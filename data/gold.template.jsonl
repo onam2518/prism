@@ -1,0 +1,2 @@
+{"content": {"displayServiceName": "뉴스", "title": "제목", "subtitle": "", "body": "본문"}, "expected": {"finalGrade": "G", "reasons": []}}
+{"content": {"displayServiceName": "콘텐츠뷰 (일반)", "title": "낚시성 제목", "subtitle": "", "body": "알맹이 없는 본문"}, "expected": {"finalGrade": "R", "reasons": ["clickbait", "shallow"]}}

@@ -1,0 +1,4 @@
+{"content":{"displayServiceName":"뉴스","title":"[예시·가상] 테크누리, 가정용 로봇 '하루' 공개","subtitle":"","body":"가상의 기업 테크누리가 가정용 로봇 신제품 '하루'를 공개했다. 음성 인식과 자율 주행을 강조했으며 가격은 추후 공지한다."},"expect":{"finalGrade":"G","reasons":[]}}
+{"content":{"displayServiceName":"커뮤니티","title":"[예시·가상] 한정 쿠폰 지금만! 가입하고 바로 받아가세요","subtitle":"","body":"지금 가입하면 즉시 적립금 지급. 아래 링크에서 신청하세요. http://example.com/promo 선착순 마감 임박, 서두르세요!"},"expect":{"finalGrade":"R","reasons":["ad"]}}
+{"content":{"displayServiceName":"연예","title":"[예시·가상] 가상 아이돌 '루미나', 새 앨범 발매","subtitle":"","body":"가상 그룹 루미나가 8개월 만에 정규 2집을 발매했다. 타이틀곡은 발랄한 댄스곡으로 컴백 무대가 예정돼 있다."},"expect":{"finalGrade":"G","reasons":[]}}
+{"content":{"displayServiceName":"스포츠","title":"[예시·가상] 가상 구단 FC노바, 시즌 5연승","subtitle":"","body":"가상 축구 구단 FC노바가 홈 경기에서 3대1로 승리하며 시즌 5연승을 달렸다."},"expect":{"finalGrade":"G","reasons":[]}}

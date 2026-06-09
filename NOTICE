@@ -1,0 +1,5 @@
+Prism : third-party components
+
+force-graph (https://github.com/vasturiano/force-graph)
+  Vendored at prism/vendor/force-graph.min.js. MIT License, (c) Vasco Asturiano.
+  Inlined into generated HTML so reports stay self-contained and work offline.

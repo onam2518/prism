@@ -1,0 +1,25 @@
+# 실데이터 / 산출물 (공개 제외)
+data/*.jsonl
+!data/*.template.jsonl
+results*.jsonl
+*.db
+*.db-wal
+*.db-shm
+.emb_cache.json
+.usage.jsonl
+runs/
+config.json
+prompts/quality.json
+*.html
+!docs/*.html
+
+# 내부 참조 로그
+daily-log/
+
+# 파이썬
+__pycache__/
+*.pyc
+.DS_Store
+
+report_results.jsonl
+*.report.jsonl

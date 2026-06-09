@@ -1,0 +1,22 @@
+{
+  "title": "ACME 콘텐츠 메타 리포트",
+  "_note": "회사별 설정 예시. 코어 파이프라인은 그대로 두고 이 파일만 갈아끼우면 다른 회사 체계에 적용된다. 키는 모두 선택(없으면 기본값 사용).",
+
+  "service_group": {
+    "blog": "ugc",
+    "newsroom": "media",
+    "forum": "ugc",
+    "shop": "ugc"
+  },
+
+  "intent_universal": [
+    "속보·사건 추적", "심층 분석", "팬덤·화제성", "실용 정보",
+    "감성·공감", "오락·유머", "의견·논쟁", "학술·전문"
+  ],
+
+  "iab_tier1": [
+    "News and Politics", "Entertainment", "Business and Finance", "Sports",
+    "Technology and Computing", "Health and Fitness", "Food and Drink",
+    "Travel", "Education", "Science", "Style and Fashion", "Automotive"
+  ]
+}
