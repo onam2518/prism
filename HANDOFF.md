@@ -18,12 +18,15 @@ DNM 맥락형 콘텐츠 메타(이미지/텍스트/엑셀 → 리드문·엔티�
 - 코드 바꾸면 **서버 재시작해야** 새 화면 반영(페이지가 메모리에 로드됨).
 - `--mock` 플래그 = 키 있어도 강제 mock.
 
-## 현재 상태 (이 세션 종료 시점)
+## 현재 상태 (업데이트)
 - 키: `~/.prism_key`에 저장됨(실키, hasKey True)
-- 생성 모델: **`solar-pro4-preview-260528`** (config.json, 설정 UI에서 변경됨)
+- 생성 모델: **`solar-pro3-260323`** (작동 확인). ⚠️ **`solar-pro4-preview-260528`은 /models 에 뜨지만 chat 호출 시 HTTP400(invalid model)** → 메타 빈 값. 모델은 반드시 chat 가능한 것(pro3/pro2/mini)으로. 설정 저장 시 자동 연결 테스트가 무효 모델을 잡아줌.
 - 엔드포인트: `https://api.upstage.ai/v1/solar/chat/completions`
-- 연결 테스트 성공 확인. 단, **실제 이미지로 리드문 뽑는 end-to-end는 아직 미확인**(키·연결만 검증).
-- 8765 서버는 이 세션에서 백그라운드로 떠 있을 수 있음 → 재시작 전 `lsof -ti tcp:8765 | xargs kill` 권장.
+- **실모델 end-to-end 검증 완료**: 텍스트/앱 경유 추출에서 리드문·엔티티 정상 생성.
+- 데스크탑 앱: **`~/Desktop/Prism-0.2.0.dmg`** (pywebview .app, 미서명/ad-hoc). 디자인 시안 C + 고급 폴리시 반영.
+- 디자인: 시안 C(구조·패널형) 전체 적용 + redesign 스킬 폴리시(빈 상태·스켈레톤·노이즈·focus 링).
+- 8765 서버는 백그라운드로 떠 있을 수 있음 → 재시작 전 `lsof -ti tcp:8765 | xargs kill` 권장.
+- 앱 config 는 `~/Library/Application Support/Prism/config.json`(frozen). 기존 파일 있으면 새 번들이 덮어쓰지 않으니 모델 바꾸려면 그 파일 수정 또는 앱 설정 UI 사용.
 
 ## DNM 메타 체계 (가장 중요 — 코드가 이 기준으로 정렬됨)
 페이지 13 + 하위(131·1312·132) 기준. `ItemMeta` 직렬화 키:
