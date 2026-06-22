@@ -16,8 +16,18 @@ import time
 import urllib.request
 
 OCR_URL = "https://api.upstage.ai/v1/document-digitization"
-CHAT_URL = "https://api.upstage.ai/v1/chat/completions"
+CHAT_URL = "https://api.upstage.ai/v1/chat/completions"   # config 미설정 시 fallback
 DOCVISION_MODEL = "solar-docvision"
+
+
+def _chat_url() -> str:
+    """DocVision 호출 엔드포인트는 Prism Config 의 chat_url 과 동일하게 맞춘다
+    (예: https://api.upstage.ai/v1/solar/chat/completions). 미설정 시 fallback."""
+    try:
+        from .config import Config
+        return Config.load().chat_url or CHAT_URL
+    except Exception:
+        return CHAT_URL
 
 _VISION_PROMPT = (
     "이 이미지의 핵심 내용을 한국어로 요약하라. 등장 인물/사물/장소/브랜드/로고, "
@@ -79,7 +89,7 @@ def docvision_describe(content: bytes, mime: str = "image/png", timeout: int = 6
         "temperature": 0.2,
         "stream": False,
     }
-    req = urllib.request.Request(CHAT_URL, data=json.dumps(body).encode(), method="POST")
+    req = urllib.request.Request(_chat_url(), data=json.dumps(body).encode(), method="POST")
     req.add_header("Authorization", f"Bearer {key}")
     req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
