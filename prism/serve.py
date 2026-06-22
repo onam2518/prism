@@ -114,6 +114,92 @@ def build_report_html() -> str:
             return f"<p>리포트 생성 실패: {e}</p>"
 
 
+# ── 설정(API 키 / 모델 / 엔드포인트) ─────────────────────────────────────────
+_KEY_PATH = os.path.expanduser("~/.prism_key")
+
+
+def load_persisted_key():
+    """저장된 키가 있고 환경변수가 비어 있으면 프로세스 환경에 주입(서버 시작 시)."""
+    if IMG._api_key():
+        return
+    try:
+        if os.path.exists(_KEY_PATH):
+            k = open(_KEY_PATH, encoding="utf-8").read().strip()
+            if k:
+                os.environ["UPSTAGE_API_KEY"] = k
+    except Exception:
+        pass
+
+
+def config_status() -> dict:
+    cfg = Config.load()
+    base = (cfg.chat_url or "").rsplit("/chat/completions", 1)[0]
+    return {
+        "hasKey": bool(IMG._api_key()),
+        "persisted": os.path.exists(_KEY_PATH),
+        "model": cfg.model or "",
+        "baseUrl": base,
+        "configured": cfg.is_configured(),
+        "forcedMock": Handler.server_mock,
+    }
+
+
+def apply_config(data: dict) -> dict:
+    """키/모델/엔드포인트 적용. 키는 프로세스 환경에 주입, persist 시 ~/.prism_key 저장."""
+    key = (data.get("api_key") or "").strip()
+    if key:
+        os.environ["UPSTAGE_API_KEY"] = key
+        if data.get("persist"):
+            try:
+                with open(_KEY_PATH, "w", encoding="utf-8") as f:
+                    f.write(key)
+                os.chmod(_KEY_PATH, 0o600)
+            except Exception:
+                pass
+    elif data.get("forget"):                      # 저장된 키 삭제
+        os.environ.pop("UPSTAGE_API_KEY", None)
+        try:
+            os.remove(_KEY_PATH)
+        except OSError:
+            pass
+    model = (data.get("model") or "").strip()
+    base = (data.get("base_url") or "").strip()
+    if model or base:
+        cfg = Config.load()
+        if base:
+            cfg.set_base_url(base)
+        if model:
+            cfg.model = model
+        try:
+            cfg.save_template()                   # config.json 갱신(키는 저장 안 함)
+        except Exception:
+            pass
+    return config_status()
+
+
+def ping_model() -> dict:
+    """현재 키/설정으로 실제 1회 호출하여 연결 검증."""
+    if not IMG._api_key():
+        return {"ok": False, "detail": "API 키가 설정되지 않았습니다"}
+    try:
+        cfg = Config.load()
+        if not cfg.is_configured():
+            return {"ok": False, "detail": "엔드포인트·모델 미설정 (config)"}
+        llm = LLMClient(config=cfg)
+        if llm.mock:
+            return {"ok": False, "detail": "키 인식 실패 (mock 모드로 동작)"}
+        obj, res = llm.complete_json("JSON 객체 하나만 출력한다.",
+                                     '{"ok": true} 형태로만 답하라.', tag="ping")
+        if res.fail_kind or "_fail" in obj:
+            return {"ok": False, "detail": (obj.get("_fail") or res.fail_kind or "호출 실패")[:200]}
+        return {"ok": True, "detail": f"{cfg.model} 응답 정상", "latency_ms": res.latency_ms}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)[:200]}
+
+
+_JSON = "application/json; charset=utf-8"
+
+
 # ── HTTP 핸들러 ──────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     server_mock = False
@@ -132,16 +218,31 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/report"):
             self._send(200, build_report_html())
+        elif self.path.startswith("/config"):
+            self._send(200, json.dumps(config_status(), ensure_ascii=False), _JSON)
         else:
             self._send(200, PAGE)
 
     def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+
+        if self.path.startswith("/config"):
+            try:
+                self._send(200, json.dumps(apply_config(json.loads(body or b"{}")),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/ping"):
+            self._send(200, json.dumps(ping_model(), ensure_ascii=False), _JSON)
+            return
+
         if not self.path.startswith("/run"):
             self._send(404, "not found")
             return
         ctype = self.headers.get("Content-Type", "")
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
         try:
             if "multipart/form-data" in ctype:
                 boundary = ctype.split("boundary=", 1)[1].strip()
@@ -149,13 +250,11 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 fields = json.loads(body or b"{}")
             result = run_pipeline(fields, mock=self.server_mock)
-            self._send(200, json.dumps(result, ensure_ascii=False),
-                       "application/json; charset=utf-8")
+            self._send(200, json.dumps(result, ensure_ascii=False), _JSON)
         except Exception as e:
             import traceback
             traceback.print_exc()
-            self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False),
-                       "application/json; charset=utf-8")
+            self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
 
 
 PAGE = """<!doctype html>
@@ -192,6 +291,43 @@ PAGE = """<!doctype html>
       imgGroup: '포토', imgTitle: '', imgCaption: '',
       txtGroup: '뉴스', txtTitle: '', txtBody: '',
       fileLabel: '선택된 파일 없음',
+
+      // 설정(API 키 / 모델)
+      showSettings: false, cfg: { hasKey: false, model: '', persisted: false, forcedMock: false },
+      cfgKey: '', cfgModel: '', cfgPersist: true, cfgMsg: '', cfgBusy: false,
+
+      init() { this.refreshConfig(); },
+      async refreshConfig() {
+        try {
+          const r = await fetch('/config'); this.cfg = await r.json();
+          if (!this.cfgModel) this.cfgModel = this.cfg.model;
+        } catch (e) { /* noop */ }
+      },
+      openSettings() { this.cfgMsg = ''; this.cfgModel = this.cfg.model || ''; this.showSettings = true; },
+      async saveConfig() {
+        this.cfgBusy = true; this.cfgMsg = '저장 중…';
+        try {
+          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: this.cfgKey, model: this.cfgModel, persist: this.cfgPersist }) });
+          this.cfg = await r.json(); this.cfgKey = '';
+          this.cfgMsg = this.cfg.hasKey ? '저장됨 · 연결 테스트로 확인하세요' : '저장됨';
+        } catch (e) { this.cfgMsg = '오류: ' + e; }
+        this.cfgBusy = false;
+      },
+      async forgetKey() {
+        this.cfgBusy = true; this.cfgMsg = '삭제 중…';
+        try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ forget: true }) }); this.cfg = await r.json(); this.cfgMsg = '저장된 키 삭제됨'; }
+        catch (e) { this.cfgMsg = '오류: ' + e; }
+        this.cfgBusy = false;
+      },
+      async testConn() {
+        this.cfgBusy = true; this.cfgMsg = '연결 테스트 중…';
+        try { const j = await (await fetch('/ping', { method: 'POST' })).json();
+          this.cfgMsg = (j.ok ? '✓ 성공 · ' : '✗ 실패 · ') + j.detail; }
+        catch (e) { this.cfgMsg = '오류: ' + e; }
+        await this.refreshConfig(); this.cfgBusy = false;
+      },
 
       selectTab(id) { this.activeTabId = id; this.status = ''; },
       onFiles(e) {
@@ -262,11 +398,56 @@ PAGE = """<!doctype html>
     </div>
     <div class="flex items-center gap-2 text-[13px] text-muted">
       <span class="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] px-2.5 py-1">
-        <span class="h-1.5 w-1.5 rounded-full" x-bind:class="(result && result.mock) ? 'bg-solar' : 'bg-violet'"></span>
-        <span x-text="(result && result.mock) ? 'MOCK' : 'Solar'"></span>
+        <span class="h-1.5 w-1.5 rounded-full" x-bind:class="(cfg.hasKey && !cfg.forcedMock) ? 'bg-solar' : 'bg-amber-400'"></span>
+        <span x-text="cfg.forcedMock ? 'MOCK(강제)' : (cfg.hasKey ? 'Solar 연결됨' : 'MOCK · 키 미설정')"></span>
       </span>
+      <button type="button" x-on:click="openSettings()" aria-label="설정"
+        class="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] px-2.5 py-1 text-white transition-colors hover:bg-white/[0.05]">
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        설정
+      </button>
     </div>
   </header>
+
+  <!-- 설정 모달 -->
+  <div x-show="showSettings" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+       x-on:click.self="showSettings = false">
+    <div class="w-full max-w-md rounded-xl border border-white/[0.10] bg-surface p-6">
+      <div class="mb-1 flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-white">설정</h2>
+        <button type="button" x-on:click="showSettings = false" class="text-muted hover:text-white" aria-label="닫기">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <p class="mb-4 text-xs text-muted">Upstage API 키를 입력하면 OCR · DocVision · 생성이 실모델로 동작합니다. 키는 config에 저장되지 않습니다.</p>
+
+      <label class="mb-1.5 block text-xs font-medium text-muted">Upstage API 키</label>
+      <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
+
+      <label class="mb-1.5 mt-4 block text-xs font-medium text-muted">생성 모델 (선택)</label>
+      <input x-model="cfgModel" class="field" placeholder="solar-pro3-260323">
+
+      <label class="mt-4 flex cursor-pointer items-center gap-2 text-sm text-body">
+        <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
+        이 기기에 저장 (재시작 후에도 유지 · <code class="text-muted">~/.prism_key</code>)
+      </label>
+
+      <div class="mt-3 flex items-center gap-2 text-xs">
+        <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasKey ? 'bg-solar' : 'bg-amber-400'"></span>
+        <span class="text-muted" x-text="cfg.hasKey ? ('키 설정됨 · 모델 ' + cfg.model + (cfg.persisted ? ' · 저장됨' : '')) : '키 미설정 (현재 MOCK)'"></span>
+      </div>
+
+      <div class="mt-5 flex flex-wrap items-center gap-2">
+        <button type="button" x-on:click="saveConfig()" x-bind:disabled="cfgBusy"
+          class="rounded-lg bg-violet px-4 py-2 text-sm font-medium text-white hover:bg-violet-hover disabled:opacity-50">저장</button>
+        <button type="button" x-on:click="testConn()" x-bind:disabled="cfgBusy"
+          class="rounded-lg border border-white/[0.10] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
+        <button type="button" x-show="cfg.persisted" x-on:click="forgetKey()" x-bind:disabled="cfgBusy"
+          class="rounded-lg border border-rose-500/30 px-4 py-2 text-sm font-medium text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">저장키 삭제</button>
+        <span class="text-xs text-body" aria-live="polite" x-text="cfgMsg"></span>
+      </div>
+    </div>
+  </div>
 
   <div class="flex">
     <!-- 좌측 사이드바 -->
@@ -445,11 +626,12 @@ def main():
     a = ap.parse_args()
 
     Handler.server_mock = a.mock
+    load_persisted_key()                              # ~/.prism_key 있으면 주입
     keyed = bool(IMG._api_key())
-    mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 없음)")
+    mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 미설정 · UI에서 설정)")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     print(f"  Prism UI  →  http://{a.host}:{a.port}   [{mode}]")
-    print("  Ctrl+C 로 종료")
+    print("  키 설정: 우상단 설정(톱니) 버튼 · Ctrl+C 로 종료")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

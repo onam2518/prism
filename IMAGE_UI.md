@@ -20,6 +20,11 @@ Prism에 **이미지→메타** 경로와 **로컬 웹 UI**를 더한 확장. Pr
 - 여러 이미지는 **하나의 콘텐츠로 통합**(body에 이미지별 신호 누적) → 메타 1세트.
 - Upstage 전용: OCR=`document-digitization`, 시각=`solar-docvision`, 생성=설정된 chat 모델.
 
+## API 키 설정 (UI)
+
+서버 실행 후 우상단 **설정(톱니)** 버튼 → Upstage API 키 입력 → **저장** → **연결 테스트**.
+키를 넣으면 OCR · DocVision · 생성이 실모델로 동작한다(키 없으면 자동 mock). `이 기기에 저장` 체크 시 `~/.prism_key`에 저장되어 재시작 후에도 유지된다. 키는 `config.json`에 저장되지 않는다.
+
 ## 실행
 
 ```bash
