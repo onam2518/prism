@@ -428,12 +428,11 @@ PAGE = """<!doctype html>
         try {
           const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ api_key: this.cfgKey, model: this.cfgModel, persist: this.cfgPersist }) });
-          this.cfg = await r.json();
-          this.cfgMsg = this.cfg.hasKey ? '저장됨 · 연결 테스트로 확인하세요' : '저장됨';
-        } catch (e) { this.cfgMsg = '오류: ' + e; }
-        this.cfgBusy = false;
+          this.cfg = await r.json(); this.cfgKey = '';
+        } catch (e) { this.cfgMsg = '오류: ' + e; this.cfgBusy = false; return; }
         if (this.cfg.hasKey && !this.models.length) this.loadModels();   // 모델 목록 자동 로드
-        this.cfgKey = '';
+        if (this.cfg.hasKey) { await this.testConn(); }                  // 저장 즉시 모델 유효성 검증
+        else { this.cfgMsg = '저장됨'; this.cfgBusy = false; }
       },
       async forgetKey() {
         this.cfgBusy = true; this.cfgMsg = '삭제 중…';
