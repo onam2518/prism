@@ -40,26 +40,26 @@ def verify_item(im, content) -> list:
         im.entities = im.entities[:3]
     im.entities = [e for e in im.entities if isinstance(e, str) and e.strip()]
 
-    # intent_categories: 사전 화이트리스트
+    # intent(분류값): 사전 화이트리스트
     valid_intents = set(D.intent_categories_for(content.displayServiceName))
     clean_int = []
-    for c in im.intent_categories or []:
+    for c in im.intent or []:
         if c in valid_intents:
             clean_int.append(c)
         else:
-            notes.append(f"intent_category 사전외 제거: {c}")
-    im.intent_categories = clean_int[:2]  # 1~2개
+            notes.append(f"intent 사전외 제거: {c}")
+    im.intent = clean_int[:2]  # 1~2개
 
-    # entity_categories: Tier1 화이트리스트 강제
+    # content_category: Tier1 화이트리스트 강제
     clean_ec = {}
-    for ent, cat in (im.entity_categories or {}).items():
+    for ent, cat in (im.content_category or {}).items():
         tier1 = str(cat).split("/")[0].strip()
         if tier1 in D.IAB_TIER1:
             clean_ec[ent] = cat
         else:
-            notes.append(f"entity_category Tier1 사전외 → 미분류: {ent}={cat}")
+            notes.append(f"content_category Tier1 사전외 → 미분류: {ent}={cat}")
             clean_ec[ent] = "Unclassified"
-    im.entity_categories = clean_ec
+    im.content_category = clean_ec
     return notes
 
 

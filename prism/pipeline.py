@@ -100,21 +100,21 @@ def extract(content_dict: dict, llm: LLMClient, *,
             from . import classify as C
             cats, margin = C.intent_category_classify(emb, content)
             if cats:
-                item_meta.intent_categories = cats
+                item_meta.intent = cats
                 verdicts.append({"agent": "IntentCategory(emb)",
                                  "evidence": f"margin={margin}", "fail": None})
             if item_meta.entities:
                 # 1차: 엔티티 본질로 분류(무문맥 → 혼합주제 오염 방지)
-                item_meta.entity_categories = C.hybrid_entity_categories(
+                item_meta.content_category = C.hybrid_entity_categories(
                     emb, llm, [(e, "") for e in item_meta.entities])
                 # 2차: 1차에서 미분류된 비익명 고유명사를 제목 문맥으로 복구
-                unrec = [(e, content.title) for e, c in item_meta.entity_categories.items()
+                unrec = [(e, content.title) for e, c in item_meta.content_category.items()
                          if c == "Unclassified" and not C.is_vague_entity(e)]
                 if unrec:
                     rec = C.recover_with_context(llm, unrec)
                     for e, c in rec.items():
                         if c != "Unclassified":
-                            item_meta.entity_categories[e] = c
+                            item_meta.content_category[e] = c
                 verdicts.append({"agent": "EntityCategory(2-pass: 본질+문맥복구)",
                                  "evidence": "1차 본질 분류 → 2차 문맥 식별 복구", "fail": None})
         fallbacks += V.verify_item(item_meta, content)
@@ -184,9 +184,9 @@ def _mock_generator(system: str, user: str, tag: str) -> dict:
         ecat = {}
         for e in ents:
             ecat[e] = "News and Politics / Society"
-        return {"intent": f"{(ents[0] if ents else '주제')} 관련 내용을 정리",
-                "entities": ents, "intent_categories": cats,
-                "entity_categories": ecat}
+        return {"summary": f"{(ents[0] if ents else '주제')} 관련 내용을 정리",
+                "entities": ents, "intent": cats,
+                "content_category": ecat}
 
     if tag == "legal_route":
         codes = []

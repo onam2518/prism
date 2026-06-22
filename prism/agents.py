@@ -37,10 +37,10 @@ def run_item(llm, content) -> tuple[ItemMeta, list]:
     sys = P.item_system(content)
     obj, res = llm.complete_json(sys, P.item_user(content), tag="item")
     im = ItemMeta(
-        intent=obj.get("intent", ""),
+        summary=obj.get("summary", ""),
         entities=obj.get("entities", []) or [],
-        intent_categories=obj.get("intent_categories", []) or [],
-        entity_categories=obj.get("entity_categories", {}) or {},
+        intent=obj.get("intent", []) or [],
+        content_category=obj.get("content_category", {}) or {},
     )
     return im, [res, {"agent": "ItemAgent", "fail": obj.get("_fail")}]
 

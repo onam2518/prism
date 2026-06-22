@@ -199,13 +199,12 @@ PAGE = """<!doctype html>
         this.fileLabel = fs.length ? (fs.length + '개 파일 선택됨') : '선택된 파일 없음';
       },
 
-      // DNM 메타 체계(13. 프로젝트 기획 / 1312. 아이템 메타) 기준 라벨 매핑.
-      // Prism 코어 필드는 그대로 두고 경계에서 신규 명칭으로 노출:
-      //   intent → 리드문 · entities → 엔티티 · intent_categories → 인텐트 · entity_categories → 콘텐츠 카테고리
+      // DNM 메타 체계(13. 프로젝트 기획 / 1312. 아이템 메타) 기준 item_meta 필드:
+      //   summary(리드문) · entities(엔티티) · intent(인텐트) · content_category(콘텐츠 카테고리)
       get im() { return (this.result && this.result.output.item_meta) || {}; },
       get q() { return (this.result && this.result.output.quality_meta) || {}; },
       get contentCats() {
-        const e = this.im.entity_categories || {};
+        const e = this.im.content_category || {};
         return Object.keys(e).map((k) => k + ' \\u2192 ' + e[k]);
       },
 
@@ -359,7 +358,7 @@ PAGE = """<!doctype html>
 
             <label class="mb-1.5 block text-xs font-medium text-muted">리드문</label>
             <p class="rounded-lg border border-white/[0.08] bg-canvas p-3.5 text-[15px] leading-relaxed text-white"
-               x-text="im.intent || '(빈 값 — 차단되었거나 본문 부족)'"></p>
+               x-text="im.summary || '(빈 값 — 차단되었거나 본문 부족)'"></p>
 
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
@@ -374,10 +373,10 @@ PAGE = """<!doctype html>
               <div>
                 <label class="mb-1.5 block text-xs font-medium text-muted">인텐트</label>
                 <div class="flex flex-wrap gap-1.5">
-                  <template x-for="x in (im.intent_categories || [])" x-bind:key="x">
+                  <template x-for="x in (im.intent || [])" x-bind:key="x">
                     <span class="inline-flex items-center rounded-md bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-body" x-text="x"></span>
                   </template>
-                  <span x-show="!(im.intent_categories || []).length" class="text-xs text-muted">—</span>
+                  <span x-show="!(im.intent || []).length" class="text-xs text-muted">—</span>
                 </div>
               </div>
             </div>

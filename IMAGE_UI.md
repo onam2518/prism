@@ -16,7 +16,7 @@ Prism에 **이미지→메타** 경로와 **로컬 웹 UI**를 더한 확장. Pr
 
 - 이미지에서 뽑은 신호로 **4필드 Content를 합성**해 기존 텍스트 파이프라인에 그대로 태운다.
 - 리드문·엔티티·인텐트·콘텐츠 카테고리는 **Prism의 `run_item`이 생성** → 코어 무수정.
-- **DNM 체계(13. 프로젝트 기획 / 1312) 매핑**: Prism `intent`→리드문, `entities`→엔티티, `intent_categories`→인텐트, `entity_categories`→콘텐츠 카테고리. 코어 필드는 두고 UI 경계에서 신규 명칭으로 노출.
+- **DNM 체계(13. 프로젝트 기획 / 1312)**: `item_meta` 필드는 `summary`(리드문) · `entities`(엔티티) · `intent`(인텐트) · `content_category`(콘텐츠 카테고리). 코어 스키마·프롬프트·리포트까지 이 명칭으로 정렬됨.
 - 여러 이미지는 **하나의 콘텐츠로 통합**(body에 이미지별 신호 누적) → 메타 1세트.
 - Upstage 전용: OCR=`document-digitization`, 시각=`solar-docvision`, 생성=설정된 chat 모델.
 

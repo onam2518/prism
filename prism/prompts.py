@@ -2,7 +2,7 @@
 from . import dictionaries as D
 
 QMETA_VERSION = "qmeta@v31"
-IMETA_VERSION = "imeta@v7"
+IMETA_VERSION = "imeta@v8"
 LEGAL_VERSION = "legal@v3"
 
 _JSON_GUARD = (
@@ -58,16 +58,16 @@ def item_system(content) -> str:
     tier1 = " / ".join(D.IAB_TIER1)
     return f"""너는 유통 가능(G) 콘텐츠의 아이템 메타를 추출한다. 4단계를 순서대로 수행한다.
 
-1) intent: 이 콘텐츠가 '무엇을 어떤 관점에서 다루는지' 한 문장으로 요약(주어+대상+관점).
+1) summary: 이 콘텐츠가 '무엇을 어떤 관점에서 다루는지' 한 문장으로 요약(주어+대상+관점).
 2) entities: 핵심 단일 명사 1~3개(인물·기관·브랜드·개념). 고유명사 우선.
-3) intent_categories: 아래 사전값 중 1~2개만. 자유 생성 금지.
+3) intent: 아래 사전값 중 1~2개만. 자유 생성 금지.
    [{intents}]
-4) entity_categories: 각 엔티티를 IAB Tier1(필요시 Tier1/Tier2)로. Tier1 사전:
+4) content_category: 각 엔티티를 IAB Tier1(필요시 Tier1/Tier2)로. Tier1 사전:
    [{tier1}]
 
 [출력 형식]
-{{"intent":"...","entities":["..."],"intent_categories":["..."],
-  "entity_categories":{{"엔티티":"Tier1 / Tier2"}}}}{_JSON_GUARD}"""
+{{"summary":"...","entities":["..."],"intent":["..."],
+  "content_category":{{"엔티티":"Tier1 / Tier2"}}}}{_JSON_GUARD}"""
 
 
 def item_user(content) -> str:

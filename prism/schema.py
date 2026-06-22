@@ -84,10 +84,11 @@ class QualityMeta:
 
 @dataclass
 class ItemMeta:
-    intent: str = ""
-    entities: list = field(default_factory=list)
-    intent_categories: list = field(default_factory=list)
-    entity_categories: dict = field(default_factory=dict)
+    # DNM 메타 체계(13. 프로젝트 기획 / 1312. 아이템 메타) 기준 필드명
+    summary: str = ""                                     # 리드문 (생성 문장)
+    entities: list = field(default_factory=list)          # 엔티티
+    intent: list = field(default_factory=list)            # 인텐트 (속성 분류값)
+    content_category: dict = field(default_factory=dict)  # 콘텐츠 카테고리
 
 
 @dataclass

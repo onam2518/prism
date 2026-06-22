@@ -198,9 +198,9 @@ def _aggregate(rows):
         for x in qm.get("reasons", []):
             reasons[x] = reasons.get(x, 0) + 1
         im = r.get("item_meta") or {}
-        for c in im.get("intent_categories", []):
+        for c in im.get("intent", []):
             intents[c] = intents.get(c, 0) + 1
-        for e, cat in (im.get("entity_categories") or {}).items():
+        for e, cat in (im.get("content_category") or {}).items():
             ents.add(e)
             t1 = tier1_remap(cat)
             if t1 and t1 != "Unclassified":      # 미분류는 분포에서 제외
@@ -245,7 +245,7 @@ def _canonical_entity_categories(rows, service_names):
     votes = {}
     for r in rows:
         im = r.get("item_meta") or {}
-        for e, c in (im.get("entity_categories") or {}).items():
+        for e, c in (im.get("content_category") or {}).items():
             if _is_junk_entity(e, service_names):
                 continue
             t1 = tier1_remap(c)
@@ -300,7 +300,7 @@ def _graph(rows, max_nodes: int = 900, top_entities: int = 260):
         # 콘텐츠 → 엔티티 카테고리 직접 엣지(belongs_to): 엔티티 레이어를 꺼도 매핑이 보임
         for t1 in content_cats:
             links.append({"s": cid, "t": f"k:{t1}", "rel": "belongs_to"})
-        for c in im.get("intent_categories", []):
+        for c in im.get("intent", []):
             iid = f"i:{c}"
             node(iid, c, "intent")
             links.append({"s": cid, "t": iid, "rel": "intent"})
@@ -396,10 +396,10 @@ def _table_rows(rows):
             "confidence": qm.get("confidence"),
             "decision": "YELLOW" if qm.get("review") == "yellow" else qm.get("finalGrade", ""),
             "reasons": qm.get("reasons", []),
-            "intent": im.get("intent", ""),
+            "intent": im.get("summary", ""),
             "entities": im.get("entities", []),
-            "intent_categories": im.get("intent_categories", []),
-            "entity_categories": im.get("entity_categories", {}),
+            "intent_categories": im.get("intent", []),
+            "entity_categories": im.get("content_category", {}),
         })
     return out
 

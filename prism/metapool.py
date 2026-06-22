@@ -127,7 +127,7 @@ def build_composite(rows, service_names):
         # 앵글 = 인텐트 카테고리를 관점(속보/분석/반응/화제)으로 정규화. 중복 = 동일 인텐트셋
         angles, intent_sets = {}, {}
         for i in members:
-            ic = (rows[i].get("item_meta") or {}).get("intent_categories") or []
+            ic = (rows[i].get("item_meta") or {}).get("intent") or []
             angles[i] = _angle(ic[0] if ic else "")
             intent_sets[i] = tuple(sorted(ic))
         dup = _dup_count(intent_sets)
@@ -181,9 +181,9 @@ def build_filter(rows, canon, service_names):
     c_ent, c_int = [], []
     for r in rows:
         im = r.get("item_meta") or {}
-        ecats = {tier1_remap(c) for c in (im.get("entity_categories") or {}).values()}
+        ecats = {tier1_remap(c) for c in (im.get("content_category") or {}).values()}
         c_ent.append(ecats)
-        c_int.append(set(im.get("intent_categories") or []))
+        c_int.append(set(im.get("intent") or []))
     pools = []
     for f in FILTER_DEFS:
         matched = []
