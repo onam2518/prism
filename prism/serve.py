@@ -577,6 +577,10 @@ PAGE = """<!doctype html>
   <div class="flex">
     <!-- 좌측 사이드바 -->
     <aside class="hidden w-60 shrink-0 border-r border-white/[0.08] px-3 py-6 md:block">
+      <div class="mb-6 flex items-center gap-2 px-3">
+        <svg class="h-5 w-5 shrink-0 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3v4M3 5h4M6 17v4m-2-2h4"/><path d="M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
+        <span class="text-sm font-semibold tracking-tight text-white">리드문 · 메타 추출</span>
+      </div>
       <div class="px-3 text-[11px] font-semibold uppercase tracking-wider text-muted">입력 방식</div>
       <nav class="mt-2 space-y-0.5" aria-label="입력 방식">
         <template x-for="tabItem in tabItems" x-bind:key="tabItem.id">
@@ -597,11 +601,6 @@ PAGE = """<!doctype html>
     <!-- 메인 -->
     <main class="min-w-0 flex-1 px-6 py-8 lg:px-10">
       <div class="mx-auto max-w-3xl">
-        <h1 class="text-3xl font-semibold tracking-tight text-white">리드문 · 메타 추출</h1>
-        <p class="mt-2 text-[15px] text-body">
-          이미지(또는 텍스트)를 넣으면 OCR과 DocVision으로 내용을 추출하고, Solar로 리드문·엔티티·인텐트·콘텐츠 카테고리를 생성합니다.
-        </p>
-        <hr class="my-7 border-white/[0.08]">
 
         <!-- 입력 카드 -->
         <section class="rounded-lg border border-white/[0.08] bg-surface p-6">
