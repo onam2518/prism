@@ -18,8 +18,8 @@ export const tokens = {
     warning: '#fbbf24',
   },
   font: {
-    sans: 'Geist, system-ui, sans-serif',
-    mono: '"Geist Mono", monospace',
+    sans: '"Pretendard Variable", Pretendard, system-ui, -apple-system, sans-serif',
+    mono: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   },
   fontSize: { xs: '12px', sm: '13px', base: '14px', md: '15px', lg: '18px', xl: '24px', '2xl': '30px' },
   fontWeight: { regular: 400, medium: 500, semibold: 600 },

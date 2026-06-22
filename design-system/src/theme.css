@@ -18,8 +18,8 @@
   --ds-warning: #fbbf24;
 
   /* typography */
-  --ds-font-sans: Geist, system-ui, sans-serif;
-  --ds-font-mono: "Geist Mono", monospace;
+  --ds-font-sans: "Pretendard Variable", Pretendard, system-ui, -apple-system, sans-serif;
+  --ds-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --ds-size-xs: 12px;
   --ds-size-sm: 13px;
   --ds-size-base: 14px;

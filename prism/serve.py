@@ -312,14 +312,22 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(200, PAGE)
 
+    _VENDOR_CT = {
+        ".js": "application/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".woff2": "font/woff2",
+        ".woff": "font/woff",
+    }
+
     def _send_vendor(self, name):
         safe = os.path.basename(name)
+        ext = os.path.splitext(safe)[1].lower()
         path = os.path.join(os.path.dirname(__file__), "vendor", safe)
-        if not (safe.endswith(".js") and os.path.isfile(path)):
+        if ext not in self._VENDOR_CT or not os.path.isfile(path):
             self._send(404, "not found")
             return
         with open(path, "rb") as f:
-            self._send(200, f.read(), "application/javascript; charset=utf-8")
+            self._send(200, f.read(), self._VENDOR_CT[ext])
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -370,14 +378,15 @@ PAGE = """<!doctype html>
 <title>Prism · 리드문·메타 추출</title>
 <meta name="description" content="이미지·텍스트·엑셀에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출하는 콘텐츠 메타 도구">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b52ff'/%3E%3Cpath d='M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z' fill='%23fff'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="/vendor/pretendard.css" rel="stylesheet">
 <script src="/vendor/tailwind.js"></script>
 <script>
   tailwind.config = {
     theme: { extend: {
-      fontFamily: { sans: ['Geist', 'system-ui', 'sans-serif'], mono: ['"Geist Mono"', 'monospace'] },
+      fontFamily: {
+        sans: ['"Pretendard Variable"', 'Pretendard', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
       colors: {
         violet: { DEFAULT: '#5b52ff', hover: '#4a42e0', deep: '#281ca5' },
         solar: '#d2ff95',
@@ -553,7 +562,17 @@ PAGE = """<!doctype html>
 <style>
   [x-cloak]{display:none!important}
   *{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-  body{font-family:Geist,system-ui,sans-serif;
+  /* ── 타이포 스케일(디자인 시스템 토큰) ──
+     글꼴: Pretendard Variable. 영역별 굵기·크기 규칙:
+       본문 14/400 · 라벨 11/600(uppercase) · 패널 제목 13/600
+       타이틀바 13/600 · 히어로 18/600 · 수치 23/600(tabular) */
+  :root{
+    --ds-font:"Pretendard Variable",Pretendard,system-ui,-apple-system,sans-serif;
+    --ctrl-h:42px;            /* 단일 컨트롤 높이(입력·셀렉트·드롭존 공통) */
+    --ctrl-r:8px;             /* 컨트롤 radius(토큰 control) */
+    --ctrl-px:12px;           /* 컨트롤 좌우 패딩 */
+  }
+  body{font-family:var(--ds-font);font-size:14px;line-height:1.5;letter-spacing:-.003em;
     background:
       radial-gradient(820px 420px at 100% -6%, rgba(91,82,255,.12), transparent 60%),
       radial-gradient(680px 360px at 0% 0%, rgba(210,255,149,.045), transparent 55%),
@@ -564,15 +583,30 @@ PAGE = """<!doctype html>
   ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.09);border-radius:8px;border:3px solid transparent;background-clip:content-box}
   ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.18);background-clip:content-box}
 
-  /* fields */
-  .field{width:100%;border-radius:8px;background:#0d0c12;border:1px solid rgba(255,255,255,.10);
-    color:#fff;font-size:14px;padding:10px 12px;transition:border-color .15s,box-shadow .15s,background .15s}
+  /* ── 폼 컨트롤(단일 규격) ──
+     입력·셀렉트·드롭존은 같은 높이(--ctrl-h)·radius·패딩·테두리를 공유한다.
+     textarea 는 다행이므로 높이만 자동, 나머지 토큰은 동일. */
+  .field{width:100%;box-sizing:border-box;border-radius:var(--ctrl-r);background:#0d0c12;
+    border:1px solid rgba(255,255,255,.10);color:#fff;font-family:var(--ds-font);font-size:14px;
+    transition:border-color .15s,box-shadow .15s,background .15s}
+  input.field,select.field{height:var(--ctrl-h);padding:0 var(--ctrl-px)}
+  textarea.field{padding:11px var(--ctrl-px);line-height:1.55;min-height:96px;resize:vertical}
   .field::placeholder{color:#5b606b}
   .field:hover{border-color:rgba(255,255,255,.18)}
   .field:focus{outline:none;border-color:#5b52ff;box-shadow:0 0 0 3px rgba(91,82,255,.22);background:#0b0a0f}
   select.field{appearance:none;-webkit-appearance:none;padding-right:34px;cursor:pointer;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa0aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 11px center}
+
+  /* 드롭존(파일 업로드) — .field 와 동일 규격. 점선 테두리·우측 버튼만 다름 */
+  .dropzone{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+    box-sizing:border-box;height:var(--ctrl-h);padding:0 6px 0 var(--ctrl-px);
+    border-radius:var(--ctrl-r);border:1px dashed rgba(255,255,255,.16);background:#0d0c12;
+    cursor:pointer;font-size:14px;color:#9aa0aa;transition:border-color .15s,background .15s}
+  .dropzone:hover{border-color:rgba(91,82,255,.55);background:#0b0a0f}
+  .dropzone .pick{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
+    border-radius:6px;background:rgba(255,255,255,.08);color:#fff;font-size:12px;font-weight:600}
+  .dropzone .name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* 카드: 토큰 유지 + 미세 입체(상단 하이라이트)·호버 리프트 */
   .card{box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
@@ -680,6 +714,13 @@ PAGE = """<!doctype html>
     font-size:13px;font-weight:600;color:#fff;letter-spacing:.01em}
   .titlebar .sub{font-weight:500;color:#6e7191;font-size:12px}
   .titlebar .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  /* 로고: 마크(분광 프리즘) + 워드마크 + 기능 태그 */
+  .logo-mark{flex:none;width:27px;height:27px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(150deg,#6760ff,#4a42e0);
+    box-shadow:0 5px 14px -5px rgba(91,82,255,.75),inset 0 1px 0 rgba(255,255,255,.2)}
+  .logo-mark svg{width:17px;height:17px}
+  .logo-word{font-size:16px;font-weight:700;letter-spacing:-.02em;color:#fff}
+  .logo-sub{font-size:11px;font-weight:500;color:#6e7191;letter-spacing:0;margin-left:-2px}
   .pbody{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
   .pbody.pad{padding:18px}
   .pbody.center{padding:26px 30px}
@@ -735,8 +776,15 @@ PAGE = """<!doctype html>
   <!-- ━━━━━ 좌측 페인 · 내비게이션 ━━━━━ -->
   <aside class="pane">
     <div class="titlebar">
-      <svg class="h-[18px] w-[18px] shrink-0 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3v4M3 5h4M6 17v4m-2-2h4"/><path d="M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
-      <span>리드문 · 메타 추출</span>
+      <span class="logo-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 4 4 20h12z" stroke="#fff" stroke-width="1.7"/>
+          <path d="M14.5 13h6" stroke="#d2ff95" stroke-width="1.7"/>
+          <path d="M14.5 16.5h6" stroke="#a8d4ff" stroke-width="1.7"/>
+        </svg>
+      </span>
+      <span class="logo-word">Prism</span>
+      <span class="logo-sub">리드문·메타</span>
     </div>
     <div class="pbody pad">
       <div class="navgrp">입력</div>
@@ -781,9 +829,9 @@ PAGE = """<!doctype html>
           <div x-show="activeTabId === 'image'" x-cloak class="space-y-4">
             <div>
               <label class="lbl">이미지 (여러 장이면 하나의 콘텐츠로 통합)</label>
-              <label class="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-white/[0.14] bg-canvas px-4 py-3.5 text-sm transition-colors hover:border-violet/60">
-                <span x-text="fileLabel" class="text-body"></span>
-                <span class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-white">
+              <label class="dropzone">
+                <span class="name" x-text="fileLabel"></span>
+                <span class="pick">
                   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
                   파일 선택
                 </span>
@@ -806,9 +854,9 @@ PAGE = """<!doctype html>
           <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
             <div>
               <label class="lbl">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
-              <label class="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-white/[0.14] bg-canvas px-4 py-3.5 text-sm transition-colors hover:border-violet/60">
-                <span x-text="excelLabel" class="text-body"></span>
-                <span class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-white">
+              <label class="dropzone">
+                <span class="name" x-text="excelLabel"></span>
+                <span class="pick">
                   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
                   파일 선택
                 </span>
