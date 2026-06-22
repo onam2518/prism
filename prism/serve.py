@@ -497,15 +497,52 @@ PAGE = """<!doctype html>
 <script defer src="/vendor/alpine.js"></script>
 <style>
   [x-cloak]{display:none!important}
-  body{font-family:Geist,system-ui,sans-serif}
+  *{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  body{font-family:Geist,system-ui,sans-serif;
+    background:
+      radial-gradient(820px 420px at 100% -6%, rgba(91,82,255,.12), transparent 60%),
+      radial-gradient(680px 360px at 0% 0%, rgba(210,255,149,.045), transparent 55%),
+      #0b0a0f;
+    background-attachment:fixed}
   ::selection{background:#5b52ff;color:#fff}
-  .field{width:100%;border-radius:8px;background:#0b0a0f;border:1px solid rgba(255,255,255,.10);
-    color:#fff;font-size:14px;padding:9px 11px}
+  ::-webkit-scrollbar{width:11px;height:11px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.09);border-radius:8px;border:3px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.18);background-clip:content-box}
+
+  /* fields */
+  .field{width:100%;border-radius:8px;background:#0d0c12;border:1px solid rgba(255,255,255,.10);
+    color:#fff;font-size:14px;padding:10px 12px;transition:border-color .15s,box-shadow .15s,background .15s}
   .field::placeholder{color:#5b606b}
-  .field:focus{outline:none;border-color:#5b52ff;box-shadow:0 0 0 1px #5b52ff}
+  .field:hover{border-color:rgba(255,255,255,.18)}
+  .field:focus{outline:none;border-color:#5b52ff;box-shadow:0 0 0 3px rgba(91,82,255,.22);background:#0b0a0f}
+  select.field{appearance:none;-webkit-appearance:none;padding-right:34px;cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa0aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 11px center}
+
+  /* 카드: 토큰 유지 + 미세 입체(상단 하이라이트)·호버 리프트 */
+  .card{box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
+    transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
+  .card:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.14)}
+
+  /* 리드문 hero */
+  .lead{position:relative;overflow:hidden;
+    background:linear-gradient(180deg,rgba(91,82,255,.10),rgba(91,82,255,.02))!important;
+    border-color:rgba(91,82,255,.24)!important}
+  .lead::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#5b52ff}
+
+  /* 사이드바 활성 항목 좌측 액센트 */
+  .navitem.active::before{content:"";position:absolute;left:-12px;top:50%;transform:translateY(-50%);
+    width:3px;height:18px;border-radius:2px;background:#5b52ff}
+
+  /* primary 버튼 미세 그라데이션 */
+  .btn-primary{background:linear-gradient(180deg,#6760ff,#5b52ff)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 8px 22px -10px rgba(91,82,255,.65);
+    transition:filter .15s,transform .08s}
+  .btn-primary:hover{filter:brightness(1.07)}
+  .btn-primary:active{transform:translateY(1px)}
 </style>
 </head>
-<body class="min-h-screen bg-canvas text-body antialiased">
+<body class="min-h-screen text-body antialiased">
 <div x-data="prismApp()">
 
   <!-- Solar 프로모 배너 (단일 액센트) -->
@@ -597,8 +634,8 @@ PAGE = """<!doctype html>
         <template x-for="tabItem in tabItems" x-bind:key="tabItem.id">
           <button type="button" x-on:click="selectTab(tabItem.id)"
             x-bind:aria-current="activeTabId === tabItem.id ? 'page' : 'false'"
-            class="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
-            x-bind:class="activeTabId === tabItem.id ? 'bg-white/[0.07] text-white font-medium' : 'text-body hover:bg-white/[0.04] hover:text-white'">
+            class="navitem relative flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
+            x-bind:class="activeTabId === tabItem.id ? 'active bg-white/[0.07] text-white font-medium' : 'text-body hover:bg-white/[0.04] hover:text-white'">
             <!-- icon: image / text / excel -->
             <svg x-show="tabItem.id === 'image'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>
             <svg x-show="tabItem.id === 'text'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
@@ -614,7 +651,7 @@ PAGE = """<!doctype html>
       <div class="mx-auto max-w-3xl">
 
         <!-- 입력 카드 -->
-        <section class="rounded-lg border border-white/[0.08] bg-surface p-6">
+        <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
           <!-- 이미지 패널 -->
           <div x-show="activeTabId === 'image'" x-cloak class="space-y-4">
             <div>
@@ -670,7 +707,7 @@ PAGE = """<!doctype html>
 
           <div class="mt-5 flex items-center gap-3">
             <button type="button" x-on:click="run()" x-bind:disabled="loading"
-              class="inline-flex items-center gap-2 rounded-lg bg-violet px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-hover disabled:opacity-50">
+              class="btn-primary inline-flex items-center gap-2 rounded-lg bg-violet px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">
               <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
               <span x-text="loading ? '실행 중' : '추출 실행'"></span>
             </button>
@@ -680,7 +717,7 @@ PAGE = """<!doctype html>
 
         <!-- 엑셀 배치 결과 -->
         <div x-show="batchResult" x-cloak class="mt-6 space-y-4">
-          <section class="rounded-lg border border-white/[0.08] bg-surface p-6">
+          <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
             <div class="mb-3 flex flex-wrap items-center gap-2 text-xs">
               <span class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-1 font-medium text-white" x-text="batchResult ? (batchResult.count + '건 처리됨') : ''"></span>
               <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2.5 py-1 font-medium text-amber-300">MOCK</span>
@@ -713,7 +750,7 @@ PAGE = """<!doctype html>
 
         <!-- 결과 -->
         <div x-show="result" x-cloak class="mt-6 space-y-4">
-          <section class="rounded-lg border border-white/[0.08] bg-surface p-6">
+          <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
             <div class="mb-4 flex flex-wrap items-center gap-2 text-xs">
               <span x-show="q.finalGrade === 'G'" class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-1 font-medium text-white"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>유통가능 · G</span>
               <span x-show="q.finalGrade !== 'G'" class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-1 font-medium text-white"><span class="h-1.5 w-1.5 rounded-full bg-rose-400"></span>차단 · R</span>
@@ -721,7 +758,7 @@ PAGE = """<!doctype html>
             </div>
 
             <label class="mb-1.5 block text-xs font-medium text-muted">리드문</label>
-            <p class="rounded-lg border border-white/[0.08] bg-canvas p-3.5 text-[15px] leading-relaxed text-white"
+            <p class="lead rounded-lg border border-white/[0.08] p-4 pl-5 text-[15px] leading-relaxed text-white"
                x-text="im.summary || '(빈 값 — 차단되었거나 본문 부족)'"></p>
 
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -758,7 +795,7 @@ PAGE = """<!doctype html>
 
           <!-- 이미지 추출 신호 -->
           <section x-show="result && result.signals && result.signals.length" x-cloak
-                   class="rounded-lg border border-white/[0.08] bg-surface p-6">
+                   class="card rounded-lg border border-white/[0.08] bg-surface p-6">
             <div class="mb-3 text-xs font-medium text-muted" x-text="result ? ('이미지 추출 신호 (' + result.signals.length + '장)') : ''"></div>
             <template x-for="(s, i) in (result ? result.signals : [])" x-bind:key="i">
               <div class="mb-3 border-l border-white/[0.10] pl-3">
@@ -776,7 +813,7 @@ PAGE = """<!doctype html>
           </section>
 
           <!-- 상세 -->
-          <section class="rounded-lg border border-white/[0.08] bg-surface p-6">
+          <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
             <details class="group">
               <summary class="cursor-pointer text-sm text-body transition-colors hover:text-white">합성된 Content (이미지 → 4필드)</summary>
               <pre class="mt-2 overflow-auto rounded-lg border border-white/[0.08] bg-canvas p-3 font-mono text-xs text-body" x-text="result ? JSON.stringify(result.content, null, 2) : ''"></pre>
