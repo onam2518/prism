@@ -11,11 +11,12 @@ Prism에 **이미지→메타** 경로와 **로컬 웹 UI**를 더한 확장. Pr
 
 ```
 이미지(들) ─[imagext]─ OCR(텍스트) + DocVision(시각) ─▶ 합성 Content(4필드)
-                                                          └─▶ 기존 pipeline.extract ─▶ 리드문·엔티티·인텐트·카테고리
+                                                          └─▶ 기존 pipeline.extract ─▶ 리드문·엔티티·인텐트·콘텐츠 카테고리
 ```
 
 - 이미지에서 뽑은 신호로 **4필드 Content를 합성**해 기존 텍스트 파이프라인에 그대로 태운다.
-- 리드문(`item_meta.intent`)·엔티티·카테고리는 **Prism의 `run_item`이 생성** → 코어 무수정.
+- 리드문·엔티티·인텐트·콘텐츠 카테고리는 **Prism의 `run_item`이 생성** → 코어 무수정.
+- **DNM 체계(13. 프로젝트 기획 / 1312) 매핑**: Prism `intent`→리드문, `entities`→엔티티, `intent_categories`→인텐트, `entity_categories`→콘텐츠 카테고리. 코어 필드는 두고 UI 경계에서 신규 명칭으로 노출.
 - 여러 이미지는 **하나의 콘텐츠로 통합**(body에 이미지별 신호 누적) → 메타 1세트.
 - Upstage 전용: OCR=`document-digitization`, 시각=`solar-docvision`, 생성=설정된 chat 모델.
 
@@ -42,7 +43,7 @@ UI는 **HyperUX**(behavior-first Alpine.js 패턴, <https://github.com/markmead/
 
 - **이미지 업로드 탭**: 여러 장 + 콘텐츠 그룹/제목/캡션(선택) → 추출 실행
 - **텍스트 입력 탭**: 기존 Prism 텍스트 경로 그대로
-- 결과: **리드문 / 엔티티 / 인텐트 카테고리 / 엔티티 카테고리** 카드 + 품질 등급(G/R)
+- 결과: **리드문 / 엔티티 / 인텐트 / 콘텐츠 카테고리** 카드 + 품질 등급(G/R)
 - **이미지 추출 신호**(이미지별 OCR/Vision), 합성 Content, 원본 JSON 펼쳐보기
 - **전체 리포트 열기**: 기존 Prism 통합 HTML 리포트(`/report`)를 새 탭으로
 

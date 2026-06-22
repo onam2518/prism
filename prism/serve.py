@@ -199,9 +199,12 @@ PAGE = """<!doctype html>
         this.fileLabel = fs.length ? (fs.length + '개 파일 선택됨') : '선택된 파일 없음';
       },
 
+      // DNM 메타 체계(13. 프로젝트 기획 / 1312. 아이템 메타) 기준 라벨 매핑.
+      // Prism 코어 필드는 그대로 두고 경계에서 신규 명칭으로 노출:
+      //   intent → 리드문 · entities → 엔티티 · intent_categories → 인텐트 · entity_categories → 콘텐츠 카테고리
       get im() { return (this.result && this.result.output.item_meta) || {}; },
       get q() { return (this.result && this.result.output.quality_meta) || {}; },
-      get entityCats() {
+      get contentCats() {
         const e = this.im.entity_categories || {};
         return Object.keys(e).map((k) => k + ' \\u2192 ' + e[k]);
       },
@@ -286,7 +289,7 @@ PAGE = """<!doctype html>
       <div class="mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted">산출</div>
       <div class="mt-2 space-y-0.5 px-3 text-sm text-body">
         <p class="py-1">리드문 · 엔티티</p>
-        <p class="py-1">인텐트 · 카테고리</p>
+        <p class="py-1">인텐트 · 콘텐츠 카테고리</p>
       </div>
     </aside>
 
@@ -354,7 +357,7 @@ PAGE = """<!doctype html>
               <span class="text-muted" x-text="result ? ('track=' + result.output.routing.content_track + ' · source=' + result.source) : ''"></span>
             </div>
 
-            <label class="mb-1.5 block text-xs font-medium text-muted">리드문 (item_meta.intent)</label>
+            <label class="mb-1.5 block text-xs font-medium text-muted">리드문</label>
             <p class="rounded-lg border border-white/[0.08] bg-canvas p-3.5 text-[15px] leading-relaxed text-white"
                x-text="im.intent || '(빈 값 — 차단되었거나 본문 부족)'"></p>
 
@@ -369,7 +372,7 @@ PAGE = """<!doctype html>
                 </div>
               </div>
               <div>
-                <label class="mb-1.5 block text-xs font-medium text-muted">인텐트 카테고리</label>
+                <label class="mb-1.5 block text-xs font-medium text-muted">인텐트</label>
                 <div class="flex flex-wrap gap-1.5">
                   <template x-for="x in (im.intent_categories || [])" x-bind:key="x">
                     <span class="inline-flex items-center rounded-md bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-body" x-text="x"></span>
@@ -380,12 +383,12 @@ PAGE = """<!doctype html>
             </div>
 
             <div class="mt-4">
-              <label class="mb-1.5 block text-xs font-medium text-muted">엔티티 카테고리</label>
+              <label class="mb-1.5 block text-xs font-medium text-muted">콘텐츠 카테고리</label>
               <div class="flex flex-wrap gap-1.5">
-                <template x-for="x in entityCats" x-bind:key="x">
+                <template x-for="x in contentCats" x-bind:key="x">
                   <span class="inline-flex items-center rounded-md bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-body" x-text="x"></span>
                 </template>
-                <span x-show="!entityCats.length" class="text-xs text-muted">—</span>
+                <span x-show="!contentCats.length" class="text-xs text-muted">—</span>
               </div>
             </div>
           </section>
