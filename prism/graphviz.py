@@ -37,10 +37,16 @@ var G=ForceGraph()(el)
  .onNodeClick(function(n){pin=(pin===n.id?null:n.id);hi=pin;})
  .onBackgroundClick(function(){pin=null;hi=null;})
  .autoPauseRedraw(false).cooldownTicks(220);
-try{G.d3Force('charge').strength(-230);}catch(e){}
+// 오밀조밀 레이아웃: 반발력 완화 + 원거리 반발 차단(distanceMax) → 분리된 묶음(필터·사건)끼리 응집,
+// 링크 거리 단축 + 중심 인력 강화로 콘텐츠 묶음이 허브 주변에 모이게.
+try{
+  G.d3Force('charge').strength(-120).distanceMax(130);
+  var lf=G.d3Force('link'); if(lf) lf.distance(function(l){return 30;}).strength(0.9);
+  var cf=G.d3Force('center'); if(cf&&cf.strength) cf.strength(1);
+}catch(e){}
 function sz(){G.width(el.clientWidth).height(el.clientHeight);}
 sz(); if(window.ResizeObserver) new ResizeObserver(sz).observe(el);
-setTimeout(function(){try{G.zoomToFit(500,45);}catch(e){}},700);
+setTimeout(function(){try{G.zoomToFit(500,30);}catch(e){}},700);
 })();"""
 
 

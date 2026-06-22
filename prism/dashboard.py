@@ -4,6 +4,7 @@ import json
 import html
 
 from . import dictionaries as D
+from . import theme as TH
 
 
 # IAB v3.0 골격을 21개로 압축: Entertainment 가 Movies/Music/TV/Fine Art 흡수,
@@ -61,6 +62,7 @@ def render(results_path: str, title: str = "아이템 메타 현황", notice: st
                "rows": _table_rows(rows), "full": rows, "title": title}
     htmltext = _HTML.replace("/*__DATA__*/", json.dumps(payload, ensure_ascii=False))
     htmltext = htmltext.replace("/*__FORCEGRAPH__*/", _vendor_js())
+    htmltext = TH.inject(htmltext)
     if notice:
         htmltext = htmltext.replace("<body>", "<body>" + notice, 1)
     return htmltext, {"contents": len(rows), "entities": agg["entity_count"]}
@@ -101,7 +103,7 @@ def build_integrated(results_path: str, out_path: str,
     def esc(h):
         return h.replace("&", "&amp;").replace('"', "&quot;")
 
-    page = _INTEGRATED.replace("__TITLE__", html.escape(title)) \
+    page = TH.inject(_INTEGRATED).replace("__TITLE__", html.escape(title)) \
         .replace("__CONTENT_SRCDOC__", esc(content_html)) \
         .replace("__METAPOOL_SRCDOC__", esc(metapool_html)) \
         .replace("__USER_SRCDOC__", esc(user_html))
@@ -156,22 +158,22 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 <h2>용어 · 구조 도움말</h2><div class="s">content → 메타 추출 → 그룹핑 → 리포트</div>
 <h3>아이템 메타 (콘텐츠 측)</h3>
 <dl>
-<dt>품질 메타</dt><dd>유통 가능 여부. <b>G</b> 유통가능 · <b>R</b> 불가 · <b>YELLOW</b> 자동 판정 애매 → 사람 검수.</dd>
-<dt>법령 메타</dt><dd>위반 유형 스코어링으로 차단 여부 판정(옵션).</dd>
-<dt>인텐트 / 인텐트 카테고리</dt><dd>콘텐츠를 '왜·어떻게' 소비하는지(서술) → 그 분류값(속보·심층 분석·팩트체크 등).</dd>
-<dt>엔티티 / 엔티티 카테고리</dt><dd>콘텐츠 속 인물·기업·작품 등 고유 대상 → IAB 기반 분류(News·Entertainment 등).</dd>
+<dt>품질 메타</dt><dd>유통 가능 여부 · <b>G</b> 유통가능 · <b>R</b> 불가 · <b>YELLOW</b> 자동 판정 애매 → 사람 검수</dd>
+<dt>법령 메타</dt><dd>위반 유형 스코어링으로 차단 여부 판정(옵션)</dd>
+<dt>인텐트 / 인텐트 카테고리</dt><dd>콘텐츠를 '왜·어떻게' 소비하는지(서술) → 그 분류값(속보·심층 분석·팩트체크 등)</dd>
+<dt>엔티티 / 엔티티 카테고리</dt><dd>콘텐츠 속 인물·기업·작품 등 고유 대상 → IAB 기반 분류(News·Entertainment 등)</dd>
 </dl>
 <h3>메타풀 (그룹핑)</h3>
 <dl>
-<dt>단독형</dt><dd class="pl">단일 엔티티 단위. "이 인물·기업에 해당하는 콘텐츠". 영속.</dd>
-<dt>복합형</dt><dd class="pl">사건 단위. 엔티티가 여러 콘텐츠에 함께 등장(공출현)하면 자동 묶임. 단기.</dd>
-<dt>필터형</dt><dd class="pl">조건 단위. 운영자가 "인텐트 카테고리 × 엔티티 카테고리" 조건으로 정의. 중장기.</dd>
+<dt>단독형</dt><dd class="pl">단일 엔티티 단위 · "이 인물·기업에 해당하는 콘텐츠" · 영속</dd>
+<dt>복합형</dt><dd class="pl">사건 단위 · 엔티티가 여러 콘텐츠에 함께 등장(공출현)하면 자동 묶임 · 단기</dd>
+<dt>필터형</dt><dd class="pl">조건 단위 · 운영자가 "인텐트 카테고리 × 엔티티 카테고리" 조건으로 정의 · 중장기</dd>
 </dl>
 <h3>사용자 메타 (소비 측)</h3>
 <dl>
-<dt>소비 형태(FORM)</dt><dd>'무엇'이 아니라 '어떻게' 소비하는가: 세션 길이·체류/완주·전환·깊이·시간대.</dd>
-<dt>소비 강도</dt><dd>형태에서 산출되는 평가값. 인텐트 카테고리(소비 맥락)별 <b>저·중·고</b>.</dd>
-<dt>페르소나</dt><dd>형태·강도를 결합한 사용자 유형(정독러·스낵러·팬덤 등). 행동 로그 연결 시 실데이터.</dd>
+<dt>소비 형태(FORM)</dt><dd>'무엇'이 아니라 '어떻게' 소비하는가: 세션 길이·체류/완주·전환·깊이·시간대</dd>
+<dt>소비 강도</dt><dd>형태에서 산출되는 평가값 · 인텐트 카테고리(소비 맥락)별 <b>저·중·고</b></dd>
+<dt>페르소나</dt><dd>형태·강도를 결합한 사용자 유형(정독러·스낵러·팬덤 등) · 행동 로그 연결 시 실데이터</dd>
 </dl>
 </div>
 <script>
@@ -431,9 +433,9 @@ _HTML = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font);
 -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;letter-spacing:-.05px}
-header{padding:20px 28px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px;background:var(--bg)}
-h1{font-size:26px;margin:0;font-weight:600;letter-spacing:-.6px;color:var(--ink)}
-.sub{color:var(--mut);font-size:14px;margin:0}
+header{padding:24px 28px 20px;border-bottom:1px solid var(--line)}
+h1{font-size:26px;margin:0;font-weight:600;letter-spacing:-.022em;color:var(--ink)}
+.sub{color:var(--mut);font-size:14px;margin:5px 0 0}
 .wrap{display:grid;grid-template-columns:340px 1fr;gap:24px;padding:24px 28px;max-width:1700px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:20px;box-shadow:var(--sh)}
 .card h2{font-size:12px;margin:0 0 14px;color:var(--mut);text-transform:uppercase;letter-spacing:.125px;font-weight:600}
@@ -495,18 +497,18 @@ code.j{display:block;white-space:pre-wrap;background:var(--bg);border:1px solid 
  font-size:12px;color:var(--ink2);margin-top:6px;max-height:170px;overflow:auto}
 </style><script>/*__FORCEGRAPH__*/</script></head><body>
 <div id="ov" onclick="closeD()"></div><div id="dw"><span class="x" onclick="closeD()">✕</span><div id="dwc"></div></div>
-<header><h1 id="ttl">아이템 메타 현황</h1>
+<header><span class="eyebrow">콘텐츠 · 아이템 메타</span><h1 id="ttl">아이템 메타 현황</h1>
 <div class="sub" id="sub"></div></header>
 <div class="wrap">
  <div>
   <div class="card"><h2>품질 등급</h2><div class="grades" id="grades"></div></div>
-  <div class="card"><h2>붙은 품질 메타 (reason)</h2><div id="reasons"></div></div>
+  <div class="card"><h2>붙은 품질 메타 <span class="hint" data-tip="차단·검수 사유(reason)별 분포">?</span></h2><div id="reasons"></div></div>
   <div class="card"><h2>인텐트 카테고리</h2><div id="intents"></div></div>
-  <div class="card"><h2>엔티티 카테고리 (IAB Tier1)</h2><div id="ecats"></div></div>
+  <div class="card"><h2>엔티티 카테고리 <span class="hint" data-tip="IAB Tier1 분류 기준">?</span></h2><div id="ecats"></div></div>
   <div class="card"><h2>서비스 분포</h2><div id="services"></div></div>
  </div>
  <div>
-  <div class="card"><h2>관계도 (콘텐츠 · 엔티티 · 카테고리)</h2>
+  <div class="card"><h2>관계도 <span class="hint" data-tip="콘텐츠 · 엔티티 · 카테고리 노드">?</span></h2>
    <div class="chips" id="gchips"></div>
    <div id="g"></div>
    <div class="legend">

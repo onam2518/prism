@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict as _dd
 from . import graphviz as GV
+from . import theme as TH
 
 WARNING = ""
 
@@ -10,55 +11,55 @@ WARNING = ""
 # intensity: 인텐트 카테고리(실데이터 값) → 저/중/고. form: 5개 형태 피처.
 PERSONAS = [
     {"id": "P1", "name": "정독러", "full": "결정 직전의 정독러",
-     "desc": "한 주제를 끝까지 파고들고 저장·재방문. 속보는 즉시 스킵.",
+     "desc": "한 주제를 끝까지 파고들고 저장·재방문 · 속보는 즉시 스킵",
      "form": {"세션 길이": "장", "체류·완주": "고", "전환·이동": "느림", "깊이": "몰입", "시간대": "평일 야간"},
      "intensity": {"기획·심층": "고", "분석·해설": "고", "의견·논평": "중", "속보": "저", "흥미·화제": "저"},
      "topics": ["Business and Finance", "News and Politics", "Science"], "breadth": 0.55, "weight": 14},
     {"id": "P2", "name": "스낵러", "full": "출퇴근 스낵러",
-     "desc": "짧고 잦은 세션, 숏폼·이슈 카드 위주. 본문은 약함.",
+     "desc": "짧고 잦은 세션 · 숏폼·이슈 카드 위주 · 본문은 약함",
      "form": {"세션 길이": "단", "체류·완주": "저", "전환·이동": "빠름", "깊이": "훑기", "시간대": "출퇴근"},
      "intensity": {"흥미·화제": "저", "유머": "중", "속보": "저", "인물 동정": "저", "기획·심층": "저"},
      "topics": ["Entertainment", "Sports", "News and Politics"], "breadth": 0.85, "weight": 22},
     {"id": "P3", "name": "조사자", "full": "이슈 추적 조사자",
-     "desc": "특정 사건 발생 시 단기 집중 정독, 종료 후 이탈.",
+     "desc": "특정 사건 발생 시 단기 집중 정독 · 종료 후 이탈",
      "form": {"세션 길이": "장", "체류·완주": "고", "전환·이동": "보통", "깊이": "단기 몰입", "시간대": "사건 발생기"},
      "intensity": {"사건 경과 보도": "고", "분석·해설": "고", "의견·논평": "중", "속보": "중"},
      "topics": ["News and Politics"], "breadth": 0.5, "weight": 12},
     {"id": "P4", "name": "이중모드", "full": "낮밤 이중모드 직장인",
-     "desc": "주간 훑기 ↔ 야간 몰입. 시간대로 형태 전환.",
+     "desc": "주간 훑기 ↔ 야간 몰입 · 시간대로 형태 전환",
      "form": {"세션 길이": "주간 단/야간 장", "체류·완주": "주간 저/야간 고", "전환·이동": "보통", "깊이": "시간대 전환", "시간대": "주·야 이중"},
      "intensity": {"분석·해설": "고", "기획·심층": "고", "흥미·화제": "저", "속보": "중"},
      "topics": ["News and Politics", "Business and Finance"], "breadth": 0.6, "weight": 12},
     {"id": "P5", "name": "편식러", "full": "엔터 화제성 편식러",
-     "desc": "소비 대부분이 단일 카테고리(연예 화제성)에 과집중.",
+     "desc": "소비 대부분이 단일 카테고리(연예 화제성)에 과집중",
      "form": {"세션 길이": "중", "체류·완주": "중", "전환·이동": "보통", "깊이": "훑기+편중", "시간대": "수시"},
      "intensity": {"흥미·화제": "중", "인물 동정": "중", "분석·해설": "저"},
      "topics": ["Entertainment"], "breadth": 0.3, "weight": 12},
     {"id": "P6", "name": "팬덤", "full": "팬덤 추종형",
-     "desc": "특정 팀·인물 관련만 집중. 이벤트 시 폭증, 형태 무관 소비.",
+     "desc": "특정 팀·인물 관련만 집중 · 이벤트 시 폭증 · 형태 무관 소비",
      "form": {"세션 길이": "이벤트시 장", "체류·완주": "고", "전환·이동": "느림", "깊이": "엔티티 추종", "시간대": "이벤트 연동"},
      "intensity": {"인물 동정": "고", "흥미·화제": "고", "속보": "고", "분석·해설": "중"},
      "topics": ["Sports", "Entertainment"], "breadth": 0.35, "weight": 12},
     {"id": "P7", "name": "전환기", "full": "관심사 전환기 사용자",
-     "desc": "관심 토픽이 급전환 중(드리프트). 신규 토픽 고강도 형성.",
+     "desc": "관심 토픽이 급전환 중(드리프트) · 신규 토픽 고강도 형성",
      "form": {"세션 길이": "중", "체류·완주": "중", "전환·이동": "보통", "깊이": "전환 중", "시간대": "수시"},
      "intensity": {"분석·해설": "중", "라이프스타일": "중", "기획·심층": "중"},
      "topics": ["Technology and Computing", "Business and Finance"], "breadth": 0.6, "weight": 8},
     {"id": "P8", "name": "라이트", "full": "주말 회귀 라이트 유저",
-     "desc": "신호 희소(콜드·저데이터). 강도 산정 어려움.",
+     "desc": "신호 희소(콜드·저데이터) · 강도 산정 어려움",
      "form": {"세션 길이": "단", "체류·완주": "저", "전환·이동": "빠름", "깊이": "저데이터", "시간대": "주말 오전"},
      "intensity": {"흥미·화제": "저", "속보": "저"}, "topics": [], "breadth": 1.0, "weight": 8},
 ]
 
 # 활용 시나리오 
 SCENARIOS = [
-    {"title": "소비 형태 기반 홈 재배치", "desc": "같은 콘텐츠 풀, 형태에 따라 순서·구성·밀도만 다르게.",
+    {"title": "소비 형태 기반 홈 재배치", "desc": "같은 콘텐츠 풀 · 형태에 따라 순서·구성·밀도만 다르게",
      "ex": "훑기형=숏폼·이슈 카드 위로 / 파고들기형=이어보기·심층·카페 위로"},
-    {"title": "능동형 컴포넌트 (메타풀 활용)", "desc": "선호(토픽×소비 맥락)를 메타풀 조건으로 변환해 능동 삽입.",
+    {"title": "능동형 컴포넌트 (메타풀 활용)", "desc": "선호(토픽×소비 맥락)를 메타풀 조건으로 변환해 능동 삽입",
      "ex": "복합형=관심 사건 묶음 · 필터형=재테크×심층 슬롯 · 단독형=팔로우 엔티티 큐레이션"},
-    {"title": "유저 프로파일링 (데이터→컴포넌트)", "desc": "행동→형태→강도→페르소나→산출까지 단계 추적.",
+    {"title": "유저 프로파일링 (데이터→컴포넌트)", "desc": "행동→형태→강도→페르소나→산출까지 단계 추적",
      "ex": "“이 데이터 때문에 이 컴포넌트가 떴다”를 근거로 설명"},
-    {"title": "광고 타겟팅", "desc": "선호 엔티티 카테고리 × 선호 인텐트 카테고리 교차로 정밀 매칭.",
+    {"title": "광고 타겟팅", "desc": "선호 엔티티 카테고리 × 선호 인텐트 카테고리 교차로 정밀 매칭",
      "ex": "Business and Finance × 심층 분석 관심 → 금융 콘텐츠·광고 (맥락 부적합 노출 감소)"},
 ]
 
@@ -96,9 +97,9 @@ def _empty_user_meta(results_path: str) -> dict:
     pdefs = [{"id": p["id"], "name": p["name"], "full": p["full"], "desc": p["desc"],
               "form": p["form"], "intensity": p["intensity"]} for p in PERSONAS]
     return {
-        "warning": ("행동 로그 소스가 연결되지 않았습니다: 가짜 데이터 대신 개념·명세만 표시합니다. "
-                    "실데이터 연결: usermeta/report 에 --logs <behavior_logs.jsonl>. "
-                    "동작하는 목업 DEMO는 GitHub 저장소(README의 DEMO 링크)에서 확인/다운로드하세요."),
+        "warning": ("행동 로그 소스가 연결되지 않았습니다 · 가짜 데이터 대신 개념·명세만 표시 · "
+                    "실데이터 연결: usermeta/report 에 --logs <behavior_logs.jsonl> · "
+                    "동작하는 목업 DEMO는 GitHub 저장소(README의 DEMO 링크)에서 확인/다운로드"),
         "is_mock": False, "empty": True, "source": "(행동 로그 미연결)",
         "n_contents": n, "users": [],
         "aggregate": {"personas": [[p["name"], 0] for p in PERSONAS],
@@ -479,7 +480,7 @@ def render_html(results_path: str, n_users: int = 200,
     if notice:
         html = html.replace("<body>", "<body>" + notice, 1)
         html = html.replace("<h1>사용자 메타</h1>", "<h1>사용자 메타 (DEMO)</h1>", 1)
-    return html
+    return TH.inject(html)
 
 
 def build_html(results_path: str, out_path: str, n_users: int = 200,
@@ -521,7 +522,7 @@ h1{font-size:24px;margin:0;font-weight:600;letter-spacing:-.6px}.sub{color:var(-
 .lv.hi{background:rgba(39,166,68,.14);color:var(--g)}.lv.mid{background:rgba(94,106,210,.14);color:var(--ac)}.lv.lo{background:rgba(138,143,152,.12);color:var(--mut)}
 .lv b{font-size:24px;display:block;font-weight:700}
 .pdefs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
-.pdef{background:#13161c;border:1px solid rgba(169,136,230,.4);border-radius:10px;padding:12px}
+.pdef{background:var(--s2);border:1px solid var(--line);border-radius:10px;padding:12px}
 .pdef .pid{font-size:11px;color:var(--cat);font-weight:700}.pdef .pn{font-weight:700;font-size:14px}
 .pdef .pd{color:var(--fg2);font-size:11.5px;margin:5px 0;line-height:1.45}
 .pdef .pf{font-size:10.5px;color:var(--mut)}
@@ -564,26 +565,26 @@ canvas#scat{width:100%;height:300px;display:block;background:#0c0e12;border:1px 
 .tl .b{flex:0 0 6px;border-radius:2px 2px 0 0;min-height:4px}
 </style></head><body>
 <div class="warn" id="warn"></div>
-<header><h1>사용자 메타</h1><div class="sub" id="sub"></div></header>
+<header><span class="eyebrow">소비 · 사용자 메타</span><h1>사용자 메타</h1><div class="sub" id="sub"></div></header>
 <div class="wrap">
  <div class="card"><h2>페르소나 분포 <span class="n" id="pn"></span></h2>
   <div class="uid" style="margin-bottom:8px">클릭 → 해당 페르소나 유저만 필터 · 8유형</div><div id="pdist"></div></div>
- <div class="card"><h2>소비 강도 분포 <span class="n">(맥락 셀 단위, 저·중·고)</span></h2>
+ <div class="card"><h2>소비 강도 분포 <span class="hint" data-tip="맥락 셀 단위 · 저·중·고">?</span></h2>
   <div class="intensity" id="intsum"></div>
-  <div class="uid" style="margin-top:10px">소비 강도 = 형태(체류·완주·저장·재방문·진입경로)에서 산출되는 최종 평가 지표. 인텐트 카테고리(소비 맥락)별 상대값.</div></div>
- <div class="card full"><h2>8 페르소나 정의 <span class="n">(소비 형태 + 맥락별 강도)</span></h2><div class="pdefs" id="pdefs"></div></div>
- <div class="card full"><h2>소비 맥락별 강도 히트맵 <span class="n">(페르소나 × 인텐트 카테고리 → 저·중·고)</span></h2>
+  <div class="uid" style="margin-top:10px">소비 강도 = 형태(체류·완주·저장·재방문·진입경로)에서 산출되는 최종 평가 지표 · 인텐트 카테고리(소비 맥락)별 상대값</div></div>
+ <div class="card full"><h2>8 페르소나 정의 <span class="hint" data-tip="소비 형태 + 맥락별 강도">?</span></h2><div class="pdefs" id="pdefs"></div></div>
+ <div class="card full"><h2>소비 맥락별 강도 히트맵 <span class="hint" data-tip="페르소나 × 인텐트 카테고리 → 저·중·고">?</span></h2>
   <div style="overflow-x:auto"><div id="heat"></div></div>
   <div class="lgd"><span><span class="dot" style="background:#3ad17e"></span>고강도</span><span><span class="dot" style="background:#5b9dff"></span>중강도</span><span><span class="dot" style="background:#3a4150"></span>저강도</span><span style="margin-left:auto">같은 콘텐츠 맥락도 페르소나에 따라 강도가 다름: 주제 중심 체계로는 구분 불가</span></div></div>
- <div class="card"><h2>소비 형태 지형 <span class="n">(깊이 × 소비 강도 · 200명)</span></h2>
+ <div class="card"><h2>소비 형태 지형 <span class="hint" data-tip="깊이 × 소비 강도 · 200명">?</span></h2>
   <canvas id="scat"></canvas>
   <div class="lgd" id="scatlgd"></div></div>
- <div class="card"><h2>홈 재배치 시나리오 <span class="n">(같은 풀, 형태별 순서·밀도)</span></h2><div id="home"></div></div>
- <div class="card"><h2>관심 엔티티 카테고리 <span class="n">(보유 유저수)</span></h2><div id="edist"></div></div>
- <div class="card"><h2>관심 인텐트 카테고리 <span class="n">(소비 맥락)</span></h2><div id="idist"></div></div>
+ <div class="card"><h2>홈 재배치 시나리오 <span class="hint" data-tip="같은 풀 · 형태별 순서·밀도">?</span></h2><div id="home"></div></div>
+ <div class="card"><h2>관심 엔티티 카테고리 <span class="hint" data-tip="보유 유저수">?</span></h2><div id="edist"></div></div>
+ <div class="card"><h2>관심 인텐트 카테고리 <span class="hint" data-tip="소비 맥락">?</span></h2><div id="idist"></div></div>
  __GRAPH__
- <div class="card full"><h2>활용 시나리오 <span class="n">( · 사용자 메타 × 콘텐츠 메타)</span></h2><div id="scen"></div></div>
- <div class="card full"><h2>유저 관계도 <span class="n">(페르소나 허브 · 유저 노드 클릭 시 상세)</span></h2>
+ <div class="card full"><h2>활용 시나리오 <span class="hint" data-tip="사용자 메타 × 콘텐츠 메타">?</span></h2><div id="scen"></div></div>
+ <div class="card full"><h2>유저 관계도 <span class="hint" data-tip="페르소나 허브 · 유저 노드 클릭 시 상세">?</span></h2>
   <canvas id="ug"></canvas>
   <div class="lgd"><span><span class="dot" style="background:#5b9dff"></span>유저</span>
    <span><span class="dot" style="background:#b07cff"></span>페르소나(공유 허브)</span>
