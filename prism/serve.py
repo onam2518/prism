@@ -99,6 +99,46 @@ def run_pipeline(fields: dict, *, mock: bool) -> dict:
     }
 
 
+def vocab() -> dict:
+    """드롭다운용 어휘(콘텐츠 그룹 등). dictionaries/profiles 와 동기화."""
+    from . import dictionaries as D
+    return {"groups": list(D.SERVICE_GROUP.keys())}
+
+
+def run_batch(file_bytes: bytes, filename: str) -> dict:
+    """엑셀/CSV 업로드 → ingest 매핑 → 행마다 추출 → 결과+리포트(_LAST_RESULTS)."""
+    from . import ingest as ING
+    ext = os.path.splitext(filename or "")[1].lower() or ".xlsx"
+    cfg = Config.load()
+    llm = LLMClient(mock=Handler.server_mock, config=cfg)
+    fd, tmp = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(file_bytes)
+        a = ING.assess(tmp)
+        if not a["ok"]:
+            return {"error": a["reason"], "headers": a.get("headers", [])}
+        contents = ING.to_contents(tmp)[:200]
+        results, items = [], []
+        for c in contents:
+            out = PIPE.extract(c, llm)
+            results.append(out)
+            im = out.get("item_meta") or {}
+            items.append({"title": (c.get("title") or "")[:80],
+                          "summary": im.get("summary", ""),
+                          "entities": im.get("entities", []),
+                          "intent": im.get("intent", []),
+                          "grade": (out.get("quality_meta") or {}).get("finalGrade", "")})
+        _LAST_RESULTS[:] = results
+        return {"source": "excel", "mock": llm.mock, "count": len(results),
+                "mapping": a["mapping"], "items": items}
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
 def build_report_html() -> str:
     if not _LAST_RESULTS:
         return "<p>아직 실행 결과가 없습니다. 먼저 추출을 실행하세요.</p>"
@@ -247,6 +287,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(config_status(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/models"):
             self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/vocab"):
+            self._send(200, json.dumps(vocab(), ensure_ascii=False), _JSON)
         else:
             self._send(200, PAGE)
 
@@ -276,7 +318,14 @@ class Handler(BaseHTTPRequestHandler):
                 fields = _parse_multipart(body, boundary)
             else:
                 fields = json.loads(body or b"{}")
-            result = run_pipeline(fields, mock=self.server_mock)
+            if self.path.startswith("/run-batch"):
+                f = fields.get("file")
+                if not isinstance(f, dict) or not f.get("bytes"):
+                    result = {"error": "파일이 없습니다"}
+                else:
+                    result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"))
+            else:
+                result = run_pipeline(fields, mock=self.server_mock)
             self._send(200, json.dumps(result, ensure_ascii=False), _JSON)
         except Exception as e:
             import traceback
@@ -310,21 +359,27 @@ PAGE = """<!doctype html>
 <script>
   document.addEventListener('alpine:init', () => {
     Alpine.data('prismApp', () => ({
-      tabItems: [{ id: 'image', label: '이미지 업로드' }, { id: 'text', label: '텍스트 입력' }],
+      tabItems: [{ id: 'image', label: '이미지' }, { id: 'text', label: '텍스트' }, { id: 'excel', label: '엑셀' }],
       activeTabId: 'image',
       loading: false,
       status: '',
       result: null,
-      imgGroup: '포토', imgTitle: '', imgCaption: '',
+      batchResult: null,
+      groups: ['뉴스', '연예', '스포츠', '콘텐츠', '커뮤니티', '블로그', '음악', '동영상'],
+      imgGroup: '연예', imgTitle: '', imgCaption: '',
       txtGroup: '뉴스', txtTitle: '', txtBody: '',
-      fileLabel: '선택된 파일 없음',
+      fileLabel: '선택된 파일 없음', excelLabel: '선택된 파일 없음',
 
       // 설정(API 키 / 모델)
       showSettings: false, cfg: { hasKey: false, model: '', persisted: false, forcedMock: false },
       cfgKey: '', cfgModel: '', cfgPersist: true, cfgMsg: '', cfgBusy: false,
       models: [], modelsMsg: '',
 
-      init() { this.refreshConfig(); },
+      init() {
+        this.refreshConfig();
+        fetch('/vocab').then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {});
+      },
+      onExcel(e) { const fs = e.target.files; this.excelLabel = fs.length ? fs[0].name : '선택된 파일 없음'; },
       get modelOptions() {
         const a = this.models.slice();
         if (this.cfgModel && !a.includes(this.cfgModel)) a.unshift(this.cfgModel);
@@ -398,8 +453,9 @@ PAGE = """<!doctype html>
       },
 
       async run() {
-        this.loading = true; this.status = ''; this.result = null;
+        this.loading = true; this.status = ''; this.result = null; this.batchResult = null;
         const fd = new FormData();
+        let endpoint = '/run';
         if (this.activeTabId === 'image') {
           const fs = this.$refs.files.files;
           if (!fs.length) { this.status = '이미지를 선택하세요'; this.loading = false; return; }
@@ -407,15 +463,19 @@ PAGE = """<!doctype html>
           fd.append('displayServiceName', this.imgGroup);
           fd.append('title', this.imgTitle);
           fd.append('caption', this.imgCaption);
+        } else if (this.activeTabId === 'excel') {
+          const fs = this.$refs.excel.files;
+          if (!fs.length) { this.status = '엑셀/CSV 파일을 선택하세요'; this.loading = false; return; }
+          fd.append('file', fs[0]); endpoint = '/run-batch';
         } else {
           fd.append('displayServiceName', this.txtGroup);
           fd.append('title', this.txtTitle);
           fd.append('body', this.txtBody);
         }
         try {
-          const r = await fetch('/run', { method: 'POST', body: fd });
-          const j = await r.json();
+          const j = await (await fetch(endpoint, { method: 'POST', body: fd })).json();
           if (j.error) { this.status = '오류: ' + j.error; }
+          else if (j.source === 'excel') { this.batchResult = j; }
           else { this.result = j; }
         } catch (e) { this.status = '오류: ' + e; }
         finally { this.loading = false; }
@@ -479,7 +539,7 @@ PAGE = """<!doctype html>
 
       <label class="mb-1.5 mt-4 block text-xs font-medium text-muted">생성 모델</label>
       <div class="flex gap-2">
-        <select x-model="cfgModel" class="field flex-1 appearance-none">
+        <select x-model="cfgModel" class="field flex-1">
           <template x-for="m in modelOptions" x-bind:key="m">
             <option x-bind:value="m" x-text="m"></option>
           </template>
@@ -524,18 +584,14 @@ PAGE = """<!doctype html>
             x-bind:aria-current="activeTabId === tabItem.id ? 'page' : 'false'"
             class="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
             x-bind:class="activeTabId === tabItem.id ? 'bg-white/[0.07] text-white font-medium' : 'text-body hover:bg-white/[0.04] hover:text-white'">
-            <!-- icon: image / type -->
+            <!-- icon: image / text / excel -->
             <svg x-show="tabItem.id === 'image'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>
             <svg x-show="tabItem.id === 'text'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
+            <svg x-show="tabItem.id === 'excel'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
             <span x-text="tabItem.label"></span>
           </button>
         </template>
       </nav>
-      <div class="mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted">산출</div>
-      <div class="mt-2 space-y-0.5 px-3 text-sm text-body">
-        <p class="py-1">리드문 · 엔티티</p>
-        <p class="py-1">인텐트 · 콘텐츠 카테고리</p>
-      </div>
     </aside>
 
     <!-- 메인 -->
@@ -564,7 +620,9 @@ PAGE = """<!doctype html>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div><label class="mb-1.5 block text-xs font-medium text-muted">콘텐츠 그룹</label>
-                <input x-model="imgGroup" class="field" placeholder="포토/뉴스/스포츠"></div>
+                <select x-model="imgGroup" class="field">
+                  <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+                </select></div>
               <div><label class="mb-1.5 block text-xs font-medium text-muted">제목 (선택)</label>
                 <input x-model="imgTitle" class="field" placeholder="없으면 이미지에서 추론"></div>
             </div>
@@ -574,13 +632,30 @@ PAGE = """<!doctype html>
           <!-- 텍스트 패널 -->
           <div x-show="activeTabId === 'text'" x-cloak class="space-y-4">
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="mb-1.5 block text-xs font-medium text-muted">콘텐츠 그룹 (displayServiceName)</label>
-                <input x-model="txtGroup" class="field"></div>
+              <div><label class="mb-1.5 block text-xs font-medium text-muted">콘텐츠 그룹</label>
+                <select x-model="txtGroup" class="field">
+                  <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+                </select></div>
               <div><label class="mb-1.5 block text-xs font-medium text-muted">제목 (title)</label>
                 <input x-model="txtTitle" class="field" placeholder="기사 제목"></div>
             </div>
             <div><label class="mb-1.5 block text-xs font-medium text-muted">본문 (body)</label>
               <textarea x-model="txtBody" rows="4" class="field" placeholder="본문 내용"></textarea></div>
+          </div>
+          <!-- 엑셀 패널 -->
+          <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
+            <div>
+              <label class="mb-1.5 block text-xs font-medium text-muted">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
+              <label class="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-white/[0.14] bg-canvas px-4 py-3.5 text-sm transition-colors hover:border-violet/60">
+                <span x-text="excelLabel" class="text-body"></span>
+                <span class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-white">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                  파일 선택
+                </span>
+                <input x-ref="excel" type="file" accept=".xlsx,.csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="onExcel($event)">
+              </label>
+              <p class="mt-1.5 text-xs text-muted">행마다 한 콘텐츠로 일괄 추출합니다. 컬럼명이 제목/본문/서비스명과 달라도 자동 추론합니다. (최대 200행)</p>
+            </div>
           </div>
 
           <div class="mt-5 flex items-center gap-3">
@@ -592,6 +667,39 @@ PAGE = """<!doctype html>
             <span aria-live="polite" class="text-sm text-rose-400" x-text="status"></span>
           </div>
         </section>
+
+        <!-- 엑셀 배치 결과 -->
+        <div x-show="batchResult" x-cloak class="mt-6 space-y-4">
+          <section class="rounded-lg border border-white/[0.08] bg-surface p-6">
+            <div class="mb-3 flex flex-wrap items-center gap-2 text-xs">
+              <span class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-1 font-medium text-white" x-text="batchResult ? (batchResult.count + '건 처리됨') : ''"></span>
+              <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2.5 py-1 font-medium text-amber-300">MOCK</span>
+              <span class="text-muted" x-text="batchResult && batchResult.mapping ? ('매핑: ' + Object.entries(batchResult.mapping).map(e=>e[0]+'←'+e[1]).join(' · ')) : ''"></span>
+            </div>
+            <div class="overflow-auto rounded-lg border border-white/[0.08]">
+              <table class="w-full text-left text-sm">
+                <thead class="bg-white/[0.03] text-xs text-muted">
+                  <tr><th class="px-3 py-2 font-medium">제목</th><th class="px-3 py-2 font-medium">리드문</th><th class="px-3 py-2 font-medium">엔티티</th><th class="px-3 py-2 font-medium">등급</th></tr>
+                </thead>
+                <tbody>
+                  <template x-for="(it, i) in (batchResult ? batchResult.items : [])" x-bind:key="i">
+                    <tr class="border-t border-white/[0.06] align-top">
+                      <td class="px-3 py-2 text-white" x-text="it.title || '—'"></td>
+                      <td class="px-3 py-2 text-body" x-text="it.summary || '—'"></td>
+                      <td class="px-3 py-2 text-body" x-text="(it.entities || []).join(', ') || '—'"></td>
+                      <td class="px-3 py-2"><span x-text="it.grade" x-bind:class="it.grade === 'G' ? 'text-emerald-400' : 'text-rose-400'"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <a href="/report" target="_blank" rel="noreferrer"
+               class="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.10] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.05]">
+              전체 리포트 열기
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
+            </a>
+          </section>
+        </div>
 
         <!-- 결과 -->
         <div x-show="result" x-cloak class="mt-6 space-y-4">
