@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import imagext as IMG
 from . import pipeline as PIPE
+from . import prompts as PR
 from .config import Config
 from .llm import LLMClient
 
@@ -173,6 +174,14 @@ def load_persisted_key():
         pass
 
 
+def sync_prompt():
+    """config 의 system_prompt 를 추출 프롬프트에 반영(추가 지시)."""
+    try:
+        PR.EXTRA_INSTRUCTION = Config.load().system_prompt or ""
+    except Exception:
+        pass
+
+
 def config_status() -> dict:
     cfg = Config.load()
     base = (cfg.chat_url or "").rsplit("/chat/completions", 1)[0]
@@ -181,13 +190,15 @@ def config_status() -> dict:
         "persisted": os.path.exists(_KEY_PATH),
         "model": cfg.model or "",
         "baseUrl": base,
+        "reasoning": cfg.reasoning_effort or "default",
+        "systemPrompt": cfg.system_prompt or "",
         "configured": cfg.is_configured(),
         "forcedMock": Handler.server_mock,
     }
 
 
 def apply_config(data: dict) -> dict:
-    """키/모델/엔드포인트 적용. 키는 프로세스 환경에 주입, persist 시 ~/.prism_key 저장."""
+    """키/모델/엔드포인트/추론강도/추가지시 적용. 키만 프로세스 환경(+옵션 ~/.prism_key)."""
     key = (data.get("api_key") or "").strip()
     if key:
         os.environ["UPSTAGE_API_KEY"] = key
@@ -206,16 +217,23 @@ def apply_config(data: dict) -> dict:
             pass
     model = (data.get("model") or "").strip()
     base = (data.get("base_url") or "").strip()
-    if model or base:
+    reasoning = (data.get("reasoning") or "").strip()
+    has_sp = "system_prompt" in data
+    if model or base or reasoning or has_sp:
         cfg = Config.load()
         if base:
             cfg.set_base_url(base)
         if model:
             cfg.model = model
+        if reasoning:
+            cfg.reasoning_effort = reasoning
+        if has_sp:
+            cfg.system_prompt = (data.get("system_prompt") or "").strip()
         try:
             cfg.save_template()                   # config.json 갱신(키는 저장 안 함)
         except Exception:
             pass
+    sync_prompt()
     return config_status()
 
 
@@ -379,19 +397,23 @@ PAGE = """<!doctype html>
       result: null,
       batchResult: null,
       groups: ['뉴스', '연예', '스포츠', '콘텐츠', '커뮤니티', '블로그', '음악', '동영상'],
-      imgGroup: '연예', imgTitle: '', imgCaption: '',
-      txtGroup: '뉴스', txtTitle: '', txtBody: '',
+      group: '뉴스',
+      imgTitle: '', imgCaption: '',
+      txtTitle: '', txtBody: '',
       fileLabel: '선택된 파일 없음', excelLabel: '선택된 파일 없음',
 
-      // 설정(API 키 / 모델)
-      showSettings: false, cfg: { hasKey: false, model: '', persisted: false, forcedMock: false },
+      // 설정(API 키 / 모델 / 추론강도 / 추가 지시) — 우측 Configuration 패널
+      cfg: { hasKey: false, model: '', persisted: false, forcedMock: false },
       cfgKey: '', cfgModel: '', cfgPersist: true, cfgMsg: '', cfgBusy: false,
       models: [], modelsMsg: '',
+      reasoning: 'default', systemPrompt: '', prefMsg: '',
+      reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],
 
       init() {
         this.refreshConfig();
         fetch('/vocab').then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {});
       },
+      get tabLabel() { return (this.tabItems.find(t => t.id === this.activeTabId) || {}).label || ''; },
       onExcel(e) { const fs = e.target.files; this.excelLabel = fs.length ? fs[0].name : '선택된 파일 없음'; },
       get modelOptions() {
         const a = this.models.slice();
@@ -420,9 +442,19 @@ PAGE = """<!doctype html>
         try {
           const r = await fetch('/config'); this.cfg = await r.json();
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
+          if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
+          if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
         } catch (e) { /* noop */ }
       },
-      openSettings() { this.cfgMsg = ''; this.cfgModel = this.cfg.model || ''; this.showSettings = true; },
+      async applyPrefs() {
+        this.prefMsg = '저장 중…';
+        try {
+          await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reasoning: this.reasoning, system_prompt: this.systemPrompt }) });
+          this.prefMsg = '✓ 적용됨';
+        } catch (e) { this.prefMsg = '오류: ' + e; }
+      },
+      setReasoning(id) { this.reasoning = id; this.applyPrefs(); },
       async saveConfig() {
         this.cfgBusy = true; this.cfgMsg = '저장 중…';
         try {
@@ -464,6 +496,28 @@ PAGE = """<!doctype html>
         return Object.keys(e).map((k) => k + ' \\u2192 ' + e[k]);
       },
 
+      // 엑셀 배치 인포그래픽: 총건·등급분포·인텐트 상위·평균 리드문 길이
+      get batchStats() {
+        const its = (this.batchResult && this.batchResult.items) || [];
+        const n = its.length;
+        const g = its.filter((x) => x.grade === 'G').length;
+        const counts = {};
+        let lenSum = 0, lenN = 0;
+        for (const x of its) {
+          for (const t of (x.intent || [])) counts[t] = (counts[t] || 0) + 1;
+          if (x.summary) { lenSum += x.summary.length; lenN += 1; }
+        }
+        const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+          .map(([k, v]) => ({ k, v, pct: n ? Math.round((v / n) * 100) : 0 }));
+        return {
+          n, g, r: n - g,
+          gPct: n ? Math.round((g / n) * 100) : 0,
+          ents: its.reduce((s, x) => s + ((x.entities || []).length), 0),
+          avgLen: lenN ? Math.round(lenSum / lenN) : 0,
+          intents: top,
+        };
+      },
+
       async run() {
         this.loading = true; this.status = ''; this.result = null; this.batchResult = null;
         const fd = new FormData();
@@ -472,7 +526,7 @@ PAGE = """<!doctype html>
           const fs = this.$refs.files.files;
           if (!fs.length) { this.status = '이미지를 선택하세요'; this.loading = false; return; }
           for (let i = 0; i < fs.length; i++) fd.append('image' + i, fs[i]);
-          fd.append('displayServiceName', this.imgGroup);
+          fd.append('displayServiceName', this.group);
           fd.append('title', this.imgTitle);
           fd.append('caption', this.imgCaption);
         } else if (this.activeTabId === 'excel') {
@@ -480,7 +534,7 @@ PAGE = """<!doctype html>
           if (!fs.length) { this.status = '엑셀/CSV 파일을 선택하세요'; this.loading = false; return; }
           fd.append('file', fs[0]); endpoint = '/run-batch';
         } else {
-          fd.append('displayServiceName', this.txtGroup);
+          fd.append('displayServiceName', this.group);
           fd.append('title', this.txtTitle);
           fd.append('body', this.txtBody);
         }
@@ -615,107 +669,83 @@ PAGE = """<!doctype html>
   .drow:last-child{border-bottom:0}
   .drow .k{font-size:12px;font-weight:600;color:#6e7191;padding-top:3px}
   .drow .v{min-width:0}
+
+  /* ── Playground 3분할 셸 ── */
+  .shell{display:grid;grid-template-columns:236px minmax(0,1fr) 332px;height:100dvh;overflow:hidden}
+  .pane{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .pane+.pane{border-left:1px solid rgba(255,255,255,.07)}
+  /* 타이틀바: 내용 영역과 명확히 분리(별도 배경·하단 경계). 버튼 없음 — 제목/상태만. */
+  .titlebar{flex:none;height:53px;display:flex;align-items:center;gap:9px;padding:0 18px;
+    border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.022);
+    font-size:13px;font-weight:600;color:#fff;letter-spacing:.01em}
+  .titlebar .sub{font-weight:500;color:#6e7191;font-size:12px}
+  .titlebar .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .pbody{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
+  .pbody.pad{padding:18px}
+  .pbody.center{padding:26px 30px}
+
+  /* 좌측 내비 그룹 라벨 */
+  .navgrp{padding:0 12px;margin:18px 0 6px;font-size:11px;font-weight:600;letter-spacing:.06em;
+    text-transform:uppercase;color:#565b66}
+
+  /* 추론강도 세그먼트 */
+  .seg{display:flex;gap:3px;padding:3px;border-radius:9px;background:#0d0c12;border:1px solid rgba(255,255,255,.09)}
+  .seg button{flex:1;border-radius:6px;padding:6px 0;font-size:12px;font-weight:600;color:#8b909b;
+    transition:color .15s,background .15s}
+  .seg button.on{background:rgba(91,82,255,.22);color:#c8c3ff;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  .seg button:not(.on):hover{color:#fff}
+
+  /* Configuration 패널 구획 */
+  .cfgsec{padding:18px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .cfgsec:last-child{border-bottom:0}
+
+  /* 히어로 빈 상태 */
+  .hero{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:64px 24px;border:1px dashed rgba(255,255,255,.10);border-radius:16px;
+    background:radial-gradient(420px 200px at 50% 0%,rgba(91,82,255,.08),transparent 70%)}
+  .hero .orb{width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(91,82,255,.28),rgba(91,82,255,.08));
+    border:1px solid rgba(91,82,255,.3);box-shadow:0 12px 30px -12px rgba(91,82,255,.6);color:#c8c3ff}
+  .schip{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:7px 12px;font-size:12.5px;
+    font-weight:500;color:#c9ccd3;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);
+    cursor:pointer;transition:border-color .15s,background .15s,transform .1s}
+  .schip:hover{border-color:rgba(91,82,255,.45);background:rgba(91,82,255,.10);transform:translateY(-1px)}
+
+  /* 인포그래픽 — 통계 타일·분포 바·도넛 */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .tile{border-radius:12px;padding:13px 14px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07)}
+  .tile .n{font-size:23px;font-weight:600;color:#fff;line-height:1.1;letter-spacing:-.01em}
+  .tile .t{margin-top:3px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e7191}
+  .bar{display:grid;grid-template-columns:96px 1fr 38px;align-items:center;gap:10px}
+  .bar .lab{font-size:12.5px;color:#c9ccd3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .track{height:8px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden}
+  .track .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#5b52ff,#7c74ff)}
+  .bar .pc{font-size:12px;color:#8b909b;text-align:right}
+  .ring{width:108px;height:108px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none}
+  .ring i{width:78px;height:78px;border-radius:50%;background:#141318;display:flex;flex-direction:column;
+    align-items:center;justify-content:center}
+  .ring .pv{font-size:21px;font-weight:600;color:#fff;line-height:1}
+  .ring .pl{font-size:10px;color:#6e7191;margin-top:2px}
 </style>
 </head>
-<body class="min-h-screen text-body antialiased">
+<body class="text-body antialiased">
 <div class="noise" aria-hidden="true"></div>
-<div x-data="prismApp()">
+<div x-data="prismApp()" class="shell">
 
-  <!-- Solar 프로모 배너 (단일 액센트) -->
-  <div class="flex items-center justify-center gap-2.5 px-4 py-2 text-[13px] font-semibold text-[#0a0d14]"
-       style="background:linear-gradient(180deg,#d9ffa3,#cdf78a)">
-    <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[#0a0d14]/12">
-      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13l0-8z"/></svg>
-    </span>
-    <span>Prism · 이미지에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출합니다</span>
-  </div>
-
-  <!-- 상단 네비 -->
-  <header class="flex h-14 items-center justify-between border-b border-white/[0.08] px-5">
-    <div class="flex items-center gap-2.5">
-      <span class="text-[15px] font-semibold tracking-tight text-white">Prism</span>
-      <span class="rounded bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-body">Console</span>
+  <!-- ━━━━━ 좌측 페인 · 내비게이션 ━━━━━ -->
+  <aside class="pane">
+    <div class="titlebar">
+      <svg class="h-[18px] w-[18px] shrink-0 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3v4M3 5h4M6 17v4m-2-2h4"/><path d="M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
+      <span>리드문 · 메타 추출</span>
     </div>
-    <div class="flex items-center gap-2 text-[13px] text-muted">
-      <span class="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] px-2.5 py-1">
-        <span class="h-1.5 w-1.5 rounded-full" x-bind:class="(cfg.hasKey && !cfg.forcedMock) ? 'bg-solar' : 'bg-amber-400'"></span>
-        <span x-text="cfg.forcedMock ? 'MOCK(강제)' : (cfg.hasKey ? 'Solar 연결됨' : 'MOCK · 키 미설정')"></span>
-      </span>
-      <button type="button" x-on:click="openSettings()" aria-label="설정"
-        class="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] px-2.5 py-1 text-white transition-colors hover:bg-white/[0.05]">
-        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        설정
-      </button>
-    </div>
-  </header>
-
-  <!-- 설정 모달 -->
-  <div x-show="showSettings" x-cloak class="modal-bg fixed inset-0 z-50 flex items-center justify-center px-4"
-       x-on:click.self="showSettings = false">
-    <div class="modal w-full max-w-md rounded-xl border border-white/[0.10] bg-surface p-6">
-      <div class="mb-1 flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-white">설정</h2>
-        <button type="button" x-on:click="showSettings = false" class="text-muted hover:text-white" aria-label="닫기">
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-      <p class="mb-4 text-xs text-muted">Upstage API 키를 입력하면 OCR · DocVision · 생성이 실모델로 동작합니다. 키는 config에 저장되지 않습니다.</p>
-
-      <label class="lbl">Upstage API 키</label>
-      <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
-
-      <label class="lbl mt-4">생성 모델</label>
-      <div class="flex gap-2">
-        <select x-model="cfgModel" class="field flex-1">
-          <template x-for="m in modelOptions" x-bind:key="m">
-            <option x-bind:value="m" x-text="m"></option>
-          </template>
-          <template x-if="!modelOptions.length">
-            <option value="" disabled>키 입력 후 '모델 불러오기'</option>
-          </template>
-        </select>
-        <button type="button" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
-          class="shrink-0 rounded-lg border border-white/[0.10] px-3 py-2 text-sm font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
-      </div>
-      <span class="mt-1 block text-xs text-muted" x-text="modelsMsg"></span>
-
-      <label class="mt-4 flex cursor-pointer items-center gap-2 text-sm text-body">
-        <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
-        이 기기에 저장 (재시작 후에도 유지 · <code class="text-muted">~/.prism_key</code>)
-      </label>
-
-      <div class="mt-3 flex items-center gap-2 text-xs">
-        <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasKey ? 'bg-solar' : 'bg-amber-400'"></span>
-        <span class="text-muted" x-text="cfg.hasKey ? ('키 설정됨 · 모델 ' + cfg.model + (cfg.persisted ? ' · 저장됨' : '')) : '키 미설정 (현재 MOCK)'"></span>
-      </div>
-
-      <div class="mt-5 flex flex-wrap items-center gap-2">
-        <button type="button" x-on:click="saveConfig()" x-bind:disabled="cfgBusy"
-          class="rounded-lg bg-violet px-4 py-2 text-sm font-medium text-white hover:bg-violet-hover disabled:opacity-50">저장</button>
-        <button type="button" x-on:click="testConn()" x-bind:disabled="cfgBusy"
-          class="rounded-lg border border-white/[0.10] px-4 py-2 text-sm font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
-        <button type="button" x-show="cfg.persisted" x-on:click="forgetKey()" x-bind:disabled="cfgBusy"
-          class="rounded-lg border border-rose-500/30 px-4 py-2 text-sm font-medium text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">저장키 삭제</button>
-        <span class="text-xs text-body" aria-live="polite" x-text="cfgMsg"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="flex">
-    <!-- 좌측 사이드바 -->
-    <aside class="hidden w-60 shrink-0 border-r border-white/[0.08] px-3 py-6 md:block">
-      <div class="mb-6 flex items-center gap-2 px-3">
-        <svg class="h-5 w-5 shrink-0 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3v4M3 5h4M6 17v4m-2-2h4"/><path d="M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
-        <span class="text-sm font-semibold tracking-tight text-white">리드문 · 메타 추출</span>
-      </div>
-      <div class="px-3 text-[11px] font-semibold uppercase tracking-wider text-muted">입력 방식</div>
-      <nav class="mt-2 space-y-0.5" aria-label="입력 방식">
+    <div class="pbody pad">
+      <div class="navgrp">입력</div>
+      <nav class="space-y-0.5" aria-label="입력 방식">
         <template x-for="tabItem in tabItems" x-bind:key="tabItem.id">
           <button type="button" x-on:click="selectTab(tabItem.id)"
             x-bind:aria-current="activeTabId === tabItem.id ? 'page' : 'false'"
             class="navitem relative flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
             x-bind:class="activeTabId === tabItem.id ? 'active bg-white/[0.07] text-white font-medium' : 'text-body hover:bg-white/[0.04] hover:text-white'">
-            <!-- icon: image / text / excel -->
             <svg x-show="tabItem.id === 'image'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>
             <svg x-show="tabItem.id === 'text'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
             <svg x-show="tabItem.id === 'excel'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
@@ -723,17 +753,31 @@ PAGE = """<!doctype html>
           </button>
         </template>
       </nav>
-    </aside>
+      <div class="navgrp">산출</div>
+      <a href="/report" target="_blank" rel="noreferrer"
+        class="navitem relative flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-body transition-colors hover:bg-white/[0.04] hover:text-white">
+        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18M8 14v3m4-7v7m4-11v11"/></svg>
+        <span>전체 리포트</span>
+      </a>
+    </div>
+  </aside>
 
-    <!-- 메인 -->
-    <main class="min-w-0 flex-1 px-6 py-8 lg:px-10">
+  <!-- ━━━━━ 가운데 페인 · 캔버스 ━━━━━ -->
+  <main class="pane">
+    <div class="titlebar">
+      <span x-text="tabLabel + ' 입력'"></span>
+      <span class="ml-auto inline-flex items-center gap-1.5">
+        <span class="dot" x-bind:class="(cfg.hasKey && !cfg.forcedMock) ? 'bg-solar' : 'bg-amber-400'"></span>
+        <span class="sub" x-text="cfg.forcedMock ? 'MOCK(강제)' : (cfg.hasKey ? 'Solar 연결됨' : 'MOCK · 키 미설정')"></span>
+      </span>
+    </div>
+    <div class="pbody center">
       <div class="mx-auto max-w-3xl">
 
         <!-- 입력 카드 -->
         <section class="panel">
-          <div class="panel-hd"><b x-text="(tabItems.find(t => t.id === activeTabId) || {}).label + ' 입력'"></b></div>
           <div class="panel-bd">
-          <!-- 이미지 패널 -->
+          <!-- 이미지 -->
           <div x-show="activeTabId === 'image'" x-cloak class="space-y-4">
             <div>
               <label class="lbl">이미지 (여러 장이면 하나의 콘텐츠로 통합)</label>
@@ -746,31 +790,19 @@ PAGE = """<!doctype html>
                 <input x-ref="files" type="file" accept="image/*" multiple class="sr-only" x-on:change="onFiles($event)">
               </label>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div><label class="lbl">콘텐츠 그룹</label>
-                <select x-model="imgGroup" class="field">
-                  <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
-                </select></div>
-              <div><label class="lbl">제목 (선택)</label>
-                <input x-model="imgTitle" class="field" placeholder="없으면 이미지에서 추론"></div>
-            </div>
+            <div><label class="lbl">제목 (선택)</label>
+              <input x-model="imgTitle" class="field" placeholder="없으면 이미지에서 추론"></div>
             <div><label class="lbl">캡션 (선택)</label>
               <input x-model="imgCaption" class="field" placeholder="사진 설명이 있으면 함께 참조"></div>
           </div>
-          <!-- 텍스트 패널 -->
+          <!-- 텍스트 -->
           <div x-show="activeTabId === 'text'" x-cloak class="space-y-4">
-            <div class="grid grid-cols-2 gap-3">
-              <div><label class="lbl">콘텐츠 그룹</label>
-                <select x-model="txtGroup" class="field">
-                  <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
-                </select></div>
-              <div><label class="lbl">제목 (title)</label>
-                <input x-model="txtTitle" class="field" placeholder="기사 제목"></div>
-            </div>
+            <div><label class="lbl">제목 (title)</label>
+              <input x-model="txtTitle" class="field" placeholder="기사 제목"></div>
             <div><label class="lbl">본문 (body)</label>
-              <textarea x-model="txtBody" rows="4" class="field" placeholder="본문 내용"></textarea></div>
+              <textarea x-model="txtBody" rows="5" class="field" placeholder="본문 내용"></textarea></div>
           </div>
-          <!-- 엑셀 패널 -->
+          <!-- 엑셀 -->
           <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
             <div>
               <label class="lbl">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
@@ -792,16 +824,34 @@ PAGE = """<!doctype html>
               <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
               <span x-text="loading ? '실행 중' : '추출 실행'"></span>
             </button>
-            <span aria-live="polite" class="text-sm text-rose-400" x-text="status"></span>
+            <span class="text-xs text-muted">콘텐츠 그룹 · 모델은 우측 Configuration 에서 설정</span>
+            <span aria-live="polite" class="ml-auto text-sm text-rose-400" x-text="status"></span>
           </div>
           </div>
         </section>
 
-        <!-- 빈 상태 -->
+        <!-- 빈 상태 (히어로 + 추천 칩) -->
         <div x-show="!result && !batchResult && !loading" x-cloak class="mt-6">
-          <div class="empty">
-            <svg class="mx-auto mb-3 h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z"/></svg>
-            <p class="text-sm">추출을 실행하면 리드문·엔티티·인텐트·콘텐츠 카테고리가 여기에 표시됩니다.</p>
+          <div class="hero">
+            <div class="orb">
+              <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 6.3L21 11.5l-6.8 2.2L12 21l-2.2-7.3L3 11.5l6.8-2.2z"/></svg>
+            </div>
+            <h2 class="mt-4 text-lg font-semibold text-white">콘텐츠에서 리드문과 메타를 추출합니다</h2>
+            <p class="mt-1.5 max-w-md text-sm text-muted">이미지·텍스트·엑셀을 입력하면 리드문(요약 한 문장)·엔티티·인텐트·콘텐츠 카테고리가 한 방향으로 정리됩니다.</p>
+            <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
+              <button type="button" class="schip" x-on:click="selectTab('image')">
+                <svg class="h-3.5 w-3.5 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>
+                이미지에서 추출
+              </button>
+              <button type="button" class="schip" x-on:click="selectTab('text')">
+                <svg class="h-3.5 w-3.5 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
+                기사 본문 붙여넣기
+              </button>
+              <button type="button" class="schip" x-on:click="selectTab('excel')">
+                <svg class="h-3.5 w-3.5 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+                엑셀 일괄 처리
+              </button>
+            </div>
           </div>
         </div>
 
@@ -816,20 +866,44 @@ PAGE = """<!doctype html>
           </div>
         </div>
 
-        <!-- 엑셀 배치 결과 -->
+        <!-- 엑셀 배치 결과 + 인포그래픽 -->
         <div x-show="batchResult" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
+          <!-- 집계 인포그래픽 -->
+          <section class="panel">
+            <div class="panel-hd"><b>집계</b><span class="meta tnum" x-text="batchResult ? (batchStats.n + '건 분석') : ''"></span></div>
+            <div class="panel-bd space-y-5">
+              <div class="tiles">
+                <div class="tile"><div class="n tnum" x-text="batchStats.n"></div><div class="t">총 건수</div></div>
+                <div class="tile"><div class="n tnum" x-text="batchStats.g"></div><div class="t">유통가능 G</div></div>
+                <div class="tile"><div class="n tnum" x-text="batchStats.ents"></div><div class="t">엔티티 수</div></div>
+                <div class="tile"><div class="n tnum" x-text="batchStats.avgLen"></div><div class="t">평균 리드문(자)</div></div>
+              </div>
+              <div class="flex items-center gap-6">
+                <div class="ring" x-bind:style="'background:conic-gradient(#5b52ff ' + batchStats.gPct + '%, rgba(255,255,255,.07) 0)'">
+                  <i><span class="pv tnum" x-text="batchStats.gPct + '%'"></span><span class="pl">유통가능</span></i>
+                </div>
+                <div class="min-w-0 flex-1 space-y-2.5">
+                  <div class="lbl" style="margin-bottom:2px">인텐트 분포 (상위 5)</div>
+                  <template x-for="it in batchStats.intents" x-bind:key="it.k">
+                    <div class="bar">
+                      <span class="lab" x-text="it.k"></span>
+                      <span class="track"><span class="fill" x-bind:style="'width:' + Math.max(it.pct, 4) + '%'"></span></span>
+                      <span class="pc tnum" x-text="it.v + '건'"></span>
+                    </div>
+                  </template>
+                  <div x-show="!batchStats.intents.length" class="text-xs text-muted">인텐트 데이터 없음</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section class="panel">
             <div class="panel-hd">
               <div class="flex items-center gap-2">
-                <b>엑셀 결과</b>
-                <span class="gpill gpill-g tnum" x-text="batchResult ? (batchResult.count + '건') : ''"></span>
+                <b>행별 결과</b>
                 <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-300">MOCK</span>
               </div>
-              <a href="/report" target="_blank" rel="noreferrer"
-                 class="inline-flex items-center gap-1.5 text-xs font-medium text-[#b9b3ff] transition-colors hover:text-white">
-                전체 리포트 열기
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
-              </a>
+              <span class="meta">우측 산출 · 전체 리포트 참조</span>
             </div>
             <div class="overflow-auto">
               <table class="tbl">
@@ -852,7 +926,7 @@ PAGE = """<!doctype html>
           </section>
         </div>
 
-        <!-- 결과 -->
+        <!-- 단건 결과 -->
         <div x-show="result" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
           <section class="panel">
             <div class="panel-hd">
@@ -932,12 +1006,93 @@ PAGE = """<!doctype html>
           </section>
         </div>
       </div>
-    </main>
-  </div>
+    </div>
+  </main>
+
+  <!-- ━━━━━ 우측 페인 · Configuration ━━━━━ -->
+  <aside class="pane">
+    <div class="titlebar"><span>Configuration</span></div>
+    <div class="pbody">
+
+      <!-- API 키 -->
+      <div class="cfgsec">
+        <label class="lbl">Upstage API 키</label>
+        <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
+        <label class="mt-3 flex cursor-pointer items-center gap-2 text-[13px] text-body">
+          <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
+          이 기기에 저장 (<code class="text-muted">~/.prism_key</code>)
+        </label>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button type="button" x-on:click="saveConfig()" x-bind:disabled="cfgBusy"
+            class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover disabled:opacity-50">저장</button>
+          <button type="button" x-on:click="testConn()" x-bind:disabled="cfgBusy"
+            class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
+          <button type="button" x-show="cfg.persisted" x-on:click="forgetKey()" x-bind:disabled="cfgBusy"
+            class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">키 삭제</button>
+        </div>
+        <div class="mt-2.5 flex items-center gap-2 text-xs">
+          <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasKey ? 'bg-solar' : 'bg-amber-400'"></span>
+          <span class="text-muted" x-text="cfgMsg || (cfg.hasKey ? ('키 설정됨' + (cfg.persisted ? ' · 저장됨' : '')) : '키 미설정 (현재 MOCK)')"></span>
+        </div>
+      </div>
+
+      <!-- 생성 모델 -->
+      <div class="cfgsec">
+        <label class="lbl">생성 모델</label>
+        <select x-model="cfgModel" x-on:change="saveConfig()" class="field">
+          <template x-for="m in modelOptions" x-bind:key="m">
+            <option x-bind:value="m" x-text="m"></option>
+          </template>
+          <template x-if="!modelOptions.length">
+            <option value="" disabled>키 입력 후 모델 불러오기</option>
+          </template>
+        </select>
+        <button type="button" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
+          class="mt-2 w-full rounded-lg border border-white/[0.10] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
+        <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
+      </div>
+
+      <!-- 추론 강도 -->
+      <div class="cfgsec">
+        <label class="lbl">추론 강도 (Reasoning Effort)</label>
+        <div class="seg">
+          <template x-for="o in reasoningOpts" x-bind:key="o.id">
+            <button type="button" x-on:click="setReasoning(o.id)"
+              x-bind:class="reasoning === o.id ? 'on' : ''" x-text="o.label"></button>
+          </template>
+        </div>
+        <p class="mt-1.5 text-xs text-muted">높일수록 추론 깊이는 늘고 속도는 느려집니다.</p>
+      </div>
+
+      <!-- 콘텐츠 그룹 -->
+      <div class="cfgsec">
+        <label class="lbl">콘텐츠 그룹</label>
+        <select x-model="group" class="field">
+          <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+        </select>
+        <p class="mt-1.5 text-xs text-muted">인텐트 사전을 이 그룹 기준으로 적용합니다.</p>
+      </div>
+
+      <!-- System Prompt (추가 지시) -->
+      <div class="cfgsec">
+        <label class="lbl">System Prompt (추가 지시)</label>
+        <textarea x-model="systemPrompt" x-on:blur="applyPrefs()" rows="4" class="field"
+          placeholder="예) 리드문은 25자 이내로. 인물명은 직책과 함께 표기."></textarea>
+        <div class="mt-2 flex items-center gap-2">
+          <button type="button" x-on:click="applyPrefs()"
+            class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05]">적용</button>
+          <span class="text-xs text-muted" aria-live="polite" x-text="prefMsg"></span>
+        </div>
+        <p class="mt-2 text-xs text-muted">출력 스키마(리드문·엔티티·인텐트·콘텐츠 카테고리)는 유지하며 추출 방향만 조향합니다.</p>
+      </div>
+
+    </div>
+  </aside>
 
 </div>
 </body>
 </html>"""
+
 
 
 def main():
@@ -949,6 +1104,7 @@ def main():
 
     Handler.server_mock = a.mock
     load_persisted_key()                              # ~/.prism_key 있으면 주입
+    sync_prompt()                                     # config 의 추가 지시 반영
     keyed = bool(IMG._api_key())
     mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 미설정 · UI에서 설정)")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)

@@ -58,6 +58,7 @@ class Config:
     embed_query_model: str = ""
     embed_passage_model: str = ""
     reasoning_effort: str = "default"   # default|low|high|off
+    system_prompt: str = ""             # 아이템 추출에 덧붙이는 추가 지시(선택)
 
     # 실행
     concurrency: int = 12

@@ -53,9 +53,14 @@ def quality_group_system(group_key: str, active_metas: list, service_group: str)
 
 
 # 아이템 메타
+# UI/설정에서 주입하는 추가 지시(System Prompt). 출력 계약(스키마)은 유지하되 추출을 가볍게 조향.
+EXTRA_INSTRUCTION = ""
+
+
 def item_system(content) -> str:
     intents = " / ".join(D.intent_categories_for(content.displayServiceName))
     tier1 = " / ".join(D.IAB_TIER1)
+    extra = f"\n\n[추가 지시] {EXTRA_INSTRUCTION.strip()}" if EXTRA_INSTRUCTION.strip() else ""
     return f"""너는 유통 가능(G) 콘텐츠의 아이템 메타를 추출한다. 4단계를 순서대로 수행한다.
 
 1) summary: 이 콘텐츠가 '무엇을 어떤 관점에서 다루는지' 한 문장으로 요약(주어+대상+관점).
@@ -63,7 +68,7 @@ def item_system(content) -> str:
 3) intent: 아래 사전값 중 1~2개만. 자유 생성 금지.
    [{intents}]
 4) content_category: 각 엔티티를 IAB Tier1(필요시 Tier1/Tier2)로. Tier1 사전:
-   [{tier1}]
+   [{tier1}]{extra}
 
 [출력 형식]
 {{"summary":"...","entities":["..."],"intent":["..."],
