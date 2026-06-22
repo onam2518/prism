@@ -12,6 +12,8 @@ import argparse
 import json
 import os
 import tempfile
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import imagext as IMG
@@ -177,6 +179,29 @@ def apply_config(data: dict) -> dict:
     return config_status()
 
 
+def list_models() -> dict:
+    """현재 키로 접근 가능한 모델 목록을 Upstage /models 에서 조회."""
+    if not IMG._api_key():
+        return {"ok": False, "detail": "API 키가 설정되지 않았습니다", "models": []}
+    cfg = Config.load()
+    url = cfg.models_url or ((cfg.chat_url or "").rsplit("/chat/completions", 1)[0] + "/models")
+    if not url or not url.endswith("/models"):
+        return {"ok": False, "detail": "models 엔드포인트 미설정", "models": []}
+    try:
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("Authorization", f"Bearer {IMG._api_key()}")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        data = payload.get("data") or payload.get("models") or []
+        ids = sorted({(m.get("id") or m.get("name") or "") for m in data
+                      if isinstance(m, dict)} - {""})
+        return {"ok": True, "models": ids, "current": cfg.model or ""}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "detail": f"HTTP{e.code}", "models": []}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)[:200], "models": []}
+
+
 def ping_model() -> dict:
     """현재 키/설정으로 실제 1회 호출하여 연결 검증."""
     if not IMG._api_key():
@@ -220,6 +245,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, build_report_html())
         elif self.path.startswith("/config"):
             self._send(200, json.dumps(config_status(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/models"):
+            self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
         else:
             self._send(200, PAGE)
 
@@ -295,8 +322,32 @@ PAGE = """<!doctype html>
       // 설정(API 키 / 모델)
       showSettings: false, cfg: { hasKey: false, model: '', persisted: false, forcedMock: false },
       cfgKey: '', cfgModel: '', cfgPersist: true, cfgMsg: '', cfgBusy: false,
+      models: [], modelsMsg: '',
 
       init() { this.refreshConfig(); },
+      get modelOptions() {
+        const a = this.models.slice();
+        if (this.cfgModel && !a.includes(this.cfgModel)) a.unshift(this.cfgModel);
+        return a;
+      },
+      async loadModels() {
+        this.modelsMsg = '불러오는 중…'; this.cfgBusy = true;
+        try {
+          if (this.cfgKey) {                       // 입력한 키를 먼저 적용(세션)
+            await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ api_key: this.cfgKey }) });
+            await this.refreshConfig();
+          }
+          const j = await (await fetch('/models')).json();
+          if (j.ok) {
+            this.models = j.models;
+            if (!this.cfgModel || !this.models.includes(this.cfgModel))
+              this.cfgModel = this.cfg.model || this.models[0] || '';
+            this.modelsMsg = this.models.length + '개 모델 불러옴';
+          } else { this.modelsMsg = '실패 · ' + j.detail; }
+        } catch (e) { this.modelsMsg = '오류: ' + e; }
+        this.cfgBusy = false;
+      },
       async refreshConfig() {
         try {
           const r = await fetch('/config'); this.cfg = await r.json();
@@ -309,10 +360,12 @@ PAGE = """<!doctype html>
         try {
           const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ api_key: this.cfgKey, model: this.cfgModel, persist: this.cfgPersist }) });
-          this.cfg = await r.json(); this.cfgKey = '';
+          this.cfg = await r.json();
           this.cfgMsg = this.cfg.hasKey ? '저장됨 · 연결 테스트로 확인하세요' : '저장됨';
         } catch (e) { this.cfgMsg = '오류: ' + e; }
         this.cfgBusy = false;
+        if (this.cfg.hasKey && !this.models.length) this.loadModels();   // 모델 목록 자동 로드
+        this.cfgKey = '';
       },
       async forgetKey() {
         this.cfgBusy = true; this.cfgMsg = '삭제 중…';
@@ -424,8 +477,20 @@ PAGE = """<!doctype html>
       <label class="mb-1.5 block text-xs font-medium text-muted">Upstage API 키</label>
       <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
 
-      <label class="mb-1.5 mt-4 block text-xs font-medium text-muted">생성 모델 (선택)</label>
-      <input x-model="cfgModel" class="field" placeholder="solar-pro3-260323">
+      <label class="mb-1.5 mt-4 block text-xs font-medium text-muted">생성 모델</label>
+      <div class="flex gap-2">
+        <select x-model="cfgModel" class="field flex-1 appearance-none">
+          <template x-for="m in modelOptions" x-bind:key="m">
+            <option x-bind:value="m" x-text="m"></option>
+          </template>
+          <template x-if="!modelOptions.length">
+            <option value="" disabled>키 입력 후 '모델 불러오기'</option>
+          </template>
+        </select>
+        <button type="button" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
+          class="shrink-0 rounded-lg border border-white/[0.10] px-3 py-2 text-sm font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
+      </div>
+      <span class="mt-1 block text-xs text-muted" x-text="modelsMsg"></span>
 
       <label class="mt-4 flex cursor-pointer items-center gap-2 text-sm text-body">
         <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
