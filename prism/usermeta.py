@@ -8,7 +8,7 @@ from . import theme as TH
 WARNING = ""
 
 # 8 페르소나  : 소비 형태 + 맥락별 강도 시그니처
-# intensity: 인텐트 카테고리(실데이터 값) → 저/중/고. form: 5개 형태 피처.
+# intensity: 인텐트(실데이터 값) → 저/중/고. form: 5개 형태 피처.
 PERSONAS = [
     {"id": "P1", "name": "정독러", "full": "결정 직전의 정독러",
      "desc": "한 주제를 끝까지 파고들고 저장·재방문 · 속보는 즉시 스킵",
@@ -55,11 +55,11 @@ PERSONAS = [
 SCENARIOS = [
     {"title": "소비 형태 기반 홈 재배치", "desc": "같은 콘텐츠 풀 · 형태에 따라 순서·구성·밀도만 다르게",
      "ex": "훑기형=숏폼·이슈 카드 위로 / 파고들기형=이어보기·심층·카페 위로"},
-    {"title": "능동형 컴포넌트 (메타풀 활용)", "desc": "선호(토픽×소비 맥락)를 메타풀 조건으로 변환해 능동 삽입",
-     "ex": "복합형=관심 사건 묶음 · 필터형=재테크×심층 슬롯 · 단독형=팔로우 엔티티 큐레이션"},
+    {"title": "능동형 컴포넌트 (토픽 활용)", "desc": "선호(토픽×소비 맥락)를 토픽 조건으로 변환해 능동 삽입",
+     "ex": "사건형=관심 사건 묶음 · 조건형=재테크×심층 슬롯 · 엔티티형=팔로우 엔티티 큐레이션"},
     {"title": "유저 프로파일링 (데이터→컴포넌트)", "desc": "행동→형태→강도→페르소나→산출까지 단계 추적",
      "ex": "“이 데이터 때문에 이 컴포넌트가 떴다”를 근거로 설명"},
-    {"title": "광고 타겟팅", "desc": "선호 엔티티 카테고리 × 선호 인텐트 카테고리 교차로 정밀 매칭",
+    {"title": "광고 타겟팅", "desc": "선호 콘텐츠 카테고리 × 선호 인텐트 교차로 정밀 매칭",
      "ex": "Business and Finance × 심층 분석 관심 → 금융 콘텐츠·광고 (맥락 부적합 노출 감소)"},
 ]
 
@@ -107,7 +107,7 @@ def _empty_user_meta(results_path: str) -> dict:
                       "intensity": [["고", 0], ["중", 0], ["저", 0]], "form_depth": [],
                       "engagement": {"avg_click_rate": 0, "high": 0, "low": 0}},
         "personas_def": pdefs, "scenarios": SCENARIOS,
-        "formula": "소비 강도 = 맥락(인텐트 카테고리)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)",
+        "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)",
     }
 
 
@@ -170,7 +170,7 @@ def build_from_logs(results_path: str, logs_path: str) -> dict:
             "source": f"실 행동 로그 {logs_path} → 소비 형태·강도 → 페르소나 (실데이터)",
             "n_contents": len(rows), "users": users, "aggregate": agg,
             "personas_def": pdefs, "scenarios": SCENARIOS,
-            "formula": "소비 강도 = 맥락(인텐트 카테고리)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)"}
+            "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)"}
 
 
 def _profile_from_logs(viewed, logs):
@@ -325,7 +325,7 @@ def build_mock(results_path: str, n_users: int = 200) -> dict:
                               "desc": p["desc"], "form": p["form"], "intensity": p["intensity"]}
                              for p in PERSONAS],
             "scenarios": SCENARIOS,
-            "formula": "소비 강도 = f(체류·완주·저장·재방문·진입경로): 맥락(인텐트 카테고리)별 상대값으로 저/중/고 등급화"}
+            "formula": "소비 강도 = f(체류·완주·저장·재방문·진입경로): 맥락(인텐트)별 상대값으로 저/중/고 등급화"}
 
 
 def _user_topic(persona, cat_rank, u):
@@ -405,7 +405,7 @@ def _profile(persona, topic, viewed, logs):
         for e in c["entities"]:
             ents[e] += w
     top_int = _top(w_int, 6)
-    # 소비 강도: 페르소나 시그니처를 실제 소비한 인텐트 카테고리에 투영
+    # 소비 강도: 페르소나 시그니처를 실제 소비한 인텐트에 투영
     intensity = {}
     for ic, _w in top_int:
         if ic in persona["intensity"]:
@@ -443,7 +443,7 @@ def _read_jsonl(path):
 
 
 
-# 관계도: 페르소나 ↔ 관심 엔티티 카테고리(공유 관심사로 페르소나가 묶임)
+# 관계도: 페르소나 ↔ 관심 콘텐츠 카테고리(공유 관심사로 페르소나가 묶임)
 _UG_COL = {"persona": "#5e6ad2", "cat": "#a988e6"}
 
 
@@ -468,8 +468,8 @@ def _persona_graph(data):
         return ""
     return GV.vendor_script() + GV.section(
         "umg", list(nodes.values()), links, _UG_COL,
-        "페르소나 관계도", "페르소나 ↔ 관심 엔티티 카테고리 · 공유 관심사로 묶임 · 호버=연결 강조",
-        legend=[("페르소나", "#5e6ad2"), ("관심 엔티티 카테고리", "#a988e6")], height=440)
+        "페르소나 관계도", "페르소나 ↔ 관심 콘텐츠 카테고리 · 공유 관심사로 묶임 · 호버=연결 강조",
+        legend=[("페르소나", "#5e6ad2"), ("관심 콘텐츠 카테고리", "#a988e6")], height=440)
 
 
 def render_html(results_path: str, n_users: int = 200,
@@ -571,17 +571,17 @@ canvas#scat{width:100%;height:300px;display:block;background:#0c0e12;border:1px 
   <div class="uid" style="margin-bottom:8px">클릭 → 해당 페르소나 유저만 필터 · 8유형</div><div id="pdist"></div></div>
  <div class="card"><h2>소비 강도 분포 <span class="hint" data-tip="맥락 셀 단위 · 저·중·고">?</span></h2>
   <div class="intensity" id="intsum"></div>
-  <div class="uid" style="margin-top:10px">소비 강도 = 형태(체류·완주·저장·재방문·진입경로)에서 산출되는 최종 평가 지표 · 인텐트 카테고리(소비 맥락)별 상대값</div></div>
+  <div class="uid" style="margin-top:10px">소비 강도 = 형태(체류·완주·저장·재방문·진입경로)에서 산출되는 최종 평가 지표 · 인텐트(소비 맥락)별 상대값</div></div>
  <div class="card full"><h2>8 페르소나 정의 <span class="hint" data-tip="소비 형태 + 맥락별 강도">?</span></h2><div class="pdefs" id="pdefs"></div></div>
- <div class="card full"><h2>소비 맥락별 강도 히트맵 <span class="hint" data-tip="페르소나 × 인텐트 카테고리 → 저·중·고">?</span></h2>
+ <div class="card full"><h2>소비 맥락별 강도 히트맵 <span class="hint" data-tip="페르소나 × 인텐트 → 저·중·고">?</span></h2>
   <div style="overflow-x:auto"><div id="heat"></div></div>
   <div class="lgd"><span><span class="dot" style="background:#3ad17e"></span>고강도</span><span><span class="dot" style="background:#5b9dff"></span>중강도</span><span><span class="dot" style="background:#3a4150"></span>저강도</span><span style="margin-left:auto">같은 콘텐츠 맥락도 페르소나에 따라 강도가 다름: 주제 중심 체계로는 구분 불가</span></div></div>
  <div class="card"><h2>소비 형태 지형 <span class="hint" data-tip="깊이 × 소비 강도 · 200명">?</span></h2>
   <canvas id="scat"></canvas>
   <div class="lgd" id="scatlgd"></div></div>
  <div class="card"><h2>홈 재배치 시나리오 <span class="hint" data-tip="같은 풀 · 형태별 순서·밀도">?</span></h2><div id="home"></div></div>
- <div class="card"><h2>관심 엔티티 카테고리 <span class="hint" data-tip="보유 유저수">?</span></h2><div id="edist"></div></div>
- <div class="card"><h2>관심 인텐트 카테고리 <span class="hint" data-tip="소비 맥락">?</span></h2><div id="idist"></div></div>
+ <div class="card"><h2>관심 콘텐츠 카테고리 <span class="hint" data-tip="보유 유저수">?</span></h2><div id="edist"></div></div>
+ <div class="card"><h2>관심 인텐트 <span class="hint" data-tip="소비 맥락">?</span></h2><div id="idist"></div></div>
  __GRAPH__
  <div class="card full"><h2>활용 시나리오 <span class="hint" data-tip="사용자 메타 × 콘텐츠 메타">?</span></h2><div id="scen"></div></div>
  <div class="card full"><h2>유저 관계도 <span class="hint" data-tip="페르소나 허브 · 유저 노드 클릭 시 상세">?</span></h2>
@@ -629,7 +629,7 @@ document.getElementById('idist').innerHTML=bars(D.aggregate.intent_categories.sl
 document.getElementById('scen').innerHTML=D.scenarios.map(s=>
  `<div class="sc"><div class="t">${esc(s.title)}</div><div class="d">${esc(s.desc)}</div><div class="ex">예: ${esc(s.ex)}</div></div>`).join('');
 
-// 소비 맥락별 강도 히트맵 (페르소나 × 인텐트 카테고리)
+// 소비 맥락별 강도 히트맵 (페르소나 × 인텐트)
 (function(){
  const seen={};D.personas_def.forEach(p=>Object.keys(p.intensity).forEach(c=>seen[c]=(seen[c]||0)+1));
  const cols=Object.keys(seen).sort((a,b)=>seen[b]-seen[a]);
@@ -710,7 +710,7 @@ function openU(uid){
   ${u.persona_derivation.map((d,i)=>`<div class="stage"><div class="h">${i+1}. ${esc(d[0])}</div><div class="kv">${esc(d[1])}</div></div>${i<u.persona_derivation.length-1?'<div class="flowarrow">↓</div>':''}`).join('')}
   <div class="stage"><div class="h">소비 강도 (맥락별)</div>
    ${Object.entries(u.intensity).map(([k,v])=>`<span class="t ${LVK[v]}" style="font-size:11px;margin:2px">${esc(k)} = ${v}</span>`).join('')}</div>
-  <div class="stage"><div class="h">관심 엔티티 카테고리</div><div class="kv">${u.interest_entity_categories.map(c=>esc(c[0])+' ('+c[1]+')').join(' · ')}</div></div>
+  <div class="stage"><div class="h">관심 콘텐츠 카테고리</div><div class="kv">${u.interest_entity_categories.map(c=>esc(c[0])+' ('+c[1]+')').join(' · ')}</div></div>
   <div class="stage"><div class="h">행동 타임라인 (시계열 소비 순서 · 막대=체류시간 · 파랑=클릭)</div><div class="tl">${tl}</div></div>
   <div class="stage"><div class="h">행동 로그 (합성, 상위 40)</div><code class="j">${log}</code></div>`;
  document.getElementById('ov').style.display='block';document.getElementById('dw').classList.add('open');

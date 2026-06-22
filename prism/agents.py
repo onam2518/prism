@@ -41,6 +41,8 @@ def run_item(llm, content) -> tuple[ItemMeta, list]:
         entities=obj.get("entities", []) or [],
         intent=obj.get("intent", []) or [],
         content_category=obj.get("content_category", {}) or {},
+        topic=obj.get("topic", "") or "",                      # 3차(미생성 시 빈 값)
+        topic_categories=obj.get("topic_categories", []) or [],
     )
     return im, [res, {"agent": "ItemAgent", "fail": obj.get("_fail")}]
 

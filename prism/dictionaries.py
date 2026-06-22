@@ -1,4 +1,4 @@
-"""출력 어휘 사전: 자유생성 금지. 메타풀·사용자 메타 공유 사전과 정합되어야 한다."""
+"""출력 어휘 사전: 자유생성 금지. 토픽·사용자 메타 공유 사전과 정합되어야 한다."""
 
 QUALITY_METAS = {
     "ad":        "노골적 상업 광고 / 협찬 미고지 / 외부 구매 유도",
@@ -118,7 +118,7 @@ def _service_key(display_name: str) -> str:
     return ""
 
 
-# 엔티티 카테고리: IAB Content Taxonomy v3.0 기반 자사 사전 (Tier1 21개)
+# 콘텐츠 카테고리: IAB Content Taxonomy v3.0 기반 자사 사전 (Tier1 21개)
 IAB_TIER1 = [
     "Automotive", "Books and Literature", "Business and Finance",
     "Careers", "Education", "Events and Attractions", "Family and Relationships",

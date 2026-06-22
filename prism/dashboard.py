@@ -93,11 +93,11 @@ def build_integrated(results_path: str, out_path: str,
     """아이템 메타 + 사용자 메타(목업)를 탭 전환 단일 HTML 로 통합.
     각 패널은 iframe(srcdoc)으로 격리: 변수/ID 충돌 없이 기존 빌더 그대로 재사용."""
     from . import usermeta as UM
-    from . import metapool as MP
+    from . import topic as TP
     nt = notice
     ctitle = "아이템 메타 (DEMO)" if nt else "아이템 메타 현황"
     content_html, cinfo = render(results_path, ctitle, notice=nt)
-    metapool_html = MP.render_html(results_path, notice=nt)
+    topic_html = TP.render_html(results_path, notice=nt)
     user_html = UM.render_html(results_path, n_users=n_users, logs_path=logs_path, demo=demo, notice=nt)
 
     def esc(h):
@@ -105,7 +105,7 @@ def build_integrated(results_path: str, out_path: str,
 
     page = TH.inject(_INTEGRATED).replace("__TITLE__", html.escape(title)) \
         .replace("__CONTENT_SRCDOC__", esc(content_html)) \
-        .replace("__METAPOOL_SRCDOC__", esc(metapool_html)) \
+        .replace("__TOPIC_SRCDOC__", esc(topic_html)) \
         .replace("__USER_SRCDOC__", esc(user_html))
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(page)
@@ -144,13 +144,13 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 </style></head><body>
 <div class="tabbar"><span class="brand">Prism</span>
  <span class="tab on" data-t="content">아이템 메타</span>
- <span class="tab" data-t="metapool">메타풀</span>
+ <span class="tab" data-t="topic">토픽</span>
  <span class="tab" data-t="user">사용자 메타</span>
  <span class="help" onclick="document.getElementById('hov').style.display='block';document.getElementById('hp').classList.add('on')">? 용어·구조</span>
 </div>
 <div class="wrap">
  <iframe id="f-content" class="on" srcdoc="__CONTENT_SRCDOC__"></iframe>
- <iframe id="f-metapool" srcdoc="__METAPOOL_SRCDOC__"></iframe>
+ <iframe id="f-topic" srcdoc="__TOPIC_SRCDOC__"></iframe>
  <iframe id="f-user" srcdoc="__USER_SRCDOC__"></iframe>
 </div>
 <div id="hov" onclick="this.style.display='none';document.getElementById('hp').classList.remove('on')"></div>
@@ -160,24 +160,24 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 <dl>
 <dt>품질 메타</dt><dd>유통 가능 여부 · <b>G</b> 유통가능 · <b>R</b> 불가 · <b>YELLOW</b> 자동 판정 애매 → 사람 검수</dd>
 <dt>법령 메타</dt><dd>위반 유형 스코어링으로 차단 여부 판정(옵션)</dd>
-<dt>인텐트 / 인텐트 카테고리</dt><dd>콘텐츠를 '왜·어떻게' 소비하는지(서술) → 그 분류값(속보·심층 분석·팩트체크 등)</dd>
-<dt>엔티티 / 엔티티 카테고리</dt><dd>콘텐츠 속 인물·기업·작품 등 고유 대상 → IAB 기반 분류(News·Entertainment 등)</dd>
+<dt>리드문 / 인텐트</dt><dd>콘텐츠를 '왜·어떻게' 소비하는지 서술(리드문) → 그 분류값(인텐트: 속보·심층 분석·팩트체크 등)</dd>
+<dt>엔티티 / 콘텐츠 카테고리</dt><dd>콘텐츠 속 인물·기업·작품 등 고유 대상(엔티티) → IAB 기반 분류(콘텐츠 카테고리: News·Entertainment 등)</dd>
 </dl>
-<h3>메타풀 (그룹핑)</h3>
+<h3>토픽 (그룹핑)</h3>
 <dl>
-<dt>단독형</dt><dd class="pl">단일 엔티티 단위 · "이 인물·기업에 해당하는 콘텐츠" · 영속</dd>
-<dt>복합형</dt><dd class="pl">사건 단위 · 엔티티가 여러 콘텐츠에 함께 등장(공출현)하면 자동 묶임 · 단기</dd>
-<dt>필터형</dt><dd class="pl">조건 단위 · 운영자가 "인텐트 카테고리 × 엔티티 카테고리" 조건으로 정의 · 중장기</dd>
+<dt>엔티티형</dt><dd class="pl">단일 엔티티 단위 · "이 인물·기업에 해당하는 콘텐츠" · 영속</dd>
+<dt>사건형</dt><dd class="pl">사건 단위 · 엔티티가 여러 콘텐츠에 함께 등장(공출현)하면 자동 묶임 · 단기</dd>
+<dt>조건형</dt><dd class="pl">조건 단위 · 운영자가 "인텐트 × 콘텐츠 카테고리" 조건으로 정의 · 중장기</dd>
 </dl>
 <h3>사용자 메타 (소비 측)</h3>
 <dl>
 <dt>소비 형태(FORM)</dt><dd>'무엇'이 아니라 '어떻게' 소비하는가: 세션 길이·체류/완주·전환·깊이·시간대</dd>
-<dt>소비 강도</dt><dd>형태에서 산출되는 평가값 · 인텐트 카테고리(소비 맥락)별 <b>저·중·고</b></dd>
+<dt>소비 강도</dt><dd>형태에서 산출되는 평가값 · 인텐트(소비 맥락)별 <b>저·중·고</b></dd>
 <dt>페르소나</dt><dd>형태·강도를 결합한 사용자 유형(정독러·스낵러·팬덤 등) · 행동 로그 연결 시 실데이터</dd>
 </dl>
 </div>
 <script>
-const TABS=['content','metapool','user'];
+const TABS=['content','topic','user'];
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
   TABS.forEach(k=>document.getElementById('f-'+k).classList.toggle('on',t.dataset.t===k));
@@ -256,7 +256,7 @@ def _canonical_entity_categories(rows, service_names):
 
 def _graph(rows, max_nodes: int = 900, top_entities: int = 260):
     """노드: content / entity / category. 링크로 연결.
-    엔티티가 여러 콘텐츠에 공유되면 degree 가 커져 허브가 된다(메타풀 후보).
+    엔티티가 여러 콘텐츠에 공유되면 degree 가 커져 허브가 된다(토픽 후보).
 
     매핑 정제(중요):
       - 엔티티→카테고리는 전역 다수결로 단일화 → 엔티티당 is_a 엣지 1개(노이즈 제거)
@@ -283,7 +283,7 @@ def _graph(rows, max_nodes: int = 900, top_entities: int = 260):
              ref.get("displayServiceName", ""))
         nodes[idx[cid]]["grade"] = decision   # 그래프 등급 필터용
         im = r.get("item_meta") or {}
-        content_cats = set()   # 이 콘텐츠가 속한 엔티티 카테고리(직접 매핑용)
+        content_cats = set()   # 이 콘텐츠가 속한 콘텐츠 카테고리(직접 매핑용)
         for e in im.get("entities", []):
             if _is_junk_entity(e, service_names):
                 continue
@@ -297,7 +297,7 @@ def _graph(rows, max_nodes: int = 900, top_entities: int = 260):
                 node(kid, t1, "category")
                 links.append({"s": eid, "t": kid, "rel": "is_a"})
                 content_cats.add(t1)
-        # 콘텐츠 → 엔티티 카테고리 직접 엣지(belongs_to): 엔티티 레이어를 꺼도 매핑이 보임
+        # 콘텐츠 → 콘텐츠 카테고리 직접 엣지(belongs_to): 엔티티 레이어를 꺼도 매핑이 보임
         for t1 in content_cats:
             links.append({"s": cid, "t": f"k:{t1}", "rel": "belongs_to"})
         for c in im.get("intent", []):
@@ -503,8 +503,8 @@ code.j{display:block;white-space:pre-wrap;background:var(--bg);border:1px solid 
  <div>
   <div class="card"><h2>품질 등급</h2><div class="grades" id="grades"></div></div>
   <div class="card"><h2>붙은 품질 메타 <span class="hint" data-tip="차단·검수 사유(reason)별 분포">?</span></h2><div id="reasons"></div></div>
-  <div class="card"><h2>인텐트 카테고리</h2><div id="intents"></div></div>
-  <div class="card"><h2>엔티티 카테고리 <span class="hint" data-tip="IAB Tier1 분류 기준">?</span></h2><div id="ecats"></div></div>
+  <div class="card"><h2>인텐트</h2><div id="intents"></div></div>
+  <div class="card"><h2>콘텐츠 카테고리 <span class="hint" data-tip="IAB Tier1 분류 기준">?</span></h2><div id="ecats"></div></div>
   <div class="card"><h2>서비스 분포</h2><div id="services"></div></div>
  </div>
  <div>
@@ -514,8 +514,8 @@ code.j{display:block;white-space:pre-wrap;background:var(--bg);border:1px solid 
    <div class="legend">
     <span><span class="dot" style="background:var(--ac)"></span>콘텐츠</span>
     <span><span class="dot" style="background:var(--ent)"></span>엔티티</span>
-    <span><span class="dot" style="background:var(--cat)"></span>엔티티 카테고리</span>
-    <span><span class="dot" style="background:var(--int)"></span>인텐트 카테고리</span>
+    <span><span class="dot" style="background:var(--cat)"></span>콘텐츠 카테고리</span>
+    <span><span class="dot" style="background:var(--int)"></span>인텐트</span>
     <span style="margin-left:auto">기본: 엔티티·카테고리만 · 콘텐츠/인텐트는 위 레이어로 켜기 · 노드 클릭=연관 강조</span>
    </div>
    <div class="gnote" id="gnote"></div>
@@ -679,7 +679,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape')closeD();});
 
 // ── 관계도: force-graph (vendored, MIT) + 등급/레이어 필터 + 하이라이트 ──
 const COL={content:'#5e6ad2',entity:'#e2a33c',category:'#a988e6',intent:'#4cb9a7'};
-const KLAB={content:'콘텐츠',entity:'엔티티',category:'엔티티 카테고리',intent:'인텐트 카테고리'};
+const KLAB={content:'콘텐츠',entity:'엔티티',category:'콘텐츠 카테고리',intent:'인텐트'};
 function _hexA(hex,a){const h=(hex||'#888').replace('#','');return `rgba(${parseInt(h.slice(0,2),16)},${parseInt(h.slice(2,4),16)},${parseInt(h.slice(4,6),16)},${a})`;}
 // 기본 보기: 엔티티↔카테고리 구조만(콘텐츠·인텐트는 토글로): 헤어볼 방지
 const gLayers={content:false,entity:true,category:true,intent:false};
@@ -785,7 +785,7 @@ function rebuild(){
 function renderGChips(){
   const grd=[['G','G'],['YELLOW','Y'],['R','R']].map(([k,lab])=>
     `<span class="chip c${k} ${gGrades[k]?'on':''}" data-grade="${k}">${lab}</span>`).join('');
-  const lay=[['content','콘텐츠'],['entity','엔티티'],['category','엔티티 카테고리'],['intent','인텐트 카테고리']].map(([k,lab])=>
+  const lay=[['content','콘텐츠'],['entity','엔티티'],['category','콘텐츠 카테고리'],['intent','인텐트']].map(([k,lab])=>
     `<span class="chip ${gLayers[k]?'on':''}" data-layer="${k}" style="${gLayers[k]?`border-color:${COL[k]};color:${COL[k]};background:${COL[k]}26;font-weight:700`:''}">${lab}</span>`).join('');
   document.getElementById('gchips').innerHTML='<span class="uid" style="align-self:center">등급</span>'+grd
     +'<span class="uid" style="align-self:center;margin-left:8px">레이어</span>'+lay

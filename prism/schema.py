@@ -89,6 +89,9 @@ class ItemMeta:
     entities: list = field(default_factory=list)          # 엔티티
     intent: list = field(default_factory=list)            # 인텐트 (속성 분류값)
     content_category: dict = field(default_factory=dict)  # 콘텐츠 카테고리
+    # 3차 메타(생성 시점 부여) · 사건형 토픽 식별·연결 신호. 1차 추출에서는 빈 값
+    topic: str = ""                                       # 토픽 (사안 명사구)
+    topic_categories: list = field(default_factory=list)  # 토픽 카테고리
 
 
 @dataclass

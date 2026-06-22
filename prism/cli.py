@@ -362,20 +362,20 @@ def cmd_dashboard(a):
     print(f"  열기:  open {out}")
 
 
-# metapool (메타풀 생성 체계)
-def cmd_metapool(a):
-    from . import metapool as MP
+# topic (토픽 관리 체계: 엔티티형/사건형/조건형)
+def cmd_topic(a):
+    from . import topic as TP
     if a.out:
-        MP.build_html(a.results, a.out)
-        d = MP.build_metapools(a.results)["summary"]
-        print(f"✓ 메타풀 → {a.out}")
-        print(f"  단독형 {d['single']} · 복합형 {d['composite']} · 필터형 {d['filter']}(활성 {d['filter_active']})")
+        TP.build_html(a.results, a.out)
+        d = TP.build_topics(a.results)["summary"]
+        print(f"✓ 토픽 → {a.out}")
+        print(f"  엔티티형 {d['single']} · 사건형 {d['composite']} · 조건형 {d['filter']}(활성 {d['filter_active']})")
         print(f"  열기:  open {a.out}")
     else:
-        print(json.dumps(MP.build_metapools(a.results), ensure_ascii=False, indent=2))
+        print(json.dumps(TP.build_topics(a.results), ensure_ascii=False, indent=2))
 
 
-# report (파이프라인 → 메타풀 → 대시보드 한 번에 · 크론 친화)
+# report (파이프라인 → 토픽 → 대시보드 한 번에 · 크론 친화)
 def _apply_profile(a):
     """회사별 설정 JSON 적용: 브랜딩(title) + 사전 override(services/categories) 시드.
     범용화 seam: 회사마다 services·taxonomy·quality metas 만 프로파일로 갈아끼우면 됨."""
@@ -395,8 +395,8 @@ def _apply_profile(a):
 
 
 def cmd_report(a):
-    """extract(배치) → metapool → integrated dashboard 를 한 번에. 크론으로 매일 생성 가능."""
-    from . import metapool as MP
+    """extract(배치) → topic → integrated dashboard 를 한 번에. 크론으로 매일 생성 가능."""
+    from . import topic as MP
     cfg = _mk_cfg(a)
     _apply_profile(a)
 
@@ -415,15 +415,15 @@ def cmd_report(a):
         return
 
     out = a.out or "report.html"
-    print("· [2/2] 메타풀 + 통합 대시보드 생성 …")
+    print("· [2/2] 토픽 + 통합 대시보드 생성 …")
     info = DASH.build_integrated(results, out, title=a.title or "Prism",
                                  n_users=getattr(a, "users", 200),
                                  logs_path=getattr(a,"logs",None), demo=getattr(a,"demo",False))
-    mp = MP.build_metapools(results)["summary"]
+    mp = MP.build_topics(results)["summary"]
     umode = ("실데이터" if getattr(a, "logs", None)
              else ("목업" if getattr(a, "demo", False) else "미연결(빈 상태)"))
     print(f"✓ 리포트 → {out}  (콘텐츠 {info['contents']})")
-    print(f"  메타풀: 단독 {mp['single']} · 복합 {mp['composite']} · 필터 {mp['filter']}(활성 {mp['filter_active']})"
+    print(f"  토픽: 엔티티형 {mp['single']} · 사건형 {mp['composite']} · 조건형 {mp['filter']}(활성 {mp['filter_active']})"
           f"  ·  사용자 메타: {umode}")
     print(f"  열기:  open {out}")
 
@@ -662,7 +662,7 @@ def _banner():
         f"{A}        ╱╲{R}",
         f"{A}       ╱  ╲{R}      {W}P R I S M{R}  {G}v{ver}{R}",
         f"{A}  ━━▸ ╱ ▹▹ ╲{R}     {G}content → meta spectrum{R}",
-        f"{A}     ╱______╲{R}     {G}품질·법령·아이템 · 메타풀 · 사용자{R}",
+        f"{A}     ╱______╲{R}     {G}품질·법령·아이템 · 토픽 · 사용자{R}",
         f"        {bar}",
         f"     {G}self-contained HTML · 의존성 0 · 모델 교체 가능{R}",
         "",
@@ -672,7 +672,7 @@ def _banner():
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    ap = argparse.ArgumentParser(prog="prism", description="Prism: 콘텐츠 메타 추출·메타풀·리포트 에이전트")
+    ap = argparse.ArgumentParser(prog="prism", description="Prism: 콘텐츠 메타 추출·토픽·리포트 에이전트")
     ap.add_argument("--version", action="store_true", help="버전·배너 표시")
     sub = ap.add_subparsers(dest="cmd", required=False)
 
@@ -703,12 +703,13 @@ def main(argv=None):
     pck.add_argument("file"); pck.add_argument("--map")
     pck.set_defaults(func=cmd_check)
 
-    pmp = sub.add_parser("metapool", help="메타풀 단독/복합/필터형 생성 + HTML")
+    pmp = sub.add_parser("topic", aliases=["metapool"],
+                         help="토픽 엔티티형/사건형/조건형 생성 + HTML")
     pmp.add_argument("--results", default="results.jsonl")
     pmp.add_argument("--out")
-    pmp.set_defaults(func=cmd_metapool)
+    pmp.set_defaults(func=cmd_topic)
 
-    prp = sub.add_parser("report", help="추출→메타풀→대시보드 한 번에 (크론 친화 리포트)")
+    prp = sub.add_parser("report", help="추출→토픽→대시보드 한 번에 (크론 친화 리포트)")
     prp.add_argument("--batch", help="신규 추출할 콘텐츠 jsonl (없으면 --results 사용)")
     prp.add_argument("--results", help="기존 추출 결과 jsonl 재사용")
     prp.add_argument("--out", help="출력 HTML 경로 (기본 report.html)")
