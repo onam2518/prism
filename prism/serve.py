@@ -583,6 +583,21 @@ PAGE = """<!doctype html>
 
   /* 빈 상태 */
   .empty{border:1px dashed rgba(255,255,255,.10);border-radius:12px;padding:40px 24px;text-align:center;color:#6e7191}
+
+  /* 패널 (시안 C — 구조·패널형) */
+  .panel{border:1px solid rgba(255,255,255,.08);border-radius:14px;background:#141318;overflow:hidden;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.045);transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
+  .panel:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.14)}
+  .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:13px 18px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.018)}
+  .panel-hd b{color:#fff;font-size:13px;font-weight:600;letter-spacing:.01em}
+  .panel-hd .meta{font-size:12px;color:#6e7191}
+  .panel-bd{padding:18px}
+  .drow{display:grid;grid-template-columns:124px 1fr;gap:16px;padding:15px 18px;
+    border-bottom:1px solid rgba(255,255,255,.05);align-items:start}
+  .drow:last-child{border-bottom:0}
+  .drow .k{font-size:12px;font-weight:600;color:#6e7191;padding-top:3px}
+  .drow .v{min-width:0}
 </style>
 </head>
 <body class="min-h-screen text-body antialiased">
@@ -697,7 +712,9 @@ PAGE = """<!doctype html>
       <div class="mx-auto max-w-3xl">
 
         <!-- 입력 카드 -->
-        <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
+        <section class="panel">
+          <div class="panel-hd"><b x-text="(tabItems.find(t => t.id === activeTabId) || {}).label + ' 입력'"></b></div>
+          <div class="panel-bd">
           <!-- 이미지 패널 -->
           <div x-show="activeTabId === 'image'" x-cloak class="space-y-4">
             <div>
@@ -759,17 +776,25 @@ PAGE = """<!doctype html>
             </button>
             <span aria-live="polite" class="text-sm text-rose-400" x-text="status"></span>
           </div>
+          </div>
         </section>
 
         <!-- 엑셀 배치 결과 -->
         <div x-show="batchResult" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
-          <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
-            <div class="mb-4 flex flex-wrap items-center gap-2 text-xs">
-              <span class="gpill gpill-g" x-text="batchResult ? (batchResult.count + '건 처리') : ''"></span>
-              <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2.5 py-1 font-semibold text-amber-300">MOCK</span>
-              <span class="text-muted" x-text="batchResult && batchResult.mapping ? ('매핑: ' + Object.entries(batchResult.mapping).map(e=>e[0]+'←'+e[1]).join(' · ')) : ''"></span>
+          <section class="panel">
+            <div class="panel-hd">
+              <div class="flex items-center gap-2">
+                <b>엑셀 결과</b>
+                <span class="gpill gpill-g" x-text="batchResult ? (batchResult.count + '건') : ''"></span>
+                <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-300">MOCK</span>
+              </div>
+              <a href="/report" target="_blank" rel="noreferrer"
+                 class="inline-flex items-center gap-1.5 text-xs font-medium text-[#b9b3ff] transition-colors hover:text-white">
+                전체 리포트 열기
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
+              </a>
             </div>
-            <div class="overflow-auto rounded-lg border border-white/[0.08]">
+            <div class="overflow-auto">
               <table class="tbl">
                 <thead>
                   <tr><th>제목</th><th>리드문</th><th>엔티티</th><th>등급</th></tr>
@@ -786,93 +811,87 @@ PAGE = """<!doctype html>
                 </tbody>
               </table>
             </div>
-            <a href="/report" target="_blank" rel="noreferrer"
-               class="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.10] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.05]">
-              전체 리포트 열기
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
-            </a>
+            <p x-show="batchResult && batchResult.mapping" class="px-4 py-2.5 text-xs text-muted" x-text="batchResult && batchResult.mapping ? ('매핑: ' + Object.entries(batchResult.mapping).map(e=>e[0]+'←'+e[1]).join(' · ')) : ''"></p>
           </section>
         </div>
 
         <!-- 결과 -->
         <div x-show="result" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
-          <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
-            <div class="mb-4 flex flex-wrap items-center gap-2 text-xs">
-              <span x-show="q.finalGrade === 'G'" class="gpill gpill-g"><span class="d"></span>유통가능 · G</span>
-              <span x-show="q.finalGrade !== 'G'" class="gpill gpill-r"><span class="d"></span>차단 · R</span>
-              <span class="text-muted" x-text="result ? ('track=' + result.output.routing.content_track + ' · source=' + result.source) : ''"></span>
-            </div>
-
-            <label class="lbl">리드문</label>
-            <p class="lead rounded-lg border border-white/[0.08] p-4 pl-5 text-[15px] leading-relaxed text-white"
-               x-text="im.summary || '(빈 값 — 차단되었거나 본문 부족)'"></p>
-
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <div>
-                <label class="lbl">엔티티</label>
-                <div class="flex flex-wrap gap-1.5">
-                  <template x-for="x in (im.entities || [])" x-bind:key="x">
-                    <span class="chip chip-ent" x-text="x"></span>
-                  </template>
-                  <span x-show="!(im.entities || []).length" class="text-xs text-muted">—</span>
-                </div>
-              </div>
-              <div>
-                <label class="lbl">인텐트</label>
-                <div class="flex flex-wrap gap-1.5">
-                  <template x-for="x in (im.intent || [])" x-bind:key="x">
-                    <span class="chip chip-int" x-text="x"></span>
-                  </template>
-                  <span x-show="!(im.intent || []).length" class="text-xs text-muted">—</span>
-                </div>
+          <section class="panel">
+            <div class="panel-hd">
+              <b>아이템 메타</b>
+              <div class="flex items-center gap-2">
+                <span x-show="q.finalGrade === 'G'" class="gpill gpill-g"><span class="d"></span>유통가능 · G</span>
+                <span x-show="q.finalGrade !== 'G'" class="gpill gpill-r"><span class="d"></span>차단 · R</span>
+                <span class="meta" x-text="result ? (result.output.routing.content_track + ' · ' + result.source) : ''"></span>
               </div>
             </div>
-
-            <div class="mt-4">
-              <label class="lbl">콘텐츠 카테고리</label>
-              <div class="flex flex-wrap gap-1.5">
-                <template x-for="x in contentCats" x-bind:key="x">
-                  <span class="chip chip-cat" x-text="x"></span>
-                </template>
+            <div class="drow">
+              <div class="k">리드문</div>
+              <div class="v"><p class="text-[15px] leading-relaxed text-white" x-text="im.summary || '(빈 값 — 차단되었거나 본문 부족)'"></p></div>
+            </div>
+            <div class="drow">
+              <div class="k">엔티티</div>
+              <div class="v flex flex-wrap gap-1.5">
+                <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="chip chip-ent" x-text="x"></span></template>
+                <span x-show="!(im.entities || []).length" class="text-xs text-muted">—</span>
+              </div>
+            </div>
+            <div class="drow">
+              <div class="k">인텐트</div>
+              <div class="v flex flex-wrap gap-1.5">
+                <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="chip chip-int" x-text="x"></span></template>
+                <span x-show="!(im.intent || []).length" class="text-xs text-muted">—</span>
+              </div>
+            </div>
+            <div class="drow">
+              <div class="k">콘텐츠 카테고리</div>
+              <div class="v flex flex-wrap gap-1.5">
+                <template x-for="x in contentCats" x-bind:key="x"><span class="chip chip-cat" x-text="x"></span></template>
                 <span x-show="!contentCats.length" class="text-xs text-muted">—</span>
               </div>
             </div>
           </section>
 
           <!-- 이미지 추출 신호 -->
-          <section x-show="result && result.signals && result.signals.length" x-cloak
-                   class="card rounded-lg border border-white/[0.08] bg-surface p-6">
-            <div class="mb-3 text-xs font-medium text-muted" x-text="result ? ('이미지 추출 신호 (' + result.signals.length + '장)') : ''"></div>
-            <template x-for="(s, i) in (result ? result.signals : [])" x-bind:key="i">
-              <div class="mb-3 border-l border-white/[0.10] pl-3">
-                <div class="text-xs font-semibold text-white" x-text="'이미지 ' + (i + 1)"></div>
-                <div class="mt-1 flex gap-2 text-sm text-body">
-                  <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                  <span x-text="s.vision || '—'"></span>
+          <section x-show="result && result.signals && result.signals.length" x-cloak class="panel">
+            <div class="panel-hd"><b>이미지 추출 신호</b><span class="meta" x-text="result ? (result.signals.length + '장') : ''"></span></div>
+            <div class="panel-bd space-y-3">
+              <template x-for="(s, i) in (result ? result.signals : [])" x-bind:key="i">
+                <div class="border-l border-white/[0.10] pl-3">
+                  <div class="text-xs font-semibold text-white" x-text="'이미지 ' + (i + 1)"></div>
+                  <div class="mt-1 flex gap-2 text-sm text-body">
+                    <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span x-text="s.vision || '—'"></span>
+                  </div>
+                  <div class="flex gap-2 text-sm text-body">
+                    <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
+                    <span x-text="s.ocr || '—'"></span>
+                  </div>
                 </div>
-                <div class="flex gap-2 text-sm text-body">
-                  <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
-                  <span x-text="s.ocr || '—'"></span>
-                </div>
-              </div>
-            </template>
+              </template>
+            </div>
           </section>
 
           <!-- 상세 -->
-          <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
-            <details class="group">
-              <summary class="cursor-pointer text-sm text-body transition-colors hover:text-white">합성된 Content (이미지 → 4필드)</summary>
-              <pre class="mt-2 overflow-auto rounded-lg border border-white/[0.08] bg-canvas p-3 font-mono text-xs text-body" x-text="result ? JSON.stringify(result.content, null, 2) : ''"></pre>
-            </details>
-            <details class="group mt-2">
-              <summary class="cursor-pointer text-sm text-body transition-colors hover:text-white">원본 출력 JSON</summary>
-              <pre class="mt-2 overflow-auto rounded-lg border border-white/[0.08] bg-canvas p-3 font-mono text-xs text-body" x-text="result ? JSON.stringify(result.output, null, 2) : ''"></pre>
-            </details>
-            <a href="/report" target="_blank" rel="noreferrer"
-               class="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.10] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.05]">
-              전체 리포트 열기
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
-            </a>
+          <section class="panel">
+            <div class="panel-hd"><b>상세</b>
+              <a href="/report" target="_blank" rel="noreferrer"
+                 class="inline-flex items-center gap-1.5 text-xs font-medium text-[#b9b3ff] transition-colors hover:text-white">
+                전체 리포트 열기
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
+              </a>
+            </div>
+            <div class="panel-bd">
+              <details class="group">
+                <summary class="cursor-pointer text-sm text-body transition-colors hover:text-white">합성된 Content (이미지 → 4필드)</summary>
+                <pre class="mt-2 overflow-auto rounded-lg border border-white/[0.08] bg-canvas p-3 font-mono text-xs text-body" x-text="result ? JSON.stringify(result.content, null, 2) : ''"></pre>
+              </details>
+              <details class="group mt-2">
+                <summary class="cursor-pointer text-sm text-body transition-colors hover:text-white">원본 출력 JSON</summary>
+                <pre class="mt-2 overflow-auto rounded-lg border border-white/[0.08] bg-canvas p-3 font-mono text-xs text-body" x-text="result ? JSON.stringify(result.output, null, 2) : ''"></pre>
+              </details>
+            </div>
           </section>
         </div>
       </div>
