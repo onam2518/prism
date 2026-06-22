@@ -540,14 +540,60 @@ PAGE = """<!doctype html>
     transition:filter .15s,transform .08s}
   .btn-primary:hover{filter:brightness(1.07)}
   .btn-primary:active{transform:translateY(1px)}
+
+  /* 라벨 (위계·여백 리듬) */
+  .lbl{display:block;margin-bottom:7px;font-size:11px;font-weight:600;letter-spacing:.05em;
+    text-transform:uppercase;color:#6e7191}
+
+  /* 칩 (엔티티/인텐트/카테고리 시각 구분) */
+  .chip{display:inline-flex;align-items:center;gap:5px;border-radius:7px;padding:3px 10px;
+    font-size:12px;font-weight:500;line-height:1.5;border:1px solid transparent;
+    transition:border-color .15s,background .15s,transform .1s}
+  .chip:hover{transform:translateY(-1px)}
+  .chip-ent{background:linear-gradient(180deg,rgba(91,82,255,.18),rgba(91,82,255,.07));
+    border-color:rgba(91,82,255,.34);color:#c4beff}
+  .chip-ent::before{content:"";width:5px;height:5px;border-radius:50%;background:#7c74ff;flex:none}
+  .chip-int{background:rgba(76,185,167,.12);border-color:rgba(76,185,167,.26);color:#84dccc}
+  .chip-cat{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.09);color:#c9ccd3}
+
+  /* 등급 pill */
+  .gpill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 11px;font-size:12px;font-weight:600}
+  .gpill .d{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 7px currentColor}
+  .gpill-g{background:rgba(52,211,153,.13);color:#5fe0ad}
+  .gpill-r{background:rgba(251,113,133,.13);color:#ff9bab}
+
+  /* 테이블 (엑셀 결과) */
+  .tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+  .tbl th{text-align:left;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+    color:#6e7191;padding:9px 12px;background:rgba(255,255,255,.025)}
+  .tbl td{padding:11px 12px;border-top:1px solid rgba(255,255,255,.06);vertical-align:top;color:#c9ccd3}
+  .tbl tbody tr{transition:background .12s}
+  .tbl tbody tr:hover{background:rgba(255,255,255,.035)}
+
+  /* 모달 */
+  .modal-bg{backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);background:rgba(4,4,8,.6)}
+  .modal{box-shadow:0 26px 72px -22px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.05)}
+
+  /* details 토글 마커 */
+  details>summary{list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"\203A";display:inline-block;width:1em;margin-right:5px;
+    transition:transform .15s;color:#6e7191}
+  details[open]>summary::before{transform:rotate(90deg)}
+
+  /* 빈 상태 */
+  .empty{border:1px dashed rgba(255,255,255,.10);border-radius:12px;padding:40px 24px;text-align:center;color:#6e7191}
 </style>
 </head>
 <body class="min-h-screen text-body antialiased">
 <div x-data="prismApp()">
 
   <!-- Solar 프로모 배너 (단일 액센트) -->
-  <div class="flex items-center justify-center gap-2 bg-solar px-4 py-2.5 text-sm font-medium text-[#0a0d14]">
-    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13l0-8z"/></svg>
+  <div class="flex items-center justify-center gap-2.5 px-4 py-2 text-[13px] font-semibold text-[#0a0d14]"
+       style="background:linear-gradient(180deg,#d9ffa3,#cdf78a)">
+    <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-[#0a0d14]/12">
+      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13l0-8z"/></svg>
+    </span>
     <span>Prism · 이미지에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출합니다</span>
   </div>
 
@@ -571,9 +617,9 @@ PAGE = """<!doctype html>
   </header>
 
   <!-- 설정 모달 -->
-  <div x-show="showSettings" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+  <div x-show="showSettings" x-cloak class="modal-bg fixed inset-0 z-50 flex items-center justify-center px-4"
        x-on:click.self="showSettings = false">
-    <div class="w-full max-w-md rounded-xl border border-white/[0.10] bg-surface p-6">
+    <div class="modal w-full max-w-md rounded-xl border border-white/[0.10] bg-surface p-6">
       <div class="mb-1 flex items-center justify-between">
         <h2 class="text-lg font-semibold text-white">설정</h2>
         <button type="button" x-on:click="showSettings = false" class="text-muted hover:text-white" aria-label="닫기">
@@ -582,10 +628,10 @@ PAGE = """<!doctype html>
       </div>
       <p class="mb-4 text-xs text-muted">Upstage API 키를 입력하면 OCR · DocVision · 생성이 실모델로 동작합니다. 키는 config에 저장되지 않습니다.</p>
 
-      <label class="mb-1.5 block text-xs font-medium text-muted">Upstage API 키</label>
+      <label class="lbl">Upstage API 키</label>
       <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
 
-      <label class="mb-1.5 mt-4 block text-xs font-medium text-muted">생성 모델</label>
+      <label class="lbl mt-4">생성 모델</label>
       <div class="flex gap-2">
         <select x-model="cfgModel" class="field flex-1">
           <template x-for="m in modelOptions" x-bind:key="m">
@@ -655,7 +701,7 @@ PAGE = """<!doctype html>
           <!-- 이미지 패널 -->
           <div x-show="activeTabId === 'image'" x-cloak class="space-y-4">
             <div>
-              <label class="mb-1.5 block text-xs font-medium text-muted">이미지 (여러 장이면 하나의 콘텐츠로 통합)</label>
+              <label class="lbl">이미지 (여러 장이면 하나의 콘텐츠로 통합)</label>
               <label class="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-white/[0.14] bg-canvas px-4 py-3.5 text-sm transition-colors hover:border-violet/60">
                 <span x-text="fileLabel" class="text-body"></span>
                 <span class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-white">
@@ -666,33 +712,33 @@ PAGE = """<!doctype html>
               </label>
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="mb-1.5 block text-xs font-medium text-muted">콘텐츠 그룹</label>
+              <div><label class="lbl">콘텐츠 그룹</label>
                 <select x-model="imgGroup" class="field">
                   <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
                 </select></div>
-              <div><label class="mb-1.5 block text-xs font-medium text-muted">제목 (선택)</label>
+              <div><label class="lbl">제목 (선택)</label>
                 <input x-model="imgTitle" class="field" placeholder="없으면 이미지에서 추론"></div>
             </div>
-            <div><label class="mb-1.5 block text-xs font-medium text-muted">캡션 (선택)</label>
+            <div><label class="lbl">캡션 (선택)</label>
               <input x-model="imgCaption" class="field" placeholder="사진 설명이 있으면 함께 참조"></div>
           </div>
           <!-- 텍스트 패널 -->
           <div x-show="activeTabId === 'text'" x-cloak class="space-y-4">
             <div class="grid grid-cols-2 gap-3">
-              <div><label class="mb-1.5 block text-xs font-medium text-muted">콘텐츠 그룹</label>
+              <div><label class="lbl">콘텐츠 그룹</label>
                 <select x-model="txtGroup" class="field">
                   <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
                 </select></div>
-              <div><label class="mb-1.5 block text-xs font-medium text-muted">제목 (title)</label>
+              <div><label class="lbl">제목 (title)</label>
                 <input x-model="txtTitle" class="field" placeholder="기사 제목"></div>
             </div>
-            <div><label class="mb-1.5 block text-xs font-medium text-muted">본문 (body)</label>
+            <div><label class="lbl">본문 (body)</label>
               <textarea x-model="txtBody" rows="4" class="field" placeholder="본문 내용"></textarea></div>
           </div>
           <!-- 엑셀 패널 -->
           <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
             <div>
-              <label class="mb-1.5 block text-xs font-medium text-muted">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
+              <label class="lbl">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
               <label class="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-white/[0.14] bg-canvas px-4 py-3.5 text-sm transition-colors hover:border-violet/60">
                 <span x-text="excelLabel" class="text-body"></span>
                 <span class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-white">
@@ -716,25 +762,25 @@ PAGE = """<!doctype html>
         </section>
 
         <!-- 엑셀 배치 결과 -->
-        <div x-show="batchResult" x-cloak class="mt-6 space-y-4">
+        <div x-show="batchResult" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
           <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
-            <div class="mb-3 flex flex-wrap items-center gap-2 text-xs">
-              <span class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-1 font-medium text-white" x-text="batchResult ? (batchResult.count + '건 처리됨') : ''"></span>
-              <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2.5 py-1 font-medium text-amber-300">MOCK</span>
+            <div class="mb-4 flex flex-wrap items-center gap-2 text-xs">
+              <span class="gpill gpill-g" x-text="batchResult ? (batchResult.count + '건 처리') : ''"></span>
+              <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2.5 py-1 font-semibold text-amber-300">MOCK</span>
               <span class="text-muted" x-text="batchResult && batchResult.mapping ? ('매핑: ' + Object.entries(batchResult.mapping).map(e=>e[0]+'←'+e[1]).join(' · ')) : ''"></span>
             </div>
             <div class="overflow-auto rounded-lg border border-white/[0.08]">
-              <table class="w-full text-left text-sm">
-                <thead class="bg-white/[0.03] text-xs text-muted">
-                  <tr><th class="px-3 py-2 font-medium">제목</th><th class="px-3 py-2 font-medium">리드문</th><th class="px-3 py-2 font-medium">엔티티</th><th class="px-3 py-2 font-medium">등급</th></tr>
+              <table class="tbl">
+                <thead>
+                  <tr><th>제목</th><th>리드문</th><th>엔티티</th><th>등급</th></tr>
                 </thead>
                 <tbody>
                   <template x-for="(it, i) in (batchResult ? batchResult.items : [])" x-bind:key="i">
-                    <tr class="border-t border-white/[0.06] align-top">
-                      <td class="px-3 py-2 text-white" x-text="it.title || '—'"></td>
-                      <td class="px-3 py-2 text-body" x-text="it.summary || '—'"></td>
-                      <td class="px-3 py-2 text-body" x-text="(it.entities || []).join(', ') || '—'"></td>
-                      <td class="px-3 py-2"><span x-text="it.grade" x-bind:class="it.grade === 'G' ? 'text-emerald-400' : 'text-rose-400'"></span></td>
+                    <tr>
+                      <td class="text-white" x-text="it.title || '—'"></td>
+                      <td x-text="it.summary || '—'"></td>
+                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="chip chip-ent" x-text="e"></span></template><span x-show="!(it.entities||[]).length">—</span></div></td>
+                      <td><span class="gpill" x-bind:class="it.grade === 'G' ? 'gpill-g' : 'gpill-r'"><span class="d"></span><span x-text="it.grade || '—'"></span></span></td>
                     </tr>
                   </template>
                 </tbody>
@@ -749,33 +795,33 @@ PAGE = """<!doctype html>
         </div>
 
         <!-- 결과 -->
-        <div x-show="result" x-cloak class="mt-6 space-y-4">
+        <div x-show="result" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
           <section class="card rounded-lg border border-white/[0.08] bg-surface p-6">
             <div class="mb-4 flex flex-wrap items-center gap-2 text-xs">
-              <span x-show="q.finalGrade === 'G'" class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-1 font-medium text-white"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>유통가능 · G</span>
-              <span x-show="q.finalGrade !== 'G'" class="inline-flex items-center gap-1.5 rounded-md bg-white/[0.06] px-2.5 py-1 font-medium text-white"><span class="h-1.5 w-1.5 rounded-full bg-rose-400"></span>차단 · R</span>
+              <span x-show="q.finalGrade === 'G'" class="gpill gpill-g"><span class="d"></span>유통가능 · G</span>
+              <span x-show="q.finalGrade !== 'G'" class="gpill gpill-r"><span class="d"></span>차단 · R</span>
               <span class="text-muted" x-text="result ? ('track=' + result.output.routing.content_track + ' · source=' + result.source) : ''"></span>
             </div>
 
-            <label class="mb-1.5 block text-xs font-medium text-muted">리드문</label>
+            <label class="lbl">리드문</label>
             <p class="lead rounded-lg border border-white/[0.08] p-4 pl-5 text-[15px] leading-relaxed text-white"
                x-text="im.summary || '(빈 값 — 차단되었거나 본문 부족)'"></p>
 
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
-                <label class="mb-1.5 block text-xs font-medium text-muted">엔티티</label>
+                <label class="lbl">엔티티</label>
                 <div class="flex flex-wrap gap-1.5">
                   <template x-for="x in (im.entities || [])" x-bind:key="x">
-                    <span class="inline-flex items-center rounded-md border border-violet/30 bg-violet/10 px-2.5 py-1 text-xs font-medium text-[#b9b3ff]" x-text="x"></span>
+                    <span class="chip chip-ent" x-text="x"></span>
                   </template>
                   <span x-show="!(im.entities || []).length" class="text-xs text-muted">—</span>
                 </div>
               </div>
               <div>
-                <label class="mb-1.5 block text-xs font-medium text-muted">인텐트</label>
+                <label class="lbl">인텐트</label>
                 <div class="flex flex-wrap gap-1.5">
                   <template x-for="x in (im.intent || [])" x-bind:key="x">
-                    <span class="inline-flex items-center rounded-md bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-body" x-text="x"></span>
+                    <span class="chip chip-int" x-text="x"></span>
                   </template>
                   <span x-show="!(im.intent || []).length" class="text-xs text-muted">—</span>
                 </div>
@@ -783,10 +829,10 @@ PAGE = """<!doctype html>
             </div>
 
             <div class="mt-4">
-              <label class="mb-1.5 block text-xs font-medium text-muted">콘텐츠 카테고리</label>
+              <label class="lbl">콘텐츠 카테고리</label>
               <div class="flex flex-wrap gap-1.5">
                 <template x-for="x in contentCats" x-bind:key="x">
-                  <span class="inline-flex items-center rounded-md bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-body" x-text="x"></span>
+                  <span class="chip chip-cat" x-text="x"></span>
                 </template>
                 <span x-show="!contentCats.length" class="text-xs text-muted">—</span>
               </div>
