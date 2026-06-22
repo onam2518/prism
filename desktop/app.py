@@ -5,14 +5,15 @@
 """
 from __future__ import annotations
 
+import os
+import shutil
+import sys
 import threading
 import time
 import urllib.request
 from http.server import ThreadingHTTPServer
 
 import webview
-
-from prism.serve import Handler, load_persisted_key
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -21,8 +22,21 @@ URL = f"http://{HOST}:{PORT}/"
 _httpd = None
 
 
+def _seed_user_config():
+    """첫 실행 시 번들 기본 config.json 을 사용자 디렉터리로 복사(번들은 읽기전용)."""
+    from prism.config import DEFAULT_CONFIG_PATH
+    if os.path.exists(DEFAULT_CONFIG_PATH):
+        return
+    base = getattr(sys, "_MEIPASS", None)
+    src = os.path.join(base, "config.json") if base else None
+    if src and os.path.exists(src):
+        os.makedirs(os.path.dirname(DEFAULT_CONFIG_PATH), exist_ok=True)
+        shutil.copyfile(src, DEFAULT_CONFIG_PATH)
+
+
 def _start_server():
     global _httpd
+    from prism.serve import Handler, load_persisted_key
     load_persisted_key()                       # ~/.prism_key 자동 로드
     _httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     _httpd.serve_forever()
@@ -40,6 +54,7 @@ def _wait_ready(timeout=10.0):
 
 
 def main():
+    _seed_user_config()
     threading.Thread(target=_start_server, daemon=True).start()
     _wait_ready()
     webview.create_window("Prism", URL, width=1240, height=860, min_size=(900, 600))

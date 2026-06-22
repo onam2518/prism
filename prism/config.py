@@ -3,9 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 import json
 import os
+import sys
 
 HOME = os.path.dirname(os.path.dirname(__file__))
-DEFAULT_CONFIG_PATH = os.path.join(HOME, "config.json")
+
+# 앱 번들(.app)은 읽기전용 → config 는 사용자 디렉터리에 둔다. 일반 실행은 레포 루트.
+if getattr(sys, "frozen", False):
+    DEFAULT_CONFIG_PATH = os.path.expanduser("~/Library/Application Support/Prism/config.json")
+else:
+    DEFAULT_CONFIG_PATH = os.path.join(HOME, "config.json")
 
 
 @dataclass
@@ -116,7 +122,9 @@ class Config:
         """config.json 템플릿 작성(비밀값 제외)."""
         d = asdict(self)
         d.pop("api_key", None)
-        with open(path or DEFAULT_CONFIG_PATH, "w", encoding="utf-8") as f:
+        target = path or DEFAULT_CONFIG_PATH
+        os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False, indent=2)
 
 

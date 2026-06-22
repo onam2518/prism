@@ -289,8 +289,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/vocab"):
             self._send(200, json.dumps(vocab(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/vendor/"):
+            self._send_vendor(self.path.split("?", 1)[0].rsplit("/", 1)[-1])
         else:
             self._send(200, PAGE)
+
+    def _send_vendor(self, name):
+        safe = os.path.basename(name)
+        path = os.path.join(os.path.dirname(__file__), "vendor", safe)
+        if not (safe.endswith(".js") and os.path.isfile(path)):
+            self._send(404, "not found")
+            return
+        with open(path, "rb") as f:
+            self._send(200, f.read(), "application/javascript; charset=utf-8")
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -342,7 +353,7 @@ PAGE = """<!doctype html>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="/vendor/tailwind.js"></script>
 <script>
   tailwind.config = {
     theme: { extend: {
@@ -483,7 +494,7 @@ PAGE = """<!doctype html>
     }));
   });
 </script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script defer src="/vendor/alpine.js"></script>
 <style>
   [x-cloak]{display:none!important}
   body{font-family:Geist,system-ui,sans-serif}
