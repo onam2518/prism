@@ -1,0 +1,37 @@
+/* Prism Design System — 디자인 토큰 (CSS 변수). tokens.json 과 1:1. */
+:root {
+  /* color */
+  --ds-violet: #5b52ff;
+  --ds-violet-hover: #4a42e0;
+  --ds-violet-deep: #281ca5;
+  --ds-solar: #d2ff95;
+  --ds-canvas: #0b0a0f;
+  --ds-surface: #141318;
+  --ds-surface-2: #1a1922;
+  --ds-heading: #ffffff;
+  --ds-body: #9aa0aa;
+  --ds-muted: #6e7191;
+  --ds-border: rgba(255, 255, 255, 0.08);
+  --ds-border-strong: rgba(255, 255, 255, 0.10);
+  --ds-success: #34d399;
+  --ds-danger: #fb7185;
+  --ds-warning: #fbbf24;
+
+  /* typography */
+  --ds-font-sans: Geist, system-ui, sans-serif;
+  --ds-font-mono: "Geist Mono", monospace;
+  --ds-size-xs: 12px;
+  --ds-size-sm: 13px;
+  --ds-size-base: 14px;
+  --ds-size-md: 15px;
+  --ds-size-lg: 18px;
+  --ds-weight-regular: 400;
+  --ds-weight-medium: 500;
+  --ds-weight-semibold: 600;
+
+  /* geometry — 이진 radius(0/8px), 그림자 없음 */
+  --ds-radius-control: 8px;
+  --ds-radius-lg: 12px;
+  --ds-radius-full: 9999px;
+  --ds-shadow: none;
+}

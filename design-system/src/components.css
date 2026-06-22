@@ -1,0 +1,97 @@
+/* Prism Design System — 컴포넌트 스타일. 토큰(CSS 변수)만 참조. */
+
+.ds-root,
+.ds-surface-bg {
+  background: var(--ds-canvas);
+  color: var(--ds-body);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-size-base);
+}
+
+/* Button */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--ds-radius-control);
+  padding: 10px 20px;
+  font-size: var(--ds-size-base);
+  font-weight: var(--ds-weight-medium);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.ds-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ds-btn--primary { background: var(--ds-violet); color: #fff; }
+.ds-btn--primary:hover:not(:disabled) { background: var(--ds-violet-hover); }
+.ds-btn--secondary { background: transparent; color: var(--ds-heading); border-color: var(--ds-border-strong); }
+.ds-btn--secondary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); }
+.ds-btn--ghost { background: transparent; color: var(--ds-body); }
+.ds-btn--ghost:hover:not(:disabled) { color: var(--ds-heading); background: rgba(255, 255, 255, 0.04); }
+
+/* Field (input / select / textarea) */
+.ds-field {
+  width: 100%;
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-border-strong);
+  color: var(--ds-heading);
+  font-size: var(--ds-size-base);
+  font-family: inherit;
+  padding: 9px 11px;
+}
+.ds-field::placeholder { color: #5b606b; }
+.ds-field:focus { outline: none; border-color: var(--ds-violet); box-shadow: 0 0 0 1px var(--ds-violet); }
+
+.ds-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: var(--ds-size-xs);
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-muted);
+}
+
+/* Card */
+.ds-card {
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+  padding: 24px;
+  box-shadow: var(--ds-shadow);
+}
+
+/* Badge */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--ds-radius-control);
+  padding: 2px 10px;
+  font-size: var(--ds-size-xs);
+  font-weight: var(--ds-weight-semibold);
+}
+.ds-badge--neutral { background: rgba(255, 255, 255, 0.06); color: var(--ds-heading); }
+.ds-badge--violet { background: rgba(91, 82, 255, 0.12); color: #b9b3ff; border: 1px solid rgba(91, 82, 255, 0.30); }
+.ds-badge--solar { background: var(--ds-solar); color: #0a0d14; }
+.ds-badge--success { background: rgba(52, 211, 153, 0.14); color: var(--ds-success); }
+.ds-badge--danger { background: rgba(251, 113, 133, 0.14); color: var(--ds-danger); }
+.ds-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* Tabs */
+.ds-tabs { display: flex; gap: 4px; }
+.ds-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: var(--ds-radius-control);
+  padding: 8px 12px;
+  font-size: var(--ds-size-base);
+  color: var(--ds-body);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ds-tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--ds-heading); }
+.ds-tab--active { background: rgba(255, 255, 255, 0.07); color: var(--ds-heading); font-weight: var(--ds-weight-medium); }
