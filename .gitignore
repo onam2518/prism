@@ -23,3 +23,8 @@ __pycache__/
 
 report_results.jsonl
 *.report.jsonl
+
+# macOS 패키징 산출물
+dist/
+build/
+*.dmg
