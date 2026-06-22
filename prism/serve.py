@@ -350,6 +350,8 @@ PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Prism · 리드문·메타 추출</title>
+<meta name="description" content="이미지·텍스트·엑셀에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출하는 콘텐츠 메타 도구">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b52ff'/%3E%3Cpath d='M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -584,6 +586,22 @@ PAGE = """<!doctype html>
   /* 빈 상태 */
   .empty{border:1px dashed rgba(255,255,255,.10);border-radius:12px;padding:40px 24px;text-align:center;color:#6e7191}
 
+  /* 고급 폴리시 */
+  html{scroll-behavior:smooth}
+  .tnum{font-variant-numeric:tabular-nums}
+  .lead,h1,.panel-hd b,.drow .v p{text-wrap:pretty}
+  :where(button,a,[role=tab],select,summary):focus-visible{outline:2px solid rgba(124,116,255,.7);
+    outline-offset:2px;border-radius:8px}
+  /* 노이즈 오버레이 — 평면감 제거(은은) */
+  .noise{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.025;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+  /* 스켈레톤 로딩 */
+  .skel{position:relative;overflow:hidden;background:rgba(255,255,255,.04);border-radius:8px}
+  .skel::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);
+    transform:translateX(-100%);animation:shimmer 1.4s infinite}
+  @keyframes shimmer{100%{transform:translateX(100%)}}
+
   /* 패널 (시안 C — 구조·패널형) */
   .panel{border:1px solid rgba(255,255,255,.08);border-radius:14px;background:#141318;overflow:hidden;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.045);transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
@@ -601,6 +619,7 @@ PAGE = """<!doctype html>
 </style>
 </head>
 <body class="min-h-screen text-body antialiased">
+<div class="noise" aria-hidden="true"></div>
 <div x-data="prismApp()">
 
   <!-- Solar 프로모 배너 (단일 액센트) -->
@@ -779,13 +798,32 @@ PAGE = """<!doctype html>
           </div>
         </section>
 
+        <!-- 빈 상태 -->
+        <div x-show="!result && !batchResult && !loading" x-cloak class="mt-6">
+          <div class="empty">
+            <svg class="mx-auto mb-3 h-7 w-7 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z"/></svg>
+            <p class="text-sm">추출을 실행하면 리드문·엔티티·인텐트·콘텐츠 카테고리가 여기에 표시됩니다.</p>
+          </div>
+        </div>
+
+        <!-- 로딩 스켈레톤 -->
+        <div x-show="loading" x-cloak class="mt-6">
+          <div class="panel">
+            <div class="panel-hd"><b>처리 중</b><span class="skel" style="width:92px;height:18px"></span></div>
+            <div class="drow"><div class="k">리드문</div><div class="v"><div class="skel" style="height:46px"></div></div></div>
+            <div class="drow"><div class="k">엔티티</div><div class="v"><div class="skel" style="width:62%;height:22px"></div></div></div>
+            <div class="drow"><div class="k">인텐트</div><div class="v"><div class="skel" style="width:46%;height:22px"></div></div></div>
+            <div class="drow"><div class="k">콘텐츠 카테고리</div><div class="v"><div class="skel" style="width:74%;height:22px"></div></div></div>
+          </div>
+        </div>
+
         <!-- 엑셀 배치 결과 -->
         <div x-show="batchResult" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
           <section class="panel">
             <div class="panel-hd">
               <div class="flex items-center gap-2">
                 <b>엑셀 결과</b>
-                <span class="gpill gpill-g" x-text="batchResult ? (batchResult.count + '건') : ''"></span>
+                <span class="gpill gpill-g tnum" x-text="batchResult ? (batchResult.count + '건') : ''"></span>
                 <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-300">MOCK</span>
               </div>
               <a href="/report" target="_blank" rel="noreferrer"
@@ -855,7 +893,7 @@ PAGE = """<!doctype html>
 
           <!-- 이미지 추출 신호 -->
           <section x-show="result && result.signals && result.signals.length" x-cloak class="panel">
-            <div class="panel-hd"><b>이미지 추출 신호</b><span class="meta" x-text="result ? (result.signals.length + '장') : ''"></span></div>
+            <div class="panel-hd"><b>이미지 추출 신호</b><span class="meta tnum" x-text="result ? (result.signals.length + '장') : ''"></span></div>
             <div class="panel-bd space-y-3">
               <template x-for="(s, i) in (result ? result.signals : [])" x-bind:key="i">
                 <div class="border-l border-white/[0.10] pl-3">
