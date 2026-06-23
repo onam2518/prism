@@ -1,22 +1,37 @@
 """출력 어휘 사전: 자유생성 금지. 토픽·사용자 메타 공유 사전과 정합되어야 한다."""
 
+# 품질 메타 11종 — DNM 1311/품질 메타 구분 및 정의(278036632) 기준.
+# 정의는 분류기 프롬프트에 주입. 발동 ≥1 → finalGrade R, 0 → G(통과 우선 default).
+# (stale 제거: 시의성은 어드민 freshness 필터 책무. format·political·hate 는 UGC 한정.)
 QUALITY_METAS = {
-    "ad":        "노골적 상업 광고 / 협찬 미고지 / 외부 구매 유도",
-    "sexual":    "선정성: 성적 묘사·암시·노출 유도",
-    "profanity": "욕설·비속어·혐오 표현(언어적)",
-    "gambling":  "도박·사행성(복권·로또·베팅) 유도",
-    "clickbait": "낚시성 제목: 제목과 본문 불일치, 과장 후킹",
-    "format":    "형식 파괴: 깨진 마크업·도배·가독 불가 (UGC 한정)",
-    "shallow":   "정보가치 부족: 빈약한 본문, 알맹이 없음",
-    "spam":      "스팸: 반복 도배·감성 스토리텔링·저품질 감정 후킹",
-    "graphic":   "잔혹/혐오 시각 묘사: 폭행·사고·사체 등",
-    "political":  "정치 선동 (UGC 한정)",
-    "hate":      "특정 집단 비하·혐오 은어 (UGC 한정)",
+    "ad":        "광고성: 제품·서비스 홍보 + 명시적 구매·가입 유도가 본문 핵심(3축 AND — 수익 귀속·명시 CTA·B2C 대상 모두 충족 시에만)",
+    "sexual":    "선정적 텍스트: 성적 표현이 과도해 정보 전달보다 자극이 목적(단어 경계·콜로케이션, 강한 신호+정량 기준)",
+    "profanity": "저속 텍스트: 욕설·비속어를 과도 사용해 불쾌감 유발(단어 경계, 마스킹 포함)",
+    "gambling":  "사행성: 로또·토토·카지노 등 조장·당첨 기대감 자극(시점성+권유·예측 톤 결합)",
+    "clickbait": "낚시성: 제목-본문 괴리·정보 은닉으로 호기심 자극 클릭 유도(제목↔본문 정합성)",
+    "format":    "형식 불만족: 극단적으로 짧거나 구조 불완전해 피드 UX 저해(UGC 한정)",
+    "shallow":   "낮은 정보가치: 본문 무관 인물·발언을 끌어와 포장, 화제성·검색 노출 노림",
+    "spam":      "저품질 생산자: AI 양산·템플릿화 등 비정상 생산 패턴(문체 부자연·사실 불일치)",
+    "graphic":   "사건·재난·범죄 과잉묘사: 수법·피해를 구체·지속 묘사(묘사 신호 2개 이상 시 R)",
+    "political": "정치·이념 거론: 한국 특정 정당·정치인·진영을 비방·낙인·선동(UGC 한정)",
+    "hate":      "차별·혐오: 인종·성별·지역·연령·세대·국적·계층 비하·혐오 표현(UGC 한정)",
 }
+
+# 메타명(한글 짧은 라벨) — 사전 모듈 표시용
+QUALITY_META_NAMES = {
+    "ad": "광고성", "sexual": "선정적 텍스트", "profanity": "저속 텍스트", "gambling": "사행성",
+    "clickbait": "낚시성", "format": "형식 불만족", "shallow": "낮은 정보가치",
+    "spam": "저품질 생산자", "graphic": "사건·재난·범죄 과잉묘사", "political": "정치·이념 거론",
+    "hate": "차별·혐오",
+}
+# 적용 그룹: both(미디어+UGC) | ugc(UGC 한정)
+QUALITY_META_APPLIES = {m: ("ugc" if m in ("format", "political", "hate") else "both")
+                        for m in QUALITY_METAS}
 
 # normal = 트리거 0개일 때의 사유값
 QUALITY_NORMAL = "normal"
 
+# 미디어 그룹 자동 비활성(검사 자체 미수행): format·political·hate (+ stale 제거됨)
 MEDIA_DISABLED_METAS = {"format", "political", "hate"}
 
 QUALITY_PRIORITY = [

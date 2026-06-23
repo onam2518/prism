@@ -138,6 +138,8 @@ def dict_data() -> dict:
         "iabMap": dict(getattr(D, "CATEGORY_IAB_MAP", {})),
         "domainGroups": {k: list(v) for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items()},
         "qualityMetas": dict(D.QUALITY_METAS),
+        "qualityNames": dict(getattr(D, "QUALITY_META_NAMES", {})),
+        "qualityApplies": dict(getattr(D, "QUALITY_META_APPLIES", {})),
         "legalTypes": {c: {"label": v.get("label", c), "article": v.get("article", "")}
                        for c, v in D.LEGAL_HARM_TYPES.items()},
     }
@@ -727,18 +729,20 @@ PAGE = """<!doctype html>
       activeTabId: 'image',
       // 어드민 모듈 셸
       mod: 'run',
+      // 워크플로 순서: ① 실행 → ② 산출(부여 순서) → ③ 현황 → ④ 정책·기반
       mods: [
+        { g: '실행', items: [
+          { id: 'run', label: '추출 실행', cov: 'done', icon: 'm5 12 5 5L20 7' } ] },
+        { g: '산출 · 메타', items: [
+          { id: 'quality', label: '품질 메타', cov: 'done', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z' },
+          { id: 'topic', label: '토픽', cov: 'done', icon: 'M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
+          { id: 'user', label: '사용자 메타', cov: 'poc', icon: 'M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8' } ] },
         { g: '현황', items: [
-          { id: 'dash', label: '대시보드', cov: 'plan', icon: 'M3 3v18h18M8 14v3m4-7v7m4-11v11' },
-          { id: 'intake', label: '인입 · 적용대상', cov: 'poc', icon: 'M4 4h16v6H4zM4 14h16v6H4z' } ] },
-        { g: '콘텐츠 메타', items: [
-          { id: 'run', label: '실행 · 추출', cov: 'done', icon: 'm5 12 5 5L20 7' },
-          { id: 'quality', label: '품질 메타', cov: 'poc', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z' },
-          { id: 'topic', label: '토픽', cov: 'poc', icon: 'M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5' } ] },
-        { g: '사용자 · 기반', items: [
-          { id: 'user', label: '사용자 메타', cov: 'poc', icon: 'M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8' },
-          { id: 'dict', label: '사전 · 매핑', cov: 'poc', icon: 'M4 4h16v16H4zM8 4v16M8 9h12M8 14h12' },
+          { id: 'dash', label: '대시보드', cov: 'done', icon: 'M3 3v18h18M8 14v3m4-7v7m4-11v11' },
           { id: 'eval', label: '검증 · 평가', cov: 'poc', icon: 'M9 11l3 3 8-8M21 12a9 9 0 1 1-6.2-8.5' } ] },
+        { g: '정책 · 기반', items: [
+          { id: 'intake', label: '인입 · 적용 대상', cov: 'poc', icon: 'M4 4h16v6H4zM4 14h16v6H4z' },
+          { id: 'dict', label: '사전 · 정책', cov: 'done', icon: 'M4 4h16v16H4zM8 4v16M8 9h12M8 14h12' } ] },
       ],
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
       loading: false,
@@ -1908,8 +1912,13 @@ PAGE = """<!doctype html>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>정의</th><th></th></tr></thead><tbody>
-                <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v"></td><td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td></tr></template>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>메타명 · 정의</th><th>적용</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr>
+                  <td class="text-white" x-text="k"></td>
+                  <td><span class="text-white" x-text="(dictData.qualityNames&&dictData.qualityNames[k])||''"></span> <span class="text-muted" x-text="v"></span></td>
+                  <td><span class="chip" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'chip-int':'chip-cat'" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
+                  <td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td>
+                </tr></template>
               </tbody></table></div></div>
             <div class="panel"><div class="panel-hd"><b>법령 위반 유형</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.legalTypes).length+'종':''"></span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
