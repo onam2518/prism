@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import os
 
-from prism.serve import PAGE
+from prism.serve import PAGE, dict_data as _dict_data
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -62,6 +62,41 @@ DEMO_CONFIG = {
 }
 DEMO_VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}
 
+DEMO_DASH = {
+    "n": 12, "g": 10, "r": 2, "gPct": 83, "entities": 31, "avgLead": 38,
+    "intents": [{"k": "사건 경과 보도", "v": 7, "pct": 58}, {"k": "분석·해설", "v": 5, "pct": 42},
+                {"k": "인물 동향", "v": 3, "pct": 25}, {"k": "흥미·화제", "v": 2, "pct": 17}],
+    "categories": [{"k": "News and Politics", "v": 6, "pct": 50}, {"k": "Sports", "v": 4, "pct": 33},
+                   {"k": "Business and Finance", "v": 3, "pct": 25}],
+    "qualityReasons": [{"k": "clickbait", "v": 2, "pct": 17}],
+}
+DEMO_TOPICS = {
+    "n_contents": 12, "summary": {"single": 2, "composite": 1, "filter": 8},
+    "single": [{"cluster_id": "S-samsung", "entities": ["삼성전자", "노동조합"], "n_contents": 3},
+               {"cluster_id": "S-rate", "entities": ["한국은행", "금리"], "n_contents": 2}],
+    "composite": [{"cluster_id": "C-labor", "rep_entities": ["삼성전자", "중앙노동위"], "n_contents": 4}],
+    "filter": [{"cluster_id": "F-fin", "name": "재테크 × 심층 분석", "active": True, "n_contents": 3},
+               {"cluster_id": "F-ent", "name": "연예 × 화제성", "active": False}],
+}
+DEMO_USER = {
+    "source": "실 행동 로그 → 소비 형태·강도 (데모)", "n_contents": 12,
+    "users": [
+        {"user_id": "u1", "persona": "정독러", "form": {"세션 길이": "장", "체류·완주": "고", "전환·이동": "느림", "깊이": "몰입", "시간대": "평일 야간"},
+         "intensity": {"심층 분석": "고", "정책·사업 소개": "고", "속보·단신": "저"},
+         "affinity_entities": [["삼성전자", 4], ["금리", 3], ["재건축", 2]],
+         "engagement": {"views": 18, "clicks": 14, "click_rate": 0.78, "avg_dwell_sec": 52.4}},
+        {"user_id": "u2", "persona": "스낵러", "form": {"세션 길이": "단", "체류·완주": "저", "전환·이동": "빠름", "깊이": "훑기", "시간대": "출퇴근"},
+         "intensity": {"흥미·화제": "중", "속보·단신": "저"},
+         "affinity_entities": [["손흥민", 2]],
+         "engagement": {"views": 22, "clicks": 5, "click_rate": 0.23, "avg_dwell_sec": 9.1}},
+    ],
+    "personas_def": [
+        {"id": 1, "name": "정독러", "full": "깊이 정독러", "desc": "한 주제를 파고들어 정독·저장", "form": {"깊이": "몰입", "체류·완주": "고"}},
+        {"id": 2, "name": "스낵러", "full": "가벼운 스낵러", "desc": "짧은 세션·빠른 전환", "form": {"깊이": "훑기", "체류·완주": "저"}},
+    ],
+    "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)",
+}
+
 # CDN 매핑(자체완결 온라인 데모)
 CDN_TAILWIND = "https://cdn.tailwindcss.com/3.4.16"
 CDN_ALPINE = "https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"
@@ -81,6 +116,10 @@ STUB = """<script>
       if (u.indexOf('/vocab') > -1) return Promise.resolve(J(VOCAB));
       if (u.indexOf('/models') > -1) return Promise.resolve(J({ ok: true, models: ['solar-pro3-260323', 'solar-pro2-251215'] }));
       if (u.indexOf('/ping') > -1) return Promise.resolve(J({ ok: true, detail: 'solar-pro3-260323 응답 정상' }));
+      if (u.indexOf('/dashboard') > -1) return Promise.resolve(J(%s));
+      if (u.indexOf('/topics') > -1) return Promise.resolve(J(%s));
+      if (u.indexOf('/usermeta') > -1) return Promise.resolve(J(%s));
+      if (u.indexOf('/dict') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
       return real ? real(url, opt) : Promise.resolve(J({}));
     };
@@ -88,7 +127,11 @@ STUB = """<script>
 </script>
 """ % (json.dumps(DEMO_RESULT, ensure_ascii=False),
        json.dumps(DEMO_CONFIG, ensure_ascii=False),
-       json.dumps(DEMO_VOCAB, ensure_ascii=False))
+       json.dumps(DEMO_VOCAB, ensure_ascii=False),
+       json.dumps(DEMO_DASH, ensure_ascii=False),
+       json.dumps(DEMO_TOPICS, ensure_ascii=False),
+       json.dumps(DEMO_USER, ensure_ascii=False),
+       json.dumps(_dict_data(), ensure_ascii=False))
 
 BANNER = ('<div style="position:fixed;left:18px;bottom:16px;z-index:70;padding:6px 12px;border-radius:8px;'
           'font:600 12px/1 Pretendard,system-ui,sans-serif;color:#c8c3ff;background:rgba(91,82,255,.16);'
