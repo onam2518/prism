@@ -106,6 +106,25 @@ def vocab() -> dict:
     return {"groups": list(D.SERVICE_GROUP.keys())}
 
 
+def build_template_csv() -> bytes:
+    """엑셀 일괄 입력용 CSV 템플릿(UTF-8 BOM → Excel 한글 정상). 헤더+예시 2행.
+
+    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문. 제목·본문이 필수.
+    """
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["콘텐츠 그룹", "제목", "부제", "본문"])
+    w.writerow(["뉴스", "삼성전자 노조 임금 협상 결렬",
+                "중앙노동위 조정 불성립",
+                "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다."])
+    w.writerow(["스포츠", "손흥민 시즌 10호골",
+                "",
+                "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다."])
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+
 def run_batch(file_bytes: bytes, filename: str) -> dict:
     """엑셀/CSV 업로드 → ingest 매핑 → 행마다 추출 → 결과+리포트(_LAST_RESULTS)."""
     from . import ingest as ING
@@ -351,6 +370,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/vocab"):
             self._send(200, json.dumps(vocab(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/template.csv"):
+            data = build_template_csv()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="prism_template.csv"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         elif self.path.startswith("/vendor/"):
             self._send_vendor(self.path.split("?", 1)[0].rsplit("/", 1)[-1])
         else:
@@ -467,6 +494,7 @@ PAGE = """<!doctype html>
       textProvider: 'solar', textModel: '',
       visionProvider: 'upstage_ie', visionModel: '',
       slotMsg: '',
+      cfgOpen: true, _accInit: false,   // 연결·모델 섹션 접힘(설정되면 접음)
       routerTextModels: ['openai/gpt-5.4', 'openai/gpt-5.4-mini', 'anthropic/claude-sonnet-4.6',
         'anthropic/claude-opus-4.6', 'google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'deepseek/deepseek-v3.2'],
       routerVisionModels: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai/gpt-5.4',
@@ -478,6 +506,11 @@ PAGE = """<!doctype html>
       },
       get tabLabel() { return (this.tabItems.find(t => t.id === this.activeTabId) || {}).label || ''; },
       get textReady() { return this.textProvider === 'router' ? !!this.cfg.hasRouterKey : !!this.cfg.hasKey; },
+      get modelSummary() {
+        const t = this.textProvider === 'router' ? ('BizRouter · ' + (this.textModel || '-')) : ('Solar · ' + (this.cfg.model || '-'));
+        const v = this.visionProvider === 'router' ? ('BizRouter · ' + (this.visionModel || '-')) : 'Upstage';
+        return '텍스트 ' + t + ' / 이미지 ' + v;
+      },
       onExcel(e) { const fs = e.target.files; this.excelLabel = fs.length ? fs[0].name : '선택된 파일 없음'; },
       get modelOptions() {
         const a = this.models.slice();
@@ -512,6 +545,7 @@ PAGE = """<!doctype html>
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
           if (this.cfg.visionProvider) this.visionProvider = this.cfg.visionProvider;
           if (typeof this.cfg.visionModel === 'string' && this.cfg.visionModel) this.visionModel = this.cfg.visionModel;
+          if (!this._accInit) { this._accInit = true; this.cfgOpen = !this.cfg.hasKey; }
         } catch (e) { /* noop */ }
       },
       // BizRouter 키
@@ -803,10 +837,10 @@ PAGE = """<!doctype html>
   .pane{display:flex;flex-direction:column;min-width:0;min-height:0}
   .pane+.pane{border-left:1px solid rgba(255,255,255,.07)}
   /* 타이틀바: 내용 영역과 명확히 분리(별도 배경·하단 경계). 버튼 없음 — 제목/상태만. */
-  .titlebar{flex:none;height:53px;display:flex;align-items:center;gap:9px;padding:0 18px;
-    border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.022);
-    font-size:13px;font-weight:600;color:#fff;letter-spacing:.01em}
-  .titlebar .sub{font-weight:500;color:#6e7191;font-size:12px}
+  .titlebar{flex:none;height:56px;display:flex;align-items:center;gap:9px;padding:0 18px;
+    border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);
+    font-size:16px;font-weight:700;color:#fff;letter-spacing:-.01em}
+  .titlebar .sub{font-weight:500;color:#6e7191;font-size:12px;letter-spacing:0}
   .titlebar .dot{width:7px;height:7px;border-radius:50%;flex:none}
   /* 로고: 마크(분광 프리즘) + 워드마크 + 기능 태그 */
   .logo-mark{flex:none;width:27px;height:27px;border-radius:8px;display:flex;align-items:center;justify-content:center;
@@ -833,6 +867,17 @@ PAGE = """<!doctype html>
   /* Configuration 패널 구획 */
   .cfgsec{padding:18px;border-bottom:1px solid rgba(255,255,255,.06)}
   .cfgsec:last-child{border-bottom:0}
+  /* 접이식 '연결·모델' 헤더 */
+  .acc{display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer}
+  .acc-t{font-size:13px;font-weight:600;color:#fff;letter-spacing:.01em;flex:none}
+  .acc-s{flex:1;min-width:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-size:11.5px;color:#6e7191}
+  .acc-chev{flex:none;margin-left:auto;width:16px;height:16px;color:#8b909b;transition:transform .18s}
+  .acc-chev.open{transform:rotate(180deg)}
+  .acc:hover .acc-t{color:#fff}
+  .acc:hover .acc-chev{color:#fff}
+  /* 접이식 내부 하위 구획(테두리 없이 간격만) */
+  .subsec+.subsec{padding-top:16px;border-top:1px solid rgba(255,255,255,.06)}
 
   /* 히어로 빈 상태 */
   .hero{display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -952,6 +997,14 @@ PAGE = """<!doctype html>
           </div>
           <!-- 엑셀 -->
           <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
+            <div class="flex items-center justify-between gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+              <div class="text-xs text-muted">컬럼 양식 · <span class="text-body">콘텐츠 그룹 · 제목 · 부제 · 본문</span> (제목·본문 필수)</div>
+              <a href="/template.csv" download
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/[0.12] px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-white/[0.06]">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                템플릿 내려받기
+              </a>
+            </div>
             <div>
               <label class="lbl">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
               <label class="dropzone">
@@ -1163,87 +1216,96 @@ PAGE = """<!doctype html>
     <div class="titlebar"><span>설정</span></div>
     <div class="pbody">
 
-      <!-- Upstage Solar 키 -->
+      <!-- 연결 · 모델 (설정 후 접힘. 성능 설정은 아래에 상시 노출) -->
       <div class="cfgsec">
-        <label class="lbl">Upstage Solar 키</label>
-        <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
-        <label class="mt-3 flex cursor-pointer items-center gap-2 text-[13px] text-body">
-          <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
-          이 기기에 저장 (<code class="text-muted">~/.prism_key</code>)
-        </label>
-        <div class="mt-3 flex flex-wrap gap-2">
-          <button type="button" x-on:click="saveConfig()" x-bind:disabled="cfgBusy"
-            class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover disabled:opacity-50">저장</button>
-          <button type="button" x-on:click="testConn()" x-bind:disabled="cfgBusy"
-            class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
-          <button type="button" x-show="cfg.persisted" x-on:click="forgetKey()" x-bind:disabled="cfgBusy"
-            class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">키 삭제</button>
-        </div>
-        <div class="mt-2.5 flex items-center gap-2 text-xs">
-          <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasKey ? 'bg-solar' : 'bg-amber-400'"></span>
-          <span class="text-muted" x-text="cfgMsg || (cfg.hasKey ? ('키 설정됨' + (cfg.persisted ? ' · 저장됨' : '')) : '키 미설정 (현재 MOCK)')"></span>
-        </div>
-      </div>
+        <button type="button" class="acc" x-on:click="cfgOpen = !cfgOpen" x-bind:aria-expanded="cfgOpen">
+          <span class="acc-t">연결 · 모델</span>
+          <span class="acc-s" x-show="!cfgOpen" x-cloak x-text="modelSummary"></span>
+          <svg class="acc-chev" x-bind:class="cfgOpen ? 'open' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
 
-      <!-- BizRouter(통합 라우터) 키 -->
-      <div class="cfgsec">
-        <label class="lbl">BizRouter 키 <span class="font-normal normal-case tracking-normal text-muted">· 멀티모달/타사 모델용(선택)</span></label>
-        <input x-model="rKey" type="password" class="field" placeholder="sk-br-v1-…" autocomplete="off">
-        <div class="mt-3 flex flex-wrap gap-2">
-          <button type="button" x-on:click="saveRouterKey()"
-            class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
-          <button type="button" x-show="cfg.routerPersisted" x-on:click="forgetRouterKey()"
-            class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">키 삭제</button>
-        </div>
-        <div class="mt-2.5 flex items-center gap-2 text-xs">
-          <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasRouterKey ? 'bg-solar' : 'bg-white/20'"></span>
-          <span class="text-muted" x-text="rMsg || (cfg.hasRouterKey ? '라우터 키 설정됨' : '미설정 (BizRouter 모델 사용 시 필요)')"></span>
-        </div>
-      </div>
+        <div x-show="cfgOpen" x-cloak class="mt-3.5 space-y-4">
+          <!-- Upstage Solar 키 -->
+          <div class="subsec">
+            <label class="lbl">Upstage Solar 키</label>
+            <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
+            <label class="mt-3 flex cursor-pointer items-center gap-2 text-[13px] text-body">
+              <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
+              이 기기에 저장 (<code class="text-muted">~/.prism_key</code>)
+            </label>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" x-on:click="saveConfig()" x-bind:disabled="cfgBusy"
+                class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover disabled:opacity-50">저장</button>
+              <button type="button" x-on:click="testConn()" x-bind:disabled="cfgBusy"
+                class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
+              <button type="button" x-show="cfg.persisted" x-on:click="forgetKey()" x-bind:disabled="cfgBusy"
+                class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">키 삭제</button>
+            </div>
+            <div class="mt-2.5 flex items-center gap-2 text-xs">
+              <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasKey ? 'bg-solar' : 'bg-amber-400'"></span>
+              <span class="text-muted" x-text="cfgMsg || (cfg.hasKey ? ('키 설정됨' + (cfg.persisted ? ' · 저장됨' : '')) : '키 미설정 (현재 MOCK)')"></span>
+            </div>
+          </div>
 
-      <!-- 텍스트 모델(메타 생성) -->
-      <div class="cfgsec">
-        <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted">· 리드문·메타 생성</span></label>
-        <div class="seg mb-2">
-          <button type="button" x-on:click="setTextProvider('solar')" x-bind:class="textProvider === 'solar' ? 'on' : ''">Solar</button>
-          <button type="button" x-on:click="setTextProvider('router')" x-bind:class="textProvider === 'router' ? 'on' : ''">BizRouter</button>
-        </div>
-        <!-- Solar 모델 -->
-        <div x-show="textProvider === 'solar'">
-          <select x-model="cfgModel" x-on:change="saveTextSlot()" class="field">
-            <template x-for="m in modelOptions" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-            <template x-if="!modelOptions.length"><option value="" disabled>키 입력 후 모델 불러오기</option></template>
-          </select>
-          <button type="button" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
-            class="mt-2 w-full rounded-lg border border-white/[0.10] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
-          <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
-        </div>
-        <!-- BizRouter 텍스트 모델 -->
-        <div x-show="textProvider === 'router'" x-cloak>
-          <select x-model="textModel" x-on:change="saveTextSlot()" class="field">
-            <template x-for="m in routerTextModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-          </select>
-          <p class="mt-1.5 text-xs text-muted" x-show="!cfg.hasRouterKey">BizRouter 키가 필요합니다.</p>
-        </div>
-      </div>
+          <!-- BizRouter(통합 라우터) 키 -->
+          <div class="subsec">
+            <label class="lbl">BizRouter 키 <span class="font-normal normal-case tracking-normal text-muted">· 멀티모달/타사 모델용(선택)</span></label>
+            <input x-model="rKey" type="password" class="field" placeholder="sk-br-v1-…" autocomplete="off">
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" x-on:click="saveRouterKey()"
+                class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
+              <button type="button" x-show="cfg.routerPersisted" x-on:click="forgetRouterKey()"
+                class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">키 삭제</button>
+            </div>
+            <div class="mt-2.5 flex items-center gap-2 text-xs">
+              <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasRouterKey ? 'bg-solar' : 'bg-white/20'"></span>
+              <span class="text-muted" x-text="rMsg || (cfg.hasRouterKey ? '라우터 키 설정됨' : '미설정 (BizRouter 모델 사용 시 필요)')"></span>
+            </div>
+          </div>
 
-      <!-- 이미지 맥락 모델(비전) -->
-      <div class="cfgsec">
-        <label class="lbl">이미지 맥락 모델 <span class="font-normal normal-case tracking-normal text-muted">· 이미지 이해</span></label>
-        <div class="seg mb-2">
-          <button type="button" x-on:click="setVisionProvider('upstage_ie')" x-bind:class="visionProvider === 'upstage_ie' ? 'on' : ''">Upstage</button>
-          <button type="button" x-on:click="setVisionProvider('router')" x-bind:class="visionProvider === 'router' ? 'on' : ''">BizRouter</button>
+          <!-- 텍스트 모델(메타 생성) -->
+          <div class="subsec">
+            <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted">· 리드문·메타 생성</span></label>
+            <div class="seg mb-2">
+              <button type="button" x-on:click="setTextProvider('solar')" x-bind:class="textProvider === 'solar' ? 'on' : ''">Solar</button>
+              <button type="button" x-on:click="setTextProvider('router')" x-bind:class="textProvider === 'router' ? 'on' : ''">BizRouter</button>
+            </div>
+            <div x-show="textProvider === 'solar'">
+              <select x-model="cfgModel" x-on:change="saveTextSlot()" class="field">
+                <template x-for="m in modelOptions" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+                <template x-if="!modelOptions.length"><option value="" disabled>키 입력 후 모델 불러오기</option></template>
+              </select>
+              <button type="button" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
+                class="mt-2 w-full rounded-lg border border-white/[0.10] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
+              <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
+            </div>
+            <div x-show="textProvider === 'router'" x-cloak>
+              <select x-model="textModel" x-on:change="saveTextSlot()" class="field">
+                <template x-for="m in routerTextModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+              </select>
+              <p class="mt-1.5 text-xs text-muted" x-show="!cfg.hasRouterKey">BizRouter 키가 필요합니다.</p>
+            </div>
+          </div>
+
+          <!-- 이미지 맥락 모델(비전) -->
+          <div class="subsec">
+            <label class="lbl">이미지 맥락 모델 <span class="font-normal normal-case tracking-normal text-muted">· 이미지 이해</span></label>
+            <div class="seg mb-2">
+              <button type="button" x-on:click="setVisionProvider('upstage_ie')" x-bind:class="visionProvider === 'upstage_ie' ? 'on' : ''">Upstage</button>
+              <button type="button" x-on:click="setVisionProvider('router')" x-bind:class="visionProvider === 'router' ? 'on' : ''">BizRouter</button>
+            </div>
+            <div x-show="visionProvider === 'upstage_ie'">
+              <p class="text-xs text-muted">Upstage Information Extraction · Solar 키 사용. 텍스트가 있는 이미지에 적합(순수 사진은 미검출 가능).</p>
+            </div>
+            <div x-show="visionProvider === 'router'" x-cloak>
+              <select x-model="visionModel" x-on:change="saveVisionSlot()" class="field">
+                <template x-for="m in routerVisionModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+              </select>
+              <p class="mt-1.5 text-xs text-muted">멀티모달 모델로 순수 사진까지 이해. <span x-show="!cfg.hasRouterKey">BizRouter 키가 필요합니다.</span></p>
+            </div>
+            <span class="mt-1.5 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
+          </div>
         </div>
-        <div x-show="visionProvider === 'upstage_ie'">
-          <p class="text-xs text-muted">Upstage Information Extraction · Solar 키 사용. 텍스트가 있는 이미지에 적합(순수 사진은 미검출 가능).</p>
-        </div>
-        <div x-show="visionProvider === 'router'" x-cloak>
-          <select x-model="visionModel" x-on:change="saveVisionSlot()" class="field">
-            <template x-for="m in routerVisionModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-          </select>
-          <p class="mt-1.5 text-xs text-muted">멀티모달 모델로 순수 사진까지 이해. <span x-show="!cfg.hasRouterKey">BizRouter 키가 필요합니다.</span></p>
-        </div>
-        <span class="mt-1.5 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
       </div>
 
       <!-- 추론 강도 -->
