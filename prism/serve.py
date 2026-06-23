@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import imagext as IMG
 from . import pipeline as PIPE
 from . import prompts as PR
-from .config import Config
+from .config import Config, DEFAULT_CONFIG_PATH
 from .llm import LLMClient
 
 # 마지막 실행 결과(리포트 생성용)
@@ -141,6 +141,78 @@ def dict_data() -> dict:
         "legalTypes": {c: {"label": v.get("label", c), "article": v.get("article", "")}
                        for c, v in D.LEGAL_HARM_TYPES.items()},
     }
+
+
+_DICT_OVERRIDES_PATH = os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH), "dict_overrides.json")
+
+
+def _read_overrides() -> dict:
+    try:
+        if os.path.exists(_DICT_OVERRIDES_PATH):
+            with open(_DICT_OVERRIDES_PATH, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def load_dict_overrides():
+    """저장된 사전 편집(overrides)을 dictionaries 에 적용(서버 시작 시)."""
+    from . import dictionaries as D
+    ov = _read_overrides()
+    if ov:
+        try:
+            D.apply_profile(ov)
+        except Exception:
+            pass
+
+
+def edit_dict(data: dict) -> dict:
+    """사전·정책 편집(사용자 직접 수정). target(+key) 에 value 를 덮어쓰고 영속화·적용."""
+    from . import dictionaries as D
+    target = (data.get("target") or "").strip()
+    allowed = {"intent_universal", "intent_by_service", "iab_tier1", "tier2",
+               "quality_metas", "legal_types", "domain_groups", "category_iab_map"}
+    if target not in allowed:
+        return {"error": f"편집 불가 target: {target}"}
+    ov = _read_overrides()
+    key = data.get("key")
+    val = data.get("value")
+    if key is not None:
+        if not isinstance(ov.get(target), dict):
+            # 베이스 dict 를 복사해 시작(부분 키 편집이 다른 키를 지우지 않도록)
+            base = getattr(D, {"intent_by_service": "INTENT_CATEGORIES_BY_SERVICE",
+                               "tier2": "CONTENT_CATEGORY_TIER2", "quality_metas": "QUALITY_METAS",
+                               "legal_types": "LEGAL_HARM_TYPES", "domain_groups": "DOMAIN_GROUP_MAP",
+                               "category_iab_map": "CATEGORY_IAB_MAP"}.get(target, ""), {})
+            ov[target] = {k: (list(v) if isinstance(v, list) else v) for k, v in dict(base).items()}
+        ov[target][key] = val
+    else:
+        ov[target] = val
+    try:
+        os.makedirs(os.path.dirname(_DICT_OVERRIDES_PATH) or ".", exist_ok=True)
+        with open(_DICT_OVERRIDES_PATH, "w", encoding="utf-8") as f:
+            json.dump(ov, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        return {"error": "저장 실패: " + str(e)[:120]}
+    try:
+        D.apply_profile(ov)
+    except Exception as e:
+        return {"error": "적용 실패: " + str(e)[:120]}
+    out = dict_data()
+    out["saved"] = True
+    return out
+
+
+def reset_dict_overrides() -> dict:
+    """편집 초기화: overrides 삭제(베이스 사전은 다음 재시작 시 복원)."""
+    try:
+        os.remove(_DICT_OVERRIDES_PATH)
+    except OSError:
+        pass
+    out = dict_data()
+    out["resetNote"] = "초기화됨 · 베이스 사전은 서버 재시작 시 완전 복원"
+    return out
 
 
 def topics_data() -> dict:
@@ -574,6 +646,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(ping_model(), ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/dict"):
+            try:
+                payload = json.loads(body or b"{}")
+                fn = reset_dict_overrides if payload.get("reset") else (lambda: edit_dict(payload))
+                self._send(200, json.dumps(fn(), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/usermeta"):
             try:
                 ctype = self.headers.get("Content-Type", "")
@@ -732,6 +813,30 @@ PAGE = """<!doctype html>
       async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard')).json(); } catch (e) {} this.modBusy = false; },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics')).json(); } catch (e) {} this.modBusy = false; },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await fetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
+      // 사전·정책 편집(사용자 직접 수정)
+      editT: null, editKey: null, editKind: 'list', editVal: '', editTitle: '', editMsg: '', editExtra: '',
+      startEdit(target, key, value, kind, title) {
+        this.editT = target; this.editKey = key; this.editKind = kind || 'list'; this.editTitle = title || target; this.editMsg = ''; this.editExtra = '';
+        this.editVal = (kind === 'text') ? (value || '') : (Array.isArray(value) ? value.join('\\n') : '');
+      },
+      startEditLegal(code, v) { this.startEdit('legal_types', code, (v && v.label) || '', 'text', '법령 · ' + code); this.editExtra = (v && v.article) || ''; },
+      cancelEdit() { this.editT = null; this.editMsg = ''; },
+      async saveEdit() {
+        let value = this.editKind === 'text' ? this.editVal : this.editVal.split('\\n').map(s => s.trim()).filter(Boolean);
+        if (this.editT === 'legal_types') value = { label: this.editVal, article: this.editExtra };
+        const body = { target: this.editT, value }; if (this.editKey != null) body.key = this.editKey;
+        this.editMsg = '저장 중…';
+        try {
+          const r = await fetch('/dict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const d = await r.json();
+          if (d.error) { this.editMsg = '오류: ' + d.error; return; }
+          this.dictData = d; this.editT = null;
+        } catch (e) { this.editMsg = '오류: ' + e; }
+      },
+      async resetDict() {
+        if (!confirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)')) return;
+        try { const r = await fetch('/dict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
+      },
       async loadUser() { this.modBusy = true; try { this.userData = await (await fetch('/usermeta')).json(); } catch (e) {} this.modBusy = false; },
       async uploadUserLog(e) {
         const f = e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -1741,19 +1846,48 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 사전 · 매핑 ═══ -->
       <div x-show="mod === 'dict'" x-cloak class="mx-auto max-w-4xl space-y-4">
+        <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
+          <div class="text-xs text-muted">각 체계의 정책(사전·카테고리·법령)을 <span class="text-body">직접 수정</span>할 수 있습니다. 저장 시 즉시 추출에 반영되고 로컬에 영속됩니다.</div>
+          <button type="button" x-on:click="resetDict()" class="rounded-md border border-rose-500/30 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/10">편집 초기화</button>
+        </div></div>
+
+        <!-- 인라인 편집 바 -->
+        <div x-show="editT" x-cloak class="panel" style="border-color:rgba(91,82,255,.4)"><div class="panel-bd">
+          <div class="flex items-center justify-between mb-2"><b class="text-sm text-white" x-text="'편집 · ' + editTitle"></b>
+            <span class="text-xs text-muted" x-text="editKind==='list' ? '한 줄에 하나씩' : '텍스트'"></span></div>
+          <textarea x-model="editVal" rows="6" class="field" style="height:auto;padding:11px 12px"></textarea>
+          <div class="mt-2 flex items-center gap-2">
+            <button type="button" x-on:click="saveEdit()" class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
+            <button type="button" x-on:click="cancelEdit()" class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05]">취소</button>
+            <span class="text-xs text-muted" x-text="editMsg"></span>
+          </div>
+        </div></div>
+
         <div x-show="dictData" class="space-y-4">
-          <div class="panel"><div class="panel-hd"><b>인텐트 사전</b>
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용(8)</b>
+            <button type="button" class="copybtn" x-on:click="startEdit('intent_universal', null, dictData.intentUniversal, 'list', '인텐트 범용')">편집</button>
+          </div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+          </div></div>
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 서비스별</b>
             <select x-model="dictGroup" class="field" style="width:auto;height:32px;padding:0 28px 0 10px">
               <template x-for="g in (dictData?dictData.serviceGroups:[])" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
             </select>
+            <button type="button" class="copybtn" x-on:click="startEdit('intent_by_service', dictGroup, (dictData.intentByService[dictGroup]||[]), 'list', '인텐트 · ' + dictGroup)">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : (dictData?dictData.intentUniversal:[]))" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+            <span x-show="!(dictData && dictData.intentByService[dictGroup] && dictData.intentByService[dictGroup].length)" class="text-xs text-muted">항목 없음</span>
           </div></div>
-          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span></div>
+          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span>
+            <button type="button" class="copybtn ml-auto" x-on:click="startEdit('iab_tier1', null, dictData.iabTier1, 'list', 'Tier1 목록')">Tier1 편집</button>
+          </div>
             <div class="panel-bd space-y-2.5" style="max-height:340px;overflow:auto">
               <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c">
                 <div>
-                  <div class="text-[13px] font-semibold text-white mb-1" x-text="c"></div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <div class="text-[13px] font-semibold text-white" x-text="c"></div>
+                    <button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button>
+                  </div>
                   <div class="flex flex-wrap gap-1.5">
                     <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="chip chip-cat" x-text="t2"></span></template>
                   </div>
@@ -1774,12 +1908,12 @@ PAGE = """<!doctype html>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>정의</th></tr></thead><tbody>
-                <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v"></td></tr></template>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>정의</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v"></td><td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td></tr></template>
               </tbody></table></div></div>
             <div class="panel"><div class="panel-hd"><b>법령 위반 유형</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.legalTypes).length+'종':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>코드</th><th>유형</th><th>근거</th></tr></thead><tbody>
-                <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v.label"></td><td class="text-muted" x-text="v.article"></td></tr></template>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v.label"></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
               </tbody></table></div></div>
           </div>
         </div>
@@ -2005,6 +2139,7 @@ def main():
 
     Handler.server_mock = a.mock
     load_persisted_key()                              # ~/.prism_key 있으면 주입
+    load_dict_overrides()                             # 사전 편집(overrides) 적용
     sync_prompt()                                     # config 의 추가 지시 반영
     keyed = bool(IMG._api_key())
     mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 미설정 · UI에서 설정)")

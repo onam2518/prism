@@ -28,3 +28,4 @@ report_results.jsonl
 dist/
 build/
 *.dmg
+dict_overrides.json

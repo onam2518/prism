@@ -36,8 +36,9 @@ def _seed_user_config():
 
 def _start_server():
     global _httpd
-    from prism.serve import Handler, load_persisted_key
+    from prism.serve import Handler, load_persisted_key, load_dict_overrides
     load_persisted_key()                       # ~/.prism_key 자동 로드
+    load_dict_overrides()                       # 사전 편집(overrides) 적용
     _httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     _httpd.serve_forever()
 

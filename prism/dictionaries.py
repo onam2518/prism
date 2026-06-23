@@ -216,20 +216,24 @@ def all_quality_ids():
 
 
 def apply_profile(prof: dict):
-    """회사별 프로파일로 사전을 비파괴 override. 코어 파이프라인은 그대로, 사전만 교체.
-    지원 키: service_group, intent_universal, intent_by_service, iab_tier1, quality_metas."""
+    """회사별/운영자 프로파일로 사전을 비파괴 override. 코어 파이프라인은 그대로, 사전만 교체.
+    어드민 편집(사용자 직접 수정)에서도 동일 경로 사용."""
     g = globals()
     keymap = {
         "service_group": "SERVICE_GROUP",
         "intent_universal": "INTENT_CATEGORIES_UNIVERSAL",
         "intent_by_service": "INTENT_CATEGORIES_BY_SERVICE",
         "iab_tier1": "IAB_TIER1",
+        "tier2": "CONTENT_CATEGORY_TIER2",
         "quality_metas": "QUALITY_METAS",
+        "legal_types": "LEGAL_HARM_TYPES",
+        "domain_groups": "DOMAIN_GROUP_MAP",
+        "category_iab_map": "CATEGORY_IAB_MAP",
     }
     for pk, gk in keymap.items():
         if pk in prof:
             cur = g.get(gk)
-            if isinstance(cur, dict):
+            if isinstance(cur, dict) and isinstance(prof[pk], dict):
                 cur.update(prof[pk])
             else:
                 g[gk] = prof[pk]
