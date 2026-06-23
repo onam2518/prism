@@ -134,6 +134,9 @@ def dict_data() -> dict:
         "intentUniversal": list(D.INTENT_CATEGORIES_UNIVERSAL),
         "intentByService": {k: list(v) for k, v in D.INTENT_CATEGORIES_BY_SERVICE.items()},
         "iabTier1": list(D.IAB_TIER1),
+        "tier2": {k: list(v) for k, v in getattr(D, "CONTENT_CATEGORY_TIER2", {}).items()},
+        "iabMap": dict(getattr(D, "CATEGORY_IAB_MAP", {})),
+        "domainGroups": {k: list(v) for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items()},
         "qualityMetas": dict(D.QUALITY_METAS),
         "legalTypes": {c: {"label": v.get("label", c), "article": v.get("article", "")}
                        for c, v in D.LEGAL_HARM_TYPES.items()},
@@ -1746,9 +1749,29 @@ PAGE = """<!doctype html>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
             <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : (dictData?dictData.intentUniversal:[]))" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
           </div></div>
-          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · IAB Tier1</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + '종') : ''"></span></div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c"><span class="chip chip-cat" x-text="c"></span></template>
-          </div></div>
+          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span></div>
+            <div class="panel-bd space-y-2.5" style="max-height:340px;overflow:auto">
+              <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c">
+                <div>
+                  <div class="text-[13px] font-semibold text-white mb-1" x-text="c"></div>
+                  <div class="flex flex-wrap gap-1.5">
+                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="chip chip-cat" x-text="t2"></span></template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div><div class="panel-bd space-y-2">
+              <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
+                <div><span class="chip chip-ent" x-text="g"></span> <span class="text-xs text-muted" x-text="ts.join(' · ')"></span></div>
+              </template>
+            </div></div>
+            <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>자사 경로</th><th>IAB 공식</th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.iabMap:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td class="text-muted" x-text="v"></td></tr></template>
+              </tbody></table></div></div>
+          </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>정의</th></tr></thead><tbody>

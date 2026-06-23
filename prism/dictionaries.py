@@ -131,23 +131,83 @@ def _service_key(display_name: str) -> str:
     return ""
 
 
-# 콘텐츠 카테고리: IAB Content Taxonomy v3.0 기반 자사 사전 (Tier1 21개)
+# 콘텐츠 카테고리 — DNM 1312/콘텐츠 카테고리 정의(365789408) 기준.
+# IAB Content Taxonomy v3.0 골격을 운영 효율 위해 Tier1 21개로 압축한 자사 사전(매핑 비중 순).
 IAB_TIER1 = [
-    "Automotive", "Books and Literature", "Business and Finance",
-    "Careers", "Education", "Events and Attractions", "Family and Relationships",
-    "Food & Drink", "Healthy Living", "Hobbies & Interests", "Home & Garden",
-    "Movies", "Music and Audio", "News and Politics", "Personal Finance",
-    "Pop Culture", "Real Estate", "Science", "Sports",
-    "Style & Fashion", "Technology & Computing",
+    "News and Politics", "Entertainment", "Business and Finance", "Sports",
+    "Food and Drink", "Travel", "Family and Relationships", "Education",
+    "Technology and Computing", "Books and Literature", "Medical Health",
+    "Hobbies and Interests", "Health and Fitness", "Home and Garden", "Pets",
+    "Style and Fashion", "Automotive", "Video Gaming", "Science", "Careers",
+    "Religion and Spirituality",
 ]
-# Tier1 → 대표 Tier2 (자유생성 금지용 화이트리스트 일부; 미수록 Tier2는 검증기가 Tier1만 강제)
-IAB_TIER2 = {
-    "Business and Finance": ["Industries", "Economy", "Business"],
-    "News and Politics": ["Politics", "Society", "Law", "International News"],
-    "Technology & Computing": ["Artificial Intelligence", "Consumer Electronics", "Software"],
-    "Sports": ["Soccer", "Baseball", "Basketball", "E-Sports"],
-    "Pop Culture": ["Celebrity News", "Humor and Satire"],
-    "Healthy Living": ["Wellness", "Nutrition"],
+# Tier1 → Tier2 (자사 사전). ★ 표시는 IAB 비표준 Custom Tier2(정의 페이지 명시).
+CONTENT_CATEGORY_TIER2 = {
+    "News and Politics": ["Politics", "Society", "Local News", "Crime", "Disasters",
+                          "Law", "International News", "Weather"],
+    "Entertainment": ["Celebrity News", "Celebrity News (Foreign)", "Drama TV", "TV Shows",
+                      "Movies", "Music", "Visual Art", "Performing Arts", "Humor"],
+    "Business and Finance": ["Economy", "Industries", "Business", "Investing", "Banking",
+                             "Insurance", "Real Estate Policy", "Real Estate Listings"],
+    "Sports": ["Soccer (Domestic)", "Soccer (International)", "Baseball (Domestic)",
+               "Baseball (International)", "Basketball", "Volleyball", "Golf",
+               "Martial Arts", "Other Sports"],
+    "Food and Drink": ["Cooking", "Food", "Beverages", "Dining Out"],
+    "Travel": ["Domestic Travel", "International Travel", "Hotels", "Air Travel", "Travel Preparation"],
+    "Family and Relationships": ["Parenting", "Family", "Dating", "Weddings"],
+    "Education": ["Primary Education", "Secondary Education", "Higher Education",
+                  "Language Learning", "Adult Education"],
+    "Technology and Computing": ["Computing", "Internet", "Information Security", "Consumer Electronics"],
+    "Books and Literature": ["Fiction", "Non-Fiction", "Biographies", "Essays"],
+    "Medical Health": ["Diseases and Conditions", "Wellness"],
+    "Hobbies and Interests": ["Arts and Crafts", "Collecting", "Outdoors"],
+    "Health and Fitness": ["Healthy Living", "Exercise and Fitness"],
+    "Home and Garden": ["Interior Decorating", "Gardening", "Home Improvement", "Shopping"],
+    "Pets": ["Dogs", "Cats", "Birds", "Fish", "Other Pets"],
+    "Style and Fashion": ["Fashion Trends", "Personal Care", "Accessories"],
+    "Automotive": ["Auto Type", "Auto Repair", "Auto Shows"],
+    "Video Gaming": ["Video Games", "eSports"],
+    "Science": ["Space and Astronomy", "Biology", "Physics", "Environment", "General Science"],
+    "Careers": ["Job Search", "Career Advice"],
+    "Religion and Spirituality": ["Religion", "Spirituality"],
+}
+IAB_TIER2 = CONTENT_CATEGORY_TIER2   # 하위 호환 별칭
+
+# 자사 경로 → IAB v3.0 공식 경로(외부 광고 연동 후처리 변환용). 정의 페이지 부록.
+CATEGORY_IAB_MAP = {
+    "Entertainment / Celebrity News (Foreign)": "Pop Culture / Celebrity News",
+    "Entertainment / Drama TV": "Television / Drama TV",
+    "Entertainment / TV Shows": "Television / TV Shows",
+    "Entertainment / Movies": "Movies",
+    "Entertainment / Music": "Music and Audio",
+    "Entertainment / Visual Art": "Fine Art",
+    "Entertainment / Performing Arts": "Fine Art",
+    "Business and Finance / Investing": "Personal Finance",
+    "Business and Finance / Banking": "Personal Finance",
+    "Business and Finance / Insurance": "Personal Finance",
+    "Business and Finance / Real Estate Policy": "Real Estate / Residential Real Estate",
+    "Business and Finance / Real Estate Listings": "Real Estate / Residential Real Estate",
+    "News and Politics / Weather": "Weather",
+    "Home and Garden / Shopping": "Shopping",
+    "Sports / Soccer (Domestic)": "Sports / Soccer",
+    "Sports / Soccer (International)": "Sports / Soccer",
+    "Sports / Baseball (Domestic)": "Sports / Baseball",
+    "Sports / Baseball (International)": "Sports / Baseball",
+    "Sports / Other Sports": "Sports / Olympic Sports",
+    "Video Gaming / eSports": "Video Gaming / eSports",
+}
+
+# 도메인 그룹(7) = Tier1 21개 고정 묶음(별도 LLM 판정 불요). 정의 페이지 부록.
+DOMAIN_GROUP_MAP = {
+    "시사": ["News and Politics"],
+    "경제·산업": ["Business and Finance"],
+    "엔터": ["Entertainment"],
+    "스포츠": ["Sports"],
+    "테크·모빌리티": ["Technology and Computing", "Automotive", "Video Gaming"],
+    "라이프": ["Food and Drink", "Travel", "Family and Relationships", "Home and Garden",
+              "Pets", "Style and Fashion", "Health and Fitness", "Hobbies and Interests",
+              "Religion and Spirituality", "Medical Health", "Careers"],
+    "지식·교양": ["Education", "Books and Literature", "Science"],
 }
 
 
