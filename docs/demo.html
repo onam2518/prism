@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Prism</title>
 <meta name="description" content="이미지·텍스트·엑셀에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출하는 콘텐츠 메타 도구">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b52ff'/%3E%3Cpath d='M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2334b4c4'/%3E%3Cpath d='M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z' fill='%23fff'/%3E%3C/svg%3E">
 <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
 <link href="/vendor/ds-theme.css" rel="stylesheet">
 <link href="/vendor/ds-components.css" rel="stylesheet">
@@ -18,10 +18,10 @@
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       colors: {
-        violet: { DEFAULT: '#5b52ff', hover: '#4a42e0', deep: '#281ca5' },
-        solar: '#d2ff95',
-        canvas: '#0b0a0f', surface: '#141318', surface2: '#1a1922',
-        body: '#9aa0aa', muted: '#6e7191',
+        violet: { DEFAULT: '#34b4c4', hover: '#5cc6d3', deep: '#13343b' },
+        solar: '#5fe0ad',
+        canvas: '#0d1117', surface: '#161b22', surface2: '#1c2128',
+        body: '#d6dade', muted: '#9ba1a6',
       },
     } },
   };
@@ -436,11 +436,11 @@
   }
   body{font-family:var(--ds-font);font-size:14px;line-height:1.5;letter-spacing:-.003em;
     background:
-      radial-gradient(820px 420px at 100% -6%, rgba(91,82,255,.12), transparent 60%),
+      radial-gradient(820px 420px at 100% -6%, rgba(52,180,196,.12), transparent 60%),
       radial-gradient(680px 360px at 0% 0%, rgba(210,255,149,.045), transparent 55%),
-      #0b0a0f;
+      #0d1117;
     background-attachment:fixed}
-  ::selection{background:#5b52ff;color:#fff}
+  ::selection{background:#34b4c4;color:#fff}
   ::-webkit-scrollbar{width:11px;height:11px}
   ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.09);border-radius:8px;border:3px solid transparent;background-clip:content-box}
   ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.18);background-clip:content-box}
@@ -448,14 +448,14 @@
   /* ── 폼 컨트롤(단일 규격) ──
      입력·셀렉트·드롭존은 같은 높이(--ctrl-h)·radius·패딩·테두리를 공유한다.
      textarea 는 다행이므로 높이만 자동, 나머지 토큰은 동일. */
-  .field{width:100%;box-sizing:border-box;border-radius:var(--ctrl-r);background:#0d0c12;
+  .field{width:100%;box-sizing:border-box;border-radius:var(--ctrl-r);background:#1c2128;
     border:1px solid rgba(255,255,255,.10);color:#fff;font-family:var(--ds-font);font-size:14px;
     transition:border-color .15s,box-shadow .15s,background .15s}
   input.field,select.field{height:var(--ctrl-h);padding:0 var(--ctrl-px)}
   textarea.field{padding:11px var(--ctrl-px);line-height:1.55;min-height:96px;resize:vertical}
-  .field::placeholder{color:#5b606b}
+  .field::placeholder{color:#6b727a}
   .field:hover{border-color:rgba(255,255,255,.18)}
-  .field:focus{outline:none;border-color:#5b52ff;box-shadow:0 0 0 3px rgba(91,82,255,.22);background:#0b0a0f}
+  .field:focus{outline:none;border-color:#34b4c4;box-shadow:0 0 0 3px rgba(52,180,196,.22);background:#0d1117}
   select.field{appearance:none;-webkit-appearance:none;padding-right:34px;cursor:pointer;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa0aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 11px center}
@@ -491,16 +491,16 @@
   /* 드롭존(파일 업로드) — .field 와 동일 규격. 점선 테두리·우측 버튼만 다름 */
   .dropzone{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
     box-sizing:border-box;height:var(--ctrl-h);padding:0 6px 0 var(--ctrl-px);
-    border-radius:var(--ctrl-r);border:1px dashed rgba(255,255,255,.16);background:#0d0c12;
-    cursor:pointer;font-size:14px;color:#9aa0aa;transition:border-color .15s,background .15s}
-  .dropzone:hover{border-color:rgba(91,82,255,.55);background:#0b0a0f}
-  .dropzone.drag{border-color:#5b52ff;border-style:solid;background:rgba(91,82,255,.10);color:#c8c3ff}
+    border-radius:var(--ctrl-r);border:1px dashed rgba(255,255,255,.16);background:#1c2128;
+    cursor:pointer;font-size:14px;color:#d6dade;transition:border-color .15s,background .15s}
+  .dropzone:hover{border-color:rgba(52,180,196,.55);background:#0d1117}
+  .dropzone.drag{border-color:#34b4c4;border-style:solid;background:rgba(52,180,196,.10);color:#9fe0e8}
   .dropzone .pick{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
     border-radius:6px;background:rgba(255,255,255,.08);color:#fff;font-size:12px;font-weight:600}
   .dropzone .name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* 썸네일 미리보기 */
-  .thumb{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.10);background:#0d0c12}
+  .thumb{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.10);background:#1c2128}
   .thumb img{width:100%;height:100%;object-fit:cover;display:block}
   .thumb-x{position:absolute;top:3px;right:3px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;
     border-radius:5px;background:rgba(8,8,12,.72);color:#fff;opacity:0;transition:opacity .12s}
@@ -514,7 +514,7 @@
     box-shadow:0 12px 30px -10px rgba(0,0,0,.7);backdrop-filter:blur(8px)}
   /* 인라인 복사 버튼 */
   .copybtn{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:3px 8px;font-size:11.5px;
-    font-weight:600;color:#9aa0aa;border:1px solid rgba(255,255,255,.10);transition:color .12s,border-color .12s,background .12s}
+    font-weight:600;color:#d6dade;border:1px solid rgba(255,255,255,.10);transition:color .12s,border-color .12s,background .12s}
   .copybtn:hover{color:#fff;border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.05)}
   .copybtn svg{width:12px;height:12px}
 
@@ -525,33 +525,33 @@
 
   /* 리드문 hero */
   .lead{position:relative;overflow:hidden;
-    background:linear-gradient(180deg,rgba(91,82,255,.10),rgba(91,82,255,.02))!important;
-    border-color:rgba(91,82,255,.24)!important}
-  .lead::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#5b52ff}
+    background:linear-gradient(180deg,rgba(52,180,196,.10),rgba(52,180,196,.02))!important;
+    border-color:rgba(52,180,196,.24)!important}
+  .lead::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#34b4c4}
 
   /* 사이드바 활성 항목 좌측 액센트 */
   .navitem.active::before{content:"";position:absolute;left:-12px;top:50%;transform:translateY(-50%);
-    width:3px;height:18px;border-radius:2px;background:#5b52ff}
+    width:3px;height:18px;border-radius:2px;background:#34b4c4}
 
   /* primary 버튼 미세 그라데이션 */
-  .btn-primary{background:linear-gradient(180deg,#6760ff,#5b52ff)!important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 8px 22px -10px rgba(91,82,255,.65);
+  .btn-primary{background:linear-gradient(180deg,#3ec2d2,#34b4c4)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 8px 22px -10px rgba(52,180,196,.65);
     transition:filter .15s,transform .08s}
   .btn-primary:hover{filter:brightness(1.07)}
   .btn-primary:active{transform:translateY(1px)}
 
   /* 라벨 (위계·여백 리듬) */
   .lbl{display:block;margin-bottom:7px;font-size:11px;font-weight:600;letter-spacing:.05em;
-    text-transform:uppercase;color:#6e7191}
+    text-transform:uppercase;color:#9ba1a6}
 
   /* 칩 (엔티티/인텐트/카테고리 시각 구분) */
   .chip{display:inline-flex;align-items:center;gap:5px;border-radius:7px;padding:3px 10px;
     font-size:12px;font-weight:500;line-height:1.5;border:1px solid transparent;
     transition:border-color .15s,background .15s,transform .1s}
   .chip:hover{transform:translateY(-1px)}
-  .chip-ent{background:linear-gradient(180deg,rgba(91,82,255,.18),rgba(91,82,255,.07));
-    border-color:rgba(91,82,255,.34);color:#c4beff}
-  .chip-ent::before{content:"";width:5px;height:5px;border-radius:50%;background:#7c74ff;flex:none}
+  .chip-ent{background:linear-gradient(180deg,rgba(52,180,196,.18),rgba(52,180,196,.07));
+    border-color:rgba(52,180,196,.34);color:#8fd9e2}
+  .chip-ent::before{content:"";width:5px;height:5px;border-radius:50%;background:#5cc6d3;flex:none}
   .chip-int{background:rgba(76,185,167,.12);border-color:rgba(76,185,167,.26);color:#84dccc}
   .chip-cat{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.09);color:#c9ccd3}
 
@@ -564,7 +564,7 @@
   /* 테이블 (엑셀 결과) */
   .tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
   .tbl th{text-align:left;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
-    color:#6e7191;padding:9px 12px;background:rgba(255,255,255,.025)}
+    color:#9ba1a6;padding:9px 12px;background:rgba(255,255,255,.025)}
   .tbl td{padding:11px 12px;border-top:1px solid rgba(255,255,255,.06);vertical-align:top;color:#c9ccd3}
   .tbl tbody tr{transition:background .12s}
   .tbl tbody tr:hover{background:rgba(255,255,255,.035)}
@@ -577,17 +577,17 @@
   details>summary{list-style:none}
   details>summary::-webkit-details-marker{display:none}
   details>summary::before{content:"A";display:inline-block;width:1em;margin-right:5px;
-    transition:transform .15s;color:#6e7191}
+    transition:transform .15s;color:#9ba1a6}
   details[open]>summary::before{transform:rotate(90deg)}
 
   /* 빈 상태 */
-  .empty{border:1px dashed rgba(255,255,255,.10);border-radius:12px;padding:40px 24px;text-align:center;color:#6e7191}
+  .empty{border:1px dashed rgba(255,255,255,.10);border-radius:12px;padding:40px 24px;text-align:center;color:#9ba1a6}
 
   /* 고급 폴리시 */
   html{scroll-behavior:smooth}
   .tnum{font-variant-numeric:tabular-nums}
   .lead,h1,.panel-hd b,.drow .v p{text-wrap:pretty}
-  :where(button,a,[role=tab],select,summary):focus-visible{outline:2px solid rgba(124,116,255,.7);
+  :where(button,a,[role=tab],select,summary):focus-visible{outline:2px solid rgba(92,198,211,.7);
     outline-offset:2px;border-radius:8px}
   /* 노이즈 오버레이 — 평면감 제거(은은) */
   .noise{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.025;mix-blend-mode:overlay;
@@ -600,18 +600,18 @@
   @keyframes shimmer{100%{transform:translateX(100%)}}
 
   /* 패널 (시안 C — 구조·패널형) */
-  .panel{border:1px solid rgba(255,255,255,.08);border-radius:14px;background:#141318;overflow:hidden;
+  .panel{border:1px solid rgba(255,255,255,.08);border-radius:14px;background:#161b22;overflow:hidden;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.045);transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
   .panel:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.14)}
   .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;
     padding:13px 18px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.018)}
   .panel-hd b{color:#fff;font-size:13px;font-weight:600;letter-spacing:.01em}
-  .panel-hd .meta{font-size:12px;color:#6e7191}
+  .panel-hd .meta{font-size:12px;color:#9ba1a6}
   .panel-bd{padding:18px}
   .drow{display:grid;grid-template-columns:124px 1fr;gap:16px;padding:15px 18px;
     border-bottom:1px solid rgba(255,255,255,.05);align-items:start}
   .drow:last-child{border-bottom:0}
-  .drow .k{font-size:12px;font-weight:600;color:#6e7191;padding-top:3px}
+  .drow .k{font-size:12px;font-weight:600;color:#9ba1a6;padding-top:3px}
   .drow .v{min-width:0}
 
   /* ── Playground 3분할 셸 ── */
@@ -622,28 +622,28 @@
   .titlebar{flex:none;height:56px;display:flex;align-items:center;gap:9px;padding:0 18px;
     border-bottom:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);
     font-size:16px;font-weight:700;color:#fff;letter-spacing:-.01em}
-  .titlebar .sub{font-weight:500;color:#6e7191;font-size:12px;letter-spacing:0}
+  .titlebar .sub{font-weight:500;color:#9ba1a6;font-size:12px;letter-spacing:0}
   .titlebar .dot{width:7px;height:7px;border-radius:50%;flex:none}
   /* 로고: 마크(분광 프리즘) + 워드마크 + 기능 태그 */
   .logo-mark{flex:none;width:27px;height:27px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(150deg,#6760ff,#4a42e0);
-    box-shadow:0 5px 14px -5px rgba(91,82,255,.75),inset 0 1px 0 rgba(255,255,255,.2)}
+    background:linear-gradient(150deg,#3ec2d2,#1a6873);
+    box-shadow:0 5px 14px -5px rgba(52,180,196,.75),inset 0 1px 0 rgba(255,255,255,.2)}
   .logo-mark svg{width:17px;height:17px}
   .logo-word{font-size:16px;font-weight:700;letter-spacing:-.02em;color:#fff}
-  .logo-sub{font-size:11px;font-weight:500;color:#6e7191;letter-spacing:0;margin-left:-2px}
+  .logo-sub{font-size:11px;font-weight:500;color:#9ba1a6;letter-spacing:0;margin-left:-2px}
   .pbody{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
   .pbody.pad{padding:18px}
   .pbody.center{padding:26px 30px}
 
   /* 좌측 내비 그룹 라벨 */
   .navgrp{padding:0 12px;margin:18px 0 6px;font-size:11px;font-weight:600;letter-spacing:.06em;
-    text-transform:uppercase;color:#565b66}
+    text-transform:uppercase;color:#6b727a}
 
   /* 추론강도 세그먼트 */
-  .seg{display:flex;gap:3px;padding:3px;border-radius:9px;background:#0d0c12;border:1px solid rgba(255,255,255,.09)}
-  .seg button{flex:1;border-radius:6px;padding:6px 0;font-size:12px;font-weight:600;color:#8b909b;
+  .seg{display:flex;gap:3px;padding:3px;border-radius:9px;background:#1c2128;border:1px solid rgba(255,255,255,.09)}
+  .seg button{flex:1;border-radius:6px;padding:6px 0;font-size:12px;font-weight:600;color:#9ba1a6;
     transition:color .15s,background .15s}
-  .seg button.on{background:rgba(91,82,255,.22);color:#c8c3ff;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  .seg button.on{background:rgba(52,180,196,.22);color:#9fe0e8;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
   .seg button:not(.on):hover{color:#fff}
 
   /* Configuration 패널 구획 */
@@ -653,8 +653,8 @@
   .acc{display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer}
   .acc-t{font-size:13px;font-weight:600;color:#fff;letter-spacing:.01em;flex:none}
   .acc-s{flex:1;min-width:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    font-size:11.5px;color:#6e7191}
-  .acc-chev{flex:none;margin-left:auto;width:16px;height:16px;color:#8b909b;transition:transform .18s}
+    font-size:11.5px;color:#9ba1a6}
+  .acc-chev{flex:none;margin-left:auto;width:16px;height:16px;color:#9ba1a6;transition:transform .18s}
   .acc-chev.open{transform:rotate(180deg)}
   .acc:hover .acc-t{color:#fff}
   .acc:hover .acc-chev{color:#fff}
@@ -664,20 +664,20 @@
   /* 스텝식 설정(텍스트 → 이미지 → 키) */
   .steps{display:flex;gap:6px}
   .steps button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;height:34px;
-    border-radius:8px;font-size:12.5px;font-weight:600;color:#8b909b;background:#0d0c12;
+    border-radius:8px;font-size:12.5px;font-weight:600;color:#9ba1a6;background:#1c2128;
     border:1px solid rgba(255,255,255,.09);transition:color .12s,border-color .12s,background .12s}
-  .steps button.on{color:#fff;border-color:rgba(91,82,255,.5);background:rgba(91,82,255,.12)}
+  .steps button.on{color:#fff;border-color:rgba(52,180,196,.5);background:rgba(52,180,196,.12)}
   .steps button:not(.on):hover{color:#fff}
   .steps button i{display:flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;
     font-size:10px;font-weight:700;font-style:normal;background:rgba(255,255,255,.1);color:#c9ccd3}
-  .steps button.on i{background:#5b52ff;color:#fff}
+  .steps button.on i{background:#34b4c4;color:#fff}
   .sdot{width:6px;height:6px;border-radius:50%;flex:none}
   .sdot.ok{background:#5fe0ad;box-shadow:0 0 6px rgba(95,224,173,.7)}
   .sdot.warn{background:#e2a33c}
   .step-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}
-  .step-nav button{font-size:12.5px;font-weight:600;color:#b9b3ff;transition:color .12s}
+  .step-nav button{font-size:12.5px;font-weight:600;color:#8fd9e2;transition:color .12s}
   .step-nav button:hover{color:#fff}
-  .step-nav button.back{color:#8b909b}
+  .step-nav button.back{color:#9ba1a6}
   .step-nav button.back:hover{color:#fff}
   .keycard{padding:13px;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(255,255,255,.022)}
   .keycard+.keycard{margin-top:10px}
@@ -685,64 +685,64 @@
   /* ── 설정 탭(Atelier 방식): API 키 / 모델 ── */
   .cfgtabs{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,.07)}
   .cfgtabs button{appearance:none;background:none;border:0;cursor:pointer;padding:9px 14px;border-radius:8px 8px 0 0;
-    font-size:13px;font-weight:600;color:#8b909b;position:relative;transition:color .12s}
+    font-size:13px;font-weight:600;color:#9ba1a6;position:relative;transition:color .12s}
   .cfgtabs button:hover{color:#fff}
   .cfgtabs button.on{color:#fff}
-  .cfgtabs button.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:#5b52ff;border-radius:2px}
+  .cfgtabs button.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:#34b4c4;border-radius:2px}
   /* 통합 라우터 카드 */
-  .routercard{border:1px solid rgba(91,82,255,.30);border-radius:12px;padding:15px;
-    background:linear-gradient(180deg,rgba(91,82,255,.10),rgba(91,82,255,.02))}
+  .routercard{border:1px solid rgba(52,180,196,.30);border-radius:12px;padding:15px;
+    background:linear-gradient(180deg,rgba(52,180,196,.10),rgba(52,180,196,.02))}
   .routercard .rc-h{display:flex;align-items:center;gap:7px;margin-bottom:3px}
   .routercard .rc-h b{font-size:13px;font-weight:700;color:#fff}
-  .rc-badge{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#c8c3ff;
-    background:rgba(91,82,255,.22);border-radius:5px;padding:2px 6px}
-  .routercard .rc-d{margin:0 0 13px;font-size:11.5px;color:#8b909b;line-height:1.55}
+  .rc-badge{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9fe0e8;
+    background:rgba(52,180,196,.22);border-radius:5px;padding:2px 6px}
+  .routercard .rc-d{margin:0 0 13px;font-size:11.5px;color:#9ba1a6;line-height:1.55}
   .sectitle{font-size:13px;font-weight:700;color:#fff;margin:20px 0 4px}
-  .secdesc{font-size:11.5px;color:#6e7191;margin:0 0 12px;line-height:1.55}
+  .secdesc{font-size:11.5px;color:#9ba1a6;margin:0 0 12px;line-height:1.55}
   /* 키 행 */
   .krow+.krow{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
   .krow-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
   .krow-nm{font-size:13px;font-weight:600;color:#fff}
-  .krow-st{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:#8b909b}
+  .krow-st{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:#9ba1a6}
   .keyin{position:relative}
   .keyin input{padding-right:38px}
   .keyin .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:28px;height:28px;display:flex;
-    align-items:center;justify-content:center;border:0;background:none;color:#6e7191;cursor:pointer}
+    align-items:center;justify-content:center;border:0;background:none;color:#9ba1a6;cursor:pointer}
   .keyin .eye:hover{color:#fff}
   .keyin .eye svg{width:16px;height:16px}
 
   /* 히어로 빈 상태 */
   .hero{display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;padding:64px 24px;border:1px dashed rgba(255,255,255,.10);border-radius:16px;
-    background:radial-gradient(420px 200px at 50% 0%,rgba(91,82,255,.08),transparent 70%)}
+    background:radial-gradient(420px 200px at 50% 0%,rgba(52,180,196,.08),transparent 70%)}
   .hero .orb{width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(180deg,rgba(91,82,255,.28),rgba(91,82,255,.08));
-    border:1px solid rgba(91,82,255,.3);box-shadow:0 12px 30px -12px rgba(91,82,255,.6);color:#c8c3ff}
+    background:linear-gradient(180deg,rgba(52,180,196,.28),rgba(52,180,196,.08));
+    border:1px solid rgba(52,180,196,.3);box-shadow:0 12px 30px -12px rgba(52,180,196,.6);color:#9fe0e8}
   .schip{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:7px 12px;font-size:12.5px;
     font-weight:500;color:#c9ccd3;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);
     cursor:pointer;transition:border-color .15s,background .15s,transform .1s}
-  .schip:hover{border-color:rgba(91,82,255,.45);background:rgba(91,82,255,.10);transform:translateY(-1px)}
+  .schip:hover{border-color:rgba(52,180,196,.45);background:rgba(52,180,196,.10);transform:translateY(-1px)}
 
   /* 인포그래픽 — 통계 타일·분포 바·도넛 */
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
   .tile{border-radius:12px;padding:13px 14px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07)}
   .tile .n{font-size:23px;font-weight:600;color:#fff;line-height:1.1;letter-spacing:-.01em}
-  .tile .t{margin-top:3px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e7191}
+  .tile .t{margin-top:3px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#9ba1a6}
   .bar{display:grid;grid-template-columns:96px 1fr 38px;align-items:center;gap:10px}
   .bar .lab{font-size:12.5px;color:#c9ccd3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .track{height:8px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden}
-  .track .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#5b52ff,#7c74ff)}
-  .bar .pc{font-size:12px;color:#8b909b;text-align:right}
+  .track .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#34b4c4,#5cc6d3)}
+  .bar .pc{font-size:12px;color:#9ba1a6;text-align:right}
   .ring{width:108px;height:108px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none}
-  .ring i{width:78px;height:78px;border-radius:50%;background:#141318;display:flex;flex-direction:column;
+  .ring i{width:78px;height:78px;border-radius:50%;background:#161b22;display:flex;flex-direction:column;
     align-items:center;justify-content:center}
   .ring .pv{font-size:21px;font-weight:600;color:#fff;line-height:1}
-  .ring .pl{font-size:10px;color:#6e7191;margin-top:2px}
+  .ring .pl{font-size:10px;color:#9ba1a6;margin-top:2px}
 </style>
 </head>
 <body class="text-body antialiased">
 <div class="noise" aria-hidden="true"></div>
-<div x-data="prismApp()" class="shell">
+<div x-data="prismApp()" class="shell" data-theme="dark">
 
   <!-- ━━━━━ 좌측 페인 · 내비게이션 ━━━━━ -->
   <aside class="pane">
@@ -961,7 +961,7 @@
                 <div class="tile"><div class="n tnum" x-text="batchStats.avgLen"></div><div class="t">평균 리드문(자)</div></div>
               </div>
               <div class="flex items-center gap-6">
-                <div class="ring" x-bind:style="'background:conic-gradient(#5b52ff ' + batchStats.gPct + '%, rgba(255,255,255,.07) 0)'">
+                <div class="ring" x-bind:style="'background:conic-gradient(#34b4c4 ' + batchStats.gPct + '%, rgba(255,255,255,.07) 0)'">
                   <i><span class="pv tnum" x-text="batchStats.gPct + '%'"></span><span class="pl">유통가능</span></i>
                 </div>
                 <div class="min-w-0 flex-1 space-y-2.5">
@@ -1000,7 +1000,7 @@
                     <tr>
                       <td class="text-white" x-text="it.title || '—'"></td>
                       <td x-text="it.summary || '—'"></td>
-                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="chip chip-ent" x-text="e"></span></template><span x-show="!(it.entities||[]).length">—</span></div></td>
+                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="!(it.entities||[]).length">—</span></div></td>
                       <td><span class="gpill" x-bind:class="it.grade === 'G' ? 'gpill-g' : 'gpill-r'"><span class="d"></span><span x-text="it.grade || '—'"></span></span></td>
                     </tr>
                   </template>
@@ -1037,21 +1037,21 @@
             <div class="drow">
               <div class="k">엔티티</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="chip chip-ent" x-text="x"></span></template>
+                <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="ds-badge ds-badge--entity" x-text="x"></span></template>
                 <span x-show="!(im.entities || []).length" class="text-xs text-muted">—</span>
               </div>
             </div>
             <div class="drow">
               <div class="k">인텐트</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="chip chip-int" x-text="x"></span></template>
+                <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="ds-badge ds-badge--intent" x-text="x"></span></template>
                 <span x-show="!(im.intent || []).length" class="text-xs text-muted">—</span>
               </div>
             </div>
             <div class="drow">
               <div class="k">콘텐츠 카테고리</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in contentCats" x-bind:key="x"><span class="chip chip-cat" x-text="x"></span></template>
+                <template x-for="x in contentCats" x-bind:key="x"><span class="ds-badge ds-badge--category" x-text="x"></span></template>
                 <span x-show="!contentCats.length" class="text-xs text-muted">—</span>
               </div>
             </div>
@@ -1087,7 +1087,7 @@
                   JSON 복사
                 </button>
                 <a href="/report" target="_blank" rel="noreferrer"
-                   class="inline-flex items-center gap-1.5 text-xs font-medium text-[#b9b3ff] transition-colors hover:text-white">
+                   class="inline-flex items-center gap-1.5 text-xs font-medium text-[#8fd9e2] transition-colors hover:text-white">
                   전체 리포트 열기
                   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
                 </a>
@@ -1145,14 +1145,14 @@
         <div class="panel"><div class="panel-hd"><b>ITEM TYPE 처리 정책</b><span class="meta">131</span></div>
           <div class="overflow-auto"><table class="tbl"><thead><tr><th>ITEM TYPE</th><th>필터 대상</th><th>처리 방식</th><th>상태</th></tr></thead><tbody>
             <tr><td class="text-white">텍스트형</td><td>O</td><td>정상 분류(품질 메타 부여)</td><td><span class="gpill gpill-g"><span class="d"></span>구현</span></td></tr>
-            <tr><td class="text-white">이미지형</td><td>△</td><td>GREEN 일괄 + 캡션 텍스트(시각 이해)</td><td><span class="chip chip-int">PoC</span></td></tr>
+            <tr><td class="text-white">이미지형</td><td>△</td><td>GREEN 일괄 + 캡션 텍스트(시각 이해)</td><td><span class="ds-badge ds-badge--intent">PoC</span></td></tr>
             <tr><td class="text-white">영상형</td><td>X</td><td>GREEN 일괄(Argos 별도)</td><td><span class="text-xs text-muted">계획</span></td></tr>
             <tr><td class="text-white">SNS형</td><td>X</td><td>서비스 자체 필터 후 인입</td><td><span class="text-xs text-muted">계획</span></td></tr>
             <tr><td class="text-white">묶음형 · 데이터형</td><td>X</td><td>GREEN 일괄(고도화 과제)</td><td><span class="text-xs text-muted">계획</span></td></tr>
           </tbody></table></div>
         </div>
         <div class="panel"><div class="panel-hd"><b>콘텐츠 출처 분류</b></div><div class="panel-bd">
-          <div class="flex flex-wrap gap-1.5"><span class="chip chip-cat">PGC 기존 미디어</span><span class="chip chip-cat">UGC 사용자 생성</span><span class="chip chip-cat">AIGC AI 생성</span><span class="chip chip-cat">AIEC AI 보정</span></div>
+          <div class="flex flex-wrap gap-1.5"><span class="ds-badge ds-badge--category">PGC 기존 미디어</span><span class="ds-badge ds-badge--category">UGC 사용자 생성</span><span class="ds-badge ds-badge--category">AIGC AI 생성</span><span class="ds-badge ds-badge--category">AIEC AI 보정</span></div>
           <p class="mt-2 text-xs text-muted">식별 표준 · C2PA(자격 증명) · SynthID(워터마크). 발행자 정보로 PGC/UGC 1차 식별.</p>
         </div></div>
       </div>
@@ -1174,12 +1174,12 @@
           </div><div class="panel-bd">
             <div class="drow"><div class="k">검수</div><div class="v text-sm text-body" x-text="(qm.review || 'auto') + (qm.confidence != null ? (' · conf ' + qm.confidence) : '')"></div></div>
             <div class="drow"><div class="k">품질 사유</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="chip chip-cat" x-text="r"></span></template>
+              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="ds-badge ds-badge--category" x-text="r"></span></template>
               <span x-show="!(qm.reasons || []).length" class="text-xs text-muted">없음(통과)</span>
             </div></div>
             <div class="drow"><div class="k">법령</div><div class="v">
               <span class="text-sm text-body" x-text="lm.enabled ? ('대표등급 ' + lm.representative_grade + ' · ' + lm.representative_score) : '법령 필터 비활성(옵션)'"></span>
-              <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="h in (lm.harm_types || [])" x-bind:key="h.code"><span class="chip chip-int" x-text="h.code + ' · ' + h.grade"></span></template></div>
+              <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="h in (lm.harm_types || [])" x-bind:key="h.code"><span class="ds-badge ds-badge--intent" x-text="h.code + ' · ' + h.grade"></span></template></div>
             </div></div>
           </div></div>
         </div>
@@ -1202,7 +1202,7 @@
             </tbody></table></div>
           </div>
           <div class="panel"><div class="panel-hd"><b>조건형 토픽</b><span class="meta">관심사 × 소비 방식</span></div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="chip" x-bind:class="t.active ? 'chip-ent' : 'chip-cat'" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||'')):'')"></span></template>
+            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="ds-badge ds-badge--neutral" x-bind:class="t.active ? 'ds-badge--entity' : 'ds-badge--category'" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||'')):'')"></span></template>
           </div></div>
         </div>
       </div>
@@ -1215,7 +1215,7 @@
         </div></div>
 
         <!-- 인라인 편집 바 -->
-        <div x-show="editT" x-cloak class="panel" style="border-color:rgba(91,82,255,.4)"><div class="panel-bd">
+        <div x-show="editT" x-cloak class="panel" style="border-color:rgba(52,180,196,.4)"><div class="panel-bd">
           <div class="flex items-center justify-between mb-2"><b class="text-sm text-white" x-text="'편집 · ' + editTitle"></b>
             <span class="text-xs text-muted" x-text="editKind==='list' ? '한 줄에 하나씩' : '텍스트'"></span></div>
           <textarea x-model="editVal" rows="6" class="field" style="height:auto;padding:11px 12px"></textarea>
@@ -1230,7 +1230,7 @@
           <div class="panel"><div class="panel-hd"><b>인텐트 · 범용(8)</b>
             <button type="button" class="copybtn" x-on:click="startEdit('intent_universal', null, dictData.intentUniversal, 'list', '인텐트 범용')">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="i"></span></template>
           </div></div>
           <div class="panel"><div class="panel-hd"><b>인텐트 · 서비스별</b>
             <select x-model="dictGroup" class="field" style="width:auto;height:32px;padding:0 28px 0 10px">
@@ -1238,7 +1238,7 @@
             </select>
             <button type="button" class="copybtn" x-on:click="startEdit('intent_by_service', dictGroup, (dictData.intentByService[dictGroup]||[]), 'list', '인텐트 · ' + dictGroup)">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="i"></span></template>
             <span x-show="!(dictData && dictData.intentByService[dictGroup] && dictData.intentByService[dictGroup].length)" class="text-xs text-muted">항목 없음</span>
           </div></div>
           <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span>
@@ -1252,7 +1252,7 @@
                     <button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button>
                   </div>
                   <div class="flex flex-wrap gap-1.5">
-                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="chip chip-cat" x-text="t2"></span></template>
+                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" x-text="t2"></span></template>
                   </div>
                 </div>
               </template>
@@ -1261,7 +1261,7 @@
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div><div class="panel-bd space-y-2">
               <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
-                <div><span class="chip chip-ent" x-text="g"></span> <span class="text-xs text-muted" x-text="ts.join(' · ')"></span></div>
+                <div><span class="ds-badge ds-badge--entity" x-text="g"></span> <span class="text-xs text-muted" x-text="ts.join(' · ')"></span></div>
               </template>
             </div></div>
             <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
@@ -1275,7 +1275,7 @@
                 <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr>
                   <td class="text-white" x-text="k"></td>
                   <td><span class="text-white" x-text="(dictData.qualityNames&&dictData.qualityNames[k])||''"></span> <span class="text-muted" x-text="v"></span></td>
-                  <td><span class="chip" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'chip-int':'chip-cat'" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
+                  <td><span class="ds-badge ds-badge--neutral" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'ds-badge--intent':'ds-badge--category'" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
                   <td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td>
                 </tr></template>
               </tbody></table></div></div>
@@ -1291,7 +1291,7 @@
       <div x-show="mod === 'user'" x-cloak class="mx-auto max-w-4xl space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="flex items-center justify-between gap-3 flex-wrap">
-            <div class="text-xs text-muted">행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <span class="text-body">소비 형태 · 강도 · 선호</span>를 산출합니다. <code class="text-[#b9b3ff]">content_id</code> = 추출 순서(0부터).</div>
+            <div class="text-xs text-muted">행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <span class="text-body">소비 형태 · 강도 · 선호</span>를 산출합니다. <code class="text-[#8fd9e2]">content_id</code> = 추출 순서(0부터).</div>
             <div class="flex items-center gap-2">
               <a href="/usermeta-template.csv" download class="inline-flex items-center gap-1.5 rounded-md border border-white/[0.12] px-2.5 py-1 text-xs font-medium text-white hover:bg-white/[0.06]">템플릿</a>
               <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-violet px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-hover">
@@ -1307,15 +1307,15 @@
           <template x-for="u in (userData?userData.users:[])" x-bind:key="u.user_id">
             <div class="panel"><div class="panel-hd">
               <b x-text="u.user_id"></b>
-              <span class="chip chip-ent" x-text="u.persona"></span>
+              <span class="ds-badge ds-badge--entity" x-text="u.persona"></span>
               <span class="meta tnum ml-auto" x-text="'조회 ' + u.engagement.views + ' · 클릭률 ' + u.engagement.click_rate + ' · 평균체류 ' + u.engagement.avg_dwell_sec + 's'"></span>
             </div><div class="panel-bd">
               <div class="drow"><div class="k">소비 형태</div><div class="v text-sm text-body" x-text="Object.entries(u.form).map(e=>e[0]+':'+e[1]).join(' · ')"></div></div>
               <div class="drow"><div class="k">소비 강도</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="chip" x-bind:class="v==='고'?'chip-ent':(v==='중'?'chip-int':'chip-cat')" x-text="k + ' (' + v + ')'"></span></template>
+                <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="ds-badge ds-badge--neutral" x-bind:class="v==='고'?'ds-badge--entity':(v==='중'?'ds-badge--intent':'ds-badge--category')" x-text="k + ' (' + v + ')'"></span></template>
               </div></div>
               <div class="drow"><div class="k">선호 엔티티</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="chip chip-ent" x-text="e[0]"></span></template>
+                <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="ds-badge ds-badge--entity" x-text="e[0]"></span></template>
                 <span x-show="!(u.affinity_entities||[]).length" class="text-xs text-muted">—</span>
               </div></div>
             </div></div>
@@ -1340,11 +1340,11 @@
         <div x-show="result" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>추출 trace</b><span class="meta" x-text="tr.prompt_version || ''"></span></div><div class="panel-bd">
             <div class="drow"><div class="k">fallback</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="chip chip-cat" x-text="f"></span></template>
+              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" x-text="f"></span></template>
               <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
             </div></div>
             <div class="drow"><div class="k">검증 verdict</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="chip chip-int" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
+              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
               <span x-show="!(tr.agent_verdicts||[]).length" class="text-xs text-muted">없음</span>
             </div></div>
             <div class="drow"><div class="k">비용 · 토큰</div><div class="v text-sm text-body tnum" x-text="'$' + (tr.cost_usd||0).toFixed(4) + ' · ' + JSON.stringify(tr.tokens||{})"></div></div>
