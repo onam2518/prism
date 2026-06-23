@@ -620,6 +620,8 @@ class Handler(BaseHTTPRequestHandler):
         ".css": "text/css; charset=utf-8",
         ".woff2": "font/woff2",
         ".woff": "font/woff",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
     }
 
     def _send_vendor(self, name):
@@ -1150,6 +1152,13 @@ PAGE = """<!doctype html>
   .ds-dropzone .dz-t{font-size:var(--ds-size-label);color:var(--ds-ink);font-weight:600}
   .ds-dropzone .dz-d{font-size:var(--ds-size-caption);color:var(--ds-muted)}
   .ds-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  /* HeroEmpty(빈 상태) */
+  .ds-hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;
+    padding:48px 24px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-xl);font-family:var(--ds-font-body);
+    background:radial-gradient(440px 210px at 50% 0%,var(--ds-primary-tint),transparent 70%),var(--ds-surface)}
+  .ds-hero__title{font-family:var(--ds-font-sans);font-size:var(--ds-size-heading);font-weight:600;color:var(--ds-ink);margin-top:12px}
+  .ds-hero__desc{font-size:var(--ds-size-body);color:var(--ds-muted);max-width:30rem;line-height:var(--ds-lh-normal)}
+  .ds-hero__chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
 
   /* 드롭존(파일 업로드) — .field 와 동일 규격. 점선 테두리·우측 버튼만 다름 */
   .dropzone{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
@@ -1563,52 +1572,51 @@ PAGE = """<!doctype html>
           </div>
         </section>
 
-        <!-- 빈 상태 (히어로 + 추천 칩) -->
+        <!-- 빈 상태 (HeroEmpty: 캐릭터 + 추천 칩) -->
         <div x-show="!result && !batchResult && !loading" x-cloak class="mt-6">
-          <div class="hero">
-            <div class="orb">
-              <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 6.3L21 11.5l-6.8 2.2L12 21l-2.2-7.3L3 11.5l6.8-2.2z"/></svg>
-            </div>
-            <h2 class="mt-4 text-lg font-semibold text-white">콘텐츠에서 리드문과 메타를 추출합니다</h2>
-            <p class="mt-1.5 max-w-md text-sm text-muted">이미지·텍스트·엑셀을 입력하면 리드문(요약 한 문장)·엔티티·인텐트·콘텐츠 카테고리가 한 방향으로 정리됩니다.</p>
-            <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
-              <button type="button" class="schip" x-on:click="selectTab('image')">
-                <svg class="h-3.5 w-3.5 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>
-                이미지에서 추출
+          <div class="ds-dark ds-pilot ds-hero">
+            <span class="ds-character ds-character--bob" style="width:104px;height:104px"><img src="/vendor/daesik-batter.svg" alt="대식 (타자)"></span>
+            <h2 class="ds-hero__title">콘텐츠에서 리드문과 메타를 추출합니다</h2>
+            <p class="ds-hero__desc">이미지·텍스트·엑셀을 입력하면 리드문(요약 한 문장)·엔티티·인텐트·콘텐츠 카테고리가 한 방향으로 정리됩니다.</p>
+            <div class="ds-hero__chips">
+              <button type="button" class="ds-attachment" x-on:click="selectTab('image')" style="cursor:pointer">
+                <span class="ds-attachment__icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg></span>
+                <span class="ds-attachment__name">이미지에서 추출</span>
               </button>
-              <button type="button" class="schip" x-on:click="selectTab('text')">
-                <svg class="h-3.5 w-3.5 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
-                기사 본문 붙여넣기
+              <button type="button" class="ds-attachment" x-on:click="selectTab('text')" style="cursor:pointer">
+                <span class="ds-attachment__icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg></span>
+                <span class="ds-attachment__name">기사 본문 붙여넣기</span>
               </button>
-              <button type="button" class="schip" x-on:click="selectTab('excel')">
-                <svg class="h-3.5 w-3.5 text-violet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
-                엑셀 일괄 처리
+              <button type="button" class="ds-attachment" x-on:click="selectTab('excel')" style="cursor:pointer">
+                <span class="ds-attachment__icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg></span>
+                <span class="ds-attachment__name">엑셀 일괄 처리</span>
               </button>
             </div>
           </div>
         </div>
 
-        <!-- 로딩 스켈레톤 -->
-        <div x-show="loading" x-cloak class="mt-6">
-          <!-- 엑셀 일괄: 행 수가 많아 시간이 걸림 -->
-          <div x-show="activeTabId === 'excel'" class="panel">
-            <div class="panel-hd"><b>일괄 처리 중</b><span class="skel" style="width:92px;height:18px"></span></div>
-            <div class="panel-bd">
-              <p class="text-sm text-body">행마다 추출 중입니다. 행 수에 따라 다소 시간이 걸릴 수 있습니다.</p>
-              <div class="mt-3 space-y-2">
-                <div class="skel" style="height:18px"></div>
-                <div class="skel" style="width:88%;height:18px"></div>
-                <div class="skel" style="width:72%;height:18px"></div>
+        <!-- 처리 대기 화면: Processing(캐릭터) + Steps (디자인 시스템) -->
+        <div x-show="loading" x-cloak class="ds-dark ds-pilot mt-6 panel" style="border-color:var(--ds-hairline)">
+          <div class="panel-bd">
+            <!-- Processing -->
+            <div class="ds-processing">
+              <span class="ds-processing__char"><span class="ds-character ds-character--bob" style="width:96px;height:96px"><img src="/vendor/yonghee-pitcher.svg" alt="용희 (투수)"></span></span>
+              <div>
+                <div class="ds-processing__title" x-text="activeTabId === 'excel' ? '일괄 추출 중' : '메타데이터 추출 중'"></div>
+                <div class="ds-processing__msg"><span class="ds-processing__dots" x-text="activeTabId === 'excel' ? '행마다 추출하고 있어요' : (activeTabId === 'image' ? '이미지를 읽고 있어요' : '리드문·메타를 생성하고 있어요')"></span></div>
+              </div>
+              <div style="width:100%;max-width:340px">
+                <div class="ds-progress ds-progress--indeterminate"><div class="ds-progress__track" role="progressbar"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div>
               </div>
             </div>
-          </div>
-          <!-- 단건(이미지·텍스트) -->
-          <div x-show="activeTabId !== 'excel'" class="panel">
-            <div class="panel-hd"><b x-text="activeTabId === 'image' ? '이미지 이해 중' : '처리 중'"></b><span class="skel" style="width:92px;height:18px"></span></div>
-            <div class="drow"><div class="k">리드문</div><div class="v"><div class="skel" style="height:46px"></div></div></div>
-            <div class="drow"><div class="k">엔티티</div><div class="v"><div class="skel" style="width:62%;height:22px"></div></div></div>
-            <div class="drow"><div class="k">인텐트</div><div class="v"><div class="skel" style="width:46%;height:22px"></div></div></div>
-            <div class="drow"><div class="k">콘텐츠 카테고리</div><div class="v"><div class="skel" style="width:74%;height:22px"></div></div></div>
+            <!-- Steps -->
+            <div class="ds-steps mt-5" style="max-width:420px">
+              <div class="ds-step ds-step--done"><div class="ds-step__rail"><span class="ds-step__marker"><svg class="ds-step__check" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">입력 수집</div><div class="ds-step__detail" x-text="activeTabId === 'excel' ? '엑셀 행 매핑' : '콘텐츠 정규화'"></div></div></div>
+              <div class="ds-step" x-bind:class="activeTabId === 'image' ? 'ds-step--active' : 'ds-step--done'"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">이미지 이해</div><div class="ds-step__detail" x-text="activeTabId === 'image' ? '시각 모델로 읽는 중' : '텍스트는 건너뜀'"></div></div></div>
+              <div class="ds-step ds-step--active"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">메타 추출</div><div class="ds-step__detail">리드문 · 엔티티 · 인텐트 · 카테고리</div></div></div>
+              <div class="ds-step ds-step--pending"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">품질 판정</div><div class="ds-step__detail">G / R</div></div></div>
+              <div class="ds-step ds-step--pending"><div class="ds-step__rail"><span class="ds-step__marker"></span></div><div class="ds-step__body"><div class="ds-step__title">완료</div></div></div>
+            </div>
           </div>
         </div>
 
