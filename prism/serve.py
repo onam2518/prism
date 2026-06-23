@@ -1678,7 +1678,7 @@ PAGE = """<!doctype html>
                     <tr>
                       <td class="text-white" x-text="it.title || '—'"></td>
                       <td x-text="it.summary || '—'"></td>
-                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="chip chip-ent" x-text="e"></span></template><span x-show="!(it.entities||[]).length">—</span></div></td>
+                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="!(it.entities||[]).length">—</span></div></td>
                       <td><span class="gpill" x-bind:class="it.grade === 'G' ? 'gpill-g' : 'gpill-r'"><span class="d"></span><span x-text="it.grade || '—'"></span></span></td>
                     </tr>
                   </template>
@@ -1715,21 +1715,21 @@ PAGE = """<!doctype html>
             <div class="drow">
               <div class="k">엔티티</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="chip chip-ent" x-text="x"></span></template>
+                <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="ds-badge ds-badge--entity" x-text="x"></span></template>
                 <span x-show="!(im.entities || []).length" class="text-xs text-muted">—</span>
               </div>
             </div>
             <div class="drow">
               <div class="k">인텐트</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="chip chip-int" x-text="x"></span></template>
+                <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="ds-badge ds-badge--intent" x-text="x"></span></template>
                 <span x-show="!(im.intent || []).length" class="text-xs text-muted">—</span>
               </div>
             </div>
             <div class="drow">
               <div class="k">콘텐츠 카테고리</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in contentCats" x-bind:key="x"><span class="chip chip-cat" x-text="x"></span></template>
+                <template x-for="x in contentCats" x-bind:key="x"><span class="ds-badge ds-badge--category" x-text="x"></span></template>
                 <span x-show="!contentCats.length" class="text-xs text-muted">—</span>
               </div>
             </div>
@@ -1823,14 +1823,14 @@ PAGE = """<!doctype html>
         <div class="panel"><div class="panel-hd"><b>ITEM TYPE 처리 정책</b><span class="meta">131</span></div>
           <div class="overflow-auto"><table class="tbl"><thead><tr><th>ITEM TYPE</th><th>필터 대상</th><th>처리 방식</th><th>상태</th></tr></thead><tbody>
             <tr><td class="text-white">텍스트형</td><td>O</td><td>정상 분류(품질 메타 부여)</td><td><span class="gpill gpill-g"><span class="d"></span>구현</span></td></tr>
-            <tr><td class="text-white">이미지형</td><td>△</td><td>GREEN 일괄 + 캡션 텍스트(시각 이해)</td><td><span class="chip chip-int">PoC</span></td></tr>
+            <tr><td class="text-white">이미지형</td><td>△</td><td>GREEN 일괄 + 캡션 텍스트(시각 이해)</td><td><span class="ds-badge ds-badge--intent">PoC</span></td></tr>
             <tr><td class="text-white">영상형</td><td>X</td><td>GREEN 일괄(Argos 별도)</td><td><span class="text-xs text-muted">계획</span></td></tr>
             <tr><td class="text-white">SNS형</td><td>X</td><td>서비스 자체 필터 후 인입</td><td><span class="text-xs text-muted">계획</span></td></tr>
             <tr><td class="text-white">묶음형 · 데이터형</td><td>X</td><td>GREEN 일괄(고도화 과제)</td><td><span class="text-xs text-muted">계획</span></td></tr>
           </tbody></table></div>
         </div>
         <div class="panel"><div class="panel-hd"><b>콘텐츠 출처 분류</b></div><div class="panel-bd">
-          <div class="flex flex-wrap gap-1.5"><span class="chip chip-cat">PGC 기존 미디어</span><span class="chip chip-cat">UGC 사용자 생성</span><span class="chip chip-cat">AIGC AI 생성</span><span class="chip chip-cat">AIEC AI 보정</span></div>
+          <div class="flex flex-wrap gap-1.5"><span class="ds-badge ds-badge--category">PGC 기존 미디어</span><span class="ds-badge ds-badge--category">UGC 사용자 생성</span><span class="ds-badge ds-badge--category">AIGC AI 생성</span><span class="ds-badge ds-badge--category">AIEC AI 보정</span></div>
           <p class="mt-2 text-xs text-muted">식별 표준 · C2PA(자격 증명) · SynthID(워터마크). 발행자 정보로 PGC/UGC 1차 식별.</p>
         </div></div>
       </div>
@@ -1852,12 +1852,12 @@ PAGE = """<!doctype html>
           </div><div class="panel-bd">
             <div class="drow"><div class="k">검수</div><div class="v text-sm text-body" x-text="(qm.review || 'auto') + (qm.confidence != null ? (' · conf ' + qm.confidence) : '')"></div></div>
             <div class="drow"><div class="k">품질 사유</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="chip chip-cat" x-text="r"></span></template>
+              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="ds-badge ds-badge--category" x-text="r"></span></template>
               <span x-show="!(qm.reasons || []).length" class="text-xs text-muted">없음(통과)</span>
             </div></div>
             <div class="drow"><div class="k">법령</div><div class="v">
               <span class="text-sm text-body" x-text="lm.enabled ? ('대표등급 ' + lm.representative_grade + ' · ' + lm.representative_score) : '법령 필터 비활성(옵션)'"></span>
-              <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="h in (lm.harm_types || [])" x-bind:key="h.code"><span class="chip chip-int" x-text="h.code + ' · ' + h.grade"></span></template></div>
+              <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="h in (lm.harm_types || [])" x-bind:key="h.code"><span class="ds-badge ds-badge--intent" x-text="h.code + ' · ' + h.grade"></span></template></div>
             </div></div>
           </div></div>
         </div>
@@ -1880,7 +1880,7 @@ PAGE = """<!doctype html>
             </tbody></table></div>
           </div>
           <div class="panel"><div class="panel-hd"><b>조건형 토픽</b><span class="meta">관심사 × 소비 방식</span></div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="chip" x-bind:class="t.active ? 'chip-ent' : 'chip-cat'" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||'')):'')"></span></template>
+            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="ds-badge ds-badge--neutral" x-bind:class="t.active ? 'ds-badge--entity' : 'ds-badge--category'" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||'')):'')"></span></template>
           </div></div>
         </div>
       </div>
@@ -1908,7 +1908,7 @@ PAGE = """<!doctype html>
           <div class="panel"><div class="panel-hd"><b>인텐트 · 범용(8)</b>
             <button type="button" class="copybtn" x-on:click="startEdit('intent_universal', null, dictData.intentUniversal, 'list', '인텐트 범용')">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="i"></span></template>
           </div></div>
           <div class="panel"><div class="panel-hd"><b>인텐트 · 서비스별</b>
             <select x-model="dictGroup" class="field" style="width:auto;height:32px;padding:0 28px 0 10px">
@@ -1916,7 +1916,7 @@ PAGE = """<!doctype html>
             </select>
             <button type="button" class="copybtn" x-on:click="startEdit('intent_by_service', dictGroup, (dictData.intentByService[dictGroup]||[]), 'list', '인텐트 · ' + dictGroup)">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="i"></span></template>
             <span x-show="!(dictData && dictData.intentByService[dictGroup] && dictData.intentByService[dictGroup].length)" class="text-xs text-muted">항목 없음</span>
           </div></div>
           <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span>
@@ -1930,7 +1930,7 @@ PAGE = """<!doctype html>
                     <button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button>
                   </div>
                   <div class="flex flex-wrap gap-1.5">
-                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="chip chip-cat" x-text="t2"></span></template>
+                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" x-text="t2"></span></template>
                   </div>
                 </div>
               </template>
@@ -1939,7 +1939,7 @@ PAGE = """<!doctype html>
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div><div class="panel-bd space-y-2">
               <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
-                <div><span class="chip chip-ent" x-text="g"></span> <span class="text-xs text-muted" x-text="ts.join(' · ')"></span></div>
+                <div><span class="ds-badge ds-badge--entity" x-text="g"></span> <span class="text-xs text-muted" x-text="ts.join(' · ')"></span></div>
               </template>
             </div></div>
             <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
@@ -1953,7 +1953,7 @@ PAGE = """<!doctype html>
                 <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr>
                   <td class="text-white" x-text="k"></td>
                   <td><span class="text-white" x-text="(dictData.qualityNames&&dictData.qualityNames[k])||''"></span> <span class="text-muted" x-text="v"></span></td>
-                  <td><span class="chip" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'chip-int':'chip-cat'" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
+                  <td><span class="ds-badge ds-badge--neutral" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'ds-badge--intent':'ds-badge--category'" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
                   <td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td>
                 </tr></template>
               </tbody></table></div></div>
@@ -1985,15 +1985,15 @@ PAGE = """<!doctype html>
           <template x-for="u in (userData?userData.users:[])" x-bind:key="u.user_id">
             <div class="panel"><div class="panel-hd">
               <b x-text="u.user_id"></b>
-              <span class="chip chip-ent" x-text="u.persona"></span>
+              <span class="ds-badge ds-badge--entity" x-text="u.persona"></span>
               <span class="meta tnum ml-auto" x-text="'조회 ' + u.engagement.views + ' · 클릭률 ' + u.engagement.click_rate + ' · 평균체류 ' + u.engagement.avg_dwell_sec + 's'"></span>
             </div><div class="panel-bd">
               <div class="drow"><div class="k">소비 형태</div><div class="v text-sm text-body" x-text="Object.entries(u.form).map(e=>e[0]+':'+e[1]).join(' · ')"></div></div>
               <div class="drow"><div class="k">소비 강도</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="chip" x-bind:class="v==='고'?'chip-ent':(v==='중'?'chip-int':'chip-cat')" x-text="k + ' (' + v + ')'"></span></template>
+                <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="ds-badge ds-badge--neutral" x-bind:class="v==='고'?'ds-badge--entity':(v==='중'?'ds-badge--intent':'ds-badge--category')" x-text="k + ' (' + v + ')'"></span></template>
               </div></div>
               <div class="drow"><div class="k">선호 엔티티</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="chip chip-ent" x-text="e[0]"></span></template>
+                <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="ds-badge ds-badge--entity" x-text="e[0]"></span></template>
                 <span x-show="!(u.affinity_entities||[]).length" class="text-xs text-muted">—</span>
               </div></div>
             </div></div>
@@ -2018,11 +2018,11 @@ PAGE = """<!doctype html>
         <div x-show="result" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>추출 trace</b><span class="meta" x-text="tr.prompt_version || ''"></span></div><div class="panel-bd">
             <div class="drow"><div class="k">fallback</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="chip chip-cat" x-text="f"></span></template>
+              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" x-text="f"></span></template>
               <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
             </div></div>
             <div class="drow"><div class="k">검증 verdict</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="chip chip-int" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
+              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
               <span x-show="!(tr.agent_verdicts||[]).length" class="text-xs text-muted">없음</span>
             </div></div>
             <div class="drow"><div class="k">비용 · 토큰</div><div class="v text-sm text-body tnum" x-text="'$' + (tr.cost_usd||0).toFixed(4) + ' · ' + JSON.stringify(tr.tokens||{})"></div></div>
