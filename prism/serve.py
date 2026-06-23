@@ -178,7 +178,11 @@ def build_report_html() -> str:
 
 # ── 설정(API 키 / 모델 / 엔드포인트) ─────────────────────────────────────────
 _KEY_PATH = os.path.expanduser("~/.prism_key")              # Upstage Solar
-_ROUTER_KEY_PATH = os.path.expanduser("~/.prism_router_key")  # BizRouter
+# 라우터별 키 저장 경로(BizRouter · Timely). env 는 imagext.ROUTERS[*]['key_env'].
+_ROUTER_KEY_PATHS = {
+    "bizrouter": os.path.expanduser("~/.prism_bizrouter_key"),
+    "timely": os.path.expanduser("~/.prism_timely_key"),
+}
 
 
 def load_persisted_key():
@@ -190,21 +194,24 @@ def load_persisted_key():
                 os.environ["UPSTAGE_API_KEY"] = k
         except Exception:
             pass
-    if not IMG._router_key() and os.path.exists(_ROUTER_KEY_PATH):
-        try:
-            k = open(_ROUTER_KEY_PATH, encoding="utf-8").read().strip()
-            if k:
-                os.environ["PRISM_ROUTER_KEY"] = k
-        except Exception:
-            pass
+    for service, path in _ROUTER_KEY_PATHS.items():
+        env = IMG.ROUTERS[service]["key_env"]
+        if not IMG.router_key(service) and os.path.exists(path):
+            try:
+                k = open(path, encoding="utf-8").read().strip()
+                if k:
+                    os.environ[env] = k
+            except Exception:
+                pass
 
 
 def make_text_llm(cfg: Config, mock: bool) -> LLMClient:
     """텍스트 슬롯 제공자에 맞춰 LLMClient 구성.
-    solar=직접(Upstage), router=BizRouter(prefixed 모델 + 라우터 키)."""
-    if cfg.text_provider == "router" and IMG._router_key() and cfg.text_model:
-        cfg.chat_url = (cfg.router_url or "https://bizrouter.ai/api/v1").rstrip("/") + "/chat/completions"
-        return LLMClient(mock=mock, config=cfg, api_key=IMG._router_key(), model=cfg.text_model)
+    solar=직접(Upstage), bizrouter/timely=통합 라우터(public id 모델 + 라우터 키)."""
+    if IMG.is_router(cfg.text_provider) and IMG.router_key(cfg.text_provider) and cfg.text_model:
+        cfg.chat_url = IMG.router_chat_url(cfg.text_provider)
+        return LLMClient(mock=mock, config=cfg,
+                         api_key=IMG.router_key(cfg.text_provider), model=cfg.text_model)
     return LLMClient(mock=mock, config=cfg)
 
 
@@ -229,8 +236,10 @@ def config_status() -> dict:
         "configured": cfg.is_configured(),
         "forcedMock": Handler.server_mock,
         # 모델 슬롯
-        "hasRouterKey": bool(IMG._router_key()),
-        "routerPersisted": os.path.exists(_ROUTER_KEY_PATH),
+        "hasBizKey": bool(IMG.router_key("bizrouter")),
+        "bizPersisted": os.path.exists(_ROUTER_KEY_PATHS["bizrouter"]),
+        "hasTimelyKey": bool(IMG.router_key("timely")),
+        "timelyPersisted": os.path.exists(_ROUTER_KEY_PATHS["timely"]),
         "textProvider": cfg.text_provider or "solar",
         "textModel": cfg.text_model or "",
         "visionProvider": cfg.vision_provider or "upstage_ie",
@@ -256,23 +265,25 @@ def apply_config(data: dict) -> dict:
             os.remove(_KEY_PATH)
         except OSError:
             pass
-    # BizRouter 키(별도)
-    rkey = (data.get("router_api_key") or "").strip()
-    if rkey:
-        os.environ["PRISM_ROUTER_KEY"] = rkey
-        if data.get("persist"):
+    # 라우터 키(BizRouter · Timely, 서비스별 별도 저장)
+    for service, path in _ROUTER_KEY_PATHS.items():
+        env = IMG.ROUTERS[service]["key_env"]
+        rkey = (data.get(service + "_api_key") or "").strip()
+        if rkey:
+            os.environ[env] = rkey
+            if data.get("persist"):
+                try:
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(rkey)
+                    os.chmod(path, 0o600)
+                except Exception:
+                    pass
+        elif data.get("forget_" + service):
+            os.environ.pop(env, None)
             try:
-                with open(_ROUTER_KEY_PATH, "w", encoding="utf-8") as f:
-                    f.write(rkey)
-                os.chmod(_ROUTER_KEY_PATH, 0o600)
-            except Exception:
+                os.remove(path)
+            except OSError:
                 pass
-    elif data.get("forget_router"):
-        os.environ.pop("PRISM_ROUTER_KEY", None)
-        try:
-            os.remove(_ROUTER_KEY_PATH)
-        except OSError:
-            pass
     model = (data.get("model") or "").strip()
     base = (data.get("base_url") or "").strip()
     reasoning = (data.get("reasoning") or "").strip()
@@ -480,38 +491,110 @@ PAGE = """<!doctype html>
       group: '뉴스',
       imgTitle: '', imgCaption: '',
       txtTitle: '', txtBody: '',
-      fileLabel: '선택된 파일 없음', excelLabel: '선택된 파일 없음',
+      imgFiles: [], imgThumbs: [], imgDrag: false,
+      excelFile: null, xlsDrag: false,
+      copyMsg: '',
 
       // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) — 우측 설정 패널
-      cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasRouterKey: false },
+      cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasBizKey: false, hasTimelyKey: false },
       cfgKey: '', cfgModel: '', cfgPersist: true, cfgMsg: '', cfgBusy: false,
       models: [], modelsMsg: '',
       reasoning: 'default', systemPrompt: '', prefMsg: '',
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],
 
-      // BizRouter(통합 라우터) 키 + 모델 슬롯
-      rKey: '', rMsg: '',
+      // 통합 라우터(BizRouter · Timely) 키 + 모델 슬롯
+      bizKey: '', bizMsg: '', timelyKey: '', timelyMsg: '',
       textProvider: 'solar', textModel: '',
       visionProvider: 'upstage_ie', visionModel: '',
       slotMsg: '',
       cfgOpen: true, _accInit: false,   // 연결·모델 섹션 접힘(설정되면 접음)
-      routerTextModels: ['openai/gpt-5.4', 'openai/gpt-5.4-mini', 'anthropic/claude-sonnet-4.6',
-        'anthropic/claude-opus-4.6', 'google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'deepseek/deepseek-v3.2'],
-      routerVisionModels: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai/gpt-5.4',
-        'openai/gpt-5-mini', 'anthropic/claude-sonnet-4.6', 'anthropic/claude-opus-4.6'],
+      providerLabels: { solar: 'Solar', upstage_ie: 'Upstage', bizrouter: 'BizRouter', timely: 'Timely' },
+      modelCatalog: {
+        bizrouter: {
+          text: ['openai/gpt-5.4', 'openai/gpt-5.4-mini', 'anthropic/claude-sonnet-4.6',
+            'anthropic/claude-opus-4.6', 'google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'deepseek/deepseek-v3.2'],
+          vision: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai/gpt-5.4',
+            'openai/gpt-5-mini', 'anthropic/claude-sonnet-4.6', 'anthropic/claude-opus-4.6'],
+        },
+        timely: {
+          text: ['gpt-5.4', 'gpt-5.4-mini', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5',
+            'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'deepseek-v4-pro', 'deepseek-chat'],
+          vision: ['gpt-5.4', 'gpt-5.4-mini', 'claude-opus-4-8', 'claude-sonnet-4-6',
+            'gemini-3.5-flash', 'gemini-3.1-pro-preview'],
+        },
+      },
 
       init() {
         this.refreshConfig();
         fetch('/vocab').then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {});
+        // Cmd/Ctrl + Enter 로 추출 실행
+        window.addEventListener('keydown', (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !this.loading) { e.preventDefault(); this.run(); }
+        });
       },
       get tabLabel() { return (this.tabItems.find(t => t.id === this.activeTabId) || {}).label || ''; },
-      get textReady() { return this.textProvider === 'router' ? !!this.cfg.hasRouterKey : !!this.cfg.hasKey; },
+      routerKeyPresent(p) { return p === 'bizrouter' ? !!this.cfg.hasBizKey : p === 'timely' ? !!this.cfg.hasTimelyKey : false; },
+      isRouter(p) { return p === 'bizrouter' || p === 'timely'; },
+      get textReady() { return this.isRouter(this.textProvider) ? this.routerKeyPresent(this.textProvider) : !!this.cfg.hasKey; },
+      get textModelList() { return this.isRouter(this.textProvider) ? this.modelCatalog[this.textProvider].text : []; },
+      get visionModelList() { return this.isRouter(this.visionProvider) ? this.modelCatalog[this.visionProvider].vision : []; },
       get modelSummary() {
-        const t = this.textProvider === 'router' ? ('BizRouter · ' + (this.textModel || '-')) : ('Solar · ' + (this.cfg.model || '-'));
-        const v = this.visionProvider === 'router' ? ('BizRouter · ' + (this.visionModel || '-')) : 'Upstage';
+        const t = this.isRouter(this.textProvider)
+          ? (this.providerLabels[this.textProvider] + ' · ' + (this.textModel || '-'))
+          : ('Solar · ' + (this.cfg.model || '-'));
+        const v = this.isRouter(this.visionProvider)
+          ? (this.providerLabels[this.visionProvider] + ' · ' + (this.visionModel || '-'))
+          : 'Upstage';
         return '텍스트 ' + t + ' / 이미지 ' + v;
       },
-      onExcel(e) { const fs = e.target.files; this.excelLabel = fs.length ? fs[0].name : '선택된 파일 없음'; },
+      // ── 이미지 입력: 선택·드롭·붙여넣기·썸네일 ──
+      get fileLabel() { return this.imgFiles.length ? (this.imgFiles.length + '개 선택됨') : '선택된 파일 없음'; },
+      get excelLabel() { return this.excelFile ? this.excelFile.name : '선택된 파일 없음'; },
+      addImages(list) {
+        const imgs = Array.from(list || []).filter((f) => f.type.startsWith('image/'));
+        if (!imgs.length) return;
+        this.imgFiles = this.imgFiles.concat(imgs);
+        this._rebuildThumbs();
+        this.status = '';
+      },
+      _rebuildThumbs() {
+        this.imgThumbs.forEach((u) => URL.revokeObjectURL(u));
+        this.imgThumbs = this.imgFiles.map((f) => URL.createObjectURL(f));
+      },
+      onFiles(e) { this.addImages(e.target.files); e.target.value = ''; },
+      onDropImages(e) { this.imgDrag = false; this.addImages(e.dataTransfer.files); },
+      onPasteImages(e) {
+        const items = (e.clipboardData && e.clipboardData.items) || [];
+        const fs = [];
+        for (const it of items) { if (it.kind === 'file') { const f = it.getAsFile(); if (f) fs.push(f); } }
+        if (fs.length) { e.preventDefault(); this.addImages(fs); }
+      },
+      removeImage(i) {
+        URL.revokeObjectURL(this.imgThumbs[i]);
+        this.imgFiles.splice(i, 1); this.imgThumbs.splice(i, 1);
+      },
+      clearImages() { this.imgThumbs.forEach((u) => URL.revokeObjectURL(u)); this.imgFiles = []; this.imgThumbs = []; },
+      onExcel(e) { this.excelFile = e.target.files[0] || null; e.target.value = ''; this.status = ''; },
+      onDropExcel(e) { this.xlsDrag = false; const f = e.dataTransfer.files[0]; if (f) this.excelFile = f; },
+      clearExcel() { this.excelFile = null; },
+
+      // ── 결과 복사 / 내보내기 ──
+      async copyText(t, label) {
+        try { await navigator.clipboard.writeText(t || ''); this.flashCopy((label || '복사') + ' 됨'); }
+        catch (e) { this.flashCopy('복사 실패'); }
+      },
+      copyJSON() { this.copyText(JSON.stringify(this.result ? this.result.output : {}, null, 2), 'JSON'); },
+      flashCopy(m) { this.copyMsg = m; clearTimeout(this._cpT); this._cpT = setTimeout(() => { this.copyMsg = ''; }, 1600); },
+      exportBatchCsv() {
+        const its = (this.batchResult && this.batchResult.items) || [];
+        const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+        const rows = [['제목', '리드문', '엔티티', '인텐트', '등급']];
+        for (const it of its) rows.push([it.title, it.summary, (it.entities || []).join(' · '), (it.intent || []).join(' · '), it.grade]);
+        const csv = '\\ufeff' + rows.map((r) => r.map(esc).join(',')).join('\\r\\n');
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        const a = document.createElement('a'); a.href = url; a.download = 'prism_results.csv';
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      },
       get modelOptions() {
         const a = this.models.slice();
         if (this.cfgModel && !a.includes(this.cfgModel)) a.unshift(this.cfgModel);
@@ -548,34 +631,48 @@ PAGE = """<!doctype html>
           if (!this._accInit) { this._accInit = true; this.cfgOpen = !this.cfg.hasKey; }
         } catch (e) { /* noop */ }
       },
-      // BizRouter 키
-      async saveRouterKey() {
-        this.rMsg = '저장 중…';
+      // 라우터 키(BizRouter · Timely)
+      async saveRouterKey(service) {
+        const key = service === 'bizrouter' ? this.bizKey : this.timelyKey;
+        const setMsg = (m) => { if (service === 'bizrouter') this.bizMsg = m; else this.timelyMsg = m; };
+        setMsg('저장 중…');
         try {
-          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ router_api_key: this.rKey, persist: this.cfgPersist }) });
-          this.cfg = await r.json(); this.rKey = '';
-          this.rMsg = this.cfg.hasRouterKey ? '✓ 라우터 키 저장됨' : '저장 실패';
-        } catch (e) { this.rMsg = '오류: ' + e; }
+          const body = { persist: this.cfgPersist }; body[service + '_api_key'] = key;
+          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          this.cfg = await r.json();
+          if (service === 'bizrouter') this.bizKey = ''; else this.timelyKey = '';
+          setMsg(this.routerKeyPresent(service) ? '✓ 키 저장됨' : '저장 실패');
+        } catch (e) { setMsg('오류: ' + e); }
       },
-      async forgetRouterKey() {
-        try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ forget_router: true }) }); this.cfg = await r.json(); this.rMsg = '라우터 키 삭제됨'; }
-        catch (e) { this.rMsg = '오류: ' + e; }
+      async forgetRouterKey(service) {
+        const setMsg = (m) => { if (service === 'bizrouter') this.bizMsg = m; else this.timelyMsg = m; };
+        try {
+          const body = {}; body['forget_' + service] = true;
+          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          this.cfg = await r.json(); setMsg('키 삭제됨');
+        } catch (e) { setMsg('오류: ' + e); }
       },
       // 텍스트 슬롯(메타 생성)
-      setTextProvider(p) { this.textProvider = p; if (p === 'router' && !this.textModel) this.textModel = this.routerTextModels[0]; this.saveTextSlot(); },
+      setTextProvider(p) {
+        this.textProvider = p;
+        if (this.isRouter(p) && !this.textModelList.includes(this.textModel)) this.textModel = this.textModelList[0] || '';
+        this.saveTextSlot();
+      },
       async saveTextSlot() {
         this.slotMsg = '저장 중…';
         const payload = { text_provider: this.textProvider };
-        if (this.textProvider === 'router') payload.text_model = this.textModel;
+        if (this.isRouter(this.textProvider)) payload.text_model = this.textModel;
         else if (this.cfgModel) payload.model = this.cfgModel;
         try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
       // 비전 슬롯(이미지 맥락 생성)
-      setVisionProvider(p) { this.visionProvider = p; if (p === 'router' && !this.visionModel) this.visionModel = this.routerVisionModels[0]; this.saveVisionSlot(); },
+      setVisionProvider(p) {
+        this.visionProvider = p;
+        if (this.isRouter(p) && !this.visionModelList.includes(this.visionModel)) this.visionModel = this.visionModelList[0] || '';
+        this.saveVisionSlot();
+      },
       async saveVisionSlot() {
         this.slotMsg = '저장 중…';
         try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -619,10 +716,6 @@ PAGE = """<!doctype html>
       },
 
       selectTab(id) { this.activeTabId = id; this.status = ''; },
-      onFiles(e) {
-        const fs = e.target.files;
-        this.fileLabel = fs.length ? (fs.length + '개 파일 선택됨') : '선택된 파일 없음';
-      },
 
       // DNM 메타 체계(13. 프로젝트 기획 / 1312. 아이템 메타) 기준 item_meta 필드:
       //   summary(리드문) · entities(엔티티) · intent(인텐트) · content_category(콘텐츠 카테고리)
@@ -660,16 +753,14 @@ PAGE = """<!doctype html>
         const fd = new FormData();
         let endpoint = '/run';
         if (this.activeTabId === 'image') {
-          const fs = this.$refs.files.files;
-          if (!fs.length) { this.status = '이미지를 선택하세요'; this.loading = false; return; }
-          for (let i = 0; i < fs.length; i++) fd.append('image' + i, fs[i]);
+          if (!this.imgFiles.length) { this.status = '이미지를 선택하세요'; this.loading = false; return; }
+          this.imgFiles.forEach((f, i) => fd.append('image' + i, f));
           fd.append('displayServiceName', this.group);
           fd.append('title', this.imgTitle);
           fd.append('caption', this.imgCaption);
         } else if (this.activeTabId === 'excel') {
-          const fs = this.$refs.excel.files;
-          if (!fs.length) { this.status = '엑셀/CSV 파일을 선택하세요'; this.loading = false; return; }
-          fd.append('file', fs[0]); endpoint = '/run-batch';
+          if (!this.excelFile) { this.status = '엑셀/CSV 파일을 선택하세요'; this.loading = false; return; }
+          fd.append('file', this.excelFile); endpoint = '/run-batch';
         } else {
           fd.append('displayServiceName', this.group);
           fd.append('title', this.txtTitle);
@@ -732,9 +823,29 @@ PAGE = """<!doctype html>
     border-radius:var(--ctrl-r);border:1px dashed rgba(255,255,255,.16);background:#0d0c12;
     cursor:pointer;font-size:14px;color:#9aa0aa;transition:border-color .15s,background .15s}
   .dropzone:hover{border-color:rgba(91,82,255,.55);background:#0b0a0f}
+  .dropzone.drag{border-color:#5b52ff;border-style:solid;background:rgba(91,82,255,.10);color:#c8c3ff}
   .dropzone .pick{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
     border-radius:6px;background:rgba(255,255,255,.08);color:#fff;font-size:12px;font-weight:600}
   .dropzone .name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 썸네일 미리보기 */
+  .thumb{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.10);background:#0d0c12}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb-x{position:absolute;top:3px;right:3px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+    border-radius:5px;background:rgba(8,8,12,.72);color:#fff;opacity:0;transition:opacity .12s}
+  .thumb:hover .thumb-x{opacity:1}
+  .thumb-x svg{width:11px;height:11px}
+
+  /* 복사 토스트 */
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;
+    padding:8px 16px;border-radius:10px;font-size:13px;font-weight:600;color:#fff;
+    background:rgba(20,19,24,.92);border:1px solid rgba(255,255,255,.12);
+    box-shadow:0 12px 30px -10px rgba(0,0,0,.7);backdrop-filter:blur(8px)}
+  /* 인라인 복사 버튼 */
+  .copybtn{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:3px 8px;font-size:11.5px;
+    font-weight:600;color:#9aa0aa;border:1px solid rgba(255,255,255,.10);transition:color .12s,border-color .12s,background .12s}
+  .copybtn:hover{color:#fff;border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.05)}
+  .copybtn svg{width:12px;height:12px}
 
   /* 카드: 토큰 유지 + 미세 입체(상단 하이라이트)·호버 리프트 */
   .card{box-shadow:inset 0 1px 0 rgba(255,255,255,.045);
@@ -954,7 +1065,7 @@ PAGE = """<!doctype html>
       <span x-text="tabLabel + ' 입력'"></span>
       <span class="ml-auto inline-flex items-center gap-1.5">
         <span class="dot" x-bind:class="(textReady && !cfg.forcedMock) ? 'bg-solar' : 'bg-amber-400'"></span>
-        <span class="sub" x-text="cfg.forcedMock ? 'MOCK(강제)' : (textReady ? (textProvider === 'router' ? 'BizRouter 연결됨' : 'Solar 연결됨') : 'MOCK · 키 미설정')"></span>
+        <span class="sub" x-text="cfg.forcedMock ? 'MOCK(강제)' : (textReady ? (providerLabels[textProvider] + ' 연결됨') : 'MOCK · 키 미설정')"></span>
       </span>
     </div>
     <div class="pbody center">
@@ -971,17 +1082,35 @@ PAGE = """<!doctype html>
             </select>
           </div>
           <!-- 이미지 -->
-          <div x-show="activeTabId === 'image'" x-cloak class="space-y-4">
+          <div x-show="activeTabId === 'image'" x-cloak class="space-y-4"
+               x-on:paste.window="activeTabId === 'image' && onPasteImages($event)">
             <div>
               <label class="lbl">이미지 (여러 장이면 하나의 콘텐츠로 통합)</label>
-              <label class="dropzone">
-                <span class="name" x-text="fileLabel"></span>
+              <label class="dropzone" x-bind:class="imgDrag ? 'drag' : ''"
+                     x-on:dragover.prevent="imgDrag = true" x-on:dragleave.prevent="imgDrag = false"
+                     x-on:drop.prevent="onDropImages($event)">
+                <span class="name" x-text="imgDrag ? '여기에 놓기' : (fileLabel + ' · 끌어다 놓기 / 붙여넣기 가능')"></span>
                 <span class="pick">
                   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
                   파일 선택
                 </span>
-                <input x-ref="files" type="file" accept="image/*" multiple class="sr-only" x-on:change="onFiles($event)">
+                <input type="file" accept="image/*" multiple class="sr-only" x-on:change="onFiles($event)">
               </label>
+              <!-- 썸네일 미리보기 -->
+              <div x-show="imgFiles.length" x-cloak class="mt-2.5">
+                <div class="grid grid-cols-5 gap-2">
+                  <template x-for="(t, i) in imgThumbs" x-bind:key="i">
+                    <div class="thumb">
+                      <img x-bind:src="t" alt="" loading="lazy">
+                      <button type="button" class="thumb-x" x-on:click="removeImage(i)" aria-label="제거">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  </template>
+                </div>
+                <button type="button" x-show="imgFiles.length > 1" x-on:click="clearImages()"
+                  class="mt-2 text-xs font-medium text-muted transition-colors hover:text-white">모두 지우기</button>
+              </div>
             </div>
             <div><label class="lbl">제목 (선택)</label>
               <input x-model="imgTitle" class="field" placeholder="없으면 이미지에서 추론"></div>
@@ -1007,13 +1136,15 @@ PAGE = """<!doctype html>
             </div>
             <div>
               <label class="lbl">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
-              <label class="dropzone">
-                <span class="name" x-text="excelLabel"></span>
+              <label class="dropzone" x-bind:class="xlsDrag ? 'drag' : ''"
+                     x-on:dragover.prevent="xlsDrag = true" x-on:dragleave.prevent="xlsDrag = false"
+                     x-on:drop.prevent="onDropExcel($event)">
+                <span class="name" x-text="xlsDrag ? '여기에 놓기' : (excelLabel + ' · 끌어다 놓기 가능')"></span>
                 <span class="pick">
                   <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
                   파일 선택
                 </span>
-                <input x-ref="excel" type="file" accept=".xlsx,.csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="onExcel($event)">
+                <input type="file" accept=".xlsx,.csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="onExcel($event)">
               </label>
               <p class="mt-1.5 text-xs text-muted">행마다 한 콘텐츠로 일괄 추출합니다. 컬럼명이 제목/본문/서비스명과 달라도 자동 추론합니다. (최대 200행)</p>
             </div>
@@ -1058,8 +1189,21 @@ PAGE = """<!doctype html>
 
         <!-- 로딩 스켈레톤 -->
         <div x-show="loading" x-cloak class="mt-6">
-          <div class="panel">
-            <div class="panel-hd"><b>처리 중</b><span class="skel" style="width:92px;height:18px"></span></div>
+          <!-- 엑셀 일괄: 행 수가 많아 시간이 걸림 -->
+          <div x-show="activeTabId === 'excel'" class="panel">
+            <div class="panel-hd"><b>일괄 처리 중</b><span class="skel" style="width:92px;height:18px"></span></div>
+            <div class="panel-bd">
+              <p class="text-sm text-body">행마다 추출 중입니다. 행 수에 따라 다소 시간이 걸릴 수 있습니다.</p>
+              <div class="mt-3 space-y-2">
+                <div class="skel" style="height:18px"></div>
+                <div class="skel" style="width:88%;height:18px"></div>
+                <div class="skel" style="width:72%;height:18px"></div>
+              </div>
+            </div>
+          </div>
+          <!-- 단건(이미지·텍스트) -->
+          <div x-show="activeTabId !== 'excel'" class="panel">
+            <div class="panel-hd"><b x-text="activeTabId === 'image' ? '이미지 이해 중' : '처리 중'"></b><span class="skel" style="width:92px;height:18px"></span></div>
             <div class="drow"><div class="k">리드문</div><div class="v"><div class="skel" style="height:46px"></div></div></div>
             <div class="drow"><div class="k">엔티티</div><div class="v"><div class="skel" style="width:62%;height:22px"></div></div></div>
             <div class="drow"><div class="k">인텐트</div><div class="v"><div class="skel" style="width:46%;height:22px"></div></div></div>
@@ -1104,7 +1248,10 @@ PAGE = """<!doctype html>
                 <b>행별 결과</b>
                 <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-300">MOCK</span>
               </div>
-              <span class="meta">우측 산출 · 전체 리포트 참조</span>
+              <button type="button" class="copybtn" x-on:click="exportBatchCsv()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                CSV 내보내기
+              </button>
             </div>
             <div class="overflow-auto">
               <table class="tbl">
@@ -1140,7 +1287,15 @@ PAGE = """<!doctype html>
             </div>
             <div class="drow">
               <div class="k">리드문</div>
-              <div class="v"><p class="text-[15px] leading-relaxed text-white" x-text="im.summary || '(빈 값 — 차단되었거나 본문 부족)'"></p></div>
+              <div class="v">
+                <div class="flex items-start gap-2">
+                  <p class="flex-1 text-[15px] leading-relaxed text-white" x-text="im.summary || '(빈 값 — 차단되었거나 본문 부족)'"></p>
+                  <button type="button" class="copybtn shrink-0" x-show="im.summary" x-on:click="copyText(im.summary, '리드문')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                    복사
+                  </button>
+                </div>
+              </div>
             </div>
             <div class="drow">
               <div class="k">엔티티</div>
@@ -1189,11 +1344,17 @@ PAGE = """<!doctype html>
           <!-- 상세 -->
           <section class="panel">
             <div class="panel-hd"><b>상세</b>
-              <a href="/report" target="_blank" rel="noreferrer"
-                 class="inline-flex items-center gap-1.5 text-xs font-medium text-[#b9b3ff] transition-colors hover:text-white">
-                전체 리포트 열기
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
-              </a>
+              <div class="flex items-center gap-2">
+                <button type="button" class="copybtn" x-on:click="copyJSON()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                  JSON 복사
+                </button>
+                <a href="/report" target="_blank" rel="noreferrer"
+                   class="inline-flex items-center gap-1.5 text-xs font-medium text-[#b9b3ff] transition-colors hover:text-white">
+                  전체 리포트 열기
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
+                </a>
+              </div>
             </div>
             <div class="panel-bd">
               <details class="group">
@@ -1247,28 +1408,45 @@ PAGE = """<!doctype html>
             </div>
           </div>
 
-          <!-- BizRouter(통합 라우터) 키 -->
+          <!-- 통합 라우터 키: BizRouter -->
           <div class="subsec">
-            <label class="lbl">BizRouter 키 <span class="font-normal normal-case tracking-normal text-muted">· 멀티모달/타사 모델용(선택)</span></label>
-            <input x-model="rKey" type="password" class="field" placeholder="sk-br-v1-…" autocomplete="off">
-            <div class="mt-3 flex flex-wrap gap-2">
-              <button type="button" x-on:click="saveRouterKey()"
+            <label class="lbl">BizRouter 키 <span class="font-normal normal-case tracking-normal text-muted">· 통합 라우터(선택)</span></label>
+            <input x-model="bizKey" type="password" class="field" placeholder="sk-br-v1-…" autocomplete="off">
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <button type="button" x-on:click="saveRouterKey('bizrouter')"
                 class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
-              <button type="button" x-show="cfg.routerPersisted" x-on:click="forgetRouterKey()"
+              <button type="button" x-show="cfg.bizPersisted" x-on:click="forgetRouterKey('bizrouter')"
                 class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">키 삭제</button>
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs">
+                <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasBizKey ? 'bg-solar' : 'bg-white/20'"></span>
+                <span class="text-muted" x-text="bizMsg || (cfg.hasBizKey ? '설정됨' : '미설정')"></span>
+              </span>
             </div>
-            <div class="mt-2.5 flex items-center gap-2 text-xs">
-              <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasRouterKey ? 'bg-solar' : 'bg-white/20'"></span>
-              <span class="text-muted" x-text="rMsg || (cfg.hasRouterKey ? '라우터 키 설정됨' : '미설정 (BizRouter 모델 사용 시 필요)')"></span>
+          </div>
+
+          <!-- 통합 라우터 키: Timely -->
+          <div class="subsec">
+            <label class="lbl">Timely 키 <span class="font-normal normal-case tracking-normal text-muted">· 통합 라우터(stage)</span></label>
+            <input x-model="timelyKey" type="password" class="field" placeholder="timely API key" autocomplete="off">
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <button type="button" x-on:click="saveRouterKey('timely')"
+                class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
+              <button type="button" x-show="cfg.timelyPersisted" x-on:click="forgetRouterKey('timely')"
+                class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">키 삭제</button>
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs">
+                <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasTimelyKey ? 'bg-solar' : 'bg-white/20'"></span>
+                <span class="text-muted" x-text="timelyMsg || (cfg.hasTimelyKey ? '설정됨' : '미설정')"></span>
+              </span>
             </div>
           </div>
 
           <!-- 텍스트 모델(메타 생성) -->
           <div class="subsec">
             <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted">· 리드문·메타 생성</span></label>
-            <div class="seg mb-2">
+            <div class="seg seg3 mb-2">
               <button type="button" x-on:click="setTextProvider('solar')" x-bind:class="textProvider === 'solar' ? 'on' : ''">Solar</button>
-              <button type="button" x-on:click="setTextProvider('router')" x-bind:class="textProvider === 'router' ? 'on' : ''">BizRouter</button>
+              <button type="button" x-on:click="setTextProvider('bizrouter')" x-bind:class="textProvider === 'bizrouter' ? 'on' : ''">BizRouter</button>
+              <button type="button" x-on:click="setTextProvider('timely')" x-bind:class="textProvider === 'timely' ? 'on' : ''">Timely</button>
             </div>
             <div x-show="textProvider === 'solar'">
               <select x-model="cfgModel" x-on:change="saveTextSlot()" class="field">
@@ -1279,29 +1457,30 @@ PAGE = """<!doctype html>
                 class="mt-2 w-full rounded-lg border border-white/[0.10] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
               <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
             </div>
-            <div x-show="textProvider === 'router'" x-cloak>
+            <div x-show="isRouter(textProvider)" x-cloak>
               <select x-model="textModel" x-on:change="saveTextSlot()" class="field">
-                <template x-for="m in routerTextModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+                <template x-for="m in textModelList" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
               </select>
-              <p class="mt-1.5 text-xs text-muted" x-show="!cfg.hasRouterKey">BizRouter 키가 필요합니다.</p>
+              <p class="mt-1.5 text-xs text-muted" x-show="!routerKeyPresent(textProvider)" x-text="providerLabels[textProvider] + ' 키가 필요합니다.'"></p>
             </div>
           </div>
 
           <!-- 이미지 맥락 모델(비전) -->
           <div class="subsec">
             <label class="lbl">이미지 맥락 모델 <span class="font-normal normal-case tracking-normal text-muted">· 이미지 이해</span></label>
-            <div class="seg mb-2">
+            <div class="seg seg3 mb-2">
               <button type="button" x-on:click="setVisionProvider('upstage_ie')" x-bind:class="visionProvider === 'upstage_ie' ? 'on' : ''">Upstage</button>
-              <button type="button" x-on:click="setVisionProvider('router')" x-bind:class="visionProvider === 'router' ? 'on' : ''">BizRouter</button>
+              <button type="button" x-on:click="setVisionProvider('bizrouter')" x-bind:class="visionProvider === 'bizrouter' ? 'on' : ''">BizRouter</button>
+              <button type="button" x-on:click="setVisionProvider('timely')" x-bind:class="visionProvider === 'timely' ? 'on' : ''">Timely</button>
             </div>
             <div x-show="visionProvider === 'upstage_ie'">
               <p class="text-xs text-muted">Upstage Information Extraction · Solar 키 사용. 텍스트가 있는 이미지에 적합(순수 사진은 미검출 가능).</p>
             </div>
-            <div x-show="visionProvider === 'router'" x-cloak>
+            <div x-show="isRouter(visionProvider)" x-cloak>
               <select x-model="visionModel" x-on:change="saveVisionSlot()" class="field">
-                <template x-for="m in routerVisionModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+                <template x-for="m in visionModelList" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
               </select>
-              <p class="mt-1.5 text-xs text-muted">멀티모달 모델로 순수 사진까지 이해. <span x-show="!cfg.hasRouterKey">BizRouter 키가 필요합니다.</span></p>
+              <p class="mt-1.5 text-xs text-muted">멀티모달 모델로 순수 사진까지 이해. <span x-show="!routerKeyPresent(visionProvider)" x-text="providerLabels[visionProvider] + ' 키가 필요합니다.'"></span></p>
             </div>
             <span class="mt-1.5 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
           </div>
@@ -1335,6 +1514,9 @@ PAGE = """<!doctype html>
 
     </div>
   </aside>
+
+  <!-- 복사 토스트 -->
+  <div x-show="copyMsg" x-cloak x-transition.opacity class="toast" x-text="copyMsg" aria-live="polite"></div>
 
 </div>
 </body>

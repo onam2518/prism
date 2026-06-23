@@ -56,18 +56,35 @@ def _api_key() -> str:
     return os.environ.get("UPSTAGE_API_KEY", os.environ.get("PRISM_API_KEY", "")).strip()
 
 
-def _router_key() -> str:
-    """BizRouter 통합 라우터 키(sk-br-v1-…). 비전/텍스트 라우팅용."""
-    return os.environ.get("PRISM_ROUTER_KEY", "").strip()
+# 통합 라우터(OpenAI 호환) 레지스트리. 텍스트·비전 슬롯이 공유한다.
+#   base   : OpenAI SDK 용 base(…/v1). chat 호출은 base + /chat/completions.
+#   key_env: 프로세스 환경변수 이름(키 비밀값).
+#   model  : public id 형식(bizrouter=provider/model, timely=bare).
+ROUTERS = {
+    "bizrouter": {"label": "BizRouter", "base": "https://bizrouter.ai/api/v1",
+                  "key_env": "PRISM_BIZROUTER_KEY", "key_alt": "PRISM_ROUTER_KEY"},
+    "timely":    {"label": "Timely",    "base": "https://router.stg.timelyai.io/v1",
+                  "key_env": "PRISM_TIMELY_KEY", "key_alt": ""},
+}
 
 
-def _router_chat_url() -> str:
-    try:
-        from .config import Config
-        base = (Config.load().router_url or "https://bizrouter.ai/api/v1").rstrip("/")
-    except Exception:
-        base = "https://bizrouter.ai/api/v1"
-    return base + "/chat/completions"
+def is_router(provider: str) -> bool:
+    return provider in ROUTERS
+
+
+def router_key(service: str) -> str:
+    info = ROUTERS.get(service)
+    if not info:
+        return ""
+    k = os.environ.get(info["key_env"], "").strip()
+    if not k and info.get("key_alt"):
+        k = os.environ.get(info["key_alt"], "").strip()
+    return k
+
+
+def router_chat_url(service: str) -> str:
+    info = ROUTERS.get(service) or ROUTERS["bizrouter"]
+    return info["base"].rstrip("/") + "/chat/completions"
 
 
 # 라우터 멀티모달 프롬프트: 스키마와 동일한 JSON 객체 하나만 출력하도록 강제(response_format
@@ -177,12 +194,13 @@ def _parse_json_lax(raw: str) -> dict:
         return {}
 
 
-def vision_via_router(content: bytes, mime: str, model: str, timeout: int = 90) -> dict:
-    """BizRouter(OpenAI 호환) 멀티모달 모델로 이미지 이해 → 스키마 dict.
+def vision_via_router(content: bytes, mime: str, model: str, service: str = "bizrouter",
+                      timeout: int = 90) -> dict:
+    """통합 라우터(OpenAI 호환) 멀티모달 모델로 이미지 이해 → 스키마 dict.
 
-    model: prefixed id(예: google/gemini-2.5-flash). 키는 PRISM_ROUTER_KEY.
+    service: bizrouter | timely. model: 각 라우터의 public id. 키는 라우터별 env.
     """
-    key = _router_key()
+    key = router_key(service)
     if not key or not model:
         return {}
     data_url = f"data:{mime};base64,{base64.b64encode(content).decode()}"
@@ -194,10 +212,9 @@ def vision_via_router(content: bytes, mime: str, model: str, timeout: int = 90) 
                 {"type": "image_url", "image_url": {"url": data_url}},
             ]},
         ],
-        "temperature": 0.2,
         "stream": False,
     }
-    req = urllib.request.Request(_router_chat_url(), data=json.dumps(body).encode(), method="POST")
+    req = urllib.request.Request(router_chat_url(service), data=json.dumps(body).encode(), method="POST")
     req.add_header("Authorization", f"Bearer {key}")
     req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -250,8 +267,9 @@ def extract_signals(images: list, *, mock: bool = False) -> list:
     텍스트 미검출(순수 사진)이면 Document OCR 로 폴백. mock=True/무키 시 mock.
     """
     provider, vmodel = _vision_cfg()
+    router = is_router(provider)
     # 비전 슬롯에 필요한 키가 있는지로 mock 판단(라우터=라우터키, upstage_ie=Solar키)
-    have_vision = (_router_key() and vmodel) if provider == "router" else bool(_api_key())
+    have_vision = (router_key(provider) and vmodel) if router else bool(_api_key())
     use_mock = mock or (not have_vision and not _api_key())
     out = []
     for i, im in enumerate(images, 1):
@@ -265,14 +283,14 @@ def extract_signals(images: list, *, mock: bool = False) -> list:
         name = im.get("filename", f"image{i}.png")
         vision, ocr, note = "", "", ""
         try:
-            if provider == "router" and _router_key() and vmodel:
-                obj = vision_via_router(im["bytes"], mime, vmodel)
+            if router and router_key(provider) and vmodel:
+                obj = vision_via_router(im["bytes"], mime, vmodel, provider)
             else:
                 obj = vision_understand(im["bytes"], mime)   # Upstage IE
             vision = _compose_vision(obj)
             ocr = (obj.get("visible_text") or "").strip()
         except NoTextInImage:
-            note = "이미지에서 텍스트가 검출되지 않아 Upstage 시각 이해를 적용하지 못했습니다(순수 사진은 BizRouter 멀티모달 권장)."
+            note = "이미지에서 텍스트가 검출되지 않아 Upstage 시각 이해를 적용하지 못했습니다(순수 사진은 라우터 멀티모달 권장)."
             print(f"  [warn] 시각 이해 불가({name}): no text elements")
         except Exception as e:
             note = "시각 이해 호출에 실패했습니다."
