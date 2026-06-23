@@ -705,6 +705,8 @@ PAGE = """<!doctype html>
 <meta name="description" content="이미지·텍스트·엑셀에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출하는 콘텐츠 메타 도구">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b52ff'/%3E%3Cpath d='M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z' fill='%23fff'/%3E%3C/svg%3E">
 <link href="/vendor/pretendard.css" rel="stylesheet">
+<link href="/vendor/ds-theme.css" rel="stylesheet">
+<link href="/vendor/ds-components.css" rel="stylesheet">
 <script src="/vendor/tailwind.js"></script>
 <script>
   tailwind.config = {
@@ -911,6 +913,7 @@ PAGE = """<!doctype html>
         this.imgFiles.splice(i, 1); this.imgThumbs.splice(i, 1);
       },
       clearImages() { this.imgThumbs.forEach((u) => URL.revokeObjectURL(u)); this.imgFiles = []; this.imgThumbs = []; },
+      sizeLabel(b) { if (!b) return ''; if (b < 1024) return b + 'B'; if (b < 1048576) return (b / 1024).toFixed(0) + 'KB'; return (b / 1048576).toFixed(1) + 'MB'; },
       onExcel(e) { this.excelFile = e.target.files[0] || null; e.target.value = ''; this.status = ''; },
       onDropExcel(e) { this.xlsDrag = false; const f = e.dataTransfer.files[0]; if (f) this.excelFile = f; },
       clearExcel() { this.excelFile = null; },
@@ -1132,6 +1135,21 @@ PAGE = """<!doctype html>
   select.field{appearance:none;-webkit-appearance:none;padding-right:34px;cursor:pointer;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa0aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 11px center}
+
+  /* ── 디자인 시스템 파일럿(이미지 업로드: ImageDropzone + AttachmentChip) ── */
+  .ds-pilot{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font)}
+  .ds-dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    width:100%;min-height:104px;padding:18px;border:1.5px dashed var(--ds-hairline);border-radius:var(--ds-radius-lg);
+    background:var(--ds-surface);color:var(--ds-muted);cursor:pointer;font-family:var(--ds-font-body);
+    transition:border-color .15s,background .15s,color .15s}
+  .ds-dropzone:hover{border-color:var(--ds-primary);color:var(--ds-ink)}
+  .ds-dropzone.drag{border-color:var(--ds-primary);border-style:solid;background:var(--ds-primary-tint);color:var(--ds-ink)}
+  .ds-dropzone .dz-ic{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    background:var(--ds-primary-tint);color:var(--ds-primary)}
+  .ds-dropzone .dz-ic svg{width:18px;height:18px}
+  .ds-dropzone .dz-t{font-size:var(--ds-size-label);color:var(--ds-ink);font-weight:600}
+  .ds-dropzone .dz-d{font-size:var(--ds-size-caption);color:var(--ds-muted)}
+  .ds-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 
   /* 드롭존(파일 업로드) — .field 와 동일 규격. 점선 테두리·우측 버튼만 다름 */
   .dropzone{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
@@ -1466,32 +1484,33 @@ PAGE = """<!doctype html>
           <!-- 이미지 -->
           <div x-show="activeTabId === 'image'" x-cloak class="space-y-4"
                x-on:paste.window="activeTabId === 'image' && onPasteImages($event)">
-            <div>
+            <!-- 디자인 시스템 파일럿: ImageDropzone + AttachmentChip (다크 스코프) -->
+            <div class="ds-dark ds-pilot">
               <label class="lbl">이미지 (여러 장이면 하나의 콘텐츠로 통합)</label>
-              <label class="dropzone" x-bind:class="imgDrag ? 'drag' : ''"
+              <label class="ds-dropzone" x-bind:class="imgDrag ? 'drag' : ''"
                      x-on:dragover.prevent="imgDrag = true" x-on:dragleave.prevent="imgDrag = false"
                      x-on:drop.prevent="onDropImages($event)">
-                <span class="name" x-text="imgDrag ? '여기에 놓기' : (fileLabel + ' · 끌어다 놓기 / 붙여넣기 가능')"></span>
-                <span class="pick">
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
-                  파일 선택
+                <span class="dz-ic">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m-4 4 4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
                 </span>
+                <span class="dz-t" x-text="imgDrag ? '여기에 놓기' : '이미지를 끌어다 놓기'"></span>
+                <span class="dz-d" x-text="imgDrag ? '' : '클릭하여 선택 · 클립보드 붙여넣기 가능'"></span>
                 <input type="file" accept="image/*" multiple class="sr-only" x-on:change="onFiles($event)">
               </label>
-              <!-- 썸네일 미리보기 -->
-              <div x-show="imgFiles.length" x-cloak class="mt-2.5">
-                <div class="grid grid-cols-5 gap-2">
-                  <template x-for="(t, i) in imgThumbs" x-bind:key="i">
-                    <div class="thumb">
-                      <img x-bind:src="t" alt="" loading="lazy">
-                      <button type="button" class="thumb-x" x-on:click="removeImage(i)" aria-label="제거">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                      </button>
-                    </div>
-                  </template>
-                </div>
-                <button type="button" x-show="imgFiles.length > 1" x-on:click="clearImages()"
-                  class="mt-2 text-xs font-medium text-muted transition-colors hover:text-white">모두 지우기</button>
+              <!-- AttachmentChip 목록 -->
+              <div x-show="imgFiles.length" x-cloak class="ds-attachments">
+                <template x-for="(f, i) in imgFiles" x-bind:key="i">
+                  <span class="ds-attachment">
+                    <span class="ds-attachment__icon">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>
+                    </span>
+                    <span class="ds-attachment__name" x-text="f.name"></span>
+                    <span class="ds-attachment__size" x-text="sizeLabel(f.size)"></span>
+                    <button type="button" class="ds-attachment__remove" x-on:click="removeImage(i)" aria-label="제거">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    </button>
+                  </span>
+                </template>
               </div>
             </div>
             <div><label class="lbl">제목 (선택)</label>
