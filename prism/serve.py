@@ -554,6 +554,21 @@ PAGE = """<!doctype html>
     Alpine.data('prismApp', () => ({
       tabItems: [{ id: 'image', label: '이미지' }, { id: 'text', label: '텍스트' }, { id: 'excel', label: '엑셀' }],
       activeTabId: 'image',
+      // 어드민 모듈 셸
+      mod: 'run',
+      mods: [
+        { g: '현황', items: [
+          { id: 'dash', label: '대시보드', cov: 'plan', icon: 'M3 3v18h18M8 14v3m4-7v7m4-11v11' },
+          { id: 'intake', label: '인입 · 적용대상', cov: 'poc', icon: 'M4 4h16v6H4zM4 14h16v6H4z' } ] },
+        { g: '콘텐츠 메타', items: [
+          { id: 'run', label: '실행 · 추출', cov: 'done', icon: 'm5 12 5 5L20 7' },
+          { id: 'quality', label: '품질 메타', cov: 'poc', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z' },
+          { id: 'topic', label: '토픽', cov: 'poc', icon: 'M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5' } ] },
+        { g: '기반', items: [
+          { id: 'dict', label: '사전 · 매핑', cov: 'poc', icon: 'M4 4h16v16H4zM8 4v16M8 9h12M8 14h12' },
+          { id: 'eval', label: '검증 · 평가', cov: 'poc', icon: 'M9 11l3 3 8-8M21 12a9 9 0 1 1-6.2-8.5' } ] },
+      ],
+      dashData: null, topicData: null, dictData: null, modBusy: false, dictGroup: '',
       loading: false,
       status: '',
       result: null,
@@ -612,6 +627,22 @@ PAGE = """<!doctype html>
         });
       },
       get tabLabel() { return (this.tabItems.find(t => t.id === this.activeTabId) || {}).label || ''; },
+      get modLabel() {
+        for (const g of this.mods) for (const it of g.items) if (it.id === this.mod) return it.label;
+        return '';
+      },
+      selectMod(id) {
+        this.mod = id; this.status = '';
+        if (id === 'dash') this.loadDash();
+        else if (id === 'topic') this.loadTopics();
+        else if (id === 'dict') this.loadDict();
+      },
+      async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard')).json(); } catch (e) {} this.modBusy = false; },
+      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics')).json(); } catch (e) {} this.modBusy = false; },
+      async loadDict() { this.modBusy = true; try { this.dictData = await (await fetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
+      get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
+      get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },
+      get tr() { return (this.result && this.result.output && this.result.output.trace) || {}; },
       routerKeyPresent(p) { return p === 'bizrouter' ? !!this.cfg.hasBizKey : p === 'timely' ? !!this.cfg.hasTimelyKey : false; },
       isRouter(p) { return p === 'bizrouter' || p === 'timely'; },
       providerHasKey(p) { return p === 'solar' || p === 'upstage_ie' ? !!this.cfg.hasKey : this.routerKeyPresent(p); },
@@ -1157,40 +1188,56 @@ PAGE = """<!doctype html>
       <span class="logo-word">Prism</span>
     </div>
     <div class="pbody pad">
-      <div class="navgrp">입력</div>
-      <nav class="space-y-0.5" aria-label="입력 방식">
-        <template x-for="tabItem in tabItems" x-bind:key="tabItem.id">
-          <button type="button" x-on:click="selectTab(tabItem.id)"
-            x-bind:aria-current="activeTabId === tabItem.id ? 'page' : 'false'"
-            class="navitem relative flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
-            x-bind:class="activeTabId === tabItem.id ? 'active bg-white/[0.07] text-white font-medium' : 'text-body hover:bg-white/[0.04] hover:text-white'">
-            <svg x-show="tabItem.id === 'image'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>
-            <svg x-show="tabItem.id === 'text'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
-            <svg x-show="tabItem.id === 'excel'" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
-            <span x-text="tabItem.label"></span>
-          </button>
-        </template>
-      </nav>
+      <template x-for="grp in mods" x-bind:key="grp.g">
+        <div>
+          <div class="navgrp" x-text="grp.g"></div>
+          <nav class="space-y-0.5">
+            <template x-for="it in grp.items" x-bind:key="it.id">
+              <button type="button" x-on:click="selectMod(it.id)"
+                class="navitem relative flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors"
+                x-bind:class="mod === it.id ? 'active bg-white/[0.07] text-white font-medium' : 'text-body hover:bg-white/[0.04] hover:text-white'">
+                <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path x-bind:d="it.icon"></path></svg>
+                <span x-text="it.label"></span>
+                <span class="ml-auto h-1.5 w-1.5 rounded-full"
+                  x-bind:class="it.cov === 'done' ? 'bg-emerald-400' : (it.cov === 'poc' ? 'bg-violet-400' : 'bg-amber-400')"></span>
+              </button>
+            </template>
+          </nav>
+        </div>
+      </template>
       <div class="navgrp">산출</div>
       <a href="/report" target="_blank" rel="noreferrer"
         class="navitem relative flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-body transition-colors hover:bg-white/[0.04] hover:text-white">
-        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18M8 14v3m4-7v7m4-11v11"/></svg>
-        <span>전체 리포트</span>
+        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
+        <span>전체 리포트 ↗</span>
       </a>
+      <div class="mt-5 border-t border-white/[0.07] pt-3 px-1 text-[10.5px] leading-relaxed text-muted">
+        <div class="font-semibold mb-1">상태 · 실증 단계</div>
+        <div class="flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> 실동작</div>
+        <div class="flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-violet-400"></span> PoC · 부분</div>
+        <div class="flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span> 기획</div>
+      </div>
     </div>
   </aside>
 
-  <!-- ━━━━━ 가운데 페인 · 캔버스 ━━━━━ -->
+  <!-- ━━━━━ 가운데 페인 · 활성 모듈 ━━━━━ -->
   <main class="pane">
     <div class="titlebar">
-      <span x-text="tabLabel + ' 입력'"></span>
+      <span x-text="modLabel"></span>
       <span class="ml-auto inline-flex items-center gap-1.5">
         <span class="dot" x-bind:class="(textReady && !cfg.forcedMock) ? 'bg-solar' : 'bg-amber-400'"></span>
         <span class="sub" x-text="cfg.forcedMock ? 'MOCK(강제)' : (textReady ? (providerLabels[textProvider] + ' 연결됨') : 'MOCK · 키 미설정')"></span>
       </span>
     </div>
     <div class="pbody center">
-      <div class="mx-auto max-w-3xl">
+      <!-- ═══ 모듈: 실행 · 추출 ═══ -->
+      <div x-show="mod === 'run'" class="mx-auto max-w-3xl">
+        <!-- 입력 방식 -->
+        <div class="seg seg3 mb-5">
+          <template x-for="t in tabItems" x-bind:key="t.id">
+            <button type="button" x-on:click="selectTab(t.id)" x-bind:class="activeTabId === t.id ? 'on' : ''" x-text="t.label"></button>
+          </template>
+        </div>
 
         <!-- 입력 카드 -->
         <section class="panel">
@@ -1490,6 +1537,142 @@ PAGE = """<!doctype html>
           </section>
         </div>
       </div>
+
+      <!-- ═══ 모듈: 대시보드 ═══ -->
+      <div x-show="mod === 'dash'" x-cloak class="mx-auto max-w-4xl">
+        <div x-show="!dashData || !dashData.n" class="empty">아직 집계할 결과가 없습니다. <b class="text-body">실행 · 추출</b>에서 추출(엑셀 일괄 권장)을 먼저 실행하세요.</div>
+        <div x-show="dashData && dashData.n" class="space-y-4">
+          <div class="tiles">
+            <div class="tile"><div class="n tnum" x-text="(dashData?dashData.gPct:0) + '%'"></div><div class="t">유통 가능 G</div></div>
+            <div class="tile"><div class="n tnum" x-text="dashData?dashData.n:0"></div><div class="t">처리 건수</div></div>
+            <div class="tile"><div class="n tnum" x-text="dashData?dashData.entities:0"></div><div class="t">엔티티 수</div></div>
+            <div class="tile"><div class="n tnum" x-text="dashData?dashData.avgLead:0"></div><div class="t">평균 리드문(자)</div></div>
+          </div>
+          <div class="flex items-center gap-6 panel"><div class="panel-bd flex items-center gap-6 w-full">
+            <div class="ring" x-bind:style="'background:conic-gradient(#5fe0ad ' + (dashData?dashData.gPct:0) + '%, rgba(255,255,255,.07) 0)'">
+              <i><span class="pv tnum" x-text="(dashData?dashData.gPct:0)+'%'"></span><span class="pl">유통 가능</span></i></div>
+            <div class="min-w-0 flex-1">
+              <div class="lbl" style="margin-bottom:2px">인텐트 분포</div>
+              <template x-for="it in (dashData?dashData.intents:[])" x-bind:key="it.k">
+                <div class="bar"><span class="lab" x-text="it.k"></span><span class="track"><span class="fill" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></span></span><span class="pc tnum" x-text="it.v"></span></div>
+              </template>
+            </div>
+          </div></div>
+          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 분포</b><span class="meta">상위</span></div><div class="panel-bd">
+            <template x-for="it in (dashData?dashData.categories:[])" x-bind:key="it.k">
+              <div class="bar"><span class="lab" x-text="it.k"></span><span class="track"><span class="fill" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></span></span><span class="pc tnum" x-text="it.v"></span></div>
+            </template>
+            <p x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" class="mt-3 text-xs text-muted">품질 사유 상위: <span x-text="(dashData?dashData.qualityReasons:[]).map(x=>x.k+'('+x.v+')').join(' · ')"></span></p>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- ═══ 모듈: 인입 · 적용대상 ═══ -->
+      <div x-show="mod === 'intake'" x-cloak class="mx-auto max-w-4xl space-y-4">
+        <div class="panel"><div class="panel-hd"><b>ITEM TYPE 처리 정책</b><span class="meta">131</span></div>
+          <div class="overflow-auto"><table class="tbl"><thead><tr><th>ITEM TYPE</th><th>필터 대상</th><th>처리 방식</th><th>상태</th></tr></thead><tbody>
+            <tr><td class="text-white">텍스트형</td><td>O</td><td>정상 분류(품질 메타 부여)</td><td><span class="gpill gpill-g"><span class="d"></span>구현</span></td></tr>
+            <tr><td class="text-white">이미지형</td><td>△</td><td>GREEN 일괄 + 캡션 텍스트(시각 이해)</td><td><span class="chip chip-int">PoC</span></td></tr>
+            <tr><td class="text-white">영상형</td><td>X</td><td>GREEN 일괄(Argos 별도)</td><td><span class="text-xs text-muted">계획</span></td></tr>
+            <tr><td class="text-white">SNS형</td><td>X</td><td>서비스 자체 필터 후 인입</td><td><span class="text-xs text-muted">계획</span></td></tr>
+            <tr><td class="text-white">묶음형 · 데이터형</td><td>X</td><td>GREEN 일괄(고도화 과제)</td><td><span class="text-xs text-muted">계획</span></td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="panel"><div class="panel-hd"><b>콘텐츠 출처 분류</b></div><div class="panel-bd">
+          <div class="flex flex-wrap gap-1.5"><span class="chip chip-cat">PGC 기존 미디어</span><span class="chip chip-cat">UGC 사용자 생성</span><span class="chip chip-cat">AIGC AI 생성</span><span class="chip chip-cat">AIEC AI 보정</span></div>
+          <p class="mt-2 text-xs text-muted">식별 표준 · C2PA(자격 증명) · SynthID(워터마크). 발행자 정보로 PGC/UGC 1차 식별.</p>
+        </div></div>
+      </div>
+
+      <!-- ═══ 모듈: 품질 메타 ═══ -->
+      <div x-show="mod === 'quality'" x-cloak class="mx-auto max-w-3xl space-y-4">
+        <div x-show="!result" class="empty"><b class="text-body">실행 · 추출</b>에서 단건 추출을 실행하면 그 콘텐츠의 품질·법령 판정 상세가 여기에 표시됩니다.</div>
+        <div x-show="result" class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>유통 판정</b>
+            <span x-show="qm.finalGrade === 'G'" class="gpill gpill-g"><span class="d"></span>유통 가능 · G</span>
+            <span x-show="qm.finalGrade !== 'G'" class="gpill gpill-r"><span class="d"></span>차단 · R</span>
+          </div><div class="panel-bd">
+            <div class="drow"><div class="k">검수</div><div class="v text-sm text-body" x-text="(qm.review || 'auto') + (qm.confidence != null ? (' · conf ' + qm.confidence) : '')"></div></div>
+            <div class="drow"><div class="k">품질 사유</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="chip chip-cat" x-text="r"></span></template>
+              <span x-show="!(qm.reasons || []).length" class="text-xs text-muted">없음(통과)</span>
+            </div></div>
+            <div class="drow"><div class="k">법령</div><div class="v">
+              <span class="text-sm text-body" x-text="lm.enabled ? ('대표등급 ' + lm.representative_grade + ' · ' + lm.representative_score) : '법령 필터 비활성(옵션)'"></span>
+              <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="h in (lm.harm_types || [])" x-bind:key="h.code"><span class="chip chip-int" x-text="h.code + ' · ' + h.grade"></span></template></div>
+            </div></div>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- ═══ 모듈: 토픽 ═══ -->
+      <div x-show="mod === 'topic'" x-cloak class="mx-auto max-w-4xl space-y-4">
+        <div x-show="!topicData || !topicData.n_contents" class="empty">아직 토픽을 만들 결과가 없습니다. <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요.</div>
+        <div x-show="topicData && topicData.n_contents" class="space-y-4">
+          <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
+            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.single||0):0"></div><div class="t">엔티티형</div></div>
+            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.composite||0):0"></div><div class="t">사건형</div></div>
+            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.filter||0):0"></div><div class="t">조건형</div></div>
+          </div>
+          <div class="panel"><div class="panel-hd"><b>엔티티형 · 사건형 토픽</b><span class="meta tnum" x-text="topicData ? (topicData.n_contents + '건 기준') : ''"></span></div>
+            <div class="overflow-auto"><table class="tbl"><thead><tr><th>유형</th><th>클러스터</th><th>대표 엔티티</th><th>멤버</th></tr></thead><tbody>
+              <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr><td>엔티티형</td><td class="text-white" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.contents?t.contents.length:'')"></td></tr></template>
+              <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr><td>사건형</td><td class="text-white" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.contents?t.contents.length:'')"></td></tr></template>
+              <template x-if="!(topicData&&(topicData.single.length||topicData.composite.length))"><tr><td colspan="4" class="text-muted">엔티티 공유 클러스터 없음(데이터가 많을수록 형성)</td></tr></template>
+            </tbody></table></div>
+          </div>
+          <div class="panel"><div class="panel-hd"><b>조건형 토픽</b><span class="meta">관심사 × 소비 방식</span></div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="chip" x-bind:class="t.active ? 'chip-ent' : 'chip-cat'" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||'')):'')"></span></template>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- ═══ 모듈: 사전 · 매핑 ═══ -->
+      <div x-show="mod === 'dict'" x-cloak class="mx-auto max-w-4xl space-y-4">
+        <div x-show="dictData" class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>인텐트 사전</b>
+            <select x-model="dictGroup" class="field" style="width:auto;height:32px;padding:0 28px 0 10px">
+              <template x-for="g in (dictData?dictData.serviceGroups:[])" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+            </select>
+          </div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : (dictData?dictData.intentUniversal:[]))" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+          </div></div>
+          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · IAB Tier1</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + '종') : ''"></span></div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c"><span class="chip chip-cat" x-text="c"></span></template>
+          </div></div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>정의</th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v"></td></tr></template>
+              </tbody></table></div></div>
+            <div class="panel"><div class="panel-hd"><b>법령 위반 유형</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.legalTypes).length+'종':''"></span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>코드</th><th>유형</th><th>근거</th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v.label"></td><td class="text-muted" x-text="v.article"></td></tr></template>
+              </tbody></table></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 모듈: 검증 · 평가 ═══ -->
+      <div x-show="mod === 'eval'" x-cloak class="mx-auto max-w-3xl space-y-4">
+        <div x-show="!result" class="empty"><b class="text-body">실행 · 추출</b>에서 단건 추출을 실행하면 그 콘텐츠의 검증(trace·fallback·비용)이 표시됩니다.</div>
+        <div x-show="result" class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>추출 trace</b><span class="meta" x-text="tr.prompt_version || ''"></span></div><div class="panel-bd">
+            <div class="drow"><div class="k">fallback</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="chip chip-cat" x-text="f"></span></template>
+              <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
+            </div></div>
+            <div class="drow"><div class="k">검증 verdict</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="chip chip-int" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
+              <span x-show="!(tr.agent_verdicts||[]).length" class="text-xs text-muted">없음</span>
+            </div></div>
+            <div class="drow"><div class="k">비용 · 토큰</div><div class="v text-sm text-body tnum" x-text="'$' + (tr.cost_usd||0).toFixed(4) + ' · ' + JSON.stringify(tr.tokens||{})"></div></div>
+            <div class="drow"><div class="k">지연(ms)</div><div class="v text-sm text-body tnum" x-text="JSON.stringify(tr.latency_ms||{})"></div></div>
+          </div></div>
+          <p class="text-xs text-muted">정량 평가(ROUGE·정확도 게이트)는 정답셋 연동 시 활성화됩니다(계획).</p>
+        </div>
+      </div>
+
     </div>
   </main>
 
