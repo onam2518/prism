@@ -1112,6 +1112,7 @@ PAGE = """<!doctype html>
     --ctrl-r:8px;             /* 컨트롤 radius(토큰 control) */
     --ctrl-px:12px;           /* 컨트롤 좌우 패딩 */
   }
+  [data-theme]{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font)}
   body{font-family:var(--ds-font);font-size:14px;line-height:1.5;letter-spacing:-.003em;
     background:
       radial-gradient(820px 420px at 100% -6%, rgba(52,180,196,.12), transparent 60%),
@@ -1669,7 +1670,7 @@ PAGE = """<!doctype html>
               </button>
             </div>
             <div class="overflow-auto">
-              <table class="tbl">
+              <table class="ds-table">
                 <thead>
                   <tr><th>제목</th><th>리드문</th><th>엔티티</th><th>등급</th></tr>
                 </thead>
@@ -1679,7 +1680,7 @@ PAGE = """<!doctype html>
                       <td class="text-white" x-text="it.title || '—'"></td>
                       <td x-text="it.summary || '—'"></td>
                       <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="!(it.entities||[]).length">—</span></div></td>
-                      <td><span class="gpill" x-bind:class="it.grade === 'G' ? 'gpill-g' : 'gpill-r'"><span class="d"></span><span x-text="it.grade || '—'"></span></span></td>
+                      <td><span class="ds-badge ds-badge--neutral" x-bind:class="it.grade === 'G' ? 'ds-badge--success' : 'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="it.grade || '—'"></span></span></td>
                     </tr>
                   </template>
                 </tbody>
@@ -1695,8 +1696,8 @@ PAGE = """<!doctype html>
             <div class="panel-hd">
               <b>아이템 메타</b>
               <div class="flex items-center gap-2">
-                <span x-show="q.finalGrade === 'G'" class="gpill gpill-g"><span class="d"></span>유통가능 · G</span>
-                <span x-show="q.finalGrade !== 'G'" class="gpill gpill-r"><span class="d"></span>차단 · R</span>
+                <span x-show="q.finalGrade === 'G'" class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>유통가능 · G</span>
+                <span x-show="q.finalGrade !== 'G'" class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>차단 · R</span>
                 <span class="meta" x-text="result ? (result.output.routing.content_track + ' · ' + result.source) : ''"></span>
               </div>
             </div>
@@ -1821,8 +1822,8 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 인입 · 적용대상 ═══ -->
       <div x-show="mod === 'intake'" x-cloak class="mx-auto max-w-4xl space-y-4">
         <div class="panel"><div class="panel-hd"><b>ITEM TYPE 처리 정책</b><span class="meta">131</span></div>
-          <div class="overflow-auto"><table class="tbl"><thead><tr><th>ITEM TYPE</th><th>필터 대상</th><th>처리 방식</th><th>상태</th></tr></thead><tbody>
-            <tr><td class="text-white">텍스트형</td><td>O</td><td>정상 분류(품질 메타 부여)</td><td><span class="gpill gpill-g"><span class="d"></span>구현</span></td></tr>
+          <div class="overflow-auto"><table class="ds-table"><thead><tr><th>ITEM TYPE</th><th>필터 대상</th><th>처리 방식</th><th>상태</th></tr></thead><tbody>
+            <tr><td class="text-white">텍스트형</td><td>O</td><td>정상 분류(품질 메타 부여)</td><td><span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>구현</span></td></tr>
             <tr><td class="text-white">이미지형</td><td>△</td><td>GREEN 일괄 + 캡션 텍스트(시각 이해)</td><td><span class="ds-badge ds-badge--intent">PoC</span></td></tr>
             <tr><td class="text-white">영상형</td><td>X</td><td>GREEN 일괄(Argos 별도)</td><td><span class="text-xs text-muted">계획</span></td></tr>
             <tr><td class="text-white">SNS형</td><td>X</td><td>서비스 자체 필터 후 인입</td><td><span class="text-xs text-muted">계획</span></td></tr>
@@ -1847,8 +1848,8 @@ PAGE = """<!doctype html>
         <div x-show="!result" class="empty"><b class="text-body">실행 · 추출</b>에서 단건 추출을 실행하면 그 콘텐츠의 품질·법령 판정 상세가 여기에 표시됩니다.</div>
         <div x-show="result" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>유통 판정</b>
-            <span x-show="qm.finalGrade === 'G'" class="gpill gpill-g"><span class="d"></span>유통 가능 · G</span>
-            <span x-show="qm.finalGrade !== 'G'" class="gpill gpill-r"><span class="d"></span>차단 · R</span>
+            <span x-show="qm.finalGrade === 'G'" class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>유통 가능 · G</span>
+            <span x-show="qm.finalGrade !== 'G'" class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>차단 · R</span>
           </div><div class="panel-bd">
             <div class="drow"><div class="k">검수</div><div class="v text-sm text-body" x-text="(qm.review || 'auto') + (qm.confidence != null ? (' · conf ' + qm.confidence) : '')"></div></div>
             <div class="drow"><div class="k">품질 사유</div><div class="v flex flex-wrap gap-1.5">
@@ -1873,7 +1874,7 @@ PAGE = """<!doctype html>
             <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.filter||0):0"></div><div class="t">조건형</div></div>
           </div>
           <div class="panel"><div class="panel-hd"><b>엔티티형 · 사건형 토픽</b><span class="meta tnum" x-text="topicData ? (topicData.n_contents + '건 기준') : ''"></span></div>
-            <div class="overflow-auto"><table class="tbl"><thead><tr><th>유형</th><th>클러스터</th><th>대표 엔티티</th><th>멤버</th></tr></thead><tbody>
+            <div class="overflow-auto"><table class="ds-table"><thead><tr><th>유형</th><th>클러스터</th><th>대표 엔티티</th><th>멤버</th></tr></thead><tbody>
               <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr><td>엔티티형</td><td class="text-white" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.contents?t.contents.length:'')"></td></tr></template>
               <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr><td>사건형</td><td class="text-white" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.contents?t.contents.length:'')"></td></tr></template>
               <template x-if="!(topicData&&(topicData.single.length||topicData.composite.length))"><tr><td colspan="4" class="text-muted">엔티티 공유 클러스터 없음(데이터가 많을수록 형성)</td></tr></template>
@@ -1943,13 +1944,13 @@ PAGE = """<!doctype html>
               </template>
             </div></div>
             <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>자사 경로</th><th>IAB 공식</th></tr></thead><tbody>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>자사 경로</th><th>IAB 공식</th></tr></thead><tbody>
                 <template x-for="(v,k) in (dictData?dictData.iabMap:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td class="text-muted" x-text="v"></td></tr></template>
               </tbody></table></div></div>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>메타명 · 정의</th><th>적용</th><th></th></tr></thead><tbody>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>ID</th><th>메타명 · 정의</th><th>적용</th><th></th></tr></thead><tbody>
                 <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr>
                   <td class="text-white" x-text="k"></td>
                   <td><span class="text-white" x-text="(dictData.qualityNames&&dictData.qualityNames[k])||''"></span> <span class="text-muted" x-text="v"></span></td>
@@ -1958,7 +1959,7 @@ PAGE = """<!doctype html>
                 </tr></template>
               </tbody></table></div></div>
             <div class="panel"><div class="panel-hd"><b>법령 위반 유형</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.legalTypes).length+'종':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
                 <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v.label"></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
               </tbody></table></div></div>
           </div>
@@ -2002,7 +2003,7 @@ PAGE = """<!doctype html>
 
         <!-- 명세(페르소나 정의·공식) -->
         <div class="panel"><div class="panel-hd"><b>페르소나 정의 · 8종</b><span class="meta">형태 + 맥락별 강도 시그니처</span></div>
-          <div class="overflow-auto"><table class="tbl"><thead><tr><th>페르소나</th><th>설명</th><th>형태(깊이·체류)</th></tr></thead><tbody>
+          <div class="overflow-auto"><table class="ds-table"><thead><tr><th>페르소나</th><th>설명</th><th>형태(깊이·체류)</th></tr></thead><tbody>
             <template x-for="p in (userData?userData.personas_def:[])" x-bind:key="p.id">
               <tr><td class="text-white" x-text="p.full || p.name"></td><td x-text="p.desc"></td><td x-text="(p.form['깊이']||'') + ' · ' + (p.form['체류·완주']||'')"></td></tr>
             </template>
