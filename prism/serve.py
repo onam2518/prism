@@ -497,17 +497,24 @@ PAGE = """<!doctype html>
 
       // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) — 우측 설정 패널
       cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasBizKey: false, hasTimelyKey: false },
-      cfgKey: '', cfgModel: '', cfgPersist: true, cfgMsg: '', cfgBusy: false,
+      cfgModel: '', cfgPersist: true, cfgBusy: false,
       models: [], modelsMsg: '',
       reasoning: 'default', systemPrompt: '', prefMsg: '',
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],
 
-      // 통합 라우터(BizRouter · Timely) 키 + 모델 슬롯
-      bizKey: '', bizMsg: '', timelyKey: '', timelyMsg: '',
+      // 모델 슬롯 + 스텝식 설정
       textProvider: 'solar', textModel: '',
       visionProvider: 'upstage_ie', visionModel: '',
       slotMsg: '',
       cfgOpen: true, _accInit: false,   // 연결·모델 섹션 접힘(설정되면 접음)
+      cfgStep: 'text',                  // 스텝: text → image → key
+      keyInputs: { solar: '', bizrouter: '', timely: '' },
+      keyMsgs: { solar: '', bizrouter: '', timely: '' },
+      keyDefs: {
+        solar:     { label: 'Upstage Solar 키', ph: 'up_xxxxxxxx', has: 'hasKey', persisted: 'persisted' },
+        bizrouter: { label: 'BizRouter 키', ph: 'sk-br-v1-…', has: 'hasBizKey', persisted: 'bizPersisted' },
+        timely:    { label: 'Timely 키', ph: 'timely API key', has: 'hasTimelyKey', persisted: 'timelyPersisted' },
+      },
       providerLabels: { solar: 'Solar', upstage_ie: 'Upstage', bizrouter: 'BizRouter', timely: 'Timely' },
       modelCatalog: {
         bizrouter: {
@@ -603,9 +610,9 @@ PAGE = """<!doctype html>
       async loadModels() {
         this.modelsMsg = '불러오는 중…'; this.cfgBusy = true;
         try {
-          if (this.cfgKey) {                       // 입력한 키를 먼저 적용(세션)
+          if (this.keyInputs.solar) {              // 입력한 키를 먼저 적용(세션)
             await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ api_key: this.cfgKey }) });
+              body: JSON.stringify({ api_key: this.keyInputs.solar }) });
             await this.refreshConfig();
           }
           const j = await (await fetch('/models')).json();
@@ -631,26 +638,44 @@ PAGE = """<!doctype html>
           if (!this._accInit) { this._accInit = true; this.cfgOpen = !this.cfg.hasKey; }
         } catch (e) { /* noop */ }
       },
-      // 라우터 키(BizRouter · Timely)
-      async saveRouterKey(service) {
-        const key = service === 'bizrouter' ? this.bizKey : this.timelyKey;
-        const setMsg = (m) => { if (service === 'bizrouter') this.bizMsg = m; else this.timelyMsg = m; };
-        setMsg('저장 중…');
-        try {
-          const body = { persist: this.cfgPersist }; body[service + '_api_key'] = key;
-          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          this.cfg = await r.json();
-          if (service === 'bizrouter') this.bizKey = ''; else this.timelyKey = '';
-          setMsg(this.routerKeyPresent(service) ? '✓ 키 저장됨' : '저장 실패');
-        } catch (e) { setMsg('오류: ' + e); }
+      // ── 스텝식 키: 선택한 제공자에 필요한 키만 ──
+      get requiredKeys() {
+        const need = [];
+        if (this.textProvider === 'solar' || this.visionProvider === 'upstage_ie') need.push('solar');
+        if (this.textProvider === 'bizrouter' || this.visionProvider === 'bizrouter') need.push('bizrouter');
+        if (this.textProvider === 'timely' || this.visionProvider === 'timely') need.push('timely');
+        return need;
       },
-      async forgetRouterKey(service) {
-        const setMsg = (m) => { if (service === 'bizrouter') this.bizMsg = m; else this.timelyMsg = m; };
+      get keysReady() { return this.requiredKeys.every((s) => this.keyState(s)); },
+      keyState(service) { return !!this.cfg[this.keyDefs[service].has]; },
+      keyPersisted(service) { return !!this.cfg[this.keyDefs[service].persisted]; },
+      async saveKey(service) {
+        this.keyMsgs[service] = '저장 중…'; this.cfgBusy = true;
         try {
-          const body = {}; body['forget_' + service] = true;
+          const body = { persist: this.cfgPersist };
+          if (service === 'solar') { body.api_key = this.keyInputs.solar; if (this.cfgModel) body.model = this.cfgModel; }
+          else body[service + '_api_key'] = this.keyInputs[service];
           const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          this.cfg = await r.json(); setMsg('키 삭제됨');
-        } catch (e) { setMsg('오류: ' + e); }
+          this.cfg = await r.json(); this.keyInputs[service] = '';
+        } catch (e) { this.keyMsgs[service] = '오류: ' + e; this.cfgBusy = false; return; }
+        if (service === 'solar' && this.keyState('solar')) {
+          if (!this.models.length) this.loadModels();
+          await this.testConn();                                  // Solar 는 즉시 연결 검증
+        } else { this.keyMsgs[service] = this.keyState(service) ? '✓ 저장됨' : '저장 실패'; this.cfgBusy = false; }
+      },
+      async forgetKey(service) {
+        try {
+          const body = {}; if (service === 'solar') body.forget = true; else body['forget_' + service] = true;
+          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          this.cfg = await r.json(); this.keyMsgs[service] = '키 삭제됨';
+        } catch (e) { this.keyMsgs[service] = '오류: ' + e; }
+      },
+      async testConn() {
+        this.cfgBusy = true; this.keyMsgs.solar = '연결 테스트 중…';
+        try { const j = await (await fetch('/ping', { method: 'POST' })).json();
+          this.keyMsgs.solar = (j.ok ? '✓ 성공 · ' : '✗ 실패 · ') + j.detail; }
+        catch (e) { this.keyMsgs.solar = '오류: ' + e; }
+        await this.refreshConfig(); this.cfgBusy = false;
       },
       // 텍스트 슬롯(메타 생성)
       setTextProvider(p) {
@@ -689,31 +714,6 @@ PAGE = """<!doctype html>
         } catch (e) { this.prefMsg = '오류: ' + e; }
       },
       setReasoning(id) { this.reasoning = id; this.applyPrefs(); },
-      async saveConfig() {
-        this.cfgBusy = true; this.cfgMsg = '저장 중…';
-        try {
-          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: this.cfgKey, model: this.cfgModel, persist: this.cfgPersist }) });
-          this.cfg = await r.json(); this.cfgKey = '';
-        } catch (e) { this.cfgMsg = '오류: ' + e; this.cfgBusy = false; return; }
-        if (this.cfg.hasKey && !this.models.length) this.loadModels();   // 모델 목록 자동 로드
-        if (this.cfg.hasKey) { await this.testConn(); }                  // 저장 즉시 모델 유효성 검증
-        else { this.cfgMsg = '저장됨'; this.cfgBusy = false; }
-      },
-      async forgetKey() {
-        this.cfgBusy = true; this.cfgMsg = '삭제 중…';
-        try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ forget: true }) }); this.cfg = await r.json(); this.cfgMsg = '저장된 키 삭제됨'; }
-        catch (e) { this.cfgMsg = '오류: ' + e; }
-        this.cfgBusy = false;
-      },
-      async testConn() {
-        this.cfgBusy = true; this.cfgMsg = '연결 테스트 중…';
-        try { const j = await (await fetch('/ping', { method: 'POST' })).json();
-          this.cfgMsg = (j.ok ? '✓ 성공 · ' : '✗ 실패 · ') + j.detail; }
-        catch (e) { this.cfgMsg = '오류: ' + e; }
-        await this.refreshConfig(); this.cfgBusy = false;
-      },
 
       selectTab(id) { this.activeTabId = id; this.status = ''; },
 
@@ -989,6 +989,27 @@ PAGE = """<!doctype html>
   .acc:hover .acc-chev{color:#fff}
   /* 접이식 내부 하위 구획(테두리 없이 간격만) */
   .subsec+.subsec{padding-top:16px;border-top:1px solid rgba(255,255,255,.06)}
+
+  /* 스텝식 설정(텍스트 → 이미지 → 키) */
+  .steps{display:flex;gap:6px}
+  .steps button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;height:34px;
+    border-radius:8px;font-size:12.5px;font-weight:600;color:#8b909b;background:#0d0c12;
+    border:1px solid rgba(255,255,255,.09);transition:color .12s,border-color .12s,background .12s}
+  .steps button.on{color:#fff;border-color:rgba(91,82,255,.5);background:rgba(91,82,255,.12)}
+  .steps button:not(.on):hover{color:#fff}
+  .steps button i{display:flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;
+    font-size:10px;font-weight:700;font-style:normal;background:rgba(255,255,255,.1);color:#c9ccd3}
+  .steps button.on i{background:#5b52ff;color:#fff}
+  .sdot{width:6px;height:6px;border-radius:50%;flex:none}
+  .sdot.ok{background:#5fe0ad;box-shadow:0 0 6px rgba(95,224,173,.7)}
+  .sdot.warn{background:#e2a33c}
+  .step-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}
+  .step-nav button{font-size:12.5px;font-weight:600;color:#b9b3ff;transition:color .12s}
+  .step-nav button:hover{color:#fff}
+  .step-nav button.back{color:#8b909b}
+  .step-nav button.back:hover{color:#fff}
+  .keycard{padding:13px;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(255,255,255,.022)}
+  .keycard+.keycard{margin-top:10px}
 
   /* 히어로 빈 상태 */
   .hero{display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -1385,63 +1406,18 @@ PAGE = """<!doctype html>
           <svg class="acc-chev" x-bind:class="cfgOpen ? 'open' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </button>
 
-        <div x-show="cfgOpen" x-cloak class="mt-3.5 space-y-4">
-          <!-- Upstage Solar 키 -->
-          <div class="subsec">
-            <label class="lbl">Upstage Solar 키</label>
-            <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
-            <label class="mt-3 flex cursor-pointer items-center gap-2 text-[13px] text-body">
-              <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
-              이 기기에 저장 (<code class="text-muted">~/.prism_key</code>)
-            </label>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <button type="button" x-on:click="saveConfig()" x-bind:disabled="cfgBusy"
-                class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover disabled:opacity-50">저장</button>
-              <button type="button" x-on:click="testConn()" x-bind:disabled="cfgBusy"
-                class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
-              <button type="button" x-show="cfg.persisted" x-on:click="forgetKey()" x-bind:disabled="cfgBusy"
-                class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">키 삭제</button>
-            </div>
-            <div class="mt-2.5 flex items-center gap-2 text-xs">
-              <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasKey ? 'bg-solar' : 'bg-amber-400'"></span>
-              <span class="text-muted" x-text="cfgMsg || (cfg.hasKey ? ('키 설정됨' + (cfg.persisted ? ' · 저장됨' : '')) : '키 미설정 (현재 MOCK)')"></span>
-            </div>
+        <div x-show="cfgOpen" x-cloak class="mt-3.5">
+          <!-- 스텝 표시 -->
+          <div class="steps">
+            <button type="button" x-on:click="cfgStep = 'text'" x-bind:class="cfgStep === 'text' ? 'on' : ''"><i>1</i> 텍스트</button>
+            <button type="button" x-on:click="cfgStep = 'image'" x-bind:class="cfgStep === 'image' ? 'on' : ''"><i>2</i> 이미지</button>
+            <button type="button" x-on:click="cfgStep = 'key'" x-bind:class="cfgStep === 'key' ? 'on' : ''">
+              <i>3</i> 키 <span class="sdot" x-bind:class="keysReady ? 'ok' : 'warn'"></span>
+            </button>
           </div>
 
-          <!-- 통합 라우터 키: BizRouter -->
-          <div class="subsec">
-            <label class="lbl">BizRouter 키 <span class="font-normal normal-case tracking-normal text-muted">· 통합 라우터(선택)</span></label>
-            <input x-model="bizKey" type="password" class="field" placeholder="sk-br-v1-…" autocomplete="off">
-            <div class="mt-3 flex flex-wrap items-center gap-2">
-              <button type="button" x-on:click="saveRouterKey('bizrouter')"
-                class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
-              <button type="button" x-show="cfg.bizPersisted" x-on:click="forgetRouterKey('bizrouter')"
-                class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">키 삭제</button>
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs">
-                <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasBizKey ? 'bg-solar' : 'bg-white/20'"></span>
-                <span class="text-muted" x-text="bizMsg || (cfg.hasBizKey ? '설정됨' : '미설정')"></span>
-              </span>
-            </div>
-          </div>
-
-          <!-- 통합 라우터 키: Timely -->
-          <div class="subsec">
-            <label class="lbl">Timely 키 <span class="font-normal normal-case tracking-normal text-muted">· 통합 라우터(stage)</span></label>
-            <input x-model="timelyKey" type="password" class="field" placeholder="timely API key" autocomplete="off">
-            <div class="mt-3 flex flex-wrap items-center gap-2">
-              <button type="button" x-on:click="saveRouterKey('timely')"
-                class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
-              <button type="button" x-show="cfg.timelyPersisted" x-on:click="forgetRouterKey('timely')"
-                class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">키 삭제</button>
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs">
-                <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasTimelyKey ? 'bg-solar' : 'bg-white/20'"></span>
-                <span class="text-muted" x-text="timelyMsg || (cfg.hasTimelyKey ? '설정됨' : '미설정')"></span>
-              </span>
-            </div>
-          </div>
-
-          <!-- 텍스트 모델(메타 생성) -->
-          <div class="subsec">
+          <!-- 스텝 1: 텍스트 모델 -->
+          <div x-show="cfgStep === 'text'" class="mt-4">
             <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted">· 리드문·메타 생성</span></label>
             <div class="seg seg3 mb-2">
               <button type="button" x-on:click="setTextProvider('solar')" x-bind:class="textProvider === 'solar' ? 'on' : ''">Solar</button>
@@ -1461,12 +1437,15 @@ PAGE = """<!doctype html>
               <select x-model="textModel" x-on:change="saveTextSlot()" class="field">
                 <template x-for="m in textModelList" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
               </select>
-              <p class="mt-1.5 text-xs text-muted" x-show="!routerKeyPresent(textProvider)" x-text="providerLabels[textProvider] + ' 키가 필요합니다.'"></p>
+            </div>
+            <div class="step-nav">
+              <span></span>
+              <button type="button" x-on:click="cfgStep = 'image'">다음 · 이미지 모델 →</button>
             </div>
           </div>
 
-          <!-- 이미지 맥락 모델(비전) -->
-          <div class="subsec">
+          <!-- 스텝 2: 이미지 맥락 모델 -->
+          <div x-show="cfgStep === 'image'" x-cloak class="mt-4">
             <label class="lbl">이미지 맥락 모델 <span class="font-normal normal-case tracking-normal text-muted">· 이미지 이해</span></label>
             <div class="seg seg3 mb-2">
               <button type="button" x-on:click="setVisionProvider('upstage_ie')" x-bind:class="visionProvider === 'upstage_ie' ? 'on' : ''">Upstage</button>
@@ -1480,9 +1459,48 @@ PAGE = """<!doctype html>
               <select x-model="visionModel" x-on:change="saveVisionSlot()" class="field">
                 <template x-for="m in visionModelList" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
               </select>
-              <p class="mt-1.5 text-xs text-muted">멀티모달 모델로 순수 사진까지 이해. <span x-show="!routerKeyPresent(visionProvider)" x-text="providerLabels[visionProvider] + ' 키가 필요합니다.'"></span></p>
+              <p class="mt-1.5 text-xs text-muted">멀티모달 모델로 순수 사진까지 이해합니다.</p>
             </div>
-            <span class="mt-1.5 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
+            <div class="step-nav">
+              <button type="button" class="back" x-on:click="cfgStep = 'text'">← 텍스트 모델</button>
+              <button type="button" x-on:click="cfgStep = 'key'">다음 · 키 입력 →</button>
+            </div>
+          </div>
+
+          <!-- 스텝 3: 키 입력(선택한 제공자에 필요한 키만) -->
+          <div x-show="cfgStep === 'key'" x-cloak class="mt-4">
+            <label class="lbl">필요한 키</label>
+            <p class="mb-3 text-xs text-muted">선택한 제공자에 필요한 키만 표시됩니다.</p>
+            <template x-for="s in requiredKeys" x-bind:key="s">
+              <div class="keycard">
+                <div class="mb-1.5 flex items-center justify-between">
+                  <span class="text-[13px] font-semibold text-white" x-text="keyDefs[s].label"></span>
+                  <span class="inline-flex items-center gap-1.5 text-xs">
+                    <span class="sdot" x-bind:class="keyState(s) ? 'ok' : 'warn'"></span>
+                    <span class="text-muted" x-text="keyState(s) ? '설정됨' : '미설정'"></span>
+                  </span>
+                </div>
+                <input type="password" x-model="keyInputs[s]" x-bind:placeholder="keyDefs[s].ph" class="field" autocomplete="off">
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
+                    class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover disabled:opacity-50">저장</button>
+                  <button type="button" x-show="s === 'solar' && keyState('solar')" x-on:click="testConn()" x-bind:disabled="cfgBusy"
+                    class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
+                  <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)"
+                    class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">삭제</button>
+                </div>
+                <span class="mt-1.5 block text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
+              </div>
+            </template>
+            <label class="mt-3 flex cursor-pointer items-center gap-2 text-[13px] text-body">
+              <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
+              이 기기에 저장 (재시작 후에도 유지)
+            </label>
+            <div class="step-nav">
+              <button type="button" class="back" x-on:click="cfgStep = 'image'">← 이미지 모델</button>
+              <span class="text-xs" x-bind:class="keysReady ? 'text-emerald-400' : 'text-amber-400'"
+                    x-text="keysReady ? '필요한 키 준비됨' : '키 입력 필요'"></span>
+            </div>
           </div>
         </div>
       </div>
