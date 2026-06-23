@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+  :root{--font:"Pretendard",system-ui,sans-serif;--vi:#5b52ff;--vi2:#7c74ff;--solar:#d2ff95;
+    --line:rgba(255,255,255,.10);--ink:#f4f5f7;--mut:#8b909b;--faint:#5c6068;
+    --done:#5fe0ad;--poc:#7c74ff;--plan:#e2a33c}
+  *{box-sizing:border-box;margin:0}
+  body{font-family:var(--font);background:
+    radial-gradient(1200px 600px at 100% -8%,rgba(91,82,255,.13),transparent 60%),
+    radial-gradient(900px 480px at 0% 0%,rgba(210,255,149,.05),transparent 55%),#0a090e;
+    color:var(--ink);width:1760px;padding:44px 48px 52px;letter-spacing:-.01em}
+  .head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .mark{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(150deg,#6760ff,#4a42e0);box-shadow:0 8px 22px -8px rgba(91,82,255,.8),inset 0 1px 0 rgba(255,255,255,.2)}
+  .mark svg{width:24px;height:24px}
+  h1{font-size:26px;font-weight:800;letter-spacing:-.03em}
+  .sub{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .meta-r{text-align:right;font-size:12px;color:var(--faint);line-height:1.7}
+  .meta-r b{color:var(--mut);font-weight:600}
+  .legend{display:flex;gap:16px;align-items:center;margin:6px 0 22px;font-size:11.5px;color:var(--mut)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+  .lane{margin-bottom:18px}
+  .lane-t{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--vi2);margin-bottom:10px}
+  .lane-t::before{content:"";width:5px;height:14px;border-radius:2px;background:var(--vi)}
+  .lane-t .x{color:var(--faint);font-weight:500;letter-spacing:0;text-transform:none}
+
+  .cols{display:grid;gap:13px}
+  .c5{grid-template-columns:218px repeat(4,1fr)}
+  .c4{grid-template-columns:repeat(4,1fr)}
+  .c3{grid-template-columns:repeat(3,1fr)}
+  .c2-asym{grid-template-columns:1.15fr 1fr}
+
+  .card{border:1px solid var(--line);border-radius:13px;background:#141318;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.045);overflow:hidden}
+  .card.glow{border-color:rgba(91,82,255,.32);background:linear-gradient(180deg,rgba(91,82,255,.08),rgba(91,82,255,.015))}
+  .card.nav{border-color:rgba(255,255,255,.14)}
+  .card-h{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);
+    background:rgba(255,255,255,.022);font-size:13px;font-weight:700}
+  .card-h .ref{margin-left:auto;font-size:10px;font-weight:600;color:var(--faint)}
+  .card-b{padding:11px 13px}
+
+  .node{border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.025);
+    padding:8px 10px;font-size:12px;color:#d7dae1;position:relative}
+  .node+.node{margin-top:7px}
+  .node .nt{font-weight:600;color:#fff;font-size:12px;display:flex;align-items:center;gap:6px}
+  .node .nd{color:var(--mut);font-size:10.5px;margin-top:2px;line-height:1.5}
+  .cov{width:7px;height:7px;border-radius:50%;flex:none}
+  .cov.done{background:var(--done);box-shadow:0 0 6px rgba(95,224,173,.6)}
+  .cov.poc{background:var(--poc);box-shadow:0 0 6px rgba(124,116,255,.6)}
+  .cov.plan{background:var(--plan)}
+
+  .navitem{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font-size:12.5px;color:#d7dae1}
+  .navitem+.navitem{margin-top:4px}
+  .navitem .n{width:18px;height:18px;border-radius:5px;flex:none;display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:700;background:rgba(91,82,255,.18);color:var(--vi2)}
+  .navitem.on{background:rgba(91,82,255,.12);color:#fff}
+  .navitem .cov{margin-left:auto}
+
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font-size:10.5px;font-weight:500;color:#c9ccd3;background:rgba(255,255,255,.05);
+    border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:inline-flex;align-items:center;gap:5px}
+  .chip.v{color:#c4beff;background:rgba(91,82,255,.13);border-color:rgba(91,82,255,.3)}
+
+  .flow{display:flex;align-items:stretch}
+  .step{flex:1;padding:11px 12px;border-right:1px solid var(--line);position:relative}
+  .step:last-child{border-right:0}
+  .step .sn{font-size:9.5px;font-weight:700;color:var(--vi2);letter-spacing:.06em}
+  .step .sh{font-size:12.5px;font-weight:700;color:#fff;margin:3px 0 4px;display:flex;align-items:center;gap:6px}
+  .step .sd{font-size:10.5px;color:var(--mut);line-height:1.5}
+  .step .arr{position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:3;width:18px;height:18px;
+    border-radius:50%;background:#0a090e;border:1px solid rgba(91,82,255,.4);display:flex;align-items:center;justify-content:center;color:var(--vi2);font-size:11px}
+  .small{font-size:10.5px;color:var(--faint);line-height:1.55}
+  .grp-l{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin:9px 0 5px}
+  .grp-l:first-child{margin-top:0}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#b9b3ff;background:rgba(91,82,255,.1);border-radius:4px;padding:1px 4px}
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="brand">
+      <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4 4 20h12z" stroke="#fff" stroke-width="1.7"/><path d="M14.5 13h6" stroke="#d2ff95" stroke-width="1.7"/><path d="M14.5 16.5h6" stroke="#a8d4ff" stroke-width="1.7"/></svg></span>
+      <div><h1>Prism Admin · DNM 맥락형 메타 운영 콘솔 — 풀스펙 IA</h1>
+        <div class="sub">페이지 13 기준 · 콘텐츠/사용자 맥락 메타를 <b style="color:#c4beff">생성하고 수행하는 어드민</b> · 품질 → 아이템 → 토픽 → 사용자 메타 → 활용처</div></div>
+    </div>
+    <div class="meta-r"><b>현재 Prism = 이 어드민의 일부 구현</b><br>아이템 메타 + 품질(부분) + 이미지 PoC + 모델 라우팅<br>레포 onam2518/prism · DNM space 13/131/1312/132/133</div>
+  </div>
+  <div class="legend">
+    <b style="color:#9aa0aa;font-weight:600">구현 단계</b>
+    <span><i style="background:var(--done)"></i> 구현됨</span>
+    <span><i style="background:var(--poc)"></i> PoC / 부분</span>
+    <span><i style="background:var(--plan)"></i> 계획</span>
+    <span style="margin-left:auto;color:var(--faint)">목표 · 운영 경량화(품질 검수 자동화) + 맥락형 메타로 추천 품질 향상</span>
+  </div>
+
+  <!-- 레인 1: 어드민 셸 + 운영 대상 -->
+  <div class="lane">
+    <div class="lane-t">어드민 셸 · 모듈 내비 + 운영 대상</div>
+    <div class="cols c5">
+      <!-- 내비 -->
+      <div class="card nav">
+        <div class="card-h">모듈 내비게이션</div>
+        <div class="card-b" style="padding:9px">
+          <div class="navitem on"><span class="n">0</span> 대시보드 · KPI <span class="cov plan"></span></div>
+          <div class="navitem"><span class="n">1</span> 인입 · 적용대상 <span class="cov poc"></span></div>
+          <div class="navitem"><span class="n">2</span> 품질 메타 <span class="cov poc"></span></div>
+          <div class="navitem"><span class="n">3</span> 아이템 메타 <span class="cov done"></span></div>
+          <div class="navitem"><span class="n">4</span> 토픽 관리 <span class="cov poc"></span></div>
+          <div class="navitem"><span class="n">5</span> 사용자 메타 <span class="cov plan"></span></div>
+          <div class="navitem"><span class="n">6</span> 사전 · 매핑 <span class="cov poc"></span></div>
+          <div class="navitem"><span class="n">7</span> 모델 · 라우팅 <span class="cov done"></span></div>
+          <div class="navitem"><span class="n">8</span> 검증 · 평가 <span class="cov poc"></span></div>
+          <div class="navitem"><span class="n">9</span> 실행 · 리포트 <span class="cov done"></span></div>
+        </div>
+      </div>
+      <!-- ITEM TYPE -->
+      <div class="card" style="grid-column:span 2">
+        <div class="card-h">① 인입 · 적용 대상 (ITEM TYPE 정책)<span class="ref">131</span></div>
+        <div class="card-b">
+          <div class="chips">
+            <span class="chip"><span class="cov done"></span>텍스트형 · 정상 분류</span>
+            <span class="chip"><span class="cov poc"></span>이미지형 · GREEN + 캡션텍스트</span>
+            <span class="chip"><span class="cov plan"></span>영상형 · GREEN 일괄</span>
+            <span class="chip"><span class="cov plan"></span>SNS형 · 제외</span>
+            <span class="chip"><span class="cov plan"></span>묶음형 · 일괄</span>
+            <span class="chip"><span class="cov plan"></span>데이터형 · 일괄</span>
+          </div>
+          <div class="grp-l">콘텐츠 출처 분류 (C2PA · SynthID)</div>
+          <div class="chips">
+            <span class="chip"><span class="cov plan"></span>PGC</span><span class="chip"><span class="cov plan"></span>UGC</span>
+            <span class="chip"><span class="cov plan"></span>AIGC</span><span class="chip"><span class="cov plan"></span>AIEC</span>
+          </div>
+          <p class="small" style="margin-top:9px">대상: 텍스트 메타 보유 ITEM 일체. 인입 큐 → 품질·아이템 메타 부여. 배포 이후 인입분 대상.</p>
+        </div>
+      </div>
+      <!-- 대시보드 -->
+      <div class="card" style="grid-column:span 2">
+        <div class="card-h">⓪ 대시보드 · 운영 KPI<span class="ref">계획</span></div>
+        <div class="card-b">
+          <div class="chips">
+            <span class="chip"><span class="cov poc"></span>유통 가능률 G/R</span>
+            <span class="chip"><span class="cov poc"></span>처리량 · 인텐트 분포</span>
+            <span class="chip"><span class="cov plan"></span>메타 품질(ROUGE·정확도)</span>
+            <span class="chip"><span class="cov plan"></span>강도 분포 · 세그먼트 CTR</span>
+          </div>
+          <p class="small" style="margin-top:9px">현재: 엑셀 배치 집계 인포그래픽(타일·분포·도넛)이 부분 제공. 전사 운영 대시보드는 계획.</p>
+          <p class="small">KPI · 운영 경량화 지표 / 유통풀 유입·품질 지표 / 추천 품질(CTR·체류)·소비 강도 상승.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 레인 2: 생성 파이프라인 -->
+  <div class="lane">
+    <div class="lane-t">메타 생성 파이프라인 <span class="x">품질(법령∥품질) → 유통 판정 → 아이템 → 토픽 → 사용자</span></div>
+    <div class="card glow">
+      <div class="flow">
+        <div class="step"><div class="sn">02 · 품질 1차</div><div class="sh">법령 필터 <span class="cov poc"></span></div><div class="sd">법령 세트·스코어링(A·B·C) → RED 차단 임계. 13종 위반 라우팅.</div><div class="arr">→</div></div>
+        <div class="step"><div class="sn">02 · 품질 2차</div><div class="sh">품질 필터 <span class="cov poc"></span></div><div class="sd">품질 메타 정의·status·프롬프트 가이드·테스트셋. 파인튜닝 자동화(계획).</div><div class="arr">→</div></div>
+        <div class="step"><div class="sn">유통 판정</div><div class="sh">G / R <span class="cov done"></span></div><div class="sd">status 종합 → 유통 가능(G)만 아이템 메타 대상.</div><div class="arr">→</div></div>
+        <div class="step"><div class="sn">03 · 아이템</div><div class="sh">리드문→엔티티→인텐트→카테고리 <span class="cov done"></span></div><div class="sd">인용/주체 규칙·정제. 카테고리 N개. 이미지형은 시각 이해 경유(PoC).</div><div class="arr">→</div></div>
+        <div class="step"><div class="sn">04 · 토픽</div><div class="sh">엔티티·사건·조건형 <span class="cov poc"></span></div><div class="sd">여러 콘텐츠 클러스터(사안)의 주제·대표 도메인.</div><div class="arr">→</div></div>
+        <div class="step"><div class="sn">05 · 사용자</div><div class="sh">소비 형태·강도·선호 <span class="cov plan"></span></div><div class="sd">TIARA 로그 → 형태·강도·선호(동일 사전). 토픽×맥락×강도 매칭.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 레인 3: 메타 4분기 상세 -->
+  <div class="lane">
+    <div class="lane-t">메타 체계 4분기 · 모듈 상세</div>
+    <div class="cols c4">
+      <!-- 품질 1311 -->
+      <div class="card">
+        <div class="card-h">② 품질 메타<span class="ref">1311</span></div>
+        <div class="card-b">
+          <div class="node"><div class="nt"><span class="cov poc"></span>1차 · 법령 필터</div><div class="nd">법령 세트 구성 · 스코어링 로직 · RED 임계</div></div>
+          <div class="node"><div class="nt"><span class="cov poc"></span>2차 · 품질 필터</div><div class="nd">품질 메타 정의 · status · 프롬프트 가이드</div></div>
+          <div class="node"><div class="nt"><span class="cov plan"></span>품질 테스트셋</div><div class="nd">1·2차 테스트 · 파인튜닝 자동화</div></div>
+        </div>
+      </div>
+      <!-- 아이템 1312 -->
+      <div class="card glow">
+        <div class="card-h">③ 아이템 메타<span class="ref">1312</span></div>
+        <div class="card-b">
+          <div class="node"><div class="nt"><span class="cov done"></span>리드문 · 엔티티</div><div class="nd">서술형 1문장 · 단일명사 1~3 · 인용/주체 규칙</div></div>
+          <div class="node"><div class="nt"><span class="cov done"></span>인텐트</div><div class="nd">소비 맥락 세부 속성(왜·어떻게) · 사전값</div></div>
+          <div class="node"><div class="nt"><span class="cov done"></span>콘텐츠 카테고리</div><div class="nd">종합 대표 도메인 N개 · IAB Tier1/2</div></div>
+          <div class="node"><div class="nt"><span class="cov poc"></span>프롬프트 가이드/버전</div><div class="nd">imeta@v8 · promptstore</div></div>
+        </div>
+      </div>
+      <!-- 토픽 132 -->
+      <div class="card">
+        <div class="card-h">④ 토픽 관리<span class="ref">132</span></div>
+        <div class="card-b">
+          <div class="node"><div class="nt"><span class="cov poc"></span>엔티티형 (1321)</div><div class="nd">대표 엔티티 단위 묶음(팔로우)</div></div>
+          <div class="node"><div class="nt"><span class="cov poc"></span>사건형 (1322)</div><div class="nd">관심 사건 묶음(대표 1 + 관련 N, 중복 제거)</div></div>
+          <div class="node"><div class="nt"><span class="cov poc"></span>조건형 (1323)</div><div class="nd">관심사 × 소비 방식 슬롯(재테크 × 심층)</div></div>
+        </div>
+      </div>
+      <!-- 사용자 133 -->
+      <div class="card">
+        <div class="card-h">⑤ 사용자 메타<span class="ref">133</span></div>
+        <div class="card-b">
+          <div class="node"><div class="nt"><span class="cov plan"></span>소비 형태(FORM)</div><div class="nd">세션·체류·완주·리듬·깊이 프로파일</div></div>
+          <div class="node"><div class="nt"><span class="cov plan"></span>선호 인텐트 × 강도</div><div class="nd">저·중·고 · 콘텐츠 측과 동일 사전·척도</div></div>
+          <div class="node"><div class="nt"><span class="cov plan"></span>선호 엔티티 · 카테고리</div><div class="nd">가중치 N개 · TIARA 로그 입력</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 레인 4: 기반 + 활용처 -->
+  <div class="lane">
+    <div class="lane-t">공통 기반 · 활용처</div>
+    <div class="cols c4">
+      <div class="card">
+        <div class="card-h">⑥ 사전 · 매핑<span class="ref">1312</span></div>
+        <div class="card-b">
+          <div class="node"><div class="nt"><span class="cov done"></span>인텐트 사전</div><div class="nd">서비스 그룹별 · 콘텐츠/사용자 공용</div></div>
+          <div class="node"><div class="nt"><span class="cov poc"></span>콘텐츠 카테고리 사전</div><div class="nd">자사 21 Tier1 + Custom Tier2(사전화 계획)</div></div>
+          <div class="node"><div class="nt"><span class="cov plan"></span>트롬 ↔ 카테고리 · IAB v3.0</div><div class="nd">유통/광고 매핑</div></div>
+        </div>
+      </div>
+      <div class="card glow">
+        <div class="card-h">⑦ 모델 · 라우팅<span class="ref">구현</span></div>
+        <div class="card-b">
+          <div class="node"><div class="nt"><span class="cov done"></span>텍스트 슬롯</div><div class="nd">Solar · BizRouter · Timely</div></div>
+          <div class="node"><div class="nt"><span class="cov done"></span>이미지 슬롯</div><div class="nd">Upstage IE · BizRouter · Timely(멀티모달)</div></div>
+          <div class="node"><div class="nt"><span class="cov poc"></span>프롬프트 스토어 · 추론 강도</div><div class="nd">버전 편집 · Low/Med/High · System Prompt</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h">⑧ 검증 · 평가<span class="ref">131/0021</span></div>
+        <div class="card-b">
+          <div class="node"><div class="nt"><span class="cov poc"></span>검증·집계</div><div class="nd">Groundedness(선택) · 등급 · 집계</div></div>
+          <div class="node"><div class="nt"><span class="cov plan"></span>정량 평가</div><div class="nd">ROUGE·어절 유사도 · 정확도 게이트 · 샘플 검수</div></div>
+          <div class="node"><div class="nt"><span class="cov done"></span>리포트</div><div class="nd">통합 HTML · 배치 CSV · 단건 JSON</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h">활용처 (다음앱 퍼스널 미디어)<span class="ref">133</span></div>
+        <div class="card-b">
+          <div class="node"><div class="nt"><span class="cov plan"></span>마이 스테이션 (MY)</div><div class="nd">선호·형태 → 개인화 구성 · 관심 슬롯=조건형 토픽</div></div>
+          <div class="node"><div class="nt"><span class="cov plan"></span>AI 에이전트</div><div class="nd">형태×인텐트×강도 → 사용자 이해·우선순위</div></div>
+          <div class="node"><div class="nt"><span class="cov plan"></span>광고 타겟팅</div><div class="nd">선호 카테고리×인텐트×강도 · IAB v3.0</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
