@@ -60,6 +60,16 @@ class Config:
     reasoning_effort: str = "default"   # default|low|high|off
     system_prompt: str = ""             # 아이템 추출에 덧붙이는 추가 지시(선택)
 
+    # ── 모델 슬롯(제공자 선택) ──
+    # 텍스트 슬롯: 메타·품질·법령 추출. solar(직접) | router(BizRouter 통합 라우터).
+    # 비전 슬롯: 이미지 맥락 생성. upstage_ie(Information Extraction) | router(멀티모달).
+    # 라우터는 OpenAI 호환. 라우터 키는 비밀값(env PRISM_ROUTER_KEY / ~/.prism_router_key).
+    router_url: str = "https://bizrouter.ai/api/v1"
+    text_provider: str = "solar"        # solar | router
+    text_model: str = ""                # router 일 때 prefixed (예: openai/gpt-5.4)
+    vision_provider: str = "upstage_ie"  # upstage_ie | router
+    vision_model: str = ""              # router 일 때 prefixed (예: google/gemini-2.5-flash)
+
     # 실행
     concurrency: int = 12
     timeout: int = 60

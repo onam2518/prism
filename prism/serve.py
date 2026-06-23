@@ -66,7 +66,7 @@ def _kv(disposition: str, key: str):
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
 def run_pipeline(fields: dict, *, mock: bool) -> dict:
     cfg = Config.load()
-    llm = LLMClient(mock=mock, config=cfg)   # 키 없으면 LLMClient 내부서 mock=True
+    llm = make_text_llm(cfg, mock)           # 텍스트 슬롯(solar|router). 무키면 내부서 mock
 
     images = [v for k, v in fields.items()
               if isinstance(v, dict) and v.get("bytes") and k.startswith("image")]
@@ -111,7 +111,7 @@ def run_batch(file_bytes: bytes, filename: str) -> dict:
     from . import ingest as ING
     ext = os.path.splitext(filename or "")[1].lower() or ".xlsx"
     cfg = Config.load()
-    llm = LLMClient(mock=Handler.server_mock, config=cfg)
+    llm = make_text_llm(cfg, Handler.server_mock)
     fd, tmp = tempfile.mkstemp(suffix=ext)
     try:
         with os.fdopen(fd, "wb") as f:
@@ -158,20 +158,35 @@ def build_report_html() -> str:
 
 
 # ── 설정(API 키 / 모델 / 엔드포인트) ─────────────────────────────────────────
-_KEY_PATH = os.path.expanduser("~/.prism_key")
+_KEY_PATH = os.path.expanduser("~/.prism_key")              # Upstage Solar
+_ROUTER_KEY_PATH = os.path.expanduser("~/.prism_router_key")  # BizRouter
 
 
 def load_persisted_key():
     """저장된 키가 있고 환경변수가 비어 있으면 프로세스 환경에 주입(서버 시작 시)."""
-    if IMG._api_key():
-        return
-    try:
-        if os.path.exists(_KEY_PATH):
+    if not IMG._api_key() and os.path.exists(_KEY_PATH):
+        try:
             k = open(_KEY_PATH, encoding="utf-8").read().strip()
             if k:
                 os.environ["UPSTAGE_API_KEY"] = k
-    except Exception:
-        pass
+        except Exception:
+            pass
+    if not IMG._router_key() and os.path.exists(_ROUTER_KEY_PATH):
+        try:
+            k = open(_ROUTER_KEY_PATH, encoding="utf-8").read().strip()
+            if k:
+                os.environ["PRISM_ROUTER_KEY"] = k
+        except Exception:
+            pass
+
+
+def make_text_llm(cfg: Config, mock: bool) -> LLMClient:
+    """텍스트 슬롯 제공자에 맞춰 LLMClient 구성.
+    solar=직접(Upstage), router=BizRouter(prefixed 모델 + 라우터 키)."""
+    if cfg.text_provider == "router" and IMG._router_key() and cfg.text_model:
+        cfg.chat_url = (cfg.router_url or "https://bizrouter.ai/api/v1").rstrip("/") + "/chat/completions"
+        return LLMClient(mock=mock, config=cfg, api_key=IMG._router_key(), model=cfg.text_model)
+    return LLMClient(mock=mock, config=cfg)
 
 
 def sync_prompt():
@@ -194,6 +209,13 @@ def config_status() -> dict:
         "systemPrompt": cfg.system_prompt or "",
         "configured": cfg.is_configured(),
         "forcedMock": Handler.server_mock,
+        # 모델 슬롯
+        "hasRouterKey": bool(IMG._router_key()),
+        "routerPersisted": os.path.exists(_ROUTER_KEY_PATH),
+        "textProvider": cfg.text_provider or "solar",
+        "textModel": cfg.text_model or "",
+        "visionProvider": cfg.vision_provider or "upstage_ie",
+        "visionModel": cfg.vision_model or "",
     }
 
 
@@ -215,11 +237,30 @@ def apply_config(data: dict) -> dict:
             os.remove(_KEY_PATH)
         except OSError:
             pass
+    # BizRouter 키(별도)
+    rkey = (data.get("router_api_key") or "").strip()
+    if rkey:
+        os.environ["PRISM_ROUTER_KEY"] = rkey
+        if data.get("persist"):
+            try:
+                with open(_ROUTER_KEY_PATH, "w", encoding="utf-8") as f:
+                    f.write(rkey)
+                os.chmod(_ROUTER_KEY_PATH, 0o600)
+            except Exception:
+                pass
+    elif data.get("forget_router"):
+        os.environ.pop("PRISM_ROUTER_KEY", None)
+        try:
+            os.remove(_ROUTER_KEY_PATH)
+        except OSError:
+            pass
     model = (data.get("model") or "").strip()
     base = (data.get("base_url") or "").strip()
     reasoning = (data.get("reasoning") or "").strip()
     has_sp = "system_prompt" in data
-    if model or base or reasoning or has_sp:
+    slot_keys = ("text_provider", "text_model", "vision_provider", "vision_model")
+    has_slot = any(k in data for k in slot_keys)
+    if model or base or reasoning or has_sp or has_slot:
         cfg = Config.load()
         if base:
             cfg.set_base_url(base)
@@ -229,6 +270,9 @@ def apply_config(data: dict) -> dict:
             cfg.reasoning_effort = reasoning
         if has_sp:
             cfg.system_prompt = (data.get("system_prompt") or "").strip()
+        for k in slot_keys:
+            if k in data:
+                setattr(cfg, k, (data.get(k) or "").strip())
         try:
             cfg.save_template()                   # config.json 갱신(키는 저장 안 함)
         except Exception:
@@ -411,18 +455,29 @@ PAGE = """<!doctype html>
       txtTitle: '', txtBody: '',
       fileLabel: '선택된 파일 없음', excelLabel: '선택된 파일 없음',
 
-      // 설정(API 키 / 모델 / 추론강도 / 추가 지시) — 우측 Configuration 패널
-      cfg: { hasKey: false, model: '', persisted: false, forcedMock: false },
+      // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) — 우측 설정 패널
+      cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasRouterKey: false },
       cfgKey: '', cfgModel: '', cfgPersist: true, cfgMsg: '', cfgBusy: false,
       models: [], modelsMsg: '',
       reasoning: 'default', systemPrompt: '', prefMsg: '',
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],
+
+      // BizRouter(통합 라우터) 키 + 모델 슬롯
+      rKey: '', rMsg: '',
+      textProvider: 'solar', textModel: '',
+      visionProvider: 'upstage_ie', visionModel: '',
+      slotMsg: '',
+      routerTextModels: ['openai/gpt-5.4', 'openai/gpt-5.4-mini', 'anthropic/claude-sonnet-4.6',
+        'anthropic/claude-opus-4.6', 'google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'deepseek/deepseek-v3.2'],
+      routerVisionModels: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai/gpt-5.4',
+        'openai/gpt-5-mini', 'anthropic/claude-sonnet-4.6', 'anthropic/claude-opus-4.6'],
 
       init() {
         this.refreshConfig();
         fetch('/vocab').then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {});
       },
       get tabLabel() { return (this.tabItems.find(t => t.id === this.activeTabId) || {}).label || ''; },
+      get textReady() { return this.textProvider === 'router' ? !!this.cfg.hasRouterKey : !!this.cfg.hasKey; },
       onExcel(e) { const fs = e.target.files; this.excelLabel = fs.length ? fs[0].name : '선택된 파일 없음'; },
       get modelOptions() {
         const a = this.models.slice();
@@ -453,7 +508,46 @@ PAGE = """<!doctype html>
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
           if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
+          if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
+          if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
+          if (this.cfg.visionProvider) this.visionProvider = this.cfg.visionProvider;
+          if (typeof this.cfg.visionModel === 'string' && this.cfg.visionModel) this.visionModel = this.cfg.visionModel;
         } catch (e) { /* noop */ }
+      },
+      // BizRouter 키
+      async saveRouterKey() {
+        this.rMsg = '저장 중…';
+        try {
+          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ router_api_key: this.rKey, persist: this.cfgPersist }) });
+          this.cfg = await r.json(); this.rKey = '';
+          this.rMsg = this.cfg.hasRouterKey ? '✓ 라우터 키 저장됨' : '저장 실패';
+        } catch (e) { this.rMsg = '오류: ' + e; }
+      },
+      async forgetRouterKey() {
+        try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ forget_router: true }) }); this.cfg = await r.json(); this.rMsg = '라우터 키 삭제됨'; }
+        catch (e) { this.rMsg = '오류: ' + e; }
+      },
+      // 텍스트 슬롯(메타 생성)
+      setTextProvider(p) { this.textProvider = p; if (p === 'router' && !this.textModel) this.textModel = this.routerTextModels[0]; this.saveTextSlot(); },
+      async saveTextSlot() {
+        this.slotMsg = '저장 중…';
+        const payload = { text_provider: this.textProvider };
+        if (this.textProvider === 'router') payload.text_model = this.textModel;
+        else if (this.cfgModel) payload.model = this.cfgModel;
+        try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
+        catch (e) { this.slotMsg = '오류: ' + e; }
+      },
+      // 비전 슬롯(이미지 맥락 생성)
+      setVisionProvider(p) { this.visionProvider = p; if (p === 'router' && !this.visionModel) this.visionModel = this.routerVisionModels[0]; this.saveVisionSlot(); },
+      async saveVisionSlot() {
+        this.slotMsg = '저장 중…';
+        try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vision_provider: this.visionProvider, vision_model: this.visionModel }) });
+          this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
+        catch (e) { this.slotMsg = '오류: ' + e; }
       },
       async applyPrefs() {
         this.prefMsg = '저장 중…';
@@ -814,8 +908,8 @@ PAGE = """<!doctype html>
     <div class="titlebar">
       <span x-text="tabLabel + ' 입력'"></span>
       <span class="ml-auto inline-flex items-center gap-1.5">
-        <span class="dot" x-bind:class="(cfg.hasKey && !cfg.forcedMock) ? 'bg-solar' : 'bg-amber-400'"></span>
-        <span class="sub" x-text="cfg.forcedMock ? 'MOCK(강제)' : (cfg.hasKey ? 'Solar 연결됨' : 'MOCK · 키 미설정')"></span>
+        <span class="dot" x-bind:class="(textReady && !cfg.forcedMock) ? 'bg-solar' : 'bg-amber-400'"></span>
+        <span class="sub" x-text="cfg.forcedMock ? 'MOCK(강제)' : (textReady ? (textProvider === 'router' ? 'BizRouter 연결됨' : 'Solar 연결됨') : 'MOCK · 키 미설정')"></span>
       </span>
     </div>
     <div class="pbody center">
@@ -1033,6 +1127,7 @@ PAGE = """<!doctype html>
                     <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
                     <span x-text="s.ocr || '—'"></span>
                   </div>
+                  <p x-show="s.note" x-cloak class="mt-1 text-xs text-amber-300/90" x-text="s.note"></p>
                 </div>
               </template>
             </div>
@@ -1068,9 +1163,9 @@ PAGE = """<!doctype html>
     <div class="titlebar"><span>설정</span></div>
     <div class="pbody">
 
-      <!-- API 키 -->
+      <!-- Upstage Solar 키 -->
       <div class="cfgsec">
-        <label class="lbl">Upstage API 키</label>
+        <label class="lbl">Upstage Solar 키</label>
         <input x-model="cfgKey" type="password" class="field" placeholder="up_xxxxxxxx" autocomplete="off">
         <label class="mt-3 flex cursor-pointer items-center gap-2 text-[13px] text-body">
           <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
@@ -1090,20 +1185,65 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
-      <!-- 생성 모델 -->
+      <!-- BizRouter(통합 라우터) 키 -->
       <div class="cfgsec">
-        <label class="lbl">생성 모델</label>
-        <select x-model="cfgModel" x-on:change="saveConfig()" class="field">
-          <template x-for="m in modelOptions" x-bind:key="m">
-            <option x-bind:value="m" x-text="m"></option>
-          </template>
-          <template x-if="!modelOptions.length">
-            <option value="" disabled>키 입력 후 모델 불러오기</option>
-          </template>
-        </select>
-        <button type="button" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
-          class="mt-2 w-full rounded-lg border border-white/[0.10] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
-        <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
+        <label class="lbl">BizRouter 키 <span class="font-normal normal-case tracking-normal text-muted">· 멀티모달/타사 모델용(선택)</span></label>
+        <input x-model="rKey" type="password" class="field" placeholder="sk-br-v1-…" autocomplete="off">
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button type="button" x-on:click="saveRouterKey()"
+            class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
+          <button type="button" x-show="cfg.routerPersisted" x-on:click="forgetRouterKey()"
+            class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">키 삭제</button>
+        </div>
+        <div class="mt-2.5 flex items-center gap-2 text-xs">
+          <span class="h-1.5 w-1.5 rounded-full" x-bind:class="cfg.hasRouterKey ? 'bg-solar' : 'bg-white/20'"></span>
+          <span class="text-muted" x-text="rMsg || (cfg.hasRouterKey ? '라우터 키 설정됨' : '미설정 (BizRouter 모델 사용 시 필요)')"></span>
+        </div>
+      </div>
+
+      <!-- 텍스트 모델(메타 생성) -->
+      <div class="cfgsec">
+        <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted">· 리드문·메타 생성</span></label>
+        <div class="seg mb-2">
+          <button type="button" x-on:click="setTextProvider('solar')" x-bind:class="textProvider === 'solar' ? 'on' : ''">Solar</button>
+          <button type="button" x-on:click="setTextProvider('router')" x-bind:class="textProvider === 'router' ? 'on' : ''">BizRouter</button>
+        </div>
+        <!-- Solar 모델 -->
+        <div x-show="textProvider === 'solar'">
+          <select x-model="cfgModel" x-on:change="saveTextSlot()" class="field">
+            <template x-for="m in modelOptions" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+            <template x-if="!modelOptions.length"><option value="" disabled>키 입력 후 모델 불러오기</option></template>
+          </select>
+          <button type="button" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
+            class="mt-2 w-full rounded-lg border border-white/[0.10] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
+          <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
+        </div>
+        <!-- BizRouter 텍스트 모델 -->
+        <div x-show="textProvider === 'router'" x-cloak>
+          <select x-model="textModel" x-on:change="saveTextSlot()" class="field">
+            <template x-for="m in routerTextModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+          </select>
+          <p class="mt-1.5 text-xs text-muted" x-show="!cfg.hasRouterKey">BizRouter 키가 필요합니다.</p>
+        </div>
+      </div>
+
+      <!-- 이미지 맥락 모델(비전) -->
+      <div class="cfgsec">
+        <label class="lbl">이미지 맥락 모델 <span class="font-normal normal-case tracking-normal text-muted">· 이미지 이해</span></label>
+        <div class="seg mb-2">
+          <button type="button" x-on:click="setVisionProvider('upstage_ie')" x-bind:class="visionProvider === 'upstage_ie' ? 'on' : ''">Upstage</button>
+          <button type="button" x-on:click="setVisionProvider('router')" x-bind:class="visionProvider === 'router' ? 'on' : ''">BizRouter</button>
+        </div>
+        <div x-show="visionProvider === 'upstage_ie'">
+          <p class="text-xs text-muted">Upstage Information Extraction · Solar 키 사용. 텍스트가 있는 이미지에 적합(순수 사진은 미검출 가능).</p>
+        </div>
+        <div x-show="visionProvider === 'router'" x-cloak>
+          <select x-model="visionModel" x-on:change="saveVisionSlot()" class="field">
+            <template x-for="m in routerVisionModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+          </select>
+          <p class="mt-1.5 text-xs text-muted">멀티모달 모델로 순수 사진까지 이해. <span x-show="!cfg.hasRouterKey">BizRouter 키가 필요합니다.</span></p>
+        </div>
+        <span class="mt-1.5 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
       </div>
 
       <!-- 추론 강도 -->
