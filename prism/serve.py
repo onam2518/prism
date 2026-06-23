@@ -744,8 +744,7 @@ PAGE = """<!doctype html>
         { g: '현황', items: [
           { id: 'dash', label: '대시보드', cov: 'done', icon: 'M3 3v18h18M8 14v3m4-7v7m4-11v11' },
           { id: 'eval', label: '검증 · 평가', cov: 'poc', icon: 'M9 11l3 3 8-8M21 12a9 9 0 1 1-6.2-8.5' } ] },
-        { g: '정책 · 기반', items: [
-          { id: 'intake', label: '인입 · 적용 대상', cov: 'poc', icon: 'M4 4h16v6H4zM4 14h16v6H4z' },
+        { g: '설정', items: [
           { id: 'dict', label: '사전 · 정책', cov: 'done', icon: 'M4 4h16v16H4zM8 4v16M8 9h12M8 14h12' } ] },
       ],
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
