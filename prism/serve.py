@@ -506,8 +506,9 @@ PAGE = """<!doctype html>
       textProvider: 'solar', textModel: '',
       visionProvider: 'upstage_ie', visionModel: '',
       slotMsg: '',
-      cfgOpen: true, _accInit: false,   // 연결·모델 섹션 접힘(설정되면 접음)
-      cfgStep: 'text',                  // 스텝: text → image → key
+      cfgTab: 'keys',                   // 설정 탭: keys | models (Atelier 방식)
+      keyServices: ['bizrouter', 'timely', 'solar'],  // 라우터 카드 먼저, 직접(Solar) 뒤
+      keyShow: { solar: false, bizrouter: false, timely: false },
       keyInputs: { solar: '', bizrouter: '', timely: '' },
       keyMsgs: { solar: '', bizrouter: '', timely: '' },
       keyDefs: {
@@ -542,18 +543,36 @@ PAGE = """<!doctype html>
       get tabLabel() { return (this.tabItems.find(t => t.id === this.activeTabId) || {}).label || ''; },
       routerKeyPresent(p) { return p === 'bizrouter' ? !!this.cfg.hasBizKey : p === 'timely' ? !!this.cfg.hasTimelyKey : false; },
       isRouter(p) { return p === 'bizrouter' || p === 'timely'; },
+      providerHasKey(p) { return p === 'solar' || p === 'upstage_ie' ? !!this.cfg.hasKey : this.routerKeyPresent(p); },
       get textReady() { return this.isRouter(this.textProvider) ? this.routerKeyPresent(this.textProvider) : !!this.cfg.hasKey; },
-      get textModelList() { return this.isRouter(this.textProvider) ? this.modelCatalog[this.textProvider].text : []; },
-      get visionModelList() { return this.isRouter(this.visionProvider) ? this.modelCatalog[this.visionProvider].vision : []; },
-      get modelSummary() {
-        const t = this.isRouter(this.textProvider)
-          ? (this.providerLabels[this.textProvider] + ' · ' + (this.textModel || '-'))
-          : ('Solar · ' + (this.cfg.model || '-'));
-        const v = this.isRouter(this.visionProvider)
-          ? (this.providerLabels[this.visionProvider] + ' · ' + (this.visionModel || '-'))
-          : 'Upstage';
-        return '텍스트 ' + t + ' / 이미지 ' + v;
+      // ── 모델 선택(Atelier 방식): 소스별 그룹 + 연결된 제공자만 활성 ──
+      get textGroups() {
+        return [
+          { label: '직접 · Solar', on: !!this.cfg.hasKey, items: this.modelOptions.map((m) => ({ provider: 'solar', model: m })) },
+          { label: '통합 · Timely', on: !!this.cfg.hasTimelyKey, items: this.modelCatalog.timely.text.map((m) => ({ provider: 'timely', model: m })) },
+          { label: '통합 · BizRouter', on: !!this.cfg.hasBizKey, items: this.modelCatalog.bizrouter.text.map((m) => ({ provider: 'bizrouter', model: m })) },
+        ];
       },
+      get visionGroups() {
+        return [
+          { label: '직접 · Upstage', on: !!this.cfg.hasKey, items: [{ provider: 'upstage_ie', model: '', label: 'Information Extraction (텍스트형 이미지)' }] },
+          { label: '통합 · Timely', on: !!this.cfg.hasTimelyKey, items: this.modelCatalog.timely.vision.map((m) => ({ provider: 'timely', model: m })) },
+          { label: '통합 · BizRouter', on: !!this.cfg.hasBizKey, items: this.modelCatalog.bizrouter.vision.map((m) => ({ provider: 'bizrouter', model: m })) },
+        ];
+      },
+      get textValue() { return this.textProvider === 'solar' ? ('solar|' + (this.cfgModel || '')) : (this.textProvider + '|' + (this.textModel || '')); },
+      get visionValue() { return this.visionProvider === 'upstage_ie' ? 'upstage_ie|' : (this.visionProvider + '|' + (this.visionModel || '')); },
+      onTextPick(v) {
+        const i = v.indexOf('|'); const p = v.slice(0, i), m = v.slice(i + 1);
+        this.textProvider = p; if (p === 'solar') this.cfgModel = m; else this.textModel = m;
+        this.saveTextSlot();
+      },
+      onVisionPick(v) {
+        const i = v.indexOf('|'); const p = v.slice(0, i), m = v.slice(i + 1);
+        this.visionProvider = p; this.visionModel = p === 'upstage_ie' ? '' : m;
+        this.saveVisionSlot();
+      },
+      optVal(provider, model) { return provider + '|' + model; },
       // ── 이미지 입력: 선택·드롭·붙여넣기·썸네일 ──
       get fileLabel() { return this.imgFiles.length ? (this.imgFiles.length + '개 선택됨') : '선택된 파일 없음'; },
       get excelLabel() { return this.excelFile ? this.excelFile.name : '선택된 파일 없음'; },
@@ -635,18 +654,9 @@ PAGE = """<!doctype html>
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
           if (this.cfg.visionProvider) this.visionProvider = this.cfg.visionProvider;
           if (typeof this.cfg.visionModel === 'string' && this.cfg.visionModel) this.visionModel = this.cfg.visionModel;
-          if (!this._accInit) { this._accInit = true; this.cfgOpen = !this.cfg.hasKey; }
         } catch (e) { /* noop */ }
       },
-      // ── 스텝식 키: 선택한 제공자에 필요한 키만 ──
-      get requiredKeys() {
-        const need = [];
-        if (this.textProvider === 'solar' || this.visionProvider === 'upstage_ie') need.push('solar');
-        if (this.textProvider === 'bizrouter' || this.visionProvider === 'bizrouter') need.push('bizrouter');
-        if (this.textProvider === 'timely' || this.visionProvider === 'timely') need.push('timely');
-        return need;
-      },
-      get keysReady() { return this.requiredKeys.every((s) => this.keyState(s)); },
+      // ── 키(서비스별) ──
       keyState(service) { return !!this.cfg[this.keyDefs[service].has]; },
       keyPersisted(service) { return !!this.cfg[this.keyDefs[service].persisted]; },
       async saveKey(service) {
@@ -678,11 +688,6 @@ PAGE = """<!doctype html>
         await this.refreshConfig(); this.cfgBusy = false;
       },
       // 텍스트 슬롯(메타 생성)
-      setTextProvider(p) {
-        this.textProvider = p;
-        if (this.isRouter(p) && !this.textModelList.includes(this.textModel)) this.textModel = this.textModelList[0] || '';
-        this.saveTextSlot();
-      },
       async saveTextSlot() {
         this.slotMsg = '저장 중…';
         const payload = { text_provider: this.textProvider };
@@ -693,11 +698,6 @@ PAGE = """<!doctype html>
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
       // 비전 슬롯(이미지 맥락 생성)
-      setVisionProvider(p) {
-        this.visionProvider = p;
-        if (this.isRouter(p) && !this.visionModelList.includes(this.visionModel)) this.visionModel = this.visionModelList[0] || '';
-        this.saveVisionSlot();
-      },
       async saveVisionSlot() {
         this.slotMsg = '저장 중…';
         try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1010,6 +1010,35 @@ PAGE = """<!doctype html>
   .step-nav button.back:hover{color:#fff}
   .keycard{padding:13px;border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(255,255,255,.022)}
   .keycard+.keycard{margin-top:10px}
+
+  /* ── 설정 탭(Atelier 방식): API 키 / 모델 ── */
+  .cfgtabs{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+  .cfgtabs button{appearance:none;background:none;border:0;cursor:pointer;padding:9px 14px;border-radius:8px 8px 0 0;
+    font-size:13px;font-weight:600;color:#8b909b;position:relative;transition:color .12s}
+  .cfgtabs button:hover{color:#fff}
+  .cfgtabs button.on{color:#fff}
+  .cfgtabs button.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:#5b52ff;border-radius:2px}
+  /* 통합 라우터 카드 */
+  .routercard{border:1px solid rgba(91,82,255,.30);border-radius:12px;padding:15px;
+    background:linear-gradient(180deg,rgba(91,82,255,.10),rgba(91,82,255,.02))}
+  .routercard .rc-h{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+  .routercard .rc-h b{font-size:13px;font-weight:700;color:#fff}
+  .rc-badge{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#c8c3ff;
+    background:rgba(91,82,255,.22);border-radius:5px;padding:2px 6px}
+  .routercard .rc-d{margin:0 0 13px;font-size:11.5px;color:#8b909b;line-height:1.55}
+  .sectitle{font-size:13px;font-weight:700;color:#fff;margin:20px 0 4px}
+  .secdesc{font-size:11.5px;color:#6e7191;margin:0 0 12px;line-height:1.55}
+  /* 키 행 */
+  .krow+.krow{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+  .krow-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+  .krow-nm{font-size:13px;font-weight:600;color:#fff}
+  .krow-st{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:#8b909b}
+  .keyin{position:relative}
+  .keyin input{padding-right:38px}
+  .keyin .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:28px;height:28px;display:flex;
+    align-items:center;justify-content:center;border:0;background:none;color:#6e7191;cursor:pointer}
+  .keyin .eye:hover{color:#fff}
+  .keyin .eye svg{width:16px;height:16px}
 
   /* 히어로 빈 상태 */
   .hero{display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -1398,136 +1427,128 @@ PAGE = """<!doctype html>
     <div class="titlebar"><span>설정</span></div>
     <div class="pbody">
 
-      <!-- 연결 · 모델 (설정 후 접힘. 성능 설정은 아래에 상시 노출) -->
-      <div class="cfgsec">
-        <button type="button" class="acc" x-on:click="cfgOpen = !cfgOpen" x-bind:aria-expanded="cfgOpen">
-          <span class="acc-t">연결 · 모델</span>
-          <span class="acc-s" x-show="!cfgOpen" x-cloak x-text="modelSummary"></span>
-          <svg class="acc-chev" x-bind:class="cfgOpen ? 'open' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-
-        <div x-show="cfgOpen" x-cloak class="mt-3.5">
-          <!-- 스텝 표시 -->
-          <div class="steps">
-            <button type="button" x-on:click="cfgStep = 'text'" x-bind:class="cfgStep === 'text' ? 'on' : ''"><i>1</i> 텍스트</button>
-            <button type="button" x-on:click="cfgStep = 'image'" x-bind:class="cfgStep === 'image' ? 'on' : ''"><i>2</i> 이미지</button>
-            <button type="button" x-on:click="cfgStep = 'key'" x-bind:class="cfgStep === 'key' ? 'on' : ''">
-              <i>3</i> 키 <span class="sdot" x-bind:class="keysReady ? 'ok' : 'warn'"></span>
-            </button>
-          </div>
-
-          <!-- 스텝 1: 텍스트 모델 -->
-          <div x-show="cfgStep === 'text'" class="mt-4">
-            <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted">· 리드문·메타 생성</span></label>
-            <div class="seg seg3 mb-2">
-              <button type="button" x-on:click="setTextProvider('solar')" x-bind:class="textProvider === 'solar' ? 'on' : ''">Solar</button>
-              <button type="button" x-on:click="setTextProvider('bizrouter')" x-bind:class="textProvider === 'bizrouter' ? 'on' : ''">BizRouter</button>
-              <button type="button" x-on:click="setTextProvider('timely')" x-bind:class="textProvider === 'timely' ? 'on' : ''">Timely</button>
-            </div>
-            <div x-show="textProvider === 'solar'">
-              <select x-model="cfgModel" x-on:change="saveTextSlot()" class="field">
-                <template x-for="m in modelOptions" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-                <template x-if="!modelOptions.length"><option value="" disabled>키 입력 후 모델 불러오기</option></template>
-              </select>
-              <button type="button" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
-                class="mt-2 w-full rounded-lg border border-white/[0.10] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">모델 불러오기</button>
-              <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
-            </div>
-            <div x-show="isRouter(textProvider)" x-cloak>
-              <select x-model="textModel" x-on:change="saveTextSlot()" class="field">
-                <template x-for="m in textModelList" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-              </select>
-            </div>
-            <div class="step-nav">
-              <span></span>
-              <button type="button" x-on:click="cfgStep = 'image'">다음 · 이미지 모델 →</button>
-            </div>
-          </div>
-
-          <!-- 스텝 2: 이미지 맥락 모델 -->
-          <div x-show="cfgStep === 'image'" x-cloak class="mt-4">
-            <label class="lbl">이미지 맥락 모델 <span class="font-normal normal-case tracking-normal text-muted">· 이미지 이해</span></label>
-            <div class="seg seg3 mb-2">
-              <button type="button" x-on:click="setVisionProvider('upstage_ie')" x-bind:class="visionProvider === 'upstage_ie' ? 'on' : ''">Upstage</button>
-              <button type="button" x-on:click="setVisionProvider('bizrouter')" x-bind:class="visionProvider === 'bizrouter' ? 'on' : ''">BizRouter</button>
-              <button type="button" x-on:click="setVisionProvider('timely')" x-bind:class="visionProvider === 'timely' ? 'on' : ''">Timely</button>
-            </div>
-            <div x-show="visionProvider === 'upstage_ie'">
-              <p class="text-xs text-muted">Upstage Information Extraction · Solar 키 사용. 텍스트가 있는 이미지에 적합(순수 사진은 미검출 가능).</p>
-            </div>
-            <div x-show="isRouter(visionProvider)" x-cloak>
-              <select x-model="visionModel" x-on:change="saveVisionSlot()" class="field">
-                <template x-for="m in visionModelList" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-              </select>
-              <p class="mt-1.5 text-xs text-muted">멀티모달 모델로 순수 사진까지 이해합니다.</p>
-            </div>
-            <div class="step-nav">
-              <button type="button" class="back" x-on:click="cfgStep = 'text'">← 텍스트 모델</button>
-              <button type="button" x-on:click="cfgStep = 'key'">다음 · 키 입력 →</button>
-            </div>
-          </div>
-
-          <!-- 스텝 3: 키 입력(선택한 제공자에 필요한 키만) -->
-          <div x-show="cfgStep === 'key'" x-cloak class="mt-4">
-            <label class="lbl">필요한 키</label>
-            <p class="mb-3 text-xs text-muted">선택한 제공자에 필요한 키만 표시됩니다.</p>
-            <template x-for="s in requiredKeys" x-bind:key="s">
-              <div class="keycard">
-                <div class="mb-1.5 flex items-center justify-between">
-                  <span class="text-[13px] font-semibold text-white" x-text="keyDefs[s].label"></span>
-                  <span class="inline-flex items-center gap-1.5 text-xs">
-                    <span class="sdot" x-bind:class="keyState(s) ? 'ok' : 'warn'"></span>
-                    <span class="text-muted" x-text="keyState(s) ? '설정됨' : '미설정'"></span>
-                  </span>
-                </div>
-                <input type="password" x-model="keyInputs[s]" x-bind:placeholder="keyDefs[s].ph" class="field" autocomplete="off">
-                <div class="mt-2 flex flex-wrap items-center gap-2">
-                  <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
-                    class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover disabled:opacity-50">저장</button>
-                  <button type="button" x-show="s === 'solar' && keyState('solar')" x-on:click="testConn()" x-bind:disabled="cfgBusy"
-                    class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
-                  <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)"
-                    class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">삭제</button>
-                </div>
-                <span class="mt-1.5 block text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
-              </div>
-            </template>
-            <label class="mt-3 flex cursor-pointer items-center gap-2 text-[13px] text-body">
-              <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
-              이 기기에 저장 (재시작 후에도 유지)
-            </label>
-            <div class="step-nav">
-              <button type="button" class="back" x-on:click="cfgStep = 'image'">← 이미지 모델</button>
-              <span class="text-xs" x-bind:class="keysReady ? 'text-emerald-400' : 'text-amber-400'"
-                    x-text="keysReady ? '필요한 키 준비됨' : '키 입력 필요'"></span>
-            </div>
-          </div>
-        </div>
+      <!-- 탭: API 키 / 모델 (Atelier 방식) -->
+      <div class="cfgtabs">
+        <button type="button" x-on:click="cfgTab = 'keys'" x-bind:class="cfgTab === 'keys' ? 'on' : ''">API 키</button>
+        <button type="button" x-on:click="cfgTab = 'models'" x-bind:class="cfgTab === 'models' ? 'on' : ''">모델</button>
       </div>
 
-      <!-- 추론 강도 -->
-      <div class="cfgsec">
-        <label class="lbl">추론 강도 (Reasoning Effort)</label>
-        <div class="seg">
-          <template x-for="o in reasoningOpts" x-bind:key="o.id">
-            <button type="button" x-on:click="setReasoning(o.id)"
-              x-bind:class="reasoning === o.id ? 'on' : ''" x-text="o.label"></button>
+      <!-- ① API 키 -->
+      <div x-show="cfgTab === 'keys'" class="cfgsec">
+        <!-- 통합 라우터 카드 -->
+        <div class="routercard">
+          <div class="rc-h"><b>통합 라우터</b><span class="rc-badge">권장</span></div>
+          <p class="rc-d">한 키로 여러 모델(OpenAI · Anthropic · Google · Solar 등)을 호출합니다.</p>
+          <template x-for="s in ['bizrouter', 'timely']" x-bind:key="s">
+            <div class="krow">
+              <div class="krow-top">
+                <span class="krow-nm" x-text="keyDefs[s].label.replace(' 키', '')"></span>
+                <span class="krow-st"><span class="sdot" x-bind:class="keyState(s) ? 'ok' : 'off'"></span><span x-text="keyState(s) ? '연결됨' : '미연결'"></span></span>
+              </div>
+              <div class="keyin">
+                <input x-bind:type="keyShow[s] ? 'text' : 'password'" x-model="keyInputs[s]" x-bind:placeholder="keyDefs[s].ph" class="field" autocomplete="off">
+                <button type="button" class="eye" x-on:click="keyShow[s] = !keyShow[s]" aria-label="키 보기">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
+                  class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
+                <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)"
+                  class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">삭제</button>
+                <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
+              </div>
+            </div>
           </template>
         </div>
-        <p class="mt-1.5 text-xs text-muted">높일수록 추론 깊이는 늘고 속도는 느려집니다.</p>
+
+        <!-- 직접 호출(Solar) -->
+        <div class="sectitle">직접 호출</div>
+        <p class="secdesc">각 회사 키로 직접 호출합니다. 통합 라우터와 함께 등록해도 됩니다.</p>
+        <div class="krow">
+          <div class="krow-top">
+            <span class="krow-nm">Upstage Solar</span>
+            <span class="krow-st"><span class="sdot" x-bind:class="cfg.hasKey ? 'ok' : 'off'"></span><span x-text="cfg.hasKey ? '연결됨' : '미연결'"></span></span>
+          </div>
+          <div class="keyin">
+            <input x-bind:type="keyShow.solar ? 'text' : 'password'" x-model="keyInputs.solar" x-bind:placeholder="keyDefs.solar.ph" class="field" autocomplete="off">
+            <button type="button" class="eye" x-on:click="keyShow.solar = !keyShow.solar" aria-label="키 보기">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" x-on:click="saveKey('solar')" x-bind:disabled="cfgBusy"
+              class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
+            <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy"
+              class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">연결 테스트</button>
+            <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')"
+              class="rounded-lg border border-rose-500/30 px-3.5 py-1.5 text-[13px] font-medium text-rose-300 hover:bg-rose-500/10">삭제</button>
+            <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
+          </div>
+        </div>
+
+        <label class="mt-4 flex cursor-pointer items-center gap-2 text-[13px] text-body">
+          <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
+          이 기기에 저장 (재시작 후에도 유지)
+        </label>
+        <p class="mt-3 text-xs text-muted">키 저장 시 연결을 확인합니다. [모델] 탭에서는 연결된 제공자의 모델만 선택 가능합니다.</p>
       </div>
 
-      <!-- System Prompt (추가 지시) -->
-      <div class="cfgsec">
-        <label class="lbl">System Prompt (추가 지시)</label>
-        <textarea x-model="systemPrompt" x-on:blur="applyPrefs()" rows="4" class="field"
-          placeholder="예) 리드문은 25자 이내로. 인물명은 직책과 함께 표기."></textarea>
-        <div class="mt-2 flex items-center gap-2">
-          <button type="button" x-on:click="applyPrefs()"
-            class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05]">적용</button>
-          <span class="text-xs text-muted" aria-live="polite" x-text="prefMsg"></span>
+      <!-- ② 모델 -->
+      <div x-show="cfgTab === 'models'" x-cloak>
+        <div class="cfgsec">
+          <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted">· 리드문·메타</span></label>
+          <select class="field" x-bind:value="textValue" x-on:change="onTextPick($event.target.value)">
+            <template x-for="g in textGroups" x-bind:key="g.label">
+              <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
+                <template x-for="it in g.items" x-bind:key="it.model">
+                  <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.model || it.label"></option>
+                </template>
+              </optgroup>
+            </template>
+          </select>
+          <button type="button" x-show="cfg.hasKey" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
+            class="mt-2 w-full rounded-lg border border-white/[0.10] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05] disabled:opacity-50">Solar 모델 새로고침</button>
+          <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
         </div>
-        <p class="mt-2 text-xs text-muted">출력 스키마(리드문·엔티티·인텐트·콘텐츠 카테고리)는 유지하며 추출 방향만 조향합니다.</p>
+
+        <div class="cfgsec">
+          <label class="lbl">이미지 모델 <span class="font-normal normal-case tracking-normal text-muted">· 이미지 이해</span></label>
+          <select class="field" x-bind:value="visionValue" x-on:change="onVisionPick($event.target.value)">
+            <template x-for="g in visionGroups" x-bind:key="g.label">
+              <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
+                <template x-for="it in g.items" x-bind:key="it.model || it.label">
+                  <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.label || it.model"></option>
+                </template>
+              </optgroup>
+            </template>
+          </select>
+          <p class="mt-1.5 text-xs text-muted">순수 사진은 멀티모달 모델 권장(Upstage는 텍스트형 이미지에 적합).</p>
+          <span class="mt-1 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
+        </div>
+
+        <div class="cfgsec">
+          <label class="lbl">추론 강도 (Reasoning Effort)</label>
+          <div class="seg">
+            <template x-for="o in reasoningOpts" x-bind:key="o.id">
+              <button type="button" x-on:click="setReasoning(o.id)"
+                x-bind:class="reasoning === o.id ? 'on' : ''" x-text="o.label"></button>
+            </template>
+          </div>
+          <p class="mt-1.5 text-xs text-muted">높일수록 추론 깊이는 늘고 속도는 느려집니다.</p>
+        </div>
+
+        <div class="cfgsec">
+          <label class="lbl">System Prompt (추가 지시)</label>
+          <textarea x-model="systemPrompt" x-on:blur="applyPrefs()" rows="4" class="field"
+            placeholder="예) 리드문은 25자 이내로. 인물명은 직책과 함께 표기."></textarea>
+          <div class="mt-2 flex items-center gap-2">
+            <button type="button" x-on:click="applyPrefs()"
+              class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05]">적용</button>
+            <span class="text-xs text-muted" aria-live="polite" x-text="prefMsg"></span>
+          </div>
+          <p class="mt-2 text-xs text-muted">출력 스키마(리드문·엔티티·인텐트·콘텐츠 카테고리)는 유지하며 추출 방향만 조향합니다.</p>
+        </div>
       </div>
 
     </div>
