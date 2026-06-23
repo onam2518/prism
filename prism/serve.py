@@ -375,7 +375,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prism · 리드문·메타 추출</title>
+<title>Prism</title>
 <meta name="description" content="이미지·텍스트·엑셀에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출하는 콘텐츠 메타 도구">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b52ff'/%3E%3Cpath d='M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z' fill='%23fff'/%3E%3C/svg%3E">
 <link href="/vendor/pretendard.css" rel="stylesheet">
@@ -784,7 +784,6 @@ PAGE = """<!doctype html>
         </svg>
       </span>
       <span class="logo-word">Prism</span>
-      <span class="logo-sub">리드문·메타</span>
     </div>
     <div class="pbody pad">
       <div class="navgrp">입력</div>
@@ -825,6 +824,13 @@ PAGE = """<!doctype html>
         <!-- 입력 카드 -->
         <section class="panel">
           <div class="panel-bd">
+          <!-- 콘텐츠 그룹: 입력 시 지정(이미지·텍스트 공용). 엑셀은 컬럼에서 자동 -->
+          <div x-show="activeTabId !== 'excel'" x-cloak class="mb-4">
+            <label class="lbl">콘텐츠 그룹</label>
+            <select x-model="group" class="field">
+              <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+            </select>
+          </div>
           <!-- 이미지 -->
           <div x-show="activeTabId === 'image'" x-cloak class="space-y-4">
             <div>
@@ -872,7 +878,7 @@ PAGE = """<!doctype html>
               <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
               <span x-text="loading ? '실행 중' : '추출 실행'"></span>
             </button>
-            <span class="text-xs text-muted">콘텐츠 그룹 · 모델은 우측 Configuration 에서 설정</span>
+            <span class="text-xs text-muted">모델 · 추론 강도는 우측 설정 패널에서 변경</span>
             <span aria-live="polite" class="ml-auto text-sm text-rose-400" x-text="status"></span>
           </div>
           </div>
@@ -1059,7 +1065,7 @@ PAGE = """<!doctype html>
 
   <!-- ━━━━━ 우측 페인 · Configuration ━━━━━ -->
   <aside class="pane">
-    <div class="titlebar"><span>Configuration</span></div>
+    <div class="titlebar"><span>설정</span></div>
     <div class="pbody">
 
       <!-- API 키 -->
@@ -1110,15 +1116,6 @@ PAGE = """<!doctype html>
           </template>
         </div>
         <p class="mt-1.5 text-xs text-muted">높일수록 추론 깊이는 늘고 속도는 느려집니다.</p>
-      </div>
-
-      <!-- 콘텐츠 그룹 -->
-      <div class="cfgsec">
-        <label class="lbl">콘텐츠 그룹</label>
-        <select x-model="group" class="field">
-          <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
-        </select>
-        <p class="mt-1.5 text-xs text-muted">인텐트 사전을 이 그룹 기준으로 적용합니다.</p>
       </div>
 
       <!-- System Prompt (추가 지시) -->
