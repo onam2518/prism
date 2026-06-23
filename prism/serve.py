@@ -89,7 +89,7 @@ def run_pipeline(fields: dict, *, mock: bool) -> dict:
             "body": fields.get("body", ""),
         }
 
-    out = PIPE.extract(content, llm)
+    out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
     _LAST_RESULTS[:] = [out]
     return {
         "source": source,
@@ -265,7 +265,7 @@ def run_batch(file_bytes: bytes, filename: str) -> dict:
         contents = ING.to_contents(tmp)[:200]
         results, items = [], []
         for c in contents:
-            out = PIPE.extract(c, llm)
+            out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
             results.append(out)
             im = out.get("item_meta") or {}
             items.append({"title": (c.get("title") or "")[:80],
@@ -368,6 +368,7 @@ def config_status() -> dict:
         "textModel": cfg.text_model or "",
         "visionProvider": cfg.vision_provider or "upstage_ie",
         "visionModel": cfg.vision_model or "",
+        "legalEnabled": bool(cfg.legal_enabled),
     }
 
 
@@ -414,7 +415,8 @@ def apply_config(data: dict) -> dict:
     has_sp = "system_prompt" in data
     slot_keys = ("text_provider", "text_model", "vision_provider", "vision_model")
     has_slot = any(k in data for k in slot_keys)
-    if model or base or reasoning or has_sp or has_slot:
+    has_legal = "legal_enabled" in data
+    if model or base or reasoning or has_sp or has_slot or has_legal:
         cfg = Config.load()
         if base:
             cfg.set_base_url(base)
@@ -424,6 +426,8 @@ def apply_config(data: dict) -> dict:
             cfg.reasoning_effort = reasoning
         if has_sp:
             cfg.system_prompt = (data.get("system_prompt") or "").strip()
+        if has_legal:
+            cfg.legal_enabled = bool(data.get("legal_enabled"))
         for k in slot_keys:
             if k in data:
                 setattr(cfg, k, (data.get(k) or "").strip())
@@ -669,7 +673,7 @@ PAGE = """<!doctype html>
       cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasBizKey: false, hasTimelyKey: false },
       cfgModel: '', cfgPersist: true, cfgBusy: false,
       models: [], modelsMsg: '',
-      reasoning: 'default', systemPrompt: '', prefMsg: '',
+      reasoning: 'default', systemPrompt: '', prefMsg: '', legalEnabled: false,
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],
 
       // 모델 슬롯 + 스텝식 설정
@@ -849,7 +853,12 @@ PAGE = """<!doctype html>
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
           if (this.cfg.visionProvider) this.visionProvider = this.cfg.visionProvider;
           if (typeof this.cfg.visionModel === 'string' && this.cfg.visionModel) this.visionModel = this.cfg.visionModel;
+          if (typeof this.cfg.legalEnabled === 'boolean') this.legalEnabled = this.cfg.legalEnabled;
         } catch (e) { /* noop */ }
+      },
+      async toggleLegal() {
+        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ legal_enabled: this.legalEnabled }) }); } catch (e) {}
       },
       // ── 키(서비스별) ──
       keyState(service) { return !!this.cfg[this.keyDefs[service].has]; },
@@ -1679,6 +1688,13 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 품질 메타 ═══ -->
       <div x-show="mod === 'quality'" x-cloak class="mx-auto max-w-3xl space-y-4">
+        <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
+          <div class="text-xs text-muted">법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다. 켜면 다음 추출부터 적용(추가 호출).</div>
+          <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
+            <input type="checkbox" x-model="legalEnabled" x-on:change="toggleLegal()" class="h-4 w-4 rounded border-white/20 bg-canvas text-violet">
+            법령 필터 포함
+          </label>
+        </div></div>
         <div x-show="!result" class="empty"><b class="text-body">실행 · 추출</b>에서 단건 추출을 실행하면 그 콘텐츠의 품질·법령 판정 상세가 여기에 표시됩니다.</div>
         <div x-show="result" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>유통 판정</b>

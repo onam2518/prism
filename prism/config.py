@@ -68,6 +68,7 @@ class Config:
     text_model: str = ""                # 라우터일 때 public id (예: gpt-5.4 / openai/gpt-5.4)
     vision_provider: str = "upstage_ie"  # upstage_ie | bizrouter | timely
     vision_model: str = ""              # 라우터일 때 public id
+    legal_enabled: bool = False         # 품질 1차 법령 필터 포함 여부(단건/일괄)
 
     # 실행
     concurrency: int = 12
