@@ -117,6 +117,30 @@
       async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard')).json(); } catch (e) {} this.modBusy = false; },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics')).json(); } catch (e) {} this.modBusy = false; },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await fetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
+      // 사전·정책 편집(사용자 직접 수정)
+      editT: null, editKey: null, editKind: 'list', editVal: '', editTitle: '', editMsg: '', editExtra: '',
+      startEdit(target, key, value, kind, title) {
+        this.editT = target; this.editKey = key; this.editKind = kind || 'list'; this.editTitle = title || target; this.editMsg = ''; this.editExtra = '';
+        this.editVal = (kind === 'text') ? (value || '') : (Array.isArray(value) ? value.join('\n') : '');
+      },
+      startEditLegal(code, v) { this.startEdit('legal_types', code, (v && v.label) || '', 'text', '법령 · ' + code); this.editExtra = (v && v.article) || ''; },
+      cancelEdit() { this.editT = null; this.editMsg = ''; },
+      async saveEdit() {
+        let value = this.editKind === 'text' ? this.editVal : this.editVal.split('\n').map(s => s.trim()).filter(Boolean);
+        if (this.editT === 'legal_types') value = { label: this.editVal, article: this.editExtra };
+        const body = { target: this.editT, value }; if (this.editKey != null) body.key = this.editKey;
+        this.editMsg = '저장 중…';
+        try {
+          const r = await fetch('/dict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const d = await r.json();
+          if (d.error) { this.editMsg = '오류: ' + d.error; return; }
+          this.dictData = d; this.editT = null;
+        } catch (e) { this.editMsg = '오류: ' + e; }
+      },
+      async resetDict() {
+        if (!confirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)')) return;
+        try { const r = await fetch('/dict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
+      },
       async loadUser() { this.modBusy = true; try { this.userData = await (await fetch('/usermeta')).json(); } catch (e) {} this.modBusy = false; },
       async uploadUserLog(e) {
         const f = e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -385,7 +409,7 @@
       if (u.indexOf('/dashboard') > -1) return Promise.resolve(J({"n": 12, "g": 10, "r": 2, "gPct": 83, "entities": 31, "avgLead": 38, "intents": [{"k": "사건 경과 보도", "v": 7, "pct": 58}, {"k": "분석·해설", "v": 5, "pct": 42}, {"k": "인물 동향", "v": 3, "pct": 25}, {"k": "흥미·화제", "v": 2, "pct": 17}], "categories": [{"k": "News and Politics", "v": 6, "pct": 50}, {"k": "Sports", "v": 4, "pct": 33}, {"k": "Business and Finance", "v": 3, "pct": 25}], "qualityReasons": [{"k": "clickbait", "v": 2, "pct": 17}]}));
       if (u.indexOf('/topics') > -1) return Promise.resolve(J({"n_contents": 12, "summary": {"single": 2, "composite": 1, "filter": 8}, "single": [{"cluster_id": "S-samsung", "entities": ["삼성전자", "노동조합"], "n_contents": 3}, {"cluster_id": "S-rate", "entities": ["한국은행", "금리"], "n_contents": 2}], "composite": [{"cluster_id": "C-labor", "rep_entities": ["삼성전자", "중앙노동위"], "n_contents": 4}], "filter": [{"cluster_id": "F-fin", "name": "재테크 × 심층 분석", "active": true, "n_contents": 3}, {"cluster_id": "F-ent", "name": "연예 × 화제성", "active": false}]}));
       if (u.indexOf('/usermeta') > -1) return Promise.resolve(J({"source": "실 행동 로그 → 소비 형태·강도 (데모)", "n_contents": 12, "users": [{"user_id": "u1", "persona": "정독러", "form": {"세션 길이": "장", "체류·완주": "고", "전환·이동": "느림", "깊이": "몰입", "시간대": "평일 야간"}, "intensity": {"심층 분석": "고", "정책·사업 소개": "고", "속보·단신": "저"}, "affinity_entities": [["삼성전자", 4], ["금리", 3], ["재건축", 2]], "engagement": {"views": 18, "clicks": 14, "click_rate": 0.78, "avg_dwell_sec": 52.4}}, {"user_id": "u2", "persona": "스낵러", "form": {"세션 길이": "단", "체류·완주": "저", "전환·이동": "빠름", "깊이": "훑기", "시간대": "출퇴근"}, "intensity": {"흥미·화제": "중", "속보·단신": "저"}, "affinity_entities": [["손흥민", 2]], "engagement": {"views": 22, "clicks": 5, "click_rate": 0.23, "avg_dwell_sec": 9.1}}], "personas_def": [{"id": 1, "name": "정독러", "full": "깊이 정독러", "desc": "한 주제를 파고들어 정독·저장", "form": {"깊이": "몰입", "체류·완주": "고"}}, {"id": 2, "name": "스낵러", "full": "가벼운 스낵러", "desc": "짧은 세션·빠른 전환", "form": {"깊이": "훑기", "체류·완주": "저"}}], "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)"}));
-      if (u.indexOf('/dict') > -1) return Promise.resolve(J({"serviceGroups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"], "intentUniversal": ["사건 경과 보도", "분석·해설", "인물 동정", "정보 전달/팁", "리뷰·평가", "의견·논평", "공지·안내", "흥미·화제"], "intentByService": {"뉴스": ["속보", "단독", "기획·심층", "팩트체크"], "연예": ["가십·루머", "작품 홍보", "스케줄·출연", "팬 반응"], "스포츠": ["경기 결과", "이적·계약", "선수 인터뷰", "기록·통계"], "콘텐츠": ["라이프스타일", "취미·DIY", "큐레이션"], "음악": ["신곡·발매", "차트·순위", "아티스트 소식"], "커뮤니티": ["일상 공유", "질문·고민", "정보 공유", "유머"], "블로그": ["리뷰·후기", "튜토리얼", "일상 기록"], "동영상": ["방송 클립", "예고·하이라이트", "리액션"]}, "iabTier1": ["Automotive", "Books and Literature", "Business and Finance", "Careers", "Education", "Events and Attractions", "Family and Relationships", "Food & Drink", "Healthy Living", "Hobbies & Interests", "Home & Garden", "Movies", "Music and Audio", "News and Politics", "Personal Finance", "Pop Culture", "Real Estate", "Science", "Sports", "Style & Fashion", "Technology & Computing"], "qualityMetas": {"ad": "노골적 상업 광고 / 협찬 미고지 / 외부 구매 유도", "sexual": "선정성: 성적 묘사·암시·노출 유도", "profanity": "욕설·비속어·혐오 표현(언어적)", "gambling": "도박·사행성(복권·로또·베팅) 유도", "clickbait": "낚시성 제목: 제목과 본문 불일치, 과장 후킹", "format": "형식 파괴: 깨진 마크업·도배·가독 불가 (UGC 한정)", "shallow": "정보가치 부족: 빈약한 본문, 알맹이 없음", "spam": "스팸: 반복 도배·감성 스토리텔링·저품질 감정 후킹", "graphic": "잔혹/혐오 시각 묘사: 폭행·사고·사체 등", "political": "정치 선동 (UGC 한정)", "hate": "특정 집단 비하·혐오 은어 (UGC 한정)"}, "legalTypes": {"defamation": {"label": "명예훼손", "article": "형법 §307"}, "insult": {"label": "모욕", "article": "형법 §311"}, "obscenity": {"label": "음란물", "article": "정보통신망법 §44-7"}, "sexual_violence": {"label": "성폭력(촬영물 등)", "article": "성폭력처벌법 §14"}, "privacy_violation": {"label": "사생활 침해", "article": "개인정보보호법"}, "stalking": {"label": "스토킹", "article": "스토킹처벌법"}, "hate_speech": {"label": "혐오표현", "article": ":"}, "copyright": {"label": "저작권 침해", "article": "저작권법"}, "fraud": {"label": "사기", "article": "형법 §347"}, "election_interference": {"label": "선거 개입", "article": "공직선거법"}, "ad_fraud": {"label": "허위·과장 광고", "article": "표시광고법"}, "gambling": {"label": "도박 개장/유도", "article": "형법 §247"}, "drug_weapon": {"label": "마약·무기 거래", "article": "마약류관리법 등"}}}));
+      if (u.indexOf('/dict') > -1) return Promise.resolve(J({"serviceGroups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"], "intentUniversal": ["속보·사건 추적", "심층 분석", "팬덤·화제성", "실용 정보", "감성·공감", "오락·유머", "의견·논쟁", "학술·전문"], "intentByService": {"뉴스": ["속보·단신", "사건 경과 보도", "정책·사업 소개", "행정 발표", "법안 통과 보도", "노동 이슈 보도", "사회 안전 보도", "인물 동정", "사설·칼럼", "국제·외교 보도", "트렌드 분석", "설문조사 기반 분석"], "연예": ["열애·결혼·이혼", "컴백·신작 발매", "논란·해명", "화보·시상식", "방송 출연", "팬 소통"], "스포츠": ["감독 인터뷰", "경기 프리뷰", "경기 결과·리뷰", "이적·계약 보도", "선수 분석 기사", "전술·데이터 분석", "부상·복귀 근황", "팬·응원 문화"], "콘텐츠": ["카드뉴스·인포그래픽", "큐레이션·모음", "랭킹·리스트", "요약·브리핑", "반응·리액션", "비교·분석"], "음악": ["신곡·앨범 발매", "차트·랭킹", "아티스트 소식", "라이브·공연", "음악 큐레이션", "음원 리뷰·분석"], "커뮤니티": ["후기·리뷰", "질문·답변", "정보 공유", "의견·토론", "일상·잡담", "창작·작품 공유"], "블로그": ["에세이·산문", "가이드·튜토리얼", "기술·개발", "리뷰·분석", "일상·여행", "창작·연재"], "동영상": ["클립·하이라이트", "풀영상·본방", "예고편·티저", "인터뷰·비하인드", "라이브 중계", "교양·다큐"]}, "iabTier1": ["News and Politics", "Entertainment", "Business and Finance", "Sports", "Food and Drink", "Travel", "Family and Relationships", "Education", "Technology and Computing", "Books and Literature", "Medical Health", "Hobbies and Interests", "Health and Fitness", "Home and Garden", "Pets", "Style and Fashion", "Automotive", "Video Gaming", "Science", "Careers", "Religion and Spirituality"], "tier2": {"News and Politics": ["Politics", "Society", "Local News", "Crime", "Disasters", "Law", "International News", "Weather"], "Entertainment": ["Celebrity News", "Celebrity News (Foreign)", "Drama TV", "TV Shows", "Movies", "Music", "Visual Art", "Performing Arts", "Humor"], "Business and Finance": ["Economy", "Industries", "Business", "Investing", "Banking", "Insurance", "Real Estate Policy", "Real Estate Listings"], "Sports": ["Soccer (Domestic)", "Soccer (International)", "Baseball (Domestic)", "Baseball (International)", "Basketball", "Volleyball", "Golf", "Martial Arts", "Other Sports"], "Food and Drink": ["Cooking", "Food", "Beverages", "Dining Out"], "Travel": ["Domestic Travel", "International Travel", "Hotels", "Air Travel", "Travel Preparation"], "Family and Relationships": ["Parenting", "Family", "Dating", "Weddings"], "Education": ["Primary Education", "Secondary Education", "Higher Education", "Language Learning", "Adult Education"], "Technology and Computing": ["Computing", "Internet", "Information Security", "Consumer Electronics"], "Books and Literature": ["Fiction", "Non-Fiction", "Biographies", "Essays"], "Medical Health": ["Diseases and Conditions", "Wellness"], "Hobbies and Interests": ["Arts and Crafts", "Collecting", "Outdoors"], "Health and Fitness": ["Healthy Living", "Exercise and Fitness"], "Home and Garden": ["Interior Decorating", "Gardening", "Home Improvement", "Shopping"], "Pets": ["Dogs", "Cats", "Birds", "Fish", "Other Pets"], "Style and Fashion": ["Fashion Trends", "Personal Care", "Accessories"], "Automotive": ["Auto Type", "Auto Repair", "Auto Shows"], "Video Gaming": ["Video Games", "eSports"], "Science": ["Space and Astronomy", "Biology", "Physics", "Environment", "General Science"], "Careers": ["Job Search", "Career Advice"], "Religion and Spirituality": ["Religion", "Spirituality"]}, "iabMap": {"Entertainment / Celebrity News (Foreign)": "Pop Culture / Celebrity News", "Entertainment / Drama TV": "Television / Drama TV", "Entertainment / TV Shows": "Television / TV Shows", "Entertainment / Movies": "Movies", "Entertainment / Music": "Music and Audio", "Entertainment / Visual Art": "Fine Art", "Entertainment / Performing Arts": "Fine Art", "Business and Finance / Investing": "Personal Finance", "Business and Finance / Banking": "Personal Finance", "Business and Finance / Insurance": "Personal Finance", "Business and Finance / Real Estate Policy": "Real Estate / Residential Real Estate", "Business and Finance / Real Estate Listings": "Real Estate / Residential Real Estate", "News and Politics / Weather": "Weather", "Home and Garden / Shopping": "Shopping", "Sports / Soccer (Domestic)": "Sports / Soccer", "Sports / Soccer (International)": "Sports / Soccer", "Sports / Baseball (Domestic)": "Sports / Baseball", "Sports / Baseball (International)": "Sports / Baseball", "Sports / Other Sports": "Sports / Olympic Sports", "Video Gaming / eSports": "Video Gaming / eSports"}, "domainGroups": {"시사": ["News and Politics"], "경제·산업": ["Business and Finance"], "엔터": ["Entertainment"], "스포츠": ["Sports"], "테크·모빌리티": ["Technology and Computing", "Automotive", "Video Gaming"], "라이프": ["Food and Drink", "Travel", "Family and Relationships", "Home and Garden", "Pets", "Style and Fashion", "Health and Fitness", "Hobbies and Interests", "Religion and Spirituality", "Medical Health", "Careers"], "지식·교양": ["Education", "Books and Literature", "Science"]}, "qualityMetas": {"ad": "노골적 상업 광고 / 협찬 미고지 / 외부 구매 유도", "sexual": "선정성: 성적 묘사·암시·노출 유도", "profanity": "욕설·비속어·혐오 표현(언어적)", "gambling": "도박·사행성(복권·로또·베팅) 유도", "clickbait": "낚시성 제목: 제목과 본문 불일치, 과장 후킹", "format": "형식 파괴: 깨진 마크업·도배·가독 불가 (UGC 한정)", "shallow": "정보가치 부족: 빈약한 본문, 알맹이 없음", "spam": "스팸: 반복 도배·감성 스토리텔링·저품질 감정 후킹", "graphic": "잔혹/혐오 시각 묘사: 폭행·사고·사체 등", "political": "정치 선동 (UGC 한정)", "hate": "특정 집단 비하·혐오 은어 (UGC 한정)"}, "legalTypes": {"defamation": {"label": "명예훼손", "article": "형법 §307"}, "insult": {"label": "모욕", "article": "형법 §311"}, "obscenity": {"label": "음란물", "article": "정보통신망법 §44-7"}, "sexual_violence": {"label": "성폭력(촬영물 등)", "article": "성폭력처벌법 §14"}, "privacy_violation": {"label": "사생활 침해", "article": "개인정보보호법"}, "stalking": {"label": "스토킹", "article": "스토킹처벌법"}, "hate_speech": {"label": "혐오표현", "article": ":"}, "copyright": {"label": "저작권 침해", "article": "저작권법"}, "fraud": {"label": "사기", "article": "형법 §347"}, "election_interference": {"label": "선거 개입", "article": "공직선거법"}, "ad_fraud": {"label": "허위·과장 광고", "article": "표시광고법"}, "gambling": {"label": "도박 개장/유도", "article": "형법 §247"}, "drug_weapon": {"label": "마약·무기 거래", "article": "마약류관리법 등"}}}));
       if (u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
       return real ? real(url, opt) : Promise.resolve(J({}));
     };
@@ -1148,25 +1172,74 @@
 
       <!-- ═══ 모듈: 사전 · 매핑 ═══ -->
       <div x-show="mod === 'dict'" x-cloak class="mx-auto max-w-4xl space-y-4">
+        <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
+          <div class="text-xs text-muted">각 체계의 정책(사전·카테고리·법령)을 <span class="text-body">직접 수정</span>할 수 있습니다. 저장 시 즉시 추출에 반영되고 로컬에 영속됩니다.</div>
+          <button type="button" x-on:click="resetDict()" class="rounded-md border border-rose-500/30 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/10">편집 초기화</button>
+        </div></div>
+
+        <!-- 인라인 편집 바 -->
+        <div x-show="editT" x-cloak class="panel" style="border-color:rgba(91,82,255,.4)"><div class="panel-bd">
+          <div class="flex items-center justify-between mb-2"><b class="text-sm text-white" x-text="'편집 · ' + editTitle"></b>
+            <span class="text-xs text-muted" x-text="editKind==='list' ? '한 줄에 하나씩' : '텍스트'"></span></div>
+          <textarea x-model="editVal" rows="6" class="field" style="height:auto;padding:11px 12px"></textarea>
+          <div class="mt-2 flex items-center gap-2">
+            <button type="button" x-on:click="saveEdit()" class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-violet-hover">저장</button>
+            <button type="button" x-on:click="cancelEdit()" class="rounded-lg border border-white/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-white/[0.05]">취소</button>
+            <span class="text-xs text-muted" x-text="editMsg"></span>
+          </div>
+        </div></div>
+
         <div x-show="dictData" class="space-y-4">
-          <div class="panel"><div class="panel-hd"><b>인텐트 사전</b>
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용(8)</b>
+            <button type="button" class="copybtn" x-on:click="startEdit('intent_universal', null, dictData.intentUniversal, 'list', '인텐트 범용')">편집</button>
+          </div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+          </div></div>
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 서비스별</b>
             <select x-model="dictGroup" class="field" style="width:auto;height:32px;padding:0 28px 0 10px">
               <template x-for="g in (dictData?dictData.serviceGroups:[])" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
             </select>
+            <button type="button" class="copybtn" x-on:click="startEdit('intent_by_service', dictGroup, (dictData.intentByService[dictGroup]||[]), 'list', '인텐트 · ' + dictGroup)">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : (dictData?dictData.intentUniversal:[]))" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="chip chip-int" x-text="i"></span></template>
+            <span x-show="!(dictData && dictData.intentByService[dictGroup] && dictData.intentByService[dictGroup].length)" class="text-xs text-muted">항목 없음</span>
           </div></div>
-          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · IAB Tier1</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + '종') : ''"></span></div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c"><span class="chip chip-cat" x-text="c"></span></template>
-          </div></div>
+          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span>
+            <button type="button" class="copybtn ml-auto" x-on:click="startEdit('iab_tier1', null, dictData.iabTier1, 'list', 'Tier1 목록')">Tier1 편집</button>
+          </div>
+            <div class="panel-bd space-y-2.5" style="max-height:340px;overflow:auto">
+              <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c">
+                <div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <div class="text-[13px] font-semibold text-white" x-text="c"></div>
+                    <button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button>
+                  </div>
+                  <div class="flex flex-wrap gap-1.5">
+                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="chip chip-cat" x-text="t2"></span></template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div><div class="panel-bd space-y-2">
+              <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
+                <div><span class="chip chip-ent" x-text="g"></span> <span class="text-xs text-muted" x-text="ts.join(' · ')"></span></div>
+              </template>
+            </div></div>
+            <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>자사 경로</th><th>IAB 공식</th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.iabMap:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td class="text-muted" x-text="v"></td></tr></template>
+              </tbody></table></div></div>
+          </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>정의</th></tr></thead><tbody>
-                <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v"></td></tr></template>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>ID</th><th>정의</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v"></td><td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td></tr></template>
               </tbody></table></div></div>
             <div class="panel"><div class="panel-hd"><b>법령 위반 유형</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.legalTypes).length+'종':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>코드</th><th>유형</th><th>근거</th></tr></thead><tbody>
-                <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v.label"></td><td class="text-muted" x-text="v.article"></td></tr></template>
+              <div class="overflow-auto" style="max-height:280px"><table class="tbl"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-white" x-text="k"></td><td x-text="v.label"></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="text-[11px] text-muted hover:text-white" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
               </tbody></table></div></div>
           </div>
         </div>
