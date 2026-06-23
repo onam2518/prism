@@ -481,6 +481,12 @@
   .ds-hero__title{font-family:var(--ds-font-sans);font-size:var(--ds-size-heading);font-weight:600;color:var(--ds-ink);margin-top:12px}
   .ds-hero__desc{font-size:var(--ds-size-body);color:var(--ds-muted);max-width:30rem;line-height:var(--ds-lh-normal)}
   .ds-hero__chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
+  /* EmptyState(모듈 빈 상태) — DS 갭, 토큰으로 구성 */
+  .ds-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;
+    padding:44px 24px;border:1px dashed var(--ds-hairline);border-radius:var(--ds-radius-lg);
+    background:var(--ds-surface);font-family:var(--ds-font-body)}
+  .ds-empty__title{font-family:var(--ds-font-sans);font-size:var(--ds-size-subtitle);font-weight:600;color:var(--ds-ink);margin-top:10px}
+  .ds-empty__desc{font-size:var(--ds-size-body);color:var(--ds-muted)}
 
   /* 드롭존(파일 업로드) — .field 와 동일 규격. 점선 테두리·우측 버튼만 다름 */
   .dropzone{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
@@ -1101,32 +1107,36 @@
         </div>
       </div>
 
-      <!-- ═══ 모듈: 대시보드 ═══ -->
-      <div x-show="mod === 'dash'" x-cloak class="mx-auto max-w-4xl">
-        <div x-show="!dashData || !dashData.n" class="empty">아직 집계할 결과가 없습니다. <b class="text-body">실행 · 추출</b>에서 추출(엑셀 일괄 권장)을 먼저 실행하세요.</div>
+      <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
+      <div x-show="mod === 'dash'" x-cloak class="ds-dark ds-pilot mx-auto max-w-4xl">
+        <div x-show="!dashData || !dashData.n" class="ds-empty">
+          <span class="ds-character ds-character--bob" style="width:80px;height:80px"><img src="/vendor/boksil-catcher.svg" alt=""></span>
+          <div class="ds-empty__title">아직 집계할 결과가 없어요</div>
+          <div class="ds-empty__desc"><b>추출 실행</b>에서 추출(엑셀 일괄 권장)을 먼저 실행하세요.</div>
+        </div>
         <div x-show="dashData && dashData.n" class="space-y-4">
-          <div class="tiles">
-            <div class="tile"><div class="n tnum" x-text="(dashData?dashData.gPct:0) + '%'"></div><div class="t">유통 가능 G</div></div>
-            <div class="tile"><div class="n tnum" x-text="dashData?dashData.n:0"></div><div class="t">처리 건수</div></div>
-            <div class="tile"><div class="n tnum" x-text="dashData?dashData.entities:0"></div><div class="t">엔티티 수</div></div>
-            <div class="tile"><div class="n tnum" x-text="dashData?dashData.avgLead:0"></div><div class="t">평균 리드문(자)</div></div>
+          <div class="ds-stat-grid">
+            <div class="ds-stat"><div class="ds-stat__value ds-stat__value--accent" x-text="(dashData?dashData.gPct:0) + '%'"></div><div class="ds-stat__label">유통 가능 G</div></div>
+            <div class="ds-stat"><div class="ds-stat__value" x-text="dashData?dashData.n:0"></div><div class="ds-stat__label">처리 건수</div></div>
+            <div class="ds-stat"><div class="ds-stat__value" x-text="dashData?dashData.entities:0"></div><div class="ds-stat__label">엔티티 수</div></div>
+            <div class="ds-stat"><div class="ds-stat__value" x-text="dashData?dashData.avgLead:0"></div><div class="ds-stat__label">평균 리드문(자)</div></div>
           </div>
-          <div class="flex items-center gap-6 panel"><div class="panel-bd flex items-center gap-6 w-full">
-            <div class="ring" x-bind:style="'background:conic-gradient(#5fe0ad ' + (dashData?dashData.gPct:0) + '%, rgba(255,255,255,.07) 0)'">
-              <i><span class="pv tnum" x-text="(dashData?dashData.gPct:0)+'%'"></span><span class="pl">유통 가능</span></i></div>
-            <div class="min-w-0 flex-1">
-              <div class="lbl" style="margin-bottom:2px">인텐트 분포</div>
+          <div class="ds-card"><div style="display:flex;align-items:center;gap:24px">
+            <div class="ds-ring" x-bind:style="'--ds-ring-size:120px;--ds-ring-pct:'+(dashData?dashData.gPct:0)"><span class="ds-ring__label" x-text="(dashData?dashData.gPct:0)+'%'"></span></div>
+            <div style="min-width:0;flex:1">
+              <div class="ds-eyebrow" style="margin-bottom:8px">인텐트 분포</div>
               <template x-for="it in (dashData?dashData.intents:[])" x-bind:key="it.k">
-                <div class="bar"><span class="lab" x-text="it.k"></span><span class="track"><span class="fill" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></span></span><span class="pc tnum" x-text="it.v"></span></div>
+                <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
               </template>
             </div>
           </div></div>
-          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 분포</b><span class="meta">상위</span></div><div class="panel-bd">
+          <div class="ds-card">
+            <div class="ds-eyebrow" style="margin-bottom:10px">콘텐츠 카테고리 분포 · 상위</div>
             <template x-for="it in (dashData?dashData.categories:[])" x-bind:key="it.k">
-              <div class="bar"><span class="lab" x-text="it.k"></span><span class="track"><span class="fill" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></span></span><span class="pc tnum" x-text="it.v"></span></div>
+              <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
             </template>
-            <p x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" class="mt-3 text-xs text-muted">품질 사유 상위: <span x-text="(dashData?dashData.qualityReasons:[]).map(x=>x.k+'('+x.v+')').join(' · ')"></span></p>
-          </div></div>
+            <p x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" class="ds-hint" style="margin-top:12px">품질 사유 상위: <span x-text="(dashData?dashData.qualityReasons:[]).map(x=>x.k+'('+x.v+')').join(' · ')"></span></p>
+          </div>
         </div>
       </div>
 
