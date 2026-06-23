@@ -125,6 +125,71 @@ def build_template_csv() -> bytes:
     return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
+# \u2500\u2500 \uc5b4\ub4dc\ubbfc \ubaa8\ub4c8 \ub370\uc774\ud130(\uc2e4\ub370\uc774\ud130 \uc5f0\uacb0) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+def dict_data() -> dict:
+    """\uc0ac\uc804\u00b7\ub9e4\ud551 \ubaa8\ub4c8: \uc778\ud150\ud2b8\u00b7\ucf58\ud150\uce20 \uce74\ud14c\uace0\ub9ac\u00b7\ud488\uc9c8\u00b7\ubc95\ub839 \uc0ac\uc804\uc744 \uadf8\ub300\ub85c \ub178\ucd9c."""
+    from . import dictionaries as D
+    return {
+        "serviceGroups": list(D.SERVICE_GROUP.keys()),
+        "intentUniversal": list(D.INTENT_CATEGORIES_UNIVERSAL),
+        "intentByService": {k: list(v) for k, v in D.INTENT_CATEGORIES_BY_SERVICE.items()},
+        "iabTier1": list(D.IAB_TIER1),
+        "qualityMetas": dict(D.QUALITY_METAS),
+        "legalTypes": {c: {"label": v.get("label", c), "article": v.get("article", "")}
+                       for c, v in D.LEGAL_HARM_TYPES.items()},
+    }
+
+
+def topics_data() -> dict:
+    """\ud1a0\ud53d \ubaa8\ub4c8: \ub9c8\uc9c0\ub9c9 \ucd94\ucd9c \uacb0\uacfc\uc5d0\uc11c \uc5d4\ud2f0\ud2f0\ud615\u00b7\uc0ac\uac74\ud615\u00b7\uc870\uac74\ud615 \ud1a0\ud53d \ube4c\ub4dc."""
+    if not _LAST_RESULTS:
+        return {"n_contents": 0, "single": [], "composite": [], "filter": [], "summary": {}}
+    from . import topic as TP
+    with tempfile.TemporaryDirectory() as d:
+        rpath = os.path.join(d, "r.jsonl")
+        with open(rpath, "w", encoding="utf-8") as f:
+            for r in _LAST_RESULTS:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        try:
+            return TP.build_topics(rpath)
+        except Exception as e:
+            return {"error": str(e)[:200], "n_contents": len(_LAST_RESULTS),
+                    "single": [], "composite": [], "filter": [], "summary": {}}
+
+
+def dashboard_data() -> dict:
+    """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8: \ub9c8\uc9c0\ub9c9 \uacb0\uacfc \uc9d1\uacc4(\uc720\ud1b5 G/R \u00b7 \uc778\ud150\ud2b8 \u00b7 \uce74\ud14c\uace0\ub9ac \u00b7 \ud488\uc9c8 \uc0ac\uc720)."""
+    rows = _LAST_RESULTS
+    n = len(rows)
+    g = sum(1 for r in rows if (r.get("quality_meta") or {}).get("finalGrade") == "G")
+    intent_c, cat_c, reason_c = {}, {}, {}
+    lead_sum = lead_n = ent_total = 0
+    for r in rows:
+        im = r.get("item_meta") or {}
+        for t in (im.get("intent") or []):
+            intent_c[t] = intent_c.get(t, 0) + 1
+        for v in (im.get("content_category") or {}).values():
+            top = (v or "").split("/")[0].strip()
+            if top:
+                cat_c[top] = cat_c.get(top, 0) + 1
+        ent_total += len(im.get("entities") or [])
+        s = im.get("summary") or ""
+        if s:
+            lead_sum += len(s); lead_n += 1
+        for rs in ((r.get("quality_meta") or {}).get("reasons") or []):
+            reason_c[rs] = reason_c.get(rs, 0) + 1
+
+    def topk(dd, k=8):
+        items = sorted(dd.items(), key=lambda x: -x[1])[:k]
+        return [{"k": a, "v": b, "pct": round(b / n * 100) if n else 0} for a, b in items]
+
+    return {
+        "n": n, "g": g, "r": n - g, "gPct": round(g / n * 100) if n else 0,
+        "entities": ent_total, "avgLead": round(lead_sum / lead_n) if lead_n else 0,
+        "intents": topk(intent_c), "categories": topk(cat_c), "qualityReasons": topk(reason_c),
+    }
+
+
 def run_batch(file_bytes: bytes, filename: str) -> dict:
     """엑셀/CSV 업로드 → ingest 매핑 → 행마다 추출 → 결과+리포트(_LAST_RESULTS)."""
     from . import ingest as ING
@@ -381,6 +446,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/vocab"):
             self._send(200, json.dumps(vocab(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/dict"):
+            self._send(200, json.dumps(dict_data(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/topics"):
+            self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/dashboard"):
+            self._send(200, json.dumps(dashboard_data(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/template.csv"):
             data = build_template_csv()
             self.send_response(200)
