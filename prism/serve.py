@@ -190,6 +190,65 @@ def dashboard_data() -> dict:
     }
 
 
+def _logs_to_jsonl(data: bytes, filename: str, out_path: str):
+    """행동 로그(csv/tsv/jsonl) → jsonl 정규화. 컬럼: user_id·content_id·event·dwell_sec·scroll_pct·ts."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    text = data.decode("utf-8-sig", "replace")
+    rows = []
+    if ext in (".csv", ".tsv"):
+        import csv
+        import io
+        for row in csv.DictReader(io.StringIO(text), delimiter="\t" if ext == ".tsv" else ","):
+            rows.append({(k or "").strip(): (v.strip() if isinstance(v, str) else v)
+                         for k, v in row.items() if k})
+    else:
+        for line in text.splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    rows.append(json.loads(line))
+                except Exception:
+                    pass
+    with open(out_path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+
+def usermeta_data(logs_bytes: bytes = None, filename: str = "") -> dict:
+    """사용자 메타 모듈: 행동 로그 업로드 시 실데이터로 소비 형태·강도·선호 산출,
+    없으면 페르소나 정의·공식·시나리오(명세)만."""
+    from . import usermeta as UM
+    if not _LAST_RESULTS:
+        return {"empty": True, "n_contents": 0, "users": [], "personas_def": [],
+                "note": "먼저 [실행 · 추출]에서 콘텐츠를 추출하세요. content_id 는 추출 순서(0부터)와 매칭됩니다."}
+    with tempfile.TemporaryDirectory() as d:
+        rpath = os.path.join(d, "r.jsonl")
+        with open(rpath, "w", encoding="utf-8") as f:
+            for r in _LAST_RESULTS:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        logs_path = None
+        if logs_bytes:
+            logs_path = os.path.join(d, "logs.jsonl")
+            _logs_to_jsonl(logs_bytes, filename, logs_path)
+        try:
+            return UM.build_user_meta(rpath, logs_path=logs_path)
+        except Exception as e:
+            return {"error": str(e)[:200], "users": [], "personas_def": []}
+
+
+def build_usermeta_template_csv() -> bytes:
+    """행동 로그 템플릿. content_id = 추출 순서(0부터)."""
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["user_id", "content_id", "event", "dwell_sec", "scroll_pct", "ts"])
+    w.writerow(["u1", "0", "click", "62", "80", "2026-06-23T21:10"])
+    w.writerow(["u1", "2", "click", "48", "70", "2026-06-23T21:14"])
+    w.writerow(["u2", "1", "impression", "8", "20", "2026-06-23T08:02"])
+    return ("﻿" + buf.getvalue()).encode("utf-8")
+
+
 def run_batch(file_bytes: bytes, filename: str) -> dict:
     """엑셀/CSV 업로드 → ingest 매핑 → 행마다 추출 → 결과+리포트(_LAST_RESULTS)."""
     from . import ingest as ING
@@ -452,6 +511,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/dashboard"):
             self._send(200, json.dumps(dashboard_data(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/usermeta-template.csv"):
+            data = build_usermeta_template_csv()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="prism_behavior_log.csv"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        elif self.path.startswith("/usermeta"):
+            self._send(200, json.dumps(usermeta_data(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/template.csv"):
             data = build_template_csv()
             self.send_response(200)
@@ -496,6 +565,20 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/ping"):
             self._send(200, json.dumps(ping_model(), ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/usermeta"):
+            try:
+                ctype = self.headers.get("Content-Type", "")
+                f = None
+                if "multipart/form-data" in ctype:
+                    boundary = ctype.split("boundary=", 1)[1].strip()
+                    f = _parse_multipart(body, boundary).get("file")
+                logs = f["bytes"] if isinstance(f, dict) and f.get("bytes") else None
+                name = f.get("filename", "logs.csv") if isinstance(f, dict) else ""
+                self._send(200, json.dumps(usermeta_data(logs, name), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
         if not self.path.startswith("/run"):
@@ -564,11 +647,12 @@ PAGE = """<!doctype html>
           { id: 'run', label: '실행 · 추출', cov: 'done', icon: 'm5 12 5 5L20 7' },
           { id: 'quality', label: '품질 메타', cov: 'poc', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z' },
           { id: 'topic', label: '토픽', cov: 'poc', icon: 'M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5' } ] },
-        { g: '기반', items: [
+        { g: '사용자 · 기반', items: [
+          { id: 'user', label: '사용자 메타', cov: 'poc', icon: 'M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8' },
           { id: 'dict', label: '사전 · 매핑', cov: 'poc', icon: 'M4 4h16v16H4zM8 4v16M8 9h12M8 14h12' },
           { id: 'eval', label: '검증 · 평가', cov: 'poc', icon: 'M9 11l3 3 8-8M21 12a9 9 0 1 1-6.2-8.5' } ] },
       ],
-      dashData: null, topicData: null, dictData: null, modBusy: false, dictGroup: '',
+      dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
       loading: false,
       status: '',
       result: null,
@@ -636,10 +720,19 @@ PAGE = """<!doctype html>
         if (id === 'dash') this.loadDash();
         else if (id === 'topic') this.loadTopics();
         else if (id === 'dict') this.loadDict();
+        else if (id === 'user') this.loadUser();
       },
       async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard')).json(); } catch (e) {} this.modBusy = false; },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics')).json(); } catch (e) {} this.modBusy = false; },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await fetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
+      async loadUser() { this.modBusy = true; try { this.userData = await (await fetch('/usermeta')).json(); } catch (e) {} this.modBusy = false; },
+      async uploadUserLog(e) {
+        const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+        this.modBusy = true;
+        try { const fd = new FormData(); fd.append('file', f);
+          this.userData = await (await fetch('/usermeta', { method: 'POST', body: fd })).json(); }
+        catch (err) {} this.modBusy = false;
+      },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },
       get tr() { return (this.result && this.result.output && this.result.output.trace) || {}; },
@@ -1651,6 +1744,53 @@ PAGE = """<!doctype html>
               </tbody></table></div></div>
           </div>
         </div>
+      </div>
+
+      <!-- ═══ 모듈: 사용자 메타 ═══ -->
+      <div x-show="mod === 'user'" x-cloak class="mx-auto max-w-4xl space-y-4">
+        <div class="panel"><div class="panel-bd">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="text-xs text-muted">행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <span class="text-body">소비 형태 · 강도 · 선호</span>를 산출합니다. <code class="text-[#b9b3ff]">content_id</code> = 추출 순서(0부터).</div>
+            <div class="flex items-center gap-2">
+              <a href="/usermeta-template.csv" download class="inline-flex items-center gap-1.5 rounded-md border border-white/[0.12] px-2.5 py-1 text-xs font-medium text-white hover:bg-white/[0.06]">템플릿</a>
+              <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-violet px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-hover">
+                행동 로그 업로드
+                <input type="file" accept=".csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="uploadUserLog($event)">
+              </label>
+            </div>
+          </div>
+        </div></div>
+
+        <!-- 실데이터 사용자 -->
+        <div x-show="userData && userData.users && userData.users.length" class="space-y-3">
+          <template x-for="u in (userData?userData.users:[])" x-bind:key="u.user_id">
+            <div class="panel"><div class="panel-hd">
+              <b x-text="u.user_id"></b>
+              <span class="chip chip-ent" x-text="u.persona"></span>
+              <span class="meta tnum ml-auto" x-text="'조회 ' + u.engagement.views + ' · 클릭률 ' + u.engagement.click_rate + ' · 평균체류 ' + u.engagement.avg_dwell_sec + 's'"></span>
+            </div><div class="panel-bd">
+              <div class="drow"><div class="k">소비 형태</div><div class="v text-sm text-body" x-text="Object.entries(u.form).map(e=>e[0]+':'+e[1]).join(' · ')"></div></div>
+              <div class="drow"><div class="k">소비 강도</div><div class="v flex flex-wrap gap-1.5">
+                <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="chip" x-bind:class="v==='고'?'chip-ent':(v==='중'?'chip-int':'chip-cat')" x-text="k + ' (' + v + ')'"></span></template>
+              </div></div>
+              <div class="drow"><div class="k">선호 엔티티</div><div class="v flex flex-wrap gap-1.5">
+                <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="chip chip-ent" x-text="e[0]"></span></template>
+                <span x-show="!(u.affinity_entities||[]).length" class="text-xs text-muted">—</span>
+              </div></div>
+            </div></div>
+          </template>
+        </div>
+
+        <!-- 명세(페르소나 정의·공식) -->
+        <div class="panel"><div class="panel-hd"><b>페르소나 정의 · 8종</b><span class="meta">형태 + 맥락별 강도 시그니처</span></div>
+          <div class="overflow-auto"><table class="tbl"><thead><tr><th>페르소나</th><th>설명</th><th>형태(깊이·체류)</th></tr></thead><tbody>
+            <template x-for="p in (userData?userData.personas_def:[])" x-bind:key="p.id">
+              <tr><td class="text-white" x-text="p.full || p.name"></td><td x-text="p.desc"></td><td x-text="(p.form['깊이']||'') + ' · ' + (p.form['체류·완주']||'')"></td></tr>
+            </template>
+            <template x-if="!(userData&&userData.personas_def&&userData.personas_def.length)"><tr><td colspan="3" class="text-muted">먼저 [실행·추출]에서 콘텐츠를 추출하세요.</td></tr></template>
+          </tbody></table></div>
+        </div>
+        <p class="text-xs text-muted" x-show="userData && userData.formula" x-text="userData ? userData.formula : ''"></p>
       </div>
 
       <!-- ═══ 모듈: 검증 · 평가 ═══ -->
