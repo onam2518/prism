@@ -120,10 +120,13 @@ supabase 모드: `store_save` 에서 **`review=='yellow'` 또는 명시 sample �
 - RLS 는 심층방어로 유지(서버 검증 + RLS 이중).
 - 비밀번호는 Supabase Auth 가 해시·관리(Prism 은 평문 비번 취급 안 함).
 
-## 작업 순서
+## 작업 순서 (완료 상태)
 
-1. (이 문서) 설계 확정
-2. Phase 2: `supastore.py` + `get_store` 분기 + 노출 스키마 설정 안내
-3. Phase 3: 프론트 로그인/가입 + 서버 JWT 검증
-4. Phase 4: 콘텐츠 동기화 + retention
-5. Phase 5: 양모드 E2E
+1. ✅ 설계 확정 (이 문서)
+2. ✅ **Phase 2** `supastore.py`(PostgREST·stdlib) + `get_store` dual-mode 분기 — 라이브 E2E 검증
+3. ✅ **Phase 3** Supabase Auth(ID/PW) 로그인/가입 프록시 + 서버 JWT 검증 + 사칭 불가 — 라이브 검증
+4. ✅ **Phase 4** 콘텐츠 동기화(`sync_contents`, 검토 대상만) + `retention` — supastore 구현
+5. ✅ **Phase 5** 양모드 E2E — supabase(인증·검수·아레나) + sqlite(회귀) 검증
+
+**운영 전환**: 서버 env `SUPABASE_URL`·`SUPABASE_SERVICE_KEY`·`PRISM_BACKEND=supabase` 설정 시
+Supabase 모드(상시 클라우드·ID/PW·팀 공유), 미설정 시 로컬 SQLite(오프라인). 코드 변경 없이 전환.
