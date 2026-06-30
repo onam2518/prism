@@ -37,13 +37,22 @@ _DB_PATH = os.environ.get("PRISM_DB") or os.path.join(os.path.dirname(DEFAULT_CO
 
 
 def get_store():
-    """Store 싱글턴. 실패해도 앱은 동작(메모리 폴백)."""
+    """Store 싱글턴(dual-mode). PRISM_BACKEND=supabase + 키 설정 시 SupabaseStore,
+    아니면 로컬 SQLite(기본). 실패해도 앱은 동작(메모리 폴백)."""
     global _STORE
     if _STORE is None:
         try:
-            from .store import Store
-            _STORE = Store(_DB_PATH)
-        except Exception:
+            if os.environ.get("PRISM_BACKEND") == "supabase":
+                from . import supastore
+                if supastore.configured():
+                    _STORE = supastore.SupabaseStore()
+                else:
+                    print("  [warn] PRISM_BACKEND=supabase 이나 SUPABASE_URL/SERVICE_KEY 미설정 → SQLite 폴백")
+            if _STORE is None:
+                from .store import Store
+                _STORE = Store(_DB_PATH)
+        except Exception as e:
+            print(f"  [warn] store 초기화 실패 → 비활성: {e}")
             _STORE = False                       # 비활성(폴백)
     return _STORE or None
 
@@ -694,12 +703,13 @@ def apply_feedback(data: dict) -> dict:
         if not ch:
             return {"ok": False, "error": "hash required"}
         verdict = data.get("verdict") or ""        # good | bad | ""(취소)
-        reviewer = (data.get("reviewer") or "").strip() or "(익명)"
+        reviewer = (data.get("reviewer") or "").strip() or "(익명)"   # 귀속 키(uid 또는 이름)
+        disp = (data.get("name") or "").strip() or reviewer          # 토스트 표시명
         note = (data.get("note") or "").strip()
         stage = data.get("stage") or "analyze"
         st.save_feedback(ch, data.get("service", ""), data.get("title", ""),
                          verdict, stage, note, time.time(), reviewer=reviewer)
-        broadcast({"type": "feedback", "hash": ch, "reviewer": reviewer,
+        broadcast({"type": "feedback", "hash": ch, "reviewer": disp,
                    "verdict": verdict, "title": data.get("title", ""),
                    "service": data.get("service", ""), "ts": time.time()})
         if verdict == "bad" and note:              # REAP 피드백 하네스(백그라운드)
@@ -736,16 +746,94 @@ def reap_for(data: dict) -> dict:
     return {"ok": True, "items": st.get_reap((data.get("hash") or "").strip())}
 
 
+# ── Supabase Auth(ID/PW) — 서버 프록시 + JWT 검증(supabase 모드) ──
+_JWT_CACHE = {}
+_JWT_LOCK = threading.Lock()
+
+
+def _supa():
+    """(url, service_key) 또는 None(=sqlite 모드)."""
+    from . import supastore
+    if os.environ.get("PRISM_BACKEND") == "supabase" and supastore.configured():
+        return os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_KEY"]
+    return None
+
+
+def _auth_post(url, path, key, body):
+    req = urllib.request.Request(url + path, method="POST",
+                                 data=json.dumps(body).encode("utf-8"),
+                                 headers={"apikey": key, "Authorization": f"Bearer {key}",
+                                          "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        raw = r.read().decode("utf-8")
+        return json.loads(raw) if raw.strip() else {}
+
+
+def auth_action(data: dict) -> dict:
+    """로그인/가입 프록시(서버만 키 보유). mode=login|signup. 키는 프론트에 노출 안 함."""
+    s = _supa()
+    if not s:
+        return {"ok": False, "error": "supabase 모드가 아닙니다"}
+    url, key = s
+    email = (data.get("email") or "").strip()
+    pw = data.get("password") or ""
+    if not email or not pw:
+        return {"ok": False, "error": "이메일·비밀번호를 입력하세요"}
+    try:
+        if data.get("mode") == "signup":            # 내부 도구: 가입 즉시 확인(admin)
+            try:
+                _auth_post(url, "/auth/v1/admin/users", key,
+                           {"email": email, "password": pw, "email_confirm": True})
+            except urllib.error.HTTPError as e:
+                if e.code not in (422, 409):        # 이미 존재 → 로그인으로 진행
+                    raise
+        tok = _auth_post(url, "/auth/v1/token?grant_type=password", key, {"email": email, "password": pw})
+        at = tok.get("access_token")
+        if not at:
+            return {"ok": False, "error": "로그인 실패"}
+        return {"ok": True, "access_token": at, "uid": (tok.get("user") or {}).get("id"), "email": email}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"HTTP{e.code}: {e.read().decode('utf-8', 'replace')[:160]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:160]}
+
+
+def validate_jwt(token: str):
+    """user JWT → uid(검증). 60s 캐시. 실패 시 None."""
+    s = _supa()
+    if not s or not token:
+        return None
+    now = time.time()
+    with _JWT_LOCK:
+        hit = _JWT_CACHE.get(token)
+        if hit and hit[1] > now:
+            return hit[0]
+    url, key = s
+    uid = None
+    try:
+        req = urllib.request.Request(url + "/auth/v1/user", method="GET",
+                                     headers={"apikey": key, "Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            uid = json.loads(r.read().decode("utf-8")).get("id")
+    except Exception:
+        uid = None
+    if uid:
+        with _JWT_LOCK:
+            _JWT_CACHE[token] = (uid, now + 60)
+    return uid
+
+
 def register_reviewer(data: dict) -> dict:
-    """검수자 등록: 이름 + 선택 캐릭터 → 영속(리더보드·아레나에 그 캐릭터로 시각화)."""
+    """검수자 등록: (인증 uid 또는 이름) + 표시명 + 캐릭터 → 영속."""
     st = get_store()
     if not st:
         return {"ok": False}
-    rv = (data.get("reviewer") or "").strip()
+    rv = (data.get("reviewer") or "").strip()        # 키: 이름(sqlite) 또는 uid(supabase 주입)
+    name = (data.get("name") or "").strip() or rv
     ch = (data.get("char") or "boksil").strip()
     if rv:
-        st.set_reviewer(rv, ch)
-        broadcast({"type": "reviewer", "reviewer": rv, "char": ch})   # 다른 화면 즉시 반영
+        st.set_reviewer(rv, name, ch)
+        broadcast({"type": "reviewer", "reviewer": name, "char": ch})   # 표시명으로 브로드캐스트
     return {"ok": True}
 
 
@@ -836,6 +924,8 @@ def config_status() -> dict:
         "build": _build_id(),
         "configured": cfg.is_configured(),
         "forcedMock": Handler.server_mock,
+        "backend": "supabase" if _supa() else "sqlite",
+        "authRequired": bool(_supa()),                 # supabase 모드 → ID/PW 로그인 필요
         # 모델 슬롯
         "hasBizKey": bool(IMG.router_key("bizrouter")),
         "bizPersisted": os.path.exists(_ROUTER_KEY_PATHS["bizrouter"]),
@@ -1087,6 +1177,19 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(200, PAGE)
 
+    def _inject_reviewer(self, data):
+        """supabase 모드: Authorization Bearer JWT 검증 → data['reviewer']=uid(귀속 키, 사칭 불가).
+        sqlite 모드: True(클라이언트 이름 그대로). 인증 실패 시 False(=401)."""
+        if not _supa():
+            return True
+        auth = self.headers.get("Authorization", "")
+        token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+        uid = validate_jwt(token)
+        if not uid:
+            return False
+        data["reviewer"] = uid                     # 클라이언트가 보낸 이름이 아니라 검증된 uid
+        return True
+
     def _serve_sse(self):
         """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK."""
         self.send_response(200)
@@ -1160,18 +1263,32 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/auth"):                 # 로그인/가입 프록시(supabase)
+            try:
+                self._send(200, json.dumps(auth_action(json.loads(body or b"{}")),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/feedback"):
             try:
-                self._send(200, json.dumps(apply_feedback(json.loads(body or b"{}")),
-                                           ensure_ascii=False), _JSON)
+                data = json.loads(body or b"{}")
+                if not data.get("clear") and not self._inject_reviewer(data):
+                    self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+                    return
+                self._send(200, json.dumps(apply_feedback(data), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
         if self.path.startswith("/reviewer"):
             try:
-                self._send(200, json.dumps(register_reviewer(json.loads(body or b"{}")),
-                                           ensure_ascii=False), _JSON)
+                data = json.loads(body or b"{}")
+                if not self._inject_reviewer(data):
+                    self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+                    return
+                self._send(200, json.dumps(register_reviewer(data), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -1320,6 +1437,8 @@ PAGE = """<!doctype html>
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
       // 팀 실시간 HITL: 검수자 식별(이름+캐릭터) · 검수 큐 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
+      // Supabase 인증(ID/PW) — backend==='supabase' 일 때
+      backend: 'sqlite', authToken: '', authEmail: '', authPw: '', authMode: 'login', authMsg: '',
       charOptions: [
         { id: 'boksil', label: '복실', role: '검수', img: '/vendor/boksil-catcher.svg' },
         { id: 'daesik', label: '대식', role: '추출', img: '/vendor/daesik-batter.svg' },
@@ -1478,17 +1597,32 @@ PAGE = """<!doctype html>
         this.fbNoteOpen[c.hash] = false;
       },
       async _postFb(payload) {
-        payload = Object.assign({ reviewer: this.reviewer || '' }, payload);   // 검수자 귀속
-        try { const r = await (await fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json(); if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback; } catch (e) {}
+        payload = Object.assign({ reviewer: this.reviewer || '', name: this.reviewer || '' }, payload);  // 키+표시명(supabase 면 서버가 uid 로 덮어씀)
+        try { const r = await (await fetch('/feedback', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json(); if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback; } catch (e) {}
       },
       // ── 팀 실시간 HITL: 검수자 식별 · 검수 큐 · 라이브 ──
-      loadReviewer() { try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; } catch (e) {} if (!this.reviewer) this.reviewerEditing = true; },
-      saveReviewer() {
+      loadReviewer() {
+        try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; this.authToken = localStorage.getItem('prism_token') || ''; } catch (e) {}
+        if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
+      },
+      _authHeaders() { const h = { 'Content-Type': 'application/json' }; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken; return h; },
+      async saveReviewer() {
         const v = (this.reviewer || '').trim(); if (!v) return;
+        if (this.backend === 'supabase') {                          // 로그인/가입 먼저
+          const email = (this.authEmail || '').trim(), pw = this.authPw || '';
+          if (!email || !pw) { this.authMsg = '이메일·비밀번호를 입력하세요'; return; }
+          this.authMsg = '확인 중…';
+          let r;
+          try { r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: this.authMode, email: email, password: pw }) })).json(); }
+          catch (e) { this.authMsg = '네트워크 오류'; return; }
+          if (!r.ok) { this.authMsg = r.error || '로그인 실패'; return; }
+          this.authToken = r.access_token; this.authMsg = '';
+          try { localStorage.setItem('prism_token', this.authToken); } catch (e) {}
+        }
         this.reviewer = v;
         try { localStorage.setItem('prism_reviewer', v); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
-        // 서버에 등록 → 리더보드·아레나에 내 캐릭터로 시각화
-        try { fetch('/reviewer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer: v, char: this.reviewerChar }) }); } catch (e) {}
+        // 검수자 등록(이름·캐릭터). supabase 면 서버가 Bearer 의 uid 로 귀속(사칭 불가).
+        try { await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reviewer: v, name: v, char: this.reviewerChar }) }); } catch (e) {}
         this.reviewerEditing = false;
         if (this.mod === 'arena') this.loadArena();
       },
@@ -1702,6 +1836,7 @@ PAGE = """<!doctype html>
       async refreshConfig() {
         try {
           const r = await fetch('/config'); this.cfg = await r.json();
+          if (this.cfg.backend) this.backend = this.cfg.backend;     // sqlite | supabase
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
           if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
@@ -2223,6 +2358,10 @@ PAGE = """<!doctype html>
   .ochar b{font-size:12.5px;color:var(--ds-ink)} .ochar small{font-size:10px;color:var(--ds-muted)}
   .ochar.sel{border-color:var(--ds-violet,#20808d);background:var(--ds-violet-tint,#e5f2f2)}
   .ochar.sel .ochar__ring{box-shadow:0 0 0 3px var(--ds-violet,#20808d)}
+  .onboard__authtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--ds-hairline-soft,#f0f0ea);padding:4px;border-radius:11px}
+  .onboard__authtabs button{flex:1;height:34px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
+  .onboard__authtabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .onboard__authmsg{text-align:left;font-size:12px;color:#c0392b;margin:-6px 0 12px}
   .onboard__cta{height:46px;width:100%;font-size:15px;font-weight:700}
   .onboard__cta:disabled{opacity:.45;cursor:not-allowed}
   .onboard__skip{margin-top:10px;background:none;border:0;color:var(--ds-muted);font-size:12.5px;cursor:pointer}
@@ -2470,11 +2609,27 @@ PAGE = """<!doctype html>
        x-on:keydown.escape.window="if (reviewer) reviewerEditing = false">
     <div class="onboard__card" x-transition>
       <div class="onboard__brand"><img src="/vendor/prism-mark.svg" alt="Prism"><b>Prism 평가 아레나</b></div>
-      <h2 class="onboard__title" x-text="reviewer ? '검수자 정보 변경' : '검수자로 등록하기'"></h2>
-      <p class="onboard__lead">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 이름과 캐릭터를 정하면
-        내 검수가 점수가 되고 캐릭터가 성장해요. <b>이 기기에 저장</b>됩니다.</p>
+      <h2 class="onboard__title" x-text="reviewer ? '검수자 정보 변경' : (backend==='supabase' ? (authMode==='signup'?'가입하고 시작':'로그인') : '검수자로 등록하기')"></h2>
+      <p class="onboard__lead">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 내 검수가 점수가 되고
+        캐릭터가 성장해요. <span x-show="backend==='supabase'">계정으로 로그인하면 <b>어느 기기에서나</b> 이어집니다.</span></p>
 
-      <label class="onboard__lbl">이름</label>
+      <!-- supabase 모드: 이메일+비밀번호 로그인/가입 -->
+      <template x-if="backend === 'supabase'">
+        <div>
+          <div class="onboard__authtabs">
+            <button type="button" x-bind:class="authMode==='login'?'sel':''" x-on:click="authMode='login';authMsg=''">로그인</button>
+            <button type="button" x-bind:class="authMode==='signup'?'sel':''" x-on:click="authMode='signup';authMsg=''">가입</button>
+          </div>
+          <label class="onboard__lbl">이메일</label>
+          <input class="field onboard__name" type="email" placeholder="you@team.com" x-model="authEmail" style="margin-bottom:12px">
+          <label class="onboard__lbl">비밀번호</label>
+          <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw"
+                 x-on:keydown.enter="saveReviewer()" style="margin-bottom:12px">
+          <div class="onboard__authmsg" x-show="authMsg" x-text="authMsg"></div>
+        </div>
+      </template>
+
+      <label class="onboard__lbl">표시 이름</label>
       <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer"
              x-on:keydown.enter="saveReviewer()" autofocus>
 
@@ -2489,8 +2644,9 @@ PAGE = """<!doctype html>
       </div>
 
       <button type="button" class="ds-btn ds-btn--primary onboard__cta"
-              x-bind:disabled="!(reviewer||'').trim()" x-on:click="saveReviewer()"
-              x-text="reviewer ? '저장하고 시작' : '시작하기'"></button>
+              x-bind:disabled="!(reviewer||'').trim() || (backend==='supabase' && (!(authEmail||'').trim() || !authPw))"
+              x-on:click="saveReviewer()"
+              x-text="backend==='supabase' ? (authMode==='signup'?'가입하고 시작':'로그인하고 시작') : (reviewer ? '저장하고 시작' : '시작하기')"></button>
       <button type="button" class="onboard__skip" x-show="reviewer" x-on:click="reviewerEditing=false">닫기</button>
     </div>
   </div>
