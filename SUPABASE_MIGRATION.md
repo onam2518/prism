@@ -44,6 +44,34 @@ prism.feedback(content_hash, reviewer_id→reviewers, service, title,
 ```
 RLS: 인증 사용자 읽기(리더보드·합의), 쓰기는 본인 행만. 색인: feedback(reviewer_id, verdict), contents(review).
 
+## 상세 설계 (확정)
+
+### (a) 정체성 통일 — dual-mode 의 핵심
+SQLite 는 검수자를 **이름 문자열**로, Supabase 는 **auth uuid**로 식별한다. serve 가 요청마다
+`current_reviewer = {key, name, avatar}` 를 만든다:
+- **sqlite**: `key = name`(사용자 입력) — 기존 동작 그대로.
+- **supabase**: `key = auth uuid`, `name = 표시명`.
+
+store 메서드는 **`reviewer_key`(귀속 키) + `reviewer_name`(표시)** 를 받는다.
+- sqlite: `feedback.reviewer = key(=name)`.
+- supabase: `feedback.reviewer_id = key(uuid)`, `reviewers.name = name`.
+리더보드·합의 표시는 항상 `name`. → serve 위쪽 코드는 백엔드 무관하게 동일.
+
+### (b) JWT 검증 (supabase 모드)
+서버가 요청의 `Authorization: Bearer <user JWT>` 로 **`GET {url}/auth/v1/user`**(apikey=anon)
+호출 → 200 이면 `user.id`(uuid)·`email` 확보 = `current_reviewer.key`. 토큰별 **짧은 캐시(60s)**.
+실패 → 401. (로컬 서명검증보다 단순·정확; JWT secret 불필요.) sqlite 모드는 인증 없음.
+
+### (c) Store 인터페이스 (양 백엔드 동일 시그니처)
+`save_feedback · feedback_map · feedback_stats · review_queue · arena_stats · set_reviewer ·
+reviewers_map · save_reap · get_reap · learned_by_stage · save_many/save_dedup(검토 콘텐츠만)`.
+집계(arena_stats·feedback_map)는 supabase 에서 **REST fetch → 기존 Python 집계 재사용**(소규모).
+
+### (d) 콘텐츠 동기화 트리거
+supabase 모드: `store_save` 에서 **`review=='yellow'` 또는 명시 sample 인 콘텐츠만**
+`prism.contents` upsert(파이어호스 제외). retention: 서버 기동 시 + 주기적으로
+`delete where created_at < now() - INTERVAL 'N days'`(기본 30).
+
 ## Phase 2 — store 계층 (dual-mode)
 
 **목표**: `store.py` 의 메서드 계약을 그대로 둔 채 백엔드를 갈아끼운다.
