@@ -36,9 +36,13 @@ def _seed_user_config():
 
 def _start_server():
     global _httpd
-    from prism.serve import Handler, load_persisted_key, load_dict_overrides
+    from prism.serve import (Handler, load_persisted_key, load_dict_overrides,
+                             get_store, sync_prompt, start_ingest_scheduler)
     load_persisted_key()                       # ~/.prism_key 자동 로드
     load_dict_overrides()                       # 사전 편집(overrides) 적용
+    sync_prompt()                               # 단계 프롬프트·학습 보정 반영
+    get_store()                                 # 로컬 영속 저장소(SQLite) 초기화
+    start_ingest_scheduler()                    # 활성 소스 자동 폴링(백그라운드)
     _httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     _httpd.serve_forever()
 
