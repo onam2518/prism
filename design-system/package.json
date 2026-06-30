@@ -1,8 +1,8 @@
 {
   "name": "@prism/design-system",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Prism UI 디자인 시스템 (Perplexity 정렬 — 따뜻한 페이퍼 + Peacock teal · 라이트 우선) — 디자인 토큰 + React 컴포넌트",
+  "description": "Prism UI 디자인 시스템 — Source of truth = Anchor Design System(axz). 무채색 캔버스 + Blue(Primary)·Red(Accent) + 도메인 카테고리색 · Pretendard · Light/Dark — 디자인 토큰 + React 컴포넌트",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -21,5 +21,5 @@
     "react": ">=18",
     "react-dom": ">=18"
   },
-  "keywords": ["design-system", "design-tokens", "react", "prism", "perplexity"]
+  "keywords": ["design-system", "design-tokens", "react", "prism", "anchor", "axz"]
 }

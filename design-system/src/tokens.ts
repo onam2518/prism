@@ -1,66 +1,82 @@
-// Prism Design System — 타입드 토큰. tokens.json / theme.css 와 1:1.
-// Perplexity 정렬: 따뜻한 페이퍼 + Peacock teal · 라이트 우선 · 페이퍼-플랫 깊이.
+// Prism Design System — 타입드 토큰. theme.css / anchor/tokens.json 와 1:1.
+// Source of truth = Anchor Design System (axz): 무채색 캔버스 + Blue(Primary)·Red(Accent)
+// + 도메인별 카테고리색 · Pretendard 단일 패밀리 · Light/Dark 자동 swap.
 export const tokens = {
   color: {
-    primary: '#20808d',
-    primaryHover: '#1a6873',
-    primaryDeep: '#13343b',
-    primaryTint: '#e5f2f2',
-    tealOnDark: '#34b4c4',
+    primary: '#1e84ff',        // atomic.Blue.500 · interaction.primary
+    primaryHover: '#0066db',   // atomic.Blue.600
+    primaryDeep: '#004fad',    // atomic.Blue.700
+    primaryTint: 'rgba(30,132,255,0.16)', // atomic.Blue.100
+    blueOnDark: '#66a8ff',     // atomic.Blue.400 — 다크 Primary
 
-    ink: '#091717',
-    canvas: '#fbfaf4',
-    surface: '#fcfcf9',
+    ink: '#000000',            // text.primary
+    canvas: '#f4f5f7',         // background.base (atomic.Gray.50)
+    surface: '#ffffff',        // surface.base
     surfaceWhite: '#ffffff',
-    body: '#2e3a3a',
-    muted: '#5c6a6a',
-    placeholder: '#8a9494',
-    hairline: '#e4e4dc',
-    hairlineSoft: '#efefe9',
+    surfaceOn: '#f4f5f7',      // surface.on
+    body: 'rgba(0,0,0,0.88)',  // text.secondary
+    muted: 'rgba(0,0,0,0.48)', // text.subtle
+    placeholder: 'rgba(0,0,0,0.32)',
+    hairline: 'rgba(0,0,0,0.08)',
+    hairlineSoft: 'rgba(0,0,0,0.04)',
 
-    darkCanvas: '#0d1117',
-    darkSurface: '#161b22',
-    darkSurfaceRaised: '#1c2128',
-    darkLine: '#2a2f37',
-    inkInverse: '#f2f2ed',
-    inkInverseMuted: '#9ba1a6',
+    darkCanvas: '#161718',     // background.base (dark)
+    darkSurface: '#202122',    // surface.base (dark)
+    darkSurfaceRaised: '#303233', // surface.on (dark)
+    darkLine: 'rgba(255,255,255,0.08)',
+    inkInverse: '#ffffff',
+    inkInverseMuted: 'rgba(255,255,255,0.48)',
 
-    success: '#1f9d6b',
-    error: '#e0524a',
-    warning: '#d9923a',
-    onPrimary: '#ffffff',
+    success: '#18ba45',        // atomic.Green
+    error: '#ff4e33',          // atomic.Red.500 · state.accent
+    warning: '#ff9429',        // atomic.Orange.500
+    info: '#1e84ff',           // state.info
+    onPrimary: '#ffffff',      // text.static.white.primary
+
+    // 도메인 카테고리 식별색 (background 500 기준)
+    catNews: '#1e84ff',
+    catShopping: '#ff4e33',
+    catSports: '#5c77ff',          // atomic.Indigo.500
+    catEntertainment: '#a05cff',   // atomic.Violet.500
+    catCafe: '#ff5c66',            // atomic.Coral.500
+    catInterest: '#ff9429',        // atomic.Orange.500
+    catCommunity: '#5e47eb',       // atomic.Lavender.500
   },
   font: {
-    sans: "'FK Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    display: "'FK Display', 'FK Grotesk', 'Inter', sans-serif",
-    body: "'FK Grotesk Neue', 'FK Grotesk', 'Inter', sans-serif",
+    sans: "'Pretendard', 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', sans-serif",
+    display: "'Pretendard', 'Pretendard Variable', -apple-system, sans-serif",
+    body: "'Pretendard', 'Pretendard Variable', -apple-system, sans-serif",
     mono: "'Berkeley Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
   },
+  // 사이즈 스케일(11단계): 12·14·15·16·17·18·20·22·24·26·40
   fontSize: {
-    caption: '13px',
-    label: '14px',
+    label: '12px',
+    caption: '14px',
     body: '15px',
-    answer: '16px',
+    answer: '17px',
     subtitle: '18px',
     heading: '22px',
-    headingLg: '28px',
-    display: '36px',
+    headingLg: '26px',
+    display: '40px',
     displayHero: '48px',
   },
-  lineHeight: { tight: 1.17, snug: 1.3, normal: 1.5, relaxed: 1.63 },
-  fontWeight: { regular: 400, medium: 500, semibold: 600 },
-  radius: { sm: '6px', md: '10px', lg: '12px', xl: '16px', full: '9999px' },
-  space: { 1: '4px', 2: '8px', 3: '12px', 4: '16px', 5: '20px', 6: '24px', 8: '32px', 12: '48px', 16: '64px' },
+  // 줄간격: 1.2(헤딩)·1.32(본문)·1.4(긴 본문)·1.52(장문)
+  lineHeight: { tight: 1.2, snug: 1.32, normal: 1.4, relaxed: 1.52 },
+  // 굵기 enum: 400(normal)·600(emphasis)·700(strong)
+  fontWeight: { regular: 400, medium: 500, emphasis: 600, semibold: 600, strong: 700 },
+  // Radius 4·8·12·16·24·100(pill)
+  radius: { xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '24px', full: '9999px' },
+  // Spacing 2·4·6·8·10·12·16·18·20·24·32·40
+  space: { 0.5: '2px', 1: '4px', 1.5: '6px', 2: '8px', 2.5: '10px', 3: '12px', 4: '16px', 4.5: '18px', 5: '20px', 6: '24px', 8: '32px', 10: '40px' },
+  // Shadow 3단 (low·medium·high). Anchor: 깊이는 surface 대비가 1차, shadow는 보조.
   shadow: {
-    ambient: '0 1px 3px rgba(9,23,23,0.06)',
-    subtle: '0 1px 2px rgba(9,23,23,0.05)',
-    standard: '0 2px 8px rgba(9,23,23,0.08)',
-    elevated: '0 4px 16px rgba(9,23,23,0.12)',
-    modal: '0 16px 48px rgba(9,23,23,0.20)',
+    low: '0 0 4px 0 rgba(0,0,0,0.04)',
+    medium: '0 1px 10px 0 rgba(0,0,0,0.08)',
+    high: '0 2px 16px 0 rgba(0,0,0,0.16)',
   },
   focus: {
-    ring: '0 0 0 3px rgba(32,128,141,0.12)',
-    ringError: '0 0 0 3px rgba(224,82,74,0.12)',
+    ring: '0 0 0 3px rgba(30,132,255,0.4)',     // border.focus = Blue.500
+    ringError: '0 0 0 3px rgba(255,78,51,0.4)',
   },
   motion: {
     fast: '120ms',

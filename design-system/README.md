@@ -1,8 +1,8 @@
 # Prism Design System
 
-Prism UI의 디자인 토큰과 React 컴포넌트. **Perplexity 정렬**(따뜻한 페이퍼 + Peacock teal 단일 액센트 · 라이트 우선 · 페이퍼-플랫 깊이 · FK Grotesk)을 코드로 고정한 시스템.
+Prism UI의 디자인 토큰과 React 컴포넌트. **Source of truth = Anchor Design System(axz)** — 무채색 캔버스 + **Blue(Primary 액션)·Red(Accent 강조)** + 도메인 카테고리색 · **Pretendard** 단일 패밀리 · **Light/Dark** 자동 swap을 코드로 고정한 시스템.
 
-원본 스펙: `~/Desktop/DESIGN.md` (Google Stitch 9-섹션 포맷, `tokens.source: prose-derived`). `/design-sync`가 읽도록 만든 패키지입니다.
+원본 스펙: [`anchor/DESIGN.md`](./anchor/DESIGN.md) · 대표 컴포넌트 [`anchor/Button.md`](./anchor/Button.md) · 토큰 스냅샷 [`anchor/tokens.json`](./anchor/tokens.json). 본 패키지의 `tokens/tokens.json`·`src/theme.css`는 Anchor semantic 토큰을 `--ds-*` 변수로 박제한 것입니다(원칙: Semantic 토큰만 사용 · Primitive 직접 참조 금지 · Light/Dark 분기 금지).
 
 **문서**
 - **위젯형 SaaS 표준(제품 비종속)** → [`WIDGET_SAAS_STANDARD.md`](./WIDGET_SAAS_STANDARD.md) — 위젯형 SaaS 표준 디자인 정책

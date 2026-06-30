@@ -10,59 +10,99 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Button ──────────────────────────────────────────────── */
+/* ── Button (Anchor Button.md 계약) ───────────────────────────
+   Variant(Solid·Outline) × Color × Size(Sm~3Xl) × Shape(Square R8·Rounded R100) × State.
+   배경/테두리/텍스트 = Variant×Color · padding/높이/타입 = Size · radius = Shape. */
 .ds-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 18px;
-  border-radius: var(--ds-radius-md);
+  gap: var(--ds-btn-gap, 4px);
+  min-height: var(--ds-btn-h, 40px);
+  padding: 0 var(--ds-btn-px, 16px);
+  border-radius: var(--ds-radius-sm);                 /* Square = R8(기본) */
   font-family: var(--ds-font-sans);
-  font-size: var(--ds-size-label);
-  font-weight: var(--ds-weight-medium);
+  font-size: var(--ds-btn-fz, var(--ds-size-body));
+  font-weight: var(--ds-weight-strong);               /* 라벨 기본 Strong */
   line-height: 1;
   border: 1px solid transparent;
   cursor: pointer;
+  isolation: isolate;
   transition: background-color var(--ds-motion-fast) var(--ds-ease-standard),
     border-color var(--ds-motion-fast) var(--ds-ease-standard),
     box-shadow var(--ds-motion-fast) var(--ds-ease-standard), opacity var(--ds-motion-fast);
 }
+.ds-btn__label, .ds-btn__icon { position: relative; z-index: 1; display: inline-flex; }
+.ds-btn__icon { width: 16px; height: 16px; align-items: center; justify-content: center; }
+/* HoverLayer — inset -1px 공통 오버레이, Hover 시 background.state.hover */
+.ds-btn__hover {
+  position: absolute; inset: -1px; border-radius: inherit;
+  background: transparent; pointer-events: none; z-index: 0;
+  transition: background-color var(--ds-motion-fast) var(--ds-ease-standard);
+}
+.ds-btn:hover:not(:disabled) .ds-btn__hover { background: var(--ds-state-hover, rgba(0,0,0,0.04)); }
+/* FocusRing — border.focus(Blue.500) 2px, offset 2px, R = 버튼 R + 2 */
 .ds-btn:focus-visible { outline: none; box-shadow: var(--ds-focus-ring); }
-.ds-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ds-btn:disabled { cursor: not-allowed; }
+.ds-btn:disabled .ds-btn__hover { background: transparent; }
 
-.ds-btn--primary { background: var(--ds-primary); color: var(--ds-on-primary); }
-.ds-btn--primary:hover:not(:disabled) { background: var(--ds-primary-hover); }
-.ds-btn--primary:active:not(:disabled) { background: var(--ds-primary-deep); }
+/* Shape */
+.ds-btn--rounded { border-radius: var(--ds-radius-full); }
 
-.ds-btn--secondary { background: transparent; color: var(--ds-ink); border-color: var(--ds-hairline); }
-.ds-btn--secondary:hover:not(:disabled) { background: var(--ds-surface); border-color: #d6d6cc; }
+/* Size 스케일 (Sm·Md·Lg·Xl·2Xl·3Xl) — typography / padding / gap / min-height */
+.ds-btn--s-sm  { --ds-btn-h: 32px; --ds-btn-px: 8px;  --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-caption); }
+.ds-btn--s-md  { --ds-btn-h: 36px; --ds-btn-px: 12px; --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-body); }
+.ds-btn--s-lg  { --ds-btn-h: 40px; --ds-btn-px: 16px; --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-body); }
+.ds-btn--s-xl  { --ds-btn-h: 44px; --ds-btn-px: 16px; --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-body); }
+.ds-btn--s-2xl { --ds-btn-h: 48px; --ds-btn-px: 16px; --ds-btn-gap: 8px; --ds-btn-fz: var(--ds-size-answer); }
+.ds-btn--s-3xl { --ds-btn-h: 56px; --ds-btn-px: 20px; --ds-btn-gap: 8px; --ds-btn-fz: var(--ds-size-answer); }
 
-.ds-btn--ghost {
-  height: 36px;
-  padding: 0 12px;
-  border-radius: var(--ds-radius-md);
-  background: transparent;
-  color: var(--ds-muted);
+/* ── Solid 매트릭스 (Button.md §3-1) ── */
+.ds-btn--solid.ds-btn--c-primary   { background: var(--ds-primary); color: var(--ds-on-primary); }
+.ds-btn--solid.ds-btn--c-secondary { background: var(--ds-interaction-secondary); color: var(--ds-text-inverse); }
+.ds-btn--solid.ds-btn--c-neutral   { background: var(--ds-interaction-neutral); color: var(--ds-text-secondary); }
+.ds-btn--solid.ds-btn--c-inverse   { background: var(--ds-interaction-inverse); color: var(--ds-text-secondary); border-color: var(--ds-border-card); }
+.ds-btn--solid.ds-btn--c-subtlest  { background: var(--ds-interaction-subtlest); color: var(--ds-text-secondary); }
+.ds-btn--solid.ds-btn--c-ghost     { background: transparent; color: var(--ds-text-secondary); }
+.ds-btn--solid.ds-btn--c-danger    { background: var(--ds-error); color: var(--ds-on-primary); }
+
+/* ── Outline 매트릭스 (Button.md §3-2) — 1px border.button.outline ── */
+.ds-btn--outline { border-color: var(--ds-border-button-outline); }
+.ds-btn--outline.ds-btn--c-primary { background: transparent; color: var(--ds-state-info); }
+.ds-btn--outline.ds-btn--c-danger  { background: transparent; color: var(--ds-state-accent); }
+.ds-btn--outline.ds-btn--c-ghost   { background: transparent; color: var(--ds-text-secondary); }
+.ds-btn--outline.ds-btn--c-neutral { background: var(--ds-interaction-neutral); color: var(--ds-text-secondary); }
+.ds-btn--outline.ds-btn--c-inverse { background: var(--ds-interaction-inverse); color: var(--ds-text-secondary); }
+.ds-btn--outline.ds-btn--c-subtlest{ background: var(--ds-interaction-subtlest); color: var(--ds-text-secondary); }
+
+/* State — Disabled (background.interaction.disabled · text.disabled) */
+.ds-btn:disabled { background: var(--ds-interaction-disabled); color: var(--ds-text-disabled); border-color: transparent; }
+.ds-btn--outline.ds-btn--c-ghost:disabled,
+.ds-btn--solid.ds-btn--c-ghost:disabled { background: transparent; }
+
+/* State — Loading: 라벨·아이콘 숨김 + 스피너, 폭 고정 */
+.ds-btn--loading { color: transparent !important; }
+.ds-btn--loading .ds-btn__label,
+.ds-btn--loading .ds-btn__icon { visibility: hidden; }
+.ds-btn__spinner {
+  position: absolute; z-index: 2; width: 18px; height: 18px;
+  border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
+  color: var(--ds-on-primary); opacity: 0.9;
+  animation: ds-btn-spin 0.7s linear infinite;
 }
-.ds-btn--ghost:hover:not(:disabled) { background: var(--ds-hairline-soft); color: var(--ds-ink); }
+.ds-btn--outline .ds-btn__spinner,
+.ds-btn--solid.ds-btn--c-ghost .ds-btn__spinner,
+.ds-btn--solid.ds-btn--c-neutral .ds-btn__spinner,
+.ds-btn--solid.ds-btn--c-inverse .ds-btn__spinner,
+.ds-btn--solid.ds-btn--c-subtlest .ds-btn__spinner { color: var(--ds-text-secondary); }
+@keyframes ds-btn-spin { to { transform: rotate(360deg); } }
 
-/* Pill — 포커스모드/필터 셀렉터 */
-.ds-btn--pill {
-  height: 34px;
-  padding: 0 14px;
-  border-radius: var(--ds-radius-full);
-  background: var(--ds-surface-white);
-  color: var(--ds-body);
-  border-color: var(--ds-hairline);
-  font-size: var(--ds-size-caption);
-}
-.ds-btn--pill:hover:not(:disabled) { border-color: #d6d6cc; }
-.ds-btn--pill[aria-pressed='true'] {
+/* 토글(필터·세그먼트) 활성 — 구 pill 호환 (aria-pressed) */
+.ds-btn[aria-pressed='true'] {
   background: var(--ds-primary-tint);
   border-color: var(--ds-primary);
-  color: var(--ds-primary-deep);
+  color: var(--ds-tint-fg);
 }
 
 /* ── Field (input / select / textarea) ───────────────────── */
