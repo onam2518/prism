@@ -20,6 +20,7 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import feedback_loop as FL
 from . import imagext as IMG
 from . import pipeline as PIPE
 from . import prompts as PR
@@ -693,15 +694,45 @@ def apply_feedback(data: dict) -> dict:
             return {"ok": False, "error": "hash required"}
         verdict = data.get("verdict") or ""        # good | bad | ""(취소)
         reviewer = (data.get("reviewer") or "").strip() or "(익명)"
+        note = (data.get("note") or "").strip()
+        stage = data.get("stage") or "analyze"
         st.save_feedback(ch, data.get("service", ""), data.get("title", ""),
-                         verdict, data.get("stage") or "analyze",
-                         (data.get("note") or "").strip(), time.time(), reviewer=reviewer)
+                         verdict, stage, note, time.time(), reviewer=reviewer)
         broadcast({"type": "feedback", "hash": ch, "reviewer": reviewer,
                    "verdict": verdict, "title": data.get("title", ""),
                    "service": data.get("service", ""), "ts": time.time()})
+        if verdict == "bad" and note:              # REAP 피드백 하네스(백그라운드)
+            fb = {"stage": stage, "note": note, "title": data.get("title", "")}
+            threading.Thread(target=_reap_async, args=(ch, reviewer, fb),
+                             daemon=True).start()
     sync_learned()                                 # 다음 추출부터 자동 반영
     return {"ok": True, "feedback": st.feedback_stats(),
             "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
+
+
+def _reap_async(content_hash: str, reviewer: str, fb: dict):
+    """REAP(Remember→Explain→Ask→Plan)로 피드백을 가공 → plan 저장 → LEARNED 재반영·브로드캐스트."""
+    try:
+        cfg = Config.load()
+        llm = make_text_llm(cfg, Handler.server_mock)   # 서버 mock 존중(키 없으면도 mock)
+        reap = FL.run_reap(llm, fb)
+        st = get_store()
+        if st:
+            st.save_reap(content_hash, reviewer, reap)
+        sync_learned()                             # 가공된 plan 을 단계 프롬프트에 반영
+        broadcast({"type": "reap", "hash": content_hash, "reviewer": reviewer,
+                   "stage": reap.get("stage", ""), "plan": reap.get("plan", ""),
+                   "ask": reap.get("ask", "")})
+    except Exception:
+        pass
+
+
+def reap_for(data: dict) -> dict:
+    """콘텐츠의 검수자별 REAP 산출(UI 표시)."""
+    st = get_store()
+    if not st:
+        return {"ok": False, "items": []}
+    return {"ok": True, "items": st.get_reap((data.get("hash") or "").strip())}
 
 
 def review_queue(data: dict) -> dict:
@@ -991,6 +1022,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(review_queue(data), ensure_ascii=False), _JSON)
         elif self.path.startswith("/events"):
             self._serve_sse()
+        elif self.path.startswith("/reap"):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            self._send(200, json.dumps(reap_for({"hash": q.get("hash", [""])[0]}),
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/ingest-status"):
             self._send(200, json.dumps(ingest_status(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/prompt-defaults"):
@@ -1415,6 +1451,9 @@ PAGE = """<!doctype html>
           }
           if (this.mod === 'review') this.loadQueue();
           if (this.mod === 'dash' || this.mod === 'eval' || this.mod === 'home') this.loadDashThrottled();
+        } else if (d.type === 'reap') {
+          if (d.plan) this.liveToast('REAP 개선안 반영 · ' + (d.plan.length > 42 ? d.plan.slice(0, 42) + '…' : d.plan));
+          if (this.mod === 'prompt') this.loadPromptDefaults();   // 단계 프롬프트(LEARNED) 갱신
         } else if (d.type === 'presence' && d.reviewer && d.reviewer !== this.reviewer) {
           if (d.action === 'viewing') this.liveSeen[d.hash] = d.reviewer; else delete this.liveSeen[d.hash];
         }

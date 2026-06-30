@@ -60,20 +60,25 @@ class Store:
 
     def _migrate_feedback(self, c):
         """구 스키마(PK=content_hash, 단일 의견) → 신 스키마(PK=content_hash+reviewer) 이행.
-        기존 1건은 reviewer='(이전)'으로 보존. 신규 DB 엔 영향 없음."""
+        기존 1건은 reviewer='(이전)'으로 보존. 신규 DB 엔 영향 없음.
+        + REAP 컬럼(remember/explain/ask/plan) 추가(없으면 ALTER)."""
         cols = [r[1] for r in c.execute("PRAGMA table_info(feedback)")]
-        if "reviewer" in cols:
-            return
-        c.executescript("""
-        ALTER TABLE feedback RENAME TO feedback_legacy;
-        CREATE TABLE feedback(
-          content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
-          verdict TEXT, stage TEXT, note TEXT, ts REAL,
-          PRIMARY KEY(content_hash, reviewer));
-        INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts)
-          SELECT content_hash,'(이전)',service,title,verdict,stage,note,ts FROM feedback_legacy;
-        DROP TABLE feedback_legacy;
-        """)
+        if "reviewer" not in cols:
+            c.executescript("""
+            ALTER TABLE feedback RENAME TO feedback_legacy;
+            CREATE TABLE feedback(
+              content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
+              verdict TEXT, stage TEXT, note TEXT, ts REAL,
+              PRIMARY KEY(content_hash, reviewer));
+            INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts)
+              SELECT content_hash,'(이전)',service,title,verdict,stage,note,ts FROM feedback_legacy;
+            DROP TABLE feedback_legacy;
+            """)
+            c.commit()
+            cols = [r[1] for r in c.execute("PRAGMA table_info(feedback)")]
+        for col in ("remember", "explain", "ask", "plan"):     # REAP 산출 보관
+            if col not in cols:
+                c.execute(f"ALTER TABLE feedback ADD COLUMN {col} TEXT")
         c.commit()
 
     # 결과 upsert / resume
@@ -294,16 +299,39 @@ class Store:
             e["stage"], e["note"] = last["stage"], last["note"]
         return out
 
+    def save_reap(self, content_hash, reviewer, reap: dict):
+        """REAP 산출(remember/explain/ask/plan)을 해당 검수자 피드백 행에 기록."""
+        c = self._conn()
+        c.execute("""UPDATE feedback SET remember=?, explain=?, ask=?, plan=?
+          WHERE content_hash=? AND reviewer=?""",
+          (reap.get("remember", ""), reap.get("explain", ""), reap.get("ask", ""),
+           reap.get("plan", ""), content_hash, reviewer or "(익명)"))
+        c.commit()
+
+    def get_reap(self, content_hash) -> list:
+        """콘텐츠의 검수자별 REAP 산출 목록(UI 표시용)."""
+        c = self._conn()
+        out = []
+        for rv, rm, ex, ak, pl, st in c.execute(
+                "SELECT reviewer,remember,explain,ask,plan,stage FROM feedback "
+                "WHERE content_hash=? AND (plan IS NOT NULL AND plan!='')", (content_hash,)):
+            out.append({"reviewer": rv, "remember": rm, "explain": ex, "ask": ak,
+                        "plan": pl, "stage": st})
+        return out
+
     def learned_by_stage(self, limit_per_stage: int = 20) -> dict:
-        """문제(bad) 피드백의 교정 메모를 단계별로 모아 학습 보정 텍스트로 컴파일."""
+        """문제(bad) 피드백을 단계별로 모아 학습 보정 텍스트로 컴파일.
+        REAP plan 이 있으면 그것을(가공된 개선 지시), 없으면 raw 메모를 사용."""
         c = self._conn()
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
-        for stage, note, title in c.execute(
-                "SELECT stage,note,title FROM feedback WHERE verdict='bad' AND note!='' ORDER BY ts DESC"):
+        for stage, note, plan in c.execute(
+                "SELECT stage,note,plan FROM feedback "
+                "WHERE verdict='bad' AND (COALESCE(plan,'')!='' OR COALESCE(note,'')!='') "
+                "ORDER BY ts DESC"):
             st = stage if stage in out else "analyze"
-            if len(out[st]) < limit_per_stage:
-                t = (title or "").strip()
-                out[st].append(f"- {note.strip()}" + (f" (예: {t})" if t else ""))
+            text = (plan or "").strip() or (note or "").strip()
+            if text and len(out[st]) < limit_per_stage:
+                out[st].append(f"- {text}")
         return {k: "\n".join(v) for k, v in out.items() if v}
 
     def feedback_stats(self) -> dict:
