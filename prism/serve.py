@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -125,18 +126,23 @@ def run_pipeline(fields: dict, *, mock: bool) -> dict:
     cfg = Config.load()
     llm = make_text_llm(cfg, mock)           # 텍스트 슬롯(solar|router). 무키면 내부서 mock
 
-    images = [v for k, v in fields.items()
-              if isinstance(v, dict) and v.get("bytes") and k.startswith("image")]
+    # 업로드 순서(image0, image1, …) = 가중치 순서. 첫 장이 대표.
+    imgs = [(k, v) for k, v in fields.items()
+            if isinstance(v, dict) and v.get("bytes") and k.startswith("image")]
+    imgs.sort(key=lambda kv: int(re.sub(r"\D", "", kv[0]) or 0))
+    images = [v for _, v in imgs]
     source = "text"
     signals = []
     if images:
         source = "image"
+        images, dropped = IMG.cap_images(images)   # 장수 상한(비전 호출 전)
         signals = IMG.extract_signals(images, mock=llm.mock)
         content = IMG.build_content(
             signals,
             displayServiceName=fields.get("displayServiceName", "포토"),
             title=fields.get("title", ""),
             caption=fields.get("caption", ""),
+            dropped=dropped,
         )
     else:
         content = {

@@ -51,6 +51,21 @@ _VISION_SCHEMA = {
 }
 
 
+# ── 다중 이미지 통합 정책 (DNM 1312/134 기준 후속) ──
+#   장수 상한: 한 콘텐츠에 이미지가 너무 많이 붙으면 비전 호출 비용·합성 본문이
+#   폭주하므로 상한을 둔다(비전 호출 전에 적용해야 비용이 잡힌다).
+#   가중치: 첫 장을 '대표'로 보고 제목·분류 신호를 우선 끌어온다(업로드 순서 = 중요도).
+#   상한 초과분은 조용히 버리지 않고 본문에 명시한다.
+MAX_IMAGES = 8
+
+
+def cap_images(images: list) -> tuple:
+    """장수 상한 적용 → (처리할 이미지, 초과로 버린 수). 첫 장이 대표(가중치 우선)."""
+    if len(images) <= MAX_IMAGES:
+        return list(images), 0
+    return list(images[:MAX_IMAGES]), len(images) - MAX_IMAGES
+
+
 def _api_key() -> str:
     """Upstage Solar 키(OCR · Information Extraction · Solar 텍스트용)."""
     return os.environ.get("UPSTAGE_API_KEY", os.environ.get("PRISM_API_KEY", "")).strip()
@@ -310,11 +325,12 @@ def extract_signals(images: list, *, mock: bool = False) -> list:
 
 
 def build_content(signals: list, *, displayServiceName: str = "포토",
-                  title: str = "", caption: str = "") -> dict:
+                  title: str = "", caption: str = "", dropped: int = 0) -> dict:
     """이미지 신호(들)를 Prism 4필드 Content 로 합성.
 
     여러 이미지는 하나의 콘텐츠로 통합: body 에 이미지별 신호를 순서대로 누적.
-    title 미지정 시 첫 신호에서 한 줄을 끌어와 채운다(분류 신호 확보).
+    가중치: 제목 미지정 시 '대표(앞 장 우선)' 신호에서 한 줄을 끌어온다(분류 신호 확보).
+    dropped>0(장수 상한 초과로 버린 수)이면 본문에 명시해 누락을 숨기지 않는다.
     """
     blocks = []
     for i, s in enumerate(signals, 1):
@@ -328,10 +344,15 @@ def build_content(signals: list, *, displayServiceName: str = "포토",
     body = "\n".join(blocks)
     if caption:
         body = f"{caption}\n{body}".strip()
+    if dropped > 0:
+        body += (f"\n(첨부 {len(signals) + dropped}장 중 상한 {MAX_IMAGES}장만 반영, "
+                 f"{dropped}장 제외)")
 
     if not title:
-        first = (signals[0].get("vision") or signals[0].get("ocr") or "") if signals else ""
-        title = first.split(".")[0][:60] if first else "이미지 콘텐츠"
+        # 대표=앞 장 우선. 단 텅 빈 대표(순수 사진 등)는 건너뛰고 다음 신호로.
+        lead = next((s.get("vision") or s.get("ocr") for s in signals
+                     if (s.get("vision") or s.get("ocr"))), "")
+        title = lead.split(".")[0][:60] if lead else "이미지 콘텐츠"
 
     return {
         "displayServiceName": displayServiceName or "포토",
