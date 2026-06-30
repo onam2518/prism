@@ -4,7 +4,7 @@ from . import dictionaries as D
 from .embed import rank_by_cosine
 
 
-# 1) 인텐트 카테고리
+# 1) 인텐트
 def intent_category_anchors(emb, display_name: str) -> dict:
     cats = D.intent_categories_for(display_name)
     return {c: emb.embed(c, is_query=False) for c in cats}
@@ -21,7 +21,7 @@ def intent_category_classify(emb, content, top_k=2, min_margin=0.0) -> tuple[lis
     return picks, round(margin, 4)
 
 
-# 2) 엔티티 카테고리 (IAB Tier1): KB(임베딩 후보) + LLM 판단 하이브리드
+# 2) 콘텐츠 카테고리 (IAB Tier1): KB(임베딩 후보) + LLM 판단 하이브리드
 # 한글 키워드 보강 앵커: 한글 엔티티 vs 영문 IAB 라벨의 교차언어 약매칭 보완.
 _IAB_KO = {
     "Automotive": "자동차 차량 모빌리티 전기차",

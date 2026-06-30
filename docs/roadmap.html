@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+  :root{--font:"Pretendard",system-ui,sans-serif;--vi:#5b52ff;--vi2:#7c74ff;--solar:#d2ff95;
+    --line:rgba(255,255,255,.10);--ink:#f4f5f7;--mut:#8b909b;--faint:#5c6068;
+    --done:#5fe0ad;--poc:#7c74ff;--plan:#e2a33c}
+  *{box-sizing:border-box;margin:0}
+  body{font-family:var(--font);background:
+    radial-gradient(1200px 600px at 100% -8%,rgba(91,82,255,.13),transparent 60%),
+    radial-gradient(900px 480px at 0% 0%,rgba(210,255,149,.05),transparent 55%),#0a090e;
+    color:var(--ink);width:1720px;padding:46px 50px 54px;letter-spacing:-.01em}
+  .head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .mark{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(150deg,#6760ff,#4a42e0);box-shadow:0 8px 22px -8px rgba(91,82,255,.8),inset 0 1px 0 rgba(255,255,255,.2)}
+  .mark svg{width:24px;height:24px}
+  h1{font-size:26px;font-weight:800;letter-spacing:-.03em}
+  .sub{font-size:12.5px;color:var(--mut);margin-top:3px}
+  .meta-r{text-align:right;font-size:12px;color:var(--faint);line-height:1.7}
+  .meta-r b{color:var(--mut);font-weight:600}
+  .legend{display:flex;gap:16px;align-items:center;margin:6px 0 20px;font-size:11.5px;color:var(--mut)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+  /* 목표 밴드 */
+  .goal{display:flex;gap:12px;margin-bottom:22px}
+  .goal .g{flex:1;border:1px solid rgba(210,255,149,.22);border-radius:11px;padding:12px 15px;
+    background:linear-gradient(180deg,rgba(210,255,149,.05),transparent)}
+  .goal .g b{font-size:13px;color:#e6ffc2;font-weight:700}
+  .goal .g p{font-size:11.5px;color:var(--mut);margin-top:3px;line-height:1.5}
+
+  /* 트랙 */
+  .track{position:relative;height:30px;margin:0 8px 4px}
+  .track .rail{position:absolute;left:0;right:0;top:14px;height:2px;
+    background:linear-gradient(90deg,var(--done),var(--vi) 30%,var(--poc) 65%,var(--plan))}
+  .track .pin{position:absolute;top:6px;width:18px;height:18px;border-radius:50%;background:#0a090e;
+    border:2px solid var(--vi);display:flex;align-items:center;justify-content:center}
+  .track .pin .d{width:7px;height:7px;border-radius:50%;background:var(--vi)}
+  .track .now{position:absolute;top:-6px;left:24%;transform:translateX(-50%);font-size:10px;font-weight:700;
+    color:#c8c3ff;background:rgba(91,82,255,.18);border:1px solid rgba(91,82,255,.4);border-radius:6px;padding:2px 7px}
+  .track .now::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:10px;background:rgba(91,82,255,.6)}
+
+  .phases{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .ph{border:1px solid var(--line);border-radius:14px;background:#141318;overflow:hidden;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.045);position:relative}
+  .ph.cur{border-color:rgba(95,224,173,.3)}
+  .ph.p1{border-color:rgba(91,82,255,.34);background:linear-gradient(180deg,rgba(91,82,255,.07),rgba(91,82,255,.01))}
+  .ph-h{padding:13px 15px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.022)}
+  .ph-h .tag{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--vi2)}
+  .ph-h .when{font-size:10px;color:var(--faint);font-weight:600;margin-left:6px}
+  .ph-h h2{font-size:15px;font-weight:800;color:#fff;margin:5px 0 4px;letter-spacing:-.02em}
+  .ph-h p{font-size:11px;color:var(--mut);line-height:1.5}
+  .ph-b{padding:12px 14px}
+  .item{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .item:last-child{border-bottom:0}
+  .item .cov{width:8px;height:8px;border-radius:50%;flex:none;margin-top:4px}
+  .item .it{font-size:12px;font-weight:600;color:#e7eaef}
+  .item .id{font-size:10.5px;color:var(--mut);margin-top:1px;line-height:1.45}
+  .cov.done{background:var(--done);box-shadow:0 0 6px rgba(95,224,173,.6)}
+  .cov.poc{background:var(--poc);box-shadow:0 0 6px rgba(124,116,255,.6)}
+  .cov.plan{background:var(--plan)}
+  .exit{margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,255,255,.12);font-size:10.5px;color:var(--mut);line-height:1.5}
+  .exit b{color:#c8c3ff;font-weight:700}
+  .ref{font-size:10px;color:var(--faint);font-weight:600}
+
+  .dep{margin-top:18px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.022);padding:14px 17px}
+  .dep h3{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--vi2);margin-bottom:9px}
+  .dep .row{display:flex;gap:24px;flex-wrap:wrap}
+  .dep .d{flex:1;min-width:300px;font-size:11.5px;color:var(--mut);line-height:1.6}
+  .dep .d b{color:#d7dae1;font-weight:600}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#b9b3ff;background:rgba(91,82,255,.1);border-radius:4px;padding:1px 4px}
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="brand">
+      <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4 4 20h12z" stroke="#fff" stroke-width="1.7"/><path d="M14.5 13h6" stroke="#d2ff95" stroke-width="1.7"/><path d="M14.5 16.5h6" stroke="#a8d4ff" stroke-width="1.7"/></svg></span>
+      <div><h1>Prism Admin · 풀스펙 로드맵</h1>
+        <div class="sub">DNM 맥락형 메타 운영 어드민 · 현재 → 풀스펙 4단계 (페이지 13 기준)</div></div>
+    </div>
+    <div class="meta-r"><b>목표</b> · 운영 경량화(품질 검수 자동화)<br>맥락형 메타로 추천 품질 향상<br>정합 사전 · 인텐트 / 콘텐츠 카테고리(콘텐츠↔사용자 공용)</div>
+  </div>
+  <div class="legend">
+    <b style="color:#9aa0aa;font-weight:600">상태</b>
+    <span><i style="background:var(--done)"></i> 구현됨</span>
+    <span><i style="background:var(--poc)"></i> PoC · 부분</span>
+    <span><i style="background:var(--plan)"></i> 계획</span>
+    <span style="margin-left:auto;color:var(--faint)">구조도 · docs/ia-admin.png · 문서 · docs/IA_ROADMAP.md</span>
+  </div>
+
+  <!-- 트랙 -->
+  <div class="track">
+    <div class="rail"></div>
+    <div class="now">지금</div>
+    <div class="pin" style="left:calc(12.5% - 9px)"><span class="d" style="background:var(--done)"></span></div>
+    <div class="pin" style="left:calc(37.5% - 9px)"></div>
+    <div class="pin" style="left:calc(62.5% - 9px)"><span class="d" style="background:var(--poc)"></span></div>
+    <div class="pin" style="left:calc(87.5% - 9px)"><span class="d" style="background:var(--plan)"></span></div>
+  </div>
+
+  <!-- 4단계 -->
+  <div class="phases">
+    <!-- P0 -->
+    <div class="ph cur">
+      <div class="ph-h">
+        <span class="tag"><span class="cov done" style="width:8px;height:8px;border-radius:50%;display:inline-block"></span> P0 · 현재<span class="when">완료</span></span>
+        <h2>코어 메타 생성기</h2>
+        <p>아이템 메타 + 이미지 PoC + 모델 라우팅 + 어드민 셸</p>
+      </div>
+      <div class="ph-b">
+        <div class="item"><span class="cov done"></span><div><div class="it">아이템 메타(텍스트)</div><div class="id">리드문·엔티티·인텐트·콘텐츠 카테고리</div></div></div>
+        <div class="item"><span class="cov poc"></span><div><div class="it">이미지형 PoC</div><div class="id">시각 이해(Upstage IE/라우터) → 메타</div></div></div>
+        <div class="item"><span class="cov done"></span><div><div class="it">모델 라우팅 3사</div><div class="id">Solar · BizRouter · Timely / 텍스트·이미지 슬롯</div></div></div>
+        <div class="item"><span class="cov done"></span><div><div class="it">어드민 UI · 일괄 · 리포트</div><div class="id">3분할 콘솔 · 엑셀 200행 · 통합 리포트 · 패키징</div></div></div>
+        <div class="exit"><b>완료 기준</b> · 실모델 end to end 추출 동작 · 로컬 앱 배포(.dmg)</div>
+      </div>
+    </div>
+
+    <!-- P1 -->
+    <div class="ph p1">
+      <div class="ph-h">
+        <span class="tag"><span class="cov poc" style="width:8px;height:8px;border-radius:50%;display:inline-block"></span> P1 · 단기<span class="when">다음</span></span>
+        <h2>품질 게이팅 + 사전 정합</h2>
+        <p>유통 판정 자동화 · 사전을 자사 기준으로 고정 <span class="ref">1311·1312</span></p>
+      </div>
+      <div class="ph-b">
+        <div class="item"><span class="cov poc"></span><div><div class="it">품질 2단계 → G/R</div><div class="id">1차 법령(세트·A·B·C·RED) ∥ 2차 품질(status) 판정 화면</div></div></div>
+        <div class="item"><span class="cov poc"></span><div><div class="it">콘텐츠 카테고리 사전화</div><div class="id">자사 21 Tier1 + Custom Tier2 · 트롬↔IAB 매핑</div></div></div>
+        <div class="item"><span class="cov done"></span><div><div class="it">인텐트 사전 운영 UI</div><div class="id">서비스 그룹별 · 콘텐츠/사용자 공용</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">엔티티 정제 규칙</div><div class="id">인용 출처 vs 핵심 주체 · 품질 균일화</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">평가 · 대시보드 v1</div><div class="id">ROUGE·정확도 게이트(0.85) · 유통률·분포</div></div></div>
+        <div class="exit"><b>완료 기준</b> · 게이트 통과율·리드문 정확도 충족 · 사전 외 값 생성 0</div>
+      </div>
+    </div>
+
+    <!-- P2 -->
+    <div class="ph">
+      <div class="ph-h">
+        <span class="tag"><span class="cov plan" style="width:8px;height:8px;border-radius:50%;display:inline-block"></span> P2 · 중기</span>
+        <h2>토픽 빌더 + 운영 확장</h2>
+        <p>사안(토픽) 단위 묶음 · 다양한 ITEM TYPE <span class="ref">132·131</span></p>
+      </div>
+      <div class="ph-b">
+        <div class="item"><span class="cov poc"></span><div><div class="it">토픽 빌더(132)</div><div class="id">엔티티형·사건형(대표1+관련N)·조건형(관심사×소비)</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">ITEM TYPE 분기 · 출처 분류</div><div class="id">영상/SNS/묶음/데이터 · PGC/UGC/AIGC/AIEC(C2PA)</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">네이티브 이미지 트랙(방식 B)</div><div class="id">image_only 전용 메타 에이전트</div></div></div>
+        <div class="item"><span class="cov poc"></span><div><div class="it">프롬프트 스토어 · 파인튜닝</div><div class="id">버전 운영 · 2차 품질 자동화 연계</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">운영 하드닝</div><div class="id">동시성·레이트리밋·비용/지연(배치·캐시)</div></div></div>
+        <div class="exit"><b>완료 기준</b> · 토픽 자동 생성·드릴다운 · 신규 TYPE 분류율 충족</div>
+      </div>
+    </div>
+
+    <!-- P3 -->
+    <div class="ph">
+      <div class="ph-h">
+        <span class="tag"><span class="cov plan" style="width:8px;height:8px;border-radius:50%;display:inline-block"></span> P3 · 중장기</span>
+        <h2>사용자 메타 + 활용처</h2>
+        <p>토픽 × 소비 맥락 × 강도 매칭 <span class="ref">133</span></p>
+      </div>
+      <div class="ph-b">
+        <div class="item"><span class="cov plan"></span><div><div class="it">사용자 메타(133)</div><div class="id">TIARA 로그→세션화→소비 형태·강도·선호</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">콘텐츠 × 사용자 매칭</div><div class="id">선호 인텐트∩콘텐츠 + 강도·카테고리 일치</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">활용처 연계</div><div class="id">마이 스테이션 · AI 에이전트 · 광고(IAB v3.0)</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">선결 과제</div><div class="id">교차 서비스 동일인 식별 · 로그 표준화 · 동의</div></div></div>
+        <div class="item"><span class="cov plan"></span><div><div class="it">전사 운영 대시보드</div><div class="id">형태·강도 세그먼트 CTR·체류</div></div></div>
+        <div class="exit"><b>완료 기준</b> · 개인화 재배치 후 고강도 소비·개인화 CTR 상승</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 의존성 -->
+  <div class="dep">
+    <h3>의존성 · 정합 포인트</h3>
+    <div class="row">
+      <div class="d"><b>사전 공유</b> · 인텐트·콘텐츠 카테고리 사전을 콘텐츠 측과 사용자 측이 공유. P1에서 고정 → P3 매칭의 전제.</div>
+      <div class="d"><b>게이팅 선행</b> · 품질 판정(P1) 통과분만 아이템 메타 → 토픽(P2) → 사용자 매칭(P3)으로 흐른다.</div>
+      <div class="d"><b>공통 기반</b> · 모델 라우팅·프롬프트 스토어(P0/P1)는 전 단계 공통. SPRINT 1·2는 131·133 진행 계획과 정렬.</div>
+    </div>
+  </div>
+</body>
+</html>

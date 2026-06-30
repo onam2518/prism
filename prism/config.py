@@ -3,9 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 import json
 import os
+import sys
 
 HOME = os.path.dirname(os.path.dirname(__file__))
-DEFAULT_CONFIG_PATH = os.path.join(HOME, "config.json")
+
+# 앱 번들(.app)은 읽기전용 → config 는 사용자 디렉터리에 둔다. 일반 실행은 레포 루트.
+if getattr(sys, "frozen", False):
+    DEFAULT_CONFIG_PATH = os.path.expanduser("~/Library/Application Support/Prism/config.json")
+else:
+    DEFAULT_CONFIG_PATH = os.path.join(HOME, "config.json")
 
 
 @dataclass
@@ -52,6 +58,25 @@ class Config:
     embed_query_model: str = ""
     embed_passage_model: str = ""
     reasoning_effort: str = "default"   # default|low|high|off
+    system_prompt: str = ""             # 아이템 추출에 덧붙이는 추가 지시(선택, =analyze 하위호환)
+    # 단계별 추가 지시(프롬프트 스튜디오): extract·analyze·review·judge
+    stage_prompts: dict = field(default_factory=dict)
+    stage_prompts_meta: dict = field(default_factory=dict)   # {stage: "최종 수정 시각"}
+    # 단계별 모델 지정 + 모델별 프롬프트(각 과정이 다른 모델을 쓸 수 있음)
+    stage_models: dict = field(default_factory=dict)         # {stage: model_id}
+    model_prompts: dict = field(default_factory=dict)        # {model_id: {stage: prompt}}
+    # 자동 인입 파이프라인 소스(API/Kafka 등). 각: {id,type,name,enabled,...연결정보}
+    ingest_sources: list = field(default_factory=list)
+
+    # ── 모델 슬롯(제공자 선택) ──
+    # 텍스트 슬롯: 메타·품질·법령 추출. solar(직접) | bizrouter | timely(통합 라우터).
+    # 비전 슬롯: 이미지 맥락 생성. upstage_ie(Information Extraction) | bizrouter | timely.
+    # 라우터는 OpenAI 호환. 키는 라우터별 비밀값(env PRISM_BIZROUTER_KEY / PRISM_TIMELY_KEY).
+    text_provider: str = "solar"        # solar | bizrouter | timely
+    text_model: str = ""                # 라우터일 때 public id (예: gpt-5.4 / openai/gpt-5.4)
+    vision_provider: str = "upstage_ie"  # upstage_ie | bizrouter | timely
+    vision_model: str = ""              # 라우터일 때 public id
+    legal_enabled: bool = False         # 품질 1차 법령 필터 포함 여부(단건/일괄)
 
     # 실행
     concurrency: int = 12
@@ -116,7 +141,9 @@ class Config:
         """config.json 템플릿 작성(비밀값 제외)."""
         d = asdict(self)
         d.pop("api_key", None)
-        with open(path or DEFAULT_CONFIG_PATH, "w", encoding="utf-8") as f:
+        target = path or DEFAULT_CONFIG_PATH
+        os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False, indent=2)
 
 

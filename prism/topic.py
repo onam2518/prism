@@ -1,17 +1,20 @@
-"""메타풀 생성 체계: 단독형/복합형/필터형."""
+"""토픽 생성 체계: 엔티티형/사건형/조건형."""
 from __future__ import annotations
 from collections import Counter, defaultdict
 from itertools import combinations
 
 from .dashboard import _read_jsonl, _is_junk_entity, _canonical_entity_categories, tier1_remap
 from . import graphviz as GV
+from . import theme as TH
 
 
 # 임계값은 정책이 아니라 구현 선택(정성 기준). 데이터·도메인에 맞게 조정.
-CO_MIN = 3            # 사건 클러스터로 묶는 공통 엔티티 최소 개수(공출현 강도)
+CO_MIN = 2            # 사건 클러스터로 묶는 공통 엔티티 최소 개수(공출현 강도).
+# 주의: 추출 엔티티가 콘텐츠당 ~2개로 희소 → 3이면 공통 3개 쌍이 구조적으로 거의 없어
+# 사건형이 0건으로 비어버림. 2 = 두 named 대상의 공출현(같은 사건 신호)으로 실효 하한.
 DUP_HINT = 0.90       # 중복 기사 힌트(인텐트 유사 근사; 임베딩은 선택적 보조)
 
-# 복합형 앵글: 같은 사건의 '관점'을 인텐트 카테고리에서 정규화(속보/분석/반응/화제)
+# 사건형 앵글: 같은 사건의 '관점'을 인텐트에서 정규화(속보/분석/반응/화제)
 ANGLE_MAP = {
     "속보": "속보", "속보·사건 추적": "속보", "사건 경과 보도": "속보", "단독": "속보",
     "분석·해설": "분석", "심층 분석": "분석", "기획·심층": "분석", "전술·데이터 분석": "분석",
@@ -47,8 +50,8 @@ def _title(r):
     return r.get("content_ref", {}).get("title", "")
 
 
-# 단독형 메타풀 
-def build_single(rows, service_names, canon, min_contents=2):
+# 엔티티형 토픽 
+def build_entity_topics(rows, service_names, canon, min_contents=2):
     """단일 엔티티 → 콘텐츠. canon=엔티티→Tier1(정규화). 엔티티당 1개 풀."""
     ent_contents = defaultdict(list)
     for i, r in enumerate(rows):
@@ -74,8 +77,8 @@ def build_single(rows, service_names, canon, min_contents=2):
     return pools
 
 
-# 복합형 메타풀 : 엔티티 공출현(공통 ≥ CO_MIN) 클러스터
-def build_composite(rows, service_names):
+# 사건형 토픽 : 엔티티 공출현(공통 ≥ CO_MIN) 클러스터
+def build_event_topics(rows, service_names):
     cent = _content_entities(rows, service_names)
     n = len(rows)
     # 역색인으로 공통 엔티티 ≥CO_MIN 인 콘텐츠 페어만 계산(전체 O(n^2) 회피)
@@ -121,10 +124,10 @@ def build_composite(rows, service_names):
         for i in members:
             ent_freq.update(cent[i])
         rep_entities = [e for e, _ in ent_freq.most_common(5)]
-        # 앵글 = 인텐트 카테고리를 관점(속보/분석/반응/화제)으로 정규화. 중복 = 동일 인텐트셋
+        # 앵글 = 인텐트를 관점(속보/분석/반응/화제)으로 정규화. 중복 = 동일 인텐트셋
         angles, intent_sets = {}, {}
         for i in members:
-            ic = (rows[i].get("item_meta") or {}).get("intent_categories") or []
+            ic = (rows[i].get("item_meta") or {}).get("intent") or []
             angles[i] = _angle(ic[0] if ic else "")
             intent_sets[i] = tuple(sorted(ic))
         dup = _dup_count(intent_sets)
@@ -145,12 +148,12 @@ def build_composite(rows, service_names):
 
 
 def _dup_count(intent_sets: dict) -> int:
-    """동일 인텐트 카테고리셋 콘텐츠를 중복으로 근사(임베딩 0.90 유사도 대체)."""
+    """동일 인텐트셋 콘텐츠를 중복으로 근사(임베딩 0.90 유사도 대체)."""
     c = Counter(intent_sets.values())
     return sum(v - 1 for v in c.values() if v > 1)
 
 
-# 필터형 메타풀 : 운영자 정의 조건(인텐트 카테고리 × 엔티티 카테고리)
+# 조건형 토픽 : 운영자 정의 조건(인텐트 × 콘텐츠 카테고리)
 FILTER_DEFS = [
     {"name": "시사 × 속보 추적", "prompt": "속보·사건 경과 추적이면서 시사·정치 콘텐츠 모아줘",
      "ent": {"News and Politics"}, "intent": {"속보", "사건 경과 보도"}},
@@ -172,15 +175,15 @@ FILTER_DEFS = [
 ]
 
 
-def build_filter(rows, canon, service_names):
+def build_condition_topics(rows, canon, service_names):
     """각 운영자 필터 조건에 부합하는 콘텐츠 매칭. 1개 디멘션만 충족도 가능(OR within, AND across)."""
-    # 콘텐츠별 엔티티 Tier1 집합 + 인텐트 카테고리 집합
+    # 콘텐츠별 엔티티 Tier1 집합 + 인텐트 집합
     c_ent, c_int = [], []
     for r in rows:
         im = r.get("item_meta") or {}
-        ecats = {tier1_remap(c) for c in (im.get("entity_categories") or {}).values()}
+        ecats = {tier1_remap(c) for c in (im.get("content_category") or {}).values()}
         c_ent.append(ecats)
-        c_int.append(set(im.get("intent_categories") or []))
+        c_int.append(set(im.get("intent") or []))
     pools = []
     for f in FILTER_DEFS:
         matched = []
@@ -193,8 +196,8 @@ def build_filter(rows, canon, service_names):
         pools.append({
             "type": "filter", "cluster_id": "F-" + _slug(f["name"]),
             "name": f["name"], "prompt": f["prompt"],
-            "dims": {"엔티티 카테고리": sorted(f.get("ent", [])),
-                     "인텐트 카테고리": sorted(f.get("intent", []))},
+            "dims": {"콘텐츠 카테고리": sorted(f.get("ent", [])),
+                     "인텐트": sorted(f.get("intent", []))},
             "content_ids": matched, "count": len(matched),
             "representative_content": rep[0] if rep else None,
             "rep_title": _title(rows[rep[0]]) if rep else "",
@@ -210,7 +213,7 @@ def _slug(s: str) -> str:
     return re.sub(r"\s+", "-", (s or "").strip())[:40]
 
 
-# 메타풀 탭 HTML (대시보드와 동일 토큰)
+# 토픽 탭 HTML (대시보드와 동일 토큰)
 
 # 관계도: 콘텐츠(묶음 멤버)가 어떤 풀(엔티티·사건·조건)에 어떻게 들어가는지
 _GRAPH_COL = {"content": "#5e6ad2", "entity": "#e2a33c", "category": "#a988e6",
@@ -244,7 +247,7 @@ def _graph_data(d, rows):
                 state["cn"] += 1
             links.append({"s": pool_id, "t": nid, "w": w})
 
-    # 단독형: 엔티티 → 카테고리 + 대표 콘텐츠(이 엔티티 묶음)
+    # 엔티티형: 엔티티 → 카테고리 + 대표 콘텐츠(이 엔티티 묶음)
     for p in d["single"][:40]:
         eid = "e:" + p["name"]
         add(eid, p["name"], "entity", 2 + min(7, p["count"]))
@@ -252,7 +255,7 @@ def _graph_data(d, rows):
         add(kid, p["category"], "category", 14, hub=True)
         links.append({"s": eid, "t": kid, "w": 1})
         add_members(eid, p.get("content_ids", []), 4, 1)
-    # 복합형: 사건 → 멤버 콘텐츠(같은 사건 묶음) + 대표 엔티티
+    # 사건형: 사건 → 멤버 콘텐츠(같은 사건 묶음) + 대표 엔티티
     for p in d["composite"][:20]:
         cid = "ev:" + p["cluster_id"]
         add(cid, p["name"][:16], "event", 5 + min(6, p["count"]), hub=True)
@@ -261,14 +264,14 @@ def _graph_data(d, rows):
             eid = "e:" + e
             add(eid, e, "entity", 3)
             links.append({"s": cid, "t": eid, "w": 1})
-    # 필터형: 조건 → 매칭 콘텐츠(조건 묶음) + 엔티티 카테고리
+    # 조건형: 조건 → 매칭 콘텐츠(조건 묶음) + 콘텐츠 카테고리
     for p in d["filter"]:
         if not p.get("active"):
             continue
         fid = "f:" + p["cluster_id"]
         add(fid, p["name"], "filter", 6, hub=True)
         add_members(fid, p.get("content_ids", []), 6, 1)
-        for cat in p["dims"].get("엔티티 카테고리", []):
+        for cat in p["dims"].get("콘텐츠 카테고리", []):
             kid = "k:" + cat
             add(kid, cat, "category", 14, hub=True)
             links.append({"s": fid, "t": kid, "w": 1})
@@ -279,15 +282,15 @@ def _graph_section(d, rows):
     nodes, links = _graph_data(d, rows)
     return GV.vendor_script() + GV.section(
         "mpg", nodes, links, _GRAPH_COL,
-        "메타풀 관계도", "콘텐츠가 어떤 묶음(엔티티·사건·조건)에 어떻게 구성되는지 · 호버=연결 강조",
-        legend=[("콘텐츠", "#5e6ad2"), ("엔티티", "#e2a33c"), ("엔티티 카테고리", "#a988e6"),
-                ("복합형 사건", "#4cb9a7"), ("필터형 조건", "#d6688f")],
+        "토픽 관계도", "콘텐츠가 어떤 묶음(엔티티·사건·조건)에 어떻게 구성되는지 · 호버=연결 강조",
+        legend=[("콘텐츠", "#5e6ad2"), ("엔티티", "#e2a33c"), ("콘텐츠 카테고리", "#a988e6"),
+                ("사건형 사건", "#4cb9a7"), ("조건형 조건", "#d6688f")],
         height=480)
 
 
 def render_html(results_path: str, notice: str = "") -> str:
     import html as _h
-    d = build_metapools(results_path)
+    d = build_topics(results_path)
     rows = _read_jsonl(results_path)
     s = d["summary"]
 
@@ -297,34 +300,39 @@ def render_html(results_path: str, notice: str = "") -> str:
     def chip(t, c="var(--mut)"):
         return f'<span class="k" style="color:{c}">{esc(t)}</span>'
 
-    # 단독형: 상위 카테고리별 엔티티 막대
+    # 엔티티형: 순위 + 엔티티 막대
     single_rows = "".join(
-        f'<div class="bar"><span class="lab">{esc(p["name"])}</span>'
+        f'<div class="bar"><span class="rk">{i + 1:02d}</span><span class="lab">{esc(p["name"])}</span>'
         f'<span class="kk">{esc(p["category"])}</span>'
         f'<span class="track"><span class="fill" style="width:{min(100,p["count"]*4)}%;background:var(--ent)"></span></span>'
         f'<span class="n">{p["count"]}</span></div>'
-        for p in d["single"][:40]
+        for i, p in enumerate(d["single"][:40])
     )
-    # 복합형: 사건 카드
+    # 사건형: 사건 카드 — 스탯 타일(콘텐츠·중복·앵글) + 앵글 칩
     comp_cards = "".join(
         f'<div class="pool comp"><div class="ph"><b>{esc(p["name"])}</b>'
-        f'<span class="lc">단기 · 사건</span></div>'
+        f'<span class="phr"><span class="lc">단기</span></span></div>'
         f'<div class="pe">{"".join(f"<span class=ent>{esc(e)}</span>" for e in p["representative_entities"][:5])}</div>'
-        f'<div class="pm">콘텐츠 {p["count"]}건 · 중복 {p["dup_count"]} ({int(p["dup_rate"]*100)}%) · '
-        f'앵글 {esc(" / ".join(p["angles"][:3]))}</div>'
+        f'<div class="mt">'
+        f'<div class="tile"><b>{p["count"]}</b><span>콘텐츠</span></div>'
+        f'<div class="tile"><b>{p["dup_count"]}</b><span>중복 {int(p["dup_rate"]*100)}%</span></div>'
+        f'<div class="tile"><b>{len(p["angles"])}</b><span>앵글</span></div></div>'
+        f'<div class="angles">{"".join(f"<span class=ang>{esc(a)}</span>" for a in p["angles"][:3])}</div>'
         f'<div class="rep">대표: {esc(p["rep_title"][:50])}</div></div>'
         for p in d["composite"][:24]
     )
-    # 필터형: 운영자 조건 카드
+    # 조건형: 운영자 조건 카드 — 상태 배지 + 큰 매칭 수
     filt_cards = "".join(
         f'<div class="pool filt {"" if p["active"] else "off"}"><div class="ph">'
-        f'<b>{esc(p["name"])}</b><span class="lc">{"활성" if p["active"] else "저조"} · 중장기</span></div>'
+        f'<b>{esc(p["name"])}</b>'
+        f'<span class="phr"><span class="st {"" if p["active"] else "no"}"><i></i>{"활성" if p["active"] else "저조"}</span>'
+        f'<span class="lc">중장기</span></span></div>'
         f'<div class="prompt">“{esc(p["prompt"])}”</div>'
         f'<div class="dims">'
-        + (("".join(f'<span class="dim ent">{esc(x)}</span>' for x in p["dims"]["엔티티 카테고리"])) or "")
-        + (("".join(f'<span class="dim int">{esc(x)}</span>' for x in p["dims"]["인텐트 카테고리"])) or "")
+        + (("".join(f'<span class="dim ent">{esc(x)}</span>' for x in p["dims"]["콘텐츠 카테고리"])) or "")
+        + (("".join(f'<span class="dim int">{esc(x)}</span>' for x in p["dims"]["인텐트"])) or "")
         + "</div>"
-        f'<div class="pm">매칭 <b style="color:var(--fg)">{p["count"]}</b>건</div>'
+        f'<div class="fmatch"><span class="big">{p["count"]}</span> 매칭 콘텐츠</div>'
         f'<div class="rep">대표: {esc(p["rep_title"][:50])}</div></div>'
         for p in d["filter"]
     )
@@ -336,11 +344,12 @@ def render_html(results_path: str, notice: str = "") -> str:
         .replace("__FILT__", filt_cards).replace("__COMP__", comp_cards) \
         .replace("__SINGLE__", single_rows) \
         .replace("__ST__", str(d["single_total"])) \
+        .replace("__COMIN__", str(CO_MIN)) \
         .replace("__GRAPH__", _graph_section(d, rows))
     if notice:
         html = html.replace("<body>", "<body>" + notice, 1)
-        html = html.replace("<h1>메타풀 생성 체계</h1>", "<h1>메타풀 (DEMO)</h1>", 1)
-    return html
+        html = html.replace("<h1>토픽 생성 체계</h1>", "<h1>토픽 (DEMO)</h1>", 1)
+    return TH.inject(html)
 
 
 def build_html(results_path: str, out_path: str, notice: str = "") -> dict:
@@ -351,34 +360,51 @@ def build_html(results_path: str, out_path: str, notice: str = "") -> dict:
 
 
 _MP_HTML = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>메타풀 생성 체계</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>토픽 생성 체계</title>
+<meta name="description" content="아이템 메타(엔티티·인텐트)를 엔티티형·사건형·조건형 3개 축으로 그룹핑하는 토픽 생성 체계">
 <style>
-:root{--bg:#010102;--surface:#0f1011;--s2:#141516;--line:#23252a;--mut:#8a8f98;--fg:#f7f8f8;--fg2:#d0d6e0;
---pri:#5e6ad2;--ent:#e2a33c;--int:#4cb9a7;--cat:#a988e6;
---sh:none;
---font:"Inter","SF Pro Display",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Pretendard,sans-serif}
+:root{--bg:#08090c;--surface:#101216;--s2:#15181d;--line:#23262e;--mut:#8b909b;--fg:#f6f7f9;--fg2:#cfd4de;
+--pri:#6872d6;--ent:#e0a648;--int:#46bda9;--cat:#ab8ee8;
+--sh:0 1px 2px rgba(0,0,0,.45),0 10px 28px -16px rgba(0,0,0,.7);
+--sh-hi:0 2px 6px rgba(0,0,0,.5),0 18px 44px -18px rgba(6,8,16,.85);
+--font:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Pretendard,sans-serif;
+--disp:"Space Grotesk","Plus Jakarta Sans",-apple-system,sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);
-color:var(--fg);font:15px/1.5 var(--font);-webkit-font-smoothing:antialiased}
-header{padding:20px 28px;border-bottom:1px solid var(--line)}
-h1{font-size:24px;margin:0;font-weight:600;letter-spacing:-.6px}
+color:var(--fg);font:14.5px/1.55 var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+header{padding:26px 28px 22px;border-bottom:1px solid var(--line);
+background:radial-gradient(120% 140% at 12% -10%,rgba(104,114,214,.10),transparent 60%),radial-gradient(90% 120% at 100% 0%,rgba(70,189,169,.06),transparent 55%)}
+.eyebrow{display:inline-block;font-family:var(--disp);font-size:10.5px;font-weight:600;text-transform:uppercase;
+letter-spacing:.18em;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin-bottom:11px}
+h1{font-family:var(--disp);font-size:26px;margin:0;font-weight:600;letter-spacing:-.022em;text-wrap:balance}
 .sub{color:var(--mut);font-size:14px;margin-top:4px}
 .wrap{padding:22px 28px;max-width:1500px}
 .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
-.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--sh)}
-.kpi b{font-size:28px;font-weight:700;letter-spacing:-.02em;display:block}
-.kpi span{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.kpi{background:linear-gradient(180deg,rgba(255,255,255,.022),transparent 70%),var(--surface);
+border:1px solid var(--line);border-radius:14px;padding:17px 18px;box-shadow:var(--sh);
+transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s,box-shadow .22s}
+.kpi:hover{transform:translateY(-2px);border-color:#31353f;box-shadow:var(--sh-hi)}
+.kpi b{font-family:var(--disp);font-size:30px;font-weight:600;letter-spacing:-.02em;display:block;
+font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi span{color:var(--mut);font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;margin-top:3px;display:block}
 .intro{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:26px}
-.def{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
-.def h3{margin:0 0 6px;font-size:15px}.def p{margin:0;color:var(--fg2);font-size:13px;line-height:1.5}
-.def .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin-bottom:8px;display:inline-block}
-h2{font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;margin:24px 0 12px;font-weight:600}
+.def{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:17px;box-shadow:var(--sh);
+transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s}
+.def:hover{transform:translateY(-2px);border-color:#31353f}
+.def h3{font-family:var(--disp);margin:0 0 6px;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.def p{margin:0;color:var(--fg2);font-size:13px;line-height:1.55;text-wrap:pretty}
+.def .tag{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;margin-bottom:9px;display:inline-block;
+text-transform:uppercase;letter-spacing:.06em}
+h2{font-family:var(--disp);font-size:16px;color:var(--fg);letter-spacing:-.012em;margin:40px 0 4px;font-weight:600;
+display:flex;align-items:center;gap:9px}
+.h2d{color:var(--mut);font-size:12.5px;margin:0 0 15px;max-width:760px;line-height:1.5}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
-.pool{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px;box-shadow:var(--sh)}
-.pool.off{opacity:.5}
+.pool{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--sh);
+transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s,box-shadow .22s}
+.pool:hover{transform:translateY(-2px);box-shadow:var(--sh-hi)}
+.pool.off{opacity:.5}.pool.off:hover{transform:none}
 .ph{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
-.ph b{font-size:15px;letter-spacing:-.01em}
+.ph b{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:-.012em}
 .lc{font-size:11px;color:var(--mut);white-space:nowrap}
-.comp{border-color:rgba(76,185,167,.45)}.filt{border-color:rgba(94,106,210,.45)}
 .prompt{color:var(--fg2);font-size:13px;font-style:italic;margin-bottom:10px}
 .pe{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
 .ent{font-size:12px;background:rgba(226,163,60,.14);color:var(--ent);border-radius:6px;padding:2px 8px}
@@ -395,53 +421,102 @@ h2{font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em
 .bar .fill{display:block;height:100%;border-radius:999px}
 .bar .n{width:34px;text-align:right;color:var(--mut);font-variant-numeric:tabular-nums}
 .note{color:var(--mut);font-size:12px;margin-top:8px}
-.single-wrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--sh)}
+.single-wrap{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--sh)}
+.bar:hover .lab{color:#fff}.bar{transition:none}.bar .fill{transition:width .5s cubic-bezier(.32,.72,0,1)}
+/* ── component kit: 구조 확대(타입 액센트·중첩 하이라이트·상태 배지·스탯 타일) ── */
+.kpi{display:flex;flex-direction:column;gap:6px;min-height:92px;justify-content:flex-end;
+box-shadow:var(--sh),inset 0 1px 0 rgba(255,255,255,.03)}
+.kpi span{order:-1;margin:0}.kpi b{margin:0}
+.pool{box-shadow:var(--sh),inset 0 1px 0 rgba(255,255,255,.028)}
+.comp,.filt{border-color:var(--line)}
+.ph{align-items:center}
+.phr{display:flex;align-items:center;gap:6px}
+.lc{font-family:var(--disp);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;
+color:var(--mut);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:6px;padding:2px 7px;white-space:nowrap}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:6px;padding:2px 8px;
+background:rgba(70,189,169,.13);color:var(--int);white-space:nowrap}
+.st i{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
+.st.no{background:rgba(139,144,155,.12);color:var(--mut)}.st.no i{box-shadow:none}
+.mt{display:flex;gap:8px;margin-bottom:10px}
+.tile{flex:1;background:#0b0d11;border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.tile b{font-family:var(--disp);font-size:18px;font-weight:600;display:block;line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.tile span{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.fmatch{font-size:12.5px;color:var(--mut);margin-bottom:10px;display:flex;align-items:baseline;gap:7px}
+.fmatch .big{font-family:var(--disp);font-size:23px;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums;letter-spacing:-.015em}
+.angles{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:11px}
+.ang{font-size:11px;color:var(--fg2);background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
+.ent,.dim{border:1px solid transparent}
+.bar .rk{font-family:var(--disp);font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums;width:24px;text-align:right;opacity:.65}
+.cnt{font-family:var(--disp);font-size:11px;font-weight:600;color:var(--fg2);background:var(--s2);border:1px solid var(--line);
+border-radius:6px;padding:1px 8px;vertical-align:middle;margin-left:4px;letter-spacing:0;text-transform:none}
+/* 호버 도움말: 정의·설명은 본문이 아니라 여기로 */
+.hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;
+border:1px solid var(--line);color:var(--mut);font-size:10px;font-weight:600;font-style:normal;cursor:help;
+vertical-align:middle;transition:color .15s,border-color .15s;flex:none}
+.hint:hover{color:var(--fg);border-color:#3a3e48}
+.hint::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 9px);left:50%;
+transform:translateX(-50%) translateY(4px);width:max-content;max-width:300px;
+background:#15181d;border:1px solid #2c2f37;border-radius:10px;padding:11px 13px;
+font-family:var(--font);font-size:12px;font-weight:400;line-height:1.6;color:var(--fg2);
+white-space:pre-line;text-align:left;letter-spacing:0;text-transform:none;
+opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;box-shadow:var(--sh-hi);z-index:9}
+.hint:hover::after{opacity:1;transform:translateX(-50%) translateY(0)}
+h2 .hint{font-size:10px}
 </style></head><body>
-<header><h1>메타풀 생성 체계</h1>
+<header><span class="eyebrow">토픽 · 그룹핑 체계</span><h1>토픽 생성 체계</h1>
 <div class="sub">아이템 메타(엔티티·인텐트)를 서로 다른 축으로 그룹핑하는 3개 병렬 체계 · 콘텐츠 __N__건 기반 · 하나의 콘텐츠는 세 유형에 동시 소속 가능</div></header>
 <div class="wrap">
  <div class="cards">
-  <div class="kpi"><b>__NS__</b><span>단독형 (엔티티)</span></div>
-  <div class="kpi"><b>__NC__</b><span>복합형 (사건)</span></div>
-  <div class="kpi"><b>__NF__</b><span>필터형 (활성/전체)</span></div>
-  <div class="kpi"><b>__DUP__</b><span>복합형 평균 중복률</span></div>
+  <div class="kpi"><b>__NS__</b><span>엔티티형 (엔티티)</span></div>
+  <div class="kpi"><b>__NC__</b><span>사건형 (사건)</span></div>
+  <div class="kpi"><b>__NF__</b><span>조건형 (활성/전체)</span></div>
+  <div class="kpi"><b>__DUP__</b><span>사건형 평균 중복률</span></div>
  </div>
  <div class="intro">
-  <div class="def"><span class="tag" style="background:rgba(226,163,60,.16);color:var(--ent)">단독형 </span>
-   <h3>이 엔티티에 해당하는 콘텐츠</h3>
-   <p>단일 엔티티 단위. 공통키(통검 DB) 자동 + 신생 키워드 수동 등록. lifecycle 영속.</p></div>
-  <div class="def"><span class="tag" style="background:rgba(76,185,167,.14);color:var(--int)">복합형 </span>
-   <h3>이 사건을 다룬 콘텐츠</h3>
-   <p>엔티티 공출현(공통 ≥3)으로 자연 발생하는 사건 묶음. 중복 제거·앵글 분산. lifecycle 단기.</p></div>
-  <div class="def"><span class="tag" style="background:rgba(94,106,210,.16);color:var(--pri)">필터형 </span>
-   <h3>이 조건에 부합하는 콘텐츠</h3>
-   <p>운영자가 자연어로 정의한 조건(인텐트 카테고리 × 엔티티 카테고리). lifecycle 중장기.</p></div>
+  <div class="def"><span class="tag" style="background:rgba(226,163,60,.16);color:var(--ent)">엔티티형</span>
+   <h3>이 엔티티에 해당하는 콘텐츠 <span class="hint" data-tip="• 단일 엔티티 단위
+• 공통키(통검 DB) 자동 + 신생 키워드 수동 등록
+• lifecycle 영속">?</span></h3>
+   <span class="lc">영속</span></div>
+  <div class="def"><span class="tag" style="background:rgba(76,185,167,.14);color:var(--int)">사건형</span>
+   <h3>이 사건을 다룬 콘텐츠 <span class="hint" data-tip="• 엔티티 공출현(공통 ≥__COMIN__개)으로 자연 발생하는 사건 묶음
+• 중복 제거 · 앵글 분산">?</span></h3>
+   <span class="lc">단기</span></div>
+  <div class="def"><span class="tag" style="background:rgba(94,106,210,.16);color:var(--pri)">조건형</span>
+   <h3>이 조건에 부합하는 콘텐츠 <span class="hint" data-tip="• 운영자가 자연어로 정의한 조건
+• 인텐트 × 콘텐츠 카테고리">?</span></h3>
+   <span class="lc">중장기</span></div>
  </div>
 
  __GRAPH__
- <h2>필터형 메타풀 · 운영자 정의 조건</h2>
+ <h2>조건형 토픽 · 운영자 정의 조건 <span class="cnt">__NF__</span>
+  <span class="hint" data-tip="• 필터(관심사) → 이슈(사건형) → 기사 3단계 드릴다운 진입점
+• 저조 필터는 자동 비활성화 권고">?</span></h2>
  <div class="grid">__FILT__</div>
- <div class="note">필터(관심사) → 이슈(복합형) → 기사 3단계 드릴다운 탐색의 진입점. 저조 필터는 자동 비활성화 권고.</div>
 
- <h2>복합형 메타풀 · 자동 검출 사건 (상위 24)</h2>
+ <h2>사건형 토픽 · 자동 검출 사건 <span class="cnt">상위 24</span>
+  <span class="hint" data-tip="• 엔티티 ≥__COMIN__개 공출현으로 자동 생성
+• 대표 1건 + 관련 N건(중복 제거)
+• 앵글(속보/분석/반응) 분산 노출">?</span></h2>
  <div class="grid">__COMP__</div>
- <div class="note">엔티티 3개 이상 공출현으로 자동 생성. 대표 1건 + 관련 N건(중복 제거), 앵글(속보/분석/반응) 분산 노출.</div>
 
- <h2>단독형 메타풀 · 엔티티별 콘텐츠 (상위 40 / 전체 __ST__)</h2>
+ <h2>엔티티형 토픽 · 엔티티별 콘텐츠 <span class="cnt">상위 40</span>
+  <span class="hint" data-tip="• 엔티티당 1개 풀(canonical)
+• 엔티티(인물·기업) 팔로우 시 이 단위로 콘텐츠 공급
+• 전체 __ST__개">?</span></h2>
  <div class="single-wrap">__SINGLE__</div>
- <div class="note">엔티티당 1개 풀(canonical). 사용자가 엔티티(인물·기업) 팔로우 시 이 단위로 콘텐츠 공급.</div>
 </div>
 </body></html>"""
 
 
-def build_metapools(results_path: str, max_single: int = 200, max_composite: int = 120) -> dict:
+def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120) -> dict:
     rows = _read_jsonl(results_path)
     svc = _service_names(rows)
     canon = _canonical_entity_categories(rows, svc)
-    single = build_single(rows, svc, canon)
-    composite = build_composite(rows, svc)
-    filt = build_filter(rows, canon, svc)
-    # 콘텐츠 → 소속 메타풀 역참조(한 콘텐츠가 세 유형 동시 소속 시연용)
+    single = build_entity_topics(rows, svc, canon)
+    composite = build_event_topics(rows, svc)
+    filt = build_condition_topics(rows, canon, svc)
+    # 콘텐츠 → 소속 토픽 역참조(한 콘텐츠가 세 유형 동시 소속 시연용)
     return {
         "n_contents": len(rows),
         "single": single[:max_single], "single_total": len(single),
@@ -456,3 +531,7 @@ def build_metapools(results_path: str, max_single: int = 200, max_composite: int
             "filter_active": sum(1 for p in filt if p["active"]),
         },
     }
+
+
+# 하위 호환 별칭 (구 명칭)
+build_metapools = build_topics

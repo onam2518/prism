@@ -48,8 +48,37 @@ class Store:
           content_hash TEXT PRIMARY KEY, service TEXT, title TEXT,
           final_grade TEXT, reasons TEXT, source TEXT, manual_review INTEGER,
           created_at REAL);
+        -- 팀 HITL: 검수자별 다중 의견 보존(PK = content_hash + reviewer).
+        CREATE TABLE IF NOT EXISTS feedback(
+          content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
+          verdict TEXT, stage TEXT, note TEXT, ts REAL,
+          PRIMARY KEY(content_hash, reviewer));
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         """)
+        c.commit()
+        self._migrate_feedback(c)
+
+    def _migrate_feedback(self, c):
+        """구 스키마(PK=content_hash, 단일 의견) → 신 스키마(PK=content_hash+reviewer) 이행.
+        기존 1건은 reviewer='(이전)'으로 보존. 신규 DB 엔 영향 없음.
+        + REAP 컬럼(remember/explain/ask/plan) 추가(없으면 ALTER)."""
+        cols = [r[1] for r in c.execute("PRAGMA table_info(feedback)")]
+        if "reviewer" not in cols:
+            c.executescript("""
+            ALTER TABLE feedback RENAME TO feedback_legacy;
+            CREATE TABLE feedback(
+              content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
+              verdict TEXT, stage TEXT, note TEXT, ts REAL,
+              PRIMARY KEY(content_hash, reviewer));
+            INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts)
+              SELECT content_hash,'(이전)',service,title,verdict,stage,note,ts FROM feedback_legacy;
+            DROP TABLE feedback_legacy;
+            """)
+            c.commit()
+            cols = [r[1] for r in c.execute("PRAGMA table_info(feedback)")]
+        for col in ("remember", "explain", "ask", "plan"):     # REAP 산출 보관
+            if col not in cols:
+                c.execute(f"ALTER TABLE feedback ADD COLUMN {col} TEXT")
         c.commit()
 
     # 결과 upsert / resume
@@ -112,6 +141,243 @@ class Store:
             q += " WHERE run_id=?"
             args = (run_id,)
         return [json.loads(r[0]) for r in c.execute(q, args)]
+
+    # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
+    def save_many(self, pairs, run_id: str):
+        """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수."""
+        rows = []
+        for content, out in pairs:
+            ch = content_hash(content)
+            qm = out.get("quality_meta", {}) or {}
+            tr = out.get("trace", {}) or {}
+            fail_kind = ""
+            for f in tr.get("fallbacks", []) or []:
+                s = str(f)
+                if "HTTP" in s or "_fail" in s or "예외" in s:
+                    fail_kind = "api"; break
+            rows.append((ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
+                         qm.get("finalGrade", ""), json.dumps(qm.get("reasons", []), ensure_ascii=False),
+                         json.dumps(out.get("item_meta"), ensure_ascii=False),
+                         json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
+                         fail_kind, time.time()))
+        if not rows:
+            return 0
+        c = self._conn()
+        c.executemany("""INSERT INTO results
+          (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(content_hash) DO UPDATE SET
+            run_id=excluded.run_id, final_grade=excluded.final_grade, reasons=excluded.reasons,
+            item_meta=excluded.item_meta, payload=excluded.payload, cost_usd=excluded.cost_usd,
+            fail_kind=excluded.fail_kind, created_at=excluded.created_at""", rows)
+        c.commit()
+        return len(rows)
+
+    def save_dedup(self, pairs, run_id: str) -> dict:
+        """적재 정책: content_hash 기준 멱등.
+        · 신규 → insert  · 기존인데 메타(등급·item_meta·reasons) 변경 → update
+        · 동일 콘텐츠 + 결과 무변경 → 적재 제외(skip, DB 미기록).
+        (trace·cost 같은 실행 부산물은 비교에서 제외 — 매 실행 달라지므로)
+        반환: {inserted, updated, skipped}"""
+        c = self._conn()
+        ins = upd = skip = 0
+        rows = []
+        for content, out in pairs:
+            ch = content_hash(content)
+            qm = out.get("quality_meta", {}) or {}
+            tr = out.get("trace", {}) or {}
+            new_im = json.dumps(out.get("item_meta"), ensure_ascii=False, sort_keys=True)
+            new_gr = qm.get("finalGrade", "")
+            new_rs = json.dumps(qm.get("reasons", []), ensure_ascii=False, sort_keys=True)
+            cur = c.execute("SELECT item_meta, final_grade, reasons FROM results WHERE content_hash=?", (ch,)).fetchone()
+            if cur is not None:
+                try: old_im = json.dumps(json.loads(cur[0]), ensure_ascii=False, sort_keys=True)
+                except Exception: old_im = cur[0] or ""
+                try: old_rs = json.dumps(json.loads(cur[2]), ensure_ascii=False, sort_keys=True)
+                except Exception: old_rs = cur[2] or ""
+                if old_im == new_im and (cur[1] or "") == new_gr and old_rs == new_rs:
+                    skip += 1
+                    continue                      # 동일 콘텐츠·결과 → 적재 제외
+                upd += 1
+            else:
+                ins += 1
+            fail_kind = ""
+            for f in tr.get("fallbacks", []) or []:
+                s = str(f)
+                if "HTTP" in s or "_fail" in s or "예외" in s:
+                    fail_kind = "api"; break
+            rows.append((ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
+                         new_gr, json.dumps(qm.get("reasons", []), ensure_ascii=False),
+                         json.dumps(out.get("item_meta"), ensure_ascii=False),
+                         json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
+                         fail_kind, time.time()))
+        if rows:
+            c.executemany("""INSERT INTO results
+              (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(content_hash) DO UPDATE SET
+                run_id=excluded.run_id, final_grade=excluded.final_grade, reasons=excluded.reasons,
+                item_meta=excluded.item_meta, payload=excluded.payload, cost_usd=excluded.cost_usd,
+                fail_kind=excluded.fail_kind, created_at=excluded.created_at""", rows)
+            c.commit()
+        return {"inserted": ins, "updated": upd, "skipped": skip}
+
+    def recent(self, limit: int = 5000) -> list:
+        """최근 적재 결과(payload)를 시간순(오래된→최신)으로. content_id = 리스트 인덱스."""
+        c = self._conn()
+        rows = [json.loads(r[0]) for r in c.execute(
+            "SELECT payload FROM results ORDER BY created_at DESC LIMIT ?", (int(limit),))]
+        rows.reverse()
+        return rows
+
+    def count(self) -> int:
+        c = self._conn()
+        return int(c.execute("SELECT COUNT(*) FROM results").fetchone()[0])
+
+    def grade_stats(self) -> dict:
+        c = self._conn()
+        n = int(c.execute("SELECT COUNT(*) FROM results").fetchone()[0])
+        g = int(c.execute("SELECT COUNT(*) FROM results WHERE final_grade='G'").fetchone()[0])
+        return {"total": n, "g": g, "r": n - g, "gPct": round(g / n * 100) if n else 0}
+
+    def clear(self):
+        c = self._conn()
+        c.execute("DELETE FROM results"); c.execute("DELETE FROM usage"); c.commit()
+
+    def recent_meta(self, limit: int = 200) -> list:
+        """배치 결과 콘텐츠별 행(피드백 부착용): content_hash·서비스·제목·등급·요약·카테고리."""
+        c = self._conn()
+        rows = []
+        for ch, svc, ti, grade, im in c.execute(
+                "SELECT content_hash,service,title,final_grade,item_meta FROM results ORDER BY created_at DESC LIMIT ?",
+                (int(limit),)):
+            try:
+                imd = json.loads(im) if im else {}
+            except Exception:
+                imd = {}
+            cat = " · ".join(f"{k}→{v}" for k, v in ((imd or {}).get("content_category") or {}).items())
+            rows.append({"hash": ch, "service": svc or "", "title": ti or "",
+                         "grade": grade or "", "summary": (imd or {}).get("summary", ""), "category": cat})
+        return rows
+
+    # ── 평가 피드백 / 학습 루프 ──
+    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)"):
+        """검수자별 평가 피드백 upsert(검수자당 1건 — 같은 검수자는 자기 의견을 갱신).
+        서로 다른 검수자의 의견은 공존 → 다중 의견 보존."""
+        c = self._conn()
+        c.execute("""INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts)
+          VALUES(?,?,?,?,?,?,?,?)
+          ON CONFLICT(content_hash,reviewer) DO UPDATE SET
+            verdict=excluded.verdict, stage=excluded.stage, note=excluded.note, ts=excluded.ts,
+            service=excluded.service, title=excluded.title""",
+          (content_hash, reviewer or "(익명)", service or "", title or "",
+           verdict or "", stage or "analyze", note or "", ts))
+        c.commit()
+
+    def feedback_map(self) -> dict:
+        """content_hash → 합의 집계. 다중 검수자 의견을 모아 합의/불일치 표시.
+        반환: {verdicts:[{reviewer,verdict,stage,note,ts}], n, good, bad,
+               consensus('good'|'bad'|'split'|''), agree(만장일치), verdict/stage/note(대표=합의·최신, 하위호환)}"""
+        c = self._conn()
+        out = {}
+        for ch, rv, v, s, nt, ts in c.execute(
+                "SELECT content_hash,reviewer,verdict,stage,note,ts FROM feedback ORDER BY ts"):
+            e = out.setdefault(ch, {"verdicts": [], "good": 0, "bad": 0})
+            e["verdicts"].append({"reviewer": rv, "verdict": v, "stage": s, "note": nt, "ts": ts})
+            if v == "good":
+                e["good"] += 1
+            elif v == "bad":
+                e["bad"] += 1
+        for e in out.values():
+            g, b = e["good"], e["bad"]
+            e["n"] = len(e["verdicts"])
+            e["consensus"] = ("good" if g > b else "bad" if b > g
+                              else ("split" if (g or b) else ""))
+            e["agree"] = e["n"] > 0 and (g == 0 or b == 0)
+            last = e["verdicts"][-1]                      # 하위호환 대표 필드(합의 우선, 없으면 최신)
+            e["verdict"] = e["consensus"] or last["verdict"]
+            e["stage"], e["note"] = last["stage"], last["note"]
+        return out
+
+    def save_reap(self, content_hash, reviewer, reap: dict):
+        """REAP 산출(remember/explain/ask/plan)을 해당 검수자 피드백 행에 기록."""
+        c = self._conn()
+        c.execute("""UPDATE feedback SET remember=?, explain=?, ask=?, plan=?
+          WHERE content_hash=? AND reviewer=?""",
+          (reap.get("remember", ""), reap.get("explain", ""), reap.get("ask", ""),
+           reap.get("plan", ""), content_hash, reviewer or "(익명)"))
+        c.commit()
+
+    def get_reap(self, content_hash) -> list:
+        """콘텐츠의 검수자별 REAP 산출 목록(UI 표시용)."""
+        c = self._conn()
+        out = []
+        for rv, rm, ex, ak, pl, st in c.execute(
+                "SELECT reviewer,remember,explain,ask,plan,stage FROM feedback "
+                "WHERE content_hash=? AND (plan IS NOT NULL AND plan!='')", (content_hash,)):
+            out.append({"reviewer": rv, "remember": rm, "explain": ex, "ask": ak,
+                        "plan": pl, "stage": st})
+        return out
+
+    def learned_by_stage(self, limit_per_stage: int = 20) -> dict:
+        """문제(bad) 피드백을 단계별로 모아 학습 보정 텍스트로 컴파일.
+        REAP plan 이 있으면 그것을(가공된 개선 지시), 없으면 raw 메모를 사용."""
+        c = self._conn()
+        out = {"extract": [], "analyze": [], "review": [], "judge": []}
+        for stage, note, plan in c.execute(
+                "SELECT stage,note,plan FROM feedback "
+                "WHERE verdict='bad' AND (COALESCE(plan,'')!='' OR COALESCE(note,'')!='') "
+                "ORDER BY ts DESC"):
+            st = stage if stage in out else "analyze"
+            text = (plan or "").strip() or (note or "").strip()
+            if text and len(out[st]) < limit_per_stage:
+                out[st].append(f"- {text}")
+        return {k: "\n".join(v) for k, v in out.items() if v}
+
+    def feedback_stats(self) -> dict:
+        c = self._conn()
+        n = int(c.execute("SELECT COUNT(*) FROM feedback").fetchone()[0])
+        bad = int(c.execute("SELECT COUNT(*) FROM feedback WHERE verdict='bad'").fetchone()[0])
+        good = int(c.execute("SELECT COUNT(*) FROM feedback WHERE verdict='good'").fetchone()[0])
+        learned = sum(1 for _ in c.execute("SELECT 1 FROM feedback WHERE verdict='bad' AND note!=''"))
+        contents = int(c.execute("SELECT COUNT(DISTINCT content_hash) FROM feedback").fetchone()[0])
+        reviewers = int(c.execute("SELECT COUNT(DISTINCT reviewer) FROM feedback").fetchone()[0])
+        # 불일치: 한 콘텐츠에 good·bad 가 모두 달린 건수(팀 합의 점검용)
+        split = int(c.execute("""SELECT COUNT(*) FROM (
+            SELECT content_hash FROM feedback WHERE verdict IN('good','bad')
+            GROUP BY content_hash
+            HAVING COUNT(DISTINCT verdict) > 1)""").fetchone()[0])
+        return {"total": n, "good": good, "bad": bad, "learned": learned,
+                "contents": contents, "reviewers": reviewers, "split": split}
+
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True) -> list:
+        """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠. only_unreviewed 면 아직 아무도
+        검수 안 한 것만. 최신순. payload 에서 review 상태를 읽는다."""
+        c = self._conn()
+        reviewed = {r[0] for r in c.execute("SELECT DISTINCT content_hash FROM feedback")}
+        out = []
+        for ch, svc, ti, grade, payload, ts in c.execute(
+                "SELECT content_hash,service,title,final_grade,payload,created_at "
+                "FROM results ORDER BY created_at DESC LIMIT ?", (max(limit * 6, 200),)):
+            try:
+                qm = (json.loads(payload) if payload else {}).get("quality_meta") or {}
+            except Exception:
+                qm = {}
+            if (qm.get("review") or "") != "yellow":
+                continue
+            is_reviewed = ch in reviewed
+            if only_unreviewed and is_reviewed:
+                continue
+            out.append({"hash": ch, "service": svc or "", "title": ti or "",
+                        "grade": grade or "", "review_reason": qm.get("review_reason", ""),
+                        "reviewed": is_reviewed, "ts": ts})
+            if len(out) >= limit:
+                break
+        return out
+
+    def clear_feedback(self):
+        c = self._conn()
+        c.execute("DELETE FROM feedback"); c.commit()
 
     # runs / usage
     def start_run(self, run_id, n, config):

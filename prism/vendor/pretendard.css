@@ -1,0 +1,8 @@
+/* Pretendard Variable (오프라인 번들) — 100~900 가변 굵기 */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  src: url('/vendor/PretendardVariable.woff2') format('woff2-variations');
+}
