@@ -1,5 +1,6 @@
 # PyInstaller spec — Prism.app (macOS 번들)
 # 빌드: python3.11 -m PyInstaller desktop/Prism.spec  (레포 루트에서 실행)
+import os
 from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
@@ -12,7 +13,8 @@ a = Analysis(
     binaries=[],
     datas=[
         ("../prism/vendor", "prism/vendor"),   # force-graph.min.js 등 런타임 로드 데이터
-        ("../config.json", "."),               # Config.load 기본 경로
+        # config.json 은 gitignore — 있으면 번들(없어도 빌드 OK, 키는 ~/.prism_key 에서 로드)
+        *( [("../config.json", ".")] if os.path.exists("../config.json") else [] ),
     ],
     hiddenimports=hidden,
     hookspath=[],

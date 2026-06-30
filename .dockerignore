@@ -1,0 +1,23 @@
+# 이미지에서 제외 — 코어(prism/)만 포함. 빌드 컨텍스트 최소화.
+.git
+.github
+design-system/
+docs/
+desktop/
+daily-log/
+.agents/
+.claude/
+data/*.jsonl
+!data/*.template.jsonl
+*.db
+*.db-wal
+*.db-shm
+runs/
+dist/
+build/
+__pycache__/
+*.pyc
+.DS_Store
+config.json
+*.md
+scripts/

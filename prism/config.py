@@ -106,6 +106,8 @@ class Config:
             cfg = _merge(cfg, data)
         # env 오버라이드
         cfg.api_key = os.environ.get("PRISM_API_KEY", os.environ.get("UPSTAGE_API_KEY", cfg.api_key))
+        if os.environ.get("PRISM_DB"):                 # 컨테이너 볼륨 등으로 DB 경로 지정
+            cfg.db_path = os.environ["PRISM_DB"]
         if os.environ.get("PRISM_MODEL"):
             cfg.model = os.environ["PRISM_MODEL"]
         if os.environ.get("PRISM_CONCURRENCY"):
