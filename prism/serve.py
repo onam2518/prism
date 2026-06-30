@@ -3489,12 +3489,14 @@ PAGE = """<!doctype html>
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div><div class="panel-bd space-y-2">
               <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
-                <div><span class="ds-badge ds-badge--entity" x-text="g"></span> <span class="text-xs text-muted" x-text="ts.join(' · ')"></span></div>
+                <div class="flex items-center gap-2"><span class="ds-badge ds-badge--entity" x-text="g"></span> <span class="text-xs text-muted" style="flex:1;min-width:0" x-text="ts.join(' · ')"></span>
+                  <button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('domain_groups', g, ts, 'list', '도메인 그룹 · ' + g)">편집</button></div>
               </template>
             </div></div>
             <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
-              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>자사 경로</th><th>IAB 공식</th></tr></thead><tbody>
-                <template x-for="(v,k) in (dictData?dictData.iabMap:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v"></div></td></tr></template>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>자사 경로</th><th>IAB 공식</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.iabMap:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v"></div></td>
+                  <td><button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('category_iab_map', k, v, 'text', '매핑 · ' + k)">편집</button></td></tr></template>
               </tbody></table></div></div>
           </div>
           <div class="grid grid-cols-2 gap-4">
