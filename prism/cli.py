@@ -331,6 +331,9 @@ def cmd_ab(a):
     win = res["winner"]
     print(f"  승자: {'A=' + res['a']['name'] if win=='a' else 'B=' + res['b']['name'] if win=='b' else '동률'}"
           f"  (등급 정확도 우선, 동률 시 유해 미탐률)")
+    ec = res.get("embedding_cost_usd", 0.0)
+    print(f"  ※ cost_usd 는 LLM-only. 임베딩 비용(공유, 전체 1회): ${ec:.4f}"
+          + ("  ← 임베딩 사용 차이가 있는 방법론 비교 시 이 값도 함께 고려" if ec else ""))
     if emb is not None:
         try:
             emb.flush()

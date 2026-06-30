@@ -55,7 +55,8 @@ def run_reap(llm, fb: dict) -> dict:
         return r
     try:
         obj, _res = llm.complete_json(REAP_SYSTEM, _reap_user(fb), tag="reap")
-    except Exception:
+    except Exception as e:
+        print(f"  [warn] REAP 모델 호출 실패 → plan 폴백: {e}")
         obj = {}
     out = {k: (obj.get(k) or "").strip() for k in REAP_STAGES}
     if not out["plan"]:                    # 안전망: plan 비면 메모 폴백

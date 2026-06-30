@@ -58,6 +58,8 @@ def score(rows: list, outs: list) -> dict:
         tout += tr.get("tokens", {}).get("out", 0)
         if any("fail" in str(f) or "unparse" in str(f) for f in tr.get("fallbacks", [])):
             empties += 1
+        # 주의: fail/unparse 행도 아래 등급·이유 채점에 그대로 포함된다(empty_rate 와 비배타).
+        #       구 cli eval 동작을 보존한 것 — 실패 산출을 '오답'으로 계수.
         grade_ok = qm["finalGrade"] == exp.get("finalGrade")
         grade_hit += int(grade_ok)
         if qm.get("review") == "yellow":
@@ -98,16 +100,21 @@ def run_methodology(rows: list, methodology: H.Methodology, llm, *,
     """방법론을 골든셋에 돌려 산출 리스트 반환(채점 전)."""
     n = len(rows)
     outs = [None] * n
+    errs = []
 
     def work(i):
         try:
             outs[i] = H.run(rows[i]["content"], llm, methodology, emb=emb,
                             quality_prefilter=prefilter, fewshot_pool=fewshot_pool)
-        except Exception:
+        except Exception as e:
             outs[i] = None
+            errs.append((i, e))
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
         list(ex.map(work, range(n)))
+    if errs:                # 무음 흡수 방지: 실패가 empty_rate 로만 둔갑하지 않게 첫 건 노출
+        i0, e0 = errs[0]
+        print(f"  [warn] 평가 중 {len(errs)}건 예외(empty 처리). 첫 건 #{i0}: {e0}")
     return outs
 
 
@@ -135,7 +142,11 @@ def ab_test(rows: list, meth_a: H.Methodology, meth_b: H.Methodology, llm, **kw)
     a_key = (a_m["grade_accuracy"], -a_m["harm_miss_rate"])
     b_key = (b_m["grade_accuracy"], -b_m["harm_miss_rate"])
     winner = "b" if b_key > a_key else "a" if a_key > b_key else "tie"
+    # cost_usd(지표)는 LLM-only. 임베딩은 공유 클라이언트라 A/B로 쪼갤 수 없어 전체 1회로 별도 노출.
+    emb = kw.get("emb")
+    emb_cost = round(getattr(emb, "cost_usd", 0.0) or 0.0, 6) if emb is not None else 0.0
     return {"n": len(rows), "winner": winner,
             "a": {"name": meth_a.name, "metrics": a_m},
             "b": {"name": meth_b.name, "metrics": b_m},
-            "diff": diff, "better_lower": sorted(_BETTER_LOWER)}
+            "diff": diff, "better_lower": sorted(_BETTER_LOWER),
+            "embedding_cost_usd": emb_cost}

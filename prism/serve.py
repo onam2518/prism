@@ -723,8 +723,8 @@ def _reap_async(content_hash: str, reviewer: str, fb: dict):
         broadcast({"type": "reap", "hash": content_hash, "reviewer": reviewer,
                    "stage": reap.get("stage", ""), "plan": reap.get("plan", ""),
                    "ask": reap.get("ask", "")})
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  [warn] REAP 처리 실패(hash={content_hash[:12]}): {e}")
 
 
 def reap_for(data: dict) -> dict:
