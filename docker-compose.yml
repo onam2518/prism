@@ -1,0 +1,18 @@
+# Prism 팀 공유 서버(LAN 실시간 HITL). docker compose up -d
+services:
+  prism:
+    build: .
+    image: prism:latest
+    ports:
+      - "8765:8765"
+    environment:
+      # 키 없으면 자동 mock. 실모델은 호스트 env 또는 .env 로 주입.
+      - UPSTAGE_API_KEY=${UPSTAGE_API_KEY:-}
+      - PRISM_MODEL=${PRISM_MODEL:-solar-pro3}
+      - PRISM_DB=/data/prism.db
+    volumes:
+      - prism-data:/data        # SQLite(검수·피드백·REAP) + 산출물 영속화
+    restart: unless-stopped
+
+volumes:
+  prism-data:
