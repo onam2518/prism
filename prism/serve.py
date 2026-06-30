@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue as _queue
 import re
 import tempfile
 import threading
@@ -695,6 +696,9 @@ def apply_feedback(data: dict) -> dict:
         st.save_feedback(ch, data.get("service", ""), data.get("title", ""),
                          verdict, data.get("stage") or "analyze",
                          (data.get("note") or "").strip(), time.time(), reviewer=reviewer)
+        broadcast({"type": "feedback", "hash": ch, "reviewer": reviewer,
+                   "verdict": verdict, "title": data.get("title", ""),
+                   "service": data.get("service", ""), "ts": time.time()})
     sync_learned()                                 # 다음 추출부터 자동 반영
     return {"ok": True, "feedback": st.feedback_stats(),
             "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
@@ -709,6 +713,35 @@ def review_queue(data: dict) -> dict:
     limit = int(data.get("limit") or 100)
     items = st.review_queue(limit=limit, only_unreviewed=bool(only_un))
     return {"ok": True, "items": items, "n": len(items)}
+
+
+# ── 실시간 협업(SSE): 검수 이벤트를 접속 중인 팀원에게 브로드캐스트 ──
+_subscribers = []                      # list[queue.Queue]
+_sub_lock = threading.Lock()
+
+
+def _sse_subscribe():
+    q = _queue.Queue(maxsize=128)
+    with _sub_lock:
+        _subscribers.append(q)
+    return q
+
+
+def _sse_unsubscribe(q):
+    with _sub_lock:
+        if q in _subscribers:
+            _subscribers.remove(q)
+
+
+def broadcast(event: dict):
+    """접속 중 모든 SSE 구독자에게 이벤트 푸시(논블로킹, 큐 가득 차면 드롭)."""
+    with _sub_lock:
+        subs = list(_subscribers)
+    for q in subs:
+        try:
+            q.put_nowait(event)
+        except _queue.Full:
+            pass
 
 
 def _candidate_models(cfg) -> list:
@@ -956,6 +989,8 @@ class Handler(BaseHTTPRequestHandler):
             data = {"only_unreviewed": q.get("all", ["0"])[0] not in ("1", "true"),
                     "limit": (q.get("limit", ["100"])[0])}
             self._send(200, json.dumps(review_queue(data), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/events"):
+            self._serve_sse()
         elif self.path.startswith("/ingest-status"):
             self._send(200, json.dumps(ingest_status(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/prompt-defaults"):
@@ -985,6 +1020,32 @@ class Handler(BaseHTTPRequestHandler):
             self._send_vendor(self.path.split("?", 1)[0].rsplit("/", 1)[-1])
         else:
             self._send(200, PAGE)
+
+    def _serve_sse(self):
+        """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")     # 프록시 버퍼링 방지
+        self.end_headers()
+        q = _sse_subscribe()
+        try:
+            self.wfile.write(b": connected\n\n")
+            self.wfile.flush()
+            while True:
+                try:
+                    ev = q.get(timeout=15)
+                except _queue.Empty:
+                    self.wfile.write(b": ping\n\n")           # 하트비트(연결 유지·끊김 감지)
+                    self.wfile.flush()
+                    continue
+                self.wfile.write(("data: " + json.dumps(ev, ensure_ascii=False) + "\n\n").encode("utf-8"))
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass                                              # 클라이언트 종료 → 정리
+        finally:
+            _sse_unsubscribe(q)
 
     _VENDOR_CT = {
         ".js": "application/javascript; charset=utf-8",
@@ -1037,6 +1098,16 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self._send(200, json.dumps(apply_feedback(json.loads(body or b"{}")),
                                            ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/presence"):
+            try:
+                p = json.loads(body or b"{}")
+                broadcast({"type": "presence", "reviewer": (p.get("reviewer") or "").strip(),
+                           "hash": p.get("hash") or "", "action": p.get("action") or "viewing"})
+                self._send(200, json.dumps({"ok": True}, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -1147,6 +1218,7 @@ PAGE = """<!doctype html>
         dict: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 18a2 2 0 0 1 2-2h12" stroke="currentColor" stroke-width="1.5"/></svg>',
         prompt: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 9l3 3-3 3M13 15h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         intake: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 5h18l-7 8v5l-4 2v-7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+        review: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 11l2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.5"/></svg>',
       },
       mods: [
         { g: '작업', items: [
@@ -1155,6 +1227,7 @@ PAGE = """<!doctype html>
         { g: '콘텐츠 현황', items: [
           { id: 'queue', label: '실행 큐', ic: 'queue' },
           { id: 'dash', label: '배치 결과', ic: 'dash' },
+          { id: 'review', label: '검수 큐', ic: 'review' },
           { id: 'quality', label: '품질 · 토픽', ic: 'quality' },
           { id: 'eval', label: '검증 · 평가', ic: 'eval' } ] },
         { g: '사용자 현황', items: [
@@ -1169,6 +1242,10 @@ PAGE = """<!doctype html>
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
+      // 팀 실시간 HITL: 검수자 식별 · 검수 큐 · 라이브 이벤트
+      reviewer: '', reviewerEditing: false,
+      queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
+      liveMsg: '', liveSeen: {}, _es: null,
       loading: false,
       status: '',
       result: null,
@@ -1225,6 +1302,8 @@ PAGE = """<!doctype html>
 
       init() {
         this.refreshConfig();
+        this.loadReviewer();                           // 검수자 이름(localStorage)
+        this.startLive();                              // 실시간 SSE 구독
         this.loadHome();                               // 배치된 홈 위젯(localStorage)
         this.loadDash();                               // 홈 위젯 데이터(/dashboard)
         // 딥링크: ?m=run|dash|quality|... 로 특정 뷰 진입(설정은 ?settings)
@@ -1251,12 +1330,13 @@ PAGE = """<!doctype html>
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 추출 trace·fallback·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 추출 trace·fallback·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
         return m[this.mod] || '';
       },
       selectMod(id) {
         this.mod = id; this.status = ''; this.addMenuOpen = false;
         if (id === 'home' || id === 'dash' || id === 'queue' || id === 'eval') this.loadDash();
+        else if (id === 'review') this.loadQueue();
         else if (id === 'quality') this.loadTopics();
         else if (id === 'dict' || id === 'intake') this.loadDict();
         else if (id === 'user') this.loadUser();
@@ -1313,8 +1393,43 @@ PAGE = """<!doctype html>
         this.fbNoteOpen[c.hash] = false;
       },
       async _postFb(payload) {
+        payload = Object.assign({ reviewer: this.reviewer || '' }, payload);   // 검수자 귀속
         try { const r = await (await fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json(); if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback; } catch (e) {}
       },
+      // ── 팀 실시간 HITL: 검수자 식별 · 검수 큐 · 라이브 ──
+      loadReviewer() { try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; } catch (e) {} if (!this.reviewer) this.reviewerEditing = true; },
+      saveReviewer() { const v = (this.reviewer || '').trim(); if (!v) return; this.reviewer = v; try { localStorage.setItem('prism_reviewer', v); } catch (e) {} this.reviewerEditing = false; },
+      startLive() {
+        try {
+          const es = new EventSource('/events'); this._es = es;
+          es.onmessage = (e) => { let d; try { d = JSON.parse(e.data); } catch (_) { return; } this.onLive(d); };
+          es.onerror = () => {};                       // 자동 재연결(브라우저 기본)
+        } catch (e) {}
+      },
+      onLive(d) {
+        if (!d || !d.type) return;
+        if (d.type === 'feedback') {
+          if (d.reviewer && d.reviewer !== this.reviewer) {
+            const v = d.verdict === 'good' ? '정확' : d.verdict === 'bad' ? '문제' : '취소';
+            this.liveToast(d.reviewer + '님 · 「' + (d.title || '콘텐츠') + '」 ' + v);
+          }
+          if (this.mod === 'review') this.loadQueue();
+          if (this.mod === 'dash' || this.mod === 'eval' || this.mod === 'home') this.loadDashThrottled();
+        } else if (d.type === 'presence' && d.reviewer && d.reviewer !== this.reviewer) {
+          if (d.action === 'viewing') this.liveSeen[d.hash] = d.reviewer; else delete this.liveSeen[d.hash];
+        }
+      },
+      liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
+      async loadQueue() { this.modBusy = true; try { this.queueData = await (await fetch('/queue' + (this.queueOnlyUnreviewed ? '' : '?all=1'))).json(); } catch (e) {} this.modBusy = false; },
+      async queueFeedback(it, verdict) {
+        if (!this.ensureReviewer()) return;
+        it.note = it.note || '';
+        await this._postFb({ hash: it.hash, service: it.service, title: it.title, verdict: verdict, stage: 'review', note: it.note });
+        it.reviewed = true; it.myVerdict = verdict;
+        if (this.queueOnlyUnreviewed) this.queueData.items = (this.queueData.items || []).filter((x) => x.hash !== it.hash);
+      },
+      ensureReviewer() { if (!(this.reviewer || '').trim()) { this.reviewerEditing = true; return false; } return true; },
+      notifyViewing(it) { try { fetch('/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer: this.reviewer, hash: it.hash, action: 'viewing' }) }); } catch (e) {} },
       async clearFeedback() {
         if (!confirm('누적된 평가 피드백과 학습 보정을 모두 초기화할까요?')) return;
         try { await fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }) }); } catch (e) {}
@@ -1953,6 +2068,12 @@ PAGE = """<!doctype html>
   /* 연결 현황(다중) — 제공자별 칩 */
   .topbar__conn{display:inline-flex;align-items:center;gap:8px;border:0;background:none;cursor:pointer;padding:4px 6px;margin-right:4px;border-radius:8px}
   .topbar__conn:hover{background:var(--ds-hairline-soft)}
+  .live-toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:90;
+    display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;
+    background:var(--ds-ink);color:#fff;font-size:12.5px;font-weight:500;
+    box-shadow:0 8px 24px rgba(9,23,23,.22)}
+  .live-toast__dot{width:7px;height:7px;border-radius:50%;background:#3ddc97;flex:none;
+    box-shadow:0 0 0 3px rgba(61,220,151,.25)}
   .conn-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ds-ink);white-space:nowrap}
   .conn-chip--off{color:var(--ds-muted)}
   /* 본문 영역: 뷰포트 남은 높이를 꽉 채우되 자체는 스크롤 안 함(overflow:hidden) 사이드바·콘텐츠가 각자 내부 스크롤 */
@@ -2084,6 +2205,22 @@ PAGE = """<!doctype html>
       <div class="homehead__sub" x-text="modSub"></div>
     </div>
     <div class="topbar__tools">
+      <!-- 검수자 식별(팀 HITL): 이름은 localStorage 저장, 모든 피드백에 귀속 -->
+      <div style="position:relative">
+        <button type="button" class="topbar__conn" x-on:click="reviewerEditing = !reviewerEditing" data-tip="검수자 이름" data-tip-pos="bottom" aria-label="검수자">
+          <span class="conn-chip" x-bind:class="reviewer ? 'conn-chip--on' : 'conn-chip--off'">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <span x-text="reviewer || '이름 설정'"></span>
+          </span>
+        </button>
+        <div class="addmenu" x-bind:class="reviewerEditing ? 'open' : ''" x-on:click.outside="reviewerEditing = false" style="min-width:230px;padding:12px">
+          <div class="text-xs text-muted" style="margin-bottom:7px">검수자 이름 — 피드백·검수에 귀속됩니다(이 기기에 저장)</div>
+          <div style="display:flex;gap:6px">
+            <input class="field" style="height:34px;flex:1" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()">
+            <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="saveReviewer()">저장</button>
+          </div>
+        </div>
+      </div>
       <!-- 연결 현황(다중): 제공자별 연결 상태를 모두 표시 -->
       <button type="button" class="topbar__conn" x-on:click="settingsOpen = true" data-tip="키 설정" data-tip-pos="bottom" aria-label="연결 현황">
         <span x-show="cfg.forcedMock" class="conn-chip conn-chip--off"><span class="ds-statusdot ds-statusdot--mock"><span class="ds-statusdot__dot"></span></span>MOCK(강제)</span>
@@ -2111,6 +2248,11 @@ PAGE = """<!doctype html>
       </div>
     </div>
   </header>
+
+  <!-- 실시간 협업 토스트: 다른 검수자의 검수 활동 -->
+  <div class="live-toast" x-show="liveMsg" x-cloak x-transition.opacity>
+    <span class="live-toast__dot"></span><span x-text="liveMsg"></span>
+  </div>
 
   <div class="appbody">
   <!-- ━━━━━ 좌측 컬럼 · 내비 + 도우미 ━━━━━ -->
@@ -2840,6 +2982,49 @@ PAGE = """<!doctype html>
           </div></div>
           <p class="text-xs text-muted">정량 평가(ROUGE·정확도 게이트)는 정답셋 연동 시 활성화됩니다(계획)</p>
         </div>
+      </div>
+
+      <!-- ═══ 모듈: 검수 큐 (팀 실시간 HITL) — YELLOW 대기열 + 다중 의견 ═══ -->
+      <div x-show="mod === 'review'" x-cloak class="w-full space-y-4">
+        <section class="panel" data-fn><div class="panel-hd"><b>검수 큐 · YELLOW 사람검수</b>
+          <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
+          <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
+            <input type="checkbox" x-model="queueOnlyUnreviewed" x-on:change="loadQueue()"> 미검수만</label>
+          <button type="button" class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px" x-on:click="loadQueue()">새로고침</button>
+        </div>
+          <div class="panel-bd">
+            <p class="text-xs text-muted" style="margin-bottom:11px">자동(임베딩-LLM)이 확신 못 한 <b class="text-ink">YELLOW</b> 콘텐츠 대기열입니다. <b class="text-ink" x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존되어 <b class="text-ink">합의/불일치</b>로 집계됩니다(실시간 반영)</p>
+            <div class="overflow-auto" style="max-height:480px;padding:2px">
+              <template x-for="it in (queueData ? queueData.items : [])" x-bind:key="it.hash">
+                <div class="fbrow" x-init="notifyViewing(it)">
+                  <div class="fbrow__main">
+                    <div class="fbrow__title">
+                      <span class="ds-badge ds-badge--neutral" x-text="it.grade || '·'"></span>
+                      <span class="ds-badge" style="background:#fcefc7;color:#8a6d1a">YELLOW</span>
+                      <span x-text="it.title || '(제목 없음)'"></span>
+                      <span class="fbrow__svc" x-text="it.service"></span>
+                      <span class="ds-badge ds-badge--intent" x-show="liveSeen[it.hash]" x-text="(liveSeen[it.hash]||'') + ' 보는 중'"></span>
+                      <span class="ds-badge ds-badge--success" x-show="it.reviewed && !it.myVerdict">검수됨</span>
+                      <span class="ds-badge" x-show="it.myVerdict" x-bind:class="it.myVerdict==='good'?'ds-badge--success':'ds-badge--neutral'" x-text="it.myVerdict==='good'?'내 의견 · 정확':'내 의견 · 문제'"></span>
+                    </div>
+                    <div class="fbrow__sum tbox" x-show="it.review_reason" x-text="it.review_reason"></div>
+                  </div>
+                  <div class="fbrow__act">
+                    <button type="button" class="fbbtn" x-bind:class="it.myVerdict==='good'?'fbbtn--good':''" x-on:click="queueFeedback(it,'good')">정확</button>
+                    <button type="button" class="fbbtn" x-bind:class="it.myVerdict==='bad'?'fbbtn--bad':''" x-on:click="queueFeedback(it,'bad')">문제</button>
+                  </div>
+                  <div class="fbrow__note" x-show="it.myVerdict==='bad'">
+                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 — 다음 추출 프롬프트에 자동 반영" x-model="it.note" x-on:keydown.enter="queueFeedback(it,'bad')">
+                    <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="queueFeedback(it,'bad')">반영</button>
+                  </div>
+                </div>
+              </template>
+              <div x-show="!(queueData && queueData.items && queueData.items.length)" class="ds-empty" style="border:0;padding:22px 8px">
+                <div class="ds-empty__desc"><b class="text-ink">검수 대기 없음</b> · YELLOW로 분류된 콘텐츠가 쌓이면 여기 표시됩니다(자동 추출이 확신 못 한 건)</div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       <!-- ═══ 모듈: 실행 큐 (단일 위젯) — 실제 실행 상태 ═══ -->
