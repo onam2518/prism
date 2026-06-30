@@ -86,26 +86,26 @@ def _build_id() -> str:
         return "?"
 
 
-def store_save(pairs, source: str = "단건"):
-    """[(content, out), …] 를 영속 저장(+_LAST_RESULTS 미러). source: 출처(결과 화면 필터용).
+def store_save(pairs, source: str = "단건", team=None):
+    """[(content, out), …] 를 영속 저장(+_LAST_RESULTS 미러). source: 출처. team: 소속 팀(supabase).
     적재 정책(dedup): 동일 콘텐츠 + 결과 무변경이면 적재 제외(skip), 변경 시 갱신, 신규는 추가."""
     outs = [o for _, o in pairs]
     _LAST_RESULTS[:] = outs
     st = get_store()
     if st:
         try:
-            return st.save_dedup(pairs, _run_id(), source=source)
+            return st.save_dedup(pairs, _run_id(), source=source, team=team)
         except Exception:
             pass
     return None
 
 
-def results_rows(limit: int = 5000) -> list:
+def results_rows(limit: int = 5000, team=None) -> list:
     """집계용 결과 행 — 영속 저장소 우선(누적), 없으면 메모리(_LAST_RESULTS)."""
     st = get_store()
     if st:
         try:
-            rows = st.recent(limit)
+            rows = st.recent(limit, team=team)
             if rows:
                 return rows
         except Exception:
@@ -151,7 +151,7 @@ def _kv(disposition: str, key: str):
 
 
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
-def run_pipeline(fields: dict, *, mock: bool) -> dict:
+def run_pipeline(fields: dict, *, mock: bool, team=None) -> dict:
     cfg = Config.load()
     llm = make_text_llm(cfg, mock)           # 텍스트 슬롯(solar|router). 무키면 내부서 mock
 
@@ -182,7 +182,7 @@ def run_pipeline(fields: dict, *, mock: bool) -> dict:
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
-    store_save([(content, out)])                 # 영속 저장(+미러)
+    store_save([(content, out)], team=team)      # 영속 저장(+미러, 팀 태깅)
     return {
         "source": source,
         "mock": llm.mock,
@@ -329,9 +329,9 @@ def topics_data() -> dict:
                     "single": [], "composite": [], "filter": [], "summary": {}}
 
 
-def dashboard_data() -> dict:
-    """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8: \uc801\uc7ac \uacb0\uacfc \uc9d1\uacc4(\uc720\ud1b5 G/R \u00b7 \uc778\ud150\ud2b8 \u00b7 \uce74\ud14c\uace0\ub9ac \u00b7 \ud488\uc9c8 \uc0ac\uc720)."""
-    rows = results_rows()
+def dashboard_data(team=None) -> dict:
+    """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8: \uc801\uc7ac \uacb0\uacfc \uc9d1\uacc4(\uc720\ud1b5 G/R \u00b7 \uc778\ud150\ud2b8 \u00b7 \uce74\ud14c\uace0\ub9ac \u00b7 \ud488\uc9c8 \uc0ac\uc720). team \ubcc4 \uc2a4\ucf54\ud551."""
+    rows = results_rows(team=team)
     n = len(rows)
     g = sum(1 for r in rows if (r.get("quality_meta") or {}).get("finalGrade") == "G")
     intent_c, cat_c, reason_c = {}, {}, {}
@@ -360,11 +360,11 @@ def dashboard_data() -> dict:
     try:
         st = get_store()
         if st:
-            fmap = st.feedback_map()
-            for row in st.recent_meta():
+            fmap = st.feedback_map(team=team)
+            for row in st.recent_meta(team=team):
                 row["fb"] = fmap.get(row["hash"], {})
                 contents.append(row)
-            fb_stats = st.feedback_stats()
+            fb_stats = st.feedback_stats(team=team)
     except Exception:
         pass
 
@@ -725,7 +725,7 @@ def apply_feedback(data: dict) -> dict:
         note = (data.get("note") or "").strip()
         stage = data.get("stage") or "analyze"
         st.save_feedback(ch, data.get("service", ""), data.get("title", ""),
-                         verdict, stage, note, time.time(), reviewer=reviewer)
+                         verdict, stage, note, time.time(), reviewer=reviewer, team=data.get("_team"))
         broadcast({"type": "feedback", "hash": ch, "reviewer": disp,
                    "verdict": verdict, "title": data.get("title", ""),
                    "service": data.get("service", ""), "ts": time.time()})
@@ -841,28 +841,38 @@ def validate_jwt(token: str):
 
 
 def register_reviewer(data: dict) -> dict:
-    """검수자 등록: (인증 uid 또는 이름) + 표시명 + 캐릭터 → 영속."""
+    """검수자 등록: (인증 uid 또는 이름) + 표시명 + 캐릭터 (+ supabase 면 팀 생성/가입)."""
     st = get_store()
     if not st:
         return {"ok": False}
     rv = (data.get("reviewer") or "").strip()        # 키: 이름(sqlite) 또는 uid(supabase 주입)
     name = (data.get("name") or "").strip() or rv
     ch = (data.get("char") or "boksil").strip()
-    if rv:
+    if not rv:
+        return {"ok": False, "error": "검수자 식별 실패"}
+    team = None
+    if _supa() and hasattr(st, "ensure_team"):
+        team = st.ensure_team(rv, (data.get("team_mode") or "create"),
+                              data.get("team_name"), data.get("invite_code"))
+        if not team:
+            return {"ok": False, "error": "팀을 찾을 수 없습니다 — 초대코드를 확인하세요"}
+        st.set_reviewer(rv, name, ch, team)
+    else:
         st.set_reviewer(rv, name, ch)
-        broadcast({"type": "reviewer", "reviewer": name, "char": ch})   # 표시명으로 브로드캐스트
-    return {"ok": True}
+    broadcast({"type": "reviewer", "reviewer": name, "char": ch})
+    info = st.team_info(team) if (team and hasattr(st, "team_info")) else None
+    return {"ok": True, "team": info}                # info.invite_code 로 초대코드 표시
 
 
-def arena_data() -> dict:
-    """평가 아레나(게임화) 데이터: 팀 정확도 + 리더보드 + 검수 대기(퀘스트)."""
+def arena_data(team=None) -> dict:
+    """평가 아레나(게임화) 데이터: 팀 정확도 + 리더보드 + 검수 대기(퀘스트). team 별 스코핑."""
     st = get_store()
     if not st:
         return {"accuracy": 0, "good": 0, "bad": 0, "reviews": 0, "week_reviews": 0,
                 "accuracy_delta": 0, "target": 0.9, "leaderboard": [], "queue": 0}
-    d = st.arena_stats()
+    d = st.arena_stats(team=team)
     try:
-        d["queue"] = len(st.review_queue())          # 미검수 YELLOW = 남은 퀘스트
+        d["queue"] = len(st.review_queue(team=team))  # 미검수 YELLOW = 남은 퀘스트
     except Exception:
         d["queue"] = 0
     return d
@@ -875,7 +885,7 @@ def review_queue(data: dict) -> dict:
         return {"ok": False, "error": "store unavailable", "items": []}
     only_un = data.get("only_unreviewed", True)
     limit = int(data.get("limit") or 100)
-    items = st.review_queue(limit=limit, only_unreviewed=bool(only_un))
+    items = st.review_queue(limit=limit, only_unreviewed=bool(only_un), team=data.get("team"))
     return {"ok": True, "items": items, "n": len(items)}
 
 
@@ -1153,14 +1163,14 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/topics"):
             self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/dashboard"):
-            self._send(200, json.dumps(dashboard_data(), ensure_ascii=False), _JSON)
+            self._send(200, json.dumps(dashboard_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/arena"):
-            self._send(200, json.dumps(arena_data(), ensure_ascii=False), _JSON)
+            self._send(200, json.dumps(arena_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/queue"):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
             data = {"only_unreviewed": q.get("all", ["0"])[0] not in ("1", "true"),
-                    "limit": (q.get("limit", ["100"])[0])}
+                    "limit": (q.get("limit", ["100"])[0]), "team": self._req_team()}
             self._send(200, json.dumps(review_queue(data), ensure_ascii=False), _JSON)
         elif self.path.startswith("/events"):
             self._serve_sse()
@@ -1199,17 +1209,30 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(200, PAGE)
 
+    def _bearer_uid(self):
+        auth = self.headers.get("Authorization", "")
+        token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+        return validate_jwt(token)
+
+    def _req_team(self):
+        """supabase 모드: Bearer uid → 그 사용자의 team_id(요청별 팀 스코핑). 아니면 None."""
+        if not _supa():
+            return None
+        uid = self._bearer_uid()
+        st = get_store()
+        return (st.reviewer_team(uid) if (uid and st and hasattr(st, "reviewer_team")) else None)
+
     def _inject_reviewer(self, data):
-        """supabase 모드: Authorization Bearer JWT 검증 → data['reviewer']=uid(귀속 키, 사칭 불가).
+        """supabase 모드: Bearer JWT 검증 → data['reviewer']=uid(사칭 불가) + data['_team']=팀.
         sqlite 모드: True(클라이언트 이름 그대로). 인증 실패 시 False(=401)."""
         if not _supa():
             return True
-        auth = self.headers.get("Authorization", "")
-        token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
-        uid = validate_jwt(token)
+        uid = self._bearer_uid()
         if not uid:
             return False
-        data["reviewer"] = uid                     # 클라이언트가 보낸 이름이 아니라 검증된 uid
+        data["reviewer"] = uid
+        st = get_store()
+        data["_team"] = (st.reviewer_team(uid) if (st and hasattr(st, "reviewer_team")) else None)
         return True
 
     def _serve_sse(self):
@@ -1374,7 +1397,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"))
             else:
-                result = run_pipeline(fields, mock=self.server_mock)
+                result = run_pipeline(fields, mock=self.server_mock, team=self._req_team())
             self._send(200, json.dumps(result, ensure_ascii=False), _JSON)
         except Exception as e:
             import traceback
@@ -1461,6 +1484,8 @@ PAGE = """<!doctype html>
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
       // Supabase 인증(ID/PW) — backend==='supabase' 일 때
       backend: 'sqlite', authToken: '', authEmail: '', authPw: '', authMode: 'login', authMsg: '',
+      // 팀(멀티테넌시): 생성/가입 + 내 초대코드
+      teamMode: 'create', teamName: '', inviteCode: '', myInvite: '',
       charOptions: [
         { id: 'boksil', label: '복실', role: '검수', img: '/vendor/boksil-catcher.svg' },
         { id: 'daesik', label: '대식', role: '추출', img: '/vendor/daesik-batter.svg' },
@@ -1643,8 +1668,14 @@ PAGE = """<!doctype html>
         }
         this.reviewer = v;
         try { localStorage.setItem('prism_reviewer', v); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
-        // 검수자 등록(이름·캐릭터). supabase 면 서버가 Bearer 의 uid 로 귀속(사칭 불가).
-        try { await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reviewer: v, name: v, char: this.reviewerChar }) }); } catch (e) {}
+        // 검수자 등록(이름·캐릭터 + 팀). supabase 면 서버가 Bearer 의 uid 로 귀속(사칭 불가).
+        const body = { reviewer: v, name: v, char: this.reviewerChar };
+        if (this.backend === 'supabase') { body.team_mode = this.teamMode; body.team_name = this.teamName; body.invite_code = this.inviteCode; }
+        try {
+          const rr = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
+          if (rr && !rr.ok) { this.authMsg = rr.error || '등록 실패'; return; }
+          if (rr && rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }   // 초대코드 표시
+        } catch (e) {}
         this.reviewerEditing = false;
         if (this.mod === 'arena') this.loadArena();
       },
@@ -2668,8 +2699,22 @@ PAGE = """<!doctype html>
         </template>
       </div>
 
+      <!-- supabase 모드: 팀 생성/가입 -->
+      <template x-if="backend === 'supabase'">
+        <div>
+          <label class="onboard__lbl">팀</label>
+          <div class="onboard__authtabs">
+            <button type="button" x-bind:class="teamMode==='create'?'sel':''" x-on:click="teamMode='create'">새 팀 만들기</button>
+            <button type="button" x-bind:class="teamMode==='join'?'sel':''" x-on:click="teamMode='join'">팀 참가</button>
+          </div>
+          <input x-show="teamMode==='create'" class="field onboard__name" placeholder="팀 이름 — 예) 콘텐츠검수팀" x-model="teamName" style="margin-bottom:6px">
+          <input x-show="teamMode==='join'" class="field onboard__name" placeholder="초대 코드 — 예) A1B2C3D4" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase">
+          <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:4px" x-text="teamMode==='create' ? '만들면 초대 코드가 생겨 팀원을 부를 수 있어요' : '관리자에게 받은 코드를 입력하세요'"></p>
+        </div>
+      </template>
+
       <button type="button" class="ds-btn ds-btn--primary onboard__cta"
-              x-bind:disabled="!(reviewer||'').trim() || (backend==='supabase' && (!(authEmail||'').trim() || !authPw))"
+              x-bind:disabled="!(reviewer||'').trim() || (backend==='supabase' && (!(authEmail||'').trim() || !authPw || (teamMode==='create' ? !(teamName||'').trim() : !(inviteCode||'').trim())))"
               x-on:click="saveReviewer()"
               x-text="backend==='supabase' ? (authMode==='signup'?'가입하고 시작':'로그인하고 시작') : (reviewer ? '저장하고 시작' : '시작하기')"></button>
       <button type="button" class="onboard__skip" x-show="reviewer" x-on:click="reviewerEditing=false">닫기</button>
