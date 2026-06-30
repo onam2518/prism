@@ -13,6 +13,7 @@ import json
 import os
 import queue as _queue
 import re
+import sys
 import tempfile
 import threading
 import time
@@ -36,24 +37,40 @@ _STORE = None
 _DB_PATH = os.environ.get("PRISM_DB") or os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH), "prism.db")
 
 
+def backend_mode():
+    """('supabase'|'sqlite', required). 운영=Supabase 전용 원칙:
+    · PRISM_BACKEND=supabase → supabase(필수, 미가용이면 시작 실패)
+    · PRISM_BACKEND=sqlite   → sqlite(로컬·개발 강제)
+    · 미설정 + Supabase 키 있음 → supabase 자동(운영)
+    · 미설정 + 키 없음        → sqlite(로컬·오프라인)
+    조용한 SQLite 폴백은 하지 않는다(운영 오설정을 숨기지 않으려고)."""
+    from . import supastore
+    b = (os.environ.get("PRISM_BACKEND") or "").strip().lower()
+    if b == "sqlite":
+        return "sqlite", False
+    if b == "supabase":
+        return "supabase", True
+    if supastore.configured():
+        return "supabase", True
+    return "sqlite", False
+
+
 def get_store():
-    """Store 싱글턴(dual-mode). PRISM_BACKEND=supabase + 키 설정 시 SupabaseStore,
-    아니면 로컬 SQLite(기본). 실패해도 앱은 동작(메모리 폴백)."""
+    """Store 싱글턴(dual-mode). 운영은 Supabase 전용 — supabase 의도 시 SQLite 로 조용히
+    폴백하지 않는다(초기화 실패면 비활성, main 이 시작을 막는다)."""
     global _STORE
     if _STORE is None:
+        mode, _required = backend_mode()
         try:
-            if os.environ.get("PRISM_BACKEND") == "supabase":
+            if mode == "supabase":
                 from . import supastore
-                if supastore.configured():
-                    _STORE = supastore.SupabaseStore()
-                else:
-                    print("  [warn] PRISM_BACKEND=supabase 이나 SUPABASE_URL/SERVICE_KEY 미설정 → SQLite 폴백")
-            if _STORE is None:
+                _STORE = supastore.SupabaseStore()
+            else:
                 from .store import Store
                 _STORE = Store(_DB_PATH)
         except Exception as e:
-            print(f"  [warn] store 초기화 실패 → 비활성: {e}")
-            _STORE = False                       # 비활성(폴백)
+            print(f"  [ERROR] {mode} store 초기화 실패: {e}")
+            _STORE = False
     return _STORE or None
 
 
@@ -2629,7 +2646,7 @@ PAGE = """<!doctype html>
         </div>
       </template>
 
-      <label class="onboard__lbl">표시 이름</label>
+      <label class="onboard__lbl">닉네임 <span class="onboard__hint">— 리더보드·검수에 표시됩니다</span></label>
       <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer"
              x-on:keydown.enter="saveReviewer()" autofocus>
 
@@ -3925,7 +3942,20 @@ def main():
     load_persisted_key()                              # ~/.prism_key 있으면 주입
     load_dict_overrides()                             # 사전 편집(overrides) 적용
     sync_prompt()                                     # config 의 추가 지시 반영
-    get_store()                                        # 로컬 영속 저장소(SQLite) 초기화
+    # 백엔드 결정 — 운영은 Supabase 전용(조용한 로컬 폴백 금지, 미가용이면 시작 실패)
+    _mode, _required = backend_mode()
+    st = get_store()
+    if _required:
+        if not st:
+            print("  [중단] Supabase 백엔드를 쓰려는데 초기화 실패 — SUPABASE_URL/SERVICE_KEY 확인.")
+            print("         (로컬·오프라인은: PRISM_BACKEND=sqlite)")
+            sys.exit(1)
+        try:
+            st.count()                                 # 연결 확인(잘못된 키·네트워크면 여기서 실패)
+        except Exception as e:
+            print(f"  [중단] Supabase 연결 실패: {e}")
+            sys.exit(1)
+    print(f"  백엔드: {_mode}" + (" · 공유(운영)" if _mode == "supabase" else " · 로컬"))
     start_ingest_scheduler()                           # 활성 소스 자동 폴링(백그라운드)
     keyed = bool(IMG._api_key())
     mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 미설정 · UI에서 설정)")
