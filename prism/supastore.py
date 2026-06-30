@@ -240,6 +240,44 @@ class SupabaseStore:
         self._req("DELETE", "contents", query=f"created_at=lt.{cutoff}", prefer="return=minimal")
         return 0
 
+    # ── dashboard/config 호환(검토 콘텐츠 기준) ──
+    def count(self) -> int:
+        return len(self._get("contents", "select=hash"))
+
+    def grade_stats(self) -> dict:
+        rows = self._get("contents", "select=final_grade")
+        n = len(rows)
+        g = sum(1 for r in rows if r.get("final_grade") == "G")
+        return {"total": n, "g": g, "r": n - g, "gPct": round(g / n * 100) if n else 0}
+
+    def recent_meta(self, limit: int = 200) -> list:
+        rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,source"
+                         f"&order=created_at.desc&limit={int(limit)}")
+        out = []
+        for r in rows:
+            im = r.get("item_meta") or {}
+            cat = " · ".join(f"{k}→{v}" for k, v in (im.get("content_category") or {}).items())
+            out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
+                        "grade": r.get("final_grade") or "", "summary": im.get("summary", ""),
+                        "category": cat, "source": r.get("source") or "단건"})
+        return out
+
+    def recent(self, limit: int = 5000) -> list:
+        rows = self._get("contents", "select=item_meta,quality_meta"
+                         f"&order=created_at.desc&limit={int(limit)}")
+        out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {}} for r in rows]
+        out.reverse()
+        return out
+
+    def clear_feedback(self):
+        self._req("DELETE", "feedback", query="content_hash=neq.__none__", prefer="return=minimal")
+
+    def clear(self):
+        self._req("DELETE", "contents", query="hash=neq.__none__", prefer="return=minimal")
+
+    def log_usage(self, *a, **k):                  # supabase 모드는 usage 미적재(no-op)
+        return None
+
     # 호환: serve 가 부르는 이름들(검토 콘텐츠 동기화로 위임)
     def save_many(self, pairs, run_id="", source="단건"):
         return self.sync_contents(pairs, source)

@@ -356,12 +356,12 @@ class Store:
         return {"total": n, "good": good, "bad": bad, "learned": learned,
                 "contents": contents, "reviewers": reviewers, "split": split}
 
-    def set_reviewer(self, reviewer: str, char: str):
-        """검수자 등록/갱신: 이름 → 선택 캐릭터."""
+    def set_reviewer(self, reviewer, name=None, avatar="boksil"):
+        """검수자 등록/갱신. sqlite 는 검수자 키=이름(name 인자는 supabase 와 시그니처 통일용)."""
         c = self._conn()
         c.execute("""INSERT INTO reviewers(reviewer,char,ts) VALUES(?,?,?)
           ON CONFLICT(reviewer) DO UPDATE SET char=excluded.char, ts=excluded.ts""",
-          (reviewer or "(익명)", char or "boksil", time.time()))
+          (reviewer or "(익명)", avatar or "boksil", time.time()))
         c.commit()
 
     def reviewers_map(self) -> dict:
