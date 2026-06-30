@@ -197,6 +197,41 @@ CONTENT_CATEGORY_TIER2 = {
 }
 IAB_TIER2 = CONTENT_CATEGORY_TIER2   # 하위 호환 별칭
 
+
+# ── 카테고리 사전화: LLM 자유 출력 → 고정 사전 스냅 ──
+#   임베딩 kNN 경로가 없을 때(LLM 직접 생성)도 content_category 가 항상 사전값이
+#   되도록 강제한다. 미매칭은 'Unclassified'. 사전 정식 값엔 멱등(그대로 통과).
+_T1_LOOKUP = {t.lower(): t for t in IAB_TIER1}
+_T2_LOOKUP = {t2.lower(): (t1, t2)                       # tier2(소문자) → (tier1, 정식 tier2)
+              for t1, t2s in CONTENT_CATEGORY_TIER2.items() for t2 in t2s}
+
+
+def normalize_content_category(raw: str) -> str:
+    """'Tier1 / Tier2' 또는 'Tier1' 자유 문자열 → 사전 정식 경로. 미매칭은 'Unclassified'."""
+    s = str(raw or "").strip()
+    if not s or s == "Unclassified":
+        return "Unclassified"
+    parts = [p.strip() for p in s.split("/") if p.strip()]
+    t1 = _T1_LOOKUP.get(parts[0].lower()) if parts else None
+    if t1:
+        if len(parts) > 1:
+            valid = {x.lower(): x for x in CONTENT_CATEGORY_TIER2.get(t1, [])}
+            t2 = valid.get(parts[1].lower())
+            if t2:
+                return f"{t1} / {t2}"
+        return t1
+    # Tier1 미매칭: 조각 중 하나가 Tier2 사전에 있으면 그 Tier1 로 복구
+    for p in parts:
+        hit = _T2_LOOKUP.get(p.lower())
+        if hit:
+            return f"{hit[0]} / {hit[1]}"
+    return "Unclassified"
+
+
+def normalize_categories(cmap: dict) -> dict:
+    """{엔티티: 카테고리문자열} 전체를 사전화."""
+    return {e: normalize_content_category(c) for e, c in (cmap or {}).items()}
+
 # 자사 경로 → IAB v3.0 공식 경로(외부 광고 연동 후처리 변환용). 정의 페이지 부록.
 CATEGORY_IAB_MAP = {
     "Entertainment / Celebrity News (Foreign)": "Pop Culture / Celebrity News",

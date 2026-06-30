@@ -117,6 +117,11 @@ def extract(content_dict: dict, llm: LLMClient, *,
                             item_meta.content_category[e] = c
                 verdicts.append({"agent": "EntityCategory(2-pass: 본질+문맥복구)",
                                  "evidence": "1차 본질 분류 → 2차 문맥 식별 복구", "fail": None})
+
+        # 사전화: LLM 직접 생성 경로(임베딩 미사용)의 카테고리를 고정 사전에 스냅.
+        # 임베딩 kNN 경로 결과엔 멱등(이미 사전값) → 항상 사전 보장.
+        if item_meta and item_meta.content_category:
+            item_meta.content_category = D.normalize_categories(item_meta.content_category)
         fallbacks += V.verify_item(item_meta, content)
 
     return _assemble(content, routing, legal_meta, qm, item_meta,
