@@ -279,73 +279,66 @@ def cmd_eval(a):
     print(f"  run manifest: runs/{run_id}.json")
 
 
-def _eval_with(rows, llm, emb, prefilter, a):
-    grade_hit = reason_exact = fn_block = empties = 0
-    jac = cost = 0.0
-    tin = tout = 0
-    n = len(rows)
-    conc = getattr(a, "concurrency", 8) or 8
-    outs = [None] * n
-    per_reason = {}   # reason 별 오답 분해(어떤 메타에서 새는지)
-    fewshot_pool = _mk_fewshot(a)
+def _methodology_from_args(a):
+    """argparse 손잡이 → harness.Methodology(평가/A·B 공유)."""
     cfg2 = _mk_cfg(a)
+    return PIPE.Methodology(
+        name="cli", legal=a.legal, quality_split=a.quality_split,
+        yellow=getattr(a, "yellow", False),
+        prefilter_conf=cfg2.thresholds.prefilter_conf,
+        yellow_low=cfg2.thresholds.yellow_low)
 
-    def work(i):
-        outs[i] = PIPE.extract(rows[i]["content"], llm, legal=a.legal,
-                               quality_split=a.quality_split, emb=emb,
-                               quality_prefilter=prefilter, fewshot_pool=fewshot_pool,
-                               yellow=getattr(a, "yellow", False),
-                               prefilter_conf=cfg2.thresholds.prefilter_conf,
-                               yellow_low=cfg2.thresholds.yellow_low)
 
-    with ThreadPoolExecutor(max_workers=conc) as ex:
-        list(ex.map(work, range(n)))
+def _eval_with(rows, llm, emb, prefilter, a):
+    """평가를 하네스+방법론으로 통일하고, 채점은 abtest.score 공유(단일 소스)."""
+    from . import abtest
+    m = _methodology_from_args(a)
+    return abtest.evaluate(rows, m, llm, emb=emb, prefilter=prefilter,
+                           fewshot_pool=_mk_fewshot(a),
+                           concurrency=getattr(a, "concurrency", 8) or 8)
 
-    yellow_n = auto_n = auto_hit = 0
-    for row, out in zip(rows, outs):
-        exp = row.get("expected", {})
-        qm = out["quality_meta"]
-        tr = out.get("trace", {})
-        cost += tr.get("cost_usd", 0.0)
-        tin += tr.get("tokens", {}).get("in", 0)
-        tout += tr.get("tokens", {}).get("out", 0)
-        if any("fail" in str(f) or "unparse" in str(f) for f in tr.get("fallbacks", [])):
-            empties += 1
-        grade_ok = qm["finalGrade"] == exp.get("finalGrade")
-        grade_hit += int(grade_ok)
-        # YELLOW(사람 검수)는 자동지표에서 분리: 자동처리분 정확도 별도 산출
-        if qm.get("review") == "yellow":
-            yellow_n += 1
-        else:
-            auto_n += 1
-            auto_hit += int(grade_ok)
-        got, want = set(qm["reasons"]), set(exp.get("reasons", []))
-        reason_exact += int(got == want)
-        u = got | want
-        jac += (len(got & want) / len(u)) if u else 1.0
-        if exp.get("finalGrade") == "R" and qm["finalGrade"] == "G":
-            fn_block += 1
-        # reason 버킷별 등급 정확도 분해
-        bucket = (exp.get("reasons") or ["normal"])[0]
-        d = per_reason.setdefault(bucket, {"n": 0, "grade_ok": 0})
-        d["n"] += 1
-        d["grade_ok"] += int(grade_ok)
-    by_reason = {k: {"n": v["n"], "grade_acc": round(v["grade_ok"] / v["n"], 3)}
-                 for k, v in sorted(per_reason.items())}
-    return {
-        "n": n,
-        "grade_accuracy": round(grade_hit / n, 4) if n else 0,
-        "reason_exact_match": round(reason_exact / n, 4) if n else 0,
-        "reason_jaccard": round(jac / n, 4) if n else 0,
-        "harm_miss_rate": round(fn_block / n, 4) if n else 0,
-        "empty_rate": round(empties / n, 4) if n else 0,
-        "cost_usd": round(cost, 6),
-        "tokens": {"in": tin, "out": tout},
-        "by_reason_bucket": by_reason,
-        "yellow_rate": round(yellow_n / n, 4) if n else 0,
-        "auto_coverage": round(auto_n / n, 4) if n else 0,
-        "auto_grade_accuracy": round(auto_hit / auto_n, 4) if auto_n else 0,  # 자동분 정확도
-    }
+
+def cmd_ab(a):
+    """A/B 테스트: 두 방법론을 같은 골든셋에 돌려 성능 비교(어떤 방법론을 쓸지 결정)."""
+    from . import abtest
+    cfg = _mk_cfg(a)
+    limiter = RateLimiter(cfg.rate.rpm, cfg.rate.tpm)
+    llm = _mk_llm(a, cfg, limiter)
+    emb = _mk_emb(a, cfg)
+    prefilter = _mk_prefilter(a, emb)
+    rows = _read_jsonl(a.goldenset)
+    if getattr(a, "limit", 0):
+        rows = rows[:a.limit]
+    meth_a = abtest.load_methodology(a.a)
+    meth_b = abtest.load_methodology(a.b)
+    res = abtest.ab_test(rows, meth_a, meth_b, llm, emb=emb, prefilter=prefilter,
+                         fewshot_pool=_mk_fewshot(a),
+                         concurrency=getattr(a, "concurrency", 8) or 8)
+    am, bm = res["a"]["metrics"], res["b"]["metrics"]
+    print(f"\n  A/B 테스트 · n={res['n']}  (A={res['a']['name']}  vs  B={res['b']['name']})")
+    print(f"  {'지표':<22}{'A':>12}{'B':>12}{'Δ(B-A)':>12}")
+    print("  " + "-" * 58)
+    for k in abtest._AB_KEYS:
+        av, bv = am.get(k, 0), bm.get(k, 0)
+        d = res["diff"][k]
+        arrow = ""
+        if d:
+            good = (d < 0) if k in abtest._BETTER_LOWER else (d > 0)
+            arrow = " ↑좋음" if good else " ↓나쁨"
+        fmt = (lambda x: f"{x:.4f}") if k == "cost_usd" else (lambda x: f"{x:.1%}")
+        print(f"  {k:<22}{fmt(av):>12}{fmt(bv):>12}{(('%+.4f' % d) if k=='cost_usd' else ('%+.1f%%' % (d*100))):>12}{arrow}")
+    print("  " + "-" * 58)
+    win = res["winner"]
+    print(f"  승자: {'A=' + res['a']['name'] if win=='a' else 'B=' + res['b']['name'] if win=='b' else '동률'}"
+          f"  (등급 정확도 우선, 동률 시 유해 미탐률)")
+    if emb is not None:
+        try:
+            emb.flush()
+        except Exception:
+            pass            # 캐시 저장 실패(스테일 경로 등)가 A/B 결과를 막지 않게
+    run_id = _run_id()
+    _write_manifest(cfg, run_id, "ab", res)
+    print(f"  run manifest: runs/{run_id}.json")
 
 
 def cmd_dashboard(a):
@@ -689,6 +682,14 @@ def main(argv=None):
     pv.add_argument("--goldenset", required=True)
     pv.add_argument("--concurrency", type=int, default=8)
     _add_common(pv); pv.set_defaults(func=cmd_eval)
+
+    pab = sub.add_parser("ab", help="A/B: 두 방법론을 골든셋에 돌려 성능 비교")
+    pab.add_argument("--goldenset", required=True)
+    pab.add_argument("--a", required=True, help="방법론 A (프리셋 이름 또는 JSON 경로)")
+    pab.add_argument("--b", required=True, help="방법론 B (프리셋 이름 또는 JSON 경로)")
+    pab.add_argument("--limit", type=int, default=0, help="골든셋 앞 N건만(빠른 비교)")
+    pab.add_argument("--concurrency", type=int, default=8)
+    _add_common(pab); pab.set_defaults(func=cmd_ab)
 
     pd = sub.add_parser("dashboard", help="메타 현황+관계도 HTML")
     pd.add_argument("--results", required=True)
