@@ -32,13 +32,12 @@ class SupabaseStore:
 
     # ── REST 헬퍼 ──────────────────────────────────────────────────────────
     def _req(self, method: str, table: str, *, query: str = "", body=None, prefer: str = "") -> list:
-        url = f"{self.base}/{table}" + (f"?{query}" if query else "")
+        # public 스키마(기본 노출) + prism_ 접두사 → 노출 설정 불필요.
+        url = f"{self.base}/prism_{table}" + (f"?{query}" if query else "")
         headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
             "Accept": "application/json",
-            "Accept-Profile": "prism",      # GET: 스키마 지정
-            "Content-Profile": "prism",     # 쓰기: 스키마 지정
         }
         if body is not None:
             headers["Content-Type"] = "application/json"

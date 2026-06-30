@@ -9,7 +9,7 @@
 
 | 항목 | 결정 | 근거 |
 |---|---|---|
-| 프로젝트 | 기존 **PromptForge**(`yujinhcdbllcnnfvcmfp`)의 격리 **`prism` 스키마** | +$0, 기존 public 무영향. Auth 공유 수용(소수 팀) |
+| 프로젝트 | 기존 **PromptForge**(`yujinhcdbllcnnfvcmfp`), **`public.prism_*`** 테이블(접두사) | +$0. public 기본 노출 → **REST 노출 설정 불필요**. Auth 공유 수용(소수 팀) |
 | 아키텍처 | **Frontend → Prism 서버 → Supabase** (서버가 허브) | 현 구조 유지, store만 교체 |
 | store 접근 | **PostgREST REST + urllib**(stdlib 유지) | "의존성 0" 거의 보존. psycopg는 선택지(직접연결·의존성↑) |
 | 모드 | **dual-mode**: `PRISM_BACKEND=sqlite`(기본·로컬) ↔ `supabase`(팀) | 로컬 오프라인 사용 보존 |
@@ -32,17 +32,19 @@
   직접 접근 대비 심층방어로 유지.
 - 로컬 모드(`sqlite`)면 위 전부 우회하고 기존 SQLite 그대로(오프라인).
 
-## 스키마 (이미 적용됨 — `prism_schema_init`)
+## 스키마 (적용됨 — `prism_move_to_public`)
 
+**`public.prism_*`** 테이블(접두사로 구분, public 기본 노출 → 노출 설정 불필요):
 ```
-prism.reviewers(id uuid PK→auth.users, name, avatar, created_at)
-prism.contents(hash PK, service, title, body, source, final_grade,
+public.prism_reviewers(id uuid PK→auth.users, name, avatar, created_at)
+public.prism_contents(hash PK, service, title, body, source, final_grade,
                item_meta jsonb, quality_meta jsonb, review, created_at)
-prism.feedback(content_hash, reviewer_id→reviewers, service, title,
+public.prism_feedback(content_hash, reviewer_id→prism_reviewers, service, title,
                verdict, stage, note, reap_remember/explain/ask/plan, ts,
                PK(content_hash, reviewer_id))
 ```
 RLS: 인증 사용자 읽기(리더보드·합의), 쓰기는 본인 행만. 색인: feedback(reviewer_id, verdict), contents(review).
+**REST 검증됨**: anon 키로 3 테이블 GET 200(노출 확인). 쓰기/인증 읽기는 service_role(서버).
 
 ## 상세 설계 (확정)
 
@@ -84,11 +86,10 @@ supabase 모드: `store_save` 에서 **`review=='yellow'` 또는 명시 sample �
   - upsert: `POST /rest/v1/prism.feedback` + `Prefer: resolution=merge-duplicates`
   - 조회: `GET /rest/v1/prism.feedback?select=*` → Python 집계(arena_stats/feedback_map).
   - 소규모라 집계는 fetch 후 Python(현 로직 재사용). 추후 Postgres view/RPC 로 최적화 가능.
-- **헤더**: `apikey: <service_role>`, `Authorization: Bearer <service_role>`,
-  `Accept-Profile/Content-Profile: prism`(스키마 지정).
-- **전제 설정**:
-  1. Supabase 대시보드 **Settings→API→Exposed schemas 에 `prism` 추가**(기본 public만 노출).
-  2. 서버 env: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`(비밀 — 커밋·로그 금지), `PRISM_BACKEND=supabase`.
+- **헤더**: `apikey: <service_role>`, `Authorization: Bearer <service_role>`. (public 스키마라
+  Profile 헤더 불필요.)
+- **전제 설정**: 서버 env `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`(비밀 — 커밋·로그 금지),
+  `PRISM_BACKEND=supabase`. **대시보드 노출 설정 불필요**(public 기본 노출).
 
 ## Phase 3 — 인증 (Supabase Auth)
 
