@@ -48,10 +48,31 @@ class Store:
           content_hash TEXT PRIMARY KEY, service TEXT, title TEXT,
           final_grade TEXT, reasons TEXT, source TEXT, manual_review INTEGER,
           created_at REAL);
+        -- 팀 HITL: 검수자별 다중 의견 보존(PK = content_hash + reviewer).
         CREATE TABLE IF NOT EXISTS feedback(
-          content_hash TEXT PRIMARY KEY, service TEXT, title TEXT,
-          verdict TEXT, stage TEXT, note TEXT, ts REAL);
+          content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
+          verdict TEXT, stage TEXT, note TEXT, ts REAL,
+          PRIMARY KEY(content_hash, reviewer));
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
+        """)
+        c.commit()
+        self._migrate_feedback(c)
+
+    def _migrate_feedback(self, c):
+        """구 스키마(PK=content_hash, 단일 의견) → 신 스키마(PK=content_hash+reviewer) 이행.
+        기존 1건은 reviewer='(이전)'으로 보존. 신규 DB 엔 영향 없음."""
+        cols = [r[1] for r in c.execute("PRAGMA table_info(feedback)")]
+        if "reviewer" in cols:
+            return
+        c.executescript("""
+        ALTER TABLE feedback RENAME TO feedback_legacy;
+        CREATE TABLE feedback(
+          content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
+          verdict TEXT, stage TEXT, note TEXT, ts REAL,
+          PRIMARY KEY(content_hash, reviewer));
+        INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts)
+          SELECT content_hash,'(이전)',service,title,verdict,stage,note,ts FROM feedback_legacy;
+        DROP TABLE feedback_legacy;
         """)
         c.commit()
 
@@ -235,22 +256,42 @@ class Store:
         return rows
 
     # ── 평가 피드백 / 학습 루프 ──
-    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts):
-        """콘텐츠별 평가 피드백 upsert(콘텐츠당 최신 1건)."""
+    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)"):
+        """검수자별 평가 피드백 upsert(검수자당 1건 — 같은 검수자는 자기 의견을 갱신).
+        서로 다른 검수자의 의견은 공존 → 다중 의견 보존."""
         c = self._conn()
-        c.execute("""INSERT INTO feedback(content_hash,service,title,verdict,stage,note,ts)
-          VALUES(?,?,?,?,?,?,?)
-          ON CONFLICT(content_hash) DO UPDATE SET
-            verdict=excluded.verdict, stage=excluded.stage, note=excluded.note, ts=excluded.ts""",
-          (content_hash, service or "", title or "", verdict or "", stage or "analyze", note or "", ts))
+        c.execute("""INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts)
+          VALUES(?,?,?,?,?,?,?,?)
+          ON CONFLICT(content_hash,reviewer) DO UPDATE SET
+            verdict=excluded.verdict, stage=excluded.stage, note=excluded.note, ts=excluded.ts,
+            service=excluded.service, title=excluded.title""",
+          (content_hash, reviewer or "(익명)", service or "", title or "",
+           verdict or "", stage or "analyze", note or "", ts))
         c.commit()
 
     def feedback_map(self) -> dict:
-        """content_hash → {verdict,stage,note} (배치 결과에 현재 피드백 표시용)."""
+        """content_hash → 합의 집계. 다중 검수자 의견을 모아 합의/불일치 표시.
+        반환: {verdicts:[{reviewer,verdict,stage,note,ts}], n, good, bad,
+               consensus('good'|'bad'|'split'|''), agree(만장일치), verdict/stage/note(대표=합의·최신, 하위호환)}"""
         c = self._conn()
         out = {}
-        for ch, v, s, n in c.execute("SELECT content_hash,verdict,stage,note FROM feedback"):
-            out[ch] = {"verdict": v, "stage": s, "note": n}
+        for ch, rv, v, s, nt, ts in c.execute(
+                "SELECT content_hash,reviewer,verdict,stage,note,ts FROM feedback ORDER BY ts"):
+            e = out.setdefault(ch, {"verdicts": [], "good": 0, "bad": 0})
+            e["verdicts"].append({"reviewer": rv, "verdict": v, "stage": s, "note": nt, "ts": ts})
+            if v == "good":
+                e["good"] += 1
+            elif v == "bad":
+                e["bad"] += 1
+        for e in out.values():
+            g, b = e["good"], e["bad"]
+            e["n"] = len(e["verdicts"])
+            e["consensus"] = ("good" if g > b else "bad" if b > g
+                              else ("split" if (g or b) else ""))
+            e["agree"] = e["n"] > 0 and (g == 0 or b == 0)
+            last = e["verdicts"][-1]                      # 하위호환 대표 필드(합의 우선, 없으면 최신)
+            e["verdict"] = e["consensus"] or last["verdict"]
+            e["stage"], e["note"] = last["stage"], last["note"]
         return out
 
     def learned_by_stage(self, limit_per_stage: int = 20) -> dict:
@@ -271,7 +312,40 @@ class Store:
         bad = int(c.execute("SELECT COUNT(*) FROM feedback WHERE verdict='bad'").fetchone()[0])
         good = int(c.execute("SELECT COUNT(*) FROM feedback WHERE verdict='good'").fetchone()[0])
         learned = sum(1 for _ in c.execute("SELECT 1 FROM feedback WHERE verdict='bad' AND note!=''"))
-        return {"total": n, "good": good, "bad": bad, "learned": learned}
+        contents = int(c.execute("SELECT COUNT(DISTINCT content_hash) FROM feedback").fetchone()[0])
+        reviewers = int(c.execute("SELECT COUNT(DISTINCT reviewer) FROM feedback").fetchone()[0])
+        # 불일치: 한 콘텐츠에 good·bad 가 모두 달린 건수(팀 합의 점검용)
+        split = int(c.execute("""SELECT COUNT(*) FROM (
+            SELECT content_hash FROM feedback WHERE verdict IN('good','bad')
+            GROUP BY content_hash
+            HAVING COUNT(DISTINCT verdict) > 1)""").fetchone()[0])
+        return {"total": n, "good": good, "bad": bad, "learned": learned,
+                "contents": contents, "reviewers": reviewers, "split": split}
+
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True) -> list:
+        """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠. only_unreviewed 면 아직 아무도
+        검수 안 한 것만. 최신순. payload 에서 review 상태를 읽는다."""
+        c = self._conn()
+        reviewed = {r[0] for r in c.execute("SELECT DISTINCT content_hash FROM feedback")}
+        out = []
+        for ch, svc, ti, grade, payload, ts in c.execute(
+                "SELECT content_hash,service,title,final_grade,payload,created_at "
+                "FROM results ORDER BY created_at DESC LIMIT ?", (max(limit * 6, 200),)):
+            try:
+                qm = (json.loads(payload) if payload else {}).get("quality_meta") or {}
+            except Exception:
+                qm = {}
+            if (qm.get("review") or "") != "yellow":
+                continue
+            is_reviewed = ch in reviewed
+            if only_unreviewed and is_reviewed:
+                continue
+            out.append({"hash": ch, "service": svc or "", "title": ti or "",
+                        "grade": grade or "", "review_reason": qm.get("review_reason", ""),
+                        "reviewed": is_reviewed, "ts": ts})
+            if len(out) >= limit:
+                break
+        return out
 
     def clear_feedback(self):
         c = self._conn()

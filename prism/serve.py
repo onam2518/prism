@@ -691,12 +691,24 @@ def apply_feedback(data: dict) -> dict:
         if not ch:
             return {"ok": False, "error": "hash required"}
         verdict = data.get("verdict") or ""        # good | bad | ""(취소)
+        reviewer = (data.get("reviewer") or "").strip() or "(익명)"
         st.save_feedback(ch, data.get("service", ""), data.get("title", ""),
                          verdict, data.get("stage") or "analyze",
-                         (data.get("note") or "").strip(), time.time())
+                         (data.get("note") or "").strip(), time.time(), reviewer=reviewer)
     sync_learned()                                 # 다음 추출부터 자동 반영
     return {"ok": True, "feedback": st.feedback_stats(),
             "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
+
+
+def review_queue(data: dict) -> dict:
+    """검수 대기 큐(YELLOW). only_unreviewed=false 면 검수된 것도 포함."""
+    st = get_store()
+    if not st:
+        return {"ok": False, "error": "store unavailable", "items": []}
+    only_un = data.get("only_unreviewed", True)
+    limit = int(data.get("limit") or 100)
+    items = st.review_queue(limit=limit, only_unreviewed=bool(only_un))
+    return {"ok": True, "items": items, "n": len(items)}
 
 
 def _candidate_models(cfg) -> list:
@@ -938,6 +950,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/dashboard"):
             self._send(200, json.dumps(dashboard_data(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/queue"):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            data = {"only_unreviewed": q.get("all", ["0"])[0] not in ("1", "true"),
+                    "limit": (q.get("limit", ["100"])[0])}
+            self._send(200, json.dumps(review_queue(data), ensure_ascii=False), _JSON)
         elif self.path.startswith("/ingest-status"):
             self._send(200, json.dumps(ingest_status(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/prompt-defaults"):
