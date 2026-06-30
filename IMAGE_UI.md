@@ -64,4 +64,4 @@ curl -s localhost:8765/report -o report.html                                    
 
 - 현재는 **방식 A**(어댑터). 운영 승격 시 **방식 B**(네이티브 `image_only` 트랙: `pipeline.py`의 skip 분기를 이미지 전용 아이템 메타 에이전트로 교체)로 전환 검토.
 - **다중 이미지 통합 정책 적용됨**(`imagext.MAX_IMAGES`): 장수 상한(기본 8, 비전 호출 *전* 적용해 비용 차단) + 가중치(업로드 순서 = 중요도, 첫 장 = 대표가 제목·분류 신호 우선). 상한 초과분은 본문에 명시(누락 비표시 금지).
-- `content_category` 사전화는 DNM `1312`/`134` 문서 기준 후속 과제.
+- **`content_category` 사전화 적용됨**(`dictionaries.normalize_categories`): LLM 자유 출력을 고정 IAB 사전(Tier1/Tier2)에 결정론적 스냅 → 임베딩 미사용 경로(serve)도 항상 사전값. 미매칭은 `Unclassified`.
