@@ -736,6 +736,19 @@ def reap_for(data: dict) -> dict:
     return {"ok": True, "items": st.get_reap((data.get("hash") or "").strip())}
 
 
+def register_reviewer(data: dict) -> dict:
+    """검수자 등록: 이름 + 선택 캐릭터 → 영속(리더보드·아레나에 그 캐릭터로 시각화)."""
+    st = get_store()
+    if not st:
+        return {"ok": False}
+    rv = (data.get("reviewer") or "").strip()
+    ch = (data.get("char") or "boksil").strip()
+    if rv:
+        st.set_reviewer(rv, ch)
+        broadcast({"type": "reviewer", "reviewer": rv, "char": ch})   # 다른 화면 즉시 반영
+    return {"ok": True}
+
+
 def arena_data() -> dict:
     """평가 아레나(게임화) 데이터: 팀 정확도 + 리더보드 + 검수 대기(퀘스트)."""
     st = get_store()
@@ -1155,6 +1168,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/reviewer"):
+            try:
+                self._send(200, json.dumps(register_reviewer(json.loads(body or b"{}")),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/presence"):
             try:
                 p = json.loads(body or b"{}")
@@ -1297,8 +1318,14 @@ PAGE = """<!doctype html>
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
-      // 팀 실시간 HITL: 검수자 식별 · 검수 큐 · 라이브 이벤트
-      reviewer: '', reviewerEditing: false,
+      // 팀 실시간 HITL: 검수자 식별(이름+캐릭터) · 검수 큐 · 라이브 이벤트
+      reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
+      charOptions: [
+        { id: 'boksil', label: '복실', role: '검수', img: '/vendor/boksil-catcher.svg' },
+        { id: 'daesik', label: '대식', role: '추출', img: '/vendor/daesik-batter.svg' },
+        { id: 'yonghee', label: '용희', role: '분석', img: '/vendor/yonghee-pitcher.svg' },
+        { id: 'ddakji', label: '딱지', role: '판정', img: '/vendor/ddakji-manager.svg' },
+      ],
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
       liveMsg: '', liveSeen: {}, _es: null,
@@ -1454,8 +1481,17 @@ PAGE = """<!doctype html>
         try { const r = await (await fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json(); if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback; } catch (e) {}
       },
       // ── 팀 실시간 HITL: 검수자 식별 · 검수 큐 · 라이브 ──
-      loadReviewer() { try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; } catch (e) {} if (!this.reviewer) this.reviewerEditing = true; },
-      saveReviewer() { const v = (this.reviewer || '').trim(); if (!v) return; this.reviewer = v; try { localStorage.setItem('prism_reviewer', v); } catch (e) {} this.reviewerEditing = false; },
+      loadReviewer() { try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; } catch (e) {} if (!this.reviewer) this.reviewerEditing = true; },
+      saveReviewer() {
+        const v = (this.reviewer || '').trim(); if (!v) return;
+        this.reviewer = v;
+        try { localStorage.setItem('prism_reviewer', v); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
+        // 서버에 등록 → 리더보드·아레나에 내 캐릭터로 시각화
+        try { fetch('/reviewer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer: v, char: this.reviewerChar }) }); } catch (e) {}
+        this.reviewerEditing = false;
+        if (this.mod === 'arena') this.loadArena();
+      },
+      charImg(id) { return (this.charOptions.find((c) => c.id === id) || this.charOptions[0]).img; },
       startLive() {
         try {
           const es = new EventSource('/events'); this._es = es;
@@ -1477,6 +1513,8 @@ PAGE = """<!doctype html>
           if (d.plan) this.liveToast('REAP 개선안 반영 · ' + (d.plan.length > 42 ? d.plan.slice(0, 42) + '…' : d.plan));
           if (this.mod === 'arena') this.loadArena();
           if (this.mod === 'prompt') this.loadPromptDefaults();   // 단계 프롬프트(LEARNED) 갱신
+        } else if (d.type === 'reviewer') {
+          if (this.mod === 'arena') this.loadArena();             // 다른 사람 캐릭터 변경 반영
         } else if (d.type === 'presence' && d.reviewer && d.reviewer !== this.reviewer) {
           if (d.action === 'viewing') this.liveSeen[d.hash] = d.reviewer; else delete this.liveSeen[d.hash];
         }
@@ -2149,6 +2187,41 @@ PAGE = """<!doctype html>
     box-shadow:0 8px 24px rgba(9,23,23,.22)}
   .live-toast__dot{width:7px;height:7px;border-radius:50%;background:#3ddc97;flex:none;
     box-shadow:0 0 0 3px rgba(61,220,151,.25)}
+  /* ── 검수자 등록 온보딩(딤드 + 중앙 모달) ── */
+  .onboard{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:24px;
+    background:rgba(9,23,23,.55);backdrop-filter:blur(4px)}
+  .onboard__card{width:100%;max-width:440px;background:var(--ds-surface2,#fff);border-radius:22px;
+    padding:30px 30px 24px;box-shadow:0 24px 70px rgba(9,23,23,.4);text-align:center}
+  .onboard__brand{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ds-violet,#20808d);
+    font-size:13px;font-weight:700;margin-bottom:14px}
+  .onboard__brand img{width:26px;height:26px}
+  .onboard__title{font-size:23px;font-weight:800;color:var(--ds-ink);margin:0 0 8px}
+  .onboard__lead{font-size:13px;line-height:1.6;color:var(--ds-body,#2e3a3a);margin:0 0 22px}
+  .onboard__lbl{display:block;text-align:left;font-size:12px;font-weight:700;color:var(--ds-ink);margin:0 0 7px}
+  .onboard__hint{font-weight:500;color:var(--ds-muted)}
+  .onboard__name{height:44px;width:100%;font-size:15px;margin-bottom:18px}
+  .onboard__chars{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:24px}
+  .ochar{display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 4px 9px;border-radius:14px;
+    border:1.5px solid var(--ds-hairline,#e4e4dc);background:var(--ds-surface,#fcfcf9);cursor:pointer;transition:all .15s}
+  .ochar:hover{border-color:var(--ds-violet,#20808d);transform:translateY(-2px)}
+  .ochar__ring{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    background:#fff;box-shadow:0 0 0 2px var(--ds-hairline,#e4e4dc);transition:box-shadow .15s}
+  .ochar__ring img{width:42px;height:42px}
+  .ochar b{font-size:12.5px;color:var(--ds-ink)} .ochar small{font-size:10px;color:var(--ds-muted)}
+  .ochar.sel{border-color:var(--ds-violet,#20808d);background:var(--ds-violet-tint,#e5f2f2)}
+  .ochar.sel .ochar__ring{box-shadow:0 0 0 3px var(--ds-violet,#20808d)}
+  .onboard__cta{height:46px;width:100%;font-size:15px;font-weight:700}
+  .onboard__cta:disabled{opacity:.45;cursor:not-allowed}
+  .onboard__skip{margin-top:10px;background:none;border:0;color:var(--ds-muted);font-size:12.5px;cursor:pointer}
+  /* ── 검수자 등록: 캐릭터 선택(구 약식, 미사용 호환) ── */
+  .charpick{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+  .charpick__opt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:11px;
+    border:1.5px solid var(--ds-hairline,#e4e4dc);background:var(--ds-surface2,#fff);cursor:pointer;transition:all .15s}
+  .charpick__opt:hover{border-color:var(--ds-violet,#20808d)}
+  .charpick__opt img{width:34px;height:34px}
+  .charpick__opt span{font-size:10.5px;color:var(--ds-muted);font-weight:600}
+  .charpick__opt.sel{border-color:var(--ds-violet,#20808d);background:var(--ds-violet-tint,#e5f2f2);box-shadow:0 0 0 2px var(--ds-violet-tint,#e5f2f2)}
+  .charpick__opt.sel span{color:var(--ds-violet,#20808d)}
   /* ── 평가 아레나(게임화) ── */
   .arena-hero{background:linear-gradient(135deg,var(--ds-violet,#20808d),var(--ds-violet-deep,#13343b));
     color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 10px 30px rgba(19,52,59,.22)}
@@ -2338,22 +2411,13 @@ PAGE = """<!doctype html>
       <div class="homehead__sub" x-text="modSub"></div>
     </div>
     <div class="topbar__tools">
-      <!-- 검수자 식별(팀 HITL): 이름은 localStorage 저장, 모든 피드백에 귀속 -->
-      <div style="position:relative">
-        <button type="button" class="topbar__conn" x-on:click="reviewerEditing = !reviewerEditing" data-tip="검수자 이름" data-tip-pos="bottom" aria-label="검수자">
-          <span class="conn-chip" x-bind:class="reviewer ? 'conn-chip--on' : 'conn-chip--off'">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-            <span x-text="reviewer || '이름 설정'"></span>
-          </span>
-        </button>
-        <div class="addmenu" x-bind:class="reviewerEditing ? 'open' : ''" x-on:click.outside="reviewerEditing = false" style="min-width:230px;padding:12px">
-          <div class="text-xs text-muted" style="margin-bottom:7px">검수자 이름 — 피드백·검수에 귀속됩니다(이 기기에 저장)</div>
-          <div style="display:flex;gap:6px">
-            <input class="field" style="height:34px;flex:1" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()">
-            <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="saveReviewer()">저장</button>
-          </div>
-        </div>
-      </div>
+      <!-- 검수자 칩: 클릭하면 정식 등록 모달(온보딩). 선택한 캐릭터를 미리보기 -->
+      <button type="button" class="topbar__conn" x-on:click="reviewerEditing = true" data-tip="검수자 등록" data-tip-pos="bottom" aria-label="검수자">
+        <span class="conn-chip" x-bind:class="reviewer ? 'conn-chip--on' : 'conn-chip--off'">
+          <img x-show="reviewer" x-bind:src="charImg(reviewerChar)" alt="" style="width:18px;height:18px;margin:-2px 0">
+          <span x-text="reviewer || '검수자 등록'"></span>
+        </span>
+      </button>
       <!-- 연결 현황(다중): 제공자별 연결 상태를 모두 표시 -->
       <button type="button" class="topbar__conn" x-on:click="settingsOpen = true" data-tip="키 설정" data-tip-pos="bottom" aria-label="연결 현황">
         <span x-show="cfg.forcedMock" class="conn-chip conn-chip--off"><span class="ds-statusdot ds-statusdot--mock"><span class="ds-statusdot__dot"></span></span>MOCK(강제)</span>
@@ -2385,6 +2449,37 @@ PAGE = """<!doctype html>
   <!-- 실시간 협업 토스트: 다른 검수자의 검수 활동 -->
   <div class="live-toast" x-show="liveMsg" x-cloak x-transition.opacity>
     <span class="live-toast__dot"></span><span x-text="liveMsg"></span>
+  </div>
+
+  <!-- 검수자 등록 온보딩(딤드 + 중앙 모달). 첫 방문 시 자동, 칩 클릭 시 변경 -->
+  <div class="onboard" x-show="reviewerEditing" x-cloak x-transition.opacity
+       x-on:click.self="if (reviewer) reviewerEditing = false"
+       x-on:keydown.escape.window="if (reviewer) reviewerEditing = false">
+    <div class="onboard__card" x-transition>
+      <div class="onboard__brand"><img src="/vendor/prism-mark.svg" alt="Prism"><b>Prism 평가 아레나</b></div>
+      <h2 class="onboard__title" x-text="reviewer ? '검수자 정보 변경' : '검수자로 등록하기'"></h2>
+      <p class="onboard__lead">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 이름과 캐릭터를 정하면
+        내 검수가 점수가 되고 캐릭터가 성장해요. <b>이 기기에 저장</b>됩니다.</p>
+
+      <label class="onboard__lbl">이름</label>
+      <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer"
+             x-on:keydown.enter="saveReviewer()" autofocus>
+
+      <label class="onboard__lbl">캐릭터 선택 <span class="onboard__hint">— 리더보드·아레나에 이 캐릭터로 표시됩니다</span></label>
+      <div class="onboard__chars">
+        <template x-for="c in charOptions" x-bind:key="c.id">
+          <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
+            <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
+            <b x-text="c.label"></b><small x-text="c.role"></small>
+          </button>
+        </template>
+      </div>
+
+      <button type="button" class="ds-btn ds-btn--primary onboard__cta"
+              x-bind:disabled="!(reviewer||'').trim()" x-on:click="saveReviewer()"
+              x-text="reviewer ? '저장하고 시작' : '시작하기'"></button>
+      <button type="button" class="onboard__skip" x-show="reviewer" x-on:click="reviewerEditing=false">닫기</button>
+    </div>
   </div>
 
   <div class="appbody">
@@ -3150,7 +3245,7 @@ PAGE = """<!doctype html>
               <template x-for="(r, i) in (arenaData?arenaData.leaderboard:[])" x-bind:key="r.reviewer">
                 <div class="lb-row" x-bind:class="r.reviewer===reviewer ? 'lb-row--me' : ''">
                   <span class="lb-rank" x-text="rankMedal(i)"></span>
-                  <span class="lb-av" x-bind:data-tier="levelTier(r.level)"><img src="/vendor/boksil-catcher.svg" alt=""></span>
+                  <span class="lb-av" x-bind:data-tier="levelTier(r.level)"><img x-bind:src="charImg(r.char)" alt=""></span>
                   <span class="lb-name"><span x-text="r.reviewer + (r.reviewer===reviewer ? ' (나)' : '')"></span>
                     <small class="lb-title" x-text="levelEmoji(r.level)+' '+levelTitle(r.level)"></small></span>
                   <span class="lb-streak" x-show="r.streak>0" x-text="'🔥' + r.streak"></span>
@@ -3169,7 +3264,7 @@ PAGE = """<!doctype html>
                 <div class="charcard" x-bind:data-tier="levelTier(arenaMe.level)">
                   <div class="charcard__avatar">
                     <span class="charcard__glow"></span>
-                    <img src="/vendor/boksil-catcher.svg" alt="검수 캐릭터">
+                    <img x-bind:src="charImg(arenaMe.char || reviewerChar)" alt="검수 캐릭터">
                     <span class="charcard__lvl" x-text="'Lv.' + arenaMe.level"></span>
                   </div>
                   <div class="charcard__title"><span x-text="levelEmoji(arenaMe.level)"></span> <span x-text="levelTitle(arenaMe.level)"></span></div>
@@ -3186,7 +3281,7 @@ PAGE = """<!doctype html>
                 </div>
               </template>
               <div x-show="reviewer && !arenaMe" class="charcard charcard--egg" data-tier="0">
-                <div class="charcard__avatar"><img src="/vendor/boksil-catcher.svg" alt="" style="opacity:.5;filter:grayscale(1)"><span class="charcard__lvl">Lv.0</span></div>
+                <div class="charcard__avatar"><img x-bind:src="charImg(reviewerChar)" alt="" style="opacity:.5;filter:grayscale(1)"><span class="charcard__lvl">Lv.0</span></div>
                 <div class="charcard__title">🥚 검수 새싹</div>
                 <div class="charcard__hint"><b class="text-ink" x-text="reviewer"></b> 의 첫 검수로 캐릭터를 깨워요 — <span class="arena-quest" x-on:click="selectMod('review')">검수하러 가기 →</span></div>
               </div>

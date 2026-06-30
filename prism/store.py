@@ -53,6 +53,8 @@ class Store:
           content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
           verdict TEXT, stage TEXT, note TEXT, ts REAL,
           PRIMARY KEY(content_hash, reviewer));
+        -- 검수자 등록: 이름 → 선택 캐릭터(아바타) 매핑.
+        CREATE TABLE IF NOT EXISTS reviewers(reviewer TEXT PRIMARY KEY, char TEXT, ts REAL);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         """)
         c.commit()
@@ -350,6 +352,19 @@ class Store:
         return {"total": n, "good": good, "bad": bad, "learned": learned,
                 "contents": contents, "reviewers": reviewers, "split": split}
 
+    def set_reviewer(self, reviewer: str, char: str):
+        """검수자 등록/갱신: 이름 → 선택 캐릭터."""
+        c = self._conn()
+        c.execute("""INSERT INTO reviewers(reviewer,char,ts) VALUES(?,?,?)
+          ON CONFLICT(reviewer) DO UPDATE SET char=excluded.char, ts=excluded.ts""",
+          (reviewer or "(익명)", char or "boksil", time.time()))
+        c.commit()
+
+    def reviewers_map(self) -> dict:
+        """reviewer → char(아바타 id)."""
+        c = self._conn()
+        return {rv: (ch or "boksil") for rv, ch in c.execute("SELECT reviewer,char FROM reviewers")}
+
     def arena_stats(self, target: float = 0.9) -> dict:
         """평가 아레나(게임화) 지표. 팀 협동 점수 = 정확도(자동 판정이 검수자와 일치한 비율).
         검수가 쌓이고 REAP 가 프롬프트를 보정할수록 오른다. + 검수자 리더보드(점수·레벨·스트릭)."""
@@ -393,12 +408,14 @@ class Store:
                 s += 1; d -= 1
             return s
 
+        chars = self.reviewers_map()
         leaderboard = []
         for rv, v in board.items():
             pts = v["reviews"] * 10 + v["corrections"] * 25
             leaderboard.append({"reviewer": rv, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
-                                "level": 1 + pts // 100, "streak": _streak(days_by.get(rv, set()))})
+                                "level": 1 + pts // 100, "streak": _streak(days_by.get(rv, set())),
+                                "char": chars.get(rv, "boksil")})
         leaderboard.sort(key=lambda x: -x["points"])
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
                 "week_reviews": wk_good + wk_bad, "accuracy_delta": round(accuracy - pv_acc, 4),
