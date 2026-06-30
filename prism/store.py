@@ -147,7 +147,7 @@ class Store:
         return [json.loads(r[0]) for r in c.execute(q, args)]
 
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
-    def save_many(self, pairs, run_id: str, source: str = ""):
+    def save_many(self, pairs, run_id: str, source: str = "", team=None):
         """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
         source: 출처(자동 인입·단건·배치 등) — 결과 화면 필터용."""
         rows = []
@@ -178,7 +178,7 @@ class Store:
         c.commit()
         return len(rows)
 
-    def save_dedup(self, pairs, run_id: str, source: str = "") -> dict:
+    def save_dedup(self, pairs, run_id: str, source: str = "", team=None) -> dict:
         """적재 정책: content_hash 기준 멱등.
         · 신규 → insert  · 기존인데 메타(등급·item_meta·reasons) 변경 → update
         · 동일 콘텐츠 + 결과 무변경 → 적재 제외(skip, DB 미기록).
@@ -227,8 +227,9 @@ class Store:
             c.commit()
         return {"inserted": ins, "updated": upd, "skipped": skip}
 
-    def recent(self, limit: int = 5000) -> list:
-        """최근 적재 결과(payload)를 시간순(오래된→최신)으로. content_id = 리스트 인덱스."""
+    def recent(self, limit: int = 5000, team=None) -> list:
+        """최근 적재 결과(payload)를 시간순(오래된→최신)으로. content_id = 리스트 인덱스.
+        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
         c = self._conn()
         rows = [json.loads(r[0]) for r in c.execute(
             "SELECT payload FROM results ORDER BY created_at DESC LIMIT ?", (int(limit),))]
@@ -249,7 +250,7 @@ class Store:
         c = self._conn()
         c.execute("DELETE FROM results"); c.execute("DELETE FROM usage"); c.commit()
 
-    def recent_meta(self, limit: int = 200) -> list:
+    def recent_meta(self, limit: int = 200, team=None) -> list:
         """배치 결과 콘텐츠별 행(피드백 부착용): content_hash·서비스·제목·등급·요약·카테고리."""
         c = self._conn()
         rows = []
@@ -267,9 +268,9 @@ class Store:
         return rows
 
     # ── 평가 피드백 / 학습 루프 ──
-    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)"):
+    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None):
         """검수자별 평가 피드백 upsert(검수자당 1건 — 같은 검수자는 자기 의견을 갱신).
-        서로 다른 검수자의 의견은 공존 → 다중 의견 보존."""
+        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
         c = self._conn()
         c.execute("""INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts)
           VALUES(?,?,?,?,?,?,?,?)
@@ -280,7 +281,7 @@ class Store:
            verdict or "", stage or "analyze", note or "", ts))
         c.commit()
 
-    def feedback_map(self) -> dict:
+    def feedback_map(self, team=None) -> dict:
         """content_hash → 합의 집계. 다중 검수자 의견을 모아 합의/불일치 표시.
         반환: {verdicts:[{reviewer,verdict,stage,note,ts}], n, good, bad,
                consensus('good'|'bad'|'split'|''), agree(만장일치), verdict/stage/note(대표=합의·최신, 하위호환)}"""
@@ -325,9 +326,9 @@ class Store:
                         "plan": pl, "stage": st})
         return out
 
-    def learned_by_stage(self, limit_per_stage: int = 20) -> dict:
+    def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
         """문제(bad) 피드백을 단계별로 모아 학습 보정 텍스트로 컴파일.
-        REAP plan 이 있으면 그것을(가공된 개선 지시), 없으면 raw 메모를 사용."""
+        REAP plan 이 있으면 그것을(가공된 개선 지시), 없으면 raw 메모를 사용. team 은 통일용(sqlite 무시)."""
         c = self._conn()
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
         for stage, note, plan in c.execute(
@@ -340,7 +341,7 @@ class Store:
                 out[st].append(f"- {text}")
         return {k: "\n".join(v) for k, v in out.items() if v}
 
-    def feedback_stats(self) -> dict:
+    def feedback_stats(self, team=None) -> dict:
         c = self._conn()
         n = int(c.execute("SELECT COUNT(*) FROM feedback").fetchone()[0])
         bad = int(c.execute("SELECT COUNT(*) FROM feedback WHERE verdict='bad'").fetchone()[0])
@@ -364,12 +365,12 @@ class Store:
           (reviewer or "(익명)", avatar or "boksil", time.time()))
         c.commit()
 
-    def reviewers_map(self) -> dict:
+    def reviewers_map(self, team=None) -> dict:
         """reviewer → char(아바타 id)."""
         c = self._conn()
         return {rv: (ch or "boksil") for rv, ch in c.execute("SELECT reviewer,char FROM reviewers")}
 
-    def arena_stats(self, target: float = 0.9) -> dict:
+    def arena_stats(self, target: float = 0.9, team=None) -> dict:
         """평가 아레나(게임화) 지표. 팀 협동 점수 = 정확도(자동 판정이 검수자와 일치한 비율).
         검수가 쌓이고 REAP 가 프롬프트를 보정할수록 오른다. + 검수자 리더보드(점수·레벨·스트릭)."""
         c = self._conn()
@@ -425,7 +426,7 @@ class Store:
                 "week_reviews": wk_good + wk_bad, "accuracy_delta": round(accuracy - pv_acc, 4),
                 "target": target, "leaderboard": leaderboard}
 
-    def review_queue(self, limit: int = 100, only_unreviewed: bool = True) -> list:
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None) -> list:
         """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠. only_unreviewed 면 아직 아무도
         검수 안 한 것만. 최신순. payload 에서 review 상태를 읽는다."""
         c = self._conn()

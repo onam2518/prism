@@ -61,25 +61,92 @@ class SupabaseStore:
             return
         self._req("POST", table, body=rows, prefer="resolution=merge-duplicates,return=minimal")
 
-    # ── 검수자 등록 ────────────────────────────────────────────────────────
-    def set_reviewer(self, reviewer, name=None, avatar="boksil"):
-        """reviewer = auth uuid(key). 이름·캐릭터를 prism.reviewers 에 upsert."""
-        self._upsert("reviewers", [{"id": reviewer, "name": name or reviewer, "avatar": avatar or "boksil"}])
+    # ── 검수자 등록 + 팀(멀티테넌시) ──────────────────────────────────────
+    def set_reviewer(self, reviewer, name=None, avatar="boksil", team_id=None):
+        """reviewer = auth uuid(key). 이름·캐릭터·팀을 upsert."""
+        row = {"id": reviewer, "name": name or reviewer, "avatar": avatar or "boksil"}
+        if team_id:
+            row["team_id"] = team_id
+        self._upsert("reviewers", [row])
 
-    def reviewers_map(self) -> dict:
-        """uuid → {name, avatar}."""
+    def reviewer_team(self, reviewer):
+        """검수자의 team_id(서버가 요청별로 팀 스코핑에 사용)."""
+        rows = self._get("reviewers", f"select=team_id&id=eq.{urllib.parse.quote(reviewer)}")
+        return rows[0].get("team_id") if rows else None
+
+    def reviewers_map(self, team=None) -> dict:
+        q = "select=id,name,avatar"
+        if team:
+            q += f"&team_id=eq.{urllib.parse.quote(team)}"
         out = {}
-        for r in self._get("reviewers", "select=id,name,avatar"):
+        for r in self._get("reviewers", q):
             out[r["id"]] = {"name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil"}
         return out
 
+    def ensure_team(self, uid, mode="create", name=None, code=None):
+        """팀 생성/가입 → team_id. join: 초대코드 조회. create: 코드 생성·삽입."""
+        if mode == "join" and code:
+            rows = self._get("teams", f"select=id&invite_code=eq.{urllib.parse.quote(code.strip().upper())}")
+            return rows[0]["id"] if rows else None
+        import hashlib
+        ic = hashlib.sha1(f"{uid}{name}{time.time()}".encode()).hexdigest()[:8].upper()
+        rows = self._req("POST", "teams", body=[{"name": name or "내 팀", "invite_code": ic, "created_by": uid}],
+                         prefer="return=representation")
+        return rows[0]["id"] if rows else None
+
+    def team_info(self, team_id):
+        if not team_id:
+            return None
+        rows = self._get("teams", f"select=id,name,invite_code,created_by&id=eq.{urllib.parse.quote(team_id)}")
+        return rows[0] if rows else None
+
+    def team_members(self, team) -> list:
+        rows = self._get("reviewers", f"select=id,name,avatar&team_id=eq.{urllib.parse.quote(team)}&order=name")
+        return [{"id": r["id"], "name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil"} for r in rows]
+
+    def is_team_admin(self, uid, team) -> bool:
+        t = self.team_info(team)
+        return bool(t and uid and t.get("created_by") == uid)
+
+    def clear_team_feedback(self, team):
+        self._req("DELETE", "feedback", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+
+    def clear_team_contents(self, team):
+        self._req("DELETE", "contents", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+
+    def remove_member(self, team, member_id):
+        """팀원 제거(team_id 해제). 본인 데이터(feedback)는 남김."""
+        self._req("PATCH", "reviewers", query=f"id=eq.{urllib.parse.quote(member_id)}&team_id=eq.{urllib.parse.quote(team)}",
+                  body={"team_id": None}, prefer="return=minimal")
+
+    # ── 골든셋(팀별, 관리자 등록) ──
+    def register_golden(self, team, rows):
+        """팀 골든셋 교체(기존 삭제 후 등록). rows: [{content, expected}]."""
+        self.clear_golden(team)
+        payload = [{"team_id": team, "content": r.get("content"), "expected": r.get("expected")}
+                   for r in rows if r.get("content") and r.get("expected")]
+        for i in range(0, len(payload), 500):
+            self._req("POST", "golden", body=payload[i:i + 500], prefer="return=minimal")
+        return len(payload)
+
+    def get_golden(self, team, limit=1000):
+        rows = self._get("golden", f"select=content,expected&team_id=eq.{urllib.parse.quote(team)}&limit={int(limit)}")
+        return [{"content": r["content"], "expected": r["expected"]} for r in rows]
+
+    def golden_count(self, team):
+        return len(self._get("golden", f"select=id&team_id=eq.{urllib.parse.quote(team)}"))
+
+    def clear_golden(self, team):
+        self._req("DELETE", "golden", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+
     # ── 피드백(다중 의견) + REAP ──────────────────────────────────────────
-    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)"):
-        self._upsert("feedback", [{
-            "content_hash": content_hash, "reviewer_id": reviewer,
-            "service": service or "", "title": title or "",
-            "verdict": verdict or "", "stage": stage or "analyze", "note": note or "",
-        }])
+    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None):
+        row = {"content_hash": content_hash, "reviewer_id": reviewer,
+               "service": service or "", "title": title or "",
+               "verdict": verdict or "", "stage": stage or "analyze", "note": note or ""}
+        if team:
+            row["team_id"] = team
+        self._upsert("feedback", [row])
 
     def save_reap(self, content_hash, reviewer, reap: dict):
         q = f"content_hash=eq.{urllib.parse.quote(content_hash)}&reviewer_id=eq.{urllib.parse.quote(reviewer)}"
@@ -97,13 +164,16 @@ class SupabaseStore:
                  "ask": r.get("reap_ask"), "plan": r.get("reap_plan"), "stage": r.get("stage")}
                 for r in rows if (r.get("reap_plan") or "").strip()]
 
-    def _all_feedback(self) -> list:
-        return self._get("feedback", "select=content_hash,reviewer_id,verdict,stage,note,reap_plan,title,service,ts")
+    def _all_feedback(self, team=None) -> list:
+        q = "select=content_hash,reviewer_id,verdict,stage,note,reap_plan,title,service,ts"
+        if team:
+            q += f"&team_id=eq.{urllib.parse.quote(team)}"
+        return self._get("feedback", q)
 
-    def feedback_map(self) -> dict:
+    def feedback_map(self, team=None) -> dict:
         """content_hash → 합의 집계(SQLite 와 동일 shape). reviewer 라벨은 표시명."""
-        names = self.reviewers_map()
-        rows = sorted(self._all_feedback(), key=lambda r: r.get("ts") or "")
+        names = self.reviewers_map(team)
+        rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "")
         out = {}
         for r in rows:
             ch = r["content_hash"]
@@ -126,8 +196,8 @@ class SupabaseStore:
             e["stage"], e["note"] = last["stage"], last["note"]
         return out
 
-    def feedback_stats(self) -> dict:
-        rows = self._all_feedback()
+    def feedback_stats(self, team=None) -> dict:
+        rows = self._all_feedback(team)
         good = sum(1 for r in rows if r.get("verdict") == "good")
         bad = sum(1 for r in rows if r.get("verdict") == "bad")
         learned = sum(1 for r in rows if r.get("verdict") == "bad" and (r.get("reap_plan") or r.get("note")))
@@ -140,9 +210,9 @@ class SupabaseStore:
         return {"total": len(rows), "good": good, "bad": bad, "learned": learned,
                 "contents": contents, "reviewers": reviewers, "split": split}
 
-    def learned_by_stage(self, limit_per_stage: int = 20) -> dict:
+    def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
-        rows = sorted(self._all_feedback(), key=lambda r: r.get("ts") or "", reverse=True)
+        rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "", reverse=True)
         for r in rows:
             if r.get("verdict") != "bad":
                 continue
@@ -152,10 +222,10 @@ class SupabaseStore:
                 out[st].append(f"- {text}")
         return {k: "\n".join(v) for k, v in out.items() if v}
 
-    def arena_stats(self, target: float = 0.9) -> dict:
+    def arena_stats(self, target: float = 0.9, team=None) -> dict:
         """팀 정확도 + 리더보드(점수·레벨·스트릭). SQLite 와 동일 shape."""
-        names = self.reviewers_map()
-        rows = self._all_feedback()
+        names = self.reviewers_map(team)
+        rows = self._all_feedback(team)
         DAY = 86400.0
         now = time.time()
         today = int(now // DAY)
@@ -201,7 +271,7 @@ class SupabaseStore:
                 "week_reviews": 0, "accuracy_delta": 0.0, "target": target, "leaderboard": leaderboard}
 
     # ── 검토 콘텐츠 동기화 + 큐 + retention ────────────────────────────────
-    def sync_contents(self, pairs, source: str = "단건"):
+    def sync_contents(self, pairs, source: str = "단건", team=None):
         """검토 대상(review=='yellow')만 prism.contents 로 upsert(파이어호스 제외)."""
         from .store import content_hash
         rows = []
@@ -209,18 +279,22 @@ class SupabaseStore:
             qm = out.get("quality_meta", {}) or {}
             if (qm.get("review") or "") != "yellow":
                 continue                              # 검토 대상만
-            rows.append({"hash": content_hash(content), "service": content.get("displayServiceName", ""),
-                         "title": content.get("title", ""), "body": content.get("body", ""),
-                         "source": source, "final_grade": qm.get("finalGrade", ""),
-                         "item_meta": out.get("item_meta"), "quality_meta": qm,
-                         "review": qm.get("review", "")})
+            row = {"hash": content_hash(content), "service": content.get("displayServiceName", ""),
+                   "title": content.get("title", ""), "body": content.get("body", ""),
+                   "source": source, "final_grade": qm.get("finalGrade", ""),
+                   "item_meta": out.get("item_meta"), "quality_meta": qm,
+                   "review": qm.get("review", "")}
+            if team:
+                row["team_id"] = team
+            rows.append(row)
         self._upsert("contents", rows)
         return len(rows)
 
-    def review_queue(self, limit: int = 100, only_unreviewed: bool = True) -> list:
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None) -> list:
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("contents", "select=hash,service,title,final_grade,quality_meta,review,created_at"
-                         f"&review=eq.yellow&order=created_at.desc&limit={int(limit) * 4}")
-        reviewed = {r["content_hash"] for r in self._get("feedback", "select=content_hash")}
+                         f"&review=eq.yellow{tq}&order=created_at.desc&limit={int(limit) * 4}")
+        reviewed = {r["content_hash"] for r in self._get("feedback", "select=content_hash" + tq)}
         out = []
         for r in rows:
             is_rev = r["hash"] in reviewed
@@ -250,9 +324,10 @@ class SupabaseStore:
         g = sum(1 for r in rows if r.get("final_grade") == "G")
         return {"total": n, "g": g, "r": n - g, "gPct": round(g / n * 100) if n else 0}
 
-    def recent_meta(self, limit: int = 200) -> list:
+    def recent_meta(self, limit: int = 200, team=None) -> list:
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,source"
-                         f"&order=created_at.desc&limit={int(limit)}")
+                         f"{tq}&order=created_at.desc&limit={int(limit)}")
         out = []
         for r in rows:
             im = r.get("item_meta") or {}
@@ -262,9 +337,10 @@ class SupabaseStore:
                         "category": cat, "source": r.get("source") or "단건"})
         return out
 
-    def recent(self, limit: int = 5000) -> list:
+    def recent(self, limit: int = 5000, team=None) -> list:
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("contents", "select=item_meta,quality_meta"
-                         f"&order=created_at.desc&limit={int(limit)}")
+                         f"{tq}&order=created_at.desc&limit={int(limit)}")
         out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {}} for r in rows]
         out.reverse()
         return out
@@ -279,11 +355,11 @@ class SupabaseStore:
         return None
 
     # 호환: serve 가 부르는 이름들(검토 콘텐츠 동기화로 위임)
-    def save_many(self, pairs, run_id="", source="단건"):
-        return self.sync_contents(pairs, source)
+    def save_many(self, pairs, run_id="", source="단건", team=None):
+        return self.sync_contents(pairs, source, team=team)
 
-    def save_dedup(self, pairs, run_id="", source="단건"):
-        n = self.sync_contents(pairs, source)
+    def save_dedup(self, pairs, run_id="", source="단건", team=None):
+        n = self.sync_contents(pairs, source, team=team)
         return {"inserted": n, "updated": 0, "skipped": 0}
 
 
