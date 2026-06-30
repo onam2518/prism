@@ -864,6 +864,32 @@ def register_reviewer(data: dict) -> dict:
     return {"ok": True, "team": info}                # info.invite_code 로 초대코드 표시
 
 
+def admin_data(uid, team) -> dict:
+    """팀 관리: 팀 정보·멤버·관리자 여부. supabase 전용."""
+    st = get_store()
+    if not (st and team and hasattr(st, "team_members")):
+        return {"ok": False, "isAdmin": False, "team": None, "members": []}
+    return {"ok": True, "isAdmin": st.is_team_admin(uid, team),
+            "team": st.team_info(team), "members": st.team_members(team)}
+
+
+def admin_action(uid, team, data) -> dict:
+    """관리자 액션(데이터 삭제·멤버 제거). 팀 생성자만."""
+    st = get_store()
+    if not (st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team)):
+        return {"ok": False, "error": "관리자 전용입니다"}
+    act = data.get("action")
+    if act == "clear_feedback":
+        st.clear_team_feedback(team)
+    elif act == "clear_contents":
+        st.clear_team_contents(team)
+    elif act == "remove_member" and data.get("member"):
+        st.remove_member(team, data["member"])
+    else:
+        return {"ok": False, "error": "알 수 없는 액션"}
+    return {"ok": True}
+
+
 def arena_data(team=None) -> dict:
     """평가 아레나(게임화) 데이터: 팀 정확도 + 리더보드 + 검수 대기(퀘스트). team 별 스코핑."""
     st = get_store()
@@ -1166,6 +1192,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(dashboard_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/arena"):
             self._send(200, json.dumps(arena_data(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/admin"):
+            self._send(200, json.dumps(admin_data(self._bearer_uid(), self._req_team()),
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/queue"):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
@@ -1338,6 +1367,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/admin"):
+            try:
+                self._send(200, json.dumps(admin_action(self._bearer_uid(), self._req_team(),
+                           json.loads(body or b"{}")), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/presence"):
             try:
                 p = json.loads(body or b"{}")
@@ -1455,6 +1492,7 @@ PAGE = """<!doctype html>
         prompt: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 9l3 3-3 3M13 15h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         intake: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 5h18l-7 8v5l-4 2v-7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
         review: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 11l2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.5"/></svg>',
+        admin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M3 20a6 6 0 0 1 12 0M16 7l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         arena: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0V4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18 5h2.5a2 2 0 0 1 0 4H18M6 5H3.5a2 2 0 0 0 0 4H6" stroke="currentColor" stroke-width="1.6"/></svg>',
       },
       mods: [
@@ -1474,6 +1512,8 @@ PAGE = """<!doctype html>
           { id: 'dict', label: '사전 · 정책 관리', ic: 'dict' },
           { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' },
           { id: 'intake', label: '인입 정책', ic: 'intake' } ] },
+        { g: '팀', items: [
+          { id: 'admin', label: '팀 관리', ic: 'admin', cond: 'supabase' } ] },
       ],
       // 위젯 홈 인터랙션 상태
       settingsOpen: false, chatOpen: false, addMenuOpen: false, editing: false, theme: 'light',
@@ -1494,6 +1534,7 @@ PAGE = """<!doctype html>
       ],
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
+      adminData: null,        // 팀 관리(supabase)
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
       loading: false,
@@ -1580,7 +1621,7 @@ PAGE = """<!doctype html>
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 — 검수할수록 게이지가 차오르고 기여가 점수로', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 추출 trace·fallback·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 — 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 추출 trace·fallback·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -1588,6 +1629,7 @@ PAGE = """<!doctype html>
         if (id === 'home' || id === 'dash' || id === 'queue' || id === 'eval') this.loadDash();
         else if (id === 'review') this.loadQueue();
         else if (id === 'arena') this.loadArena();
+        else if (id === 'admin') this.loadAdmin();
         else if (id === 'quality') this.loadTopics();
         else if (id === 'dict' || id === 'intake') this.loadDict();
         else if (id === 'user') this.loadUser();
@@ -1710,6 +1752,15 @@ PAGE = """<!doctype html>
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
       async loadQueue() { this.modBusy = true; try { this.queueData = await (await fetch('/queue' + (this.queueOnlyUnreviewed ? '' : '?all=1'))).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { this.arenaData = await (await fetch('/arena')).json(); } catch (e) {} },
+      async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) {} },
+      async adminAct(action, member) {
+        if (action === 'clear_feedback' && !confirm('우리 팀의 평가 피드백을 모두 삭제할까요?')) return;
+        if (action === 'clear_contents' && !confirm('우리 팀의 검토 콘텐츠를 모두 삭제할까요?')) return;
+        try { await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: action, member: member }) }); } catch (e) {}
+        this.loadAdmin();
+      },
+      copyInvite() { try { navigator.clipboard.writeText((this.adminData && this.adminData.team && this.adminData.team.invite_code) || ''); this.inviteCopied = true; setTimeout(() => { this.inviteCopied = false; }, 1500); } catch (e) {} },
+      inviteCopied: false,
       // 결과 출처 필터(자동 인입/단건/배치)
       get srcOptions() { const s = new Set(((this.dashData && this.dashData.contents) || []).map((c) => c.source || '단건')); return [...s]; },
       get filteredContents() { const cs = (this.dashData && this.dashData.contents) || []; return this.srcFilter ? cs.filter((c) => (c.source || '단건') === this.srcFilter) : cs; },
@@ -2430,6 +2481,8 @@ PAGE = """<!doctype html>
   .charpick__opt span{font-size:10.5px;color:var(--ds-muted);font-weight:600}
   .charpick__opt.sel{border-color:var(--ds-violet,#20808d);background:var(--ds-violet-tint,#e5f2f2);box-shadow:0 0 0 2px var(--ds-violet-tint,#e5f2f2)}
   .charpick__opt.sel span{color:var(--ds-violet,#20808d)}
+  .invite{display:flex;align-items:center;justify-content:space-between;gap:14px}
+  .invite__code{font-family:var(--ds-font-mono,ui-monospace);font-size:26px;font-weight:800;letter-spacing:.12em;color:var(--ds-violet,#20808d)}
   /* ── 평가 아레나(게임화) ── */
   .arena-hero{background:linear-gradient(135deg,var(--ds-violet,#20808d),var(--ds-violet-deep,#13343b));
     color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 10px 30px rgba(19,52,59,.22)}
@@ -2732,10 +2785,10 @@ PAGE = """<!doctype html>
         </button>
       </nav>
       <template x-for="grp in mods" x-bind:key="grp.g">
-        <nav class="ds-navgroup">
+        <nav class="ds-navgroup" x-show="grp.g !== '팀' || backend === 'supabase'">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
-            <button type="button" class="ds-navitem" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+            <button type="button" class="ds-navitem" x-show="!it.cond || backend === it.cond" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
               <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
               <span x-text="it.label"></span>
             </button>
@@ -3458,6 +3511,41 @@ PAGE = """<!doctype html>
           </div></div>
           <p class="text-xs text-muted">정량 평가(ROUGE·정확도 게이트)는 정답셋 연동 시 활성화됩니다(계획)</p>
         </div>
+      </div>
+
+      <!-- ═══ 모듈: 팀 관리 (멀티테넌시) ═══ -->
+      <div x-show="mod === 'admin'" x-cloak class="w-full space-y-4">
+        <section class="panel"><div class="panel-hd"><b>팀 정보</b><span class="meta" x-text="adminData&&adminData.team ? adminData.team.name : ''"></span></div>
+          <div class="panel-bd">
+            <div class="invite">
+              <div><div class="text-xs text-muted" style="margin-bottom:4px">초대 코드 — 팀원에게 공유하면 같은 팀으로 참가합니다</div>
+                <div class="invite__code" x-text="adminData&&adminData.team ? adminData.team.invite_code : '—'"></div></div>
+              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="copyInvite()" x-text="inviteCopied ? '복사됨 ✓' : '복사'"></button>
+            </div>
+          </div>
+        </section>
+        <section class="panel"><div class="panel-hd"><b>멤버</b><span class="meta" x-text="(adminData&&adminData.members?adminData.members.length:0)+'명'"></span></div>
+          <div class="panel-bd">
+            <template x-for="m in (adminData?adminData.members:[])" x-bind:key="m.id">
+              <div class="lb-row">
+                <span class="lb-av" data-tier="0"><img x-bind:src="charImg(m.avatar)" alt=""></span>
+                <span class="lb-name" x-text="m.name + (adminData.team && m.id===adminData.team.created_by ? ' (관리자)' : '')"></span>
+                <button type="button" x-show="adminData&&adminData.isAdmin && adminData.team && m.id!==adminData.team.created_by" class="ds-btn ds-btn--secondary" style="height:28px;padding:0 11px" x-on:click="adminAct('remove_member', m.id)">제거</button>
+              </div>
+            </template>
+            <div x-show="!(adminData&&adminData.members&&adminData.members.length)" class="text-xs text-muted" style="padding:8px">멤버가 없습니다</div>
+          </div>
+        </section>
+        <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>데이터 관리</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
+          <div class="panel-bd">
+            <p class="text-xs text-muted" style="margin-bottom:10px">우리 팀 데이터만 삭제됩니다(다른 팀 무영향). 되돌릴 수 없습니다.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_feedback')">평가 피드백 전체 삭제</button>
+              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_contents')">검토 콘텐츠 전체 삭제</button>
+            </div>
+          </div>
+        </section>
+        <div x-show="adminData && !adminData.isAdmin" class="text-xs text-muted" style="padding:4px">데이터 삭제·멤버 관리는 팀 관리자(생성자)만 가능합니다.</div>
       </div>
 
       <!-- ═══ 모듈: 평가 아레나 (게임화) — 팀 정확도 협동 스코어 + 리더보드 ═══ -->

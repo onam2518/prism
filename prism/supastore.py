@@ -100,6 +100,25 @@ class SupabaseStore:
         rows = self._get("teams", f"select=id,name,invite_code,created_by&id=eq.{urllib.parse.quote(team_id)}")
         return rows[0] if rows else None
 
+    def team_members(self, team) -> list:
+        rows = self._get("reviewers", f"select=id,name,avatar&team_id=eq.{urllib.parse.quote(team)}&order=name")
+        return [{"id": r["id"], "name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil"} for r in rows]
+
+    def is_team_admin(self, uid, team) -> bool:
+        t = self.team_info(team)
+        return bool(t and uid and t.get("created_by") == uid)
+
+    def clear_team_feedback(self, team):
+        self._req("DELETE", "feedback", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+
+    def clear_team_contents(self, team):
+        self._req("DELETE", "contents", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+
+    def remove_member(self, team, member_id):
+        """팀원 제거(team_id 해제). 본인 데이터(feedback)는 남김."""
+        self._req("PATCH", "reviewers", query=f"id=eq.{urllib.parse.quote(member_id)}&team_id=eq.{urllib.parse.quote(team)}",
+                  body={"team_id": None}, prefer="return=minimal")
+
     # ── 피드백(다중 의견) + REAP ──────────────────────────────────────────
     def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None):
         row = {"content_hash": content_hash, "reviewer_id": reviewer,
