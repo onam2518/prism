@@ -65,6 +65,34 @@ def run_reap(llm, fb: dict) -> dict:
     return out
 
 
+META_SYSTEM = (
+    "너는 프롬프트 개선 '메타컴파일러'다. 한 단계(추출/분석/검수/판정)에 대한 여러 검수자의 교정 "
+    "피드백 묶음을 받아 다음 추출 프롬프트에 넣을 '정제된 개선 지시'로 컴파일한다.\n"
+    "- 중복·유사 항목은 하나로 병합. 자주 반복되는 교정을 우선(앞에).\n"
+    "- 서로 충돌하는 지적은 directive 에 억지로 합치지 말고 ambiguities 로 분리한다"
+    "(= 가이드가 모호하다는 신호 → 명확화 필요).\n"
+    "반드시 JSON 만: {\"directive\": \"명령형 1~5줄, 일반화·구체적\", \"ambiguities\": [\"무엇에 대해 의견이 갈리는지\", ...]}"
+)
+
+
+def meta_compile(llm, stage: str, raw_text: str) -> dict:
+    """한 단계의 누적 검수 피드백(plan 묶음) → {directive, ambiguities}. 다수 의견을 병합·정리하고
+    충돌은 '명확화 필요'로 분리. 키 없으면 mock(원문 일부)."""
+    if not (raw_text or "").strip():
+        return {"stage": stage, "directive": "", "ambiguities": []}
+    if getattr(llm, "mock", False):
+        return {"stage": stage, "directive": raw_text.strip()[:400], "ambiguities": []}
+    try:
+        obj, _res = llm.complete_json(META_SYSTEM, f"[단계] {stage}\n[검수자 피드백 묶음]\n{raw_text}",
+                                      tag="metacompile")
+    except Exception as e:
+        print(f"  [warn] meta_compile 실패: {e}")
+        obj = {}
+    return {"stage": stage,
+            "directive": (obj.get("directive") or "").strip() or raw_text.strip(),
+            "ambiguities": obj.get("ambiguities") or []}
+
+
 def _mock_reap(fb: dict) -> dict:
     note = (fb.get("note") or "").strip() or "(메모 없음)"
     stage = fb.get("stage", "analyze")

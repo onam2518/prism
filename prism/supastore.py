@@ -119,6 +119,26 @@ class SupabaseStore:
         self._req("PATCH", "reviewers", query=f"id=eq.{urllib.parse.quote(member_id)}&team_id=eq.{urllib.parse.quote(team)}",
                   body={"team_id": None}, prefer="return=minimal")
 
+    # ── 골든셋(팀별, 관리자 등록) ──
+    def register_golden(self, team, rows):
+        """팀 골든셋 교체(기존 삭제 후 등록). rows: [{content, expected}]."""
+        self.clear_golden(team)
+        payload = [{"team_id": team, "content": r.get("content"), "expected": r.get("expected")}
+                   for r in rows if r.get("content") and r.get("expected")]
+        for i in range(0, len(payload), 500):
+            self._req("POST", "golden", body=payload[i:i + 500], prefer="return=minimal")
+        return len(payload)
+
+    def get_golden(self, team, limit=1000):
+        rows = self._get("golden", f"select=content,expected&team_id=eq.{urllib.parse.quote(team)}&limit={int(limit)}")
+        return [{"content": r["content"], "expected": r["expected"]} for r in rows]
+
+    def golden_count(self, team):
+        return len(self._get("golden", f"select=id&team_id=eq.{urllib.parse.quote(team)}"))
+
+    def clear_golden(self, team):
+        self._req("DELETE", "golden", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+
     # ── 피드백(다중 의견) + REAP ──────────────────────────────────────────
     def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None):
         row = {"content_hash": content_hash, "reviewer_id": reviewer,
@@ -190,9 +210,9 @@ class SupabaseStore:
         return {"total": len(rows), "good": good, "bad": bad, "learned": learned,
                 "contents": contents, "reviewers": reviewers, "split": split}
 
-    def learned_by_stage(self, limit_per_stage: int = 20) -> dict:
+    def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
-        rows = sorted(self._all_feedback(), key=lambda r: r.get("ts") or "", reverse=True)
+        rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "", reverse=True)
         for r in rows:
             if r.get("verdict") != "bad":
                 continue

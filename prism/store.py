@@ -326,9 +326,9 @@ class Store:
                         "plan": pl, "stage": st})
         return out
 
-    def learned_by_stage(self, limit_per_stage: int = 20) -> dict:
+    def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
         """문제(bad) 피드백을 단계별로 모아 학습 보정 텍스트로 컴파일.
-        REAP plan 이 있으면 그것을(가공된 개선 지시), 없으면 raw 메모를 사용."""
+        REAP plan 이 있으면 그것을(가공된 개선 지시), 없으면 raw 메모를 사용. team 은 통일용(sqlite 무시)."""
         c = self._conn()
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
         for stage, note, plan in c.execute(

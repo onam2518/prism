@@ -864,13 +864,58 @@ def register_reviewer(data: dict) -> dict:
     return {"ok": True, "team": info}                # info.invite_code 로 초대코드 표시
 
 
+def eval_golden(team=None) -> dict:
+    """프로세스 1 — 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용."""
+    st = get_store()
+    if not (st and hasattr(st, "get_golden")):
+        return {"ok": False, "error": "골든셋 평가는 Supabase 모드 전용입니다"}
+    rows = st.get_golden(team)
+    if not rows:
+        return {"ok": False, "error": "등록된 골든셋이 없습니다 — 팀 관리에서 등록하세요"}
+    from . import abtest
+    from . import harness as H
+    cfg = Config.load()
+    llm = make_text_llm(cfg, Handler.server_mock)
+    m = abtest.evaluate(rows[:300], H.Methodology(name="원천"), llm, concurrency=8)
+    m["ok"] = True
+    m["evaluated"] = min(len(rows), 300)
+    return m
+
+
+def register_golden(uid, team, rows) -> dict:
+    """관리자가 팀 골든셋 등록(교체). rows: [{content, expected}]."""
+    st = get_store()
+    if not (st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team)):
+        return {"ok": False, "error": "관리자 전용입니다"}
+    n = st.register_golden(team, [r for r in rows if isinstance(r, dict) and r.get("content") and r.get("expected")])
+    return {"ok": True, "count": n}
+
+
+def meta_compile_run(team=None) -> dict:
+    """메타컴파일러: 팀의 단계별 누적 검수 피드백을 병합·충돌정리 → 정제 지시. LEARNED 갱신.
+    반환: {results:{stage:{directive,ambiguities}}} (불일치=가이드 명확화 신호 표면화)."""
+    st = get_store()
+    if not st:
+        return {"ok": False, "error": "store unavailable"}
+    cfg = Config.load()
+    llm = make_text_llm(cfg, Handler.server_mock)
+    raw = st.learned_by_stage(team=team)
+    results = {}
+    for stage, text in raw.items():
+        results[stage] = FL.meta_compile(llm, stage, text)
+    # 컴파일된 directive 를 단계 프롬프트(LEARNED)로 반영 — raw 누적 대체
+    PR.LEARNED = {k: (results.get(k, {}).get("directive") or "") for k in ("extract", "analyze", "review", "judge")}
+    return {"ok": True, "results": results}
+
+
 def admin_data(uid, team) -> dict:
     """팀 관리: 팀 정보·멤버·관리자 여부. supabase 전용."""
     st = get_store()
     if not (st and team and hasattr(st, "team_members")):
         return {"ok": False, "isAdmin": False, "team": None, "members": []}
+    gc = st.golden_count(team) if hasattr(st, "golden_count") else 0
     return {"ok": True, "isAdmin": st.is_team_admin(uid, team),
-            "team": st.team_info(team), "members": st.team_members(team)}
+            "team": st.team_info(team), "members": st.team_members(team), "goldenCount": gc}
 
 
 def admin_action(uid, team, data) -> dict:
@@ -1375,6 +1420,36 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/meta-compile"):
+            try:
+                self._send(200, json.dumps(meta_compile_run(self._req_team()),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/eval-golden"):       # 등록 골든셋으로 평가 실행
+            try:
+                self._send(200, json.dumps(eval_golden(self._req_team()), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/golden"):            # 관리자: 골든셋 등록(.jsonl 업로드)
+            try:
+                ctype = self.headers.get("Content-Type", "")
+                if "multipart/form-data" in ctype:
+                    f = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip()).get("file")
+                    raw = f.get("bytes", b"") if isinstance(f, dict) else b""
+                else:
+                    raw = body
+                rows = [json.loads(ln) for ln in raw.decode("utf-8", "replace").splitlines() if ln.strip()]
+                self._send(200, json.dumps(register_golden(self._bearer_uid(), self._req_team(), rows),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/presence"):
             try:
                 p = json.loads(body or b"{}")
@@ -1535,6 +1610,9 @@ PAGE = """<!doctype html>
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
       adminData: null,        // 팀 관리(supabase)
+      // 평가 2탭: 원천(골든셋) / 실시간(메타컴파일)
+      evalTab: 'golden', goldenResult: null, goldenBusy: false, goldenMsg: '',
+      metaResults: null, metaBusy: false,
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
       loading: false,
@@ -1753,6 +1831,25 @@ PAGE = """<!doctype html>
       async loadQueue() { this.modBusy = true; try { this.queueData = await (await fetch('/queue' + (this.queueOnlyUnreviewed ? '' : '?all=1'))).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { this.arenaData = await (await fetch('/arena')).json(); } catch (e) {} },
       async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) {} },
+      async runGolden() {
+        this.goldenBusy = true; this.goldenResult = null;
+        try { this.goldenResult = await (await fetch('/eval-golden', { method: 'POST', headers: this._authHeaders() })).json(); } catch (e) {}
+        this.goldenBusy = false;
+      },
+      async runMetaCompile() {
+        this.metaBusy = true;
+        try { const r = await (await fetch('/meta-compile', { method: 'POST', headers: this._authHeaders() })).json(); this.metaResults = r.results || null; } catch (e) {}
+        this.metaBusy = false; this.loadPromptDefaults();
+      },
+      async registerGolden(ev) {
+        const f = ev.target.files && ev.target.files[0]; if (!f) return;
+        this.goldenMsg = '등록 중…';
+        const fd = new FormData(); fd.append('file', f);
+        const h = {}; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken;
+        try { const r = await (await fetch('/golden', { method: 'POST', headers: h, body: fd })).json(); this.goldenMsg = r.ok ? ('✓ 등록됨 ' + r.count + '건') : (r.error || '실패'); this.loadAdmin(); }
+        catch (e) { this.goldenMsg = '오류'; }
+        ev.target.value = '';
+      },
       async adminAct(action, member) {
         if (action === 'clear_feedback' && !confirm('우리 팀의 평가 피드백을 모두 삭제할까요?')) return;
         if (action === 'clear_contents' && !confirm('우리 팀의 검토 콘텐츠를 모두 삭제할까요?')) return;
@@ -2481,6 +2578,16 @@ PAGE = """<!doctype html>
   .charpick__opt span{font-size:10.5px;color:var(--ds-muted);font-weight:600}
   .charpick__opt.sel{border-color:var(--ds-violet,#20808d);background:var(--ds-violet-tint,#e5f2f2);box-shadow:0 0 0 2px var(--ds-violet-tint,#e5f2f2)}
   .charpick__opt.sel span{color:var(--ds-violet,#20808d)}
+  .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,#f0f0ea);padding:4px;border-radius:11px;max-width:520px}
+  .evaltabs button{flex:1;height:36px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
+  .evaltabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .goldgrid{display:flex;align-items:center;gap:24px;margin-top:16px;flex-wrap:wrap}
+  .goldbig__v{font-size:42px;font-weight:800;color:var(--ds-violet,#20808d);line-height:1}
+  .goldbig__l{font-size:11px;color:var(--ds-muted);margin-top:3px}
+  .goldstat{display:flex;flex-direction:column} .goldstat b{font-size:20px;font-weight:800;color:var(--ds-ink)} .goldstat span{font-size:10.5px;color:var(--ds-muted)}
+  .metarow{display:flex;gap:10px;padding:11px 6px;border-bottom:1px solid var(--ds-hairline-soft)}
+  .metarow__dir{font-size:13px;color:var(--ds-ink);line-height:1.55}
+  .metarow__amb{font-size:11.5px;color:#c0392b;margin-top:4px;line-height:1.5}
   .invite{display:flex;align-items:center;justify-content:space-between;gap:14px}
   .invite__code{font-family:var(--ds-font-mono,ui-monospace);font-size:26px;font-weight:800;letter-spacing:.12em;color:var(--ds-violet,#20808d)}
   /* ── 평가 아레나(게임화) ── */
@@ -3457,6 +3564,61 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 검증 · 평가 ═══ -->
       <div x-show="mod === 'eval'" x-cloak class="w-full space-y-4">
+        <!-- 평가 2탭: ① 원천(골든셋) ② 실시간(메타컴파일) -->
+        <div class="evaltabs">
+          <button type="button" x-bind:class="evalTab==='golden'?'sel':''" x-on:click="evalTab='golden'">① 원천 평가 · 골든셋</button>
+          <button type="button" x-bind:class="evalTab==='live'?'sel':''" x-on:click="evalTab='live'">② 실시간 튜닝 · 메타컴파일</button>
+        </div>
+
+        <!-- ① 원천 평가(골든셋): 기대 vs 실제 정합성 → 원천 프롬프트 수정 -->
+        <div x-show="evalTab === 'golden'" class="space-y-4">
+          <section class="panel"><div class="panel-hd"><b>원천 평가 · 골든셋 정합성</b><span class="meta">기대(정답) vs 실제</span></div>
+            <div class="panel-bd">
+              <p class="text-xs text-muted" style="margin-bottom:11px">관리자가 등록한 골든셋으로 <b class="text-ink">원천 프롬프트</b>의 정합성을 측정합니다. 낮으면 <b class="text-ink">프롬프트 스튜디오</b>에서 원천 프롬프트를 수정하고 다시 평가하세요. (골든셋 등록은 <b class="text-ink">팀 관리</b>)</p>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중…(원천 프롬프트로 전건 추출)' : '평가 실행'"></button>
+              <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
+              <template x-if="goldenResult && goldenResult.ok">
+                <div>
+                  <div class="goldgrid">
+                    <div class="goldbig"><div class="goldbig__v" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="goldbig__l">등급 정합성</div></div>
+                    <div class="goldstat"><b x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></b><span>유해 미탐</span></div>
+                    <div class="goldstat"><b x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></b><span>이유 일치</span></div>
+                    <div class="goldstat"><b x-text="goldenResult.evaluated"></b><span>평가 건</span></div>
+                  </div>
+                  <div style="margin-top:14px">
+                    <div class="text-xs text-muted" style="margin-bottom:6px">버킷별 정합성 — 어디가 새는지(원천 프롬프트 수정 우선순위)</div>
+                    <template x-for="(v,k) in (goldenResult.by_reason_bucket||{})" x-bind:key="k">
+                      <div class="ds-progress" style="margin:5px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="k+' ('+v.n+')'"></span><span class="ds-progress__pct" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
+                    </template>
+                  </div>
+                  <button type="button" class="ds-btn ds-btn--secondary" style="margin-top:12px" x-on:click="selectMod('prompt')">원천 프롬프트 수정하러 가기 →</button>
+                </div>
+              </template>
+            </div>
+          </section>
+        </div>
+
+        <!-- ② 실시간 튜닝(메타컴파일) -->
+        <div x-show="evalTab === 'live'" class="space-y-4">
+          <section class="panel"><div class="panel-hd"><b>실시간 튜닝 · 메타컴파일</b><span class="meta">여러 검수 의견 → 정제 지시</span>
+            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="metaBusy" x-on:click="runMetaCompile()" x-text="metaBusy ? '정리 중…' : '🧩 학습 정리'"></button>
+          </div>
+            <div class="panel-bd">
+              <p class="text-xs text-muted" style="margin-bottom:10px">실시간 검수 피드백(REAP plan)을 단계별로 <b class="text-ink">병합·중복제거</b>하고, 의견이 갈리는 부분은 <b class="text-ink">명확화 필요</b>로 분리해 파인튜닝 층(LEARNED)에 반영합니다.</p>
+              <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="stage">
+                <div x-show="metaResults && metaResults[stage] && (metaResults[stage].directive || (metaResults[stage].ambiguities||[]).length)" class="metarow">
+                  <span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
+                  <div style="flex:1;min-width:0">
+                    <div class="metarow__dir" x-text="metaResults&&metaResults[stage]?metaResults[stage].directive:''"></div>
+                    <template x-for="a in (metaResults&&metaResults[stage]?metaResults[stage].ambiguities:[])" x-bind:key="a">
+                      <div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+              <div x-show="!metaResults" class="text-xs text-muted"><b class="text-ink">🧩 학습 정리</b>를 누르면 누적 검수 피드백을 정제합니다</div>
+            </div>
+          </section>
         <!-- 콘텐츠별 평가 피드백 → 학습 루프(다음 추출 프롬프트에 자동 반영) -->
         <section class="panel" data-fn><div class="panel-hd"><b>콘텐츠별 평가 · 학습 루프</b>
           <span class="meta tnum" x-show="dashData && dashData.feedback" x-text="dashData ? ('평가 ' + dashData.feedback.total + ' · 학습 반영 ' + dashData.feedback.learned + '건') : ''"></span>
@@ -3511,6 +3673,7 @@ PAGE = """<!doctype html>
           </div></div>
           <p class="text-xs text-muted">정량 평가(ROUGE·정확도 게이트)는 정답셋 연동 시 활성화됩니다(계획)</p>
         </div>
+        </div><!-- /evalTab live -->
       </div>
 
       <!-- ═══ 모듈: 팀 관리 (멀티테넌시) ═══ -->
@@ -3534,6 +3697,13 @@ PAGE = """<!doctype html>
               </div>
             </template>
             <div x-show="!(adminData&&adminData.members&&adminData.members.length)" class="text-xs text-muted" style="padding:8px">멤버가 없습니다</div>
+          </div>
+        </section>
+        <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>골든셋</b><span class="meta" x-text="(adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록')"></span></div>
+          <div class="panel-bd">
+            <p class="text-xs text-muted" style="margin-bottom:10px">원천 평가의 정답셋. <b class="text-ink">{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다. (검증·평가 → 원천 평가에서 이 골든셋으로 정합성 측정)</p>
+            <label class="ds-btn ds-btn--secondary" style="cursor:pointer">골든셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
+            <span class="text-xs text-muted" style="margin-left:10px" x-text="goldenMsg"></span>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>데이터 관리</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
