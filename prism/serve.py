@@ -918,6 +918,32 @@ def admin_data(uid, team) -> dict:
             "team": st.team_info(team), "members": st.team_members(team), "goldenCount": gc}
 
 
+def admin_ingest(uid, team, endpoint, n) -> dict:
+    """관리자: 크롤러 엔드포인트에서 N건 당겨와 추출 → 전건 검토 대상으로 팀 큐 적재(배치).
+    실시간 스트리밍 부담 없이 관리자가 수량 목표로 트리거."""
+    st = get_store()
+    if not (st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team)):
+        return {"ok": False, "error": "관리자 전용입니다"}
+    n = max(1, min(int(n or 20), 200))             # 수량 상한(응답성)
+    from . import ingest as ING
+    rows, err = _fetch_records((endpoint or "").strip(), n, "GET", "")
+    if err:
+        return {"ok": False, "error": err}
+    try:
+        contents, _m = ING.to_contents_rows(rows[:n])
+    except Exception as e:
+        return {"ok": False, "error": f"형식 매핑 실패: {str(e)[:140]}"}
+    cfg = Config.load()
+    llm = make_text_llm(cfg, Handler.server_mock)
+    pairs = []
+    for c in contents:
+        out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+        out.setdefault("quality_meta", {})["review"] = "yellow"   # 인입 배치는 전건 검토 대상
+        pairs.append((c, out))
+    st.sync_contents(pairs, source="자동 인입", team=team)
+    return {"ok": True, "fetched": len(contents), "queued": len(pairs)}
+
+
 def admin_action(uid, team, data) -> dict:
     """관리자 액션(데이터 삭제·멤버 제거). 팀 생성자만."""
     st = get_store()
@@ -930,6 +956,8 @@ def admin_action(uid, team, data) -> dict:
         st.clear_team_contents(team)
     elif act == "remove_member" and data.get("member"):
         st.remove_member(team, data["member"])
+    elif act == "ingest":                          # 크롤러 수량 인입 → 검토 큐
+        return admin_ingest(uid, team, data.get("endpoint"), data.get("n"))
     else:
         return {"ok": False, "error": "알 수 없는 액션"}
     return {"ok": True}
@@ -1858,6 +1886,14 @@ PAGE = """<!doctype html>
       },
       copyInvite() { try { navigator.clipboard.writeText((this.adminData && this.adminData.team && this.adminData.team.invite_code) || ''); this.inviteCopied = true; setTimeout(() => { this.inviteCopied = false; }, 1500); } catch (e) {} },
       inviteCopied: false,
+      ingestEndpoint: '', ingestN: 20, ingestMsg: '', ingestBusy: false,
+      async ingestRun() {
+        if (!(this.ingestEndpoint || '').trim()) { this.ingestMsg = '크롤러 엔드포인트를 입력하세요'; return; }
+        this.ingestBusy = true; this.ingestMsg = '인입·추출 중…';
+        try { const r = await (await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'ingest', endpoint: this.ingestEndpoint, n: this.ingestN }) })).json();
+          this.ingestMsg = r.ok ? ('✓ ' + r.fetched + '건 인입 → 검수 큐 ' + r.queued + '건 적재') : (r.error || '실패'); } catch (e) { this.ingestMsg = '오류'; }
+        this.ingestBusy = false;
+      },
       // 결과 출처 필터(자동 인입/단건/배치)
       get srcOptions() { const s = new Set(((this.dashData && this.dashData.contents) || []).map((c) => c.source || '단건')); return [...s]; },
       get filteredContents() { const cs = (this.dashData && this.dashData.contents) || []; return this.srcFilter ? cs.filter((c) => (c.source || '단건') === this.srcFilter) : cs; },
@@ -3706,6 +3742,17 @@ PAGE = """<!doctype html>
             <p class="text-xs text-muted" style="margin-bottom:10px">원천 평가의 정답셋. <b class="text-ink">{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다. (검증·평가 → 원천 평가에서 이 골든셋으로 정합성 측정)</p>
             <label class="ds-btn ds-btn--secondary" style="cursor:pointer">골든셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
             <span class="text-xs text-muted" style="margin-left:10px" x-text="goldenMsg"></span>
+          </div>
+        </section>
+        <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>콘텐츠 인입 (검토용)</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
+          <div class="panel-bd">
+            <p class="text-xs text-muted" style="margin-bottom:10px">크롤러 엔드포인트에서 <b class="text-ink">수량 목표</b>로 당겨와 추출 → 전건을 팀 <b class="text-ink">검수 큐</b>에 적재합니다. 실시간 스트리밍 부담 없이 배치로.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 — JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
+              <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestBusy" x-on:click="ingestRun()" x-text="ingestBusy ? '인입 중…' : '인입 실행'"></button>
+            </div>
+            <span class="text-xs text-muted" style="display:block;margin-top:7px" x-text="ingestMsg"></span>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>데이터 관리</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
