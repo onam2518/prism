@@ -943,6 +943,7 @@ def config_status() -> dict:
         "forcedMock": Handler.server_mock,
         "backend": "supabase" if _supa() else "sqlite",
         "authRequired": bool(_supa()),                 # supabase 모드 → ID/PW 로그인 필요
+        "keyManagedByServer": bool(_supa()),           # 운영: 키는 서버 관리(UI 키 입력 숨김)
         # 모델 슬롯
         "hasBizKey": bool(IMG.router_key("bizrouter")),
         "bizPersisted": os.path.exists(_ROUTER_KEY_PATHS["bizrouter"]),
@@ -957,7 +958,11 @@ def config_status() -> dict:
 
 
 def apply_config(data: dict) -> dict:
-    """키/모델/엔드포인트/추론강도/추가지시 적용. 키만 프로세스 환경(+옵션 ~/.prism_key)."""
+    """키/모델/엔드포인트/추론강도/추가지시 적용. 키만 프로세스 환경(+옵션 ~/.prism_key).
+    운영(supabase·공유 서버): 키는 서버 env 전용 → 브라우저가 보낸 키 변경은 무시(서버 키 보호)."""
+    if backend_mode()[0] == "supabase":
+        data = {k: v for k, v in data.items()
+                if k not in ("api_key", "persist", "forget", "bizrouter_api_key", "timely_api_key")}
     key = (data.get("api_key") or "").strip()
     if key:
         os.environ["UPSTAGE_API_KEY"] = key
@@ -2352,6 +2357,9 @@ PAGE = """<!doctype html>
   .srcfilter__chip:hover{border-color:var(--ds-violet,#20808d)}
   .srcfilter__chip.sel{background:var(--ds-violet,#20808d);color:#fff;border-color:var(--ds-violet,#20808d)}
   .srcfilter__chip.sel span{color:rgba(255,255,255,.8)}
+  .keymanaged{padding:16px;border-radius:12px;background:var(--ds-violet-tint,#e5f2f2);border:1px solid var(--ds-hairline,#e4e4dc)}
+  .keymanaged b{display:block;font-size:14px;margin-bottom:6px}
+  .keymanaged p{font-size:12.5px;line-height:1.6;color:var(--ds-body,#2e3a3a);margin:0}
   /* ── 검수자 등록 온보딩(딤드 + 중앙 모달) ── */
   .onboard{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:24px;
     background:rgba(9,23,23,.55);backdrop-filter:blur(4px)}
@@ -2588,7 +2596,7 @@ PAGE = """<!doctype html>
         </span>
       </button>
       <!-- 연결 현황(다중): 제공자별 연결 상태를 모두 표시 -->
-      <button type="button" class="topbar__conn" x-on:click="settingsOpen = true" data-tip="키 설정" data-tip-pos="bottom" aria-label="연결 현황">
+      <button type="button" class="topbar__conn" x-on:click="if (!cfg.keyManagedByServer) settingsOpen = true" x-bind:data-tip="cfg.keyManagedByServer ? '연결 현황(서버 관리)' : '키 설정'" data-tip-pos="bottom" aria-label="연결 현황">
         <span x-show="cfg.forcedMock" class="conn-chip conn-chip--off"><span class="ds-statusdot ds-statusdot--mock"><span class="ds-statusdot__dot"></span></span>MOCK(강제)</span>
         <template x-if="!cfg.forcedMock && connCount === 0"><span class="conn-chip conn-chip--off"><span class="ds-statusdot ds-statusdot--mock"><span class="ds-statusdot__dot"></span></span>키 미설정</span></template>
         <template x-for="c in connList" x-bind:key="c.id">
@@ -2600,7 +2608,7 @@ PAGE = """<!doctype html>
       <a href="/report" target="_blank" rel="noreferrer" class="ds-iconbtn ds-iconbtn--bordered" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></a>
       <button type="button" x-show="mod === 'home'" x-on:click.stop="addMenuOpen = !addMenuOpen" class="ds-iconbtn ds-iconbtn--bordered" data-tip="위젯 추가" data-tip-pos="bottom" aria-label="위젯 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
       <button type="button" x-show="mod === 'home'" x-on:click="editing = !editing" x-bind:class="editing ? 'ds-iconbtn ds-iconbtn--bordered ds-iconbtn--active' : 'ds-iconbtn ds-iconbtn--bordered'" x-bind:data-tip="editing ? '편집 완료' : '편집'" data-tip-pos="bottom" aria-label="편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
-      <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="settingsOpen = true" data-tip="설정" data-tip-pos="bottom" aria-label="설정"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg></button>
+      <button type="button" x-show="!cfg.keyManagedByServer" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="settingsOpen = true" data-tip="설정" data-tip-pos="bottom" aria-label="설정"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg></button>
       <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="toggleTheme()" x-bind:data-tip="theme === 'dark' ? '라이트 모드' : '다크 모드'" data-tip-pos="bottom" aria-label="테마 전환">
         <svg x-show="theme !== 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         <svg x-show="theme === 'dark'" x-cloak width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -3666,6 +3674,13 @@ PAGE = """<!doctype html>
 
       <!-- ① API 키 -->
       <div x-show="cfgTab === 'keys'" class="cfgsec">
+        <!-- 운영(공유 서버): 키는 서버에서 관리 → 팀원은 입력 불필요 -->
+        <div x-show="cfg.keyManagedByServer" class="keymanaged">
+          <b class="text-ink">🔒 API 키는 서버에서 관리됩니다</b>
+          <p>공유 서버 모드입니다. 추출 키는 <b>관리자가 서버에 한 번</b> 설정하고, 팀원은 따로 키를 넣지 않아도 바로 사용합니다.
+            <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 서버에 키 미설정(관리자 확인 필요)'"></span></p>
+        </div>
+        <div x-show="!cfg.keyManagedByServer">
         <!-- 통합 라우터 카드 -->
         <div class="routercard">
           <div class="rc-h"><b>통합 라우터</b><span class="rc-badge">권장</span></div>
@@ -3725,6 +3740,7 @@ PAGE = """<!doctype html>
           이 기기에 저장 (재시작 후에도 유지)
         </label>
         <p class="mt-3 text-xs text-muted">키 저장 시 연결을 확인합니다 [모델] 탭에서는 연결된 제공자의 모델만 선택 가능합니다</p>
+        </div>
       </div>
 
       <!-- ③ 데이터 -->
