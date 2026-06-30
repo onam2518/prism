@@ -34,6 +34,15 @@ QUALITY_NORMAL = "normal"
 # 미디어 그룹 자동 비활성(검사 자체 미수행): format·political·hate (+ stale 제거됨)
 MEDIA_DISABLED_METAS = {"format", "political", "hate"}
 
+# 인입 정책: ITEM TYPE 별 필터·처리 정책(어드민 편집 가능). 131 체계.
+INTAKE_POLICY = {
+    "텍스트형": {"filter": "O", "method": "정상 분류(품질 메타 부여)", "status": "구현"},
+    "이미지형": {"filter": "△", "method": "GREEN 일괄 + 캡션 텍스트(시각 이해)", "status": "PoC"},
+    "영상형": {"filter": "X", "method": "GREEN 일괄(Argos 별도)", "status": "계획"},
+    "SNS형": {"filter": "X", "method": "서비스 자체 필터 후 인입", "status": "계획"},
+    "묶음형 · 데이터형": {"filter": "X", "method": "GREEN 일괄(고도화 과제)", "status": "계획"},
+}
+
 QUALITY_PRIORITY = [
     "graphic", "sexual", "hate", "political", "gambling",
     "profanity", "ad", "spam", "clickbait", "shallow", "format",
@@ -244,6 +253,7 @@ def apply_profile(prof: dict):
         "legal_types": "LEGAL_HARM_TYPES",
         "domain_groups": "DOMAIN_GROUP_MAP",
         "category_iab_map": "CATEGORY_IAB_MAP",
+        "intake_policy": "INTAKE_POLICY",
     }
     for pk, gk in keymap.items():
         if pk in prof:

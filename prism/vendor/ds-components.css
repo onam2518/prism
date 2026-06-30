@@ -245,7 +245,7 @@
   letter-spacing: -0.01em;
 }
 .ds-dialog__body { font-size: var(--ds-size-body); color: var(--ds-body); line-height: var(--ds-lh-normal); }
-.ds-dialog__footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.ds-dialog__footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 
 @keyframes ds-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ds-dialog-in {
@@ -466,7 +466,7 @@
   justify-content: center;
   overflow: hidden;
 }
-.ds-persona__avatar img { width: 80%; height: 80%; object-fit: contain; }
+.ds-persona__avatar img { width: 96%; height: 96%; object-fit: contain; }
 .ds-persona__name { font-family: var(--ds-font-sans); font-size: var(--ds-size-subtitle); font-weight: 600; color: var(--ds-ink); }
 .ds-persona__role { font-size: var(--ds-size-caption); color: var(--ds-muted); margin-top: 2px; }
 .ds-persona__desc { font-size: var(--ds-size-body); color: var(--ds-body); margin-top: 6px; line-height: var(--ds-lh-normal); }
@@ -787,22 +787,28 @@
 }
 .ds-pane__title small { font-size: var(--ds-size-caption); font-weight: 400; color: var(--ds-muted); }
 
+/* 사이드바 = 하나의 고정 위젯처럼 (라운드 카드). 위치/정렬은 레이아웃이 담당 */
 .ds-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 20px 16px;
-  border-right: 1px solid var(--ds-hairline);
+  gap: 4px;
+  padding: 14px 12px;
+  border: 1px solid var(--ds-hairline-soft);
+  border-radius: var(--ds-radius-xl);
+  background: var(--ds-surface);
+  box-shadow: 0 1px 2px rgba(9, 23, 23, 0.05), 0 8px 20px -8px rgba(9, 23, 23, 0.08), var(--ds-highlight);
+  height: fit-content;
 }
-.ds-navgroup { display: flex; flex-direction: column; gap: 2px; }
+.ds-navgroup { display: flex; flex-direction: column; gap: 1px; }
+/* 카테고리 사이 구분선 — 계층 분리 */
+.ds-navgroup + .ds-navgroup { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--ds-hairline-soft); }
 .ds-navgroup__label {
   font-family: var(--ds-font-sans);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--ds-placeholder);
-  padding: 0 10px 6px;
+  padding: 2px 10px 7px;
 }
 .ds-navitem {
   display: flex;
@@ -812,10 +818,10 @@
   border: 0;
   background: transparent;
   border-radius: var(--ds-radius-md);
-  padding: 8px 10px;
+  padding: 7px 10px;
   font-family: var(--ds-font-sans);
   font-size: var(--ds-size-label);
-  color: var(--ds-muted);
+  color: var(--ds-body);
   cursor: pointer;
   text-align: left;
   transition: background-color var(--ds-motion-fast) var(--ds-ease-standard), color var(--ds-motion-fast) var(--ds-ease-standard);
@@ -1091,7 +1097,7 @@
   justify-content: center;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
-.ds-personacard__art img { width: 74%; height: 74%; object-fit: contain; }
+.ds-personacard__art img { width: 86%; height: 86%; object-fit: contain; }
 .ds-personacard__stats { position: relative; display: flex; flex-direction: column; gap: 6px; }
 .ds-personacard__stat { display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .ds-personacard__stat > b { width: 44px; flex: none; font-weight: 500; opacity: 0.92; }
@@ -1162,3 +1168,276 @@
 [data-tip][data-tip-pos='top']::after { bottom: auto; top: -8px; transform: translate(-50%, -100%) scale(0.96); }
 [data-tip][data-tip-pos='top']:hover::after { transform: translate(-50%, -100%) scale(1); }
 @media (prefers-reduced-motion: reduce) { [data-tip]::after { transition: opacity var(--ds-motion-fast); } }
+
+/* ════════════════════════════════════════════════════════════
+   Widget & WidgetGrid — 기능 포함 자족 모듈 (폰 홈처럼 조립)
+   ════════════════════════════════════════════════════════════ */
+.ds-widgetgrid {
+  display: grid;
+  grid-template-columns: repeat(var(--ds-wg-cols, 4), minmax(0, 1fr));
+  /* 행은 내용 기반(auto) — 위젯 최소 높이는 위젯이 책임, 런처는 컴팩트 */
+  grid-auto-rows: auto;
+  gap: 16px;
+}
+.ds-widget {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  grid-column: span 1;
+  grid-row: span 1;
+  border-radius: var(--ds-radius-xl);
+  border: 1px solid var(--ds-hairline-soft);
+  background: var(--ds-surface);
+  box-shadow: 0 1px 2px rgba(9, 23, 23, 0.05), 0 6px 16px -6px rgba(9, 23, 23, 0.08), var(--ds-highlight);
+  padding: 14px 16px;
+  min-height: 156px;
+  overflow: visible;
+  transition: transform var(--ds-motion-standard) var(--ds-ease-standard), box-shadow var(--ds-motion-standard) var(--ds-ease-standard);
+}
+.ds-widget:hover { box-shadow: 0 2px 5px rgba(9, 23, 23, 0.07), 0 14px 28px -8px rgba(9, 23, 23, 0.12), var(--ds-highlight); transform: translateY(-2px); }
+.ds-widget--md { grid-column: span 2; }
+.ds-widget--lg { grid-column: span 2; grid-row: span 2; }
+.ds-widget--tall { grid-row: span 2; }
+.ds-widget--wide { grid-column: 1 / -1; }
+
+.ds-widget__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.ds-widget__title { display: flex; align-items: center; gap: 8px; font-family: var(--ds-font-sans); font-size: var(--ds-size-label); font-weight: 600; color: var(--ds-ink); min-width: 0; }
+.ds-widget__title-icon { color: var(--ds-primary); display: inline-flex; flex: none; }
+/* 위젯 아이덴티티 — 아이콘 칩(개성 컬러) + 따뜻한 헤더 */
+.ds-widget__icon-chip {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: color-mix(in srgb, var(--w-accent, var(--ds-primary)) 16%, transparent);
+  color: var(--w-accent, var(--ds-primary));
+}
+.ds-widget__title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-widget__actions { display: flex; align-items: center; gap: 2px; flex: none; }
+/* 위젯 내부 스크롤 지양 — 내용에 맞춰 영역이 자란다(여백 최소·여유 유지) */
+.ds-widget__body { flex: 1; min-height: 0; overflow: visible; }
+.ds-widget__remove {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ds-error);
+  color: #fff;
+  border: 2px solid var(--ds-canvas);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  padding: 0;
+}
+
+/* 편집 모드 — iOS 홈처럼 지글 + 삭제 노출 */
+.ds-widgetgrid--edit .ds-widget { animation: ds-jiggle 0.34s var(--ds-ease-standard) infinite; cursor: grab; }
+.ds-widgetgrid--edit .ds-widget:nth-child(2n) { animation-delay: -0.17s; }
+.ds-widgetgrid--edit .ds-widget:nth-child(3n) { animation-delay: -0.09s; }
+.ds-widgetgrid--edit .ds-widget__remove { display: flex; }
+@keyframes ds-jiggle { 0% { transform: rotate(-0.55deg); } 100% { transform: rotate(0.55deg); } }
+
+@media (max-width: 860px) { .ds-widgetgrid { --ds-wg-cols: 2; } .ds-widget--lg, .ds-widget--md, .ds-widget--wide { grid-column: 1 / -1; } }
+@media (max-width: 520px) { .ds-widgetgrid { --ds-wg-cols: 1; } .ds-widget, .ds-widget--lg, .ds-widget--tall { grid-column: 1 / -1; grid-row: span 1; } }
+@media (prefers-reduced-motion: reduce) { .ds-widgetgrid--edit .ds-widget { animation: none; } }
+
+/* kind: 기능 위젯(실행·메뉴) vs 정보 위젯(정보 패널) */
+.ds-widget--function { border-color: color-mix(in srgb, var(--ds-primary) 32%, var(--ds-hairline)); }
+.ds-widget--function .ds-widget__title-icon { color: var(--ds-primary); }
+.ds-widget--info .ds-widget__title-icon { color: var(--ds-muted); }
+.ds-widget__kind {
+  font-family: var(--ds-font-sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--ds-radius-full);
+  flex: none;
+}
+.ds-widget__kind--fn { background: var(--ds-primary-tint); color: var(--ds-primary-deep); }
+.ds-widget__kind--info { background: var(--ds-hairline-soft); color: var(--ds-muted); }
+
+/* Launcher — 메뉴형 기능 위젯(클릭 → 실행/이동) */
+.ds-widget--launcher {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  min-height: 0;
+}
+.ds-widget--launcher:hover { border-color: var(--ds-primary); box-shadow: var(--ds-shadow-standard); }
+.ds-widget--launcher:focus-visible { outline: none; box-shadow: var(--ds-focus-ring); }
+.ds-launcher__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-primary-tint);
+  color: var(--ds-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.ds-launcher__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ds-launcher__title { font-family: var(--ds-font-sans); font-size: var(--ds-size-label); font-weight: 600; color: var(--ds-ink); }
+.ds-launcher__sub { font-size: var(--ds-size-caption); color: var(--ds-muted); margin-top: 1px; }
+.ds-launcher__chev { color: var(--ds-placeholder); flex: none; transition: transform var(--ds-motion-fast) var(--ds-ease-standard), color var(--ds-motion-fast); }
+.ds-widget--launcher:hover .ds-launcher__chev { color: var(--ds-primary); transform: translateX(2px); }
+
+/* ── 배치 규격 (폰 홈처럼) — 사이즈·점선 스냅·선택 핸들 ──────── */
+/* 사이즈 카탈로그 (4-col 셀 기준): sm 1×1 · md 2×1 · lg 2×2 · tall 1×2 · wide 4×1 · xl 4×2 */
+.ds-widget--xl { grid-column: 1 / -1; grid-row: span 2; }
+
+/* 편집 모드: 점선 스냅 그리드 (셀 코너 정렬) */
+.ds-widgetgrid--edit {
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--ds-muted) 50%, transparent) 1.5px, transparent 2px);
+  background-size: calc((100% + 16px) / var(--ds-wg-cols, 4)) calc(var(--ds-wg-row, 170px) + 16px);
+  background-position: -9px -9px;
+  border-radius: var(--ds-radius-lg);
+}
+/* (사이즈 배지 제거 — 편집 시 X만 노출) */
+/* 선택 상태: teal 링 + 8핸들 */
+.ds-widget--selected { box-shadow: 0 0 0 2px var(--ds-primary), var(--ds-shadow-standard); z-index: 4; }
+.ds-widget__sel { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; z-index: 5; }
+.ds-widget__sel i {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ds-surface-white);
+  border: 2px solid var(--ds-primary);
+}
+.ds-widget__sel i:nth-child(1) { top: -5px; left: -5px; }
+.ds-widget__sel i:nth-child(2) { top: -5px; left: calc(50% - 5px); }
+.ds-widget__sel i:nth-child(3) { top: -5px; right: -5px; }
+.ds-widget__sel i:nth-child(4) { top: calc(50% - 5px); right: -5px; }
+.ds-widget__sel i:nth-child(5) { bottom: -5px; right: -5px; pointer-events: auto; cursor: nwse-resize; }
+.ds-widget__sel i:nth-child(6) { bottom: -5px; left: calc(50% - 5px); }
+.ds-widget__sel i:nth-child(7) { bottom: -5px; left: -5px; }
+.ds-widget__sel i:nth-child(8) { top: calc(50% - 5px); left: -5px; }
+
+/* ════════════════════════════════════════════════════════════
+   Onboarding — 스포트라이트 코치마크 (스텝바이스텝, 다시 보기)
+   ════════════════════════════════════════════════════════════ */
+/* 대상 강조 — 링 + 9999px 그림자로 주변을 어둡게(컷아웃) */
+.ds-coach-target {
+  position: relative;
+  z-index: 1320;
+  border-radius: var(--ds-radius-md);
+  box-shadow: 0 0 0 4px var(--ds-primary), 0 0 0 9999px rgba(9, 23, 23, 0.55);
+  transition: box-shadow 0.3s var(--ds-ease-standard);
+}
+/* 전체 스크림(대상 없는 단계) */
+.ds-onboard-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1310;
+  background: rgba(9, 23, 23, 0.55);
+}
+/* 코치 카드 */
+.ds-coach {
+  position: fixed;
+  z-index: 1330;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-xl);
+  box-shadow: var(--ds-shadow-modal);
+  padding: 18px;
+  animation: ds-coach-in var(--ds-motion-standard) var(--ds-ease-enter);
+}
+.ds-coach__step { font-family: var(--ds-font-mono); font-size: 11px; font-weight: 600; color: var(--ds-primary); letter-spacing: 0.04em; }
+.ds-coach__title { font-family: var(--ds-font-sans); font-size: var(--ds-size-subtitle); font-weight: 600; color: var(--ds-ink); margin: 6px 0; line-height: var(--ds-lh-snug); }
+.ds-coach__desc { font-size: var(--ds-size-body); color: var(--ds-body); line-height: var(--ds-lh-normal); }
+.ds-coach__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.ds-coach__dots { display: flex; gap: 5px; align-items: center; }
+.ds-coach__dot { width: 6px; height: 6px; border-radius: var(--ds-radius-full); background: var(--ds-hairline); transition: width var(--ds-motion-fast), background-color var(--ds-motion-fast); }
+.ds-coach__dot--on { width: 16px; background: var(--ds-primary); }
+.ds-coach__btns { display: flex; gap: 8px; align-items: center; }
+@keyframes ds-coach-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ds-coach { animation: none; } .ds-coach-target { transition: none; } }
+
+/* ════════════════════════════════════════════════════════════
+   Assistant — 하단 플로팅 캐릭터 버튼 + 대화 팝업 (채널톡 스타일)
+   ════════════════════════════════════════════════════════════ */
+/* 플로팅 독: 작업 상태창 + 캐릭터(배경 없이 크게). 사이드바 아래(좌하단) */
+.ds-fab-dock { position: fixed; left: 22px; bottom: 22px; z-index: 1150; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.ds-fab {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  width: 92px;
+  height: 92px;
+  filter: drop-shadow(0 8px 16px rgba(9, 23, 23, 0.22));
+  transition: transform var(--ds-motion-fast) var(--ds-ease-standard), filter var(--ds-motion-fast) var(--ds-ease-standard);
+}
+.ds-fab img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ds-fab:hover { transform: translateY(-3px) scale(1.05); filter: drop-shadow(0 12px 22px rgba(9, 23, 23, 0.26)); }
+.ds-fab:active { transform: scale(0.97); }
+.ds-fab:focus-visible { outline: none; filter: drop-shadow(0 0 0 4px rgba(32, 128, 141, 0.45)); }
+
+/* 작업 상태창 (Now-brief 스타일 다크 pill) — 진행 중일 때 노출 */
+.ds-fab-status {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: #091717;
+  color: #f2f2ed;
+  border-radius: var(--ds-radius-full);
+  padding: 9px 16px 9px 11px;
+  box-shadow: var(--ds-shadow-elevated);
+  max-width: 280px;
+  cursor: pointer;
+  animation: ds-chat-in var(--ds-motion-standard) var(--ds-ease-enter);
+}
+.ds-fab-status__spin { width: 22px; height: 22px; border: 2px solid rgba(242, 242, 237, 0.22); border-top-color: var(--ds-primary); border-radius: 50%; flex: none; animation: ds-spin 0.7s linear infinite; }
+.ds-fab-status__t { font-family: var(--ds-font-sans); font-size: var(--ds-size-label); font-weight: 600; line-height: 1.2; }
+.ds-fab-status__s { font-size: var(--ds-size-caption); color: #9ba1a6; line-height: 1.2; margin-top: 1px; }
+@media (prefers-reduced-motion: reduce) { .ds-fab-status, .ds-fab-status__spin { animation: none; } }
+
+.ds-chat {
+  position: fixed;
+  left: 24px;
+  bottom: 128px;
+  z-index: 1150;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  height: 520px;
+  max-height: calc(100vh - 132px);
+  display: flex;
+  flex-direction: column;
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-xl);
+  box-shadow: var(--ds-shadow-modal);
+  overflow: hidden;
+  animation: ds-chat-in var(--ds-motion-standard) var(--ds-ease-enter);
+}
+.ds-chat__head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--ds-hairline); background: var(--ds-surface); }
+.ds-chat__av { width: 38px; height: 38px; border-radius: 50%; background: var(--ds-primary-tint); display: flex; align-items: center; justify-content: center; flex: none; }
+.ds-chat__av img { width: 80%; height: 80%; object-fit: contain; }
+.ds-chat__title { font-family: var(--ds-font-sans); font-weight: 600; font-size: var(--ds-size-label); color: var(--ds-ink); }
+.ds-chat__sub { font-size: 11px; color: var(--ds-muted); display: flex; align-items: center; gap: 5px; margin-top: 1px; }
+.ds-chat__body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ds-chat__msg { max-width: 82%; padding: 10px 13px; font-size: var(--ds-size-body); line-height: 1.45; }
+.ds-chat__msg--bot { align-self: flex-start; background: var(--ds-surface-white); border: 1px solid var(--ds-hairline); color: var(--ds-ink); border-radius: 14px 14px 14px 4px; }
+.ds-chat__msg--me { align-self: flex-end; background: var(--ds-primary); color: #fff; border-radius: 14px 14px 4px 14px; }
+.ds-chat__quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px; }
+.ds-chat__foot { padding: 12px 14px; border-top: 1px solid var(--ds-hairline); display: flex; gap: 8px; align-items: flex-end; }
+.ds-chat__input { flex: 1; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-xl); padding: 9px 14px; background: var(--ds-surface-white); font-family: var(--ds-font-body); font-size: var(--ds-size-body); color: var(--ds-ink); resize: none; outline: none; max-height: 96px; }
+.ds-chat__input:focus { border-color: var(--ds-primary); box-shadow: var(--ds-focus-ring); }
+.ds-chat__send { width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--ds-primary); color: #fff; cursor: pointer; flex: none; display: flex; align-items: center; justify-content: center; }
+.ds-chat__send:disabled { opacity: 0.4; cursor: not-allowed; }
+@keyframes ds-chat-in { from { opacity: 0; transform: translateY(12px) scale(0.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ds-chat { animation: none; } }

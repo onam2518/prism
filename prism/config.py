@@ -58,7 +58,15 @@ class Config:
     embed_query_model: str = ""
     embed_passage_model: str = ""
     reasoning_effort: str = "default"   # default|low|high|off
-    system_prompt: str = ""             # 아이템 추출에 덧붙이는 추가 지시(선택)
+    system_prompt: str = ""             # 아이템 추출에 덧붙이는 추가 지시(선택, =analyze 하위호환)
+    # 단계별 추가 지시(프롬프트 스튜디오): extract·analyze·review·judge
+    stage_prompts: dict = field(default_factory=dict)
+    stage_prompts_meta: dict = field(default_factory=dict)   # {stage: "최종 수정 시각"}
+    # 단계별 모델 지정 + 모델별 프롬프트(각 과정이 다른 모델을 쓸 수 있음)
+    stage_models: dict = field(default_factory=dict)         # {stage: model_id}
+    model_prompts: dict = field(default_factory=dict)        # {model_id: {stage: prompt}}
+    # 자동 인입 파이프라인 소스(API/Kafka 등). 각: {id,type,name,enabled,...연결정보}
+    ingest_sources: list = field(default_factory=list)
 
     # ── 모델 슬롯(제공자 선택) ──
     # 텍스트 슬롯: 메타·품질·법령 추출. solar(직접) | bizrouter | timely(통합 라우터).

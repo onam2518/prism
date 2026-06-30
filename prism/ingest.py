@@ -158,6 +158,22 @@ def assess(path: str, override: dict = None) -> dict:
             "n_rows": len(rows), "samples": samples, "reason": reason}
 
 
+def to_contents_rows(rows: list, override: dict = None) -> tuple:
+    """JSON 레코드(list[dict]) → (콘텐츠 리스트, 매핑). API 인입용. 판정 불가면 ValueError."""
+    headers = list(rows[0].keys()) if rows else []
+    m = infer_mapping(headers, override)
+    missing = [f for f in REQUIRED if f not in m]
+    if missing:
+        raise ValueError(f"필수 필드 미발견: {', '.join(missing)} (헤더: {', '.join(map(str, headers))[:200]})")
+    out = []
+    for r in rows:
+        item = dict(OPTIONAL_DEFAULT)
+        for field, col in m.items():
+            item[field] = str(r.get(col, "") or "")
+        out.append(item)
+    return out, m
+
+
 def to_contents(path: str, override: dict = None) -> list:
     """표 → 우리 콘텐츠 스키마 리스트. 판정 불가면 ValueError."""
     a = assess(path, override)

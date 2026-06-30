@@ -1,4 +1,10 @@
-"""프롬프트 빌더."""
+"""프롬프트 빌더.
+
+원천(단계 지시)은 STAGE_DIRECTIVE 기본값을 두고, 프롬프트 스튜디오에서 단계별로
+직접 편집(override)한다. 사전·스키마 같은 구조 비계(scaffolding)는 코드가 자동으로
+덧붙여 깨지지 않게 한다. 보완은 배치 결과의 콘텐츠별 피드백이 LEARNED 로 누적되어
+다음 추출부터 자동 반영된다(학습 루프).
+"""
 from . import dictionaries as D
 
 QMETA_VERSION = "qmeta@v31"
@@ -11,12 +17,66 @@ _JSON_GUARD = (
 )
 
 
+# ── 원천 단계 지시(편집 대상). 기본값 = 현재 동작 보존 ──
+#   extract=추출(대식·신호해석) · analyze=분석(용희·메타) · review=검수(복실·품질) · judge=판정(딱지·법령)
+STAGE_DIRECTIVE_DEFAULT = {
+    "extract": (
+        "너는 유통 가능(G) 콘텐츠의 아이템 메타를 추출한다. 아래 4단계를 순서대로 수행한다.\n"
+        "1) summary: 이 콘텐츠가 '무엇을 어떤 관점에서 다루는지' 한 문장으로 요약(주어+대상+관점).\n"
+        "2) entities: 핵심 단일 명사 1~3개(인물·기관·브랜드·개념). 고유명사 우선."
+    ),
+    "analyze": (
+        "3) intent: 아래 [사전·intent] 값 중 1~2개만 고른다. 자유 생성 금지.\n"
+        "4) content_category: 각 엔티티를 아래 [사전·IAB Tier1] 기준으로 매핑(필요시 Tier1 / Tier2)."
+    ),
+    "review": (
+        "너는 콘텐츠 품질 필터다. 증거를 먼저 수집한 뒤, 임계를 충족한 메타만 골라낸다. "
+        "사전에 정의된 메타 외에는 판정하지 않는다."
+    ),
+    "judge": (
+        "너는 콘텐츠의 법령 위반 가능성을 판정한다. 사전에 정의된 위반유형만 사용하고, "
+        "임계 미만은 제외한다. 제재수준 가중치는 법정형 기준으로 보수적으로 부여한다."
+    ),
+}
+
+# 단계별 override(프롬프트 스튜디오에서 채움). 빈 값이면 기본값 사용.
+STAGE_DIRECTIVE = {"extract": "", "analyze": "", "review": "", "judge": ""}
+# 학습 루프: 배치 결과 피드백에서 누적된 보정 지시(자동 반영). 사람이 직접 쓰지 않음.
+LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
+
+# 하위호환 별칭
+EXTRA = STAGE_DIRECTIVE
+EXTRA_INSTRUCTION = ""
+
+
+def directive(stage: str) -> str:
+    """단계 원천 지시(override 우선, 없으면 기본값)."""
+    v = (STAGE_DIRECTIVE.get(stage) or "").strip()
+    return v if v else STAGE_DIRECTIVE_DEFAULT.get(stage, "")
+
+
+def stage_defaults() -> dict:
+    """프롬프트 스튜디오 초기 표시용 기본 원천 지시."""
+    return dict(STAGE_DIRECTIVE_DEFAULT)
+
+
+def _learned(stage: str) -> str:
+    v = (LEARNED.get(stage) or "").strip()
+    return f"\n\n[학습 보정 · {stage}] 아래는 과거 평가 피드백에서 누적된 교정 지침이다. 우선 반영한다.\n{v}" if v else ""
+
+
+# 하위호환: 기존 _extra(stage) 호출부 유지(= 학습 보정으로 의미 전환)
+def _extra(stage: str) -> str:
+    return _learned(stage)
+
+
 # 품질 메타: 활성 프롬프트 버전(promptstore)에서 렌더. 코드 수정 없이 룰 편집 가능.
 def quality_system(active_metas: list, service_group: str, version: str | None = None,
                    examples: str = "") -> str:
     from . import promptstore
-    return promptstore.render_quality_system(active_metas, service_group, _JSON_GUARD,
+    base = promptstore.render_quality_system(active_metas, service_group, _JSON_GUARD,
                                              version, examples)
+    return f"[검수 지시] {directive('review')}\n\n{base}{_learned('review')}"
 
 
 def quality_version() -> str:
@@ -49,30 +109,22 @@ def quality_group_system(group_key: str, active_metas: list, service_group: str)
 {rules}
 
 증거를 먼저 수집한 뒤, 임계 충족 메타만 골라낸다.
-[출력] {{"reasons": ["메타ID", ...], "evidence": "근거"}}{_JSON_GUARD}"""
-
-
-# 아이템 메타
-# UI/설정에서 주입하는 추가 지시(System Prompt). 출력 계약(스키마)은 유지하되 추출을 가볍게 조향.
-EXTRA_INSTRUCTION = ""
+[출력] {{"reasons": ["메타ID", ...], "evidence": "근거"}}{_JSON_GUARD}""" + _learned("review")
 
 
 def item_system(content) -> str:
     intents = " / ".join(D.intent_categories_for(content.displayServiceName))
     tier1 = " / ".join(D.IAB_TIER1)
-    extra = f"\n\n[추가 지시] {EXTRA_INSTRUCTION.strip()}" if EXTRA_INSTRUCTION.strip() else ""
-    return f"""너는 유통 가능(G) 콘텐츠의 아이템 메타를 추출한다. 4단계를 순서대로 수행한다.
+    learned = _learned("extract") + _learned("analyze")
+    return f"""{directive('extract')}
+{directive('analyze')}
 
-1) summary: 이 콘텐츠가 '무엇을 어떤 관점에서 다루는지' 한 문장으로 요약(주어+대상+관점).
-2) entities: 핵심 단일 명사 1~3개(인물·기관·브랜드·개념). 고유명사 우선.
-3) intent: 아래 사전값 중 1~2개만. 자유 생성 금지.
-   [{intents}]
-4) content_category: 각 엔티티를 IAB Tier1(필요시 Tier1/Tier2)로. Tier1 사전:
-   [{tier1}]{extra}
+[사전·intent] {intents}
+[사전·IAB Tier1] {tier1}
 
 [출력 형식]
 {{"summary":"...","entities":["..."],"intent":["..."],
-  "content_category":{{"엔티티":"Tier1 / Tier2"}}}}{_JSON_GUARD}"""
+  "content_category":{{"엔티티":"Tier1 / Tier2"}}}}{_JSON_GUARD}{learned}"""
 
 
 def item_user(content) -> str:
@@ -84,13 +136,13 @@ def legal_router_system() -> str:
     types = "\n".join(
         f"  - {c}: {v['label']} ({v['article']})" for c, v in D.LEGAL_HARM_TYPES.items()
     )
-    return f"""너는 콘텐츠의 법령 위반 가능성을 라우팅한다. 아래 13종 중 의심되는 유형을
-confidence(0~1)와 함께 모두 나열한다(복수 허용). 임계 0.3 미만은 제외.
+    return f"""{directive('judge')}
+아래 13종 중 의심되는 유형을 confidence(0~1)와 함께 모두 나열한다(복수 허용). 임계 0.3 미만은 제외.
 
 [위반유형 사전: 밖은 금지]
 {types}
 
-[출력] {{"harm_types":[{{"code":"...","confidence":0.0}}]}}{_JSON_GUARD}"""
+[출력] {{"harm_types":[{{"code":"...","confidence":0.0}}]}}{_JSON_GUARD}""" + _learned("judge")
 
 
 def legal_scorer_system(code: str) -> str:
@@ -99,7 +151,7 @@ def legal_scorer_system(code: str) -> str:
 A(구성요건 0~40) + B(제재 0~30) + C(맥락 0~30) 으로 채점한다.
 B(제재수준)는 법정형 기준 고정 가중치이므로 보수적으로 부여한다.
 
-[출력] {{"a":0,"b":0,"c":0,"evidence":"근거"}}{_JSON_GUARD}"""
+[출력] {{"a":0,"b":0,"c":0,"evidence":"근거"}}{_JSON_GUARD}""" + _learned("judge")
 
 
 def _content_block(content) -> str:
