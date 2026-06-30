@@ -27,7 +27,8 @@ STAGE_DIRECTIVE_DEFAULT = {
     ),
     "analyze": (
         "3) intent: 아래 [사전·intent] 값 중 1~2개만 고른다. 자유 생성 금지.\n"
-        "4) content_category: 각 엔티티를 아래 [사전·IAB Tier1] 기준으로 매핑(필요시 Tier1 / Tier2)."
+        "4) content_category: 리드문·인텐트·엔티티를 종합해 '콘텐츠 단위' 카테고리를 아래 [사전·IAB "
+        "Tier1] 기준으로 부여(필요시 Tier1 / Tier2). 엔티티별이 아니라 콘텐츠 전체 기준, 복수 매핑 가능(N개)."
     ),
     "review": (
         "너는 콘텐츠 품질 필터다. 증거를 먼저 수집한 뒤, 임계를 충족한 메타만 골라낸다. "
@@ -124,7 +125,7 @@ def item_system(content) -> str:
 
 [출력 형식]
 {{"summary":"...","entities":["..."],"intent":["..."],
-  "content_category":{{"엔티티":"Tier1 / Tier2"}}}}{_JSON_GUARD}{learned}"""
+  "content_category":["Tier1 / Tier2","..."]}}{_JSON_GUARD}{learned}"""
 
 
 def item_user(content) -> str:
@@ -155,9 +156,8 @@ B(제재수준)는 법정형 기준 고정 가중치이므로 보수적으로 �
 
 
 def _content_block(content) -> str:
-    return (
+    return (                                          # 입력 3필드 고정(1312): subtitle 미사용
         f"displayServiceName: {content.displayServiceName}\n"
         f"title: {content.title}\n"
-        f"subtitle: {content.subtitle}\n"
         f"body: {content.body}"
     )

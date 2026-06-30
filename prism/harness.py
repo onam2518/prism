@@ -147,6 +147,8 @@ def st_item(ctx: HCtx):
     ctx.item_meta = im
     ctx.results += [r for r in ires if hasattr(r, "cost_usd")]
     ctx.verdicts += [r for r in ires if isinstance(r, dict)]
+    # 인텐트는 임베딩 결정론 분류(있을 때). 콘텐츠 카테고리는 1312 기준 '콘텐츠 단위 N개'라
+    # 엔티티별 분류가 아니라 LLM 콘텐츠 단위 산출 → 사전화(스냅)한다.
     if ctx.emb is not None and m.embed_categories:
         from . import classify as C
         cats, margin = C.intent_category_classify(ctx.emb, ctx.content)
@@ -154,20 +156,8 @@ def st_item(ctx: HCtx):
             im.intent = cats
             ctx.verdicts.append({"agent": "IntentCategory(emb)",
                                  "evidence": f"margin={margin}", "fail": None})
-        if im.entities:
-            im.content_category = C.hybrid_entity_categories(
-                ctx.emb, ctx.llm, [(e, "") for e in im.entities])
-            unrec = [(e, ctx.content.title) for e, c in im.content_category.items()
-                     if c == "Unclassified" and not C.is_vague_entity(e)]
-            if unrec:
-                rec = C.recover_with_context(ctx.llm, unrec)
-                for e, c in rec.items():
-                    if c != "Unclassified":
-                        im.content_category[e] = c
-            ctx.verdicts.append({"agent": "EntityCategory(2-pass: 본질+문맥복구)",
-                                 "evidence": "1차 본질 분류 → 2차 문맥 식별 복구", "fail": None})
     if im and im.content_category:
-        im.content_category = D.normalize_categories(im.content_category)   # 사전화
+        im.content_category = D.normalize_category_list(im.content_category)   # 콘텐츠 단위 사전화
     ctx.fallbacks += V.verify_item(im, ctx.content)
 
 
@@ -250,11 +240,9 @@ def _mock_generator(system: str, user: str, tag: str) -> dict:
         ents = _mock_entities(title + " " + _field(user, "body"))
         svc = _field(user, "displayServiceName")
         cats = D.intent_categories_for(svc)[:2]
-        ecat = {}
-        for e in ents:
-            ecat[e] = "News and Politics / Society"
         return {"summary": f"{(ents[0] if ents else '주제')} 관련 내용을 정리",
-                "entities": ents, "intent": cats, "content_category": ecat}
+                "entities": ents, "intent": cats,
+                "content_category": ["News and Politics / Society"]}  # 콘텐츠 단위 N개
 
     if tag == "legal_route":
         codes = []

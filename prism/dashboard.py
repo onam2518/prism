@@ -200,8 +200,9 @@ def _aggregate(rows):
         im = r.get("item_meta") or {}
         for c in im.get("intent", []):
             intents[c] = intents.get(c, 0) + 1
-        for e, cat in (im.get("content_category") or {}).items():
+        for e in im.get("entities", []):
             ents.add(e)
+        for cat in (im.get("content_category") or []):   # 콘텐츠 단위 N개
             t1 = tier1_remap(cat)
             if t1 and t1 != "Unclassified":      # 미분류는 분포에서 제외
                 ecats[t1] = ecats.get(t1, 0) + 1
@@ -240,16 +241,22 @@ def _is_junk_entity(e: str, service_names: set) -> bool:
 
 
 def _canonical_entity_categories(rows, service_names):
-    """엔티티별 카테고리를 전역 다수결로 단일화(콘텐츠별 불일치 제거)."""
+    """엔티티 대표 카테고리를 전역 다수결로 단일화.
+    1312 이후 content_category 는 '콘텐츠 단위 N개' 라 엔티티 직접 매핑이 없다.
+    따라서 엔티티가 등장한 콘텐츠들의 콘텐츠 카테고리를 공기(co-occurrence)로 모아
+    다수결로 엔티티당 대표 Tier1 1개를 부여한다(그래프 is_a·토픽 묶음용)."""
     from collections import Counter
     votes = {}
     for r in rows:
         im = r.get("item_meta") or {}
-        for e, c in (im.get("content_category") or {}).items():
+        cats = [tier1_remap(c) for c in (im.get("content_category") or [])]
+        cats = [t for t in cats if t and t != "Unclassified"]
+        if not cats:
+            continue
+        for e in im.get("entities", []):
             if _is_junk_entity(e, service_names):
                 continue
-            t1 = tier1_remap(c)
-            if t1 and t1 != "Unclassified":
+            for t1 in cats:
                 votes.setdefault(e, Counter())[t1] += 1
     return {e: cnt.most_common(1)[0][0] for e, cnt in votes.items()}
 
@@ -283,22 +290,24 @@ def _graph(rows, max_nodes: int = 900, top_entities: int = 260):
              ref.get("displayServiceName", ""))
         nodes[idx[cid]]["grade"] = decision   # 그래프 등급 필터용
         im = r.get("item_meta") or {}
-        content_cats = set()   # 이 콘텐츠가 속한 콘텐츠 카테고리(직접 매핑용)
+        # 콘텐츠 단위 카테고리(1312·N개): 콘텐츠에 직접 매핑
+        content_cats = {tier1_remap(c) for c in (im.get("content_category") or [])}
+        content_cats = {t for t in content_cats if t and t != "Unclassified"}
         for e in im.get("entities", []):
             if _is_junk_entity(e, service_names):
                 continue
             eid = f"e:{e}"
             node(eid, e, "entity")
             links.append({"s": cid, "t": eid, "rel": "mentions"})
-            # 단일화된 카테고리(엔티티당 1개)
+            # 엔티티 대표 카테고리(공기 다수결, 엔티티당 1개)
             t1 = canon.get(e)
             if t1:
                 kid = f"k:{t1}"
                 node(kid, t1, "category")
                 links.append({"s": eid, "t": kid, "rel": "is_a"})
-                content_cats.add(t1)
         # 콘텐츠 → 콘텐츠 카테고리 직접 엣지(belongs_to): 엔티티 레이어를 꺼도 매핑이 보임
         for t1 in content_cats:
+            node(f"k:{t1}", t1, "category")
             links.append({"s": cid, "t": f"k:{t1}", "rel": "belongs_to"})
         for c in im.get("intent", []):
             iid = f"i:{c}"
@@ -399,7 +408,7 @@ def _table_rows(rows):
             "intent": im.get("summary", ""),
             "entities": im.get("entities", []),
             "intent_categories": im.get("intent", []),
-            "entity_categories": im.get("content_category", {}),
+            "entity_categories": im.get("content_category", []),   # 콘텐츠 단위 N개
         })
     return out
 

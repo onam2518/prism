@@ -340,7 +340,7 @@ def dashboard_data(team=None) -> dict:
         im = r.get("item_meta") or {}
         for t in (im.get("intent") or []):
             intent_c[t] = intent_c.get(t, 0) + 1
-        for v in (im.get("content_category") or {}).values():
+        for v in (im.get("content_category") or []):
             top = (v or "").split("/")[0].strip()
             if top:
                 cat_c[top] = cat_c.get(top, 0) + 1
@@ -602,7 +602,7 @@ def build_results_csv() -> bytes:
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
         c = r.get("content") or {}
-        cat = " · ".join(f"{k}→{v}" for k, v in (im.get("content_category") or {}).items())
+        cat = " · ".join(im.get("content_category") or [])
         out.append(",".join(esc(x) for x in [
             c.get("title", ""), c.get("displayServiceName", ""), im.get("summary", ""),
             " · ".join(im.get("entities") or []), " · ".join(im.get("intent") or []),
@@ -2255,8 +2255,8 @@ PAGE = """<!doctype html>
       get im() { return (this.result && this.result.output.item_meta) || {}; },
       get q() { return (this.result && this.result.output.quality_meta) || {}; },
       get contentCats() {
-        const e = this.im.content_category || {};
-        return Object.keys(e).map((k) => k + ' \\u2192 ' + e[k]);
+        // 1312: 콘텐츠 단위 카테고리 N개(복수 매핑) → 리스트 그대로
+        return this.im.content_category || [];
       },
 
       // 엑셀 배치 인포그래픽: 총건·등급분포·인텐트 상위·평균 리드문 길이

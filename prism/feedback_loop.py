@@ -38,7 +38,7 @@ def _reap_user(fb: dict) -> str:
     im = out.get("item_meta") or {}
     if im:
         lines.append(f"[에이전트 산출] 리드문={im.get('summary', '')} · 엔티티={im.get('entities', [])} "
-                     f"· 인텐트={im.get('intent', [])} · 카테고리={im.get('content_category', {})}")
+                     f"· 인텐트={im.get('intent', [])} · 카테고리={im.get('content_category', [])}")
     qm = out.get("quality_meta") or {}
     if qm:
         lines.append(f"[품질 판정] 등급={qm.get('finalGrade', '')} · 사유={qm.get('reasons', [])}")

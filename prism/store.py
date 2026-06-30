@@ -261,7 +261,7 @@ class Store:
                 imd = json.loads(im) if im else {}
             except Exception:
                 imd = {}
-            cat = " · ".join(f"{k}→{v}" for k, v in ((imd or {}).get("content_category") or {}).items())
+            cat = " · ".join((imd or {}).get("content_category") or [])
             rows.append({"hash": ch, "service": svc or "", "title": ti or "",
                          "grade": grade or "", "summary": (imd or {}).get("summary", ""),
                          "category": cat, "source": src or "단건"})

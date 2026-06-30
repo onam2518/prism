@@ -41,11 +41,7 @@ DEMO_RESULT = {
             "summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다",
             "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"],
             "intent": ["사실 전달", "분석·해설"],
-            "content_category": {
-                "삼성전자": "Business / Industries",
-                "전국삼성전자노동조합": "Law, Govt & Politics",
-                "중앙노동위원회": "Law, Govt & Politics",
-            },
+            "content_category": ["Business / Industries", "Law, Govt & Politics"],
         },
         "quality_meta": {"finalGrade": "G"},
         "routing": {"content_track": "text"},

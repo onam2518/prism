@@ -181,7 +181,7 @@ def build_condition_topics(rows, canon, service_names):
     c_ent, c_int = [], []
     for r in rows:
         im = r.get("item_meta") or {}
-        ecats = {tier1_remap(c) for c in (im.get("content_category") or {}).values()}
+        ecats = {tier1_remap(c) for c in (im.get("content_category") or [])}
         c_ent.append(ecats)
         c_int.append(set(im.get("intent") or []))
     pools = []
