@@ -350,6 +350,60 @@ class Store:
         return {"total": n, "good": good, "bad": bad, "learned": learned,
                 "contents": contents, "reviewers": reviewers, "split": split}
 
+    def arena_stats(self, target: float = 0.9) -> dict:
+        """평가 아레나(게임화) 지표. 팀 협동 점수 = 정확도(자동 판정이 검수자와 일치한 비율).
+        검수가 쌓이고 REAP 가 프롬프트를 보정할수록 오른다. + 검수자 리더보드(점수·레벨·스트릭)."""
+        c = self._conn()
+        DAY = 86400.0
+        now = time.time()
+        week_ago = now - 7 * DAY
+        today = int(now // DAY)
+        good = bad = wk_good = wk_bad = pv_good = pv_bad = 0
+        board = {}
+        days_by = {}
+        for rv, verdict, plan, ts in c.execute("SELECT reviewer,verdict,plan,ts FROM feedback"):
+            rv = rv or "(익명)"
+            b = board.setdefault(rv, {"reviews": 0, "corrections": 0})
+            b["reviews"] += 1
+            g, d = (verdict == "good"), (verdict == "bad")
+            if g:
+                good += 1
+            elif d:
+                bad += 1
+                if (plan or "").strip():
+                    b["corrections"] += 1            # 채택된 개선(REAP plan) = 가산점
+            if (ts or 0) >= week_ago:
+                wk_good += int(g); wk_bad += int(d)
+            else:
+                pv_good += int(g); pv_bad += int(d)
+            days_by.setdefault(rv, set()).add(int((ts or 0) // DAY))
+        total = good + bad
+        accuracy = round(good / total, 4) if total else 0.0
+        pv_total = pv_good + pv_bad
+        pv_acc = round(pv_good / pv_total, 4) if pv_total else accuracy
+
+        def _streak(days):
+            d = today
+            if d not in days and (d - 1) not in days:
+                return 0
+            if d not in days:
+                d -= 1                               # 오늘 미검수면 어제부터 인정
+            s = 0
+            while d in days:
+                s += 1; d -= 1
+            return s
+
+        leaderboard = []
+        for rv, v in board.items():
+            pts = v["reviews"] * 10 + v["corrections"] * 25
+            leaderboard.append({"reviewer": rv, "reviews": v["reviews"],
+                                "corrections": v["corrections"], "points": pts,
+                                "level": 1 + pts // 100, "streak": _streak(days_by.get(rv, set()))})
+        leaderboard.sort(key=lambda x: -x["points"])
+        return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
+                "week_reviews": wk_good + wk_bad, "accuracy_delta": round(accuracy - pv_acc, 4),
+                "target": target, "leaderboard": leaderboard}
+
     def review_queue(self, limit: int = 100, only_unreviewed: bool = True) -> list:
         """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠. only_unreviewed 면 아직 아무도
         검수 안 한 것만. 최신순. payload 에서 review 상태를 읽는다."""
