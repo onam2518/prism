@@ -37,7 +37,7 @@ class Store:
         CREATE TABLE IF NOT EXISTS results(
           content_hash TEXT PRIMARY KEY, run_id TEXT, service TEXT, title TEXT,
           final_grade TEXT, reasons TEXT, item_meta TEXT, payload TEXT,
-          cost_usd REAL, fail_kind TEXT, created_at REAL);
+          cost_usd REAL, fail_kind TEXT, created_at REAL, source TEXT);
         CREATE TABLE IF NOT EXISTS usage(
           id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, kind TEXT, n INTEGER,
           cost_usd REAL, tokens_in INTEGER, tokens_out INTEGER);
@@ -53,10 +53,14 @@ class Store:
           content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
           verdict TEXT, stage TEXT, note TEXT, ts REAL,
           PRIMARY KEY(content_hash, reviewer));
+        -- 검수자 등록: 이름 → 선택 캐릭터(아바타) 매핑.
+        CREATE TABLE IF NOT EXISTS reviewers(reviewer TEXT PRIMARY KEY, char TEXT, ts REAL);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         """)
         c.commit()
         self._migrate_feedback(c)
+        if "source" not in [r[1] for r in c.execute("PRAGMA table_info(results)")]:
+            c.execute("ALTER TABLE results ADD COLUMN source TEXT"); c.commit()   # 출처 필터
 
     def _migrate_feedback(self, c):
         """구 스키마(PK=content_hash, 단일 의견) → 신 스키마(PK=content_hash+reviewer) 이행.
@@ -143,8 +147,9 @@ class Store:
         return [json.loads(r[0]) for r in c.execute(q, args)]
 
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
-    def save_many(self, pairs, run_id: str):
-        """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수."""
+    def save_many(self, pairs, run_id: str, source: str = ""):
+        """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
+        source: 출처(자동 인입·단건·배치 등) — 결과 화면 필터용."""
         rows = []
         for content, out in pairs:
             ch = content_hash(content)
@@ -159,21 +164,21 @@ class Store:
                          qm.get("finalGrade", ""), json.dumps(qm.get("reasons", []), ensure_ascii=False),
                          json.dumps(out.get("item_meta"), ensure_ascii=False),
                          json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
-                         fail_kind, time.time()))
+                         fail_kind, time.time(), source))
         if not rows:
             return 0
         c = self._conn()
         c.executemany("""INSERT INTO results
-          (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?)
+          (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at,source)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
           ON CONFLICT(content_hash) DO UPDATE SET
             run_id=excluded.run_id, final_grade=excluded.final_grade, reasons=excluded.reasons,
             item_meta=excluded.item_meta, payload=excluded.payload, cost_usd=excluded.cost_usd,
-            fail_kind=excluded.fail_kind, created_at=excluded.created_at""", rows)
+            fail_kind=excluded.fail_kind, created_at=excluded.created_at, source=excluded.source""", rows)
         c.commit()
         return len(rows)
 
-    def save_dedup(self, pairs, run_id: str) -> dict:
+    def save_dedup(self, pairs, run_id: str, source: str = "") -> dict:
         """적재 정책: content_hash 기준 멱등.
         · 신규 → insert  · 기존인데 메타(등급·item_meta·reasons) 변경 → update
         · 동일 콘텐츠 + 결과 무변경 → 적재 제외(skip, DB 미기록).
@@ -210,15 +215,15 @@ class Store:
                          new_gr, json.dumps(qm.get("reasons", []), ensure_ascii=False),
                          json.dumps(out.get("item_meta"), ensure_ascii=False),
                          json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
-                         fail_kind, time.time()))
+                         fail_kind, time.time(), source))
         if rows:
             c.executemany("""INSERT INTO results
-              (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?)
+              (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at,source)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(content_hash) DO UPDATE SET
                 run_id=excluded.run_id, final_grade=excluded.final_grade, reasons=excluded.reasons,
                 item_meta=excluded.item_meta, payload=excluded.payload, cost_usd=excluded.cost_usd,
-                fail_kind=excluded.fail_kind, created_at=excluded.created_at""", rows)
+                fail_kind=excluded.fail_kind, created_at=excluded.created_at, source=excluded.source""", rows)
             c.commit()
         return {"inserted": ins, "updated": upd, "skipped": skip}
 
@@ -248,8 +253,8 @@ class Store:
         """배치 결과 콘텐츠별 행(피드백 부착용): content_hash·서비스·제목·등급·요약·카테고리."""
         c = self._conn()
         rows = []
-        for ch, svc, ti, grade, im in c.execute(
-                "SELECT content_hash,service,title,final_grade,item_meta FROM results ORDER BY created_at DESC LIMIT ?",
+        for ch, svc, ti, grade, im, src in c.execute(
+                "SELECT content_hash,service,title,final_grade,item_meta,source FROM results ORDER BY created_at DESC LIMIT ?",
                 (int(limit),)):
             try:
                 imd = json.loads(im) if im else {}
@@ -257,7 +262,8 @@ class Store:
                 imd = {}
             cat = " · ".join(f"{k}→{v}" for k, v in ((imd or {}).get("content_category") or {}).items())
             rows.append({"hash": ch, "service": svc or "", "title": ti or "",
-                         "grade": grade or "", "summary": (imd or {}).get("summary", ""), "category": cat})
+                         "grade": grade or "", "summary": (imd or {}).get("summary", ""),
+                         "category": cat, "source": src or "단건"})
         return rows
 
     # ── 평가 피드백 / 학습 루프 ──
@@ -349,6 +355,75 @@ class Store:
             HAVING COUNT(DISTINCT verdict) > 1)""").fetchone()[0])
         return {"total": n, "good": good, "bad": bad, "learned": learned,
                 "contents": contents, "reviewers": reviewers, "split": split}
+
+    def set_reviewer(self, reviewer: str, char: str):
+        """검수자 등록/갱신: 이름 → 선택 캐릭터."""
+        c = self._conn()
+        c.execute("""INSERT INTO reviewers(reviewer,char,ts) VALUES(?,?,?)
+          ON CONFLICT(reviewer) DO UPDATE SET char=excluded.char, ts=excluded.ts""",
+          (reviewer or "(익명)", char or "boksil", time.time()))
+        c.commit()
+
+    def reviewers_map(self) -> dict:
+        """reviewer → char(아바타 id)."""
+        c = self._conn()
+        return {rv: (ch or "boksil") for rv, ch in c.execute("SELECT reviewer,char FROM reviewers")}
+
+    def arena_stats(self, target: float = 0.9) -> dict:
+        """평가 아레나(게임화) 지표. 팀 협동 점수 = 정확도(자동 판정이 검수자와 일치한 비율).
+        검수가 쌓이고 REAP 가 프롬프트를 보정할수록 오른다. + 검수자 리더보드(점수·레벨·스트릭)."""
+        c = self._conn()
+        DAY = 86400.0
+        now = time.time()
+        week_ago = now - 7 * DAY
+        today = int(now // DAY)
+        good = bad = wk_good = wk_bad = pv_good = pv_bad = 0
+        board = {}
+        days_by = {}
+        for rv, verdict, plan, ts in c.execute("SELECT reviewer,verdict,plan,ts FROM feedback"):
+            rv = rv or "(익명)"
+            b = board.setdefault(rv, {"reviews": 0, "corrections": 0})
+            b["reviews"] += 1
+            g, d = (verdict == "good"), (verdict == "bad")
+            if g:
+                good += 1
+            elif d:
+                bad += 1
+                if (plan or "").strip():
+                    b["corrections"] += 1            # 채택된 개선(REAP plan) = 가산점
+            if (ts or 0) >= week_ago:
+                wk_good += int(g); wk_bad += int(d)
+            else:
+                pv_good += int(g); pv_bad += int(d)
+            days_by.setdefault(rv, set()).add(int((ts or 0) // DAY))
+        total = good + bad
+        accuracy = round(good / total, 4) if total else 0.0
+        pv_total = pv_good + pv_bad
+        pv_acc = round(pv_good / pv_total, 4) if pv_total else accuracy
+
+        def _streak(days):
+            d = today
+            if d not in days and (d - 1) not in days:
+                return 0
+            if d not in days:
+                d -= 1                               # 오늘 미검수면 어제부터 인정
+            s = 0
+            while d in days:
+                s += 1; d -= 1
+            return s
+
+        chars = self.reviewers_map()
+        leaderboard = []
+        for rv, v in board.items():
+            pts = v["reviews"] * 10 + v["corrections"] * 25
+            leaderboard.append({"reviewer": rv, "reviews": v["reviews"],
+                                "corrections": v["corrections"], "points": pts,
+                                "level": 1 + pts // 100, "streak": _streak(days_by.get(rv, set())),
+                                "char": chars.get(rv, "boksil")})
+        leaderboard.sort(key=lambda x: -x["points"])
+        return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
+                "week_reviews": wk_good + wk_bad, "accuracy_delta": round(accuracy - pv_acc, 4),
+                "target": target, "leaderboard": leaderboard}
 
     def review_queue(self, limit: int = 100, only_unreviewed: bool = True) -> list:
         """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠. only_unreviewed 면 아직 아무도
