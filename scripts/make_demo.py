@@ -105,6 +105,8 @@ CDN_PRETENDARD = ("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/"
 
 STUB = """<script>
   // 정적 데모: 서버 호출을 합성 응답으로 스텁(키·서버 불필요)
+  // 홈 위젯 레이아웃 시드(쇼케이스 — 실제 앱은 빈 상태로 시작)
+  try { localStorage.setItem('prism_home', JSON.stringify(['launch-run','launch-batch','launch-dict','metrics','quality','intents','categories','process'])); } catch (e) {}
   window.__DEMO_RESULT__ = %s;
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
@@ -147,6 +149,13 @@ def build() -> str:
                         f'<script src="{CDN_TAILWIND}"></script>')
     html = html.replace('<script defer src="/vendor/alpine.js"></script>',
                         STUB + f'<script defer src="{CDN_ALPINE}"></script>')
+    # 디자인 시스템 CSS 인라인(정적 데모 자체완결 — file:// 에서도 라이트 위젯홈 렌더)
+    theme_css = open(os.path.join(ROOT, "prism", "vendor", "ds-theme.css"), encoding="utf-8").read()
+    comp_css = open(os.path.join(ROOT, "prism", "vendor", "ds-components.css"), encoding="utf-8").read()
+    html = html.replace('<link href="/vendor/ds-theme.css" rel="stylesheet">', f'<style>{theme_css}</style>')
+    html = html.replace('<link href="/vendor/ds-components.css" rel="stylesheet">', f'<style>{comp_css}</style>')
+    # 벤더 에셋(캐릭터·로고 SVG) → docs/ 기준 레포 상대경로
+    html = html.replace('src="/vendor/', 'src="../prism/vendor/')
     # Pretendard 폰트 패밀리는 'Pretendard Variable' 가변 → 정적 CDN 은 'Pretendard'
     html = html.replace('"Pretendard Variable",Pretendard,', '"Pretendard",')
     html = html.replace("'\\\"Pretendard Variable\\\"', 'Pretendard',",
