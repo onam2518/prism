@@ -60,15 +60,15 @@ def _build_id() -> str:
         return "?"
 
 
-def store_save(pairs):
-    """[(content, out), …] 를 영속 저장(+_LAST_RESULTS 미러).
+def store_save(pairs, source: str = "단건"):
+    """[(content, out), …] 를 영속 저장(+_LAST_RESULTS 미러). source: 출처(결과 화면 필터용).
     적재 정책(dedup): 동일 콘텐츠 + 결과 무변경이면 적재 제외(skip), 변경 시 갱신, 신규는 추가."""
     outs = [o for _, o in pairs]
     _LAST_RESULTS[:] = outs
     st = get_store()
     if st:
         try:
-            return st.save_dedup(pairs, _run_id())
+            return st.save_dedup(pairs, _run_id(), source=source)
         except Exception:
             pass
     return None
@@ -435,7 +435,7 @@ def run_batch(file_bytes: bytes, filename: str) -> dict:
                           "entities": im.get("entities", []),
                           "intent": im.get("intent", []),
                           "grade": (out.get("quality_meta") or {}).get("finalGrade", "")})
-        store_save(pairs)                          # 영속 저장(단일 트랜잭션 배치)
+        store_save(pairs, source="배치")            # 영속 저장(단일 트랜잭션 배치)
         return {"source": "excel", "mock": llm.mock, "count": len(results),
                 "mapping": a["mapping"], "items": items}
     finally:
@@ -516,7 +516,7 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         stats = {"inserted": 0, "updated": 0, "skipped": 0}
         st = get_store()
         if st and pairs:
-            stats = st.save_dedup(pairs, "ingest-" + time.strftime("%Y%m%d-%H%M%S"))
+            stats = st.save_dedup(pairs, "ingest-" + time.strftime("%Y%m%d-%H%M%S"), source="자동 인입")
         msg = f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
         _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=True, last_msg=msg)
         return {"ok": True, "fetched": len(rows), "extracted": len(pairs),
@@ -1328,6 +1328,7 @@ PAGE = """<!doctype html>
       ],
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
+      srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
       loading: false,
       status: '',
@@ -1522,6 +1523,10 @@ PAGE = """<!doctype html>
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
       async loadQueue() { this.modBusy = true; try { this.queueData = await (await fetch('/queue' + (this.queueOnlyUnreviewed ? '' : '?all=1'))).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { this.arenaData = await (await fetch('/arena')).json(); } catch (e) {} },
+      // 결과 출처 필터(자동 인입/단건/배치)
+      get srcOptions() { const s = new Set(((this.dashData && this.dashData.contents) || []).map((c) => c.source || '단건')); return [...s]; },
+      get filteredContents() { const cs = (this.dashData && this.dashData.contents) || []; return this.srcFilter ? cs.filter((c) => (c.source || '단건') === this.srcFilter) : cs; },
+      srcBadgeClass(s) { return s === '자동 인입' ? 'ds-badge--intent' : s === '배치' ? 'ds-badge--category' : 'ds-badge--neutral'; },
       // 아레나 파생값(게이지·내 순위)
       get arenaPct() { const d = this.arenaData; return d ? Math.round((d.accuracy || 0) * 100) : 0; },
       get arenaTargetPct() { const d = this.arenaData; return d ? Math.round((d.target || 0.9) * 100) : 90; },
@@ -2187,6 +2192,14 @@ PAGE = """<!doctype html>
     box-shadow:0 8px 24px rgba(9,23,23,.22)}
   .live-toast__dot{width:7px;height:7px;border-radius:50%;background:#3ddc97;flex:none;
     box-shadow:0 0 0 3px rgba(61,220,151,.25)}
+  /* ── 결과 출처 필터 ── */
+  .srcfilter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px}
+  .srcfilter__chip{font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer;
+    border:1px solid var(--ds-hairline,#e4e4dc);background:var(--ds-surface2,#fff);color:var(--ds-body,#2e3a3a)}
+  .srcfilter__chip span{color:var(--ds-muted);font-variant-numeric:tabular-nums;margin-left:2px}
+  .srcfilter__chip:hover{border-color:var(--ds-violet,#20808d)}
+  .srcfilter__chip.sel{background:var(--ds-violet,#20808d);color:#fff;border-color:var(--ds-violet,#20808d)}
+  .srcfilter__chip.sel span{color:rgba(255,255,255,.8)}
   /* ── 검수자 등록 온보딩(딤드 + 중앙 모달) ── */
   .onboard{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:24px;
     background:rgba(9,23,23,.55);backdrop-filter:blur(4px)}
@@ -3172,11 +3185,19 @@ PAGE = """<!doctype html>
         </div>
           <div class="panel-bd">
             <p class="text-xs text-muted" style="margin-bottom:11px">콘텐츠마다 <b class="text-ink">정확</b> / <b class="text-ink">문제</b>를 표시하고, 문제는 교정 메모를 남기면 다음 추출부터 해당 단계 프롬프트에 자동 반영됩니다(원천 프롬프트는 <b class="text-ink">프롬프트 스튜디오</b>에서 편집)</p>
+            <!-- 출처 필터: 자동 인입 / 단건 / 배치 구분 -->
+            <div class="srcfilter" x-show="srcOptions.length > 1">
+              <button type="button" class="srcfilter__chip" x-bind:class="srcFilter==='' ? 'sel' : ''" x-on:click="srcFilter=''">전체 <span x-text="(dashData&&dashData.contents?dashData.contents.length:0)"></span></button>
+              <template x-for="s in srcOptions" x-bind:key="s">
+                <button type="button" class="srcfilter__chip" x-bind:class="srcFilter===s ? 'sel' : ''" x-on:click="srcFilter=s">
+                  <span x-text="s"></span> <span x-text="(dashData&&dashData.contents?dashData.contents.filter(c=>(c.source||'단건')===s).length:0)"></span></button>
+              </template>
+            </div>
             <div class="overflow-auto" style="max-height:440px;padding:2px">
-              <template x-for="c in (dashData?dashData.contents:[])" x-bind:key="c.hash">
+              <template x-for="c in filteredContents" x-bind:key="c.hash">
                 <div class="fbrow">
                   <div class="fbrow__main">
-                    <div class="fbrow__title"><span class="ds-badge" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="c.grade||'-'"></span><span x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span></div>
+                    <div class="fbrow__title"><span class="ds-badge" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" x-text="c.source||'단건'"></span><span x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span></div>
                     <div class="fbrow__sum tbox" x-show="c.summary" x-text="c.summary"></div>
                   </div>
                   <div class="fbrow__act">
@@ -3191,6 +3212,7 @@ PAGE = """<!doctype html>
                 </div>
               </template>
               <div x-show="!(dashData&&dashData.contents&&dashData.contents.length)" class="text-xs text-muted" style="padding:10px">표시할 콘텐츠가 없습니다 먼저 추출을 실행하세요</div>
+              <div x-show="dashData&&dashData.contents&&dashData.contents.length && !filteredContents.length" class="text-xs text-muted" style="padding:10px">이 출처의 콘텐츠가 없습니다</div>
             </div>
           </div>
         </section>

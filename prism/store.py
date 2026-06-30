@@ -37,7 +37,7 @@ class Store:
         CREATE TABLE IF NOT EXISTS results(
           content_hash TEXT PRIMARY KEY, run_id TEXT, service TEXT, title TEXT,
           final_grade TEXT, reasons TEXT, item_meta TEXT, payload TEXT,
-          cost_usd REAL, fail_kind TEXT, created_at REAL);
+          cost_usd REAL, fail_kind TEXT, created_at REAL, source TEXT);
         CREATE TABLE IF NOT EXISTS usage(
           id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, kind TEXT, n INTEGER,
           cost_usd REAL, tokens_in INTEGER, tokens_out INTEGER);
@@ -59,6 +59,8 @@ class Store:
         """)
         c.commit()
         self._migrate_feedback(c)
+        if "source" not in [r[1] for r in c.execute("PRAGMA table_info(results)")]:
+            c.execute("ALTER TABLE results ADD COLUMN source TEXT"); c.commit()   # 출처 필터
 
     def _migrate_feedback(self, c):
         """구 스키마(PK=content_hash, 단일 의견) → 신 스키마(PK=content_hash+reviewer) 이행.
@@ -145,8 +147,9 @@ class Store:
         return [json.loads(r[0]) for r in c.execute(q, args)]
 
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
-    def save_many(self, pairs, run_id: str):
-        """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수."""
+    def save_many(self, pairs, run_id: str, source: str = ""):
+        """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
+        source: 출처(자동 인입·단건·배치 등) — 결과 화면 필터용."""
         rows = []
         for content, out in pairs:
             ch = content_hash(content)
@@ -161,21 +164,21 @@ class Store:
                          qm.get("finalGrade", ""), json.dumps(qm.get("reasons", []), ensure_ascii=False),
                          json.dumps(out.get("item_meta"), ensure_ascii=False),
                          json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
-                         fail_kind, time.time()))
+                         fail_kind, time.time(), source))
         if not rows:
             return 0
         c = self._conn()
         c.executemany("""INSERT INTO results
-          (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?)
+          (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at,source)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
           ON CONFLICT(content_hash) DO UPDATE SET
             run_id=excluded.run_id, final_grade=excluded.final_grade, reasons=excluded.reasons,
             item_meta=excluded.item_meta, payload=excluded.payload, cost_usd=excluded.cost_usd,
-            fail_kind=excluded.fail_kind, created_at=excluded.created_at""", rows)
+            fail_kind=excluded.fail_kind, created_at=excluded.created_at, source=excluded.source""", rows)
         c.commit()
         return len(rows)
 
-    def save_dedup(self, pairs, run_id: str) -> dict:
+    def save_dedup(self, pairs, run_id: str, source: str = "") -> dict:
         """적재 정책: content_hash 기준 멱등.
         · 신규 → insert  · 기존인데 메타(등급·item_meta·reasons) 변경 → update
         · 동일 콘텐츠 + 결과 무변경 → 적재 제외(skip, DB 미기록).
@@ -212,15 +215,15 @@ class Store:
                          new_gr, json.dumps(qm.get("reasons", []), ensure_ascii=False),
                          json.dumps(out.get("item_meta"), ensure_ascii=False),
                          json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
-                         fail_kind, time.time()))
+                         fail_kind, time.time(), source))
         if rows:
             c.executemany("""INSERT INTO results
-              (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?)
+              (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at,source)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(content_hash) DO UPDATE SET
                 run_id=excluded.run_id, final_grade=excluded.final_grade, reasons=excluded.reasons,
                 item_meta=excluded.item_meta, payload=excluded.payload, cost_usd=excluded.cost_usd,
-                fail_kind=excluded.fail_kind, created_at=excluded.created_at""", rows)
+                fail_kind=excluded.fail_kind, created_at=excluded.created_at, source=excluded.source""", rows)
             c.commit()
         return {"inserted": ins, "updated": upd, "skipped": skip}
 
@@ -250,8 +253,8 @@ class Store:
         """배치 결과 콘텐츠별 행(피드백 부착용): content_hash·서비스·제목·등급·요약·카테고리."""
         c = self._conn()
         rows = []
-        for ch, svc, ti, grade, im in c.execute(
-                "SELECT content_hash,service,title,final_grade,item_meta FROM results ORDER BY created_at DESC LIMIT ?",
+        for ch, svc, ti, grade, im, src in c.execute(
+                "SELECT content_hash,service,title,final_grade,item_meta,source FROM results ORDER BY created_at DESC LIMIT ?",
                 (int(limit),)):
             try:
                 imd = json.loads(im) if im else {}
@@ -259,7 +262,8 @@ class Store:
                 imd = {}
             cat = " · ".join(f"{k}→{v}" for k, v in ((imd or {}).get("content_category") or {}).items())
             rows.append({"hash": ch, "service": svc or "", "title": ti or "",
-                         "grade": grade or "", "summary": (imd or {}).get("summary", ""), "category": cat})
+                         "grade": grade or "", "summary": (imd or {}).get("summary", ""),
+                         "category": cat, "source": src or "단건"})
         return rows
 
     # ── 평가 피드백 / 학습 루프 ──
