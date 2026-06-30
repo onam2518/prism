@@ -37,13 +37,22 @@ _DB_PATH = os.environ.get("PRISM_DB") or os.path.join(os.path.dirname(DEFAULT_CO
 
 
 def get_store():
-    """Store 싱글턴. 실패해도 앱은 동작(메모리 폴백)."""
+    """Store 싱글턴(dual-mode). PRISM_BACKEND=supabase + 키 설정 시 SupabaseStore,
+    아니면 로컬 SQLite(기본). 실패해도 앱은 동작(메모리 폴백)."""
     global _STORE
     if _STORE is None:
         try:
-            from .store import Store
-            _STORE = Store(_DB_PATH)
-        except Exception:
+            if os.environ.get("PRISM_BACKEND") == "supabase":
+                from . import supastore
+                if supastore.configured():
+                    _STORE = supastore.SupabaseStore()
+                else:
+                    print("  [warn] PRISM_BACKEND=supabase 이나 SUPABASE_URL/SERVICE_KEY 미설정 → SQLite 폴백")
+            if _STORE is None:
+                from .store import Store
+                _STORE = Store(_DB_PATH)
+        except Exception as e:
+            print(f"  [warn] store 초기화 실패 → 비활성: {e}")
             _STORE = False                       # 비활성(폴백)
     return _STORE or None
 
