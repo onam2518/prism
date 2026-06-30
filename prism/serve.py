@@ -1490,6 +1490,12 @@ PAGE = """<!doctype html>
       get arenaMe() { const d = this.arenaData; if (!d || !this.reviewer) return null; return (d.leaderboard || []).find((r) => r.reviewer === this.reviewer) || null; },
       get arenaMyRank() { const d = this.arenaData; if (!d || !this.reviewer) return 0; const i = (d.leaderboard || []).findIndex((r) => r.reviewer === this.reviewer); return i < 0 ? 0 : i + 1; },
       rankMedal(i) { return ['🥇', '🥈', '🥉'][i] || ('#' + (i + 1)); },
+      // 캐릭터 육성: 레벨 → 성장 티어·타이틀·XP
+      levelTier(L) { return L >= 10 ? 4 : L >= 7 ? 3 : L >= 4 ? 2 : L >= 2 ? 1 : 0; },
+      levelTitle(L) { return ['새내기 검수자', '숙련 검수자', '베테랑 검수자', '검수 마스터', '전설의 검수자'][this.levelTier(L)]; },
+      levelEmoji(L) { return ['🌱', '🔰', '⭐', '🏆', '👑'][this.levelTier(L)]; },
+      xpPct(r) { return r ? (r.points % 100) : 0; },                 // 레벨당 100pt
+      xpToNext(r) { return r ? (r.level * 100 - r.points) : 0; },
       async queueFeedback(it, verdict) {
         if (!this.ensureReviewer()) return;
         it.note = it.note || '';
@@ -2168,10 +2174,39 @@ PAGE = """<!doctype html>
   .lb-rank{width:30px;text-align:center;font-weight:700;font-size:14px}
   .lb-name{flex:1;min-width:0;font-weight:600;color:var(--ds-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .lb-streak{font-size:12px;color:var(--ds-muted)} .lb-pts{font-weight:700;color:var(--ds-violet,#20808d)}
-  .mecard__rank{font-size:34px;font-weight:800;color:var(--ds-violet,#20808d);line-height:1;margin-bottom:10px}
-  .mecard__grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-  .mecard__n{font-size:19px;font-weight:800;color:var(--ds-ink)} .mecard__l{font-size:10.5px;color:var(--ds-muted);margin-top:2px}
-  .mecard__hint{margin-top:12px;font-size:11px;color:var(--ds-muted)}
+  .lb-title{display:block;font-size:10px;color:var(--ds-muted);font-weight:500;margin-top:1px}
+  .lb-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+    background:var(--ds-surface2,#fff);box-shadow:0 0 0 2px var(--tier-c,#c9d4d4);overflow:hidden}
+  .lb-av img{width:24px;height:24px}
+  /* ── 검수 캐릭터 육성 카드 ── */
+  .charcard{text-align:center;padding:6px 4px 4px;--tier-c:#aab6b6}
+  .charcard[data-tier="1"]{--tier-c:#20808d} .charcard[data-tier="2"]{--tier-c:#2f7dd1}
+  .charcard[data-tier="3"]{--tier-c:#e0a52e} .charcard[data-tier="4"]{--tier-c:#9a5cff}
+  .lb-av[data-tier="1"]{--tier-c:#20808d} .lb-av[data-tier="2"]{--tier-c:#2f7dd1}
+  .lb-av[data-tier="3"]{--tier-c:#e0a52e} .lb-av[data-tier="4"]{--tier-c:#9a5cff}
+  .charcard__avatar{position:relative;width:96px;height:96px;margin:6px auto 4px;display:flex;align-items:center;justify-content:center}
+  .charcard__avatar img{position:relative;z-index:1;width:64px;height:64px;
+    /* 티어가 오를수록 캐릭터가 커지고(육성) 살짝 떠오름 */
+    transform:scale(calc(1 + var(--tier,0)*0.11));transition:transform .5s cubic-bezier(.22,1.4,.36,1);
+    filter:drop-shadow(0 4px 8px rgba(19,52,59,.2))}
+  .charcard[data-tier="0"]{--tier:0} .charcard[data-tier="1"]{--tier:1} .charcard[data-tier="2"]{--tier:2}
+  .charcard[data-tier="3"]{--tier:3} .charcard[data-tier="4"]{--tier:4}
+  .charcard__glow{position:absolute;inset:0;border-radius:50%;
+    background:radial-gradient(circle,color-mix(in srgb,var(--tier-c) 38%,transparent),transparent 68%);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--tier-c) 55%,transparent);opacity:calc(.35 + var(--tier,0)*0.16)}
+  .charcard[data-tier="4"] .charcard__glow{animation:charpulse 1.8s ease-in-out infinite}
+  @keyframes charpulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.08);opacity:1}}
+  .charcard__lvl{position:absolute;z-index:2;bottom:-2px;right:6px;background:var(--tier-c);color:#fff;
+    font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.18)}
+  .charcard__title{font-weight:800;font-size:15px;color:var(--ds-ink);margin:2px 0 10px}
+  .charcard__xpwrap{padding:0 10px}
+  .charcard__xpbar{height:9px;border-radius:999px;background:var(--ds-hairline,#e4e4dc);overflow:hidden}
+  .charcard__xpfill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--tier-c),color-mix(in srgb,var(--tier-c) 55%,#fff));transition:width .6s cubic-bezier(.22,1,.36,1)}
+  .charcard__xptxt{font-size:11px;color:var(--ds-muted);margin-top:5px}
+  .charcard__stats{display:flex;justify-content:center;gap:18px;margin:13px 0 4px}
+  .charcard__stats div{display:flex;flex-direction:column}
+  .charcard__stats b{font-size:18px;font-weight:800;color:var(--ds-ink)} .charcard__stats span{font-size:10.5px;color:var(--ds-muted)}
+  .charcard__hint{font-size:11px;color:var(--ds-muted);margin-top:8px;line-height:1.5}
   .conn-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ds-ink);white-space:nowrap}
   .conn-chip--off{color:var(--ds-muted)}
   /* 본문 영역: 뷰포트 남은 높이를 꽉 채우되 자체는 스크롤 안 함(overflow:hidden) 사이드바·콘텐츠가 각자 내부 스크롤 */
@@ -3115,7 +3150,9 @@ PAGE = """<!doctype html>
               <template x-for="(r, i) in (arenaData?arenaData.leaderboard:[])" x-bind:key="r.reviewer">
                 <div class="lb-row" x-bind:class="r.reviewer===reviewer ? 'lb-row--me' : ''">
                   <span class="lb-rank" x-text="rankMedal(i)"></span>
-                  <span class="lb-name" x-text="r.reviewer + (r.reviewer===reviewer ? ' (나)' : '')"></span>
+                  <span class="lb-av" x-bind:data-tier="levelTier(r.level)"><img src="/vendor/boksil-catcher.svg" alt=""></span>
+                  <span class="lb-name"><span x-text="r.reviewer + (r.reviewer===reviewer ? ' (나)' : '')"></span>
+                    <small class="lb-title" x-text="levelEmoji(r.level)+' '+levelTitle(r.level)"></small></span>
                   <span class="lb-streak" x-show="r.streak>0" x-text="'🔥' + r.streak"></span>
                   <span class="ds-badge ds-badge--neutral" x-text="'Lv.' + r.level"></span>
                   <span class="lb-pts tnum" x-text="r.points + 'pt'"></span>
@@ -3124,24 +3161,35 @@ PAGE = """<!doctype html>
               <div x-show="!(arenaData&&arenaData.leaderboard&&arenaData.leaderboard.length)" class="text-xs text-muted" style="padding:12px">아직 검수 기록이 없습니다 — <b class="text-ink">검수 큐</b>에서 첫 검수를 해보세요</div>
             </div>
           </section>
-          <!-- 내 기여 -->
-          <section class="panel"><div class="panel-hd"><b>내 기여</b><span class="meta" x-text="reviewer ? reviewer : '이름 미설정'"></span></div>
+          <!-- 내 검수 캐릭터 (육성) -->
+          <section class="panel"><div class="panel-hd"><b>내 검수 캐릭터</b><span class="meta" x-text="reviewer ? reviewer : '이름 미설정'"></span></div>
             <div class="panel-bd">
-              <div x-show="!reviewer" class="text-xs text-muted" style="padding:8px">우상단에서 <b class="text-ink">검수자 이름</b>을 설정하면 내 기여가 집계됩니다</div>
+              <div x-show="!reviewer" class="text-xs text-muted" style="padding:8px">우상단에서 <b class="text-ink">검수자 이름</b>을 설정하면 나만의 캐릭터가 생깁니다</div>
               <template x-if="reviewer && arenaMe">
-                <div class="mecard">
-                  <div class="mecard__rank">#<span x-text="arenaMyRank"></span></div>
-                  <div class="mecard__grid">
-                    <div><div class="mecard__n tnum" x-text="arenaMe.points"></div><div class="mecard__l">점수</div></div>
-                    <div><div class="mecard__n tnum" x-text="'Lv.'+arenaMe.level"></div><div class="mecard__l">레벨</div></div>
-                    <div><div class="mecard__n tnum" x-text="arenaMe.reviews"></div><div class="mecard__l">검수</div></div>
-                    <div><div class="mecard__n tnum" x-text="arenaMe.corrections"></div><div class="mecard__l">반영 개선 🏅</div></div>
-                    <div><div class="mecard__n tnum" x-text="(arenaMe.streak||0)+'일'"></div><div class="mecard__l">🔥 스트릭</div></div>
+                <div class="charcard" x-bind:data-tier="levelTier(arenaMe.level)">
+                  <div class="charcard__avatar">
+                    <span class="charcard__glow"></span>
+                    <img src="/vendor/boksil-catcher.svg" alt="검수 캐릭터">
+                    <span class="charcard__lvl" x-text="'Lv.' + arenaMe.level"></span>
                   </div>
-                  <div class="mecard__hint">검수 +10pt · 채택된 개선(REAP) +25pt</div>
+                  <div class="charcard__title"><span x-text="levelEmoji(arenaMe.level)"></span> <span x-text="levelTitle(arenaMe.level)"></span></div>
+                  <div class="charcard__xpwrap">
+                    <div class="charcard__xpbar"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
+                    <div class="charcard__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
+                  </div>
+                  <div class="charcard__stats">
+                    <div><b class="tnum" x-text="arenaMe.reviews"></b><span>검수</span></div>
+                    <div><b class="tnum" x-text="arenaMe.corrections"></b><span>개선 🏅</span></div>
+                    <div><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>🔥 스트릭</span></div>
+                  </div>
+                  <div class="charcard__hint">검수 +10 · 채택된 개선(REAP) +25 — 점수가 쌓이면 캐릭터가 <b class="text-ink">성장</b>해요</div>
                 </div>
               </template>
-              <div x-show="reviewer && !arenaMe" class="text-xs text-muted" style="padding:8px"><b class="text-ink" x-text="reviewer"></b> 의 첫 검수를 기다려요 — <span class="arena-quest" x-on:click="selectMod('review')">검수하러 가기 →</span></div>
+              <div x-show="reviewer && !arenaMe" class="charcard charcard--egg" data-tier="0">
+                <div class="charcard__avatar"><img src="/vendor/boksil-catcher.svg" alt="" style="opacity:.5;filter:grayscale(1)"><span class="charcard__lvl">Lv.0</span></div>
+                <div class="charcard__title">🥚 검수 새싹</div>
+                <div class="charcard__hint"><b class="text-ink" x-text="reviewer"></b> 의 첫 검수로 캐릭터를 깨워요 — <span class="arena-quest" x-on:click="selectMod('review')">검수하러 가기 →</span></div>
+              </div>
             </div>
           </section>
         </div>
