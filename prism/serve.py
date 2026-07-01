@@ -1661,6 +1661,7 @@ PAGE = """<!doctype html>
       drillOpen: false, drillData: null, drillBusy: false,  // 대시보드 드릴다운
       detailOpen: false, detail: null,   // 콘텐츠 상세(공통 컴포넌트): 좌 원문 렌더 · 우 평가
       badgeToast: null,   // 배지 달성 축하 오버레이
+      errMsg: '',   // 전역 에러 토스트(조용한 실패 노출)
       dashSub: 'batch',     // 콘텐츠 서브탭: batch(배치결과) | quality(품질·법령) | topic(토픽)
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
       navIcons: {
@@ -1855,10 +1856,10 @@ PAGE = """<!doctype html>
       addWidget(id) { this.addMenuOpen = false; if (!this.placed) this.placed = []; if (!this.placed.includes(id)) { this.placed.push(id); this.saveHome(); } },
       removeWidget(id) { this.placed = (this.placed || []).filter((x) => x !== id); this.saveHome(); },
       useRecommended() { this.placed = ['launch-run', 'launch-dict', 'metrics', 'quality', 'intents']; this.saveHome(); },
-      async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard')).json(); } catch (e) {} this.modBusy = false; },
+      async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard')).json(); } catch (e) { this._err('대시보드 불러오기 실패 · 다시 시도하세요'); } this.modBusy = false; },
       async drill(kind, value) {
         this.drillOpen = true; this.drillBusy = true; this.drillData = { kind: kind, value: value, items: [] };
-        try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value))).json(); } catch (e) {}
+        try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value))).json(); } catch (e) { this._err('콘텐츠 목록 불러오기 실패'); }
         this.drillBusy = false;
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : '품질 사유'; },
@@ -1888,6 +1889,7 @@ PAGE = """<!doctype html>
         if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
       },
       _authHeaders() { const h = { 'Content-Type': 'application/json' }; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken; return h; },
+      _err(m) { this.errMsg = m; if (this._errT) clearTimeout(this._errT); this._errT = setTimeout(() => { this.errMsg = ''; }, 4800); },
       get showProfileFields() { return this.backend !== 'supabase' || this.authMode === 'signup' || !!this.reviewer; },
       logout() {
         try { localStorage.removeItem('prism_reviewer'); localStorage.removeItem('prism_reviewer_char'); localStorage.removeItem('prism_token'); } catch (e) {}
@@ -1963,8 +1965,8 @@ PAGE = """<!doctype html>
       },
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
       async loadQueue() { this.modBusy = true; try { this.queueData = await (await fetch('/queue' + (this.queueOnlyUnreviewed ? '' : '?all=1'))).json(); } catch (e) {} this.modBusy = false; },
-      async loadArena() { try { this.arenaData = await (await fetch('/arena')).json(); } catch (e) {} this.checkBadges(); },
-      async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) {} },
+      async loadArena() { try { this.arenaData = await (await fetch('/arena')).json(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
+      async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
       async runGolden() {
         this.goldenBusy = true; this.goldenResult = null;
         try { this.goldenResult = await (await fetch('/eval-golden', { method: 'POST', headers: this._authHeaders() })).json(); } catch (e) {}
@@ -2730,6 +2732,8 @@ PAGE = """<!doctype html>
     display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;
     background:var(--ds-ink);color:#fff;font-size:12.5px;font-weight:500;
     box-shadow:0 8px 24px rgba(0,0,0,.22)}
+  .err-toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:96;display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:9999px;background:var(--ds-error);color:#fff;font-size:13px;font-weight:600;box-shadow:var(--ds-shadow-high);cursor:pointer}
+  .err-toast__ic{font-size:14px}
   .live-toast__dot{width:7px;height:7px;border-radius:50%;background:#18ba45;flex:none;
     box-shadow:0 0 0 3px rgba(61,220,151,.25)}
   /* ── 결과 출처 필터 ── */
@@ -3103,6 +3107,11 @@ PAGE = """<!doctype html>
   <!-- 실시간 협업 토스트: 다른 검수자의 검수 활동 -->
   <div class="live-toast" x-show="liveMsg" x-cloak x-transition.opacity>
     <span class="live-toast__dot"></span><span x-text="liveMsg"></span>
+  </div>
+
+  <!-- 전역 에러 토스트(조용한 실패 노출 · A-2) -->
+  <div class="err-toast" x-show="errMsg" x-cloak x-transition.opacity x-on:click="errMsg=''">
+    <span class="err-toast__ic">⚠</span><span x-text="errMsg"></span>
   </div>
 
   <!-- 배지 달성 축하 오버레이(성취감) -->
