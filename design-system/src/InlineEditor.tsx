@@ -12,7 +12,7 @@ export interface EditBarProps {
   children?: React.ReactNode;
 }
 
-/** 편집 액션 바 — 저장/취소. InlineEditor 내부 또는 단독. */
+/** 편집 액션 바 · 저장/취소. InlineEditor 내부 또는 단독. */
 export function EditBar({ onSave, onCancel, saveLabel = '저장', cancelLabel = '취소', children }: EditBarProps) {
   return (
     <div className="ds-editbar">
@@ -36,7 +36,7 @@ export interface InlineEditorProps {
   multiline?: boolean;
 }
 
-/** 인라인 편집 — 클릭하면 입력으로 전환, EditBar 로 저장/취소. */
+/** 인라인 편집 · 클릭하면 입력으로 전환, EditBar 로 저장/취소. */
 export function InlineEditor({ value, onChange, placeholder, multiline = false }: InlineEditorProps) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);

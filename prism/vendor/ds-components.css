@@ -1,4 +1,4 @@
-/* Prism Design System — 컴포넌트 스타일. 토큰(CSS 변수)만 참조.
+/* Prism Design System · 컴포넌트 스타일. 토큰(CSS 변수)만 참조.
    Anchor(axz) 정렬: 무채색 캔버스 위 Blue(Primary)·Red(Accent) 액센트, surface 대비 우선 깊이. */
 
 .ds-root,
@@ -35,14 +35,14 @@
 }
 .ds-btn__label, .ds-btn__icon { position: relative; z-index: 1; display: inline-flex; }
 .ds-btn__icon { width: 16px; height: 16px; align-items: center; justify-content: center; }
-/* HoverLayer — inset -1px 공통 오버레이, Hover 시 background.state.hover */
+/* HoverLayer · inset -1px 공통 오버레이, Hover 시 background.state.hover */
 .ds-btn__hover {
   position: absolute; inset: -1px; border-radius: inherit;
   background: transparent; pointer-events: none; z-index: 0;
   transition: background-color var(--ds-motion-fast) var(--ds-ease-standard);
 }
 .ds-btn:hover:not(:disabled) .ds-btn__hover { background: var(--ds-state-hover, rgba(0,0,0,0.04)); }
-/* FocusRing — border.focus(Blue.500) 2px, offset 2px, R = 버튼 R + 2 */
+/* FocusRing · border.focus(Blue.500) 2px, offset 2px, R = 버튼 R + 2 */
 .ds-btn:focus-visible { outline: none; box-shadow: var(--ds-focus-ring); }
 .ds-btn:disabled { cursor: not-allowed; }
 .ds-btn:disabled .ds-btn__hover { background: transparent; }
@@ -50,7 +50,7 @@
 /* Shape */
 .ds-btn--rounded { border-radius: var(--ds-radius-full); }
 
-/* Size 스케일 (Sm·Md·Lg·Xl·2Xl·3Xl) — typography / padding / gap / min-height */
+/* Size 스케일 (Sm·Md·Lg·Xl·2Xl·3Xl) · typography / padding / gap / min-height */
 .ds-btn--s-sm  { --ds-btn-h: 32px; --ds-btn-px: 8px;  --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-caption); }
 .ds-btn--s-md  { --ds-btn-h: 36px; --ds-btn-px: 12px; --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-body); }
 .ds-btn--s-lg  { --ds-btn-h: 40px; --ds-btn-px: 16px; --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-body); }
@@ -67,7 +67,7 @@
 .ds-btn--solid.ds-btn--c-ghost     { background: transparent; color: var(--ds-text-secondary); }
 .ds-btn--solid.ds-btn--c-danger    { background: var(--ds-error); color: var(--ds-on-primary); }
 
-/* ── Outline 매트릭스 (Button.md §3-2) — 1px border.button.outline ── */
+/* ── Outline 매트릭스 (Button.md §3-2) · 1px border.button.outline ── */
 .ds-btn--outline { border-color: var(--ds-border-button-outline); }
 .ds-btn--outline.ds-btn--c-primary { background: transparent; color: var(--ds-state-info); }
 .ds-btn--outline.ds-btn--c-danger  { background: transparent; color: var(--ds-state-accent); }
@@ -76,12 +76,12 @@
 .ds-btn--outline.ds-btn--c-inverse { background: var(--ds-interaction-inverse); color: var(--ds-text-secondary); }
 .ds-btn--outline.ds-btn--c-subtlest{ background: var(--ds-interaction-subtlest); color: var(--ds-text-secondary); }
 
-/* State — Disabled (background.interaction.disabled · text.disabled) */
+/* State · Disabled (background.interaction.disabled · text.disabled) */
 .ds-btn:disabled { background: var(--ds-interaction-disabled); color: var(--ds-text-disabled); border-color: transparent; }
 .ds-btn--outline.ds-btn--c-ghost:disabled,
 .ds-btn--solid.ds-btn--c-ghost:disabled { background: transparent; }
 
-/* State — Loading: 라벨·아이콘 숨김 + 스피너, 폭 고정 */
+/* State · Loading: 라벨·아이콘 숨김 + 스피너, 폭 고정 */
 .ds-btn--loading { color: transparent !important; }
 .ds-btn--loading .ds-btn__label,
 .ds-btn--loading .ds-btn__icon { visibility: hidden; }
@@ -98,7 +98,7 @@
 .ds-btn--solid.ds-btn--c-subtlest .ds-btn__spinner { color: var(--ds-text-secondary); }
 @keyframes ds-btn-spin { to { transform: rotate(360deg); } }
 
-/* 토글(필터·세그먼트) 활성 — 구 pill 호환 (aria-pressed) */
+/* 토글(필터·세그먼트) 활성 · 구 pill 호환 (aria-pressed) */
 .ds-btn[aria-pressed='true'] {
   background: var(--ds-primary-tint);
   border-color: var(--ds-primary);
@@ -133,7 +133,7 @@
 .ds-field--invalid { border-color: var(--ds-error); }
 .ds-field--invalid:focus { border-color: var(--ds-error); box-shadow: var(--ds-focus-ring-error); }
 
-/* Composer — 시그니처 Ask 박스 */
+/* Composer · 시그니처 Ask 박스 */
 .ds-field--composer {
   border-radius: var(--ds-radius-xl);
   padding: 16px 18px;
@@ -151,9 +151,9 @@
   background: var(--ds-surface);
   padding: 20px 24px;
 }
-/* Answer — 에디토리얼 플랫, 그림자 없음 */
+/* Answer · 에디토리얼 플랫, 그림자 없음 */
 .ds-card--answer { border-color: var(--ds-hairline-soft); }
-/* Source — 흰 배경, 미묘한 그림자, hover 시 Primary lift */
+/* Source · 흰 배경, 미묘한 그림자, hover 시 Primary lift */
 .ds-card--source {
   background: var(--ds-surface-white);
   border-color: var(--ds-hairline);
@@ -164,7 +164,7 @@
     box-shadow var(--ds-motion-standard) var(--ds-ease-standard);
 }
 .ds-card--source:hover { border-color: var(--ds-primary); box-shadow: var(--ds-shadow-standard); }
-/* Feed — Discover 카드 */
+/* Feed · Discover 카드 */
 .ds-card--feed { padding: 0; overflow: hidden; }
 
 /* ── Badge ───────────────────────────────────────────────── */
@@ -406,7 +406,7 @@
   margin-bottom: 2px;
 }
 
-/* ── Toast (의도적으로 다크 — 모드 무관 고정) ──────────────── */
+/* ── Toast (의도적으로 다크 · 모드 무관 고정) ──────────────── */
 .ds-toast-viewport {
   position: fixed;
   left: 50%;
@@ -511,7 +511,7 @@
 .ds-persona__role { font-size: var(--ds-size-caption); color: var(--ds-muted); margin-top: 2px; }
 .ds-persona__desc { font-size: var(--ds-size-body); color: var(--ds-body); margin-top: 6px; line-height: var(--ds-lh-normal); }
 
-/* Processing — 배치/단건 처리 대기 화면 */
+/* Processing · 배치/단건 처리 대기 화면 */
 .ds-processing {
   display: flex;
   flex-direction: column;
@@ -535,7 +535,7 @@
 }
 
 /* ════════════════════════════════════════════════════════════
-   Infographic — Stat · ProgressBar · ProgressRing · Skeleton · Spinner
+   Infographic · Stat · ProgressBar · ProgressRing · Skeleton · Spinner
    ════════════════════════════════════════════════════════════ */
 
 /* Stat 타일 (배치 집계) */
@@ -585,7 +585,7 @@
   animation: ds-indeterminate 1.4s var(--ds-ease-standard) infinite;
 }
 
-/* ProgressRing (도넛 — conic-gradient) */
+/* ProgressRing (도넛 · conic-gradient) */
 .ds-ring {
   position: relative;
   width: var(--ds-ring-size, 96px);
@@ -714,7 +714,7 @@
    High-end 유틸리티 (Anchor 정합 범위만)
    ════════════════════════════════════════════════════════════ */
 
-/* Eyebrow 태그 — H1/H2 위 마이크로 라벨 */
+/* Eyebrow 태그 · H1/H2 위 마이크로 라벨 */
 .ds-eyebrow {
   display: inline-block;
   border-radius: var(--ds-radius-full);
@@ -728,7 +728,7 @@
   background: var(--ds-hairline-soft);
 }
 
-/* Double-Bezel — 카드를 머신드 하드웨어처럼 (외피 + 동심원 코어) */
+/* Double-Bezel · 카드를 머신드 하드웨어처럼 (외피 + 동심원 코어) */
 .ds-bezel {
   border-radius: var(--ds-radius-2xl);
   background: var(--ds-hairline-soft);
@@ -741,7 +741,7 @@
   box-shadow: var(--ds-highlight);
 }
 
-/* Button-in-Button — CTA 트레일링 아이콘을 중첩 원에 (자석 hover) */
+/* Button-in-Button · CTA 트레일링 아이콘을 중첩 원에 (자석 hover) */
 .ds-btn--cta { padding-right: 6px; }
 .ds-btn__trail {
   width: 28px;
@@ -759,7 +759,7 @@
 .ds-btn--cta:hover:not(:disabled) .ds-btn__trail { transform: translate(2px, -1px) scale(1.06); }
 .ds-btn--cta:active:not(:disabled) { transform: scale(0.98); }
 
-/* 필름 그레인 — 페이퍼 질감 (fixed, pointer-events 없음) */
+/* 필름 그레인 · 페이퍼 질감 (fixed, pointer-events 없음) */
 .ds-grain {
   position: fixed;
   inset: 0;
@@ -769,7 +769,7 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* 스크롤 진입 리빌 — transform/opacity/blur 만 (GPU-safe) */
+/* 스크롤 진입 리빌 · transform/opacity/blur 만 (GPU-safe) */
 .ds-reveal {
   opacity: 0;
   transform: translateY(16px);
@@ -798,7 +798,7 @@
 }
 
 /* ════════════════════════════════════════════════════════════
-   App UI — Shell·Nav / Form / Result / Operations
+   App UI · Shell·Nav / Form / Result / Operations
    ════════════════════════════════════════════════════════════ */
 
 /* ── Shell & Nav ─────────────────────────────────────────── */
@@ -840,7 +840,7 @@
   height: fit-content;
 }
 .ds-navgroup { display: flex; flex-direction: column; gap: 1px; }
-/* 카테고리 사이 구분선 — 계층 분리 */
+/* 카테고리 사이 구분선 · 계층 분리 */
 .ds-navgroup + .ds-navgroup { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--ds-hairline-soft); }
 .ds-navgroup__label {
   font-family: var(--ds-font-sans);
@@ -1058,7 +1058,7 @@
 }
 
 /* ════════════════════════════════════════════════════════════
-   PersonaCard — 홀로그래픽 트레이딩 카드 (야구/포켓몬 카드)
+   PersonaCard · 홀로그래픽 트레이딩 카드 (야구/포켓몬 카드)
    CSS 포일 + 포인터 틸트. 라이브러리 0.
    ════════════════════════════════════════════════════════════ */
 .ds-personacard {
@@ -1151,7 +1151,7 @@
 }
 
 /* ════════════════════════════════════════════════════════════
-   IconButton + Tooltip — 아이콘화 + 호버 시 라벨 (군더더기 축소)
+   IconButton + Tooltip · 아이콘화 + 호버 시 라벨 (군더더기 축소)
    ════════════════════════════════════════════════════════════ */
 .ds-iconbtn {
   display: inline-flex;
@@ -1173,7 +1173,7 @@
 .ds-iconbtn--active { background: var(--ds-primary-tint); color: var(--ds-primary-deep); }
 .ds-iconbtn--sm { width: 28px; height: 28px; }
 
-/* 호버 툴팁 — [data-tip] 만 붙이면 동작. JS 0. */
+/* 호버 툴팁 · [data-tip] 만 붙이면 동작. JS 0. */
 [data-tip] { position: relative; }
 [data-tip]::after {
   content: attr(data-tip);
@@ -1210,12 +1210,12 @@
 @media (prefers-reduced-motion: reduce) { [data-tip]::after { transition: opacity var(--ds-motion-fast); } }
 
 /* ════════════════════════════════════════════════════════════
-   Widget & WidgetGrid — 기능 포함 자족 모듈 (폰 홈처럼 조립)
+   Widget & WidgetGrid · 기능 포함 자족 모듈 (폰 홈처럼 조립)
    ════════════════════════════════════════════════════════════ */
 .ds-widgetgrid {
   display: grid;
   grid-template-columns: repeat(var(--ds-wg-cols, 4), minmax(0, 1fr));
-  /* 행은 내용 기반(auto) — 위젯 최소 높이는 위젯이 책임, 런처는 컴팩트 */
+  /* 행은 내용 기반(auto) · 위젯 최소 높이는 위젯이 책임, 런처는 컴팩트 */
   grid-auto-rows: auto;
   gap: 16px;
 }
@@ -1243,7 +1243,7 @@
 .ds-widget__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .ds-widget__title { display: flex; align-items: center; gap: 8px; font-family: var(--ds-font-sans); font-size: var(--ds-size-label); font-weight: 600; color: var(--ds-ink); min-width: 0; }
 .ds-widget__title-icon { color: var(--ds-primary); display: inline-flex; flex: none; }
-/* 위젯 아이덴티티 — 아이콘 칩(카테고리 식별색) + 무채색 헤더 */
+/* 위젯 아이덴티티 · 아이콘 칩(카테고리 식별색) + 무채색 헤더 */
 .ds-widget__icon-chip {
   width: 26px;
   height: 26px;
@@ -1257,7 +1257,7 @@
 }
 .ds-widget__title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-widget__actions { display: flex; align-items: center; gap: 2px; flex: none; }
-/* 위젯 내부 스크롤 지양 — 내용에 맞춰 영역이 자란다(여백 최소·여유 유지) */
+/* 위젯 내부 스크롤 지양 · 내용에 맞춰 영역이 자란다(여백 최소·여유 유지) */
 .ds-widget__body { flex: 1; min-height: 0; overflow: visible; }
 .ds-widget__remove {
   position: absolute;
@@ -1277,7 +1277,7 @@
   padding: 0;
 }
 
-/* 편집 모드 — iOS 홈처럼 지글 + 삭제 노출 */
+/* 편집 모드 · iOS 홈처럼 지글 + 삭제 노출 */
 .ds-widgetgrid--edit .ds-widget { animation: ds-jiggle 0.34s var(--ds-ease-standard) infinite; cursor: grab; }
 .ds-widgetgrid--edit .ds-widget:nth-child(2n) { animation-delay: -0.17s; }
 .ds-widgetgrid--edit .ds-widget:nth-child(3n) { animation-delay: -0.09s; }
@@ -1305,7 +1305,7 @@
 .ds-widget__kind--fn { background: var(--ds-primary-tint); color: var(--ds-primary-deep); }
 .ds-widget__kind--info { background: var(--ds-hairline-soft); color: var(--ds-muted); }
 
-/* Launcher — 메뉴형 기능 위젯(클릭 → 실행/이동) */
+/* Launcher · 메뉴형 기능 위젯(클릭 → 실행/이동) */
 .ds-widget--launcher {
   flex-direction: row;
   align-items: center;
@@ -1333,7 +1333,7 @@
 .ds-launcher__chev { color: var(--ds-placeholder); flex: none; transition: transform var(--ds-motion-fast) var(--ds-ease-standard), color var(--ds-motion-fast); }
 .ds-widget--launcher:hover .ds-launcher__chev { color: var(--ds-primary); transform: translateX(2px); }
 
-/* ── 배치 규격 (폰 홈처럼) — 사이즈·점선 스냅·선택 핸들 ──────── */
+/* ── 배치 규격 (폰 홈처럼) · 사이즈·점선 스냅·선택 핸들 ──────── */
 /* 사이즈 카탈로그 (4-col 셀 기준): sm 1×1 · md 2×1 · lg 2×2 · tall 1×2 · wide 4×1 · xl 4×2 */
 .ds-widget--xl { grid-column: 1 / -1; grid-row: span 2; }
 
@@ -1344,7 +1344,7 @@
   background-position: -9px -9px;
   border-radius: var(--ds-radius-lg);
 }
-/* (사이즈 배지 제거 — 편집 시 X만 노출) */
+/* (사이즈 배지 제거 · 편집 시 X만 노출) */
 /* 선택 상태: Primary 링 + 8핸들 */
 .ds-widget--selected { box-shadow: 0 0 0 2px var(--ds-primary), var(--ds-shadow-standard); z-index: 4; }
 .ds-widget__sel { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; z-index: 5; }
@@ -1366,9 +1366,9 @@
 .ds-widget__sel i:nth-child(8) { top: calc(50% - 5px); left: -5px; }
 
 /* ════════════════════════════════════════════════════════════
-   Onboarding — 스포트라이트 코치마크 (스텝바이스텝, 다시 보기)
+   Onboarding · 스포트라이트 코치마크 (스텝바이스텝, 다시 보기)
    ════════════════════════════════════════════════════════════ */
-/* 대상 강조 — 링 + 9999px 그림자로 주변을 어둡게(컷아웃) */
+/* 대상 강조 · 링 + 9999px 그림자로 주변을 어둡게(컷아웃) */
 .ds-coach-target {
   position: relative;
   z-index: 1320;
@@ -1408,7 +1408,7 @@
 @media (prefers-reduced-motion: reduce) { .ds-coach { animation: none; } .ds-coach-target { transition: none; } }
 
 /* ════════════════════════════════════════════════════════════
-   Assistant — 하단 플로팅 캐릭터 버튼 + 대화 팝업 (채널톡 스타일)
+   Assistant · 하단 플로팅 캐릭터 버튼 + 대화 팝업 (채널톡 스타일)
    ════════════════════════════════════════════════════════════ */
 /* 플로팅 독: 작업 상태창 + 캐릭터(배경 없이 크게). 사이드바 아래(좌하단) */
 .ds-fab-dock { position: fixed; left: 22px; bottom: 22px; z-index: 1150; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -1427,7 +1427,7 @@
 .ds-fab:active { transform: scale(0.97); }
 .ds-fab:focus-visible { outline: none; filter: drop-shadow(0 0 0 4px rgba(30, 132, 255, 0.45)); }
 
-/* 작업 상태창 (Now-brief 스타일 다크 pill) — 진행 중일 때 노출 */
+/* 작업 상태창 (Now-brief 스타일 다크 pill) · 진행 중일 때 노출 */
 .ds-fab-status {
   display: flex;
   align-items: center;

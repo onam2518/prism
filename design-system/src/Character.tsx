@@ -2,7 +2,7 @@ import * as React from 'react';
 import './theme.css';
 import './components.css';
 
-/** 다음프렌즈 캐릭터 메타 — 야구 팀 역할로 페르소나에 매핑. */
+/** 다음프렌즈 캐릭터 메타 · 야구 팀 역할로 페르소나에 매핑. */
 export const characters = {
   daesik: { name: '대식', role: '타자', color: '#2f6bff', file: 'daesik-batter' },
   yonghee: { name: '용희', role: '투수', color: '#16c098', file: 'yonghee-pitcher' },

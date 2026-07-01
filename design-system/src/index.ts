@@ -1,4 +1,4 @@
-// Prism Design System — 공개 진입점 (Anchor Design System 정렬)
+// Prism Design System · 공개 진입점 (Anchor Design System 정렬)
 export { tokens } from './tokens';
 export type { Tokens } from './tokens';
 

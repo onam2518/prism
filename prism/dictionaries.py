@@ -1,10 +1,10 @@
 """출력 어휘 사전: 자유생성 금지. 토픽·사용자 메타 공유 사전과 정합되어야 한다."""
 
-# 품질 메타 11종 — DNM 1311/품질 메타 구분 및 정의(278036632) 기준.
+# 품질 메타 11종 · DNM 1311/품질 메타 구분 및 정의(278036632) 기준.
 # 정의는 분류기 프롬프트에 주입. 발동 ≥1 → finalGrade R, 0 → G(통과 우선 default).
 # (stale 제거: 시의성은 어드민 freshness 필터 책무. format·political·hate 는 UGC 한정.)
 QUALITY_METAS = {
-    "ad":        "광고성: 제품·서비스 홍보 + 명시적 구매·가입 유도가 본문 핵심(3축 AND — 수익 귀속·명시 CTA·B2C 대상 모두 충족 시에만)",
+    "ad":        "광고성: 제품·서비스 홍보 + 명시적 구매·가입 유도가 본문 핵심(3축 AND · 수익 귀속·명시 CTA·B2C 대상 모두 충족 시에만)",
     "sexual":    "선정적 텍스트: 성적 표현이 과도해 정보 전달보다 자극이 목적(단어 경계·콜로케이션, 강한 신호+정량 기준)",
     "profanity": "저속 텍스트: 욕설·비속어를 과도 사용해 불쾌감 유발(단어 경계, 마스킹 포함)",
     "gambling":  "사행성: 로또·토토·카지노 등 조장·당첨 기대감 자극(시점성+권유·예측 톤 결합)",
@@ -17,7 +17,7 @@ QUALITY_METAS = {
     "hate":      "차별·혐오: 인종·성별·지역·연령·세대·국적·계층 비하·혐오 표현(UGC 한정)",
 }
 
-# 메타명(한글 짧은 라벨) — 사전 모듈 표시용
+# 메타명(한글 짧은 라벨) · 사전 모듈 표시용
 QUALITY_META_NAMES = {
     "ad": "광고성", "sexual": "선정적 텍스트", "profanity": "저속 텍스트", "gambling": "사행성",
     "clickbait": "낚시성", "format": "형식 불만족", "shallow": "낮은 정보가치",
@@ -56,7 +56,7 @@ LEGAL_HARM_TYPES = {
     "sexual_violence":      {"label": "성폭력(촬영물 등)", "article": "성폭력처벌법 §14"},
     "privacy_violation":    {"label": "사생활 침해", "article": "개인정보보호법"},
     "stalking":             {"label": "스토킹", "article": "스토킹처벌법"},
-    "hate_speech":          {"label": "혐오표현", "article": ":"},
+    "hate_speech":          {"label": "혐오표현", "article": "포괄 규정(개별 조문 없음)"},
     "copyright":            {"label": "저작권 침해", "article": "저작권법"},
     "fraud":                {"label": "사기", "article": "형법 §347"},
     "election_interference": {"label": "선거 개입", "article": "공직선거법"},
@@ -100,7 +100,7 @@ def active_quality_metas(service_group: str) -> list:
     return metas
 
 
-# 인텐트 사전 — DNM 1312/인텐트 정의 및 구분(278856094) 기준.
+# 인텐트 사전 · DNM 1312/인텐트 정의 및 구분(278856094) 기준.
 # displayServiceName 분기 후 [범용 + 해당 서비스 카테고리] 만 프롬프트에 주입.
 # 범용(전 서비스 공통, 소비 방식 축): 8종
 INTENT_CATEGORIES_UNIVERSAL = [
@@ -155,7 +155,7 @@ def _service_key(display_name: str) -> str:
     return ""
 
 
-# 콘텐츠 카테고리 — DNM 1312/콘텐츠 카테고리 정의(365789408) 기준.
+# 콘텐츠 카테고리 · DNM 1312/콘텐츠 카테고리 정의(365789408) 기준.
 # IAB Content Taxonomy v3.0 골격을 운영 효율 위해 Tier1 21개로 압축한 자사 사전(매핑 비중 순).
 IAB_TIER1 = [
     "News and Politics", "Entertainment", "Business and Finance", "Sports",

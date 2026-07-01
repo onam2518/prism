@@ -142,7 +142,7 @@ answer                          source
 
 | 부품(권장) | 설명 |
 |---|---|
-| `__eyebrow` | 카드 상단 라벨(예: "Answer") — caption muted |
+| `__eyebrow` | 카드 상단 라벨(예: "Answer") · caption muted |
 | `__media` | feed 카드 상단 이미지(16:9, full-bleed) |
 | `__body` | 본문 슬롯 |
 | `__footer` | 액션/메타 |
@@ -199,7 +199,7 @@ underline                         sidebar
 - **variant**: `underline`(상단 가로) · `sidebar`(세로)
 - **상태**: inactive(muted) · hover(ink) · active(밑줄 또는 tint) · focus(ring)
 - **API**: `items: {id,label,icon?}[]`, `value`, `onChange`, `variant`
-- **구성 규칙**: 멀티스텝(단계)에는 Tabs 금지 — 단계는 별도 Stepper(예정). Tabs는 동급 장소 전환만.
+- **구성 규칙**: 멀티스텝(단계)에는 Tabs 금지 · 단계는 별도 Stepper(예정). Tabs는 동급 장소 전환만.
 - **Don't**: 활성 표시를 색만으로(밑줄/배경 동반) · 탭 7개 초과.
 
 ---
@@ -256,7 +256,7 @@ underline                         sidebar
 
 ---
 
-## Composite (사전 정의 — 향후 빌드)
+## Composite (사전 정의 · 향후 빌드)
 
 ### C1. Composer (시그니처)
 ```
@@ -303,9 +303,9 @@ Related (chips/Pill)
 | 상태 | 배경 | 보더 | 텍스트 | 비고 |
 |---|---|---|---|---|
 | rest | `--ds-surface` | `--ds-border-input` | `--ds-text-primary` | placeholder = `--ds-placeholder` |
-| hover | `--ds-surface` | `--ds-border-input-hover` | — | |
-| focus | `--ds-surface` | `--ds-border-focus`(Blue) | — | ring = `--ds-focus-ring` |
-| invalid | `--ds-surface` | `--ds-error` | — | ring = `--ds-focus-ring-error` · `__hint` = `--ds-error` |
+| hover | `--ds-surface` | `--ds-border-input-hover` | · | |
+| focus | `--ds-surface` | `--ds-border-focus`(Blue) | · | ring = `--ds-focus-ring` |
+| invalid | `--ds-surface` | `--ds-error` | · | ring = `--ds-focus-ring-error` · `__hint` = `--ds-error` |
 | disabled | `--ds-surface` | `--ds-border-input` | `--ds-text-disabled` | dim(opacity) · Anchor는 Input border 3상태만 정의(DESIGN.md §4) |
 
 ### Card (`.ds-card`)
@@ -366,7 +366,7 @@ Related (chips/Pill)
 |---|---|---|
 | off | `--ds-interaction-neutral` | `#ffffff`(static) |
 | on | `--ds-primary` | `#ffffff`(static) |
-| focus | ring `--ds-focus-ring` | — |
+| focus | ring `--ds-focus-ring` | · |
 
 ### Toast (`.ds-toast`) / FAB status
 

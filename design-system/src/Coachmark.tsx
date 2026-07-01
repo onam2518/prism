@@ -17,7 +17,7 @@ export interface CoachmarkProps {
 }
 
 /**
- * 온보딩 코치 카드 — 스텝 표시 + 제목/설명 + 다음/건너뛰기.
+ * 온보딩 코치 카드 · 스텝 표시 + 제목/설명 + 다음/건너뛰기.
  * 스포트라이트(대상 강조)는 대상에 `ds-coach-target` 클래스를 토글해 구현(호출측).
  */
 export function Coachmark({

@@ -22,7 +22,7 @@ function UploadIcon() {
   );
 }
 
-/** 범용 파일 드롭존 — 드래그·드롭·클릭·붙여넣기. 이미지/엑셀 입력 공통. */
+/** 범용 파일 드롭존 · 드래그·드롭·클릭·붙여넣기. 이미지/엑셀 입력 공통. */
 export function FileDropzone({
   onFiles,
   accept,

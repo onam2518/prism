@@ -8,11 +8,11 @@ export interface AnswerBlockProps {
   /** 상단 소스 레일 (없으면 생략) */
   sources?: Source[];
   onSelectSource?: (source: Source, index: number) => void;
-  /** 답변 본문 — <Citation/> 을 흐름 속에 포함 */
+  /** 답변 본문 · <Citation/> 을 흐름 속에 포함 */
   children: React.ReactNode;
   /** 카드 상단 라벨 (기본 "Answer") */
   eyebrow?: string;
-  /** 관련 질문 — Pill 로 표시 */
+  /** 관련 질문 · Pill 로 표시 */
   related?: string[];
   onRelated?: (question: string) => void;
 }

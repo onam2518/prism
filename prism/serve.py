@@ -31,9 +31,9 @@ from .llm import LLMClient
 # 마지막 실행 결과(리포트 생성용 · 즉시 응답 미러)
 _LAST_RESULTS: list = []
 
-# ── 로컬 영속 저장소(SQLite) — 추출 결과를 재시작해도 누적 보존 ──
+# ── 로컬 영속 저장소(SQLite) · 추출 결과를 재시작해도 누적 보존 ──
 _STORE = None
-# PRISM_DB(컨테이너 볼륨 등) 우선, 없으면 기존 기본 위치(config 옆) — 기존 데이터 이동 방지.
+# PRISM_DB(컨테이너 볼륨 등) 우선, 없으면 기존 기본 위치(config 옆) · 기존 데이터 이동 방지.
 _DB_PATH = os.environ.get("PRISM_DB") or os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH), "prism.db")
 
 
@@ -56,7 +56,7 @@ def backend_mode():
 
 
 def get_store():
-    """Store 싱글턴(dual-mode). 운영은 Supabase 전용 — supabase 의도 시 SQLite 로 조용히
+    """Store 싱글턴(dual-mode). 운영은 Supabase 전용 · supabase 의도 시 SQLite 로 조용히
     폴백하지 않는다(초기화 실패면 비활성, main 이 시작을 막는다)."""
     global _STORE
     if _STORE is None:
@@ -79,7 +79,7 @@ def _run_id() -> str:
 
 
 def _build_id() -> str:
-    """빌드 식별자(이 모듈 파일의 수정시각) — 설치본이 최신인지 확인용."""
+    """빌드 식별자(이 모듈 파일의 수정시각) · 설치본이 최신인지 확인용."""
     try:
         return time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(__file__)))
     except Exception:
@@ -101,7 +101,7 @@ def store_save(pairs, source: str = "단건", team=None):
 
 
 def results_rows(limit: int = 5000, team=None) -> list:
-    """집계용 결과 행 — 영속 저장소 우선(누적), 없으면 메모리(_LAST_RESULTS)."""
+    """집계용 결과 행 · 영속 저장소 우선(누적), 없으면 메모리(_LAST_RESULTS)."""
     st = get_store()
     if st:
         try:
@@ -763,7 +763,7 @@ def reap_for(data: dict) -> dict:
     return {"ok": True, "items": st.get_reap((data.get("hash") or "").strip())}
 
 
-# ── Supabase Auth(ID/PW) — 서버 프록시 + JWT 검증(supabase 모드) ──
+# ── Supabase Auth(ID/PW) · 서버 프록시 + JWT 검증(supabase 모드) ──
 _JWT_CACHE = {}
 _JWT_LOCK = threading.Lock()
 
@@ -855,7 +855,7 @@ def register_reviewer(data: dict) -> dict:
         team = st.ensure_team(rv, (data.get("team_mode") or "create"),
                               data.get("team_name"), data.get("invite_code"))
         if not team:
-            return {"ok": False, "error": "팀을 찾을 수 없습니다 — 초대코드를 확인하세요"}
+            return {"ok": False, "error": "팀을 찾을 수 없습니다 · 초대코드를 확인하세요"}
         st.set_reviewer(rv, name, ch, team)
     else:
         st.set_reviewer(rv, name, ch)
@@ -865,13 +865,13 @@ def register_reviewer(data: dict) -> dict:
 
 
 def eval_golden(team=None) -> dict:
-    """프로세스 1 — 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용."""
+    """프로세스 1 · 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용."""
     st = get_store()
     if not (st and hasattr(st, "get_golden")):
         return {"ok": False, "error": "골든셋 평가는 Supabase 모드 전용입니다"}
     rows = st.get_golden(team)
     if not rows:
-        return {"ok": False, "error": "등록된 골든셋이 없습니다 — 팀 관리에서 등록하세요"}
+        return {"ok": False, "error": "등록된 골든셋이 없습니다 · 팀 관리에서 등록하세요"}
     from . import abtest
     from . import harness as H
     cfg = Config.load()
@@ -903,7 +903,7 @@ def meta_compile_run(team=None) -> dict:
     results = {}
     for stage, text in raw.items():
         results[stage] = FL.meta_compile(llm, stage, text)
-    # 컴파일된 directive 를 단계 프롬프트(LEARNED)로 반영 — raw 누적 대체
+    # 컴파일된 directive 를 단계 프롬프트(LEARNED)로 반영 · raw 누적 대체
     PR.LEARNED = {k: (results.get(k, {}).get("directive") or "") for k in ("extract", "analyze", "review", "judge")}
     return {"ok": True, "results": results}
 
@@ -1566,7 +1566,7 @@ PAGE = """<!doctype html>
       },
       colors: {
         // Anchor(axz) 라이트 · 단일 토큰 소스(ds-theme.css 와 1:1). Blue=Primary 액션.
-        // 'violet' 은 역사적 유틸명 — 값은 Anchor Blue 로 통일.
+        // 'violet' 은 역사적 유틸명 · 값은 Anchor Blue 로 통일.
         violet: { DEFAULT: '#1e84ff', hover: '#0066db', deep: '#004fad', tint: 'rgba(30,132,255,0.16)' },
         solar: '#18ba45',
         canvas: '#f4f5f7', surface: '#ffffff', surface2: '#ffffff',
@@ -1576,7 +1576,7 @@ PAGE = """<!doctype html>
   };
 </script>
 <style>
-  /* 앱 레벨 별칭 — 역사적 변수명(--ds-violet*·--ds-surface2·--ds-solar)을
+  /* 앱 레벨 별칭 · 역사적 변수명(--ds-violet*·--ds-surface2·--ds-solar)을
      Anchor 토큰(ds-theme.css)으로 매핑. 고정 위젯 테두리는 Blue 틴트로 전환. */
   :root{
     --ds-violet: var(--ds-primary);
@@ -1593,7 +1593,7 @@ PAGE = """<!doctype html>
     Alpine.data('prismApp', () => ({
       tabItems: [{ id: 'image', label: '이미지' }, { id: 'text', label: '텍스트' }, { id: 'excel', label: '엑셀' }],
       activeTabId: 'image',
-      // 위젯 홈 셸 — 홈(캔버스) + 카테고리 내비
+      // 위젯 홈 셸 · 홈(캔버스) + 카테고리 내비
       mod: 'home',
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
       navIcons: {
@@ -1639,7 +1639,7 @@ PAGE = """<!doctype html>
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
       // 팀 실시간 HITL: 검수자 식별(이름+캐릭터) · 검수 큐 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
-      // Supabase 인증(ID/PW) — backend==='supabase' 일 때
+      // Supabase 인증(ID/PW) · backend==='supabase' 일 때
       backend: 'sqlite', authToken: '', authEmail: '', authPw: '', authMode: 'login', authMsg: '',
       // 팀(멀티테넌시): 생성/가입 + 내 초대코드
       teamMode: 'create', teamName: '', inviteCode: '', myInvite: '',
@@ -1669,7 +1669,7 @@ PAGE = """<!doctype html>
       excelFile: null, xlsDrag: false,
       copyMsg: '',
 
-      // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) — 우측 설정 패널
+      // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) · 우측 설정 패널
       cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasBizKey: false, hasTimelyKey: false },
       cfgModel: '', cfgPersist: true, cfgBusy: false,
       models: [], modelsMsg: '',
@@ -1712,7 +1712,7 @@ PAGE = """<!doctype html>
       },
 
       init() {
-        this.loadReviewer();                           // 검수자·토큰(localStorage) — refreshConfig 의 관리자 로드보다 먼저
+        this.loadReviewer();                           // 검수자·토큰(localStorage) · refreshConfig 의 관리자 로드보다 먼저
         this.refreshConfig();
         this.startLive();                              // 실시간 SSE 구독
         this.loadHome();                               // 배치된 홈 위젯(localStorage)
@@ -1731,7 +1731,7 @@ PAGE = """<!doctype html>
         for (const g of this.mods) for (const it of g.items) if (it.id === this.mod) return it.label;
         return '';
       },
-      // 연결 현황(다중) — 여러 제공자를 동시에 넣어도 각각의 연결 상태를 표시
+      // 연결 현황(다중) · 여러 제공자를 동시에 넣어도 각각의 연결 상태를 표시
       get connList() {
         return [
           { id: 'solar', label: 'Solar', on: !!this.cfg.hasKey },
@@ -1741,7 +1741,7 @@ PAGE = """<!doctype html>
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 — 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 추출 trace·fallback·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 추출 trace·fallback·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -2223,7 +2223,7 @@ PAGE = """<!doctype html>
         } catch (e) { this.ingestRunMsg[s.id] = '오류: ' + e; }
         this.ingestBusy[s.id] = false;
       },
-      // 자동 인입 상태(진행률) 폴링 — 실행 큐/자동 인입 뷰에서 사용
+      // 자동 인입 상태(진행률) 폴링 · 실행 큐/자동 인입 뷰에서 사용
       async fetchIngestStatus() { try { const d = await (await fetch('/ingest-status')).json(); this.ingestJobs = d.jobs || []; if (d.running) this.loadDashThrottled(); return d; } catch (e) { return { jobs: [], running: false }; } },
       pollIngestStatus() {
         if (this._ingestPoll) return;
@@ -2356,16 +2356,16 @@ PAGE = """<!doctype html>
   .panel .overflow-auto::-webkit-scrollbar-track,.panel pre::-webkit-scrollbar-track{background:transparent}
   .panel .overflow-auto::-webkit-scrollbar-thumb,.panel pre::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:6px;border:2px solid transparent;background-clip:content-box}
   .panel .overflow-auto::-webkit-scrollbar-thumb:hover,.panel pre::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.32);background-clip:content-box}
-  /* 내부 스크롤 영역을 컴포넌트로 구분 — 1px 라인 프레임(그라데이션 미사용) pre(코드)는 자체 테두리 있어 제외 */
+  /* 내부 스크롤 영역을 컴포넌트로 구분 · 1px 라인 프레임(그라데이션 미사용) pre(코드)는 자체 테두리 있어 제외 */
   .panel div.overflow-auto{border:1px solid var(--ds-hairline);border-radius:10px;background:var(--ds-surface)}
-  /* 텍스트 박스(A안) — 값·설명 텍스트를 옅은 테두리 박스로 통일 전체 텍스트가 잘림 없이, 문장부호 단위로 줄넘김 */
+  /* 텍스트 박스(A안) · 값·설명 텍스트를 옅은 테두리 박스로 통일 전체 텍스트가 잘림 없이, 문장부호 단위로 줄넘김 */
   .tbox{display:block;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-surface-white);
     padding:6px 9px;color:var(--ds-body);font-size:12.5px;line-height:1.5;word-break:keep-all;overflow-wrap:break-word}
   .tbox .nm{display:block;font-weight:600;color:var(--ds-ink);margin-bottom:1px}
   .ds-table td{vertical-align:top}
   /* 표 안에서는 박스 테두리 제거(행 구분선과 이중선으로 겹쳐 보임) → 옅은 배경만으로 값 구분 */
   .ds-table td .tbox{margin:0;border:0;background:var(--ds-surface);border-radius:7px;padding:6px 10px}
-  /* 상단 자유배치 안내문도 텍스트 영역 — 박스로 감싸 일관화 */
+  /* 상단 자유배치 안내문도 텍스트 영역 · 박스로 감싸 일관화 */
   .hintbox{border:1px solid var(--ds-hairline);border-radius:10px;background:var(--ds-surface-white);
     padding:11px 15px;margin:0 0 2px;color:var(--ds-muted);font-size:12.5px;line-height:1.55;
     word-break:keep-all;overflow-wrap:break-word}
@@ -2504,7 +2504,7 @@ PAGE = """<!doctype html>
   .seg button.on{background:var(--ds-primary-tint);color:var(--ds-primary-deep);box-shadow:var(--ds-highlight)}
   .seg button:not(.on):hover{color:var(--ds-ink)}
 
-  /* 인포그래픽 — 타일·분포바·도넛 */
+  /* 인포그래픽 · 타일·분포바·도넛 */
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
   .tile{border-radius:12px;padding:13px 14px;background:var(--ds-surface-white);border:1px solid var(--ds-hairline-soft)}
   .tile .n{font-size:23px;font-weight:600;color:var(--ds-ink);line-height:1.1;letter-spacing:-.01em}
@@ -2553,7 +2553,7 @@ PAGE = """<!doctype html>
   .sdot.off{background:var(--ds-placeholder)}
 
   /* ════ 위젯 홈 셸 ════ */
-  /* 상단 바(로고|타이틀 고정) + 아래(사이드바|콘텐츠) — 타이틀을 로고 위치에 고정해 정렬 표준화 */
+  /* 상단 바(로고|타이틀 고정) + 아래(사이드바|콘텐츠) · 타이틀을 로고 위치에 고정해 정렬 표준화 */
   .appshell{display:flex;flex-direction:column;max-width:1320px;margin:0 auto;height:100dvh;overflow:hidden}
   /* 상단 바·사이드바는 완전 고정 스크롤은 콘텐츠(.home) 내부에서만 → 톱바를 절대 침범하지 않음 */
   .topbar{flex:none;display:flex;align-items:stretch;gap:0;height:68px;margin:16px 22px 0;
@@ -2570,9 +2570,11 @@ PAGE = """<!doctype html>
   .topbar__title .homehead__title{font-size:15px;line-height:1.15}
   .topbar__title .homehead__sub{font-size:12.5px;line-height:1.2}
   .topbar__tools{flex:none;display:flex;align-items:center;gap:6px;position:relative;padding-right:14px}
-  /* 연결 현황(다중) — 제공자별 칩 */
+  /* 연결 현황(다중) · 제공자별 칩 */
   .topbar__conn{display:inline-flex;align-items:center;gap:8px;border:0;background:none;cursor:pointer;padding:4px 6px;margin-right:4px;border-radius:8px}
   .topbar__conn:hover{background:var(--ds-hairline-soft)}
+  .topbar__conn--dot{padding:7px;border-radius:9999px;margin-right:6px}
+  .topbar__conn--dot .ds-statusdot{width:11px;height:11px}
   .live-toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:90;
     display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;
     background:var(--ds-ink);color:#fff;font-size:12.5px;font-weight:500;
@@ -2729,8 +2731,18 @@ PAGE = """<!doctype html>
   .side-assistant__char{width:54px;height:54px;flex:none}
   .side-assistant__char img{width:100%;height:100%;object-fit:contain}
   .side-assistant__txt{min-width:0;display:flex;flex-direction:column;gap:2px}
-  .side-assistant__t{display:flex;align-items:center;gap:7px;font-family:var(--ds-font-sans);font-size:var(--ds-size-label);font-weight:600;color:var(--ds-ink)}
+  .side-assistant__t{display:flex;align-items:center;gap:7px;font-family:var(--ds-font-sans);font-size:var(--ds-size-label);font-weight:700;color:var(--ds-ink)}
   .side-assistant__s{font-size:11px;color:var(--ds-muted)}
+  /* 야구카드형 프로필: 캐릭터를 라운드 타일에 얹고, 이름 옆 '에이전트' 태그 + 편집 */
+  .side-assistant__card--profile{position:relative;align-items:center}
+  .side-assistant__card--profile .side-assistant__char{width:52px;height:52px;border-radius:12px;background:var(--ds-primary-tint);
+    display:flex;align-items:center;justify-content:center;padding:3px;box-shadow:inset 0 0 0 1px var(--ds-hairline)}
+  .side-assistant__tag{font-size:10px;font-weight:700;color:var(--ds-primary);background:var(--ds-primary-tint);
+    padding:1px 6px;border-radius:9999px;letter-spacing:.01em}
+  .side-assistant__edit{position:absolute;top:9px;right:9px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
+    border-radius:7px;color:var(--ds-muted);opacity:0;transition:opacity var(--ds-motion-fast)}
+  .side-assistant__card--profile:hover .side-assistant__edit{opacity:1}
+  .side-assistant__edit:hover{background:var(--ds-hairline-soft);color:var(--ds-ink)}
   .side-assistant__spin{width:12px;height:12px;border:2px solid rgba(0,0,0,.14);border-top-color:var(--ds-primary);border-radius:50%;animation:ds-spin .7s linear infinite;flex:none}
   .side-assistant__idle{width:8px;height:8px;border-radius:50%;background:var(--ds-primary);box-shadow:0 0 0 3px rgba(30,132,255,.16);flex:none}
 
@@ -2757,7 +2769,7 @@ PAGE = """<!doctype html>
     padding:8px 10px;font-family:var(--ds-font-sans);font-size:var(--ds-size-label);color:var(--ds-ink);cursor:pointer;text-align:left}
   .addmenu button:hover{background:var(--ds-hairline-soft)}
 
-  /* 콘텐츠 영역(모듈/홈 그리드 공용) — 타이틀바와 충분히 띄움 */
+  /* 콘텐츠 영역(모듈/홈 그리드 공용) · 타이틀바와 충분히 띄움 */
   .canvas{margin-top:0;min-width:0;margin-left:0;padding-left:0}
   .ds-widgetgrid{margin-top:0}
 
@@ -2785,7 +2797,7 @@ PAGE = """<!doctype html>
 
   @media (max-width:900px){.appbody{grid-template-columns:1fr}.leftcol{display:none}.home{grid-column:1}.topbar__brand{width:auto}}
 
-  /* ════ 공통 규칙 — 위젯 종류 무관 동일 타이포·정렬 기준(단일 소스) ════ */
+  /* ════ 공통 규칙 · 위젯 종류 무관 동일 타이포·정렬 기준(단일 소스) ════ */
   /* ① 타이틀: 모든 위젯/패널/타이틀바 14px·600 동일 */
   .ds-widget__title,.homehead__title{font-size:var(--ds-size-label);font-weight:600;line-height:1.3;color:var(--ds-ink);letter-spacing:-.005em}
   /* ② 라벨(섹션·필드·표헤더·통계·eyebrow): 12px·600·muted·비대문자 동일 */
@@ -2805,11 +2817,11 @@ PAGE = """<!doctype html>
   /* ⑦ 위젯 간 세로 간격: 동일 리듬(타이트 금지) */
   .canvas .space-y-4>:not([hidden])~:not([hidden]){margin-top:26px}
   .ds-widgetgrid{gap:20px}
-  /* ⑧ 위젯 헤드 캐릭터 아바타(귀엽게) — 라운드, 투명배경 캐릭터 */
+  /* ⑧ 위젯 헤드 캐릭터 아바타(귀엽게) · 라운드, 투명배경 캐릭터 */
   .wz-char{width:30px;height:30px;border-radius:50%;background:var(--ds-hairline-soft);overflow:hidden;display:inline-flex;align-items:center;justify-content:center;flex:none}
   .wz-char img{width:88%;height:88%;object-fit:contain}
   .wz-char--sm{width:24px;height:24px}
-  /* ⑨ 패널 내부 좌측 정렬선 통일(18px) — 타이틀·본문·표·행이 한 선에 정렬
+  /* ⑨ 패널 내부 좌측 정렬선 통일(18px) · 타이틀·본문·표·행이 한 선에 정렬
      패널 직속 표(셀패딩 12)·행(0)은 타이틀(18)보다 왼쪽이라 18로 보정 panel-bd 안은 이미 18. */
   .panel > .drow{padding-left:18px;padding-right:18px}
   .panel > .overflow-auto > .ds-table tr > :first-child,
@@ -2830,22 +2842,11 @@ PAGE = """<!doctype html>
       <div class="homehead__sub" x-text="modSub"></div>
     </div>
     <div class="topbar__tools">
-      <!-- 검수자 칩: 클릭하면 정식 등록 모달(온보딩). 선택한 캐릭터를 미리보기 -->
-      <button type="button" class="topbar__conn" x-on:click="reviewerEditing = true" data-tip="검수자 등록" data-tip-pos="bottom" aria-label="검수자">
-        <span class="conn-chip" x-bind:class="reviewer ? 'conn-chip--on' : 'conn-chip--off'">
-          <img x-show="reviewer" x-bind:src="charImg(reviewerChar)" alt="" style="width:18px;height:18px;margin:-2px 0">
-          <span x-text="reviewer || '검수자 등록'"></span>
-        </span>
-      </button>
-      <!-- 연결 현황(다중): 제공자별 연결 상태를 모두 표시 -->
-      <button type="button" class="topbar__conn" x-on:click="if (!cfg.keyManagedByServer) settingsOpen = true" x-bind:data-tip="cfg.keyManagedByServer ? '연결 현황(서버 관리)' : '키 설정'" data-tip-pos="bottom" aria-label="연결 현황">
-        <span x-show="cfg.forcedMock" class="conn-chip conn-chip--off"><span class="ds-statusdot ds-statusdot--mock"><span class="ds-statusdot__dot"></span></span>MOCK(강제)</span>
-        <template x-if="!cfg.forcedMock && connCount === 0"><span class="conn-chip conn-chip--off"><span class="ds-statusdot ds-statusdot--mock"><span class="ds-statusdot__dot"></span></span>키 미설정</span></template>
-        <template x-for="c in connList" x-bind:key="c.id">
-          <span x-show="!cfg.forcedMock && (c.on || connCount === 0 ? c.on : false)" class="conn-chip conn-chip--on">
-            <span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span><span x-text="c.label"></span>
-          </span>
-        </template>
+      <!-- 사용자 식별(이름·캐릭터)은 사이드바 프로필 카드로 이관. 상단바엔 미표시 -->
+      <!-- 연결 신호등: 모델별 표시 없이 단일 신호 dot (초록=연결·회색=미설정/서버관리·주황=MOCK). 상세는 호버 -->
+      <button type="button" class="topbar__conn topbar__conn--dot" x-on:click="if (!cfg.keyManagedByServer) settingsOpen = true"
+        x-bind:data-tip="cfg.forcedMock ? 'MOCK (강제)' : (connCount ? '연결됨' : (cfg.keyManagedByServer ? '서버 관리 (연결됨)' : '키 미설정'))" data-tip-pos="bottom" aria-label="연결 상태">
+        <span class="ds-statusdot" x-bind:class="cfg.forcedMock ? 'ds-statusdot--mock' : ((connCount || (cfg.keyManagedByServer && cfg.hasKey)) ? 'ds-statusdot--ok' : 'ds-statusdot--mock')"><span class="ds-statusdot__dot"></span></span>
       </button>
       <a href="/report" target="_blank" rel="noreferrer" class="ds-iconbtn ds-iconbtn--bordered" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></a>
       <button type="button" x-show="mod === 'home'" x-on:click.stop="addMenuOpen = !addMenuOpen" class="ds-iconbtn ds-iconbtn--bordered" data-tip="위젯 추가" data-tip-pos="bottom" aria-label="위젯 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
@@ -2896,11 +2897,11 @@ PAGE = """<!doctype html>
         </div>
       </template>
 
-      <label class="onboard__lbl">닉네임 <span class="onboard__hint">— 리더보드·검수에 표시됩니다</span></label>
+      <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시됩니다</span></label>
       <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer"
              x-on:keydown.enter="saveReviewer()" autofocus>
 
-      <label class="onboard__lbl">캐릭터 선택 <span class="onboard__hint">— 리더보드·아레나에 이 캐릭터로 표시됩니다</span></label>
+      <label class="onboard__lbl">캐릭터 선택 <span class="onboard__hint"> 리더보드·아레나에 이 캐릭터로 표시됩니다</span></label>
       <div class="onboard__chars">
         <template x-for="c in charOptions" x-bind:key="c.id">
           <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
@@ -2918,8 +2919,8 @@ PAGE = """<!doctype html>
             <button type="button" x-bind:class="teamMode==='create'?'sel':''" x-on:click="teamMode='create'">새 팀 만들기</button>
             <button type="button" x-bind:class="teamMode==='join'?'sel':''" x-on:click="teamMode='join'">팀 참가</button>
           </div>
-          <input x-show="teamMode==='create'" class="field onboard__name" placeholder="팀 이름 — 예) 콘텐츠검수팀" x-model="teamName" style="margin-bottom:6px">
-          <input x-show="teamMode==='join'" class="field onboard__name" placeholder="초대 코드 — 예) A1B2C3D4" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase">
+          <input x-show="teamMode==='create'" class="field onboard__name" placeholder="팀 이름 · 예) 콘텐츠검수팀" x-model="teamName" style="margin-bottom:6px">
+          <input x-show="teamMode==='join'" class="field onboard__name" placeholder="초대 코드 · 예) A1B2C3D4" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase">
           <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:4px" x-text="teamMode==='create' ? '만들면 초대 코드가 생겨 팀원을 부를 수 있어요' : '관리자에게 받은 코드를 입력하세요'"></p>
         </div>
       </template>
@@ -2946,7 +2947,7 @@ PAGE = """<!doctype html>
         <nav class="ds-navgroup" x-show="grp.g !== '팀' || backend === 'supabase'">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
-            <button type="button" class="ds-navitem" x-show="!it.cond || (it.cond === 'admin' ? (backend !== 'supabase' || (adminData && adminData.isAdmin)) : backend === it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+            <button type="button" class="ds-navitem" x-show="!it.cond || (it.cond === 'admin' ? (backend === 'supabase' && adminData && adminData.isAdmin) : backend === it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
               <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
               <span x-text="it.label"></span>
             </button>
@@ -2956,16 +2957,19 @@ PAGE = """<!doctype html>
     </aside>
     <!-- 도우미 = 사이드 위젯 바로 아래(다크 박스 + 캐릭터) -->
     <div class="side-assistant">
-      <button type="button" class="side-assistant__card" x-on:click="chatOpen = !chatOpen" aria-label="도우미 열기">
-        <span class="side-assistant__char"><img src="/vendor/boksil-catcher.svg" alt=""></span>
+      <!-- 사용자 프로필 카드(야구카드형): 내 캐릭터 + 이름. 누르면 '유저명 에이전트' 열림. 미설정 시 프로필 설정 -->
+      <button type="button" class="side-assistant__card side-assistant__card--profile" x-on:click="reviewer ? (chatOpen = !chatOpen) : (reviewerEditing = true)" aria-label="내 프로필·에이전트">
+        <span class="side-assistant__char"><img x-bind:src="charImg(reviewer ? reviewerChar : 'boksil')" alt=""></span>
         <span class="side-assistant__txt">
           <span class="side-assistant__t">
             <span class="side-assistant__spin" x-show="loading || modBusy"></span>
             <span class="side-assistant__idle" x-show="!(loading || modBusy)"></span>
-            <span x-text="(loading || modBusy) ? '작업 중' : '도우미'"></span>
+            <span x-text="reviewer || '프로필 설정'"></span>
+            <span class="side-assistant__tag" x-show="reviewer && !(loading || modBusy)">에이전트</span>
           </span>
-          <span class="side-assistant__s" x-text="(loading || modBusy) ? '처리하고 있어요…' : ((dashData && dashData.n) ? ('처리 ' + dashData.n + '건 · 유통 ' + dashData.gPct + '%') : '말로 작업을 지시하세요')"></span>
+          <span class="side-assistant__s" x-text="(loading || modBusy) ? '처리하고 있어요…' : (reviewer ? ((dashData && dashData.n) ? ('처리 ' + dashData.n + '건 · 유통 ' + dashData.gPct + '%') : '내 에이전트 열기') : '이름·캐릭터를 설정하세요')"></span>
         </span>
+        <span class="side-assistant__edit" x-show="reviewer" x-on:click.stop="reviewerEditing = true" role="button" aria-label="프로필 편집" data-tip="편집" data-tip-pos="left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
       </button>
     </div>
   </div>
@@ -3008,7 +3012,7 @@ PAGE = """<!doctype html>
           <span class="ds-launcher__chev"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </div>
 
-        <!-- 핵심 지표 (정보 · md) — /dashboard 집계 -->
+        <!-- 핵심 지표 (정보 · md) · /dashboard 집계 -->
         <div class="ds-widget ds-widget--info ds-widget--md" data-wid="metrics" x-show="hasWidget('metrics')" x-cloak>
           <button class="ds-widget__remove" x-on:click.stop="removeWidget('metrics')" aria-label="제거"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M3 3l5 5M8 3l-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
           <div class="ds-widget__head"><div class="ds-widget__title"><span>핵심 지표</span></div><div class="ds-widget__actions"><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
@@ -3051,7 +3055,7 @@ PAGE = """<!doctype html>
           </div>
         </div>
 
-        <!-- 처리 프로세스 (정보 · tall) — 파이프라인 4단계 -->
+        <!-- 처리 프로세스 (정보 · tall) · 파이프라인 4단계 -->
         <div class="ds-widget ds-widget--info ds-widget--tall" data-wid="process" x-show="hasWidget('process')" x-cloak>
           <button class="ds-widget__remove" x-on:click.stop="removeWidget('process')" aria-label="제거"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M3 3l5 5M8 3l-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
           <div class="ds-widget__head"><div class="ds-widget__title"><span>처리 프로세스</span></div><div class="ds-widget__actions"><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
@@ -3064,10 +3068,10 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
-      <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) — 관리자 전용 ═══ -->
+      <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) · 관리자 전용 ═══ -->
       <div x-show="mod === 'auto'" x-cloak class="w-full space-y-4">
-        <div x-show="backend === 'supabase' && !(adminData && adminData.isAdmin)" class="ds-hint hintbox">자동 인입 파이프라인 설정은 <b class="text-ink">팀 관리자</b>만 가능합니다. 일회성 처리는 <b class="text-ink">수동 추출</b>을 사용하세요.</div>
-        <template x-if="backend !== 'supabase' || (adminData && adminData.isAdmin)">
+        <div x-show="!(backend === 'supabase' && adminData && adminData.isAdmin)" class="ds-hint hintbox">자동 인입은 <b class="text-ink">운영(팀) 관리자</b> 전용입니다. 로컬 단독 실행에서는 <b class="text-ink">수동 추출</b>을 사용하세요.</div>
+        <template x-if="backend === 'supabase' && adminData && adminData.isAdmin">
         <div class="w-full space-y-4">
         <p class="ds-hint hintbox">콘텐츠를 <b class="text-ink">자동으로 인입</b>하는 파이프라인 소스를 설정합니다 등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다 일회성 처리는 <b class="text-ink">수동 추출</b>을 사용하세요</p>
         <section class="panel" data-fn><div class="panel-hd"><b>인입 소스 추가</b></div>
@@ -3304,10 +3308,10 @@ PAGE = """<!doctype html>
                 <tbody>
                   <template x-for="(it, i) in (batchResult ? batchResult.items : [])" x-bind:key="i">
                     <tr>
-                      <td class="text-ink" x-text="it.title || '—'"></td>
-                      <td x-text="it.summary || '—'"></td>
-                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="!(it.entities||[]).length">—</span></div></td>
-                      <td><span class="ds-badge ds-badge--neutral" x-bind:class="it.grade === 'G' ? 'ds-badge--success' : 'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="it.grade || '—'"></span></span></td>
+                      <td class="text-ink" x-text="it.title || '·'"></td>
+                      <td x-text="it.summary || '·'"></td>
+                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="!(it.entities||[]).length">·</span></div></td>
+                      <td><span class="ds-badge ds-badge--neutral" x-bind:class="it.grade === 'G' ? 'ds-badge--success' : 'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="it.grade || '·'"></span></span></td>
                     </tr>
                   </template>
                 </tbody>
@@ -3332,7 +3336,7 @@ PAGE = """<!doctype html>
               <div class="k">리드문</div>
               <div class="v">
                 <div class="flex items-start gap-2">
-                  <p class="flex-1 text-[15px] leading-relaxed text-ink" x-text="im.summary || '(빈 값 — 차단되었거나 본문 부족)'"></p>
+                  <p class="flex-1 text-[15px] leading-relaxed text-ink" x-text="im.summary || '(빈 값 · 차단되었거나 본문 부족)'"></p>
                   <button type="button" class="copybtn shrink-0" x-show="im.summary" x-on:click="copyText(im.summary, '리드문')">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                     복사
@@ -3344,21 +3348,21 @@ PAGE = """<!doctype html>
               <div class="k">엔티티</div>
               <div class="v flex flex-wrap gap-1.5">
                 <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="ds-badge ds-badge--entity" x-text="x"></span></template>
-                <span x-show="!(im.entities || []).length" class="text-xs text-muted">—</span>
+                <span x-show="!(im.entities || []).length" class="text-xs text-muted">·</span>
               </div>
             </div>
             <div class="drow">
               <div class="k">인텐트</div>
               <div class="v flex flex-wrap gap-1.5">
                 <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="ds-badge ds-badge--intent" x-text="x"></span></template>
-                <span x-show="!(im.intent || []).length" class="text-xs text-muted">—</span>
+                <span x-show="!(im.intent || []).length" class="text-xs text-muted">·</span>
               </div>
             </div>
             <div class="drow">
               <div class="k">콘텐츠 카테고리</div>
               <div class="v flex flex-wrap gap-1.5">
                 <template x-for="x in contentCats" x-bind:key="x"><span class="ds-badge ds-badge--category" x-text="x"></span></template>
-                <span x-show="!contentCats.length" class="text-xs text-muted">—</span>
+                <span x-show="!contentCats.length" class="text-xs text-muted">·</span>
               </div>
             </div>
           </section>
@@ -3372,11 +3376,11 @@ PAGE = """<!doctype html>
                   <div class="text-xs font-semibold text-ink" x-text="'이미지 ' + (i + 1)"></div>
                   <div class="mt-1 flex gap-2 text-sm text-body">
                     <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                    <span x-text="s.vision || '—'"></span>
+                    <span x-text="s.vision || '·'"></span>
                   </div>
                   <div class="flex gap-2 text-sm text-body">
                     <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
-                    <span x-text="s.ocr || '—'"></span>
+                    <span x-text="s.ocr || '·'"></span>
                   </div>
                   <p x-show="s.note" x-cloak class="mt-1 text-xs text-[#ff9429]" x-text="s.note"></p>
                 </div>
@@ -3508,7 +3512,7 @@ PAGE = """<!doctype html>
           <button type="button" x-on:click="resetDict()" class="rounded-md border border-[#ff4e33]/30 px-3 py-1.5 text-xs font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">편집 초기화</button>
         </div></div>
 
-        <!-- 편집은 팝업(편집 다이얼로그)에서 — 화면 하단 정의 -->
+        <!-- 편집은 팝업(편집 다이얼로그)에서 · 화면 하단 정의 -->
 
         <div x-show="dictData" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>인텐트 · 범용(8)</b>
@@ -3602,7 +3606,7 @@ PAGE = """<!doctype html>
               </div></div>
               <div class="drow"><div class="k">선호 엔티티</div><div class="v flex flex-wrap gap-1.5">
                 <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="ds-badge ds-badge--entity" x-text="e[0]"></span></template>
-                <span x-show="!(u.affinity_entities||[]).length" class="text-xs text-muted">—</span>
+                <span x-show="!(u.affinity_entities||[]).length" class="text-xs text-muted">·</span>
               </div></div>
             </div></div>
           </template>
@@ -3644,7 +3648,7 @@ PAGE = """<!doctype html>
                     <div class="goldstat"><b x-text="goldenResult.evaluated"></b><span>평가 건</span></div>
                   </div>
                   <div style="margin-top:14px">
-                    <div class="text-xs text-muted" style="margin-bottom:6px">버킷별 정합성 — 어디가 새는지(원천 프롬프트 수정 우선순위)</div>
+                    <div class="text-xs text-muted" style="margin-bottom:6px">버킷별 정합성 · 어디가 새는지(원천 프롬프트 수정 우선순위)</div>
                     <template x-for="(v,k) in (goldenResult.by_reason_bucket||{})" x-bind:key="k">
                       <div class="ds-progress" style="margin:5px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="k+' ('+v.n+')'"></span><span class="ds-progress__pct" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
                     </template>
@@ -3704,7 +3708,7 @@ PAGE = """<!doctype html>
                     <button type="button" class="fbbtn" x-bind:class="(c.fb&&c.fb.verdict==='bad')?'fbbtn--bad':''" x-on:click="setFeedback(c,'bad')">문제</button>
                   </div>
                   <div class="fbrow__note" x-show="(c.fb&&c.fb.verdict==='bad') || fbNoteOpen[c.hash]">
-                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 — 예) 카테고리를 스포츠가 아니라 정치로 / 리드문이 핵심을 놓침" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
+                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 · 예) 카테고리를 스포츠가 아니라 정치로 / 리드문이 핵심을 놓침" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
                     <select class="field" style="width:auto;height:34px;padding:0 26px 0 10px" x-model="c.fb.stage"><option value="extract">추출</option><option value="analyze">분석</option><option value="review">검수</option><option value="judge">판정</option></select>
                     <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="saveFbNote(c)">반영</button>
                   </div>
@@ -3739,8 +3743,8 @@ PAGE = """<!doctype html>
         <section class="panel"><div class="panel-hd"><b>팀 정보</b><span class="meta" x-text="adminData&&adminData.team ? adminData.team.name : ''"></span></div>
           <div class="panel-bd">
             <div class="invite">
-              <div><div class="text-xs text-muted" style="margin-bottom:4px">초대 코드 — 팀원에게 공유하면 같은 팀으로 참가합니다</div>
-                <div class="invite__code" x-text="adminData&&adminData.team ? adminData.team.invite_code : '—'"></div></div>
+              <div><div class="text-xs text-muted" style="margin-bottom:4px">초대 코드 · 팀원에게 공유하면 같은 팀으로 참가합니다</div>
+                <div class="invite__code" x-text="adminData&&adminData.team ? adminData.team.invite_code : '·'"></div></div>
               <button type="button" class="ds-btn ds-btn--secondary" x-on:click="copyInvite()" x-text="inviteCopied ? '복사됨 ✓' : '복사'"></button>
             </div>
           </div>
@@ -3757,6 +3761,13 @@ PAGE = """<!doctype html>
             <div x-show="!(adminData&&adminData.members&&adminData.members.length)" class="text-xs text-muted" style="padding:8px">멤버가 없습니다</div>
           </div>
         </section>
+        <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>API 키·모델 설정</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
+          <div class="panel-bd">
+            <p class="text-xs text-muted" style="margin-bottom:10px">추출 <b class="text-ink">API 키·모델·엔드포인트</b>를 관리자가 여기서 설정합니다. 팀원은 키 입력 없이 바로 사용합니다.
+              <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 키 미설정'"></span></p>
+            <button type="button" class="ds-btn ds-btn--primary" x-on:click="settingsOpen = true">API·모델 설정 열기</button>
+          </div>
+        </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>골든셋</b><span class="meta" x-text="(adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록')"></span></div>
           <div class="panel-bd">
             <p class="text-xs text-muted" style="margin-bottom:10px">원천 평가의 정답셋. <b class="text-ink">{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다. (검증·평가 → 원천 평가에서 이 골든셋으로 정합성 측정)</p>
@@ -3768,7 +3779,7 @@ PAGE = """<!doctype html>
           <div class="panel-bd">
             <p class="text-xs text-muted" style="margin-bottom:10px">크롤러 엔드포인트에서 <b class="text-ink">수량 목표</b>로 당겨와 추출 → 전건을 팀 <b class="text-ink">검수 큐</b>에 적재합니다. 실시간 스트리밍 부담 없이 배치로.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 — JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
+              <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
               <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestBusy" x-on:click="ingestRun()" x-text="ingestBusy ? '인입 중…' : '인입 실행'"></button>
             </div>
@@ -3787,7 +3798,7 @@ PAGE = """<!doctype html>
         <div x-show="adminData && !adminData.isAdmin" class="text-xs text-muted" style="padding:4px">데이터 삭제·멤버 관리는 팀 관리자(생성자)만 가능합니다.</div>
       </div>
 
-      <!-- ═══ 모듈: 평가 아레나 (게임화) — 팀 정확도 협동 스코어 + 리더보드 ═══ -->
+      <!-- ═══ 모듈: 평가 아레나 (게임화) · 팀 정확도 협동 스코어 + 리더보드 ═══ -->
       <div x-show="mod === 'arena'" x-cloak class="w-full space-y-4">
         <!-- 히어로: 팀 정확도 게이지(협동) -->
         <section class="arena-hero">
@@ -3809,7 +3820,7 @@ PAGE = """<!doctype html>
             <span>자동 판정이 검수자와 일치한 비율 · <b class="text-ink" x-text="(arenaData?arenaData.reviews:0)"></b>건 검수됨</span>
             <span class="arena-quest" x-show="arenaData && arenaData.queue" x-on:click="selectMod('review')">
               🎯 남은 퀘스트 <b x-text="(arenaData?arenaData.queue:0)"></b>건 검수하러 가기 →</span>
-            <span class="arena-quest arena-quest--done" x-show="arenaData && !arenaData.queue">✓ 검수 대기 없음 — 깔끔!</span>
+            <span class="arena-quest arena-quest--done" x-show="arenaData && !arenaData.queue">✓ 검수 대기 없음 · 깔끔!</span>
           </div>
         </section>
 
@@ -3828,7 +3839,7 @@ PAGE = """<!doctype html>
                   <span class="lb-pts tnum" x-text="r.points + 'pt'"></span>
                 </div>
               </template>
-              <div x-show="!(arenaData&&arenaData.leaderboard&&arenaData.leaderboard.length)" class="text-xs text-muted" style="padding:12px">아직 검수 기록이 없습니다 — <b class="text-ink">검수 큐</b>에서 첫 검수를 해보세요</div>
+              <div x-show="!(arenaData&&arenaData.leaderboard&&arenaData.leaderboard.length)" class="text-xs text-muted" style="padding:12px">아직 검수 기록이 없습니다 · <b class="text-ink">검수 큐</b>에서 첫 검수를 해보세요</div>
             </div>
           </section>
           <!-- 내 검수 캐릭터 (육성) -->
@@ -3852,20 +3863,20 @@ PAGE = """<!doctype html>
                     <div><b class="tnum" x-text="arenaMe.corrections"></b><span>개선 🏅</span></div>
                     <div><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>🔥 스트릭</span></div>
                   </div>
-                  <div class="charcard__hint">검수 +10 · 채택된 개선(REAP) +25 — 점수가 쌓이면 캐릭터가 <b class="text-ink">성장</b>해요</div>
+                  <div class="charcard__hint">검수 +10 · 채택된 개선(REAP) +25 · 점수가 쌓이면 캐릭터가 <b class="text-ink">성장</b>해요</div>
                 </div>
               </template>
               <div x-show="reviewer && !arenaMe" class="charcard charcard--egg" data-tier="0">
                 <div class="charcard__avatar"><img x-bind:src="charImg(reviewerChar)" alt="" style="opacity:.5;filter:grayscale(1)"><span class="charcard__lvl">Lv.0</span></div>
                 <div class="charcard__title">🥚 검수 새싹</div>
-                <div class="charcard__hint"><b class="text-ink" x-text="reviewer"></b> 의 첫 검수로 캐릭터를 깨워요 — <span class="arena-quest" x-on:click="selectMod('review')">검수하러 가기 →</span></div>
+                <div class="charcard__hint"><b class="text-ink" x-text="reviewer"></b> 의 첫 검수로 캐릭터를 깨워요 · <span class="arena-quest" x-on:click="selectMod('review')">검수하러 가기 →</span></div>
               </div>
             </div>
           </section>
         </div>
       </div>
 
-      <!-- ═══ 모듈: 검수 큐 (팀 실시간 HITL) — YELLOW 대기열 + 다중 의견 ═══ -->
+      <!-- ═══ 모듈: 검수 큐 (팀 실시간 HITL) · YELLOW 대기열 + 다중 의견 ═══ -->
       <div x-show="mod === 'review'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>검수 큐 · YELLOW 사람검수</b>
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
@@ -3895,7 +3906,7 @@ PAGE = """<!doctype html>
                     <button type="button" class="fbbtn" x-bind:class="it.myVerdict==='bad'?'fbbtn--bad':''" x-on:click="queueFeedback(it,'bad')">문제</button>
                   </div>
                   <div class="fbrow__note" x-show="it.myVerdict==='bad'">
-                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 — 다음 추출 프롬프트에 자동 반영" x-model="it.note" x-on:keydown.enter="queueFeedback(it,'bad')">
+                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 · 다음 추출 프롬프트에 자동 반영" x-model="it.note" x-on:keydown.enter="queueFeedback(it,'bad')">
                     <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="queueFeedback(it,'bad')">반영</button>
                   </div>
                 </div>
@@ -3908,7 +3919,7 @@ PAGE = """<!doctype html>
         </section>
       </div>
 
-      <!-- ═══ 모듈: 실행 큐 (단일 위젯) — 실제 실행 상태 ═══ -->
+      <!-- ═══ 모듈: 실행 큐 (단일 위젯) · 실제 실행 상태 ═══ -->
       <div x-show="mod === 'queue'" x-cloak class="w-full">
         <section class="panel"><div class="panel-hd"><b>실행 큐</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span></div>
           <div class="panel-bd">
@@ -3929,7 +3940,7 @@ PAGE = """<!doctype html>
         </section>
       </div>
 
-      <!-- ═══ 모듈: 프롬프트 스튜디오 (전용 도구) — 추출 단계별 프롬프트 ═══ -->
+      <!-- ═══ 모듈: 프롬프트 스튜디오 (전용 도구) · 추출 단계별 프롬프트 ═══ -->
       <div x-show="mod === 'prompt'" x-cloak class="w-full space-y-4">
         <p class="ds-hint hintbox">단계마다 <b class="text-ink">모델을 지정</b>하면 그 모델의 원천 프롬프트로 동작합니다 각 과정에 다른 모델을 쓸 수 있고, 프롬프트는 모델별로 저장됩니다 보완은 <b class="text-ink">검증 · 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다</p>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
@@ -4001,7 +4012,7 @@ PAGE = """<!doctype html>
   </div>
   </div><!-- /.appbody -->
 
-  <!-- ✎ 편집 팝업 — 편집 버튼 클릭 시 바로 수정(사전·정책 등) -->
+  <!-- ✎ 편집 팝업 · 편집 버튼 클릭 시 바로 수정(사전·정책 등) -->
   <div class="ds-dialog-backdrop" x-show="editT" x-cloak x-on:mousedown.self="cancelEdit()" style="z-index:75">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="편집" style="max-width:520px">
       <h2 class="ds-dialog__title" x-text="'편집 · ' + editTitle"></h2>
@@ -4047,12 +4058,13 @@ PAGE = """<!doctype html>
       <!-- ① API 키 -->
       <div x-show="cfgTab === 'keys'" class="cfgsec">
         <!-- 운영(공유 서버): 키는 서버에서 관리 → 팀원은 입력 불필요 -->
-        <div x-show="cfg.keyManagedByServer" class="keymanaged">
+        <!-- 팀원(비관리자): 키는 서버(관리자) 관리 · 입력 불필요. 관리자는 아래 입력으로 설정 -->
+        <div x-show="cfg.keyManagedByServer && !(adminData && adminData.isAdmin)" class="keymanaged">
           <b class="text-ink">🔒 API 키는 서버에서 관리됩니다</b>
-          <p>공유 서버 모드입니다. 추출 키는 <b>관리자가 서버에 한 번</b> 설정하고, 팀원은 따로 키를 넣지 않아도 바로 사용합니다.
+          <p>공유 서버 모드입니다. 추출 키는 <b>관리자가</b> 설정하고, 팀원은 따로 키를 넣지 않아도 바로 사용합니다.
             <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 서버에 키 미설정(관리자 확인 필요)'"></span></p>
         </div>
-        <div x-show="!cfg.keyManagedByServer">
+        <div x-show="!cfg.keyManagedByServer || (adminData && adminData.isAdmin)">
         <!-- 통합 라우터 카드 -->
         <div class="routercard">
           <div class="rc-h"><b>통합 라우터</b><span class="rc-badge">권장</span></div>
@@ -4080,7 +4092,7 @@ PAGE = """<!doctype html>
           </template>
         </div>
 
-        <!-- 직접 호출(Solar) — 통합 라우터처럼 카드로 묶음 -->
+        <!-- 직접 호출(Solar) · 통합 라우터처럼 카드로 묶음 -->
         <div class="routercard" style="margin-top:14px">
           <div class="rc-h"><b>직접 호출</b></div>
           <p class="rc-d">각 회사 키로 직접 호출합니다 통합 라우터와 함께 등록해도 됩니다</p>
@@ -4127,7 +4139,7 @@ PAGE = """<!doctype html>
       <!-- ② 모델 -->
       <div x-show="cfgTab === 'models'" x-cloak>
         <div class="cfgsec">
-          <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted">· 리드문·메타</span></label>
+          <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted"> 리드문·메타</span></label>
           <select class="field" x-bind:value="textValue" x-on:change="onTextPick($event.target.value)">
             <template x-for="g in textGroups" x-bind:key="g.label">
               <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
@@ -4143,7 +4155,7 @@ PAGE = """<!doctype html>
         </div>
 
         <div class="cfgsec">
-          <label class="lbl">이미지 모델 <span class="font-normal normal-case tracking-normal text-muted">· 이미지 이해</span></label>
+          <label class="lbl">이미지 모델 <span class="font-normal normal-case tracking-normal text-muted"> 이미지 이해</span></label>
           <select class="field" x-bind:value="visionValue" x-on:change="onVisionPick($event.target.value)">
             <template x-for="g in visionGroups" x-bind:key="g.label">
               <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
@@ -4178,11 +4190,11 @@ PAGE = """<!doctype html>
     </div>
   </div>
 
-  <!-- 플로팅 도우미(채널톡 스타일) — 모든 기능 허브 -->
+  <!-- 플로팅 도우미(채널톡 스타일) · 모든 기능 허브 -->
   <div class="ds-chat" x-show="chatOpen" x-cloak>
     <div class="ds-chat__head">
-      <span class="ds-chat__av"><img src="/vendor/boksil-catcher.svg" alt=""></span>
-      <div><div class="ds-chat__title">Prism 도우미</div><div class="ds-chat__sub"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span>보통 1분 내 응답</div></div>
+      <span class="ds-chat__av"><img x-bind:src="charImg(reviewer ? reviewerChar : 'boksil')" alt=""></span>
+      <div><div class="ds-chat__title" x-text="(reviewer || 'Prism') + ' 에이전트'"></div><div class="ds-chat__sub"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span>보통 1분 내 응답</div></div>
       <span style="margin-left:auto"><button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="chatOpen = false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></span>
     </div>
     <div class="ds-chat__body">
@@ -4201,7 +4213,7 @@ PAGE = """<!doctype html>
 
 </div>
 
-<!-- 위젯 홈 인터랙션(편집·리사이즈·드래그·틸트) — SERVICE_DESIGN §4.3 규격 -->
+<!-- 위젯 홈 인터랙션(편집·리사이즈·드래그·틸트) · SERVICE_DESIGN §4.3 규격 -->
 <script>
   // ── 캐릭터 사용 정책(공통 규칙) ──────────────────────────────────────
   // 캐릭터 = 추출 파이프라인 4단계 역할 위젯/뷰는 자신이 속한 단계의 캐릭터만 쓴다
@@ -4330,12 +4342,12 @@ def main():
     load_persisted_key()                              # ~/.prism_key 있으면 주입
     load_dict_overrides()                             # 사전 편집(overrides) 적용
     sync_prompt()                                     # config 의 추가 지시 반영
-    # 백엔드 결정 — 운영은 Supabase 전용(조용한 로컬 폴백 금지, 미가용이면 시작 실패)
+    # 백엔드 결정 · 운영은 Supabase 전용(조용한 로컬 폴백 금지, 미가용이면 시작 실패)
     _mode, _required = backend_mode()
     st = get_store()
     if _required:
         if not st:
-            print("  [중단] Supabase 백엔드를 쓰려는데 초기화 실패 — SUPABASE_URL/SERVICE_KEY 확인.")
+            print("  [중단] Supabase 백엔드를 쓰려는데 초기화 실패 · SUPABASE_URL/SERVICE_KEY 확인.")
             print("         (로컬·오프라인은: PRISM_BACKEND=sqlite)")
             sys.exit(1)
         try:

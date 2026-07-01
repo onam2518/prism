@@ -23,7 +23,7 @@ export interface DefinitionListProps {
   children: React.ReactNode;
 }
 
-/** 메타 상세 패널 — FieldRow 들의 컨테이너. */
+/** 메타 상세 패널 · FieldRow 들의 컨테이너. */
 export function DefinitionList({ children }: DefinitionListProps) {
   return <div className="ds-deflist">{children}</div>;
 }

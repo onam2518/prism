@@ -10,7 +10,7 @@ export interface KeyFieldProps extends Omit<React.InputHTMLAttributes<HTMLInputE
   statusLabel?: string;
 }
 
-/** API 키 입력 — 비밀 토글(eye) + 연결 상태 dot. */
+/** API 키 입력 · 비밀 토글(eye) + 연결 상태 dot. */
 export function KeyField({ label, status, statusLabel, className = '', id, ...props }: KeyFieldProps) {
   const [shown, setShown] = React.useState(false);
   const fieldId = id || (label ? `ds-key-${label}` : undefined);

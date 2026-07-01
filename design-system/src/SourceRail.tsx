@@ -17,7 +17,7 @@ export interface SourceRailProps {
   onSelect?: (source: Source, index: number) => void;
 }
 
-/** 인용 소스의 가로 스크롤 레일. Card(source) 의 반복 — 본문을 가리지 않음. */
+/** 인용 소스의 가로 스크롤 레일. Card(source) 의 반복 · 본문을 가리지 않음. */
 export function SourceRail({ sources, onSelect }: SourceRailProps) {
   return (
     <div className="ds-rail">

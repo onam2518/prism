@@ -1,4 +1,4 @@
-// Prism Design System — 타입드 토큰. theme.css / anchor/tokens.json 와 1:1.
+// Prism Design System · 타입드 토큰. theme.css / anchor/tokens.json 와 1:1.
 // Source of truth = Anchor Design System (axz): 무채색 캔버스 + Blue(Primary)·Red(Accent)
 // + 도메인별 카테고리색 · Pretendard 단일 패밀리 · Light/Dark 자동 swap.
 export const tokens = {
@@ -7,7 +7,7 @@ export const tokens = {
     primaryHover: '#0066db',   // atomic.Blue.600
     primaryDeep: '#004fad',    // atomic.Blue.700
     primaryTint: 'rgba(30,132,255,0.16)', // atomic.Blue.100
-    blueOnDark: '#66a8ff',     // atomic.Blue.400 — 다크 Primary
+    blueOnDark: '#66a8ff',     // atomic.Blue.400 · 다크 Primary
 
     ink: '#000000',            // text.primary
     canvas: '#f4f5f7',         // background.base (atomic.Gray.50)

@@ -31,11 +31,11 @@ export interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonE
   shape?: ButtonShape;
   /** 라벨·아이콘 숨기고 스피너 + 폭 고정(레이아웃 시프트 방지) */
   loading?: boolean;
-  /** 토글(필터·세그먼트) 활성 — aria-pressed. 구 pill API 호환. */
+  /** 토글(필터·세그먼트) 활성 · aria-pressed. 구 pill API 호환. */
   active?: boolean;
   /** 앞 아이콘 슬롯 (16px) */
   leadingIcon?: React.ReactNode;
-  /** 뒤 아이콘 슬롯 (16px) — Outline 에서만 허용(Solid 금지) */
+  /** 뒤 아이콘 슬롯 (16px) · Outline 에서만 허용(Solid 금지) */
   trailingIcon?: React.ReactNode;
 }
 
@@ -90,7 +90,7 @@ export function Button({
       className={cls}
       {...props}
     >
-      {/* HoverLayer — 전 variant 공통 오버레이(Hover 시 background.state.hover) */}
+      {/* HoverLayer · 전 variant 공통 오버레이(Hover 시 background.state.hover) */}
       <span className="ds-btn__hover" aria-hidden="true" />
       {loading && <span className="ds-btn__spinner" aria-hidden="true" />}
       {leadingIcon && <span className="ds-btn__icon ds-btn__icon--lead">{leadingIcon}</span>}
