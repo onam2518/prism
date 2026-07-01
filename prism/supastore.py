@@ -101,12 +101,25 @@ class SupabaseStore:
         return rows[0] if rows else None
 
     def team_members(self, team) -> list:
-        rows = self._get("reviewers", f"select=id,name,avatar&team_id=eq.{urllib.parse.quote(team)}&order=name")
-        return [{"id": r["id"], "name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil"} for r in rows]
+        rows = self._get("reviewers", f"select=id,name,avatar,is_admin&team_id=eq.{urllib.parse.quote(team)}&order=name")
+        return [{"id": r["id"], "name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil",
+                 "is_admin": bool(r.get("is_admin"))} for r in rows]
 
     def is_team_admin(self, uid, team) -> bool:
         t = self.team_info(team)
-        return bool(t and uid and t.get("created_by") == uid)
+        if t and uid and t.get("created_by") == uid:      # 생성자는 항상 관리자
+            return True
+        if not (uid and team):
+            return False
+        rows = self._get("reviewers", f"select=is_admin&id=eq.{urllib.parse.quote(uid)}"
+                         f"&team_id=eq.{urllib.parse.quote(team)}")
+        return bool(rows and rows[0].get("is_admin"))      # 위임된 관리자
+
+    def set_member_admin(self, team, member_id, on: bool):
+        """멤버에게 관리자 권한 위임/회수(생성자는 대상 아님)."""
+        self._req("PATCH", "reviewers",
+                  query=f"id=eq.{urllib.parse.quote(member_id)}&team_id=eq.{urllib.parse.quote(team)}",
+                  body={"is_admin": bool(on)}, prefer="return=minimal")
 
     def clear_team_feedback(self, team):
         self._req("DELETE", "feedback", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
