@@ -1633,6 +1633,7 @@ PAGE = """<!doctype html>
       dashTop: 'content',   // 현황 대시보드 상위 탭: content | user
       evalTop: 'queue',     // 검증 및 평가 상위 탭: queue(검수큐) | test(테스트)
       drillOpen: false, drillData: null, drillBusy: false,  // 대시보드 드릴다운
+      dashSub: 'batch',     // 콘텐츠 서브탭: batch(배치결과) | quality(품질·법령) | topic(토픽)
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
       navIcons: {
         home: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 11 12 4l8 7M6 10v9h12v-9" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
@@ -2702,6 +2703,8 @@ PAGE = """<!doctype html>
   .charpick__opt.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16));box-shadow:0 0 0 2px var(--ds-violet-tint,rgba(30,132,255,0.16))}
   .charpick__opt.sel span{color:var(--ds-violet,#1e84ff)}
   .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:12px;max-width:520px}
+  .evaltabs--sub{background:transparent;padding:0;gap:6px;max-width:none}
+  .evaltabs--sub button{background:var(--ds-surface-table);border-radius:var(--ds-radius-sm)}
   .evaltabs button{flex:1;height:36px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
   .evaltabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .goldgrid{display:flex;align-items:center;gap:24px;margin-top:16px;flex-wrap:wrap}
@@ -3549,7 +3552,8 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
       <div x-show="mod === 'dash'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs"><button type="button" x-bind:class="dashTop==='content'?'sel':''" x-on:click="dashTop='content'">콘텐츠</button><button type="button" x-bind:class="dashTop==='user'?'sel':''" x-on:click="dashTop='user'">사용자</button></div></div>
-      <div x-show="mod === 'dash' && dashTop === 'content'" x-cloak class="ds-pilot w-full">
+      <div x-show="mod === 'dash' && dashTop === 'content'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs evaltabs--sub"><button type="button" x-bind:class="dashSub==='batch'?'sel':''" x-on:click="dashSub='batch'">배치 결과</button><button type="button" x-bind:class="dashSub==='quality'?'sel':''" x-on:click="dashSub='quality'">품질 · 법령</button><button type="button" x-bind:class="dashSub==='topic'?'sel':''" x-on:click="dashSub='topic'">토픽</button></div></div>
+      <div x-show="mod === 'dash' && dashTop === 'content' && dashSub === 'batch'" x-cloak class="ds-pilot w-full">
         <div x-show="!dashData || !dashData.n" class="ds-empty">
           <span class="ds-character ds-character--bob" style="width:80px;height:80px"><img src="/vendor/boksil-catcher.svg" alt=""></span>
           <div class="ds-empty__title">아직 집계할 결과가 없어요</div>
@@ -3594,7 +3598,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 품질 메타 ═══ -->
-      <div x-show="(mod === 'dash' && dashTop === 'content') || mod === 'quality'" x-cloak class="w-full space-y-4">
+      <div x-show="(mod === 'dash' && dashTop === 'content' && dashSub === 'quality') || mod === 'quality'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <div class="text-xs text-muted">법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다 켜면 다음 추출부터 적용(추가 호출)</div>
           <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
@@ -3622,7 +3626,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 토픽 (품질 · 토픽 통합 뷰) ═══ -->
-      <div x-show="(mod === 'dash' && dashTop === 'content') || mod === 'quality'" x-cloak class="w-full space-y-4">
+      <div x-show="(mod === 'dash' && dashTop === 'content' && dashSub === 'topic') || mod === 'quality'" x-cloak class="w-full space-y-4">
         <div x-show="!topicData || !topicData.n_contents" class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
           <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
