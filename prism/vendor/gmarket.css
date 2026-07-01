@@ -1,0 +1,22 @@
+/* Gmarket Sans (오프라인 번들) — 게임형 디스플레이 폰트(제목·숫자). 본문은 Pretendard 유지. */
+@font-face {
+  font-family: 'GmarketSans';
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+  src: url('/vendor/GmarketSansLight.woff') format('woff');
+}
+@font-face {
+  font-family: 'GmarketSans';
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url('/vendor/GmarketSansMedium.woff') format('woff');
+}
+@font-face {
+  font-family: 'GmarketSans';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('/vendor/GmarketSansBold.woff') format('woff');
+}

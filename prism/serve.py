@@ -1674,6 +1674,7 @@ PAGE = """<!doctype html>
 <meta name="description" content="이미지·텍스트·엑셀에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출하는 콘텐츠 메타 도구">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2320808d'/%3E%3Cpath d='M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z' fill='%23fff'/%3E%3C/svg%3E">
 <link href="/vendor/pretendard.css" rel="stylesheet">
+<link href="/vendor/gmarket.css" rel="stylesheet">
 <link href="/vendor/ds-theme.css" rel="stylesheet">
 <link href="/vendor/ds-components.css" rel="stylesheet">
 <script src="/vendor/tailwind.js"></script>
@@ -2549,9 +2550,16 @@ PAGE = """<!doctype html>
   *{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   :root{
     --ds-font:"Pretendard Variable",Pretendard,system-ui,-apple-system,sans-serif;
+    --ds-font-game:'GmarketSans',"Pretendard Variable",Pretendard,system-ui,sans-serif;  /* 게임형 디스플레이 */
     --ctrl-h:42px; --ctrl-r:10px; --ctrl-px:12px;
   }
-  [data-theme]{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font)}
+  [data-theme]{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font-game)}
+  /* 게임형 디스플레이 폰트(GmarketSans) 적용: 제목·큰 숫자·레벨·점수 등 강조 요소만. 본문·라벨은 Pretendard 유지 */
+  .panel-hd>.ds-widget__title,.panel-hd b,.ds-widget__title,.homehead__title,
+  .arena-hero__big,.arena-hero__eyebrow,.ds-stat__value,.tile .n,.goldbig__v,.goldstat b,
+  .lb-pts,.lb-name>span:first-child,.charcard__lvl,.charcard__title,.charcard__xptxt b,
+  .badgeburst__label,.badgeburst__ttl,.gbadge__exp,.badgeburst__exp,.side-profile__score,.side-profile__gain,
+  .tnum{font-family:var(--ds-font-display)}
   html{scroll-behavior:smooth}
   /* 문서를 뷰포트에 고정 → 스크롤은 .appbody 안에서만 상단 바(.topbar)는 절대 안 따라옴 */
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}

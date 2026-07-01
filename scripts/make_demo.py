@@ -122,6 +122,14 @@ CDN_TAILWIND = "https://cdn.tailwindcss.com/3.4.16"
 CDN_ALPINE = "https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"
 CDN_PRETENDARD = ("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/"
                   "dist/web/static/pretendard.min.css")
+# GmarketSans woff(projectnoonnu/jsdelivr) → @font-face 인라인. 로컬 번들과 동일 소스.
+_GM = "https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1"
+GMARKET_CDN_CSS = (
+    "<style>"
+    f"@font-face{{font-family:'GmarketSans';font-weight:300;font-display:swap;src:url('{_GM}/GmarketSansLight.woff') format('woff')}}"
+    f"@font-face{{font-family:'GmarketSans';font-weight:500;font-display:swap;src:url('{_GM}/GmarketSansMedium.woff') format('woff')}}"
+    f"@font-face{{font-family:'GmarketSans';font-weight:700;font-display:swap;src:url('{_GM}/GmarketSansBold.woff') format('woff')}}"
+    "</style>")
 
 STUB = """<script>
   // 정적 데모: 서버 호출을 합성 응답으로 스텁(키·서버 불필요)
@@ -180,6 +188,8 @@ def build() -> str:
     # 폰트·벤더 → CDN
     html = html.replace('<link href="/vendor/pretendard.css" rel="stylesheet">',
                         f'<link href="{CDN_PRETENDARD}" rel="stylesheet">')
+    # 게임형 디스플레이 폰트(GmarketSans) → CDN @font-face 인라인(데모 자체완결)
+    html = html.replace('<link href="/vendor/gmarket.css" rel="stylesheet">', GMARKET_CDN_CSS)
     html = html.replace('<script src="/vendor/tailwind.js"></script>',
                         f'<script src="{CDN_TAILWIND}"></script>')
     html = html.replace('<script defer src="/vendor/alpine.js"></script>',
