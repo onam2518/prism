@@ -294,6 +294,7 @@ class SupabaseStore:
                 continue                              # 검토 대상만
             row = {"hash": content_hash(content), "service": content.get("displayServiceName", ""),
                    "title": content.get("title", ""), "body": content.get("body", ""),
+                   "source_url": content.get("source_url", "") or content.get("url", ""),
                    "source": source, "final_grade": qm.get("finalGrade", ""),
                    "item_meta": out.get("item_meta"), "quality_meta": qm,
                    "review": qm.get("review", "")}
@@ -305,7 +306,7 @@ class SupabaseStore:
 
     def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,final_grade,quality_meta,review,created_at"
+        rows = self._get("contents", "select=hash,service,title,body,source_url,final_grade,item_meta,quality_meta,review,created_at"
                          f"&review=eq.yellow{tq}&order=created_at.desc&limit={int(limit) * 4}")
         reviewed = {r["content_hash"] for r in self._get("feedback", "select=content_hash" + tq)}
         out = []
@@ -314,8 +315,13 @@ class SupabaseStore:
             if only_unreviewed and is_rev:
                 continue
             qm = r.get("quality_meta") or {}
+            im = r.get("item_meta") or {}
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
-                        "grade": r.get("final_grade") or "", "review_reason": qm.get("review_reason", ""),
+                        "body": r.get("body") or "", "url": r.get("source_url") or "",
+                        "summary": im.get("summary", ""), "entities": im.get("entities", []) or [],
+                        "intent": im.get("intent", []) or [], "category": im.get("content_category", []) or [],
+                        "grade": r.get("final_grade") or "", "reasons": qm.get("reasons", []) or [],
+                        "review_reason": qm.get("review_reason", ""),
                         "reviewed": is_rev, "ts": r.get("created_at")})
             if len(out) >= limit:
                 break
@@ -352,9 +358,12 @@ class SupabaseStore:
 
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=item_meta,quality_meta"
+        rows = self._get("contents", "select=hash,service,title,body,source_url,item_meta,quality_meta"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
-        out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {}} for r in rows]
+        out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},
+                "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
+                                "body": r.get("body", ""), "source_url": r.get("source_url", ""),
+                                "body_hash": r.get("hash", "")}} for r in rows]
         out.reverse()
         return out
 
