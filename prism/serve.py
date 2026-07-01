@@ -1839,7 +1839,7 @@ PAGE = """<!doctype html>
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
-      // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 큐 · 라이브 이벤트
+      // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
       // Supabase 인증(ID/PW) · backend==='supabase' 일 때
       backend: 'sqlite', authToken: '', authEmail: '', authPw: '', authMode: 'login', authMsg: '',
@@ -2033,7 +2033,7 @@ PAGE = """<!doctype html>
         payload = Object.assign({ reviewer: this.reviewer || '', name: this.reviewer || '' }, payload);  // 키+표시명(supabase 면 서버가 uid 로 덮어씀)
         try { const r = await (await fetch('/feedback', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json(); if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback; } catch (e) {}
       },
-      // ── 팀 실시간 협업: 검수자 식별 · 검수 큐 · 라이브 ──
+      // ── 팀 실시간 협업: 검수자 식별 · 검수 대기 · 라이브 ──
       loadReviewer() {
         try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; this.authToken = localStorage.getItem('prism_token') || ''; } catch (e) {}
         if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
@@ -2150,7 +2150,7 @@ PAGE = """<!doctype html>
         if (!(this.ingestEndpoint || '').trim()) { this.ingestMsg = '크롤러 엔드포인트를 입력하세요'; return; }
         this.ingestBusy = true; this.ingestMsg = '인입·추출 중…';
         try { const r = await (await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'ingest', endpoint: this.ingestEndpoint, n: this.ingestN }) })).json();
-          this.ingestMsg = r.ok ? ('✓ ' + r.fetched + '건 인입 → 검수 큐 ' + r.queued + '건 적재') : (r.error || '실패'); } catch (e) { this.ingestMsg = '오류'; }
+          this.ingestMsg = r.ok ? ('✓ ' + r.fetched + '건 인입 → 검수 대기 ' + r.queued + '건 적재') : (r.error || '실패'); } catch (e) { this.ingestMsg = '오류'; }
         this.ingestBusy = false;
       },
       // 결과 출처 필터(자동 인입/단건/배치)
@@ -2240,11 +2240,11 @@ PAGE = """<!doctype html>
         if (this._ptT) clearTimeout(this._ptT);
         this._ptT = setTimeout(() => { if (this.ptToast && this.ptToast.id === id) this.ptToast = null; }, 1700);
       },
-      // 오늘의 미션(도전): 검수 큐가 있으면 스트릭 유지 유도, 없으면 골든셋
+      // 오늘의 미션(도전): 검수 대기가 있으면 스트릭 유지 유도, 없으면 골든셋
       get todayMission() {
         const q = (this.arenaData && this.arenaData.queue) || 0;
-        if (q > 0) return { txt: '검수 큐 ' + q + '건 · 지금 검수하면 🔥 스트릭 유지', to: 'review', cta: '검수하기' };
-        return { txt: '검수 큐 비었음 · 골든셋으로 프롬프트 정합성 점검', to: 'eval', cta: '테스트' };
+        if (q > 0) return { txt: '검수 대기 ' + q + '건 · 지금 검수하면 🔥 스트릭 유지', to: 'review', cta: '검수하기' };
+        return { txt: '검수 대기 비었음 · 골든셋으로 프롬프트 정합성 점검', to: 'eval', cta: '테스트' };
       },
       xpPct(r) { return r ? (r.points % 100) : 0; },                 // 레벨당 100pt
       xpToNext(r) { return r ? (r.level * 100 - r.points) : 0; },
@@ -4344,7 +4344,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 검증 · 평가 ═══ -->
-      <div x-show="mod === 'eval'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs"><button type="button" x-bind:class="evalTop==='queue'?'sel':''" x-on:click="evalTop='queue'">검수 큐</button><button type="button" x-bind:class="evalTop==='test'?'sel':''" x-on:click="evalTop='test'">테스트</button></div></div>
+      <div x-show="mod === 'eval'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs"><button type="button" x-bind:class="evalTop==='queue'?'sel':''" x-on:click="evalTop='queue'">검수 대기</button><button type="button" x-bind:class="evalTop==='test'?'sel':''" x-on:click="evalTop='test'">테스트</button></div></div>
       <div x-show="mod === 'eval' && evalTop === 'test'" x-cloak class="w-full space-y-4">
         <!-- 평가 2탭: ① 골든셋 평가 ② 실시간 콘텐츠 평가 -->
         <div class="evaltabs">
@@ -4506,7 +4506,7 @@ PAGE = """<!doctype html>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>콘텐츠 인입 (검토용)</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:10px">크롤러 엔드포인트에서 <b class="text-ink">수량 목표</b>로 당겨와 추출 → 전건을 팀 <b class="text-ink">검수 큐</b>에 적재합니다. 실시간 스트리밍 부담 없이 배치로.</p>
+            <p class="text-xs text-muted" style="margin-bottom:10px">크롤러 엔드포인트에서 <b class="text-ink">수량 목표</b>로 당겨와 추출 → 전건을 팀 <b class="text-ink">검수 대기</b>에 적재합니다. 실시간 스트리밍 부담 없이 배치로.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
               <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
@@ -4569,7 +4569,7 @@ PAGE = """<!doctype html>
                 <span class="lb-pts tnum" x-text="r.wp + 'pt'"></span>
               </div>
             </template>
-            <div x-show="leagueActive()===0" class="text-xs text-muted" style="padding:12px">이번 주 검수 활동이 아직 없습니다 · <b class="text-ink">검수 큐</b>에서 점수를 쌓아 승급권에 드세요</div>
+            <div x-show="leagueActive()===0" class="text-xs text-muted" style="padding:12px">이번 주 검수 활동이 아직 없습니다 · <b class="text-ink">검수 대기</b>에서 점수를 쌓아 승급권에 드세요</div>
           </div>
         </section>
         <div class="arena-cols">
@@ -4587,7 +4587,7 @@ PAGE = """<!doctype html>
                   <span class="lb-pts tnum" x-text="r.points + 'pt'"></span>
                 </div>
               </template>
-              <div x-show="!(arenaData&&arenaData.leaderboard&&arenaData.leaderboard.length)" class="text-xs text-muted" style="padding:12px">아직 검수 기록이 없습니다 · <b class="text-ink">검수 큐</b>에서 첫 검수를 해보세요</div>
+              <div x-show="!(arenaData&&arenaData.leaderboard&&arenaData.leaderboard.length)" class="text-xs text-muted" style="padding:12px">아직 검수 기록이 없습니다 · <b class="text-ink">검수 대기</b>에서 첫 검수를 해보세요</div>
             </div>
           </section>
           <!-- 내 검수 캐릭터 (육성) · 상단 히어로 -->
@@ -4649,13 +4649,13 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
-      <!-- ═══ 모듈: 검수 큐 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
+      <!-- ═══ 모듈: 검수 대기 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
       <div x-show="(mod === 'eval' && evalTop === 'queue') || mod === 'review'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn><div class="panel-hd"><b>검수 큐 · YELLOW 사람검수</b>
+        <section class="panel" data-fn><div class="panel-hd"><b>검수 대기 · YELLOW 사람검수</b>
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
           <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
             <input type="checkbox" x-model="queueOnlyUnreviewed" x-on:change="loadQueue()"> 미검수만</label>
-          <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 대기 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
           <div class="panel-bd">
             <p class="text-xs text-muted" style="margin-bottom:11px">자동(임베딩-LLM)이 확신 못 한 <b class="text-ink">YELLOW</b> 콘텐츠 대기열입니다. <b class="text-ink" x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존되어 <b class="text-ink">합의/불일치</b>로 집계됩니다(실시간 반영)</p>
