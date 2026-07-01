@@ -2034,21 +2034,61 @@ PAGE = """<!doctype html>
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : k === 'topic' ? '토픽' : '품질 사유'; },
       // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
-      openDetail(c) { this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.detailOpen = true; this.drillOpen = false; },
+      openDetail(c) { this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.detailOpen = true; this.drillOpen = false; },
+      editVerdict: false,
+      // 태그 용어 정의(호버 툴팁): 인텐트=고정 설명 · 품질 사유=사전(dictData) · 카테고리=경로
+      INTENT_DEF: {
+        '속보·사건 추적': '새로 발생한 사건·이슈를 빠르게 전하고 후속 경과를 추적', '심층 분석': '배경·맥락·데이터로 사안을 깊이 해설',
+        '팬덤·화제성': '인물·작품에 대한 팬 반응·화제 중심', '실용 정보': '방법·팁·가이드 등 바로 쓰는 정보',
+        '감성·공감': '감정·경험을 나누며 공감을 유도', '오락·유머': '재미·유머 중심의 가벼운 콘텐츠',
+        '의견·논쟁': '주장·토론·찬반이 오가는 콘텐츠', '학술·전문': '전문 지식·연구·기술을 다룸',
+      },
+      termDef(kind, val) {
+        if (kind === 'intent') return this.INTENT_DEF[val] || ('인텐트 · ' + val);
+        if (kind === 'reason') {
+          const d = this.dictData;
+          if (d && d.qualityMetas) { const nm = (d.qualityNames && d.qualityNames[val]) || ''; return (nm ? nm + ' · ' : '') + (d.qualityMetas[val] || val); }
+          if (!this._dictReq) { this._dictReq = true; this.loadDict(); }
+          return '품질 사유 · ' + val;
+        }
+        if (kind === 'category') return '콘텐츠 카테고리 · ' + val;
+        return val;
+      },
+      // 수정 대상 요소(파이프라인 단계 대신 '무엇을 고칠지'로 직관화). 각 요소 → 학습 단계 매핑.
+      FIX_ELEMENTS: [
+        { id: 'summary', label: '리드문', stage: 'analyze' },
+        { id: 'entities', label: '엔티티', stage: 'analyze' },
+        { id: 'intent', label: '인텐트', stage: 'analyze' },
+        { id: 'category', label: '카테고리', stage: 'analyze' },
+        { id: 'grade', label: '등급·유통', stage: 'judge' },
+        { id: 'quality', label: '품질 사유', stage: 'review' },
+      ],
+      elemStage(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.stage : 'analyze'; },
+      elemLabel(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.label : ''; },
+      fmtTs(ts) {                                        // epoch(초) → 'M.D HH:mm'
+        if (!ts) return '';
+        const d = new Date((ts > 1e12 ? ts : ts * 1000));
+        const p = (n) => (n < 10 ? '0' + n : '' + n);
+        return (d.getMonth() + 1) + '.' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+      },
       // ── 배치 결과: 콘텐츠별 평가 피드백 → 학습 루프 ──
       fbNoteOpen: {},
       async setFeedback(c, verdict) {
         const cur = (c.fb && c.fb.verdict) || '';
         const v = (cur === verdict) ? '' : verdict;        // 같은 버튼 재클릭 = 취소
-        c.fb = Object.assign({}, c.fb, { verdict: v });
+        c.fb = Object.assign({}, c.fb, { verdict: v, ts: (v ? Date.now() / 1000 : 0) });   // 수정 일시 기록
         if (v === 'bad') this.fbNoteOpen[c.hash] = true;
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
         if (cur === '' && v !== '') this.celebratePoints(10, '검수 완료');   // 새 검수 = +10 PT
       },
       async saveFbNote(c) {
         const hadNote = !!(c.fb && c.fb._noteRewarded);
-        c.fb = Object.assign({}, c.fb, { verdict: c.fb.verdict || 'bad' });
-        await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: c.fb.verdict, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
+        const el = c.fb.element || 'summary';                         // 수정 대상 요소 → 학습 단계
+        const stage = this.elemStage(el);
+        const raw = (c.fb.note || '').trim();
+        const tagged = raw ? ('[' + this.elemLabel(el) + '] ' + raw) : raw;
+        c.fb = Object.assign({}, c.fb, { verdict: c.fb.verdict || 'bad', stage: stage, ts: Date.now() / 1000 });
+        await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: c.fb.verdict, stage: stage, element: el, note: tagged });
         this.fbNoteOpen[c.hash] = false;
         if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(15, '개선안 채택'); }  // 교정 = +15 PT
       },
@@ -2812,6 +2852,12 @@ PAGE = """<!doctype html>
   [data-theme='dark'] .verdictbtn--good.is-on{color:#5fe08a} [data-theme='dark'] .verdictbtn--bad.is-on{color:#ff8a75}
   /* 패널 헤더 액션 간격: 카운트·버튼·칩이 붙지 않게(기본 gap 2px → 8px) */
   .panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions{gap:8px}
+  /* 수정 대상 요소 선택 칩 */
+  .fixelems{display:flex;flex-wrap:wrap;gap:6px}
+  .fixelem{height:28px;padding:0 12px;border-radius:9999px;border:1px solid var(--ds-hairline);background:var(--ds-surface-white);
+    color:var(--ds-text-secondary);font-size:12px;font-weight:700;cursor:pointer;transition:all .12s}
+  .fixelem:hover{border-color:var(--ds-border-input-hover);color:var(--ds-ink)}
+  .fixelem.sel{background:#ff4e33;border-color:#ff4e33;color:#fff}
   .fbrow__note{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
   /* 프롬프트 스튜디오 · 단계별 모델 지정 */
@@ -2955,7 +3001,8 @@ PAGE = """<!doctype html>
     transition:transform .16s var(--ds-ease-standard),box-shadow .16s var(--ds-ease-standard)}
   .ds-stat:hover{transform:translateY(-2px);box-shadow:0 10px 22px -12px rgba(16,24,40,.20)}
   .ds-stat__value--accent{text-shadow:0 0 18px color-mix(in srgb,var(--ds-primary) 28%,transparent)}
-  .panel-hd{display:flex;align-items:center;gap:12px;padding:18px 20px 10px}
+  .panel-hd{display:flex;align-items:center;gap:12px;padding:18px 20px 13px;border-bottom:1px solid var(--ds-hairline-soft)}
+  .panel-bd{padding-top:16px}   /* 헤더 구분선 아래 본문 */
   .panel-hd>b{margin-right:auto}
   .ds-progress--drill:hover .ds-progress__label{color:var(--ds-primary)}
   .ds-progress--drill:hover .ds-progress__track{box-shadow:0 0 0 2px color-mix(in srgb,var(--ds-primary) 26%,transparent)}
@@ -4516,7 +4563,7 @@ PAGE = """<!doctype html>
               <template x-for="c in filteredContents" x-bind:key="c.hash">
                 <div class="fbrow">
                   <div class="fbrow__main">
-                    <div class="fbrow__title"><span class="ds-badge" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" x-text="c.source||'단건'"></span><span x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span></div>
+                    <div class="fbrow__title"><span class="ds-badge" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" x-text="c.source||'단건'"></span><span x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span><span class="ds-badge ds-badge--success" x-show="c.fb && c.fb.verdict" data-tip="검수 판정 완료" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></div>
                     <div class="fbrow__sum tbox" x-show="c.summary" x-text="c.summary"></div>
                   </div>
                   <div class="fbrow__act">
@@ -4524,8 +4571,8 @@ PAGE = """<!doctype html>
                     <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="(c.fb&&c.fb.verdict==='bad')?'is-on':''" x-on:click="setFeedback(c,'bad')"><span class="verdictbtn__dot"></span>문제</button>
                   </div>
                   <div class="fbrow__note" x-show="(c.fb&&c.fb.verdict==='bad') || fbNoteOpen[c.hash]">
-                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 · 예) 카테고리를 스포츠가 아니라 정치로 / 리드문이 핵심을 놓침" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
-                    <select class="field" style="width:auto;height:34px;padding:0 26px 0 10px" x-model="c.fb.stage"><option value="extract">추출</option><option value="analyze">분석</option><option value="review">검수</option><option value="judge">판정</option></select>
+                    <select class="field" style="width:auto;height:34px;padding:0 26px 0 10px" x-model="c.fb.element"><template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id"><option x-bind:value="fe.id" x-text="fe.label"></option></template></select>
+                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="무엇이 왜 잘못됐는지 · 예) 카테고리를 스포츠가 아니라 정치로" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
                     <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="saveFbNote(c)">반영</button>
                   </div>
                 </div>
@@ -4966,19 +5013,39 @@ PAGE = """<!doctype html>
         <div class="detailview__eval">
           <div x-show="detail && detail.grade"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span></div>
           <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
-          <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
-          <div class="dve__sec"><div class="dve__lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" x-text="e"></span></template><span x-show="detail && !detail.category.length" class="text-xs text-muted">·</span></div></div>
-          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" x-text="e"></span></template></div></div>
+          <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.category.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', e)" data-tip-pos="top" x-text="e"></span></template></div></div>
           <div class="dve__verdict">
             <div class="dve__lbl">검수 판정</div>
-            <div style="display:flex;gap:8px">
-              <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="detail && detail.fb && detail.fb.verdict==='good' ? 'is-on' : ''" x-on:click="setFeedback(detail,'good')"><span class="verdictbtn__dot"></span>정확</button>
-              <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="detail && detail.fb && detail.fb.verdict==='bad' ? 'is-on' : ''" x-on:click="setFeedback(detail,'bad')"><span class="verdictbtn__dot"></span>수정 필요</button>
-            </div>
-            <template x-if="detail && detail.fb && detail.fb.verdict==='bad'">
-              <div style="margin-top:8px">
-                <textarea x-model="detail.fb.note" rows="3" class="field" placeholder="교정 메모 (다음 추출 프롬프트에 자동 반영)"></textarea>
-                <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" style="margin-top:8px" x-on:click="saveFbNote(detail)">메모 저장</button>
+            <!-- 검수 완료(판정 있음 · 수정 아님): 완료 표기 + 수정 일시 + 추가 수정 -->
+            <template x-if="detail && detail.fb && detail.fb.verdict && !editVerdict">
+              <div>
+                <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span><span x-text="detail.fb.verdict==='good' ? '검수 완료 · 정확' : '검수 완료 · 수정 필요'"></span></span>
+                <span class="text-xs text-muted" x-show="detail.fb.ts" x-text="'· 최종 수정 ' + fmtTs(detail.fb.ts)" style="margin-left:6px"></span>
+                <div class="tbox" x-show="detail.fb.verdict==='bad' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:10px" x-on:click="editVerdict=true">추가 수정</button>
+              </div>
+            </template>
+            <!-- 미검수 또는 추가 수정 중 -->
+            <template x-if="detail && (!(detail.fb && detail.fb.verdict) || editVerdict)">
+              <div>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="detail && detail.fb && detail.fb.verdict==='good' ? 'is-on' : ''" x-on:click="setFeedback(detail,'good'); if(detail.fb.verdict!=='bad') editVerdict=false"><span class="verdictbtn__dot"></span>정확</button>
+                  <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="detail && detail.fb && detail.fb.verdict==='bad' ? 'is-on' : ''" x-on:click="setFeedback(detail,'bad')"><span class="verdictbtn__dot"></span>수정 필요</button>
+                </div>
+                <template x-if="detail && detail.fb && detail.fb.verdict==='bad'">
+                  <div style="margin-top:10px">
+                    <div class="dve__lbl" style="margin-bottom:6px">어떤 요소를 고칠까요?</div>
+                    <div class="fixelems">
+                      <template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id">
+                        <button type="button" class="fixelem" x-bind:class="(detail.fb.element||'summary')===fe.id ? 'sel' : ''" x-on:click="detail.fb.element=fe.id" x-text="fe.label"></button>
+                      </template>
+                    </div>
+                    <textarea x-model="detail.fb.note" rows="3" class="field" style="margin-top:8px" x-bind:placeholder="elemLabel(detail.fb.element||'summary') + ' 이(가) 왜 잘못됐는지 · 다음 추출 프롬프트에 자동 반영'"></textarea>
+                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" style="margin-top:8px" x-on:click="saveFbNote(detail); editVerdict=false" x-bind:disabled="!(detail.fb.note||'').trim()">반영</button>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
