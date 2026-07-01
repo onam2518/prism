@@ -1988,7 +1988,7 @@ PAGE = """<!doctype html>
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '팀 정확도를 함께 끌어올리는 평가 아레나 · 검수할수록 점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -2287,6 +2287,10 @@ PAGE = """<!doctype html>
       // 아레나 파생값(게이지·내 순위)
       get arenaPct() { const d = this.arenaData; return d ? Math.round((d.accuracy || 0) * 100) : 0; },
       get arenaTargetPct() { const d = this.arenaData; return d ? Math.round((d.target || 0.9) * 100) : 90; },
+      // 검수 진척율: 개인(내가 검수한 대상 비율) · 팀(팀원 평균)
+      get myProgressPct() { const m = this.arenaMe; return m ? Math.round((m.progress || 0) * 100) : 0; },
+      get teamProgressPct() { const d = this.arenaData; return d ? Math.round((d.team_progress || 0) * 100) : 0; },
+      get reviewTargets() { const d = this.arenaData; return d ? (d.total_targets || 0) : 0; },
       get arenaMe() { const d = this.arenaData; if (!d || !this.reviewer) return null; return (d.leaderboard || []).find((r) => r.reviewer === this.reviewer) || null; },
       get arenaMyRank() { const d = this.arenaData; if (!d || !this.reviewer) return 0; const i = (d.leaderboard || []).findIndex((r) => r.reviewer === this.reviewer); return i < 0 ? 0 : i + 1; },
       rankMedal(i) { return ['🥇', '🥈', '🥉'][i] || ('#' + (i + 1)); },
@@ -4717,23 +4721,20 @@ PAGE = """<!doctype html>
         <!-- 히어로: 팀 정확도 게이지(협동) -->
         <section class="arena-hero">
           <div class="arena-hero__head">
-            <div><div class="arena-hero__eyebrow">팀 정확도 · 함께 끌어올리는 점수</div>
-              <div class="arena-hero__big"><span x-text="arenaPct"></span><span class="arena-hero__pct">%</span>
-                <span class="arena-hero__delta" x-show="arenaData && arenaData.accuracy_delta" x-bind:class="(arenaData&&arenaData.accuracy_delta>=0)?'up':'down'"
-                      x-text="arenaData ? ((arenaData.accuracy_delta>=0?'▲ +':'▼ ')+Math.round(arenaData.accuracy_delta*100)+'%p · 최근') : ''"></span>
-              </div>
+            <div><div class="arena-hero__eyebrow">내 검수 진척율 · 함께 끝까지</div>
+              <div class="arena-hero__big"><span x-text="myProgressPct"></span><span class="arena-hero__pct">%</span></div>
             </div>
-            <div class="arena-hero__target">목표 <b x-text="arenaTargetPct + '%'"></b></div>
+            <div class="arena-hero__target">팀 평균 <b x-text="teamProgressPct + '%'"></b></div>
           </div>
-          <!-- 게이지: 정확도 채움 + 목표 마커 -->
+          <!-- 게이지: 내 진척 채움 + 팀 평균 마커 -->
           <div class="arena-gauge">
-            <div class="arena-gauge__fill" x-bind:style="'width:' + arenaPct + '%'"></div>
-            <div class="arena-gauge__target" x-bind:style="'left:' + arenaTargetPct + '%'" title="목표"></div>
+            <div class="arena-gauge__fill" x-bind:style="'width:' + myProgressPct + '%'"></div>
+            <div class="arena-gauge__target" x-bind:style="'left:' + teamProgressPct + '%'" title="팀 평균"></div>
           </div>
           <div class="arena-hero__foot">
-            <span>자동 판정이 검수자와 일치한 비율 · <b class="text-ink" x-text="(arenaData?arenaData.reviews:0)"></b>건 검수됨</span>
+            <span>검수 대상 <b class="text-ink" x-text="reviewTargets"></b>건 중 내가 <b class="text-ink" x-text="(arenaMe?arenaMe.reviews:0)"></b>건 검수</span>
             <span class="arena-quest" x-show="arenaData && arenaData.queue" x-on:click="selectMod('review')">
-              🎯 남은 퀘스트 <b x-text="(arenaData?arenaData.queue:0)"></b>건 검수하러 가기 →</span>
+              🎯 남은 <b x-text="(arenaData?arenaData.queue:0)"></b>건 검수하러 가기 →</span>
             <span class="arena-quest arena-quest--done" x-show="arenaData && !arenaData.queue">✓ 검수 대기 없음 · 깔끔!</span>
           </div>
         </section>

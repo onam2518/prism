@@ -1980,7 +1980,7 @@
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '팀 정확도를 함께 끌어올리는 평가 아레나 · 검수할수록 점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -2279,6 +2279,10 @@
       // 아레나 파생값(게이지·내 순위)
       get arenaPct() { const d = this.arenaData; return d ? Math.round((d.accuracy || 0) * 100) : 0; },
       get arenaTargetPct() { const d = this.arenaData; return d ? Math.round((d.target || 0.9) * 100) : 90; },
+      // 검수 진척율: 개인(내가 검수한 대상 비율) · 팀(팀원 평균)
+      get myProgressPct() { const m = this.arenaMe; return m ? Math.round((m.progress || 0) * 100) : 0; },
+      get teamProgressPct() { const d = this.arenaData; return d ? Math.round((d.team_progress || 0) * 100) : 0; },
+      get reviewTargets() { const d = this.arenaData; return d ? (d.total_targets || 0) : 0; },
       get arenaMe() { const d = this.arenaData; if (!d || !this.reviewer) return null; return (d.leaderboard || []).find((r) => r.reviewer === this.reviewer) || null; },
       get arenaMyRank() { const d = this.arenaData; if (!d || !this.reviewer) return 0; const i = (d.leaderboard || []).findIndex((r) => r.reviewer === this.reviewer); return i < 0 ? 0 : i + 1; },
       rankMedal(i) { return ['🥇', '🥈', '🥉'][i] || ('#' + (i + 1)); },
@@ -2779,7 +2783,7 @@
   window.__DEMO_RESULT__ = {"source": "image", "mock": false, "content": {"displayServiceName": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "subtitle": "", "body": "기자회견장에서 노조 집행부가 발언하는 장면. 중앙노동위원회 조정에서 합의 불성립."}, "signals": [{"vision": "이미지는 실내 기자회견장을 담고 있다. 노동조합 집행부로 보이는 인물들이 단상에 앉아 발언하고 있으며, 배경 현수막에 협상 관련 문구가 보인다. 전체적으로 노사 협상 결렬을 알리는 공식 발표 현장의 분위기다. [엔티티] 삼성전자, 전국삼성전자노동조합, 중앙노동위원회 [장면] 노사 협상 결렬 기자회견", "ocr": "중앙노동위원회 조정 불성립 · 임금 인상 협상 결렬", "latency_ms": 2840}], "output": {"item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사실 전달", "분석·해설"], "content_category": ["Business / Industries", "Law, Govt & Politics"]}, "quality_meta": {"finalGrade": "G"}, "routing": {"content_track": "text"}}};
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
-    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": true}, {"id": "m2", "name": "검수자 A", "char": "yonghee", "avatar": "yonghee", "is_admin": true}, {"id": "m3", "name": "검수자 B", "char": "ddakji", "avatar": "ddakji", "is_admin": false}], "goldenCount": 24}, ARENA = {"accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18, "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "leaderboard": [{"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120}, {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160}, {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90}]};
+    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": true}, {"id": "m2", "name": "검수자 A", "char": "yonghee", "avatar": "yonghee", "is_admin": true}, {"id": "m3", "name": "검수자 B", "char": "ddakji", "avatar": "ddakji", "is_admin": false}], "goldenCount": 24}, ARENA = {"accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18, "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.5, "leaderboard": [{"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78}, {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51}, {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21}]};
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
       const u = String(url);
@@ -4750,23 +4754,20 @@
         <!-- 히어로: 팀 정확도 게이지(협동) -->
         <section class="arena-hero">
           <div class="arena-hero__head">
-            <div><div class="arena-hero__eyebrow">팀 정확도 · 함께 끌어올리는 점수</div>
-              <div class="arena-hero__big"><span x-text="arenaPct"></span><span class="arena-hero__pct">%</span>
-                <span class="arena-hero__delta" x-show="arenaData && arenaData.accuracy_delta" x-bind:class="(arenaData&&arenaData.accuracy_delta>=0)?'up':'down'"
-                      x-text="arenaData ? ((arenaData.accuracy_delta>=0?'▲ +':'▼ ')+Math.round(arenaData.accuracy_delta*100)+'%p · 최근') : ''"></span>
-              </div>
+            <div><div class="arena-hero__eyebrow">내 검수 진척율 · 함께 끝까지</div>
+              <div class="arena-hero__big"><span x-text="myProgressPct"></span><span class="arena-hero__pct">%</span></div>
             </div>
-            <div class="arena-hero__target">목표 <b x-text="arenaTargetPct + '%'"></b></div>
+            <div class="arena-hero__target">팀 평균 <b x-text="teamProgressPct + '%'"></b></div>
           </div>
-          <!-- 게이지: 정확도 채움 + 목표 마커 -->
+          <!-- 게이지: 내 진척 채움 + 팀 평균 마커 -->
           <div class="arena-gauge">
-            <div class="arena-gauge__fill" x-bind:style="'width:' + arenaPct + '%'"></div>
-            <div class="arena-gauge__target" x-bind:style="'left:' + arenaTargetPct + '%'" title="목표"></div>
+            <div class="arena-gauge__fill" x-bind:style="'width:' + myProgressPct + '%'"></div>
+            <div class="arena-gauge__target" x-bind:style="'left:' + teamProgressPct + '%'" title="팀 평균"></div>
           </div>
           <div class="arena-hero__foot">
-            <span>자동 판정이 검수자와 일치한 비율 · <b class="text-ink" x-text="(arenaData?arenaData.reviews:0)"></b>건 검수됨</span>
+            <span>검수 대상 <b class="text-ink" x-text="reviewTargets"></b>건 중 내가 <b class="text-ink" x-text="(arenaMe?arenaMe.reviews:0)"></b>건 검수</span>
             <span class="arena-quest" x-show="arenaData && arenaData.queue" x-on:click="selectMod('review')">
-              🎯 남은 퀘스트 <b x-text="(arenaData?arenaData.queue:0)"></b>건 검수하러 가기 →</span>
+              🎯 남은 <b x-text="(arenaData?arenaData.queue:0)"></b>건 검수하러 가기 →</span>
             <span class="arena-quest arena-quest--done" x-show="arenaData && !arenaData.queue">✓ 검수 대기 없음 · 깔끔!</span>
           </div>
         </section>

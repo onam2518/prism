@@ -311,6 +311,15 @@ class SupabaseStore:
                 s += 1; d -= 1
             return s
 
+        # 검수 대상(팀 YELLOW 콘텐츠) 총량 → 진척율 분모
+        if team:
+            total_targets = len(self._get("contents", "select=hash&team_id=eq." + urllib.parse.quote(team)))
+        else:
+            total_targets = self.count()
+
+        def _prog(rc):
+            return round(min(rc, total_targets) / total_targets, 4) if total_targets else 0.0
+
         leaderboard = []
         for rid, v in board.items():
             pts = v["reviews"] * 10 + v["corrections"] * 25
@@ -318,13 +327,16 @@ class SupabaseStore:
             leaderboard.append({"reviewer": meta.get("name", rid), "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": 1 + pts // 100, "streak": _streak(days_by.get(rid, set())),
-                                "char": meta.get("avatar", "boksil"),
+                                "char": meta.get("avatar", "boksil"), "progress": _prog(v["reviews"]),
                                 "week_points": v["wk_reviews"] * 10 + v["wk_corr"] * 25,
                                 "last_week_points": v["pv_reviews"] * 10 + v["pv_corr"] * 25})
         leaderboard.sort(key=lambda x: -x["points"])
+        members = set(names.keys()) | set(board.keys())  # 팀 전원(검수 이력 없어도 평균에 포함)
+        team_progress = round(sum(_prog(board.get(m, {}).get("reviews", 0)) for m in members) / len(members), 4) if (members and total_targets) else 0.0
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
                 "week_reviews": wk_good + wk_bad, "accuracy_delta": 0.0,
-                "target": target, "leaderboard": leaderboard}
+                "target": target, "leaderboard": leaderboard,
+                "total_targets": total_targets, "team_progress": team_progress}
 
     # ── 검토 콘텐츠 동기화 + 큐 + retention ────────────────────────────────
     def sync_contents(self, pairs, source: str = "단건", team=None):

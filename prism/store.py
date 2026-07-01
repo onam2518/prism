@@ -427,19 +427,27 @@ class Store:
             return s
 
         chars = self.reviewers_map()
+        total_targets = self.count()                     # 검수 대상(YELLOW 콘텐츠) 총량
+
+        def _prog(rv_count):
+            return round(min(rv_count, total_targets) / total_targets, 4) if total_targets else 0.0
+
         leaderboard = []
         for rv, v in board.items():
             pts = v["reviews"] * 10 + v["corrections"] * 25
             leaderboard.append({"reviewer": rv, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": 1 + pts // 100, "streak": _streak(days_by.get(rv, set())),
-                                "char": chars.get(rv, "boksil"),
+                                "char": chars.get(rv, "boksil"), "progress": _prog(v["reviews"]),
                                 "week_points": v["wk_reviews"] * 10 + v["wk_corr"] * 25,
                                 "last_week_points": v["pv_reviews"] * 10 + v["pv_corr"] * 25})
         leaderboard.sort(key=lambda x: -x["points"])
+        members = set(board.keys()) | set(chars.keys())  # 검수 이력 없는 팀원도 평균에 포함
+        team_progress = round(sum(_prog(board.get(m, {}).get("reviews", 0)) for m in members) / len(members), 4) if (members and total_targets) else 0.0
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
                 "week_reviews": wk_good + wk_bad, "accuracy_delta": round(accuracy - pv_acc, 4),
-                "target": target, "leaderboard": leaderboard}
+                "target": target, "leaderboard": leaderboard,
+                "total_targets": total_targets, "team_progress": team_progress}
 
     def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None) -> list:
         """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠. only_unreviewed 면 아직 아무도

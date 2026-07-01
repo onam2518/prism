@@ -73,11 +73,11 @@ DEMO_ADMIN = {
 }
 DEMO_ARENA = {
     "accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18,
-    "accuracy_delta": 0.04, "target": 0.9, "queue": 3,
+    "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.50,
     "leaderboard": [
-        {"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120},
-        {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160},
-        {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90},
+        {"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78},
+        {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51},
+        {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21},
     ],
 }
 DEMO_VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}
