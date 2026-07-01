@@ -3057,6 +3057,11 @@ PAGE = """<!doctype html>
   .wz-char{width:30px;height:30px;border-radius:50%;background:var(--ds-hairline-soft);overflow:hidden;display:inline-flex;align-items:center;justify-content:center;flex:none}
   .wz-char img{width:88%;height:88%;object-fit:contain}
   .wz-char--sm{width:24px;height:24px}
+  /* 카드 속성 클러스터(캐릭터+기능/정보 칩) · 종류별 캐릭터 통일 · 항상 헤드 우측 끝 고정 */
+  .ds-cardtype{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding-left:10px;flex:none;
+    border-left:1px solid var(--ds-hairline-soft)}
+  .panel-hd>.ds-widget__title{margin-right:auto}
+  .panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions{margin-left:auto}
   /* ⑨ 패널 내부 좌측 정렬선 통일(18px) · 타이틀·본문·표·행이 한 선에 정렬
      패널 직속 표(셀패딩 12)·행(0)은 타이틀(18)보다 왼쪽이라 18로 보정 panel-bd 안은 이미 18. */
   .panel > .drow{padding-left:18px;padding-right:18px}
@@ -4601,6 +4606,15 @@ PAGE = """<!doctype html>
     var st = MOD_STAGE[mod];
     return st ? stageChar(st) : stageChar(panelStage(titleText));
   }
+  // 카드 속성(기능/정보) = 캐릭터+칩 고정 클러스터. 종류별 캐릭터 통일 · 항상 헤드 우측 끝.
+  var KIND_CHAR = { fn: 'boksil-catcher', info: 'yonghee-pitcher' };
+  function prismCardType(isFn) {
+    var kind = isFn ? 'fn' : 'info';
+    var wrap = document.createElement('span'); wrap.className = 'ds-cardtype';
+    wrap.innerHTML = '<span class="wz-char wz-char--sm"><img src="/vendor/' + KIND_CHAR[kind] + '.svg" alt=""></span>'
+      + '<span class="ds-widget__kind ds-widget__kind--' + kind + '">' + (isFn ? '기능' : '정보') + '</span>';
+    return wrap;
+  }
   (function () {
     var grid = document.getElementById('grid'); if (!grid) return;
     var ORDER = ['', 'ds-widget--md', 'ds-widget--lg', 'ds-widget--tall', 'ds-widget--wide', 'ds-widget--xl'];
@@ -4646,9 +4660,10 @@ PAGE = """<!doctype html>
       if (chip) chip.remove();
       var actions = head.querySelector('.ds-widget__actions');
       if (!actions) { actions = document.createElement('div'); actions.className = 'ds-widget__actions'; head.appendChild(actions); }
-      var av = document.createElement('span'); av.className = 'wz-char wz-char--sm';
-      av.innerHTML = '<img src="/vendor/' + stageChar(WID_STAGE[wid]) + '.svg" alt="">';
-      actions.insertBefore(av, actions.firstChild);
+      var ek = actions.querySelector('.ds-widget__kind');            // 기존 인라인 칩 → 통일 클러스터로 교체
+      var isFn = ek ? ek.classList.contains('ds-widget__kind--fn') : false;
+      if (ek) ek.remove();
+      actions.appendChild(prismCardType(isFn));                       // 캐릭터+칩 고정(우측 끝)
     });
   })();
 
@@ -4667,12 +4682,7 @@ PAGE = """<!doctype html>
         title.appendChild(span);
         var actions = document.createElement('div'); actions.className = 'ds-widget__actions';
         while (h.firstChild) actions.appendChild(h.firstChild);   // 남은 메타·버튼 → actions
-        var av = document.createElement('span'); av.className = 'wz-char wz-char--sm';
-        av.innerHTML = '<img src="/vendor/' + prismCharForPanel(h, titleText) + '.svg" alt="">';
-        actions.appendChild(av);
-        var fn = h.closest('[data-fn]');
-        var kind = document.createElement('span'); kind.className = 'ds-widget__kind ds-widget__kind--' + (fn ? 'fn' : 'info'); kind.textContent = fn ? '기능' : '정보';
-        actions.appendChild(kind);
+        actions.appendChild(prismCardType(!!h.closest('[data-fn]')));   // 캐릭터+칩 고정 클러스터(우측 끝)
         h.appendChild(title); h.appendChild(actions);
       });
     }
