@@ -1113,15 +1113,50 @@ def build_golden_from_reviews(team=None) -> dict:
     return {"ok": True, "confirmed": n, "need_category": no_cat, "disagree": disagree}
 
 
-def learning_batch(team=None) -> dict:
-    """일배치 학습(하루 1회): ① 누적 피드백 병합→프롬프트 개선 ② 정확분 골든 축적 ③ 골든 회귀 평가."""
+_LAST_LEARN_REPORT = {}                               # 최근 일배치 결과(수신·표시용)
+
+
+def compare_models_on_golden(models=None, team=None) -> dict:
+    """골든셋(사람 확정 정답)을 여러 모델에 돌려 정합성 비교 → 최적 모델 선택 근거.
+    모델별 grade_accuracy·reason_jaccard·비용 비교."""
+    st = get_store()
+    if not (st and hasattr(st, "get_golden")):
+        return {"ok": False, "error": "골든셋을 지원하지 않는 저장소"}
+    rows = st.get_golden(team)
+    if not rows:
+        return {"ok": False, "error": "골든셋이 비어 있습니다 · 검수로 '정확' 확정분을 쌓으세요"}
+    from . import abtest
+    from . import harness as H
+    cfg = Config.load()
+    models = [m for m in (models or []) if m] or [cfg.model]
+    out = []
+    for model in models:
+        llm = make_text_llm(cfg, Handler.server_mock)
+        llm.model = model                            # 모델 override 후 골든 재현
+        m = abtest.evaluate(rows[:200], H.Methodology(name=model), llm, concurrency=8)
+        out.append({"model": model, "n": min(len(rows), 200),
+                    "grade_accuracy": m.get("grade_accuracy"), "reason_jaccard": m.get("reason_jaccard"),
+                    "reason_exact_match": m.get("reason_exact_match"), "empty_rate": m.get("empty_rate"),
+                    "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens")})
+    out.sort(key=lambda r: (-(r.get("grade_accuracy") or 0), -(r.get("reason_jaccard") or 0)))
+    return {"ok": True, "models": out, "best": (out[0]["model"] if out else None), "golden_n": len(rows)}
+
+
+def learning_batch(team=None, models=None) -> dict:
+    """일배치 학습(하루 1회): ① 피드백 병합→프롬프트 개선 ② 정확분 골든 축적 ③ 골든 회귀 평가(다중 모델)."""
     improve = meta_compile_run(team)
     golden = build_golden_from_reviews(team)
-    evalr = eval_golden(team)
+    evalr = eval_golden(team)                        # 현재 프롬프트 회귀 점수
+    compare = compare_models_on_golden(models, team) if (models and len(models) > 1) else None
+    report = {"ok": True, "ts": time.time(), "improve": improve, "golden": golden,
+              "eval": evalr, "compare": compare,
+              "grade_accuracy": evalr.get("grade_accuracy") if evalr.get("ok") else None}
+    global _LAST_LEARN_REPORT
+    _LAST_LEARN_REPORT = report
     _agg_bump()
     print(f"  [batch] 학습 일배치 · 골든 확정 {golden.get('confirmed')} · 카테고리필요 "
-          f"{golden.get('need_category')} · 정합성 {evalr.get('accuracy') if evalr.get('ok') else 'n/a'}")
-    return {"ok": True, "improve": improve, "golden": golden, "eval": evalr}
+          f"{golden.get('need_category')} · 정합성(grade) {report['grade_accuracy']}")
+    return report
 
 
 _learn_sched_started = False
@@ -1767,9 +1802,27 @@ class Handler(BaseHTTPRequestHandler):
                 if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                     self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                     return
-                self._send(200, json.dumps(learning_batch(self._req_team()), ensure_ascii=False), _JSON)
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(learning_batch(self._req_team(), data.get("models")),
+                                           ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/compare-models"):    # 골든셋 다중 모델 비교(관리자)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(compare_models_on_golden(data.get("models"), self._req_team()),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/learn-report"):       # 최근 일배치 결과 수신(개선·골든·평가·모델비교)
+            self._send(200, json.dumps({"ok": True, "report": _LAST_LEARN_REPORT}, ensure_ascii=False), _JSON)
             return
 
         if self.path.startswith("/meta-compile"):
