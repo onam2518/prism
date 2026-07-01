@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Prism</title>
 <meta name="description" content="이미지·텍스트·엑셀에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출하는 콘텐츠 메타 도구">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%2320808d'/%3E%3Cpath d='M12 4l1.7 5L19 12l-5.3 1.7L12 19l-1.7-5.3L5 12l5.3-1.7z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="demo-assets/prism-favicon.svg">
+<link rel="apple-touch-icon" href="demo-assets/prism-icon-180.png">
 <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
 <style>@font-face{font-family:'GmarketSans';font-weight:300;font-display:swap;src:url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansLight.woff') format('woff')}@font-face{font-family:'GmarketSans';font-weight:500;font-display:swap;src:url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff') format('woff')}@font-face{font-family:'GmarketSans';font-weight:700;font-display:swap;src:url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff') format('woff')}</style>
 <style>/* Prism Design System · 디자인 토큰 (CSS 변수).
@@ -1861,7 +1862,7 @@
           { id: 'queue', label: '실행 큐', ic: 'queue' } ] },
         { g: '현황 · 평가', items: [
           { id: 'dash', label: '현황 대시보드', ic: 'dash' },
-          { id: 'eval', label: '검증 및 평가', ic: 'eval' } ] },
+          { id: 'eval', label: '검수 및 평가', ic: 'eval' } ] },
         { g: '관리자', gcond: 'admin', items: [
           { id: 'auto', label: '자동 인입', ic: 'auto' },
           { id: 'admin', label: '팀 관리', ic: 'admin' },
@@ -3193,6 +3194,8 @@
     background:linear-gradient(90deg,#18ba45,#7be3a3);transition:width .6s cubic-bezier(.22,1,.36,1)}
   .arena-gauge__target{position:absolute;top:-3px;bottom:-3px;width:3px;background:#fff;border-radius:2px;box-shadow:0 0 0 2px rgba(19,52,59,.35)}
   .arena-hero__foot{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12.5px;opacity:.95;flex-wrap:wrap}
+  /* 히어로(파란 그라데이션) 위의 text-ink(라이트=검정) 강제 흰색 → 라이트 모드 가독성 */
+  .arena-hero .text-ink,.arena-hero__foot b,.arena-hero__eyebrow{color:#fff !important}
   .arena-quest{cursor:pointer;font-weight:600;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:999px}
   .arena-quest:hover{background:rgba(255,255,255,.26)}
   .arena-quest--done{cursor:default;background:rgba(255,255,255,.1)}
@@ -4302,7 +4305,10 @@
       <!-- ═══ 모듈: 사전 · 매핑 ═══ -->
       <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
-          <div class="text-xs text-muted">각 체계의 정책(사전·카테고리·법령)을 <span class="text-body">직접 수정</span>할 수 있습니다 저장 시 즉시 추출에 반영되고 로컬에 영속됩니다</div>
+          <ul class="ds-bullets">
+            <li>각 체계의 정책(사전·카테고리·법령)을 <b>직접 수정</b>할 수 있습니다.</li>
+            <li>저장 시 즉시 추출에 반영되고 로컬에 영속됩니다.</li>
+          </ul>
           <button type="button" x-on:click="resetDict()" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">편집 초기화</button>
         </div></div>
 
@@ -4575,7 +4581,7 @@
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>골든셋</b><span class="meta" x-text="(adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록')"></span></div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:10px">골든셋(정답셋). <b class="text-ink">{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다. (검증·평가 → 원천 평가에서 이 골든셋으로 정합성 측정)</p>
+            <p class="text-xs text-muted" style="margin-bottom:10px">골든셋(정답셋). <b class="text-ink">{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다. (검수 및 평가 → 원천 평가에서 이 골든셋으로 정합성 측정)</p>
             <label class="ds-btn ds-btn--secondary" style="cursor:pointer">골든셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
             <span class="text-xs text-muted" style="margin-left:10px" x-text="goldenMsg"></span>
           </div>
@@ -4727,7 +4733,7 @@
 
       <!-- ═══ 모듈: 검수 대기 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
       <div x-show="(mod === 'eval' && evalTop === 'queue') || mod === 'review'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn><div class="panel-hd"><b>검수 대기 · YELLOW 사람검수</b>
+        <section class="panel" data-fn><div class="panel-hd"><b>검수 대기 목록</b>
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
           <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
             <input type="checkbox" x-model="queueOnlyUnreviewed" x-on:change="loadQueue()"> 미검수만</label>
@@ -4794,7 +4800,7 @@
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>각 단계의 <b>원천 프롬프트</b>를 아래 <b>코드블록</b>에서 직접 수정합니다(관리자 전용).</li>
           <li>단계마다 <b>모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 모델별로 저장됩니다.</li>
-          <li>보완은 <b>검증 · 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다.</li>
+          <li>보완은 <b>검수 및 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다.</li>
         </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
         <section class="panel" data-fn><div class="panel-hd"><b>추출</b><span class="meta">대식 · 이미지 → 신호(OCR · 비전)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
