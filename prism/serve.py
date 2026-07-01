@@ -896,7 +896,8 @@ def register_reviewer(data: dict) -> dict:
         if not prof:
             return {"ok": False, "needSignup": True, "error": "가입이 필요합니다"}
         info = st.team_info(prof.get("team")) if (prof.get("team") and hasattr(st, "team_info")) else None
-        return {"ok": True, "name": prof["name"], "char": prof["char"], "team": info}
+        return {"ok": True, "name": prof["name"], "char": prof["char"], "team": info,
+                "badges": prof.get("badges") or []}       # 서버 배지 기준선(기기 간 중복 축하 방지)
     name = (data.get("name") or "").strip() or rv
     ch = (data.get("char") or "boksil").strip()
     team = None
@@ -911,6 +912,19 @@ def register_reviewer(data: dict) -> dict:
     broadcast({"type": "reviewer", "reviewer": name, "char": ch})
     info = st.team_info(team) if (team and hasattr(st, "team_info")) else None
     return {"ok": True, "team": info}                # info.invite_code 로 초대코드 표시
+
+
+def save_badges(uid, earned) -> dict:
+    """획득 배지 라벨을 서버(prism_reviewers.badges)에 영속. 최신 전체 목록 반환.
+    로컬(sqlite) 모드엔 영속 테이블이 없으므로 그대로 echo(클라 localStorage 폴백)."""
+    st = get_store()
+    labels = [str(x) for x in (earned or []) if x]
+    if st and hasattr(st, "save_badges") and uid:
+        try:
+            return {"ok": True, "badges": st.save_badges(uid, labels)}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "badges": labels}
+    return {"ok": True, "badges": labels, "persisted": False}
 
 
 def eval_golden(team=None) -> dict:
@@ -1490,6 +1504,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/badges"):                # 배지 획득 영속(기기 간 기준선)
+            try:
+                data = json.loads(body or b"{}")
+                uid = self._bearer_uid() or (data.get("reviewer") or "").strip()
+                self._send(200, json.dumps(save_badges(uid, data.get("earned")),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/reviewer"):
             try:
                 data = json.loads(body or b"{}")
@@ -1912,6 +1936,7 @@ PAGE = """<!doctype html>
             if (rr && rr.needSignup) { this.authMode = 'signup'; this.authMsg = '가입 정보가 없습니다 · 닉네임·캐릭터·팀을 설정해 가입하세요'; return; }
             if (!rr || !rr.ok) { this.authMsg = (rr && rr.error) || '프로필 로드 실패'; return; }
             this.reviewer = rr.name; this.reviewerChar = rr.char || this.reviewerChar;
+            this._badgeSeen = Array.isArray(rr.badges) ? rr.badges : null;   // 서버 배지 기준선(기기 간)
             if (rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }
             try { localStorage.setItem('prism_reviewer', this.reviewer); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
             this.reviewerEditing = false; this.authMsg = ''; this.refreshConfig();
@@ -2035,15 +2060,27 @@ PAGE = """<!doctype html>
         ];
       },
       get badgeGot() { return this.badges().filter((x) => x.got).length; },
-      checkBadges() {
+      async checkBadges() {
         if (!this.arenaMe) return;
         const key = 'prism_badges_' + (this.reviewer || '');
-        let seen = null;
-        try { const raw = localStorage.getItem(key); if (raw) seen = JSON.parse(raw); } catch (e) {}
+        // 기준선(이미 축하함): 서버 우선(_badgeSeen, 기기 간) → 없으면 로컬 폴백
+        let localSeen = null;
+        try { const raw = localStorage.getItem(key); if (raw) localSeen = JSON.parse(raw); } catch (e) {}
+        const server = Array.isArray(this._badgeSeen) ? this._badgeSeen : null;
+        const firstLoad = (server === null && localSeen === null);   // 최초 진입 = 기준선만
+        const base = [].concat(server || [], localSeen || []);
         const got = this.badges().filter((x) => x.got).map((x) => x.label);
+        const fresh = got.filter((l) => !base.includes(l));
         try { localStorage.setItem(key, JSON.stringify(got)); } catch (e) {}
-        if (seen === null) return;                       // 첫 로드는 기준선만(축하 생략)
-        const fresh = got.filter((l) => !seen.includes(l));
+        // 서버 영속(단조 증가) — 신규가 있거나 서버 기준선이 아직 없을 때
+        if (this.reviewer && (fresh.length || server === null)) {
+          try {
+            const r = await (await fetch('/badges', { method: 'POST', headers: this._authHeaders(),
+              body: JSON.stringify({ reviewer: this.reviewer, earned: got }) })).json();
+            if (r && Array.isArray(r.badges)) this._badgeSeen = r.badges;
+          } catch (e) {}
+        }
+        if (firstLoad) return;                            // 최초 기준선은 축하 생략(스팸 방지)
         if (fresh.length) { const bd = this.badges().find((x) => x.label === fresh[0]); if (bd) this.celebrateBadge(bd); }
       },
       celebrateBadge(bd) { this.badgeToast = bd; if (this._btT) clearTimeout(this._btT); this._btT = setTimeout(() => { this.badgeToast = null; }, 4500); },

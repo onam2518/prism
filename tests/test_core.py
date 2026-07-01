@@ -91,6 +91,42 @@ class TestDrillAndDetail(unittest.TestCase):
             S.get_store = orig
 
 
+class TestBadges(unittest.TestCase):
+    def test_save_badges_echo_without_store(self):
+        import prism.serve as S
+        orig = S.get_store
+        S.get_store = lambda: None
+        try:
+            out = S.save_badges("u1", ["첫 검수", "연속 3일"])
+            self.assertTrue(out["ok"])
+            self.assertEqual(out["badges"], ["첫 검수", "연속 3일"])
+            self.assertFalse(out.get("persisted", True))
+        finally:
+            S.get_store = orig
+
+    def test_save_badges_monotonic_union(self):
+        import prism.serve as S
+
+        class FakeStore:                                   # save_badges = 기존 ∪ 신규
+            def __init__(self):
+                self.saved = {"u1": ["첫 검수"]}
+
+            def save_badges(self, uid, earned):
+                cur = self.saved.get(uid, [])
+                merged = cur + [b for b in earned if b not in cur]
+                self.saved[uid] = merged
+                return merged
+
+        fake = FakeStore()
+        orig = S.get_store
+        S.get_store = lambda: fake
+        try:
+            out = S.save_badges("u1", ["첫 검수", "Lv.5"])
+            self.assertEqual(out["badges"], ["첫 검수", "Lv.5"])   # 중복 없이 합집합
+        finally:
+            S.get_store = orig
+
+
 class TestVerify(unittest.TestCase):
     def test_content_category_tier1_whitelist_list(self):
         from prism.verify import verify_item

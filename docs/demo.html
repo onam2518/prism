@@ -2083,6 +2083,7 @@
             if (rr && rr.needSignup) { this.authMode = 'signup'; this.authMsg = '가입 정보가 없습니다 · 닉네임·캐릭터·팀을 설정해 가입하세요'; return; }
             if (!rr || !rr.ok) { this.authMsg = (rr && rr.error) || '프로필 로드 실패'; return; }
             this.reviewer = rr.name; this.reviewerChar = rr.char || this.reviewerChar;
+            this._badgeSeen = Array.isArray(rr.badges) ? rr.badges : null;   // 서버 배지 기준선(기기 간)
             if (rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }
             try { localStorage.setItem('prism_reviewer', this.reviewer); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
             this.reviewerEditing = false; this.authMsg = ''; this.refreshConfig();
@@ -2206,15 +2207,27 @@
         ];
       },
       get badgeGot() { return this.badges().filter((x) => x.got).length; },
-      checkBadges() {
+      async checkBadges() {
         if (!this.arenaMe) return;
         const key = 'prism_badges_' + (this.reviewer || '');
-        let seen = null;
-        try { const raw = localStorage.getItem(key); if (raw) seen = JSON.parse(raw); } catch (e) {}
+        // 기준선(이미 축하함): 서버 우선(_badgeSeen, 기기 간) → 없으면 로컬 폴백
+        let localSeen = null;
+        try { const raw = localStorage.getItem(key); if (raw) localSeen = JSON.parse(raw); } catch (e) {}
+        const server = Array.isArray(this._badgeSeen) ? this._badgeSeen : null;
+        const firstLoad = (server === null && localSeen === null);   // 최초 진입 = 기준선만
+        const base = [].concat(server || [], localSeen || []);
         const got = this.badges().filter((x) => x.got).map((x) => x.label);
+        const fresh = got.filter((l) => !base.includes(l));
         try { localStorage.setItem(key, JSON.stringify(got)); } catch (e) {}
-        if (seen === null) return;                       // 첫 로드는 기준선만(축하 생략)
-        const fresh = got.filter((l) => !seen.includes(l));
+        // 서버 영속(단조 증가) — 신규가 있거나 서버 기준선이 아직 없을 때
+        if (this.reviewer && (fresh.length || server === null)) {
+          try {
+            const r = await (await fetch('/badges', { method: 'POST', headers: this._authHeaders(),
+              body: JSON.stringify({ reviewer: this.reviewer, earned: got }) })).json();
+            if (r && Array.isArray(r.badges)) this._badgeSeen = r.badges;
+          } catch (e) {}
+        }
+        if (firstLoad) return;                            // 최초 기준선은 축하 생략(스팸 방지)
         if (fresh.length) { const bd = this.badges().find((x) => x.label === fresh[0]); if (bd) this.celebrateBadge(bd); }
       },
       celebrateBadge(bd) { this.badgeToast = bd; if (this._btT) clearTimeout(this._btT); this._btT = setTimeout(() => { this.badgeToast = null; }, 4500); },
@@ -2649,6 +2662,7 @@
         {hash:'d2', title:'한국은행 기준금리 동결 결정', subtitle:'', service:'뉴스', grade:'G', summary:'한국은행이 기준금리를 현 수준에서 동결하기로 결정했다', entities:['한국은행','금리'], intent:['사건 경과 보도'], category:['Business and Finance / Economy'], reasons:[], url:''},
         {hash:'d3', title:'낚시성 제목 사례', subtitle:'', service:'커뮤니티', grade:'R', summary:'제목과 본문 괴리로 클릭을 유도한 사례', entities:[], intent:['흥미·화제'], category:[], reasons:['clickbait'], url:''}
       ], n: 3 })); }
+      if (u.indexOf('/badges') > -1) { let e = []; try { e = JSON.parse((opt&&opt.body)||'{}').earned || []; } catch (x) {} return Promise.resolve(J({ ok: true, badges: e })); }
       if (u.indexOf('/reviewer') > -1) return Promise.resolve(J({ ok: true, team: { invite_code: ADMIN.team.invite_code } }));
       if (u.indexOf('/auth') > -1) return Promise.resolve(J({ ok: true, access_token: 'demo' }));
       if (u.indexOf('/models') > -1) return Promise.resolve(J({ ok: true, models: ['solar-pro3-260323', 'solar-pro2-251215'] }));

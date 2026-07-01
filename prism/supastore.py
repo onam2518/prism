@@ -75,12 +75,29 @@ class SupabaseStore:
         return rows[0].get("team_id") if rows else None
 
     def get_reviewer(self, reviewer):
-        """기존 검수자 프로필(이름·캐릭터·팀). 로그인 시 재입력 없이 로드. 없으면 None."""
-        rows = self._get("reviewers", f"select=name,avatar,team_id&id=eq.{urllib.parse.quote(reviewer)}")
+        """기존 검수자 프로필(이름·캐릭터·팀·배지). 로그인 시 재입력 없이 로드. 없으면 None."""
+        rows = self._get("reviewers", f"select=name,avatar,team_id,badges&id=eq.{urllib.parse.quote(reviewer)}")
         if not rows:
             return None
         r = rows[0]
-        return {"name": r.get("name") or reviewer, "char": r.get("avatar") or "boksil", "team": r.get("team_id")}
+        return {"name": r.get("name") or reviewer, "char": r.get("avatar") or "boksil",
+                "team": r.get("team_id"), "badges": r.get("badges") or []}
+
+    def save_badges(self, uid, earned) -> list:
+        """획득 배지 라벨을 서버에 영속(기존 ∪ 신규, 단조 증가). 최신 전체 목록 반환.
+        기기 간 '이미 축하함' 기준선이 되어 중복 축하를 막는다."""
+        if not uid:
+            return list(earned or [])
+        rows = self._get("reviewers", f"select=badges&id=eq.{urllib.parse.quote(uid)}")
+        cur = (rows[0].get("badges") if rows else None) or []
+        merged = list(cur)
+        for b in (earned or []):
+            if b not in merged:
+                merged.append(b)
+        if merged != cur:
+            self._req("PATCH", "reviewers", query=f"id=eq.{urllib.parse.quote(uid)}",
+                      body={"badges": merged}, prefer="return=minimal")
+        return merged
 
     def reviewers_map(self, team=None) -> dict:
         q = "select=id,name,avatar"
