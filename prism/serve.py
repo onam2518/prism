@@ -1638,7 +1638,7 @@ PAGE = """<!doctype html>
       // Supabase 인증(ID/PW) · backend==='supabase' 일 때
       backend: 'sqlite', authToken: '', authEmail: '', authPw: '', authMode: 'login', authMsg: '',
       // 팀(멀티테넌시): 생성/가입 + 내 초대코드
-      teamMode: 'create', teamName: '', inviteCode: '', myInvite: '',
+      teamMode: 'join', teamName: '', inviteCode: '', myInvite: '',
       charOptions: [
         { id: 'boksil', label: '복실', role: '검수', img: '/vendor/boksil-catcher.svg' },
         { id: 'daesik', label: '대식', role: '추출', img: '/vendor/daesik-batter.svg' },
@@ -2898,6 +2898,20 @@ PAGE = """<!doctype html>
         </div>
       </template>
 
+      <!-- supabase 모드: 팀 참가/생성 · 첫 시작 시 팀 코드 입력을 앞단계로 -->
+      <template x-if="backend === 'supabase'">
+        <div>
+          <label class="onboard__lbl">팀 <span class="onboard__hint"> 초대 코드로 참가하거나 새 팀을 만드세요</span></label>
+          <div class="onboard__authtabs">
+            <button type="button" x-bind:class="teamMode==='join'?'sel':''" x-on:click="teamMode='join'">팀 코드로 참가</button>
+            <button type="button" x-bind:class="teamMode==='create'?'sel':''" x-on:click="teamMode='create'">새 팀 만들기</button>
+          </div>
+          <input x-show="teamMode==='join'" class="field onboard__name" placeholder="팀 초대 코드 (예: A1B2C3D4)" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:700" x-on:keydown.enter="saveReviewer()">
+          <input x-show="teamMode==='create'" class="field onboard__name" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="teamName" style="margin-bottom:6px">
+          <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:4px" x-text="teamMode==='join' ? '관리자에게 받은 코드를 입력하면 같은 팀으로 참가합니다' : '만들면 초대 코드가 생겨 팀원을 부를 수 있어요'"></p>
+        </div>
+      </template>
+
       <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시됩니다</span></label>
       <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer"
              x-on:keydown.enter="saveReviewer()" autofocus>
@@ -2912,19 +2926,6 @@ PAGE = """<!doctype html>
         </template>
       </div>
 
-      <!-- supabase 모드: 팀 생성/가입 -->
-      <template x-if="backend === 'supabase'">
-        <div>
-          <label class="onboard__lbl">팀</label>
-          <div class="onboard__authtabs">
-            <button type="button" x-bind:class="teamMode==='create'?'sel':''" x-on:click="teamMode='create'">새 팀 만들기</button>
-            <button type="button" x-bind:class="teamMode==='join'?'sel':''" x-on:click="teamMode='join'">팀 참가</button>
-          </div>
-          <input x-show="teamMode==='create'" class="field onboard__name" placeholder="팀 이름 · 예) 콘텐츠검수팀" x-model="teamName" style="margin-bottom:6px">
-          <input x-show="teamMode==='join'" class="field onboard__name" placeholder="초대 코드 · 예) A1B2C3D4" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase">
-          <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:4px" x-text="teamMode==='create' ? '만들면 초대 코드가 생겨 팀원을 부를 수 있어요' : '관리자에게 받은 코드를 입력하세요'"></p>
-        </div>
-      </template>
 
       <button type="button" class="ds-btn ds-btn--primary onboard__cta"
               x-bind:disabled="!(reviewer||'').trim() || (backend==='supabase' && (!(authEmail||'').trim() || !authPw || (teamMode==='create' ? !(teamName||'').trim() : !(inviteCode||'').trim())))"
@@ -3949,25 +3950,25 @@ PAGE = """<!doctype html>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
         <section class="panel" data-fn><div class="panel-hd"><b>추출</b><span class="meta">대식 · 이미지 → 신호(OCR · 비전)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
-            <div class="stage-model"><span class="stage-model__lbl">모델</span><input class="field" list="modelopts" x-model="stageModels.extract" x-on:change="onStageModelChange('extract')" placeholder="이 단계에 사용할 모델 (미지정 = 전역 프롬프트)"></div>
+            <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.extract" x-on:change="onStageModelChange('extract')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
             <textarea x-model="stagePrompts.extract" rows="5" class="field" placeholder="이 단계의 원천 프롬프트(지시문)"></textarea>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('extract')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('extract')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.extract"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.extract ? ('최종 수정 ' + stagePromptsMeta.extract) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>분석</b><span class="meta">용희 · 신호 → 메타(리드문 · 엔티티 · 인텐트 · 카테고리)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.analyze" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
-            <div class="stage-model"><span class="stage-model__lbl">모델</span><input class="field" list="modelopts" x-model="stageModels.analyze" x-on:change="onStageModelChange('analyze')" placeholder="이 단계에 사용할 모델 (미지정 = 전역 프롬프트)"></div>
+            <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.analyze" x-on:change="onStageModelChange('analyze')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
             <textarea x-model="stagePrompts.analyze" rows="5" class="field" placeholder="이 단계의 원천 프롬프트(지시문)"></textarea>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('analyze')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('analyze')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.analyze"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.analyze ? ('최종 수정 ' + stagePromptsMeta.analyze) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>검수</b><span class="meta">복실 · 품질 메타 판정</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.review" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
-            <div class="stage-model"><span class="stage-model__lbl">모델</span><input class="field" list="modelopts" x-model="stageModels.review" x-on:change="onStageModelChange('review')" placeholder="이 단계에 사용할 모델 (미지정 = 전역 프롬프트)"></div>
+            <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.review" x-on:change="onStageModelChange('review')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
             <textarea x-model="stagePrompts.review" rows="5" class="field" placeholder="이 단계의 원천 프롬프트(지시문)"></textarea>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('review')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('review')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.review"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.review ? ('최종 수정 ' + stagePromptsMeta.review) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>판정 · 부여</b><span class="meta">딱지 · 유통 결정 · 법령</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.judge" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
-            <div class="stage-model"><span class="stage-model__lbl">모델</span><input class="field" list="modelopts" x-model="stageModels.judge" x-on:change="onStageModelChange('judge')" placeholder="이 단계에 사용할 모델 (미지정 = 전역 프롬프트)"></div>
+            <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.judge" x-on:change="onStageModelChange('judge')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
             <textarea x-model="stagePrompts.judge" rows="5" class="field" placeholder="이 단계의 원천 프롬프트(지시문)"></textarea>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('judge')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('judge')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.judge"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.judge ? ('최종 수정 ' + stagePromptsMeta.judge) : '수정 이력 없음'"></span></div>
           </div></section>
