@@ -4568,7 +4568,6 @@ PAGE = """<!doctype html>
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
           <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
             <input type="checkbox" x-model="queueOnlyUnreviewed" x-on:change="loadQueue()"> 미검수만</label>
-          <span class="hd-divider" aria-hidden="true"></span>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
           <div class="panel-bd">
@@ -5002,6 +5001,19 @@ PAGE = """<!doctype html>
       + '<span class="ds-widget__kind ds-widget__kind--' + kind + '">' + (isFn ? '기능' : '정보') + '</span>';
     return wrap;
   }
+  // 헤더 액션: 정보(메타·라벨)와 컨트롤(버튼) 경계에 구분선 자동 삽입(전 카드 공통). 카드속성 구분선과 동일 규칙.
+  function insertHdDivider(actions) {
+    var kids = Array.prototype.slice.call(actions.children);
+    for (var i = 1; i < kids.length; i++) {
+      var el = kids[i];
+      var isCtrl = el.matches && el.matches('button, a.ds-btn, .ds-btn, .copybtn, .ds-iconbtn');
+      if (isCtrl && !(kids[i - 1].classList && kids[i - 1].classList.contains('hd-divider'))) {
+        var d = document.createElement('span'); d.className = 'hd-divider'; d.setAttribute('aria-hidden', 'true');
+        actions.insertBefore(d, el);
+        break;                                      // 정보|컨트롤 경계 1곳
+      }
+    }
+  }
   (function () {
     var grid = document.getElementById('grid'); if (!grid) return;
     var ORDER = ['', 'ds-widget--md', 'ds-widget--lg', 'ds-widget--tall', 'ds-widget--wide', 'ds-widget--xl'];
@@ -5050,6 +5062,7 @@ PAGE = """<!doctype html>
       var ek = actions.querySelector('.ds-widget__kind');            // 기존 인라인 칩 → 통일 클러스터로 교체
       var isFn = ek ? ek.classList.contains('ds-widget__kind--fn') : false;
       if (ek) ek.remove();
+      insertHdDivider(actions);                                       // 정보|컨트롤 구분선
       actions.appendChild(prismCardType(isFn));                       // 캐릭터+칩 고정(우측 끝)
     });
   })();
@@ -5069,6 +5082,7 @@ PAGE = """<!doctype html>
         title.appendChild(span);
         var actions = document.createElement('div'); actions.className = 'ds-widget__actions';
         while (h.firstChild) actions.appendChild(h.firstChild);   // 남은 메타·버튼 → actions
+        insertHdDivider(actions);                                 // 정보|컨트롤 구분선(전 카드 공통)
         actions.appendChild(prismCardType(!!h.closest('[data-fn]')));   // 캐릭터+칩 고정 클러스터(우측 끝)
         h.appendChild(title); h.appendChild(actions);
       });
