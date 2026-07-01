@@ -845,12 +845,12 @@ def apply_feedback(data: dict) -> dict:
         broadcast({"type": "feedback", "hash": ch, "reviewer": disp,
                    "verdict": verdict, "title": data.get("title", ""),
                    "service": data.get("service", ""), "ts": time.time()})
-        if verdict == "bad" and note:              # REAP 피드백 하네스(백그라운드)
+        if verdict == "bad" and note:              # REAP: 교정을 plan 으로 가공해 저장(맥락용, 프롬프트 즉시반영은 안 함)
             fb = {"stage": stage, "note": note, "title": data.get("title", "")}
             threading.Thread(target=_reap_async, args=(ch, reviewer, fb),
                              daemon=True).start()
-    sync_learned()                                 # 다음 추출부터 자동 반영
-    _agg_bump()                                    # 피드백/정확도 변경 → 집계·아레나 캐시 무효화
+    # 프롬프트 반영은 '일배치 학습'에서 합의 후 1회(진동 방지). 여기선 수집만.
+    _agg_bump()                                    # 피드백/진척율 변경 → 집계·아레나 캐시 무효화
     return {"ok": True, "feedback": st.feedback_stats(),
             "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
 
@@ -864,7 +864,7 @@ def _reap_async(content_hash: str, reviewer: str, fb: dict):
         st = get_store()
         if st:
             st.save_reap(content_hash, reviewer, reap)
-        sync_learned()                             # 가공된 plan 을 단계 프롬프트에 반영
+        # 프롬프트 즉시반영 없음(일배치 학습에서 합의 반영). plan 은 저장·브로드캐스트만.
         broadcast({"type": "reap", "hash": content_hash, "reviewer": reviewer,
                    "stage": reap.get("stage", ""), "plan": reap.get("plan", ""),
                    "ask": reap.get("ask", "")})
@@ -1074,6 +1074,80 @@ def register_golden(uid, team, rows, email="") -> dict:
         return {"ok": False, "error": "관리자 전용입니다"}
     n = st.register_golden(team, [r for r in rows if isinstance(r, dict) and r.get("content") and r.get("expected")])
     return {"ok": True, "count": n}
+
+
+def build_golden_from_reviews(team=None) -> dict:
+    """검수 = 골든 생성: '정확' 다수결 합의 + 카테고리 채워진 콘텐츠 → 골든셋(정답)으로 축적.
+    카테고리 공백은 확정 제외(채워야 골든). 반환: 확정·카테고리필요·불일치 수."""
+    from .store import content_hash
+    st = get_store()
+    if not (st and hasattr(st, "feedback_map") and hasattr(st, "register_golden")):
+        return {"ok": False, "error": "지원하지 않는 저장소"}
+    rows = results_rows(team=team)
+    try:
+        fmap = st.feedback_map(team=team)
+    except Exception:
+        fmap = {}
+    entries, no_cat, disagree = [], 0, 0
+    for r in rows:
+        ref = r.get("content_ref") or {}
+        content = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
+                   "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
+        fb = fmap.get(content_hash(content))
+        if not fb:
+            continue
+        if not (fb.get("consensus") == "good" and fb.get("good", 0) >= 1):   # 정확 다수결만
+            disagree += 1
+            continue
+        im = r.get("item_meta") or {}
+        qm = r.get("quality_meta") or {}
+        cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
+        if not cats:                                  # 카테고리 공백 → 골든 미확정(채워야 함)
+            no_cat += 1
+            continue
+        entries.append({"content": content, "expected": {
+            "finalGrade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
+            "intent": im.get("intent", []) or [], "content_category": cats,
+            "summary": im.get("summary", ""), "entities": im.get("entities", []) or []}})
+    n = st.register_golden(team, entries)
+    return {"ok": True, "confirmed": n, "need_category": no_cat, "disagree": disagree}
+
+
+def learning_batch(team=None) -> dict:
+    """일배치 학습(하루 1회): ① 누적 피드백 병합→프롬프트 개선 ② 정확분 골든 축적 ③ 골든 회귀 평가."""
+    improve = meta_compile_run(team)
+    golden = build_golden_from_reviews(team)
+    evalr = eval_golden(team)
+    _agg_bump()
+    print(f"  [batch] 학습 일배치 · 골든 확정 {golden.get('confirmed')} · 카테고리필요 "
+          f"{golden.get('need_category')} · 정합성 {evalr.get('accuracy') if evalr.get('ok') else 'n/a'}")
+    return {"ok": True, "improve": improve, "golden": golden, "eval": evalr}
+
+
+_learn_sched_started = False
+
+
+def start_learning_scheduler(hour: int = 4):
+    """매일 지정 시각(기본 04:00)에 learning_batch 실행. 서버당 1회(진동 방지·합의 반영)."""
+    global _learn_sched_started
+    if _learn_sched_started:
+        return
+    _learn_sched_started = True
+
+    def _loop():
+        import datetime
+        while True:
+            now = datetime.datetime.now()
+            nxt = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if nxt <= now:
+                nxt += datetime.timedelta(days=1)
+            time.sleep(max(60, (nxt - now).total_seconds()))
+            try:
+                learning_batch(None)
+            except Exception as e:
+                print(f"  [warn] 학습 일배치 실패: {e}")
+
+    threading.Thread(target=_loop, daemon=True).start()
 
 
 def meta_compile_run(team=None) -> dict:
@@ -1684,6 +1758,16 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self._send(200, json.dumps(admin_action(self._bearer_uid(), self._req_team(),
                            json.loads(body or b"{}"), self._bearer_email()), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/learn-batch"):        # 일배치 학습 수동 실행(관리자): 개선+골든+회귀평가
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                self._send(200, json.dumps(learning_batch(self._req_team()), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -5427,6 +5511,7 @@ def main():
             sys.exit(1)
     print(f"  백엔드: {_mode}" + (" · 공유(운영)" if _mode == "supabase" else " · 로컬"))
     start_ingest_scheduler()                           # 활성 소스 자동 폴링(백그라운드)
+    start_learning_scheduler()                         # 매일 04:00 학습 일배치(합의 반영+골든+회귀평가)
     keyed = bool(IMG._api_key())
     mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 미설정 · UI에서 설정)")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)

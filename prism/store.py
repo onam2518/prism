@@ -55,6 +55,9 @@ class Store:
           PRIMARY KEY(content_hash, reviewer));
         -- 검수자 등록: 이름 → 선택 캐릭터(아바타) 매핑.
         CREATE TABLE IF NOT EXISTS reviewers(reviewer TEXT PRIMARY KEY, char TEXT, ts REAL);
+        -- 골든셋: 검수(정확) 확정 콘텐츠 = 정답셋. content_hash 로 upsert.
+        CREATE TABLE IF NOT EXISTS golden(
+          content_hash TEXT PRIMARY KEY, content TEXT, expected TEXT, ts REAL);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         """)
         c.commit()
@@ -477,6 +480,48 @@ class Store:
     def clear_feedback(self):
         c = self._conn()
         c.execute("DELETE FROM feedback"); c.commit()
+
+    # ── 골든셋(검수 확정 정답셋) ──
+    def upsert_golden(self, content_hash, content, expected):
+        """골든 엔트리 upsert(검수 정확 확정분). content_hash 키."""
+        c = self._conn()
+        c.execute("""INSERT INTO golden(content_hash,content,expected,ts) VALUES(?,?,?,?)
+          ON CONFLICT(content_hash) DO UPDATE SET content=excluded.content, expected=excluded.expected, ts=excluded.ts""",
+          (content_hash, json.dumps(content, ensure_ascii=False), json.dumps(expected, ensure_ascii=False), time.time()))
+        c.commit()
+
+    def register_golden(self, team, rows):
+        """골든셋 교체(수동 업로드 등). rows: [{content, expected}]. content_hash 로 키."""
+        from .store import content_hash
+        c = self._conn()
+        c.execute("DELETE FROM golden")
+        n = 0
+        for r in rows:
+            if r.get("content") and r.get("expected"):
+                h = content_hash(r["content"])
+                c.execute("INSERT OR REPLACE INTO golden(content_hash,content,expected,ts) VALUES(?,?,?,?)",
+                          (h, json.dumps(r["content"], ensure_ascii=False), json.dumps(r["expected"], ensure_ascii=False), time.time()))
+                n += 1
+        c.commit()
+        return n
+
+    def get_golden(self, team=None, limit=1000):
+        c = self._conn()
+        out = []
+        for content, expected in c.execute("SELECT content,expected FROM golden LIMIT ?", (int(limit),)):
+            try:
+                out.append({"content": json.loads(content), "expected": json.loads(expected)})
+            except Exception:
+                pass
+        return out
+
+    def golden_count(self, team=None):
+        c = self._conn()
+        return c.execute("SELECT COUNT(*) FROM golden").fetchone()[0]
+
+    def clear_golden(self, team=None):
+        c = self._conn()
+        c.execute("DELETE FROM golden"); c.commit()
 
     # runs / usage
     def start_run(self, run_id, n, config):
