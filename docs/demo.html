@@ -2912,6 +2912,8 @@
     color:var(--ds-text-secondary);font-size:12px;font-weight:700;cursor:pointer;transition:all .12s}
   .fixelem:hover{border-color:var(--ds-border-input-hover);color:var(--ds-ink)}
   .fixelem.sel{background:#ff4e33;border-color:#ff4e33;color:#fff}
+  /* 툴팁: 긴 정의문이 한 줄로 넘쳐 잘리던 것 → 줄바꿈·최대폭으로 감쌈 */
+  [data-tip]::after{white-space:normal;width:max-content;max-width:min(280px,72vw);line-height:1.45;text-align:left;word-break:keep-all}
   .fbrow__note{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
   /* 프롬프트 스튜디오 · 단계별 모델 지정 */
@@ -5038,7 +5040,7 @@
         <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th></tr></thead><tbody>
           <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
             <td x-text="c.service || '·'"></td>
-            <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
+            <td class="text-ink"><span x-text="c.title || c.summary || '·'"></span><span class="ds-badge ds-badge--success" style="margin-left:6px" x-show="c.fb && c.fb.verdict" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></td>
             <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
           </tr></template>
         </tbody></table>

@@ -424,7 +424,7 @@ def drill_contents(kind: str, value: str, team=None) -> dict:
             hit = False
         if hit:
             out.append(_detail_row(r))
-    return {"ok": True, "kind": kind, "value": value, "items": out, "n": len(out)}
+    return {"ok": True, "kind": kind, "value": value, "items": _attach_fb(out, team), "n": len(out)}
 
 
 def topic_drill(cluster_id: str) -> dict:
@@ -445,18 +445,25 @@ def topic_drill(cluster_id: str) -> dict:
         return {"ok": False, "kind": "topic", "value": cluster_id, "items": [], "n": 0,
                 "error": "토픽을 찾을 수 없습니다(데이터가 갱신되었을 수 있음)"}
     ids = cluster.get("content_ids") or []
-    out = [_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)]
+    out = _attach_fb([_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)])
     name = cluster.get("name") or cluster.get("label") or cluster_id
     return {"ok": True, "kind": "topic", "value": name, "items": out, "n": len(out)}
 
 
 def _detail_row(r: dict) -> dict:
     """콘텐츠 상세/목록 공용 행: 렌더에 필요한 필드 표준화(공통 컴포넌트 입력)."""
+    from .store import content_hash
     im = r.get("item_meta") or {}
     qm = r.get("quality_meta") or {}
     ref = r.get("content_ref") or {}
+    svc = ref.get("displayServiceName", "") or r.get("service", "")
+    title = ref.get("title", "") or r.get("title", "")
+    sub = ref.get("subtitle", "")
+    body = ref.get("body", "")
+    # 피드백 키와 동일한 content_hash 사용(서비스+제목+부제+본문) → 목록 어디서나 검수상태 매칭
+    chash = content_hash({"displayServiceName": svc, "title": title, "subtitle": sub, "body": body}) if title else (ref.get("body_hash", "") or r.get("hash", ""))
     return {
-        "hash": ref.get("body_hash", "") or r.get("hash", ""),
+        "hash": chash,
         "title": ref.get("title", "") or r.get("title", ""),
         "subtitle": ref.get("subtitle", ""),
         "service": ref.get("displayServiceName", "") or r.get("service", ""),
@@ -469,6 +476,20 @@ def _detail_row(r: dict) -> dict:
         "grade": qm.get("finalGrade", "") or r.get("grade", ""),
         "reasons": qm.get("reasons", []) or [],
     }
+
+
+def _attach_fb(items, team=None):
+    """상세행 리스트에 검수 피드백 상태(fb: verdict·ts) 부착 → 콘텐츠 목록 어디서나 '검수 완료' 표기."""
+    st = get_store()
+    if not (st and hasattr(st, "feedback_map")):
+        return items
+    try:
+        fmap = st.feedback_map(team=team)
+    except Exception:
+        return items
+    for it in items:
+        it["fb"] = fmap.get(it.get("hash"), {}) or {}
+    return items
 
 
 def _logs_to_jsonl(data: bytes, filename: str, out_path: str):
@@ -2858,6 +2879,8 @@ PAGE = """<!doctype html>
     color:var(--ds-text-secondary);font-size:12px;font-weight:700;cursor:pointer;transition:all .12s}
   .fixelem:hover{border-color:var(--ds-border-input-hover);color:var(--ds-ink)}
   .fixelem.sel{background:#ff4e33;border-color:#ff4e33;color:#fff}
+  /* 툴팁: 긴 정의문이 한 줄로 넘쳐 잘리던 것 → 줄바꿈·최대폭으로 감쌈 */
+  [data-tip]::after{white-space:normal;width:max-content;max-width:min(280px,72vw);line-height:1.45;text-align:left;word-break:keep-all}
   .fbrow__note{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
   /* 프롬프트 스튜디오 · 단계별 모델 지정 */
@@ -4984,7 +5007,7 @@ PAGE = """<!doctype html>
         <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th></tr></thead><tbody>
           <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
             <td x-text="c.service || '·'"></td>
-            <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
+            <td class="text-ink"><span x-text="c.title || c.summary || '·'"></span><span class="ds-badge ds-badge--success" style="margin-left:6px" x-show="c.fb && c.fb.verdict" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></td>
             <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
           </tr></template>
         </tbody></table>
