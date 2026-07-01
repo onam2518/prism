@@ -1,4 +1,4 @@
-"""docs/demo.html 생성 — 현재 앱(serve.PAGE)을 그대로 담은 자체완결 정적 스냅샷.
+"""docs/demo.html 생성 · 현재 앱(serve.PAGE)을 그대로 담은 자체완결 정적 스냅샷.
 
 목적: '최종 구현 현황 그대로' 보이는 데모. 서버·키 없이 브라우저에서 열면
 3분할 콘솔(Pretendard·설정 패널·결과)이 실제 구현과 동일하게 렌더된다.
@@ -60,7 +60,7 @@ DEMO_CONFIG = {
     "backend": "supabase", "authRequired": False, "keyManagedByServer": True,
 }
 
-# 데모 관리자 컨텍스트(/admin 스텁) — isAdmin=true 로 자동 인입·팀 관리 노출
+# 데모 관리자 컨텍스트(/admin 스텁) · isAdmin=true 로 자동 인입·팀 관리 노출
 DEMO_ADMIN = {
     "ok": True, "isAdmin": True,
     "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"},
@@ -116,7 +116,7 @@ CDN_PRETENDARD = ("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/"
 
 STUB = """<script>
   // 정적 데모: 서버 호출을 합성 응답으로 스텁(키·서버 불필요)
-  // 홈 위젯 레이아웃 시드(쇼케이스 — 실제 앱은 빈 상태로 시작)
+  // 홈 위젯 레이아웃 시드(쇼케이스 · 실제 앱은 빈 상태로 시작)
   try { localStorage.setItem('prism_home', JSON.stringify(['launch-run','launch-batch','launch-dict','metrics','quality','intents','categories','process'])); } catch (e) {}
   // 데모 로그인 시드(관리자) → 로그인 벽 생략 + 자동 인입·팀 관리 노출
   try { localStorage.setItem('prism_reviewer', '데모 관리자'); localStorage.setItem('prism_reviewer_char', 'boksil'); localStorage.setItem('prism_token', 'demo'); } catch (e) {}
@@ -167,7 +167,7 @@ def build() -> str:
                         f'<script src="{CDN_TAILWIND}"></script>')
     html = html.replace('<script defer src="/vendor/alpine.js"></script>',
                         STUB + f'<script defer src="{CDN_ALPINE}"></script>')
-    # 디자인 시스템 CSS 인라인(정적 데모 자체완결 — file:// 에서도 라이트 위젯홈 렌더)
+    # 디자인 시스템 CSS 인라인(정적 데모 자체완결 · file:// 에서도 라이트 위젯홈 렌더)
     theme_css = open(os.path.join(ROOT, "prism", "vendor", "ds-theme.css"), encoding="utf-8").read()
     comp_css = open(os.path.join(ROOT, "prism", "vendor", "ds-components.css"), encoding="utf-8").read()
     html = html.replace('<link href="/vendor/ds-theme.css" rel="stylesheet">', f'<style>{theme_css}</style>')

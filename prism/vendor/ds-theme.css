@@ -1,10 +1,10 @@
-/* Prism Design System — 디자인 토큰 (CSS 변수).
+/* Prism Design System · 디자인 토큰 (CSS 변수).
    Source of truth = Anchor Design System (axz). 값 원본은 design-system/anchor/tokens.json,
    사용 규칙은 anchor/DESIGN.md. 본 파일은 Anchor semantic 토큰을 --ds-* CSS 변수로 박제한다.
 
    원칙(anchor/DESIGN.md):
    - Semantic 토큰만 사용. Primitive(atomic.Blue.500 등) 직접 참조 금지.
-   - Light/Dark 분기 코드 금지 — 같은 --ds-* 이름이 모드에 따라 자동 swap.
+   - Light/Dark 분기 코드 금지 · 같은 --ds-* 이름이 모드에 따라 자동 swap.
    - 무채색 캔버스 + 도메인별 액센트. Primary(Blue)=사용자 액션, Accent(Red)=정보 강조,
      카테고리색(*.category.*)=도메인 식별.
    라이트가 기본. 다크는 .ds-dark / [data-theme="dark"] / prefers-color-scheme 로 전환. */
@@ -15,13 +15,13 @@
   --ds-primary-deep: #004fad;     /* atomic.Blue.700 */
   --ds-primary-tint: rgba(30, 132, 255, 0.16); /* atomic.Blue.100 · surface.highlight */
 
-  /* ── surfaces & ink (light) — 무채색 캔버스 ── */
+  /* ── surfaces & ink (light) · 무채색 캔버스 ── */
   --ds-ink: #000000;              /* text.primary (atomic.Black.1000) */
   --ds-canvas: #f4f5f7;           /* background.base (atomic.Gray.50) */
   --ds-surface: #ffffff;          /* background.surface.base */
   --ds-surface-white: #ffffff;    /* background.surface.widget/onlayer */
   --ds-surface-on: #f4f5f7;       /* background.surface.on (중첩 면) */
-  --ds-body: rgba(0, 0, 0, 0.88); /* text.secondary — 본문 */
+  --ds-body: rgba(0, 0, 0, 0.88); /* text.secondary · 본문 */
   --ds-muted: rgba(0, 0, 0, 0.48);/* text.subtle */
   --ds-placeholder: rgba(0, 0, 0, 0.32); /* text.disabled / surface.placeholder 계열 */
   --ds-hairline: rgba(0, 0, 0, 0.08);    /* border.divider.section / border.card */
@@ -32,10 +32,10 @@
   --ds-error: #ff4e33;            /* atomic.Red.500 · state.accent */
   --ds-warning: #ff9429;          /* atomic.Orange.500 */
   --ds-info: #1e84ff;             /* state.info */
-  --ds-on-primary: #ffffff;       /* text.static.white.primary — Primary 버튼 위 글자 */
-  --ds-text-static-white: #ffffff;/* text.static.white.primary — 모드 무관 고정 흰색(딤/스낵바 위) */
+  --ds-on-primary: #ffffff;       /* text.static.white.primary · Primary 버튼 위 글자 */
+  --ds-text-static-white: #ffffff;/* text.static.white.primary · 모드 무관 고정 흰색(딤/스낵바 위) */
 
-  /* citation/badge tint pair (mode-aware) — Blue 정보 강조 */
+  /* citation/badge tint pair (mode-aware) · Blue 정보 강조 */
   --ds-tint-bg: rgba(30, 132, 255, 0.16); /* surface.highlight */
   --ds-tint-fg: #004fad;          /* atomic.Blue.700 */
 
@@ -72,7 +72,7 @@
   --ds-border-focus: #1e84ff;      /* border.focus = Blue.500 */
   --ds-border-button-outline: rgba(0, 0, 0, 0.1); /* atomic.Black.200 */
 
-  /* ── 카테고리 식별색 (도메인) — 본문색 / 배경 Subtle / 텍스트 ── */
+  /* ── 카테고리 식별색 (도메인) · 본문색 / 배경 Subtle / 텍스트 ── */
   --ds-cat-news: #1e84ff;             --ds-cat-news-subtle: rgba(30,132,255,.16);   --ds-cat-news-text: #004fad;
   --ds-cat-shopping: #ff4e33;         --ds-cat-shopping-subtle: rgba(255,78,51,.16);--ds-cat-shopping-text: #bf2610;
   --ds-cat-sports: #5c77ff;           --ds-cat-sports-subtle: rgba(92,119,255,.16); --ds-cat-sports-text: #3550d8;
@@ -81,21 +81,21 @@
   --ds-cat-interest: #ff9429;         --ds-cat-interest-subtle: rgba(255,148,41,.16);--ds-cat-interest-text: #cc6a0a;
   --ds-cat-community: #5e47eb;         --ds-cat-community-subtle: rgba(94,71,235,.16);--ds-cat-community-text: #3c2bb8;
 
-  /* ── typography — Pretendard 단일 패밀리 ── */
+  /* ── typography · Pretendard 단일 패밀리 ── */
   --ds-font-sans: 'Pretendard', 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', sans-serif;
   --ds-font-display: 'Pretendard', 'Pretendard Variable', -apple-system, sans-serif;
   --ds-font-body: 'Pretendard', 'Pretendard Variable', -apple-system, sans-serif;
   --ds-font-mono: 'Berkeley Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* 사이즈 스케일(11단계): 12·14·15·16·17·18·20·22·24·26·40 */
-  --ds-size-label: 12px;       /* label.normal/strong — 배지 */
-  --ds-size-caption: 14px;     /* caption.normal/strong — 부가정보 */
-  --ds-size-body: 15px;        /* body.small — 1뎁스 탭·버튼 */
-  --ds-size-answer: 17px;      /* body.large.normal — 본문 기본 */
+  --ds-size-label: 12px;       /* label.normal/strong · 배지 */
+  --ds-size-caption: 14px;     /* caption.normal/strong · 부가정보 */
+  --ds-size-body: 15px;        /* body.small · 1뎁스 탭·버튼 */
+  --ds-size-answer: 17px;      /* body.large.normal · 본문 기본 */
   --ds-size-subtitle: 18px;    /* title.small */
   --ds-size-heading: 22px;     /* title.large */
   --ds-size-heading-lg: 26px;  /* display.medium */
-  --ds-size-display: 40px;     /* display.large — PC 대 타이틀 */
+  --ds-size-display: 40px;     /* display.large · PC 대 타이틀 */
   --ds-size-display-hero: 48px;/* 프로덕트 히어로(시스템 외 확장) */
 
   /* 줄간격: 1.2(헤딩)·1.32(본문 기본)·1.4(긴 본문)·1.52(장문) */
@@ -111,19 +111,19 @@
   --ds-weight-semibold: 600;   /* 호환 별칭 → emphasis */
   --ds-weight-strong: 700;
 
-  /* ── geometry — Radius 4·8·12·16·24·100 ── */
+  /* ── geometry · Radius 4·8·12·16·24·100 ── */
   --ds-radius-xs: 4px;         /* atomic.Radius.4 */
-  --ds-radius-sm: 8px;         /* atomic.Radius.8 — 버튼 Square·칩 */
-  --ds-radius-md: 12px;        /* atomic.Radius.12 — 카드 */
-  --ds-radius-lg: 16px;        /* atomic.Radius.16 — 큰 카드 */
-  --ds-radius-xl: 24px;        /* atomic.Radius.24 — 시트·모달 */
+  --ds-radius-sm: 8px;         /* atomic.Radius.8 · 버튼 Square·칩 */
+  --ds-radius-md: 12px;        /* atomic.Radius.12 · 카드 */
+  --ds-radius-lg: 16px;        /* atomic.Radius.16 · 큰 카드 */
+  --ds-radius-xl: 24px;        /* atomic.Radius.24 · 시트·모달 */
   --ds-radius-2xl: 24px;
-  --ds-radius-full: 9999px;    /* atomic.Radius.100 — pill/원형 */
+  --ds-radius-full: 9999px;    /* atomic.Radius.100 · pill/원형 */
 
   /* 표면 내부 하이라이트 (다크에서 0) */
   --ds-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 
-  /* ── depth — Anchor Shadow 3단(low·medium·high). 깊이는 surface 대비가 1차, shadow는 보조. ── */
+  /* ── depth · Anchor Shadow 3단(low·medium·high). 깊이는 surface 대비가 1차, shadow는 보조. ── */
   --ds-shadow-low: 0 0 4px 0 rgba(0, 0, 0, 0.04);
   --ds-shadow-medium: 0 1px 10px 0 rgba(0, 0, 0, 0.08);
   --ds-shadow-high: 0 2px 16px 0 rgba(0, 0, 0, 0.16);
@@ -135,7 +135,7 @@
   --ds-shadow-modal: var(--ds-shadow-high);
   --ds-scrim: rgba(0, 0, 0, 0.48); /* background.layer.overlay */
 
-  /* focus — border.focus = Blue.500, 2px (Button.md §3-5) */
+  /* focus · border.focus = Blue.500, 2px (Button.md §3-5) */
   --ds-focus-ring: 0 0 0 3px rgba(30, 132, 255, 0.4);
   --ds-focus-ring-error: 0 0 0 3px rgba(255, 78, 51, 0.4);
 
@@ -148,11 +148,11 @@
   --ds-ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* ── Dark mode — 같은 --ds-* 이름이 자동 swap (anchor semantic.dark) ── */
+/* ── Dark mode · 같은 --ds-* 이름이 자동 swap (anchor semantic.dark) ── */
 .ds-dark,
 [data-theme='dark'] {
   --ds-primary: #1e84ff;
-  --ds-primary-hover: #66a8ff;     /* atomic.Blue.400 — 다크에서 밝게 */
+  --ds-primary-hover: #66a8ff;     /* atomic.Blue.400 · 다크에서 밝게 */
   --ds-primary-deep: #66a8ff;
   --ds-primary-tint: rgba(30, 132, 255, 0.24);
 
@@ -203,7 +203,7 @@
   --ds-border-focus: #1e84ff;
   --ds-border-button-outline: rgba(255, 255, 255, 0.16);
 
-  /* 카테고리색 — 다크 변종(채도 상향) */
+  /* 카테고리색 · 다크 변종(채도 상향) */
   --ds-cat-news: #66a8ff;             --ds-cat-news-subtle: rgba(30,132,255,.16);   --ds-cat-news-text: #8094ff;
   --ds-cat-shopping: #ff4e33;         --ds-cat-shopping-subtle: rgba(255,78,51,.16);--ds-cat-shopping-text: #ff7880;
   --ds-cat-sports: #5c77ff;           --ds-cat-sports-subtle: rgba(92,119,255,.16); --ds-cat-sports-text: #8094ff;
@@ -212,7 +212,7 @@
   --ds-cat-interest: #ff9429;         --ds-cat-interest-subtle: rgba(255,148,41,.16);--ds-cat-interest-text: #ffa245;
   --ds-cat-community: #5e47eb;         --ds-cat-community-subtle: rgba(94,71,235,.48);--ds-cat-community-text: rgba(255,255,255,.88);
 
-  /* shadow — 다크는 알파 2배 */
+  /* shadow · 다크는 알파 2배 */
   --ds-shadow-low: 0 0 4px 0 rgba(0, 0, 0, 0.08);
   --ds-shadow-medium: 0 1px 10px 0 rgba(0, 0, 0, 0.16);
   --ds-shadow-high: 0 2px 16px 0 rgba(0, 0, 0, 0.32);

@@ -6,7 +6,7 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   label?: string;
   /** field = 표준 텍스트필드 · composer = 큰 Ask 박스 */
   variant?: 'field' | 'composer';
-  /** 에러 상태 — 보더/링이 error 색으로 */
+  /** 에러 상태 · 보더/링이 error 색으로 */
   invalid?: boolean;
   /** 도움말·에러 메시지 */
   hint?: string;

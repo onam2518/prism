@@ -15,7 +15,7 @@ export interface ToastProps {
   onClose?: () => void;
 }
 
-/** 일시적 확인(Copied·Shared). 의도적으로 다크 — 모드 무관 하단 중앙. */
+/** 일시적 확인(Copied·Shared). 의도적으로 다크 · 모드 무관 하단 중앙. */
 export function Toast({ open, children, variant = 'default', icon, duration = 3000, onClose }: ToastProps) {
   React.useEffect(() => {
     if (!open || !duration || !onClose) return;

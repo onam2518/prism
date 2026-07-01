@@ -29,7 +29,7 @@ export interface WidgetProps {
   /** 타이틀 좌측 아이콘 */
   icon?: React.ReactNode;
   size?: WidgetSize;
-  /** 위젯 종류 — function(기능) / info(정보). 기본 info */
+  /** 위젯 종류 · function(기능) / info(정보). 기본 info */
   kind?: WidgetKind;
   /** 헤더에 종류 칩 표시 */
   showKind?: boolean;
@@ -37,7 +37,7 @@ export interface WidgetProps {
   actions?: React.ReactNode;
   /** 지정 시 편집 모드에서 삭제 버튼 노출 */
   onRemove?: () => void;
-  /** 선택 상태 — Primary 링 + 8핸들 표시(배치 편집) */
+  /** 선택 상태 · Primary 링 + 8핸들 표시(배치 편집) */
   selected?: boolean;
   children?: React.ReactNode;
   className?: string;
@@ -50,7 +50,7 @@ const REMOVE = (
 );
 
 /**
- * 위젯 — 자족 모듈(폰 홈 위젯처럼). 헤더(제목·아이콘·종류·액션) + 바디.
+ * 위젯 · 자족 모듈(폰 홈 위젯처럼). 헤더(제목·아이콘·종류·액션) + 바디.
  * kind 로 기능 위젯/정보 위젯 구분, size 로 그리드 span 결정.
  */
 export function Widget({
@@ -113,7 +113,7 @@ export interface LauncherWidgetProps {
   className?: string;
 }
 
-/** 메뉴형 기능 위젯 — 클릭하면 기능 실행/이동하는 런처 타일. */
+/** 메뉴형 기능 위젯 · 클릭하면 기능 실행/이동하는 런처 타일. */
 export function LauncherWidget({ title, subtitle, icon, onClick, onRemove, size = 'sm', className = '' }: LauncherWidgetProps) {
   const cls = ['ds-widget', 'ds-widget--function', 'ds-widget--launcher', size !== 'sm' && `ds-widget--${size}`, className]
     .filter(Boolean)
@@ -160,13 +160,13 @@ export function LauncherWidget({ title, subtitle, icon, onClick, onRemove, size 
 }
 
 export interface WidgetGridProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** 편집 모드 — 위젯 지글 + 삭제 버튼 노출 */
+  /** 편집 모드 · 위젯 지글 + 삭제 버튼 노출 */
   editing?: boolean;
   /** 그리드 컬럼 수 (기본 4) */
   columns?: number;
 }
 
-/** 위젯 캔버스 — bento 그리드. 편집 모드로 재배치/삭제. */
+/** 위젯 캔버스 · bento 그리드. 편집 모드로 재배치/삭제. */
 export function WidgetGrid({ editing = false, columns, className = '', style, children, ...props }: WidgetGridProps) {
   return (
     <div

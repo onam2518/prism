@@ -8,7 +8,7 @@ export interface ChipInputProps {
   placeholder?: string;
 }
 
-/** 칩 입력 — Enter 로 추가, ×로 제거. 사전(엔티티·인텐트) 편집용. */
+/** 칩 입력 · Enter 로 추가, ×로 제거. 사전(엔티티·인텐트) 편집용. */
 export function ChipInput({ value, onChange, placeholder = '입력 후 Enter' }: ChipInputProps) {
   const [draft, setDraft] = React.useState('');
 

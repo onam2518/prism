@@ -20,7 +20,7 @@ export interface TableProps<T> extends React.TableHTMLAttributes<HTMLTableElemen
   actionsHeader?: string;
 }
 
-/** Prism 테이블. 에디토리얼 — 조용한 헤더 라벨 + 헤어라인 행, hover 시 tint. */
+/** Prism 테이블. 에디토리얼 · 조용한 헤더 라벨 + 헤어라인 행, hover 시 tint. */
 export function Table<T extends Record<string, unknown>>({
   columns,
   data,
