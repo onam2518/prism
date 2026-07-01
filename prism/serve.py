@@ -2608,6 +2608,26 @@ PAGE = """<!doctype html>
   .fbbtn:hover{background:var(--ds-hairline-soft)}
   .fbbtn--good{border-color:var(--ds-primary);color:var(--ds-primary);background:var(--ds-primary-tint)}
   .fbbtn--bad{border-color:#ff4e33;color:#ff4e33;background:#ffece9}
+  /* ── 게임형 검수 판정 버튼(신호등): 지겨운 검수 → 한 판 하듯. 선택 시 해당 신호등이 '켜짐'(글로우) ── */
+  .verdictbtn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 16px;border-radius:9999px;
+    border:1.5px solid var(--ds-hairline);background:var(--ds-surface-white);font-size:13px;font-weight:700;
+    color:var(--ds-text-secondary);cursor:pointer;white-space:nowrap;
+    transition:transform .12s var(--ds-ease-standard),box-shadow .16s,background .16s,border-color .16s,color .16s}
+  .verdictbtn__dot{width:11px;height:11px;border-radius:50%;background:var(--ds-hairline);
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);transition:box-shadow .16s,background .16s}
+  .verdictbtn--good .verdictbtn__dot{background:#18ba45}
+  .verdictbtn--bad .verdictbtn__dot{background:#ff4e33}
+  .verdictbtn:hover{transform:translateY(-1px);border-color:var(--ds-border-input-hover)}
+  .verdictbtn:active{transform:translateY(1px) scale(.97)}
+  .verdictbtn--good.is-on{border-color:#18ba45;color:#0f8f36;background:rgba(24,186,69,.12);
+    box-shadow:0 0 0 3px rgba(24,186,69,.15),0 8px 18px -8px rgba(24,186,69,.6)}
+  .verdictbtn--bad.is-on{border-color:#ff4e33;color:#d63a20;background:rgba(255,78,51,.10);
+    box-shadow:0 0 0 3px rgba(255,78,51,.15),0 8px 18px -8px rgba(255,78,51,.6)}
+  .verdictbtn--good.is-on .verdictbtn__dot{background:#18ba45;box-shadow:0 0 0 2px rgba(24,186,69,.35),0 0 10px 2px rgba(24,186,69,.8)}
+  .verdictbtn--bad.is-on .verdictbtn__dot{background:#ff4e33;box-shadow:0 0 0 2px rgba(255,78,51,.35),0 0 10px 2px rgba(255,78,51,.8)}
+  [data-theme='dark'] .verdictbtn--good.is-on{color:#5fe08a} [data-theme='dark'] .verdictbtn--bad.is-on{color:#ff8a75}
+  /* 패널 헤더 액션 간격: 카운트·버튼·칩이 붙지 않게(기본 gap 2px → 8px) */
+  .panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions{gap:8px}
   .fbrow__note{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
   /* 프롬프트 스튜디오 · 단계별 모델 지정 */
@@ -3630,7 +3650,7 @@ PAGE = """<!doctype html>
 
           <div class="mt-5 flex items-center gap-3">
             <button type="button" x-on:click="run()" x-bind:disabled="loading"
-              class="btn-primary inline-flex items-center gap-2 rounded-lg bg-violet px-5 py-2.5 text-sm font-medium text-ink disabled:opacity-50">
+              class="ds-btn ds-btn--primary ds-btn--s-lg disabled:opacity-50">
               <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
               <span x-text="loading ? '실행 중' : '추출 실행'"></span>
             </button>
@@ -4123,8 +4143,8 @@ PAGE = """<!doctype html>
                     <div class="fbrow__sum tbox" x-show="c.summary" x-text="c.summary"></div>
                   </div>
                   <div class="fbrow__act">
-                    <button type="button" class="fbbtn" x-bind:class="(c.fb&&c.fb.verdict==='good')?'fbbtn--good':''" x-on:click="setFeedback(c,'good')">정확</button>
-                    <button type="button" class="fbbtn" x-bind:class="(c.fb&&c.fb.verdict==='bad')?'fbbtn--bad':''" x-on:click="setFeedback(c,'bad')">문제</button>
+                    <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="(c.fb&&c.fb.verdict==='good')?'is-on':''" x-on:click="setFeedback(c,'good')"><span class="verdictbtn__dot"></span>정확</button>
+                    <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="(c.fb&&c.fb.verdict==='bad')?'is-on':''" x-on:click="setFeedback(c,'bad')"><span class="verdictbtn__dot"></span>문제</button>
                   </div>
                   <div class="fbrow__note" x-show="(c.fb&&c.fb.verdict==='bad') || fbNoteOpen[c.hash]">
                     <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 · 예) 카테고리를 스포츠가 아니라 정치로 / 리드문이 핵심을 놓침" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
@@ -4367,8 +4387,8 @@ PAGE = """<!doctype html>
                     <div class="fbrow__sum tbox" x-show="it.review_reason" x-text="it.review_reason"></div>
                   </div>
                   <div class="fbrow__act">
-                    <button type="button" class="fbbtn" x-bind:class="it.myVerdict==='good'?'fbbtn--good':''" x-on:click="queueFeedback(it,'good')">정확</button>
-                    <button type="button" class="fbbtn" x-bind:class="it.myVerdict==='bad'?'fbbtn--bad':''" x-on:click="queueFeedback(it,'bad')">문제</button>
+                    <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="it.myVerdict==='good'?'is-on':''" x-on:click="queueFeedback(it,'good')"><span class="verdictbtn__dot"></span>정확</button>
+                    <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="it.myVerdict==='bad'?'is-on':''" x-on:click="queueFeedback(it,'bad')"><span class="verdictbtn__dot"></span>문제</button>
                   </div>
                   <div class="fbrow__note" x-show="it.myVerdict==='bad'">
                     <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 · 다음 추출 프롬프트에 자동 반영" x-model="it.note" x-on:keydown.enter="queueFeedback(it,'bad')">
@@ -4551,8 +4571,8 @@ PAGE = """<!doctype html>
           <div class="dve__verdict">
             <div class="dve__lbl">검수 판정</div>
             <div style="display:flex;gap:8px">
-              <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="detail && detail.fb && detail.fb.verdict==='good' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline ds-btn--c-primary'" x-on:click="setFeedback(detail,'good')">정확</button>
-              <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="detail && detail.fb && detail.fb.verdict==='bad' ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline ds-btn--c-danger'" x-on:click="setFeedback(detail,'bad')">수정 필요</button>
+              <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="detail && detail.fb && detail.fb.verdict==='good' ? 'is-on' : ''" x-on:click="setFeedback(detail,'good')"><span class="verdictbtn__dot"></span>정확</button>
+              <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="detail && detail.fb && detail.fb.verdict==='bad' ? 'is-on' : ''" x-on:click="setFeedback(detail,'bad')"><span class="verdictbtn__dot"></span>수정 필요</button>
             </div>
             <template x-if="detail && detail.fb && detail.fb.verdict==='bad'">
               <div style="margin-top:8px">
@@ -4607,7 +4627,7 @@ PAGE = """<!doctype html>
               </div>
               <div class="mt-2 flex flex-wrap items-center gap-2">
                 <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
-                  class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-ink hover:bg-violet-hover disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
+                  class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
                 <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
                 <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
               </div>
@@ -4632,9 +4652,9 @@ PAGE = """<!doctype html>
             </div>
             <div class="mt-2 flex flex-wrap items-center gap-2">
               <button type="button" x-on:click="saveKey('solar')" x-bind:disabled="cfgBusy"
-                class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-ink hover:bg-violet-hover disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
+                class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
               <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy"
-                class="rounded-lg border border-black/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-ink hover:bg-black/[0.05] disabled:opacity-50">연결 테스트</button>
+                class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
               <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
               <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
             </div>
@@ -4672,7 +4692,7 @@ PAGE = """<!doctype html>
             </template>
           </select>
           <button type="button" x-show="cfg.hasKey" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
-            class="mt-2 w-full rounded-lg border border-black/[0.10] px-3 py-1.5 text-[13px] font-medium text-ink hover:bg-black/[0.05] disabled:opacity-50">Solar 모델 새로고침</button>
+            class="ds-btn ds-btn--secondary ds-btn--s-sm w-full mt-2 disabled:opacity-50">Solar 모델 새로고침</button>
           <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
         </div>
 
