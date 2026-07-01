@@ -2072,6 +2072,21 @@ PAGE = """<!doctype html>
       get arenaMe() { const d = this.arenaData; if (!d || !this.reviewer) return null; return (d.leaderboard || []).find((r) => r.reviewer === this.reviewer) || null; },
       get arenaMyRank() { const d = this.arenaData; if (!d || !this.reviewer) return 0; const i = (d.leaderboard || []).findIndex((r) => r.reviewer === this.reviewer); return i < 0 ? 0 : i + 1; },
       rankMedal(i) { return ['🥇', '🥈', '🥉'][i] || ('#' + (i + 1)); },
+      // 주간 리그(D-9): 이번 주 점수 순위 + 승급/강등 존 + 지난주 대비 이동
+      weeklyLeague() {
+        const d = this.arenaData; if (!d || !d.leaderboard) return [];
+        const board = d.leaderboard.map((r) => ({ ...r, wp: r.week_points || 0, lwp: r.last_week_points || 0 }))
+          .sort((a, b) => b.wp - a.wp);
+        const n = board.length;
+        const upN = Math.max(1, Math.ceil(n * 0.3));
+        const downN = n >= 5 ? Math.max(1, Math.floor(n * 0.2)) : 0;
+        return board.map((r, i) => ({ ...r, rank: i + 1, delta: r.wp - r.lwp,
+          zone: r.wp <= 0 ? 'idle' : (i < upN ? 'up' : (downN && i >= n - downN ? 'down' : 'keep')) }));
+      },
+      leagueActive() { return this.weeklyLeague().filter((r) => r.wp > 0).length; },
+      leagueZoneKr(z) { return { up: '승급권', down: '강등권', keep: '유지권', idle: '대기' }[z] || ''; },
+      leagueZoneLabel(z) { return { up: '▲ 승급', down: '▼ 강등', keep: '유지', idle: '대기' }[z] || ''; },
+      leagueZoneClass(z) { return { up: 'ds-badge--success', down: 'ds-badge--category', keep: 'ds-badge--neutral', idle: 'ds-badge--neutral' }[z] || 'ds-badge--neutral'; },
       // 캐릭터 육성: 레벨 → 성장 티어·타이틀·XP
       levelTier(L) { return L >= 10 ? 4 : L >= 7 ? 3 : L >= 4 ? 2 : L >= 2 ? 1 : 0; },
       levelTitle(L) { return ['새내기 검수자', '숙련 검수자', '베테랑 검수자', '검수 마스터', '전설의 검수자'][this.levelTier(L)]; },
@@ -4194,6 +4209,25 @@ PAGE = """<!doctype html>
           </div>
         </section>
 
+        <!-- 주간 리그(D-9): 이번 주 점수 승급/강등 -->
+        <section class="panel" data-fn x-show="arenaData && arenaData.leaderboard && arenaData.leaderboard.length"><div class="panel-hd"><b>주간 리그 · 승급/강등</b>
+          <span class="meta">최근 7일 · <b class="text-ink" x-text="leagueActive()"></b>명 활동</span></div>
+          <div class="panel-bd">
+            <p class="text-xs text-muted" style="margin-bottom:10px">이번 주 획득 점수로 매기는 순위입니다 · 상위 <b class="text-ink">승급권</b>은 지위 보상, 하위 <b class="text-ink">강등권</b>은 분발 신호(지난주 대비 이동 표시)</p>
+            <template x-for="r in weeklyLeague()" x-bind:key="r.reviewer">
+              <div class="lb-row" x-show="r.wp>0 || leagueActive()===0" x-bind:class="r.reviewer===reviewer ? 'lb-row--me' : ''">
+                <span class="lb-rank" x-text="rankMedal(r.rank-1)"></span>
+                <span class="lb-av" x-bind:data-tier="levelTier(r.level)"><img x-bind:src="charImg(r.char)" alt=""></span>
+                <span class="lb-name"><span x-text="r.reviewer + (r.reviewer===reviewer ? ' (나)' : '')"></span>
+                  <small class="lb-title" x-text="leagueZoneKr(r.zone)"></small></span>
+                <span class="ds-badge" x-bind:class="leagueZoneClass(r.zone)" x-text="leagueZoneLabel(r.zone)"></span>
+                <span class="lb-streak" x-show="r.delta" x-bind:class="r.delta>=0?'':'down'" x-text="(r.delta>=0?'▲ +':'▼ ')+Math.abs(r.delta)"></span>
+                <span class="lb-pts tnum" x-text="r.wp + 'pt'"></span>
+              </div>
+            </template>
+            <div x-show="leagueActive()===0" class="text-xs text-muted" style="padding:12px">이번 주 검수 활동이 아직 없습니다 · <b class="text-ink">검수 큐</b>에서 점수를 쌓아 승급권에 드세요</div>
+          </div>
+        </section>
         <div class="arena-cols">
           <!-- 리더보드 -->
           <section class="panel"><div class="panel-hd"><b>검수 리더보드</b><span class="meta" x-text="(arenaData&&arenaData.leaderboard?arenaData.leaderboard.length:0) + '명'"></span></div>

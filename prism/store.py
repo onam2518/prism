@@ -377,26 +377,39 @@ class Store:
         DAY = 86400.0
         now = time.time()
         week_ago = now - 7 * DAY
+        prev_ago = now - 14 * DAY                     # 지난주 창(리그 승급/강등 비교)
         today = int(now // DAY)
         good = bad = wk_good = wk_bad = pv_good = pv_bad = 0
         board = {}
         days_by = {}
         for rv, verdict, plan, ts in c.execute("SELECT reviewer,verdict,plan,ts FROM feedback"):
             rv = rv or "(익명)"
-            b = board.setdefault(rv, {"reviews": 0, "corrections": 0})
+            b = board.setdefault(rv, {"reviews": 0, "corrections": 0,
+                                      "wk_reviews": 0, "wk_corr": 0, "pv_reviews": 0, "pv_corr": 0})
             b["reviews"] += 1
             g, d = (verdict == "good"), (verdict == "bad")
+            t = ts or 0
+            this_wk = t >= week_ago
+            last_wk = week_ago > t >= prev_ago
+            if this_wk:
+                b["wk_reviews"] += 1
+            elif last_wk:
+                b["pv_reviews"] += 1
             if g:
                 good += 1
             elif d:
                 bad += 1
                 if (plan or "").strip():
                     b["corrections"] += 1            # 채택된 개선(REAP plan) = 가산점
-            if (ts or 0) >= week_ago:
+                    if this_wk:
+                        b["wk_corr"] += 1
+                    elif last_wk:
+                        b["pv_corr"] += 1
+            if t >= week_ago:
                 wk_good += int(g); wk_bad += int(d)
             else:
                 pv_good += int(g); pv_bad += int(d)
-            days_by.setdefault(rv, set()).add(int((ts or 0) // DAY))
+            days_by.setdefault(rv, set()).add(int(t // DAY))
         total = good + bad
         accuracy = round(good / total, 4) if total else 0.0
         pv_total = pv_good + pv_bad
@@ -420,7 +433,9 @@ class Store:
             leaderboard.append({"reviewer": rv, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": 1 + pts // 100, "streak": _streak(days_by.get(rv, set())),
-                                "char": chars.get(rv, "boksil")})
+                                "char": chars.get(rv, "boksil"),
+                                "week_points": v["wk_reviews"] * 10 + v["wk_corr"] * 25,
+                                "last_week_points": v["pv_reviews"] * 10 + v["pv_corr"] * 25})
         leaderboard.sort(key=lambda x: -x["points"])
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
                 "week_reviews": wk_good + wk_bad, "accuracy_delta": round(accuracy - pv_acc, 4),

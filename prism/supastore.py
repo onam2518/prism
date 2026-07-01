@@ -266,21 +266,36 @@ class SupabaseStore:
         rows = self._all_feedback(team)
         DAY = 86400.0
         now = time.time()
+        week_ago = now - 7 * DAY
+        prev_ago = now - 14 * DAY                     # 지난주 창(리그 승급/강등 비교)
         today = int(now // DAY)
-        good = bad = 0
+        good = bad = wk_good = wk_bad = 0
         board, days_by = {}, {}
         for r in rows:
             rid = r["reviewer_id"]
-            b = board.setdefault(rid, {"reviews": 0, "corrections": 0})
+            b = board.setdefault(rid, {"reviews": 0, "corrections": 0,
+                                       "wk_reviews": 0, "wk_corr": 0, "pv_reviews": 0, "pv_corr": 0})
             b["reviews"] += 1
+            ts = _epoch(r.get("ts"))
+            this_wk = ts >= week_ago
+            last_wk = week_ago > ts >= prev_ago
+            if this_wk:
+                b["wk_reviews"] += 1
+            elif last_wk:
+                b["pv_reviews"] += 1
             v = r.get("verdict")
             if v == "good":
                 good += 1
+                wk_good += int(this_wk)
             elif v == "bad":
                 bad += 1
+                wk_bad += int(this_wk)
                 if (r.get("reap_plan") or "").strip():
                     b["corrections"] += 1
-            ts = _epoch(r.get("ts"))
+                    if this_wk:
+                        b["wk_corr"] += 1
+                    elif last_wk:
+                        b["pv_corr"] += 1
             days_by.setdefault(rid, set()).add(int(ts // DAY))
         total = good + bad
         accuracy = round(good / total, 4) if total else 0.0
@@ -303,10 +318,13 @@ class SupabaseStore:
             leaderboard.append({"reviewer": meta.get("name", rid), "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": 1 + pts // 100, "streak": _streak(days_by.get(rid, set())),
-                                "char": meta.get("avatar", "boksil")})
+                                "char": meta.get("avatar", "boksil"),
+                                "week_points": v["wk_reviews"] * 10 + v["wk_corr"] * 25,
+                                "last_week_points": v["pv_reviews"] * 10 + v["pv_corr"] * 25})
         leaderboard.sort(key=lambda x: -x["points"])
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
-                "week_reviews": 0, "accuracy_delta": 0.0, "target": target, "leaderboard": leaderboard}
+                "week_reviews": wk_good + wk_bad, "accuracy_delta": 0.0,
+                "target": target, "leaderboard": leaderboard}
 
     # ── 검토 콘텐츠 동기화 + 큐 + retention ────────────────────────────────
     def sync_contents(self, pairs, source: str = "단건", team=None):
