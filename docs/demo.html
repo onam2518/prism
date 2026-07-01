@@ -1846,7 +1846,7 @@
       },
       mods: [
         { g: '작업', items: [
-          { id: 'auto', label: '자동 인입', ic: 'auto' },
+          { id: 'auto', label: '자동 인입', ic: 'auto', cond: 'admin' },
           { id: 'run', label: '수동 추출', ic: 'run' } ] },
         { g: '콘텐츠 현황', items: [
           { id: 'queue', label: '실행 큐', ic: 'queue' },
@@ -1944,8 +1944,8 @@
       },
 
       init() {
+        this.loadReviewer();                           // 검수자·토큰(localStorage) — refreshConfig 의 관리자 로드보다 먼저
         this.refreshConfig();
-        this.loadReviewer();                           // 검수자 이름(localStorage)
         this.startLive();                              // 실시간 SSE 구독
         this.loadHome();                               // 배치된 홈 위젯(localStorage)
         this.loadDash();                               // 홈 위젯 데이터(/dashboard)
@@ -2320,6 +2320,7 @@
         try {
           const r = await fetch('/config'); this.cfg = await r.json();
           if (this.cfg.backend) this.backend = this.cfg.backend;     // sqlite | supabase
+          if (this.backend === 'supabase' && this.authToken) this.loadAdmin();  // 관리자 여부 → nav 게이팅(자동인입 등)
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
           if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
@@ -2560,15 +2561,20 @@
   // 정적 데모: 서버 호출을 합성 응답으로 스텁(키·서버 불필요)
   // 홈 위젯 레이아웃 시드(쇼케이스 — 실제 앱은 빈 상태로 시작)
   try { localStorage.setItem('prism_home', JSON.stringify(['launch-run','launch-batch','launch-dict','metrics','quality','intents','categories','process'])); } catch (e) {}
+  // 데모 로그인 시드(관리자) → 로그인 벽 생략 + 자동 인입·팀 관리 노출
+  try { localStorage.setItem('prism_reviewer', '데모 관리자'); localStorage.setItem('prism_reviewer_char', 'boksil'); localStorage.setItem('prism_token', 'demo'); } catch (e) {}
   window.__DEMO_RESULT__ = {"source": "image", "mock": false, "content": {"displayServiceName": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "subtitle": "", "body": "기자회견장에서 노조 집행부가 발언하는 장면. 중앙노동위원회 조정에서 합의 불성립."}, "signals": [{"vision": "이미지는 실내 기자회견장을 담고 있다. 노동조합 집행부로 보이는 인물들이 단상에 앉아 발언하고 있으며, 배경 현수막에 협상 관련 문구가 보인다. 전체적으로 노사 협상 결렬을 알리는 공식 발표 현장의 분위기다. [엔티티] 삼성전자, 전국삼성전자노동조합, 중앙노동위원회 [장면] 노사 협상 결렬 기자회견", "ocr": "중앙노동위원회 조정 불성립 · 임금 인상 협상 결렬", "latency_ms": 2840}], "output": {"item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사실 전달", "분석·해설"], "content_category": ["Business / Industries", "Law, Govt & Politics"]}, "quality_meta": {"finalGrade": "G"}, "routing": {"content_track": "text"}}};
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
-    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": ""}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]};
+    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil"}, {"id": "m2", "name": "검수자 A", "char": "yonghee"}, {"id": "m3", "name": "검수자 B", "char": "ddakji"}], "goldenCount": 24};
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
       const u = String(url);
       if (u.indexOf('/config') === 0 || u.indexOf('/config') > -1) return Promise.resolve(J(CFG));
       if (u.indexOf('/vocab') > -1) return Promise.resolve(J(VOCAB));
+      if (u.indexOf('/admin') > -1) return Promise.resolve(J(ADMIN));
+      if (u.indexOf('/reviewer') > -1) return Promise.resolve(J({ ok: true, team: { invite_code: ADMIN.team.invite_code } }));
+      if (u.indexOf('/auth') > -1) return Promise.resolve(J({ ok: true, access_token: 'demo' }));
       if (u.indexOf('/models') > -1) return Promise.resolve(J({ ok: true, models: ['solar-pro3-260323', 'solar-pro2-251215'] }));
       if (u.indexOf('/ping') > -1) return Promise.resolve(J({ ok: true, detail: 'solar-pro3-260323 응답 정상' }));
       if (u.indexOf('/dashboard') > -1) return Promise.resolve(J({"n": 12, "g": 10, "r": 2, "gPct": 83, "entities": 31, "avgLead": 38, "intents": [{"k": "사건 경과 보도", "v": 7, "pct": 58}, {"k": "분석·해설", "v": 5, "pct": 42}, {"k": "인물 동향", "v": 3, "pct": 25}, {"k": "흥미·화제", "v": 2, "pct": 17}], "categories": [{"k": "News and Politics", "v": 6, "pct": 50}, {"k": "Sports", "v": 4, "pct": 33}, {"k": "Business and Finance", "v": 3, "pct": 25}], "qualityReasons": [{"k": "clickbait", "v": 2, "pct": 17}]}));
@@ -2576,6 +2582,7 @@
       if (u.indexOf('/usermeta') > -1) return Promise.resolve(J({"source": "실 행동 로그 → 소비 형태·강도 (데모)", "n_contents": 12, "users": [{"user_id": "u1", "persona": "정독러", "form": {"세션 길이": "장", "체류·완주": "고", "전환·이동": "느림", "깊이": "몰입", "시간대": "평일 야간"}, "intensity": {"심층 분석": "고", "정책·사업 소개": "고", "속보·단신": "저"}, "affinity_entities": [["삼성전자", 4], ["금리", 3], ["재건축", 2]], "engagement": {"views": 18, "clicks": 14, "click_rate": 0.78, "avg_dwell_sec": 52.4}}, {"user_id": "u2", "persona": "스낵러", "form": {"세션 길이": "단", "체류·완주": "저", "전환·이동": "빠름", "깊이": "훑기", "시간대": "출퇴근"}, "intensity": {"흥미·화제": "중", "속보·단신": "저"}, "affinity_entities": [["손흥민", 2]], "engagement": {"views": 22, "clicks": 5, "click_rate": 0.23, "avg_dwell_sec": 9.1}}], "personas_def": [{"id": 1, "name": "정독러", "full": "깊이 정독러", "desc": "한 주제를 파고들어 정독·저장", "form": {"깊이": "몰입", "체류·완주": "고"}}, {"id": 2, "name": "스낵러", "full": "가벼운 스낵러", "desc": "짧은 세션·빠른 전환", "form": {"깊이": "훑기", "체류·완주": "저"}}], "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)"}));
       if (u.indexOf('/dict') > -1) return Promise.resolve(J({"serviceGroups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"], "intentUniversal": ["속보·사건 추적", "심층 분석", "팬덤·화제성", "실용 정보", "감성·공감", "오락·유머", "의견·논쟁", "학술·전문"], "intentByService": {"뉴스": ["속보·단신", "사건 경과 보도", "정책·사업 소개", "행정 발표", "법안 통과 보도", "노동 이슈 보도", "사회 안전 보도", "인물 동정", "사설·칼럼", "국제·외교 보도", "트렌드 분석", "설문조사 기반 분석"], "연예": ["열애·결혼·이혼", "컴백·신작 발매", "논란·해명", "화보·시상식", "방송 출연", "팬 소통"], "스포츠": ["감독 인터뷰", "경기 프리뷰", "경기 결과·리뷰", "이적·계약 보도", "선수 분석 기사", "전술·데이터 분석", "부상·복귀 근황", "팬·응원 문화"], "콘텐츠": ["카드뉴스·인포그래픽", "큐레이션·모음", "랭킹·리스트", "요약·브리핑", "반응·리액션", "비교·분석"], "음악": ["신곡·앨범 발매", "차트·랭킹", "아티스트 소식", "라이브·공연", "음악 큐레이션", "음원 리뷰·분석"], "커뮤니티": ["후기·리뷰", "질문·답변", "정보 공유", "의견·토론", "일상·잡담", "창작·작품 공유"], "블로그": ["에세이·산문", "가이드·튜토리얼", "기술·개발", "리뷰·분석", "일상·여행", "창작·연재"], "동영상": ["클립·하이라이트", "풀영상·본방", "예고편·티저", "인터뷰·비하인드", "라이브 중계", "교양·다큐"]}, "iabTier1": ["News and Politics", "Entertainment", "Business and Finance", "Sports", "Food and Drink", "Travel", "Family and Relationships", "Education", "Technology and Computing", "Books and Literature", "Medical Health", "Hobbies and Interests", "Health and Fitness", "Home and Garden", "Pets", "Style and Fashion", "Automotive", "Video Gaming", "Science", "Careers", "Religion and Spirituality"], "tier2": {"News and Politics": ["Politics", "Society", "Local News", "Crime", "Disasters", "Law", "International News", "Weather"], "Entertainment": ["Celebrity News", "Celebrity News (Foreign)", "Drama TV", "TV Shows", "Movies", "Music", "Visual Art", "Performing Arts", "Humor"], "Business and Finance": ["Economy", "Industries", "Business", "Investing", "Banking", "Insurance", "Real Estate Policy", "Real Estate Listings"], "Sports": ["Soccer (Domestic)", "Soccer (International)", "Baseball (Domestic)", "Baseball (International)", "Basketball", "Volleyball", "Golf", "Martial Arts", "Other Sports"], "Food and Drink": ["Cooking", "Food", "Beverages", "Dining Out"], "Travel": ["Domestic Travel", "International Travel", "Hotels", "Air Travel", "Travel Preparation"], "Family and Relationships": ["Parenting", "Family", "Dating", "Weddings"], "Education": ["Primary Education", "Secondary Education", "Higher Education", "Language Learning", "Adult Education"], "Technology and Computing": ["Computing", "Internet", "Information Security", "Consumer Electronics"], "Books and Literature": ["Fiction", "Non-Fiction", "Biographies", "Essays"], "Medical Health": ["Diseases and Conditions", "Wellness"], "Hobbies and Interests": ["Arts and Crafts", "Collecting", "Outdoors"], "Health and Fitness": ["Healthy Living", "Exercise and Fitness"], "Home and Garden": ["Interior Decorating", "Gardening", "Home Improvement", "Shopping"], "Pets": ["Dogs", "Cats", "Birds", "Fish", "Other Pets"], "Style and Fashion": ["Fashion Trends", "Personal Care", "Accessories"], "Automotive": ["Auto Type", "Auto Repair", "Auto Shows"], "Video Gaming": ["Video Games", "eSports"], "Science": ["Space and Astronomy", "Biology", "Physics", "Environment", "General Science"], "Careers": ["Job Search", "Career Advice"], "Religion and Spirituality": ["Religion", "Spirituality"]}, "iabMap": {"Entertainment / Celebrity News (Foreign)": "Pop Culture / Celebrity News", "Entertainment / Drama TV": "Television / Drama TV", "Entertainment / TV Shows": "Television / TV Shows", "Entertainment / Movies": "Movies", "Entertainment / Music": "Music and Audio", "Entertainment / Visual Art": "Fine Art", "Entertainment / Performing Arts": "Fine Art", "Business and Finance / Investing": "Personal Finance", "Business and Finance / Banking": "Personal Finance", "Business and Finance / Insurance": "Personal Finance", "Business and Finance / Real Estate Policy": "Real Estate / Residential Real Estate", "Business and Finance / Real Estate Listings": "Real Estate / Residential Real Estate", "News and Politics / Weather": "Weather", "Home and Garden / Shopping": "Shopping", "Sports / Soccer (Domestic)": "Sports / Soccer", "Sports / Soccer (International)": "Sports / Soccer", "Sports / Baseball (Domestic)": "Sports / Baseball", "Sports / Baseball (International)": "Sports / Baseball", "Sports / Other Sports": "Sports / Olympic Sports", "Video Gaming / eSports": "Video Gaming / eSports"}, "domainGroups": {"시사": ["News and Politics"], "경제·산업": ["Business and Finance"], "엔터": ["Entertainment"], "스포츠": ["Sports"], "테크·모빌리티": ["Technology and Computing", "Automotive", "Video Gaming"], "라이프": ["Food and Drink", "Travel", "Family and Relationships", "Home and Garden", "Pets", "Style and Fashion", "Health and Fitness", "Hobbies and Interests", "Religion and Spirituality", "Medical Health", "Careers"], "지식·교양": ["Education", "Books and Literature", "Science"]}, "qualityMetas": {"ad": "광고성: 제품·서비스 홍보 + 명시적 구매·가입 유도가 본문 핵심(3축 AND — 수익 귀속·명시 CTA·B2C 대상 모두 충족 시에만)", "sexual": "선정적 텍스트: 성적 표현이 과도해 정보 전달보다 자극이 목적(단어 경계·콜로케이션, 강한 신호+정량 기준)", "profanity": "저속 텍스트: 욕설·비속어를 과도 사용해 불쾌감 유발(단어 경계, 마스킹 포함)", "gambling": "사행성: 로또·토토·카지노 등 조장·당첨 기대감 자극(시점성+권유·예측 톤 결합)", "clickbait": "낚시성: 제목-본문 괴리·정보 은닉으로 호기심 자극 클릭 유도(제목↔본문 정합성)", "format": "형식 불만족: 극단적으로 짧거나 구조 불완전해 피드 UX 저해(UGC 한정)", "shallow": "낮은 정보가치: 본문 무관 인물·발언을 끌어와 포장, 화제성·검색 노출 노림", "spam": "저품질 생산자: AI 양산·템플릿화 등 비정상 생산 패턴(문체 부자연·사실 불일치)", "graphic": "사건·재난·범죄 과잉묘사: 수법·피해를 구체·지속 묘사(묘사 신호 2개 이상 시 R)", "political": "정치·이념 거론: 한국 특정 정당·정치인·진영을 비방·낙인·선동(UGC 한정)", "hate": "차별·혐오: 인종·성별·지역·연령·세대·국적·계층 비하·혐오 표현(UGC 한정)"}, "qualityNames": {"ad": "광고성", "sexual": "선정적 텍스트", "profanity": "저속 텍스트", "gambling": "사행성", "clickbait": "낚시성", "format": "형식 불만족", "shallow": "낮은 정보가치", "spam": "저품질 생산자", "graphic": "사건·재난·범죄 과잉묘사", "political": "정치·이념 거론", "hate": "차별·혐오"}, "qualityApplies": {"ad": "both", "sexual": "both", "profanity": "both", "gambling": "both", "clickbait": "both", "format": "ugc", "shallow": "both", "spam": "both", "graphic": "both", "political": "ugc", "hate": "ugc"}, "legalTypes": {"defamation": {"label": "명예훼손", "article": "형법 §307"}, "insult": {"label": "모욕", "article": "형법 §311"}, "obscenity": {"label": "음란물", "article": "정보통신망법 §44-7"}, "sexual_violence": {"label": "성폭력(촬영물 등)", "article": "성폭력처벌법 §14"}, "privacy_violation": {"label": "사생활 침해", "article": "개인정보보호법"}, "stalking": {"label": "스토킹", "article": "스토킹처벌법"}, "hate_speech": {"label": "혐오표현", "article": ":"}, "copyright": {"label": "저작권 침해", "article": "저작권법"}, "fraud": {"label": "사기", "article": "형법 §347"}, "election_interference": {"label": "선거 개입", "article": "공직선거법"}, "ad_fraud": {"label": "허위·과장 광고", "article": "표시광고법"}, "gambling": {"label": "도박 개장/유도", "article": "형법 §247"}, "drug_weapon": {"label": "마약·무기 거래", "article": "마약류관리법 등"}}, "intakePolicy": {"텍스트형": {"filter": "O", "method": "정상 분류(품질 메타 부여)", "status": "구현"}, "이미지형": {"filter": "△", "method": "GREEN 일괄 + 캡션 텍스트(시각 이해)", "status": "PoC"}, "영상형": {"filter": "X", "method": "GREEN 일괄(Argos 별도)", "status": "계획"}, "SNS형": {"filter": "X", "method": "서비스 자체 필터 후 인입", "status": "계획"}, "묶음형 · 데이터형": {"filter": "X", "method": "GREEN 일괄(고도화 과제)", "status": "계획"}}}));
       if (u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
+      if (u.indexOf('/queue') > -1 || u.indexOf('/ingest') > -1) return Promise.resolve(J({ ok: true, jobs: [], sources: [] }));
       return real ? real(url, opt) : Promise.resolve(J({}));
     };
   })();
@@ -2626,7 +2633,7 @@
     word-break:keep-all;overflow-wrap:break-word}
   /* 배치 결과 · 콘텐츠별 평가 피드백(학습 루프) */
   .fbrow{display:grid;grid-template-columns:1fr auto;gap:9px 12px;align-items:start;padding:11px 13px;
-    border:1px solid var(--ds-hairline-soft);border-radius:11px;background:var(--ds-surface-white);margin-bottom:8px}
+    border:1px solid var(--ds-hairline-soft);border-radius:12px;background:var(--ds-surface-white);margin-bottom:8px}
   .fbrow__main{min-width:0}
   .fbrow__title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ds-ink);flex-wrap:wrap}
   .fbrow__svc{font-size:11px;font-weight:500;color:var(--ds-muted)}
@@ -2848,7 +2855,7 @@
   /* ── 검수자 등록 온보딩(딤드 + 중앙 모달) ── */
   .onboard{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:24px;
     background:rgba(0,0,0,.55);backdrop-filter:blur(4px)}
-  .onboard__card{width:100%;max-width:440px;background:var(--ds-surface2,#fff);border-radius:22px;
+  .onboard__card{width:100%;max-width:440px;background:var(--ds-surface2,#fff);border-radius:24px;
     padding:30px 30px 24px;box-shadow:0 24px 70px rgba(0,0,0,.4);text-align:center}
   .onboard__brand{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ds-violet,#1e84ff);
     font-size:13px;font-weight:700;margin-bottom:14px}
@@ -2859,7 +2866,7 @@
   .onboard__hint{font-weight:500;color:var(--ds-muted)}
   .onboard__name{height:44px;width:100%;font-size:15px;margin-bottom:18px}
   .onboard__chars{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:24px}
-  .ochar{display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 4px 9px;border-radius:14px;
+  .ochar{display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 4px 9px;border-radius:12px;
     border:1.5px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface,#ffffff);cursor:pointer;transition:all .15s}
   .ochar:hover{border-color:var(--ds-violet,#1e84ff);transform:translateY(-2px)}
   .ochar__ring{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;
@@ -2868,7 +2875,7 @@
   .ochar b{font-size:12.5px;color:var(--ds-ink)} .ochar small{font-size:10px;color:var(--ds-muted)}
   .ochar.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16))}
   .ochar.sel .ochar__ring{box-shadow:0 0 0 3px var(--ds-violet,#1e84ff)}
-  .onboard__authtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:11px}
+  .onboard__authtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:12px}
   .onboard__authtabs button{flex:1;height:34px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
   .onboard__authtabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .onboard__authmsg{text-align:left;font-size:12px;color:#ff4e33;margin:-6px 0 12px}
@@ -2877,14 +2884,14 @@
   .onboard__skip{margin-top:10px;background:none;border:0;color:var(--ds-muted);font-size:12.5px;cursor:pointer}
   /* ── 검수자 등록: 캐릭터 선택(구 약식, 미사용 호환) ── */
   .charpick{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
-  .charpick__opt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:11px;
+  .charpick__opt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;
     border:1.5px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface2,#fff);cursor:pointer;transition:all .15s}
   .charpick__opt:hover{border-color:var(--ds-violet,#1e84ff)}
   .charpick__opt img{width:34px;height:34px}
   .charpick__opt span{font-size:10.5px;color:var(--ds-muted);font-weight:600}
   .charpick__opt.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16));box-shadow:0 0 0 2px var(--ds-violet-tint,rgba(30,132,255,0.16))}
   .charpick__opt.sel span{color:var(--ds-violet,#1e84ff)}
-  .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:11px;max-width:520px}
+  .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:12px;max-width:520px}
   .evaltabs button{flex:1;height:36px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
   .evaltabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .goldgrid{display:flex;align-items:center;gap:24px;margin-top:16px;flex-wrap:wrap}
@@ -2898,7 +2905,7 @@
   .invite__code{font-family:var(--ds-font-mono,ui-monospace);font-size:26px;font-weight:800;letter-spacing:.12em;color:var(--ds-violet,#1e84ff)}
   /* ── 평가 아레나(게임화) ── */
   .arena-hero{background:linear-gradient(135deg,var(--ds-violet,#1e84ff),var(--ds-violet-deep,#004fad));
-    color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 10px 30px rgba(19,52,59,.22)}
+    color:#fff;border-radius:16px;padding:22px 24px;box-shadow:0 10px 30px rgba(19,52,59,.22)}
   .arena-hero__head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
   .arena-hero__eyebrow{font-size:12px;opacity:.82;font-weight:600;letter-spacing:.02em;margin-bottom:4px}
   .arena-hero__big{font-size:54px;font-weight:800;line-height:1;display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums}
@@ -3079,7 +3086,7 @@
 
   <!-- ━━━━━ 상단 바: 로고 | 타이틀(고정) | 도구 ━━━━━ -->
   <header class="topbar">
-    <div class="topbar__brand"><span class="logo"><img src="../prism/vendor/prism-mark.svg" alt="Prism"></span><div class="topbar__wm">Prism<small>A lens on content &amp; users</small></div></div>
+    <div class="topbar__brand"><span class="logo"><img src="demo-assets/prism-mark.svg" alt="Prism"></span><div class="topbar__wm">Prism<small>A lens on content &amp; users</small></div></div>
     <div class="topbar__title">
       <div class="homehead__title" x-text="modLabel"></div>
       <div class="homehead__sub" x-text="modSub"></div>
@@ -3130,7 +3137,7 @@
        x-on:click.self="if (reviewer) reviewerEditing = false"
        x-on:keydown.escape.window="if (reviewer) reviewerEditing = false">
     <div class="onboard__card" x-transition>
-      <div class="onboard__brand"><img src="../prism/vendor/prism-mark.svg" alt="Prism"><b>Prism 평가 아레나</b></div>
+      <div class="onboard__brand"><img src="demo-assets/prism-mark.svg" alt="Prism"><b>Prism 평가 아레나</b></div>
       <h2 class="onboard__title" x-text="reviewer ? '검수자 정보 변경' : (backend==='supabase' ? (authMode==='signup'?'가입하고 시작':'로그인') : '검수자로 등록하기')"></h2>
       <p class="onboard__lead">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 내 검수가 점수가 되고
         캐릭터가 성장해요. <span x-show="backend==='supabase'">계정으로 로그인하면 <b>어느 기기에서나</b> 이어집니다.</span></p>
@@ -3201,7 +3208,7 @@
         <nav class="ds-navgroup" x-show="grp.g !== '팀' || backend === 'supabase'">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
-            <button type="button" class="ds-navitem" x-show="!it.cond || backend === it.cond" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+            <button type="button" class="ds-navitem" x-show="!it.cond || (it.cond === 'admin' ? (backend !== 'supabase' || (adminData && adminData.isAdmin)) : backend === it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
               <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
               <span x-text="it.label"></span>
             </button>
@@ -3212,7 +3219,7 @@
     <!-- 도우미 = 사이드 위젯 바로 아래(다크 박스 + 캐릭터) -->
     <div class="side-assistant">
       <button type="button" class="side-assistant__card" x-on:click="chatOpen = !chatOpen" aria-label="도우미 열기">
-        <span class="side-assistant__char"><img src="../prism/vendor/boksil-catcher.svg" alt=""></span>
+        <span class="side-assistant__char"><img src="demo-assets/boksil-catcher.svg" alt=""></span>
         <span class="side-assistant__txt">
           <span class="side-assistant__t">
             <span class="side-assistant__spin" x-show="loading || modBusy"></span>
@@ -3232,7 +3239,7 @@
       <div x-show="mod === 'home'" class="ds-widgetgrid" x-bind:class="editing ? 'ds-widgetgrid--edit' : ''" id="grid">
         <!-- 빈 상태: 배치 도우미(첫 방문) -->
         <div x-show="placed && placed.length === 0" x-cloak class="ds-empty" style="grid-column:1/-1">
-          <span class="ds-character ds-character--bob" style="width:84px;height:84px"><img src="../prism/vendor/boksil-catcher.svg" alt=""></span>
+          <span class="ds-character ds-character--bob" style="width:84px;height:84px"><img src="demo-assets/boksil-catcher.svg" alt=""></span>
           <div class="ds-empty__title">홈을 직접 구성해 보세요</div>
           <div class="ds-empty__desc">필요한 위젯을 골라 나만의 콘솔을 만듭니다 추천 구성으로 빠르게 시작할 수 있어요</div>
           <div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
@@ -3311,16 +3318,19 @@
           <button class="ds-widget__remove" x-on:click.stop="removeWidget('process')" aria-label="제거"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M3 3l5 5M8 3l-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
           <div class="ds-widget__head"><div class="ds-widget__title"><span>처리 프로세스</span></div><div class="ds-widget__actions"><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">
-            <div class="w-agent"><span class="w-agent__av"><img src="../prism/vendor/daesik-batter.svg" alt=""></span><div><div class="w-agent__n">추출</div><div class="w-agent__r">대식 · 이미지→신호</div></div><span class="w-agent__s"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span></span></div>
-            <div class="w-agent"><span class="w-agent__av"><img src="../prism/vendor/yonghee-pitcher.svg" alt=""></span><div><div class="w-agent__n">분석</div><div class="w-agent__r">용희 · 메타 분류</div></div><span class="w-agent__s"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span></span></div>
-            <div class="w-agent"><span class="w-agent__av"><img src="../prism/vendor/boksil-catcher.svg" alt=""></span><div><div class="w-agent__n">검수</div><div class="w-agent__r">복실 · 품질 확인</div></div><span class="w-agent__s"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span></span></div>
-            <div class="w-agent"><span class="w-agent__av"><img src="../prism/vendor/ddakji-manager.svg" alt=""></span><div><div class="w-agent__n">판정 · 부여</div><div class="w-agent__r">딱지 · 유통 결정</div></div><span class="w-agent__s"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span></span></div>
+            <div class="w-agent"><span class="w-agent__av"><img src="demo-assets/daesik-batter.svg" alt=""></span><div><div class="w-agent__n">추출</div><div class="w-agent__r">대식 · 이미지→신호</div></div><span class="w-agent__s"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span></span></div>
+            <div class="w-agent"><span class="w-agent__av"><img src="demo-assets/yonghee-pitcher.svg" alt=""></span><div><div class="w-agent__n">분석</div><div class="w-agent__r">용희 · 메타 분류</div></div><span class="w-agent__s"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span></span></div>
+            <div class="w-agent"><span class="w-agent__av"><img src="demo-assets/boksil-catcher.svg" alt=""></span><div><div class="w-agent__n">검수</div><div class="w-agent__r">복실 · 품질 확인</div></div><span class="w-agent__s"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span></span></div>
+            <div class="w-agent"><span class="w-agent__av"><img src="demo-assets/ddakji-manager.svg" alt=""></span><div><div class="w-agent__n">판정 · 부여</div><div class="w-agent__r">딱지 · 유통 결정</div></div><span class="w-agent__s"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span></span></div>
           </div>
         </div>
       </div>
 
-      <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) ═══ -->
+      <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) — 관리자 전용 ═══ -->
       <div x-show="mod === 'auto'" x-cloak class="w-full space-y-4">
+        <div x-show="backend === 'supabase' && !(adminData && adminData.isAdmin)" class="ds-hint hintbox">자동 인입 파이프라인 설정은 <b class="text-ink">팀 관리자</b>만 가능합니다. 일회성 처리는 <b class="text-ink">수동 추출</b>을 사용하세요.</div>
+        <template x-if="backend !== 'supabase' || (adminData && adminData.isAdmin)">
+        <div class="w-full space-y-4">
         <p class="ds-hint hintbox">콘텐츠를 <b class="text-ink">자동으로 인입</b>하는 파이프라인 소스를 설정합니다 등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다 일회성 처리는 <b class="text-ink">수동 추출</b>을 사용하세요</p>
         <section class="panel" data-fn><div class="panel-hd"><b>인입 소스 추가</b></div>
           <div class="panel-bd" style="display:flex;flex-direction:column;gap:12px">
@@ -3375,6 +3385,8 @@
             </template>
           </div>
         </section>
+        </div>
+        </template>
       </div>
 
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
@@ -3484,7 +3496,7 @@
           <div class="panel-bd">
             <!-- Processing -->
             <div class="ds-processing">
-              <span class="ds-processing__char"><span class="ds-character ds-character--bob" style="width:96px;height:96px"><img src="../prism/vendor/yonghee-pitcher.svg" alt="용희 (투수)"></span></span>
+              <span class="ds-processing__char"><span class="ds-character ds-character--bob" style="width:96px;height:96px"><img src="demo-assets/yonghee-pitcher.svg" alt="용희 (투수)"></span></span>
               <div>
                 <div class="ds-processing__title" x-text="activeTabId === 'excel' ? '일괄 추출 중' : '메타데이터 추출 중'"></div>
                 <div class="ds-processing__msg"><span class="ds-processing__dots" x-text="activeTabId === 'excel' ? '행마다 추출하고 있어요' : (activeTabId === 'image' ? '이미지를 읽고 있어요' : '리드문·메타를 생성하고 있어요')"></span></div>
@@ -3666,7 +3678,7 @@
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
       <div x-show="mod === 'dash'" x-cloak class="ds-pilot w-full">
         <div x-show="!dashData || !dashData.n" class="ds-empty">
-          <span class="ds-character ds-character--bob" style="width:80px;height:80px"><img src="../prism/vendor/boksil-catcher.svg" alt=""></span>
+          <span class="ds-character ds-character--bob" style="width:80px;height:80px"><img src="demo-assets/boksil-catcher.svg" alt=""></span>
           <div class="ds-empty__title">아직 집계할 결과가 없어요</div>
           <div class="ds-empty__desc"><b>추출 실행</b>에서 추출(엑셀 일괄 권장)을 먼저 실행하세요</div>
         </div>
@@ -4163,10 +4175,10 @@
         <section class="panel"><div class="panel-hd"><b>실행 큐</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span></div>
           <div class="panel-bd">
             <div x-show="loading">
-              <div class="w-run"><span class="w-run__av"><img src="../prism/vendor/yonghee-pitcher.svg" alt=""></span><div><div class="w-run__t" x-text="activeTabId === 'excel' ? '엑셀 일괄 추출 중' : '메타 추출 중'"></div><div class="ds-progress ds-progress--indeterminate" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div></div></div>
+              <div class="w-run"><span class="w-run__av"><img src="demo-assets/yonghee-pitcher.svg" alt=""></span><div><div class="w-run__t" x-text="activeTabId === 'excel' ? '엑셀 일괄 추출 중' : '메타 추출 중'"></div><div class="ds-progress ds-progress--indeterminate" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div></div></div>
             </div>
             <template x-for="j in runningJobs" x-bind:key="j.id">
-              <div class="w-run"><span class="w-run__av"><img src="../prism/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
+              <div class="w-run"><span class="w-run__av"><img src="demo-assets/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
                 <div class="w-run__t"><b class="text-ink" x-text="j.name"></b> · 자동 인입 중 <span class="ds-badge" x-bind:class="j.trigger==='auto' ? 'ds-badge--intent' : 'ds-badge--entity'" x-text="j.trigger==='auto' ? '자동' : '수동'"></span> <span class="text-xs text-muted tnum" x-show="j.total" x-text="j.done + ' / ' + j.total + '건'"></span></div>
                 <div class="text-xs text-muted" x-text="j.last_msg || j.endpoint"></div>
                 <div class="ds-progress" x-bind:class="j.total ? '' : 'ds-progress--indeterminate'" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="j.total ? ('width:' + Math.round((j.done/j.total)*100) + '%') : ''"></div></div></div>
@@ -4431,7 +4443,7 @@
   <!-- 플로팅 도우미(채널톡 스타일) — 모든 기능 허브 -->
   <div class="ds-chat" x-show="chatOpen" x-cloak>
     <div class="ds-chat__head">
-      <span class="ds-chat__av"><img src="../prism/vendor/boksil-catcher.svg" alt=""></span>
+      <span class="ds-chat__av"><img src="demo-assets/boksil-catcher.svg" alt=""></span>
       <div><div class="ds-chat__title">Prism 도우미</div><div class="ds-chat__sub"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span>보통 1분 내 응답</div></div>
       <span style="margin-left:auto"><button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="chatOpen = false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></span>
     </div>
@@ -4526,7 +4538,7 @@
       var actions = head.querySelector('.ds-widget__actions');
       if (!actions) { actions = document.createElement('div'); actions.className = 'ds-widget__actions'; head.appendChild(actions); }
       var av = document.createElement('span'); av.className = 'wz-char wz-char--sm';
-      av.innerHTML = '<img src="../prism/vendor/' + stageChar(WID_STAGE[wid]) + '.svg" alt="">';
+      av.innerHTML = '<img src="demo-assets/' + stageChar(WID_STAGE[wid]) + '.svg" alt="">';
       actions.insertBefore(av, actions.firstChild);
     });
   })();
@@ -4547,7 +4559,7 @@
         var actions = document.createElement('div'); actions.className = 'ds-widget__actions';
         while (h.firstChild) actions.appendChild(h.firstChild);   // 남은 메타·버튼 → actions
         var av = document.createElement('span'); av.className = 'wz-char wz-char--sm';
-        av.innerHTML = '<img src="../prism/vendor/' + prismCharForPanel(h, titleText) + '.svg" alt="">';
+        av.innerHTML = '<img src="demo-assets/' + prismCharForPanel(h, titleText) + '.svg" alt="">';
         actions.appendChild(av);
         var fn = h.closest('[data-fn]');
         var kind = document.createElement('span'); kind.className = 'ds-widget__kind ds-widget__kind--' + (fn ? 'fn' : 'info'); kind.textContent = fn ? '기능' : '정보';
