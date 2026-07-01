@@ -19,9 +19,12 @@ ALIASES = {
     "displayServiceName": ["displayservicename", "서비스명", "service", "서비스", "구분",
                            "채널", "channel", "category", "카테고리", "매체", "섹션",
                            "section", "source", "type", "지면"],
+    # 참조용 원문 링크(선택). 있으면 상세뷰 '원문 열기' 로 연결.
+    "source_url": ["sourceurl", "url", "link", "permalink", "href", "링크", "원문링크",
+                   "원문url", "articleurl", "weburl", "원문주소", "주소", "originurl"],
 }
 REQUIRED = ["title", "body"]            # 이 둘이 잡혀야 '가능'
-OPTIONAL_DEFAULT = {"subtitle": "", "displayServiceName": ""}
+OPTIONAL_DEFAULT = {"subtitle": "", "displayServiceName": "", "source_url": ""}
 
 
 def read_table(path: str) -> tuple[list, list]:

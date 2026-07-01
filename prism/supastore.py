@@ -74,6 +74,14 @@ class SupabaseStore:
         rows = self._get("reviewers", f"select=team_id&id=eq.{urllib.parse.quote(reviewer)}")
         return rows[0].get("team_id") if rows else None
 
+    def get_reviewer(self, reviewer):
+        """기존 검수자 프로필(이름·캐릭터·팀). 로그인 시 재입력 없이 로드. 없으면 None."""
+        rows = self._get("reviewers", f"select=name,avatar,team_id&id=eq.{urllib.parse.quote(reviewer)}")
+        if not rows:
+            return None
+        r = rows[0]
+        return {"name": r.get("name") or reviewer, "char": r.get("avatar") or "boksil", "team": r.get("team_id")}
+
     def reviewers_map(self, team=None) -> dict:
         q = "select=id,name,avatar"
         if team:
