@@ -2788,12 +2788,12 @@
       if (u.indexOf('/admin') > -1) return Promise.resolve(J(ADMIN));
       if (u.indexOf('/arena') > -1) return Promise.resolve(J(ARENA));
       if (u.indexOf('/drill') > -1) { const qp = new URLSearchParams((u.split('?')[1]||'')); return Promise.resolve(J({ ok: true, kind: qp.get('kind')||'intent', value: qp.get('value')||'', items: [
-        {hash:'d1', title:'삼성전자 노조 임금 협상 결렬', subtitle:'중앙노동위 조정 불성립', service:'뉴스', grade:'G', summary:'삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다', entities:['삼성전자','전국삼성전자노동조합','중앙노동위원회'], intent:['사건 경과 보도'], category:['News and Politics / Society'], reasons:[], url:''},
+        {hash:'d1', title:'삼성전자 노조 임금 협상 결렬', subtitle:'중앙노동위 조정 불성립', service:'뉴스', grade:'G', fb:{verdict:'good', ts: 1782800000}, summary:'삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다', entities:['삼성전자','전국삼성전자노동조합','중앙노동위원회'], intent:['사건 경과 보도'], category:['News and Politics / Society'], reasons:[], url:''},
         {hash:'d2', title:'한국은행 기준금리 동결 결정', subtitle:'', service:'뉴스', grade:'G', summary:'한국은행이 기준금리를 현 수준에서 동결하기로 결정했다', entities:['한국은행','금리'], intent:['사건 경과 보도'], category:['Business and Finance / Economy'], reasons:[], url:''},
         {hash:'d3', title:'낚시성 제목 사례', subtitle:'', service:'커뮤니티', grade:'R', summary:'제목과 본문 괴리로 클릭을 유도한 사례', entities:[], intent:['흥미·화제'], category:[], reasons:['clickbait'], url:''}
       ], n: 3 })); }
       if (u.indexOf('/topic-drill') > -1) { const qp = new URLSearchParams((u.split('?')[1]||'')); return Promise.resolve(J({ ok: true, kind: 'topic', value: qp.get('cluster')||'토픽', items: [
-        {hash:'t1', title:'삼성전자 노조 임금 협상 결렬', subtitle:'중앙노동위 조정 불성립', service:'뉴스', grade:'G', summary:'삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다', entities:['삼성전자','전국삼성전자노동조합'], intent:['사건 경과 보도'], category:['News and Politics / Society'], reasons:[], url:''},
+        {hash:'t1', title:'삼성전자 노조 임금 협상 결렬', subtitle:'중앙노동위 조정 불성립', service:'뉴스', grade:'G', fb:{verdict:'good', ts: 1782800000}, summary:'삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다', entities:['삼성전자','전국삼성전자노동조합'], intent:['사건 경과 보도'], category:['News and Politics / Society'], reasons:[], url:''},
         {hash:'t2', title:'삼성전자 3분기 실적 발표', subtitle:'', service:'뉴스', grade:'G', summary:'삼성전자가 3분기 잠정 실적을 발표했다', entities:['삼성전자'], intent:['사건 경과 보도'], category:['Business and Finance / Economy'], reasons:[], url:''}
       ], n: 2 })); }
       if (u.indexOf('/badges') > -1) { let e = []; try { e = JSON.parse((opt&&opt.body)||'{}').earned || []; } catch (x) {} return Promise.resolve(J({ ok: true, badges: e })); }
@@ -5045,11 +5045,12 @@
       <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span></h2>
       <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
         <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
-        <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th></tr></thead><tbody>
+        <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th><th>검수</th></tr></thead><tbody>
           <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
             <td x-text="c.service || '·'"></td>
-            <td class="text-ink"><span x-text="c.title || c.summary || '·'"></span><span class="ds-badge ds-badge--success" style="margin-left:6px" x-show="c.fb && c.fb.verdict" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></td>
+            <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
             <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
+            <td><span class="ds-badge" x-show="c.fb && c.fb.verdict" x-bind:class="c.fb && c.fb.verdict==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="c.fb && c.fb.verdict==='good' ? '✓ 완료' : '✓ 수정'"></span><span class="text-xs text-muted" x-show="!(c.fb && c.fb.verdict)">·</span></td>
           </tr></template>
         </tbody></table>
         <div x-show="!drillBusy && drillData && !drillData.items.length" class="text-xs text-muted" style="padding:14px">해당 콘텐츠가 없습니다</div>
