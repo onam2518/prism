@@ -1751,6 +1751,7 @@ PAGE = """<!doctype html>
       drillOpen: false, drillData: null, drillBusy: false,  // 대시보드 드릴다운
       detailOpen: false, detail: null,   // 콘텐츠 상세(공통 컴포넌트): 좌 원문 렌더 · 우 평가
       badgeToast: null,   // 배지 달성 축하 오버레이
+      ptToast: null,      // 검수 완료 시 점수 상승(+PT) 리워드 토스트
       errMsg: '',   // 전역 에러 토스트(조용한 실패 노출)
       dashSub: 'batch',     // 콘텐츠 서브탭: batch(배치결과) | quality(품질·법령) | topic(토픽)
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
@@ -1970,11 +1971,14 @@ PAGE = """<!doctype html>
         c.fb = Object.assign({}, c.fb, { verdict: v });
         if (v === 'bad') this.fbNoteOpen[c.hash] = true;
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
+        if (cur === '' && v !== '') this.celebratePoints(10, '검수 완료');   // 새 검수 = +10 PT
       },
       async saveFbNote(c) {
+        const hadNote = !!(c.fb && c.fb._noteRewarded);
         c.fb = Object.assign({}, c.fb, { verdict: c.fb.verdict || 'bad' });
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: c.fb.verdict, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
         this.fbNoteOpen[c.hash] = false;
+        if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(15, '개선안 채택'); }  // 교정 = +15 PT
       },
       async _postFb(payload) {
         payload = Object.assign({ reviewer: this.reviewer || '', name: this.reviewer || '' }, payload);  // 키+표시명(supabase 면 서버가 uid 로 덮어씀)
@@ -2172,6 +2176,14 @@ PAGE = """<!doctype html>
         if (fresh.length) { const bd = this.badges().find((x) => x.label === fresh[0]); if (bd) this.celebrateBadge(bd); }
       },
       celebrateBadge(bd) { this.badgeToast = bd; if (this._btT) clearTimeout(this._btT); this._btT = setTimeout(() => { this.badgeToast = null; }, 4500); },
+      // 검수 완료 → 점수 상승 리워드(성취감). 연속 검수 시 key 로 애니메이션 재시작.
+      celebratePoints(pts, label) {
+        this._ptId = (this._ptId || 0) + 1;
+        this.ptToast = { id: this._ptId, pts: pts, label: label || '' };
+        const id = this._ptId;
+        if (this._ptT) clearTimeout(this._ptT);
+        this._ptT = setTimeout(() => { if (this.ptToast && this.ptToast.id === id) this.ptToast = null; }, 1700);
+      },
       // 오늘의 미션(도전): 검수 큐가 있으면 스트릭 유지 유도, 없으면 골든셋
       get todayMission() {
         const q = (this.arenaData && this.arenaData.queue) || 0;
@@ -2183,7 +2195,9 @@ PAGE = """<!doctype html>
       async queueFeedback(it, verdict) {
         if (!this.ensureReviewer()) return;
         it.note = it.note || '';
+        const wasReviewed = !!it.myVerdict;
         await this._postFb({ hash: it.hash, service: it.service, title: it.title, verdict: verdict, stage: 'review', note: it.note });
+        if (!wasReviewed) this.celebratePoints((verdict === 'bad' && (it.note || '').trim()) ? 25 : 10, '검수 완료');
         it.reviewed = true; it.myVerdict = verdict;
         if (this.queueOnlyUnreviewed) this.queueData.items = (this.queueData.items || []).filter((x) => x.hash !== it.hash);
       },
@@ -3145,6 +3159,16 @@ PAGE = """<!doctype html>
   .gbadge__exp{font-size:9.5px;font-weight:800;letter-spacing:.02em;color:#b8791f;background:rgba(255,148,41,.18);padding:1.5px 7px;border-radius:9999px}
   .gbadge.locked .gbadge__exp{color:var(--ds-muted);background:var(--ds-surface-table)}
   /* 배지 달성 축하 오버레이 */
+  /* 검수 완료 +PT 리워드 토스트(위로 떠오르며 페이드) */
+  .pttoast{position:fixed;left:50%;bottom:96px;z-index:96;pointer-events:none;display:inline-flex;align-items:center;gap:9px;
+    padding:11px 22px;border-radius:9999px;background:linear-gradient(135deg,#22c24e,#0f8f36);color:#fff;
+    font-family:var(--ds-font-display);font-weight:800;box-shadow:0 10px 26px -6px rgba(24,186,69,.6),0 0 0 4px rgba(24,186,69,.18);
+    animation:pt-rise 1.7s cubic-bezier(.2,.8,.2,1) forwards;will-change:transform,opacity}
+  .pttoast__spark{font-size:18px} .pttoast__pt{font-size:18px;letter-spacing:.01em}
+  .pttoast__lbl{font-size:12px;font-weight:700;opacity:.92;font-family:var(--ds-font)}
+  @keyframes pt-rise{0%{opacity:0;transform:translate(-50%,22px) scale(.82)}14%{opacity:1;transform:translate(-50%,0) scale(1.06)}
+    28%{transform:translate(-50%,0) scale(1)}78%{opacity:1;transform:translate(-50%,-32px)}100%{opacity:0;transform:translate(-50%,-60px)}}
+  @media (prefers-reduced-motion:reduce){.pttoast{animation:none}}
   .badgeburst{position:fixed;inset:0;z-index:95;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(3px)}
   .badgeburst__card{position:relative;background:var(--ds-layer-popup);border-radius:var(--ds-radius-xl);padding:34px 40px 30px;text-align:center;
     box-shadow:var(--ds-shadow-high),0 0 0 1px color-mix(in srgb,var(--bc,#1e84ff) 30%,transparent);
@@ -3320,6 +3344,13 @@ PAGE = """<!doctype html>
   /* 카드 속성 클러스터(캐릭터+기능/정보 칩) · 종류별 캐릭터 통일 · 항상 헤드 우측 끝 고정 */
   .ds-cardtype{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding-left:10px;flex:none;
     border-left:1px solid var(--ds-hairline-soft)}
+  /* 헤더 그룹 구분선(정보·컨트롤·카드속성 사이 동일 간격·구분선 원칙) */
+  .hd-divider{align-self:center;width:1px;height:18px;background:var(--ds-hairline-soft);margin:0 4px;flex:none}
+  /* 서술형 설명 = 상단 불릿(문장 단위·마침표). 텍스트 뭉침 방지 */
+  .ds-bullets{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+  .ds-bullets li{position:relative;padding-left:15px;font-size:12.5px;line-height:1.55;color:var(--ds-muted)}
+  .ds-bullets li::before{content:"";position:absolute;left:3px;top:7px;width:4px;height:4px;border-radius:50%;background:var(--ds-primary)}
+  .ds-bullets b{color:var(--ds-ink);font-weight:700}
   /* 패널 타이틀은 카드 구분이 명확하도록 크게(전 페이지) · 홈 위젯 타이틀보다 한 단계 위 위계 */
   .panel-hd>.ds-widget__title{margin-right:auto;font-size:16.5px;font-weight:700;letter-spacing:-.015em}
   .panel-hd>.ds-widget__title span{font-size:inherit;font-weight:inherit}
@@ -3383,6 +3414,15 @@ PAGE = """<!doctype html>
   <div class="err-toast" x-show="errMsg" x-cloak x-transition.opacity x-on:click="errMsg=''">
     <span class="err-toast__ic">⚠</span><span x-text="errMsg"></span>
   </div>
+
+  <!-- 검수 완료 점수 상승(+PT) 리워드 토스트 · key 로 연속 검수 시 애니메이션 재시작 -->
+  <template x-if="ptToast">
+    <div class="pttoast" x-bind:key="ptToast.id">
+      <span class="pttoast__spark">✨</span>
+      <span class="pttoast__pt" x-text="'+' + ptToast.pts + ' PT'"></span>
+      <span class="pttoast__lbl" x-show="ptToast.label" x-text="ptToast.label"></span>
+    </div>
+  </template>
 
   <!-- 배지 달성 축하 오버레이(성취감) -->
   <div class="badgeburst" x-show="badgeToast" x-cloak x-transition.opacity x-on:click="badgeToast = null">
@@ -4472,6 +4512,7 @@ PAGE = """<!doctype html>
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
           <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
             <input type="checkbox" x-model="queueOnlyUnreviewed" x-on:change="loadQueue()"> 미검수만</label>
+          <span class="hd-divider" aria-hidden="true"></span>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
           <div class="panel-bd">
@@ -4532,7 +4573,11 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 프롬프트 스튜디오 (전용 도구) · 추출 단계별 프롬프트 ═══ -->
       <div x-show="mod === 'prompt'" x-cloak class="w-full space-y-4">
-        <p class="ds-hint hintbox">각 단계의 <b class="text-ink">원천 프롬프트</b>를 아래 <b class="text-ink">코드블록</b>에서 직접 수정합니다(관리자 전용) 단계마다 <b class="text-ink">모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 모델별로 저장됩니다 보완은 <b class="text-ink">검증 · 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다</p>
+        <ul class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>각 단계의 <b>원천 프롬프트</b>를 아래 <b>코드블록</b>에서 직접 수정합니다(관리자 전용).</li>
+          <li>단계마다 <b>모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 모델별로 저장됩니다.</li>
+          <li>보완은 <b>검증 · 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다.</li>
+        </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
         <section class="panel" data-fn><div class="panel-hd"><b>추출</b><span class="meta">대식 · 이미지 → 신호(OCR · 비전)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
@@ -4589,11 +4634,14 @@ PAGE = """<!doctype html>
             </tbody></table></div>
           </div>
         </div>
-        <div class="ds-widget ds-widget--info" style="--w-accent:#a05cff">
+        <div class="ds-widget ds-widget--info" style="--w-accent:#a05cff;min-height:auto">
           <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span>콘텐츠 출처 분류</span></div><div class="ds-widget__actions"><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">
+            <ul class="ds-bullets" style="margin-bottom:11px">
+              <li><b>식별 표준</b>: C2PA(자격 증명) · SynthID(워터마크).</li>
+              <li>발행자 정보로 <b>PGC/UGC 1차 식별</b>.</li>
+            </ul>
             <div class="flex flex-wrap gap-1.5"><span class="ds-badge ds-badge--category">PGC 기존 미디어</span><span class="ds-badge ds-badge--category">UGC 사용자 생성</span><span class="ds-badge ds-badge--category">AIGC AI 생성</span><span class="ds-badge ds-badge--category">AIEC AI 보정</span></div>
-            <p class="ds-hint" style="margin-top:8px">식별 표준 · C2PA(자격 증명) · SynthID(워터마크) 발행자 정보로 PGC/UGC 1차 식별</p>
           </div>
         </div>
       </div>
