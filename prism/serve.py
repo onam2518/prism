@@ -999,12 +999,15 @@ def register_reviewer(data: dict) -> dict:
     name = (data.get("name") or "").strip() or rv
     ch = (data.get("char") or "boksil").strip()
     team = None
+    tmode = (data.get("team_mode") or "join")
     if _supa() and hasattr(st, "ensure_team"):
-        team = st.ensure_team(rv, (data.get("team_mode") or "join"),
-                              data.get("team_name"), data.get("invite_code"))
-        if not team:
-            return {"ok": False, "error": "팀을 찾을 수 없습니다 · 초대코드를 확인하세요"}
-        st.set_reviewer(rv, name, ch, team)
+        if tmode == "none":                          # 팀 없이 가입(솔로) · 팀 생성은 관리자 메뉴
+            st.set_reviewer(rv, name, ch, None)
+        else:
+            team = st.ensure_team(rv, tmode, data.get("team_name"), data.get("invite_code"))
+            if not team:
+                return {"ok": False, "error": "팀을 찾을 수 없습니다 · 초대코드를 확인하세요"}
+            st.set_reviewer(rv, name, ch, team)
     else:
         st.set_reviewer(rv, name, ch)
     broadcast({"type": "reviewer", "reviewer": name, "char": ch})
@@ -1126,6 +1129,17 @@ def admin_action(uid, team, data, email="") -> dict:
         st.set_member_admin(team, data["member"], act == "set_admin")
     elif act == "ingest":                          # 크롤러 수량 인입 → 검토 큐
         return admin_ingest(uid, team, data.get("endpoint"), data.get("n"), email)
+    elif act == "create_team" and hasattr(st, "ensure_team"):   # 관리자: 새 팀 생성(초대코드 발급)
+        nm = (data.get("name") or "").strip()
+        if not nm:
+            return {"ok": False, "error": "팀 이름을 입력하세요"}
+        tid = st.ensure_team(uid, "create", nm)
+        if not tid:
+            return {"ok": False, "error": "팀 생성 실패"}
+        prof = st.get_reviewer(uid) if hasattr(st, "get_reviewer") else None
+        st.set_reviewer(uid, (prof or {}).get("name") or uid, (prof or {}).get("char", "boksil"), tid)
+        info = st.team_info(tid) if hasattr(st, "team_info") else None
+        return {"ok": True, "team": info, "invite": (info or {}).get("invite_code")}
     else:
         return {"ok": False, "error": "알 수 없는 액션"}
     return {"ok": True}
@@ -1851,9 +1865,9 @@ PAGE = """<!doctype html>
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
       // Supabase 인증(ID/PW) · backend==='supabase' 일 때
-      backend: 'sqlite', authToken: '', authEmail: '', authPw: '', authMode: 'login', authMsg: '',
+      backend: 'supabase', authToken: '', authEmail: '', authPw: '', authPw2: '', authMode: 'login', authMsg: '', noTeam: false,
       // 팀(멀티테넌시): 생성/가입 + 내 초대코드
-      teamMode: 'join', teamName: '', inviteCode: '', myInvite: '',
+      teamMode: 'join', teamName: '', inviteCode: '', myInvite: '', newTeamName: '', teamMsg: '',
       charOptions: [
         { id: 'boksil', label: '복실', role: '검수', img: '/vendor/boksil-catcher.svg' },
         { id: 'daesik', label: '대식', role: '추출', img: '/vendor/daesik-batter.svg' },
@@ -2068,11 +2082,15 @@ PAGE = """<!doctype html>
         if (this.backend === 'supabase') {                          // 로그인/가입 먼저
           const email = (this.authEmail || '').trim(), pw = this.authPw || '';
           if (!email || !pw) { this.authMsg = '이메일·비밀번호를 입력하세요'; return; }
+          if (this.authMode === 'signup') {
+            if (pw.length < 6) { this.authMsg = '비밀번호는 6자 이상이어야 합니다'; return; }
+            if (pw !== this.authPw2) { this.authMsg = '비밀번호가 일치하지 않습니다'; return; }
+          }
           this.authMsg = '확인 중…';
           let r;
           try { r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: this.authMode, email: email, password: pw }) })).json(); }
           catch (e) { this.authMsg = '네트워크 오류'; return; }
-          if (!r.ok) { this.authMsg = r.error || '로그인 실패'; return; }
+          if (!r.ok) { this.authMsg = this._authErr(r.error, r.raw); return; }
           this.authToken = r.access_token; this.authMsg = '';
           try { localStorage.setItem('prism_token', this.authToken); } catch (e) {}
           if (this.authMode === 'login') {                          // 로그인: 기존 프로필 로드(재입력 없음)
@@ -2096,14 +2114,24 @@ PAGE = """<!doctype html>
         try { localStorage.setItem('prism_reviewer', v); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
         // 검수자 등록(이름·캐릭터 + 팀). supabase 면 서버가 Bearer 의 uid 로 귀속(사칭 불가).
         const body = { reviewer: v, name: v, char: this.reviewerChar };
-        if (this.backend === 'supabase') { body.team_mode = this.teamMode; body.team_name = this.teamName; body.invite_code = this.inviteCode; }
+        // 팀: 없음(none) 또는 코드 참가(join). 팀 생성은 관리자 메뉴 전용.
+        if (this.backend === 'supabase') { body.team_mode = this.noTeam ? 'none' : 'join'; body.invite_code = this.inviteCode; }
         try {
           const rr = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
           if (rr && !rr.ok) { this.authMsg = rr.error || '등록 실패'; return; }
           if (rr && rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }   // 초대코드 표시
         } catch (e) {}
-        this.reviewerEditing = false;
+        this.authEmail = ''; this.authPw = ''; this.authPw2 = '';
+        this.reviewerEditing = false; this.refreshConfig();
         if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
+      },
+      _authErr(err, raw) {
+        const s = ((err || '') + ' ' + (raw || '')).toLowerCase();
+        if (s.includes('invalid') && s.includes('credential')) return '이메일 또는 비밀번호가 올바르지 않습니다';
+        if (s.includes('already') || s.includes('registered') || s.includes('exists')) return '이미 가입된 이메일입니다 · 로그인해 주세요';
+        if (s.includes('password')) return '비밀번호를 확인하세요(6자 이상)';
+        if (s.includes('email')) return '이메일 형식을 확인하세요';
+        return err || '로그인 실패';
       },
       charImg(id) { return (this.charOptions.find((c) => c.id === id) || this.charOptions[0]).img; },
       startLive() {
@@ -2161,6 +2189,17 @@ PAGE = """<!doctype html>
         if (action === 'clear_contents' && !confirm('우리 팀의 검토 콘텐츠를 모두 삭제할까요?')) return;
         try { await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: action, member: member }) }); } catch (e) {}
         this.loadAdmin();
+      },
+      async createTeam() {
+        const nm = (this.newTeamName || '').trim();
+        if (!nm) return;
+        try {
+          const r = await (await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'create_team', name: nm }) })).json();
+          if (!r || !r.ok) { this._err((r && r.error) || '팀 생성 실패'); return; }
+          this.teamMsg = '팀 생성됨 · 초대코드 ' + (r.invite || ''); this.newTeamName = '';
+          if (r.team && r.team.invite_code) this.myInvite = r.team.invite_code;
+          this.loadAdmin();
+        } catch (e) { this._err('팀 생성 실패'); }
       },
       copyInvite() { try { navigator.clipboard.writeText((this.adminData && this.adminData.team && this.adminData.team.invite_code) || ''); this.inviteCopied = true; setTimeout(() => { this.inviteCopied = false; }, 1500); } catch (e) {} },
       inviteCopied: false,
@@ -3620,7 +3659,7 @@ PAGE = """<!doctype html>
           <button type="button" x-bind:class="authMode==='login'?'sel':''" x-on:click="authMode='login';authMsg=''">로그인</button>
           <button type="button" x-bind:class="authMode==='signup'?'sel':''" x-on:click="authMode='signup';authMsg=''">가입</button>
         </div>
-        <!-- 그룹 A · 계정: 이메일·비밀번호·닉네임 한 영역 -->
+        <!-- 그룹 A · 계정: 이메일·비밀번호(+확인)·닉네임·캐릭터 -->
         <div class="onboard__group">
           <div class="onboard__grouphd">계정</div>
           <label class="onboard__lbl">이메일</label>
@@ -3629,28 +3668,33 @@ PAGE = """<!doctype html>
           <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw" x-on:keydown.enter="saveReviewer()" x-bind:style="authMode==='signup' ? 'margin-bottom:12px' : 'margin-bottom:0'">
           <template x-if="authMode==='signup'">
             <div>
+              <label class="onboard__lbl">비밀번호 확인</label>
+              <input class="field onboard__name" type="password" placeholder="비밀번호 다시 입력" x-model="authPw2" x-on:keydown.enter="saveReviewer()" style="margin-bottom:12px">
               <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시</span></label>
-              <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()" style="margin-bottom:0">
+              <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()" style="margin-bottom:12px">
+              <label class="onboard__lbl">캐릭터 선택</label>
+              <div class="onboard__chars" style="margin-bottom:0">
+                <template x-for="c in charOptions" x-bind:key="c.id">
+                  <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
+                    <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
+                    <b x-text="c.label"></b><small x-text="c.role"></small>
+                  </button>
+                </template>
+              </div>
             </div>
           </template>
         </div>
         <div class="onboard__authmsg" x-show="authMsg" x-text="authMsg"></div>
-        <!-- 그룹 B · 팀·캐릭터(가입 시) · 팀은 코드 참가만 -->
+        <!-- 그룹 B · 팀(가입 시): 코드 참가 또는 팀 없음. 팀 생성은 관리자 메뉴 -->
         <template x-if="authMode==='signup'">
           <div class="onboard__group onboard__group--b">
-            <div class="onboard__grouphd">팀 · 캐릭터</div>
-            <label class="onboard__lbl">팀 참가 <span class="onboard__hint"> 관리자에게 받은 초대 코드</span></label>
-            <input class="field onboard__name" placeholder="팀 초대 코드 (예: A1B2C3D4)" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:700" x-on:keydown.enter="saveReviewer()">
-            <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:14px">관리자에게 받은 코드를 입력하면 같은 팀으로 참가합니다</p>
-            <label class="onboard__lbl">캐릭터 선택</label>
-            <div class="onboard__chars" style="margin-bottom:0">
-              <template x-for="c in charOptions" x-bind:key="c.id">
-                <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
-                  <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
-                  <b x-text="c.label"></b><small x-text="c.role"></small>
-                </button>
-              </template>
+            <div class="onboard__grouphd" style="display:flex;align-items:center;justify-content:space-between">
+              <span>팀 참가</span>
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--ds-muted);cursor:pointer;text-transform:none;letter-spacing:0">
+                <input type="checkbox" x-model="noTeam"> 팀 없음</label>
             </div>
+            <input x-show="!noTeam" class="field onboard__name" placeholder="팀 초대 코드 (예: A1B2C3D4)" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:700" x-on:keydown.enter="saveReviewer()">
+            <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:0" x-text="noTeam ? '팀 없이 시작합니다. 나중에 관리자에게 코드를 받아 참가할 수 있어요.' : '관리자에게 받은 코드를 입력하면 같은 팀으로 참가합니다.'"></p>
           </div>
         </template>
       </div>
@@ -3672,7 +3716,7 @@ PAGE = """<!doctype html>
       </div>
 
       <button type="button" class="ds-btn ds-btn--primary onboard__cta"
-              x-bind:disabled="authToken ? !(reviewer||'').trim() : (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!(reviewer||'').trim() || !(inviteCode||'').trim())))"
+              x-bind:disabled="authToken ? !(reviewer||'').trim() : (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!authPw2 || !(reviewer||'').trim() || (!noTeam && !(inviteCode||'').trim()))))"
               x-on:click="saveReviewer()"
               x-text="authToken ? '저장하고 시작' : (authMode==='signup'?'가입하고 시작':'로그인하고 시작')"></button>
       <button type="button" class="onboard__skip" x-show="authToken" x-on:click="reviewerEditing=false">닫기</button>
@@ -4512,6 +4556,19 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 팀 관리 (멀티테넌시) ═══ -->
       <div x-show="mod === 'admin'" x-cloak class="w-full space-y-4">
+        <section class="panel" data-fn><div class="panel-hd"><b>새 팀 만들기</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:11px">
+              <li>새 팀을 만들면 <b>초대 코드</b>가 발급됩니다.</li>
+              <li>팀원은 가입 시 이 코드로 참가합니다(팀 생성은 관리자만).</li>
+            </ul>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input class="field" style="flex:1;min-width:200px;height:38px" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="newTeamName" x-on:keydown.enter="createTeam()">
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-on:click="createTeam()" x-bind:disabled="!(newTeamName||'').trim()">만들기</button>
+              <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="teamMsg"></span>
+            </div>
+          </div>
+        </section>
         <section class="panel"><div class="panel-hd"><b>팀 정보</b><span class="meta" x-text="adminData&&adminData.team ? adminData.team.name : ''"></span></div>
           <div class="panel-bd">
             <div class="invite">
