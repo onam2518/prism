@@ -2756,7 +2756,8 @@
   .panel{border:1px solid var(--ds-border-card);border-radius:var(--ds-radius-lg);background:var(--ds-surface);overflow:hidden;
     box-shadow:var(--ds-shadow-low);transition:border-color var(--ds-motion-fast) var(--ds-ease-standard)}
   .panel:hover{border-color:var(--ds-border-input-hover)}
-  .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 20px 6px}
+  .panel-hd{display:flex;align-items:center;gap:12px;padding:18px 20px 8px}
+  .panel-hd>b{margin-right:auto}
   .panel-hd b{color:var(--ds-ink);font-size:13px;font-weight:600;letter-spacing:.01em}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
   .panel-bd{padding:16px 20px 20px}
@@ -2951,6 +2952,21 @@
   .arena-quest--done{cursor:default;background:rgba(255,255,255,.1)}
   .arena-cols{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}
   @media (max-width:820px){.arena-cols{grid-template-columns:1fr}}
+  /* 홈 아레나: 세로 스택(가로 full 사용) · 캐릭터 히어로 상단 */
+  .arena-cols{display:flex;flex-direction:column;gap:16px}
+  .arena-charpanel{order:-1}
+  .charcard--wide{text-align:left;padding:22px 22px 18px}
+  .charcard--wide .charcard__top{display:flex;gap:24px;align-items:center}
+  .charcard--wide .charcard__avatar{flex:none;margin:0}
+  .charcard--wide .charcard__info{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+  .charcard--wide .charcard__title{margin:0;font-size:17px}
+  .charcard--wide .charcard__xpwrap{padding:0}
+  .charcard--wide .charcard__stats{justify-content:flex-start;gap:26px;margin:2px 0}
+  .charcard--wide .charcard__mission{margin-top:2px}
+  .charcard--wide .charcard__badges-hd{margin-top:16px}
+  .charcard--wide .charcard__badges{grid-template-columns:repeat(auto-fill,minmax(82px,1fr))}
+  @media (max-width:640px){.charcard--wide .charcard__top{flex-direction:column;text-align:center}
+    .charcard--wide .charcard__stats{justify-content:center}}
   .lb-row{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--ds-hairline-soft)}
   .lb-row--me{background:var(--ds-violet-tint,rgba(30,132,255,0.16));border-radius:9px;border-bottom-color:transparent}
   .lb-rank{width:30px;text-align:center;font-weight:700;font-size:14px}
@@ -4177,31 +4193,35 @@
               <div x-show="!(arenaData&&arenaData.leaderboard&&arenaData.leaderboard.length)" class="text-xs text-muted" style="padding:12px">아직 검수 기록이 없습니다 · <b class="text-ink">검수 큐</b>에서 첫 검수를 해보세요</div>
             </div>
           </section>
-          <!-- 내 검수 캐릭터 (육성) -->
-          <section class="panel"><div class="panel-hd"><b>내 검수 캐릭터</b><span class="meta" x-text="reviewer ? reviewer : '이름 미설정'"></span></div>
+          <!-- 내 검수 캐릭터 (육성) · 상단 히어로 -->
+          <section class="panel arena-charpanel"><div class="panel-hd"><b>내 검수 캐릭터</b><span class="meta" x-text="reviewer ? reviewer : '이름 미설정'"></span></div>
             <div class="panel-bd">
               <div x-show="!reviewer" class="text-xs text-muted" style="padding:8px">우상단에서 <b class="text-ink">검수자 이름</b>을 설정하면 나만의 캐릭터가 생깁니다</div>
               <template x-if="reviewer && arenaMe">
-                <div class="charcard" x-bind:data-tier="levelTier(arenaMe.level)">
-                  <div class="charcard__avatar">
-                    <span class="charcard__glow"></span>
-                    <img x-bind:src="charImg(arenaMe.char || reviewerChar)" alt="검수 캐릭터">
-                    <span class="charcard__lvl" x-text="'Lv.' + arenaMe.level"></span>
-                  </div>
-                  <div class="charcard__title"><span x-text="levelEmoji(arenaMe.level)"></span> <span x-text="levelTitle(arenaMe.level)"></span> <span class="charcard__flow" x-text="flowStageKr(arenaMe.level)"></span></div>
-                  <div class="charcard__xpwrap">
-                    <div class="charcard__xpbar"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
-                    <div class="charcard__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
-                  </div>
-                  <div class="charcard__stats">
-                    <div><b class="tnum" x-text="arenaMe.reviews"></b><span>검수</span></div>
-                    <div><b class="tnum" x-text="arenaMe.corrections"></b><span>개선 🏅</span></div>
-                    <div><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>🔥 스트릭</span></div>
-                  </div>
-                  <div class="charcard__mission" x-on:click="selectMod(todayMission.to)">
-                    <span class="charcard__mission-ic">🎯</span>
-                    <span class="charcard__mission-tx" x-text="todayMission.txt"></span>
-                    <span class="charcard__mission-cta" x-text="todayMission.cta + ' →'"></span>
+                <div class="charcard charcard--wide" x-bind:data-tier="levelTier(arenaMe.level)">
+                  <div class="charcard__top">
+                    <div class="charcard__avatar">
+                      <span class="charcard__glow"></span>
+                      <img x-bind:src="charImg(arenaMe.char || reviewerChar)" alt="검수 캐릭터">
+                      <span class="charcard__lvl" x-text="'Lv.' + arenaMe.level"></span>
+                    </div>
+                    <div class="charcard__info">
+                      <div class="charcard__title"><span x-text="levelEmoji(arenaMe.level)"></span> <span x-text="levelTitle(arenaMe.level)"></span> <span class="charcard__flow" x-text="flowStageKr(arenaMe.level)"></span></div>
+                      <div class="charcard__xpwrap">
+                        <div class="charcard__xpbar"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
+                        <div class="charcard__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
+                      </div>
+                      <div class="charcard__stats">
+                        <div><b class="tnum" x-text="arenaMe.reviews"></b><span>검수</span></div>
+                        <div><b class="tnum" x-text="arenaMe.corrections"></b><span>개선 🏅</span></div>
+                        <div><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>🔥 스트릭</span></div>
+                      </div>
+                      <div class="charcard__mission" x-on:click="selectMod(todayMission.to)">
+                        <span class="charcard__mission-ic">🎯</span>
+                        <span class="charcard__mission-tx" x-text="todayMission.txt"></span>
+                        <span class="charcard__mission-cta" x-text="todayMission.cta + ' →'"></span>
+                      </div>
+                    </div>
                   </div>
                   <div class="charcard__badges-hd">배지 컬렉션 <b x-text="badgeGot + ' / ' + badges().length"></b></div>
                   <div class="charcard__badges">
