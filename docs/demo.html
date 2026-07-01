@@ -3088,6 +3088,10 @@
     box-shadow:0 1px 2px rgba(0,0,0,.05),var(--ds-highlight);position:relative;z-index:30}
   /* 로고 영역 = 카드 왼쪽~구분선(폭 232 = 사이드바 폭), 콘텐츠 가운데 정렬 */
   .topbar__brand{width:232px;flex:none;display:flex;align-items:center;justify-content:center;gap:10px;border-right:1px solid var(--ds-hairline)}
+  /* 제공된 풀 로고(배지+PRISM+태그라인) · 라이트/다크 스왑 */
+  .topbar__logo{height:44px;width:auto;display:block}
+  .topbar__logo--dark{display:none}
+  [data-theme='dark'] .topbar__logo--light{display:none} [data-theme='dark'] .topbar__logo--dark{display:block}
   .topbar__brand .logo{width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:none}
   .topbar__brand .logo img{width:100%;height:100%}
   .topbar__wm{font-family:var(--ds-font-sans);font-weight:600;font-size:var(--ds-size-subtitle);color:var(--ds-ink);line-height:1.12}
@@ -3545,7 +3549,9 @@
 
   <!-- ━━━━━ 상단 바: 로고 | 타이틀(고정) | 도구 ━━━━━ -->
   <header class="topbar">
-    <div class="topbar__brand" x-on:click="selectMod('home')" style="cursor:pointer" role="button" aria-label="홈으로"><span class="logo"><img src="demo-assets/prism-mark.svg" alt="Prism"></span><div class="topbar__wm">Prism<small>A lens on content &amp; users</small></div></div>
+    <div class="topbar__brand" x-on:click="selectMod('home')" style="cursor:pointer" role="button" aria-label="홈으로">
+      <img class="topbar__logo topbar__logo--light" src="demo-assets/prism-logo-tagline-light.png" alt="Prism · A lens on content & users">
+      <img class="topbar__logo topbar__logo--dark" src="demo-assets/prism-logo-tagline-dark.png" alt="Prism · A lens on content & users"></div>
     <div class="topbar__title">
       <div class="homehead__title" x-text="modLabel"></div>
       <div class="homehead__sub" x-text="modSub"></div>
