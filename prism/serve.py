@@ -1944,7 +1944,7 @@ PAGE = """<!doctype html>
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '팀 정확도를 함께 끌어올리는 평가 아레나 · 검수할수록 점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -2188,18 +2188,25 @@ PAGE = """<!doctype html>
       badges() {
         const m = this.arenaMe; const r = (m&&m.reviews)||0, c = (m&&m.corrections)||0, s = (m&&m.streak)||0, L = (m&&m.level)||0;
         const acc = (this.arenaData && this.arenaData.accuracy) || 0;
+        // 확정 배지 세트(12) · 아레나 데이터에서 파생(백엔드 무변경). 5분류: 볼륨·스트릭·기여·성과·지위(SAPS Status).
+        // cur/target/unit = 미획득 배지 진행도(모달 표시용).
+        const acp = Math.round(acc * 100);
         return [
-          { icon: '🌱', label: '첫 검수', desc: '첫 검수를 완료', exp: 10, color: '#18ba45', got: r >= 1 },
-          { icon: '🔥', label: '연속 3일', desc: '3일 연속 검수', exp: 15, color: '#ff9429', got: s >= 3 },
-          { icon: '⚡', label: '연속 7일', desc: '7일 연속 검수', exp: 30, color: '#ff6a3d', got: s >= 7 },
-          { icon: '📚', label: '검수 50', desc: '누적 50건 검수', exp: 50, color: '#1e84ff', got: r >= 50 },
-          { icon: '💯', label: '검수 100', desc: '누적 100건 검수', exp: 100, color: '#5c77ff', got: r >= 100 },
-          { icon: '🏅', label: '개선 채택', desc: '개선안이 채택됨', exp: 25, color: '#a05cff', got: c >= 1 },
-          { icon: '⭐', label: 'Lv.5', desc: '레벨 5 도달', exp: 50, color: '#ffb020', got: L >= 5 },
-          { icon: '👑', label: '마스터', desc: '레벨 10 도달', exp: 200, color: '#f5a623', got: L >= 10 },
-          { icon: '🎯', label: '정확도 90%', desc: '팀 정확도 90%', exp: 40, color: '#18ba45', got: acc >= 0.9 },
+          { icon: '🌱', label: '첫 검수', desc: '첫 검수를 완료했어요', exp: 10, color: '#18ba45', cat: '볼륨', cur: r, target: 1, unit: '검수', got: r >= 1 },
+          { icon: '📖', label: '검수 50', desc: '누적 50건 검수', exp: 50, color: '#1e84ff', cat: '볼륨', cur: r, target: 50, unit: '검수', got: r >= 50 },
+          { icon: '📚', label: '검수 100', desc: '누적 100건 검수', exp: 100, color: '#5c77ff', cat: '볼륨', cur: r, target: 100, unit: '검수', got: r >= 100 },
+          { icon: '🏆', label: '검수 300', desc: '누적 300건 검수', exp: 250, color: '#f5a623', cat: '볼륨', cur: r, target: 300, unit: '검수', got: r >= 300 },
+          { icon: '🔥', label: '연속 3일', desc: '3일 연속 검수', exp: 15, color: '#ff9429', cat: '스트릭', cur: s, target: 3, unit: '일', got: s >= 3 },
+          { icon: '⚡', label: '연속 7일', desc: '7일 연속 검수', exp: 30, color: '#ff6a3d', cat: '스트릭', cur: s, target: 7, unit: '일', got: s >= 7 },
+          { icon: '☄️', label: '연속 14일', desc: '14일 연속 검수', exp: 70, color: '#ff4e33', cat: '스트릭', cur: s, target: 14, unit: '일', got: s >= 14 },
+          { icon: '🏅', label: '개선 채택', desc: '개선안이 채택됐어요', exp: 25, color: '#a05cff', cat: '기여', cur: c, target: 1, unit: '개선', got: c >= 1 },
+          { icon: '🛠️', label: '개선 10', desc: '개선안 10건 채택', exp: 90, color: '#7c5cff', cat: '기여', cur: c, target: 10, unit: '개선', got: c >= 10 },
+          { icon: '🎯', label: '정확도 90%', desc: '팀 정확도 90% 달성', exp: 40, color: '#18ba45', cat: '성과', cur: acp, target: 90, unit: '%', got: acc >= 0.9 },
+          { icon: '⭐', label: 'Lv.5', desc: '레벨 5 도달', exp: 50, color: '#ffb020', cat: '지위', cur: L, target: 5, unit: 'Lv', got: L >= 5 },
+          { icon: '👑', label: '마스터', desc: '레벨 10 도달(마스터)', exp: 200, color: '#f5a623', cat: '지위', cur: L, target: 10, unit: 'Lv', got: L >= 10 },
         ];
       },
+      badgeModalOpen: false,
       get badgeGot() { return this.badges().filter((x) => x.got).length; },
       async checkBadges() {
         if (!this.arenaMe) return;
@@ -3118,18 +3125,26 @@ PAGE = """<!doctype html>
   /* 홈 아레나: 세로 스택(가로 full 사용) · 캐릭터 히어로 상단 */
   .arena-cols{display:flex;flex-direction:column;gap:16px}
   .arena-charpanel{order:-1}
-  .charcard--wide{text-align:left;padding:22px 22px 18px}
-  .charcard--wide .charcard__top{display:flex;gap:24px;align-items:center}
-  .charcard--wide .charcard__avatar{flex:none;margin:0}
-  .charcard--wide .charcard__info{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
-  .charcard--wide .charcard__title{margin:0;font-size:17px}
-  .charcard--wide .charcard__xpwrap{padding:0}
-  .charcard--wide .charcard__stats{justify-content:flex-start;gap:26px;margin:2px 0}
-  .charcard--wide .charcard__mission{margin-top:2px}
-  .charcard--wide .charcard__badges-hd{margin-top:16px}
-  .charcard--wide .charcard__badges{grid-template-columns:repeat(auto-fill,minmax(82px,1fr))}
-  @media (max-width:640px){.charcard--wide .charcard__top{flex-direction:column;text-align:center}
-    .charcard--wide .charcard__stats{justify-content:center}}
+  /* 2분할 선수 카드: 좌=캐릭터·스탯·검수하기 · 우=모은 배지 컬렉션 */
+  .charcard--split{text-align:left;padding:0;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.15fr);gap:0;overflow:hidden}
+  .charcard--split .charcard__player{display:flex;gap:22px;align-items:center;padding:24px 26px;
+    border-right:1px solid var(--ds-hairline-soft)}
+  .charcard--split .charcard__avatar{flex:none;margin:0}
+  .charcard--split .charcard__info{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+  .charcard--split .charcard__title{margin:0;font-size:17px}
+  .charcard--split .charcard__xpwrap{padding:0}
+  .charcard--split .charcard__stats{justify-content:flex-start;gap:26px;margin:2px 0}
+  .charcard--split .charcard__mission{margin-top:2px}
+  .charcard--split .charcard__collection{padding:20px 22px;display:flex;flex-direction:column;min-width:0}
+  .charcard--split .charcard__badges-hd{margin-top:0;display:flex;align-items:center;gap:8px}
+  .charcard--split .charcard__badges{grid-template-columns:repeat(auto-fill,minmax(74px,1fr));max-height:196px;overflow:hidden}
+  @media (max-width:900px){.charcard--split{grid-template-columns:1fr}
+    .charcard--split .charcard__player{border-right:0;border-bottom:1px solid var(--ds-hairline-soft)}}
+  @media (max-width:640px){.charcard--split .charcard__player{flex-direction:column;text-align:center}
+    .charcard--split .charcard__stats{justify-content:center}}
+  .charcard__more{margin-left:auto;font-size:11px;font-weight:700}
+  /* 배지 카테고리 라벨(작게) */
+  .gbadge__cat{display:block;margin-top:1px;font-size:9px;font-weight:700;color:var(--ds-muted);letter-spacing:.02em}
   .lb-row{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--ds-hairline-soft)}
   .lb-row--me{background:var(--ds-violet-tint,rgba(30,132,255,0.16));border-radius:9px;border-bottom-color:transparent}
   .lb-rank{width:30px;text-align:center;font-weight:700;font-size:14px}
@@ -3209,6 +3224,30 @@ PAGE = """<!doctype html>
   .gbadge.locked .gbadge__exp{color:var(--ds-muted);background:var(--ds-surface-table)}
   /* 배지 달성 축하 오버레이 */
   /* 검수 완료 +PT 리워드 토스트(위로 떠오르며 페이드) */
+  /* 배지 전체 보기 모달 */
+  .badgemodal{background:var(--ds-layer-popup,var(--ds-surface-white));border-radius:var(--ds-radius-xl);box-shadow:var(--ds-shadow-high);
+    width:min(920px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;padding:22px 24px 8px}
+  .badgemodal__hd{display:flex;align-items:center;gap:12px}
+  .badgemodal__ttl{font-family:var(--ds-font-display);font-size:20px;font-weight:800;color:var(--ds-ink)}
+  .badgemodal__lvwrap{display:flex;align-items:center;gap:10px;margin-left:auto}
+  .badgemodal__lv{font-family:var(--ds-font-display);font-weight:800;font-size:13px;color:#b8791f;background:rgba(255,148,41,.18);padding:3px 12px;border-radius:9999px}
+  .badgemodal__count{font-family:var(--ds-font-display);font-size:15px;color:var(--ds-muted)} .badgemodal__count b{color:var(--ds-ink)}
+  .badgemodal__xp{margin:14px 0 4px} .badgemodal__xptxt{margin-top:6px;font-size:12px;color:var(--ds-muted)} .badgemodal__xptxt b{color:var(--ds-ink)}
+  .badgemodal__grid{margin-top:10px;overflow:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:6px 2px 16px}
+  @media (max-width:720px){.badgemodal__grid{grid-template-columns:repeat(2,1fr)}}
+  .bmcard{position:relative;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-lg);padding:18px 14px 14px;
+    display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;background:var(--ds-surface-white);transition:transform .15s,box-shadow .15s}
+  .bmcard.got{border-color:color-mix(in srgb,var(--bc,#1e84ff) 45%,transparent);box-shadow:0 8px 22px -12px color-mix(in srgb,var(--bc,#1e84ff) 60%,transparent)}
+  .bmcard.got:hover{transform:translateY(-3px)}
+  .bmcard.locked{opacity:.72;filter:saturate(.5)}
+  .bmcard__cat{position:absolute;top:9px;left:11px;font-size:9px;font-weight:800;color:var(--ds-muted);letter-spacing:.03em}
+  .bmcard__orb{width:56px;height:56px;margin:6px 0 2px}
+  .bmcard__label{font-family:var(--ds-font-display);font-size:14px;font-weight:800;color:var(--ds-ink)}
+  .bmcard__exp{font-family:var(--ds-font-display);font-size:11px;font-weight:800;color:#b8791f;background:rgba(255,148,41,.16);padding:2px 9px;border-radius:9999px}
+  .bmcard__desc{font-size:11.5px;color:var(--ds-muted);line-height:1.45}
+  .bmcard__foot{margin-top:4px;font-size:11.5px;font-weight:800;color:var(--ds-muted);font-family:var(--ds-font-display)}
+  .bmcard__foot.is-got{color:#0f8f36}
+  [data-theme='dark'] .badgemodal__lv,[data-theme='dark'] .bmcard__exp{color:#ffc266}
   .pttoast{position:fixed;left:50%;bottom:96px;z-index:96;pointer-events:none;display:inline-flex;align-items:center;gap:9px;
     padding:11px 22px;border-radius:9999px;background:linear-gradient(135deg,#22c24e,#0f8f36);color:#fff;
     font-family:var(--ds-font-display);font-weight:800;box-shadow:0 10px 26px -6px rgba(24,186,69,.6),0 0 0 4px rgba(24,186,69,.18);
@@ -3473,6 +3512,41 @@ PAGE = """<!doctype html>
     </div>
   </template>
 
+  <!-- 배지 전체 보기 모달(목록 + 달성 여부·진행도) -->
+  <div class="ds-dialog-backdrop" x-show="badgeModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="badgeModalOpen=false" style="z-index:74">
+    <div class="badgemodal" x-show="badgeModalOpen" x-transition>
+      <div class="badgemodal__hd">
+        <div class="badgemodal__ttl">배지 컬렉션</div>
+        <template x-if="arenaMe">
+          <div class="badgemodal__lvwrap">
+            <span class="badgemodal__lv" x-text="'Lv.' + arenaMe.level"></span>
+            <span class="badgemodal__count"><b x-text="badgeGot"></b> / <span x-text="badges().length"></span></span>
+          </div>
+        </template>
+        <button type="button" class="ds-iconbtn" x-on:click="badgeModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      </div>
+      <template x-if="arenaMe">
+        <div class="badgemodal__xp">
+          <div class="charcard__xpbar"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
+          <div class="badgemodal__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
+        </div>
+      </template>
+      <div class="badgemodal__grid">
+        <template x-for="(bd, i) in badges()" x-bind:key="i">
+          <div class="bmcard" x-bind:class="bd.got ? 'got' : 'locked'" x-bind:style="bd.got ? ('--bc:' + bd.color) : ''">
+            <span class="bmcard__cat" x-text="bd.cat"></span>
+            <span class="gbadge__orb bmcard__orb"><span class="gbadge__ic" x-text="bd.got ? bd.icon : '🔒'"></span></span>
+            <span class="bmcard__label" x-text="bd.label"></span>
+            <span class="bmcard__exp" x-text="'+' + bd.exp + ' EXP'"></span>
+            <span class="bmcard__desc" x-text="bd.desc"></span>
+            <span class="bmcard__foot" x-bind:class="bd.got ? 'is-got' : ''"
+                  x-text="bd.got ? '✓ 달성 완료' : (Math.min(bd.cur, bd.target) + ' / ' + bd.target + ' ' + bd.unit)"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
   <!-- 배지 달성 축하 오버레이(성취감) -->
   <div class="badgeburst" x-show="badgeToast" x-cloak x-transition.opacity x-on:click="badgeToast = null">
     <div class="badgeburst__card" x-bind:style="badgeToast ? ('--bc:' + badgeToast.color) : ''">
@@ -3692,10 +3766,12 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) · 관리자 전용 ═══ -->
       <div x-show="mod === 'auto'" x-cloak class="w-full space-y-4">
-        <ul x-show="!(backend === 'supabase' && adminData && adminData.isAdmin)" class="ds-bullets hintbox" style="padding:14px 16px">
-          <li>자동 인입은 <b>운영(팀) 관리자</b> 전용입니다.</li>
-          <li>로컬 단독 실행에서는 <b>수동 추출</b>을 사용하세요.</li>
-        </ul>
+        <template x-if="!(backend === 'supabase' && adminData && adminData.isAdmin)">
+          <ul class="ds-bullets hintbox" style="padding:14px 16px">
+            <li>자동 인입은 <b>운영(팀) 관리자</b> 전용입니다.</li>
+            <li>로컬 단독 실행에서는 <b>수동 추출</b>을 사용하세요.</li>
+          </ul>
+        </template>
         <template x-if="backend === 'supabase' && adminData && adminData.isAdmin">
         <div class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
@@ -4515,8 +4591,9 @@ PAGE = """<!doctype html>
             <div class="panel-bd">
               <div x-show="!reviewer" class="text-xs text-muted" style="padding:8px">우상단에서 <b class="text-ink">검수자 이름</b>을 설정하면 나만의 캐릭터가 생깁니다</div>
               <template x-if="reviewer && arenaMe">
-                <div class="charcard charcard--wide" x-bind:data-tier="levelTier(arenaMe.level)">
-                  <div class="charcard__top">
+                <div class="charcard charcard--split" x-bind:data-tier="levelTier(arenaMe.level)">
+                  <!-- 좌: 선수 카드(캐릭터·레벨·스탯·검수하기) -->
+                  <div class="charcard__player">
                     <div class="charcard__avatar">
                       <span class="charcard__glow"></span>
                       <img x-bind:src="charImg(arenaMe.char || reviewerChar)" alt="검수 캐릭터">
@@ -4540,15 +4617,19 @@ PAGE = """<!doctype html>
                       </div>
                     </div>
                   </div>
-                  <div class="charcard__badges-hd">배지 컬렉션 <b x-text="badgeGot + ' / ' + badges().length"></b></div>
-                  <div class="charcard__badges">
-                    <template x-for="(bd, i) in badges()" x-bind:key="i">
-                      <div class="gbadge" x-bind:class="bd.got ? 'got' : 'locked'" x-bind:style="bd.got ? ('--bc:' + bd.color) : ''" x-bind:data-tip="bd.desc" data-tip-pos="top">
-                        <span class="gbadge__orb"><span class="gbadge__ic" x-text="bd.got ? bd.icon : '🔒'"></span></span>
-                        <span class="gbadge__label" x-text="bd.label"></span>
-                        <span class="gbadge__exp" x-text="'+' + bd.exp + ' EXP'"></span>
-                      </div>
-                    </template>
+                  <!-- 우: 모은 배지 컬렉션 -->
+                  <div class="charcard__collection">
+                    <div class="charcard__badges-hd">배지 컬렉션 <b x-text="badgeGot + ' / ' + badges().length"></b>
+                      <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm charcard__more" x-on:click="badgeModalOpen=true">전체 보기 →</button></div>
+                    <div class="charcard__badges">
+                      <template x-for="(bd, i) in badges()" x-bind:key="i">
+                        <div class="gbadge" x-bind:class="bd.got ? 'got' : 'locked'" x-bind:style="bd.got ? ('--bc:' + bd.color) : ''" x-bind:data-tip="bd.desc + ' · +' + bd.exp + ' EXP'" data-tip-pos="top">
+                          <span class="gbadge__orb"><span class="gbadge__ic" x-text="bd.got ? bd.icon : '🔒'"></span></span>
+                          <span class="gbadge__label" x-text="bd.label"></span>
+                          <span class="gbadge__cat" x-text="bd.cat"></span>
+                        </div>
+                      </template>
+                    </div>
                   </div>
                 </div>
               </template>
