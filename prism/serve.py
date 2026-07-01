@@ -91,6 +91,7 @@ def store_save(pairs, source: str = "단건", team=None):
     적재 정책(dedup): 동일 콘텐츠 + 결과 무변경이면 적재 제외(skip), 변경 시 갱신, 신규는 추가."""
     outs = [o for _, o in pairs]
     _LAST_RESULTS[:] = outs
+    _agg_bump()                          # 결과 변경 → 집계 캐시 무효화
     st = get_store()
     if st:
         try:
@@ -111,6 +112,30 @@ def results_rows(limit: int = 5000, team=None) -> list:
         except Exception:
             pass
     return _LAST_RESULTS
+
+
+# ── 집계 캐시(B-4): 대시보드·아레나는 매 로드마다 최대 5000행 재스캔 → 짧은 TTL 메모 ──
+# 쓰기(추출·인입·피드백·동기화) 시 _agg_bump() 로 무효화. ThreadingHTTPServer 다중스레드는
+# GIL 하 dict 원자성으로 충분(중복 계산은 무해). TTL 은 안전망(무효화 누락 대비).
+_AGG_CACHE = {}                      # key -> (expiry_ts, version, value)
+_AGG_VERSION = 0
+_AGG_TTL = 30.0
+
+
+def _agg_bump():
+    """집계 캐시 무효화(버전 증가). 결과·피드백이 바뀌는 모든 경로에서 호출."""
+    global _AGG_VERSION
+    _AGG_VERSION += 1
+
+
+def _agg_cached(key, fn, ttl: float = _AGG_TTL):
+    now = time.time()
+    hit = _AGG_CACHE.get(key)
+    if hit and hit[0] > now and hit[1] == _AGG_VERSION:
+        return hit[2]
+    val = fn()
+    _AGG_CACHE[key] = (now + ttl, _AGG_VERSION, val)
+    return val
 
 
 # ── multipart/form-data 파서 (cgi 제거된 3.13+ 대응, stdlib만) ───────────────
@@ -330,7 +355,12 @@ def topics_data() -> dict:
 
 
 def dashboard_data(team=None) -> dict:
-    """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8: \uc801\uc7ac \uacb0\uacfc \uc9d1\uacc4(\uc720\ud1b5 G/R \u00b7 \uc778\ud150\ud2b8 \u00b7 \uce74\ud14c\uace0\ub9ac \u00b7 \ud488\uc9c8 \uc0ac\uc720). team \ubcc4 \uc2a4\ucf54\ud551."""
+    """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8 \uc9d1\uacc4. team \ubcc4 \uc2a4\ucf54\ud551 \u00b7 \uc9e7\uc740 TTL \uce90\uc2dc(\ubc18\ubcf5 \ub85c\ub4dc \uc2dc 5000\ud589 \uc7ac\uc2a4\uce94 \ubc29\uc9c0)."""
+    return _agg_cached(("dash", team), lambda: _dashboard_compute(team))
+
+
+def _dashboard_compute(team=None) -> dict:
+    """\uc801\uc7ac \uacb0\uacfc \uc9d1\uacc4(\uc720\ud1b5 G/R \u00b7 \uc778\ud150\ud2b8 \u00b7 \uce74\ud14c\uace0\ub9ac \u00b7 \ud488\uc9c8 \uc0ac\uc720) + \ucf58\ud150\uce20\ubcc4 \ud53c\ub4dc\ubc31."""
     rows = results_rows(team=team)
     n = len(rows)
     g = sum(1 for r in rows if (r.get("quality_meta") or {}).get("finalGrade") == "G")
@@ -776,6 +806,7 @@ def apply_feedback(data: dict) -> dict:
             threading.Thread(target=_reap_async, args=(ch, reviewer, fb),
                              daemon=True).start()
     sync_learned()                                 # 다음 추출부터 자동 반영
+    _agg_bump()                                    # 피드백/정확도 변경 → 집계·아레나 캐시 무효화
     return {"ok": True, "feedback": st.feedback_stats(),
             "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
 
@@ -1034,7 +1065,11 @@ def admin_action(uid, team, data) -> dict:
 
 
 def arena_data(team=None) -> dict:
-    """평가 아레나(게임화) 데이터: 팀 정확도 + 리더보드 + 검수 대기(퀘스트). team 별 스코핑."""
+    """평가 아레나(게임화) 데이터: 팀 정확도 + 리더보드 + 검수 대기(퀘스트). team 별 스코핑 · TTL 캐시."""
+    return _agg_cached(("arena", team), lambda: _arena_compute(team), ttl=15.0)
+
+
+def _arena_compute(team=None) -> dict:
     st = get_store()
     if not st:
         return {"accuracy": 0, "good": 0, "bad": 0, "reviews": 0, "week_reviews": 0,

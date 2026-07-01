@@ -127,6 +127,26 @@ class TestBadges(unittest.TestCase):
             S.get_store = orig
 
 
+class TestAggCache(unittest.TestCase):
+    def test_memo_and_invalidation(self):
+        import prism.serve as S
+        S._AGG_CACHE.clear()
+        calls = {"n": 0}
+
+        def fn():
+            calls["n"] += 1
+            return calls["n"]
+
+        a = S._agg_cached(("t", None), fn)
+        b = S._agg_cached(("t", None), fn)          # 캐시 히트 → 재계산 없음
+        self.assertEqual(a, b)
+        self.assertEqual(calls["n"], 1)
+        S._agg_bump()                                # 무효화 → 재계산
+        c = S._agg_cached(("t", None), fn)
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(c, 2)
+
+
 class TestVerify(unittest.TestCase):
     def test_content_category_tier1_whitelist_list(self):
         from prism.verify import verify_item
