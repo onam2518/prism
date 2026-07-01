@@ -2554,12 +2554,15 @@ PAGE = """<!doctype html>
     --ctrl-h:42px; --ctrl-r:10px; --ctrl-px:12px;
   }
   [data-theme]{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font-game)}
-  /* 게임형 디스플레이 폰트(GmarketSans) 적용: 제목·큰 숫자·레벨·점수 등 강조 요소만. 본문·라벨은 Pretendard 유지 */
-  .panel-hd>.ds-widget__title,.panel-hd b,.ds-widget__title,.homehead__title,
+  /* 게임형 디스플레이 폰트(GmarketSans) 적용: 제목·큰 숫자·레벨·점수 + 사이드바·타이틀·탭 등 UI 크롬. 본문·표·입력은 Pretendard 유지 */
+  .panel-hd>.ds-widget__title,.panel-hd b,.ds-widget__title,.homehead__title,.homehead__sub,
   .arena-hero__big,.arena-hero__eyebrow,.ds-stat__value,.tile .n,.goldbig__v,.goldstat b,
   .lb-pts,.lb-name>span:first-child,.charcard__lvl,.charcard__title,.charcard__xptxt b,
-  .badgeburst__label,.badgeburst__ttl,.gbadge__exp,.badgeburst__exp,.side-profile__score,.side-profile__gain,
+  .badgeburst__label,.badgeburst__ttl,.gbadge__exp,.badgeburst__exp,.side-profile__score,.side-profile__gain,.side-profile__name,
+  .topbar__wm,.ds-navitem,.ds-navgroup__label,.evaltabs button,.seg button,.verdictbtn,
   .tnum{font-family:var(--ds-font-display)}
+  .topbar__wm small{font-family:var(--ds-font)}   /* 영문 태그라인은 Pretendard 유지 */
+  .homehead__title{font-family:var(--ds-font-display)}   /* 3192 라인 재정의 방지(뒤에서 승리) */
   html{scroll-behavior:smooth}
   /* 문서를 뷰포트에 고정 → 스크롤은 .appbody 안에서만 상단 바(.topbar)는 절대 안 따라옴 */
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
@@ -2589,9 +2592,13 @@ PAGE = """<!doctype html>
     padding:6px 9px;color:var(--ds-body);font-size:12.5px;line-height:1.5;word-break:keep-all;overflow-wrap:break-word}
   .tbox .nm{display:block;font-weight:600;color:var(--ds-ink);margin-bottom:1px}
   .ds-table td{vertical-align:top}
-  /* 패널 내부 표: 카드 안쪽으로 정렬 · 행 배경(hover/선택)이 카드 모서리에 닿지 않게 좌우 인셋 */
-  .panel .overflow-auto:has(> .ds-table){padding-left:8px;padding-right:8px}
-  .panel .ds-table th:first-child,.panel .ds-table td:first-child{padding-left:12px}
+  /* 패널 내부 표 = 카드 안쪽에 '독립된 둥근 표 블록'으로 분리(카드 레이어와 겹침 방지).
+     사방 여백 + 자체 테두리·라운드 + overflow 클립으로 표 선이 카드 모서리에 닿지 않게. */
+  .panel .overflow-auto:has(> .ds-table){margin:2px 16px 16px;border:1px solid var(--ds-hairline);
+    border-radius:12px;overflow:auto;background:var(--ds-surface-white)}
+  .panel .overflow-auto:has(> .ds-table) .ds-table th{border-top:0}
+  .panel .overflow-auto:has(> .ds-table) .ds-table tbody tr:last-child td{border-bottom:0}
+  .panel .ds-table th:first-child,.panel .ds-table td:first-child{padding-left:14px}
   .panel .ds-table th:last-child,.panel .ds-table td:last-child{padding-right:12px}
   .panel .ds-table tbody tr{border-radius:8px}
   /* 표 안에서는 박스 테두리 제거(행 구분선과 이중선으로 겹쳐 보임) → 옅은 배경만으로 값 구분 */
@@ -3161,9 +3168,9 @@ PAGE = """<!doctype html>
   .side-profile[data-tier="3"]{--tier-c:#ff9429} .side-profile[data-tier="4"]{--tier-c:#a05cff} .side-profile[data-tier="5"]{--tier-c:#ffb020}
   .side-profile__lvl{position:absolute;bottom:-3px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:800;color:#fff;
     background:var(--tier-c,#ffb020);padding:1px 9px;border-radius:9999px;box-shadow:0 2px 5px rgba(0,0,0,.28);white-space:nowrap;z-index:2}
-  .side-profile__gain{position:absolute;top:-3px;right:-4px;font-size:11px;font-weight:800;color:#0f8f36;
-    background:rgba(24,186,69,.16);border:1px solid rgba(24,186,69,.42);padding:1px 7px;border-radius:9999px;
-    box-shadow:0 2px 6px rgba(24,186,69,.32);animation:sp-float 3s ease-in-out infinite;z-index:2}
+  .side-profile__gain{position:absolute;top:9px;left:10px;font-size:11px;font-weight:800;color:#0f8f36;
+    background:rgba(24,186,69,.16);border:1px solid rgba(24,186,69,.42);padding:1px 8px;border-radius:9999px;
+    box-shadow:0 2px 6px rgba(24,186,69,.32);animation:sp-float 3s ease-in-out infinite;z-index:4;pointer-events:none}
   .side-profile__name{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;font-size:13px;font-weight:800;color:var(--ds-ink);margin-top:5px}
   .side-profile__tag{font-size:9.5px;font-weight:700;color:var(--ds-primary);background:var(--ds-primary-tint);padding:1px 6px;border-radius:9999px}
   .side-profile__score{font-size:16px;font-weight:800;color:var(--ds-ink);letter-spacing:-.01em}
@@ -3189,7 +3196,7 @@ PAGE = """<!doctype html>
   .homehead{position:relative;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;
     padding:11px 18px;background:var(--ds-fixed-bg);border:1px solid var(--ds-fixed-bd);border-radius:var(--ds-radius-xl);
     box-shadow:0 1px 2px rgba(0,0,0,.06),0 10px 24px -10px rgba(0,0,0,.14),var(--ds-highlight)}
-  .homehead__title{font-family:var(--ds-font-sans);font-size:var(--ds-size-label);font-weight:700;letter-spacing:-.01em;line-height:1.2;color:var(--ds-ink)}
+  .homehead__title{font-family:var(--ds-font-display);font-size:var(--ds-size-label);font-weight:700;letter-spacing:-.01em;line-height:1.2;color:var(--ds-ink)}
   .homehead__sub{font-size:var(--ds-size-caption);color:var(--ds-muted);margin-top:3px}
   .homehead__tools{display:flex;align-items:center;gap:6px;flex:none;position:relative}
   .homehead__status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ds-muted);white-space:nowrap;
@@ -3427,9 +3434,9 @@ PAGE = """<!doctype html>
       <!-- 사용자 프로필 카드(야구카드형): 내 캐릭터 + 이름. 누르면 '유저명 에이전트' 열림. 미설정 시 프로필 설정 -->
       <button type="button" class="side-profile" x-on:click="reviewer ? (chatOpen = !chatOpen) : (reviewerEditing = true)" x-bind:data-tier="(reviewer && arenaMe) ? levelTier(arenaMe.level) : 0" aria-label="내 프로필·에이전트">
         <span class="side-profile__glow"></span>
+        <span class="side-profile__gain" x-show="reviewer && arenaMe && arenaMe.week_points>0" x-text="'+' + arenaMe.week_points + ' XP'"></span>
         <span class="side-profile__avatar">
           <img x-bind:src="charImg(reviewer ? reviewerChar : 'boksil')" alt="">
-          <span class="side-profile__gain" x-show="reviewer && arenaMe && arenaMe.week_points>0" x-text="'+' + arenaMe.week_points + ' XP'"></span>
           <span class="side-profile__lvl" x-show="reviewer && arenaMe" x-text="'Lv.' + (arenaMe ? arenaMe.level : 0)"></span>
         </span>
         <span class="side-profile__name">
