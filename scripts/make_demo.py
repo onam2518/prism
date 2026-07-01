@@ -140,6 +140,7 @@ STUB = """<script>
       if (u.indexOf('/vocab') > -1) return Promise.resolve(J(VOCAB));
       if (u.indexOf('/admin') > -1) return Promise.resolve(J(ADMIN));
       if (u.indexOf('/arena') > -1) return Promise.resolve(J(ARENA));
+      if (u.indexOf('/drill') > -1) { const qp = new URLSearchParams((u.split('?')[1]||'')); return Promise.resolve(J({ ok: true, kind: qp.get('kind')||'intent', value: qp.get('value')||'', items: [{title:'삼성전자 노조 임금 협상 결렬', service:'뉴스', grade:'G'},{title:'한국은행 기준금리 동결 결정', service:'뉴스', grade:'G'},{title:'낚시성 제목 사례', service:'커뮤니티', grade:'R'}], n: 3 })); }
       if (u.indexOf('/reviewer') > -1) return Promise.resolve(J({ ok: true, team: { invite_code: ADMIN.team.invite_code } }));
       if (u.indexOf('/auth') > -1) return Promise.resolve(J({ ok: true, access_token: 'demo' }));
       if (u.indexOf('/models') > -1) return Promise.resolve(J({ ok: true, models: ['solar-pro3-260323', 'solar-pro2-251215'] }));
