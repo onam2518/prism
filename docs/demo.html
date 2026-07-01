@@ -3768,10 +3768,17 @@
 
       <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) · 관리자 전용 ═══ -->
       <div x-show="mod === 'auto'" x-cloak class="w-full space-y-4">
-        <div x-show="!(backend === 'supabase' && adminData && adminData.isAdmin)" class="ds-hint hintbox">자동 인입은 <b class="text-ink">운영(팀) 관리자</b> 전용입니다. 로컬 단독 실행에서는 <b class="text-ink">수동 추출</b>을 사용하세요.</div>
+        <ul x-show="!(backend === 'supabase' && adminData && adminData.isAdmin)" class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>자동 인입은 <b>운영(팀) 관리자</b> 전용입니다.</li>
+          <li>로컬 단독 실행에서는 <b>수동 추출</b>을 사용하세요.</li>
+        </ul>
         <template x-if="backend === 'supabase' && adminData && adminData.isAdmin">
         <div class="w-full space-y-4">
-        <p class="ds-hint hintbox">콘텐츠를 <b class="text-ink">자동으로 인입</b>하는 파이프라인 소스를 설정합니다 등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다 일회성 처리는 <b class="text-ink">수동 추출</b>을 사용하세요</p>
+        <ul class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>콘텐츠를 <b>자동으로 인입</b>하는 파이프라인 소스를 설정합니다.</li>
+          <li>등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다.</li>
+          <li>일회성 처리는 <b>수동 추출</b>을 사용하세요.</li>
+        </ul>
         <section class="panel" data-fn><div class="panel-hd"><b>인입 소스 추가</b></div>
           <div class="panel-bd" style="display:flex;flex-direction:column;gap:12px">
             <div style="display:flex;gap:10px;flex-wrap:wrap">

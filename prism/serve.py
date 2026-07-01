@@ -923,17 +923,61 @@ def validate_jwt(token: str):
             return hit[0]
     url, key = s
     uid = None
+    email = ""
     try:
         req = urllib.request.Request(url + "/auth/v1/user", method="GET",
                                      headers={"apikey": key, "Authorization": f"Bearer {token}"})
         with urllib.request.urlopen(req, timeout=15) as r:
-            uid = json.loads(r.read().decode("utf-8")).get("id")
+            u = json.loads(r.read().decode("utf-8"))
+            uid = u.get("id")
+            email = (u.get("email") or "").strip().lower()
     except Exception:
         uid = None
     if uid:
         with _JWT_LOCK:
             _JWT_CACHE[token] = (uid, now + 60)
+            _JWT_EMAIL[token] = (email, now + 60)
     return uid
+
+
+_JWT_EMAIL = {}                                  # token -> (email, expiry)
+
+
+def jwt_email(token: str) -> str:
+    """user JWT → email(소문자). validate_jwt 캐시 재사용. 관리자 허용목록 판정용."""
+    if not token:
+        return ""
+    with _JWT_LOCK:
+        hit = _JWT_EMAIL.get(token)
+    if hit and hit[1] > time.time():
+        return hit[0]
+    validate_jwt(token)                          # 캐시 채우기(email 동반)
+    with _JWT_LOCK:
+        hit = _JWT_EMAIL.get(token)
+    return hit[0] if hit else ""
+
+
+def admin_emails() -> set:
+    """관리자 허용목록(엄격 모드). env PRISM_ADMIN_EMAILS 또는 ~/.prism_admin_emails(콤마/개행 구분)."""
+    raw = os.environ.get("PRISM_ADMIN_EMAILS", "")
+    if not raw:
+        try:
+            p = os.path.expanduser("~/.prism_admin_emails")
+            if os.path.exists(p):
+                raw = open(p, encoding="utf-8").read()
+        except Exception:
+            raw = ""
+    return {e.strip().lower() for e in raw.replace("\n", ",").split(",") if e.strip()}
+
+
+def is_admin_user(uid, team, email="") -> bool:
+    """관리자 판정. 허용목록이 설정돼 있으면 '그 이메일만'(엄격) · 팀 생성자·위임 로직 무시.
+    허용목록 미설정 시 기존 로직(팀 생성자 OR is_admin 위임)."""
+    allow = admin_emails()
+    if allow:
+        return bool(email and email.strip().lower() in allow)
+    st = get_store()
+    return bool(st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team))
 
 
 def register_reviewer(data: dict) -> dict:
@@ -999,10 +1043,10 @@ def eval_golden(team=None) -> dict:
     return m
 
 
-def register_golden(uid, team, rows) -> dict:
+def register_golden(uid, team, rows, email="") -> dict:
     """관리자가 팀 골든셋 등록(교체). rows: [{content, expected}]."""
     st = get_store()
-    if not (st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team)):
+    if not is_admin_user(uid, team, email):
         return {"ok": False, "error": "관리자 전용입니다"}
     n = st.register_golden(team, [r for r in rows if isinstance(r, dict) and r.get("content") and r.get("expected")])
     return {"ok": True, "count": n}
@@ -1025,21 +1069,21 @@ def meta_compile_run(team=None) -> dict:
     return {"ok": True, "results": results}
 
 
-def admin_data(uid, team) -> dict:
+def admin_data(uid, team, email="") -> dict:
     """팀 관리: 팀 정보·멤버·관리자 여부. supabase 전용."""
     st = get_store()
     if not (st and team and hasattr(st, "team_members")):
         return {"ok": False, "isAdmin": False, "team": None, "members": []}
     gc = st.golden_count(team) if hasattr(st, "golden_count") else 0
-    return {"ok": True, "isAdmin": st.is_team_admin(uid, team),
+    return {"ok": True, "isAdmin": is_admin_user(uid, team, email),
             "team": st.team_info(team), "members": st.team_members(team), "goldenCount": gc}
 
 
-def admin_ingest(uid, team, endpoint, n) -> dict:
+def admin_ingest(uid, team, endpoint, n, email="") -> dict:
     """관리자: 크롤러 엔드포인트에서 N건 당겨와 추출 → 전건 검토 대상으로 팀 큐 적재(배치).
     실시간 스트리밍 부담 없이 관리자가 수량 목표로 트리거."""
     st = get_store()
-    if not (st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team)):
+    if not is_admin_user(uid, team, email):
         return {"ok": False, "error": "관리자 전용입니다"}
     n = max(1, min(int(n or 20), 200))             # 수량 상한(응답성)
     from . import ingest as ING
@@ -1061,10 +1105,10 @@ def admin_ingest(uid, team, endpoint, n) -> dict:
     return {"ok": True, "fetched": len(contents), "queued": len(pairs)}
 
 
-def admin_action(uid, team, data) -> dict:
+def admin_action(uid, team, data, email="") -> dict:
     """관리자 액션(데이터 삭제·멤버 제거). 팀 생성자만."""
     st = get_store()
-    if not (st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team)):
+    if not is_admin_user(uid, team, email):
         return {"ok": False, "error": "관리자 전용입니다"}
     act = data.get("action")
     if act == "clear_feedback":
@@ -1081,7 +1125,7 @@ def admin_action(uid, team, data) -> dict:
             return {"ok": False, "error": "이 백엔드는 위임을 지원하지 않습니다"}
         st.set_member_admin(team, data["member"], act == "set_admin")
     elif act == "ingest":                          # 크롤러 수량 인입 → 검토 큐
-        return admin_ingest(uid, team, data.get("endpoint"), data.get("n"))
+        return admin_ingest(uid, team, data.get("endpoint"), data.get("n"), email)
     else:
         return {"ok": False, "error": "알 수 없는 액션"}
     return {"ok": True}
@@ -1404,7 +1448,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/arena"):
             self._send(200, json.dumps(arena_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/admin"):
-            self._send(200, json.dumps(admin_data(self._bearer_uid(), self._req_team()),
+            self._send(200, json.dumps(admin_data(self._bearer_uid(), self._req_team(), self._bearer_email()),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/queue"):
             from urllib.parse import urlparse, parse_qs
@@ -1453,6 +1497,11 @@ class Handler(BaseHTTPRequestHandler):
         auth = self.headers.get("Authorization", "")
         token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
         return validate_jwt(token)
+
+    def _bearer_email(self):
+        auth = self.headers.get("Authorization", "")
+        token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+        return jwt_email(token)
 
     def _req_team(self):
         """supabase 모드: Bearer uid → 그 사용자의 team_id(요청별 팀 스코핑). 아니면 None."""
@@ -1591,7 +1640,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/admin"):
             try:
                 self._send(200, json.dumps(admin_action(self._bearer_uid(), self._req_team(),
-                           json.loads(body or b"{}")), ensure_ascii=False), _JSON)
+                           json.loads(body or b"{}"), self._bearer_email()), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -1620,8 +1669,8 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     raw = body
                 rows = [json.loads(ln) for ln in raw.decode("utf-8", "replace").splitlines() if ln.strip()]
-                self._send(200, json.dumps(register_golden(self._bearer_uid(), self._req_team(), rows),
-                                           ensure_ascii=False), _JSON)
+                self._send(200, json.dumps(register_golden(self._bearer_uid(), self._req_team(), rows,
+                                           self._bearer_email()), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -3643,10 +3692,17 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) · 관리자 전용 ═══ -->
       <div x-show="mod === 'auto'" x-cloak class="w-full space-y-4">
-        <div x-show="!(backend === 'supabase' && adminData && adminData.isAdmin)" class="ds-hint hintbox">자동 인입은 <b class="text-ink">운영(팀) 관리자</b> 전용입니다. 로컬 단독 실행에서는 <b class="text-ink">수동 추출</b>을 사용하세요.</div>
+        <ul x-show="!(backend === 'supabase' && adminData && adminData.isAdmin)" class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>자동 인입은 <b>운영(팀) 관리자</b> 전용입니다.</li>
+          <li>로컬 단독 실행에서는 <b>수동 추출</b>을 사용하세요.</li>
+        </ul>
         <template x-if="backend === 'supabase' && adminData && adminData.isAdmin">
         <div class="w-full space-y-4">
-        <p class="ds-hint hintbox">콘텐츠를 <b class="text-ink">자동으로 인입</b>하는 파이프라인 소스를 설정합니다 등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다 일회성 처리는 <b class="text-ink">수동 추출</b>을 사용하세요</p>
+        <ul class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>콘텐츠를 <b>자동으로 인입</b>하는 파이프라인 소스를 설정합니다.</li>
+          <li>등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다.</li>
+          <li>일회성 처리는 <b>수동 추출</b>을 사용하세요.</li>
+        </ul>
         <section class="panel" data-fn><div class="panel-hd"><b>인입 소스 추가</b></div>
           <div class="panel-bd" style="display:flex;flex-direction:column;gap:12px">
             <div style="display:flex;gap:10px;flex-wrap:wrap">
