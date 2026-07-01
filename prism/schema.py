@@ -49,6 +49,7 @@ class Content:
             "title": self.title,
             "subtitle": self.subtitle,
             "source_url": self.source_url,
+            "body": self.body,
             "body_hash": self.body_hash(),
         }
 
