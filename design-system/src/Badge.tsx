@@ -23,7 +23,7 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   dot?: boolean;
 }
 
-/** Prism 배지/칩. teal 계열은 액션·인용 신호라 절제해서 사용. */
+/** Prism 배지/칩. Blue(Primary)·카테고리색은 신호라 절제해서 사용. */
 export function Badge({ variant = 'neutral', dot = false, className = '', children, ...props }: BadgeProps) {
   return (
     <span className={`ds-badge ds-badge--${variant} ${className}`.trim()} {...props}>

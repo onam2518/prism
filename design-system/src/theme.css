@@ -33,6 +33,7 @@
   --ds-warning: #ff9429;          /* atomic.Orange.500 */
   --ds-info: #1e84ff;             /* state.info */
   --ds-on-primary: #ffffff;       /* text.static.white.primary — Primary 버튼 위 글자 */
+  --ds-text-static-white: #ffffff;/* text.static.white.primary — 모드 무관 고정 흰색(딤/스낵바 위) */
 
   /* citation/badge tint pair (mode-aware) — Blue 정보 강조 */
   --ds-tint-bg: rgba(30, 132, 255, 0.16); /* surface.highlight */

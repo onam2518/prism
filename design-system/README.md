@@ -7,7 +7,7 @@ Prism UI의 디자인 토큰과 React 컴포넌트. **Source of truth = Anchor D
 **문서**
 - **위젯형 SaaS 표준(제품 비종속)** → [`WIDGET_SAAS_STANDARD.md`](./WIDGET_SAAS_STANDARD.md) — 위젯형 SaaS 표준 디자인 정책
 - **서비스 디자인 가이드(최상위)** → [`SERVICE_DESIGN.md`](./SERVICE_DESIGN.md) — 위젯 홈 중심 종합 가이드(Prism)
-- **비주얼 원칙** → `DESIGN.md` · **UX·플로우·에셋 원칙** → [`PRINCIPLES.md`](./PRINCIPLES.md) · **컴포넌트 구조** → [`COMPONENTS.md`](./COMPONENTS.md) · **산정/로드맵** → [`COMPONENT_ROADMAP.md`](./COMPONENT_ROADMAP.md) · **로고** → [`LOGO.md`](./LOGO.md)
+- **비주얼 원칙** → [`anchor/DESIGN.md`](./anchor/DESIGN.md) · **UX·플로우·에셋 원칙** → [`PRINCIPLES.md`](./PRINCIPLES.md) · **컴포넌트 구조** → [`COMPONENTS.md`](./COMPONENTS.md) · **산정/로드맵** → [`COMPONENT_ROADMAP.md`](./COMPONENT_ROADMAP.md) · **로고** → [`LOGO.md`](./LOGO.md)
 
 **화면**
 - **위젯 홈(중심)** → `preview/widget-home.html` — 위젯 추가·삭제·재배치·리사이즈 · 기능/정보 구분 · 온보딩 · 설정 팝업
@@ -34,12 +34,12 @@ design-system/
 
 | 컴포넌트 | variant / props | 비고 |
 |---|---|---|
-| `Button` | `primary` · `secondary` · `ghost` · `pill`(+`active`) | teal CTA / 보더 / 조용한 툴바 / 포커스모드 칩 |
+| `Button` | `variant`(Solid·Outline) × `color`(Primary·Secondary·Subtlest·Neutral·Inverse·Ghost·Danger) × `size`(Sm~3Xl) × `shape` · 구 API(primary/secondary/ghost/pill) 호환 | Anchor Button.md 계약 |
 | `Input` | `field` · `composer`, `invalid`, `hint`, `label` | composer = 시그니처 Ask 웰(radius 16) |
 | `Select` | `options`, `invalid`, `label` | 정해진 값 입력 |
-| `Card` | `answer`(기본) · `source` · `feed` | source 는 hover 시 teal lift |
-| `Badge` | `neutral` · `pro` · `status` · `citation` · `success` · `error` · `warning` | teal 계열은 절제 |
-| `Tabs` | `underline`(상단 내비) · `sidebar`(세로) | 활성: teal 밑줄 / tint 하이라이트 |
+| `Card` | `answer`(기본) · `source` · `feed` | source 는 hover 시 Primary lift |
+| `Badge` | `neutral` · `pro` · `status` · `citation` · `success` · `error` · `warning` | Blue·카테고리색은 절제 |
+| `Tabs` | `underline`(상단 내비) · `sidebar`(세로) | 활성: Primary 밑줄 / tint 하이라이트 |
 | `Table` | `columns`, `data`, `rowKey` | 에디토리얼, hover 시 tint 행 |
 | `Dialog` | `open`, `onClose`, `title`, `footer` | 중앙 모달, Esc/백드롭 닫힘 |
 
@@ -57,14 +57,14 @@ claude
 
 | 그룹 | 값 |
 |---|---|
-| Primary | `teal #20808d` (hover `#1a6873` · pressed/deep `#13343b` · tint `#e5f2f2`) — 유일한 인터랙션/인용 색 |
-| Surface | page `#fbfaf4` · card `#fcfcf9` · input/overlay `#ffffff` (순백 페이지 금지) |
-| Ink | ink `#091717`(=`#000` 금지) · body `#2e3a3a` · muted `#5c6a6a` · placeholder `#8a9494` |
-| Border | hairline `#e4e4dc` · soft `#efefe9` — 따뜻하고 저대비 |
-| Dark | canvas `#0d1117` · surface `#161b22` · teal `#34b4c4` |
-| Font | FK Grotesk(UI) · FK Grotesk Neue(본문) · FK Display(히어로) · Berkeley Mono — Inter 폴백 |
-| Radius | 6(칩) · 10(버튼/입력) · 12(카드) · 16(컴포저/모달) · full |
-| Shadow | 페이퍼-플랫 기본. 떠있는 레이어에만 잉크 틴트 그림자(`rgba(9,23,23,…)`) |
+| Primary | `Blue #1e84ff` (hover `#0066db` · deep `#004fad` · tint `rgba(30,132,255,.16)`) — 사용자 액션 · Accent = `Red #ff4e33`(정보 강조) |
+| Surface | base(page) `#f4f5f7` · surface(card) `#ffffff` · 무채색 캔버스 |
+| Ink | text.primary `#000000` · body `rgba(0,0,0,.88)` · muted `rgba(0,0,0,.48)` · disabled `rgba(0,0,0,.32)` (알파 기반) |
+| Border | hairline `rgba(0,0,0,.08)` · soft `rgba(0,0,0,.04)` — 저대비 무채색 |
+| Dark | base `#161718` · surface `#202122` · Blue `#66a8ff` |
+| Font | Pretendard(UI·본문 단일 패밀리) · Berkeley Mono(코드) |
+| Radius | 4 · 8(버튼 Square/칩) · 12(카드) · 16 · 24(시트) · 100(pill) |
+| Shadow | low·medium·high 3단(순수 흑 알파). 깊이는 surface 대비가 1차, shadow는 보조 |
 
 ## 라이트 / 다크
 
@@ -72,12 +72,12 @@ claude
 - 루트에 `class="ds-dark"` 또는 `data-theme="dark"`
 - 아무 것도 안 하면 `prefers-color-scheme: dark` 자동 따라감 (`ds-light`/`data-theme=light` 로 고정 가능)
 
-## 핵심 원칙 (DESIGN.md 발췌)
+## 핵심 원칙 (anchor/DESIGN.md 발췌)
 
-1. 답변/콘텐츠가 주인공 — 크롬은 `#5c6a6a` 회색으로 물러남
-2. teal `#20808d` 은 **액션·인용 신호만**. 장식 금지
-3. 페이퍼-플랫 — 깊이는 따뜻한 보더 + surface 온도차로, 그림자 아님
-4. 본문은 매거진처럼 — `ds-answer`(16px / 1.63 / 68ch)
+1. 답변/콘텐츠가 주인공 — 크롬은 muted 회색으로 물러남
+2. Blue `#1e84ff`(Primary)·Red `#ff4e33`(Accent) 는 **액션·강조 신호만**. 장식 금지
+3. 무채색 캔버스 — 깊이는 surface 대비가 1차, shadow는 보조
+4. 본문은 매거진처럼 — `ds-answer`(17px / 1.52 / 68ch)
 5. 디자인 변경은 `tokens.json` + `theme.css` + `components.css` 만 고치면 전체 반영
 
 ## Prism UI(serve.py)와의 관계

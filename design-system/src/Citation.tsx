@@ -10,7 +10,7 @@ export interface CitationProps {
   onClick?: () => void;
 }
 
-/** 답변 본문 흐름 속 인라인 인용 토큰. teal superscript. */
+/** 답변 본문 흐름 속 인라인 인용 토큰. Primary superscript. */
 export function Citation({ index, href, onClick }: CitationProps) {
   if (href) {
     return (

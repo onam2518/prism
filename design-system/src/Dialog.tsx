@@ -13,7 +13,7 @@ export interface DialogProps {
   closeOnBackdrop?: boolean;
 }
 
-/** Prism 중앙 모달. 따뜻한 페이퍼 표면 + 잉크 틴트 그림자, Esc/백드롭으로 닫힘. */
+/** Prism 중앙 모달. 무채색 표면 + 그림자, Esc/백드롭으로 닫힘. */
 export function Dialog({
   open,
   onClose,

@@ -5,7 +5,7 @@ import './components.css';
 export type CardVariant = 'answer' | 'source' | 'feed';
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** answer = 에디토리얼 플랫(기본) · source = 흰 카드 + hover teal lift · feed = Discover 카드 */
+  /** answer = 에디토리얼 플랫(기본) · source = 흰 카드 + hover Primary lift · feed = Discover 카드 */
   variant?: CardVariant;
 }
 

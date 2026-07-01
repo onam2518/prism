@@ -37,7 +37,7 @@ export interface WidgetProps {
   actions?: React.ReactNode;
   /** 지정 시 편집 모드에서 삭제 버튼 노출 */
   onRemove?: () => void;
-  /** 선택 상태 — teal 링 + 8핸들 표시(배치 편집) */
+  /** 선택 상태 — Primary 링 + 8핸들 표시(배치 편집) */
   selected?: boolean;
   children?: React.ReactNode;
   className?: string;

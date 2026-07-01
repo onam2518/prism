@@ -1,6 +1,6 @@
 # Prism 컴포넌트 구조 사전
 
-각 컴포넌트의 **해부(anatomy) · 부품(parts) · API · variant · 상태 · 구성 규칙**을 사전에 못박는 문서. Perplexity 기준.
+각 컴포넌트의 **해부(anatomy) · 부품(parts) · API · variant · 상태 · 구성 규칙**을 사전에 못박는 문서. Anchor(axz) 기준.
 
 - 비주얼 토큰 → `DESIGN.md`
 - UX·플로우 → `PRINCIPLES.md`
@@ -46,7 +46,7 @@ Operations (3)
 ```
 
 > 총 50+ 컴포넌트 모두 `src/*.tsx` 로 구현 완료. `preview/index.html` 에서 확인.
-> 추가 산정·우선순위·Perplexity 기능 매핑·스킬 적용 노트 → **`COMPONENT_ROADMAP.md`**.
+> 추가 산정·우선순위·기능 매핑·스킬 적용 노트 → **`COMPONENT_ROADMAP.md`**.
 
 원칙: **Composite는 새 CSS를 거의 만들지 않는다.** Primitive를 순서대로 배치한 레이아웃일 뿐.
 
@@ -54,7 +54,7 @@ Operations (3)
 
 ## 1. Button
 
-화면당 주 행동을 나르는 최소 단위. teal primary는 화면당 하나.
+화면당 주 행동을 나르는 최소 단위. Blue(Solid/Primary)는 화면당 하나. 상세 계약 → `anchor/Button.md`.
 
 ```
 ┌─────────────────────────────┐
@@ -67,10 +67,10 @@ Operations (3)
 |---|---|---|
 | `root` (`.ds-btn`) | ● | 인터랙션 박스. variant 클래스가 색/높이 결정 |
 | `__icon` | ○ | 16–18px, `currentColor` 상속 |
-| `__label` | ● | 14px / 500 / FK Grotesk |
+| `__label` | ● | 15px / 700 / Pretendard |
 
-- **variant**: `primary`(teal 44px) · `secondary`(보더 44px) · `ghost`(36px 조용) · `pill`(34px 필터, `aria-pressed`로 active)
-- **상태**: default · hover · active(pressed) · disabled(40%) · focus(teal ring)
+- **variant×color**(Anchor): `Solid×Primary`(Blue) · `Outline×Neutral` · `Outline×Ghost` · `Solid×Danger` … Size Sm~3Xl · Shape Square(R8)/Rounded(R100). 구 API(primary/secondary/ghost/pill)는 back-compat 매핑.
+- **상태**: default · hover(HoverLayer) · loading(스피너·폭 고정) · disabled(interaction.disabled) · focus(Blue 2px ring)
 - **API**: `variant`, `active`(pill 전용), 그 외 표준 `<button>` 속성
 - **구성 규칙**: 아이콘은 라벨 좌측 기본. 아이콘 단독이면 `aria-label` 필수.
 - **Don't**: 한 화면에 primary 2개 · 색만 다른 새 variant.
@@ -96,7 +96,7 @@ Operations (3)
 | `__hint` (`.ds-hint`) | ○ | 13px muted, error면 `--error` |
 
 - **variant**: `field`(표준 radius 10) · `composer`(radius 16, 큰 Ask 박스)
-- **상태**: rest(subtle shadow) · focus(teal 보더 + ring) · invalid(error 보더/ring) · disabled
+- **상태**: rest(subtle shadow) · focus(Blue 보더 + ring) · invalid(error 보더/ring) · disabled
 - **API**: `label`, `variant`, `invalid`, `hint` + 표준 `<input>`
 - **구성 규칙**: composer는 하단에 **Action bar**(아이콘 + Submit) 결합 가능 → Composite 참조.
 - **Don't**: 라벨 없이 placeholder만으로 의미 전달 · 에러를 색만으로(반드시 `__hint` 텍스트 동반).
@@ -131,7 +131,7 @@ answer                          source
 │ [eyebrow?]               │   │ [fav] domain           │
 │ ─ 본문 콘텐츠 ─           │   │       title (2줄 clamp) │
 │                          │   └────────────────────────┘
-└──────────────────────────┘    hover → teal 보더 + lift
+└──────────────────────────┘    hover → Primary 보더 + lift
 ```
 
 | variant | 배경 | 보더 | radius | 그림자 | 용도 |
@@ -148,7 +148,7 @@ answer                          source
 | `__footer` | 액션/메타 |
 
 - **API**: `variant`, children(자유 구성)
-- **상태**: source만 hover(teal lift). answer/feed는 정적.
+- **상태**: source만 hover(Primary lift). answer/feed는 정적.
 - **구성 규칙**: 답변 본문은 `.ds-answer`(16px/1.63/68ch). source는 가로 Rail 안에 배치.
 - **Don't**: answer 카드에 그림자 · source 카드를 본문 위에 띄워 가리기.
 
@@ -156,7 +156,7 @@ answer                          source
 
 ## 5. Badge
 
-상태·라벨·인용을 한눈에. teal 계열은 절제(액션/인용 신호).
+상태·라벨·인용을 한눈에. Blue(Primary)·Red(Accent)·카테고리색은 절제(신호).
 
 ```
 ┌──────────────┐
@@ -167,7 +167,7 @@ answer                          source
 | variant | 배경 / 글자 | 용도 |
 |---|---|---|
 | `pro` | deep / white | PRO·모델 라벨 |
-| `status` | tint / teal | New·Beta·포커스 |
+| `status` | tint / Blue | New·Beta·포커스 |
 | `citation` | tint / deep, 1px6px | 인라인 인용 `[1]` |
 | `neutral` | hairline-soft / body | 일반 라벨 |
 | `success`·`error`·`warning` | 의미색 14% / 의미색 | 결과 상태 |
@@ -175,7 +175,7 @@ answer                          source
 - **부품**: `__dot`(6px, `currentColor`) 선택
 - **API**: `variant`, `dot`
 - **구성 규칙**: 줄글로 충분하면 배지 금지. 인용은 본문 흐름 속 `citation`/`.ds-citation`(superscript).
-- **Don't**: 비인터랙티브 장식에 teal 배지 · 한 영역 배지 남발.
+- **Don't**: 비인터랙티브 장식에 Primary 배지 · 한 영역 배지 남발.
 
 ---
 
@@ -187,7 +187,7 @@ answer                          source
 underline                         sidebar
  Home  Discover  Spaces  Library    ┌ Home      (active: tint)
  ──────                             │ Discover
- (active: ink + teal 2px 밑줄)      └ Library
+ (active: ink + Blue 2px 밑줄)      └ Library
 ```
 
 | 부품 | 설명 |
@@ -229,7 +229,7 @@ underline                         sidebar
 
 ## 8. Dialog
 
-흐름을 끊는 결정(공유·설정·업그레이드)만. 따뜻한 페이퍼 + 잉크 틴트 그림자.
+흐름을 끊는 결정(공유·설정·업그레이드)만. 무채색 표면 + 그림자.
 
 ```
    ▒▒▒▒▒ backdrop (scrim 40%) ▒▒▒▒▒
@@ -268,7 +268,7 @@ underline                         sidebar
 └──────────────────────────────────────────┘
 ```
 - 구성: `Input(composer)` + `__toolbar`(좌 Pill row, 우 아이콘 Button[] + Submit primary)
-- 규칙: Submit은 유일한 teal primary. 포커스 시 전체 웰 teal ring.
+- 규칙: Submit은 유일한 Solid/Primary. 포커스 시 전체 웰 Blue ring.
 
 ### C2. Source Rail
 ```
@@ -287,10 +287,10 @@ Related (chips/Pill)
 - 규칙: 68ch 측정 폭, 인용은 타이포 흐름 속 superscript.
 
 ### C4. Toast (예정 primitive)
-- 구조: `root`(다크 `#091717`) + `__icon?` + `__label`. 하단 중앙, 3초 자동 dismiss.
+- 구조: `root`(snackbar `#303233`) + `__icon?` + `__label`. 하단 중앙, 3초 자동 dismiss.
 
 ### C5. Toggle (예정 primitive)
-- 구조: `track`(on=teal/off=`#d6d6cc`) + `thumb`(white 18px). 설정 스위치.
+- 구조: `track`(on=Primary/off=neutral) + `thumb`(white 18px). 설정 스위치.
 
 ---
 

@@ -42,6 +42,7 @@
   --ds-warning: #ff9429;          /* atomic.Orange.500 */
   --ds-info: #1e84ff;             /* state.info */
   --ds-on-primary: #ffffff;       /* text.static.white.primary — Primary 버튼 위 글자 */
+  --ds-text-static-white: #ffffff;/* text.static.white.primary — 모드 무관 고정 흰색(딤/스낵바 위) */
 
   /* citation/badge tint pair (mode-aware) — Blue 정보 강조 */
   --ds-tint-bg: rgba(30, 132, 255, 0.16); /* surface.highlight */
@@ -301,7 +302,7 @@
 }
 </style>
 <style>/* Prism Design System — 컴포넌트 스타일. 토큰(CSS 변수)만 참조.
-   Perplexity 정렬: 따뜻한 페이퍼 위 teal 단일 액센트, 페이퍼-플랫 깊이. */
+   Anchor(axz) 정렬: 무채색 캔버스 위 Blue(Primary)·Red(Accent) 액센트, surface 대비 우선 깊이. */
 
 .ds-root,
 .ds-surface-bg {
@@ -455,7 +456,7 @@
 }
 /* Answer — 에디토리얼 플랫, 그림자 없음 */
 .ds-card--answer { border-color: var(--ds-hairline-soft); }
-/* Source — 흰 배경, 미묘한 그림자, hover 시 teal lift */
+/* Source — 흰 배경, 미묘한 그림자, hover 시 Primary lift */
 .ds-card--source {
   background: var(--ds-surface-white);
   border-color: var(--ds-hairline);
@@ -725,8 +726,8 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: #091717;
-  color: #f2f2ed;
+  background: var(--ds-layer-snackbar);
+  color: var(--ds-text-static-white, #ffffff);
   border-radius: var(--ds-radius-md);
   padding: 12px 16px;
   font-family: var(--ds-font-body);
@@ -754,7 +755,7 @@
   width: 40px;
   height: 24px;
   border-radius: var(--ds-radius-full);
-  background: #d6d6cc;
+  background: var(--ds-border-input-hover);
   border: 0;
   padding: 0;
   cursor: inherit;
@@ -770,7 +771,7 @@
   height: 18px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(9, 23, 23, 0.2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   transition: transform var(--ds-motion-fast) var(--ds-ease-standard);
 }
 .ds-toggle__track[aria-checked='true'] .ds-toggle__thumb { transform: translateX(16px); }
@@ -1013,7 +1014,7 @@
 .ds-attachment__remove:hover { background: var(--ds-hairline-soft); color: var(--ds-ink); }
 
 /* ════════════════════════════════════════════════════════════
-   High-end 유틸리티 (Editorial Luxury — Perplexity 정합 범위만)
+   High-end 유틸리티 (Anchor 정합 범위만)
    ════════════════════════════════════════════════════════════ */
 
 /* Eyebrow 태그 — H1/H2 위 마이크로 라벨 */
@@ -1057,7 +1058,7 @@
   transition: transform var(--ds-motion-fast) var(--ds-ease-standard);
 }
 .ds-btn--secondary .ds-btn__trail,
-.ds-btn--ghost .ds-btn__trail { background: rgba(9, 23, 23, 0.06); }
+.ds-btn--ghost .ds-btn__trail { background: rgba(0, 0, 0, 0.06); }
 .ds-btn--cta:hover:not(:disabled) .ds-btn__trail { transform: translate(2px, -1px) scale(1.06); }
 .ds-btn--cta:active:not(:disabled) { transform: scale(0.98); }
 
@@ -1138,7 +1139,7 @@
   border: 1px solid var(--ds-hairline-soft);
   border-radius: var(--ds-radius-xl);
   background: var(--ds-surface);
-  box-shadow: 0 1px 2px rgba(9, 23, 23, 0.05), 0 8px 20px -8px rgba(9, 23, 23, 0.08), var(--ds-highlight);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 20px -8px rgba(0, 0, 0, 0.08), var(--ds-highlight);
   height: fit-content;
 }
 .ds-navgroup { display: flex; flex-direction: column; gap: 1px; }
@@ -1471,7 +1472,7 @@
 .ds-iconbtn:hover { background: var(--ds-hairline-soft); color: var(--ds-ink); }
 .ds-iconbtn:focus-visible { outline: none; box-shadow: var(--ds-focus-ring); }
 .ds-iconbtn--bordered { border-color: var(--ds-hairline); }
-.ds-iconbtn--bordered:hover { border-color: #d6d6cc; background: var(--ds-surface); }
+.ds-iconbtn--bordered:hover { border-color: var(--ds-border-input-hover); background: var(--ds-surface); }
 .ds-iconbtn--active { background: var(--ds-primary-tint); color: var(--ds-primary-deep); }
 .ds-iconbtn--sm { width: 28px; height: 28px; }
 
@@ -1530,13 +1531,13 @@
   border-radius: var(--ds-radius-xl);
   border: 1px solid var(--ds-hairline-soft);
   background: var(--ds-surface);
-  box-shadow: 0 1px 2px rgba(9, 23, 23, 0.05), 0 6px 16px -6px rgba(9, 23, 23, 0.08), var(--ds-highlight);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 16px -6px rgba(0, 0, 0, 0.08), var(--ds-highlight);
   padding: 14px 16px;
   min-height: 156px;
   overflow: visible;
   transition: transform var(--ds-motion-standard) var(--ds-ease-standard), box-shadow var(--ds-motion-standard) var(--ds-ease-standard);
 }
-.ds-widget:hover { box-shadow: 0 2px 5px rgba(9, 23, 23, 0.07), 0 14px 28px -8px rgba(9, 23, 23, 0.12), var(--ds-highlight); transform: translateY(-2px); }
+.ds-widget:hover { box-shadow: 0 2px 5px rgba(0, 0, 0, 0.07), 0 14px 28px -8px rgba(0, 0, 0, 0.12), var(--ds-highlight); transform: translateY(-2px); }
 .ds-widget--md { grid-column: span 2; }
 .ds-widget--lg { grid-column: span 2; grid-row: span 2; }
 .ds-widget--tall { grid-row: span 2; }
@@ -1545,7 +1546,7 @@
 .ds-widget__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .ds-widget__title { display: flex; align-items: center; gap: 8px; font-family: var(--ds-font-sans); font-size: var(--ds-size-label); font-weight: 600; color: var(--ds-ink); min-width: 0; }
 .ds-widget__title-icon { color: var(--ds-primary); display: inline-flex; flex: none; }
-/* 위젯 아이덴티티 — 아이콘 칩(개성 컬러) + 따뜻한 헤더 */
+/* 위젯 아이덴티티 — 아이콘 칩(카테고리 식별색) + 무채색 헤더 */
 .ds-widget__icon-chip {
   width: 26px;
   height: 26px;
@@ -1647,7 +1648,7 @@
   border-radius: var(--ds-radius-lg);
 }
 /* (사이즈 배지 제거 — 편집 시 X만 노출) */
-/* 선택 상태: teal 링 + 8핸들 */
+/* 선택 상태: Primary 링 + 8핸들 */
 .ds-widget--selected { box-shadow: 0 0 0 2px var(--ds-primary), var(--ds-shadow-standard); z-index: 4; }
 .ds-widget__sel { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; z-index: 5; }
 .ds-widget__sel i {
@@ -1675,7 +1676,7 @@
   position: relative;
   z-index: 1320;
   border-radius: var(--ds-radius-md);
-  box-shadow: 0 0 0 4px var(--ds-primary), 0 0 0 9999px rgba(9, 23, 23, 0.55);
+  box-shadow: 0 0 0 4px var(--ds-primary), 0 0 0 9999px rgba(0, 0, 0, 0.55);
   transition: box-shadow 0.3s var(--ds-ease-standard);
 }
 /* 전체 스크림(대상 없는 단계) */
@@ -1683,7 +1684,7 @@
   position: fixed;
   inset: 0;
   z-index: 1310;
-  background: rgba(9, 23, 23, 0.55);
+  background: rgba(0, 0, 0, 0.55);
 }
 /* 코치 카드 */
 .ds-coach {
@@ -1721,21 +1722,21 @@
   background: transparent;
   width: 92px;
   height: 92px;
-  filter: drop-shadow(0 8px 16px rgba(9, 23, 23, 0.22));
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.22));
   transition: transform var(--ds-motion-fast) var(--ds-ease-standard), filter var(--ds-motion-fast) var(--ds-ease-standard);
 }
 .ds-fab img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.ds-fab:hover { transform: translateY(-3px) scale(1.05); filter: drop-shadow(0 12px 22px rgba(9, 23, 23, 0.26)); }
+.ds-fab:hover { transform: translateY(-3px) scale(1.05); filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.26)); }
 .ds-fab:active { transform: scale(0.97); }
-.ds-fab:focus-visible { outline: none; filter: drop-shadow(0 0 0 4px rgba(32, 128, 141, 0.45)); }
+.ds-fab:focus-visible { outline: none; filter: drop-shadow(0 0 0 4px rgba(30, 132, 255, 0.45)); }
 
 /* 작업 상태창 (Now-brief 스타일 다크 pill) — 진행 중일 때 노출 */
 .ds-fab-status {
   display: flex;
   align-items: center;
   gap: 11px;
-  background: #091717;
-  color: #f2f2ed;
+  background: var(--ds-layer-snackbar);
+  color: var(--ds-text-static-white, #ffffff);
   border-radius: var(--ds-radius-full);
   padding: 9px 16px 9px 11px;
   box-shadow: var(--ds-shadow-elevated);

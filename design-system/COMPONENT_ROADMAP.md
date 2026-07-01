@@ -3,7 +3,7 @@
 세 가지 입력을 합쳐 필요한 컴포넌트를 산정한 문서.
 1. **Prism 실제 코드 감사** (serve.py · dashboard.html — 이미지→메타 파이프라인)
 2. **Perplexity 제품 기능** 매핑 (Spaces · Pages · Pro Search · Discover · Focus modes · File upload)
-3. **High-end visual design 스킬** (Editorial Luxury 기법, Perplexity 정합 범위만)
+3. **High-end visual design 스킬** (Editorial Luxury 기법, Anchor 정합 범위만)
 
 범례: ✅ 구현 완료 · 🔜 다음 · 💤 백로그
 
@@ -11,15 +11,15 @@
 
 ## 0. 브랜드 결정 (확정 ✅)
 
-> **전체 이행 — teal 라이트 (Perplexity 그대로).**
+> **Source of truth = Anchor Design System(axz).** 무채색 캔버스 + Blue(Primary)·Red(Accent) + 도메인 카테고리색 · Pretendard · Light/Dark 자동 swap.
 
-- 앱(`serve.py`)은 현재 **다크 + violet `#5b52ff`** (Upstage 잔재) + 일부 `.ds-pilot` 파일럿.
-- 결정: **violet/다크를 버리고 DS 기본값(라이트 페이퍼 `#fbfaf4` + teal `#20808d`)으로 전면 이행.**
+- 이력: Upstage 다크+violet → Perplexity teal 라이트(v0.2) → **Anchor 전면 채택(v0.3, 2026-06-30)**.
+- 결정: 토큰 원본을 **Anchor**(`anchor/DESIGN.md`·`anchor/Button.md`·`anchor/tokens.json`)로 고정. teal(`#20808d`)·FK Grotesk 폐기.
 - 함의:
-  - DS 자체는 **변경 불필요** (이미 라이트+teal 기본).
-  - **violet 프리셋/오버라이드는 불필요** → 폐기. 단일 토큰 소스.
-  - serve.py 적용 시: `<style>`/`tailwind.config` 의 `#0b0a0f→#fbfaf4`, `#5b52ff→#20808d`, `chip-ent/int/cat → ds-badge--entity/intent/category` 매핑(기계적).
-  - 다크가 필요하면 같은 토큰의 `.ds-dark`(teal-on-dark `#34b4c4`)로 — 별도 브랜드 아님.
+  - `theme.css`·`tokens.ts`·`tailwind.preset.cjs`·`tokens/tokens.json`은 Anchor semantic 토큰을 `--ds-*` 변수로 박제 — **변수 API는 유지, 값만 swap**(기존 50+ 컴포넌트 무수정 호환).
+  - serve.py 적용: teal `#20808d→#1e84ff`(Blue.500), 잉크 그림자 `rgba(9,23,23,…)→rgba(0,0,0,…)`, 따뜻한 뉴트럴 → Anchor 무채색. 앱 별칭(`--ds-violet*→--ds-primary*`)으로 폴백 제거.
+  - 다크는 별도 브랜드 아님 — 같은 `--ds-*` 이름이 `.ds-dark`/`[data-theme=dark]`에서 자동 swap.
+  - 원칙: **Semantic 토큰만 · Primitive 직접 참조 금지 · Light/Dark 분기 금지.**
 
 ---
 
@@ -103,7 +103,7 @@ Perplexity 제품 기능(Spaces·Pages·Pro Search·Discover·Focus·File·Model
 
 ## 4. High-end 스킬 적용 노트 (의도적 취사선택)
 
-스킬 기본값(Ethereal Glass: OLED 블랙·네온 오브·강한 블러·극적 회전)은 Perplexity "invisible brand · calm over spectacle · 페이퍼-플랫"과 **충돌**. → 스킬의 **Editorial Luxury** 아키타입과 품질 기법만 채택.
+스킬 기본값(Ethereal Glass: OLED 블랙·네온 오브·강한 블러·극적 회전)은 Anchor "무채색 캔버스 · 의미 있는 곳에만 액센트 · calm over spectacle"과 **충돌**. → 스킬의 **Editorial Luxury** 아키타입과 품질 기법만 채택.
 
 **채택 ✅**
 - 필름 그레인 텍스처(`.ds-grain`, opacity 0.035) — 페이퍼 질감
@@ -113,11 +113,11 @@ Perplexity 제품 기능(Spaces·Pages·Pro Search·Discover·Focus·File·Model
 - 커스텀 cubic-bezier(이미 토큰) · 스크롤 진입 리빌(`.ds-reveal`, transform/opacity/blur, IntersectionObserver)
 - 표면 내부 하이라이트(`--ds-highlight`)
 
-**거부 ❌ (Perplexity 원칙 위반)**
-- OLED 블랙 배경 / 네온 글로우 오브 → 따뜻한 페이퍼 유지
+**거부 ❌ (Anchor 원칙 위반)**
+- OLED 블랙 배경 / 네온 글로우 오브 → 무채색 캔버스 유지
 - 전면 글래스 블러 → 떠있는 레이어(팝오버/모달)에만
 - 카드 회전(-2deg) / 과장 모션 → 절제된 진입만
-- 배너 폰트(Inter)는 FK Grotesk 폴백 체인에 잔류(에셋 없을 때만)
+- 배너 폰트는 Pretendard 폴백 체인에 잔류(에셋 없을 때만)
 
 > 원칙 충돌 시 우선순위: **PRINCIPLES.md(단계 명확성·절제) > 스킬(스펙터클)**. 스킬은 "품질의 도구"로 쓰되 브랜드 톤을 바꾸지 않는다.
 

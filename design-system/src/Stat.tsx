@@ -5,7 +5,7 @@ import './components.css';
 export interface StatProps {
   value: React.ReactNode;
   label: string;
-  /** 값을 teal 강조 */
+  /** 값을 Primary 강조 */
   accent?: boolean;
   /** 증감 표시 (예: "+12%") */
   delta?: string;
