@@ -1831,6 +1831,7 @@
       evalTop: 'queue',     // 검증 및 평가 상위 탭: queue(검수큐) | test(테스트)
       drillOpen: false, drillData: null, drillBusy: false,  // 대시보드 드릴다운
       detailOpen: false, detail: null,   // 콘텐츠 상세(공통 컴포넌트): 좌 원문 렌더 · 우 평가
+      badgeToast: null,   // 배지 달성 축하 오버레이
       dashSub: 'batch',     // 콘텐츠 서브탭: batch(배치결과) | quality(품질·법령) | topic(토픽)
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
       navIcons: {
@@ -2058,13 +2059,13 @@
         if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
       },
       _authHeaders() { const h = { 'Content-Type': 'application/json' }; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken; return h; },
+      get showProfileFields() { return this.backend !== 'supabase' || this.authMode === 'signup' || !!this.reviewer; },
       logout() {
         try { localStorage.removeItem('prism_reviewer'); localStorage.removeItem('prism_reviewer_char'); localStorage.removeItem('prism_token'); } catch (e) {}
         this.reviewer = ''; this.authToken = ''; this.adminData = null; this.arenaData = null;
         this.mod = 'home'; this.reviewerEditing = true;
       },
       async saveReviewer() {
-        const v = (this.reviewer || '').trim(); if (!v) return;
         if (this.backend === 'supabase') {                          // 로그인/가입 먼저
           const email = (this.authEmail || '').trim(), pw = this.authPw || '';
           if (!email || !pw) { this.authMsg = '이메일·비밀번호를 입력하세요'; return; }
@@ -2075,7 +2076,21 @@
           if (!r.ok) { this.authMsg = r.error || '로그인 실패'; return; }
           this.authToken = r.access_token; this.authMsg = '';
           try { localStorage.setItem('prism_token', this.authToken); } catch (e) {}
+          if (this.authMode === 'login') {                          // 로그인: 기존 프로필 로드(재입력 없음)
+            let rr; try { rr = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ mode: 'login' }) })).json(); } catch (e) { this.authMsg = '네트워크 오류'; return; }
+            if (rr && rr.needSignup) { this.authMode = 'signup'; this.authMsg = '가입 정보가 없습니다 · 닉네임·캐릭터·팀을 설정해 가입하세요'; return; }
+            if (!rr || !rr.ok) { this.authMsg = (rr && rr.error) || '프로필 로드 실패'; return; }
+            this.reviewer = rr.name; this.reviewerChar = rr.char || this.reviewerChar;
+            if (rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }
+            try { localStorage.setItem('prism_reviewer', this.reviewer); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
+            this.reviewerEditing = false; this.authMsg = ''; this.refreshConfig();
+            if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
+            return;
+          }
         }
+        // 가입(supabase) 또는 로컬: 닉네임 필수
+        const v = (this.reviewer || '').trim();
+        if (!v) { this.authMsg = '닉네임을 입력하세요'; return; }
         this.reviewer = v;
         try { localStorage.setItem('prism_reviewer', v); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
         // 검수자 등록(이름·캐릭터 + 팀). supabase 면 서버가 Bearer 의 uid 로 귀속(사칭 불가).
@@ -2119,7 +2134,7 @@
       },
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
       async loadQueue() { this.modBusy = true; try { this.queueData = await (await fetch('/queue' + (this.queueOnlyUnreviewed ? '' : '?all=1'))).json(); } catch (e) {} this.modBusy = false; },
-      async loadArena() { try { this.arenaData = await (await fetch('/arena')).json(); } catch (e) {} },
+      async loadArena() { try { this.arenaData = await (await fetch('/arena')).json(); } catch (e) {} this.checkBadges(); },
       async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) {} },
       async runGolden() {
         this.goldenBusy = true; this.goldenResult = null;
@@ -2189,6 +2204,18 @@
         ];
       },
       get badgeGot() { return this.badges().filter((x) => x.got).length; },
+      checkBadges() {
+        if (!this.arenaMe) return;
+        const key = 'prism_badges_' + (this.reviewer || '');
+        let seen = null;
+        try { const raw = localStorage.getItem(key); if (raw) seen = JSON.parse(raw); } catch (e) {}
+        const got = this.badges().filter((x) => x.got).map((x) => x.label);
+        try { localStorage.setItem(key, JSON.stringify(got)); } catch (e) {}
+        if (seen === null) return;                       // 첫 로드는 기준선만(축하 생략)
+        const fresh = got.filter((l) => !seen.includes(l));
+        if (fresh.length) { const bd = this.badges().find((x) => x.label === fresh[0]); if (bd) this.celebrateBadge(bd); }
+      },
+      celebrateBadge(bd) { this.badgeToast = bd; if (this._btT) clearTimeout(this._btT); this._btT = setTimeout(() => { this.badgeToast = null; }, 4500); },
       // 오늘의 미션(도전): 검수 큐가 있으면 스트릭 유지 유도, 없으면 골든셋
       get todayMission() {
         const q = (this.arenaData && this.arenaData.queue) || 0;
@@ -3029,24 +3056,24 @@
   .charcard[data-tier="3"]{--tier-c:#ff9429} .charcard[data-tier="4"]{--tier-c:#a05cff}
   .lb-av[data-tier="1"]{--tier-c:#1e84ff} .lb-av[data-tier="2"]{--tier-c:#5c77ff}
   .lb-av[data-tier="3"]{--tier-c:#ff9429} .lb-av[data-tier="4"]{--tier-c:#a05cff}
-  .charcard__avatar{position:relative;width:140px;height:140px;margin:2px auto 8px;display:flex;align-items:flex-end;justify-content:center}
-  .charcard__avatar::after{content:'';position:absolute;bottom:10px;left:50%;transform:translateX(-50%);width:78px;height:16px;border-radius:50%;
-    background:radial-gradient(ellipse at center, color-mix(in srgb,var(--tier-c) 34%,transparent), transparent 72%);z-index:0;
+  .charcard__avatar{position:relative;width:140px;height:140px;margin:2px auto 8px;display:flex;align-items:center;justify-content:center}
+  .charcard__avatar::after{content:'';position:absolute;bottom:16px;left:50%;transform:translateX(-50%);width:62px;height:12px;border-radius:50%;
+    background:radial-gradient(ellipse at center, color-mix(in srgb,var(--tier-c) 26%,transparent), transparent 72%);z-index:0;
     animation:charshadow 3.2s ease-in-out infinite}
-  .charcard__avatar img{position:relative;z-index:1;width:92px;height:92px;transform-origin:bottom center;
-    filter:drop-shadow(0 8px 12px rgba(0,0,0,.24));
+  .charcard__avatar img{position:relative;z-index:1;width:84px;height:84px;transform-origin:center;
+    filter:drop-shadow(0 6px 9px rgba(0,0,0,.22));
     animation:charfloat 3.2s ease-in-out infinite}
   .charcard[data-tier="0"]{--tier:0} .charcard[data-tier="1"]{--tier:1} .charcard[data-tier="2"]{--tier:2}
   .charcard[data-tier="3"]{--tier:3} .charcard[data-tier="4"]{--tier:4}
-  .charcard__glow{position:absolute;inset:6px;border-radius:50%;
-    background:radial-gradient(circle,color-mix(in srgb,var(--tier-c) 40%,transparent),transparent 66%);
-    box-shadow:0 0 0 3px color-mix(in srgb,var(--tier-c) 50%,transparent);opacity:calc(.35 + var(--tier,0)*0.15);
-    animation:charpulse 2.8s ease-in-out infinite}
-  @keyframes charfloat{0%,100%{transform:scale(calc(1 + var(--tier,0)*0.07)) translateY(0)}50%{transform:scale(calc(1 + var(--tier,0)*0.07)) translateY(-7px)}}
+  .charcard__glow{position:absolute;inset:0;border-radius:50%;
+    background:radial-gradient(circle at 50% 42%,color-mix(in srgb,var(--tier-c) 30%,transparent),transparent 70%);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--tier-c) 45%,transparent), inset 0 0 24px color-mix(in srgb,var(--tier-c) 18%,transparent);
+    opacity:calc(.4 + var(--tier,0)*0.13);animation:charpulse 2.8s ease-in-out infinite}
+  @keyframes charfloat{0%,100%{transform:scale(calc(1 + var(--tier,0)*0.05)) translateY(0)}50%{transform:scale(calc(1 + var(--tier,0)*0.05)) translateY(-4px)}}
   @keyframes charshadow{0%,100%{transform:translateX(-50%) scale(1);opacity:.9}50%{transform:translateX(-50%) scale(.82);opacity:.6}}
   @keyframes charpulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.06);opacity:.9}}
   @media (prefers-reduced-motion:reduce){.charcard__avatar img,.charcard__avatar::after,.charcard__glow{animation:none}}
-  .charcard__lvl{position:absolute;z-index:2;bottom:-2px;right:6px;background:var(--tier-c);color:#fff;
+  .charcard__lvl{position:absolute;z-index:3;bottom:6px;right:6px;background:var(--tier-c);color:#fff;
     font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.18)}
   .charcard__title{font-weight:800;font-size:15px;color:var(--ds-ink);margin:2px 0 10px}
   .charcard__xpwrap{padding:0 10px}
@@ -3087,6 +3114,27 @@
   .gbadge.locked .gbadge__label{color:var(--ds-muted)}
   .gbadge__exp{font-size:9.5px;font-weight:800;letter-spacing:.02em;color:#b8791f;background:rgba(255,148,41,.18);padding:1.5px 7px;border-radius:9999px}
   .gbadge.locked .gbadge__exp{color:var(--ds-muted);background:var(--ds-surface-table)}
+  /* 배지 달성 축하 오버레이 */
+  .badgeburst{position:fixed;inset:0;z-index:95;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(3px)}
+  .badgeburst__card{position:relative;background:var(--ds-layer-popup);border-radius:var(--ds-radius-xl);padding:34px 40px 30px;text-align:center;
+    box-shadow:var(--ds-shadow-high),0 0 0 1px color-mix(in srgb,var(--bc,#1e84ff) 30%,transparent);
+    animation:bb-pop .5s cubic-bezier(.2,1.5,.4,1)}
+  .badgeburst__orb{width:88px;height:88px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;position:relative;
+    background:radial-gradient(circle at 38% 28%, color-mix(in srgb,var(--bc,#1e84ff) 45%,#fff) 0%, var(--bc,#1e84ff) 55%, color-mix(in srgb,var(--bc,#1e84ff) 72%,#000) 100%);
+    box-shadow:0 10px 24px -4px color-mix(in srgb,var(--bc,#1e84ff) 60%,transparent), inset 0 3px 5px rgba(255,255,255,.6), inset 0 -7px 11px rgba(0,0,0,.3);
+    animation:bb-bounce 1.6s ease-in-out infinite}
+  .badgeburst__ic{font-size:40px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.3))}
+  .badgeburst__ttl{font-size:14px;font-weight:800;color:var(--bc,#1e84ff);letter-spacing:.02em}
+  .badgeburst__label{font-size:22px;font-weight:800;color:var(--ds-ink);margin-top:4px}
+  .badgeburst__exp{display:inline-block;margin-top:10px;font-size:13px;font-weight:800;color:#b8791f;background:rgba(255,148,41,.18);padding:3px 12px;border-radius:9999px}
+  .badgeburst__hint{font-size:12px;color:var(--ds-muted);margin-top:10px}
+  .badgeburst__spark{position:absolute;top:50%;left:50%;width:8px;height:8px;border-radius:50%;background:var(--bc,#1e84ff);
+    transform-origin:0 0;opacity:0;animation:bb-spark 1s ease-out forwards;animation-delay:.12s;
+    transform:rotate(calc(var(--i)*30deg)) translateX(0)}
+  @keyframes bb-pop{0%{opacity:0;transform:scale(.7) translateY(10px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+  @keyframes bb-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  @keyframes bb-spark{0%{opacity:1;transform:rotate(calc(var(--i)*30deg)) translateX(30px) scale(1)}100%{opacity:0;transform:rotate(calc(var(--i)*30deg)) translateX(120px) scale(.3)}}
+  @media (prefers-reduced-motion:reduce){.badgeburst__orb,.badgeburst__spark,.badgeburst__card{animation:none}}
   .conn-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ds-ink);white-space:nowrap}
   .conn-chip--off{color:var(--ds-muted)}
   /* 본문 영역: 뷰포트 남은 높이를 꽉 채우되 자체는 스크롤 안 함(overflow:hidden) 사이드바·콘텐츠가 각자 내부 스크롤 */
@@ -3263,6 +3311,18 @@
     <span class="live-toast__dot"></span><span x-text="liveMsg"></span>
   </div>
 
+  <!-- 배지 달성 축하 오버레이(성취감) -->
+  <div class="badgeburst" x-show="badgeToast" x-cloak x-transition.opacity x-on:click="badgeToast = null">
+    <div class="badgeburst__card" x-bind:style="badgeToast ? ('--bc:' + badgeToast.color) : ''">
+      <template x-for="i in 12" x-bind:key="i"><span class="badgeburst__spark" x-bind:style="'--i:' + i"></span></template>
+      <div class="badgeburst__orb"><span class="badgeburst__ic" x-text="badgeToast && badgeToast.icon"></span></div>
+      <div class="badgeburst__ttl">🎉 배지 달성!</div>
+      <div class="badgeburst__label" x-text="badgeToast && badgeToast.label"></div>
+      <div class="badgeburst__exp" x-text="badgeToast && ('+' + badgeToast.exp + ' EXP')"></div>
+      <div class="badgeburst__hint" x-text="badgeToast && badgeToast.desc"></div>
+    </div>
+  </div>
+
   <!-- 검수자 등록 온보딩(딤드 + 중앙 모달). 첫 방문 시 자동, 칩 클릭 시 변경 -->
   <div class="onboard" x-show="reviewerEditing" x-cloak x-transition.opacity
        x-on:click.self="if (reviewer) reviewerEditing = false"
@@ -3289,8 +3349,8 @@
         </div>
       </template>
 
-      <!-- supabase 모드: 팀 참가/생성 · 첫 시작 시 팀 코드 입력을 앞단계로 -->
-      <template x-if="backend === 'supabase'">
+      <!-- supabase 모드: 팀 참가/생성(가입/편집 시에만 · 로그인엔 미표시) -->
+      <template x-if="backend === 'supabase' && showProfileFields">
         <div>
           <label class="onboard__lbl">팀 <span class="onboard__hint"> 초대 코드로 참가하거나 새 팀을 만드세요</span></label>
           <div class="onboard__authtabs">
@@ -3303,10 +3363,13 @@
         </div>
       </template>
 
+      <div x-show="showProfileFields">
       <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시됩니다</span></label>
       <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer"
-             x-on:keydown.enter="saveReviewer()" autofocus>
+             x-on:keydown.enter="saveReviewer()">
+      </div>
 
+      <div x-show="showProfileFields">
       <label class="onboard__lbl">캐릭터 선택 <span class="onboard__hint"> 리더보드·아레나에 이 캐릭터로 표시됩니다</span></label>
       <div class="onboard__chars">
         <template x-for="c in charOptions" x-bind:key="c.id">
@@ -3316,10 +3379,11 @@
           </button>
         </template>
       </div>
+      </div>
 
 
       <button type="button" class="ds-btn ds-btn--primary onboard__cta"
-              x-bind:disabled="!(reviewer||'').trim() || (backend==='supabase' && (!(authEmail||'').trim() || !authPw || (teamMode==='create' ? !(teamName||'').trim() : !(inviteCode||'').trim())))"
+              x-bind:disabled="backend==='supabase' ? (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!(reviewer||'').trim() || (teamMode==='create' ? !(teamName||'').trim() : !(inviteCode||'').trim())))) : !(reviewer||'').trim()"
               x-on:click="saveReviewer()"
               x-text="backend==='supabase' ? (authMode==='signup'?'가입하고 시작':'로그인하고 시작') : (reviewer ? '저장하고 시작' : '시작하기')"></button>
       <button type="button" class="onboard__skip" x-show="reviewer" x-on:click="reviewerEditing=false">닫기</button>
