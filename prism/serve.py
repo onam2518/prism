@@ -3131,13 +3131,13 @@ PAGE = """<!doctype html>
     border-right:1px solid var(--ds-hairline-soft)}
   .charcard--split .charcard__avatar{flex:none;margin:0}
   .charcard--split .charcard__info{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
-  .charcard--split .charcard__title{margin:0;font-size:17px}
+  .charcard--split .charcard__title{margin:0;font-size:17px;text-align:left}
   .charcard--split .charcard__xpwrap{padding:0}
-  .charcard--split .charcard__stats{justify-content:flex-start;gap:26px;margin:2px 0}
+  .charcard--split .charcard__stats{justify-content:center;gap:26px;margin:2px 0}
   .charcard--split .charcard__mission{margin-top:2px}
-  .charcard--split .charcard__collection{padding:20px 22px;display:flex;flex-direction:column;min-width:0}
-  .charcard--split .charcard__badges-hd{margin-top:0;display:flex;align-items:center;gap:8px}
-  .charcard--split .charcard__badges{grid-template-columns:repeat(auto-fill,minmax(74px,1fr));max-height:196px;overflow:hidden}
+  .charcard--split .charcard__collection{padding:20px 22px 16px;display:flex;flex-direction:column;min-width:0;max-height:340px}
+  .charcard--split .charcard__badges-hd{margin-top:0;display:flex;align-items:center;gap:8px;flex:none}
+  .charcard--split .charcard__badges{grid-template-columns:repeat(auto-fill,minmax(74px,1fr));overflow-y:auto;min-height:0;padding-right:4px;padding-bottom:2px}
   @media (max-width:900px){.charcard--split{grid-template-columns:1fr}
     .charcard--split .charcard__player{border-right:0;border-bottom:1px solid var(--ds-hairline-soft)}}
   @media (max-width:640px){.charcard--split .charcard__player{flex-direction:column;text-align:center}
@@ -3151,6 +3151,10 @@ PAGE = """<!doctype html>
   .lb-name{flex:1;min-width:0;font-weight:600;color:var(--ds-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .lb-streak{font-size:12px;color:var(--ds-muted)} .lb-pts{font-weight:700;color:var(--ds-violet,#1e84ff)}
   .lb-title{display:block;font-size:10px;color:var(--ds-muted);font-weight:500;margin-top:1px}
+  /* 주간 리그: 존 배지·델타·점수를 고정 폭 컬럼으로 정렬(승급/유지/강등 행이 같은 열에) */
+  .lb-row--league .lb-zone{min-width:60px;justify-content:center;flex:none}
+  .lb-row--league .lb-delta{min-width:54px;display:inline-flex;justify-content:flex-end;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+  .lb-row--league .lb-pts{min-width:60px;text-align:right;flex:none}
   .lb-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
     background:var(--ds-surface-white);box-shadow:0 0 0 2px var(--tier-c,rgba(0,0,0,.12));overflow:hidden}
   .lb-av img{width:24px;height:24px}
@@ -4555,13 +4559,13 @@ PAGE = """<!doctype html>
           <div class="panel-bd">
             <p class="text-xs text-muted" style="margin-bottom:10px">이번 주 획득 점수로 매기는 순위입니다 · 상위 <b class="text-ink">승급권</b>은 지위 보상, 하위 <b class="text-ink">강등권</b>은 분발 신호(지난주 대비 이동 표시)</p>
             <template x-for="r in weeklyLeague()" x-bind:key="r.reviewer">
-              <div class="lb-row" x-show="r.wp>0 || leagueActive()===0" x-bind:class="r.reviewer===reviewer ? 'lb-row--me' : ''">
+              <div class="lb-row lb-row--league" x-show="r.wp>0 || leagueActive()===0" x-bind:class="r.reviewer===reviewer ? 'lb-row--me' : ''">
                 <span class="lb-rank" x-text="rankMedal(r.rank-1)"></span>
                 <span class="lb-av" x-bind:data-tier="levelTier(r.level)"><img x-bind:src="charImg(r.char)" alt=""></span>
                 <span class="lb-name"><span x-text="r.reviewer + (r.reviewer===reviewer ? ' (나)' : '')"></span>
                   <small class="lb-title" x-text="leagueZoneKr(r.zone)"></small></span>
-                <span class="ds-badge" x-bind:class="leagueZoneClass(r.zone)" x-text="leagueZoneLabel(r.zone)"></span>
-                <span class="lb-streak" x-show="r.delta" x-bind:class="r.delta>=0?'':'down'" x-text="(r.delta>=0?'▲ +':'▼ ')+Math.abs(r.delta)"></span>
+                <span class="ds-badge lb-zone" x-bind:class="leagueZoneClass(r.zone)" x-text="leagueZoneLabel(r.zone)"></span>
+                <span class="lb-streak lb-delta" x-bind:class="r.delta>=0?'':'down'" x-text="r.delta ? ((r.delta>=0?'▲ +':'▼ ')+Math.abs(r.delta)) : '·'"></span>
                 <span class="lb-pts tnum" x-text="r.wp + 'pt'"></span>
               </div>
             </template>
@@ -4612,7 +4616,9 @@ PAGE = """<!doctype html>
                       </div>
                       <div class="charcard__mission" x-on:click="selectMod(todayMission.to)">
                         <span class="charcard__mission-ic">🎯</span>
-                        <span class="charcard__mission-tx" x-text="todayMission.txt"></span>
+                        <span class="charcard__mission-tx">
+                          <template x-for="(line, li) in todayMission.txt.split(' · ')" x-bind:key="li"><span style="display:block" x-text="line"></span></template>
+                        </span>
                         <span class="charcard__mission-cta" x-text="todayMission.cta + ' →'"></span>
                       </div>
                     </div>
