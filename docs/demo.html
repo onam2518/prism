@@ -2827,8 +2827,18 @@
   .copybtn{display:inline-flex;align-items:center;gap:4px;border-radius:7px;padding:3px 8px;font-size:11.5px;
     font-weight:600;color:var(--ds-muted);border:1px solid var(--ds-hairline);background:var(--ds-surface-white);
     transition:color .12s,border-color .12s,background .12s;cursor:pointer}
-  .copybtn:hover{color:var(--ds-ink);border-color:var(--ds-border-input-hover);background:var(--ds-surface)}
+  .copybtn:hover{color:var(--ds-ink);border-color:var(--ds-border-input-hover);background:var(--ds-primary-tint)}
   .copybtn svg{width:12px;height:12px}
+  /* ── 버튼 프레즌스 강화(전 페이지 원칙): 텍스트 버튼 금지 → 박스/아이콘, 라벨 굵기·대비 상향 ── */
+  .copybtn{font-weight:650;color:var(--ds-text-secondary);box-shadow:0 1px 1px rgba(16,24,40,.03)}
+  .ds-btn{font-weight:var(--ds-weight-strong,650);letter-spacing:-.005em}
+  /* 은은한 버튼(secondary·ghost·outline)도 쉼 상태에서 버튼임이 보이게: 면·경계 대비 확보 */
+  .ds-btn--secondary,.ds-btn--ghost{background:var(--ds-surface-white);border-color:var(--ds-hairline);
+    box-shadow:0 1px 2px rgba(16,24,40,.05),inset 0 1px 0 rgba(255,255,255,.6)}
+  .ds-btn--secondary:hover,.ds-btn--ghost:hover{border-color:var(--ds-border-input-hover);background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
+  .ds-btn--outline{border-color:var(--ds-border-input);box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .ds-iconbtn--bordered{box-shadow:0 1px 2px rgba(16,24,40,.05),inset 0 1px 0 rgba(255,255,255,.5)}
+  .ds-iconbtn--bordered:hover{border-color:var(--ds-primary);color:var(--ds-primary);background:var(--ds-primary-tint)}
 
   /* 카드 · 패널 (라이트 + 절제된 입체) */
   .card{box-shadow:var(--ds-highlight);transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
@@ -4063,7 +4073,7 @@
                     <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" x-text="t2"></span></template>
                     <span x-show="!(dictData && dictData.tier2[c] && dictData.tier2[c].length)" class="text-xs text-muted">항목 없음</span>
                   </div></td>
-                  <td style="vertical-align:top"><button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button></td>
+                  <td style="vertical-align:top"><button type="button" class="copybtn" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button></td>
                 </tr>
               </template>
             </tbody></table></div>
@@ -4074,13 +4084,13 @@
                 <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
                   <tr><td style="vertical-align:top"><span class="ds-badge ds-badge--entity" x-text="g"></span></td>
                     <td class="text-muted" x-text="ts.join(' · ')"></td>
-                    <td style="vertical-align:top"><button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('domain_groups', g, ts, 'list', '도메인 그룹 · ' + g)">편집</button></td></tr>
+                    <td style="vertical-align:top"><button type="button" class="copybtn" x-on:click="startEdit('domain_groups', g, ts, 'list', '도메인 그룹 · ' + g)">편집</button></td></tr>
                 </template>
               </tbody></table></div></div>
             <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>자사 경로</th><th>IAB 공식</th><th></th></tr></thead><tbody>
                 <template x-for="(v,k) in (dictData?dictData.iabMap:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v"></div></td>
-                  <td><button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('category_iab_map', k, v, 'text', '매핑 · ' + k)">편집</button></td></tr></template>
+                  <td><button type="button" class="copybtn" x-on:click="startEdit('category_iab_map', k, v, 'text', '매핑 · ' + k)">편집</button></td></tr></template>
               </tbody></table></div></div>
           </div>
           <div class="grid grid-cols-2 gap-4">
@@ -4090,12 +4100,12 @@
                   <td class="text-ink" x-text="k"></td>
                   <td><div class="tbox"><span class="nm" x-text="(dictData.qualityNames&&dictData.qualityNames[k])||''"></span><span x-text="v"></span></div></td>
                   <td><span class="ds-badge ds-badge--neutral" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'ds-badge--intent':'ds-badge--category'" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
-                  <td><button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td>
+                  <td><button type="button" class="copybtn" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td>
                 </tr></template>
               </tbody></table></div></div>
             <div class="panel"><div class="panel-hd"><b>법령 위반 유형</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.legalTypes).length+'종':''"></span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
-                <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v.label"></div></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
+                <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v.label"></div></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="copybtn" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
               </tbody></table></div></div>
           </div>
         </div>
