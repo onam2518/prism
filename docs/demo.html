@@ -2829,14 +2829,20 @@
     transition:color .12s,border-color .12s,background .12s;cursor:pointer}
   .copybtn:hover{color:var(--ds-ink);border-color:var(--ds-border-input-hover);background:var(--ds-primary-tint)}
   .copybtn svg{width:12px;height:12px}
-  /* ── 버튼 프레즌스 강화(전 페이지 원칙): 텍스트 버튼 금지 → 박스/아이콘, 라벨 굵기·대비 상향 ── */
-  .copybtn{font-weight:650;color:var(--ds-text-secondary);box-shadow:0 1px 1px rgba(16,24,40,.03)}
+  /* ── 버튼 변형 정의(레거시 shorthand): 재벤더링된 DS 는 --solid.--c-* API 라 --primary/--secondary/--ghost 가
+        미정의 → 맨 텍스트로 렌더되던 버그 수정. 앱은 이 shorthand 를 40여곳 사용하므로 앱 레벨에서 채운다. ── */
   .ds-btn{font-weight:var(--ds-weight-strong,650);letter-spacing:-.005em}
-  /* 은은한 버튼(secondary·ghost·outline)도 쉼 상태에서 버튼임이 보이게: 면·경계 대비 확보 */
-  .ds-btn--secondary,.ds-btn--ghost{background:var(--ds-surface-white);border-color:var(--ds-hairline);
+  .ds-btn--primary{background:var(--ds-primary);color:#fff;border-color:transparent;
+    box-shadow:0 1px 2px rgba(16,24,40,.14),0 4px 12px -3px color-mix(in srgb,var(--ds-primary) 42%,transparent)}
+  .ds-btn--primary:hover:not(:disabled){background:var(--ds-primary-hover);color:#fff}
+  .ds-btn--primary:active:not(:disabled){background:var(--ds-primary-deep);transform:translateY(.5px)}
+  .ds-btn--secondary,.ds-btn--ghost{background:var(--ds-surface-white);color:var(--ds-ink);border-color:var(--ds-hairline);
     box-shadow:0 1px 2px rgba(16,24,40,.05),inset 0 1px 0 rgba(255,255,255,.6)}
-  .ds-btn--secondary:hover,.ds-btn--ghost:hover{border-color:var(--ds-border-input-hover);background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
-  .ds-btn--outline{border-color:var(--ds-border-input);box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .ds-btn--secondary:hover:not(:disabled),.ds-btn--ghost:hover:not(:disabled){border-color:var(--ds-primary);background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
+  .ds-btn--outline{background:var(--ds-surface-white);color:var(--ds-ink);border-color:var(--ds-border-input);box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .ds-btn--outline:hover:not(:disabled){border-color:var(--ds-primary);color:var(--ds-primary-deep);background:var(--ds-primary-tint)}
+  /* 텍스트 버튼 금지 → 박스형(copybtn) 라벨 굵기·대비 상향 */
+  .copybtn{font-weight:650;color:var(--ds-text-secondary);box-shadow:0 1px 1px rgba(16,24,40,.03)}
   .ds-iconbtn--bordered{box-shadow:0 1px 2px rgba(16,24,40,.05),inset 0 1px 0 rgba(255,255,255,.5)}
   .ds-iconbtn--bordered:hover{border-color:var(--ds-primary);color:var(--ds-primary);background:var(--ds-primary-tint)}
 
@@ -3291,7 +3297,7 @@
 
   /* ════ 공통 규칙 · 위젯 종류 무관 동일 타이포·정렬 기준(단일 소스) ════ */
   /* ① 타이틀: 모든 위젯/패널/타이틀바 14px·600 동일 */
-  .ds-widget__title,.homehead__title{font-size:var(--ds-size-label);font-weight:600;line-height:1.3;color:var(--ds-ink);letter-spacing:-.005em}
+  .ds-widget__title,.homehead__title{font-size:13px;font-weight:700;line-height:1.3;color:var(--ds-ink);letter-spacing:-.01em}
   /* ② 라벨(섹션·필드·표헤더·통계·eyebrow): 12px·600·muted·비대문자 동일 */
   .lbl,.ds-eyebrow,.tile .t,.w-stat-l,.ds-stat__label,.ds-table th{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ds-muted)}
   .lbl{display:block;margin-bottom:8px}
@@ -3316,7 +3322,9 @@
   /* 카드 속성 클러스터(캐릭터+기능/정보 칩) · 종류별 캐릭터 통일 · 항상 헤드 우측 끝 고정 */
   .ds-cardtype{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding-left:10px;flex:none;
     border-left:1px solid var(--ds-hairline-soft)}
-  .panel-hd>.ds-widget__title{margin-right:auto}
+  /* 패널 타이틀은 카드 구분이 명확하도록 크게(전 페이지) · 홈 위젯 타이틀보다 한 단계 위 위계 */
+  .panel-hd>.ds-widget__title{margin-right:auto;font-size:16.5px;font-weight:700;letter-spacing:-.015em}
+  .panel-hd>.ds-widget__title span{font-size:inherit;font-weight:inherit}
   .panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions{margin-left:auto}
   /* ⑨ 패널 내부 좌측 정렬선 통일(18px) · 타이틀·본문·표·행이 한 선에 정렬
      패널 직속 표(셀패딩 12)·행(0)은 타이틀(18)보다 왼쪽이라 18로 보정 panel-bd 안은 이미 18. */
