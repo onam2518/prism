@@ -2712,6 +2712,9 @@
     border:1px solid var(--ds-hairline-soft);border-radius:12px;background:var(--ds-surface-white);margin-bottom:8px}
   .fbrow__main{min-width:0}
   .fbrow__title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ds-ink);flex-wrap:wrap}
+  .fbrow__titlelink{cursor:pointer;border-radius:4px;transition:color .12s,background .12s}
+  .fbrow__titlelink:hover{color:var(--ds-primary);text-decoration:underline;text-underline-offset:2px}
+  .fbrow__titlelink:focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px}
   .fbrow__svc{font-size:11px;font-weight:500;color:var(--ds-muted)}
   .fbrow__sum{margin-top:6px;font-size:12px;color:var(--ds-body)}
   .fbrow__act{display:flex;gap:6px;align-self:center}
@@ -3281,7 +3284,6 @@
   <!-- ━━━━━ 상단 바: 로고 | 타이틀(고정) | 도구 ━━━━━ -->
   <header class="topbar">
     <div class="topbar__brand" x-on:click="selectMod('home')" style="cursor:pointer" role="button" aria-label="홈으로"><span class="logo"><img src="demo-assets/prism-mark.svg" alt="Prism"></span><div class="topbar__wm">Prism<small>A lens on content &amp; users</small></div></div>
-    <a href="/report" target="_blank" rel="noreferrer" class="ds-iconbtn ds-iconbtn--bordered topbar__pageicon" style="margin-left:14px" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></a>
     <div class="topbar__title">
       <div class="homehead__title" x-text="modLabel"></div>
       <div class="homehead__sub" x-text="modSub"></div>
@@ -3293,6 +3295,7 @@
         x-bind:data-tip="cfg.forcedMock ? 'MOCK (강제)' : (connCount ? '연결됨' : (cfg.keyManagedByServer ? '서버 관리 (연결됨)' : '키 미설정'))" data-tip-pos="bottom" aria-label="연결 상태">
         <span class="ds-statusdot" x-bind:class="cfg.forcedMock ? 'ds-statusdot--mock' : ((connCount || (cfg.keyManagedByServer && cfg.hasKey)) ? 'ds-statusdot--ok' : 'ds-statusdot--mock')"><span class="ds-statusdot__dot"></span></span>
       </button>
+      <a href="/report" target="_blank" rel="noreferrer" class="ds-iconbtn ds-iconbtn--bordered" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></a>
       <button type="button" x-show="false" x-on:click.stop="addMenuOpen = !addMenuOpen" class="ds-iconbtn ds-iconbtn--bordered" data-tip="위젯 추가" data-tip-pos="bottom" aria-label="위젯 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
       <button type="button" x-show="false" x-on:click="editing = !editing" x-bind:class="editing ? 'ds-iconbtn ds-iconbtn--bordered ds-iconbtn--active' : 'ds-iconbtn ds-iconbtn--bordered'" x-bind:data-tip="editing ? '편집 완료' : '편집'" data-tip-pos="bottom" aria-label="편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
       <button type="button" x-show="!cfg.keyManagedByServer" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="settingsOpen = true" data-tip="설정" data-tip-pos="bottom" aria-label="설정"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg></button>
@@ -3774,7 +3777,7 @@
                 </thead>
                 <tbody>
                   <template x-for="(it, i) in (batchResult ? batchResult.items : [])" x-bind:key="i">
-                    <tr style="cursor:pointer" x-on:click="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="left">
+                    <tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="left">
                       <td class="text-ink" x-text="it.title || '·'"></td>
                       <td x-text="it.summary || '·'"></td>
                       <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="!(it.entities||[]).length">·</span></div></td>
@@ -3907,7 +3910,7 @@
               <div class="ds-ring" x-bind:style="'--ds-ring-size:120px;--ds-ring-pct:'+(dashData?dashData.gPct:0)"><span class="ds-ring__label" x-text="(dashData?dashData.gPct:0)+'%'"></span></div>
               <div style="min-width:0;flex:1">
                 <template x-for="it in (dashData?dashData.intents:[])" x-bind:key="it.k">
-                  <div class="ds-progress ds-progress--drill" style="margin:11px 0;cursor:pointer" x-on:click="drill('intent', it.k)" data-tip="이 항목의 콘텐츠 보기" data-tip-pos="left"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
+                  <div class="ds-progress ds-progress--drill" style="margin:11px 0;cursor:pointer" role="button" tabindex="0" x-on:click="drill('intent', it.k)" x-on:keydown.enter="drill('intent', it.k)" data-tip="이 항목의 콘텐츠 보기" data-tip-pos="left"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
                 </template>
               </div>
             </div></div>
@@ -3915,13 +3918,13 @@
           <section class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 분포 · 상위</b></div>
             <div class="panel-bd">
               <template x-for="it in (dashData?dashData.categories:[])" x-bind:key="it.k">
-                <div class="ds-progress ds-progress--drill" style="margin:11px 0;cursor:pointer" x-on:click="drill('category', it.k)" data-tip="이 항목의 콘텐츠 보기" data-tip-pos="left"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
+                <div class="ds-progress ds-progress--drill" style="margin:11px 0;cursor:pointer" role="button" tabindex="0" x-on:click="drill('category', it.k)" x-on:keydown.enter="drill('category', it.k)" data-tip="이 항목의 콘텐츠 보기" data-tip-pos="left"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
               </template>
               <div x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" style="margin-top:18px">
                 <span class="ds-hint">품질 사유 상위 (클릭 → 콘텐츠)</span>
                 <div class="flex flex-wrap gap-1.5" style="margin-top:7px">
                   <template x-for="x in (dashData?dashData.qualityReasons:[])" x-bind:key="x.k">
-                    <span class="ds-badge ds-badge--reason" style="cursor:pointer" x-on:click="drill('reason', x.k)" x-text="x.k + ' (' + x.v + ')'"></span>
+                    <span class="ds-badge ds-badge--reason" style="cursor:pointer" role="button" tabindex="0" x-on:click="drill('reason', x.k)" x-on:keydown.enter="drill('reason', x.k)" x-text="x.k + ' (' + x.v + ')'"></span>
                   </template>
                 </div>
               </div>
@@ -4386,7 +4389,7 @@
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
           <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
             <input type="checkbox" x-model="queueOnlyUnreviewed" x-on:change="loadQueue()"> 미검수만</label>
-          <button type="button" class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px" x-on:click="loadQueue()">새로고침</button>
+          <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
           <div class="panel-bd">
             <p class="text-xs text-muted" style="margin-bottom:11px">자동(임베딩-LLM)이 확신 못 한 <b class="text-ink">YELLOW</b> 콘텐츠 대기열입니다. <b class="text-ink" x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존되어 <b class="text-ink">합의/불일치</b>로 집계됩니다(실시간 반영)</p>
@@ -4397,7 +4400,7 @@
                     <div class="fbrow__title">
                       <span class="ds-badge ds-badge--neutral" x-text="it.grade || '·'"></span>
                       <span class="ds-badge" style="background:rgba(255,148,41,.16);color:#cc6a0a">YELLOW</span>
-                      <span x-text="it.title || '(제목 없음)'"></span>
+                      <span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="it.title || '(제목 없음)'"></span>
                       <span class="fbrow__svc" x-text="it.service"></span>
                       <span class="ds-badge ds-badge--intent" x-show="liveSeen[it.hash]" x-text="(liveSeen[it.hash]||'') + ' 보는 중'"></span>
                       <span class="ds-badge ds-badge--success" x-show="it.reviewed && !it.myVerdict">검수됨</span>
@@ -4553,7 +4556,7 @@
       <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
         <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
         <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th></tr></thead><tbody>
-          <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" x-on:click="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
+          <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
             <td x-text="c.service || '·'"></td>
             <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
             <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
