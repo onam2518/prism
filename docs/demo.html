@@ -3089,7 +3089,7 @@
   /* 로고 영역 = 카드 왼쪽~구분선(폭 232 = 사이드바 폭), 콘텐츠 가운데 정렬 */
   .topbar__brand{width:232px;flex:none;display:flex;align-items:center;justify-content:center;gap:10px;border-right:1px solid var(--ds-hairline)}
   /* 제공된 풀 로고(배지+PRISM+태그라인) · 라이트/다크 스왑 */
-  .topbar__logo{height:44px;width:auto;display:block}
+  .topbar__logo{height:56px;width:auto;display:block}
   .topbar__logo--dark{display:none}
   [data-theme='dark'] .topbar__logo--light{display:none} [data-theme='dark'] .topbar__logo--dark{display:block}
   .topbar__brand .logo{width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:none}
@@ -3899,7 +3899,7 @@
         </section>
         <section class="panel"><div class="panel-hd"><b>등록된 인입 소스</b><span class="meta" x-text="ingestSources.length + '개'"></span></div>
           <div class="panel-bd">
-            <p x-show="ingestSources.length" class="text-xs text-muted" style="margin-bottom:11px"><b class="text-ink">활성</b> 소스는 <b class="text-ink">폴링(초)</b> 주기마다 백그라운드로 자동 인입되고, <b class="text-ink">실행 큐</b>에 진행률이 표시됩니다 즉시 한 번만 받으려면 <b class="text-ink">지금 인입</b>, 멈추려면 <b class="text-ink">중지</b></p>
+            <ul x-show="ingestSources.length" class="ds-bullets" style="margin-bottom:11px"><li><b>활성</b> 소스는 <b>폴링(초)</b> 주기마다 백그라운드로 자동 인입되고, <b>실행 큐</b>에 진행률이 표시됩니다.</li><li>즉시 한 번만 받으려면 <b>지금 인입</b>, 멈추려면 <b>중지</b>.</li></ul>
             <div x-show="!ingestSources.length" class="ds-empty" style="border:0;padding:16px 4px"><div class="ds-empty__desc">아직 등록된 소스가 없습니다 위에서 API · Kafka 소스를 추가하세요</div></div>
             <template x-for="s in ingestSources" x-bind:key="s.id">
               <div class="drow" style="grid-template-columns:1fr auto;align-items:center;border-bottom:1px solid var(--ds-hairline-soft)">
@@ -4261,7 +4261,7 @@
       <!-- ═══ 모듈: 품질 메타 ═══ -->
       <div x-show="(mod === 'dash' && dashTop === 'content' && dashSub === 'quality') || mod === 'quality'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
-          <div class="text-xs text-muted">법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다 켜면 다음 추출부터 적용(추가 호출)</div>
+          <ul class="ds-bullets"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출).</li></ul>
           <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
             <input type="checkbox" x-model="legalEnabled" x-on:change="toggleLegal()" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
             법령 필터 포함
@@ -4388,7 +4388,7 @@
       <div x-show="(mod === 'dash' && dashTop === 'user') || mod === 'user'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="flex items-center justify-between gap-3 flex-wrap">
-            <div class="text-xs text-muted">행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <span class="text-body">소비 형태 · 강도 · 선호</span>를 산출합니다 <code class="text-violet">content_id</code> = 추출 순서(0부터)</div>
+            <ul class="ds-bullets"><li>행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <b>소비 형태 · 강도 · 선호</b>를 산출합니다.</li><li><code class="text-violet">content_id</code> = 추출 순서(0부터).</li></ul>
             <div class="flex items-center gap-2">
               <a href="/usermeta-template.csv" download class="ds-btn ds-btn--secondary ds-btn--s-sm">템플릿</a>
               <label class="ds-btn ds-btn--primary ds-btn--s-sm" style="cursor:pointer">
@@ -4444,7 +4444,7 @@
         <div x-show="evalTab === 'golden'" class="space-y-4">
           <section class="panel"><div class="panel-hd"><b>골든셋 정합성 평가</b><span class="meta">기대(정답) vs 실제</span></div>
             <div class="panel-bd">
-              <p class="text-xs text-muted" style="margin-bottom:11px">관리자가 등록한 골든셋으로 <b class="text-ink">프롬프트</b>의 정합성을 측정합니다. 낮으면 <b class="text-ink">프롬프트 스튜디오</b>에서 원천 프롬프트를 수정하고 다시 평가하세요. (골든셋 등록은 <b class="text-ink">팀 관리</b>)</p>
+              <ul class="ds-bullets" style="margin-bottom:11px"><li>관리자가 등록한 골든셋으로 <b>프롬프트</b>의 정합성을 측정합니다.</li><li>낮으면 <b>프롬프트 스튜디오</b>에서 원천 프롬프트를 수정하고 다시 평가하세요.</li><li>골든셋 등록은 <b>팀 관리</b>에서 합니다.</li></ul>
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenResult && goldenResult.ok">
@@ -4495,7 +4495,7 @@
           <button type="button" class="ds-btn ds-btn--secondary ml-auto" style="height:30px;padding:0 12px" x-show="dashData && dashData.feedback && dashData.feedback.total" x-on:click="clearFeedback()">초기화</button>
         </div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:11px">콘텐츠마다 <b class="text-ink">정확</b> / <b class="text-ink">문제</b>를 표시하고, 문제는 교정 메모를 남기면 다음 추출부터 해당 단계 프롬프트에 자동 반영됩니다(원천 프롬프트는 <b class="text-ink">프롬프트 스튜디오</b>에서 편집)</p>
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>콘텐츠마다 <b>정확</b> / <b>문제</b>를 표시합니다.</li><li>문제는 교정 메모를 남기면 다음 추출부터 해당 단계 프롬프트에 자동 반영됩니다.</li><li>원천 프롬프트는 <b>프롬프트 스튜디오</b>에서 편집합니다.</li></ul>
             <!-- 출처 필터: 자동 인입 / 단건 / 배치 구분 -->
             <div class="srcfilter" x-show="srcOptions.length > 1">
               <button type="button" class="srcfilter__chip" x-bind:class="srcFilter==='' ? 'sel' : ''" x-on:click="srcFilter=''">전체 <span x-text="(dashData&&dashData.contents?dashData.contents.length:0)"></span></button>
@@ -4580,21 +4580,20 @@
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>API 키·모델 설정</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:10px">추출 <b class="text-ink">API 키·모델·엔드포인트</b>를 관리자가 여기서 설정합니다. 팀원은 키 입력 없이 바로 사용합니다.
-              <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 키 미설정'"></span></p>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>추출 <b>API 키·모델·엔드포인트</b>를 관리자가 여기서 설정합니다.</li><li>팀원은 키 입력 없이 바로 사용합니다.</li><li><span x-text="cfg.hasKey ? '현재 연결됨 ✓' : '키 미설정'"></span></li></ul>
             <button type="button" class="ds-btn ds-btn--primary" x-on:click="settingsOpen = true">API·모델 설정 열기</button>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>골든셋</b><span class="meta" x-text="(adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록')"></span></div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:10px">골든셋(정답셋). <b class="text-ink">{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다. (검수 및 평가 → 원천 평가에서 이 골든셋으로 정합성 측정)</p>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>골든셋(정답셋) <b>{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다.</li><li><b>검수 및 평가</b> → 원천 평가에서 이 골든셋으로 정합성을 측정합니다.</li></ul>
             <label class="ds-btn ds-btn--secondary" style="cursor:pointer">골든셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
             <span class="text-xs text-muted" style="margin-left:10px" x-text="goldenMsg"></span>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>콘텐츠 인입 (검토용)</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:10px">크롤러 엔드포인트에서 <b class="text-ink">수량 목표</b>로 당겨와 추출 → 전건을 팀 <b class="text-ink">검수 대기</b>에 적재합니다. 실시간 스트리밍 부담 없이 배치로.</p>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>크롤러 엔드포인트에서 <b>수량 목표</b>로 당겨와 추출 → 전건을 팀 <b>검수 대기</b>에 적재합니다.</li><li>실시간 스트리밍 부담 없이 배치로 처리합니다.</li></ul>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
               <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
@@ -4605,7 +4604,7 @@
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>데이터 관리</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:10px">우리 팀 데이터만 삭제됩니다(다른 팀 무영향). 되돌릴 수 없습니다.</p>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>우리 팀 데이터만 삭제됩니다(다른 팀 무영향).</li><li>되돌릴 수 없습니다.</li></ul>
             <div style="display:flex;gap:10px;flex-wrap:wrap">
               <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_feedback')">평가 피드백 전체 삭제</button>
               <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_contents')">검토 콘텐츠 전체 삭제</button>
@@ -4645,7 +4644,7 @@
         <section class="panel" data-fn x-show="arenaData && arenaData.leaderboard && arenaData.leaderboard.length"><div class="panel-hd"><b>주간 리그 · 승급/강등</b>
           <span class="meta">최근 7일 · <b class="text-ink" x-text="leagueActive()"></b>명 활동</span></div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:10px">이번 주 획득 점수로 매기는 순위입니다 · 상위 <b class="text-ink">승급권</b>은 지위 보상, 하위 <b class="text-ink">강등권</b>은 분발 신호(지난주 대비 이동 표시)</p>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>이번 주 획득 점수로 매기는 순위입니다.</li><li>상위 <b>승급권</b>은 지위 보상, 하위 <b>강등권</b>은 분발 신호입니다(지난주 대비 이동 표시).</li></ul>
             <template x-for="r in weeklyLeague()" x-bind:key="r.reviewer">
               <div class="lb-row lb-row--league" x-show="r.wp>0 || leagueActive()===0" x-bind:class="r.reviewer===reviewer ? 'lb-row--me' : ''">
                 <span class="lb-rank" x-text="rankMedal(r.rank-1)"></span>
@@ -4746,7 +4745,7 @@
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 대기 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:11px">자동(임베딩-LLM)이 확신 못 한 <b class="text-ink">YELLOW</b> 콘텐츠 대기열입니다. <b class="text-ink" x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존되어 <b class="text-ink">합의/불일치</b>로 집계됩니다(실시간 반영)</p>
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>자동(임베딩-LLM)이 확신 못 한 <b>YELLOW</b> 콘텐츠 대기열입니다.</li><li><b x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존됩니다.</li><li><b>합의/불일치</b>로 실시간 집계됩니다.</li></ul>
             <div class="overflow-auto" style="max-height:480px;padding:2px">
               <template x-for="it in (queueData ? queueData.items : [])" x-bind:key="it.hash">
                 <div class="fbrow" x-init="notifyViewing(it)">
@@ -5021,7 +5020,7 @@
         <!-- 직접 호출(Solar) · 통합 라우터처럼 카드로 묶음 -->
         <div class="routercard" style="margin-top:14px">
           <div class="rc-h"><b>직접 호출</b></div>
-          <p class="rc-d">각 회사 키로 직접 호출합니다 통합 라우터와 함께 등록해도 됩니다</p>
+          <ul class="ds-bullets"><li>각 회사 키로 직접 호출합니다.</li><li>통합 라우터와 함께 등록해도 됩니다.</li></ul>
           <div class="krow">
             <div class="krow-top">
               <span class="krow-nm">Upstage Solar</span>
@@ -5056,7 +5055,7 @@
       <div x-show="cfgTab === 'data'" x-cloak class="cfgsec">
         <div class="routercard">
           <div class="rc-h"><b>로컬 저장 (SQLite)</b><span class="rc-badge" x-text="(cfg.storedCount || 0) + '건'"></span></div>
-          <p class="rc-d">추출 결과는 로컬 DB에 누적 저장되어 재시작해도 유지됩니다 대시보드·토픽·사용자 메타가 이 데이터를 집계합니다 동일 콘텐츠·결과 무변경 시 적재되지 않습니다(중복 방지)</p>
+          <ul class="ds-bullets"><li>추출 결과는 로컬 DB에 누적 저장되어 재시작해도 유지됩니다.</li><li>대시보드·토픽·사용자 메타가 이 데이터를 집계합니다.</li><li>동일 콘텐츠·결과 무변경 시 적재되지 않습니다(중복 방지).</li></ul>
           <button type="button" x-on:click="clearStore()" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">적재 데이터 초기화</button>
         </div>
       </div>
