@@ -1,0 +1,16 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 분산되는 빛 (오른쪽 점들) -->
+  <circle cx="34.5" cy="19.5" r="1.6" fill="#a05cff"/>
+  <circle cx="36.2" cy="24" r="1.6" fill="#18ba45"/>
+  <circle cx="34.8" cy="28.5" r="1.6" fill="#ff9429"/>
+  <!-- 들어오는 빛 (왼쪽) -->
+  <path d="M2 24h5" stroke="#8e949b" stroke-width="2" stroke-linecap="round"/>
+  <!-- 프리즘 몸통 (둥근 삼각형) -->
+  <path d="M20 7 L32.5 30.5 L7.5 30.5 Z" fill="#1e84ff" stroke="#1e84ff" stroke-width="5" stroke-linejoin="round"/>
+  <!-- 귀여운 얼굴 -->
+  <ellipse cx="16.2" cy="23.4" rx="1.8" ry="2.2" fill="#ffffff"/>
+  <ellipse cx="23.8" cy="23.4" rx="1.8" ry="2.2" fill="#ffffff"/>
+  <circle cx="16.5" cy="23.9" r="0.9" fill="#000000"/>
+  <circle cx="24.1" cy="23.9" r="0.9" fill="#000000"/>
+  <path d="M16.6 27.2 Q20 29.6 23.4 27.2" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+</svg>

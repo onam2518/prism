@@ -55,6 +55,21 @@ DEMO_CONFIG = {
     "hasBizKey": False, "bizPersisted": False, "hasTimelyKey": False, "timelyPersisted": False,
     "textProvider": "solar", "textModel": "",
     "visionProvider": "upstage_ie", "visionModel": "",
+    # 운영 모델(현재 버전): Supabase 백엔드 · 키는 서버(관리자) 관리 → API 설정 UI 숨김.
+    # 데모는 팀 관리자 시점으로 표시(자동 인입·팀 관리 노출). authRequired=false 로 로그인 벽 생략.
+    "backend": "supabase", "authRequired": False, "keyManagedByServer": True,
+}
+
+# 데모 관리자 컨텍스트(/admin 스텁) — isAdmin=true 로 자동 인입·팀 관리 노출
+DEMO_ADMIN = {
+    "ok": True, "isAdmin": True,
+    "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"},
+    "members": [
+        {"id": "demo-admin", "name": "데모 관리자", "char": "boksil"},
+        {"id": "m2", "name": "검수자 A", "char": "yonghee"},
+        {"id": "m3", "name": "검수자 B", "char": "ddakji"},
+    ],
+    "goldenCount": 24,
 }
 DEMO_VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}
 
@@ -103,15 +118,20 @@ STUB = """<script>
   // 정적 데모: 서버 호출을 합성 응답으로 스텁(키·서버 불필요)
   // 홈 위젯 레이아웃 시드(쇼케이스 — 실제 앱은 빈 상태로 시작)
   try { localStorage.setItem('prism_home', JSON.stringify(['launch-run','launch-batch','launch-dict','metrics','quality','intents','categories','process'])); } catch (e) {}
+  // 데모 로그인 시드(관리자) → 로그인 벽 생략 + 자동 인입·팀 관리 노출
+  try { localStorage.setItem('prism_reviewer', '데모 관리자'); localStorage.setItem('prism_reviewer_char', 'boksil'); localStorage.setItem('prism_token', 'demo'); } catch (e) {}
   window.__DEMO_RESULT__ = %s;
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
-    const CFG = %s, VOCAB = %s;
+    const CFG = %s, VOCAB = %s, ADMIN = %s;
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
       const u = String(url);
       if (u.indexOf('/config') === 0 || u.indexOf('/config') > -1) return Promise.resolve(J(CFG));
       if (u.indexOf('/vocab') > -1) return Promise.resolve(J(VOCAB));
+      if (u.indexOf('/admin') > -1) return Promise.resolve(J(ADMIN));
+      if (u.indexOf('/reviewer') > -1) return Promise.resolve(J({ ok: true, team: { invite_code: ADMIN.team.invite_code } }));
+      if (u.indexOf('/auth') > -1) return Promise.resolve(J({ ok: true, access_token: 'demo' }));
       if (u.indexOf('/models') > -1) return Promise.resolve(J({ ok: true, models: ['solar-pro3-260323', 'solar-pro2-251215'] }));
       if (u.indexOf('/ping') > -1) return Promise.resolve(J({ ok: true, detail: 'solar-pro3-260323 응답 정상' }));
       if (u.indexOf('/dashboard') > -1) return Promise.resolve(J(%s));
@@ -119,6 +139,7 @@ STUB = """<script>
       if (u.indexOf('/usermeta') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/dict') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
+      if (u.indexOf('/queue') > -1 || u.indexOf('/ingest') > -1) return Promise.resolve(J({ ok: true, jobs: [], sources: [] }));
       return real ? real(url, opt) : Promise.resolve(J({}));
     };
   })();
@@ -126,6 +147,7 @@ STUB = """<script>
 """ % (json.dumps(DEMO_RESULT, ensure_ascii=False),
        json.dumps(DEMO_CONFIG, ensure_ascii=False),
        json.dumps(DEMO_VOCAB, ensure_ascii=False),
+       json.dumps(DEMO_ADMIN, ensure_ascii=False),
        json.dumps(DEMO_DASH, ensure_ascii=False),
        json.dumps(DEMO_TOPICS, ensure_ascii=False),
        json.dumps(DEMO_USER, ensure_ascii=False),
@@ -150,8 +172,9 @@ def build() -> str:
     comp_css = open(os.path.join(ROOT, "prism", "vendor", "ds-components.css"), encoding="utf-8").read()
     html = html.replace('<link href="/vendor/ds-theme.css" rel="stylesheet">', f'<style>{theme_css}</style>')
     html = html.replace('<link href="/vendor/ds-components.css" rel="stylesheet">', f'<style>{comp_css}</style>')
-    # 벤더 에셋(캐릭터·로고 SVG) → docs/ 기준 레포 상대경로
-    html = html.replace('src="/vendor/', 'src="../prism/vendor/')
+    # 벤더 에셋(캐릭터·로고 SVG) → docs/demo-assets/ (Pages 루트 내부, main() 에서 복사)
+    #   ../prism/vendor 는 Pages(docs=루트)에서 사이트 밖으로 나가 404 → 루트 내부 상대경로로.
+    html = html.replace('src="/vendor/', 'src="demo-assets/')
     # Pretendard 폰트 패밀리는 'Pretendard Variable' 가변 → 정적 CDN 은 'Pretendard'
     html = html.replace('"Pretendard Variable",Pretendard,', '"Pretendard",')
     html = html.replace("'\\\"Pretendard Variable\\\"', 'Pretendard',",
@@ -163,12 +186,29 @@ def build() -> str:
     return html
 
 
+def _copy_demo_assets():
+    """캐릭터·로고 SVG 를 docs/demo-assets/ 로 복사(Pages 루트 내부).
+    demo.html 이 src="demo-assets/*.svg" 로 참조 → Pages·htmlpreview·file:// 모두 해석."""
+    import shutil
+    src_dir = os.path.join(ROOT, "prism", "vendor")
+    dst_dir = os.path.join(ROOT, "docs", "demo-assets")
+    os.makedirs(dst_dir, exist_ok=True)
+    n = 0
+    for fn in os.listdir(src_dir):
+        if fn.lower().endswith((".svg", ".png", ".jpg", ".gif", ".webp")):
+            shutil.copy2(os.path.join(src_dir, fn), os.path.join(dst_dir, fn))
+            n += 1
+    return n, dst_dir
+
+
 def main():
     out = os.path.join(ROOT, "docs", "demo.html")
     html = build()
     with open(out, "w", encoding="utf-8") as f:
         f.write(html)
+    n, dst = _copy_demo_assets()
     print(f"wrote {out} ({len(html):,} bytes)")
+    print(f"copied {n} assets → {dst}")
 
 
 if __name__ == "__main__":

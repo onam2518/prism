@@ -1614,7 +1614,7 @@ PAGE = """<!doctype html>
       },
       mods: [
         { g: '작업', items: [
-          { id: 'auto', label: '자동 인입', ic: 'auto' },
+          { id: 'auto', label: '자동 인입', ic: 'auto', cond: 'admin' },
           { id: 'run', label: '수동 추출', ic: 'run' } ] },
         { g: '콘텐츠 현황', items: [
           { id: 'queue', label: '실행 큐', ic: 'queue' },
@@ -1712,8 +1712,8 @@ PAGE = """<!doctype html>
       },
 
       init() {
+        this.loadReviewer();                           // 검수자·토큰(localStorage) — refreshConfig 의 관리자 로드보다 먼저
         this.refreshConfig();
-        this.loadReviewer();                           // 검수자 이름(localStorage)
         this.startLive();                              // 실시간 SSE 구독
         this.loadHome();                               // 배치된 홈 위젯(localStorage)
         this.loadDash();                               // 홈 위젯 데이터(/dashboard)
@@ -2088,6 +2088,7 @@ PAGE = """<!doctype html>
         try {
           const r = await fetch('/config'); this.cfg = await r.json();
           if (this.cfg.backend) this.backend = this.cfg.backend;     // sqlite | supabase
+          if (this.backend === 'supabase' && this.authToken) this.loadAdmin();  // 관리자 여부 → nav 게이팅(자동인입 등)
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
           if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
@@ -2370,7 +2371,7 @@ PAGE = """<!doctype html>
     word-break:keep-all;overflow-wrap:break-word}
   /* 배치 결과 · 콘텐츠별 평가 피드백(학습 루프) */
   .fbrow{display:grid;grid-template-columns:1fr auto;gap:9px 12px;align-items:start;padding:11px 13px;
-    border:1px solid var(--ds-hairline-soft);border-radius:11px;background:var(--ds-surface-white);margin-bottom:8px}
+    border:1px solid var(--ds-hairline-soft);border-radius:12px;background:var(--ds-surface-white);margin-bottom:8px}
   .fbrow__main{min-width:0}
   .fbrow__title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ds-ink);flex-wrap:wrap}
   .fbrow__svc{font-size:11px;font-weight:500;color:var(--ds-muted)}
@@ -2592,7 +2593,7 @@ PAGE = """<!doctype html>
   /* ── 검수자 등록 온보딩(딤드 + 중앙 모달) ── */
   .onboard{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:24px;
     background:rgba(0,0,0,.55);backdrop-filter:blur(4px)}
-  .onboard__card{width:100%;max-width:440px;background:var(--ds-surface2,#fff);border-radius:22px;
+  .onboard__card{width:100%;max-width:440px;background:var(--ds-surface2,#fff);border-radius:24px;
     padding:30px 30px 24px;box-shadow:0 24px 70px rgba(0,0,0,.4);text-align:center}
   .onboard__brand{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ds-violet,#1e84ff);
     font-size:13px;font-weight:700;margin-bottom:14px}
@@ -2603,7 +2604,7 @@ PAGE = """<!doctype html>
   .onboard__hint{font-weight:500;color:var(--ds-muted)}
   .onboard__name{height:44px;width:100%;font-size:15px;margin-bottom:18px}
   .onboard__chars{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:24px}
-  .ochar{display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 4px 9px;border-radius:14px;
+  .ochar{display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 4px 9px;border-radius:12px;
     border:1.5px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface,#ffffff);cursor:pointer;transition:all .15s}
   .ochar:hover{border-color:var(--ds-violet,#1e84ff);transform:translateY(-2px)}
   .ochar__ring{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;
@@ -2612,7 +2613,7 @@ PAGE = """<!doctype html>
   .ochar b{font-size:12.5px;color:var(--ds-ink)} .ochar small{font-size:10px;color:var(--ds-muted)}
   .ochar.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16))}
   .ochar.sel .ochar__ring{box-shadow:0 0 0 3px var(--ds-violet,#1e84ff)}
-  .onboard__authtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:11px}
+  .onboard__authtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:12px}
   .onboard__authtabs button{flex:1;height:34px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
   .onboard__authtabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .onboard__authmsg{text-align:left;font-size:12px;color:#ff4e33;margin:-6px 0 12px}
@@ -2621,14 +2622,14 @@ PAGE = """<!doctype html>
   .onboard__skip{margin-top:10px;background:none;border:0;color:var(--ds-muted);font-size:12.5px;cursor:pointer}
   /* ── 검수자 등록: 캐릭터 선택(구 약식, 미사용 호환) ── */
   .charpick{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
-  .charpick__opt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:11px;
+  .charpick__opt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;
     border:1.5px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface2,#fff);cursor:pointer;transition:all .15s}
   .charpick__opt:hover{border-color:var(--ds-violet,#1e84ff)}
   .charpick__opt img{width:34px;height:34px}
   .charpick__opt span{font-size:10.5px;color:var(--ds-muted);font-weight:600}
   .charpick__opt.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16));box-shadow:0 0 0 2px var(--ds-violet-tint,rgba(30,132,255,0.16))}
   .charpick__opt.sel span{color:var(--ds-violet,#1e84ff)}
-  .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:11px;max-width:520px}
+  .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:12px;max-width:520px}
   .evaltabs button{flex:1;height:36px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
   .evaltabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .goldgrid{display:flex;align-items:center;gap:24px;margin-top:16px;flex-wrap:wrap}
@@ -2642,7 +2643,7 @@ PAGE = """<!doctype html>
   .invite__code{font-family:var(--ds-font-mono,ui-monospace);font-size:26px;font-weight:800;letter-spacing:.12em;color:var(--ds-violet,#1e84ff)}
   /* ── 평가 아레나(게임화) ── */
   .arena-hero{background:linear-gradient(135deg,var(--ds-violet,#1e84ff),var(--ds-violet-deep,#004fad));
-    color:#fff;border-radius:18px;padding:22px 24px;box-shadow:0 10px 30px rgba(19,52,59,.22)}
+    color:#fff;border-radius:16px;padding:22px 24px;box-shadow:0 10px 30px rgba(19,52,59,.22)}
   .arena-hero__head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
   .arena-hero__eyebrow{font-size:12px;opacity:.82;font-weight:600;letter-spacing:.02em;margin-bottom:4px}
   .arena-hero__big{font-size:54px;font-weight:800;line-height:1;display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums}
@@ -2945,7 +2946,7 @@ PAGE = """<!doctype html>
         <nav class="ds-navgroup" x-show="grp.g !== '팀' || backend === 'supabase'">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
-            <button type="button" class="ds-navitem" x-show="!it.cond || backend === it.cond" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+            <button type="button" class="ds-navitem" x-show="!it.cond || (it.cond === 'admin' ? (backend !== 'supabase' || (adminData && adminData.isAdmin)) : backend === it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
               <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
               <span x-text="it.label"></span>
             </button>
@@ -3063,8 +3064,11 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
-      <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) ═══ -->
+      <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) — 관리자 전용 ═══ -->
       <div x-show="mod === 'auto'" x-cloak class="w-full space-y-4">
+        <div x-show="backend === 'supabase' && !(adminData && adminData.isAdmin)" class="ds-hint hintbox">자동 인입 파이프라인 설정은 <b class="text-ink">팀 관리자</b>만 가능합니다. 일회성 처리는 <b class="text-ink">수동 추출</b>을 사용하세요.</div>
+        <template x-if="backend !== 'supabase' || (adminData && adminData.isAdmin)">
+        <div class="w-full space-y-4">
         <p class="ds-hint hintbox">콘텐츠를 <b class="text-ink">자동으로 인입</b>하는 파이프라인 소스를 설정합니다 등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다 일회성 처리는 <b class="text-ink">수동 추출</b>을 사용하세요</p>
         <section class="panel" data-fn><div class="panel-hd"><b>인입 소스 추가</b></div>
           <div class="panel-bd" style="display:flex;flex-direction:column;gap:12px">
@@ -3119,6 +3123,8 @@ PAGE = """<!doctype html>
             </template>
           </div>
         </section>
+        </div>
+        </template>
       </div>
 
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
