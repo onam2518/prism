@@ -427,6 +427,29 @@ def drill_contents(kind: str, value: str, team=None) -> dict:
     return {"ok": True, "kind": kind, "value": value, "items": out, "n": len(out)}
 
 
+def topic_drill(cluster_id: str) -> dict:
+    """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape."""
+    rows = results_rows()
+    if not rows or not cluster_id:
+        return {"ok": True, "kind": "topic", "value": cluster_id or "", "items": [], "n": 0}
+    td = topics_data()                        # single/composite/filter (각 content_ids 보유)
+    cluster = None
+    for grp in ("single", "composite", "filter"):
+        for c in td.get(grp, []):
+            if c.get("cluster_id") == cluster_id:
+                cluster = c
+                break
+        if cluster:
+            break
+    if not cluster:
+        return {"ok": False, "kind": "topic", "value": cluster_id, "items": [], "n": 0,
+                "error": "토픽을 찾을 수 없습니다(데이터가 갱신되었을 수 있음)"}
+    ids = cluster.get("content_ids") or []
+    out = [_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)]
+    name = cluster.get("name") or cluster.get("label") or cluster_id
+    return {"ok": True, "kind": "topic", "value": name, "items": out, "n": len(out)}
+
+
 def _detail_row(r: dict) -> dict:
     """콘텐츠 상세/목록 공용 행: 렌더에 필요한 필드 표준화(공통 컴포넌트 입력)."""
     im = r.get("item_meta") or {}
@@ -1364,6 +1387,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(vocab(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/dict"):
             self._send(200, json.dumps(dict_data(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/topic-drill"):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            self._send(200, json.dumps(topic_drill(q.get("cluster", [""])[0]),
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/topics"):
             self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/dashboard"):
@@ -1690,8 +1718,10 @@ PAGE = """<!doctype html>
         // 'violet' 은 역사적 유틸명 · 값은 Anchor Blue 로 통일.
         violet: { DEFAULT: '#1e84ff', hover: '#0066db', deep: '#004fad', tint: 'rgba(30,132,255,0.16)' },
         solar: '#18ba45',
-        canvas: '#f4f5f7', surface: '#ffffff', surface2: '#ffffff',
-        ink: '#000000', body: 'rgba(0,0,0,0.88)', muted: 'rgba(0,0,0,0.48)', hair: 'rgba(0,0,0,0.08)',
+        // ⚠️ CSS 변수로 매핑(하드코딩 금지) → text-ink/bg-surface 등 유틸이 라이트/다크 자동 적응.
+        // 예전엔 #000/#fff 고정이라 다크모드서 검은 글씨·흰 박스로 안 보였음.
+        canvas: 'var(--ds-canvas)', surface: 'var(--ds-surface-white)', surface2: 'var(--ds-surface-white)',
+        ink: 'var(--ds-ink)', body: 'var(--ds-body)', muted: 'var(--ds-muted)', hair: 'var(--ds-hairline)',
       },
     } },
   };
@@ -1922,7 +1952,14 @@ PAGE = """<!doctype html>
         try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value))).json(); } catch (e) { this._err('콘텐츠 목록 불러오기 실패'); }
         this.drillBusy = false;
       },
-      drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : '품질 사유'; },
+      async topicDrill(t) {                              // 토픽 → 묶인 콘텐츠(배치 결과 드릴다운과 동일 모달)
+        if (!t || !t.cluster_id) return;
+        this.drillOpen = true; this.drillBusy = true;
+        this.drillData = { kind: 'topic', value: (t.name || t.label || t.cluster_id), items: [] };
+        try { this.drillData = await (await fetch('/topic-drill?cluster=' + encodeURIComponent(t.cluster_id))).json(); } catch (e) { this._err('토픽 콘텐츠 불러오기 실패'); }
+        this.drillBusy = false;
+      },
+      drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : k === 'topic' ? '토픽' : '품질 사유'; },
       // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
       openDetail(c) { this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.detailOpen = true; this.drillOpen = false; },
       // ── 배치 결과: 콘텐츠별 평가 피드백 → 학습 루프 ──
@@ -2560,8 +2597,12 @@ PAGE = """<!doctype html>
   .lb-pts,.lb-name>span:first-child,.charcard__lvl,.charcard__title,.charcard__xptxt b,
   .badgeburst__label,.badgeburst__ttl,.gbadge__exp,.badgeburst__exp,.side-profile__score,.side-profile__gain,.side-profile__name,
   .topbar__wm,.ds-navitem,.ds-navgroup__label,.evaltabs button,.seg button,.verdictbtn,
+  .ds-btn,.copybtn,.fbbtn,.srcfilter__chip,.ds-segmented__item,.ds-badge,
+  .panel-hd .meta,.panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions,.ds-widget__kind,
   .tnum{font-family:var(--ds-font-display)}
   .topbar__wm small{font-family:var(--ds-font)}   /* 영문 태그라인은 Pretendard 유지 */
+  .codeblock textarea,.field,input,textarea,select{font-family:var(--ds-font)}   /* 입력·코드블록은 가독성 위해 Pretendard/모노 유지 */
+  .codeblock textarea{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"D2Coding",monospace}
   .homehead__title{font-family:var(--ds-font-display)}   /* 3192 라인 재정의 방지(뒤에서 승리) */
   html{scroll-behavior:smooth}
   /* 문서를 뷰포트에 고정 → 스크롤은 .appbody 안에서만 상단 바(.topbar)는 절대 안 따라옴 */
@@ -2650,6 +2691,21 @@ PAGE = """<!doctype html>
   .stage-model__lbl{flex:none;font-size:11px;font-weight:700;color:var(--ds-primary);background:var(--ds-primary-tint);
     border-radius:6px;padding:4px 9px}
   .stage-model .field{height:36px}
+  /* 원천 프롬프트 = 코드블록 에디터(직접 수정). 모노스페이스 · 코드창 크롬(맥 신호등 도트) */
+  .codeblock{position:relative;border:1px solid var(--ds-hairline);border-radius:10px;overflow:hidden;
+    background:var(--ds-surface-on);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+  .codeblock__bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--ds-hairline-soft);
+    border-bottom:1px solid var(--ds-hairline);font-size:11px;font-weight:700;color:var(--ds-text-secondary);font-family:var(--ds-font)}
+  .codeblock__dots{display:inline-flex;gap:5px;margin-right:4px}
+  .codeblock__dots i{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .codeblock__dots i:nth-child(1){background:#ff5f57} .codeblock__dots i:nth-child(2){background:#febc2e} .codeblock__dots i:nth-child(3){background:#28c840}
+  .codeblock__stage{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+    color:var(--ds-muted);background:var(--ds-surface-white);border:1px solid var(--ds-hairline);border-radius:6px;padding:1px 8px}
+  .codeblock textarea{display:block;width:100%;border:0;background:transparent;resize:vertical;
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"D2Coding",monospace;font-size:12.5px;line-height:1.65;
+    color:var(--ds-ink);padding:14px 16px;min-height:200px;tab-size:2;white-space:pre;overflow:auto}
+  .codeblock textarea:focus{outline:none;box-shadow:none}
+  .codeblock:focus-within{border-color:var(--ds-primary);box-shadow:0 0 0 3px var(--ds-primary-tint)}
   .tnum{font-variant-numeric:tabular-nums}
   :where(button,a,[role=tab],select,summary):focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px;border-radius:8px}
 
@@ -3980,13 +4036,13 @@ PAGE = """<!doctype html>
           </div>
           <div class="panel"><div class="panel-hd"><b>엔티티형 · 사건형 토픽</b><span class="meta tnum" x-text="topicData ? (topicData.n_contents + '건 기준') : ''"></span><button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th>유형</th><th>클러스터</th><th>대표 엔티티</th><th>멤버</th></tr></thead><tbody>
-              <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr><td>엔티티형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.contents?t.contents.length:'')"></td></tr></template>
-              <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr><td>사건형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.contents?t.contents.length:'')"></td></tr></template>
+              <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>엔티티형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.count||(t.content_ids?t.content_ids.length:''))"></td></tr></template>
+              <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>사건형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.count||(t.content_ids?t.content_ids.length:''))"></td></tr></template>
               <template x-if="!(topicData&&(topicData.single.length||topicData.composite.length))"><tr><td colspan="4" class="text-muted">엔티티 공유 클러스터 없음(데이터가 많을수록 형성)</td></tr></template>
             </tbody></table></div>
           </div>
           <div class="panel"><div class="panel-hd"><b>조건형 토픽</b><span class="meta">관심사 × 소비 방식</span></div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="ds-badge ds-badge--neutral" x-bind:class="t.active ? 'ds-badge--entity' : 'ds-badge--category'" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||'')):'')"></span></template>
+            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" role="button" tabindex="0" x-bind:class="t.active ? 'ds-badge--entity' : 'ds-badge--category'" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||'')):'')"></span></template>
           </div></div>
         </div>
       </div>
@@ -4070,8 +4126,8 @@ PAGE = """<!doctype html>
           <div class="flex items-center justify-between gap-3 flex-wrap">
             <div class="text-xs text-muted">행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <span class="text-body">소비 형태 · 강도 · 선호</span>를 산출합니다 <code class="text-violet">content_id</code> = 추출 순서(0부터)</div>
             <div class="flex items-center gap-2">
-              <a href="/usermeta-template.csv" download class="inline-flex items-center gap-1.5 rounded-md border border-black/[0.12] px-2.5 py-1 text-xs font-medium text-ink hover:bg-black/[0.06]">템플릿</a>
-              <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-violet px-3 py-1.5 text-xs font-semibold text-ink hover:bg-violet-hover">
+              <a href="/usermeta-template.csv" download class="ds-btn ds-btn--secondary ds-btn--s-sm">템플릿</a>
+              <label class="ds-btn ds-btn--primary ds-btn--s-sm" style="cursor:pointer">
                 행동 로그 업로드
                 <input type="file" accept=".csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="uploadUserLog($event)">
               </label>
@@ -4476,30 +4532,30 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 프롬프트 스튜디오 (전용 도구) · 추출 단계별 프롬프트 ═══ -->
       <div x-show="mod === 'prompt'" x-cloak class="w-full space-y-4">
-        <p class="ds-hint hintbox">단계마다 <b class="text-ink">모델을 지정</b>하면 그 모델의 프롬프트로 동작합니다 각 과정에 다른 모델을 쓸 수 있고, 프롬프트는 모델별로 저장됩니다 보완은 <b class="text-ink">검증 · 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다</p>
+        <p class="ds-hint hintbox">각 단계의 <b class="text-ink">원천 프롬프트</b>를 아래 <b class="text-ink">코드블록</b>에서 직접 수정합니다(관리자 전용) 단계마다 <b class="text-ink">모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 모델별로 저장됩니다 보완은 <b class="text-ink">검증 · 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다</p>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
         <section class="panel" data-fn><div class="panel-hd"><b>추출</b><span class="meta">대식 · 이미지 → 신호(OCR · 비전)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
             <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.extract" x-on:change="onStageModelChange('extract')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <textarea x-model="stagePrompts.extract" rows="5" class="field" placeholder="이 단계의 프롬프트(지시문)"></textarea>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 프롬프트 · 추출<span class="codeblock__stage" x-text="stageModels.extract || '전역 프롬프트'"></span></div><textarea x-model="stagePrompts.extract" spellcheck="false" placeholder="이 단계의 원천 프롬프트(지시문)를 직접 수정하세요"></textarea></div>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('extract')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('extract')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.extract"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.extract ? ('최종 수정 ' + stagePromptsMeta.extract) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>분석</b><span class="meta">용희 · 신호 → 메타(리드문 · 엔티티 · 인텐트 · 카테고리)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.analyze" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
             <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.analyze" x-on:change="onStageModelChange('analyze')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <textarea x-model="stagePrompts.analyze" rows="5" class="field" placeholder="이 단계의 프롬프트(지시문)"></textarea>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 프롬프트 · 분석<span class="codeblock__stage" x-text="stageModels.analyze || '전역 프롬프트'"></span></div><textarea x-model="stagePrompts.analyze" spellcheck="false" placeholder="이 단계의 원천 프롬프트(지시문)를 직접 수정하세요"></textarea></div>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('analyze')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('analyze')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.analyze"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.analyze ? ('최종 수정 ' + stagePromptsMeta.analyze) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>검수</b><span class="meta">복실 · 품질 메타 판정</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.review" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
             <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.review" x-on:change="onStageModelChange('review')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <textarea x-model="stagePrompts.review" rows="5" class="field" placeholder="이 단계의 프롬프트(지시문)"></textarea>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 프롬프트 · 검수<span class="codeblock__stage" x-text="stageModels.review || '전역 프롬프트'"></span></div><textarea x-model="stagePrompts.review" spellcheck="false" placeholder="이 단계의 원천 프롬프트(지시문)를 직접 수정하세요"></textarea></div>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('review')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('review')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.review"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.review ? ('최종 수정 ' + stagePromptsMeta.review) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>판정 · 부여</b><span class="meta">딱지 · 유통 결정 · 법령</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.judge" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
             <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.judge" x-on:change="onStageModelChange('judge')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <textarea x-model="stagePrompts.judge" rows="5" class="field" placeholder="이 단계의 프롬프트(지시문)"></textarea>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 프롬프트 · 판정<span class="codeblock__stage" x-text="stageModels.judge || '전역 프롬프트'"></span></div><textarea x-model="stagePrompts.judge" spellcheck="false" placeholder="이 단계의 원천 프롬프트(지시문)를 직접 수정하세요"></textarea></div>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('judge')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('judge')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.judge"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.judge ? ('최종 수정 ' + stagePromptsMeta.judge) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통</span></div>
