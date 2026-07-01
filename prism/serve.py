@@ -376,6 +376,29 @@ def dashboard_data(team=None) -> dict:
     }
 
 
+def drill_contents(kind: str, value: str, team=None) -> dict:
+    """대시보드 드릴다운: intent|category|reason = value 로 판정된 콘텐츠 목록."""
+    rows = results_rows(team=team)
+    out = []
+    for r in rows:
+        im = r.get("item_meta") or {}
+        qm = r.get("quality_meta") or {}
+        ref = r.get("content_ref") or {}
+        if kind == "intent":
+            hit = value in (im.get("intent") or [])
+        elif kind == "category":
+            hit = any((v or "").split("/")[0].strip() == value or (v or "").strip() == value
+                      for v in (im.get("content_category") or []))
+        elif kind == "reason":
+            hit = value in (qm.get("reasons") or [])
+        else:
+            hit = False
+        if hit:
+            out.append({"title": ref.get("title", ""), "service": ref.get("displayServiceName", ""),
+                        "grade": qm.get("finalGrade", ""), "summary": im.get("summary", "")})
+    return {"ok": True, "kind": kind, "value": value, "items": out, "n": len(out)}
+
+
 def _logs_to_jsonl(data: bytes, filename: str, out_path: str):
     """행동 로그(csv/tsv/jsonl) → jsonl 정규화. 컬럼: user_id·content_id·event·dwell_sec·scroll_pct·ts."""
     ext = os.path.splitext(filename or "")[1].lower()
@@ -1263,6 +1286,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/dashboard"):
             self._send(200, json.dumps(dashboard_data(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/drill"):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            self._send(200, json.dumps(drill_contents(q.get("kind", [""])[0], q.get("value", [""])[0],
+                                                       self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/arena"):
             self._send(200, json.dumps(arena_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/admin"):
@@ -1597,6 +1625,7 @@ PAGE = """<!doctype html>
       mod: 'home',
       dashTop: 'content',   // 현황 대시보드 상위 탭: content | user
       evalTop: 'queue',     // 검증 및 평가 상위 탭: queue(검수큐) | test(테스트)
+      drillOpen: false, drillData: null, drillBusy: false,  // 대시보드 드릴다운
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
       navIcons: {
         home: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 11 12 4l8 7M6 10v9h12v-9" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
@@ -1791,6 +1820,12 @@ PAGE = """<!doctype html>
       removeWidget(id) { this.placed = (this.placed || []).filter((x) => x !== id); this.saveHome(); },
       useRecommended() { this.placed = ['launch-run', 'launch-dict', 'metrics', 'quality', 'intents']; this.saveHome(); },
       async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard')).json(); } catch (e) {} this.modBusy = false; },
+      async drill(kind, value) {
+        this.drillOpen = true; this.drillBusy = true; this.drillData = { kind: kind, value: value, items: [] };
+        try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value))).json(); } catch (e) {}
+        this.drillBusy = false;
+      },
+      drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : '품질 사유'; },
       // ── 배치 결과: 콘텐츠별 평가 피드백 → 학습 루프 ──
       fbNoteOpen: {},
       async setFeedback(c, verdict) {
@@ -2495,6 +2530,8 @@ PAGE = """<!doctype html>
   .panel:hover{border-color:var(--ds-border-input-hover)}
   .panel-hd{display:flex;align-items:center;gap:12px;padding:18px 20px 8px}
   .panel-hd>b{margin-right:auto}
+  .ds-progress--drill:hover .ds-progress__label{color:var(--ds-primary)}
+  .ds-progress--drill:hover .ds-progress__track{box-shadow:0 0 0 2px color-mix(in srgb,var(--ds-primary) 26%,transparent)}
   .panel-hd b{color:var(--ds-ink);font-size:13px;font-weight:600;letter-spacing:.01em}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
   .panel-bd{padding:16px 20px 20px}
@@ -3525,7 +3562,7 @@ PAGE = """<!doctype html>
               <div class="ds-ring" x-bind:style="'--ds-ring-size:120px;--ds-ring-pct:'+(dashData?dashData.gPct:0)"><span class="ds-ring__label" x-text="(dashData?dashData.gPct:0)+'%'"></span></div>
               <div style="min-width:0;flex:1">
                 <template x-for="it in (dashData?dashData.intents:[])" x-bind:key="it.k">
-                  <div class="ds-progress" style="margin:11px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
+                  <div class="ds-progress ds-progress--drill" style="margin:11px 0;cursor:pointer" x-on:click="drill('intent', it.k)" data-tip="이 항목의 콘텐츠 보기" data-tip-pos="left"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
                 </template>
               </div>
             </div></div>
@@ -3533,9 +3570,16 @@ PAGE = """<!doctype html>
           <section class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 분포 · 상위</b></div>
             <div class="panel-bd">
               <template x-for="it in (dashData?dashData.categories:[])" x-bind:key="it.k">
-                <div class="ds-progress" style="margin:11px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
+                <div class="ds-progress ds-progress--drill" style="margin:11px 0;cursor:pointer" x-on:click="drill('category', it.k)" data-tip="이 항목의 콘텐츠 보기" data-tip-pos="left"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
               </template>
-              <p x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" class="ds-hint" style="margin-top:18px">품질 사유 상위: <span x-text="(dashData?dashData.qualityReasons:[]).map(x=>x.k+'('+x.v+')').join(' · ')"></span></p>
+              <div x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" style="margin-top:18px">
+                <span class="ds-hint">품질 사유 상위 (클릭 → 콘텐츠)</span>
+                <div class="flex flex-wrap gap-1.5" style="margin-top:7px">
+                  <template x-for="x in (dashData?dashData.qualityReasons:[])" x-bind:key="x.k">
+                    <span class="ds-badge ds-badge--reason" style="cursor:pointer" x-on:click="drill('reason', x.k)" x-text="x.k + ' (' + x.v + ')'"></span>
+                  </template>
+                </div>
+              </div>
             </div>
           </section>
           <!-- 콘텐츠별 평가 피드백 → 학습 루프(다음 추출 프롬프트에 자동 반영) -->
@@ -4145,6 +4189,25 @@ PAGE = """<!doctype html>
         <button type="button" class="ds-btn ds-btn--ghost" x-on:click="cancelEdit()">취소</button>
         <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveEdit()">저장</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 대시보드 드릴다운: 분포 항목 → 판정된 콘텐츠 목록 -->
+  <div class="ds-dialog-backdrop" x-show="drillOpen" x-cloak x-on:mousedown.self="drillOpen=false" style="z-index:72">
+    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="콘텐츠 목록" style="max-width:620px">
+      <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span></h2>
+      <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
+        <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
+        <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th></tr></thead><tbody>
+          <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr>
+            <td x-text="c.service || '·'"></td>
+            <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
+            <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
+          </tr></template>
+        </tbody></table>
+        <div x-show="!drillBusy && drillData && !drillData.items.length" class="text-xs text-muted" style="padding:14px">해당 콘텐츠가 없습니다</div>
+      </div>
+      <div style="text-align:right;margin-top:14px"><button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-md" x-on:click="drillOpen=false">닫기</button></div>
     </div>
   </div>
 
