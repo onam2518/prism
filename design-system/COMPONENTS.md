@@ -294,6 +294,89 @@ Related (chips/Pill)
 
 ---
 
+## 9. Anchor 토큰 바인딩 매트릭스
+
+각 컴포넌트의 상태(state)를 **Anchor semantic 토큰**(`--ds-*`)에 못박는 표. 모든 값은 토큰 ref로만 바인딩(inline HEX 금지) → Light/Dark 자동 swap. 값 원본은 [`anchor/tokens.json`](./anchor/tokens.json), Button 상세는 [`anchor/Button.md`](./anchor/Button.md).
+
+### Input / Select (`.ds-field`)
+
+| 상태 | 배경 | 보더 | 텍스트 | 비고 |
+|---|---|---|---|---|
+| rest | `--ds-surface` | `--ds-border-input` | `--ds-text-primary` | placeholder = `--ds-placeholder` |
+| hover | `--ds-surface` | `--ds-border-input-hover` | — | |
+| focus | `--ds-surface` | `--ds-border-focus`(Blue) | — | ring = `--ds-focus-ring` |
+| invalid | `--ds-surface` | `--ds-error` | — | ring = `--ds-focus-ring-error` · `__hint` = `--ds-error` |
+| disabled | `--ds-surface` | `--ds-border-input` | `--ds-text-disabled` | dim(opacity) · Anchor는 Input border 3상태만 정의(DESIGN.md §4) |
+
+### Card (`.ds-card`)
+
+| variant | 배경 | 보더 | radius | 그림자 |
+|---|---|---|---|---|
+| `answer` | `--ds-surface` | `--ds-divider-item` | `--ds-radius-md`(12) | 없음(플랫) |
+| `source` | `--ds-surface-white` | `--ds-border-card` | `--ds-radius-sm`(8) | rest `--ds-shadow-low` → hover `--ds-shadow-medium` |
+| `feed` | `--ds-surface` | `--ds-divider-item` | `--ds-radius-md`(12) | 없음 |
+
+> hover lift(source) = `--ds-shadow-medium` + `translateY(-2px)`. 깊이 1차는 surface 대비, shadow는 보조.
+
+### Badge / Meta chip (`.ds-badge`)
+
+| variant | 배경 | 텍스트 |
+|---|---|---|
+| `neutral` | `--ds-surface-table` | `--ds-text-secondary` |
+| `pro` | `--ds-interaction-secondary` | `--ds-text-inverse` |
+| `status` | `--ds-state-info-subtle` | `--ds-state-info`(Blue) |
+| `citation` | `--ds-primary-tint` | `--ds-tint-fg` |
+| `success` / `error` / `warning` | 의미색 16% 틴트 | `--ds-success` / `--ds-error` / `--ds-warning` |
+| `entity` | `--ds-cat-entertainment-subtle` | `--ds-cat-entertainment-text`(Violet) |
+| `intent` | `--ds-primary-tint` | `--ds-tint-fg`(Blue) |
+| `category` | `--ds-cat-interest-subtle` | `--ds-cat-interest-text`(Orange) |
+| `reason` | `--ds-state-accent-subtle` | `--ds-state-accent`(Red) |
+
+> 도메인 카테고리 배지가 필요하면 `--ds-cat-{news|shopping|sports|entertainment|cafe|interest|community}` 3종 세트(`·-subtle`/`·-text`) 사용.
+
+### Tabs (`.ds-tab`)
+
+| 상태 | underline | sidebar |
+|---|---|---|
+| inactive | `--ds-text-subtle` | `--ds-text-subtle` |
+| hover | `--ds-text-primary` | 배경 `--ds-state-hover` |
+| active | `--ds-text-primary` + 2px `--ds-primary` 밑줄 | 배경 `--ds-primary-tint` · 텍스트 `--ds-tint-fg` |
+| focus | ring `--ds-focus-ring` | ring `--ds-focus-ring` |
+
+### Table (`.ds-table`)
+
+| 부품 | 토큰 |
+|---|---|
+| header | 배경 `--ds-surface-table` · 텍스트 `--ds-text-subtle` |
+| row 구분 | `--ds-divider-item` |
+| row hover | `--ds-state-hover` |
+
+### Dialog (`.ds-dialog`)
+
+| 부품 | 토큰 |
+|---|---|
+| backdrop | `--ds-scrim`(overlay 48%) |
+| root | 배경 `--ds-layer-popup` · radius `--ds-radius-xl`(24) · 그림자 `--ds-shadow-high` |
+| `__title` | `--ds-text-primary` |
+| `__footer` | 취소 = Outline/Ghost · 확인 = Solid/Primary(파괴적이면 Solid/Danger) |
+
+### Toggle (`.ds-toggle`)
+
+| 상태 | track | thumb |
+|---|---|---|
+| off | `--ds-interaction-neutral` | `#ffffff`(static) |
+| on | `--ds-primary` | `#ffffff`(static) |
+| focus | ring `--ds-focus-ring` | — |
+
+### Toast (`.ds-toast`) / FAB status
+
+| 부품 | 토큰 |
+|---|---|
+| root | 배경 `--ds-layer-snackbar` · 텍스트 `--ds-text-static-white` |
+| 그림자 | `--ds-shadow-high` |
+
+---
+
 ## 부품 네이밍 규약 (요약)
 
 | 패턴 | 의미 | 예 |

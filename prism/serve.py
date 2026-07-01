@@ -2380,7 +2380,7 @@ PAGE = """<!doctype html>
     color:var(--ds-muted);border-radius:8px;padding:5px 13px;cursor:pointer;white-space:nowrap}
   .fbbtn:hover{background:var(--ds-hairline-soft)}
   .fbbtn--good{border-color:var(--ds-primary);color:var(--ds-primary);background:var(--ds-primary-tint)}
-  .fbbtn--bad{border-color:#e0524a;color:#e0524a;background:#fdeceb}
+  .fbbtn--bad{border-color:#ff4e33;color:#ff4e33;background:#ffece9}
   .fbrow__note{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
   /* 프롬프트 스튜디오 · 단계별 모델 지정 */
@@ -2398,7 +2398,7 @@ PAGE = """<!doctype html>
   input.field,select.field{height:var(--ctrl-h);padding:0 var(--ctrl-px)}
   textarea.field{padding:11px var(--ctrl-px);line-height:1.55;min-height:96px;resize:vertical}
   .field::placeholder{color:var(--ds-placeholder)}
-  .field:hover{border-color:#cfd3cb}
+  .field:hover{border-color:var(--ds-border-input-hover)}
   .field:focus{outline:none;border-color:var(--ds-primary);box-shadow:0 0 0 3px rgba(30,132,255,.16);background:#fff}
   select.field{appearance:none;-webkit-appearance:none;padding-right:34px;cursor:pointer;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235c6a6a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -2451,12 +2451,12 @@ PAGE = """<!doctype html>
 
   /* 토스트(다크 오버레이) */
   .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;
-    padding:8px 16px;border-radius:10px;font-size:13px;font-weight:600;color:#f2f2ed;
+    padding:8px 16px;border-radius:10px;font-size:13px;font-weight:600;color:#ffffff;
     background:#000000;box-shadow:0 12px 30px -10px rgba(0,0,0,.45)}
   .copybtn{display:inline-flex;align-items:center;gap:4px;border-radius:7px;padding:3px 8px;font-size:11.5px;
     font-weight:600;color:var(--ds-muted);border:1px solid var(--ds-hairline);background:var(--ds-surface-white);
     transition:color .12s,border-color .12s,background .12s;cursor:pointer}
-  .copybtn:hover{color:var(--ds-ink);border-color:#cfd3cb;background:var(--ds-surface)}
+  .copybtn:hover{color:var(--ds-ink);border-color:var(--ds-border-input-hover);background:var(--ds-surface)}
   .copybtn svg{width:12px;height:12px}
 
   /* 카드 · 패널 (라이트 + 절제된 입체) */
@@ -2576,7 +2576,7 @@ PAGE = """<!doctype html>
     display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;
     background:var(--ds-ink);color:#fff;font-size:12.5px;font-weight:500;
     box-shadow:0 8px 24px rgba(0,0,0,.22)}
-  .live-toast__dot{width:7px;height:7px;border-radius:50%;background:#3ddc97;flex:none;
+  .live-toast__dot{width:7px;height:7px;border-radius:50%;background:#18ba45;flex:none;
     box-shadow:0 0 0 3px rgba(61,220,151,.25)}
   /* ── 결과 출처 필터 ── */
   .srcfilter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px}
@@ -2612,10 +2612,10 @@ PAGE = """<!doctype html>
   .ochar b{font-size:12.5px;color:var(--ds-ink)} .ochar small{font-size:10px;color:var(--ds-muted)}
   .ochar.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16))}
   .ochar.sel .ochar__ring{box-shadow:0 0 0 3px var(--ds-violet,#1e84ff)}
-  .onboard__authtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--ds-hairline-soft,#f0f0ea);padding:4px;border-radius:11px}
+  .onboard__authtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:11px}
   .onboard__authtabs button{flex:1;height:34px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
   .onboard__authtabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-  .onboard__authmsg{text-align:left;font-size:12px;color:#c0392b;margin:-6px 0 12px}
+  .onboard__authmsg{text-align:left;font-size:12px;color:#ff4e33;margin:-6px 0 12px}
   .onboard__cta{height:46px;width:100%;font-size:15px;font-weight:700}
   .onboard__cta:disabled{opacity:.45;cursor:not-allowed}
   .onboard__skip{margin-top:10px;background:none;border:0;color:var(--ds-muted);font-size:12.5px;cursor:pointer}
@@ -2628,7 +2628,7 @@ PAGE = """<!doctype html>
   .charpick__opt span{font-size:10.5px;color:var(--ds-muted);font-weight:600}
   .charpick__opt.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16));box-shadow:0 0 0 2px var(--ds-violet-tint,rgba(30,132,255,0.16))}
   .charpick__opt.sel span{color:var(--ds-violet,#1e84ff)}
-  .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,#f0f0ea);padding:4px;border-radius:11px;max-width:520px}
+  .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:11px;max-width:520px}
   .evaltabs button{flex:1;height:36px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
   .evaltabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .goldgrid{display:flex;align-items:center;gap:24px;margin-top:16px;flex-wrap:wrap}
@@ -2637,7 +2637,7 @@ PAGE = """<!doctype html>
   .goldstat{display:flex;flex-direction:column} .goldstat b{font-size:20px;font-weight:800;color:var(--ds-ink)} .goldstat span{font-size:10.5px;color:var(--ds-muted)}
   .metarow{display:flex;gap:10px;padding:11px 6px;border-bottom:1px solid var(--ds-hairline-soft)}
   .metarow__dir{font-size:13px;color:var(--ds-ink);line-height:1.55}
-  .metarow__amb{font-size:11.5px;color:#c0392b;margin-top:4px;line-height:1.5}
+  .metarow__amb{font-size:11.5px;color:#ff4e33;margin-top:4px;line-height:1.5}
   .invite{display:flex;align-items:center;justify-content:space-between;gap:14px}
   .invite__code{font-family:var(--ds-font-mono,ui-monospace);font-size:26px;font-weight:800;letter-spacing:.12em;color:var(--ds-violet,#1e84ff)}
   /* ── 평가 아레나(게임화) ── */
@@ -2652,7 +2652,7 @@ PAGE = """<!doctype html>
   .arena-hero__target{font-size:13px;opacity:.9;white-space:nowrap;padding-top:6px}
   .arena-gauge{position:relative;height:14px;border-radius:999px;background:rgba(255,255,255,.18);margin:16px 0 12px;overflow:hidden}
   .arena-gauge__fill{position:absolute;left:0;top:0;bottom:0;border-radius:999px;
-    background:linear-gradient(90deg,#3ddc97,#9af5c8);transition:width .6s cubic-bezier(.22,1,.36,1)}
+    background:linear-gradient(90deg,#18ba45,#7be3a3);transition:width .6s cubic-bezier(.22,1,.36,1)}
   .arena-gauge__target{position:absolute;top:-3px;bottom:-3px;width:3px;background:#fff;border-radius:2px;box-shadow:0 0 0 2px rgba(19,52,59,.35)}
   .arena-hero__foot{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12.5px;opacity:.95;flex-wrap:wrap}
   .arena-quest{cursor:pointer;font-weight:600;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:999px}
@@ -2667,14 +2667,14 @@ PAGE = """<!doctype html>
   .lb-streak{font-size:12px;color:var(--ds-muted)} .lb-pts{font-weight:700;color:var(--ds-violet,#1e84ff)}
   .lb-title{display:block;font-size:10px;color:var(--ds-muted);font-weight:500;margin-top:1px}
   .lb-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
-    background:var(--ds-surface2,#fff);box-shadow:0 0 0 2px var(--tier-c,#c9d4d4);overflow:hidden}
+    background:var(--ds-surface2,#fff);box-shadow:0 0 0 2px var(--tier-c,rgba(0,0,0,.12));overflow:hidden}
   .lb-av img{width:24px;height:24px}
   /* ── 검수 캐릭터 육성 카드 ── */
-  .charcard{text-align:center;padding:6px 4px 4px;--tier-c:#aab6b6}
-  .charcard[data-tier="1"]{--tier-c:#1e84ff} .charcard[data-tier="2"]{--tier-c:#2f7dd1}
-  .charcard[data-tier="3"]{--tier-c:#e0a52e} .charcard[data-tier="4"]{--tier-c:#9a5cff}
-  .lb-av[data-tier="1"]{--tier-c:#1e84ff} .lb-av[data-tier="2"]{--tier-c:#2f7dd1}
-  .lb-av[data-tier="3"]{--tier-c:#e0a52e} .lb-av[data-tier="4"]{--tier-c:#9a5cff}
+  .charcard{text-align:center;padding:6px 4px 4px;--tier-c:rgba(0,0,0,.24)}
+  .charcard[data-tier="1"]{--tier-c:#1e84ff} .charcard[data-tier="2"]{--tier-c:#5c77ff}
+  .charcard[data-tier="3"]{--tier-c:#ff9429} .charcard[data-tier="4"]{--tier-c:#a05cff}
+  .lb-av[data-tier="1"]{--tier-c:#1e84ff} .lb-av[data-tier="2"]{--tier-c:#5c77ff}
+  .lb-av[data-tier="3"]{--tier-c:#ff9429} .lb-av[data-tier="4"]{--tier-c:#a05cff}
   .charcard__avatar{position:relative;width:96px;height:96px;margin:6px auto 4px;display:flex;align-items:center;justify-content:center}
   .charcard__avatar img{position:relative;z-index:1;width:64px;height:64px;
     /* 티어가 오를수록 캐릭터가 커지고(육성) 살짝 떠오름 */
@@ -3108,12 +3108,12 @@ PAGE = """<!doctype html>
                     <span class="ds-badge" x-bind:class="s.enabled ? 'ds-badge--success' : 'ds-badge--neutral'"><span x-show="s.enabled" class="ds-badge__dot"></span><span x-text="s.enabled ? '활성' : '중지'"></span></span>
                   </div>
                   <div class="text-xs text-muted" style="margin-top:3px" x-text="s.type === 'kafka' ? (s.brokers + ' · ' + s.topic) : (s.method + ' ' + s.endpoint)"></div>
-                  <div x-show="srcRunning(s) || ingestRunMsg[s.id] || (srcJob(s) && srcJob(s).last_msg)" class="text-xs" style="margin-top:5px" x-bind:style="(ingestRunMsg[s.id]||'').startsWith('오류') || (srcJob(s) && srcJob(s).last_ok === false) ? 'color:#e0524a' : 'color:var(--ds-primary)'" x-text="srcRunning(s) ? ('인입 중 ' + (srcJob(s) ? (srcJob(s).done + (srcJob(s).total ? ('/' + srcJob(s).total) : '') + '건') : '…')) : (ingestRunMsg[s.id] || (srcJob(s) ? srcJob(s).last_msg : ''))"></div>
+                  <div x-show="srcRunning(s) || ingestRunMsg[s.id] || (srcJob(s) && srcJob(s).last_msg)" class="text-xs" style="margin-top:5px" x-bind:style="(ingestRunMsg[s.id]||'').startsWith('오류') || (srcJob(s) && srcJob(s).last_ok === false) ? 'color:#ff4e33' : 'color:var(--ds-primary)'" x-text="srcRunning(s) ? ('인입 중 ' + (srcJob(s) ? (srcJob(s).done + (srcJob(s).total ? ('/' + srcJob(s).total) : '') + '건') : '…')) : (ingestRunMsg[s.id] || (srcJob(s) ? srcJob(s).last_msg : ''))"></div>
                 </div>
                 <div style="display:flex;gap:6px">
                   <button type="button" class="ds-btn ds-btn--primary" style="height:30px;padding:0 12px" x-show="s.type !== 'kafka'" x-bind:disabled="srcRunning(s)" x-on:click="ingestNow(s)" x-text="srcRunning(s) ? '인입 중…' : '지금 인입'"></button>
                   <button type="button" class="copybtn" x-on:click="toggleSource(s)" x-text="s.enabled ? '중지' : '활성'"></button>
-                  <button type="button" class="copybtn" x-on:click="removeSource(s.id)" style="color:#e0524a;border-color:rgba(224,82,74,.3)">삭제</button>
+                  <button type="button" class="copybtn" x-on:click="removeSource(s.id)" style="color:#ff4e33;border-color:rgba(255,78,51,.3)">삭제</button>
                 </div>
               </div>
             </template>
@@ -3217,7 +3217,7 @@ PAGE = """<!doctype html>
               <span x-text="loading ? '실행 중' : '추출 실행'"></span>
             </button>
             <span class="text-xs text-muted">모델·추론 강도는 상단 ⚙ 설정에서 변경</span>
-            <span aria-live="polite" class="ml-auto text-sm text-[#e0524a]" x-text="status"></span>
+            <span aria-live="polite" class="ml-auto text-sm text-[#ff4e33]" x-text="status"></span>
           </div>
           </div>
         </section>
@@ -3283,7 +3283,7 @@ PAGE = """<!doctype html>
             <div class="panel-hd">
               <div class="flex items-center gap-2">
                 <b>행별 결과</b>
-                <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-[#d9923a]/15 px-2 py-0.5 text-xs font-semibold text-[#d9923a]">MOCK</span>
+                <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-[#ff9429]/15 px-2 py-0.5 text-xs font-semibold text-[#ff9429]">MOCK</span>
               </div>
               <button type="button" class="copybtn" x-on:click="exportBatchCsv()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
@@ -3372,7 +3372,7 @@ PAGE = """<!doctype html>
                     <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
                     <span x-text="s.ocr || '—'"></span>
                   </div>
-                  <p x-show="s.note" x-cloak class="mt-1 text-xs text-[#d9923a]" x-text="s.note"></p>
+                  <p x-show="s.note" x-cloak class="mt-1 text-xs text-[#ff9429]" x-text="s.note"></p>
                 </div>
               </template>
             </div>
@@ -3499,7 +3499,7 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <div class="text-xs text-muted">각 체계의 정책(사전·카테고리·법령)을 <span class="text-body">직접 수정</span>할 수 있습니다 저장 시 즉시 추출에 반영되고 로컬에 영속됩니다</div>
-          <button type="button" x-on:click="resetDict()" class="rounded-md border border-[#e0524a]/30 px-3 py-1.5 text-xs font-medium text-[#e0524a] hover:bg-[#e0524a]/10">편집 초기화</button>
+          <button type="button" x-on:click="resetDict()" class="rounded-md border border-[#ff4e33]/30 px-3 py-1.5 text-xs font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">편집 초기화</button>
         </div></div>
 
         <!-- 편집은 팝업(편집 다이얼로그)에서 — 화면 하단 정의 -->
@@ -3875,7 +3875,7 @@ PAGE = """<!doctype html>
                   <div class="fbrow__main">
                     <div class="fbrow__title">
                       <span class="ds-badge ds-badge--neutral" x-text="it.grade || '·'"></span>
-                      <span class="ds-badge" style="background:#fcefc7;color:#8a6d1a">YELLOW</span>
+                      <span class="ds-badge" style="background:rgba(255,148,41,.16);color:#cc6a0a">YELLOW</span>
                       <span x-text="it.title || '(제목 없음)'"></span>
                       <span class="fbrow__svc" x-text="it.service"></span>
                       <span class="ds-badge ds-badge--intent" x-show="liveSeen[it.hash]" x-text="(liveSeen[it.hash]||'') + ' 보는 중'"></span>
@@ -3965,7 +3965,7 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 인입 정책 (전용 도구) ═══ -->
       <div x-show="mod === 'intake'" x-cloak class="w-full space-y-4">
-        <div class="ds-widget ds-widget--info" style="--w-accent:#2f6bff">
+        <div class="ds-widget ds-widget--info" style="--w-accent:#1e84ff">
           <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>ITEM TYPE 처리 정책</span></div><div class="ds-widget__actions"><span class="ds-badge ds-badge--neutral">131</span><span class="text-xs text-muted">직접 수정 가능</span><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th>ITEM TYPE</th><th>필터 대상</th><th>처리 방식</th><th>상태</th><th></th></tr></thead><tbody>
@@ -3982,7 +3982,7 @@ PAGE = """<!doctype html>
             </tbody></table></div>
           </div>
         </div>
-        <div class="ds-widget ds-widget--info" style="--w-accent:#6e5a86">
+        <div class="ds-widget ds-widget--info" style="--w-accent:#a05cff">
           <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span>콘텐츠 출처 분류</span></div><div class="ds-widget__actions"><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">
             <div class="flex flex-wrap gap-1.5"><span class="ds-badge ds-badge--category">PGC 기존 미디어</span><span class="ds-badge ds-badge--category">UGC 사용자 생성</span><span class="ds-badge ds-badge--category">AIGC AI 생성</span><span class="ds-badge ds-badge--category">AIEC AI 보정</span></div>
@@ -4067,7 +4067,7 @@ PAGE = """<!doctype html>
                 <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
                   class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-ink hover:bg-violet-hover disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
                 <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)"
-                  class="rounded-lg border border-[#e0524a]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#e0524a] hover:bg-[#e0524a]/10">삭제</button>
+                  class="rounded-lg border border-[#ff4e33]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">삭제</button>
                 <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
               </div>
             </div>
@@ -4095,7 +4095,7 @@ PAGE = """<!doctype html>
               <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy"
                 class="rounded-lg border border-black/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-ink hover:bg-black/[0.05] disabled:opacity-50">연결 테스트</button>
               <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')"
-                class="rounded-lg border border-[#e0524a]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#e0524a] hover:bg-[#e0524a]/10">삭제</button>
+                class="rounded-lg border border-[#ff4e33]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">삭제</button>
               <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
             </div>
           </div>
@@ -4114,7 +4114,7 @@ PAGE = """<!doctype html>
         <div class="routercard">
           <div class="rc-h"><b>로컬 저장 (SQLite)</b><span class="rc-badge" x-text="(cfg.storedCount || 0) + '건'"></span></div>
           <p class="rc-d">추출 결과는 로컬 DB에 누적 저장되어 재시작해도 유지됩니다 대시보드·토픽·사용자 메타가 이 데이터를 집계합니다 동일 콘텐츠·결과 무변경 시 적재되지 않습니다(중복 방지)</p>
-          <button type="button" x-on:click="clearStore()" class="rounded-lg border border-[#e0524a]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#e0524a] hover:bg-[#e0524a]/10">적재 데이터 초기화</button>
+          <button type="button" x-on:click="clearStore()" class="rounded-lg border border-[#ff4e33]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">적재 데이터 초기화</button>
         </div>
       </div>
 

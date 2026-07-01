@@ -69,6 +69,7 @@
   --ds-interaction-disabled: #c7cbcf;
   --ds-border-input: rgba(0, 0, 0, 0.1);
   --ds-border-input-hover: rgba(0, 0, 0, 0.32);
+  --ds-border-focus: #1e84ff;      /* border.focus = Blue.500 */
   --ds-border-button-outline: rgba(0, 0, 0, 0.1); /* atomic.Black.200 */
 
   /* ── 카테고리 식별색 (도메인) — 본문색 / 배경 Subtle / 텍스트 ── */
@@ -199,6 +200,7 @@
   --ds-interaction-disabled: #5b5f65;
   --ds-border-input: rgba(255, 255, 255, 0.1);
   --ds-border-input-hover: rgba(255, 255, 255, 0.32);
+  --ds-border-focus: #1e84ff;
   --ds-border-button-outline: rgba(255, 255, 255, 0.16);
 
   /* 카테고리색 — 다크 변종(채도 상향) */
@@ -267,6 +269,7 @@
     --ds-interaction-disabled: #5b5f65;
     --ds-border-input: rgba(255, 255, 255, 0.1);
     --ds-border-input-hover: rgba(255, 255, 255, 0.32);
+  --ds-border-focus: #1e84ff;
     --ds-border-button-outline: rgba(255, 255, 255, 0.16);
 
     --ds-cat-news: #66a8ff;             --ds-cat-news-subtle: rgba(30,132,255,.16);   --ds-cat-news-text: #8094ff;
