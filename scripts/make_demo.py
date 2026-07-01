@@ -71,6 +71,15 @@ DEMO_ADMIN = {
     ],
     "goldenCount": 24,
 }
+DEMO_ARENA = {
+    "accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18,
+    "accuracy_delta": 0.04, "target": 0.9, "queue": 3,
+    "leaderboard": [
+        {"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7},
+        {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3},
+        {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1},
+    ],
+}
 DEMO_VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}
 
 DEMO_DASH = {
@@ -123,13 +132,14 @@ STUB = """<script>
   window.__DEMO_RESULT__ = %s;
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
-    const CFG = %s, VOCAB = %s, ADMIN = %s;
+    const CFG = %s, VOCAB = %s, ADMIN = %s, ARENA = %s;
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
       const u = String(url);
       if (u.indexOf('/config') === 0 || u.indexOf('/config') > -1) return Promise.resolve(J(CFG));
       if (u.indexOf('/vocab') > -1) return Promise.resolve(J(VOCAB));
       if (u.indexOf('/admin') > -1) return Promise.resolve(J(ADMIN));
+      if (u.indexOf('/arena') > -1) return Promise.resolve(J(ARENA));
       if (u.indexOf('/reviewer') > -1) return Promise.resolve(J({ ok: true, team: { invite_code: ADMIN.team.invite_code } }));
       if (u.indexOf('/auth') > -1) return Promise.resolve(J({ ok: true, access_token: 'demo' }));
       if (u.indexOf('/models') > -1) return Promise.resolve(J({ ok: true, models: ['solar-pro3-260323', 'solar-pro2-251215'] }));
@@ -148,6 +158,7 @@ STUB = """<script>
        json.dumps(DEMO_CONFIG, ensure_ascii=False),
        json.dumps(DEMO_VOCAB, ensure_ascii=False),
        json.dumps(DEMO_ADMIN, ensure_ascii=False),
+       json.dumps(DEMO_ARENA, ensure_ascii=False),
        json.dumps(DEMO_DASH, ensure_ascii=False),
        json.dumps(DEMO_TOPICS, ensure_ascii=False),
        json.dumps(DEMO_USER, ensure_ascii=False),

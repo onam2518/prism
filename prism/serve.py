@@ -1922,6 +1922,31 @@ PAGE = """<!doctype html>
       levelTier(L) { return L >= 10 ? 4 : L >= 7 ? 3 : L >= 4 ? 2 : L >= 2 ? 1 : 0; },
       levelTitle(L) { return ['새내기 검수자', '숙련 검수자', '베테랑 검수자', '검수 마스터', '전설의 검수자'][this.levelTier(L)]; },
       levelEmoji(L) { return ['🌱', '🔰', '⭐', '🏆', '👑'][this.levelTier(L)]; },
+      // 게이미피케이션(KB 프레임워크 적용): Flow 단계 + 배지 컬렉션(성취) + 오늘의 미션(도전)
+      flowStage(L) { return L >= 10 ? 'Master' : L >= 4 ? 'Regular' : 'Rookie'; },
+      flowStageKr(L) { return L >= 10 ? '마스터' : L >= 4 ? '정착' : '입문'; },
+      badges() {
+        const m = this.arenaMe; const r = (m&&m.reviews)||0, c = (m&&m.corrections)||0, s = (m&&m.streak)||0, L = (m&&m.level)||0;
+        const acc = (this.arenaData && this.arenaData.accuracy) || 0;
+        return [
+          { icon: '🌱', label: '첫 검수', got: r >= 1 },
+          { icon: '🔥', label: '연속 3일', got: s >= 3 },
+          { icon: '⚡', label: '연속 7일', got: s >= 7 },
+          { icon: '📚', label: '검수 50', got: r >= 50 },
+          { icon: '💯', label: '검수 100', got: r >= 100 },
+          { icon: '🏅', label: '개선 채택', got: c >= 1 },
+          { icon: '⭐', label: 'Lv.5', got: L >= 5 },
+          { icon: '👑', label: '마스터', got: L >= 10 },
+          { icon: '🎯', label: '정확도 90%', got: acc >= 0.9 },
+        ];
+      },
+      get badgeGot() { return this.badges().filter((x) => x.got).length; },
+      // 오늘의 미션(도전): 검수 큐가 있으면 스트릭 유지 유도, 없으면 골든셋
+      get todayMission() {
+        const q = (this.arenaData && this.arenaData.queue) || 0;
+        if (q > 0) return { txt: '검수 큐 ' + q + '건 · 지금 검수하면 🔥 스트릭 유지', to: 'review', cta: '검수하기' };
+        return { txt: '검수 큐 비었음 · 골든셋으로 프롬프트 정합성 점검', to: 'eval', cta: '테스트' };
+      },
       xpPct(r) { return r ? (r.points % 100) : 0; },                 // 레벨당 100pt
       xpToNext(r) { return r ? (r.level * 100 - r.points) : 0; },
       async queueFeedback(it, verdict) {
@@ -2701,6 +2726,22 @@ PAGE = """<!doctype html>
   .charcard__stats div{display:flex;flex-direction:column}
   .charcard__stats b{font-size:18px;font-weight:800;color:var(--ds-ink)} .charcard__stats span{font-size:10.5px;color:var(--ds-muted)}
   .charcard__hint{font-size:11px;color:var(--ds-muted);margin-top:8px;line-height:1.5}
+  /* 게이미피케이션: Flow 단계·오늘의 미션·배지 컬렉션 */
+  .charcard__flow{font-size:10px;font-weight:700;color:var(--tier-c);background:color-mix(in srgb,var(--tier-c) 14%,transparent);padding:1px 7px;border-radius:9999px;vertical-align:middle}
+  .charcard__mission{display:flex;align-items:center;gap:8px;margin-top:12px;padding:9px 12px;border-radius:var(--ds-radius-md);
+    background:var(--ds-primary-tint);cursor:pointer;text-align:left;transition:background var(--ds-motion-fast)}
+  .charcard__mission:hover{background:color-mix(in srgb,var(--ds-primary) 20%,transparent)}
+  .charcard__mission-ic{flex:none;font-size:15px}
+  .charcard__mission-tx{flex:1;font-size:11.5px;color:var(--ds-text-secondary);line-height:1.4}
+  .charcard__mission-cta{flex:none;font-size:11px;font-weight:700;color:var(--ds-primary)}
+  .charcard__badges-hd{margin-top:14px;text-align:left;font-size:11px;font-weight:600;color:var(--ds-muted)}
+  .charcard__badges-hd b{color:var(--ds-ink)}
+  .charcard__badges{margin-top:7px;display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:7px}
+  .charcard__badge{aspect-ratio:1;border-radius:var(--ds-radius-md);display:flex;align-items:center;justify-content:center;border:1px solid var(--ds-border-card)}
+  .charcard__badge.got{background:color-mix(in srgb,var(--tier-c) 12%,var(--ds-surface));border-color:color-mix(in srgb,var(--tier-c) 40%,transparent)}
+  .charcard__badge.locked{background:var(--ds-surface-table);opacity:.65}
+  .charcard__badge-ic{font-size:17px;filter:grayscale(0)}
+  .charcard__badge.locked .charcard__badge-ic{font-size:12px;opacity:.7}
   .conn-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ds-ink);white-space:nowrap}
   .conn-chip--off{color:var(--ds-muted)}
   /* 본문 영역: 뷰포트 남은 높이를 꽉 채우되 자체는 스크롤 안 함(overflow:hidden) 사이드바·콘텐츠가 각자 내부 스크롤 */
@@ -3861,7 +3902,7 @@ PAGE = """<!doctype html>
                     <img x-bind:src="charImg(arenaMe.char || reviewerChar)" alt="검수 캐릭터">
                     <span class="charcard__lvl" x-text="'Lv.' + arenaMe.level"></span>
                   </div>
-                  <div class="charcard__title"><span x-text="levelEmoji(arenaMe.level)"></span> <span x-text="levelTitle(arenaMe.level)"></span></div>
+                  <div class="charcard__title"><span x-text="levelEmoji(arenaMe.level)"></span> <span x-text="levelTitle(arenaMe.level)"></span> <span class="charcard__flow" x-text="flowStageKr(arenaMe.level)"></span></div>
                   <div class="charcard__xpwrap">
                     <div class="charcard__xpbar"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
                     <div class="charcard__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
@@ -3871,7 +3912,17 @@ PAGE = """<!doctype html>
                     <div><b class="tnum" x-text="arenaMe.corrections"></b><span>개선 🏅</span></div>
                     <div><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>🔥 스트릭</span></div>
                   </div>
-                  <div class="charcard__hint">검수 +10 · 채택된 개선 +25 · 점수가 쌓이면 캐릭터가 <b class="text-ink">성장</b>해요</div>
+                  <div class="charcard__mission" x-on:click="selectMod(todayMission.to)">
+                    <span class="charcard__mission-ic">🎯</span>
+                    <span class="charcard__mission-tx" x-text="todayMission.txt"></span>
+                    <span class="charcard__mission-cta" x-text="todayMission.cta + ' →'"></span>
+                  </div>
+                  <div class="charcard__badges-hd">배지 <b x-text="badgeGot + ' / ' + badges().length"></b></div>
+                  <div class="charcard__badges">
+                    <template x-for="(bd, i) in badges()" x-bind:key="i">
+                      <div class="charcard__badge" x-bind:class="bd.got ? 'got' : 'locked'" x-bind:data-tip="bd.label" data-tip-pos="top"><span class="charcard__badge-ic" x-text="bd.got ? bd.icon : '🔒'"></span></div>
+                    </template>
+                  </div>
                 </div>
               </template>
               <div x-show="reviewer && !arenaMe" class="charcard charcard--egg" data-tier="0">
