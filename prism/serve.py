@@ -2072,7 +2072,7 @@ PAGE = """<!doctype html>
         const got = this.badges().filter((x) => x.got).map((x) => x.label);
         const fresh = got.filter((l) => !base.includes(l));
         try { localStorage.setItem(key, JSON.stringify(got)); } catch (e) {}
-        // 서버 영속(단조 증가) — 신규가 있거나 서버 기준선이 아직 없을 때
+        // 서버 영속(단조 증가) · 신규가 있거나 서버 기준선이 아직 없을 때
         if (this.reviewer && (fresh.length || server === null)) {
           try {
             const r = await (await fetch('/badges', { method: 'POST', headers: this._authHeaders(),
@@ -3856,27 +3856,28 @@ PAGE = """<!doctype html>
           <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span>
             <button type="button" class="copybtn ml-auto" x-on:click="startEdit('iab_tier1', null, dictData.iabTier1, 'list', 'Tier1 목록')">Tier1 편집</button>
           </div>
-            <div class="panel-bd space-y-2.5" style="max-height:340px;overflow:auto">
+            <div class="overflow-auto" style="max-height:340px"><table class="ds-table"><thead><tr><th style="width:210px">Tier1</th><th>Tier2</th><th style="width:52px" class="tnum" x-text="dictData ? (dictData.iabTier1.length) : ''"></th></tr></thead><tbody>
               <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c">
-                <div>
-                  <div class="flex items-center gap-2 mb-1">
-                    <div class="text-[13px] font-semibold text-ink" x-text="c"></div>
-                    <button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button>
-                  </div>
-                  <div class="flex flex-wrap gap-1.5">
+                <tr>
+                  <td class="text-ink" style="font-weight:600;vertical-align:top" x-text="c"></td>
+                  <td><div class="flex flex-wrap gap-1.5">
                     <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" x-text="t2"></span></template>
-                  </div>
-                </div>
+                    <span x-show="!(dictData && dictData.tier2[c] && dictData.tier2[c].length)" class="text-xs text-muted">항목 없음</span>
+                  </div></td>
+                  <td style="vertical-align:top"><button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button></td>
+                </tr>
               </template>
-            </div>
+            </tbody></table></div>
           </div>
           <div class="grid grid-cols-2 gap-4">
-            <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div><div class="panel-bd space-y-2">
-              <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
-                <div class="flex items-center gap-2"><span class="ds-badge ds-badge--entity" x-text="g"></span> <span class="text-xs text-muted" style="flex:1;min-width:0" x-text="ts.join(' · ')"></span>
-                  <button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('domain_groups', g, ts, 'list', '도메인 그룹 · ' + g)">편집</button></div>
-              </template>
-            </div></div>
+            <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th style="width:120px">그룹</th><th>포함 Tier1</th><th style="width:52px"></th></tr></thead><tbody>
+                <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
+                  <tr><td style="vertical-align:top"><span class="ds-badge ds-badge--entity" x-text="g"></span></td>
+                    <td class="text-muted" x-text="ts.join(' · ')"></td>
+                    <td style="vertical-align:top"><button type="button" class="text-[11px] text-muted hover:text-ink" x-on:click="startEdit('domain_groups', g, ts, 'list', '도메인 그룹 · ' + g)">편집</button></td></tr>
+                </template>
+              </tbody></table></div></div>
             <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>자사 경로</th><th>IAB 공식</th><th></th></tr></thead><tbody>
                 <template x-for="(v,k) in (dictData?dictData.iabMap:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v"></div></td>
