@@ -1827,6 +1827,8 @@
       activeTabId: 'image',
       // 위젯 홈 셸 · 홈(캔버스) + 카테고리 내비
       mod: 'home',
+      dashTop: 'content',   // 현황 대시보드 상위 탭: content | user
+      evalTop: 'queue',     // 검증 및 평가 상위 탭: queue(검수큐) | test(테스트)
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
       navIcons: {
         home: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 11 12 4l8 7M6 10v9h12v-9" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
@@ -1846,23 +1848,17 @@
       },
       mods: [
         { g: '작업', items: [
-          { id: 'auto', label: '자동 인입', ic: 'auto', cond: 'admin' },
-          { id: 'run', label: '수동 추출', ic: 'run' } ] },
-        { g: '콘텐츠 현황', items: [
-          { id: 'queue', label: '실행 큐', ic: 'queue' },
-          { id: 'dash', label: '배치 결과', ic: 'dash' },
-          { id: 'review', label: '검수 큐', ic: 'review' },
-          { id: 'arena', label: '평가 아레나', ic: 'arena' },
-          { id: 'quality', label: '품질 · 토픽', ic: 'quality' },
-          { id: 'eval', label: '검증 · 평가', ic: 'eval' } ] },
-        { g: '사용자 현황', items: [
-          { id: 'user', label: '사용자 메타', ic: 'user' } ] },
-        { g: '정책 · 기준 (전용 도구)', items: [
-          { id: 'dict', label: '사전 · 정책 관리', ic: 'dict' },
+          { id: 'run', label: '수동 추출', ic: 'run' },
+          { id: 'queue', label: '실행 큐', ic: 'queue' } ] },
+        { g: '현황 · 평가', items: [
+          { id: 'dash', label: '현황 대시보드', ic: 'dash' },
+          { id: 'eval', label: '검증 및 평가', ic: 'eval' } ] },
+        { g: '관리자', gcond: 'admin', items: [
+          { id: 'auto', label: '자동 인입', ic: 'auto' },
+          { id: 'admin', label: '팀 관리', ic: 'admin' },
+          { id: 'dict', label: '사전 · 정책', ic: 'dict' },
           { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' },
           { id: 'intake', label: '인입 정책', ic: 'intake' } ] },
-        { g: '팀', items: [
-          { id: 'admin', label: '팀 관리', ic: 'admin', cond: 'supabase' } ] },
       ],
       // 위젯 홈 인터랙션 상태
       settingsOpen: false, chatOpen: false, addMenuOpen: false, editing: false, theme: 'light',
@@ -1949,6 +1945,7 @@
         this.startLive();                              // 실시간 SSE 구독
         this.loadHome();                               // 배치된 홈 위젯(localStorage)
         this.loadDash();                               // 홈 위젯 데이터(/dashboard)
+        this.loadArena();                              // 홈 = 아레나
         // 딥링크: ?m=run|dash|quality|... 로 특정 뷰 진입(설정은 ?settings)
         try { const q = new URLSearchParams(location.search); const m = q.get('m'); if (m) this.selectMod(m); if (q.has('settings')) this.settingsOpen = true; } catch (e) {}
         fetch('/vocab').then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {});
@@ -1978,7 +1975,10 @@
       },
       selectMod(id) {
         this.mod = id; this.status = ''; this.addMenuOpen = false;
-        if (id === 'home' || id === 'dash' || id === 'queue' || id === 'eval') this.loadDash();
+        if (id === 'home') { this.loadArena(); this.loadDash(); }
+        else if (id === 'dash') { this.loadDash(); this.loadTopics(); this.loadUser(); }
+        else if (id === 'eval') { this.loadDash(); this.loadQueue(); }
+        else if (id === 'queue') this.loadDash();
         else if (id === 'review') this.loadQueue();
         else if (id === 'arena') this.loadArena();
         else if (id === 'admin') this.loadAdmin();
@@ -2071,7 +2071,7 @@
           if (rr && rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }   // 초대코드 표시
         } catch (e) {}
         this.reviewerEditing = false;
-        if (this.mod === 'arena') this.loadArena();
+        if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
       },
       charImg(id) { return (this.charOptions.find((c) => c.id === id) || this.charOptions[0]).img; },
       startLive() {
@@ -2089,14 +2089,14 @@
             this.liveToast(d.reviewer + '님 · 「' + (d.title || '콘텐츠') + '」 ' + v);
           }
           if (this.mod === 'review') this.loadQueue();
-          if (this.mod === 'arena') this.loadArena();             // 정확도 게이지 실시간 상승
+          if (this.mod === 'arena' || this.mod === 'home') this.loadArena();             // 정확도 게이지 실시간 상승
           if (this.mod === 'dash' || this.mod === 'eval' || this.mod === 'home') this.loadDashThrottled();
         } else if (d.type === 'reap') {
           if (d.plan) this.liveToast('REAP 개선안 반영 · ' + (d.plan.length > 42 ? d.plan.slice(0, 42) + '…' : d.plan));
-          if (this.mod === 'arena') this.loadArena();
+          if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
           if (this.mod === 'prompt') this.loadPromptDefaults();   // 단계 프롬프트(LEARNED) 갱신
         } else if (d.type === 'reviewer') {
-          if (this.mod === 'arena') this.loadArena();             // 다른 사람 캐릭터 변경 반영
+          if (this.mod === 'arena' || this.mod === 'home') this.loadArena();             // 다른 사람 캐릭터 변경 반영
         } else if (d.type === 'presence' && d.reviewer && d.reviewer !== this.reviewer) {
           if (d.action === 'viewing') this.liveSeen[d.hash] = d.reviewer; else delete this.liveSeen[d.hash];
         }
@@ -3032,7 +3032,8 @@
   .addmenu button:hover{background:var(--ds-hairline-soft)}
 
   /* 콘텐츠 영역(모듈/홈 그리드 공용) · 타이틀바와 충분히 띄움 */
-  .canvas{margin-top:0;min-width:0;margin-left:0;padding-left:0}
+  .canvas{margin-top:0;min-width:0;margin-left:0;padding-left:0;display:flex;flex-direction:column}
+  .canvas>.ds-widgetgrid{order:0}   /* 홈: 아레나(order:-1) 아래에 위젯 그리드 */
   .ds-widgetgrid{margin-top:0}
 
   /* 위젯 내부 */
@@ -3206,7 +3207,7 @@
         </button>
       </nav>
       <template x-for="grp in mods" x-bind:key="grp.g">
-        <nav class="ds-navgroup" x-show="grp.g !== '팀' || backend === 'supabase'">
+        <nav class="ds-navgroup" x-show="!grp.gcond || (grp.gcond === 'admin' ? (backend === 'supabase' && adminData && adminData.isAdmin) : backend === grp.gcond)">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
             <button type="button" class="ds-navitem" x-show="!it.cond || (it.cond === 'admin' ? (backend === 'supabase' && adminData && adminData.isAdmin) : backend === it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
@@ -3680,7 +3681,8 @@
       </div>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
-      <div x-show="mod === 'dash'" x-cloak class="ds-pilot w-full">
+      <div x-show="mod === 'dash'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs"><button type="button" x-bind:class="dashTop==='content'?'sel':''" x-on:click="dashTop='content'">콘텐츠</button><button type="button" x-bind:class="dashTop==='user'?'sel':''" x-on:click="dashTop='user'">사용자</button></div></div>
+      <div x-show="mod === 'dash' && dashTop === 'content'" x-cloak class="ds-pilot w-full">
         <div x-show="!dashData || !dashData.n" class="ds-empty">
           <span class="ds-character ds-character--bob" style="width:80px;height:80px"><img src="demo-assets/boksil-catcher.svg" alt=""></span>
           <div class="ds-empty__title">아직 집계할 결과가 없어요</div>
@@ -3718,7 +3720,7 @@
       </div>
 
       <!-- ═══ 모듈: 품질 메타 ═══ -->
-      <div x-show="mod === 'quality'" x-cloak class="w-full space-y-4">
+      <div x-show="(mod === 'dash' && dashTop === 'content') || mod === 'quality'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <div class="text-xs text-muted">법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다 켜면 다음 추출부터 적용(추가 호출)</div>
           <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
@@ -3746,7 +3748,7 @@
       </div>
 
       <!-- ═══ 모듈: 토픽 (품질 · 토픽 통합 뷰) ═══ -->
-      <div x-show="mod === 'quality'" x-cloak class="w-full space-y-4">
+      <div x-show="(mod === 'dash' && dashTop === 'content') || mod === 'quality'" x-cloak class="w-full space-y-4">
         <div x-show="!topicData || !topicData.n_contents" class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
           <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
@@ -3840,7 +3842,7 @@
       </div>
 
       <!-- ═══ 모듈: 사용자 메타 ═══ -->
-      <div x-show="mod === 'user'" x-cloak class="w-full space-y-4">
+      <div x-show="(mod === 'dash' && dashTop === 'user') || mod === 'user'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="flex items-center justify-between gap-3 flex-wrap">
             <div class="text-xs text-muted">행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <span class="text-body">소비 형태 · 강도 · 선호</span>를 산출합니다 <code class="text-violet">content_id</code> = 추출 순서(0부터)</div>
@@ -3887,11 +3889,12 @@
       </div>
 
       <!-- ═══ 모듈: 검증 · 평가 ═══ -->
-      <div x-show="mod === 'eval'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'eval'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs"><button type="button" x-bind:class="evalTop==='queue'?'sel':''" x-on:click="evalTop='queue'">검수 큐</button><button type="button" x-bind:class="evalTop==='test'?'sel':''" x-on:click="evalTop='test'">테스트</button></div></div>
+      <div x-show="mod === 'eval' && evalTop === 'test'" x-cloak class="w-full space-y-4">
         <!-- 평가 2탭: ① 원천(골든셋) ② 실시간(메타컴파일) -->
         <div class="evaltabs">
-          <button type="button" x-bind:class="evalTab==='golden'?'sel':''" x-on:click="evalTab='golden'">① 원천 평가 · 골든셋</button>
-          <button type="button" x-bind:class="evalTab==='live'?'sel':''" x-on:click="evalTab='live'">② 실시간 튜닝 · 메타컴파일</button>
+          <button type="button" x-bind:class="evalTab==='golden'?'sel':''" x-on:click="evalTab='golden'">골든셋 평가</button>
+          <button type="button" x-bind:class="evalTab==='live'?'sel':''" x-on:click="evalTab='live'">실시간 콘텐츠 평가</button>
         </div>
 
         <!-- ① 원천 평가(골든셋): 기대 vs 실제 정합성 → 원천 프롬프트 수정 -->
@@ -4061,7 +4064,7 @@
       </div>
 
       <!-- ═══ 모듈: 평가 아레나 (게임화) · 팀 정확도 협동 스코어 + 리더보드 ═══ -->
-      <div x-show="mod === 'arena'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'home' || mod === 'arena'" x-cloak class="w-full space-y-4" style="order:-1">
         <!-- 히어로: 팀 정확도 게이지(협동) -->
         <section class="arena-hero">
           <div class="arena-hero__head">
@@ -4139,7 +4142,7 @@
       </div>
 
       <!-- ═══ 모듈: 검수 큐 (팀 실시간 HITL) · YELLOW 대기열 + 다중 의견 ═══ -->
-      <div x-show="mod === 'review'" x-cloak class="w-full space-y-4">
+      <div x-show="(mod === 'eval' && evalTop === 'queue') || mod === 'review'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>검수 큐 · YELLOW 사람검수</b>
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
           <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
@@ -4307,7 +4310,7 @@
   <!-- ⚙ 설정 = 고정 팝업(Dialog) · 위젯 아님(§9.5) -->
   <div class="ds-dialog-backdrop" x-show="settingsOpen" x-cloak x-on:mousedown.self="settingsOpen = false" style="z-index:70">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="설정" style="max-width:560px">
-      <h2 class="ds-dialog__title">설정</h2>
+      <h2 class="ds-dialog__title">API 키·모델 설정</h2>
       <div class="ds-dialog__body" style="max-height:70vh;overflow:auto">
 
       <!-- 탭: API 키 / 모델 (Atelier 방식) -->
