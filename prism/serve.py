@@ -4106,7 +4106,6 @@ PAGE = """<!doctype html>
               <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
               <span x-text="loading ? '실행 중' : '추출 실행'"></span>
             </button>
-            <span class="text-xs text-muted">모델·추론 강도는 상단 ⚙ 설정에서 변경</span>
             <span aria-live="polite" class="ml-auto text-sm text-[#ff4e33]" x-text="status"></span>
           </div>
           </div>
@@ -4779,7 +4778,7 @@ PAGE = """<!doctype html>
           <!-- 내 검수 캐릭터 (육성) · 상단 히어로 -->
           <section class="panel arena-charpanel"><div class="panel-hd"><b>내 검수 캐릭터</b><span class="meta" x-text="reviewer ? reviewer : '이름 미설정'"></span></div>
             <div class="panel-bd">
-              <div x-show="!reviewer" class="text-xs text-muted" style="padding:8px">우상단에서 <b class="text-ink">검수자 이름</b>을 설정하면 나만의 캐릭터가 생깁니다</div>
+              <div x-show="!reviewer" class="text-xs text-muted" style="padding:8px">로그인하면 나만의 <b class="text-ink">검수 캐릭터</b>가 생깁니다</div>
               <template x-if="reviewer && arenaMe">
                 <div class="charcard charcard--split" x-bind:data-tier="levelTier(arenaMe.level)">
                   <!-- 좌: 선수 카드(캐릭터·레벨·스탯·검수하기) -->
