@@ -2464,10 +2464,10 @@ PAGE = """<!doctype html>
   .card{box-shadow:var(--ds-highlight);transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
   .card:hover{transform:translateY(-1px)}
   /* .panel = 카탈로그 위젯 카드(ds-widget) 외형 상단 라이닝 금지(§4.4.2) → 헤드 구분선 없음 */
-  .panel{border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-xl);background:var(--ds-surface);overflow:hidden;
-    box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 20px -12px rgba(0,0,0,.10),var(--ds-highlight);
-    transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
-  .panel:hover{transform:translateY(-1px)}
+  /* 카드 계열 통일: 콘텐츠 패널은 차분(무-호버리프트) · border-card · radius-lg · shadow-low */
+  .panel{border:1px solid var(--ds-border-card);border-radius:var(--ds-radius-lg);background:var(--ds-surface);overflow:hidden;
+    box-shadow:var(--ds-shadow-low);transition:border-color var(--ds-motion-fast) var(--ds-ease-standard)}
+  .panel:hover{border-color:var(--ds-border-input-hover)}
   .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 20px 6px}
   .panel-hd b{color:var(--ds-ink);font-size:13px;font-weight:600;letter-spacing:.01em}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
@@ -2506,7 +2506,7 @@ PAGE = """<!doctype html>
 
   /* 인포그래픽 · 타일·분포바·도넛 */
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-  .tile{border-radius:12px;padding:13px 14px;background:var(--ds-surface-white);border:1px solid var(--ds-hairline-soft)}
+  .tile{border-radius:var(--ds-radius-md);padding:14px 16px;background:var(--ds-surface);border:1px solid var(--ds-border-card)}
   .tile .n{font-size:23px;font-weight:600;color:var(--ds-ink);line-height:1.1;letter-spacing:-.01em}
   .tile .t{margin-top:3px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ds-muted)}
   .bar{display:grid;grid-template-columns:96px 1fr 38px;align-items:center;gap:10px}

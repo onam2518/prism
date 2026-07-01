@@ -1225,16 +1225,16 @@
   flex-direction: column;
   grid-column: span 1;
   grid-row: span 1;
-  border-radius: var(--ds-radius-xl);
-  border: 1px solid var(--ds-hairline-soft);
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid var(--ds-border-card);
   background: var(--ds-surface);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 16px -6px rgba(0, 0, 0, 0.08), var(--ds-highlight);
+  box-shadow: var(--ds-shadow-low);
   padding: 14px 16px;
   min-height: 156px;
   overflow: visible;
   transition: transform var(--ds-motion-standard) var(--ds-ease-standard), box-shadow var(--ds-motion-standard) var(--ds-ease-standard);
 }
-.ds-widget:hover { box-shadow: 0 2px 5px rgba(0, 0, 0, 0.07), 0 14px 28px -8px rgba(0, 0, 0, 0.12), var(--ds-highlight); transform: translateY(-2px); }
+.ds-widget:hover { box-shadow: var(--ds-shadow-medium); transform: translateY(-2px); border-color: var(--ds-border-input-hover); }
 .ds-widget--md { grid-column: span 2; }
 .ds-widget--lg { grid-column: span 2; grid-row: span 2; }
 .ds-widget--tall { grid-row: span 2; }
