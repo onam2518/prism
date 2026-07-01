@@ -4406,7 +4406,7 @@
 
       <!-- ═══ 모듈: 토픽 (품질 · 토픽 통합 뷰) ═══ -->
       <div x-show="(mod === 'dash' && dashTop === 'content' && dashSub === 'topic') || mod === 'quality'" x-cloak class="w-full space-y-4">
-        <div x-show="!topicData || !topicData.n_contents" class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div>
+        <template x-if="!topicData || !topicData.n_contents"><div class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div></template>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
           <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
             <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.single||0):0"></div><div class="t">엔티티형</div></div>
