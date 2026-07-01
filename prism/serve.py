@@ -2770,7 +2770,7 @@ PAGE = """<!doctype html>
   .addmenu button:hover{background:var(--ds-hairline-soft)}
 
   /* 콘텐츠 영역(모듈/홈 그리드 공용) · 타이틀바와 충분히 띄움 */
-  .canvas{margin-top:0;min-width:0;margin-left:0;padding-left:0;display:flex;flex-direction:column}
+  .canvas{margin-top:0;min-width:0;margin-left:0;padding-left:0;display:flex;flex-direction:column;gap:20px}
   .canvas>.ds-widgetgrid{order:0}   /* 홈: 아레나(order:-1) 아래에 위젯 그리드 */
   .ds-widgetgrid{margin-top:0}
 

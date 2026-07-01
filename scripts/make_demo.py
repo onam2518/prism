@@ -174,7 +174,9 @@ def build() -> str:
     html = html.replace('<link href="/vendor/ds-components.css" rel="stylesheet">', f'<style>{comp_css}</style>')
     # 벤더 에셋(캐릭터·로고 SVG) → docs/demo-assets/ (Pages 루트 내부, main() 에서 복사)
     #   ../prism/vendor 는 Pages(docs=루트)에서 사이트 밖으로 나가 404 → 루트 내부 상대경로로.
-    html = html.replace('src="/vendor/', 'src="demo-assets/')
+    # src="/vendor/ 뿐 아니라 charOptions 의 JS 경로('/vendor/…')까지 포함해 전역 치환
+    # (CSS·폰트·CDN 스크립트는 위에서 이미 태그 통째 치환됨 → 남은 /vendor/ 는 캐릭터 SVG 뿐)
+    html = html.replace('/vendor/', 'demo-assets/')
     # Pretendard 폰트 패밀리는 'Pretendard Variable' 가변 → 정적 CDN 은 'Pretendard'
     html = html.replace('"Pretendard Variable",Pretendard,', '"Pretendard",')
     html = html.replace("'\\\"Pretendard Variable\\\"', 'Pretendard',",
