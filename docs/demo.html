@@ -2047,8 +2047,16 @@
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : k === 'topic' ? '토픽' : '품질 사유'; },
       // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
-      openDetail(c) { this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.detailOpen = true; this.drillOpen = false; },
-      editVerdict: false,
+      openDetail(c) { this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.pendingBad = false; this.detailOpen = true; this.drillOpen = false; },
+      editVerdict: false, pendingBad: false,
+      // 정확 = 즉시 완료 · 수정 필요 = 요소·사유 입력 후 '완료 처리' 로만 확정(누른다고 바로 저장 안 함)
+      reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; },
+      reviewBadComplete() {
+        if (!(this.detail.fb.note || '').trim()) { this._err('무엇을 왜 고쳐야 하는지 입력하세요'); return; }
+        this.detail.fb = Object.assign({}, this.detail.fb, { verdict: 'bad' });
+        this.saveFbNote(this.detail);
+        this.pendingBad = false; this.editVerdict = false;
+      },
       // 태그 용어 정의(호버 툴팁): 인텐트=고정 설명 · 품질 사유=사전(dictData) · 카테고리=경로
       INTENT_DEF: {
         '속보·사건 추적': '새로 발생한 사건·이슈를 빠르게 전하고 후속 경과를 추적', '심층 분석': '배경·맥락·데이터로 사안을 깊이 해설',
@@ -5069,28 +5077,29 @@
         <div class="detailview__eval">
           <div x-show="detail && detail.grade"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span></div>
           <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
-          <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
-          <div class="dve__sec"><div class="dve__lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.category.length" class="text-xs text-muted">·</span></div></div>
-          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', e)" data-tip-pos="top" x-text="e"></span></template></div></div>
+          <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="right" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', e)" data-tip-pos="right" x-text="e"></span></template><span x-show="detail && !detail.category.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', e)" data-tip-pos="right" x-text="e"></span></template></div></div>
           <div class="dve__verdict">
             <div class="dve__lbl">검수 판정</div>
-            <!-- 검수 완료(판정 있음 · 수정 아님): 완료 표기 + 수정 일시 + 추가 수정 -->
+            <!-- 검수 완료(판정 있음 · 수정 아님): 완료 표기(색상=판정별) + 수정 일시 + 추가 수정 -->
             <template x-if="detail && detail.fb && detail.fb.verdict && !editVerdict">
               <div>
-                <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span><span x-text="detail.fb.verdict==='good' ? '검수 완료 · 정확' : '검수 완료 · 수정 필요'"></span></span>
+                <span class="ds-badge" x-bind:class="detail.fb.verdict==='good' ? 'ds-badge--success' : 'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail.fb.verdict==='good' ? '검수 완료 · 정확' : '검수 완료 · 수정 필요'"></span></span>
                 <span class="text-xs text-muted" x-show="detail.fb.ts" x-text="'· 최종 수정 ' + fmtTs(detail.fb.ts)" style="margin-left:6px"></span>
                 <div class="tbox" x-show="detail.fb.verdict==='bad' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:10px" x-on:click="editVerdict=true">추가 수정</button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:10px" x-on:click="editVerdict=true; pendingBad=(detail.fb.verdict==='bad')">추가 수정</button>
               </div>
             </template>
             <!-- 미검수 또는 추가 수정 중 -->
             <template x-if="detail && (!(detail.fb && detail.fb.verdict) || editVerdict)">
               <div>
                 <div style="display:flex;gap:8px">
-                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="detail && detail.fb && detail.fb.verdict==='good' ? 'is-on' : ''" x-on:click="setFeedback(detail,'good'); if(detail.fb.verdict!=='bad') editVerdict=false"><span class="verdictbtn__dot"></span>정확</button>
-                  <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="detail && detail.fb && detail.fb.verdict==='bad' ? 'is-on' : ''" x-on:click="setFeedback(detail,'bad')"><span class="verdictbtn__dot"></span>수정 필요</button>
+                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="!pendingBad && detail && detail.fb && detail.fb.verdict==='good' ? 'is-on' : ''" x-on:click="reviewGood()"><span class="verdictbtn__dot"></span>정확</button>
+                  <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="pendingBad ? 'is-on' : ''" x-on:click="pendingBad=true"><span class="verdictbtn__dot"></span>수정 필요</button>
                 </div>
-                <template x-if="detail && detail.fb && detail.fb.verdict==='bad'">
+                <!-- 수정 필요: 요소·사유 입력 후 '완료 처리' 로만 확정 -->
+                <template x-if="pendingBad">
                   <div style="margin-top:10px">
                     <div class="dve__lbl" style="margin-bottom:6px">어떤 요소를 고칠까요?</div>
                     <div class="fixelems">
@@ -5099,7 +5108,10 @@
                       </template>
                     </div>
                     <textarea x-model="detail.fb.note" rows="3" class="field" style="margin-top:8px" x-bind:placeholder="elemLabel(detail.fb.element||'summary') + ' 이(가) 왜 잘못됐는지 · 다음 추출 프롬프트에 자동 반영'"></textarea>
-                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" style="margin-top:8px" x-on:click="saveFbNote(detail); editVerdict=false" x-bind:disabled="!(detail.fb.note||'').trim()">반영</button>
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                      <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="reviewBadComplete()" x-bind:disabled="!(detail.fb.note||'').trim()">완료 처리</button>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="pendingBad=false; if(!(detail.fb&&detail.fb.verdict)) editVerdict=false">취소</button>
+                    </div>
                   </div>
                 </template>
               </div>
