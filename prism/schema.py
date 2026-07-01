@@ -28,6 +28,7 @@ class Content:
     title: str
     subtitle: str = ""
     body: str = ""
+    source_url: str = ""      # 참조용 원문 링크(추출 입력 아님 · 있으면 상세에서 '원문' 링크)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Content":
@@ -36,6 +37,7 @@ class Content:
             title=normalize_text(d.get("title", "")),
             subtitle=normalize_text(d.get("subtitle", "")),
             body=normalize_text(d.get("body", "")),
+            source_url=normalize_text(d.get("source_url", "") or d.get("url", "")),
         )
 
     def body_hash(self) -> str:
@@ -46,6 +48,7 @@ class Content:
             "displayServiceName": self.displayServiceName,
             "title": self.title,
             "subtitle": self.subtitle,
+            "source_url": self.source_url,
             "body_hash": self.body_hash(),
         }
 

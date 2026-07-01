@@ -140,7 +140,11 @@ STUB = """<script>
       if (u.indexOf('/vocab') > -1) return Promise.resolve(J(VOCAB));
       if (u.indexOf('/admin') > -1) return Promise.resolve(J(ADMIN));
       if (u.indexOf('/arena') > -1) return Promise.resolve(J(ARENA));
-      if (u.indexOf('/drill') > -1) { const qp = new URLSearchParams((u.split('?')[1]||'')); return Promise.resolve(J({ ok: true, kind: qp.get('kind')||'intent', value: qp.get('value')||'', items: [{title:'삼성전자 노조 임금 협상 결렬', service:'뉴스', grade:'G'},{title:'한국은행 기준금리 동결 결정', service:'뉴스', grade:'G'},{title:'낚시성 제목 사례', service:'커뮤니티', grade:'R'}], n: 3 })); }
+      if (u.indexOf('/drill') > -1) { const qp = new URLSearchParams((u.split('?')[1]||'')); return Promise.resolve(J({ ok: true, kind: qp.get('kind')||'intent', value: qp.get('value')||'', items: [
+        {hash:'d1', title:'삼성전자 노조 임금 협상 결렬', subtitle:'중앙노동위 조정 불성립', service:'뉴스', grade:'G', summary:'삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다', entities:['삼성전자','전국삼성전자노동조합','중앙노동위원회'], intent:['사건 경과 보도'], category:['News and Politics / Society'], reasons:[], url:''},
+        {hash:'d2', title:'한국은행 기준금리 동결 결정', subtitle:'', service:'뉴스', grade:'G', summary:'한국은행이 기준금리를 현 수준에서 동결하기로 결정했다', entities:['한국은행','금리'], intent:['사건 경과 보도'], category:['Business and Finance / Economy'], reasons:[], url:''},
+        {hash:'d3', title:'낚시성 제목 사례', subtitle:'', service:'커뮤니티', grade:'R', summary:'제목과 본문 괴리로 클릭을 유도한 사례', entities:[], intent:['흥미·화제'], category:[], reasons:['clickbait'], url:''}
+      ], n: 3 })); }
       if (u.indexOf('/reviewer') > -1) return Promise.resolve(J({ ok: true, team: { invite_code: ADMIN.team.invite_code } }));
       if (u.indexOf('/auth') > -1) return Promise.resolve(J({ ok: true, access_token: 'demo' }));
       if (u.indexOf('/models') > -1) return Promise.resolve(J({ ok: true, models: ['solar-pro3-260323', 'solar-pro2-251215'] }));

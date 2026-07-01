@@ -383,7 +383,6 @@ def drill_contents(kind: str, value: str, team=None) -> dict:
     for r in rows:
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
-        ref = r.get("content_ref") or {}
         if kind == "intent":
             hit = value in (im.get("intent") or [])
         elif kind == "category":
@@ -394,9 +393,28 @@ def drill_contents(kind: str, value: str, team=None) -> dict:
         else:
             hit = False
         if hit:
-            out.append({"title": ref.get("title", ""), "service": ref.get("displayServiceName", ""),
-                        "grade": qm.get("finalGrade", ""), "summary": im.get("summary", "")})
+            out.append(_detail_row(r))
     return {"ok": True, "kind": kind, "value": value, "items": out, "n": len(out)}
+
+
+def _detail_row(r: dict) -> dict:
+    """콘텐츠 상세/목록 공용 행: 렌더에 필요한 필드 표준화(공통 컴포넌트 입력)."""
+    im = r.get("item_meta") or {}
+    qm = r.get("quality_meta") or {}
+    ref = r.get("content_ref") or {}
+    return {
+        "hash": ref.get("body_hash", "") or r.get("hash", ""),
+        "title": ref.get("title", "") or r.get("title", ""),
+        "subtitle": ref.get("subtitle", ""),
+        "service": ref.get("displayServiceName", "") or r.get("service", ""),
+        "url": ref.get("source_url", "") or r.get("url", ""),
+        "summary": im.get("summary", ""),
+        "entities": im.get("entities", []) or [],
+        "intent": im.get("intent", []) or [],
+        "category": im.get("content_category", []) or [],
+        "grade": qm.get("finalGrade", "") or r.get("grade", ""),
+        "reasons": qm.get("reasons", []) or [],
+    }
 
 
 def _logs_to_jsonl(data: bytes, filename: str, out_path: str):
@@ -1633,6 +1651,7 @@ PAGE = """<!doctype html>
       dashTop: 'content',   // 현황 대시보드 상위 탭: content | user
       evalTop: 'queue',     // 검증 및 평가 상위 탭: queue(검수큐) | test(테스트)
       drillOpen: false, drillData: null, drillBusy: false,  // 대시보드 드릴다운
+      detailOpen: false, detail: null,   // 콘텐츠 상세(공통 컴포넌트): 좌 원문 렌더 · 우 평가
       dashSub: 'batch',     // 콘텐츠 서브탭: batch(배치결과) | quality(품질·법령) | topic(토픽)
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
       navIcons: {
@@ -1834,6 +1853,8 @@ PAGE = """<!doctype html>
         this.drillBusy = false;
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : '품질 사유'; },
+      // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
+      openDetail(c) { this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.detailOpen = true; this.drillOpen = false; },
       // ── 배치 결과: 콘텐츠별 평가 피드백 → 학습 루프 ──
       fbNoteOpen: {},
       async setFeedback(c, verdict) {
@@ -2540,6 +2561,24 @@ PAGE = """<!doctype html>
   .panel-hd>b{margin-right:auto}
   .ds-progress--drill:hover .ds-progress__label{color:var(--ds-primary)}
   .ds-progress--drill:hover .ds-progress__track{box-shadow:0 0 0 2px color-mix(in srgb,var(--ds-primary) 26%,transparent)}
+  /* 콘텐츠 상세 스플릿뷰(공통 컴포넌트) */
+  .detailview{background:var(--ds-layer-popup);border-radius:var(--ds-radius-xl);box-shadow:var(--ds-shadow-high);width:min(940px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+  .detailview__hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--ds-divider-section)}
+  .detailview__hd b{font-size:15px;color:var(--ds-ink)}
+  .detailview__body{display:grid;grid-template-columns:1.25fr 1fr;min-height:0;overflow:hidden}
+  .detailview__content{padding:22px 24px;overflow:auto;border-right:1px solid var(--ds-divider-section)}
+  .detailview__eval{padding:22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px;background:var(--ds-surface-on)}
+  .dvc__service{font-size:12px;font-weight:700;color:var(--ds-primary)}
+  .dvc__title{font-size:22px;font-weight:700;line-height:1.3;margin:6px 0 4px;color:var(--ds-ink)}
+  .dvc__subtitle{font-size:15px;color:var(--ds-text-secondary);margin-bottom:6px}
+  .dvc__lead{margin:14px 0;padding:14px 16px;border-radius:var(--ds-radius-md);background:var(--ds-primary-tint);font-size:15px;line-height:1.6;color:var(--ds-text-secondary)}
+  .dvc__lead-lbl{display:block;font-size:11px;font-weight:700;color:var(--ds-primary);margin-bottom:4px}
+  .dvc__bodytext{font-size:15px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap;margin-top:12px}
+  .dvc__note{font-size:12px;color:var(--ds-muted);margin-top:12px}
+  .dvc__src{margin-top:16px;display:inline-flex}
+  .dve__lbl{font-size:11px;font-weight:700;color:var(--ds-muted);margin-bottom:6px}
+  .dve__verdict{margin-top:auto;padding-top:16px;border-top:1px solid var(--ds-divider-section)}
+  @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}
   .panel-hd b{color:var(--ds-ink);font-size:13px;font-weight:600;letter-spacing:.01em}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
   .panel-bd{padding:16px 20px 20px}
@@ -3440,7 +3479,7 @@ PAGE = """<!doctype html>
                 </thead>
                 <tbody>
                   <template x-for="(it, i) in (batchResult ? batchResult.items : [])" x-bind:key="i">
-                    <tr>
+                    <tr style="cursor:pointer" x-on:click="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="left">
                       <td class="text-ink" x-text="it.title || '·'"></td>
                       <td x-text="it.summary || '·'"></td>
                       <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="!(it.entities||[]).length">·</span></div></td>
@@ -4219,7 +4258,7 @@ PAGE = """<!doctype html>
       <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
         <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
         <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th></tr></thead><tbody>
-          <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr>
+          <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" x-on:click="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
             <td x-text="c.service || '·'"></td>
             <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
             <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
@@ -4228,6 +4267,46 @@ PAGE = """<!doctype html>
         <div x-show="!drillBusy && drillData && !drillData.items.length" class="text-xs text-muted" style="padding:14px">해당 콘텐츠가 없습니다</div>
       </div>
       <div style="text-align:right;margin-top:14px"><button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-md" x-on:click="drillOpen=false">닫기</button></div>
+    </div>
+  </div>
+
+  <!-- 콘텐츠 상세 스플릿뷰(공통 컴포넌트): 좌 추출 원문 렌더 · 우 평가 -->
+  <div class="ds-dialog-backdrop" x-show="detailOpen" x-cloak x-on:mousedown.self="detailOpen=false" style="z-index:74">
+    <div class="detailview" role="dialog" aria-modal="true" aria-label="콘텐츠 상세">
+      <div class="detailview__hd"><b>콘텐츠 상세 · 검수</b>
+        <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="detailOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="detailview__body">
+        <div class="detailview__content">
+          <div class="dvc__service" x-text="detail && (detail.service || '·')"></div>
+          <h2 class="dvc__title" x-text="detail && (detail.title || '(제목 없음)')"></h2>
+          <div class="dvc__subtitle" x-show="detail && detail.subtitle" x-text="detail && detail.subtitle"></div>
+          <div class="dvc__lead" x-show="detail && detail.summary"><span class="dvc__lead-lbl">리드문</span><span x-text="detail && detail.summary"></span></div>
+          <div class="dvc__bodytext" x-show="detail && detail.body" x-text="detail && detail.body"></div>
+          <div class="dvc__note" x-show="detail && !detail.body">전체 본문은 저장되지 않습니다 · 리드문·메타 기준으로 검수하세요</div>
+          <a class="dvc__src ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-show="detail && detail.url" x-bind:href="detail && detail.url" target="_blank" rel="noreferrer">원문 열기 ↗</a>
+        </div>
+        <div class="detailview__eval">
+          <div x-show="detail && detail.grade"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span></div>
+          <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" x-text="e"></span></template><span x-show="detail && !detail.category.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" x-text="e"></span></template></div></div>
+          <div class="dve__verdict">
+            <div class="dve__lbl">검수 판정</div>
+            <div style="display:flex;gap:8px">
+              <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="detail && detail.fb && detail.fb.verdict==='good' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline ds-btn--c-primary'" x-on:click="setFeedback(detail,'good')">정확</button>
+              <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="detail && detail.fb && detail.fb.verdict==='bad' ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline ds-btn--c-danger'" x-on:click="setFeedback(detail,'bad')">수정 필요</button>
+            </div>
+            <template x-if="detail && detail.fb && detail.fb.verdict==='bad'">
+              <div style="margin-top:8px">
+                <textarea x-model="detail.fb.note" rows="3" class="field" placeholder="교정 메모 (다음 추출 프롬프트에 자동 반영)"></textarea>
+                <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" style="margin-top:8px" x-on:click="saveFbNote(detail)">메모 저장</button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
