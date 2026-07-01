@@ -331,7 +331,7 @@ class SupabaseStore:
         out = []
         for r in rows:
             im = r.get("item_meta") or {}
-            cat = " · ".join(f"{k}→{v}" for k, v in (im.get("content_category") or {}).items())
+            cat = " · ".join(im.get("content_category") or [])
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
                         "grade": r.get("final_grade") or "", "summary": im.get("summary", ""),
                         "category": cat, "source": r.get("source") or "단건"})

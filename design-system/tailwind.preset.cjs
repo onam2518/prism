@@ -1,41 +1,62 @@
 /**
- * Prism Design System — Tailwind preset (Perplexity 정렬).
- * Prism UI(serve.py)나 다른 Tailwind 프로젝트에서 이 토큰을 그대로 쓰려면:
+ * Prism Design System — Tailwind preset.
+ * Source of truth = Anchor Design System (axz): Blue(Primary)·Red(Accent)·무채색 캔버스
+ * + 도메인 카테고리색 · Pretendard. 값 원본 design-system/anchor/tokens.json.
  *   tailwind.config = { presets: [require('@prism/design-system/tailwind.preset.cjs')] }
  */
 module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: { DEFAULT: '#20808d', hover: '#1a6873', deep: '#13343b', tint: '#e5f2f2' },
-        ink: '#091717',
-        canvas: '#fbfaf4',
-        surface: '#fcfcf9',
-        body: '#2e3a3a',
-        muted: '#5c6a6a',
-        hairline: '#e4e4dc',
-        'hairline-soft': '#efefe9',
-        success: '#1f9d6b',
-        error: '#e0524a',
-        warning: '#d9923a',
+        primary: { DEFAULT: '#1e84ff', hover: '#0066db', deep: '#004fad', tint: 'rgba(30,132,255,0.16)' },
+        ink: '#000000',
+        canvas: '#f4f5f7',
+        surface: '#ffffff',
+        'surface-on': '#f4f5f7',
+        body: 'rgba(0,0,0,0.88)',
+        muted: 'rgba(0,0,0,0.48)',
+        hairline: 'rgba(0,0,0,0.08)',
+        'hairline-soft': 'rgba(0,0,0,0.04)',
+        success: '#18ba45',
+        error: '#ff4e33',
+        warning: '#ff9429',
+        info: '#1e84ff',
+        // 도메인 카테고리 식별색
+        'cat-news': '#1e84ff',
+        'cat-shopping': '#ff4e33',
+        'cat-sports': '#5c77ff',
+        'cat-entertainment': '#a05cff',
+        'cat-cafe': '#ff5c66',
+        'cat-interest': '#ff9429',
+        'cat-community': '#5e47eb',
         // dark
-        'dark-canvas': '#0d1117',
-        'dark-surface': '#161b22',
-        'teal-on-dark': '#34b4c4',
+        'dark-canvas': '#161718',
+        'dark-surface': '#202122',
+        'blue-on-dark': '#66a8ff',
       },
       fontFamily: {
-        sans: ['"FK Grotesk"', 'Inter', 'system-ui', 'sans-serif'],
-        display: ['"FK Display"', '"FK Grotesk"', 'Inter', 'sans-serif'],
-        body: ['"FK Grotesk Neue"', '"FK Grotesk"', 'Inter', 'sans-serif'],
+        sans: ['"Pretendard"', '"Pretendard Variable"', 'system-ui', '"Apple SD Gothic Neo"', 'sans-serif'],
+        display: ['"Pretendard"', '"Pretendard Variable"', 'system-ui', 'sans-serif'],
+        body: ['"Pretendard"', '"Pretendard Variable"', 'system-ui', 'sans-serif'],
         mono: ['"Berkeley Mono"', '"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
-      borderRadius: { sm: '6px', DEFAULT: '10px', md: '10px', lg: '12px', xl: '16px' },
+      fontSize: {
+        label: '12px',
+        caption: '14px',
+        body: '15px',
+        answer: '17px',
+        subtitle: '18px',
+        heading: '22px',
+        'heading-lg': '26px',
+        display: '40px',
+      },
+      // Radius 4·8·12·16·24·100(pill)
+      borderRadius: { xs: '4px', sm: '8px', DEFAULT: '8px', md: '12px', lg: '16px', xl: '24px', full: '9999px' },
+      // Anchor Shadow 3단
       boxShadow: {
-        ambient: '0 1px 3px rgba(9,23,23,0.06)',
-        subtle: '0 1px 2px rgba(9,23,23,0.05)',
-        standard: '0 2px 8px rgba(9,23,23,0.08)',
-        elevated: '0 4px 16px rgba(9,23,23,0.12)',
-        modal: '0 16px 48px rgba(9,23,23,0.20)',
+        low: '0 0 4px 0 rgba(0,0,0,0.04)',
+        medium: '0 1px 10px 0 rgba(0,0,0,0.08)',
+        high: '0 2px 16px 0 rgba(0,0,0,0.16)',
       },
     },
   },

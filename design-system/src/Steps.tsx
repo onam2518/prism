@@ -23,7 +23,7 @@ function Check() {
 }
 
 /**
- * 에이전틱 단계 표시 (Perplexity Pro Search 5-step 패턴).
+ * 에이전틱 단계 표시 (다단계 진행 패턴).
  * Prism 메타 파이프라인: 이미지 읽기 → OCR → 비전 → 메타 추출 → 품질 판정.
  */
 export function Steps({ steps }: StepsProps) {

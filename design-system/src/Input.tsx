@@ -12,7 +12,7 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   hint?: string;
 }
 
-/** Prism 텍스트 입력. 포커스 시 teal 링. composer 는 시그니처 Ask 웰. */
+/** Prism 텍스트 입력. 포커스 시 Blue(Primary) 링. composer 는 시그니처 Ask 웰. */
 export function Input({
   label,
   variant = 'field',

@@ -88,7 +88,7 @@
 3. **부드러운 입체감.** 미묘한 그림자 + hover 리프트. 절제.
 4. **브랜드/캐릭터 요소 환영, 단 절제.** 일러스트는 **배경 투명 필수**(컨테이너가 배경 책임, 떠보이지 않게). 정보 밀도 높은 패널은 자제.
 5. **런처는 컴팩트.** 큰 타일이 아니라 자기 콘텐츠 높이의 바로가기.
-6. **한 위젯 한 책임.** 한 위젯은 하나의 명명된 기능/정보. teal/포인트색은 액션·강조 신호로만.
+6. **한 위젯 한 책임.** 한 위젯은 하나의 명명된 기능/정보. Primary(Blue)·Accent(Red)·포인트색은 액션·강조 신호로만.
 7. **삭제는 ×.** 위젯 제거는 마이너스가 아니라 ×.
 
 ---
@@ -126,7 +126,7 @@
 | **의미** | success · error · warning |
 | **타이포** | UI 그로테스크 / 본문 가독체 / mono — 시스템 폴백 |
 | **Radius** | sm·md·lg·xl(위젯)·2xl(히어로)·full |
-| **Shadow** | 페이퍼-플랫 기본 + 위젯 elevation(ambient~modal 단계) + 내부 하이라이트 |
+| **Shadow** | surface 대비 우선 깊이 + 위젯 elevation(low·medium·high 3단) + 내부 하이라이트 |
 | **Motion** | fast 120 / standard 220 / slow 360ms · 커스텀 cubic-bezier · `prefers-reduced-motion` 대응 |
 
 ---

@@ -130,7 +130,7 @@ def build_from_logs(results_path: str, logs_path: str) -> dict:
         item = {"idx": i, "title": r.get("content_ref", {}).get("title", ""),
                 "service": r.get("content_ref", {}).get("displayServiceName", ""),
                 "intent_categories": im.get("intent", []),
-                "entity_categories": [_t1(c) for c in (im.get("content_category") or {}).values()],
+                "entity_categories": [_t1(c) for c in (im.get("content_category") or [])],
                 "entities": im.get("entities", [])}
         by_id[str(i)] = item
         by_id[item["title"]] = item
@@ -262,7 +262,7 @@ def build_mock(results_path: str, n_users: int = 200) -> dict:
             "idx": i, "title": r.get("content_ref", {}).get("title", ""),
             "service": r.get("content_ref", {}).get("displayServiceName", ""),
             "intent_categories": im.get("intent", []),
-            "entity_categories": [_t1(c) for c in (im.get("content_category") or {}).values()],
+            "entity_categories": [_t1(c) for c in (im.get("content_category") or [])],
             "entities": im.get("entities", []),
         })
 

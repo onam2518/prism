@@ -50,15 +50,15 @@ def verify_item(im, content) -> list:
             notes.append(f"intent 사전외 제거: {c}")
     im.intent = clean_int[:2]  # 1~2개
 
-    # content_category: Tier1 화이트리스트 강제
-    clean_ec = {}
-    for ent, cat in (im.content_category or {}).items():
+    # content_category: 콘텐츠 단위 N개(1312). Tier1 화이트리스트 강제·중복 제거
+    clean_ec = []
+    for cat in (im.content_category or []):
         tier1 = str(cat).split("/")[0].strip()
         if tier1 in D.IAB_TIER1:
-            clean_ec[ent] = cat
+            if cat not in clean_ec:
+                clean_ec.append(cat)
         else:
-            notes.append(f"content_category Tier1 사전외 → 미분류: {ent}={cat}")
-            clean_ec[ent] = "Unclassified"
+            notes.append(f"content_category Tier1 사전외 제거: {cat}")
     im.content_category = clean_ec
     return notes
 

@@ -229,8 +229,23 @@ def normalize_content_category(raw: str) -> str:
 
 
 def normalize_categories(cmap: dict) -> dict:
-    """{엔티티: 카테고리문자열} 전체를 사전화."""
+    """{엔티티: 카테고리문자열} 전체를 사전화. (구 형식 호환용)"""
     return {e: normalize_content_category(c) for e, c in (cmap or {}).items()}
+
+
+def normalize_category_list(cats) -> list:
+    """콘텐츠 단위 카테고리 N개(1312) → 사전 정식 경로 리스트.
+    중복·Unclassified 제거, 순서 보존. 구 dict 형식이 와도 값만 추려 호환."""
+    if isinstance(cats, dict):                       # 구 형식(엔티티별) 호환
+        cats = list(cats.values())
+    if isinstance(cats, str):
+        cats = [cats]
+    out: list = []
+    for c in (cats or []):
+        n = normalize_content_category(c)
+        if n and n != "Unclassified" and n not in out:
+            out.append(n)
+    return out
 
 # 자사 경로 → IAB v3.0 공식 경로(외부 광고 연동 후처리 변환용). 정의 페이지 부록.
 CATEGORY_IAB_MAP = {

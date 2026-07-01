@@ -10,7 +10,7 @@ export interface ToggleProps {
   id?: string;
 }
 
-/** 설정 스위치. on = teal 트랙, white thumb. role=switch. */
+/** 설정 스위치. on = Primary 트랙, white thumb. role=switch. */
 export function Toggle({ checked, onChange, label, disabled = false, id }: ToggleProps) {
   const btn = (
     <button

@@ -9,9 +9,9 @@ Prism(이미지 → 메타데이터 파이프라인)의 종합 서비스 디자�
 
 ## 1. 철학
 
-Perplexity의 "invisible brand · answer-first · calm over spectacle"를 Prism으로 옮기면:
+Anchor(axz)의 "무채색 캔버스 + 의미 있는 곳에만 액센트 · answer-first · calm over spectacle"를 Prism으로 옮기면:
 
-- **결과(메타)가 주인공.** 크롬은 물러나고, teal은 액션·신호에만.
+- **결과(메타)가 주인공.** 크롬은 물러나고, Blue(Primary)·Red(Accent)는 액션·신호에만.
 - **홈은 위젯 캔버스.** 사용자가 폰 홈처럼 **위젯을 골라 배치**해 자신의 작업대를 만든다. 고정된 대시보드를 강요하지 않는다.
 - **위젯 = 자족 모듈.** 단순 디자인 단위가 아니라 **기능을 담은 단위**다. 추가·삭제·재배치·리사이즈가 일급 동작.
 - **에이전트 메타포.** 파이프라인은 4명의 에이전트(다음프렌즈)가 협업하는 팀으로 표현된다.
@@ -24,14 +24,14 @@ Perplexity의 "invisible brand · answer-first · calm over spectacle"를 Prism�
 
 | 그룹 | 값 |
 |---|---|
-| Primary | teal `#20808d` (hover `#1a6873` · deep `#13343b` · tint `#e5f2f2`) — 유일 인터랙션/인용색 |
-| Surface | page `#fbfaf4` · card `#fcfcf9` · white `#ffffff` (순백 페이지 금지) |
-| Ink | `#091717`(=#000 금지) · body `#2e3a3a` · muted `#5c6a6a` |
-| Dark | canvas `#0d1117` · teal `#34b4c4` — 같은 토큰의 1급 모드 |
-| Font | FK Grotesk(UI) · FK Grotesk Neue(본문) · Berkeley Mono — Inter 폴백 |
-| Radius | 6·10·12·16·22(2xl) · full | Shadow | 페이퍼-플랫, 떠있는 레이어만 |
+| Primary | Blue `#1e84ff` (hover `#0066db` · deep `#004fad` · tint `rgba(30,132,255,.16)`) — 사용자 액션(버튼·링크·포커스) · Accent = Red `#ff4e33`(정보 강조) |
+| Surface | base(page) `#f4f5f7` · surface(card) `#ffffff` · 무채색 캔버스 |
+| Ink | text.primary `#000000` · body `rgba(0,0,0,.88)` · muted `rgba(0,0,0,.48)` (알파 기반) |
+| Dark | base `#161718` · surface `#202122` · Blue `#66a8ff` — 같은 토큰의 자동 swap |
+| Font | Pretendard(UI·본문 단일 패밀리) · Berkeley Mono(코드) |
+| Radius | 4·8·12·16·24·100(pill) | Shadow | low·medium·high 3단(surface 대비 우선) |
 
-**브랜드 결정(확정):** 앱 전체를 **teal 라이트로 이행**(violet/다크 잔재 폐기). 단일 토큰 소스. → `COMPONENT_ROADMAP.md §0`.
+**브랜드 결정(확정):** Source of truth = **Anchor Design System(axz)**. Blue(Primary)·Red(Accent)·무채색 캔버스·Pretendard·Light/Dark 자동 swap. 원본 `anchor/DESIGN.md`·`anchor/Button.md`·`anchor/tokens.json`. → `COMPONENT_ROADMAP.md §0`.
 
 ---
 
@@ -141,7 +141,7 @@ Perplexity의 "invisible brand · answer-first · calm over spectacle"를 Prism�
 편집 모드에서:
 - **점선 스냅 그리드** — 셀 코너 점으로 들어갈 자리 가시화.
 - **삭제 X(우상단)만** 노출. *(사이즈 배지는 군더더기라 제거 — 크기는 선택 핸들로 조절.)*
-- **선택 시** teal 링 + 8핸들, **우하단 핸들로 리사이즈**(셀 단위 순환).
+- **선택 시** Primary 링 + 8핸들, **우하단 핸들로 리사이즈**(셀 단위 순환).
 - **지글 + 드래그 재배치 + 위젯 추가(팔레트)**.
 
 ### 4.4 위젯 디자인 원칙 (최신·중요)
@@ -188,7 +188,7 @@ Perplexity의 "invisible brand · answer-first · calm over spectacle"를 Prism�
 
 ## 5. 컴포넌트 시스템
 
-위젯 내부를 채우는 45+ 빌딩블록. 전부 토큰 기반·teal 라이트. 구조 계약은 `COMPONENTS.md`.
+위젯 내부를 채우는 45+ 빌딩블록. 전부 토큰 기반·Anchor 라이트/다크. 구조 계약은 `COMPONENTS.md`.
 
 - **Primitive**: Button(pill·trailingIcon) · IconButton(+`[data-tip]` 툴팁) · Input/Composer · Select · Card · Badge(+메타칩) · Tabs · Table(rowActions) · Dialog · Toast · Toggle · Steps · AttachmentChip
 - **Infographic**: Stat · ProgressBar/Distribution · ProgressRing · Skeleton · Spinner
@@ -221,7 +221,7 @@ Prism은 "에이전트"가 아니라 **데이터 추출·부여 프로세스**�
 - **따뜻한 타이틀** — "오늘"이 아니라 "오늘 한 일", "활동"이 아니라 "방금 있었던 일", "빠른 실행"이 아니라 "지금 시작하기". 기능은 명확하게, 표현은 사람답게.
 - 아이콘 칩(tinted square)으로 한눈에 구분.
 
-> 원칙: 개성은 **작은 신호**(아이콘 칩·액센트·타이틀 톤)로. 본문·teal 시스템은 유지 — 화려함이 아니라 친근함.
+> 원칙: 개성은 **작은 신호**(아이콘 칩·카테고리색·타이틀 톤)로. 본문·무채색 시스템은 유지 — 화려함이 아니라 친근함.
 
 ---
 
@@ -243,7 +243,7 @@ Prism은 "에이전트"가 아니라 **데이터 추출·부여 프로세스**�
 ## 9. 접근성 · 군더더기 축소
 
 - **아이콘 우선, 라벨은 호버.** 버튼·상태는 `IconButton` + `[data-tip]` 툴팁으로 시각 노이즈 축소. 단 `aria-label` 항상 유지.
-- 포커스 링(teal), `role`/`aria-*`(switch·tab·dialog·progressbar), 키보드 동작 기본 제공.
+- 포커스 링(Blue), `role`/`aria-*`(switch·tab·dialog·progressbar), 키보드 동작 기본 제공.
 
 ---
 
@@ -293,7 +293,7 @@ Prism은 "에이전트"가 아니라 **데이터 추출·부여 프로세스**�
 | 문서 | 역할 |
 |---|---|
 | **SERVICE_DESIGN.md** (이 문서) | 최상위 — 위젯 홈 중심 서비스 디자인 |
-| `DESIGN.md` | 비주얼 토큰(Perplexity 9-섹션) |
+| `anchor/DESIGN.md` | Anchor Foundation·토큰 사용 규칙 |
 | `PRINCIPLES.md` | UX·플로우·에셋 원칙 |
 | `COMPONENTS.md` | 컴포넌트 구조 계약 |
 | `COMPONENT_ROADMAP.md` | 산정·상태·브랜드 결정·스킬 노트 |
