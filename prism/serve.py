@@ -1000,7 +1000,7 @@ def register_reviewer(data: dict) -> dict:
     ch = (data.get("char") or "boksil").strip()
     team = None
     if _supa() and hasattr(st, "ensure_team"):
-        team = st.ensure_team(rv, (data.get("team_mode") or "create"),
+        team = st.ensure_team(rv, (data.get("team_mode") or "join"),
                               data.get("team_name"), data.get("invite_code"))
         if not team:
             return {"ok": False, "error": "팀을 찾을 수 없습니다 · 초대코드를 확인하세요"}
@@ -1575,6 +1575,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/config"):
             try:
+                # 운영(supabase): 팀 공유 설정(모델·프롬프트·인입 등)은 관리자만 변경
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
                 self._send(200, json.dumps(apply_config(json.loads(body or b"{}")),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
@@ -1588,6 +1592,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/store"):
             try:
                 payload = json.loads(body or b"{}")
+                if payload.get("clear") and _supa() and not is_admin_user(
+                        self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
                 st = get_store()
                 if payload.get("clear") and st:
                     st.clear()
@@ -2048,6 +2056,15 @@ PAGE = """<!doctype html>
         this.mod = 'home'; this.reviewerEditing = true;
       },
       async saveReviewer() {
+        // 프로필 편집(이미 로그인): 재인증 없이 닉네임·캐릭터만 갱신(팀 재참가 안 함)
+        if (this.backend === 'supabase' && this.authToken) {
+          const nv = (this.reviewer || '').trim();
+          if (!nv) { this.authMsg = '닉네임을 입력하세요'; return; }
+          try { await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reviewer: nv, name: nv, char: this.reviewerChar }) }); } catch (e) {}
+          try { localStorage.setItem('prism_reviewer', nv); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
+          this.reviewerEditing = false; this.authMsg = '';
+          return;
+        }
         if (this.backend === 'supabase') {                          // 로그인/가입 먼저
           const email = (this.authEmail || '').trim(), pw = this.authPw || '';
           if (!email || !pw) { this.authMsg = '이메일·비밀번호를 입력하세요'; return; }
@@ -2066,6 +2083,7 @@ PAGE = """<!doctype html>
             this._badgeSeen = Array.isArray(rr.badges) ? rr.badges : null;   // 서버 배지 기준선(기기 간)
             if (rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }
             try { localStorage.setItem('prism_reviewer', this.reviewer); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
+            this.authEmail = ''; this.authPw = '';                   // 상태 정리(편집 재진입 시 오인 방지)
             this.reviewerEditing = false; this.authMsg = ''; this.refreshConfig();
             if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
             return;
@@ -3054,9 +3072,14 @@ PAGE = """<!doctype html>
     background:rgba(0,0,0,.55);backdrop-filter:blur(4px)}
   .onboard__card{width:100%;max-width:440px;background:var(--ds-surface-white);border-radius:24px;
     padding:30px 30px 24px;box-shadow:0 24px 70px rgba(0,0,0,.4);text-align:center}
-  .onboard__brand{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ds-violet,#1e84ff);
-    font-size:13px;font-weight:700;margin-bottom:14px}
-  .onboard__brand img{width:26px;height:26px}
+  .onboard__brand{display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+  .onboard__logo{height:42px;width:auto;display:block}
+  .onboard__logo--dark{display:none}
+  [data-theme='dark'] .onboard__logo--light{display:none} [data-theme='dark'] .onboard__logo--dark{display:block}
+  /* 온보딩 영역 그룹(계정 / 팀·캐릭터) · 시각적 구분 */
+  .onboard__group{text-align:left;border:1px solid var(--ds-hairline);border-radius:14px;padding:16px;margin-bottom:14px;background:var(--ds-surface)}
+  .onboard__group--b{margin-top:2px}
+  .onboard__grouphd{font-size:11px;font-weight:800;color:var(--ds-muted);letter-spacing:.03em;margin-bottom:12px;text-transform:uppercase}
   .onboard__title{font-size:23px;font-weight:800;color:var(--ds-ink);margin:0 0 8px}
   .onboard__lead{font-size:13px;line-height:1.6;color:var(--ds-body,rgba(0,0,0,0.88));margin:0 0 22px}
   .onboard__lbl{display:block;text-align:left;font-size:12px;font-weight:700;color:var(--ds-ink);margin:0 0 7px}
@@ -3445,6 +3468,14 @@ PAGE = """<!doctype html>
     border-left:1px solid var(--ds-hairline-soft)}
   /* 헤더 그룹 구분선(정보·컨트롤·카드속성 사이 동일 간격·구분선 원칙) */
   .hd-divider{align-self:center;width:1px;height:18px;background:var(--ds-hairline-soft);margin:0 4px;flex:none}
+  /* 채팅 퀵액션 = 칩 */
+  .ds-chat__quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .chatchip{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 12px;border-radius:9999px;
+    border:1px solid var(--ds-hairline);background:var(--ds-surface-white);color:var(--ds-text-secondary);
+    font-family:var(--ds-font-display);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;
+    box-shadow:0 1px 1px rgba(16,24,40,.03);transition:border-color .12s,color .12s,background .12s,transform .1s}
+  .chatchip:hover{border-color:var(--ds-primary);color:var(--ds-primary-deep);background:var(--ds-primary-tint)}
+  .chatchip:active{transform:translateY(1px)}
   /* 서술형 설명 = 상단 불릿(문장 단위·마침표). 텍스트 뭉침 방지 */
   .ds-bullets{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
   .ds-bullets li{position:relative;padding-left:15px;font-size:12.5px;line-height:1.55;color:var(--ds-muted)}
@@ -3577,65 +3608,74 @@ PAGE = """<!doctype html>
        x-on:click.self="if (reviewer) reviewerEditing = false"
        x-on:keydown.escape.window="if (reviewer) reviewerEditing = false">
     <div class="onboard__card" x-transition>
-      <div class="onboard__brand"><img src="/vendor/prism-mark.svg" alt="Prism"><b>Prism 평가 아레나</b></div>
-      <h2 class="onboard__title" x-text="reviewer ? '검수자 정보 변경' : (backend==='supabase' ? (authMode==='signup'?'가입하고 시작':'로그인') : '검수자로 등록하기')"></h2>
-      <p class="onboard__lead">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 내 검수가 점수가 되고
-        캐릭터가 성장해요. <span x-show="backend==='supabase'">계정으로 로그인하면 <b>어느 기기에서나</b> 이어집니다.</span></p>
+      <div class="onboard__brand">
+        <img class="onboard__logo onboard__logo--light" src="/vendor/prism-logo-tagline-light.png" alt="Prism · A lens on content & users">
+        <img class="onboard__logo onboard__logo--dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism · A lens on content & users"></div>
+      <h2 class="onboard__title" x-text="authToken ? '검수자 정보 변경' : (authMode==='signup'?'가입하고 시작':'로그인')"></h2>
+      <p class="onboard__lead">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 내 검수가 점수가 되고 캐릭터가 성장해요. 계정으로 로그인하면 <b>어느 기기에서나</b> 이어집니다.</p>
 
-      <!-- supabase 모드: 이메일+비밀번호 로그인/가입 -->
-      <template x-if="backend === 'supabase'">
-        <div>
-          <div class="onboard__authtabs">
-            <button type="button" x-bind:class="authMode==='login'?'sel':''" x-on:click="authMode='login';authMsg=''">로그인</button>
-            <button type="button" x-bind:class="authMode==='signup'?'sel':''" x-on:click="authMode='signup';authMsg=''">가입</button>
-          </div>
+      <!-- ① 로그인/가입 (비로그인) -->
+      <div x-show="!authToken">
+        <div class="onboard__authtabs">
+          <button type="button" x-bind:class="authMode==='login'?'sel':''" x-on:click="authMode='login';authMsg=''">로그인</button>
+          <button type="button" x-bind:class="authMode==='signup'?'sel':''" x-on:click="authMode='signup';authMsg=''">가입</button>
+        </div>
+        <!-- 그룹 A · 계정: 이메일·비밀번호·닉네임 한 영역 -->
+        <div class="onboard__group">
+          <div class="onboard__grouphd">계정</div>
           <label class="onboard__lbl">이메일</label>
           <input class="field onboard__name" type="email" placeholder="you@team.com" x-model="authEmail" style="margin-bottom:12px">
           <label class="onboard__lbl">비밀번호</label>
-          <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw"
-                 x-on:keydown.enter="saveReviewer()" style="margin-bottom:12px">
-          <div class="onboard__authmsg" x-show="authMsg" x-text="authMsg"></div>
+          <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw" x-on:keydown.enter="saveReviewer()" x-bind:style="authMode==='signup' ? 'margin-bottom:12px' : 'margin-bottom:0'">
+          <template x-if="authMode==='signup'">
+            <div>
+              <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시</span></label>
+              <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()" style="margin-bottom:0">
+            </div>
+          </template>
         </div>
-      </template>
-
-      <!-- supabase 모드: 팀 참가/생성(가입/편집 시에만 · 로그인엔 미표시) -->
-      <template x-if="backend === 'supabase' && showProfileFields">
-        <div>
-          <label class="onboard__lbl">팀 <span class="onboard__hint"> 초대 코드로 참가하거나 새 팀을 만드세요</span></label>
-          <div class="onboard__authtabs">
-            <button type="button" x-bind:class="teamMode==='join'?'sel':''" x-on:click="teamMode='join'">팀 코드로 참가</button>
-            <button type="button" x-bind:class="teamMode==='create'?'sel':''" x-on:click="teamMode='create'">새 팀 만들기</button>
+        <div class="onboard__authmsg" x-show="authMsg" x-text="authMsg"></div>
+        <!-- 그룹 B · 팀·캐릭터(가입 시) · 팀은 코드 참가만 -->
+        <template x-if="authMode==='signup'">
+          <div class="onboard__group onboard__group--b">
+            <div class="onboard__grouphd">팀 · 캐릭터</div>
+            <label class="onboard__lbl">팀 참가 <span class="onboard__hint"> 관리자에게 받은 초대 코드</span></label>
+            <input class="field onboard__name" placeholder="팀 초대 코드 (예: A1B2C3D4)" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:700" x-on:keydown.enter="saveReviewer()">
+            <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:14px">관리자에게 받은 코드를 입력하면 같은 팀으로 참가합니다</p>
+            <label class="onboard__lbl">캐릭터 선택</label>
+            <div class="onboard__chars" style="margin-bottom:0">
+              <template x-for="c in charOptions" x-bind:key="c.id">
+                <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
+                  <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
+                  <b x-text="c.label"></b><small x-text="c.role"></small>
+                </button>
+              </template>
+            </div>
           </div>
-          <input x-show="teamMode==='join'" class="field onboard__name" placeholder="팀 초대 코드 (예: A1B2C3D4)" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:700" x-on:keydown.enter="saveReviewer()">
-          <input x-show="teamMode==='create'" class="field onboard__name" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="teamName" style="margin-bottom:6px">
-          <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:4px" x-text="teamMode==='join' ? '관리자에게 받은 코드를 입력하면 같은 팀으로 참가합니다' : '만들면 초대 코드가 생겨 팀원을 부를 수 있어요'"></p>
-        </div>
-      </template>
-
-      <div x-show="showProfileFields">
-      <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시됩니다</span></label>
-      <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer"
-             x-on:keydown.enter="saveReviewer()">
-      </div>
-
-      <div x-show="showProfileFields">
-      <label class="onboard__lbl">캐릭터 선택 <span class="onboard__hint"> 리더보드·아레나에 이 캐릭터로 표시됩니다</span></label>
-      <div class="onboard__chars">
-        <template x-for="c in charOptions" x-bind:key="c.id">
-          <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
-            <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
-            <b x-text="c.label"></b><small x-text="c.role"></small>
-          </button>
         </template>
       </div>
+
+      <!-- ② 프로필 편집 (로그인 상태) · 닉네임·캐릭터만 -->
+      <div x-show="authToken" class="onboard__group">
+        <div class="onboard__grouphd">프로필</div>
+        <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시</span></label>
+        <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()">
+        <label class="onboard__lbl">캐릭터 선택</label>
+        <div class="onboard__chars" style="margin-bottom:0">
+          <template x-for="c in charOptions" x-bind:key="c.id">
+            <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
+              <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
+              <b x-text="c.label"></b><small x-text="c.role"></small>
+            </button>
+          </template>
+        </div>
       </div>
 
-
       <button type="button" class="ds-btn ds-btn--primary onboard__cta"
-              x-bind:disabled="backend==='supabase' ? (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!(reviewer||'').trim() || (teamMode==='create' ? !(teamName||'').trim() : !(inviteCode||'').trim())))) : !(reviewer||'').trim()"
+              x-bind:disabled="authToken ? !(reviewer||'').trim() : (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!(reviewer||'').trim() || !(inviteCode||'').trim())))"
               x-on:click="saveReviewer()"
-              x-text="backend==='supabase' ? (authMode==='signup'?'가입하고 시작':'로그인하고 시작') : (reviewer ? '저장하고 시작' : '시작하기')"></button>
-      <button type="button" class="onboard__skip" x-show="reviewer" x-on:click="reviewerEditing=false">닫기</button>
+              x-text="authToken ? '저장하고 시작' : (authMode==='signup'?'가입하고 시작':'로그인하고 시작')"></button>
+      <button type="button" class="onboard__skip" x-show="authToken" x-on:click="reviewerEditing=false">닫기</button>
     </div>
   </div>
 
@@ -5047,9 +5087,9 @@ PAGE = """<!doctype html>
       <template x-for="(m, i) in chatMsgs" x-bind:key="i"><div class="ds-chat__msg" x-bind:class="m.from === 'me' ? 'ds-chat__msg--me' : 'ds-chat__msg--bot'" x-text="m.text"></div></template>
     </div>
     <div class="ds-chat__quick">
-      <button type="button" class="ds-btn ds-btn--pill" x-on:click="chatAct('extract')">새 추출</button>
-      <button type="button" class="ds-btn ds-btn--pill" x-on:click="chatAct('dict')">사전 편집</button>
-      <button type="button" class="ds-btn ds-btn--pill" x-on:click="chatAct('settings')">설정</button>
+      <button type="button" class="chatchip" x-on:click="chatAct('extract')">＋ 새 추출</button>
+      <button type="button" class="chatchip" x-on:click="chatAct('dict')">사전 편집</button>
+      <button type="button" class="chatchip" x-on:click="chatAct('settings')">설정</button>
     </div>
     <div class="ds-chat__foot"><textarea class="ds-chat__input" x-model="chatDraft" rows="1" placeholder="작업을 지시하세요…" x-on:keydown.enter.prevent="chatSend()"></textarea><button type="button" class="ds-chat__send" x-on:click="chatSend()" aria-label="보내기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h10M8 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
   </div>

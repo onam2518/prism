@@ -34,8 +34,30 @@ def _seed_user_config():
         shutil.copyfile(src, DEFAULT_CONFIG_PATH)
 
 
+def _enable_supabase():
+    """~/.prism_supabase_key(서비스키) + URL 이 있으면 팀(supabase) 모드로 기동 —
+    로그인/가입·팀 참가·관리자. 없으면 로컬 sqlite 단독(닉네임만).
+    GUI 앱은 셸 env 를 못 물려받으므로 키파일에서 직접 로드한다."""
+    keyfile = os.path.expanduser("~/.prism_supabase_key")
+    urlfile = os.path.expanduser("~/.prism_supabase_url")
+    if not os.path.exists(keyfile):
+        return
+    try:
+        key = open(keyfile, encoding="utf-8").read().strip()
+    except Exception:
+        return
+    url = (os.environ.get("SUPABASE_URL") or "").strip()
+    if not url and os.path.exists(urlfile):
+        url = open(urlfile, encoding="utf-8").read().strip()
+    if key and url:
+        os.environ["SUPABASE_URL"] = url
+        os.environ["SUPABASE_SERVICE_KEY"] = key
+        os.environ["PRISM_BACKEND"] = "supabase"
+
+
 def _start_server():
     global _httpd
+    _enable_supabase()                         # 키파일 있으면 팀 모드(로그인/가입)로 전환
     from prism.serve import (Handler, load_persisted_key, load_dict_overrides,
                              get_store, sync_prompt, start_ingest_scheduler)
     load_persisted_key()                       # ~/.prism_key 자동 로드
