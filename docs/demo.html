@@ -1865,7 +1865,7 @@
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
-      // 팀 실시간 HITL: 검수자 식별(이름+캐릭터) · 검수 큐 · 라이브 이벤트
+      // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 큐 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
       // Supabase 인증(ID/PW) · backend==='supabase' 일 때
       backend: 'sqlite', authToken: '', authEmail: '', authPw: '', authMode: 'login', authMsg: '',
@@ -1880,7 +1880,7 @@
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
       adminData: null,        // 팀 관리(supabase)
-      // 평가 2탭: 원천(골든셋) / 실시간(메타컴파일)
+      // 평가 2탭: 골든셋 평가 / 실시간 콘텐츠 평가
       evalTab: 'golden', goldenResult: null, goldenBusy: false, goldenMsg: '',
       metaResults: null, metaBusy: false,
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
@@ -1970,7 +1970,7 @@
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 추출 trace·fallback·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '위젯을 추가·삭제·재배치해 나만의 콘솔을 구성하세요', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '팀 정확도를 함께 끌어올리는 평가 · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -2041,7 +2041,7 @@
         payload = Object.assign({ reviewer: this.reviewer || '', name: this.reviewer || '' }, payload);  // 키+표시명(supabase 면 서버가 uid 로 덮어씀)
         try { const r = await (await fetch('/feedback', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json(); if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback; } catch (e) {}
       },
-      // ── 팀 실시간 HITL: 검수자 식별 · 검수 큐 · 라이브 ──
+      // ── 팀 실시간 협업: 검수자 식별 · 검수 큐 · 라이브 ──
       loadReviewer() {
         try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; this.authToken = localStorage.getItem('prism_token') || ''; } catch (e) {}
         if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
@@ -2092,7 +2092,7 @@
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();             // 정확도 게이지 실시간 상승
           if (this.mod === 'dash' || this.mod === 'eval' || this.mod === 'home') this.loadDashThrottled();
         } else if (d.type === 'reap') {
-          if (d.plan) this.liveToast('REAP 개선안 반영 · ' + (d.plan.length > 42 ? d.plan.slice(0, 42) + '…' : d.plan));
+          if (d.plan) this.liveToast('개선안 반영 · ' + (d.plan.length > 42 ? d.plan.slice(0, 42) + '…' : d.plan));
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
           if (this.mod === 'prompt') this.loadPromptDefaults();   // 단계 프롬프트(LEARNED) 갱신
         } else if (d.type === 'reviewer') {
@@ -2730,10 +2730,10 @@
     box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 20px -12px rgba(0,0,0,.10),var(--ds-highlight);
     transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
   .panel:hover{transform:translateY(-1px)}
-  .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 18px 0}
+  .panel-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 20px 6px}
   .panel-hd b{color:var(--ds-ink);font-size:13px;font-weight:600;letter-spacing:.01em}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
-  .panel-bd{padding:14px 18px 18px}
+  .panel-bd{padding:16px 20px 20px}
   .drow{display:grid;grid-template-columns:124px 1fr;gap:16px;padding:15px 18px;
     border-bottom:1px solid var(--ds-hairline-soft);align-items:start}
   .drow:last-child{border-bottom:0}
@@ -3078,7 +3078,7 @@
   /* ⑥ 캡션·설명·힌트: 13px·muted 동일 */
   .ds-hint,.secdesc,.rc-d,.homehead__sub{font-size:13px;color:var(--ds-muted);line-height:1.5}
   /* ⑦ 위젯 간 세로 간격: 동일 리듬(타이트 금지) */
-  .canvas .space-y-4>:not([hidden])~:not([hidden]){margin-top:26px}
+  .canvas .space-y-4>:not([hidden])~:not([hidden]){margin-top:28px}
   .ds-widgetgrid{gap:20px}
   /* ⑧ 위젯 헤드 캐릭터 아바타(귀엽게) · 라운드, 투명배경 캐릭터 */
   .wz-char{width:30px;height:30px;border-radius:50%;background:var(--ds-hairline-soft);overflow:hidden;display:inline-flex;align-items:center;justify-content:center;flex:none}
@@ -3703,7 +3703,7 @@
               <div class="ds-ring" x-bind:style="'--ds-ring-size:120px;--ds-ring-pct:'+(dashData?dashData.gPct:0)"><span class="ds-ring__label" x-text="(dashData?dashData.gPct:0)+'%'"></span></div>
               <div style="min-width:0;flex:1">
                 <template x-for="it in (dashData?dashData.intents:[])" x-bind:key="it.k">
-                  <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
+                  <div class="ds-progress" style="margin:11px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
                 </template>
               </div>
             </div></div>
@@ -3711,9 +3711,9 @@
           <section class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 분포 · 상위</b></div>
             <div class="panel-bd">
               <template x-for="it in (dashData?dashData.categories:[])" x-bind:key="it.k">
-                <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
+                <div class="ds-progress" style="margin:11px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
               </template>
-              <p x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" class="ds-hint" style="margin-top:12px">품질 사유 상위: <span x-text="(dashData?dashData.qualityReasons:[]).map(x=>x.k+'('+x.v+')').join(' · ')"></span></p>
+              <p x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" class="ds-hint" style="margin-top:18px">품질 사유 상위: <span x-text="(dashData?dashData.qualityReasons:[]).map(x=>x.k+'('+x.v+')').join(' · ')"></span></p>
             </div>
           </section>
           <!-- 콘텐츠별 평가 피드백 → 학습 루프(다음 추출 프롬프트에 자동 반영) -->
@@ -3892,17 +3892,17 @@
       <!-- ═══ 모듈: 검증 · 평가 ═══ -->
       <div x-show="mod === 'eval'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs"><button type="button" x-bind:class="evalTop==='queue'?'sel':''" x-on:click="evalTop='queue'">검수 큐</button><button type="button" x-bind:class="evalTop==='test'?'sel':''" x-on:click="evalTop='test'">테스트</button></div></div>
       <div x-show="mod === 'eval' && evalTop === 'test'" x-cloak class="w-full space-y-4">
-        <!-- 평가 2탭: ① 원천(골든셋) ② 실시간(메타컴파일) -->
+        <!-- 평가 2탭: ① 골든셋 평가 ② 실시간 콘텐츠 평가 -->
         <div class="evaltabs">
           <button type="button" x-bind:class="evalTab==='golden'?'sel':''" x-on:click="evalTab='golden'">골든셋 평가</button>
           <button type="button" x-bind:class="evalTab==='live'?'sel':''" x-on:click="evalTab='live'">실시간 콘텐츠 평가</button>
         </div>
 
-        <!-- ① 원천 평가(골든셋): 기대 vs 실제 정합성 → 원천 프롬프트 수정 -->
+        <!-- ① 골든셋 평가: 기대 vs 실제 정합성 → 프롬프트 수정 -->
         <div x-show="evalTab === 'golden'" class="space-y-4">
-          <section class="panel"><div class="panel-hd"><b>원천 평가 · 골든셋 정합성</b><span class="meta">기대(정답) vs 실제</span></div>
+          <section class="panel"><div class="panel-hd"><b>골든셋 정합성 평가</b><span class="meta">기대(정답) vs 실제</span></div>
             <div class="panel-bd">
-              <p class="text-xs text-muted" style="margin-bottom:11px">관리자가 등록한 골든셋으로 <b class="text-ink">원천 프롬프트</b>의 정합성을 측정합니다. 낮으면 <b class="text-ink">프롬프트 스튜디오</b>에서 원천 프롬프트를 수정하고 다시 평가하세요. (골든셋 등록은 <b class="text-ink">팀 관리</b>)</p>
+              <p class="text-xs text-muted" style="margin-bottom:11px">관리자가 등록한 골든셋으로 <b class="text-ink">프롬프트</b>의 정합성을 측정합니다. 낮으면 <b class="text-ink">프롬프트 스튜디오</b>에서 원천 프롬프트를 수정하고 다시 평가하세요. (골든셋 등록은 <b class="text-ink">팀 관리</b>)</p>
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중…(원천 프롬프트로 전건 추출)' : '평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenResult && goldenResult.ok">
@@ -3914,7 +3914,7 @@
                     <div class="goldstat"><b x-text="goldenResult.evaluated"></b><span>평가 건</span></div>
                   </div>
                   <div style="margin-top:14px">
-                    <div class="text-xs text-muted" style="margin-bottom:6px">버킷별 정합성 · 어디가 새는지(원천 프롬프트 수정 우선순위)</div>
+                    <div class="text-xs text-muted" style="margin-bottom:6px">버킷별 정합성 · 어디가 새는지(프롬프트 수정 우선순위)</div>
                     <template x-for="(v,k) in (goldenResult.by_reason_bucket||{})" x-bind:key="k">
                       <div class="ds-progress" style="margin:5px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="k+' ('+v.n+')'"></span><span class="ds-progress__pct" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
                     </template>
@@ -3926,13 +3926,13 @@
           </section>
         </div>
 
-        <!-- ② 실시간 튜닝(메타컴파일) -->
+        <!-- ② 실시간 콘텐츠 평가 -->
         <div x-show="evalTab === 'live'" class="space-y-4">
-          <section class="panel"><div class="panel-hd"><b>실시간 튜닝 · 메타컴파일</b><span class="meta">여러 검수 의견 → 정제 지시</span>
+          <section class="panel"><div class="panel-hd"><b>실시간 학습</b><span class="meta">여러 검수 의견을 모아 지시문 자동 보완</span>
             <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="metaBusy" x-on:click="runMetaCompile()" x-text="metaBusy ? '정리 중…' : '🧩 학습 정리'"></button>
           </div>
             <div class="panel-bd">
-              <p class="text-xs text-muted" style="margin-bottom:10px">실시간 검수 피드백(REAP plan)을 단계별로 <b class="text-ink">병합·중복제거</b>하고, 의견이 갈리는 부분은 <b class="text-ink">명확화 필요</b>로 분리해 파인튜닝 층(LEARNED)에 반영합니다.</p>
+              <p class="text-xs text-muted" style="margin-bottom:10px">실시간 검수 피드백을 단계별로 <b class="text-ink">병합·중복제거</b>하고, 의견이 갈리는 부분은 <b class="text-ink">명확화 필요</b>로 분리해 파인튜닝 층(LEARNED)에 반영합니다.</p>
               <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="stage">
                 <div x-show="metaResults && metaResults[stage] && (metaResults[stage].directive || (metaResults[stage].ambiguities||[]).length)" class="metarow">
                   <span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
@@ -3985,10 +3985,10 @@
             </div>
           </div>
         </section>
-        <div x-show="!result" class="empty"><b class="text-body">실행 · 추출</b>에서 단건 추출을 실행하면 그 콘텐츠의 검증(trace·fallback·비용)이 표시됩니다</div>
+        <div x-show="!result" class="empty"><b class="text-body">실행 · 추출</b>에서 단건 추출을 실행하면 그 콘텐츠의 검증(처리 이력·보정·비용)이 표시됩니다</div>
         <div x-show="result" class="space-y-4">
-          <div class="panel"><div class="panel-hd"><b>추출 trace</b><span class="meta" x-text="tr.prompt_version || ''"></span><button type="button" class="copybtn" x-show="tr && tr.content_id !== undefined" x-on:click="exportEval()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div><div class="panel-bd">
-            <div class="drow"><div class="k">fallback</div><div class="v flex flex-wrap gap-1.5">
+          <div class="panel"><div class="panel-hd"><b>처리 이력</b><span class="meta" x-text="tr.prompt_version || ''"></span><button type="button" class="copybtn" x-show="tr && tr.content_id !== undefined" x-on:click="exportEval()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div><div class="panel-bd">
+            <div class="drow"><div class="k">보정</div><div class="v flex flex-wrap gap-1.5">
               <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" x-text="f"></span></template>
               <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
             </div></div>
@@ -4036,7 +4036,7 @@
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>골든셋</b><span class="meta" x-text="(adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록')"></span></div>
           <div class="panel-bd">
-            <p class="text-xs text-muted" style="margin-bottom:10px">원천 평가의 정답셋. <b class="text-ink">{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다. (검증·평가 → 원천 평가에서 이 골든셋으로 정합성 측정)</p>
+            <p class="text-xs text-muted" style="margin-bottom:10px">골든셋(정답셋). <b class="text-ink">{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다. (검증·평가 → 원천 평가에서 이 골든셋으로 정합성 측정)</p>
             <label class="ds-btn ds-btn--secondary" style="cursor:pointer">골든셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
             <span class="text-xs text-muted" style="margin-left:10px" x-text="goldenMsg"></span>
           </div>
@@ -4129,7 +4129,7 @@
                     <div><b class="tnum" x-text="arenaMe.corrections"></b><span>개선 🏅</span></div>
                     <div><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>🔥 스트릭</span></div>
                   </div>
-                  <div class="charcard__hint">검수 +10 · 채택된 개선(REAP) +25 · 점수가 쌓이면 캐릭터가 <b class="text-ink">성장</b>해요</div>
+                  <div class="charcard__hint">검수 +10 · 채택된 개선 +25 · 점수가 쌓이면 캐릭터가 <b class="text-ink">성장</b>해요</div>
                 </div>
               </template>
               <div x-show="reviewer && !arenaMe" class="charcard charcard--egg" data-tier="0">
@@ -4142,7 +4142,7 @@
         </div>
       </div>
 
-      <!-- ═══ 모듈: 검수 큐 (팀 실시간 HITL) · YELLOW 대기열 + 다중 의견 ═══ -->
+      <!-- ═══ 모듈: 검수 큐 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
       <div x-show="(mod === 'eval' && evalTop === 'queue') || mod === 'review'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>검수 큐 · YELLOW 사람검수</b>
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
@@ -4208,30 +4208,30 @@
 
       <!-- ═══ 모듈: 프롬프트 스튜디오 (전용 도구) · 추출 단계별 프롬프트 ═══ -->
       <div x-show="mod === 'prompt'" x-cloak class="w-full space-y-4">
-        <p class="ds-hint hintbox">단계마다 <b class="text-ink">모델을 지정</b>하면 그 모델의 원천 프롬프트로 동작합니다 각 과정에 다른 모델을 쓸 수 있고, 프롬프트는 모델별로 저장됩니다 보완은 <b class="text-ink">검증 · 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다</p>
+        <p class="ds-hint hintbox">단계마다 <b class="text-ink">모델을 지정</b>하면 그 모델의 프롬프트로 동작합니다 각 과정에 다른 모델을 쓸 수 있고, 프롬프트는 모델별로 저장됩니다 보완은 <b class="text-ink">검증 · 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다</p>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
         <section class="panel" data-fn><div class="panel-hd"><b>추출</b><span class="meta">대식 · 이미지 → 신호(OCR · 비전)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
             <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.extract" x-on:change="onStageModelChange('extract')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <textarea x-model="stagePrompts.extract" rows="5" class="field" placeholder="이 단계의 원천 프롬프트(지시문)"></textarea>
+            <textarea x-model="stagePrompts.extract" rows="5" class="field" placeholder="이 단계의 프롬프트(지시문)"></textarea>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('extract')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('extract')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.extract"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.extract ? ('최종 수정 ' + stagePromptsMeta.extract) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>분석</b><span class="meta">용희 · 신호 → 메타(리드문 · 엔티티 · 인텐트 · 카테고리)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.analyze" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
             <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.analyze" x-on:change="onStageModelChange('analyze')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <textarea x-model="stagePrompts.analyze" rows="5" class="field" placeholder="이 단계의 원천 프롬프트(지시문)"></textarea>
+            <textarea x-model="stagePrompts.analyze" rows="5" class="field" placeholder="이 단계의 프롬프트(지시문)"></textarea>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('analyze')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('analyze')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.analyze"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.analyze ? ('최종 수정 ' + stagePromptsMeta.analyze) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>검수</b><span class="meta">복실 · 품질 메타 판정</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.review" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
             <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.review" x-on:change="onStageModelChange('review')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <textarea x-model="stagePrompts.review" rows="5" class="field" placeholder="이 단계의 원천 프롬프트(지시문)"></textarea>
+            <textarea x-model="stagePrompts.review" rows="5" class="field" placeholder="이 단계의 프롬프트(지시문)"></textarea>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('review')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('review')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.review"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.review ? ('최종 수정 ' + stagePromptsMeta.review) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>판정 · 부여</b><span class="meta">딱지 · 유통 결정 · 법령</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.judge" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">
             <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.judge" x-on:change="onStageModelChange('judge')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <textarea x-model="stagePrompts.judge" rows="5" class="field" placeholder="이 단계의 원천 프롬프트(지시문)"></textarea>
+            <textarea x-model="stagePrompts.judge" rows="5" class="field" placeholder="이 단계의 프롬프트(지시문)"></textarea>
             <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('judge')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('judge')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.judge"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.judge ? ('최종 수정 ' + stagePromptsMeta.judge) : '수정 이력 없음'"></span></div>
           </div></section>
         <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통</span></div>
