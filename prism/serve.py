@@ -2603,6 +2603,16 @@ PAGE = """<!doctype html>
     box-shadow:0 1px 2px rgba(0,0,0,.04),0 10px 26px -12px rgba(0,0,0,.14),var(--ds-highlight);
     transition:box-shadow var(--ds-motion-standard) var(--ds-ease-standard),transform var(--ds-motion-standard) var(--ds-ease-standard)}
   .panel:hover{box-shadow:0 2px 5px rgba(0,0,0,.06),0 18px 38px -14px rgba(0,0,0,.20),var(--ds-highlight);transform:translateY(-2px)}
+  /* ── 카드 폴리시: 오락실 모달 수준의 깊이·정돈감(라이트 3중 레이어 그림자 + 지표 타일) ── */
+  .panel,.ds-widget{border-color:var(--ds-hairline)}
+  .panel{box-shadow:0 1px 2px rgba(16,24,40,.04),0 8px 20px -10px rgba(16,24,40,.10),0 26px 50px -26px rgba(16,24,40,.15),var(--ds-highlight)}
+  .panel:hover{box-shadow:0 2px 4px rgba(16,24,40,.05),0 14px 30px -12px rgba(16,24,40,.15),0 36px 64px -28px rgba(16,24,40,.22),var(--ds-highlight);transform:translateY(-3px)}
+  .ds-widget{box-shadow:0 1px 2px rgba(16,24,40,.04),0 8px 20px -10px rgba(16,24,40,.10),0 24px 46px -26px rgba(16,24,40,.14),var(--ds-highlight)}
+  .ds-stat{background:linear-gradient(180deg,var(--ds-surface-white),var(--ds-surface));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 1px 2px rgba(16,24,40,.04),0 6px 16px -12px rgba(16,24,40,.16);
+    transition:transform .16s var(--ds-ease-standard),box-shadow .16s var(--ds-ease-standard)}
+  .ds-stat:hover{transform:translateY(-2px);box-shadow:0 10px 22px -12px rgba(16,24,40,.20)}
+  .ds-stat__value--accent{text-shadow:0 0 18px color-mix(in srgb,var(--ds-primary) 28%,transparent)}
   .panel-hd{display:flex;align-items:center;gap:12px;padding:18px 20px 10px}
   .panel-hd>b{margin-right:auto}
   .ds-progress--drill:hover .ds-progress__label{color:var(--ds-primary)}
