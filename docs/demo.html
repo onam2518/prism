@@ -2598,7 +2598,7 @@
   window.__DEMO_RESULT__ = {"source": "image", "mock": false, "content": {"displayServiceName": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "subtitle": "", "body": "기자회견장에서 노조 집행부가 발언하는 장면. 중앙노동위원회 조정에서 합의 불성립."}, "signals": [{"vision": "이미지는 실내 기자회견장을 담고 있다. 노동조합 집행부로 보이는 인물들이 단상에 앉아 발언하고 있으며, 배경 현수막에 협상 관련 문구가 보인다. 전체적으로 노사 협상 결렬을 알리는 공식 발표 현장의 분위기다. [엔티티] 삼성전자, 전국삼성전자노동조합, 중앙노동위원회 [장면] 노사 협상 결렬 기자회견", "ocr": "중앙노동위원회 조정 불성립 · 임금 인상 협상 결렬", "latency_ms": 2840}], "output": {"item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사실 전달", "분석·해설"], "content_category": ["Business / Industries", "Law, Govt & Politics"]}, "quality_meta": {"finalGrade": "G"}, "routing": {"content_track": "text"}}};
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
-    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil"}, {"id": "m2", "name": "검수자 A", "char": "yonghee"}, {"id": "m3", "name": "검수자 B", "char": "ddakji"}], "goldenCount": 24}, ARENA = {"accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18, "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "leaderboard": [{"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7}, {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3}, {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1}]};
+    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": true}, {"id": "m2", "name": "검수자 A", "char": "yonghee", "avatar": "yonghee", "is_admin": true}, {"id": "m3", "name": "검수자 B", "char": "ddakji", "avatar": "ddakji", "is_admin": false}], "goldenCount": 24}, ARENA = {"accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18, "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "leaderboard": [{"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7}, {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3}, {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1}]};
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
       const u = String(url);
@@ -4122,11 +4122,20 @@
             <template x-for="m in (adminData?adminData.members:[])" x-bind:key="m.id">
               <div class="lb-row">
                 <span class="lb-av" data-tier="0"><img x-bind:src="charImg(m.avatar)" alt=""></span>
-                <span class="lb-name" x-text="m.name + (adminData.team && m.id===adminData.team.created_by ? ' (관리자)' : '')"></span>
-                <button type="button" x-show="adminData&&adminData.isAdmin && adminData.team && m.id!==adminData.team.created_by" class="ds-btn ds-btn--secondary" style="height:28px;padding:0 11px" x-on:click="adminAct('remove_member', m.id)">제거</button>
+                <span class="lb-name"><span x-text="m.name"></span>
+                  <span x-show="adminData.team && m.id===adminData.team.created_by" class="ds-badge ds-badge--status" style="margin-left:6px">생성자</span>
+                  <span x-show="m.is_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--intent" style="margin-left:6px">관리자</span>
+                </span>
+                <template x-if="adminData&&adminData.isAdmin && adminData.team && m.id!==adminData.team.created_by">
+                  <span style="display:flex;gap:6px">
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-on:click="adminAct(m.is_admin ? 'unset_admin' : 'set_admin', m.id)" x-text="m.is_admin ? '관리자 해제' : '관리자 지정'"></button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="adminAct('remove_member', m.id)">제거</button>
+                  </span>
+                </template>
               </div>
             </template>
             <div x-show="!(adminData&&adminData.members&&adminData.members.length)" class="text-xs text-muted" style="padding:8px">멤버가 없습니다</div>
+            <p class="text-xs text-muted" style="padding:8px 8px 0;line-height:1.5">🎖 <b class="text-ink">검수 마스터</b>(레벨 10) 멤버에게 관리자 권한을 위임해 골든셋·정책 관리를 함께 맡길 수 있습니다.</p>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>API 키·모델 설정</b><span class="ds-badge ds-badge--neutral">관리자</span></div>

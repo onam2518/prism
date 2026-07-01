@@ -979,6 +979,13 @@ def admin_action(uid, team, data) -> dict:
         st.clear_team_contents(team)
     elif act == "remove_member" and data.get("member"):
         st.remove_member(team, data["member"])
+    elif act in ("set_admin", "unset_admin") and data.get("member"):
+        t = st.team_info(team) if hasattr(st, "team_info") else None
+        if t and data["member"] == t.get("created_by"):
+            return {"ok": False, "error": "생성자의 관리자 권한은 변경할 수 없습니다"}
+        if not hasattr(st, "set_member_admin"):
+            return {"ok": False, "error": "이 백엔드는 위임을 지원하지 않습니다"}
+        st.set_member_admin(team, data["member"], act == "set_admin")
     elif act == "ingest":                          # 크롤러 수량 인입 → 검토 큐
         return admin_ingest(uid, team, data.get("endpoint"), data.get("n"))
     else:
@@ -3886,11 +3893,20 @@ PAGE = """<!doctype html>
             <template x-for="m in (adminData?adminData.members:[])" x-bind:key="m.id">
               <div class="lb-row">
                 <span class="lb-av" data-tier="0"><img x-bind:src="charImg(m.avatar)" alt=""></span>
-                <span class="lb-name" x-text="m.name + (adminData.team && m.id===adminData.team.created_by ? ' (관리자)' : '')"></span>
-                <button type="button" x-show="adminData&&adminData.isAdmin && adminData.team && m.id!==adminData.team.created_by" class="ds-btn ds-btn--secondary" style="height:28px;padding:0 11px" x-on:click="adminAct('remove_member', m.id)">제거</button>
+                <span class="lb-name"><span x-text="m.name"></span>
+                  <span x-show="adminData.team && m.id===adminData.team.created_by" class="ds-badge ds-badge--status" style="margin-left:6px">생성자</span>
+                  <span x-show="m.is_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--intent" style="margin-left:6px">관리자</span>
+                </span>
+                <template x-if="adminData&&adminData.isAdmin && adminData.team && m.id!==adminData.team.created_by">
+                  <span style="display:flex;gap:6px">
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-on:click="adminAct(m.is_admin ? 'unset_admin' : 'set_admin', m.id)" x-text="m.is_admin ? '관리자 해제' : '관리자 지정'"></button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="adminAct('remove_member', m.id)">제거</button>
+                  </span>
+                </template>
               </div>
             </template>
             <div x-show="!(adminData&&adminData.members&&adminData.members.length)" class="text-xs text-muted" style="padding:8px">멤버가 없습니다</div>
+            <p class="text-xs text-muted" style="padding:8px 8px 0;line-height:1.5">🎖 <b class="text-ink">검수 마스터</b>(레벨 10) 멤버에게 관리자 권한을 위임해 골든셋·정책 관리를 함께 맡길 수 있습니다.</p>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>API 키·모델 설정</b><span class="ds-badge ds-badge--neutral">관리자</span></div>

@@ -65,9 +65,9 @@ DEMO_ADMIN = {
     "ok": True, "isAdmin": True,
     "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"},
     "members": [
-        {"id": "demo-admin", "name": "데모 관리자", "char": "boksil"},
-        {"id": "m2", "name": "검수자 A", "char": "yonghee"},
-        {"id": "m3", "name": "검수자 B", "char": "ddakji"},
+        {"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": True},
+        {"id": "m2", "name": "검수자 A", "char": "yonghee", "avatar": "yonghee", "is_admin": True},
+        {"id": "m3", "name": "검수자 B", "char": "ddakji", "avatar": "ddakji", "is_admin": False},
     ],
     "goldenCount": 24,
 }
