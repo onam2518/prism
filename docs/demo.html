@@ -3091,6 +3091,10 @@
   .panel > .ds-table tr > :first-child{padding-left:18px}
   .panel > .overflow-auto > .ds-table tr > :last-child,
   .panel > .ds-table tr > :last-child{padding-right:18px}
+  .panel > .overflow-auto, .panel > .ds-table{margin-top:10px}
+  .ds-table th{padding:11px 14px 12px}
+  .ds-table td{padding:12px 14px}
+  .ds-table thead tr{border-bottom:1px solid var(--ds-divider-section, rgba(0,0,0,0.08))}
 </style>
 </head>
 <body class="antialiased">
@@ -3903,7 +3907,7 @@
           <section class="panel"><div class="panel-hd"><b>골든셋 정합성 평가</b><span class="meta">기대(정답) vs 실제</span></div>
             <div class="panel-bd">
               <p class="text-xs text-muted" style="margin-bottom:11px">관리자가 등록한 골든셋으로 <b class="text-ink">프롬프트</b>의 정합성을 측정합니다. 낮으면 <b class="text-ink">프롬프트 스튜디오</b>에서 원천 프롬프트를 수정하고 다시 평가하세요. (골든셋 등록은 <b class="text-ink">팀 관리</b>)</p>
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중…(원천 프롬프트로 전건 추출)' : '평가 실행'"></button>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenResult && goldenResult.ok">
                 <div>
