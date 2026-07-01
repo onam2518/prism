@@ -2161,15 +2161,15 @@
         const m = this.arenaMe; const r = (m&&m.reviews)||0, c = (m&&m.corrections)||0, s = (m&&m.streak)||0, L = (m&&m.level)||0;
         const acc = (this.arenaData && this.arenaData.accuracy) || 0;
         return [
-          { icon: '🌱', label: '첫 검수', got: r >= 1 },
-          { icon: '🔥', label: '연속 3일', got: s >= 3 },
-          { icon: '⚡', label: '연속 7일', got: s >= 7 },
-          { icon: '📚', label: '검수 50', got: r >= 50 },
-          { icon: '💯', label: '검수 100', got: r >= 100 },
-          { icon: '🏅', label: '개선 채택', got: c >= 1 },
-          { icon: '⭐', label: 'Lv.5', got: L >= 5 },
-          { icon: '👑', label: '마스터', got: L >= 10 },
-          { icon: '🎯', label: '정확도 90%', got: acc >= 0.9 },
+          { icon: '🌱', label: '첫 검수', desc: '첫 검수를 완료', exp: 10, color: '#18ba45', got: r >= 1 },
+          { icon: '🔥', label: '연속 3일', desc: '3일 연속 검수', exp: 15, color: '#ff9429', got: s >= 3 },
+          { icon: '⚡', label: '연속 7일', desc: '7일 연속 검수', exp: 30, color: '#ff6a3d', got: s >= 7 },
+          { icon: '📚', label: '검수 50', desc: '누적 50건 검수', exp: 50, color: '#1e84ff', got: r >= 50 },
+          { icon: '💯', label: '검수 100', desc: '누적 100건 검수', exp: 100, color: '#5c77ff', got: r >= 100 },
+          { icon: '🏅', label: '개선 채택', desc: '개선안이 채택됨', exp: 25, color: '#a05cff', got: c >= 1 },
+          { icon: '⭐', label: 'Lv.5', desc: '레벨 5 도달', exp: 50, color: '#ffb020', got: L >= 5 },
+          { icon: '👑', label: '마스터', desc: '레벨 10 도달', exp: 200, color: '#f5a623', got: L >= 10 },
+          { icon: '🎯', label: '정확도 90%', desc: '팀 정확도 90%', exp: 40, color: '#18ba45', got: acc >= 0.9 },
         ];
       },
       get badgeGot() { return this.badges().filter((x) => x.got).length; },
@@ -2961,23 +2961,32 @@
     background:var(--ds-surface2,#fff);box-shadow:0 0 0 2px var(--tier-c,rgba(0,0,0,.12));overflow:hidden}
   .lb-av img{width:24px;height:24px}
   /* ── 검수 캐릭터 육성 카드 ── */
-  .charcard{text-align:center;padding:6px 4px 4px;--tier-c:rgba(0,0,0,.24)}
+  /* 캐릭터 육성 카드: 입체 카드 + 발판 + 플로팅/브리딩 애니메이션 */
+  .charcard{text-align:center;padding:22px 16px 18px;--tier-c:rgba(0,0,0,.24);
+    background:radial-gradient(130% 90% at 50% -10%, color-mix(in srgb,var(--tier-c) 12%,var(--ds-surface)), var(--ds-surface) 70%);
+    border:1px solid color-mix(in srgb,var(--tier-c) 22%,var(--ds-border-card));border-radius:var(--ds-radius-xl);
+    box-shadow:var(--ds-shadow-medium),inset 0 1px 0 rgba(255,255,255,.5)}
   .charcard[data-tier="1"]{--tier-c:#1e84ff} .charcard[data-tier="2"]{--tier-c:#5c77ff}
   .charcard[data-tier="3"]{--tier-c:#ff9429} .charcard[data-tier="4"]{--tier-c:#a05cff}
   .lb-av[data-tier="1"]{--tier-c:#1e84ff} .lb-av[data-tier="2"]{--tier-c:#5c77ff}
   .lb-av[data-tier="3"]{--tier-c:#ff9429} .lb-av[data-tier="4"]{--tier-c:#a05cff}
-  .charcard__avatar{position:relative;width:96px;height:96px;margin:6px auto 4px;display:flex;align-items:center;justify-content:center}
-  .charcard__avatar img{position:relative;z-index:1;width:64px;height:64px;
-    /* 티어가 오를수록 캐릭터가 커지고(육성) 살짝 떠오름 */
-    transform:scale(calc(1 + var(--tier,0)*0.11));transition:transform .5s cubic-bezier(.22,1.4,.36,1);
-    filter:drop-shadow(0 4px 8px rgba(19,52,59,.2))}
+  .charcard__avatar{position:relative;width:140px;height:140px;margin:2px auto 8px;display:flex;align-items:flex-end;justify-content:center}
+  .charcard__avatar::after{content:'';position:absolute;bottom:10px;left:50%;transform:translateX(-50%);width:78px;height:16px;border-radius:50%;
+    background:radial-gradient(ellipse at center, color-mix(in srgb,var(--tier-c) 34%,transparent), transparent 72%);z-index:0;
+    animation:charshadow 3.2s ease-in-out infinite}
+  .charcard__avatar img{position:relative;z-index:1;width:92px;height:92px;transform-origin:bottom center;
+    filter:drop-shadow(0 8px 12px rgba(0,0,0,.24));
+    animation:charfloat 3.2s ease-in-out infinite}
   .charcard[data-tier="0"]{--tier:0} .charcard[data-tier="1"]{--tier:1} .charcard[data-tier="2"]{--tier:2}
   .charcard[data-tier="3"]{--tier:3} .charcard[data-tier="4"]{--tier:4}
-  .charcard__glow{position:absolute;inset:0;border-radius:50%;
-    background:radial-gradient(circle,color-mix(in srgb,var(--tier-c) 38%,transparent),transparent 68%);
-    box-shadow:0 0 0 3px color-mix(in srgb,var(--tier-c) 55%,transparent);opacity:calc(.35 + var(--tier,0)*0.16)}
-  .charcard[data-tier="4"] .charcard__glow{animation:charpulse 1.8s ease-in-out infinite}
-  @keyframes charpulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.08);opacity:1}}
+  .charcard__glow{position:absolute;inset:6px;border-radius:50%;
+    background:radial-gradient(circle,color-mix(in srgb,var(--tier-c) 40%,transparent),transparent 66%);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--tier-c) 50%,transparent);opacity:calc(.35 + var(--tier,0)*0.15);
+    animation:charpulse 2.8s ease-in-out infinite}
+  @keyframes charfloat{0%,100%{transform:scale(calc(1 + var(--tier,0)*0.07)) translateY(0)}50%{transform:scale(calc(1 + var(--tier,0)*0.07)) translateY(-7px)}}
+  @keyframes charshadow{0%,100%{transform:translateX(-50%) scale(1);opacity:.9}50%{transform:translateX(-50%) scale(.82);opacity:.6}}
+  @keyframes charpulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.06);opacity:.9}}
+  @media (prefers-reduced-motion:reduce){.charcard__avatar img,.charcard__avatar::after,.charcard__glow{animation:none}}
   .charcard__lvl{position:absolute;z-index:2;bottom:-2px;right:6px;background:var(--tier-c);color:#fff;
     font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.18)}
   .charcard__title{font-weight:800;font-size:15px;color:var(--ds-ink);margin:2px 0 10px}
@@ -2999,12 +3008,26 @@
   .charcard__mission-cta{flex:none;font-size:11px;font-weight:700;color:var(--ds-primary)}
   .charcard__badges-hd{margin-top:14px;text-align:left;font-size:11px;font-weight:600;color:var(--ds-muted)}
   .charcard__badges-hd b{color:var(--ds-ink)}
-  .charcard__badges{margin-top:7px;display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:7px}
-  .charcard__badge{aspect-ratio:1;border-radius:var(--ds-radius-md);display:flex;align-items:center;justify-content:center;border:1px solid var(--ds-border-card)}
-  .charcard__badge.got{background:color-mix(in srgb,var(--tier-c) 12%,var(--ds-surface));border-color:color-mix(in srgb,var(--tier-c) 40%,transparent)}
-  .charcard__badge.locked{background:var(--ds-surface-table);opacity:.65}
-  .charcard__badge-ic{font-size:17px;filter:grayscale(0)}
-  .charcard__badge.locked .charcard__badge-ic{font-size:12px;opacity:.7}
+  .charcard__badges{margin-top:9px;display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:10px}
+  /* 입체 오브 배지: 광택 라디얼 + 외부 글로우 + 내부 하이라이트/그림자 */
+  .gbadge{display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 6px 11px;border-radius:16px;
+    background:var(--ds-surface-table);border:1px solid var(--ds-border-card);transition:transform var(--ds-motion-fast) var(--ds-ease-standard)}
+  .gbadge.got{background:color-mix(in srgb,var(--bc) 7%,var(--ds-surface));border-color:color-mix(in srgb,var(--bc) 26%,var(--ds-border-card))}
+  .gbadge.got:hover{transform:translateY(-2px)}
+  .gbadge__orb{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;
+    background:radial-gradient(circle at 38% 28%, color-mix(in srgb,var(--bc,#9aa0a6) 45%,#fff) 0%, var(--bc,#9aa0a6) 55%, color-mix(in srgb,var(--bc,#9aa0a6) 72%,#000) 100%);
+    box-shadow:0 6px 13px -3px color-mix(in srgb,var(--bc,#9aa0a6) 60%,transparent),
+      inset 0 2px 3px rgba(255,255,255,.6), inset 0 -5px 8px rgba(0,0,0,.3)}
+  .gbadge__orb::after{content:'';position:absolute;top:6px;left:9px;width:20px;height:12px;border-radius:50%;
+    background:radial-gradient(ellipse at center, rgba(255,255,255,.55), transparent 70%);pointer-events:none}
+  .gbadge__ic{position:relative;z-index:1;font-size:22px;line-height:1;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.3))}
+  .gbadge.locked{opacity:.72}
+  .gbadge.locked .gbadge__orb{--bc:#9aa0a6;box-shadow:inset 0 2px 3px rgba(255,255,255,.35),inset 0 -4px 7px rgba(0,0,0,.22)}
+  .gbadge.locked .gbadge__ic{font-size:15px;filter:none}
+  .gbadge__label{font-size:11px;font-weight:700;color:var(--ds-ink);text-align:center;line-height:1.2}
+  .gbadge.locked .gbadge__label{color:var(--ds-muted)}
+  .gbadge__exp{font-size:9.5px;font-weight:800;letter-spacing:.02em;color:#b8791f;background:rgba(255,148,41,.18);padding:1.5px 7px;border-radius:9999px}
+  .gbadge.locked .gbadge__exp{color:var(--ds-muted);background:var(--ds-surface-table)}
   .conn-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ds-ink);white-space:nowrap}
   .conn-chip--off{color:var(--ds-muted)}
   /* 본문 영역: 뷰포트 남은 높이를 꽉 채우되 자체는 스크롤 안 함(overflow:hidden) 사이드바·콘텐츠가 각자 내부 스크롤 */
@@ -3158,8 +3181,8 @@
         <span class="ds-statusdot" x-bind:class="cfg.forcedMock ? 'ds-statusdot--mock' : ((connCount || (cfg.keyManagedByServer && cfg.hasKey)) ? 'ds-statusdot--ok' : 'ds-statusdot--mock')"><span class="ds-statusdot__dot"></span></span>
       </button>
       <a href="/report" target="_blank" rel="noreferrer" class="ds-iconbtn ds-iconbtn--bordered" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></a>
-      <button type="button" x-show="mod === 'home'" x-on:click.stop="addMenuOpen = !addMenuOpen" class="ds-iconbtn ds-iconbtn--bordered" data-tip="위젯 추가" data-tip-pos="bottom" aria-label="위젯 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
-      <button type="button" x-show="mod === 'home'" x-on:click="editing = !editing" x-bind:class="editing ? 'ds-iconbtn ds-iconbtn--bordered ds-iconbtn--active' : 'ds-iconbtn ds-iconbtn--bordered'" x-bind:data-tip="editing ? '편집 완료' : '편집'" data-tip-pos="bottom" aria-label="편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
+      <button type="button" x-show="false" x-on:click.stop="addMenuOpen = !addMenuOpen" class="ds-iconbtn ds-iconbtn--bordered" data-tip="위젯 추가" data-tip-pos="bottom" aria-label="위젯 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+      <button type="button" x-show="false" x-on:click="editing = !editing" x-bind:class="editing ? 'ds-iconbtn ds-iconbtn--bordered ds-iconbtn--active' : 'ds-iconbtn ds-iconbtn--bordered'" x-bind:data-tip="editing ? '편집 완료' : '편집'" data-tip-pos="bottom" aria-label="편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
       <button type="button" x-show="!cfg.keyManagedByServer" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="settingsOpen = true" data-tip="설정" data-tip-pos="bottom" aria-label="설정"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg></button>
       <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="toggleTheme()" x-bind:data-tip="theme === 'dark' ? '라이트 모드' : '다크 모드'" data-tip-pos="bottom" aria-label="테마 전환">
         <svg x-show="theme !== 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -3288,7 +3311,7 @@
   <div class="home">
     <div class="canvas">
       <!-- ═══ 홈: 위젯 캔버스(실동작 위젯만 · 직접 배치) ═══ -->
-      <div x-show="mod === 'home'" class="ds-widgetgrid" x-bind:class="editing ? 'ds-widgetgrid--edit' : ''" id="grid">
+      <div x-show="false" class="ds-widgetgrid" x-bind:class="editing ? 'ds-widgetgrid--edit' : ''" id="grid">
         <!-- 빈 상태: 배치 도우미(첫 방문) -->
         <div x-show="placed && placed.length === 0" x-cloak class="ds-empty" style="grid-column:1/-1">
           <span class="ds-character ds-character--bob" style="width:84px;height:84px"><img src="demo-assets/boksil-catcher.svg" alt=""></span>
@@ -4180,10 +4203,14 @@
                     <span class="charcard__mission-tx" x-text="todayMission.txt"></span>
                     <span class="charcard__mission-cta" x-text="todayMission.cta + ' →'"></span>
                   </div>
-                  <div class="charcard__badges-hd">배지 <b x-text="badgeGot + ' / ' + badges().length"></b></div>
+                  <div class="charcard__badges-hd">배지 컬렉션 <b x-text="badgeGot + ' / ' + badges().length"></b></div>
                   <div class="charcard__badges">
                     <template x-for="(bd, i) in badges()" x-bind:key="i">
-                      <div class="charcard__badge" x-bind:class="bd.got ? 'got' : 'locked'" x-bind:data-tip="bd.label" data-tip-pos="top"><span class="charcard__badge-ic" x-text="bd.got ? bd.icon : '🔒'"></span></div>
+                      <div class="gbadge" x-bind:class="bd.got ? 'got' : 'locked'" x-bind:style="bd.got ? ('--bc:' + bd.color) : ''" x-bind:data-tip="bd.desc" data-tip-pos="top">
+                        <span class="gbadge__orb"><span class="gbadge__ic" x-text="bd.got ? bd.icon : '🔒'"></span></span>
+                        <span class="gbadge__label" x-text="bd.label"></span>
+                        <span class="gbadge__exp" x-text="'+' + bd.exp + ' EXP'"></span>
+                      </div>
                     </template>
                   </div>
                 </div>
