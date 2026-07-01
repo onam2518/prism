@@ -2581,6 +2581,11 @@ PAGE = """<!doctype html>
     padding:6px 9px;color:var(--ds-body);font-size:12.5px;line-height:1.5;word-break:keep-all;overflow-wrap:break-word}
   .tbox .nm{display:block;font-weight:600;color:var(--ds-ink);margin-bottom:1px}
   .ds-table td{vertical-align:top}
+  /* 패널 내부 표: 카드 안쪽으로 정렬 · 행 배경(hover/선택)이 카드 모서리에 닿지 않게 좌우 인셋 */
+  .panel .overflow-auto:has(> .ds-table){padding-left:8px;padding-right:8px}
+  .panel .ds-table th:first-child,.panel .ds-table td:first-child{padding-left:12px}
+  .panel .ds-table th:last-child,.panel .ds-table td:last-child{padding-right:12px}
+  .panel .ds-table tbody tr{border-radius:8px}
   /* 표 안에서는 박스 테두리 제거(행 구분선과 이중선으로 겹쳐 보임) → 옅은 배경만으로 값 구분 */
   .ds-table td .tbox{margin:0;border:0;background:var(--ds-surface);border-radius:7px;padding:6px 10px}
   /* 상단 자유배치 안내문도 텍스트 영역 · 박스로 감싸 일관화 */
@@ -2621,7 +2626,7 @@ PAGE = """<!doctype html>
   textarea.field{padding:11px var(--ctrl-px);line-height:1.55;min-height:96px;resize:vertical}
   .field::placeholder{color:var(--ds-placeholder)}
   .field:hover{border-color:var(--ds-border-input-hover)}
-  .field:focus{outline:none;border-color:var(--ds-primary);box-shadow:0 0 0 3px rgba(30,132,255,.16);background:#fff}
+  .field:focus{outline:none;border-color:var(--ds-primary);box-shadow:0 0 0 3px rgba(30,132,255,.16);background:var(--ds-surface-white)}
   select.field{appearance:none;-webkit-appearance:none;padding-right:34px;cursor:pointer;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235c6a6a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 11px center}
@@ -2657,7 +2662,7 @@ PAGE = """<!doctype html>
     box-sizing:border-box;height:var(--ctrl-h);padding:0 6px 0 var(--ctrl-px);
     border-radius:var(--ctrl-r);border:1px dashed var(--ds-hairline);background:var(--ds-surface);
     cursor:pointer;font-size:14px;color:var(--ds-body);transition:border-color .15s,background .15s}
-  .dropzone:hover{border-color:var(--ds-primary);background:#fff}
+  .dropzone:hover{border-color:var(--ds-primary);background:var(--ds-surface-white)}
   .dropzone.drag{border-color:var(--ds-primary);border-style:solid;background:var(--ds-primary-tint);color:var(--ds-ink)}
   .dropzone .pick{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
     border-radius:7px;background:var(--ds-primary-tint);color:var(--ds-primary);font-size:12px;font-weight:600}
@@ -2696,6 +2701,21 @@ PAGE = """<!doctype html>
   .copybtn{font-weight:650;color:var(--ds-text-secondary);box-shadow:0 1px 1px rgba(16,24,40,.03)}
   .ds-iconbtn--bordered{box-shadow:0 1px 2px rgba(16,24,40,.05),inset 0 1px 0 rgba(255,255,255,.5)}
   .ds-iconbtn--bordered:hover{border-color:var(--ds-primary);color:var(--ds-primary);background:var(--ds-primary-tint)}
+  /* YELLOW(사람검수 대기) 배지 · 테마 인지(라이트/다크 모두 대비 확보) */
+  .ds-badge--yellow{background:rgba(255,148,41,.16);color:#b8600a}
+  /* ── 다크모드 대비 보정: 하드코딩 골드/화이트가 다크서 안 보이던 부분 ── */
+  [data-theme='dark'] .ds-badge--yellow{background:rgba(255,158,64,.22);color:#ffc266}
+  [data-theme='dark'] .gbadge__exp,[data-theme='dark'] .badgeburst__exp{color:#ffc879;background:rgba(255,158,64,.20)}
+  [data-theme='dark'] .metarow__amb{color:#ff8a75}
+  [data-theme='dark'] .ds-btn--secondary,[data-theme='dark'] .ds-btn--ghost,[data-theme='dark'] .ds-btn--outline{box-shadow:0 1px 2px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.04)}
+  [data-theme='dark'] .copybtn,[data-theme='dark'] .ds-iconbtn--bordered{box-shadow:0 1px 2px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.04)}
+  [data-theme='dark'] .ds-stat{background:linear-gradient(180deg,var(--ds-surface-on),var(--ds-surface));box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 1px 2px rgba(0,0,0,.3)}
+  /* ── 공통 버튼 스케일 정책(전 페이지): 계층=색(primary/secondary/danger) · 크기=역할 · 모서리 R8 ──
+        sm=인라인·행 액션(콤팩트, 헤비하지 않게 semibold) · md=기본 · lg=CTA. DS 기본은 caption=14px 라 sm 이 커 보임 → 축소. */
+  .ds-btn--s-sm{--ds-btn-h:28px;--ds-btn-px:10px;--ds-btn-fz:12.5px;font-weight:600;letter-spacing:-.01em}
+  .ds-btn--s-md{--ds-btn-h:34px;--ds-btn-px:13px;--ds-btn-fz:13.5px;font-weight:600}
+  .ds-btn--s-lg{--ds-btn-h:40px;--ds-btn-px:16px;--ds-btn-fz:14.5px}
+  .ds-btn:not([class*="--s-"]){--ds-btn-h:36px;--ds-btn-fz:14px}   /* 크기 미지정 기본도 살짝 콤팩트 */
 
   /* 카드 · 패널 (라이트 + 절제된 입체) */
   .card{box-shadow:var(--ds-highlight);transition:transform .2s cubic-bezier(.32,.72,0,1),border-color .2s}
@@ -2855,7 +2875,7 @@ PAGE = """<!doctype html>
   /* ── 결과 출처 필터 ── */
   .srcfilter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px}
   .srcfilter__chip{font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;cursor:pointer;
-    border:1px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface2,#fff);color:var(--ds-body,rgba(0,0,0,0.88))}
+    border:1px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface-white);color:var(--ds-body,rgba(0,0,0,0.88))}
   .srcfilter__chip span{color:var(--ds-muted);font-variant-numeric:tabular-nums;margin-left:2px}
   .srcfilter__chip:hover{border-color:var(--ds-violet,#1e84ff)}
   .srcfilter__chip.sel{background:var(--ds-violet,#1e84ff);color:#fff;border-color:var(--ds-violet,#1e84ff)}
@@ -2866,7 +2886,7 @@ PAGE = """<!doctype html>
   /* ── 검수자 등록 온보딩(딤드 + 중앙 모달) ── */
   .onboard{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:24px;
     background:rgba(0,0,0,.55);backdrop-filter:blur(4px)}
-  .onboard__card{width:100%;max-width:440px;background:var(--ds-surface2,#fff);border-radius:24px;
+  .onboard__card{width:100%;max-width:440px;background:var(--ds-surface-white);border-radius:24px;
     padding:30px 30px 24px;box-shadow:0 24px 70px rgba(0,0,0,.4);text-align:center}
   .onboard__brand{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ds-violet,#1e84ff);
     font-size:13px;font-weight:700;margin-bottom:14px}
@@ -2888,7 +2908,7 @@ PAGE = """<!doctype html>
   .ochar.sel .ochar__ring{box-shadow:0 0 0 3px var(--ds-violet,#1e84ff)}
   .onboard__authtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:12px}
   .onboard__authtabs button{flex:1;height:34px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
-  .onboard__authtabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .onboard__authtabs button.sel{background:var(--ds-surface-white);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .onboard__authmsg{text-align:left;font-size:12px;color:#ff4e33;margin:-6px 0 12px}
   .onboard__cta{height:46px;width:100%;font-size:15px;font-weight:700}
   .onboard__cta:disabled{opacity:.45;cursor:not-allowed}
@@ -2896,17 +2916,22 @@ PAGE = """<!doctype html>
   /* ── 검수자 등록: 캐릭터 선택(구 약식, 미사용 호환) ── */
   .charpick{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
   .charpick__opt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;
-    border:1.5px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface2,#fff);cursor:pointer;transition:all .15s}
+    border:1.5px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface-white);cursor:pointer;transition:all .15s}
   .charpick__opt:hover{border-color:var(--ds-violet,#1e84ff)}
   .charpick__opt img{width:34px;height:34px}
   .charpick__opt span{font-size:10.5px;color:var(--ds-muted);font-weight:600}
   .charpick__opt.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16));box-shadow:0 0 0 2px var(--ds-violet-tint,rgba(30,132,255,0.16))}
   .charpick__opt.sel span{color:var(--ds-violet,#1e84ff)}
-  .evaltabs{display:flex;gap:6px;background:var(--ds-hairline-soft,rgba(0,0,0,.04));padding:4px;border-radius:12px;max-width:520px}
-  .evaltabs--sub{background:transparent;padding:0;gap:6px;max-width:none}
-  .evaltabs--sub button{background:var(--ds-surface-table);border-radius:var(--ds-radius-sm)}
-  .evaltabs button{flex:1;height:36px;border:0;background:none;border-radius:8px;font-size:13px;font-weight:700;color:var(--ds-muted);cursor:pointer}
-  .evaltabs button.sel{background:var(--ds-surface2,#fff);color:var(--ds-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  /* 탭 = 아래 내용과 연결된 언더라인 방식(플로팅 필름 → 콘텐츠에 붙는 탭). 활성 탭 하단 프라이머리 인디케이터. */
+  .evaltabs{display:flex;gap:2px;background:transparent;padding:0 2px;border-bottom:1.5px solid var(--ds-hairline);border-radius:0;max-width:none}
+  .evaltabs--sub{background:transparent;padding:0 2px}
+  .evaltabs button{flex:0 0 auto;height:40px;padding:0 18px;border:0;background:none;border-radius:8px 8px 0 0;
+    font-size:13.5px;font-weight:700;color:var(--ds-muted);cursor:pointer;position:relative;transition:color .15s,background .15s}
+  .evaltabs button:hover:not(.sel){color:var(--ds-ink);background:var(--ds-hairline-soft)}
+  .evaltabs button.sel{background:none;color:var(--ds-primary-deep);box-shadow:none}
+  .evaltabs button.sel::after{content:"";position:absolute;left:10px;right:10px;bottom:-1.5px;height:2.5px;
+    background:var(--ds-primary);border-radius:3px 3px 0 0}
+  .evaltabs--sub button{background:none;border-radius:8px 8px 0 0}
   .goldgrid{display:flex;align-items:center;gap:24px;margin-top:16px;flex-wrap:wrap}
   .goldbig__v{font-size:42px;font-weight:800;color:var(--ds-violet,#1e84ff);line-height:1}
   .goldbig__l{font-size:11px;color:var(--ds-muted);margin-top:3px}
@@ -2958,7 +2983,7 @@ PAGE = """<!doctype html>
   .lb-streak{font-size:12px;color:var(--ds-muted)} .lb-pts{font-weight:700;color:var(--ds-violet,#1e84ff)}
   .lb-title{display:block;font-size:10px;color:var(--ds-muted);font-weight:500;margin-top:1px}
   .lb-av{width:30px;height:30px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
-    background:var(--ds-surface2,#fff);box-shadow:0 0 0 2px var(--tier-c,rgba(0,0,0,.12));overflow:hidden}
+    background:var(--ds-surface-white);box-shadow:0 0 0 2px var(--tier-c,rgba(0,0,0,.12));overflow:hidden}
   .lb-av img{width:24px;height:24px}
   /* ── 검수 캐릭터 육성 카드 ── */
   /* 캐릭터 육성 카드: 입체 카드 + 발판 + 플로팅/브리딩 애니메이션 */
@@ -3901,7 +3926,7 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <div class="text-xs text-muted">각 체계의 정책(사전·카테고리·법령)을 <span class="text-body">직접 수정</span>할 수 있습니다 저장 시 즉시 추출에 반영되고 로컬에 영속됩니다</div>
-          <button type="button" x-on:click="resetDict()" class="rounded-md border border-[#ff4e33]/30 px-3 py-1.5 text-xs font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">편집 초기화</button>
+          <button type="button" x-on:click="resetDict()" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">편집 초기화</button>
         </div></div>
 
         <!-- 편집은 팝업(편집 다이얼로그)에서 · 화면 하단 정의 -->
@@ -4332,7 +4357,7 @@ PAGE = """<!doctype html>
                   <div class="fbrow__main">
                     <div class="fbrow__title">
                       <span class="ds-badge ds-badge--neutral" x-text="it.grade || '·'"></span>
-                      <span class="ds-badge" style="background:rgba(255,148,41,.16);color:#cc6a0a">YELLOW</span>
+                      <span class="ds-badge ds-badge--yellow">YELLOW</span>
                       <span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="it.title || '(제목 없음)'"></span>
                       <span class="fbrow__svc" x-text="it.service"></span>
                       <span class="ds-badge ds-badge--intent" x-show="liveSeen[it.hash]" x-text="(liveSeen[it.hash]||'') + ' 보는 중'"></span>
@@ -4583,8 +4608,7 @@ PAGE = """<!doctype html>
               <div class="mt-2 flex flex-wrap items-center gap-2">
                 <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
                   class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-ink hover:bg-violet-hover disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
-                <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)"
-                  class="rounded-lg border border-[#ff4e33]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">삭제</button>
+                <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
                 <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
               </div>
             </div>
@@ -4611,8 +4635,7 @@ PAGE = """<!doctype html>
                 class="rounded-lg bg-violet px-3.5 py-1.5 text-[13px] font-medium text-ink hover:bg-violet-hover disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
               <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy"
                 class="rounded-lg border border-black/[0.10] px-3.5 py-1.5 text-[13px] font-medium text-ink hover:bg-black/[0.05] disabled:opacity-50">연결 테스트</button>
-              <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')"
-                class="rounded-lg border border-[#ff4e33]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">삭제</button>
+              <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
               <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
             </div>
           </div>
@@ -4631,7 +4654,7 @@ PAGE = """<!doctype html>
         <div class="routercard">
           <div class="rc-h"><b>로컬 저장 (SQLite)</b><span class="rc-badge" x-text="(cfg.storedCount || 0) + '건'"></span></div>
           <p class="rc-d">추출 결과는 로컬 DB에 누적 저장되어 재시작해도 유지됩니다 대시보드·토픽·사용자 메타가 이 데이터를 집계합니다 동일 콘텐츠·결과 무변경 시 적재되지 않습니다(중복 방지)</p>
-          <button type="button" x-on:click="clearStore()" class="rounded-lg border border-[#ff4e33]/30 px-3.5 py-1.5 text-[13px] font-medium text-[#ff4e33] hover:bg-[#ff4e33]/10">적재 데이터 초기화</button>
+          <button type="button" x-on:click="clearStore()" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">적재 데이터 초기화</button>
         </div>
       </div>
 
