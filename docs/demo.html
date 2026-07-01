@@ -2236,6 +2236,34 @@
         try { const r = await (await fetch('/meta-compile', { method: 'POST', headers: this._authHeaders() })).json(); this.metaResults = r.results || null; } catch (e) {}
         this.metaBusy = false; this.loadPromptDefaults();
       },
+      // 일배치 학습(수동 실행): 개선 + 골든 축적 + 골든 회귀 평가 + 다중 모델 비교
+      learnReport: null, learnBusy: false,
+      async runLearnBatch() {
+        this.learnBusy = true;
+        const models = (this.availableModels || []).slice(0, 3);   // 상위 후보 모델로 비교
+        try {
+          const r = await (await fetch('/learn-batch', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: models }) })).json();
+          if (r && r.ok) { this.learnReport = r; this.metaResults = (r.improve && r.improve.results) || this.metaResults; }
+          else this._err((r && r.error) || '일배치 실행 실패');
+        } catch (e) { this._err('일배치 실행 실패'); }
+        this.learnBusy = false; this.loadPromptDefaults();
+      },
+      async loadLearnReport() { try { const r = await (await fetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; } catch (e) {} },
+      pctTxt(v) { return (v == null) ? '·' : (Math.round(v * 1000) / 10) + '%'; },
+      // 카테고리 옵션(IAB Tier1 / Tier2) · 빈칸 채우기 피커용
+      get categoryOptions() {
+        const d = this.dictData; if (!d) { if (!this._dictReq) { this._dictReq = true; this.loadDict(); } return []; }
+        const out = [];
+        (d.iabTier1 || []).forEach((t1) => { out.push(t1); ((d.tier2 && d.tier2[t1]) || []).forEach((t2) => out.push(t1 + ' / ' + t2)); });
+        return out;
+      },
+      async fillCategory(c, val) {
+        if (!val || !c) return;
+        const cats = [val];
+        try { await fetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, patch: { content_category: cats } }) }); } catch (e) { this._err('분류 저장 실패'); return; }
+        c.category = cats;                                         // 로컬 즉시 반영
+        this.celebratePoints(5, '분류 채움');
+      },
       async registerGolden(ev) {
         const f = ev.target.files && ev.target.files[0]; if (!f) return;
         this.goldenMsg = '등록 중…';
@@ -4592,11 +4620,41 @@
 
         <!-- ② 실시간 콘텐츠 평가 -->
         <div x-show="evalTab === 'live'" class="space-y-4">
-          <section class="panel"><div class="panel-hd"><b>실시간 학습</b><span class="meta">여러 검수 의견을 모아 지시문 자동 보완</span>
-            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="metaBusy" x-on:click="runMetaCompile()" x-text="metaBusy ? '정리 중…' : '🧩 학습 정리'"></button>
+          <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>학습 일배치</b><span class="meta">검수 의견 합의 → 프롬프트 개선 + 골든 축적 + 회귀 평가</span>
+            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚙ 지금 실행'"></button>
           </div>
             <div class="panel-bd">
-              <p class="text-xs text-muted" style="margin-bottom:10px">실시간 검수 피드백을 단계별로 <b class="text-ink">병합·중복제거</b>하고, 의견이 갈리는 부분은 <b class="text-ink">명확화 필요</b>로 분리해 파인튜닝 층(LEARNED)에 반영합니다.</p>
+              <ul class="ds-bullets" style="margin-bottom:12px">
+                <li>매일 04:00 자동 실행 · 실시간 즉시반영 대신 <b>합의 후 1회</b> 반영(진동 방지).</li>
+                <li><b>정확</b> 확정분은 골든셋으로 축적되고, 갱신된 프롬프트를 골든셋으로 <b>회귀 평가</b>합니다.</li>
+              </ul>
+              <!-- 일배치 결과 리포트 -->
+              <template x-if="learnReport && learnReport.ts">
+                <div>
+                  <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+                    <div class="tile"><div class="n tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></div><div class="t">골든 확정</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(learnReport.golden&&learnReport.golden.need_category)||0"></div><div class="t">분류 필요</div></div>
+                    <div class="tile"><div class="n tnum" x-text="pctTxt(learnReport.grade_accuracy)"></div><div class="t">골든 정합성</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></div><div class="t">의견 불일치</div></div>
+                  </div>
+                  <!-- 다중 모델 비교 표 -->
+                  <template x-if="learnReport.compare && learnReport.compare.ok && learnReport.compare.models.length">
+                    <div class="overflow-auto" style="margin-bottom:12px"><table class="ds-table"><thead><tr><th>모델</th><th>등급 정합성</th><th>사유 유사도</th><th>공백률</th><th>비용($)</th><th></th></tr></thead><tbody>
+                      <template x-for="(m,mi) in learnReport.compare.models" x-bind:key="m.model">
+                        <tr>
+                          <td class="text-ink" x-text="m.model"></td>
+                          <td class="tnum" x-text="pctTxt(m.grade_accuracy)"></td>
+                          <td class="tnum" x-text="pctTxt(m.reason_jaccard)"></td>
+                          <td class="tnum" x-text="pctTxt(m.empty_rate)"></td>
+                          <td class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></td>
+                          <td><span class="ds-badge ds-badge--success" x-show="m.model===learnReport.compare.best">★ best</span></td>
+                        </tr>
+                      </template>
+                    </tbody></table></div>
+                  </template>
+                </div>
+              </template>
+              <!-- 개선 지시(단계별) -->
               <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="stage">
                 <div x-show="metaResults && metaResults[stage] && (metaResults[stage].directive || (metaResults[stage].ambiguities||[]).length)" class="metarow">
                   <span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
@@ -4608,7 +4666,7 @@
                   </div>
                 </div>
               </template>
-              <div x-show="!metaResults" class="text-xs text-muted"><b class="text-ink">🧩 학습 정리</b>를 누르면 누적 검수 피드백을 정제합니다</div>
+              <div x-show="!(learnReport && learnReport.ts) && !metaResults" class="text-xs text-muted"><b class="text-ink">⚙ 지금 실행</b>을 누르면 개선·골든 축적·회귀 평가·모델 비교를 한 번에 돌립니다</div>
             </div>
           </section>
         <!-- 콘텐츠별 평가 피드백 → 학습 루프(다음 추출 프롬프트에 자동 반영) -->
@@ -5083,7 +5141,21 @@
           <div x-show="detail && detail.grade"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span></div>
           <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="right" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
-          <div class="dve__sec"><div class="dve__lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', e)" data-tip-pos="right" x-text="e"></span></template><span x-show="detail && !detail.category.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">카테고리</div>
+            <div class="flex flex-wrap gap-1 items-center">
+              <template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', e)" data-tip-pos="right" x-text="e"></span></template>
+              <!-- 빈칸 감지 → 분류 필요 + 구조화 채우기(IAB Tier1/2) -->
+              <template x-if="detail && !detail.category.length">
+                <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span class="ds-badge ds-badge--error">미분류 · 분류 필요</span>
+                  <select class="field" style="height:30px;width:auto;padding:0 24px 0 8px;font-size:12px" x-on:change="fillCategory(detail, $event.target.value); $event.target.value=''">
+                    <option value="">분류 선택…</option>
+                    <template x-for="opt in categoryOptions" x-bind:key="opt"><option x-bind:value="opt" x-text="opt"></option></template>
+                  </select>
+                </span>
+              </template>
+            </div>
+          </div>
           <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', e)" data-tip-pos="right" x-text="e"></span></template></div></div>
           <div class="dve__verdict">
             <div class="dve__lbl">검수 판정</div>

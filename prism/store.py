@@ -481,6 +481,30 @@ class Store:
         c = self._conn()
         c.execute("DELETE FROM feedback"); c.commit()
 
+    def update_item_meta(self, content_hash, patch: dict) -> bool:
+        """검수자 구조화 교정: item_meta 패치(예: 빈 content_category 채우기).
+        recent() 가 payload 를 읽으므로 item_meta 컬럼 + payload.item_meta 둘 다 갱신."""
+        c = self._conn()
+        row = c.execute("SELECT item_meta,payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
+        if not row:
+            return False
+
+        def _load(s):
+            try:
+                v = json.loads(s) if s else {}
+            except Exception:
+                v = {}
+            return v if isinstance(v, dict) else {}
+
+        im = _load(row[0]); im.update(patch or {})
+        pl = _load(row[1])
+        pim = pl.get("item_meta"); pim = pim if isinstance(pim, dict) else {}
+        pim.update(patch or {}); pl["item_meta"] = pim
+        c.execute("UPDATE results SET item_meta=?, payload=? WHERE content_hash=?",
+                  (json.dumps(im, ensure_ascii=False), json.dumps(pl, ensure_ascii=False), content_hash))
+        c.commit()
+        return True
+
     # ── 골든셋(검수 확정 정답셋) ──
     def upsert_golden(self, content_hash, content, expected):
         """골든 엔트리 upsert(검수 정확 확정분). content_hash 키."""

@@ -382,6 +382,17 @@ class SupabaseStore:
                 break
         return out
 
+    def update_item_meta(self, content_hash, patch: dict) -> bool:
+        """검수자 구조화 교정: contents.item_meta 패치(빈 카테고리 채우기 등)."""
+        rows = self._get("contents", f"select=item_meta&hash=eq.{urllib.parse.quote(content_hash)}")
+        if not rows:
+            return False
+        im = rows[0].get("item_meta") or {}
+        im.update(patch or {})
+        self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(content_hash)}",
+                  body={"item_meta": im}, prefer="return=minimal")
+        return True
+
     def retention(self, days: int = 30) -> int:
         """오래된 검토 콘텐츠 삭제(8GB 내 유지)."""
         cutoff = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - days * 86400))
