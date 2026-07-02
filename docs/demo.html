@@ -1931,8 +1931,7 @@
       rawData: null, rawSel: null,
       async loadRaw() { try { const r = await (await fetch('/raw?limit=200', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; } } catch (e) {} },
       // 검수 대상 콘텐츠: 상단 모델→버전 구분 + 필터
-      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '', rawVer: '',
-      get rawVersions() { return [...new Set(((this.rawData||{}).items||[]).filter((r) => !this.rawModel || r.model === this.rawModel).map((r) => r.version).filter((v) => v != null))].sort((a,b)=>b-a); },
+      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '',
       // 결과 비교: 요소 단위 모델별 현황 + 콘텐츠별 초안 diff(팝업)
       cmpDraftHash: '', draftsData: null, cmpL: 0, cmpR: 1,
       cmpModalOpen: false, cmpTitle: '',
@@ -1974,7 +1973,6 @@
           if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
-          if (this.rawVer && String(r.version||'') !== this.rawVer) return false;
           if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
           if (this.rawRev === 'todo' && (r.fb && r.fb.verdict)) return false;
           if (this.rawRev === 'done' && !(r.fb && r.fb.verdict)) return false;
@@ -5149,19 +5147,15 @@
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>모델을 고르면 아래 목록은 전부 <b>그 모델이 초기 판정한 초안</b>입니다(모델별 정답셋의 재료).</li><li>검수가 진행되며 프롬프트가 갱신되면 <b>버전</b>이 올라갑니다 · 행 클릭 = JSON 원문, <b>검수하기</b> = 상세에서 판정·교정.</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>모델을 고르면 아래 목록은 전부 <b>그 모델이 초기 판정한 초안</b>입니다(모델별 정답셋의 재료).</li><li>행 클릭 = JSON 원문 · <b>검수하기</b> = 상세에서 판정·교정 · 버전 간 비교는 <b>결과 비교</b> 탭.</li></ul>
             <!-- 상단 구분: 모델 → 버전 → 목록 -->
             <div class="filterbar" style="gap:6px;margin-bottom:8px">
-              <button type="button" class="srcfilter__chip" x-bind:class="rawModel==='' ? 'sel' : ''" x-on:click="rawModel=''; rawVer=''">모델 전체</button>
+              <button type="button" class="srcfilter__chip" x-bind:class="rawModel==='' ? 'sel' : ''" x-on:click="rawModel=''">모델 전체</button>
               <template x-for="m in rawModels" x-bind:key="m">
-                <button type="button" class="srcfilter__chip" x-bind:class="rawModel===m ? 'sel' : ''" x-on:click="rawModel=m; rawVer=''" x-text="m"></button>
+                <button type="button" class="srcfilter__chip" x-bind:class="rawModel===m ? 'sel' : ''" x-on:click="rawModel=m" x-text="m"></button>
               </template>
-              <select class="field" style="width:auto;height:32px" x-model="rawVer" x-show="rawVersions.length > 1">
-                <option value="">버전 전체</option>
-                <template x-for="v in rawVersions" x-bind:key="v"><option x-bind:value="String(v)" x-text="'v' + v"></option></template>
-              </select>
             </div>
-            <div class="text-xs text-muted" style="margin:0 16px 10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b><span x-show="rawVer" x-text="' · v' + rawVer"></span> 가 초기 판정한 초안 목록입니다 · 검수 합의는 이 모델의 정답셋으로 쌓입니다</div>
+            <div class="text-xs text-muted" style="margin:0 16px 10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b> 가 초기 판정한 초안 목록입니다(누적) · 검수 합의는 이 모델의 정답셋으로 쌓입니다 · 버전 간 비교는 <b>결과 비교</b> 탭에서</div>
             <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
             <div class="filterbar">
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
