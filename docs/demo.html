@@ -1863,6 +1863,7 @@
         // 콘텐츠 인입(수동·자동·실행 큐)은 '콘텐츠 관리' 단일 메뉴로 통합 · 전부 관리자 통제
         { g: '관리자', gcond: 'admin', items: [
           { id: 'content', label: '콘텐츠 관리', ic: 'intake' },
+          { id: 'testset', label: '테스트셋 관리', ic: 'eval' },
           { id: 'admin', label: '팀 관리', ic: 'admin' },
           { id: 'dict', label: '사전 · 정책', ic: 'dict' },
           { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' } ] },
@@ -2002,6 +2003,7 @@
         else if (id === 'evaluate') this.loadGoldenStatus();
         else if (id === 'arena') this.loadArena();
         else if (id === 'admin') this.loadAdmin();
+        else if (id === 'testset') { this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
         else if (id === 'dict') this.loadDict();
         else if (id === 'prompt') this.loadPromptDefaults();
         if (id === 'content') { this.loadDash(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
@@ -3253,6 +3255,7 @@
   .tile{border-radius:var(--ds-radius-md);padding:15px 16px;background:var(--ds-surface);border:1px solid var(--ds-border-card);box-shadow:0 1px 2px rgba(0,0,0,.04),0 6px 14px -8px rgba(0,0,0,.1)}
   .tile .n{font-size:23px;font-weight:600;color:var(--ds-ink);line-height:1.1;letter-spacing:-.01em}
   .tile .t{margin-top:3px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ds-muted)}
+  .tile--hero .n{color:var(--ds-violet,#1e84ff);font-size:30px}
   .bar{display:grid;grid-template-columns:96px 1fr 38px;align-items:center;gap:10px}
   .bar .lab{font-size:12.5px;color:var(--ds-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .track{height:8px;border-radius:6px;background:var(--ds-hairline-soft);overflow:hidden}
@@ -4762,16 +4765,17 @@
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenResult && goldenResult.ok">
                 <div>
-                  <div class="goldgrid">
-                    <div class="goldbig"><div class="goldbig__v" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="goldbig__l">등급 일치율 <span class="tnum" x-text="goldenResult.grade_ci ? ('· 신뢰구간 ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
-                    <div class="goldstat"><b x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></b><span>사유 일치</span></div>
-                    <div class="goldstat"><b x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></b><span>유해 놓침</span></div>
-                    <div class="goldstat"><b x-text="goldenResult.evaluated"></b><span>평가 건수</span></div>
+                  <!-- 결과 카드화: 산개한 숫자·막대를 타일과 박스로 묶어 시선 고정 -->
+                  <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:14px">
+                    <div class="tile tile--hero"><div class="n tnum" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="t">등급 일치율<span class="tnum" x-text="goldenResult.grade_ci ? (' · 신뢰구간 ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
+                    <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></div><div class="t">사유 일치</div></div>
+                    <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></div><div class="t">유해 놓침</div></div>
+                    <div class="tile"><div class="n tnum" x-text="goldenResult.evaluated"></div><div class="t">평가 건수</div></div>
                   </div>
-                  <div style="margin-top:14px">
-                    <div class="text-xs text-muted" style="margin-bottom:6px">유형별 일치율 · 어디가 약한지(수정 우선순위)</div>
+                  <div class="tile" style="margin-top:10px">
+                    <div class="t" style="margin:0 0 8px">유형별 일치율 · 어디가 약한지(수정 우선순위)</div>
                     <template x-for="(v,k) in (goldenResult.by_reason_bucket||{})" x-bind:key="k">
-                      <div class="ds-progress" style="margin:5px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="k+' ('+v.n+')'"></span><span class="ds-progress__pct" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
+                      <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="k+' ('+v.n+')'"></span><span class="ds-progress__pct tnum" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
                     </template>
                   </div>
                   <button type="button" class="ds-btn ds-btn--secondary" style="margin-top:12px" x-on:click="selectMod('prompt')">원천 프롬프트 수정하러 가기 →</button>
@@ -4876,8 +4880,38 @@
               <div x-show="!(learnReport && learnReport.ts) && !metaResults" class="text-xs text-muted"><b class="text-ink">⚙ 지금 실행</b>을 누르면 개선·골든 축적·회귀 평가·모델 비교를 한 번에 돌립니다</div>
             </div>
           </section>
-          <!-- 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보 + 데이터셋 추출 -->
-          <section class="panel" data-fn x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()">
+      </div><!-- /테스트셋 생성 · 현황 -->
+
+      <!-- ═══ 모듈: 테스트셋 관리(관리자) · 정답셋 목록·업로드 + 학습 데이터 현황 ═══ -->
+      <div x-show="mod === 'testset'" x-cloak class="w-full space-y-4">
+        <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋(골든) 목록</b>
+          <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수로 확정 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 직접 등록 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
+          <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenList()" data-tip="새로고침" data-tip-pos="bottom" aria-label="정답셋 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격되고, 관리자가 .jsonl 로 보완 등록할 수 있습니다.</li><li>업로드 형식 <b>{content, expected:{finalGrade, reasons, content_category}}</b> · 등록 시 등급·카테고리를 사전 기준으로 검증합니다.</li><li>평가와 어긋나 <b>오류 의심</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <label class="ds-btn ds-btn--secondary" style="cursor:pointer">정답셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
+              <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" x-model="goldenMerge"> 기존에 병합(해제 시 전체 교체)</label>
+              <span class="text-xs text-muted" x-text="goldenMsg"></span>
+            </div>
+            <template x-if="goldenList && goldenList.items && goldenList.items.length">
+              <div class="overflow-auto" style="max-height:300px;margin-top:12px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
+                <template x-for="g in goldenList.items" x-bind:key="g.hash">
+                  <tr>
+                    <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" x-show="g.flagged" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span></td>
+                    <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
+                    <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
+                    <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '직접' : '검수'"></span></td>
+                    <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
+                  </tr>
+                </template>
+              </tbody></table></div>
+            </template>
+          </div>
+        </section>
+        <!-- 학습 데이터 현황: 커버리지·일치도·신뢰도·오류 후보 + 데이터셋 추출 -->
+        <section class="panel" data-fn x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()">
             <div class="panel-hd"><b>학습 데이터 현황</b><span class="meta">특화 LLM 학습데이터 · 소요 산정(논문 기준)</span>
               <button type="button" class="ds-btn ds-btn--secondary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnDataBusy" x-on:click="loadLearnData()" x-text="learnDataBusy ? '집계 중…' : '새로고침'"></button>
             </div>
@@ -4944,8 +4978,8 @@
               </template>
               <div x-show="!learnData" class="text-xs text-muted">집계를 불러오는 중이거나, 관리자 권한이 필요합니다</div>
             </div>
-          </section>
-      </div><!-- /골든셋 생성 -->
+        </section>
+      </div><!-- /테스트셋 관리 -->
 
       <!-- 콘텐츠 검수 · 로우 목록 뷰: 결과 원본을 가공 없이 빠르게(접근 방식 토글) -->
       <div x-show="mod === 'create' && createTab === 'review' && reviewView === 'raw'" x-cloak class="w-full space-y-4">
@@ -5044,32 +5078,6 @@
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:10px"><li>추출 <b>API 키·모델·엔드포인트</b>를 관리자가 여기서 설정합니다.</li><li>팀원은 키 입력 없이 바로 사용합니다.</li><li><span x-text="cfg.hasKey ? '현재 연결됨 ✓' : '키 미설정'"></span></li></ul>
             <button type="button" class="ds-btn ds-btn--primary" x-on:click="settingsOpen = true">API·모델 설정 열기</button>
-          </div>
-        </section>
-        <section class="panel" x-show="adminData&&adminData.isAdmin" x-init="loadGoldenList()"><div class="panel-hd"><b>골든셋</b>
-          <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수 유래 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 수동 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
-          <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenList()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        </div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>골든은 <b>검수 '정확' 합의</b>가 일배치에서 누적 승격되고, 관리자가 .jsonl 로 보완 등록할 수 있습니다.</li><li>업로드 형식 <b>{content, expected:{finalGrade, reasons, content_category}}</b> · 등록 시 등급·카테고리를 사전 기준으로 검증합니다.</li><li>평가 불일치로 <b>오류 의심</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <label class="ds-btn ds-btn--secondary" style="cursor:pointer">골든셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
-              <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" x-model="goldenMerge"> 기존에 병합(해제 시 전체 교체)</label>
-              <span class="text-xs text-muted" x-text="goldenMsg"></span>
-            </div>
-            <template x-if="goldenList && goldenList.items && goldenList.items.length">
-              <div class="overflow-auto" style="max-height:300px;margin-top:12px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
-                <template x-for="g in goldenList.items" x-bind:key="g.hash">
-                  <tr>
-                    <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" x-show="g.flagged" data-tip="최근 골든 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span></td>
-                    <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
-                    <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
-                    <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '수동' : '검수'"></span></td>
-                    <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
-                  </tr>
-                </template>
-              </tbody></table></div>
-            </template>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>데이터 관리</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
