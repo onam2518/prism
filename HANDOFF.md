@@ -1,84 +1,75 @@
-# HANDOFF — Prism · DNM 이미지→메타 작업
+# HANDOFF — Prism · 팀 검수·평가 플랫폼
 
-다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (작성: 2026-06-22)
+다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-01, v0.4.4)
 
 ## 한 줄 요약
-DNM 맥락형 콘텐츠 메타(이미지/텍스트/엑셀 → 리드문·엔티티·인텐트·콘텐츠 카테고리 추출)를
-**Prism 레포에서 단일 관리**한다. 로컬 웹 UI + 실모델(Upstage Solar) 연결까지 동작.
+Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출을 넘어 **팀이 산출물을 검수·평가하고(HITL), 그 합의를 골든셋·프롬프트 개선으로 되먹이는 평가 플랫폼**이다. supabase 운영 전용, 게이미피케이션 검수 아레나, 검수 → 골든셋 → 학습 일배치 폐루프까지 동작.
 
 ## 정본 위치
 - 레포: `/Users/pete.axz-pc/Desktop/project/prism` (origin `github.com/onam2518/prism`, 사용자 소유)
-- 작업 브랜치: **`feat/image-meta-poc`** (push 됨, PR 미생성)
-- 폐기/참고용(정본 아님): `~/prism`(작업용 클론), `~/dnm-leadsentence-poc`(초기 standalone PoC, Prism 통합으로 대체)
+- **작업은 `main` 브랜치에 직접**(과거 `feat/policy-edit` 경유 PR 방식 → 현재는 main 직커밋). `feat/image-meta-poc`는 과거 브랜치.
+- 릴리즈: `gh release`, 최신 **v0.4.4**. DMG 자산 첨부.
 
 ## 실행 방법
-- 바탕화면 **`Prism 실행.command`** 더블클릭 → 서버 기동 + 브라우저 자동 오픈
-- 또는: `cd ~/Desktop/project/prism && python3 -m prism.serve` → http://127.0.0.1:8765
-- **키 설정은 UI 우상단 '설정' 버튼**(터미널 환경변수 불필요). `~/.prism_key`에 저장되어 재시작 시 자동 로드.
-- 코드 바꾸면 **서버 재시작해야** 새 화면 반영(페이지가 메모리에 로드됨).
-- `--mock` 플래그 = 키 있어도 강제 mock.
+- `cd ~/Desktop/project/prism && python3 -m prism.serve` → http://127.0.0.1:8765
+- 데스크탑 앱: `desktop/app.py`(pywebview). 코드 바꾸면 **서버 재시작해야** 반영(페이지 메모리 로드).
+- `--mock` = 키 있어도 강제 mock. 8765 점유 시 `lsof -ti tcp:8765 | xargs kill`.
 
-## 현재 상태 (업데이트)
-- 키: `~/.prism_key`에 저장됨(실키, hasKey True)
-- 생성 모델: **`solar-pro3-260323`** (작동 확인). ⚠️ **`solar-pro4-preview-260528`은 /models 에 뜨지만 chat 호출 시 HTTP400(invalid model)** → 메타 빈 값. 모델은 반드시 chat 가능한 것(pro3/pro2/mini)으로. 설정 저장 시 자동 연결 테스트가 무효 모델을 잡아줌.
-- 엔드포인트: `https://api.upstage.ai/v1/solar/chat/completions`
-- **실모델 end-to-end 검증 완료**: 텍스트/앱 경유 추출에서 리드문·엔티티 정상 생성.
-- 데스크탑 앱: **`~/Desktop/Prism-0.2.0.dmg`** (pywebview .app, 미서명/ad-hoc, 17M). Playground 3분할 + Pretendard 반영해 재빌드함.
-- 디자인: **Playground 3분할**(좌 내비·가운데 캔버스·우 Configuration), 각 영역 타이틀바 분리(버튼 없음). 우측 패널에 추론 강도·System Prompt·콘텐츠 그룹·모델. 엑셀 결과 인포그래픽(타일·분포 바·도넛).
-- 글꼴: **Pretendard Variable 전면 적용**(오프라인 번들 `prism/vendor/PretendardVariable.woff2`+`pretendard.css`, `_send_vendor`가 css/woff2 서빙). mono=시스템 모노.
-- 컨트롤 규격 통일: `--ctrl-h`(42px)·`--ctrl-r`·`--ctrl-px`로 input·select·`.dropzone` 정렬(파일 업로드=텍스트 입력 동일 높이).
-- 로고: 좌측 타이틀바에 분광 프리즘 마크 + `Prism` 워드마크 + `리드문·메타` 태그.
-- design-system 토큰(theme.css·tokens.ts·tokens.json) 글꼴도 Pretendard 동기화.
-- 8765 서버는 백그라운드로 떠 있을 수 있음 → 재시작 전 `lsof -ti tcp:8765 | xargs kill` 권장.
-- 앱 config 는 `~/Library/Application Support/Prism/config.json`(frozen). 기존 파일 있으면 새 번들이 덮어쓰지 않으니 모델 바꾸려면 그 파일 수정 또는 앱 설정 UI 사용.
+## 운영 모드 (중요 — supabase 전용화됨)
+- **로컬(sqlite 단독) 모드는 UI 상 제거**. 첫 화면 = 로그인/가입.
+- 모드 스위치: `PRISM_BACKEND=supabase` + `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` 셋 다 있으면 팀(supabase) 모드(`_supa()`), 아니면 sqlite.
+- **GUI 앱은 셸 env 미상속** → `desktop/app.py:_enable_supabase()`가 키파일에서 직접 로드:
+  - `~/.prism_supabase_key`(service_role 키) · `~/.prism_supabase_url`(project URL). 있으면 env 세팅 후 supabase 모드로 기동.
+- **보안 게이트**: supabase 모드에서 `/store` clear·`/config` POST 는 `is_admin_user(uid, team, email)` 관리자 한정(비관리자 403). 관리자 허용목록 `~/.prism_admin_emails`(예: `pete.ryu@axzcorp.com`) 또는 `PRISM_ADMIN_EMAILS`.
+- **팀 생성 = 관리자 메뉴**. 일반 사용자는 팀 코드로 **참가만**, 또는 팀없음(solo).
+- ⚠️ service_role 키는 과거 세션에서 유출된 적 있음 → **로테이션 권장**. 값 echo/print/표시 금지, 공개 레포에 내부 식별자 노출 금지.
 
-## DNM 메타 체계 (가장 중요 — 코드가 이 기준으로 정렬됨)
-페이지 13 + 하위(131·1312·132) 기준. `ItemMeta` 직렬화 키:
-| 신규 키 | 의미 | 구 Prism 키(폐기) |
-|---|---|---|
-| `summary` | 리드문(생성 문장) | `intent` |
-| `entities` | 엔티티 | (동일) |
-| `intent` | 인텐트(속성 분류값) | `intent_categories` |
-| `content_category` | 콘텐츠 카테고리 | `entity_categories` |
-| `topic` / `topic_categories` | 토픽(3차, 기본 빈값) | (신규 추가) |
+## 저장소 (dual-mode store)
+- `prism/store.py`(sqlite) / `prism/supastore.py`(Supabase PostgREST/urllib), `get_store()`가 모드로 스위치.
+- ⚠️ **sqlite `recent()`는 `payload` 컬럼을 읽는다**(item_meta 컬럼 아님). 콘텐츠 메타를 고칠 땐 `update_item_meta`가 `item_meta`·`payload.item_meta` **둘 다** 갱신해야 함(2026-07-01 버그 수정). supabase 는 `item_meta` jsonb 단일 소스라 무관.
+- `golden` 테이블(`content_hash PK, content, expected, ts`) + `upsert/register/get/count/clear_golden`.
 
-**메타풀 → 토픽 전환**: 단독형→엔티티형 · 복합형→사건형 · 필터형→조건형.
-모듈 `metapool.py → topic.py`(함수 `build_topics`, 구 `build_metapools` 별칭 유지).
-내부 dict 키 `single/composite/filter`는 레거시로 유지(외부 소비처 없음, docstring에 매핑 명시).
+## 검수 → 골든셋 → 학습 폐루프 (신규 핵심)
+- 서버: `prism/serve.py`
+  - `patch_content_meta(content_hash, patch, team)` — 검수자 구조화 교정(빈 카테고리 채우기 등). 라우트 `/patch-meta`.
+  - `build_golden_from_reviews(team)` — 정확 다수결 + 카테고리 채워짐 → **골든 확정**, 카테고리 공백 → **need_category**.
+  - `compare_models_on_golden(models, team)` — 모델별 grade_accuracy/reason_jaccard/cost, best.
+  - `learning_batch(team, models)` — meta_compile + build_golden + eval + compare, `_LAST_LEARN_REPORT` 저장. 라우트 `/learn-batch`·`/learn-report`·`/compare-models`.
+  - `start_learning_scheduler(hour=4)` — 매일 04:00 스레드(실시간 아님: 합의·진동 방지).
+- 요소 기반 교정: `FIX_ELEMENTS`·`elemStage`(요소→analyze/judge/review). 검수자가 어느 요소가 틀렸는지 고르면 해당 단계 프롬프트 보정(`PR.LEARNED[stage]` → `prompts._learned(stage)`)에 반영.
+- **프롬프트 반영은 일배치가 소유**. `apply_feedback`·`_reap_async`에서 live `sync_learned()` 제거(캡처만).
+- 프론트: `runLearnBatch`·`loadLearnReport`·`categoryOptions`·`fillCategory`(POST /patch-meta). '학습 일배치' 리포트 패널(타일 + 모델 비교표), 상세 내 빈 카테고리 gap-fill picker.
+- 합의 기준: 정확≥1 & 정확≥수정필요. 필수 채움 = 카테고리만. `content_hash` = sha1(displayServiceName+title+subtitle+body)[:16].
+
+## 메타 체계 (코드가 이 기준으로 정렬)
+`ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
 
 ## 코드 구조 (핵심 파일)
-- `prism/imagext.py` — 이미지 인제스트 어댑터(방식 A): 이미지 → OCR + DocVision → 4필드 Content 합성. **Prism 코어 무수정**. DocVision 엔드포인트는 config.chat_url 사용.
-- `prism/serve.py` — 로컬 웹 UI(stdlib http.server). 탭: **이미지 / 텍스트 / 엑셀**. 설정 패널(키·모델 드롭다운). 엔드포인트: `/run` `/run-batch` `/config` `/ping` `/models` `/vocab` `/report`.
-- `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` — 추출 파이프라인(신규 스키마 반영, 프롬프트 `imeta@v8`).
-- `prism/topic.py` — 토픽(엔티티형·사건형·조건형) 빌더.
-- `prism/dashboard.py·usermeta.py` — 통합 리포트/사용자 메타.
-- `docs/prism_architecture.drawio/.png`, `docs/poc_architecture.*` — 구조도.
-- `design-system/` — `/design-sync`용 스타터(토큰 + React 컴포넌트). **진행 중**.
+- `prism/serve.py`(~5500줄) — 앱 전체(stdlib http.server). 모든 UI 인라인(Alpine.js + Tailwind CDN). 온보딩·아레나·대시보드·검수·프롬프트 스튜디오·학습 배치.
+- `prism/store.py`·`supastore.py` — dual-mode 저장소 + golden.
+- `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` — 추출 파이프라인. `abtest.py` — 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).
+- `prism/imagext.py` — 이미지 인제스트(방식 A, 코어 무수정).
+- `desktop/app.py`·`Prism.spec`(v0.4.4)·`make_dmg.sh` — 패키징. 빌드 venv `/tmp/prism-pkg/bin/python`.
+- `scripts/make_demo.py` — GitHub Pages 데모(`docs/demo.html`) 재생성(fetch 스텁·CDN 폰트·vendor 복사).
+- `design-system/` — Anchor 디자인 시스템(`--ds-*` 토큰, GmarketSans/Pretendard 이중폰트).
 
-## UI 동작 메모
-- 메인 큰 제목/설명 제거됨 → 사이드바 상단에 아이콘+`리드문 · 메타 추출` 타이틀.
-- 콘텐츠 그룹 = 드롭다운(서비스 그룹 8종, `/vocab`). 엑셀 탭 = xlsx/csv 업로드 → ingest 자동매핑 → 행별 일괄 추출(최대 200) → 결과 테이블 + 전체 리포트.
-- 헤더 상태 배지: `Solar 연결됨`(키 있음) / `MOCK · 키 미설정`.
-
-## 열린 작업 / 다음 단계
-1. **실제 이미지로 end-to-end 검증** — `samples/`에 이미지 넣고 UI에서 추출 실행 → 리드문 품질·환각 점검.
-2. **디자인시스템** — 사용자가 `design-system/`에서 `/design-sync` 실행 예정. 완료 후 토큰/컴포넌트를 `serve.py`에 반영. (사용자: "컴포넌트 단조로움, 디자인시스템 만들어 반영" → **컴포넌트 스타일 임의 변경 금지, 대기**.)
-3. 엑셀 컬럼 자동매핑이 실제 파일에서 잘 되는지 확인, 안 되면 매핑 지정 UI 추가.
-4. 콘텐츠 카테고리 사전화(자유생성 → 자사 사전), 검증 지표(ROUGE·Groundedness) — 1312/0021 후속.
-5. 방식 B(네이티브 image_only 트랙)는 중기 과제.
-
-## Confluence (DNM space)
-- `0021. POC`(353501523) — 이 작업의 기획+구조 문서(구조도 사용자 삽입). 최신 v14.
-- `134. 이미지형 콘텐츠 리드문·메타`(375653664) — 이미지형 PoC 스펙.
-- `1312. 아이템 메타`(364314733) · `131`(274040089) · `132 토픽`(279904498) — 체계 정본.
-- 첨부 업로드 MCP 없음 → 구조도 교체는 draw.io 매크로에 `docs/*.drawio` 붙여넣기(수동).
+## UI·디자인 메모
+- 홈 = **검수 아레나**(Flow·오늘의 미션·배지 12종·주간 리그·선수카드). 히어로 지표 = **검수 진척율**(개인·팀 평균).
+- 폰트: display=**GmarketSans**(게임형) / body=**Pretendard**. 다크모드는 Tailwind 색을 `var(--ds-*)`로 토큰화.
+- 버튼: 맨 텍스트 금지(박스/아이콘). `.ds-btn--primary/--secondary/--ghost`는 앱단 정의(재벤더링 DS 는 `--solid.--c-*`만).
+- 검수 완료 표기 전역(목록·상세), 추가 수정 버튼·수정 일시 로그, 판정 색상(정확=초록/수정필요=빨강).
 
 ## 규칙 / 주의
-- **문서 작성 시 하이픈 `-` 금지**(사용자 강한 선호) → 중점 `·`/괄호/문장으로. 코드 식별자는 예외.
-- 사용자 WIP 보존: `d9633cd`는 사용자의 dashboard/metapool/usermeta/graphviz WIP 격리 스냅샷(squash/reword 가능).
-- `docs/demo-*.html`는 생성 산출물 — 미커밋 변경 있어도 무시/재생성 가능.
-- config.json의 `db_path`/`emb_cache_path`는 `~/Desktop/metacli/`(존재함). 다른 머신/클론에선 `--no-db --embed off`로 우회.
-- 커밋 시 trailer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+- **제품 카피에 em-dash `—` 금지**(·/괄호/문장). 확인: `grep -c "—" prism/serve.py` == 0. 코드 식별자·커밋 메시지는 예외.
+- `x-show`(display:none)는 `.space-y-* > :not([hidden]) ~` 마진에 잡혀 팬텀 마진 유발 → 조건부 첫 자식은 `x-if`.
+- 커밋 trailer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+- 릴리즈 노트·공개 레포에 내부(DNM/Confluence) 식별자·정책 노출 금지.
+
+## 다음 단계
+1. **실 supabase 팀 데이터**로 골든셋·일배치 라이브 검증(현재 sqlite E2E 만).
+2. **다중 모델 실호출** 연결(`compare_models_on_golden` 지금은 로직·지표 골격), 평가 결과 수신 UI 정합.
+3. 빈 카테고리 gap-fill 이 실 사전(iabTier1/2) 커버리지에서 충분한지 점검, 부족 시 사전 확장.
+4. service_role 키 로테이션.
 
 ## 메모리
-`prism-canonical-home` 메모리에 정본/통합 방침 기록됨.
+`prism-goal-evaluation-platform`·`prism-harness-architecture`·`prism-team-hitl`·`prism-supabase`·`prism-gamification`·`prism-anchor-design`·`prism-deploy-release-workflow` 참조.
