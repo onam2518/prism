@@ -443,6 +443,36 @@ class TestGoldenCreation(unittest.TestCase):
         self.assertTrue(ms["fill1"]["completed"])
 
 
+class TestFeedbackOrchestrator(unittest.TestCase):
+    def test_route_fallback_splits_elements_by_stage(self):
+        from prism import feedback_loop as FL
+        from prism.llm import LLMClient
+        fb = {"note": "카테고리가 틀렸고 등급도 과했다", "elements": ["category", "grade"], "title": "T"}
+        items = FL.route_feedback(LLMClient(mock=True), fb)     # mock → 선택 요소 폴백(무손실)
+        self.assertEqual([(i["element"], i["stage"]) for i in items],
+                         [("category", "analyze"), ("grade", "judge")])
+
+    def test_routes_persist_and_feed_learned(self):
+        import tempfile
+        import time as _t
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        st.save_feedback("h1", "s", "T", "bad", "analyze", "[카테고리·등급·유통] 원문",
+                         _t.time(), reviewer="A", element="category,grade")
+        # 후처리를 동기 실행(mock LLM → 요소 폴백 라우팅 + REAP)
+        serve._reap_async("h1", "A", {"stage": "analyze", "note": "카테고리가 틀렸고 등급도 과했다",
+                                      "title": "T", "elements": ["category", "grade"]})
+        routed = st.routes_by_stage()
+        self.assertIn("analyze", routed)
+        self.assertIn("judge", routed)                          # 등급 지적 → judge 단계로 분기
+        learned = st.learned_by_stage()
+        self.assertIn("카테고리가 틀렸", learned["analyze"])
+        self.assertIn("judge", learned)
+
+
 class TestLearnData(unittest.TestCase):
     def test_learn_data_and_exports(self):
         import tempfile

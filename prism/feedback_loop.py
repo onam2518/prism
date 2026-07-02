@@ -93,6 +93,49 @@ def meta_compile(llm, stage: str, raw_text: str) -> dict:
             "ambiguities": obj.get("ambiguities") or []}
 
 
+# ── 피드백 오케스트레이터: 교정 원문 → 요소별 개선사항 재분류(분기) ──
+ELEMENTS = ("summary", "entities", "intent", "category", "grade", "quality")
+ELEM_STAGE = {"summary": "analyze", "entities": "analyze", "intent": "analyze",
+              "category": "analyze", "grade": "judge", "quality": "review"}
+_ELEM_KO = {"summary": "리드문", "entities": "엔티티", "intent": "인텐트",
+            "category": "카테고리", "grade": "등급·유통", "quality": "품질 사유"}
+
+ROUTE_SYSTEM = (
+    "너는 콘텐츠 메타 추출 파이프라인의 '피드백 오케스트레이터'다. 검수자의 교정 원문을 읽고, "
+    "지적이 어느 요소(들)에 대한 것인지 재분류해 요소별 개선 지시로 분해한다.\n"
+    "- 요소 id 는 다음만 사용: summary(리드문), entities(엔티티), intent(인텐트), "
+    "category(카테고리), grade(등급·유통), quality(품질 사유).\n"
+    "- 검수자가 선택한 요소 힌트가 있어도, 원문이 다른 요소를 함께 지적하면 그 요소도 포함하라.\n"
+    "- directive 는 그 요소를 다루는 프롬프트에 덧붙일 명령형 1~2문장. 이 한 건을 넘어 일반화하고, "
+    "콘텐츠 제목 같은 고유값은 넣지 말 것.\n"
+    "반드시 JSON 만: {\"items\": [{\"element\": \"위 id\", \"directive\": \"...\"}]}"
+)
+
+
+def route_feedback(llm, fb: dict) -> list:
+    """검수 교정 원문을 요소별 개선사항으로 재분류 → [{element, stage, directive}].
+    mock/실패 시 폴백: 선택 요소(들) 그대로 원문을 지시로 사용(무손실)."""
+    note = (fb.get("note") or "").strip()
+    hint = [e for e in (fb.get("elements") or []) if e in ELEMENTS] or ["summary"]
+    fallback = [{"element": e, "stage": ELEM_STAGE[e], "directive": note} for e in hint if note]
+    if not note or getattr(llm, "mock", False):
+        return fallback
+    user = (f"[검수자 선택 요소 힌트] {', '.join(_ELEM_KO[e] + '(' + e + ')' for e in hint)}\n"
+            + _reap_user(fb))
+    try:
+        obj, _res = llm.complete_json(ROUTE_SYSTEM, user, tag="route")
+    except Exception as e:
+        print(f"  [warn] 피드백 라우팅 실패 → 선택 요소 폴백: {e}")
+        return fallback
+    out = []
+    for it in (obj.get("items") or []):
+        el = str(it.get("element") or "").strip()
+        dv = str(it.get("directive") or "").strip()
+        if el in ELEMENTS and dv:
+            out.append({"element": el, "stage": ELEM_STAGE[el], "directive": dv})
+    return out or fallback
+
+
 def _mock_reap(fb: dict) -> dict:
     note = (fb.get("note") or "").strip() or "(메모 없음)"
     stage = fb.get("stage", "analyze")

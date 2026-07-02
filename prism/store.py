@@ -70,6 +70,10 @@ class Store:
         CREATE TABLE IF NOT EXISTS events(
           id INTEGER PRIMARY KEY AUTOINCREMENT, reviewer TEXT, kind TEXT,
           day INTEGER, bonus INTEGER, meta TEXT, ts REAL);
+        -- 피드백 라우팅(append-only): 교정 원문을 요소·단계별 개선 지시로 재분류한 결과.
+        CREATE TABLE IF NOT EXISTS feedback_routes(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
+          element TEXT, stage TEXT, directive TEXT, ts REAL);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         CREATE INDEX IF NOT EXISTS ix_gold_reviewer ON gold_checks(reviewer);
         CREATE INDEX IF NOT EXISTS ix_events_reviewer ON events(reviewer, kind, day);
@@ -456,19 +460,43 @@ class Store:
                         "plan": pl, "stage": st})
         return out
 
+    def save_routes(self, content_hash, reviewer, items, team=None):
+        """오케스트레이터 재분류 결과 append. items: [{element, stage, directive}]."""
+        c = self._conn()
+        now = time.time()
+        c.executemany("INSERT INTO feedback_routes(content_hash,reviewer,element,stage,directive,ts) VALUES(?,?,?,?,?,?)",
+                      [(content_hash, reviewer or "(익명)", it.get("element", ""), it.get("stage", "analyze"),
+                        it.get("directive", ""), now) for it in items if it.get("directive")])
+        c.commit()
+
+    def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+        c = self._conn()
+        out = {}
+        for stage, directive in c.execute(
+                "SELECT stage,directive FROM feedback_routes WHERE COALESCE(directive,'')!='' ORDER BY ts DESC"):
+            st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
+            lst = out.setdefault(st, [])
+            if len(lst) < limit_per_stage:
+                lst.append(directive.strip())
+        return out
+
     def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
-        """문제(bad) 피드백을 단계별로 모아 학습 보정 텍스트로 컴파일.
-        REAP plan 이 있으면 그것을(가공된 개선 지시), 없으면 raw 메모를 사용. team 은 통일용(sqlite 무시)."""
+        """단계별 학습 보정 텍스트: 오케스트레이터 라우팅(요소 재분류 지시) 우선 + REAP plan/메모 보완.
+        team 은 통일용(sqlite 무시)."""
         c = self._conn()
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
+        routed = self.routes_by_stage(limit_per_stage)
+        for st, items in routed.items():
+            out[st].extend(f"- {t}" for t in items)
         for stage, note, plan in c.execute(
                 "SELECT stage,note,plan FROM feedback "
                 "WHERE verdict='bad' AND (COALESCE(plan,'')!='' OR COALESCE(note,'')!='') "
                 "ORDER BY ts DESC"):
             st = stage if stage in out else "analyze"
             text = (plan or "").strip() or (note or "").strip()
-            if text and len(out[st]) < limit_per_stage:
-                out[st].append(f"- {text}")
+            line = f"- {text}"
+            if text and len(out[st]) < limit_per_stage and line not in out[st]:
+                out[st].append(line)
         return {k: "\n".join(v) for k, v in out.items() if v}
 
     def feedback_stats(self, team=None) -> dict:

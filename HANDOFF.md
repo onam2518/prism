@@ -70,8 +70,15 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - **사용자**: '검수 및 평가 → 테스트' 탭 = **골든셋 생성**(기본 탭, 구 실시간 콘텐츠 평가: 생성 현황 타일 +
   분류 필요 목록 + 일배치) | **골든셋 평가**(현행 버전 정합성 %·95% CI·버킷 + 모델별 비교 실행 UI /compare-models).
   분류 채우기 미션(fill1) 추가, /golden-status(팀원 공개) 라우트.
-- **콘텐츠 인입 = 관리자 전용**: 수동 추출(run)·실행 큐·자동 인입·인입 정책 메뉴를 관리자 그룹으로 이동,
-  서버도 /run·/run-batch·/ingest-run 을 supabase 모드에서 관리자 게이트(403). 로컬(sqlite)은 관리자 취급.
+- **콘텐츠 인입 = 관리자 전용**: 서버 /run·/run-batch·/ingest-run 을 supabase 모드에서 관리자 게이트(403).
+  로컬(sqlite)은 관리자 취급.
+- **콘텐츠 관리 단일 메뉴**: 수동 추출·자동 인입·실행 큐·인입 정책을 mod `content` 하나로 통합(탭 `contentTab`,
+  홈 탭=실행 큐, 자동/수동 필터 칩). 구 mod id(run/queue/auto/intake)는 selectMod 에서 매핑(하위호환).
+  팀 관리의 '콘텐츠 인입(검토용)' 패널은 자동 인입 탭 '일회성 인입'으로 이동.
+- **피드백 오케스트레이터**: 수정 필요 시 요소 **다중 선택**(fixelem 칩, `elements` 배열 → feedback.element
+  콤마 저장). 비동기 후처리(`_reap_async`)가 `FL.route_feedback`(LLM)으로 교정 원문을 요소·단계별 개선
+  지시로 재분류 → `feedback_routes` 테이블(append, supabase `prism_feedback_routes`) → `learned_by_stage` 가
+  라우팅 지시 우선으로 병합(일배치 meta_compile 로 유입). mock/실패 시 선택 요소 폴백(무손실).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).

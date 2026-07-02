@@ -427,16 +427,47 @@ class SupabaseStore:
         return {"total": len(rows), "good": good, "bad": bad, "learned": learned,
                 "contents": contents, "reviewers": reviewers, "split": split}
 
+    def save_routes(self, content_hash, reviewer, items, team=None):
+        """오케스트레이터 재분류 결과 append."""
+        rows = []
+        for it in items:
+            if not it.get("directive"):
+                continue
+            row = {"content_hash": content_hash, "reviewer_id": reviewer or None,
+                   "element": it.get("element", ""), "stage": it.get("stage", "analyze"),
+                   "directive": it.get("directive", "")}
+            if team:
+                row["team_id"] = team
+            rows.append(row)
+        if rows:
+            self._req("POST", "feedback_routes", body=rows, prefer="return=minimal")
+
+    def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        rows = self._get("feedback_routes", "select=stage,directive"
+                         f"{tq}&order=created_at.desc&limit={limit_per_stage * 4}")
+        out = {}
+        for r in rows:
+            st = r.get("stage") if r.get("stage") in ("extract", "analyze", "review", "judge") else "analyze"
+            lst = out.setdefault(st, [])
+            dv = (r.get("directive") or "").strip()
+            if dv and len(lst) < limit_per_stage:
+                lst.append(dv)
+        return out
+
     def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
+        for st, items in self.routes_by_stage(limit_per_stage, team=team).items():
+            out[st].extend(f"- {t}" for t in items)
         rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "", reverse=True)
         for r in rows:
             if r.get("verdict") != "bad":
                 continue
             text = (r.get("reap_plan") or "").strip() or (r.get("note") or "").strip()
             st = r.get("stage") if r.get("stage") in out else "analyze"
-            if text and len(out[st]) < limit_per_stage:
-                out[st].append(f"- {text}")
+            line = f"- {text}"
+            if text and len(out[st]) < limit_per_stage and line not in out[st]:
+                out[st].append(line)
         return {k: "\n".join(v) for k, v in out.items() if v}
 
     def arena_stats(self, target: float = 0.9, team=None) -> dict:

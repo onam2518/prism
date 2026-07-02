@@ -872,16 +872,25 @@ def apply_feedback(data: dict) -> dict:
         reviewer = (data.get("reviewer") or "").strip() or "(익명)"   # 귀속 키(uid 또는 이름)
         disp = (data.get("name") or "").strip() or reviewer          # 토스트 표시명
         note = (data.get("note") or "").strip()
-        stage = data.get("stage") or "analyze"
-        element = (data.get("element") or "").strip()
+        elements = [e for e in (data.get("elements") or []) if e in FL.ELEMENTS]
+        if not elements and (data.get("element") or "").strip() in FL.ELEMENTS:
+            elements = [(data.get("element") or "").strip()]         # 단일 요소 하위호환
+        stage = data.get("stage") or (FL.ELEM_STAGE.get(elements[0]) if elements else "analyze") or "analyze"
         st.save_feedback(ch, data.get("service", ""), data.get("title", ""),
                          verdict, stage, note, time.time(), reviewer=reviewer,
-                         team=data.get("_team"), element=element)
+                         team=data.get("_team"), element=",".join(elements))
         broadcast({"type": "feedback", "hash": ch, "reviewer": disp,
                    "verdict": verdict, "title": data.get("title", ""),
                    "service": data.get("service", ""), "ts": time.time()})
-        if verdict == "bad" and note:              # REAP: 교정을 plan 으로 가공해 저장(맥락용, 프롬프트 즉시반영은 안 함)
-            fb = {"stage": stage, "note": note, "title": data.get("title", "")}
+        if verdict == "bad" and note:              # 오케스트레이터: 원문 재분류(요소·단계 분기) + REAP 가공
+            fb = {"stage": stage, "note": note, "title": data.get("title", ""),
+                  "elements": elements, "_team": data.get("_team")}
+            try:                                   # 요소 메타 맥락(재분류 정확도용)
+                im = st.get_item_meta(ch) if hasattr(st, "get_item_meta") else None
+                if im:
+                    fb["output"] = {"item_meta": im}
+            except Exception:
+                pass
             threading.Thread(target=_reap_async, args=(ch, reviewer, fb),
                              daemon=True).start()
         missions = _check_missions(reviewer, data.get("_team"))
@@ -973,20 +982,25 @@ def reviewer_weights(team=None) -> dict:
 
 
 def _reap_async(content_hash: str, reviewer: str, fb: dict):
-    """REAP(Remember→Explain→Ask→Plan)로 피드백을 가공 → plan 저장 → LEARNED 재반영·브로드캐스트."""
+    """피드백 후처리(비동기): ① 오케스트레이터가 교정 원문을 요소·단계별 개선 지시로 재분류(분기 저장)
+    ② REAP(Remember→Explain→Ask→Plan) 가공 → plan 저장 → 브로드캐스트."""
     try:
         cfg = Config.load()
         llm = make_text_llm(cfg, Handler.server_mock)   # 서버 mock 존중(키 없으면도 mock)
-        reap = FL.run_reap(llm, fb)
         st = get_store()
+        routes = FL.route_feedback(llm, fb)             # 요소 재분류(mock/실패 시 선택 요소 폴백)
+        if st and routes and hasattr(st, "save_routes"):
+            st.save_routes(content_hash, reviewer, routes, team=fb.get("_team"))
+        reap = FL.run_reap(llm, fb)
         if st:
             st.save_reap(content_hash, reviewer, reap)
         # 프롬프트 즉시반영 없음(일배치 학습에서 합의 반영). plan 은 저장·브로드캐스트만.
         broadcast({"type": "reap", "hash": content_hash, "reviewer": reviewer,
                    "stage": reap.get("stage", ""), "plan": reap.get("plan", ""),
-                   "ask": reap.get("ask", "")})
+                   "ask": reap.get("ask", ""),
+                   "routed": [r["element"] for r in routes]})
     except Exception as e:
-        print(f"  [warn] REAP 처리 실패(hash={content_hash[:12]}): {e}")
+        print(f"  [warn] 피드백 후처리 실패(hash={content_hash[:12]}): {e}")
 
 
 def reap_for(data: dict) -> dict:
@@ -2567,16 +2581,16 @@ PAGE = """<!doctype html>
         { g: '현황 · 평가', items: [
           { id: 'dash', label: '현황 대시보드', ic: 'dash' },
           { id: 'eval', label: '검수 및 평가', ic: 'eval' } ] },
-        // 콘텐츠 인입(수동·자동)은 전부 관리자 통제 · 실행 큐 포함
+        // 콘텐츠 인입(수동·자동·실행 큐)은 '콘텐츠 관리' 단일 메뉴로 통합 · 전부 관리자 통제
         { g: '관리자', gcond: 'admin', items: [
-          { id: 'run', label: '수동 추출', ic: 'run' },
-          { id: 'queue', label: '실행 큐', ic: 'queue' },
-          { id: 'auto', label: '자동 인입', ic: 'auto' },
-          { id: 'intake', label: '인입 정책', ic: 'intake' },
+          { id: 'content', label: '콘텐츠 관리', ic: 'intake' },
           { id: 'admin', label: '팀 관리', ic: 'admin' },
           { id: 'dict', label: '사전 · 정책', ic: 'dict' },
           { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' } ] },
       ],
+      contentTab: 'queue',                    // 콘텐츠 관리 홈 탭 = 실행 큐(자동/수동 구분)
+      queueTrig: '',                          // 실행 큐 자동/수동 필터
+      get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
       // 위젯 홈 인터랙션 상태
       settingsOpen: false, chatOpen: false, addMenuOpen: false, editing: false, theme: 'light',
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
@@ -2692,18 +2706,18 @@ PAGE = """<!doctype html>
       },
       selectMod(id) {
         this.mod = id; this.status = ''; this.addMenuOpen = false;
+        if (id === 'run' || id === 'auto' || id === 'queue' || id === 'intake') { this.contentTab = id; id = 'content'; }   // 구 메뉴 id 호환
         if (id === 'home') { this.loadArena(); this.loadDash(); }
         else if (id === 'dash') { this.loadDash(); this.loadTopics(); this.loadUser(); }
         else if (id === 'eval') { this.loadDash(); this.loadQueue(); this.loadGoldenStatus(); }
-        else if (id === 'queue') this.loadDash();
         else if (id === 'review') this.loadQueue();
         else if (id === 'arena') this.loadArena();
         else if (id === 'admin') this.loadAdmin();
         else if (id === 'quality') this.loadTopics();
-        else if (id === 'dict' || id === 'intake') this.loadDict();
+        else if (id === 'dict') this.loadDict();
         else if (id === 'user') this.loadUser();
         else if (id === 'prompt') this.loadPromptDefaults();
-        if (id === 'queue' || id === 'auto') { this.fetchIngestStatus(); this.pollIngestStatus(); }
+        if (id === 'content') { this.loadDash(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
       },
       toggleTheme() {
         this.theme = this.theme === 'dark' ? 'light' : 'dark';
@@ -2809,14 +2823,22 @@ PAGE = """<!doctype html>
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
         if (cur === '' && v !== '') this.celebratePoints(10, '검수 완료');   // 새 검수 = +10 PT
       },
+      // 수정 대상 요소: 다중 선택 · 서버 오케스트레이터가 원문을 재분류해 단계별로 분기
+      fbElems(fb) { if (!Array.isArray(fb.elems) || !fb.elems.length) fb.elems = [fb.element || 'summary']; return fb.elems; },
+      toggleFixElem(fb, id) {
+        const a = this.fbElems(fb);
+        const i = a.indexOf(id);
+        if (i >= 0) { if (a.length > 1) a.splice(i, 1); } else a.push(id);
+        fb.element = a[0];
+      },
       async saveFbNote(c) {
         const hadNote = !!(c.fb && c.fb._noteRewarded);
-        const el = c.fb.element || 'summary';                         // 수정 대상 요소 → 학습 단계
-        const stage = this.elemStage(el);
+        const els = this.fbElems(c.fb).slice();                       // 수정 대상 요소(복수 가능)
+        const stage = this.elemStage(els[0]);
         const raw = (c.fb.note || '').trim();
-        const tagged = raw ? ('[' + this.elemLabel(el) + '] ' + raw) : raw;
+        const tagged = raw ? ('[' + els.map((e) => this.elemLabel(e)).join('·') + '] ' + raw) : raw;
         c.fb = Object.assign({}, c.fb, { verdict: c.fb.verdict || 'bad', stage: stage, ts: Date.now() / 1000 });
-        await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: c.fb.verdict, stage: stage, element: el, note: tagged });
+        await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: c.fb.verdict, stage: stage, elements: els, note: tagged });
         this.fbNoteOpen[c.hash] = false;
         if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(25, '교정 반영'); }  // 교정 = +25 PT(서버 산정과 일치)
       },
@@ -4736,7 +4758,14 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) · 관리자 전용 ═══ -->
-      <div x-show="mod === 'auto'" x-cloak class="w-full space-y-4">
+      <!-- ═══ 모듈: 콘텐츠 관리(관리자) · 실행 큐(홈) | 수동 추출 | 자동 인입 | 인입 정책 ═══ -->
+      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
+        <button type="button" x-bind:class="contentTab==='queue'?'sel':''" x-on:click="contentTab='queue'">실행 큐</button>
+        <button type="button" x-bind:class="contentTab==='run'?'sel':''" x-on:click="contentTab='run'">수동 추출</button>
+        <button type="button" x-bind:class="contentTab==='auto'?'sel':''" x-on:click="contentTab='auto'; fetchIngestStatus()">자동 인입</button>
+        <button type="button" x-bind:class="contentTab==='intake'?'sel':''" x-on:click="contentTab='intake'; loadDict()">인입 정책</button>
+      </div></div>
+      <div x-show="mod === 'content' && contentTab === 'auto'" x-cloak class="w-full space-y-4">
         <template x-if="!(backend === 'supabase' && adminData && adminData.isAdmin)">
           <ul class="ds-bullets hintbox" style="padding:14px 16px">
             <li>자동 인입은 <b>운영(팀) 관리자</b> 전용입니다.</li>
@@ -4750,6 +4779,18 @@ PAGE = """<!doctype html>
           <li>등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다.</li>
           <li>일회성 처리는 <b>수동 추출</b>을 사용하세요.</li>
         </ul>
+        <!-- 일회성 인입: 크롤러에서 수량 목표로 당겨오기(구 팀 관리 패널 이동) -->
+        <section class="panel" data-fn><div class="panel-hd"><b>일회성 인입</b><span class="meta">크롤러에서 수량 목표로 당겨오기</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>크롤러 엔드포인트에서 <b>수량 목표</b>로 당겨와 추출 → 전건을 팀 <b>검수 대기</b>에 적재합니다.</li><li>실시간 스트리밍 부담 없이 배치로 처리합니다.</li></ul>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
+              <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestBusy" x-on:click="ingestRun()" x-text="ingestBusy ? '인입 중…' : '인입 실행'"></button>
+            </div>
+            <span class="text-xs text-muted" style="display:block;margin-top:7px" x-text="ingestMsg"></span>
+          </div>
+        </section>
         <section class="panel" data-fn><div class="panel-hd"><b>인입 소스 추가</b></div>
           <div class="panel-bd" style="display:flex;flex-direction:column;gap:12px">
             <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -4808,7 +4849,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
-      <div x-show="mod === 'run'" class="w-full space-y-4">
+      <div x-show="mod === 'content' && contentTab === 'run'" class="w-full space-y-4">
         <!-- 추출 실행 = 기능 위젯(입력 방식 탭 + 폼) -->
         <section class="panel" data-fn>
           <div class="panel-hd"><b>추출 실행</b></div>
@@ -5565,8 +5606,8 @@ PAGE = """<!doctype html>
                     <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="(c.fb&&c.fb.verdict==='bad')?'is-on':''" x-on:click="setFeedback(c,'bad')"><span class="verdictbtn__dot"></span>문제</button>
                   </div>
                   <div class="fbrow__note" x-show="(c.fb&&c.fb.verdict==='bad') || fbNoteOpen[c.hash]">
-                    <select class="field" style="width:auto;height:34px;padding:0 26px 0 10px" x-model="c.fb.element"><template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id"><option x-bind:value="fe.id" x-text="fe.label"></option></template></select>
-                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="무엇이 왜 잘못됐는지 · 예) 카테고리를 스포츠가 아니라 정치로" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
+                    <span class="fixelems" style="margin:0"><template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id"><button type="button" class="fixelem" x-bind:class="fbElems(c.fb).includes(fe.id) ? 'sel' : ''" x-on:click="toggleFixElem(c.fb, fe.id)" x-text="fe.label"></button></template></span>
+                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="무엇이 왜 잘못됐는지 · 요소 여러 개 선택 가능(단계별 자동 분기)" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
                     <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="saveFbNote(c)">반영</button>
                   </div>
                 </div>
@@ -5670,17 +5711,6 @@ PAGE = """<!doctype html>
                 </template>
               </tbody></table></div>
             </template>
-          </div>
-        </section>
-        <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>콘텐츠 인입 (검토용)</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>크롤러 엔드포인트에서 <b>수량 목표</b>로 당겨와 추출 → 전건을 팀 <b>검수 대기</b>에 적재합니다.</li><li>실시간 스트리밍 부담 없이 배치로 처리합니다.</li></ul>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
-              <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestBusy" x-on:click="ingestRun()" x-text="ingestBusy ? '인입 중…' : '인입 실행'"></button>
-            </div>
-            <span class="text-xs text-muted" style="display:block;margin-top:7px" x-text="ingestMsg"></span>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>데이터 관리</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
@@ -5874,13 +5904,20 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 실행 큐 (단일 위젯) · 실제 실행 상태 ═══ -->
-      <div x-show="mod === 'queue'" x-cloak class="w-full">
-        <section class="panel"><div class="panel-hd"><b>실행 큐</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span></div>
+      <div x-show="mod === 'content' && contentTab === 'queue'" x-cloak class="w-full">
+        <section class="panel"><div class="panel-hd"><b>실행 큐</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>
+          <!-- 자동/수동 구분 필터 -->
+          <span class="ml-auto" style="display:flex;gap:6px">
+            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='' ? 'sel' : ''" x-on:click="queueTrig=''">전체</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='auto' ? 'sel' : ''" x-on:click="queueTrig='auto'">자동</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='manual' ? 'sel' : ''" x-on:click="queueTrig='manual'">수동</button>
+          </span>
+        </div>
           <div class="panel-bd">
-            <div x-show="loading">
-              <div class="w-run"><span class="w-run__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span><div><div class="w-run__t" x-text="activeTabId === 'excel' ? '엑셀 일괄 추출 중' : '메타 추출 중'"></div><div class="ds-progress ds-progress--indeterminate" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div></div></div>
+            <div x-show="loading && queueTrig !== 'auto'">
+              <div class="w-run"><span class="w-run__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span><div><div class="w-run__t" x-text="(activeTabId === 'excel' ? '엑셀 일괄 추출 중' : '메타 추출 중') + ' · 수동'"></div><div class="ds-progress ds-progress--indeterminate" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div></div></div>
             </div>
-            <template x-for="j in runningJobs" x-bind:key="j.id">
+            <template x-for="j in filteredJobs" x-bind:key="j.id">
               <div class="w-run"><span class="w-run__av"><img src="/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
                 <div class="w-run__t"><b class="text-ink" x-text="j.name"></b> · 자동 인입 중 <span class="ds-badge" x-bind:class="j.trigger==='auto' ? 'ds-badge--intent' : 'ds-badge--entity'" x-text="j.trigger==='auto' ? '자동' : '수동'"></span> <span class="text-xs text-muted tnum" x-show="j.total" x-text="j.done + ' / ' + j.total + '건'"></span></div>
                 <div class="text-xs text-muted" x-text="j.last_msg || j.endpoint"></div>
@@ -5888,7 +5925,7 @@ PAGE = """<!doctype html>
               </div></div>
             </template>
             <div x-show="!runningCount" class="ds-empty" style="border:0;padding:20px 8px">
-              <div class="ds-empty__desc">진행 중인 작업이 없습니다 <b class="text-ink">새 추출</b> 또는 <b class="text-ink">자동 인입</b>을 실행하면 여기에 표시되고, 완료분은 <b class="text-ink">배치 결과</b>에 집계됩니다</div>
+              <div class="ds-empty__desc">진행 중인 작업이 없습니다 <b class="text-ink">수동 추출</b> 또는 <b class="text-ink">자동 인입</b> 탭에서 실행하면 여기에 표시되고, 완료분은 <b class="text-ink">배치 결과</b>에 집계됩니다</div>
             </div>
           </div>
         </section>
@@ -5939,7 +5976,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 인입 정책 (전용 도구) ═══ -->
-      <div x-show="mod === 'intake'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'content' && contentTab === 'intake'" x-cloak class="w-full space-y-4">
         <div class="ds-widget ds-widget--info" style="--w-accent:#1e84ff">
           <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>ITEM TYPE 처리 정책</span></div><div class="ds-widget__actions"><span class="ds-badge ds-badge--neutral">131</span><span class="text-xs text-muted">직접 수정 가능</span><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">
@@ -6087,10 +6124,10 @@ PAGE = """<!doctype html>
                     <div class="dve__lbl" style="margin-bottom:6px">어떤 요소를 고칠까요?</div>
                     <div class="fixelems">
                       <template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id">
-                        <button type="button" class="fixelem" x-bind:class="(detail.fb.element||'summary')===fe.id ? 'sel' : ''" x-on:click="detail.fb.element=fe.id" x-text="fe.label"></button>
+                        <button type="button" class="fixelem" x-bind:class="fbElems(detail.fb).includes(fe.id) ? 'sel' : ''" x-on:click="toggleFixElem(detail.fb, fe.id)" x-text="fe.label"></button>
                       </template>
                     </div>
-                    <textarea x-model="detail.fb.note" rows="3" class="field" style="margin-top:8px" x-bind:placeholder="elemLabel(detail.fb.element||'summary') + ' 이(가) 왜 잘못됐는지 · 다음 추출 프롬프트에 자동 반영'"></textarea>
+                    <textarea x-model="detail.fb.note" rows="3" class="field" style="margin-top:8px" x-bind:placeholder="fbElems(detail.fb).map((e)=>elemLabel(e)).join('·') + ' 이(가) 왜 잘못됐는지 · 요소를 여러 개 고르면 각 단계로 나눠 반영됩니다'"></textarea>
                     <div style="display:flex;gap:8px;margin-top:8px">
                       <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="reviewBadComplete()" x-bind:disabled="!(detail.fb.note||'').trim()">완료 처리</button>
                       <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="pendingBad=false; if(!(detail.fb&&detail.fb.verdict)) editVerdict=false">취소</button>
