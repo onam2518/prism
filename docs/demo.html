@@ -4645,100 +4645,6 @@
           </section>
         </div>
 
-        <!-- 단건 결과 -->
-        <div x-show="result" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
-          <section class="panel">
-            <div class="panel-hd">
-              <b>아이템 메타</b>
-              <div class="flex items-center gap-2">
-                <span x-show="q.finalGrade === 'G'" class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>유통가능 · G</span>
-                <span x-show="q.finalGrade !== 'G'" class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>차단 · R</span>
-                <span class="meta" x-text="result ? (result.output.routing.content_track + ' · ' + result.source) : ''"></span>
-              </div>
-            </div>
-            <div class="drow">
-              <div class="k">리드문</div>
-              <div class="v">
-                <div class="flex items-start gap-2">
-                  <p class="flex-1 text-[15px] leading-relaxed text-ink" x-text="im.summary || '(빈 값 · 차단되었거나 본문 부족)'"></p>
-                  <button type="button" class="copybtn shrink-0" x-show="im.summary" x-on:click="copyText(im.summary, '리드문')">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-                    복사
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div class="drow">
-              <div class="k">엔티티</div>
-              <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', x)" data-tip-pos="top" x-text="x"></span></template>
-                <span x-show="!(im.entities || []).length" class="text-xs text-muted">·</span>
-              </div>
-            </div>
-            <div class="drow">
-              <div class="k">인텐트</div>
-              <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', x)" data-tip-pos="top" x-text="x"></span></template>
-                <span x-show="!(im.intent || []).length" class="text-xs text-muted">·</span>
-              </div>
-            </div>
-            <div class="drow">
-              <div class="k">콘텐츠 카테고리</div>
-              <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in contentCats" x-bind:key="x"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', x)" data-tip-pos="top" x-text="x"></span></template>
-                <span x-show="!contentCats.length" class="text-xs text-muted">·</span>
-              </div>
-            </div>
-          </section>
-
-          <!-- 이미지 추출 신호 -->
-          <section x-show="result && result.signals && result.signals.length" x-cloak class="panel">
-            <div class="panel-hd"><b>이미지 추출 신호</b><span class="meta tnum" x-text="result ? (result.signals.length + '장') : ''"></span></div>
-            <div class="panel-bd space-y-3">
-              <template x-for="(s, i) in (result ? result.signals : [])" x-bind:key="i">
-                <div class="border-l border-black/[0.10] pl-3">
-                  <div class="text-xs font-semibold text-ink" x-text="'이미지 ' + (i + 1)"></div>
-                  <div class="mt-1 flex gap-2 text-sm text-body">
-                    <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                    <span x-text="s.vision || '·'"></span>
-                  </div>
-                  <div class="flex gap-2 text-sm text-body">
-                    <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M9 5v14m-3 0h6"/></svg>
-                    <span x-text="s.ocr || '·'"></span>
-                  </div>
-                  <p x-show="s.note" x-cloak class="mt-1 text-xs text-[#ff9429]" x-text="s.note"></p>
-                </div>
-              </template>
-            </div>
-          </section>
-
-          <!-- 상세 -->
-          <section class="panel">
-            <div class="panel-hd"><b>상세</b>
-              <div class="flex items-center gap-2">
-                <button type="button" class="copybtn" x-on:click="copyJSON()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-                  JSON 복사
-                </button>
-                <a href="/report" target="_blank" rel="noreferrer"
-                   class="inline-flex items-center gap-1.5 text-xs font-medium text-violet transition-colors hover:text-ink">
-                  전체 리포트 열기
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg>
-                </a>
-              </div>
-            </div>
-            <div class="panel-bd">
-              <details class="group">
-                <summary class="cursor-pointer text-sm text-body transition-colors hover:text-ink">합성된 Content (이미지 → 4필드)</summary>
-                <pre class="mt-2 overflow-auto rounded-lg border border-black/[0.08] bg-canvas p-3 font-mono text-xs text-body" x-text="result ? JSON.stringify(result.content, null, 2) : ''"></pre>
-              </details>
-              <details class="group mt-2">
-                <summary class="cursor-pointer text-sm text-body transition-colors hover:text-ink">원본 출력 JSON</summary>
-                <pre class="mt-2 overflow-auto rounded-lg border border-black/[0.08] bg-canvas p-3 font-mono text-xs text-body" x-text="result ? JSON.stringify(result.output, null, 2) : ''"></pre>
-              </details>
-            </div>
-          </section>
-        </div>
         <!-- 단건 처리 이력(마지막 수동 추출의 보정·비용·지연 · 관리자 추적용) -->
         <div x-show="result" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>처리 이력</b><span class="meta" x-text="tr.prompt_version || ''"></span><button type="button" class="copybtn" x-show="tr && tr.content_id !== undefined" x-on:click="exportEval()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div><div class="panel-bd">
@@ -4757,26 +4663,6 @@
       </div>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
-      <!-- 모델 실행: 모아진 콘텐츠(자동/수동 불문)에 모델을 실행해 초안 생성 · 버전 안내 -->
-      <div x-show="mod === 'content'" x-cloak class="w-full space-y-4" style="margin-top:14px">
-        <section class="panel" data-fn><div class="panel-hd"><b>추가된 콘텐츠 · 용도</b><span class="meta">평가용은 검수 목록에서 제외되어 평가 전용으로 보존됩니다</span>
-          <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        </div>
-          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:110px"></th></tr></thead><tbody>
-            <template x-for="c in ((dashData && dashData.contents) || [])" x-bind:key="'pp'+c.hash">
-              <tr>
-                <td class="text-ink" x-text="c.title || '(제목 없음)'"></td>
-                <td class="text-muted" x-text="c.service || '·'"></td>
-                <td class="text-muted" x-text="c.model || '·'"></td>
-                <td class="tnum" x-text="c.version ? ('v' + c.version) : '·'"></td>
-                <td><span class="ds-badge" x-bind:class="c.purpose === 'eval' ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="c.purpose === 'eval' ? '평가용' : '검수용'"></span></td>
-                <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button></td>
-              </tr>
-            </template>
-          </tbody></table></div>
-          <div x-show="!((dashData && dashData.contents) || []).length" class="text-xs text-muted" style="margin:0 16px 14px">아직 추가된 콘텐츠가 없습니다 · 위에서 수동·자동으로 추가하세요</div>
-        </section>
-      </div>
       <div x-show="mod === 'content'" x-cloak class="w-full" style="margin:18px 0 12px">
         <div class="stepline"><span class="stepline__no">STEP 2</span><b>모델 실행</b><span class="meta">모은 콘텐츠에 모델을 실행해 초안을 만듭니다</span></div>
       </div>
@@ -5762,6 +5648,26 @@
               <div class="ds-empty__desc">진행 중인 작업이 없습니다 <b class="text-ink">수동 추출</b> 또는 <b class="text-ink">자동 인입</b> 탭에서 실행하면 여기에 표시되고, 완료분은 <b class="text-ink">배치 결과</b>에 집계됩니다</div>
             </div>
           </div>
+        </section>
+      </div>
+      <!-- 추가된 콘텐츠 · 용도: 실행 큐 아래(맥락: 추가 → 실행 → 큐 → 결과 용도 관리) -->
+      <div x-show="mod === 'content'" x-cloak class="w-full space-y-4" style="margin-top:14px">
+        <section class="panel" data-fn><div class="panel-hd"><b>추가된 콘텐츠 · 용도</b><span class="meta">평가용은 검수 목록에서 제외되어 평가 전용으로 보존됩니다</span>
+          <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:110px"></th></tr></thead><tbody>
+            <template x-for="c in ((dashData && dashData.contents) || [])" x-bind:key="'pp'+c.hash">
+              <tr>
+                <td class="text-ink" x-text="c.title || '(제목 없음)'"></td>
+                <td class="text-muted" x-text="c.service || '·'"></td>
+                <td class="text-muted" x-text="c.model || '·'"></td>
+                <td class="tnum" x-text="c.version ? ('v' + c.version) : '·'"></td>
+                <td><span class="ds-badge" x-bind:class="c.purpose === 'eval' ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="c.purpose === 'eval' ? '평가용' : '검수용'"></span></td>
+                <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button></td>
+              </tr>
+            </template>
+          </tbody></table></div>
+          <div x-show="!((dashData && dashData.contents) || []).length" class="text-xs text-muted" style="margin:0 16px 14px">아직 추가된 콘텐츠가 없습니다 · 위에서 수동·자동으로 추가하세요</div>
         </section>
       </div>
 
