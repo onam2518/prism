@@ -5228,6 +5228,24 @@
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
+        <!-- 모델 선택(별도 영역 · selctl 정책): 아래 목록의 기준 모델 지정 -->
+        <section class="panel" data-fn><div class="panel-hd"><b>모델 선택</b><span class="meta">아래 목록의 기준 모델 지정</span></div>
+          <div class="panel-bd">
+            <div class="filterbar" style="margin:0 16px">
+              <span class="selctl abslot"><span class="selctl__tag">모델</span>
+                <select class="field" x-model="rawModel">
+                  <option value="">전체</option>
+                  <template x-for="m in rawModels" x-bind:key="'rm'+m"><option x-bind:value="m" x-text="m"></option></template>
+                </select>
+              </span>
+            </div>
+            <ul class="ds-bullets" style="margin:10px 16px 0">
+              <li>선택한 모델이 <b>초기 판정한 초안</b>만 목록에 표시됩니다(누적 · 모델별 정답셋의 재료).</li>
+              <li>검수 합의는 <b>이 모델의 정답셋</b>으로 쌓입니다.</li>
+              <li>버전 간 비교는 <b>결과 비교</b> 탭에서 합니다.</li>
+            </ul>
+          </div>
+        </section>
         <section class="panel" data-fn><div class="panel-hd"><b>검수 대상 콘텐츠</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
           <span class="ml-auto" style="display:flex;gap:8px;align-items:center">
             <a class="copybtn" style="text-decoration:none" href="/export.csv" data-tip="전체 결과 CSV 다운로드" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>CSV</a>
@@ -5236,17 +5254,7 @@
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>모델을 고르면 아래 목록은 전부 <b>그 모델이 초기 판정한 초안</b>입니다(모델별 정답셋의 재료).</li><li>행 클릭 = JSON 원문 · <b>검수하기</b> = 상세에서 판정·교정 · 버전 간 비교는 <b>결과 비교</b> 탭.</li></ul>
-            <!-- 상단 구분: 모델 선택(selctl 정책 · A/B 화면과 동일 디자인) → 목록 -->
-            <div class="filterbar" style="margin-bottom:8px">
-              <span class="selctl"><span class="selctl__tag">모델</span>
-                <select class="field" x-model="rawModel">
-                  <option value="">전체</option>
-                  <template x-for="m in rawModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-                </select>
-              </span>
-            </div>
-            <div class="text-xs text-muted" style="margin:0 16px 10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b> 가 초기 판정한 초안 목록입니다(누적) · 검수 합의는 이 모델의 정답셋으로 쌓입니다 · 버전 간 비교는 <b>결과 비교</b> 탭에서</div>
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = <b>JSON 원문</b> · <b>검수하기</b> = 상세에서 판정·교정.</li><li x-show="rawModel">현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다.</li></ul>
             <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
             <div class="filterbar">
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
