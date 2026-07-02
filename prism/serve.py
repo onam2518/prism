@@ -3429,6 +3429,7 @@ PAGE = """<!doctype html>
         '의견·논쟁': '주장·토론·찬반이 오가는 콘텐츠', '학술·전문': '전문 지식·연구·기술을 다룸',
       },
       termDef(kind, val) {
+        val = String(val == null ? '' : val).replace(/\s*\(\d+\)\s*$/, '');   // '값 (건수)' 형태 정규화
         if (kind === 'intent') return this.INTENT_DEF[val] || ('인텐트 · ' + val);
         if (kind === 'reason') {
           const d = this.dictData;
