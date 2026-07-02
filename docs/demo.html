@@ -1899,7 +1899,43 @@
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
       goldenResult: null, goldenBusy: false, goldenMsg: '',
       rawData: null, rawSel: null,
-      async loadRaw() { try { const r = await (await fetch('/raw?limit=100', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; } } catch (e) {} },
+      async loadRaw() { try { const r = await (await fetch('/raw?limit=200', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; } } catch (e) {} },
+      // 원본 목록 필터(빠른 검수): 검색 + 등급/모델/서비스/검수 상태
+      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '',
+      get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
+      get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
+      get rawFiltered() {
+        return (((this.rawData||{}).items)||[]).filter((r) => {
+          if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
+          if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
+          if (this.rawModel && (r.model||'') !== this.rawModel) return false;
+          if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
+          if (this.rawRev === 'todo' && (r.fb && r.fb.verdict)) return false;
+          if (this.rawRev === 'done' && !(r.fb && r.fb.verdict)) return false;
+          return true;
+        });
+      },
+      async rawVerdict(r, v) {
+        if (!this.ensureReviewer()) return;
+        const had = !!(r.fb && r.fb.verdict);
+        const res = await this._postFb({ hash: r.hash, service: r.service, title: r.title, model: r.model || '', verdict: v, stage: 'review', note: '' });
+        if (res && res.error) { this._err(res.error); return; }
+        r.fb = Object.assign({}, r.fb, { verdict: v });
+        if (!had) this.celebratePoints(10, '검수 완료');
+      },
+      // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
+      rerunHash: '', rerunModel: '', rerunBusy: false, rerunMsg: '',
+      async runRerun() {
+        if (!this.rerunHash || !this.rerunModel) return;
+        if (!confirm('기존 초안을 덮어씁니다(이전 초안은 이력에 보존) · 진행할까요?')) return;
+        this.rerunBusy = true; this.rerunMsg = '';
+        try {
+          const r = await (await fetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: this.rerunHash, model: this.rerunModel }) })).json();
+          if (r && r.error) this.rerunMsg = r.error;
+          else { this.result = r; this.rerunMsg = '✓ 재실행 완료 · ' + this.rerunModel; this.loadDash(); this.loadRaw(); }
+        } catch (e) { this.rerunMsg = '재실행 실패'; }
+        this.rerunBusy = false;
+      },
       metaResults: null, metaBusy: false,
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
@@ -2313,6 +2349,14 @@
         } catch (e) { this._err('내보내기 실패'); }
       },
       ciTxt(ci) { return ci ? (this.pctTxt(ci.acc) + ' · 95% CI ' + this.pctTxt(ci.lo) + '~' + this.pctTxt(ci.hi) + ' (n=' + ci.n + ')') : '·'; },
+      async exportSpec() {
+        try {
+          const res = await fetch('/learn-spec', { headers: this._authHeaders() });
+          if (!res.ok) { this._err('소요서 생성 실패'); return; }
+          const blob = await res.blob(); const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = 'prism_finetune_spec.md'; a.click(); URL.revokeObjectURL(a.href);
+        } catch (e) { this._err('소요서 생성 실패'); }
+      },
       pctTxt(v) { return (v == null) ? '·' : (Math.round(v * 1000) / 10) + '%'; },
       // 카테고리 옵션(IAB Tier1 / Tier2) · 빈칸 채우기 피커용
       get categoryOptions() {
@@ -2920,7 +2964,7 @@
       if (u.indexOf('/topics') > -1) return Promise.resolve(J({"n_contents": 12, "summary": {"single": 2, "composite": 1, "filter": 8}, "single": [{"cluster_id": "S-samsung", "entities": ["삼성전자", "노동조합"], "n_contents": 3}, {"cluster_id": "S-rate", "entities": ["한국은행", "금리"], "n_contents": 2}], "composite": [{"cluster_id": "C-labor", "rep_entities": ["삼성전자", "중앙노동위"], "n_contents": 4}], "filter": [{"cluster_id": "F-fin", "name": "재테크 × 심층 분석", "active": true, "n_contents": 3}, {"cluster_id": "F-ent", "name": "연예 × 화제성", "active": false}]}));
       if (u.indexOf('/usermeta') > -1) return Promise.resolve(J({"source": "실 행동 로그 → 소비 형태·강도 (데모)", "n_contents": 12, "users": [{"user_id": "u1", "persona": "정독러", "form": {"세션 길이": "장", "체류·완주": "고", "전환·이동": "느림", "깊이": "몰입", "시간대": "평일 야간"}, "intensity": {"심층 분석": "고", "정책·사업 소개": "고", "속보·단신": "저"}, "affinity_entities": [["삼성전자", 4], ["금리", 3], ["재건축", 2]], "engagement": {"views": 18, "clicks": 14, "click_rate": 0.78, "avg_dwell_sec": 52.4}}, {"user_id": "u2", "persona": "스낵러", "form": {"세션 길이": "단", "체류·완주": "저", "전환·이동": "빠름", "깊이": "훑기", "시간대": "출퇴근"}, "intensity": {"흥미·화제": "중", "속보·단신": "저"}, "affinity_entities": [["손흥민", 2]], "engagement": {"views": 22, "clicks": 5, "click_rate": 0.23, "avg_dwell_sec": 9.1}}], "personas_def": [{"id": 1, "name": "정독러", "full": "깊이 정독러", "desc": "한 주제를 파고들어 정독·저장", "form": {"깊이": "몰입", "체류·완주": "고"}}, {"id": 2, "name": "스낵러", "full": "가벼운 스낵러", "desc": "짧은 세션·빠른 전환", "form": {"깊이": "훑기", "체류·완주": "저"}}], "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)"}));
       if (u.indexOf('/dict') > -1) return Promise.resolve(J({"serviceGroups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"], "intentUniversal": ["속보·사건 추적", "심층 분석", "팬덤·화제성", "실용 정보", "감성·공감", "오락·유머", "의견·논쟁", "학술·전문"], "intentByService": {"뉴스": ["속보·단신", "사건 경과 보도", "정책·사업 소개", "행정 발표", "법안 통과 보도", "노동 이슈 보도", "사회 안전 보도", "인물 동정", "사설·칼럼", "국제·외교 보도", "트렌드 분석", "설문조사 기반 분석"], "연예": ["열애·결혼·이혼", "컴백·신작 발매", "논란·해명", "화보·시상식", "방송 출연", "팬 소통"], "스포츠": ["감독 인터뷰", "경기 프리뷰", "경기 결과·리뷰", "이적·계약 보도", "선수 분석 기사", "전술·데이터 분석", "부상·복귀 근황", "팬·응원 문화"], "콘텐츠": ["카드뉴스·인포그래픽", "큐레이션·모음", "랭킹·리스트", "요약·브리핑", "반응·리액션", "비교·분석"], "음악": ["신곡·앨범 발매", "차트·랭킹", "아티스트 소식", "라이브·공연", "음악 큐레이션", "음원 리뷰·분석"], "커뮤니티": ["후기·리뷰", "질문·답변", "정보 공유", "의견·토론", "일상·잡담", "창작·작품 공유"], "블로그": ["에세이·산문", "가이드·튜토리얼", "기술·개발", "리뷰·분석", "일상·여행", "창작·연재"], "동영상": ["클립·하이라이트", "풀영상·본방", "예고편·티저", "인터뷰·비하인드", "라이브 중계", "교양·다큐"]}, "iabTier1": ["News and Politics", "Entertainment", "Business and Finance", "Sports", "Food and Drink", "Travel", "Family and Relationships", "Education", "Technology and Computing", "Books and Literature", "Medical Health", "Hobbies and Interests", "Health and Fitness", "Home and Garden", "Pets", "Style and Fashion", "Automotive", "Video Gaming", "Science", "Careers", "Religion and Spirituality"], "tier2": {"News and Politics": ["Politics", "Society", "Local News", "Crime", "Disasters", "Law", "International News", "Weather"], "Entertainment": ["Celebrity News", "Celebrity News (Foreign)", "Drama TV", "TV Shows", "Movies", "Music", "Visual Art", "Performing Arts", "Humor"], "Business and Finance": ["Economy", "Industries", "Business", "Investing", "Banking", "Insurance", "Real Estate Policy", "Real Estate Listings"], "Sports": ["Soccer (Domestic)", "Soccer (International)", "Baseball (Domestic)", "Baseball (International)", "Basketball", "Volleyball", "Golf", "Martial Arts", "Other Sports"], "Food and Drink": ["Cooking", "Food", "Beverages", "Dining Out"], "Travel": ["Domestic Travel", "International Travel", "Hotels", "Air Travel", "Travel Preparation"], "Family and Relationships": ["Parenting", "Family", "Dating", "Weddings"], "Education": ["Primary Education", "Secondary Education", "Higher Education", "Language Learning", "Adult Education"], "Technology and Computing": ["Computing", "Internet", "Information Security", "Consumer Electronics"], "Books and Literature": ["Fiction", "Non-Fiction", "Biographies", "Essays"], "Medical Health": ["Diseases and Conditions", "Wellness"], "Hobbies and Interests": ["Arts and Crafts", "Collecting", "Outdoors"], "Health and Fitness": ["Healthy Living", "Exercise and Fitness"], "Home and Garden": ["Interior Decorating", "Gardening", "Home Improvement", "Shopping"], "Pets": ["Dogs", "Cats", "Birds", "Fish", "Other Pets"], "Style and Fashion": ["Fashion Trends", "Personal Care", "Accessories"], "Automotive": ["Auto Type", "Auto Repair", "Auto Shows"], "Video Gaming": ["Video Games", "eSports"], "Science": ["Space and Astronomy", "Biology", "Physics", "Environment", "General Science"], "Careers": ["Job Search", "Career Advice"], "Religion and Spirituality": ["Religion", "Spirituality"]}, "iabMap": {"Entertainment / Celebrity News (Foreign)": "Pop Culture / Celebrity News", "Entertainment / Drama TV": "Television / Drama TV", "Entertainment / TV Shows": "Television / TV Shows", "Entertainment / Movies": "Movies", "Entertainment / Music": "Music and Audio", "Entertainment / Visual Art": "Fine Art", "Entertainment / Performing Arts": "Fine Art", "Business and Finance / Investing": "Personal Finance", "Business and Finance / Banking": "Personal Finance", "Business and Finance / Insurance": "Personal Finance", "Business and Finance / Real Estate Policy": "Real Estate / Residential Real Estate", "Business and Finance / Real Estate Listings": "Real Estate / Residential Real Estate", "News and Politics / Weather": "Weather", "Home and Garden / Shopping": "Shopping", "Sports / Soccer (Domestic)": "Sports / Soccer", "Sports / Soccer (International)": "Sports / Soccer", "Sports / Baseball (Domestic)": "Sports / Baseball", "Sports / Baseball (International)": "Sports / Baseball", "Sports / Other Sports": "Sports / Olympic Sports", "Video Gaming / eSports": "Video Gaming / eSports"}, "domainGroups": {"시사": ["News and Politics"], "경제·산업": ["Business and Finance"], "엔터": ["Entertainment"], "스포츠": ["Sports"], "테크·모빌리티": ["Technology and Computing", "Automotive", "Video Gaming"], "라이프": ["Food and Drink", "Travel", "Family and Relationships", "Home and Garden", "Pets", "Style and Fashion", "Health and Fitness", "Hobbies and Interests", "Religion and Spirituality", "Medical Health", "Careers"], "지식·교양": ["Education", "Books and Literature", "Science"]}, "qualityMetas": {"ad": "광고성: 제품·서비스 홍보 + 명시적 구매·가입 유도가 본문 핵심(3축 AND · 수익 귀속·명시 CTA·B2C 대상 모두 충족 시에만)", "sexual": "선정적 텍스트: 성적 표현이 과도해 정보 전달보다 자극이 목적(단어 경계·콜로케이션, 강한 신호+정량 기준)", "profanity": "저속 텍스트: 욕설·비속어를 과도 사용해 불쾌감 유발(단어 경계, 마스킹 포함)", "gambling": "사행성: 로또·토토·카지노 등 조장·당첨 기대감 자극(시점성+권유·예측 톤 결합)", "clickbait": "낚시성: 제목-본문 괴리·정보 은닉으로 호기심 자극 클릭 유도(제목↔본문 정합성)", "format": "형식 불만족: 극단적으로 짧거나 구조 불완전해 피드 UX 저해(UGC 한정)", "shallow": "낮은 정보가치: 본문 무관 인물·발언을 끌어와 포장, 화제성·검색 노출 노림", "spam": "저품질 생산자: AI 양산·템플릿화 등 비정상 생산 패턴(문체 부자연·사실 불일치)", "graphic": "사건·재난·범죄 과잉묘사: 수법·피해를 구체·지속 묘사(묘사 신호 2개 이상 시 R)", "political": "정치·이념 거론: 한국 특정 정당·정치인·진영을 비방·낙인·선동(UGC 한정)", "hate": "차별·혐오: 인종·성별·지역·연령·세대·국적·계층 비하·혐오 표현(UGC 한정)"}, "qualityNames": {"ad": "광고성", "sexual": "선정적 텍스트", "profanity": "저속 텍스트", "gambling": "사행성", "clickbait": "낚시성", "format": "형식 불만족", "shallow": "낮은 정보가치", "spam": "저품질 생산자", "graphic": "사건·재난·범죄 과잉묘사", "political": "정치·이념 거론", "hate": "차별·혐오"}, "qualityApplies": {"ad": "both", "sexual": "both", "profanity": "both", "gambling": "both", "clickbait": "both", "format": "ugc", "shallow": "both", "spam": "both", "graphic": "both", "political": "ugc", "hate": "ugc"}, "legalTypes": {"defamation": {"label": "명예훼손", "article": "형법 §307"}, "insult": {"label": "모욕", "article": "형법 §311"}, "obscenity": {"label": "음란물", "article": "정보통신망법 §44-7"}, "sexual_violence": {"label": "성폭력(촬영물 등)", "article": "성폭력처벌법 §14"}, "privacy_violation": {"label": "사생활 침해", "article": "개인정보보호법"}, "stalking": {"label": "스토킹", "article": "스토킹처벌법"}, "hate_speech": {"label": "혐오표현", "article": "포괄 규정(개별 조문 없음)"}, "copyright": {"label": "저작권 침해", "article": "저작권법"}, "fraud": {"label": "사기", "article": "형법 §347"}, "election_interference": {"label": "선거 개입", "article": "공직선거법"}, "ad_fraud": {"label": "허위·과장 광고", "article": "표시광고법"}, "gambling": {"label": "도박 개장/유도", "article": "형법 §247"}, "drug_weapon": {"label": "마약·무기 거래", "article": "마약류관리법 등"}}, "intakePolicy": {"텍스트형": {"filter": "O", "method": "정상 분류(품질 메타 부여)", "status": "구현"}, "이미지형": {"filter": "△", "method": "GREEN 일괄 + 캡션 텍스트(시각 이해)", "status": "PoC"}, "영상형": {"filter": "X", "method": "GREEN 일괄(Argos 별도)", "status": "계획"}, "SNS형": {"filter": "X", "method": "서비스 자체 필터 후 인입", "status": "계획"}, "묶음형 · 데이터형": {"filter": "X", "method": "GREEN 일괄(고도화 과제)", "status": "계획"}}}));
-      if (u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
+      if (u.indexOf('/rerun') > -1 || u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
       // 골든셋·학습·평가 예시(리포트 · 모델 비교 · 로우 데이터)
       if (u.indexOf('/golden-status') > -1) return Promise.resolve(J(EX.gstat));
       if (u.indexOf('/golden-list') > -1) return Promise.resolve(J(EX.glist));
@@ -4203,6 +4247,26 @@
 
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
       <div x-show="mod === 'content' && contentTab === 'run'" class="w-full space-y-4">
+        <!-- 같은 콘텐츠를 다른 모델로 재실행(초안 재생성 · 이전 초안은 이력 보존 후 덮어씀) -->
+        <section class="panel" data-fn><div class="panel-hd"><b>다른 모델로 재실행</b><span class="meta">같은 콘텐츠 · 모델만 바꿔 초안 재생성</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>선택한 콘텐츠의 초안을 <b>지정 모델</b>로 다시 만듭니다 · 기존 초안은 이력에 남기고 덮어씁니다.</li><li>모델별 초안 품질 비교·교정 귀속에 사용하세요.</li></ul>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select class="field" style="flex:1;min-width:240px;height:38px" x-model="rerunHash">
+                <option value="">콘텐츠 선택…</option>
+                <template x-for="c in (dashData ? dashData.contents : [])" x-bind:key="c.hash">
+                  <option x-bind:value="c.hash" x-text="(c.title || '(제목 없음)') + (c.model ? (' · 현재 ' + c.model) : '')"></option>
+                </template>
+              </select>
+              <select class="field" style="width:auto;min-width:170px;height:38px" x-model="rerunModel">
+                <option value="">모델 선택…</option>
+                <template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+              </select>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="rerunBusy || !rerunHash || !rerunModel" x-on:click="runRerun()" x-text="rerunBusy ? '재실행 중…' : '재실행'"></button>
+              <span class="text-xs text-muted" x-text="rerunMsg"></span>
+            </div>
+          </div>
+        </section>
         <!-- 추출 실행 = 기능 위젯(입력 방식 탭 + 폼) -->
         <section class="panel" data-fn>
           <div class="panel-hd"><b>추출 실행</b></div>
@@ -4955,6 +5019,7 @@
                     <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
                     <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
                     <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
+                    <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서)" data-tip-pos="top">소요서(.md) 생성</button>
                   </div>
                   <!-- 학습 소요 대비(기준치 = 논문 출처) -->
                   <div class="overflow-auto" style="margin-bottom:14px"><table class="ds-table"><thead><tr><th>용도</th><th>기준</th><th>보유</th><th>부족</th><th>근거</th></tr></thead><tbody>
@@ -5008,16 +5073,25 @@
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>원본 목록</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
-          <span class="ml-auto" style="display:flex;gap:8px">
-            <a class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center" href="/export.csv">CSV</a>
-            <a class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center" href="/report" target="_blank">HTML 리포트</a>
-            <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadRaw()" data-tip="새로고침" data-tip-pos="bottom" aria-label="로우 데이터 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <span class="ml-auto" style="display:flex;gap:8px;align-items:center">
+            <a class="copybtn" style="text-decoration:none" href="/export.csv" data-tip="전체 결과 CSV 다운로드" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>CSV</a>
+            <a class="copybtn" style="text-decoration:none" href="/report" target="_blank" data-tip="브라우저용 HTML 리포트 열기" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>리포트</a>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadRaw()" data-tip="새로고침" data-tip-pos="bottom" aria-label="원본 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>추출 결과 원본(메타 · 품질 판정)을 가공 없이 빠르게 확인합니다.</li><li>행을 클릭하면 <b>JSON 원문</b>이 펼쳐집니다.</li></ul>
-            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:130px">모델</th><th>카테고리</th><th>사유</th></tr></thead><tbody>
-              <template x-for="r in (rawData ? rawData.items : [])" x-bind:key="r.hash">
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>판정 결과 전체를 <b>한 표</b>로 봅니다 · 필터로 좁혀 빠르게 검수하세요.</li><li>행 클릭 = <b>JSON 원문</b> · 정확/문제 버튼 = 바로 판정.</li></ul>
+            <!-- 필터: 검색 + 등급/모델/서비스/검수 상태 -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+              <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
+              <select class="field" style="width:auto;height:34px" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
+              <select class="field" style="width:auto;height:34px" x-model="rawModel"><option value="">모델 전체</option><template x-for="m in rawModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select>
+              <select class="field" style="width:auto;height:34px" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+              <select class="field" style="width:auto;height:34px" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
+              <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
+            </div>
+            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:120px">모델</th><th>카테고리</th><th>사유</th><th style="width:120px">검수</th></tr></thead><tbody>
+              <template x-for="r in rawFiltered" x-bind:key="r.hash">
                 <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" x-on:keydown.enter="rawSel = r">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
                   <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top" x-text="r.title || '(제목 없음)'"></td>
@@ -5025,6 +5099,12 @@
                   <td class="text-xs text-muted tnum" x-text="r.model || '·'"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
                   <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template></td>
+                  <td x-on:click.stop>
+                    <span style="display:flex;gap:4px;align-items:center">
+                      <button type="button" class="verdictbtn verdictbtn--good" style="padding:3px 8px" x-bind:class="(r.fb&&r.fb.verdict==='good')?'is-on':''" x-on:click="rawVerdict(r,'good')"><span class="verdictbtn__dot"></span>정확</button>
+                      <button type="button" class="verdictbtn verdictbtn--bad" style="padding:3px 8px" x-bind:class="(r.fb&&r.fb.verdict==='bad')?'is-on':''" x-on:click="rawVerdict(r,'bad')"><span class="verdictbtn__dot"></span>문제</button>
+                    </span>
+                  </td>
                 </tr>
               </template>
             </tbody></table>
@@ -5458,7 +5538,7 @@
           <a class="dvc__src ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-show="detail && detail.url" x-bind:href="detail && detail.url" target="_blank" rel="noreferrer">원문 열기 ↗</a>
         </div>
         <div class="detailview__eval">
-          <div x-show="detail && detail.grade"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span></div>
+          <div x-show="detail && detail.grade" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
           <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="right" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">카테고리</div>

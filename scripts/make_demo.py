@@ -255,7 +255,7 @@ STUB = """<script>
       if (u.indexOf('/topics') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/usermeta') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/dict') > -1) return Promise.resolve(J(%s));
-      if (u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
+      if (u.indexOf('/rerun') > -1 || u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
       // 골든셋·학습·평가 예시(리포트 · 모델 비교 · 로우 데이터)
       if (u.indexOf('/golden-status') > -1) return Promise.resolve(J(EX.gstat));
       if (u.indexOf('/golden-list') > -1) return Promise.resolve(J(EX.glist));

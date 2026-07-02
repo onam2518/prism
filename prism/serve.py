@@ -176,9 +176,14 @@ def _kv(disposition: str, key: str):
 
 
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
-def run_pipeline(fields: dict, *, mock: bool, team=None) -> dict:
+def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dict:
     cfg = Config.load()
-    llm = make_text_llm(cfg, mock)           # 텍스트 슬롯(solar|router). 무키면 내부서 mock
+    if (model or "").strip():                # 모델 지정 재실행: 제공자·키를 모델에 맞게 라우팅
+        llm, _route = llm_for_model(model.strip(), mock)
+        if llm is None:
+            return {"error": f"모델 호출 불가({_route}): {model}"}
+    else:
+        llm = make_text_llm(cfg, mock)       # 텍스트 슬롯(solar|router). 무키면 내부서 mock
 
     # 업로드 순서(image0, image1, …) = 가중치 순서. 첫 장이 대표.
     imgs = [(k, v) for k, v in fields.items()
@@ -215,6 +220,44 @@ def run_pipeline(fields: dict, *, mock: bool, team=None) -> dict:
         "signals": signals,
         "output": out,
     }
+
+
+def rerun_content(content_hash: str, model: str, team=None) -> dict:
+    """같은 콘텐츠를 지정 모델로 재실행(초안 재생성 · 관리자). 기존 초안은 덮어쓰되
+    이전 초안을 patch_log 에 남겨(rerun:구모델) 이력·비교 근거를 보존한다."""
+    st = get_store()
+    ch = (content_hash or "").strip()
+    if not (st and ch):
+        return {"error": "콘텐츠를 찾을 수 없습니다"}
+    row = None
+    fields = None
+    for r in results_rows(team=team):
+        ref = r.get("content_ref") or {}
+        if _row_key(ref) == ch:
+            row = r
+            fields = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
+                      "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
+            break
+    if not row:
+        return {"error": "콘텐츠를 찾을 수 없습니다(본문 미보존 항목일 수 있음)"}
+    old_model = (row.get("trace") or {}).get("model", "") or ""
+    result = run_pipeline(fields, mock=Handler.server_mock, team=team, model=model)
+    if result.get("error"):
+        return result
+    try:                                       # 산출이 동일해도 모델 표기가 갱신되도록 무조건 upsert
+        st.save_many([(fields, result.get("output") or {})], "rerun", source="재실행", team=team)
+    except Exception:
+        pass
+    if hasattr(st, "log_patch"):               # 이전 초안 보존(이력)
+        try:
+            st.log_patch(ch, "(재실행)", f"rerun:{old_model or '?'}->{model}",
+                         {"item_meta": row.get("item_meta"), "quality_meta": row.get("quality_meta"),
+                          "model": old_model},
+                         {"model": model}, team=team)
+        except Exception:
+            pass
+    _agg_bump()
+    return result
 
 
 def vocab() -> dict:
@@ -1508,6 +1551,77 @@ def learn_data(team=None) -> dict:
             "requirements": requirements}
 
 
+def learn_spec_md(team=None) -> str:
+    """파인튜닝 스펙·소요서(.md) 생성: 살아있는 검수·골든 수치를 근거로 한 요구사항 문서.
+    이 도구의 최종 산출물(관리자 주입 → 검수 → 골든 → 스펙·소요) · 기준치는 전부 논문 출처."""
+    d = learn_data(team)
+    if not d.get("ok"):
+        return "# 파인튜닝 소요서\n\n데이터가 없습니다."
+    rep = _LAST_LEARN_REPORT or {}
+    g = rep.get("golden") or {}
+    L = []
+    L.append("# 콘텐츠 분류·운영 특화 LLM · 파인튜닝 스펙 및 소요서")
+    L.append("")
+    L.append("자동 생성 문서 · 근거 수치는 팀 검수(HITL) 실데이터, 기준치는 검증 논문(LEARNING_DESIGN.md 서지).")
+    L.append("")
+    L.append("## 1. 목적·태스크 정의")
+    L.append("- 입력: 콘텐츠(서비스명·제목·부제·본문)")
+    L.append("- 출력: 리드문(summary) · 핵심 개체(entities) · 인텐트 · 콘텐츠 카테고리(IAB Tier1/2 사전) · 등급(G|R) · 품질 사유")
+    L.append("- 분류 기준(taxonomy)은 프롬프트 외재화 방식 유지(재학습 없이 개편 가능 · Llama Guard, Inan et al. 2023)")
+    L.append("")
+    L.append("## 2. 학습데이터 현황 (검수 합의 기반)")
+    L.append(f"- 정답셋(골든): **{d['golden_n']}건** (검수 유래 승격 + 관리자 등록 · 등급 분포 {d.get('grade_dist')})")
+    L.append(f"- 클래스 충족: **{d['covered']}/{d['class_total']}** (목표 {d['per_class_target']}건/클래스 · SetFit, Tunstall et al. 2022)")
+    aa = d.get("agreement")
+    L.append(f"- 검수 일치도: 단순 일치율 {aa if aa is not None else '·'} · Krippendorff α {d.get('alpha') if d.get('alpha') is not None else '·'} "
+             f"(참고 지표 · Artstein & Poesio 2008)")
+    if d.get("acc_ci"):
+        ci = d["acc_ci"]
+        L.append(f"- 현행 버전 정답 일치율: **{round(ci['acc']*100,1)}%** (95% CI {round(ci['lo']*100,1)}~{round(ci['hi']*100,1)}%, n={ci['n']} · Miller 2024)")
+    if g:
+        L.append(f"- 최근 학습 반영: 확정 {g.get('confirmed')} · 신규 {g.get('new')} · 분류 필요 {g.get('need_category')} · 의견 갈림 {g.get('disagree')}")
+    L.append(f"- 추출 가능 데이터: SFT {d['extractable']['sft']} · 선호쌍(DPO) {d['extractable']['dpo']} · 판단근거(rationale) {d['extractable']['rationale']}")
+    L.append("")
+    L.append("## 3. 소요(부족분) · 기준치 대비")
+    L.append("")
+    L.append("| 용도 | 기준 | 보유 | 부족 | 근거 |")
+    L.append("|---|---|---|---|---|")
+    for r in d.get("requirements", []):
+        L.append(f"| {r['kind']} | {r['target']} | {r['have']} | {r['lack']} | {r['basis']} |")
+    L.append("")
+    L.append("### 클래스별 부족분 (검수 대상 주입 우선순위)")
+    L.append("")
+    L.append("| Tier1 | 보유 | 부족 |")
+    L.append("|---|---|---|")
+    for c in sorted(d.get("coverage", []), key=lambda x: -x["lack"]):
+        if c["lack"] > 0:
+            L.append(f"| {c['cls']} | {c['have']} | {c['lack']} |")
+    L.append("")
+    L.append("## 4. 권장 학습 스펙 (전 항목 논문 근거)")
+    L.append("- 방법: 오픈 베이스 LLM + LoRA/QLoRA 어댑터 · 학습 자원 GPU 1장급 (Hu et al. 2021 · Dettmers et al. 2023, 48GB 1장으로 65B)")
+    L.append("- 1단계 SFT: 소량·고품질 우선(LIMA, Zhou et al. 2023 · 1k) · rationale 멀티태스크 병행 시 데이터 소요 절감(Distilling Step-by-Step, Hsieh et al. 2023)")
+    L.append("- 2단계 선호 정렬: 검수 교정 전/후 선호쌍으로 DPO(Rafailov et al. 2023 · RL 인프라 불필요)")
+    L.append("- 운영급 목표: 라벨 ~13.5k 축적 시 7B급 분류 LLM 성립 전례(Llama Guard, Inan et al. 2023)")
+    L.append("- 검수자 신뢰도 반영: 골드 문항 정확도 가중 합의(Oleson et al. 2011 · Snow et al. 2008) · Dawid-Skene EM 통계 병행(1979)")
+    L.append("")
+    L.append("## 5. 평가 계획")
+    L.append(f"- 평가셋: 큐레이션 목표 100건/축(tinyBenchmarks, Maia Polo et al. 2024) · 현재 골든 {d['golden_n']}건")
+    L.append("- 판정 규칙: 정확도에 95% CI 병기, 신뢰구간이 겹치는 비교는 판정 보류(Miller 2024)")
+    L.append("- 모델 선정: 같은 정답셋으로 후보 모델 실호출 비교('평가' 페이지) 결과를 스펙에 첨부")
+    L.append("")
+    L.append("### 검수자 신뢰도(참고)")
+    L.append("")
+    L.append("| 검수자 | 검수 | 합의 일치 | 골드 정확도 | EM 오류율 |")
+    L.append("|---|---|---|---|---|")
+    for r in d.get("reviewers", []):
+        L.append(f"| {r['reviewer']} | {r['n']} | {r.get('agree_rate') if r.get('agree_rate') is not None else '·'} "
+                 f"| {r.get('gold_acc') if r.get('gold_n', 0) >= 5 else '·'} ({r.get('gold_n', 0)}) "
+                 f"| {r.get('ds_error') if r.get('ds_error') is not None else '·'} |")
+    L.append("")
+    L.append("전체 서지·설계 근거: LEARNING_DESIGN.md")
+    return "\n".join(L)
+
+
 def _sft_system() -> str:
     """SFT 시스템 프롬프트: 분류 기준(taxonomy)을 지시문으로 외재화(Llama Guard 방식 →
     카테고리 개편 시 재학습 불필요)."""
@@ -1712,22 +1826,39 @@ def _arena_compute(team=None) -> dict:
     return d
 
 
-def raw_rows(limit: int = 100, team=None) -> dict:
-    """테스트 탭 · 로우 데이터: 최근 결과 원본(메타·품질 판정)을 가공 없이 반환."""
+def _row_key(ref: dict) -> str:
+    """검수 키(content_hash) 정합: supabase recent 는 body_hash 에 스토어 키(16자)를 담고,
+    sqlite payload 의 body_hash 는 본문 해시(12자) → 16자면 그대로, 아니면 재계산."""
     from .store import content_hash
+    bh = ref.get("body_hash") or ""
+    if isinstance(bh, str) and len(bh) == 16:
+        return bh
+    return content_hash({"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
+                         "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")})
+
+
+def raw_rows(limit: int = 100, team=None) -> dict:
+    """원본 목록: 판정 결과를 한 표로(필터·빠른 검수용). 검수 상태(합의·건수) 부착."""
     rows = results_rows(team=team)
+    st = get_store()
+    try:
+        fmap = st.feedback_map(team=team) if st else {}
+    except Exception:
+        fmap = {}
     out = []
     for r in reversed(rows[-int(limit):]):         # 최근순
         ref = r.get("content_ref") or {}
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
-        out.append({"hash": ref.get("body_hash") or content_hash({
-                        "displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
-                        "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}),
+        ch = _row_key(ref)
+        fb = fmap.get(ch) or {}
+        out.append({"hash": ch,
                     "service": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                     "grade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
                     "category": im.get("content_category", []) or [],
                     "model": (r.get("trace") or {}).get("model", "") or "",
+                    "review": qm.get("review", "") or "",
+                    "fb": {"verdict": fb.get("consensus") or fb.get("verdict") or "", "n": fb.get("n", 0)},
                     "item_meta": im, "quality_meta": qm})
     return {"ok": True, "items": out, "n": len(out)}
 
@@ -2143,6 +2274,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        elif self.path.startswith("/learn-spec"):        # 파인튜닝 스펙·소요서(.md · 관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            data = learn_spec_md(self._req_team()).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/markdown; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="prism_finetune_spec.md"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         elif self.path.startswith("/learn-data"):        # 학습 데이터 현황(관리자)
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
@@ -2461,6 +2603,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/rerun"):             # 관리자: 같은 콘텐츠를 다른 모델로 재실행
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(rerun_content(data.get("hash"), (data.get("model") or "").strip(),
+                                           self._req_team()), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/ingest-run"):
             try:
                 # 콘텐츠 인입은 관리자 통제(수동·자동 공통)
@@ -2648,7 +2802,43 @@ PAGE = """<!doctype html>
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
       goldenResult: null, goldenBusy: false, goldenMsg: '',
       rawData: null, rawSel: null,
-      async loadRaw() { try { const r = await (await fetch('/raw?limit=100', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; } } catch (e) {} },
+      async loadRaw() { try { const r = await (await fetch('/raw?limit=200', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; } } catch (e) {} },
+      // 원본 목록 필터(빠른 검수): 검색 + 등급/모델/서비스/검수 상태
+      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '',
+      get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
+      get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
+      get rawFiltered() {
+        return (((this.rawData||{}).items)||[]).filter((r) => {
+          if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
+          if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
+          if (this.rawModel && (r.model||'') !== this.rawModel) return false;
+          if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
+          if (this.rawRev === 'todo' && (r.fb && r.fb.verdict)) return false;
+          if (this.rawRev === 'done' && !(r.fb && r.fb.verdict)) return false;
+          return true;
+        });
+      },
+      async rawVerdict(r, v) {
+        if (!this.ensureReviewer()) return;
+        const had = !!(r.fb && r.fb.verdict);
+        const res = await this._postFb({ hash: r.hash, service: r.service, title: r.title, model: r.model || '', verdict: v, stage: 'review', note: '' });
+        if (res && res.error) { this._err(res.error); return; }
+        r.fb = Object.assign({}, r.fb, { verdict: v });
+        if (!had) this.celebratePoints(10, '검수 완료');
+      },
+      // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
+      rerunHash: '', rerunModel: '', rerunBusy: false, rerunMsg: '',
+      async runRerun() {
+        if (!this.rerunHash || !this.rerunModel) return;
+        if (!confirm('기존 초안을 덮어씁니다(이전 초안은 이력에 보존) · 진행할까요?')) return;
+        this.rerunBusy = true; this.rerunMsg = '';
+        try {
+          const r = await (await fetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: this.rerunHash, model: this.rerunModel }) })).json();
+          if (r && r.error) this.rerunMsg = r.error;
+          else { this.result = r; this.rerunMsg = '✓ 재실행 완료 · ' + this.rerunModel; this.loadDash(); this.loadRaw(); }
+        } catch (e) { this.rerunMsg = '재실행 실패'; }
+        this.rerunBusy = false;
+      },
       metaResults: null, metaBusy: false,
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
@@ -3062,6 +3252,14 @@ PAGE = """<!doctype html>
         } catch (e) { this._err('내보내기 실패'); }
       },
       ciTxt(ci) { return ci ? (this.pctTxt(ci.acc) + ' · 95% CI ' + this.pctTxt(ci.lo) + '~' + this.pctTxt(ci.hi) + ' (n=' + ci.n + ')') : '·'; },
+      async exportSpec() {
+        try {
+          const res = await fetch('/learn-spec', { headers: this._authHeaders() });
+          if (!res.ok) { this._err('소요서 생성 실패'); return; }
+          const blob = await res.blob(); const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = 'prism_finetune_spec.md'; a.click(); URL.revokeObjectURL(a.href);
+        } catch (e) { this._err('소요서 생성 실패'); }
+      },
       pctTxt(v) { return (v == null) ? '·' : (Math.round(v * 1000) / 10) + '%'; },
       // 카테고리 옵션(IAB Tier1 / Tier2) · 빈칸 채우기 피커용
       get categoryOptions() {
@@ -4897,6 +5095,26 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
       <div x-show="mod === 'content' && contentTab === 'run'" class="w-full space-y-4">
+        <!-- 같은 콘텐츠를 다른 모델로 재실행(초안 재생성 · 이전 초안은 이력 보존 후 덮어씀) -->
+        <section class="panel" data-fn><div class="panel-hd"><b>다른 모델로 재실행</b><span class="meta">같은 콘텐츠 · 모델만 바꿔 초안 재생성</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>선택한 콘텐츠의 초안을 <b>지정 모델</b>로 다시 만듭니다 · 기존 초안은 이력에 남기고 덮어씁니다.</li><li>모델별 초안 품질 비교·교정 귀속에 사용하세요.</li></ul>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select class="field" style="flex:1;min-width:240px;height:38px" x-model="rerunHash">
+                <option value="">콘텐츠 선택…</option>
+                <template x-for="c in (dashData ? dashData.contents : [])" x-bind:key="c.hash">
+                  <option x-bind:value="c.hash" x-text="(c.title || '(제목 없음)') + (c.model ? (' · 현재 ' + c.model) : '')"></option>
+                </template>
+              </select>
+              <select class="field" style="width:auto;min-width:170px;height:38px" x-model="rerunModel">
+                <option value="">모델 선택…</option>
+                <template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+              </select>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="rerunBusy || !rerunHash || !rerunModel" x-on:click="runRerun()" x-text="rerunBusy ? '재실행 중…' : '재실행'"></button>
+              <span class="text-xs text-muted" x-text="rerunMsg"></span>
+            </div>
+          </div>
+        </section>
         <!-- 추출 실행 = 기능 위젯(입력 방식 탭 + 폼) -->
         <section class="panel" data-fn>
           <div class="panel-hd"><b>추출 실행</b></div>
@@ -5649,6 +5867,7 @@ PAGE = """<!doctype html>
                     <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
                     <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
                     <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
+                    <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서)" data-tip-pos="top">소요서(.md) 생성</button>
                   </div>
                   <!-- 학습 소요 대비(기준치 = 논문 출처) -->
                   <div class="overflow-auto" style="margin-bottom:14px"><table class="ds-table"><thead><tr><th>용도</th><th>기준</th><th>보유</th><th>부족</th><th>근거</th></tr></thead><tbody>
@@ -5702,16 +5921,25 @@ PAGE = """<!doctype html>
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>원본 목록</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
-          <span class="ml-auto" style="display:flex;gap:8px">
-            <a class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center" href="/export.csv">CSV</a>
-            <a class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center" href="/report" target="_blank">HTML 리포트</a>
-            <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadRaw()" data-tip="새로고침" data-tip-pos="bottom" aria-label="로우 데이터 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <span class="ml-auto" style="display:flex;gap:8px;align-items:center">
+            <a class="copybtn" style="text-decoration:none" href="/export.csv" data-tip="전체 결과 CSV 다운로드" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>CSV</a>
+            <a class="copybtn" style="text-decoration:none" href="/report" target="_blank" data-tip="브라우저용 HTML 리포트 열기" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>리포트</a>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadRaw()" data-tip="새로고침" data-tip-pos="bottom" aria-label="원본 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>추출 결과 원본(메타 · 품질 판정)을 가공 없이 빠르게 확인합니다.</li><li>행을 클릭하면 <b>JSON 원문</b>이 펼쳐집니다.</li></ul>
-            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:130px">모델</th><th>카테고리</th><th>사유</th></tr></thead><tbody>
-              <template x-for="r in (rawData ? rawData.items : [])" x-bind:key="r.hash">
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>판정 결과 전체를 <b>한 표</b>로 봅니다 · 필터로 좁혀 빠르게 검수하세요.</li><li>행 클릭 = <b>JSON 원문</b> · 정확/문제 버튼 = 바로 판정.</li></ul>
+            <!-- 필터: 검색 + 등급/모델/서비스/검수 상태 -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+              <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
+              <select class="field" style="width:auto;height:34px" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
+              <select class="field" style="width:auto;height:34px" x-model="rawModel"><option value="">모델 전체</option><template x-for="m in rawModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select>
+              <select class="field" style="width:auto;height:34px" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+              <select class="field" style="width:auto;height:34px" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
+              <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
+            </div>
+            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:120px">모델</th><th>카테고리</th><th>사유</th><th style="width:120px">검수</th></tr></thead><tbody>
+              <template x-for="r in rawFiltered" x-bind:key="r.hash">
                 <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" x-on:keydown.enter="rawSel = r">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
                   <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top" x-text="r.title || '(제목 없음)'"></td>
@@ -5719,6 +5947,12 @@ PAGE = """<!doctype html>
                   <td class="text-xs text-muted tnum" x-text="r.model || '·'"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
                   <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template></td>
+                  <td x-on:click.stop>
+                    <span style="display:flex;gap:4px;align-items:center">
+                      <button type="button" class="verdictbtn verdictbtn--good" style="padding:3px 8px" x-bind:class="(r.fb&&r.fb.verdict==='good')?'is-on':''" x-on:click="rawVerdict(r,'good')"><span class="verdictbtn__dot"></span>정확</button>
+                      <button type="button" class="verdictbtn verdictbtn--bad" style="padding:3px 8px" x-bind:class="(r.fb&&r.fb.verdict==='bad')?'is-on':''" x-on:click="rawVerdict(r,'bad')"><span class="verdictbtn__dot"></span>문제</button>
+                    </span>
+                  </td>
                 </tr>
               </template>
             </tbody></table>
