@@ -3168,6 +3168,7 @@
   .filterbar .field{height:36px}
   .filterbar input.field{flex:1;min-width:180px}
   .ds-table td{vertical-align:middle}
+  .ds-badge[data-tip]{cursor:help}   /* 정의 있는 배지 = help 커서 통일 */
   .fbrow__note{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
   /* 프롬프트 스튜디오 · 단계별 모델 지정 */
@@ -4698,11 +4699,11 @@
             <button type="button" class="ds-iconbtn ml-auto" x-on:click="cmpModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-            <select class="field" style="width:auto;min-width:180px;height:34px" x-model.number="cmpL" x-show="draftsData && draftsData.items.length">
+            <select class="field" style="width:auto;min-width:180px;height:36px" x-model.number="cmpL" x-show="draftsData && draftsData.items.length">
               <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'ML'+i"><option x-bind:value="i" x-text="d.label"></option></template>
             </select>
             <span class="text-xs text-muted" x-show="draftsData && draftsData.items.length">vs</span>
-            <select class="field" style="width:auto;min-width:180px;height:34px" x-model.number="cmpR" x-show="draftsData && draftsData.items.length">
+            <select class="field" style="width:auto;min-width:180px;height:36px" x-model.number="cmpR" x-show="draftsData && draftsData.items.length">
               <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'MR'+i"><option x-bind:value="i" x-text="d.label"></option></template>
             </select>
           </div>
