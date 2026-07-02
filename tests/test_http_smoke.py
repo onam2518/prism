@@ -37,7 +37,11 @@ class TestButtonsEndToEnd(unittest.TestCase):
         os.environ["PRISM_BACKEND"] = "sqlite"
         os.environ["PRISM_DB"] = os.path.join(tempfile.mkdtemp(), "smoke.db")
         from http.server import ThreadingHTTPServer
+        from prism import config as _cfg
         from prism import serve
+        cls._orig_cfg_path = _cfg.DEFAULT_CONFIG_PATH   # 실제 config.json 오염 방지(격리)
+        _cfg.DEFAULT_CONFIG_PATH = os.path.join(tempfile.mkdtemp(), "config.json")
+        cls._cfg_mod = _cfg
         serve._STORE = None                    # 환경 반영 재초기화
         serve.Handler.server_mock = True
         cls.serve = serve
@@ -50,6 +54,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
     def tearDownClass(cls):
         cls.srv.shutdown()
         cls.serve._STORE = None
+        cls._cfg_mod.DEFAULT_CONFIG_PATH = cls._orig_cfg_path
 
     def ok(self, path, obj=None, **kw):
         status, body = _req(self.port, path, obj, **kw)
