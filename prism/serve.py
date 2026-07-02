@@ -1909,9 +1909,11 @@ def model_stats(team=None) -> dict:
     rows = results_rows(team=team)
     by = {}
     for r in rows:
-        m = (r.get("trace") or {}).get("model", "") or "(모델 미기록)"
-        g = by.setdefault(m, {"n": 0, "g": 0, "lead": 0, "lead_n": 0,
-                              "intents": {}, "cats": {}, "reasons": {}})
+        tr = r.get("trace") or {}
+        m = tr.get("model", "") or "(모델 미기록)"
+        ver = int(tr.get("version") or 1)
+        g = by.setdefault((m, ver), {"n": 0, "g": 0, "lead": 0, "lead_n": 0,
+                                     "intents": {}, "cats": {}, "reasons": {}})
         qm = r.get("quality_meta") or {}
         im = r.get("item_meta") or {}
         g["n"] += 1
@@ -1932,8 +1934,9 @@ def model_stats(team=None) -> dict:
     def topk(d, k=3):
         return [f"{a} ({b})" for a, b in sorted(d.items(), key=lambda x: -x[1])[:k]]
     out = []
-    for m, g in sorted(by.items(), key=lambda x: -x[1]["n"]):
-        out.append({"model": m, "n": g["n"], "gPct": round(g["g"] / g["n"] * 100) if g["n"] else 0,
+    for (m, ver), g in sorted(by.items(), key=lambda x: (x[0][0], -x[0][1])):
+        out.append({"model": m, "version": ver, "key": f"{m} · v{ver}",
+                    "n": g["n"], "gPct": round(g["g"] / g["n"] * 100) if g["n"] else 0,
                     "avgLead": round(g["lead"] / g["lead_n"]) if g["lead_n"] else 0,
                     "intents": topk(g["intents"]), "categories": topk(g["cats"]),
                     "reasons": topk(g["reasons"])})
@@ -2952,10 +2955,10 @@ PAGE = """<!doctype html>
       cmpModalOpen: false, cmpTitle: '',
       msData: null, msOn: [],
       async loadModelStats() {
-        try { const r = await (await fetch('/model-stats', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.msData = r; if (!this.msOn.length) this.msOn = r.models.map((m) => m.model); } } catch (e) {}
+        try { const r = await (await fetch('/model-stats', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.msData = r; if (!this.msOn.length) this.msOn = r.models.map((m) => m.key); } } catch (e) {}
       },
       toggleMs(m) { const i = this.msOn.indexOf(m); if (i >= 0) this.msOn.splice(i, 1); else this.msOn.push(m); },
-      get msCols() { return (((this.msData||{}).models)||[]).filter((m) => this.msOn.includes(m.model)); },
+      get msCols() { return (((this.msData||{}).models)||[]).filter((m) => this.msOn.includes(m.key)); },
       openCmpModal(r) { this.cmpTitle = r.title || '(제목 없음)'; this.cmpDraftHash = r.hash; this.cmpModalOpen = true; this.loadDrafts(); },
       async loadDrafts() {
         this.draftsData = null; this.cmpL = 0; this.cmpR = 1;
@@ -5603,25 +5606,25 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="ds-pilot w-full">
         <div class="space-y-4">
           <!-- 요소 단위 모델별 결과 현황: 같은 정보요소를 모델 축으로 비교 -->
-          <section class="panel" data-fn><div class="panel-hd"><b>모델별 결과 현황</b><span class="meta">같은 정보요소 · 모델 축 비교</span>
+          <section class="panel" data-fn><div class="panel-hd"><b>모델·버전별 결과 현황</b><span class="meta">같은 정보요소 · 모델과 버전 축으로 비교</span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadModelStats()" data-tip="새로고침" data-tip-pos="bottom" aria-label="모델별 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
             <div class="panel-bd">
               <div class="filterbar" style="gap:6px">
-                <template x-for="m in ((msData||{}).models||[])" x-bind:key="m.model">
-                  <button type="button" class="srcfilter__chip" x-bind:class="msOn.includes(m.model) ? 'sel' : ''" x-on:click="toggleMs(m.model)" x-text="m.model + ' (' + m.n + ')'"></button>
+                <template x-for="m in ((msData||{}).models||[])" x-bind:key="m.key">
+                  <button type="button" class="srcfilter__chip" x-bind:class="msOn.includes(m.key) ? 'sel' : ''" x-on:click="toggleMs(m.key)" x-text="m.key + ' (' + m.n + ')'"></button>
                 </template>
               </div>
               <template x-if="msCols.length">
                 <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:130px">정보요소</th>
-                  <template x-for="m in msCols" x-bind:key="'h'+m.model"><th x-text="m.model"></th></template>
+                  <template x-for="m in msCols" x-bind:key="'h'+m.key"><th x-text="m.key"></th></template>
                 </tr></thead><tbody>
-                  <tr><td class="text-ink">유통 가능 G</td><template x-for="m in msCols" x-bind:key="'g'+m.model"><td class="tnum" x-text="m.gPct + '%'"></td></template></tr>
-                  <tr><td class="text-ink">처리 건수</td><template x-for="m in msCols" x-bind:key="'n'+m.model"><td class="tnum" x-text="m.n"></td></template></tr>
-                  <tr><td class="text-ink">평균 리드문(자)</td><template x-for="m in msCols" x-bind:key="'l'+m.model"><td class="tnum" x-text="m.avgLead"></td></template></tr>
-                  <tr><td class="text-ink">인텐트 상위</td><template x-for="m in msCols" x-bind:key="'i'+m.model"><td class="text-xs text-muted" x-text="(m.intents||[]).join(' · ') || '·'"></td></template></tr>
-                  <tr><td class="text-ink">카테고리 상위</td><template x-for="m in msCols" x-bind:key="'c'+m.model"><td class="text-xs text-muted" x-text="(m.categories||[]).join(' · ') || '·'"></td></template></tr>
-                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="m in msCols" x-bind:key="'r'+m.model"><td class="text-xs text-muted" x-text="(m.reasons||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">유통 가능 G</td><template x-for="m in msCols" x-bind:key="'g'+m.key"><td class="tnum" x-text="m.gPct + '%'"></td></template></tr>
+                  <tr><td class="text-ink">처리 건수</td><template x-for="m in msCols" x-bind:key="'n'+m.key"><td class="tnum" x-text="m.n"></td></template></tr>
+                  <tr><td class="text-ink">평균 리드문(자)</td><template x-for="m in msCols" x-bind:key="'l'+m.key"><td class="tnum" x-text="m.avgLead"></td></template></tr>
+                  <tr><td class="text-ink">인텐트 상위</td><template x-for="m in msCols" x-bind:key="'i'+m.key"><td class="text-xs text-muted" x-text="(m.intents||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">카테고리 상위</td><template x-for="m in msCols" x-bind:key="'c'+m.key"><td class="text-xs text-muted" x-text="(m.categories||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="m in msCols" x-bind:key="'r'+m.key"><td class="text-xs text-muted" x-text="(m.reasons||[]).join(' · ') || '·'"></td></template></tr>
                 </tbody></table></div>
               </template>
               <div x-show="!msCols.length" class="text-xs text-muted">모델별 결과가 쌓이면 비교가 표시됩니다 · <b class="text-ink">콘텐츠 관리 · 다른 모델로 재실행</b>으로 초안을 만들어 보세요</div>

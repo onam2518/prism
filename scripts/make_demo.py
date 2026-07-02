@@ -152,9 +152,11 @@ DEMO_EXTRAS = {
         {"hash": "q2", "service": "뉴스", "title": "연예인 A·B 열애설 보도", "grade": "G", "review_reason": "사생활 보도 경계 사례", "reviewed": True, "split": True, "confidence": 0.66, "model": "solar-pro3-260323"},
         {"hash": "gold:ok:demo1", "service": "뉴스", "title": "국회 예산안 표결 처리", "grade": "G", "review_reason": "", "reviewed": False, "split": False, "confidence": None, "model": "solar-pro3-260323"}]},
     "mstats": {"ok": True, "models": [
-        {"model": "solar-pro3-260323", "n": 9, "gPct": 89, "avgLead": 39,
-         "intents": ["사건 경과 보도 (5)", "분석·해설 (4)"], "categories": ["News and Politics (5)", "Business and Finance (3)"], "reasons": ["clickbait (1)"]},
-        {"model": "gpt-5.4-mini", "n": 3, "gPct": 67, "avgLead": 34,
+        {"model": "solar-pro3-260323", "version": 2, "key": "solar-pro3-260323 · v2", "n": 6, "gPct": 92, "avgLead": 40,
+         "intents": ["사건 경과 보도 (4)", "분석·해설 (2)"], "categories": ["News and Politics (4)"], "reasons": []},
+        {"model": "solar-pro3-260323", "version": 1, "key": "solar-pro3-260323 · v1", "n": 3, "gPct": 78, "avgLead": 36,
+         "intents": ["사건 경과 보도 (1)", "분석·해설 (2)"], "categories": ["Business and Finance (3)"], "reasons": ["clickbait (1)"]},
+        {"model": "gpt-5.4-mini", "version": 1, "key": "gpt-5.4-mini · v1", "n": 3, "gPct": 67, "avgLead": 34,
          "intents": ["흥미·화제 (2)"], "categories": ["Entertainment (2)"], "reasons": ["clickbait (1)"]}]},
     "drafts": {"ok": True, "n": 2, "items": [
         {"label": "solar-pro3-260323 · v2 (현재)", "model": "solar-pro3-260323", "version": 2,
