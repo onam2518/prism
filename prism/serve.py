@@ -6747,60 +6747,11 @@ PAGE = """<!doctype html>
           <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
           이 기기에 저장 (재시작 후에도 유지)
         </label>
-        <p class="mt-3 text-xs text-muted">키 저장 시 연결을 확인합니다 [모델] 탭에서는 연결된 제공자의 모델만 선택 가능합니다</p>
-        </div>
-      </div>
-          </div>
-        </section>
-        <section class="panel" data-fn><div class="panel-hd"><b>모델 · 추론 강도</b><span class="meta">텍스트·이미지 모델과 추론 깊이</span></div>
-          <div class="panel-bd">
-        <div class="cfgsec">
-          <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted"> 리드문·메타</span></label>
-          <select class="field" x-bind:value="textValue" x-on:change="onTextPick($event.target.value)">
-            <template x-for="g in textGroups" x-bind:key="g.label">
-              <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
-                <template x-for="it in g.items" x-bind:key="it.model">
-                  <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.model || it.label"></option>
-                </template>
-              </optgroup>
-            </template>
-          </select>
-          <button type="button" x-show="cfg.hasKey" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
-            class="ds-btn ds-btn--secondary ds-btn--s-sm w-full mt-2 disabled:opacity-50">Solar 모델 새로고침</button>
-          <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
-        </div>
-
-        <div class="cfgsec">
-          <label class="lbl">이미지 모델 <span class="font-normal normal-case tracking-normal text-muted"> 이미지 이해</span></label>
-          <select class="field" x-bind:value="visionValue" x-on:change="onVisionPick($event.target.value)">
-            <template x-for="g in visionGroups" x-bind:key="g.label">
-              <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
-                <template x-for="it in g.items" x-bind:key="it.model || it.label">
-                  <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.label || it.model"></option>
-                </template>
-              </optgroup>
-            </template>
-          </select>
-          <p class="mt-1.5 text-xs text-muted">순수 사진은 멀티모달 모델 권장(Upstage는 텍스트형 이미지에 적합)</p>
-          <span class="mt-1 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
-        </div>
-
-        <div class="cfgsec">
-          <label class="lbl">추론 강도 (Reasoning Effort)</label>
-          <div class="seg">
-            <template x-for="o in reasoningOpts" x-bind:key="o.id">
-              <button type="button" x-on:click="setReasoning(o.id)"
-                x-bind:class="reasoning === o.id ? 'on' : ''" x-text="o.label"></button>
-            </template>
-          </div>
-          <p class="mt-1.5 text-xs text-muted">높일수록 추론 깊이는 늘고 속도는 느려집니다</p>
-        </div>
-
-        <div class="cfgsec">
-          <p class="text-xs text-muted">단계별 추출 프롬프트(추출·분석·검수·판정)는 <b class="text-ink">프롬프트 스튜디오</b>에서 관리합니다</p>
+        <p class="mt-3 text-xs text-muted">키 저장 시 연결을 확인합니다 · 아래 [모델] 카드에서는 연결된 제공자의 모델만 선택 가능합니다</p>
         </div>
           </div>
         </section>
+
       </div>
 
       <!-- ═══ 모듈: 평가 아레나 (게임화) · 팀 정확도 협동 스코어 + 리더보드 ═══ -->
