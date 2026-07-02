@@ -1014,10 +1014,10 @@ def apply_gold_answer(data: dict) -> dict:
 
 # ── 오늘의 미션(판정·보상 있는 형태) · 대상 = 불확실/불일치 콘텐츠(Lewis & Gale 1994) ──
 MISSIONS = [
-    {"id": "daily5", "label": "오늘 검수 5건", "total": 5, "bonus": 20},
-    {"id": "gold1", "label": "골드 문항 1건 정답", "total": 1, "bonus": 15},
-    {"id": "split1", "label": "불일치 콘텐츠 재검토 1건", "total": 1, "bonus": 15},
-    {"id": "fill1", "label": "분류 채우기 1건(골든 승격)", "total": 1, "bonus": 10},
+    {"id": "daily5", "label": "오늘의 검수", "total": 5, "bonus": 20},
+    {"id": "gold1", "label": "골드 정답", "total": 1, "bonus": 15},
+    {"id": "split1", "label": "불일치 재검토", "total": 1, "bonus": 15},
+    {"id": "fill1", "label": "분류 채우기", "total": 1, "bonus": 10},
 ]
 
 
@@ -3678,8 +3678,8 @@ PAGE = """<!doctype html>
       get missionList() { return (this.arenaData && this.arenaData.missions) || []; },
       get todayMission() {
         const q = (this.arenaData && this.arenaData.queue) || 0;
-        if (q > 0) return { txt: '검수 대기 ' + q + '건 · 지금 검수하면 스트릭 유지 🔥', to: 'review', cta: '검수하기' };
-        return { txt: '검수 대기 비었음 · 정답 일치율 점검하기', to: 'evaluate', cta: '평가' };
+        if (q > 0) return { txt: '대기 ' + q + '건 비우기 🔥', to: 'review', cta: '검수하기' };
+        return { txt: '일치율 점검', to: 'evaluate', cta: '평가' };
       },
       xpPct(r) { return r ? (r.points % 100) : 0; },                 // 레벨당 100pt
       xpToNext(r) { return r ? (r.level * 100 - r.points) : 0; },
@@ -4711,7 +4711,7 @@ PAGE = """<!doctype html>
     background:var(--ds-primary-tint);cursor:pointer;text-align:left;transition:background var(--ds-motion-fast)}
   .charcard__mission:hover{background:color-mix(in srgb,var(--ds-primary) 20%,transparent)}
   .charcard__mission-ic{flex:none;font-size:15px}
-  .charcard__mission-tx{flex:1;font-size:11.5px;color:var(--ds-text-secondary);line-height:1.45;word-break:keep-all}
+  .charcard__mission-tx{flex:1;font-family:var(--ds-font-game);font-size:11.5px;font-weight:500;color:var(--ds-text-secondary);line-height:1.45;word-break:keep-all;letter-spacing:-.01em}
   .charcard__mission-cta{flex:none;font-size:11px;font-weight:700;color:var(--ds-primary)}
   .charcard__missions{display:flex;flex-direction:column;gap:5px;margin-top:12px}
   .charcard__missions .charcard__mission{margin-top:0;padding:7px 12px}

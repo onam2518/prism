@@ -83,10 +83,10 @@ DEMO_ARENA = {
          "gold_n": 3, "gold_acc": 0.67, "quality_mult": 1.0, "consensus_matches": 8, "split_reviews": 1, "patches": 1, "golden_contribs": 2, "agree_rate": 0.78},
     ],
     "missions": [
-        {"id": "daily5", "label": "오늘 검수 5건", "total": 5, "bonus": 20, "done": 3, "completed": False},
-        {"id": "gold1", "label": "골드 문항 1건 정답", "total": 1, "bonus": 15, "done": 1, "completed": True},
-        {"id": "split1", "label": "불일치 콘텐츠 재검토 1건", "total": 1, "bonus": 15, "done": 0, "completed": False},
-        {"id": "fill1", "label": "분류 채우기 1건(골든 승격)", "total": 1, "bonus": 10, "done": 0, "completed": False},
+        {"id": "daily5", "label": "오늘의 검수", "total": 5, "bonus": 20, "done": 3, "completed": False},
+        {"id": "gold1", "label": "골드 정답", "total": 1, "bonus": 15, "done": 1, "completed": True},
+        {"id": "split1", "label": "불일치 재검토", "total": 1, "bonus": 15, "done": 0, "completed": False},
+        {"id": "fill1", "label": "분류 채우기", "total": 1, "bonus": 10, "done": 0, "completed": False},
     ],
 }
 
