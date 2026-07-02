@@ -3236,7 +3236,6 @@ PAGE = """<!doctype html>
       },
 
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
-      rerunHash: '', rerunModel: '', rerunBusy: false, rerunMsg: '',
       bulkModel: '', bulkBusy: false, bulkMsg: '',
       async runBulk() {
         if (!this.bulkModel) return;
@@ -3248,17 +3247,6 @@ PAGE = """<!doctype html>
           this.loadDash(); this.loadRaw();
         } catch (e) { this.bulkMsg = '일괄 실행 실패'; }
         this.bulkBusy = false;
-      },
-      async runRerun() {
-        if (!this.rerunHash || !this.rerunModel) return;
-        if (!confirm('기존 초안을 덮어씁니다(이전 초안은 이력에 보존) · 진행할까요?')) return;
-        this.rerunBusy = true; this.rerunMsg = '';
-        try {
-          const r = await (await fetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: this.rerunHash, model: this.rerunModel }) })).json();
-          if (r && r.error) this.rerunMsg = r.error;
-          else { this.result = r; this.rerunMsg = '✓ 재실행 완료 · ' + this.rerunModel; this.loadDash(); this.loadRaw(); }
-        } catch (e) { this.rerunMsg = '재실행 실패'; }
-        this.rerunBusy = false;
       },
       metaResults: null, metaBusy: false,
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
@@ -3672,7 +3660,7 @@ PAGE = """<!doctype html>
       goldenStatus: null,
       async loadGoldenStatus() { try { const r = await (await fetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenStatus = r; } catch (e) {} },
       // 관리자 골든 브라우저
-      goldenList: null, goldenMerge: true,
+      goldenList: null,
       async loadGoldenList() { try { const r = await (await fetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) {} },
       async removeGolden(h) {
         if (!confirm('이 골든 항목을 제거할까요? (평가 정답셋에서 빠집니다)')) return;
@@ -3738,19 +3726,6 @@ PAGE = """<!doctype html>
         this.celebratePoints(5, '분류 채움');
         (r && r.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
         this.loadGoldenStatus();
-      },
-      async registerGolden(ev) {
-        const f = ev.target.files && ev.target.files[0]; if (!f) return;
-        this.goldenMsg = '등록 중…';
-        const fd = new FormData(); fd.append('file', f); fd.append('merge', this.goldenMerge ? '1' : '0');
-        const h = {}; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken;
-        try {
-          const r = await (await fetch('/golden', { method: 'POST', headers: h, body: fd })).json();
-          this.goldenMsg = r.ok ? ('✓ ' + (r.merged ? '병합' : '교체') + ' ' + r.count + '건' + (r.skipped ? (' · 검증 제외 ' + r.skipped + '건') : '')) : (r.error || '실패');
-          this.loadAdmin(); this.loadGoldenList(); this.loadGoldenStatus();
-        }
-        catch (e) { this.goldenMsg = '오류'; }
-        ev.target.value = '';
       },
       async adminAct(action, member) {
         if (action === 'clear_feedback' && !confirm('우리 팀의 평가 피드백을 모두 삭제할까요?')) return;
@@ -4231,6 +4206,12 @@ PAGE = """<!doctype html>
         (d.filter || []).forEach((t) => rows.push(['조건형', t.cluster_id, (t.name || t.label || ''), t.n_contents || '']));
         this._dl('prism_topics.csv', rows);
       },
+      exportGolden() {                       // 정답셋 엑셀(CSV) 다운로드
+        const its = (this.goldenList && this.goldenList.items) || [];
+        const rows = [['제목', '등급', '카테고리', '유래 모델', '버전', '출처', '교정 필요']];
+        its.forEach((g) => rows.push([g.title || '', g.grade || '', (g.category || []).join(' · '), g.model || '', g.version ? ('v' + g.version) : '', g.source === 'manual' ? '직접' : '검수', g.fix_needed ? 'Y' : '']));
+        this._dl('prism_golden.csv', rows);
+      },
       exportUsers() {
         const us = (this.userData && this.userData.users) || []; const rows = [['user_id', '페르소나', '조회', '클릭률', '평균체류', '소비형태', '선호엔티티']];
         us.forEach((u) => rows.push([u.user_id, u.persona, u.engagement.views, u.engagement.click_rate, u.engagement.avg_dwell_sec, Object.entries(u.form).map((e) => e[0] + ':' + e[1]).join(' · '), (u.affinity_entities || []).map((e) => e[0]).join(' · ')]));
@@ -4442,6 +4423,9 @@ PAGE = """<!doctype html>
   .abslot .selctl__tag{height:28px;min-width:28px;border-radius:9px;font-size:13px}
   .abslot .field{height:32px;font-weight:600}
   .abvs{font-size:12px;font-weight:800;color:var(--ds-muted);letter-spacing:.04em}
+  .keyline{display:flex;align-items:center;gap:10px;padding:9px 0;flex-wrap:wrap}
+  .keyline + .keyline{border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))}
+  .keyline__nm{min-width:120px;font-size:12.5px;font-weight:700;color:var(--ds-ink);display:inline-flex;align-items:center;gap:7px}
   .stepline{display:flex;align-items:center;gap:10px;margin:2px 2px 0;min-height:32px}
   .stepline__no{font-family:var(--ds-font-game);font-size:11px;font-weight:700;color:#fff;
     background:var(--ds-violet,#1e84ff);border-radius:9999px;padding:4px 11px;letter-spacing:.03em;flex:none}
@@ -5616,9 +5600,9 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
       <div x-show="mod === 'content' && contentTab === 'run'" class="w-full space-y-4">
 
-        <!-- 추출 실행 = 기능 위젯(입력 방식 탭 + 폼) -->
+        <!-- 콘텐츠 추가(저장): 저장 시 사용 모델로 초안 자동 생성 · 모델 지정 실행은 STEP 2 -->
         <section class="panel" data-fn>
-          <div class="panel-hd"><b>추출 실행</b></div>
+          <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">저장 시 사용 모델로 초안이 자동 생성됩니다 · 모델 지정 실행은 STEP 2</span></div>
           <div class="panel-bd">
           <!-- 입력 방식 -->
           <div class="seg seg3 mb-5">
@@ -5707,7 +5691,7 @@ PAGE = """<!doctype html>
             <button type="button" x-on:click="run()" x-bind:disabled="loading"
               class="ds-btn ds-btn--primary ds-btn--s-lg disabled:opacity-50">
               <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
-              <span x-text="loading ? '실행 중' : '추출 실행'"></span>
+              <span x-text="loading ? '추가 중' : '콘텐츠 추가'"></span>
             </button>
             <span aria-live="polite" class="ml-auto text-sm text-[#ff4e33]" x-text="status"></span>
           </div>
@@ -5960,26 +5944,6 @@ PAGE = """<!doctype html>
                 </select></span>
               <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-md" x-bind:disabled="cfgBusy" x-on:click="loadModels()">모델 새로고침</button>
               <span class="text-xs text-muted" x-text="modelsMsg"></span>
-            </div>
-          </div>
-        </section>
-        <!-- 같은 콘텐츠를 다른 모델로 재실행(초안 재생성 · 이전 초안은 이력 보존 후 덮어씀) -->
-        <section class="panel" data-fn><div class="panel-hd"><b>단건 실행</b><span class="meta">콘텐츠 하나를 지정 모델로 초안 재생성</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>선택한 콘텐츠의 초안을 <b>지정 모델</b>로 다시 만듭니다 · 기존 초안은 이력에 남기고 덮어씁니다.</li><li>모델별 초안 품질 비교·교정 귀속에 사용하세요.</li></ul>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <select class="field" style="flex:1;min-width:240px;height:38px" x-model="rerunHash">
-                <option value="">콘텐츠 선택…</option>
-                <template x-for="c in (dashData ? dashData.contents : [])" x-bind:key="c.hash">
-                  <option x-bind:value="c.hash" x-text="(c.title || '(제목 없음)') + (c.model ? (' · 현재 ' + c.model) : '')"></option>
-                </template>
-              </select>
-              <select class="field" style="width:auto;min-width:170px;height:38px" x-model="rerunModel">
-                <option value="">모델 선택…</option>
-                <template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-              </select>
-              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="rerunBusy || !rerunHash || !rerunModel" x-on:click="runRerun()" x-text="rerunBusy ? '재실행 중…' : '재실행'"></button>
-              <span class="text-xs text-muted" x-text="rerunMsg"></span>
             </div>
           </div>
         </section>
@@ -6463,15 +6427,13 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'testset' && testTab === 'golden'" x-cloak class="w-full space-y-4">
         <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋(골든) 목록</b>
           <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수로 확정 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 직접 등록 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
-          <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenList()" data-tip="새로고침" data-tip-pos="bottom" aria-label="정답셋 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <span class="ml-auto" style="display:flex;gap:6px">
+          <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-show="goldenList && goldenList.items && goldenList.items.length" x-on:click="exportGolden()" data-tip="엑셀 다운로드 (CSV)" data-tip-pos="bottom" aria-label="정답셋 엑셀 다운로드"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg></button>
+          <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadGoldenList()" data-tip="새로고침" data-tip-pos="bottom" aria-label="정답셋 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격되고, 관리자가 .jsonl 로 보완 등록할 수 있습니다.</li><li>업로드 형식 <b>{content, expected:{finalGrade, reasons, content_category}}</b> · 등록 시 등급·카테고리를 사전 기준으로 검증합니다.</li><li>평가와 어긋나 <b>오류 의심</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <label class="ds-btn ds-btn--secondary" style="cursor:pointer">정답셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
-              <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" x-model="goldenMerge"> 기존에 병합(해제 시 전체 교체)</label>
-              <span class="text-xs text-muted" x-text="goldenMsg"></span>
-            </div>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다.</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
             <template x-if="goldenList && goldenList.items && goldenList.items.length">
               <div style="margin-top:12px">
               <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
@@ -6687,11 +6649,12 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'system'" x-cloak class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>데이터 관리</b><span class="meta">삭제는 되돌릴 수 없습니다 · 우리 팀 데이터만 영향</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
           <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:12px"><li>삭제는 <b>되돌릴 수 없습니다</b> · 우리 팀 데이터만 영향합니다.</li><li>로컬 적재 데이터 초기화는 <b>이 기기</b>의 SQLite 에만 영향합니다.</li></ul>
             <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_feedback')">평가 피드백 전체 삭제</button>
-              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_contents')">검토 콘텐츠 전체 삭제</button>
-              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_golden')">정답셋 전체 삭제</button>
-              <button type="button" x-show="backend !== 'supabase'" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" style="height:34px" x-on:click="clearStore()">로컬 적재 데이터 초기화 <span class="tnum" x-text="'(' + (cfg.storedCount || 0) + '건)'"></span></button>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="adminAct('clear_feedback')">평가 피드백 전체 삭제</button>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="adminAct('clear_contents')">검토 콘텐츠 전체 삭제</button>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="adminAct('clear_golden')">정답셋 전체 삭제</button>
+              <button type="button" x-show="backend !== 'supabase'" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="clearStore()">로컬 적재 데이터 초기화 <span class="tnum" x-text="'(' + (cfg.storedCount || 0) + '건)'"></span></button>
             </div>
             <div x-show="backend === 'supabase' && adminData && adminData.team" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -6714,63 +6677,41 @@ PAGE = """<!doctype html>
             <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 서버에 키 미설정(관리자 확인 필요)'"></span></p>
         </div>
         <div x-show="!cfg.keyManagedByServer || (adminData && adminData.isAdmin)">
-        <!-- 통합 라우터 카드 -->
-        <div class="routercard">
-          <div class="rc-h"><b>통합 라우터</b><span class="rc-badge">권장</span></div>
-          <p class="rc-d">한 키로 여러 모델(OpenAI · Anthropic · Google · Solar 등)을 호출합니다</p>
-          <template x-for="s in ['bizrouter', 'timely']" x-bind:key="s">
-            <div class="krow">
-              <div class="krow-top">
-                <span class="krow-nm" x-text="keyDefs[s].label.replace(' 키', '')"></span>
-                <span class="krow-st"><span class="sdot" x-bind:class="keyState(s) ? 'ok' : 'off'"></span><span x-text="keyState(s) ? '연결됨' : '미연결'"></span></span>
+              <div class="subhd" style="margin:2px 0 6px">통합 라우터 <span class="ds-badge ds-badge--intent" style="cursor:help" data-tip="한 키로 여러 제공자 모델을 호출하는 방식 · 키 관리가 단순해 권장" data-tip-pos="top">권장</span></div>
+              <ul class="ds-bullets" style="margin-bottom:6px"><li>한 키로 <b>여러 모델</b>(OpenAI · Anthropic · Google · Solar 등)을 호출합니다.</li></ul>
+              <template x-for="s in ['bizrouter', 'timely']" x-bind:key="s">
+                <div class="keyline">
+                  <span class="keyline__nm"><span x-text="keyDefs[s].label.replace(' 키', '')"></span><span class="sdot" x-bind:class="keyState(s) ? 'ok' : 'off'" style="cursor:help" x-bind:data-tip="keyState(s) ? '연결됨' : '미연결 · 키를 저장하면 연결됩니다'" data-tip-pos="top"></span></span>
+                  <div class="keyin" style="flex:1;min-width:220px;margin:0">
+                    <input x-bind:type="keyShow[s] ? 'text' : 'password'" x-model="keyInputs[s]" x-bind:placeholder="keyDefs[s].ph" class="field" autocomplete="off">
+                    <button type="button" class="eye" x-on:click="keyShow[s] = !keyShow[s]" aria-label="키 보기">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                  </div>
+                  <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
+                  <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
+                  <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
+                </div>
+              </template>
+              <div class="subhd" style="margin:18px 0 6px">직접 호출</div>
+              <ul class="ds-bullets" style="margin-bottom:6px"><li>각 회사 키로 직접 호출합니다 · 통합 라우터와 함께 등록해도 됩니다.</li></ul>
+              <div class="keyline">
+                <span class="keyline__nm">Upstage Solar<span class="sdot" x-bind:class="cfg.hasKey ? 'ok' : 'off'" style="cursor:help" x-bind:data-tip="cfg.hasKey ? '연결됨' : '미연결 · 키를 저장하면 연결됩니다'" data-tip-pos="top"></span></span>
+                <div class="keyin" style="flex:1;min-width:220px;margin:0">
+                  <input x-bind:type="keyShow.solar ? 'text' : 'password'" x-model="keyInputs.solar" x-bind:placeholder="keyDefs.solar.ph" class="field" autocomplete="off">
+                  <button type="button" class="eye" x-on:click="keyShow.solar = !keyShow.solar" aria-label="키 보기">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+                <button type="button" x-on:click="saveKey('solar')" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
+                <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
+                <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
+                <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
               </div>
-              <div class="keyin">
-                <input x-bind:type="keyShow[s] ? 'text' : 'password'" x-model="keyInputs[s]" x-bind:placeholder="keyDefs[s].ph" class="field" autocomplete="off">
-                <button type="button" class="eye" x-on:click="keyShow[s] = !keyShow[s]" aria-label="키 보기">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
+              <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
+                <label class="flex cursor-pointer items-center gap-2 text-[13px] text-body" style="margin:0"><input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet"> 이 기기에 저장 (재시작 후에도 유지)</label>
+                <ul class="ds-bullets" style="margin-top:8px"><li>키 저장 시 연결을 확인합니다 · 기본 실행 모델은 <b>콘텐츠 관리 · 모델 실행 · 사용 모델</b>에서 선택합니다.</li></ul>
               </div>
-              <div class="mt-2 flex flex-wrap items-center gap-2">
-                <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
-                  class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
-                <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
-                <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
-              </div>
-            </div>
-          </template>
-        </div>
-
-        <!-- 직접 호출(Solar) · 통합 라우터처럼 카드로 묶음 -->
-        <div class="routercard" style="margin-top:14px">
-          <div class="rc-h"><b>직접 호출</b></div>
-          <ul class="ds-bullets"><li>각 회사 키로 직접 호출합니다.</li><li>통합 라우터와 함께 등록해도 됩니다.</li></ul>
-          <div class="krow">
-            <div class="krow-top">
-              <span class="krow-nm">Upstage Solar</span>
-              <span class="krow-st"><span class="sdot" x-bind:class="cfg.hasKey ? 'ok' : 'off'"></span><span x-text="cfg.hasKey ? '연결됨' : '미연결'"></span></span>
-            </div>
-            <div class="keyin">
-              <input x-bind:type="keyShow.solar ? 'text' : 'password'" x-model="keyInputs.solar" x-bind:placeholder="keyDefs.solar.ph" class="field" autocomplete="off">
-              <button type="button" class="eye" x-on:click="keyShow.solar = !keyShow.solar" aria-label="키 보기">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-            </div>
-            <div class="mt-2 flex flex-wrap items-center gap-2">
-              <button type="button" x-on:click="saveKey('solar')" x-bind:disabled="cfgBusy"
-                class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
-              <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy"
-                class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
-              <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
-              <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
-            </div>
-          </div>
-        </div>
-
-        <label class="mt-4 flex cursor-pointer items-center gap-2 text-[13px] text-body">
-          <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
-          이 기기에 저장 (재시작 후에도 유지)
-        </label>
-        <p class="mt-3 text-xs text-muted">키 저장 시 연결을 확인합니다 · 아래 [모델] 카드에서는 연결된 제공자의 모델만 선택 가능합니다</p>
         </div>
           </div>
         </section>
