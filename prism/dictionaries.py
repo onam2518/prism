@@ -204,6 +204,9 @@ IAB_TIER2 = CONTENT_CATEGORY_TIER2   # 하위 호환 별칭
 _T1_LOOKUP = {t.lower(): t for t in IAB_TIER1}
 _T2_LOOKUP = {t2.lower(): (t1, t2)                       # tier2(소문자) → (tier1, 정식 tier2)
               for t1, t2s in CONTENT_CATEGORY_TIER2.items() for t2 in t2s}
+# LLM 자유 표기 별칭 → 정식 Tier2 스냅 회복(2026-07-02 gold 표본 실측 손실 기준).
+# 사전 자체(1312 정의)는 불변 · 별칭만 정식 값으로 흡수.
+_T2_LOOKUP.setdefault("world news", ("News and Politics", "International News"))
 
 
 def normalize_content_category(raw: str) -> str:
@@ -219,6 +222,9 @@ def normalize_content_category(raw: str) -> str:
             t2 = valid.get(parts[1].lower())
             if t2:
                 return f"{t1} / {t2}"
+            hit = _T2_LOOKUP.get(parts[1].lower())       # 별칭 회복(같은 Tier1 한정)
+            if hit and hit[0] == t1:
+                return f"{hit[0]} / {hit[1]}"
         return t1
     # Tier1 미매칭: 조각 중 하나가 Tier2 사전에 있으면 그 Tier1 로 복구
     for p in parts:

@@ -784,6 +784,37 @@ def make_text_llm(cfg: Config, mock: bool) -> LLMClient:
     return LLMClient(mock=mock, config=cfg)
 
 
+# 모델 계열 → 라우터 public id 접두(bizrouter=provider/model 형식)
+_MODEL_FAMILY_PREFIX = {"gpt": "openai", "o1": "openai", "o3": "openai", "o4": "openai",
+                        "claude": "anthropic", "gemini": "google", "deepseek": "deepseek"}
+
+
+def llm_for_model(model: str, mock: bool):
+    """모델 id 로 제공자·엔드포인트·키를 해석해 전용 LLMClient 구성(다중 모델 실호출 라우팅).
+    solar* = Upstage 직접, 그 외 = 키 보유 라우터(bizrouter=provider/model · timely=bare id).
+    반환 (llm, route). 호출 불가(키 없음) 모델은 (None, 사유)."""
+    cfg = Config.load()                                # 모델별 사본(공유 cfg 변형 방지)
+    mid = (model or "").strip() or cfg.model
+    if mock:
+        return LLMClient(mock=True, config=cfg, model=mid), "mock"
+    bare = mid.split("/")[-1]
+    if bare.startswith("solar"):
+        if not (cfg.api_key or IMG._api_key()):
+            return None, "Upstage 키 없음"
+        return LLMClient(config=cfg, model=bare), "solar"
+    routers = ([cfg.text_provider] if IMG.is_router(cfg.text_provider) else []) + ["bizrouter", "timely"]
+    for svc in dict.fromkeys(routers):                 # 설정 제공자 우선, 중복 제거
+        if not IMG.router_key(svc):
+            continue
+        pid = bare if svc == "timely" else mid
+        if svc == "bizrouter" and "/" not in pid:
+            fam = next((v for k, v in _MODEL_FAMILY_PREFIX.items() if pid.startswith(k)), "")
+            pid = (fam + "/" + pid) if fam else pid
+        cfg.chat_url = IMG.router_chat_url(svc)
+        return LLMClient(config=cfg, api_key=IMG.router_key(svc), model=pid), svc
+    return None, "라우터 키 없음(BizRouter·Timely)"
+
+
 def sync_prompt():
     """단계별 모델의 프롬프트(원천) + 학습 보정(피드백)을 추출 파이프라인에 반영.
 
@@ -1127,8 +1158,8 @@ _LAST_LEARN_REPORT = {}                               # 최근 일배치 결과(
 
 
 def compare_models_on_golden(models=None, team=None) -> dict:
-    """골든셋(사람 확정 정답)을 여러 모델에 돌려 정합성 비교 → 최적 모델 선택 근거.
-    모델별 grade_accuracy·reason_jaccard·비용 비교."""
+    """골든셋(사람 확정 정답)을 여러 모델에 실호출로 돌려 정합성 비교 → 최적 모델 선택 근거.
+    모델별 제공자·엔드포인트를 라우팅(llm_for_model)하고, 키 없는 모델은 건너뛰되 사유를 노출."""
     st = get_store()
     if not (st and hasattr(st, "get_golden")):
         return {"ok": False, "error": "골든셋을 지원하지 않는 저장소"}
@@ -1138,18 +1169,24 @@ def compare_models_on_golden(models=None, team=None) -> dict:
     from . import abtest
     from . import harness as H
     cfg = Config.load()
-    models = [m for m in (models or []) if m] or [cfg.model]
-    out = []
-    for model in models:
-        llm = make_text_llm(cfg, Handler.server_mock)
-        llm.model = model                            # 모델 override 후 골든 재현
+    cand = list(dict.fromkeys(m for m in (models or []) if m)) or [cfg.model]
+    out, skipped = [], []
+    for model in cand:
+        llm, route = llm_for_model(model, Handler.server_mock)
+        if llm is None:
+            skipped.append({"model": model, "reason": route})
+            continue
         m = abtest.evaluate(rows[:200], H.Methodology(name=model), llm, concurrency=8)
-        out.append({"model": model, "n": min(len(rows), 200),
+        out.append({"model": model, "route": route, "real": (not llm.mock), "n": min(len(rows), 200),
                     "grade_accuracy": m.get("grade_accuracy"), "reason_jaccard": m.get("reason_jaccard"),
                     "reason_exact_match": m.get("reason_exact_match"), "empty_rate": m.get("empty_rate"),
                     "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens")})
+    if not out:
+        return {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
+                "skipped": skipped, "golden_n": len(rows)}
     out.sort(key=lambda r: (-(r.get("grade_accuracy") or 0), -(r.get("reason_jaccard") or 0)))
-    return {"ok": True, "models": out, "best": (out[0]["model"] if out else None), "golden_n": len(rows)}
+    return {"ok": True, "models": out, "skipped": skipped,
+            "best": out[0]["model"], "golden_n": len(rows)}
 
 
 def learning_batch(team=None, models=None) -> dict:
@@ -4765,10 +4802,11 @@ PAGE = """<!doctype html>
                   </div>
                   <!-- 다중 모델 비교 표 -->
                   <template x-if="learnReport.compare && learnReport.compare.ok && learnReport.compare.models.length">
-                    <div class="overflow-auto" style="margin-bottom:12px"><table class="ds-table"><thead><tr><th>모델</th><th>등급 정합성</th><th>사유 유사도</th><th>공백률</th><th>비용($)</th><th></th></tr></thead><tbody>
+                    <div class="overflow-auto" style="margin-bottom:12px"><table class="ds-table"><thead><tr><th>모델</th><th>호출</th><th>등급 정합성</th><th>사유 유사도</th><th>공백률</th><th>비용($)</th><th></th></tr></thead><tbody>
                       <template x-for="(m,mi) in learnReport.compare.models" x-bind:key="m.model">
                         <tr>
                           <td class="text-ink" x-text="m.model"></td>
+                          <td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td>
                           <td class="tnum" x-text="pctTxt(m.grade_accuracy)"></td>
                           <td class="tnum" x-text="pctTxt(m.reason_jaccard)"></td>
                           <td class="tnum" x-text="pctTxt(m.empty_rate)"></td>
@@ -4777,6 +4815,13 @@ PAGE = """<!doctype html>
                         </tr>
                       </template>
                     </tbody></table></div>
+                  </template>
+                  <!-- 비교에서 제외된 모델(키 없음 등 사유) -->
+                  <template x-if="learnReport.compare && learnReport.compare.skipped && learnReport.compare.skipped.length">
+                    <div class="text-xs text-muted" style="margin-bottom:12px">비교 제외: <span x-text="learnReport.compare.skipped.map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
+                  </template>
+                  <template x-if="learnReport.compare && !learnReport.compare.ok && learnReport.compare.error">
+                    <div class="text-xs text-muted" style="margin-bottom:12px">모델 비교 실패: <span x-text="learnReport.compare.error"></span></div>
                   </template>
                 </div>
               </template>
