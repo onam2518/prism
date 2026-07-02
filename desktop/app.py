@@ -85,8 +85,14 @@ def main():
     _seed_user_config()
     threading.Thread(target=_start_server, daemon=True).start()
     _wait_ready()
+    # 다운로드 허용: 템플릿(xlsx/csv)·엑셀 내보내기 앵커가 WKWebView 에서 동작하도록 (기본 False 면 무시됨)
+    webview.settings["ALLOW_DOWNLOADS"] = True
     webview.create_window("Prism", URL, width=1240, height=860, min_size=(900, 600))
-    webview.start()                            # macOS: Cocoa/WKWebView 백엔드
+    # localStorage 영속: 기본 private_mode=True 는 재시작마다 로그인 토큰·아이디/비밀번호 저장·
+    # 배지 기준선을 지운다 → 사용자 디렉터리에 영속 스토리지 지정
+    storage = os.path.expanduser("~/Library/Application Support/Prism/webview")
+    os.makedirs(storage, exist_ok=True)
+    webview.start(private_mode=False, storage_path=storage)   # macOS: Cocoa/WKWebView 백엔드
 
 
 if __name__ == "__main__":
