@@ -3021,6 +3021,7 @@ PAGE = """<!doctype html>
       msVers(model) { return (((this.msData||{}).models)||[]).filter((m) => m.model === model).map((m) => m.version).sort((a,b)=>b-a); },
       msCol(model, ver) { return (((this.msData||{}).models)||[]).find((m) => m.model === model && String(m.version) === String(ver)) || null; },
       get abCols() { return [this.msCol(this.abAm, this.abAv), this.msCol(this.abBm, this.abBv)].filter(Boolean); },
+      abWin(f, mi) { const c = this.abCols; return c.length === 2 && (c[mi][f] || 0) > (c[1 - mi][f] || 0); },
       openCmpModal(r) { this.cmpTitle = r.title || '(제목 없음)'; this.cmpDraftHash = r.hash; this.cmpModalOpen = true; this.loadDrafts(); },
       async loadDrafts() {
         this.draftsData = null; this.cmpL = 0; this.cmpR = 1; this.cmpAmiss = false; this.cmpBmiss = false;
@@ -4232,6 +4233,14 @@ PAGE = """<!doctype html>
   .abslot .selctl__tag{height:28px;min-width:28px;border-radius:9px;font-size:13px}
   .abslot .field{height:32px;font-weight:600}
   .abvs{font-size:12px;font-weight:800;color:var(--ds-muted);letter-spacing:.04em}
+  .subhd{display:flex;align-items:center;gap:8px;margin:18px 16px 8px;font-family:var(--ds-font-game);
+    font-size:13.5px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
+  .subhd .meta{font-family:var(--ds-font-sans);font-size:11.5px;font-weight:500;color:var(--ds-muted)}
+  .abbar{display:flex;align-items:center;gap:8px;min-width:160px}
+  .abbar__track{flex:1;height:6px;border-radius:99px;background:var(--ds-hairline-soft,rgba(0,0,0,.06));overflow:hidden}
+  .abbar__fill{height:100%;border-radius:99px;background:var(--ds-violet,#1e84ff)}
+  .abbar--b .abbar__fill{background:#ff6a3d}
+  .abwin{font-size:10.5px;font-weight:800;color:var(--ds-success,#18ba45)}
   .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
   .panel .filterbar{margin-left:16px;margin-right:16px}   /* 표 인셋(16px)과 좌우 정렬 */
   .filterbar .field{height:36px}
@@ -5764,20 +5773,25 @@ PAGE = """<!doctype html>
           <!-- 비교 결과: 요소별 현황 표 + 콘텐츠별 비교 표(상단 A/B 기준) -->
           <section class="panel" data-fn><div class="panel-hd"><b>비교 결과</b><span class="meta">상단 A/B 기준 · 요소별 현황과 콘텐츠별 비교</span></div>
             <div class="panel-bd">
+              <div class="subhd" style="margin-top:4px">요소별 현황 <span class="meta">막대 = 유통 가능 비율 · ▲ = 우세</span></div>
               <template x-if="abCols.length">
                 <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:130px">항목</th>
                   <template x-for="(m,mi) in abCols" x-bind:key="'h'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : 'background:var(--ds-violet,#1e84ff)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.key"></span></th></template>
                 </tr></thead><tbody>
-                  <tr><td class="text-ink">유통 가능 G</td><template x-for="(m,mi) in abCols" x-bind:key="'g'+mi"><td class="tnum" x-text="m.gPct + '%'"></td></template></tr>
-                  <tr><td class="text-ink">처리 건수</td><template x-for="(m,mi) in abCols" x-bind:key="'n'+mi"><td class="tnum" x-text="m.n"></td></template></tr>
+                  <tr><td class="text-ink">유통 가능 G</td><template x-for="(m,mi) in abCols" x-bind:key="'g'+mi"><td>
+                    <span class="abbar" x-bind:class="mi ? 'abbar--b' : ''">
+                      <span class="abbar__track"><span class="abbar__fill" x-bind:style="'width:' + Math.max(m.gPct, 3) + '%'"></span></span>
+                      <b class="tnum" x-text="m.gPct + '%'"></b><span class="abwin" x-show="abWin('gPct', mi)">▲</span>
+                    </span></td></template></tr>
+                  <tr><td class="text-ink">처리 건수</td><template x-for="(m,mi) in abCols" x-bind:key="'n'+mi"><td><b class="tnum" x-text="m.n"></b> <span class="abwin" x-show="abWin('n', mi)">▲</span></td></template></tr>
                   <tr><td class="text-ink">평균 리드문(자)</td><template x-for="(m,mi) in abCols" x-bind:key="'l'+mi"><td class="tnum" x-text="m.avgLead"></td></template></tr>
-                  <tr><td class="text-ink">인텐트 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'i'+mi"><td class="text-xs text-muted" x-text="(m.intents||[]).join(' · ') || '·'"></td></template></tr>
-                  <tr><td class="text-ink">카테고리 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'c'+mi"><td class="text-xs text-muted" x-text="(m.categories||[]).join(' · ') || '·'"></td></template></tr>
-                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'r'+mi"><td class="text-xs text-muted" x-text="(m.reasons||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">인텐트 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'i'+mi"><td><template x-for="t in (m.intents||[])" x-bind:key="'it'+mi+t"><span class="ds-badge ds-badge--intent" style="margin:1px" x-text="t"></span></template><span x-show="!(m.intents||[]).length" class="text-xs text-muted">·</span></td></template></tr>
+                  <tr><td class="text-ink">카테고리 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'c'+mi"><td><template x-for="t in (m.categories||[])" x-bind:key="'ct'+mi+t"><span class="ds-badge ds-badge--category" style="margin:1px" x-text="t"></span></template><span x-show="!(m.categories||[]).length" class="text-xs text-muted">·</span></td></template></tr>
+                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'r'+mi"><td><template x-for="t in (m.reasons||[])" x-bind:key="'rt'+mi+t"><span class="ds-badge ds-badge--reason" style="margin:1px" x-text="t"></span></template><span x-show="!(m.reasons||[]).length" class="text-xs text-muted">·</span></td></template></tr>
                 </tbody></table></div>
               </template>
               <div x-show="!abCols.length" class="text-xs text-muted" style="margin:0 16px 10px">모델·버전 결과가 쌓이면 A/B 비교가 표시됩니다 · <b class="text-ink">콘텐츠 관리 · 모델 실행</b>으로 초안을 만들어 보세요</div>
-              <div class="text-xs text-muted" style="margin:14px 16px 6px"><b class="text-ink">콘텐츠별 비교</b> · 클릭하면 팝업에서 상단 A/B 기준으로 초안을 나란히 봅니다</div>
+              <div class="subhd">콘텐츠별 비교 <span class="meta">클릭 = 팝업에서 A/B 초안 나란히</span></div>
               <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:150px">현재 모델</th><th style="width:56px">버전</th></tr></thead><tbody>
                 <template x-for="r in ((rawData||{}).items||[])" x-bind:key="'cmp'+r.hash">
                   <tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openCmpModal(r)" x-on:keydown.enter="openCmpModal(r)" data-tip="초안 비교 팝업 열기" data-tip-pos="top">
