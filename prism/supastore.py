@@ -17,6 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from .store import level_of
+
 
 def configured() -> bool:
     return bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY"))
@@ -585,7 +587,7 @@ class SupabaseStore:
             meta = names.get(rid, {})
             leaderboard.append({"reviewer": meta.get("name", rid), "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
-                                "level": 1 + pts // 100, "streak": _streak(days_by.get(rid, set())),
+                                "level": level_of(pts), "streak": _streak(days_by.get(rid, set())),
                                 "char": meta.get("avatar", "boksil"), "progress": _prog(v["reviews"]),
                                 "week_points": round(wk_base * mult) + (bonuses.get(rid) or {}).get("week", 0),
                                 "last_week_points": round(pv_base * mult),

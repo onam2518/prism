@@ -15,6 +15,23 @@ def content_hash(content: dict) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
 
 
+LEVEL_MAX = 50
+
+
+def level_floor(level: int) -> int:
+    """레벨 도달에 필요한 누적 pt. 구간 요구치 = 100 + 80×(레벨-1)씩 증가(등차).
+    만렙(50) = 98,980pt ≈ 검수 1만 건(건당 10pt): 개인 1만 건 검수 완주 설계."""
+    return (level - 1) * 100 + 40 * (level - 1) * (level - 2)
+
+
+def level_of(points: int) -> int:
+    """누적 pt → 레벨(1~LEVEL_MAX). 초반 짧고 후반 길어지는 커브(Flow: 잦은 초기 보상)."""
+    lvl = 1
+    while lvl < LEVEL_MAX and points >= level_floor(lvl + 1):
+        lvl += 1
+    return lvl
+
+
 class Store:
     def __init__(self, path: str):
         self.path = path
@@ -721,7 +738,7 @@ class Store:
             pv_base = v["pv_reviews"] * 10 + v["pv_corr"] * 25
             leaderboard.append({"reviewer": rv, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
-                                "level": 1 + pts // 100, "streak": _streak(days_by.get(rv, set())),
+                                "level": level_of(pts), "streak": _streak(days_by.get(rv, set())),
                                 "char": chars.get(rv, "boksil"), "progress": _prog(v["reviews"]),
                                 "week_points": round(wk_base * mult) + (bonuses.get(rv) or {}).get("week", 0),
                                 "last_week_points": round(pv_base * mult),

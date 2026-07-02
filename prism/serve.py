@@ -3797,27 +3797,35 @@ PAGE = """<!doctype html>
       flowStageKr(L) { return L >= 10 ? '마스터' : L >= 4 ? '정착' : '입문'; },
       badges() {
         const m = this.arenaMe; const r = (m&&m.reviews)||0, c = (m&&m.corrections)||0, s = (m&&m.streak)||0, L = (m&&m.level)||0;
-        // 배지 세트(14) · 5분류: 볼륨·스트릭·기여·품질·지위. 품질 배지는 개인 실측(골드 정확도·합의·불일치 해소)
+        // 배지 세트(22) · 5분류: 볼륨·스트릭·기여·품질·지위. 개인 1만 건 검수 완주 시 전 배지 달성 규모.
+        // 품질 배지는 개인 실측(골드 정확도·합의·불일치 해소)
         // 기반 = 유능감 정보 제공(Sailer 2017 · Ryan & Deci 2000). cur/target/unit = 진행도(모달 표시용).
         const gn = (m&&m.gold_n)||0, ga = (m&&m.gold_acc)||0, cm = (m&&m.consensus_matches)||0, sr = (m&&m.split_reviews)||0;
         const gap = Math.round(ga * 100);
         return [
           { icon: '🌱', label: '첫 검수', desc: '첫 검수를 완료했어요', exp: 10, color: '#18ba45', cat: '볼륨', cur: r, target: 1, unit: '검수', got: r >= 1 },
           { icon: '📖', label: '검수 50', desc: '누적 50건 검수', exp: 50, color: '#1e84ff', cat: '볼륨', cur: r, target: 50, unit: '검수', got: r >= 50 },
-          { icon: '📚', label: '검수 100', desc: '누적 100건 검수', exp: 100, color: '#5c77ff', cat: '볼륨', cur: r, target: 100, unit: '검수', got: r >= 100 },
-          { icon: '🏆', label: '검수 300', desc: '누적 300건 검수', exp: 250, color: '#f5a623', cat: '볼륨', cur: r, target: 300, unit: '검수', got: r >= 300 },
+          { icon: '📚', label: '검수 250', desc: '누적 250건 검수', exp: 120, color: '#5c77ff', cat: '볼륨', cur: r, target: 250, unit: '검수', got: r >= 250 },
+          { icon: '🏆', label: '검수 1,000', desc: '누적 1,000건 검수', exp: 300, color: '#f5a623', cat: '볼륨', cur: r, target: 1000, unit: '검수', got: r >= 1000 },
+          { icon: '🚀', label: '검수 2,500', desc: '누적 2,500건 검수', exp: 500, color: '#ff9429', cat: '볼륨', cur: r, target: 2500, unit: '검수', got: r >= 2500 },
+          { icon: '🌌', label: '검수 5,000', desc: '누적 5,000건 검수', exp: 800, color: '#a05cff', cat: '볼륨', cur: r, target: 5000, unit: '검수', got: r >= 5000 },
+          { icon: '🏔️', label: '완주 10,000', desc: '누적 1만 건 검수 · 여정 완주', exp: 2000, color: '#f5a623', cat: '볼륨', cur: r, target: 10000, unit: '검수', got: r >= 10000 },
           { icon: '🔥', label: '연속 3일', desc: '3일 연속 검수', exp: 15, color: '#ff9429', cat: '스트릭', cur: s, target: 3, unit: '일', got: s >= 3 },
           { icon: '⚡', label: '연속 7일', desc: '7일 연속 검수', exp: 30, color: '#ff6a3d', cat: '스트릭', cur: s, target: 7, unit: '일', got: s >= 7 },
-          { icon: '☄️', label: '연속 14일', desc: '14일 연속 검수', exp: 70, color: '#ff4e33', cat: '스트릭', cur: s, target: 14, unit: '일', got: s >= 14 },
+          { icon: '☄️', label: '연속 30일', desc: '30일 연속 검수', exp: 120, color: '#ff4e33', cat: '스트릭', cur: s, target: 30, unit: '일', got: s >= 30 },
+          { icon: '🌋', label: '연속 100일', desc: '100일 연속 검수', exp: 500, color: '#d83a2c', cat: '스트릭', cur: s, target: 100, unit: '일', got: s >= 100 },
           { icon: '🏅', label: '개선 채택', desc: '개선안이 채택됐어요', exp: 25, color: '#a05cff', cat: '기여', cur: c, target: 1, unit: '개선', got: c >= 1 },
-          { icon: '🛠️', label: '개선 10', desc: '개선안 10건 채택', exp: 90, color: '#7c5cff', cat: '기여', cur: c, target: 10, unit: '개선', got: c >= 10 },
+          { icon: '🛠️', label: '개선 50', desc: '개선안 50건 채택', exp: 150, color: '#7c5cff', cat: '기여', cur: c, target: 50, unit: '개선', got: c >= 50 },
+          { icon: '⚒️', label: '개선 500', desc: '개선안 500건 채택', exp: 600, color: '#6a3dff', cat: '기여', cur: c, target: 500, unit: '개선', got: c >= 500 },
           { icon: '🎯', label: '골드 정확도 90%', desc: '골드 문항 10건 이상 · 정확도 90%', exp: 60, color: '#18ba45', cat: '품질', cur: gap, target: 90, unit: '%', got: gn >= 10 && ga >= 0.9 },
-          { icon: '🤝', label: '합의 메이커', desc: '팀 합의와 일치한 판정 50건', exp: 60, color: '#1e84ff', cat: '품질', cur: cm, target: 50, unit: '건', got: cm >= 50 },
-          { icon: '⚖️', label: '불일치 해결사', desc: '의견 갈린 콘텐츠 재검토 10건', exp: 60, color: '#a05cff', cat: '품질', cur: sr, target: 10, unit: '건', got: sr >= 10 },
-          { icon: '💎', label: '골든 기여 10', desc: '내 검수가 골든(정답) 확정 10건에 기여', exp: 80, color: '#f5a623', cat: '품질', cur: (m&&m.golden_contribs)||0, target: 10, unit: '건', got: ((m&&m.golden_contribs)||0) >= 10 },
-          { icon: '⭐', label: 'Lv.5', desc: '레벨 5 도달', exp: 50, color: '#ffb020', cat: '지위', cur: L, target: 5, unit: 'Lv', got: L >= 5 },
-          { icon: '👑', label: '마스터', desc: '레벨 10 도달(마스터)', exp: 200, color: '#f5a623', cat: '지위', cur: L, target: 10, unit: 'Lv', got: L >= 10 },
-        ];
+          { icon: '🎯', label: '골드 정확도 95%', desc: '골드 문항 50건 이상 · 정확도 95%', exp: 250, color: '#0f9c38', cat: '품질', cur: gap, target: 95, unit: '%', got: gn >= 50 && ga >= 0.95 },
+          { icon: '🤝', label: '합의 메이커', desc: '팀 합의와 일치한 판정 500건', exp: 200, color: '#1e84ff', cat: '품질', cur: cm, target: 500, unit: '건', got: cm >= 500 },
+          { icon: '⚖️', label: '불일치 해결사', desc: '의견 갈린 콘텐츠 재검토 100건', exp: 200, color: '#a05cff', cat: '품질', cur: sr, target: 100, unit: '건', got: sr >= 100 },
+          { icon: '💎', label: '골든 기여 100', desc: '내 검수가 골든(정답) 확정 100건에 기여', exp: 300, color: '#f5a623', cat: '품질', cur: (m&&m.golden_contribs)||0, target: 100, unit: '건', got: ((m&&m.golden_contribs)||0) >= 100 },
+          { icon: '⭐', label: 'Lv.10 마스터', desc: '레벨 10 도달(약 380건 검수)', exp: 100, color: '#ffb020', cat: '지위', cur: L, target: 10, unit: 'Lv', got: L >= 10 },
+          { icon: '🌟', label: 'Lv.25', desc: '레벨 25 도달(여정의 절반 고지)', exp: 400, color: '#f5a623', cat: '지위', cur: L, target: 25, unit: 'Lv', got: L >= 25 },
+          { icon: '👑', label: 'Lv.50 만렙', desc: '레벨 50 · 약 1만 건 검수 완주', exp: 2000, color: '#f5a623', cat: '지위', cur: L, target: 50, unit: 'Lv', got: L >= 50 },
+                ];
       },
       badgeModalOpen: false,
       get badgeGot() { return this.badges().filter((x) => x.got).length; },
@@ -3860,8 +3868,15 @@ PAGE = """<!doctype html>
         if (q > 0) return { txt: '대기 ' + q + '건 비우기 🔥', to: 'review', cta: '검수하기' };
         return { txt: '일치율 점검', to: 'evaluate', cta: '평가' };
       },
-      xpPct(r) { return r ? (r.points % 100) : 0; },                 // 레벨당 100pt
-      xpToNext(r) { return r ? (r.level * 100 - r.points) : 0; },
+      // 레벨 커브(서버 store.level_of 와 동일): 구간 요구 pt = 100 + 80×(레벨-1) · Lv.50 만렙 = 98,980pt ≈ 검수 1만 건
+      lvlFloor(l) { return (l - 1) * 100 + 40 * (l - 1) * (l - 2); },
+      lvlNeed(l) { return 100 + 80 * (l - 1); },
+      xpPct(r) {
+        if (!r) return 0; const L = r.level || 1;
+        if (L >= 50) return 100;
+        return Math.max(0, Math.min(100, Math.round(((r.points || 0) - this.lvlFloor(L)) / this.lvlNeed(L) * 100)));
+      },
+      xpToNext(r) { if (!r) return 0; const L = r.level || 1; return L >= 50 ? 0 : Math.max(0, this.lvlFloor(L + 1) - (r.points || 0)); },
       async queueFeedback(it, verdict) {
         if (!this.ensureReviewer()) return;
         it.note = it.note || '';
@@ -6170,7 +6185,7 @@ PAGE = """<!doctype html>
             <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th style="width:120px">그룹</th><th>포함 Tier1</th><th style="width:52px"></th></tr></thead><tbody>
                 <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
-                  <tr><td style="vertical-align:top"><span class="ds-badge ds-badge--entity" x-text="g"></span></td>
+                  <tr><td style="vertical-align:top"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', g)" data-tip-pos="top" x-text="g"></span></td>
                     <td class="text-muted" x-text="ts.join(' · ')"></td>
                     <td style="vertical-align:top"><button type="button" class="copybtn" x-on:click="startEdit('domain_groups', g, ts, 'list', '도메인 그룹 · ' + g)">편집</button></td></tr>
                 </template>
@@ -6224,7 +6239,7 @@ PAGE = """<!doctype html>
             </div><div class="panel-bd">
               <div class="drow"><div class="k">소비 형태</div><div class="v text-sm text-body" x-text="Object.entries(u.form).map(e=>e[0]+':'+e[1]).join(' · ')"></div></div>
               <div class="drow"><div class="k">소비 강도</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="ds-badge ds-badge--neutral" x-bind:class="v==='고'?'ds-badge--entity':(v==='중'?'ds-badge--intent':'ds-badge--category')" x-text="k + ' (' + v + ')'"></span></template>
+                <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:class="v==='고'?'ds-badge--entity':(v==='중'?'ds-badge--intent':'ds-badge--category')" x-bind:data-tip="'맥락(인텐트) ' + k + ' 소비 강도 ' + v + ' · 체류·클릭 가중 상대 등급'" data-tip-pos="top" x-text="k + ' (' + v + ')'"></span></template>
               </div></div>
               <div class="drow"><div class="k">선호 엔티티</div><div class="v flex flex-wrap gap-1.5">
                 <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e[0])" data-tip-pos="top" x-text="e[0]"></span></template>
@@ -6373,13 +6388,15 @@ PAGE = """<!doctype html>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.need_category)||0"></div><div class="t">분류 필요</div></div>
                   </div>
                   <div x-show="(goldenStatus.need_list||[]).length">
-                    <div class="text-xs text-muted" style="margin-bottom:6px">분류 필요 · 아래 콘텐츠의 카테고리를 채우면 다음 학습 반영 때 정답으로 승격됩니다(+5pt·미션)</div>
+                    <div class="subhd" style="margin:4px 0 8px">분류 필요 <span class="meta">카테고리를 채우면 다음 학습 반영 때 정답으로 승격 (+5pt·미션)</span></div>
                     <div class="overflow-auto" style="max-height:180px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:120px">서비스</th></tr></thead><tbody>
                       <template x-for="ng in goldenStatus.need_list" x-bind:key="ng.hash">
                         <tr><td x-text="ng.title || '(제목 없음)'"></td><td class="text-muted" x-text="ng.service"></td></tr>
                       </template>
                     </tbody></table></div>
-                    <div class="text-xs text-muted" style="margin-top:6px"><b>콘텐츠 검수 · 결과 목록</b>에서 해당 콘텐츠 상세를 열어 분류를 골라 주세요 <button type="button" class="copybtn" x-on:click="selectMod('dash')">결과 목록 열기 →</button></div>
+                    <ul class="ds-bullets" style="margin-top:8px">
+                      <li><b>콘텐츠 검수 · 검수 대상 콘텐츠</b>에서 해당 콘텐츠 상세를 열어 분류를 골라 주세요. <button type="button" class="copybtn" x-on:click="selectMod('create')">콘텐츠 검수 열기 →</button></li>
+                    </ul>
                   </div>
                 </div>
               </template>

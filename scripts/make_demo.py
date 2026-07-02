@@ -75,9 +75,9 @@ DEMO_ARENA = {
     "accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18,
     "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.50,
     "leaderboard": [
-        {"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78,
+        {"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 4, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78,
          "gold_n": 12, "gold_acc": 0.92, "quality_mult": 0.96, "consensus_matches": 34, "split_reviews": 6, "patches": 5, "golden_contribs": 11, "agree_rate": 0.94},
-        {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51,
+        {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 3, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51,
          "gold_n": 8, "gold_acc": 0.88, "quality_mult": 0.94, "consensus_matches": 22, "split_reviews": 4, "patches": 3, "golden_contribs": 7, "agree_rate": 0.9},
         {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21,
          "gold_n": 3, "gold_acc": 0.67, "quality_mult": 1.0, "consensus_matches": 8, "split_reviews": 1, "patches": 1, "golden_contribs": 2, "agree_rate": 0.78},

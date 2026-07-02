@@ -538,6 +538,21 @@ class TestEvalJudgment(unittest.TestCase):
         self.assertFalse(row["fix_needed"])         # 탈락 우세로 뒤집히면 해제
 
 
+class TestLevelCurve(unittest.TestCase):
+    """레벨 커브: 개인 1만 건 검수(≈10만 pt) 완주 설계 · Lv.50 만렙."""
+    def test_curve_boundaries_and_journey(self):
+        from prism.store import level_of, level_floor, LEVEL_MAX
+        self.assertEqual(LEVEL_MAX, 50)
+        self.assertEqual(level_of(0), 1)
+        self.assertEqual(level_of(99), 1)
+        self.assertEqual(level_of(100), 2)              # 첫 레벨업 = 100pt(검수 10건)
+        self.assertEqual(level_of(level_floor(50) - 1), 49)
+        self.assertEqual(level_of(level_floor(50)), 50)
+        self.assertEqual(level_of(10**9), 50)           # 만렙 상한
+        journey = level_floor(50) / 10                  # 건당 10pt 기준 완주 검수량
+        self.assertTrue(9000 <= journey <= 11000, journey)
+
+
 class TestAdminTiers(unittest.TestCase):
     """권한 2단계: 운영 관리자(허용목록) vs 팀 관리자(생성자·위임 · 팀 관리만)."""
     def test_sys_admin_allowlist_strict_and_fallback(self):
