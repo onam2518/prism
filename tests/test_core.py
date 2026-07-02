@@ -538,6 +538,44 @@ class TestEvalJudgment(unittest.TestCase):
         self.assertFalse(row["fix_needed"])         # 탈락 우세로 뒤집히면 해제
 
 
+class TestMetaPromptBaseline(unittest.TestCase):
+    """기준 문서(contextual-meta-extraction v2.1) 기본 적용: 계열 라우팅·코어 규칙·사전 주입."""
+    def test_family_routing(self):
+        from prism import meta_prompts as MP
+        self.assertEqual(MP.family_of("openai/gpt-5.4-mini"), "gpt")
+        self.assertEqual(MP.family_of("gemini-3.1-pro"), "gemini")
+        self.assertEqual(MP.family_of("anthropic/claude-sonnet-4.6"), "claude")
+        self.assertEqual(MP.family_of("solar-pro3-260323"), "solar")
+        self.assertEqual(MP.family_of("deepseek/deepseek-v3.2"), "default")
+
+    def test_item_system_family_framing_and_dicts(self):
+        from prism import prompts as P
+        from prism.schema import Content
+        c = Content(displayServiceName="뉴스", title="제목", subtitle="", body="본문")
+        solar = P.item_system(c, "solar-pro3-260323")
+        self.assertIn("CRITICAL", solar)
+        self.assertIn("자가 검증", solar)
+        claude = P.item_system(c, "anthropic/claude-sonnet-4.6")
+        self.assertIn("<background>", claude)
+        self.assertNotIn("CRITICAL", claude)          # Claude 리터럴리즘: 과격 지시 금지(문서 §5)
+        gpt = P.item_system(c, "gpt-5.4")
+        self.assertIn("<output_contract>", gpt)
+        for sys_p in (solar, claude, gpt):            # 공통: 코어 규칙 + 사전 + 골드 예시
+            self.assertIn("인용 출처 vs 핵심 주체", sys_p)
+            self.assertIn("노동·사회 이슈", sys_p)     # 확정 표기 + 예시 A
+            self.assertIn("Business and Finance", sys_p)
+            self.assertIn("인터뷰", sys_p)             # 범용② 주입
+
+    def test_intent_dictionary_contract(self):
+        from prism import dictionaries as D
+        cats = D.intent_categories_for("뉴스")
+        self.assertIn("노동·사회 이슈", cats)          # 확정 1: 구 표기 교체
+        self.assertNotIn("노동 이슈 보도", cats)
+        for v in D.INTENT_FORM_UNIVERSAL:             # 확정 4: 범용② 8종 주입·검증 포함
+            self.assertIn(v, cats)
+        self.assertEqual(len(D.INTENT_FORM_UNIVERSAL), 8)
+
+
 class TestLevelCurve(unittest.TestCase):
     """레벨 커브: 개인 1만 건 검수(≈10만 pt) 완주 설계 · Lv.50 만렙."""
     def test_curve_boundaries_and_journey(self):

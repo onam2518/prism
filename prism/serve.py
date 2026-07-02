@@ -343,6 +343,7 @@ def dict_data() -> dict:
     return {
         "serviceGroups": list(D.SERVICE_GROUP.keys()),
         "intentUniversal": list(D.INTENT_CATEGORIES_UNIVERSAL),
+        "intentForm": list(getattr(D, "INTENT_FORM_UNIVERSAL", [])),
         "intentByService": {k: list(v) for k, v in D.INTENT_CATEGORIES_BY_SERVICE.items()},
         "iabTier1": list(D.IAB_TIER1),
         "tier2": {k: list(v) for k, v in getattr(D, "CONTENT_CATEGORY_TIER2", {}).items()},
@@ -3427,6 +3428,10 @@ PAGE = """<!doctype html>
         '팬덤·화제성': '인물·작품에 대한 팬 반응·화제 중심', '실용 정보': '방법·팁·가이드 등 바로 쓰는 정보',
         '감성·공감': '감정·경험을 나누며 공감을 유도', '오락·유머': '재미·유머 중심의 가벼운 콘텐츠',
         '의견·논쟁': '주장·토론·찬반이 오가는 콘텐츠', '학술·전문': '전문 지식·연구·기술을 다룸',
+        '인터뷰': '인물 문답 중심의 전달 형식', '현장취재·르포': '현장에서 직접 취재한 심층 전달',
+        '그래픽·인포그래픽': '도표·시각 자료 중심의 전달', '포토·영상 중심': '사진·영상이 본문의 중심',
+        '보도자료·공식발표': '기관·기업의 공식 발표 기반', '후기·리뷰·비평': '사용·관람 경험의 평가·비평',
+        '해설·팩트체크': '사안의 사실 검증·해설', '정형정보': '시세·일정·순위 등 정형 데이터 전달',
       },
       termDef(kind, val) {
         val = String(val == null ? '' : val).replace(/\\s*\\(\\d+\\)\\s*$/, '');   // '값 (건수)' 형태 정규화
@@ -6038,10 +6043,13 @@ PAGE = """<!doctype html>
         <!-- 편집은 팝업(편집 다이얼로그)에서 · 화면 하단 정의 -->
 
         <div x-show="dictData" class="space-y-4">
-          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용(8)</b>
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용 소비 방식(8)</b>
             <button type="button" class="copybtn" x-on:click="startEdit('intent_universal', null, dictData.intentUniversal, 'list', '인텐트 범용')">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
             <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
+          </div></div>
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용 형식·전달(8)</b><span class="meta">소비 방식과 교차 부여 가능 · 합산 0~2개 권장</span></div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="i in ((dictData&&dictData.intentForm)||[])" x-bind:key="'if'+i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
           </div></div>
           <div class="panel"><div class="panel-hd"><b>인텐트 · 서비스별</b>
             <select x-model="dictGroup" class="field" style="width:auto;height:32px;padding:0 28px 0 10px">

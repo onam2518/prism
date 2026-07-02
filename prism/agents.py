@@ -34,7 +34,7 @@ def run_quality_split(llm, content, routing) -> tuple[QualityMeta, list]:
 
 
 def run_item(llm, content) -> tuple[ItemMeta, list]:
-    sys = P.item_system(content)
+    sys = P.item_system(content, getattr(llm, "model", "") or "")
     obj, res = llm.complete_json(sys, P.item_user(content), tag="item")
     im = ItemMeta(
         summary=obj.get("summary", ""),

@@ -152,6 +152,15 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
   - **검증 체계(v0.5.0)**: tests 46종 = 유닛 40 + HTTP 스모크 6(tests/test_http_smoke.py: mock 서버
     실부팅 후 화면 전 버튼 엔드포인트 실호출 · DEFAULT_CONFIG_PATH 격리로 로컬 config 오염 방지).
     termDef 는 '값 (건수)' 접미 정규화 후 사전 매칭(집계 칩 호버 정의).
+  - **기준 프롬프트(2026-07-02 · imeta@v9)**: 원천 = `~/Desktop/contextual-meta-extraction.md` v2.1
+    (모델별 메타 추출 쿡북, DNM 계약). `prism/meta_prompts.py` 가 코드 원천: 코어 규칙 C1~C4 원문 +
+    골드 예시 + 모델 계열 래퍼(gpt=<output_contract>/gemini=스키마 재명시/claude=<background> 담백/
+    solar=CRITICAL+자가 검증). STAGE_DIRECTIVE_DEFAULT extract·analyze 기본값 = C1+C2 / C3+C4
+    (스튜디오 '기본값 복원' = 문서 기준). item_system(content, model) 이 실행 모델 계열로 래핑,
+    사전 주입 = 인텐트(범용①·②+서비스 분기) + IAB Tier1/Tier2 전체. 확정 반영: '노동·사회 이슈'
+    표기 교체, 범용② 형식·전달 8종 사전 추가(주입·검증 공용). 미적용 갭: 분리형 4호출(현 1콜 통합),
+    호출별 모델 티어, Structured Outputs/responseSchema/cache_control API 강제, IAB '구분 기준'
+    텍스트(사전에 경로만 존재), 12 서비스 분기 세분화(공개 레포 내부명 노출 금지로 일반명 유지).
   - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)

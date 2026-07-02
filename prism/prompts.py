@@ -8,7 +8,7 @@
 from . import dictionaries as D
 
 QMETA_VERSION = "qmeta@v31"
-IMETA_VERSION = "imeta@v8"
+IMETA_VERSION = "imeta@v9"   # v9: 기준 문서(contextual-meta-extraction v2.1) 코어 규칙 + 모델 계열 래핑
 LEGAL_VERSION = "legal@v3"
 
 _JSON_GUARD = (
@@ -19,17 +19,12 @@ _JSON_GUARD = (
 
 # ── 원천 단계 지시(편집 대상). 기본값 = 현재 동작 보존 ──
 #   extract=추출(대식·신호해석) · analyze=분석(용희·메타) · review=검수(복실·품질) · judge=판정(딱지·법령)
+#   extract/analyze 기본값 = 기준 문서(contextual-meta-extraction.md v2.1)의 코어 규칙 C1~C4 원문.
+#   문서 갱신 시 meta_prompts.C*_RULES 와 함께 동기화한다.
 STAGE_DIRECTIVE_DEFAULT = {
-    "extract": (
-        "너는 유통 가능(G) 콘텐츠의 아이템 메타를 추출한다. 아래 4단계를 순서대로 수행한다.\n"
-        "1) summary: 이 콘텐츠가 '무엇을 어떤 관점에서 다루는지' 한 문장으로 요약(주어+대상+관점).\n"
-        "2) entities: 핵심 단일 명사 1~3개(인물·기관·브랜드·개념). 고유명사 우선."
-    ),
-    "analyze": (
-        "3) intent: 아래 [사전·intent] 값 중 1~2개만 고른다. 자유 생성 금지.\n"
-        "4) content_category: 리드문·인텐트·엔티티를 종합해 '콘텐츠 단위' 카테고리를 아래 [사전·IAB "
-        "Tier1] 기준으로 부여(필요시 Tier1 / Tier2). 엔티티별이 아니라 콘텐츠 전체 기준, 복수 매핑 가능(N개)."
-    ),
+    "extract": None,   # 아래에서 meta_prompts 코어로 채움(C1 리드문 + C2 엔티티)
+    "analyze": None,   # C3 인텐트 + C4 콘텐츠 카테고리
+
     "review": (
         "너는 콘텐츠 품질 필터다. 증거를 먼저 수집한 뒤, 임계를 충족한 메타만 골라낸다. "
         "사전에 정의된 메타 외에는 판정하지 않는다."
@@ -39,6 +34,10 @@ STAGE_DIRECTIVE_DEFAULT = {
         "임계 미만은 제외한다. 제재수준 가중치는 법정형 기준으로 보수적으로 부여한다."
     ),
 }
+
+from . import meta_prompts as MP                     # 기준 문서 코어(순환 없음: MP는 dictionaries만 의존)
+STAGE_DIRECTIVE_DEFAULT["extract"] = MP.C1_RULES + "\n\n" + MP.C2_RULES
+STAGE_DIRECTIVE_DEFAULT["analyze"] = MP.C3_RULES + "\n\n" + MP.C4_RULES
 
 # 단계별 override(프롬프트 스튜디오에서 채움). 빈 값이면 기본값 사용.
 STAGE_DIRECTIVE = {"extract": "", "analyze": "", "review": "", "judge": ""}
@@ -113,19 +112,15 @@ def quality_group_system(group_key: str, active_metas: list, service_group: str)
 [출력] {{"reasons": ["메타ID", ...], "evidence": "근거"}}{_JSON_GUARD}""" + _learned("review")
 
 
-def item_system(content) -> str:
+def item_system(content, model: str = "") -> str:
+    """아이템 메타(4필드 통합) 시스템 프롬프트.
+    원천 지시(기본=기준 문서 C1~C4, 스튜디오 override 가능)를 모델 계열별 래퍼(meta_prompts)로 감싼다.
+    사전 주입: 인텐트(범용①·② + 서비스 분기) · IAB Tier1/Tier2 전체."""
     intents = " / ".join(D.intent_categories_for(content.displayServiceName))
-    tier1 = " / ".join(D.IAB_TIER1)
+    iab = MP.iab_dictionary_text()
+    core = f"{directive('extract')}\n\n{directive('analyze')}"
     learned = _learned("extract") + _learned("analyze")
-    return f"""{directive('extract')}
-{directive('analyze')}
-
-[사전·intent] {intents}
-[사전·IAB Tier1] {tier1}
-
-[출력 형식]
-{{"summary":"...","entities":["..."],"intent":["..."],
-  "content_category":["Tier1 / Tier2","..."]}}{_JSON_GUARD}{learned}"""
+    return MP.item_system(model, core, intents, iab, learned)
 
 
 def item_user(content) -> str:

@@ -107,11 +107,16 @@ INTENT_CATEGORIES_UNIVERSAL = [
     "속보·사건 추적", "심층 분석", "팬덤·화제성", "실용 정보",
     "감성·공감", "오락·유머", "의견·논쟁", "학술·전문",
 ]
+# 범용 ② 형식·전달 형태(전 서비스 공통): 8종 — 기획 확정(2026-07-02 · 계약 v2, 범용①·② 합산 0~2개 권장)
+INTENT_FORM_UNIVERSAL = [
+    "인터뷰", "현장취재·르포", "그래픽·인포그래픽", "포토·영상 중심",
+    "보도자료·공식발표", "후기·리뷰·비평", "해설·팩트체크", "정형정보",
+]
 # 서비스 카테고리별(세부 종류·속성 축). UI 콘텐츠 그룹 키 ↔ 기획서 서비스 카테고리:
 #   콘텐츠=콘텐츠뷰 · 음악=멜론 · 커뮤니티=다음카페 · 블로그=티스토리 · 동영상=카카오TV
 INTENT_CATEGORIES_BY_SERVICE = {
     "뉴스":   ["속보·단신", "사건 경과 보도", "정책·사업 소개", "행정 발표",
-              "법안 통과 보도", "노동 이슈 보도", "사회 안전 보도", "인물 동정",
+              "법안 통과 보도", "노동·사회 이슈", "사회 안전 보도", "인물 동정",
               "사설·칼럼", "국제·외교 보도", "트렌드 분석", "설문조사 기반 분석"],
     "연예":   ["열애·결혼·이혼", "컴백·신작 발매", "논란·해명",
               "화보·시상식", "방송 출연", "팬 소통"],
@@ -131,8 +136,10 @@ INTENT_CATEGORIES_BY_SERVICE = {
 
 
 def intent_categories_for(display_name: str) -> list:
+    """주입·검증 공용 인텐트 후보 = 범용①(소비 방식) + 범용②(형식·전달) + 서비스 분기."""
     svc = _service_key(display_name)
-    return INTENT_CATEGORIES_UNIVERSAL + INTENT_CATEGORIES_BY_SERVICE.get(svc, [])
+    return (INTENT_CATEGORIES_UNIVERSAL + INTENT_FORM_UNIVERSAL
+            + INTENT_CATEGORIES_BY_SERVICE.get(svc, []))
 
 
 def _service_key(display_name: str) -> str:
