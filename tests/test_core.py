@@ -168,5 +168,216 @@ class TestHarnessMock(unittest.TestCase):
         self.assertIsInstance(cc, list)
 
 
+class TestQuality(unittest.TestCase):
+    def test_alpha_perfect_and_chance(self):
+        from prism import quality as Q
+        self.assertEqual(Q.krippendorff_alpha_binary([[1, 1], [0, 0]]), 1.0)   # 완전 일치
+        self.assertEqual(Q.krippendorff_alpha_binary([[1, 0]]), 0.0)           # 우연 수준
+        self.assertIsNone(Q.krippendorff_alpha_binary([[1]]))                  # 평가 불가
+
+    def test_percent_agreement(self):
+        from prism import quality as Q
+        self.assertEqual(Q.percent_agreement([[1, 1], [1, 0]]), 0.5)
+
+    def test_binomial_ci(self):
+        from prism import quality as Q
+        lo, hi = Q.binomial_ci(0.5, 100)
+        self.assertAlmostEqual(lo, 0.402, places=3)
+        self.assertAlmostEqual(hi, 0.598, places=3)
+        self.assertEqual(Q.binomial_ci(1.0, 0), (0.0, 1.0))                    # n=0 방어
+
+    def test_dawid_skene_flags_bad_annotator(self):
+        from prism import quality as Q
+        # r1·r2 는 항상 합의, r3 는 항상 반대 → r3 오류율이 가장 높아야 함
+        labels = {f"u{i}": {"r1": i % 2, "r2": i % 2, "r3": 1 - (i % 2)} for i in range(10)}
+        out = Q.dawid_skene_binary(labels)
+        r = out["reviewers"]
+        self.assertGreater(r["r3"]["error_rate"], r["r1"]["error_rate"])
+        self.assertEqual(r["r1"]["n"], 10)
+
+
+class TestLearningStore(unittest.TestCase):
+    def _store(self):
+        import tempfile
+        from prism.store import Store
+        return Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+
+    def test_gold_checks_and_stats(self):
+        st = self._store()
+        self.assertTrue(st.save_gold_check("h1", "A", "good", "good"))
+        self.assertFalse(st.save_gold_check("h2", "A", "bad", "good"))
+        gs = st.gold_stats()["A"]
+        self.assertEqual((gs["n"], gs["correct"], gs["acc"]), (2, 1, 0.5))
+        self.assertEqual(st.gold_answered("A"), {"h1", "h2"})
+
+    def test_patch_log_appends(self):
+        st = self._store()
+        st.log_patch("h1", "A", "category", {"content_category": []}, {"content_category": ["Sports"]})
+        st.log_patch("h1", "A", "summary", {"summary": "구"}, {"summary": "신"})   # 같은 검수자 2건 무손실
+        rows = st.patch_rows()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(st.patch_counts()["A"], 2)
+
+    def test_event_once_dedup(self):
+        st = self._store()
+        self.assertTrue(st.log_event_once("A", "mission:daily5", 20000, 20))
+        self.assertFalse(st.log_event_once("A", "mission:daily5", 20000, 20))   # 같은 날 중복 보상 금지
+        self.assertEqual(st.event_bonus()["A"]["total"], 20)
+
+    def test_feedback_element_persisted(self):
+        import time as _t
+        st = self._store()
+        st.save_feedback("h1", "svc", "T", "bad", "analyze", "[카테고리] 교정", _t.time(),
+                         reviewer="A", element="category")
+        c = st._conn()
+        self.assertEqual(c.execute("SELECT element FROM feedback").fetchone()[0], "category")
+
+    def test_arena_quality_multiplier_and_consensus(self):
+        import time as _t
+        st = self._store()
+        now = _t.time()
+        # A·B 가 h1 에 good 합의(합의 일치 +5씩) · A 골드 5건 전부 정답 → 배율 1.0 유지
+        st.save_feedback("h1", "s", "T", "good", "review", "", now, reviewer="A")
+        st.save_feedback("h1", "s", "T", "good", "review", "", now, reviewer="B")
+        for i in range(5):
+            st.save_gold_check(f"g{i}", "A", "good", "good")
+        lb = {r["reviewer"]: r for r in st.arena_stats()["leaderboard"]}
+        self.assertEqual(lb["A"]["quality_mult"], 1.0)
+        self.assertEqual(lb["A"]["consensus_matches"], 1)
+        # A: 검수1(10) + 합의1(5) + 골드5(50) = 65 · B: 검수1(10) + 합의1(5) = 15
+        self.assertEqual(lb["A"]["points"], 65)
+        self.assertEqual(lb["B"]["points"], 15)
+        # 골드 전부 오답이면 배율 0.5
+        st2 = self._store()
+        st2.save_feedback("h1", "s", "T", "good", "review", "", now, reviewer="C")
+        for i in range(5):
+            st2.save_gold_check(f"g{i}", "C", "good", "bad")
+        lb2 = {r["reviewer"]: r for r in st2.arena_stats()["leaderboard"]}
+        self.assertEqual(lb2["C"]["quality_mult"], 0.5)
+
+    def test_review_queue_split_and_uncertainty_order(self):
+        import json as _j
+        import time as _t
+        st = self._store()
+
+        def put(h, conf, ts):
+            payload = {"quality_meta": {"review": "yellow", "confidence": conf},
+                       "content_ref": {"title": h, "body": "b"}}
+            c = st._conn()
+            c.execute("INSERT INTO results(content_hash,service,title,final_grade,payload,created_at) "
+                      "VALUES(?,?,?,?,?,?)", (h, "s", h, "G", _j.dumps(payload), ts))
+            c.commit()
+        put("h_hi", 0.9, _t.time())
+        put("h_lo", 0.2, _t.time() - 10)
+        put("h_split", 0.8, _t.time() - 20)
+        now = _t.time()
+        st.save_feedback("h_split", "s", "T", "good", "review", "", now, reviewer="A")
+        st.save_feedback("h_split", "s", "T", "bad", "review", "", now, reviewer="B")
+        q = st.review_queue()
+        self.assertEqual(q[0]["hash"], "h_split")                    # 불일치 재검토 최우선
+        self.assertTrue(q[0]["split"])
+        self.assertEqual([r["hash"] for r in q[1:]], ["h_lo", "h_hi"])   # 저확신 우선
+
+
+class TestServeGamification(unittest.TestCase):
+    def _with_store(self):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def test_gold_injection_deterministic_and_answer(self):
+        serve, st = self._with_store()
+        content = {"displayServiceName": "뉴스", "title": "골드 문항", "subtitle": "", "body": "본문"}
+        st.register_golden(None, [{"content": content,
+                                   "expected": {"finalGrade": "G", "reasons": [],
+                                                "content_category": ["Sports"], "summary": "s"}}])
+        items1 = serve._inject_gold([], "tester")
+        items2 = serve._inject_gold([], "tester")
+        self.assertEqual(len(items1), 1)
+        self.assertEqual(items1[0]["hash"], items2[0]["hash"])       # (검수자,일자) 결정적
+        self.assertTrue(items1[0]["hash"].startswith("gold:"))
+        variant = items1[0]["hash"].split(":")[1]
+        # 등급 뒤집기 변형이면 표시 등급 R(정답 bad), 원본이면 G(정답 good)
+        self.assertEqual(items1[0]["grade"], "R" if variant == "bad" else "G")
+        r = serve.apply_gold_answer({"hash": items1[0]["hash"], "verdict": "good", "reviewer": "tester"})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["gold"]["correct"], variant == "ok")
+        self.assertEqual(serve._inject_gold([], "tester"), [])       # 응답한 문항 재출제 안 함
+
+    def test_missions_progress_and_once(self):
+        import time as _t
+        serve, st = self._with_store()
+        now = _t.time()
+        for i in range(5):
+            st.save_feedback(f"h{i}", "s", "T", "good", "review", "", now, reviewer="A")
+        ms = {m["id"]: m for m in serve.mission_progress("A")}
+        self.assertTrue(ms["daily5"]["completed"])
+        fresh = serve._check_missions("A")
+        self.assertIn("daily5", [m["id"] for m in fresh])
+        self.assertEqual(serve._check_missions("A"), [])             # 같은 날 재보상 없음
+
+    def test_weighted_consensus_uses_gold_reliability(self):
+        import json as _j
+        import time as _t
+        serve, st = self._with_store()
+        # 신뢰도: A(골드 5/5 정답 → 1.0) · B·C(골드 0/5 → 0.5)
+        for i in range(5):
+            st.save_gold_check(f"g{i}", "A", "good", "good")
+            st.save_gold_check(f"g{i}", "B", "good", "bad")
+            st.save_gold_check(f"g{i}", "C", "good", "bad")
+        w = serve.reviewer_weights()
+        self.assertEqual((w["A"], w["B"]), (1.0, 0.5))
+        # 콘텐츠: A=good(1.0) vs B+C=bad(0.5+0.5) → 가중 동수(우세 아님) → 골든 미확정
+        content = {"displayServiceName": "뉴스", "title": "가중 합의", "subtitle": "", "body": "본문"}
+        from prism.store import content_hash
+        ch = content_hash(content)
+        im = {"summary": "s", "entities": [], "intent": [], "content_category": ["Sports"]}
+        payload = {"quality_meta": {"review": "yellow", "finalGrade": "G", "reasons": []},
+                   "item_meta": im, "content_ref": dict(content)}
+        c = st._conn()
+        c.execute("INSERT INTO results(content_hash,service,title,final_grade,reasons,item_meta,payload,created_at) "
+                  "VALUES(?,?,?,?,?,?,?,?)",
+                  (ch, "뉴스", content["title"], "G", "[]", _j.dumps(im), _j.dumps(payload), _t.time()))
+        c.commit()
+        now = _t.time()
+        st.save_feedback(ch, "뉴스", content["title"], "good", "review", "", now, reviewer="A")
+        st.save_feedback(ch, "뉴스", content["title"], "bad", "review", "", now, reviewer="B")
+        st.save_feedback(ch, "뉴스", content["title"], "bad", "review", "", now, reviewer="C")
+        g = serve.build_golden_from_reviews(None)
+        self.assertEqual(g["confirmed"], 0)
+        self.assertEqual(g["disagree"], 1)
+
+
+class TestLearnData(unittest.TestCase):
+    def test_learn_data_and_exports(self):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        content = {"displayServiceName": "뉴스", "title": "T", "subtitle": "", "body": "B"}
+        st.register_golden(None, [{"content": content,
+                                   "expected": {"finalGrade": "G", "content_category": ["Sports"]}}])
+        st.log_patch("h1", "A", "category", {"content_category": []}, {"content_category": ["Sports"]})
+        d = serve.learn_data(None)
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["golden_n"], 1)
+        self.assertEqual(d["extractable"]["dpo"], 1)
+        self.assertEqual(len(d["requirements"]), 5)
+        cov = {c["cls"]: c for c in d["coverage"]}
+        self.assertEqual(cov["Sports"]["have"], 1)
+        fn, text = serve.learn_export("sft", None)
+        self.assertEqual(fn, "prism_sft.jsonl")
+        self.assertEqual(len(text.splitlines()), 1)
+        fn, text = serve.learn_export("dpo", None)
+        self.assertEqual(len(text.splitlines()), 1)
+        self.assertIn("rejected", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

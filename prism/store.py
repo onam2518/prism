@@ -58,7 +58,21 @@ class Store:
         -- 골든셋: 검수(정확) 확정 콘텐츠 = 정답셋. content_hash 로 upsert.
         CREATE TABLE IF NOT EXISTS golden(
           content_hash TEXT PRIMARY KEY, content TEXT, expected TEXT, ts REAL);
+        -- 교정 로그(append-only): patch 전/후 보존 → 선호쌍(DPO) 데이터 원천.
+        CREATE TABLE IF NOT EXISTS patch_log(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
+          element TEXT, before TEXT, after TEXT, ts REAL);
+        -- 골드 문항 응답: 정답 알려진 검증 문항에 대한 검수자 판정(품질 측정 원천).
+        CREATE TABLE IF NOT EXISTS gold_checks(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
+          expected TEXT, verdict TEXT, correct INTEGER, ts REAL);
+        -- 이벤트 로그(append-only): 미션 달성 등 1회성 보상·감사 추적.
+        CREATE TABLE IF NOT EXISTS events(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, reviewer TEXT, kind TEXT,
+          day INTEGER, bonus INTEGER, meta TEXT, ts REAL);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
+        CREATE INDEX IF NOT EXISTS ix_gold_reviewer ON gold_checks(reviewer);
+        CREATE INDEX IF NOT EXISTS ix_events_reviewer ON events(reviewer, kind, day);
         """)
         c.commit()
         self._migrate_feedback(c)
@@ -83,7 +97,7 @@ class Store:
             """)
             c.commit()
             cols = [r[1] for r in c.execute("PRAGMA table_info(feedback)")]
-        for col in ("remember", "explain", "ask", "plan"):     # REAP 산출 보관
+        for col in ("remember", "explain", "ask", "plan", "element"):   # REAP 산출 + 교정 요소
             if col not in cols:
                 c.execute(f"ALTER TABLE feedback ADD COLUMN {col} TEXT")
         c.commit()
@@ -271,18 +285,122 @@ class Store:
         return rows
 
     # ── 평가 피드백 / 학습 루프 ──
-    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None):
+    def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None, element=""):
         """검수자별 평가 피드백 upsert(검수자당 1건 — 같은 검수자는 자기 의견을 갱신).
+        element = 교정 대상 요소(리드문·엔티티·인텐트·카테고리·등급·품질사유).
         team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
         c = self._conn()
-        c.execute("""INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts)
-          VALUES(?,?,?,?,?,?,?,?)
+        c.execute("""INSERT INTO feedback(content_hash,reviewer,service,title,verdict,stage,note,ts,element)
+          VALUES(?,?,?,?,?,?,?,?,?)
           ON CONFLICT(content_hash,reviewer) DO UPDATE SET
             verdict=excluded.verdict, stage=excluded.stage, note=excluded.note, ts=excluded.ts,
-            service=excluded.service, title=excluded.title""",
+            service=excluded.service, title=excluded.title, element=excluded.element""",
           (content_hash, reviewer or "(익명)", service or "", title or "",
-           verdict or "", stage or "analyze", note or "", ts))
+           verdict or "", stage or "analyze", note or "", ts, element or ""))
         c.commit()
+
+    # ── 교정 로그(append-only) · 골드 문항 · 이벤트 ──
+    def log_patch(self, content_hash, reviewer, element, before, after, team=None):
+        """검수자 구조화 교정의 전/후를 보존(선호쌍 데이터 원천 · 다중 요소 교정 무손실)."""
+        c = self._conn()
+        c.execute("INSERT INTO patch_log(content_hash,reviewer,element,before,after,ts) VALUES(?,?,?,?,?,?)",
+                  (content_hash, reviewer or "(익명)", element or "",
+                   json.dumps(before, ensure_ascii=False), json.dumps(after, ensure_ascii=False), time.time()))
+        c.commit()
+
+    def patch_rows(self, limit: int = 5000, team=None) -> list:
+        c = self._conn()
+        out = []
+        for ch, rv, el, bf, af, ts in c.execute(
+                "SELECT content_hash,reviewer,element,before,after,ts FROM patch_log ORDER BY ts DESC LIMIT ?",
+                (int(limit),)):
+            try:
+                out.append({"hash": ch, "reviewer": rv, "element": el or "",
+                            "before": json.loads(bf or "{}"), "after": json.loads(af or "{}"), "ts": ts})
+            except Exception:
+                pass
+        return out
+
+    def patch_counts(self, team=None) -> dict:
+        """reviewer → 구조화 교정 건수(patch_log)."""
+        c = self._conn()
+        return {rv: n for rv, n in c.execute(
+            "SELECT reviewer, COUNT(*) FROM patch_log GROUP BY reviewer")}
+
+    def save_gold_check(self, content_hash, reviewer, expected, verdict, team=None) -> bool:
+        """골드 문항(정답 알려진 검증 문항) 응답 기록. 반환: 정답 여부."""
+        ok = (verdict or "") == (expected or "")
+        c = self._conn()
+        c.execute("INSERT INTO gold_checks(content_hash,reviewer,expected,verdict,correct,ts) VALUES(?,?,?,?,?,?)",
+                  (content_hash, reviewer or "(익명)", expected or "", verdict or "", int(ok), time.time()))
+        c.commit()
+        return ok
+
+    def gold_stats(self, team=None) -> dict:
+        """reviewer → {n, correct, acc}(골드 문항 정확도)."""
+        c = self._conn()
+        out = {}
+        for rv, n, corr in c.execute(
+                "SELECT reviewer, COUNT(*), SUM(correct) FROM gold_checks GROUP BY reviewer"):
+            n = int(n or 0)
+            corr = int(corr or 0)
+            out[rv] = {"n": n, "correct": corr, "acc": round(corr / n, 4) if n else 0.0}
+        return out
+
+    def gold_answered(self, reviewer, team=None) -> set:
+        """검수자가 이미 응답한 골드 문항 content_hash 집합(재출제 방지)."""
+        c = self._conn()
+        return {r[0] for r in c.execute(
+            "SELECT DISTINCT content_hash FROM gold_checks WHERE reviewer=?", (reviewer or "(익명)",))}
+
+    def log_event_once(self, reviewer, kind, day, bonus, meta="", team=None) -> bool:
+        """(reviewer, kind, day) 당 1회만 기록(미션 보상 중복 방지). 신규 기록 시 True."""
+        c = self._conn()
+        cur = c.execute("SELECT 1 FROM events WHERE reviewer=? AND kind=? AND day=?",
+                        (reviewer or "(익명)", kind, int(day))).fetchone()
+        if cur:
+            return False
+        c.execute("INSERT INTO events(reviewer,kind,day,bonus,meta,ts) VALUES(?,?,?,?,?,?)",
+                  (reviewer or "(익명)", kind, int(day), int(bonus), meta or "", time.time()))
+        c.commit()
+        return True
+
+    def event_bonus(self, team=None) -> dict:
+        """reviewer → {total, week}(미션 등 이벤트 보너스 합)."""
+        c = self._conn()
+        week_ago = time.time() - 7 * 86400.0
+        out = {}
+        for rv, ts, bonus in c.execute("SELECT reviewer,ts,bonus FROM events"):
+            e = out.setdefault(rv, {"total": 0, "week": 0})
+            e["total"] += int(bonus or 0)
+            if (ts or 0) >= week_ago:
+                e["week"] += int(bonus or 0)
+        return out
+
+    def feedback_today(self, reviewer, team=None) -> int:
+        """검수자의 오늘(UTC 일 단위) 피드백 건수(미션 판정용)."""
+        day_start = (int(time.time() // 86400)) * 86400.0
+        c = self._conn()
+        return int(c.execute("SELECT COUNT(*) FROM feedback WHERE reviewer=? AND ts>=?",
+                             (reviewer or "(익명)", day_start)).fetchone()[0])
+
+    def gold_today(self, reviewer, team=None) -> dict:
+        """검수자의 오늘 골드 문항 {n, correct}(미션 판정용)."""
+        day_start = (int(time.time() // 86400)) * 86400.0
+        c = self._conn()
+        n, corr = c.execute("SELECT COUNT(*), COALESCE(SUM(correct),0) FROM gold_checks WHERE reviewer=? AND ts>=?",
+                            (reviewer or "(익명)", day_start)).fetchone()
+        return {"n": int(n or 0), "correct": int(corr or 0)}
+
+    def split_reviewed_today(self, reviewer, team=None) -> int:
+        """검수자가 오늘 의견 갈린(split) 콘텐츠에 판정한 건수(불일치 재검토 미션 판정용)."""
+        day_start = (int(time.time() // 86400)) * 86400.0
+        c = self._conn()
+        return int(c.execute("""
+          SELECT COUNT(*) FROM feedback f WHERE f.reviewer=? AND f.ts>=? AND f.content_hash IN (
+            SELECT content_hash FROM feedback WHERE verdict IN('good','bad')
+            GROUP BY content_hash HAVING COUNT(DISTINCT verdict)>1)""",
+          (reviewer or "(익명)", day_start)).fetchone()[0])
 
     def feedback_map(self, team=None) -> dict:
         """content_hash → 합의 집계. 다중 검수자 의견을 모아 합의/불일치 표시.
@@ -373,9 +491,20 @@ class Store:
         c = self._conn()
         return {rv: (ch or "boksil") for rv, ch in c.execute("SELECT reviewer,char FROM reviewers")}
 
+    def yellow_count(self) -> int:
+        """검수 대상(YELLOW) 총량. json_extract 미지원 빌드는 전체 수로 폴백."""
+        c = self._conn()
+        try:
+            return int(c.execute(
+                "SELECT COUNT(*) FROM results WHERE json_extract(payload,'$.quality_meta.review')='yellow'"
+            ).fetchone()[0])
+        except Exception:
+            return self.count()
+
     def arena_stats(self, target: float = 0.9, team=None) -> dict:
-        """평가 아레나(게임화) 지표. 팀 협동 점수 = 정확도(자동 판정이 검수자와 일치한 비율).
-        검수가 쌓이고 REAP 가 프롬프트를 보정할수록 오른다. + 검수자 리더보드(점수·레벨·스트릭)."""
+        """평가 아레나(게임화) 지표 · 품질 가중.
+        점수 = (검수 10 + 교정 25 + 구조화 교정 5 + 합의 일치 5 + 골드 응답 10) × 품질 배율 + 미션 보너스.
+        품질 배율 = 0.5 + 0.5 × 골드 정확도(응답 5건 이상일 때, 그 외 1.0). [Oleson 2011 · Snow 2008]"""
         c = self._conn()
         DAY = 86400.0
         now = time.time()
@@ -385,12 +514,15 @@ class Store:
         good = bad = wk_good = wk_bad = pv_good = pv_bad = 0
         board = {}
         days_by = {}
-        for rv, verdict, plan, ts in c.execute("SELECT reviewer,verdict,plan,ts FROM feedback"):
+        by_content = {}                               # 합의·불일치 산정용 {hash: [(reviewer, verdict)]}
+        for ch, rv, verdict, plan, ts in c.execute("SELECT content_hash,reviewer,verdict,plan,ts FROM feedback"):
             rv = rv or "(익명)"
             b = board.setdefault(rv, {"reviews": 0, "corrections": 0,
                                       "wk_reviews": 0, "wk_corr": 0, "pv_reviews": 0, "pv_corr": 0})
             b["reviews"] += 1
             g, d = (verdict == "good"), (verdict == "bad")
+            if g or d:
+                by_content.setdefault(ch, []).append((rv, verdict))
             t = ts or 0
             this_wk = t >= week_ago
             last_wk = week_ago > t >= prev_ago
@@ -418,6 +550,25 @@ class Store:
         pv_total = pv_good + pv_bad
         pv_acc = round(pv_good / pv_total, 4) if pv_total else accuracy
 
+        # 합의 일치·불일치 참여·합의 대비 일치율(n>=2 콘텐츠만) [von Ahn 2004 · Dawid-Skene 1979 근사]
+        cons_match, split_part, agree_hit, agree_n = {}, {}, {}, {}
+        for ch, votes in by_content.items():
+            if len(votes) < 2:
+                continue
+            gn = sum(1 for _, v in votes if v == "good")
+            bn = len(votes) - gn
+            cons = "good" if gn > bn else ("bad" if bn > gn else "split")
+            for rv, v in votes:
+                others_g = gn - (1 if v == "good" else 0)
+                others_b = bn - (1 if v == "bad" else 0)
+                if others_g and others_b:            # 남들 의견이 갈린 콘텐츠에 참여 = 불일치 재검토
+                    split_part[rv] = split_part.get(rv, 0) + 1
+                if cons != "split":
+                    agree_n[rv] = agree_n.get(rv, 0) + 1
+                    if v == cons:
+                        agree_hit[rv] = agree_hit.get(rv, 0) + 1
+                        cons_match[rv] = cons_match.get(rv, 0) + 1
+
         def _streak(days):
             d = today
             if d not in days and (d - 1) not in days:
@@ -430,20 +581,39 @@ class Store:
             return s
 
         chars = self.reviewers_map()
-        total_targets = self.count()                     # 검수 대상(YELLOW 콘텐츠) 총량
+        total_targets = self.yellow_count()              # 검수 대상 = YELLOW 총량(분모 정합)
+        gold = self.gold_stats()
+        patches = self.patch_counts()
+        bonuses = self.event_bonus()
 
         def _prog(rv_count):
             return round(min(rv_count, total_targets) / total_targets, 4) if total_targets else 0.0
 
+        def _mult(rv):
+            gs = gold.get(rv) or {}
+            return round(0.5 + 0.5 * gs["acc"], 4) if gs.get("n", 0) >= 5 else 1.0
+
         leaderboard = []
         for rv, v in board.items():
-            pts = v["reviews"] * 10 + v["corrections"] * 25
+            gs = gold.get(rv) or {"n": 0, "acc": 0.0}
+            mult = _mult(rv)
+            base = (v["reviews"] * 10 + v["corrections"] * 25 + patches.get(rv, 0) * 5
+                    + cons_match.get(rv, 0) * 5 + gs["n"] * 10)
+            pts = round(base * mult) + (bonuses.get(rv) or {}).get("total", 0)
+            wk_base = v["wk_reviews"] * 10 + v["wk_corr"] * 25
+            pv_base = v["pv_reviews"] * 10 + v["pv_corr"] * 25
             leaderboard.append({"reviewer": rv, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": 1 + pts // 100, "streak": _streak(days_by.get(rv, set())),
                                 "char": chars.get(rv, "boksil"), "progress": _prog(v["reviews"]),
-                                "week_points": v["wk_reviews"] * 10 + v["wk_corr"] * 25,
-                                "last_week_points": v["pv_reviews"] * 10 + v["pv_corr"] * 25})
+                                "week_points": round(wk_base * mult) + (bonuses.get(rv) or {}).get("week", 0),
+                                "last_week_points": round(pv_base * mult),
+                                "gold_n": gs["n"], "gold_acc": gs["acc"], "quality_mult": mult,
+                                "consensus_matches": cons_match.get(rv, 0),
+                                "split_reviews": split_part.get(rv, 0),
+                                "patches": patches.get(rv, 0),
+                                "agree_rate": (round(agree_hit.get(rv, 0) / agree_n[rv], 4)
+                                               if agree_n.get(rv) else None)})
         leaderboard.sort(key=lambda x: -x["points"])
         members = set(board.keys()) | set(chars.keys())  # 검수 이력 없는 팀원도 평균에 포함
         team_progress = round(sum(_prog(board.get(m, {}).get("reviews", 0)) for m in members) / len(members), 4) if (members and total_targets) else 0.0
@@ -453,10 +623,15 @@ class Store:
                 "total_targets": total_targets, "team_progress": team_progress}
 
     def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None) -> list:
-        """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠. only_unreviewed 면 아직 아무도
-        검수 안 한 것만. 최신순. payload 에서 review 상태를 읽는다."""
+        """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠.
+        정렬 = 모델 확신 낮은 순(불확실성 샘플링, Lewis & Gale 1994) → 최신순.
+        only_unreviewed 여도 의견이 갈린(split) 콘텐츠는 재검토 대상으로 포함(Aroyo & Welty 2015)."""
         c = self._conn()
         reviewed = {r[0] for r in c.execute("SELECT DISTINCT content_hash FROM feedback")}
+        split = set()                                 # good·bad 공존 콘텐츠(조정 필요)
+        for (ch,) in c.execute("""SELECT content_hash FROM feedback WHERE verdict IN('good','bad')
+                GROUP BY content_hash HAVING COUNT(DISTINCT verdict) > 1"""):
+            split.add(ch)
         out = []
         for ch, svc, ti, grade, payload, ts in c.execute(
                 "SELECT content_hash,service,title,final_grade,payload,created_at "
@@ -468,14 +643,49 @@ class Store:
             if (qm.get("review") or "") != "yellow":
                 continue
             is_reviewed = ch in reviewed
-            if only_unreviewed and is_reviewed:
+            is_split = ch in split
+            if only_unreviewed and is_reviewed and not is_split:
                 continue
+            conf = qm.get("confidence")
             out.append({"hash": ch, "service": svc or "", "title": ti or "",
                         "grade": grade or "", "review_reason": qm.get("review_reason", ""),
-                        "reviewed": is_reviewed, "ts": ts})
-            if len(out) >= limit:
+                        "reviewed": is_reviewed, "split": is_split,
+                        "confidence": conf, "ts": ts})
+            if len(out) >= limit * 2:                 # 정렬 전 여유 수집
                 break
+        # split 재검토 우선 → 저확신 순 → 최신순
+        out.sort(key=lambda r: (0 if r["split"] else 1,
+                                r["confidence"] if isinstance(r.get("confidence"), (int, float)) else 1.0,
+                                -(r["ts"] or 0)))
+        return out[:limit]
+
+    def contents_by_hash(self, team=None, limit: int = 5000) -> dict:
+        """content_hash → 콘텐츠 dict(학습데이터 추출용). sqlite payload 에 body 가 없으면 빈 값."""
+        c = self._conn()
+        out = {}
+        for ch, svc, ti, payload in c.execute(
+                "SELECT content_hash,service,title,payload FROM results ORDER BY created_at DESC LIMIT ?",
+                (int(limit),)):
+            body = ""
+            try:
+                ref = (json.loads(payload) if payload else {}).get("content_ref") or {}
+                body = ref.get("body", "") or ""
+            except Exception:
+                pass
+            out[ch] = {"displayServiceName": svc or "", "title": ti or "", "subtitle": "", "body": body}
         return out
+
+    def get_item_meta(self, content_hash) -> dict | None:
+        """저장된 item_meta 조회(교정 로그의 before 스냅샷용). 없으면 None."""
+        c = self._conn()
+        row = c.execute("SELECT item_meta FROM results WHERE content_hash=?", (content_hash,)).fetchone()
+        if not row:
+            return None
+        try:
+            v = json.loads(row[0]) if row[0] else {}
+        except Exception:
+            v = {}
+        return v if isinstance(v, dict) else {}
 
     def clear_feedback(self):
         c = self._conn()

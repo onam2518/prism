@@ -866,13 +866,17 @@ def apply_feedback(data: dict) -> dict:
         ch = (data.get("hash") or "").strip()
         if not ch:
             return {"ok": False, "error": "hash required"}
+        if ch.startswith("gold:"):                 # 골드 문항 응답 → gold_checks 로 분리(피드백 오염 방지)
+            return apply_gold_answer(data)
         verdict = data.get("verdict") or ""        # good | bad | ""(취소)
         reviewer = (data.get("reviewer") or "").strip() or "(익명)"   # 귀속 키(uid 또는 이름)
         disp = (data.get("name") or "").strip() or reviewer          # 토스트 표시명
         note = (data.get("note") or "").strip()
         stage = data.get("stage") or "analyze"
+        element = (data.get("element") or "").strip()
         st.save_feedback(ch, data.get("service", ""), data.get("title", ""),
-                         verdict, stage, note, time.time(), reviewer=reviewer, team=data.get("_team"))
+                         verdict, stage, note, time.time(), reviewer=reviewer,
+                         team=data.get("_team"), element=element)
         broadcast({"type": "feedback", "hash": ch, "reviewer": disp,
                    "verdict": verdict, "title": data.get("title", ""),
                    "service": data.get("service", ""), "ts": time.time()})
@@ -880,10 +884,90 @@ def apply_feedback(data: dict) -> dict:
             fb = {"stage": stage, "note": note, "title": data.get("title", "")}
             threading.Thread(target=_reap_async, args=(ch, reviewer, fb),
                              daemon=True).start()
+        missions = _check_missions(reviewer, data.get("_team"))
     # 프롬프트 반영은 '일배치 학습'에서 합의 후 1회(진동 방지). 여기선 수집만.
     _agg_bump()                                    # 피드백/진척율 변경 → 집계·아레나 캐시 무효화
-    return {"ok": True, "feedback": st.feedback_stats(),
-            "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
+    out = {"ok": True, "feedback": st.feedback_stats(),
+           "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
+    if not data.get("clear") and missions:
+        out["missions_completed"] = missions       # 이번 행동으로 새로 달성된 미션(1회 보상)
+    return out
+
+
+def apply_gold_answer(data: dict) -> dict:
+    """골드 문항(정답 알려진 검증 문항, Oleson 2011) 응답 처리.
+    hash 형식 gold:<ok|bad>:<content_hash>. feedback 테이블은 건드리지 않는다."""
+    st = get_store()
+    parts = (data.get("hash") or "").split(":")
+    if not (st and hasattr(st, "save_gold_check")) or len(parts) < 3:
+        return {"ok": False, "error": "골드 문항 처리 불가"}
+    verdict = data.get("verdict") or ""
+    if not verdict:                                # 판정 취소 = 무기록
+        return {"ok": True, "gold": None}
+    expected = "good" if parts[1] == "ok" else "bad"
+    reviewer = (data.get("reviewer") or "").strip() or "(익명)"
+    correct = st.save_gold_check(parts[2], reviewer, expected, verdict, team=data.get("_team"))
+    missions = _check_missions(reviewer, data.get("_team"))
+    _agg_bump()
+    out = {"ok": True, "gold": {"correct": bool(correct), "expected": expected}}
+    if missions:
+        out["missions_completed"] = missions
+    return out
+
+
+# ── 오늘의 미션(판정·보상 있는 형태) · 대상 = 불확실/불일치 콘텐츠(Lewis & Gale 1994) ──
+MISSIONS = [
+    {"id": "daily5", "label": "오늘 검수 5건", "total": 5, "bonus": 20},
+    {"id": "gold1", "label": "골드 문항 1건 정답", "total": 1, "bonus": 15},
+    {"id": "split1", "label": "불일치 콘텐츠 재검토 1건", "total": 1, "bonus": 15},
+]
+
+
+def mission_progress(reviewer, team=None) -> list:
+    """검수자별 오늘의 미션 진행도. 판정은 저장된 행동 데이터로만(자가 신고 없음)."""
+    st = get_store()
+    if not (st and reviewer and hasattr(st, "feedback_today")):
+        return []
+    try:
+        done = {"daily5": st.feedback_today(reviewer, team=team),
+                "gold1": st.gold_today(reviewer, team=team).get("correct", 0),
+                "split1": st.split_reviewed_today(reviewer, team=team)}
+    except Exception:
+        return []
+    out = []
+    for m in MISSIONS:
+        d = min(done.get(m["id"], 0), m["total"])
+        out.append({**m, "done": d, "completed": d >= m["total"]})
+    return out
+
+
+def _check_missions(reviewer, team=None) -> list:
+    """달성 미션을 이벤트 로그에 1회 기록(중복 보상 방지) → 새로 달성된 미션 목록 반환."""
+    st = get_store()
+    if not (st and reviewer and hasattr(st, "log_event_once")):
+        return []
+    day = int(time.time() // 86400)
+    fresh = []
+    for m in mission_progress(reviewer, team):
+        if not m["completed"]:
+            continue
+        try:
+            if st.log_event_once(reviewer, "mission:" + m["id"], day, m["bonus"], team=team):
+                fresh.append({"id": m["id"], "label": m["label"], "bonus": m["bonus"]})
+        except Exception:
+            pass
+    return fresh
+
+
+def reviewer_weights(team=None) -> dict:
+    """검수자 신뢰도 가중치(골든 합의용): 골드 정확도 기반 0.5+0.5*acc(응답 5건 이상).
+    데이터 없으면 빈 dict → 전원 1.0(기존 다수결과 동일). [Dawid-Skene 1979 근사 · Snow 2008]"""
+    st = get_store()
+    try:
+        gold = st.gold_stats(team) if (st and hasattr(st, "gold_stats")) else {}
+    except Exception:
+        gold = {}
+    return {rv: round(0.5 + 0.5 * g["acc"], 4) for rv, g in gold.items() if g.get("n", 0) >= 5}
 
 
 def _reap_async(content_hash: str, reviewer: str, fb: dict):
@@ -1080,8 +1164,13 @@ def save_badges(uid, earned) -> dict:
     return {"ok": True, "badges": labels, "persisted": False}
 
 
+_LAST_EVAL_DETAIL = []                             # 최근 골든 평가의 건별 불일치(라벨 오류 후보)
+
+
 def eval_golden(team=None) -> dict:
-    """프로세스 1 · 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용."""
+    """프로세스 1 · 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용.
+    건별 불일치를 _LAST_EVAL_DETAIL 로 보존 → 라벨 오류 후보 플래깅(Northcutt 2021: 기계 플래그→휴먼 확정)."""
+    from .store import content_hash
     st = get_store()
     if not (st and hasattr(st, "get_golden")):
         return {"ok": False, "error": "골든셋 평가는 Supabase 모드 전용입니다"}
@@ -1092,9 +1181,25 @@ def eval_golden(team=None) -> dict:
     from . import harness as H
     cfg = Config.load()
     llm = make_text_llm(cfg, Handler.server_mock)
-    m = abtest.evaluate(rows[:300], H.Methodology(name="골든셋"), llm, concurrency=8)
+    meth = H.Methodology(name="골든셋")
+    sample = rows[:300]
+    outs = abtest.run_methodology(sample, meth, llm, concurrency=8)
+    m = abtest.score(sample, outs)
+    m["methodology"] = meth.to_dict()
+    global _LAST_EVAL_DETAIL
+    detail = []
+    for row, out in zip(sample, outs):
+        if out is None:
+            continue
+        exp = (row.get("expected") or {}).get("finalGrade", "")
+        got = (out.get("quality_meta") or {}).get("finalGrade", "")
+        if exp and got and exp != got:
+            c = row.get("content") or {}
+            detail.append({"hash": content_hash(c), "title": (c.get("title") or "")[:60],
+                           "expected": exp, "got": got})
+    _LAST_EVAL_DETAIL = detail
     m["ok"] = True
-    m["evaluated"] = min(len(rows), 300)
+    m["evaluated"] = len(sample)
     return m
 
 
@@ -1119,6 +1224,7 @@ def build_golden_from_reviews(team=None) -> dict:
         fmap = st.feedback_map(team=team)
     except Exception:
         fmap = {}
+    weights = reviewer_weights(team)               # 골드 정확도 기반 신뢰도(G-4)
     entries, no_cat, disagree = [], 0, 0
     for r in rows:
         ref = r.get("content_ref") or {}
@@ -1127,7 +1233,12 @@ def build_golden_from_reviews(team=None) -> dict:
         fb = fmap.get(content_hash(content))
         if not fb:
             continue
-        if not (fb.get("consensus") == "good" and fb.get("good", 0) >= 1):   # 정확 다수결만
+        # 신뢰도 가중 다수결: 골드 정확도 기반 가중치(없으면 전원 1.0 = 기존 다수결과 동일)
+        gw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
+                 for v in fb.get("verdicts", []) if v.get("verdict") == "good")
+        bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
+                 for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
+        if not (fb.get("good", 0) >= 1 and gw > bw):   # 정확 1건 이상 + 가중 다수
             disagree += 1
             continue
         im = r.get("item_meta") or {}
@@ -1144,12 +1255,28 @@ def build_golden_from_reviews(team=None) -> dict:
     return {"ok": True, "confirmed": n, "need_category": no_cat, "disagree": disagree}
 
 
-def patch_content_meta(content_hash, patch, team=None) -> dict:
-    """검수자 구조화 교정(빈 카테고리 채우기 등) → 저장된 item_meta 패치. 골든 완성에 기여."""
+def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
+    """검수자 구조화 교정(빈 카테고리 채우기 등) → 저장된 item_meta 패치. 골든 완성에 기여.
+    교정 전/후를 patch_log 에 append(선호쌍 데이터 원천 · 다중 요소 교정 무손실)."""
     st = get_store()
     if not (st and hasattr(st, "update_item_meta")):
         return {"ok": False, "error": "지원하지 않는 저장소"}
-    ok = st.update_item_meta((content_hash or "").strip(), patch or {})
+    ch = (content_hash or "").strip()
+    before = None
+    if hasattr(st, "get_item_meta"):
+        try:
+            cur = st.get_item_meta(ch)
+            if isinstance(cur, dict):
+                before = {k: cur.get(k) for k in (patch or {})}   # 패치 대상 키의 이전 값만
+        except Exception:
+            before = None
+    ok = st.update_item_meta(ch, patch or {})
+    if ok and before is not None and hasattr(st, "log_patch"):
+        element = "category" if "content_category" in (patch or {}) else ",".join(sorted(patch or {}))
+        try:
+            st.log_patch(ch, reviewer or "(익명)", element, before, patch or {}, team=team)
+        except Exception:
+            pass
     _agg_bump()
     return {"ok": bool(ok)}
 
@@ -1204,6 +1331,160 @@ def learning_batch(team=None, models=None) -> dict:
     print(f"  [batch] 학습 일배치 · 골든 확정 {golden.get('confirmed')} · 카테고리필요 "
           f"{golden.get('need_category')} · 정합성(grade) {report['grade_accuracy']}")
     return report
+
+
+def learn_data(team=None) -> dict:
+    """학습 데이터 현황(관리자): 클래스 커버리지·일치도·검수자 신뢰도·라벨 오류 후보·추출 가능량·소요 대비.
+    기준치는 논문 근거(LEARNING_DESIGN.md): SetFit 8/클래스 · LIMA 1k · Llama Guard 13.5k ·
+    InstructGPT 33k · tinyBenchmarks 100/축 · CI 는 Miller 2024."""
+    from . import quality as Q
+    from . import dictionaries as D
+    st = get_store()
+    if not st:
+        return {"ok": False, "error": "store unavailable"}
+    golden = st.get_golden(team) if hasattr(st, "get_golden") else []
+    golden_n = len(golden)
+    # 클래스(Tier1) 커버리지 · 부트스트랩 하한 = 클래스당 8(SetFit)
+    per_class, grade_dist = {}, {}
+    for g in golden:
+        exp = g.get("expected") or {}
+        gr = exp.get("finalGrade") or "?"
+        grade_dist[gr] = grade_dist.get(gr, 0) + 1
+        t1s = {str(c).split("/")[0].strip() for c in (exp.get("content_category") or []) if c}
+        for t1 in (t1s or {"(미분류)"}):
+            per_class[t1] = per_class.get(t1, 0) + 1
+    PER_CLASS_TARGET = 8                                # SetFit(Tunstall 2022) 클래스당 8예시
+    coverage = [{"cls": t1, "have": per_class.get(t1, 0),
+                 "lack": max(0, PER_CLASS_TARGET - per_class.get(t1, 0))} for t1 in D.IAB_TIER1]
+    lack_total = sum(c["lack"] for c in coverage)
+    # 일치도(참고 지표 · 임계값 기계 적용 금지: Artstein & Poesio 2008)
+    try:
+        fmap = st.feedback_map(team=team)
+    except Exception:
+        fmap = {}
+    units = Q.feedback_units(fmap)
+    alpha = Q.krippendorff_alpha_binary(units)
+    agree = Q.percent_agreement(units)
+    multi_units = sum(1 for u in units if len(u) >= 2)
+    # 검수자 신뢰도: 합의 일치율(아레나) + 골드 정확도 + Dawid-Skene EM 오류율
+    ds = Q.dawid_skene_binary(Q.feedback_labels(fmap))
+    arena = st.arena_stats(team=team)
+    reviewers = []
+    for row in arena.get("leaderboard", []):
+        rv = row["reviewer"]
+        dsr = (ds.get("reviewers") or {}).get(rv) or {}
+        reviewers.append({"reviewer": rv, "n": row.get("reviews", 0),
+                          "agree_rate": row.get("agree_rate"),
+                          "gold_n": row.get("gold_n", 0), "gold_acc": row.get("gold_acc"),
+                          "ds_error": dsr.get("error_rate")})
+    # 골든 정합성 ± 95% CI(최근 일배치 평가 기준, Miller 2024)
+    ev = (_LAST_LEARN_REPORT or {}).get("eval") or {}
+    acc_ci = None
+    if ev.get("ok") and ev.get("n"):
+        lo, hi = Q.binomial_ci(ev.get("grade_accuracy") or 0.0, int(ev["n"]))
+        acc_ci = {"acc": ev.get("grade_accuracy"), "n": int(ev["n"]), "lo": lo, "hi": hi}
+    # 추출 가능량
+    patch_n = len(st.patch_rows(team=team)) if hasattr(st, "patch_rows") else 0
+    fstats = st.feedback_stats(team=team)
+    rationale_n = fstats.get("learned", 0)
+    # 학습 소요 대비(전 기준치 논문 출처)
+    requirements = [
+        {"kind": "분류 부트스트랩(클래스당 8)", "target": PER_CLASS_TARGET * len(D.IAB_TIER1),
+         "have": golden_n, "lack": lack_total, "basis": "SetFit · Tunstall et al. 2022 · arXiv:2209.11055"},
+        {"kind": "SFT 정렬(고품질)", "target": 1000, "have": golden_n,
+         "lack": max(0, 1000 - golden_n), "basis": "LIMA · Zhou et al. 2023 · arXiv:2305.11206"},
+        {"kind": "운영급 분류 LLM", "target": 13500, "have": golden_n,
+         "lack": max(0, 13500 - golden_n), "basis": "Llama Guard · Inan et al. 2023 · arXiv:2312.06674"},
+        {"kind": "선호쌍(DPO · 참고 상한)", "target": 33000, "have": patch_n,
+         "lack": max(0, 33000 - patch_n), "basis": "DPO · Rafailov et al. 2023 + InstructGPT RM 33k · Ouyang et al. 2022"},
+        {"kind": "평가셋(큐레이션)", "target": 100, "have": golden_n,
+         "lack": max(0, 100 - golden_n), "basis": "tinyBenchmarks · Maia Polo et al. 2024 + Miller 2024(CI 병기)"},
+    ]
+    # 불일치(원시 의견 보존 · Plank 2022) 목록
+    split_list = []
+    for ch, e in fmap.items():
+        if e.get("consensus") == "split":
+            split_list.append({"hash": ch, "n": e.get("n", 0), "good": e.get("good", 0),
+                               "bad": e.get("bad", 0)})
+    return {"ok": True, "golden_n": golden_n, "grade_dist": grade_dist,
+            "coverage": coverage, "covered": sum(1 for c in coverage if c["lack"] == 0),
+            "class_total": len(coverage), "per_class_target": PER_CLASS_TARGET,
+            "alpha": alpha, "agreement": agree, "multi_units": multi_units,
+            "reviewers": reviewers, "acc_ci": acc_ci,
+            "label_flags": list(_LAST_EVAL_DETAIL),
+            "split": split_list[:50], "split_n": len(split_list),
+            "extractable": {"sft": golden_n, "dpo": patch_n, "rationale": rationale_n},
+            "requirements": requirements}
+
+
+def _sft_system() -> str:
+    """SFT 시스템 프롬프트: 분류 기준(taxonomy)을 지시문으로 외재화(Llama Guard 방식 →
+    카테고리 개편 시 재학습 불필요)."""
+    from . import dictionaries as D
+    return ("주어진 콘텐츠의 메타를 JSON 객체 하나로만 출력하라. 필드: summary(리드문 1문장), "
+            "entities(핵심 개체 1~3), intent(속성 분류 1~2), content_category(사전 값만: "
+            + ", ".join(D.IAB_TIER1) + " 또는 'Tier1 / Tier2' 경로), finalGrade(G|R), reasons(문제 사유 목록).")
+
+
+def learn_export(kind: str, team=None):
+    """학습데이터 JSONL 추출. kind = sft(골든→지시학습) | dpo(교정 전/후→선호쌍) | rationale(판단근거).
+    반환 (filename, ndjson_text) 또는 (None, error)."""
+    st = get_store()
+    if not st:
+        return None, "store unavailable"
+    lines = []
+    if kind == "sft":                                  # LIMA · Llama Guard 방식
+        sys_p = _sft_system()
+        for g in (st.get_golden(team) if hasattr(st, "get_golden") else []):
+            content, exp = g.get("content") or {}, g.get("expected") or {}
+            if not content.get("title"):
+                continue
+            lines.append(json.dumps({"messages": [
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": json.dumps(content, ensure_ascii=False)},
+                {"role": "assistant", "content": json.dumps(exp, ensure_ascii=False)}]},
+                ensure_ascii=False))
+        return "prism_sft.jsonl", "\n".join(lines)
+    if kind == "dpo":                                  # DPO(Rafailov 2023) 선호쌍: 교정 전=rejected · 후=chosen
+        cmap = st.contents_by_hash(team=team) if hasattr(st, "contents_by_hash") else {}
+        for p in (st.patch_rows(team=team) if hasattr(st, "patch_rows") else []):
+            if not p.get("before") and not p.get("after"):
+                continue
+            lines.append(json.dumps({
+                "prompt": {"content": cmap.get(p["hash"]) or {"hash": p["hash"]},
+                           "element": p.get("element", "")},
+                "chosen": p.get("after") or {}, "rejected": p.get("before") or {},
+                "reviewer": p.get("reviewer", ""), "ts": p.get("ts")},
+                ensure_ascii=False))
+        return "prism_dpo.jsonl", "\n".join(lines)
+    if kind == "rationale":                            # Distilling Step-by-Step(Hsieh 2023): 라벨+판단근거
+        cmap = st.contents_by_hash(team=team) if hasattr(st, "contents_by_hash") else {}
+        try:
+            fmap = st.feedback_map(team=team)
+        except Exception:
+            fmap = {}
+        count = 0
+        for ch, e in fmap.items():
+            for v in e.get("verdicts", []):
+                note = (v.get("note") or "").strip()
+                if not note:
+                    continue
+                reaps = []
+                if count < 300 and hasattr(st, "get_reap"):    # REAP 조회 상한(요청 비용 억제)
+                    try:
+                        reaps = st.get_reap(ch)
+                    except Exception:
+                        reaps = []
+                rp = next((r for r in reaps if r.get("reviewer") == v.get("reviewer")), {})
+                lines.append(json.dumps({
+                    "content": cmap.get(ch) or {"hash": ch},
+                    "label": {"verdict": v.get("verdict"), "stage": v.get("stage"),
+                              "element": v.get("element", "")},
+                    "rationale": note, "reap_explain": rp.get("explain") or "",
+                    "reap_plan": rp.get("plan") or ""}, ensure_ascii=False))
+                count += 1
+        return "prism_rationale.jsonl", "\n".join(lines)
+    return None, f"알 수 없는 종류: {kind}"
 
 
 _learn_sched_started = False
@@ -1341,14 +1622,78 @@ def _arena_compute(team=None) -> dict:
 
 
 def review_queue(data: dict) -> dict:
-    """검수 대기 큐(YELLOW). only_unreviewed=false 면 검수된 것도 포함."""
+    """검수 대기 큐(YELLOW). only_unreviewed=false 면 검수된 것도 포함.
+    검수자 식별 시 골드 문항(정답 알려진 검증 문항)을 큐에 몰래 섞는다."""
     st = get_store()
     if not st:
         return {"ok": False, "error": "store unavailable", "items": []}
     only_un = data.get("only_unreviewed", True)
     limit = int(data.get("limit") or 100)
     items = st.review_queue(limit=limit, only_unreviewed=bool(only_un), team=data.get("team"))
+    items = _inject_gold(items, (data.get("reviewer") or "").strip(), data.get("team"))
     return {"ok": True, "items": items, "n": len(items)}
+
+
+def _inject_gold(items: list, reviewer: str, team=None) -> list:
+    """골든셋에서 골드 문항을 생성해 큐에 삽입(블라인드). [Oleson 2011 · Kittur 2008]
+    변형: hash 짝수 = 원본 그대로(정답 good) / 홀수 = 등급 뒤집기(정답 bad).
+    선택·위치는 (검수자, 일자) 시드로 결정적(폴링 때마다 재배치 방지). 응답한 문항은 재출제 안 함."""
+    st = get_store()
+    if not (reviewer and st and hasattr(st, "get_golden") and hasattr(st, "gold_answered")):
+        return items
+    try:
+        golden = st.get_golden(team)
+        answered = st.gold_answered(reviewer, team=team)
+    except Exception:
+        return items
+    from .store import content_hash as _chash
+    cands = []
+    for g in golden:
+        content, exp = g.get("content") or {}, g.get("expected") or {}
+        h = _chash(content)
+        if h in answered or not content.get("title"):
+            continue
+        cands.append((h, content, exp))
+    if not cands:
+        return items
+    import hashlib as _hl
+    import random as _rd
+    day = int(time.time() // 86400)
+    rng = _rd.Random(int(_hl.sha1(f"{reviewer}:{day}".encode()).hexdigest()[:8], 16))
+    rng.shuffle(cands)
+    k = min(len(cands), max(1, len(items) // 10))
+    out = list(items)
+    for h, content, exp in cands[:k]:
+        flip = int(h, 16) % 2 == 1                  # 홀수 = 등급 뒤집기(정답 bad)
+        grade = exp.get("finalGrade", "") or "G"
+        item = {"hash": f"gold:{'bad' if flip else 'ok'}:{h}",
+                "service": content.get("displayServiceName", ""), "title": content.get("title", ""),
+                "body": content.get("body", ""), "summary": exp.get("summary", ""),
+                "entities": exp.get("entities", []) or [], "intent": exp.get("intent", []) or [],
+                "category": exp.get("content_category", []) or [],
+                "grade": ("R" if grade == "G" else "G") if flip else grade,
+                "reasons": exp.get("reasons", []) or [], "review_reason": "",
+                "reviewed": False, "split": False, "confidence": None, "ts": None}
+        out.insert(rng.randint(0, len(out)), item)
+    return out
+
+
+# ── 검수 엔드포인트 레이트리밋(스팸 클릭 억제) ──
+_RL_HITS = {}
+_RL_LOCK = threading.Lock()
+
+
+def rate_limited(key: str, min_interval: float = 0.8, per_min: int = 40) -> bool:
+    """key(검수자/IP)별 최소 간격·분당 상한. 초과 시 True(=429)."""
+    now = time.time()
+    with _RL_LOCK:
+        q = _RL_HITS.setdefault(key, [])
+        while q and now - q[0] > 60:
+            q.pop(0)
+        if (q and (now - q[-1]) < min_interval) or len(q) >= per_min:
+            return True
+        q.append(now)
+        return False
 
 
 # ── 실시간 협업(SSE): 검수 이벤트를 접속 중인 팀원에게 브로드캐스트 ──
@@ -1637,7 +1982,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(drill_contents(q.get("kind", [""])[0], q.get("value", [""])[0],
                                                        self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/arena"):
-            self._send(200, json.dumps(arena_data(self._req_team()), ensure_ascii=False), _JSON)
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            d = dict(arena_data(self._req_team()))
+            rv = self._bearer_uid() or q.get("reviewer", [""])[0]
+            if rv:
+                d["missions"] = mission_progress(rv, self._req_team())
+            self._send(200, json.dumps(d, ensure_ascii=False), _JSON)
         elif self.path.startswith("/admin"):
             self._send(200, json.dumps(admin_data(self._bearer_uid(), self._req_team(), self._bearer_email()),
                                        ensure_ascii=False), _JSON)
@@ -1645,7 +1996,8 @@ class Handler(BaseHTTPRequestHandler):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
             data = {"only_unreviewed": q.get("all", ["0"])[0] not in ("1", "true"),
-                    "limit": (q.get("limit", ["100"])[0]), "team": self._req_team()}
+                    "limit": (q.get("limit", ["100"])[0]), "team": self._req_team(),
+                    "reviewer": self._bearer_uid() or q.get("reviewer", [""])[0]}
             self._send(200, json.dumps(review_queue(data), ensure_ascii=False), _JSON)
         elif self.path.startswith("/events"):
             self._serve_sse()
@@ -1656,6 +2008,30 @@ class Handler(BaseHTTPRequestHandler):
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/ingest-status"):
             self._send(200, json.dumps(ingest_status(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/learn-report"):     # 최근 일배치 결과(GET 수신)
+            self._send(200, json.dumps({"ok": True, "report": _LAST_LEARN_REPORT}, ensure_ascii=False), _JSON)
+        elif self.path.startswith("/learn-export"):      # 학습데이터 JSONL 다운로드(관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            fname, text = learn_export(q.get("kind", ["sft"])[0], self._req_team())
+            if not fname:
+                self._send(400, json.dumps({"error": text}, ensure_ascii=False), _JSON)
+                return
+            data = text.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        elif self.path.startswith("/learn-data"):        # 학습 데이터 현황(관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            self._send(200, json.dumps(learn_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/prompt-defaults"):
             sync_learned()
             self._send(200, json.dumps({"defaults": PR.stage_defaults(),
@@ -1810,6 +2186,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not data.get("clear") and not self._inject_reviewer(data):
                     self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
                     return
+                rl_key = (data.get("reviewer") or "").strip() or self.client_address[0]
+                if not data.get("clear") and rate_limited(rl_key):
+                    self._send(429, json.dumps({"error": "잠시 후 다시 시도하세요(검수 속도 제한)"},
+                                               ensure_ascii=False), _JSON)
+                    return
                 self._send(200, json.dumps(apply_feedback(data), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
@@ -1879,7 +2260,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
                     return
                 self._send(200, json.dumps(patch_content_meta(data.get("hash"), data.get("patch"),
-                                           self._req_team()), ensure_ascii=False), _JSON)
+                                           self._req_team(), reviewer=data.get("reviewer") or ""),
+                                           ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -2315,11 +2697,16 @@ PAGE = """<!doctype html>
         c.fb = Object.assign({}, c.fb, { verdict: c.fb.verdict || 'bad', stage: stage, ts: Date.now() / 1000 });
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: c.fb.verdict, stage: stage, element: el, note: tagged });
         this.fbNoteOpen[c.hash] = false;
-        if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(15, '개선안 채택'); }  // 교정 = +15 PT
+        if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(25, '교정 반영'); }  // 교정 = +25 PT(서버 산정과 일치)
       },
       async _postFb(payload) {
         payload = Object.assign({ reviewer: this.reviewer || '', name: this.reviewer || '' }, payload);  // 키+표시명(supabase 면 서버가 uid 로 덮어씀)
-        try { const r = await (await fetch('/feedback', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json(); if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback; } catch (e) {}
+        try {
+          const r = await (await fetch('/feedback', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
+          if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback;
+          (r && r.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+          return r;
+        } catch (e) { return null; }
       },
       // ── 팀 실시간 협업: 검수자 식별 · 검수 대기 · 라이브 ──
       loadReviewer() {
@@ -2427,8 +2814,8 @@ PAGE = """<!doctype html>
         }
       },
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
-      async loadQueue() { this.modBusy = true; try { this.queueData = await (await fetch('/queue' + (this.queueOnlyUnreviewed ? '' : '?all=1'))).json(); } catch (e) {} this.modBusy = false; },
-      async loadArena() { try { this.arenaData = await (await fetch('/arena')).json(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
+      async loadQueue() { this.modBusy = true; try { const p = new URLSearchParams(); if (!this.queueOnlyUnreviewed) p.set('all', '1'); if (this.reviewer) p.set('reviewer', this.reviewer); this.queueData = await (await fetch('/queue?' + p.toString(), { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
+      async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; this.arenaData = await (await fetch('/arena' + p, { headers: this._authHeaders() })).json(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
       async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
       async runGolden() {
         this.goldenBusy = true; this.goldenResult = null;
@@ -2453,6 +2840,23 @@ PAGE = """<!doctype html>
         this.learnBusy = false; this.loadPromptDefaults();
       },
       async loadLearnReport() { try { const r = await (await fetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; } catch (e) {} },
+      // 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보·추출(전 기준치 논문 근거)
+      learnData: null, learnDataBusy: false,
+      async loadLearnData() {
+        this.learnDataBusy = true;
+        try { const r = await (await fetch('/learn-data', { headers: this._authHeaders() })).json(); if (r && r.ok) this.learnData = r; } catch (e) {}
+        this.learnDataBusy = false;
+      },
+      async exportLearn(kind) {
+        try {
+          const res = await fetch('/learn-export?kind=' + kind, { headers: this._authHeaders() });
+          if (!res.ok) { this._err('내보내기 실패'); return; }
+          const blob = await res.blob(); const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = 'prism_' + kind + '.jsonl';
+          a.click(); URL.revokeObjectURL(a.href);
+        } catch (e) { this._err('내보내기 실패'); }
+      },
+      ciTxt(ci) { return ci ? (this.pctTxt(ci.acc) + ' · 95% CI ' + this.pctTxt(ci.lo) + '~' + this.pctTxt(ci.hi) + ' (n=' + ci.n + ')') : '·'; },
       pctTxt(v) { return (v == null) ? '·' : (Math.round(v * 1000) / 10) + '%'; },
       // 카테고리 옵션(IAB Tier1 / Tier2) · 빈칸 채우기 피커용
       get categoryOptions() {
@@ -2464,7 +2868,7 @@ PAGE = """<!doctype html>
       async fillCategory(c, val) {
         if (!val || !c) return;
         const cats = [val];
-        try { await fetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, patch: { content_category: cats } }) }); } catch (e) { this._err('분류 저장 실패'); return; }
+        try { await fetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, patch: { content_category: cats }, reviewer: this.reviewer || '' }) }); } catch (e) { this._err('분류 저장 실패'); return; }
         c.category = cats;                                         // 로컬 즉시 반영
         this.celebratePoints(5, '분류 채움');
       },
@@ -2542,10 +2946,10 @@ PAGE = """<!doctype html>
       flowStageKr(L) { return L >= 10 ? '마스터' : L >= 4 ? '정착' : '입문'; },
       badges() {
         const m = this.arenaMe; const r = (m&&m.reviews)||0, c = (m&&m.corrections)||0, s = (m&&m.streak)||0, L = (m&&m.level)||0;
-        const acc = (this.arenaData && this.arenaData.accuracy) || 0;
-        // 확정 배지 세트(12) · 아레나 데이터에서 파생(백엔드 무변경). 5분류: 볼륨·스트릭·기여·성과·지위(SAPS Status).
-        // cur/target/unit = 미획득 배지 진행도(모달 표시용).
-        const acp = Math.round(acc * 100);
+        // 배지 세트(14) · 5분류: 볼륨·스트릭·기여·품질·지위. 품질 배지는 개인 실측(골드 정확도·합의·불일치 해소)
+        // 기반 = 유능감 정보 제공(Sailer 2017 · Ryan & Deci 2000). cur/target/unit = 진행도(모달 표시용).
+        const gn = (m&&m.gold_n)||0, ga = (m&&m.gold_acc)||0, cm = (m&&m.consensus_matches)||0, sr = (m&&m.split_reviews)||0;
+        const gap = Math.round(ga * 100);
         return [
           { icon: '🌱', label: '첫 검수', desc: '첫 검수를 완료했어요', exp: 10, color: '#18ba45', cat: '볼륨', cur: r, target: 1, unit: '검수', got: r >= 1 },
           { icon: '📖', label: '검수 50', desc: '누적 50건 검수', exp: 50, color: '#1e84ff', cat: '볼륨', cur: r, target: 50, unit: '검수', got: r >= 50 },
@@ -2556,7 +2960,9 @@ PAGE = """<!doctype html>
           { icon: '☄️', label: '연속 14일', desc: '14일 연속 검수', exp: 70, color: '#ff4e33', cat: '스트릭', cur: s, target: 14, unit: '일', got: s >= 14 },
           { icon: '🏅', label: '개선 채택', desc: '개선안이 채택됐어요', exp: 25, color: '#a05cff', cat: '기여', cur: c, target: 1, unit: '개선', got: c >= 1 },
           { icon: '🛠️', label: '개선 10', desc: '개선안 10건 채택', exp: 90, color: '#7c5cff', cat: '기여', cur: c, target: 10, unit: '개선', got: c >= 10 },
-          { icon: '🎯', label: '정확도 90%', desc: '팀 정확도 90% 달성', exp: 40, color: '#18ba45', cat: '성과', cur: acp, target: 90, unit: '%', got: acc >= 0.9 },
+          { icon: '🎯', label: '골드 정확도 90%', desc: '골드 문항 10건 이상 · 정확도 90%', exp: 60, color: '#18ba45', cat: '품질', cur: gap, target: 90, unit: '%', got: gn >= 10 && ga >= 0.9 },
+          { icon: '🤝', label: '합의 메이커', desc: '팀 합의와 일치한 판정 50건', exp: 60, color: '#1e84ff', cat: '품질', cur: cm, target: 50, unit: '건', got: cm >= 50 },
+          { icon: '⚖️', label: '불일치 해결사', desc: '의견 갈린 콘텐츠 재검토 10건', exp: 60, color: '#a05cff', cat: '품질', cur: sr, target: 10, unit: '건', got: sr >= 10 },
           { icon: '⭐', label: 'Lv.5', desc: '레벨 5 도달', exp: 50, color: '#ffb020', cat: '지위', cur: L, target: 5, unit: 'Lv', got: L >= 5 },
           { icon: '👑', label: '마스터', desc: '레벨 10 도달(마스터)', exp: 200, color: '#f5a623', cat: '지위', cur: L, target: 10, unit: 'Lv', got: L >= 10 },
         ];
@@ -2595,7 +3001,8 @@ PAGE = """<!doctype html>
         if (this._ptT) clearTimeout(this._ptT);
         this._ptT = setTimeout(() => { if (this.ptToast && this.ptToast.id === id) this.ptToast = null; }, 1700);
       },
-      // 오늘의 미션(도전): 검수 대기가 있으면 스트릭 유지 유도, 없으면 골든셋
+      // 오늘의 미션: 서버 판정·보상(arenaData.missions). 아래 getter 는 미션 데이터 없을 때 폴백 안내.
+      get missionList() { return (this.arenaData && this.arenaData.missions) || []; },
       get todayMission() {
         const q = (this.arenaData && this.arenaData.queue) || 0;
         if (q > 0) return { txt: '검수 대기 ' + q + '건 · 지금 검수하면 스트릭 유지 🔥', to: 'review', cta: '검수하기' };
@@ -2607,10 +3014,17 @@ PAGE = """<!doctype html>
         if (!this.ensureReviewer()) return;
         it.note = it.note || '';
         const wasReviewed = !!it.myVerdict;
-        await this._postFb({ hash: it.hash, service: it.service, title: it.title, verdict: verdict, stage: 'review', note: it.note });
+        const r = await this._postFb({ hash: it.hash, service: it.service, title: it.title, verdict: verdict, stage: 'review', note: it.note });
+        if (r && r.gold) {                              // 골드 문항: 응답 후 정오답 공개(즉시 학습 피드백)
+          it.reviewed = true; it.myVerdict = verdict; it.goldRevealed = true; it.goldCorrect = !!r.gold.correct;
+          if (r.gold.correct) this.celebratePoints(10, '골드 문항 정답');
+          else this.liveToast('골드 문항 · 정답과 달랐습니다(품질 배율에 반영)');
+          return;
+        }
+        if (r && r.error) { this._err(r.error); return; }
         if (!wasReviewed) this.celebratePoints((verdict === 'bad' && (it.note || '').trim()) ? 25 : 10, '검수 완료');
         it.reviewed = true; it.myVerdict = verdict;
-        if (this.queueOnlyUnreviewed) this.queueData.items = (this.queueData.items || []).filter((x) => x.hash !== it.hash);
+        if (this.queueOnlyUnreviewed && !it.split) this.queueData.items = (this.queueData.items || []).filter((x) => x.hash !== it.hash);
       },
       ensureReviewer() { if (!(this.reviewer || '').trim()) { this.reviewerEditing = true; return false; } return true; },
       notifyViewing(it) { try { fetch('/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer: this.reviewer, hash: it.hash, action: 'viewing' }) }); } catch (e) {} },
@@ -3579,6 +3993,10 @@ PAGE = """<!doctype html>
   .charcard__mission-ic{flex:none;font-size:15px}
   .charcard__mission-tx{flex:1;font-size:11.5px;color:var(--ds-text-secondary);line-height:1.45;word-break:keep-all}
   .charcard__mission-cta{flex:none;font-size:11px;font-weight:700;color:var(--ds-primary)}
+  .charcard__missions{display:flex;flex-direction:column;gap:5px;margin-top:12px}
+  .charcard__missions .charcard__mission{margin-top:0;padding:7px 12px}
+  .charcard__mission.is-done{background:color-mix(in srgb,var(--ds-success, #18ba45) 12%,transparent)}
+  .charcard__mission.is-done .charcard__mission-cta{color:var(--ds-success, #18ba45)}
   .charcard__badges-hd{margin-top:14px;text-align:left;font-size:11px;font-weight:600;color:var(--ds-muted)}
   .charcard__badges-hd b{color:var(--ds-ink)}
   .charcard__badges{margin-top:9px;display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:10px}
@@ -4840,6 +5258,74 @@ PAGE = """<!doctype html>
               <div x-show="!(learnReport && learnReport.ts) && !metaResults" class="text-xs text-muted"><b class="text-ink">⚙ 지금 실행</b>을 누르면 개선·골든 축적·회귀 평가·모델 비교를 한 번에 돌립니다</div>
             </div>
           </section>
+          <!-- 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보 + 데이터셋 추출 -->
+          <section class="panel" data-fn x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()">
+            <div class="panel-hd"><b>학습 데이터 현황</b><span class="meta">특화 LLM 학습데이터 · 소요 산정(논문 기준)</span>
+              <button type="button" class="ds-btn ds-btn--secondary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnDataBusy" x-on:click="loadLearnData()" x-text="learnDataBusy ? '집계 중…' : '새로고침'"></button>
+            </div>
+            <div class="panel-bd">
+              <template x-if="learnData">
+                <div>
+                  <div class="tiles" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
+                    <div class="tile"><div class="n tnum" x-text="learnData.golden_n"></div><div class="t">골든(정답)</div></div>
+                    <div class="tile"><div class="n tnum" x-text="learnData.covered + '/' + learnData.class_total"></div><div class="t">클래스 충족</div></div>
+                    <div class="tile" data-tip="Krippendorff's alpha · 참고 지표(임계값 기계 적용 금지 · Artstein & Poesio 2008)" data-tip-pos="top"><div class="n tnum" x-text="learnData.alpha == null ? '·' : learnData.alpha"></div><div class="t">일치도 α</div></div>
+                    <div class="tile" data-tip="최근 골든 평가에서 모델과 정답이 어긋난 건(기계 플래그 → 사람 확정 · Northcutt 2021)" data-tip-pos="top"><div class="n tnum" x-text="(learnData.label_flags||[]).length"></div><div class="t">오류 의심</div></div>
+                    <div class="tile"><div class="n tnum" x-text="learnData.split_n"></div><div class="t">의견 불일치</div></div>
+                  </div>
+                  <div class="text-xs text-muted" style="margin-bottom:12px" x-show="learnData.acc_ci">골든 정합성 <b class="text-ink" x-text="ciTxt(learnData.acc_ci)"></b> · 신뢰구간이 겹치는 비교는 판정 보류(Miller 2024)</div>
+                  <!-- 데이터셋 추출(JSONL) -->
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+                    <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
+                    <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
+                    <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
+                  </div>
+                  <!-- 학습 소요 대비(기준치 = 논문 출처) -->
+                  <div class="overflow-auto" style="margin-bottom:14px"><table class="ds-table"><thead><tr><th>용도</th><th>기준</th><th>보유</th><th>부족</th><th>근거</th></tr></thead><tbody>
+                    <template x-for="r in learnData.requirements" x-bind:key="r.kind">
+                      <tr><td class="text-ink" x-text="r.kind"></td><td class="tnum" x-text="r.target"></td><td class="tnum" x-text="r.have"></td>
+                        <td class="tnum" x-bind:class="r.lack > 0 ? 'text-ink' : ''" x-text="r.lack"></td>
+                        <td class="text-xs text-muted" x-text="r.basis"></td></tr>
+                    </template>
+                  </tbody></table></div>
+                  <div class="grid grid-cols-2 gap-4">
+                    <!-- 클래스(Tier1) 커버리지 · 목표 = 클래스당 8(SetFit) -->
+                    <div><div class="text-xs text-muted" style="margin-bottom:6px">클래스 커버리지 · 목표 <b class="text-ink" x-text="learnData.per_class_target + '건/클래스'"></b> (SetFit)</div>
+                      <div class="overflow-auto" style="max-height:260px"><table class="ds-table"><thead><tr><th>Tier1</th><th>보유</th><th>부족</th></tr></thead><tbody>
+                        <template x-for="c in [...learnData.coverage].sort((a,b)=>b.lack-a.lack)" x-bind:key="c.cls">
+                          <tr><td x-text="c.cls"></td><td class="tnum" x-text="c.have"></td><td class="tnum" x-bind:class="c.lack>0?'text-ink':''" x-text="c.lack"></td></tr>
+                        </template>
+                      </tbody></table></div></div>
+                    <!-- 검수자 신뢰도 · 합의 일치율 + 골드 정확도 + Dawid-Skene EM -->
+                    <div><div class="text-xs text-muted" style="margin-bottom:6px">검수자 신뢰도 · 합의 일치율 + 골드 정확도 + EM 오류율(Dawid-Skene 1979)</div>
+                      <div class="overflow-auto" style="max-height:260px"><table class="ds-table"><thead><tr><th>검수자</th><th>검수</th><th>합의 일치</th><th>골드</th><th>EM 오류율</th></tr></thead><tbody>
+                        <template x-for="r in learnData.reviewers" x-bind:key="r.reviewer">
+                          <tr><td class="text-ink" x-text="r.reviewer"></td><td class="tnum" x-text="r.n"></td>
+                            <td class="tnum" x-text="r.agree_rate == null ? '·' : pctTxt(r.agree_rate)"></td>
+                            <td class="tnum" x-text="r.gold_n >= 5 ? (pctTxt(r.gold_acc) + ' (' + r.gold_n + ')') : ('· (' + (r.gold_n||0) + ')')"></td>
+                            <td class="tnum" x-text="r.ds_error == null ? '·' : pctTxt(r.ds_error)"></td></tr>
+                        </template>
+                        <template x-if="!learnData.reviewers.length"><tr><td colspan="5" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
+                      </tbody></table></div></div>
+                  </div>
+                  <!-- 라벨 오류 후보(기계 플래그 → 재검토) -->
+                  <div x-show="(learnData.label_flags||[]).length" style="margin-top:14px">
+                    <div class="text-xs text-muted" style="margin-bottom:6px">라벨 오류 후보 · 최근 골든 평가에서 모델·정답 불일치(재검토 권장)</div>
+                    <div class="overflow-auto" style="max-height:200px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>정답</th><th>모델</th></tr></thead><tbody>
+                      <template x-for="f in learnData.label_flags" x-bind:key="f.hash">
+                        <tr><td x-text="f.title || f.hash"></td><td class="tnum" x-text="f.expected"></td><td class="tnum" x-text="f.got"></td></tr>
+                      </template>
+                    </tbody></table></div>
+                  </div>
+                  <ul class="ds-bullets" style="margin-top:14px">
+                    <li>기준치 출처: 클래스당 8(SetFit 2022) · SFT 1k(LIMA 2023) · 운영급 13.5k(Llama Guard 2023) · 선호쌍 33k(InstructGPT 2022 참고 상한) · 평가셋 100(tinyBenchmarks 2024). 전체 서지는 <b>LEARNING_DESIGN.md</b>.</li>
+                    <li>선호쌍(DPO)은 검수자 교정의 <b>전/후</b>가 원천입니다 · 상세 화면에서 교정할수록 쌓입니다.</li>
+                  </ul>
+                </div>
+              </template>
+              <div x-show="!learnData" class="text-xs text-muted">집계를 불러오는 중이거나, 관리자 권한이 필요합니다</div>
+            </div>
+          </section>
         <!-- 콘텐츠별 평가 피드백 → 학습 루프(다음 추출 프롬프트에 자동 반영) -->
         <section class="panel" data-fn><div class="panel-hd"><b>콘텐츠별 평가 · 학습 루프</b>
           <span class="meta tnum" x-show="dashData && dashData.feedback" x-text="dashData ? ('평가 ' + dashData.feedback.total + ' · 학습 반영 ' + dashData.feedback.learned + '건') : ''"></span>
@@ -5061,12 +5547,27 @@ PAGE = """<!doctype html>
                         <div><b class="tnum" x-text="arenaMe.reviews"></b><span>검수</span></div>
                         <div><b class="tnum" x-text="arenaMe.corrections"></b><span>개선 🏅</span></div>
                         <div><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>🔥 스트릭</span></div>
+                        <div data-tip="골드 문항(정답 알려진 검증 문항) 정확도 · 점수 배율에 반영" data-tip-pos="top"><b class="tnum" x-text="(arenaMe.gold_n||0) >= 5 ? pctTxt(arenaMe.gold_acc) : '·'"></b><span>🥇 골드</span></div>
                       </div>
-                      <div class="charcard__mission" x-on:click="selectMod(todayMission.to)">
-                        <span class="charcard__mission-ic">🎯</span>
-                        <span class="charcard__mission-tx" x-text="todayMission.txt"></span>
-                        <span class="charcard__mission-cta" x-text="todayMission.cta + ' →'"></span>
-                      </div>
+                      <!-- 오늘의 미션: 서버 판정·보상(달성 시 보너스 1회 지급) -->
+                      <template x-if="missionList.length">
+                        <div class="charcard__missions">
+                          <template x-for="ms in missionList" x-bind:key="ms.id">
+                            <div class="charcard__mission" x-bind:class="ms.completed ? 'is-done' : ''" x-on:click="selectMod('review')">
+                              <span class="charcard__mission-ic" x-text="ms.completed ? '✅' : '🎯'"></span>
+                              <span class="charcard__mission-tx" x-text="ms.label + ' · ' + ms.done + '/' + ms.total"></span>
+                              <span class="charcard__mission-cta" x-text="ms.completed ? ('+' + ms.bonus + 'pt') : '도전 →'"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                      <template x-if="!missionList.length">
+                        <div class="charcard__mission" x-on:click="selectMod(todayMission.to)">
+                          <span class="charcard__mission-ic">🎯</span>
+                          <span class="charcard__mission-tx" x-text="todayMission.txt"></span>
+                          <span class="charcard__mission-cta" x-text="todayMission.cta + ' →'"></span>
+                        </div>
+                      </template>
                     </div>
                   </div>
                   <!-- 우: 모은 배지 컬렉션 -->
@@ -5114,9 +5615,12 @@ PAGE = """<!doctype html>
                       <span class="ds-badge ds-badge--yellow">YELLOW</span>
                       <span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="it.title || '(제목 없음)'"></span>
                       <span class="fbrow__svc" x-text="it.service"></span>
+                      <span class="ds-badge ds-badge--error" x-show="it.split" data-tip="검수자 의견이 갈린 콘텐츠 · 추가 의견으로 합의를 만들어 주세요" data-tip-pos="top">불일치 · 재검토</span>
+                      <span class="ds-badge ds-badge--warning" x-show="it.confidence != null && it.confidence < 0.6" data-tip="모델 확신이 낮아 사람 판단이 특히 중요한 콘텐츠" data-tip-pos="top">저확신</span>
+                      <span class="ds-badge" x-show="it.goldRevealed" x-bind:class="it.goldCorrect ? 'ds-badge--success' : 'ds-badge--error'" x-text="it.goldCorrect ? '골드 문항 · 정답' : '골드 문항 · 오답'"></span>
                       <span class="ds-badge ds-badge--intent" x-show="liveSeen[it.hash]" x-text="(liveSeen[it.hash]||'') + ' 보는 중'"></span>
-                      <span class="ds-badge ds-badge--success" x-show="it.reviewed && !it.myVerdict">검수됨</span>
-                      <span class="ds-badge" x-show="it.myVerdict" x-bind:class="it.myVerdict==='good'?'ds-badge--success':'ds-badge--neutral'" x-text="it.myVerdict==='good'?'내 의견 · 정확':'내 의견 · 문제'"></span>
+                      <span class="ds-badge ds-badge--success" x-show="it.reviewed && !it.myVerdict && !it.goldRevealed">검수됨</span>
+                      <span class="ds-badge" x-show="it.myVerdict && !it.goldRevealed" x-bind:class="it.myVerdict==='good'?'ds-badge--success':'ds-badge--neutral'" x-text="it.myVerdict==='good'?'내 의견 · 정확':'내 의견 · 문제'"></span>
                     </div>
                     <div class="fbrow__sum tbox" x-show="it.review_reason" x-text="it.review_reason"></div>
                   </div>

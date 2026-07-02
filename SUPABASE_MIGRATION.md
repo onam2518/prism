@@ -46,6 +46,18 @@ public.prism_feedback(content_hash, reviewer_id→prism_reviewers, service, titl
 RLS: 인증 사용자 읽기(리더보드·합의), 쓰기는 본인 행만. 색인: feedback(reviewer_id, verdict), contents(review).
 **REST 검증됨**: anon 키로 3 테이블 GET 200(노출 확인). 쓰기/인증 읽기는 service_role(서버).
 
+**학습 루프 확장(적용됨 — `prism_learning_loop_tables`, 2026-07-02)**:
+```
+public.prism_feedback + element text                      -- 교정 대상 요소 영속
+public.prism_patch_log(id, team_id, content_hash, reviewer_id,
+               element, before jsonb, after jsonb, created_at)   -- 교정 전/후 append(선호쌍 원천)
+public.prism_gold_checks(id, team_id, content_hash, reviewer_id,
+               expected, verdict, correct, created_at)     -- 골드 문항 응답(검수자 품질 측정)
+public.prism_events(id, team_id, reviewer_id, kind, day, bonus, meta,
+               created_at, UNIQUE(reviewer_id, kind, day)) -- 미션 보상 1회 기록(감사 추적)
+```
+신규 3 테이블은 RLS enable + 정책 없음 = service_role(서버) 전용.
+
 ## 상세 설계 (확정)
 
 ### (a) 정체성 통일 — dual-mode 의 핵심
