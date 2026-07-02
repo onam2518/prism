@@ -637,6 +637,58 @@ def usermeta_data(logs_bytes: bytes = None, filename: str = "") -> dict:
             return {"error": str(e)[:200], "users": [], "personas_def": []}
 
 
+def build_template_xlsx() -> bytes:
+    """엑셀 일괄 입력용 .xlsx 템플릿(의존성 0: zipfile+xml, inline string).
+    헤더·예시는 CSV 템플릿과 동일 · ingest._read_xlsx 와 왕복 호환."""
+    import io
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    rows = [["콘텐츠 그룹", "제목", "부제", "본문"],
+            ["뉴스", "삼성전자 노조 임금 협상 결렬", "중앙노동위 조정 불성립",
+             "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다."],
+            ["스포츠", "손흥민 시즌 10호골", "",
+             "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다."]]
+
+    def cell(r, ci, v):
+        col = chr(ord("A") + ci)
+        return f'<c r="{col}{r}" t="inlineStr"><is><t xml:space="preserve">{escape(v)}</t></is></c>'
+
+    sheet_rows = "".join(
+        f'<row r="{ri + 1}">' + "".join(cell(ri + 1, ci, v) for ci, v in enumerate(row)) + "</row>"
+        for ri, row in enumerate(rows))
+    sheet = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+             '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+             f'<sheetData>{sheet_rows}</sheetData></worksheet>')
+    workbook = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+                'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                '<sheets><sheet name="contents" sheetId="1" r:id="rId1"/></sheets></workbook>')
+    wb_rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+               '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+               '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
+               'Target="worksheets/sheet1.xml"/></Relationships>')
+    root_rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                 '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+                 'Target="xl/workbook.xml"/></Relationships>')
+    types = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+             '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+             '<Default Extension="xml" ContentType="application/xml"/>'
+             '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+             '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+             '</Types>')
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", types)
+        z.writestr("_rels/.rels", root_rels)
+        z.writestr("xl/workbook.xml", workbook)
+        z.writestr("xl/_rels/workbook.xml.rels", wb_rels)
+        z.writestr("xl/worksheets/sheet1.xml", sheet)
+    return buf.getvalue()
+
+
 def build_usermeta_template_csv() -> bytes:
     """행동 로그 템플릿. content_id = 추출 순서(0부터)."""
     import csv
@@ -2635,6 +2687,16 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
         elif self.path.startswith("/usermeta"):
             self._send(200, json.dumps(usermeta_data(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/template.xlsx"):
+            data = build_template_xlsx()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", 'attachment; filename="prism_template.xlsx"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         elif self.path.startswith("/template.csv"):
             data = build_template_csv()
             self.send_response(200)
@@ -3205,6 +3267,7 @@ PAGE = """<!doctype html>
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
+      saveCred: false, authBusy: false,        // 로그인: 아이디·비밀번호 저장(이 기기) · 진행 애니메이션
       // Supabase 인증(ID/PW) · backend==='supabase' 일 때
       backend: 'supabase', authToken: '', authEmail: '', authPw: '', authPw2: '', authMode: 'login', authMsg: '', noTeam: false,
       // 팀(멀티테넌시): 생성/가입 + 내 초대코드
@@ -3567,6 +3630,7 @@ PAGE = """<!doctype html>
       // ── 팀 실시간 협업: 검수자 식별 · 검수 대기 · 라이브 ──
       loadReviewer() {
         try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; this.authToken = localStorage.getItem('prism_token') || ''; } catch (e) {}
+        this._loadCred();                              // 저장된 아이디·비밀번호 프리필(이 기기)
         if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
       },
       _authHeaders() { const h = { 'Content-Type': 'application/json' }; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken; return h; },
@@ -3574,8 +3638,23 @@ PAGE = """<!doctype html>
       get showProfileFields() { return this.backend !== 'supabase' || this.authMode === 'signup' || !!this.reviewer; },
       logout() {
         try { localStorage.removeItem('prism_reviewer'); localStorage.removeItem('prism_reviewer_char'); localStorage.removeItem('prism_token'); } catch (e) {}
+        this._loadCred();                              // 저장 선택 시 재로그인 편의(프리필 유지)
         this.reviewer = ''; this.authToken = ''; this.adminData = null; this.arenaData = null;
         this.mod = 'home'; this.reviewerEditing = true;
+      },
+      _loadCred() {
+        try {
+          const raw = localStorage.getItem('prism_cred');
+          if (!raw) return;
+          const d = JSON.parse(decodeURIComponent(escape(atob(raw))));
+          this.authEmail = d.e || ''; this.authPw = d.p || ''; this.saveCred = true;
+        } catch (e) {}
+      },
+      _storeCred(email, pw) {
+        try {
+          if (this.saveCred) localStorage.setItem('prism_cred', btoa(unescape(encodeURIComponent(JSON.stringify({ e: email, p: pw })))));
+          else localStorage.removeItem('prism_cred');
+        } catch (e) {}
       },
       async saveReviewer() {
         // 프로필 편집(이미 로그인): 재인증 없이 닉네임·캐릭터만 갱신(팀 재참가 안 함)
@@ -3594,23 +3673,25 @@ PAGE = """<!doctype html>
             if (pw.length < 6) { this.authMsg = '비밀번호는 6자 이상이어야 합니다'; return; }
             if (pw !== this.authPw2) { this.authMsg = '비밀번호가 일치하지 않습니다'; return; }
           }
-          this.authMsg = '확인 중…';
+          this.authMsg = ''; this.authBusy = true;                 // 진행 애니메이션(정보 변경 화면 노출 방지)
           let r;
           try { r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: this.authMode, email: email, password: pw }) })).json(); }
-          catch (e) { this.authMsg = '네트워크 오류'; return; }
-          if (!r.ok) { this.authMsg = this._authErr(r.error, r.raw); return; }
+          catch (e) { this.authBusy = false; this.authMsg = '네트워크 오류'; return; }
+          if (!r.ok) { this.authBusy = false; this.authMsg = this._authErr(r.error, r.raw); return; }
+          this._storeCred(email, pw);                               // 아이디·비밀번호 저장(선택 시 · 이 기기)
           this.authToken = r.access_token; this.authMsg = '';
           try { localStorage.setItem('prism_token', this.authToken); } catch (e) {}
           if (this.authMode === 'login') {                          // 로그인: 기존 프로필 로드(재입력 없음)
-            let rr; try { rr = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ mode: 'login' }) })).json(); } catch (e) { this.authMsg = '네트워크 오류'; return; }
-            if (rr && rr.needSignup) { this.authMode = 'signup'; this.authMsg = '가입 정보가 없습니다 · 닉네임·캐릭터·팀을 설정해 가입하세요'; return; }
-            if (!rr || !rr.ok) { this.authMsg = (rr && rr.error) || '프로필 로드 실패'; return; }
+            let rr; try { rr = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ mode: 'login' }) })).json(); } catch (e) { this.authBusy = false; this.authMsg = '네트워크 오류'; return; }
+            if (rr && rr.needSignup) { this.authBusy = false; this.authMode = 'signup'; this.authMsg = '가입 정보가 없습니다 · 닉네임·캐릭터·팀을 설정해 가입하세요'; return; }
+            if (!rr || !rr.ok) { this.authBusy = false; this.authMsg = (rr && rr.error) || '프로필 로드 실패'; return; }
             this.reviewer = rr.name; this.reviewerChar = rr.char || this.reviewerChar;
             this._badgeSeen = Array.isArray(rr.badges) ? rr.badges : null;   // 서버 배지 기준선(기기 간)
             if (rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }
             try { localStorage.setItem('prism_reviewer', this.reviewer); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
-            this.authEmail = ''; this.authPw = '';                   // 상태 정리(편집 재진입 시 오인 방지)
-            this.reviewerEditing = false; this.authMsg = ''; this.refreshConfig();
+            if (!this.saveCred) { this.authEmail = ''; this.authPw = ''; }   // 상태 정리(저장 시 프리필 유지)
+            this.reviewerEditing = false; this.authBusy = false; this.authMsg = ''; this.refreshConfig();
+            this.loadAdmin();                                        // 관리자 메뉴 게이팅 즉시 갱신
             if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
             return;
           }
@@ -3626,11 +3707,12 @@ PAGE = """<!doctype html>
         if (this.backend === 'supabase') { body.team_mode = this.noTeam ? 'none' : 'join'; body.invite_code = this.inviteCode; }
         try {
           const rr = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
-          if (rr && !rr.ok) { this.authMsg = rr.error || '등록 실패'; return; }
+          if (rr && !rr.ok) { this.authBusy = false; this.authMsg = rr.error || '등록 실패'; return; }
           if (rr && rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }   // 초대코드 표시
         } catch (e) {}
-        this.authEmail = ''; this.authPw = ''; this.authPw2 = '';
-        this.reviewerEditing = false; this.refreshConfig();
+        if (!this.saveCred) { this.authEmail = ''; this.authPw = ''; }
+        this.authPw2 = '';
+        this.reviewerEditing = false; this.authBusy = false; this.refreshConfig();
         if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
       },
       _authErr(err, raw) {
@@ -4895,6 +4977,21 @@ PAGE = """<!doctype html>
   .onboard__cta{height:46px;width:100%;font-size:15px;font-weight:700}
   .onboard__cta:disabled{opacity:.45;cursor:not-allowed}
   .onboard__skip{margin-top:10px;background:none;border:0;color:var(--ds-muted);font-size:12.5px;cursor:pointer}
+  /* 로그인 진행 애니메이션: 캐릭터 펄스 링 + 점 3개 */
+  .onboard__busy{display:flex;flex-direction:column;align-items:center;gap:14px;padding:26px 0 10px;text-align:center}
+  .onboard__busy p{font-size:13px;color:var(--ds-muted);margin:0}
+  .onboard__busy-ring{width:86px;height:86px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    background:var(--ds-primary-tint,rgba(30,132,255,.10));animation:busyPulse 1.6s ease-in-out infinite}
+  .onboard__busy-ring img{width:62px;height:62px;animation:busyBob 1.6s ease-in-out infinite}
+  .onboard__busy-dots{display:flex;gap:6px}
+  .onboard__busy-dots i{width:7px;height:7px;border-radius:50%;background:var(--ds-violet,#1e84ff);opacity:.35;
+    animation:busyDot 1.2s ease-in-out infinite}
+  .onboard__busy-dots i:nth-child(2){animation-delay:.2s}
+  .onboard__busy-dots i:nth-child(3){animation-delay:.4s}
+  @keyframes busyPulse{0%,100%{box-shadow:0 0 0 0 rgba(30,132,255,.25)}50%{box-shadow:0 0 0 14px rgba(30,132,255,0)}}
+  @keyframes busyBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+  @keyframes busyDot{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:1;transform:scale(1.25)}}
+
   /* ── 검수자 등록: 캐릭터 선택(구 약식, 미사용 호환) ── */
   .charpick{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
   .charpick__opt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;
@@ -5410,11 +5507,17 @@ PAGE = """<!doctype html>
       <div class="onboard__brand">
         <img class="onboard__logo onboard__logo--light" src="/vendor/prism-logo-tagline-light.png" alt="Prism · A lens on content & users">
         <img class="onboard__logo onboard__logo--dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism · A lens on content & users"></div>
-      <h2 class="onboard__title" x-text="authToken ? '검수자 정보 변경' : (authMode==='signup'?'가입하고 시작':'로그인')"></h2>
+      <h2 class="onboard__title" x-text="authBusy ? (authMode==='signup' ? '가입 중' : '로그인 중') : (authToken ? '검수자 정보 변경' : (authMode==='signup'?'가입하고 시작':'로그인'))"></h2>
       <p class="onboard__lead">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 내 검수가 점수가 되고 캐릭터가 성장해요. 계정으로 로그인하면 <b>어느 기기에서나</b> 이어집니다.</p>
 
+      <!-- 로그인 진행 애니메이션(정보 변경 화면 플래시 방지) -->
+      <div x-show="authBusy" x-cloak class="onboard__busy">
+        <span class="onboard__busy-ring"><img x-bind:src="charImg(reviewerChar)" alt=""></span>
+        <div class="onboard__busy-dots"><i></i><i></i><i></i></div>
+        <p x-text="authMode==='signup' ? '가입을 완료하고 있어요' : '프로필을 불러오고 있어요'"></p>
+      </div>
       <!-- ① 로그인/가입 (비로그인) -->
-      <div x-show="!authToken">
+      <div x-show="!authToken && !authBusy">
         <div class="onboard__authtabs">
           <button type="button" x-bind:class="authMode==='login'?'sel':''" x-on:click="authMode='login';authMsg=''">로그인</button>
           <button type="button" x-bind:class="authMode==='signup'?'sel':''" x-on:click="authMode='signup';authMsg=''">가입</button>
@@ -5425,7 +5528,9 @@ PAGE = """<!doctype html>
           <label class="onboard__lbl">이메일</label>
           <input class="field onboard__name" type="email" placeholder="you@team.com" x-model="authEmail" style="margin-bottom:12px">
           <label class="onboard__lbl">비밀번호</label>
-          <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw" x-on:keydown.enter="saveReviewer()" x-bind:style="authMode==='signup' ? 'margin-bottom:12px' : 'margin-bottom:0'">
+          <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw" x-on:keydown.enter="saveReviewer()" x-bind:style="authMode==='signup' ? 'margin-bottom:12px' : 'margin-bottom:8px'">
+          <label x-show="authMode==='login'" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ds-muted);cursor:pointer">
+            <input type="checkbox" x-model="saveCred"> 아이디·비밀번호 저장 <span class="onboard__hint" style="margin:0">이 기기에만 저장됩니다</span></label>
           <template x-if="authMode==='signup'">
             <div>
               <label class="onboard__lbl">비밀번호 확인</label>
@@ -5460,7 +5565,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ② 프로필 편집 (로그인 상태) · 닉네임·캐릭터만 -->
-      <div x-show="authToken" class="onboard__group">
+      <div x-show="authToken && !authBusy" class="onboard__group">
         <div class="onboard__grouphd">프로필</div>
         <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시</span></label>
         <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()">
@@ -5475,11 +5580,11 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
-      <button type="button" class="ds-btn ds-btn--primary onboard__cta"
+      <button type="button" class="ds-btn ds-btn--primary onboard__cta" x-show="!authBusy"
               x-bind:disabled="authToken ? !(reviewer||'').trim() : (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!authPw2 || !(reviewer||'').trim() || (!noTeam && !(inviteCode||'').trim()))))"
               x-on:click="saveReviewer()"
               x-text="authToken ? '저장하고 시작' : (authMode==='signup'?'가입하고 시작':'로그인하고 시작')"></button>
-      <button type="button" class="onboard__skip" x-show="authToken" x-on:click="reviewerEditing=false">닫기</button>
+      <button type="button" class="onboard__skip" x-show="authToken && !authBusy" x-on:click="reviewerEditing=false">닫기</button>
     </div>
   </div>
 
@@ -5783,11 +5888,14 @@ PAGE = """<!doctype html>
           <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
             <div class="flex items-center justify-between gap-2 rounded-lg border border-black/[0.08] bg-black/[0.02] px-3 py-2.5">
               <div class="text-xs text-muted">컬럼 양식 · <span class="text-body">콘텐츠 그룹 · 제목 · 부제 · 본문</span> (제목·본문 필수)</div>
-              <a href="/template.csv" download
+              <span class="inline-flex shrink-0 items-center gap-2">
+              <a href="/template.xlsx" download
                 class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-black/[0.12] px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-black/[0.06]">
                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
-                템플릿 내려받기
+                엑셀 템플릿
               </a>
+              <a href="/template.csv" download class="text-xs text-muted hover:text-ink" style="text-decoration:underline" data-tip="같은 양식의 CSV(UTF-8 BOM)" data-tip-pos="top">CSV</a>
+              </span>
             </div>
             <div>
               <label class="lbl">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>

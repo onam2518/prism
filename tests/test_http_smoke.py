@@ -147,6 +147,12 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.ok("/topics")
         self.ok("/usermeta")
         self.ok("/vocab")
+        status, xlsx = _req(self.port, "/template.xlsx")
+        self.assertEqual(status, 200)
+        self.assertTrue(xlsx.startswith("PK"))         # zip 시그니처 = 유효 xlsx
+        status, csv_t = _req(self.port, "/template.csv")
+        self.assertEqual(status, 200)
+        self.assertIn("콘텐츠 그룹", csv_t)
 
     # ── 프롬프트 스튜디오: 계약 노출 · 래퍼 편집 · 호출별 모델 · 미리보기 ──
     def test_07_prompt_studio_contract(self):
