@@ -4902,6 +4902,12 @@
           </section>
         </div>
 
+      <!-- ═══ 모듈: 테스트셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
+      <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
+        <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport()">현황 · 학습 반영</button>
+        <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
+        <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
+      </div></div>
       <!-- 테스트셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
       <div x-show="mod === 'testset' && testTab === 'status'" x-cloak class="w-full space-y-4">
           <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
@@ -4968,12 +4974,6 @@
           </section>
       </div><!-- /테스트셋 관리 · 현황 -->
 
-      <!-- ═══ 모듈: 테스트셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
-      <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport()">현황 · 학습 반영</button>
-        <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
-        <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
-      </div></div>
 
       <!-- ═══ 모듈: 실험실(관리자) · 지금 테스트하지 않는 탐구 요소 ═══ -->
       <div x-show="mod === 'lab'" x-cloak class="w-full" style="margin-bottom:10px">
