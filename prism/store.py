@@ -70,6 +70,9 @@ class Store:
         CREATE TABLE IF NOT EXISTS events(
           id INTEGER PRIMARY KEY AUTOINCREMENT, reviewer TEXT, kind TEXT,
           day INTEGER, bonus INTEGER, meta TEXT, ts REAL);
+        -- 콘텐츠 용도: review(검수용, 기본)=검수·골든 축적 / eval(평가용)=평가 전용 홀드아웃.
+        CREATE TABLE IF NOT EXISTS content_purpose(
+          content_hash TEXT PRIMARY KEY, purpose TEXT, ts REAL);
         -- 피드백 라우팅(append-only): 교정 원문을 요소·단계별 개선 지시로 재분류한 결과.
         CREATE TABLE IF NOT EXISTS feedback_routes(
           id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
@@ -284,15 +287,20 @@ class Store:
                 imd = json.loads(im) if im else {}
             except Exception:
                 imd = {}
-            model = ""
+            model, version = "", 1
             try:
-                model = ((json.loads(payload) if payload else {}).get("trace") or {}).get("model", "") or ""
+                tr = (json.loads(payload) if payload else {}).get("trace") or {}
+                model = tr.get("model", "") or ""
+                version = int(tr.get("version") or 1)
             except Exception:
                 pass
             cat = " · ".join((imd or {}).get("content_category") or [])
             rows.append({"hash": ch, "service": svc or "", "title": ti or "",
                          "grade": grade or "", "summary": (imd or {}).get("summary", ""),
-                         "category": cat, "source": src or "단건", "model": model})
+                         "category": cat, "source": src or "단건", "model": model, "version": version})
+        pm = self.purpose_map(team)
+        for r in rows:
+            r["purpose"] = pm.get(r["hash"], "review")
         return rows
 
     # ── 평가 피드백 / 학습 루프 ──
@@ -469,6 +477,26 @@ class Store:
             out.append({"reviewer": rv, "remember": rm, "explain": ex, "ask": ak,
                         "plan": pl, "stage": st})
         return out
+
+    def set_purpose(self, hashes, purpose, team=None) -> int:
+        """콘텐츠 용도 지정: review(검수용)|eval(평가용). 평가용은 검수 대상에서 제외(홀드아웃 보존)."""
+        if purpose not in ("review", "eval"):
+            return 0
+        hs = [h for h in (hashes or []) if h]
+        if not hs:
+            return 0
+        c = self._conn()
+        now = time.time()
+        c.executemany("INSERT INTO content_purpose(content_hash,purpose,ts) VALUES(?,?,?) "
+                      "ON CONFLICT(content_hash) DO UPDATE SET purpose=excluded.purpose, ts=excluded.ts",
+                      [(h, purpose, now) for h in hs])
+        c.commit()
+        return len(hs)
+
+    def purpose_map(self, team=None) -> dict:
+        """{content_hash: purpose}. 미지정은 review 취급(호출부 기본값)."""
+        c = self._conn()
+        return {h: p for h, p in c.execute("SELECT content_hash,purpose FROM content_purpose")}
 
     def save_routes(self, content_hash, reviewer, items, team=None, model=""):
         """오케스트레이터 재분류 결과 append(초안 생성 모델 귀속 포함)."""

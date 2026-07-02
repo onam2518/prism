@@ -122,9 +122,18 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     `.selctl`(태그+셀렉트 박스) = 단일 지정 선택 · `.selctl--a/--b`(A 파랑/B 주황) = A/B 비교 슬롯.
     적용처: 모델·버전별 결과 현황(A/B 슬롯, 모델→버전 종속 선택), 검수 대상 콘텐츠(모델 selctl),
     비교 팝업(상단 A/B **상속** · 자체 선택 없음 · 해당 초안 없으면 '초안 없음' 배지 + 최근접 폴백).
-  - 콘텐츠 관리 = 실행 큐 | 수동 추가 | 자동 추가 | **모델 실행**(단건·일괄 /rerun-all · 버전 안내
-    v=batch_seq+1 · 자동 재실행 옵션 Config.auto_rerun_after_batch 기본 꺼짐). 수집(인입) 정책은
-    사전·정책 메뉴로 통합.
+  - **콘텐츠 관리 = 원페이지 STEP 구성(2026-07-02)**: 상위 탭 제거. STEP 1 콘텐츠 추가(수동/자동
+    카드 칩 전환 + **추가 용도** selctl: 검수용/평가용, 추가된 콘텐츠 목록에서 건별 용도 전환 /purpose)
+    → STEP 2 모델 실행(단건·일괄 /rerun-all · v=batch_seq+1 · auto_rerun_after_batch 기본 꺼짐)
+    → STEP 3 실행 큐. `.stepline` 컴포넌트(STEP 배지 GmarketSans). 수집(인입) 정책은 사전·정책 통합.
+  - **콘텐츠 용도(purpose)**: review(검수용, 기본)=검수·골든 축적 / eval(평가용)=검수 목록(/raw)에서
+    제외되는 평가 전용 홀드아웃(학습 오염 방지). sqlite `content_purpose` 테이블(결과 upsert 와 분리해
+    재실행에도 보존) · supabase `prism_contents.purpose`(DDL prism_content_purpose, 기본 'review').
+    수동 추가·엑셀 배치 모두 purpose 필드 전달(run_pipeline/run_batch).
+  - **평가 기준(evaluate 상단 패널)**: 기준 모델(selctl, 비우면 현재 설정 모델 · llm_for_model 라우팅)
+    + 프롬프트 버전 표기(v=batch_seq+1, 평가는 항상 현재 버전) + 대상 콘텐츠 칩(전체 정답셋/평가용만
+    scope=all|eval, _scope_golden 필터). /eval-golden·/compare-models 에 model·scope 전달, 결과에
+    basis{model,version,scope} 명시.
   - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)

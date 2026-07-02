@@ -443,6 +443,63 @@ class TestGoldenCreation(unittest.TestCase):
         self.assertTrue(ms["fill1"]["completed"])
 
 
+class TestContentPurpose(unittest.TestCase):
+    """콘텐츠 용도(검수용/평가용 홀드아웃): 지정·조회 · 검수 목록 제외 · 평가 스코프."""
+    def _with_store(self):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def _put(self, st, title):
+        import json as _j
+        import time as _t
+        from prism.store import content_hash
+        content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문 " + title}
+        ch = content_hash(content)
+        payload = {"quality_meta": {"review": "yellow", "finalGrade": "G", "reasons": []},
+                   "item_meta": {"summary": title}, "content_ref": dict(content)}
+        c = st._conn()
+        c.execute("INSERT OR REPLACE INTO results(content_hash,service,title,final_grade,reasons,item_meta,payload,created_at) "
+                  "VALUES(?,?,?,?,?,?,?,?)",
+                  (ch, "뉴스", title, "G", "[]", "{}", _j.dumps(payload), _t.time()))
+        c.commit()
+        return ch
+
+    def test_set_purpose_roundtrip_and_invalid(self):
+        _, st = self._with_store()
+        h1, h2 = self._put(st, "가"), self._put(st, "나")
+        self.assertEqual(st.set_purpose([h1], "eval"), 1)
+        self.assertEqual(st.purpose_map().get(h1), "eval")
+        self.assertIsNone(st.purpose_map().get(h2))          # 미지정 = review 취급(호출부 기본)
+        self.assertEqual(st.set_purpose([h1], "이상한값"), 0)   # 잘못된 용도는 거부
+        self.assertEqual(st.set_purpose([h1], "review"), 1)   # 재전환 upsert
+        self.assertEqual(st.purpose_map().get(h1), "review")
+
+    def test_raw_rows_excludes_eval_holdout(self):
+        serve, st = self._with_store()
+        h1, h2 = self._put(st, "검수용 콘텐츠"), self._put(st, "평가용 콘텐츠")
+        st.set_purpose([h2], "eval")
+        hashes = {it["hash"] for it in serve.raw_rows(team=None)["items"]}
+        self.assertIn(h1, hashes)
+        self.assertNotIn(h2, hashes)                          # 홀드아웃은 검수 대상에서 제외
+
+    def test_scope_golden_filters_to_eval_pool(self):
+        serve, st = self._with_store()
+        from prism.store import content_hash
+        c1 = {"displayServiceName": "뉴스", "title": "일반", "subtitle": "", "body": "b1"}
+        c2 = {"displayServiceName": "뉴스", "title": "홀드아웃", "subtitle": "", "body": "b2"}
+        rows = [{"content": c1, "expected": {"finalGrade": "G"}},
+                {"content": c2, "expected": {"finalGrade": "R"}}]
+        st.set_purpose([content_hash(c2)], "eval")
+        self.assertEqual(len(serve._scope_golden(rows, "all", st)), 2)
+        scoped = serve._scope_golden(rows, "eval", st)
+        self.assertEqual([r["content"]["title"] for r in scoped], ["홀드아웃"])
+
+
 class TestFeedbackOrchestrator(unittest.TestCase):
     def test_route_fallback_splits_elements_by_stage(self):
         from prism import feedback_loop as FL

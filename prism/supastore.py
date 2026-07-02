@@ -696,7 +696,7 @@ class SupabaseStore:
 
     def recent_meta(self, limit: int = 200, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,source,model"
+        rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,source,model,version,purpose"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
         out = []
         for r in rows:
@@ -704,8 +704,26 @@ class SupabaseStore:
             cat = " · ".join(im.get("content_category") or [])
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
                         "grade": r.get("final_grade") or "", "summary": im.get("summary", ""),
-                        "category": cat, "source": r.get("source") or "단건", "model": r.get("model") or ""})
+                        "category": cat, "source": r.get("source") or "단건", "model": r.get("model") or "",
+                        "version": int(r.get("version") or 1), "purpose": r.get("purpose") or "review"})
         return out
+
+    def set_purpose(self, hashes, purpose, team=None) -> int:
+        """콘텐츠 용도 지정: review(검수용)|eval(평가용 홀드아웃)."""
+        if purpose not in ("review", "eval"):
+            return 0
+        hs = [h for h in (hashes or []) if h]
+        if not hs:
+            return 0
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        q = "hash=in.(" + ",".join(urllib.parse.quote(h) for h in hs) + ")" + tq
+        self._req("PATCH", "contents", query=q, body={"purpose": purpose}, prefer="return=minimal")
+        return len(hs)
+
+    def purpose_map(self, team=None) -> dict:
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        rows = self._get("contents", "select=hash,purpose" + tq)
+        return {r["hash"]: (r.get("purpose") or "review") for r in rows}
 
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""

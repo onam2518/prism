@@ -134,7 +134,7 @@ DEMO_EXTRAS = {
                 {"model": "gpt-5.4-mini", "route": "timely", "real": True, "n": 24, "grade_accuracy": 0.83, "reason_jaccard": 0.77, "reason_exact_match": 0.63, "empty_rate": 0.0, "cost_usd": 0.0089, "tokens": {"in": 47100, "out": 5480}},
                 {"model": "claude-haiku-4-5", "route": "timely", "real": True, "n": 24, "grade_accuracy": 0.79, "reason_jaccard": 0.74, "reason_exact_match": 0.58, "empty_rate": 0.04, "cost_usd": 0.0075, "tokens": {"in": 46800, "out": 5010}}],
             "skipped": [{"model": "gemini-2.5-pro", "reason": "라우터 키 없음(BizRouter·Timely)"}]},
-    "evalg": {"ok": True, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24},
+    "evalg": {"basis": {"model": "solar-pro3-260323", "version": 3, "scope": "all"}, "ok": True, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24},
               "reason_jaccard": 0.81, "harm_miss_rate": 0.04, "empty_rate": 0.0, "evaluated": 24,
               "by_reason_bucket": {"normal": {"n": 15, "grade_acc": 0.93}, "clickbait": {"n": 5, "grade_acc": 0.8}, "ad": {"n": 4, "grade_acc": 0.75}}},
     "raw": {"ok": True, "n": 3, "items": [
@@ -183,14 +183,14 @@ DEMO_DASH = {
         {"hash": "d1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "source": "자동 인입",
          "summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다",
          "entities": ["삼성전자", "전국삼성전자노동조합"], "intent": ["사건 경과 보도"],
-         "category": ["News and Politics / Society"], "reasons": [], "model": "solar-pro3-260323", "fb": {"verdict": "good", "ts": 1782800000}},
+         "category": ["News and Politics / Society"], "reasons": [], "model": "solar-pro3-260323", "version": 2, "purpose": "review", "fb": {"verdict": "good", "ts": 1782800000}},
         {"hash": "d2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "source": "배치",
          "summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다",
          "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"],
-         "category": ["Business and Finance / Economy"], "reasons": [], "model": "solar-pro3-260323", "fb": {}},
+         "category": ["Business and Finance / Economy"], "reasons": [], "model": "solar-pro3-260323", "version": 2, "purpose": "eval", "fb": {}},
         {"hash": "d3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "source": "단건",
          "summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"],
-         "category": [], "reasons": ["clickbait"], "model": "gpt-5.4-mini", "fb": {"verdict": "bad", "ts": 1782800000}},
+         "category": [], "reasons": ["clickbait"], "model": "gpt-5.4-mini", "version": 1, "purpose": "review", "fb": {"verdict": "bad", "ts": 1782800000}},
     ],
 }
 DEMO_TOPICS = {
@@ -279,6 +279,7 @@ STUB = """<script>
       if (u.indexOf('/learn-data') > -1) return Promise.resolve(J(EX.ldata));
       if (u.indexOf('/learn-export') > -1) return Promise.resolve(J({ ok: true }));
       if (u.indexOf('/compare-models') > -1) return Promise.resolve(J(EX.cmp));
+      if (u.indexOf('/purpose') > -1) return Promise.resolve(J({ ok: true, n: 1 }));
       if (u.indexOf('/eval-golden') > -1) return Promise.resolve(J(EX.evalg));
       if (u.indexOf('/raw') > -1) return Promise.resolve(J(EX.raw));
       if (u.indexOf('/drafts') > -1) return Promise.resolve(J(EX.drafts));

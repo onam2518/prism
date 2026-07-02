@@ -218,6 +218,14 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dic
     except Exception:
         pass
     store_save([(content, out)], team=team)      # 영속 저장(+미러, 팀 태깅)
+    if (fields.get("purpose") or "") == "eval":  # 평가용 지정: 검수 대상에서 제외(홀드아웃)
+        try:
+            from .store import content_hash as _chash
+            stp = get_store()
+            if stp and hasattr(stp, "set_purpose"):
+                stp.set_purpose([_chash(content)], "eval", team=team)
+        except Exception:
+            pass
     return {
         "source": source,
         "mock": llm.mock,
@@ -639,7 +647,7 @@ def build_usermeta_template_csv() -> bytes:
     return ("﻿" + buf.getvalue()).encode("utf-8")
 
 
-def run_batch(file_bytes: bytes, filename: str) -> dict:
+def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None) -> dict:
     """엑셀/CSV 업로드 → ingest 매핑 → 행마다 추출 → 결과+리포트(_LAST_RESULTS)."""
     from . import ingest as ING
     ext = os.path.splitext(filename or "")[1].lower() or ".xlsx"
@@ -664,7 +672,15 @@ def run_batch(file_bytes: bytes, filename: str) -> dict:
                           "entities": im.get("entities", []),
                           "intent": im.get("intent", []),
                           "grade": (out.get("quality_meta") or {}).get("finalGrade", "")})
-        store_save(pairs, source="배치")            # 영속 저장(단일 트랜잭션 배치)
+        store_save(pairs, source="배치", team=team)  # 영속 저장(단일 트랜잭션 배치)
+        if (purpose or "") == "eval":               # 평가용 지정: 검수 대상에서 제외(홀드아웃)
+            try:
+                from .store import content_hash as _chash
+                stp = get_store()
+                if stp and hasattr(stp, "set_purpose"):
+                    stp.set_purpose([_chash(c) for c, _ in pairs], "eval", team=team)
+            except Exception:
+                pass
         return {"source": "excel", "mock": llm.mock, "count": len(results),
                 "mapping": a["mapping"], "items": items}
     finally:
@@ -1272,7 +1288,19 @@ def save_badges(uid, earned) -> dict:
 _LAST_EVAL_DETAIL = []                             # 최근 골든 평가의 건별 불일치(라벨 오류 후보)
 
 
-def eval_golden(team=None) -> dict:
+def _scope_golden(rows, scope, st, team=None):
+    """평가 대상 콘텐츠 풀 필터: eval=평가용 홀드아웃만 / all=전체 정답셋."""
+    if scope != "eval" or not rows:
+        return rows
+    from .store import content_hash
+    try:
+        pm = st.purpose_map(team) if hasattr(st, "purpose_map") else {}
+    except Exception:
+        pm = {}
+    return [r for r in rows if pm.get(content_hash(r.get("content") or {}), "review") == "eval"]
+
+
+def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
     """프로세스 1 · 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용.
     건별 불일치를 _LAST_EVAL_DETAIL 로 보존 → 라벨 오류 후보 플래깅(Northcutt 2021: 기계 플래그→휴먼 확정)."""
     from .store import content_hash
@@ -1282,10 +1310,20 @@ def eval_golden(team=None) -> dict:
     rows = st.get_golden(team)
     if not rows:
         return {"ok": False, "error": "등록된 골든셋이 없습니다 · 팀 관리에서 등록하세요"}
+    rows = _scope_golden(rows, scope, st, team)
+    if not rows:
+        return {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
     from . import abtest
     from . import harness as H
     cfg = Config.load()
-    llm = make_text_llm(cfg, Handler.server_mock)
+    used_model = (model or "").strip()
+    if used_model:                               # 기준 모델 지정: 제공자·키 라우팅
+        llm, _route = llm_for_model(used_model, Handler.server_mock)
+        if llm is None:
+            return {"ok": False, "error": f"모델 호출 불가({_route}): {used_model}"}
+    else:
+        llm = make_text_llm(cfg, Handler.server_mock)
+        used_model = cfg.model or getattr(llm, "model", "") or ""
     meth = H.Methodology(name="골든셋")
     sample = rows[:300]
     outs = abtest.run_methodology(sample, meth, llm, concurrency=8)
@@ -1308,6 +1346,11 @@ def eval_golden(team=None) -> dict:
     m["grade_ci"] = {"lo": lo, "hi": hi, "n": len(sample)}   # 95% CI(Miller 2024)
     m["ok"] = True
     m["evaluated"] = len(sample)
+    try:                                         # 평가 기준(어떤 모델·버전으로 쟀는지) 명시
+        seq = st.batch_seq(team) if hasattr(st, "batch_seq") else 0
+    except Exception:
+        seq = 0
+    m["basis"] = {"model": used_model, "version": seq + 1, "scope": scope}
     return m
 
 
@@ -1461,7 +1504,7 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
 _LAST_LEARN_REPORT = {}                               # 최근 일배치 결과(수신·표시용)
 
 
-def compare_models_on_golden(models=None, team=None) -> dict:
+def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict:
     """골든셋(사람 확정 정답)을 여러 모델에 실호출로 돌려 정합성 비교 → 최적 모델 선택 근거.
     모델별 제공자·엔드포인트를 라우팅(llm_for_model)하고, 키 없는 모델은 건너뛰되 사유를 노출."""
     st = get_store()
@@ -1470,6 +1513,9 @@ def compare_models_on_golden(models=None, team=None) -> dict:
     rows = st.get_golden(team)
     if not rows:
         return {"ok": False, "error": "골든셋이 비어 있습니다 · 검수로 '정확' 확정분을 쌓으세요"}
+    rows = _scope_golden(rows, scope, st, team)
+    if not rows:
+        return {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
     from . import abtest
     from . import harness as H
     cfg = Config.load()
@@ -1897,6 +1943,10 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         fmap = st.feedback_map(team=team) if st else {}
     except Exception:
         fmap = {}
+    try:                                           # 평가용 홀드아웃은 검수 대상에서 제외(학습 오염 방지)
+        pmap = st.purpose_map(team=team) if (st and hasattr(st, "purpose_map")) else {}
+    except Exception:
+        pmap = {}
     out = []
     for r in reversed(rows[-int(limit):]):         # 최근순
         ref = r.get("content_ref") or {}
@@ -1904,6 +1954,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         qm = r.get("quality_meta") or {}
         tr = r.get("trace") or {}
         ch = _row_key(ref)
+        if pmap.get(ch) == "eval":
+            continue
         fb = fmap.get(ch) or {}
         last_ts = 0
         for v in (fb.get("verdicts") or []):
@@ -2673,7 +2725,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                     return
                 data = json.loads(body or b"{}")
-                self._send(200, json.dumps(compare_models_on_golden(data.get("models"), self._req_team()),
+                self._send(200, json.dumps(compare_models_on_golden(data.get("models"), self._req_team(),
+                                           scope=(data.get("scope") or "all").strip()),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
@@ -2708,9 +2761,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
-        if self.path.startswith("/eval-golden"):       # 등록 골든셋으로 평가 실행
+        if self.path.startswith("/eval-golden"):       # 등록 골든셋으로 평가 실행(기준 모델·콘텐츠 풀)
             try:
-                self._send(200, json.dumps(eval_golden(self._req_team()), ensure_ascii=False), _JSON)
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(eval_golden(self._req_team(),
+                                           model=(data.get("model") or "").strip(),
+                                           scope=(data.get("scope") or "all").strip()), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -2754,6 +2810,21 @@ class Handler(BaseHTTPRequestHandler):
                 broadcast({"type": "presence", "reviewer": (p.get("reviewer") or "").strip(),
                            "hash": p.get("hash") or "", "action": p.get("action") or "viewing"})
                 self._send(200, json.dumps({"ok": True}, ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/purpose"):           # 관리자: 콘텐츠 용도 지정(검수용/평가용)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                st = get_store()
+                n = st.set_purpose([h for h in (data.get("hashes") or []) if h],
+                                   (data.get("purpose") or "").strip(), team=self._req_team()) if st else 0
+                _agg_bump()
+                self._send(200, json.dumps({"ok": bool(n), "n": n}, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -2837,7 +2908,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(f, dict) or not f.get("bytes"):
                     result = {"error": "파일이 없습니다"}
                 else:
-                    result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"))
+                    result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"),
+                                       purpose=str(fields.get("purpose") or ""), team=self._req_team())
             else:
                 result = run_pipeline(fields, mock=self.server_mock, team=self._req_team())
             self._send(200, json.dumps(result, ensure_ascii=False), _JSON)
@@ -2970,7 +3042,8 @@ PAGE = """<!doctype html>
           // 실험실: 지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관
           { id: 'lab', label: '실험실', ic: 'auto' } ] },
       ],
-      contentTab: 'queue',                    // 콘텐츠 관리 홈 탭 = 실행 큐(자동/수동 구분)
+      contentTab: 'run',                      // 콘텐츠 관리 STEP 1 카드: 수동(run)/자동(auto)
+      addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 테스트셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
       labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | topic(토픽) | user(사용자)
@@ -3195,7 +3268,9 @@ PAGE = """<!doctype html>
         this.mod = id; this.status = ''; this.addMenuOpen = false;
         // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 테스트셋 관리
         if (id === 'intake') id = 'dict';
-        if (id === 'run' || id === 'auto' || id === 'queue') { this.contentTab = id; id = 'content'; }
+        if (id === 'run' || id === 'auto') { this.contentTab = id; id = 'content'; }
+        if (id === 'queue') id = 'content';
+        if (id === 'content' || id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
         if (id === 'dash') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
@@ -3455,9 +3530,18 @@ PAGE = """<!doctype html>
       async loadQueue() { this.modBusy = true; try { const p = new URLSearchParams(); if (!this.queueOnlyUnreviewed) p.set('all', '1'); if (this.reviewer) p.set('reviewer', this.reviewer); this.queueData = await (await fetch('/queue?' + p.toString(), { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; this.arenaData = await (await fetch('/arena' + p, { headers: this._authHeaders() })).json(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
       async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
+      async togglePurpose(c) {               // 관리자: 용도 전환(검수용 ↔ 평가용 홀드아웃)
+        const next = c.purpose === 'eval' ? 'review' : 'eval';
+        try {
+          const r = await (await fetch('/purpose', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hashes: [c.hash], purpose: next }) })).json();
+          if (r && r.ok) { c.purpose = next; this.liveToast((c.title || '콘텐츠') + ' · ' + (next === 'eval' ? '평가용' : '검수용') + ' 전환'); }
+          else this._err((r && r.error) || '용도 전환 실패');
+        } catch (e) { this._err('용도 전환 실패'); }
+      },
+      evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
       async runGolden() {
         this.goldenBusy = true; this.goldenResult = null;
-        try { this.goldenResult = await (await fetch('/eval-golden', { method: 'POST', headers: this._authHeaders() })).json(); } catch (e) {}
+        try { this.goldenResult = await (await fetch('/eval-golden', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.evalModel, scope: this.evalScope }) })).json(); } catch (e) {}
         this.goldenBusy = false;
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 이항 95% CI 표기
@@ -3465,7 +3549,7 @@ PAGE = """<!doctype html>
       toggleCmpModel(m) { const i = this.cmpModels.indexOf(m); if (i >= 0) this.cmpModels.splice(i, 1); else if (this.cmpModels.length < 4) this.cmpModels.push(m); },
       async runCompare() {
         this.cmpBusy = true; this.cmpResult = null;
-        try { this.cmpResult = await (await fetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: this.cmpModels }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
+        try { this.cmpResult = await (await fetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: this.cmpModels, scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
         this.cmpBusy = false;
       },
       ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
@@ -4068,6 +4152,7 @@ PAGE = """<!doctype html>
       async run() {
         this.loading = true; this.status = ''; this.result = null; this.batchResult = null;
         const fd = new FormData();
+        fd.append('purpose', this.addPurpose || 'review');   // 추가 용도(STEP 1 선택)
         let endpoint = '/run';
         if (this.activeTabId === 'image') {
           if (!this.imgFiles.length) { this.status = '이미지를 선택하세요'; this.loading = false; return; }
@@ -4233,6 +4318,11 @@ PAGE = """<!doctype html>
   .abslot .selctl__tag{height:28px;min-width:28px;border-radius:9px;font-size:13px}
   .abslot .field{height:32px;font-weight:600}
   .abvs{font-size:12px;font-weight:800;color:var(--ds-muted);letter-spacing:.04em}
+  .stepline{display:flex;align-items:center;gap:10px;margin:2px 2px 0;min-height:32px}
+  .stepline__no{font-family:var(--ds-font-game);font-size:11px;font-weight:700;color:#fff;
+    background:var(--ds-violet,#1e84ff);border-radius:9999px;padding:4px 11px;letter-spacing:.03em;flex:none}
+  .stepline b{font-family:var(--ds-font-game);font-size:15px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
+  .stepline .meta{font-size:11.5px;color:var(--ds-muted)}
   .subhd{display:flex;align-items:center;gap:8px;margin:18px 16px 8px;font-family:var(--ds-font-game);
     font-size:13.5px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
   .subhd .meta{font-family:var(--ds-font-sans);font-size:11.5px;font-weight:500;color:var(--ds-muted)}
@@ -5306,13 +5396,16 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) · 관리자 전용 ═══ -->
-      <!-- ═══ 모듈: 콘텐츠 관리(관리자) · 실행 큐(홈) | 수동 추출 | 자동 인입 | 인입 정책 ═══ -->
-      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="contentTab==='queue'?'sel':''" x-on:click="contentTab='queue'">실행 큐</button>
-        <button type="button" x-bind:class="contentTab==='run'?'sel':''" x-on:click="contentTab='run'">수동 추가</button>
-        <button type="button" x-bind:class="contentTab==='auto'?'sel':''" x-on:click="contentTab='auto'; fetchIngestStatus()">자동 추가</button>
-        <button type="button" x-bind:class="contentTab==='exec'?'sel':''" x-on:click="contentTab='exec'; loadDash(); loadGoldenStatus()">모델 실행</button>
-      </div></div>
+      <!-- ═══ 모듈: 콘텐츠 관리(관리자) · 원페이지 STEP: 1 추가(수동/자동·용도) → 2 모델 실행 → 3 실행 큐 ═══ -->
+      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin-bottom:12px">
+        <div class="stepline"><span class="stepline__no">STEP 1</span><b>콘텐츠 추가</b><span class="meta">수동·자동으로 콘텐츠를 모으고 용도를 지정합니다</span>
+          <span class="ml-auto" style="display:flex;gap:6px;align-items:center">
+            <span class="selctl" data-tip="검수용=검수·정답 축적 대상 · 평가용=검수 목록에서 제외되는 평가 전용 홀드아웃" data-tip-pos="bottom"><span class="selctl__lbl">추가 용도</span><select class="field" x-model="addPurpose"><option value="review">검수용</option><option value="eval">평가용</option></select></span>
+            <button type="button" class="srcfilter__chip" x-bind:class="contentTab==='run'?'sel':''" x-on:click="contentTab='run'">수동 추가</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="contentTab==='auto'?'sel':''" x-on:click="contentTab='auto'; fetchIngestStatus()">자동 추가</button>
+          </span>
+        </div>
+      </div>
       <div x-show="mod === 'content' && contentTab === 'auto'" x-cloak class="w-full space-y-4">
         <template x-if="!(backend === 'supabase' && adminData && adminData.isAdmin)">
           <ul class="ds-bullets hintbox" style="padding:14px 16px">
@@ -5699,7 +5792,29 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
       <!-- 모델 실행: 모아진 콘텐츠(자동/수동 불문)에 모델을 실행해 초안 생성 · 버전 안내 -->
-      <div x-show="mod === 'content' && contentTab === 'exec'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'content'" x-cloak class="w-full space-y-4" style="margin-top:14px">
+        <section class="panel" data-fn><div class="panel-hd"><b>추가된 콘텐츠 · 용도</b><span class="meta">평가용은 검수 목록에서 제외되어 평가 전용으로 보존됩니다</span>
+          <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:110px"></th></tr></thead><tbody>
+            <template x-for="c in ((dashData && dashData.contents) || [])" x-bind:key="'pp'+c.hash">
+              <tr>
+                <td class="text-ink" x-text="c.title || '(제목 없음)'"></td>
+                <td class="text-muted" x-text="c.service || '·'"></td>
+                <td class="text-muted" x-text="c.model || '·'"></td>
+                <td class="tnum" x-text="c.version ? ('v' + c.version) : '·'"></td>
+                <td><span class="ds-badge" x-bind:class="c.purpose === 'eval' ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="c.purpose === 'eval' ? '평가용' : '검수용'"></span></td>
+                <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button></td>
+              </tr>
+            </template>
+          </tbody></table></div>
+          <div x-show="!((dashData && dashData.contents) || []).length" class="text-xs text-muted" style="margin:0 16px 14px">아직 추가된 콘텐츠가 없습니다 · 위에서 수동·자동으로 추가하세요</div>
+        </section>
+      </div>
+      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin:18px 0 12px">
+        <div class="stepline"><span class="stepline__no">STEP 2</span><b>모델 실행</b><span class="meta">모은 콘텐츠에 모델을 실행해 초안을 만듭니다</span></div>
+      </div>
+      <div x-show="mod === 'content'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>추가된 콘텐츠(자동·수동 불문)에 <b>모델을 실행</b>해 검수용 초안을 만듭니다 · 여기는 <b>수동 실행</b>입니다.</li>
           <li>실행 결과는 <b>버전 v(학습 반영 회차+1)</b> 로 기록됩니다 · 현재 다음 실행 버전: <b class="text-ink tnum" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></b></li>
@@ -6019,7 +6134,25 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 테스트셋 생성 · 골든/검수/원본 뷰 ═══ -->
       <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
       <div x-show="mod === 'evaluate'" x-cloak class="w-full space-y-4">
-          <section class="panel"><div class="panel-hd"><b>정답 일치율 평가</b><span class="meta">지금 버전이 정답셋과 얼마나 일치하는지</span></div>
+          <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
+            <div class="panel-bd">
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                <span class="selctl" data-tip="정답셋과 비교할 대상 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">기준 모델</span>
+                  <select class="field" x-model="evalModel"><option value="">현재 설정 모델</option><template x-for="m in availableModels" x-bind:key="'ev'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                <span class="selctl" data-tip="프롬프트 버전 = 학습 반영 회차 + 1 · 평가는 항상 현재 버전으로 실행됩니다" data-tip-pos="bottom"><span class="selctl__lbl">프롬프트 버전</span>
+                  <b class="tnum" style="padding:0 8px;font-size:13px" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></b></span>
+                <span style="display:flex;gap:6px;align-items:center;margin-left:6px"><span class="selctl__lbl">대상 콘텐츠</span>
+                  <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='all' ? 'sel' : ''" x-on:click="evalScope='all'">전체 정답셋</button>
+                  <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='eval' ? 'sel' : ''" x-on:click="evalScope='eval'">평가용만</button>
+                </span>
+              </div>
+              <ul class="ds-bullets" style="margin:11px 0 0">
+                <li><b>평가용</b> 콘텐츠는 <b>콘텐츠 관리 · STEP 1</b>에서 지정합니다 · 검수 목록에서 제외되어 오염 없이 평가에만 쓰입니다.</li>
+                <li>평가는 항상 <b>현재 프롬프트 버전</b>으로 실행됩니다 · 버전 간 추이는 학습 반영을 거듭하며 재평가로 비교하세요.</li>
+              </ul>
+            </div>
+          </section>
+          <section class="panel"><div class="panel-hd"><b>정답 일치율 평가</b><span class="meta">위 기준으로 정답셋과 얼마나 일치하는지</span></div>
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:11px"><li>검수 합의로 쌓인 <b>정답셋(테스트셋)</b> 기준으로 지금 버전의 일치율을 숫자로 확인합니다.</li><li>평가 건수가 적으면 오차가 큽니다 · 신뢰구간이 겹치면 우열 판단을 미룹니다.</li><li>낮으면 <b>프롬프트 스튜디오</b>에서 수정 후 다시 평가하세요.</li></ul>
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '일치율 평가 실행'"></button>
@@ -6027,7 +6160,8 @@ PAGE = """<!doctype html>
               <template x-if="goldenResult && goldenResult.ok">
                 <div>
                   <!-- 결과 카드화: 산개한 숫자·막대를 타일과 박스로 묶어 시선 고정 -->
-                  <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:14px">
+                  <div class="text-xs text-muted" style="margin-top:12px" x-show="goldenResult.basis">기준: <b class="text-ink" x-text="goldenResult.basis ? (goldenResult.basis.model || '현재 설정 모델') : ''"></b> · <span class="tnum" x-text="goldenResult.basis ? ('v' + goldenResult.basis.version) : ''"></span> · <span x-text="goldenResult.basis && goldenResult.basis.scope === 'eval' ? '평가용 콘텐츠' : '전체 정답셋'"></span></div>
+                  <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
                     <div class="tile tile--hero"><div class="n tnum" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="t">등급 일치율<span class="tnum" x-text="goldenResult.grade_ci ? (' · 신뢰구간 ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
                     <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></div><div class="t">사유 일치</div></div>
                     <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></div><div class="t">유해 놓침</div></div>
@@ -6522,7 +6656,10 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 검수 대기 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
       <!-- ═══ 모듈: 실행 큐 (단일 위젯) · 실제 실행 상태 ═══ -->
-      <div x-show="mod === 'content' && contentTab === 'queue'" x-cloak class="w-full">
+      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin:18px 0 12px">
+        <div class="stepline"><span class="stepline__no">STEP 3</span><b>실행 큐</b><span class="meta">진행 중인 추가·실행 작업 현황</span></div>
+      </div>
+      <div x-show="mod === 'content'" x-cloak class="w-full">
         <section class="panel"><div class="panel-hd"><b>실행 큐</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>
           <!-- 자동/수동 구분 필터 -->
           <span class="ml-auto" style="display:flex;gap:6px">
