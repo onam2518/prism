@@ -36,8 +36,8 @@ STAGE_DIRECTIVE_DEFAULT = {
 }
 
 from . import meta_prompts as MP                     # 기준 문서 코어(순환 없음: MP는 dictionaries만 의존)
-STAGE_DIRECTIVE_DEFAULT["extract"] = MP.C1_RULES + "\n\n" + MP.C2_RULES
-STAGE_DIRECTIVE_DEFAULT["analyze"] = MP.C3_RULES + "\n\n" + MP.C4_RULES
+STAGE_DIRECTIVE_DEFAULT["extract"] = MP.CALL_RULES["summary"] + "\n\n" + MP.CALL_RULES["entities"]
+STAGE_DIRECTIVE_DEFAULT["analyze"] = MP.CALL_RULES["intent"] + "\n\n" + MP.CALL_RULES["category"]
 
 # 단계별 override(프롬프트 스튜디오에서 채움). 빈 값이면 기본값 사용.
 STAGE_DIRECTIVE = {"extract": "", "analyze": "", "review": "", "judge": ""}
@@ -125,6 +125,17 @@ def item_system(content, model: str = "") -> str:
 
 def item_user(content) -> str:
     return _content_block(content)
+
+
+def call_system(content, call: str, model: str = "") -> str:
+    """분리형 4호출(①~④) 시스템 프롬프트. 코어 규칙은 계약 원문(CALL_RULES) 고정,
+    수정은 모델 계열 래퍼(config.family_wrappers) 단위로만. 학습 보정은 병기."""
+    learned = _learned("extract") + _learned("analyze")
+    return MP.call_system(model, call, content.displayServiceName, learned)
+
+
+def call_user(call: str, content, prior: dict) -> str:
+    return MP.call_user(call, content, prior)
 
 
 # 법령 메타 (옵션)

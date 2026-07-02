@@ -161,6 +161,21 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     표기 교체, 범용② 형식·전달 8종 사전 추가(주입·검증 공용). 미적용 갭: 분리형 4호출(현 1콜 통합),
     호출별 모델 티어, Structured Outputs/responseSchema/cache_control API 강제, IAB '구분 기준'
     텍스트(사전에 경로만 존재), 12 서비스 분기 세분화(공개 레포 내부명 노출 금지로 일반명 유지).
+  - **분리형 4호출 계약 적용(2026-07-02 · 기준 원문 1312/인텐트·카테고리 사전 동기)**: agents._run_item_calls
+    = ① 리드문 → ② 엔티티(1~3 강제) → ③ 인텐트(사전: 범용①·②+서비스 분기 · 표기 정확 일치만) →
+    ④ 카테고리(사전: Tier1 설명+Tier2 전체+**구분 기준** 주입 · normalize 스냅). 단락 차단(① 빈 문자열 →
+    후속 생략), 전량 드롭 시 1회 재요청. Config.meta_four_calls(기본 True · 해제=통합 1콜 폴백),
+    meta_call_models(호출별 모델 티어 · llm_for_model 라우팅, AG.LLM_FOR_CALL 주입). mock 태그
+    item_summary/entities/intent/category. response_format json_object 는 llm._call 에 기존 적용.
+  - **사전 개편(원문 동기)**: displayServiceName 정의값 10개+구명칭(카카오TV·카카오비디오→TV) 분기
+    → 서비스 카테고리 8종(뉴스/연예/스포츠/콘텐츠뷰/음악/커뮤니티/티스토리/TV) · 분류값 전면 교체
+    (뉴스 7종 통합 등) + INTENT_VALUE_DEFS(설명) · IAB Tier2 신규 Military★/Lifestyle★ ·
+    CATEGORY_CRITERIA(구분 기준 15종) · 골드 예시 5종(1312 예시 1~4 + 경계 보강, 신 분류값 표기).
+  - **프롬프트 수정 원칙(스튜디오 개편)**: 코어 규칙·골드 예시 = 계약(읽기 전용 카드) · 수정은
+    **모델 계열 쿡북 래퍼**({ROLE}{SCHEMA}{RULES}{EXAMPLES}{SELF_CHECK}{LEARNED} 템플릿,
+    config.family_wrappers · 빈 저장=기본 복원) 단위로만. 스튜디오 = 계약 뷰 + 래퍼 편집 +
+    호출별 모델 티어 + **최종 프롬프트 미리보기**(/prompt-preview?model&call&service · 콜×모델×서비스
+    합성 결과). 구 추출·분석 카드 제거(검수·판정 카드는 유지).
   - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)

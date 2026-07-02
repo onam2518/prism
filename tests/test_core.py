@@ -576,6 +576,98 @@ class TestMetaPromptBaseline(unittest.TestCase):
         self.assertEqual(len(D.INTENT_FORM_UNIVERSAL), 8)
 
 
+class TestFourCallExtraction(unittest.TestCase):
+    """분리형 4호출 계약: 순차 산출 · 단락 차단 · 사전 기계 검증 · 콜별 모델 라우팅."""
+    def _llm(self, answers):
+        class L:
+            model = "solar-pro3-260323"
+            mock = True
+            def __init__(self):
+                self.calls = []
+            def complete_json(self, sys_p, user_p, tag=""):
+                self.calls.append(tag)
+                return dict(answers.get(tag, {})), {"tag": tag}
+        return L()
+
+    def _content(self, title="한국은행 기준금리 동결", body="본문", svc="뉴스"):
+        from prism.schema import Content
+        return Content(displayServiceName=svc, title=title, subtitle="", body=body)
+
+    def test_sequential_calls_and_validation(self):
+        from prism import agents as AG
+        llm = self._llm({
+            "item_summary": {"summary": "한국은행이 기준금리를 동결한 사실을 전한다."},
+            "item_entities": {"entities": ["한국은행", "기준금리", "물가", "네번째버림"]},
+            "item_intent": {"intent": ["속보·단신", "사전에없는값"]},
+            "item_category": {"content_category": ["Business and Finance / Economy", "엉터리"]},
+        })
+        AG.META_CFG = {"four_calls": True, "call_models": {}}
+        im, results = AG.run_item(llm, self._content())
+        self.assertEqual(llm.calls, ["item_summary", "item_entities", "item_intent", "item_category"])
+        self.assertEqual(len(im.entities), 3)                       # 1~3개 강제
+        self.assertEqual(im.intent, ["속보·단신"])                    # 사전 불일치 드롭
+        self.assertEqual(im.content_category, ["Business and Finance / Economy"])
+
+    def test_empty_summary_short_circuits(self):
+        from prism import agents as AG
+        llm = self._llm({"item_summary": {"summary": ""}})
+        AG.META_CFG = {"four_calls": True, "call_models": {}}
+        im, _ = AG.run_item(llm, self._content(title="", body=""))
+        self.assertEqual(llm.calls, ["item_summary"])               # 후속 호출 생략
+        self.assertEqual((im.summary, im.entities, im.intent), ("", [], []))
+
+    def test_all_dropped_retries_once(self):
+        from prism import agents as AG
+        llm = self._llm({
+            "item_summary": {"summary": "리드문"},
+            "item_entities": {"entities": ["개체"]},
+            "item_intent": {"intent": ["목록외값"]},
+            "item_category": {"content_category": ["News and Politics / Society"]},
+        })
+        AG.META_CFG = {"four_calls": True, "call_models": {}}
+        AG.run_item(llm, self._content())
+        self.assertEqual(llm.calls.count("item_intent"), 2)          # 전량 드롭 → 1회 재요청
+
+    def test_call_model_routing(self):
+        from prism import agents as AG
+        main = self._llm({"item_summary": {"summary": "리드문"}, "item_entities": {"entities": ["개체"]},
+                          "item_intent": {"intent": ["속보·단신"]}})
+        heavy = self._llm({"item_category": {"content_category": ["News and Politics / Society"]}})
+        heavy.model = "gpt-5.4"
+        AG.META_CFG = {"four_calls": True, "call_models": {"category": "gpt-5.4"}}
+        AG.LLM_FOR_CALL = lambda mid: heavy if mid == "gpt-5.4" else None
+        try:
+            im, _ = AG.run_item(main, self._content())
+        finally:
+            AG.LLM_FOR_CALL = None
+            AG.META_CFG = {"four_calls": True, "call_models": {}}
+        self.assertEqual(heavy.calls, ["item_category"])             # ④만 상위 모델로
+        self.assertEqual(im.content_category, ["News and Politics / Society"])
+
+
+class TestFamilyWrappers(unittest.TestCase):
+    def test_override_and_restore(self):
+        from prism import meta_prompts as MP
+        MP.WRAPPER_OVERRIDES = {"solar": "# 커스텀\n{ROLE}\n{RULES}"}
+        try:
+            sysp = MP.call_system("solar-pro2", "summary")
+            self.assertTrue(sysp.startswith("# 커스텀"))
+            self.assertIn("리드문 정의", sysp)                        # 계약 코어는 그대로 삽입
+        finally:
+            MP.WRAPPER_OVERRIDES = {}
+        self.assertTrue(MP.call_system("solar-pro2", "summary").startswith("# 역할"))
+
+    def test_call_dictionaries_are_separated(self):
+        from prism import meta_prompts as MP
+        s3 = MP.call_system("gpt-5.4", "intent", "스포츠")
+        s4 = MP.call_system("gpt-5.4", "category")
+        self.assertIn("경기 라인업·중계", s3)                          # ③ = 인텐트 사전(서비스 분기)
+        self.assertNotIn("Tier 2 목록", s3.split("IAB")[0]) if "IAB" in s3 else None
+        self.assertNotIn("구분 기준", s3)                              # ③에 IAB 사전 미적재
+        self.assertIn("구분 기준", s4)                                 # ④ = IAB 사전+기준
+        self.assertNotIn("경기 라인업·중계", s4)                        # ④에 인텐트 사전 미적재
+
+
 class TestLevelCurve(unittest.TestCase):
     """레벨 커브: 개인 1만 건 검수(≈10만 pt) 완주 설계 · Lv.50 만렙."""
     def test_curve_boundaries_and_journey(self):

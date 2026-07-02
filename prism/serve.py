@@ -25,6 +25,8 @@ from . import feedback_loop as FL
 from . import imagext as IMG
 from . import pipeline as PIPE
 from . import prompts as PR
+from . import agents as AG
+from . import meta_prompts as MP
 from .config import Config, DEFAULT_CONFIG_PATH
 from .llm import LLMClient
 
@@ -944,6 +946,14 @@ def sync_prompt():
             "judge": resolve("judge"),
         }
         PR.EXTRA = PR.STAGE_DIRECTIVE          # 별칭 일관 유지
+        # 기준 프롬프트 계층: 수정 단위 = 모델 계열 쿡북 래퍼(config.family_wrappers)
+        MP.WRAPPER_OVERRIDES = {k: (v or "") for k, v in (cfg.family_wrappers or {}).items()
+                                if k in MP.FAMILIES}
+        AG.META_CFG = {"four_calls": bool(getattr(cfg, "meta_four_calls", True)),
+                       "call_models": {k: (v or "").strip()
+                                       for k, v in (getattr(cfg, "meta_call_models", {}) or {}).items()
+                                       if k in MP.CALLS}}
+        AG.LLM_FOR_CALL = lambda mid: llm_for_model(mid, Handler.server_mock)[0]
         sync_learned()
     except Exception:
         pass
@@ -2238,6 +2248,12 @@ def config_status() -> dict:
         "stageModels": dict(cfg.stage_models or {}),
         "modelPrompts": dict(cfg.model_prompts or {}),
         "availableModels": _candidate_models(cfg),
+        "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
+        "metaCallModels": dict(getattr(cfg, "meta_call_models", {}) or {}),
+        "familyWrappers": dict(getattr(cfg, "family_wrappers", {}) or {}),
+        "familyWrapperDefaults": dict(MP.FAMILY_WRAPPER_DEFAULT),
+        "metaCalls": list(MP.CALLS),
+        "metaContract": {"rules": dict(MP.CALL_RULES), "examples": MP.gold_examples(None)},
         "ingestSources": list(cfg.ingest_sources or []),
         "storedCount": (get_store().count() if get_store() else 0),
         "build": _build_id(),
@@ -2311,7 +2327,11 @@ def apply_config(data: dict) -> dict:
     has_ingest = "ingest_sources" in data and isinstance(data.get("ingest_sources"), list)
     has_smodels = "stage_models" in data and isinstance(data.get("stage_models"), dict)
     has_mprompts = "model_prompts" in data and isinstance(data.get("model_prompts"), dict)
-    if model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest or has_smodels or has_mprompts:
+    has_wrappers = "family_wrappers" in data and isinstance(data.get("family_wrappers"), dict)
+    has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
+    has_4c = "meta_four_calls" in data
+    if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
+            or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c):
         cfg = Config.load()
         if has_ingest:
             cfg.ingest_sources = data.get("ingest_sources") or []
@@ -2361,6 +2381,22 @@ def apply_config(data: dict) -> dict:
             cfg.stage_prompts_meta = meta
         if has_legal:
             cfg.legal_enabled = bool(data.get("legal_enabled"))
+        if has_wrappers:                          # 계열 래퍼 오버라이드(빈 값 = 기본 복원)
+            fw = dict(cfg.family_wrappers or {})
+            for fam, tpl in (data.get("family_wrappers") or {}).items():
+                if fam in MP.FAMILIES:
+                    t = (tpl or "").strip()
+                    if t:
+                        fw[fam] = t
+                    else:
+                        fw.pop(fam, None)
+            cfg.family_wrappers = fw
+        if has_callm:                             # 호출별 모델 티어(빈 값 = 실행 모델)
+            cm = {k: (v or "").strip() for k, v in (data.get("meta_call_models") or {}).items()
+                  if k in MP.CALLS}
+            cfg.meta_call_models = {k: v for k, v in cm.items() if v}
+        if has_4c:
+            cfg.meta_four_calls = bool(data.get("meta_four_calls"))
         for k in slot_keys:
             if k in data:
                 setattr(cfg, k, (data.get(k) or "").strip())
@@ -2506,6 +2542,28 @@ class Handler(BaseHTTPRequestHandler):
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/ingest-status"):
             self._send(200, json.dumps(ingest_status(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/prompt-preview"):    # 프롬프트 스튜디오: 콜별×모델별 최종 합성 프롬프트
+            from urllib.parse import parse_qs, urlparse
+            q = parse_qs(urlparse(self.path).query)
+            model = (q.get("model") or [""])[0]
+            call = (q.get("call") or ["merged"])[0]
+            svc = (q.get("service") or ["뉴스"])[0]
+            from .schema import Content
+            c = Content(displayServiceName=svc, title="(미리보기)", subtitle="", body="(미리보기 본문)")
+            sync_prompt()
+            try:
+                if call in MP.CALLS:
+                    sysp = PR.call_system(c, call, model)
+                    userp = MP.call_user(call, c, {"summary": "(리드문)", "entities": ["(엔티티)"], "intent": ["(인텐트)"]})
+                else:
+                    sysp = PR.item_system(c, model)
+                    userp = PR.item_user(c)
+                body_out = {"ok": True, "family": MP.family_of(model), "call": call,
+                            "system": sysp, "user": userp}
+            except Exception as e:
+                body_out = {"ok": False, "error": str(e)[:300]}
+            self._send(200, json.dumps(body_out, ensure_ascii=False), _JSON)
+
         elif self.path.startswith("/learn-report"):     # 최근 일배치 결과(GET 수신)
             self._send(200, json.dumps({"ok": True, "report": _LAST_LEARN_REPORT}, ensure_ascii=False), _JSON)
         elif self.path.startswith("/learn-export"):      # 학습데이터 JSONL 다운로드(관리자)
@@ -3347,6 +3405,7 @@ PAGE = """<!doctype html>
         if (id === 'queue') id = 'content';
         if (id === 'content' || id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
         if (id === 'prompt' || id === 'testset') this.loadGoldenStatus();
+        if (id === 'prompt') { this.syncWrapDraft(); this.loadPreview(); }
         if (id === 'dash') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
@@ -3619,6 +3678,39 @@ PAGE = """<!doctype html>
       get filteredGolden() {
         const its = (this.goldenList && this.goldenList.items) || [];
         return this.goldenModel === '' ? its : its.filter(g => (g.model || '') === this.goldenModel);
+      },
+      // 프롬프트 스튜디오 · 기준 계약/계열 래퍼/호출별 모델/미리보기
+      contractCall: 'summary', wrapFam: 'solar', wrapDraft: '', wrapMsg: '',
+      callModels: { summary: '', entities: '', intent: '', category: '' }, fourCalls: true, callMsg: '',
+      pvModel: '', pvCall: 'summary', pvService: '뉴스', pvData: null,
+      callLabel(cl) { return ({ summary: '① 리드문', entities: '② 엔티티', intent: '③ 인텐트', category: '④ 카테고리' })[cl] || cl; },
+      get contractText() {
+        const mc = this.cfg.metaContract || {};
+        if (this.contractCall === 'examples') return mc.examples || '';
+        return (mc.rules || {})[this.contractCall] || '';
+      },
+      syncWrapDraft() {
+        const ov = (this.cfg.familyWrappers || {})[this.wrapFam];
+        this.wrapDraft = ov || (this.cfg.familyWrapperDefaults || {})[this.wrapFam] || '';
+      },
+      async saveWrapper() {
+        const body = { family_wrappers: {} }; body.family_wrappers[this.wrapFam] = this.wrapDraft || '';
+        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 저장됨'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
+        setTimeout(() => { this.wrapMsg = ''; }, 2500);
+      },
+      async restoreWrapper() {
+        const body = { family_wrappers: {} }; body.family_wrappers[this.wrapFam] = '';
+        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 기본값 복원'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
+        setTimeout(() => { this.wrapMsg = ''; }, 2500);
+      },
+      async saveCallModels() {
+        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ meta_call_models: this.callModels, meta_four_calls: !!this.fourCalls }) }); await this.refreshConfig(); this.callMsg = '✓ 저장됨'; } catch (e) { this.callMsg = '실패'; }
+        setTimeout(() => { this.callMsg = ''; }, 2500);
+      },
+      async loadPreview() {
+        if (!this.pvModel) this.pvModel = this.availableModels[0] || '';
+        if (!this.pvModel) return;
+        try { this.pvData = await (await fetch('/prompt-preview?model=' + encodeURIComponent(this.pvModel) + '&call=' + encodeURIComponent(this.pvCall) + '&service=' + encodeURIComponent(this.pvService))).json(); } catch (e) { this.pvData = null; }
       },
       async togglePurpose(c) {               // 관리자: 용도 전환(검수용 ↔ 평가용 홀드아웃)
         const next = c.purpose === 'eval' ? 'review' : 'eval';
@@ -4069,6 +4161,9 @@ PAGE = """<!doctype html>
           if (this.cfg.stageModels) this.stageModels = Object.assign({ extract:'', analyze:'', review:'', judge:'' }, this.cfg.stageModels);
           if (this.cfg.modelPrompts) this.modelPrompts = this.cfg.modelPrompts;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
+          if (this.cfg.metaCallModels) this.callModels = Object.assign({ summary: '', entities: '', intent: '', category: '' }, this.cfg.metaCallModels);
+          if (typeof this.cfg.metaFourCalls === 'boolean') this.fourCalls = this.cfg.metaFourCalls;
+          if (!this.wrapDraft) this.syncWrapDraft();
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
@@ -6839,23 +6934,75 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 프롬프트 스튜디오 (전용 도구) · 추출 단계별 프롬프트 ═══ -->
       <div x-show="mod === 'prompt'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
-          <li>각 단계의 <b>원천 프롬프트</b>를 아래 <b>코드블록</b>에서 직접 수정합니다(관리자 전용).</li>
-          <li>단계마다 <b>모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 <b>모델별로 분기 저장</b>됩니다.</li>
-          <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="verTxt"></b> · 지금 저장하면 이 버전의 실행에 반영됩니다.</li>
-          <li>보완은 <b>테스트셋 생성 · 콘텐츠 검수</b>의 교정 피드백이 자동 반영됩니다.</li>
+          <li>아이템 메타(리드문·엔티티·인텐트·카테고리)의 <b>코어 규칙·예시는 계약</b>(읽기 전용)이고, 수정은 <b>모델별 쿡북 래퍼</b> 단위로만 합니다.</li>
+          <li>검수·판정 단계의 원천 프롬프트는 아래 코드블록에서 직접 수정합니다(관리자 전용) · 모델 지정 시 <b>모델별 분기 저장</b>.</li>
+          <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="verTxt"></b>.</li>
+          <li>보완은 <b>콘텐츠 검수</b>의 교정 피드백이 자동 반영됩니다.</li>
         </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
-        <section class="panel" data-fn><div class="panel-hd"><b>추출</b><span class="meta">대식 · 이미지 → 신호(OCR · 비전)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
+        <!-- 아이템 메타(추출·분석) = 분리형 4호출 계약. 코어 규칙·예시는 읽기 전용, 수정은 모델 계열 쿡북 래퍼 단위 -->
+        <section class="panel" data-fn><div class="panel-hd"><b>기준 계약 · 아이템 메타 4호출</b><span class="meta">코어 규칙·골드 예시는 계약(읽기 전용) · 수정은 기준 문서 개정으로</span>
+          <span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract || learnedStages.analyze" style="cursor:help" data-tip="배치 결과 피드백이 각 호출 프롬프트에 자동 병기 중">학습 보정 반영</span></div>
           <div class="panel-bd">
-            <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.extract" x-on:change="onStageModelChange('extract')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 프롬프트 · 추출<span class="codeblock__stage" x-text="stageModels.extract || '전역 프롬프트'"></span></div><textarea x-model="stagePrompts.extract" spellcheck="false" placeholder="이 단계의 원천 프롬프트(지시문)를 직접 수정하세요"></textarea></div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('extract')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('extract')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.extract"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.extract ? ('최종 수정 ' + stagePromptsMeta.extract) : '수정 이력 없음'"></span></div>
+            <ul class="ds-bullets" style="margin-bottom:10px">
+              <li>추출은 <b>분리형 순차 4호출</b>입니다: ① 리드문 → ② 엔티티 → ③ 인텐트(사전: 범용①·② + 서비스 분기) → ④ 콘텐츠 카테고리(사전: Tier1/Tier2 + 구분 기준). 리드문이 비면 후속 호출을 생략합니다.</li>
+              <li>호출 사이 <b>기계 검증</b>: 사전 불일치 값 드롭 · 전량 드롭 시 1회 재요청 · 엔티티 1~3개 강제.</li>
+              <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="verTxt"></b>.</li>
+            </ul>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+              <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'ct'+cl">
+                <button type="button" class="srcfilter__chip" x-bind:class="contractCall===cl ? 'sel' : ''" x-on:click="contractCall=cl" x-text="callLabel(cl)"></button>
+              </template>
+              <button type="button" class="srcfilter__chip" x-bind:class="contractCall==='examples' ? 'sel' : ''" x-on:click="contractCall='examples'">골드 예시</button>
+            </div>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>계약 원문 · 읽기 전용<span class="codeblock__stage" x-text="contractCall==='examples' ? '골드 예시' : callLabel(contractCall)"></span></div><textarea readonly spellcheck="false" x-bind:value="contractText"></textarea></div>
           </div></section>
-        <section class="panel" data-fn><div class="panel-hd"><b>분석</b><span class="meta">용희 · 신호 → 메타(리드문 · 엔티티 · 인텐트 · 카테고리)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.analyze" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
+        <section class="panel" data-fn><div class="panel-hd"><b>모델별 쿡북 래퍼</b><span class="meta">수정 단위는 계열 래퍼만 · 코어 규칙·사전·예시는 자동 삽입</span></div>
           <div class="panel-bd">
-            <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.analyze" x-on:change="onStageModelChange('analyze')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 프롬프트 · 분석<span class="codeblock__stage" x-text="stageModels.analyze || '전역 프롬프트'"></span></div><textarea x-model="stagePrompts.analyze" spellcheck="false" placeholder="이 단계의 원천 프롬프트(지시문)를 직접 수정하세요"></textarea></div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('analyze')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('analyze')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.analyze"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.analyze ? ('최종 수정 ' + stagePromptsMeta.analyze) : '수정 이력 없음'"></span></div>
+            <ul class="ds-bullets" style="margin-bottom:10px">
+              <li>계열별 쿡북 관례(GPT 출력 계약 · Gemini 스키마 재명시 · Claude 배경 제공 · Solar CRITICAL+자가 검증)를 이 래퍼가 담당합니다.</li>
+              <li>플레이스홀더 <b>{ROLE} {SCHEMA} {RULES} {EXAMPLES} {SELF_CHECK} {LEARNED}</b> 위치에 계약 요소가 삽입됩니다 · 비우고 저장하면 기본 래퍼로 복원됩니다.</li>
+            </ul>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+              <template x-for="f in ['gpt','gemini','claude','solar']" x-bind:key="'fw'+f">
+                <button type="button" class="srcfilter__chip" x-bind:class="wrapFam===f ? 'sel' : ''" x-on:click="wrapFam=f; syncWrapDraft()" x-text="f"></button>
+              </template>
+            </div>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>계열 래퍼 템플릿<span class="codeblock__stage" x-text="wrapFam + ((cfg.familyWrappers||{})[wrapFam] ? ' · 수정됨' : ' · 기본')"></span></div><textarea x-model="wrapDraft" spellcheck="false" placeholder="이 계열의 래퍼 템플릿을 수정하세요"></textarea></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+              <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveWrapper()">저장</button>
+              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreWrapper()">기본값 복원</button>
+              <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="wrapMsg"></span>
+            </div>
+          </div></section>
+        <section class="panel" data-fn><div class="panel-hd"><b>호출별 모델 티어</b><span class="meta">①·② 경량 → ④ 상위 권장 · 비우면 실행 모델 사용</span></div>
+          <div class="panel-bd">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'cm'+cl">
+                <span class="selctl"><span class="selctl__lbl" x-text="callLabel(cl)"></span>
+                  <select class="field" x-model="callModels[cl]"><option value="">실행 모델</option><template x-for="m in availableModels" x-bind:key="'cm'+cl+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+              </template>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-on:click="saveCallModels()">저장</button>
+              <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" x-model="fourCalls" x-on:change="saveCallModels()"> 분리형 4호출(해제 시 통합 1콜 폴백)</label>
+              <span class="text-xs" style="color:var(--ds-success)" x-text="callMsg"></span>
+            </div>
+          </div></section>
+        <section class="panel" data-fn><div class="panel-hd"><b>최종 프롬프트 미리보기</b><span class="meta">호출×모델×서비스 조합의 실제 합성 결과</span></div>
+          <div class="panel-bd">
+            <div class="filterbar" style="margin:0 0 10px">
+              <span class="selctl"><span class="selctl__lbl">모델</span>
+                <select class="field" x-model="pvModel" x-on:change="loadPreview()"><template x-for="m in availableModels" x-bind:key="'pv'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+              <span class="selctl"><span class="selctl__lbl">호출</span>
+                <select class="field" x-model="pvCall" x-on:change="loadPreview()">
+                  <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'pc'+cl"><option x-bind:value="cl" x-text="callLabel(cl)"></option></template>
+                  <option value="merged">통합 1콜(폴백)</option>
+                </select></span>
+              <span class="selctl"><span class="selctl__lbl">서비스</span>
+                <select class="field" x-model="pvService" x-on:change="loadPreview()"><template x-for="g in groups" x-bind:key="'pg'+g"><option x-bind:value="g" x-text="g"></option></template></select></span>
+              <span class="text-xs text-muted" x-text="pvData ? ('계열 ' + pvData.family) : ''"></span>
+            </div>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="pvModel"></span></div><textarea readonly spellcheck="false" x-bind:value="pvData ? pvData.system : '모델·호출을 선택하면 합성 결과가 표시됩니다'"></textarea></div>
+            <div class="codeblock" style="margin-top:10px"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>user<span class="codeblock__stage">입력 템플릿</span></div><textarea readonly spellcheck="false" style="min-height:90px" x-bind:value="pvData ? pvData.user : ''"></textarea></div>
           </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>검수</b><span class="meta">복실 · 품질 메타 판정</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.review" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
           <div class="panel-bd">

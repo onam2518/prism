@@ -236,6 +236,21 @@ def _mock_generator(system: str, user: str, tag: str) -> dict:
         return {"finalGrade": "R" if reasons else "G", "reasons": reasons,
                 "evidence": "mock heuristic"}
 
+    if tag == "item_summary":                     # 분리형 ①: title·body 모두 비면 단락 차단 신호("")
+        title = _field(user, "title")
+        b = _field(user, "body")
+        if not title.strip() and not b.strip():
+            return {"summary": ""}
+        ents = _mock_entities(title + " " + b)
+        return {"summary": f"{(ents[0] if ents else '주제')} 관련 내용을 정리"}
+    if tag == "item_entities":                    # 분리형 ②
+        return {"entities": _mock_entities(_field(user, "title") + " " + _field(user, "body"))}
+    if tag == "item_intent":                      # 분리형 ③: 사전 값에서 결정론 선택
+        svc = _field(user, "displayServiceName")
+        return {"intent": D.intent_categories_for(svc)[:2]}
+    if tag == "item_category":                    # 분리형 ④
+        return {"content_category": ["News and Politics / Society"]}
+
     if tag == "item":
         title = _field(user, "title")
         ents = _mock_entities(title + " " + _field(user, "body"))

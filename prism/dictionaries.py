@@ -112,28 +112,64 @@ INTENT_FORM_UNIVERSAL = [
     "인터뷰", "현장취재·르포", "그래픽·인포그래픽", "포토·영상 중심",
     "보도자료·공식발표", "후기·리뷰·비평", "해설·팩트체크", "정형정보",
 ]
-# 서비스 카테고리별(세부 종류·속성 축). UI 콘텐츠 그룹 키 ↔ 기획서 서비스 카테고리:
-#   콘텐츠=콘텐츠뷰 · 음악=멜론 · 커뮤니티=다음카페 · 블로그=티스토리 · 동영상=카카오TV
+# 서비스 카테고리별(세부 종류·속성 축) · 원문 사전(인텐트 정의 및 구분, 2026-07 개편) 동기.
+# 분기: displayServiceName 정의값 10개 → 서비스 카테고리 8종. 미정의 값 = PGC 폴백(범용만 부여).
 INTENT_CATEGORIES_BY_SERVICE = {
-    "뉴스":   ["속보·단신", "사건 경과 보도", "정책·사업 소개", "행정 발표",
-              "법안 통과 보도", "노동·사회 이슈", "사회 안전 보도", "인물 동정",
-              "사설·칼럼", "국제·외교 보도", "트렌드 분석", "설문조사 기반 분석"],
-    "연예":   ["열애·결혼·이혼", "컴백·신작 발매", "논란·해명",
-              "화보·시상식", "방송 출연", "팬 소통"],
-    "스포츠": ["감독 인터뷰", "경기 프리뷰", "경기 결과·리뷰", "이적·계약 보도",
+    "뉴스":   ["속보·단신", "사건 경과 보도", "정책·행정", "노동·사회 이슈",
+              "인물·사연", "국제·외교 보도", "트렌드·시장 분석"],
+    "연예":   ["열애·결혼·이혼", "컴백·신작 발매", "예고", "논란·해명", "방송 출연",
+              "SNS·인플루언서", "캐스팅·공식소식", "이슈 편승(재조명)", "연재"],
+    "스포츠": ["경기 프리뷰", "경기 라인업·중계", "경기 결과·리뷰", "이적·계약 보도",
               "선수 분석 기사", "전술·데이터 분석", "부상·복귀 근황", "팬·응원 문화"],
-    "콘텐츠": ["카드뉴스·인포그래픽", "큐레이션·모음", "랭킹·리스트",
-              "요약·브리핑", "반응·리액션", "비교·분석"],
+    "콘텐츠뷰": ["카드뉴스·인포그래픽", "큐레이션·모음", "랭킹·리스트", "요약·브리핑",
+                "비교·분석", "반응·리액션", "생활·실용정보", "트렌드", "뉴스·소식", "칼럼"],
     "음악":   ["신곡·앨범 발매", "차트·랭킹", "아티스트 소식",
               "라이브·공연", "음악 큐레이션", "음원 리뷰·분석"],
-    "커뮤니티": ["후기·리뷰", "질문·답변", "정보 공유",
-                "의견·토론", "일상·잡담", "창작·작품 공유"],
-    "블로그": ["에세이·산문", "가이드·튜토리얼", "기술·개발",
-              "리뷰·분석", "일상·여행", "창작·연재"],
-    "동영상": ["클립·하이라이트", "풀영상·본방", "예고편·티저",
+    "커뮤니티": ["후기·리뷰", "질문·답변", "정보 공유", "의견·토론",
+                "일상·잡담", "창작·작품 공유", "뉴스·소식"],
+    "티스토리": ["에세이·산문", "가이드·튜토리얼", "기술·개발",
+                "리뷰·분석", "일상·여행", "창작·연재"],
+    "TV":     ["클립·하이라이트", "풀영상·본방", "예고편·티저",
               "인터뷰·비하인드", "라이브 중계", "교양·다큐"],
 }
 
+# 분류값 설명(사전 원문) · 호버 정의·프롬프트 참고용. 범용①·②는 별도 정의.
+INTENT_VALUE_DEFS = {
+    "속보·단신": "사건 발생 직후 팩트 위주 전달", "사건 경과 보도": "진행 중인 사건의 후속·경과 전달",
+    "정책·행정": "정책·사업 소개 + 법안 통과 + 행정 발표 통합", "노동·사회 이슈": "노사·파업·고용 + 교통·산업·재난·생활 안전 통합",
+    "인물·사연": "일반인·시민의 삶·사연, 인물 조명", "국제·외교 보도": "해외 사건·외교·국제 관계 전달",
+    "트렌드·시장 분석": "세대·소비·라이프스타일·시장 변화 분석 + 설문 기반 + 시장 동향 통합",
+    "열애·결혼·이혼": "연예인 교제·결혼·파경 관련 소식", "컴백·신작 발매": "앨범·영화·드라마·예능 신규 출시",
+    "예고": "방송·유튜브·공연 신작/차회 예고", "논란·해명": "연예인 관련 의혹·논란과 대응",
+    "방송 출연": "예능·토크쇼·리얼리티 출연 관련", "SNS·인플루언서": "스타 SNS·라이브 소통, 인플루언서 동향",
+    "캐스팅·공식소식": "캐스팅·발탁 등 공식 소식", "이슈 편승(재조명)": "과거 영상·이력 재조명 등 이슈 편승",
+    "연재": "연재·기획 시리즈",
+    "경기 프리뷰": "경기 앞두고 전망·관전 포인트", "경기 라인업·중계": "라인업 공개 및 실시간 진행 상보",
+    "경기 결과·리뷰": "경기 스코어·하이라이트·경기 분석", "이적·계약 보도": "선수 이적·FA·트레이드·재계약 관련",
+    "선수 분석 기사": "선수 개인의 폼·기록·경기력 분석", "전술·데이터 분석": "전술 해설·통계 기반 경기 분석",
+    "부상·복귀 근황": "선수 부상 상태·재활·복귀 정보", "팬·응원 문화": "팬 반응·응원 문화·원정 관전",
+    "카드뉴스·인포그래픽": "시각 중심 정보 전달 콘텐츠", "큐레이션·모음": "여러 소스를 엮은 주제별 모음",
+    "랭킹·리스트": "순위형·나열형 콘텐츠", "요약·브리핑": "긴 기사·보고서의 핵심 요약",
+    "비교·분석": "제품·정책·인물 등 비교형 콘텐츠", "반응·리액션": "특정 이슈에 대한 반응 모음",
+    "생활·실용정보": "일상 활용 정보·팁", "트렌드": "인물·이슈·스타일 트렌드 소개",
+    "뉴스·소식": "신제품·동향·공식 발표 등 소식 전달", "칼럼": "화자 관점이 강한 해설·주장",
+    "신곡·앨범 발매": "신곡·앨범·EP 발매 및 발매 예고", "차트·랭킹": "차트 진입·상위·역주행 등 순위 변동",
+    "아티스트 소식": "아티스트 활동·근황·인터뷰", "라이브·공연": "콘서트·페스티벌·라이브 출연",
+    "음악 큐레이션": "플레이리스트·테마곡 모음·시대별 추천", "음원 리뷰·분석": "음원·앨범에 대한 비평·해설·트랙 분석",
+    "후기·리뷰": "제품·서비스·장소 사용 경험 공유", "질문·답변": "특정 주제에 대한 질의와 답변",
+    "정보 공유": "유용한 정보·팁·노하우 공유", "의견·토론": "특정 이슈에 대한 의견 개진과 토론",
+    "일상·잡담": "일상 공유, 가벼운 대화", "창작·작품 공유": "팬픽·그림·사진 등 창작물 공유",
+    "에세이·산문": "개인 경험·감상 기반 글", "가이드·튜토리얼": "단계별 안내·설명 콘텐츠",
+    "기술·개발": "프로그래밍·IT·기술 관련 글", "리뷰·분석": "제품·서비스·콘텐츠 리뷰 및 분석",
+    "일상·여행": "일상 기록·여행기·맛집 탐방", "창작·연재": "소설·시·연재물·번역 등 창작 콘텐츠",
+    "클립·하이라이트": "방송·경기의 핵심 장면 발췌", "풀영상·본방": "방송 전체 또는 긴 분량 영상",
+    "예고편·티저": "신작·차회 예고 영상", "인터뷰·비하인드": "출연자·제작진 인터뷰, 비하인드",
+    "라이브 중계": "실시간 방송·중계", "교양·다큐": "교육·교양·다큐멘터리 영상",
+    "인터뷰": "인물의 발언·문답 중심(감독·선수·연예인·일반인 통합)", "현장취재·르포": "현장 방문·취재 기반 보도",
+    "그래픽·인포그래픽": "도표·그래픽이 핵심 전달 수단", "포토·영상 중심": "이미지·영상 자체가 본문(텍스트형 한정)",
+    "보도자료·공식발표": "공식 채널 발 발표·공고·캐스팅·스폰서·프로모션", "후기·리뷰·비평": "사용·관람·체험 기반 평가",
+    "해설·팩트체크": "쟁점 검증·배경 해설", "정형정보": "일정·부고·인사·시황·날씨·기록 등 주기적 정형 기사",
+}
 
 def intent_categories_for(display_name: str) -> list:
     """주입·검증 공용 인텐트 후보 = 범용①(소비 방식) + 범용②(형식·전달) + 서비스 분기."""
@@ -142,23 +178,38 @@ def intent_categories_for(display_name: str) -> list:
             + INTENT_CATEGORIES_BY_SERVICE.get(svc, []))
 
 
+# displayServiceName 정의값(10) → 서비스 카테고리. 구 명칭·레거시 UI 그룹명 공존 매핑.
+_SERVICE_NAME_MAP = {
+    "뉴스": "뉴스", "연예": "연예", "스포츠": "스포츠",
+    "콘텐츠뷰 (일반)": "콘텐츠뷰", "콘텐츠뷰(일반)": "콘텐츠뷰",
+    "멜론": "음악",
+    "다음카페": "커뮤니티", "콘텐츠뷰 (커뮤니티)": "커뮤니티", "콘텐츠뷰(커뮤니티)": "커뮤니티",
+    "티스토리": "티스토리",
+    "VOD": "TV", "루프": "TV",
+    "카카오TV": "TV", "카카오비디오": "TV",     # 마이그레이션 기간 구 명칭 공존
+    # 레거시 UI 콘텐츠 그룹명 호환
+    "콘텐츠": "콘텐츠뷰", "블로그": "티스토리", "동영상": "TV", "음악": "음악", "커뮤니티": "커뮤니티",
+}
+
+
 def _service_key(display_name: str) -> str:
-    """프롬프트 주입용 서비스 키 정규화."""
+    """displayServiceName → 서비스 카테고리 키. 미정의 값은 빈 문자열(PGC 폴백 · 범용만 부여)."""
     n = (display_name or "").strip()
+    if n in _SERVICE_NAME_MAP:
+        return _SERVICE_NAME_MAP[n]
     if n in INTENT_CATEGORIES_BY_SERVICE:
         return n
-    # 느슨한 매핑
-    for k in INTENT_CATEGORIES_BY_SERVICE:
-        if k in n:
-            return k
+    for k, v in _SERVICE_NAME_MAP.items():      # 느슨한 포함 매칭(공백 변형 등)
+        if k and k in n:
+            return v
     if "music" in n.lower() or "뮤직" in n:
         return "음악"
     if "카페" in n or "커뮤" in n or "포럼" in n:
         return "커뮤니티"
     if "blog" in n.lower() or "블로그" in n:
-        return "블로그"
+        return "티스토리"
     if "tv" in n.lower() or "비디오" in n or "video" in n.lower():
-        return "동영상"
+        return "TV"
     return ""
 
 
@@ -191,9 +242,9 @@ CONTENT_CATEGORY_TIER2 = {
     "Technology and Computing": ["Computing", "Internet", "Information Security", "Consumer Electronics"],
     "Books and Literature": ["Fiction", "Non-Fiction", "Biographies", "Essays"],
     "Medical Health": ["Diseases and Conditions", "Wellness"],
-    "Hobbies and Interests": ["Arts and Crafts", "Collecting", "Outdoors"],
+    "Hobbies and Interests": ["Arts and Crafts", "Collecting", "Outdoors", "Military"],
     "Health and Fitness": ["Healthy Living", "Exercise and Fitness"],
-    "Home and Garden": ["Interior Decorating", "Gardening", "Home Improvement", "Shopping"],
+    "Home and Garden": ["Interior Decorating", "Gardening", "Home Improvement", "Shopping", "Lifestyle"],
     "Pets": ["Dogs", "Cats", "Birds", "Fish", "Other Pets"],
     "Style and Fashion": ["Fashion Trends", "Personal Care", "Accessories"],
     "Automotive": ["Auto Type", "Auto Repair", "Auto Shows"],
@@ -203,6 +254,55 @@ CONTENT_CATEGORY_TIER2 = {
     "Religion and Spirituality": ["Religion", "Spirituality"],
 }
 IAB_TIER2 = CONTENT_CATEGORY_TIER2   # 하위 호환 별칭
+
+# Tier1 국문 설명(원문 사전) · 프롬프트 주입·UI 참고
+IAB_TIER1_DESC = {
+    "News and Politics": "뉴스·시사·정치·사회·국제·기상", "Entertainment": "연예·예능·방송·영화·음악·공연",
+    "Business and Finance": "비즈니스·경제·산업·개인금융·부동산", "Sports": "스포츠·경기·선수",
+    "Food and Drink": "음식·요리·외식", "Travel": "여행·관광·숙박",
+    "Family and Relationships": "가족·연애·육아", "Education": "교육·학습",
+    "Technology and Computing": "테크·컴퓨팅·전자제품", "Books and Literature": "도서·문학·에세이",
+    "Medical Health": "의료·질병", "Hobbies and Interests": "취미·관심사",
+    "Health and Fitness": "건강·운동", "Home and Garden": "홈·인테리어·가드닝·쇼핑·라이프스타일",
+    "Pets": "반려동물", "Style and Fashion": "패션·뷰티", "Automotive": "자동차·모빌리티",
+    "Video Gaming": "비디오 게임·e스포츠", "Science": "과학·자연·환경",
+    "Careers": "직업·채용·커리어", "Religion and Spirituality": "종교·운세·영성",
+}
+
+# 카테고리별 구분 기준(원문 사전 · ④ 콘텐츠 카테고리 호출의 시스템 메시지에 주입 · 캐싱 대상)
+CATEGORY_CRITERIA = {
+    "News and Politics": ("정책·법안·정치인 발언·정부기관·정책 사업명은 Politics, 정책 외 사회 현상·통계·일반 사회 기사는 Society. "
+        "노동·파업·노사 갈등은 Society(거시지표 중심 경제는 Business and Finance / Economy). "
+        "단, 기업 엔티티가 노사·파업 맥락으로 등장하면 Business and Finance / Industries 우선 · Society 는 총파업·고령운전자 등 일반명사에 적용. "
+        "세대·인구 그룹은 Society. 지역 단위 행정·이슈는 Local News, 전국 단위 사회 이슈는 Society 우선. "
+        "교육 정책은 Politics, 학습·교육 콘텐츠는 Education, 사회 현상으로서 교육 이슈는 Society. "
+        "자연재해 피해 보도는 Disasters, 기상 현상·예보는 Weather. 국내 사안은 도메인별 Tier 2, 해외 사안은 International News 우선. "
+        "모호 엔티티(의혹·선거 등)는 본문 맥락으로 분기(성폭행 맥락 → Crime, 정치 맥락 → Politics)."),
+    "Entertainment": ("인물 중심은 Celebrity News 계열, 작품·프로그램 중심은 Drama TV / TV Shows / Movies / Music. "
+        "국적 분기: 한국 인물 → Celebrity News, 해외 인물 → Celebrity News (Foreign). "
+        "프로그램 단위 세부 분류는 카테고리가 아닌 엔티티(프로그램명) 단위로 처리."),
+    "Business and Finance": ("기업 엔티티는 주력 산업 기준: 테크·플랫폼 → Business, 제조·에너지 → Industries, 금융 → Banking. "
+        "삼성전자 분기: 반도체 투자·실적·노사 보도 → Industries, 갤럭시 신제품 보도 → Technology and Computing / Consumer Electronics. "
+        "유통 산업 분석·이커머스 기업 동향은 Industries, 소비자 관점 쇼핑 정보는 Home and Garden / Shopping. "
+        "부동산은 정책(규제·세제) vs 매물(분양·시세) 분기."),
+    "Sports": ("선수·팀·리그·감독·대회 모두 해당 종목 Tier 2로 직접 매핑. 축구·야구만 국내·해외 분기, 그 외 통합. "
+        "해외 리그·클럽·대회(EPL·UEL·UCL 등)는 Soccer (International). e스포츠는 제외 · Video Gaming / eSports 로 단일화."),
+    "Food and Drink": "가정 요리(레시피) → Cooking, 외식·맛집 → Dining Out. 브랜드 단위면 Dining Out, 음료 제품 중심이면 Beverages.",
+    "Travel": "단기 여행 콘텐츠는 Travel, 이민·장기체류·외국생활은 Home and Garden / Lifestyle 로 분류.",
+    "Technology and Computing": ("AI 는 Computing 산하(별도 Tier 2 없음). "
+        "통신사·반도체 부품 기업이 산업 분석 맥락이면 Business and Finance / Industries 우선."),
+    "Books and Literature": "커뮤니티·블로그의 일반 일상 글(UGC)은 Essays 로 1차 분류.",
+    "Medical Health": ("선수 부상 보도는 경기 맥락이면 Sports, 의학 정보 중심이면 Diseases and Conditions. "
+        "의학·보건·질병 콘텐츠는 Medical Health, 건강관리·운동·식단 등 일상 건강은 Health and Fitness."),
+    "Hobbies and Interests": "군대·군인·무기 등 밀리터리 취향 콘텐츠는 Military, 국방·전쟁·안보 시사 기사는 News and Politics.",
+    "Health and Fitness": "건강관리·다이어트·운동은 Health and Fitness, 질병·의료·보건·의학계 소식은 Medical Health.",
+    "Home and Garden": ("Shopping 은 소비자 관점 쇼핑 정보에 한정(유통 산업 분석은 Business and Finance / Industries). "
+        "귀촌·전원생활·외국생활·이민·살림·생활정보는 Lifestyle, 순수 인테리어·공간 꾸미기는 Interior Decorating."),
+    "Automotive": ("자동차 브랜드·차종·신차 보도는 Auto Type 통합. 정비·부품은 Auto Repair. "
+        "자동차 안전 정책·정부 보급사업은 News and Politics / Politics, 운전자 인구 그룹·사회 이슈는 News and Politics / Society."),
+    "Video Gaming": "게임 작품·플레이 콘텐츠는 Video Games, 프로 대회·선수·팀은 eSports.",
+    "Religion and Spirituality": "운세·점술은 Spirituality, 제도 종교·교리·묵상·종교계 뉴스는 Religion. 종교 관련 사회 이슈는 News and Politics 우선.",
+}
 
 
 # ── 카테고리 사전화: LLM 자유 출력 → 고정 사전 스냅 ──

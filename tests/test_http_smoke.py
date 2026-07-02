@@ -142,10 +142,28 @@ class TestButtonsEndToEnd(unittest.TestCase):
     def test_06_dict_prompt_lab_buttons(self):
         d = self.ok("/dict")
         self.assertIn("intentUniversal", d)
-        self.ok("/config", {"stage_prompts": {"analyze": "스모크 추가 지시"}})
+        self.assertEqual(len(d.get("intentForm") or []), 8)
+        self.ok("/config", {"stage_prompts": {"review": "스모크 추가 지시"}})
         self.ok("/topics")
         self.ok("/usermeta")
         self.ok("/vocab")
+
+    # ── 프롬프트 스튜디오: 계약 노출 · 래퍼 편집 · 호출별 모델 · 미리보기 ──
+    def test_07_prompt_studio_contract(self):
+        cfg = self.ok("/config")
+        self.assertEqual(cfg.get("metaCalls"), ["summary", "entities", "intent", "category"])
+        self.assertIn("리드문 정의", (cfg.get("metaContract") or {}).get("rules", {}).get("summary", ""))
+        pv = self.ok("/prompt-preview?model=solar-pro2&call=intent&service=%EC%8A%A4%ED%8F%AC%EC%B8%A0")
+        self.assertTrue(pv["ok"] and pv["family"] == "solar" and "경기 프리뷰" in pv["system"])
+        # 래퍼 오버라이드 저장 → 반영 → 복원
+        self.ok("/config", {"family_wrappers": {"gpt": "# X\n{ROLE}\n{SCHEMA}\n{RULES}\n{EXAMPLES}\n{SELF_CHECK}{LEARNED}"}})
+        pv2 = self.ok("/prompt-preview?model=gpt-5.4&call=summary")
+        self.assertTrue(pv2["system"].startswith("# X"))
+        self.ok("/config", {"family_wrappers": {"gpt": ""}})
+        # 호출별 모델 저장 왕복
+        c = self.ok("/config", {"meta_call_models": {"category": "gpt-5.4"}, "meta_four_calls": True})
+        self.assertEqual((c.get("metaCallModels") or {}).get("category"), "gpt-5.4")
+        self.ok("/config", {"meta_call_models": {}})
 
 
 if __name__ == "__main__":

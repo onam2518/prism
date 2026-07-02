@@ -60,6 +60,16 @@ DEMO_CONFIG = {
     "backend": "supabase", "authRequired": False, "keyManagedByServer": True,
 }
 
+# 기준 계약·계열 래퍼(코드 원천에서 그대로) → 데모 스튜디오도 실제 계약을 표시
+from prism import meta_prompts as _MP
+DEMO_CONFIG.update({
+    "availableModels": ["solar-pro3-260323", "gpt-5.4-mini", "gpt-5.4", "claude-sonnet-4.6", "gemini-2.5-pro"],
+    "metaFourCalls": True, "metaCallModels": {"category": "gpt-5.4"}, "familyWrappers": {},
+    "familyWrapperDefaults": dict(_MP.FAMILY_WRAPPER_DEFAULT),
+    "metaCalls": list(_MP.CALLS),
+    "metaContract": {"rules": dict(_MP.CALL_RULES), "examples": _MP.gold_examples(None)},
+})
+
 # 데모 관리자 컨텍스트(/admin 스텁) · isAdmin=true 로 자동 인입·팀 관리 노출
 DEMO_ADMIN = {
     "ok": True, "isAdmin": True, "isSysAdmin": True,
@@ -244,6 +254,7 @@ STUB = """<script>
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
     const CFG = %s, VOCAB = %s, ADMIN = %s, ARENA = %s, EX = %s;
+    const PV_SAMPLE = %s;
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
       const u = String(url);
@@ -279,6 +290,11 @@ STUB = """<script>
       if (u.indexOf('/learn-data') > -1) return Promise.resolve(J(EX.ldata));
       if (u.indexOf('/learn-export') > -1) return Promise.resolve(J({ ok: true }));
       if (u.indexOf('/compare-models') > -1) return Promise.resolve(J(EX.cmp));
+      if (u.indexOf('/prompt-preview') > -1) {
+        const q = new URLSearchParams(u.split('?')[1] || '');
+        return Promise.resolve(J({ ok: true, family: 'solar', call: q.get('call') || 'summary',
+          system: PV_SAMPLE, user: 'displayServiceName: 뉴스\ntitle: (미리보기)\nbody: (미리보기 본문)' }));
+      }
       if (u.indexOf('/purpose') > -1) return Promise.resolve(J({ ok: true, n: 1 }));
       if (u.indexOf('/eval-judge') > -1) return Promise.resolve(J({ ok: true, judge: { adopt: 1, reject: 0, reviewers: {} } }));
       if (u.indexOf('/eval-golden') > -1) return Promise.resolve(J(EX.evalg));
@@ -299,6 +315,7 @@ STUB = """<script>
        json.dumps(DEMO_ADMIN, ensure_ascii=False),
        json.dumps(DEMO_ARENA, ensure_ascii=False),
        json.dumps(DEMO_EXTRAS, ensure_ascii=False),
+       json.dumps(_MP.call_system("solar-pro3-260323", "summary"), ensure_ascii=False),
        json.dumps(DEMO_DASH, ensure_ascii=False),
        json.dumps(DEMO_TOPICS, ensure_ascii=False),
        json.dumps(DEMO_USER, ensure_ascii=False),

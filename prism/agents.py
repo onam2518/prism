@@ -33,7 +33,27 @@ def run_quality_split(llm, content, routing) -> tuple[QualityMeta, list]:
     return qm, results + verdicts
 
 
+# 아이템 메타 실행 설정(serve.sync_prompt 주입): 분리형 4호출 여부 + 호출별 모델 티어
+META_CFG = {"four_calls": True, "call_models": {}}
+# 호출별 모델 라우팅 팩토리(serve 주입): model_id -> llm | None
+LLM_FOR_CALL = None
+
+
+def _call_llm(main_llm, call: str):
+    mid = ((META_CFG.get("call_models") or {}).get(call) or "").strip()
+    if mid and LLM_FOR_CALL is not None:
+        try:
+            alt = LLM_FOR_CALL(mid)
+            if alt is not None:
+                return alt
+        except Exception:
+            pass
+    return main_llm
+
+
 def run_item(llm, content) -> tuple[ItemMeta, list]:
+    if META_CFG.get("four_calls", True):
+        return _run_item_calls(llm, content)
     sys = P.item_system(content, getattr(llm, "model", "") or "")
     obj, res = llm.complete_json(sys, P.item_user(content), tag="item")
     im = ItemMeta(
@@ -45,6 +65,56 @@ def run_item(llm, content) -> tuple[ItemMeta, list]:
         topic_categories=obj.get("topic_categories", []) or [],
     )
     return im, [res, {"agent": "ItemAgent", "fail": obj.get("_fail")}]
+
+
+def _run_item_calls(llm, content) -> tuple[ItemMeta, list]:
+    """분리형 순차 4호출(계약): ① summary → ② entities → ③ intent → ④ content_category.
+    단락 차단(① 빈 문자열 → 후속 생략) · 호출 사이 기계 검증(사전 불일치 드롭, 전량 드롭 시 1회 재요청)."""
+    from . import dictionaries as D
+    results, prior = [], {}
+
+    def ask(call: str, tag: str) -> dict:
+        c_llm = _call_llm(llm, call)
+        sysp = P.call_system(content, call, getattr(c_llm, "model", "") or "")
+        obj, res = c_llm.complete_json(sysp, P.call_user(call, content, prior), tag=tag)
+        results.append(res)
+        results.append({"agent": f"ItemAgent:{call}", "model": getattr(c_llm, "model", "") or "",
+                        "fail": obj.get("_fail")})
+        return obj
+
+    # ① 리드문
+    o1 = ask("summary", "item_summary")
+    summary = (o1.get("summary") or "").strip() if isinstance(o1.get("summary"), str) else ""
+    prior["summary"] = summary
+    if not summary:                                # 단락 차단: 하위 호출 생략, 빈 값 적재
+        return ItemMeta(summary="", entities=[], intent=[], content_category=[]), results
+
+    # ② 엔티티(1~3개 강제)
+    o2 = ask("entities", "item_entities")
+    ents = [str(x).strip() for x in (o2.get("entities") or []) if str(x).strip()][:3]
+    prior["entities"] = ents
+
+    # ③ 인텐트: 사전 표기 정확 일치만 통과, 전량 드롭이면 1회 재요청
+    valid_intents = set(D.intent_categories_for(content.displayServiceName))
+    o3 = ask("intent", "item_intent")
+    raw3 = [str(x).strip() for x in (o3.get("intent") or []) if str(x).strip()]
+    intent = [x for x in raw3 if x in valid_intents]
+    if raw3 and not intent:
+        o3 = ask("intent", "item_intent")
+        raw3 = [str(x).strip() for x in (o3.get("intent") or []) if str(x).strip()]
+        intent = [x for x in raw3 if x in valid_intents]
+    prior["intent"] = intent
+
+    # ④ 콘텐츠 카테고리: 사전 경로 정규화(스냅), 전량 드롭이면 1회 재요청
+    o4 = ask("category", "item_category")
+    raw4 = [str(x) for x in (o4.get("content_category") or []) if str(x).strip()]
+    cats = D.normalize_category_list(raw4)
+    if raw4 and not cats:
+        o4 = ask("category", "item_category")
+        raw4 = [str(x) for x in (o4.get("content_category") or []) if str(x).strip()]
+        cats = D.normalize_category_list(raw4)
+
+    return ItemMeta(summary=summary, entities=ents, intent=intent, content_category=cats), results
 
 
 def run_legal(llm, content) -> tuple[LegalMeta, list]:

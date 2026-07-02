@@ -78,6 +78,12 @@ class Config:
     vision_model: str = ""              # 라우터일 때 public id
     legal_enabled: bool = False         # 품질 1차 법령 필터 포함 여부(단건/일괄)
     golden_min_good: int = 1            # 골든 확정 최소 '정확' 인원(팀 규모에 맞게 상향 가능)
+    # 아이템 메타 분리형 4호출(계약 기본). False 면 통합 1콜 폴백.
+    meta_four_calls: bool = True
+    # 호출별 모델 티어: {summary|entities|intent|category: model_id}. 빈 값 = 실행 모델.
+    meta_call_models: dict = field(default_factory=dict)
+    # 모델 계열 쿡북 래퍼 오버라이드: {gpt|gemini|claude|solar|default: template}. 수정 단위는 계열 래퍼만.
+    family_wrappers: dict = field(default_factory=dict)
     auto_rerun_after_batch: bool = False  # 학습 반영 종료 후 새 버전으로 전 콘텐츠 자동 재실행(비용 발생)
 
     # 실행
