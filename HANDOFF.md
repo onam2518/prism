@@ -1,6 +1,6 @@
 # HANDOFF — Prism · 팀 검수·평가 플랫폼
 
-다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-02, v0.4.4+)
+다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-02, v0.5.0)
 
 ## 한 줄 요약
 Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출을 넘어 **팀이 산출물을 검수·평가하고(HITL), 그 합의를 골든셋·프롬프트 개선과 특화 LLM 학습데이터로 되먹이는 평가 플랫폼**이다. supabase 운영 전용, 품질 가중 게이미피케이션(골드 문항·미션), 검수 → 골든셋 → 학습 일배치 폐루프 + 학습데이터 추출(SFT/DPO/rationale)까지 동작.
@@ -8,7 +8,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 ## 정본 위치
 - 레포: `/Users/pete.axz-pc/Desktop/project/prism` (origin `github.com/onam2518/prism`, 사용자 소유)
 - **작업은 `main` 브랜치에 직접**(과거 `feat/policy-edit` 경유 PR 방식 → 현재는 main 직커밋). `feat/image-meta-poc`는 과거 브랜치.
-- 릴리즈: `gh release`, 최신 **v0.4.4**. DMG 자산 첨부.
+- 릴리즈: `gh release`, 최신 **v0.5.0**(용도 구분·건별 판정·시스템 설정·1만 건 완주 게임 정책). DMG 자산 첨부.
 
 ## 실행 방법
 - `cd ~/Desktop/project/prism && python3 -m prism.serve` → http://127.0.0.1:8765
@@ -146,6 +146,12 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     로컬 적재 초기화 + **팀 삭제**(2중 확인, supabase delete_team)) + 하단 API 키·모델 카드 인라인
     (설정 모달 폐지 · settingsOpen 제거, 딥링크 ?settings·topbar 기어 → selectMod('system')).
     팀 관리 메뉴는 멤버·초대코드만 유지.
+  - **게임 정책(v0.5.0)**: 레벨 커브 = 구간 요구 pt 100+80×(레벨-1) 등차 증가, Lv.50 만렙 98,980pt
+    ≈ 검수 9,898건(개인 1만 건 완주 설계, store.level_of 단일 원천 · 클라 lvlFloor/lvlNeed 동기화).
+    배지 22종 래더(볼륨 1~10k 완주 · 스트릭 3/7/30/100일 · 기여 1/50/500 · 품질 5종 · 지위 Lv.10/25/50).
+  - **검증 체계(v0.5.0)**: tests 46종 = 유닛 40 + HTTP 스모크 6(tests/test_http_smoke.py: mock 서버
+    실부팅 후 화면 전 버튼 엔드포인트 실호출 · DEFAULT_CONFIG_PATH 격리로 로컬 config 오염 방지).
+    termDef 는 '값 (건수)' 접미 정규화 후 사전 매칭(집계 칩 호버 정의).
   - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)
@@ -156,7 +162,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - `prism/store.py`·`supastore.py` — dual-mode 저장소 + golden.
 - `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` — 추출 파이프라인. `abtest.py` — 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).
 - `prism/imagext.py` — 이미지 인제스트(방식 A, 코어 무수정).
-- `desktop/app.py`·`Prism.spec`(v0.4.4)·`make_dmg.sh` — 패키징. 빌드 venv `/tmp/prism-pkg/bin/python`.
+- `desktop/app.py`·`Prism.spec`(v0.5.0)·`make_dmg.sh` — 패키징. 빌드 venv `/tmp/prism-pkg/bin/python`.
 - `scripts/make_demo.py` — GitHub Pages 데모(`docs/demo.html`) 재생성(fetch 스텁·CDN 폰트·vendor 복사).
 - `design-system/` — Anchor 디자인 시스템(`--ds-*` 토큰, GmarketSans/Pretendard 이중폰트).
 
