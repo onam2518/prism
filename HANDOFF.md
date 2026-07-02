@@ -1,9 +1,9 @@
 # HANDOFF — Prism · 팀 검수·평가 플랫폼
 
-다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-01, v0.4.4)
+다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-02, v0.4.4+)
 
 ## 한 줄 요약
-Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출을 넘어 **팀이 산출물을 검수·평가하고(HITL), 그 합의를 골든셋·프롬프트 개선으로 되먹이는 평가 플랫폼**이다. supabase 운영 전용, 게이미피케이션 검수 아레나, 검수 → 골든셋 → 학습 일배치 폐루프까지 동작.
+Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출을 넘어 **팀이 산출물을 검수·평가하고(HITL), 그 합의를 골든셋·프롬프트 개선과 특화 LLM 학습데이터로 되먹이는 평가 플랫폼**이다. supabase 운영 전용, 품질 가중 게이미피케이션(골드 문항·미션), 검수 → 골든셋 → 학습 일배치 폐루프 + 학습데이터 추출(SFT/DPO/rationale)까지 동작.
 
 ## 정본 위치
 - 레포: `/Users/pete.axz-pc/Desktop/project/prism` (origin `github.com/onam2518/prism`, 사용자 소유)
@@ -41,6 +41,24 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - 프론트: `runLearnBatch`·`loadLearnReport`·`categoryOptions`·`fillCategory`(POST /patch-meta). '학습 일배치' 리포트 패널(타일 + 모델 비교표), 상세 내 빈 카테고리 gap-fill picker.
 - 합의 기준: 정확≥1 & 정확≥수정필요. 필수 채움 = 카테고리만. `content_hash` = sha1(displayServiceName+title+subtitle+body)[:16].
 
+## 품질 가중 게임화 + 학습데이터 추출 (2026-07-02 신규 · 논문 근거는 LEARNING_DESIGN.md)
+- **골드 문항(G-1)**: 골든셋에서 (검수자,일자) 시드로 결정적 블라인드 출제(`_inject_gold`).
+  hash 홀수 = 등급 뒤집기 변형(정답 bad). 응답은 `gold_checks` 테이블로 분리(feedback 무오염).
+  hash 형식 `gold:<ok|bad>:<content_hash>`, `/feedback` 이 `apply_gold_answer` 로 분기.
+- **품질 가중 점수(G-2)**: `(검수10+교정25+구조화교정5+합의일치5+골드10) × (0.5+0.5×골드정확도, 응답5건↑) + 미션보너스`.
+  sqlite·supastore `arena_stats` 동일 산식. 리더보드에 gold_acc·quality_mult·consensus_matches·split_reviews·agree_rate.
+- **신뢰도 가중 골든 합의(G-4)**: `reviewer_weights()`(골드 정확도 기반) → `build_golden_from_reviews` 가중 다수결.
+  골드 데이터 없으면 전원 1.0 = 기존 다수결과 동일(하위호환).
+- **판정형 미션(G-5)**: MISSIONS 3종(오늘 검수5·골드 정답1·불일치 재검토1). `/arena?reviewer=` 로 진행도,
+  달성 시 `events` 테이블에 (reviewer,kind,day) 1회 기록 → 중복 보상 방지. 검수 큐 = split 재검토 우선 → 저확신 순.
+- **레이트리밋**: `/feedback` 간격 0.8s·분당 40(초과 429).
+- **학습데이터 추출(관리자)**: `/learn-data`(클래스 커버리지·Krippendorff α·검수자 신뢰도(합의 일치율+골드+Dawid-Skene EM)·
+  라벨 오류 후보(_LAST_EVAL_DETAIL)·소요 대비표) + `/learn-export?kind=sft|dpo|rationale`(JSONL).
+  `prism/quality.py` = alpha·DS EM·이항 95% CI. UI = 학습 일배치 아래 '학습 데이터 현황' 패널.
+- **신규 테이블**: `patch_log`(교정 전/후 append=DPO 원천) · `gold_checks` · `events`. feedback 에 `element` 컬럼.
+  supabase DDL 적용됨(`prism_learning_loop_tables`), 신규 3테이블은 service_role 전용(RLS 정책 없음).
+- ⚠️ patch 는 이제 `update_item_meta` 전에 `get_item_meta` 로 before 를 떠서 `log_patch` 에 남긴다(선호쌍 rejected).
+
 ## 메타 체계 (코드가 이 기준으로 정렬)
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
 
@@ -66,10 +84,13 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - 릴리즈 노트·공개 레포에 내부(DNM/Confluence) 식별자·정책 노출 금지.
 
 ## 다음 단계
-1. **실 supabase 팀 데이터**로 골든셋·일배치 라이브 검증(현재 sqlite E2E 만).
-2. **다중 모델 실호출** 연결(`compare_models_on_golden` 지금은 로직·지표 골격), 평가 결과 수신 UI 정합.
-3. 빈 카테고리 gap-fill 이 실 사전(iabTier1/2) 커버리지에서 충분한지 점검, 부족 시 사전 확장.
-4. service_role 키 로테이션.
+1. **실 팀 운영 개시**: supabase 는 아직 팀 데이터 0건(2026-07-02 확인). 실사용에서 골드 문항 노출 비율(현재
+   큐의 ~10%·최소 1)·미션 난이도·품질 배율 체감을 모니터링해 튜닝.
+2. **DPO 선호쌍 축적**: 상세 화면 교정이 patch_log 로 쌓인다. 등급/리드문 등 카테고리 외 요소의
+   구조화 교정 UI 확대(현재 구조화 교정은 카테고리 채우기 중심).
+3. Dawid-Skene EM 을 합의 가중치에 직접 반영할지 검토(현재 통계 표시용, 가중치는 골드 정확도 근사).
+4. `/learn-report` 가 과거 POST 전용이던 문제는 GET 라우트 추가로 해소됨. 데스크탑 재빌드 시 버전 범프.
+5. service_role 키 로테이션(미처리, 사용자 지시로 보류).
 
 ## 메모리
 `prism-goal-evaluation-platform`·`prism-harness-architecture`·`prism-team-hitl`·`prism-supabase`·`prism-gamification`·`prism-anchor-design`·`prism-deploy-release-workflow` 참조.
