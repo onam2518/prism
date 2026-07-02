@@ -2822,21 +2822,25 @@
         if (this.cfgModel && !a.includes(this.cfgModel)) a.unshift(this.cfgModel);
         return a;
       },
-      async loadModels() {
+      async loadModels() {                     // 모델 새로고침: 전 제공자(직접 Solar 실조회 + 라우터 카탈로그)
         this.modelsMsg = '불러오는 중…'; this.cfgBusy = true;
         try {
           if (this.keyInputs.solar) {              // 입력한 키를 먼저 적용(세션)
             await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ api_key: this.keyInputs.solar }) });
-            await this.refreshConfig();
           }
-          const j = await (await fetch('/models')).json();
-          if (j.ok) {
-            this.models = j.models;
-            if (!this.cfgModel || !this.models.includes(this.cfgModel))
-              this.cfgModel = this.cfg.model || this.models[0] || '';
-            this.modelsMsg = this.models.length + '개 모델 불러옴';
-          } else { this.modelsMsg = '실패 · ' + j.detail; }
+          try {                                    // Solar 는 실조회(키 있을 때) · 실패해도 전체는 계속
+            const j = await (await fetch('/models')).json();
+            if (j.ok) {
+              this.models = j.models;
+              if (!this.cfgModel || !this.models.includes(this.cfgModel))
+                this.cfgModel = this.cfg.model || this.models[0] || '';
+            }
+          } catch (e) {}
+          await this.refreshConfig();
+          const total = this.textGroups.reduce((n, g) => n + g.items.length, 0);
+          const on = this.textGroups.filter((g) => g.on).length;
+          this.modelsMsg = '전 제공자 ' + total + '개 모델 · 연결 ' + on + '/' + this.textGroups.length;
         } catch (e) { this.modelsMsg = '오류: ' + e; }
         this.cfgBusy = false;
       },
@@ -4783,6 +4787,25 @@
           <li>실행 결과는 <b>버전 v(학습 반영 회차+1)</b> 로 기록됩니다 · 현재 다음 실행 버전: <b class="text-ink tnum" x-text="verTxt"></b></li>
           <li><b>자동 프로세스</b>: 학습 반영(매일 04:00)이 끝나면 개선된 프롬프트의 새 버전으로 <b>자동 재실행</b>되도록 설정할 수 있습니다(설정 auto_rerun_after_batch · 기본 꺼짐, 비용 발생).</li>
         </ul>
+        <!-- 사용 모델: 리드문·메타 추출과 단건·일괄 실행의 기본값(제공자 불문 전 모델 노출) -->
+        <section class="panel" data-fn><div class="panel-hd"><b>사용 모델</b><span class="meta">기본 실행 모델 · 리드문·메타 추출과 실행의 기본값</span></div>
+          <div class="panel-bd">
+            <div class="filterbar" style="margin:0">
+              <span class="selctl" data-tip="모델을 지정하지 않은 실행에 쓰이는 기본 모델 · 미연결 제공자 모델은 키 등록 후 선택 가능" data-tip-pos="bottom"><span class="selctl__lbl">사용 모델</span>
+                <select class="field" style="min-width:260px" x-bind:value="textValue" x-on:change="onTextPick($event.target.value)">
+                  <template x-for="g in textGroups" x-bind:key="g.label">
+                    <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
+                      <template x-for="it in g.items" x-bind:key="g.label + it.model">
+                        <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.model || it.label"></option>
+                      </template>
+                    </optgroup>
+                  </template>
+                </select></span>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-md" x-bind:disabled="cfgBusy" x-on:click="loadModels()">모델 새로고침</button>
+              <span class="text-xs text-muted" x-text="modelsMsg"></span>
+            </div>
+          </div>
+        </section>
         <!-- 같은 콘텐츠를 다른 모델로 재실행(초안 재생성 · 이전 초안은 이력 보존 후 덮어씀) -->
         <section class="panel" data-fn><div class="panel-hd"><b>단건 실행</b><span class="meta">콘텐츠 하나를 지정 모델로 초안 재생성</span></div>
           <div class="panel-bd">
