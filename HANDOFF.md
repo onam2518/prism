@@ -134,6 +134,18 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     + 프롬프트 버전 표기(v=batch_seq+1, 평가는 항상 현재 버전) + 대상 콘텐츠 칩(전체 정답셋/평가용만
     scope=all|eval, _scope_golden 필터). /eval-golden·/compare-models 에 model·scope 전달, 결과에
     basis{model,version,scope} 명시.
+  - **평가 페이지(2026-07-02)**: 평가 기준(기준 모델·버전·대상 콘텐츠) → 평가 실행(요약 타일 + 유형별
+    태그 막대) → **평가 상세 · 건별 판정**(불일치 목록, 채택=모델 결과 채택(정답 교정 후보)/탈락=모델
+    오답 확정, 1인 1표 upsert /eval-judge, 최초 판정 +5pt, 합의(golden_min_good) 시 정답셋 목록
+    '교정 필요' 배지 · 골든 자동 교체는 안 함) → 모델별 비교(A/B 슬롯 · abbar · ▲ · ★ best).
+    저장: sqlite eval_checks · supabase prism_eval_checks.
+  - **권한 2단계(2026-07-02)**: 운영 관리자(허용목록 ~/.prism_admin_emails · is_sys_admin_user) =
+    전체 관리자 메뉴. 팀 관리자(생성자·위임) = '팀 관리'만 추가. 허용목록 미설정 시 기존 로직 폴백.
+    메뉴 게이팅 navVisible(cond: admin|sysadmin) · adminData.isSysAdmin.
+  - **시스템 설정 메뉴(mod system · 운영 관리자)**: 데이터 관리(상단: 피드백/콘텐츠/정답셋 삭제 +
+    로컬 적재 초기화 + **팀 삭제**(2중 확인, supabase delete_team)) + 하단 API 키·모델 카드 인라인
+    (설정 모달 폐지 · settingsOpen 제거, 딥링크 ?settings·topbar 기어 → selectMod('system')).
+    팀 관리 메뉴는 멤버·초대코드만 유지.
   - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)

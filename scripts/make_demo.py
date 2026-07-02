@@ -62,7 +62,7 @@ DEMO_CONFIG = {
 
 # 데모 관리자 컨텍스트(/admin 스텁) · isAdmin=true 로 자동 인입·팀 관리 노출
 DEMO_ADMIN = {
-    "ok": True, "isAdmin": True,
+    "ok": True, "isAdmin": True, "isSysAdmin": True,
     "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"},
     "members": [
         {"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": True},

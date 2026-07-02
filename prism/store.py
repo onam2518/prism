@@ -505,6 +505,18 @@ class Store:
             d["reviewers"][rv] = v
         return out
 
+    def clear_team_feedback(self, team=None):
+        """평가 피드백 전체 삭제(로컬 단일 팀). 시스템 설정 · 데이터 관리."""
+        c = self._conn()
+        c.execute("DELETE FROM feedback")
+        c.commit()
+
+    def clear_team_contents(self, team=None):
+        """검토 콘텐츠(추출 결과) 전체 삭제(로컬 단일 팀)."""
+        c = self._conn()
+        c.execute("DELETE FROM results")
+        c.commit()
+
     def set_purpose(self, hashes, purpose, team=None) -> int:
         """콘텐츠 용도 지정: review(검수용)|eval(평가용). 평가용은 검수 대상에서 제외(홀드아웃 보존)."""
         if purpose not in ("review", "eval"):

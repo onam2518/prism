@@ -152,6 +152,14 @@ class SupabaseStore:
     def clear_team_contents(self, team):
         self._req("DELETE", "contents", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
 
+    def delete_team(self, team):
+        """팀 삭제(위험): 멤버 소속 해제 후 팀 행 삭제. 콘텐츠·피드백 등 팀 데이터는 별도 삭제."""
+        if not team:
+            return
+        self._req("PATCH", "reviewers", query=f"team_id=eq.{urllib.parse.quote(team)}",
+                  body={"team_id": None}, prefer="return=minimal")
+        self._req("DELETE", "teams", query=f"id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+
     def remove_member(self, team, member_id):
         """팀원 제거(team_id 해제). 본인 데이터(feedback)는 남김."""
         self._req("PATCH", "reviewers", query=f"id=eq.{urllib.parse.quote(member_id)}&team_id=eq.{urllib.parse.quote(team)}",

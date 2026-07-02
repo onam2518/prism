@@ -538,6 +538,30 @@ class TestEvalJudgment(unittest.TestCase):
         self.assertFalse(row["fix_needed"])         # 탈락 우세로 뒤집히면 해제
 
 
+class TestAdminTiers(unittest.TestCase):
+    """권한 2단계: 운영 관리자(허용목록) vs 팀 관리자(생성자·위임 · 팀 관리만)."""
+    def test_sys_admin_allowlist_strict_and_fallback(self):
+        from prism import serve
+        orig = serve.admin_emails
+        serve.admin_emails = lambda: {"ops@corp.com"}
+        self.addCleanup(lambda: setattr(serve, "admin_emails", orig))
+        self.assertTrue(serve.is_sys_admin_user("u1", "t1", "ops@corp.com"))
+        self.assertFalse(serve.is_sys_admin_user("u1", "t1", "member@corp.com"))  # 팀 관리자여도 시스템 메뉴 불가
+        serve.admin_emails = lambda: set()          # 허용목록 미설정 → 기존 관리자 로직 폴백
+        orig_admin = serve.is_admin_user
+        serve.is_admin_user = lambda uid, team, email="": True
+        self.addCleanup(lambda: setattr(serve, "is_admin_user", orig_admin))
+        self.assertTrue(serve.is_sys_admin_user("u1", "t1", "member@corp.com"))
+
+    def test_local_store_clear_helpers(self):
+        import tempfile
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        st.save_feedback("h1", "뉴스", "t", "good", "review", "", 1.0, reviewer="복실")
+        st.clear_team_feedback()
+        self.assertEqual(st.feedback_map(), {})
+
+
 class TestFeedbackOrchestrator(unittest.TestCase):
     def test_route_fallback_splits_elements_by_stage(self):
         from prism import feedback_loop as FL

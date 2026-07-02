@@ -1237,6 +1237,16 @@ def is_admin_user(uid, team, email="") -> bool:
     return bool(st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team))
 
 
+def is_sys_admin_user(uid, team, email="") -> bool:
+    """운영(시스템) 관리자: 허용목록(~/.prism_admin_emails) 이메일만.
+    허용목록 미설정 시 기존 관리자 로직으로 폴백(단독 운영 호환).
+    팀 관리자(생성자·위임)는 '팀 관리'만 담당하고 시스템 메뉴는 운영 관리자 전용."""
+    allow = admin_emails()
+    if allow:
+        return bool(email and email.strip().lower() in allow)
+    return is_admin_user(uid, team, email)
+
+
 def register_reviewer(data: dict) -> dict:
     """검수자 등록: (인증 uid 또는 이름) + 표시명 + 캐릭터 (+ supabase 면 팀 생성/가입)."""
     st = get_store()
@@ -1863,6 +1873,7 @@ def admin_data(uid, team, email="") -> dict:
         return {"ok": False, "isAdmin": False, "team": None, "members": []}
     gc = st.golden_count(team) if hasattr(st, "golden_count") else 0
     return {"ok": True, "isAdmin": is_admin_user(uid, team, email),
+            "isSysAdmin": is_sys_admin_user(uid, team, email),
             "team": st.team_info(team), "members": st.team_members(team), "goldenCount": gc}
 
 
@@ -1895,13 +1906,22 @@ def admin_ingest(uid, team, endpoint, n, email="") -> dict:
 def admin_action(uid, team, data, email="") -> dict:
     """관리자 액션(데이터 삭제·멤버 제거). 팀 생성자만."""
     st = get_store()
-    if not is_admin_user(uid, team, email):
+    if _supa() and not is_admin_user(uid, team, email):    # 로컬 단독 실행 = 관리자 취급(타 라우트와 동일)
         return {"ok": False, "error": "관리자 전용입니다"}
     act = data.get("action")
+    data_ops = ("clear_feedback", "clear_contents", "clear_golden", "delete_team")
+    if act in data_ops and _supa() and not is_sys_admin_user(uid, team, email):
+        return {"ok": False, "error": "데이터 관리는 운영 관리자 전용입니다"}
     if act == "clear_feedback":
         st.clear_team_feedback(team)
     elif act == "clear_contents":
         st.clear_team_contents(team)
+    elif act == "clear_golden":                    # 정답셋 전체 삭제(되돌릴 수 없음)
+        st.register_golden(team, [], replace=True, source="manual")
+    elif act == "delete_team":                     # 팀 삭제: 멤버 소속 해제 + 팀 행 삭제
+        if not hasattr(st, "delete_team"):
+            return {"ok": False, "error": "이 백엔드는 팀 삭제를 지원하지 않습니다"}
+        st.delete_team(team)
     elif act == "remove_member" and data.get("member"):
         st.remove_member(team, data["member"])
     elif act in ("set_admin", "unset_admin") and data.get("member"):
@@ -3080,6 +3100,7 @@ PAGE = """<!doctype html>
         review: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 11l2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.5"/></svg>',
         admin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M3 20a6 6 0 0 1 12 0M16 7l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         arena: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0V4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18 5h2.5a2 2 0 0 1 0 4H18M6 5H3.5a2 2 0 0 0 0 4H6" stroke="currentColor" stroke-width="1.6"/></svg>',
+        system: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg>',
       },
       // 멤버 메뉴는 둘: 콘텐츠 검수(판정·교정 → 정답 축적) / 평가(일치율·모델 비교)
       mods: [
@@ -3087,15 +3108,24 @@ PAGE = """<!doctype html>
           { id: 'create', label: '콘텐츠 검수', ic: 'eval' },
           { id: 'evaluate', label: '평가', ic: 'dash' } ] },
         // 콘텐츠 인입(수동·자동·실행 큐)은 '콘텐츠 관리' 단일 메뉴로 통합 · 전부 관리자 통제
+        // 권한 2단계: 팀 관리자(생성자·위임)는 '팀 관리'만 추가 · 나머지는 운영 관리자(허용목록) 전용
         { g: '관리자', gcond: 'admin', items: [
-          { id: 'content', label: '콘텐츠 관리', ic: 'intake' },
-          { id: 'testset', label: '테스트셋 관리', ic: 'eval' },
-          { id: 'admin', label: '팀 관리', ic: 'admin' },
-          { id: 'dict', label: '사전 · 정책', ic: 'dict' },
-          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' },
+          { id: 'content', label: '콘텐츠 관리', ic: 'intake', cond: 'sysadmin' },
+          { id: 'testset', label: '테스트셋 관리', ic: 'eval', cond: 'sysadmin' },
+          { id: 'admin', label: '팀 관리', ic: 'admin', cond: 'admin' },
+          { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'sysadmin' },
+          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt', cond: 'sysadmin' },
           // 실험실: 지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관
-          { id: 'lab', label: '실험실', ic: 'auto' } ] },
+          { id: 'lab', label: '실험실', ic: 'auto', cond: 'sysadmin' },
+          // 시스템 설정: 데이터 관리(상단) + API 키·모델(하단) 통합 · 운영 관리자 전용
+          { id: 'system', label: '시스템 설정', ic: 'system', cond: 'sysadmin' } ] },
       ],
+      navVisible(c) {                        // 메뉴 노출 판정: admin=팀 관리자 이상 · sysadmin=운영 관리자
+        if (!c) return true;
+        if (c === 'admin') return this.backend !== 'supabase' || (this.adminData && this.adminData.isAdmin);
+        if (c === 'sysadmin') return this.backend !== 'supabase' || (this.adminData && this.adminData.isSysAdmin);
+        return this.backend === c;
+      },
       contentTab: 'run',                      // 콘텐츠 관리 STEP 1 카드: 수동(run)/자동(auto)
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
@@ -3104,7 +3134,7 @@ PAGE = """<!doctype html>
       queueTrig: '',                          // 실행 큐 자동/수동 필터
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
       // 위젯 홈 인터랙션 상태
-      settingsOpen: false, chatOpen: false, addMenuOpen: false, editing: false, theme: 'light',
+      chatOpen: false, addMenuOpen: false, editing: false, theme: 'light',
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
@@ -3258,7 +3288,6 @@ PAGE = """<!doctype html>
       textProvider: 'solar', textModel: '',
       visionProvider: 'upstage_ie', visionModel: '',
       slotMsg: '',
-      cfgTab: 'keys',                   // 설정 탭: keys | models (Atelier 방식)
       keyServices: ['bizrouter', 'timely', 'solar'],  // 라우터 카드 먼저, 직접(Solar) 뒤
       keyShow: { solar: false, bizrouter: false, timely: false },
       keyInputs: { solar: '', bizrouter: '', timely: '' },
@@ -3292,7 +3321,7 @@ PAGE = """<!doctype html>
         this.loadDash();                               // 홈 위젯 데이터(/dashboard)
         this.loadArena();                              // 홈 = 아레나
         // 딥링크: ?m=run|dash|quality|... 로 특정 뷰 진입(설정은 ?settings)
-        try { const q = new URLSearchParams(location.search); const m = q.get('m'); if (m) this.selectMod(m); if (q.has('settings')) this.settingsOpen = true; } catch (e) {}
+        try { const q = new URLSearchParams(location.search); const m = q.get('m'); if (m) this.selectMod(m); if (q.has('settings')) this.selectMod('system'); } catch (e) {}
         fetch('/vocab').then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {});
         // Cmd/Ctrl + Enter 로 추출 실행
         window.addEventListener('keydown', (e) => {
@@ -3315,7 +3344,7 @@ PAGE = """<!doctype html>
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드 · 데이터 관리(관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드(팀 관리자)', system: '데이터 관리 + API 키·모델 설정(운영 관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -3335,7 +3364,7 @@ PAGE = """<!doctype html>
         else if (id === 'create') { this.loadDash(); this.loadRaw(); }
         else if (id === 'evaluate') this.loadGoldenStatus();
         else if (id === 'arena') this.loadArena();
-        else if (id === 'admin') this.loadAdmin();
+        else if (id === 'admin' || id === 'system') this.loadAdmin();
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
         else if (id === 'lab') { this.loadDash(); this.loadTopics(); this.loadUser(); }
         else if (id === 'dict') this.loadDict();
@@ -3355,7 +3384,7 @@ PAGE = """<!doctype html>
       chatAct(act) {
         this.chatOpen = false;
         if (act === 'extract') this.selectMod('run');
-        else if (act === 'settings') this.settingsOpen = true;
+        else if (act === 'settings') this.selectMod('system');
         else if (act === 'dict') this.selectMod('dict');
       },
       // ── 홈 위젯 구성(실동작 위젯만) + 직접 배치 + localStorage 영속 ──
@@ -3723,6 +3752,11 @@ PAGE = """<!doctype html>
       async adminAct(action, member) {
         if (action === 'clear_feedback' && !confirm('우리 팀의 평가 피드백을 모두 삭제할까요?')) return;
         if (action === 'clear_contents' && !confirm('우리 팀의 검토 콘텐츠를 모두 삭제할까요?')) return;
+        if (action === 'clear_golden' && !confirm('정답셋(골든)을 모두 삭제할까요? 되돌릴 수 없습니다.')) return;
+        if (action === 'delete_team') {
+          if (!confirm('팀을 삭제할까요? 멤버 소속이 모두 해제됩니다.')) return;
+          if (!confirm('정말 삭제합니다. 되돌릴 수 없습니다.')) return;
+        }
         try { await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: action, member: member }) }); } catch (e) {}
         this.loadAdmin();
       },
@@ -5170,14 +5204,14 @@ PAGE = """<!doctype html>
     <div class="topbar__tools">
       <!-- 사용자 식별(이름·캐릭터)은 사이드바 프로필 카드로 이관. 상단바엔 미표시 -->
       <!-- 연결 신호등: 모델별 표시 없이 단일 신호 dot (초록=연결·회색=미설정/서버관리·주황=MOCK). 상세는 호버 -->
-      <button type="button" class="topbar__conn topbar__conn--dot" x-on:click="if (!cfg.keyManagedByServer) settingsOpen = true"
+      <button type="button" class="topbar__conn topbar__conn--dot" x-on:click="if (navVisible('sysadmin')) selectMod('system')"
         x-bind:data-tip="cfg.forcedMock ? 'MOCK (강제)' : (connCount ? '연결됨' : (cfg.keyManagedByServer ? '서버 관리 (연결됨)' : '키 미설정'))" data-tip-pos="bottom" aria-label="연결 상태">
         <span class="ds-statusdot" x-bind:class="cfg.forcedMock ? 'ds-statusdot--mock' : ((connCount || (cfg.keyManagedByServer && cfg.hasKey)) ? 'ds-statusdot--ok' : 'ds-statusdot--mock')"><span class="ds-statusdot__dot"></span></span>
       </button>
       <a href="/report" target="_blank" rel="noreferrer" class="ds-iconbtn ds-iconbtn--bordered" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></a>
       <button type="button" x-show="false" x-on:click.stop="addMenuOpen = !addMenuOpen" class="ds-iconbtn ds-iconbtn--bordered" data-tip="위젯 추가" data-tip-pos="bottom" aria-label="위젯 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
       <button type="button" x-show="false" x-on:click="editing = !editing" x-bind:class="editing ? 'ds-iconbtn ds-iconbtn--bordered ds-iconbtn--active' : 'ds-iconbtn ds-iconbtn--bordered'" x-bind:data-tip="editing ? '편집 완료' : '편집'" data-tip-pos="bottom" aria-label="편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
-      <button type="button" x-show="!cfg.keyManagedByServer" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="settingsOpen = true" data-tip="설정" data-tip-pos="bottom" aria-label="설정"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg></button>
+      <button type="button" x-show="navVisible('sysadmin')" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="selectMod('system')" data-tip="시스템 설정" data-tip-pos="bottom" aria-label="시스템 설정"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg></button>
       <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="toggleTheme()" x-bind:data-tip="theme === 'dark' ? '라이트 모드' : '다크 모드'" data-tip-pos="bottom" aria-label="테마 전환">
         <svg x-show="theme !== 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         <svg x-show="theme === 'dark'" x-cloak width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -5351,10 +5385,10 @@ PAGE = """<!doctype html>
         </button>
       </nav>
       <template x-for="grp in mods" x-bind:key="grp.g">
-        <nav class="ds-navgroup" x-show="!grp.gcond || (grp.gcond === 'admin' ? (backend !== 'supabase' || (adminData && adminData.isAdmin)) : backend === grp.gcond)">
+        <nav class="ds-navgroup" x-show="navVisible(grp.gcond)">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
-            <button type="button" class="ds-navitem" x-show="!it.cond || (it.cond === 'admin' ? (backend !== 'supabase' || (adminData && adminData.isAdmin)) : backend === it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+            <button type="button" class="ds-navitem" x-show="navVisible(it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
               <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
               <span x-text="it.label"></span>
             </button>
@@ -6620,22 +6654,150 @@ PAGE = """<!doctype html>
             <p class="text-xs text-muted" style="padding:8px 8px 0;line-height:1.5">🎖 <b class="text-ink">검수 마스터</b>(레벨 10) 멤버에게 관리자 권한을 위임해 골든셋·정책 관리를 함께 맡길 수 있습니다.</p>
           </div>
         </section>
-        <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>API 키·모델 설정</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
+        <div x-show="adminData && !adminData.isAdmin" class="text-xs text-muted" style="padding:4px">멤버 관리는 팀 관리자(생성자·위임)만 가능합니다.</div>
+      </div>
+
+      <!-- ═══ 모듈: 시스템 설정(운영 관리자) · 데이터 관리(상단) + API 키·모델(하단) ═══ -->
+      <div x-show="mod === 'system'" x-cloak class="w-full space-y-4">
+        <section class="panel"><div class="panel-hd"><b>데이터 관리</b><span class="meta">삭제는 되돌릴 수 없습니다 · 우리 팀 데이터만 영향</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>추출 <b>API 키·모델·엔드포인트</b>를 관리자가 여기서 설정합니다.</li><li>팀원은 키 입력 없이 바로 사용합니다.</li><li><span x-text="cfg.hasKey ? '현재 연결됨 ✓' : '키 미설정'"></span></li></ul>
-            <button type="button" class="ds-btn ds-btn--primary" x-on:click="settingsOpen = true">API·모델 설정 열기</button>
-          </div>
-        </section>
-        <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>데이터 관리</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>우리 팀 데이터만 삭제됩니다(다른 팀 무영향).</li><li>되돌릴 수 없습니다.</li></ul>
             <div style="display:flex;gap:10px;flex-wrap:wrap">
               <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_feedback')">평가 피드백 전체 삭제</button>
               <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_contents')">검토 콘텐츠 전체 삭제</button>
+              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="adminAct('clear_golden')">정답셋 전체 삭제</button>
+              <button type="button" x-show="backend !== 'supabase'" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" style="height:34px" x-on:click="clearStore()">로컬 적재 데이터 초기화 <span class="tnum" x-text="'(' + (cfg.storedCount || 0) + '건)'"></span></button>
+            </div>
+            <div x-show="backend === 'supabase' && adminData && adminData.team" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <div style="flex:1;min-width:220px">
+                  <b class="text-ink" style="font-size:12.5px">팀 삭제</b>
+                  <div class="text-xs text-muted" style="margin-top:3px">팀과 멤버 소속이 해제됩니다 · 콘텐츠·피드백 등 팀 데이터는 위 버튼으로 먼저 삭제하세요.</div>
+                </div>
+                <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger" x-on:click="adminAct('delete_team')">팀 삭제</button>
+              </div>
             </div>
           </div>
         </section>
-        <div x-show="adminData && !adminData.isAdmin" class="text-xs text-muted" style="padding:4px">데이터 삭제·멤버 관리는 팀 관리자(생성자)만 가능합니다.</div>
+        <section class="panel" data-fn><div class="panel-hd"><b>API 키</b><span class="meta">추출 호출 키 · 팀원은 입력 없이 사용</span></div>
+          <div class="panel-bd">
+        <!-- 운영(공유 서버): 키는 서버에서 관리 → 팀원은 입력 불필요 -->
+        <!-- 팀원(비관리자): 키는 서버(관리자) 관리 · 입력 불필요. 관리자는 아래 입력으로 설정 -->
+        <div x-show="cfg.keyManagedByServer && !(adminData && adminData.isAdmin)" class="keymanaged">
+          <b class="text-ink">🔒 API 키는 서버에서 관리됩니다</b>
+          <p>공유 서버 모드입니다. 추출 키는 <b>관리자가</b> 설정하고, 팀원은 따로 키를 넣지 않아도 바로 사용합니다.
+            <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 서버에 키 미설정(관리자 확인 필요)'"></span></p>
+        </div>
+        <div x-show="!cfg.keyManagedByServer || (adminData && adminData.isAdmin)">
+        <!-- 통합 라우터 카드 -->
+        <div class="routercard">
+          <div class="rc-h"><b>통합 라우터</b><span class="rc-badge">권장</span></div>
+          <p class="rc-d">한 키로 여러 모델(OpenAI · Anthropic · Google · Solar 등)을 호출합니다</p>
+          <template x-for="s in ['bizrouter', 'timely']" x-bind:key="s">
+            <div class="krow">
+              <div class="krow-top">
+                <span class="krow-nm" x-text="keyDefs[s].label.replace(' 키', '')"></span>
+                <span class="krow-st"><span class="sdot" x-bind:class="keyState(s) ? 'ok' : 'off'"></span><span x-text="keyState(s) ? '연결됨' : '미연결'"></span></span>
+              </div>
+              <div class="keyin">
+                <input x-bind:type="keyShow[s] ? 'text' : 'password'" x-model="keyInputs[s]" x-bind:placeholder="keyDefs[s].ph" class="field" autocomplete="off">
+                <button type="button" class="eye" x-on:click="keyShow[s] = !keyShow[s]" aria-label="키 보기">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
+                  class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
+                <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
+                <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- 직접 호출(Solar) · 통합 라우터처럼 카드로 묶음 -->
+        <div class="routercard" style="margin-top:14px">
+          <div class="rc-h"><b>직접 호출</b></div>
+          <ul class="ds-bullets"><li>각 회사 키로 직접 호출합니다.</li><li>통합 라우터와 함께 등록해도 됩니다.</li></ul>
+          <div class="krow">
+            <div class="krow-top">
+              <span class="krow-nm">Upstage Solar</span>
+              <span class="krow-st"><span class="sdot" x-bind:class="cfg.hasKey ? 'ok' : 'off'"></span><span x-text="cfg.hasKey ? '연결됨' : '미연결'"></span></span>
+            </div>
+            <div class="keyin">
+              <input x-bind:type="keyShow.solar ? 'text' : 'password'" x-model="keyInputs.solar" x-bind:placeholder="keyDefs.solar.ph" class="field" autocomplete="off">
+              <button type="button" class="eye" x-on:click="keyShow.solar = !keyShow.solar" aria-label="키 보기">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" x-on:click="saveKey('solar')" x-bind:disabled="cfgBusy"
+                class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
+              <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy"
+                class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
+              <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
+              <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
+            </div>
+          </div>
+        </div>
+
+        <label class="mt-4 flex cursor-pointer items-center gap-2 text-[13px] text-body">
+          <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
+          이 기기에 저장 (재시작 후에도 유지)
+        </label>
+        <p class="mt-3 text-xs text-muted">키 저장 시 연결을 확인합니다 [모델] 탭에서는 연결된 제공자의 모델만 선택 가능합니다</p>
+        </div>
+      </div>
+          </div>
+        </section>
+        <section class="panel" data-fn><div class="panel-hd"><b>모델 · 추론 강도</b><span class="meta">텍스트·이미지 모델과 추론 깊이</span></div>
+          <div class="panel-bd">
+        <div class="cfgsec">
+          <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted"> 리드문·메타</span></label>
+          <select class="field" x-bind:value="textValue" x-on:change="onTextPick($event.target.value)">
+            <template x-for="g in textGroups" x-bind:key="g.label">
+              <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
+                <template x-for="it in g.items" x-bind:key="it.model">
+                  <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.model || it.label"></option>
+                </template>
+              </optgroup>
+            </template>
+          </select>
+          <button type="button" x-show="cfg.hasKey" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
+            class="ds-btn ds-btn--secondary ds-btn--s-sm w-full mt-2 disabled:opacity-50">Solar 모델 새로고침</button>
+          <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
+        </div>
+
+        <div class="cfgsec">
+          <label class="lbl">이미지 모델 <span class="font-normal normal-case tracking-normal text-muted"> 이미지 이해</span></label>
+          <select class="field" x-bind:value="visionValue" x-on:change="onVisionPick($event.target.value)">
+            <template x-for="g in visionGroups" x-bind:key="g.label">
+              <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
+                <template x-for="it in g.items" x-bind:key="it.model || it.label">
+                  <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.label || it.model"></option>
+                </template>
+              </optgroup>
+            </template>
+          </select>
+          <p class="mt-1.5 text-xs text-muted">순수 사진은 멀티모달 모델 권장(Upstage는 텍스트형 이미지에 적합)</p>
+          <span class="mt-1 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
+        </div>
+
+        <div class="cfgsec">
+          <label class="lbl">추론 강도 (Reasoning Effort)</label>
+          <div class="seg">
+            <template x-for="o in reasoningOpts" x-bind:key="o.id">
+              <button type="button" x-on:click="setReasoning(o.id)"
+                x-bind:class="reasoning === o.id ? 'on' : ''" x-text="o.label"></button>
+            </template>
+          </div>
+          <p class="mt-1.5 text-xs text-muted">높일수록 추론 깊이는 늘고 속도는 느려집니다</p>
+        </div>
+
+        <div class="cfgsec">
+          <p class="text-xs text-muted">단계별 추출 프롬프트(추출·분석·검수·판정)는 <b class="text-ink">프롬프트 스튜디오</b>에서 관리합니다</p>
+        </div>
+          </div>
+        </section>
       </div>
 
       <!-- ═══ 모듈: 평가 아레나 (게임화) · 팀 정확도 협동 스코어 + 리더보드 ═══ -->
@@ -7016,151 +7178,6 @@ PAGE = """<!doctype html>
   </div>
 
   <!-- ⚙ 설정 = 고정 팝업(Dialog) · 위젯 아님(§9.5) -->
-  <div class="ds-dialog-backdrop" x-show="settingsOpen" x-cloak x-on:mousedown.self="settingsOpen = false" style="z-index:70">
-    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="설정" style="max-width:560px">
-      <h2 class="ds-dialog__title">API 키·모델 설정</h2>
-      <div class="ds-dialog__body" style="max-height:70vh;overflow:auto">
-
-      <!-- 탭: API 키 / 모델 (Atelier 방식) -->
-      <div class="cfgtabs">
-        <button type="button" x-on:click="cfgTab = 'keys'" x-bind:class="cfgTab === 'keys' ? 'on' : ''">API 키</button>
-        <button type="button" x-on:click="cfgTab = 'models'" x-bind:class="cfgTab === 'models' ? 'on' : ''">모델</button>
-        <button type="button" x-on:click="cfgTab = 'data'" x-bind:class="cfgTab === 'data' ? 'on' : ''">데이터</button>
-      </div>
-
-      <!-- ① API 키 -->
-      <div x-show="cfgTab === 'keys'" class="cfgsec">
-        <!-- 운영(공유 서버): 키는 서버에서 관리 → 팀원은 입력 불필요 -->
-        <!-- 팀원(비관리자): 키는 서버(관리자) 관리 · 입력 불필요. 관리자는 아래 입력으로 설정 -->
-        <div x-show="cfg.keyManagedByServer && !(adminData && adminData.isAdmin)" class="keymanaged">
-          <b class="text-ink">🔒 API 키는 서버에서 관리됩니다</b>
-          <p>공유 서버 모드입니다. 추출 키는 <b>관리자가</b> 설정하고, 팀원은 따로 키를 넣지 않아도 바로 사용합니다.
-            <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 서버에 키 미설정(관리자 확인 필요)'"></span></p>
-        </div>
-        <div x-show="!cfg.keyManagedByServer || (adminData && adminData.isAdmin)">
-        <!-- 통합 라우터 카드 -->
-        <div class="routercard">
-          <div class="rc-h"><b>통합 라우터</b><span class="rc-badge">권장</span></div>
-          <p class="rc-d">한 키로 여러 모델(OpenAI · Anthropic · Google · Solar 등)을 호출합니다</p>
-          <template x-for="s in ['bizrouter', 'timely']" x-bind:key="s">
-            <div class="krow">
-              <div class="krow-top">
-                <span class="krow-nm" x-text="keyDefs[s].label.replace(' 키', '')"></span>
-                <span class="krow-st"><span class="sdot" x-bind:class="keyState(s) ? 'ok' : 'off'"></span><span x-text="keyState(s) ? '연결됨' : '미연결'"></span></span>
-              </div>
-              <div class="keyin">
-                <input x-bind:type="keyShow[s] ? 'text' : 'password'" x-model="keyInputs[s]" x-bind:placeholder="keyDefs[s].ph" class="field" autocomplete="off">
-                <button type="button" class="eye" x-on:click="keyShow[s] = !keyShow[s]" aria-label="키 보기">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-              </div>
-              <div class="mt-2 flex flex-wrap items-center gap-2">
-                <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy"
-                  class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
-                <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
-                <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
-              </div>
-            </div>
-          </template>
-        </div>
-
-        <!-- 직접 호출(Solar) · 통합 라우터처럼 카드로 묶음 -->
-        <div class="routercard" style="margin-top:14px">
-          <div class="rc-h"><b>직접 호출</b></div>
-          <ul class="ds-bullets"><li>각 회사 키로 직접 호출합니다.</li><li>통합 라우터와 함께 등록해도 됩니다.</li></ul>
-          <div class="krow">
-            <div class="krow-top">
-              <span class="krow-nm">Upstage Solar</span>
-              <span class="krow-st"><span class="sdot" x-bind:class="cfg.hasKey ? 'ok' : 'off'"></span><span x-text="cfg.hasKey ? '연결됨' : '미연결'"></span></span>
-            </div>
-            <div class="keyin">
-              <input x-bind:type="keyShow.solar ? 'text' : 'password'" x-model="keyInputs.solar" x-bind:placeholder="keyDefs.solar.ph" class="field" autocomplete="off">
-              <button type="button" class="eye" x-on:click="keyShow.solar = !keyShow.solar" aria-label="키 보기">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-            </div>
-            <div class="mt-2 flex flex-wrap items-center gap-2">
-              <button type="button" x-on:click="saveKey('solar')" x-bind:disabled="cfgBusy"
-                class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
-              <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy"
-                class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
-              <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
-              <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
-            </div>
-          </div>
-        </div>
-
-        <label class="mt-4 flex cursor-pointer items-center gap-2 text-[13px] text-body">
-          <input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
-          이 기기에 저장 (재시작 후에도 유지)
-        </label>
-        <p class="mt-3 text-xs text-muted">키 저장 시 연결을 확인합니다 [모델] 탭에서는 연결된 제공자의 모델만 선택 가능합니다</p>
-        </div>
-      </div>
-
-      <!-- ③ 데이터 -->
-      <div x-show="cfgTab === 'data'" x-cloak class="cfgsec">
-        <div class="routercard">
-          <div class="rc-h"><b>로컬 저장 (SQLite)</b><span class="rc-badge" x-text="(cfg.storedCount || 0) + '건'"></span></div>
-          <ul class="ds-bullets"><li>추출 결과는 로컬 DB에 누적 저장되어 재시작해도 유지됩니다.</li><li>대시보드·토픽·사용자 메타가 이 데이터를 집계합니다.</li><li>동일 콘텐츠·결과 무변경 시 적재되지 않습니다(중복 방지).</li></ul>
-          <button type="button" x-on:click="clearStore()" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">적재 데이터 초기화</button>
-        </div>
-      </div>
-
-      <!-- ② 모델 -->
-      <div x-show="cfgTab === 'models'" x-cloak>
-        <div class="cfgsec">
-          <label class="lbl">텍스트 모델 <span class="font-normal normal-case tracking-normal text-muted"> 리드문·메타</span></label>
-          <select class="field" x-bind:value="textValue" x-on:change="onTextPick($event.target.value)">
-            <template x-for="g in textGroups" x-bind:key="g.label">
-              <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
-                <template x-for="it in g.items" x-bind:key="it.model">
-                  <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.model || it.label"></option>
-                </template>
-              </optgroup>
-            </template>
-          </select>
-          <button type="button" x-show="cfg.hasKey" x-on:click="loadModels()" x-bind:disabled="cfgBusy"
-            class="ds-btn ds-btn--secondary ds-btn--s-sm w-full mt-2 disabled:opacity-50">Solar 모델 새로고침</button>
-          <span class="mt-1.5 block text-xs text-muted" x-text="modelsMsg"></span>
-        </div>
-
-        <div class="cfgsec">
-          <label class="lbl">이미지 모델 <span class="font-normal normal-case tracking-normal text-muted"> 이미지 이해</span></label>
-          <select class="field" x-bind:value="visionValue" x-on:change="onVisionPick($event.target.value)">
-            <template x-for="g in visionGroups" x-bind:key="g.label">
-              <optgroup x-bind:label="g.label + (g.on ? '' : ' (미연결)')">
-                <template x-for="it in g.items" x-bind:key="it.model || it.label">
-                  <option x-bind:value="optVal(it.provider, it.model)" x-bind:disabled="!g.on" x-text="it.label || it.model"></option>
-                </template>
-              </optgroup>
-            </template>
-          </select>
-          <p class="mt-1.5 text-xs text-muted">순수 사진은 멀티모달 모델 권장(Upstage는 텍스트형 이미지에 적합)</p>
-          <span class="mt-1 block text-xs text-muted" aria-live="polite" x-text="slotMsg"></span>
-        </div>
-
-        <div class="cfgsec">
-          <label class="lbl">추론 강도 (Reasoning Effort)</label>
-          <div class="seg">
-            <template x-for="o in reasoningOpts" x-bind:key="o.id">
-              <button type="button" x-on:click="setReasoning(o.id)"
-                x-bind:class="reasoning === o.id ? 'on' : ''" x-text="o.label"></button>
-            </template>
-          </div>
-          <p class="mt-1.5 text-xs text-muted">높일수록 추론 깊이는 늘고 속도는 느려집니다</p>
-        </div>
-
-        <div class="cfgsec">
-          <p class="text-xs text-muted">단계별 추출 프롬프트(추출·분석·검수·판정)는 <b class="text-ink">프롬프트 스튜디오</b>에서 관리합니다</p>
-        </div>
-      </div>
-
-      </div>
-      <div class="ds-dialog__footer"><button type="button" class="ds-btn ds-btn--ghost" x-on:click="settingsOpen = false">닫기</button></div>
-    </div>
-  </div>
-
   <!-- 플로팅 도우미(채널톡 스타일) · 모든 기능 허브 -->
   <div class="ds-chat" x-show="chatOpen" x-cloak>
     <div class="ds-chat__head">
