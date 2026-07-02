@@ -85,14 +85,21 @@ def main():
     _seed_user_config()
     threading.Thread(target=_start_server, daemon=True).start()
     _wait_ready()
+    # 데스크탑 셸 옵션(시스템 설정 · 데스크탑 카드에서 조정, 재시작 시 적용)
+    from prism.config import Config
+    cfg = Config.load()
+    allow_dl = bool(getattr(cfg, "desktop_allow_downloads", True))
+    persist = bool(getattr(cfg, "desktop_persist_storage", True))
     # 다운로드 허용: 템플릿(xlsx/csv)·엑셀 내보내기 앵커가 WKWebView 에서 동작하도록 (기본 False 면 무시됨)
-    webview.settings["ALLOW_DOWNLOADS"] = True
+    webview.settings["ALLOW_DOWNLOADS"] = allow_dl
     webview.create_window("Prism", URL, width=1240, height=860, min_size=(900, 600))
-    # localStorage 영속: 기본 private_mode=True 는 재시작마다 로그인 토큰·아이디/비밀번호 저장·
-    # 배지 기준선을 지운다 → 사용자 디렉터리에 영속 스토리지 지정
-    storage = os.path.expanduser("~/Library/Application Support/Prism/webview")
-    os.makedirs(storage, exist_ok=True)
-    webview.start(private_mode=False, storage_path=storage)   # macOS: Cocoa/WKWebView 백엔드
+    # localStorage 영속: private_mode=True 는 재시작마다 로그인 토큰·아이디/비밀번호 저장·배지 기준선을 지움
+    if persist:
+        storage = os.path.expanduser("~/Library/Application Support/Prism/webview")
+        os.makedirs(storage, exist_ok=True)
+        webview.start(private_mode=False, storage_path=storage)   # macOS: Cocoa/WKWebView 백엔드
+    else:
+        webview.start()
 
 
 if __name__ == "__main__":

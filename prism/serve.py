@@ -2303,6 +2303,8 @@ def config_status() -> dict:
         "stageModels": dict(cfg.stage_models or {}),
         "modelPrompts": dict(cfg.model_prompts or {}),
         "availableModels": _candidate_models(cfg),
+        "desktopAllowDownloads": bool(getattr(cfg, "desktop_allow_downloads", True)),
+        "desktopPersistStorage": bool(getattr(cfg, "desktop_persist_storage", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
         "metaCallModels": dict(getattr(cfg, "meta_call_models", {}) or {}),
         "familyWrappers": dict(getattr(cfg, "family_wrappers", {}) or {}),
@@ -2385,8 +2387,9 @@ def apply_config(data: dict) -> dict:
     has_wrappers = "family_wrappers" in data and isinstance(data.get("family_wrappers"), dict)
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
+    has_desktop = ("desktop_allow_downloads" in data) or ("desktop_persist_storage" in data)
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
-            or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c):
+            or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_desktop):
         cfg = Config.load()
         if has_ingest:
             cfg.ingest_sources = data.get("ingest_sources") or []
@@ -2452,6 +2455,10 @@ def apply_config(data: dict) -> dict:
             cfg.meta_call_models = {k: v for k, v in cm.items() if v}
         if has_4c:
             cfg.meta_four_calls = bool(data.get("meta_four_calls"))
+        if "desktop_allow_downloads" in data:
+            cfg.desktop_allow_downloads = bool(data.get("desktop_allow_downloads"))
+        if "desktop_persist_storage" in data:
+            cfg.desktop_persist_storage = bool(data.get("desktop_persist_storage"))
         for k in slot_keys:
             if k in data:
                 setattr(cfg, k, (data.get(k) or "").strip())
@@ -3642,6 +3649,15 @@ PAGE = """<!doctype html>
         this.reviewer = ''; this.authToken = ''; this.adminData = null; this.arenaData = null;
         this.mod = 'home'; this.reviewerEditing = true;
       },
+      get isDesktop() { return typeof window.pywebview !== 'undefined'; },
+      dtAllowDl: true, dtPersist: true, dtMsg: '',
+      async saveDesktopOpts() {
+        try {
+          await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ desktop_allow_downloads: !!this.dtAllowDl, desktop_persist_storage: !!this.dtPersist }) });
+          this.dtMsg = '✓ 저장됨 · 앱 재시작 후 적용';
+        } catch (e) { this.dtMsg = '저장 실패'; }
+        setTimeout(() => { this.dtMsg = ''; }, 4000);
+      },
       _loadCred() {
         try {
           const raw = localStorage.getItem('prism_cred');
@@ -4247,6 +4263,8 @@ PAGE = """<!doctype html>
           if (this.cfg.modelPrompts) this.modelPrompts = this.cfg.modelPrompts;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.metaCallModels) this.callModels = Object.assign({ summary: '', entities: '', intent: '', category: '' }, this.cfg.metaCallModels);
+          if (typeof this.cfg.desktopAllowDownloads === 'boolean') this.dtAllowDl = this.cfg.desktopAllowDownloads;
+          if (typeof this.cfg.desktopPersistStorage === 'boolean') this.dtPersist = this.cfg.desktopPersistStorage;
           if (typeof this.cfg.metaFourCalls === 'boolean') this.fourCalls = this.cfg.metaFourCalls;
           if (!this.wrapDraft) this.syncWrapDraft();
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
@@ -6804,6 +6822,19 @@ PAGE = """<!doctype html>
                 </div>
                 <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger" x-on:click="adminAct('delete_team')">팀 삭제</button>
               </div>
+            </div>
+          </div>
+        </section>
+        <section class="panel" data-fn x-show="isDesktop"><div class="panel-hd"><b>데스크탑 앱</b><span class="meta">네이티브 창(WKWebView) 옵션 · 앱 재시작 시 적용</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:12px">
+              <li><b>다운로드 허용</b>이 꺼져 있으면 템플릿·엑셀 내보내기 클릭이 무시됩니다.</li>
+              <li><b>저장 데이터 유지</b>가 꺼져 있으면 로그인 상태·저장된 아이디/비밀번호가 앱 재시작마다 사라집니다.</li>
+            </ul>
+            <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+              <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" x-model="dtAllowDl" x-on:change="saveDesktopOpts()"> 다운로드 허용</label>
+              <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" x-model="dtPersist" x-on:change="saveDesktopOpts()"> 저장 데이터 유지(localStorage)</label>
+              <span class="text-xs text-muted" x-text="dtMsg || '변경은 앱을 완전히 종료 후 다시 열면 적용됩니다'"></span>
             </div>
           </div>
         </section>
