@@ -105,6 +105,15 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     피드백 payload 로 서버 전달 → `feedback_routes.model` 귀속(라우팅 프롬프트에 [초안 생성 모델] 주입).
     모델별 프롬프트(model_prompts·stage_models)는 기존 존재 → meta_compile 의 모델별 그룹 컴파일은 후속.
   - 평가 결과는 카드화(tiles + tile--hero, 유형별 막대도 tile 박스 안) · 산개 방지.
+  - **도구 취지(정본)**: 관리자 주입 → 사용자 검수 → 골든셋 → **파인튜닝 스펙·소요서 근거 산출**.
+    소요서 = `/learn-spec`(.md 자동 생성, 학습 데이터 탭 버튼): 실데이터 수치 + 기준치 + 권장 스펙 + 논문 출처.
+  - **모델 재실행**: 콘텐츠 관리 · 수동 추출의 '다른 모델로 재실행' 패널(/rerun, 관리자). 같은 콘텐츠를
+    지정 모델로 초안 재생성 · 이전 초안 patch_log(rerun:구→신) 보존 · save_many 무조건 upsert.
+    run_pipeline 에 model 파라미터(llm_for_model 라우팅). ⚠️ supabase 는 재실행 결과가 비-YELLOW 면
+    contents 미갱신(sync 필터) 엣지 있음.
+  - **원본 목록 = 빠른 검수 표**: 검색 + 등급/모델/서비스/검수 상태 필터 + 행 내 정확/문제 즉시 판정.
+    hash 키는 `_row_key`(스토어 16자 키 우선) 로 검수 키와 정합.
+  - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
