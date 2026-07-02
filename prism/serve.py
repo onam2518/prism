@@ -6459,77 +6459,100 @@ PAGE = """<!doctype html>
           </div>
         </section>
       </div><!-- /정답셋 목록 -->
-      <!-- 학습 데이터: 커버리지·일치도·신뢰도·오류 후보 + 데이터셋 추출 -->
-      <div x-show="mod === 'testset' && testTab === 'data'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()">
-            <div class="panel-hd"><b>학습 데이터 현황</b><span class="meta">특화 LLM 학습데이터 · 소요 산정(논문 기준)</span>
+      <!-- 학습 데이터: 항목별 카드(요약 | 내보내기 | 소요 산정 | 커버리지·신뢰도 | 오류 후보) · 용어는 호버 정의 -->
+      <div x-show="mod === 'testset' && testTab === 'data'" x-cloak class="w-full">
+        <div x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()" class="space-y-4">
+        <section class="panel" data-fn>
+            <div class="panel-hd"><b>학습 데이터 현황</b><span class="meta">특화 LLM 학습데이터 요약 · 용어는 항목에 마우스를 올리면 설명됩니다</span>
               <button type="button" class="ds-btn ds-btn--secondary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnDataBusy" x-on:click="loadLearnData()" x-text="learnDataBusy ? '집계 중…' : '새로고침'"></button>
             </div>
             <div class="panel-bd">
               <template x-if="learnData">
                 <div>
-                  <div class="tiles" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
-                    <div class="tile"><div class="n tnum" x-text="learnData.golden_n"></div><div class="t">골든(정답)</div></div>
-                    <div class="tile"><div class="n tnum" x-text="learnData.covered + '/' + learnData.class_total"></div><div class="t">클래스 충족</div></div>
-                    <div class="tile" data-tip="Krippendorff's alpha · 참고 지표(임계값 기계 적용 금지 · Artstein & Poesio 2008)" data-tip-pos="top"><div class="n tnum" x-text="learnData.alpha == null ? '·' : learnData.alpha"></div><div class="t">일치도 α</div></div>
-                    <div class="tile" data-tip="최근 골든 평가에서 모델과 정답이 어긋난 건(기계 플래그 → 사람 확정 · Northcutt 2021)" data-tip-pos="top"><div class="n tnum" x-text="(learnData.label_flags||[]).length"></div><div class="t">오류 의심</div></div>
-                    <div class="tile"><div class="n tnum" x-text="learnData.split_n"></div><div class="t">의견 불일치</div></div>
+                  <div class="tiles" style="grid-template-columns:repeat(5,1fr)">
+                    <div class="tile" style="cursor:help" data-tip="사람 검수 합의로 확정된 정답 데이터 · 평가와 학습의 기준" data-tip-pos="top"><div class="n tnum" x-text="learnData.golden_n"></div><div class="t">골든(정답)</div></div>
+                    <div class="tile" style="cursor:help" data-tip="카테고리(클래스)별 목표 8건(SetFit 2022)을 채운 클래스 수" data-tip-pos="top"><div class="n tnum" x-text="learnData.covered + '/' + learnData.class_total"></div><div class="t">클래스 충족</div></div>
+                    <div class="tile" style="cursor:help" data-tip="검수자 간 판정 일치도(Krippendorff's alpha) · 참고 지표(임계값 기계 적용 금지 · Artstein & Poesio 2008)" data-tip-pos="top"><div class="n tnum" x-text="learnData.alpha == null ? '·' : learnData.alpha"></div><div class="t">일치도 α</div></div>
+                    <div class="tile" style="cursor:help" data-tip="최근 골든 평가에서 모델과 정답이 어긋난 건(기계 플래그 → 사람 확정 · Northcutt 2021)" data-tip-pos="top"><div class="n tnum" x-text="(learnData.label_flags||[]).length"></div><div class="t">오류 의심</div></div>
+                    <div class="tile" style="cursor:help" data-tip="같은 콘텐츠에 검수자 판정이 갈린 건 · 재검토 우선 대상" data-tip-pos="top"><div class="n tnum" x-text="learnData.split_n"></div><div class="t">의견 불일치</div></div>
                   </div>
-                  <div class="text-xs text-muted" style="margin-bottom:12px" x-show="learnData.acc_ci">골든 정합성 <b class="text-ink" x-text="ciTxt(learnData.acc_ci)"></b> · 신뢰구간이 겹치는 비교는 판정 보류(Miller 2024)</div>
-                  <!-- 데이터셋 추출(JSONL) -->
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-                    <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
-                    <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
-                    <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
-                    <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서)" data-tip-pos="top">소요서(.md) 생성</button>
-                  </div>
-                  <!-- 학습 소요 대비(기준치 = 논문 출처) -->
-                  <div class="overflow-auto" style="margin-bottom:14px"><table class="ds-table"><thead><tr><th>용도</th><th>기준</th><th>보유</th><th>부족</th><th>근거</th></tr></thead><tbody>
-                    <template x-for="r in learnData.requirements" x-bind:key="r.kind">
-                      <tr><td class="text-ink" x-text="r.kind"></td><td class="tnum" x-text="r.target"></td><td class="tnum" x-text="r.have"></td>
-                        <td class="tnum" x-bind:class="r.lack > 0 ? 'text-ink' : ''" x-text="r.lack"></td>
-                        <td class="text-xs text-muted" x-text="r.basis"></td></tr>
-                    </template>
-                  </tbody></table></div>
-                  <div class="grid grid-cols-2 gap-4">
-                    <!-- 클래스(Tier1) 커버리지 · 목표 = 클래스당 8(SetFit) -->
-                    <div><div class="text-xs text-muted" style="margin-bottom:6px">클래스 커버리지 · 목표 <b class="text-ink" x-text="learnData.per_class_target + '건/클래스'"></b> (SetFit)</div>
-                      <div class="overflow-auto" style="max-height:260px"><table class="ds-table"><thead><tr><th>Tier1</th><th>보유</th><th>부족</th></tr></thead><tbody>
-                        <template x-for="c in [...learnData.coverage].sort((a,b)=>b.lack-a.lack)" x-bind:key="c.cls">
-                          <tr><td x-text="c.cls"></td><td class="tnum" x-text="c.have"></td><td class="tnum" x-bind:class="c.lack>0?'text-ink':''" x-text="c.lack"></td></tr>
-                        </template>
-                      </tbody></table></div></div>
-                    <!-- 검수자 신뢰도 · 합의 일치율 + 골드 정확도 + Dawid-Skene EM -->
-                    <div><div class="text-xs text-muted" style="margin-bottom:6px">검수자 신뢰도 · 합의 일치율 + 골드 정확도 + EM 오류율(Dawid-Skene 1979)</div>
-                      <div class="overflow-auto" style="max-height:260px"><table class="ds-table"><thead><tr><th>검수자</th><th>검수</th><th>합의 일치</th><th>골드</th><th>EM 오류율</th></tr></thead><tbody>
-                        <template x-for="r in learnData.reviewers" x-bind:key="r.reviewer">
-                          <tr><td class="text-ink" x-text="r.reviewer"></td><td class="tnum" x-text="r.n"></td>
-                            <td class="tnum" x-text="r.agree_rate == null ? '·' : pctTxt(r.agree_rate)"></td>
-                            <td class="tnum" x-text="r.gold_n >= 5 ? (pctTxt(r.gold_acc) + ' (' + r.gold_n + ')') : ('· (' + (r.gold_n||0) + ')')"></td>
-                            <td class="tnum" x-text="r.ds_error == null ? '·' : pctTxt(r.ds_error)"></td></tr>
-                        </template>
-                        <template x-if="!learnData.reviewers.length"><tr><td colspan="5" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
-                      </tbody></table></div></div>
-                  </div>
-                  <!-- 라벨 오류 후보(기계 플래그 → 휴먼 확정: 유지 또는 제거) -->
-                  <div x-show="(learnData.label_flags||[]).length" style="margin-top:14px">
-                    <div class="text-xs text-muted" style="margin-bottom:6px">라벨 오류 후보 · 최근 골든 평가에서 모델·정답 불일치(확인 후 오답이면 제거)</div>
-                    <div class="overflow-auto" style="max-height:200px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>정답</th><th>모델</th><th style="width:60px"></th></tr></thead><tbody>
-                      <template x-for="f in learnData.label_flags" x-bind:key="f.hash">
-                        <tr><td x-text="f.title || f.hash"></td><td class="tnum" x-text="f.expected"></td><td class="tnum" x-text="f.got"></td>
-                          <td><button type="button" class="copybtn" x-on:click="removeGolden(f.hash)">제거</button></td></tr>
-                      </template>
-                    </tbody></table></div>
-                  </div>
-                  <ul class="ds-bullets" style="margin-top:14px">
-                    <li>기준치 출처: 클래스당 8(SetFit 2022) · SFT 1k(LIMA 2023) · 운영급 13.5k(Llama Guard 2023) · 선호쌍 33k(InstructGPT 2022 참고 상한) · 평가셋 100(tinyBenchmarks 2024). 전체 서지는 <b>LEARNING_DESIGN.md</b>.</li>
-                    <li>선호쌍(DPO)은 검수자 교정의 <b>전/후</b>가 원천입니다 · 상세 화면에서 교정할수록 쌓입니다.</li>
-                  </ul>
+                  <div class="text-xs text-muted" style="margin-top:12px" x-show="learnData.acc_ci">골든 정합성 <b class="text-ink" style="cursor:help" data-tip="정답셋과 현재 모델의 등급 일치율 · 95% 신뢰구간(Miller 2024): 표본이 적을수록 구간이 넓어집니다" data-tip-pos="top" x-text="ciTxt(learnData.acc_ci)"></b> · 신뢰구간이 겹치는 비교는 판정 보류</div>
                 </div>
               </template>
               <div x-show="!learnData" class="text-xs text-muted">집계를 불러오는 중이거나, 관리자 권한이 필요합니다</div>
             </div>
         </section>
+        <template x-if="learnData">
+        <section class="panel" data-fn>
+            <div class="panel-hd"><b>데이터셋 내보내기</b><span class="meta">검수 결과를 학습용 JSONL 과 소요서로</span></div>
+            <div class="panel-bd">
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="지도 미세조정(Supervised Fine-Tuning) 학습쌍 · 콘텐츠 → 확정 메타" data-tip-pos="top" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="선호 학습(DPO)용 교정 전/후 쌍 · 상세 화면에서 교정할수록 쌓입니다" data-tip-pos="top" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="판정 이유(rationale) 데이터 · 근거 증류 학습(Distilling Step-by-Step)용" data-tip-pos="top" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서 .md)" data-tip-pos="top">소요서(.md) 생성</button>
+              </div>
+            </div>
+        </section>
+        </template>
+        <template x-if="learnData">
+        <section class="panel" data-fn>
+            <div class="panel-hd"><b>소요 산정</b><span class="meta">용도별 목표 대비 보유 · 기준치는 논문 근거</span></div>
+            <div class="overflow-auto"><table class="ds-table"><thead><tr><th>용도</th>
+              <th style="cursor:help" data-tip="논문 근거 목표 건수" data-tip-pos="top">기준</th>
+              <th style="cursor:help" data-tip="현재 확보한 건수" data-tip-pos="top">보유</th>
+              <th style="cursor:help" data-tip="목표까지 남은 건수" data-tip-pos="top">부족</th>
+              <th style="cursor:help" data-tip="기준치의 출처 논문 · 전체 서지는 LEARNING_DESIGN.md" data-tip-pos="top">근거</th></tr></thead><tbody>
+              <template x-for="r in learnData.requirements" x-bind:key="r.kind">
+                <tr><td class="text-ink" x-text="r.kind"></td><td class="tnum" x-text="r.target"></td><td class="tnum" x-text="r.have"></td>
+                  <td class="tnum" x-bind:class="r.lack > 0 ? 'text-ink' : ''" x-text="r.lack"></td>
+                  <td class="text-xs text-muted" x-text="r.basis"></td></tr>
+              </template>
+            </tbody></table></div>
+            <ul class="ds-bullets" style="margin:10px 16px 14px">
+              <li>기준치 출처: 클래스당 8(SetFit 2022) · SFT 1k(LIMA 2023) · 운영급 13.5k(Llama Guard 2023) · 선호쌍 33k(InstructGPT 2022 참고 상한) · 평가셋 100(tinyBenchmarks 2024).</li>
+            </ul>
+        </section>
+        </template>
+        <template x-if="learnData">
+        <div class="grid grid-cols-2 gap-4">
+          <section class="panel" data-fn style="margin:0">
+            <div class="panel-hd"><b>클래스 커버리지</b><span class="meta" style="cursor:help" data-tip="클래스당 8건이면 분류 부트스트랩이 가능(SetFit 2022)" data-tip-pos="top">목표 <b class="text-ink" x-text="learnData.per_class_target + '건/클래스'"></b></span></div>
+            <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th style="cursor:help" data-tip="콘텐츠 카테고리 대분류" data-tip-pos="top">Tier1</th><th>보유</th><th>부족</th></tr></thead><tbody>
+              <template x-for="c in [...learnData.coverage].sort((a,b)=>b.lack-a.lack)" x-bind:key="c.cls">
+                <tr><td x-text="c.cls"></td><td class="tnum" x-text="c.have"></td><td class="tnum" x-bind:class="c.lack>0?'text-ink':''" x-text="c.lack"></td></tr>
+              </template>
+            </tbody></table></div>
+          </section>
+          <section class="panel" data-fn style="margin:0">
+            <div class="panel-hd"><b>검수자 신뢰도</b><span class="meta">합의 일치 + 골드 정확도 + 통계 추정</span></div>
+            <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>검수자</th><th style="cursor:help" data-tip="검수한 콘텐츠 수" data-tip-pos="top">검수</th>
+              <th style="cursor:help" data-tip="다수 의견과 같은 판정을 낸 비율" data-tip-pos="top">합의 일치</th>
+              <th style="cursor:help" data-tip="정답을 아는 검증 문항의 정확도 · 문항 5개 이상일 때 표시(점수 배율에 반영)" data-tip-pos="top">골드</th>
+              <th style="cursor:help" data-tip="통계 모델(Dawid-Skene 1979)이 추정한 검수자 오류율 · 참고 지표" data-tip-pos="top">EM 오류율</th></tr></thead><tbody>
+              <template x-for="r in learnData.reviewers" x-bind:key="r.reviewer">
+                <tr><td class="text-ink" x-text="r.reviewer"></td><td class="tnum" x-text="r.n"></td>
+                  <td class="tnum" x-text="r.agree_rate == null ? '·' : pctTxt(r.agree_rate)"></td>
+                  <td class="tnum" x-text="r.gold_n >= 5 ? (pctTxt(r.gold_acc) + ' (' + r.gold_n + ')') : ('· (' + (r.gold_n||0) + ')')"></td>
+                  <td class="tnum" x-text="r.ds_error == null ? '·' : pctTxt(r.ds_error)"></td></tr>
+              </template>
+              <template x-if="!learnData.reviewers.length"><tr><td colspan="5" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
+            </tbody></table></div>
+          </section>
+        </div>
+        </template>
+        <template x-if="learnData && (learnData.label_flags||[]).length">
+        <section class="panel" data-fn>
+            <div class="panel-hd"><b>정답 오류 후보</b><span class="meta">최근 평가에서 모델·정답 불일치 · 확인 후 오답이면 제거</span></div>
+            <div class="overflow-auto" style="max-height:220px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>정답</th><th>모델</th><th style="width:60px"></th></tr></thead><tbody>
+              <template x-for="f in learnData.label_flags" x-bind:key="f.hash">
+                <tr><td x-text="f.title || f.hash"></td><td class="tnum" x-text="f.expected"></td><td class="tnum" x-text="f.got"></td>
+                  <td><button type="button" class="copybtn" x-on:click="removeGolden(f.hash)">제거</button></td></tr>
+              </template>
+            </tbody></table></div>
+        </section>
+        </template>
+        </div>
       </div><!-- /학습 데이터 -->
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
