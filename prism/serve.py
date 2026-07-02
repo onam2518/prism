@@ -1387,8 +1387,17 @@ def golden_list(team=None) -> dict:
         return {"ok": False, "error": "지원하지 않는 저장소", "items": []}
     flagged = {f.get("hash") for f in (_LAST_EVAL_DETAIL or [])}
     items = st.golden_rows(team, limit=300)
+    cmeta = {}
+    try:                                       # 정답의 유래 초안(검수 당시 모델·버전) 부착
+        for r in (st.recent_meta(1000, team=team) if hasattr(st, "recent_meta") else []):
+            cmeta[r.get("hash")] = r
+    except Exception:
+        cmeta = {}
     for it in items:
         it["flagged"] = it["hash"] in flagged
+        m = cmeta.get(it["hash"]) or {}
+        it["model"] = m.get("model", "") or ""
+        it["version"] = m.get("version")
     return {"ok": True, "items": items,
             "source_counts": (st.golden_source_counts(team) if hasattr(st, "golden_source_counts") else {}),
             "total": (st.golden_count(team) if hasattr(st, "golden_count") else len(items))}
@@ -3271,6 +3280,7 @@ PAGE = """<!doctype html>
         if (id === 'run' || id === 'auto') { this.contentTab = id; id = 'content'; }
         if (id === 'queue') id = 'content';
         if (id === 'content' || id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
+        if (id === 'prompt' || id === 'testset') this.loadGoldenStatus();
         if (id === 'dash') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
@@ -3530,6 +3540,15 @@ PAGE = """<!doctype html>
       async loadQueue() { this.modBusy = true; try { const p = new URLSearchParams(); if (!this.queueOnlyUnreviewed) p.set('all', '1'); if (this.reviewer) p.set('reviewer', this.reviewer); this.queueData = await (await fetch('/queue?' + p.toString(), { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; this.arenaData = await (await fetch('/arena' + p, { headers: this._authHeaders() })).json(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
       async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
+      goldenModel: '',                        // 정답셋 목록 · 유래 모델 필터
+      get goldenModelList() {
+        const its = (this.goldenList && this.goldenList.items) || [];
+        return [...new Set(its.map(g => g.model || ''))].sort();
+      },
+      get filteredGolden() {
+        const its = (this.goldenList && this.goldenList.items) || [];
+        return this.goldenModel === '' ? its : its.filter(g => (g.model || '') === this.goldenModel);
+      },
       async togglePurpose(c) {               // 관리자: 용도 전환(검수용 ↔ 평가용 홀드아웃)
         const next = c.purpose === 'eval' ? 'review' : 'eval';
         try {
@@ -5959,6 +5978,15 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 품질 메타 ═══ -->
+      <!-- ═══ 모듈: 실험실(관리자) · 지금 테스트하지 않는 탐구 요소 ═══ -->
+      <div x-show="mod === 'lab'" x-cloak class="w-full" style="margin-bottom:10px">
+        <div class="evaltabs">
+          <button type="button" x-bind:class="labTab==='legal'?'sel':''" x-on:click="labTab='legal'">법령</button>
+          <button type="button" x-bind:class="labTab==='topic'?'sel':''" x-on:click="labTab='topic'; loadTopics()">토픽</button>
+          <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
+        </div>
+        <ul class="ds-bullets hintbox" style="padding:12px 16px;margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
+      </div>
       <div x-show="mod === 'lab' && labTab === 'legal'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <ul class="ds-bullets"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출).</li></ul>
@@ -6127,8 +6155,8 @@ PAGE = """<!doctype html>
             </template>
             <template x-if="!(userData&&userData.personas_def&&userData.personas_def.length)"><tr><td colspan="3" class="text-muted">먼저 [실행·추출]에서 콘텐츠를 추출하세요</td></tr></template>
           </tbody></table></div>
+          <div class="text-xs text-muted" style="margin:10px 16px 14px" x-show="userData && userData.formula" x-text="userData ? userData.formula : ''"></div>
         </div>
-        <p class="text-xs text-muted" x-show="userData && userData.formula" x-text="userData ? userData.formula : ''"></p>
       </div>
 
       <!-- ═══ 모듈: 테스트셋 생성 · 골든/검수/원본 뷰 ═══ -->
@@ -6220,7 +6248,7 @@ PAGE = """<!doctype html>
       <!-- 테스트셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
       <div x-show="mod === 'testset' && testTab === 'status'" x-cloak class="w-full space-y-4">
           <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
-          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다</span>
+          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다 · 현재 프롬프트 <span class="tnum" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></span></span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenStatus()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
             <div class="panel-bd">
@@ -6284,15 +6312,6 @@ PAGE = """<!doctype html>
       </div><!-- /테스트셋 관리 · 현황 -->
 
 
-      <!-- ═══ 모듈: 실험실(관리자) · 지금 테스트하지 않는 탐구 요소 ═══ -->
-      <div x-show="mod === 'lab'" x-cloak class="w-full" style="margin-bottom:10px">
-        <div class="evaltabs">
-          <button type="button" x-bind:class="labTab==='legal'?'sel':''" x-on:click="labTab='legal'">법령</button>
-          <button type="button" x-bind:class="labTab==='topic'?'sel':''" x-on:click="labTab='topic'; loadTopics()">토픽</button>
-          <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
-        </div>
-        <ul class="ds-bullets hintbox" style="padding:12px 16px;margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
-      </div>
       <div x-show="mod === 'testset' && testTab === 'golden'" x-cloak class="w-full space-y-4">
         <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋(골든) 목록</b>
           <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수로 확정 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 직접 등록 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
@@ -6306,17 +6325,26 @@ PAGE = """<!doctype html>
               <span class="text-xs text-muted" x-text="goldenMsg"></span>
             </div>
             <template x-if="goldenList && goldenList.items && goldenList.items.length">
-              <div class="overflow-auto" style="max-height:300px;margin-top:12px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
-                <template x-for="g in goldenList.items" x-bind:key="g.hash">
+              <div style="margin-top:12px">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+                <span class="selctl__lbl" data-tip="정답이 확정될 당시의 초안 모델 · 정답 자체는 모델과 무관한 사람 확정값" data-tip-pos="top">유래 모델</span>
+                <button type="button" class="srcfilter__chip" x-bind:class="goldenModel==='' ? 'sel' : ''" x-on:click="goldenModel=''">전체</button>
+                <template x-for="m in goldenModelList" x-bind:key="'gm'+m"><button type="button" class="srcfilter__chip" x-bind:class="goldenModel===m ? 'sel' : ''" x-on:click="goldenModel=m" x-text="m || '(모델 미기록)'"></button></template>
+              </div>
+              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:150px">유래 모델</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
+                <template x-for="g in filteredGolden" x-bind:key="g.hash">
                   <tr>
                     <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" x-show="g.flagged" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span></td>
                     <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
                     <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
+                    <td class="text-muted" x-text="g.model || '·'"></td>
+                    <td class="tnum" x-text="g.version ? ('v' + g.version) : '·'"></td>
                     <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '직접' : '검수'"></span></td>
                     <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
                   </tr>
                 </template>
               </tbody></table></div>
+              </div>
             </template>
           </div>
         </section>
@@ -6690,7 +6718,8 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'prompt'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>각 단계의 <b>원천 프롬프트</b>를 아래 <b>코드블록</b>에서 직접 수정합니다(관리자 전용).</li>
-          <li>단계마다 <b>모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 모델별로 저장됩니다.</li>
+          <li>단계마다 <b>모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 <b>모델별로 분기 저장</b>됩니다.</li>
+          <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></b> · 지금 저장하면 이 버전의 실행에 반영됩니다.</li>
           <li>보완은 <b>테스트셋 생성 · 콘텐츠 검수</b>의 교정 피드백이 자동 반영됩니다.</li>
         </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
