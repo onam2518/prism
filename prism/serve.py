@@ -3004,18 +3004,42 @@ PAGE = """<!doctype html>
       rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '',
       // 결과 비교: 요소 단위 모델별 현황 + 콘텐츠별 초안 diff(팝업)
       cmpDraftHash: '', draftsData: null, cmpL: 0, cmpR: 1,
-      cmpModalOpen: false, cmpTitle: '',
-      msData: null, msOn: [],
+      cmpModalOpen: false, cmpTitle: '', cmpAmiss: false, cmpBmiss: false,
+      msData: null, abAm: '', abAv: '', abBm: '', abBv: '',
       async loadModelStats() {
-        try { const r = await (await fetch('/model-stats', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.msData = r; if (!this.msOn.length) this.msOn = r.models.map((m) => m.key); } } catch (e) {}
+        try {
+          const r = await (await fetch('/model-stats', { headers: this._authHeaders() })).json();
+          if (r && r.ok) {
+            this.msData = r;
+            const ms = r.models;
+            if (ms.length && !this.abAm) { this.abAm = ms[0].model; this.abAv = String(ms[0].version); }
+            if (ms.length && !this.abBm) { const b = ms.find((m) => m.key !== (this.abAm + ' · v' + this.abAv)) || ms[0]; this.abBm = b.model; this.abBv = String(b.version); }
+          }
+        } catch (e) {}
       },
-      toggleMs(m) { const i = this.msOn.indexOf(m); if (i >= 0) this.msOn.splice(i, 1); else this.msOn.push(m); },
-      get msCols() { return (((this.msData||{}).models)||[]).filter((m) => this.msOn.includes(m.key)); },
+      get msModels() { return [...new Set((((this.msData||{}).models)||[]).map((m) => m.model))]; },
+      msVers(model) { return (((this.msData||{}).models)||[]).filter((m) => m.model === model).map((m) => m.version).sort((a,b)=>b-a); },
+      msCol(model, ver) { return (((this.msData||{}).models)||[]).find((m) => m.model === model && String(m.version) === String(ver)) || null; },
+      get abCols() { return [this.msCol(this.abAm, this.abAv), this.msCol(this.abBm, this.abBv)].filter(Boolean); },
       openCmpModal(r) { this.cmpTitle = r.title || '(제목 없음)'; this.cmpDraftHash = r.hash; this.cmpModalOpen = true; this.loadDrafts(); },
       async loadDrafts() {
-        this.draftsData = null; this.cmpL = 0; this.cmpR = 1;
+        this.draftsData = null; this.cmpL = 0; this.cmpR = 1; this.cmpAmiss = false; this.cmpBmiss = false;
         if (!this.cmpDraftHash) return;
-        try { const r = await (await fetch('/drafts?hash=' + encodeURIComponent(this.cmpDraftHash), { headers: this._authHeaders() })).json(); if (r && r.ok) { this.draftsData = r; this.cmpR = r.items.length > 1 ? 1 : 0; } } catch (e) {}
+        try {
+          const r = await (await fetch('/drafts?hash=' + encodeURIComponent(this.cmpDraftHash), { headers: this._authHeaders() })).json();
+          if (!(r && r.ok)) return;
+          this.draftsData = r;
+          const items = r.items || [];
+          const find = (m, v) => {
+            let i = items.findIndex((d) => d.model === m && String(d.version) === String(v));
+            if (i < 0) i = items.findIndex((d) => d.model === m);
+            return i;
+          };
+          const ia = find(this.abAm, this.abAv), ib = find(this.abBm, this.abBv);
+          this.cmpAmiss = ia < 0; this.cmpBmiss = ib < 0;
+          this.cmpL = ia >= 0 ? ia : 0;
+          this.cmpR = ib >= 0 ? ib : (items.length > 1 ? 1 : 0);
+        } catch (e) {}
       },
       get draftPair() {
         const it = (this.draftsData||{}).items || [];
@@ -4187,6 +4211,14 @@ PAGE = """<!doctype html>
     pointer-events:none;box-shadow:0 8px 22px -8px rgba(0,0,0,.35)}
   /* 정렬 원칙: 칩 높이 통일 · 필터바 컨트롤 통일 · 표 셀 수직 중앙 */
   .srcfilter__chip{display:inline-flex;align-items:center;height:30px;line-height:1}
+  /* 선택 컨트롤 정책: 칩(srcfilter__chip)=다중 토글 필터 · selctl=단일 지정 선택 · selctl--a/--b=A/B 비교 슬롯 */
+  .selctl{display:inline-flex;align-items:center;gap:6px;padding:4px 8px 4px 5px;border:1px solid var(--ds-hairline,rgba(0,0,0,.08));
+    border-radius:12px;background:var(--ds-surface-white)}
+  .selctl__tag{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:26px;padding:0 8px;
+    border-radius:8px;font-size:12px;font-weight:800;color:#fff;background:var(--ds-muted,#8b8f98)}
+  .selctl--a .selctl__tag{background:var(--ds-violet,#1e84ff)}
+  .selctl--b .selctl__tag{background:#ff6a3d}
+  .selctl .field{height:30px;border:0;background:transparent;padding:0 4px;width:auto;min-width:0}
   .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
   .panel .filterbar{margin-left:16px;margin-right:16px}   /* 표 인셋(16px)과 좌우 정렬 */
   .filterbar .field{height:36px}
@@ -5698,28 +5730,35 @@ PAGE = """<!doctype html>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadModelStats()" data-tip="새로고침" data-tip-pos="bottom" aria-label="모델별 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
             <div class="panel-bd">
-              <div class="filterbar" style="gap:6px">
-                <template x-for="m in ((msData||{}).models||[])" x-bind:key="m.key">
-                  <button type="button" class="srcfilter__chip" x-bind:class="msOn.includes(m.key) ? 'sel' : ''" x-on:click="toggleMs(m.key)" x-text="m.key + ' (' + m.n + ')'"></button>
-                </template>
+              <!-- A/B 슬롯(디자인 정책: selctl--a/--b): 각 슬롯에서 모델·버전 선택 -->
+              <div class="filterbar">
+                <span class="selctl selctl--a"><span class="selctl__tag">A</span>
+                  <select class="field" x-model="abAm" x-on:change="abAv=String((msVers(abAm)[0]||''))"><template x-for="m in msModels" x-bind:key="'am'+m"><option x-bind:value="m" x-text="m"></option></template></select>
+                  <select class="field" x-model="abAv"><template x-for="v in msVers(abAm)" x-bind:key="'av'+v"><option x-bind:value="String(v)" x-text="'v' + v"></option></template></select>
+                </span>
+                <span class="text-xs text-muted">vs</span>
+                <span class="selctl selctl--b"><span class="selctl__tag">B</span>
+                  <select class="field" x-model="abBm" x-on:change="abBv=String((msVers(abBm)[0]||''))"><template x-for="m in msModels" x-bind:key="'bm'+m"><option x-bind:value="m" x-text="m"></option></template></select>
+                  <select class="field" x-model="abBv"><template x-for="v in msVers(abBm)" x-bind:key="'bv'+v"><option x-bind:value="String(v)" x-text="'v' + v"></option></template></select>
+                </span>
               </div>
-              <template x-if="msCols.length">
+              <template x-if="abCols.length">
                 <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:130px">정보요소</th>
-                  <template x-for="m in msCols" x-bind:key="'h'+m.key"><th x-text="m.key"></th></template>
+                  <template x-for="(m,mi) in abCols" x-bind:key="'h'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : ''" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.key"></span></th></template>
                 </tr></thead><tbody>
-                  <tr><td class="text-ink">유통 가능 G</td><template x-for="m in msCols" x-bind:key="'g'+m.key"><td class="tnum" x-text="m.gPct + '%'"></td></template></tr>
-                  <tr><td class="text-ink">처리 건수</td><template x-for="m in msCols" x-bind:key="'n'+m.key"><td class="tnum" x-text="m.n"></td></template></tr>
-                  <tr><td class="text-ink">평균 리드문(자)</td><template x-for="m in msCols" x-bind:key="'l'+m.key"><td class="tnum" x-text="m.avgLead"></td></template></tr>
-                  <tr><td class="text-ink">인텐트 상위</td><template x-for="m in msCols" x-bind:key="'i'+m.key"><td class="text-xs text-muted" x-text="(m.intents||[]).join(' · ') || '·'"></td></template></tr>
-                  <tr><td class="text-ink">카테고리 상위</td><template x-for="m in msCols" x-bind:key="'c'+m.key"><td class="text-xs text-muted" x-text="(m.categories||[]).join(' · ') || '·'"></td></template></tr>
-                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="m in msCols" x-bind:key="'r'+m.key"><td class="text-xs text-muted" x-text="(m.reasons||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">유통 가능 G</td><template x-for="(m,mi) in abCols" x-bind:key="'g'+mi"><td class="tnum" x-text="m.gPct + '%'"></td></template></tr>
+                  <tr><td class="text-ink">처리 건수</td><template x-for="(m,mi) in abCols" x-bind:key="'n'+mi"><td class="tnum" x-text="m.n"></td></template></tr>
+                  <tr><td class="text-ink">평균 리드문(자)</td><template x-for="(m,mi) in abCols" x-bind:key="'l'+mi"><td class="tnum" x-text="m.avgLead"></td></template></tr>
+                  <tr><td class="text-ink">인텐트 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'i'+mi"><td class="text-xs text-muted" x-text="(m.intents||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">카테고리 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'c'+mi"><td class="text-xs text-muted" x-text="(m.categories||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'r'+mi"><td class="text-xs text-muted" x-text="(m.reasons||[]).join(' · ') || '·'"></td></template></tr>
                 </tbody></table></div>
               </template>
-              <div x-show="!msCols.length" class="text-xs text-muted">모델별 결과가 쌓이면 비교가 표시됩니다 · <b class="text-ink">콘텐츠 관리 · 다른 모델로 재실행</b>으로 초안을 만들어 보세요</div>
+              <div x-show="!abCols.length" class="text-xs text-muted">모델·버전 결과가 쌓이면 A/B 비교가 표시됩니다 · <b class="text-ink">콘텐츠 관리 · 모델 실행</b>으로 초안을 만들어 보세요</div>
             </div>
           </section>
           <!-- 콘텐츠별 결과 비교: 클릭 → 팝업에서 초안(모델·버전) 좌우 비교 -->
-          <section class="panel" data-fn><div class="panel-hd"><b>콘텐츠별 결과 비교</b><span class="meta">콘텐츠 선택 → 팝업에서 초안 좌우 비교</span></div>
+          <section class="panel" data-fn><div class="panel-hd"><b>콘텐츠별 결과 비교</b><span class="meta">상단 A/B 설정 기준 · 콘텐츠 클릭 = 팝업 비교</span></div>
             <div class="panel-bd">
               <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:150px">현재 모델</th><th style="width:56px">버전</th></tr></thead><tbody>
                 <template x-for="r in ((rawData||{}).items||[])" x-bind:key="'cmp'+r.hash">
@@ -5745,17 +5784,21 @@ PAGE = """<!doctype html>
           <div class="panel-hd" style="border:0;padding:0 0 10px"><b x-text="cmpTitle || '초안 비교'"></b>
             <button type="button" class="ds-iconbtn ml-auto" x-on:click="cmpModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-            <select class="field" style="width:auto;min-width:180px;height:36px" x-model.number="cmpL" x-show="draftsData && draftsData.items.length">
-              <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'ML'+i"><option x-bind:value="i" x-text="d.label"></option></template>
-            </select>
-            <span class="text-xs text-muted" x-show="draftsData && draftsData.items.length">vs</span>
-            <select class="field" style="width:auto;min-width:180px;height:36px" x-model.number="cmpR" x-show="draftsData && draftsData.items.length">
-              <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'MR'+i"><option x-bind:value="i" x-text="d.label"></option></template>
-            </select>
+          <!-- 상단(모델·버전별 결과 현황)에서 설정한 A/B 를 그대로 상속(공통 콘텐츠 대상) -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px" x-show="draftsData && draftsData.items.length">
+            <span class="selctl selctl--a"><span class="selctl__tag">A</span>
+              <span class="text-xs text-ink" style="padding:0 4px" x-text="abAm ? (abAm + ' · v' + abAv) : '미설정'"></span>
+              <span class="ds-badge ds-badge--warning" x-show="cmpAmiss" data-tip="이 콘텐츠에는 A 슬롯 초안이 없어 가장 가까운 초안을 표시합니다" data-tip-pos="top">초안 없음</span>
+            </span>
+            <span class="text-xs text-muted">vs</span>
+            <span class="selctl selctl--b"><span class="selctl__tag">B</span>
+              <span class="text-xs text-ink" style="padding:0 4px" x-text="abBm ? (abBm + ' · v' + abBv) : '미설정'"></span>
+              <span class="ds-badge ds-badge--warning" x-show="cmpBmiss" data-tip="이 콘텐츠에는 B 슬롯 초안이 없어 가장 가까운 초안을 표시합니다" data-tip-pos="top">초안 없음</span>
+            </span>
+            <span class="text-xs text-muted">· 상단 A/B 설정 기준</span>
           </div>
           <template x-if="draftPair">
-            <div class="overflow-auto" style="max-height:60vh"><table class="ds-table"><thead><tr><th style="width:100px">필드</th><th x-text="draftPair.l.label"></th><th x-text="draftPair.r.label"></th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:60vh"><table class="ds-table"><thead><tr><th style="width:100px">필드</th><th><span class="selctl__tag" style="background:var(--ds-violet,#1e84ff)">A</span> <span x-text="draftPair.l.label"></span></th><th><span class="selctl__tag" style="background:#ff6a3d">B</span> <span x-text="draftPair.r.label"></span></th></tr></thead><tbody>
               <template x-for="f in draftDiff" x-bind:key="'MF'+f.k">
                 <tr x-bind:class="f.diff ? 'is-sel' : ''">
                   <td class="text-ink"><span x-text="f.k"></span> <span class="ds-badge ds-badge--error" x-show="f.diff" style="margin-left:4px">다름</span></td>
@@ -6197,12 +6240,14 @@ PAGE = """<!doctype html>
         </div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px"><li>모델을 고르면 아래 목록은 전부 <b>그 모델이 초기 판정한 초안</b>입니다(모델별 정답셋의 재료).</li><li>행 클릭 = JSON 원문 · <b>검수하기</b> = 상세에서 판정·교정 · 버전 간 비교는 <b>결과 비교</b> 탭.</li></ul>
-            <!-- 상단 구분: 모델 → 버전 → 목록 -->
-            <div class="filterbar" style="gap:6px;margin-bottom:8px">
-              <button type="button" class="srcfilter__chip" x-bind:class="rawModel==='' ? 'sel' : ''" x-on:click="rawModel=''">모델 전체</button>
-              <template x-for="m in rawModels" x-bind:key="m">
-                <button type="button" class="srcfilter__chip" x-bind:class="rawModel===m ? 'sel' : ''" x-on:click="rawModel=m" x-text="m"></button>
-              </template>
+            <!-- 상단 구분: 모델 선택(selctl 정책 · A/B 화면과 동일 디자인) → 목록 -->
+            <div class="filterbar" style="margin-bottom:8px">
+              <span class="selctl"><span class="selctl__tag">모델</span>
+                <select class="field" x-model="rawModel">
+                  <option value="">전체</option>
+                  <template x-for="m in rawModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+                </select>
+              </span>
             </div>
             <div class="text-xs text-muted" style="margin:0 16px 10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b> 가 초기 판정한 초안 목록입니다(누적) · 검수 합의는 이 모델의 정답셋으로 쌓입니다 · 버전 간 비교는 <b>결과 비교</b> 탭에서</div>
             <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
