@@ -4121,6 +4121,7 @@ PAGE = """<!doctype html>
   /* 정렬 원칙: 칩 높이 통일 · 필터바 컨트롤 통일 · 표 셀 수직 중앙 */
   .srcfilter__chip{display:inline-flex;align-items:center;height:30px;line-height:1}
   .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .panel .filterbar{margin-left:16px;margin-right:16px}   /* 표 인셋(16px)과 좌우 정렬 */
   .filterbar .field{height:36px}
   .filterbar input.field{flex:1;min-width:180px}
   .ds-table td{vertical-align:middle}
@@ -5606,7 +5607,7 @@ PAGE = """<!doctype html>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadModelStats()" data-tip="새로고침" data-tip-pos="bottom" aria-label="모델별 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
             <div class="panel-bd">
-              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+              <div class="filterbar" style="gap:6px">
                 <template x-for="m in ((msData||{}).models||[])" x-bind:key="m.model">
                   <button type="button" class="srcfilter__chip" x-bind:class="msOn.includes(m.model) ? 'sel' : ''" x-on:click="toggleMs(m.model)" x-text="m.model + ' (' + m.n + ')'"></button>
                 </template>
@@ -6106,7 +6107,7 @@ PAGE = """<!doctype html>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px"><li>모델을 고르면 아래 목록은 전부 <b>그 모델이 초기 판정한 초안</b>입니다(모델별 정답셋의 재료).</li><li>검수가 진행되며 프롬프트가 갱신되면 <b>버전</b>이 올라갑니다 · 행 클릭 = JSON 원문, <b>검수하기</b> = 상세에서 판정·교정.</li></ul>
             <!-- 상단 구분: 모델 → 버전 → 목록 -->
-            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <div class="filterbar" style="gap:6px;margin-bottom:8px">
               <button type="button" class="srcfilter__chip" x-bind:class="rawModel==='' ? 'sel' : ''" x-on:click="rawModel=''; rawVer=''">모델 전체</button>
               <template x-for="m in rawModels" x-bind:key="m">
                 <button type="button" class="srcfilter__chip" x-bind:class="rawModel===m ? 'sel' : ''" x-on:click="rawModel=m; rawVer=''" x-text="m"></button>
@@ -6116,7 +6117,7 @@ PAGE = """<!doctype html>
                 <template x-for="v in rawVersions" x-bind:key="v"><option x-bind:value="String(v)" x-text="'v' + v"></option></template>
               </select>
             </div>
-            <div class="text-xs text-muted" style="margin-bottom:10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b><span x-show="rawVer" x-text="' · v' + rawVer"></span> 가 초기 판정한 초안 목록입니다 · 검수 합의는 이 모델의 정답셋으로 쌓입니다</div>
+            <div class="text-xs text-muted" style="margin:0 16px 10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b><span x-show="rawVer" x-text="' · v' + rawVer"></span> 가 초기 판정한 초안 목록입니다 · 검수 합의는 이 모델의 정답셋으로 쌓입니다</div>
             <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
             <div class="filterbar">
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
