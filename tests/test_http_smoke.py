@@ -20,7 +20,7 @@ def _req(port, path, obj=None, method=None, raw=None, ctype="application/json"):
                                  headers={"Content-Type": ctype} if data else {},
                                  method=method or ("POST" if data is not None else "GET"))
     with urllib.request.urlopen(req, timeout=20) as r:
-        body = r.read().decode()
+        body = r.read().decode("utf-8", "replace")   # 바이너리(xlsx 등)도 안전(PK 시그니처는 ASCII)
         if body.strip().startswith(("{", "[")):
             try:
                 return r.status, json.loads(body)
