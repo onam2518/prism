@@ -1982,6 +1982,18 @@
 
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
       rerunHash: '', rerunModel: '', rerunBusy: false, rerunMsg: '',
+      bulkModel: '', bulkBusy: false, bulkMsg: '',
+      async runBulk() {
+        if (!this.bulkModel) return;
+        if (!confirm('모든 콘텐츠를 ' + this.bulkModel + ' 로 다시 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?')) return;
+        this.bulkBusy = true; this.bulkMsg = '';
+        try {
+          const r = await (await fetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel }) })).json();
+          this.bulkMsg = r && r.ok ? ('✓ 완료 ' + r.done + '건' + (r.failed ? (' · 실패 ' + r.failed) : '')) : ((r && r.error) || '실패');
+          this.loadDash(); this.loadRaw();
+        } catch (e) { this.bulkMsg = '일괄 실행 실패'; }
+        this.bulkBusy = false;
+      },
       async runRerun() {
         if (!this.rerunHash || !this.rerunModel) return;
         if (!confirm('기존 초안을 덮어씁니다(이전 초안은 이력에 보존) · 진행할까요?')) return;
@@ -2087,7 +2099,8 @@
       selectMod(id) {
         this.mod = id; this.status = ''; this.addMenuOpen = false;
         // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 테스트셋 관리
-        if (id === 'run' || id === 'auto' || id === 'queue' || id === 'intake') { this.contentTab = id; id = 'content'; }
+        if (id === 'intake') id = 'dict';
+        if (id === 'run' || id === 'auto' || id === 'queue') { this.contentTab = id; id = 'content'; }
         if (id === 'dash') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
@@ -4229,9 +4242,9 @@
       <!-- ═══ 모듈: 콘텐츠 관리(관리자) · 실행 큐(홈) | 수동 추출 | 자동 인입 | 인입 정책 ═══ -->
       <div x-show="mod === 'content'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
         <button type="button" x-bind:class="contentTab==='queue'?'sel':''" x-on:click="contentTab='queue'">실행 큐</button>
-        <button type="button" x-bind:class="contentTab==='run'?'sel':''" x-on:click="contentTab='run'">수동 추출</button>
-        <button type="button" x-bind:class="contentTab==='auto'?'sel':''" x-on:click="contentTab='auto'; fetchIngestStatus()">자동 인입</button>
-        <button type="button" x-bind:class="contentTab==='intake'?'sel':''" x-on:click="contentTab='intake'; loadDict()">인입 정책</button>
+        <button type="button" x-bind:class="contentTab==='run'?'sel':''" x-on:click="contentTab='run'">수동 추가</button>
+        <button type="button" x-bind:class="contentTab==='auto'?'sel':''" x-on:click="contentTab='auto'; fetchIngestStatus()">자동 추가</button>
+        <button type="button" x-bind:class="contentTab==='exec'?'sel':''" x-on:click="contentTab='exec'; loadDash(); loadGoldenStatus()">모델 실행</button>
       </div></div>
       <div x-show="mod === 'content' && contentTab === 'auto'" x-cloak class="w-full space-y-4">
         <template x-if="!(backend === 'supabase' && adminData && adminData.isAdmin)">
@@ -4243,18 +4256,18 @@
         <template x-if="backend === 'supabase' && adminData && adminData.isAdmin">
         <div class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
-          <li>콘텐츠를 <b>자동으로 인입</b>하는 파이프라인 소스를 설정합니다.</li>
-          <li>등록·활성화한 소스로 들어온 콘텐츠가 추출 → 분석 → 검수 → 판정을 자동으로 거칩니다.</li>
-          <li>일회성 처리는 <b>수동 추출</b>을 사용하세요.</li>
+          <li>콘텐츠를 <b>자동으로 추가</b>하는 수집 소스를 설정합니다.</li>
+          <li>등록·활성화한 소스로 들어온 콘텐츠가 자동으로 추가되어 초안이 생성됩니다.</li>
+          <li>일회성 처리는 <b>수동 추가</b>를 사용하세요.</li>
         </ul>
         <!-- 일회성 인입: 크롤러에서 수량 목표로 당겨오기(구 팀 관리 패널 이동) -->
-        <section class="panel" data-fn><div class="panel-hd"><b>일회성 인입</b><span class="meta">크롤러에서 수량 목표로 당겨오기</span></div>
+        <section class="panel" data-fn><div class="panel-hd"><b>일회성 가져오기</b><span class="meta">크롤러에서 수량 목표로 당겨와 추가</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:10px"><li>크롤러 엔드포인트에서 <b>수량 목표</b>로 당겨와 추출 → 전건을 팀 <b>검수 대기</b>에 적재합니다.</li><li>실시간 스트리밍 부담 없이 배치로 처리합니다.</li></ul>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
               <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestBusy" x-on:click="ingestRun()" x-text="ingestBusy ? '인입 중…' : '인입 실행'"></button>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestBusy" x-on:click="ingestRun()" x-text="ingestBusy ? '가져오는 중…' : '가져오기 실행'"></button>
             </div>
             <span class="text-xs text-muted" style="display:block;margin-top:7px" x-text="ingestMsg"></span>
           </div>
@@ -4318,26 +4331,7 @@
 
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
       <div x-show="mod === 'content' && contentTab === 'run'" class="w-full space-y-4">
-        <!-- 같은 콘텐츠를 다른 모델로 재실행(초안 재생성 · 이전 초안은 이력 보존 후 덮어씀) -->
-        <section class="panel" data-fn><div class="panel-hd"><b>다른 모델로 재실행</b><span class="meta">같은 콘텐츠 · 모델만 바꿔 초안 재생성</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>선택한 콘텐츠의 초안을 <b>지정 모델</b>로 다시 만듭니다 · 기존 초안은 이력에 남기고 덮어씁니다.</li><li>모델별 초안 품질 비교·교정 귀속에 사용하세요.</li></ul>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <select class="field" style="flex:1;min-width:240px;height:38px" x-model="rerunHash">
-                <option value="">콘텐츠 선택…</option>
-                <template x-for="c in (dashData ? dashData.contents : [])" x-bind:key="c.hash">
-                  <option x-bind:value="c.hash" x-text="(c.title || '(제목 없음)') + (c.model ? (' · 현재 ' + c.model) : '')"></option>
-                </template>
-              </select>
-              <select class="field" style="width:auto;min-width:170px;height:38px" x-model="rerunModel">
-                <option value="">모델 선택…</option>
-                <template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
-              </select>
-              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="rerunBusy || !rerunHash || !rerunModel" x-on:click="runRerun()" x-text="rerunBusy ? '재실행 중…' : '재실행'"></button>
-              <span class="text-xs text-muted" x-text="rerunMsg"></span>
-            </div>
-          </div>
-        </section>
+
         <!-- 추출 실행 = 기능 위젯(입력 방식 탭 + 폼) -->
         <section class="panel" data-fn>
           <div class="panel-hd"><b>추출 실행</b></div>
@@ -4637,6 +4631,48 @@
       </div>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
+      <!-- 모델 실행: 모아진 콘텐츠(자동/수동 불문)에 모델을 실행해 초안 생성 · 버전 안내 -->
+      <div x-show="mod === 'content' && contentTab === 'exec'" x-cloak class="w-full space-y-4">
+        <ul class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>추가된 콘텐츠(자동·수동 불문)에 <b>모델을 실행</b>해 검수용 초안을 만듭니다 · 여기는 <b>수동 실행</b>입니다.</li>
+          <li>실행 결과는 <b>버전 v(학습 반영 회차+1)</b> 로 기록됩니다 · 현재 다음 실행 버전: <b class="text-ink tnum" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></b></li>
+          <li><b>자동 프로세스</b>: 학습 반영(매일 04:00)이 끝나면 개선된 프롬프트의 새 버전으로 <b>자동 재실행</b>되도록 설정할 수 있습니다(설정 auto_rerun_after_batch · 기본 꺼짐, 비용 발생).</li>
+        </ul>
+        <!-- 같은 콘텐츠를 다른 모델로 재실행(초안 재생성 · 이전 초안은 이력 보존 후 덮어씀) -->
+        <section class="panel" data-fn><div class="panel-hd"><b>단건 실행</b><span class="meta">콘텐츠 하나를 지정 모델로 초안 재생성</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>선택한 콘텐츠의 초안을 <b>지정 모델</b>로 다시 만듭니다 · 기존 초안은 이력에 남기고 덮어씁니다.</li><li>모델별 초안 품질 비교·교정 귀속에 사용하세요.</li></ul>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select class="field" style="flex:1;min-width:240px;height:38px" x-model="rerunHash">
+                <option value="">콘텐츠 선택…</option>
+                <template x-for="c in (dashData ? dashData.contents : [])" x-bind:key="c.hash">
+                  <option x-bind:value="c.hash" x-text="(c.title || '(제목 없음)') + (c.model ? (' · 현재 ' + c.model) : '')"></option>
+                </template>
+              </select>
+              <select class="field" style="width:auto;min-width:170px;height:38px" x-model="rerunModel">
+                <option value="">모델 선택…</option>
+                <template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template>
+              </select>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="rerunBusy || !rerunHash || !rerunModel" x-on:click="runRerun()" x-text="rerunBusy ? '재실행 중…' : '재실행'"></button>
+              <span class="text-xs text-muted" x-text="rerunMsg"></span>
+            </div>
+          </div>
+        </section>
+        <!-- 일괄 실행: 모아진 콘텐츠 전체를 지정 모델로 -->
+        <section class="panel" data-fn><div class="panel-hd"><b>일괄 실행</b><span class="meta">모든 콘텐츠 · 지정 모델로 초안 일괄 생성</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>모아진 콘텐츠 전체를 지정 모델로 실행합니다 · 기존 초안은 이력에 남기고 덮어씁니다(건당 비용 발생).</li></ul>
+            <div class="filterbar" style="margin:0">
+              <select class="field" style="width:auto;min-width:170px;height:36px" x-model="bulkModel">
+                <option value="">모델 선택…</option>
+                <template x-for="m in availableModels" x-bind:key="'bk'+m"><option x-bind:value="m" x-text="m"></option></template>
+              </select>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || !bulkModel" x-on:click="runBulk()" x-text="bulkBusy ? '일괄 실행 중…' : ('일괄 실행 (' + ((dashData&&dashData.contents)||[]).length + '건)')"></button>
+              <span class="text-xs text-muted" x-text="bulkMsg"></span>
+            </div>
+          </div>
+        </section>
+      </div>
       <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대상 콘텐츠(기본) | 결과 비교 ═══ -->
       <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
         <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
@@ -4683,7 +4719,7 @@
                   </tr>
                 </template>
               </tbody></table>
-              <div x-show="!((rawData||{}).items||[]).length" class="text-xs text-muted" style="padding:10px">데이터가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 추출·인입을 실행하세요</div>
+              <div x-show="!((rawData||{}).items||[]).length" class="text-xs text-muted" style="padding:10px">데이터가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 콘텐츠를 추가하세요</div>
               </div>
             </div>
           </section>
@@ -4995,7 +5031,7 @@
           </div>
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:12px">
-                <li>의견을 모아 <b>하루 1회</b> 반영해 결과가 흔들리지 않게 합니다.</li>
+                <li>의견을 모아 <b>하루 1회</b> 반영해 결과가 흔들리지 않게 합니다 · 반영 후 새 버전 자동 재실행은 설정(auto_rerun_after_batch)으로 켤 수 있습니다.</li>
                 <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
               </ul>
               <!-- 일배치 결과 요약(상세 수치는 위 '골든셋 생성 현황' · 정합성·모델 비교는 '골든셋 평가' 탭) -->
@@ -5182,7 +5218,7 @@
                 </tr>
               </template>
             </tbody></table>
-            <div x-show="!(rawData && rawData.items && rawData.items.length)" class="text-xs text-muted" style="padding:10px">데이터가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 추출·인입을 실행하세요</div>
+            <div x-show="!(rawData && rawData.items && rawData.items.length)" class="text-xs text-muted" style="padding:10px">데이터가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 콘텐츠를 추가하세요</div>
             </div>
             <div x-show="rawSel" style="margin-top:10px">
               <div class="text-xs text-muted" style="margin-bottom:6px">JSON 원문 · <b class="text-ink" x-text="rawSel ? (rawSel.title || rawSel.hash) : ''"></b></div>
@@ -5461,7 +5497,8 @@
       </div>
 
       <!-- ═══ 모듈: 인입 정책 (전용 도구) ═══ -->
-      <div x-show="mod === 'content' && contentTab === 'intake'" x-cloak class="w-full space-y-4">
+      <!-- 수집(인입) 정책: 정책 표 성격 → 사전·정책 메뉴에 통합 렌더 -->
+      <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4" style="margin-top:16px">
         <div class="ds-widget ds-widget--info" style="--w-accent:#1e84ff">
           <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>ITEM TYPE 처리 정책</span></div><div class="ds-widget__actions"><span class="ds-badge ds-badge--neutral">131</span><span class="text-xs text-muted">직접 수정 가능</span><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">

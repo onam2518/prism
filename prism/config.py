@@ -78,6 +78,7 @@ class Config:
     vision_model: str = ""              # 라우터일 때 public id
     legal_enabled: bool = False         # 품질 1차 법령 필터 포함 여부(단건/일괄)
     golden_min_good: int = 1            # 골든 확정 최소 '정확' 인원(팀 규모에 맞게 상향 가능)
+    auto_rerun_after_batch: bool = False  # 학습 반영 종료 후 새 버전으로 전 콘텐츠 자동 재실행(비용 발생)
 
     # 실행
     concurrency: int = 12
