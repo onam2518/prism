@@ -1903,6 +1903,43 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
     return {"ok": True, "items": out, "n": len(out)}
 
 
+def model_stats(team=None) -> dict:
+    """결과 비교 · 요소 단위 모델별 현황: 모델별로 유통 G%·처리 건수·평균 리드문·
+    인텐트/카테고리/품질 사유 상위를 집계(같은 정보요소를 모델 축으로 비교)."""
+    rows = results_rows(team=team)
+    by = {}
+    for r in rows:
+        m = (r.get("trace") or {}).get("model", "") or "(모델 미기록)"
+        g = by.setdefault(m, {"n": 0, "g": 0, "lead": 0, "lead_n": 0,
+                              "intents": {}, "cats": {}, "reasons": {}})
+        qm = r.get("quality_meta") or {}
+        im = r.get("item_meta") or {}
+        g["n"] += 1
+        if qm.get("finalGrade") == "G":
+            g["g"] += 1
+        sm = im.get("summary") or ""
+        if sm:
+            g["lead"] += len(sm); g["lead_n"] += 1
+        for t in (im.get("intent") or []):
+            g["intents"][t] = g["intents"].get(t, 0) + 1
+        for c in (im.get("content_category") or []):
+            top = (c or "").split("/")[0].strip()
+            if top:
+                g["cats"][top] = g["cats"].get(top, 0) + 1
+        for rs in (qm.get("reasons") or []):
+            g["reasons"][rs] = g["reasons"].get(rs, 0) + 1
+
+    def topk(d, k=3):
+        return [f"{a} ({b})" for a, b in sorted(d.items(), key=lambda x: -x[1])[:k]]
+    out = []
+    for m, g in sorted(by.items(), key=lambda x: -x[1]["n"]):
+        out.append({"model": m, "n": g["n"], "gPct": round(g["g"] / g["n"] * 100) if g["n"] else 0,
+                    "avgLead": round(g["lead"] / g["lead_n"]) if g["lead_n"] else 0,
+                    "intents": topk(g["intents"]), "categories": topk(g["cats"]),
+                    "reasons": topk(g["reasons"])})
+    return {"ok": True, "models": out}
+
+
 def drafts_for(content_hash: str, team=None) -> dict:
     """결과 비교용 초안 스냅샷: 현재 초안 + 재실행 이력(patch_log rerun) 의 이전 초안."""
     st = get_store()
@@ -2313,6 +2350,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(raw_rows(int(q.get("limit", ["100"])[0]), self._req_team(),
                                        reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
                                        ensure_ascii=False), _JSON)
+        elif self.path.startswith("/model-stats"):       # 결과 비교: 요소 단위 모델별 현황
+            self._send(200, json.dumps(model_stats(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/drafts"):            # 결과 비교: 콘텐츠별 초안 스냅샷
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
@@ -2767,6 +2806,36 @@ PAGE = """<!doctype html>
 <link href="/vendor/ds-components.css" rel="stylesheet">
 <script src="/vendor/tailwind.js"></script>
 <script>
+  // 전역 호버 툴팁: [data-tip] 위임 · position:fixed 로 overflow/스택 컨텍스트에 안 잘림
+  (function () {
+    var tip = null;
+    function box() {
+      if (!tip) { tip = document.createElement('div'); tip.id = 'tipfloat'; document.body.appendChild(tip); }
+      return tip;
+    }
+    function show(el) {
+      var t = el.getAttribute('data-tip'); if (!t) return;
+      var b = box(); b.textContent = t; b.style.display = 'block';
+      var r = el.getBoundingClientRect(), pos = el.getAttribute('data-tip-pos') || 'top';
+      var tw = b.offsetWidth, th = b.offsetHeight, x, y;
+      if (pos === 'bottom') { x = r.left + r.width / 2 - tw / 2; y = r.bottom + 8; }
+      else if (pos === 'left') { x = r.left - tw - 8; y = r.top + r.height / 2 - th / 2; }
+      else if (pos === 'right') { x = r.right + 8; y = r.top + r.height / 2 - th / 2; }
+      else { x = r.left + r.width / 2 - tw / 2; y = r.top - th - 8; }
+      x = Math.max(8, Math.min(x, window.innerWidth - tw - 8));
+      y = Math.max(8, Math.min(y, window.innerHeight - th - 8));
+      b.style.left = x + 'px'; b.style.top = y + 'px';
+    }
+    function hide() { if (tip) tip.style.display = 'none'; }
+    document.addEventListener('mouseover', function (e) {
+      var el = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (el) show(el); else hide();
+    });
+    document.addEventListener('scroll', hide, true);
+    document.addEventListener('mousedown', hide, true);
+  })();
+</script>
+<script>
   tailwind.config = {
     theme: { extend: {
       fontFamily: {
@@ -2878,8 +2947,16 @@ PAGE = """<!doctype html>
       // 검수 대상 콘텐츠: 상단 모델→버전 구분 + 필터
       rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '', rawVer: '',
       get rawVersions() { return [...new Set(((this.rawData||{}).items||[]).filter((r) => !this.rawModel || r.model === this.rawModel).map((r) => r.version).filter((v) => v != null))].sort((a,b)=>b-a); },
-      // 결과 비교(양분할): 초안 목록 + 필드 diff
+      // 결과 비교: 요소 단위 모델별 현황 + 콘텐츠별 초안 diff(팝업)
       cmpDraftHash: '', draftsData: null, cmpL: 0, cmpR: 1,
+      cmpModalOpen: false, cmpTitle: '',
+      msData: null, msOn: [],
+      async loadModelStats() {
+        try { const r = await (await fetch('/model-stats', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.msData = r; if (!this.msOn.length) this.msOn = r.models.map((m) => m.model); } } catch (e) {}
+      },
+      toggleMs(m) { const i = this.msOn.indexOf(m); if (i >= 0) this.msOn.splice(i, 1); else this.msOn.push(m); },
+      get msCols() { return (((this.msData||{}).models)||[]).filter((m) => this.msOn.includes(m.model)); },
+      openCmpModal(r) { this.cmpTitle = r.title || '(제목 없음)'; this.cmpDraftHash = r.hash; this.cmpModalOpen = true; this.loadDrafts(); },
       async loadDrafts() {
         this.draftsData = null; this.cmpL = 0; this.cmpR = 1;
         if (!this.cmpDraftHash) return;
@@ -4036,7 +4113,17 @@ PAGE = """<!doctype html>
   .fixelem:hover{border-color:var(--ds-border-input-hover);color:var(--ds-ink)}
   .fixelem.sel{background:#ff4e33;border-color:#ff4e33;color:#fff}
   /* 툴팁: 긴 정의문이 한 줄로 넘쳐 잘리던 것 → 줄바꿈·최대폭으로 감쌈 */
-  [data-tip]::after{white-space:normal;width:max-content;max-width:min(280px,72vw);line-height:1.45;text-align:left;word-break:keep-all}
+  /* 툴팁: DS 가상요소는 overflow 컨테이너에 잘림 → 전역 고정 레이어(#tipfloat)로 대체 */
+  [data-tip]::after,[data-tip]::before{display:none !important}
+  #tipfloat{position:fixed;z-index:120;display:none;background:rgba(17,17,17,.94);color:#fff;font-size:12px;
+    line-height:1.45;padding:7px 10px;border-radius:8px;max-width:min(280px,72vw);word-break:keep-all;
+    pointer-events:none;box-shadow:0 8px 22px -8px rgba(0,0,0,.35)}
+  /* 정렬 원칙: 칩 높이 통일 · 필터바 컨트롤 통일 · 표 셀 수직 중앙 */
+  .srcfilter__chip{display:inline-flex;align-items:center;height:30px;line-height:1}
+  .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .filterbar .field{height:36px}
+  .filterbar input.field{flex:1;min-width:180px}
+  .ds-table td{vertical-align:middle}
   .fbrow__note{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
   /* 프롬프트 스튜디오 · 단계별 모델 지정 */
@@ -5510,80 +5597,83 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대상 콘텐츠(기본) | 결과 비교 ═══ -->
       <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
         <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
-        <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadDash(); loadRaw()">결과 비교</button>
+        <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadModelStats(); loadRaw()">결과 비교</button>
       </div></div>
       <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="ds-pilot w-full">
-        <div x-show="!dashData || !dashData.n" class="ds-empty">
-          <span class="ds-character ds-character--bob" style="width:80px;height:80px"><img src="/vendor/boksil-catcher.svg" alt=""></span>
-          <div class="ds-empty__title">아직 집계할 결과가 없어요</div>
-          <div class="ds-empty__desc"><b>추출 실행</b>에서 추출(엑셀 일괄 권장)을 먼저 실행하세요</div>
-        </div>
-        <div x-show="dashData && dashData.n" class="space-y-4">
-          <section class="panel"><div class="panel-hd"><b>집계</b><span class="meta tnum" x-text="(dashData?dashData.n:0) + '건'"></span><button type="button" class="copybtn" x-on:click="exportDash()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
-            <div class="panel-bd"><div class="ds-stat-grid">
-              <div class="ds-stat"><div class="ds-stat__value ds-stat__value--accent" x-text="(dashData?dashData.gPct:0) + '%'"></div><div class="ds-stat__label">유통 가능 G</div></div>
-              <div class="ds-stat"><div class="ds-stat__value" x-text="dashData?dashData.n:0"></div><div class="ds-stat__label">처리 건수</div></div>
-              <div class="ds-stat"><div class="ds-stat__value" x-text="dashData?dashData.entities:0"></div><div class="ds-stat__label">엔티티 수</div></div>
-              <div class="ds-stat"><div class="ds-stat__value" x-text="dashData?dashData.avgLead:0"></div><div class="ds-stat__label">평균 리드문(자)</div></div>
-            </div></div>
-          </section>
-          <section class="panel"><div class="panel-hd"><b>유통 판정 · 인텐트 분포</b></div>
-            <div class="panel-bd"><div style="display:flex;align-items:center;gap:24px">
-              <div class="ds-ring" x-bind:style="'--ds-ring-size:120px;--ds-ring-pct:'+(dashData?dashData.gPct:0)"><span class="ds-ring__label" x-text="(dashData?dashData.gPct:0)+'%'"></span></div>
-              <div style="min-width:0;flex:1">
-                <template x-for="it in (dashData?dashData.intents:[])" x-bind:key="it.k">
-                  <div class="ds-progress ds-progress--drill" style="margin:11px 0;cursor:pointer" role="button" tabindex="0" x-on:click="drill('intent', it.k)" x-on:keydown.enter="drill('intent', it.k)" data-tip="이 항목의 콘텐츠 보기" data-tip-pos="left"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
+        <div class="space-y-4">
+          <!-- 요소 단위 모델별 결과 현황: 같은 정보요소를 모델 축으로 비교 -->
+          <section class="panel" data-fn><div class="panel-hd"><b>모델별 결과 현황</b><span class="meta">같은 정보요소 · 모델 축 비교</span>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadModelStats()" data-tip="새로고침" data-tip-pos="bottom" aria-label="모델별 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </div>
+            <div class="panel-bd">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+                <template x-for="m in ((msData||{}).models||[])" x-bind:key="m.model">
+                  <button type="button" class="srcfilter__chip" x-bind:class="msOn.includes(m.model) ? 'sel' : ''" x-on:click="toggleMs(m.model)" x-text="m.model + ' (' + m.n + ')'"></button>
                 </template>
               </div>
-            </div></div>
-          </section>
-          <section class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 분포 · 상위</b></div>
-            <div class="panel-bd">
-              <template x-for="it in (dashData?dashData.categories:[])" x-bind:key="it.k">
-                <div class="ds-progress ds-progress--drill" style="margin:11px 0;cursor:pointer" role="button" tabindex="0" x-on:click="drill('category', it.k)" x-on:keydown.enter="drill('category', it.k)" data-tip="이 항목의 콘텐츠 보기" data-tip-pos="left"><div class="ds-progress__head"><span class="ds-progress__label" x-text="it.k"></span><span class="ds-progress__pct" x-text="it.v"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(it.pct,4)+'%'"></div></div></div>
-              </template>
-              <div x-show="dashData && dashData.qualityReasons && dashData.qualityReasons.length" style="margin-top:18px">
-                <span class="ds-hint">품질 사유 상위 (클릭 → 콘텐츠)</span>
-                <div class="flex flex-wrap gap-1.5" style="margin-top:7px">
-                  <template x-for="x in (dashData?dashData.qualityReasons:[])" x-bind:key="x.k">
-                    <span class="ds-badge ds-badge--reason" style="cursor:pointer" role="button" tabindex="0" x-on:click="drill('reason', x.k)" x-on:keydown.enter="drill('reason', x.k)" x-text="x.k + ' (' + x.v + ')'"></span>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </section>
-          <!-- 결과 비교: 같은 콘텐츠의 초안(모델·버전)을 양분할로 비교 · 다른 필드 하이라이트 -->
-          <section class="panel" data-fn><div class="panel-hd"><b>결과 비교</b><span class="meta">같은 콘텐츠 · 초안(모델·버전) 좌우 비교</span></div>
-            <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:10px"><li>콘텐츠를 고르면 보유한 초안(현재 + 재실행 이전)을 <b>좌/우로 비교</b>합니다.</li><li>서로 <b>다른 필드는 색으로 표시</b>됩니다 · 판정은 검수 대상 콘텐츠 표에서 하세요.</li></ul>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-                <select class="field" style="flex:1;min-width:240px;height:36px" x-model="cmpDraftHash" x-on:change="loadDrafts()">
-                  <option value="">콘텐츠 선택…</option>
-                  <template x-for="r in ((rawData||{}).items||[])" x-bind:key="r.hash"><option x-bind:value="r.hash" x-text="r.title || '(제목 없음)'"></option></template>
-                </select>
-                <select class="field" style="width:auto;min-width:170px;height:36px" x-model.number="cmpL" x-show="draftsData && draftsData.items.length">
-                  <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'L'+i"><option x-bind:value="i" x-text="d.label"></option></template>
-                </select>
-                <span class="text-xs text-muted" x-show="draftsData && draftsData.items.length">vs</span>
-                <select class="field" style="width:auto;min-width:170px;height:36px" x-model.number="cmpR" x-show="draftsData && draftsData.items.length">
-                  <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'R'+i"><option x-bind:value="i" x-text="d.label"></option></template>
-                </select>
-              </div>
-              <template x-if="draftPair">
-                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:110px">필드</th><th x-text="draftPair.l.label"></th><th x-text="draftPair.r.label"></th></tr></thead><tbody>
-                  <template x-for="f in draftDiff" x-bind:key="f.k">
-                    <tr x-bind:class="f.diff ? 'is-sel' : ''">
-                      <td class="text-ink"><span x-text="f.k"></span> <span class="ds-badge ds-badge--error" x-show="f.diff" style="margin-left:4px">다름</span></td>
-                      <td class="text-xs" x-text="f.l"></td>
-                      <td class="text-xs" x-text="f.r"></td>
-                    </tr>
-                  </template>
+              <template x-if="msCols.length">
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:130px">정보요소</th>
+                  <template x-for="m in msCols" x-bind:key="'h'+m.model"><th x-text="m.model"></th></template>
+                </tr></thead><tbody>
+                  <tr><td class="text-ink">유통 가능 G</td><template x-for="m in msCols" x-bind:key="'g'+m.model"><td class="tnum" x-text="m.gPct + '%'"></td></template></tr>
+                  <tr><td class="text-ink">처리 건수</td><template x-for="m in msCols" x-bind:key="'n'+m.model"><td class="tnum" x-text="m.n"></td></template></tr>
+                  <tr><td class="text-ink">평균 리드문(자)</td><template x-for="m in msCols" x-bind:key="'l'+m.model"><td class="tnum" x-text="m.avgLead"></td></template></tr>
+                  <tr><td class="text-ink">인텐트 상위</td><template x-for="m in msCols" x-bind:key="'i'+m.model"><td class="text-xs text-muted" x-text="(m.intents||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">카테고리 상위</td><template x-for="m in msCols" x-bind:key="'c'+m.model"><td class="text-xs text-muted" x-text="(m.categories||[]).join(' · ') || '·'"></td></template></tr>
+                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="m in msCols" x-bind:key="'r'+m.model"><td class="text-xs text-muted" x-text="(m.reasons||[]).join(' · ') || '·'"></td></template></tr>
                 </tbody></table></div>
               </template>
-              <div x-show="cmpDraftHash && draftsData && draftsData.items.length < 2" class="text-xs text-muted">비교할 초안이 하나뿐입니다 · <b class="text-ink">콘텐츠 관리 · 다른 모델로 재실행</b>으로 다른 모델 초안을 만들어 보세요</div>
-              <div x-show="!cmpDraftHash" class="text-xs text-muted">콘텐츠를 선택하면 초안 비교가 표시됩니다</div>
+              <div x-show="!msCols.length" class="text-xs text-muted">모델별 결과가 쌓이면 비교가 표시됩니다 · <b class="text-ink">콘텐츠 관리 · 다른 모델로 재실행</b>으로 초안을 만들어 보세요</div>
             </div>
           </section>
+          <!-- 콘텐츠별 결과 비교: 클릭 → 팝업에서 초안(모델·버전) 좌우 비교 -->
+          <section class="panel" data-fn><div class="panel-hd"><b>콘텐츠별 결과 비교</b><span class="meta">콘텐츠 선택 → 팝업에서 초안 좌우 비교</span></div>
+            <div class="panel-bd">
+              <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:150px">현재 모델</th><th style="width:56px">버전</th></tr></thead><tbody>
+                <template x-for="r in ((rawData||{}).items||[])" x-bind:key="'cmp'+r.hash">
+                  <tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openCmpModal(r)" x-on:keydown.enter="openCmpModal(r)" data-tip="초안 비교 팝업 열기" data-tip-pos="top">
+                    <td><span class="ds-badge" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="r.grade||'·'"></span></td>
+                    <td class="text-ink" x-text="r.title || '(제목 없음)'"></td>
+                    <td class="text-muted" x-text="r.service"></td>
+                    <td class="text-xs text-muted tnum" x-text="r.model || '·'"></td>
+                    <td class="text-xs text-muted tnum" x-text="r.version != null ? ('v' + r.version) : '·'"></td>
+                  </tr>
+                </template>
+              </tbody></table>
+              <div x-show="!((rawData||{}).items||[]).length" class="text-xs text-muted" style="padding:10px">데이터가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 추출·인입을 실행하세요</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- 콘텐츠별 초안 비교 팝업 -->
+      <div class="ds-dialog-backdrop" x-show="cmpModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="cmpModalOpen=false" style="z-index:74">
+        <div class="badgemodal" x-show="cmpModalOpen" x-transition style="max-width:860px">
+          <div class="panel-hd" style="border:0;padding:0 0 10px"><b x-text="cmpTitle || '초안 비교'"></b>
+            <button type="button" class="ds-iconbtn ml-auto" x-on:click="cmpModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+            <select class="field" style="width:auto;min-width:180px;height:34px" x-model.number="cmpL" x-show="draftsData && draftsData.items.length">
+              <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'ML'+i"><option x-bind:value="i" x-text="d.label"></option></template>
+            </select>
+            <span class="text-xs text-muted" x-show="draftsData && draftsData.items.length">vs</span>
+            <select class="field" style="width:auto;min-width:180px;height:34px" x-model.number="cmpR" x-show="draftsData && draftsData.items.length">
+              <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'MR'+i"><option x-bind:value="i" x-text="d.label"></option></template>
+            </select>
+          </div>
+          <template x-if="draftPair">
+            <div class="overflow-auto" style="max-height:60vh"><table class="ds-table"><thead><tr><th style="width:100px">필드</th><th x-text="draftPair.l.label"></th><th x-text="draftPair.r.label"></th></tr></thead><tbody>
+              <template x-for="f in draftDiff" x-bind:key="'MF'+f.k">
+                <tr x-bind:class="f.diff ? 'is-sel' : ''">
+                  <td class="text-ink"><span x-text="f.k"></span> <span class="ds-badge ds-badge--error" x-show="f.diff" style="margin-left:4px">다름</span></td>
+                  <td class="text-xs" x-text="f.l"></td>
+                  <td class="text-xs" x-text="f.r"></td>
+                </tr>
+              </template>
+            </tbody></table></div>
+          </template>
+          <div x-show="draftsData && draftsData.items.length < 2" class="text-xs text-muted" style="margin-top:8px">비교할 초안이 하나뿐입니다 · <b class="text-ink">콘텐츠 관리 · 다른 모델로 재실행</b>으로 다른 모델 초안을 만들어 보세요</div>
         </div>
       </div>
 
@@ -6028,11 +6118,11 @@ PAGE = """<!doctype html>
             </div>
             <div class="text-xs text-muted" style="margin-bottom:10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b><span x-show="rawVer" x-text="' · v' + rawVer"></span> 가 초기 판정한 초안 목록입니다 · 검수 합의는 이 모델의 정답셋으로 쌓입니다</div>
             <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-              <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
-              <select class="field" style="width:auto;height:34px" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
-              <select class="field" style="width:auto;height:34px" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
-              <select class="field" style="width:auto;height:34px" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
+            <div class="filterbar">
+              <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
+              <select class="field" style="width:auto" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
+              <select class="field" style="width:auto" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+              <select class="field" style="width:auto" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
             </div>
             <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th></tr></thead><tbody>
@@ -6044,8 +6134,8 @@ PAGE = """<!doctype html>
                     <span class="ds-badge ds-badge--error" style="margin-left:4px" x-show="r.split" data-tip="검수자 의견이 갈림 · 추가 의견 필요" data-tip-pos="top">불일치</span>
                   </td>
                   <td class="text-muted" x-text="r.service"></td>
-                  <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
-                  <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template></td>
+                  <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template><span x-show="!(r.category||[]).length" class="text-xs text-muted">·</span></td>
+                  <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template><span x-show="!(r.reasons||[]).length" class="text-xs text-muted">·</span></td>
                   <td x-on:click.stop>
                     <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="!(r.fb && r.fb.verdict)" x-on:click="openRawDetail(r)">검수하기</button>
                     <span class="text-xs text-muted tnum" x-show="r.fb && r.fb.verdict" style="cursor:pointer" x-on:click="openRawDetail(r)" data-tip="완료 · 클릭하면 상세에서 수정" data-tip-pos="top" x-text="'✓ ' + (r.fb && r.fb.ts ? fmtTs(r.fb.ts) : '완료')"></span>

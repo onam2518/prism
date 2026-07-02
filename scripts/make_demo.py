@@ -151,6 +151,11 @@ DEMO_EXTRAS = {
         {"hash": "q1", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "review_reason": "제목·본문 불일치 확신 낮음", "reviewed": False, "split": False, "confidence": 0.52, "model": "solar-pro3-260323"},
         {"hash": "q2", "service": "뉴스", "title": "연예인 A·B 열애설 보도", "grade": "G", "review_reason": "사생활 보도 경계 사례", "reviewed": True, "split": True, "confidence": 0.66, "model": "solar-pro3-260323"},
         {"hash": "gold:ok:demo1", "service": "뉴스", "title": "국회 예산안 표결 처리", "grade": "G", "review_reason": "", "reviewed": False, "split": False, "confidence": None, "model": "solar-pro3-260323"}]},
+    "mstats": {"ok": True, "models": [
+        {"model": "solar-pro3-260323", "n": 9, "gPct": 89, "avgLead": 39,
+         "intents": ["사건 경과 보도 (5)", "분석·해설 (4)"], "categories": ["News and Politics (5)", "Business and Finance (3)"], "reasons": ["clickbait (1)"]},
+        {"model": "gpt-5.4-mini", "n": 3, "gPct": 67, "avgLead": 34,
+         "intents": ["흥미·화제 (2)"], "categories": ["Entertainment (2)"], "reasons": ["clickbait (1)"]}]},
     "drafts": {"ok": True, "n": 2, "items": [
         {"label": "solar-pro3-260323 · v2 (현재)", "model": "solar-pro3-260323", "version": 2,
          "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]},
@@ -275,6 +280,7 @@ STUB = """<script>
       if (u.indexOf('/eval-golden') > -1) return Promise.resolve(J(EX.evalg));
       if (u.indexOf('/raw') > -1) return Promise.resolve(J(EX.raw));
       if (u.indexOf('/drafts') > -1) return Promise.resolve(J(EX.drafts));
+      if (u.indexOf('/model-stats') > -1) return Promise.resolve(J(EX.mstats));
       if (u.indexOf('/patch-meta') > -1 || u.indexOf('/feedback') > -1) return Promise.resolve(J({ ok: true, feedback: { total: 62, good: 48, bad: 14, learned: 9, contents: 12, reviewers: 3, split: 3 } }));
       if (u.indexOf('/reap') > -1) return Promise.resolve(J({ ok: true, items: [] }));
       if (u.indexOf('/queue') > -1) return Promise.resolve(J(EX.rqueue));
