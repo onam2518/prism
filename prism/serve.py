@@ -1238,24 +1238,25 @@ def admin_emails() -> set:
     return {e.strip().lower() for e in raw.replace("\n", ",").split(",") if e.strip()}
 
 
-def is_admin_user(uid, team, email="") -> bool:
-    """관리자 판정. 허용목록이 설정돼 있으면 '그 이메일만'(엄격) · 팀 생성자·위임 로직 무시.
-    허용목록 미설정 시 기존 로직(팀 생성자 OR is_admin 위임)."""
-    allow = admin_emails()
-    if allow:
-        return bool(email and email.strip().lower() in allow)
+def _team_admin(uid, team) -> bool:
+    """팀 관리자(생성자 OR is_admin 위임) 판정."""
     st = get_store()
     return bool(st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team))
 
 
 def is_sys_admin_user(uid, team, email="") -> bool:
-    """운영(시스템) 관리자: 허용목록(~/.prism_admin_emails) 이메일만.
-    허용목록 미설정 시 기존 관리자 로직으로 폴백(단독 운영 호환).
-    팀 관리자(생성자·위임)는 '팀 관리'만 담당하고 시스템 메뉴는 운영 관리자 전용."""
+    """운영(시스템) 관리자 = 허용목록(~/.prism_admin_emails) 이메일. 팀 소속과 무관.
+    허용목록 미설정 시 팀 관리자 로직으로 폴백(단독 운영 호환)."""
     allow = admin_emails()
     if allow:
         return bool(email and email.strip().lower() in allow)
-    return is_admin_user(uid, team, email)
+    return _team_admin(uid, team)
+
+
+def is_admin_user(uid, team, email="") -> bool:
+    """관리자(팀 관리 접근) = 운영 관리자 OR 팀 관리자(생성자·위임).
+    권한 2단계: 팀 관리자는 '팀 관리'만 추가, 나머지 관리자 메뉴는 운영 관리자 전용."""
+    return is_sys_admin_user(uid, team, email) or _team_admin(uid, team)
 
 
 def register_reviewer(data: dict) -> dict:
@@ -1878,10 +1879,12 @@ def meta_compile_run(team=None) -> dict:
 
 
 def admin_data(uid, team, email="") -> dict:
-    """팀 관리: 팀 정보·멤버·관리자 여부. supabase 전용."""
+    """팀 관리: 팀 정보·멤버·관리자 여부. supabase 전용.
+    팀 미소속이어도 운영 관리자(허용목록)는 isSysAdmin/isAdmin 을 내려 관리자 메뉴가 열리게 한다."""
     st = get_store()
     if not (st and team and hasattr(st, "team_members")):
-        return {"ok": False, "isAdmin": False, "team": None, "members": []}
+        sysadm = is_sys_admin_user(uid, team, email)
+        return {"ok": False, "isAdmin": sysadm, "isSysAdmin": sysadm, "team": None, "members": []}
     gc = st.golden_count(team) if hasattr(st, "golden_count") else 0
     return {"ok": True, "isAdmin": is_admin_user(uid, team, email),
             "isSysAdmin": is_sys_admin_user(uid, team, email),
