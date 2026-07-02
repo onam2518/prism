@@ -4237,8 +4237,8 @@ PAGE = """<!doctype html>
     font-size:13.5px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
   .subhd .meta{font-family:var(--ds-font-sans);font-size:11.5px;font-weight:500;color:var(--ds-muted)}
   .abbar{display:flex;align-items:center;gap:8px;min-width:160px}
-  .abbar__track{flex:1;height:6px;border-radius:99px;background:var(--ds-hairline-soft,rgba(0,0,0,.06));overflow:hidden}
-  .abbar__fill{height:100%;border-radius:99px;background:var(--ds-violet,#1e84ff)}
+  .abbar__track{display:block;flex:1;height:6px;border-radius:99px;background:var(--ds-hairline-soft,rgba(0,0,0,.06));overflow:hidden}
+  .abbar__fill{display:block;height:100%;border-radius:99px;background:var(--ds-violet,#1e84ff);transition:width var(--ds-motion-fast,.2s)}
   .abbar--b .abbar__fill{background:#ff6a3d}
   .abwin{font-size:10.5px;font-weight:800;color:var(--ds-success,#18ba45)}
   .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
@@ -5745,7 +5745,7 @@ PAGE = """<!doctype html>
         <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
         <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadModelStats(); loadRaw()">결과 비교</button>
       </div></div>
-      <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="ds-pilot w-full">
+      <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="w-full">
         <div class="space-y-4">
           <!-- 요소 단위 모델별 결과 현황: 같은 정보요소를 모델 축으로 비교 -->
           <!-- A/B 선택: 비교할 모델과 버전 지정(별도 패널 · abslot 디자인) -->
