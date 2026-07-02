@@ -3120,6 +3120,9 @@ PAGE = """<!doctype html>
           // 시스템 설정: 데이터 관리(상단) + API 키·모델(하단) 통합 · 운영 관리자 전용
           { id: 'system', label: '시스템 설정', ic: 'system', cond: 'sysadmin' } ] },
       ],
+      get verTxt() {                         // 현재 프롬프트 버전(v=학습 반영 회차+1) · 미확정은 '-'
+        return (this.goldenStatus && this.goldenStatus.batch_seq != null) ? ('v' + (this.goldenStatus.batch_seq + 1)) : '-';
+      },
       navVisible(c) {                        // 메뉴 노출 판정: admin=팀 관리자 이상 · sysadmin=운영 관리자
         if (!c) return true;
         if (c === 'admin') return this.backend !== 'supabase' || (this.adminData && this.adminData.isAdmin);
@@ -5934,7 +5937,7 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'content'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>추가된 콘텐츠(자동·수동 불문)에 <b>모델을 실행</b>해 검수용 초안을 만듭니다 · 여기는 <b>수동 실행</b>입니다.</li>
-          <li>실행 결과는 <b>버전 v(학습 반영 회차+1)</b> 로 기록됩니다 · 현재 다음 실행 버전: <b class="text-ink tnum" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></b></li>
+          <li>실행 결과는 <b>버전 v(학습 반영 회차+1)</b> 로 기록됩니다 · 현재 다음 실행 버전: <b class="text-ink tnum" x-text="verTxt"></b></li>
           <li><b>자동 프로세스</b>: 학습 반영(매일 04:00)이 끝나면 개선된 프롬프트의 새 버전으로 <b>자동 재실행</b>되도록 설정할 수 있습니다(설정 auto_rerun_after_batch · 기본 꺼짐, 비용 발생).</li>
         </ul>
         <!-- 같은 콘텐츠를 다른 모델로 재실행(초안 재생성 · 이전 초안은 이력 보존 후 덮어씀) -->
@@ -6266,7 +6269,7 @@ PAGE = """<!doctype html>
                 <span class="selctl" data-tip="정답셋과 비교할 대상 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">기준 모델</span>
                   <select class="field" x-model="evalModel"><option value="">현재 설정 모델</option><template x-for="m in availableModels" x-bind:key="'ev'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
                 <span class="selctl" data-tip="프롬프트 버전 = 학습 반영 회차 + 1 · 평가는 항상 현재 버전으로 실행됩니다" data-tip-pos="bottom"><span class="selctl__lbl">프롬프트 버전</span>
-                  <b class="tnum" style="padding:0 8px;font-size:13px" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></b></span>
+                  <b class="tnum" style="padding:0 8px;font-size:13px;height:30px;display:inline-flex;align-items:center" x-text="verTxt"></b></span>
                 <span style="display:flex;gap:6px;align-items:center;margin-left:6px"><span class="selctl__lbl">대상 콘텐츠</span>
                   <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='all' ? 'sel' : ''" x-on:click="evalScope='all'">전체 정답셋</button>
                   <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='eval' ? 'sel' : ''" x-on:click="evalScope='eval'">평가용만</button>
@@ -6370,7 +6373,7 @@ PAGE = """<!doctype html>
       <!-- 테스트셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
       <div x-show="mod === 'testset' && testTab === 'status'" x-cloak class="w-full space-y-4">
           <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
-          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다 · 현재 프롬프트 <span class="tnum" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></span></span>
+          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다 · 현재 프롬프트 <span class="tnum" x-text="verTxt"></span></span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenStatus()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
             <div class="panel-bd">
@@ -6969,7 +6972,7 @@ PAGE = """<!doctype html>
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>각 단계의 <b>원천 프롬프트</b>를 아래 <b>코드블록</b>에서 직접 수정합니다(관리자 전용).</li>
           <li>단계마다 <b>모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 <b>모델별로 분기 저장</b>됩니다.</li>
-          <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="'v' + ((goldenStatus && goldenStatus.batch_seq != null) ? (goldenStatus.batch_seq + 1) : '?')"></b> · 지금 저장하면 이 버전의 실행에 반영됩니다.</li>
+          <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="verTxt"></b> · 지금 저장하면 이 버전의 실행에 반영됩니다.</li>
           <li>보완은 <b>테스트셋 생성 · 콘텐츠 검수</b>의 교정 피드백이 자동 반영됩니다.</li>
         </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
