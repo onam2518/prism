@@ -3335,7 +3335,7 @@ PAGE = """<!doctype html>
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드(팀 관리자)', system: '데이터 관리 + API 키·모델 설정(운영 관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류' };
+        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드(팀 관리자)', system: '데이터 관리 + API 키·모델 설정(운영 관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류', create: '검수 대상 콘텐츠를 판정·교정하고 결과를 모델·버전으로 비교합니다', evaluate: '정답셋 기준 평가 실행 · 불일치 건별 판정 · 모델별 A/B 비교', content: '콘텐츠 추가(수동·자동) → 모델 실행 → 실행 큐 · 용도(검수/평가) 지정', testset: '정답셋 현황·학습 반영 · 정답셋 목록 · 학습 데이터 추출', lab: '지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -5202,7 +5202,6 @@ PAGE = """<!doctype html>
       <a href="/report" target="_blank" rel="noreferrer" class="ds-iconbtn ds-iconbtn--bordered" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></a>
       <button type="button" x-show="false" x-on:click.stop="addMenuOpen = !addMenuOpen" class="ds-iconbtn ds-iconbtn--bordered" data-tip="위젯 추가" data-tip-pos="bottom" aria-label="위젯 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
       <button type="button" x-show="false" x-on:click="editing = !editing" x-bind:class="editing ? 'ds-iconbtn ds-iconbtn--bordered ds-iconbtn--active' : 'ds-iconbtn ds-iconbtn--bordered'" x-bind:data-tip="editing ? '편집 완료' : '편집'" data-tip-pos="bottom" aria-label="편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
-      <button type="button" x-show="navVisible('sysadmin')" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="selectMod('system')" data-tip="시스템 설정" data-tip-pos="bottom" aria-label="시스템 설정"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg></button>
       <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="toggleTheme()" x-bind:data-tip="theme === 'dark' ? '라이트 모드' : '다크 모드'" data-tip-pos="bottom" aria-label="테마 전환">
         <svg x-show="theme !== 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         <svg x-show="theme === 'dark'" x-cloak width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -5776,7 +5775,7 @@ PAGE = """<!doctype html>
                     <tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="left">
                       <td class="text-ink" x-text="it.title || '·'"></td>
                       <td x-text="it.summary || '·'"></td>
-                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="!(it.entities||[]).length">·</span></div></td>
+                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="!(it.entities||[]).length">·</span></div></td>
                       <td><span class="ds-badge ds-badge--neutral" x-bind:class="it.grade === 'G' ? 'ds-badge--success' : 'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="it.grade || '·'"></span></span></td>
                     </tr>
                   </template>
@@ -5813,21 +5812,21 @@ PAGE = """<!doctype html>
             <div class="drow">
               <div class="k">엔티티</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="ds-badge ds-badge--entity" x-text="x"></span></template>
+                <template x-for="x in (im.entities || [])" x-bind:key="x"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', x)" data-tip-pos="top" x-text="x"></span></template>
                 <span x-show="!(im.entities || []).length" class="text-xs text-muted">·</span>
               </div>
             </div>
             <div class="drow">
               <div class="k">인텐트</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="ds-badge ds-badge--intent" x-text="x"></span></template>
+                <template x-for="x in (im.intent || [])" x-bind:key="x"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', x)" data-tip-pos="top" x-text="x"></span></template>
                 <span x-show="!(im.intent || []).length" class="text-xs text-muted">·</span>
               </div>
             </div>
             <div class="drow">
               <div class="k">콘텐츠 카테고리</div>
               <div class="v flex flex-wrap gap-1.5">
-                <template x-for="x in contentCats" x-bind:key="x"><span class="ds-badge ds-badge--category" x-text="x"></span></template>
+                <template x-for="x in contentCats" x-bind:key="x"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', x)" data-tip-pos="top" x-text="x"></span></template>
                 <span x-show="!contentCats.length" class="text-xs text-muted">·</span>
               </div>
             </div>
@@ -6007,9 +6006,9 @@ PAGE = """<!doctype html>
                     </span></td></template></tr>
                   <tr><td class="text-ink">처리 건수</td><template x-for="(m,mi) in abCols" x-bind:key="'n'+mi"><td><b class="tnum" x-text="m.n"></b> <span class="abwin" x-show="abWin('n', mi)">▲</span></td></template></tr>
                   <tr><td class="text-ink">평균 리드문(자)</td><template x-for="(m,mi) in abCols" x-bind:key="'l'+mi"><td class="tnum" x-text="m.avgLead"></td></template></tr>
-                  <tr><td class="text-ink">인텐트 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'i'+mi"><td><template x-for="t in (m.intents||[])" x-bind:key="'it'+mi+t"><span class="ds-badge ds-badge--intent" style="margin:1px" x-text="t"></span></template><span x-show="!(m.intents||[]).length" class="text-xs text-muted">·</span></td></template></tr>
-                  <tr><td class="text-ink">카테고리 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'c'+mi"><td><template x-for="t in (m.categories||[])" x-bind:key="'ct'+mi+t"><span class="ds-badge ds-badge--category" style="margin:1px" x-text="t"></span></template><span x-show="!(m.categories||[]).length" class="text-xs text-muted">·</span></td></template></tr>
-                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'r'+mi"><td><template x-for="t in (m.reasons||[])" x-bind:key="'rt'+mi+t"><span class="ds-badge ds-badge--reason" style="margin:1px" x-text="t"></span></template><span x-show="!(m.reasons||[]).length" class="text-xs text-muted">·</span></td></template></tr>
+                  <tr><td class="text-ink">인텐트 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'i'+mi"><td><template x-for="t in (m.intents||[])" x-bind:key="'it'+mi+t"><span class="ds-badge ds-badge--intent" style="margin:1px;cursor:help" x-bind:data-tip="termDef('intent', t)" data-tip-pos="top" x-text="t"></span></template><span x-show="!(m.intents||[]).length" class="text-xs text-muted">·</span></td></template></tr>
+                  <tr><td class="text-ink">카테고리 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'c'+mi"><td><template x-for="t in (m.categories||[])" x-bind:key="'ct'+mi+t"><span class="ds-badge ds-badge--category" style="margin:1px;cursor:help" x-bind:data-tip="termDef('category', t)" data-tip-pos="top" x-text="t"></span></template><span x-show="!(m.categories||[]).length" class="text-xs text-muted">·</span></td></template></tr>
+                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'r'+mi"><td><template x-for="t in (m.reasons||[])" x-bind:key="'rt'+mi+t"><span class="ds-badge ds-badge--reason" style="margin:1px;cursor:help" x-bind:data-tip="termDef('reason', t)" data-tip-pos="top" x-text="t"></span></template><span x-show="!(m.reasons||[]).length" class="text-xs text-muted">·</span></td></template></tr>
                 </tbody></table></div>
               </template>
               <div x-show="!abCols.length" class="text-xs text-muted" style="margin:0 16px 10px">모델·버전 결과가 쌓이면 A/B 비교가 표시됩니다 · <b class="text-ink">콘텐츠 관리 · 모델 실행</b>으로 초안을 만들어 보세요</div>
@@ -6091,12 +6090,12 @@ PAGE = """<!doctype html>
           </div><div class="panel-bd">
             <div class="drow"><div class="k">검수</div><div class="v text-sm text-body" x-text="(qm.review || 'auto') + (qm.confidence != null ? (' · conf ' + qm.confidence) : '')"></div></div>
             <div class="drow"><div class="k">품질 사유</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="ds-badge ds-badge--category" x-text="r"></span></template>
+              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', r)" data-tip-pos="top" x-text="r"></span></template>
               <span x-show="!(qm.reasons || []).length" class="text-xs text-muted">없음(통과)</span>
             </div></div>
             <div class="drow"><div class="k">법령</div><div class="v">
               <span class="text-sm text-body" x-text="lm.enabled ? ('대표등급 ' + lm.representative_grade + ' · ' + lm.representative_score) : '법령 필터 비활성(옵션)'"></span>
-              <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="h in (lm.harm_types || [])" x-bind:key="h.code"><span class="ds-badge ds-badge--intent" x-text="h.code + ' · ' + h.grade"></span></template></div>
+              <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="h in (lm.harm_types || [])" x-bind:key="h.code"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="'유해 유형 코드 ' + h.code + ' · 판정 등급 ' + h.grade" data-tip-pos="top" x-text="h.code + ' · ' + h.grade"></span></template></div>
             </div></div>
           </div></div>
         </div>
@@ -6140,7 +6139,7 @@ PAGE = """<!doctype html>
           <div class="panel"><div class="panel-hd"><b>인텐트 · 범용(8)</b>
             <button type="button" class="copybtn" x-on:click="startEdit('intent_universal', null, dictData.intentUniversal, 'list', '인텐트 범용')">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="i"></span></template>
+            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
           </div></div>
           <div class="panel"><div class="panel-hd"><b>인텐트 · 서비스별</b>
             <select x-model="dictGroup" class="field" style="width:auto;height:32px;padding:0 28px 0 10px">
@@ -6148,7 +6147,7 @@ PAGE = """<!doctype html>
             </select>
             <button type="button" class="copybtn" x-on:click="startEdit('intent_by_service', dictGroup, (dictData.intentByService[dictGroup]||[]), 'list', '인텐트 · ' + dictGroup)">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="i"></span></template>
+            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
             <span x-show="!(dictData && dictData.intentByService[dictGroup] && dictData.intentByService[dictGroup].length)" class="text-xs text-muted">항목 없음</span>
           </div></div>
           <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span>
@@ -6159,7 +6158,7 @@ PAGE = """<!doctype html>
                 <tr>
                   <td class="text-ink" style="font-weight:600;vertical-align:top" x-text="c"></td>
                   <td><div class="flex flex-wrap gap-1.5">
-                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" x-text="t2"></span></template>
+                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', t2)" data-tip-pos="top" x-text="t2"></span></template>
                     <span x-show="!(dictData && dictData.tier2[c] && dictData.tier2[c].length)" class="text-xs text-muted">항목 없음</span>
                   </div></td>
                   <td style="vertical-align:top"><button type="button" class="copybtn" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button></td>
@@ -6228,7 +6227,7 @@ PAGE = """<!doctype html>
                 <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="ds-badge ds-badge--neutral" x-bind:class="v==='고'?'ds-badge--entity':(v==='중'?'ds-badge--intent':'ds-badge--category')" x-text="k + ' (' + v + ')'"></span></template>
               </div></div>
               <div class="drow"><div class="k">선호 엔티티</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="ds-badge ds-badge--entity" x-text="e[0]"></span></template>
+                <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e[0])" data-tip-pos="top" x-text="e[0]"></span></template>
                 <span x-show="!(u.affinity_entities||[]).length" class="text-xs text-muted">·</span>
               </div></div>
             </div></div>
@@ -6651,7 +6650,7 @@ PAGE = """<!doctype html>
                 <span class="lb-av" data-tier="0"><img x-bind:src="charImg(m.avatar)" alt=""></span>
                 <span class="lb-name"><span x-text="m.name"></span>
                   <span x-show="adminData.team && m.id===adminData.team.created_by" class="ds-badge ds-badge--status" style="margin-left:6px">생성자</span>
-                  <span x-show="m.is_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--intent" style="margin-left:6px">관리자</span>
+                  <span x-show="m.is_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--intent" style="margin-left:6px;cursor:help" data-tip="위임된 팀 관리자 · 팀 관리 메뉴 사용 가능" data-tip-pos="top">관리자</span>
                 </span>
                 <template x-if="adminData&&adminData.isAdmin && adminData.team && m.id!==adminData.team.created_by">
                   <span style="display:flex;gap:6px">
@@ -6821,10 +6820,10 @@ PAGE = """<!doctype html>
                         <div class="charcard__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
                       </div>
                       <div class="charcard__stats">
-                        <div><b class="tnum" x-text="arenaMe.reviews"></b><span>검수</span></div>
-                        <div><b class="tnum" x-text="arenaMe.corrections"></b><span>개선 🏅</span></div>
-                        <div><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>🔥 스트릭</span></div>
-                        <div data-tip="골드 문항(정답 알려진 검증 문항) 정확도 · 점수 배율에 반영" data-tip-pos="top"><b class="tnum" x-text="(arenaMe.gold_n||0) >= 5 ? pctTxt(arenaMe.gold_acc) : '·'"></b><span>🥇 골드</span></div>
+                        <div style="cursor:help" data-tip="내가 판정한 콘텐츠 수" data-tip-pos="top"><b class="tnum" x-text="arenaMe.reviews"></b><span>검수</span></div>
+                        <div style="cursor:help" data-tip="교정(수정 제안) 제출 수" data-tip-pos="top"><b class="tnum" x-text="arenaMe.corrections"></b><span>개선</span></div>
+                        <div style="cursor:help" data-tip="연속 검수 일수" data-tip-pos="top"><b class="tnum" x-text="(arenaMe.streak||0)+'일'"></b><span>스트릭</span></div>
+                        <div style="cursor:help" data-tip="골드 문항(정답 알려진 검증 문항) 정확도 · 점수 배율에 반영" data-tip-pos="top"><b class="tnum" x-text="(arenaMe.gold_n||0) >= 5 ? pctTxt(arenaMe.gold_acc) : '·'"></b><span>골드</span></div>
                       </div>
                       <!-- 오늘의 미션: 서버 판정·보상(달성 시 보너스 1회 지급) -->
                       <template x-if="missionList.length">
@@ -6977,7 +6976,7 @@ PAGE = """<!doctype html>
               <li><b>식별 표준</b>: C2PA(자격 증명) · SynthID(워터마크).</li>
               <li>발행자 정보로 <b>PGC/UGC 1차 식별</b>.</li>
             </ul>
-            <div class="flex flex-wrap gap-1.5"><span class="ds-badge ds-badge--category">PGC 기존 미디어</span><span class="ds-badge ds-badge--category">UGC 사용자 생성</span><span class="ds-badge ds-badge--category">AIGC AI 생성</span><span class="ds-badge ds-badge--category">AIEC AI 보정</span></div>
+            <div class="flex flex-wrap gap-1.5"><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="기존 미디어(언론·방송)가 제작한 콘텐츠" data-tip-pos="top">PGC 기존 미디어</span><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="일반 사용자가 만든 콘텐츠" data-tip-pos="top">UGC 사용자 생성</span><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="AI 가 생성한 콘텐츠" data-tip-pos="top">AIGC AI 생성</span><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="AI 로 보정·편집된 콘텐츠" data-tip-pos="top">AIEC AI 보정</span></div>
           </div>
         </div>
       </div>
@@ -7058,7 +7057,7 @@ PAGE = """<!doctype html>
         </div>
         <div class="detailview__eval">
           <div x-show="detail && detail.grade" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
-          <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="right" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">카테고리</div>
             <div class="flex flex-wrap gap-1 items-center">
