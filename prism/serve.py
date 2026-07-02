@@ -2576,8 +2576,7 @@ PAGE = """<!doctype html>
       activeTabId: 'image',
       // 위젯 홈 셸 · 홈(캔버스) + 카테고리 내비
       mod: 'home',
-      dashTop: 'content',   // 현황 대시보드 상위 탭: content | user
-      evalTop: 'queue',     // 검수 및 평가 탭: queue(검수 대기) | create(골든셋 생성) | eval(골든셋 평가) | raw(테스트·로우 데이터)
+      dashTop: 'content',   // (구 현황 대시보드 잔여 상태 · 위젯 홈 호환용)
       drillOpen: false, drillData: null, drillBusy: false,  // 대시보드 드릴다운
       detailOpen: false, detail: null,   // 콘텐츠 상세(공통 컴포넌트): 좌 원문 렌더 · 우 평가
       badgeToast: null,   // 배지 달성 축하 오버레이
@@ -2601,10 +2600,11 @@ PAGE = """<!doctype html>
         admin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M3 20a6 6 0 0 1 12 0M16 7l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         arena: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0V4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18 5h2.5a2 2 0 0 1 0 4H18M6 5H3.5a2 2 0 0 0 0 4H6" stroke="currentColor" stroke-width="1.6"/></svg>',
       },
+      // 멤버 메뉴는 둘: 테스트셋 생성(검수·합의로 정답 축적) / 평가(정합성·모델 비교)
       mods: [
-        { g: '현황 · 평가', items: [
-          { id: 'dash', label: '현황 대시보드', ic: 'dash' },
-          { id: 'eval', label: '검수 및 평가', ic: 'eval' } ] },
+        { g: '테스트셋 · 평가', items: [
+          { id: 'create', label: '테스트셋 생성', ic: 'eval' },
+          { id: 'evaluate', label: '평가', ic: 'dash' } ] },
         // 콘텐츠 인입(수동·자동·실행 큐)은 '콘텐츠 관리' 단일 메뉴로 통합 · 전부 관리자 통제
         { g: '관리자', gcond: 'admin', items: [
           { id: 'content', label: '콘텐츠 관리', ic: 'intake' },
@@ -2613,6 +2613,9 @@ PAGE = """<!doctype html>
           { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' } ] },
       ],
       contentTab: 'queue',                    // 콘텐츠 관리 홈 탭 = 실행 큐(자동/수동 구분)
+      createTab: 'golden',                    // 테스트셋 생성: golden(현황) | queue(검수 대기) | review(콘텐츠 검수) | insight(분석)
+      reviewView: 'edit',                     // 콘텐츠 검수 접근 방식(편의성): edit(결과 보며 수정) | raw(로우 목록)
+      insightTab: 'quality',                  // 분석: quality(품질·법령) | topic(토픽) | user(사용자)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
       // 위젯 홈 인터랙션 상태
@@ -2732,16 +2735,19 @@ PAGE = """<!doctype html>
       },
       selectMod(id) {
         this.mod = id; this.status = ''; this.addMenuOpen = false;
-        if (id === 'run' || id === 'auto' || id === 'queue' || id === 'intake') { this.contentTab = id; id = 'content'; }   // 구 메뉴 id 호환
+        // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 대시보드/검수/분석 → 테스트셋 생성 · 평가
+        if (id === 'run' || id === 'auto' || id === 'queue' || id === 'intake') { this.contentTab = id; id = 'content'; }
+        if (id === 'dash') { id = 'create'; this.createTab = 'review'; }
+        if (id === 'review') { id = 'create'; this.createTab = 'queue'; }
+        if (id === 'quality') { id = 'create'; this.createTab = 'insight'; this.insightTab = 'quality'; }
+        if (id === 'user') { id = 'create'; this.createTab = 'insight'; this.insightTab = 'user'; }
+        if (id === 'eval') id = 'evaluate';
         if (id === 'home') { this.loadArena(); this.loadDash(); }
-        else if (id === 'dash') { this.loadDash(); this.loadTopics(); this.loadUser(); }
-        else if (id === 'eval') { this.loadDash(); this.loadQueue(); this.loadGoldenStatus(); }
-        else if (id === 'review') this.loadQueue();
+        else if (id === 'create') { this.loadDash(); this.loadQueue(); this.loadGoldenStatus(); this.loadTopics(); this.loadUser(); }
+        else if (id === 'evaluate') this.loadGoldenStatus();
         else if (id === 'arena') this.loadArena();
         else if (id === 'admin') this.loadAdmin();
-        else if (id === 'quality') this.loadTopics();
         else if (id === 'dict') this.loadDict();
-        else if (id === 'user') this.loadUser();
         else if (id === 'prompt') this.loadPromptDefaults();
         if (id === 'content') { this.loadDash(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
       },
@@ -2820,6 +2826,8 @@ PAGE = """<!doctype html>
           return '품질 사유 · ' + val;
         }
         if (kind === 'category') return '콘텐츠 카테고리 · ' + val;
+        if (kind === 'grade') return val === 'G' ? '등급 G · 유통 가능' : val === 'R' ? '등급 R · 유통 제외(문제 사유 있음)' : '등급 미판정';
+        if (kind === 'entity') return '핵심 개체(인물·기관·작품 등) · ' + val;
         return val;
       },
       // 수정 대상 요소(파이프라인 단계 대신 '무엇을 고칠지'로 직관화). 각 요소 → 학습 단계 매핑.
@@ -3202,7 +3210,7 @@ PAGE = """<!doctype html>
       get todayMission() {
         const q = (this.arenaData && this.arenaData.queue) || 0;
         if (q > 0) return { txt: '검수 대기 ' + q + '건 · 지금 검수하면 스트릭 유지 🔥', to: 'review', cta: '검수하기' };
-        return { txt: '검수 대기 비었음 · 골든셋 평가로 정합성 점검', to: 'eval', cta: '평가' };
+        return { txt: '검수 대기 비었음 · 정답 일치율 점검하기', to: 'evaluate', cta: '평가' };
       },
       xpPct(r) { return r ? (r.points % 100) : 0; },                 // 레벨당 100pt
       xpToNext(r) { return r ? (r.level * 100 - r.points) : 0; },
@@ -3214,7 +3222,7 @@ PAGE = """<!doctype html>
         if (r && r.gold) {                              // 골드 문항: 응답 후 정오답 공개(즉시 학습 피드백)
           it.reviewed = true; it.myVerdict = verdict; it.goldRevealed = true; it.goldCorrect = !!r.gold.correct;
           if (r.gold.correct) this.celebratePoints(10, '골드 문항 정답');
-          else this.liveToast('골드 문항 · 정답과 달랐습니다(품질 배율에 반영)');
+          else this.liveToast('골드 문항 · 정답과 달랐어요(품질 점수에 반영)');
           return;
         }
         if (r && r.error) { this._err(r.error); return; }
@@ -4078,10 +4086,13 @@ PAGE = """<!doctype html>
   .evaltabs button.sel::after{content:"";position:absolute;left:10px;right:10px;bottom:-1.5px;height:2.5px;
     background:var(--ds-primary);border-radius:3px 3px 0 0}
   .evaltabs--sub button{background:none;border-radius:8px 8px 0 0}
-  .goldgrid{display:flex;align-items:center;gap:24px;margin-top:16px;flex-wrap:wrap}
+  /* 스탯 클러스터 정렬 규칙(전 카드 공통): 숫자 line-height 1 + 라벨 동일 크기·간격 → 하단 기준선 정렬 */
+  .goldgrid{display:flex;align-items:flex-end;gap:28px;margin-top:16px;flex-wrap:wrap}
   .goldbig__v{font-size:42px;font-weight:800;color:var(--ds-violet,#1e84ff);line-height:1}
-  .goldbig__l{font-size:11px;color:var(--ds-muted);margin-top:3px}
-  .goldstat{display:flex;flex-direction:column} .goldstat b{font-size:20px;font-weight:800;color:var(--ds-ink)} .goldstat span{font-size:10.5px;color:var(--ds-muted)}
+  .goldbig__l{font-size:11px;color:var(--ds-muted);margin-top:6px;line-height:1.4}
+  .goldstat{display:flex;flex-direction:column}
+  .goldstat b{font-size:20px;font-weight:800;color:var(--ds-ink);line-height:1}
+  .goldstat span{font-size:11px;color:var(--ds-muted);margin-top:6px;line-height:1.4}
   .metarow{display:flex;gap:10px;padding:11px 6px;border-bottom:1px solid var(--ds-hairline-soft)}
   .metarow__dir{font-size:13px;color:var(--ds-ink);line-height:1.55}
   .metarow__amb{font-size:11.5px;color:#ff4e33;margin-top:4px;line-height:1.5}
@@ -5160,9 +5171,24 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
-      <div x-show="mod === 'dash'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs"><button type="button" x-bind:class="dashTop==='content'?'sel':''" x-on:click="dashTop='content'">콘텐츠</button><button type="button" x-bind:class="dashTop==='user'?'sel':''" x-on:click="dashTop='user'">사용자</button></div></div>
-      <div x-show="mod === 'dash' && dashTop === 'content'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs evaltabs--sub"><button type="button" x-bind:class="dashSub==='batch'?'sel':''" x-on:click="dashSub='batch'">배치 결과</button><button type="button" x-bind:class="dashSub==='quality'?'sel':''" x-on:click="dashSub='quality'">품질 · 법령</button><button type="button" x-bind:class="dashSub==='topic'?'sel':''" x-on:click="dashSub='topic'">토픽</button></div></div>
-      <div x-show="mod === 'dash' && dashTop === 'content' && dashSub === 'batch'" x-cloak class="ds-pilot w-full">
+      <!-- ═══ 모듈: 테스트셋 생성 · 탭: 현황(골든) | 검수 대기 | 콘텐츠 검수(결과/로우 토글) | 분석 ═══ -->
+      <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
+        <button type="button" x-bind:class="createTab==='golden'?'sel':''" x-on:click="createTab='golden'; loadGoldenStatus()">현황</button>
+        <button type="button" x-bind:class="createTab==='queue'?'sel':''" x-on:click="createTab='queue'; loadQueue()">검수 대기</button>
+        <button type="button" x-bind:class="createTab==='review'?'sel':''" x-on:click="createTab='review'; loadDash()">콘텐츠 검수</button>
+        <button type="button" x-bind:class="createTab==='insight'?'sel':''" x-on:click="createTab='insight'">분석</button>
+      </div></div>
+      <!-- 접근 방식(편의성): 결과 보며 수정 vs 로우 목록 -->
+      <div x-show="mod === 'create' && createTab === 'review'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs evaltabs--sub">
+        <button type="button" x-bind:class="reviewView==='edit'?'sel':''" x-on:click="reviewView='edit'">결과 보며 수정</button>
+        <button type="button" x-bind:class="reviewView==='raw'?'sel':''" x-on:click="reviewView='raw'; loadRaw()">원본 목록</button>
+      </div></div>
+      <div x-show="mod === 'create' && createTab === 'insight'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs evaltabs--sub">
+        <button type="button" x-bind:class="insightTab==='quality'?'sel':''" x-on:click="insightTab='quality'">품질 · 법령</button>
+        <button type="button" x-bind:class="insightTab==='topic'?'sel':''" x-on:click="insightTab='topic'; loadTopics()">토픽</button>
+        <button type="button" x-bind:class="insightTab==='user'?'sel':''" x-on:click="insightTab='user'; loadUser()">사용자</button>
+      </div></div>
+      <div x-show="mod === 'create' && createTab === 'review' && reviewView === 'edit'" x-cloak class="ds-pilot w-full">
         <div x-show="!dashData || !dashData.n" class="ds-empty">
           <span class="ds-character ds-character--bob" style="width:80px;height:80px"><img src="/vendor/boksil-catcher.svg" alt=""></span>
           <div class="ds-empty__title">아직 집계할 결과가 없어요</div>
@@ -5221,7 +5247,7 @@ PAGE = """<!doctype html>
                 <template x-for="c in filteredContents" x-bind:key="c.hash">
                   <div class="fbrow">
                     <div class="fbrow__main">
-                      <div class="fbrow__title"><span class="ds-badge" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" x-text="c.source||'단건'"></span><span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span><span class="ds-badge ds-badge--success" x-show="c.fb && c.fb.verdict" data-tip="검수 판정 완료" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></div>
+                      <div class="fbrow__title"><span class="ds-badge" style="cursor:help" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', c.grade)" data-tip-pos="top" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" data-tip="콘텐츠가 들어온 경로" data-tip-pos="top" x-text="c.source||'단건'"></span><span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span><span class="ds-badge ds-badge--success" x-show="c.fb && c.fb.verdict" data-tip="검수 판정 완료" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></div>
                       <div class="fbrow__sum tbox" x-show="c.summary" x-text="c.summary"></div>
                     </div>
                     <div class="fbrow__act">
@@ -5244,7 +5270,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 품질 메타 ═══ -->
-      <div x-show="(mod === 'dash' && dashTop === 'content' && dashSub === 'quality') || mod === 'quality'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'create' && createTab === 'insight' && insightTab === 'quality'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <ul class="ds-bullets"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출).</li></ul>
           <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
@@ -5272,7 +5298,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 토픽 (품질 · 토픽 통합 뷰) ═══ -->
-      <div x-show="(mod === 'dash' && dashTop === 'content' && dashSub === 'topic') || mod === 'quality'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'create' && createTab === 'insight' && insightTab === 'topic'" x-cloak class="w-full space-y-4">
         <template x-if="!topicData || !topicData.n_contents"><div class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div></template>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
           <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
@@ -5370,7 +5396,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 사용자 메타 ═══ -->
-      <div x-show="(mod === 'dash' && dashTop === 'user') || mod === 'user'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'create' && createTab === 'insight' && insightTab === 'user'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="flex items-center justify-between gap-3 flex-wrap">
             <ul class="ds-bullets"><li>행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <b>소비 형태 · 강도 · 선호</b>를 산출합니다.</li><li><code class="text-violet">content_id</code> = 추출 순서(0부터).</li></ul>
@@ -5416,32 +5442,24 @@ PAGE = """<!doctype html>
         <p class="text-xs text-muted" x-show="userData && userData.formula" x-text="userData ? userData.formula : ''"></p>
       </div>
 
-      <!-- ═══ 모듈: 검증 · 평가 ═══ -->
-      <!-- 검수 및 평가 · 탭: 검수 대기(사람 판정) | 골든셋 생성(합의→정답 축적·학습) | 골든셋 평가(정합성 수치화) | 테스트(로우 데이터) -->
-      <div x-show="mod === 'eval'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="evalTop==='queue'?'sel':''" x-on:click="evalTop='queue'">검수 대기</button>
-        <button type="button" x-bind:class="evalTop==='create'?'sel':''" x-on:click="evalTop='create'; loadGoldenStatus()">골든셋 생성</button>
-        <button type="button" x-bind:class="evalTop==='eval'?'sel':''" x-on:click="evalTop='eval'">골든셋 평가</button>
-        <button type="button" x-bind:class="evalTop==='raw'?'sel':''" x-on:click="evalTop='raw'; loadRaw()">테스트</button>
-      </div></div>
-
-      <!-- 골든셋 평가: 현행(개선 반영) 버전 vs 골든 정합성 수치화 + 모델별 비교 -->
-      <div x-show="mod === 'eval' && evalTop === 'eval'" x-cloak class="w-full space-y-4">
-          <section class="panel"><div class="panel-hd"><b>골든셋 정합성 평가</b><span class="meta">현행 프롬프트·모델이 골든(정답)과 얼마나 일치하는지</span></div>
+      <!-- ═══ 모듈: 테스트셋 생성 · 골든/검수/원본 뷰 ═══ -->
+      <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
+      <div x-show="mod === 'evaluate'" x-cloak class="w-full space-y-4">
+          <section class="panel"><div class="panel-hd"><b>정답 일치율 평가</b><span class="meta">지금 버전이 정답셋과 얼마나 일치하는지</span></div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:11px"><li>검수 합의로 축적된 골든셋 기준으로 <b>지금 운영 중인 버전</b>의 정합성을 수치화합니다.</li><li>신뢰구간(95% CI)이 겹치는 차이는 판정 보류가 원칙입니다.</li><li>낮으면 <b>프롬프트 스튜디오</b>에서 수정 후 재평가하세요.</li></ul>
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '정합성 평가 실행'"></button>
+              <ul class="ds-bullets" style="margin-bottom:11px"><li>검수 합의로 쌓인 <b>정답셋(테스트셋)</b> 기준으로 지금 버전의 일치율을 숫자로 확인합니다.</li><li>평가 건수가 적으면 오차가 큽니다 · 신뢰구간이 겹치면 우열 판단을 미룹니다.</li><li>낮으면 <b>프롬프트 스튜디오</b>에서 수정 후 다시 평가하세요.</li></ul>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '일치율 평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenResult && goldenResult.ok">
                 <div>
                   <div class="goldgrid">
-                    <div class="goldbig"><div class="goldbig__v" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="goldbig__l">등급 정합성 <span class="tnum" x-text="goldenResult.grade_ci ? ('· CI ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
-                    <div class="goldstat"><b x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></b><span>이유 일치</span></div>
-                    <div class="goldstat"><b x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></b><span>유해 미탐</span></div>
-                    <div class="goldstat"><b x-text="goldenResult.evaluated"></b><span>평가 건(n)</span></div>
+                    <div class="goldbig"><div class="goldbig__v" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="goldbig__l">등급 일치율 <span class="tnum" x-text="goldenResult.grade_ci ? ('· 신뢰구간 ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
+                    <div class="goldstat"><b x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></b><span>사유 일치</span></div>
+                    <div class="goldstat"><b x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></b><span>유해 놓침</span></div>
+                    <div class="goldstat"><b x-text="goldenResult.evaluated"></b><span>평가 건수</span></div>
                   </div>
                   <div style="margin-top:14px">
-                    <div class="text-xs text-muted" style="margin-bottom:6px">버킷별 정합성 · 어디가 새는지(프롬프트 수정 우선순위)</div>
+                    <div class="text-xs text-muted" style="margin-bottom:6px">유형별 일치율 · 어디가 약한지(수정 우선순위)</div>
                     <template x-for="(v,k) in (goldenResult.by_reason_bucket||{})" x-bind:key="k">
                       <div class="ds-progress" style="margin:5px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="k+' ('+v.n+')'"></span><span class="ds-progress__pct" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
                     </template>
@@ -5451,8 +5469,8 @@ PAGE = """<!doctype html>
               </template>
             </div>
           </section>
-          <!-- 모델별 정합성 비교: 같은 골든셋을 여러 모델에 실호출 -->
-          <section class="panel"><div class="panel-hd"><b>모델별 정합성 비교</b><span class="meta">같은 골든셋 · 모델만 교체(실호출)</span></div>
+          <!-- 모델별 비교: 같은 정답셋을 여러 모델에 실호출 -->
+          <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">같은 정답셋으로 모델만 바꿔 비교</span></div>
             <div class="panel-bd">
               <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
                 <template x-for="m in availableModels" x-bind:key="m">
@@ -5463,7 +5481,7 @@ PAGE = """<!doctype html>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
               <template x-if="cmpResult && cmpResult.ok">
                 <div style="margin-top:12px">
-                  <div class="overflow-auto"><table class="ds-table"><thead><tr><th>모델</th><th>호출</th><th>등급 정합성 (95% CI)</th><th>사유 유사도</th><th>공백률</th><th>비용($)</th><th></th></tr></thead><tbody>
+                  <div class="overflow-auto"><table class="ds-table"><thead><tr><th>모델</th><th>호출</th><th>등급 일치율 (신뢰구간)</th><th>사유 일치</th><th>빈 결과</th><th>비용($)</th><th></th></tr></thead><tbody>
                     <template x-for="m in cmpResult.models" x-bind:key="m.model">
                       <tr>
                         <td class="text-ink" x-text="m.model"></td>
@@ -5477,60 +5495,60 @@ PAGE = """<!doctype html>
                     </template>
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
-                  <div class="text-xs text-muted" style="margin-top:4px">CI가 겹치는 모델 간 우열은 판정 보류(골든 n이 커질수록 좁아집니다)</div>
+                  <div class="text-xs text-muted" style="margin-top:4px">신뢰구간이 겹치면 우열 판단 보류 · 정답셋이 쌓일수록 오차가 줄어듭니다</div>
                 </div>
               </template>
             </div>
           </section>
         </div>
 
-      <!-- 골든셋 생성: 검수 합의 → 정답 축적 + 학습 일배치 -->
-      <div x-show="mod === 'eval' && evalTop === 'create'" x-cloak class="w-full space-y-4">
+      <!-- 테스트셋 생성 · 현황 탭: 골든(정답) 축적 현황 + 학습 일배치 + 학습 데이터 -->
+      <div x-show="mod === 'create' && createTab === 'golden'" x-cloak class="w-full space-y-4">
           <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
-          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>골든셋 생성 현황</b><span class="meta">검수 '정확' 합의가 정답으로 축적됩니다</span>
+          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다</span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenStatus()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
             <div class="panel-bd">
               <template x-if="goldenStatus">
                 <div>
                   <div class="tiles" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
-                    <div class="tile"><div class="n tnum" x-text="goldenStatus.total"></div><div class="t">골든 누적</div></div>
-                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.review)||0"></div><div class="t">검수 유래</div></div>
-                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.manual)||0"></div><div class="t">수동 등록</div></div>
-                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.new)||0"></div><div class="t">최근 배치 신규</div></div>
+                    <div class="tile"><div class="n tnum" x-text="goldenStatus.total"></div><div class="t">정답 누적</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.review)||0"></div><div class="t">검수로 확정</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.manual)||0"></div><div class="t">직접 등록</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.new)||0"></div><div class="t">신규 승격</div></div>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.need_category)||0"></div><div class="t">분류 필요</div></div>
                   </div>
                   <div x-show="(goldenStatus.need_list||[]).length">
-                    <div class="text-xs text-muted" style="margin-bottom:6px">분류 필요 · 아래 콘텐츠의 카테고리를 채우면 다음 배치에서 골든으로 승격됩니다(+5pt·미션)</div>
+                    <div class="text-xs text-muted" style="margin-bottom:6px">분류 필요 · 아래 콘텐츠의 카테고리를 채우면 다음 학습 반영 때 정답으로 승격됩니다(+5pt·미션)</div>
                     <div class="overflow-auto" style="max-height:180px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:120px">서비스</th></tr></thead><tbody>
                       <template x-for="ng in goldenStatus.need_list" x-bind:key="ng.hash">
                         <tr><td x-text="ng.title || '(제목 없음)'"></td><td class="text-muted" x-text="ng.service"></td></tr>
                       </template>
                     </tbody></table></div>
-                    <div class="text-xs text-muted" style="margin-top:6px"><b>현황 대시보드 · 배치 결과</b>의 검수 목록에서 해당 콘텐츠 상세를 열어 분류를 선택하세요 <button type="button" class="copybtn" x-on:click="selectMod('dash')">현황 열기 →</button></div>
+                    <div class="text-xs text-muted" style="margin-top:6px"><b>콘텐츠 검수</b> 목록에서 해당 콘텐츠 상세를 열어 분류를 골라 주세요 <button type="button" class="copybtn" x-on:click="createTab='review'; reviewView='edit'; loadDash()">콘텐츠 검수 열기 →</button></div>
                   </div>
                 </div>
               </template>
-              <div x-show="!goldenStatus" class="text-xs text-muted">일배치(또는 ⚙ 지금 실행) 후 현황이 표시됩니다</div>
+              <div x-show="!goldenStatus" class="text-xs text-muted">검수가 쌓이고 학습 반영이 돌면 현황이 표시됩니다(아래 ⚙ 지금 실행으로 바로 반영 가능)</div>
             </div>
           </section>
-          <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>학습 일배치</b><span class="meta">검수 의견 합의 → 프롬프트 개선 + 골든 축적 + 회귀 평가</span>
+          <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>학습 반영</b><span class="meta">검수 의견을 모아 매일 04:00 한 번에 반영</span>
             <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚙ 지금 실행'"></button>
           </div>
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:12px">
-                <li>매일 04:00 자동 실행 · 실시간 즉시반영 대신 <b>합의 후 1회</b> 반영(진동 방지).</li>
-                <li><b>정확</b> 확정분은 골든셋으로 축적되고, 갱신된 프롬프트를 골든셋으로 <b>회귀 평가</b>합니다.</li>
+                <li>의견을 모아 <b>하루 1회</b> 반영해 결과가 흔들리지 않게 합니다.</li>
+                <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
               </ul>
               <!-- 일배치 결과 요약(상세 수치는 위 '골든셋 생성 현황' · 정합성·모델 비교는 '골든셋 평가' 탭) -->
               <template x-if="learnReport && learnReport.ts">
-                <div class="text-xs text-muted" style="margin-bottom:12px">최근 배치: 골든 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
+                <div class="text-xs text-muted" style="margin-bottom:12px">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
                   · 신규 <b class="text-ink tnum" x-text="'+' + ((learnReport.golden&&learnReport.golden.new)||0)"></b>
                   · 분류 필요 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.need_category)||0"></b>
-                  · 불일치 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></b>
-                  <span x-show="learnReport.golden && learnReport.golden.demoted"> · 강등 <b class="text-ink tnum" x-text="learnReport.golden.demoted"></b></span>
-                  · 골든 정합성 <b class="text-ink tnum" x-text="pctTxt(learnReport.grade_accuracy)"></b>
-                  <span x-show="learnReport.eval && learnReport.eval.grade_ci" class="tnum" x-text="learnReport.eval && learnReport.eval.grade_ci ? (' (CI ' + pctTxt(learnReport.eval.grade_ci.lo) + '~' + pctTxt(learnReport.eval.grade_ci.hi) + ')') : ''"></span>
+                  · 의견 갈림 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></b>
+                  <span x-show="learnReport.golden && learnReport.golden.demoted"> · 정답 제외 <b class="text-ink tnum" x-text="learnReport.golden.demoted"></b></span>
+                  · 정답 일치율 <b class="text-ink tnum" x-text="pctTxt(learnReport.grade_accuracy)"></b>
+                  <span x-show="learnReport.eval && learnReport.eval.grade_ci" class="tnum" x-text="learnReport.eval && learnReport.eval.grade_ci ? (' (신뢰구간 ' + pctTxt(learnReport.eval.grade_ci.lo) + '~' + pctTxt(learnReport.eval.grade_ci.hi) + ')') : ''"></span>
                 </div>
               </template>
               <!-- 개선 지시(단계별) -->
@@ -5619,9 +5637,9 @@ PAGE = """<!doctype html>
           </section>
       </div><!-- /골든셋 생성 -->
 
-      <!-- 테스트: 로우 데이터 빠른 확인(최근 결과 원본 · 단건 처리 이력) -->
-      <div x-show="mod === 'eval' && evalTop === 'raw'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn><div class="panel-hd"><b>로우 데이터</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
+      <!-- 콘텐츠 검수 · 로우 목록 뷰: 결과 원본을 가공 없이 빠르게(접근 방식 토글) -->
+      <div x-show="mod === 'create' && createTab === 'review' && reviewView === 'raw'" x-cloak class="w-full space-y-4">
+        <section class="panel" data-fn><div class="panel-hd"><b>원본 목록</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
           <span class="ml-auto" style="display:flex;gap:8px">
             <a class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center" href="/export.csv">CSV</a>
             <a class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center" href="/report" target="_blank">HTML 리포트</a>
@@ -5632,12 +5650,12 @@ PAGE = """<!doctype html>
             <ul class="ds-bullets" style="margin-bottom:11px"><li>추출 결과 원본(메타 · 품질 판정)을 가공 없이 빠르게 확인합니다.</li><li>행을 클릭하면 <b>JSON 원문</b>이 펼쳐집니다.</li></ul>
             <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:110px">서비스</th><th>카테고리</th><th>사유</th></tr></thead><tbody>
               <template x-for="r in (rawData ? rawData.items : [])" x-bind:key="r.hash">
-                <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" x-on:keydown.enter="rawSel = r" data-tip="JSON 원문 보기" data-tip-pos="left">
-                  <td><span class="ds-badge" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="r.grade||'·'"></span></td>
-                  <td class="text-ink" x-text="r.title || '(제목 없음)'"></td>
+                <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" x-on:keydown.enter="rawSel = r">
+                  <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
+                  <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top" x-text="r.title || '(제목 없음)'"></td>
                   <td class="text-muted" x-text="r.service"></td>
-                  <td class="text-xs text-muted" x-text="(r.category||[]).join(' · ')"></td>
-                  <td class="text-xs text-muted" x-text="(r.reasons||[]).join(' · ')"></td>
+                  <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
+                  <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template></td>
                 </tr>
               </template>
             </tbody></table>
@@ -5734,8 +5752,8 @@ PAGE = """<!doctype html>
                 <template x-for="g in goldenList.items" x-bind:key="g.hash">
                   <tr>
                     <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" x-show="g.flagged" data-tip="최근 골든 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span></td>
-                    <td class="tnum" x-text="g.grade || '·'"></td>
-                    <td class="text-xs text-muted" x-text="(g.category||[]).join(' · ')"></td>
+                    <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
+                    <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
                     <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '수동' : '검수'"></span></td>
                     <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
                   </tr>
@@ -5889,7 +5907,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 검수 대기 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
-      <div x-show="(mod === 'eval' && evalTop === 'queue') || mod === 'review'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'create' && createTab === 'queue'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>검수 대기 목록</b>
           <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
           <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
@@ -5897,14 +5915,14 @@ PAGE = """<!doctype html>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 대기 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>자동(임베딩-LLM)이 확신 못 한 <b>YELLOW</b> 콘텐츠 대기열입니다.</li><li><b x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존됩니다.</li><li><b>합의/불일치</b>로 실시간 집계됩니다.</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>AI가 확신하지 못해 <b>사람 확인이 필요한 콘텐츠</b>(YELLOW) 대기열입니다.</li><li><b x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존됩니다.</li><li>같은 의견이 모이면 <b>합의</b>, 갈리면 <b>재검토</b>로 표시됩니다.</li></ul>
             <div class="overflow-auto" style="max-height:480px;padding:2px">
               <template x-for="it in (queueData ? queueData.items : [])" x-bind:key="it.hash">
                 <div class="fbrow" x-init="notifyViewing(it)">
                   <div class="fbrow__main">
                     <div class="fbrow__title">
-                      <span class="ds-badge ds-badge--neutral" x-text="it.grade || '·'"></span>
-                      <span class="ds-badge ds-badge--yellow">YELLOW</span>
+                      <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="termDef('grade', it.grade)" data-tip-pos="top" x-text="it.grade || '·'"></span>
+                      <span class="ds-badge ds-badge--yellow" style="cursor:help" data-tip="AI 확신이 낮아 사람 검수가 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
                       <span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="it.title || '(제목 없음)'"></span>
                       <span class="fbrow__svc" x-text="it.service"></span>
                       <span class="ds-badge ds-badge--error" x-show="it.split" data-tip="검수자 의견이 갈린 콘텐츠 · 추가 의견으로 합의를 만들어 주세요" data-tip-pos="top">불일치 · 재검토</span>
@@ -5967,7 +5985,7 @@ PAGE = """<!doctype html>
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>각 단계의 <b>원천 프롬프트</b>를 아래 <b>코드블록</b>에서 직접 수정합니다(관리자 전용).</li>
           <li>단계마다 <b>모델을 지정</b>하면 그 모델의 프롬프트로 동작하고, 프롬프트는 모델별로 저장됩니다.</li>
-          <li>보완은 <b>검수 및 평가</b>의 콘텐츠별 평가 피드백이 자동 반영됩니다.</li>
+          <li>보완은 <b>테스트셋 생성 · 콘텐츠 검수</b>의 교정 피드백이 자동 반영됩니다.</li>
         </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
         <section class="panel" data-fn><div class="panel-hd"><b>추출</b><span class="meta">대식 · 이미지 → 신호(OCR · 비전)</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
