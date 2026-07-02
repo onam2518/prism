@@ -70,6 +70,11 @@ class Store:
         CREATE TABLE IF NOT EXISTS events(
           id INTEGER PRIMARY KEY AUTOINCREMENT, reviewer TEXT, kind TEXT,
           day INTEGER, bonus INTEGER, meta TEXT, ts REAL);
+        -- 평가 판정(집단 지성): 평가 불일치 건에 대한 검수자 판정. adopt=모델 결과 채택(정답 교정 후보)
+        -- / reject=탈락(정답 유지 · 모델 오답 확정). 1인 1표 upsert.
+        CREATE TABLE IF NOT EXISTS eval_checks(
+          content_hash TEXT, reviewer TEXT, verdict TEXT, expected TEXT, got TEXT, ts REAL,
+          PRIMARY KEY(content_hash, reviewer));
         -- 콘텐츠 용도: review(검수용, 기본)=검수·골든 축적 / eval(평가용)=평가 전용 홀드아웃.
         CREATE TABLE IF NOT EXISTS content_purpose(
           content_hash TEXT PRIMARY KEY, purpose TEXT, ts REAL);
@@ -476,6 +481,28 @@ class Store:
                 "WHERE content_hash=? AND (plan IS NOT NULL AND plan!='')", (content_hash,)):
             out.append({"reviewer": rv, "remember": rm, "explain": ex, "ask": ak,
                         "plan": pl, "stage": st})
+        return out
+
+    def save_eval_check(self, content_hash, reviewer, verdict, expected="", got="", team=None) -> bool:
+        """평가 불일치 건 판정 upsert(1인 1표 · 재판정 허용). verdict: adopt|reject."""
+        if verdict not in ("adopt", "reject") or not content_hash:
+            return False
+        c = self._conn()
+        c.execute("INSERT INTO eval_checks(content_hash,reviewer,verdict,expected,got,ts) VALUES(?,?,?,?,?,?) "
+                  "ON CONFLICT(content_hash,reviewer) DO UPDATE SET verdict=excluded.verdict, "
+                  "expected=excluded.expected, got=excluded.got, ts=excluded.ts",
+                  (content_hash, reviewer or "(익명)", verdict, expected or "", got or "", time.time()))
+        c.commit()
+        return True
+
+    def eval_check_counts(self, team=None) -> dict:
+        """{hash: {adopt, reject, reviewers:{reviewer: verdict}}} · 합의 판단 원천."""
+        c = self._conn()
+        out = {}
+        for ch, rv, v in c.execute("SELECT content_hash,reviewer,verdict FROM eval_checks"):
+            d = out.setdefault(ch, {"adopt": 0, "reject": 0, "reviewers": {}})
+            d[v] = d.get(v, 0) + 1
+            d["reviewers"][rv] = v
         return out
 
     def set_purpose(self, hashes, purpose, team=None) -> int:

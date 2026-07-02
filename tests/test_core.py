@@ -500,6 +500,44 @@ class TestContentPurpose(unittest.TestCase):
         self.assertEqual([r["content"]["title"] for r in scoped], ["홀드아웃"])
 
 
+class TestEvalJudgment(unittest.TestCase):
+    """평가 건별 판정(집단 지성): 1인 1표 upsert · 합의 → 정답 교정 필요 플래그."""
+    def _with_store(self):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def test_save_upsert_one_vote_and_counts(self):
+        _, st = self._with_store()
+        self.assertTrue(st.save_eval_check("h1", "복실", "adopt", "R", "G"))
+        self.assertTrue(st.save_eval_check("h1", "용희", "reject"))
+        self.assertTrue(st.save_eval_check("h1", "복실", "reject"))   # 재판정 = upsert(표 이동)
+        self.assertFalse(st.save_eval_check("h1", "딱지", "이상"))     # 잘못된 판정 거부
+        c = st.eval_check_counts()["h1"]
+        self.assertEqual((c["adopt"], c["reject"]), (0, 2))
+        self.assertEqual(c["reviewers"]["복실"], "reject")
+
+    def test_adopt_consensus_flags_golden_fix(self):
+        serve, st = self._with_store()
+        from prism.store import content_hash
+        content = {"displayServiceName": "뉴스", "title": "교정 대상", "subtitle": "", "body": "b"}
+        ch = content_hash(content)
+        st.register_golden(None, [{"content": content, "expected": {"finalGrade": "G"}}],
+                           replace=True, source="manual")
+        st.save_eval_check(ch, "복실", "adopt", "G", "R")
+        items = serve.golden_list(None)["items"]
+        row = next(it for it in items if it["hash"] == ch)
+        self.assertTrue(row["fix_needed"])          # 채택 합의(min_good=1) → 교정 필요
+        st.save_eval_check(ch, "용희", "reject")
+        st.save_eval_check(ch, "딱지", "reject")
+        row = next(it for it in serve.golden_list(None)["items"] if it["hash"] == ch)
+        self.assertFalse(row["fix_needed"])         # 탈락 우세로 뒤집히면 해제
+
+
 class TestFeedbackOrchestrator(unittest.TestCase):
     def test_route_fallback_splits_elements_by_stage(self):
         from prism import feedback_loop as FL

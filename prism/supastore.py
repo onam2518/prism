@@ -708,6 +708,28 @@ class SupabaseStore:
                         "version": int(r.get("version") or 1), "purpose": r.get("purpose") or "review"})
         return out
 
+    def save_eval_check(self, content_hash, reviewer, verdict, expected="", got="", team=None) -> bool:
+        """평가 불일치 건 판정 upsert(1인 1표). verdict: adopt|reject."""
+        if verdict not in ("adopt", "reject") or not content_hash:
+            return False
+        row = {"hash": content_hash, "reviewer": reviewer or "(익명)", "verdict": verdict,
+               "expected": expected or "", "got": got or ""}
+        if team:
+            row["team_id"] = team
+        self._upsert("eval_checks", [row])
+        return True
+
+    def eval_check_counts(self, team=None) -> dict:
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        out = {}
+        for r in self._get("eval_checks", "select=hash,reviewer,verdict" + tq):
+            d = out.setdefault(r["hash"], {"adopt": 0, "reject": 0, "reviewers": {}})
+            v = r.get("verdict") or ""
+            if v in ("adopt", "reject"):
+                d[v] += 1
+                d["reviewers"][r.get("reviewer") or "(익명)"] = v
+        return out
+
     def set_purpose(self, hashes, purpose, team=None) -> int:
         """콘텐츠 용도 지정: review(검수용)|eval(평가용 홀드아웃)."""
         if purpose not in ("review", "eval"):

@@ -1341,6 +1341,14 @@ def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
             detail.append({"hash": content_hash(c), "title": (c.get("title") or "")[:60],
                            "expected": exp, "got": got})
     _LAST_EVAL_DETAIL = detail
+    try:                                         # 건별 판정(집단 지성) 현황 부착
+        jm = st.eval_check_counts(team) if hasattr(st, "eval_check_counts") else {}
+    except Exception:
+        jm = {}
+    for d in detail:
+        d["judge"] = jm.get(d["hash"]) or {"adopt": 0, "reject": 0, "reviewers": {}}
+    m["detail"] = detail
+    m["min_good"] = int(getattr(cfg, "golden_min_good", 1) or 1)
     from . import quality as Q
     lo, hi = Q.binomial_ci(m.get("grade_accuracy") or 0.0, len(sample))
     m["grade_ci"] = {"lo": lo, "hi": hi, "n": len(sample)}   # 95% CI(Miller 2024)
@@ -1393,11 +1401,18 @@ def golden_list(team=None) -> dict:
             cmeta[r.get("hash")] = r
     except Exception:
         cmeta = {}
+    try:
+        jm = st.eval_check_counts(team) if hasattr(st, "eval_check_counts") else {}
+    except Exception:
+        jm = {}
+    mg = int(getattr(Config.load(), "golden_min_good", 1) or 1)
     for it in items:
         it["flagged"] = it["hash"] in flagged
         m = cmeta.get(it["hash"]) or {}
         it["model"] = m.get("model", "") or ""
         it["version"] = m.get("version")
+        j = jm.get(it["hash"]) or {}
+        it["fix_needed"] = bool(j.get("adopt", 0) >= mg and j.get("adopt", 0) > j.get("reject", 0))
     return {"ok": True, "items": items,
             "source_counts": (st.golden_source_counts(team) if hasattr(st, "golden_source_counts") else {}),
             "total": (st.golden_count(team) if hasattr(st, "golden_count") else len(items))}
@@ -2770,6 +2785,36 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/eval-judge"):        # 평가 상세 · 건별 판정(집단 지성)
+            try:
+                data = json.loads(body or b"{}")
+                rv = (data.get("reviewer") or "").strip()
+                verdict = (data.get("verdict") or "").strip()
+                ch = (data.get("hash") or "").strip()
+                if not rv or not ch or verdict not in ("adopt", "reject"):
+                    self._send(200, json.dumps({"ok": False, "error": "판정 값이 올바르지 않습니다"}, ensure_ascii=False), _JSON)
+                    return
+                st = get_store()
+                ok = bool(st and hasattr(st, "save_eval_check")
+                          and st.save_eval_check(ch, rv, verdict, str(data.get("expected") or ""),
+                                                 str(data.get("got") or ""), team=self._req_team()))
+                if ok:
+                    try:                          # 판정 보상: 콘텐츠당 1회 +5pt(재판정은 upsert 만)
+                        st.log_event_once(rv, "evja:" + ch, 0, 5, team=self._req_team())
+                    except Exception:
+                        pass
+                counts = {}
+                try:
+                    counts = (st.eval_check_counts(team=self._req_team()) or {}).get(ch) or {}
+                except Exception:
+                    pass
+                _agg_bump()
+                self._send(200, json.dumps({"ok": ok, "judge": counts or {"adopt": 0, "reject": 0, "reviewers": {}}},
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/eval-golden"):       # 등록 골든셋으로 평가 실행(기준 모델·콘텐츠 풀)
             try:
                 data = json.loads(body or b"{}")
@@ -3564,12 +3609,31 @@ PAGE = """<!doctype html>
         this.goldenBusy = false;
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 이항 95% CI 표기
-      cmpModels: [], cmpBusy: false, cmpResult: null,
-      toggleCmpModel(m) { const i = this.cmpModels.indexOf(m); if (i >= 0) this.cmpModels.splice(i, 1); else if (this.cmpModels.length < 4) this.cmpModels.push(m); },
+      cmpA: '', cmpB: '', cmpBusy: false, cmpResult: null,
+      get cmpCols() {
+        const ms = (this.cmpResult && this.cmpResult.models) || [];
+        return [this.cmpA, this.cmpB].map((id) => ms.find((m) => m.model === id)).filter(Boolean);
+      },
+      cmpWin(f, mi) { const c = this.cmpCols; return c.length === 2 && (c[mi][f] || 0) > (c[1 - mi][f] || 0); },
       async runCompare() {
         this.cmpBusy = true; this.cmpResult = null;
-        try { this.cmpResult = await (await fetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: this.cmpModels, scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
+        try { this.cmpResult = await (await fetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: [this.cmpA, this.cmpB], scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
         this.cmpBusy = false;
+      },
+      myEvalVote(d) { const r = (d.judge && d.judge.reviewers) || {}; return r[this.reviewer] || ''; },
+      evalConsensus(d) {
+        const j = d.judge || {}; const mg = (this.goldenResult && this.goldenResult.min_good) || 1;
+        if ((j.adopt || 0) >= mg && (j.adopt || 0) > (j.reject || 0)) return 'adopt';
+        if ((j.reject || 0) >= mg && (j.reject || 0) > (j.adopt || 0)) return 'reject';
+        return '';
+      },
+      async evalJudge(d, verdict) {                 // 평가 판정: 검수와 같은 집단 지성(1인 1표 · 재판정 허용)
+        if (!this.ensureReviewer()) return;
+        try {
+          const r = await (await fetch('/eval-judge', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: d.hash, verdict: verdict, reviewer: this.reviewer, expected: d.expected, got: d.got }) })).json();
+          if (r && r.ok) { d.judge = r.judge; this.liveToast('평가 판정 저장 · ' + (verdict === 'adopt' ? '채택' : '탈락')); }
+          else this._err((r && r.error) || '판정 저장 실패');
+        } catch (e) { this._err('판정 저장 실패'); }
       },
       ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
       // 골든 생성 현황(팀원 공개)
@@ -3968,7 +4032,7 @@ PAGE = """<!doctype html>
           if (this.cfg.stageModels) this.stageModels = Object.assign({ extract:'', analyze:'', review:'', judge:'' }, this.cfg.stageModels);
           if (this.cfg.modelPrompts) this.modelPrompts = this.cfg.modelPrompts;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
-          if (!this.cmpModels.length) this.cmpModels = this.availableModels.slice(0, 3);   // 비교 기본 선택
+          if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
@@ -6180,10 +6244,10 @@ PAGE = """<!doctype html>
               </ul>
             </div>
           </section>
-          <section class="panel"><div class="panel-hd"><b>정답 일치율 평가</b><span class="meta">위 기준으로 정답셋과 얼마나 일치하는지</span></div>
+          <section class="panel"><div class="panel-hd"><b>평가 실행</b><span class="meta">위 기준으로 정답셋과 비교 · 요약과 건별 판정</span></div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:11px"><li>검수 합의로 쌓인 <b>정답셋(테스트셋)</b> 기준으로 지금 버전의 일치율을 숫자로 확인합니다.</li><li>평가 건수가 적으면 오차가 큽니다 · 신뢰구간이 겹치면 우열 판단을 미룹니다.</li><li>낮으면 <b>프롬프트 스튜디오</b>에서 수정 후 다시 평가하세요.</li></ul>
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '일치율 평가 실행'"></button>
+              <ul class="ds-bullets" style="margin-bottom:11px"><li>검수 합의로 쌓인 <b>정답셋(테스트셋)</b>과 모델 결과를 비교해 요약 수치와 <b>불일치 목록</b>을 만듭니다.</li><li>불일치 건은 검수처럼 <b>건별 판정</b>합니다 · <b>채택</b>=모델 결과가 맞음(정답 교정 후보) · <b>탈락</b>=정답 유지(모델 오답 확정).</li><li>평가 건수가 적으면 오차가 큽니다 · 신뢰구간이 겹치면 우열 판단을 미룹니다.</li></ul>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenResult && goldenResult.ok">
                 <div>
@@ -6198,38 +6262,62 @@ PAGE = """<!doctype html>
                   <div class="tile" style="margin-top:10px">
                     <div class="t" style="margin:0 0 8px">유형별 일치율 · 어디가 약한지(수정 우선순위)</div>
                     <template x-for="(v,k) in (goldenResult.by_reason_bucket||{})" x-bind:key="k">
-                      <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label" x-text="k+' ('+v.n+')'"></span><span class="ds-progress__pct tnum" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
+                      <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="k==='normal' ? '문제 사유 없는 일반 콘텐츠' : termDef('reason', k)" data-tip-pos="top" x-text="k"></span> <span class="tnum text-muted" x-text="'('+v.n+')'"></span></span><span class="ds-progress__pct tnum" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
                     </template>
                   </div>
+                  <div class="subhd" style="margin:16px 0 8px">평가 상세 · 불일치 건별 판정 <span class="meta">채택=모델 결과가 맞음(정답 교정 후보) · 탈락=정답 유지(모델 오답 확정)</span></div>
+                  <template x-if="(goldenResult.detail||[]).length">
+                    <div class="overflow-auto" style="max-height:340px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:64px">정답</th><th style="width:84px">모델 결과</th><th style="width:160px">판정</th><th style="width:190px">합의</th></tr></thead><tbody>
+                      <template x-for="d in goldenResult.detail" x-bind:key="'ej'+d.hash">
+                        <tr>
+                          <td class="text-ink" x-text="d.title || '(제목 없음)'"></td>
+                          <td><span class="ds-badge" style="cursor:help" x-bind:class="d.expected==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', d.expected)" data-tip-pos="top" x-text="d.expected"></span></td>
+                          <td><span class="ds-badge" style="cursor:help" x-bind:class="d.got==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', d.got)" data-tip-pos="top" x-text="d.got"></span></td>
+                          <td><span style="display:inline-flex;gap:6px">
+                            <button type="button" class="verdictbtn verdictbtn--good" style="height:26px;padding:0 10px;font-size:11px" x-bind:class="myEvalVote(d)==='adopt' ? 'is-on' : ''" data-tip="모델 결과가 맞아요 · 정답 교정 후보로 올립니다" data-tip-pos="top" x-on:click="evalJudge(d, 'adopt')">채택</button>
+                            <button type="button" class="verdictbtn verdictbtn--bad" style="height:26px;padding:0 10px;font-size:11px" x-bind:class="myEvalVote(d)==='reject' ? 'is-on' : ''" data-tip="정답이 맞아요 · 모델 오답으로 확정합니다" data-tip-pos="top" x-on:click="evalJudge(d, 'reject')">탈락</button>
+                          </span></td>
+                          <td><span class="text-xs text-muted tnum" x-text="'채택 ' + ((d.judge&&d.judge.adopt)||0) + ' · 탈락 ' + ((d.judge&&d.judge.reject)||0)"></span>
+                            <span class="ds-badge ds-badge--warning" style="cursor:help;margin-left:6px" x-show="evalConsensus(d)==='adopt'" data-tip="채택 합의 · 정답 교정 필요(테스트셋 관리 · 정답셋 목록에 '교정 필요'로 표시)" data-tip-pos="top">교정 필요</span>
+                            <span class="ds-badge ds-badge--error" style="cursor:help;margin-left:6px" x-show="evalConsensus(d)==='reject'" data-tip="탈락 합의 · 모델 오답 확정(프롬프트 개선 우선순위 근거)" data-tip-pos="top">모델 오답</span>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody></table></div>
+                  </template>
+                  <div x-show="!(goldenResult.detail||[]).length" class="text-xs text-muted">불일치 없음 · 건별 판정할 항목이 없습니다</div>
                   <button type="button" class="ds-btn ds-btn--secondary" style="margin-top:12px" x-on:click="selectMod('prompt')">원천 프롬프트 수정하러 가기 →</button>
                 </div>
               </template>
             </div>
           </section>
           <!-- 모델별 비교: 같은 정답셋을 여러 모델에 실호출 -->
-          <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">같은 정답셋으로 모델만 바꿔 비교</span></div>
+          <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">같은 정답셋으로 A·B 모델을 실호출 비교</span></div>
             <div class="panel-bd">
-              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-                <template x-for="m in availableModels" x-bind:key="m">
-                  <button type="button" class="srcfilter__chip" x-bind:class="cmpModels.includes(m) ? 'sel' : ''" x-on:click="toggleCmpModel(m)" x-text="m"></button>
-                </template>
+              <div class="filterbar" style="margin:0 0 12px">
+                <span class="selctl selctl--a abslot"><span class="selctl__tag">A</span><span class="selctl__lbl">모델</span>
+                  <select class="field" x-model="cmpA"><option value="">선택…</option><template x-for="m in availableModels" x-bind:key="'ca'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                <span class="abvs">VS</span>
+                <span class="selctl selctl--b abslot"><span class="selctl__tag">B</span><span class="selctl__lbl">모델</span>
+                  <select class="field" x-model="cmpB"><option value="">선택…</option><template x-for="m in availableModels" x-bind:key="'cb'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || !cmpA || !cmpB || cmpA===cmpB" x-on:click="runCompare()" x-text="cmpBusy ? '비교 중… (모델별 전건 추출)' : '비교 실행'"></button>
+                <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
               </div>
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="cmpBusy || cmpModels.length < 1" x-on:click="runCompare()" x-text="cmpBusy ? '비교 중… (모델별 전건 추출)' : ('비교 실행 (' + cmpModels.length + '개 모델)')"></button>
-              <span class="text-xs text-muted" style="margin-left:10px" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
-              <template x-if="cmpResult && cmpResult.ok">
-                <div style="margin-top:12px">
-                  <div class="overflow-auto"><table class="ds-table"><thead><tr><th>모델</th><th>호출</th><th>등급 일치율 (신뢰구간)</th><th>사유 일치</th><th>빈 결과</th><th>비용($)</th><th></th></tr></thead><tbody>
-                    <template x-for="m in cmpResult.models" x-bind:key="m.model">
-                      <tr>
-                        <td class="text-ink" x-text="m.model"></td>
-                        <td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td>
-                        <td class="tnum" x-text="pctTxt(m.grade_accuracy) + ' (' + ciOf(m.grade_accuracy, m.n) + ')'"></td>
-                        <td class="tnum" x-text="pctTxt(m.reason_jaccard)"></td>
-                        <td class="tnum" x-text="pctTxt(m.empty_rate)"></td>
-                        <td class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></td>
-                        <td><span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span></td>
-                      </tr>
-                    </template>
+              <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
+                <div>
+                  <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">항목</th>
+                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : 'background:var(--ds-violet,#1e84ff)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span></th></template>
+                  </tr></thead><tbody>
+                    <tr><td class="text-ink">호출</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cr'+mi"><td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-bind:data-tip="m.real ? '실제 API 호출 결과' : '모의 응답 · API 키를 설정하면 실호출됩니다'" data-tip-pos="top" style="cursor:help" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td></template></tr>
+                    <tr><td class="text-ink">등급 일치율 <span class="text-xs text-muted">(신뢰구간)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cg'+mi"><td>
+                      <span class="abbar" x-bind:class="mi ? 'abbar--b' : ''">
+                        <span class="abbar__track"><span class="abbar__fill" x-bind:style="'width:' + Math.max((m.grade_accuracy||0)*100, 3) + '%'"></span></span>
+                        <b class="tnum" x-text="pctTxt(m.grade_accuracy)"></b><span class="abwin" x-show="cmpWin('grade_accuracy', mi)">▲</span>
+                      </span>
+                      <div class="text-xs text-muted tnum" style="margin-top:3px" x-text="'(' + ciOf(m.grade_accuracy, m.n) + ')'"></div></td></template></tr>
+                    <tr><td class="text-ink">사유 일치</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cj'+mi"><td><b class="tnum" x-text="pctTxt(m.reason_jaccard)"></b> <span class="abwin" x-show="cmpWin('reason_jaccard', mi)">▲</span></td></template></tr>
+                    <tr><td class="text-ink">빈 결과</td><template x-for="(m,mi) in cmpCols" x-bind:key="'ce'+mi"><td class="tnum" x-text="pctTxt(m.empty_rate)"></td></template></tr>
+                    <tr><td class="text-ink">비용($)</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cc'+mi"><td class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></td></template></tr>
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
                   <div class="text-xs text-muted" style="margin-top:4px">신뢰구간이 겹치면 우열 판단 보류 · 정답셋이 쌓일수록 오차가 줄어듭니다</div>
@@ -6334,7 +6422,7 @@ PAGE = """<!doctype html>
               <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:150px">유래 모델</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
                 <template x-for="g in filteredGolden" x-bind:key="g.hash">
                   <tr>
-                    <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" x-show="g.flagged" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span></td>
+                    <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" style="cursor:help" x-show="g.flagged && !g.fix_needed" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span> <span class="ds-badge ds-badge--warning" style="cursor:help" x-show="g.fix_needed" data-tip="평가 판정에서 '채택' 합의 · 모델 결과가 맞다고 확정된 정답(제거 후 재등록 또는 검수 재확정 필요)" data-tip-pos="top">교정 필요</span></td>
                     <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
                     <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
                     <td class="text-muted" x-text="g.model || '·'"></td>

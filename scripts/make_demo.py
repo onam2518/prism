@@ -101,7 +101,7 @@ DEMO_EXTRAS = {
         {"hash": "g1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "category": ["News and Politics / Society"], "source": "review", "flagged": False, "model": "solar-pro3-260323", "version": 2},
         {"hash": "g2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "category": ["Business and Finance / Economy"], "source": "review", "flagged": False, "model": "solar-pro3-260323", "version": 2},
         {"hash": "g3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "category": ["Entertainment"], "source": "manual", "flagged": True, "model": "", "version": None},
-        {"hash": "g4", "title": "손흥민 시즌 15호골", "service": "스포츠", "grade": "G", "category": ["Sports / Soccer (International)"], "source": "review", "flagged": False, "model": "gpt-5.4-mini", "version": 1}]},
+        {"hash": "g4", "title": "손흥민 시즌 15호골", "service": "스포츠", "grade": "G", "category": ["Sports / Soccer (International)"], "source": "review", "flagged": False, "model": "gpt-5.4-mini", "version": 1, "fix_needed": True}]},
     "lreport": {"ok": True, "ts": 1782950000, "grade_accuracy": 0.87,
                 "golden": {"ok": True, "confirmed": 18, "new": 3, "demoted": 1, "total": 24, "need_category": 2, "disagree": 3, "min_good": 1},
                 "eval": {"ok": True, "n": 24, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}},
@@ -134,7 +134,7 @@ DEMO_EXTRAS = {
                 {"model": "gpt-5.4-mini", "route": "timely", "real": True, "n": 24, "grade_accuracy": 0.83, "reason_jaccard": 0.77, "reason_exact_match": 0.63, "empty_rate": 0.0, "cost_usd": 0.0089, "tokens": {"in": 47100, "out": 5480}},
                 {"model": "claude-haiku-4-5", "route": "timely", "real": True, "n": 24, "grade_accuracy": 0.79, "reason_jaccard": 0.74, "reason_exact_match": 0.58, "empty_rate": 0.04, "cost_usd": 0.0075, "tokens": {"in": 46800, "out": 5010}}],
             "skipped": [{"model": "gemini-2.5-pro", "reason": "라우터 키 없음(BizRouter·Timely)"}]},
-    "evalg": {"basis": {"model": "solar-pro3-260323", "version": 3, "scope": "all"}, "ok": True, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24},
+    "evalg": {"basis": {"model": "solar-pro3-260323", "version": 3, "scope": "all"}, "min_good": 1, "detail": [{"hash": "g3", "title": "낚시성 제목 사례", "expected": "R", "got": "G", "judge": {"adopt": 0, "reject": 2, "reviewers": {}}}, {"hash": "g4", "title": "손흥민 시즌 15호골", "expected": "G", "got": "R", "judge": {"adopt": 2, "reject": 0, "reviewers": {}}}], "ok": True, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24},
               "reason_jaccard": 0.81, "harm_miss_rate": 0.04, "empty_rate": 0.0, "evaluated": 24,
               "by_reason_bucket": {"normal": {"n": 15, "grade_acc": 0.93}, "clickbait": {"n": 5, "grade_acc": 0.8}, "ad": {"n": 4, "grade_acc": 0.75}}},
     "raw": {"ok": True, "n": 3, "items": [
@@ -280,6 +280,7 @@ STUB = """<script>
       if (u.indexOf('/learn-export') > -1) return Promise.resolve(J({ ok: true }));
       if (u.indexOf('/compare-models') > -1) return Promise.resolve(J(EX.cmp));
       if (u.indexOf('/purpose') > -1) return Promise.resolve(J({ ok: true, n: 1 }));
+      if (u.indexOf('/eval-judge') > -1) return Promise.resolve(J({ ok: true, judge: { adopt: 1, reject: 0, reviewers: {} } }));
       if (u.indexOf('/eval-golden') > -1) return Promise.resolve(J(EX.evalg));
       if (u.indexOf('/raw') > -1) return Promise.resolve(J(EX.raw));
       if (u.indexOf('/drafts') > -1) return Promise.resolve(J(EX.drafts));
