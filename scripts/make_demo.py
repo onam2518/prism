@@ -75,10 +75,85 @@ DEMO_ARENA = {
     "accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18,
     "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.50,
     "leaderboard": [
-        {"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78},
-        {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51},
-        {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21},
+        {"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78,
+         "gold_n": 12, "gold_acc": 0.92, "quality_mult": 0.96, "consensus_matches": 34, "split_reviews": 6, "patches": 5, "golden_contribs": 11, "agree_rate": 0.94},
+        {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51,
+         "gold_n": 8, "gold_acc": 0.88, "quality_mult": 0.94, "consensus_matches": 22, "split_reviews": 4, "patches": 3, "golden_contribs": 7, "agree_rate": 0.9},
+        {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21,
+         "gold_n": 3, "gold_acc": 0.67, "quality_mult": 1.0, "consensus_matches": 8, "split_reviews": 1, "patches": 1, "golden_contribs": 2, "agree_rate": 0.78},
     ],
+    "missions": [
+        {"id": "daily5", "label": "오늘 검수 5건", "total": 5, "bonus": 20, "done": 3, "completed": False},
+        {"id": "gold1", "label": "골드 문항 1건 정답", "total": 1, "bonus": 15, "done": 1, "completed": True},
+        {"id": "split1", "label": "불일치 콘텐츠 재검토 1건", "total": 1, "bonus": 15, "done": 0, "completed": False},
+        {"id": "fill1", "label": "분류 채우기 1건(골든 승격)", "total": 1, "bonus": 10, "done": 0, "completed": False},
+    ],
+}
+
+# ── 골든셋·학습·평가 예시(리포트·모델 비교·로우 데이터까지 데모에서 보이도록) ──
+DEMO_EXTRAS = {
+    "gstat": {"ok": True, "total": 24, "source_counts": {"review": 18, "manual": 6},
+              "last_batch": {"confirmed": 18, "new": 3, "demoted": 1, "need_category": 2, "disagree": 3, "min_good": 1},
+              "need_list": [{"hash": "n1", "title": "집에서 만드는 김치볶음밥 레시피", "service": "블로그"},
+                            {"hash": "n2", "title": "주말 캠핑장 예약 꿀팁", "service": "커뮤니티"}],
+              "ts": 1782950000},
+    "glist": {"ok": True, "total": 24, "source_counts": {"review": 18, "manual": 6}, "items": [
+        {"hash": "g1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "category": ["News and Politics / Society"], "source": "review", "flagged": False},
+        {"hash": "g2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "category": ["Business and Finance / Economy"], "source": "review", "flagged": False},
+        {"hash": "g3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "category": ["Entertainment"], "source": "manual", "flagged": True},
+        {"hash": "g4", "title": "손흥민 시즌 15호골", "service": "스포츠", "grade": "G", "category": ["Sports / Soccer (International)"], "source": "review", "flagged": False}]},
+    "lreport": {"ok": True, "ts": 1782950000, "grade_accuracy": 0.87,
+                "golden": {"ok": True, "confirmed": 18, "new": 3, "demoted": 1, "total": 24, "need_category": 2, "disagree": 3, "min_good": 1},
+                "eval": {"ok": True, "n": 24, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}},
+                "improve": {"results": {
+                    "analyze": {"directive": "콘텐츠 카테고리는 인물보다 본문 주제 기준으로 부여하라. 연예 인물의 스포츠 활동은 Sports 로 분류.", "ambiguities": ["연예·스포츠 겹침 처리 기준"]},
+                    "judge": {"directive": "구매 링크·쿠폰 문구가 본문에 있으면 ad 사유를 우선 검토하라.", "ambiguities": []}}}},
+    "ldata": {"ok": True, "golden_n": 24, "grade_dist": {"G": 19, "R": 5},
+              "coverage": [{"cls": "News and Politics", "have": 9, "lack": 0}, {"cls": "Business and Finance", "have": 6, "lack": 2},
+                           {"cls": "Sports", "have": 4, "lack": 4}, {"cls": "Entertainment", "have": 3, "lack": 5},
+                           {"cls": "Food and Drink", "have": 1, "lack": 7}, {"cls": "Travel", "have": 1, "lack": 7},
+                           {"cls": "Technology and Computing", "have": 0, "lack": 8}, {"cls": "Medical Health", "have": 0, "lack": 8}],
+              "covered": 1, "class_total": 21, "per_class_target": 8,
+              "alpha": 0.72, "agreement": 0.88, "multi_units": 14,
+              "reviewers": [{"reviewer": "데모 관리자", "n": 62, "agree_rate": 0.94, "gold_n": 12, "gold_acc": 0.92, "ds_error": 0.06},
+                            {"reviewer": "검수자 A", "n": 41, "agree_rate": 0.9, "gold_n": 8, "gold_acc": 0.88, "ds_error": 0.09},
+                            {"reviewer": "검수자 B", "n": 17, "agree_rate": 0.78, "gold_n": 3, "gold_acc": 0.67, "ds_error": 0.21}],
+              "acc_ci": {"acc": 0.87, "n": 24, "lo": 0.7365, "hi": 1.0},
+              "label_flags": [{"hash": "g3", "title": "낚시성 제목 사례", "expected": "R", "got": "G"}],
+              "split": [{"hash": "s1", "n": 3, "good": 1, "bad": 2}], "split_n": 3,
+              "extractable": {"sft": 24, "dpo": 11, "rationale": 9},
+              "requirements": [
+                  {"kind": "분류 부트스트랩(클래스당 8)", "target": 168, "have": 24, "lack": 121, "basis": "SetFit · Tunstall et al. 2022 · arXiv:2209.11055"},
+                  {"kind": "SFT 정렬(고품질)", "target": 1000, "have": 24, "lack": 976, "basis": "LIMA · Zhou et al. 2023 · arXiv:2305.11206"},
+                  {"kind": "운영급 분류 LLM", "target": 13500, "have": 24, "lack": 13476, "basis": "Llama Guard · Inan et al. 2023 · arXiv:2312.06674"},
+                  {"kind": "선호쌍(DPO · 참고 상한)", "target": 33000, "have": 11, "lack": 32989, "basis": "DPO · Rafailov et al. 2023 + InstructGPT RM 33k · Ouyang et al. 2022"},
+                  {"kind": "평가셋(큐레이션)", "target": 100, "have": 24, "lack": 76, "basis": "tinyBenchmarks · Maia Polo et al. 2024 + Miller 2024(CI 병기)"}]},
+    "cmp": {"ok": True, "golden_n": 24, "best": "solar-pro3-260323",
+            "models": [
+                {"model": "solar-pro3-260323", "route": "solar", "real": True, "n": 24, "grade_accuracy": 0.87, "reason_jaccard": 0.81, "reason_exact_match": 0.71, "empty_rate": 0.0, "cost_usd": 0.0102, "tokens": {"in": 48210, "out": 6120}},
+                {"model": "gpt-5.4-mini", "route": "timely", "real": True, "n": 24, "grade_accuracy": 0.83, "reason_jaccard": 0.77, "reason_exact_match": 0.63, "empty_rate": 0.0, "cost_usd": 0.0089, "tokens": {"in": 47100, "out": 5480}},
+                {"model": "claude-haiku-4-5", "route": "timely", "real": True, "n": 24, "grade_accuracy": 0.79, "reason_jaccard": 0.74, "reason_exact_match": 0.58, "empty_rate": 0.04, "cost_usd": 0.0075, "tokens": {"in": 46800, "out": 5010}}],
+            "skipped": [{"model": "gemini-2.5-pro", "reason": "라우터 키 없음(BizRouter·Timely)"}]},
+    "evalg": {"ok": True, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24},
+              "reason_jaccard": 0.81, "harm_miss_rate": 0.04, "empty_rate": 0.0, "evaluated": 24,
+              "by_reason_bucket": {"normal": {"n": 15, "grade_acc": 0.93}, "clickbait": {"n": 5, "grade_acc": 0.8}, "ad": {"n": 4, "grade_acc": 0.75}}},
+    "raw": {"ok": True, "n": 3, "items": [
+        {"hash": "d1", "service": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "grade": "G", "reasons": [], "category": ["News and Politics / Society"],
+         "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]},
+         "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.91}},
+        {"hash": "d2", "service": "뉴스", "title": "한국은행 기준금리 동결 결정", "grade": "G", "reasons": [], "category": ["Business and Finance / Economy"],
+         "item_meta": {"summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다", "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"], "content_category": ["Business and Finance / Economy"]},
+         "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.88}},
+        {"hash": "d3", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "reasons": ["clickbait"], "category": [],
+         "item_meta": {"summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"], "content_category": []},
+         "quality_meta": {"finalGrade": "R", "reasons": ["clickbait"], "review": "yellow", "confidence": 0.52, "review_reason": "제목·본문 불일치 확신 낮음"}}]},
+    "rqueue": {"ok": True, "n": 3, "items": [
+        {"hash": "q1", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "review_reason": "제목·본문 불일치 확신 낮음", "reviewed": False, "split": False, "confidence": 0.52},
+        {"hash": "q2", "service": "뉴스", "title": "연예인 A·B 열애설 보도", "grade": "G", "review_reason": "사생활 보도 경계 사례", "reviewed": True, "split": True, "confidence": 0.66},
+        {"hash": "gold:ok:demo1", "service": "뉴스", "title": "국회 예산안 표결 처리", "grade": "G", "review_reason": "", "reviewed": False, "split": False, "confidence": None}]},
+    "ingest": {"running": True, "scheduler": True, "jobs": [
+        {"id": "src1", "name": "뉴스 수집 API", "running": True, "trigger": "auto", "total": 40, "done": 25, "last_msg": "25/40 처리 중", "endpoint": "https://crawler.example/items"},
+        {"id": "job2", "name": "엑셀 일괄 추출", "running": True, "trigger": "manual", "total": 12, "done": 7, "last_msg": "7/12 처리 중", "endpoint": ""}]},
 }
 DEMO_VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}
 
@@ -89,6 +164,20 @@ DEMO_DASH = {
     "categories": [{"k": "News and Politics", "v": 6, "pct": 50}, {"k": "Sports", "v": 4, "pct": 33},
                    {"k": "Business and Finance", "v": 3, "pct": 25}],
     "qualityReasons": [{"k": "clickbait", "v": 2, "pct": 17}],
+    "feedback": {"total": 62, "good": 48, "bad": 14, "learned": 9, "contents": 12, "reviewers": 3, "split": 3},
+    "contents": [
+        {"hash": "d1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "source": "자동 인입",
+         "summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다",
+         "entities": ["삼성전자", "전국삼성전자노동조합"], "intent": ["사건 경과 보도"],
+         "category": ["News and Politics / Society"], "reasons": [], "fb": {"verdict": "good", "ts": 1782800000}},
+        {"hash": "d2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "source": "배치",
+         "summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다",
+         "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"],
+         "category": ["Business and Finance / Economy"], "reasons": [], "fb": {}},
+        {"hash": "d3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "source": "단건",
+         "summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"],
+         "category": [], "reasons": ["clickbait"], "fb": {"verdict": "bad", "ts": 1782800000}},
+    ],
 }
 DEMO_TOPICS = {
     "n_contents": 12, "summary": {"single": 2, "composite": 1, "filter": 8},
@@ -140,7 +229,7 @@ STUB = """<script>
   window.__DEMO_RESULT__ = %s;
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
-    const CFG = %s, VOCAB = %s, ADMIN = %s, ARENA = %s;
+    const CFG = %s, VOCAB = %s, ADMIN = %s, ARENA = %s, EX = %s;
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
       const u = String(url);
@@ -167,7 +256,21 @@ STUB = """<script>
       if (u.indexOf('/usermeta') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/dict') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
-      if (u.indexOf('/queue') > -1 || u.indexOf('/ingest') > -1) return Promise.resolve(J({ ok: true, jobs: [], sources: [] }));
+      // 골든셋·학습·평가 예시(리포트 · 모델 비교 · 로우 데이터)
+      if (u.indexOf('/golden-status') > -1) return Promise.resolve(J(EX.gstat));
+      if (u.indexOf('/golden-list') > -1) return Promise.resolve(J(EX.glist));
+      if (u.indexOf('/golden-remove') > -1 || u.indexOf('/golden') > -1) return Promise.resolve(J({ ok: true }));
+      if (u.indexOf('/learn-report') > -1) return Promise.resolve(J({ ok: true, report: EX.lreport }));
+      if (u.indexOf('/learn-batch') > -1) return Promise.resolve(J(EX.lreport));
+      if (u.indexOf('/learn-data') > -1) return Promise.resolve(J(EX.ldata));
+      if (u.indexOf('/learn-export') > -1) return Promise.resolve(J({ ok: true }));
+      if (u.indexOf('/compare-models') > -1) return Promise.resolve(J(EX.cmp));
+      if (u.indexOf('/eval-golden') > -1) return Promise.resolve(J(EX.evalg));
+      if (u.indexOf('/raw') > -1) return Promise.resolve(J(EX.raw));
+      if (u.indexOf('/patch-meta') > -1 || u.indexOf('/feedback') > -1) return Promise.resolve(J({ ok: true, feedback: { total: 62, good: 48, bad: 14, learned: 9, contents: 12, reviewers: 3, split: 3 } }));
+      if (u.indexOf('/reap') > -1) return Promise.resolve(J({ ok: true, items: [] }));
+      if (u.indexOf('/queue') > -1) return Promise.resolve(J(EX.rqueue));
+      if (u.indexOf('/ingest') > -1) return Promise.resolve(J(EX.ingest));
       return real ? real(url, opt) : Promise.resolve(J({}));
     };
   })();
@@ -177,6 +280,7 @@ STUB = """<script>
        json.dumps(DEMO_VOCAB, ensure_ascii=False),
        json.dumps(DEMO_ADMIN, ensure_ascii=False),
        json.dumps(DEMO_ARENA, ensure_ascii=False),
+       json.dumps(DEMO_EXTRAS, ensure_ascii=False),
        json.dumps(DEMO_DASH, ensure_ascii=False),
        json.dumps(DEMO_TOPICS, ensure_ascii=False),
        json.dumps(DEMO_USER, ensure_ascii=False),

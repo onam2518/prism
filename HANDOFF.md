@@ -79,6 +79,12 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
   콤마 저장). 비동기 후처리(`_reap_async`)가 `FL.route_feedback`(LLM)으로 교정 원문을 요소·단계별 개선
   지시로 재분류 → `feedback_routes` 테이블(append, supabase `prism_feedback_routes`) → `learned_by_stage` 가
   라우팅 지시 우선으로 병합(일배치 meta_compile 로 유입). mock/실패 시 선택 요소 폴백(무손실).
+- **역할 정리(2026-07-02 심야)**: 검수·교정 목록(fbrow)은 **현황 대시보드 · 배치 결과**로 이동(현황 보며
+  검수·수정·학습). '검수 및 평가' 탭 = 검수 대기 | 골든셋 생성(현황·일배치·학습 데이터) | 골든셋 평가
+  (정합성 %·CI + 모델 비교) | **테스트**(`/raw` 로우 데이터 + 단건 처리 이력). evalTab 계층 제거(evalTop 단일).
+  중복 제거: 일배치 리포트의 골든 타일·모델 비교표 삭제(생성 현황·평가 탭이 소유), 일배치는 비교 미실행
+  (models 빈 배열, 비교는 평가 탭 온디맨드). 데모(make_demo)는 골든 현황·리포트·모델 비교·학습 데이터·
+  검수 대기·실행 큐·로우 데이터 예시(EX 스텁)까지 표시.
 
 ## 메타 체계 (코드가 이 기준으로 정렬)
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
