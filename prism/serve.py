@@ -212,6 +212,11 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dic
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
+    try:                                         # 초안 버전 = 학습 반영 회차 + 1
+        stv = get_store()
+        (out.setdefault("trace", {}))["version"] = (stv.batch_seq(team) + 1) if (stv and hasattr(stv, "batch_seq")) else 1
+    except Exception:
+        pass
     store_save([(content, out)], team=team)      # 영속 저장(+미러, 팀 태깅)
     return {
         "source": source,
@@ -1456,6 +1461,12 @@ def learning_batch(team=None, models=None) -> dict:
     golden = build_golden_from_reviews(team)
     evalr = eval_golden(team)                        # 현재 프롬프트 회귀 점수
     compare = compare_models_on_golden(models, team) if (models and len(models) > 1) else None
+    try:                                        # 학습 반영 회차 기록 → 초안 버전(v = 회차+1)
+        stv = get_store()
+        if stv and hasattr(stv, "log_event_once"):
+            stv.log_event_once("(system)", "learn_batch", int(time.time()), 0, team=team)
+    except Exception:
+        pass
     report = {"ok": True, "ts": time.time(), "improve": improve, "golden": golden,
               "eval": evalr, "compare": compare,
               "grade_accuracy": evalr.get("grade_accuracy") if evalr.get("ok") else None}
@@ -1837,8 +1848,9 @@ def _row_key(ref: dict) -> str:
                          "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")})
 
 
-def raw_rows(limit: int = 100, team=None) -> dict:
-    """원본 목록: 판정 결과를 한 표로(필터·빠른 검수용). 검수 상태(합의·건수) 부착."""
+def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
+    """검수 대상 콘텐츠: 판정 결과 전체를 한 표로(모델·버전·필터 · 빠른 검수).
+    검수 대기(YELLOW)·불일치도 포함되며, 검수자 식별 시 골드 문항을 섞는다."""
     rows = results_rows(team=team)
     st = get_store()
     try:
@@ -1850,17 +1862,71 @@ def raw_rows(limit: int = 100, team=None) -> dict:
         ref = r.get("content_ref") or {}
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
+        tr = r.get("trace") or {}
         ch = _row_key(ref)
         fb = fmap.get(ch) or {}
+        last_ts = 0
+        for v in (fb.get("verdicts") or []):
+            try:
+                last_ts = max(last_ts, float(v.get("ts") or 0))
+            except Exception:
+                pass
         out.append({"hash": ch,
                     "service": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
+                    "body": ref.get("body", ""), "url": ref.get("source_url", ""),
                     "grade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
                     "category": im.get("content_category", []) or [],
-                    "model": (r.get("trace") or {}).get("model", "") or "",
+                    "summary": im.get("summary", ""), "entities": im.get("entities", []) or [],
+                    "intent": im.get("intent", []) or [],
+                    "model": tr.get("model", "") or "",
+                    "version": int(tr.get("version") or 1),
                     "review": qm.get("review", "") or "",
-                    "fb": {"verdict": fb.get("consensus") or fb.get("verdict") or "", "n": fb.get("n", 0)},
+                    "split": bool(fb.get("good") and fb.get("bad")),
+                    "fb": {"verdict": fb.get("consensus") or fb.get("verdict") or "",
+                           "n": fb.get("n", 0), "ts": last_ts},
                     "item_meta": im, "quality_meta": qm})
+    # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트
+    if reviewer:
+        gold_items = _inject_gold([], reviewer, team)
+        for g in gold_items:
+            out.insert(0, {"hash": g["hash"], "service": g.get("service", ""), "title": g.get("title", ""),
+                           "body": g.get("body", ""), "url": "",
+                           "grade": g.get("grade", ""), "reasons": g.get("reasons", []) or [],
+                           "category": g.get("category", []) or [],
+                           "summary": g.get("summary", ""), "entities": g.get("entities", []) or [],
+                           "intent": g.get("intent", []) or [],
+                           "model": "", "version": None, "review": "yellow", "split": False,
+                           "fb": {"verdict": "", "n": 0, "ts": 0},
+                           "item_meta": {"summary": g.get("summary", ""), "entities": g.get("entities", []),
+                                         "intent": g.get("intent", []), "content_category": g.get("category", [])},
+                           "quality_meta": {"finalGrade": g.get("grade", ""), "reasons": g.get("reasons", [])}})
     return {"ok": True, "items": out, "n": len(out)}
+
+
+def drafts_for(content_hash: str, team=None) -> dict:
+    """결과 비교용 초안 스냅샷: 현재 초안 + 재실행 이력(patch_log rerun) 의 이전 초안."""
+    st = get_store()
+    ch = (content_hash or "").strip()
+    cur = None
+    for r in results_rows(team=team):
+        if _row_key(r.get("content_ref") or {}) == ch:
+            tr = r.get("trace") or {}
+            cur = {"label": f"{tr.get('model') or '모델 미기록'} · v{int(tr.get('version') or 1)} (현재)",
+                   "model": tr.get("model", ""), "version": int(tr.get("version") or 1),
+                   "item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {}}
+            break
+    outs = []
+    if cur:
+        outs.append(cur)
+    if st and hasattr(st, "patch_rows"):
+        for p in st.patch_rows(limit=5000, team=team):
+            if p.get("hash") != ch or not str(p.get("element", "")).startswith("rerun:"):
+                continue
+            bf = p.get("before") or {}
+            outs.append({"label": f"{bf.get('model') or '모델 미기록'} · 이전({p.get('element','')[6:]})",
+                         "model": bf.get("model", ""), "version": None,
+                         "item_meta": bf.get("item_meta") or {}, "quality_meta": bf.get("quality_meta") or {}})
+    return {"ok": True, "items": outs, "n": len(outs)}
 
 
 def review_queue(data: dict) -> dict:
@@ -2241,10 +2307,16 @@ class Handler(BaseHTTPRequestHandler):
                     "limit": (q.get("limit", ["100"])[0]), "team": self._req_team(),
                     "reviewer": self._bearer_uid() or q.get("reviewer", [""])[0]}
             self._send(200, json.dumps(review_queue(data), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/raw"):               # 테스트 탭 · 로우 데이터(원본 JSON)
+        elif self.path.startswith("/raw"):               # 검수 대상 콘텐츠(모델·버전 필터 표)
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(raw_rows(int(q.get("limit", ["100"])[0]), self._req_team()),
+            self._send(200, json.dumps(raw_rows(int(q.get("limit", ["100"])[0]), self._req_team(),
+                                       reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
+                                       ensure_ascii=False), _JSON)
+        elif self.path.startswith("/drafts"):            # 결과 비교: 콘텐츠별 초안 스냅샷
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            self._send(200, json.dumps(drafts_for(q.get("hash", [""])[0], self._req_team()),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/events"):
             self._serve_sse()
@@ -2774,7 +2846,7 @@ PAGE = """<!doctype html>
           { id: 'lab', label: '실험실', ic: 'auto' } ] },
       ],
       contentTab: 'queue',                    // 콘텐츠 관리 홈 탭 = 실행 큐(자동/수동 구분)
-      createTab: 'queue',                     // 콘텐츠 검수: queue(검수 대기) | edit(결과 목록) | raw(원본 목록)
+      createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 테스트셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
       labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | topic(토픽) | user(사용자)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
@@ -2803,8 +2875,35 @@ PAGE = """<!doctype html>
       goldenResult: null, goldenBusy: false, goldenMsg: '',
       rawData: null, rawSel: null,
       async loadRaw() { try { const r = await (await fetch('/raw?limit=200', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; } } catch (e) {} },
-      // 원본 목록 필터(빠른 검수): 검색 + 등급/모델/서비스/검수 상태
-      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '',
+      // 검수 대상 콘텐츠: 상단 모델→버전 구분 + 필터
+      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '', rawVer: '',
+      get rawVersions() { return [...new Set(((this.rawData||{}).items||[]).filter((r) => !this.rawModel || r.model === this.rawModel).map((r) => r.version).filter((v) => v != null))].sort((a,b)=>b-a); },
+      // 결과 비교(양분할): 초안 목록 + 필드 diff
+      cmpDraftHash: '', draftsData: null, cmpL: 0, cmpR: 1,
+      async loadDrafts() {
+        this.draftsData = null; this.cmpL = 0; this.cmpR = 1;
+        if (!this.cmpDraftHash) return;
+        try { const r = await (await fetch('/drafts?hash=' + encodeURIComponent(this.cmpDraftHash), { headers: this._authHeaders() })).json(); if (r && r.ok) { this.draftsData = r; this.cmpR = r.items.length > 1 ? 1 : 0; } } catch (e) {}
+      },
+      get draftPair() {
+        const it = (this.draftsData||{}).items || [];
+        if (!it.length) return null;
+        return { l: it[Math.min(this.cmpL, it.length-1)], r: it[Math.min(this.cmpR, it.length-1)] };
+      },
+      get draftDiff() {
+        const p = this.draftPair; if (!p) return [];
+        const pick = (d) => ({
+          '등급': (d.quality_meta||{}).finalGrade || '·',
+          '품질 사유': ((d.quality_meta||{}).reasons||[]).join(' · ') || '·',
+          '카테고리': ((d.item_meta||{}).content_category||[]).join(' · ') || '·',
+          '인텐트': ((d.item_meta||{}).intent||[]).join(' · ') || '·',
+          '엔티티': ((d.item_meta||{}).entities||[]).join(' · ') || '·',
+          '리드문': (d.item_meta||{}).summary || '·',
+        });
+        const L = pick(p.l), R = pick(p.r);
+        return Object.keys(L).map((k) => ({ k: k, l: L[k], r: R[k], diff: L[k] !== R[k] }));
+      },
+      openRawDetail(r) { this.openDetail({ hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', fb: Object.assign({}, r.fb) }); },
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
       get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
       get rawFiltered() {
@@ -2812,20 +2911,14 @@ PAGE = """<!doctype html>
           if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
+          if (this.rawVer && String(r.version||'') !== this.rawVer) return false;
           if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
           if (this.rawRev === 'todo' && (r.fb && r.fb.verdict)) return false;
           if (this.rawRev === 'done' && !(r.fb && r.fb.verdict)) return false;
           return true;
         });
       },
-      async rawVerdict(r, v) {
-        if (!this.ensureReviewer()) return;
-        const had = !!(r.fb && r.fb.verdict);
-        const res = await this._postFb({ hash: r.hash, service: r.service, title: r.title, model: r.model || '', verdict: v, stage: 'review', note: '' });
-        if (res && res.error) { this._err(res.error); return; }
-        r.fb = Object.assign({}, r.fb, { verdict: v });
-        if (!had) this.celebratePoints(10, '검수 완료');
-      },
+
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
       rerunHash: '', rerunModel: '', rerunBusy: false, rerunMsg: '',
       async runRerun() {
@@ -2934,13 +3027,13 @@ PAGE = """<!doctype html>
         this.mod = id; this.status = ''; this.addMenuOpen = false;
         // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 테스트셋 관리
         if (id === 'run' || id === 'auto' || id === 'queue' || id === 'intake') { this.contentTab = id; id = 'content'; }
-        if (id === 'dash') { id = 'create'; this.createTab = 'edit'; }
-        if (id === 'review') { id = 'create'; this.createTab = 'queue'; }
+        if (id === 'dash') { id = 'create'; this.createTab = 'raw'; }
+        if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
         if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
         if (id === 'eval') id = 'evaluate';
         if (id === 'home') { this.loadArena(); this.loadDash(); }
-        else if (id === 'create') { this.loadDash(); this.loadQueue(); }
+        else if (id === 'create') { this.loadDash(); this.loadRaw(); }
         else if (id === 'evaluate') this.loadGoldenStatus();
         else if (id === 'arena') this.loadArena();
         else if (id === 'admin') this.loadAdmin();
@@ -3176,7 +3269,7 @@ PAGE = """<!doctype html>
             const v = d.verdict === 'good' ? '정확' : d.verdict === 'bad' ? '문제' : '취소';
             this.liveToast(d.reviewer + '님 · 「' + (d.title || '콘텐츠') + '」 ' + v);
           }
-          if (this.mod === 'review') this.loadQueue();
+          if (this.mod === 'create') this.loadRaw();
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();             // 정확도 게이지 실시간 상승
           if (this.mod === 'dash' || this.mod === 'eval' || this.mod === 'home') this.loadDashThrottled();
         } else if (d.type === 'reap') {
@@ -5414,11 +5507,10 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
-      <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대기 | 결과 목록 | 원본 목록 ═══ -->
+      <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대상 콘텐츠(기본) | 결과 비교 ═══ -->
       <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="createTab==='queue'?'sel':''" x-on:click="createTab='queue'; loadQueue()">검수 대기</button>
-        <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadDash()">결과 목록</button>
-        <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">원본 목록</button>
+        <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
+        <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadDash(); loadRaw()">결과 비교</button>
       </div></div>
       <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="ds-pilot w-full">
         <div x-show="!dashData || !dashData.n" class="ds-empty">
@@ -5460,42 +5552,36 @@ PAGE = """<!doctype html>
               </div>
             </div>
           </section>
-          <!-- 콘텐츠별 검수 · 교정: 현황을 보면서 판정·교정 → 학습 루프로 수집(일배치 반영) -->
-          <section class="panel" data-fn><div class="panel-hd"><b>콘텐츠별 검수 · 교정</b>
-            <span class="meta tnum" x-show="dashData && dashData.feedback" x-text="dashData ? ('검수 ' + dashData.feedback.total + ' · 학습 반영 ' + dashData.feedback.learned + '건') : ''"></span>
-            <button type="button" class="ds-btn ds-btn--secondary ml-auto" style="height:30px;padding:0 12px" x-show="dashData && dashData.feedback && dashData.feedback.total" x-on:click="clearFeedback()">초기화</button>
-          </div>
+          <!-- 결과 비교: 같은 콘텐츠의 초안(모델·버전)을 양분할로 비교 · 다른 필드 하이라이트 -->
+          <section class="panel" data-fn><div class="panel-hd"><b>결과 비교</b><span class="meta">같은 콘텐츠 · 초안(모델·버전) 좌우 비교</span></div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:11px"><li>콘텐츠마다 <b>정확</b> / <b>문제</b>를 표시합니다 · 제목 클릭 = 상세(원문·교정).</li><li>문제는 요소를 고르고 교정 메모를 남기면 단계별로 분기되어 <b>학습 일배치</b>에 반영됩니다.</li></ul>
-              <!-- 출처 필터: 자동 인입 / 단건 / 배치 구분 -->
-              <div class="srcfilter" x-show="srcOptions.length > 1">
-                <button type="button" class="srcfilter__chip" x-bind:class="srcFilter==='' ? 'sel' : ''" x-on:click="srcFilter=''">전체 <span x-text="(dashData&&dashData.contents?dashData.contents.length:0)"></span></button>
-                <template x-for="s in srcOptions" x-bind:key="s">
-                  <button type="button" class="srcfilter__chip" x-bind:class="srcFilter===s ? 'sel' : ''" x-on:click="srcFilter=s">
-                    <span x-text="s"></span> <span x-text="(dashData&&dashData.contents?dashData.contents.filter(c=>(c.source||'단건')===s).length:0)"></span></button>
-                </template>
+              <ul class="ds-bullets" style="margin-bottom:10px"><li>콘텐츠를 고르면 보유한 초안(현재 + 재실행 이전)을 <b>좌/우로 비교</b>합니다.</li><li>서로 <b>다른 필드는 색으로 표시</b>됩니다 · 판정은 검수 대상 콘텐츠 표에서 하세요.</li></ul>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+                <select class="field" style="flex:1;min-width:240px;height:36px" x-model="cmpDraftHash" x-on:change="loadDrafts()">
+                  <option value="">콘텐츠 선택…</option>
+                  <template x-for="r in ((rawData||{}).items||[])" x-bind:key="r.hash"><option x-bind:value="r.hash" x-text="r.title || '(제목 없음)'"></option></template>
+                </select>
+                <select class="field" style="width:auto;min-width:170px;height:36px" x-model.number="cmpL" x-show="draftsData && draftsData.items.length">
+                  <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'L'+i"><option x-bind:value="i" x-text="d.label"></option></template>
+                </select>
+                <span class="text-xs text-muted" x-show="draftsData && draftsData.items.length">vs</span>
+                <select class="field" style="width:auto;min-width:170px;height:36px" x-model.number="cmpR" x-show="draftsData && draftsData.items.length">
+                  <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'R'+i"><option x-bind:value="i" x-text="d.label"></option></template>
+                </select>
               </div>
-              <div class="overflow-auto" style="max-height:440px;padding:2px">
-                <template x-for="c in filteredContents" x-bind:key="c.hash">
-                  <div class="fbrow">
-                    <div class="fbrow__main">
-                      <div class="fbrow__title"><span class="ds-badge" style="cursor:help" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', c.grade)" data-tip-pos="top" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" data-tip="콘텐츠가 들어온 경로" data-tip-pos="top" x-text="c.source||'단건'"></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="c.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델의 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="c.model"></span><span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span><span class="ds-badge ds-badge--success" x-show="c.fb && c.fb.verdict" data-tip="검수 판정 완료" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></div>
-                      <div class="fbrow__sum tbox" x-show="c.summary" x-text="c.summary"></div>
-                    </div>
-                    <div class="fbrow__act">
-                      <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="(c.fb&&c.fb.verdict==='good')?'is-on':''" x-on:click="setFeedback(c,'good')"><span class="verdictbtn__dot"></span>정확</button>
-                      <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="(c.fb&&c.fb.verdict==='bad')?'is-on':''" x-on:click="setFeedback(c,'bad')"><span class="verdictbtn__dot"></span>문제</button>
-                    </div>
-                    <div class="fbrow__note" x-show="(c.fb&&c.fb.verdict==='bad') || fbNoteOpen[c.hash]">
-                      <span class="fixelems" style="margin:0"><template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id"><button type="button" class="fixelem" x-bind:class="fbElems(c.fb).includes(fe.id) ? 'sel' : ''" x-on:click="toggleFixElem(c.fb, fe.id)" x-text="fe.label"></button></template></span>
-                      <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="무엇이 왜 잘못됐는지 · 요소 여러 개 선택 가능(단계별 자동 분기)" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
-                      <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="saveFbNote(c)">반영</button>
-                    </div>
-                  </div>
-                </template>
-                <div x-show="!(dashData&&dashData.contents&&dashData.contents.length)" class="text-xs text-muted" style="padding:10px">표시할 콘텐츠가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 추출·인입을 실행하세요</div>
-                <div x-show="dashData&&dashData.contents&&dashData.contents.length && !filteredContents.length" class="text-xs text-muted" style="padding:10px">이 출처의 콘텐츠가 없습니다</div>
-              </div>
+              <template x-if="draftPair">
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:110px">필드</th><th x-text="draftPair.l.label"></th><th x-text="draftPair.r.label"></th></tr></thead><tbody>
+                  <template x-for="f in draftDiff" x-bind:key="f.k">
+                    <tr x-bind:class="f.diff ? 'is-sel' : ''">
+                      <td class="text-ink"><span x-text="f.k"></span> <span class="ds-badge ds-badge--error" x-show="f.diff" style="margin-left:4px">다름</span></td>
+                      <td class="text-xs" x-text="f.l"></td>
+                      <td class="text-xs" x-text="f.r"></td>
+                    </tr>
+                  </template>
+                </tbody></table></div>
+              </template>
+              <div x-show="cmpDraftHash && draftsData && draftsData.items.length < 2" class="text-xs text-muted">비교할 초안이 하나뿐입니다 · <b class="text-ink">콘텐츠 관리 · 다른 모델로 재실행</b>으로 다른 모델 초안을 만들어 보세요</div>
+              <div x-show="!cmpDraftHash" class="text-xs text-muted">콘텐츠를 선택하면 초안 비교가 표시됩니다</div>
             </div>
           </section>
         </div>
@@ -5920,7 +6006,7 @@ PAGE = """<!doctype html>
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn><div class="panel-hd"><b>원본 목록</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
+        <section class="panel" data-fn><div class="panel-hd"><b>검수 대상 콘텐츠</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
           <span class="ml-auto" style="display:flex;gap:8px;align-items:center">
             <a class="copybtn" style="text-decoration:none" href="/export.csv" data-tip="전체 결과 CSV 다운로드" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>CSV</a>
             <a class="copybtn" style="text-decoration:none" href="/report" target="_blank" data-tip="브라우저용 HTML 리포트 열기" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>리포트</a>
@@ -5928,30 +6014,41 @@ PAGE = """<!doctype html>
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>판정 결과 전체를 <b>한 표</b>로 봅니다 · 필터로 좁혀 빠르게 검수하세요.</li><li>행 클릭 = <b>JSON 원문</b> · 정확/문제 버튼 = 바로 판정.</li></ul>
-            <!-- 필터: 검색 + 등급/모델/서비스/검수 상태 -->
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>모델을 고르면 아래 목록은 전부 <b>그 모델이 초기 판정한 초안</b>입니다(모델별 정답셋의 재료).</li><li>검수가 진행되며 프롬프트가 갱신되면 <b>버전</b>이 올라갑니다 · 행 클릭 = JSON 원문, <b>검수하기</b> = 상세에서 판정·교정.</li></ul>
+            <!-- 상단 구분: 모델 → 버전 → 목록 -->
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+              <button type="button" class="srcfilter__chip" x-bind:class="rawModel==='' ? 'sel' : ''" x-on:click="rawModel=''; rawVer=''">모델 전체</button>
+              <template x-for="m in rawModels" x-bind:key="m">
+                <button type="button" class="srcfilter__chip" x-bind:class="rawModel===m ? 'sel' : ''" x-on:click="rawModel=m; rawVer=''" x-text="m"></button>
+              </template>
+              <select class="field" style="width:auto;height:32px" x-model="rawVer" x-show="rawVersions.length > 1">
+                <option value="">버전 전체</option>
+                <template x-for="v in rawVersions" x-bind:key="v"><option x-bind:value="String(v)" x-text="'v' + v"></option></template>
+              </select>
+            </div>
+            <div class="text-xs text-muted" style="margin-bottom:10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b><span x-show="rawVer" x-text="' · v' + rawVer"></span> 가 초기 판정한 초안 목록입니다 · 검수 합의는 이 모델의 정답셋으로 쌓입니다</div>
+            <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
               <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
               <select class="field" style="width:auto;height:34px" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
-              <select class="field" style="width:auto;height:34px" x-model="rawModel"><option value="">모델 전체</option><template x-for="m in rawModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select>
               <select class="field" style="width:auto;height:34px" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
               <select class="field" style="width:auto;height:34px" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
             </div>
-            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:120px">모델</th><th>카테고리</th><th>사유</th><th style="width:120px">검수</th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th></tr></thead><tbody>
               <template x-for="r in rawFiltered" x-bind:key="r.hash">
                 <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" x-on:keydown.enter="rawSel = r">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
-                  <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top" x-text="r.title || '(제목 없음)'"></td>
+                  <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top"><span x-text="r.title || '(제목 없음)'"></span>
+                    <span class="ds-badge ds-badge--yellow" style="cursor:help;margin-left:4px" x-show="r.review==='yellow'" data-tip="AI 확신이 낮아 사람 확인이 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
+                    <span class="ds-badge ds-badge--error" style="margin-left:4px" x-show="r.split" data-tip="검수자 의견이 갈림 · 추가 의견 필요" data-tip-pos="top">불일치</span>
+                  </td>
                   <td class="text-muted" x-text="r.service"></td>
-                  <td class="text-xs text-muted tnum" x-text="r.model || '·'"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
                   <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template></td>
                   <td x-on:click.stop>
-                    <span style="display:flex;gap:4px;align-items:center">
-                      <button type="button" class="verdictbtn verdictbtn--good" style="padding:3px 8px" x-bind:class="(r.fb&&r.fb.verdict==='good')?'is-on':''" x-on:click="rawVerdict(r,'good')"><span class="verdictbtn__dot"></span>정확</button>
-                      <button type="button" class="verdictbtn verdictbtn--bad" style="padding:3px 8px" x-bind:class="(r.fb&&r.fb.verdict==='bad')?'is-on':''" x-on:click="rawVerdict(r,'bad')"><span class="verdictbtn__dot"></span>문제</button>
-                    </span>
+                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="!(r.fb && r.fb.verdict)" x-on:click="openRawDetail(r)">검수하기</button>
+                    <span class="text-xs text-muted tnum" x-show="r.fb && r.fb.verdict" style="cursor:pointer" x-on:click="openRawDetail(r)" data-tip="완료 · 클릭하면 상세에서 수정" data-tip-pos="top" x-text="'✓ ' + (r.fb && r.fb.ts ? fmtTs(r.fb.ts) : '완료')"></span>
                   </td>
                 </tr>
               </template>
@@ -6162,52 +6259,6 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 검수 대기 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
-      <div x-show="mod === 'create' && createTab === 'queue'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn><div class="panel-hd"><b>검수 대기 목록</b>
-          <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
-          <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
-            <input type="checkbox" x-model="queueOnlyUnreviewed" x-on:change="loadQueue()"> 미검수만</label>
-          <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 대기 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        </div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>AI가 확신하지 못해 <b>사람 확인이 필요한 콘텐츠</b>(YELLOW) 대기열입니다.</li><li><b x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존됩니다.</li><li>같은 의견이 모이면 <b>합의</b>, 갈리면 <b>재검토</b>로 표시됩니다.</li></ul>
-            <div class="overflow-auto" style="max-height:480px;padding:2px">
-              <template x-for="it in (queueData ? queueData.items : [])" x-bind:key="it.hash">
-                <div class="fbrow" x-init="notifyViewing(it)">
-                  <div class="fbrow__main">
-                    <div class="fbrow__title">
-                      <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="termDef('grade', it.grade)" data-tip-pos="top" x-text="it.grade || '·'"></span>
-                      <span class="ds-badge ds-badge--yellow" style="cursor:help" data-tip="AI 확신이 낮아 사람 검수가 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
-                      <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="it.model" data-tip="이 결과 초안을 만든 모델" data-tip-pos="top" x-text="it.model"></span>
-                      <span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="it.title || '(제목 없음)'"></span>
-                      <span class="fbrow__svc" x-text="it.service"></span>
-                      <span class="ds-badge ds-badge--error" x-show="it.split" data-tip="검수자 의견이 갈린 콘텐츠 · 추가 의견으로 합의를 만들어 주세요" data-tip-pos="top">불일치 · 재검토</span>
-                      <span class="ds-badge ds-badge--warning" x-show="it.confidence != null && it.confidence < 0.6" data-tip="모델 확신이 낮아 사람 판단이 특히 중요한 콘텐츠" data-tip-pos="top">저확신</span>
-                      <span class="ds-badge" x-show="it.goldRevealed" x-bind:class="it.goldCorrect ? 'ds-badge--success' : 'ds-badge--error'" x-text="it.goldCorrect ? '골드 문항 · 정답' : '골드 문항 · 오답'"></span>
-                      <span class="ds-badge ds-badge--intent" x-show="liveSeen[it.hash]" x-text="(liveSeen[it.hash]||'') + ' 보는 중'"></span>
-                      <span class="ds-badge ds-badge--success" x-show="it.reviewed && !it.myVerdict && !it.goldRevealed">검수됨</span>
-                      <span class="ds-badge" x-show="it.myVerdict && !it.goldRevealed" x-bind:class="it.myVerdict==='good'?'ds-badge--success':'ds-badge--neutral'" x-text="it.myVerdict==='good'?'내 의견 · 정확':'내 의견 · 문제'"></span>
-                    </div>
-                    <div class="fbrow__sum tbox" x-show="it.review_reason" x-text="it.review_reason"></div>
-                  </div>
-                  <div class="fbrow__act">
-                    <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="it.myVerdict==='good'?'is-on':''" x-on:click="queueFeedback(it,'good')"><span class="verdictbtn__dot"></span>정확</button>
-                    <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="it.myVerdict==='bad'?'is-on':''" x-on:click="queueFeedback(it,'bad')"><span class="verdictbtn__dot"></span>문제</button>
-                  </div>
-                  <div class="fbrow__note" x-show="it.myVerdict==='bad'">
-                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 · 다음 추출 프롬프트에 자동 반영" x-model="it.note" x-on:keydown.enter="queueFeedback(it,'bad')">
-                    <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="queueFeedback(it,'bad')">반영</button>
-                  </div>
-                </div>
-              </template>
-              <div x-show="!(queueData && queueData.items && queueData.items.length)" class="ds-empty" style="border:0;padding:22px 8px">
-                <div class="ds-empty__desc"><b class="text-ink">검수 대기 없음</b> · YELLOW로 분류된 콘텐츠가 쌓이면 여기 표시됩니다(자동 추출이 확신 못 한 건)</div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
       <!-- ═══ 모듈: 실행 큐 (단일 위젯) · 실제 실행 상태 ═══ -->
       <div x-show="mod === 'content' && contentTab === 'queue'" x-cloak class="w-full">
         <section class="panel"><div class="panel-hd"><b>실행 큐</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>

@@ -388,6 +388,11 @@ class Store:
                 e["week"] += int(bonus or 0)
         return out
 
+    def batch_seq(self, team=None) -> int:
+        """학습 반영(일배치) 누적 회차 → 초안 버전 = batch_seq + 1."""
+        c = self._conn()
+        return int(c.execute("SELECT COUNT(*) FROM events WHERE kind='learn_batch'").fetchone()[0])
+
     def feedback_today(self, reviewer, team=None) -> int:
         """검수자의 오늘(UTC 일 단위) 피드백 건수(미션 판정용)."""
         day_start = (int(time.time() // 86400)) * 86400.0

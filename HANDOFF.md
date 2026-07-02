@@ -111,8 +111,13 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     지정 모델로 초안 재생성 · 이전 초안 patch_log(rerun:구→신) 보존 · save_many 무조건 upsert.
     run_pipeline 에 model 파라미터(llm_for_model 라우팅). ⚠️ supabase 는 재실행 결과가 비-YELLOW 면
     contents 미갱신(sync 필터) 엣지 있음.
-  - **원본 목록 = 빠른 검수 표**: 검색 + 등급/모델/서비스/검수 상태 필터 + 행 내 정확/문제 즉시 판정.
-    hash 키는 `_row_key`(스토어 16자 키 우선) 로 검수 키와 정합.
+  - **검수 대상 콘텐츠(구 원본 목록 · 콘텐츠 검수 첫 탭)**: 상단 **모델 칩 → 버전 선택 → 목록**
+    구조(모델별 정답셋 전제 명기 배너). 검수 대기(YELLOW)·불일치 배지로 흡수(큐 탭 삭제, 골드 문항은
+    /raw 에서 삽입). 검수열 = '검수하기'(상세 열기) / 완료 시 ✓일시. hash 키는 `_row_key` 정합.
+  - **초안 버전**: 학습 반영 실행마다 events kind='learn_batch' 기록 → `batch_seq()+1` 을
+    trace.version 으로 스탬프(run_pipeline·재실행). supabase contents.version 컬럼(`prism_draft_version`).
+  - **결과 비교(콘텐츠 검수 둘째 탭)**: 집계·분포 시각화 + `/drafts`(현재 초안 + 재실행 이전 초안)
+    양분할 비교 · 다른 필드 하이라이트. 검수·교정 fbrow 목록은 제거(표+상세가 담당).
   - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)

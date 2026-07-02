@@ -138,19 +138,26 @@ DEMO_EXTRAS = {
               "reason_jaccard": 0.81, "harm_miss_rate": 0.04, "empty_rate": 0.0, "evaluated": 24,
               "by_reason_bucket": {"normal": {"n": 15, "grade_acc": 0.93}, "clickbait": {"n": 5, "grade_acc": 0.8}, "ad": {"n": 4, "grade_acc": 0.75}}},
     "raw": {"ok": True, "n": 3, "items": [
-        {"hash": "d1", "service": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "grade": "G", "reasons": [], "category": ["News and Politics / Society"], "model": "solar-pro3-260323",
+        {"hash": "d1", "service": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "grade": "G", "reasons": [], "category": ["News and Politics / Society"], "model": "solar-pro3-260323", "version": 2, "review": "", "split": False, "fb": {"verdict": "good", "n": 2, "ts": 1782800000}, "body": "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다.",
          "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]},
          "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.91}},
-        {"hash": "d2", "service": "뉴스", "title": "한국은행 기준금리 동결 결정", "grade": "G", "reasons": [], "category": ["Business and Finance / Economy"], "model": "solar-pro3-260323",
+        {"hash": "d2", "service": "뉴스", "title": "한국은행 기준금리 동결 결정", "grade": "G", "reasons": [], "category": ["Business and Finance / Economy"], "model": "solar-pro3-260323", "version": 2, "review": "", "split": False, "fb": {"verdict": "", "n": 0, "ts": 0}, "body": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다.",
          "item_meta": {"summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다", "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"], "content_category": ["Business and Finance / Economy"]},
          "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.88}},
-        {"hash": "d3", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "reasons": ["clickbait"], "category": [], "model": "gpt-5.4-mini",
+        {"hash": "d3", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "reasons": ["clickbait"], "category": [], "model": "gpt-5.4-mini", "version": 1, "review": "yellow", "split": True, "fb": {"verdict": "", "n": 2, "ts": 0}, "body": "본문과 무관한 자극적 제목으로 클릭을 유도한 사례.",
          "item_meta": {"summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"], "content_category": []},
          "quality_meta": {"finalGrade": "R", "reasons": ["clickbait"], "review": "yellow", "confidence": 0.52, "review_reason": "제목·본문 불일치 확신 낮음"}}]},
     "rqueue": {"ok": True, "n": 3, "items": [
         {"hash": "q1", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "review_reason": "제목·본문 불일치 확신 낮음", "reviewed": False, "split": False, "confidence": 0.52, "model": "solar-pro3-260323"},
         {"hash": "q2", "service": "뉴스", "title": "연예인 A·B 열애설 보도", "grade": "G", "review_reason": "사생활 보도 경계 사례", "reviewed": True, "split": True, "confidence": 0.66, "model": "solar-pro3-260323"},
         {"hash": "gold:ok:demo1", "service": "뉴스", "title": "국회 예산안 표결 처리", "grade": "G", "review_reason": "", "reviewed": False, "split": False, "confidence": None, "model": "solar-pro3-260323"}]},
+    "drafts": {"ok": True, "n": 2, "items": [
+        {"label": "solar-pro3-260323 · v2 (현재)", "model": "solar-pro3-260323", "version": 2,
+         "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]},
+         "quality_meta": {"finalGrade": "G", "reasons": []}},
+        {"label": "gpt-5.4-mini · 이전(rerun)", "model": "gpt-5.4-mini", "version": None,
+         "item_meta": {"summary": "삼성 노사가 임금 협상에서 결렬됐다", "entities": ["삼성전자"], "intent": ["속보·사건 추적"], "content_category": ["Business and Finance / Business"]},
+         "quality_meta": {"finalGrade": "G", "reasons": []}}]},
     "ingest": {"running": True, "scheduler": True, "jobs": [
         {"id": "src1", "name": "뉴스 수집 API", "running": True, "trigger": "auto", "total": 40, "done": 25, "last_msg": "25/40 처리 중", "endpoint": "https://crawler.example/items"},
         {"id": "job2", "name": "엑셀 일괄 추출", "running": True, "trigger": "manual", "total": 12, "done": 7, "last_msg": "7/12 처리 중", "endpoint": ""}]},
@@ -267,6 +274,7 @@ STUB = """<script>
       if (u.indexOf('/compare-models') > -1) return Promise.resolve(J(EX.cmp));
       if (u.indexOf('/eval-golden') > -1) return Promise.resolve(J(EX.evalg));
       if (u.indexOf('/raw') > -1) return Promise.resolve(J(EX.raw));
+      if (u.indexOf('/drafts') > -1) return Promise.resolve(J(EX.drafts));
       if (u.indexOf('/patch-meta') > -1 || u.indexOf('/feedback') > -1) return Promise.resolve(J({ ok: true, feedback: { total: 62, good: 48, bad: 14, learned: 9, contents: 12, reviewers: 3, split: 3 } }));
       if (u.indexOf('/reap') > -1) return Promise.resolve(J({ ok: true, items: [] }));
       if (u.indexOf('/queue') > -1) return Promise.resolve(J(EX.rqueue));

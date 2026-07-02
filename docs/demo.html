@@ -1871,7 +1871,7 @@
           { id: 'lab', label: '실험실', ic: 'auto' } ] },
       ],
       contentTab: 'queue',                    // 콘텐츠 관리 홈 탭 = 실행 큐(자동/수동 구분)
-      createTab: 'queue',                     // 콘텐츠 검수: queue(검수 대기) | edit(결과 목록) | raw(원본 목록)
+      createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 테스트셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
       labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | topic(토픽) | user(사용자)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
@@ -1900,8 +1900,35 @@
       goldenResult: null, goldenBusy: false, goldenMsg: '',
       rawData: null, rawSel: null,
       async loadRaw() { try { const r = await (await fetch('/raw?limit=200', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; } } catch (e) {} },
-      // 원본 목록 필터(빠른 검수): 검색 + 등급/모델/서비스/검수 상태
-      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '',
+      // 검수 대상 콘텐츠: 상단 모델→버전 구분 + 필터
+      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '', rawVer: '',
+      get rawVersions() { return [...new Set(((this.rawData||{}).items||[]).filter((r) => !this.rawModel || r.model === this.rawModel).map((r) => r.version).filter((v) => v != null))].sort((a,b)=>b-a); },
+      // 결과 비교(양분할): 초안 목록 + 필드 diff
+      cmpDraftHash: '', draftsData: null, cmpL: 0, cmpR: 1,
+      async loadDrafts() {
+        this.draftsData = null; this.cmpL = 0; this.cmpR = 1;
+        if (!this.cmpDraftHash) return;
+        try { const r = await (await fetch('/drafts?hash=' + encodeURIComponent(this.cmpDraftHash), { headers: this._authHeaders() })).json(); if (r && r.ok) { this.draftsData = r; this.cmpR = r.items.length > 1 ? 1 : 0; } } catch (e) {}
+      },
+      get draftPair() {
+        const it = (this.draftsData||{}).items || [];
+        if (!it.length) return null;
+        return { l: it[Math.min(this.cmpL, it.length-1)], r: it[Math.min(this.cmpR, it.length-1)] };
+      },
+      get draftDiff() {
+        const p = this.draftPair; if (!p) return [];
+        const pick = (d) => ({
+          '등급': (d.quality_meta||{}).finalGrade || '·',
+          '품질 사유': ((d.quality_meta||{}).reasons||[]).join(' · ') || '·',
+          '카테고리': ((d.item_meta||{}).content_category||[]).join(' · ') || '·',
+          '인텐트': ((d.item_meta||{}).intent||[]).join(' · ') || '·',
+          '엔티티': ((d.item_meta||{}).entities||[]).join(' · ') || '·',
+          '리드문': (d.item_meta||{}).summary || '·',
+        });
+        const L = pick(p.l), R = pick(p.r);
+        return Object.keys(L).map((k) => ({ k: k, l: L[k], r: R[k], diff: L[k] !== R[k] }));
+      },
+      openRawDetail(r) { this.openDetail({ hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', fb: Object.assign({}, r.fb) }); },
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
       get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
       get rawFiltered() {
@@ -1909,20 +1936,14 @@
           if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
+          if (this.rawVer && String(r.version||'') !== this.rawVer) return false;
           if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
           if (this.rawRev === 'todo' && (r.fb && r.fb.verdict)) return false;
           if (this.rawRev === 'done' && !(r.fb && r.fb.verdict)) return false;
           return true;
         });
       },
-      async rawVerdict(r, v) {
-        if (!this.ensureReviewer()) return;
-        const had = !!(r.fb && r.fb.verdict);
-        const res = await this._postFb({ hash: r.hash, service: r.service, title: r.title, model: r.model || '', verdict: v, stage: 'review', note: '' });
-        if (res && res.error) { this._err(res.error); return; }
-        r.fb = Object.assign({}, r.fb, { verdict: v });
-        if (!had) this.celebratePoints(10, '검수 완료');
-      },
+
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
       rerunHash: '', rerunModel: '', rerunBusy: false, rerunMsg: '',
       async runRerun() {
@@ -2031,13 +2052,13 @@
         this.mod = id; this.status = ''; this.addMenuOpen = false;
         // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 테스트셋 관리
         if (id === 'run' || id === 'auto' || id === 'queue' || id === 'intake') { this.contentTab = id; id = 'content'; }
-        if (id === 'dash') { id = 'create'; this.createTab = 'edit'; }
-        if (id === 'review') { id = 'create'; this.createTab = 'queue'; }
+        if (id === 'dash') { id = 'create'; this.createTab = 'raw'; }
+        if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
         if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
         if (id === 'eval') id = 'evaluate';
         if (id === 'home') { this.loadArena(); this.loadDash(); }
-        else if (id === 'create') { this.loadDash(); this.loadQueue(); }
+        else if (id === 'create') { this.loadDash(); this.loadRaw(); }
         else if (id === 'evaluate') this.loadGoldenStatus();
         else if (id === 'arena') this.loadArena();
         else if (id === 'admin') this.loadAdmin();
@@ -2273,7 +2294,7 @@
             const v = d.verdict === 'good' ? '정확' : d.verdict === 'bad' ? '문제' : '취소';
             this.liveToast(d.reviewer + '님 · 「' + (d.title || '콘텐츠') + '」 ' + v);
           }
-          if (this.mod === 'review') this.loadQueue();
+          if (this.mod === 'create') this.loadRaw();
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();             // 정확도 게이지 실시간 상승
           if (this.mod === 'dash' || this.mod === 'eval' || this.mod === 'home') this.loadDashThrottled();
         } else if (d.type === 'reap') {
@@ -2938,7 +2959,7 @@
   window.__DEMO_RESULT__ = {"source": "image", "mock": false, "content": {"displayServiceName": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "subtitle": "", "body": "기자회견장에서 노조 집행부가 발언하는 장면. 중앙노동위원회 조정에서 합의 불성립."}, "signals": [{"vision": "이미지는 실내 기자회견장을 담고 있다. 노동조합 집행부로 보이는 인물들이 단상에 앉아 발언하고 있으며, 배경 현수막에 협상 관련 문구가 보인다. 전체적으로 노사 협상 결렬을 알리는 공식 발표 현장의 분위기다. [엔티티] 삼성전자, 전국삼성전자노동조합, 중앙노동위원회 [장면] 노사 협상 결렬 기자회견", "ocr": "중앙노동위원회 조정 불성립 · 임금 인상 협상 결렬", "latency_ms": 2840}], "output": {"item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사실 전달", "분석·해설"], "content_category": ["Business / Industries", "Law, Govt & Politics"]}, "quality_meta": {"finalGrade": "G"}, "routing": {"content_track": "text"}}};
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
-    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": true}, {"id": "m2", "name": "검수자 A", "char": "yonghee", "avatar": "yonghee", "is_admin": true}, {"id": "m3", "name": "검수자 B", "char": "ddakji", "avatar": "ddakji", "is_admin": false}], "goldenCount": 24}, ARENA = {"accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18, "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.5, "leaderboard": [{"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78, "gold_n": 12, "gold_acc": 0.92, "quality_mult": 0.96, "consensus_matches": 34, "split_reviews": 6, "patches": 5, "golden_contribs": 11, "agree_rate": 0.94}, {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51, "gold_n": 8, "gold_acc": 0.88, "quality_mult": 0.94, "consensus_matches": 22, "split_reviews": 4, "patches": 3, "golden_contribs": 7, "agree_rate": 0.9}, {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21, "gold_n": 3, "gold_acc": 0.67, "quality_mult": 1.0, "consensus_matches": 8, "split_reviews": 1, "patches": 1, "golden_contribs": 2, "agree_rate": 0.78}], "missions": [{"id": "daily5", "label": "오늘 검수 5건", "total": 5, "bonus": 20, "done": 3, "completed": false}, {"id": "gold1", "label": "골드 문항 1건 정답", "total": 1, "bonus": 15, "done": 1, "completed": true}, {"id": "split1", "label": "불일치 콘텐츠 재검토 1건", "total": 1, "bonus": 15, "done": 0, "completed": false}, {"id": "fill1", "label": "분류 채우기 1건(골든 승격)", "total": 1, "bonus": 10, "done": 0, "completed": false}]}, EX = {"gstat": {"ok": true, "total": 24, "source_counts": {"review": 18, "manual": 6}, "last_batch": {"confirmed": 18, "new": 3, "demoted": 1, "need_category": 2, "disagree": 3, "min_good": 1}, "need_list": [{"hash": "n1", "title": "집에서 만드는 김치볶음밥 레시피", "service": "블로그"}, {"hash": "n2", "title": "주말 캠핑장 예약 꿀팁", "service": "커뮤니티"}], "ts": 1782950000}, "glist": {"ok": true, "total": 24, "source_counts": {"review": 18, "manual": 6}, "items": [{"hash": "g1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "category": ["News and Politics / Society"], "source": "review", "flagged": false}, {"hash": "g2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "category": ["Business and Finance / Economy"], "source": "review", "flagged": false}, {"hash": "g3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "category": ["Entertainment"], "source": "manual", "flagged": true}, {"hash": "g4", "title": "손흥민 시즌 15호골", "service": "스포츠", "grade": "G", "category": ["Sports / Soccer (International)"], "source": "review", "flagged": false}]}, "lreport": {"ok": true, "ts": 1782950000, "grade_accuracy": 0.87, "golden": {"ok": true, "confirmed": 18, "new": 3, "demoted": 1, "total": 24, "need_category": 2, "disagree": 3, "min_good": 1}, "eval": {"ok": true, "n": 24, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}}, "improve": {"results": {"analyze": {"directive": "콘텐츠 카테고리는 인물보다 본문 주제 기준으로 부여하라. 연예 인물의 스포츠 활동은 Sports 로 분류.", "ambiguities": ["연예·스포츠 겹침 처리 기준"]}, "judge": {"directive": "구매 링크·쿠폰 문구가 본문에 있으면 ad 사유를 우선 검토하라.", "ambiguities": []}}}}, "ldata": {"ok": true, "golden_n": 24, "grade_dist": {"G": 19, "R": 5}, "coverage": [{"cls": "News and Politics", "have": 9, "lack": 0}, {"cls": "Business and Finance", "have": 6, "lack": 2}, {"cls": "Sports", "have": 4, "lack": 4}, {"cls": "Entertainment", "have": 3, "lack": 5}, {"cls": "Food and Drink", "have": 1, "lack": 7}, {"cls": "Travel", "have": 1, "lack": 7}, {"cls": "Technology and Computing", "have": 0, "lack": 8}, {"cls": "Medical Health", "have": 0, "lack": 8}], "covered": 1, "class_total": 21, "per_class_target": 8, "alpha": 0.72, "agreement": 0.88, "multi_units": 14, "reviewers": [{"reviewer": "데모 관리자", "n": 62, "agree_rate": 0.94, "gold_n": 12, "gold_acc": 0.92, "ds_error": 0.06}, {"reviewer": "검수자 A", "n": 41, "agree_rate": 0.9, "gold_n": 8, "gold_acc": 0.88, "ds_error": 0.09}, {"reviewer": "검수자 B", "n": 17, "agree_rate": 0.78, "gold_n": 3, "gold_acc": 0.67, "ds_error": 0.21}], "acc_ci": {"acc": 0.87, "n": 24, "lo": 0.7365, "hi": 1.0}, "label_flags": [{"hash": "g3", "title": "낚시성 제목 사례", "expected": "R", "got": "G"}], "split": [{"hash": "s1", "n": 3, "good": 1, "bad": 2}], "split_n": 3, "extractable": {"sft": 24, "dpo": 11, "rationale": 9}, "requirements": [{"kind": "분류 부트스트랩(클래스당 8)", "target": 168, "have": 24, "lack": 121, "basis": "SetFit · Tunstall et al. 2022 · arXiv:2209.11055"}, {"kind": "SFT 정렬(고품질)", "target": 1000, "have": 24, "lack": 976, "basis": "LIMA · Zhou et al. 2023 · arXiv:2305.11206"}, {"kind": "운영급 분류 LLM", "target": 13500, "have": 24, "lack": 13476, "basis": "Llama Guard · Inan et al. 2023 · arXiv:2312.06674"}, {"kind": "선호쌍(DPO · 참고 상한)", "target": 33000, "have": 11, "lack": 32989, "basis": "DPO · Rafailov et al. 2023 + InstructGPT RM 33k · Ouyang et al. 2022"}, {"kind": "평가셋(큐레이션)", "target": 100, "have": 24, "lack": 76, "basis": "tinyBenchmarks · Maia Polo et al. 2024 + Miller 2024(CI 병기)"}]}, "cmp": {"ok": true, "golden_n": 24, "best": "solar-pro3-260323", "models": [{"model": "solar-pro3-260323", "route": "solar", "real": true, "n": 24, "grade_accuracy": 0.87, "reason_jaccard": 0.81, "reason_exact_match": 0.71, "empty_rate": 0.0, "cost_usd": 0.0102, "tokens": {"in": 48210, "out": 6120}}, {"model": "gpt-5.4-mini", "route": "timely", "real": true, "n": 24, "grade_accuracy": 0.83, "reason_jaccard": 0.77, "reason_exact_match": 0.63, "empty_rate": 0.0, "cost_usd": 0.0089, "tokens": {"in": 47100, "out": 5480}}, {"model": "claude-haiku-4-5", "route": "timely", "real": true, "n": 24, "grade_accuracy": 0.79, "reason_jaccard": 0.74, "reason_exact_match": 0.58, "empty_rate": 0.04, "cost_usd": 0.0075, "tokens": {"in": 46800, "out": 5010}}], "skipped": [{"model": "gemini-2.5-pro", "reason": "라우터 키 없음(BizRouter·Timely)"}]}, "evalg": {"ok": true, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}, "reason_jaccard": 0.81, "harm_miss_rate": 0.04, "empty_rate": 0.0, "evaluated": 24, "by_reason_bucket": {"normal": {"n": 15, "grade_acc": 0.93}, "clickbait": {"n": 5, "grade_acc": 0.8}, "ad": {"n": 4, "grade_acc": 0.75}}}, "raw": {"ok": true, "n": 3, "items": [{"hash": "d1", "service": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "grade": "G", "reasons": [], "category": ["News and Politics / Society"], "model": "solar-pro3-260323", "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]}, "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.91}}, {"hash": "d2", "service": "뉴스", "title": "한국은행 기준금리 동결 결정", "grade": "G", "reasons": [], "category": ["Business and Finance / Economy"], "model": "solar-pro3-260323", "item_meta": {"summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다", "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"], "content_category": ["Business and Finance / Economy"]}, "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.88}}, {"hash": "d3", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "reasons": ["clickbait"], "category": [], "model": "gpt-5.4-mini", "item_meta": {"summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"], "content_category": []}, "quality_meta": {"finalGrade": "R", "reasons": ["clickbait"], "review": "yellow", "confidence": 0.52, "review_reason": "제목·본문 불일치 확신 낮음"}}]}, "rqueue": {"ok": true, "n": 3, "items": [{"hash": "q1", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "review_reason": "제목·본문 불일치 확신 낮음", "reviewed": false, "split": false, "confidence": 0.52, "model": "solar-pro3-260323"}, {"hash": "q2", "service": "뉴스", "title": "연예인 A·B 열애설 보도", "grade": "G", "review_reason": "사생활 보도 경계 사례", "reviewed": true, "split": true, "confidence": 0.66, "model": "solar-pro3-260323"}, {"hash": "gold:ok:demo1", "service": "뉴스", "title": "국회 예산안 표결 처리", "grade": "G", "review_reason": "", "reviewed": false, "split": false, "confidence": null, "model": "solar-pro3-260323"}]}, "ingest": {"running": true, "scheduler": true, "jobs": [{"id": "src1", "name": "뉴스 수집 API", "running": true, "trigger": "auto", "total": 40, "done": 25, "last_msg": "25/40 처리 중", "endpoint": "https://crawler.example/items"}, {"id": "job2", "name": "엑셀 일괄 추출", "running": true, "trigger": "manual", "total": 12, "done": 7, "last_msg": "7/12 처리 중", "endpoint": ""}]}};
+    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": true}, {"id": "m2", "name": "검수자 A", "char": "yonghee", "avatar": "yonghee", "is_admin": true}, {"id": "m3", "name": "검수자 B", "char": "ddakji", "avatar": "ddakji", "is_admin": false}], "goldenCount": 24}, ARENA = {"accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18, "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.5, "leaderboard": [{"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 6, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78, "gold_n": 12, "gold_acc": 0.92, "quality_mult": 0.96, "consensus_matches": 34, "split_reviews": 6, "patches": 5, "golden_contribs": 11, "agree_rate": 0.94}, {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 4, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51, "gold_n": 8, "gold_acc": 0.88, "quality_mult": 0.94, "consensus_matches": 22, "split_reviews": 4, "patches": 3, "golden_contribs": 7, "agree_rate": 0.9}, {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21, "gold_n": 3, "gold_acc": 0.67, "quality_mult": 1.0, "consensus_matches": 8, "split_reviews": 1, "patches": 1, "golden_contribs": 2, "agree_rate": 0.78}], "missions": [{"id": "daily5", "label": "오늘 검수 5건", "total": 5, "bonus": 20, "done": 3, "completed": false}, {"id": "gold1", "label": "골드 문항 1건 정답", "total": 1, "bonus": 15, "done": 1, "completed": true}, {"id": "split1", "label": "불일치 콘텐츠 재검토 1건", "total": 1, "bonus": 15, "done": 0, "completed": false}, {"id": "fill1", "label": "분류 채우기 1건(골든 승격)", "total": 1, "bonus": 10, "done": 0, "completed": false}]}, EX = {"gstat": {"ok": true, "total": 24, "source_counts": {"review": 18, "manual": 6}, "last_batch": {"confirmed": 18, "new": 3, "demoted": 1, "need_category": 2, "disagree": 3, "min_good": 1}, "need_list": [{"hash": "n1", "title": "집에서 만드는 김치볶음밥 레시피", "service": "블로그"}, {"hash": "n2", "title": "주말 캠핑장 예약 꿀팁", "service": "커뮤니티"}], "ts": 1782950000}, "glist": {"ok": true, "total": 24, "source_counts": {"review": 18, "manual": 6}, "items": [{"hash": "g1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "category": ["News and Politics / Society"], "source": "review", "flagged": false}, {"hash": "g2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "category": ["Business and Finance / Economy"], "source": "review", "flagged": false}, {"hash": "g3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "category": ["Entertainment"], "source": "manual", "flagged": true}, {"hash": "g4", "title": "손흥민 시즌 15호골", "service": "스포츠", "grade": "G", "category": ["Sports / Soccer (International)"], "source": "review", "flagged": false}]}, "lreport": {"ok": true, "ts": 1782950000, "grade_accuracy": 0.87, "golden": {"ok": true, "confirmed": 18, "new": 3, "demoted": 1, "total": 24, "need_category": 2, "disagree": 3, "min_good": 1}, "eval": {"ok": true, "n": 24, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}}, "improve": {"results": {"analyze": {"directive": "콘텐츠 카테고리는 인물보다 본문 주제 기준으로 부여하라. 연예 인물의 스포츠 활동은 Sports 로 분류.", "ambiguities": ["연예·스포츠 겹침 처리 기준"]}, "judge": {"directive": "구매 링크·쿠폰 문구가 본문에 있으면 ad 사유를 우선 검토하라.", "ambiguities": []}}}}, "ldata": {"ok": true, "golden_n": 24, "grade_dist": {"G": 19, "R": 5}, "coverage": [{"cls": "News and Politics", "have": 9, "lack": 0}, {"cls": "Business and Finance", "have": 6, "lack": 2}, {"cls": "Sports", "have": 4, "lack": 4}, {"cls": "Entertainment", "have": 3, "lack": 5}, {"cls": "Food and Drink", "have": 1, "lack": 7}, {"cls": "Travel", "have": 1, "lack": 7}, {"cls": "Technology and Computing", "have": 0, "lack": 8}, {"cls": "Medical Health", "have": 0, "lack": 8}], "covered": 1, "class_total": 21, "per_class_target": 8, "alpha": 0.72, "agreement": 0.88, "multi_units": 14, "reviewers": [{"reviewer": "데모 관리자", "n": 62, "agree_rate": 0.94, "gold_n": 12, "gold_acc": 0.92, "ds_error": 0.06}, {"reviewer": "검수자 A", "n": 41, "agree_rate": 0.9, "gold_n": 8, "gold_acc": 0.88, "ds_error": 0.09}, {"reviewer": "검수자 B", "n": 17, "agree_rate": 0.78, "gold_n": 3, "gold_acc": 0.67, "ds_error": 0.21}], "acc_ci": {"acc": 0.87, "n": 24, "lo": 0.7365, "hi": 1.0}, "label_flags": [{"hash": "g3", "title": "낚시성 제목 사례", "expected": "R", "got": "G"}], "split": [{"hash": "s1", "n": 3, "good": 1, "bad": 2}], "split_n": 3, "extractable": {"sft": 24, "dpo": 11, "rationale": 9}, "requirements": [{"kind": "분류 부트스트랩(클래스당 8)", "target": 168, "have": 24, "lack": 121, "basis": "SetFit · Tunstall et al. 2022 · arXiv:2209.11055"}, {"kind": "SFT 정렬(고품질)", "target": 1000, "have": 24, "lack": 976, "basis": "LIMA · Zhou et al. 2023 · arXiv:2305.11206"}, {"kind": "운영급 분류 LLM", "target": 13500, "have": 24, "lack": 13476, "basis": "Llama Guard · Inan et al. 2023 · arXiv:2312.06674"}, {"kind": "선호쌍(DPO · 참고 상한)", "target": 33000, "have": 11, "lack": 32989, "basis": "DPO · Rafailov et al. 2023 + InstructGPT RM 33k · Ouyang et al. 2022"}, {"kind": "평가셋(큐레이션)", "target": 100, "have": 24, "lack": 76, "basis": "tinyBenchmarks · Maia Polo et al. 2024 + Miller 2024(CI 병기)"}]}, "cmp": {"ok": true, "golden_n": 24, "best": "solar-pro3-260323", "models": [{"model": "solar-pro3-260323", "route": "solar", "real": true, "n": 24, "grade_accuracy": 0.87, "reason_jaccard": 0.81, "reason_exact_match": 0.71, "empty_rate": 0.0, "cost_usd": 0.0102, "tokens": {"in": 48210, "out": 6120}}, {"model": "gpt-5.4-mini", "route": "timely", "real": true, "n": 24, "grade_accuracy": 0.83, "reason_jaccard": 0.77, "reason_exact_match": 0.63, "empty_rate": 0.0, "cost_usd": 0.0089, "tokens": {"in": 47100, "out": 5480}}, {"model": "claude-haiku-4-5", "route": "timely", "real": true, "n": 24, "grade_accuracy": 0.79, "reason_jaccard": 0.74, "reason_exact_match": 0.58, "empty_rate": 0.04, "cost_usd": 0.0075, "tokens": {"in": 46800, "out": 5010}}], "skipped": [{"model": "gemini-2.5-pro", "reason": "라우터 키 없음(BizRouter·Timely)"}]}, "evalg": {"ok": true, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}, "reason_jaccard": 0.81, "harm_miss_rate": 0.04, "empty_rate": 0.0, "evaluated": 24, "by_reason_bucket": {"normal": {"n": 15, "grade_acc": 0.93}, "clickbait": {"n": 5, "grade_acc": 0.8}, "ad": {"n": 4, "grade_acc": 0.75}}}, "raw": {"ok": true, "n": 3, "items": [{"hash": "d1", "service": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "grade": "G", "reasons": [], "category": ["News and Politics / Society"], "model": "solar-pro3-260323", "version": 2, "review": "", "split": false, "fb": {"verdict": "good", "n": 2, "ts": 1782800000}, "body": "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다.", "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]}, "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.91}}, {"hash": "d2", "service": "뉴스", "title": "한국은행 기준금리 동결 결정", "grade": "G", "reasons": [], "category": ["Business and Finance / Economy"], "model": "solar-pro3-260323", "version": 2, "review": "", "split": false, "fb": {"verdict": "", "n": 0, "ts": 0}, "body": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다.", "item_meta": {"summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다", "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"], "content_category": ["Business and Finance / Economy"]}, "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.88}}, {"hash": "d3", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "reasons": ["clickbait"], "category": [], "model": "gpt-5.4-mini", "version": 1, "review": "yellow", "split": true, "fb": {"verdict": "", "n": 2, "ts": 0}, "body": "본문과 무관한 자극적 제목으로 클릭을 유도한 사례.", "item_meta": {"summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"], "content_category": []}, "quality_meta": {"finalGrade": "R", "reasons": ["clickbait"], "review": "yellow", "confidence": 0.52, "review_reason": "제목·본문 불일치 확신 낮음"}}]}, "rqueue": {"ok": true, "n": 3, "items": [{"hash": "q1", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "review_reason": "제목·본문 불일치 확신 낮음", "reviewed": false, "split": false, "confidence": 0.52, "model": "solar-pro3-260323"}, {"hash": "q2", "service": "뉴스", "title": "연예인 A·B 열애설 보도", "grade": "G", "review_reason": "사생활 보도 경계 사례", "reviewed": true, "split": true, "confidence": 0.66, "model": "solar-pro3-260323"}, {"hash": "gold:ok:demo1", "service": "뉴스", "title": "국회 예산안 표결 처리", "grade": "G", "review_reason": "", "reviewed": false, "split": false, "confidence": null, "model": "solar-pro3-260323"}]}, "drafts": {"ok": true, "n": 2, "items": [{"label": "solar-pro3-260323 · v2 (현재)", "model": "solar-pro3-260323", "version": 2, "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]}, "quality_meta": {"finalGrade": "G", "reasons": []}}, {"label": "gpt-5.4-mini · 이전(rerun)", "model": "gpt-5.4-mini", "version": null, "item_meta": {"summary": "삼성 노사가 임금 협상에서 결렬됐다", "entities": ["삼성전자"], "intent": ["속보·사건 추적"], "content_category": ["Business and Finance / Business"]}, "quality_meta": {"finalGrade": "G", "reasons": []}}]}, "ingest": {"running": true, "scheduler": true, "jobs": [{"id": "src1", "name": "뉴스 수집 API", "running": true, "trigger": "auto", "total": 40, "done": 25, "last_msg": "25/40 처리 중", "endpoint": "https://crawler.example/items"}, {"id": "job2", "name": "엑셀 일괄 추출", "running": true, "trigger": "manual", "total": 12, "done": 7, "last_msg": "7/12 처리 중", "endpoint": ""}]}};
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
       const u = String(url);
@@ -2976,6 +2997,7 @@
       if (u.indexOf('/compare-models') > -1) return Promise.resolve(J(EX.cmp));
       if (u.indexOf('/eval-golden') > -1) return Promise.resolve(J(EX.evalg));
       if (u.indexOf('/raw') > -1) return Promise.resolve(J(EX.raw));
+      if (u.indexOf('/drafts') > -1) return Promise.resolve(J(EX.drafts));
       if (u.indexOf('/patch-meta') > -1 || u.indexOf('/feedback') > -1) return Promise.resolve(J({ ok: true, feedback: { total: 62, good: 48, bad: 14, learned: 9, contents: 12, reviewers: 3, split: 3 } }));
       if (u.indexOf('/reap') > -1) return Promise.resolve(J({ ok: true, items: [] }));
       if (u.indexOf('/queue') > -1) return Promise.resolve(J(EX.rqueue));
@@ -4566,11 +4588,10 @@
       </div>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
-      <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대기 | 결과 목록 | 원본 목록 ═══ -->
+      <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대상 콘텐츠(기본) | 결과 비교 ═══ -->
       <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="createTab==='queue'?'sel':''" x-on:click="createTab='queue'; loadQueue()">검수 대기</button>
-        <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadDash()">결과 목록</button>
-        <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">원본 목록</button>
+        <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
+        <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadDash(); loadRaw()">결과 비교</button>
       </div></div>
       <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="ds-pilot w-full">
         <div x-show="!dashData || !dashData.n" class="ds-empty">
@@ -4612,42 +4633,36 @@
               </div>
             </div>
           </section>
-          <!-- 콘텐츠별 검수 · 교정: 현황을 보면서 판정·교정 → 학습 루프로 수집(일배치 반영) -->
-          <section class="panel" data-fn><div class="panel-hd"><b>콘텐츠별 검수 · 교정</b>
-            <span class="meta tnum" x-show="dashData && dashData.feedback" x-text="dashData ? ('검수 ' + dashData.feedback.total + ' · 학습 반영 ' + dashData.feedback.learned + '건') : ''"></span>
-            <button type="button" class="ds-btn ds-btn--secondary ml-auto" style="height:30px;padding:0 12px" x-show="dashData && dashData.feedback && dashData.feedback.total" x-on:click="clearFeedback()">초기화</button>
-          </div>
+          <!-- 결과 비교: 같은 콘텐츠의 초안(모델·버전)을 양분할로 비교 · 다른 필드 하이라이트 -->
+          <section class="panel" data-fn><div class="panel-hd"><b>결과 비교</b><span class="meta">같은 콘텐츠 · 초안(모델·버전) 좌우 비교</span></div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:11px"><li>콘텐츠마다 <b>정확</b> / <b>문제</b>를 표시합니다 · 제목 클릭 = 상세(원문·교정).</li><li>문제는 요소를 고르고 교정 메모를 남기면 단계별로 분기되어 <b>학습 일배치</b>에 반영됩니다.</li></ul>
-              <!-- 출처 필터: 자동 인입 / 단건 / 배치 구분 -->
-              <div class="srcfilter" x-show="srcOptions.length > 1">
-                <button type="button" class="srcfilter__chip" x-bind:class="srcFilter==='' ? 'sel' : ''" x-on:click="srcFilter=''">전체 <span x-text="(dashData&&dashData.contents?dashData.contents.length:0)"></span></button>
-                <template x-for="s in srcOptions" x-bind:key="s">
-                  <button type="button" class="srcfilter__chip" x-bind:class="srcFilter===s ? 'sel' : ''" x-on:click="srcFilter=s">
-                    <span x-text="s"></span> <span x-text="(dashData&&dashData.contents?dashData.contents.filter(c=>(c.source||'단건')===s).length:0)"></span></button>
-                </template>
+              <ul class="ds-bullets" style="margin-bottom:10px"><li>콘텐츠를 고르면 보유한 초안(현재 + 재실행 이전)을 <b>좌/우로 비교</b>합니다.</li><li>서로 <b>다른 필드는 색으로 표시</b>됩니다 · 판정은 검수 대상 콘텐츠 표에서 하세요.</li></ul>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+                <select class="field" style="flex:1;min-width:240px;height:36px" x-model="cmpDraftHash" x-on:change="loadDrafts()">
+                  <option value="">콘텐츠 선택…</option>
+                  <template x-for="r in ((rawData||{}).items||[])" x-bind:key="r.hash"><option x-bind:value="r.hash" x-text="r.title || '(제목 없음)'"></option></template>
+                </select>
+                <select class="field" style="width:auto;min-width:170px;height:36px" x-model.number="cmpL" x-show="draftsData && draftsData.items.length">
+                  <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'L'+i"><option x-bind:value="i" x-text="d.label"></option></template>
+                </select>
+                <span class="text-xs text-muted" x-show="draftsData && draftsData.items.length">vs</span>
+                <select class="field" style="width:auto;min-width:170px;height:36px" x-model.number="cmpR" x-show="draftsData && draftsData.items.length">
+                  <template x-for="(d,i) in ((draftsData||{}).items||[])" x-bind:key="'R'+i"><option x-bind:value="i" x-text="d.label"></option></template>
+                </select>
               </div>
-              <div class="overflow-auto" style="max-height:440px;padding:2px">
-                <template x-for="c in filteredContents" x-bind:key="c.hash">
-                  <div class="fbrow">
-                    <div class="fbrow__main">
-                      <div class="fbrow__title"><span class="ds-badge" style="cursor:help" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', c.grade)" data-tip-pos="top" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" data-tip="콘텐츠가 들어온 경로" data-tip-pos="top" x-text="c.source||'단건'"></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="c.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델의 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="c.model"></span><span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span><span class="ds-badge ds-badge--success" x-show="c.fb && c.fb.verdict" data-tip="검수 판정 완료" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></div>
-                      <div class="fbrow__sum tbox" x-show="c.summary" x-text="c.summary"></div>
-                    </div>
-                    <div class="fbrow__act">
-                      <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="(c.fb&&c.fb.verdict==='good')?'is-on':''" x-on:click="setFeedback(c,'good')"><span class="verdictbtn__dot"></span>정확</button>
-                      <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="(c.fb&&c.fb.verdict==='bad')?'is-on':''" x-on:click="setFeedback(c,'bad')"><span class="verdictbtn__dot"></span>문제</button>
-                    </div>
-                    <div class="fbrow__note" x-show="(c.fb&&c.fb.verdict==='bad') || fbNoteOpen[c.hash]">
-                      <span class="fixelems" style="margin:0"><template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id"><button type="button" class="fixelem" x-bind:class="fbElems(c.fb).includes(fe.id) ? 'sel' : ''" x-on:click="toggleFixElem(c.fb, fe.id)" x-text="fe.label"></button></template></span>
-                      <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="무엇이 왜 잘못됐는지 · 요소 여러 개 선택 가능(단계별 자동 분기)" x-model="c.fb.note" x-on:keydown.enter="saveFbNote(c)">
-                      <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="saveFbNote(c)">반영</button>
-                    </div>
-                  </div>
-                </template>
-                <div x-show="!(dashData&&dashData.contents&&dashData.contents.length)" class="text-xs text-muted" style="padding:10px">표시할 콘텐츠가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 추출·인입을 실행하세요</div>
-                <div x-show="dashData&&dashData.contents&&dashData.contents.length && !filteredContents.length" class="text-xs text-muted" style="padding:10px">이 출처의 콘텐츠가 없습니다</div>
-              </div>
+              <template x-if="draftPair">
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:110px">필드</th><th x-text="draftPair.l.label"></th><th x-text="draftPair.r.label"></th></tr></thead><tbody>
+                  <template x-for="f in draftDiff" x-bind:key="f.k">
+                    <tr x-bind:class="f.diff ? 'is-sel' : ''">
+                      <td class="text-ink"><span x-text="f.k"></span> <span class="ds-badge ds-badge--error" x-show="f.diff" style="margin-left:4px">다름</span></td>
+                      <td class="text-xs" x-text="f.l"></td>
+                      <td class="text-xs" x-text="f.r"></td>
+                    </tr>
+                  </template>
+                </tbody></table></div>
+              </template>
+              <div x-show="cmpDraftHash && draftsData && draftsData.items.length < 2" class="text-xs text-muted">비교할 초안이 하나뿐입니다 · <b class="text-ink">콘텐츠 관리 · 다른 모델로 재실행</b>으로 다른 모델 초안을 만들어 보세요</div>
+              <div x-show="!cmpDraftHash" class="text-xs text-muted">콘텐츠를 선택하면 초안 비교가 표시됩니다</div>
             </div>
           </section>
         </div>
@@ -5072,7 +5087,7 @@
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn><div class="panel-hd"><b>원본 목록</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
+        <section class="panel" data-fn><div class="panel-hd"><b>검수 대상 콘텐츠</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
           <span class="ml-auto" style="display:flex;gap:8px;align-items:center">
             <a class="copybtn" style="text-decoration:none" href="/export.csv" data-tip="전체 결과 CSV 다운로드" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>CSV</a>
             <a class="copybtn" style="text-decoration:none" href="/report" target="_blank" data-tip="브라우저용 HTML 리포트 열기" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>리포트</a>
@@ -5080,30 +5095,41 @@
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>판정 결과 전체를 <b>한 표</b>로 봅니다 · 필터로 좁혀 빠르게 검수하세요.</li><li>행 클릭 = <b>JSON 원문</b> · 정확/문제 버튼 = 바로 판정.</li></ul>
-            <!-- 필터: 검색 + 등급/모델/서비스/검수 상태 -->
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>모델을 고르면 아래 목록은 전부 <b>그 모델이 초기 판정한 초안</b>입니다(모델별 정답셋의 재료).</li><li>검수가 진행되며 프롬프트가 갱신되면 <b>버전</b>이 올라갑니다 · 행 클릭 = JSON 원문, <b>검수하기</b> = 상세에서 판정·교정.</li></ul>
+            <!-- 상단 구분: 모델 → 버전 → 목록 -->
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+              <button type="button" class="srcfilter__chip" x-bind:class="rawModel==='' ? 'sel' : ''" x-on:click="rawModel=''; rawVer=''">모델 전체</button>
+              <template x-for="m in rawModels" x-bind:key="m">
+                <button type="button" class="srcfilter__chip" x-bind:class="rawModel===m ? 'sel' : ''" x-on:click="rawModel=m; rawVer=''" x-text="m"></button>
+              </template>
+              <select class="field" style="width:auto;height:32px" x-model="rawVer" x-show="rawVersions.length > 1">
+                <option value="">버전 전체</option>
+                <template x-for="v in rawVersions" x-bind:key="v"><option x-bind:value="String(v)" x-text="'v' + v"></option></template>
+              </select>
+            </div>
+            <div class="text-xs text-muted" style="margin-bottom:10px" x-show="rawModel"><b class="text-ink" x-text="rawModel"></b><span x-show="rawVer" x-text="' · v' + rawVer"></span> 가 초기 판정한 초안 목록입니다 · 검수 합의는 이 모델의 정답셋으로 쌓입니다</div>
+            <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
               <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
               <select class="field" style="width:auto;height:34px" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
-              <select class="field" style="width:auto;height:34px" x-model="rawModel"><option value="">모델 전체</option><template x-for="m in rawModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select>
               <select class="field" style="width:auto;height:34px" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
               <select class="field" style="width:auto;height:34px" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
             </div>
-            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:120px">모델</th><th>카테고리</th><th>사유</th><th style="width:120px">검수</th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th></tr></thead><tbody>
               <template x-for="r in rawFiltered" x-bind:key="r.hash">
                 <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" x-on:keydown.enter="rawSel = r">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
-                  <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top" x-text="r.title || '(제목 없음)'"></td>
+                  <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top"><span x-text="r.title || '(제목 없음)'"></span>
+                    <span class="ds-badge ds-badge--yellow" style="cursor:help;margin-left:4px" x-show="r.review==='yellow'" data-tip="AI 확신이 낮아 사람 확인이 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
+                    <span class="ds-badge ds-badge--error" style="margin-left:4px" x-show="r.split" data-tip="검수자 의견이 갈림 · 추가 의견 필요" data-tip-pos="top">불일치</span>
+                  </td>
                   <td class="text-muted" x-text="r.service"></td>
-                  <td class="text-xs text-muted tnum" x-text="r.model || '·'"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
                   <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template></td>
                   <td x-on:click.stop>
-                    <span style="display:flex;gap:4px;align-items:center">
-                      <button type="button" class="verdictbtn verdictbtn--good" style="padding:3px 8px" x-bind:class="(r.fb&&r.fb.verdict==='good')?'is-on':''" x-on:click="rawVerdict(r,'good')"><span class="verdictbtn__dot"></span>정확</button>
-                      <button type="button" class="verdictbtn verdictbtn--bad" style="padding:3px 8px" x-bind:class="(r.fb&&r.fb.verdict==='bad')?'is-on':''" x-on:click="rawVerdict(r,'bad')"><span class="verdictbtn__dot"></span>문제</button>
-                    </span>
+                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="!(r.fb && r.fb.verdict)" x-on:click="openRawDetail(r)">검수하기</button>
+                    <span class="text-xs text-muted tnum" x-show="r.fb && r.fb.verdict" style="cursor:pointer" x-on:click="openRawDetail(r)" data-tip="완료 · 클릭하면 상세에서 수정" data-tip-pos="top" x-text="'✓ ' + (r.fb && r.fb.ts ? fmtTs(r.fb.ts) : '완료')"></span>
                   </td>
                 </tr>
               </template>
@@ -5314,52 +5340,6 @@
       </div>
 
       <!-- ═══ 모듈: 검수 대기 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
-      <div x-show="mod === 'create' && createTab === 'queue'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn><div class="panel-hd"><b>검수 대기 목록</b>
-          <span class="meta tnum" x-text="(queueData && queueData.n != null) ? (queueData.n + '건') : ''"></span>
-          <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
-            <input type="checkbox" x-model="queueOnlyUnreviewed" x-on:change="loadQueue()"> 미검수만</label>
-          <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="검수 대기 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        </div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>AI가 확신하지 못해 <b>사람 확인이 필요한 콘텐츠</b>(YELLOW) 대기열입니다.</li><li><b x-text="reviewer || '(이름 미설정)'"></b> 으로 검수하며, 여러 검수자의 의견은 모두 보존됩니다.</li><li>같은 의견이 모이면 <b>합의</b>, 갈리면 <b>재검토</b>로 표시됩니다.</li></ul>
-            <div class="overflow-auto" style="max-height:480px;padding:2px">
-              <template x-for="it in (queueData ? queueData.items : [])" x-bind:key="it.hash">
-                <div class="fbrow" x-init="notifyViewing(it)">
-                  <div class="fbrow__main">
-                    <div class="fbrow__title">
-                      <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="termDef('grade', it.grade)" data-tip-pos="top" x-text="it.grade || '·'"></span>
-                      <span class="ds-badge ds-badge--yellow" style="cursor:help" data-tip="AI 확신이 낮아 사람 검수가 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
-                      <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="it.model" data-tip="이 결과 초안을 만든 모델" data-tip-pos="top" x-text="it.model"></span>
-                      <span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="it.title || '(제목 없음)'"></span>
-                      <span class="fbrow__svc" x-text="it.service"></span>
-                      <span class="ds-badge ds-badge--error" x-show="it.split" data-tip="검수자 의견이 갈린 콘텐츠 · 추가 의견으로 합의를 만들어 주세요" data-tip-pos="top">불일치 · 재검토</span>
-                      <span class="ds-badge ds-badge--warning" x-show="it.confidence != null && it.confidence < 0.6" data-tip="모델 확신이 낮아 사람 판단이 특히 중요한 콘텐츠" data-tip-pos="top">저확신</span>
-                      <span class="ds-badge" x-show="it.goldRevealed" x-bind:class="it.goldCorrect ? 'ds-badge--success' : 'ds-badge--error'" x-text="it.goldCorrect ? '골드 문항 · 정답' : '골드 문항 · 오답'"></span>
-                      <span class="ds-badge ds-badge--intent" x-show="liveSeen[it.hash]" x-text="(liveSeen[it.hash]||'') + ' 보는 중'"></span>
-                      <span class="ds-badge ds-badge--success" x-show="it.reviewed && !it.myVerdict && !it.goldRevealed">검수됨</span>
-                      <span class="ds-badge" x-show="it.myVerdict && !it.goldRevealed" x-bind:class="it.myVerdict==='good'?'ds-badge--success':'ds-badge--neutral'" x-text="it.myVerdict==='good'?'내 의견 · 정확':'내 의견 · 문제'"></span>
-                    </div>
-                    <div class="fbrow__sum tbox" x-show="it.review_reason" x-text="it.review_reason"></div>
-                  </div>
-                  <div class="fbrow__act">
-                    <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="it.myVerdict==='good'?'is-on':''" x-on:click="queueFeedback(it,'good')"><span class="verdictbtn__dot"></span>정확</button>
-                    <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="it.myVerdict==='bad'?'is-on':''" x-on:click="queueFeedback(it,'bad')"><span class="verdictbtn__dot"></span>문제</button>
-                  </div>
-                  <div class="fbrow__note" x-show="it.myVerdict==='bad'">
-                    <input class="field" style="height:34px;flex:1;min-width:180px" placeholder="교정 메모 · 다음 추출 프롬프트에 자동 반영" x-model="it.note" x-on:keydown.enter="queueFeedback(it,'bad')">
-                    <button type="button" class="ds-btn ds-btn--primary" style="height:34px" x-on:click="queueFeedback(it,'bad')">반영</button>
-                  </div>
-                </div>
-              </template>
-              <div x-show="!(queueData && queueData.items && queueData.items.length)" class="ds-empty" style="border:0;padding:22px 8px">
-                <div class="ds-empty__desc"><b class="text-ink">검수 대기 없음</b> · YELLOW로 분류된 콘텐츠가 쌓이면 여기 표시됩니다(자동 추출이 확신 못 한 건)</div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
       <!-- ═══ 모듈: 실행 큐 (단일 위젯) · 실제 실행 상태 ═══ -->
       <div x-show="mod === 'content' && contentTab === 'queue'" x-cloak class="w-full">
         <section class="panel"><div class="panel-hd"><b>실행 큐</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>

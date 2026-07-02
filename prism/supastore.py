@@ -310,6 +310,10 @@ class SupabaseStore:
                                             f"&created_at=gte.{self._today_iso()}"))
         return {"n": len(rows), "correct": sum(int(bool(r.get("correct"))) for r in rows)}
 
+    def batch_seq(self, team=None) -> int:
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        return len(self._get("events", f"select=id&kind=eq.learn_batch{tq}&limit=10000"))
+
     def feedback_today(self, reviewer, team=None) -> int:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback", "select=content_hash"
@@ -607,6 +611,7 @@ class SupabaseStore:
                    "source": source, "final_grade": qm.get("finalGrade", ""),
                    "item_meta": out.get("item_meta"), "quality_meta": qm,
                    "model": (out.get("trace") or {}).get("model", "") or "",
+                   "version": int((out.get("trace") or {}).get("version") or 1),
                    "review": qm.get("review", "")}
             if team:
                 row["team_id"] = team
@@ -704,10 +709,10 @@ class SupabaseStore:
 
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,body,source_url,item_meta,quality_meta,model"
+        rows = self._get("contents", "select=hash,service,title,body,source_url,item_meta,quality_meta,model,version"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
         out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},
-                "trace": {"model": r.get("model") or ""},
+                "trace": {"model": r.get("model") or "", "version": int(r.get("version") or 1)},
                 "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
                                 "body": r.get("body", ""), "source_url": r.get("source_url", ""),
                                 "body_hash": r.get("hash", "")}} for r in rows]
