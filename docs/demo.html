@@ -3207,6 +3207,14 @@
   .selctl--b .selctl__tag{background:#ff6a3d}
   .selctl .field{height:30px;border:0;background:transparent;padding:0 4px;width:auto;min-width:0}
   .selctl__lbl{font-size:11px;font-weight:600;color:var(--ds-muted);margin-left:6px}
+  /* 드롭다운 폴리시: 커스텀 셰브론 + 호버·포커스 피드백(전역 select.field) */
+  select.field{appearance:none;-webkit-appearance:none;cursor:pointer;
+    background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%238b8f98' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
+  select.field:hover{border-color:var(--ds-violet,#1e84ff)}
+  select.field:focus-visible{outline:2px solid var(--ds-violet,#1e84ff);outline-offset:1px}
+  .selctl select.field{background-position:right 4px center;padding-right:22px}
+  .selctl:hover{border-color:var(--ds-violet,#1e84ff)}
   .abslot{padding:8px 12px 8px 8px;gap:8px;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
   .abslot .selctl__tag{height:28px;min-width:28px;border-radius:9px;font-size:13px}
   .abslot .field{height:32px;font-weight:600}
@@ -4778,7 +4786,7 @@
       <!-- 콘텐츠별 초안 비교 팝업 -->
       <div class="ds-dialog-backdrop" x-show="cmpModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="cmpModalOpen=false" style="z-index:74">
         <div class="badgemodal" x-show="cmpModalOpen" x-transition style="max-width:860px">
-          <div class="panel-hd" style="border:0;padding:0 0 10px"><b x-text="cmpTitle || '초안 비교'"></b>
+          <div class="panel-hd" style="padding:0 0 12px;margin-bottom:12px;border-bottom:1px solid var(--ds-hairline,rgba(0,0,0,.08))"><b>모델별 콘텐츠 상세 비교</b><span class="meta" x-text="cmpTitle"></span>
             <button type="button" class="ds-iconbtn ml-auto" x-on:click="cmpModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
           </div>
           <!-- 상단(모델·버전별 결과 현황)에서 설정한 A/B 를 그대로 상속(공통 콘텐츠 대상) -->
@@ -4792,7 +4800,6 @@
               <span class="text-xs text-ink" style="padding:0 4px" x-text="abBm ? (abBm + ' · v' + abBv) : '미설정'"></span>
               <span class="ds-badge ds-badge--warning" x-show="cmpBmiss" data-tip="이 콘텐츠에는 B 슬롯 초안이 없어 가장 가까운 초안을 표시합니다" data-tip-pos="top">초안 없음</span>
             </span>
-            <span class="text-xs text-muted">· 상단 A/B 설정 기준</span>
           </div>
           <template x-if="draftPair">
             <div class="overflow-auto" style="max-height:60vh"><table class="ds-table"><thead><tr><th style="width:100px">필드</th><th><span class="selctl__tag" style="background:var(--ds-violet,#1e84ff)">A</span> <span x-text="draftPair.l.label"></span></th><th><span class="selctl__tag" style="background:#ff6a3d">B</span> <span x-text="draftPair.r.label"></span></th></tr></thead><tbody>
