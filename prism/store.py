@@ -78,6 +78,8 @@ class Store:
         self._migrate_feedback(c)
         if "source" not in [r[1] for r in c.execute("PRAGMA table_info(results)")]:
             c.execute("ALTER TABLE results ADD COLUMN source TEXT"); c.commit()   # 출처 필터
+        if "source" not in [r[1] for r in c.execute("PRAGMA table_info(golden)")]:
+            c.execute("ALTER TABLE golden ADD COLUMN source TEXT DEFAULT 'review'"); c.commit()   # 골든 출처(review|manual)
 
     def _migrate_feedback(self, c):
         """구 스키마(PK=content_hash, 단일 의견) → 신 스키마(PK=content_hash+reviewer) 이행.
@@ -402,6 +404,13 @@ class Store:
             GROUP BY content_hash HAVING COUNT(DISTINCT verdict)>1)""",
           (reviewer or "(익명)", day_start)).fetchone()[0])
 
+    def patches_today(self, reviewer, team=None) -> int:
+        """검수자의 오늘 구조화 교정(분류 채우기 등) 건수(미션 판정용)."""
+        day_start = (int(time.time() // 86400)) * 86400.0
+        c = self._conn()
+        return int(c.execute("SELECT COUNT(*) FROM patch_log WHERE reviewer=? AND ts>=?",
+                             (reviewer or "(익명)", day_start)).fetchone()[0])
+
     def feedback_map(self, team=None) -> dict:
         """content_hash → 합의 집계. 다중 검수자 의견을 모아 합의/불일치 표시.
         반환: {verdicts:[{reviewer,verdict,stage,note,ts}], n, good, bad,
@@ -585,6 +594,7 @@ class Store:
         gold = self.gold_stats()
         patches = self.patch_counts()
         bonuses = self.event_bonus()
+        gcontrib = self.golden_contrib_counts()          # 골든 확정 기여(가시화·배지)
 
         def _prog(rv_count):
             return round(min(rv_count, total_targets) / total_targets, 4) if total_targets else 0.0
@@ -612,6 +622,7 @@ class Store:
                                 "consensus_matches": cons_match.get(rv, 0),
                                 "split_reviews": split_part.get(rv, 0),
                                 "patches": patches.get(rv, 0),
+                                "golden_contribs": gcontrib.get(rv, 0),
                                 "agree_rate": (round(agree_hit.get(rv, 0) / agree_n[rv], 4)
                                                if agree_n.get(rv) else None)})
         leaderboard.sort(key=lambda x: -x["points"])
@@ -715,28 +726,30 @@ class Store:
         c.commit()
         return True
 
-    # ── 골든셋(검수 확정 정답셋) ──
-    def upsert_golden(self, content_hash, content, expected):
-        """골든 엔트리 upsert(검수 정확 확정분). content_hash 키."""
+    # ── 골든셋(검수 확정 정답셋 · 누적) ──
+    def upsert_golden(self, content_hash, content, expected, team=None, source="review"):
+        """골든 엔트리 upsert(누적). content_hash 키 · source = review(검수 유래)|manual(관리자 등록)."""
         c = self._conn()
-        c.execute("""INSERT INTO golden(content_hash,content,expected,ts) VALUES(?,?,?,?)
-          ON CONFLICT(content_hash) DO UPDATE SET content=excluded.content, expected=excluded.expected, ts=excluded.ts""",
-          (content_hash, json.dumps(content, ensure_ascii=False), json.dumps(expected, ensure_ascii=False), time.time()))
+        c.execute("""INSERT INTO golden(content_hash,content,expected,ts,source) VALUES(?,?,?,?,?)
+          ON CONFLICT(content_hash) DO UPDATE SET content=excluded.content, expected=excluded.expected,
+            ts=excluded.ts, source=excluded.source""",
+          (content_hash, json.dumps(content, ensure_ascii=False), json.dumps(expected, ensure_ascii=False),
+           time.time(), source or "review"))
         c.commit()
 
-    def register_golden(self, team, rows):
-        """골든셋 교체(수동 업로드 등). rows: [{content, expected}]. content_hash 로 키."""
+    def register_golden(self, team, rows, replace=True, source="manual"):
+        """골든셋 등록. replace=True 면 전체 교체, False 면 기존에 병합(upsert).
+        rows: [{content, expected}]. content_hash 로 키."""
         from .store import content_hash
         c = self._conn()
-        c.execute("DELETE FROM golden")
+        if replace:
+            c.execute("DELETE FROM golden")
+            c.commit()
         n = 0
         for r in rows:
             if r.get("content") and r.get("expected"):
-                h = content_hash(r["content"])
-                c.execute("INSERT OR REPLACE INTO golden(content_hash,content,expected,ts) VALUES(?,?,?,?)",
-                          (h, json.dumps(r["content"], ensure_ascii=False), json.dumps(r["expected"], ensure_ascii=False), time.time()))
+                self.upsert_golden(content_hash(r["content"]), r["content"], r["expected"], source=source)
                 n += 1
-        c.commit()
         return n
 
     def get_golden(self, team=None, limit=1000):
@@ -749,6 +762,38 @@ class Store:
                 pass
         return out
 
+    def golden_hashes(self, team=None) -> set:
+        c = self._conn()
+        return {r[0] for r in c.execute("SELECT content_hash FROM golden")}
+
+    def golden_rows(self, team=None, limit=300) -> list:
+        """관리자 골든 브라우저용: 제목·등급·카테고리·출처·시각."""
+        c = self._conn()
+        out = []
+        for ch, content, expected, ts, src in c.execute(
+                "SELECT content_hash,content,expected,ts,source FROM golden ORDER BY ts DESC LIMIT ?",
+                (int(limit),)):
+            try:
+                ct = json.loads(content) if content else {}
+                ex = json.loads(expected) if expected else {}
+            except Exception:
+                continue
+            out.append({"hash": ch, "title": ct.get("title", ""), "service": ct.get("displayServiceName", ""),
+                        "grade": ex.get("finalGrade", ""), "category": ex.get("content_category", []) or [],
+                        "source": src or "review", "ts": ts})
+        return out
+
+    def golden_source_counts(self, team=None) -> dict:
+        c = self._conn()
+        return {(src or "review"): n for src, n in
+                c.execute("SELECT source, COUNT(*) FROM golden GROUP BY source")}
+
+    def remove_golden(self, content_hash, team=None) -> bool:
+        c = self._conn()
+        cur = c.execute("DELETE FROM golden WHERE content_hash=?", (content_hash,))
+        c.commit()
+        return cur.rowcount > 0
+
     def golden_count(self, team=None):
         c = self._conn()
         return c.execute("SELECT COUNT(*) FROM golden").fetchone()[0]
@@ -756,6 +801,12 @@ class Store:
     def clear_golden(self, team=None):
         c = self._conn()
         c.execute("DELETE FROM golden"); c.commit()
+
+    def golden_contrib_counts(self, team=None) -> dict:
+        """reviewer → 골든 확정 기여 수(events kind='golden:*', 확정 1회 보상 기록 기반)."""
+        c = self._conn()
+        return {rv: n for rv, n in c.execute(
+            "SELECT reviewer, COUNT(*) FROM events WHERE kind LIKE 'golden:%' GROUP BY reviewer")}
 
     # runs / usage
     def start_run(self, run_id, n, config):

@@ -157,25 +157,90 @@ class SupabaseStore:
         self._req("PATCH", "reviewers", query=f"id=eq.{urllib.parse.quote(member_id)}&team_id=eq.{urllib.parse.quote(team)}",
                   body={"team_id": None}, prefer="return=minimal")
 
-    # ── 골든셋(팀별, 관리자 등록) ──
-    def register_golden(self, team, rows):
-        """팀 골든셋 교체(기존 삭제 후 등록). rows: [{content, expected}]."""
-        self.clear_golden(team)
-        payload = [{"team_id": team, "content": r.get("content"), "expected": r.get("expected")}
-                   for r in rows if r.get("content") and r.get("expected")]
-        for i in range(0, len(payload), 500):
-            self._req("POST", "golden", body=payload[i:i + 500], prefer="return=minimal")
-        return len(payload)
+    # ── 골든셋(팀별 · 누적 upsert + 출처 태깅) ──
+    def _team_q(self, team) -> str:
+        return f"team_id=eq.{urllib.parse.quote(team)}" if team else "team_id=is.null"
+
+    def upsert_golden(self, content_hash, content, expected, team=None, source="review"):
+        """골든 엔트리 upsert(누적). (team, content_hash) 키 · 서버 단일 작성자라 삭제 후 삽입."""
+        self._req("DELETE", "golden",
+                  query=f"{self._team_q(team)}&content_hash=eq.{urllib.parse.quote(content_hash)}",
+                  prefer="return=minimal")
+        row = {"content_hash": content_hash, "content": content, "expected": expected,
+               "source": source or "review"}
+        if team:
+            row["team_id"] = team
+        self._req("POST", "golden", body=[row], prefer="return=minimal")
+
+    def register_golden(self, team, rows, replace=True, source="manual"):
+        """골든셋 등록. replace=True 면 팀 전체 교체, False 면 병합(upsert)."""
+        from .store import content_hash
+        if replace:
+            self.clear_golden(team)
+            payload = [{"team_id": team, "content": r.get("content"), "expected": r.get("expected"),
+                        "content_hash": content_hash(r.get("content") or {}), "source": source or "manual"}
+                       for r in rows if r.get("content") and r.get("expected")]
+            for i in range(0, len(payload), 500):
+                self._req("POST", "golden", body=payload[i:i + 500], prefer="return=minimal")
+            return len(payload)
+        n = 0
+        for r in rows:
+            if r.get("content") and r.get("expected"):
+                self.upsert_golden(content_hash(r["content"]), r["content"], r["expected"],
+                                   team=team, source=source or "manual")
+                n += 1
+        return n
 
     def get_golden(self, team, limit=1000):
-        rows = self._get("golden", f"select=content,expected&team_id=eq.{urllib.parse.quote(team)}&limit={int(limit)}")
+        rows = self._get("golden", f"select=content,expected&{self._team_q(team)}&limit={int(limit)}")
         return [{"content": r["content"], "expected": r["expected"]} for r in rows]
 
+    def golden_hashes(self, team=None) -> set:
+        rows = self._get("golden", f"select=content_hash&{self._team_q(team)}&limit=10000")
+        return {r["content_hash"] for r in rows if r.get("content_hash")}
+
+    def golden_rows(self, team=None, limit=300) -> list:
+        rows = self._get("golden", "select=content_hash,content,expected,source,created_at"
+                         f"&{self._team_q(team)}&order=created_at.desc&limit={int(limit)}")
+        out = []
+        for r in rows:
+            ct = r.get("content") or {}
+            ex = r.get("expected") or {}
+            out.append({"hash": r.get("content_hash") or "", "title": ct.get("title", ""),
+                        "service": ct.get("displayServiceName", ""), "grade": ex.get("finalGrade", ""),
+                        "category": ex.get("content_category", []) or [],
+                        "source": r.get("source") or "review", "ts": _epoch(r.get("created_at"))})
+        return out
+
+    def golden_source_counts(self, team=None) -> dict:
+        rows = self._get("golden", f"select=source&{self._team_q(team)}&limit=10000")
+        out = {}
+        for r in rows:
+            k = r.get("source") or "review"
+            out[k] = out.get(k, 0) + 1
+        return out
+
+    def remove_golden(self, content_hash, team=None) -> bool:
+        self._req("DELETE", "golden",
+                  query=f"{self._team_q(team)}&content_hash=eq.{urllib.parse.quote(content_hash)}",
+                  prefer="return=minimal")
+        return True
+
     def golden_count(self, team):
-        return len(self._get("golden", f"select=id&team_id=eq.{urllib.parse.quote(team)}"))
+        return len(self._get("golden", f"select=id&{self._team_q(team)}"))
 
     def clear_golden(self, team):
-        self._req("DELETE", "golden", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+        self._req("DELETE", "golden", query=self._team_q(team), prefer="return=minimal")
+
+    def golden_contrib_counts(self, team=None) -> dict:
+        """reviewer → 골든 확정 기여 수(events kind='golden:*' 1회 기록 기반)."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        rows = self._get("events", f"select=reviewer_id&kind=like.golden:*{tq}&limit=20000")
+        out = {}
+        for r in rows:
+            k = r.get("reviewer_id") or ""
+            out[k] = out.get(k, 0) + 1
+        return out
 
     # ── 피드백(다중 의견) + REAP ──────────────────────────────────────────
     def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None, element=""):
@@ -250,6 +315,14 @@ class SupabaseStore:
         rows = self._get("feedback", "select=content_hash"
                          f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
                          f"&ts=gte.{self._today_iso()}{tq}")
+        return len(rows)
+
+    def patches_today(self, reviewer, team=None) -> int:
+        """검수자의 오늘 구조화 교정 건수(분류 채우기 미션 판정용)."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        rows = self._get("patch_log", "select=id"
+                         f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
+                         f"&created_at=gte.{self._today_iso()}{tq}")
         return len(rows)
 
     def split_reviewed_today(self, reviewer, team=None) -> int:
@@ -448,6 +521,7 @@ class SupabaseStore:
         gold = self.gold_stats(team)
         patches = self.patch_counts(team)
         bonuses = self.event_bonus(team)
+        gcontrib = self.golden_contrib_counts(team)
 
         def _prog(rc):
             return round(min(rc, total_targets) / total_targets, 4) if total_targets else 0.0
@@ -476,6 +550,7 @@ class SupabaseStore:
                                 "consensus_matches": cons_match.get(rid, 0),
                                 "split_reviews": split_part.get(rid, 0),
                                 "patches": patches.get(rid, 0),
+                                "golden_contribs": gcontrib.get(rid, 0),
                                 "agree_rate": (round(agree_hit.get(rid, 0) / agree_n[rid], 4)
                                                if agree_n.get(rid) else None)})
         leaderboard.sort(key=lambda x: -x["points"])

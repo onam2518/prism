@@ -59,6 +59,20 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
   supabase DDL 적용됨(`prism_learning_loop_tables`), 신규 3테이블은 service_role 전용(RLS 정책 없음).
 - ⚠️ patch 는 이제 `update_item_meta` 전에 `get_item_meta` 로 before 를 떠서 `log_patch` 에 남긴다(선호쌍 rejected).
 
+## 골든셋 생성 체계 (2026-07-02 후반 개편)
+- **누적(upsert) 방식**: `build_golden_from_reviews` 가 전체 교체 대신 (team, content_hash) upsert.
+  관리자 등록분(source=manual)·과거 확정분 보존, 합의가 뒤집힌 검수 유래(review) 골든만 강등(제거).
+  supabase `prism_golden` 에 content_hash·source 컬럼 추가(`prism_golden_provenance`). ⚠️ 구 register_golden(replace)로 돌아가면 안 됨.
+- **확정 요건**: 정확 >= `Config.golden_min_good`(기본 1) + 골드 정확도 가중 다수. 신규 확정 기여 검수자에게
+  events `golden:<hash>` 1회 +10(리더보드 golden_contribs · 배지 '골든 기여 10').
+- **관리자**: 팀 관리 골든 패널 = 브라우저(목록·출처·오류 의심 플래그·개별 제거) + .jsonl 업로드(병합 기본,
+  등급 G|R·카테고리 사전 스냅 검증, skipped 집계). 라우트 /golden(merge)·/golden-list·/golden-remove.
+- **사용자**: '검수 및 평가 → 테스트' 탭 = **골든셋 생성**(기본 탭, 구 실시간 콘텐츠 평가: 생성 현황 타일 +
+  분류 필요 목록 + 일배치) | **골든셋 평가**(현행 버전 정합성 %·95% CI·버킷 + 모델별 비교 실행 UI /compare-models).
+  분류 채우기 미션(fill1) 추가, /golden-status(팀원 공개) 라우트.
+- **콘텐츠 인입 = 관리자 전용**: 수동 추출(run)·실행 큐·자동 인입·인입 정책 메뉴를 관리자 그룹으로 이동,
+  서버도 /run·/run-batch·/ingest-run 을 supabase 모드에서 관리자 게이트(403). 로컬(sqlite)은 관리자 취급.
+
 ## 메타 체계 (코드가 이 기준으로 정렬)
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
 

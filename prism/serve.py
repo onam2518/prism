@@ -920,6 +920,7 @@ MISSIONS = [
     {"id": "daily5", "label": "오늘 검수 5건", "total": 5, "bonus": 20},
     {"id": "gold1", "label": "골드 문항 1건 정답", "total": 1, "bonus": 15},
     {"id": "split1", "label": "불일치 콘텐츠 재검토 1건", "total": 1, "bonus": 15},
+    {"id": "fill1", "label": "분류 채우기 1건(골든 승격)", "total": 1, "bonus": 10},
 ]
 
 
@@ -931,7 +932,8 @@ def mission_progress(reviewer, team=None) -> list:
     try:
         done = {"daily5": st.feedback_today(reviewer, team=team),
                 "gold1": st.gold_today(reviewer, team=team).get("correct", 0),
-                "split1": st.split_reviewed_today(reviewer, team=team)}
+                "split1": st.split_reviewed_today(reviewer, team=team),
+                "fill1": (st.patches_today(reviewer, team=team) if hasattr(st, "patches_today") else 0)}
     except Exception:
         return []
     out = []
@@ -1198,26 +1200,62 @@ def eval_golden(team=None) -> dict:
             detail.append({"hash": content_hash(c), "title": (c.get("title") or "")[:60],
                            "expected": exp, "got": got})
     _LAST_EVAL_DETAIL = detail
+    from . import quality as Q
+    lo, hi = Q.binomial_ci(m.get("grade_accuracy") or 0.0, len(sample))
+    m["grade_ci"] = {"lo": lo, "hi": hi, "n": len(sample)}   # 95% CI(Miller 2024)
     m["ok"] = True
     m["evaluated"] = len(sample)
     return m
 
 
-def register_golden(uid, team, rows, email="") -> dict:
-    """관리자가 팀 골든셋 등록(교체). rows: [{content, expected}]."""
+def register_golden(uid, team, rows, email="", merge=False) -> dict:
+    """관리자가 팀 골든셋 등록. merge=True 면 기존에 병합(upsert), False 면 전체 교체.
+    등록 전 검증·정규화: finalGrade G|R 강제, content_category 사전 스냅, title 필수."""
+    from . import dictionaries as D
     st = get_store()
     if not is_admin_user(uid, team, email):
         return {"ok": False, "error": "관리자 전용입니다"}
-    n = st.register_golden(team, [r for r in rows if isinstance(r, dict) and r.get("content") and r.get("expected")])
-    return {"ok": True, "count": n}
+    valid, skipped = [], 0
+    for r in rows:
+        if not (isinstance(r, dict) and isinstance(r.get("content"), dict) and isinstance(r.get("expected"), dict)):
+            skipped += 1
+            continue
+        content, exp = r["content"], dict(r["expected"])
+        grade = str(exp.get("finalGrade", "")).strip().upper()
+        if not content.get("title") or grade not in ("G", "R"):
+            skipped += 1
+            continue
+        exp["finalGrade"] = grade
+        exp["content_category"] = D.normalize_category_list(exp.get("content_category") or [])
+        exp["reasons"] = [str(x) for x in (exp.get("reasons") or []) if x]
+        valid.append({"content": content, "expected": exp})
+    n = st.register_golden(team, valid, replace=not merge, source="manual")
+    _agg_bump()
+    return {"ok": True, "count": n, "skipped": skipped, "merged": bool(merge)}
+
+
+def golden_list(team=None) -> dict:
+    """관리자 골든 브라우저: 목록 + 출처 집계 + 라벨 오류 의심(최근 평가 불일치) 표시."""
+    st = get_store()
+    if not (st and hasattr(st, "golden_rows")):
+        return {"ok": False, "error": "지원하지 않는 저장소", "items": []}
+    flagged = {f.get("hash") for f in (_LAST_EVAL_DETAIL or [])}
+    items = st.golden_rows(team, limit=300)
+    for it in items:
+        it["flagged"] = it["hash"] in flagged
+    return {"ok": True, "items": items,
+            "source_counts": (st.golden_source_counts(team) if hasattr(st, "golden_source_counts") else {}),
+            "total": (st.golden_count(team) if hasattr(st, "golden_count") else len(items))}
 
 
 def build_golden_from_reviews(team=None) -> dict:
-    """검수 = 골든 생성: '정확' 다수결 합의 + 카테고리 채워진 콘텐츠 → 골든셋(정답)으로 축적.
-    카테고리 공백은 확정 제외(채워야 골든). 반환: 확정·카테고리필요·불일치 수."""
+    """검수 = 골든 생성: '정확' 신뢰도 가중 다수결 + 카테고리 채워진 콘텐츠 → 골든셋에 **누적**(upsert).
+    전체 교체가 아니므로 관리자 등록분(source=manual)과 과거 확정분을 보존하고, 합의가 '수정필요'로
+    뒤집힌 검수 유래 골든은 강등(제거)한다. 신규 확정 기여 검수자에게 1회 보상(지연 보상 · von Ahn 2004).
+    반환: 확정 총계·신규·강등·카테고리필요(목록 포함)·불일치."""
     from .store import content_hash
     st = get_store()
-    if not (st and hasattr(st, "feedback_map") and hasattr(st, "register_golden")):
+    if not (st and hasattr(st, "feedback_map") and hasattr(st, "upsert_golden")):
         return {"ok": False, "error": "지원하지 않는 저장소"}
     rows = results_rows(team=team)
     try:
@@ -1225,12 +1263,21 @@ def build_golden_from_reviews(team=None) -> dict:
     except Exception:
         fmap = {}
     weights = reviewer_weights(team)               # 골드 정확도 기반 신뢰도(G-4)
-    entries, no_cat, disagree = [], 0, 0
+    min_good = max(1, int(getattr(Config.load(), "golden_min_good", 1) or 1))   # 확정 최소 '정확' 인원
+    try:
+        existing = st.golden_hashes(team)
+        by_source = {r["hash"]: r["source"] for r in st.golden_rows(team, limit=10000)} if hasattr(st, "golden_rows") else {}
+    except Exception:
+        existing, by_source = set(), {}
+    entries, need_list, no_cat, disagree = [], [], 0, 0
+    demote = []                                    # 합의가 뒤집힌 검수 유래 골든(강등 대상)
+    contributors = {}                              # hash → 정확 판정 검수자 키 목록(신규 확정 보상)
     for r in rows:
         ref = r.get("content_ref") or {}
         content = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                    "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
-        fb = fmap.get(content_hash(content))
+        ch = content_hash(content)
+        fb = fmap.get(ch)
         if not fb:
             continue
         # 신뢰도 가중 다수결: 골드 정확도 기반 가중치(없으면 전원 1.0 = 기존 다수결과 동일)
@@ -1238,21 +1285,48 @@ def build_golden_from_reviews(team=None) -> dict:
                  for v in fb.get("verdicts", []) if v.get("verdict") == "good")
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
-        if not (fb.get("good", 0) >= 1 and gw > bw):   # 정확 1건 이상 + 가중 다수
+        if not (fb.get("good", 0) >= min_good and gw > bw):   # 정확 최소 인원 + 가중 다수
             disagree += 1
+            # 검수 유래 골든이 뒤집힘(가중 열세) → 강등. 관리자 등록분(manual)은 보존.
+            if ch in existing and by_source.get(ch, "review") == "review" and bw > gw:
+                demote.append(ch)
             continue
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
         cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
         if not cats:                                  # 카테고리 공백 → 골든 미확정(채워야 함)
             no_cat += 1
+            need_list.append({"hash": ch, "title": content.get("title", ""),
+                              "service": content.get("displayServiceName", "")})
             continue
-        entries.append({"content": content, "expected": {
+        entries.append({"hash": ch, "content": content, "expected": {
             "finalGrade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
             "intent": im.get("intent", []) or [], "content_category": cats,
             "summary": im.get("summary", ""), "entities": im.get("entities", []) or []}})
-    n = st.register_golden(team, entries)
-    return {"ok": True, "confirmed": n, "need_category": no_cat, "disagree": disagree}
+        contributors[ch] = [v.get("reviewer_id") or v.get("reviewer")
+                            for v in fb.get("verdicts", []) if v.get("verdict") == "good"]
+    new = 0
+    for e in entries:
+        st.upsert_golden(e["hash"], e["content"], e["expected"], team=team, source="review")
+        if e["hash"] not in existing:
+            new += 1
+            # 골든 기여 1회 보상(hash 당 · 검수자당 1번): 유능감 정보 제공(Ryan & Deci 2000)
+            if hasattr(st, "log_event_once"):
+                for rv in contributors.get(e["hash"], []):
+                    try:
+                        st.log_event_once(rv, "golden:" + e["hash"], 0, 10,
+                                          meta=e["content"].get("title", "")[:60], team=team)
+                    except Exception:
+                        pass
+    for ch in demote:
+        try:
+            st.remove_golden(ch, team=team)
+        except Exception:
+            pass
+    total = st.golden_count(team) if hasattr(st, "golden_count") else len(entries)
+    return {"ok": True, "confirmed": len(entries), "new": new, "demoted": len(demote),
+            "total": total, "need_category": no_cat, "need_list": need_list[:50],
+            "disagree": disagree, "min_good": min_good}
 
 
 def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
@@ -2032,6 +2106,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                 return
             self._send(200, json.dumps(learn_data(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/golden-list"):       # 관리자 골든 브라우저
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            self._send(200, json.dumps(golden_list(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/golden-status"):     # 골든 생성 현황(팀원 공개): 확정·분류필요·불일치
+            st = get_store()
+            g = (_LAST_LEARN_REPORT or {}).get("golden") or {}
+            self._send(200, json.dumps({
+                "ok": True,
+                "total": (st.golden_count(self._req_team()) if (st and hasattr(st, "golden_count")) else 0),
+                "source_counts": (st.golden_source_counts(self._req_team())
+                                  if (st and hasattr(st, "golden_source_counts")) else {}),
+                "last_batch": {k: g.get(k) for k in ("confirmed", "new", "demoted", "need_category",
+                                                     "disagree", "min_good")},
+                "need_list": g.get("need_list") or [],
+                "ts": (_LAST_LEARN_REPORT or {}).get("ts")}, ensure_ascii=False), _JSON)
         elif self.path.startswith("/prompt-defaults"):
             sync_learned()
             self._send(200, json.dumps({"defaults": PR.stage_defaults(),
@@ -2259,9 +2350,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not self._inject_reviewer(data):
                     self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
                     return
-                self._send(200, json.dumps(patch_content_meta(data.get("hash"), data.get("patch"),
-                                           self._req_team(), reviewer=data.get("reviewer") or ""),
-                                           ensure_ascii=False), _JSON)
+                res = patch_content_meta(data.get("hash"), data.get("patch"),
+                                         self._req_team(), reviewer=data.get("reviewer") or "")
+                if res.get("ok"):                       # 분류 채우기 미션 판정(1회 보상)
+                    fresh = _check_missions((data.get("reviewer") or "").strip(), self._req_team())
+                    if fresh:
+                        res["missions_completed"] = fresh
+                self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -2281,17 +2376,35 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
-        if self.path.startswith("/golden"):            # 관리자: 골든셋 등록(.jsonl 업로드)
+        if self.path.startswith("/golden-remove"):     # 관리자: 골든 개별 삭제(라벨 오류 후보 처리)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                st = get_store()
+                ok = bool(st and hasattr(st, "remove_golden")
+                          and st.remove_golden((data.get("hash") or "").strip(), team=self._req_team()))
+                _agg_bump()
+                self._send(200, json.dumps({"ok": ok}, ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/golden"):            # 관리자: 골든셋 등록(.jsonl 업로드 · merge 지원)
             try:
                 ctype = self.headers.get("Content-Type", "")
+                merge = False
                 if "multipart/form-data" in ctype:
-                    f = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip()).get("file")
+                    fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
+                    f = fields.get("file")
                     raw = f.get("bytes", b"") if isinstance(f, dict) else b""
+                    merge = str(fields.get("merge") or "").strip().lower() in ("1", "true")
                 else:
                     raw = body
                 rows = [json.loads(ln) for ln in raw.decode("utf-8", "replace").splitlines() if ln.strip()]
                 self._send(200, json.dumps(register_golden(self._bearer_uid(), self._req_team(), rows,
-                                           self._bearer_email()), ensure_ascii=False), _JSON)
+                                           self._bearer_email(), merge=merge), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -2308,6 +2421,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/ingest-run"):
             try:
+                # 콘텐츠 인입은 관리자 통제(수동·자동 공통)
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
                 p = json.loads(body or b"{}")
                 res = ingest_run_source(p, trigger="manual")
                 self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
@@ -2340,6 +2457,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.path.startswith("/run"):
             self._send(404, "not found")
+            return
+        # 추출 실행(단건·배치) = 콘텐츠 인입 → 관리자 통제(supabase 모드)
+        if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+            self._send(403, json.dumps({"error": "콘텐츠 인입은 관리자 전용입니다"}, ensure_ascii=False), _JSON)
             return
         ctype = self.headers.get("Content-Type", "")
         try:
@@ -2443,18 +2564,18 @@ PAGE = """<!doctype html>
         arena: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0V4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18 5h2.5a2 2 0 0 1 0 4H18M6 5H3.5a2 2 0 0 0 0 4H6" stroke="currentColor" stroke-width="1.6"/></svg>',
       },
       mods: [
-        { g: '작업', items: [
-          { id: 'run', label: '수동 추출', ic: 'run' },
-          { id: 'queue', label: '실행 큐', ic: 'queue' } ] },
         { g: '현황 · 평가', items: [
           { id: 'dash', label: '현황 대시보드', ic: 'dash' },
           { id: 'eval', label: '검수 및 평가', ic: 'eval' } ] },
+        // 콘텐츠 인입(수동·자동)은 전부 관리자 통제 · 실행 큐 포함
         { g: '관리자', gcond: 'admin', items: [
+          { id: 'run', label: '수동 추출', ic: 'run' },
+          { id: 'queue', label: '실행 큐', ic: 'queue' },
           { id: 'auto', label: '자동 인입', ic: 'auto' },
+          { id: 'intake', label: '인입 정책', ic: 'intake' },
           { id: 'admin', label: '팀 관리', ic: 'admin' },
           { id: 'dict', label: '사전 · 정책', ic: 'dict' },
-          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' },
-          { id: 'intake', label: '인입 정책', ic: 'intake' } ] },
+          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' } ] },
       ],
       // 위젯 홈 인터랙션 상태
       settingsOpen: false, chatOpen: false, addMenuOpen: false, editing: false, theme: 'light',
@@ -2477,7 +2598,7 @@ PAGE = """<!doctype html>
       arenaData: null,
       adminData: null,        // 팀 관리(supabase)
       // 평가 2탭: 골든셋 평가 / 실시간 콘텐츠 평가
-      evalTab: 'golden', goldenResult: null, goldenBusy: false, goldenMsg: '',
+      evalTab: 'live', goldenResult: null, goldenBusy: false, goldenMsg: '',
       metaResults: null, metaBusy: false,
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
@@ -2573,7 +2694,7 @@ PAGE = """<!doctype html>
         this.mod = id; this.status = ''; this.addMenuOpen = false;
         if (id === 'home') { this.loadArena(); this.loadDash(); }
         else if (id === 'dash') { this.loadDash(); this.loadTopics(); this.loadUser(); }
-        else if (id === 'eval') { this.loadDash(); this.loadQueue(); }
+        else if (id === 'eval') { this.loadDash(); this.loadQueue(); this.loadGoldenStatus(); }
         else if (id === 'queue') this.loadDash();
         else if (id === 'review') this.loadQueue();
         else if (id === 'arena') this.loadArena();
@@ -2822,6 +2943,26 @@ PAGE = """<!doctype html>
         try { this.goldenResult = await (await fetch('/eval-golden', { method: 'POST', headers: this._authHeaders() })).json(); } catch (e) {}
         this.goldenBusy = false;
       },
+      // 모델별 정합성 비교(골든셋 평가 탭) · 이항 95% CI 표기
+      cmpModels: [], cmpBusy: false, cmpResult: null,
+      toggleCmpModel(m) { const i = this.cmpModels.indexOf(m); if (i >= 0) this.cmpModels.splice(i, 1); else if (this.cmpModels.length < 4) this.cmpModels.push(m); },
+      async runCompare() {
+        this.cmpBusy = true; this.cmpResult = null;
+        try { this.cmpResult = await (await fetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: this.cmpModels }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
+        this.cmpBusy = false;
+      },
+      ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
+      // 골든 생성 현황(팀원 공개)
+      goldenStatus: null,
+      async loadGoldenStatus() { try { const r = await (await fetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenStatus = r; } catch (e) {} },
+      // 관리자 골든 브라우저
+      goldenList: null, goldenMerge: true,
+      async loadGoldenList() { try { const r = await (await fetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) {} },
+      async removeGolden(h) {
+        if (!confirm('이 골든 항목을 제거할까요? (평가 정답셋에서 빠집니다)')) return;
+        try { await fetch('/golden-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: h }) }); } catch (e) {}
+        this.loadGoldenList(); this.loadGoldenStatus(); this.loadLearnData();
+      },
       async runMetaCompile() {
         this.metaBusy = true;
         try { const r = await (await fetch('/meta-compile', { method: 'POST', headers: this._authHeaders() })).json(); this.metaResults = r.results || null; } catch (e) {}
@@ -2837,7 +2978,7 @@ PAGE = """<!doctype html>
           if (r && r.ok) { this.learnReport = r; this.metaResults = (r.improve && r.improve.results) || this.metaResults; }
           else this._err((r && r.error) || '일배치 실행 실패');
         } catch (e) { this._err('일배치 실행 실패'); }
-        this.learnBusy = false; this.loadPromptDefaults();
+        this.learnBusy = false; this.loadPromptDefaults(); this.loadGoldenStatus();
       },
       async loadLearnReport() { try { const r = await (await fetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; } catch (e) {} },
       // 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보·추출(전 기준치 논문 근거)
@@ -2868,16 +3009,23 @@ PAGE = """<!doctype html>
       async fillCategory(c, val) {
         if (!val || !c) return;
         const cats = [val];
-        try { await fetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, patch: { content_category: cats }, reviewer: this.reviewer || '' }) }); } catch (e) { this._err('분류 저장 실패'); return; }
+        let r = null;
+        try { r = await (await fetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, patch: { content_category: cats }, reviewer: this.reviewer || '' }) })).json(); } catch (e) { this._err('분류 저장 실패'); return; }
         c.category = cats;                                         // 로컬 즉시 반영
         this.celebratePoints(5, '분류 채움');
+        (r && r.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+        this.loadGoldenStatus();
       },
       async registerGolden(ev) {
         const f = ev.target.files && ev.target.files[0]; if (!f) return;
         this.goldenMsg = '등록 중…';
-        const fd = new FormData(); fd.append('file', f);
+        const fd = new FormData(); fd.append('file', f); fd.append('merge', this.goldenMerge ? '1' : '0');
         const h = {}; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken;
-        try { const r = await (await fetch('/golden', { method: 'POST', headers: h, body: fd })).json(); this.goldenMsg = r.ok ? ('✓ 등록됨 ' + r.count + '건') : (r.error || '실패'); this.loadAdmin(); }
+        try {
+          const r = await (await fetch('/golden', { method: 'POST', headers: h, body: fd })).json();
+          this.goldenMsg = r.ok ? ('✓ ' + (r.merged ? '병합' : '교체') + ' ' + r.count + '건' + (r.skipped ? (' · 검증 제외 ' + r.skipped + '건') : '')) : (r.error || '실패');
+          this.loadAdmin(); this.loadGoldenList(); this.loadGoldenStatus();
+        }
         catch (e) { this.goldenMsg = '오류'; }
         ev.target.value = '';
       },
@@ -2963,6 +3111,7 @@ PAGE = """<!doctype html>
           { icon: '🎯', label: '골드 정확도 90%', desc: '골드 문항 10건 이상 · 정확도 90%', exp: 60, color: '#18ba45', cat: '품질', cur: gap, target: 90, unit: '%', got: gn >= 10 && ga >= 0.9 },
           { icon: '🤝', label: '합의 메이커', desc: '팀 합의와 일치한 판정 50건', exp: 60, color: '#1e84ff', cat: '품질', cur: cm, target: 50, unit: '건', got: cm >= 50 },
           { icon: '⚖️', label: '불일치 해결사', desc: '의견 갈린 콘텐츠 재검토 10건', exp: 60, color: '#a05cff', cat: '품질', cur: sr, target: 10, unit: '건', got: sr >= 10 },
+          { icon: '💎', label: '골든 기여 10', desc: '내 검수가 골든(정답) 확정 10건에 기여', exp: 80, color: '#f5a623', cat: '품질', cur: (m&&m.golden_contribs)||0, target: 10, unit: '건', got: ((m&&m.golden_contribs)||0) >= 10 },
           { icon: '⭐', label: 'Lv.5', desc: '레벨 5 도달', exp: 50, color: '#ffb020', cat: '지위', cur: L, target: 5, unit: 'Lv', got: L >= 5 },
           { icon: '👑', label: '마스터', desc: '레벨 10 도달(마스터)', exp: 200, color: '#f5a623', cat: '지위', cur: L, target: 10, unit: 'Lv', got: L >= 10 },
         ];
@@ -3192,6 +3341,7 @@ PAGE = """<!doctype html>
           if (this.cfg.stageModels) this.stageModels = Object.assign({ extract:'', analyze:'', review:'', judge:'' }, this.cfg.stageModels);
           if (this.cfg.modelPrompts) this.modelPrompts = this.cfg.modelPrompts;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
+          if (!this.cmpModels.length) this.cmpModels = this.availableModels.slice(0, 3);   // 비교 기본 선택
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
@@ -4458,10 +4608,10 @@ PAGE = """<!doctype html>
         </button>
       </nav>
       <template x-for="grp in mods" x-bind:key="grp.g">
-        <nav class="ds-navgroup" x-show="!grp.gcond || (grp.gcond === 'admin' ? (backend === 'supabase' && adminData && adminData.isAdmin) : backend === grp.gcond)">
+        <nav class="ds-navgroup" x-show="!grp.gcond || (grp.gcond === 'admin' ? (backend !== 'supabase' || (adminData && adminData.isAdmin)) : backend === grp.gcond)">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
-            <button type="button" class="ds-navitem" x-show="!it.cond || (it.cond === 'admin' ? (backend === 'supabase' && adminData && adminData.isAdmin) : backend === it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+            <button type="button" class="ds-navitem" x-show="!it.cond || (it.cond === 'admin' ? (backend !== 'supabase' || (adminData && adminData.isAdmin)) : backend === it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
               <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
               <span x-text="it.label"></span>
             </button>
@@ -5165,26 +5315,26 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 검증 · 평가 ═══ -->
       <div x-show="mod === 'eval'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs"><button type="button" x-bind:class="evalTop==='queue'?'sel':''" x-on:click="evalTop='queue'">검수 대기</button><button type="button" x-bind:class="evalTop==='test'?'sel':''" x-on:click="evalTop='test'">테스트</button></div></div>
       <div x-show="mod === 'eval' && evalTop === 'test'" x-cloak class="w-full space-y-4">
-        <!-- 평가 2탭: ① 골든셋 평가 ② 실시간 콘텐츠 평가 -->
+        <!-- 평가 2탭: ① 골든셋 생성(검수 합의 → 정답 축적) ② 골든셋 평가(현행 버전 정합성 수치화) -->
         <div class="evaltabs">
+          <button type="button" x-bind:class="evalTab==='live'?'sel':''" x-on:click="evalTab='live'">골든셋 생성</button>
           <button type="button" x-bind:class="evalTab==='golden'?'sel':''" x-on:click="evalTab='golden'">골든셋 평가</button>
-          <button type="button" x-bind:class="evalTab==='live'?'sel':''" x-on:click="evalTab='live'">실시간 콘텐츠 평가</button>
         </div>
 
-        <!-- ① 골든셋 평가: 기대 vs 실제 정합성 → 프롬프트 수정 -->
+        <!-- ② 골든셋 평가: 현행(개선 반영) 버전 vs 골든 정합성 수치화 + 모델별 비교 -->
         <div x-show="evalTab === 'golden'" class="space-y-4">
-          <section class="panel"><div class="panel-hd"><b>골든셋 정합성 평가</b><span class="meta">기대(정답) vs 실제</span></div>
+          <section class="panel"><div class="panel-hd"><b>골든셋 정합성 평가</b><span class="meta">현행 프롬프트·모델이 골든(정답)과 얼마나 일치하는지</span></div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:11px"><li>관리자가 등록한 골든셋으로 <b>프롬프트</b>의 정합성을 측정합니다.</li><li>낮으면 <b>프롬프트 스튜디오</b>에서 원천 프롬프트를 수정하고 다시 평가하세요.</li><li>골든셋 등록은 <b>팀 관리</b>에서 합니다.</li></ul>
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '평가 실행'"></button>
+              <ul class="ds-bullets" style="margin-bottom:11px"><li>검수 합의로 축적된 골든셋 기준으로 <b>지금 운영 중인 버전</b>의 정합성을 수치화합니다.</li><li>신뢰구간(95% CI)이 겹치는 차이는 판정 보류가 원칙입니다.</li><li>낮으면 <b>프롬프트 스튜디오</b>에서 수정 후 재평가하세요.</li></ul>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '정합성 평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenResult && goldenResult.ok">
                 <div>
                   <div class="goldgrid">
-                    <div class="goldbig"><div class="goldbig__v" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="goldbig__l">등급 정합성</div></div>
-                    <div class="goldstat"><b x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></b><span>유해 미탐</span></div>
+                    <div class="goldbig"><div class="goldbig__v" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="goldbig__l">등급 정합성 <span class="tnum" x-text="goldenResult.grade_ci ? ('· CI ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
                     <div class="goldstat"><b x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></b><span>이유 일치</span></div>
-                    <div class="goldstat"><b x-text="goldenResult.evaluated"></b><span>평가 건</span></div>
+                    <div class="goldstat"><b x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></b><span>유해 미탐</span></div>
+                    <div class="goldstat"><b x-text="goldenResult.evaluated"></b><span>평가 건(n)</span></div>
                   </div>
                   <div style="margin-top:14px">
                     <div class="text-xs text-muted" style="margin-bottom:6px">버킷별 정합성 · 어디가 새는지(프롬프트 수정 우선순위)</div>
@@ -5197,10 +5347,69 @@ PAGE = """<!doctype html>
               </template>
             </div>
           </section>
+          <!-- 모델별 정합성 비교: 같은 골든셋을 여러 모델에 실호출 -->
+          <section class="panel"><div class="panel-hd"><b>모델별 정합성 비교</b><span class="meta">같은 골든셋 · 모델만 교체(실호출)</span></div>
+            <div class="panel-bd">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+                <template x-for="m in availableModels" x-bind:key="m">
+                  <button type="button" class="srcfilter__chip" x-bind:class="cmpModels.includes(m) ? 'sel' : ''" x-on:click="toggleCmpModel(m)" x-text="m"></button>
+                </template>
+              </div>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="cmpBusy || cmpModels.length < 1" x-on:click="runCompare()" x-text="cmpBusy ? '비교 중… (모델별 전건 추출)' : ('비교 실행 (' + cmpModels.length + '개 모델)')"></button>
+              <span class="text-xs text-muted" style="margin-left:10px" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
+              <template x-if="cmpResult && cmpResult.ok">
+                <div style="margin-top:12px">
+                  <div class="overflow-auto"><table class="ds-table"><thead><tr><th>모델</th><th>호출</th><th>등급 정합성 (95% CI)</th><th>사유 유사도</th><th>공백률</th><th>비용($)</th><th></th></tr></thead><tbody>
+                    <template x-for="m in cmpResult.models" x-bind:key="m.model">
+                      <tr>
+                        <td class="text-ink" x-text="m.model"></td>
+                        <td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td>
+                        <td class="tnum" x-text="pctTxt(m.grade_accuracy) + ' (' + ciOf(m.grade_accuracy, m.n) + ')'"></td>
+                        <td class="tnum" x-text="pctTxt(m.reason_jaccard)"></td>
+                        <td class="tnum" x-text="pctTxt(m.empty_rate)"></td>
+                        <td class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></td>
+                        <td><span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span></td>
+                      </tr>
+                    </template>
+                  </tbody></table></div>
+                  <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
+                  <div class="text-xs text-muted" style="margin-top:4px">CI가 겹치는 모델 간 우열은 판정 보류(골든 n이 커질수록 좁아집니다)</div>
+                </div>
+              </template>
+            </div>
+          </section>
         </div>
 
-        <!-- ② 실시간 콘텐츠 평가 -->
+        <!-- ① 골든셋 생성: 검수 합의 → 정답 축적(구 실시간 콘텐츠 평가) -->
         <div x-show="evalTab === 'live'" class="space-y-4">
+          <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
+          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>골든셋 생성 현황</b><span class="meta">검수 '정확' 합의가 정답으로 축적됩니다</span>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenStatus()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </div>
+            <div class="panel-bd">
+              <template x-if="goldenStatus">
+                <div>
+                  <div class="tiles" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
+                    <div class="tile"><div class="n tnum" x-text="goldenStatus.total"></div><div class="t">골든 누적</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.review)||0"></div><div class="t">검수 유래</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.manual)||0"></div><div class="t">수동 등록</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.new)||0"></div><div class="t">최근 배치 신규</div></div>
+                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.need_category)||0"></div><div class="t">분류 필요</div></div>
+                  </div>
+                  <div x-show="(goldenStatus.need_list||[]).length">
+                    <div class="text-xs text-muted" style="margin-bottom:6px">분류 필요 · 아래 콘텐츠의 카테고리를 채우면 다음 배치에서 골든으로 승격됩니다(+5pt·미션)</div>
+                    <div class="overflow-auto" style="max-height:180px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:120px">서비스</th></tr></thead><tbody>
+                      <template x-for="ng in goldenStatus.need_list" x-bind:key="ng.hash">
+                        <tr><td x-text="ng.title || '(제목 없음)'"></td><td class="text-muted" x-text="ng.service"></td></tr>
+                      </template>
+                    </tbody></table></div>
+                    <div class="text-xs text-muted" style="margin-top:6px">아래 <b>콘텐츠별 평가</b> 목록에서 해당 콘텐츠 상세를 열어 분류를 선택하세요</div>
+                  </div>
+                </div>
+              </template>
+              <div x-show="!goldenStatus" class="text-xs text-muted">일배치(또는 ⚙ 지금 실행) 후 현황이 표시됩니다</div>
+            </div>
+          </section>
           <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>학습 일배치</b><span class="meta">검수 의견 합의 → 프롬프트 개선 + 골든 축적 + 회귀 평가</span>
             <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚙ 지금 실행'"></button>
           </div>
@@ -5212,12 +5421,14 @@ PAGE = """<!doctype html>
               <!-- 일배치 결과 리포트 -->
               <template x-if="learnReport && learnReport.ts">
                 <div>
-                  <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+                  <div class="tiles" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
                     <div class="tile"><div class="n tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></div><div class="t">골든 확정</div></div>
+                    <div class="tile"><div class="n tnum" x-text="'+' + ((learnReport.golden&&learnReport.golden.new)||0)"></div><div class="t">신규 승격</div></div>
                     <div class="tile"><div class="n tnum" x-text="(learnReport.golden&&learnReport.golden.need_category)||0"></div><div class="t">분류 필요</div></div>
                     <div class="tile"><div class="n tnum" x-text="pctTxt(learnReport.grade_accuracy)"></div><div class="t">골든 정합성</div></div>
                     <div class="tile"><div class="n tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></div><div class="t">의견 불일치</div></div>
                   </div>
+                  <div class="text-xs text-muted" style="margin-bottom:12px" x-show="learnReport.golden && learnReport.golden.demoted">합의가 뒤집혀 강등된 골든 <b class="text-ink" x-text="learnReport.golden.demoted + '건'"></b> · 누적 <b class="text-ink" x-text="(learnReport.golden.total||0) + '건'"></b></div>
                   <!-- 다중 모델 비교 표 -->
                   <template x-if="learnReport.compare && learnReport.compare.ok && learnReport.compare.models.length">
                     <div class="overflow-auto" style="margin-bottom:12px"><table class="ds-table"><thead><tr><th>모델</th><th>호출</th><th>등급 정합성</th><th>사유 유사도</th><th>공백률</th><th>비용($)</th><th></th></tr></thead><tbody>
@@ -5308,12 +5519,13 @@ PAGE = """<!doctype html>
                         <template x-if="!learnData.reviewers.length"><tr><td colspan="5" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
                       </tbody></table></div></div>
                   </div>
-                  <!-- 라벨 오류 후보(기계 플래그 → 재검토) -->
+                  <!-- 라벨 오류 후보(기계 플래그 → 휴먼 확정: 유지 또는 제거) -->
                   <div x-show="(learnData.label_flags||[]).length" style="margin-top:14px">
-                    <div class="text-xs text-muted" style="margin-bottom:6px">라벨 오류 후보 · 최근 골든 평가에서 모델·정답 불일치(재검토 권장)</div>
-                    <div class="overflow-auto" style="max-height:200px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>정답</th><th>모델</th></tr></thead><tbody>
+                    <div class="text-xs text-muted" style="margin-bottom:6px">라벨 오류 후보 · 최근 골든 평가에서 모델·정답 불일치(확인 후 오답이면 제거)</div>
+                    <div class="overflow-auto" style="max-height:200px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>정답</th><th>모델</th><th style="width:60px"></th></tr></thead><tbody>
                       <template x-for="f in learnData.label_flags" x-bind:key="f.hash">
-                        <tr><td x-text="f.title || f.hash"></td><td class="tnum" x-text="f.expected"></td><td class="tnum" x-text="f.got"></td></tr>
+                        <tr><td x-text="f.title || f.hash"></td><td class="tnum" x-text="f.expected"></td><td class="tnum" x-text="f.got"></td>
+                          <td><button type="button" class="copybtn" x-on:click="removeGolden(f.hash)">제거</button></td></tr>
                       </template>
                     </tbody></table></div>
                   </div>
@@ -5434,11 +5646,30 @@ PAGE = """<!doctype html>
             <button type="button" class="ds-btn ds-btn--primary" x-on:click="settingsOpen = true">API·모델 설정 열기</button>
           </div>
         </section>
-        <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>골든셋</b><span class="meta" x-text="(adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록')"></span></div>
+        <section class="panel" x-show="adminData&&adminData.isAdmin" x-init="loadGoldenList()"><div class="panel-hd"><b>골든셋</b>
+          <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수 유래 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 수동 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
+          <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenList()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>골든셋(정답셋) <b>{content, expected:{finalGrade, reasons}}</b> 형식의 .jsonl 을 올리면 교체 등록됩니다.</li><li><b>검수 및 평가</b> → 원천 평가에서 이 골든셋으로 정합성을 측정합니다.</li></ul>
-            <label class="ds-btn ds-btn--secondary" style="cursor:pointer">골든셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
-            <span class="text-xs text-muted" style="margin-left:10px" x-text="goldenMsg"></span>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>골든은 <b>검수 '정확' 합의</b>가 일배치에서 누적 승격되고, 관리자가 .jsonl 로 보완 등록할 수 있습니다.</li><li>업로드 형식 <b>{content, expected:{finalGrade, reasons, content_category}}</b> · 등록 시 등급·카테고리를 사전 기준으로 검증합니다.</li><li>평가 불일치로 <b>오류 의심</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <label class="ds-btn ds-btn--secondary" style="cursor:pointer">골든셋 .jsonl 등록<input type="file" accept=".jsonl" class="sr-only" x-on:change="registerGolden($event)"></label>
+              <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" x-model="goldenMerge"> 기존에 병합(해제 시 전체 교체)</label>
+              <span class="text-xs text-muted" x-text="goldenMsg"></span>
+            </div>
+            <template x-if="goldenList && goldenList.items && goldenList.items.length">
+              <div class="overflow-auto" style="max-height:300px;margin-top:12px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
+                <template x-for="g in goldenList.items" x-bind:key="g.hash">
+                  <tr>
+                    <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" x-show="g.flagged" data-tip="최근 골든 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span></td>
+                    <td class="tnum" x-text="g.grade || '·'"></td>
+                    <td class="text-xs text-muted" x-text="(g.category||[]).join(' · ')"></td>
+                    <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '수동' : '검수'"></span></td>
+                    <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
+                  </tr>
+                </template>
+              </tbody></table></div>
+            </template>
           </div>
         </section>
         <section class="panel" x-show="adminData&&adminData.isAdmin"><div class="panel-hd"><b>콘텐츠 인입 (검토용)</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
