@@ -193,6 +193,7 @@ def _assemble(ctx: HCtx) -> dict:
     주의: emb 는 배치 공유 클라이언트라 per-content 누적비용을 여기 더하면 중복계상된다.
     임베딩 비용은 호출측(cli)에서 배치 단위로 1회만 합산한다 → 여기선 LLM 비용만."""
     t = ctx.trace
+    t.model = getattr(ctx.llm, "model", "") or ""      # 초안 생성 모델 기록
     t.agent_verdicts = [v for v in ctx.verdicts if v.get("evidence") or v.get("fail")]
     t.fallbacks = ctx.fallbacks
     t.cost_usd = round(sum(r.cost_usd for r in ctx.results), 6)

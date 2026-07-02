@@ -101,6 +101,7 @@ class ItemMeta:
 @dataclass
 class Trace:
     prompt_version: str = ""
+    model: str = ""                        # 초안을 생성한 모델(검수·피드백 귀속용)
     agent_verdicts: list = field(default_factory=list)
     fallbacks: list = field(default_factory=list)
     latency_ms: dict = field(default_factory=dict)

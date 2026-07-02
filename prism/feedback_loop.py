@@ -34,6 +34,8 @@ def _reap_user(fb: dict) -> str:
         f"[검수자 메모] {fb.get('note', '').strip() or '(메모 없음)'}",
         f"[콘텐츠 제목] {fb.get('title', '') or '(없음)'}",
     ]
+    if fb.get("model"):
+        lines.append(f"[초안 생성 모델] {fb['model']}")
     out = fb.get("output") or {}
     im = out.get("item_meta") or {}
     if im:

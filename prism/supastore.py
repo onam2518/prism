@@ -427,15 +427,15 @@ class SupabaseStore:
         return {"total": len(rows), "good": good, "bad": bad, "learned": learned,
                 "contents": contents, "reviewers": reviewers, "split": split}
 
-    def save_routes(self, content_hash, reviewer, items, team=None):
-        """오케스트레이터 재분류 결과 append."""
+    def save_routes(self, content_hash, reviewer, items, team=None, model=""):
+        """오케스트레이터 재분류 결과 append(초안 생성 모델 귀속 포함)."""
         rows = []
         for it in items:
             if not it.get("directive"):
                 continue
             row = {"content_hash": content_hash, "reviewer_id": reviewer or None,
                    "element": it.get("element", ""), "stage": it.get("stage", "analyze"),
-                   "directive": it.get("directive", "")}
+                   "directive": it.get("directive", ""), "model": model or ""}
             if team:
                 row["team_id"] = team
             rows.append(row)
@@ -606,6 +606,7 @@ class SupabaseStore:
                    "source_url": content.get("source_url", "") or content.get("url", ""),
                    "source": source, "final_grade": qm.get("finalGrade", ""),
                    "item_meta": out.get("item_meta"), "quality_meta": qm,
+                   "model": (out.get("trace") or {}).get("model", "") or "",
                    "review": qm.get("review", "")}
             if team:
                 row["team_id"] = team
@@ -616,7 +617,7 @@ class SupabaseStore:
     def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None) -> list:
         """정렬 = split 재검토 우선 → 모델 확신 낮은 순(불확실성 샘플링) → 최신순."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,body,source_url,final_grade,item_meta,quality_meta,review,created_at"
+        rows = self._get("contents", "select=hash,service,title,body,source_url,final_grade,item_meta,quality_meta,review,model,created_at"
                          f"&review=eq.yellow{tq}&order=created_at.desc&limit={int(limit) * 4}")
         fb = self._get("feedback", "select=content_hash,verdict" + tq)
         reviewed = {r["content_hash"] for r in fb}
@@ -639,7 +640,7 @@ class SupabaseStore:
                         "intent": im.get("intent", []) or [], "category": im.get("content_category", []) or [],
                         "grade": r.get("final_grade") or "", "reasons": qm.get("reasons", []) or [],
                         "review_reason": qm.get("review_reason", ""),
-                        "reviewed": is_rev, "split": is_split,
+                        "reviewed": is_rev, "split": is_split, "model": r.get("model") or "",
                         "confidence": qm.get("confidence"), "ts": r.get("created_at")})
         out.sort(key=lambda r: (0 if r["split"] else 1,
                                 r["confidence"] if isinstance(r.get("confidence"), (int, float)) else 1.0,
@@ -690,7 +691,7 @@ class SupabaseStore:
 
     def recent_meta(self, limit: int = 200, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,source"
+        rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,source,model"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
         out = []
         for r in rows:
@@ -698,14 +699,15 @@ class SupabaseStore:
             cat = " · ".join(im.get("content_category") or [])
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
                         "grade": r.get("final_grade") or "", "summary": im.get("summary", ""),
-                        "category": cat, "source": r.get("source") or "단건"})
+                        "category": cat, "source": r.get("source") or "단건", "model": r.get("model") or ""})
         return out
 
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,body,source_url,item_meta,quality_meta"
+        rows = self._get("contents", "select=hash,service,title,body,source_url,item_meta,quality_meta,model"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
         out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},
+                "trace": {"model": r.get("model") or ""},
                 "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
                                 "body": r.get("body", ""), "source_url": r.get("source_url", ""),
                                 "body_hash": r.get("hash", "")}} for r in rows]

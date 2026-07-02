@@ -73,7 +73,7 @@ class Store:
         -- 피드백 라우팅(append-only): 교정 원문을 요소·단계별 개선 지시로 재분류한 결과.
         CREATE TABLE IF NOT EXISTS feedback_routes(
           id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
-          element TEXT, stage TEXT, directive TEXT, ts REAL);
+          element TEXT, stage TEXT, directive TEXT, model TEXT, ts REAL);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         CREATE INDEX IF NOT EXISTS ix_gold_reviewer ON gold_checks(reviewer);
         CREATE INDEX IF NOT EXISTS ix_events_reviewer ON events(reviewer, kind, day);
@@ -277,17 +277,22 @@ class Store:
         """배치 결과 콘텐츠별 행(피드백 부착용): content_hash·서비스·제목·등급·요약·카테고리."""
         c = self._conn()
         rows = []
-        for ch, svc, ti, grade, im, src in c.execute(
-                "SELECT content_hash,service,title,final_grade,item_meta,source FROM results ORDER BY created_at DESC LIMIT ?",
+        for ch, svc, ti, grade, im, src, payload in c.execute(
+                "SELECT content_hash,service,title,final_grade,item_meta,source,payload FROM results ORDER BY created_at DESC LIMIT ?",
                 (int(limit),)):
             try:
                 imd = json.loads(im) if im else {}
             except Exception:
                 imd = {}
+            model = ""
+            try:
+                model = ((json.loads(payload) if payload else {}).get("trace") or {}).get("model", "") or ""
+            except Exception:
+                pass
             cat = " · ".join((imd or {}).get("content_category") or [])
             rows.append({"hash": ch, "service": svc or "", "title": ti or "",
                          "grade": grade or "", "summary": (imd or {}).get("summary", ""),
-                         "category": cat, "source": src or "단건"})
+                         "category": cat, "source": src or "단건", "model": model})
         return rows
 
     # ── 평가 피드백 / 학습 루프 ──
@@ -460,13 +465,15 @@ class Store:
                         "plan": pl, "stage": st})
         return out
 
-    def save_routes(self, content_hash, reviewer, items, team=None):
-        """오케스트레이터 재분류 결과 append. items: [{element, stage, directive}]."""
+    def save_routes(self, content_hash, reviewer, items, team=None, model=""):
+        """오케스트레이터 재분류 결과 append(초안 생성 모델 귀속 포함)."""
         c = self._conn()
+        if "model" not in [r[1] for r in c.execute("PRAGMA table_info(feedback_routes)")]:
+            c.execute("ALTER TABLE feedback_routes ADD COLUMN model TEXT")
         now = time.time()
-        c.executemany("INSERT INTO feedback_routes(content_hash,reviewer,element,stage,directive,ts) VALUES(?,?,?,?,?,?)",
+        c.executemany("INSERT INTO feedback_routes(content_hash,reviewer,element,stage,directive,model,ts) VALUES(?,?,?,?,?,?,?)",
                       [(content_hash, reviewer or "(익명)", it.get("element", ""), it.get("stage", "analyze"),
-                        it.get("directive", ""), now) for it in items if it.get("directive")])
+                        it.get("directive", ""), model or "", now) for it in items if it.get("directive")])
         c.commit()
 
     def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
@@ -686,9 +693,13 @@ class Store:
             if only_unreviewed and is_reviewed and not is_split:
                 continue
             conf = qm.get("confidence")
+            try:
+                model = ((json.loads(payload) if payload else {}).get("trace") or {}).get("model", "") or ""
+            except Exception:
+                model = ""
             out.append({"hash": ch, "service": svc or "", "title": ti or "",
                         "grade": grade or "", "review_reason": qm.get("review_reason", ""),
-                        "reviewed": is_reviewed, "split": is_split,
+                        "reviewed": is_reviewed, "split": is_split, "model": model,
                         "confidence": conf, "ts": ts})
             if len(out) >= limit * 2:                 # 정렬 전 여유 수집
                 break

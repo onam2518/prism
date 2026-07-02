@@ -466,6 +466,7 @@ def _detail_row(r: dict) -> dict:
         "hash": chash,
         "title": ref.get("title", "") or r.get("title", ""),
         "subtitle": ref.get("subtitle", ""),
+        "model": (r.get("trace") or {}).get("model", "") or r.get("model", "") or "",
         "service": ref.get("displayServiceName", "") or r.get("service", ""),
         "url": ref.get("source_url", "") or r.get("url", ""),
         "body": ref.get("body", ""),
@@ -884,7 +885,8 @@ def apply_feedback(data: dict) -> dict:
                    "service": data.get("service", ""), "ts": time.time()})
         if verdict == "bad" and note:              # 오케스트레이터: 원문 재분류(요소·단계 분기) + REAP 가공
             fb = {"stage": stage, "note": note, "title": data.get("title", ""),
-                  "elements": elements, "_team": data.get("_team")}
+                  "elements": elements, "_team": data.get("_team"),
+                  "model": (data.get("model") or "").strip()}
             try:                                   # 요소 메타 맥락(재분류 정확도용)
                 im = st.get_item_meta(ch) if hasattr(st, "get_item_meta") else None
                 if im:
@@ -990,7 +992,8 @@ def _reap_async(content_hash: str, reviewer: str, fb: dict):
         st = get_store()
         routes = FL.route_feedback(llm, fb)             # 요소 재분류(mock/실패 시 선택 요소 폴백)
         if st and routes and hasattr(st, "save_routes"):
-            st.save_routes(content_hash, reviewer, routes, team=fb.get("_team"))
+            st.save_routes(content_hash, reviewer, routes, team=fb.get("_team"),
+                           model=fb.get("model", ""))
         reap = FL.run_reap(llm, fb)
         if st:
             st.save_reap(content_hash, reviewer, reap)
@@ -1724,6 +1727,7 @@ def raw_rows(limit: int = 100, team=None) -> dict:
                     "service": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                     "grade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
                     "category": im.get("content_category", []) or [],
+                    "model": (r.get("trace") or {}).get("model", "") or "",
                     "item_meta": im, "quality_meta": qm})
     return {"ok": True, "items": out, "n": len(out)}
 
@@ -2600,10 +2604,10 @@ PAGE = """<!doctype html>
         admin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M3 20a6 6 0 0 1 12 0M16 7l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         arena: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0V4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18 5h2.5a2 2 0 0 1 0 4H18M6 5H3.5a2 2 0 0 0 0 4H6" stroke="currentColor" stroke-width="1.6"/></svg>',
       },
-      // 멤버 메뉴는 둘: 테스트셋 생성(검수·합의로 정답 축적) / 평가(정합성·모델 비교)
+      // 멤버 메뉴는 둘: 콘텐츠 검수(판정·교정 → 정답 축적) / 평가(일치율·모델 비교)
       mods: [
-        { g: '테스트셋 · 평가', items: [
-          { id: 'create', label: '테스트셋 생성', ic: 'eval' },
+        { g: '검수 · 평가', items: [
+          { id: 'create', label: '콘텐츠 검수', ic: 'eval' },
           { id: 'evaluate', label: '평가', ic: 'dash' } ] },
         // 콘텐츠 인입(수동·자동·실행 큐)은 '콘텐츠 관리' 단일 메뉴로 통합 · 전부 관리자 통제
         { g: '관리자', gcond: 'admin', items: [
@@ -2611,12 +2615,14 @@ PAGE = """<!doctype html>
           { id: 'testset', label: '테스트셋 관리', ic: 'eval' },
           { id: 'admin', label: '팀 관리', ic: 'admin' },
           { id: 'dict', label: '사전 · 정책', ic: 'dict' },
-          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' } ] },
+          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt' },
+          // 실험실: 지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관
+          { id: 'lab', label: '실험실', ic: 'auto' } ] },
       ],
       contentTab: 'queue',                    // 콘텐츠 관리 홈 탭 = 실행 큐(자동/수동 구분)
-      createTab: 'golden',                    // 테스트셋 생성: golden(현황) | queue(검수 대기) | review(콘텐츠 검수) | insight(분석)
-      reviewView: 'edit',                     // 콘텐츠 검수 접근 방식(편의성): edit(결과 보며 수정) | raw(로우 목록)
-      insightTab: 'quality',                  // 분석: quality(품질·법령) | topic(토픽) | user(사용자)
+      createTab: 'queue',                     // 콘텐츠 검수: queue(검수 대기) | edit(결과 목록) | raw(원본 목록)
+      testTab: 'status',                      // 테스트셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
+      labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | topic(토픽) | user(사용자)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
       // 위젯 홈 인터랙션 상태
@@ -2736,19 +2742,20 @@ PAGE = """<!doctype html>
       },
       selectMod(id) {
         this.mod = id; this.status = ''; this.addMenuOpen = false;
-        // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 대시보드/검수/분석 → 테스트셋 생성 · 평가
+        // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 테스트셋 관리
         if (id === 'run' || id === 'auto' || id === 'queue' || id === 'intake') { this.contentTab = id; id = 'content'; }
-        if (id === 'dash') { id = 'create'; this.createTab = 'review'; }
+        if (id === 'dash') { id = 'create'; this.createTab = 'edit'; }
         if (id === 'review') { id = 'create'; this.createTab = 'queue'; }
-        if (id === 'quality') { id = 'create'; this.createTab = 'insight'; this.insightTab = 'quality'; }
-        if (id === 'user') { id = 'create'; this.createTab = 'insight'; this.insightTab = 'user'; }
+        if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
+        if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
         if (id === 'eval') id = 'evaluate';
         if (id === 'home') { this.loadArena(); this.loadDash(); }
-        else if (id === 'create') { this.loadDash(); this.loadQueue(); this.loadGoldenStatus(); this.loadTopics(); this.loadUser(); }
+        else if (id === 'create') { this.loadDash(); this.loadQueue(); }
         else if (id === 'evaluate') this.loadGoldenStatus();
         else if (id === 'arena') this.loadArena();
         else if (id === 'admin') this.loadAdmin();
-        else if (id === 'testset') { this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
+        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
+        else if (id === 'lab') { this.loadDash(); this.loadTopics(); this.loadUser(); }
         else if (id === 'dict') this.loadDict();
         else if (id === 'prompt') this.loadPromptDefaults();
         if (id === 'content') { this.loadDash(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
@@ -2856,7 +2863,7 @@ PAGE = """<!doctype html>
         const v = (cur === verdict) ? '' : verdict;        // 같은 버튼 재클릭 = 취소
         c.fb = Object.assign({}, c.fb, { verdict: v, ts: (v ? Date.now() / 1000 : 0) });   // 수정 일시 기록
         if (v === 'bad') this.fbNoteOpen[c.hash] = true;
-        await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
+        await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
         if (cur === '' && v !== '') this.celebratePoints(10, '검수 완료');   // 새 검수 = +10 PT
       },
       // 수정 대상 요소: 다중 선택 · 서버 오케스트레이터가 원문을 재분류해 단계별로 분기
@@ -2874,7 +2881,7 @@ PAGE = """<!doctype html>
         const raw = (c.fb.note || '').trim();
         const tagged = raw ? ('[' + els.map((e) => this.elemLabel(e)).join('·') + '] ' + raw) : raw;
         c.fb = Object.assign({}, c.fb, { verdict: c.fb.verdict || 'bad', stage: stage, ts: Date.now() / 1000 });
-        await this._postFb({ hash: c.hash, service: c.service, title: c.title, verdict: c.fb.verdict, stage: stage, elements: els, note: tagged });
+        await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: c.fb.verdict, stage: stage, elements: els, note: tagged });
         this.fbNoteOpen[c.hash] = false;
         if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(25, '교정 반영'); }  // 교정 = +25 PT(서버 산정과 일치)
       },
@@ -3220,7 +3227,7 @@ PAGE = """<!doctype html>
         if (!this.ensureReviewer()) return;
         it.note = it.note || '';
         const wasReviewed = !!it.myVerdict;
-        const r = await this._postFb({ hash: it.hash, service: it.service, title: it.title, verdict: verdict, stage: 'review', note: it.note });
+        const r = await this._postFb({ hash: it.hash, service: it.service, title: it.title, model: it.model || '', verdict: verdict, stage: 'review', note: it.note });
         if (r && r.gold) {                              // 골드 문항: 응답 후 정오답 공개(즉시 학습 피드백)
           it.reviewed = true; it.myVerdict = verdict; it.goldRevealed = true; it.goldCorrect = !!r.gold.correct;
           if (r.gold.correct) this.celebratePoints(10, '골드 문항 정답');
@@ -5171,27 +5178,31 @@ PAGE = """<!doctype html>
             </div>
           </section>
         </div>
+        <!-- 단건 처리 이력(마지막 수동 추출의 보정·비용·지연 · 관리자 추적용) -->
+        <div x-show="result" class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>처리 이력</b><span class="meta" x-text="tr.prompt_version || ''"></span><button type="button" class="copybtn" x-show="tr && tr.content_id !== undefined" x-on:click="exportEval()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div><div class="panel-bd">
+            <div class="drow"><div class="k">보정</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" x-text="f"></span></template>
+              <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
+            </div></div>
+            <div class="drow"><div class="k">검증 verdict</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
+              <span x-show="!(tr.agent_verdicts||[]).length" class="text-xs text-muted">없음</span>
+            </div></div>
+            <div class="drow"><div class="k">비용 · 토큰</div><div class="v text-sm text-body tnum" x-text="'$' + (tr.cost_usd||0).toFixed(4) + ' · ' + JSON.stringify(tr.tokens||{})"></div></div>
+            <div class="drow"><div class="k">지연(ms)</div><div class="v text-sm text-body tnum" x-text="JSON.stringify(tr.latency_ms||{})"></div></div>
+          </div></div>
+        </div>
       </div>
 
       <!-- ═══ 모듈: 대시보드 (디자인 시스템: Stat · ProgressRing · ProgressBar) ═══ -->
-      <!-- ═══ 모듈: 테스트셋 생성 · 탭: 현황(골든) | 검수 대기 | 콘텐츠 검수(결과/로우 토글) | 분석 ═══ -->
+      <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대기 | 결과 목록 | 원본 목록 ═══ -->
       <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="createTab==='golden'?'sel':''" x-on:click="createTab='golden'; loadGoldenStatus()">현황</button>
         <button type="button" x-bind:class="createTab==='queue'?'sel':''" x-on:click="createTab='queue'; loadQueue()">검수 대기</button>
-        <button type="button" x-bind:class="createTab==='review'?'sel':''" x-on:click="createTab='review'; loadDash()">콘텐츠 검수</button>
-        <button type="button" x-bind:class="createTab==='insight'?'sel':''" x-on:click="createTab='insight'">분석</button>
+        <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadDash()">결과 목록</button>
+        <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">원본 목록</button>
       </div></div>
-      <!-- 접근 방식(편의성): 결과 보며 수정 vs 로우 목록 -->
-      <div x-show="mod === 'create' && createTab === 'review'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs evaltabs--sub">
-        <button type="button" x-bind:class="reviewView==='edit'?'sel':''" x-on:click="reviewView='edit'">결과 보며 수정</button>
-        <button type="button" x-bind:class="reviewView==='raw'?'sel':''" x-on:click="reviewView='raw'; loadRaw()">원본 목록</button>
-      </div></div>
-      <div x-show="mod === 'create' && createTab === 'insight'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs evaltabs--sub">
-        <button type="button" x-bind:class="insightTab==='quality'?'sel':''" x-on:click="insightTab='quality'">품질 · 법령</button>
-        <button type="button" x-bind:class="insightTab==='topic'?'sel':''" x-on:click="insightTab='topic'; loadTopics()">토픽</button>
-        <button type="button" x-bind:class="insightTab==='user'?'sel':''" x-on:click="insightTab='user'; loadUser()">사용자</button>
-      </div></div>
-      <div x-show="mod === 'create' && createTab === 'review' && reviewView === 'edit'" x-cloak class="ds-pilot w-full">
+      <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="ds-pilot w-full">
         <div x-show="!dashData || !dashData.n" class="ds-empty">
           <span class="ds-character ds-character--bob" style="width:80px;height:80px"><img src="/vendor/boksil-catcher.svg" alt=""></span>
           <div class="ds-empty__title">아직 집계할 결과가 없어요</div>
@@ -5250,7 +5261,7 @@ PAGE = """<!doctype html>
                 <template x-for="c in filteredContents" x-bind:key="c.hash">
                   <div class="fbrow">
                     <div class="fbrow__main">
-                      <div class="fbrow__title"><span class="ds-badge" style="cursor:help" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', c.grade)" data-tip-pos="top" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" data-tip="콘텐츠가 들어온 경로" data-tip-pos="top" x-text="c.source||'단건'"></span><span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span><span class="ds-badge ds-badge--success" x-show="c.fb && c.fb.verdict" data-tip="검수 판정 완료" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></div>
+                      <div class="fbrow__title"><span class="ds-badge" style="cursor:help" x-bind:class="c.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', c.grade)" data-tip-pos="top" x-text="c.grade||'-'"></span><span class="ds-badge" x-bind:class="srcBadgeClass(c.source||'단건')" data-tip="콘텐츠가 들어온 경로" data-tip-pos="top" x-text="c.source||'단건'"></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="c.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델의 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="c.model"></span><span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="c.title || '(제목 없음)'"></span><span class="fbrow__svc" x-text="c.service"></span><span class="ds-badge ds-badge--success" x-show="c.fb && c.fb.verdict" data-tip="검수 판정 완료" x-text="c.fb && c.fb.verdict==='good' ? '✓ 검수 완료' : '✓ 수정 필요'"></span></div>
                       <div class="fbrow__sum tbox" x-show="c.summary" x-text="c.summary"></div>
                     </div>
                     <div class="fbrow__act">
@@ -5273,7 +5284,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 품질 메타 ═══ -->
-      <div x-show="mod === 'create' && createTab === 'insight' && insightTab === 'quality'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'lab' && labTab === 'legal'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <ul class="ds-bullets"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출).</li></ul>
           <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
@@ -5301,7 +5312,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 토픽 (품질 · 토픽 통합 뷰) ═══ -->
-      <div x-show="mod === 'create' && createTab === 'insight' && insightTab === 'topic'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'lab' && labTab === 'topic'" x-cloak class="w-full space-y-4">
         <template x-if="!topicData || !topicData.n_contents"><div class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div></template>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
           <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
@@ -5399,7 +5410,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 사용자 메타 ═══ -->
-      <div x-show="mod === 'create' && createTab === 'insight' && insightTab === 'user'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'lab' && labTab === 'user'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="flex items-center justify-between gap-3 flex-wrap">
             <ul class="ds-bullets"><li>행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <b>소비 형태 · 강도 · 선호</b>를 산출합니다.</li><li><code class="text-violet">content_id</code> = 추출 순서(0부터).</li></ul>
@@ -5506,8 +5517,8 @@ PAGE = """<!doctype html>
           </section>
         </div>
 
-      <!-- 테스트셋 생성 · 현황 탭: 골든(정답) 축적 현황 + 학습 일배치 + 학습 데이터 -->
-      <div x-show="mod === 'create' && createTab === 'golden'" x-cloak class="w-full space-y-4">
+      <!-- 테스트셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
+      <div x-show="mod === 'testset' && testTab === 'status'" x-cloak class="w-full space-y-4">
           <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
           <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다</span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenStatus()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -5529,7 +5540,7 @@ PAGE = """<!doctype html>
                         <tr><td x-text="ng.title || '(제목 없음)'"></td><td class="text-muted" x-text="ng.service"></td></tr>
                       </template>
                     </tbody></table></div>
-                    <div class="text-xs text-muted" style="margin-top:6px"><b>콘텐츠 검수</b> 목록에서 해당 콘텐츠 상세를 열어 분류를 골라 주세요 <button type="button" class="copybtn" x-on:click="createTab='review'; reviewView='edit'; loadDash()">콘텐츠 검수 열기 →</button></div>
+                    <div class="text-xs text-muted" style="margin-top:6px"><b>콘텐츠 검수 · 결과 목록</b>에서 해당 콘텐츠 상세를 열어 분류를 골라 주세요 <button type="button" class="copybtn" x-on:click="selectMod('dash')">결과 목록 열기 →</button></div>
                   </div>
                 </div>
               </template>
@@ -5570,10 +5581,25 @@ PAGE = """<!doctype html>
               <div x-show="!(learnReport && learnReport.ts) && !metaResults" class="text-xs text-muted"><b class="text-ink">⚙ 지금 실행</b>을 누르면 개선·골든 축적·회귀 평가·모델 비교를 한 번에 돌립니다</div>
             </div>
           </section>
-      </div><!-- /테스트셋 생성 · 현황 -->
+      </div><!-- /테스트셋 관리 · 현황 -->
 
-      <!-- ═══ 모듈: 테스트셋 관리(관리자) · 정답셋 목록·업로드 + 학습 데이터 현황 ═══ -->
-      <div x-show="mod === 'testset'" x-cloak class="w-full space-y-4">
+      <!-- ═══ 모듈: 테스트셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
+      <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
+        <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport()">현황 · 학습 반영</button>
+        <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
+        <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
+      </div></div>
+
+      <!-- ═══ 모듈: 실험실(관리자) · 지금 테스트하지 않는 탐구 요소 ═══ -->
+      <div x-show="mod === 'lab'" x-cloak class="w-full" style="margin-bottom:10px">
+        <div class="evaltabs">
+          <button type="button" x-bind:class="labTab==='legal'?'sel':''" x-on:click="labTab='legal'">법령</button>
+          <button type="button" x-bind:class="labTab==='topic'?'sel':''" x-on:click="labTab='topic'; loadTopics()">토픽</button>
+          <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
+        </div>
+        <ul class="ds-bullets hintbox" style="padding:12px 16px;margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
+      </div>
+      <div x-show="mod === 'testset' && testTab === 'golden'" x-cloak class="w-full space-y-4">
         <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋(골든) 목록</b>
           <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수로 확정 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 직접 등록 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenList()" data-tip="새로고침" data-tip-pos="bottom" aria-label="정답셋 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -5600,7 +5626,9 @@ PAGE = """<!doctype html>
             </template>
           </div>
         </section>
-        <!-- 학습 데이터 현황: 커버리지·일치도·신뢰도·오류 후보 + 데이터셋 추출 -->
+      </div><!-- /정답셋 목록 -->
+      <!-- 학습 데이터: 커버리지·일치도·신뢰도·오류 후보 + 데이터셋 추출 -->
+      <div x-show="mod === 'testset' && testTab === 'data'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()">
             <div class="panel-hd"><b>학습 데이터 현황</b><span class="meta">특화 LLM 학습데이터 · 소요 산정(논문 기준)</span>
               <button type="button" class="ds-btn ds-btn--secondary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnDataBusy" x-on:click="loadLearnData()" x-text="learnDataBusy ? '집계 중…' : '새로고침'"></button>
@@ -5669,10 +5697,10 @@ PAGE = """<!doctype html>
               <div x-show="!learnData" class="text-xs text-muted">집계를 불러오는 중이거나, 관리자 권한이 필요합니다</div>
             </div>
         </section>
-      </div><!-- /테스트셋 관리 -->
+      </div><!-- /학습 데이터 -->
 
-      <!-- 콘텐츠 검수 · 로우 목록 뷰: 결과 원본을 가공 없이 빠르게(접근 방식 토글) -->
-      <div x-show="mod === 'create' && createTab === 'review' && reviewView === 'raw'" x-cloak class="w-full space-y-4">
+      <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
+      <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>원본 목록</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
           <span class="ml-auto" style="display:flex;gap:8px">
             <a class="ds-btn ds-btn--secondary" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center" href="/export.csv">CSV</a>
@@ -5682,12 +5710,13 @@ PAGE = """<!doctype html>
         </div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px"><li>추출 결과 원본(메타 · 품질 판정)을 가공 없이 빠르게 확인합니다.</li><li>행을 클릭하면 <b>JSON 원문</b>이 펼쳐집니다.</li></ul>
-            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:110px">서비스</th><th>카테고리</th><th>사유</th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:130px">모델</th><th>카테고리</th><th>사유</th></tr></thead><tbody>
               <template x-for="r in (rawData ? rawData.items : [])" x-bind:key="r.hash">
                 <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" x-on:keydown.enter="rawSel = r">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
                   <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top" x-text="r.title || '(제목 없음)'"></td>
                   <td class="text-muted" x-text="r.service"></td>
+                  <td class="text-xs text-muted tnum" x-text="r.model || '·'"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
                   <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template></td>
                 </tr>
@@ -5701,23 +5730,7 @@ PAGE = """<!doctype html>
             </div>
           </div>
         </section>
-        <!-- 단건 처리 이력(마지막 수동 추출의 보정·비용·지연) -->
-        <div x-show="!result" class="empty"><b class="text-body">콘텐츠 관리 · 수동 추출</b>에서 단건 추출을 실행하면 그 콘텐츠의 처리 이력(보정·비용·지연)이 표시됩니다</div>
-        <div x-show="result" class="space-y-4">
-          <div class="panel"><div class="panel-hd"><b>처리 이력</b><span class="meta" x-text="tr.prompt_version || ''"></span><button type="button" class="copybtn" x-show="tr && tr.content_id !== undefined" x-on:click="exportEval()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div><div class="panel-bd">
-            <div class="drow"><div class="k">보정</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" x-text="f"></span></template>
-              <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
-            </div></div>
-            <div class="drow"><div class="k">검증 verdict</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
-              <span x-show="!(tr.agent_verdicts||[]).length" class="text-xs text-muted">없음</span>
-            </div></div>
-            <div class="drow"><div class="k">비용 · 토큰</div><div class="v text-sm text-body tnum" x-text="'$' + (tr.cost_usd||0).toFixed(4) + ' · ' + JSON.stringify(tr.tokens||{})"></div></div>
-            <div class="drow"><div class="k">지연(ms)</div><div class="v text-sm text-body tnum" x-text="JSON.stringify(tr.latency_ms||{})"></div></div>
-          </div></div>
-        </div>
-      </div><!-- /테스트(로우 데이터) -->
+      </div><!-- /콘텐츠 검수 · 원본 목록 -->
 
       <!-- ═══ 모듈: 팀 관리 (멀티테넌시) ═══ -->
       <div x-show="mod === 'admin'" x-cloak class="w-full space-y-4">
@@ -5931,6 +5944,7 @@ PAGE = """<!doctype html>
                     <div class="fbrow__title">
                       <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="termDef('grade', it.grade)" data-tip-pos="top" x-text="it.grade || '·'"></span>
                       <span class="ds-badge ds-badge--yellow" style="cursor:help" data-tip="AI 확신이 낮아 사람 검수가 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
+                      <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="it.model" data-tip="이 결과 초안을 만든 모델" data-tip-pos="top" x-text="it.model"></span>
                       <span class="fbrow__titlelink" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="top" x-text="it.title || '(제목 없음)'"></span>
                       <span class="fbrow__svc" x-text="it.service"></span>
                       <span class="ds-badge ds-badge--error" x-show="it.split" data-tip="검수자 의견이 갈린 콘텐츠 · 추가 의견으로 합의를 만들어 주세요" data-tip-pos="top">불일치 · 재검토</span>
@@ -6138,7 +6152,7 @@ PAGE = """<!doctype html>
           <a class="dvc__src ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-show="detail && detail.url" x-bind:href="detail && detail.url" target="_blank" rel="noreferrer">원문 열기 ↗</a>
         </div>
         <div class="detailview__eval">
-          <div x-show="detail && detail.grade"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span></div>
+          <div x-show="detail && detail.grade" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
           <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="right" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">카테고리</div>

@@ -93,9 +93,18 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     11px/margin 6px 통일(goldgrid align-items:flex-end)로 기준선 정렬.
   - 데모(make_demo)는 정답 현황·학습 리포트·모델 비교·학습 데이터·검수 대기(골드 문항)·실행 큐·원본
     목록 예시(EX 스텁)까지 표시.
-  - **테스트셋 관리(관리자 메뉴, mod testset)**: 정답셋(골든) 목록·업로드 패널(팀 관리에서 이동) +
-    학습 데이터 현황 패널(생성 현황 탭에서 이동). 평가 결과는 카드화(tiles + tile--hero, 유형별 막대도
-    tile 박스 안) · 산개 방지.
+  - **테스트셋 관리(관리자 메뉴, mod testset · 탭 3)**: 현황·학습 반영(테스트셋 현황 타일 + 분류 필요 +
+    학습 반영 '지금 실행') | 정답셋 목록(업로드·병합·제거) | 학습 데이터. 멤버 화면에서 현황·실행 제거,
+    안내 문구만 잔류.
+  - **콘텐츠 검수(멤버, mod create · 탭 3)**: 검수 대기 | 결과 목록(구 '결과 보며 수정') | 원본 목록.
+    처리 이력은 콘텐츠 관리 · 수동 추출 하단으로 이동.
+  - **실험실(관리자 메뉴, mod lab · 탭 3)**: 법령 | 토픽 | 사용자 = 지금 테스트하지 않는 탐구 요소 보관.
+    품질 판정은 검수·평가 핵심 흐름이 담당(실험실 아님).
+  - **모델 출처(provenance)**: Trace.model 에 초안 생성 모델 기록 → contents.model(supabase DDL
+    `prism_model_provenance`)·payload.trace 로 영속. 결과 목록·검수 대기·원본 목록·상세에 모델 배지,
+    피드백 payload 로 서버 전달 → `feedback_routes.model` 귀속(라우팅 프롬프트에 [초안 생성 모델] 주입).
+    모델별 프롬프트(model_prompts·stage_models)는 기존 존재 → meta_compile 의 모델별 그룹 컴파일은 후속.
+  - 평가 결과는 카드화(tiles + tile--hero, 유형별 막대도 tile 박스 안) · 산개 방지.
 
 ## 메타 체계 (코드가 이 기준으로 정렬)
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
