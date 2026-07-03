@@ -224,14 +224,16 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - **라우트 분리(점진 3차 · 2026-07-03 후반)**: 학습·골든·평가 → `learnops.py`, 관리자·팀·인증 → `adminops.py`, HTML 마크업 → `page.py`(serve.py 7,667→2,507줄). serve 가 자기 모듈 객체를 `_SV` 로 주입(-m 실행 __main__ 이중 인스턴스 회피)하고 하위호환 별칭 유지 · HTTP 계약 무변경(스모크 게이트).
 - **4호출 ①② 병렬 실행(기본 on · 2026-07-03 실측 승격)**: `Methodology.parallel_calls=True` 기본. 실키 A/B(solar-pro3, 16쌍 교차 2라운드): 평균 -15.5% · 중앙값 -18.0% 지연, API 실패 0, 산출 일치 16/16. 산출·차단 계약 파리티 유지(① 빈값 → ② 폐기·③④ 생략, ③④는 prior 의존이라 순차 유지). 순차 회귀 비교는 abtest 프리셋 `sequential`.
 
-## 다음 단계
-1. **실 팀 운영 개시**: supabase 는 아직 팀 데이터 0건(2026-07-02 확인). 실사용에서 골드 문항 노출 비율(현재
-   큐의 ~10%·최소 1)·미션 난이도·품질 배율 체감을 모니터링해 튜닝.
+## 다음 단계 (2026-07-03 · v0.5.3 릴리즈 시점)
+1. **실 팀 운영 개시**: supabase 는 아직 팀 데이터 0건. 실사용에서 골드 문항 노출 비율(큐의 ~10%·최소 1)·
+   미션 난이도·품질 배율 체감을 모니터링해 튜닝. 모델별 learned 계층도 실데이터로 검증.
 2. **DPO 선호쌍 축적**: 상세 화면 교정이 patch_log 로 쌓인다. 등급/리드문 등 카테고리 외 요소의
    구조화 교정 UI 확대(현재 구조화 교정은 카테고리 채우기 중심).
 3. Dawid-Skene EM 을 합의 가중치에 직접 반영할지 검토(현재 통계 표시용, 가중치는 골드 정확도 근사).
-4. `/learn-report` 가 과거 POST 전용이던 문제는 GET 라우트 추가로 해소됨. 데스크탑 재빌드 시 버전 범프.
-5. service_role 키 로테이션(미처리, 사용자 지시로 보류).
+4. **subtitle 소급 불가분**: 부제가 있던 기존 supabase contents 행은 재실행 시 신규 행이 생길 수 있음
+   (v0.5.3 이후 저장분부터 정상 · 필요 시 원본 재인입으로 정리).
+5. 라우트 2단계(디스패치 테이블화) · Sparkle 자동업데이트(T3)는 별도 트랙.
+6. service_role 키 로테이션(미처리, 사용자 지시로 보류).
 
 ## 메모리
 `prism-goal-evaluation-platform`·`prism-harness-architecture`·`prism-team-hitl`·`prism-supabase`·`prism-gamification`·`prism-anchor-design`·`prism-deploy-release-workflow` 참조.
