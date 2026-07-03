@@ -293,7 +293,7 @@ STUB = """<script>
       if (u.indexOf('/prompt-preview') > -1) {
         const q = new URLSearchParams(u.split('?')[1] || '');
         return Promise.resolve(J({ ok: true, family: 'solar', call: q.get('call') || 'summary',
-          system: PV_SAMPLE, user: 'displayServiceName: 뉴스\ntitle: (미리보기)\nbody: (미리보기 본문)' }));
+          system: PV_SAMPLE, user: 'displayServiceName: 뉴스' + String.fromCharCode(10) + 'title: (미리보기)' + String.fromCharCode(10) + 'body: (미리보기 본문)' }));
       }
       if (u.indexOf('/purpose') > -1) return Promise.resolve(J({ ok: true, n: 1 }));
       if (u.indexOf('/eval-judge') > -1) return Promise.resolve(J({ ok: true, judge: { adopt: 1, reject: 0, reviewers: {} } }));
