@@ -1357,7 +1357,29 @@ def save_badges(uid, earned) -> dict:
     return {"ok": True, "badges": labels, "persisted": False}
 
 
-_LAST_EVAL_DETAIL = []                             # 최근 골든 평가의 건별 불일치(라벨 오류 후보)
+_LAST_EVAL_DETAIL = []                             # (폴백 캐시) 최근 평가 불일치 · 원천은 store reports
+
+
+def _report_save(kind: str, payload, team=None):
+    """운영 리포트 영속(재시작·다중 워커에도 유지 · 팀 스코프). 실패해도 흐름은 계속."""
+    st = get_store()
+    try:
+        if st and hasattr(st, "save_report"):
+            st.save_report(kind, payload, team=team)
+    except Exception:
+        pass
+
+
+def _report_get(kind: str, team=None, default=None):
+    st = get_store()
+    try:
+        if st and hasattr(st, "get_report"):
+            r = st.get_report(kind, team=team)
+            if r is not None:
+                return r
+    except Exception:
+        pass
+    return default
 
 
 def _scope_golden(rows, scope, st, team=None):
@@ -1413,6 +1435,7 @@ def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
             detail.append({"hash": content_hash(c), "title": (c.get("title") or "")[:60],
                            "expected": exp, "got": got})
     _LAST_EVAL_DETAIL = detail
+    _report_save("eval_detail", {"items": detail, "ts": time.time()}, team)
     try:                                         # 건별 판정(집단 지성) 현황 부착
         jm = st.eval_check_counts(team) if hasattr(st, "eval_check_counts") else {}
     except Exception:
@@ -1465,7 +1488,8 @@ def golden_list(team=None) -> dict:
     st = get_store()
     if not (st and hasattr(st, "golden_rows")):
         return {"ok": False, "error": "지원하지 않는 저장소", "items": []}
-    flagged = {f.get("hash") for f in (_LAST_EVAL_DETAIL or [])}
+    ev = _report_get("eval_detail", team, {}) or {}
+    flagged = {f.get("hash") for f in (ev.get("items") or _LAST_EVAL_DETAIL or [])}
     items = st.golden_rows(team, limit=300)
     cmeta = {}
     try:                                       # 정답의 유래 초안(검수 당시 모델·버전) 부착
@@ -1652,6 +1676,7 @@ def learning_batch(team=None, models=None) -> dict:
               "grade_accuracy": evalr.get("grade_accuracy") if evalr.get("ok") else None}
     global _LAST_LEARN_REPORT
     _LAST_LEARN_REPORT = report
+    _report_save("learn_report", report, team)
     _agg_bump()
     if getattr(Config.load(), "auto_rerun_after_batch", False):   # 옵션: 개선 버전으로 자동 재실행
         threading.Thread(target=auto_rerun_after_batch, args=(team,), daemon=True).start()
@@ -1705,7 +1730,7 @@ def learn_data(team=None) -> dict:
                           "gold_n": row.get("gold_n", 0), "gold_acc": row.get("gold_acc"),
                           "ds_error": dsr.get("error_rate")})
     # 골든 정합성 ± 95% CI(최근 일배치 평가 기준, Miller 2024)
-    ev = (_LAST_LEARN_REPORT or {}).get("eval") or {}
+    ev = (_report_get("learn_report", team, _LAST_LEARN_REPORT) or {}).get("eval") or {}
     acc_ci = None
     if ev.get("ok") and ev.get("n"):
         lo, hi = Q.binomial_ci(ev.get("grade_accuracy") or 0.0, int(ev["n"]))
@@ -1738,7 +1763,7 @@ def learn_data(team=None) -> dict:
             "class_total": len(coverage), "per_class_target": PER_CLASS_TARGET,
             "alpha": alpha, "agreement": agree, "multi_units": multi_units,
             "reviewers": reviewers, "acc_ci": acc_ci,
-            "label_flags": list(_LAST_EVAL_DETAIL),
+            "label_flags": list((_report_get("eval_detail", team, {}) or {}).get("items") or _LAST_EVAL_DETAIL),
             "split": split_list[:50], "split_n": len(split_list),
             "extractable": {"sft": golden_n, "dpo": patch_n, "rationale": rationale_n},
             "requirements": requirements}
@@ -1750,7 +1775,7 @@ def learn_spec_md(team=None) -> str:
     d = learn_data(team)
     if not d.get("ok"):
         return "# 파인튜닝 소요서\n\n데이터가 없습니다."
-    rep = _LAST_LEARN_REPORT or {}
+    rep = _report_get("learn_report", team, _LAST_LEARN_REPORT) or {}
     g = rep.get("golden") or {}
     L = []
     L.append("# 콘텐츠 분류·운영 특화 LLM · 파인튜닝 스펙 및 소요서")
@@ -2629,8 +2654,9 @@ class Handler(BaseHTTPRequestHandler):
                 body_out = {"ok": False, "error": str(e)[:300]}
             self._send(200, json.dumps(body_out, ensure_ascii=False), _JSON)
 
-        elif self.path.startswith("/learn-report"):     # 최근 일배치 결과(GET 수신)
-            self._send(200, json.dumps({"ok": True, "report": _LAST_LEARN_REPORT}, ensure_ascii=False), _JSON)
+        elif self.path.startswith("/learn-report"):     # 최근 일배치 결과(GET · 재시작에도 store 영속)
+            rep = _report_get("learn_report", self._req_team(), _LAST_LEARN_REPORT)
+            self._send(200, json.dumps({"ok": True, "report": rep}, ensure_ascii=False), _JSON)
         elif self.path.startswith("/learn-export"):      # 학습데이터 JSONL 다운로드(관리자)
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
@@ -2671,7 +2697,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(golden_list(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/golden-status"):     # 골든 생성 현황(팀원 공개): 확정·분류필요·불일치
             st = get_store()
-            g = (_LAST_LEARN_REPORT or {}).get("golden") or {}
+            _rep = _report_get("learn_report", self._req_team(), _LAST_LEARN_REPORT) or {}
+            g = _rep.get("golden") or {}
             self._send(200, json.dumps({
                 "ok": True,
                 "batch_seq": (st.batch_seq(self._req_team()) if (st and hasattr(st, "batch_seq")) else 0),
@@ -2681,7 +2708,7 @@ class Handler(BaseHTTPRequestHandler):
                 "last_batch": {k: g.get(k) for k in ("confirmed", "new", "demoted", "need_category",
                                                      "disagree", "min_good")},
                 "need_list": g.get("need_list") or [],
-                "ts": (_LAST_LEARN_REPORT or {}).get("ts")}, ensure_ascii=False), _JSON)
+                "ts": _rep.get("ts")}, ensure_ascii=False), _JSON)
         elif self.path.startswith("/prompt-defaults"):
             sync_learned()
             self._send(200, json.dumps({"defaults": PR.stage_defaults(),
@@ -2911,7 +2938,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/learn-report"):       # 최근 일배치 결과 수신(개선·골든·평가·모델비교)
-            self._send(200, json.dumps({"ok": True, "report": _LAST_LEARN_REPORT}, ensure_ascii=False), _JSON)
+            self._send(200, json.dumps({"ok": True, "report": _report_get("learn_report", self._req_team(), _LAST_LEARN_REPORT)}, ensure_ascii=False), _JSON)
             return
 
         if self.path.startswith("/patch-meta"):          # 검수자 구조화 교정(빈 카테고리 채우기 등)
@@ -2947,6 +2974,10 @@ class Handler(BaseHTTPRequestHandler):
                 ch = (data.get("hash") or "").strip()
                 if not rv or not ch or verdict not in ("adopt", "reject"):
                     self._send(200, json.dumps({"ok": False, "error": "판정 값이 올바르지 않습니다"}, ensure_ascii=False), _JSON)
+                    return
+                if rate_limited(f"evj:{rv}"):
+                    self._send(429, json.dumps({"error": "잠시 후 다시 시도하세요(판정 속도 제한)"},
+                                               ensure_ascii=False), _JSON)
                     return
                 st = get_store()
                 ok = bool(st and hasattr(st, "save_eval_check")

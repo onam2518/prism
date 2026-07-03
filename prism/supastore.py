@@ -723,6 +723,15 @@ class SupabaseStore:
                         "version": int(r.get("version") or 1), "purpose": r.get("purpose") or "review"})
         return out
 
+    def save_report(self, kind: str, payload, team=None):
+        row = {"kind": kind, "team_key": team or "", "payload": payload}
+        self._upsert("reports", [row])
+
+    def get_report(self, kind: str, team=None):
+        tq = urllib.parse.quote(team or "")
+        rows = self._get("reports", f"select=payload&kind=eq.{urllib.parse.quote(kind)}&team_key=eq.{tq}")
+        return rows[0]["payload"] if rows else None
+
     def save_eval_check(self, content_hash, reviewer, verdict, expected="", got="", team=None) -> bool:
         """평가 불일치 건 판정 upsert(1인 1표). verdict: adopt|reject."""
         if verdict not in ("adopt", "reject") or not content_hash:

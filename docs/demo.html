@@ -3206,6 +3206,10 @@
       if (u.indexOf('/learn-data') > -1) return Promise.resolve(J(EX.ldata));
       if (u.indexOf('/learn-export') > -1) return Promise.resolve(J({ ok: true }));
       if (u.indexOf('/compare-models') > -1) return Promise.resolve(J(EX.cmp));
+      if (u.indexOf('/learn-spec') > -1) {
+        const md = '# (데모) 파인튜닝 소요서 예시' + String.fromCharCode(10) + '실서비스에서는 축적 현황과 논문 기준치를 대비한 소요서가 생성됩니다.';
+        return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob([md], { type: 'text/markdown' })), json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve(md) });
+      }
       if (u.indexOf('/prompt-preview') > -1) {
         const q = new URLSearchParams(u.split('?')[1] || '');
         return Promise.resolve(J({ ok: true, family: 'solar', call: q.get('call') || 'summary',

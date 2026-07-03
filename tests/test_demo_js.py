@@ -36,5 +36,23 @@ class TestDemoInlineScripts(unittest.TestCase):
                 os.unlink(path)
 
 
+class TestDemoStubCoverage(unittest.TestCase):
+    """데모에 노출되는 버튼이 쓰는 라우트는 반드시 스텁이 있어야 한다(무동작 회귀 방지)."""
+    REQUIRED = ["/config", "/dashboard", "/arena", "/raw", "/drafts", "/model-stats",
+                "/golden-status", "/golden-list", "/learn-report", "/learn-batch", "/learn-data",
+                "/learn-export", "/learn-spec", "/eval-golden", "/eval-judge", "/compare-models",
+                "/purpose", "/prompt-preview", "/feedback", "/admin", "/rerun"]
+
+    def test_required_routes_stubbed(self):
+        demo = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "demo.html")
+        if not os.path.exists(demo):
+            self.skipTest("docs/demo.html 없음")
+        html = open(demo, encoding="utf-8").read()
+        stubs = set(re.findall(r"u\.indexOf\('(/[a-zA-Z0-9\-_]+)'\)", html))
+        missing = [r for r in self.REQUIRED
+                   if not any(r.startswith(st) or st.startswith(r) for st in stubs)]
+        self.assertEqual(missing, [], f"데모 스텁 누락: {missing}")
+
+
 if __name__ == "__main__":
     unittest.main()

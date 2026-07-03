@@ -290,6 +290,10 @@ STUB = """<script>
       if (u.indexOf('/learn-data') > -1) return Promise.resolve(J(EX.ldata));
       if (u.indexOf('/learn-export') > -1) return Promise.resolve(J({ ok: true }));
       if (u.indexOf('/compare-models') > -1) return Promise.resolve(J(EX.cmp));
+      if (u.indexOf('/learn-spec') > -1) {
+        const md = '# (데모) 파인튜닝 소요서 예시' + String.fromCharCode(10) + '실서비스에서는 축적 현황과 논문 기준치를 대비한 소요서가 생성됩니다.';
+        return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob([md], { type: 'text/markdown' })), json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve(md) });
+      }
       if (u.indexOf('/prompt-preview') > -1) {
         const q = new URLSearchParams(u.split('?')[1] || '');
         return Promise.resolve(J({ ok: true, family: 'solar', call: q.get('call') || 'summary',
@@ -376,11 +380,27 @@ def _copy_demo_assets():
 def main():
     out = os.path.join(ROOT, "docs", "demo.html")
     html = build()
+    report_stub_coverage(html)
     with open(out, "w", encoding="utf-8") as f:
         f.write(html)
     n, dst = _copy_demo_assets()
     print(f"wrote {out} ({len(html):,} bytes)")
     print(f"copied {n} assets → {dst}")
+
+
+def report_stub_coverage(html: str):
+    """서버 라우트 대비 데모 스텁 커버리지 경고(누락 라우트 = 데모에서 실호출·무동작 위험)."""
+    import re as _re
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prism", "serve.py"), encoding="utf-8").read()
+    routes = set(_re.findall(r'self\.path(?:\.startswith\(|\s*==\s*)"(/[a-zA-Z0-9\-_]+)"', src))
+    stubs = set(_re.findall(r"u\.indexOf\('(/[a-zA-Z0-9\-_]+)'\)", html))
+    missing = sorted(r for r in routes if not any(r.startswith(st) or st.startswith(r) for st in stubs))
+    allow = {"/events", "/presence", "/report", "/store", "/prompt-defaults", "/meta-compile"}   # 데모 비노출 허용 목록
+    warn = [m for m in missing if m not in allow]
+    if warn:
+        print(f"  [warn] 데모 스텁 미커버 라우트(버튼 노출 시 무동작): {warn}")
+    else:
+        print(f"  [ok] 데모 스텁 커버리지 정상(허용 예외 {len(missing)}종)")
 
 
 if __name__ == "__main__":

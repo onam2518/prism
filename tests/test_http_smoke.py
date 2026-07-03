@@ -117,9 +117,11 @@ class TestButtonsEndToEnd(unittest.TestCase):
     def test_04_evaluate_buttons(self):
         r = self.ok("/eval-golden", {"model": "", "scope": "all"})
         self.assertIn("ok", r)                  # 골든 유무에 따라 ok/에러 안내 모두 계약상 정상
+        import time as _t
         r = self.ok("/eval-judge", {"hash": "judge-smoke", "verdict": "adopt", "reviewer": "복실",
                                     "expected": "R", "got": "G"})
         self.assertTrue(r["ok"] and r["judge"]["adopt"] == 1)
+        _t.sleep(0.9)                                # 판정 레이트리밋(0.8s/검수자) 준수
         r = self.ok("/eval-judge", {"hash": "judge-smoke", "verdict": "reject", "reviewer": "복실"})
         self.assertEqual((r["judge"]["adopt"], r["judge"]["reject"]), (0, 1))
         r = self.ok("/compare-models", {"models": ["solar-pro2", "gpt-5.4"], "scope": "all"})

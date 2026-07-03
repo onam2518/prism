@@ -87,6 +87,10 @@ class Store:
         CREATE TABLE IF NOT EXISTS events(
           id INTEGER PRIMARY KEY AUTOINCREMENT, reviewer TEXT, kind TEXT,
           day INTEGER, bonus INTEGER, meta TEXT, ts REAL);
+        -- 운영 리포트 영속(kind×team): 최근 학습 반영·평가 상세 등 재시작에도 유지.
+        CREATE TABLE IF NOT EXISTS reports(
+          kind TEXT, team TEXT NOT NULL DEFAULT '', payload TEXT, ts REAL,
+          PRIMARY KEY(kind, team));
         -- 평가 판정(집단 지성): 평가 불일치 건에 대한 검수자 판정. adopt=모델 결과 채택(정답 교정 후보)
         -- / reject=탈락(정답 유지 · 모델 오답 확정). 1인 1표 upsert.
         CREATE TABLE IF NOT EXISTS eval_checks(
@@ -499,6 +503,25 @@ class Store:
             out.append({"reviewer": rv, "remember": rm, "explain": ex, "ask": ak,
                         "plan": pl, "stage": st})
         return out
+
+    def save_report(self, kind: str, payload, team=None):
+        """운영 리포트 upsert(JSON 직렬화 · 재시작 영속 · 팀 스코프)."""
+        c = self._conn()
+        c.execute("INSERT INTO reports(kind,team,payload,ts) VALUES(?,?,?,?) "
+                  "ON CONFLICT(kind,team) DO UPDATE SET payload=excluded.payload, ts=excluded.ts",
+                  (kind, team or "", json.dumps(payload, ensure_ascii=False), time.time()))
+        c.commit()
+
+    def get_report(self, kind: str, team=None):
+        c = self._conn()
+        row = c.execute("SELECT payload FROM reports WHERE kind=? AND team=?",
+                        (kind, team or "")).fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return None
 
     def save_eval_check(self, content_hash, reviewer, verdict, expected="", got="", team=None) -> bool:
         """평가 불일치 건 판정 upsert(1인 1표 · 재판정 허용). verdict: adopt|reject."""
