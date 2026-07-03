@@ -1604,7 +1604,12 @@ PAGE = """<!doctype html>
             <div><div class="arena-hero__eyebrow">내 검수 진척율 · 함께 끝까지</div>
               <div class="arena-hero__big"><span x-text="myProgressPct"></span><span class="arena-hero__pct">%</span></div>
             </div>
-            <div class="arena-hero__target">팀 평균 <b x-text="teamProgressPct + '%'"></b></div>
+            <div class="arena-hero__target">팀 평균 <b x-text="teamProgressPct + '%'"></b>
+              <div class="arena-deadline" x-show="arenaData && arenaData.next_batch_at" x-bind:data-tip="'다음 학습 반영(모델 버전 시한) · 이때까지 모인 검수 의견이 v' + (arenaData?arenaData.next_version:'') + ' 프롬프트에 반영됩니다'" data-tip-pos="bottom">
+                🏁 <b x-text="'v' + (arenaData?arenaData.next_version:'') + ' 마감 ' + ddayTxt(arenaData?arenaData.next_batch_at:0)"></b>
+                <span x-text="fmtTs(arenaData?arenaData.next_batch_at:0) + ' 반영'"></span>
+              </div>
+            </div>
           </div>
           <!-- 게이지: 내 진척 채움 + 팀 평균 마커 -->
           <div class="arena-gauge">
@@ -1614,8 +1619,8 @@ PAGE = """<!doctype html>
           <div class="arena-hero__foot">
             <span>검수 대상 <b class="text-ink" x-text="reviewTargets"></b>건 중 내가 <b class="text-ink" x-text="(arenaMe?arenaMe.reviews:0)"></b>건 검수</span>
             <span class="arena-quest" x-show="arenaData && arenaData.queue" x-on:click="selectMod('review')">
-              🎯 남은 <b x-text="(arenaData?arenaData.queue:0)"></b>건 검수하러 가기 →</span>
-            <span class="arena-quest arena-quest--done" x-show="arenaData && !arenaData.queue">✓ 검수 대기 없음 · 깔끔!</span>
+              🎯 <span x-show="arenaData && arenaData.next_batch_at" x-text="'v' + (arenaData?arenaData.next_version:'') + ' 마감까지 '"></span>남은 <b x-text="(arenaData?arenaData.queue:0)"></b>건 완주 →</span>
+            <span class="arena-quest arena-quest--done" x-show="arenaData && !arenaData.queue" x-text="arenaData && arenaData.next_batch_at ? ('✓ 마감 준비 완료 · v' + arenaData.next_version + ' 반영 대기') : '✓ 검수 대기 없음 · 깔끔!'"></span>
           </div>
         </section>
 

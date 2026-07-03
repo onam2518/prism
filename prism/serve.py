@@ -1330,6 +1330,14 @@ def _arena_compute(team=None) -> dict:
         d["queue"] = len(st.review_queue(team=team))  # 미검수 YELLOW = 남은 퀘스트
     except Exception:
         d["queue"] = 0
+    try:                                          # 팀 퀘스트: 다음 버전(시한)까지 검수 완주
+        cfg = Config.load()
+        last = float((_report_get("learn_report", team) or {}).get("ts") or 0)
+        d["next_version"] = int(st.batch_seq(team) if hasattr(st, "batch_seq") else 0) + 1
+        d["next_batch_at"] = LO.next_batch_time(last, getattr(cfg, "learn_cycle_days", 1),
+                                                getattr(cfg, "learn_batch_hour", 4))
+    except Exception:
+        pass
     return d
 
 

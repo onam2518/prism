@@ -774,6 +774,14 @@
         setTimeout(() => { this.learnSchedMsg = ''; }, 2500);
       },
       cycleLabel(n) { n = parseInt(n, 10) || 1; return n === 1 ? '매일' : (n === 7 ? '매주' : (n === 14 ? '격주' : n + '일마다')); },
+      ddayTxt(ts) {                                  // 버전 시한까지 D-n (당일 = D-DAY)
+        if (!ts) return '';
+        const now = new Date(); const due = new Date(ts * 1000);
+        const d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const d1 = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+        const n = Math.round((d1 - d0) / 86400000);
+        return n <= 0 ? 'D-DAY' : 'D-' + n;
+      },
       // 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보·추출(전 기준치 논문 근거)
       learnData: null, learnDataBusy: false,
       async loadLearnData() {

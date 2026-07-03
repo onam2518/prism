@@ -225,6 +225,9 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertEqual((cfg.get("learnCycleDays"), cfg.get("learnBatchHour")), (3, 6))
         r = self.ok("/learn-report")
         self.assertGreater(r.get("next_batch_at") or 0, 0)
+        a = self.ok("/arena")                        # 팀 퀘스트: 홈 히어로 시한 데이터
+        self.assertGreater(a.get("next_batch_at") or 0, 0)
+        self.assertGreaterEqual(a.get("next_version") or 0, 1)
         self.ok("/config", {"learn_cycle_days": 999, "learn_batch_hour": -5})   # 클램프
         cfg = self.ok("/config")
         self.assertEqual((cfg.get("learnCycleDays"), cfg.get("learnBatchHour")), (30, 0))

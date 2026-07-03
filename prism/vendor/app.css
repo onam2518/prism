@@ -896,3 +896,9 @@
 .polpal__item b{font-size:12.5px;color:var(--ds-ink)}
 .polpal__item div{color:var(--ds-body);margin-top:3px;line-height:1.55;white-space:pre-line}
 .polpal__item.is-hl{border-color:var(--ds-primary);background:var(--ds-primary-tint)}
+
+/* 팀 퀘스트(버전 시한): 히어로 우측 D-day 칩 · 시한까지 팀 검수 완주 프레임 */
+.arena-deadline{margin-top:var(--ds-space-2);display:inline-flex;align-items:center;gap:6px;padding:5px 12px;
+  border-radius:var(--ds-radius-chip);background:rgba(255,255,255,.14);cursor:help;
+  font:700 12px/1 var(--ds-font-game);color:var(--ds-text-static-white)}
+.arena-deadline span{font-weight:500;font-size:11px;opacity:.85}
