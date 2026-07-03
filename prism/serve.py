@@ -1314,6 +1314,7 @@ def _arena_compute(team=None) -> dict:
     try:                                          # 팀 퀘스트: 다음 버전(검수 목표 일시)까지 완주
         cfg = Config.load()
         d["next_version"] = int(st.batch_seq(team) if hasattr(st, "batch_seq") else 0) + 1
+        d["next_model"] = cfg.model or ""          # 어떤 모델의 어떤 버전인지 명기(퀘스트 카드)
         d["next_batch_at"] = LO.next_batch_time(getattr(cfg, "learn_next_at", ""))
     except Exception:
         pass

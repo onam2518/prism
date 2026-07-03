@@ -228,6 +228,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         a = self.ok("/arena")                        # 팀 퀘스트: 홈·사이드바 시한 데이터
         self.assertGreater(a.get("next_batch_at") or 0, 0)
         self.assertGreaterEqual(a.get("next_version") or 0, 1)
+        self.assertIn("next_model", a)                       # 어떤 모델의 버전인지 명기(미설정 시 빈 값 허용)
         self.ok("/config", {"learn_next_at": "엉터리"})           # 형식 오류 무시
         self.assertEqual(self.ok("/config").get("learnNextAt"), "2030-01-02T09:30")
         self.ok("/config", {"learn_next_at": ""})                # 목표 해제

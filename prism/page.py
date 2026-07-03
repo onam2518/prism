@@ -321,12 +321,13 @@ PAGE = """<!doctype html>
       </button>
       <!-- 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 유형 태그 + D-day + 목표 + 진행 게이지 + 시한 · 전 메뉴 노출 -->
       <div class="squest" x-show="arenaData && arenaData.next_batch_at" x-cloak x-on:click="selectMod('review')" role="button" tabindex="0"
-           x-bind:data-tip="'다음 학습 반영 ' + fmtTs(arenaData?arenaData.next_batch_at:0) + ' · 그전까지의 검수 의견이 v' + (arenaData?arenaData.next_version:'') + ' 프롬프트에 반영됩니다 · 눌러서 검수하러 가기'" data-tip-pos="right">
+           x-bind:data-tip="'다음 학습 반영 ' + fmtTs(arenaData?arenaData.next_batch_at:0) + ' · 그전까지의 검수 의견이 ' + ((arenaData&&arenaData.next_model)||'기준 모델') + ' v' + (arenaData?arenaData.next_version:'') + ' 프롬프트에 반영됩니다 · 눌러서 검수하러 가기'" data-tip-pos="right">
         <div class="squest__hd">
           <span class="squest__type">팀 퀘스트</span>
           <span class="squest__dday" x-bind:class="['D-DAY','D-1'].indexOf(ddayTxt(arenaData?arenaData.next_batch_at:0)) >= 0 ? 'is-urgent' : ''" x-text="ddayTxt(arenaData?arenaData.next_batch_at:0)"></span>
         </div>
         <div class="squest__title" x-text="'🏁 v' + (arenaData?arenaData.next_version:'') + ' 버전 마감'"></div>
+        <div class="squest__model" x-show="arenaData && arenaData.next_model" x-text="(arenaData?arenaData.next_model:'') + ' 새 버전 학습'"></div>
         <div class="squest__obj" x-show="arenaData && arenaData.queue" x-text="'목표 · 검수 대상 ' + questTotal() + '건 전량 완주'"></div>
         <div class="squest__obj" x-show="arenaData && !arenaData.queue">목표 달성 · 반영을 기다리는 중</div>
         <div class="squest__bar"><div class="squest__fill" x-bind:class="arenaData && !arenaData.queue ? 'is-done' : ''" x-bind:style="'width:' + questPct() + '%'"></div></div>
@@ -1616,7 +1617,7 @@ PAGE = """<!doctype html>
               <div class="arena-hero__big"><span x-text="myProgressPct"></span><span class="arena-hero__pct">%</span></div>
             </div>
             <div class="arena-hero__target">팀 평균 <b x-text="teamProgressPct + '%'"></b>
-              <div class="arena-deadline" x-show="arenaData && arenaData.next_batch_at" x-bind:data-tip="'다음 학습 반영(모델 버전 시한) · 이때까지 모인 검수 의견이 v' + (arenaData?arenaData.next_version:'') + ' 프롬프트에 반영됩니다'" data-tip-pos="bottom">
+              <div class="arena-deadline" x-show="arenaData && arenaData.next_batch_at" x-bind:data-tip="'다음 학습 반영(모델 버전 시한) · 이때까지 모인 검수 의견이 ' + ((arenaData&&arenaData.next_model)||'기준 모델') + ' v' + (arenaData?arenaData.next_version:'') + ' 프롬프트에 반영됩니다'" data-tip-pos="bottom">
                 🏁 <b x-text="'v' + (arenaData?arenaData.next_version:'') + ' 마감 ' + ddayTxt(arenaData?arenaData.next_batch_at:0)"></b>
                 <span x-text="fmtTs(arenaData?arenaData.next_batch_at:0) + ' 반영'"></span>
               </div>
