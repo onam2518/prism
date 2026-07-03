@@ -567,25 +567,53 @@ def learn_export(kind: str, team=None):
 
 _learn_sched_started = False
 
+def next_batch_time(last_ts, cycle_days, hour, now=None) -> float:
+    """다음 학습 반영 예정 시각(epoch). 기준 = 마지막 반영일의 실행 시각 + 주기(일).
+    이력이 없거나 기한이 이미 지났으면(서버 중지 등) 다가오는 실행 시각.
+    '지금 실행'(수동)도 learn_report ts 를 갱신하므로 주기가 그 시점부터 재시작된다."""
+    import datetime as _dt
+    cycle = max(1, min(30, int(cycle_days or 1)))
+    hh = max(0, min(23, int(hour if hour is not None else 4)))
+    now_ts = time.time() if now is None else float(now)
+    now_dt = _dt.datetime.fromtimestamp(now_ts)
+
+    def _at_hour(d):
+        return d.replace(hour=hh, minute=0, second=0, microsecond=0)
+    if last_ts:
+        due = _at_hour(_dt.datetime.fromtimestamp(float(last_ts))) + _dt.timedelta(days=cycle)
+        if due > now_dt:
+            return due.timestamp()
+    due = _at_hour(now_dt)
+    if due <= now_dt:
+        due += _dt.timedelta(days=1)
+    return due.timestamp()
+
+
 def start_learning_scheduler(hour: int = 4):
-    """매일 지정 시각(기본 04:00)에 learning_batch 실행. 서버당 1회(진동 방지·합의 반영)."""
+    """학습 반영(모델 버전 시한) 스케줄러. 주기·시각은 Config(learn_cycle_days/learn_batch_hour)를
+    루프마다 다시 읽어 재시작 없이 반영한다(10분 단위 재평가). 기준 = 마지막 반영 시각(learn_report).
+    실시간이 아니라 주기 반영인 이유 = 의견을 모아 한 번에 반영(진동 방지·합의). 서버당 1회."""
     global _learn_sched_started
     if _learn_sched_started:
         return
     _learn_sched_started = True
 
     def _loop():
-        import datetime
         while True:
-            now = datetime.datetime.now()
-            nxt = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-            if nxt <= now:
-                nxt += datetime.timedelta(days=1)
-            time.sleep(max(60, (nxt - now).total_seconds()))
             try:
+                cfg = Config.load()
+                last = float((_SV._report_get("learn_report", None) or {}).get("ts") or 0)
+                due = next_batch_time(last, getattr(cfg, "learn_cycle_days", 1),
+                                      getattr(cfg, "learn_batch_hour", hour))
+                wait = due - time.time()
+                if wait > 0:
+                    time.sleep(min(wait, 600))
+                    continue
                 learning_batch(None)
+                time.sleep(60)                    # 리포트 저장 실패 시 과주기 재실행 방지
             except Exception as e:
-                print(f"  [warn] 학습 일배치 실패: {e}")
+                print(f"  [warn] 학습 배치 실패: {e}")
+                time.sleep(600)
 
     threading.Thread(target=_loop, daemon=True).start()
 

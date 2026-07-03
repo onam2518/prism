@@ -174,6 +174,31 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertTrue(fired.wait(3), "옵션이 켜져 있으면 배치 후 자동 재실행이 기동돼야 함")
 
 
+    def test_next_batch_time_cycle(self):
+        """모델 버전 시한: 마지막 반영 + 주기(일)의 실행 시각 · 이력 없음/기한 경과는 다가오는 시각."""
+        import datetime as dt
+        from prism.learnops import next_batch_time
+        base = dt.datetime(2026, 7, 1, 4, 0).timestamp()          # 7/1 04:00 반영됨
+        now = dt.datetime(2026, 7, 2, 12, 0).timestamp()
+        # 주기 3일 -> 7/4 04:00
+        self.assertEqual(dt.datetime.fromtimestamp(next_batch_time(base, 3, 4, now=now)),
+                         dt.datetime(2026, 7, 4, 4, 0))
+        # 주기 1일 시각 22시 -> 7/2 22:00
+        self.assertEqual(dt.datetime.fromtimestamp(next_batch_time(base, 1, 22, now=now)),
+                         dt.datetime(2026, 7, 2, 22, 0))
+        # 기한 경과(주기 1일 04시 · 지금 12시) -> 다가오는 내일 04:00
+        self.assertEqual(dt.datetime.fromtimestamp(next_batch_time(base, 1, 4, now=now)),
+                         dt.datetime(2026, 7, 3, 4, 0))
+        # 이력 없음 · 지금 12시 -> 오늘 22:00 / 내일 04:00
+        self.assertEqual(dt.datetime.fromtimestamp(next_batch_time(0, 1, 22, now=now)),
+                         dt.datetime(2026, 7, 2, 22, 0))
+        self.assertEqual(dt.datetime.fromtimestamp(next_batch_time(0, 1, 4, now=now)),
+                         dt.datetime(2026, 7, 3, 4, 0))
+        # 클램프: 0일 -> 1일 · 99시 -> 23시
+        self.assertEqual(dt.datetime.fromtimestamp(next_batch_time(base, 0, 99, now=now)),
+                         dt.datetime(2026, 7, 2, 23, 0))
+
+
 class TestLearnData(unittest.TestCase):
     def test_learn_data_and_exports(self):
         import tempfile

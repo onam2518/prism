@@ -218,7 +218,19 @@ class TestButtonsEndToEnd(unittest.TestCase):
         ld = self.ok("/learn-data")
         self.assertGreaterEqual(ld.get("golden_n", 0), 1)
 
-    def test_09_prompt_snapshot_after_batch(self):
+    def test_09_learn_schedule_config(self):
+        """학습 반영 주기(모델 버전 시한) 설정 왕복 + 다음 반영 예정 노출."""
+        self.ok("/config", {"learn_cycle_days": 3, "learn_batch_hour": 6})
+        cfg = self.ok("/config")
+        self.assertEqual((cfg.get("learnCycleDays"), cfg.get("learnBatchHour")), (3, 6))
+        r = self.ok("/learn-report")
+        self.assertGreater(r.get("next_batch_at") or 0, 0)
+        self.ok("/config", {"learn_cycle_days": 999, "learn_batch_hour": -5})   # 클램프
+        cfg = self.ok("/config")
+        self.assertEqual((cfg.get("learnCycleDays"), cfg.get("learnBatchHour")), (30, 0))
+        self.ok("/config", {"learn_cycle_days": 1, "learn_batch_hour": 4})      # 기본 복원
+
+    def test_10_prompt_snapshot_after_batch(self):
         """학습 반영이 남긴 버전별 프롬프트 스냅샷: 최신 + v 지정 조회(버전 재현 근거)."""
         self.ok("/learn-batch", {})
         r = self.ok("/prompt-snapshot")

@@ -58,6 +58,7 @@ DEMO_CONFIG = {
     # 운영 모델(현재 버전): Supabase 백엔드 · 키는 서버(관리자) 관리 → API 설정 UI 숨김.
     # 데모는 팀 관리자 시점으로 표시(자동 인입·팀 관리 노출). authRequired=false 로 로그인 벽 생략.
     "backend": "supabase", "authRequired": False, "keyManagedByServer": True,
+    "learnCycleDays": 1, "learnBatchHour": 4,
 }
 
 # 기준 계약·계열 래퍼(코드 원천에서 그대로) → 데모 스튜디오도 실제 계약을 표시

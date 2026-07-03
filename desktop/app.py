@@ -86,7 +86,7 @@ def _start_server():
         except Exception:
             pass
     start_ingest_scheduler()                    # 활성 소스 자동 폴링(백그라운드)
-    start_learning_scheduler()                  # 매일 04:00 학습 일배치
+    start_learning_scheduler()                  # 학습 반영 주기 스레드(관리자 설정 주기·시각)
     _httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     _httpd.serve_forever()
 

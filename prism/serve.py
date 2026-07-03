@@ -1621,6 +1621,8 @@ def config_status() -> dict:
         "availableModels": _candidate_models(cfg),
         "autoRerunAfterBatch": bool(getattr(cfg, "auto_rerun_after_batch", False)),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
+        "learnCycleDays": max(1, min(30, int(getattr(cfg, "learn_cycle_days", 1) or 1))),
+        "learnBatchHour": max(0, min(23, int(getattr(cfg, "learn_batch_hour", 4) or 0))),
         "desktopAllowDownloads": bool(getattr(cfg, "desktop_allow_downloads", True)),
         "desktopPersistStorage": bool(getattr(cfg, "desktop_persist_storage", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
@@ -1706,7 +1708,8 @@ def apply_config(data: dict) -> dict:
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
     has_desktop = ("desktop_allow_downloads" in data) or ("desktop_persist_storage" in data) \
-        or ("auto_rerun_after_batch" in data) or ("golden_min_good" in data)
+        or ("auto_rerun_after_batch" in data) or ("golden_min_good" in data) \
+        or ("learn_cycle_days" in data) or ("learn_batch_hour" in data)
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_desktop):
         cfg = Config.load()
@@ -1779,6 +1782,16 @@ def apply_config(data: dict) -> dict:
         if "golden_min_good" in data:             # 골든 확정 최소 '정확' 인원(1~9)
             try:
                 cfg.golden_min_good = max(1, min(9, int(data.get("golden_min_good") or 1)))
+            except (TypeError, ValueError):
+                pass
+        if "learn_cycle_days" in data:            # 학습 반영(모델 버전 시한) 주기 · 1~30일
+            try:
+                cfg.learn_cycle_days = max(1, min(30, int(data.get("learn_cycle_days") or 1)))
+            except (TypeError, ValueError):
+                pass
+        if "learn_batch_hour" in data:            # 반영 실행 시각(0~23시)
+            try:
+                cfg.learn_batch_hour = max(0, min(23, int(data.get("learn_batch_hour") or 0)))
             except (TypeError, ValueError):
                 pass
         if "desktop_allow_downloads" in data:
@@ -1965,9 +1978,13 @@ class Handler(BaseHTTPRequestHandler):
             kind = f"prompt_snapshot_v{int(v)}" if v.isdigit() else "prompt_snapshot_latest"
             snap = _report_get(kind, self._req_team())
             self._send(200, json.dumps({"ok": bool(snap), "snapshot": snap}, ensure_ascii=False), _JSON)
-        elif self.path.startswith("/learn-report"):     # 최근 일배치 결과(GET · 재시작에도 store 영속)
+        elif self.path.startswith("/learn-report"):     # 최근 배치 결과(GET · 재시작에도 store 영속)
             rep = _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT)
-            self._send(200, json.dumps({"ok": True, "report": rep}, ensure_ascii=False), _JSON)
+            _c = Config.load()                           # 다음 반영 예정(주기 설정 기준 · 화면 표시용)
+            nb = LO.next_batch_time(float((rep or {}).get("ts") or 0),
+                                    getattr(_c, "learn_cycle_days", 1), getattr(_c, "learn_batch_hour", 4))
+            self._send(200, json.dumps({"ok": True, "report": rep, "next_batch_at": nb},
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/learn-export"):      # 학습데이터 JSONL 다운로드(관리자)
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
