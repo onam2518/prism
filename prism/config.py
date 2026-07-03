@@ -50,7 +50,7 @@ class Thresholds:
 
 @dataclass
 class Config:
-    # 엔드포인트·모델 (기본 없음 — init/--base-url/--model 로 지정. 미설정 시 --mock 만 가능)
+    # 엔드포인트·모델 (기본 없음 · init/--base-url/--model 로 지정. 미설정 시 --mock 만 가능)
     chat_url: str = ""
     embed_url: str = ""
     models_url: str = ""

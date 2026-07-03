@@ -1,10 +1,10 @@
-"""REAP 피드백 하네스 — 사람 피드백을 Remember→Explain→Ask→Plan 에이전트로 가공.
+"""REAP 피드백 하네스 · 사람 피드백을 Remember→Explain→Ask→Plan 에이전트로 가공.
 
 검수자의 교정 메모를 raw 그대로 LEARNED 에 넣지 않고, REAP 4단계로 구조화한다:
-  Remember(기억) — 비난·감정을 걷어내고 객관 사실부터 인지
-  Explain(설명)  — 잘된 점·부족한 점을 구체 근거로 설명
-  Ask(질문)      — 검수자의 의도를 묻고 확인
-  Plan(계획)     — 다음 추출에 적용할 개선 지시(프롬프트에 덧붙일 명령형)
+  Remember(기억) · 비난·감정을 걷어내고 객관 사실부터 인지
+  Explain(설명)  · 잘된 점·부족한 점을 구체 근거로 설명
+  Ask(질문)      · 검수자의 의도를 묻고 확인
+  Plan(계획)     · 다음 추출에 적용할 개선 지시(프롬프트에 덧붙일 명령형)
 산출된 plan 이 store.learned_by_stage 를 통해 단계별 프롬프트(LEARNED)로 자동 반영된다.
 
 키가 없으면 mock REAP 로 동작(배관 검증). 비용·지연 최소화를 위해 4단계를 1회 구조화
@@ -146,5 +146,5 @@ def _mock_reap(fb: dict) -> dict:
         "remember": f"검수자가 {ko} 단계 산출에 대해 다음을 지적함: {note}",
         "explain": f"해당 단계 산출이 기대와 어긋난 부분이 있음. 핵심 지적: {note}",
         "ask": "검수자가 원한 올바른 결과는 무엇인가?",
-        "plan": f"{note} — 다음 {ko}부터 이 점을 반영해 처리하라.",
+        "plan": f"{note} · 다음 {ko}부터 이 점을 반영해 처리하라.",
     }

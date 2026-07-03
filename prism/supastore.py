@@ -1,4 +1,4 @@
-"""Supabase(PostgREST) 백엔드 스토어 — SQLite Store 와 동일 메서드 계약.
+"""Supabase(PostgREST) 백엔드 스토어 · SQLite Store 와 동일 메서드 계약.
 
 dual-mode 의 한 축: PRISM_BACKEND=supabase 면 serve 가 이 스토어를 쓴다(기본은 sqlite).
 의존성 0 유지를 위해 urllib(stdlib)로 PostgREST REST API 를 호출한다. 검수자는 auth uuid

@@ -513,7 +513,7 @@ def cmd_init_config(a):
         print(f"  엔드포인트: {cfg.chat_url}")
         print(f"  모델: {cfg.model}")
     else:
-        print("  ⚠️ 엔드포인트·모델 미지정 — 아래처럼 다시 실행하거나 config.json 을 채우세요:")
+        print("  ⚠️ 엔드포인트·모델 미지정 · 아래처럼 다시 실행하거나 config.json 을 채우세요:")
         print("     python3 -m prism.cli init --base-url https://api.openai.com/v1 --model gpt-4o-mini")
     print("  API 키: export PRISM_API_KEY=...   (config 에는 저장하지 않음)")
 

@@ -984,7 +984,6 @@ def sync_prompt():
         sp = dict(cfg.stage_prompts or {})        # 전역 폴백(하위호환)
         sm = dict(cfg.stage_models or {})          # {stage: model_id}
         mp = dict(cfg.model_prompts or {})         # {model_id: {stage: prompt}}
-        PR.EXTRA_INSTRUCTION = cfg.system_prompt or ""
 
         def resolve(stage, legacy=""):
             model = (sm.get(stage) or "").strip()
@@ -997,7 +996,6 @@ def sync_prompt():
             "review": resolve("review"),
             "judge": resolve("judge"),
         }
-        PR.EXTRA = PR.STAGE_DIRECTIVE          # 별칭 일관 유지
         # 기준 프롬프트 계층: 수정 단위 = 모델 계열 쿡북 래퍼(config.family_wrappers)
         MP.WRAPPER_OVERRIDES = {k: (v or "") for k, v in (cfg.family_wrappers or {}).items()
                                 if k in MP.FAMILIES}
@@ -4153,24 +4151,11 @@ PAGE = """<!doctype html>
           { label: '통합 · BizRouter', on: !!this.cfg.hasBizKey, items: this.modelCatalog.bizrouter.text.map((m) => ({ provider: 'bizrouter', model: m })) },
         ];
       },
-      get visionGroups() {
-        return [
-          { label: '직접 · Upstage', on: !!this.cfg.hasKey, items: [{ provider: 'upstage_ie', model: '', label: 'Information Extraction (텍스트형 이미지)' }] },
-          { label: '통합 · Timely', on: !!this.cfg.hasTimelyKey, items: this.modelCatalog.timely.vision.map((m) => ({ provider: 'timely', model: m })) },
-          { label: '통합 · BizRouter', on: !!this.cfg.hasBizKey, items: this.modelCatalog.bizrouter.vision.map((m) => ({ provider: 'bizrouter', model: m })) },
-        ];
-      },
       get textValue() { return this.textProvider === 'solar' ? ('solar|' + (this.cfgModel || '')) : (this.textProvider + '|' + (this.textModel || '')); },
-      get visionValue() { return this.visionProvider === 'upstage_ie' ? 'upstage_ie|' : (this.visionProvider + '|' + (this.visionModel || '')); },
       onTextPick(v) {
         const i = v.indexOf('|'); const p = v.slice(0, i), m = v.slice(i + 1);
         this.textProvider = p; if (p === 'solar') this.cfgModel = m; else this.textModel = m;
         this.saveTextSlot();
-      },
-      onVisionPick(v) {
-        const i = v.indexOf('|'); const p = v.slice(0, i), m = v.slice(i + 1);
-        this.visionProvider = p; this.visionModel = p === 'upstage_ie' ? '' : m;
-        this.saveVisionSlot();
       },
       optVal(provider, model) { return provider + '|' + model; },
       // ── 이미지 입력: 선택·드롭·붙여넣기·썸네일 ──
@@ -4322,13 +4307,6 @@ PAGE = """<!doctype html>
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
       // 비전 슬롯(이미지 맥락 생성)
-      async saveVisionSlot() {
-        this.slotMsg = '저장 중…';
-        try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vision_provider: this.visionProvider, vision_model: this.visionModel }) });
-          this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
-        catch (e) { this.slotMsg = '오류: ' + e; }
-      },
       async applyPrefs() {
         this.prefMsg = '저장 중…';
         try {
@@ -4883,27 +4861,6 @@ PAGE = """<!doctype html>
   .ring .pl{font-size:10px;color:var(--ds-muted);margin-top:2px}
 
   /* ── 설정 다이얼로그 내부(키·모델) ── */
-  .cfgtabs{display:flex;gap:4px;border-bottom:1px solid var(--ds-hairline-soft);margin-bottom:4px}
-  .cfgtabs button{appearance:none;background:none;border:0;cursor:pointer;padding:9px 14px;border-radius:8px 8px 0 0;
-    font-size:13px;font-weight:600;color:var(--ds-muted);position:relative;transition:color .12s}
-  .cfgtabs button:hover{color:var(--ds-ink)}
-  .cfgtabs button.on{color:var(--ds-ink)}
-  .cfgtabs button.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:var(--ds-primary);border-radius:2px}
-  .cfgsec{padding:16px 0;border-bottom:1px solid var(--ds-hairline-soft)}
-  .cfgsec:last-child{border-bottom:0}
-  .routercard{border:1px solid rgba(30,132,255,.30);border-radius:12px;padding:15px;
-    background:var(--ds-surface)}
-  .routercard .rc-h{display:flex;align-items:center;gap:7px;margin-bottom:3px}
-  .routercard .rc-h b{font-size:13px;font-weight:700;color:var(--ds-ink)}
-  .rc-badge{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ds-primary-deep);
-    background:rgba(30,132,255,.16);border-radius:5px;padding:2px 6px}
-  .routercard .rc-d{margin:0 0 13px;font-size:11.5px;color:var(--ds-muted);line-height:1.55}
-  .sectitle{font-size:13px;font-weight:700;color:var(--ds-ink);margin:20px 0 4px}
-  .secdesc{font-size:11.5px;color:var(--ds-muted);margin:0 0 12px;line-height:1.55}
-  .krow+.krow{margin-top:12px;padding-top:12px;border-top:1px solid var(--ds-hairline-soft)}
-  .krow-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
-  .krow-nm{font-size:13px;font-weight:600;color:var(--ds-ink)}
-  .krow-st{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ds-muted)}
   .keyin{position:relative}
   .keyin input{padding-right:38px}
   .keyin .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:28px;height:28px;display:flex;
@@ -5010,15 +4967,6 @@ PAGE = """<!doctype html>
   @keyframes busyBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
   @keyframes busyDot{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:1;transform:scale(1.25)}}
 
-  /* ── 검수자 등록: 캐릭터 선택(구 약식, 미사용 호환) ── */
-  .charpick{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
-  .charpick__opt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border-radius:12px;
-    border:1.5px solid var(--ds-hairline,rgba(0,0,0,0.08));background:var(--ds-surface-white);cursor:pointer;transition:all .15s}
-  .charpick__opt:hover{border-color:var(--ds-violet,#1e84ff)}
-  .charpick__opt img{width:34px;height:34px}
-  .charpick__opt span{font-size:10.5px;color:var(--ds-muted);font-weight:600}
-  .charpick__opt.sel{border-color:var(--ds-violet,#1e84ff);background:var(--ds-violet-tint,rgba(30,132,255,0.16));box-shadow:0 0 0 2px var(--ds-violet-tint,rgba(30,132,255,0.16))}
-  .charpick__opt.sel span{color:var(--ds-violet,#1e84ff)}
   /* 탭 = 아래 내용과 연결된 언더라인 방식(플로팅 필름 → 콘텐츠에 붙는 탭). 활성 탭 하단 프라이머리 인디케이터. */
   .evaltabs{display:flex;gap:2px;background:transparent;padding:0 2px;border-bottom:1.5px solid var(--ds-hairline);border-radius:0;max-width:none}
   .evaltabs--sub{background:transparent;padding:0 2px}

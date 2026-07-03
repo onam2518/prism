@@ -308,7 +308,7 @@ def render_html(results_path: str, notice: str = "") -> str:
         f'<span class="n">{p["count"]}</span></div>'
         for i, p in enumerate(d["single"][:40])
     )
-    # 사건형: 사건 카드 — 스탯 타일(콘텐츠·중복·앵글) + 앵글 칩
+    # 사건형: 사건 카드 · 스탯 타일(콘텐츠·중복·앵글) + 앵글 칩
     comp_cards = "".join(
         f'<div class="pool comp"><div class="ph"><b>{esc(p["name"])}</b>'
         f'<span class="phr"><span class="lc">단기</span></span></div>'
@@ -321,7 +321,7 @@ def render_html(results_path: str, notice: str = "") -> str:
         f'<div class="rep">대표: {esc(p["rep_title"][:50])}</div></div>'
         for p in d["composite"][:24]
     )
-    # 조건형: 운영자 조건 카드 — 상태 배지 + 큰 매칭 수
+    # 조건형: 운영자 조건 카드 · 상태 배지 + 큰 매칭 수
     filt_cards = "".join(
         f'<div class="pool filt {"" if p["active"] else "off"}"><div class="ph">'
         f'<b>{esc(p["name"])}</b>'

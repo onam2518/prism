@@ -1,4 +1,4 @@
-"""에이전트 하네스 — 방법론(Methodology)으로 구성되는 에이전트 그래프 실행기.
+"""에이전트 하네스 · 방법론(Methodology)으로 구성되는 에이전트 그래프 실행기.
 
 기존 `pipeline.extract()` 의 흩어진 손잡이(legal·quality_split·emb·prefilter·yellow…)를
 1급 **Methodology** 객체로 형식화하고, 디스패처·에이전트·검증·집계를 **등록부(REGISTRY)
@@ -60,7 +60,7 @@ class HCtx:
     content: Content
     llm: object
     methodology: Methodology
-    emb: object = None                 # 런타임 리소스(능력) — 방법론이 아니라 주입
+    emb: object = None                 # 런타임 리소스(능력) · 방법론이 아니라 주입
     prefilter: object = None
     fewshot_pool: object = None
     routing: object = None

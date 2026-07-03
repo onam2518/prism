@@ -44,11 +44,6 @@ STAGE_DIRECTIVE = {"extract": "", "analyze": "", "review": "", "judge": ""}
 # 학습 루프: 배치 결과 피드백에서 누적된 보정 지시(자동 반영). 사람이 직접 쓰지 않음.
 LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
 
-# 하위호환 별칭
-EXTRA = STAGE_DIRECTIVE
-EXTRA_INSTRUCTION = ""
-
-
 def directive(stage: str) -> str:
     """단계 원천 지시(override 우선, 없으면 기본값)."""
     v = (STAGE_DIRECTIVE.get(stage) or "").strip()
@@ -63,11 +58,6 @@ def stage_defaults() -> dict:
 def _learned(stage: str) -> str:
     v = (LEARNED.get(stage) or "").strip()
     return f"\n\n[학습 보정 · {stage}] 아래는 과거 평가 피드백에서 누적된 교정 지침이다. 우선 반영한다.\n{v}" if v else ""
-
-
-# 하위호환: 기존 _extra(stage) 호출부 유지(= 학습 보정으로 의미 전환)
-def _extra(stage: str) -> str:
-    return _learned(stage)
 
 
 # 품질 메타: 활성 프롬프트 버전(promptstore)에서 렌더. 코드 수정 없이 룰 편집 가능.

@@ -1,4 +1,4 @@
-"""평가 하네스 + A/B 테스트 — 방법론(Methodology)을 골든셋에 돌려 지표를 산출하고,
+"""평가 하네스 + A/B 테스트 · 방법론(Methodology)을 골든셋에 돌려 지표를 산출하고,
 두 방법론을 같은 데이터셋에 돌려 성능을 비교한다.
 
 '파이프라인 인입 후 어떤 방법론을 선택할지(테스트·성능 평가)'를 1급으로 만드는 모듈.
@@ -39,7 +39,7 @@ def load_methodology(spec: str) -> H.Methodology:
 
 def score(rows: list, outs: list) -> dict:
     """골든셋 정답(rows[i].expected)과 산출(outs[i])을 비교해 지표 산출.
-    cli.cmd_eval 과 동일 지표 — 채점 로직 단일 소스."""
+    cli.cmd_eval 과 동일 지표 · 채점 로직 단일 소스."""
     grade_hit = reason_exact = fn_block = empties = 0
     jac = cost = 0.0
     tin = tout = 0
@@ -59,7 +59,7 @@ def score(rows: list, outs: list) -> dict:
         if any("fail" in str(f) or "unparse" in str(f) for f in tr.get("fallbacks", [])):
             empties += 1
         # 주의: fail/unparse 행도 아래 등급·이유 채점에 그대로 포함된다(empty_rate 와 비배타).
-        #       구 cli eval 동작을 보존한 것 — 실패 산출을 '오답'으로 계수.
+        #       구 cli eval 동작을 보존한 것 · 실패 산출을 '오답'으로 계수.
         grade_ok = qm["finalGrade"] == exp.get("finalGrade")
         grade_hit += int(grade_ok)
         if qm.get("review") == "yellow":

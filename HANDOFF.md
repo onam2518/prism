@@ -1,4 +1,4 @@
-# HANDOFF — Prism · 팀 검수·평가 플랫폼
+# HANDOFF · Prism · 팀 검수·평가 플랫폼
 
 다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-02, v0.5.0)
 
@@ -15,7 +15,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - 데스크탑 앱: `desktop/app.py`(pywebview). 코드 바꾸면 **서버 재시작해야** 반영(페이지 메모리 로드).
 - `--mock` = 키 있어도 강제 mock. 8765 점유 시 `lsof -ti tcp:8765 | xargs kill`.
 
-## 운영 모드 (중요 — supabase 전용화됨)
+## 운영 모드 (중요 · supabase 전용화됨)
 - **로컬(sqlite 단독) 모드는 UI 상 제거**. 첫 화면 = 로그인/가입.
 - 모드 스위치: `PRISM_BACKEND=supabase` + `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` 셋 다 있으면 팀(supabase) 모드(`_supa()`), 아니면 sqlite.
 - **GUI 앱은 셸 env 미상속** → `desktop/app.py:_enable_supabase()`가 키파일에서 직접 로드:
@@ -31,11 +31,11 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 
 ## 검수 → 골든셋 → 학습 폐루프 (신규 핵심)
 - 서버: `prism/serve.py`
-  - `patch_content_meta(content_hash, patch, team)` — 검수자 구조화 교정(빈 카테고리 채우기 등). 라우트 `/patch-meta`.
-  - `build_golden_from_reviews(team)` — 정확 다수결 + 카테고리 채워짐 → **골든 확정**, 카테고리 공백 → **need_category**.
-  - `compare_models_on_golden(models, team)` — 모델별 grade_accuracy/reason_jaccard/cost, best.
-  - `learning_batch(team, models)` — meta_compile + build_golden + eval + compare, `_LAST_LEARN_REPORT` 저장. 라우트 `/learn-batch`·`/learn-report`·`/compare-models`.
-  - `start_learning_scheduler(hour=4)` — 매일 04:00 스레드(실시간 아님: 합의·진동 방지).
+  - `patch_content_meta(content_hash, patch, team)` · 검수자 구조화 교정(빈 카테고리 채우기 등). 라우트 `/patch-meta`.
+  - `build_golden_from_reviews(team)` · 정확 다수결 + 카테고리 채워짐 → **골든 확정**, 카테고리 공백 → **need_category**.
+  - `compare_models_on_golden(models, team)` · 모델별 grade_accuracy/reason_jaccard/cost, best.
+  - `learning_batch(team, models)` · meta_compile + build_golden + eval + compare, `_LAST_LEARN_REPORT` 저장. 라우트 `/learn-batch`·`/learn-report`·`/compare-models`.
+  - `start_learning_scheduler(hour=4)` · 매일 04:00 스레드(실시간 아님: 합의·진동 방지).
 - 요소 기반 교정: `FIX_ELEMENTS`·`elemStage`(요소→analyze/judge/review). 검수자가 어느 요소가 틀렸는지 고르면 해당 단계 프롬프트 보정(`PR.LEARNED[stage]` → `prompts._learned(stage)`)에 반영.
 - **프롬프트 반영은 일배치가 소유**. `apply_feedback`·`_reap_async`에서 live `sync_learned()` 제거(캡처만).
 - 프론트: `runLearnBatch`·`loadLearnReport`·`categoryOptions`·`fillCategory`(POST /patch-meta). '학습 일배치' 리포트 패널(타일 + 모델 비교표), 상세 내 빈 카테고리 gap-fill picker.
@@ -182,13 +182,13 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
 
 ## 코드 구조 (핵심 파일)
-- `prism/serve.py`(~5500줄) — 앱 전체(stdlib http.server). 모든 UI 인라인(Alpine.js + Tailwind CDN). 온보딩·아레나·대시보드·검수·프롬프트 스튜디오·학습 배치.
-- `prism/store.py`·`supastore.py` — dual-mode 저장소 + golden.
-- `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` — 추출 파이프라인. `abtest.py` — 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).
-- `prism/imagext.py` — 이미지 인제스트(방식 A, 코어 무수정).
-- `desktop/app.py`·`Prism.spec`(v0.5.0)·`make_dmg.sh` — 패키징. 빌드 venv `/tmp/prism-pkg/bin/python`.
-- `scripts/make_demo.py` — GitHub Pages 데모(`docs/demo.html`) 재생성(fetch 스텁·CDN 폰트·vendor 복사).
-- `design-system/` — Anchor 디자인 시스템(`--ds-*` 토큰, GmarketSans/Pretendard 이중폰트).
+- `prism/serve.py`(~5500줄) · 앱 전체(stdlib http.server). 모든 UI 인라인(Alpine.js + Tailwind CDN). 온보딩·아레나·대시보드·검수·프롬프트 스튜디오·학습 배치.
+- `prism/store.py`·`supastore.py` · dual-mode 저장소 + golden.
+- `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` · 추출 파이프라인. `abtest.py` · 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).
+- `prism/imagext.py` · 이미지 인제스트(방식 A, 코어 무수정).
+- `desktop/app.py`·`Prism.spec`(v0.5.0)·`make_dmg.sh` · 패키징. 빌드 venv `/tmp/prism-pkg/bin/python`.
+- `scripts/make_demo.py` · GitHub Pages 데모(`docs/demo.html`) 재생성(fetch 스텁·CDN 폰트·vendor 복사).
+- `design-system/` · Anchor 디자인 시스템(`--ds-*` 토큰, GmarketSans/Pretendard 이중폰트).
 
 ## UI·디자인 메모
 - 홈 = **검수 아레나**(Flow·오늘의 미션·배지 12종·주간 리그·선수카드). 히어로 지표 = **검수 진척율**(개인·팀 평균).
@@ -197,7 +197,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - 검수 완료 표기 전역(목록·상세), 추가 수정 버튼·수정 일시 로그, 판정 색상(정확=초록/수정필요=빨강).
 
 ## 규칙 / 주의
-- **제품 카피에 em-dash `—` 금지**(·/괄호/문장). 확인: `grep -c "—" prism/serve.py` == 0. 코드 식별자·커밋 메시지는 예외.
+- **제품 카피에 em-dash `-` 금지**(·/괄호/문장). 확인: `grep -c "-" prism/serve.py` == 0. 코드 식별자·커밋 메시지는 예외.
 - `x-show`(display:none)는 `.space-y-* > :not([hidden]) ~` 마진에 잡혀 팬텀 마진 유발 → 조건부 첫 자식은 `x-if`.
 - 커밋 trailer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 - 릴리즈 노트·공개 레포에 내부(DNM/Confluence) 식별자·정책 노출 금지.

@@ -19,7 +19,7 @@ FONT_HEAD = (
     'family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">'
 )
 
-# 공통 토큰 — 템플릿의 :root 보다 뒤에 주입되어 값이 통일된다(별칭 포함).
+# 공통 토큰 · 템플릿의 :root 보다 뒤에 주입되어 값이 통일된다(별칭 포함).
 TOKENS = r""":root{
 --bg:#08090c;--surface:#101216;--s2:#15181d;--s3:#1b1f25;--line:#23262e;--line2:#34343a;
 --mut:#8b909b;--faint:#666b76;--fg:#f6f7f9;--fg2:#cfd4de;
@@ -32,7 +32,7 @@ TOKENS = r""":root{
 --font:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Pretendard,sans-serif;
 --disp:"Space Grotesk","Plus Jakarta Sans",-apple-system,sans-serif}"""
 
-# 공통 컴포넌트 — 헤딩 display 폰트, 카드 그림자, eyebrow, 호버 툴팁, 배지/타일.
+# 공통 컴포넌트 · 헤딩 display 폰트, 카드 그림자, eyebrow, 호버 툴팁, 배지/타일.
 COMPONENTS = r"""
 h1{font-family:var(--disp);letter-spacing:-.022em}
 h2,h3{font-family:var(--disp)}

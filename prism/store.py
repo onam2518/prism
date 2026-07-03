@@ -197,7 +197,7 @@ class Store:
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
     def save_many(self, pairs, run_id: str, source: str = "", team=None):
         """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
-        source: 출처(자동 인입·단건·배치 등) — 결과 화면 필터용."""
+        source: 출처(자동 인입·단건·배치 등) · 결과 화면 필터용."""
         rows = []
         for content, out in pairs:
             ch = content_hash(content)
@@ -230,7 +230,7 @@ class Store:
         """적재 정책: content_hash 기준 멱등.
         · 신규 → insert  · 기존인데 메타(등급·item_meta·reasons) 변경 → update
         · 동일 콘텐츠 + 결과 무변경 → 적재 제외(skip, DB 미기록).
-        (trace·cost 같은 실행 부산물은 비교에서 제외 — 매 실행 달라지므로)
+        (trace·cost 같은 실행 부산물은 비교에서 제외 · 매 실행 달라지므로)
         반환: {inserted, updated, skipped}"""
         c = self._conn()
         ins = upd = skip = 0
@@ -327,7 +327,7 @@ class Store:
 
     # ── 평가 피드백 / 학습 루프 ──
     def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None, element=""):
-        """검수자별 평가 피드백 upsert(검수자당 1건 — 같은 검수자는 자기 의견을 갱신).
+        """검수자별 평가 피드백 upsert(검수자당 1건 · 같은 검수자는 자기 의견을 갱신).
         element = 교정 대상 요소(리드문·엔티티·인텐트·카테고리·등급·품질사유).
         team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
         c = self._conn()

@@ -2,200 +2,117 @@
 
 # Prism
 
-**콘텐츠를 넣으면 메타를 추출·그룹핑해서 단일 HTML 리포트로 만들어 주는 터미널 에이전트**
+**콘텐츠 검수·평가 플랫폼: 관리자가 넣은 콘텐츠를 팀이 검수하면, 그 합의가 정답셋(골든)과 파인튜닝 스펙·소요서의 근거가 됩니다.**
 
 ![license](https://img.shields.io/badge/license-MIT-black?style=flat-square)
 ![python](https://img.shields.io/badge/python-3.8%2B-black?style=flat-square)
 
-**DEMO (온라인):** [통합 데모](https://onam2518.github.io/prism/demo.html) ·
-[아이템 메타](https://onam2518.github.io/prism/demo-items.html) ·
-[토픽](https://onam2518.github.io/prism/demo-metapool.html) ·
-[사용자 메타](https://onam2518.github.io/prism/demo-users.html)
+**온라인 데모:** [통합 데모](https://onam2518.github.io/prism/demo.html)
 
-[5분 사용법](#5분-사용법) · [구조](#구조) · [활용](#이걸로-뭘-하나) · [용어 사전](#용어-사전)
+[처음 사용자 가이드](GUIDE.md) · [QA 체크리스트](QA_CHECKLIST.md) · [개발 인수인계](HANDOFF.md) · [학습 설계](LEARNING_DESIGN.md)
 
 </div>
 
 ```
-content  ─▶  콘텐츠 메타  ─▶  토픽  ─▶  사용자 메타  ─▶  report.html
-            (품질·법령·아이템)    (단독·복합·필터)   (소비형태·강도)      (단일 파일)
+콘텐츠 추가(수동·자동) → 모델 실행(초안 vN) → 팀 검수(판정·교정·게임화)
+      → 정답셋(골든) 누적 → 평가(일치율·건별 판정·모델 A/B) → 학습데이터·소요서(.md)
 ```
 
-> DEMO(`docs/demo.html`)와 `examples/`는 전부 **합성 예시**입니다.
+> 데모(`docs/demo.html`)와 `examples/`의 콘텐츠는 전부 합성 예시입니다.
 
----
+## 무엇을 하는 도구인가
 
-## 왜 만들었나
+LLM으로 콘텐츠 메타(리드문·엔티티·인텐트·카테고리·품질)를 뽑을 때 문제는 "모델이 뽑은 결과를 누가, 어떻게 믿을 것인가"입니다. Prism은 그 답을 팀의 검수 합의에서 찾습니다.
 
-콘텐츠를 다루는 일은 결국 같은 질문의 반복입니다. **이거 내보내도 되나(품질), 무슨 내용이지(의미), 무엇과 묶이나(관계), 누가 어떻게 볼까(사용자).** 보통은 스크립트 몇 개에 사람 손을 더해 그때그때 답합니다.
+- **검수가 곧 데이터**: 팀원이 초안을 정확/수정으로 판정하고 교정하면, 합의된 결과가 정답셋(골든)으로 쌓입니다.
+- **정답셋이 곧 기준**: 쌓인 정답셋으로 모델·프롬프트 버전을 평가하고(일치율·신뢰구간), 모델끼리 A/B 비교합니다.
+- **결과물이 곧 소요서**: 축적 현황과 논문 기준치를 대비해 SFT/DPO/판단근거 데이터셋과 파인튜닝 소요서(.md)를 뽑아냅니다.
+- **계속하게 만드는 장치**: 레벨·배지·미션·리그 등 게임화가 붙어 있습니다. 개인이 1만 건을 검수하면 만렙과 전 배지가 완성되는 설계입니다.
 
-Prism은 이 네 가지 '이해'를 **에이전트 팀**(각 메타를 맡은 추출기 + 게이팅 하네스)으로 자동화해서, **명령 한 줄 → 단일 HTML 한 장**으로 내놓습니다. 서버도 빌드도 없고, 받는 사람은 더블클릭만 하면 됩니다. (오프라인·이메일·USB 다 돼요.)
+## 빠른 시작
 
-## 설치
+### 웹 (로컬 서버)
 
 ```bash
 git clone https://github.com/onam2518/prism && cd prism
-python3 -m prism.cli            # 배너 + 도움말 (바로 실행)
+python3 -m prism.serve --mock          # http://localhost:8765 · 키 없이 모의 추출로 전 기능 체험
 ```
 
-**`pip install` 없습니다.** 받아서 바로 실행하면 됩니다.
+- 파이썬 표준 라이브러리만 사용합니다. `pip install` 없이 3.8+ 어디서나 돌아갑니다.
+- 실제 모델 호출은 화면의 시스템 설정에서 API 키를 넣으면 됩니다(Upstage Solar 직접 또는 통합 라우터).
 
-- 파이썬 표준 라이브러리만 사용 → `python3` 3.8+ 면 **Windows · macOS · Linux** 어디서나.
-- 클론 직후 `--mock`으로 전 기능을 키 없이 돌려볼 수 있습니다(실제 모델은 `PRISM_API_KEY` + `--model`).
-- 생성된 리포트 HTML은 그래프 라이브러리까지 파일에 포함돼 **인터넷 없이도** 열립니다.
-- Claude Code 같은 에이전트도 동일: 클론 후 명령만 실행하면 그대로 동작합니다.
+### 데스크탑 (macOS)
 
-## 5분 사용법
+[Releases](https://github.com/onam2518/prism/releases)에서 최신 DMG를 받아 설치합니다.
+
+- `Prism-x.y.z.dmg`: 운영 빌드. 팀 로그인(supabase 설정 시)과 로컬 단독 모드를 지원합니다.
+- `Prism-QA-x.y.z.dmg`: QA 빌드. 키·로그인 없이 목업 콘텐츠 10건이 자동으로 채워진 상태로 시작합니다. 점검 항목은 [QA_CHECKLIST.md](QA_CHECKLIST.md)를 보세요.
+
+### CLI (배치 추출)
+
+화면 없이 파일 배치만 돌릴 때 사용합니다. 상세 옵션은 `python3 -m prism.cli` 도움말 참조.
 
 ```bash
-# 0) 키 없이 체험 (mock)
-python3 -m prism.cli extract --input examples/content.json --mock
-
-# 1) 콘텐츠 묶음 → 메타 추출
 python3 -m prism.cli extract --batch examples/contents.sample.jsonl --mock --out results.jsonl
-
-# 2) 한 번에 리포트 (추출 → 토픽 → 대시보드 → 단일 HTML)
-python3 -m prism.cli report --batch examples/contents.sample.jsonl --mock --out report.html
-
-# 3) 실제 모델로: 처음 한 번 설정
-python3 -m prism.cli init --base-url https://api.openai.com/v1 --model gpt-4o-mini
-export PRISM_API_KEY=...
-python3 -m prism.cli report --batch contents.jsonl --out report.html
+python3 -m prism.cli report  --batch examples/contents.sample.jsonl --mock --out report.html
 ```
 
-> 설정 전에는 실제 모델 호출이 막혀 있고, 안내 메시지가 뜹니다. 둘러보기는 `--mock`으로 키·설정 없이 가능합니다.
+## 화면 구성
 
-리포트 HTML은 3개 탭으로 열립니다: **아이템 메타 · 토픽 · 사용자 메타**.
+| 메뉴 | 역할 |
+|---|---|
+| 홈 | 검수 진척율 · 내 캐릭터(레벨·배지·미션) · 주간 리그 |
+| 콘텐츠 검수 | 검수 대상 목록(판정·교정) · 결과 비교(모델×버전 A/B) |
+| 평가 | 평가 기준 설정 · 정답셋 일치율 · 불일치 건별 판정(채택/탈락) · 모델 A/B 비교 |
+| 콘텐츠 관리* | STEP 1 콘텐츠 추가(수동·자동, 용도 지정) → STEP 2 모델 실행 → STEP 3 실행 큐 |
+| 테스트셋 관리* | 정답셋 현황·학습 반영 · 정답셋 목록 · 학습 데이터(SFT/DPO/소요서) |
+| 프롬프트 스튜디오* | 기준 계약(4호출 규칙, 읽기 전용) · 모델별 쿡북 래퍼 편집 · 최종 프롬프트 미리보기 |
+| 사전·정책* / 실험실* / 팀 관리 / 시스템 설정* | 분류 사전 · 탐구 요소 · 멤버/초대코드 · 데이터/API 키/데스크탑 옵션 |
 
-### 모델은 무엇을 붙일 수 있나
+\* 관리자 메뉴. 운영 관리자(허용목록)는 전체, 팀 관리자(생성자·위임)는 팀 관리만 봅니다.
 
-`/v1/chat/completions` 형식(OpenAI 호환)을 따르는 곳이면 **무엇이든** 됩니다. `init` 또는 `--base-url`(`PRISM_BASE_URL`)로 엔드포인트만 지정하면 됩니다. 기본값은 없습니다.
+## 핵심 개념
 
-| 제공자 | base URL 예시 |
-| --- | --- |
-| OpenAI | `https://api.openai.com/v1` |
-| Together · Groq · Mistral 등 | 각 제공자의 `/v1` |
-| 로컬 (Ollama) | `http://localhost:11434/v1` |
-| 로컬 (vLLM · LM Studio) | `http://localhost:8000/v1` |
+- **분리형 4호출**: 아이템 메타는 리드문 → 엔티티 → 인텐트 → 카테고리 순서의 개별 호출로 뽑습니다. 호출 사이에 사전 검증이 들어가고, 호출별로 다른 모델을 지정할 수 있습니다.
+- **용도(검수용/평가용)**: 콘텐츠 추가 시 용도를 정합니다. 평가용은 검수 목록에서 제외되어 오염 없는 평가 전용 홀드아웃으로 보존됩니다.
+- **버전(v)**: 초안 버전은 학습 반영 회차 + 1 입니다. 검수 피드백이 매일 한 번 프롬프트에 반영되고, 새 버전으로 재실행해 개선을 비교합니다.
+- **정답셋(골든)**: 검수 '정확' 합의가 학습 반영 때 누적 승격됩니다. 평가에서 불일치가 '채택' 합의되면 교정 대상으로 표시됩니다.
+- **품질 등급**: G 유통 가능 · R 유통 제외 · YELLOW 판정 애매(사람 검수 대상).
 
-- Claude·Gemini처럼 자체 API 형식을 쓰는 모델은 OpenAI 호환 게이트웨이를 앞에 두면 됩니다.
-- 임베딩(카테고리 분류용)은 제공자에 맞는 임베딩 모델이 없으면 `--embed off`로 끄거나 `PRISM_EMBED_MODEL`로 지정하세요.
+## 데이터 입력
 
-## 구조
+콘텐츠는 4필드가 기본입니다. 제목·본문 두 개가 핵심입니다.
 
-```
-content (4필드: 서비스명·제목·부제·본문)
-  └ Dispatcher (규칙)        서비스 그룹 분기 · 활성 메타 결정          [$0]
-     ├ 품질 메타             유통 가능(G)/불가(R), 저신뢰는 YELLOW(사람 검수)
-     │    └ R → 이후 생략 (토큰 절약)
-     ├ 아이템 메타           인텐트 · 엔티티 · 인텐트/엔티티 카테고리
-     ├ [옵션] 법령 메타       위반유형 스코어링 → 차단
-     └ Verifier · Aggregator (규칙)  →  통합 JSON + trace            [$0]
-        └ 토픽: 엔티티형(엔티티)·사건형(사건)·조건형(조건)
-        └ 사용자 메타: 행동 로그 → 소비 형태·강도 → 페르소나
-```
-
-- **에이전트 팀 + 하네스**: 품질·법령·아이템·카테고리 추출기는 각각 독립 에이전트, `pipeline`이 게이팅으로 조율. 새 메타는 에이전트 추가로 확장.
-- **LLM 비의존 레이어**: Dispatcher·Verifier·Aggregator는 순수 규칙. 카테고리는 임베딩 후보 + LLM 판단(2-pass).
-- **YELLOW(사람 검수)**: 임베딩 2차의견과 LLM 판정이 엇갈리면 자동으로 사람 검수 대상으로 분리.
-
-## 이걸로 뭘 하나
-
-프리즘이 하는 건 하나입니다. **콘텐츠를 이해하는 것.** 그 이해(품질·의미·관계·사용자)를 어디에 꽂느냐가 응용이고, 아래는 일부일 뿐입니다.
-
-**의미·품질 파악**: 들어온 글이 내보낼 수 있는지(G/YELLOW/R), 왜 막혔는지(광고·선정·낚시 등 사유별), 무엇에 관한지(인텐트·엔티티 카테고리)를 한눈에.
-
-**관계로 묶기 (토픽)**: 흩어진 콘텐츠를 세 축으로 그룹핑.
-- 엔티티형: 인물·기업 단위 ("손흥민 관련 전부")
-- 사건형: 같은 사건을 자동으로 묶어 **대표 1건 + 관련 N건** (중복 제거·관점 분산)
-- 조건형: 자연어 조건만 적으면 부합 콘텐츠가 자동 편입 ("경제 × 심층 분석"). **이 조건의 주체가 운영자면 큐레이션, 개인이면 개인 피드가 됩니다.**
-
-**사용자 이해**: '무엇'이 아니라 '어떻게 소비하나'까지. 정독러에겐 심층, 스낵러에겐 요약. 행동→형태→강도→페르소나로 역추적하고, 선호 카테고리 교차로 타겟팅 정밀도를 높입니다.
-
-이 이해는 큐레이션·추천·개인화·모더레이션 어디에든 꽂힙니다. 그리고 무엇을 만들든 `report` 한 줄을 크론에 걸면 매일 자동으로 단일 HTML이 도착합니다.
-
-```bash
-# 어떤 응용이든 매일 자동화: 어제 콘텐츠 → 단일 HTML
-0 8 * * * cd /path/to/prism && python3 -m prism.cli report \
-  --batch /data/yesterday.jsonl --profile profiles/your-company.json \
-  --out ~/reports/$(date +\%Y\%m\%d).html
-```
-
-## 회사마다 다르게 (프로파일)
-
-서비스 종류·분류 체계·품질 기준은 회사마다 다릅니다. 코어는 그대로 두고 **사전만 교체**합니다.
-
-```bash
-python3 -m prism.cli report --batch contents.jsonl --profile profiles/example-acme.json --out report.html
-```
-
-`profiles/example-acme.json` 참고. 교체 가능한 키: `service_group`, `intent_universal`, `intent_by_service`, `iab_tier1`, `quality_metas`, `title`.
-
-## 데이터 명세 (실제로 돌리려면)
-
-입력은 두 가지면 충분합니다.
-
-**① 콘텐츠 (추출 대상)**: jsonl·엑셀·CSV:
 ```json
 {"displayServiceName":"뉴스","title":"제목","subtitle":"","body":"본문 텍스트"}
 ```
-4필드 권장. 핵심은 **제목·본문** 두 개. `displayServiceName`은 프로파일 `service_group` 키와 매칭(없으면 media 기본).
 
-**엑셀/CSV도 됩니다.** 컬럼명이 달라도 자동 추론하고, 동작 가능 여부를 먼저 판정합니다:
-```bash
-python3 -m prism.cli check data.xlsx        # [가능]/[불가능] + 추론 매핑 출력
-python3 -m prism.cli report --batch data.xlsx --out report.html   # 가능하면 바로 실행
-python3 -m prism.cli report --batch data.xlsx --map "title=헤드라인,body=기사내용"  # 강제 지정
-```
-`헤드라인/기사내용/섹션` 같은 컬럼도 제목·본문·서비스로 자동 매핑. 제목·본문을 못 찾으면 **불가능**으로 판정하고 `--map` 지정을 안내합니다.
+- 화면의 콘텐츠 관리에서 텍스트·이미지·엑셀(.xlsx/CSV)로 추가합니다. 엑셀 템플릿은 화면에서 내려받을 수 있습니다.
+- 컬럼명이 달라도 자동 추론합니다(제목/본문/서비스명). CLI는 `check <file>` 로 동작 가능 여부를 먼저 판정합니다.
 
-**② 행동 로그 (사용자 메타용, 선택)**: jsonl, `--logs`로 연결:
-```json
-{"user_id":"u_001","content_id":"<results의 id 또는 제목>","event":"click|impression","dwell_sec":42,"scroll_pct":80,"ts":"2026-06-08T08:01:00"}
-```
-`examples/behavior_logs.sample.jsonl` 참고. 이 로그가 있으면 **실데이터로** 소비 형태·강도·페르소나를 산출합니다.
+## 저장소 문서
 
-> **사용자 메타 기본 동작**: 행동 로그가 연결되지 않으면 **가짜 데이터를 만들지 않고 빈 상태**(개념·명세만)로 표시합니다.
-> `--logs`로 실데이터를 연결하거나, `--demo`로 합성 목업을 채워 미리 볼 수 있습니다. 동작 예시는 [온라인 데모](https://onam2518.github.io/prism/demo.html).
+| 문서 | 대상 |
+|---|---|
+| [GUIDE.md](GUIDE.md) | 처음 사용하는 팀원 · 관리자 |
+| [QA_CHECKLIST.md](QA_CHECKLIST.md) | QA 담당자 (QA 빌드 기준 기대값 포함) |
+| [HANDOFF.md](HANDOFF.md) | 개발 인수인계 (구조·정책·이력) |
+| [LEARNING_DESIGN.md](LEARNING_DESIGN.md) | 학습데이터·게임화 설계 근거 (논문 인용) |
+| [SUPABASE_MIGRATION.md](SUPABASE_MIGRATION.md) | 팀 모드(Supabase) 테이블 명세 |
 
-## 명령
+## 기술 요약
 
-| 명령 | 설명 |
-| --- | --- |
-| `extract --input/--batch` | 단건/배치 메타 추출 (`--resume`, `--legal`, `--yellow`) |
-| `report --batch/--results` | 추출→토픽→대시보드 한 번에. `--profile`, `--logs`, `--demo` |
-| `topic --results` | 토픽 엔티티형·사건형·조건형 생성 (구 `metapool` 별칭 유지) |
-| `usermeta --results` | 사용자 메타: `--logs`(실데이터)/`--demo`(목업)/기본(빈 상태) |
-| `dashboard --results [--integrated]` | 메타 현황 + 관계도 + 추출로직 상세 HTML |
-| `check <file.xlsx/csv>` | 엑셀/CSV가 동작 가능한지 판정(가능/불가능 + 추론 매핑) |
-| `eval --goldenset` | 라벨셋 일치율·게이트 |
-| `init` | 설정(엔드포인트·모델) 구성 → config.json |
-| `doctor` / `usage` | 연결 점검 / 비용 로그 |
-
-공통: `--model` `--mock` `--embed on|off` `--config` `--no-db`
-
-## 용어 사전
-
-리포트 우상단 **`? 용어·구조`** 버튼에서도 볼 수 있습니다.
-
-| 용어 | 뜻 |
-| --- | --- |
-| 품질 메타 | 유통 가능 여부. **G** 가능 · **R** 불가 · **YELLOW** 자동 판정 애매 → 사람 검수 |
-| 아이템 메타 | 콘텐츠가 "무엇인지": 인텐트·엔티티·각각의 카테고리 |
-| 인텐트 (카테고리) | 콘텐츠를 '왜·어떻게' 소비하는지(서술) → 분류값(속보·심층 분석·팩트체크 등) |
-| 엔티티 (카테고리) | 콘텐츠 속 인물·기업·작품 등 고유 대상 → IAB 기반 분류 |
-| 토픽 · 엔티티형 | 단일 엔티티 단위 그룹("이 인물·기업 관련 콘텐츠"). 영속 |
-| 토픽 · 사건형 | 사건 단위 그룹(엔티티 공출현으로 자동 발견). 단기 |
-| 토픽 · 조건형 | 조건 단위 그룹(인텐트 카테고리 × 엔티티 카테고리). 중장기 |
-| 소비 형태(FORM) | '무엇'이 아니라 '어떻게' 소비하는가: 세션·체류/완주·전환·깊이·시간대 |
-| 소비 강도 | 형태에서 산출되는 평가값. 소비 맥락(인텐트 카테고리)별 저·중·고 |
-| 페르소나 | 형태·강도를 결합한 사용자 유형(정독러·스낵러·팬덤 등) |
+- 서버: 파이썬 표준 라이브러리 http.server, 단일 파일 UI(Alpine.js). 외부 패키지 의존 없음.
+- 저장소: 로컬 SQLite 기본, 팀 모드는 Supabase(PostgREST) 이중 지원.
+- 모의 모드(`--mock`): 키 없이 결정론적 모의 추출로 전 기능이 동작합니다.
+- 모델 연결: OpenAI 호환 `/v1/chat/completions` 이면 어디든(Upstage 직접, 통합 라우터, 로컬 vLLM/Ollama).
+- 데스크탑: pywebview 네이티브 창. 다운로드·저장 데이터 옵션은 시스템 설정에서 조정합니다.
 
 ## 한계
 
-- 판정 정확도는 사용하는 모델에 달려 있습니다. 경계 사례는 YELLOW(사람 검수)로 회수하는 설계입니다.
-- 사용자 메타는 행동 로그 파이프라인이 있어야 실데이터로 동작합니다. 없으면 빈 상태 또는 `--demo`.
-- 동봉된 `examples/`·`docs/demo.html`은 전부 합성 예시입니다.
+- 판정 정확도는 연결한 모델에 달려 있습니다. 경계 사례는 YELLOW로 회수해 사람 검수로 확정하는 설계입니다.
+- 사용자 메타(실험실)는 행동 로그를 연결해야 실데이터로 동작합니다.
+- 동봉된 예시·데모 데이터는 전부 합성입니다.
 
 ## 라이선스
 
