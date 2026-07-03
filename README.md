@@ -99,6 +99,7 @@ python3 -m prism.cli report  --batch examples/contents.sample.jsonl --mock --out
 | [HANDOFF.md](HANDOFF.md) | 개발 인수인계 (구조·정책·이력) |
 | [LEARNING_DESIGN.md](LEARNING_DESIGN.md) | 학습데이터·게임화 설계 근거 (논문 인용) |
 | [TESTING.md](TESTING.md) | 테스트 구조와 방법론 근거 (3층 + 메타모픽) |
+| [DESIGN_COMPONENTS.md](DESIGN_COMPONENTS.md) | 컴포넌트 계약 (상태 매트릭스 · 토큰 정책) |
 | [SUPABASE_MIGRATION.md](SUPABASE_MIGRATION.md) | 팀 모드(Supabase) 테이블 명세 |
 
 ## 기술 요약

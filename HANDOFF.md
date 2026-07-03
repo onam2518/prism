@@ -182,7 +182,8 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     (입력·버튼)/`--ds-radius-chip`(칩·배지). 포커스는 전 컴포넌트 `--ds-focus-ring` box-shadow 로
     통일(outline 하드코딩 금지 · 전역 :where 폴백만 예외). 신규 스타일은 하드코딩 px 대신 토큰 사용.
     비교 원천: Meta Astryx theme-neutral(spacing scale·radius 시맨틱 명명 참조 · React 컴포넌트
-    계층은 미도입, 토큰 관례만 차용).
+    계층은 미도입, 토큰 관례만 차용). 컴포넌트별 상태·사용 규칙은 **DESIGN_COMPONENTS.md**(계약)가
+    단일 원천 · 스케일 일치 간격 px 는 토큰으로 전면 이관(serve 82곳 + ds-components 51곳, 값 보존).
   - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)

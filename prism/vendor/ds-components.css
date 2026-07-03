@@ -51,12 +51,12 @@
 .ds-btn--rounded { border-radius: var(--ds-radius-full); }
 
 /* Size 스케일 (Sm·Md·Lg·Xl·2Xl·3Xl) · typography / padding / gap / min-height */
-.ds-btn--s-sm  { --ds-btn-h: 32px; --ds-btn-px: 8px;  --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-caption); }
-.ds-btn--s-md  { --ds-btn-h: 36px; --ds-btn-px: 12px; --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-body); }
-.ds-btn--s-lg  { --ds-btn-h: 40px; --ds-btn-px: 16px; --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-body); }
-.ds-btn--s-xl  { --ds-btn-h: 44px; --ds-btn-px: 16px; --ds-btn-gap: 4px; --ds-btn-fz: var(--ds-size-body); }
-.ds-btn--s-2xl { --ds-btn-h: 48px; --ds-btn-px: 16px; --ds-btn-gap: 8px; --ds-btn-fz: var(--ds-size-answer); }
-.ds-btn--s-3xl { --ds-btn-h: 56px; --ds-btn-px: 20px; --ds-btn-gap: 8px; --ds-btn-fz: var(--ds-size-answer); }
+.ds-btn--s-sm  { --ds-btn-h: 32px; --ds-btn-px: 8px;  --ds-btn-gap: var(--ds-space-1); --ds-btn-fz: var(--ds-size-caption); }
+.ds-btn--s-md  { --ds-btn-h: 36px; --ds-btn-px: 12px; --ds-btn-gap: var(--ds-space-1); --ds-btn-fz: var(--ds-size-body); }
+.ds-btn--s-lg  { --ds-btn-h: 40px; --ds-btn-px: 16px; --ds-btn-gap: var(--ds-space-1); --ds-btn-fz: var(--ds-size-body); }
+.ds-btn--s-xl  { --ds-btn-h: 44px; --ds-btn-px: 16px; --ds-btn-gap: var(--ds-space-1); --ds-btn-fz: var(--ds-size-body); }
+.ds-btn--s-2xl { --ds-btn-h: 48px; --ds-btn-px: 16px; --ds-btn-gap: var(--ds-space-2); --ds-btn-fz: var(--ds-size-answer); }
+.ds-btn--s-3xl { --ds-btn-h: 56px; --ds-btn-px: 20px; --ds-btn-gap: var(--ds-space-2); --ds-btn-fz: var(--ds-size-answer); }
 
 /* ── Solid 매트릭스 (Button.md §3-1) ── */
 .ds-btn--solid.ds-btn--c-primary   { background: var(--ds-primary); color: var(--ds-on-primary); }
@@ -149,7 +149,7 @@
   border-radius: var(--ds-radius-lg);
   border: 1px solid var(--ds-hairline-soft);
   background: var(--ds-surface);
-  padding: 20px 24px;
+  padding: var(--ds-space-5) var(--ds-space-6);
 }
 /* Answer · 에디토리얼 플랫, 그림자 없음 */
 .ds-card--answer { border-color: var(--ds-hairline-soft); }
@@ -197,13 +197,13 @@
 
 /* ── Tabs ────────────────────────────────────────────────── */
 .ds-tabs { display: flex; }
-.ds-tabs--underline { gap: 24px; border-bottom: 1px solid var(--ds-hairline); }
+.ds-tabs--underline { gap: var(--ds-space-6); border-bottom: 1px solid var(--ds-hairline); }
 .ds-tabs--sidebar { flex-direction: column; gap: 2px; }
 
 .ds-tab {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-space-2);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -228,7 +228,7 @@
 /* Sidebar (세로 내비) */
 .ds-tabs--sidebar .ds-tab {
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--ds-space-2) var(--ds-space-3);
   border-radius: var(--ds-radius-md);
 }
 .ds-tabs--sidebar .ds-tab:hover { background: var(--ds-hairline-soft); color: var(--ds-ink); }
@@ -262,7 +262,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--ds-space-6);
   z-index: 1000;
   animation: ds-fade-in var(--ds-motion-standard) var(--ds-ease-enter);
 }
@@ -285,7 +285,7 @@
   letter-spacing: -0.01em;
 }
 .ds-dialog__body { font-size: var(--ds-size-body); color: var(--ds-body); line-height: var(--ds-lh-normal); }
-.ds-dialog__footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.ds-dialog__footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--ds-space-2); margin-top: var(--ds-space-6); }
 
 @keyframes ds-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ds-dialog-in {
@@ -322,7 +322,7 @@
 .ds-composer {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--ds-space-3);
   background: var(--ds-surface-white);
   border: 1px solid var(--ds-hairline);
   border-radius: var(--ds-radius-xl);
@@ -348,9 +348,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--ds-space-2);
 }
-.ds-composer__pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.ds-composer__pills { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
 .ds-composer__actions { display: flex; align-items: center; gap: 6px; }
 
 /* ── Composite: Source Rail (가로 스크롤 + source 카드[]) ───── */
@@ -358,7 +358,7 @@
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding-bottom: var(--ds-space-1);
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
 }
@@ -387,7 +387,7 @@
 }
 
 /* ── Composite: Answer Block (rail → answer → related) ─────── */
-.ds-answer-block { display: flex; flex-direction: column; gap: 16px; }
+.ds-answer-block { display: flex; flex-direction: column; gap: var(--ds-space-4); }
 .ds-answer-block__eyebrow {
   font-family: var(--ds-font-sans);
   font-size: var(--ds-size-caption);
@@ -396,7 +396,7 @@
   margin: 0 0 8px;
   text-transform: none;
 }
-.ds-answer-block__related { display: flex; flex-wrap: wrap; gap: 8px; }
+.ds-answer-block__related { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
 .ds-answer-block__related-label {
   width: 100%;
   font-family: var(--ds-font-sans);
@@ -415,7 +415,7 @@
   z-index: 1100;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-space-2);
   align-items: center;
   pointer-events: none;
 }
@@ -426,7 +426,7 @@
   background: var(--ds-layer-snackbar);
   color: var(--ds-text-static-white, #ffffff);
   border-radius: var(--ds-radius-md);
-  padding: 12px 16px;
+  padding: var(--ds-space-3) var(--ds-space-4);
   font-family: var(--ds-font-body);
   font-size: var(--ds-size-label);
   box-shadow: var(--ds-shadow-elevated);
@@ -493,7 +493,7 @@
   border-radius: var(--ds-radius-lg);
   border: 1px solid var(--ds-hairline-soft);
   background: var(--ds-surface);
-  padding: 16px;
+  padding: var(--ds-space-4);
 }
 .ds-persona__avatar {
   flex: none;
@@ -516,8 +516,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 40px 24px;
+  gap: var(--ds-space-4);
+  padding: var(--ds-space-10) var(--ds-space-6);
   text-align: center;
 }
 .ds-processing__char { width: 96px; height: 96px; }
@@ -539,7 +539,7 @@
    ════════════════════════════════════════════════════════════ */
 
 /* Stat 타일 (배치 집계) */
-.ds-stat-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.ds-stat-grid { display: grid; gap: var(--ds-space-3); grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .ds-stat {
   border-radius: var(--ds-radius-lg);
   border: 1px solid var(--ds-hairline-soft);
@@ -555,7 +555,7 @@
   line-height: 1.1;
 }
 .ds-stat__value--accent { color: var(--ds-primary); }
-.ds-stat__label { font-size: var(--ds-size-caption); color: var(--ds-muted); margin-top: 4px; }
+.ds-stat__label { font-size: var(--ds-size-caption); color: var(--ds-muted); margin-top: var(--ds-space-1); }
 .ds-stat__delta { font-size: var(--ds-size-caption); margin-top: 6px; font-weight: 500; }
 .ds-stat__delta--up { color: var(--ds-success); }
 .ds-stat__delta--down { color: var(--ds-error); }
@@ -647,7 +647,7 @@
    ════════════════════════════════════════════════════════════ */
 /* ── Steps (Pro Search 5-step 패턴 → 메타 파이프라인) ────────── */
 .ds-steps { display: flex; flex-direction: column; }
-.ds-step { display: grid; grid-template-columns: 22px 1fr; gap: 12px; }
+.ds-step { display: grid; grid-template-columns: 22px 1fr; gap: var(--ds-space-3); }
 .ds-step__rail { display: flex; flex-direction: column; align-items: center; }
 .ds-step__marker {
   width: 20px;
@@ -662,7 +662,7 @@
 }
 .ds-step__line { flex: 1; width: 2px; min-height: 12px; background: var(--ds-hairline); margin: 2px 0; }
 .ds-step:last-child .ds-step__line { display: none; }
-.ds-step__body { padding-bottom: 16px; }
+.ds-step__body { padding-bottom: var(--ds-space-4); }
 .ds-step:last-child .ds-step__body { padding-bottom: 0; }
 .ds-step__title { font-family: var(--ds-font-sans); font-size: var(--ds-size-label); font-weight: 500; color: var(--ds-ink); }
 .ds-step__detail { font-size: var(--ds-size-caption); color: var(--ds-muted); margin-top: 2px; }
@@ -685,7 +685,7 @@
 .ds-attachment {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-space-2);
   background: var(--ds-surface-white);
   border: 1px solid var(--ds-hairline);
   border-radius: var(--ds-radius-md);
@@ -813,12 +813,12 @@
   border-radius: var(--ds-radius-lg);
   border: 1px solid var(--ds-hairline-soft);
   background: var(--ds-surface);
-  padding: 20px;
+  padding: var(--ds-space-5);
 }
 .ds-pane__title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-space-2);
   font-family: var(--ds-font-sans);
   font-size: var(--ds-size-subtitle);
   font-weight: 600;
@@ -831,7 +831,7 @@
 .ds-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ds-space-1);
   padding: 14px 12px;
   border: 1px solid var(--ds-hairline-soft);
   border-radius: var(--ds-radius-xl);
@@ -841,7 +841,7 @@
 }
 .ds-navgroup { display: flex; flex-direction: column; gap: 1px; }
 /* 카테고리 사이 구분선 · 계층 분리 */
-.ds-navgroup + .ds-navgroup { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--ds-hairline-soft); }
+.ds-navgroup + .ds-navgroup { margin-top: 6px; padding-top: var(--ds-space-3); border-top: 1px solid var(--ds-hairline-soft); }
 .ds-navgroup__label {
   font-family: var(--ds-font-sans);
   font-size: 11px;
@@ -908,7 +908,7 @@
 /* KeyField (비밀 입력 + eye + 상태) */
 .ds-keyfield { display: flex; flex-direction: column; gap: 6px; }
 .ds-keyfield__row { position: relative; display: flex; align-items: center; }
-.ds-keyfield__row .ds-field { padding-right: 40px; }
+.ds-keyfield__row .ds-field { padding-right: var(--ds-space-10); }
 .ds-keyfield__eye {
   position: absolute;
   right: 8px;
@@ -954,9 +954,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--ds-space-2);
   min-height: 132px;
-  padding: 24px;
+  padding: var(--ds-space-6);
   border: 1.5px dashed var(--ds-hairline);
   border-radius: var(--ds-radius-xl);
   background: var(--ds-surface);
@@ -973,7 +973,7 @@
 /* ── Result ──────────────────────────────────────────────── */
 /* DefinitionList / FieldRow */
 .ds-deflist { display: flex; flex-direction: column; }
-.ds-fieldrow { display: grid; grid-template-columns: 120px 1fr; gap: 16px; padding: 12px 0; align-items: start; }
+.ds-fieldrow { display: grid; grid-template-columns: 120px 1fr; gap: var(--ds-space-4); padding: 12px 0; align-items: start; }
 .ds-fieldrow + .ds-fieldrow { border-top: 1px solid var(--ds-hairline-soft); }
 .ds-fieldrow__label { font-family: var(--ds-font-sans); font-size: var(--ds-size-caption); font-weight: 500; color: var(--ds-muted); padding-top: 2px; }
 .ds-fieldrow__value { font-size: var(--ds-size-body); color: var(--ds-ink); line-height: var(--ds-lh-normal); }
@@ -1001,7 +1001,7 @@
 .ds-empty__icon { color: var(--ds-placeholder); }
 .ds-empty__title { font-family: var(--ds-font-sans); font-size: var(--ds-size-subtitle); font-weight: 600; color: var(--ds-ink); }
 .ds-empty__desc { font-size: var(--ds-size-body); color: var(--ds-muted); max-width: 42ch; }
-.ds-empty__actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
+.ds-empty__actions { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); justify-content: center; margin-top: var(--ds-space-1); }
 
 /* CodeBlock / JsonViewer */
 .ds-code {
@@ -1025,7 +1025,7 @@
 .ds-inline-edit { border-radius: var(--ds-radius-md); transition: background-color var(--ds-motion-fast) var(--ds-ease-standard); }
 .ds-inline-edit__text { padding: 6px 8px; border-radius: var(--ds-radius-sm); cursor: text; color: var(--ds-ink); }
 .ds-inline-edit__text:hover { background: var(--ds-hairline-soft); }
-.ds-editbar { display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: var(--ds-radius-md); background: var(--ds-surface); border: 1px solid var(--ds-hairline); }
+.ds-editbar { display: flex; align-items: center; gap: 6px; padding: var(--ds-space-2); border-radius: var(--ds-radius-md); background: var(--ds-surface); border: 1px solid var(--ds-hairline); }
 .ds-editbar__spacer { flex: 1; }
 
 /* ChipInput (사전 편집) */
@@ -1049,7 +1049,7 @@
 .ds-chipinput__input::placeholder { color: var(--ds-placeholder); }
 
 /* Table 액션 셀 */
-.ds-table__actions { display: flex; gap: 4px; justify-content: flex-end; }
+.ds-table__actions { display: flex; gap: var(--ds-space-1); justify-content: flex-end; }
 
 @keyframes ds-dot-pulse {
   0% { box-shadow: 0 0 0 0 rgba(24, 186, 69, 0.4); }
@@ -1114,7 +1114,7 @@
 .ds-personacard:hover .ds-personacard__foil { opacity: 0.45; }
 @keyframes ds-foil { 0% { background-position: 0% 50%; } 100% { background-position: 220% 50%; } }
 
-.ds-personacard__head { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.ds-personacard__head { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ds-space-2); }
 .ds-personacard__name { font-family: var(--ds-font-sans); font-size: var(--ds-size-subtitle); font-weight: 600; line-height: 1.1; }
 .ds-personacard__role { font-size: 11px; opacity: 0.85; margin-top: 2px; }
 .ds-personacard__rarity {
@@ -1139,7 +1139,7 @@
 }
 .ds-personacard__art img { width: 86%; height: 86%; object-fit: contain; }
 .ds-personacard__stats { position: relative; display: flex; flex-direction: column; gap: 6px; }
-.ds-personacard__stat { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.ds-personacard__stat { display: flex; align-items: center; gap: var(--ds-space-2); font-size: 11px; }
 .ds-personacard__stat > b { width: 44px; flex: none; font-weight: 500; opacity: 0.92; }
 .ds-personacard__bar { flex: 1; height: 6px; border-radius: var(--ds-radius-full); background: rgba(255, 255, 255, 0.25); overflow: hidden; }
 .ds-personacard__bar > span { display: block; height: 100%; background: #fff; border-radius: inherit; }
@@ -1217,7 +1217,7 @@
   grid-template-columns: repeat(var(--ds-wg-cols, 4), minmax(0, 1fr));
   /* 행은 내용 기반(auto) · 위젯 최소 높이는 위젯이 책임, 런처는 컴팩트 */
   grid-auto-rows: auto;
-  gap: 16px;
+  gap: var(--ds-space-4);
 }
 .ds-widget {
   position: relative;
@@ -1240,8 +1240,8 @@
 .ds-widget--tall { grid-row: span 2; }
 .ds-widget--wide { grid-column: 1 / -1; }
 
-.ds-widget__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.ds-widget__title { display: flex; align-items: center; gap: 8px; font-family: var(--ds-font-sans); font-size: var(--ds-size-label); font-weight: 600; color: var(--ds-ink); min-width: 0; }
+.ds-widget__head { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); margin-bottom: 10px; }
+.ds-widget__title { display: flex; align-items: center; gap: var(--ds-space-2); font-family: var(--ds-font-sans); font-size: var(--ds-size-label); font-weight: 600; color: var(--ds-ink); min-width: 0; }
 .ds-widget__title-icon { color: var(--ds-primary); display: inline-flex; flex: none; }
 /* 위젯 아이덴티티 · 아이콘 칩(카테고리 식별색) + 무채색 헤더 */
 .ds-widget__icon-chip {
@@ -1309,7 +1309,7 @@
 .ds-widget--launcher {
   flex-direction: row;
   align-items: center;
-  gap: 12px;
+  gap: var(--ds-space-3);
   cursor: pointer;
   text-align: left;
   min-height: 0;
@@ -1399,11 +1399,11 @@
 .ds-coach__step { font-family: var(--ds-font-mono); font-size: 11px; font-weight: 600; color: var(--ds-primary); letter-spacing: 0.04em; }
 .ds-coach__title { font-family: var(--ds-font-sans); font-size: var(--ds-size-subtitle); font-weight: 600; color: var(--ds-ink); margin: 6px 0; line-height: var(--ds-lh-snug); }
 .ds-coach__desc { font-size: var(--ds-size-body); color: var(--ds-body); line-height: var(--ds-lh-normal); }
-.ds-coach__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.ds-coach__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-3); margin-top: 18px; }
 .ds-coach__dots { display: flex; gap: 5px; align-items: center; }
 .ds-coach__dot { width: 6px; height: 6px; border-radius: var(--ds-radius-full); background: var(--ds-hairline); transition: width var(--ds-motion-fast), background-color var(--ds-motion-fast); }
 .ds-coach__dot--on { width: 16px; background: var(--ds-primary); }
-.ds-coach__btns { display: flex; gap: 8px; align-items: center; }
+.ds-coach__btns { display: flex; gap: var(--ds-space-2); align-items: center; }
 @keyframes ds-coach-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .ds-coach { animation: none; } .ds-coach-target { transition: none; } }
 
@@ -1469,12 +1469,12 @@
 .ds-chat__av img { width: 80%; height: 80%; object-fit: contain; }
 .ds-chat__title { font-family: var(--ds-font-sans); font-weight: 600; font-size: var(--ds-size-label); color: var(--ds-ink); }
 .ds-chat__sub { font-size: 11px; color: var(--ds-muted); display: flex; align-items: center; gap: 5px; margin-top: 1px; }
-.ds-chat__body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ds-chat__body { flex: 1; overflow-y: auto; padding: var(--ds-space-4); display: flex; flex-direction: column; gap: 10px; }
 .ds-chat__msg { max-width: 82%; padding: 10px 13px; font-size: var(--ds-size-body); line-height: 1.45; }
 .ds-chat__msg--bot { align-self: flex-start; background: var(--ds-surface-white); border: 1px solid var(--ds-hairline); color: var(--ds-ink); border-radius: 14px 14px 14px 4px; }
 .ds-chat__msg--me { align-self: flex-end; background: var(--ds-primary); color: #fff; border-radius: 14px 14px 4px 14px; }
 .ds-chat__quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px; }
-.ds-chat__foot { padding: 12px 14px; border-top: 1px solid var(--ds-hairline); display: flex; gap: 8px; align-items: flex-end; }
+.ds-chat__foot { padding: 12px 14px; border-top: 1px solid var(--ds-hairline); display: flex; gap: var(--ds-space-2); align-items: flex-end; }
 .ds-chat__input { flex: 1; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-xl); padding: 9px 14px; background: var(--ds-surface-white); font-family: var(--ds-font-body); font-size: var(--ds-size-body); color: var(--ds-ink); resize: none; outline: none; max-height: 96px; }
 .ds-chat__input:focus { border-color: var(--ds-primary); box-shadow: var(--ds-focus-ring); }
 .ds-chat__send { width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--ds-primary); color: #fff; cursor: pointer; flex: none; display: flex; align-items: center; justify-content: center; }
