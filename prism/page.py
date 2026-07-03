@@ -1219,7 +1219,7 @@ PAGE = """<!doctype html>
             <div class="panel-bd">
               <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap">
                 <span class="selctl" data-tip="모델 버전 시한: 이 일시에 검수 의견을 모아 반영하고 버전이 올라갑니다 · 도달 후에는 새 목표를 다시 생성" data-tip-pos="top"><span class="selctl__lbl">반영 일시</span>
-                  <input type="datetime-local" class="field" x-model="learnNextAt" x-bind:disabled="!schedEditing" style="min-width:190px">
+                  <input type="datetime-local" class="field" x-model="learnNextAt" x-bind:disabled="!schedEditing" x-bind:min="new Date(Date.now()+60000).toISOString().slice(0,16)" style="min-width:190px">
                 </span>
                 <span class="selctl" data-tip="이 인원 이상이 '정확'으로 합의해야 정답셋으로 확정됩니다 · 팀 규모에 맞게 조정" data-tip-pos="top"><span class="selctl__lbl">확정 최소 인원</span>
                   <select class="field" x-model="goldenMinGood" x-bind:disabled="!schedEditing">

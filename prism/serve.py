@@ -1774,7 +1774,9 @@ def apply_config(data: dict) -> dict:
             else:
                 try:
                     time.strptime(v, "%Y-%m-%dT%H:%M")
-                    cfg.learn_next_at = v
+                    # 과거 일시는 거부: 저장 즉시 반영이 돼버리는 함정 방지('⚡ 즉시 반영'이 정식 경로)
+                    if LO.next_batch_time(v) > time.time() + 60:
+                        cfg.learn_next_at = v
                 except ValueError:
                     pass
         if "desktop_allow_downloads" in data:

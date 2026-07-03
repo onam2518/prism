@@ -764,9 +764,14 @@
       },
       async saveLearnSched() {                           // 목표 일시 + 확정 최소 인원 통합 저장
         try {
-          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) });
-          this.learnSchedMsg = '✓ 저장됨';
-          this.schedEditing = false;
+          const r = await (await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) })).json();
+          if ((this.learnNextAt || '') !== (r.learnNextAt || '')) {   // 서버 거부(과거 일시 등)
+            this.learnNextAt = r.learnNextAt || '';
+            this.learnSchedMsg = '지난 일시는 지정할 수 없어요';
+          } else {
+            this.learnSchedMsg = '✓ 저장됨';
+            this.schedEditing = false;
+          }
           this.loadLearnReport();                        // 다음 반영 예정 갱신
           this.loadArena();                              // 홈·사이드바 퀘스트 D-day 갱신
         } catch (e) { this.learnSchedMsg = '실패'; }
