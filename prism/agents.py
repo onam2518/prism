@@ -52,9 +52,9 @@ def _call_llm(main_llm, call: str):
     return main_llm
 
 
-def run_item(llm, content) -> tuple[ItemMeta, list]:
+def run_item(llm, content, parallel: bool = False) -> tuple[ItemMeta, list]:
     if META_CFG.get("four_calls", True):
-        return _run_item_calls(llm, content)
+        return _run_item_calls(llm, content, parallel=parallel)
     sys = P.item_system(content, getattr(llm, "model", "") or "")
     obj, res = llm.complete_json(sys, P.item_user(content), tag="item")
     im = ItemMeta(
@@ -68,30 +68,53 @@ def run_item(llm, content) -> tuple[ItemMeta, list]:
     return im, [res, {"agent": "ItemAgent", "fail": obj.get("_fail")}]
 
 
-def _run_item_calls(llm, content) -> tuple[ItemMeta, list]:
+def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, list]:
     """분리형 순차 4호출(계약): ① summary → ② entities → ③ intent → ④ content_category.
-    단락 차단(① 빈 문자열 → 후속 생략) · 호출 사이 기계 검증(사전 불일치 드롭, 전량 드롭 시 1회 재요청)."""
+    단락 차단(① 빈 문자열 → 후속 생략) · 호출 사이 기계 검증(사전 불일치 드롭, 전량 드롭 시 1회 재요청).
+    parallel=True(방법론 옵션 · A/B 검증용): ①·②만 동시 실행. 두 호출의 user 프롬프트가
+    prior 를 쓰지 않아(meta_prompts.call_user) 산출은 순차와 동일하고, 트레이스는 ①→② 순서로
+    적재해 결정론을 유지한다. 트레이드오프 = ① 빈 문자열일 때 ② 호출 비용 낭비(차단 계약 예외)."""
     from . import dictionaries as D
     results, prior = [], {}
 
-    def ask(call: str, tag: str) -> dict:
+    def ask(call: str, tag: str, sink: list = None) -> dict:
+        out = results if sink is None else sink
         c_llm = _call_llm(llm, call)
         sysp = P.call_system(content, call, getattr(c_llm, "model", "") or "")
         obj, res = c_llm.complete_json(sysp, P.call_user(call, content, prior), tag=tag)
-        results.append(res)
-        results.append({"agent": f"ItemAgent:{call}", "model": getattr(c_llm, "model", "") or "",
-                        "fail": obj.get("_fail")})
+        out.append(res)
+        out.append({"agent": f"ItemAgent:{call}", "model": getattr(c_llm, "model", "") or "",
+                    "fail": obj.get("_fail")})
         return obj
 
-    # ① 리드문
-    o1 = ask("summary", "item_summary")
+    # ①·② (parallel 이면 동시 · 아니면 계약 순차)
+    if parallel:
+        import threading
+        box, errs, r1, r2 = {}, [], [], []
+
+        def _t(key, call, tag, sink):
+            try:
+                box[key] = ask(call, tag, sink)
+            except Exception as e:                 # 순차 모드와 동일하게 전파
+                errs.append(e)
+        t1 = threading.Thread(target=_t, args=("o1", "summary", "item_summary", r1))
+        t2 = threading.Thread(target=_t, args=("o2", "entities", "item_entities", r2))
+        t1.start(); t2.start(); t1.join(); t2.join()
+        results += r1 + r2                          # 트레이스 순서 결정론(①→②)
+        if errs:
+            raise errs[0]
+        o1, o2 = box.get("o1") or {}, box.get("o2") or {}
+    else:
+        o1 = ask("summary", "item_summary")
+
     summary = (o1.get("summary") or "").strip() if isinstance(o1.get("summary"), str) else ""
     prior["summary"] = summary
     if not summary:                                # 단락 차단: 하위 호출 생략, 빈 값 적재
         return ItemMeta(summary="", entities=[], intent=[], content_category=[]), results
 
     # ② 엔티티(1~3개 강제)
-    o2 = ask("entities", "item_entities")
+    if not parallel:
+        o2 = ask("entities", "item_entities")
     ents = [str(x).strip() for x in (o2.get("entities") or []) if str(x).strip()][:3]
     prior["entities"] = ents
 

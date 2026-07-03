@@ -91,6 +91,35 @@ class TestFourCallExtraction(unittest.TestCase):
         self.assertEqual(im.intent, ["속보·단신"])                    # 사전 불일치 드롭
         self.assertEqual(im.content_category, ["Business and Finance / Economy"])
 
+    def test_parallel_calls_output_parity(self):
+        """parallel_calls A/B 옵션: 산출(ItemMeta)이 순차와 동일하고 트레이스 순서도 ①→② 결정론."""
+        from prism import agents as AG
+        answers = {
+            "item_summary": {"summary": "한국은행이 기준금리를 동결한 사실을 전한다."},
+            "item_entities": {"entities": ["한국은행", "기준금리"]},
+            "item_intent": {"intent": ["속보·단신"]},
+            "item_category": {"content_category": ["Business and Finance / Economy"]},
+        }
+        AG.META_CFG = {"four_calls": True, "call_models": {}}
+        seq_im, seq_res = AG.run_item(self._llm(answers), self._content())
+        llm_p = self._llm(answers)
+        par_im, par_res = AG.run_item(llm_p, self._content(), parallel=True)
+        self.assertEqual((par_im.summary, par_im.entities, par_im.intent, par_im.content_category),
+                         (seq_im.summary, seq_im.entities, seq_im.intent, seq_im.content_category))
+        self.assertEqual(sorted(llm_p.calls[:2]), ["item_entities", "item_summary"])
+        self.assertEqual(llm_p.calls[2:], ["item_intent", "item_category"])
+        tags = [r.get("tag") for r in par_res if isinstance(r, dict) and r.get("tag")]
+        self.assertEqual(tags, [r.get("tag") for r in seq_res if isinstance(r, dict) and r.get("tag")])
+
+    def test_parallel_empty_summary_still_blocks(self):
+        """parallel 모드 단락 차단 파리티: ① 빈값이면 ②는 실행됐어도 산출은 전부 빈 값."""
+        from prism import agents as AG
+        llm = self._llm({"item_summary": {"summary": ""}, "item_entities": {"entities": ["개체"]}})
+        AG.META_CFG = {"four_calls": True, "call_models": {}}
+        im, _ = AG.run_item(llm, self._content(title="", body=""), parallel=True)
+        self.assertEqual((im.summary, im.entities, im.intent, im.content_category), ("", [], [], []))
+        self.assertNotIn("item_intent", llm.calls)              # ③④는 여전히 생략
+
     def test_empty_summary_short_circuits(self):
         from prism import agents as AG
         llm = self._llm({"item_summary": {"summary": ""}})

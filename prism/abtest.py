@@ -21,6 +21,7 @@ PRESETS = {
     "legal":    H.Methodology(name="legal", legal=True),                      # 법령 스테이지 on
     "yellow":   H.Methodology(name="yellow", yellow=True),                    # YELLOW 사람검수 게이트
     "no-emb":   H.Methodology(name="no-emb", embed_categories=False),         # 임베딩 카테고리 off
+    "parallel": H.Methodology(name="parallel", parallel_calls=True),          # ①②호출 동시(지연 A/B)
 }
 
 

@@ -38,13 +38,17 @@ class Methodology:
     prefilter_conf: float = 0.72
     yellow_low: float = 0.45
     slim: bool = False
+    # 4호출 중 ①리드문·②엔티티 동시 실행(A/B 검증용 · 산출은 순차와 동일, ① 실패 시 ② 비용 낭비).
+    # 기본 off = 기준 문서의 순차·단락 차단 계약. 승격은 A/B 근거 확보 후 계약 개정과 함께.
+    parallel_calls: bool = False
     stages: tuple = ("dispatch", "legal", "quality", "item")   # assemble 은 항상 종단
 
     def to_dict(self) -> dict:
         return {"name": self.name, "version": self.version, "legal": self.legal,
                 "quality_split": self.quality_split, "embed_categories": self.embed_categories,
                 "yellow": self.yellow, "prefilter_conf": self.prefilter_conf,
-                "yellow_low": self.yellow_low, "slim": self.slim, "stages": list(self.stages)}
+                "yellow_low": self.yellow_low, "slim": self.slim,
+                "parallel_calls": self.parallel_calls, "stages": list(self.stages)}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Methodology":
@@ -143,7 +147,7 @@ def st_item(ctx: HCtx):
     gate_item = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow")
     if not (gate_item and ctx.routing.content_track != "image_only"):
         return
-    im, ires = A.run_item(ctx.llm, ctx.content)
+    im, ires = A.run_item(ctx.llm, ctx.content, parallel=m.parallel_calls)
     ctx.item_meta = im
     ctx.results += [r for r in ires if hasattr(r, "cost_usd")]
     ctx.verdicts += [r for r in ires if isinstance(r, dict)]
