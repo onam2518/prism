@@ -643,7 +643,8 @@ class SupabaseStore:
             if not include_all and (qm.get("review") or "") != "yellow":
                 continue                              # 검토 대상만
             row = {"hash": content_hash(content), "service": content.get("displayServiceName", ""),
-                   "title": content.get("title", ""), "body": content.get("body", ""),
+                   "title": content.get("title", ""), "subtitle": content.get("subtitle", ""),
+                   "body": content.get("body", ""),
                    "source_url": content.get("source_url", "") or content.get("url", ""),
                    "source": source, "final_grade": qm.get("finalGrade", ""),
                    "item_meta": out.get("item_meta"), "quality_meta": qm,
@@ -692,9 +693,9 @@ class SupabaseStore:
     def contents_by_hash(self, team=None, limit: int = 5000) -> dict:
         """content_hash → 콘텐츠 dict(학습데이터 추출용)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", f"select=hash,service,title,body{tq}&limit={int(limit)}")
+        rows = self._get("contents", f"select=hash,service,title,subtitle,body{tq}&limit={int(limit)}")
         return {r["hash"]: {"displayServiceName": r.get("service") or "", "title": r.get("title") or "",
-                            "subtitle": "", "body": r.get("body") or ""} for r in rows}
+                            "subtitle": r.get("subtitle") or "", "body": r.get("body") or ""} for r in rows}
 
     def get_item_meta(self, content_hash) -> dict | None:
         """저장된 item_meta 조회(교정 로그 before 스냅샷용)."""
@@ -810,12 +811,15 @@ class SupabaseStore:
 
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,body,source_url,item_meta,quality_meta,model,version"
+        rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,item_meta,quality_meta,model,version"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
+        # subtitle 보존: 재구성 콘텐츠의 해시가 저장 해시와 일치해야 재실행 upsert·골든 매칭이
+        # 같은 행을 가리킨다(과거엔 subtitle 소실로 부제 있는 콘텐츠가 유령 행을 만들었음).
         out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},
                 "trace": {"model": r.get("model") or "", "version": int(r.get("version") or 1)},
                 "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
-                                "body": r.get("body", ""), "source_url": r.get("source_url", ""),
+                                "subtitle": r.get("subtitle", "") or "", "body": r.get("body", ""),
+                                "source_url": r.get("source_url", ""),
                                 "body_hash": r.get("hash", "")}} for r in rows]
         out.reverse()
         return out

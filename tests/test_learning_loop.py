@@ -147,6 +147,33 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertNotIn("솔라 보정", other)
 
 
+    def test_learning_batch_auto_rerun_option_fires(self):
+        """auto_rerun_after_batch=True 면 배치 종료 후 자동 재실행 스레드가 기동돼야 한다
+        (learnops 분리 때 getattr 속성명 오염으로 옵션이 조용히 죽었던 회귀 방지)."""
+        import json as _j
+        import tempfile
+        import threading
+        from prism import config as C
+        from prism import serve
+        from prism.store import Store
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        cfgp = os.path.join(tempfile.mkdtemp(), "config.json")
+        open(cfgp, "w", encoding="utf-8").write(_j.dumps({"auto_rerun_after_batch": True}))
+        orig_p = C.DEFAULT_CONFIG_PATH
+        C.DEFAULT_CONFIG_PATH = cfgp
+        self.addCleanup(lambda: setattr(C, "DEFAULT_CONFIG_PATH", orig_p))
+        orig_mock = serve.Handler.server_mock
+        serve.Handler.server_mock = True
+        self.addCleanup(lambda: setattr(serve.Handler, "server_mock", orig_mock))
+        fired = threading.Event()
+        orig_fn = serve.auto_rerun_after_batch
+        serve.auto_rerun_after_batch = lambda team=None: fired.set()   # _SV 늦은 바인딩 경유
+        self.addCleanup(lambda: setattr(serve, "auto_rerun_after_batch", orig_fn))
+        serve.learning_batch(None)
+        self.assertTrue(fired.wait(3), "옵션이 켜져 있으면 배치 후 자동 재실행이 기동돼야 함")
+
+
 class TestLearnData(unittest.TestCase):
     def test_learn_data_and_exports(self):
         import tempfile

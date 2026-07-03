@@ -338,7 +338,7 @@ def learning_batch(team=None, models=None) -> dict:
     _LAST_LEARN_REPORT = report
     _SV._report_save("learn_report", report, team)
     _SV._agg_bump()
-    if getattr(Config.load(), "_SV.auto_rerun_after_batch", False):   # 옵션: 개선 버전으로 자동 재실행
+    if getattr(Config.load(), "auto_rerun_after_batch", False):   # 옵션: 개선 버전으로 자동 재실행
         threading.Thread(target=_SV.auto_rerun_after_batch, args=(team,), daemon=True).start()
     print(f"  [batch] 학습 일배치 · 골든 확정 {golden.get('confirmed')} · 카테고리필요 "
           f"{golden.get('need_category')} · 정합성(grade) {report['grade_accuracy']}")

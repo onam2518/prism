@@ -99,6 +99,23 @@ class StoreContractMixin:
         self.assertIn("solar 전용 지시", (bm.get("solar-계약") or {}).get("analyze", []))
         self.assertNotIn("", bm)
 
+    def test_content_roundtrip_hash_stable(self):
+        """저장→재구성(recent) 콘텐츠의 해시 불변: subtitle 이 소실되면 재실행 upsert 가
+        원본 행 대신 유령 행을 만들고 골든 매칭이 깨진다(supabase 회귀 방지)."""
+        from prism.store import content_hash
+        st, team = self.st, self.team
+        content = {"displayServiceName": "뉴스", "title": "계약-부제보존", "subtitle": "부제목", "body": "b"}
+        out = {"content_ref": dict(content),
+               "quality_meta": {"finalGrade": "G", "review": "yellow"}, "item_meta": {},
+               "trace": {"model": "contract-m", "version": 1}}
+        st.save_many([(content, out)], "t", source="계약", team=team, include_all=True)
+        row = next(r for r in st.recent(team=team)
+                   if (r.get("content_ref") or {}).get("title") == "계약-부제보존")
+        ref = row["content_ref"]
+        rebuilt = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
+                   "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
+        self.assertEqual(content_hash(rebuilt), content_hash(content))
+
     # ── helpers ──
     def _hash(self, title):
         from prism.store import content_hash
@@ -132,12 +149,16 @@ class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
         import secrets
         import urllib.request
         import uuid
+        cls._env_added = []                               # 이 클래스가 주입한 env 만 종료 시 제거
         for k, f in (("SUPABASE_URL", "~/.prism_supabase_url"), ("SUPABASE_SERVICE_KEY", "~/.prism_supabase_key")):
             if not os.environ.get(k):
                 pth = os.path.expanduser(f)
                 if os.path.exists(pth):
                     os.environ[k] = open(pth, encoding="utf-8").read().strip()
-        os.environ.setdefault("SUPABASE_KEY", os.environ.get("SUPABASE_SERVICE_KEY", ""))
+                    cls._env_added.append(k)
+        if not os.environ.get("SUPABASE_KEY"):
+            os.environ["SUPABASE_KEY"] = os.environ.get("SUPABASE_SERVICE_KEY", "")
+            cls._env_added.append("SUPABASE_KEY")
         from prism.supastore import SupabaseStore
         cls.st_cls = SupabaseStore()
         base, key = os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_KEY"]
@@ -176,6 +197,8 @@ class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
             urllib.request.urlopen(req, timeout=20).read()
         except Exception:
             pass
+        for k in getattr(cls, "_env_added", []):          # 주입 env 정리(타 테스트 모드 판정 오염 방지)
+            os.environ.pop(k, None)
 
     def setUp(self):
         self.st = self.st_cls

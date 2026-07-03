@@ -25,9 +25,13 @@ _JWT_CACHE = {}
 _JWT_LOCK = threading.Lock()
 
 def _supa():
-    """(url, service_key) 또는 None(=sqlite 모드)."""
+    """(url, service_key) 또는 None(=sqlite 모드). 판정은 스토어 선택(serve.backend_mode)과 동일:
+    명시 supabase 또는 '미설정 + 키 존재'(운영 자동)면 supabase · sqlite 명시만 로컬 강제.
+    과거엔 명시 supabase 만 인정해, 키 자동 감지로 뜬 운영 서버에서 인증·관리자 게이트가
+    전부 비활성화되는 불일치가 있었다."""
     from . import supastore
-    if os.environ.get("PRISM_BACKEND") == "supabase" and supastore.configured():
+    b = (os.environ.get("PRISM_BACKEND") or "").strip().lower()
+    if b != "sqlite" and supastore.configured():
         return os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_KEY"]
     return None
 
