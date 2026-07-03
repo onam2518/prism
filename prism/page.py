@@ -1194,12 +1194,12 @@ PAGE = """<!doctype html>
               <div x-show="!goldenStatus" class="text-xs text-muted">검수가 쌓이고 학습 반영이 돌면 현황이 표시됩니다(아래 ⚙ 지금 실행으로 바로 반영 가능)</div>
             </div>
           </section>
-          <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>학습 반영</b><span class="meta" x-text="'검수 의견을 모아 ' + cycleLabel(learnCycle) + ' ' + learnHour + ':00 반영'"></span>
+          <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>학습 반영</b>
             <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚙ 지금 실행'"></button>
           </div>
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:12px">
-                <li>의견을 모아 <b>설정한 주기(모델 버전 시한)</b>로 한 번에 반영해 결과가 흔들리지 않게 합니다 · <span class="tnum" x-text="nextBatchAt ? ('다음 반영 예정 ' + fmtTs(nextBatchAt)) : ''"></span></li>
+                <li>의견을 모아 <b>설정한 주기(모델 버전 시한)</b>로 한 번에 반영해 결과가 흔들리지 않게 합니다 · 일정은 아래 <b>반영 일정</b> 카드에서 설정합니다.</li>
                 <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
               </ul>
               <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap;margin-bottom:12px">
@@ -1208,17 +1208,6 @@ PAGE = """<!doctype html>
                   반영이 끝나면 <b>새 버전으로 전체 자동 재실행</b> <span class="text-xs text-muted">(건당 비용 발생)</span>
                   <span class="text-xs" style="color:var(--ds-success)" x-text="autoRerunMsg"></span>
                 </label>
-                <span class="selctl" data-tip="모델 버전 시한: 이 주기마다 검수 의견을 모아 반영하고 버전이 올라갑니다 · '지금 실행' 시 주기가 그 시점부터 재시작" data-tip-pos="top"><span class="selctl__lbl">반영 주기</span>
-                  <select class="field" x-model="learnCycle" x-on:change="saveLearnSched()">
-                    <template x-for="n in [1,2,3,7,14,30]" x-bind:key="'lc'+n"><option x-bind:value="n" x-text="cycleLabel(n)" x-bind:selected="parseInt(learnCycle,10)===n"></option></template>
-                  </select>
-                </span>
-                <span class="selctl" data-tip="반영이 실행되는 시각(서버 기준) · 업무 시간 밖 새벽 권장" data-tip-pos="top"><span class="selctl__lbl">실행 시각</span>
-                  <select class="field" x-model="learnHour" x-on:change="saveLearnSched()">
-                    <template x-for="h in Array.from({length:24},(_,i)=>i)" x-bind:key="'lh'+h"><option x-bind:value="h" x-text="h + ':00'" x-bind:selected="parseInt(learnHour,10)===h"></option></template>
-                  </select>
-                </span>
-                <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
                 <span class="selctl" data-tip="이 인원 이상이 '정확'으로 합의해야 정답셋으로 확정됩니다 · 팀 규모에 맞게 조정" data-tip-pos="top"><span class="selctl__lbl">확정 최소 인원</span>
                   <select class="field" x-model="goldenMinGood" x-on:change="saveMinGood()">
                     <template x-for="n in [1,2,3,4,5]" x-bind:key="n"><option x-bind:value="n" x-text="n + '명'" x-bind:selected="parseInt(goldenMinGood,10)===n"></option></template>
@@ -1251,6 +1240,29 @@ PAGE = """<!doctype html>
                 </div>
               </template>
               <div x-show="!(learnReport && learnReport.ts) && !metaResults" class="text-xs text-muted"><b class="text-ink">⚙ 지금 실행</b>을 누르면 개선·골든 축적·회귀 평가·모델 비교를 한 번에 돌립니다</div>
+            </div>
+          </section>
+
+          <!-- 반영 일정(모델 버전 시한): 주기·시각 설정 · 홈 팀 퀘스트(D-day)와 같은 원천 -->
+          <section class="panel" data-fn><div class="panel-hd"><b>반영 일정</b><span class="meta">모델 버전 시한 · 이 주기마다 검수 의견이 새 버전 프롬프트에 반영됩니다</span></div>
+            <div class="panel-bd">
+              <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap">
+                <span class="selctl" data-tip="모델 버전 시한: 이 주기마다 검수 의견을 모아 반영하고 버전이 올라갑니다" data-tip-pos="top"><span class="selctl__lbl">반영 주기</span>
+                  <select class="field" x-model="learnCycle" x-on:change="saveLearnSched()">
+                    <template x-for="n in [1,2,3,7,14,30]" x-bind:key="'lc'+n"><option x-bind:value="n" x-text="cycleLabel(n)" x-bind:selected="parseInt(learnCycle,10)===n"></option></template>
+                  </select>
+                </span>
+                <span class="selctl" data-tip="반영이 실행되는 시각(서버 기준) · 업무 시간 밖 새벽 권장" data-tip-pos="top"><span class="selctl__lbl">실행 시각</span>
+                  <select class="field" x-model="learnHour" x-on:change="saveLearnSched()">
+                    <template x-for="h in Array.from({length:24},(_,i)=>i)" x-bind:key="'lh'+h"><option x-bind:value="h" x-text="h + ':00'" x-bind:selected="parseInt(learnHour,10)===h"></option></template>
+                  </select>
+                </span>
+                <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
+                <span class="ds-badge ds-badge--neutral tnum" x-show="nextBatchAt" style="cursor:help" data-tip="홈의 팀 퀘스트(vN 마감 D-day)와 같은 일정입니다" data-tip-pos="top" x-text="'다음 반영 예정 ' + fmtTs(nextBatchAt)"></span>
+              </div>
+              <ul class="ds-bullets" style="margin-top:10px">
+                <li>'⚙ 지금 실행'으로 수동 반영하면 주기가 그 시점부터 다시 시작됩니다.</li>
+              </ul>
             </div>
           </section>
       </div><!-- /테스트셋 관리 · 현황 -->

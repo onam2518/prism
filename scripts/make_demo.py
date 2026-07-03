@@ -115,6 +115,7 @@ DEMO_EXTRAS = {
         {"hash": "g2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "category": ["Business and Finance / Economy"], "source": "review", "flagged": False, "model": "solar-pro3-260323", "version": 2},
         {"hash": "g3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "category": ["Entertainment"], "source": "manual", "flagged": True, "model": "", "version": None},
         {"hash": "g4", "title": "손흥민 시즌 15호골", "service": "스포츠", "grade": "G", "category": ["Sports / Soccer (International)"], "source": "review", "flagged": False, "model": "gpt-5.4-mini", "version": 1, "fix_needed": True}]},
+    "next_batch_at": _time.time() + 2 * 86400 + 3600,   # 데모: 반영 일정 카드 '다음 예정' 예시(D-2)
     "lreport": {"ok": True, "ts": 1782950000, "grade_accuracy": 0.87,
                 "golden": {"ok": True, "confirmed": 18, "new": 3, "demoted": 1, "total": 24, "need_category": 2, "disagree": 3, "min_good": 1},
                 "eval": {"ok": True, "n": 24, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}},
@@ -288,7 +289,7 @@ STUB = """<script>
       if (u.indexOf('/golden-status') > -1) return Promise.resolve(J(EX.gstat));
       if (u.indexOf('/golden-list') > -1) return Promise.resolve(J(EX.glist));
       if (u.indexOf('/golden-remove') > -1 || u.indexOf('/golden') > -1) return Promise.resolve(J({ ok: true }));
-      if (u.indexOf('/learn-report') > -1) return Promise.resolve(J({ ok: true, report: EX.lreport }));
+      if (u.indexOf('/learn-report') > -1) return Promise.resolve(J({ ok: true, report: EX.lreport, next_batch_at: EX.next_batch_at }));
       if (u.indexOf('/learn-batch') > -1) return Promise.resolve(J(EX.lreport));
       if (u.indexOf('/learn-data') > -1) return Promise.resolve(J(EX.ldata));
       if (u.indexOf('/learn-export') > -1) return Promise.resolve(J({ ok: true }));
