@@ -145,8 +145,9 @@ class TestContentPurpose(unittest.TestCase):
         rows = [{"content": c1, "expected": {"finalGrade": "G"}},
                 {"content": c2, "expected": {"finalGrade": "R"}}]
         st.set_purpose([content_hash(c2)], "eval")
-        self.assertEqual(len(serve._scope_golden(rows, "all", st)), 2)
-        scoped = serve._scope_golden(rows, "eval", st)
+        from prism import learnops as LO
+        self.assertEqual(len(LO._scope_golden(rows, "all", st)), 2)
+        scoped = LO._scope_golden(rows, "eval", st)
         self.assertEqual([r["content"]["title"] for r in scoped], ["홀드아웃"])
 
 
