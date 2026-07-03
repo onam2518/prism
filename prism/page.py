@@ -319,12 +319,24 @@ PAGE = """<!doctype html>
         <span class="side-profile__sub" x-show="!(reviewer && arenaMe) || (loading || modBusy)" x-text="(loading || modBusy) ? '처리하고 있어요…' : (reviewer ? '내 에이전트 열기' : '이름·캐릭터를 설정하세요')"></span>
         <span class="side-profile__edit" x-show="reviewer" x-on:click.stop="reviewerEditing = true" role="button" aria-label="프로필 편집" data-tip="편집" data-tip-pos="left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
       </button>
-      <!-- 팀 퀘스트(버전 시한): 에이전트 카드 아래 추가 정보 · 전 메뉴에서 노출 -->
-      <button type="button" class="side-quest" x-show="arenaData && arenaData.next_batch_at" x-cloak x-on:click="selectMod('review')" x-bind:data-tip="'다음 학습 반영(모델 버전 시한) ' + fmtTs(arenaData?arenaData.next_batch_at:0) + ' · 그전까지의 검수 의견이 v' + (arenaData?arenaData.next_version:'') + ' 프롬프트에 반영됩니다 · 눌러서 검수하러 가기'" data-tip-pos="right">
-        <span>🏁 <b x-text="'v' + (arenaData?arenaData.next_version:'') + ' 마감 ' + ddayTxt(arenaData?arenaData.next_batch_at:0)"></b></span>
-        <span class="side-quest__sub" x-show="arenaData && arenaData.queue" x-text="'남은 ' + (arenaData?arenaData.queue:0) + '건 완주 →'"></span>
-        <span class="side-quest__sub" x-show="arenaData && !arenaData.queue">✓ 완주 · 반영 대기</span>
-      </button>
+      <!-- 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 유형 태그 + D-day + 목표 + 진행 게이지 + 시한 · 전 메뉴 노출 -->
+      <div class="squest" x-show="arenaData && arenaData.next_batch_at" x-cloak x-on:click="selectMod('review')" role="button" tabindex="0"
+           x-bind:data-tip="'다음 학습 반영 ' + fmtTs(arenaData?arenaData.next_batch_at:0) + ' · 그전까지의 검수 의견이 v' + (arenaData?arenaData.next_version:'') + ' 프롬프트에 반영됩니다 · 눌러서 검수하러 가기'" data-tip-pos="right">
+        <div class="squest__hd">
+          <span class="squest__type">팀 퀘스트</span>
+          <span class="squest__dday" x-bind:class="['D-DAY','D-1'].indexOf(ddayTxt(arenaData?arenaData.next_batch_at:0)) >= 0 ? 'is-urgent' : ''" x-text="ddayTxt(arenaData?arenaData.next_batch_at:0)"></span>
+        </div>
+        <div class="squest__title" x-text="'🏁 v' + (arenaData?arenaData.next_version:'') + ' 버전 마감'"></div>
+        <div class="squest__obj" x-show="arenaData && arenaData.queue" x-text="'목표 · 검수 대상 ' + questTotal() + '건 전량 완주'"></div>
+        <div class="squest__obj" x-show="arenaData && !arenaData.queue">목표 달성 · 반영을 기다리는 중</div>
+        <div class="squest__bar"><div class="squest__fill" x-bind:class="arenaData && !arenaData.queue ? 'is-done' : ''" x-bind:style="'width:' + questPct() + '%'"></div></div>
+        <div class="squest__cnt"><b class="tnum" x-text="questDone() + ' / ' + questTotal()"></b><span class="tnum" x-text="questPct() + '%'"></span></div>
+        <div class="squest__foot">
+          <span>⏳ <span class="tnum" x-text="fmtTs(arenaData?arenaData.next_batch_at:0) + ' 반영'"></span></span>
+          <span class="squest__go" x-show="arenaData && arenaData.queue" x-text="'남은 ' + (arenaData?arenaData.queue:0) + '건 →'"></span>
+          <span class="squest__go" x-show="arenaData && !arenaData.queue">✓ 완주</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1220,6 +1232,7 @@ PAGE = """<!doctype html>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!schedEditing" x-on:click="schedEdit()" x-text="nextBatchAt ? '수정' : '퀘스트 생성'"></button>
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="schedEditing" x-on:click="saveLearnSched()">저장</button>
                 <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
+                <span x-show="learnReport && learnReport.ts" style="width:1px;height:14px;background:var(--ds-hairline)" aria-hidden="true"></span>
                 <template x-if="learnReport && learnReport.ts">
                   <span class="text-xs text-muted">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
                     · 신규 <b class="text-ink tnum" x-text="'+' + ((learnReport.golden&&learnReport.golden.new)||0)"></b>

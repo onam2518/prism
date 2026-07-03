@@ -780,6 +780,9 @@
         const n = Math.round((d1 - d0) / 86400000);
         return n <= 0 ? 'D-DAY' : 'D-' + n;
       },
+      questTotal() { return (this.arenaData && this.arenaData.total_targets) || 0; },
+      questDone() { const t = this.questTotal(); return Math.max(0, t - ((this.arenaData && this.arenaData.queue) || 0)); },
+      questPct() { const t = this.questTotal(); return t ? Math.round(this.questDone() / t * 100) : 0; },
       // 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보·추출(전 기준치 논문 근거)
       learnData: null, learnDataBusy: false,
       async loadLearnData() {
