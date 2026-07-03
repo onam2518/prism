@@ -461,8 +461,13 @@ class SupabaseStore:
         rows = self._get("feedback_routes", "select=stage,directive"
                          f"{tq}&order=created_at.desc&limit={limit_per_stage * 4}")
         out = {}
+        seen = set()
         for r in rows:
             st = r.get("stage") if r.get("stage") in ("extract", "analyze", "review", "judge") else "analyze"
+            d = (r.get("directive") or "").strip()
+            if (st, d) in seen:
+                continue
+            seen.add((st, d))
             lst = out.setdefault(st, [])
             dv = (r.get("directive") or "").strip()
             if dv and len(lst) < limit_per_stage:

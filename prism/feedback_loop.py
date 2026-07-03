@@ -83,7 +83,8 @@ def meta_compile(llm, stage: str, raw_text: str) -> dict:
     if not (raw_text or "").strip():
         return {"stage": stage, "directive": "", "ambiguities": []}
     if getattr(llm, "mock", False):
-        return {"stage": stage, "directive": raw_text.strip()[:400], "ambiguities": []}
+        lines = list(dict.fromkeys(ln.strip() for ln in raw_text.splitlines() if ln.strip()))
+        return {"stage": stage, "directive": "\n".join(lines)[:400], "ambiguities": []}
     try:
         obj, _res = llm.complete_json(META_SYSTEM, f"[단계] {stage}\n[검수자 피드백 묶음]\n{raw_text}",
                                       tag="metacompile")

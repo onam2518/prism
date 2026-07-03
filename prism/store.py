@@ -568,12 +568,17 @@ class Store:
     def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
         c = self._conn()
         out = {}
+        seen = set()
         for stage, directive in c.execute(
                 "SELECT stage,directive FROM feedback_routes WHERE COALESCE(directive,'')!='' ORDER BY ts DESC"):
             st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
+            d = directive.strip()
+            if (st, d) in seen:                        # 동일 지시 반복 제거(표시·프롬프트 병기 모두)
+                continue
+            seen.add((st, d))
             lst = out.setdefault(st, [])
             if len(lst) < limit_per_stage:
-                lst.append(directive.strip())
+                lst.append(d)
         return out
 
     def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:

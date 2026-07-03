@@ -172,5 +172,42 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.ok("/config", {"meta_call_models": {}})
 
 
+    # ── e2e: 콘텐츠 추가 → 검수 합의·교정 → 학습 반영 → 정답셋 승격 → 평가 ──
+    def test_08_e2e_review_to_golden(self):
+        title = "E2E 정답셋 승격 검증"
+        self.ok("/run", {"displayServiceName": "뉴스", "title": title,
+                         "body": "학습 반영 이후 정답셋으로 승격되는 전체 흐름을 검증하기 위한 본문입니다. 충분한 길이를 확보합니다."})
+        dash = self.ok("/dashboard")
+        h = next(c["hash"] for c in dash["contents"] if c["title"] == title)
+        # 검수: 교정(리드문) 후 2인 '정확' 합의
+        fixed = "학습 반영 이후 정답셋 승격 흐름을 검증한다."
+        self.ok("/patch-meta", {"hash": h, "patch": {"summary": fixed}, "reviewer": "복실"})
+        for rv in ("복실", "용희"):
+            self.ok("/feedback", {"hash": h, "service": "뉴스", "title": title,
+                                  "verdict": "good", "stage": "review", "note": "", "reviewer": rv})
+        # 학습 반영 → 정답셋 승격 확인(교정된 리드문이 정답에 반영)
+        before = self.ok("/golden-status")
+        r = self.ok("/learn-batch", {})
+        self.assertTrue(r.get("ok"))
+        gl = self.ok("/golden-list")
+        row = next((g for g in gl["items"] if g["hash"] == h), None)
+        self.assertIsNotNone(row, "검수 합의 콘텐츠가 정답셋으로 승격되어야 함")
+        self.assertEqual(row.get("source"), "review")
+        gs = self.ok("/golden-status")
+        self.assertGreaterEqual(gs["total"], (before.get("total") or 0) + 1)
+        self.assertGreaterEqual(gs.get("batch_seq", 0), 1)      # 버전 회차 증가
+        # 정답 원문에 교정 리드문 반영 확인(learn-export sft 원천)
+        status, sft = _req(self.port, "/learn-export?kind=sft")
+        self.assertEqual(status, 200)
+        sft_text = sft if isinstance(sft, str) else json.dumps(sft, ensure_ascii=False)
+        self.assertIn(fixed, sft_text)              # 교정 리드문이 SFT 정답으로 반영
+        # 승격된 정답셋으로 평가 실행(모의)
+        ev = self.ok("/eval-golden", {"model": "", "scope": "all"})
+        self.assertTrue(ev.get("ok"), ev)
+        self.assertGreaterEqual(ev.get("evaluated", 0), 1)
+        ld = self.ok("/learn-data")
+        self.assertGreaterEqual(ld.get("golden_n", 0), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

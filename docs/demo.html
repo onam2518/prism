@@ -2302,6 +2302,12 @@
         this.reviewer = ''; this.authToken = ''; this.adminData = null; this.arenaData = null;
         this.mod = 'home'; this.reviewerEditing = true;
       },
+      autoRerun: false, autoRerunMsg: '',
+      async saveAutoRerun() {
+        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ auto_rerun_after_batch: !!this.autoRerun }) }); this.autoRerunMsg = '✓ 저장됨'; }
+        catch (e) { this.autoRerunMsg = '실패'; }
+        setTimeout(() => { this.autoRerunMsg = ''; }, 2500);
+      },
       get isDesktop() { return typeof window.pywebview !== 'undefined'; },
       dtAllowDl: true, dtPersist: true, dtMsg: '',
       async saveDesktopOpts() {
@@ -2903,6 +2909,7 @@
           if (this.cfg.modelPrompts) this.modelPrompts = this.cfg.modelPrompts;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.metaCallModels) this.callModels = Object.assign({ summary: '', entities: '', intent: '', category: '' }, this.cfg.metaCallModels);
+          if (typeof this.cfg.autoRerunAfterBatch === 'boolean') this.autoRerun = this.cfg.autoRerunAfterBatch;
           if (typeof this.cfg.desktopAllowDownloads === 'boolean') this.dtAllowDl = this.cfg.desktopAllowDownloads;
           if (typeof this.cfg.desktopPersistStorage === 'boolean') this.dtPersist = this.cfg.desktopPersistStorage;
           if (typeof this.cfg.metaFourCalls === 'boolean') this.fourCalls = this.cfg.metaFourCalls;
@@ -4726,7 +4733,7 @@ body: (미리보기 본문)' }));
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>추가된 콘텐츠(자동·수동 불문)에 <b>모델을 실행</b>해 검수용 초안을 만듭니다 · 여기는 <b>수동 실행</b>입니다.</li>
           <li>실행 결과는 <b>버전 v(학습 반영 회차+1)</b> 로 기록됩니다 · 현재 다음 실행 버전: <b class="text-ink tnum" x-text="verTxt"></b></li>
-          <li><b>자동 프로세스</b>: 학습 반영(매일 04:00)이 끝나면 개선된 프롬프트의 새 버전으로 <b>자동 재실행</b>되도록 설정할 수 있습니다(설정 auto_rerun_after_batch · 기본 꺼짐, 비용 발생).</li>
+          <li><b>자동 프로세스</b>: 학습 반영(매일 04:00)이 끝나면 새 버전으로 <b>자동 재실행</b>되게 할 수 있습니다 · <b>테스트셋 관리 · 학습 반영</b>의 토글로 켭니다(기본 꺼짐 · 비용 발생).</li>
         </ul>
         <!-- 사용 모델: 리드문·메타 추출과 단건·일괄 실행의 기본값(제공자 불문 전 모델 노출) -->
         <section class="panel" data-fn><div class="panel-hd"><b>사용 모델</b><span class="meta">기본 실행 모델 · 리드문·메타 추출과 실행의 기본값</span></div>
@@ -5197,9 +5204,14 @@ body: (미리보기 본문)' }));
           </div>
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:12px">
-                <li>의견을 모아 <b>하루 1회</b> 반영해 결과가 흔들리지 않게 합니다 · 반영 후 새 버전 자동 재실행은 설정(auto_rerun_after_batch)으로 켤 수 있습니다.</li>
+                <li>의견을 모아 <b>하루 1회</b> 반영해 결과가 흔들리지 않게 합니다.</li>
                 <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
               </ul>
+              <label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ds-body);cursor:pointer;margin-bottom:12px">
+                <input type="checkbox" x-model="autoRerun" x-on:change="saveAutoRerun()">
+                반영이 끝나면 <b>새 버전으로 전체 자동 재실행</b> <span class="text-xs text-muted">(건당 비용 발생)</span>
+                <span class="text-xs" style="color:var(--ds-success)" x-text="autoRerunMsg"></span>
+              </label>
               <!-- 일배치 결과 요약(상세 수치는 위 '골든셋 생성 현황' · 정합성·모델 비교는 '골든셋 평가' 탭) -->
               <template x-if="learnReport && learnReport.ts">
                 <div class="text-xs text-muted" style="margin-bottom:12px">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
@@ -5208,13 +5220,14 @@ body: (미리보기 본문)' }));
                   · 의견 갈림 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></b>
                   <span x-show="learnReport.golden && learnReport.golden.demoted"> · 정답 제외 <b class="text-ink tnum" x-text="learnReport.golden.demoted"></b></span>
                   · 정답 일치율 <b class="text-ink tnum" x-text="pctTxt(learnReport.grade_accuracy)"></b>
-                  <span x-show="learnReport.eval && learnReport.eval.grade_ci" class="tnum" x-text="learnReport.eval && learnReport.eval.grade_ci ? (' (신뢰구간 ' + pctTxt(learnReport.eval.grade_ci.lo) + '~' + pctTxt(learnReport.eval.grade_ci.hi) + ')') : ''"></span>
+                  <span x-show="learnReport.eval && learnReport.eval.grade_ci" class="tnum" x-text="learnReport.eval && learnReport.eval.grade_ci ? (' (신뢰구간 ' + pctTxt(learnReport.eval.grade_ci.lo) + '~' + pctTxt(learnReport.eval.grade_ci.hi) + ' · 표본 ' + learnReport.eval.grade_ci.n + '건)') : ''"></span>
                 </div>
               </template>
-              <!-- 개선 지시(단계별) -->
+              <!-- 학습 보정 지시(단계별 · 중복 정리) -->
+              <div class="subhd" style="margin:4px 0 8px" x-show="metaResults && ['extract','analyze','review','judge'].some(st => metaResults[st] && (metaResults[st].directive || (metaResults[st].ambiguities||[]).length))">학습 보정 지시 <span class="meta">검수 피드백을 정리해 각 단계 프롬프트에 병기합니다</span></div>
               <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="stage">
                 <div x-show="metaResults && metaResults[stage] && (metaResults[stage].directive || (metaResults[stage].ambiguities||[]).length)" class="metarow">
-                  <span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
+                  <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="({extract:'① 리드문·엔티티 호출에 병기', analyze:'③ 인텐트·④ 카테고리 호출에 병기', review:'품질 판정 프롬프트에 병기', judge:'법령·유통 판정 프롬프트에 병기'})[stage]" data-tip-pos="top" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
                   <div style="flex:1;min-width:0">
                     <div class="metarow__dir" x-text="metaResults&&metaResults[stage]?metaResults[stage].directive:''"></div>
                     <template x-for="a in (metaResults&&metaResults[stage]?metaResults[stage].ambiguities:[])" x-bind:key="a">
@@ -5425,8 +5438,16 @@ body: (미리보기 본문)' }));
         </section>
       </div><!-- /콘텐츠 검수 · 원본 목록 -->
 
-      <!-- ═══ 모듈: 팀 관리 (멀티테넌시) ═══ -->
+      <!-- ═══ 모듈: 팀 관리 (멀티테넌시 · 팀 모드 전용) ═══ -->
       <div x-show="mod === 'admin'" x-cloak class="w-full space-y-4">
+        <section class="panel" x-show="backend !== 'supabase'"><div class="panel-hd"><b>팀 관리</b><span class="meta">로컬 단독 실행</span></div>
+          <div class="panel-bd"><ul class="ds-bullets">
+            <li>팀 기능(팀 생성 · 초대 코드 · 멤버 관리)은 <b>팀 모드(공유 서버)</b>에서 동작합니다.</li>
+            <li>지금은 로컬 단독 실행이라 팀 없이 <b>개인 검수</b>로 진행됩니다 · 검수·평가·정답셋 등 나머지 기능은 동일하게 사용할 수 있습니다.</li>
+          </ul></div>
+        </section>
+        <template x-if="backend === 'supabase'">
+        <div class="space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>새 팀 만들기</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
@@ -5471,6 +5492,8 @@ body: (미리보기 본문)' }));
           </div>
         </section>
         <div x-show="adminData && !adminData.isAdmin" class="text-xs text-muted" style="padding:4px">멤버 관리는 팀 관리자(생성자·위임)만 가능합니다.</div>
+        </div>
+        </template>
       </div>
 
       <!-- ═══ 모듈: 시스템 설정(운영 관리자) · 데이터 관리(상단) + API 키·모델(하단) ═══ -->
