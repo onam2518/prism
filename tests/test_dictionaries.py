@@ -1,0 +1,65 @@
+"""사전·스키마 계약: 분류 정규화 · 인입 매핑 · 검증 화이트리스트.
+
+실행: python3 -m pytest tests/ -q  (stdlib unittest · 의존성 0)
+구조 근거는 TESTING.md 참조.
+"""
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+class TestDictionaries(unittest.TestCase):
+    def test_normalize_content_category_snap(self):
+        from prism import dictionaries as D
+        self.assertEqual(D.normalize_content_category("Sports / Soccer (Domestic)"),
+                         "Sports / Soccer (Domestic)")
+        self.assertEqual(D.normalize_content_category("엉터리"), "Unclassified")
+
+    def test_normalize_category_list(self):
+        from prism import dictionaries as D
+        out = D.normalize_category_list(["Sports", "Sports", "엉터리", "News and Politics"])
+        self.assertEqual(out, ["Sports", "News and Politics"])          # 중복·미분류 제거
+        self.assertEqual(D.normalize_category_list("Sports"), ["Sports"])  # 문자열 허용
+        # 구 dict 형식 호환(값만 추림)
+        self.assertEqual(D.normalize_category_list({"e": "Sports"}), ["Sports"])
+
+
+class TestIngest(unittest.TestCase):
+    def test_source_url_mapping(self):
+        from prism.ingest import to_contents_rows
+        rows = [{"제목": "T", "내용": "본문", "서비스명": "뉴스", "원문링크": "https://x/1"}]
+        items, m = to_contents_rows(rows)
+        self.assertEqual(m.get("source_url"), "원문링크")
+        self.assertEqual(items[0]["source_url"], "https://x/1")
+
+    def test_required_missing_raises(self):
+        from prism.ingest import to_contents_rows
+        with self.assertRaises(ValueError):
+            to_contents_rows([{"제목": "T"}])                          # body 없음
+
+
+class TestSchema(unittest.TestCase):
+    def test_content_source_url_and_ref(self):
+        from prism.schema import Content
+        c = Content.from_dict({"displayServiceName": "뉴스", "title": "T",
+                               "body": "B", "url": "https://x/2"})
+        self.assertEqual(c.source_url, "https://x/2")                  # url→source_url
+        ref = c.ref()
+        self.assertEqual(ref["body"], "B")
+        self.assertEqual(ref["source_url"], "https://x/2")
+
+
+class TestVerify(unittest.TestCase):
+    def test_content_category_tier1_whitelist_list(self):
+        from prism.verify import verify_item
+        from prism.schema import ItemMeta, Content
+        im = ItemMeta(content_category=["News and Politics / Society", "엉터리Tier1 / X",
+                                        "News and Politics / Society"])  # 중복+사전외
+        verify_item(im, Content(displayServiceName="뉴스", title="t"))
+        self.assertEqual(im.content_category, ["News and Politics / Society"])  # 화이트리스트+중복제거
+
+
+if __name__ == "__main__":
+    unittest.main()

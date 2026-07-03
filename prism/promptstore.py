@@ -100,13 +100,6 @@ def set_active(version: str):
     _save(data)
 
 
-def save_version(version: str, body: dict, activate: bool = False):
-    data = _load()
-    data["versions"][version] = body
-    if activate:
-        data["active"] = version
-    _save(data)
-
 
 def new_from(base: str, new_version: str) -> dict:
     data = _load()

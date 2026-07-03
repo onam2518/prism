@@ -341,10 +341,6 @@ def normalize_content_category(raw: str) -> str:
     return "Unclassified"
 
 
-def normalize_categories(cmap: dict) -> dict:
-    """{엔티티: 카테고리문자열} 전체를 사전화. (구 형식 호환용)"""
-    return {e: normalize_content_category(c) for e, c in (cmap or {}).items()}
-
 
 def normalize_category_list(cats) -> list:
     """콘텐츠 단위 카테고리 N개(1312) → 사전 정식 경로 리스트.
@@ -397,9 +393,6 @@ DOMAIN_GROUP_MAP = {
     "지식·교양": ["Education", "Books and Literature", "Science"],
 }
 
-
-def all_quality_ids():
-    return list(QUALITY_METAS.keys())
 
 
 def apply_profile(prof: dict):

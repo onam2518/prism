@@ -98,6 +98,7 @@ python3 -m prism.cli report  --batch examples/contents.sample.jsonl --mock --out
 | [QA_CHECKLIST.md](QA_CHECKLIST.md) | QA 담당자 (QA 빌드 기준 기대값 포함) |
 | [HANDOFF.md](HANDOFF.md) | 개발 인수인계 (구조·정책·이력) |
 | [LEARNING_DESIGN.md](LEARNING_DESIGN.md) | 학습데이터·게임화 설계 근거 (논문 인용) |
+| [TESTING.md](TESTING.md) | 테스트 구조와 방법론 근거 (3층 + 메타모픽) |
 | [SUPABASE_MIGRATION.md](SUPABASE_MIGRATION.md) | 팀 모드(Supabase) 테이블 명세 |
 
 ## 기술 요약
