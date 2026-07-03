@@ -516,18 +516,7 @@
         this.reviewer = ''; this.authToken = ''; this.adminData = null; this.arenaData = null;
         this.mod = 'home'; this.reviewerEditing = true;
       },
-      autoRerun: false, autoRerunMsg: '',
-      async saveAutoRerun() {
-        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ auto_rerun_after_batch: !!this.autoRerun }) }); this.autoRerunMsg = '✓ 저장됨'; }
-        catch (e) { this.autoRerunMsg = '실패'; }
-        setTimeout(() => { this.autoRerunMsg = ''; }, 2500);
-      },
-      goldenMinGood: 1, minGoodMsg: '',
-      async saveMinGood() {
-        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) }); this.minGoodMsg = '✓ 저장됨'; }
-        catch (e) { this.minGoodMsg = '실패'; }
-        setTimeout(() => { this.minGoodMsg = ''; }, 2500);
-      },
+      goldenMinGood: 1,
       get isDesktop() { return typeof window.pywebview !== 'undefined'; },
       dtAllowDl: true, dtPersist: true, dtMsg: '',
       async saveDesktopOpts() {
@@ -764,12 +753,14 @@
       async loadLearnReport() { try { const r = await (await fetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; if (r && r.next_batch_at) this.nextBatchAt = r.next_batch_at; } catch (e) {} },
       nextBatchAt: 0,
       // 학습 반영 주기(모델 버전 시한 · 관리자): N일마다 지정 시각에 반영 · 지금 실행 시 주기 재시작
-      learnCycle: 1, learnHour: 4, learnSchedMsg: '',
-      async saveLearnSched() {
+      learnCycle: 1, learnHour: 4, learnSchedMsg: '', schedEditing: false,
+      async saveLearnSched() {                           // 일정·정책 통합 저장(주기·시각·확정 최소 인원)
         try {
-          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_cycle_days: parseInt(this.learnCycle, 10) || 1, learn_batch_hour: parseInt(this.learnHour, 10) || 0 }) });
+          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_cycle_days: parseInt(this.learnCycle, 10) || 1, learn_batch_hour: parseInt(this.learnHour, 10) || 0, golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) });
           this.learnSchedMsg = '✓ 저장됨';
+          this.schedEditing = false;
           this.loadLearnReport();                        // 다음 반영 예정 갱신
+          this.loadArena();                              // 홈·사이드바 퀘스트 D-day 갱신
         } catch (e) { this.learnSchedMsg = '실패'; }
         setTimeout(() => { this.learnSchedMsg = ''; }, 2500);
       },
@@ -1149,7 +1140,6 @@
           if (this.cfg.modelPrompts) this.modelPrompts = this.cfg.modelPrompts;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.metaCallModels) this.callModels = Object.assign({ summary: '', entities: '', intent: '', category: '' }, this.cfg.metaCallModels);
-          if (typeof this.cfg.autoRerunAfterBatch === 'boolean') this.autoRerun = this.cfg.autoRerunAfterBatch;
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (this.cfg.learnCycleDays) this.learnCycle = this.cfg.learnCycleDays;
           if (typeof this.cfg.learnBatchHour === 'number') this.learnHour = this.cfg.learnBatchHour;

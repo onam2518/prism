@@ -302,25 +302,6 @@ def rerun_all(model: str, team=None, limit: int = 200) -> dict:
     return {"ok": True, "done": done, "failed": failed, "model": model}
 
 
-def auto_rerun_after_batch(team=None):
-    """학습 반영 종료 후 자동 재실행(옵션 · Config.auto_rerun_after_batch):
-    각 콘텐츠를 기존 모델(미기록이면 기본 모델)로 새 버전 초안 재생성."""
-    cfg = Config.load()
-    rows = results_rows(team=team)
-    done = 0
-    seen = set()
-    for r in rows:
-        ref = r.get("content_ref") or {}
-        ch = _row_key(ref)
-        if ch in seen:
-            continue
-        seen.add(ch)
-        m = (r.get("trace") or {}).get("model", "") or cfg.model
-        if not rerun_content(ch, m, team=team).get("error"):
-            done += 1
-    print(f"  [batch] 자동 재실행 완료 {done}건(새 버전)")
-
-
 def rerun_content(content_hash: str, model: str, team=None) -> dict:
     """같은 콘텐츠를 지정 모델로 재실행(초안 재생성 · 관리자). 기존 초안은 덮어쓰되
     이전 초안을 patch_log 에 남겨(rerun:구모델) 이력·비교 근거를 보존한다."""
@@ -1627,7 +1608,6 @@ def config_status() -> dict:
         "stageModels": dict(cfg.stage_models or {}),
         "modelPrompts": dict(cfg.model_prompts or {}),
         "availableModels": _candidate_models(cfg),
-        "autoRerunAfterBatch": bool(getattr(cfg, "auto_rerun_after_batch", False)),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "learnCycleDays": max(1, min(30, int(getattr(cfg, "learn_cycle_days", 1) or 1))),
         "learnBatchHour": max(0, min(23, int(getattr(cfg, "learn_batch_hour", 4) or 0))),
@@ -1716,8 +1696,7 @@ def apply_config(data: dict) -> dict:
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
     has_desktop = ("desktop_allow_downloads" in data) or ("desktop_persist_storage" in data) \
-        or ("auto_rerun_after_batch" in data) or ("golden_min_good" in data) \
-        or ("learn_cycle_days" in data) or ("learn_batch_hour" in data)
+        or ("golden_min_good" in data) or ("learn_cycle_days" in data) or ("learn_batch_hour" in data)
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_desktop):
         cfg = Config.load()
@@ -1785,8 +1764,6 @@ def apply_config(data: dict) -> dict:
             cfg.meta_call_models = {k: v for k, v in cm.items() if v}
         if has_4c:
             cfg.meta_four_calls = bool(data.get("meta_four_calls"))
-        if "auto_rerun_after_batch" in data:
-            cfg.auto_rerun_after_batch = bool(data.get("auto_rerun_after_batch"))
         if "golden_min_good" in data:             # 골든 확정 최소 '정확' 인원(1~9)
             try:
                 cfg.golden_min_good = max(1, min(9, int(data.get("golden_min_good") or 1)))
