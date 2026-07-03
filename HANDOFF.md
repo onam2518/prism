@@ -190,8 +190,9 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
 
 ## 코드 구조 (핵심 파일)
-- `prism/serve.py`(~5,500줄) · 앱 서버(stdlib http.server) + HTML 마크업. 온보딩·아레나·대시보드·검수·프롬프트 스튜디오·학습 배치.
-- `prism/vendor/app.js`·`app.css` · 앱 Alpine 스크립트·스타일(2026-07-03 serve.PAGE 에서 분리 · 단일 원천). 데모는 make_demo 가 다시 인라인.
+- `prism/serve.py`(~2,500줄) · HTTP 디스패치 + 콘텐츠 실행·검수 라우트(stdlib http.server). 컴포지션 루트(learnops/adminops 에 `_SV` 주입 + 하위호환 별칭).
+- `prism/page.py` · 앱 HTML 마크업(PAGE). `prism/vendor/app.js`·`app.css` · 앱 Alpine 스크립트·스타일(단일 원천, 데모는 make_demo 가 재인라인).
+- `prism/learnops.py` · 학습·골든·평가 도메인(learning_batch·eval_golden·소요서·버전 스냅샷). `prism/adminops.py` · 인증 프록시·JWT 캐시·권한 2단계·팀 액션.
 - `prism/store.py`·`supastore.py` · dual-mode 저장소 + golden.
 - `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` · 추출 파이프라인. `abtest.py` · 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).
 - `prism/imagext.py` · 이미지 인제스트(방식 A, 코어 무수정).
@@ -219,7 +220,9 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - **모델별 learned 계층**: feedback_routes.model 그룹 → `PR.LEARNED_BY_MODEL` → 그 모델의 item/call 프롬프트에만 병기(공통=모델 미기록 라우트). 메타컴파일도 모델별 그룹 컴파일(`model_results`).
 - **골든 확정 인원 UI**: 학습 반영 카드에서 `golden_min_good`(1~5) 조정 → /config.
 - **프롬프트 버전 스냅샷**: 학습 반영마다 다음 버전(v=회차+1)이 쓸 콜별 최종 시스템 프롬프트를 `prompt_snapshot_v{N}` 리포트로 영속. 조회 `GET /prompt-snapshot?v=N`(미지정=최신) · 버전 재현 근거.
-- **자산 분리 1단계**: 인라인 앱 JS/CSS → `prism/vendor/app.js`·`app.css`(serve.py 7,667→5,495줄). PyInstaller 스펙은 vendor 디렉토리 통째 포함이라 무변경. 라우트 모듈 분리는 별도 트랙(보류).
+- **자산 분리 1단계**: 인라인 앱 JS/CSS → `prism/vendor/app.js`·`app.css`. PyInstaller 스펙은 vendor 디렉토리 통째 포함이라 무변경.
+- **라우트 분리(점진 3차 · 2026-07-03 후반)**: 학습·골든·평가 → `learnops.py`, 관리자·팀·인증 → `adminops.py`, HTML 마크업 → `page.py`(serve.py 7,667→2,507줄). serve 가 자기 모듈 객체를 `_SV` 로 주입(-m 실행 __main__ 이중 인스턴스 회피)하고 하위호환 별칭 유지 · HTTP 계약 무변경(스모크 게이트).
+- **4호출 ①② 병렬화 옵션**: `Methodology.parallel_calls`(기본 off) + abtest 프리셋 `parallel`. 산출·차단은 순차와 파리티, 기본값 전환은 실측 A/B + 계약 개정 후.
 
 ## 다음 단계
 1. **실 팀 운영 개시**: supabase 는 아직 팀 데이터 0건(2026-07-02 확인). 실사용에서 골드 문항 노출 비율(현재
