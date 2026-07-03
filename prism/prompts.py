@@ -5,6 +5,7 @@
 덧붙여 깨지지 않게 한다. 보완은 배치 결과의 콘텐츠별 피드백이 LEARNED 로 누적되어
 다음 추출부터 자동 반영된다(학습 루프).
 """
+from __future__ import annotations
 from . import dictionaries as D
 
 QMETA_VERSION = "qmeta@v31"

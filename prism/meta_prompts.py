@@ -12,6 +12,7 @@
   (config.family_wrappers 오버라이드, WRAPPER_OVERRIDES 로 주입).
 - 최종 프롬프트 = 래퍼 템플릿에 {ROLE}/{SCHEMA}/{RULES}/{EXAMPLES}/{SELF_CHECK}/{LEARNED} 삽입.
 """
+from __future__ import annotations
 from . import dictionaries as D
 
 CALLS = ("summary", "entities", "intent", "category")

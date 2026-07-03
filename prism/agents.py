@@ -1,4 +1,5 @@
 """추출 에이전트 래퍼 (Quality·Legal·Item)."""
+from __future__ import annotations
 from . import prompts as P
 from .schema import QualityMeta, ItemMeta, LegalMeta, HarmType
 
