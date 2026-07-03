@@ -294,6 +294,7 @@ STUB = """<script>
         const md = '# (데모) 파인튜닝 소요서 예시' + String.fromCharCode(10) + '실서비스에서는 축적 현황과 논문 기준치를 대비한 소요서가 생성됩니다.';
         return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob([md], { type: 'text/markdown' })), json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve(md) });
       }
+      if (u.indexOf('/prompt-snapshot') > -1) return Promise.resolve(J({ ok: false, snapshot: null }));
       if (u.indexOf('/prompt-preview') > -1) {
         const q = new URLSearchParams(u.split('?')[1] || '');
         return Promise.resolve(J({ ok: true, family: 'solar', call: q.get('call') || 'summary',
@@ -346,6 +347,11 @@ def build() -> str:
     comp_css = open(os.path.join(ROOT, "prism", "vendor", "ds-components.css"), encoding="utf-8").read()
     html = html.replace('<link href="/vendor/ds-theme.css" rel="stylesheet">', f'<style>{theme_css}</style>')
     html = html.replace('<link href="/vendor/ds-components.css" rel="stylesheet">', f'<style>{comp_css}</style>')
+    # 앱 CSS·JS(분리 파일) 인라인 · 이후의 /vendor/·폰트·result 치환이 앱 코드에도 닿도록 여기서 병합
+    app_css = open(os.path.join(ROOT, "prism", "vendor", "app.css"), encoding="utf-8").read()
+    app_js = open(os.path.join(ROOT, "prism", "vendor", "app.js"), encoding="utf-8").read()
+    html = html.replace('<link href="/vendor/app.css" rel="stylesheet">', f'<style>{app_css}</style>')
+    html = html.replace('<script src="/vendor/app.js"></script>', f'<script>{app_js}</script>')
     # 벤더 에셋(캐릭터·로고 SVG) → docs/demo-assets/ (Pages 루트 내부, main() 에서 복사)
     #   ../prism/vendor 는 Pages(docs=루트)에서 사이트 밖으로 나가 404 → 루트 내부 상대경로로.
     # src="/vendor/ 뿐 아니라 charOptions 의 JS 경로('/vendor/…')까지 포함해 전역 치환

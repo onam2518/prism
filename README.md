@@ -104,7 +104,7 @@ python3 -m prism.cli report  --batch examples/contents.sample.jsonl --mock --out
 
 ## 기술 요약
 
-- 서버: 파이썬 표준 라이브러리 http.server, 단일 파일 UI(Alpine.js). 외부 패키지 의존 없음.
+- 서버: 파이썬 표준 라이브러리 http.server + Alpine.js UI(앱 스크립트·스타일은 `prism/vendor/app.js`·`app.css`). 외부 패키지 의존 없음.
 - 저장소: 로컬 SQLite 기본, 팀 모드는 Supabase(PostgREST) 이중 지원.
 - 모의 모드(`--mock`): 키 없이 결정론적 모의 추출로 전 기능이 동작합니다.
 - 모델 연결: OpenAI 호환 `/v1/chat/completions` 이면 어디든(Upstage 직접, 통합 라우터, 로컬 vLLM/Ollama).

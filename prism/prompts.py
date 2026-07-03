@@ -44,7 +44,7 @@ STAGE_DIRECTIVE = {"extract": "", "analyze": "", "review": "", "judge": ""}
 # 학습 루프: 배치 결과 피드백에서 누적된 보정 지시(자동 반영). 사람이 직접 쓰지 않음.
 LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
 # 모델별 계층: 피드백이 특정 모델의 초안에서 나온 경우 그 모델 프롬프트에만 병기.
-# {model_id: {stage: directive}} — 공통(모델 미기록) 지시는 위 LEARNED 에만 들어간다.
+# {model_id: {stage: directive}} · 공통(모델 미기록) 지시는 위 LEARNED 에만 들어간다.
 LEARNED_BY_MODEL = {}
 
 def directive(stage: str) -> str:

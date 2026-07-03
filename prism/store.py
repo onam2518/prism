@@ -530,7 +530,7 @@ class Store:
             return None
 
     def save_draft(self, content_hash: str, model: str, version, item_meta, quality_meta, team=None):
-        """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert — 결과 비교 팝업의 전체 이력 원천."""
+        """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert · 결과 비교 팝업의 전체 이력 원천."""
         c = self._conn()
         c.execute("INSERT INTO drafts(content_hash,team,model,version,item_meta,quality_meta,ts) "
                   "VALUES(?,?,?,?,?,?,?) "
@@ -624,7 +624,7 @@ class Store:
         c.commit()
 
     def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
-        """공통(모델 미기록) 라우트만 — 모델 귀속 라우트는 routes_by_stage_model 로
+        """공통(모델 미기록) 라우트만 · 모델 귀속 라우트는 routes_by_stage_model 로
         해당 모델 프롬프트에만 병기한다(타 모델 오염·중복 방지)."""
         c = self._conn()
         out = {}
@@ -648,7 +648,7 @@ class Store:
         return out
 
     def routes_by_stage_model(self, limit_per_stage: int = 20, team=None) -> dict:
-        """모델 귀속 라우트: {model: {stage: [directive, …]}} — 모델별 learned 계층의 원천."""
+        """모델 귀속 라우트: {model: {stage: [directive, …]}} · 모델별 learned 계층의 원천."""
         c = self._conn()
         out = {}
         seen = set()

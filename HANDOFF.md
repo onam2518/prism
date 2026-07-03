@@ -190,7 +190,8 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
 
 ## 코드 구조 (핵심 파일)
-- `prism/serve.py`(~5500줄) · 앱 전체(stdlib http.server). 모든 UI 인라인(Alpine.js + Tailwind CDN). 온보딩·아레나·대시보드·검수·프롬프트 스튜디오·학습 배치.
+- `prism/serve.py`(~5,500줄) · 앱 서버(stdlib http.server) + HTML 마크업. 온보딩·아레나·대시보드·검수·프롬프트 스튜디오·학습 배치.
+- `prism/vendor/app.js`·`app.css` · 앱 Alpine 스크립트·스타일(2026-07-03 serve.PAGE 에서 분리 · 단일 원천). 데모는 make_demo 가 다시 인라인.
 - `prism/store.py`·`supastore.py` · dual-mode 저장소 + golden.
 - `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` · 추출 파이프라인. `abtest.py` · 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).
 - `prism/imagext.py` · 이미지 인제스트(방식 A, 코어 무수정).
@@ -207,8 +208,18 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 ## 규칙 / 주의
 - **제품 카피에 em-dash `-` 금지**(·/괄호/문장). 확인: `grep -c "-" prism/serve.py` == 0. 코드 식별자·커밋 메시지는 예외.
 - `x-show`(display:none)는 `.space-y-* > :not([hidden]) ~` 마진에 잡혀 팬텀 마진 유발 → 조건부 첫 자식은 `x-if`.
-- 커밋 trailer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+- 커밋 trailer: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - 릴리즈 노트·공개 레포에 내부(DNM/Confluence) 식별자·정책 노출 금지.
+
+## 구조 감사 개선 (2026-07-03 · P1~P3 일괄)
+- **리포트 영속화**: `_LAST_*` 전역 → `store.save_report/get_report`(kind×팀 upsert). 재시작 소실·팀 오염 해소. `/eval-judge` 레이트리밋 추가.
+- **스토어 계약 테스트**: `tests/test_store_contract.py` 동일 시나리오 Mixin 을 sqlite/supabase 양쪽에 실행. 라이브는 `PRISM_TEST_SUPABASE=1`(일회용 auth 계정+팀 생성 후 정리 · contents.team_id 가 prism_teams FK 라 실팀 필수).
+- **재실행 정합**: `sync_contents(include_all=True)` 로 비-YELLOW 재실행 결과도 upsert(모델·버전·review 갱신 누락 해소).
+- **초안 전체 이력**: `drafts`(sqlite)·`prism_drafts`(supabase) 테이블에 (hash,모델,버전) 스냅샷 적재. 결과 비교 팝업의 정확 매칭 원천, patch_log 는 과거 데이터 폴백.
+- **모델별 learned 계층**: feedback_routes.model 그룹 → `PR.LEARNED_BY_MODEL` → 그 모델의 item/call 프롬프트에만 병기(공통=모델 미기록 라우트). 메타컴파일도 모델별 그룹 컴파일(`model_results`).
+- **골든 확정 인원 UI**: 학습 반영 카드에서 `golden_min_good`(1~5) 조정 → /config.
+- **프롬프트 버전 스냅샷**: 학습 반영마다 다음 버전(v=회차+1)이 쓸 콜별 최종 시스템 프롬프트를 `prompt_snapshot_v{N}` 리포트로 영속. 조회 `GET /prompt-snapshot?v=N`(미지정=최신) · 버전 재현 근거.
+- **자산 분리 1단계**: 인라인 앱 JS/CSS → `prism/vendor/app.js`·`app.css`(serve.py 7,667→5,495줄). PyInstaller 스펙은 vendor 디렉토리 통째 포함이라 무변경. 라우트 모듈 분리는 별도 트랙(보류).
 
 ## 다음 단계
 1. **실 팀 운영 개시**: supabase 는 아직 팀 데이터 0건(2026-07-02 확인). 실사용에서 골드 문항 노출 비율(현재

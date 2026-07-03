@@ -212,6 +212,20 @@ class TestButtonsEndToEnd(unittest.TestCase):
         ld = self.ok("/learn-data")
         self.assertGreaterEqual(ld.get("golden_n", 0), 1)
 
+    def test_09_prompt_snapshot_after_batch(self):
+        """학습 반영이 남긴 버전별 프롬프트 스냅샷: 최신 + v 지정 조회(버전 재현 근거)."""
+        self.ok("/learn-batch", {})
+        r = self.ok("/prompt-snapshot")
+        snap = r.get("snapshot") or {}
+        ver = snap.get("version")
+        self.assertGreaterEqual(int(ver or 0), 1)
+        self.assertEqual(set(snap.get("calls") or {}) & {"summary", "entities", "intent", "category"},
+                         {"summary", "entities", "intent", "category"})
+        for cs in (snap.get("calls") or {}).values():
+            self.assertTrue(cs.get("system"))
+        byv = self.ok(f"/prompt-snapshot?v={ver}")
+        self.assertEqual((byv.get("snapshot") or {}).get("version"), ver)
+
 
 if __name__ == "__main__":
     unittest.main()

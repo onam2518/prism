@@ -11,6 +11,7 @@ Prism의 검증 대상은 성격이 다른 세 층이므로, 테스트도 세 �
 | 1. 단위·계약 | `test_dictionaries` `test_quality_stats` `test_store` `test_gamification` `test_extraction` `test_learning_loop` `test_admin` `test_serve_views` | 순수 함수·스토어·계약 로직 (사전 정규화, 통계, 레벨 커브, 4호출 검증, 권한) | 결정론 입출력이라 고전적 example 기반 단위 테스트가 가장 저렴하고 정확 |
 | 2. 메타모픽·속성 | `test_metamorphic` | 오라클을 만들기 어려운 변환 계층 (정규화 멱등성, 서비스명 동치, 레벨 단조성, mock 파이프라인 INV/DIR, 프롬프트 합성 순수성) | 정답쌍 없이 "변환 전후 관계"로 결함을 잡는다. 케이스당 수백 조합을 고정 시드 난수로 탐색 |
 | 3. 통합·e2e | `test_http_smoke` | 실제 HTTP 서버를 스레드로 부팅해 화면 전 버튼의 엔드포인트 계약 + 검수→정답셋 승격 e2e | 프론트가 호출하는 실제 경로·파라미터·응답 형태를 검증. UI 회귀의 대부분이 이 층에서 잡힘 |
+| 4. 이중 구현 계약 | `test_store_contract` | sqlite(Store)와 supabase(SupabaseStore)가 같은 의미로 동작해야 하는 메서드(용도·평가 판정·리포트·골든·초안 이력·라우트 계층) | 동일 시나리오 Mixin 을 두 구현에 실행해 이중 구현 표류를 잡는다. 라이브는 `PRISM_TEST_SUPABASE=1`(일회용 계정·팀 생성 후 전부 정리), CI 기본은 skip |
 
 세 층 밖의 수동 확인은 `QA_CHECKLIST.md`(QA 빌드 기준 기대값)가 담당한다.
 
@@ -46,6 +47,8 @@ tests/
   test_serve_views.py     드릴다운 · 배지 영속 · 집계 캐시
   test_metamorphic.py     MR·속성 (멱등성 · 동치 · 단조성 · INV/DIR · 합성 순수성)
   test_http_smoke.py      HTTP 실부팅 스모크 + e2e (검수 → 정답셋 → 평가)
+  test_store_contract.py  sqlite/supabase 동일 시나리오 계약 (라이브는 PRISM_TEST_SUPABASE=1)
+  test_demo_js.py         정적 데모 스크립트 파스(node --check) + 필수 스텁 커버리지
 ```
 
 ## 작성 규칙

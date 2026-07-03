@@ -458,7 +458,7 @@ class SupabaseStore:
             self._req("POST", "feedback_routes", body=rows, prefer="return=minimal")
 
     def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
-        """공통(모델 미기록) 라우트만 — 모델 귀속 라우트는 routes_by_stage_model 참조."""
+        """공통(모델 미기록) 라우트만 · 모델 귀속 라우트는 routes_by_stage_model 참조."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback_routes", "select=stage,directive"
                          f"{tq}&or=(model.is.null,model.eq.)"
@@ -477,7 +477,7 @@ class SupabaseStore:
         return out
 
     def routes_by_stage_model(self, limit_per_stage: int = 20, team=None) -> dict:
-        """모델 귀속 라우트: {model: {stage: [directive, …]}} — 모델별 learned 계층의 원천."""
+        """모델 귀속 라우트: {model: {stage: [directive, …]}} · 모델별 learned 계층의 원천."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback_routes", "select=stage,directive,model"
                          f"{tq}&model=neq.&order=created_at.desc&limit={limit_per_stage * 8}")
@@ -755,7 +755,7 @@ class SupabaseStore:
         return rows[0]["payload"] if rows else None
 
     def save_draft(self, content_hash, model, version, item_meta, quality_meta, team=None):
-        """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert — 결과 비교 팝업의 전체 이력 원천."""
+        """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert · 결과 비교 팝업의 전체 이력 원천."""
         self._upsert("drafts", [{"content_hash": content_hash, "team_key": team or "",
                                  "model": model or "", "version": int(version or 1),
                                  "item_meta": item_meta or {}, "quality_meta": quality_meta or {}}])

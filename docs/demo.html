@@ -1871,7 +1871,7 @@
     --ds-hair: var(--ds-hairline);
   }
 </style>
-<script>
+<script>/* Prism 앱 스크립트(Alpine) · serve.PAGE 에서 분리된 단일 원천. */
   document.addEventListener('alpine:init', () => {
     Alpine.data('prismApp', () => ({
       tabItems: [{ id: 'image', label: '이미지' }, { id: 'text', label: '텍스트' }, { id: 'excel', label: '엑셀' }],
@@ -2324,6 +2324,12 @@
         try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ auto_rerun_after_batch: !!this.autoRerun }) }); this.autoRerunMsg = '✓ 저장됨'; }
         catch (e) { this.autoRerunMsg = '실패'; }
         setTimeout(() => { this.autoRerunMsg = ''; }, 2500);
+      },
+      goldenMinGood: 1, minGoodMsg: '',
+      async saveMinGood() {
+        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) }); this.minGoodMsg = '✓ 저장됨'; }
+        catch (e) { this.minGoodMsg = '실패'; }
+        setTimeout(() => { this.minGoodMsg = ''; }, 2500);
       },
       get isDesktop() { return typeof window.pywebview !== 'undefined'; },
       dtAllowDl: true, dtPersist: true, dtMsg: '',
@@ -2927,6 +2933,7 @@
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.metaCallModels) this.callModels = Object.assign({ summary: '', entities: '', intent: '', category: '' }, this.cfg.metaCallModels);
           if (typeof this.cfg.autoRerunAfterBatch === 'boolean') this.autoRerun = this.cfg.autoRerunAfterBatch;
+          if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.desktopAllowDownloads === 'boolean') this.dtAllowDl = this.cfg.desktopAllowDownloads;
           if (typeof this.cfg.desktopPersistStorage === 'boolean') this.dtPersist = this.cfg.desktopPersistStorage;
           if (typeof this.cfg.metaFourCalls === 'boolean') this.fourCalls = this.cfg.metaFourCalls;
@@ -3210,6 +3217,7 @@
         const md = '# (데모) 파인튜닝 소요서 예시' + String.fromCharCode(10) + '실서비스에서는 축적 현황과 논문 기준치를 대비한 소요서가 생성됩니다.';
         return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob([md], { type: 'text/markdown' })), json: () => Promise.resolve({ ok: true }), text: () => Promise.resolve(md) });
       }
+      if (u.indexOf('/prompt-snapshot') > -1) return Promise.resolve(J({ ok: false, snapshot: null }));
       if (u.indexOf('/prompt-preview') > -1) {
         const q = new URLSearchParams(u.split('?')[1] || '');
         return Promise.resolve(J({ ok: true, family: 'solar', call: q.get('call') || 'summary',
@@ -3230,7 +3238,7 @@
   })();
 </script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
-<style>
+<style>/* Prism 앱 스타일 · serve.PAGE 에서 분리된 단일 원천(토큰은 ds-theme.css). */
   [x-cloak]{display:none!important}
   *{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   :root{
@@ -4329,7 +4337,7 @@
       <!-- 사용자 프로필 카드(야구카드형): 내 캐릭터 + 이름. 누르면 '유저명 에이전트' 열림. 미설정 시 프로필 설정 -->
       <button type="button" class="side-profile" x-on:click="reviewer ? (chatOpen = !chatOpen) : (reviewerEditing = true)" x-bind:data-tier="(reviewer && arenaMe) ? levelTier(arenaMe.level) : 0" aria-label="내 프로필·에이전트">
         <span class="side-profile__glow"></span>
-        <span class="side-profile__gain" x-show="reviewer && arenaMe && arenaMe.week_points>0" x-text="'+' + arenaMe.week_points + ' XP'"></span>
+        <span class="side-profile__gain" x-show="reviewer && arenaMe && arenaMe.week_points>0" x-text="arenaMe && arenaMe.week_points ? ('+' + arenaMe.week_points + ' XP') : ''"></span>
         <span class="side-profile__avatar">
           <img x-bind:src="charImg(reviewer ? reviewerChar : 'boksil')" alt="">
           <span class="side-profile__lvl" x-show="reviewer && arenaMe" x-text="'Lv.' + (arenaMe ? arenaMe.level : 0)"></span>
@@ -5226,11 +5234,19 @@
                 <li>의견을 모아 <b>하루 1회</b> 반영해 결과가 흔들리지 않게 합니다.</li>
                 <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
               </ul>
-              <label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ds-body);cursor:pointer;margin-bottom:12px">
-                <input type="checkbox" x-model="autoRerun" x-on:change="saveAutoRerun()">
-                반영이 끝나면 <b>새 버전으로 전체 자동 재실행</b> <span class="text-xs text-muted">(건당 비용 발생)</span>
-                <span class="text-xs" style="color:var(--ds-success)" x-text="autoRerunMsg"></span>
-              </label>
+              <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap;margin-bottom:12px">
+                <label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ds-body);cursor:pointer">
+                  <input type="checkbox" x-model="autoRerun" x-on:change="saveAutoRerun()">
+                  반영이 끝나면 <b>새 버전으로 전체 자동 재실행</b> <span class="text-xs text-muted">(건당 비용 발생)</span>
+                  <span class="text-xs" style="color:var(--ds-success)" x-text="autoRerunMsg"></span>
+                </label>
+                <span class="selctl" data-tip="이 인원 이상이 '정확'으로 합의해야 정답셋으로 확정됩니다 · 팀 규모에 맞게 조정" data-tip-pos="top"><span class="selctl__lbl">확정 최소 인원</span>
+                  <select class="field" x-model="goldenMinGood" x-on:change="saveMinGood()">
+                    <template x-for="n in [1,2,3,4,5]" x-bind:key="n"><option x-bind:value="n" x-text="n + '명'" x-bind:selected="parseInt(goldenMinGood,10)===n"></option></template>
+                  </select>
+                </span>
+                <span class="text-xs" style="color:var(--ds-success)" x-text="minGoodMsg"></span>
+              </div>
               <!-- 일배치 결과 요약(상세 수치는 위 '골든셋 생성 현황' · 정합성·모델 비교는 '골든셋 평가' 탭) -->
               <template x-if="learnReport && learnReport.ts">
                 <div class="text-xs text-muted" style="margin-bottom:12px">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
