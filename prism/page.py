@@ -1953,6 +1953,38 @@ PAGE = """<!doctype html>
   </div>
 
   <!-- 콘텐츠 상세 스플릿뷰(공통 컴포넌트): 좌 추출 원문 렌더 · 우 평가 -->
+  <!-- 정책 팔레트(플로팅 도움말): 검수 중 사전·정책 기준 참조 · 드래그 이동 · 위치 기억 -->
+  <button type="button" class="polfab" x-show="!polOpen" x-cloak x-on:click="polToggle()" data-tip="정책 도움말 · 인텐트/카테고리/품질 사유 기준" data-tip-pos="left" aria-label="정책 도움말 열기">?</button>
+  <div class="polpal" x-show="polOpen" x-cloak x-ref="polpal" x-bind:style="polStyle()">
+    <div class="polpal__hd" x-on:pointerdown="polDragStart($event)">
+      <b>정책 도움말</b><span class="meta">드래그로 이동</span>
+      <button type="button" class="ds-iconbtn ds-iconbtn--sm ml-auto" x-on:click="polOpen=false; polSave()" aria-label="정책 도움말 닫기"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="polpal__bd">
+      <div class="polpal__ctx" x-show="polCtx().length">
+        <span class="text-xs text-muted" style="width:100%">현재 검수 항목의 값 · 눌러서 기준 보기</span>
+        <template x-for="(x,xi) in polCtx()" x-bind:key="'pc'+xi+x.v">
+          <button type="button" class="ds-badge" x-bind:class="{intent:'ds-badge--intent',category:'ds-badge--category',reason:'ds-badge--reason',grade:(x.v==='G'?'ds-badge--success':'ds-badge--error')}[x.kind]" style="cursor:pointer" x-on:click="polShow(x.kind, x.v)" x-text="polCtxLabel(x)"></button>
+        </template>
+      </div>
+      <span class="srcfilter" style="display:flex;gap:4px">
+        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='intent'?'sel':''" x-on:click="polTab='intent'; polHl=''; polSave()">인텐트</button>
+        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='category'?'sel':''" x-on:click="polTab='category'; polHl=''; polSave()">카테고리</button>
+        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='quality'?'sel':''" x-on:click="polTab='quality'; polHl=''; polSave()">품질 사유</button>
+        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='grade'?'sel':''" x-on:click="polTab='grade'; polHl=''; polSave()">등급</button>
+      </span>
+      <input type="text" class="field" placeholder="정책 검색 (값·기준 텍스트)" x-model="polQ">
+      <div class="polpal__list">
+        <template x-for="e in polEntries()" x-bind:key="polTab + e.k">
+          <div class="polpal__item" x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
+            <b x-text="e.t"></b>
+            <div class="text-xs" x-text="e.d || '·'"></div>
+          </div>
+        </template>
+        <div x-show="!polEntries().length" class="text-xs text-muted">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
+      </div>
+    </div>
+  </div>
   <div class="ds-dialog-backdrop" x-show="detailOpen" x-cloak x-on:mousedown.self="detailOpen=false" style="z-index:74">
     <div class="detailview" role="dialog" aria-modal="true" aria-label="콘텐츠 상세">
       <div class="detailview__hd">
@@ -1975,10 +2007,10 @@ PAGE = """<!doctype html>
         <div class="detailview__eval">
           <div x-show="detail && detail.grade" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
           <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
-          <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="right" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:pointer" x-bind:data-tip="termDef('intent', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('intent', e)" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">카테고리</div>
             <div class="flex flex-wrap gap-1 items-center">
-              <template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', e)" data-tip-pos="right" x-text="e"></span></template>
+              <template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:pointer" x-bind:data-tip="termDef('category', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('category', e)" x-text="e"></span></template>
               <!-- 빈칸 감지 → 분류 필요 + 구조화 채우기(IAB Tier1/2) -->
               <template x-if="detail && !detail.category.length">
                 <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -1991,7 +2023,7 @@ PAGE = """<!doctype html>
               </template>
             </div>
           </div>
-          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', e)" data-tip-pos="right" x-text="e"></span></template></div></div>
+          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="e"></span></template></div></div>
           <div class="dve__verdict">
             <div class="dve__lbl">검수 판정</div>
             <!-- 검수 완료(판정 있음 · 수정 아님): 완료 표기(색상=판정별) + 수정 일시 + 추가 수정 -->

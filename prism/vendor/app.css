@@ -875,3 +875,24 @@
   .ds-table th{padding:11px 14px 12px}
   .ds-table td{padding:12px 14px}
   .ds-table thead tr{border-bottom:1px solid var(--ds-divider-section, rgba(0,0,0,0.08))}
+
+/* ── 정책 팔레트(플로팅 도움말): 검수 중 사전·정책 기준 참조 · 드래그 이동 ── */
+.polfab{position:fixed;right:22px;bottom:22px;z-index:80;width:44px;height:44px;border-radius:50%;
+  border:1px solid var(--ds-hairline);background:var(--ds-surface-white);color:var(--ds-ink);
+  font:700 17px/1 GmarketSans,Pretendard,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.14);cursor:pointer}
+.polfab:hover{border-color:var(--ds-primary);color:var(--ds-primary)}
+.polpal{position:fixed;right:22px;bottom:76px;z-index:80;width:372px;max-width:calc(100vw - 24px);
+  background:var(--ds-surface-white);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
+  box-shadow:0 14px 44px rgba(0,0,0,.2);display:flex;flex-direction:column}
+.polpal__hd{display:flex;align-items:center;gap:8px;padding:10px var(--ds-pad-inset);cursor:grab;user-select:none;
+  border-bottom:1px solid var(--ds-hairline)}
+.polpal__hd:active{cursor:grabbing}
+.polpal__hd b{font:600 13.5px/1.2 GmarketSans,Pretendard,sans-serif;color:var(--ds-ink)}
+.polpal__hd .meta{font-size:11px;color:var(--ds-muted)}
+.polpal__bd{padding:10px var(--ds-pad-inset) var(--ds-pad-inset);display:flex;flex-direction:column;gap:8px;min-height:0}
+.polpal__ctx{display:flex;flex-wrap:wrap;gap:4px;padding-bottom:8px;border-bottom:1px dashed var(--ds-hairline)}
+.polpal__list{overflow:auto;max-height:46vh;display:flex;flex-direction:column;gap:6px}
+.polpal__item{padding:8px 10px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-control);background:var(--ds-surface-white)}
+.polpal__item b{font-size:12.5px;color:var(--ds-ink)}
+.polpal__item div{color:var(--ds-body);margin-top:3px;line-height:1.55;white-space:pre-line}
+.polpal__item.is-hl{border-color:var(--ds-primary);background:var(--ds-primary-tint)}

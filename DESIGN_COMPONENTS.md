@@ -70,6 +70,7 @@
 | `.onboard__busy` | 로그인/가입 진행: 캐릭터 펄스 링 + 점 3개 + 상태 문구 · 진행 중 폼/CTA 숨김 |
 | 토스트(`liveToast`/`celebratePoints`) | 행동 즉시 보상·결과 알림. 실패는 `_err` 경로 |
 | `.codeblock` | 프롬프트·계약 원문 표시(맥 도트 바 + 스테이지 라벨) · 읽기 전용은 `readonly` |
+| `.polpal` + `.polfab` | 정책 팔레트(플로팅 도움말): 우하단 `?` 런처, 헤더 드래그 이동·위치는 localStorage. 탭 4종(인텐트/카테고리/품질 사유/등급) + 검색 + 현재 검수 항목 값 바로가기. 값 태그 클릭 = `polShow(kind, val)` 딥링크·`is-hl` 강조. 원천은 /dict(intentDefs·categoryCriteria·qualityMetas) 단일 |
 
 ## 게임화 표면
 

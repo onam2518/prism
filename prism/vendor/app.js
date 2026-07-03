@@ -240,6 +240,7 @@
         this.loadHome();                               // 배치된 홈 위젯(localStorage)
         this.loadDash();                               // 홈 위젯 데이터(/dashboard)
         this.loadArena();                              // 홈 = 아레나
+        this.polRestore();                             // 정책 팔레트 위치·탭 복원
         // 딥링크: ?m=run|dash|quality|... 로 특정 뷰 진입(설정은 ?settings)
         try { const q = new URLSearchParams(location.search); const m = q.get('m'); if (m) this.selectMod(m); if (q.has('settings')) this.selectMod('system'); } catch (e) {}
         fetch('/vocab').then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {});
@@ -375,6 +376,75 @@
         if (kind === 'grade') return val === 'G' ? '등급 G · 유통 가능' : val === 'R' ? '등급 R · 유통 제외(문제 사유 있음)' : '등급 미판정';
         if (kind === 'entity') return '핵심 개체(인물·기관·작품 등) · ' + val;
         return val;
+      },
+      // ── 정책 팔레트(플로팅 도움말): 검수 중 사전·정책 기준 참조 · 드래그 이동 ──
+      polOpen: false, polTab: 'intent', polQ: '', polHl: '', polPos: null, polDrag: null,
+      polRestore() {
+        try { const p = JSON.parse(localStorage.getItem('prismPolPal') || 'null'); if (p) { this.polPos = p.pos || null; this.polTab = p.tab || 'intent'; } } catch (e) {}
+      },
+      polSave() { try { localStorage.setItem('prismPolPal', JSON.stringify({ pos: this.polPos, tab: this.polTab })); } catch (e) {} },
+      polToggle() { this.polOpen = !this.polOpen; if (this.polOpen && !this.dictData) this.loadDict(); this.polSave(); },
+      polShow(kind, val) {                              // 값 태그 딥링크: 해당 정책 항목으로 점프·강조
+        let v = String(val == null ? '' : val).replace(/\s*\(\d+\)\s*$/, '');
+        if (kind === 'category') v = v.split('/')[0].trim();    // 기준은 Tier 1 단위
+        this.polTab = kind === 'reason' ? 'quality' : (kind === 'grade' ? 'grade' : (kind === 'category' ? 'category' : 'intent'));
+        this.polQ = ''; this.polHl = v; this.polOpen = true;
+        if (!this.dictData) this.loadDict();
+        this.polSave();
+        this.$nextTick(() => { try { const el = document.querySelector('.polpal [data-pol="' + (window.CSS && CSS.escape ? CSS.escape(v) : v) + '"]'); if (el) el.scrollIntoView({ block: 'center' }); } catch (e) {} });
+      },
+      polEntries() {                                    // 탭 + 검색 → [{k(키), t(제목), d(기준)}]
+        const d = this.dictData || {};
+        let out = [];
+        if (this.polTab === 'intent') {
+          const defs = (d.intentDefs && Object.keys(d.intentDefs).length) ? d.intentDefs : this.INTENT_DEF;
+          out = Object.keys(defs).map((k) => ({ k, t: k, d: defs[k] }));
+        } else if (this.polTab === 'category') {
+          const cr = d.categoryCriteria || {};
+          const t1 = d.iabTier1 || [];
+          out = t1.map((k) => ({ k, t: k, d: cr[k] || ((d.tier2 && d.tier2[k] && d.tier2[k].length) ? ('Tier 2: ' + d.tier2[k].join(' · ')) : '') }));
+          Object.keys(cr).forEach((k) => { if (t1.indexOf(k) < 0) out.push({ k, t: k, d: cr[k] }); });
+        } else if (this.polTab === 'quality') {
+          const qm = d.qualityMetas || {};
+          out = Object.keys(qm).map((k) => ({ k, t: ((d.qualityNames || {})[k] ? (d.qualityNames[k] + ' · ' + k) : k), d: qm[k] }));
+        } else {                                        // grade: 판정 계약(코드 원천 고정)
+          out = [
+            { k: 'G', t: 'G · 유통 가능', d: '품질 사유가 임계 미만. 서비스 노출 가능 판정.' },
+            { k: 'R', t: 'R · 유통 제외', d: '임계를 넘는 품질 사유가 1개 이상 확정. 사유 태그가 함께 표시됩니다.' },
+            { k: 'YELLOW', t: 'YELLOW · 판정 애매', d: '모델 확신이 낮거나 경계 사례. 사람 검수 대상으로 회수되어 검수 큐에 들어옵니다.' },
+          ];
+        }
+        const q = (this.polQ || '').trim().toLowerCase();
+        if (q) out = out.filter((e) => (e.t + ' ' + (e.d || '')).toLowerCase().indexOf(q) >= 0);
+        return out;
+      },
+      polCtx() {                                        // 열려 있는 검수 상세의 값 → 관련 정책 바로가기
+        const c = this.detailOpen ? this.detail : null;
+        if (!c) return [];
+        const out = [];
+        (c.intent || []).forEach((v) => out.push({ kind: 'intent', v: String(v) }));
+        (c.category || []).forEach((v) => out.push({ kind: 'category', v: String(v) }));
+        (c.reasons || []).forEach((v) => out.push({ kind: 'reason', v: String(v) }));
+        if (c.grade) out.push({ kind: 'grade', v: String(c.grade) });
+        return out.slice(0, 12);
+      },
+      polCtxLabel(x) { return x.kind === 'category' ? String(x.v).split('/')[0].trim() : x.v; },
+      polStyle() { return this.polPos ? ('left:' + this.polPos.x + 'px; top:' + this.polPos.y + 'px; right:auto; bottom:auto;') : ''; },
+      polDragStart(e) {
+        if (e.target && e.target.closest && e.target.closest('button')) return;   // 닫기 버튼은 드래그 제외
+        const box = this.$refs.polpal;
+        if (!box) return;
+        const r = box.getBoundingClientRect();
+        this.polDrag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+        const move = (ev) => {
+          if (!this.polDrag) return;
+          const x = Math.min(Math.max(ev.clientX - this.polDrag.dx, 8), window.innerWidth - 120);
+          const y = Math.min(Math.max(ev.clientY - this.polDrag.dy, 8), window.innerHeight - 48);
+          this.polPos = { x, y };
+        };
+        const up = () => { this.polDrag = null; this.polSave(); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
       },
       // 수정 대상 요소(파이프라인 단계 대신 '무엇을 고칠지'로 직관화). 각 요소 → 학습 단계 매핑.
       FIX_ELEMENTS: [

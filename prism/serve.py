@@ -399,6 +399,8 @@ def dict_data() -> dict:
         "tier2": {k: list(v) for k, v in getattr(D, "CONTENT_CATEGORY_TIER2", {}).items()},
         "iabMap": dict(getattr(D, "CATEGORY_IAB_MAP", {})),
         "domainGroups": {k: list(v) for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items()},
+        "intentDefs": dict(getattr(D, "INTENT_VALUE_DEFS", {})),
+        "categoryCriteria": dict(getattr(D, "CATEGORY_CRITERIA", {})),
         "qualityMetas": dict(D.QUALITY_METAS),
         "qualityNames": dict(getattr(D, "QUALITY_META_NAMES", {})),
         "qualityApplies": dict(getattr(D, "QUALITY_META_APPLIES", {})),

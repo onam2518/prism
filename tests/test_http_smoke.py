@@ -145,6 +145,12 @@ class TestButtonsEndToEnd(unittest.TestCase):
         d = self.ok("/dict")
         self.assertIn("intentUniversal", d)
         self.assertEqual(len(d.get("intentForm") or []), 8)
+        self.assertTrue(d.get("intentDefs"))                     # 정책 팔레트 원천(값 정의)
+        self.assertTrue(d.get("categoryCriteria"))               # 카테고리 구분 기준 15종
+        status, html = _req(self.port, "/")
+        self.assertEqual(status, 200)
+        self.assertIn("polpal", html)                            # 정책 팔레트 렌더 마커
+        self.assertIn("polfab", html)
         self.ok("/config", {"stage_prompts": {"review": "스모크 추가 지시"}})
         self.ok("/topics")
         self.ok("/usermeta")
