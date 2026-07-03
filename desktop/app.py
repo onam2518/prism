@@ -55,15 +55,36 @@ def _enable_supabase():
         os.environ["PRISM_BACKEND"] = "supabase"
 
 
+def _qa_mode() -> bool:
+    """QA 빌드 여부: 번들 마커(qa.flag) 또는 PRISM_QA=1. 로컬 sqlite + mock + 목업 시드."""
+    base = getattr(sys, "_MEIPASS", "")
+    if base and os.path.exists(os.path.join(base, "qa.flag")):
+        return True
+    return os.environ.get("PRISM_QA") == "1"
+
+
 def _start_server():
     global _httpd
-    _enable_supabase()                         # 키파일 있으면 팀 모드(로그인/가입)로 전환
+    qa = _qa_mode()
+    if qa:                                     # QA: 팀/실호출 배제 · 별도 DB · 목업 시드
+        os.environ["PRISM_BACKEND"] = "sqlite"
+        from prism.config import DEFAULT_CONFIG_PATH as _CFGP
+        os.environ.setdefault("PRISM_DB", os.path.join(os.path.dirname(_CFGP), "qa.db"))
+    else:
+        _enable_supabase()                     # 키파일 있으면 팀 모드(로그인/가입)로 전환
     from prism.serve import (Handler, load_persisted_key, load_dict_overrides,
                              get_store, sync_prompt, start_ingest_scheduler, start_learning_scheduler)
     load_persisted_key()                       # ~/.prism_key 자동 로드
     load_dict_overrides()                       # 사전 편집(overrides) 적용
     sync_prompt()                               # 단계 프롬프트·학습 보정 반영
     get_store()                                 # 로컬 영속 저장소(SQLite) 초기화
+    if qa:
+        Handler.server_mock = True             # 실호출 없이 전 기능 QA(모의 추출)
+        try:
+            from prism import qa_seed
+            qa_seed.seed()                     # 비어 있으면 콘텐츠 10건 + 예시 데이터 적재
+        except Exception:
+            pass
     start_ingest_scheduler()                    # 활성 소스 자동 폴링(백그라운드)
     start_learning_scheduler()                  # 매일 04:00 학습 일배치
     _httpd = ThreadingHTTPServer((HOST, PORT), Handler)
@@ -92,7 +113,7 @@ def main():
     persist = bool(getattr(cfg, "desktop_persist_storage", True))
     # 다운로드 허용: 템플릿(xlsx/csv)·엑셀 내보내기 앵커가 WKWebView 에서 동작하도록 (기본 False 면 무시됨)
     webview.settings["ALLOW_DOWNLOADS"] = allow_dl
-    webview.create_window("Prism", URL, width=1240, height=860, min_size=(900, 600))
+    webview.create_window("Prism QA" if _qa_mode() else "Prism", URL, width=1240, height=860, min_size=(900, 600))
     # localStorage 영속: private_mode=True 는 재시작마다 로그인 토큰·아이디/비밀번호 저장·배지 기준선을 지움
     if persist:
         storage = os.path.expanduser("~/Library/Application Support/Prism/webview")

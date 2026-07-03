@@ -683,6 +683,32 @@ class TestLevelCurve(unittest.TestCase):
         self.assertTrue(9000 <= journey <= 11000, journey)
 
 
+class TestQASeed(unittest.TestCase):
+    """QA 목업 시드: 10건·용도·골든·멱등(격리 DB·config)."""
+    def test_seed_counts_and_idempotency(self):
+        import tempfile
+        from prism import serve, config as C
+        from prism.store import Store
+        orig_path = C.DEFAULT_CONFIG_PATH
+        C.DEFAULT_CONFIG_PATH = os.path.join(tempfile.mkdtemp(), "config.json")
+        self.addCleanup(lambda: setattr(C, "DEFAULT_CONFIG_PATH", orig_path))
+        st = Store(os.path.join(tempfile.mkdtemp(), "qa.db"))
+        serve._STORE = st
+        serve.Handler.server_mock = True
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        from prism import qa_seed
+        out = qa_seed.seed(verbose=False)
+        self.assertTrue(out["ok"] and out["contents"] == 10)
+        rows = st.recent_meta(50)
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(sum(1 for r in rows if r["purpose"] == "eval"), 2)
+        self.assertGreaterEqual(st.golden_count(), 1)
+        self.assertEqual(st.batch_seq(), 1)                    # 학습 반영 1회 → 다음 버전 v2
+        self.assertEqual(len(serve.raw_rows()["items"]), 8)     # 평가용 제외
+        again = qa_seed.seed(verbose=False)
+        self.assertTrue(again.get("skipped"))                   # 멱등
+
+
 class TestAdminTiers(unittest.TestCase):
     """권한 2단계: 운영 관리자(허용목록) vs 팀 관리자(생성자·위임 · 팀 관리만)."""
     def test_sys_admin_allowlist_and_team_admin_tiers(self):
