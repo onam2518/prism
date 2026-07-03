@@ -350,6 +350,10 @@ def build() -> str:
     # 앱 CSS·JS(분리 파일) 인라인 · 이후의 /vendor/·폰트·result 치환이 앱 코드에도 닿도록 여기서 병합
     app_css = open(os.path.join(ROOT, "prism", "vendor", "app.css"), encoding="utf-8").read()
     app_js = open(os.path.join(ROOT, "prism", "vendor", "app.js"), encoding="utf-8").read()
+    # 공개 표면(Pages) 정책: 내부 기준 문서 식별자가 든 주석 라인은 데모에서 제거
+    _internal = ("DNM", "1311", "1312", "278036632", "278856094", "365789408", "364314733")
+    app_js = "\n".join(l for l in app_js.splitlines()
+                       if not (l.lstrip().startswith("//") and any(m in l for m in _internal)))
     html = html.replace('<link href="/vendor/app.css" rel="stylesheet">', f'<style>{app_css}</style>')
     html = html.replace('<script src="/vendor/app.js"></script>', f'<script>{app_js}</script>')
     # 벤더 에셋(캐릭터·로고 SVG) → docs/demo-assets/ (Pages 루트 내부, main() 에서 복사)

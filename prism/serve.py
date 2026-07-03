@@ -1928,7 +1928,10 @@ class Handler(BaseHTTPRequestHandler):
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/ingest-status"):
             self._send(200, json.dumps(ingest_status(), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/prompt-preview"):    # 프롬프트 스튜디오: 콜별×모델별 최종 합성 프롬프트
+        elif self.path.startswith("/prompt-preview"):    # 프롬프트 스튜디오: 콜별×모델별 최종 합성 프롬프트(관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
             from urllib.parse import parse_qs, urlparse
             q = parse_qs(urlparse(self.path).query)
             model = (q.get("model") or [""])[0]
@@ -1950,7 +1953,10 @@ class Handler(BaseHTTPRequestHandler):
                 body_out = {"ok": False, "error": str(e)[:300]}
             self._send(200, json.dumps(body_out, ensure_ascii=False), _JSON)
 
-        elif self.path.startswith("/prompt-snapshot"):  # 버전별 프롬프트 스냅샷(v 미지정 = 최신)
+        elif self.path.startswith("/prompt-snapshot"):  # 버전별 프롬프트 스냅샷(v 미지정 = 최신 · 관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
             from urllib.parse import parse_qs, urlparse
             q = parse_qs(urlparse(self.path).query)
             v = (q.get("v") or [""])[0].strip()

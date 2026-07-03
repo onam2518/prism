@@ -129,7 +129,9 @@ class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import json as _j
+        import secrets
         import urllib.request
+        import uuid
         for k, f in (("SUPABASE_URL", "~/.prism_supabase_url"), ("SUPABASE_SERVICE_KEY", "~/.prism_supabase_key")):
             if not os.environ.get(k):
                 pth = os.path.expanduser(f)
@@ -139,20 +141,15 @@ class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
         from prism.supastore import SupabaseStore
         cls.st_cls = SupabaseStore()
         base, key = os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_KEY"]
-        body = _j.dumps({"email": "contract-bot@prism.test", "password": "contract-test-pw-1",
+        # 실행마다 일회용 자격증명(고정 비밀번호 하드코딩 금지 · 잔존 계정의 로그인 가능성 차단)
+        email = f"contract-bot-{uuid.uuid4().hex[:12]}@prism.test"
+        body = _j.dumps({"email": email, "password": secrets.token_urlsafe(24),
                          "email_confirm": True}).encode()
         req = urllib.request.Request(f"{base}/auth/v1/admin/users", data=body, method="POST",
                                      headers={"apikey": key, "Authorization": f"Bearer {key}",
                                               "Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=20) as r:
-                cls.uid = _j.loads(r.read().decode()).get("id")
-        except Exception:                                 # 이미 존재 → 조회로 획득
-            q = urllib.request.Request(f"{base}/auth/v1/admin/users?page=1&per_page=100",
-                                       headers={"apikey": key, "Authorization": f"Bearer {key}"})
-            with urllib.request.urlopen(q, timeout=20) as r:
-                users = _j.loads(r.read().decode()).get("users") or []
-            cls.uid = next(u["id"] for u in users if u.get("email") == "contract-bot@prism.test")
+        with urllib.request.urlopen(req, timeout=20) as r:
+            cls.uid = _j.loads(r.read().decode()).get("id")
         cls.team_id = cls.st_cls.ensure_team(cls.uid, "create", "계약 테스트팀(자동 정리)")
 
     @classmethod
