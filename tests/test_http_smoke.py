@@ -179,10 +179,12 @@ class TestButtonsEndToEnd(unittest.TestCase):
                          "body": "학습 반영 이후 정답셋으로 승격되는 전체 흐름을 검증하기 위한 본문입니다. 충분한 길이를 확보합니다."})
         dash = self.ok("/dashboard")
         h = next(c["hash"] for c in dash["contents"] if c["title"] == title)
-        # 검수: 교정(리드문) 후 2인 '정확' 합의
+        # 검수: 교정(리드문) 후 2인 '정확' 합의 · 검수자별 레이트리밋(0.8s) 준수
+        import time as _t
         fixed = "학습 반영 이후 정답셋 승격 흐름을 검증한다."
-        self.ok("/patch-meta", {"hash": h, "patch": {"summary": fixed}, "reviewer": "복실"})
-        for rv in ("복실", "용희"):
+        self.ok("/patch-meta", {"hash": h, "patch": {"summary": fixed}, "reviewer": "e2e검수자1"})
+        _t.sleep(0.9)
+        for rv in ("e2e검수자1", "e2e검수자2"):
             self.ok("/feedback", {"hash": h, "service": "뉴스", "title": title,
                                   "verdict": "good", "stage": "review", "note": "", "reviewer": rv})
         # 학습 반영 → 정답셋 승격 확인(교정된 리드문이 정답에 반영)
