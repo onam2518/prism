@@ -96,7 +96,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.ok("/model-stats")
         self.ok("/arena?reviewer=%EB%B3%B5%EC%8B%A4")
 
-    # ── 테스트셋 관리: 학습 반영 → 정답셋 목록·현황 → 학습 데이터·내보내기 ──
+    # ── 정답셋 관리: 학습 반영 → 정답셋 목록·현황 → 학습 데이터·내보내기 ──
     def test_03_testset_buttons(self):
         r = self.ok("/learn-batch", {})
         self.assertTrue(r.get("ok"))

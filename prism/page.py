@@ -1134,7 +1134,7 @@ PAGE = """<!doctype html>
                             <button type="button" class="verdictbtn verdictbtn--bad" style="height:26px;padding:0 10px;font-size:11px" x-bind:class="myEvalVote(d)==='reject' ? 'is-on' : ''" data-tip="정답이 맞아요 · 모델 오답으로 확정합니다" data-tip-pos="top" x-on:click="evalJudge(d, 'reject')">탈락</button>
                           </span></td>
                           <td><span class="text-xs text-muted tnum" x-text="'채택 ' + ((d.judge&&d.judge.adopt)||0) + ' · 탈락 ' + ((d.judge&&d.judge.reject)||0)"></span>
-                            <span class="ds-badge ds-badge--warning" style="cursor:help;margin-left:6px" x-show="evalConsensus(d)==='adopt'" data-tip="채택 합의 · 정답 교정 필요(테스트셋 관리 · 정답셋 목록에 '교정 필요'로 표시)" data-tip-pos="top">교정 필요</span>
+                            <span class="ds-badge ds-badge--warning" style="cursor:help;margin-left:6px" x-show="evalConsensus(d)==='adopt'" data-tip="채택 합의 · 정답 교정 필요(정답셋 관리 · 정답셋 목록에 '교정 필요'로 표시)" data-tip-pos="top">교정 필요</span>
                             <span class="ds-badge ds-badge--error" style="cursor:help;margin-left:6px" x-show="evalConsensus(d)==='reject'" data-tip="탈락 합의 · 모델 오답 확정(프롬프트 개선 우선순위 근거)" data-tip-pos="top">모델 오답</span>
                           </td>
                         </tr>
@@ -1183,13 +1183,13 @@ PAGE = """<!doctype html>
           </section>
         </div>
 
-      <!-- ═══ 모듈: 테스트셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
+      <!-- ═══ 모듈: 정답셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
       <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
         <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport()">현황 · 학습 반영</button>
         <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
         <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
       </div></div>
-      <!-- 테스트셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
+      <!-- 정답셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
       <div x-show="mod === 'testset' && testTab === 'status'" x-cloak class="w-full space-y-4">
           <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
           <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다 · 현재 프롬프트 <span class="tnum" x-text="verTxt"></span></span>
@@ -1274,7 +1274,7 @@ PAGE = """<!doctype html>
               </template>
             </div>
           </section>
-      </div><!-- /테스트셋 관리 · 현황 -->
+      </div><!-- /정답셋 관리 · 현황 -->
 
 
       <div x-show="mod === 'testset' && testTab === 'golden'" x-cloak class="w-full space-y-4">
@@ -1436,7 +1436,7 @@ PAGE = """<!doctype html>
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = <b>JSON 원문</b> · <b>검수하기</b> = 상세에서 판정·교정.</li><li x-show="rawModel">현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다.</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = <b>검수 상세</b>(판정·교정) · 상세에서 A/S/←→ 단축키와 자동 다음 이동을 쓸 수 있습니다 · JSON 원문은 행 우측 <b>{ }</b>.</li><li x-show="rawModel">현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다.</li></ul>
             <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
             <div class="filterbar">
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
@@ -1444,12 +1444,13 @@ PAGE = """<!doctype html>
               <select class="field" style="width:auto" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
               <select class="field" style="width:auto" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
+              <span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다" data-tip-pos="top">최근순</span>
             </div>
             <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th></tr></thead><tbody>
               <template x-for="r in rawFiltered" x-bind:key="r.hash">
-                <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" x-on:keydown.enter="rawSel = r">
+                <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="openRawDetail(r)" x-on:keydown.enter="openRawDetail(r)">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
-                  <td class="text-ink" data-tip="JSON 원문 보기" data-tip-pos="top"><span x-text="r.title || '(제목 없음)'"></span>
+                  <td class="text-ink"><span x-text="r.title || '(제목 없음)'"></span>
                     <span class="ds-badge ds-badge--yellow" style="cursor:help;margin-left:4px" x-show="r.review==='yellow'" data-tip="AI 확신이 낮아 사람 확인이 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
                     <span class="ds-badge ds-badge--error" style="margin-left:4px" x-show="r.split" data-tip="검수자 의견이 갈림 · 추가 의견 필요" data-tip-pos="top">불일치</span>
                   </td>
@@ -1459,11 +1460,13 @@ PAGE = """<!doctype html>
                   <td x-on:click.stop>
                     <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="!(r.fb && r.fb.verdict)" x-on:click="openRawDetail(r)">검수하기</button>
                     <span class="text-xs text-muted tnum" x-show="r.fb && r.fb.verdict" style="cursor:pointer" x-on:click="openRawDetail(r)" data-tip="완료 · 클릭하면 상세에서 수정" data-tip-pos="top" x-text="'✓ ' + (r.fb && r.fb.ts ? fmtTs(r.fb.ts) : '완료')"></span>
+                    <button type="button" class="copybtn" style="margin-left:6px" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" data-tip="JSON 원문 보기(표 아래 펼침)" data-tip-pos="top">{ }</button>
                   </td>
                 </tr>
               </template>
             </tbody></table>
-            <div x-show="!(rawData && rawData.items && rawData.items.length)" class="text-xs text-muted" style="padding:10px">데이터가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 콘텐츠를 추가하세요</div>
+            <div x-show="modBusy && !(rawData && rawData.items && rawData.items.length)" class="text-xs text-muted" style="padding:10px">목록을 불러오는 중…</div>
+            <div x-show="!modBusy && !(rawData && rawData.items && rawData.items.length)" class="text-xs text-muted" style="padding:10px">데이터가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 콘텐츠를 추가하세요</div>
             </div>
             <div x-show="rawSel" style="margin-top:10px">
               <div class="text-xs text-muted" style="margin-bottom:6px">JSON 원문 · <b class="text-ink" x-text="rawSel ? (rawSel.title || rawSel.hash) : ''"></b></div>
@@ -1619,6 +1622,17 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 평가 아레나 (게임화) · 팀 정확도 협동 스코어 + 리더보드 ═══ -->
       <div x-show="mod === 'home' || mod === 'arena'" x-cloak class="w-full space-y-4" style="order:-1">
+        <!-- 시작하기(관리자 · 데이터 0건): 첫 화면에서 다음 행동을 안내(빈 홈 온보딩) -->
+        <section class="panel" x-show="adminData && adminData.isAdmin && arenaData && !arenaData.total_targets && !arenaData.queue" x-cloak>
+          <div class="panel-hd"><b>시작하기</b><span class="meta">아직 콘텐츠가 없습니다 · 3단계면 검수 루프가 돌기 시작합니다</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets">
+              <li><b>① 콘텐츠 추가</b> · 텍스트·엑셀·자동 인입으로 검수할 콘텐츠를 넣습니다. <button type="button" class="copybtn" x-on:click="selectMod('content')">콘텐츠 관리 열기 →</button></li>
+              <li><b>② 모델 실행</b> · 같은 화면 STEP 2에서 초안을 생성합니다(키 없이 모의 모드도 가능).</li>
+              <li><b>③ 검수 목표(퀘스트) 생성</b> · 반영 일시를 정하면 팀 퀘스트가 시작됩니다. <button type="button" class="copybtn" x-on:click="selectMod('testset')">정답셋 관리 열기 →</button></li>
+            </ul>
+          </div>
+        </section>
         <!-- 히어로: 팀 정확도 게이지(협동) -->
         <section class="arena-hero">
           <div class="arena-hero__head">
@@ -2020,8 +2034,14 @@ PAGE = """<!doctype html>
         <span style="display:flex;align-items:center;gap:8px">
           <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailBack" x-on:click="detailOpen=false; drillOpen=true" data-tip="목록으로" data-tip-pos="bottom" aria-label="목록으로 뒤로가기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           <b>콘텐츠 상세 · 검수</b>
+          <span class="text-xs text-muted tnum" x-show="detailNav" x-text="detailNav ? ((detailNav.idx + 1) + ' / ' + detailNav.list.length) : ''"></span>
         </span>
-        <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="detailOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span class="text-xs text-muted" x-show="detailNav" style="cursor:help" data-tip="단축키 · A 정확 · S 수정 · ← → 이전/다음 · Esc 닫기" data-tip-pos="bottom">⌨ 단축키</span>
+          <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailNav" x-bind:disabled="!detailNav || detailNav.idx <= 0" x-on:click="detailGo(-1)" data-tip="이전 항목 (←)" data-tip-pos="bottom" aria-label="이전 항목"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailNav" x-bind:disabled="!detailNav || detailNav.idx >= detailNav.list.length - 1" x-on:click="detailGo(1)" data-tip="다음 항목 (→)" data-tip-pos="bottom" aria-label="다음 항목"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="detailOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        </span>
       </div>
       <div class="detailview__body">
         <div class="detailview__content">
@@ -2054,7 +2074,11 @@ PAGE = """<!doctype html>
           </div>
           <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="e"></span></template></div></div>
           <div class="dve__verdict">
-            <div class="dve__lbl">검수 판정</div>
+            <div class="dve__lbl" style="display:flex;align-items:center;gap:8px">검수 판정
+              <label x-show="detailNav" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400;color:var(--ds-muted);cursor:pointer;margin-left:auto">
+                <input type="checkbox" x-model="autoNext" x-on:change="saveAutoNext()">저장 후 다음 미검수로
+              </label>
+            </div>
             <!-- 검수 완료(판정 있음 · 수정 아님): 완료 표기(색상=판정별) + 수정 일시 + 추가 수정 -->
             <template x-if="detail && detail.fb && detail.fb.verdict && !editVerdict">
               <div>

@@ -39,7 +39,7 @@
         // 권한 2단계: 팀 관리자(생성자·위임)는 '팀 관리'만 추가 · 나머지는 운영 관리자(허용목록) 전용
         { g: '관리자', gcond: 'admin', items: [
           { id: 'content', label: '콘텐츠 관리', ic: 'intake', cond: 'sysadmin' },
-          { id: 'testset', label: '테스트셋 관리', ic: 'eval', cond: 'sysadmin' },
+          { id: 'testset', label: '정답셋 관리', ic: 'eval', cond: 'sysadmin' },
           { id: 'admin', label: '팀 관리', ic: 'admin', cond: 'admin' },
           { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'sysadmin' },
           { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt', cond: 'sysadmin' },
@@ -60,7 +60,7 @@
       contentTab: 'run',                      // 콘텐츠 관리 STEP 1 카드: 수동(run)/자동(auto)
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
-      testTab: 'status',                      // 테스트셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
+      testTab: 'status',                      // 정답셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
       labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | topic(토픽) | user(사용자)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
@@ -149,7 +149,45 @@
         const L = pick(p.l), R = pick(p.r);
         return Object.keys(L).map((k) => ({ k: k, l: L[k], r: R[k], diff: L[k] !== R[k] }));
       },
-      openRawDetail(r) { this.openDetail({ hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', fb: Object.assign({}, r.fb) }); },
+      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', fb: Object.assign({}, r.fb) }; },
+      openRawDetail(r) {                                 // 목록 컨텍스트 보존 -> 상세에서 이전/다음·자동 이동
+        const list = this.rawFiltered.slice();
+        this.openDetail(this._rawToDetail(r));
+        this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
+      },
+      detailNav: null,
+      autoNext: (function () { try { return localStorage.getItem('prismAutoNext') !== '0'; } catch (e) { return true; } })(),
+      saveAutoNext() { try { localStorage.setItem('prismAutoNext', this.autoNext ? '1' : '0'); } catch (e) {} },
+      detailGo(step) {                                   // 상세에서 목록 순서로 이전/다음 이동
+        if (!this.detailNav) return;
+        const i = this.detailNav.idx + step;
+        if (i < 0 || i >= this.detailNav.list.length) return;
+        const nav = this.detailNav;
+        this.openDetail(this._rawToDetail(nav.list[i]));
+        nav.idx = i;
+        this.detailNav = nav;
+      },
+      detailNextTodo() {                                 // 다음 미검수 항목으로 · 없으면 완료 안내 후 닫기
+        if (!this.detailNav) return;
+        const nav = this.detailNav;
+        for (let i = nav.idx + 1; i < nav.list.length; i++) {
+          const r = nav.list[i];
+          if (!(r.fb && r.fb.verdict) && !r._doneLocal) {
+            this.openDetail(this._rawToDetail(r));
+            nav.idx = i;
+            this.detailNav = nav;
+            return;
+          }
+        }
+        this.liveToast('🎉 목록의 검수를 모두 마쳤어요!');
+        this.detailOpen = false;
+      },
+      _afterVerdict() {                                  // 판정 직후: 현재 행 완료 표기 + 자동 다음(토글)
+        if (!this.detailNav) return;
+        const cur = this.detailNav.list[this.detailNav.idx];
+        if (cur) cur._doneLocal = true;
+        if (this.autoNext) this.detailNextTodo();
+      },
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
       get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
       get rawFiltered() {
@@ -248,6 +286,23 @@
         window.addEventListener('keydown', (e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !this.loading) { e.preventDefault(); this.run(); }
         });
+        // 검수 상세 단축키: A=정확 · S=수정 · ←→=이전/다음 · Esc=닫기 (입력 중에는 무시)
+        window.addEventListener('keydown', (e) => {
+          if (!this.detailOpen) return;
+          const t = e.target;
+          if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          if (e.code === 'KeyA') { e.preventDefault(); this.reviewGood(); }
+          else if (e.code === 'KeyS') { e.preventDefault(); this.editVerdict = true; this.pendingBad = true; }
+          else if (e.code === 'ArrowRight') { e.preventDefault(); this.detailGo(1); }
+          else if (e.code === 'ArrowLeft') { e.preventDefault(); this.detailGo(-1); }
+          else if (e.code === 'Escape') { this.detailOpen = false; }
+        });
+        // 브라우저 뒤로/앞으로 = 메뉴 이동(URL ?m= 동기화)
+        window.addEventListener('popstate', (e) => {
+          const m = (e.state && e.state.m) || new URLSearchParams(location.search).get('m') || 'home';
+          this._noPush = true; this.selectMod(m); this._noPush = false;
+        });
       },
       get tabLabel() { return (this.tabItems.find(t => t.id === this.activeTabId) || {}).label || ''; },
       get modLabel() {
@@ -270,7 +325,7 @@
       },
       selectMod(id) {
         this.status = ''; this.addMenuOpen = false;
-        // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 테스트셋 관리
+        // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 정답셋 관리
         // 주의: 별칭 치환을 끝낸 뒤 mod 를 확정한다(치환 전 대입 시 매칭 섹션이 없어 빈 화면).
         if (id === 'intake') id = 'dict';
         if (id === 'run' || id === 'auto') { this.contentTab = id; id = 'content'; }
@@ -282,6 +337,9 @@
         if (id === 'eval') id = 'evaluate';
         if (id === 'golden') id = 'testset';
         this.mod = id;
+        if (!this._noPush) {                          // URL 동기화(뒤로가기·새로고침 시 현재 화면 유지)
+          try { const u = new URL(location.href); u.searchParams.set('m', id); history.pushState({ m: id }, '', u); } catch (e) {}
+        }
         if (id === 'content' || id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
         if (id === 'prompt' || id === 'testset') this.loadGoldenStatus();
         if (id === 'prompt') { this.syncWrapDraft(); this.loadPreview(); }
@@ -345,15 +403,16 @@
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : k === 'topic' ? '토픽' : '품질 사유'; },
       // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
-      openDetail(c) { this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; },
+      openDetail(c) { this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; },
       editVerdict: false, pendingBad: false, detailBack: false,
       // 정확 = 즉시 완료 · 수정 필요 = 요소·사유 입력 후 '완료 처리' 로만 확정(누른다고 바로 저장 안 함)
-      reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; },
+      reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; this._afterVerdict(); },
       reviewBadComplete() {
         if (!(this.detail.fb.note || '').trim()) { this._err('무엇을 왜 고쳐야 하는지 입력하세요'); return; }
         this.detail.fb = Object.assign({}, this.detail.fb, { verdict: 'bad' });
         this.saveFbNote(this.detail);
         this.pendingBad = false; this.editVerdict = false;
+        this._afterVerdict();
       },
       // 태그 용어 정의(호버 툴팁): 인텐트=고정 설명 · 품질 사유=사전(dictData) · 카테고리=경로
       INTENT_DEF: {
