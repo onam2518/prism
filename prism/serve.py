@@ -88,6 +88,21 @@ def _build_id() -> str:
         return "?"
 
 
+def _save_drafts(st, pairs, team=None):
+    """(hash, 모델, 버전) 초안 스냅샷 적재 — 결과 비교 팝업의 전체 이력 원천.
+    같은 (모델, 버전) 재실행은 upsert 로 최신 산출만 유지된다."""
+    if not (st and hasattr(st, "save_draft")):
+        return
+    from .store import content_hash as _ch
+    for content, out in pairs:
+        tr = (out or {}).get("trace") or {}
+        try:
+            st.save_draft(_ch(content), tr.get("model", "") or "", int(tr.get("version") or 1),
+                          out.get("item_meta") or {}, out.get("quality_meta") or {}, team=team)
+        except Exception:
+            pass
+
+
 def store_save(pairs, source: str = "단건", team=None):
     """[(content, out), …] 를 영속 저장(+_LAST_RESULTS 미러). source: 출처. team: 소속 팀(supabase).
     적재 정책(dedup): 동일 콘텐츠 + 결과 무변경이면 적재 제외(skip), 변경 시 갱신, 신규는 추가."""
@@ -97,7 +112,9 @@ def store_save(pairs, source: str = "단건", team=None):
     st = get_store()
     if st:
         try:
-            return st.save_dedup(pairs, _run_id(), source=source, team=team)
+            r = st.save_dedup(pairs, _run_id(), source=source, team=team)
+            _save_drafts(st, pairs, team=team)
+            return r
         except Exception:
             pass
     return None
@@ -297,10 +314,12 @@ def rerun_content(content_hash: str, model: str, team=None) -> dict:
     result = run_pipeline(fields, mock=Handler.server_mock, team=team, model=model)
     if result.get("error"):
         return result
-    try:                                       # 산출이 동일해도 모델 표기가 갱신되도록 무조건 upsert
-        st.save_many([(fields, result.get("output") or {})], "rerun", source="재실행", team=team)
+    try:                                       # 산출이 동일해도(비-YELLOW 포함) 모델·버전 표기가 갱신되도록 무조건 upsert
+        st.save_many([(fields, result.get("output") or {})], "rerun", source="재실행",
+                     team=team, include_all=True)
     except Exception:
         pass
+    _save_drafts(st, [(fields, result.get("output") or {})], team=team)
     if hasattr(st, "log_patch"):               # 이전 초안 보존(이력)
         try:
             st.log_patch(ch, "(재실행)", f"rerun:{old_model or '?'}->{model}",
@@ -817,6 +836,7 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         st = get_store()
         if st and pairs:
             stats = st.save_dedup(pairs, "ingest-" + time.strftime("%Y%m%d-%H%M%S"), source="자동 인입")
+            _save_drafts(st, pairs)
         msg = f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
         _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=True, last_msg=msg)
         return {"ok": True, "fetched": len(rows), "extracted": len(pairs),
@@ -1010,13 +1030,19 @@ def sync_prompt():
 
 
 def sync_learned():
-    """배치 결과 피드백 → 단계별 학습 보정(LEARNED)으로 컴파일해 프롬프트에 자동 반영."""
+    """배치 결과 피드백 → 단계별 학습 보정(LEARNED)으로 컴파일해 프롬프트에 자동 반영.
+    모델 귀속 라우트는 LEARNED_BY_MODEL 계층으로 분리(그 모델 프롬프트에만 병기)."""
     try:
         st = get_store()
         learned = st.learned_by_stage() if st else {}
         PR.LEARNED = {k: (learned.get(k) or "") for k in ("extract", "analyze", "review", "judge")}
+        bm = st.routes_by_stage_model() if (st and hasattr(st, "routes_by_stage_model")) else {}
+        PR.LEARNED_BY_MODEL = {m: {stg: "\n".join(f"- {t}" for t in items)
+                                   for stg, items in stages.items()}
+                               for m, stages in bm.items() if m}
     except Exception:
         PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
+        PR.LEARNED_BY_MODEL = {}
 
 
 def apply_feedback(data: dict) -> dict:
@@ -1950,7 +1976,15 @@ def meta_compile_run(team=None) -> dict:
         results[stage] = FL.meta_compile(llm, stage, text)
     # 컴파일된 directive 를 단계 프롬프트(LEARNED)로 반영 · raw 누적 대체
     PR.LEARNED = {k: (results.get(k, {}).get("directive") or "") for k in ("extract", "analyze", "review", "judge")}
-    return {"ok": True, "results": results}
+    # 모델 귀속 라우트는 모델별 그룹으로 따로 컴파일 → 그 모델 프롬프트에만 병기
+    by_model = st.routes_by_stage_model(team=team) if hasattr(st, "routes_by_stage_model") else {}
+    model_results = {}
+    for m, stages in sorted(by_model.items()):
+        model_results[m] = {stage: FL.meta_compile(llm, stage, "\n".join(f"- {t}" for t in items))
+                            for stage, items in stages.items()}
+    PR.LEARNED_BY_MODEL = {m: {stg: (r.get("directive") or "") for stg, r in cr.items()}
+                           for m, cr in model_results.items()}
+    return {"ok": True, "results": results, "model_results": model_results}
 
 
 def admin_data(uid, team, email="") -> dict:
@@ -2171,7 +2205,8 @@ def model_stats(team=None) -> dict:
 
 
 def drafts_for(content_hash: str, team=None) -> dict:
-    """결과 비교용 초안 스냅샷: 현재 초안 + 재실행 이력(patch_log rerun) 의 이전 초안."""
+    """결과 비교용 초안 스냅샷: 현재 초안 + (hash, 모델, 버전) 전체 이력(drafts).
+    이력 테이블이 비어 있으면(과거 데이터) 재실행 patch_log 의 이전 초안으로 폴백."""
     st = get_store()
     ch = (content_hash or "").strip()
     cur = None
@@ -2185,7 +2220,22 @@ def drafts_for(content_hash: str, team=None) -> dict:
     outs = []
     if cur:
         outs.append(cur)
-    if st and hasattr(st, "patch_rows"):
+    seen = {(o.get("model") or "", o.get("version")) for o in outs}
+    had_history = False
+    if st and hasattr(st, "draft_history"):
+        try:
+            for d in st.draft_history(ch, team=team):
+                had_history = True
+                k = (d.get("model") or "", d.get("version"))
+                if k in seen:
+                    continue
+                seen.add(k)
+                outs.append({"label": f"{d.get('model') or '모델 미기록'} · v{int(d.get('version') or 1)}",
+                             "model": d.get("model", ""), "version": int(d.get("version") or 1),
+                             "item_meta": d.get("item_meta") or {}, "quality_meta": d.get("quality_meta") or {}})
+        except Exception:
+            pass
+    if not had_history and st and hasattr(st, "patch_rows"):
         for p in st.patch_rows(limit=5000, team=team):
             if p.get("hash") != ch or not str(p.get("element", "")).startswith("rerun:"):
                 continue
@@ -2329,6 +2379,7 @@ def config_status() -> dict:
         "modelPrompts": dict(cfg.model_prompts or {}),
         "availableModels": _candidate_models(cfg),
         "autoRerunAfterBatch": bool(getattr(cfg, "auto_rerun_after_batch", False)),
+        "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "desktopAllowDownloads": bool(getattr(cfg, "desktop_allow_downloads", True)),
         "desktopPersistStorage": bool(getattr(cfg, "desktop_persist_storage", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
@@ -2413,7 +2464,8 @@ def apply_config(data: dict) -> dict:
     has_wrappers = "family_wrappers" in data and isinstance(data.get("family_wrappers"), dict)
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
-    has_desktop = ("desktop_allow_downloads" in data) or ("desktop_persist_storage" in data) or ("auto_rerun_after_batch" in data)
+    has_desktop = ("desktop_allow_downloads" in data) or ("desktop_persist_storage" in data) \
+        or ("auto_rerun_after_batch" in data) or ("golden_min_good" in data)
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_desktop):
         cfg = Config.load()
@@ -2483,6 +2535,11 @@ def apply_config(data: dict) -> dict:
             cfg.meta_four_calls = bool(data.get("meta_four_calls"))
         if "auto_rerun_after_batch" in data:
             cfg.auto_rerun_after_batch = bool(data.get("auto_rerun_after_batch"))
+        if "golden_min_good" in data:             # 골든 확정 최소 '정확' 인원(1~9)
+            try:
+                cfg.golden_min_good = max(1, min(9, int(data.get("golden_min_good") or 1)))
+            except (TypeError, ValueError):
+                pass
         if "desktop_allow_downloads" in data:
             cfg.desktop_allow_downloads = bool(data.get("desktop_allow_downloads"))
         if "desktop_persist_storage" in data:
@@ -3689,6 +3746,12 @@ PAGE = """<!doctype html>
         catch (e) { this.autoRerunMsg = '실패'; }
         setTimeout(() => { this.autoRerunMsg = ''; }, 2500);
       },
+      goldenMinGood: 1, minGoodMsg: '',
+      async saveMinGood() {
+        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) }); this.minGoodMsg = '✓ 저장됨'; }
+        catch (e) { this.minGoodMsg = '실패'; }
+        setTimeout(() => { this.minGoodMsg = ''; }, 2500);
+      },
       get isDesktop() { return typeof window.pywebview !== 'undefined'; },
       dtAllowDl: true, dtPersist: true, dtMsg: '',
       async saveDesktopOpts() {
@@ -4291,6 +4354,7 @@ PAGE = """<!doctype html>
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.metaCallModels) this.callModels = Object.assign({ summary: '', entities: '', intent: '', category: '' }, this.cfg.metaCallModels);
           if (typeof this.cfg.autoRerunAfterBatch === 'boolean') this.autoRerun = this.cfg.autoRerunAfterBatch;
+          if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.desktopAllowDownloads === 'boolean') this.dtAllowDl = this.cfg.desktopAllowDownloads;
           if (typeof this.cfg.desktopPersistStorage === 'boolean') this.dtPersist = this.cfg.desktopPersistStorage;
           if (typeof this.cfg.metaFourCalls === 'boolean') this.fourCalls = this.cfg.metaFourCalls;
@@ -6521,11 +6585,19 @@ PAGE = """<!doctype html>
                 <li>의견을 모아 <b>하루 1회</b> 반영해 결과가 흔들리지 않게 합니다.</li>
                 <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
               </ul>
-              <label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ds-body);cursor:pointer;margin-bottom:12px">
-                <input type="checkbox" x-model="autoRerun" x-on:change="saveAutoRerun()">
-                반영이 끝나면 <b>새 버전으로 전체 자동 재실행</b> <span class="text-xs text-muted">(건당 비용 발생)</span>
-                <span class="text-xs" style="color:var(--ds-success)" x-text="autoRerunMsg"></span>
-              </label>
+              <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap;margin-bottom:12px">
+                <label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ds-body);cursor:pointer">
+                  <input type="checkbox" x-model="autoRerun" x-on:change="saveAutoRerun()">
+                  반영이 끝나면 <b>새 버전으로 전체 자동 재실행</b> <span class="text-xs text-muted">(건당 비용 발생)</span>
+                  <span class="text-xs" style="color:var(--ds-success)" x-text="autoRerunMsg"></span>
+                </label>
+                <span class="selctl" data-tip="이 인원 이상이 '정확'으로 합의해야 정답셋으로 확정됩니다 · 팀 규모에 맞게 조정" data-tip-pos="top"><span class="selctl__lbl">확정 최소 인원</span>
+                  <select class="field" x-model="goldenMinGood" x-on:change="saveMinGood()">
+                    <template x-for="n in [1,2,3,4,5]" x-bind:key="n"><option x-bind:value="n" x-text="n + '명'" x-bind:selected="parseInt(goldenMinGood,10)===n"></option></template>
+                  </select>
+                </span>
+                <span class="text-xs" style="color:var(--ds-success)" x-text="minGoodMsg"></span>
+              </div>
               <!-- 일배치 결과 요약(상세 수치는 위 '골든셋 생성 현황' · 정합성·모델 비교는 '골든셋 평가' 탭) -->
               <template x-if="learnReport && learnReport.ts">
                 <div class="text-xs text-muted" style="margin-bottom:12px">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>

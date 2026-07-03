@@ -130,6 +130,22 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertIn("카테고리가 틀렸", learned["analyze"])
         self.assertIn("judge", learned)
 
+    def test_learned_model_layering_in_prompt(self):
+        """모델 귀속 보정은 그 모델 프롬프트에만 병기, 공통 보정은 항상 병기."""
+        from prism import prompts as PR
+        old, old_bm = dict(PR.LEARNED), PR.LEARNED_BY_MODEL
+        self.addCleanup(lambda: (PR.LEARNED.update(old), setattr(PR, "LEARNED_BY_MODEL", old_bm)))
+        PR.LEARNED["analyze"] = "- 공통 보정"
+        PR.LEARNED_BY_MODEL = {"solar-x": {"analyze": "- 솔라 보정"}}
+        base = PR._learned("analyze")
+        self.assertIn("공통 보정", base)
+        self.assertNotIn("솔라 보정", base)
+        mine = PR._learned("analyze", "solar-x")
+        self.assertIn("공통 보정", mine)
+        self.assertIn("솔라 보정", mine)
+        other = PR._learned("analyze", "gpt-x")
+        self.assertNotIn("솔라 보정", other)
+
 
 class TestLearnData(unittest.TestCase):
     def test_learn_data_and_exports(self):

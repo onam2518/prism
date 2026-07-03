@@ -99,6 +99,11 @@ class Store:
         -- 콘텐츠 용도: review(검수용, 기본)=검수·골든 축적 / eval(평가용)=평가 전용 홀드아웃.
         CREATE TABLE IF NOT EXISTS content_purpose(
           content_hash TEXT PRIMARY KEY, purpose TEXT, ts REAL);
+        -- 초안 이력: (콘텐츠, 모델, 버전) 별 산출 스냅샷. 결과 비교 팝업의 전체 이력 원천.
+        CREATE TABLE IF NOT EXISTS drafts(
+          content_hash TEXT, team TEXT NOT NULL DEFAULT '', model TEXT, version INTEGER,
+          item_meta TEXT, quality_meta TEXT, ts REAL,
+          PRIMARY KEY(content_hash, team, model, version));
         -- 피드백 라우팅(append-only): 교정 원문을 요소·단계별 개선 지시로 재분류한 결과.
         CREATE TABLE IF NOT EXISTS feedback_routes(
           id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
@@ -199,9 +204,10 @@ class Store:
         return [json.loads(r[0]) for r in c.execute(q, args)]
 
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
-    def save_many(self, pairs, run_id: str, source: str = "", team=None):
+    def save_many(self, pairs, run_id: str, source: str = "", team=None, include_all: bool = False):
         """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
-        source: 출처(자동 인입·단건·배치 등) · 결과 화면 필터용."""
+        source: 출처(자동 인입·단건·배치 등) · 결과 화면 필터용.
+        include_all 은 supabase 와의 시그니처 계약용(sqlite 는 원래 전량 저장)."""
         rows = []
         for content, out in pairs:
             ch = content_hash(content)
@@ -523,6 +529,34 @@ class Store:
         except Exception:
             return None
 
+    def save_draft(self, content_hash: str, model: str, version, item_meta, quality_meta, team=None):
+        """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert — 결과 비교 팝업의 전체 이력 원천."""
+        c = self._conn()
+        c.execute("INSERT INTO drafts(content_hash,team,model,version,item_meta,quality_meta,ts) "
+                  "VALUES(?,?,?,?,?,?,?) "
+                  "ON CONFLICT(content_hash,team,model,version) DO UPDATE SET "
+                  "item_meta=excluded.item_meta, quality_meta=excluded.quality_meta, ts=excluded.ts",
+                  (content_hash, team or "", model or "", int(version or 1),
+                   json.dumps(item_meta or {}, ensure_ascii=False),
+                   json.dumps(quality_meta or {}, ensure_ascii=False), time.time()))
+        c.commit()
+
+    def draft_history(self, content_hash: str, team=None, limit: int = 20) -> list:
+        c = self._conn()
+        rows = c.execute("SELECT model,version,item_meta,quality_meta,ts FROM drafts "
+                         "WHERE content_hash=? AND team=? ORDER BY ts DESC LIMIT ?",
+                         (content_hash, team or "", int(limit))).fetchall()
+        out = []
+        for m, v, im, qm, ts in rows:
+            def _load(s):
+                try:
+                    return json.loads(s or "{}")
+                except Exception:
+                    return {}
+            out.append({"model": m or "", "version": int(v or 1),
+                        "item_meta": _load(im), "quality_meta": _load(qm), "ts": ts})
+        return out
+
     def save_eval_check(self, content_hash, reviewer, verdict, expected="", got="", team=None) -> bool:
         """평가 불일치 건 판정 upsert(1인 1표 · 재판정 허용). verdict: adopt|reject."""
         if verdict not in ("adopt", "reject") or not content_hash:
@@ -552,9 +586,10 @@ class Store:
         c.commit()
 
     def clear_team_contents(self, team=None):
-        """검토 콘텐츠(추출 결과) 전체 삭제(로컬 단일 팀)."""
+        """검토 콘텐츠(추출 결과) 전체 삭제(로컬 단일 팀). 초안 이력도 함께 비운다."""
         c = self._conn()
         c.execute("DELETE FROM results")
+        c.execute("DELETE FROM drafts")
         c.commit()
 
     def set_purpose(self, hashes, purpose, team=None) -> int:
@@ -589,17 +624,47 @@ class Store:
         c.commit()
 
     def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+        """공통(모델 미기록) 라우트만 — 모델 귀속 라우트는 routes_by_stage_model 로
+        해당 모델 프롬프트에만 병기한다(타 모델 오염·중복 방지)."""
         c = self._conn()
         out = {}
         seen = set()
-        for stage, directive in c.execute(
-                "SELECT stage,directive FROM feedback_routes WHERE COALESCE(directive,'')!='' ORDER BY ts DESC"):
+        try:
+            rows = c.execute("SELECT stage,directive FROM feedback_routes "
+                             "WHERE COALESCE(directive,'')!='' AND COALESCE(model,'')='' "
+                             "ORDER BY ts DESC").fetchall()
+        except sqlite3.OperationalError:               # 구 스키마(model 컬럼 없음)
+            rows = c.execute("SELECT stage,directive FROM feedback_routes "
+                             "WHERE COALESCE(directive,'')!='' ORDER BY ts DESC").fetchall()
+        for stage, directive in rows:
             st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
             d = directive.strip()
             if (st, d) in seen:                        # 동일 지시 반복 제거(표시·프롬프트 병기 모두)
                 continue
             seen.add((st, d))
             lst = out.setdefault(st, [])
+            if len(lst) < limit_per_stage:
+                lst.append(d)
+        return out
+
+    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None) -> dict:
+        """모델 귀속 라우트: {model: {stage: [directive, …]}} — 모델별 learned 계층의 원천."""
+        c = self._conn()
+        out = {}
+        seen = set()
+        try:
+            rows = c.execute("SELECT stage,directive,COALESCE(model,'') FROM feedback_routes "
+                             "WHERE COALESCE(directive,'')!='' AND COALESCE(model,'')!='' "
+                             "ORDER BY ts DESC").fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        for stage, directive, model in rows:
+            st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
+            d, m = directive.strip(), model.strip()
+            if (m, st, d) in seen:
+                continue
+            seen.add((m, st, d))
+            lst = out.setdefault(m, {}).setdefault(st, [])
             if len(lst) < limit_per_stage:
                 lst.append(d)
         return out

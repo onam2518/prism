@@ -153,6 +153,7 @@ class SupabaseStore:
 
     def clear_team_contents(self, team):
         self._req("DELETE", "contents", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+        self._req("DELETE", "drafts", query=f"team_key=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
 
     def delete_team(self, team):
         """팀 삭제(위험): 멤버 소속 해제 후 팀 행 삭제. 콘텐츠·피드백 등 팀 데이터는 별도 삭제."""
@@ -457,21 +458,40 @@ class SupabaseStore:
             self._req("POST", "feedback_routes", body=rows, prefer="return=minimal")
 
     def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+        """공통(모델 미기록) 라우트만 — 모델 귀속 라우트는 routes_by_stage_model 참조."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback_routes", "select=stage,directive"
-                         f"{tq}&order=created_at.desc&limit={limit_per_stage * 4}")
+                         f"{tq}&or=(model.is.null,model.eq.)"
+                         f"&order=created_at.desc&limit={limit_per_stage * 4}")
         out = {}
         seen = set()
         for r in rows:
             st = r.get("stage") if r.get("stage") in ("extract", "analyze", "review", "judge") else "analyze"
             d = (r.get("directive") or "").strip()
-            if (st, d) in seen:
+            if not d or (st, d) in seen:
                 continue
             seen.add((st, d))
             lst = out.setdefault(st, [])
-            dv = (r.get("directive") or "").strip()
-            if dv and len(lst) < limit_per_stage:
-                lst.append(dv)
+            if len(lst) < limit_per_stage:
+                lst.append(d)
+        return out
+
+    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None) -> dict:
+        """모델 귀속 라우트: {model: {stage: [directive, …]}} — 모델별 learned 계층의 원천."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        rows = self._get("feedback_routes", "select=stage,directive,model"
+                         f"{tq}&model=neq.&order=created_at.desc&limit={limit_per_stage * 8}")
+        out = {}
+        seen = set()
+        for r in rows:
+            st = r.get("stage") if r.get("stage") in ("extract", "analyze", "review", "judge") else "analyze"
+            d, m = (r.get("directive") or "").strip(), (r.get("model") or "").strip()
+            if not d or not m or (m, st, d) in seen:
+                continue
+            seen.add((m, st, d))
+            lst = out.setdefault(m, {}).setdefault(st, [])
+            if len(lst) < limit_per_stage:
+                lst.append(d)
         return out
 
     def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
@@ -612,13 +632,15 @@ class SupabaseStore:
                 "total_targets": total_targets, "team_progress": team_progress}
 
     # ── 검토 콘텐츠 동기화 + 큐 + retention ────────────────────────────────
-    def sync_contents(self, pairs, source: str = "단건", team=None):
-        """검토 대상(review=='yellow')만 prism.contents 로 upsert(파이어호스 제외)."""
+    def sync_contents(self, pairs, source: str = "단건", team=None, include_all: bool = False):
+        """검토 대상(review=='yellow')만 prism.contents 로 upsert(파이어호스 제외).
+        include_all=True 는 재실행처럼 기존 행 갱신이 목적일 때: 비-YELLOW 결과도
+        upsert 해 모델·버전·review 상태가 최신 실행을 따라가게 한다."""
         from .store import content_hash
         rows = []
         for content, out in pairs:
             qm = out.get("quality_meta", {}) or {}
-            if (qm.get("review") or "") != "yellow":
+            if not include_all and (qm.get("review") or "") != "yellow":
                 continue                              # 검토 대상만
             row = {"hash": content_hash(content), "service": content.get("displayServiceName", ""),
                    "title": content.get("title", ""), "body": content.get("body", ""),
@@ -732,6 +754,21 @@ class SupabaseStore:
         rows = self._get("reports", f"select=payload&kind=eq.{urllib.parse.quote(kind)}&team_key=eq.{tq}")
         return rows[0]["payload"] if rows else None
 
+    def save_draft(self, content_hash, model, version, item_meta, quality_meta, team=None):
+        """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert — 결과 비교 팝업의 전체 이력 원천."""
+        self._upsert("drafts", [{"content_hash": content_hash, "team_key": team or "",
+                                 "model": model or "", "version": int(version or 1),
+                                 "item_meta": item_meta or {}, "quality_meta": quality_meta or {}}])
+
+    def draft_history(self, content_hash, team=None, limit: int = 20) -> list:
+        q = (f"select=model,version,item_meta,quality_meta,created_at"
+             f"&content_hash=eq.{urllib.parse.quote(content_hash)}"
+             f"&team_key=eq.{urllib.parse.quote(team or '')}&order=created_at.desc&limit={int(limit)}")
+        rows = self._get("drafts", q)
+        return [{"model": r.get("model") or "", "version": int(r.get("version") or 1),
+                 "item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},
+                 "ts": _epoch(r.get("created_at"))} for r in rows]
+
     def save_eval_check(self, content_hash, reviewer, verdict, expected="", got="", team=None) -> bool:
         """평가 불일치 건 판정 upsert(1인 1표). verdict: adopt|reject."""
         if verdict not in ("adopt", "reject") or not content_hash:
@@ -793,8 +830,8 @@ class SupabaseStore:
         return None
 
     # 호환: serve 가 부르는 이름들(검토 콘텐츠 동기화로 위임)
-    def save_many(self, pairs, run_id="", source="단건", team=None):
-        return self.sync_contents(pairs, source, team=team)
+    def save_many(self, pairs, run_id="", source="단건", team=None, include_all=False):
+        return self.sync_contents(pairs, source, team=team, include_all=include_all)
 
     def save_dedup(self, pairs, run_id="", source="단건", team=None):
         n = self.sync_contents(pairs, source, team=team)

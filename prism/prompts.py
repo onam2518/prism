@@ -43,6 +43,9 @@ STAGE_DIRECTIVE_DEFAULT["analyze"] = MP.CALL_RULES["intent"] + "\n\n" + MP.CALL_
 STAGE_DIRECTIVE = {"extract": "", "analyze": "", "review": "", "judge": ""}
 # 학습 루프: 배치 결과 피드백에서 누적된 보정 지시(자동 반영). 사람이 직접 쓰지 않음.
 LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
+# 모델별 계층: 피드백이 특정 모델의 초안에서 나온 경우 그 모델 프롬프트에만 병기.
+# {model_id: {stage: directive}} — 공통(모델 미기록) 지시는 위 LEARNED 에만 들어간다.
+LEARNED_BY_MODEL = {}
 
 def directive(stage: str) -> str:
     """단계 원천 지시(override 우선, 없으면 기본값)."""
@@ -55,9 +58,18 @@ def stage_defaults() -> dict:
     return dict(STAGE_DIRECTIVE_DEFAULT)
 
 
-def _learned(stage: str) -> str:
+def _learned(stage: str, model: str = "") -> str:
+    """학습 보정 병기: 공통 지시 + (모델 지정 시) 그 모델 귀속 지시."""
+    parts = []
     v = (LEARNED.get(stage) or "").strip()
-    return f"\n\n[학습 보정 · {stage}] 아래는 과거 평가 피드백에서 누적된 교정 지침이다. 우선 반영한다.\n{v}" if v else ""
+    if v:
+        parts.append(v)
+    if model:
+        mv = ((LEARNED_BY_MODEL.get(model) or {}).get(stage) or "").strip()
+        if mv:
+            parts.append(f"[{model} 전용 보정]\n{mv}")
+    joined = "\n".join(parts)
+    return f"\n\n[학습 보정 · {stage}] 아래는 과거 평가 피드백에서 누적된 교정 지침이다. 우선 반영한다.\n{joined}" if joined else ""
 
 
 # 품질 메타: 활성 프롬프트 버전(promptstore)에서 렌더. 코드 수정 없이 룰 편집 가능.
@@ -109,7 +121,7 @@ def item_system(content, model: str = "") -> str:
     intents = " / ".join(D.intent_categories_for(content.displayServiceName))
     iab = MP.iab_dictionary_text()
     core = f"{directive('extract')}\n\n{directive('analyze')}"
-    learned = _learned("extract") + _learned("analyze")
+    learned = _learned("extract", model) + _learned("analyze", model)
     return MP.item_system(model, core, intents, iab, learned)
 
 
@@ -120,7 +132,7 @@ def item_user(content) -> str:
 def call_system(content, call: str, model: str = "") -> str:
     """분리형 4호출(①~④) 시스템 프롬프트. 코어 규칙은 계약 원문(CALL_RULES) 고정,
     수정은 모델 계열 래퍼(config.family_wrappers) 단위로만. 학습 보정은 병기."""
-    learned = _learned("extract") + _learned("analyze")
+    learned = _learned("extract", model) + _learned("analyze", model)
     return MP.call_system(model, call, content.displayServiceName, learned)
 
 
