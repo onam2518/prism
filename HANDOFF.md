@@ -222,7 +222,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - **프롬프트 버전 스냅샷**: 학습 반영마다 다음 버전(v=회차+1)이 쓸 콜별 최종 시스템 프롬프트를 `prompt_snapshot_v{N}` 리포트로 영속. 조회 `GET /prompt-snapshot?v=N`(미지정=최신) · 버전 재현 근거.
 - **자산 분리 1단계**: 인라인 앱 JS/CSS → `prism/vendor/app.js`·`app.css`. PyInstaller 스펙은 vendor 디렉토리 통째 포함이라 무변경.
 - **라우트 분리(점진 3차 · 2026-07-03 후반)**: 학습·골든·평가 → `learnops.py`, 관리자·팀·인증 → `adminops.py`, HTML 마크업 → `page.py`(serve.py 7,667→2,507줄). serve 가 자기 모듈 객체를 `_SV` 로 주입(-m 실행 __main__ 이중 인스턴스 회피)하고 하위호환 별칭 유지 · HTTP 계약 무변경(스모크 게이트).
-- **4호출 ①② 병렬화 옵션**: `Methodology.parallel_calls`(기본 off) + abtest 프리셋 `parallel`. 산출·차단은 순차와 파리티, 기본값 전환은 실측 A/B + 계약 개정 후.
+- **4호출 ①② 병렬 실행(기본 on · 2026-07-03 실측 승격)**: `Methodology.parallel_calls=True` 기본. 실키 A/B(solar-pro3, 16쌍 교차 2라운드): 평균 -15.5% · 중앙값 -18.0% 지연, API 실패 0, 산출 일치 16/16. 산출·차단 계약 파리티 유지(① 빈값 → ② 폐기·③④ 생략, ③④는 prior 의존이라 순차 유지). 순차 회귀 비교는 abtest 프리셋 `sequential`.
 
 ## 다음 단계
 1. **실 팀 운영 개시**: supabase 는 아직 팀 데이터 0건(2026-07-02 확인). 실사용에서 골드 문항 노출 비율(현재

@@ -38,9 +38,11 @@ class Methodology:
     prefilter_conf: float = 0.72
     yellow_low: float = 0.45
     slim: bool = False
-    # 4호출 중 ①리드문·②엔티티 동시 실행(A/B 검증용 · 산출은 순차와 동일, ① 실패 시 ② 비용 낭비).
-    # 기본 off = 기준 문서의 순차·단락 차단 계약. 승격은 A/B 근거 확보 후 계약 개정과 함께.
-    parallel_calls: bool = False
+    # 4호출 중 ①리드문·②엔티티 동시 실행. 산출은 순차와 동일(두 콜 user 프롬프트가 prior 미사용),
+    # 차단 계약은 유지(① 빈값 → ② 결과 폐기·③④ 생략). 기본 on 근거: 실키 A/B(2026-07-03,
+    # solar-pro3 16쌍 교차 측정) 평균 -15.5%·중앙값 -18.0% 지연, API 실패 0, 산출 일치 16/16.
+    # 순차 회귀 비교는 abtest 프리셋 "sequential".
+    parallel_calls: bool = True
     stages: tuple = ("dispatch", "legal", "quality", "item")   # assemble 은 항상 종단
 
     def to_dict(self) -> dict:
