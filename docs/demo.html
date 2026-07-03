@@ -129,7 +129,11 @@
   --ds-radius-lg: 16px;        /* atomic.Radius.16 · 큰 카드 */
   --ds-radius-xl: 24px;        /* atomic.Radius.24 · 시트·모달 */
   --ds-radius-2xl: 24px;
-  --ds-radius-full: 9999px;    /* atomic.Radius.100 · pill/원형 */
+  --ds-radius-full: 9999px;
+  /* radius 시맨틱 별칭 (참조: Astryx container/element 명명 · 용도로 선택하게) */
+  --ds-radius-card: var(--ds-radius-lg);      /* 패널·카드 */
+  --ds-radius-control: var(--ds-radius-md);   /* 입력·버튼·박스형 컨트롤 */
+  --ds-radius-chip: var(--ds-radius-full);    /* 칩·배지·아바타 */    /* atomic.Radius.100 · pill/원형 */
 
   /* 표면 내부 하이라이트 (다크에서 0) */
   --ds-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.7);
@@ -149,6 +153,19 @@
   /* focus · border.focus = Blue.500, 2px (Button.md §3-5) */
   --ds-focus-ring: 0 0 0 3px rgba(30, 132, 255, 0.4);
   --ds-focus-ring-error: 0 0 0 3px rgba(255, 78, 51, 0.4);
+
+  /* spacing · 4px 그리드 스케일 (참조: Astryx spacing scale · 신규 스타일은 이 토큰 사용) */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-space-8: 32px;
+  --ds-space-10: 40px;
+  /* semantic spacing: 패널 좌우 패딩 · 패널 내 표/필터 인셋(정렬 정책의 단일 원천) */
+  --ds-pad-panel-x: 20px;
+  --ds-pad-inset: 16px;
 
   /* motion */
   --ds-motion-fast: 120ms;
@@ -3262,7 +3279,7 @@
   .ds-table td{vertical-align:top}
   /* 패널 내부 표 = 카드 안쪽에 '독립된 둥근 표 블록'으로 분리(카드 레이어와 겹침 방지).
      사방 여백 + 자체 테두리·라운드 + overflow 클립으로 표 선이 카드 모서리에 닿지 않게. */
-  .panel .overflow-auto:has(> .ds-table){margin:2px 16px 16px;border:1px solid var(--ds-hairline);
+  .panel .overflow-auto:has(> .ds-table){margin:2px var(--ds-pad-inset,16px) var(--ds-pad-inset,16px);border:1px solid var(--ds-hairline);
     border-radius:12px;overflow:auto;background:var(--ds-surface-white)}
   .panel .overflow-auto:has(> .ds-table) .ds-table th{border-top:0}
   .panel .overflow-auto:has(> .ds-table) .ds-table tbody tr:last-child td{border-bottom:0}
@@ -3283,7 +3300,7 @@
   .ds-table tr.is-sel td{background:var(--ds-primary-tint)}
   .fbrow__titlelink{cursor:pointer;border-radius:4px;transition:color .12s,background .12s}
   .fbrow__titlelink:hover{color:var(--ds-primary);text-decoration:underline;text-underline-offset:2px}
-  .fbrow__titlelink:focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px}
+  .fbrow__titlelink:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
   .fbrow__svc{font-size:11px;font-weight:500;color:var(--ds-muted)}
   .fbrow__sum{margin-top:6px;font-size:12px;color:var(--ds-body)}
   .fbrow__act{display:flex;gap:6px;align-self:center}
@@ -3340,7 +3357,7 @@
     background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%238b8f98' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
   select.field:hover{border-color:var(--ds-violet,#1e84ff)}
-  select.field:focus-visible{outline:2px solid var(--ds-violet,#1e84ff);outline-offset:1px}
+  select.field:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
   .selctl select.field{background-position:right 4px center;padding-right:22px}
   .selctl:hover{border-color:var(--ds-violet,#1e84ff)}
   .abslot{padding:8px 12px 8px 8px;gap:8px;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -3364,7 +3381,7 @@
   .abbar--b .abbar__fill{background:#ff6a3d}
   .abwin{font-size:10.5px;font-weight:800;color:var(--ds-success,#18ba45)}
   .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
-  .panel .filterbar{margin-left:16px;margin-right:16px}   /* 표 인셋(16px)과 좌우 정렬 */
+  .panel .filterbar{margin-left:var(--ds-pad-inset,16px);margin-right:var(--ds-pad-inset,16px)}   /* 표 인셋과 좌우 정렬(단일 원천: --ds-pad-inset) */
   .filterbar .field{height:36px}
   .filterbar input.field{flex:1;min-width:180px}
   .ds-table td{vertical-align:middle}
@@ -3512,7 +3529,7 @@
     transition:transform .16s var(--ds-ease-standard),box-shadow .16s var(--ds-ease-standard)}
   .ds-stat:hover{transform:translateY(-2px);box-shadow:0 10px 22px -12px rgba(16,24,40,.20)}
   .ds-stat__value--accent{text-shadow:0 0 18px color-mix(in srgb,var(--ds-primary) 28%,transparent)}
-  .panel-hd{display:flex;align-items:center;gap:12px;padding:18px 20px 13px;border-bottom:1px solid var(--ds-hairline-soft)}
+  .panel-hd{display:flex;align-items:center;gap:12px;padding:18px var(--ds-pad-panel-x,20px) 13px;border-bottom:1px solid var(--ds-hairline-soft)}
   .panel-bd{padding-top:16px}   /* 헤더 구분선 아래 본문 */
   .panel-hd>b{margin-right:auto}
   .ds-progress--drill:hover .ds-progress__label{color:var(--ds-primary)}
@@ -3537,7 +3554,7 @@
   @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}
   .panel-hd b{color:var(--ds-ink);font-size:16px;font-weight:700;letter-spacing:-.01em}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
-  .panel-bd{padding:16px 20px 20px}
+  .panel-bd{padding:var(--ds-pad-inset,16px) var(--ds-pad-panel-x,20px) var(--ds-pad-panel-x,20px)}
   .drow{display:grid;grid-template-columns:124px 1fr;gap:16px;padding:15px 18px;
     border-bottom:1px solid var(--ds-hairline-soft);align-items:start}
   .drow:last-child{border-bottom:0}

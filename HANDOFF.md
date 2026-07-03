@@ -176,6 +176,13 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     config.family_wrappers · 빈 저장=기본 복원) 단위로만. 스튜디오 = 계약 뷰 + 래퍼 편집 +
     호출별 모델 티어 + **최종 프롬프트 미리보기**(/prompt-preview?model&call&service · 콜×모델×서비스
     합성 결과). 구 추출·분석 카드 제거(검수·판정 카드는 유지).
+  - **토큰 정책(2026-07-03 · Astryx 참조 감사)**: 간격은 4px 그리드 스케일 `--ds-space-1..10` +
+    시맨틱 `--ds-pad-panel-x`(패널 좌우 20px)·`--ds-pad-inset`(패널 내 표·필터 인셋 16px, 정렬 정책의
+    단일 원천). radius 는 용도 별칭으로 선택: `--ds-radius-card`(패널·카드)/`--ds-radius-control`
+    (입력·버튼)/`--ds-radius-chip`(칩·배지). 포커스는 전 컴포넌트 `--ds-focus-ring` box-shadow 로
+    통일(outline 하드코딩 금지 · 전역 :where 폴백만 예외). 신규 스타일은 하드코딩 px 대신 토큰 사용.
+    비교 원천: Meta Astryx theme-neutral(spacing scale·radius 시맨틱 명명 참조 · React 컴포넌트
+    계층은 미도입, 토큰 관례만 차용).
   - 후속 소요: meta_compile 의 모델별 그룹 컴파일(feedback_routes.model 활용 · 모델별 프롬프트 개선 반영).
 
 ## 메타 체계 (코드가 이 기준으로 정렬)

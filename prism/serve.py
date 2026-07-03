@@ -4547,7 +4547,7 @@ PAGE = """<!doctype html>
   .ds-table td{vertical-align:top}
   /* 패널 내부 표 = 카드 안쪽에 '독립된 둥근 표 블록'으로 분리(카드 레이어와 겹침 방지).
      사방 여백 + 자체 테두리·라운드 + overflow 클립으로 표 선이 카드 모서리에 닿지 않게. */
-  .panel .overflow-auto:has(> .ds-table){margin:2px 16px 16px;border:1px solid var(--ds-hairline);
+  .panel .overflow-auto:has(> .ds-table){margin:2px var(--ds-pad-inset,16px) var(--ds-pad-inset,16px);border:1px solid var(--ds-hairline);
     border-radius:12px;overflow:auto;background:var(--ds-surface-white)}
   .panel .overflow-auto:has(> .ds-table) .ds-table th{border-top:0}
   .panel .overflow-auto:has(> .ds-table) .ds-table tbody tr:last-child td{border-bottom:0}
@@ -4568,7 +4568,7 @@ PAGE = """<!doctype html>
   .ds-table tr.is-sel td{background:var(--ds-primary-tint)}
   .fbrow__titlelink{cursor:pointer;border-radius:4px;transition:color .12s,background .12s}
   .fbrow__titlelink:hover{color:var(--ds-primary);text-decoration:underline;text-underline-offset:2px}
-  .fbrow__titlelink:focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px}
+  .fbrow__titlelink:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
   .fbrow__svc{font-size:11px;font-weight:500;color:var(--ds-muted)}
   .fbrow__sum{margin-top:6px;font-size:12px;color:var(--ds-body)}
   .fbrow__act{display:flex;gap:6px;align-self:center}
@@ -4625,7 +4625,7 @@ PAGE = """<!doctype html>
     background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%238b8f98' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 10px center;padding-right:30px}
   select.field:hover{border-color:var(--ds-violet,#1e84ff)}
-  select.field:focus-visible{outline:2px solid var(--ds-violet,#1e84ff);outline-offset:1px}
+  select.field:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
   .selctl select.field{background-position:right 4px center;padding-right:22px}
   .selctl:hover{border-color:var(--ds-violet,#1e84ff)}
   .abslot{padding:8px 12px 8px 8px;gap:8px;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -4649,7 +4649,7 @@ PAGE = """<!doctype html>
   .abbar--b .abbar__fill{background:#ff6a3d}
   .abwin{font-size:10.5px;font-weight:800;color:var(--ds-success,#18ba45)}
   .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
-  .panel .filterbar{margin-left:16px;margin-right:16px}   /* 표 인셋(16px)과 좌우 정렬 */
+  .panel .filterbar{margin-left:var(--ds-pad-inset,16px);margin-right:var(--ds-pad-inset,16px)}   /* 표 인셋과 좌우 정렬(단일 원천: --ds-pad-inset) */
   .filterbar .field{height:36px}
   .filterbar input.field{flex:1;min-width:180px}
   .ds-table td{vertical-align:middle}
@@ -4797,7 +4797,7 @@ PAGE = """<!doctype html>
     transition:transform .16s var(--ds-ease-standard),box-shadow .16s var(--ds-ease-standard)}
   .ds-stat:hover{transform:translateY(-2px);box-shadow:0 10px 22px -12px rgba(16,24,40,.20)}
   .ds-stat__value--accent{text-shadow:0 0 18px color-mix(in srgb,var(--ds-primary) 28%,transparent)}
-  .panel-hd{display:flex;align-items:center;gap:12px;padding:18px 20px 13px;border-bottom:1px solid var(--ds-hairline-soft)}
+  .panel-hd{display:flex;align-items:center;gap:12px;padding:18px var(--ds-pad-panel-x,20px) 13px;border-bottom:1px solid var(--ds-hairline-soft)}
   .panel-bd{padding-top:16px}   /* 헤더 구분선 아래 본문 */
   .panel-hd>b{margin-right:auto}
   .ds-progress--drill:hover .ds-progress__label{color:var(--ds-primary)}
@@ -4822,7 +4822,7 @@ PAGE = """<!doctype html>
   @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}
   .panel-hd b{color:var(--ds-ink);font-size:16px;font-weight:700;letter-spacing:-.01em}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
-  .panel-bd{padding:16px 20px 20px}
+  .panel-bd{padding:var(--ds-pad-inset,16px) var(--ds-pad-panel-x,20px) var(--ds-pad-panel-x,20px)}
   .drow{display:grid;grid-template-columns:124px 1fr;gap:16px;padding:15px 18px;
     border-bottom:1px solid var(--ds-hairline-soft);align-items:start}
   .drow:last-child{border-bottom:0}
