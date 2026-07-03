@@ -29,6 +29,8 @@
 
   /* ── semantic state ── */
   --ds-success: #18ba45;          /* atomic.Green (단일값) */
+  --ds-success-deep: #0f8f36;     /* 성공 텍스트(틴트 배경 위 가독) */
+  --ds-error-deep: #d63a20;       /* 오류 텍스트(틴트 배경 위 가독) */
   --ds-error: #ff4e33;            /* atomic.Red.500 · state.accent */
   --ds-warning: #ff9429;          /* atomic.Orange.500 */
   --ds-info: #1e84ff;             /* state.info */
@@ -185,6 +187,8 @@
   --ds-hairline-soft: rgba(255, 255, 255, 0.04);
 
   --ds-on-primary: #ffffff;
+  --ds-success-deep: #5fe08a;      /* 다크: 밝게 보정 */
+  --ds-error-deep: #ff8a75;
   --ds-tint-bg: rgba(30, 132, 255, 0.24);
   --ds-tint-fg: #66a8ff;
   --ds-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.04);

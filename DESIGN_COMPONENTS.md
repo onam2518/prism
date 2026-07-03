@@ -12,6 +12,8 @@
 - 타이틀·소제목·스텝 배지·퀘스트·큰 숫자는 디스플레이 폰트(GmarketSans), 본문·표·입력은 Pretendard.
 - 값 태그(등급·인텐트·카테고리·사유·엔티티)는 반드시 호버 정의(`data-tip` + `termDef`)를 단다.
 - em-dash 문자 금지 · 빈 셀은 `·` · 위험(파괴) 버튼은 danger outline 단일 규격.
+- 색은 토큰(`var(--ds-*)`) 경유가 기본. 상태 텍스트는 `--ds-success-deep`/`--ds-error-deep`(틴트 배경 위 가독 · 다크 자동 보정), 색 배경 위 글자는 `--ds-on-primary`(Primary) 또는 `--ds-text-static-white`(모드 무관).
+- **고정 액센트 예외**(값 직접 사용 허용 · 감사 제외): 게임화 티어 5색(#1e84ff·#5c77ff·#ff9429·#a05cff·#ffb020), 배지 금장 #b8791f·잠금 오브 #9aa0a6·축하 그라디언트, A/B 'B' 슬롯 주황 #ff6a3d, `[data-theme='dark']` 보정 전용 값. `var(--x, #hex)` 폴백은 하드코딩이 아니다.
 
 ## 선택 컨트롤 3종 (혼용 금지)
 

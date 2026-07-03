@@ -490,17 +490,17 @@ PAGE = """<!doctype html>
               <div class="drow" style="grid-template-columns:1fr auto;align-items:center;border-bottom:1px solid var(--ds-hairline-soft)">
                 <div>
                   <div style="display:flex;align-items:center;gap:var(--ds-space-2);flex-wrap:wrap">
-                    <span class="ds-badge" x-bind:class="s.type === 'kafka' ? 'ds-badge--intent' : 'ds-badge--entity'" x-text="s.type === 'kafka' ? 'Kafka' : 'API'"></span>
+                    <span class="ds-badge" x-bind:class="s.type === 'kafka' ? 'ds-badge--intent' : 'ds-badge--entity'" style="cursor:help" data-tip="자동 인입 소스 유형 · Kafka 스트림 또는 API 폴링" data-tip-pos="top" x-text="s.type === 'kafka' ? 'Kafka' : 'API'"></span>
                     <b class="text-ink" x-text="s.name"></b>
                     <span class="ds-badge" x-bind:class="s.enabled ? 'ds-badge--success' : 'ds-badge--neutral'"><span x-show="s.enabled" class="ds-badge__dot"></span><span x-text="s.enabled ? '활성' : '중지'"></span></span>
                   </div>
                   <div class="text-xs text-muted" style="margin-top:3px" x-text="s.type === 'kafka' ? (s.brokers + ' · ' + s.topic) : (s.method + ' ' + s.endpoint)"></div>
-                  <div x-show="srcRunning(s) || ingestRunMsg[s.id] || (srcJob(s) && srcJob(s).last_msg)" class="text-xs" style="margin-top:5px" x-bind:style="(ingestRunMsg[s.id]||'').startsWith('오류') || (srcJob(s) && srcJob(s).last_ok === false) ? 'color:#ff4e33' : 'color:var(--ds-primary)'" x-text="srcRunning(s) ? ('인입 중 ' + (srcJob(s) ? (srcJob(s).done + (srcJob(s).total ? ('/' + srcJob(s).total) : '') + '건') : '…')) : (ingestRunMsg[s.id] || (srcJob(s) ? srcJob(s).last_msg : ''))"></div>
+                  <div x-show="srcRunning(s) || ingestRunMsg[s.id] || (srcJob(s) && srcJob(s).last_msg)" class="text-xs" style="margin-top:5px" x-bind:style="(ingestRunMsg[s.id]||'').startsWith('오류') || (srcJob(s) && srcJob(s).last_ok === false) ? 'color:var(--ds-error)' : 'color:var(--ds-primary)'" x-text="srcRunning(s) ? ('인입 중 ' + (srcJob(s) ? (srcJob(s).done + (srcJob(s).total ? ('/' + srcJob(s).total) : '') + '건') : '…')) : (ingestRunMsg[s.id] || (srcJob(s) ? srcJob(s).last_msg : ''))"></div>
                 </div>
                 <div style="display:flex;gap:6px">
                   <button type="button" class="ds-btn ds-btn--primary" style="height:30px;padding:0 12px" x-show="s.type !== 'kafka'" x-bind:disabled="srcRunning(s)" x-on:click="ingestNow(s)" x-text="srcRunning(s) ? '인입 중…' : '지금 인입'"></button>
                   <button type="button" class="copybtn" x-on:click="toggleSource(s)" x-text="s.enabled ? '중지' : '활성'"></button>
-                  <button type="button" class="copybtn" x-on:click="removeSource(s.id)" style="color:#ff4e33;border-color:rgba(255,78,51,.3)">삭제</button>
+                  <button type="button" class="copybtn" x-on:click="removeSource(s.id)" style="color:var(--ds-error);border-color:rgba(255,78,51,.3)">삭제</button>
                 </div>
               </div>
             </template>
@@ -609,7 +609,7 @@ PAGE = """<!doctype html>
               <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
               <span x-text="loading ? '추가 중' : '콘텐츠 추가'"></span>
             </button>
-            <span aria-live="polite" class="ml-auto text-sm text-[#ff4e33]" x-text="status"></span>
+            <span aria-live="polite" class="ml-auto text-sm" style="color:var(--ds-error)" x-text="status"></span>
           </div>
           </div>
         </section>
@@ -707,11 +707,11 @@ PAGE = """<!doctype html>
         <div x-show="result" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>처리 이력</b><span class="meta" x-text="tr.prompt_version || ''"></span><button type="button" class="copybtn" x-show="tr && tr.content_id !== undefined" x-on:click="exportEval()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div><div class="panel-bd">
             <div class="drow"><div class="k">보정</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" x-text="f"></span></template>
+              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="실행 중 발생한 폴백·재시도 기록" data-tip-pos="top" x-text="f"></span></template>
               <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
             </div></div>
             <div class="drow"><div class="k">검증 verdict</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
+              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" data-tip="에이전트별 판정 근거(트레이스)" data-tip-pos="top" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
               <span x-show="!(tr.agent_verdicts||[]).length" class="text-xs text-muted">없음</span>
             </div></div>
             <div class="drow"><div class="k">비용 · 토큰</div><div class="v text-sm text-body tnum" x-text="'$' + (tr.cost_usd||0).toFixed(4) + ' · ' + JSON.stringify(tr.tokens||{})"></div></div>
@@ -993,7 +993,7 @@ PAGE = """<!doctype html>
                 <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr>
                   <td class="text-ink" x-text="k"></td>
                   <td><div class="tbox"><span class="nm" x-text="(dictData.qualityNames&&dictData.qualityNames[k])||''"></span><span x-text="v"></span></div></td>
-                  <td><span class="ds-badge ds-badge--neutral" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'ds-badge--intent':'ds-badge--category'" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
+                  <td><span class="ds-badge ds-badge--neutral" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'ds-badge--intent':'ds-badge--category'" style="cursor:help" data-tip="적용 범위 · UGC=이용자 생성 콘텐츠에만, 전체=모든 서비스에 적용" data-tip-pos="top" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
                   <td><button type="button" class="copybtn" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td>
                 </tr></template>
               </tbody></table></div></div>
@@ -1025,7 +1025,7 @@ PAGE = """<!doctype html>
           <template x-for="u in (userData?userData.users:[])" x-bind:key="u.user_id">
             <div class="panel"><div class="panel-hd">
               <b x-text="u.user_id"></b>
-              <span class="ds-badge ds-badge--entity" x-text="u.persona"></span>
+              <span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="'사용자 페르소나(행동 로그 군집) · ' + u.persona" data-tip-pos="top" x-text="u.persona"></span>
               <span class="meta tnum ml-auto" x-text="'조회 ' + u.engagement.views + ' · 클릭률 ' + u.engagement.click_rate + ' · 평균체류 ' + u.engagement.avg_dwell_sec + 's'"></span>
             </div><div class="panel-bd">
               <div class="drow"><div class="k">소비 형태</div><div class="v text-sm text-body" x-text="Object.entries(u.form).map(e=>e[0]+':'+e[1]).join(' · ')"></div></div>
@@ -1737,7 +1737,7 @@ PAGE = """<!doctype html>
             </div>
             <template x-for="j in filteredJobs" x-bind:key="j.id">
               <div class="w-run"><span class="w-run__av"><img src="/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
-                <div class="w-run__t"><b class="text-ink" x-text="j.name"></b> · 자동 인입 중 <span class="ds-badge" x-bind:class="j.trigger==='auto' ? 'ds-badge--intent' : 'ds-badge--entity'" x-text="j.trigger==='auto' ? '자동' : '수동'"></span> <span class="text-xs text-muted tnum" x-show="j.total" x-text="j.done + ' / ' + j.total + '건'"></span></div>
+                <div class="w-run__t"><b class="text-ink" x-text="j.name"></b> · 자동 인입 중 <span class="ds-badge" x-bind:class="j.trigger==='auto' ? 'ds-badge--intent' : 'ds-badge--entity'" style="cursor:help" data-tip="인입 트리거 · 자동=스케줄 폴링, 수동=관리자 실행" data-tip-pos="top" x-text="j.trigger==='auto' ? '자동' : '수동'"></span> <span class="text-xs text-muted tnum" x-show="j.total" x-text="j.done + ' / ' + j.total + '건'"></span></div>
                 <div class="text-xs text-muted" x-text="j.last_msg || j.endpoint"></div>
                 <div class="ds-progress" x-bind:class="j.total ? '' : 'ds-progress--indeterminate'" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="j.total ? ('width:' + Math.round((j.done/j.total)*100) + '%') : ''"></div></div></div>
               </div></div>
@@ -1869,7 +1869,7 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 인입 정책 (전용 도구) ═══ -->
       <!-- 수집(인입) 정책: 정책 표 성격 → 사전·정책 메뉴에 통합 렌더 -->
       <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4" style="margin-top:16px">
-        <div class="ds-widget ds-widget--info" style="--w-accent:#1e84ff">
+        <div class="ds-widget ds-widget--info" style="--w-accent:var(--ds-primary)">
           <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>ITEM TYPE 처리 정책</span></div><div class="ds-widget__actions"><span class="ds-badge ds-badge--neutral">131</span><span class="text-xs text-muted">직접 수정 가능</span><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th>ITEM TYPE</th><th>필터 대상</th><th>처리 방식</th><th>상태</th><th></th></tr></thead><tbody>
@@ -1878,7 +1878,7 @@ PAGE = """<!doctype html>
                   <td class="text-ink" x-text="t"></td>
                   <td x-text="row.filter"></td>
                   <td><div class="tbox" x-text="row.method"></div></td>
-                  <td><span class="ds-badge" x-bind:class="row.status === '구현' ? 'ds-badge--success' : (row.status === 'PoC' ? 'ds-badge--intent' : 'ds-badge--neutral')"><span x-show="row.status==='구현'" class="ds-badge__dot"></span><span x-text="row.status"></span></span></td>
+                  <td><span class="ds-badge" x-bind:class="row.status === '구현' ? 'ds-badge--success' : (row.status === 'PoC' ? 'ds-badge--intent' : 'ds-badge--neutral')" style="cursor:help" data-tip="구현 상태 · 구현=운영 반영, PoC=검증 단계, 설계=문서 단계" data-tip-pos="top"><span x-show="row.status==='구현'" class="ds-badge__dot"></span><span x-text="row.status"></span></span></td>
                   <td><button type="button" class="copybtn" x-on:click="startEditIntake(t, row)">편집</button></td>
                 </tr>
               </template>
@@ -1964,10 +1964,10 @@ PAGE = """<!doctype html>
       <div class="polpal__ctx" x-show="polCtx().length">
         <span class="text-xs text-muted" style="width:100%">현재 검수 항목의 값 · 눌러서 기준 보기</span>
         <template x-for="(x,xi) in polCtx()" x-bind:key="'pc'+xi+x.v">
-          <button type="button" class="ds-badge" x-bind:class="{intent:'ds-badge--intent',category:'ds-badge--category',reason:'ds-badge--reason',grade:(x.v==='G'?'ds-badge--success':'ds-badge--error')}[x.kind]" style="cursor:pointer" x-on:click="polShow(x.kind, x.v)" x-text="polCtxLabel(x)"></button>
+          <button type="button" class="ds-badge" x-bind:class="{intent:'ds-badge--intent',category:'ds-badge--category',reason:'ds-badge--reason',grade:(x.v==='G'?'ds-badge--success':'ds-badge--error')}[x.kind]" style="cursor:pointer" x-bind:data-tip="termDef(x.kind, x.v) + ' · 눌러서 기준 보기'" data-tip-pos="top" x-on:click="polShow(x.kind, x.v)" x-text="polCtxLabel(x)"></button>
         </template>
       </div>
-      <span class="srcfilter" style="display:flex;gap:4px">
+      <span class="srcfilter" style="display:flex;gap:var(--ds-space-1)">
         <button type="button" class="srcfilter__chip" x-bind:class="polTab==='intent'?'sel':''" x-on:click="polTab='intent'; polHl=''; polSave()">인텐트</button>
         <button type="button" class="srcfilter__chip" x-bind:class="polTab==='category'?'sel':''" x-on:click="polTab='category'; polHl=''; polSave()">카테고리</button>
         <button type="button" class="srcfilter__chip" x-bind:class="polTab==='quality'?'sel':''" x-on:click="polTab='quality'; polHl=''; polSave()">품질 사유</button>
