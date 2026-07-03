@@ -43,6 +43,9 @@ class Methodology:
     # solar-pro3 16쌍 교차 측정) 평균 -15.5%·중앙값 -18.0% 지연, API 실패 0, 산출 일치 16/16.
     # 순차 회귀 비교는 abtest 프리셋 "sequential".
     parallel_calls: bool = True
+    # quality ∥ item 스테이지 동시 실행(A/B 검증용 · 기본 off): 게이트는 사후 적용이라 산출은
+    # 순차와 동일, 트레이드오프 = R(비-YELLOW) 판정 시 아이템 4호출 비용 낭비. 승격은 실측 후.
+    parallel_quality_item: bool = False
     stages: tuple = ("dispatch", "legal", "quality", "item")   # assemble 은 항상 종단
 
     def to_dict(self) -> dict:
@@ -50,7 +53,8 @@ class Methodology:
                 "quality_split": self.quality_split, "embed_categories": self.embed_categories,
                 "yellow": self.yellow, "prefilter_conf": self.prefilter_conf,
                 "yellow_low": self.yellow_low, "slim": self.slim,
-                "parallel_calls": self.parallel_calls, "stages": list(self.stages)}
+                "parallel_calls": self.parallel_calls,
+                "parallel_quality_item": self.parallel_quality_item, "stages": list(self.stages)}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Methodology":
@@ -189,8 +193,55 @@ def run(content_dict: dict, llm, methodology: Methodology = None, *,
     for key in m.stages:
         if ctx.halt:
             break
+        if m.parallel_quality_item and key == "quality" and "item" in m.stages:
+            _run_quality_item_parallel(ctx)
+            continue
+        if m.parallel_quality_item and key == "item" and "quality" in m.stages:
+            continue                                   # 병렬 쌍에서 이미 소화
         REGISTRY[key](ctx)
     return _assemble(ctx)
+
+
+def _run_quality_item_parallel(ctx: HCtx):
+    """quality ∥ item 동시 실행(방법론 옵션): 게이트를 사후 적용 · R(비-YELLOW) 판정이면
+    item 산출을 폐기해 산출 파리티를 유지한다(그 콜 비용 낭비가 트레이드오프).
+    트레이스는 quality → item 순서로 병합(결정론)."""
+    import copy
+    import threading
+    cq = copy.copy(ctx)
+    cq.results, cq.verdicts, cq.fallbacks = [], [], []
+    ci = copy.copy(ctx)
+    ci.results, ci.verdicts, ci.fallbacks = [], [], []
+    ci.qm = QualityMeta(finalGrade="G", reasons=[])    # 게이트 통과용 더미(사후 게이트가 대체)
+    errs = []
+
+    def _q():
+        try:
+            st_quality(cq)
+        except Exception as e:
+            errs.append(e)
+
+    def _i():
+        try:
+            st_item(ci)
+        except Exception as e:
+            errs.append(e)
+    t1 = threading.Thread(target=_q)
+    t2 = threading.Thread(target=_i)
+    t1.start(); t2.start(); t1.join(); t2.join()
+    if errs:
+        raise errs[0]
+    ctx.qm = cq.qm
+    ctx.pred_v, ctx.pred_c = cq.pred_v, cq.pred_c
+    ctx.results += cq.results + ci.results
+    ctx.verdicts += cq.verdicts + ci.verdicts
+    ctx.fallbacks += cq.fallbacks + ci.fallbacks
+    gate = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow")
+    if gate and ctx.routing.content_track != "image_only":
+        ctx.item_meta = ci.item_meta
+    elif ci.item_meta is not None:
+        ctx.item_meta = None
+        ctx.fallbacks.append("병렬 스테이지: R 판정 → 아이템 메타 폐기(비용 트레이드오프)")
 
 
 def _assemble(ctx: HCtx) -> dict:
@@ -206,6 +257,16 @@ def _assemble(ctx: HCtx) -> dict:
     t.tokens = {"in": sum(r.in_tok for r in ctx.results),
                 "out": sum(r.out_tok for r in ctx.results)}
     t.latency_ms = {"total": sum(r.latency_ms for r in ctx.results)}
+    by_call = {}
+    for r in ctx.results:                              # 콜 태그별 비용·토큰 분해(콜별 모델 라우팅 근거)
+        tag = getattr(r, "tag", "") or "(기타)"
+        b = by_call.setdefault(tag, {"n": 0, "cost": 0.0, "in": 0, "out": 0, "ms": 0})
+        b["n"] += 1
+        b["cost"] = round(b["cost"] + r.cost_usd, 6)
+        b["in"] += r.in_tok
+        b["out"] += r.out_tok
+        b["ms"] += r.latency_ms
+    t.by_call = by_call
     out = Output(ctx.content.ref(), ctx.routing, ctx.legal_meta, ctx.qm, ctx.item_meta, t)
     return out.to_dict(slim=ctx.methodology.slim)
 

@@ -199,6 +199,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         before = self.ok("/golden-status")
         r = self.ok("/learn-batch", {})
         self.assertTrue(r.get("ok"))
+        self.assertIn("improve_delta", r)               # 개선 전/후 효과 측정 필드
         gl = self.ok("/golden-list")
         row = next((g for g in gl["items"] if g["hash"] == h), None)
         self.assertIsNotNone(row, "검수 합의 콘텐츠가 정답셋으로 승격되어야 함")
@@ -217,6 +218,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertGreaterEqual(ev.get("evaluated", 0), 1)
         ld = self.ok("/learn-data")
         self.assertGreaterEqual(ld.get("golden_n", 0), 1)
+        self.assertIn("dict_gap", ld)                   # 사전 갭 집계 노출
 
     def test_09_learn_quest_config(self):
         """검수 목표(퀘스트) 일시 설정 왕복 + 팀 퀘스트 데이터 노출 + 해제."""

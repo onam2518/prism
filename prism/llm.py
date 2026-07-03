@@ -17,8 +17,9 @@ PRICE_OUT = 0.60
 
 class LLMResult:
     def __init__(self, text, in_tok, out_tok, latency_ms, retries, raw=None,
-                 price_in=PRICE_IN, price_out=PRICE_OUT, fail_kind=None):
+                 price_in=PRICE_IN, price_out=PRICE_OUT, fail_kind=None, tag=""):
         self.text = text
+        self.tag = tag                 # 호출 태그(quality·item_summary 등) · 콜별 비용 분해용
         self.in_tok = in_tok
         self.out_tok = out_tok
         self.latency_ms = latency_ms
@@ -53,7 +54,9 @@ class LLMClient:
     def complete_json(self, system: str, user: str, tag: str = "") -> tuple[dict, LLMResult]:
         """JSON 객체를 강제 파싱해 반환. 실패 시 1회 재시도 후 빈 dict + 표식."""
         if self.mock:
-            return self._mock(system, user, tag)
+            obj, res = self._mock(system, user, tag)
+            res.tag = tag
+            return obj, res
 
         rp = self.cfg.retry
         last_err = None
@@ -64,6 +67,7 @@ class LLMClient:
                 res = self._call(system, user)
                 obj = _parse_json(res.text)
                 res.retries = retries
+                res.tag = tag
                 return obj, res
             except (ParseError, EmptyError) as e:
                 # 형식 실패도 재시도(EMPTY 는 테스트상 최대 손실원)
@@ -72,7 +76,7 @@ class LLMClient:
                     retries += 1
                     time.sleep(backoff_delay(attempt, rp.base_delay, rp.max_delay, rp.jitter))
                     continue
-                return self._fail("parse_empty", str(e), retries)
+                return self._fail("parse_empty", str(e), retries, tag=tag)
             except urllib.error.HTTPError as e:
                 try:
                     detail = e.read().decode()[:200]
@@ -86,7 +90,7 @@ class LLMClient:
                     continue
                 # 400(콘텐츠 필터 등) 비재시도성 → 분류 후 fail(배치 비중단)
                 kind = classify_http_error(e.code, detail)
-                return self._fail(kind, f"HTTP{e.code}: {detail}", retries)
+                return self._fail(kind, f"HTTP{e.code}: {detail}", retries, tag=tag)
             except Exception as e:
                 # 네트워크/타임아웃: 백오프 재시도
                 last_err = e
@@ -94,16 +98,16 @@ class LLMClient:
                     retries += 1
                     time.sleep(backoff_delay(attempt, rp.base_delay, rp.max_delay, rp.jitter))
                     continue
-                return self._fail("network", str(e), retries)
-        return self._fail("unknown", str(last_err), retries)
+                return self._fail("network", str(e), retries, tag=tag)
+        return self._fail("unknown", str(last_err), retries, tag=tag)
 
-    def _fail(self, kind, detail, retries):
+    def _fail(self, kind, detail, retries, tag=""):
         with self._lock:
             self.fail_counts[kind] = self.fail_counts.get(kind, 0) + 1
         return ({"_fail": detail, "_fail_kind": kind},
                 LLMResult("", 0, 0, 0, retries,
                           price_in=self.cfg.prices.chat_in,
-                          price_out=self.cfg.prices.chat_out, fail_kind=kind))
+                          price_out=self.cfg.prices.chat_out, fail_kind=kind, tag=tag))
 
     # 내부
     def _call(self, system: str, user: str) -> LLMResult:

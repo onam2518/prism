@@ -111,8 +111,11 @@ ROUTE_SYSTEM = (
     "- 검수자가 선택한 요소 힌트가 있어도, 원문이 다른 요소를 함께 지적하면 그 요소도 포함하라.\n"
     "- directive 는 그 요소를 다루는 프롬프트에 덧붙일 명령형 1~2문장. 이 한 건을 넘어 일반화하고, "
     "콘텐츠 제목 같은 고유값은 넣지 말 것.\n"
-    "반드시 JSON 만: {\"items\": [{\"element\": \"위 id\", \"directive\": \"...\"}]}"
+    "- confidence 는 그 분류가 원문 지적과 맞다는 확신(0~1). 원문이 모호하면 낮게.\n"
+    "반드시 JSON 만: {\"items\": [{\"element\": \"위 id\", \"directive\": \"...\", \"confidence\": 0.0}]}"
 )
+
+ROUTE_MIN_CONF = 0.5     # 이 미만이면 재분류를 버리고 검수자 선택 요소 폴백(오염 방지 · 무손실)
 
 
 def route_feedback(llm, fb: dict) -> list:
@@ -131,11 +134,22 @@ def route_feedback(llm, fb: dict) -> list:
         print(f"  [warn] 피드백 라우팅 실패 → 선택 요소 폴백: {e}")
         return fallback
     out = []
+    low_conf = False
     for it in (obj.get("items") or []):
         el = str(it.get("element") or "").strip()
         dv = str(it.get("directive") or "").strip()
+        try:
+            conf = float(it.get("confidence")) if it.get("confidence") is not None else None
+        except (TypeError, ValueError):
+            conf = None
+        if conf is not None and conf < ROUTE_MIN_CONF:
+            low_conf = True                        # 확신 낮은 재분류가 섞임 → 전체를 폴백으로
+            continue
         if el in ELEMENTS and dv:
             out.append({"element": el, "stage": ELEM_STAGE[el], "directive": dv})
+    if low_conf and fallback:                      # 잘못된 스테이지 오염 방지: 원문 그대로(무손실) 채택
+        print("  [route] 재분류 확신 낮음 → 선택 요소 폴백")
+        return fallback
     return out or fallback
 
 

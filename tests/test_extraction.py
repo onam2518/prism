@@ -128,6 +128,40 @@ class TestFourCallExtraction(unittest.TestCase):
         self.assertEqual(llm.calls, ["item_summary"])               # 후속 호출 생략
         self.assertEqual((im.summary, im.entities, im.intent), ("", [], []))
 
+    def test_rule_fixes_rescue_before_drop(self):
+        """규칙 보정: 공백 변형 인텐트 구제 + 문자열 단일값 코어션(재요청·드롭 절감)."""
+        from prism import agents as AG
+        llm = self._llm({
+            "item_summary": {"summary": "리드문"},
+            "item_entities": {"entities": "한국은행"},                  # 문자열 -> [값]
+            "item_intent": {"intent": ["속보 · 단신"]},                  # 공백 변형 -> 사전 표기 구제
+            "item_category": {"content_category": ["Business and Finance / Economy"]},
+        })
+        AG.META_CFG = {"four_calls": True, "call_models": {}}
+        im, results = AG.run_item(llm, self._content())
+        self.assertEqual(im.entities, ["한국은행"])
+        self.assertEqual(im.intent, ["속보·단신"])                      # 정규 표기로 반환
+        self.assertEqual(llm.calls.count("item_intent"), 1)             # 재요청 없이 구제
+        self.assertFalse([r for r in results if isinstance(r, dict) and r.get("drop")])
+
+    def test_drop_observability_recorded(self):
+        """사전 갭 관측: 드롭 원값·재요청 여부가 트레이스(verdict)에 남는다."""
+        from prism import agents as AG
+        llm = self._llm({
+            "item_summary": {"summary": "리드문"},
+            "item_entities": {"entities": ["개체"]},
+            "item_intent": {"intent": ["사전에없는값"]},
+            "item_category": {"content_category": ["엉터리경로"]},
+        })
+        AG.META_CFG = {"four_calls": True, "call_models": {}}
+        im, results = AG.run_item(llm, self._content())
+        drops = [r["drop"] for r in results if isinstance(r, dict) and r.get("drop")]
+        by_call = {d["call"]: d for d in drops}
+        self.assertIn("사전에없는값", by_call["intent"]["values"])
+        self.assertTrue(by_call["intent"]["retried"])               # 전량 드롭 -> 재요청 기록
+        self.assertIn("엉터리경로", by_call["category"]["values"])
+        self.assertEqual(by_call["intent"]["service"], "뉴스")
+
     def test_all_dropped_retries_once(self):
         from prism import agents as AG
         llm = self._llm({

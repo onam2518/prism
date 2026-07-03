@@ -158,3 +158,56 @@ class TestPromptComposition(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMockSchemaContract(unittest.TestCase):
+    def test_mock_matches_call_schemas(self):
+        """mock 생성기의 태그별 응답 키가 실프롬프트 출력 스키마의 필수 키를 포함해야 한다
+        (mock-실모델 계약 드리프트 감시 · 어긋나면 테스트가 헛돈다)."""
+        from prism import harness as H
+        user = "displayServiceName: 뉴스\ntitle: 스키마 검증\nbody: 본문입니다"
+        cases = {
+            "item_summary": {"summary"},
+            "item_entities": {"entities"},
+            "item_intent": {"intent"},
+            "item_category": {"content_category"},
+            "item": {"summary", "entities", "intent", "content_category"},
+            "quality": {"finalGrade", "reasons"},
+        }
+        for tag, required in cases.items():
+            obj = H._mock_generator("sys", user, tag)
+            self.assertTrue(required <= set(obj.keys()),
+                            f"{tag}: mock 키 {sorted(obj.keys())} 가 필수 {sorted(required)} 를 못 덮음")
+
+
+class TestStageParallelParity(unittest.TestCase):
+    def test_stage_parallel_output_parity(self):
+        """quality ∥ item 병렬(방법론 옵션): 산출(품질·아이템 메타)이 순차와 동일해야 한다
+        (G/YELLOW = 동일 아이템 · R = 양쪽 모두 아이템 없음)."""
+        from prism import harness as H
+        from prism.llm import LLMClient
+        contents = [
+            {"displayServiceName": "뉴스", "title": "한국은행 기준금리 동결", "subtitle": "",
+             "body": "한국은행이 기준금리를 동결했다. 시장 전문가들은 물가 안정 흐름을 근거로 들었다."},
+            {"displayServiceName": "커뮤니티", "title": "한정 쿠폰 지금만! 절대 놓치지 마세요", "subtitle": "",
+             "body": "지금 바로 링크 클릭! 최저가 쿠폰 할인 구매 기회!"},
+        ]
+        for c in contents:
+            seq = H.run(dict(c), LLMClient(mock=True), H.Methodology(name="seq"))
+            par = H.run(dict(c), LLMClient(mock=True), H.Methodology(name="par", parallel_quality_item=True))
+            self.assertEqual(par["quality_meta"], seq["quality_meta"], c["title"])
+            self.assertEqual(par["item_meta"], seq["item_meta"], c["title"])
+
+    def test_trace_by_call_breakdown(self):
+        """콜 태그별 비용·토큰 분해(by_call)가 트레이스에 남는다(콜별 모델 구성 근거)."""
+        from prism import harness as H
+        from prism.llm import LLMClient
+        out = H.run({"displayServiceName": "뉴스", "title": "분해 검증", "subtitle": "",
+                     "body": "콜별 비용 분해를 검증하기 위한 본문입니다. 한국은행이 기준금리를 동결했고 "
+                             "시장 전문가들은 물가 안정 흐름을 근거로 들었다. 충분한 길이의 본문을 유지한다."},
+                    LLMClient(mock=True), H.Methodology())
+        bc = (out.get("trace") or {}).get("by_call") or {}
+        self.assertIn("quality", bc)
+        self.assertIn("item_summary", bc)
+        self.assertGreaterEqual(bc["item_summary"]["n"], 1)
+        self.assertGreaterEqual(bc["quality"]["in"], 1)

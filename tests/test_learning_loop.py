@@ -110,6 +110,25 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertEqual([(i["element"], i["stage"]) for i in items],
                          [("category", "analyze"), ("grade", "judge")])
 
+    def test_route_low_confidence_falls_back(self):
+        """재분류 confidence 가 임계 미만이면 선택 요소 폴백(스테이지 오염 방지 · 무손실)."""
+        from prism import feedback_loop as FL
+
+        class L:
+            mock = False
+            def complete_json(self, sys_p, user_p, tag=""):
+                return {"items": [{"element": "grade", "directive": "이상한 재분류", "confidence": 0.2}]}, {"tag": tag}
+        fb = {"note": "리드문이 과장됐다", "elements": ["summary"], "title": "T"}
+        items = FL.route_feedback(L(), fb)
+        self.assertEqual([(i["element"], i["directive"]) for i in items],
+                         [("summary", "리드문이 과장됐다")])                  # 폴백 채택
+
+        class L2(L):
+            def complete_json(self, sys_p, user_p, tag=""):
+                return {"items": [{"element": "grade", "directive": "등급 보수적으로", "confidence": 0.9}]}, {"tag": tag}
+        items2 = FL.route_feedback(L2(), fb)
+        self.assertEqual(items2[0]["element"], "grade")                     # 고확신은 재분류 채택
+
     def test_routes_persist_and_feed_learned(self):
         import tempfile
         import time as _t
@@ -158,6 +177,46 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         # 초 단위가 붙어도 분까지만 해석
         self.assertEqual(dt.datetime.fromtimestamp(next_batch_time("2026-07-10T22:00:59")),
                          dt.datetime(2026, 7, 10, 22, 0))
+
+
+    def test_learning_batch_delta_and_revert(self):
+        """개선 전/후 delta 기록 · 2%p 초과 악화면 LEARNED 원복 + 보정 미반영 표기."""
+        import tempfile
+        import json as _j
+        from prism import config as C
+        from prism import learnops as LO
+        from prism import prompts as PR
+        from prism import serve
+        from prism.store import Store
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        cfgp = os.path.join(tempfile.mkdtemp(), "config.json")
+        open(cfgp, "w", encoding="utf-8").write(_j.dumps({}))
+        orig_p = C.DEFAULT_CONFIG_PATH
+        C.DEFAULT_CONFIG_PATH = cfgp
+        self.addCleanup(lambda: setattr(C, "DEFAULT_CONFIG_PATH", orig_p))
+        old_learned = dict(PR.LEARNED)
+        old_bm = PR.LEARNED_BY_MODEL
+        self.addCleanup(lambda: (PR.LEARNED.update(old_learned), setattr(PR, "LEARNED_BY_MODEL", old_bm)))
+        PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
+        PR.LEARNED_BY_MODEL = {}
+
+        evals = [{"ok": True, "grade_accuracy": 0.9, "evaluated": 10},
+                 {"ok": True, "grade_accuracy": 0.5, "evaluated": 10}]      # 개선 후 대폭 악화
+        def fake_eval(team=None, model="", scope="all"):
+            return evals.pop(0) if evals else {"ok": True, "grade_accuracy": 0.5, "evaluated": 10}
+        def fake_improve(team=None):
+            PR.LEARNED = {"extract": "", "analyze": "- 악화 지시", "review": "", "judge": ""}
+            return {"ok": True, "results": {"analyze": {"directive": "- 악화 지시"}}}
+        orig_e, orig_i = LO.eval_golden, LO.meta_compile_run
+        LO.eval_golden, LO.meta_compile_run = fake_eval, fake_improve
+        self.addCleanup(lambda: (setattr(LO, "eval_golden", orig_e), setattr(LO, "meta_compile_run", orig_i)))
+        rep = LO.learning_batch(None)
+        self.assertAlmostEqual(rep["improve_delta"], -0.4)
+        self.assertTrue(rep["improve"].get("reverted"))
+        self.assertEqual(PR.LEARNED["analyze"], "")                          # 원복됨
+        self.assertEqual(rep["grade_accuracy"], 0.9)                         # 유지 프롬프트 기준 보고
+        self.assertEqual((rep.get("eval_pre") or {}).get("grade_accuracy"), 0.9)
 
 
 class TestLearnData(unittest.TestCase):

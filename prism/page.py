@@ -738,6 +738,9 @@ PAGE = """<!doctype html>
               <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="실행 중 발생한 폴백·재시도 기록" data-tip-pos="top" x-text="f"></span></template>
               <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
             </div></div>
+            <div class="drow" x-show="tr.by_call && Object.keys(tr.by_call).length"><div class="k">콜별 비용</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="[k,v] in Object.entries(tr.by_call || {})" x-bind:key="'bc'+k"><span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-bind:data-tip="'호출 ' + v.n + '회 · 토큰 in ' + v['in'] + ' / out ' + v.out + ' · ' + v.ms + 'ms'" data-tip-pos="top" x-text="k + ' $' + (v.cost||0).toFixed(4)"></span></template>
+            </div></div>
             <div class="drow"><div class="k">검증 verdict</div><div class="v flex flex-wrap gap-1.5">
               <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" data-tip="에이전트별 판정 근거(트레이스)" data-tip-pos="top" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
               <span x-show="!(tr.agent_verdicts||[]).length" class="text-xs text-muted">없음</span>
@@ -1250,6 +1253,8 @@ PAGE = """<!doctype html>
                     · 의견 갈림 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></b>
                     <span x-show="learnReport.golden && learnReport.golden.demoted"> · 정답 제외 <b class="text-ink tnum" x-text="learnReport.golden.demoted"></b></span>
                     · 정답 일치율 <b class="text-ink tnum" x-text="pctTxt(learnReport.grade_accuracy)"></b>
+                    <span x-show="learnReport.improve_delta != null && !(learnReport.improve && learnReport.improve.reverted)" class="tnum" x-bind:style="(learnReport.improve_delta||0) >= 0 ? 'color:var(--ds-success-deep)' : 'color:var(--ds-error-deep)'" x-text="' · 보정 효과 ' + deltaTxt(learnReport.improve_delta)"></span>
+                    <span x-show="learnReport.improve && learnReport.improve.reverted" class="ds-badge ds-badge--warning" style="cursor:help;margin-left:4px" x-bind:data-tip="(learnReport.improve && learnReport.improve.revert_reason) || '정합성 악화로 이번 보정을 반영하지 않았습니다'" data-tip-pos="top">보정 미반영</span>
                     <span x-show="learnReport.eval && learnReport.eval.grade_ci" class="tnum" x-text="learnReport.eval && learnReport.eval.grade_ci ? (' (신뢰구간 ' + pctTxt(learnReport.eval.grade_ci.lo) + '~' + pctTxt(learnReport.eval.grade_ci.hi) + ' · 표본 ' + learnReport.eval.grade_ci.n + '건)') : ''"></span>
                   </span>
                 </template>
@@ -1393,6 +1398,21 @@ PAGE = """<!doctype html>
             </tbody></table></div>
           </section>
         </div>
+        </template>
+        <template x-if="learnData && learnData.dict_gap && (((learnData.dict_gap.intent)||[]).length || ((learnData.dict_gap.category)||[]).length)">
+          <section class="panel"><div class="panel-hd"><b>사전 갭</b><span class="meta">모델 산출이 사전과 안 맞아 드롭된 값 · 사전 별칭 추가 또는 프롬프트 보정 후보</span></div>
+            <div class="panel-bd">
+              <div class="flex flex-wrap gap-1" style="align-items:center" x-show="((learnData.dict_gap.intent)||[]).length">
+                <span class="text-xs text-muted" style="width:72px">인텐트</span>
+                <template x-for="g in (learnData.dict_gap.intent||[])" x-bind:key="'gi'+g[0]"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="'사전에 없는 산출값 · 드롭 ' + g[1] + '회'" data-tip-pos="top" x-text="g[0] + ' (' + g[1] + ')'"></span></template>
+              </div>
+              <div class="flex flex-wrap gap-1" style="align-items:center;margin-top:6px" x-show="((learnData.dict_gap.category)||[]).length">
+                <span class="text-xs text-muted" style="width:72px">카테고리</span>
+                <template x-for="g in (learnData.dict_gap.category||[])" x-bind:key="'gc'+g[0]"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="'사전 스냅 실패 산출값 · 드롭 ' + g[1] + '회'" data-tip-pos="top" x-text="g[0] + ' (' + g[1] + ')'"></span></template>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.dict_gap.retries && (learnData.dict_gap.retries.intent || learnData.dict_gap.retries.category)" x-text="'전량 드롭 재요청 · 인텐트 ' + ((learnData.dict_gap.retries&&learnData.dict_gap.retries.intent)||0) + '회 · 카테고리 ' + ((learnData.dict_gap.retries&&learnData.dict_gap.retries.category)||0) + '회'"></div>
+            </div>
+          </section>
         </template>
         <template x-if="learnData && (learnData.label_flags||[]).length">
         <section class="panel" data-fn>

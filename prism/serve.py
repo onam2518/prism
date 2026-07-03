@@ -1158,14 +1158,33 @@ def _check_missions(reviewer, team=None) -> list:
 
 
 def reviewer_weights(team=None) -> dict:
-    """검수자 신뢰도 가중치(골든 합의용): 골드 정확도 기반 0.5+0.5*acc(응답 5건 이상).
-    데이터 없으면 빈 dict → 전원 1.0(기존 다수결과 동일). [Dawid-Skene 1979 근사 · Snow 2008]"""
+    """검수자 신뢰도 가중치(골든 합의용) = 골드 문항 정확도와 Dawid-Skene EM 추정 정확도의 블렌드.
+    w = 0.5 + 0.5*acc, acc = 두 추정의 평균(한쪽만 충분하면 그쪽만 · 각 표본 5건 이상).
+    표본 없는 검수자는 미포함 → 1.0 취급(기존 다수결과 동일). [Dawid-Skene 1979 · Snow 2008]"""
     st = get_store()
+    gold, ds = {}, {}
     try:
         gold = st.gold_stats(team) if (st and hasattr(st, "gold_stats")) else {}
     except Exception:
         gold = {}
-    return {rv: round(0.5 + 0.5 * g["acc"], 4) for rv, g in gold.items() if g.get("n", 0) >= 5}
+    try:                                          # DS EM: 다중 라벨 유닛에서 검수자 오류율 추정
+        from . import quality as Q
+        fmap = st.feedback_map(team=team) if st else {}
+        ds = (Q.dawid_skene_binary(Q.feedback_labels(fmap)) or {}).get("reviewers") or {}
+    except Exception:
+        ds = {}
+    out = {}
+    for rv in set(gold) | set(ds):
+        accs = []
+        g = gold.get(rv) or {}
+        if g.get("n", 0) >= 5:
+            accs.append(float(g.get("acc") or 0.0))
+        d = ds.get(rv) or {}
+        if d.get("n", 0) >= 5 and d.get("error_rate") is not None:
+            accs.append(max(0.0, 1.0 - float(d["error_rate"])))
+        if accs:
+            out[rv] = round(0.5 + 0.5 * (sum(accs) / len(accs)), 4)
+    return out
 
 
 def _reap_async(content_hash: str, reviewer: str, fb: dict):

@@ -74,8 +74,17 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     parallel=True(방법론 옵션 · A/B 검증용): ①·②만 동시 실행. 두 호출의 user 프롬프트가
     prior 를 쓰지 않아(meta_prompts.call_user) 산출은 순차와 동일하고, 트레이스는 ①→② 순서로
     적재해 결정론을 유지한다. 트레이드오프 = ① 빈 문자열일 때 ② 호출 비용 낭비(차단 계약 예외)."""
+    import re as _re
     from . import dictionaries as D
     results, prior = [], {}
+
+    def _aslist(v):                                # 규칙 보정: 문자열 단일값 → 리스트(재요청 절감)
+        if isinstance(v, str) and v.strip():
+            return [v]
+        return v if isinstance(v, list) else []
+
+    def _canon(x):                                 # 규칙 보정: '속보 · 단신' 등 공백 변형 흡수
+        return _re.sub(r"\s*·\s*", "·", str(x).strip())
 
     def ask(call: str, tag: str, sink: list = None) -> dict:
         out = results if sink is None else sink
@@ -115,28 +124,55 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     # ② 엔티티(1~3개 강제)
     if not parallel:
         o2 = ask("entities", "item_entities")
-    ents = [str(x).strip() for x in (o2.get("entities") or []) if str(x).strip()][:3]
+    ents = [str(x).strip() for x in _aslist(o2.get("entities")) if str(x).strip()][:3]
     prior["entities"] = ents
 
     # ③ 인텐트: 사전 표기 정확 일치만 통과, 전량 드롭이면 1회 재요청
     valid_intents = set(D.intent_categories_for(content.displayServiceName))
+    canon_map = {_canon(v): v for v in valid_intents}
+
+    def _match_intents(vals):
+        ok, bad = [], []
+        for x in vals:
+            hit = canon_map.get(_canon(x))
+            (ok if hit else bad).append(hit or x)
+        return ok, bad
     o3 = ask("intent", "item_intent")
-    raw3 = [str(x).strip() for x in (o3.get("intent") or []) if str(x).strip()]
-    intent = [x for x in raw3 if x in valid_intents]
+    raw3 = [str(x).strip() for x in _aslist(o3.get("intent")) if str(x).strip()]
+    intent, dropped3 = _match_intents(raw3)
+    retried3 = False
     if raw3 and not intent:
+        retried3 = True
         o3 = ask("intent", "item_intent")
-        raw3 = [str(x).strip() for x in (o3.get("intent") or []) if str(x).strip()]
-        intent = [x for x in raw3 if x in valid_intents]
+        raw3 = [str(x).strip() for x in _aslist(o3.get("intent")) if str(x).strip()]
+        got2, bad2 = _match_intents(raw3)
+        intent = got2
+        dropped3 += bad2
+    if dropped3:                                   # 사전 갭 관측: 드롭 원값·재요청 여부를 트레이스에 보존
+        results.append({"agent": "Verifier:intent", "fail": None,
+                        "evidence": f"사전 불일치 드롭 {len(dropped3)}건: " + " · ".join(dropped3[:5])
+                                    + (" (전량 드롭 → 재요청 1회)" if retried3 else ""),
+                        "drop": {"call": "intent", "values": dropped3[:10],
+                                 "service": content.displayServiceName, "retried": retried3}})
     prior["intent"] = intent
 
     # ④ 콘텐츠 카테고리: 사전 경로 정규화(스냅), 전량 드롭이면 1회 재요청
     o4 = ask("category", "item_category")
-    raw4 = [str(x) for x in (o4.get("content_category") or []) if str(x).strip()]
+    raw4 = [str(x) for x in _aslist(o4.get("content_category")) if str(x).strip()]
     cats = D.normalize_category_list(raw4)
+    retried4 = False
     if raw4 and not cats:
+        retried4 = True
         o4 = ask("category", "item_category")
-        raw4 = [str(x) for x in (o4.get("content_category") or []) if str(x).strip()]
+        raw4 = [str(x) for x in _aslist(o4.get("content_category")) if str(x).strip()]
         cats = D.normalize_category_list(raw4)
+    dropped4 = [x for x in raw4 if not D.normalize_category_list([x])]
+    if dropped4:
+        results.append({"agent": "Verifier:category", "fail": None,
+                        "evidence": f"사전 스냅 실패 드롭 {len(dropped4)}건: " + " · ".join(dropped4[:5])
+                                    + (" (전량 드롭 → 재요청 1회)" if retried4 else ""),
+                        "drop": {"call": "category", "values": dropped4[:10],
+                                 "service": content.displayServiceName, "retried": retried4}})
 
     return ItemMeta(summary=summary, entities=ents, intent=intent, content_category=cats), results
 

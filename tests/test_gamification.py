@@ -100,3 +100,28 @@ class TestLevelCurve(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReviewerWeightBlend(unittest.TestCase):
+    def test_gold_and_ds_blend(self):
+        """가중치 = 골드 정확도·DS 추정 정확도 블렌드 · 표본(5건) 미달 축은 제외."""
+        import tempfile
+        import time as _t
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        # 골드 문항: A 6문항 중 3 정답(acc 0.5)
+        for i in range(6):
+            st.save_gold_check(f"g{i}", "A", "good", "good" if i < 3 else "bad", i < 3)
+        # DS 축: A·B 가 5개 유닛에 라벨(전부 일치 -> 낮은 오류율 추정)
+        now = _t.time()
+        for i in range(5):
+            st.save_feedback(f"h{i}", "s", f"t{i}", "good", "review", "", now, reviewer="A")
+            st.save_feedback(f"h{i}", "s", f"t{i}", "good", "review", "", now, reviewer="B")
+        w = serve.reviewer_weights()
+        self.assertIn("A", w)
+        self.assertGreater(w["A"], 0.5 + 0.5 * 0.5 - 1e-9)      # DS(고정확 추정) 블렌드로 골드 단독(0.75)보다 상승
+        self.assertIn("B", w)                                    # 골드 없어도 DS 축만으로 산출
+        self.assertGreaterEqual(w["B"], 0.5)

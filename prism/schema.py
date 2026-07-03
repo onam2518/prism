@@ -107,6 +107,7 @@ class Trace:
     latency_ms: dict = field(default_factory=dict)
     cost_usd: float = 0.0
     tokens: dict = field(default_factory=dict)
+    by_call: dict = field(default_factory=dict)   # 호출 태그별 {n·cost·in·out·ms} · 콜별 모델 구성 근거
 
 
 @dataclass

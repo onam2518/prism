@@ -692,7 +692,7 @@
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
           if (this.mod === 'prompt') this.loadPromptDefaults();   // 단계 프롬프트(LEARNED) 갱신
         } else if (d.type === 'learn_batch') {           // 반영 완료 모먼트(팀 전체)
-          this.liveToast('🎉 v' + (d.version || '') + ' 반영 완료' + (d.grade_accuracy != null ? ' · 정답 일치율 ' + this.pctTxt(d.grade_accuracy) : '') + ' · 새 퀘스트를 기다립니다');
+          this.liveToast('🎉 v' + (d.version || '') + ' 반영 완료' + (d.grade_accuracy != null ? ' · 정답 일치율 ' + this.pctTxt(d.grade_accuracy) : '') + (d.reverted ? ' · 보정 미반영(악화 방지)' : (d.improve_delta != null ? ' · 보정 효과 ' + this.deltaTxt(d.improve_delta) : '')) + ' · 새 퀘스트를 기다립니다');
           this.loadArena(); this.loadLearnReport();
           if (this.mod === 'testset') { this.loadGoldenStatus(); this.loadGoldenList(); }
         } else if (d.type === 'reviewer') {
@@ -864,6 +864,7 @@
         try { if (localStorage.getItem('prismQuestRemind') === mark) return; localStorage.setItem('prismQuestRemind', mark); } catch (e) {}
         this.liveToast('⏰ 팀 퀘스트 마감 임박 ' + dd + ' · 남은 ' + a.queue + '건, 완주까지 화이팅!');
       },
+      deltaTxt(d) { const v = (d || 0) * 100; return (v >= 0 ? '+' : '') + v.toFixed(1) + '%p'; },
       questTotal() { return (this.arenaData && this.arenaData.total_targets) || 0; },
       questDone() { const t = this.questTotal(); return Math.max(0, t - ((this.arenaData && this.arenaData.queue) || 0)); },
       questPct() { const t = this.questTotal(); return t ? Math.round(this.questDone() / t * 100) : 0; },

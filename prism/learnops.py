@@ -316,10 +316,33 @@ def snapshot_prompts(team=None) -> dict:
     return {"version": ver, "calls": list(calls.keys())}
 
 def learning_batch(team=None, models=None) -> dict:
-    """일배치 학습(하루 1회): ① 피드백 병합→프롬프트 개선 ② 정확분 골든 축적 ③ 골든 회귀 평가(다중 모델)."""
+    """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
+    ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성이 2%p 넘게 악화되면 개선을 반영하지 않고
+    이전 프롬프트를 유지한다(개선의 방향 검증 · 진동 방지의 완결)."""
+    golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
+    prev_learned = dict(PR.LEARNED)
+    prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
+    eval_pre = eval_golden(team)                         # 개선 전(현행 프롬프트) 점수
     improve = meta_compile_run(team)
-    golden = build_golden_from_reviews(team)
-    evalr = eval_golden(team)                        # 현재 프롬프트 회귀 점수
+    changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
+    delta = None
+    if changed and eval_pre.get("ok"):
+        evalr = eval_golden(team)                        # 개선 후 점수(같은 셋)
+        try:
+            delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
+        except (TypeError, ValueError):
+            delta = None
+        if delta is not None and delta < -0.02:          # 악화 가드: 이전 프롬프트로 원복
+            PR.LEARNED = prev_learned
+            PR.LEARNED_BY_MODEL = prev_by_model
+            improve = dict(improve or {})
+            improve["reverted"] = True
+            improve["revert_reason"] = f"정합성 {delta:+.1%} 악화 → 이번 보정 미반영(이전 프롬프트 유지)"
+            evalr = eval_pre                             # 유지되는 프롬프트 기준 점수로 보고
+    else:
+        evalr = eval_pre
+        if eval_pre.get("ok"):
+            delta = 0.0
     compare = compare_models_on_golden(models, team) if (models and len(models) > 1) else None
     try:                                        # 학습 반영 회차 기록 → 초안 버전(v = 회차+1)
         stv = _SV.get_store()
@@ -333,6 +356,9 @@ def learning_batch(team=None, models=None) -> dict:
         snap = {}
     report = {"ok": True, "ts": time.time(), "improve": improve, "golden": golden,
               "eval": evalr, "compare": compare, "prompt_snapshot": snap,
+              "eval_pre": ({"grade_accuracy": eval_pre.get("grade_accuracy"), "n": eval_pre.get("evaluated")}
+                           if eval_pre.get("ok") else None),
+              "improve_delta": delta,
               "grade_accuracy": evalr.get("grade_accuracy") if evalr.get("ok") else None}
     global _LAST_LEARN_REPORT
     _LAST_LEARN_REPORT = report
@@ -343,6 +369,7 @@ def learning_batch(team=None, models=None) -> dict:
         done_ver = int(stv2.batch_seq(team)) if (stv2 and hasattr(stv2, "batch_seq")) else 0
         _SV.broadcast({"type": "learn_batch", "version": done_ver,
                        "grade_accuracy": report.get("grade_accuracy"),
+                       "improve_delta": delta, "reverted": bool((improve or {}).get("reverted")),
                        "confirmed": golden.get("confirmed"), "ts": report["ts"]})
     except Exception:
         pass
@@ -423,7 +450,25 @@ def learn_data(team=None) -> dict:
         if e.get("consensus") == "split":
             split_list.append({"hash": ch, "n": e.get("n", 0), "good": e.get("good", 0),
                                "bad": e.get("bad", 0)})
+    # 사전 갭(드롭 관측): 최근 트레이스의 Verifier 드롭 집계 · 사전 별칭·프롬프트 보정의 1차 신호
+    gap = {"intent": {}, "category": {}}
+    gap_retries = {"intent": 0, "category": 0}
+    try:
+        for r in _SV.results_rows(team=team):
+            for v in ((r.get("trace") or {}).get("agent_verdicts") or []):
+                d = v.get("drop") if isinstance(v, dict) else None
+                if not d or d.get("call") not in gap:
+                    continue
+                for val in (d.get("values") or []):
+                    gap[d["call"]][val] = gap[d["call"]].get(val, 0) + 1
+                if d.get("retried"):
+                    gap_retries[d["call"]] += 1
+    except Exception:
+        pass
+    dict_gap = {k: sorted(v.items(), key=lambda x: -x[1])[:10] for k, v in gap.items()}
+    dict_gap["retries"] = gap_retries
     return {"ok": True, "golden_n": golden_n, "grade_dist": grade_dist,
+            "dict_gap": dict_gap,
             "coverage": coverage, "covered": sum(1 for c in coverage if c["lack"] == 0),
             "class_total": len(coverage), "per_class_target": PER_CLASS_TARGET,
             "alpha": alpha, "agreement": agree, "multi_units": multi_units,
