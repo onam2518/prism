@@ -753,10 +753,18 @@
       async loadLearnReport() { try { const r = await (await fetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; if (r && r.next_batch_at) this.nextBatchAt = r.next_batch_at; } catch (e) {} },
       nextBatchAt: 0,
       // 학습 반영 주기(모델 버전 시한 · 관리자): N일마다 지정 시각에 반영 · 지금 실행 시 주기 재시작
-      learnCycle: 1, learnHour: 4, learnSchedMsg: '', schedEditing: false,
-      async saveLearnSched() {                           // 일정·정책 통합 저장(주기·시각·확정 최소 인원)
+      learnNextAt: '', learnSchedMsg: '', schedEditing: false,
+      schedEdit() {                                      // 퀘스트 생성/수정: 미지정이면 내일 04:00 프리필
+        if (!this.learnNextAt) {
+          const d = new Date(Date.now() + 86400000);
+          const p = (n) => (n < 10 ? '0' + n : '' + n);
+          this.learnNextAt = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T04:00';
+        }
+        this.schedEditing = true;
+      },
+      async saveLearnSched() {                           // 목표 일시 + 확정 최소 인원 통합 저장
         try {
-          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_cycle_days: parseInt(this.learnCycle, 10) || 1, learn_batch_hour: parseInt(this.learnHour, 10) || 0, golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) });
+          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) });
           this.learnSchedMsg = '✓ 저장됨';
           this.schedEditing = false;
           this.loadLearnReport();                        // 다음 반영 예정 갱신
@@ -764,7 +772,6 @@
         } catch (e) { this.learnSchedMsg = '실패'; }
         setTimeout(() => { this.learnSchedMsg = ''; }, 2500);
       },
-      cycleLabel(n) { n = parseInt(n, 10) || 1; return n === 1 ? '매일' : (n === 7 ? '매주' : (n === 14 ? '격주' : n + '일마다')); },
       ddayTxt(ts) {                                  // 버전 시한까지 D-n (당일 = D-DAY)
         if (!ts) return '';
         const now = new Date(); const due = new Date(ts * 1000);
@@ -1141,8 +1148,7 @@
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.metaCallModels) this.callModels = Object.assign({ summary: '', entities: '', intent: '', category: '' }, this.cfg.metaCallModels);
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
-          if (this.cfg.learnCycleDays) this.learnCycle = this.cfg.learnCycleDays;
-          if (typeof this.cfg.learnBatchHour === 'number') this.learnHour = this.cfg.learnBatchHour;
+          if (typeof this.cfg.learnNextAt === 'string') this.learnNextAt = this.cfg.learnNextAt;
           if (typeof this.cfg.desktopAllowDownloads === 'boolean') this.dtAllowDl = this.cfg.desktopAllowDownloads;
           if (typeof this.cfg.desktopPersistStorage === 'boolean') this.dtPersist = this.cfg.desktopPersistStorage;
           if (typeof this.cfg.metaFourCalls === 'boolean') this.fourCalls = this.cfg.metaFourCalls;

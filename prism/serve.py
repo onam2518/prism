@@ -1311,12 +1311,10 @@ def _arena_compute(team=None) -> dict:
         d["queue"] = len(st.review_queue(team=team))  # 미검수 YELLOW = 남은 퀘스트
     except Exception:
         d["queue"] = 0
-    try:                                          # 팀 퀘스트: 다음 버전(시한)까지 검수 완주
+    try:                                          # 팀 퀘스트: 다음 버전(검수 목표 일시)까지 완주
         cfg = Config.load()
-        last = float((_report_get("learn_report", team) or {}).get("ts") or 0)
         d["next_version"] = int(st.batch_seq(team) if hasattr(st, "batch_seq") else 0) + 1
-        d["next_batch_at"] = LO.next_batch_time(last, getattr(cfg, "learn_cycle_days", 1),
-                                                getattr(cfg, "learn_batch_hour", 4))
+        d["next_batch_at"] = LO.next_batch_time(getattr(cfg, "learn_next_at", ""))
     except Exception:
         pass
     return d
@@ -1609,8 +1607,7 @@ def config_status() -> dict:
         "modelPrompts": dict(cfg.model_prompts or {}),
         "availableModels": _candidate_models(cfg),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
-        "learnCycleDays": max(1, min(30, int(getattr(cfg, "learn_cycle_days", 1) or 1))),
-        "learnBatchHour": max(0, min(23, int(getattr(cfg, "learn_batch_hour", 4) or 0))),
+        "learnNextAt": str(getattr(cfg, "learn_next_at", "") or ""),
         "desktopAllowDownloads": bool(getattr(cfg, "desktop_allow_downloads", True)),
         "desktopPersistStorage": bool(getattr(cfg, "desktop_persist_storage", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
@@ -1696,7 +1693,7 @@ def apply_config(data: dict) -> dict:
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
     has_desktop = ("desktop_allow_downloads" in data) or ("desktop_persist_storage" in data) \
-        or ("golden_min_good" in data) or ("learn_cycle_days" in data) or ("learn_batch_hour" in data)
+        or ("golden_min_good" in data) or ("learn_next_at" in data)
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_desktop):
         cfg = Config.load()
@@ -1769,16 +1766,16 @@ def apply_config(data: dict) -> dict:
                 cfg.golden_min_good = max(1, min(9, int(data.get("golden_min_good") or 1)))
             except (TypeError, ValueError):
                 pass
-        if "learn_cycle_days" in data:            # 학습 반영(모델 버전 시한) 주기 · 1~30일
-            try:
-                cfg.learn_cycle_days = max(1, min(30, int(data.get("learn_cycle_days") or 1)))
-            except (TypeError, ValueError):
-                pass
-        if "learn_batch_hour" in data:            # 반영 실행 시각(0~23시)
-            try:
-                cfg.learn_batch_hour = max(0, min(23, int(data.get("learn_batch_hour") or 0)))
-            except (TypeError, ValueError):
-                pass
+        if "learn_next_at" in data:               # 검수 목표(퀘스트) 일시 · 빈 값 = 목표 해제
+            v = str(data.get("learn_next_at") or "").strip()[:16]
+            if not v:
+                cfg.learn_next_at = ""
+            else:
+                try:
+                    time.strptime(v, "%Y-%m-%dT%H:%M")
+                    cfg.learn_next_at = v
+                except ValueError:
+                    pass
         if "desktop_allow_downloads" in data:
             cfg.desktop_allow_downloads = bool(data.get("desktop_allow_downloads"))
         if "desktop_persist_storage" in data:
@@ -1790,6 +1787,7 @@ def apply_config(data: dict) -> dict:
             cfg.save_template()                   # config.json 갱신(키는 저장 안 함)
         except Exception:
             pass
+        _agg_bump()                               # 설정 파생 캐시 무효화(아레나 퀘스트 시한 등 즉시 반영)
     sync_prompt()
     return config_status()
 
@@ -1965,9 +1963,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"ok": bool(snap), "snapshot": snap}, ensure_ascii=False), _JSON)
         elif self.path.startswith("/learn-report"):     # 최근 배치 결과(GET · 재시작에도 store 영속)
             rep = _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT)
-            _c = Config.load()                           # 다음 반영 예정(주기 설정 기준 · 화면 표시용)
-            nb = LO.next_batch_time(float((rep or {}).get("ts") or 0),
-                                    getattr(_c, "learn_cycle_days", 1), getattr(_c, "learn_batch_hour", 4))
+            _c = Config.load()                           # 다음 반영 예정(검수 목표 일시 · 화면 표시용)
+            nb = LO.next_batch_time(getattr(_c, "learn_next_at", ""))
             self._send(200, json.dumps({"ok": True, "report": rep, "next_batch_at": nb},
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/learn-export"):      # 학습데이터 JSONL 다운로드(관리자)

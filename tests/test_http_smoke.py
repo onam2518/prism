@@ -218,20 +218,21 @@ class TestButtonsEndToEnd(unittest.TestCase):
         ld = self.ok("/learn-data")
         self.assertGreaterEqual(ld.get("golden_n", 0), 1)
 
-    def test_09_learn_schedule_config(self):
-        """학습 반영 주기(모델 버전 시한) 설정 왕복 + 다음 반영 예정 노출."""
-        self.ok("/config", {"learn_cycle_days": 3, "learn_batch_hour": 6})
+    def test_09_learn_quest_config(self):
+        """검수 목표(퀘스트) 일시 설정 왕복 + 팀 퀘스트 데이터 노출 + 해제."""
+        self.ok("/config", {"learn_next_at": "2030-01-02T09:30"})
         cfg = self.ok("/config")
-        self.assertEqual((cfg.get("learnCycleDays"), cfg.get("learnBatchHour")), (3, 6))
+        self.assertEqual(cfg.get("learnNextAt"), "2030-01-02T09:30")
         r = self.ok("/learn-report")
         self.assertGreater(r.get("next_batch_at") or 0, 0)
-        a = self.ok("/arena")                        # 팀 퀘스트: 홈 히어로 시한 데이터
+        a = self.ok("/arena")                        # 팀 퀘스트: 홈·사이드바 시한 데이터
         self.assertGreater(a.get("next_batch_at") or 0, 0)
         self.assertGreaterEqual(a.get("next_version") or 0, 1)
-        self.ok("/config", {"learn_cycle_days": 999, "learn_batch_hour": -5})   # 클램프
-        cfg = self.ok("/config")
-        self.assertEqual((cfg.get("learnCycleDays"), cfg.get("learnBatchHour")), (30, 0))
-        self.ok("/config", {"learn_cycle_days": 1, "learn_batch_hour": 4})      # 기본 복원
+        self.ok("/config", {"learn_next_at": "엉터리"})           # 형식 오류 무시
+        self.assertEqual(self.ok("/config").get("learnNextAt"), "2030-01-02T09:30")
+        self.ok("/config", {"learn_next_at": ""})                # 목표 해제
+        self.assertEqual(self.ok("/config").get("learnNextAt"), "")
+        self.assertEqual(self.ok("/arena").get("next_batch_at") or 0, 0)
 
     def test_10_prompt_snapshot_after_batch(self):
         """학습 반영이 남긴 버전별 프롬프트 스냅샷: 최신 + v 지정 조회(버전 재현 근거)."""

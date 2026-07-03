@@ -87,8 +87,7 @@ class Config:
     # 데스크탑(pywebview) 셸 옵션 · 앱 재시작 시 적용
     desktop_allow_downloads: bool = True     # 템플릿·엑셀 내보내기 다운로드 허용
     desktop_persist_storage: bool = True     # localStorage 영속(로그인 토큰·저장된 아이디/비밀번호 유지)
-    learn_cycle_days: int = 1             # 학습 반영(모델 버전 시한) 주기 · 관리자 설정(1~30일)
-    learn_batch_hour: int = 4             # 반영 실행 시각(0~23시)
+    learn_next_at: str = ""               # 검수 목표(퀘스트) 일시 'YYYY-MM-DDTHH:MM' · 도달 시 학습 반영 1회 후 소진
 
     # 실행
     concurrency: int = 12

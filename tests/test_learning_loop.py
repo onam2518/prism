@@ -146,6 +146,20 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         other = PR._learned("analyze", "gpt-x")
         self.assertNotIn("솔라 보정", other)
 
+    def test_next_batch_time_deadline(self):
+        """검수 목표(퀘스트) 일시 파싱: 지정 일시 -> epoch · 미지정/형식 오류 -> 0."""
+        import datetime as dt
+        from prism.learnops import next_batch_time
+        self.assertEqual(dt.datetime.fromtimestamp(next_batch_time("2026-07-10T22:00")),
+                         dt.datetime(2026, 7, 10, 22, 0))
+        self.assertEqual(next_batch_time(""), 0.0)
+        self.assertEqual(next_batch_time(None), 0.0)
+        self.assertEqual(next_batch_time("이상한값"), 0.0)
+        # 초 단위가 붙어도 분까지만 해석
+        self.assertEqual(dt.datetime.fromtimestamp(next_batch_time("2026-07-10T22:00:59")),
+                         dt.datetime(2026, 7, 10, 22, 0))
+
+
 class TestLearnData(unittest.TestCase):
     def test_learn_data_and_exports(self):
         import tempfile

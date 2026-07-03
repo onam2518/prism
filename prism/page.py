@@ -1196,28 +1196,48 @@ PAGE = """<!doctype html>
                   </div>
                 </div>
               </template>
-              <div x-show="!goldenStatus" class="text-xs text-muted">검수가 쌓이고 학습 반영이 돌면 현황이 표시됩니다(아래 ⚙ 지금 실행으로 바로 반영 가능)</div>
+              <div x-show="!goldenStatus" class="text-xs text-muted">검수가 쌓이고 학습 반영이 돌면 현황이 표시됩니다(아래 검수 목표 카드의 ⚡ 즉시 반영으로 바로 반영 가능)</div>
             </div>
           </section>
-          <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>학습 반영</b><span class="meta">최근 반영 결과와 프롬프트 보정 지시</span></div>
+          <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->
+          <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>검수 목표 / 퀘스트 생성</b><span class="meta">지정한 일시까지 모인 검수 의견이 새 버전 프롬프트에 반영됩니다</span>
+            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚡ 즉시 반영'"></button>
+          </div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:12px">
-                <li>의견을 모아 <b>설정한 주기(모델 버전 시한)</b>로 한 번에 반영해 결과가 흔들리지 않게 합니다 · 실행·설정은 아래 <b>반영 일정</b> 카드에서.</li>
+              <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap">
+                <span class="selctl" data-tip="모델 버전 시한: 이 일시에 검수 의견을 모아 반영하고 버전이 올라갑니다 · 도달 후에는 새 목표를 다시 생성" data-tip-pos="top"><span class="selctl__lbl">반영 일시</span>
+                  <input type="datetime-local" class="field" x-model="learnNextAt" x-bind:disabled="!schedEditing" style="min-width:190px">
+                </span>
+                <span class="selctl" data-tip="이 인원 이상이 '정확'으로 합의해야 정답셋으로 확정됩니다 · 팀 규모에 맞게 조정" data-tip-pos="top"><span class="selctl__lbl">확정 최소 인원</span>
+                  <select class="field" x-model="goldenMinGood" x-bind:disabled="!schedEditing">
+                    <template x-for="n in [1,2,3,4,5]" x-bind:key="n"><option x-bind:value="n" x-text="n + '명'" x-bind:selected="parseInt(goldenMinGood,10)===n"></option></template>
+                  </select>
+                </span>
+                <span class="ds-badge ds-badge--intent tnum" x-show="nextBatchAt" style="cursor:help" data-tip="홈·사이드바의 팀 퀘스트(vN 마감 D-day)와 같은 일정입니다" data-tip-pos="top" x-text="'퀘스트 진행 중 · ' + fmtTs(nextBatchAt) + ' 반영'"></span>
+                <span class="ds-badge ds-badge--neutral" x-show="!nextBatchAt" style="cursor:help" data-tip="목표 일시를 지정하면 홈·사이드바에 팀 퀘스트(D-day)가 생깁니다" data-tip-pos="top">목표 미설정 · 퀘스트를 생성하세요</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:var(--ds-space-2);margin-top:12px;flex-wrap:wrap">
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!schedEditing" x-on:click="schedEdit()" x-text="nextBatchAt ? '수정' : '퀘스트 생성'"></button>
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="schedEditing" x-on:click="saveLearnSched()">저장</button>
+                <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
+                <template x-if="learnReport && learnReport.ts">
+                  <span class="text-xs text-muted">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
+                    · 신규 <b class="text-ink tnum" x-text="'+' + ((learnReport.golden&&learnReport.golden.new)||0)"></b>
+                    · 분류 필요 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.need_category)||0"></b>
+                    · 의견 갈림 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></b>
+                    <span x-show="learnReport.golden && learnReport.golden.demoted"> · 정답 제외 <b class="text-ink tnum" x-text="learnReport.golden.demoted"></b></span>
+                    · 정답 일치율 <b class="text-ink tnum" x-text="pctTxt(learnReport.grade_accuracy)"></b>
+                    <span x-show="learnReport.eval && learnReport.eval.grade_ci" class="tnum" x-text="learnReport.eval && learnReport.eval.grade_ci ? (' (신뢰구간 ' + pctTxt(learnReport.eval.grade_ci.lo) + '~' + pctTxt(learnReport.eval.grade_ci.hi) + ' · 표본 ' + learnReport.eval.grade_ci.n + '건)') : ''"></span>
+                  </span>
+                </template>
+              </div>
+              <ul class="ds-bullets" style="margin-top:10px">
+                <li>의견을 모아 <b>지정한 일시(모델 버전 시한)</b>에 한 번에 반영해 결과가 흔들리지 않게 합니다 · 반영 후 목표는 소진되고 새 퀘스트를 생성합니다.</li>
                 <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
+                <li>'⚡ 즉시 반영'은 목표 일시와 무관하게 지금까지 모인 의견을 바로 반영합니다.</li>
               </ul>
-              <!-- 일배치 결과 요약(상세 수치는 위 '골든셋 생성 현황' · 정합성·모델 비교는 '골든셋 평가' 탭) -->
-              <template x-if="learnReport && learnReport.ts">
-                <div class="text-xs text-muted" style="margin-bottom:12px">최근 반영: 정답 확정 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.confirmed)||0"></b>
-                  · 신규 <b class="text-ink tnum" x-text="'+' + ((learnReport.golden&&learnReport.golden.new)||0)"></b>
-                  · 분류 필요 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.need_category)||0"></b>
-                  · 의견 갈림 <b class="text-ink tnum" x-text="(learnReport.golden&&learnReport.golden.disagree)||0"></b>
-                  <span x-show="learnReport.golden && learnReport.golden.demoted"> · 정답 제외 <b class="text-ink tnum" x-text="learnReport.golden.demoted"></b></span>
-                  · 정답 일치율 <b class="text-ink tnum" x-text="pctTxt(learnReport.grade_accuracy)"></b>
-                  <span x-show="learnReport.eval && learnReport.eval.grade_ci" class="tnum" x-text="learnReport.eval && learnReport.eval.grade_ci ? (' (신뢰구간 ' + pctTxt(learnReport.eval.grade_ci.lo) + '~' + pctTxt(learnReport.eval.grade_ci.hi) + ' · 표본 ' + learnReport.eval.grade_ci.n + '건)') : ''"></span>
-                </div>
-              </template>
               <!-- 학습 보정 지시(단계별 · 중복 정리) -->
-              <div class="subhd" style="margin:4px 0 8px" x-show="metaResults && ['extract','analyze','review','judge'].some(st => metaResults[st] && (metaResults[st].directive || (metaResults[st].ambiguities||[]).length))">학습 보정 지시 <span class="meta">검수 피드백을 정리해 각 단계 프롬프트에 병기합니다</span></div>
+              <div class="subhd" style="margin:12px 0 8px" x-show="metaResults && ['extract','analyze','review','judge'].some(st => metaResults[st] && (metaResults[st].directive || (metaResults[st].ambiguities||[]).length))">학습 보정 지시 <span class="meta">검수 피드백을 정리해 각 단계 프롬프트에 병기합니다</span></div>
               <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="stage">
                 <div x-show="metaResults && metaResults[stage] && (metaResults[stage].directive || (metaResults[stage].ambiguities||[]).length)" class="metarow">
                   <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="({extract:'① 리드문·엔티티 호출에 병기', analyze:'③ 인텐트·④ 카테고리 호출에 병기', review:'품질 판정 프롬프트에 병기', judge:'법령·유통 판정 프롬프트에 병기'})[stage]" data-tip-pos="top" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
@@ -1229,41 +1249,6 @@ PAGE = """<!doctype html>
                   </div>
                 </div>
               </template>
-              <div x-show="!(learnReport && learnReport.ts) && !metaResults" class="text-xs text-muted">아래 <b class="text-ink">반영 일정</b> 카드의 <b class="text-ink">⚡ 즉시 반영</b>을 누르면 개선·골든 축적·회귀 평가·모델 비교를 한 번에 돌립니다</div>
-            </div>
-          </section>
-
-          <!-- 반영 일정(모델 버전 시한): 주기·시각 설정 · 홈 팀 퀘스트(D-day)와 같은 원천 -->
-          <section class="panel" data-fn><div class="panel-hd"><b>반영 일정</b><span class="meta">모델 버전 시한 · 이 주기마다 검수 의견이 새 버전 프롬프트에 반영됩니다</span>
-            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚡ 즉시 반영'"></button>
-          </div>
-            <div class="panel-bd">
-              <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap">
-                <span class="selctl" data-tip="모델 버전 시한: 이 주기마다 검수 의견을 모아 반영하고 버전이 올라갑니다" data-tip-pos="top"><span class="selctl__lbl">반영 주기</span>
-                  <select class="field" x-model="learnCycle" x-bind:disabled="!schedEditing">
-                    <template x-for="n in [1,2,3,7,14,30]" x-bind:key="'lc'+n"><option x-bind:value="n" x-text="cycleLabel(n)" x-bind:selected="parseInt(learnCycle,10)===n"></option></template>
-                  </select>
-                </span>
-                <span class="selctl" data-tip="반영이 실행되는 시각(서버 기준) · 업무 시간 밖 새벽 권장" data-tip-pos="top"><span class="selctl__lbl">실행 시각</span>
-                  <select class="field" x-model="learnHour" x-bind:disabled="!schedEditing">
-                    <template x-for="h in Array.from({length:24},(_,i)=>i)" x-bind:key="'lh'+h"><option x-bind:value="h" x-text="h + ':00'" x-bind:selected="parseInt(learnHour,10)===h"></option></template>
-                  </select>
-                </span>
-                <span class="selctl" data-tip="이 인원 이상이 '정확'으로 합의해야 정답셋으로 확정됩니다 · 팀 규모에 맞게 조정" data-tip-pos="top"><span class="selctl__lbl">확정 최소 인원</span>
-                  <select class="field" x-model="goldenMinGood" x-bind:disabled="!schedEditing">
-                    <template x-for="n in [1,2,3,4,5]" x-bind:key="n"><option x-bind:value="n" x-text="n + '명'" x-bind:selected="parseInt(goldenMinGood,10)===n"></option></template>
-                  </select>
-                </span>
-                <span class="ds-badge ds-badge--neutral tnum" x-show="nextBatchAt" style="cursor:help" data-tip="홈의 팀 퀘스트(vN 마감 D-day)와 같은 일정입니다" data-tip-pos="top" x-text="'다음 반영 예정 ' + fmtTs(nextBatchAt)"></span>
-              </div>
-              <div style="display:flex;align-items:center;gap:var(--ds-space-2);margin-top:12px">
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!schedEditing" x-on:click="schedEditing=true">수정</button>
-                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="schedEditing" x-on:click="saveLearnSched()">저장</button>
-                <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
-              </div>
-              <ul class="ds-bullets" style="margin-top:10px">
-                <li>'⚡ 즉시 반영'으로 수동 반영하면 주기가 그 시점부터 다시 시작됩니다.</li>
-              </ul>
             </div>
           </section>
       </div><!-- /테스트셋 관리 · 현황 -->

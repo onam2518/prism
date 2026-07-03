@@ -565,32 +565,22 @@ def learn_export(kind: str, team=None):
 
 _learn_sched_started = False
 
-def next_batch_time(last_ts, cycle_days, hour, now=None) -> float:
-    """다음 학습 반영 예정 시각(epoch). 기준 = 마지막 반영일의 실행 시각 + 주기(일).
-    이력이 없거나 기한이 이미 지났으면(서버 중지 등) 다가오는 실행 시각.
-    '지금 실행'(수동)도 learn_report ts 를 갱신하므로 주기가 그 시점부터 재시작된다."""
-    import datetime as _dt
-    cycle = max(1, min(30, int(cycle_days or 1)))
-    hh = max(0, min(23, int(hour if hour is not None else 4)))
-    now_ts = time.time() if now is None else float(now)
-    now_dt = _dt.datetime.fromtimestamp(now_ts)
-
-    def _at_hour(d):
-        return d.replace(hour=hh, minute=0, second=0, microsecond=0)
-    if last_ts:
-        due = _at_hour(_dt.datetime.fromtimestamp(float(last_ts))) + _dt.timedelta(days=cycle)
-        if due > now_dt:
-            return due.timestamp()
-    due = _at_hour(now_dt)
-    if due <= now_dt:
-        due += _dt.timedelta(days=1)
-    return due.timestamp()
+def next_batch_time(next_at, now=None) -> float:
+    """검수 목표(퀘스트) 일시('YYYY-MM-DDTHH:MM' 로컬) → epoch. 미지정·형식 오류는 0.
+    now 는 시그니처 호환용(파싱에 미사용)."""
+    if not next_at:
+        return 0.0
+    try:
+        import datetime as _dt
+        return _dt.datetime.strptime(str(next_at).strip()[:16], "%Y-%m-%dT%H:%M").timestamp()
+    except Exception:
+        return 0.0
 
 
 def start_learning_scheduler(hour: int = 4):
-    """학습 반영(모델 버전 시한) 스케줄러. 주기·시각은 Config(learn_cycle_days/learn_batch_hour)를
-    루프마다 다시 읽어 재시작 없이 반영한다(10분 단위 재평가). 기준 = 마지막 반영 시각(learn_report).
-    실시간이 아니라 주기 반영인 이유 = 의견을 모아 한 번에 반영(진동 방지·합의). 서버당 1회."""
+    """검수 목표(퀘스트) 스케줄러: 관리자가 지정한 일시(Config.learn_next_at)에 학습 반영을
+    1회 실행하고 목표를 소진(비움)한다. 다음 목표는 관리자가 '퀘스트 생성'으로 다시 지정.
+    10분 단위 재평가라 재시작 불필요 · 서버당 1회. hour 인자는 하위호환용(미사용)."""
     global _learn_sched_started
     if _learn_sched_started:
         return
@@ -600,20 +590,25 @@ def start_learning_scheduler(hour: int = 4):
         while True:
             try:
                 cfg = Config.load()
-                last = float((_SV._report_get("learn_report", None) or {}).get("ts") or 0)
-                due = next_batch_time(last, getattr(cfg, "learn_cycle_days", 1),
-                                      getattr(cfg, "learn_batch_hour", hour))
-                wait = due - time.time()
-                if wait > 0:
-                    time.sleep(min(wait, 600))
+                due = next_batch_time(getattr(cfg, "learn_next_at", ""))
+                if not due or due > time.time():
+                    wait = 600 if not due else min(600, max(30, due - time.time()))
+                    time.sleep(wait)
                     continue
                 learning_batch(None)
-                time.sleep(60)                    # 리포트 저장 실패 시 과주기 재실행 방지
+                try:                                  # 목표 소진(1회 실행 · 재실행 방지)
+                    cfg = Config.load()
+                    cfg.learn_next_at = ""
+                    cfg.save_template()
+                except Exception:
+                    pass
+                time.sleep(60)
             except Exception as e:
                 print(f"  [warn] 학습 배치 실패: {e}")
                 time.sleep(600)
 
     threading.Thread(target=_loop, daemon=True).start()
+
 
 def meta_compile_run(team=None) -> dict:
     """메타컴파일러: 팀의 단계별 누적 검수 피드백을 병합·충돌정리 → 정제 지시. LEARNED 갱신.

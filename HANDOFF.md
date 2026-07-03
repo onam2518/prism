@@ -35,7 +35,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
   - `build_golden_from_reviews(team)` · 정확 다수결 + 카테고리 채워짐 → **골든 확정**, 카테고리 공백 → **need_category**.
   - `compare_models_on_golden(models, team)` · 모델별 grade_accuracy/reason_jaccard/cost, best.
   - `learning_batch(team, models)` · meta_compile + build_golden + eval + compare, `_LAST_LEARN_REPORT` 저장. 라우트 `/learn-batch`·`/learn-report`·`/compare-models`.
-  - `start_learning_scheduler` · 주기 스레드(실시간 아님: 합의·진동 방지). 주기(일)·시각은 관리자 설정(Config learn_cycle_days 1~30 / learn_batch_hour 0~23 · 기본 매일 04:00), 기준 = 마지막 반영(learn_report ts) · '지금 실행'도 주기를 재시작. 10분 단위 재평가라 재시작 불필요.
+  - `start_learning_scheduler` · 검수 목표(퀘스트) 스레드(실시간 아님: 합의·진동 방지). 관리자가 '검수 목표/퀘스트 생성' 카드에서 지정한 일시(Config learn_next_at 'YYYY-MM-DDTHH:MM')에 학습 반영 1회 실행 후 목표 소진(빈 값으로 저장) · 다음 목표는 관리자가 재생성. 목표 미설정 시 자동 반영 없음(⚡ 즉시 반영만). 시한은 홈 히어로·사이드바 팀 퀘스트(D-day)·/arena·/learn-report 와 단일 원천.
 - 요소 기반 교정: `FIX_ELEMENTS`·`elemStage`(요소→analyze/judge/review). 검수자가 어느 요소가 틀렸는지 고르면 해당 단계 프롬프트 보정(`PR.LEARNED[stage]` → `prompts._learned(stage)`)에 반영.
 - **프롬프트 반영은 일배치가 소유**. `apply_feedback`·`_reap_async`에서 live `sync_learned()` 제거(캡처만).
 - 프론트: `runLearnBatch`·`loadLearnReport`·`categoryOptions`·`fillCategory`(POST /patch-meta). '학습 일배치' 리포트 패널(타일 + 모델 비교표), 상세 내 빈 카테고리 gap-fill picker.
