@@ -1313,9 +1313,12 @@ def _arena_compute(team=None) -> dict:
         d["queue"] = 0
     try:                                          # 팀 퀘스트: 다음 버전(검수 목표 일시)까지 완주
         cfg = Config.load()
-        d["next_version"] = int(st.batch_seq(team) if hasattr(st, "batch_seq") else 0) + 1
+        seq = int(st.batch_seq(team) if hasattr(st, "batch_seq") else 0)
+        d["next_version"] = seq + 1
         d["next_model"] = cfg.model or ""          # 어떤 모델의 어떤 버전인지 명기(퀘스트 카드)
         d["next_batch_at"] = LO.next_batch_time(getattr(cfg, "learn_next_at", ""))
+        d["last_version"] = seq                    # 완료 잔상(소진 후 '반영 완료' 카드)용
+        d["last_batch_at"] = float((_report_get("learn_report", team) or {}).get("ts") or 0)
     except Exception:
         pass
     return d

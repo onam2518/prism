@@ -269,19 +269,22 @@
         return m[this.mod] || '';
       },
       selectMod(id) {
-        this.mod = id; this.status = ''; this.addMenuOpen = false;
+        this.status = ''; this.addMenuOpen = false;
         // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 테스트셋 관리
+        // 주의: 별칭 치환을 끝낸 뒤 mod 를 확정한다(치환 전 대입 시 매칭 섹션이 없어 빈 화면).
         if (id === 'intake') id = 'dict';
         if (id === 'run' || id === 'auto') { this.contentTab = id; id = 'content'; }
         if (id === 'queue') id = 'content';
-        if (id === 'content' || id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
-        if (id === 'prompt' || id === 'testset') this.loadGoldenStatus();
-        if (id === 'prompt') { this.syncWrapDraft(); this.loadPreview(); }
         if (id === 'dash') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
         if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
         if (id === 'eval') id = 'evaluate';
+        if (id === 'golden') id = 'testset';
+        this.mod = id;
+        if (id === 'content' || id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
+        if (id === 'prompt' || id === 'testset') this.loadGoldenStatus();
+        if (id === 'prompt') { this.syncWrapDraft(); this.loadPreview(); }
         if (id === 'home') { this.loadArena(); this.loadDash(); }
         else if (id === 'create') { this.loadDash(); this.loadRaw(); }
         else if (id === 'evaluate') this.loadGoldenStatus();
@@ -629,6 +632,10 @@
           if (d.plan) this.liveToast('개선안 반영 · ' + (d.plan.length > 42 ? d.plan.slice(0, 42) + '…' : d.plan));
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
           if (this.mod === 'prompt') this.loadPromptDefaults();   // 단계 프롬프트(LEARNED) 갱신
+        } else if (d.type === 'learn_batch') {           // 반영 완료 모먼트(팀 전체)
+          this.liveToast('🎉 v' + (d.version || '') + ' 반영 완료' + (d.grade_accuracy != null ? ' · 정답 일치율 ' + this.pctTxt(d.grade_accuracy) : '') + ' · 새 퀘스트를 기다립니다');
+          this.loadArena(); this.loadLearnReport();
+          if (this.mod === 'testset') { this.loadGoldenStatus(); this.loadGoldenList(); }
         } else if (d.type === 'reviewer') {
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();             // 다른 사람 캐릭터 변경 반영
         } else if (d.type === 'presence' && d.reviewer && d.reviewer !== this.reviewer) {
@@ -637,7 +644,7 @@
       },
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
       async loadQueue() { this.modBusy = true; try { const p = new URLSearchParams(); if (!this.queueOnlyUnreviewed) p.set('all', '1'); if (this.reviewer) p.set('reviewer', this.reviewer); this.queueData = await (await fetch('/queue?' + p.toString(), { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
-      async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; this.arenaData = await (await fetch('/arena' + p, { headers: this._authHeaders() })).json(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
+      async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; this.arenaData = await (await fetch('/arena' + p, { headers: this._authHeaders() })).json(); this.maybeQuestReminder(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
       async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
       goldenModel: '',                        // 정답셋 목록 · 유래 모델 필터
       get goldenModelList() {
@@ -784,6 +791,19 @@
         const d1 = new Date(due.getFullYear(), due.getMonth(), due.getDate());
         const n = Math.round((d1 - d0) / 86400000);
         return n <= 0 ? 'D-DAY' : 'D-' + n;
+      },
+      questDoneRecent() {                              // 목표 소진 후 72시간 동안 완료 잔상 표시
+        const a = this.arenaData;
+        return !!(a && !a.next_batch_at && a.last_batch_at && (Date.now() / 1000 - a.last_batch_at) < 72 * 3600);
+      },
+      maybeQuestReminder() {                           // 마감 임박(D-1 이하) 1일 1회 리마인드
+        const a = this.arenaData;
+        if (!(a && a.next_batch_at && a.queue)) return;
+        const dd = this.ddayTxt(a.next_batch_at);
+        if (dd !== 'D-DAY' && dd !== 'D-1') return;
+        const mark = new Date().toDateString() + ':' + a.next_batch_at;
+        try { if (localStorage.getItem('prismQuestRemind') === mark) return; localStorage.setItem('prismQuestRemind', mark); } catch (e) {}
+        this.liveToast('⏰ 팀 퀘스트 마감 임박 ' + dd + ' · 남은 ' + a.queue + '건, 완주까지 화이팅!');
       },
       questTotal() { return (this.arenaData && this.arenaData.total_targets) || 0; },
       questDone() { const t = this.questTotal(); return Math.max(0, t - ((this.arenaData && this.arenaData.queue) || 0)); },

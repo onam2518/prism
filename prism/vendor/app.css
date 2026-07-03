@@ -897,11 +897,6 @@
 .polpal__item div{color:var(--ds-body);margin-top:3px;line-height:1.55;white-space:pre-line}
 .polpal__item.is-hl{border-color:var(--ds-primary);background:var(--ds-primary-tint)}
 
-/* 팀 퀘스트(버전 시한): 히어로 우측 D-day 칩 · 시한까지 팀 검수 완주 프레임 */
-.arena-deadline{margin-top:var(--ds-space-2);display:inline-flex;align-items:center;gap:6px;padding:5px 12px;
-  border-radius:var(--ds-radius-chip);background:rgba(255,255,255,.14);cursor:help;
-  font:700 12px/1 var(--ds-font-game);color:var(--ds-text-static-white)}
-.arena-deadline span{font-weight:500;font-size:11px;opacity:.85}
 
 /* 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 에이전트 카드 아래 · 전 메뉴 노출
    구조 = 유형 태그 + D-day(임박 시 경고색) + 제목 + 목표 + 진행 게이지/카운트 + 시한 + CTA */
@@ -913,6 +908,8 @@
   background:var(--ds-primary-tint);padding:3px 8px;border-radius:var(--ds-radius-chip)}
 .squest__dday{font:800 12.5px/1 var(--ds-font-game);color:var(--ds-primary-deep)}
 .squest__dday.is-urgent{color:var(--ds-error)}
+.squest__dday--done{color:var(--ds-success-deep)}
+.squest--done{cursor:default;background:var(--ds-primary-tint)}
 .squest__title{margin-top:8px;font:700 13px/1.3 var(--ds-font-game);color:var(--ds-ink)}
 .squest__model{margin-top:2px;font-size:10.5px;color:var(--ds-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .squest__obj{margin-top:3px;font-size:11px;color:var(--ds-muted)}

@@ -338,6 +338,14 @@ def learning_batch(team=None, models=None) -> dict:
     _LAST_LEARN_REPORT = report
     _SV._report_save("learn_report", report, team)
     _SV._agg_bump()
+    try:                                        # 반영 완료 모먼트: 접속 팀원 전체에 축하 토스트(SSE)
+        stv2 = _SV.get_store()
+        done_ver = int(stv2.batch_seq(team)) if (stv2 and hasattr(stv2, "batch_seq")) else 0
+        _SV.broadcast({"type": "learn_batch", "version": done_ver,
+                       "grade_accuracy": report.get("grade_accuracy"),
+                       "confirmed": golden.get("confirmed"), "ts": report["ts"]})
+    except Exception:
+        pass
     print(f"  [batch] 학습 일배치 · 골든 확정 {golden.get('confirmed')} · 카테고리필요 "
           f"{golden.get('need_category')} · 정합성(grade) {report['grade_accuracy']}")
     return report

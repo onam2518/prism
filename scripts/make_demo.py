@@ -92,6 +92,7 @@ DEMO_ADMIN = {
 import time as _time
 DEMO_ARENA = {
     "next_version": 3, "next_model": "solar-pro3-260323", "next_batch_at": _time.time() + 2 * 86400 + 3600,   # 데모: 시한 D-2
+    "last_version": 2, "last_batch_at": 1782950000,
     "accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18,
     "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.50,
     "leaderboard": [
