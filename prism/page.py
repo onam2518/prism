@@ -1611,6 +1611,7 @@ PAGE = """<!doctype html>
                     </button>
                   </div>
                   <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
+                  <button type="button" x-show="keyState(s)" x-on:click="testConn(s)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
                   <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
                   <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
                 </div>
@@ -1634,6 +1635,19 @@ PAGE = """<!doctype html>
                 <label class="flex cursor-pointer items-center gap-2 text-[13px] text-body" style="margin:0"><input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet"> 이 기기에 저장 (재시작 후에도 유지)</label>
                 <ul class="ds-bullets" style="margin-top:8px"><li>키 저장 시 연결을 확인합니다 · 기본 실행 모델은 <b>콘텐츠 관리 · 모델 실행 · 사용 모델</b>에서 선택합니다.</li></ul>
               </div>
+              <div style="margin-top:var(--ds-space-4);padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
+                <b class="text-[13px]">팀 가이드 링크</b>
+                <p class="text-xs text-muted" style="margin:4px 0 10px">시작하기 카드의 '상세 가이드' 바로가기 주소입니다 · 저장하면 팀 전체에 공유됩니다.</p>
+                <div class="space-y-2">
+                  <label class="selctl" style="width:100%"><span class="selctl__tag">개요</span><input type="url" x-model="teamLinks.guide" placeholder="https://… (프로그램 개요 문서)" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
+                  <label class="selctl" style="width:100%"><span class="selctl__tag">사용자</span><input type="url" x-model="teamLinks.guide_user" placeholder="https://… (팀원용 가이드)" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
+                  <label class="selctl" style="width:100%"><span class="selctl__tag">관리자</span><input type="url" x-model="teamLinks.guide_admin" placeholder="https://… (관리자용 가이드)" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
+                </div>
+                <div class="flex items-center gap-2" style="margin-top:10px">
+                  <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="saveTeamLinks()">저장</button>
+                  <span class="text-xs text-muted" aria-live="polite" x-text="tlMsg"></span>
+                </div>
+              </div>
         </div>
           </div>
         </section>
@@ -1642,15 +1656,66 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 평가 아레나 (게임화) · 팀 정확도 협동 스코어 + 리더보드 ═══ -->
       <div x-show="mod === 'home' || mod === 'arena'" x-cloak class="w-full space-y-4" style="order:-1">
-        <!-- 시작하기(관리자 · 데이터 0건): 첫 화면에서 다음 행동을 안내(빈 홈 온보딩) -->
-        <section class="panel" x-show="adminData && adminData.isAdmin && arenaData && !arenaData.total_targets && !arenaData.queue" x-cloak>
-          <div class="panel-hd"><b>시작하기</b><span class="meta">아직 콘텐츠가 없습니다 · 3단계면 검수 루프가 돌기 시작합니다</span></div>
+        <!-- 시작하기(빈 홈 온보딩): 권한별 3분할 카드 · 구성은 팀 가이드(사용자/관리자) STEP 순서 기준 -->
+        <section class="panel" x-show="starterVisible" x-cloak>
+          <div class="panel-hd"><b>시작하기</b>
+            <span class="meta" x-text="(adminData && adminData.isAdmin) ? '아직 콘텐츠가 없습니다 · 3단계면 검수 루프가 돌기 시작합니다' : '처음이신가요 · 3단계면 첫 검수까지 끝낼 수 있습니다'"></span>
+            <span class="starter__actions">
+              <a class="copybtn" style="text-decoration:none" x-show="starterGuide" x-cloak x-bind:href="starterGuide" target="_blank" rel="noreferrer">상세 가이드 ↗</a>
+              <button type="button" class="starter__hide" x-on:click="hideStarter()" data-tip="이 카드를 다시 표시하지 않습니다" data-tip-pos="bottom">다음부터 표시 안 함 ×</button>
+            </span>
+          </div>
           <div class="panel-bd">
-            <ul class="ds-bullets">
-              <li><b>① 콘텐츠 추가</b> · 텍스트·엑셀·자동 인입으로 검수할 콘텐츠를 넣습니다. <button type="button" class="copybtn" x-on:click="selectMod('content')">콘텐츠 관리 열기 →</button></li>
-              <li><b>② 모델 실행</b> · 같은 화면 STEP 2에서 초안을 생성합니다(키 없이 모의 모드도 가능).</li>
-              <li><b>③ 검수 목표(퀘스트) 생성</b> · 반영 일시를 정하면 팀 퀘스트가 시작됩니다. <button type="button" class="copybtn" x-on:click="selectMod('testset')">정답셋 관리 열기 →</button></li>
-            </ul>
+            <!-- 관리자: 관리자 가이드 STEP 1(콘텐츠) → 모델 실행 → STEP 2(퀘스트) -->
+            <template x-if="adminData && adminData.isAdmin">
+              <div class="starter__grid">
+                <div class="starter__card">
+                  <span class="starter__no">STEP 1</span>
+                  <span class="starter__ico starter__ico--a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M14 3v5h5"/><path d="M12 11v6M9 14h6"/></svg></span>
+                  <b>콘텐츠 넣기</b>
+                  <p>텍스트·엑셀·이미지·자동 인입으로 검수할 콘텐츠를 넣습니다. 용도(검수용/평가용)를 먼저 고릅니다.</p>
+                  <button type="button" class="copybtn starter__cta" x-on:click="selectMod('content')">콘텐츠 관리 열기 →</button>
+                </div>
+                <div class="starter__card">
+                  <span class="starter__no">STEP 2</span>
+                  <span class="starter__ico starter__ico--b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg></span>
+                  <b>모델 실행</b>
+                  <p>같은 화면 STEP 2에서 초안을 생성합니다. 키가 없어도 모의 모드로 전 과정을 체험할 수 있습니다.</p>
+                </div>
+                <div class="starter__card">
+                  <span class="starter__no">STEP 3</span>
+                  <span class="starter__ico starter__ico--c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4"/><path d="M4 4h13l-2 4 2 4H4"/></svg></span>
+                  <b>검수 목표(퀘스트) 생성</b>
+                  <p>반영 일시를 정해 저장하면 팀 퀘스트가 시작되고, 전 팀원의 홈에 D-day가 나타납니다.</p>
+                  <button type="button" class="copybtn starter__cta" x-on:click="selectMod('testset')">정답셋 관리 열기 →</button>
+                </div>
+              </div>
+            </template>
+            <!-- 멤버: 사용자 가이드 STEP 3(검수) → STEP 4(교정) → STEP 6(점수와 성장) -->
+            <template x-if="!(adminData && adminData.isAdmin)">
+              <div class="starter__grid">
+                <div class="starter__card">
+                  <span class="starter__no">STEP 1</span>
+                  <span class="starter__ico starter__ico--a"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></span>
+                  <b>검수하기</b>
+                  <p>목록의 행을 클릭해 원문과 AI 초안을 비교하고 정확/수정을 판정합니다.</p>
+                  <span class="starter__kbd"><kbd>A</kbd> 정확 <kbd>S</kbd> 수정 <kbd>←</kbd><kbd>→</kbd> 이동</span>
+                  <button type="button" class="copybtn starter__cta" x-on:click="selectMod('create')">콘텐츠 검수 열기 →</button>
+                </div>
+                <div class="starter__card">
+                  <span class="starter__no">STEP 2</span>
+                  <span class="starter__ico starter__ico--b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="m15 5 4 4"/></svg></span>
+                  <b>틀린 초안 고치기</b>
+                  <p>수정 판정 후 틀린 요소를 골라 바르게 고칩니다. 교정 하나하나가 팀의 학습 데이터가 됩니다.</p>
+                </div>
+                <div class="starter__card">
+                  <span class="starter__no">STEP 3</span>
+                  <span class="starter__ico starter__ico--c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4"/><path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M17 5h3a2 2 0 0 1-2 4h-1M7 5H4a2 2 0 0 0 2 4h1"/></svg></span>
+                  <b>점수와 성장</b>
+                  <p>판정마다 점수가 오르고 퀘스트·배지·레벨이 자랍니다. 팀 퀘스트 D-day까지 함께 완주해요.</p>
+                </div>
+              </div>
+            </template>
           </div>
         </section>
         <!-- 히어로: 팀 정확도 게이지(협동) -->

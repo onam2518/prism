@@ -144,6 +144,29 @@
     background:var(--ds-violet,#1e84ff);border-radius:var(--ds-radius-chip);padding:4px 11px;letter-spacing:.03em;flex:none}
   .stepline b{font-family:var(--ds-font-game);font-size:15px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
   .stepline .meta{font-size:11.5px;color:var(--ds-muted)}
+  /* 시작하기(온보딩) 3분할 카드 */
+  .starter__actions{margin-left:auto;display:flex;align-items:center;gap:var(--ds-space-2);flex:none}
+  .starter__hide{font-size:11.5px;color:var(--ds-muted);background:none;border:none;cursor:pointer;
+    padding:4px 8px;border-radius:var(--ds-radius-chip)}
+  .starter__hide:hover{color:var(--ds-ink);background:var(--ds-hairline-soft,rgba(0,0,0,.05))}
+  .starter__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ds-space-3)}
+  @media (max-width:900px){.starter__grid{grid-template-columns:1fr}}
+  .starter__card{position:relative;display:flex;flex-direction:column;gap:8px;padding:var(--ds-pad-inset,16px);
+    border:1px solid var(--ds-hairline-soft,rgba(0,0,0,.07));border-radius:var(--ds-radius-card);
+    background:linear-gradient(180deg,rgba(30,132,255,.04),transparent 55%)}
+  .starter__no{position:absolute;top:14px;right:14px;font-family:var(--ds-font-game);font-size:10px;
+    font-weight:700;color:var(--ds-muted);letter-spacing:.08em}
+  .starter__ico{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none}
+  .starter__ico svg{width:20px;height:20px}
+  .starter__ico--a{background:rgba(30,132,255,.12);color:var(--ds-violet,#1e84ff)}
+  .starter__ico--b{background:rgba(234,140,8,.14);color:#d97706}
+  .starter__ico--c{background:rgba(22,163,74,.13);color:#16a34a}
+  .starter__card b{font-family:var(--ds-font-game);font-size:14.5px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
+  .starter__card p{margin:0;font-size:12.5px;line-height:1.55;color:var(--ds-muted)}
+  .starter__cta{margin-top:auto;align-self:flex-start}
+  .starter__kbd{display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--ds-muted);flex-wrap:wrap}
+  .starter__kbd kbd{font-family:var(--ds-font-game);font-size:10.5px;padding:2px 7px;color:var(--ds-ink);
+    border:1px solid var(--ds-hairline-soft,rgba(0,0,0,.12));border-bottom-width:2px;border-radius:6px;background:var(--ds-canvas,#fff)}
   .subhd{display:flex;align-items:center;gap:var(--ds-space-2);margin:18px 16px 8px;font-family:var(--ds-font-game);
     font-size:13.5px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
   .subhd .meta{font-family:var(--ds-font-sans);font-size:11.5px;font-weight:500;color:var(--ds-muted)}

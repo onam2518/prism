@@ -953,6 +953,8 @@ def load_persisted_key():
                 os.environ["UPSTAGE_API_KEY"] = k
         except Exception:
             pass
+    if IMG._api_key():
+        _seed_solar_defaults()                        # 키 보유 + 엔드포인트·모델 미설정 자기 치유
     for service, path in _ROUTER_KEY_PATHS.items():
         env = IMG.ROUTERS[service]["key_env"]
         if not IMG.router_key(service) and os.path.exists(path):
@@ -1614,6 +1616,24 @@ def _candidate_models(cfg) -> list:
     return out
 
 
+def team_links() -> dict:
+    """팀 가이드 링크(reports kind='team_links' 전역 행 · 운영 관리자가 시스템 설정에서 등록).
+    내부 위키 URL 은 코드에 두지 않는다(공개 데모 docs/demo.html 유출 방지)."""
+    try:
+        st = get_store()
+        d = st.get_report("team_links") if st else None
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_team_links(data: dict):
+    st = get_store()
+    if st:
+        st.save_report("team_links", {k: str(data.get(k) or "").strip()
+                                      for k in ("guide", "guide_user", "guide_admin")})
+
+
 def config_status() -> dict:
     cfg = Config.load()
     base = (cfg.chat_url or "").rsplit("/chat/completions", 1)[0]
@@ -1640,6 +1660,7 @@ def config_status() -> dict:
         "metaCalls": list(MP.CALLS),
         "metaContract": {"rules": dict(MP.CALL_RULES), "examples": MP.gold_examples(None)},
         "ingestSources": list(cfg.ingest_sources or []),
+        "guideUrls": team_links(),
         "storedCount": (get_store().count() if get_store() else 0),
         "build": _build_id(),
         "configured": cfg.is_configured(),
@@ -1670,6 +1691,7 @@ def apply_config(data: dict, allow_key: bool = False) -> dict:
     key = (data.get("api_key") or "").strip()
     if key:
         os.environ["UPSTAGE_API_KEY"] = key
+        _seed_solar_defaults()                        # 키만 저장해도 바로 호출 가능하게
         if data.get("persist"):
             try:
                 with open(_KEY_PATH, "w", encoding="utf-8") as f:
@@ -1841,14 +1863,59 @@ def list_models() -> dict:
         return {"ok": False, "detail": str(e)[:200], "models": []}
 
 
+_SOLAR_BASE_DEFAULT = "https://api.upstage.ai/v1"
+_SOLAR_MODEL_DEFAULT = "solar-pro2"
+
+
+def _seed_solar_defaults():
+    """Upstage 키 저장 시 엔드포인트·기본 모델이 비어 있으면 기본값을 채워 저장.
+    (새 설치에서 키만 등록하면 연결 테스트·실행이 '엔드포인트·모델 미설정'으로 죽는 함정 방지)"""
+    try:
+        cfg = Config.load()
+        if cfg.is_configured():
+            return
+        if not cfg.chat_url:
+            cfg.set_base_url(_SOLAR_BASE_DEFAULT)
+        if not cfg.model:
+            cfg.model = _SOLAR_MODEL_DEFAULT
+        cfg.save_template()
+    except Exception:
+        pass
+
+
+def ping_router(service: str) -> dict:
+    """라우터(BizRouter·Timely) 키로 모델 목록을 조회하여 연결 검증(OpenAI 호환 /models)."""
+    info = IMG.ROUTERS.get(service)
+    if not info:
+        return {"ok": False, "detail": "알 수 없는 서비스"}
+    key = IMG.router_key(service)
+    if not key:
+        return {"ok": False, "detail": "키가 설정되지 않았습니다"}
+    try:
+        req = urllib.request.Request(info["base"].rstrip("/") + "/models",
+                                     headers={"Authorization": "Bearer " + key})
+        t0 = time.time()
+        with urllib.request.urlopen(req, timeout=12) as r:
+            body = json.loads(r.read().decode("utf-8", "replace"))
+        n = len(body.get("data") or []) if isinstance(body, dict) else 0
+        return {"ok": True, "detail": info["label"] + " 연결 정상" + (f" · 모델 {n}종" if n else ""),
+                "latency_ms": int((time.time() - t0) * 1000)}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "detail": f"HTTP {e.code} · 키 또는 권한을 확인하세요"}
+    except Exception as e:
+        return {"ok": False, "detail": str(e)[:200]}
+
+
 def ping_model() -> dict:
     """현재 키/설정으로 실제 1회 호출하여 연결 검증."""
     if not IMG._api_key():
         return {"ok": False, "detail": "API 키가 설정되지 않았습니다"}
     try:
         cfg = Config.load()
-        if not cfg.is_configured():
-            return {"ok": False, "detail": "엔드포인트·모델 미설정 (config)"}
+        if not cfg.chat_url:                          # 미설정이면 기본 엔드포인트·모델로 검증
+            cfg.set_base_url(_SOLAR_BASE_DEFAULT)
+        if not cfg.model:
+            cfg.model = _SOLAR_MODEL_DEFAULT
         llm = LLMClient(config=cfg)
         if llm.mock:
             return {"ok": False, "detail": "키 인식 실패 (mock 모드로 동작)"}
@@ -2172,14 +2239,27 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 # API 키 등록·삭제는 운영 관리자만(관리자 로컬 앱 = 서버 · ~/.prism_key 저장)
                 allow_key = (not _supa()) or is_sys_admin_user(uid, team, email)
-                self._send(200, json.dumps(apply_config(json.loads(body or b"{}"), allow_key=allow_key),
+                data = json.loads(body or b"{}")
+                if isinstance(data.get("team_links"), dict):
+                    # 팀 가이드 링크(전역 공유) = 운영 관리자만
+                    if not allow_key:
+                        self._send(403, json.dumps({"error": "운영 관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                        return
+                    save_team_links(data["team_links"])
+                self._send(200, json.dumps(apply_config(data, allow_key=allow_key),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
         if self.path.startswith("/ping"):
-            self._send(200, json.dumps(ping_model(), ensure_ascii=False), _JSON)
+            try:
+                d = json.loads(body or b"{}")
+            except Exception:
+                d = {}
+            svc = (d.get("service") or "").strip()
+            out = ping_router(svc) if svc in IMG.ROUTERS else ping_model()
+            self._send(200, json.dumps(out, ensure_ascii=False), _JSON)
             return
 
         if self.path.startswith("/store"):

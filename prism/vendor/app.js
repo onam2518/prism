@@ -231,8 +231,9 @@
       copyMsg: '',
 
       // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) · 우측 설정 패널
-      cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasBizKey: false, hasTimelyKey: false },
+      cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasBizKey: false, hasTimelyKey: false, guideUrls: {} },
       cfgModel: '', cfgPersist: true, cfgBusy: false,
+      teamLinks: { guide: '', guide_user: '', guide_admin: '' }, tlMsg: '',   // 팀 가이드 링크(시작하기 카드 바로가기)
       models: [], modelsMsg: '',
       reasoning: 'default', systemPrompt: '', prefMsg: '', legalEnabled: false,
       stagePrompts: { extract: '', analyze: '', review: '', judge: '' },
@@ -954,6 +955,19 @@
       get myProgressPct() { const m = this.arenaMe; return m ? Math.round((m.progress || 0) * 100) : 0; },
       get teamProgressPct() { const d = this.arenaData; return d ? Math.round((d.team_progress || 0) * 100) : 0; },
       get reviewTargets() { const d = this.arenaData; return d ? (d.total_targets || 0) : 0; },
+      // 시작하기(온보딩) 카드: 권한별 노출 · '다음부터 표시 안 함' localStorage 영속
+      starterHide: (() => { try { return localStorage.getItem('prism_starter_hide') === '1'; } catch (e) { return false; } })(),
+      hideStarter() { this.starterHide = true; try { localStorage.setItem('prism_starter_hide', '1'); } catch (e) {} },
+      get starterGuide() {
+        const g = (this.cfg && this.cfg.guideUrls) || {};
+        return ((this.adminData && this.adminData.isAdmin) ? g.guide_admin : g.guide_user) || g.guide || '';
+      },
+      get starterVisible() {
+        if (this.starterHide || !this.arenaData) return false;
+        if (this.adminData && this.adminData.isAdmin) return !this.arenaData.total_targets && !this.arenaData.queue;
+        const m = this.arenaMe;                        // 멤버: 첫 판정 전까지 안내
+        return !((m && m.reviews) || 0);
+      },
       get arenaMe() { const d = this.arenaData; if (!d || !this.reviewer) return null; return (d.leaderboard || []).find((r) => r.reviewer === this.reviewer) || null; },
       get arenaMyRank() { const d = this.arenaData; if (!d || !this.reviewer) return 0; const i = (d.leaderboard || []).findIndex((r) => r.reviewer === this.reviewer); return i < 0 ? 0 : i + 1; },
       rankMedal(i) { return ['🥇', '🥈', '🥉'][i] || ('#' + (i + 1)); },
@@ -1243,6 +1257,7 @@
           if (!this.wrapDraft) this.syncWrapDraft();
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();
+          if (this.cfg.guideUrls) this.teamLinks = Object.assign({ guide: '', guide_user: '', guide_admin: '' }, this.cfg.guideUrls);
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
           if (this.cfg.visionProvider) this.visionProvider = this.cfg.visionProvider;
@@ -1268,10 +1283,10 @@
           if (!r.ok || (j && j.error)) { this.keyMsgs[service] = '오류: ' + ((j && j.error) || r.status); this.cfgBusy = false; return; }
           this.cfg = j; this.keyInputs[service] = '';
         } catch (e) { this.keyMsgs[service] = '오류: ' + e; this.cfgBusy = false; return; }
-        if (service === 'solar' && this.keyState('solar')) {
-          if (!this.models.length) this.loadModels();
-          await this.testConn();                                  // Solar 는 즉시 연결 검증
-        } else { this.keyMsgs[service] = this.keyState(service) ? '✓ 저장됨' : '저장 실패'; this.cfgBusy = false; }
+        if (this.keyState(service)) {
+          if (service === 'solar' && !this.models.length) this.loadModels();
+          await this.testConn(service);                           // 저장 즉시 연결 검증(전 서비스)
+        } else { this.keyMsgs[service] = '저장 실패'; this.cfgBusy = false; }
       },
       async forgetKey(service) {
         try {
@@ -1282,11 +1297,20 @@
           this.cfg = j; this.keyMsgs[service] = '키 삭제됨';
         } catch (e) { this.keyMsgs[service] = '오류: ' + e; }
       },
-      async testConn() {
-        this.cfgBusy = true; this.keyMsgs.solar = '연결 테스트 중…';
-        try { const j = await (await fetch('/ping', { method: 'POST' })).json();
-          this.keyMsgs.solar = (j.ok ? '✓ 성공 · ' : '✗ 실패 · ') + j.detail; }
-        catch (e) { this.keyMsgs.solar = '오류: ' + e; }
+      async saveTeamLinks() {
+        this.tlMsg = '저장 중…';
+        try {
+          const r = await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ team_links: this.teamLinks }) });
+          const j = await r.json();
+          if (!r.ok || (j && j.error)) { this.tlMsg = '오류: ' + ((j && j.error) || r.status); return; }
+          this.cfg = j; this.tlMsg = '✓ 저장됨';
+        } catch (e) { this.tlMsg = '오류: ' + e; }
+      },
+      async testConn(service = 'solar') {
+        this.cfgBusy = true; this.keyMsgs[service] = '연결 테스트 중…';
+        try { const j = await (await fetch('/ping', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(service === 'solar' ? {} : { service }) })).json();
+          this.keyMsgs[service] = (j.ok ? '✓ 성공 · ' : '✗ 실패 · ') + j.detail; }
+        catch (e) { this.keyMsgs[service] = '오류: ' + e; }
         await this.refreshConfig(); this.cfgBusy = false;
       },
       // 텍스트 슬롯(메타 생성)
