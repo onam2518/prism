@@ -1660,10 +1660,11 @@ def config_status() -> dict:
     }
 
 
-def apply_config(data: dict) -> dict:
+def apply_config(data: dict, allow_key: bool = False) -> dict:
     """키/모델/엔드포인트/추론강도/추가지시 적용. 키만 프로세스 환경(+옵션 ~/.prism_key).
-    운영(supabase·공유 서버): 키는 서버 env 전용 → 브라우저가 보낸 키 변경은 무시(서버 키 보호)."""
-    if backend_mode()[0] == "supabase":
+    운영(supabase): 키 변경은 운영 관리자(allow_key=True, /config 게이트에서 판정)만 허용.
+    비관리자·미인증 요청의 키 필드는 무시(서버 키 보호)."""
+    if backend_mode()[0] == "supabase" and not allow_key:
         data = {k: v for k, v in data.items()
                 if k not in ("api_key", "persist", "forget", "bizrouter_api_key", "timely_api_key")}
     key = (data.get("api_key") or "").strip()
@@ -2165,10 +2166,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/config"):
             try:
                 # 운영(supabase): 팀 공유 설정(모델·프롬프트·인입 등)은 관리자만 변경
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
+                if _supa() and not is_admin_user(uid, team, email):
                     self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                     return
-                self._send(200, json.dumps(apply_config(json.loads(body or b"{}")),
+                # API 키 등록·삭제는 운영 관리자만(관리자 로컬 앱 = 서버 · ~/.prism_key 저장)
+                allow_key = (not _supa()) or is_sys_admin_user(uid, team, email)
+                self._send(200, json.dumps(apply_config(json.loads(body or b"{}"), allow_key=allow_key),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)

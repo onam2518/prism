@@ -583,7 +583,7 @@
       dtAllowDl: true, dtPersist: true, dtMsg: '',
       async saveDesktopOpts() {
         try {
-          await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ desktop_allow_downloads: !!this.dtAllowDl, desktop_persist_storage: !!this.dtPersist }) });
+          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ desktop_allow_downloads: !!this.dtAllowDl, desktop_persist_storage: !!this.dtPersist }) });
           this.dtMsg = '✓ 저장됨 · 앱 재시작 후 적용';
         } catch (e) { this.dtMsg = '저장 실패'; }
         setTimeout(() => { this.dtMsg = ''; }, 4000);
@@ -730,22 +730,22 @@
       },
       async saveWrapper() {
         const body = { family_wrappers: {} }; body.family_wrappers[this.wrapFam] = this.wrapDraft || '';
-        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 저장됨'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
+        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 저장됨'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
         setTimeout(() => { this.wrapMsg = ''; }, 2500);
       },
       async restoreWrapper() {
         const body = { family_wrappers: {} }; body.family_wrappers[this.wrapFam] = '';
-        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 기본값 복원'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
+        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 기본값 복원'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
         setTimeout(() => { this.wrapMsg = ''; }, 2500);
       },
       async saveCallModels() {
-        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ meta_call_models: this.callModels, meta_four_calls: !!this.fourCalls }) }); await this.refreshConfig(); this.callMsg = '✓ 저장됨'; } catch (e) { this.callMsg = '실패'; }
+        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ meta_call_models: this.callModels, meta_four_calls: !!this.fourCalls }) }); await this.refreshConfig(); this.callMsg = '✓ 저장됨'; } catch (e) { this.callMsg = '실패'; }
         setTimeout(() => { this.callMsg = ''; }, 2500);
       },
       async loadPreview() {
         if (!this.pvModel) this.pvModel = this.availableModels[0] || '';
         if (!this.pvModel) return;
-        try { this.pvData = await (await fetch('/prompt-preview?model=' + encodeURIComponent(this.pvModel) + '&call=' + encodeURIComponent(this.pvCall) + '&service=' + encodeURIComponent(this.pvService))).json(); } catch (e) { this.pvData = null; }
+        try { this.pvData = await (await fetch('/prompt-preview?model=' + encodeURIComponent(this.pvModel) + '&call=' + encodeURIComponent(this.pvCall) + '&service=' + encodeURIComponent(this.pvService), { headers: this._authHeaders() })).json(); } catch (e) { this.pvData = null; }
       },
       async togglePurpose(c) {               // 관리자: 용도 전환(검수용 ↔ 평가용 홀드아웃)
         const next = c.purpose === 'eval' ? 'review' : 'eval';
@@ -1203,7 +1203,7 @@
         this.modelsMsg = '불러오는 중…'; this.cfgBusy = true;
         try {
           if (this.keyInputs.solar) {              // 입력한 키를 먼저 적용(세션)
-            await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            await fetch('/config', { method: 'POST', headers: this._authHeaders(),
               body: JSON.stringify({ api_key: this.keyInputs.solar }) });
           }
           try {                                    // Solar 는 실조회(키 있을 때) · 실패해도 전체는 계속
@@ -1251,7 +1251,7 @@
         } catch (e) { /* noop */ }
       },
       async toggleLegal() {
-        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(),
           body: JSON.stringify({ legal_enabled: this.legalEnabled }) }); } catch (e) {}
       },
       // ── 키(서비스별) ──
@@ -1263,8 +1263,10 @@
           const body = { persist: this.cfgPersist };
           if (service === 'solar') { body.api_key = this.keyInputs.solar; if (this.cfgModel) body.model = this.cfgModel; }
           else body[service + '_api_key'] = this.keyInputs[service];
-          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          this.cfg = await r.json(); this.keyInputs[service] = '';
+          const r = await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
+          const j = await r.json();
+          if (!r.ok || (j && j.error)) { this.keyMsgs[service] = '오류: ' + ((j && j.error) || r.status); this.cfgBusy = false; return; }
+          this.cfg = j; this.keyInputs[service] = '';
         } catch (e) { this.keyMsgs[service] = '오류: ' + e; this.cfgBusy = false; return; }
         if (service === 'solar' && this.keyState('solar')) {
           if (!this.models.length) this.loadModels();
@@ -1274,8 +1276,10 @@
       async forgetKey(service) {
         try {
           const body = {}; if (service === 'solar') body.forget = true; else body['forget_' + service] = true;
-          const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          this.cfg = await r.json(); this.keyMsgs[service] = '키 삭제됨';
+          const r = await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
+          const j = await r.json();
+          if (!r.ok || (j && j.error)) { this.keyMsgs[service] = '오류: ' + ((j && j.error) || r.status); return; }
+          this.cfg = j; this.keyMsgs[service] = '키 삭제됨';
         } catch (e) { this.keyMsgs[service] = '오류: ' + e; }
       },
       async testConn() {
@@ -1291,7 +1295,7 @@
         const payload = { text_provider: this.textProvider };
         if (this.isRouter(this.textProvider)) payload.text_model = this.textModel;
         else if (this.cfgModel) payload.model = this.cfgModel;
-        try { const r = await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        try { const r = await fetch('/config', { method: 'POST', headers: this._authHeaders(),
             body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
@@ -1299,21 +1303,21 @@
       async applyPrefs() {
         this.prefMsg = '저장 중…';
         try {
-          await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          await fetch('/config', { method: 'POST', headers: this._authHeaders(),
             body: JSON.stringify({ reasoning: this.reasoning, system_prompt: this.systemPrompt }) });
           this.prefMsg = '✓ 적용됨';
         } catch (e) { this.prefMsg = '오류: ' + e; }
       },
-      setReasoning(id) { this.reasoning = id; fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reasoning: id }) }).catch(() => {}); },
+      setReasoning(id) { this.reasoning = id; fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reasoning: id }) }).catch(() => {}); },
       async clearStore() {
         if (!confirm('적재된 추출 결과를 모두 삭제할까요? (되돌릴 수 없음)')) return;
-        try { const r = await fetch('/store', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }) });
+        try { const r = await fetch('/store', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ clear: true }) });
           const d = await r.json(); this.cfg.storedCount = d.count || 0; this.loadDash(); } catch (e) {}
       },
       async applyStagePrompts() {
         this.prefMsg = '저장 중…';
         try {
-          await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          await fetch('/config', { method: 'POST', headers: this._authHeaders(),
             body: JSON.stringify({ stage_prompts: this.stagePrompts, reasoning: this.reasoning }) });
           await this.refreshConfig(); this.prefMsg = '✓ 전체 적용됨';
         } catch (e) { this.prefMsg = '오류: ' + e; }
@@ -1332,7 +1336,7 @@
           const payload = { stage: stage, stage_models: this.stageModels };
           if (m) payload.model_prompts = { [m]: { [stage]: this.stagePrompts[stage] } };
           else payload.stage_prompts = this.stagePrompts;     // 모델 미지정 → 전역 폴백
-          await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) });
           await this.refreshConfig(); this.stagePrompts[stage] = this.promptFor(stage); this.stageMsg[stage] = '✓ 저장됨';
           clearTimeout(this._stT); this._stT = setTimeout(() => { this.stageMsg[stage] = ''; }, 1800);
         } catch (e) { this.stageMsg[stage] = '오류: ' + e; }
@@ -1354,7 +1358,7 @@
         this.ingestBusy[s.id] = true; this.ingestRunMsg[s.id] = '';
         this.pollIngestStatus();                         // 진행률 폴링 시작
         try {
-          const r = await (await fetch('/ingest-run', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          const r = await (await fetch('/ingest-run', { method: 'POST', headers: this._authHeaders(),
             body: JSON.stringify({ id: s.id, name: s.name, endpoint: s.endpoint, method: s.method || 'GET', auth: s.auth || '', limit: 100 }) })).json();
           if (!r.ok) { this.ingestRunMsg[s.id] = '오류: ' + (r.error || '실패') + (r.headers ? (' / 헤더: ' + r.headers.join(', ')) : ''); }
           else { this.ingestRunMsg[s.id] = `✓ ${r.fetched}건 수신 → 신규 ${r.inserted} · 갱신 ${r.updated} · 제외 ${r.skipped}` + (r.mock ? ' (mock)' : ''); this.loadDash(); }
@@ -1375,7 +1379,7 @@
       srcRunning(s) { const j = this.srcJob(s); return !!(this.ingestBusy[s.id] || (j && j.running)); },
       async saveIngest() {
         this.ingestMsg = '저장 중…';
-        try { await fetch('/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ingest_sources: this.ingestSources }) }); this.ingestMsg = '✓ 저장됨'; clearTimeout(this._inT); this._inT = setTimeout(() => { this.ingestMsg = ''; }, 1600); } catch (e) { this.ingestMsg = '오류: ' + e; }
+        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ ingest_sources: this.ingestSources }) }); this.ingestMsg = '✓ 저장됨'; clearTimeout(this._inT); this._inT = setTimeout(() => { this.ingestMsg = ''; }, 1600); } catch (e) { this.ingestMsg = '오류: ' + e; }
       },
       // ── 현황 결과 엑셀(CSV) 다운로드 ──
       _dl(name, rows) {
@@ -1460,7 +1464,7 @@
           fd.append('body', this.txtBody);
         }
         try {
-          const j = await (await fetch(endpoint, { method: 'POST', body: fd })).json();
+          const j = await (await fetch(endpoint, { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (j.error) { this.status = '오류: ' + j.error; }
           else if (j.source === 'excel') { this.batchResult = j; }
           else { this.result = j; }

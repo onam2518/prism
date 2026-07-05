@@ -43,6 +43,25 @@ class TestAdminTiers(unittest.TestCase):
         d2 = AO.admin_data("uid", None, "member@x.com")
         self.assertFalse(d2["isSysAdmin"])
 
+    def test_apply_config_key_gate_supabase(self):
+        """supabase 모드 API 키 등록: 운영 관리자(allow_key=True)만 반영 · 그 외 무시."""
+        import prism.serve as SV
+        orig_mode = SV.backend_mode
+        orig_env = os.environ.get("UPSTAGE_API_KEY")
+        SV.backend_mode = lambda: ("supabase", True)
+        def _restore():
+            SV.backend_mode = orig_mode
+            if orig_env is None:
+                os.environ.pop("UPSTAGE_API_KEY", None)
+            else:
+                os.environ["UPSTAGE_API_KEY"] = orig_env
+        self.addCleanup(_restore)
+        os.environ.pop("UPSTAGE_API_KEY", None)
+        SV.apply_config({"api_key": "sk-test-gate"})           # 비관리자(기본): 무시
+        self.assertNotEqual(os.environ.get("UPSTAGE_API_KEY"), "sk-test-gate")
+        SV.apply_config({"api_key": "sk-test-gate"}, allow_key=True)   # 운영 관리자: 반영
+        self.assertEqual(os.environ.get("UPSTAGE_API_KEY"), "sk-test-gate")
+
     def test_local_store_clear_helpers(self):
         import tempfile
         from prism.store import Store
