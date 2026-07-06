@@ -1,27 +1,28 @@
-# fly.toml app configuration file generated for prism-item on 2026-07-06T04:27:40Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+# fly.toml · Prism 상시 서버(Fly.io) 구성
+# 원칙(HANDOFF 2026-07-06): 학습 반영 스케줄러가 상시 돌아야 하므로 머신을 재우지 않는다.
+# 배포: fly deploy · 검증: curl https://prism-item.fly.dev/config (backend supabase · configured true)
 
 app = 'prism-item'
-primary_region = 'iad'
+primary_region = 'nrt'            # 도쿄(한국 팀 지연 최소) · 생성 기본값 iad 에서 교정
 
 [build]
+
+[env]
+  PRISM_CONFIG = '/data/config.json'   # 컨테이너 재시작에도 설정(퀘스트 일시 등) 보존
 
 [[mounts]]
   source = 'data'
   destination = '/data'
 
 [http_service]
-  internal_port = 8080
+  internal_port = 8765              # serve 기본 포트(Dockerfile EXPOSE 와 일치 · 8080이면 502)
   force_https = true
-  auto_stop_machines = 'stop'
+  auto_stop_machines = 'off'        # 스케줄러 상시 필요: 머신 수면 금지
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ['app']
 
 [[vm]]
-  memory = '1gb'
+  memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 256
