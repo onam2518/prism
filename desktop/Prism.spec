@@ -40,11 +40,11 @@ app = BUNDLE(
     name="Prism.app",
     icon="icon/prism.icns",
     bundle_identifier="co.axz.prism.desktop",
-    version="0.5.12",
+    version="0.5.13",
     info_plist={
         "CFBundleName": "Prism",
         "CFBundleDisplayName": "Prism",
-        "CFBundleShortVersionString": "0.5.12",
+        "CFBundleShortVersionString": "0.5.13",
         "LSMinimumSystemVersion": "12.0",
         "NSHighResolutionCapable": True,
         "LSApplicationCategoryType": "public.app-category.productivity",
