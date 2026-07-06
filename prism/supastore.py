@@ -600,7 +600,9 @@ class SupabaseStore:
 
         # 검수 대상(팀 YELLOW 콘텐츠) 총량 → 진척율 분모(contents 는 YELLOW 만 적재)
         if team:
-            total_targets = len(self._get("contents", "select=hash&team_id=eq." + urllib.parse.quote(team)))
+            total_targets = len([r for r in self._get(
+                "contents", "select=hash,model&team_id=eq." + urllib.parse.quote(team))
+                if (r.get("model") or "")])           # 미실행(추가만) 콘텐츠는 진척 분모에서 제외
         else:
             total_targets = self.count()
         gold = self.gold_stats(team)

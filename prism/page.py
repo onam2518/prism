@@ -106,8 +106,6 @@ PAGE = """<!doctype html>
         <span class="ds-statusdot" x-bind:class="cfg.forcedMock ? 'ds-statusdot--mock' : ((connCount || (cfg.keyManagedByServer && cfg.hasKey)) ? 'ds-statusdot--ok' : 'ds-statusdot--mock')"><span class="ds-statusdot__dot"></span></span>
       </button>
       <a href="/report" target="_blank" rel="noreferrer" class="ds-iconbtn ds-iconbtn--bordered" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></a>
-      <button type="button" x-show="false" x-on:click.stop="addMenuOpen = !addMenuOpen" class="ds-iconbtn ds-iconbtn--bordered" data-tip="위젯 추가" data-tip-pos="bottom" aria-label="위젯 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
-      <button type="button" x-show="false" x-on:click="editing = !editing" x-bind:class="editing ? 'ds-iconbtn ds-iconbtn--bordered ds-iconbtn--active' : 'ds-iconbtn ds-iconbtn--bordered'" x-bind:data-tip="editing ? '편집 완료' : '편집'" data-tip-pos="bottom" aria-label="편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></button>
       <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="toggleTheme()" x-bind:data-tip="theme === 'dark' ? '라이트 모드' : '다크 모드'" data-tip-pos="bottom" aria-label="테마 전환">
         <svg x-show="theme !== 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
         <svg x-show="theme === 'dark'" x-cloak width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -541,9 +539,9 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
       <div x-show="mod === 'content' && contentTab === 'run'" class="w-full space-y-4">
 
-        <!-- 콘텐츠 추가(저장): 저장 시 사용 모델로 초안 자동 생성 · 모델 지정 실행은 STEP 2 -->
+        <!-- 콘텐츠 추가 = 저장만(미실행 대기) · 초안 생성은 STEP 2 모델 실행이 담당 -->
         <section class="panel" data-fn>
-          <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">저장 시 사용 모델로 초안이 자동 생성됩니다 · 모델 지정 실행은 STEP 2</span></div>
+          <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">추가는 저장만 합니다 · 초안 생성은 STEP 2 모델 실행에서(이미지 제외)</span></div>
           <div class="panel-bd">
           <!-- 입력 방식 -->
           <div class="seg seg3 mb-5">
@@ -755,16 +753,18 @@ PAGE = """<!doctype html>
             </div>
           </div>
         </section>
-        <!-- 일괄 실행: 모아진 콘텐츠 전체를 지정 모델로 -->
-        <section class="panel" data-fn><div class="panel-hd"><b>일괄 실행</b><span class="meta">모든 콘텐츠 · 지정 모델로 초안 일괄 생성</span></div>
+        <!-- 모델 실행: 대상(미실행만/전체) 선택 후 지정 모델로 큐 실행 -->
+        <section class="panel" data-fn><div class="panel-hd"><b>모델 실행</b><span class="meta">대상을 고르고 지정 모델로 초안을 생성합니다 · 진행은 STEP 3 실행 큐</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li>모아진 콘텐츠 전체를 지정 모델로 실행합니다 · 기존 초안은 이력에 남기고 덮어씁니다(건당 비용 발생).</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:10px"><li><b>미실행만</b> = STEP 1에서 추가만 된 콘텐츠(기본) · <b>전체 재실행</b> = 기존 초안을 이력에 남기고 덮어씁니다(건당 비용 발생).</li></ul>
             <div class="filterbar" style="margin:0">
+              <button type="button" class="srcfilter__chip" x-bind:class="bulkScope==='pending' ? 'sel' : ''" x-on:click="bulkScope='pending'" x-text="'미실행만 (' + pendingCount + '건)'"></button>
+              <button type="button" class="srcfilter__chip" x-bind:class="bulkScope==='all' ? 'sel' : ''" x-on:click="bulkScope='all'" x-text="'전체 재실행 (' + ((dashData&&dashData.contents)||[]).length + '건)'"></button>
               <select class="field" style="width:auto;min-width:170px;height:36px" x-model="bulkModel">
                 <option value="">모델 선택…</option>
                 <template x-for="m in availableModels" x-bind:key="'bk'+m"><option x-bind:value="m" x-text="m"></option></template>
               </select>
-              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || !bulkModel" x-on:click="runBulk()" x-text="bulkBusy ? '일괄 실행 중…' : ('일괄 실행 (' + ((dashData&&dashData.contents)||[]).length + '건)')"></button>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || !bulkModel" x-on:click="runBulk()" x-text="bulkBusy ? '실행 중…' : ('실행 (' + (bulkScope==='pending' ? pendingCount : ((dashData&&dashData.contents)||[]).length) + '건)')"></button>
               <span class="text-xs text-muted" x-text="bulkMsg"></span>
             </div>
           </div>
@@ -1860,7 +1860,7 @@ PAGE = """<!doctype html>
                 <td class="text-ink" x-text="c.title || '(제목 없음)'"></td>
                 <td class="text-muted" x-text="c.service || '·'"></td>
                 <td class="text-muted" x-text="c.model || '·'"></td>
-                <td class="tnum" x-text="c.version ? ('v' + c.version) : '·'"></td>
+                <td><span x-show="c.model" class="tnum" x-text="'v' + (c.version || 1)"></span><span x-show="!c.model" class="ds-badge ds-badge--warning" style="cursor:help" data-tip="STEP 2 모델 실행에서 초안을 생성하세요" data-tip-pos="top">미실행</span></td>
                 <td><span class="ds-badge" x-bind:class="c.purpose === 'eval' ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="c.purpose === 'eval' ? '평가용' : '검수용'"></span></td>
                 <td><div class="flex items-center gap-1.5">
                   <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button>

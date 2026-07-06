@@ -224,6 +224,39 @@ def _kv(disposition: str, key: str):
 
 
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
+def _is_pending_row(r: dict) -> bool:
+    """미실행(STEP 1 추가만) 행 판별: 모델 기록도 산출(item_meta)도 판정(finalGrade)도 없다.
+    R 등급(아이템 폐기)은 item_meta 가 비어도 판정이 있으므로 미실행이 아니다."""
+    tr = r.get("trace") or {}
+    qm = r.get("quality_meta") or {}
+    return not ((tr.get("model") or "") or (r.get("item_meta") or {}) or (qm.get("finalGrade") or ""))
+
+
+def add_contents(contents: list, purpose: str = "", team=None, source: str = "단건") -> dict:
+    """STEP 1 콘텐츠 추가: 저장만 하고 모델은 돌리지 않는다(미실행 대기).
+    실행은 STEP 2 모델 실행(일괄 실행 큐 · scope=pending)이 담당 · 실행 시 같은 hash 로 upsert."""
+    rows = [c for c in contents
+            if (c.get("title") or "").strip() or (c.get("body") or "").strip()]
+    if not rows:
+        return {"error": "제목·본문이 비어 있습니다"}
+    from .store import content_hash as _chash
+    pairs = [(c, {"content_ref": {"displayServiceName": c.get("displayServiceName", ""),
+                                  "title": c.get("title", ""), "subtitle": c.get("subtitle", ""),
+                                  "source_url": c.get("source_url", "") or c.get("url", ""),
+                                  "body": c.get("body", ""), "body_hash": _chash(c)},
+                  "quality_meta": {}, "item_meta": {}, "trace": {}}) for c in rows]
+    store_save(pairs, source=source, team=team)
+    if (purpose or "") == "eval":
+        try:
+            from .store import content_hash as _chash
+            stp = get_store()
+            if stp and hasattr(stp, "set_purpose"):
+                stp.set_purpose([_chash(c) for c in rows], "eval", team=team)
+        except Exception:
+            pass
+    return {"ok": True, "added": len(rows), "pending": True}
+
+
 def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dict:
     cfg = Config.load()
     if (model or "").strip():                # 모델 지정 재실행: 제공자·키를 모델에 맞게 라우팅
@@ -283,15 +316,21 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dic
     }
 
 
-def rerun_all(model: str, team=None, limit: int = 200) -> dict:
-    """모아진 콘텐츠 전체를 지정 모델로 일괄 실행(수동 · 관리자). 건당 비용 발생."""
+def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> dict:
+    """모아진 콘텐츠를 지정 모델로 일괄 실행(수동 · 관리자). 건당 비용 발생.
+    scope: pending=미실행(STEP 1 추가 대기)만 · all=전체 재실행."""
     rows = results_rows(team=team)
     targets, seen = [], set()
     for r in rows[-int(limit):]:
+        if scope == "pending" and not _is_pending_row(r):
+            continue                                 # 이미 실행된 건 제외
         ch = _row_key(r.get("content_ref") or {})
         if ch and ch not in seen:
             seen.add(ch)
             targets.append(ch)
+    if not targets:
+        return {"ok": True, "done": 0, "failed": 0, "model": model, "scope": scope,
+                "msg": "대상이 없습니다" + (" (미실행 콘텐츠 없음)" if scope == "pending" else "")}
     done = failed = 0
     jid = "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
     _job_begin(jid, model or "기본 모델", "일괄 실행", len(targets))
@@ -742,8 +781,9 @@ def build_usermeta_template_csv() -> bytes:
     return ("﻿" + buf.getvalue()).encode("utf-8")
 
 
-def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None) -> dict:
-    """엑셀/CSV 업로드 → ingest 매핑 → 행마다 추출 → 결과+리포트(_LAST_RESULTS)."""
+def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
+              add_only: bool = False) -> dict:
+    """엑셀/CSV 업로드 → ingest 매핑 → (add_only=추가만 | 행마다 추출 → 결과+리포트)."""
     from . import ingest as ING
     ext = os.path.splitext(filename or "")[1].lower() or ".xlsx"
     cfg = Config.load()
@@ -756,6 +796,9 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None) ->
         if not a["ok"]:
             return {"error": a["reason"], "headers": a.get("headers", [])}
         contents = ING.to_contents(tmp)[:200]
+        if add_only:                                 # STEP 1 = 추가만(모델 미실행 · 즉시 완료)
+            r = add_contents(contents, purpose=purpose, team=team, source="배치")
+            return {**r, "source": "excel", "count": r.get("added", 0), "mapping": a["mapping"]}
         results, items, pairs = [], [], []
         jid = "batch:" + time.strftime("%H%M%S")     # 실행 큐 등록(진행률·ETA)
         _job_begin(jid, (filename or "엑셀"), "엑셀 일괄 추출", len(contents))
@@ -1424,6 +1467,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         tr = r.get("trace") or {}
         ch = _row_key(ref)
         if pmap.get(ch) == "eval":
+            continue
+        if _is_pending_row(r):                     # 미실행(STEP 1 추가만) 콘텐츠는 검수 대상 아님
             continue
         fb = fmap.get(ch) or {}
         last_ts = 0
@@ -2434,6 +2479,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/eval-judge"):        # 평가 상세 · 건별 판정(집단 지성)
             try:
+                # 팀원 기능이지만 미인증 직접 호출은 차단(supabase 모드 · 판정 위조 방지)
+                if _supa() and not self._bearer_uid():
+                    self._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+                    return
                 data = json.loads(body or b"{}")
                 rv = (data.get("reviewer") or "").strip()
                 verdict = (data.get("verdict") or "").strip()
@@ -2555,7 +2604,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                     return
                 data = json.loads(body or b"{}")
-                self._send(200, json.dumps(rerun_all((data.get("model") or "").strip(), self._req_team()),
+                scope = (data.get("scope") or "all").strip()
+                self._send(200, json.dumps(rerun_all((data.get("model") or "").strip(), self._req_team(),
+                                                     scope=(scope if scope in ("all", "pending") else "all")),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
@@ -2588,6 +2639,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/dict"):
             try:
+                # 사전·정책 편집 = 관리자 전용(supabase 모드 · UI 게이팅과 정합)
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
                 payload = json.loads(body or b"{}")
                 fn = reset_dict_overrides if payload.get("reset") else (lambda: edit_dict(payload))
                 self._send(200, json.dumps(fn(), ensure_ascii=False), _JSON)
@@ -2623,13 +2678,21 @@ class Handler(BaseHTTPRequestHandler):
                 fields = _parse_multipart(body, boundary)
             else:
                 fields = json.loads(body or b"{}")
+            add_only = str(fields.get("add_only") or "") in ("1", "true")
             if self.path.startswith("/run-batch"):
                 f = fields.get("file")
                 if not isinstance(f, dict) or not f.get("bytes"):
                     result = {"error": "파일이 없습니다"}
                 else:
                     result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"),
-                                       purpose=str(fields.get("purpose") or ""), team=self._req_team())
+                                       purpose=str(fields.get("purpose") or ""), team=self._req_team(),
+                                       add_only=add_only)
+            elif add_only:                             # STEP 1 = 추가만(모델 미실행)
+                result = add_contents([{
+                    "displayServiceName": fields.get("displayServiceName", ""),
+                    "title": fields.get("title", ""), "subtitle": fields.get("subtitle", ""),
+                    "body": fields.get("body", ""),
+                }], purpose=str(fields.get("purpose") or ""), team=self._req_team())
             else:
                 result = run_pipeline(fields, mock=self.server_mock, team=self._req_team())
             self._send(200, json.dumps(result, ensure_ascii=False), _JSON)

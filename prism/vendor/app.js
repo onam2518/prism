@@ -203,15 +203,16 @@
       },
 
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
-      bulkModel: '', bulkBusy: false, bulkMsg: '',
+      bulkModel: '', bulkBusy: false, bulkMsg: '', bulkScope: 'pending',
+      get pendingCount() { return (((this.dashData && this.dashData.contents) || []).filter((c) => !c.model)).length; },
       async runBulk() {
         if (!this.bulkModel) return;
-        if (!confirm('모든 콘텐츠를 ' + this.bulkModel + ' 로 다시 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?')) return;
+        if (!confirm((this.bulkScope === 'pending' ? ('미실행 콘텐츠 ' + this.pendingCount + '건을 ') : '모든 콘텐츠를 ') + this.bulkModel + ' 로 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?')) return;
         this.bulkBusy = true; this.bulkMsg = '';
         try {
           this.pollIngestStatus();                   // 실행 큐 진척도 실시간
-          const r = await (await fetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel }) })).json();
-          this.bulkMsg = r && r.ok ? ('✓ 완료 ' + r.done + '건' + (r.failed ? (' · 실패 ' + r.failed) : '')) : ((r && r.error) || '실패');
+          const r = await (await fetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel, scope: this.bulkScope }) })).json();
+          this.bulkMsg = r && r.ok ? (r.msg || ('✓ 완료 ' + r.done + '건' + (r.failed ? (' · 실패 ' + r.failed) : ''))) : ((r && r.error) || '실패');
           this.loadDash(); this.loadRaw();
         } catch (e) { this.bulkMsg = '일괄 실행 실패'; }
         this.bulkBusy = false;
@@ -1130,7 +1131,7 @@
         const body = { target: this.editT, value }; if (this.editKey != null) body.key = this.editKey;
         this.editMsg = '저장 중…';
         try {
-          const r = await fetch('/dict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const r = await fetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
           const d = await r.json();
           if (d.error) { this.editMsg = '오류: ' + d.error; return; }
           this.dictData = d; this.editT = null;
@@ -1138,7 +1139,7 @@
       },
       async resetDict() {
         if (!confirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)')) return;
-        try { const r = await fetch('/dict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
+        try { const r = await fetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
       },
       async loadUser() { this.modBusy = true; try { this.userData = await (await fetch('/usermeta')).json(); } catch (e) {} this.modBusy = false; },
       async uploadUserLog(e) {
@@ -1499,6 +1500,7 @@
         this.loading = true; this.status = ''; this.result = null; this.batchResult = null;
         const fd = new FormData();
         fd.append('purpose', this.addPurpose || 'review');   // 추가 용도(STEP 1 선택)
+        if (this.activeTabId !== 'image') fd.append('add_only', '1');   // 추가=저장만 · 실행은 STEP 2(이미지는 즉시)
         let endpoint = '/run';
         if (this.activeTabId === 'image') {
           if (!this.imgFiles.length) { this.status = '이미지를 선택하세요'; this.loading = false; return; }
@@ -1518,6 +1520,7 @@
           if (endpoint === '/run-batch') this.pollIngestStatus();   // 실행 큐 진척도 실시간
           const j = await (await fetch(endpoint, { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (j.error) { this.status = '오류: ' + j.error; }
+          else if (j.pending) { this.status = '✓ ' + (j.added || 0) + '건 추가됨 · STEP 2 모델 실행에서 초안을 생성하세요'; this.loadDash(); }
           else if (j.source === 'excel') { this.batchResult = j; }
           else { this.result = j; }
         } catch (e) { this.status = '오류: ' + e; }
