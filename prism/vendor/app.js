@@ -206,12 +206,12 @@
       bulkModel: '', bulkBusy: false, bulkMsg: '', bulkScope: 'pending',
       get pendingCount() { return (((this.dashData && this.dashData.contents) || []).filter((c) => !c.model)).length; },
       async runBulk() {
-        if (!this.bulkModel) return;
-        if (!confirm((this.bulkScope === 'pending' ? ('미실행 콘텐츠 ' + this.pendingCount + '건을 ') : '모든 콘텐츠를 ') + this.bulkModel + ' 로 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?')) return;
+        const mname = this.textModel || this.cfg.model || '기본 모델';
+        if (!confirm((this.bulkScope === 'pending' ? ('미실행 콘텐츠 ' + this.pendingCount + '건을 ') : '모든 콘텐츠를 ') + mname + ' 로 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?')) return;
         this.bulkBusy = true; this.bulkMsg = '';
         try {
           this.pollIngestStatus();                   // 실행 큐 진척도 실시간
-          const r = await (await fetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel, scope: this.bulkScope }) })).json();
+          const r = await (await fetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: '', scope: this.bulkScope }) })).json();   // 모델 비움 = 사용 모델(기본 실행 모델)
           this.bulkMsg = r && r.ok ? (r.msg || ('✓ 완료 ' + r.done + '건' + (r.failed ? (' · 실패 ' + r.failed) : ''))) : ((r && r.error) || '실패');
           this.loadDash(); this.loadRaw();
         } catch (e) { this.bulkMsg = '일괄 실행 실패'; }

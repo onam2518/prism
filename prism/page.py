@@ -641,31 +641,6 @@ PAGE = """<!doctype html>
         </section>
 
 
-        <!-- 처리 대기 화면: Processing(캐릭터) + Steps (디자인 시스템) -->
-        <div x-show="loading" x-cloak class="ds-pilot mt-6 panel" style="border-color:var(--ds-hairline)">
-          <div class="panel-bd">
-            <!-- Processing -->
-            <div class="ds-processing">
-              <span class="ds-processing__char"><span class="ds-character ds-character--bob" style="width:96px;height:96px"><img src="/vendor/yonghee-pitcher.svg" alt="용희 (투수)"></span></span>
-              <div>
-                <div class="ds-processing__title" x-text="activeTabId === 'excel' ? '일괄 추출 중' : '메타데이터 추출 중'"></div>
-                <div class="ds-processing__msg"><span class="ds-processing__dots" x-text="activeTabId === 'excel' ? '행마다 추출하고 있어요' : (activeTabId === 'image' ? '이미지를 읽고 있어요' : '리드문·메타를 생성하고 있어요')"></span></div>
-              </div>
-              <div style="width:100%;max-width:340px">
-                <div class="ds-progress ds-progress--indeterminate"><div class="ds-progress__track" role="progressbar"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div>
-              </div>
-            </div>
-            <!-- Steps -->
-            <div class="ds-steps mt-5" style="max-width:420px">
-              <div class="ds-step ds-step--done"><div class="ds-step__rail"><span class="ds-step__marker"><svg class="ds-step__check" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">입력 수집</div><div class="ds-step__detail" x-text="activeTabId === 'excel' ? '엑셀 행 매핑' : '콘텐츠 정규화'"></div></div></div>
-              <div class="ds-step" x-bind:class="activeTabId === 'image' ? 'ds-step--active' : 'ds-step--done'"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">이미지 이해</div><div class="ds-step__detail" x-text="activeTabId === 'image' ? '시각 모델로 읽는 중' : '텍스트는 건너뜀'"></div></div></div>
-              <div class="ds-step ds-step--active"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">메타 추출</div><div class="ds-step__detail">리드문 · 엔티티 · 인텐트 · 카테고리</div></div></div>
-              <div class="ds-step ds-step--pending"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">품질 판정</div><div class="ds-step__detail">G / R</div></div></div>
-              <div class="ds-step ds-step--pending"><div class="ds-step__rail"><span class="ds-step__marker"></span></div><div class="ds-step__body"><div class="ds-step__title">완료</div></div></div>
-            </div>
-          </div>
-        </div>
-
         <!-- 엑셀 배치 결과 + 인포그래픽 -->
         <div x-show="batchResult" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
           <!-- 집계 인포그래픽 -->
@@ -749,26 +724,40 @@ PAGE = """<!doctype html>
                   </template>
                 </select></span>
               <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-md" x-bind:disabled="cfgBusy" x-on:click="loadModels()">모델 새로고침</button>
-              <span class="text-xs text-muted" x-text="modelsMsg"></span>
-            </div>
-          </div>
-        </section>
-        <!-- 모델 실행: 대상(미실행만/전체) 선택 후 지정 모델로 큐 실행 -->
-        <section class="panel" data-fn><div class="panel-hd"><b>모델 실행</b><span class="meta">대상을 고르고 지정 모델로 초안을 생성합니다 · 진행은 STEP 3 실행 큐</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px"><li><b>미실행만</b> = STEP 1에서 추가만 된 콘텐츠(기본) · <b>전체 재실행</b> = 기존 초안을 이력에 남기고 덮어씁니다(건당 비용 발생).</li></ul>
-            <div class="filterbar" style="margin:0">
               <button type="button" class="srcfilter__chip" x-bind:class="bulkScope==='pending' ? 'sel' : ''" x-on:click="bulkScope='pending'" x-text="'미실행만 (' + pendingCount + '건)'"></button>
               <button type="button" class="srcfilter__chip" x-bind:class="bulkScope==='all' ? 'sel' : ''" x-on:click="bulkScope='all'" x-text="'전체 재실행 (' + ((dashData&&dashData.contents)||[]).length + '건)'"></button>
-              <select class="field" style="width:auto;min-width:170px;height:36px" x-model="bulkModel">
-                <option value="">모델 선택…</option>
-                <template x-for="m in availableModels" x-bind:key="'bk'+m"><option x-bind:value="m" x-text="m"></option></template>
-              </select>
-              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || !bulkModel" x-on:click="runBulk()" x-text="bulkBusy ? '실행 중…' : ('실행 (' + (bulkScope==='pending' ? pendingCount : ((dashData&&dashData.contents)||[]).length) + '건)')"></button>
-              <span class="text-xs text-muted" x-text="bulkMsg"></span>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || (bulkScope==='pending' && !pendingCount)" x-on:click="runBulk()" x-text="bulkBusy ? '실행 중…' : ('실행 (' + (bulkScope==='pending' ? pendingCount : ((dashData&&dashData.contents)||[]).length) + '건)')"></button>
+              <span class="text-xs text-muted" x-text="bulkMsg || modelsMsg"></span>
             </div>
+            <ul class="ds-bullets" style="margin:10px 0 0"><li><b>미실행만</b> = 추가만 된 콘텐츠(기본) · <b>전체 재실행</b> = 기존 초안을 이력에 남기고 덮어씁니다 · 건당 비용 발생 · 진행은 STEP 3 실행 큐.</li></ul>
           </div>
         </section>
+        <!-- 처리 대기 화면: Processing(캐릭터) + Steps (디자인 시스템) -->
+        <div x-show="(loading && activeTabId === 'image') || bulkBusy" x-cloak class="ds-pilot mt-6 panel" style="border-color:var(--ds-hairline)">
+          <div class="panel-bd">
+            <!-- Processing -->
+            <div class="ds-processing">
+              <span class="ds-processing__char"><span class="ds-character ds-character--bob" style="width:96px;height:96px"><img src="/vendor/yonghee-pitcher.svg" alt="용희 (투수)"></span></span>
+              <div>
+                <div class="ds-processing__title" x-text="bulkBusy ? '일괄 실행 중' : '메타데이터 추출 중'"></div>
+                <div class="ds-processing__msg"><span class="ds-processing__dots" x-text="bulkBusy ? '콘텐츠마다 초안을 만들고 있어요 · 진행률은 STEP 3 실행 큐' : '이미지를 읽고 있어요'"></span></div>
+              </div>
+              <div style="width:100%;max-width:340px">
+                <div class="ds-progress ds-progress--indeterminate"><div class="ds-progress__track" role="progressbar"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div>
+              </div>
+            </div>
+            <!-- Steps -->
+            <div class="ds-steps mt-5" style="max-width:420px">
+              <div class="ds-step ds-step--done"><div class="ds-step__rail"><span class="ds-step__marker"><svg class="ds-step__check" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2 5 8.5 9.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">입력 수집</div><div class="ds-step__detail" x-text="bulkBusy ? '대상 콘텐츠 선별' : '콘텐츠 정규화'"></div></div></div>
+              <div class="ds-step" x-bind:class="(!bulkBusy && activeTabId === 'image') ? 'ds-step--active' : 'ds-step--done'"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">이미지 이해</div><div class="ds-step__detail" x-text="(!bulkBusy && activeTabId === 'image') ? '시각 모델로 읽는 중' : '텍스트는 건너뜀'"></div></div></div>
+              <div class="ds-step ds-step--active"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">메타 추출</div><div class="ds-step__detail">리드문 · 엔티티 · 인텐트 · 카테고리</div></div></div>
+              <div class="ds-step ds-step--pending"><div class="ds-step__rail"><span class="ds-step__marker"></span><span class="ds-step__line"></span></div><div class="ds-step__body"><div class="ds-step__title">품질 판정</div><div class="ds-step__detail">G / R</div></div></div>
+              <div class="ds-step ds-step--pending"><div class="ds-step__rail"><span class="ds-step__marker"></span></div><div class="ds-step__body"><div class="ds-step__title">완료</div></div></div>
+            </div>
+          </div>
+        </div>
+
+
       </div>
       <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대상 콘텐츠(기본) | 결과 비교 ═══ -->
       <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
@@ -1830,8 +1819,8 @@ PAGE = """<!doctype html>
           </span>
         </div>
           <div class="panel-bd">
-            <div x-show="loading && queueTrig !== 'auto'">
-              <div class="w-run"><span class="w-run__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span><div><div class="w-run__t" x-text="(activeTabId === 'excel' ? '엑셀 일괄 추출 중' : '메타 추출 중') + ' · 수동'"></div><div class="ds-progress ds-progress--indeterminate" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div></div></div>
+            <div x-show="loading && activeTabId === 'image' && queueTrig !== 'auto'">
+              <div class="w-run"><span class="w-run__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span><div><div class="w-run__t">이미지 메타 추출 중 · 수동</div><div class="ds-progress ds-progress--indeterminate" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div></div></div>
             </div>
             <template x-for="j in filteredJobs" x-bind:key="j.id">
               <div class="w-run"><span class="w-run__av"><img src="/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
