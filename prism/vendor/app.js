@@ -233,6 +233,11 @@
       // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) · 우측 설정 패널
       cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasBizKey: false, hasTimelyKey: false, guideUrls: {} },
       cfgModel: '', cfgPersist: true, cfgBusy: false,
+      keyTarget: 'bizrouter',                        // API 키 대상 선택(계층형 단일 입력)
+      get keySummary() {
+        const set = ['bizrouter', 'timely', 'solar'].filter((s) => this.keyState(s)).map((s) => this.keyDefs[s].label.replace(' 키', ''));
+        return set.length ? '등록됨: ' + set.join(' · ') : '등록된 키가 없습니다 · 모의(mock) 모드로 동작합니다';
+      },
       teamLinks: { guide: '', guide_user: '', guide_admin: '' }, tlMsg: '', tlTarget: 'guide',   // 팀 가이드 링크(시작하기 카드 바로가기)
       get tlStatus() {
         const nm = { guide: '개요', guide_user: '사용자', guide_admin: '관리자' };
@@ -1263,6 +1268,7 @@
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();
           if (this.cfg.guideUrls) this.teamLinks = Object.assign({ guide: '', guide_user: '', guide_admin: '' }, this.cfg.guideUrls);
+          if (!this._keyTargetInit) { this._keyTargetInit = true; this.keyTarget = ['bizrouter', 'timely', 'solar'].find((s) => this.keyState(s)) || 'bizrouter'; }
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
           if (this.cfg.visionProvider) this.visionProvider = this.cfg.visionProvider;

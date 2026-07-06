@@ -1599,38 +1599,30 @@ PAGE = """<!doctype html>
             <span x-text="cfg.hasKey ? '· 현재 연결됨 ✓' : '· 서버에 키 미설정(관리자 확인 필요)'"></span></p>
         </div>
         <div x-show="!cfg.keyManagedByServer || (adminData && adminData.isAdmin)">
-              <div class="subhd" style="margin:2px 0 6px">통합 라우터 <span class="ds-badge ds-badge--intent" style="cursor:help" data-tip="한 키로 여러 제공자 모델을 호출하는 방식 · 키 관리가 단순해 권장" data-tip-pos="top">권장</span></div>
-              <ul class="ds-bullets" style="margin-bottom:6px"><li>한 키로 <b>여러 모델</b>(OpenAI · Anthropic · Google · Solar 등)을 호출합니다.</li></ul>
-              <template x-for="s in ['bizrouter', 'timely']" x-bind:key="s">
-                <div class="keyline">
-                  <span class="keyline__nm"><span x-text="keyDefs[s].label.replace(' 키', '')"></span><span class="sdot" x-bind:class="keyState(s) ? 'ok' : 'off'" style="cursor:help" x-bind:data-tip="keyState(s) ? '연결됨' : '미연결 · 키를 저장하면 연결됩니다'" data-tip-pos="top"></span></span>
-                  <div class="keyin" style="flex:1;min-width:220px;margin:0">
-                    <input x-bind:type="keyShow[s] ? 'text' : 'password'" x-model="keyInputs[s]" x-bind:placeholder="keyDefs[s].ph" class="field" autocomplete="off">
-                    <button type="button" class="eye" x-on:click="keyShow[s] = !keyShow[s]" aria-label="키 보기">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                    </button>
-                  </div>
-                  <button type="button" x-on:click="saveKey(s)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(s) ? '변경' : '저장'"></button>
-                  <button type="button" x-show="keyState(s)" x-on:click="testConn(s)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
-                  <button type="button" x-show="keyPersisted(s)" x-on:click="forgetKey(s)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
-                  <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs[s]"></span>
-                </div>
-              </template>
-              <div class="subhd" style="margin:18px 0 6px">직접 호출</div>
-              <ul class="ds-bullets" style="margin-bottom:6px"><li>각 회사 키로 직접 호출합니다 · 통합 라우터와 함께 등록해도 됩니다.</li></ul>
+              <div class="subhd" style="margin:2px 0 6px">API 키</div>
+              <ul class="ds-bullets" style="margin-bottom:6px">
+                <li x-show="keyTarget !== 'solar'">통합 라우터 · 한 키로 <b>여러 모델</b>(OpenAI · Anthropic · Google · Solar 등)을 호출합니다 · 키 관리가 단순해 권장.</li>
+                <li x-show="keyTarget === 'solar'" x-cloak>직접 호출 · Upstage 키로 Solar 모델을 직접 호출합니다 · 통합 라우터와 함께 등록해도 됩니다.</li>
+              </ul>
               <div class="keyline">
-                <span class="keyline__nm">Upstage Solar<span class="sdot" x-bind:class="cfg.hasKey ? 'ok' : 'off'" style="cursor:help" x-bind:data-tip="cfg.hasKey ? '연결됨' : '미연결 · 키를 저장하면 연결됩니다'" data-tip-pos="top"></span></span>
+                <label class="selctl"><span class="selctl__tag">대상</span>
+                  <select x-model="keyTarget" class="bg-transparent text-[13px]" style="border:none;outline:none">
+                    <template x-for="s in ['bizrouter', 'timely', 'solar']" x-bind:key="s">
+                      <option x-bind:value="s" x-text="keyDefs[s].label.replace(' 키', '') + (s === 'solar' ? ' · 직접' : ' · 라우터') + (keyState(s) ? ' ✓' : '')"></option>
+                    </template>
+                  </select></label>
+                <span class="sdot" x-bind:class="keyState(keyTarget) ? 'ok' : 'off'" style="cursor:help" x-bind:data-tip="keyState(keyTarget) ? '연결됨' : '미연결 · 키를 저장하면 연결됩니다'" data-tip-pos="top"></span>
                 <div class="keyin" style="flex:1;min-width:220px;margin:0">
-                  <input x-bind:type="keyShow.solar ? 'text' : 'password'" x-model="keyInputs.solar" x-bind:placeholder="keyDefs.solar.ph" class="field" autocomplete="off">
-                  <button type="button" class="eye" x-on:click="keyShow.solar = !keyShow.solar" aria-label="키 보기">
+                  <input x-bind:type="keyShow[keyTarget] ? 'text' : 'password'" x-model="keyInputs[keyTarget]" x-bind:placeholder="keyDefs[keyTarget].ph" class="field" autocomplete="off">
+                  <button type="button" class="eye" x-on:click="keyShow[keyTarget] = !keyShow[keyTarget]" aria-label="키 보기">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                   </button>
                 </div>
-                <button type="button" x-on:click="saveKey('solar')" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="cfg.hasKey ? '변경' : '저장'"></button>
-                <button type="button" x-show="cfg.hasKey" x-on:click="testConn()" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
-                <button type="button" x-show="cfg.persisted" x-on:click="forgetKey('solar')" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
-                <span class="text-xs text-muted" aria-live="polite" x-text="keyMsgs.solar"></span>
+                <button type="button" x-on:click="saveKey(keyTarget)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(keyTarget) ? '변경' : '저장'"></button>
+                <button type="button" x-show="keyState(keyTarget)" x-on:click="testConn(keyTarget)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
+                <button type="button" x-show="keyPersisted(keyTarget)" x-on:click="forgetKey(keyTarget)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
               </div>
+              <div class="text-xs text-muted" style="margin-top:6px" aria-live="polite" x-text="keyMsgs[keyTarget] || keySummary"></div>
               <div style="margin-top:var(--ds-space-4);padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
                 <label class="flex cursor-pointer items-center gap-2 text-[13px] text-body" style="margin:0"><input type="checkbox" x-model="cfgPersist" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet"> 이 기기에 저장 (재시작 후에도 유지)</label>
                 <ul class="ds-bullets" style="margin-top:8px"><li>키 저장 시 연결을 확인합니다 · 기본 실행 모델은 <b>콘텐츠 관리 · 모델 실행 · 사용 모델</b>에서 선택합니다.</li></ul>
