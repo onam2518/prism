@@ -1,14 +1,14 @@
 # HANDOFF · Prism · 팀 검수·평가 플랫폼
 
-다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-02, v0.5.0)
+다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-06, v0.5.17)
 
 ## 한 줄 요약
 Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출을 넘어 **팀이 산출물을 검수·평가하고(HITL), 그 합의를 골든셋·프롬프트 개선과 특화 LLM 학습데이터로 되먹이는 평가 플랫폼**이다. supabase 운영 전용, 품질 가중 게이미피케이션(골드 문항·미션), 검수 → 골든셋 → 학습 일배치 폐루프 + 학습데이터 추출(SFT/DPO/rationale)까지 동작.
 
 ## 정본 위치
-- 레포: `/Users/pete.axz-pc/Desktop/project/prism` (origin `github.com/onam2518/prism`, 사용자 소유)
+- 레포: `/Users/tony/Desktop/prism` (origin `github.com/onam2518/prism`, 사용자 소유 · private). 구 머신 경로 `/Users/pete.axz-pc/...`는 폐기.
 - **작업은 `main` 브랜치에 직접**(과거 `feat/policy-edit` 경유 PR 방식 → 현재는 main 직커밋). `feat/image-meta-poc`는 과거 브랜치.
-- 릴리즈: `gh release`, 최신 **v0.5.0**(용도 구분·건별 판정·시스템 설정·1만 건 완주 게임 정책). DMG 자산 첨부.
+- 릴리즈: `gh release`, 최신 **v0.5.17**. DMG 2종(일반/QA) 자산 첨부. 빌드: venv `~/.venvs/prism-pkg`(python3.12·pyinstaller·pywebview) + brew create-dmg, 절차는 데일리로그(2026-07-06)와 메모리 참조.
 
 ## 실행 방법
 - `cd ~/Desktop/project/prism && python3 -m prism.serve` → http://127.0.0.1:8765
@@ -236,16 +236,46 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - **mock 스키마 계약 테스트**: 태그별 mock 응답 키 ⊇ 실스키마 필수 키(드리프트 감시).
 - 보류: legal 스코어러 병렬화(legal 기본 off · 필요 시 동일 패턴).
 
-## 다음 단계 (2026-07-03 · v0.5.3 릴리즈 시점)
-1. **실 팀 운영 개시**: supabase 는 아직 팀 데이터 0건. 실사용에서 골드 문항 노출 비율(큐의 ~10%·최소 1)·
-   미션 난이도·품질 배율 체감을 모니터링해 튜닝. 모델별 learned 계층도 실데이터로 검증.
-2. **DPO 선호쌍 축적**: 상세 화면 교정이 patch_log 로 쌓인다. 등급/리드문 등 카테고리 외 요소의
-   구조화 교정 UI 확대(현재 구조화 교정은 카테고리 채우기 중심).
-3. Dawid-Skene EM 을 합의 가중치에 직접 반영할지 검토(현재 통계 표시용, 가중치는 골드 정확도 근사).
-4. **subtitle 소급 불가분**: 부제가 있던 기존 supabase contents 행은 재실행 시 신규 행이 생길 수 있음
-   (v0.5.3 이후 저장분부터 정상 · 필요 시 원본 재인입으로 정리).
-5. 라우트 2단계(디스패치 테이블화) · Sparkle 자동업데이트(T3)는 별도 트랙.
-6. service_role 키 로테이션(미처리, 사용자 지시로 보류).
+## 2026-07-06 세션 요약 (운영 개시 준비 · v0.5.6~v0.5.17)
+
+상세는 `prism/daily-log/2026-07-06.md`. 핵심만:
+
+- **운영 차단급 결함 수정**: ① 앱 관리자 요청 전반이 인증 헤더 없이 나가 supabase 모드에서 403(v0.5.7)
+  ② supabase 가 yellow 만 저장해 인입 콘텐츠 전량 유실(v0.5.11) ③ 배치 내 중복 행이 upsert 전체를
+  죽이는 21000(v0.5.15) ④ 큐 폴링 조기 종료로 진행률 미표시(v0.5.16) ⑤ 저장 실패가 성공처럼 보임(v0.5.14).
+- **흐름 개편**: STEP 1 추가=저장만(미실행) → STEP 2 사용 모델 카드에서 대상(미실행만/전체)+실행 →
+  STEP 3 실행 큐·이력(진척도·ETA·작업 클릭=콘텐츠 필터). 퀘스트 진행 중 재실행 물리 차단(v0.5.17).
+- **UI**: 시작하기 3분할 카드(권한별·가이드 링크·숨김), API 키/가이드 링크 계층형 입력, 개별 삭제(파생 연쇄).
+- **팀 가이드 링크**: reports kind='team_links'(supabase) → /config guideUrls. 내부 위키 URL 은 코드 금지
+  (GitHub Pages 데모 공개). 시스템 설정에서 수정.
+- **정리**: supabase 콘텐츠·초안 전량 삭제(팀 DNM·검수자·가이드 링크 보존) · 테스트용 임시 계정/팀 정리 완료.
+- 키 상태: Upstage(`~/.prism_key`)·Timely(`~/.prism_timely_key`) 등록·연결 검증 완료. service_role 키는
+  2026-04-27 발급 원본(로테이션 미처리 · 보류 중).
+
+## 다음 단계 (2026-07-06 · v0.5.17 시점)
+
+1. **Fly.io 상시 서버 배포** ← 최우선 · **다른 PC에서 진행 예정**
+   - 배경: 팀원 DMG 는 키 파일 없인 로컬 sqlite 모드 → 가입이 supabase 에 도달 못 함(팀 합류 경로 없음).
+     Vercel 은 상시 스케줄러·인메모리 큐·장시간 배치 때문에 구조적 불가 → Fly.io 컨테이너로 확정.
+   - 절차(레포의 Dockerfile 그대로 사용):
+     1) `brew install flyctl && fly auth login`
+     2) `fly launch --no-deploy` (region nrt 권장 · Dockerfile 자동 감지)
+     3) fly.toml: `internal_port = 8765` · **`auto_stop_machines = false` + `min_machines_running = 1`**
+        (학습 반영 스케줄러 상시 필요 · 머신이 잠들면 퀘스트 자동 반영이 안 돎) · `[mounts] source="prism_data", destination="/data"`
+     4) `fly volumes create prism_data --size 1`
+     5) `fly secrets set PRISM_BACKEND=supabase SUPABASE_URL=<~/.prism_supabase_url 값> SUPABASE_SERVICE_KEY=<~/.prism_supabase_key 값> UPSTAGE_API_KEY=<~/.prism_key 값> PRISM_TIMELY_KEY=<~/.prism_timely_key 값> PRISM_ADMIN_EMAILS=pete.ryu@axzcorp.com PRISM_CONFIG=/data/config.json PRISM_MODEL=<운영 모델>`
+        (키 파일 4종은 이 머신 홈에 있음 · 값 이관은 지난번처럼 안전 경로로)
+     6) `fly deploy` → `curl https://<앱>.fly.dev/config` 에서 `backend: supabase · configured: true · guideUrls 3종` 확인
+   - 배포 후: **관리자 데스크탑 앱 사용 중단**(스케줄러 이중 발화 방지) · 전원 브라우저 접속.
+     `PRISM_CONFIG` env 는 v0.5.17 코드에 있음(컨테이너 재시작 시 퀘스트 일시·설정 보존).
+2. **팀원 온보딩 재시도**: Fly URL + 초대코드(팀 관리 화면) 안내 → 가입 → 팀 관리 멤버 목록 확인.
+   Confluence 사용자 가이드 STEP 0 "맥 앱 권장" → **브라우저 접속** 안내로 수정(가이드 링크는 시작하기 카드에 연동돼 있음).
+3. **운영 사이클 개시**: 배치 추가 → 한 모델 실행 → 퀘스트 생성 → 검수 → 반영. 검수 중 재실행은 서버가 차단(v0.5.17).
+   골드 문항 비율·미션 난이도·품질 배율·모델별 learned 실데이터 모니터링(기존 1번).
+4. **큐(실행 작업) 단위 퀘스트** (설계안 보류 · 사용자 검토 대기): 퀘스트 대상 = 전체 | 실행 작업(이력 hashes),
+   진척 분모·팀 게이지만 범위 고정, 학습 반영은 전체 누적 유지. 실행 이력 hashes 기반이라 서버 기반 준비됨.
+5. service_role 키 로테이션(미처리 · iat 2026-04-27 원본): Fly 배포 시점이 로테이션 적기(secrets 만 갱신하면 됨).
+6. DPO 선호쌍 축적·Dawid-Skene 가중 직접 반영 검토·라우트 2단계·Sparkle(T3): 기존 트랙 유지.
 
 ## 메모리
-`prism-goal-evaluation-platform`·`prism-harness-architecture`·`prism-team-hitl`·`prism-supabase`·`prism-gamification`·`prism-anchor-design`·`prism-deploy-release-workflow` 참조.
+구 머신 메모리는 이관 안 됨. 이 머신(tony) 메모리: `prism-deploy-release-workflow`(빌드·DMG·릴리스 절차) · `prism-supabase-keys`(키 파일 배치 · supabase 모드 함정 · team_links 패턴). 다른 PC 작업 시 이 문서와 데일리로그가 원천.
