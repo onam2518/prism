@@ -144,8 +144,10 @@ def store_save(pairs, source: str = "단건", team=None):
             r = st.save_dedup(pairs, _run_id(), source=source, team=team)
             _save_drafts(st, pairs, team=team)
             return r
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback
+            traceback.print_exc()                 # 저장 실패를 조용히 삼키지 않는다(유실 관측)
+            return {"error": str(e)[:200]}
     return None
 
 
@@ -245,7 +247,9 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
                                   "source_url": c.get("source_url", "") or c.get("url", ""),
                                   "body": c.get("body", ""), "body_hash": _chash(c)},
                   "quality_meta": {}, "item_meta": {}, "trace": {}}) for c in rows]
-    store_save(pairs, source=source, team=team)
+    saved = store_save(pairs, source=source, team=team)
+    if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '추가됨'으로 속이지 않는다
+        return {"error": "저장 실패 · 다시 시도하세요 (" + saved["error"][:120] + ")"}
     if (purpose or "") == "eval":
         try:
             from .store import content_hash as _chash
@@ -2669,7 +2673,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         # 추출 실행(단건·배치) = 콘텐츠 인입 → 관리자 통제(supabase 모드)
         if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-            self._send(403, json.dumps({"error": "콘텐츠 인입은 관리자 전용입니다"}, ensure_ascii=False), _JSON)
+            msg = ("로그인이 만료됐습니다 · 다시 로그인 후 시도하세요" if not self._bearer_uid()
+                   else "콘텐츠 인입은 관리자 전용입니다")
+            self._send(403, json.dumps({"error": msg}, ensure_ascii=False), _JSON)
             return
         ctype = self.headers.get("Content-Type", "")
         try:
