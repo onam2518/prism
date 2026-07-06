@@ -62,6 +62,20 @@ class TestAdminTiers(unittest.TestCase):
         SV.apply_config({"api_key": "sk-test-gate"}, allow_key=True)   # 운영 관리자: 반영
         self.assertEqual(os.environ.get("UPSTAGE_API_KEY"), "sk-test-gate")
 
+    def test_rerun_blocked_while_quest_active(self):
+        """퀘스트 진행 중 전체 재실행 차단(검수 중 초안 교체 = 합의 오염 방지) · 미실행만은 허용."""
+        import prism.serve as SV
+        orig = SV.quest_active
+        SV.quest_active = lambda: True
+        self.addCleanup(lambda: setattr(SV, "quest_active", orig))
+        r = SV.rerun_all("solar-pro2", scope="all")
+        self.assertIn("퀘스트 진행 중", r.get("error", ""))
+        r2 = SV.rerun_all("solar-pro2", scope="pending")      # 미실행 실행은 초안 교체가 아님
+        self.assertTrue(r2.get("ok"))
+        SV.quest_active = lambda: False                        # 퀘스트 없으면 차단 없음
+        r3 = SV.rerun_all("solar-pro2", scope="all")
+        self.assertNotIn("error", r3)
+
     def test_local_store_clear_helpers(self):
         import tempfile
         from prism.store import Store

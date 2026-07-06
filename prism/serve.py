@@ -226,6 +226,16 @@ def _kv(disposition: str, key: str):
 
 
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
+def quest_active() -> bool:
+    """검수 목표(퀘스트) 진행 중 여부: 반영 일시가 미래로 설정돼 있으면 참.
+    진행 중에는 검수 대상 초안 교체(재실행)를 물리적으로 차단한다(합의 오염 방지)."""
+    try:
+        cfg = Config.load()
+        return LO.next_batch_time(getattr(cfg, "learn_next_at", "")) > time.time()
+    except Exception:
+        return False
+
+
 def _is_pending_row(r: dict) -> bool:
     """미실행(STEP 1 추가만) 행 판별: 모델 기록도 산출(item_meta)도 판정(finalGrade)도 없다.
     R 등급(아이템 폐기)은 item_meta 가 비어도 판정이 있으므로 미실행이 아니다."""
@@ -333,7 +343,11 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dic
 
 def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> dict:
     """모아진 콘텐츠를 지정 모델로 일괄 실행(수동 · 관리자). 건당 비용 발생.
-    scope: pending=미실행(STEP 1 추가 대기)만 · all=전체 재실행."""
+    scope: pending=미실행(STEP 1 추가 대기)만 · all=전체 재실행.
+    퀘스트 진행 중에는 전체 재실행 차단(검수 중 초안이 바뀌면 판정·합의가 오염된다)."""
+    if scope != "pending" and quest_active():
+        return {"error": "퀘스트 진행 중에는 전체 재실행이 차단됩니다(검수 중 초안 교체 방지) · "
+                         "'미실행만'은 가능하며, 반영 후 실행하거나 검수 목표 카드에서 일시를 비워 목표를 해제하세요"}
     rows = results_rows(team=team)
     targets, seen = [], set()
     for r in rows[-int(limit):]:
@@ -384,6 +398,9 @@ def rerun_content(content_hash: str, model: str, team=None) -> dict:
             break
     if not row:
         return {"error": "콘텐츠를 찾을 수 없습니다(본문 미보존 항목일 수 있음)"}
+    if quest_active() and not _is_pending_row(row):
+        return {"error": "퀘스트 진행 중에는 검수 중 콘텐츠의 초안 재실행이 차단됩니다 · "
+                         "반영 후 실행하거나 검수 목표 카드에서 목표를 해제하세요"}
     old_model = (row.get("trace") or {}).get("model", "") or ""
     result = run_pipeline(fields, mock=Handler.server_mock, team=team, model=model)
     if result.get("error"):

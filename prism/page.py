@@ -725,7 +725,7 @@ PAGE = """<!doctype html>
                 </select></span>
               <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-md" x-bind:disabled="cfgBusy" x-on:click="loadModels()">모델 새로고침</button>
               <button type="button" class="srcfilter__chip" x-bind:class="bulkScope==='pending' ? 'sel' : ''" x-on:click="bulkScope='pending'" x-text="'미실행만 (' + pendingCount + '건)'"></button>
-              <button type="button" class="srcfilter__chip" x-bind:class="bulkScope==='all' ? 'sel' : ''" x-on:click="bulkScope='all'" x-text="'전체 재실행 (' + ((dashData&&dashData.contents)||[]).length + '건)'"></button>
+              <button type="button" class="srcfilter__chip" x-bind:class="bulkScope==='all' ? 'sel' : ''" x-bind:disabled="questActive" x-bind:style="questActive ? 'opacity:.45;cursor:not-allowed' : ''" x-on:click="!questActive && (bulkScope='all')" x-bind:data-tip="questActive ? '퀘스트 진행 중에는 전체 재실행이 차단됩니다(검수 중 초안 교체 방지) · 반영 후 가능' : null" data-tip-pos="top" x-text="'전체 재실행 (' + ((dashData&&dashData.contents)||[]).length + '건)'"></button>
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || (bulkScope==='pending' && !pendingCount)" x-on:click="runBulk()" x-text="bulkBusy ? '실행 중…' : ('실행 (' + (bulkScope==='pending' ? pendingCount : ((dashData&&dashData.contents)||[]).length) + '건)')"></button>
               <span class="text-xs text-muted" x-text="bulkMsg || modelsMsg"></span>
             </div>
