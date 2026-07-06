@@ -155,6 +155,21 @@ class SupabaseStore:
         self._req("DELETE", "contents", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
         self._req("DELETE", "drafts", query=f"team_key=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
 
+    def remove_content(self, content_hash: str, team=None) -> bool:
+        """콘텐츠 개별 삭제(관리자): 결과 + 파생(초안 이력·검수 피드백·평가 판정) 연쇄 삭제.
+        골든(확정 정답)과 patch_log(교정 이력·DPO 원천)는 보존한다. purpose 는 contents 컬럼이라 함께 삭제."""
+        h = (content_hash or "").strip()
+        if not h:
+            return False
+        hq = urllib.parse.quote(h)
+        tid = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        tk = f"&team_key=eq.{urllib.parse.quote(team)}" if team else ""
+        self._req("DELETE", "contents", query=f"hash=eq.{hq}" + tid, prefer="return=minimal")
+        self._req("DELETE", "drafts", query=f"content_hash=eq.{hq}" + tk, prefer="return=minimal")
+        self._req("DELETE", "feedback", query=f"content_hash=eq.{hq}" + tid, prefer="return=minimal")
+        self._req("DELETE", "eval_checks", query=f"hash=eq.{hq}" + tid, prefer="return=minimal")
+        return True
+
     def delete_team(self, team):
         """팀 삭제(위험): 멤버 소속 해제 후 팀 행 삭제. 콘텐츠·피드백 등 팀 데이터는 별도 삭제."""
         if not team:
@@ -838,7 +853,10 @@ class SupabaseStore:
         return self.sync_contents(pairs, source, team=team, include_all=include_all)
 
     def save_dedup(self, pairs, run_id="", source="단건", team=None):
-        n = self.sync_contents(pairs, source, team=team)
+        # 관리자 인입(수동·엑셀·자동)은 등급 무관 전량 적재(include_all).
+        # yellow 필터는 파이어호스 시절 잔재 · sqlite(전량 저장)와 어긋나 G/auto 콘텐츠가
+        # 목록에 안 뜨는 결함이 있었다(2026-07-06). 검수 대기 구분은 review 컬럼이 담당.
+        n = self.sync_contents(pairs, source, team=team, include_all=True)
         return {"inserted": n, "updated": 0, "skipped": 0}
 
 

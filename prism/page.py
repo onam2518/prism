@@ -672,7 +672,13 @@ PAGE = """<!doctype html>
         <div x-show="batchResult" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
           <!-- 집계 인포그래픽 -->
           <section class="panel">
-            <div class="panel-hd"><b>집계</b><span class="meta tnum" x-text="batchResult ? (batchStats.n + '건 분석') : ''"></span></div>
+            <div class="panel-hd"><b>집계</b><span class="meta tnum" x-text="batchResult ? (batchStats.n + '건 분석') : ''"></span>
+              <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-[#ff9429]/15 px-2 py-0.5 text-xs font-semibold text-[#ff9429]">MOCK</span>
+              <button type="button" class="copybtn ml-auto" x-on:click="exportBatchCsv()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                CSV 내보내기
+              </button>
+            </div>
             <div class="panel-bd space-y-5">
               <div class="tiles">
                 <div class="tile"><div class="n tnum" x-text="batchStats.n"></div><div class="t">총 건수</div></div>
@@ -696,38 +702,8 @@ PAGE = """<!doctype html>
                   <div x-show="!batchStats.intents.length" class="text-xs text-muted">인텐트 데이터 없음</div>
                 </div>
               </div>
+              <p x-show="batchResult && batchResult.mapping" class="text-xs text-muted" style="margin:0" x-text="batchResult && batchResult.mapping ? ('매핑: ' + Object.entries(batchResult.mapping).map(e=>e[0]+'←'+e[1]).join(' · ') + ' · 건별 결과는 아래 추가된 콘텐츠·검수 목록에서 확인합니다') : ''"></p>
             </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-hd">
-              <div class="flex items-center gap-2">
-                <b>행별 결과</b>
-                <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-[#ff9429]/15 px-2 py-0.5 text-xs font-semibold text-[#ff9429]">MOCK</span>
-              </div>
-              <button type="button" class="copybtn" x-on:click="exportBatchCsv()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
-                CSV 내보내기
-              </button>
-            </div>
-            <div class="overflow-auto">
-              <table class="ds-table">
-                <thead>
-                  <tr><th>제목</th><th>리드문</th><th>엔티티</th><th>등급</th></tr>
-                </thead>
-                <tbody>
-                  <template x-for="(it, i) in (batchResult ? batchResult.items : [])" x-bind:key="i">
-                    <tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(it)" x-on:keydown.enter="openDetail(it)" data-tip="상세·검수 열기" data-tip-pos="left">
-                      <td class="text-ink" x-text="it.title || '·'"></td>
-                      <td x-text="it.summary || '·'"></td>
-                      <td><div class="flex flex-wrap gap-1"><template x-for="e in (it.entities || [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="!(it.entities||[]).length">·</span></div></td>
-                      <td><span class="ds-badge ds-badge--neutral" x-bind:class="it.grade === 'G' ? 'ds-badge--success' : 'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="it.grade || '·'"></span></span></td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-            <p x-show="batchResult && batchResult.mapping" class="px-4 py-2.5 text-xs text-muted" x-text="batchResult && batchResult.mapping ? ('매핑: ' + Object.entries(batchResult.mapping).map(e=>e[0]+'←'+e[1]).join(' · ')) : ''"></p>
           </section>
         </div>
 
@@ -1859,9 +1835,12 @@ PAGE = """<!doctype html>
             </div>
             <template x-for="j in filteredJobs" x-bind:key="j.id">
               <div class="w-run"><span class="w-run__av"><img src="/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
-                <div class="w-run__t"><b class="text-ink" x-text="j.name"></b> · 자동 인입 중 <span class="ds-badge" x-bind:class="j.trigger==='auto' ? 'ds-badge--intent' : 'ds-badge--entity'" style="cursor:help" data-tip="인입 트리거 · 자동=스케줄 폴링, 수동=관리자 실행" data-tip-pos="top" x-text="j.trigger==='auto' ? '자동' : '수동'"></span> <span class="text-xs text-muted tnum" x-show="j.total" x-text="j.done + ' / ' + j.total + '건'"></span></div>
+                <div class="w-run__t"><b class="text-ink" x-text="j.name"></b> · <span x-text="(j.kind || '자동 인입') + (j.running ? ' 중' : ' 완료')"></span> <span class="ds-badge" x-bind:class="j.trigger==='auto' ? 'ds-badge--intent' : 'ds-badge--entity'" style="cursor:help" data-tip="트리거 · 자동=스케줄 폴링, 수동=관리자 실행" data-tip-pos="top" x-text="j.trigger==='auto' ? '자동' : '수동'"></span>
+                  <span class="text-xs text-muted tnum" x-show="j.total" x-text="j.done + ' / ' + j.total + '건' + (j.total ? (' · ' + Math.round((j.done/j.total)*100) + '%') : '')"></span>
+                  <span class="text-xs text-muted tnum" x-show="j.running && j.eta_s != null" x-text="'· 남은 예상 ' + fmtEta(j.eta_s) + ' (건당 ' + ((j.per_item_ms||0)/1000).toFixed(1) + '초)'"></span>
+                  <span class="ds-badge ds-badge--error" x-show="j.failed" x-text="'실패 ' + j.failed"></span></div>
                 <div class="text-xs text-muted" x-text="j.last_msg || j.endpoint"></div>
-                <div class="ds-progress" x-bind:class="j.total ? '' : 'ds-progress--indeterminate'" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="j.total ? ('width:' + Math.round((j.done/j.total)*100) + '%') : ''"></div></div></div>
+                <div class="ds-progress" x-show="j.running" x-bind:class="j.total ? '' : 'ds-progress--indeterminate'" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="j.total ? ('width:' + Math.round((j.done/j.total)*100) + '%') : ''"></div></div></div>
               </div></div>
             </template>
             <div x-show="!runningCount" class="ds-empty" style="border:0;padding:20px 8px">
@@ -1875,7 +1854,7 @@ PAGE = """<!doctype html>
         <section class="panel" data-fn><div class="panel-hd"><b>추가된 콘텐츠 · 용도</b><span class="meta">평가용은 검수 목록에서 제외되어 평가 전용으로 보존됩니다</span>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
-          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:110px"></th></tr></thead><tbody>
+          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:170px"></th></tr></thead><tbody>
             <template x-for="c in ((dashData && dashData.contents) || [])" x-bind:key="'pp'+c.hash">
               <tr>
                 <td class="text-ink" x-text="c.title || '(제목 없음)'"></td>
@@ -1883,7 +1862,10 @@ PAGE = """<!doctype html>
                 <td class="text-muted" x-text="c.model || '·'"></td>
                 <td class="tnum" x-text="c.version ? ('v' + c.version) : '·'"></td>
                 <td><span class="ds-badge" x-bind:class="c.purpose === 'eval' ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="c.purpose === 'eval' ? '평가용' : '검수용'"></span></td>
-                <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button></td>
+                <td><div class="flex items-center gap-1.5">
+                  <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button>
+                  <button type="button" class="ds-btn ds-btn--outline" x-bind:class="delArm === c.hash ? 'ds-btn--c-danger' : ''" style="height:26px;padding:0 10px;font-size:11px" x-on:click="removeContent(c)" x-text="delArm === c.hash ? '삭제 확인' : '삭제'" data-tip="검수 목록·결과 비교(초안)·피드백까지 함께 삭제됩니다" data-tip-pos="left"></button>
+                </div></td>
               </tr>
             </template>
           </tbody></table></div>

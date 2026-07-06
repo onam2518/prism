@@ -209,6 +209,7 @@
         if (!confirm('모든 콘텐츠를 ' + this.bulkModel + ' 로 다시 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?')) return;
         this.bulkBusy = true; this.bulkMsg = '';
         try {
+          this.pollIngestStatus();                   // 실행 큐 진척도 실시간
           const r = await (await fetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel }) })).json();
           this.bulkMsg = r && r.ok ? ('✓ 완료 ' + r.done + '건' + (r.failed ? (' · 실패 ' + r.failed) : '')) : ((r && r.error) || '실패');
           this.loadDash(); this.loadRaw();
@@ -1389,6 +1390,21 @@
       removeSource(id) { this.ingestSources = this.ingestSources.filter((s) => s.id !== id); this.saveIngest(); },
       toggleSource(s) { s.enabled = !s.enabled; this.saveIngest(); },
       ingestBusy: {}, ingestRunMsg: {}, ingestJobs: [], _ingestPoll: null,
+      delArm: '', _delArmT: null,                  // 콘텐츠 개별 삭제 2단계 확인
+      fmtEta(s) { s = Math.max(0, Math.round(s || 0)); return s >= 60 ? (Math.floor(s / 60) + '분 ' + (s % 60) + '초') : (s + '초'); },
+      async removeContent(c) {
+        if (this.delArm !== c.hash) {              // 1차 클릭 = 확인 대기(3초)
+          this.delArm = c.hash;
+          clearTimeout(this._delArmT); this._delArmT = setTimeout(() => { this.delArm = ''; }, 3000);
+          return;
+        }
+        this.delArm = ''; clearTimeout(this._delArmT);
+        try {
+          const r = await (await fetch('/content-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash }) })).json();
+          if (r && r.ok) { this.loadDash(); this.loadRaw && this.loadRaw(); }
+          else this._err((r && r.error) || '삭제 실패');
+        } catch (e) { this._err('삭제 실패'); }
+      },
       async ingestNow(s) {
         this.ingestBusy[s.id] = true; this.ingestRunMsg[s.id] = '';
         this.pollIngestStatus();                         // 진행률 폴링 시작
@@ -1499,6 +1515,7 @@
           fd.append('body', this.txtBody);
         }
         try {
+          if (endpoint === '/run-batch') this.pollIngestStatus();   // 실행 큐 진척도 실시간
           const j = await (await fetch(endpoint, { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (j.error) { this.status = '오류: ' + j.error; }
           else if (j.source === 'excel') { this.batchResult = j; }

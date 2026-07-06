@@ -592,6 +592,21 @@ class Store:
         c.execute("DELETE FROM drafts")
         c.commit()
 
+    def remove_content(self, content_hash: str, team=None) -> bool:
+        """콘텐츠 개별 삭제(관리자): 결과 + 파생(초안 이력·용도·검수 피드백·평가 판정) 연쇄 삭제.
+        골든(확정 정답)과 patch_log(교정 이력·DPO 원천)는 보존한다."""
+        h = (content_hash or "").strip()
+        if not h:
+            return False
+        c = self._conn()
+        cur = c.execute("DELETE FROM results WHERE content_hash=?", (h,))
+        c.execute("DELETE FROM drafts WHERE content_hash=?", (h,))
+        c.execute("DELETE FROM content_purpose WHERE content_hash=?", (h,))
+        c.execute("DELETE FROM feedback WHERE content_hash=?", (h,))
+        c.execute("DELETE FROM eval_checks WHERE content_hash=?", (h,))
+        c.commit()
+        return cur.rowcount > 0
+
     def set_purpose(self, hashes, purpose, team=None) -> int:
         """콘텐츠 용도 지정: review(검수용)|eval(평가용). 평가용은 검수 대상에서 제외(홀드아웃 보존)."""
         if purpose not in ("review", "eval"):

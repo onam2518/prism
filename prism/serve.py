@@ -286,19 +286,28 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dic
 def rerun_all(model: str, team=None, limit: int = 200) -> dict:
     """모아진 콘텐츠 전체를 지정 모델로 일괄 실행(수동 · 관리자). 건당 비용 발생."""
     rows = results_rows(team=team)
-    done = failed = 0
-    seen = set()
+    targets, seen = [], set()
     for r in rows[-int(limit):]:
-        ref = r.get("content_ref") or {}
-        ch = _row_key(ref)
-        if ch in seen:
-            continue
-        seen.add(ch)
-        res = rerun_content(ch, model, team=team)
-        if res.get("error"):
-            failed += 1
-        else:
-            done += 1
+        ch = _row_key(r.get("content_ref") or {})
+        if ch and ch not in seen:
+            seen.add(ch)
+            targets.append(ch)
+    done = failed = 0
+    jid = "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
+    _job_begin(jid, model or "기본 모델", "일괄 실행", len(targets))
+    try:
+        for ch in targets:
+            res = rerun_content(ch, model, team=team)
+            if res.get("error"):
+                failed += 1
+                _INGEST_STATE[jid]["failed"] = failed
+            else:
+                done += 1
+            _INGEST_STATE[jid]["done"] += 1
+    except Exception as e:
+        _job_end(jid, False, f"{done}건 실행 후 중단 · {str(e)[:80]}")
+        raise
+    _job_end(jid, failed == 0, f"{done}건 실행" + (f" · 실패 {failed}" if failed else " 완료"))
     return {"ok": True, "done": done, "failed": failed, "model": model}
 
 
@@ -748,17 +757,25 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None) ->
             return {"error": a["reason"], "headers": a.get("headers", [])}
         contents = ING.to_contents(tmp)[:200]
         results, items, pairs = [], [], []
-        for c in contents:
-            out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
-            results.append(out)
-            pairs.append((c, out))
-            im = out.get("item_meta") or {}
-            items.append({"title": (c.get("title") or "")[:80],
-                          "summary": im.get("summary", ""),
-                          "entities": im.get("entities", []),
-                          "intent": im.get("intent", []),
-                          "grade": (out.get("quality_meta") or {}).get("finalGrade", "")})
+        jid = "batch:" + time.strftime("%H%M%S")     # 실행 큐 등록(진행률·ETA)
+        _job_begin(jid, (filename or "엑셀"), "엑셀 일괄 추출", len(contents))
+        try:
+            for c in contents:
+                out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+                results.append(out)
+                pairs.append((c, out))
+                im = out.get("item_meta") or {}
+                items.append({"title": (c.get("title") or "")[:80],
+                              "summary": im.get("summary", ""),
+                              "entities": im.get("entities", []),
+                              "intent": im.get("intent", []),
+                              "grade": (out.get("quality_meta") or {}).get("finalGrade", "")})
+                _INGEST_STATE[jid]["done"] += 1
+        except Exception as e:
+            _job_end(jid, False, f"{len(results)}건 추출 후 중단 · {str(e)[:80]}")
+            raise
         store_save(pairs, source="배치", team=team)  # 영속 저장(단일 트랜잭션 배치)
+        _job_end(jid, True, f"{len(results)}건 추출 · 저장 완료")
         if (purpose or "") == "eval":               # 평가용 지정: 검수 대상에서 제외(홀드아웃)
             try:
                 from .store import content_hash as _chash
@@ -820,6 +837,7 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         if _INGEST_STATE.get(sid, {}).get("running"):
             return {"ok": False, "error": "이미 인입 중", "skipped_run": True}
         _INGEST_STATE[sid] = {"name": source.get("name") or "소스", "endpoint": source.get("endpoint", ""),
+                              "kind": "자동 인입", "started": time.time(),
                               "running": True, "total": 0, "done": 0, "last_run": _INGEST_STATE.get(sid, {}).get("last_run", 0),
                               "last_msg": "수신 중…", "last_ok": None, "trigger": trigger}
     try:
@@ -858,11 +876,40 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         return {"ok": False, "error": str(e)[:160]}
 
 
+def _fmt_dur(seconds: float) -> str:
+    s = max(0, int(seconds))
+    return (f"{s // 60}분 {s % 60}초" if s >= 60 else f"{s}초")
+
+
+def _job_begin(jid: str, name: str, kind: str, total: int, trigger: str = "manual"):
+    """일괄 작업(엑셀·일괄 실행)을 실행 큐에 등록(진행률·ETA 추적)."""
+    with _INGEST_LOCK:
+        _INGEST_STATE[jid] = {"name": name, "endpoint": "", "kind": kind, "started": time.time(),
+                              "running": True, "total": int(total), "done": 0, "failed": 0,
+                              "last_run": 0, "last_msg": "추출 중…", "last_ok": None, "trigger": trigger}
+
+
+def _job_end(jid: str, ok: bool, msg: str):
+    s = _INGEST_STATE.get(jid)
+    if not s:
+        return
+    dur = _fmt_dur(time.time() - (s.get("started") or time.time()))
+    s.update(running=False, last_run=time.time(), last_ok=ok, last_msg=f"{msg} · 소요 {dur}")
+
+
 def ingest_status() -> dict:
-    """실행 큐/자동 인입 상태(진행률 포함) + 스케줄러 동작 여부."""
+    """실행 큐 상태(자동 인입 + 일괄 작업 · 진행률·예상 잔여시간) + 스케줄러 동작 여부."""
     jobs = []
+    now = time.time()
     for sid, s in _INGEST_STATE.items():
-        jobs.append({"id": sid, **s})
+        j = {"id": sid, **s}
+        if s.get("running") and s.get("started"):
+            j["elapsed_s"] = int(now - s["started"])
+            if s.get("done") and s.get("total"):
+                rate = (now - s["started"]) / max(1, s["done"])
+                j["per_item_ms"] = int(rate * 1000)
+                j["eta_s"] = int(rate * max(0, s["total"] - s["done"]))
+        jobs.append(j)
     return {"jobs": jobs, "scheduler": bool(_INGEST_THREAD and _INGEST_THREAD.is_alive()),
             "running": any(j["running"] for j in jobs)}
 
@@ -2425,6 +2472,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(eval_golden(self._req_team(),
                                            model=(data.get("model") or "").strip(),
                                            scope=(data.get("scope") or "all").strip()), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/content-remove"):    # 관리자: 콘텐츠 개별 삭제(파생 데이터 연쇄)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                st = get_store()
+                ok = bool(st and hasattr(st, "remove_content")
+                          and st.remove_content((data.get("hash") or "").strip(), team=self._req_team()))
+                _agg_bump()
+                self._send(200, json.dumps({"ok": ok}, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

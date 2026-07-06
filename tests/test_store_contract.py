@@ -70,6 +70,34 @@ class StoreContractMixin:
         n = st.save_many([(content, out)], "rerun", source="재실행", team=team, include_all=True)
         self.assertEqual(n, 1)
 
+    def test_save_dedup_persists_nonyellow(self):
+        """인입 경로 계약: 관리자 인입(수동·엑셀·자동)은 G/auto 등 비-YELLOW 도 전량 적재된다.
+        (supabase 가 yellow 만 저장해 인입 콘텐츠가 목록에 안 뜨던 2026-07-06 결함의 회귀 방지)"""
+        st, team = self.st, self.team
+        content = {"displayServiceName": "뉴스", "title": "계약-인입-G", "subtitle": "", "body": "본문"}
+        out = {"quality_meta": {"finalGrade": "G", "review": "auto"}, "item_meta": {"summary": "s"},
+               "trace": {"model": "contract-m3", "version": 1}}
+        st.save_dedup([(content, out)], "run-x", source="단건", team=team)
+        from prism.store import content_hash
+        h = content_hash(content)
+        self.assertIn(h, {r["hash"] for r in st.recent_meta(200, team=team)},
+                      "비-YELLOW 인입 콘텐츠가 저장 목록에 없다")
+
+    def test_remove_content_cascade(self):
+        """개별 삭제 계약: 콘텐츠 삭제 시 결과·초안·피드백 파생이 함께 사라진다(골든은 보존)."""
+        st, team = self.st, self.team
+        content = {"displayServiceName": "뉴스", "title": "계약-삭제", "subtitle": "", "body": "본문"}
+        out = {"quality_meta": {"finalGrade": "G", "review": "auto"}, "item_meta": {},
+               "trace": {"model": "contract-m4", "version": 1}}
+        st.save_dedup([(content, out)], "run-y", source="단건", team=team)
+        from prism.store import content_hash
+        h = content_hash(content)
+        st.save_draft(h, "contract-m4", 1, {}, {}, team=team)
+        self.assertTrue(st.remove_content(h, team=team))
+        self.assertNotIn(h, {r["hash"] for r in st.recent_meta(200, team=team)},
+                         "삭제 후에도 목록에 남아 있다")
+        self.assertEqual(st.draft_history(h, team=team), [], "삭제 후에도 초안 이력이 남아 있다")
+
     def test_draft_history_roundtrip(self):
         """(hash, 모델, 버전) 초안 이력: 버전별 축적 + 같은 키 upsert."""
         st, team = self.st, self.team
