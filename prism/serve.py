@@ -255,6 +255,11 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
     saved = store_save(pairs, source=source, team=team)
     if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '추가됨'으로 속이지 않는다
         return {"error": "저장 실패 · 다시 시도하세요 (" + saved["error"][:120] + ")"}
+    jid = "add:" + time.strftime("%H%M%S")               # 실행 이력에 추가 기록(클릭 -> 해당 콘텐츠)
+    _INGEST_STATE[jid] = {"name": source, "endpoint": "", "kind": "콘텐츠 추가", "started": time.time(),
+                          "running": False, "total": len(rows), "done": len(rows), "failed": 0,
+                          "last_run": time.time(), "last_msg": f"{len(rows)}건 추가 · 미실행 대기(STEP 2에서 실행)",
+                          "last_ok": True, "trigger": "manual", "hashes": [_chash(c) for c in rows]}
     if (purpose or "") == "eval":
         try:
             from .store import content_hash as _chash
@@ -344,6 +349,7 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
     done = failed = 0
     jid = "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
     _job_begin(jid, model or "기본 모델", "일괄 실행", len(targets))
+    _INGEST_STATE[jid]["hashes"] = list(targets)     # 작업 클릭 -> 결과 콘텐츠 보기
     try:
         for ch in targets:
             res = rerun_content(ch, model, team=team)
@@ -812,6 +818,8 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         results, items, pairs = [], [], []
         jid = "batch:" + time.strftime("%H%M%S")     # 실행 큐 등록(진행률·ETA)
         _job_begin(jid, (filename or "엑셀"), "엑셀 일괄 추출", len(contents))
+        from .store import content_hash as _bch
+        _INGEST_STATE[jid]["hashes"] = [_bch(c) for c in contents]
         try:
             for c in contents:
                 out = PIPE.extract(c, llm, legal=cfg.legal_enabled)

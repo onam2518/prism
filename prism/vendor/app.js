@@ -1392,6 +1392,18 @@
       toggleSource(s) { s.enabled = !s.enabled; this.saveIngest(); },
       ingestBusy: {}, ingestRunMsg: {}, ingestJobs: [], _ingestPoll: null,
       delArm: '', _delArmT: null,                  // 콘텐츠 개별 삭제 2단계 확인
+      jobFilter: null,                              // 실행 큐 작업 클릭 -> 해당 콘텐츠만 보기 {name, hashes}
+      jobContents(j) {
+        if (!(j.hashes || []).length) return;
+        this.jobFilter = { name: j.name, kind: j.kind || '', hashes: j.hashes };
+        this.$nextTick(() => { const el = document.getElementById('added-contents'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      },
+      get contentRows() {
+        const all = (this.dashData && this.dashData.contents) || [];
+        if (!this.jobFilter) return all;
+        const set = new Set(this.jobFilter.hashes);
+        return all.filter((c) => set.has(c.hash));
+      },
       fmtEta(s) { s = Math.max(0, Math.round(s || 0)); return s >= 60 ? (Math.floor(s / 60) + '분 ' + (s % 60) + '초') : (s + '초'); },
       async removeContent(c) {
         if (this.delArm !== c.hash) {              // 1차 클릭 = 확인 대기(3초)
@@ -1421,7 +1433,15 @@
       async fetchIngestStatus() { try { const d = await (await fetch('/ingest-status')).json(); this.ingestJobs = d.jobs || []; if (d.running) this.loadDashThrottled(); return d; } catch (e) { return { jobs: [], running: false }; } },
       pollIngestStatus() {
         if (this._ingestPoll) return;
-        const tick = async () => { const d = await this.fetchIngestStatus(); if (!d.running) { clearInterval(this._ingestPoll); this._ingestPoll = null; this.loadDash(); } };
+        let seenRun = false, empties = 0;              // 작업 등록 전 첫 조회에 폴링이 꺼지던 결함 방지
+        const tick = async () => {
+          const d = await this.fetchIngestStatus();
+          if (d.running) { seenRun = true; empties = 0; return; }
+          empties++;
+          if ((seenRun || empties >= 4) && !this.loading && !this.bulkBusy) {
+            clearInterval(this._ingestPoll); this._ingestPoll = null; this.loadDash();
+          }
+        };
         this._ingestPoll = setInterval(tick, 1500); tick();
       },
       loadDashThrottled() { const now = Date.now(); if (now - (this._lastDash || 0) > 4000) { this._lastDash = now; this.loadDash(); } },

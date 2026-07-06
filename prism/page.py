@@ -1807,10 +1807,10 @@ PAGE = """<!doctype html>
       <!-- ═══ 모듈: 검수 대기 (팀 실시간 협업) · YELLOW 대기열 + 다중 의견 ═══ -->
       <!-- ═══ 모듈: 실행 큐 (단일 위젯) · 실제 실행 상태 ═══ -->
       <div x-show="mod === 'content'" x-cloak class="w-full" style="margin:18px 0 12px">
-        <div class="stepline"><span class="stepline__no">STEP 3</span><b>실행 큐</b><span class="meta">진행 중인 추가·실행 작업 현황</span></div>
+        <div class="stepline"><span class="stepline__no">STEP 3</span><b>실행 큐 · 이력</b><span class="meta">진행 중 작업의 진척도와 완료 이력 · 완료 작업을 누르면 해당 콘텐츠를 봅니다</span></div>
       </div>
       <div x-show="mod === 'content'" x-cloak class="w-full">
-        <section class="panel"><div class="panel-hd"><b>실행 큐</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>
+        <section class="panel"><div class="panel-hd"><b>실행 큐 · 이력</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>
           <!-- 자동/수동 구분 필터 -->
           <span class="ml-auto" style="display:flex;gap:6px">
             <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='' ? 'sel' : ''" x-on:click="queueTrig=''">전체</button>
@@ -1823,7 +1823,7 @@ PAGE = """<!doctype html>
               <div class="w-run"><span class="w-run__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span><div><div class="w-run__t">이미지 메타 추출 중 · 수동</div><div class="ds-progress ds-progress--indeterminate" style="margin-top:5px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary"></div></div></div></div></div>
             </div>
             <template x-for="j in filteredJobs" x-bind:key="j.id">
-              <div class="w-run"><span class="w-run__av"><img src="/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
+              <div class="w-run" x-bind:style="(j.hashes||[]).length ? 'cursor:pointer' : ''" x-on:click="jobContents(j)" x-bind:data-tip="(j.hashes||[]).length ? '해당 작업의 콘텐츠 보기' : null" data-tip-pos="top"><span class="w-run__av"><img src="/vendor/daesik-batter.svg" alt=""></span><div style="flex:1;min-width:0">
                 <div class="w-run__t"><b class="text-ink" x-text="j.name"></b> · <span x-text="(j.kind || '자동 인입') + (j.running ? ' 중' : ' 완료')"></span> <span class="ds-badge" x-bind:class="j.trigger==='auto' ? 'ds-badge--intent' : 'ds-badge--entity'" style="cursor:help" data-tip="트리거 · 자동=스케줄 폴링, 수동=관리자 실행" data-tip-pos="top" x-text="j.trigger==='auto' ? '자동' : '수동'"></span>
                   <span class="text-xs text-muted tnum" x-show="j.total" x-text="j.done + ' / ' + j.total + '건' + (j.total ? (' · ' + Math.round((j.done/j.total)*100) + '%') : '')"></span>
                   <span class="text-xs text-muted tnum" x-show="j.running && j.eta_s != null" x-text="'· 남은 예상 ' + fmtEta(j.eta_s) + ' (건당 ' + ((j.per_item_ms||0)/1000).toFixed(1) + '초)'"></span>
@@ -1833,18 +1833,19 @@ PAGE = """<!doctype html>
               </div></div>
             </template>
             <div x-show="!runningCount" class="ds-empty" style="border:0;padding:20px 8px">
-              <div class="ds-empty__desc">진행 중인 작업이 없습니다 <b class="text-ink">수동 추출</b> 또는 <b class="text-ink">자동 인입</b> 탭에서 실행하면 여기에 표시되고, 완료분은 <b class="text-ink">배치 결과</b>에 집계됩니다</div>
+              <div class="ds-empty__desc">진행 중인 작업이 없습니다 · STEP 1에서 추가하고 <b class="text-ink">STEP 2 실행</b>을 누르면 여기에 진척도가 표시되고, 완료 작업은 이력으로 남습니다</div>
             </div>
           </div>
         </section>
       </div>
       <!-- 추가된 콘텐츠 · 용도: 실행 큐 아래(맥락: 추가 → 실행 → 큐 → 결과 용도 관리) -->
       <div x-show="mod === 'content'" x-cloak class="w-full space-y-4" style="margin-top:14px">
-        <section class="panel" data-fn><div class="panel-hd"><b>추가된 콘텐츠 · 용도</b><span class="meta">평가용은 검수 목록에서 제외되어 평가 전용으로 보존됩니다</span>
+        <section class="panel" data-fn id="added-contents"><div class="panel-hd"><b>추가된 콘텐츠 · 용도</b><span class="meta">평가용은 검수 목록에서 제외되어 평가 전용으로 보존됩니다</span>
+          <button type="button" class="srcfilter__chip sel" x-show="jobFilter" x-cloak x-on:click="jobFilter = null" x-text="jobFilter ? (jobFilter.name + ' 결과 ' + contentRows.length + '건 · 전체 보기 ×') : ''"></button>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
           <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:170px"></th></tr></thead><tbody>
-            <template x-for="c in ((dashData && dashData.contents) || [])" x-bind:key="'pp'+c.hash">
+            <template x-for="c in contentRows" x-bind:key="'pp'+c.hash">
               <tr>
                 <td class="text-ink" x-text="c.title || '(제목 없음)'"></td>
                 <td class="text-muted" x-text="c.service || '·'"></td>
@@ -1858,7 +1859,7 @@ PAGE = """<!doctype html>
               </tr>
             </template>
           </tbody></table></div>
-          <div x-show="!((dashData && dashData.contents) || []).length" class="text-xs text-muted" style="margin:0 16px 14px">아직 추가된 콘텐츠가 없습니다 · 위에서 수동·자동으로 추가하세요</div>
+          <div x-show="!contentRows.length" class="text-xs text-muted" style="margin:0 16px 14px" x-text="jobFilter ? '이 작업의 콘텐츠가 목록에 없습니다(삭제되었을 수 있음)' : '아직 추가된 콘텐츠가 없습니다 · 위에서 수동·자동으로 추가하세요'"></div>
         </section>
       </div>
 
