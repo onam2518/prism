@@ -8,7 +8,10 @@ import sys
 HOME = os.path.dirname(os.path.dirname(__file__))
 
 # 앱 번들(.app)은 읽기전용 → config 는 사용자 디렉터리에 둔다. 일반 실행은 레포 루트.
-if getattr(sys, "frozen", False):
+# 컨테이너(상시 서버)는 PRISM_CONFIG 로 볼륨 경로 지정(재시작 시 퀘스트 일시·모델 설정 보존).
+if os.environ.get("PRISM_CONFIG"):
+    DEFAULT_CONFIG_PATH = os.environ["PRISM_CONFIG"]
+elif getattr(sys, "frozen", False):
     DEFAULT_CONFIG_PATH = os.path.expanduser("~/Library/Application Support/Prism/config.json")
 else:
     DEFAULT_CONFIG_PATH = os.path.join(HOME, "config.json")

@@ -11,13 +11,19 @@ services:
       - PRISM_BACKEND=supabase
       - SUPABASE_URL=${SUPABASE_URL:-https://yujinhcdbllcnnfvcmfp.supabase.co}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY:?service_role 키 필요 (.env 또는 호스트 env)}
-      # ── 추출 모델(Upstage) ──
+      # ── 추출 모델(Upstage · 선택: Timely 라우터) ──
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY:-}
+      - PRISM_TIMELY_KEY=${PRISM_TIMELY_KEY:-}
       - PRISM_MODEL=${PRISM_MODEL:-solar-pro3}
+      # ── 운영 관리자 허용목록(쉼표 구분) + 설정 영속(퀘스트 일시·모델·래퍼) ──
+      - PRISM_ADMIN_EMAILS=${PRISM_ADMIN_EMAILS:-}
+      - PRISM_CONFIG=/data/config.json
+    volumes:
+      - prism-data:/data
     restart: unless-stopped
     # 로컬 SQLite 모드로 쓰려면 위 SUPABASE_* 제거 + PRISM_BACKEND=sqlite + 아래 볼륨 사용:
     # volumes: ["prism-data:/data"]
     # environment 에 PRISM_DB=/data/prism.db
 
-# volumes:
-#   prism-data:
+volumes:
+  prism-data:
