@@ -242,6 +242,11 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
     if not rows:
         return {"error": "제목·본문이 비어 있습니다"}
     from .store import content_hash as _chash
+    uniq = {}                                     # 파일 내 완전 중복 행은 1건으로(추가 건수 정확)
+    for c in rows:
+        uniq[_chash(c)] = c
+    dropped = len(rows) - len(uniq)
+    rows = list(uniq.values())
     pairs = [(c, {"content_ref": {"displayServiceName": c.get("displayServiceName", ""),
                                   "title": c.get("title", ""), "subtitle": c.get("subtitle", ""),
                                   "source_url": c.get("source_url", "") or c.get("url", ""),
@@ -258,7 +263,8 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
                 stp.set_purpose([_chash(c) for c in rows], "eval", team=team)
         except Exception:
             pass
-    return {"ok": True, "added": len(rows), "pending": True}
+    return {"ok": True, "added": len(rows), "pending": True,
+            **({"duplicates": dropped} if dropped else {})}
 
 
 def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dict:

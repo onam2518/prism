@@ -671,6 +671,12 @@ class SupabaseStore:
             if team:
                 row["team_id"] = team
             rows.append(row)
+        # 같은 배치 내 동일 hash 중복(업로드 파일의 중복 행)은 마지막 것만 남긴다.
+        # 중복이 섞이면 upsert 전체가 Postgres 21000(cardinality)으로 실패한다(2026-07-06 실사용 발견).
+        uniq = {}
+        for row in rows:
+            uniq[(row["hash"], row.get("team_id") or "")] = row
+        rows = list(uniq.values())
         self._upsert("contents", rows)
         return len(rows)
 

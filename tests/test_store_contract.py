@@ -83,6 +83,18 @@ class StoreContractMixin:
         self.assertIn(h, {r["hash"] for r in st.recent_meta(200, team=team)},
                       "비-YELLOW 인입 콘텐츠가 저장 목록에 없다")
 
+    def test_save_dedup_duplicate_rows_in_one_batch(self):
+        """한 배치에 동일 hash 행이 중복돼도 저장이 성공한다(1건으로 병합).
+        supabase 는 중복이 섞이면 upsert 전체가 Postgres 21000 으로 죽던 결함의 회귀 방지."""
+        st, team = self.st, self.team
+        content = {"displayServiceName": "뉴스", "title": "계약-중복행", "subtitle": "", "body": "본문"}
+        out = {"quality_meta": {"finalGrade": "G", "review": "auto"}, "item_meta": {"summary": "s"},
+               "trace": {"model": "contract-m5", "version": 1}}
+        st.save_dedup([(content, out), (dict(content), dict(out))], "run-z", source="배치", team=team)
+        from prism.store import content_hash
+        h = content_hash(content)
+        self.assertEqual(sum(1 for r in st.recent_meta(200, team=team) if r["hash"] == h), 1)
+
     def test_remove_content_cascade(self):
         """개별 삭제 계약: 콘텐츠 삭제 시 결과·초안·피드백 파생이 함께 사라진다(골든은 보존)."""
         st, team = self.st, self.team
