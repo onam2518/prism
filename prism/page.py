@@ -1637,15 +1637,17 @@ PAGE = """<!doctype html>
               </div>
               <div style="margin-top:var(--ds-space-4);padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
                 <b class="text-[13px]">팀 가이드 링크</b>
-                <p class="text-xs text-muted" style="margin:4px 0 10px">시작하기 카드의 '상세 가이드' 바로가기 주소입니다 · 저장하면 팀 전체에 공유됩니다.</p>
-                <div class="space-y-2">
-                  <label class="selctl" style="width:100%"><span class="selctl__tag">개요</span><input type="url" x-model="teamLinks.guide" placeholder="https://… (프로그램 개요 문서)" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
-                  <label class="selctl" style="width:100%"><span class="selctl__tag">사용자</span><input type="url" x-model="teamLinks.guide_user" placeholder="https://… (팀원용 가이드)" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
-                  <label class="selctl" style="width:100%"><span class="selctl__tag">관리자</span><input type="url" x-model="teamLinks.guide_admin" placeholder="https://… (관리자용 가이드)" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
-                </div>
-                <div class="flex items-center gap-2" style="margin-top:10px">
+                <p class="text-xs text-muted" style="margin:4px 0 10px">시작하기 카드의 '상세 가이드' 바로가기 주소입니다 · 대상을 고르고 URL 을 넣어 저장하면 팀 전체에 공유됩니다.</p>
+                <div class="flex items-center gap-2" style="flex-wrap:wrap">
+                  <label class="selctl"><span class="selctl__tag">대상</span>
+                    <select x-model="tlTarget" class="bg-transparent text-[13px]" style="border:none;outline:none">
+                      <option value="guide">개요</option>
+                      <option value="guide_user">사용자 가이드</option>
+                      <option value="guide_admin">관리자 가이드</option>
+                    </select></label>
+                  <label class="selctl" style="flex:1;min-width:240px"><span class="selctl__tag">URL</span><input type="url" x-model="teamLinks[tlTarget]" placeholder="https://…" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
                   <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="saveTeamLinks()">저장</button>
-                  <span class="text-xs text-muted" aria-live="polite" x-text="tlMsg"></span>
+                  <span class="text-xs text-muted" aria-live="polite" x-text="tlMsg || tlStatus"></span>
                 </div>
               </div>
         </div>

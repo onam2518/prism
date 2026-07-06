@@ -233,7 +233,12 @@
       // 설정(키 / 모델 슬롯 / 추론강도 / 추가 지시) · 우측 설정 패널
       cfg: { hasKey: false, model: '', persisted: false, forcedMock: false, hasBizKey: false, hasTimelyKey: false, guideUrls: {} },
       cfgModel: '', cfgPersist: true, cfgBusy: false,
-      teamLinks: { guide: '', guide_user: '', guide_admin: '' }, tlMsg: '',   // 팀 가이드 링크(시작하기 카드 바로가기)
+      teamLinks: { guide: '', guide_user: '', guide_admin: '' }, tlMsg: '', tlTarget: 'guide',   // 팀 가이드 링크(시작하기 카드 바로가기)
+      get tlStatus() {
+        const nm = { guide: '개요', guide_user: '사용자', guide_admin: '관리자' };
+        const set = Object.keys(nm).filter((k) => (this.teamLinks[k] || '').trim());
+        return set.length ? '등록됨: ' + set.map((k) => nm[k]).join(' · ') : '';
+      },
       models: [], modelsMsg: '',
       reasoning: 'default', systemPrompt: '', prefMsg: '', legalEnabled: false,
       stagePrompts: { extract: '', analyze: '', review: '', judge: '' },
