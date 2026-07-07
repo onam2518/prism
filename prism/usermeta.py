@@ -77,11 +77,11 @@ def _t1(v):
 
 
 def build_user_meta(results_path: str, n_users: int = 200,
-                    logs_path: str = None, demo: bool = False) -> dict:
+                    logs_path: str = None, demo: bool = False, profiles: dict = None) -> dict:
     """logs_path 있으면 실데이터, demo=True 면 합성 목업, 기본은 빈 상태(개념·명세만).
     동일 산출 구조 → 대시보드 그대로 재사용. (가짜 데이터를 기본 노출하지 않는다)"""
     if logs_path:
-        return build_from_logs(results_path, logs_path)
+        return build_from_logs(results_path, logs_path, profiles=profiles)
     if demo:
         return build_mock(results_path, n_users)
     return _empty_user_meta(results_path)
@@ -121,7 +121,7 @@ _CENTROID = {  # (depth, intensity, breadth) → 8 페르소나 시그니처
 }
 
 
-def build_from_logs(results_path: str, logs_path: str) -> dict:
+def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) -> dict:
     from collections import defaultdict
     rows = _read_jsonl(results_path)
     by_id = {}
@@ -156,7 +156,8 @@ def build_from_logs(results_path: str, logs_path: str) -> dict:
                 for j, (it, lg) in enumerate(evs)]
         form, intensity, prof = _profile_from_logs(viewed, logs)
         pname = _nearest_persona(form, intensity, viewed)
-        users.append({"user_id": uid, "persona": pname, "persona_id": _pid(pname),
+        users.append({"user_id": uid, "profile": (profiles or {}).get(uid),
+                      "persona": pname, "persona_id": _pid(pname),
                       "persona_full": pname, "topic": prof["ent"][0][0] if prof["ent"] else "기타",
                       "form": form, "intensity": intensity, "behavior_log": logs,
                       "interest_entity_categories": prof["ent"], "interest_intent_categories": prof["int"],
@@ -422,6 +423,26 @@ def _profile(persona, topic, viewed, logs):
              ["페르소나", f"{persona['id']} {persona['full']}"]]
     return {"ent": _top(w_ent, 5), "int": top_int, "ents": _top(ents, 8),
             "intensity": intensity, "eng": eng, "deriv": deriv}
+
+
+def attach_generated(data: dict, gen: dict) -> dict:
+    """생성 페르소나(personagen 산출)를 사용자·정의 표에 병행 부착.
+    기존 8종 매칭은 그대로 두고, 생성 카드는 별도 필드(gen_persona)와
+    personas_def 뒤(generated=True)에 얹어 화면에서 나란히 비교."""
+    if not gen:
+        data["generated_n"] = 0
+        return data
+    shown = {}
+    for u in data.get("users", []):
+        g = gen.get(u.get("user_id"))
+        if g:
+            u["gen_persona"] = g
+            shown[g.get("id", u["user_id"])] = g
+    data.setdefault("personas_def", [])
+    data["personas_def"] = ([p for p in data["personas_def"] if not p.get("generated")]
+                            + sorted(shown.values(), key=lambda g: g.get("id", "")))
+    data["generated_n"] = len(shown)
+    return data
 
 
 def _sortc(counter):
