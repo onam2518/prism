@@ -46,6 +46,9 @@ class LLMClient:
         self.timeout = timeout or self.cfg.timeout
         self.limiter = limiter or RateLimiter(self.cfg.rate.rpm, self.cfg.rate.tpm)
         self._mock_fn = None  # pipeline 이 주입하는 결정론적 mock 생성기
+        # gpt-5 계열은 max_tokens 미지원(라우터가 기본값 주입 시 HTTP400) → max_completion_tokens 명시.
+        # 그 외 모델은 400 응답의 안내문을 보고 적응(아래 chat 재시도 분기).
+        self._max_completion = str(self.model or "").split("/")[-1].startswith("gpt-5")
         # 운영 집계(스레드세이프): 실패 분류 카운터
         self._lock = threading.Lock()
         self.fail_counts = {}   # {kind: n}
@@ -82,6 +85,14 @@ class LLMClient:
                     detail = e.read().decode()[:200]
                 except Exception:
                     detail = ""
+                if (e.code == 400 and not self._max_completion
+                        and "max_completion_tokens" in detail):
+                    # 모델이 max_tokens 를 거부(신형 gpt 등 · 라우터가 기본값 주입) →
+                    # max_completion_tokens 로 전환해 즉시 재시도(백오프 불필요)
+                    self._max_completion = True
+                    retries += 1
+                    last_err = e
+                    continue
                 if e.code in rp.retry_status and attempt < rp.max_retries:
                     # 레이트리밋/일시 오류 → 지수백오프 재시도
                     retries += 1
@@ -124,6 +135,10 @@ class LLMClient:
         if self.reasoning_effort and self.reasoning_effort != "default":
             # Upstage 가 지원하면 reasoning 강도 제어; 미지원이면 무해하게 무시됨
             body["reasoning_effort"] = self.reasoning_effort
+        if self._max_completion:
+            # max_tokens 미지원 모델(gpt-5 계열 등): 명시하면 라우터가 max_tokens 를 주입하지 않는다.
+            # 추론형 모델은 추론 토큰도 이 상한에 포함되므로 넉넉히 잡는다(출력 잘림 = JSON 파싱 실패).
+            body["max_completion_tokens"] = 8192
 
         # 레이트리밋 게이팅(입력 토큰 근사로 예약)
         self.limiter.acquire(_approx_tokens(system + user))
