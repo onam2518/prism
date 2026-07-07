@@ -1360,7 +1360,7 @@ PAGE = """<!doctype html>
                 <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서 .md)" data-tip-pos="top">소요서(.md) 생성</button>
                 <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportHandoff()" data-tip="모델러 전달용 한 파일(.zip): 학습데이터 3종 + 노하우·백로그 + 소요서 + 프롬프트·사전 스냅샷 + manifest(건수·체크섬·직전 발행 대비 증분)" data-tip-pos="top">핸드오프 번들(.zip)</button>
               </div>
-              <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.knowhow">노하우 결속 <b class="text-ink tnum" x-text="(learnData.knowhow ? learnData.knowhow.n : 0) + '/' + learnData.golden_n + '건'"></b> · 골든에 사람 판단 사유(검수 노트·교정 이력)가 연결된 비율 — 결속률이 낮으면 검수 노트 작성을 독려하세요</div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.knowhow">노하우 결속 <b class="text-ink tnum" x-text="(learnData.knowhow ? learnData.knowhow.n : 0) + '/' + learnData.golden_n + '건'"></b> · 골든에 사람 판단 사유(검수 노트·교정 이력)가 연결된 비율 · 결속률이 낮으면 검수 노트 작성을 독려하세요</div>
             </div>
         </section>
         </template>
@@ -2057,7 +2057,7 @@ PAGE = """<!doctype html>
             <td x-text="c.service || '·'"></td>
             <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
             <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
-            <td><span class="ds-badge" x-show="c.fb && c.fb.verdict" x-bind:class="c.fb && c.fb.verdict==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="c.fb && c.fb.verdict==='good' ? '✓ 완료' : '✓ 수정'"></span><span class="text-xs text-muted" x-show="!(c.fb && c.fb.verdict)">·</span></td>
+            <td><span class="ds-badge" x-show="c.fb && c.fb.verdict" x-bind:class="c.fb && c.fb.verdict==='good' ? 'ds-badge--success' : (c.fb && c.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')" x-text="c.fb && c.fb.verdict==='good' ? '✓ 완료' : (c.fb && c.fb.verdict==='split' ? '✓ 불일치' : '✓ 수정')"></span><span class="text-xs text-muted" x-show="!(c.fb && c.fb.verdict)">·</span></td>
           </tr></template>
         </tbody></table>
         <div x-show="!drillBusy && drillData && !drillData.items.length" class="text-xs text-muted" style="padding:14px">해당 콘텐츠가 없습니다</div>
@@ -2185,13 +2185,14 @@ PAGE = """<!doctype html>
                 <input type="checkbox" x-model="autoNext" x-on:change="saveAutoNext()">저장 후 다음 미검수로
               </label>
             </div>
-            <!-- 검수 완료(판정 있음 · 수정 아님): 완료 표기(색상=판정별) + 수정 일시 + 추가 수정 -->
+            <!-- 검수 완료(판정 있음 · 수정 아님): 팀 합의 3상태(정확/수정/의견 갈림) + 내 판정 병기 + 추가 수정 -->
             <template x-if="detail && detail.fb && detail.fb.verdict && !editVerdict">
               <div>
-                <span class="ds-badge" x-bind:class="detail.fb.verdict==='good' ? 'ds-badge--success' : 'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail.fb.verdict==='good' ? '검수 완료 · 정확' : '검수 완료 · 수정 필요'"></span></span>
+                <span class="ds-badge" x-bind:class="detail.fb.verdict==='good' ? 'ds-badge--success' : (detail.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')"><span class="ds-badge__dot"></span><span x-text="detail.fb.verdict==='good' ? '검수 완료 · 정확' : (detail.fb.verdict==='split' ? '의견 갈림 · 재검토 대상' : '검수 완료 · 수정 필요')"></span></span>
                 <span class="text-xs text-muted" x-show="detail.fb.ts" x-text="'· 최종 수정 ' + fmtTs(detail.fb.ts)" style="margin-left:6px"></span>
-                <div class="tbox" x-show="detail.fb.verdict==='bad' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:10px" x-on:click="editVerdict=true; pendingBad=(detail.fb.verdict==='bad')">추가 수정</button>
+                <div class="text-xs text-muted" style="margin-top:6px" x-show="detail.fb.mine && detail.fb.n > 1" x-text="'내 판정: ' + (detail.fb.mine==='good' ? '정확' : '수정 필요') + ' · 팀 표 ' + detail.fb.n + '개(위 표기는 팀 합의)'"></div>
+                <div class="tbox" x-show="detail.fb.verdict!=='good' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:10px" x-on:click="editVerdict=true; pendingBad=((detail.fb.mine || detail.fb.verdict)==='bad')">추가 수정</button>
               </div>
             </template>
             <!-- 미검수 또는 추가 수정 중 -->
