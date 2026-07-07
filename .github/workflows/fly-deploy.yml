@@ -6,6 +6,10 @@ name: Fly Deploy
 on:
   push:
     branches: [main]
+    paths-ignore:            # 문서만 바뀐 머지는 배포 생략(런타임 무관)
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch: {}      # 필요 시 Actions 탭에서 수동 배포(문서 생략분 포함)
 
 concurrency:
   group: fly-deploy          # 머지가 몰려도 배포는 순차(경합 방지)
