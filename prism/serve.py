@@ -55,6 +55,7 @@ learning_batch = LO.learning_batch
 learn_data = LO.learn_data
 learn_spec_md = LO.learn_spec_md
 learn_export = LO.learn_export
+handoff_bundle = LO.handoff_bundle
 meta_compile_run = LO.meta_compile_run
 start_learning_scheduler = LO.start_learning_scheduler
 from .llm import LLMClient
@@ -2222,6 +2223,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        elif self.path.startswith("/handoff-export"):    # 모델러 핸드오프 번들(.zip · 관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            fname, blob = handoff_bundle(self._req_team())
+            if not fname:
+                self._send(400, json.dumps({"error": blob}, ensure_ascii=False), _JSON)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.send_header("Content-Length", str(len(blob)))
+            self.end_headers()
+            self.wfile.write(blob)
         elif self.path.startswith("/learn-data"):        # 학습 데이터 현황(관리자)
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)

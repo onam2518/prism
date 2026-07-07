@@ -1309,14 +1309,17 @@ PAGE = """<!doctype html>
         </section>
         <template x-if="learnData">
         <section class="panel" data-fn>
-            <div class="panel-hd"><b>데이터셋 내보내기</b><span class="meta">검수 결과를 학습용 JSONL 과 소요서로</span></div>
+            <div class="panel-hd"><b>데이터셋 내보내기</b><span class="meta">검수 결과를 학습용 JSONL·소요서·핸드오프 번들로</span></div>
             <div class="panel-bd">
               <div style="display:flex;gap:var(--ds-space-2);flex-wrap:wrap">
                 <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="지도 미세조정(Supervised Fine-Tuning) 학습쌍 · 콘텐츠 → 확정 메타" data-tip-pos="top" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
                 <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="선호 학습(DPO)용 교정 전/후 쌍 · 상세 화면에서 교정할수록 쌓입니다" data-tip-pos="top" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
                 <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="판정 이유(rationale) 데이터 · 근거 증류 학습(Distilling Step-by-Step)용" data-tip-pos="top" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
-                <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서 .md)" data-tip-pos="top">소요서(.md) 생성</button>
+                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="골든마다 사람 판단의 궤적(판정 노트·REAP 사유·교정 전/후·합의)을 결속 · '왜 이 정답인가' 검증용" data-tip-pos="top" x-on:click="exportLearn('knowhow')">노하우 내보내기 <span class="tnum" x-text="'(' + (learnData.extractable.knowhow == null ? '·' : learnData.extractable.knowhow) + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서 .md)" data-tip-pos="top">소요서(.md) 생성</button>
+                <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportHandoff()" data-tip="모델러 전달용 한 파일(.zip): 학습데이터 3종 + 노하우·백로그 + 소요서 + 프롬프트·사전 스냅샷 + manifest(건수·체크섬·직전 발행 대비 증분)" data-tip-pos="top">핸드오프 번들(.zip)</button>
               </div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.knowhow">노하우 결속 <b class="text-ink tnum" x-text="(learnData.knowhow ? learnData.knowhow.n : 0) + '/' + learnData.golden_n + '건'"></b> · 골든에 사람 판단 사유(검수 노트·교정 이력)가 연결된 비율 — 결속률이 낮으면 검수 노트 작성을 독려하세요</div>
             </div>
         </section>
         </template>
@@ -1909,18 +1912,6 @@ PAGE = """<!doctype html>
               <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="wrapMsg"></span>
             </div>
           </div></section>
-        <section class="panel" data-fn><div class="panel-hd"><b>호출별 모델 티어</b><span class="meta">①·② 경량 → ④ 상위 권장 · 비우면 실행 모델 사용</span></div>
-          <div class="panel-bd">
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-              <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'cm'+cl">
-                <span class="selctl"><span class="selctl__lbl" x-text="callLabel(cl)"></span>
-                  <select class="field" x-model="callModels[cl]"><option value="">실행 모델</option><template x-for="m in availableModels" x-bind:key="'cm'+cl+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
-              </template>
-              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-on:click="saveCallModels()">저장</button>
-              <label class="text-xs text-muted" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" x-model="fourCalls" x-on:change="saveCallModels()"> 분리형 4호출(해제 시 통합 1콜 폴백)</label>
-              <span class="text-xs" style="color:var(--ds-success)" x-text="callMsg"></span>
-            </div>
-          </div></section>
         <section class="panel" data-fn><div class="panel-hd"><b>최종 프롬프트 미리보기</b><span class="meta">호출×모델×서비스 조합의 실제 합성 결과</span></div>
           <div class="panel-bd">
             <div class="filterbar" style="margin:0 0 10px">
@@ -1929,7 +1920,6 @@ PAGE = """<!doctype html>
               <span class="selctl"><span class="selctl__lbl">호출</span>
                 <select class="field" x-model="pvCall" x-on:change="loadPreview()">
                   <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'pc'+cl"><option x-bind:value="cl" x-text="callLabel(cl)"></option></template>
-                  <option value="merged">통합 1콜(폴백)</option>
                 </select></span>
               <span class="selctl"><span class="selctl__lbl">서비스</span>
                 <select class="field" x-model="pvService" x-on:change="loadPreview()"><template x-for="g in groups" x-bind:key="'pg'+g"><option x-bind:value="g" x-text="g"></option></template></select></span>
