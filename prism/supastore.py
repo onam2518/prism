@@ -128,9 +128,9 @@ class SupabaseStore:
         return rows[0] if rows else None
 
     def team_members(self, team) -> list:
-        rows = self._get("reviewers", f"select=id,name,avatar,is_admin&team_id=eq.{urllib.parse.quote(team)}&order=name")
+        rows = self._get("reviewers", f"select=id,name,avatar,is_admin,super_admin&team_id=eq.{urllib.parse.quote(team)}&order=name")
         return [{"id": r["id"], "name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil",
-                 "is_admin": bool(r.get("is_admin"))} for r in rows]
+                 "is_admin": bool(r.get("is_admin")), "super_admin": bool(r.get("super_admin"))} for r in rows]
 
     def is_team_admin(self, uid, team) -> bool:
         t = self.team_info(team)
@@ -147,6 +147,23 @@ class SupabaseStore:
         self._req("PATCH", "reviewers",
                   query=f"id=eq.{urllib.parse.quote(member_id)}&team_id=eq.{urllib.parse.quote(team)}",
                   body={"is_admin": bool(on)}, prefer="return=minimal")
+
+    def is_team_super(self, uid, team) -> bool:
+        """슈퍼관리자(생성자 OR super_admin 위임) · 운영 작업 메뉴 전체(시스템 설정 제외)."""
+        t = self.team_info(team)
+        if t and uid and t.get("created_by") == uid:      # 생성자는 항상 슈퍼관리자
+            return True
+        if not (uid and team):
+            return False
+        rows = self._get("reviewers", f"select=super_admin&id=eq.{urllib.parse.quote(uid)}"
+                         f"&team_id=eq.{urllib.parse.quote(team)}")
+        return bool(rows and rows[0].get("super_admin"))
+
+    def set_member_super(self, team, member_id, on: bool):
+        """슈퍼관리자 위임/회수 · 부여는 팀 생성자만(게이트는 adminops.admin_action)."""
+        self._req("PATCH", "reviewers",
+                  query=f"id=eq.{urllib.parse.quote(member_id)}&team_id=eq.{urllib.parse.quote(team)}",
+                  body={"super_admin": bool(on)}, prefer="return=minimal")
 
     def clear_team_feedback(self, team):
         self._req("DELETE", "feedback", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")

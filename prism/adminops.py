@@ -132,6 +132,11 @@ def _team_admin(uid, team) -> bool:
     st = _SV.get_store()
     return bool(st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team))
 
+def _team_super(uid, team) -> bool:
+    """슈퍼관리자(생성자 OR super_admin 위임) 판정."""
+    st = _SV.get_store()
+    return bool(st and team and hasattr(st, "is_team_super") and st.is_team_super(uid, team))
+
 def is_sys_admin_user(uid, team, email="") -> bool:
     """운영(시스템) 관리자 = 허용목록(~/.prism_admin_emails) 이메일. 팀 소속과 무관.
     허용목록 미설정 시 팀 관리자 로직으로 폴백(단독 운영 호환)."""
@@ -140,10 +145,15 @@ def is_sys_admin_user(uid, team, email="") -> bool:
         return bool(email and email.strip().lower() in allow)
     return _team_admin(uid, team)
 
+def is_super_admin_user(uid, team, email="") -> bool:
+    """운영 작업 관리자 = 운영 관리자 OR 슈퍼관리자(생성자 부여).
+    관리자 메뉴 전체를 열되 위험 작업(시스템 설정·데이터/팀 삭제·API 키)은 운영 관리자 전용 유지."""
+    return is_sys_admin_user(uid, team, email) or _team_super(uid, team)
+
 def is_admin_user(uid, team, email="") -> bool:
-    """관리자(팀 관리 접근) = 운영 관리자 OR 팀 관리자(생성자·위임).
-    권한 2단계: 팀 관리자는 '팀 관리'만 추가, 나머지 관리자 메뉴는 운영 관리자 전용."""
-    return is_sys_admin_user(uid, team, email) or _team_admin(uid, team)
+    """관리자(팀 관리 접근) = 운영 관리자 OR 슈퍼관리자 OR 팀 관리자(생성자·위임).
+    권한 3단계: 운영 관리자(전부) > 슈퍼관리자(운영 작업) > 팀 관리자('팀 관리'만)."""
+    return is_sys_admin_user(uid, team, email) or _team_super(uid, team) or _team_admin(uid, team)
 
 def admin_data(uid, team, email="") -> dict:
     """팀 관리: 팀 정보·멤버·관리자 여부. supabase 전용.
@@ -151,11 +161,15 @@ def admin_data(uid, team, email="") -> dict:
     st = _SV.get_store()
     if not (st and team and hasattr(st, "team_members")):
         sysadm = is_sys_admin_user(uid, team, email)
-        return {"ok": False, "isAdmin": sysadm, "isSysAdmin": sysadm, "team": None, "members": []}
+        return {"ok": False, "isAdmin": sysadm, "isSysAdmin": sysadm, "isSuperAdmin": sysadm,
+                "isCreator": False, "team": None, "members": []}
     gc = st.golden_count(team) if hasattr(st, "golden_count") else 0
+    t = st.team_info(team)
     return {"ok": True, "isAdmin": is_admin_user(uid, team, email),
             "isSysAdmin": is_sys_admin_user(uid, team, email),
-            "team": st.team_info(team), "members": st.team_members(team), "goldenCount": gc}
+            "isSuperAdmin": is_super_admin_user(uid, team, email),
+            "isCreator": bool(t and uid and t.get("created_by") == uid),
+            "team": t, "members": st.team_members(team), "goldenCount": gc}
 
 def admin_ingest(uid, team, endpoint, n, email="") -> dict:
     """관리자: 크롤러 엔드포인트에서 N건 당겨와 추출 → 전건 검토 대상으로 팀 큐 적재(배치).
@@ -203,13 +217,17 @@ def admin_action(uid, team, data, email="") -> dict:
         st.delete_team(team)
     elif act == "remove_member" and data.get("member"):
         st.remove_member(team, data["member"])
-    elif act in ("set_admin", "unset_admin") and data.get("member"):
+    elif act in ("set_admin", "unset_admin", "set_super", "unset_super") and data.get("member"):
         t = st.team_info(team) if hasattr(st, "team_info") else None
+        # 권한 지정은 오직 팀 생성자만 · 부여받은 관리자(슈퍼관리자 포함)와 운영 관리자도 불가
+        if _supa() and not (t and uid and uid == t.get("created_by")):
+            return {"ok": False, "error": "권한 지정은 팀 생성자만 할 수 있습니다"}
         if t and data["member"] == t.get("created_by"):
-            return {"ok": False, "error": "생성자의 관리자 권한은 변경할 수 없습니다"}
-        if not hasattr(st, "set_member_admin"):
+            return {"ok": False, "error": "생성자의 권한은 변경할 수 없습니다"}
+        fn = "set_member_super" if act in ("set_super", "unset_super") else "set_member_admin"
+        if not hasattr(st, fn):
             return {"ok": False, "error": "이 백엔드는 위임을 지원하지 않습니다"}
-        st.set_member_admin(team, data["member"], act == "set_admin")
+        getattr(st, fn)(team, data["member"], act in ("set_admin", "set_super"))
     elif act == "ingest":                          # 크롤러 수량 인입 → 검토 큐
         return admin_ingest(uid, team, data.get("endpoint"), data.get("n"), email)
     elif act == "create_team" and not hasattr(st, "ensure_team"):

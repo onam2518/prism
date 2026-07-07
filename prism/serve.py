@@ -39,6 +39,7 @@ validate_jwt = AO.validate_jwt
 jwt_email = AO.jwt_email
 admin_emails = AO.admin_emails
 is_sys_admin_user = AO.is_sys_admin_user
+is_super_admin_user = AO.is_super_admin_user
 is_admin_user = AO.is_admin_user
 admin_data = AO.admin_data
 admin_ingest = AO.admin_ingest

@@ -84,6 +84,62 @@ class TestAdminTiers(unittest.TestCase):
         st.clear_team_feedback()
         self.assertEqual(st.feedback_map(), {})
 
+    def test_super_admin_tier(self):
+        """권한 3단계: 슈퍼관리자(생성자 부여)는 운영 작업 접근 O · 팀 관리자만인 멤버는 X."""
+        from prism import adminops as AO
+        orig = (AO.admin_emails, AO._team_admin, AO._team_super)
+        self.addCleanup(lambda: (setattr(AO, "admin_emails", orig[0]),
+                                 setattr(AO, "_team_admin", orig[1]),
+                                 setattr(AO, "_team_super", orig[2])))
+        AO.admin_emails = lambda: {"ops@corp.com"}
+        AO._team_admin = lambda uid, team: uid in ("boss", "mgr")
+        AO._team_super = lambda uid, team: uid in ("boss", "sup")
+        self.assertTrue(AO.is_super_admin_user("sup", "t1", "sup@x.com"))    # 슈퍼관리자
+        self.assertFalse(AO.is_super_admin_user("mgr", "t1", "mgr@x.com"))   # 팀 관리자는 운영 작업 불가
+        self.assertTrue(AO.is_super_admin_user("u1", None, "ops@corp.com"))  # 운영 관리자 포함
+        self.assertTrue(AO.is_admin_user("sup", "t1", "sup@x.com"))          # 팀 관리 접근도 포함
+
+    def test_permission_grant_creator_only(self):
+        """관리자·슈퍼관리자 지정/해제는 오직 팀 생성자만 · 부여받은 관리자(운영 관리자 포함) 불가."""
+        from prism import adminops as AO
+
+        class FakeStore:
+            def __init__(self):
+                self.calls = []
+            def team_info(self, team):
+                return {"id": team, "created_by": "boss", "invite_code": "X"}
+            def set_member_admin(self, team, member, on):
+                self.calls.append(("admin", member, bool(on)))
+            def set_member_super(self, team, member, on):
+                self.calls.append(("super", member, bool(on)))
+            def is_team_admin(self, uid, team):
+                return uid in ("boss", "mgr")
+            def is_team_super(self, uid, team):
+                return uid == "boss"
+
+        st = FakeStore()
+        orig_store, orig_supa, orig_emails = AO._SV.get_store, AO._supa, AO.admin_emails
+        AO._SV.get_store = lambda: st
+        AO._supa = lambda: ("http://x", "k")
+        AO.admin_emails = lambda: {"ops@corp.com"}
+        self.addCleanup(lambda: (setattr(AO._SV, "get_store", orig_store),
+                                 setattr(AO, "_supa", orig_supa),
+                                 setattr(AO, "admin_emails", orig_emails)))
+        # 위임받은 관리자(mgr)와 운영 관리자(허용목록)도 지정 불가
+        r = AO.admin_action("mgr", "t1", {"action": "set_super", "member": "u9"}, "mgr@x.com")
+        self.assertIn("팀 생성자만", r.get("error", ""))
+        r = AO.admin_action("u1", "t1", {"action": "set_admin", "member": "u9"}, "ops@corp.com")
+        self.assertIn("팀 생성자만", r.get("error", ""))
+        self.assertEqual(st.calls, [])
+        # 생성자는 지정/해제 가능 · 생성자 자신은 대상 불가
+        r = AO.admin_action("boss", "t1", {"action": "set_super", "member": "u9"}, "boss@x.com")
+        self.assertTrue(r.get("ok"))
+        r = AO.admin_action("boss", "t1", {"action": "unset_admin", "member": "u8"}, "boss@x.com")
+        self.assertTrue(r.get("ok"))
+        self.assertEqual(st.calls, [("super", "u9", True), ("admin", "u8", False)])
+        r = AO.admin_action("boss", "t1", {"action": "set_super", "member": "boss"}, "boss@x.com")
+        self.assertIn("생성자의 권한", r.get("error", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

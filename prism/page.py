@@ -1505,12 +1505,15 @@ PAGE = """<!doctype html>
                 <span class="lb-av" data-tier="0"><img x-bind:src="charImg(m.avatar)" alt=""></span>
                 <span class="lb-name"><span x-text="m.name"></span>
                   <span x-show="adminData.team && m.id===adminData.team.created_by" class="ds-badge ds-badge--status" style="margin-left:6px">생성자</span>
-                  <span x-show="m.is_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--intent" style="margin-left:6px;cursor:help" data-tip="위임된 팀 관리자 · 팀 관리 메뉴 사용 가능" data-tip-pos="top">관리자</span>
+                  <span x-show="m.super_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--category" style="margin-left:6px;cursor:help" data-tip="생성자가 부여한 슈퍼관리자 · 운영 작업 메뉴 전체 사용 가능(시스템 설정 제외)" data-tip-pos="top">슈퍼관리자</span>
+                  <span x-show="m.is_admin && !m.super_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--intent" style="margin-left:6px;cursor:help" data-tip="위임된 팀 관리자 · 팀 관리 메뉴 사용 가능" data-tip-pos="top">관리자</span>
                 </span>
-                <template x-if="adminData&&adminData.isAdmin && adminData.team && m.id!==adminData.team.created_by">
+                <template x-if="adminData&&adminData.team && m.id!==adminData.team.created_by">
                   <span style="display:flex;gap:6px">
-                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-on:click="adminAct(m.is_admin ? 'unset_admin' : 'set_admin', m.id)" x-text="m.is_admin ? '관리자 해제' : '관리자 지정'"></button>
-                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="adminAct('remove_member', m.id)">제거</button>
+                    <!-- 권한 지정은 팀 생성자 전용(서버도 동일 게이트) · 부여받은 관리자에게는 미표시 -->
+                    <button type="button" x-show="adminData.isCreator" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="adminAct(m.super_admin ? 'unset_super' : 'set_super', m.id)" x-text="m.super_admin ? '슈퍼관리자 해제' : '슈퍼관리자 지정'"></button>
+                    <button type="button" x-show="adminData.isCreator" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-on:click="adminAct(m.is_admin ? 'unset_admin' : 'set_admin', m.id)" x-text="m.is_admin ? '관리자 해제' : '관리자 지정'"></button>
+                    <button type="button" x-show="adminData.isAdmin" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="adminAct('remove_member', m.id)">제거</button>
                   </span>
                 </template>
               </div>

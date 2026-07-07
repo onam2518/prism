@@ -36,24 +36,25 @@
           { id: 'create', label: '콘텐츠 검수', ic: 'eval' },
           { id: 'evaluate', label: '평가', ic: 'dash' } ] },
         // 콘텐츠 인입(수동·자동·실행 큐)은 '콘텐츠 관리' 단일 메뉴로 통합 · 전부 관리자 통제
-        // 권한 2단계: 팀 관리자(생성자·위임)는 '팀 관리'만 추가 · 나머지는 운영 관리자(허용목록) 전용
+        // 권한 3단계: 운영 관리자(전부) > 슈퍼관리자(생성자 부여 · 운영 작업 메뉴) > 팀 관리자('팀 관리'만)
         { g: '관리자', gcond: 'admin', items: [
-          { id: 'content', label: '콘텐츠 관리', ic: 'intake', cond: 'sysadmin' },
-          { id: 'testset', label: '정답셋 관리', ic: 'eval', cond: 'sysadmin' },
+          { id: 'content', label: '콘텐츠 관리', ic: 'intake', cond: 'opsadmin' },
+          { id: 'testset', label: '정답셋 관리', ic: 'eval', cond: 'opsadmin' },
           { id: 'admin', label: '팀 관리', ic: 'admin', cond: 'admin' },
-          { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'sysadmin' },
-          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt', cond: 'sysadmin' },
+          { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'opsadmin' },
+          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt', cond: 'opsadmin' },
           // 실험실: 지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관
-          { id: 'lab', label: '실험실', ic: 'auto', cond: 'sysadmin' },
-          // 시스템 설정: 데이터 관리(상단) + API 키·모델(하단) 통합 · 운영 관리자 전용
+          { id: 'lab', label: '실험실', ic: 'auto', cond: 'opsadmin' },
+          // 시스템 설정: 데이터 관리(상단) + API 키·모델(하단) 통합 · 운영 관리자 전용(위험 작업)
           { id: 'system', label: '시스템 설정', ic: 'system', cond: 'sysadmin' } ] },
       ],
       get verTxt() {                         // 현재 프롬프트 버전(v=학습 반영 회차+1) · 미확정은 '-'
         return (this.goldenStatus && this.goldenStatus.batch_seq != null) ? ('v' + (this.goldenStatus.batch_seq + 1)) : '-';
       },
-      navVisible(c) {                        // 메뉴 노출 판정: admin=팀 관리자 이상 · sysadmin=운영 관리자
+      navVisible(c) {                        // 메뉴 노출 판정: admin=팀 관리자 이상 · opsadmin=슈퍼관리자 이상 · sysadmin=운영 관리자
         if (!c) return true;
         if (c === 'admin') return this.backend !== 'supabase' || (this.adminData && this.adminData.isAdmin);
+        if (c === 'opsadmin') return this.backend !== 'supabase' || (this.adminData && (this.adminData.isSysAdmin || this.adminData.isSuperAdmin));
         if (c === 'sysadmin') return this.backend !== 'supabase' || (this.adminData && this.adminData.isSysAdmin);
         return this.backend === c;
       },
