@@ -209,7 +209,7 @@
       async runBulk() {
         if (this.bulkScope === 'all' && this.questActive) { this.bulkMsg = '퀘스트 진행 중 · 전체 재실행은 반영 후 가능합니다'; return; }
         const mname = this.textModel || this.cfg.model || '기본 모델';
-        if (!confirm((this.bulkScope === 'pending' ? ('미실행 콘텐츠 ' + this.pendingCount + '건을 ') : '모든 콘텐츠를 ') + mname + ' 로 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?')) return;
+        if (!(await this.dsConfirm((this.bulkScope === 'pending' ? ('미실행 콘텐츠 ' + this.pendingCount + '건을 ') : '모든 콘텐츠를 ') + mname + ' 로 실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?', { ok: '실행' }))) return;
         this.bulkBusy = true; this.bulkMsg = '';
         try {
           this.pollIngestStatus();                   // 실행 큐 진척도 실시간
@@ -229,7 +229,7 @@
       groups: ['뉴스', '연예', '스포츠', '콘텐츠', '커뮤니티', '블로그', '음악', '동영상'],
       group: '뉴스',
       imgTitle: '', imgCaption: '',
-      txtTitle: '', txtBody: '',
+      txtTitle: '', txtBody: '', txtUrl: '',
       imgFiles: [], imgThumbs: [], imgDrag: false,
       excelFile: null, xlsDrag: false,
       copyMsg: '',
@@ -417,6 +417,27 @@
         this.drillBusy = false;
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : k === 'topic' ? '토픽' : '품질 사유'; },
+      // 확인 모달(공통) · 네이티브 confirm 대체: 자동화(CDP)에서 렌더러를 블로킹하지 않고 DS 일관 유지
+      confirmOpen: false, confirmTitle: '확인', confirmMsg: '', confirmOk: '진행', confirmDanger: false, _confirmResolve: null,
+      dsConfirm(msg, opts) {
+        opts = opts || {};
+        this.confirmTitle = opts.title || '확인'; this.confirmMsg = msg;
+        this.confirmOk = opts.ok || '진행'; this.confirmDanger = !!opts.danger;
+        this.confirmOpen = true;
+        return new Promise((resolve) => { this._confirmResolve = resolve; });
+      },
+      confirmAnswer(v) {
+        this.confirmOpen = false;
+        const r = this._confirmResolve; this._confirmResolve = null;
+        if (r) r(!!v);
+      },
+      // 좌측 패널 보기: 추출 텍스트 ↔ 원문 페이지(iframe) · 선택은 기억, 링크 없는 항목(골드 문항 등)은 텍스트 고정
+      dvcSrc: (function () { try { return localStorage.getItem('prismDetailSrc') || 'text'; } catch (e) { return 'text'; } })(),
+      dvcView() { return (this.detail && this.detail.url) ? this.dvcSrc : 'text'; },
+      setDvcView(v) { this.dvcSrc = v; try { localStorage.setItem('prismDetailSrc', v); } catch (e) {} },
+      // 원문 배율 3단계 · 작게 50 / 보통 75 / 크게 100 · 축소하면 한 화면에 더 담긴다 · 선택은 기억
+      dvcZoom: (function () { try { const z = parseInt(localStorage.getItem('prismDetailZoom') || '100', 10); return [50, 75, 100].indexOf(z) >= 0 ? z : 100; } catch (e) { return 100; } })(),
+      setDvcZoom(z) { this.dvcZoom = z; try { localStorage.setItem('prismDetailZoom', String(z)); } catch (e) {} },
       // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
       openDetail(c) { this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; },
       editVerdict: false, pendingBad: false, detailBack: false,
@@ -811,7 +832,7 @@
       goldenList: null,
       async loadGoldenList() { try { const r = await (await fetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) {} },
       async removeGolden(h) {
-        if (!confirm('이 골든 항목을 제거할까요? (평가 정답셋에서 빠집니다)')) return;
+        if (!(await this.dsConfirm('이 골든 항목을 제거할까요? (평가 정답셋에서 빠집니다)', { ok: '제거', danger: true }))) return;
         try { await fetch('/golden-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: h }) }); } catch (e) {}
         this.loadGoldenList(); this.loadGoldenStatus(); this.loadLearnData();
       },
@@ -927,12 +948,12 @@
         this.loadGoldenStatus();
       },
       async adminAct(action, member) {
-        if (action === 'clear_feedback' && !confirm('우리 팀의 평가 피드백을 모두 삭제할까요?')) return;
-        if (action === 'clear_contents' && !confirm('우리 팀의 검토 콘텐츠를 모두 삭제할까요?')) return;
-        if (action === 'clear_golden' && !confirm('정답셋(골든)을 모두 삭제할까요? 되돌릴 수 없습니다.')) return;
+        if (action === 'clear_feedback' && !(await this.dsConfirm('우리 팀의 평가 피드백을 모두 삭제할까요?', { ok: '삭제', danger: true }))) return;
+        if (action === 'clear_contents' && !(await this.dsConfirm('우리 팀의 검토 콘텐츠를 모두 삭제할까요?', { ok: '삭제', danger: true }))) return;
+        if (action === 'clear_golden' && !(await this.dsConfirm('정답셋(골든)을 모두 삭제할까요? 되돌릴 수 없습니다.', { ok: '삭제', danger: true }))) return;
         if (action === 'delete_team') {
-          if (!confirm('팀을 삭제할까요? 멤버 소속이 모두 해제됩니다.')) return;
-          if (!confirm('정말 삭제합니다. 되돌릴 수 없습니다.')) return;
+          if (!(await this.dsConfirm('팀을 삭제할까요? 멤버 소속이 모두 해제됩니다.', { ok: '팀 삭제', danger: true }))) return;
+          if (!(await this.dsConfirm('정말 삭제합니다. 되돌릴 수 없습니다.', { ok: '최종 삭제', danger: true }))) return;
         }
         try { await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: action, member: member }) }); } catch (e) {}
         this.loadAdmin();
@@ -1108,7 +1129,7 @@
       ensureReviewer() { if (!(this.reviewer || '').trim()) { this.reviewerEditing = true; return false; } return true; },
       notifyViewing(it) { try { fetch('/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer: this.reviewer, hash: it.hash, action: 'viewing' }) }); } catch (e) {} },
       async clearFeedback() {
-        if (!confirm('누적된 평가 피드백과 학습 보정을 모두 초기화할까요?')) return;
+        if (!(await this.dsConfirm('누적된 평가 피드백과 학습 보정을 모두 초기화할까요?', { ok: '초기화', danger: true }))) return;
         try { await fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }) }); } catch (e) {}
         this.loadDash();
       },
@@ -1140,7 +1161,7 @@
         } catch (e) { this.editMsg = '오류: ' + e; }
       },
       async resetDict() {
-        if (!confirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)')) return;
+        if (!(await this.dsConfirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)', { ok: '초기화', danger: true }))) return;
         try { const r = await fetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
       },
       async loadUser() { this.modBusy = true; try { this.userData = await (await fetch('/usermeta')).json(); } catch (e) {} this.modBusy = false; },
@@ -1349,7 +1370,7 @@
       },
       setReasoning(id) { this.reasoning = id; fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reasoning: id }) }).catch(() => {}); },
       async clearStore() {
-        if (!confirm('적재된 추출 결과를 모두 삭제할까요? (되돌릴 수 없음)')) return;
+        if (!(await this.dsConfirm('적재된 추출 결과를 모두 삭제할까요? (되돌릴 수 없음)', { ok: '삭제', danger: true }))) return;
         try { const r = await fetch('/store', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ clear: true }) });
           const d = await r.json(); this.cfg.storedCount = d.count || 0; this.loadDash(); } catch (e) {}
       },
@@ -1537,6 +1558,7 @@
           fd.append('displayServiceName', this.group);
           fd.append('title', this.txtTitle);
           fd.append('body', this.txtBody);
+          fd.append('source_url', this.txtUrl);
         }
         try {
           if (endpoint === '/run-batch') this.pollIngestStatus();   // 실행 큐 진척도 실시간

@@ -599,11 +599,13 @@ PAGE = """<!doctype html>
               <input x-model="txtTitle" class="field" placeholder="기사 제목"></div>
             <div><label class="lbl">본문 (body)</label>
               <textarea x-model="txtBody" rows="5" class="field" placeholder="본문 내용"></textarea></div>
+            <div><label class="lbl">원문 링크 (선택)</label>
+              <input x-model="txtUrl" class="field" placeholder="https:// 원문 주소 · 검수 화면에서 원문 페이지를 바로 볼 수 있습니다"></div>
           </div>
           <!-- 엑셀 -->
           <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
             <div class="flex items-center justify-between gap-2 rounded-lg border border-black/[0.08] bg-black/[0.02] px-3 py-2.5">
-              <div class="text-xs text-muted">컬럼 양식 · <span class="text-body">콘텐츠 그룹 · 제목 · 부제 · 본문</span> (제목·본문 필수)</div>
+              <div class="text-xs text-muted">컬럼 양식 · <span class="text-body">콘텐츠 그룹 · 제목 · 부제 · 본문 · 원문 링크</span> (제목·본문 필수)</div>
               <span class="inline-flex shrink-0 items-center gap-2">
               <a href="/template.xlsx" download
                 class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-black/[0.12] px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-black/[0.06]">
@@ -2046,6 +2048,17 @@ PAGE = """<!doctype html>
     </div>
   </div>
 
+  <!-- 확인 모달(공통): 네이티브 confirm 대체 · 자동화(CDP) 렌더러 블로킹 방지 + DS 일관 -->
+  <div class="ds-dialog-backdrop" x-show="confirmOpen" x-cloak x-on:mousedown.self="confirmAnswer(false)" x-on:keydown.escape.window="confirmOpen && confirmAnswer(false)" style="z-index:80">
+    <div class="ds-dialog" role="alertdialog" aria-modal="true" aria-label="확인" style="max-width:440px">
+      <h2 class="ds-dialog__title" x-text="confirmTitle"></h2>
+      <div class="ds-dialog__body"><p style="margin:0;white-space:pre-line" x-text="confirmMsg"></p></div>
+      <div class="ds-dialog__footer">
+        <button type="button" class="ds-btn ds-btn--ghost" x-on:click="confirmAnswer(false)">취소</button>
+        <button type="button" class="ds-btn" x-bind:class="confirmDanger ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--primary'" x-on:click="confirmAnswer(true)" x-text="confirmOk"></button>
+      </div>
+    </div>
+  </div>
   <!-- 콘텐츠 상세 스플릿뷰(공통 컴포넌트): 좌 추출 원문 렌더 · 우 평가 -->
   <!-- 정책 팔레트(플로팅 도움말): 검수 중 사전·정책 기준 참조 · 드래그 이동 · 위치 기억 -->
   <button type="button" class="polfab" x-show="!polOpen" x-cloak x-on:click="polToggle()" data-tip="정책 도움말 · 인텐트/카테고리/품질 사유 기준" data-tip-pos="left" aria-label="정책 도움말 열기">?</button>
@@ -2080,7 +2093,7 @@ PAGE = """<!doctype html>
     </div>
   </div>
   <div class="ds-dialog-backdrop" x-show="detailOpen" x-cloak x-on:mousedown.self="detailOpen=false" style="z-index:74">
-    <div class="detailview" role="dialog" aria-modal="true" aria-label="콘텐츠 상세">
+    <div class="detailview" x-bind:class="dvcView()==='web' ? 'detailview--wide' : ''" role="dialog" aria-modal="true" aria-label="콘텐츠 상세">
       <div class="detailview__hd">
         <span style="display:flex;align-items:center;gap:8px">
           <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailBack" x-on:click="detailOpen=false; drillOpen=true" data-tip="목록으로" data-tip-pos="bottom" aria-label="목록으로 뒤로가기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -2096,13 +2109,37 @@ PAGE = """<!doctype html>
       </div>
       <div class="detailview__body">
         <div class="detailview__content">
+          <!-- 원문 링크가 있으면 좌측 패널을 '추출 텍스트 ↔ 원문 페이지' 탭으로 전환(검수자 대조 편의) -->
+          <div class="dvc__viewtabs" x-show="detail && detail.url" x-cloak>
+            <span class="srcfilter" style="display:inline-flex;gap:var(--ds-space-1)">
+              <button type="button" class="srcfilter__chip" x-bind:class="dvcView()==='text'?'sel':''" x-on:click="setDvcView('text')">추출 텍스트</button>
+              <button type="button" class="srcfilter__chip" x-bind:class="dvcView()==='web'?'sel':''" x-on:click="setDvcView('web')">원문 페이지</button>
+            </span>
+            <!-- 배율 3단계: 작게(50)·보통(75)·크게(100) · 축소하면 한 화면에 더 담긴다 · 선택은 기억 -->
+            <span class="srcfilter" style="display:inline-flex;gap:var(--ds-space-1);margin-left:auto" x-show="dvcView()==='web'" x-cloak>
+              <template x-for="o in [{z:50,t:'작게'},{z:75,t:'보통'},{z:100,t:'크게'}]" x-bind:key="'dz'+o.z">
+                <button type="button" class="srcfilter__chip" x-bind:class="dvcZoom===o.z?'sel':''" x-on:click="setDvcZoom(o.z)" x-bind:data-tip="o.z+'%'" data-tip-pos="top" x-text="o.t"></button>
+              </template>
+            </span>
+          </div>
           <div class="dvc__service" x-text="detail && (detail.service || '·')"></div>
           <h2 class="dvc__title" x-text="detail && (detail.title || '(제목 없음)')"></h2>
           <div class="dvc__subtitle" x-show="detail && detail.subtitle" x-text="detail && detail.subtitle"></div>
-          <div class="dvc__lead" x-show="detail && detail.summary"><span class="dvc__lead-lbl">리드문</span><span x-text="detail && detail.summary"></span></div>
-          <div class="dvc__bodytext" x-show="detail && detail.body" x-text="detail && detail.body"></div>
-          <div class="dvc__note" x-show="detail && !detail.body">전체 본문은 저장되지 않습니다 · 리드문·메타 기준으로 검수하세요</div>
-          <a class="dvc__src ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-show="detail && detail.url" x-bind:href="detail && detail.url" target="_blank" rel="noreferrer">원문 열기 ↗</a>
+          <template x-if="dvcView()==='text'">
+            <div>
+              <div class="dvc__lead" x-show="detail && detail.summary"><span class="dvc__lead-lbl">리드문</span><span x-text="detail && detail.summary"></span></div>
+              <div class="dvc__bodytext" x-show="detail && detail.body" x-text="detail && detail.body"></div>
+              <div class="dvc__note" x-show="detail && !detail.body">전체 본문은 저장되지 않습니다 · 리드문·메타 기준으로 검수하세요</div>
+            </div>
+          </template>
+          <template x-if="dvcView()==='web'">
+            <div class="dvc__webwrap">
+              <div class="dvc__webbox">
+                <iframe class="dvc__web" x-bind:src="detail && detail.url" x-bind:style="'transform:scale('+(dvcZoom/100)+');width:'+(10000/dvcZoom)+'%;height:'+(10000/dvcZoom)+'%'" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer" loading="lazy" title="원문 페이지"></iframe>
+              </div>
+              <div class="dvc__note" style="margin-top:var(--ds-space-2)">화면이 비어 보이면 이 사이트가 내장 표시를 차단한 것입니다</div>
+            </div>
+          </template>
         </div>
         <div class="detailview__eval">
           <div x-show="detail && detail.grade" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>

@@ -344,6 +344,12 @@
   .dvc__bodytext{font-size:15px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap;margin-top:var(--ds-space-3)}
   .dvc__note{font-size:12px;color:var(--ds-muted);margin-top:var(--ds-space-3)}
   .dvc__src{margin-top:var(--ds-space-4);display:inline-flex}
+  /* 원문 페이지 내장 보기: 탭 전환(추출 텍스트 ↔ 원문) · 원문 선택 시 다이얼로그 확장 · 배율은 transform 스케일 */
+  .detailview--wide{width:min(1280px,96vw)}
+  .dvc__viewtabs{display:flex;align-items:center;gap:var(--ds-space-2);margin-bottom:var(--ds-space-3)}
+  .dvc__webwrap{display:flex;flex-direction:column;margin-top:var(--ds-space-3)}
+  .dvc__webbox{height:min(62vh,720px);border:1px solid var(--ds-divider-section);border-radius:var(--ds-radius-card);background:#fff;overflow:hidden}
+  .dvc__web{border:0;background:#fff;transform-origin:0 0}
   .dve__lbl{font-size:11px;font-weight:700;color:var(--ds-muted);margin-bottom:6px}
   .dve__verdict{margin-top:auto;padding-top:var(--ds-space-4);border-top:1px solid var(--ds-divider-section)}
   @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}

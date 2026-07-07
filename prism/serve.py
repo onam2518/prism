@@ -315,6 +315,8 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dic
             "title": fields.get("title", ""),
             "subtitle": fields.get("subtitle", ""),
             "body": fields.get("body", ""),
+            # 참조용 원문 링크 · 해시(서비스+제목+부제+본문) 불포함이라 정체성 무변
+            "source_url": fields.get("source_url", "") or fields.get("url", ""),
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
@@ -394,7 +396,8 @@ def rerun_content(content_hash: str, model: str, team=None) -> dict:
         if _row_key(ref) == ch:
             row = r
             fields = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
-                      "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
+                      "subtitle": ref.get("subtitle", ""), "body": ref.get("body", ""),
+                      "source_url": ref.get("source_url", "")}   # 재실행 upsert 가 원문 링크를 지우지 않게 보존
             break
     if not row:
         return {"error": "콘텐츠를 찾을 수 없습니다(본문 미보존 항목일 수 있음)"}
@@ -432,19 +435,21 @@ def vocab() -> dict:
 def build_template_csv() -> bytes:
     """엑셀 일괄 입력용 CSV 템플릿(UTF-8 BOM → Excel 한글 정상). 헤더+예시 2행.
 
-    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문. 제목·본문이 필수.
+    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문·원문 링크. 제목·본문이 필수(원문 링크는 선택).
     """
     import csv
     import io
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["콘텐츠 그룹", "제목", "부제", "본문"])
+    w.writerow(["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크"])
     w.writerow(["뉴스", "삼성전자 노조 임금 협상 결렬",
                 "중앙노동위 조정 불성립",
-                "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다."])
+                "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다.",
+                "https://v.daum.net/v/20260101000000000"])
     w.writerow(["스포츠", "손흥민 시즌 10호골",
                 "",
-                "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다."])
+                "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다.",
+                ""])
     return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
@@ -756,11 +761,13 @@ def build_template_xlsx() -> bytes:
     import zipfile
     from xml.sax.saxutils import escape
 
-    rows = [["콘텐츠 그룹", "제목", "부제", "본문"],
+    rows = [["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크"],
             ["뉴스", "삼성전자 노조 임금 협상 결렬", "중앙노동위 조정 불성립",
-             "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다."],
+             "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다.",
+             "https://v.daum.net/v/20260101000000000"],
             ["스포츠", "손흥민 시즌 10호골", "",
-             "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다."]]
+             "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다.",
+             ""]]
 
     def cell(r, ci, v):
         col = chr(ord("A") + ci)
@@ -2729,6 +2736,7 @@ class Handler(BaseHTTPRequestHandler):
                     "displayServiceName": fields.get("displayServiceName", ""),
                     "title": fields.get("title", ""), "subtitle": fields.get("subtitle", ""),
                     "body": fields.get("body", ""),
+                    "source_url": fields.get("source_url", ""),
                 }], purpose=str(fields.get("purpose") or ""), team=self._req_team())
             else:
                 result = run_pipeline(fields, mock=self.server_mock, team=self._req_team())
