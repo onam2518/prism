@@ -254,6 +254,39 @@ class TestButtonsEndToEnd(unittest.TestCase):
         byv = self.ok(f"/prompt-snapshot?v={ver}")
         self.assertEqual((byv.get("snapshot") or {}).get("version"), ver)
 
+    # ── 실험실 · 사용자: 프로필 + 행동 로그 → 페르소나 능동 생성(저장·재방문 유지) ──
+    def test_11_usermeta_persona_gen(self):
+        status, csv_t = _req(self.port, "/usermeta-profile-template.csv")
+        self.assertEqual(status, 200)
+        self.assertIn("user_id", csv_t)
+        # 1) 프로필 단건(폼) 저장 → 아직 로그 없음 = 생성 0
+        r = self.ok("/usermeta-profiles", {"profile": {
+            "user_id": "smoke-u1", "age_band": "30대", "interests": "재테크, 야구", "day_part": "야간"}})
+        self.assertEqual(r.get("saved"), 1)
+        self.assertGreaterEqual(r.get("profiles_n") or 0, 1)
+        self.assertEqual(r.get("generated_n") or 0, 0)
+        # 2) 행동 로그 업로드(multipart) → 재료가 모인 사용자는 자동 생성
+        log_csv = ("user_id,content_id,event,dwell_sec,scroll_pct,ts\n"
+                   "smoke-u1,0,click,62,80,2026-06-23T21:10\n"
+                   "smoke-u1,1,impression,8,20,2026-06-23T21:14\n").encode("utf-8")
+        boundary = "smokeboundary"
+        part = (f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="file"; filename="logs.csv"\r\n'
+                "Content-Type: text/csv\r\n\r\n").encode() + log_csv + f"\r\n--{boundary}--\r\n".encode()
+        r = self.ok("/usermeta", raw=part, ctype=f"multipart/form-data; boundary={boundary}")
+        self.assertGreaterEqual(len(r.get("users") or []), 1)
+        self.assertEqual(r.get("generated_n"), 1)
+        u = next(x for x in r["users"] if x["user_id"] == "smoke-u1")
+        gp = u.get("gen_persona") or {}
+        self.assertTrue(gp.get("name") and gp.get("desc"))       # 생성 카드(mock=결정론 폴백)
+        self.assertTrue(gp.get("basis"))                         # 판단 근거
+        self.assertTrue(any(p.get("generated") for p in r.get("personas_def") or []))  # 정의 표 병행
+        # 3) 재방문(GET): 로그·프로필·생성 페르소나 유지 + 재생성 없음(id 유지)
+        r2 = self.ok("/usermeta")
+        self.assertGreaterEqual(len(r2.get("users") or []), 1)
+        u2 = next(x for x in r2["users"] if x["user_id"] == "smoke-u1")
+        self.assertEqual((u2.get("gen_persona") or {}).get("id"), gp.get("id"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -250,12 +250,8 @@
         return set.length ? '등록됨: ' + set.map((k) => nm[k]).join(' · ') : '';
       },
       models: [], modelsMsg: '',
-      reasoning: 'default', systemPrompt: '', prefMsg: '', legalEnabled: false,
-      stagePrompts: { extract: '', analyze: '', review: '', judge: '' },
-      promptDefaults: { extract: '', analyze: '', review: '', judge: '' },
-      stageModels: { extract: '', analyze: '', review: '', judge: '' },
-      modelPrompts: {}, availableModels: [],
-      stagePromptsMeta: {}, stageMsg: { extract: '', analyze: '', review: '', judge: '' },
+      reasoning: 'default', systemPrompt: '', legalEnabled: false,
+      availableModels: [],
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],
 
       // 모델 슬롯 + 스텝식 설정
@@ -1140,8 +1136,7 @@
         this.loadDash();
       },
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
-      async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults')).json(); this.promptDefaults = d.defaults || d; this.learnedStages = d.learned || this.learnedStages; ['extract','analyze','review','judge'].forEach((k)=>{ this.stagePrompts[k] = this.promptFor(k); }); } catch (e) {} },
-      restoreDefault(stage) { this.stagePrompts[stage] = this.promptDefaults[stage] || ''; },
+      async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults')).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics')).json(); } catch (e) {} this.modBusy = false; },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await fetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
       // 사전·정책 편집(사용자 직접 수정)
@@ -1170,13 +1165,42 @@
         if (!(await this.dsConfirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)', { ok: '초기화', danger: true }))) return;
         try { const r = await fetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
       },
-      async loadUser() { this.modBusy = true; try { this.userData = await (await fetch('/usermeta')).json(); } catch (e) {} this.modBusy = false; },
+      async loadUser() { this.modBusy = true; try { this.userData = await (await fetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
       async uploadUserLog(e) {
         const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-        this.modBusy = true;
+        this.modBusy = true; this.pfMsg = '';
         try { const fd = new FormData(); fd.append('file', f);
-          this.userData = await (await fetch('/usermeta', { method: 'POST', body: fd })).json(); }
+          const d = await (await fetch('/usermeta', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          if (d.error) { this.pfMsg = '오류: ' + d.error; } else { this.userData = d; this.pfMsg = this._genMsg(d); } }
         catch (err) {} this.modBusy = false;
+      },
+      // 실험실 · 사용자: 프로필(사용자 메타) 입력 → 행동 로그와 모이면 서버가 페르소나 능동 생성
+      pf: { user_id: '', age_band: '', interests: '', day_part: '' }, pfMsg: '',
+      _genMsg(d) {
+        if (d.generated_n) return '생성 페르소나 ' + d.generated_n + '개 · 재료가 모인 사용자는 자동 생성됩니다';
+        if ((d.profiles_n || 0) && !(d.users || []).length) return '행동 로그가 연결되면 자동 생성됩니다';
+        if (!(d.profiles_n || 0) && (d.users || []).length) return '프로필이 저장되면 자동 생성됩니다';
+        return '';
+      },
+      async saveProfile() {
+        if (!this.pf.user_id.trim()) { this.pfMsg = 'user_id 를 입력하세요'; return; }
+        this.modBusy = true; this.pfMsg = '';
+        try {
+          const d = await (await fetch('/usermeta-profiles', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ profile: this.pf }) })).json();
+          if (d.error) { this.pfMsg = '오류: ' + d.error; }
+          else { this.userData = d; this.pf = { user_id: '', age_band: '', interests: '', day_part: '' }; this.pfMsg = '프로필 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
+        } catch (e) { this.pfMsg = '오류: ' + e; }
+        this.modBusy = false;
+      },
+      async uploadProfiles(e) {
+        const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+        this.modBusy = true; this.pfMsg = '';
+        try { const fd = new FormData(); fd.append('file', f);
+          const d = await (await fetch('/usermeta-profiles', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          if (d.error) { this.pfMsg = '오류: ' + d.error; }
+          else { this.userData = d; this.pfMsg = (d.saved || 0) + '명 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
+        } catch (err) { this.pfMsg = '오류: ' + err; }
+        this.modBusy = false;
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },
@@ -1284,10 +1308,6 @@
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
           if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
-          if (this.cfg.stagePrompts) { ['extract','analyze','review','judge'].forEach((k)=>{ this.stagePrompts[k] = this.cfg.stagePrompts[k] || ''; }); if (!this.stagePrompts.analyze) this.stagePrompts.analyze = this.cfg.systemPrompt || ''; }
-          if (this.cfg.stagePromptsMeta) this.stagePromptsMeta = this.cfg.stagePromptsMeta;
-          if (this.cfg.stageModels) this.stageModels = Object.assign({ extract:'', analyze:'', review:'', judge:'' }, this.cfg.stageModels);
-          if (this.cfg.modelPrompts) this.modelPrompts = this.cfg.modelPrompts;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.learnNextAt === 'string') this.learnNextAt = this.cfg.learnNextAt;
@@ -1363,47 +1383,11 @@
             body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
-      // 비전 슬롯(이미지 맥락 생성)
-      async applyPrefs() {
-        this.prefMsg = '저장 중…';
-        try {
-          await fetch('/config', { method: 'POST', headers: this._authHeaders(),
-            body: JSON.stringify({ reasoning: this.reasoning, system_prompt: this.systemPrompt }) });
-          this.prefMsg = '✓ 적용됨';
-        } catch (e) { this.prefMsg = '오류: ' + e; }
-      },
       setReasoning(id) { this.reasoning = id; fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reasoning: id }) }).catch(() => {}); },
       async clearStore() {
         if (!(await this.dsConfirm('적재된 추출 결과를 모두 삭제할까요? (되돌릴 수 없음)', { ok: '삭제', danger: true }))) return;
         try { const r = await fetch('/store', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ clear: true }) });
           const d = await r.json(); this.cfg.storedCount = d.count || 0; this.loadDash(); } catch (e) {}
-      },
-      async applyStagePrompts() {
-        this.prefMsg = '저장 중…';
-        try {
-          await fetch('/config', { method: 'POST', headers: this._authHeaders(),
-            body: JSON.stringify({ stage_prompts: this.stagePrompts, reasoning: this.reasoning }) });
-          await this.refreshConfig(); this.prefMsg = '✓ 전체 적용됨';
-        } catch (e) { this.prefMsg = '오류: ' + e; }
-      },
-      // 단계별 모델 + 모델별 프롬프트 ──────────────
-      promptFor(stage) {
-        const m = (this.stageModels[stage] || '').trim();
-        const byModel = (m && this.modelPrompts[m] && this.modelPrompts[m][stage]) || '';
-        return byModel || this.promptDefaults[stage] || '';
-      },
-      onStageModelChange(stage) { this.stagePrompts[stage] = this.promptFor(stage); },
-      async saveStage(stage) {
-        this.stageMsg[stage] = '저장 중…';
-        const m = (this.stageModels[stage] || '').trim();
-        try {
-          const payload = { stage: stage, stage_models: this.stageModels };
-          if (m) payload.model_prompts = { [m]: { [stage]: this.stagePrompts[stage] } };
-          else payload.stage_prompts = this.stagePrompts;     // 모델 미지정 → 전역 폴백
-          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) });
-          await this.refreshConfig(); this.stagePrompts[stage] = this.promptFor(stage); this.stageMsg[stage] = '✓ 저장됨';
-          clearTimeout(this._stT); this._stT = setTimeout(() => { this.stageMsg[stage] = ''; }, 1800);
-        } catch (e) { this.stageMsg[stage] = '오류: ' + e; }
       },
 
       // ── 자동 인입 파이프라인 소스(API/Kafka) ──

@@ -709,8 +709,8 @@ def _attach_fb(items, team=None):
     return items
 
 
-def _logs_to_jsonl(data: bytes, filename: str, out_path: str):
-    """행동 로그(csv/tsv/jsonl) → jsonl 정규화. 컬럼: user_id·content_id·event·dwell_sec·scroll_pct·ts."""
+def _logs_rows(data: bytes, filename: str) -> list:
+    """행동 로그(csv/tsv/jsonl) → dict 행 정규화. 컬럼: user_id·content_id·event·dwell_sec·scroll_pct·ts."""
     ext = os.path.splitext(filename or "")[1].lower()
     text = data.decode("utf-8-sig", "replace")
     rows = []
@@ -728,32 +728,77 @@ def _logs_to_jsonl(data: bytes, filename: str, out_path: str):
                     rows.append(json.loads(line))
                 except Exception:
                     pass
+    return rows
+
+
+def _write_jsonl(rows: list, out_path: str):
     with open(out_path, "w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def usermeta_data(logs_bytes: bytes = None, filename: str = "") -> dict:
-    """사용자 메타 모듈: 행동 로그 업로드 시 실데이터로 소비 형태·강도·선호 산출,
-    없으면 페르소나 정의·공식·시나리오(명세)만."""
+def usermeta_data(logs_bytes: bytes = None, filename: str = "", team=None) -> dict:
+    """사용자 메타 모듈: 행동 로그(업로드분 저장 → 재방문 유지)와 프로필을 조인해
+    소비 형태·강도·선호 산출. 프로필·로그가 모두 갖춰진 사용자는 페르소나를
+    능동 생성(미생성분만 · 별도 버튼 없음)해 저장하고 기존 8종과 병행 표시."""
+    from . import personagen as PG
     from . import usermeta as UM
     rows = results_rows()
     if not rows:
         return {"empty": True, "n_contents": 0, "users": [], "personas_def": [],
                 "note": "먼저 [실행 · 추출]에서 콘텐츠를 추출하세요. content_id 는 추출 순서(0부터)와 매칭됩니다."}
+    st = get_store()
+    profiles = (_report_get("usermeta_profiles", team, {}) or {}).get("users") or {}
+    if logs_bytes:
+        log_rows = _logs_rows(logs_bytes, filename)
+        if log_rows and st and hasattr(st, "save_report"):
+            st.save_report("usermeta_logs", {"rows": log_rows, "name": filename}, team=team)
+    else:
+        log_rows = (_report_get("usermeta_logs", team, {}) or {}).get("rows") or []
     with tempfile.TemporaryDirectory() as d:
         rpath = os.path.join(d, "r.jsonl")
-        with open(rpath, "w", encoding="utf-8") as f:
-            for r in rows:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        _write_jsonl(rows, rpath)
         logs_path = None
-        if logs_bytes:
+        if log_rows:
             logs_path = os.path.join(d, "logs.jsonl")
-            _logs_to_jsonl(logs_bytes, filename, logs_path)
+            _write_jsonl(log_rows, logs_path)
         try:
-            return UM.build_user_meta(rpath, logs_path=logs_path)
+            data = UM.build_user_meta(rpath, logs_path=logs_path, profiles=profiles)
         except Exception as e:
             return {"error": str(e)[:200], "users": [], "personas_def": []}
+    gen = (_report_get("usermeta_personas", team, {}) or {}).get("items") or {}
+    need = [u for u in data.get("users", [])
+            if profiles.get(u.get("user_id")) and u["user_id"] not in gen]
+    if need:
+        try:
+            llm = make_text_llm(Config.load(), Handler.server_mock)
+            gen.update(PG.generate_personas(llm, profiles, need, start_idx=len(gen)))
+            if st and hasattr(st, "save_report"):
+                st.save_report("usermeta_personas", {"items": gen}, team=team)
+        except Exception as e:
+            data["gen_error"] = str(e)[:200]
+    UM.attach_generated(data, gen)
+    data["profiles_n"] = len(profiles)
+    data["profile_fields"] = {"age_bands": list(PG.AGE_BANDS), "day_parts": list(PG.DAY_PARTS)}
+    return data
+
+
+def usermeta_save_profiles(profs: list, team=None) -> dict:
+    """프로필(사용자 메타) upsert → 최신 사용자 메타 반환(재료가 모이면 이 안에서 능동 생성)."""
+    from . import personagen as PG
+    st = get_store()
+    cur = (_report_get("usermeta_profiles", team, {}) or {}).get("users") or {}
+    n = 0
+    for p in profs or []:
+        p = PG.normalize_profile(p if isinstance(p, dict) else {})
+        if p["user_id"]:
+            cur[p["user_id"]] = p
+            n += 1
+    if n and st and hasattr(st, "save_report"):
+        st.save_report("usermeta_profiles", {"users": cur}, team=team)
+    out = usermeta_data(team=team)
+    out["saved"] = n
+    return out
 
 
 def build_template_xlsx() -> bytes:
@@ -2275,8 +2320,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        elif self.path.startswith("/usermeta-profile-template.csv"):
+            from . import personagen as PG
+            data = PG.profile_template_csv()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="prism_user_profile.csv"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         elif self.path.startswith("/usermeta"):
-            self._send(200, json.dumps(usermeta_data(), ensure_ascii=False), _JSON)
+            self._send(200, json.dumps(usermeta_data(team=self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/template.xlsx"):
             data = build_template_xlsx()
             self.send_response(200)
@@ -2708,6 +2762,24 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/usermeta-profiles"):   # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
+            try:
+                from . import personagen as PG
+                ctype = self.headers.get("Content-Type", "")
+                if "multipart/form-data" in ctype:
+                    boundary = ctype.split("boundary=", 1)[1].strip()
+                    f = _parse_multipart(body, boundary).get("file")
+                    profs = (PG.parse_profiles(f["bytes"], f.get("filename", "profiles.csv"))
+                             if isinstance(f, dict) and f.get("bytes") else [])
+                else:
+                    p = json.loads(body or b"{}")
+                    profs = p.get("profiles") or ([p.get("profile")] if p.get("profile") else [])
+                self._send(200, json.dumps(usermeta_save_profiles(profs, team=self._req_team()),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/usermeta"):
             try:
                 ctype = self.headers.get("Content-Type", "")
@@ -2717,7 +2789,8 @@ class Handler(BaseHTTPRequestHandler):
                     f = _parse_multipart(body, boundary).get("file")
                 logs = f["bytes"] if isinstance(f, dict) and f.get("bytes") else None
                 name = f.get("filename", "logs.csv") if isinstance(f, dict) else ""
-                self._send(200, json.dumps(usermeta_data(logs, name), ensure_ascii=False), _JSON)
+                self._send(200, json.dumps(usermeta_data(logs, name, team=self._req_team()),
+                                           ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

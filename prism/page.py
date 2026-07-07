@@ -1002,29 +1002,70 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
-      <!-- ═══ 모듈: 사용자 메타 ═══ -->
+      <!-- ═══ 모듈: 사용자 메타 · 프로필 + 행동 로그 → 페르소나 능동 생성 ═══ -->
       <div x-show="mod === 'lab' && labTab === 'user'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="flex items-center justify-between gap-3 flex-wrap">
-            <ul class="ds-bullets"><li>행동 로그(TIARA형)를 올리면 추출 콘텐츠와 조인해 <b>소비 형태 · 강도 · 선호</b>를 산출합니다.</li><li><code class="text-violet">content_id</code> = 추출 순서(0부터).</li></ul>
-            <div class="flex items-center gap-2">
-              <a href="/usermeta-template.csv" download class="ds-btn ds-btn--secondary ds-btn--s-sm">템플릿</a>
-              <label class="ds-btn ds-btn--primary ds-btn--s-sm" style="cursor:pointer">
-                행동 로그 업로드
-                <input type="file" accept=".csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="uploadUserLog($event)">
-              </label>
+            <ul class="ds-bullets">
+              <li>사용자 정보(프로필)와 행동 로그(TIARA형)가 <b>모두 모이면</b> 사용자마다 페르소나를 <b>자동 생성</b>합니다 · 별도 실행 버튼 없음.</li>
+              <li>행동 로그는 추출 콘텐츠와 조인해 <b>소비 형태 · 강도 · 선호</b>를 산출 · <code class="text-violet">content_id</code> = 추출 순서(0부터).</li>
+              <li>실명 · 연락처 등 식별 정보는 입력하지 마세요 · 프로필은 페르소나 생성 시 외부 AI로 전달됩니다.</li>
+            </ul>
+            <div class="flex items-center gap-2 flex-wrap" x-show="userData">
+              <span class="ds-badge ds-badge--category tnum" x-text="'프로필 ' + ((userData && userData.profiles_n) || 0) + '명'"></span>
+              <span class="ds-badge ds-badge--intent tnum" x-text="'로그 사용자 ' + ((userData && userData.users) ? userData.users.length : 0) + '명'"></span>
+              <span class="ds-badge ds-badge--success tnum"><span class="ds-badge__dot"></span><span x-text="'생성 페르소나 ' + ((userData && userData.generated_n) || 0) + '개'"></span></span>
             </div>
           </div>
         </div></div>
 
-        <!-- 실데이터 사용자 -->
+        <!-- 입력: 프로필(신규) + 행동 로그(기존) 2열 · 두 재료가 모이는 순간 서버가 생성 -->
+        <div class="grid grid-cols-2 gap-4">
+          <div class="panel"><div class="panel-hd"><b>사용자 정보 (프로필)</b><span class="meta">저장 즉시 재료 확인 · 모이면 자동 생성</span></div>
+            <div class="panel-bd">
+              <div class="flex items-center gap-2" style="margin-bottom:10px">
+                <a href="/usermeta-profile-template.csv" download class="ds-btn ds-btn--secondary ds-btn--s-sm">템플릿</a>
+                <label class="ds-btn ds-btn--secondary ds-btn--s-sm" style="cursor:pointer">CSV 업로드
+                  <input type="file" accept=".csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="uploadProfiles($event)"></label>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <div style="flex:1;min-width:110px"><label class="lbl">user_id</label><input x-model="pf.user_id" class="field" placeholder="u1"></div>
+                <div style="flex:1;min-width:100px"><label class="lbl">연령대</label><select x-model="pf.age_band" class="field"><option value="">선택</option><template x-for="a in ((userData && userData.profile_fields) ? userData.profile_fields.age_bands : [])" x-bind:key="a"><option x-bind:value="a" x-text="a"></option></template></select></div>
+                <div style="flex:1;min-width:110px"><label class="lbl">주 이용 시간대</label><select x-model="pf.day_part" class="field"><option value="">선택</option><template x-for="dp in ((userData && userData.profile_fields) ? userData.profile_fields.day_parts : [])" x-bind:key="dp"><option x-bind:value="dp" x-text="dp"></option></template></select></div>
+              </div>
+              <div style="margin-top:8px"><label class="lbl">관심 선언 (쉼표 구분)</label><input x-model="pf.interests" class="field" placeholder="재테크, 야구"></div>
+              <div class="flex items-center gap-2" style="margin-top:10px">
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="modBusy" x-on:click="saveProfile()" x-text="modBusy ? '처리 중…' : '프로필 저장'"></button>
+                <span class="text-xs text-muted" x-text="pfMsg"></span>
+              </div>
+            </div>
+          </div>
+          <div class="panel"><div class="panel-hd"><b>행동 로그</b><span class="meta">노출 · 클릭 · 체류 · 업로드분은 저장되어 재방문 시 유지</span></div>
+            <div class="panel-bd">
+              <div class="flex items-center gap-2" style="margin-bottom:10px">
+                <a href="/usermeta-template.csv" download class="ds-btn ds-btn--secondary ds-btn--s-sm">템플릿</a>
+                <label class="ds-btn ds-btn--primary ds-btn--s-sm" style="cursor:pointer">행동 로그 업로드
+                  <input type="file" accept=".csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="uploadUserLog($event)"></label>
+              </div>
+              <div class="text-xs text-muted" x-show="userData && userData.source" x-text="userData ? userData.source : ''"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 실데이터 사용자 · 생성 페르소나가 있으면 카드에 병행 표시 -->
         <div x-show="userData && userData.users && userData.users.length" class="space-y-3">
           <template x-for="u in (userData?userData.users:[])" x-bind:key="u.user_id">
             <div class="panel"><div class="panel-hd">
               <b x-text="u.user_id"></b>
-              <span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="'사용자 페르소나(행동 로그 군집) · ' + u.persona" data-tip-pos="top" x-text="u.persona"></span>
+              <span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="'기본 8종 근접 매칭 · ' + u.persona" data-tip-pos="top" x-text="u.persona"></span>
+              <span x-show="u.gen_persona" class="ds-badge ds-badge--success" style="cursor:help" x-bind:data-tip="u.gen_persona ? ('이 사용자의 메타 + 소비로 생성한 전용 페르소나 · ' + u.gen_persona.desc) : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="u.gen_persona ? (u.gen_persona.name + ' · 생성됨') : ''"></span></span>
               <span class="meta tnum ml-auto" x-text="'조회 ' + u.engagement.views + ' · 클릭률 ' + u.engagement.click_rate + ' · 평균체류 ' + u.engagement.avg_dwell_sec + 's'"></span>
             </div><div class="panel-bd">
+              <div class="drow" x-show="u.profile"><div class="k">프로필</div><div class="v text-sm text-body" x-text="u.profile ? [u.profile.age_band, (u.profile.interests||[]).join(' · '), u.profile.day_part].filter(Boolean).join('  ·  ') : ''"></div></div>
+              <div class="drow" x-show="u.gen_persona"><div class="k">생성 페르소나</div><div class="v">
+                <div class="text-sm"><b class="text-ink" x-text="u.gen_persona ? (u.gen_persona.full || u.gen_persona.name) : ''"></b><span class="text-muted" x-text="u.gen_persona ? (' · ' + u.gen_persona.desc) : ''"></span></div>
+                <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="(b, bi) in ((u.gen_persona && u.gen_persona.basis) || [])" x-bind:key="'gb'+bi"><span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="판단 근거 · 행동 로그와 프로필에서 도출" data-tip-pos="top" x-text="b"></span></template></div>
+              </div></div>
               <div class="drow"><div class="k">소비 형태</div><div class="v text-sm text-body" x-text="Object.entries(u.form).map(e=>e[0]+':'+e[1]).join(' · ')"></div></div>
               <div class="drow"><div class="k">소비 강도</div><div class="v flex flex-wrap gap-1.5">
                 <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:class="v==='고'?'ds-badge--entity':(v==='중'?'ds-badge--intent':'ds-badge--category')" x-bind:data-tip="'맥락(인텐트) ' + k + ' 소비 강도 ' + v + ' · 체류·클릭 가중 상대 등급'" data-tip-pos="top" x-text="k + ' (' + v + ')'"></span></template>
@@ -1037,11 +1078,11 @@ PAGE = """<!doctype html>
           </template>
         </div>
 
-        <!-- 명세(페르소나 정의·공식) -->
-        <div class="panel"><div class="panel-hd"><b>페르소나 정의 · 8종</b><span class="meta">형태 + 맥락별 강도 시그니처</span><button type="button" class="copybtn" x-show="userData && userData.users && userData.users.length" x-on:click="exportUsers()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
+        <!-- 명세(페르소나 정의·공식) · 기본 8종 + 생성분 병행 -->
+        <div class="panel"><div class="panel-hd"><b>페르소나 정의</b><span class="meta" x-text="'기본 8종' + ((userData && userData.generated_n) ? (' + 생성 ' + userData.generated_n) : '') + ' · 형태 + 맥락별 강도 시그니처'"></span><button type="button" class="copybtn" x-show="userData && userData.users && userData.users.length" x-on:click="exportUsers()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
           <div class="overflow-auto"><table class="ds-table"><thead><tr><th>페르소나</th><th>설명</th><th>형태(깊이·체류)</th></tr></thead><tbody>
             <template x-for="p in (userData?userData.personas_def:[])" x-bind:key="p.id">
-              <tr><td class="text-ink" x-text="p.full || p.name"></td><td><div class="tbox" x-text="p.desc"></div></td><td x-text="(p.form['깊이']||'') + ' · ' + (p.form['체류·완주']||'')"></td></tr>
+              <tr><td class="text-ink"><span x-text="p.full || p.name"></span><span x-show="p.generated" class="ds-badge ds-badge--success" style="margin-left:6px;cursor:help" x-bind:data-tip="p.generated ? ('사용자 ' + p.user_id + ' 전용 생성 페르소나') : ''" data-tip-pos="top">생성됨</span></td><td><div class="tbox" x-text="p.desc"></div></td><td x-text="(p.form['깊이']||'') + ' · ' + (p.form['체류·완주']||'')"></td></tr>
             </template>
             <template x-if="!(userData&&userData.personas_def&&userData.personas_def.length)"><tr><td colspan="3" class="text-muted">먼저 [실행·추출]에서 콘텐츠를 추출하세요</td></tr></template>
           </tbody></table></div>
@@ -1931,26 +1972,10 @@ PAGE = """<!doctype html>
             <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="pvModel"></span></div><textarea readonly spellcheck="false" x-bind:value="pvData ? pvData.system : '모델·호출을 선택하면 합성 결과가 표시됩니다'"></textarea></div>
             <div class="codeblock" style="margin-top:10px"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>user<span class="codeblock__stage">입력 템플릿</span></div><textarea readonly spellcheck="false" style="min-height:90px" x-bind:value="pvData ? pvData.user : ''"></textarea></div>
           </div></section>
-        <section class="panel" data-fn><div class="panel-hd"><b>검수</b><span class="meta">복실 · 품질 메타 판정</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.review" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
-          <div class="panel-bd">
-            <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.review" x-on:change="onStageModelChange('review')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 프롬프트 · 검수<span class="codeblock__stage" x-text="stageModels.review || '전역 프롬프트'"></span></div><textarea x-model="stagePrompts.review" spellcheck="false" placeholder="이 단계의 원천 프롬프트(지시문)를 직접 수정하세요"></textarea></div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('review')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('review')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.review"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.review ? ('최종 수정 ' + stagePromptsMeta.review) : '수정 이력 없음'"></span></div>
-          </div></section>
-        <section class="panel" data-fn><div class="panel-hd"><b>판정 · 부여</b><span class="meta">딱지 · 유통 결정 · 법령</span><span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.judge" data-tip="배치 결과 피드백이 이 단계 프롬프트에 자동 반영 중">학습 보정 반영</span></div>
-          <div class="panel-bd">
-            <div class="stage-model"><span class="stage-model__lbl">모델</span><select class="field" x-model="stageModels.judge" x-on:change="onStageModelChange('judge')"><option value="">전역 프롬프트 (미지정)</option><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m"></option></template></select></div>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 프롬프트 · 판정<span class="codeblock__stage" x-text="stageModels.judge || '전역 프롬프트'"></span></div><textarea x-model="stagePrompts.judge" spellcheck="false" placeholder="이 단계의 원천 프롬프트(지시문)를 직접 수정하세요"></textarea></div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button type="button" x-on:click="saveStage('judge')" class="ds-btn ds-btn--primary">저장</button><button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreDefault('judge')">기본값 복원</button><span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="stageMsg.judge"></span><span class="text-xs" style="color:var(--ds-placeholder);margin-left:auto" x-text="stagePromptsMeta.judge ? ('최종 수정 ' + stagePromptsMeta.judge) : '수정 이력 없음'"></span></div>
-          </div></section>
-        <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통</span></div>
+        <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통 · 선택 시 즉시 저장</span></div>
           <div class="panel-bd">
             <div class="ds-segmented" style="max-width:300px">
               <template x-for="o in reasoningOpts" x-bind:key="o.id"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="reasoning === o.id ? 'true' : 'false'" x-on:click="setReasoning(o.id)" x-text="o.label"></button></template>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
-              <button type="button" x-on:click="applyStagePrompts()" class="ds-btn ds-btn--secondary">전체 단계 한꺼번에 저장</button>
-              <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="prefMsg"></span>
             </div>
           </div></section>
       </div>
