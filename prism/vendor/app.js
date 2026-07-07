@@ -757,15 +757,15 @@
         if (this._adminBusy) return;
         this._adminBusy = true;
         try {
-          for (let i = 0; i < (tries || 4); i++) {
+          for (let i = 0; i < (tries || 6); i++) {
             try {
               const r = await fetch('/admin', { headers: this._authHeaders() });
-              if (r.ok || r.status === 401 || r.status === 403) {   // 인증 실패는 재시도 무의미(만료 = 재로그인)
+              if (r.ok || r.status === 401 || r.status === 403) {   // 인증 실패는 재시도 무의미(만료 = 재로그인) · 503 은 재시도
                 this.adminData = await r.json();
                 return;
               }
             } catch (e) {}
-            await new Promise((res) => setTimeout(res, 700 * Math.pow(2, i)));   // 0.7→1.4→2.8→5.6s
+            await new Promise((res) => setTimeout(res, 700 * Math.pow(2, i)));   // 0.7→…→22.4s(누적 ~44s · 배포 재시작 흡수)
           }
           this._err('팀 관리 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요');
         } finally { this._adminBusy = false; }

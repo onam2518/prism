@@ -72,8 +72,14 @@ def auth_action(data: dict) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)[:160]}
 
-def validate_jwt(token: str):
-    """user JWT → uid(검증). 60s 캐시. 실패 시 None."""
+class AuthBackendUnavailable(Exception):
+    """인증 서버(supabase auth) 일시 장애: 토큰 무효와 구분해 재시도 가능(503)으로 응답하기 위한 신호."""
+
+
+def validate_jwt(token: str, strict: bool = False):
+    """user JWT → uid(검증). 60s 캐시. 실패 시 None.
+    strict=True: 인증 서버 연결 실패(일시 장애)를 토큰 무효와 구분해 AuthBackendUnavailable 로 던진다.
+    (구분 없이 None 을 주면 /admin 이 200+isAdmin:false 로 굳어 관리자 메뉴가 사라지는 간헐 증상)"""
     s = _supa()
     if not s or not token:
         return None
@@ -92,8 +98,12 @@ def validate_jwt(token: str):
             u = json.loads(r.read().decode("utf-8"))
             uid = u.get("id")
             email = (u.get("email") or "").strip().lower()
+    except urllib.error.HTTPError:
+        uid = None                                   # 4xx = 토큰 무효(확정 · 재시도 무의미)
     except Exception:
-        uid = None
+        uid = None                                   # 네트워크/타임아웃 = 일시 장애
+        if strict:
+            raise AuthBackendUnavailable()
     if uid:
         with _JWT_LOCK:
             _JWT_CACHE[token] = (uid, now + 60)
