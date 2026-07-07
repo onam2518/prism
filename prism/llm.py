@@ -46,12 +46,26 @@ class LLMClient:
         self.timeout = timeout or self.cfg.timeout
         self.limiter = limiter or RateLimiter(self.cfg.rate.rpm, self.cfg.rate.tpm)
         self._mock_fn = None  # pipeline 이 주입하는 결정론적 mock 생성기
-        # gpt-5 계열은 max_tokens 미지원(라우터가 기본값 주입 시 HTTP400) → max_completion_tokens 명시.
-        # 그 외 모델은 400 응답의 안내문을 보고 적응(아래 chat 재시도 분기).
-        self._max_completion = str(self.model or "").split("/")[-1].startswith("gpt-5")
+        # 모델별 파라미터 협상: 라우터(Timely 등) 경유 시 모델마다 거부 파라미터가 다르다(실측 2026-07-07).
+        #  · gpt-5*: max_tokens 미지원(라우터가 기본값 주입) → max_completion_tokens 명시
+        #  · gpt-5* + reasoning_effort: temperature=0 거부(기본 1만 허용) → temperature 생략
+        #  · claude-*: response_format json_object 거부(json_schema 만) → response_format 생략(_parse_json 이 복구)
+        # 첫 400 안내문에서 배우고 즉시 재시도하며, 결과는 모델별 프로세스 캐시로 공유(배치 400 낭비 방지).
+        bare = str(self.model or "").split("/")[-1]
+        seed = set(LLMClient._PARAM_ADAPT.get(bare, ()))
+        if bare.startswith("gpt-5"):
+            seed.add("max_completion")
+        self._adapt = seed                     # {"max_completion", "no_temperature", "no_response_format"}
         # 운영 집계(스레드세이프): 실패 분류 카운터
         self._lock = threading.Lock()
         self.fail_counts = {}   # {kind: n}
+
+    _PARAM_ADAPT = {}                          # {bare_model: set(적응)} · 프로세스 전역(멱등 갱신이라 GIL 로 충분)
+
+    def _learn_param(self, name: str):
+        self._adapt.add(name)
+        bare = str(self.model or "").split("/")[-1]
+        LLMClient._PARAM_ADAPT.setdefault(bare, set()).add(name)
 
     # 공개 API
     def complete_json(self, system: str, user: str, tag: str = "") -> tuple[dict, LLMResult]:
@@ -85,14 +99,22 @@ class LLMClient:
                     detail = e.read().decode()[:200]
                 except Exception:
                     detail = ""
-                if (e.code == 400 and not self._max_completion
-                        and "max_completion_tokens" in detail):
-                    # 모델이 max_tokens 를 거부(신형 gpt 등 · 라우터가 기본값 주입) →
-                    # max_completion_tokens 로 전환해 즉시 재시도(백오프 불필요)
-                    self._max_completion = True
-                    retries += 1
-                    last_err = e
-                    continue
+                if e.code == 400:
+                    # 파라미터 협상: 400 안내문에서 거부 파라미터를 배우고 즉시 재시도(백오프 불필요)
+                    learned = ""
+                    if "max_completion" not in self._adapt and "max_completion_tokens" in detail:
+                        learned = "max_completion"
+                    elif ("no_temperature" not in self._adapt and "temperature" in detail
+                          and ("does not support" in detail or "unsupported_value" in detail
+                               or "deprecated" in detail)):
+                        learned = "no_temperature"
+                    elif "no_response_format" not in self._adapt and "response_format" in detail:
+                        learned = "no_response_format"
+                    if learned:
+                        self._learn_param(learned)
+                        retries += 1
+                        last_err = e
+                        continue
                 if e.code in rp.retry_status and attempt < rp.max_retries:
                     # 레이트리밋/일시 오류 → 지수백오프 재시도
                     retries += 1
@@ -128,14 +150,18 @@ class LLMClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0,
             "stream": False,
         }
+        if "no_response_format" not in self._adapt:
+            # 일부 모델(라우터 경유 claude 등)은 json_object 를 거부 → 생략(프롬프트 계약 + _parse_json 복구)
+            body["response_format"] = {"type": "json_object"}
+        if "no_temperature" not in self._adapt:
+            # 일부 추론형 모델(gpt-5 + reasoning_effort)은 temperature=0 거부(기본 1만 허용) → 생략
+            body["temperature"] = 0
         if self.reasoning_effort and self.reasoning_effort != "default":
             # Upstage 가 지원하면 reasoning 강도 제어; 미지원이면 무해하게 무시됨
             body["reasoning_effort"] = self.reasoning_effort
-        if self._max_completion:
+        if "max_completion" in self._adapt:
             # max_tokens 미지원 모델(gpt-5 계열 등): 명시하면 라우터가 max_tokens 를 주입하지 않는다.
             # 추론형 모델은 추론 토큰도 이 상한에 포함되므로 넉넉히 잡는다(출력 잘림 = JSON 파싱 실패).
             body["max_completion_tokens"] = 8192
