@@ -86,6 +86,7 @@
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
       adminData: null,        // 팀 관리(supabase)
+      _adminBusy: false,      // ensureAdmin 동시 실행 가드(초기 이중 트리거 dedupe)
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
       goldenResult: null, goldenBusy: false, goldenMsg: '',
       rawData: null, rawSel: null,
@@ -285,8 +286,13 @@
 
       init() {
         this.loadReviewer();                           // 검수자·토큰(localStorage) · refreshConfig 의 관리자 로드보다 먼저
+        if (this.authToken) this.ensureAdmin();        // 관리자 판정을 /config 성공에 묶지 않는다(새로고침 경합 방지)
         this.refreshConfig();
         this.startLive();                              // 실시간 SSE 구독
+        // 장기 폴백: 탭 복귀 시에도 판정이 비어 있으면 재시도(일시 실패로 사용자 메뉴만 굳는 것 방지)
+        window.addEventListener('focus', () => {
+          if (this.backend === 'supabase' && this.authToken && !this.adminData) this.ensureAdmin();
+        });
         this.loadHome();                               // 배치된 홈 위젯(localStorage)
         this.loadDash();                               // 홈 위젯 데이터(/dashboard)
         this.loadArena();                              // 홈 = 아레나
@@ -738,6 +744,25 @@
       async loadQueue() { this.modBusy = true; try { const p = new URLSearchParams(); if (!this.queueOnlyUnreviewed) p.set('all', '1'); if (this.reviewer) p.set('reviewer', this.reviewer); this.queueData = await (await fetch('/queue?' + p.toString(), { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; this.arenaData = await (await fetch('/arena' + p, { headers: this._authHeaders() })).json(); this.maybeQuestReminder(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
       async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
+      // 관리자 판정 보장 로드: 일시 실패(배포 재시작·네트워크 순단)면 백오프 재시도.
+      // 단발 loadAdmin 만으로는 실패 시 adminData 가 null 로 굳어 관리자에게 사용자 메뉴만 노출됐다(간헐 · 2026-07-07).
+      async ensureAdmin(tries) {
+        if (this._adminBusy) return;
+        this._adminBusy = true;
+        try {
+          for (let i = 0; i < (tries || 4); i++) {
+            try {
+              const r = await fetch('/admin', { headers: this._authHeaders() });
+              if (r.ok || r.status === 401 || r.status === 403) {   // 인증 실패는 재시도 무의미(만료 = 재로그인)
+                this.adminData = await r.json();
+                return;
+              }
+            } catch (e) {}
+            await new Promise((res) => setTimeout(res, 700 * Math.pow(2, i)));   // 0.7→1.4→2.8→5.6s
+          }
+          this._err('팀 관리 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요');
+        } finally { this._adminBusy = false; }
+      },
       goldenModel: '',                        // 정답셋 목록 · 유래 모델 필터
       get goldenModelList() {
         const its = (this.goldenList && this.goldenList.items) || [];
@@ -1304,7 +1329,7 @@
         try {
           const r = await fetch('/config'); this.cfg = await r.json();
           if (this.cfg.backend) this.backend = this.cfg.backend;     // sqlite | supabase
-          if (this.backend === 'supabase' && this.authToken) this.loadAdmin();  // 관리자 여부 → nav 게이팅(자동인입 등)
+          if (this.backend === 'supabase' && this.authToken) this.ensureAdmin();  // 관리자 여부 → nav 게이팅(재시도 포함)
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
           if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
