@@ -84,6 +84,30 @@ class TestAdminTiers(unittest.TestCase):
         st.clear_team_feedback()
         self.assertEqual(st.feedback_map(), {})
 
+    def test_validate_jwt_strict_distinguishes_transient(self):
+        """인증 서버 일시 장애 vs 토큰 무효 구분: /admin 이 200+isAdmin:false 로 굳어
+        관리자 메뉴가 사라지던 간헐 증상의 원천(2026-07-07)."""
+        import io
+        import urllib.error
+        import urllib.request
+        from prism import adminops as AO
+        orig_supa, orig_open = AO._supa, urllib.request.urlopen
+        AO._supa = lambda: ("http://auth.test", "k")
+        self.addCleanup(lambda: (setattr(AO, "_supa", orig_supa),
+                                 setattr(urllib.request, "urlopen", orig_open)))
+
+        def transient(req, timeout=None):
+            raise OSError("connection refused")
+        urllib.request.urlopen = transient
+        self.assertIsNone(AO.validate_jwt("tok-x"))              # 비 strict = 기존 계약(None)
+        with self.assertRaises(AO.AuthBackendUnavailable):       # strict = 재시도 신호(503 응답용)
+            AO.validate_jwt("tok-x", strict=True)
+
+        def invalid(req, timeout=None):
+            raise urllib.error.HTTPError("u", 401, "bad", None, io.BytesIO(b"{}"))
+        urllib.request.urlopen = invalid
+        self.assertIsNone(AO.validate_jwt("tok-y", strict=True))  # 토큰 무효 = 확정 None(재시도 없음)
+
     def test_super_admin_tier(self):
         """권한 3단계: 슈퍼관리자(생성자 부여)는 운영 작업 접근 O · 팀 관리자만인 멤버는 X."""
         from prism import adminops as AO

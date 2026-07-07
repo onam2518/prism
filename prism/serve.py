@@ -2178,7 +2178,16 @@ class Handler(BaseHTTPRequestHandler):
                 d["missions"] = mission_progress(rv, self._req_team())
             self._send(200, json.dumps(d, ensure_ascii=False), _JSON)
         elif self.path.startswith("/admin"):
-            self._send(200, json.dumps(admin_data(self._bearer_uid(), self._req_team(), self._bearer_email()),
+            # 메뉴 게이팅의 원천: 인증 서버 일시 장애는 '비관리자(200)'가 아니라 503(재시도)으로 구분
+            auth = self.headers.get("Authorization", "")
+            token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+            try:
+                uid = AO.validate_jwt(token, strict=True)
+            except AO.AuthBackendUnavailable:
+                self._send(503, json.dumps({"ok": False, "error": "인증 서버 연결 지연 · 자동 재시도됩니다"},
+                                           ensure_ascii=False), _JSON)
+                return
+            self._send(200, json.dumps(admin_data(uid, self._req_team(), self._bearer_email()),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/queue"):
             from urllib.parse import urlparse, parse_qs
