@@ -2306,12 +2306,23 @@ class Handler(BaseHTTPRequestHandler):
             st = get_store()
             _rep = _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT) or {}
             g = _rep.get("golden") or {}
+            # 검수 진행(반영 대기): 골든은 학습 반영 시에만 확정되므로, 반영 전에도 검수가
+            # 쌓이고 있음을 현황에 표시(전부 0 + 안내 없음 = "표시가 안 된다" 혼란 방지)
+            reviewed_n = good_n = 0
+            try:
+                for e in (st.feedback_map(team=self._req_team()) or {}).values():
+                    reviewed_n += 1
+                    if e.get("consensus") == "good":
+                        good_n += 1
+            except Exception:
+                pass
             self._send(200, json.dumps({
                 "ok": True,
                 "batch_seq": (st.batch_seq(self._req_team()) if (st and hasattr(st, "batch_seq")) else 0),
                 "total": (st.golden_count(self._req_team()) if (st and hasattr(st, "golden_count")) else 0),
                 "source_counts": (st.golden_source_counts(self._req_team())
                                   if (st and hasattr(st, "golden_source_counts")) else {}),
+                "reviewed": {"contents": reviewed_n, "good": good_n},
                 "last_batch": {k: g.get(k) for k in ("confirmed", "new", "demoted", "need_category",
                                                      "disagree", "min_good")},
                 "need_list": g.get("need_list") or [],
