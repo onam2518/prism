@@ -1,19 +1,22 @@
 # HANDOFF · Prism · 팀 검수·평가 플랫폼
 
-다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-06, v0.5.17)
+다음 세션이 바로 이어갈 수 있도록 현재 상태를 정리한 문서. (갱신: 2026-07-07 · 세션 공통 규칙은 `CLAUDE.md`가 우선)
 
 ## 한 줄 요약
 Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출을 넘어 **팀이 산출물을 검수·평가하고(HITL), 그 합의를 골든셋·프롬프트 개선과 특화 LLM 학습데이터로 되먹이는 평가 플랫폼**이다. supabase 운영 전용, 품질 가중 게이미피케이션(골드 문항·미션), 검수 → 골든셋 → 학습 일배치 폐루프 + 학습데이터 추출(SFT/DPO/rationale)까지 동작.
 
 ## 정본 위치
-- 레포: `/Users/tony/Desktop/prism` (origin `github.com/onam2518/prism`, 사용자 소유 · private). 구 머신 경로 `/Users/pete.axz-pc/...`는 폐기.
-- **작업은 `main` 브랜치에 직접**(과거 `feat/policy-edit` 경유 PR 방식 → 현재는 main 직커밋). `feat/image-meta-poc`는 과거 브랜치.
-- 릴리즈: `gh release`, 최신 **v0.5.17**. DMG 2종(일반/QA) 자산 첨부. 빌드: venv `~/.venvs/prism-pkg`(python3.12·pyinstaller·pywebview) + brew create-dmg, 절차는 데일리로그(2026-07-06)와 메모리 참조.
+- 정본 = origin `github.com/onam2518/prism` main (사용자 소유 · private). 작업·배포 머신(2026-07-07 현재):
+  `/Users/pete.axz-pc/orca/prism` (키 파일 4종·flyctl 보유 · 구 tony 머신 표기는 07-06 시점 기록).
+- **main 직접 커밋·push 금지** · 기능 브랜치(`feat/…`) → PR → 머지 (2026-07-07 `CLAUDE.md` 규칙 ·
+  멀티 세션 동시작업 안전. 커밋은 내 파일만 명시 스테이징 · 배포는 클린 워크트리 스냅샷에서만).
+- 릴리즈: `gh release`, 최신 **v0.5.17**(DMG는 QA 연습용만 유효 · 팀원은 브라우저 접속). 빌드: venv `~/.venvs/prism-pkg`(python3.12·pyinstaller·pywebview) + brew create-dmg, 절차는 데일리로그(2026-07-06)와 메모리 참조.
 
 ## 실행 방법
-- `cd ~/Desktop/project/prism && python3 -m prism.serve` → http://127.0.0.1:8765
-- 데스크탑 앱: `desktop/app.py`(pywebview). 코드 바꾸면 **서버 재시작해야** 반영(페이지 메모리 로드).
-- `--mock` = 키 있어도 강제 mock. 8765 점유 시 `lsof -ti tcp:8765 | xargs kill`.
+- **운영(팀원 포함)**: https://prism-item.fly.dev 브라우저 접속 (Fly 상시 서버 · supabase 모드).
+- 로컬 개발: `PRISM_DB=$(mktemp -d)/t.db python3 -m prism.serve --mock --port <임시포트>` (운영 8765 회피 · DB 격리 · CLAUDE.md 규칙 6). 코드 바꾸면 **서버 재시작해야** 반영(페이지 메모리 로드).
+- 배포: main 최신화 → `git worktree add --detach <경로> origin/main` → 그 안에서 `fly deploy` → `curl https://prism-item.fly.dev/config` 검증(backend supabase · configured true).
+- 데스크탑 앱(`desktop/app.py`)은 관리자 사용 중단(스케줄러 이중 발화 방지) · QA 연습 빌드 용도만.
 
 ## 운영 모드 (중요 · supabase 전용화됨)
 - **로컬(sqlite 단독) 모드는 UI 상 제거**. 첫 화면 = 로그인/가입.
@@ -252,30 +255,34 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - 키 상태: Upstage(`~/.prism_key`)·Timely(`~/.prism_timely_key`) 등록·연결 검증 완료. service_role 키는
   2026-04-27 발급 원본(로테이션 미처리 · 보류 중).
 
-## 다음 단계 (2026-07-06 · v0.5.17 시점)
+## 2026-07-07 세션 요약 (운영 전환 완료)
 
-1. **Fly.io 상시 서버 배포** ← 최우선 · **다른 PC에서 진행 예정**
-   - 배경: 팀원 DMG 는 키 파일 없인 로컬 sqlite 모드 → 가입이 supabase 에 도달 못 함(팀 합류 경로 없음).
-     Vercel 은 상시 스케줄러·인메모리 큐·장시간 배치 때문에 구조적 불가 → Fly.io 컨테이너로 확정.
-   - 절차(레포의 Dockerfile 그대로 사용):
-     1) `brew install flyctl && fly auth login`
-     2) `fly launch --no-deploy` (region nrt 권장 · Dockerfile 자동 감지)
-     3) fly.toml: `internal_port = 8765` · **`auto_stop_machines = false` + `min_machines_running = 1`**
-        (학습 반영 스케줄러 상시 필요 · 머신이 잠들면 퀘스트 자동 반영이 안 돎) · `[mounts] source="prism_data", destination="/data"`
-     4) `fly volumes create prism_data --size 1`
-     5) `fly secrets set PRISM_BACKEND=supabase SUPABASE_URL=<~/.prism_supabase_url 값> SUPABASE_SERVICE_KEY=<~/.prism_supabase_key 값> UPSTAGE_API_KEY=<~/.prism_key 값> PRISM_TIMELY_KEY=<~/.prism_timely_key 값> PRISM_ADMIN_EMAILS=pete.ryu@axzcorp.com PRISM_CONFIG=/data/config.json PRISM_MODEL=<운영 모델>`
-        (키 파일 4종은 이 머신 홈에 있음 · 값 이관은 지난번처럼 안전 경로로)
-     6) `fly deploy` → `curl https://<앱>.fly.dev/config` 에서 `backend: supabase · configured: true · guideUrls 3종` 확인
-   - 배포 후: **관리자 데스크탑 앱 사용 중단**(스케줄러 이중 발화 방지) · 전원 브라우저 접속.
-     `PRISM_CONFIG` env 는 v0.5.17 코드에 있음(컨테이너 재시작 시 퀘스트 일시·설정 보존).
-2. **팀원 온보딩 재시도**: Fly URL + 초대코드(팀 관리 화면) 안내 → 가입 → 팀 관리 멤버 목록 확인.
-   Confluence 사용자 가이드 STEP 0 "맥 앱 권장" → **브라우저 접속** 안내로 수정(가이드 링크는 시작하기 카드에 연동돼 있음).
-3. **운영 사이클 개시**: 배치 추가 → 한 모델 실행 → 퀘스트 생성 → 검수 → 반영. 검수 중 재실행은 서버가 차단(v0.5.17).
-   골드 문항 비율·미션 난이도·품질 배율·모델별 learned 실데이터 모니터링(기존 1번).
-4. **큐(실행 작업) 단위 퀘스트** (설계안 보류 · 사용자 검토 대기): 퀘스트 대상 = 전체 | 실행 작업(이력 hashes),
+상세는 `prism/daily-log/2026-07-07.md`. 핵심만:
+
+- **Fly 상시 서버 운영 개시**: prism-item.fly.dev 검증·재배포. 배포 절차 = main 최신화 → 클린 워크트리
+  스냅샷에서 `fly deploy` → /config 검증. 07-06 "다음 단계" 1·2·5번(배포·온보딩·키 로테이션) 완료.
+- **원문 페이지 패널**: 검수 상세 좌측 '추출 텍스트 ↔ 원문 페이지(iframe)' 탭 + 배율 3단계(작게50/보통75/크게100)
+  + 다이얼로그 확장. source_url 이 실행(rerun)·run_pipeline·단건 추가에서 유실되던 3곳 수정(실행 upsert 가
+  supabase 컬럼을 "" 로 덮어쓰던 결함). 템플릿·수동 폼에 원문 링크 입력 추가. ⚠️ 기존 건 URL 백필은
+  재업로드 불가(save_dedup skip + 실행건 리셋 부작용) · 별도 기능 필요.
+- **슈퍼관리자(권한 3단계)**: 운영 관리자(허용목록·전부) > 슈퍼관리자(생성자 부여 · 운영 작업 메뉴 전체,
+  시스템 설정·데이터/팀 삭제·API 키 제외 · cond `opsadmin`) > 팀 관리자(위임 · 팀 관리만).
+  지정/해제는 **오직 팀 생성자만**(서버+UI 이중 게이트 · 운영 관리자도 불가). DDL `prism_reviewers.super_admin`.
+- **네이티브 confirm 10곳 → DS 확인 모달**(dsConfirm · Promise): CDP 자동화 렌더러 블로킹 해소.
+- **병행 세션**: 모델러 핸드오프 번들(.zip) · 페르소나 능동 생성(usermeta) · `CLAUDE.md` 동시작업 규칙 신설
+  (main 직커밋 금지 → 브랜치·PR · 파일 명시 스테이징 · 클린 스냅샷 배포).
+- Confluence 사용자 가이드 STEP 0 = 브라우저 접속(prism-item.fly.dev) 안내로 교체(v7 · 맥 앱 안내 제거).
+
+## 다음 단계 (2026-07-07 시점)
+
+1. **운영 사이클 개시** ← 최우선: 실배치 추가(원문 링크 컬럼 포함 권장) → 한 모델 실행 → 퀘스트 생성
+   (learnNextAt) → 검수 → 반영. 검수 중 재실행은 서버가 차단(v0.5.17).
+   골드 문항 비율·미션 난이도·품질 배율·모델별 learned 실데이터 모니터링.
+2. **큐(실행 작업) 단위 퀘스트** (설계안 보류 · 사용자 검토 대기): 퀘스트 대상 = 전체 | 실행 작업(이력 hashes),
    진척 분모·팀 게이지만 범위 고정, 학습 반영은 전체 누적 유지. 실행 이력 hashes 기반이라 서버 기반 준비됨.
-5. service_role 키 로테이션(미처리 · iat 2026-04-27 원본): Fly 배포 시점이 로테이션 적기(secrets 만 갱신하면 됨).
-6. DPO 선호쌍 축적·Dawid-Skene 가중 직접 반영 검토·라우트 2단계·Sparkle(T3): 기존 트랙 유지.
+3. 기존 콘텐츠 **원문 링크 백필** 기능(필요 시): hash 매칭 URL-only 갱신 라우트(재업로드로는 불가).
+4. DPO 선호쌍 축적·Dawid-Skene 가중 직접 반영 검토·라우트 2단계·Sparkle(T3): 기존 트랙 유지.
 
 ## 메모리
-구 머신 메모리는 이관 안 됨. 이 머신(tony) 메모리: `prism-deploy-release-workflow`(빌드·DMG·릴리스 절차) · `prism-supabase-keys`(키 파일 배치 · supabase 모드 함정 · team_links 패턴). 다른 PC 작업 시 이 문서와 데일리로그가 원천.
+작업·배포 머신(pete) 메모리: `prism-ops-environment`(배포 머신·prism-item·"배포해줘" 절차·키 파일 위치) ·
+`reference-confluence-prism-pages`(DNM 페이지 ID). 세션 공통 규칙은 repo `CLAUDE.md` 가 정본.
