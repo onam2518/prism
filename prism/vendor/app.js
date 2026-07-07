@@ -187,7 +187,12 @@
       _afterVerdict() {                                  // 판정 직후: 현재 행 완료 표기 + 자동 다음(토글)
         if (!this.detailNav) return;
         const cur = this.detailNav.list[this.detailNav.idx];
-        if (cur) cur._doneLocal = true;
+        if (cur) {
+          cur._doneLocal = true;
+          // 상세(detail)는 목록 행의 사본이라 판정이 행에 자동 반영되지 않는다 →
+          // fb 를 되써서 목록의 ✓/검수하기 표기가 새로고침 없이 즉시 갱신되게 한다
+          if (this.detail && this.detail.hash === cur.hash) cur.fb = Object.assign({}, cur.fb, this.detail.fb);
+        }
         if (this.autoNext) this.detailNextTodo();
       },
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },

@@ -1209,12 +1209,17 @@ PAGE = """<!doctype html>
             <div class="panel-bd">
               <template x-if="goldenStatus">
                 <div>
-                  <div class="tiles" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
+                  <div class="tiles" style="grid-template-columns:repeat(6,1fr);margin-bottom:12px">
+                    <div class="tile"><div class="n tnum" x-text="(goldenStatus.reviewed&&goldenStatus.reviewed.contents)||0"></div><div class="t">검수 완료</div></div>
                     <div class="tile"><div class="n tnum" x-text="goldenStatus.total"></div><div class="t">정답 누적</div></div>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.review)||0"></div><div class="t">검수로 확정</div></div>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.source_counts&&goldenStatus.source_counts.manual)||0"></div><div class="t">직접 등록</div></div>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.new)||0"></div><div class="t">신규 승격</div></div>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.need_category)||0"></div><div class="t">분류 필요</div></div>
+                  </div>
+                  <!-- 반영 전 안내: 검수는 쌓였는데 정답이 0이면 "표시가 안 된다"로 오해 · 골든은 학습 반영 시 확정 -->
+                  <div class="text-xs text-muted" style="margin-bottom:10px" x-show="!goldenStatus.total && goldenStatus.reviewed && goldenStatus.reviewed.contents">
+                    검수 <b class="text-ink tnum" x-text="goldenStatus.reviewed.contents"></b>건이 쌓였고 아직 학습 반영 전입니다 · 정답 확정은 학습 반영 때 이뤄집니다(검수 목표 카드의 ⚡ 즉시 반영 또는 목표 일시 도달 시)
                   </div>
                   <div x-show="(goldenStatus.need_list||[]).length">
                     <div class="subhd" style="margin:4px 0 8px">분류 필요 <span class="meta">카테고리를 채우면 다음 학습 반영 때 정답으로 승격 (+5pt·미션)</span></div>
@@ -2199,7 +2204,7 @@ PAGE = """<!doctype html>
             <template x-if="detail && (!(detail.fb && detail.fb.verdict) || editVerdict)">
               <div>
                 <div style="display:flex;gap:8px">
-                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="!pendingBad && detail && detail.fb && detail.fb.verdict==='good' ? 'is-on' : ''" x-on:click="reviewGood()"><span class="verdictbtn__dot"></span>정확</button>
+                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="!pendingBad && detail && detail.fb && (detail.fb.mine || detail.fb.verdict)==='good' ? 'is-on' : ''" x-on:click="reviewGood()"><span class="verdictbtn__dot"></span>정확</button>
                   <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="pendingBad ? 'is-on' : ''" x-on:click="pendingBad=true"><span class="verdictbtn__dot"></span>수정 필요</button>
                 </div>
                 <!-- 수정 필요: 요소·사유 입력 후 '완료 처리' 로만 확정 -->
