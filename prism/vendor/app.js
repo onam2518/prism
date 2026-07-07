@@ -750,9 +750,8 @@
         const its = (this.goldenList && this.goldenList.items) || [];
         return this.goldenModel === '' ? its : its.filter(g => (g.model || '') === this.goldenModel);
       },
-      // 프롬프트 스튜디오 · 기준 계약/계열 래퍼/호출별 모델/미리보기
+      // 프롬프트 스튜디오 · 기준 계약/계열 래퍼/미리보기
       contractCall: 'summary', wrapFam: 'solar', wrapDraft: '', wrapMsg: '',
-      callModels: { summary: '', entities: '', intent: '', category: '' }, fourCalls: true, callMsg: '',
       pvModel: '', pvCall: 'summary', pvService: '뉴스', pvData: null,
       callLabel(cl) { return ({ summary: '① 리드문', entities: '② 엔티티', intent: '③ 인텐트', category: '④ 카테고리' })[cl] || cl; },
       get contractText() {
@@ -773,10 +772,6 @@
         const body = { family_wrappers: {} }; body.family_wrappers[this.wrapFam] = '';
         try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 기본값 복원'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
         setTimeout(() => { this.wrapMsg = ''; }, 2500);
-      },
-      async saveCallModels() {
-        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ meta_call_models: this.callModels, meta_four_calls: !!this.fourCalls }) }); await this.refreshConfig(); this.callMsg = '✓ 저장됨'; } catch (e) { this.callMsg = '실패'; }
-        setTimeout(() => { this.callMsg = ''; }, 2500);
       },
       async loadPreview() {
         if (!this.pvModel) this.pvModel = this.availableModels[0] || '';
@@ -928,6 +923,16 @@
           const blob = await res.blob(); const a = document.createElement('a');
           a.href = URL.createObjectURL(blob); a.download = 'prism_finetune_spec.md'; a.click(); URL.revokeObjectURL(a.href);
         } catch (e) { this._err('소요서 생성 실패'); }
+      },
+      async exportHandoff() {
+        try {
+          const res = await fetch('/handoff-export', { headers: this._authHeaders() });
+          if (!res.ok) { this._err('핸드오프 번들 생성 실패'); return; }
+          const m = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+          const blob = await res.blob(); const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = (m && m[1]) || 'prism_handoff.zip';
+          a.click(); URL.revokeObjectURL(a.href);
+        } catch (e) { this._err('핸드오프 번들 생성 실패'); }
       },
       pctTxt(v) { return (v == null) ? '·' : (Math.round(v * 1000) / 10) + '%'; },
       // 카테고리 옵션(IAB Tier1 / Tier2) · 빈칸 채우기 피커용
@@ -1283,12 +1288,10 @@
           if (this.cfg.stageModels) this.stageModels = Object.assign({ extract:'', analyze:'', review:'', judge:'' }, this.cfg.stageModels);
           if (this.cfg.modelPrompts) this.modelPrompts = this.cfg.modelPrompts;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
-          if (this.cfg.metaCallModels) this.callModels = Object.assign({ summary: '', entities: '', intent: '', category: '' }, this.cfg.metaCallModels);
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.learnNextAt === 'string') this.learnNextAt = this.cfg.learnNextAt;
           if (typeof this.cfg.desktopAllowDownloads === 'boolean') this.dtAllowDl = this.cfg.desktopAllowDownloads;
           if (typeof this.cfg.desktopPersistStorage === 'boolean') this.dtPersist = this.cfg.desktopPersistStorage;
-          if (typeof this.cfg.metaFourCalls === 'boolean') this.fourCalls = this.cfg.metaFourCalls;
           if (!this.wrapDraft) this.syncWrapDraft();
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();

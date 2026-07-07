@@ -428,9 +428,20 @@ def learn_data(team=None) -> dict:
         lo, hi = Q.binomial_ci(ev.get("grade_accuracy") or 0.0, int(ev["n"]))
         acc_ci = {"acc": ev.get("grade_accuracy"), "n": int(ev["n"]), "lo": lo, "hi": hi}
     # 추출 가능량
-    patch_n = len(st.patch_rows(team=team)) if hasattr(st, "patch_rows") else 0
+    prows = st.patch_rows(team=team) if hasattr(st, "patch_rows") else []
+    patch_n = len(prows)
     fstats = st.feedback_stats(team=team)
     rationale_n = fstats.get("learned", 0)
+    # 노하우 결속: 골든 중 사람 판단 사유(검수 노트·교정 이력)가 연결된 건 · knowhow.jsonl 의 원천.
+    # REAP 사유는 내보내기 시점에 합류(건별 질의 비용상 집계에는 미포함 → 소량 가산될 수 있음).
+    from .store import content_hash as _chash
+    patch_hashes = {p["hash"] for p in prows}
+    knowhow_n = 0
+    for g in golden:
+        ch = _chash(g.get("content") or {})
+        e = fmap.get(ch) or {}
+        if ch in patch_hashes or any((v.get("note") or "").strip() for v in e.get("verdicts", [])):
+            knowhow_n += 1
     # 학습 소요 대비(전 기준치 논문 출처)
     requirements = [
         {"kind": "분류 부트스트랩(클래스당 8)", "target": PER_CLASS_TARGET * len(D.IAB_TIER1),
@@ -475,7 +486,10 @@ def learn_data(team=None) -> dict:
             "reviewers": reviewers, "acc_ci": acc_ci,
             "label_flags": list((_SV._report_get("eval_detail", team, {}) or {}).get("items") or _LAST_EVAL_DETAIL),
             "split": split_list[:50], "split_n": len(split_list),
-            "extractable": {"sft": golden_n, "dpo": patch_n, "rationale": rationale_n},
+            "extractable": {"sft": golden_n, "dpo": patch_n, "rationale": rationale_n,
+                            "knowhow": knowhow_n},
+            "knowhow": {"n": knowhow_n,
+                        "coverage": (round(knowhow_n / golden_n, 3) if golden_n else None)},
             "requirements": requirements}
 
 def learn_spec_md(team=None) -> str:
@@ -508,6 +522,12 @@ def learn_spec_md(team=None) -> str:
     if g:
         L.append(f"- 최근 학습 반영: 확정 {g.get('confirmed')} · 신규 {g.get('new')} · 분류 필요 {g.get('need_category')} · 의견 갈림 {g.get('disagree')}")
     L.append(f"- 추출 가능 데이터: SFT {d['extractable']['sft']} · 선호쌍(DPO) {d['extractable']['dpo']} · 판단근거(rationale) {d['extractable']['rationale']}")
+    kh = d.get("knowhow") or {}
+    if d.get("golden_n"):
+        cov = kh.get("coverage")
+        L.append(f"- 판단 노하우 결속: 골든 {d['golden_n']}건 중 **{kh.get('n', 0)}건"
+                 f"({round(cov * 100, 1) if cov is not None else 0}%)** 에 사람 사유(검수 노트·교정 이력) 연결"
+                 " · 원문 확인은 핸드오프 번들 knowhow.jsonl")
     L.append("")
     L.append("## 3. 소요(부족분) · 기준치 대비")
     L.append("")
@@ -614,7 +634,189 @@ def learn_export(kind: str, team=None):
                     "reap_plan": rp.get("plan") or ""}, ensure_ascii=False))
                 count += 1
         return "prism_rationale.jsonl", "\n".join(lines)
+    if kind == "knowhow":                              # 판단 궤적: 골든 ← 검수 의견·REAP 사유·교정 전/후 결속
+        for r in knowhow_rows(team):
+            if r["revisions"] or r["rationales"] or any(o.get("note") for o in r["opinions"]):
+                lines.append(json.dumps(r, ensure_ascii=False))
+        return "prism_knowhow.jsonl", "\n".join(lines)
     return None, f"알 수 없는 종류: {kind}"
+
+_REAP_JOIN_CAP = 300                               # REAP 건별 조회 상한(요청 비용 억제 · rationale 과 동일)
+
+def knowhow_rows(team=None) -> list:
+    """골든 1건마다 사람 판단의 전체 궤적을 결합: 검수 의견(판정·노트)·REAP 사유(explain/plan)·
+    교정 전/후·합의 상태. '왜 이 정답인가'를 건 단위로 검증할 수 있는 노하우 계층(knowhow.jsonl)."""
+    st = _SV.get_store()
+    if not st:
+        return []
+    from .store import content_hash
+    try:
+        fmap = st.feedback_map(team=team)
+    except Exception:
+        fmap = {}
+    patches = {}
+    for p in (st.patch_rows(team=team) if hasattr(st, "patch_rows") else []):
+        patches.setdefault(p["hash"], []).append(
+            {"reviewer": p.get("reviewer", ""), "element": p.get("element", ""),
+             "before": p.get("before") or {}, "after": p.get("after") or {}, "ts": p.get("ts")})
+    rows, reap_joined = [], 0
+    for g in (st.get_golden(team) if hasattr(st, "get_golden") else []):
+        content, exp = g.get("content") or {}, g.get("expected") or {}
+        ch = content_hash(content)
+        e = fmap.get(ch) or {}
+        opinions = [{"reviewer": v.get("reviewer"), "verdict": v.get("verdict"),
+                     "stage": v.get("stage"), "note": (v.get("note") or "").strip(),
+                     "ts": v.get("ts")} for v in e.get("verdicts", [])]
+        rationales = []
+        if opinions and reap_joined < _REAP_JOIN_CAP and hasattr(st, "get_reap"):
+            try:
+                rationales = [{"reviewer": r.get("reviewer"), "explain": r.get("explain") or "",
+                               "plan": r.get("plan") or "", "remember": r.get("remember") or "",
+                               "ask": r.get("ask") or "", "stage": r.get("stage")}
+                              for r in st.get_reap(ch)]
+                reap_joined += 1
+            except Exception:
+                rationales = []
+        rows.append({"hash": ch, "content": content, "expected": exp,
+                     "consensus": e.get("consensus", ""), "agree": e.get("agree"),
+                     "opinions": opinions, "rationales": rationales,
+                     "revisions": patches.get(ch, [])})
+    return rows
+
+def backlog_rows(team=None, d=None) -> list:
+    """모델러 백로그(backlog.jsonl): 다음 반복에서 손볼 미해결 신호를 유형별 한 줄로 —
+    split(의견 갈림 · 원시 의견 포함) / label_flag(골든-모델 어긋남 · 오류 의심) /
+    dict_gap(사전에 없어 드롭된 산출값) / class_gap(커버리지 부족 클래스)."""
+    d = d if (d and d.get("ok")) else learn_data(team)
+    if not d.get("ok"):
+        return []
+    st = _SV.get_store()
+    try:
+        fmap = st.feedback_map(team=team) if st else {}
+    except Exception:
+        fmap = {}
+    rows = []
+    for ch, e in fmap.items():                         # split 은 전량(learn_data 의 표시용 50건 상한과 무관)
+        if e.get("consensus") != "split":
+            continue
+        rows.append({"type": "split", "hash": ch, "n": e.get("n", 0),
+                     "good": e.get("good", 0), "bad": e.get("bad", 0),
+                     "opinions": [{"reviewer": v.get("reviewer"), "verdict": v.get("verdict"),
+                                   "stage": v.get("stage"), "note": (v.get("note") or "").strip(),
+                                   "ts": v.get("ts")} for v in e.get("verdicts", [])]})
+    for f in d.get("label_flags") or []:
+        rows.append(dict({"type": "label_flag"}, **(f if isinstance(f, dict) else {"item": f})))
+    dg = d.get("dict_gap") or {}
+    for call in ("intent", "category"):
+        for val, n in (dg.get(call) or []):
+            rows.append({"type": "dict_gap", "call": call, "value": val, "drops": n})
+    for c in d.get("coverage") or []:
+        if c.get("lack", 0) > 0:
+            rows.append({"type": "class_gap", "cls": c["cls"], "have": c["have"], "lack": c["lack"]})
+    return rows
+
+def _data_card_md(d, man) -> str:
+    """데이터 카드(data_card.md): Datasheets for Datasets(Gebru et al. 2021) 축약 양식.
+    수치는 전부 실데이터 자동 기입 · 라이선스/민감정보 항목만 배포 전 사람이 확정."""
+    c = man["counts"]
+    kh = d.get("knowhow") or {}
+    cov = kh.get("coverage")
+    L = ["# Prism 핸드오프 데이터 카드", "",
+         f"발행 #{man['seq']} · {time.strftime('%Y-%m-%d %H:%M', time.localtime(man['ts']))}"
+         f" · 프롬프트 v{man.get('prompt_version') or '?'}",
+         "", "## 목적·구성",
+         "- 용도: 콘텐츠 분류·운영 특화 LLM 파인튜닝(SFT→DPO) · 태스크 정의는 finetune_spec.md",
+         f"- 구성: SFT {c['sft']} · 선호쌍(DPO) {c['dpo']} · 판단근거(rationale) {c['rationale']}"
+         f" · 노하우 궤적 {c['knowhow']} · 백로그 {c['backlog']}",
+         "", "## 수집·라벨링 절차",
+         "- 사람 검수(HITL) 합의로 정답 확정: 판정(정확/수정) → 교정(전/후 보존) → 합의 승격(골든)",
+         f"- 노하우 결속: 골든 {c['golden']}건 중 {kh.get('n', 0)}건"
+         f"({round(cov * 100, 1) if cov is not None else 0}%)에 판단 사유(노트·교정·REAP) 연결 · 원문은 knowhow.jsonl",
+         "", "## 알려진 한계 (백로그 동봉)",
+         f"- 의견 갈림(split) {c['split']}건 · 라벨 오류 의심 {c['label_flags']}건 → backlog.jsonl 에 원시 의견 포함",
+         f"- 검수 일치도: 단순 {d.get('agreement') if d.get('agreement') is not None else '·'}"
+         f" · Krippendorff α {d.get('alpha') if d.get('alpha') is not None else '·'} (참고 지표 · 임계값 기계 적용 금지)",
+         "", "## 배포 전 확인 (사람 작성)",
+         "- [ ] 라이선스·이용 범위:",
+         "- [ ] 개인정보·민감정보 점검:",
+         "- [ ] 수령자(모델러)·전달 채널:", ""]
+    return "\n".join(L)
+
+def handoff_bundle(team=None):
+    """모델러 핸드오프 번들(.zip): 학습데이터 3종 + 노하우 궤적 + 백로그 + 소요서 + 재현 스냅샷
+    (프롬프트·사전) + 데이터 카드 + manifest(건수·체크섬·직전 발행 대비 증분).
+    발행 이력은 reports('handoff_log')에 영속 → 다음 발행에서 증분 자동 산출.
+    반환 (filename, zip_bytes) 또는 (None, error)."""
+    import hashlib
+    import io
+    import zipfile
+    st = _SV.get_store()
+    if not st:
+        return None, "store unavailable"
+    d = learn_data(team)
+    if not d.get("ok"):
+        return None, d.get("error") or "데이터가 없습니다"
+    files = {}
+    for kind in ("sft", "dpo", "rationale", "knowhow"):
+        fname, text = learn_export(kind, team)
+        if fname:
+            files[fname] = text
+    files["backlog.jsonl"] = "\n".join(json.dumps(r, ensure_ascii=False)
+                                       for r in backlog_rows(team, d))
+    files["finetune_spec.md"] = learn_spec_md(team)
+    from . import dictionaries as D
+    files["dictionaries.json"] = json.dumps({            # taxonomy 외재화 방식 → 사전 동봉이 재현 조건
+        "iab_tier1": list(D.IAB_TIER1),
+        "tier2": {k: list(v) for k, v in (getattr(D, "CONTENT_CATEGORY_TIER2", {}) or {}).items()},
+        "intent_universal": list(getattr(D, "INTENT_CATEGORIES_UNIVERSAL", []) or []),
+        "intent_by_service": {k: list(v) for k, v in
+                              (getattr(D, "INTENT_CATEGORIES_BY_SERVICE", {}) or {}).items()},
+    }, ensure_ascii=False, indent=2)
+    snap = _SV._report_get("prompt_snapshot_latest", team)
+    if snap:
+        files["prompts_snapshot.json"] = json.dumps(snap, ensure_ascii=False, indent=2)
+    rep = _SV._report_get("learn_report", team, _LAST_LEARN_REPORT) or {}
+    files["eval_report.json"] = json.dumps({
+        "learn_report": rep, "acc_ci": d.get("acc_ci"),
+        "label_flags": d.get("label_flags") or [],
+        "alpha": d.get("alpha"), "agreement": d.get("agreement")}, ensure_ascii=False, indent=2)
+
+    def _nl(name):
+        return len([x for x in (files.get(name) or "").split("\n") if x.strip()])
+    log = list((_SV._report_get("handoff_log", team) or {}).get("entries") or [])
+    seq = len(log) + 1
+    counts = {"golden": d.get("golden_n", 0), "sft": _nl("prism_sft.jsonl"),
+              "dpo": _nl("prism_dpo.jsonl"), "rationale": _nl("prism_rationale.jsonl"),
+              "knowhow": _nl("prism_knowhow.jsonl"), "backlog": _nl("backlog.jsonl"),
+              "split": d.get("split_n", 0), "label_flags": len(d.get("label_flags") or [])}
+    try:
+        golden_total = st.golden_count(team) if hasattr(st, "golden_count") else None
+    except Exception:
+        golden_total = None
+    prev = log[-1] if log else None
+    manifest = {"tool": "prism", "seq": seq, "ts": time.time(), "team": team or "",
+                "prompt_version": (snap or {}).get("version"),
+                "model": (snap or {}).get("model", ""),
+                "counts": counts, "golden_total": golden_total,
+                "knowhow_coverage": (d.get("knowhow") or {}).get("coverage"),
+                "caps": {"golden_rows": 1000, "reap_join": _REAP_JOIN_CAP},
+                "prev": ({"seq": prev["seq"], "ts": prev["ts"], "counts": prev["counts"]}
+                         if prev else None),
+                "delta": ({k: counts.get(k, 0) - int((prev["counts"] or {}).get(k, 0))
+                           for k in counts} if prev else None)}
+    files["data_card.md"] = _data_card_md(d, manifest)
+    manifest["files"] = {}
+    for name, text in files.items():
+        b = text.encode("utf-8")
+        manifest["files"][name] = {"bytes": len(b), "sha256": hashlib.sha256(b).hexdigest()}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        for name, text in files.items():
+            z.writestr(name, text)
+    log.append({"seq": seq, "ts": manifest["ts"], "counts": counts})
+    _SV._report_save("handoff_log", {"entries": log[-50:]}, team)
+    return f"prism_handoff_{seq:02d}_{time.strftime('%Y%m%d')}.zip", buf.getvalue()
 
 _learn_sched_started = False
 
