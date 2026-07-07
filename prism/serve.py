@@ -100,7 +100,8 @@ def get_store():
                 _STORE = supastore.SupabaseStore()
             else:
                 from .store import Store
-                _STORE = Store(_DB_PATH)
+                # 경로는 생성 시점에 재해석: 임포트 후 PRISM_DB 를 바꾸는 테스트 격리 지원
+                _STORE = Store(os.environ.get("PRISM_DB") or _DB_PATH)
         except Exception as e:
             print(f"  [ERROR] {mode} store 초기화 실패: {e}")
             _STORE = False
