@@ -1567,6 +1567,14 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                 last_ts = max(last_ts, float(v.get("ts") or 0))
             except Exception:
                 pass
+        # 내 판정(mine): 합의(consensus)와 별개로 요청 검수자 본인의 최신 표 · 상세 배지의 혼동 방지
+        # (합의가 동점 split 인데 배지가 '수정 필요'로 뭉뚱그려져 "정확으로 바꿨는데 수정필요로 조회" 혼란)
+        mine = ""
+        if reviewer:
+            for v in reversed(fb.get("verdicts") or []):
+                if v.get("reviewer") == reviewer or v.get("reviewer_id") == reviewer:
+                    mine = v.get("verdict") or ""
+                    break
         out.append({"hash": ch,
                     "service": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                     "body": ref.get("body", ""), "url": ref.get("source_url", ""),
@@ -1579,7 +1587,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "review": qm.get("review", "") or "",
                     "split": bool(fb.get("good") and fb.get("bad")),
                     "fb": {"verdict": fb.get("consensus") or fb.get("verdict") or "",
-                           "n": fb.get("n", 0), "ts": last_ts},
+                           "mine": mine, "n": fb.get("n", 0), "ts": last_ts},
                     "item_meta": im, "quality_meta": qm})
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트
     if reviewer:

@@ -448,7 +448,7 @@
       reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; this._afterVerdict(); },
       reviewBadComplete() {
         if (!(this.detail.fb.note || '').trim()) { this._err('무엇을 왜 고쳐야 하는지 입력하세요'); return; }
-        this.detail.fb = Object.assign({}, this.detail.fb, { verdict: 'bad' });
+        this.detail.fb = Object.assign({}, this.detail.fb, { verdict: 'bad', mine: 'bad' });
         this.saveFbNote(this.detail);
         this.pendingBad = false; this.editVerdict = false;
         this._afterVerdict();
@@ -567,9 +567,11 @@
       // ── 배치 결과: 콘텐츠별 평가 피드백 → 학습 루프 ──
       fbNoteOpen: {},
       async setFeedback(c, verdict) {
-        const cur = (c.fb && c.fb.verdict) || '';
+        // 재클릭 취소 비교는 '내 표(mine)' 기준. fb.verdict 는 팀 합의라 남의 표와 비교하면
+        // 이미 합의가 같은 값일 때 내 첫 클릭이 취소('')로 전송되는 오동작이 난다.
+        const cur = (c.fb && (c.fb.mine !== undefined ? (c.fb.mine || '') : (c.fb.verdict || ''))) || '';
         const v = (cur === verdict) ? '' : verdict;        // 같은 버튼 재클릭 = 취소
-        c.fb = Object.assign({}, c.fb, { verdict: v, ts: (v ? Date.now() / 1000 : 0) });   // 수정 일시 기록
+        c.fb = Object.assign({}, c.fb, { verdict: v, mine: v, ts: (v ? Date.now() / 1000 : 0) });   // 수정 일시 기록
         if (v === 'bad') this.fbNoteOpen[c.hash] = true;
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
         if (cur === '' && v !== '') this.celebratePoints(10, '검수 완료');   // 새 검수 = +10 PT
