@@ -1,0 +1,38 @@
+# main 머지 = 배포: 테스트 통과 시에만 Fly.io(prism-item)로 자동 배포.
+# 로컬 세션의 수동 배포를 대체한다(CLAUDE.md 규칙 5의 기계 강제).
+# 사전 조건: 저장소 Secret FLY_API_TOKEN (fly tokens create deploy -a prism-item)
+name: Fly Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:            # 문서만 바뀐 머지는 배포 생략(런타임 무관)
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch: {}      # 필요 시 Actions 탭에서 수동 배포(문서 생략분 포함)
+
+concurrency:
+  group: fly-deploy          # 머지가 몰려도 배포는 순차(경합 방지)
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 전체 테스트 (의존성 0 · stdlib unittest)
+        run: python3 -m unittest discover tests
+
+  deploy:
+    needs: test              # 테스트 실패 시 배포 중단
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Fly.io 배포 (원격 빌더)
+        run: flyctl deploy --remote-only --config fly.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
