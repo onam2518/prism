@@ -10,7 +10,9 @@ dual-mode 의 한 축: PRISM_BACKEND=supabase 면 serve 가 이 스토어를 쓴
 """
 from __future__ import annotations
 
+import http.client
 import json
+import threading
 import os
 import time
 import urllib.error
@@ -46,14 +48,37 @@ class SupabaseStore:
         if prefer:
             headers["Prefer"] = prefer
         data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
-        req = urllib.request.Request(url, data=data, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                raw = resp.read().decode("utf-8")
-                return json.loads(raw) if raw.strip() else []
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", "replace")[:300]
-            raise RuntimeError(f"supabase {method} {table} HTTP{e.code}: {detail}")
+        path = url[len(self.url):]                       # /rest/v1/… (keep-alive 는 host 기준)
+        status, raw = self._http(method, path, data, headers)
+        if status >= 400:
+            raise RuntimeError(f"supabase {method} {table} HTTP{status}: {raw[:300]}")
+        return json.loads(raw) if raw.strip() else []
+
+    _TLS = threading.local()                             # 스레드별 keep-alive 연결(ThreadingHTTPServer 대응)
+
+    def _http(self, method, path, data, headers):
+        """PostgREST 호출을 keep-alive 연결로 실행. 매 호출 새 TLS 핸드셰이크(urllib)가
+        도쿄(Fly)→서울(supabase) 왕복을 요청마다 추가하던 비용 제거(2026-07-08 실측 API 400~860ms)."""
+        host = self.url.split("://", 1)[1]
+        for attempt in (0, 1):                           # 유휴 종료된 소켓은 1회 재수립
+            conns = getattr(self._TLS, "conns", None)
+            if conns is None:
+                conns = self._TLS.conns = {}
+            c = conns.get(host)
+            if c is None:
+                c = conns[host] = http.client.HTTPSConnection(host, timeout=20)
+            try:
+                c.request(method, path, body=data, headers=headers)
+                resp = c.getresponse()
+                return resp.status, resp.read().decode("utf-8", "replace")
+            except (http.client.HTTPException, ConnectionError, OSError):
+                try:
+                    c.close()
+                except Exception:
+                    pass
+                conns.pop(host, None)
+                if attempt:
+                    raise
 
     def _get(self, table, query=""):
         return self._req("GET", table, query=query)
