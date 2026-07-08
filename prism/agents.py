@@ -10,10 +10,14 @@ def run_quality(llm, content, routing, fewshot: str = "") -> tuple[QualityMeta, 
     sys = P.quality_system(routing.active_quality_metas, routing.service_group,
                            examples=fewshot)
     obj, res = llm.complete_json(sys, P.quality_user(content), tag="quality")
-    qm = QualityMeta(
-        finalGrade=obj.get("finalGrade", "G"),
-        reasons=obj.get("reasons", []) or [],
-    )
+    if obj.get("_fail"):                       # 호출 실패 = 판정 보류(빈 응답을 G 로 유통하지 않는다 · fail-open 금지)
+        qm = QualityMeta(finalGrade="", reasons=[], review="yellow",
+                         review_reason="품질 호출 실패 · 판정 보류")
+    else:
+        qm = QualityMeta(
+            finalGrade=obj.get("finalGrade", "G"),
+            reasons=obj.get("reasons", []) or [],
+        )
     verdict = {"agent": "QualityAgent", "evidence": obj.get("evidence", ""),
                "fail": obj.get("_fail")}
     return qm, [res, verdict]
@@ -22,15 +26,21 @@ def run_quality(llm, content, routing, fewshot: str = "") -> tuple[QualityMeta, 
 def run_quality_split(llm, content, routing) -> tuple[QualityMeta, list]:
     """분해형(옵션 A/B). 4개 관심사 묶음을 각각 좁은 규칙으로 호출."""
     reasons, results, verdicts = [], [], []
+    failed = False
     for gkey in P.QUALITY_GROUPS:
         sys = P.quality_group_system(gkey, routing.active_quality_metas, routing.service_group)
         if not sys:
             continue
         obj, res = llm.complete_json(sys, P.quality_user(content), tag=f"q:{gkey}")
+        failed = failed or bool(obj.get("_fail"))
         reasons += obj.get("reasons", []) or []
         results.append(res)
         verdicts.append({"agent": f"QualityAgent:{gkey}", "evidence": obj.get("evidence", "")})
-    qm = QualityMeta(finalGrade="R" if reasons else "G", reasons=reasons)
+    if failed:                                 # 일부 묶음이라도 실패 = 커버리지 불명 → 판정 보류(fail-open 금지)
+        qm = QualityMeta(finalGrade="", reasons=reasons, review="yellow",
+                         review_reason="품질 호출 일부 실패 · 판정 보류")
+    else:
+        qm = QualityMeta(finalGrade="R" if reasons else "G", reasons=reasons)
     return qm, results + verdicts
 
 

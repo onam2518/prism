@@ -866,7 +866,8 @@ PAGE = """<!doctype html>
         <div x-show="result" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>유통 판정</b>
             <span x-show="qm.finalGrade === 'G'" class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>유통 가능 · G</span>
-            <span x-show="qm.finalGrade !== 'G'" class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>차단 · R</span>
+            <span x-show="qm.finalGrade === 'R'" class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>차단 · R</span>
+            <span x-show="!qm.finalGrade" class="ds-badge ds-badge--reason" style="cursor:help" data-tip="품질 호출이 실패해 판정을 보류했습니다 · 재실행하면 다시 판정합니다" data-tip-pos="top"><span class="ds-badge__dot"></span>판정 보류 · 재실행 필요</span>
           </div><div class="panel-bd">
             <div class="drow"><div class="k">검수</div><div class="v text-sm text-body" x-text="(qm.review || 'auto') + (qm.confidence != null ? (' · conf ' + qm.confidence) : '')"></div></div>
             <div class="drow"><div class="k">품질 사유</div><div class="v flex flex-wrap gap-1.5">
@@ -2165,7 +2166,7 @@ PAGE = """<!doctype html>
           </template>
         </div>
         <div class="detailview__eval">
-          <div x-show="detail && detail.grade" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':'차단 · R')"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
+          <div x-show="detail && (detail.grade || detail.model)" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':(detail && detail.grade==='R'?'ds-badge--error':'ds-badge--reason')" x-bind:data-tip="detail && !detail.grade ? '품질 호출이 실패해 판정을 보류했습니다 · 재실행하면 다시 판정합니다' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':(detail.grade==='R'?'차단 · R':'판정 보류 · 재실행 필요'))"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
           <!-- 리드문 즉시 확인: 좌측이 원문 페이지 탭일 때도 우측에서 초안 리드문을 대조(회의 소요) -->
           <div class="dve__sec" x-show="detail && detail.summary"><div class="dve__lbl">리드문</div><div class="dve__lead" x-text="detail && detail.summary"></div></div>
           <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
