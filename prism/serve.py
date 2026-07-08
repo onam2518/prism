@@ -1609,7 +1609,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "review": qm.get("review", "") or "",
                     "split": bool(fb.get("good") and fb.get("bad")),
                     "fb": {"verdict": fb.get("consensus") or fb.get("verdict") or "",
-                           "mine": mine, "n": fb.get("n", 0), "ts": last_ts},
+                           "mine": mine, "n": fb.get("n", 0),
+                           "good": fb.get("good", 0), "bad": fb.get("bad", 0), "ts": last_ts},
                     "item_meta": im, "quality_meta": qm})
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트
     if reviewer:
@@ -1667,6 +1668,55 @@ def model_stats(team=None) -> dict:
                     "intents": topk(g["intents"]), "categories": topk(g["cats"]),
                     "reasons": topk(g["reasons"])})
     return {"ok": True, "models": out}
+
+
+def _hist_epoch(ts):
+    """이력 정렬용 epoch: sqlite=float · supabase 피드백=ISO 문자열 혼재를 흡수."""
+    if isinstance(ts, (int, float)):
+        return float(ts)
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def content_history(content_hash: str, team=None) -> dict:
+    """콘텐츠 단위 작업 이력(최신순): 판정(피드백 표) + 교정·재실행(patch_log).
+    검수 화면에서 누가 언제 무엇을 했는지 시각화(2026-07-08 회의 소요)."""
+    st = get_store()
+    ch = (content_hash or "").strip()
+    if not (st and ch):
+        return {"ok": False, "items": []}
+    items = []
+    try:
+        fb = (st.feedback_map(team=team) or {}).get(ch) or {}
+        for v in (fb.get("verdicts") or []):
+            verdict = v.get("verdict") or ""
+            items.append({"kind": "verdict", "who": v.get("reviewer") or "",
+                          "ts": _hist_epoch(v.get("ts")),
+                          "label": ("판정 · 정확" if verdict == "good"
+                                    else "판정 · 수정 필요" if verdict == "bad" else "판정 취소"),
+                          "note": (v.get("note") or "")[:200]})
+    except Exception:
+        pass
+    try:
+        for pr in (st.patch_rows(team=team) if hasattr(st, "patch_rows") else []):
+            if pr.get("hash") != ch:
+                continue
+            el = pr.get("element") or ""
+            if el.startswith("rerun:"):
+                items.append({"kind": "rerun", "who": "",
+                              "ts": _hist_epoch(pr.get("ts")),
+                              "label": "초안 재실행 · " + el[len("rerun:"):].replace("->", " → "), "note": ""})
+            else:
+                items.append({"kind": "patch", "who": pr.get("reviewer") or "",
+                              "ts": _hist_epoch(pr.get("ts")),
+                              "label": "교정 · " + (el or "요소"), "note": ""})
+    except Exception:
+        pass
+    items.sort(key=lambda x: x["ts"], reverse=True)
+    return {"ok": True, "items": items[:100], "n": len(items)}
 
 
 def drafts_for(content_hash: str, team=None) -> dict:
@@ -2244,6 +2294,11 @@ class Handler(BaseHTTPRequestHandler):
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/model-stats"):       # 결과 비교: 요소 단위 모델별 현황
             self._send(200, json.dumps(model_stats(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/history"):           # 검수 상세: 콘텐츠 작업 이력(판정·교정·재실행)
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            self._send(200, json.dumps(content_history(q.get("hash", [""])[0], self._req_team()),
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/drafts"):            # 결과 비교: 콘텐츠별 초안 스냅샷
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)

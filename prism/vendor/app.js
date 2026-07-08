@@ -204,6 +204,7 @@
         this.detailOpen = false;
       },
       _afterVerdict() {                                  // 판정 직후: 자동 다음(토글) · 행 반영은 _syncFbByHash 가 담당
+        if (this.histOpen) this.loadHistory();             // 이력이 열려 있으면 즉시 갱신
         if (!this.detailNav) return;
         if (this.autoNext) this.detailNextTodo();
       },
@@ -463,7 +464,21 @@
       dvcZoom: (function () { try { const z = parseInt(localStorage.getItem('prismDetailZoom') || '100', 10); return [50, 75, 100].indexOf(z) >= 0 ? z : 100; } catch (e) { return 100; } })(),
       setDvcZoom(z) { this.dvcZoom = z; try { localStorage.setItem('prismDetailZoom', String(z)); } catch (e) {} },
       // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
-      openDetail(c) { this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; },
+      openDetail(c) { this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; this.histItems = []; if (this.histOpen) this.loadHistory(); },
+      // 작업 이력(판정·교정·재실행 타임라인): 접이식 · 열려 있으면 항목 이동·판정 후 자동 갱신
+      histOpen: false, histBusy: false, histItems: [],
+      toggleHistory() { this.histOpen = !this.histOpen; if (this.histOpen) this.loadHistory(); },
+      async loadHistory() {
+        if (!(this.detail && this.detail.hash)) return;
+        const h = this.detail.hash;
+        this.histBusy = true;
+        try {
+          const r = await (await fetch('/history?hash=' + encodeURIComponent(h), { headers: this._authHeaders() })).json();
+          if (r && r.ok && this.detail && this.detail.hash === h) this.histItems = r.items || [];
+        } catch (e) {}
+        this.histBusy = false;
+      },
+      histWhen(ts) { return ts ? new Date(ts * 1000).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''; },
       editVerdict: false, pendingBad: false, detailBack: false,
       // 정확 = 즉시 완료 · 수정 필요 = 요소·사유 입력 후 '완료 처리' 로만 확정(누른다고 바로 저장 안 함)
       reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; this._afterVerdict(); },

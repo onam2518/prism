@@ -16,7 +16,7 @@ ALIASES = {
     "body": ["body", "본문", "본문내용", "기사본문", "기사내용", "content", "contents",
              "내용", "내용본문", "text", "article", "기사", "description", "desc", "원문"],
     "subtitle": ["subtitle", "부제목", "부제", "summary", "요약", "subhead", "lead", "리드"],
-    "displayServiceName": ["displayservicename", "서비스명", "service", "서비스", "구분",
+    "displayServiceName": ["displayservicename", "콘텐츠그룹", "서비스명", "service", "서비스", "구분",
                            "채널", "channel", "category", "카테고리", "매체", "섹션",
                            "section", "source", "type", "지면"],
     # 참조용 원문 링크(선택). 있으면 상세뷰 '원문 열기' 로 연결.

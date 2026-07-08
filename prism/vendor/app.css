@@ -356,6 +356,18 @@
   .dvc__web{border:0;background:#fff;transform-origin:0 0}
   .dve__lbl{font-size:11px;font-weight:700;color:var(--ds-muted);margin-bottom:6px}
   .dve__lead{font-size:13px;line-height:1.65;padding:10px 12px;border-radius:10px;background:var(--ds-primary-tint);color:var(--ds-text-secondary)}
+  /* 내 판정 vs 팀 판정 분리 표기(팀 표 2개 이상일 때) */
+  .dve__mine{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .dve__mine-lbl{font-size:11px;font-weight:700;color:var(--ds-muted)}
+  /* 작업 이력 타임라인(상세 우측 · 접이식) */
+  .histbox{margin-top:8px;max-height:180px;overflow-y:auto;border:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));border-radius:10px;padding:4px 10px}
+  .histrow{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 0;border-bottom:1px dashed var(--ds-hairline-soft,rgba(0,0,0,.06))}
+  .histrow:last-child{border-bottom:0}
+  .histrow__ts{color:var(--ds-muted);flex:none}
+  .histrow__who{font-weight:600;color:var(--ds-ink);flex:none}
+  .histrow__label{color:var(--ds-text-secondary)}
+  .histrow__label.is-sub{color:var(--ds-muted)}
+  .histrow__note{margin-left:auto;flex:none;font-size:11px;color:var(--ds-primary);cursor:help;text-decoration:underline dotted}
   .dve__verdict{margin-top:auto;padding-top:var(--ds-space-4);border-top:1px solid var(--ds-divider-section)}
   @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}
   .panel-hd b{color:var(--ds-ink);font-size:16px;font-weight:700;letter-spacing:-.01em}

@@ -2135,7 +2135,6 @@ PAGE = """<!doctype html>
           <div class="dvc__subtitle" x-show="detail && detail.subtitle" x-text="detail && detail.subtitle"></div>
           <template x-if="dvcView()==='text'">
             <div>
-              <div class="dvc__lead" x-show="detail && detail.summary"><span class="dvc__lead-lbl">리드문</span><span x-text="detail && detail.summary"></span></div>
               <div class="dvc__bodytext" x-show="detail && detail.body" x-text="detail && detail.body"></div>
               <div class="dvc__note" x-show="detail && !detail.body">전체 본문은 저장되지 않습니다 · 리드문·메타 기준으로 검수하세요</div>
             </div>
@@ -2171,6 +2170,22 @@ PAGE = """<!doctype html>
             </div>
           </div>
           <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="e"></span></template></div></div>
+          <!-- 작업 이력: 판정·교정·재실행 타임라인(접이식 · 회의 소요) -->
+          <div class="dve__sec">
+            <button type="button" class="copybtn" x-on:click="toggleHistory()" x-text="histOpen ? '작업 이력 닫기' : '작업 이력 보기'"></button>
+            <div x-show="histOpen" x-cloak class="histbox">
+              <div class="text-xs text-muted" x-show="histBusy">불러오는 중…</div>
+              <template x-for="(h,hi) in histItems" x-bind:key="hi">
+                <div class="histrow">
+                  <span class="histrow__ts tnum" x-text="histWhen(h.ts)"></span>
+                  <span class="histrow__who" x-show="h.who" x-text="h.who"></span>
+                  <span class="histrow__label" x-bind:class="h.kind==='verdict' ? '' : 'is-sub'" x-text="h.label"></span>
+                  <span class="histrow__note" x-show="h.note" x-bind:data-tip="h.note" data-tip-pos="left">메모</span>
+                </div>
+              </template>
+              <div x-show="!histBusy && !histItems.length" class="text-xs text-muted">아직 기록이 없습니다</div>
+            </div>
+          </div>
           <div class="dve__verdict">
             <div class="dve__lbl" style="display:flex;align-items:center;gap:8px">검수 판정
               <label x-show="detailNav" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400;color:var(--ds-muted);cursor:pointer;margin-left:auto">
@@ -2180,9 +2195,14 @@ PAGE = """<!doctype html>
             <!-- 검수 완료(판정 있음 · 수정 아님): 팀 합의 3상태(정확/수정/의견 갈림) + 내 판정 병기 + 추가 수정 -->
             <template x-if="detail && detail.fb && detail.fb.verdict && !editVerdict">
               <div>
-                <span class="ds-badge" x-bind:class="detail.fb.verdict==='good' ? 'ds-badge--success' : (detail.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')"><span class="ds-badge__dot"></span><span x-text="detail.fb.verdict==='good' ? '검수 완료 · 정확' : (detail.fb.verdict==='split' ? '의견 갈림 · 재검토 대상' : '검수 완료 · 수정 필요')"></span></span>
+                <!-- 팀 표 2개 이상이면 주어를 명시(팀 판정)하고 내 판정을 분리 표기 · 단독 판정은 기존 표기 -->
+                <span class="ds-badge" x-bind:class="detail.fb.verdict==='good' ? 'ds-badge--success' : (detail.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')" x-bind:data-tip="detail.fb.verdict==='split' ? '정확과 수정 필요로 의견이 갈렸습니다 · 재검토 대상' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail.fb.n > 1 ? (detail.fb.verdict==='good' ? '팀 판정 · 정확' : (detail.fb.verdict==='split' ? '팀 판정 · 의견 갈림' : '팀 판정 · 수정 필요')) : (detail.fb.verdict==='good' ? '검수 완료 · 정확' : '검수 완료 · 수정 필요')"></span></span>
                 <span class="text-xs text-muted" x-show="detail.fb.ts" x-text="'· 최종 수정 ' + fmtTs(detail.fb.ts)" style="margin-left:6px"></span>
-                <div class="text-xs text-muted" style="margin-top:6px" x-show="detail.fb.mine && detail.fb.n > 1" x-text="'내 판정: ' + (detail.fb.mine==='good' ? '정확' : '수정 필요') + ' · 팀 표 ' + detail.fb.n + '개(위 표기는 팀 합의)'"></div>
+                <div class="dve__mine" x-show="detail.fb.n > 1" x-cloak>
+                  <span class="dve__mine-lbl">내 판정</span>
+                  <span class="ds-badge" x-bind:class="detail.fb.mine==='good' ? 'ds-badge--success' : (detail.fb.mine==='bad' ? 'ds-badge--error' : 'ds-badge--neutral')" x-text="detail.fb.mine==='good' ? '정확' : (detail.fb.mine==='bad' ? '수정 필요' : '아직 없음')"></span>
+                  <span class="text-xs text-muted" x-text="'팀 표 ' + detail.fb.n + '개 · 정확 ' + (detail.fb.good||0) + ' · 수정 필요 ' + (detail.fb.bad||0)"></span>
+                </div>
                 <div class="tbox" x-show="detail.fb.verdict!=='good' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:10px" x-on:click="editVerdict=true; pendingBad=((detail.fb.mine || detail.fb.verdict)==='bad')">추가 수정</button>
               </div>
