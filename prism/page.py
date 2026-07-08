@@ -17,7 +17,6 @@ PAGE = """<!doctype html>
 <link href="/vendor/gmarket.css" rel="stylesheet">
 <link href="/vendor/ds-theme.css" rel="stylesheet">
 <link href="/vendor/ds-components.css" rel="stylesheet">
-<script src="/vendor/tailwind.js"></script>
 <script>
   // 전역 호버 툴팁: [data-tip] 위임 · position:fixed 로 overflow/스택 컨텍스트에 안 잘림
   (function () {
@@ -48,26 +47,6 @@ PAGE = """<!doctype html>
     document.addEventListener('mousedown', hide, true);
   })();
 </script>
-<script>
-  tailwind.config = {
-    theme: { extend: {
-      fontFamily: {
-        sans: ['"Pretendard Variable"', 'Pretendard', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-      },
-      colors: {
-        // Anchor(axz) 라이트 · 단일 토큰 소스(ds-theme.css 와 1:1). Blue=Primary 액션.
-        // 'violet' 은 역사적 유틸명 · 값은 Anchor Blue 로 통일.
-        violet: { DEFAULT: '#1e84ff', hover: '#0066db', deep: '#004fad', tint: 'rgba(30,132,255,0.16)' },
-        solar: '#18ba45',
-        // ⚠️ CSS 변수로 매핑(하드코딩 금지) → text-ink/bg-surface 등 유틸이 라이트/다크 자동 적응.
-        // 예전엔 #000/#fff 고정이라 다크모드서 검은 글씨·흰 박스로 안 보였음.
-        canvas: 'var(--ds-canvas)', surface: 'var(--ds-surface-white)', surface2: 'var(--ds-surface-white)',
-        ink: 'var(--ds-ink)', body: 'var(--ds-body)', muted: 'var(--ds-muted)', hair: 'var(--ds-hairline)',
-      },
-    } },
-  };
-</script>
 <style>
   /* 앱 레벨 별칭 · 역사적 변수명(--ds-violet*·--ds-surface2·--ds-solar)을
      Anchor 토큰(ds-theme.css)으로 매핑. 고정 위젯 테두리는 Blue 틴트로 전환. */
@@ -84,6 +63,7 @@ PAGE = """<!doctype html>
 <script src="/vendor/app.js"></script>
 <script defer src="/vendor/alpine.js"></script>
 <link href="/vendor/app.css" rel="stylesheet">
+<link href="/vendor/tw.css" rel="stylesheet">
 </head>
 <body class="antialiased">
 <div class="ds-grain" aria-hidden="true"></div>
