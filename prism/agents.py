@@ -121,10 +121,10 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     if not summary:                                # 단락 차단: 하위 호출 생략, 빈 값 적재
         return ItemMeta(summary="", entities=[], intent=[], content_category=[]), results
 
-    # ② 엔티티(1~3개 강제)
+    # ② 엔티티(핵심만 · 개수 상한 없음 · 2026-07-08 수량 정책 전환)
     if not parallel:
         o2 = ask("entities", "item_entities")
-    ents = [str(x).strip() for x in _aslist(o2.get("entities")) if str(x).strip()][:3]
+    ents = [str(x).strip() for x in _aslist(o2.get("entities")) if str(x).strip()]
     prior["entities"] = ents
 
     # ③ 인텐트: 사전 표기 정확 일치만 통과, 전량 드롭이면 1회 재요청
