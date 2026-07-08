@@ -1337,9 +1337,19 @@ def apply_feedback(data: dict) -> dict:
             return {"ok": False, "error": "hash required"}
         if ch.startswith("gold:"):                 # 골드 문항 응답 → gold_checks 로 분리(피드백 오염 방지)
             return apply_gold_answer(data)
-        verdict = data.get("verdict") or ""        # good | bad | ""(취소)
+        verdict = data.get("verdict") or ""        # good | bad | ""(실행취소)
         reviewer = (data.get("reviewer") or "").strip() or "(익명)"   # 귀속 키(uid 또는 이름)
         disp = (data.get("name") or "").strip() or reviewer          # 토스트 표시명
+        if not verdict:                            # 실행취소: 빈 표를 upsert 하지 않고 행을 삭제(팀 표 수 정합)
+            prev = (st.delete_feedback(ch, reviewer, team=data.get("_team"))
+                    if hasattr(st, "delete_feedback") else "")
+            if prev:                               # 원 표는 삭제돼도 취소 사실은 작업 이력에 남긴다(감사 추적)
+                st.log_patch(ch, reviewer, "undo:verdict", prev, "", team=data.get("_team"))
+            broadcast({"type": "feedback", "hash": ch, "reviewer": disp, "verdict": "",
+                       "title": data.get("title", ""), "service": data.get("service", ""), "ts": time.time()})
+            _agg_bump()
+            return {"ok": True, "feedback": st.feedback_stats(),
+                    "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
         note = (data.get("note") or "").strip()
         elements = [e for e in (data.get("elements") or []) if e in FL.ELEMENTS]
         if not elements and (data.get("element") or "").strip() in FL.ELEMENTS:
@@ -1671,11 +1681,18 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         # 내 판정(mine): 합의(consensus)와 별개로 요청 검수자 본인의 최신 표 · 상세 배지의 혼동 방지
         # (합의가 동점 split 인데 배지가 '수정 필요'로 뭉뚱그려져 "정확으로 바꿨는데 수정필요로 조회" 혼란)
         mine = ""
+        my_note, my_elems = "", []                 # 내 직전 교정(메모·요소) · '추가 수정' 이어쓰기 원천
         if reviewer:
             for v in reversed(fb.get("verdicts") or []):
                 if v.get("reviewer") == reviewer or v.get("reviewer_id") == reviewer:
                     mine = v.get("verdict") or ""
+                    my_note = v.get("note") or ""
+                    my_elems = [e for e in (v.get("element") or "").split(",") if e]
                     break
+        elif fb.get("verdicts"):                   # 로컬(sqlite): 검수자 식별 없음 → 최신 표의 교정을 원천으로
+            lv = fb["verdicts"][-1]
+            my_note = lv.get("note") or ""
+            my_elems = [e for e in (lv.get("element") or "").split(",") if e]
         out.append({"hash": ch,
                     "service": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                     "body": ref.get("body", ""), "url": ref.get("source_url", ""),
@@ -1689,7 +1706,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "split": bool(fb.get("good") and fb.get("bad")),
                     "fb": {"verdict": fb.get("consensus") or fb.get("verdict") or "",
                            "mine": mine, "n": fb.get("n", 0),
-                           "good": fb.get("good", 0), "bad": fb.get("bad", 0), "ts": last_ts},
+                           "good": fb.get("good", 0), "bad": fb.get("bad", 0), "ts": last_ts,
+                           "note": my_note, "elems": my_elems},
                     "item_meta": im, "quality_meta": qm})
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트
     if reviewer:
@@ -1788,6 +1806,9 @@ def content_history(content_hash: str, team=None) -> dict:
                 items.append({"kind": "rerun", "who": "",
                               "ts": _hist_epoch(pr.get("ts")),
                               "label": "초안 재실행 · " + el[len("rerun:"):].replace("->", " → "), "note": ""})
+            elif el == "undo:verdict":             # 판정 실행취소(표 행은 삭제돼도 취소 사실은 남긴다)
+                items.append({"kind": "undo", "who": pr.get("reviewer") or "",
+                              "ts": _hist_epoch(pr.get("ts")), "label": "판정 취소", "note": ""})
             else:
                 items.append({"kind": "patch", "who": pr.get("reviewer") or "",
                               "ts": _hist_epoch(pr.get("ts")),

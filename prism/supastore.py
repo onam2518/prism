@@ -331,6 +331,20 @@ class SupabaseStore:
             row["team_id"] = team
         self._upsert("feedback", [row])
 
+    def delete_feedback(self, content_hash, reviewer, team=None) -> str:
+        """판정 실행취소: 해당 검수자의 표 행을 삭제(빈 표 upsert 는 팀 표 수를 부풀린다).
+        반환: 삭제된 이전 판정('' = 행 없음)."""
+        h = (content_hash or "").strip()
+        if not (h and reviewer):
+            return ""
+        q = (f"content_hash=eq.{urllib.parse.quote(h)}&reviewer_id=eq.{urllib.parse.quote(reviewer)}"
+             + (f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""))
+        rows = self._get("feedback", "select=verdict&" + q)
+        if not rows:
+            return ""
+        self._req("DELETE", "feedback", query=q, prefer="return=minimal")
+        return rows[0].get("verdict") or ""
+
     # ── 교정 로그(append-only) · 골드 문항 · 이벤트 ──
     def log_patch(self, content_hash, reviewer, element, before, after, team=None):
         row = {"content_hash": content_hash, "reviewer_id": reviewer or None,
@@ -465,7 +479,7 @@ class SupabaseStore:
                 for r in rows if (r.get("reap_plan") or "").strip()]
 
     def _all_feedback(self, team=None) -> list:
-        q = "select=content_hash,reviewer_id,verdict,stage,note,reap_plan,title,service,ts"
+        q = "select=content_hash,reviewer_id,verdict,stage,note,element,reap_plan,title,service,ts"
         if team:
             q += f"&team_id=eq.{urllib.parse.quote(team)}"
         return self._get("feedback", q)
@@ -476,12 +490,15 @@ class SupabaseStore:
         rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "")
         out = {}
         for r in rows:
+            v = r.get("verdict")
+            if v not in ("good", "bad"):           # 과거 취소가 남긴 빈 표는 집계 제외(표 수 정합)
+                continue
             ch = r["content_hash"]
             rv = names.get(r["reviewer_id"], {}).get("name", r["reviewer_id"])
             e = out.setdefault(ch, {"verdicts": [], "good": 0, "bad": 0})
-            v = r.get("verdict")
             e["verdicts"].append({"reviewer": rv, "reviewer_id": r["reviewer_id"], "verdict": v,
-                                  "stage": r.get("stage"), "note": r.get("note"), "ts": r.get("ts")})
+                                  "stage": r.get("stage"), "note": r.get("note"), "ts": r.get("ts"),
+                                  "element": r.get("element") or ""})
             if v == "good":
                 e["good"] += 1
             elif v == "bad":

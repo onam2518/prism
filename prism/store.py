@@ -370,6 +370,20 @@ class Store:
            verdict or "", stage or "analyze", note or "", ts, element or ""))
         c.commit()
 
+    def delete_feedback(self, content_hash, reviewer, team=None) -> str:
+        """판정 실행취소: 해당 검수자의 표 행을 삭제. 빈 표로 upsert 하면 팀 표 수(n)가
+        부풀어 표기가 오염된다(정확 0 · 수정 1 인데 표 3개). 반환: 삭제된 이전 판정('' = 행 없음).
+        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
+        c = self._conn()
+        row = c.execute("SELECT verdict FROM feedback WHERE content_hash=? AND reviewer=?",
+                        (content_hash, reviewer or "(익명)")).fetchone()
+        if not row:
+            return ""
+        c.execute("DELETE FROM feedback WHERE content_hash=? AND reviewer=?",
+                  (content_hash, reviewer or "(익명)"))
+        c.commit()
+        return row[0] or ""
+
     # ── 교정 로그(append-only) · 골드 문항 · 이벤트 ──
     def log_patch(self, content_hash, reviewer, element, before, after, team=None):
         """검수자 구조화 교정의 전/후를 보존(선호쌍 데이터 원천 · 다중 요소 교정 무손실)."""
@@ -491,10 +505,13 @@ class Store:
                consensus('good'|'bad'|'split'|''), agree(만장일치), verdict/stage/note(대표=합의·최신, 하위호환)}"""
         c = self._conn()
         out = {}
-        for ch, rv, v, s, nt, ts in c.execute(
-                "SELECT content_hash,reviewer,verdict,stage,note,ts FROM feedback ORDER BY ts"):
+        for ch, rv, v, s, nt, ts, el in c.execute(
+                "SELECT content_hash,reviewer,verdict,stage,note,ts,element FROM feedback ORDER BY ts"):
+            if v not in ("good", "bad"):           # 과거 취소가 남긴 빈 표는 집계 제외(표 수 정합)
+                continue
             e = out.setdefault(ch, {"verdicts": [], "good": 0, "bad": 0})
-            e["verdicts"].append({"reviewer": rv, "verdict": v, "stage": s, "note": nt, "ts": ts})
+            e["verdicts"].append({"reviewer": rv, "verdict": v, "stage": s, "note": nt, "ts": ts,
+                                  "element": el or ""})
             if v == "good":
                 e["good"] += 1
             elif v == "bad":
