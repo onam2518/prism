@@ -151,6 +151,26 @@ class Store:
             q += " WHERE fail_kind IS NULL OR fail_kind=''"
         return {r[0] for r in c.execute(q)}
 
+    def set_source_url(self, content_hash, url, team=None) -> bool:
+        """원문 링크 백필: payload.content_ref.source_url 만 교체(초안·판정·적재 시각 불변).
+        해시는 서비스+제목+부제+본문으로만 계산되므로 링크 교체는 콘텐츠 정체성을 바꾸지 않는다.
+        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
+        c = self._conn()
+        row = c.execute("SELECT payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
+        if not row:
+            return False
+        try:
+            payload = json.loads(row[0])
+        except (TypeError, ValueError):
+            return False
+        ref = payload.get("content_ref") or {}
+        ref["source_url"] = url
+        payload["content_ref"] = ref
+        c.execute("UPDATE results SET payload=? WHERE content_hash=?",
+                  (json.dumps(payload, ensure_ascii=False), content_hash))
+        c.commit()
+        return True
+
     def save_result(self, content: dict, out: dict, run_id: str):
         ch = content_hash(content)
         qm = out.get("quality_meta", {})

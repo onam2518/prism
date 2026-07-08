@@ -930,6 +930,85 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
             pass
 
 
+def backfill_urls(file_bytes: bytes, filename: str, team=None) -> dict:
+    """원문 링크 백필(관리자): 해시/제목 ↔ URL 매핑 표로 기존 콘텐츠의 source_url 만 갱신.
+    초안(item_meta)·검수 판정·적재 시각은 건드리지 않는다 — 해시가 서비스+제목+부제+본문으로만
+    계산되므로 링크 교체는 콘텐츠 정체성을 바꾸지 않는다(링크 없이 인입된 과거분 구제)."""
+    from . import ingest as ING
+    ext = os.path.splitext(filename or "")[1].lower() or ".csv"
+    fd, tmp = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(file_bytes)
+        try:
+            headers, rows = ING.read_table(tmp)
+        except ValueError as e:
+            return {"error": str(e)}
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+    def _find(names):
+        for h in headers or []:
+            if str(h or "").strip().lower().replace(" ", "").replace("_", "") in names:
+                return h
+        return None
+    url_col = _find(set(ING.ALIASES["source_url"]))
+    hash_col = _find({"hash", "해시", "contenthash", "콘텐츠해시"})
+    title_col = _find(set(ING.ALIASES["title"]))
+    if not url_col or not (hash_col or title_col):
+        return {"error": "필수 컬럼을 찾지 못했습니다 · URL(링크) 컬럼과 해시 또는 제목 컬럼이 필요합니다",
+                "headers": headers}
+    st = get_store()
+    if not (st and hasattr(st, "set_source_url")):
+        return {"error": "저장소가 준비되지 않았습니다"}
+    by_hash, by_title = {}, {}                     # 현재 적재분 색인: 매칭 + 변화 없음 판별
+    for r in results_rows(team=team):
+        ref = r.get("content_ref") or {}
+        h = _row_key(ref)
+        by_hash[h] = ref.get("source_url", "") or r.get("url", "")
+        t = (ref.get("title", "") or r.get("title", "")).strip()
+        if t:
+            by_title.setdefault(t, []).append(h)
+    updated = unchanged = no_match = ambiguous = bad_url = 0
+    misses = []                                    # 미매칭 표본(최대 10) · 사용자가 원인 파악
+    for row in rows:
+        url = str(row.get(url_col) or "").strip()
+        h = str(row.get(hash_col) or "").strip() if hash_col else ""
+        t = str(row.get(title_col) or "").strip() if title_col else ""
+        if not (url.startswith("http://") or url.startswith("https://")):
+            bad_url += 1
+            continue
+        if h and h in by_hash:
+            target = h
+        elif t and t in by_title:
+            if len(by_title[t]) > 1:               # 동일 제목 다건 = 오적용 위험 → 해시로만 허용
+                ambiguous += 1
+                if len(misses) < 10:
+                    misses.append(f"{t} (동일 제목 {len(by_title[t])}건 · 해시로 지정 필요)")
+                continue
+            target = by_title[t][0]
+        else:
+            no_match += 1
+            if len(misses) < 10:
+                misses.append(h or t or "(해시·제목 빈 행)")
+            continue
+        if by_hash.get(target, "") == url:
+            unchanged += 1
+            continue
+        if st.set_source_url(target, url, team=team):
+            by_hash[target] = url
+            updated += 1
+        else:
+            no_match += 1
+    if updated:
+        _agg_bump()
+    return {"ok": True, "rows": len(rows), "updated": updated, "unchanged": unchanged,
+            "noMatch": no_match, "ambiguous": ambiguous, "badUrl": bad_url, "misses": misses}
+
+
 # ── 자동 인입: 작업 상태(진행률) + 백그라운드 폴링 스케줄러 ──
 _INGEST_STATE = {}                         # {sid: {name,endpoint,running,total,done,last_run,last_msg,last_ok,trigger}}
 _INGEST_LOCK = threading.Lock()
@@ -2814,6 +2893,26 @@ class Handler(BaseHTTPRequestHandler):
                 rows = [json.loads(ln) for ln in raw.decode("utf-8", "replace").splitlines() if ln.strip()]
                 self._send(200, json.dumps(register_golden(self._bearer_uid(), self._req_team(), rows,
                                            self._bearer_email(), merge=merge), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/backfill-urls"):   # 관리자: 원문 링크 백필(source_url 만 갱신 · 초안·판정 불변)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                ctype = self.headers.get("Content-Type", "")
+                if "multipart/form-data" not in ctype:
+                    self._send(400, json.dumps({"error": "매핑 파일이 필요합니다(multipart)"}, ensure_ascii=False), _JSON)
+                    return
+                fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
+                f = fields.get("file")
+                if not isinstance(f, dict) or not f.get("bytes"):
+                    self._send(400, json.dumps({"error": "파일이 없습니다"}, ensure_ascii=False), _JSON)
+                    return
+                r = backfill_urls(f["bytes"], f.get("filename", "map.csv"), team=self._req_team())
+                self._send(200, json.dumps(r, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
