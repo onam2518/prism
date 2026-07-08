@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import queue as _queue
@@ -1164,6 +1165,24 @@ _MODEL_FAMILY_PREFIX = {"gpt": "openai", "o1": "openai", "o3": "openai", "o4": "
                         "claude": "anthropic", "gemini": "google", "deepseek": "deepseek"}
 
 
+_TEAM_CACHE = {}                       # uid -> (team_id, expiry) · 팀 변경은 드물어 60s TTL 로 충분
+
+
+def team_of(uid):
+    """uid → team_id · 60s 캐시. 인증 요청마다 reviewer_team 조회가 supabase 1콜을 만들던 비용 제거
+    (가입·팀 변경 시 /reviewer POST 가 해당 uid 캐시를 즉시 무효화)."""
+    if not uid:
+        return None
+    now = time.time()
+    hit = _TEAM_CACHE.get(uid)
+    if hit and hit[1] > now:
+        return hit[0]
+    st = get_store()
+    team = st.reviewer_team(uid) if (st and hasattr(st, "reviewer_team")) else None
+    _TEAM_CACHE[uid] = (team, now + 60)
+    return team
+
+
 def llm_for_model(model: str, mock: bool):
     """모델 id 로 제공자·엔드포인트·키를 해석해 전용 LLMClient 구성(다중 모델 실호출 라우팅).
     solar* = Upstage 직접, 그 외 = 키 보유 라우터(bizrouter=provider/model · timely=bare id).
@@ -2132,12 +2151,24 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _send(self, code, body, ctype="text/html; charset=utf-8"):
+    _GZIP_CT = ("text/html", "application/json", "text/css", "application/javascript",
+                "text/csv", "image/svg", "text/plain")
+
+    def _send(self, code, body, ctype="text/html; charset=utf-8", cache=""):
         data = body.encode("utf-8") if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        # 전송 압축: 텍스트 응답 · 1KB 이상 · 클라이언트 gzip 수용 시(첫 로드 4.7MB → ~1MB 실측 근거)
+        if (code == 200 and len(data) > 1024
+                and any(t in ctype for t in self._GZIP_CT)
+                and "gzip" in (self.headers.get("Accept-Encoding") or "")):
+            data = gzip.compress(data, 6)
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(data)))
-        if "text/html" in ctype:        # WKWebView 가 옛 페이지를 캐시하지 않도록
+        if cache:
+            self.send_header("Cache-Control", cache)
+        elif "text/html" in ctype:      # WKWebView 가 옛 페이지를 캐시하지 않도록
             self.send_header("Cache-Control", "no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(data)
@@ -2406,9 +2437,7 @@ class Handler(BaseHTTPRequestHandler):
         """supabase 모드: Bearer uid → 그 사용자의 team_id(요청별 팀 스코핑). 아니면 None."""
         if not _supa():
             return None
-        uid = self._bearer_uid()
-        st = get_store()
-        return (st.reviewer_team(uid) if (uid and st and hasattr(st, "reviewer_team")) else None)
+        return team_of(self._bearer_uid())
 
     def _inject_reviewer(self, data):
         """supabase 모드: Bearer JWT 검증 → data['reviewer']=uid(사칭 불가) + data['_team']=팀.
@@ -2467,8 +2496,16 @@ class Handler(BaseHTTPRequestHandler):
         if ext not in self._VENDOR_CT or not os.path.isfile(path):
             self._send(404, "not found")
             return
+        # 캐시 정책: 페이지가 ?v=부팅ID 버스터를 달아 주므로 버스터 有 = 불변 1년.
+        # 폰트는 css 에서 버스터 없이 참조되지만 사실상 불변 자산 → 30일.
+        if ext in (".woff", ".woff2"):
+            cache = "public, max-age=2592000"
+        elif "?v=" in self.path:
+            cache = "public, max-age=31536000, immutable"
+        else:
+            cache = "public, max-age=3600"
         with open(path, "rb") as f:
-            self._send(200, f.read(), self._VENDOR_CT[ext])
+            self._send(200, f.read(), self._VENDOR_CT[ext], cache=cache)
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -2557,6 +2594,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/reviewer"):
+            _TEAM_CACHE.pop(self._bearer_uid() or "", None)   # 가입·팀 변경 즉시 반영
             try:
                 data = json.loads(body or b"{}")
                 if not self._inject_reviewer(data):
