@@ -291,7 +291,11 @@
 
       init() {
         this.loadReviewer();                           // 검수자·토큰(localStorage) · refreshConfig 의 관리자 로드보다 먼저
-        if (this.authToken) this.ensureAdmin();        // 관리자 판정을 /config 성공에 묶지 않는다(새로고침 경합 방지)
+        if (this.authToken) {                          // 관리자 판정을 /config 성공에 묶지 않는다(새로고침 경합 방지)
+          const kick = () => this.ensureAdmin();
+          this.rtoken ? this.authRefresh().then(kick, kick) : kick();   // 부팅 선갱신: 만료 토큰 새로고침 케이스
+        }
+        setInterval(() => { if (this.rtoken && this.authToken) this.authRefresh(); }, 45 * 60 * 1000);   // 1h 만료 전 주기 연장
         this.refreshConfig();
         this.startLive();                              // 실시간 SSE 구독
         // 장기 폴백: 탭 복귀 시에도 판정이 비어 있으면 재시도(일시 실패로 사용자 메뉴만 굳는 것 방지)
@@ -611,7 +615,7 @@
       },
       // ── 팀 실시간 협업: 검수자 식별 · 검수 대기 · 라이브 ──
       loadReviewer() {
-        try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; this.authToken = localStorage.getItem('prism_token') || ''; } catch (e) {}
+        try { this.reviewer = localStorage.getItem('prism_reviewer') || ''; this.reviewerChar = localStorage.getItem('prism_reviewer_char') || 'boksil'; this.authToken = localStorage.getItem('prism_token') || ''; this.rtoken = localStorage.getItem('prism_rtoken') || ''; } catch (e) {}
         this._loadCred();                              // 저장된 아이디·비밀번호 프리필(이 기기)
         if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
       },
@@ -619,9 +623,9 @@
       _err(m) { this.errMsg = m; if (this._errT) clearTimeout(this._errT); this._errT = setTimeout(() => { this.errMsg = ''; }, 4800); },
       get showProfileFields() { return this.backend !== 'supabase' || this.authMode === 'signup' || !!this.reviewer; },
       logout() {
-        try { localStorage.removeItem('prism_reviewer'); localStorage.removeItem('prism_reviewer_char'); localStorage.removeItem('prism_token'); } catch (e) {}
+        try { localStorage.removeItem('prism_reviewer'); localStorage.removeItem('prism_reviewer_char'); localStorage.removeItem('prism_token'); localStorage.removeItem('prism_rtoken'); } catch (e) {}
         this._loadCred();                              // 저장 선택 시 재로그인 편의(프리필 유지)
-        this.reviewer = ''; this.authToken = ''; this.adminData = null; this.arenaData = null;
+        this.reviewer = ''; this.authToken = ''; this.rtoken = ''; this.adminData = null; this.arenaData = null;
         this.mod = 'home'; this.reviewerEditing = true;
       },
       goldenMinGood: 1,
@@ -671,8 +675,8 @@
           catch (e) { this.authBusy = false; this.authMsg = '네트워크 오류'; return; }
           if (!r.ok) { this.authBusy = false; this.authMsg = this._authErr(r.error, r.raw); return; }
           this._storeCred(email, pw);                               // 아이디·비밀번호 저장(선택 시 · 이 기기)
-          this.authToken = r.access_token; this.authMsg = '';
-          try { localStorage.setItem('prism_token', this.authToken); } catch (e) {}
+          this.authToken = r.access_token; this.rtoken = r.refresh_token || ''; this.authMsg = '';
+          try { localStorage.setItem('prism_token', this.authToken); if (this.rtoken) localStorage.setItem('prism_rtoken', this.rtoken); } catch (e) {}
           if (this.authMode === 'login') {                          // 로그인: 기존 프로필 로드(재입력 없음)
             let rr; try { rr = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ mode: 'login' }) })).json(); } catch (e) { this.authBusy = false; this.authMsg = '네트워크 오류'; return; }
             if (rr && rr.needSignup) { this.authBusy = false; this.authMode = 'signup'; this.authMsg = '가입 정보가 없습니다 · 닉네임·캐릭터·팀을 설정해 가입하세요'; return; }
@@ -753,14 +757,41 @@
       async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
       // 관리자 판정 보장 로드: 일시 실패(배포 재시작·네트워크 순단)면 백오프 재시도.
       // 단발 loadAdmin 만으로는 실패 시 adminData 가 null 로 굳어 관리자에게 사용자 메뉴만 노출됐다(간헐 · 2026-07-07).
+      // 세션 자동 갱신: supabase access token 은 1시간 만료 · refresh_token 으로 무중단 연장.
+      // (만료 후 관리자 메뉴가 조용히 사용자 메뉴로 강등되던 원인 · 2026-07-08)
+      rtoken: '',
+      async authRefresh() {
+        if (!this.rtoken) return false;
+        if (this._refreshBusy) return this._refreshBusy;            // 동시 호출 dedupe
+        this._refreshBusy = (async () => {
+          try {
+            const r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'refresh', refresh_token: this.rtoken }) })).json();
+            if (!(r && r.ok && r.access_token)) return false;
+            this.authToken = r.access_token;
+            if (r.refresh_token) this.rtoken = r.refresh_token;     // supabase 는 갱신 시 회전
+            try { localStorage.setItem('prism_token', this.authToken); localStorage.setItem('prism_rtoken', this.rtoken); } catch (e) {}
+            return true;
+          } catch (e) { return false; }
+          finally { this._refreshBusy = null; }
+        })();
+        return this._refreshBusy;
+      },
       async ensureAdmin(tries) {
         if (this._adminBusy) return;
         this._adminBusy = true;
         try {
+          let refreshed = false;
           for (let i = 0; i < (tries || 6); i++) {
             try {
               const r = await fetch('/admin', { headers: this._authHeaders() });
-              if (r.ok || r.status === 401 || r.status === 403) {   // 인증 실패는 재시도 무의미(만료 = 재로그인) · 503 은 재시도
+              if (r.status === 401) {                               // 토큰 만료: 1회 자동 갱신 후 즉시 재시도
+                if (!refreshed && await this.authRefresh()) { refreshed = true; continue; }
+                this.adminData = await r.json();
+                this._err('로그인이 만료됐습니다 · 다시 로그인해주세요');
+                this.logout();
+                return;
+              }
+              if (r.ok || r.status === 403) {                       // 503 등은 재시도
                 this.adminData = await r.json();
                 return;
               }

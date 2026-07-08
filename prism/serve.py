@@ -2187,6 +2187,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(503, json.dumps({"ok": False, "error": "인증 서버 연결 지연 · 자동 재시도됩니다"},
                                            ensure_ascii=False), _JSON)
                 return
+            if token and _supa() and not uid:
+                # 토큰이 있는데 무효 = 만료(1시간) · '비관리자(200)'로 뭉개면 관리자 메뉴가 조용히 강등된다
+                self._send(401, json.dumps({"ok": False, "error": "로그인이 만료됐습니다 · 세션 갱신 필요"},
+                                           ensure_ascii=False), _JSON)
+                return
             self._send(200, json.dumps(admin_data(uid, self._req_team(), self._bearer_email()),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/queue"):
