@@ -87,7 +87,7 @@ class TestFourCallExtraction(unittest.TestCase):
         AG.META_CFG = {"four_calls": True, "call_models": {}}
         im, results = AG.run_item(llm, self._content())
         self.assertEqual(llm.calls, ["item_summary", "item_entities", "item_intent", "item_category"])
-        self.assertEqual(len(im.entities), 3)                       # 1~3개 강제
+        self.assertEqual(len(im.entities), 4)                       # 핵심만 · 상한 없음(2026-07-08 정책 전환 · 절단 금지)
         self.assertEqual(im.intent, ["속보·단신"])                    # 사전 불일치 드롭
         self.assertEqual(im.content_category, ["Business and Finance / Economy"])
 
