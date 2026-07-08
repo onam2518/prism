@@ -2217,10 +2217,13 @@ PAGE = """<!doctype html>
                 <div class="dve__mine" x-show="detail.fb.n > 1" x-cloak>
                   <span class="dve__mine-lbl">내 판정</span>
                   <span class="ds-badge" x-bind:class="detail.fb.mine==='good' ? 'ds-badge--success' : (detail.fb.mine==='bad' ? 'ds-badge--error' : 'ds-badge--neutral')" x-text="detail.fb.mine==='good' ? '정확' : (detail.fb.mine==='bad' ? '수정 필요' : '아직 없음')"></span>
-                  <span class="text-xs text-muted" x-text="'팀 표 ' + detail.fb.n + '개 · 정확 ' + (detail.fb.good||0) + ' · 수정 필요 ' + (detail.fb.bad||0)"></span>
+                  <span class="text-xs text-muted" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개'"></span>
                 </div>
                 <div class="tbox" x-show="detail.fb.verdict!=='good' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:10px" x-on:click="editVerdict=true; pendingBad=((detail.fb.mine || detail.fb.verdict)==='bad')">추가 수정</button>
+                <div style="display:flex;gap:var(--ds-space-2);margin-top:10px">
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="editVerdict=true; pendingBad=((detail.fb.mine || detail.fb.verdict)==='bad')">추가 수정</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.fb.mine || (backend !== 'supabase' && detail.fb.n === 1)" x-cloak x-on:click="undoVerdict()" data-tip="내 표만 취소합니다 · 다른 검수자의 판정은 그대로 유지됩니다" data-tip-pos="top">내 판정 취소</button>
+                </div>
               </div>
             </template>
             <!-- 미검수 또는 추가 수정 중 -->

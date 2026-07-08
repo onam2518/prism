@@ -106,7 +106,7 @@
       // 내 판정 직후: 모든 목록 사본(검수 목록·드릴 목록·탐색 목록)에 hash 기준 반영.
       // 기존에는 detailNav 가 있는 경로만 동기화돼 드릴 목록 재진입 시 예전 판정이 보였다.
       _syncFbByHash(hash, fb) {
-        const upd = (r) => { if (r && r.hash === hash) { r.fb = Object.assign({}, r.fb, fb); r._doneLocal = !!(fb && fb.verdict); } };
+        const upd = (r) => { if (r && r.hash === hash) { r.fb = Object.assign({}, r.fb, fb); r._doneLocal = !!(fb && fb.verdict); if (fb && fb.good !== undefined) r.split = !!(fb.good && fb.bad); } };
         (((this.rawData || {}).items) || []).forEach(upd);
         (((this.drillData || {}).items) || []).forEach(upd);
         if (this.detailNav) (this.detailNav.list || []).forEach(upd);
@@ -485,7 +485,8 @@
       reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; this._afterVerdict(); },
       reviewBadComplete() {
         if (!(this.detail.fb.note || '').trim()) { this._err('무엇을 왜 고쳐야 하는지 입력하세요'); return; }
-        this.detail.fb = Object.assign({}, this.detail.fb, { verdict: 'bad', mine: 'bad', ts: Date.now() / 1000 });
+        const cur = (this.detail.fb.mine !== undefined ? (this.detail.fb.mine || '') : (this.detail.fb.verdict || '')) || '';
+        this.detail.fb = this._fbRecount(Object.assign({}, this.detail.fb, { mine: 'bad', ts: Date.now() / 1000 }), cur, 'bad');
         this._syncFbByHash(this.detail.hash, this.detail.fb);
         this.saveFbNote(this.detail);
         this.pendingBad = false; this.editVerdict = false;
@@ -605,12 +606,36 @@
       },
       // ── 배치 결과: 콘텐츠별 평가 피드백 → 학습 루프 ──
       fbNoteOpen: {},
+      // 내 표 변경(cur→v)을 팀 카운트에 즉시 반영: 다음 /raw 응답 전에도 '팀 의견 · 정확 x개' 표기 정합.
+      // verdict 는 서버 합의 규칙과 동일하게 재계산(다수결 · 동수 = 의견 갈림).
+      _fbRecount(fb, cur, v) {
+        if (cur === v) return fb;
+        fb.good = Math.max(0, (fb.good || 0) + (v === 'good' ? 1 : 0) - (cur === 'good' ? 1 : 0));
+        fb.bad = Math.max(0, (fb.bad || 0) + (v === 'bad' ? 1 : 0) - (cur === 'bad' ? 1 : 0));
+        fb.n = fb.good + fb.bad;
+        fb.verdict = fb.good > fb.bad ? 'good' : (fb.bad > fb.good ? 'bad' : (fb.n ? 'split' : ''));
+        return fb;
+      },
+      // 내 판정 취소: 내 표 행만 서버에서 삭제 · 남은 표 없으면 미검수로 복귀
+      async undoVerdict() {
+        const c = this.detail; if (!c || !c.fb) return;
+        let cur = (c.fb.mine !== undefined ? (c.fb.mine || '') : (c.fb.verdict || '')) || '';
+        // 로컬(sqlite) 모드는 /raw 가 내 표를 식별하지 않는다(mine 항상 빈 값) → 단독 표는 내 표로 간주
+        if (!cur && this.backend !== 'supabase' && c.fb.n === 1) cur = c.fb.verdict || '';
+        if (!cur) return;
+        const nf = this._fbRecount(Object.assign({}, c.fb, { mine: '', ts: Date.now() / 1000 }), cur, '');
+        c.fb = nf;
+        this._syncFbByHash(c.hash, nf);
+        this.editVerdict = false; this.pendingBad = false;
+        await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: '', stage: 'analyze', note: '' });
+        if (this.histOpen) this.loadHistory();
+      },
       async setFeedback(c, verdict) {
         // 재클릭 취소 비교는 '내 표(mine)' 기준. fb.verdict 는 팀 합의라 남의 표와 비교하면
         // 이미 합의가 같은 값일 때 내 첫 클릭이 취소('')로 전송되는 오동작이 난다.
         const cur = (c.fb && (c.fb.mine !== undefined ? (c.fb.mine || '') : (c.fb.verdict || ''))) || '';
         const v = (cur === verdict) ? '' : verdict;        // 같은 버튼 재클릭 = 취소
-        c.fb = Object.assign({}, c.fb, { verdict: v, mine: v, ts: (v ? Date.now() / 1000 : 0) });   // 수정 일시 기록
+        c.fb = this._fbRecount(Object.assign({}, c.fb, { mine: v, ts: (v ? Date.now() / 1000 : 0) }), cur, v);   // 수정 일시 기록
         this._syncFbByHash(c.hash, c.fb);
         if (v === 'bad') this.fbNoteOpen[c.hash] = true;
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
@@ -631,7 +656,9 @@
         const raw = (c.fb.note || '').trim();
         const tagged = raw ? ('[' + els.map((e) => this.elemLabel(e)).join('·') + '] ' + raw) : raw;
         c.fb = Object.assign({}, c.fb, { verdict: c.fb.verdict || 'bad', stage: stage, ts: Date.now() / 1000 });
-        await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: c.fb.verdict, stage: stage, elements: els, note: tagged });
+        // 서버에는 '내 표'를 보낸다 · fb.verdict 는 팀 합의라 'split' 등 표가 아닌 값이 저장될 수 있다
+        const myV = (c.fb.mine !== undefined ? (c.fb.mine || '') : '') || 'bad';
+        await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: myV, stage: stage, elements: els, note: tagged });
         this.fbNoteOpen[c.hash] = false;
         if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(25, '교정 반영'); }  // 교정 = +25 PT(서버 산정과 일치)
       },

@@ -1337,9 +1337,19 @@ def apply_feedback(data: dict) -> dict:
             return {"ok": False, "error": "hash required"}
         if ch.startswith("gold:"):                 # 골드 문항 응답 → gold_checks 로 분리(피드백 오염 방지)
             return apply_gold_answer(data)
-        verdict = data.get("verdict") or ""        # good | bad | ""(취소)
+        verdict = data.get("verdict") or ""        # good | bad | ""(실행취소)
         reviewer = (data.get("reviewer") or "").strip() or "(익명)"   # 귀속 키(uid 또는 이름)
         disp = (data.get("name") or "").strip() or reviewer          # 토스트 표시명
+        if not verdict:                            # 실행취소: 빈 표를 upsert 하지 않고 행을 삭제(팀 표 수 정합)
+            prev = (st.delete_feedback(ch, reviewer, team=data.get("_team"))
+                    if hasattr(st, "delete_feedback") else "")
+            if prev:                               # 원 표는 삭제돼도 취소 사실은 작업 이력에 남긴다(감사 추적)
+                st.log_patch(ch, reviewer, "undo:verdict", prev, "", team=data.get("_team"))
+            broadcast({"type": "feedback", "hash": ch, "reviewer": disp, "verdict": "",
+                       "title": data.get("title", ""), "service": data.get("service", ""), "ts": time.time()})
+            _agg_bump()
+            return {"ok": True, "feedback": st.feedback_stats(),
+                    "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
         note = (data.get("note") or "").strip()
         elements = [e for e in (data.get("elements") or []) if e in FL.ELEMENTS]
         if not elements and (data.get("element") or "").strip() in FL.ELEMENTS:
@@ -1788,6 +1798,9 @@ def content_history(content_hash: str, team=None) -> dict:
                 items.append({"kind": "rerun", "who": "",
                               "ts": _hist_epoch(pr.get("ts")),
                               "label": "초안 재실행 · " + el[len("rerun:"):].replace("->", " → "), "note": ""})
+            elif el == "undo:verdict":             # 판정 실행취소(표 행은 삭제돼도 취소 사실은 남긴다)
+                items.append({"kind": "undo", "who": pr.get("reviewer") or "",
+                              "ts": _hist_epoch(pr.get("ts")), "label": "판정 취소", "note": ""})
             else:
                 items.append({"kind": "patch", "who": pr.get("reviewer") or "",
                               "ts": _hist_epoch(pr.get("ts")),
