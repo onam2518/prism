@@ -91,7 +91,25 @@
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
       goldenResult: null, goldenBusy: false, goldenMsg: '',
       rawData: null, rawSel: null,
-      async loadRaw() { try { const r = await (await fetch('/raw?limit=200', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; } } catch (e) {} },
+      async loadRaw() { try { const r = await (await fetch('/raw?limit=200', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this._absorbFreshFb(); } } catch (e) {} },
+      // 목록 재조회(SSE 포함) 후: 열린 상세와 ←→ 탐색 목록은 '사본'이라 그대로 두면 예전 판정이
+      // 계속 보인다(타 검수자·다른 기기 판정 미반영 · 2026-07-08 재현). 최신 fb 를 사본에 주입한다.
+      _absorbFreshFb() {
+        const map = {};
+        (((this.rawData || {}).items) || []).forEach((r) => { if (r.hash) map[r.hash] = r.fb; });
+        if (this.detailNav) (this.detailNav.list || []).forEach((r) => { if (map[r.hash]) r.fb = Object.assign({}, map[r.hash]); });
+        if (this.detailOpen && this.detail && map[this.detail.hash] && !this.editVerdict && !this.pendingBad) {
+          this.detail.fb = Object.assign({}, this.detail.fb, map[this.detail.hash]);   // 편집 중에는 방해 금지
+        }
+      },
+      // 내 판정 직후: 모든 목록 사본(검수 목록·드릴 목록·탐색 목록)에 hash 기준 반영.
+      // 기존에는 detailNav 가 있는 경로만 동기화돼 드릴 목록 재진입 시 예전 판정이 보였다.
+      _syncFbByHash(hash, fb) {
+        const upd = (r) => { if (r && r.hash === hash) { r.fb = Object.assign({}, r.fb, fb); r._doneLocal = !!(fb && fb.verdict); } };
+        (((this.rawData || {}).items) || []).forEach(upd);
+        (((this.drillData || {}).items) || []).forEach(upd);
+        if (this.detailNav) (this.detailNav.list || []).forEach(upd);
+      },
       // 검수 대상 콘텐츠: 상단 모델→버전 구분 + 필터
       rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '',
       // 결과 비교: 요소 단위 모델별 현황 + 콘텐츠별 초안 diff(팝업)
@@ -185,15 +203,8 @@
         this.liveToast('🎉 목록의 검수를 모두 마쳤어요!');
         this.detailOpen = false;
       },
-      _afterVerdict() {                                  // 판정 직후: 현재 행 완료 표기 + 자동 다음(토글)
+      _afterVerdict() {                                  // 판정 직후: 자동 다음(토글) · 행 반영은 _syncFbByHash 가 담당
         if (!this.detailNav) return;
-        const cur = this.detailNav.list[this.detailNav.idx];
-        if (cur) {
-          cur._doneLocal = true;
-          // 상세(detail)는 목록 행의 사본이라 판정이 행에 자동 반영되지 않는다 →
-          // fb 를 되써서 목록의 ✓/검수하기 표기가 새로고침 없이 즉시 갱신되게 한다
-          if (this.detail && this.detail.hash === cur.hash) cur.fb = Object.assign({}, cur.fb, this.detail.fb);
-        }
         if (this.autoNext) this.detailNextTodo();
       },
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
@@ -458,7 +469,8 @@
       reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; this._afterVerdict(); },
       reviewBadComplete() {
         if (!(this.detail.fb.note || '').trim()) { this._err('무엇을 왜 고쳐야 하는지 입력하세요'); return; }
-        this.detail.fb = Object.assign({}, this.detail.fb, { verdict: 'bad', mine: 'bad' });
+        this.detail.fb = Object.assign({}, this.detail.fb, { verdict: 'bad', mine: 'bad', ts: Date.now() / 1000 });
+        this._syncFbByHash(this.detail.hash, this.detail.fb);
         this.saveFbNote(this.detail);
         this.pendingBad = false; this.editVerdict = false;
         this._afterVerdict();
@@ -582,6 +594,7 @@
         const cur = (c.fb && (c.fb.mine !== undefined ? (c.fb.mine || '') : (c.fb.verdict || ''))) || '';
         const v = (cur === verdict) ? '' : verdict;        // 같은 버튼 재클릭 = 취소
         c.fb = Object.assign({}, c.fb, { verdict: v, mine: v, ts: (v ? Date.now() / 1000 : 0) });   // 수정 일시 기록
+        this._syncFbByHash(c.hash, c.fb);
         if (v === 'bad') this.fbNoteOpen[c.hash] = true;
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
         if (cur === '' && v !== '') this.celebratePoints(10, '검수 완료');   // 새 검수 = +10 PT
