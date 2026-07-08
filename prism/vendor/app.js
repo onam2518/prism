@@ -334,7 +334,7 @@
           if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
           if (e.metaKey || e.ctrlKey || e.altKey) return;
           if (e.code === 'KeyA') { e.preventDefault(); this.reviewGood(); }
-          else if (e.code === 'KeyS') { e.preventDefault(); this.editVerdict = true; this.pendingBad = true; }
+          else if (e.code === 'KeyS') { e.preventDefault(); this.openEditVerdict(); this.pendingBad = true; }
           else if (e.code === 'ArrowRight') { e.preventDefault(); this.detailGo(1); }
           else if (e.code === 'ArrowLeft') { e.preventDefault(); this.detailGo(-1); }
           else if (e.code === 'Escape') { this.detailOpen = false; }
@@ -615,6 +615,14 @@
         fb.n = fb.good + fb.bad;
         fb.verdict = fb.good > fb.bad ? 'good' : (fb.bad > fb.good ? 'bad' : (fb.n ? 'split' : ''));
         return fb;
+      },
+      // 추가 수정: 직전 교정(메모·선택 요소)을 남긴 채 편집을 연다(이어쓰기 · 회의 소요).
+      // 저장 시 '[요소] ' 태그가 다시 붙으므로 선두 태그는 벗겨 중복을 막는다.
+      openEditVerdict() {
+        const fb = this.detail && this.detail.fb; if (!fb) return;
+        if (fb.note) fb.note = String(fb.note).replace(/^\[[^\]]*\]\s*/, '');
+        this.editVerdict = true;
+        this.pendingBad = ((fb.mine || fb.verdict) === 'bad');
       },
       // 내 판정 취소: 내 표 행만 서버에서 삭제 · 남은 표 없으면 미검수로 복귀
       async undoVerdict() {

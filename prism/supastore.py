@@ -479,7 +479,7 @@ class SupabaseStore:
                 for r in rows if (r.get("reap_plan") or "").strip()]
 
     def _all_feedback(self, team=None) -> list:
-        q = "select=content_hash,reviewer_id,verdict,stage,note,reap_plan,title,service,ts"
+        q = "select=content_hash,reviewer_id,verdict,stage,note,element,reap_plan,title,service,ts"
         if team:
             q += f"&team_id=eq.{urllib.parse.quote(team)}"
         return self._get("feedback", q)
@@ -497,7 +497,8 @@ class SupabaseStore:
             rv = names.get(r["reviewer_id"], {}).get("name", r["reviewer_id"])
             e = out.setdefault(ch, {"verdicts": [], "good": 0, "bad": 0})
             e["verdicts"].append({"reviewer": rv, "reviewer_id": r["reviewer_id"], "verdict": v,
-                                  "stage": r.get("stage"), "note": r.get("note"), "ts": r.get("ts")})
+                                  "stage": r.get("stage"), "note": r.get("note"), "ts": r.get("ts"),
+                                  "element": r.get("element") or ""})
             if v == "good":
                 e["good"] += 1
             elif v == "bad":

@@ -35,6 +35,17 @@ class TestVerdictUndo(unittest.TestCase):
             fb = st.feedback_map()["h1"]
             self.assertEqual((fb["n"], fb["good"], fb["bad"]), (2, 1, 1))
 
+    def test_feedback_map_keeps_note_and_element(self):
+        """'추가 수정' 이어쓰기 원천: 표에 교정 메모·선택 요소가 함께 실려야 한다."""
+        from prism.store import Store
+        with tempfile.TemporaryDirectory() as d:
+            st = Store(os.path.join(d, "t.db"))
+            st.save_feedback("h2", "", "", "bad", "analyze", "[리드문·엔티티] 어색함", 1.0,
+                             reviewer="a", element="summary,entities")
+            v = st.feedback_map()["h2"]["verdicts"][0]
+            self.assertEqual(v["element"], "summary,entities")
+            self.assertEqual(v["note"], "[리드문·엔티티] 어색함")
+
     def test_apply_feedback_undo_flow(self):
         import prism.serve as SV
         from prism.store import Store

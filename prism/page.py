@@ -2221,7 +2221,7 @@ PAGE = """<!doctype html>
                 </div>
                 <div class="tbox" x-show="detail.fb.verdict!=='good' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
                 <div style="display:flex;gap:var(--ds-space-2);margin-top:10px">
-                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="editVerdict=true; pendingBad=((detail.fb.mine || detail.fb.verdict)==='bad')">추가 수정</button>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEditVerdict()">추가 수정</button>
                   <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.fb.mine || (backend !== 'supabase' && detail.fb.n === 1)" x-cloak x-on:click="undoVerdict()" data-tip="내 표만 취소합니다 · 다른 검수자의 판정은 그대로 유지됩니다" data-tip-pos="top">내 판정 취소</button>
                 </div>
               </div>

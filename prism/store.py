@@ -505,12 +505,13 @@ class Store:
                consensus('good'|'bad'|'split'|''), agree(만장일치), verdict/stage/note(대표=합의·최신, 하위호환)}"""
         c = self._conn()
         out = {}
-        for ch, rv, v, s, nt, ts in c.execute(
-                "SELECT content_hash,reviewer,verdict,stage,note,ts FROM feedback ORDER BY ts"):
+        for ch, rv, v, s, nt, ts, el in c.execute(
+                "SELECT content_hash,reviewer,verdict,stage,note,ts,element FROM feedback ORDER BY ts"):
             if v not in ("good", "bad"):           # 과거 취소가 남긴 빈 표는 집계 제외(표 수 정합)
                 continue
             e = out.setdefault(ch, {"verdicts": [], "good": 0, "bad": 0})
-            e["verdicts"].append({"reviewer": rv, "verdict": v, "stage": s, "note": nt, "ts": ts})
+            e["verdicts"].append({"reviewer": rv, "verdict": v, "stage": s, "note": nt, "ts": ts,
+                                  "element": el or ""})
             if v == "good":
                 e["good"] += 1
             elif v == "bad":
