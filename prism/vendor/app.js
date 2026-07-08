@@ -86,6 +86,7 @@
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
       adminData: null,        // 팀 관리(supabase)
+      updateAvail: false,     // 새 버전 배포 감지(서버 부팅 ID 변화) · 새로고침 배너
       _adminBusy: false,      // ensureAdmin 동시 실행 가드(초기 이중 트리거 dedupe)
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
       goldenResult: null, goldenBusy: false, goldenMsg: '',
@@ -720,6 +721,11 @@
         return err || '로그인 실패';
       },
       charImg(id) { return (this.charOptions.find((c) => c.id === id) || this.charOptions[0]).img; },
+      _seenBoot(b) {                                 // 최초 값 기억 · 달라지면 새 버전 배너(분기 없음 · 새로고침 단일 유도)
+        if (!b) return;
+        if (this._boot && this._boot !== b) this.updateAvail = true;
+        if (!this._boot) this._boot = b;
+      },
       startLive() {
         try {
           const es = new EventSource('/events'); this._es = es;
@@ -729,6 +735,7 @@
       },
       onLive(d) {
         if (!d || !d.type) return;
+        if (d.type === 'hello') { this._seenBoot(d.boot); return; }   // 배포 감지: SSE 재연결 시 부팅 ID 비교
         if (d.type === 'feedback') {
           if (d.reviewer && d.reviewer !== this.reviewer) {
             const v = d.verdict === 'good' ? '정확' : d.verdict === 'bad' ? '문제' : '취소';
@@ -1367,6 +1374,7 @@
         try {
           const r = await fetch('/config'); this.cfg = await r.json();
           if (this.cfg.backend) this.backend = this.cfg.backend;     // sqlite | supabase
+          this._seenBoot(this.cfg.bootId);                            // 배포 감지 폴백(SSE 차단 환경)
           if (this.backend === 'supabase' && this.authToken) this.ensureAdmin();  // 관리자 여부 → nav 게이팅(재시도 포함)
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;

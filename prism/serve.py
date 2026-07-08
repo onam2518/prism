@@ -21,6 +21,9 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# 서버 부팅 ID: 배포(프로세스 교체) 감지 + 벤더 자산 캐시버스터의 단일 원천
+_BOOT_ID = "%d-%d" % (int(time.time()), os.getpid())
+
 from . import feedback_loop as FL
 from . import imagext as IMG
 from . import pipeline as PIPE
@@ -1830,6 +1833,7 @@ def config_status() -> dict:
     return {
         "hasKey": bool(IMG._api_key()),
         "persisted": os.path.exists(_KEY_PATH),
+        "bootId": _BOOT_ID,
         "model": cfg.model or "",
         "baseUrl": base,
         "reasoning": cfg.reasoning_effort or "default",
@@ -2386,7 +2390,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/vendor/"):
             self._send_vendor(self.path.split("?", 1)[0].rsplit("/", 1)[-1])
         else:
-            self._send(200, PAGE)
+            self._send(200, _page_versioned())
 
     def _bearer_uid(self):
         auth = self.headers.get("Authorization", "")
@@ -2429,6 +2433,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         q = _sse_subscribe()
         try:
+            # 접속 인사에 부팅 ID 동봉: 배포로 서버가 교체되면 재연결 시 값이 달라진다(새 버전 배너 트리거)
+            self.wfile.write(("data: " + json.dumps({"type": "hello", "boot": _BOOT_ID}) + "\n\n").encode("utf-8"))
             self.wfile.write(b": connected\n\n")
             self.wfile.flush()
             while True:
@@ -2871,6 +2877,17 @@ class Handler(BaseHTTPRequestHandler):
 
 
 from .page import PAGE                             # 앱 마크업(라우트 분리 3차)
+
+_PAGE_V = ""
+
+
+def _page_versioned() -> str:
+    """벤더 js/css 링크에 ?v=부팅ID 를 붙인 페이지(1회 생성 캐시).
+    새 배포 = 새 URL 이라 브라우저가 구버전 스크립트를 재사용하지 못한다(강력 새로고침 불필요)."""
+    global _PAGE_V
+    if not _PAGE_V:
+        _PAGE_V = re.sub(r"(/vendor/[\w.\-]+\.(?:js|css))", lambda m: m.group(1) + "?v=" + _BOOT_ID, PAGE)
+    return _PAGE_V
 
 
 

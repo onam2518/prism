@@ -344,6 +344,10 @@
   .dvc__bodytext{font-size:15px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap;margin-top:var(--ds-space-3)}
   .dvc__note{font-size:12px;color:var(--ds-muted);margin-top:var(--ds-space-3)}
   .dvc__src{margin-top:var(--ds-space-4);display:inline-flex}
+  /* 새 버전 배너: 하단 중앙 고정 · 모든 레이어 위(z 90) */
+  .updatebar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:12px;
+    padding:10px 12px 10px 18px;border-radius:999px;background:var(--ds-layer-popup);border:1px solid var(--ds-divider-section);
+    box-shadow:var(--ds-shadow-high);font-size:13px;color:var(--ds-ink)}
   /* 원문 페이지 내장 보기: 탭 전환(추출 텍스트 ↔ 원문) · 원문 선택 시 다이얼로그 확장 · 배율은 transform 스케일 */
   .detailview--wide{width:min(1280px,96vw)}
   .dvc__viewtabs{display:flex;align-items:center;gap:var(--ds-space-2);margin-bottom:var(--ds-space-3)}

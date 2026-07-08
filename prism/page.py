@@ -2071,6 +2071,11 @@ PAGE = """<!doctype html>
     </div>
   </div>
 
+  <!-- 새 버전 배너: 배포 감지(서버 부팅 ID 변화) · 분기 없이 새로고침 단일 유도(세션 만료면 새로고침 후 로그인 화면) -->
+  <div class="updatebar" x-show="updateAvail" x-cloak role="status">
+    <span>새 버전이 배포되었습니다 · 새로고침 후 이용해 주세요</span>
+    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="location.reload()">새로고침</button>
+  </div>
   <!-- 확인 모달(공통): 네이티브 confirm 대체 · 자동화(CDP) 렌더러 블로킹 방지 + DS 일관 -->
   <div class="ds-dialog-backdrop" x-show="confirmOpen" x-cloak x-on:mousedown.self="confirmAnswer(false)" x-on:keydown.escape.window="confirmOpen && confirmAnswer(false)" style="z-index:80">
     <div class="ds-dialog" role="alertdialog" aria-modal="true" aria-label="확인" style="max-width:440px">
