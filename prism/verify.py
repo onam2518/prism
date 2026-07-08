@@ -22,6 +22,8 @@ def verify_quality(qm, active_metas: list) -> list:
 
     # 2) 정합성 강제: reasons 유무 ↔ finalGrade
     qm.reasons = clean
+    if not qm.finalGrade and qm.review == "yellow":
+        return notes                           # 판정 보류(호출 실패)는 G 로 보정하지 않는다(fail-open 금지)
     forced = "R" if clean else "G"
     if qm.finalGrade != forced:
         notes.append(f"finalGrade 정합 보정: {qm.finalGrade}→{forced}")
@@ -34,10 +36,7 @@ def verify_item(im, content) -> list:
     if im is None:
         return notes
 
-    # entities 1~3개
-    if len(im.entities) > 3:
-        notes.append(f"entities {len(im.entities)}→3 절단")
-        im.entities = im.entities[:3]
+    # entities: 상한 없음 · 핵심만(2026-07-08 정책 전환 · 프롬프트가 통제) — 빈 값만 정제
     im.entities = [e for e in im.entities if isinstance(e, str) and e.strip()]
 
     # intent(분류값): 사전 화이트리스트

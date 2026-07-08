@@ -132,7 +132,7 @@ def st_quality(ctx: HCtx):
             qm, qres = A.run_quality(ctx.llm, ctx.content, ctx.routing, fewshot=fewshot)
         ctx.results += [r for r in qres if hasattr(r, "cost_usd")]
         ctx.verdicts += [r for r in qres if isinstance(r, dict)]
-        if m.yellow and ctx.pred_v is not None:                         # YELLOW 판정
+        if m.yellow and ctx.pred_v is not None and qm.finalGrade:       # YELLOW 판정(판정 보류는 사유 보존)
             qm.confidence = round(ctx.pred_c, 3)
             if ctx.pred_v != qm.finalGrade:
                 qm.review = "yellow"
@@ -144,6 +144,8 @@ def st_quality(ctx: HCtx):
                 ctx.verdicts.append({"agent": "YellowGate",
                                      "evidence": qm.review_reason, "fail": None})
     ctx.qm = qm
+    if not qm.finalGrade and qm.review == "yellow":    # '_fail' 표기 → store fail_kind=api → 다음 배치 재실행 대상
+        ctx.fallbacks.append("quality_fail → 판정 보류(재실행 대상)")
     ctx.fallbacks += V.verify_quality(qm, ctx.routing.active_quality_metas)
 
 
