@@ -2186,8 +2186,8 @@ PAGE = """<!doctype html>
             </div>
           </div>
           <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="e"></span></template></div></div>
-          <!-- 작업 이력: 판정·교정·재실행 타임라인(접이식 · 회의 소요) -->
-          <div class="dve__sec">
+          <!-- 작업 이력: 판정·교정·재실행 타임라인(접이식 · 회의 소요) · 운영은 팀 생성자·슈퍼관리자 전용 -->
+          <div class="dve__sec" x-show="backend !== 'supabase' || (adminData && adminData.isSuperAdmin)" x-cloak>
             <button type="button" class="copybtn" x-on:click="toggleHistory()" x-text="histOpen ? '작업 이력 닫기' : '작업 이력 보기'"></button>
             <div x-show="histOpen" x-cloak class="histbox">
               <div class="text-xs text-muted" x-show="histBusy">불러오는 중…</div>

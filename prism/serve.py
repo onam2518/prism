@@ -2395,6 +2395,10 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/model-stats"):       # 결과 비교: 요소 단위 모델별 현황
             self._send(200, json.dumps(model_stats(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/history"):           # 검수 상세: 콘텐츠 작업 이력(판정·교정·재실행)
+            # 운영(supabase): 팀 생성자·슈퍼관리자 전용(누가 언제 판정했는지 = 민감 정보) · 로컬 단독 실행은 그대로
+            if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "팀 생성자·슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
             self._send(200, json.dumps(content_history(q.get("hash", [""])[0], self._req_team()),
