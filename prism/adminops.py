@@ -45,16 +45,29 @@ def _auth_post(url, path, key, body):
         return json.loads(raw) if raw.strip() else {}
 
 def auth_action(data: dict) -> dict:
-    """로그인/가입 프록시(서버만 키 보유). mode=login|signup. 키는 프론트에 노출 안 함."""
+    """로그인/가입/세션 갱신 프록시(서버만 키 보유). mode=login|signup|refresh. 키는 프론트에 노출 안 함.
+    refresh: access token 1시간 만료 후에도 refresh_token 으로 무중단 연장(관리자 메뉴가
+    조용히 사용자 메뉴로 강등되던 원인 = 만료 토큰의 401 · 2026-07-08)."""
     s = _supa()
     if not s:
         return {"ok": False, "error": "supabase 모드가 아닙니다"}
     url, key = s
-    email = (data.get("email") or "").strip()
-    pw = data.get("password") or ""
-    if not email or not pw:
-        return {"ok": False, "error": "이메일·비밀번호를 입력하세요"}
     try:
+        if data.get("mode") == "refresh":            # 세션 갱신: 이메일·비밀번호 불필요
+            rt = (data.get("refresh_token") or "").strip()
+            if not rt:
+                return {"ok": False, "error": "갱신 토큰 없음 · 다시 로그인하세요"}
+            tok = _auth_post(url, "/auth/v1/token?grant_type=refresh_token", key, {"refresh_token": rt})
+            at = tok.get("access_token")
+            if not at:
+                return {"ok": False, "error": "세션 갱신 실패 · 다시 로그인하세요"}
+            return {"ok": True, "access_token": at, "refresh_token": tok.get("refresh_token") or rt,
+                    "uid": (tok.get("user") or {}).get("id"),
+                    "email": ((tok.get("user") or {}).get("email") or "")}
+        email = (data.get("email") or "").strip()
+        pw = data.get("password") or ""
+        if not email or not pw:
+            return {"ok": False, "error": "이메일·비밀번호를 입력하세요"}
         if data.get("mode") == "signup":            # 내부 도구: 가입 즉시 확인(admin)
             try:
                 _auth_post(url, "/auth/v1/admin/users", key,
@@ -66,7 +79,8 @@ def auth_action(data: dict) -> dict:
         at = tok.get("access_token")
         if not at:
             return {"ok": False, "error": "로그인 실패"}
-        return {"ok": True, "access_token": at, "uid": (tok.get("user") or {}).get("id"), "email": email}
+        return {"ok": True, "access_token": at, "refresh_token": tok.get("refresh_token") or "",
+                "uid": (tok.get("user") or {}).get("id"), "email": email}
     except urllib.error.HTTPError as e:
         return {"ok": False, "error": f"HTTP{e.code}: {e.read().decode('utf-8', 'replace')[:160]}"}
     except Exception as e:

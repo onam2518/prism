@@ -108,6 +108,32 @@ class TestAdminTiers(unittest.TestCase):
         urllib.request.urlopen = invalid
         self.assertIsNone(AO.validate_jwt("tok-y", strict=True))  # 토큰 무효 = 확정 None(재시도 없음)
 
+    def test_auth_refresh_mode(self):
+        """세션 갱신(grant_type=refresh_token): 이메일·비밀번호 없이 토큰 연장 ·
+        access 1시간 만료로 관리자 메뉴가 조용히 강등되던 증상(2026-07-08)의 해결 경로."""
+        from prism import adminops as AO
+        orig_supa, orig_post = AO._supa, AO._auth_post
+        AO._supa = lambda: ("http://auth.test", "k")
+        self.addCleanup(lambda: (setattr(AO, "_supa", orig_supa),
+                                 setattr(AO, "_auth_post", orig_post)))
+        calls = []
+
+        def fake_post(url, path, key, body):
+            calls.append((path, body))
+            return {"access_token": "new-at", "refresh_token": "new-rt", "user": {"id": "u1", "email": "a@b.c"}}
+        AO._auth_post = fake_post
+        r = AO.auth_action({"mode": "refresh", "refresh_token": "old-rt"})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["access_token"], "new-at")
+        self.assertEqual(r["refresh_token"], "new-rt")                # 회전된 토큰 전달
+        self.assertIn("grant_type=refresh_token", calls[0][0])
+        self.assertEqual(calls[0][1], {"refresh_token": "old-rt"})
+        r2 = AO.auth_action({"mode": "refresh"})                      # 토큰 없음 = 재로그인 안내
+        self.assertFalse(r2["ok"])
+        # 로그인 응답도 refresh_token 을 포함(클라이언트 저장용)
+        r3 = AO.auth_action({"mode": "login", "email": "a@b.c", "password": "pw"})
+        self.assertTrue(r3["ok"] and r3["refresh_token"] == "new-rt")
+
     def test_super_admin_tier(self):
         """권한 3단계: 슈퍼관리자(생성자 부여)는 운영 작업 접근 O · 팀 관리자만인 멤버는 X."""
         from prism import adminops as AO
