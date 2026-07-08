@@ -234,7 +234,7 @@
         this.bulkBusy = true; this.bulkMsg = '';
         try {
           this.pollIngestStatus();                   // 실행 큐 진척도 실시간
-          const r = await (await fetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: '', scope: this.bulkScope }) })).json();   // 모델 비움 = 사용 모델(기본 실행 모델)
+          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: '', scope: this.bulkScope }) })).json();   // 모델 비움 = 사용 모델(기본 실행 모델)
           this.bulkMsg = r && r.ok ? (r.msg || ('✓ 완료 ' + r.done + '건' + (r.failed ? (' · 실패 ' + r.failed) : ''))) : ((r && r.error) || '실패');
           this.loadDash(); this.loadRaw();
         } catch (e) { this.bulkMsg = '일괄 실행 실패'; }
@@ -673,7 +673,7 @@
       async _postFb(payload) {
         payload = Object.assign({ reviewer: this.reviewer || '', name: this.reviewer || '' }, payload);  // 키+표시명(supabase 면 서버가 uid 로 덮어씀)
         try {
-          const r = await (await fetch('/feedback', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
+          const r = await (await this._afetch('/feedback', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
           if (r && r.feedback && this.dashData) this.dashData.feedback = r.feedback;
           (r && r.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
           return r;
@@ -686,6 +686,24 @@
         if (!this.reviewer) this.reviewerEditing = true;            // 첫 방문 → 등록/로그인 모달
       },
       _authHeaders() { const h = { 'Content-Type': 'application/json' }; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken; return h; },
+      // 인증 공통 fetch(쓰기 라우트 통일 · 회의 소요 F): 401(토큰 만료)이면 1회 자동 갱신 후
+      // 재시도하고, 그래도 만료면 안내 + 로그인 모달. 기존에는 경로마다 제각각이라
+      // 만료 시 판정·교정이 조용히 유실됐다. Authorization 은 호출 시점의 최신 토큰으로 덮는다.
+      async _afetch(url, opts) {
+        opts = opts || {};
+        const call = () => {
+          const h = Object.assign({}, opts.headers || {});
+          if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken;
+          return fetch(url, Object.assign({}, opts, { headers: h }));
+        };
+        let r = await call();
+        if (r.status === 401 && this.rtoken && await this.authRefresh()) r = await call();
+        if (r.status === 401 && this.backend === 'supabase') {
+          this._err('로그인이 만료됐습니다 · 다시 로그인해 주세요');
+          this.reviewerEditing = true;
+        }
+        return r;
+      },
       _err(m) { this.errMsg = m; if (this._errT) clearTimeout(this._errT); this._errT = setTimeout(() => { this.errMsg = ''; }, 4800); },
       get showProfileFields() { return this.backend !== 'supabase' || this.authMode === 'signup' || !!this.reviewer; },
       logout() {
@@ -699,7 +717,7 @@
       dtAllowDl: true, dtPersist: true, dtMsg: '',
       async saveDesktopOpts() {
         try {
-          await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ desktop_allow_downloads: !!this.dtAllowDl, desktop_persist_storage: !!this.dtPersist }) });
+          await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ desktop_allow_downloads: !!this.dtAllowDl, desktop_persist_storage: !!this.dtPersist }) });
           this.dtMsg = '✓ 저장됨 · 앱 재시작 후 적용';
         } catch (e) { this.dtMsg = '저장 실패'; }
         setTimeout(() => { this.dtMsg = ''; }, 4000);
@@ -723,7 +741,7 @@
         if (this.backend === 'supabase' && this.authToken) {
           const nv = (this.reviewer || '').trim();
           if (!nv) { this.authMsg = '닉네임을 입력하세요'; return; }
-          try { await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reviewer: nv, name: nv, char: this.reviewerChar }) }); } catch (e) {}
+          try { await this._afetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reviewer: nv, name: nv, char: this.reviewerChar }) }); } catch (e) {}
           try { localStorage.setItem('prism_reviewer', nv); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
           this.reviewerEditing = false; this.authMsg = '';
           return;
@@ -768,7 +786,7 @@
         // 팀: 없음(none) 또는 코드 참가(join). 팀 생성은 관리자 메뉴 전용.
         if (this.backend === 'supabase') { body.team_mode = this.noTeam ? 'none' : 'join'; body.invite_code = this.inviteCode; }
         try {
-          const rr = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
+          const rr = await (await this._afetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
           if (rr && !rr.ok) { this.authBusy = false; this.authMsg = rr.error || '등록 실패'; return; }
           if (rr && rr.team && rr.team.invite_code) { this.myInvite = rr.team.invite_code; }   // 초대코드 표시
         } catch (e) {}
@@ -826,7 +844,7 @@
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
       async loadQueue() { this.modBusy = true; try { const p = new URLSearchParams(); if (!this.queueOnlyUnreviewed) p.set('all', '1'); if (this.reviewer) p.set('reviewer', this.reviewer); this.queueData = await (await fetch('/queue?' + p.toString(), { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; this.arenaData = await (await fetch('/arena' + p, { headers: this._authHeaders() })).json(); this.maybeQuestReminder(); } catch (e) { this._err('아레나 불러오기 실패'); } this.checkBadges(); },
-      async loadAdmin() { try { this.adminData = await (await fetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
+      async loadAdmin() { try { this.adminData = await (await this._afetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
       // 관리자 판정 보장 로드: 일시 실패(배포 재시작·네트워크 순단)면 백오프 재시도.
       // 단발 loadAdmin 만으로는 실패 시 adminData 가 null 로 굳어 관리자에게 사용자 메뉴만 노출됐다(간헐 · 2026-07-07).
       // 세션 자동 갱신: supabase access token 은 1시간 만료 · refresh_token 으로 무중단 연장.
@@ -855,7 +873,7 @@
           let refreshed = false;
           for (let i = 0; i < (tries || 6); i++) {
             try {
-              const r = await fetch('/admin', { headers: this._authHeaders() });
+              const r = await this._afetch('/admin', { headers: this._authHeaders() });
               if (r.status === 401) {                               // 토큰 만료: 1회 자동 갱신 후 즉시 재시도
                 if (!refreshed && await this.authRefresh()) { refreshed = true; continue; }
                 this.adminData = await r.json();
@@ -897,12 +915,12 @@
       },
       async saveWrapper() {
         const body = { family_wrappers: {} }; body.family_wrappers[this.wrapFam] = this.wrapDraft || '';
-        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 저장됨'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
+        try { await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 저장됨'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
         setTimeout(() => { this.wrapMsg = ''; }, 2500);
       },
       async restoreWrapper() {
         const body = { family_wrappers: {} }; body.family_wrappers[this.wrapFam] = '';
-        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 기본값 복원'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
+        try { await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) }); await this.refreshConfig(); this.syncWrapDraft(); this.wrapMsg = '✓ 기본값 복원'; this.loadPreview(); } catch (e) { this.wrapMsg = '실패'; }
         setTimeout(() => { this.wrapMsg = ''; }, 2500);
       },
       async loadPreview() {
@@ -913,7 +931,7 @@
       async togglePurpose(c) {               // 관리자: 용도 전환(검수용 ↔ 평가용 홀드아웃)
         const next = c.purpose === 'eval' ? 'review' : 'eval';
         try {
-          const r = await (await fetch('/purpose', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hashes: [c.hash], purpose: next }) })).json();
+          const r = await (await this._afetch('/purpose', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hashes: [c.hash], purpose: next }) })).json();
           if (r && r.ok) { c.purpose = next; this.liveToast((c.title || '콘텐츠') + ' · ' + (next === 'eval' ? '평가용' : '검수용') + ' 전환'); }
           else this._err((r && r.error) || '용도 전환 실패');
         } catch (e) { this._err('용도 전환 실패'); }
@@ -921,7 +939,7 @@
       evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
       async runGolden() {
         this.goldenBusy = true; this.goldenResult = null;
-        try { this.goldenResult = await (await fetch('/eval-golden', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.evalModel, scope: this.evalScope }) })).json(); } catch (e) {}
+        try { this.goldenResult = await (await this._afetch('/eval-golden', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.evalModel, scope: this.evalScope }) })).json(); } catch (e) {}
         this.goldenBusy = false;
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 이항 95% CI 표기
@@ -933,7 +951,7 @@
       cmpWin(f, mi) { const c = this.cmpCols; return c.length === 2 && (c[mi][f] || 0) > (c[1 - mi][f] || 0); },
       async runCompare() {
         this.cmpBusy = true; this.cmpResult = null;
-        try { this.cmpResult = await (await fetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: [this.cmpA, this.cmpB], scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
+        try { this.cmpResult = await (await this._afetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: [this.cmpA, this.cmpB], scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
         this.cmpBusy = false;
       },
       myEvalVote(d) { const r = (d.judge && d.judge.reviewers) || {}; return r[this.reviewer] || ''; },
@@ -946,7 +964,7 @@
       async evalJudge(d, verdict) {                 // 평가 판정: 검수와 같은 집단 지성(1인 1표 · 재판정 허용)
         if (!this.ensureReviewer()) return;
         try {
-          const r = await (await fetch('/eval-judge', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: d.hash, verdict: verdict, reviewer: this.reviewer, expected: d.expected, got: d.got }) })).json();
+          const r = await (await this._afetch('/eval-judge', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: d.hash, verdict: verdict, reviewer: this.reviewer, expected: d.expected, got: d.got }) })).json();
           if (r && r.ok) { d.judge = r.judge; this.liveToast('평가 판정 저장 · ' + (verdict === 'adopt' ? '채택' : '탈락')); }
           else this._err((r && r.error) || '판정 저장 실패');
         } catch (e) { this._err('판정 저장 실패'); }
@@ -954,18 +972,18 @@
       ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
-      async loadGoldenStatus() { try { const r = await (await fetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenStatus = r; } catch (e) {} },
+      async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenStatus = r; } catch (e) {} },
       // 관리자 골든 브라우저
       goldenList: null,
-      async loadGoldenList() { try { const r = await (await fetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) {} },
+      async loadGoldenList() { try { const r = await (await this._afetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) {} },
       async removeGolden(h) {
         if (!(await this.dsConfirm('이 골든 항목을 제거할까요? (평가 정답셋에서 빠집니다)', { ok: '제거', danger: true }))) return;
-        try { await fetch('/golden-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: h }) }); } catch (e) {}
+        try { await this._afetch('/golden-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: h }) }); } catch (e) {}
         this.loadGoldenList(); this.loadGoldenStatus(); this.loadLearnData();
       },
       async runMetaCompile() {
         this.metaBusy = true;
-        try { const r = await (await fetch('/meta-compile', { method: 'POST', headers: this._authHeaders() })).json(); this.metaResults = r.results || null; } catch (e) {}
+        try { const r = await (await this._afetch('/meta-compile', { method: 'POST', headers: this._authHeaders() })).json(); this.metaResults = r.results || null; } catch (e) {}
         this.metaBusy = false; this.loadPromptDefaults();
       },
       // 일배치 학습(수동 실행): 개선 + 골든 축적 + 골든 회귀 평가 + 다중 모델 비교
@@ -973,13 +991,13 @@
       async runLearnBatch() {
         this.learnBusy = true;
         try {                                        // 모델 비교는 '골든셋 평가' 탭에서 온디맨드(중복 실행 방지)
-          const r = await (await fetch('/learn-batch', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({}) })).json();
+          const r = await (await this._afetch('/learn-batch', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({}) })).json();
           if (r && r.ok) { this.learnReport = r; this.metaResults = (r.improve && r.improve.results) || this.metaResults; }
           else this._err((r && r.error) || '일배치 실행 실패');
         } catch (e) { this._err('일배치 실행 실패'); }
         this.learnBusy = false; this.loadPromptDefaults(); this.loadGoldenStatus();
       },
-      async loadLearnReport() { try { const r = await (await fetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; if (r && r.next_batch_at) this.nextBatchAt = r.next_batch_at; } catch (e) {} },
+      async loadLearnReport() { try { const r = await (await this._afetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; if (r && r.next_batch_at) this.nextBatchAt = r.next_batch_at; } catch (e) {} },
       nextBatchAt: 0,
       // 학습 반영 주기(모델 버전 시한 · 관리자): N일마다 지정 시각에 반영 · 지금 실행 시 주기 재시작
       learnNextAt: '', learnSchedMsg: '', schedEditing: false,
@@ -993,7 +1011,7 @@
       },
       async saveLearnSched() {                           // 목표 일시 + 확정 최소 인원 통합 저장
         try {
-          const r = await (await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) })).json();
+          const r = await (await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) })).json();
           if ((this.learnNextAt || '') !== (r.learnNextAt || '')) {   // 서버 거부(과거 일시 등)
             this.learnNextAt = r.learnNextAt || '';
             this.learnSchedMsg = '지난 일시는 지정할 수 없어요';
@@ -1078,7 +1096,7 @@
         if (!val || !c) return;
         const cats = [val];
         let r = null;
-        try { r = await (await fetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, patch: { content_category: cats }, reviewer: this.reviewer || '' }) })).json(); } catch (e) { this._err('분류 저장 실패'); return; }
+        try { r = await (await this._afetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, patch: { content_category: cats }, reviewer: this.reviewer || '' }) })).json(); } catch (e) { this._err('분류 저장 실패'); return; }
         c.category = cats;                                         // 로컬 즉시 반영
         this.celebratePoints(5, '분류 채움');
         (r && r.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
@@ -1092,7 +1110,7 @@
           if (!(await this.dsConfirm('팀을 삭제할까요? 멤버 소속이 모두 해제됩니다.', { ok: '팀 삭제', danger: true }))) return;
           if (!(await this.dsConfirm('정말 삭제합니다. 되돌릴 수 없습니다.', { ok: '최종 삭제', danger: true }))) return;
         }
-        try { await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: action, member: member }) }); } catch (e) {}
+        try { await this._afetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: action, member: member }) }); } catch (e) {}
         this.loadAdmin();
       },
       // 원문 링크 백필: 매핑 파일 업로드 → source_url 만 갱신(초안·판정 불변) · 결과 요약 표시
@@ -1102,7 +1120,7 @@
         this.bfBusy = true; this.bfMsg = ''; this.bfMisses = [];
         try {
           const fd = new FormData(); fd.append('file', f, f.name);
-          const j = await (await fetch('/backfill-urls', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          const j = await (await this._afetch('/backfill-urls', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (j.error) { this.bfMsg = j.error; }
           else {
             const skip = (j.noMatch || 0) + (j.ambiguous || 0);
@@ -1118,7 +1136,7 @@
         const nm = (this.newTeamName || '').trim();
         if (!nm) return;
         try {
-          const r = await (await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'create_team', name: nm }) })).json();
+          const r = await (await this._afetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'create_team', name: nm }) })).json();
           if (!r || !r.ok) { this._err((r && r.error) || '팀 생성 실패'); return; }
           this.teamMsg = '팀 생성됨 · 초대코드 ' + (r.invite || ''); this.newTeamName = '';
           if (r.team && r.team.invite_code) this.myInvite = r.team.invite_code;
@@ -1131,7 +1149,7 @@
       async ingestRun() {
         if (!(this.ingestEndpoint || '').trim()) { this.ingestMsg = '크롤러 엔드포인트를 입력하세요'; return; }
         this.ingestBusy = true; this.ingestMsg = '인입·추출 중…';
-        try { const r = await (await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'ingest', endpoint: this.ingestEndpoint, n: this.ingestN }) })).json();
+        try { const r = await (await this._afetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'ingest', endpoint: this.ingestEndpoint, n: this.ingestN }) })).json();
           this.ingestMsg = r.ok ? ('✓ ' + r.fetched + '건 인입 → 검수 대기 ' + r.queued + '건 적재') : (r.error || '실패'); } catch (e) { this.ingestMsg = '오류'; }
         this.ingestBusy = false;
       },
@@ -1233,7 +1251,7 @@
         // 서버 영속(단조 증가) · 신규가 있거나 서버 기준선이 아직 없을 때
         if (this.reviewer && (fresh.length || server === null)) {
           try {
-            const r = await (await fetch('/badges', { method: 'POST', headers: this._authHeaders(),
+            const r = await (await this._afetch('/badges', { method: 'POST', headers: this._authHeaders(),
               body: JSON.stringify({ reviewer: this.reviewer, earned: got }) })).json();
             if (r && Array.isArray(r.badges)) this._badgeSeen = r.badges;
           } catch (e) {}
@@ -1292,7 +1310,7 @@
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults')).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics')).json(); } catch (e) {} this.modBusy = false; },
-      async loadDict() { this.modBusy = true; try { this.dictData = await (await fetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
+      async loadDict() { this.modBusy = true; try { this.dictData = await (await this._afetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
       // 사전·정책 편집(사용자 직접 수정)
       editT: null, editKey: null, editKind: 'list', editVal: '', editTitle: '', editMsg: '', editExtra: '', editFilter: '',
       startEdit(target, key, value, kind, title) {
@@ -1309,7 +1327,7 @@
         const body = { target: this.editT, value }; if (this.editKey != null) body.key = this.editKey;
         this.editMsg = '저장 중…';
         try {
-          const r = await fetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
+          const r = await this._afetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
           const d = await r.json();
           if (d.error) { this.editMsg = '오류: ' + d.error; return; }
           this.dictData = d; this.editT = null;
@@ -1317,14 +1335,14 @@
       },
       async resetDict() {
         if (!(await this.dsConfirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)', { ok: '초기화', danger: true }))) return;
-        try { const r = await fetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
+        try { const r = await this._afetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
       },
-      async loadUser() { this.modBusy = true; try { this.userData = await (await fetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
+      async loadUser() { this.modBusy = true; try { this.userData = await (await this._afetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
       async uploadUserLog(e) {
         const f = e.target.files[0]; e.target.value = ''; if (!f) return;
         this.modBusy = true; this.pfMsg = '';
         try { const fd = new FormData(); fd.append('file', f);
-          const d = await (await fetch('/usermeta', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          const d = await (await this._afetch('/usermeta', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (d.error) { this.pfMsg = '오류: ' + d.error; } else { this.userData = d; this.pfMsg = this._genMsg(d); } }
         catch (err) {} this.modBusy = false;
       },
@@ -1340,7 +1358,7 @@
         if (!this.pf.user_id.trim()) { this.pfMsg = 'user_id 를 입력하세요'; return; }
         this.modBusy = true; this.pfMsg = '';
         try {
-          const d = await (await fetch('/usermeta-profiles', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ profile: this.pf }) })).json();
+          const d = await (await this._afetch('/usermeta-profiles', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ profile: this.pf }) })).json();
           if (d.error) { this.pfMsg = '오류: ' + d.error; }
           else { this.userData = d; this.pf = { user_id: '', age_band: '', interests: '', day_part: '' }; this.pfMsg = '프로필 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
         } catch (e) { this.pfMsg = '오류: ' + e; }
@@ -1350,7 +1368,7 @@
         const f = e.target.files[0]; e.target.value = ''; if (!f) return;
         this.modBusy = true; this.pfMsg = '';
         try { const fd = new FormData(); fd.append('file', f);
-          const d = await (await fetch('/usermeta-profiles', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          const d = await (await this._afetch('/usermeta-profiles', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (d.error) { this.pfMsg = '오류: ' + d.error; }
           else { this.userData = d; this.pfMsg = (d.saved || 0) + '명 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
         } catch (err) { this.pfMsg = '오류: ' + err; }
@@ -1436,7 +1454,7 @@
         this.modelsMsg = '불러오는 중…'; this.cfgBusy = true;
         try {
           if (this.keyInputs.solar) {              // 입력한 키를 먼저 적용(세션)
-            await fetch('/config', { method: 'POST', headers: this._authHeaders(),
+            await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
               body: JSON.stringify({ api_key: this.keyInputs.solar }) });
           }
           try {                                    // Solar 는 실조회(키 있을 때) · 실패해도 전체는 계속
@@ -1456,7 +1474,7 @@
       },
       async refreshConfig() {
         try {
-          const r = await fetch('/config'); this.cfg = await r.json();
+          const r = await this._afetch('/config'); this.cfg = await r.json();
           if (this.cfg.backend) this.backend = this.cfg.backend;     // sqlite | supabase
           this._seenBoot(this.cfg.bootId);                            // 배포 감지 폴백(SSE 차단 환경)
           if (this.backend === 'supabase' && this.authToken) this.ensureAdmin();  // 관리자 여부 → nav 게이팅(재시도 포함)
@@ -1481,7 +1499,7 @@
         } catch (e) { /* noop */ }
       },
       async toggleLegal() {
-        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(),
+        try { await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
           body: JSON.stringify({ legal_enabled: this.legalEnabled }) }); } catch (e) {}
       },
       // ── 키(서비스별) ──
@@ -1493,7 +1511,7 @@
           const body = { persist: this.cfgPersist };
           if (service === 'solar') { body.api_key = this.keyInputs.solar; if (this.cfgModel) body.model = this.cfgModel; }
           else body[service + '_api_key'] = this.keyInputs[service];
-          const r = await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
+          const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
           const j = await r.json();
           if (!r.ok || (j && j.error)) { this.keyMsgs[service] = '오류: ' + ((j && j.error) || r.status); this.cfgBusy = false; return; }
           this.cfg = j; this.keyInputs[service] = '';
@@ -1506,7 +1524,7 @@
       async forgetKey(service) {
         try {
           const body = {}; if (service === 'solar') body.forget = true; else body['forget_' + service] = true;
-          const r = await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
+          const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
           const j = await r.json();
           if (!r.ok || (j && j.error)) { this.keyMsgs[service] = '오류: ' + ((j && j.error) || r.status); return; }
           this.cfg = j; this.keyMsgs[service] = '키 삭제됨';
@@ -1515,7 +1533,7 @@
       async saveTeamLinks() {
         this.tlMsg = '저장 중…';
         try {
-          const r = await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ team_links: this.teamLinks }) });
+          const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ team_links: this.teamLinks }) });
           const j = await r.json();
           if (!r.ok || (j && j.error)) { this.tlMsg = '오류: ' + ((j && j.error) || r.status); return; }
           this.cfg = j; this.tlMsg = '✓ 저장됨';
@@ -1523,7 +1541,7 @@
       },
       async testConn(service = 'solar') {
         this.cfgBusy = true; this.keyMsgs[service] = '연결 테스트 중…';
-        try { const j = await (await fetch('/ping', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(service === 'solar' ? {} : { service }) })).json();
+        try { const j = await (await this._afetch('/ping', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(service === 'solar' ? {} : { service }) })).json();
           this.keyMsgs[service] = (j.ok ? '✓ 성공 · ' : '✗ 실패 · ') + j.detail; }
         catch (e) { this.keyMsgs[service] = '오류: ' + e; }
         await this.refreshConfig(); this.cfgBusy = false;
@@ -1534,14 +1552,14 @@
         const payload = { text_provider: this.textProvider };
         if (this.isRouter(this.textProvider)) payload.text_model = this.textModel;
         else if (this.cfgModel) payload.model = this.cfgModel;
-        try { const r = await fetch('/config', { method: 'POST', headers: this._authHeaders(),
+        try { const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
             body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
       setReasoning(id) { this.reasoning = id; fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reasoning: id }) }).catch(() => {}); },
       async clearStore() {
         if (!(await this.dsConfirm('적재된 추출 결과를 모두 삭제할까요? (되돌릴 수 없음)', { ok: '삭제', danger: true }))) return;
-        try { const r = await fetch('/store', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ clear: true }) });
+        try { const r = await this._afetch('/store', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ clear: true }) });
           const d = await r.json(); this.cfg.storedCount = d.count || 0; this.loadDash(); } catch (e) {}
       },
 
@@ -1579,7 +1597,7 @@
         }
         this.delArm = ''; clearTimeout(this._delArmT);
         try {
-          const r = await (await fetch('/content-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash }) })).json();
+          const r = await (await this._afetch('/content-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash }) })).json();
           if (r && r.ok) { this.loadDash(); this.loadRaw && this.loadRaw(); }
           else this._err((r && r.error) || '삭제 실패');
         } catch (e) { this._err('삭제 실패'); }
@@ -1617,7 +1635,7 @@
       srcRunning(s) { const j = this.srcJob(s); return !!(this.ingestBusy[s.id] || (j && j.running)); },
       async saveIngest() {
         this.ingestMsg = '저장 중…';
-        try { await fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ ingest_sources: this.ingestSources }) }); this.ingestMsg = '✓ 저장됨'; clearTimeout(this._inT); this._inT = setTimeout(() => { this.ingestMsg = ''; }, 1600); } catch (e) { this.ingestMsg = '오류: ' + e; }
+        try { await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ ingest_sources: this.ingestSources }) }); this.ingestMsg = '✓ 저장됨'; clearTimeout(this._inT); this._inT = setTimeout(() => { this.ingestMsg = ''; }, 1600); } catch (e) { this.ingestMsg = '오류: ' + e; }
       },
       // ── 현황 결과 엑셀(CSV) 다운로드 ──
       _dl(name, rows) {
@@ -1705,7 +1723,7 @@
         }
         try {
           if (endpoint === '/run-batch') this.pollIngestStatus();   // 실행 큐 진척도 실시간
-          const j = await (await fetch(endpoint, { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          const j = await (await this._afetch(endpoint, { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (j.error) { this.status = '오류: ' + j.error; }
           else if (j.pending) { this.status = '✓ ' + (j.added || 0) + '건 추가됨 · STEP 2 모델 실행에서 초안을 생성하세요'; this.loadDash(); }
           else if (j.source === 'excel') { this.batchResult = j; }
