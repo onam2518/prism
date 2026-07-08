@@ -1061,12 +1061,14 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
                                    source.get("method", "GET"), source.get("auth", ""))
         if err:
             _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=err)
+            _jobs_persist()
             return {"ok": False, "error": err}
         try:
             contents, m = ING.to_contents_rows(rows[:limit])
         except Exception as e:
             msg = str(e)[:200]
             _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=msg)
+            _jobs_persist()
             return {"ok": False, "error": msg, "headers": list(rows[0].keys()) if rows else []}
         _INGEST_STATE[sid].update(total=len(contents), done=0, last_msg="추출 중…")
         cfg = Config.load()
@@ -1085,10 +1087,12 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
             _save_drafts(st, pairs)
         msg = f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
         _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=True, last_msg=msg)
+        _jobs_persist()
         return {"ok": True, "fetched": len(rows), "extracted": len(pairs),
                 "mapping": m, "mock": llm.mock, **stats}
     except Exception as e:
         _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=str(e)[:160])
+        _jobs_persist()
         return {"ok": False, "error": str(e)[:160]}
 
 
@@ -1103,6 +1107,7 @@ def _job_begin(jid: str, name: str, kind: str, total: int, trigger: str = "manua
         _INGEST_STATE[jid] = {"name": name, "endpoint": "", "kind": kind, "started": time.time(),
                               "running": True, "total": int(total), "done": 0, "failed": 0,
                               "last_run": 0, "last_msg": "추출 중…", "last_ok": None, "trigger": trigger}
+    _jobs_persist()
 
 
 def _job_end(jid: str, ok: bool, msg: str):
@@ -1111,6 +1116,46 @@ def _job_end(jid: str, ok: bool, msg: str):
         return
     dur = _fmt_dur(time.time() - (s.get("started") or time.time()))
     s.update(running=False, last_run=time.time(), last_ok=ok, last_msg=f"{msg} · 소요 {dur}")
+    _jobs_persist()
+
+
+def _jobs_persist():
+    """실행 큐 스냅샷 영속(reports 패턴 · 전역 kind='jobs'): 배포·재시작에도 이력 유지.
+    시작·종료 등 상태 전이 때만 기록(건별 진행률은 기록하지 않아 저장소 부담 없음) · 최근 20건."""
+    st = get_store()
+    if not (st and hasattr(st, "save_report")):
+        return
+    try:
+        with _INGEST_LOCK:
+            items = sorted(_INGEST_STATE.items(),
+                           key=lambda kv: kv[1].get("started") or kv[1].get("last_run") or 0)[-20:]
+            snap = {k: dict(v) for k, v in items}
+        st.save_report("jobs", snap)
+    except Exception:
+        pass
+
+
+def _jobs_restore():
+    """부팅 시 실행 이력 복원. 재시작(배포)으로 끊긴 '실행 중' 작업은 중단으로 표시해
+    유령 진행률을 막고, 관리자에게 재실행이 필요함을 알린다."""
+    st = get_store()
+    if not (st and hasattr(st, "get_report")):
+        return
+    try:
+        snap = st.get_report("jobs")
+        if not isinstance(snap, dict):
+            return
+        with _INGEST_LOCK:
+            for k, v in snap.items():
+                if k in _INGEST_STATE or not isinstance(v, dict):
+                    continue
+                if v.get("running"):
+                    v.update(running=False, last_ok=False,
+                             last_run=v.get("started") or time.time(),
+                             last_msg="서버 재시작(배포)으로 중단됨 · 다시 실행하세요")
+                _INGEST_STATE[k] = v
+    except Exception:
+        pass
 
 
 def ingest_status() -> dict:
@@ -3133,6 +3178,7 @@ def main():
             print(f"  [중단] Supabase 연결 실패: {e}")
             sys.exit(1)
     print(f"  백엔드: {_mode}" + (" · 공유(운영)" if _mode == "supabase" else " · 로컬"))
+    _jobs_restore()                                    # 실행 이력 복원 · 배포로 끊긴 배치는 중단 표시
     start_ingest_scheduler()                           # 활성 소스 자동 폴링(백그라운드)
     start_learning_scheduler()                         # 매일 04:00 학습 일배치(합의 반영+골든+회귀평가)
     keyed = bool(IMG._api_key())
