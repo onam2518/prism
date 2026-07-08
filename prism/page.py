@@ -1575,6 +1575,22 @@ PAGE = """<!doctype html>
             </div>
           </div>
         </section>
+        <section class="panel" data-fn><div class="panel-hd"><b>원문 링크 백필</b><span class="meta">기존 콘텐츠에 원문 링크만 채웁니다 · 초안·검수 판정 불변</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:12px">
+              <li>링크 없이 적재된 과거 콘텐츠에 <b>원문 링크만</b> 채웁니다 · 초안·검수 판정·적재 시각은 바뀌지 않습니다.</li>
+              <li>매핑 파일(xlsx/csv/tsv/jsonl)에 <b>URL(링크) 컬럼</b>과 <b>해시 또는 제목 컬럼</b>이 있으면 됩니다 · 해시가 있으면 해시 우선, 제목은 정확히 일치하는 1건에만 적용합니다(동일 제목 다건은 건너뜀).</li>
+            </ul>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <input type="file" accept=".xlsx,.csv,.tsv,.jsonl,.json" x-ref="bfFile" class="text-[13px]">
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md disabled:opacity-50" x-bind:disabled="bfBusy" x-on:click="backfillUrls()" x-text="bfBusy ? '적용 중…' : '링크 백필 실행'"></button>
+            </div>
+            <div class="text-xs text-muted" style="margin-top:8px" aria-live="polite" x-text="bfMsg"></div>
+            <ul x-show="bfMisses.length" x-cloak class="ds-bullets" style="margin-top:6px">
+              <template x-for="m in bfMisses" x-bind:key="m"><li x-text="m"></li></template>
+            </ul>
+          </div>
+        </section>
         <section class="panel" data-fn x-show="isDesktop"><div class="panel-hd"><b>데스크탑 앱</b><span class="meta">네이티브 창(WKWebView) 옵션 · 앱 재시작 시 적용</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:12px">

@@ -86,6 +86,7 @@
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
       adminData: null,        // 팀 관리(supabase)
+      bfBusy: false, bfMsg: '', bfMisses: [],   // 원문 링크 백필(시스템 설정)
       updateAvail: false,     // 새 버전 배포 감지(서버 부팅 ID 변화) · 새로고침 배너
       _adminBusy: false,      // ensureAdmin 동시 실행 가드(초기 이중 트리거 dedupe)
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
@@ -1043,6 +1044,25 @@
         }
         try { await fetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: action, member: member }) }); } catch (e) {}
         this.loadAdmin();
+      },
+      // 원문 링크 백필: 매핑 파일 업로드 → source_url 만 갱신(초안·판정 불변) · 결과 요약 표시
+      async backfillUrls() {
+        const f = this.$refs.bfFile && this.$refs.bfFile.files[0];
+        if (!f) { this.bfMsg = '매핑 파일을 먼저 선택하세요'; return; }
+        this.bfBusy = true; this.bfMsg = ''; this.bfMisses = [];
+        try {
+          const fd = new FormData(); fd.append('file', f, f.name);
+          const j = await (await fetch('/backfill-urls', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          if (j.error) { this.bfMsg = j.error; }
+          else {
+            const skip = (j.noMatch || 0) + (j.ambiguous || 0);
+            this.bfMsg = '링크 갱신 ' + j.updated + '건 · 이미 같음 ' + j.unchanged + '건'
+              + (skip ? ' · 미매칭 ' + skip + '건' : '') + (j.badUrl ? ' · URL 형식 오류 ' + j.badUrl + '건' : '');
+            this.bfMisses = j.misses || [];
+            if (j.updated) this.loadRaw();
+          }
+        } catch (e) { this.bfMsg = '실패 · 네트워크 상태를 확인하세요'; }
+        this.bfBusy = false;
       },
       async createTeam() {
         const nm = (this.newTeamName || '').trim();
