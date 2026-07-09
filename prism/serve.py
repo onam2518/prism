@@ -473,6 +473,10 @@ def dict_data() -> dict:
         "tier2": {k: list(v) for k, v in getattr(D, "CONTENT_CATEGORY_TIER2", {}).items()},
         "tier1Ko": dict(getattr(D, "IAB_TIER1_KO", {})),   # 한글 표시명(UI 전용 · 공식 표기는 영문)
         "tier2Ko": dict(getattr(D, "TIER2_KO", {})),
+        # 도움말 표 원천: Tier2 정의·예시 / 인텐트 예시 / 등급 판정 계약
+        "tier2Defs": {k: {"def": v[0], "ex": v[1]} for k, v in getattr(D, "TIER2_DEFS", {}).items()},
+        "intentExamples": dict(getattr(D, "INTENT_EXAMPLES", {})),
+        "gradeDefs": list(getattr(D, "GRADE_DEFS", [])),
         "iabMap": dict(getattr(D, "CATEGORY_IAB_MAP", {})),
         "domainGroups": {k: list(v) for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items()},
         "intentDefs": dict(getattr(D, "INTENT_VALUE_DEFS", {})),

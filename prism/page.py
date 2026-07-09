@@ -2116,13 +2116,75 @@ PAGE = """<!doctype html>
       </span>
       <input type="text" class="field" placeholder="정책 검색 (값·기준 텍스트)" x-model="polQ">
       <div class="polpal__list">
-        <template x-for="e in polEntries()" x-bind:key="polTab + e.k">
-          <div class="polpal__item" x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
-            <b x-text="e.t"></b>
-            <div class="text-xs" x-text="e.d || '·'"></div>
+        <!-- 카테고리: Tier1 그룹 → (Tier2 | 정의 | 예시) 표 + 분기 규칙 접힘 -->
+        <template x-if="polTab==='category'">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div class="text-xs text-muted">공식 표기는 영문(IAB Content Taxonomy 기반) · 한글은 표시용 병기 · 예시는 초안(팀 확정 대상)</div>
+            <template x-for="g in polCatGroups()" x-bind:key="'pg'+g.t1">
+              <div class="polsec">
+                <div class="polsec__hd" x-bind:data-pol="g.t1" x-bind:class="polHl===g.t1 ? 'is-hl' : ''"><b x-text="catBoth(g.t1)"></b></div>
+                <table class="poltbl">
+                  <thead><tr><th style="width:172px">Tier2</th><th>정의</th><th style="width:186px">예시</th></tr></thead>
+                  <tbody><template x-for="r in g.rows" x-bind:key="'pr'+r.k">
+                    <tr x-bind:data-pol="r.k" x-bind:class="polHl===r.k ? 'is-hl' : ''">
+                      <td><span class="ds-badge ds-badge--category" x-text="catBoth(r.k)"></span></td>
+                      <td x-text="r.def || '·'"></td>
+                      <td class="text-muted" x-text="r.ex || '·'"></td>
+                    </tr>
+                  </template></tbody>
+                </table>
+                <details class="polrule" x-show="g.rule"><summary>분기 규칙 · 경합 시 우선순위</summary><div x-text="g.rule"></div></details>
+              </div>
+            </template>
+            <div x-show="!polCatGroups().length" class="text-xs text-muted">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
           </div>
         </template>
-        <div x-show="!polEntries().length" class="text-xs text-muted">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
+        <!-- 인텐트: 인텐트 | 정의 | 예시 -->
+        <template x-if="polTab==='intent'">
+          <div>
+            <table class="poltbl">
+              <thead><tr><th style="width:158px">인텐트</th><th>정의</th><th style="width:178px">예시 (초안)</th></tr></thead>
+              <tbody><template x-for="e in polRows()" x-bind:key="'pi'+e.k">
+                <tr x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
+                  <td><span class="ds-badge ds-badge--intent" x-text="e.t"></span></td>
+                  <td x-text="e.d || '·'"></td>
+                  <td class="text-muted" x-text="e.ex || '·'"></td>
+                </tr>
+              </template></tbody>
+            </table>
+            <div x-show="!polRows().length" class="text-xs text-muted" style="margin-top:6px">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
+          </div>
+        </template>
+        <!-- 품질 사유: 사유(병기) | 정의·판정 기준 | 적용 -->
+        <template x-if="polTab==='quality'">
+          <div>
+            <table class="poltbl">
+              <thead><tr><th style="width:186px">사유</th><th>정의 · 판정 기준</th><th style="width:52px">적용</th></tr></thead>
+              <tbody><template x-for="e in polRows()" x-bind:key="'pq'+e.k">
+                <tr x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
+                  <td><span class="ds-badge ds-badge--reason" x-text="e.t"></span></td>
+                  <td x-text="e.d || '·'"></td>
+                  <td x-text="e.ex"></td>
+                </tr>
+              </template></tbody>
+            </table>
+            <div x-show="!polRows().length" class="text-xs text-muted" style="margin-top:6px">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
+          </div>
+        </template>
+        <!-- 등급: 등급 | 판정 기준 -->
+        <template x-if="polTab==='grade'">
+          <div>
+            <table class="poltbl">
+              <thead><tr><th style="width:186px">등급</th><th>판정 기준</th></tr></thead>
+              <tbody><template x-for="e in polRows()" x-bind:key="'pgd'+e.k">
+                <tr x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
+                  <td><span class="ds-badge" x-bind:class="e.k==='G'?'ds-badge--success':(e.k==='R'?'ds-badge--error':'ds-badge--neutral')" x-text="e.t"></span></td>
+                  <td x-text="e.d || '·'"></td>
+                </tr>
+              </template></tbody>
+            </table>
+          </div>
+        </template>
       </div>
     </div>
   </div>
