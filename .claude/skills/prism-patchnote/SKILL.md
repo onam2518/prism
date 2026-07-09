@@ -60,7 +60,9 @@ gh pr list --state merged --base main --limit 200 \
 - 한 PR 을 여러 항목으로 쪼개거나 사소한 PR 들을 한 항목으로 묶는 것은 자유. 오타·내부 정리
   수준은 생략. 항목 수보다 읽는 사람이 얻는 정보가 기준.
 - **머지된 PR 만 포함.** 오픈 PR 은 다음 회차로.
-- 머리는 header(🔭 Prism 패치노트 · 날짜)와 한 줄 요약 section, 꼬리는 날짜만 있는 context 라인.
+- 머리는 header(🔭 Prism 패치노트 · 날짜)와 한 줄 요약 section.
+  꼬리는 **'프리즘 바로가기' 버튼**(actions 블록 · `url: https://prism-item.fly.dev`) 뒤에
+  날짜만 있는 context 라인.
 
 ### 5. payload 작성
 
@@ -75,6 +77,7 @@ section 3,000자(넘으면 블록 분할), blocks 최대 50개, 최상위 `text`
     {"type": "section", "text": {"type": "mrkdwn", "text": "한 줄 요약이에요."}},
     {"type": "section", "text": {"type": "mrkdwn", "text": "*✨ 새 기능*\n• 닉네임을 직접 바꿀 수 있어요.\n    ◦ 홈의 '내 검수 캐릭터'에서 변경해요.\n    ◦ 팀·캐릭터·검수 기록은 그대로 유지돼요."}},
     {"type": "divider"},
+    {"type": "actions", "elements": [{"type": "button", "text": {"type": "plain_text", "text": "프리즘 바로가기"}, "url": "https://prism-item.fly.dev", "style": "primary"}]},
     {"type": "context", "elements": [{"type": "mrkdwn", "text": "2026-07-09 · Prism 업데이트 소식"}]}
   ]
 }
