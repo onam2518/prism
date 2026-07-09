@@ -20,7 +20,8 @@ def _seed_v31() -> dict:
                       "1. 본문/제목에서 각 메타의 트리거 근거를 먼저 수집한다(없으면 없음으로 둔다).\n"
                       "2. 트리거가 임계(노골적/반복적/유통부적합)를 충족하면 해당 메타를 reasons 에 넣는다.\n"
                       "3. reasons 가 1개 이상이면 finalGrade=R, 0개면 finalGrade=G.\n"
-                      "4. 복수일 때 대표 우선순위: {priority}."),
+                      "4. 복수 메타는 동시 부여가 원칙(발동한 메타는 모두 reasons 에 포함). "
+                      "단일 대표를 골라야 하는 경계 케이스만 상황부 우선 규칙을 따른다: {priority}."),
         "consistency": "[정합성] reasons 가 비면 finalGrade 는 반드시 G, 1개 이상이면 반드시 R.",
         "format": ('[출력 형식]\n'
                    '{{"finalGrade": "G|R", "reasons": ["메타ID", ...], "evidence": "근거 한 줄"}}'),
@@ -116,7 +117,7 @@ def render_quality_system(active_metas: list, service_group: str,
     body = get(version)
     rules = "\n".join(f"  - {m}: {body['meta_rules'].get(m, D.QUALITY_METAS.get(m, ''))}"
                       for m in active_metas)
-    priority = " > ".join([p for p in D.QUALITY_PRIORITY if p in active_metas])
+    priority = D.priority_rules_text(active_metas) or "해당 규칙 없음(동시 부여 원칙만 적용)"
     # 5 Focal Elements(쿡북 Ch3): 역할(intro)·맥락(룰)·예시(few-shot)·지시(절차)·형식
     parts = [
         body["intro"].format(service_group=service_group),

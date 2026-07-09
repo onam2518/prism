@@ -323,10 +323,10 @@ def call_user(call: str, content, prior: dict) -> str:
             f"entities: {_ja(prior.get('entities', []))}\nbody: {body}")
 
 
-MERGED_SCHEMA = ('{"summary": string, "entities": string[] (1~3개), "intent": string[], '
-                 '"content_category": string[] ("Tier 1 / Tier 2" 표기)}')
+MERGED_SCHEMA = ('{"summary": string, "entities": string[] (핵심만 · 개수 상한 없음, 대표 첫 번째), '
+                 '"intent": string[], "content_category": string[] ("Tier 1 / Tier 2" 표기)}')
 MERGED_SELF_CHECK = ("1. summary 가 정확히 1문장 평서형이고 과장·추측이 없는가\n"
-                     "2. entities 가 정제 규칙 1→2→3→4를 거친 1~3개인가\n"
+                     "2. entities 가 정제 규칙 1→2→3→4를 거쳐 핵심만 남았는가(개수 상한 없음 · 대표성 높은 순)\n"
                      "3. intent·content_category 의 모든 값이 사전 내 표기와 정확히 일치하는가 (CRITICAL)\n"
                      "4. 각 배열의 대표 값이 첫 번째인가\n5. CRITICAL: 출력이 JSON 한 줄뿐인가")
 

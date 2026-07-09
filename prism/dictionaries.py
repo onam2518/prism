@@ -43,10 +43,27 @@ INTAKE_POLICY = {
     "묶음형 · 데이터형": {"filter": "X", "method": "GREEN 일괄(고도화 과제)", "status": "계획"},
 }
 
-QUALITY_PRIORITY = [
-    "graphic", "sexual", "hate", "political", "gambling",
-    "profanity", "ad", "spam", "clickbait", "shallow", "format",
+# 메타 간 우선순위 · DNM 품질 메타 구분 및 정의(278036632) "메타 간 우선순위" 상황부 규칙.
+# 동시 TRUE 가능이 원칙이며, 단일 대표를 골라야 하는 경계 케이스에만 적용한다.
+# (win, over, when, both) · both=True 는 "둘 다 명확하면 둘 다 부여" 명시 규칙.
+QUALITY_PRIORITY_RULES = [
+    ("graphic", ("ad", "political", "shallow"),
+     "본문 사건성 묘사 신호(구체 동사·도구·피해·감각) 2개 이상이면", False),
+    ("hate", ("profanity",), "국가·민족·인종 멸칭이면", True),
+    ("sexual", ("graphic",), "성적 묘사가 사건 묘사보다 핵심이면", True),
 ]
+
+
+def priority_rules_text(active_metas) -> str:
+    """활성 메타에 해당하는 상황부 우선 규칙 텍스트. 해당 규칙이 없으면 빈 문자열."""
+    act = set(active_metas)
+    lines = []
+    for win, over, when, both in QUALITY_PRIORITY_RULES:
+        over_act = [o for o in over if o in act]
+        if win in act and over_act:
+            tail = " (둘 다 명확하면 둘 다 부여)" if both else ""
+            lines.append(f"{when} {win} 을 {'·'.join(over_act)} 보다 우선{tail}")
+    return " / ".join(lines)
 
 
 LEGAL_HARM_TYPES = {
@@ -86,7 +103,7 @@ SERVICE_GROUP = {
     "콘텐츠": "media",
     "커뮤니티": "ugc",
     "블로그": "ugc",
-    "음악": "ugc",
+    "음악": "media",       # 멜론 = PGC 그룹 (2차 필터 정책 · 위키 277118998)
     "동영상": "ugc",
 }
 SERVICE_GROUP_DEFAULT = "media"
