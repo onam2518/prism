@@ -48,18 +48,39 @@ MOBILE_PAGE = """<!doctype html>
   </section>
 
   <!-- ━━ 검수 카드(메인) ━━ -->
-  <section class="m-main" x-show="view === 'main'">
+  <section class="m-main" x-show="view === 'list' || view === 'card'">
     <header class="m-top">
-      <img class="m-top__logo" src="/vendor/prism-favicon.svg" alt="">
+      <button type="button" class="m-back" x-show="view === 'card'" x-on:click="back()" aria-label="목록으로">←</button>
+      <img class="m-top__logo" x-show="view !== 'card'" src="/vendor/prism-favicon.svg" alt="">
       <b>PRISM</b>
       <span class="m-top__me" x-text="name + (points !== null ? (' · ' + points + 'pt') : '')"></span>
       <button type="button" class="m-help" x-on:click="sheet = 'help'" aria-label="도움말">?</button>
     </header>
     <div class="m-prog">
-      <div class="m-prog__row"><span>검수 진행</span><b class="tnum" x-text="done + ' / ' + total() + '건'"></b></div>
+      <div class="m-prog__row"><span>팀 검수 진행</span><b class="tnum" x-text="(items.length - unreviewedCount()) + ' / ' + items.length + '건'"></b></div>
       <div class="m-bar"><i x-bind:style="'width:' + progPct() + '%'"></i></div>
     </div>
-    <template x-if="cur()">
+
+    <!-- 목록: 전체 콘텐츠 · 미검수 배지 · 탭하면 카드로 -->
+    <div class="m-listwrap" x-show="view === 'list'">
+      <button type="button" class="ds-btn ds-btn--primary m-start" x-show="unreviewedCount()" x-on:click="startReview()" x-text="'검수 시작 · 미검수 ' + unreviewedCount() + '건'"></button>
+      <div class="m-rows">
+        <template x-for="(it, i) in items" x-bind:key="it.hash">
+          <button type="button" class="m-row" x-bind:class="reviewed(it) ? 'is-done' : ''" x-on:click="open(i)">
+            <span class="m-row__dot" x-bind:class="it.grade === 'G' ? 'g' : (it.grade === 'R' ? 'r' : 'h')"></span>
+            <span class="m-row__main">
+              <span class="m-row__title" x-text="it.title"></span>
+              <span class="m-row__meta" x-text="it.service + (it.model ? ' · ' + it.model : '')"></span>
+            </span>
+            <span class="ds-badge ds-badge--success" x-show="reviewed(it)">검수함</span>
+            <span class="ds-badge ds-badge--neutral" x-show="!reviewed(it)">미검수</span>
+          </button>
+        </template>
+      </div>
+      <div class="m-login__hint" x-show="!items.length" style="margin-top:40px">지금은 검수할 콘텐츠가 없어요</div>
+    </div>
+
+    <template x-if="view === 'card' && cur()">
       <article class="m-card">
         <div class="m-card__scroll">
           <div class="m-card__meta">
@@ -72,14 +93,14 @@ MOBILE_PAGE = """<!doctype html>
           <div class="m-chips">
             <template x-for="e in (cur().entities || [])" x-bind:key="'e' + e"><span class="m-chip" x-text="e"></span></template>
             <template x-for="i in (cur().intent || [])" x-bind:key="'i' + i"><button type="button" class="m-chip m-chip--tap" x-on:click="intentDef(i)" x-text="i"></button></template>
-            <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><span class="m-chip" x-text="c"></span></template>
+            <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><span class="m-chip" x-text="catKo(c)"></span></template>
           </div>
-          <div class="m-body" x-text="cur().body"></div>
+          <div class="m-body" x-text="cur().body || '본문이 저장되지 않은 콘텐츠입니다 · 데스크탑에서 원문 링크로 확인하세요'"></div>
         </div>
         <div class="m-team" x-show="cur().fb && cur().fb.n" x-text="cur().fb ? teamLine(cur().fb) : ''"></div>
       </article>
     </template>
-    <footer class="m-actions">
+    <footer class="m-actions" x-show="view === 'card'">
       <button type="button" class="verdictbtn verdictbtn--bad" x-on:click="openFix()"><span class="verdictbtn__dot"></span>수정 필요</button>
       <button type="button" class="verdictbtn verdictbtn--good" x-on:click="good()"><span class="verdictbtn__dot"></span>정확</button>
     </footer>
@@ -96,7 +117,8 @@ MOBILE_PAGE = """<!doctype html>
       <div class="m-stat"><b class="tnum" x-text="done"></b><span>판정</span></div>
       <div class="m-stat"><b class="tnum" x-text="fixed"></b><span>교정</span></div>
     </div>
-    <button type="button" class="ds-btn ds-btn--secondary" x-on:click="loadQueue()">새 콘텐츠 확인</button>
+    <button type="button" class="ds-btn ds-btn--primary" x-on:click="view = 'list'">목록으로</button>
+    <button type="button" class="ds-btn ds-btn--secondary" x-on:click="loadItems().then(() => view = 'list')">새 콘텐츠 확인</button>
     <button type="button" class="m-logout" x-on:click="logout()">로그아웃</button>
   </section>
 
