@@ -151,7 +151,9 @@ def intent_dictionary_text(display_service_name: str) -> str:
     svc = D._service_key(display_service_name)
     lines = ["[범용 ① 소비 방식 · 전 서비스 공통]", " / ".join(D.INTENT_CATEGORIES_UNIVERSAL),
              "- 관점 축 구분: 한쪽 논조가 뚜렷하면 옹호·지지(지지 논조) 또는 반박·비판(반대·비판 논조),"
-             " 찬반이 병렬로 오가면 의견·논쟁.",
+             " 찬반이 병렬로 오가면 의견·논쟁."
+             " 기존 정책·주장을 반박하며 대안을 옹호하는 콘텐츠(사설·칼럼 전형)는 비판 대상이"
+             " 논지의 출발점이므로 반박·비판을 우선한다.",
              "", "[범용 ② 형식·전달 형태 · 전 서비스 공통 · ①과 교차 부여 가능]",
              " / ".join(D.INTENT_FORM_UNIVERSAL)]
     svc_vals = D.INTENT_CATEGORIES_BY_SERVICE.get(svc, [])

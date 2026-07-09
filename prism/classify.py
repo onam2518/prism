@@ -5,9 +5,22 @@ from .embed import rank_by_cosine
 
 
 # 1) 인텐트
+# 관점 축(논조 판정)은 라벨 임베딩 kNN으로 판별 불가 → 후보에서 제외하고 LLM 판정을 병합 보존(harness).
+PERSPECTIVE_INTENTS = ("옹호·지지", "반박·비판")
+
+
 def intent_category_anchors(emb, display_name: str) -> dict:
-    cats = D.intent_categories_for(display_name)
+    cats = [c for c in D.intent_categories_for(display_name) if c not in PERSPECTIVE_INTENTS]
     return {c: emb.embed(c, is_query=False) for c in cats}
+
+
+def merge_perspective(emb_intents: list, llm_intents: list, cap: int = 2) -> list:
+    """임베딩 kNN 인텐트에 LLM의 관점 축 판정을 병합. 논조는 kNN이 못 보는 축이라 LLM 값을 보존한다."""
+    persp = [v for v in (llm_intents or []) if v in PERSPECTIVE_INTENTS]
+    if not persp:
+        return list(emb_intents or [])
+    base = [c for c in (emb_intents or []) if c not in PERSPECTIVE_INTENTS]
+    return (base[: max(0, cap - 1)] + persp[:1])[:cap]
 
 
 def intent_category_classify(emb, content, top_k=2, min_margin=0.0) -> tuple[list, float]:

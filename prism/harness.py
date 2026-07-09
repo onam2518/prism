@@ -165,7 +165,7 @@ def st_item(ctx: HCtx):
         from . import classify as C
         cats, margin = C.intent_category_classify(ctx.emb, ctx.content)
         if cats:
-            im.intent = cats
+            im.intent = C.merge_perspective(cats, im.intent)   # 관점 축(옹호/반박)은 LLM 판정 보존
             ctx.verdicts.append({"agent": "IntentCategory(emb)",
                                  "evidence": f"margin={margin}", "fail": None})
     if im and im.content_category:
