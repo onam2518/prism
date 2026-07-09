@@ -1,0 +1,100 @@
+/* 모바일 검수 전용 셸(.m-*) · 컴포넌트(배지·판정 버튼·필드)는 운영 DS 클래스 그대로 사용.
+   토큰은 ds-theme.css 의 var(--ds-*) 만 참조 → PC 디자인 변경을 자동 추종한다. */
+.mbody{margin:0;background:var(--ds-canvas);color:var(--ds-ink);
+  font-family:"Pretendard Variable",Pretendard,-apple-system,sans-serif;
+  -webkit-text-size-adjust:100%}
+.mshell{height:100dvh;display:flex;flex-direction:column;overflow:hidden;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+[x-cloak]{display:none!important}
+
+/* ── 로그인 ── */
+.m-login{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 24px 15dvh}
+.m-login__mark{width:72px;height:72px;border-radius:20px;margin:0 auto 16px;display:block}
+.m-login h1{font-size:20px;font-weight:800;text-align:center;margin:0}
+.m-login__sub{font-size:13px;color:var(--ds-text-secondary);text-align:center;line-height:1.55;margin:8px 0 24px}
+.m-login .field{width:100%;box-sizing:border-box;height:48px;font-size:15px;margin-bottom:10px}
+.m-cta{width:100%;height:52px;font-size:15px;margin-top:4px}
+.m-login__hint{font-size:11.5px;color:var(--ds-muted);text-align:center;margin-top:16px}
+.m-err{margin-top:12px;text-align:center;font-size:12.5px;color:var(--ds-error)}
+
+/* ── 상단바 + 진행 ── */
+.m-main{flex:1;min-height:0;display:flex;flex-direction:column}
+.m-top{display:flex;align-items:center;gap:8px;padding:12px 16px 4px}
+.m-top__logo{width:26px;height:26px;border-radius:8px}
+.m-top b{font-size:14px;letter-spacing:.4px}
+.m-top__me{margin-left:auto;font-size:11.5px;color:var(--ds-muted)}
+.m-help{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--ds-hairline);
+  background:transparent;color:var(--ds-muted);font-size:13px;font-weight:800;font-family:inherit}
+.m-prog{padding:6px 16px 10px}
+.m-prog__row{display:flex;justify-content:space-between;font-size:11px;color:var(--ds-muted);margin-bottom:5px}
+.m-prog__row b{color:var(--ds-ink)}
+.m-bar{height:5px;border-radius:3px;background:var(--ds-hairline-soft,rgba(0,0,0,.08));overflow:hidden}
+.m-bar i{display:block;height:100%;border-radius:3px;background:var(--ds-primary);transition:width .3s}
+
+/* ── 검수 카드 ── */
+.m-card{flex:1;min-height:0;margin:2px 12px 8px;background:var(--ds-layer-popup);
+  border-radius:var(--ds-radius-xl,18px);box-shadow:var(--ds-shadow-low,0 2px 10px rgba(0,0,0,.06));
+  display:flex;flex-direction:column;overflow:hidden}
+.m-card__scroll{flex:1;min-height:0;overflow-y:auto;padding:14px 16px 18px;-webkit-overflow-scrolling:touch}
+.m-card__meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.m-card__title{font-size:17px;line-height:1.35;font-weight:800;margin:0}
+.m-lead{margin-top:11px;padding:11px 13px;border-radius:var(--ds-radius-md,12px);
+  background:var(--ds-primary-tint);font-size:13px;line-height:1.55;color:var(--ds-text-secondary)}
+.m-lead em{display:block;font-style:normal;font-size:10px;font-weight:800;color:var(--ds-primary);
+  letter-spacing:.5px;margin-bottom:4px}
+.m-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:11px}
+.m-chip{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:100px;border:1px solid var(--ds-hairline);
+  background:transparent;color:var(--ds-text-secondary);font-family:inherit}
+.m-chip--tap{border-color:var(--ds-primary);color:var(--ds-primary)}
+.m-body{margin-top:12px;font-size:13.5px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap}
+.m-team{padding:9px 16px;border-top:1px solid var(--ds-divider-section);font-size:11.5px;color:var(--ds-muted)}
+.m-team b{color:var(--ds-ink)}
+
+/* ── 하단 판정바: DS verdictbtn 을 모바일 터치 타겟으로 확장 ── */
+.m-actions{display:flex;gap:9px;padding:8px 12px 12px}
+.m-actions .verdictbtn{flex:1;height:52px;justify-content:center;font-size:15px}
+
+/* ── 바텀시트 공통 ── */
+.m-dim{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:40}
+.m-sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--ds-layer-popup);
+  border-radius:22px 22px 0 0;padding:12px 18px calc(20px + env(safe-area-inset-bottom));
+  box-shadow:var(--ds-shadow-high,0 -8px 30px rgba(0,0,0,.2));max-height:78dvh;overflow-y:auto}
+.m-grab{width:40px;height:4px;border-radius:2px;background:var(--ds-hairline);margin:0 auto 14px}
+.m-sheet h3{font-size:15px;font-weight:800;margin:0 0 12px}
+.m-elems{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.m-elem{font-size:12.5px;font-weight:700;padding:10px 14px;border-radius:100px;
+  border:1px solid var(--ds-hairline);background:transparent;color:var(--ds-text-secondary);font-family:inherit}
+.m-elem.sel{background:rgba(255,148,41,.16);border-color:var(--ds-warning);color:var(--ds-warning-deep,#c26a10)}
+.m-memo{width:100%;box-sizing:border-box;min-height:88px;font-size:13.5px;line-height:1.55;resize:none}
+.m-sheet__row{display:flex;gap:8px;margin-top:14px}
+.m-sheet__row .ds-btn{flex:1;height:48px;font-size:14px}
+.m-sheet__row .ds-btn--primary{flex:1.6}
+
+/* 도움말·용어 */
+.m-hrow{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:13px;line-height:1.55;color:var(--ds-text-secondary)}
+.m-hrow .ds-badge{flex-shrink:0;margin-top:1px}
+.m-hsec{margin-bottom:12px}
+.m-hsec h4{font-size:11.5px;font-weight:800;color:var(--ds-muted);letter-spacing:.4px;margin:0 0 4px}
+.m-guide{display:flex;align-items:center;justify-content:center;gap:6px;height:46px;margin-top:6px;
+  border-radius:13px;border:1px solid var(--ds-hairline);color:var(--ds-primary);
+  font-size:13.5px;font-weight:700;text-decoration:none}
+.m-logout{display:block;text-align:center;margin-top:14px;font-size:12px;color:var(--ds-muted);
+  background:none;border:0;font-family:inherit;width:100%}
+.m-def{font-size:13.5px;line-height:1.65;color:var(--ds-text-secondary);margin:0}
+
+/* ── 완료 ── */
+.m-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:0 28px 10dvh}
+.m-done__big{font-size:48px;margin-bottom:12px}
+.m-done h2{font-size:19px;font-weight:800;margin:0 0 8px}
+.m-done p{font-size:13px;color:var(--ds-text-secondary);line-height:1.65;margin:0}
+.m-stats{display:flex;gap:8px;margin-top:20px;width:100%}
+.m-stat{flex:1;background:var(--ds-layer-popup);border-radius:14px;padding:13px 6px;border:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))}
+.m-stat b{display:block;font-size:17px}
+.m-stat span{font-size:10.5px;color:var(--ds-muted)}
+.m-done .ds-btn{margin-top:18px;height:48px;padding:0 26px}
+
+/* ── 토스트 ── */
+.m-toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  z-index:50;background:var(--ds-success);color:#fff;font-size:13.5px;font-weight:800;
+  padding:12px 20px;border-radius:100px;box-shadow:0 8px 22px rgba(24,186,69,.4);white-space:nowrap}

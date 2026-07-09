@@ -2701,6 +2701,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        elif self.path.split("?", 1)[0].rstrip("/") == "/m":   # 모바일 검수 전용(검수만 덜어낸 카드 UI)
+            self._send(200, _mpage_versioned())
         elif self.path.startswith("/vendor/"):
             self._send_vendor(self.path.split("?", 1)[0].rsplit("/", 1)[-1])
         else:
@@ -3242,6 +3244,18 @@ def _page_versioned() -> str:
     if not _PAGE_V:
         _PAGE_V = re.sub(r"(/vendor/[\w.\-]+\.(?:js|css))", lambda m: m.group(1) + "?v=" + _BOOT_ID, PAGE)
     return _PAGE_V
+
+
+_MPAGE_V = ""
+
+
+def _mpage_versioned() -> str:
+    """모바일 검수 페이지(/m) · 벤더 캐시버스터는 데스크탑과 동일 규약."""
+    global _MPAGE_V
+    if not _MPAGE_V:
+        from .page_mobile import MOBILE_PAGE
+        _MPAGE_V = re.sub(r"(/vendor/[\w.\-]+\.(?:js|css))", lambda m: m.group(1) + "?v=" + _BOOT_ID, MOBILE_PAGE)
+    return _MPAGE_V
 
 
 

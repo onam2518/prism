@@ -83,6 +83,13 @@ class TestE2ESmoke(unittest.TestCase):
         self.assertIn("/vendor/app.js", page)
         self.assertIn("setFeedback", _req(base, "/vendor/app.js?v=x"))
 
+        # ①-b 모바일 검수 페이지(/m): 전용 셸 + 벤더 버스터 · 기존 /m* 프리픽스 라우트 비잠식
+        m = _req(base, "/m")
+        self.assertIn("mreview()", m)
+        self.assertIn("/vendor/mobile.js?v=", m)
+        self.assertIn("mreview()", _req(base, "/m/"))              # 트레일링 슬래시 허용
+        self.assertIsInstance(_req(base, "/models"), dict)         # /models 는 여전히 JSON 라우트(비잠식)
+
         # ② 단건 추출(mock LLM · 실제 파이프라인 경유)
         r = _req(base, "/run", data={"displayServiceName": "뉴스", "title": "스모크 기사",
                                      "body": "전 구간 흐름 검증 본문"},
