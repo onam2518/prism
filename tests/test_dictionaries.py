@@ -91,3 +91,12 @@ class TestCategoryKoDisplay(unittest.TestCase):
         # 정규화(저장 계층)는 한글 입력을 스냅하지 않는 한 영문 원문 유지 · KO 맵과 무관
         self.assertEqual(D.normalize_content_category("Sports / Soccer (Domestic)"),
                          "Sports / Soccer (Domestic)")
+
+
+class TestQualityKoNames(unittest.TestCase):
+    def test_quality_names_cover_all_metas(self):
+        """품질 병기(한글/영문) 전제: 모든 품질 메타 키에 한글 메타명 존재."""
+        from prism import dictionaries as D
+        for k in D.QUALITY_METAS:
+            self.assertIn(k, D.QUALITY_META_NAMES, k)
+            self.assertTrue(D.QUALITY_META_NAMES[k].strip(), k)
