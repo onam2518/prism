@@ -859,6 +859,37 @@ class SupabaseStore:
         rows = self._get("reports", f"select=payload&kind=eq.{urllib.parse.quote(kind)}&team_key=eq.{tq}")
         return rows[0]["payload"] if rows else None
 
+    # ── 게시판(기능개선·오류 제보 · 팀 스코프) · SQLite Store 와 동일 계약 ──
+    def board_add(self, kind, title, body, reviewer, team=None) -> int:
+        rows = self._req("POST", "board", body=[{"team_key": team or "", "kind": kind, "title": title,
+                                                 "body": body, "author_id": reviewer or "", "status": "open"}],
+                         prefer="return=representation")
+        return rows[0]["id"] if rows else 0
+
+    def _board_row(self, r) -> dict:
+        return {"id": r["id"], "kind": r.get("kind"), "title": r.get("title"), "body": r.get("body"),
+                "author_id": r.get("author_id") or "", "status": r.get("status") or "open",
+                "ts": _epoch(r.get("created_at"))}
+
+    def board_list(self, team=None, limit: int = 200) -> list:
+        q = (f"select=id,kind,title,body,author_id,status,created_at"
+             f"&team_key=eq.{urllib.parse.quote(team or '')}&order=id.desc&limit={int(limit)}")
+        return [self._board_row(r) for r in self._get("board", q)]
+
+    def board_get(self, bid: int, team=None):
+        rows = self._get("board", f"select=id,kind,title,body,author_id,status,created_at"
+                                  f"&id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}")
+        return self._board_row(rows[0]) if rows else None
+
+    def board_set_status(self, bid: int, status: str, team=None) -> bool:
+        self._req("PATCH", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}",
+                  body={"status": status}, prefer="return=minimal")
+        return True
+
+    def board_delete(self, bid: int, team=None) -> bool:
+        self._req("DELETE", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}")
+        return True
+
     def save_draft(self, content_hash, model, version, item_meta, quality_meta, team=None):
         """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert · 결과 비교 팝업의 전체 이력 원천."""
         self._upsert("drafts", [{"content_hash": content_hash, "team_key": team or "",
