@@ -1698,6 +1698,61 @@ def _arena_compute(team=None) -> dict:
     return d
 
 
+def board_data(team=None, uid: str = "") -> dict:
+    """게시판(기능개선·오류 제보) 목록 · 팀 스코프.
+    작성자는 uid 로 저장하고 표시명은 조회 시점에 해석 → 닉네임 변경이 자동 반영된다."""
+    st = get_store()
+    if not (st and hasattr(st, "board_list")):
+        return {"items": [], "n": 0}
+    items = st.board_list(team=team)
+    if _supa():
+        names = st.reviewers_map(None) if hasattr(st, "reviewers_map") else {}
+        for it in items:
+            meta = names.get(it["author_id"]) or {}
+            it["author"] = meta.get("name") or (it["author_id"][:8] or "(탈퇴)")
+            it["mine"] = bool(uid and it["author_id"] == uid)
+    else:                                            # sqlite: 키=이름 · 단일 사용자 = 전부 내 글
+        for it in items:
+            it["author"] = it["author_id"]
+            it["mine"] = True
+    return {"items": items, "n": len(items)}
+
+
+def board_action(data: dict, team=None, uid: str = "", email: str = "") -> dict:
+    """게시판 동작: 등록=팀원 · 상태 변경=관리자 · 삭제=작성자 또는 관리자."""
+    st = get_store()
+    if not (st and hasattr(st, "board_add")):
+        return {"ok": False, "error": "게시판을 지원하지 않는 저장소입니다"}
+    act = (data.get("action") or "create").strip()
+    rv = (data.get("reviewer") or "").strip()        # sqlite=이름 · supabase=_inject_reviewer 가 uid 주입
+    if act == "create":
+        title = (data.get("title") or "").strip()[:80]
+        if not title:
+            return {"ok": False, "error": "제목을 입력하세요"}
+        st.board_add("feature" if data.get("kind") == "feature" else "bug",
+                     title, (data.get("body") or "").strip()[:2000], rv, team=team)
+    else:
+        it = st.board_get(int(data.get("id") or 0), team=team)
+        if not it:
+            return {"ok": False, "error": "항목을 찾을 수 없습니다"}
+        admin = (not _supa()) or is_admin_user(uid, team, email)
+        if act == "status":
+            if not admin:
+                return {"ok": False, "error": "상태 변경은 관리자 전용입니다"}
+            if data.get("status") not in ("open", "doing", "done"):
+                return {"ok": False, "error": "상태 값이 올바르지 않습니다"}
+            st.board_set_status(it["id"], data["status"], team=team)
+        elif act == "delete":
+            if not (admin or (it["author_id"] and it["author_id"] == (uid or rv))):
+                return {"ok": False, "error": "작성자 또는 관리자만 삭제할 수 있습니다"}
+            st.board_delete(it["id"], team=team)
+        else:
+            return {"ok": False, "error": "알 수 없는 동작입니다"}
+    out = board_data(team, uid or rv)
+    out["ok"] = True
+    return out
+
+
 def _row_key(ref: dict) -> str:
     """검수 키(content_hash) 정합: supabase recent 는 body_hash 에 스토어 키(16자)를 담고,
     sqlite payload 의 body_hash 는 본문 해시(12자) → 16자면 그대로, 아니면 재계산."""
@@ -2621,6 +2676,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
         elif self.path.startswith("/usermeta"):
             self._send(200, json.dumps(usermeta_data(team=self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/board"):             # 게시판: 기능개선·오류 제보(팀 스코프)
+            self._send(200, json.dumps(board_data(self._req_team(), self._bearer_uid() or ""),
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/template.xlsx"):
             data = build_template_xlsx()
             self.send_response(200)
@@ -3077,6 +3135,19 @@ class Handler(BaseHTTPRequestHandler):
                 payload = json.loads(body or b"{}")
                 fn = reset_dict_overrides if payload.get("reset") else (lambda: edit_dict(payload))
                 self._send(200, json.dumps(fn(), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/board"):               # 게시판: 등록·상태 변경·삭제(팀 스코프)
+            try:
+                data = json.loads(body or b"{}")
+                if not self._inject_reviewer(data):
+                    self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+                    return
+                self._send(200, json.dumps(board_action(data, team=self._req_team(),
+                           uid=self._bearer_uid() or "", email=self._bearer_email()),
+                           ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

@@ -301,6 +301,26 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIn("개명후", names)                    # 검수 이력(점수)이 새 이름으로
         self.assertNotIn("개명전", names)
 
+    # ── 게시판: 등록(팀원) → 목록(최신순) → 상태 변경(관리자) → 삭제 ──
+    def test_13_board(self):
+        r = self.ok("/board", {"action": "create", "kind": "bug", "title": "스모크 오류 제보",
+                               "body": "재현: 스모크", "reviewer": "복실"})
+        self.assertTrue(r.get("ok"))
+        r = self.ok("/board", {"action": "create", "kind": "feature", "title": "스모크 기능 제안",
+                               "reviewer": "딱지"})
+        self.assertEqual(r.get("n"), 2)
+        top = r["items"][0]
+        self.assertEqual(top["title"], "스모크 기능 제안")            # 최신순
+        r = self.ok("/board", {"action": "status", "id": top["id"], "status": "doing", "reviewer": "딱지"})
+        self.assertEqual(next(i["status"] for i in r["items"] if i["id"] == top["id"]), "doing")
+        r = self.ok("/board", {"action": "status", "id": top["id"], "status": "elsewhere", "reviewer": "딱지"})
+        self.assertFalse(r.get("ok"))                                # 상태 값 화이트리스트
+        r = self.ok("/board", {"action": "delete", "id": top["id"], "reviewer": "딱지"})
+        self.assertEqual(r.get("n"), 1)
+        g = self.ok("/board")
+        self.assertEqual(g.get("n"), 1)
+        self.assertEqual(g["items"][0]["title"], "스모크 오류 제보")
+
 
 if __name__ == "__main__":
     unittest.main()

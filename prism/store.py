@@ -108,6 +108,10 @@ class Store:
         CREATE TABLE IF NOT EXISTS feedback_routes(
           id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
           element TEXT, stage TEXT, directive TEXT, model TEXT, ts REAL);
+        -- 게시판(팀 스코프): 기능개선 제안 · 오류 제보 수집. status = open|doing|done.
+        CREATE TABLE IF NOT EXISTS board(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
+          kind TEXT, title TEXT, body TEXT, reviewer TEXT, status TEXT, ts REAL);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         CREATE INDEX IF NOT EXISTS ix_gold_reviewer ON gold_checks(reviewer);
         CREATE INDEX IF NOT EXISTS ix_events_reviewer ON events(reviewer, kind, day);
@@ -768,6 +772,41 @@ class Store:
         """reviewer → char(아바타 id)."""
         c = self._conn()
         return {rv: (ch or "boksil") for rv, ch in c.execute("SELECT reviewer,char FROM reviewers")}
+
+    # ── 게시판(기능개선·오류 제보 · 팀 스코프) ─────────────────────────────
+    def board_add(self, kind, title, body, reviewer, team=None) -> int:
+        c = self._conn()
+        cur = c.execute("INSERT INTO board(team,kind,title,body,reviewer,status,ts) VALUES(?,?,?,?,?,?,?)",
+                        (team or "", kind, title, body, reviewer or "(익명)", "open", time.time()))
+        c.commit()
+        return cur.lastrowid
+
+    def board_list(self, team=None, limit: int = 200) -> list:
+        c = self._conn()
+        rows = c.execute("SELECT id,kind,title,body,reviewer,status,ts FROM board "
+                         "WHERE team=? ORDER BY id DESC LIMIT ?", (team or "", int(limit)))
+        return [{"id": r[0], "kind": r[1], "title": r[2], "body": r[3],
+                 "author_id": r[4], "status": r[5], "ts": r[6]} for r in rows]
+
+    def board_get(self, bid: int, team=None):
+        c = self._conn()
+        r = c.execute("SELECT id,kind,title,body,reviewer,status,ts FROM board WHERE id=? AND team=?",
+                      (int(bid), team or "")).fetchone()
+        return ({"id": r[0], "kind": r[1], "title": r[2], "body": r[3],
+                 "author_id": r[4], "status": r[5], "ts": r[6]} if r else None)
+
+    def board_set_status(self, bid: int, status: str, team=None) -> bool:
+        c = self._conn()
+        n = c.execute("UPDATE board SET status=? WHERE id=? AND team=?",
+                      (status, int(bid), team or "")).rowcount
+        c.commit()
+        return bool(n)
+
+    def board_delete(self, bid: int, team=None) -> bool:
+        c = self._conn()
+        n = c.execute("DELETE FROM board WHERE id=? AND team=?", (int(bid), team or "")).rowcount
+        c.commit()
+        return bool(n)
 
     def rename_reviewer(self, old: str, new: str) -> dict:
         """닉네임 변경(로컬): 검수자 키=이름이므로 이력 테이블의 키를 함께 이관."""

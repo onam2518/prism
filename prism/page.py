@@ -1071,6 +1071,47 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
+      <!-- ═══ 모듈: 게시판 · 기능개선 제안 + 오류 제보(팀 스코프) ═══ -->
+      <div x-show="mod === 'board'" x-cloak class="w-full space-y-4">
+        <div class="panel"><div class="panel-hd"><b>새 글 등록</b><span class="meta">기능개선 제안 · 오류 제보 · 우리 팀에만 공개</span></div>
+          <div class="panel-bd">
+            <div class="flex flex-wrap gap-2">
+              <div style="min-width:130px"><label class="lbl">유형</label>
+                <select x-model="boardForm.kind" class="field"><option value="bug">오류</option><option value="feature">기능개선</option></select></div>
+              <div style="flex:1;min-width:220px"><label class="lbl">제목</label><input x-model="boardForm.title" class="field" maxlength="80" placeholder="예) 검수 저장 시 화면이 멈춰요" x-on:keydown.enter="boardSubmit()"></div>
+            </div>
+            <div style="margin-top:8px"><label class="lbl">내용 (선택)</label>
+              <textarea x-model="boardForm.body" class="field" rows="3" maxlength="2000" placeholder="오류: 재현 방법 · 기대 동작 / 기능개선: 배경 · 제안 내용" style="height:auto;padding-top:8px"></textarea></div>
+            <div class="flex items-center gap-2" style="margin-top:10px">
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="boardBusy" x-on:click="boardSubmit()" x-text="boardBusy ? '등록 중…' : '등록'"></button>
+              <span class="text-xs text-muted" x-text="boardMsg"></span>
+            </div>
+          </div></div>
+        <div class="panel"><div class="panel-hd"><b>접수 목록</b><span class="meta tnum" x-text="boardData ? (boardData.n + '건 · 최신순') : ''"></span></div>
+          <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:86px">유형</th><th>제목 · 내용</th><th style="width:100px">작성자</th><th style="width:120px">상태</th><th style="width:130px"></th></tr></thead><tbody>
+            <template x-for="b in (boardData ? boardData.items : [])" x-bind:key="b.id">
+              <tr>
+                <td><span class="ds-badge" x-bind:class="b.kind==='bug' ? 'ds-badge--error' : 'ds-badge--intent'" x-text="b.kind==='bug' ? '오류' : '기능개선'"></span></td>
+                <td><div class="text-ink" style="font-weight:600" x-text="b.title"></div><div class="tbox" x-show="b.body" x-text="b.body"></div></td>
+                <td class="text-body" x-text="b.author"></td>
+                <td>
+                  <template x-if="boardAdmin">
+                    <select class="field" style="height:30px;padding:0 26px 0 9px;width:auto" x-bind:value="b.status" x-on:change="boardStatus(b, $event.target.value)" data-tip="관리자: 처리 상태를 팀에 공유" data-tip-pos="top">
+                      <option value="open">접수</option><option value="doing">처리 중</option><option value="done">완료</option></select>
+                  </template>
+                  <template x-if="!boardAdmin">
+                    <span class="ds-badge" x-bind:class="b.status==='done' ? 'ds-badge--success' : (b.status==='doing' ? 'ds-badge--intent' : 'ds-badge--neutral')"><span class="ds-badge__dot"></span><span x-text="b.status==='done' ? '완료' : (b.status==='doing' ? '처리 중' : '접수')"></span></span>
+                  </template>
+                </td>
+                <td><span class="text-xs text-muted tnum" x-text="fmtTs(b.ts)"></span>
+                  <button type="button" class="copybtn" x-show="b.mine || boardAdmin" x-on:click="boardDelete(b)" style="margin-left:6px">삭제</button></td>
+              </tr>
+            </template>
+            <template x-if="!(boardData && boardData.items && boardData.items.length)"><tr><td colspan="5" class="text-muted">아직 글이 없습니다 · 불편한 점이나 아이디어를 첫 글로 남겨보세요</td></tr></template>
+          </tbody></table></div>
+        </div>
+      </div>
+
       <!-- ═══ 모듈: 테스트셋 생성 · 골든/검수/원본 뷰 ═══ -->
       <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
       <div x-show="mod === 'evaluate'" x-cloak class="w-full space-y-4">

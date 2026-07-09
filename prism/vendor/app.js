@@ -29,12 +29,14 @@
         admin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M3 20a6 6 0 0 1 12 0M16 7l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         arena: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0V4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18 5h2.5a2 2 0 0 1 0 4H18M6 5H3.5a2 2 0 0 0 0 4H6" stroke="currentColor" stroke-width="1.6"/></svg>',
         system: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg>',
+        board: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.6-2.6A7.5 7.5 0 1 1 21 11.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 10h7M9 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
       },
-      // 멤버 메뉴는 둘: 콘텐츠 검수(판정·교정 → 정답 축적) / 평가(일치율·모델 비교)
+      // 멤버 메뉴: 콘텐츠 검수(판정·교정 → 정답 축적) / 평가(일치율·모델 비교) / 게시판(제안·오류)
       mods: [
         { g: '검수 · 평가', items: [
           { id: 'create', label: '콘텐츠 검수', ic: 'eval' },
-          { id: 'evaluate', label: '평가', ic: 'dash' } ] },
+          { id: 'evaluate', label: '평가', ic: 'dash' },
+          { id: 'board', label: '게시판', ic: 'board' } ] },
         // 콘텐츠 인입(수동·자동·실행 큐)은 '콘텐츠 관리' 단일 메뉴로 통합 · 전부 관리자 통제
         // 권한 3단계: 운영 관리자(전부) > 슈퍼관리자(생성자 부여 · 운영 작업 메뉴) > 팀 관리자('팀 관리'만)
         { g: '관리자', gcond: 'admin', items: [
@@ -197,6 +199,38 @@
           }
         } catch (e) { this.nickMsg = '오류: ' + e; }
         this.nickBusy = false;
+      },
+      // 게시판(기능개선·오류 제보 · 팀 스코프)
+      boardData: null, boardForm: { kind: 'bug', title: '', body: '' }, boardBusy: false, boardMsg: '',
+      get boardAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isAdmin || this.adminData.isSuperAdmin || this.adminData.isSysAdmin)); },
+      async loadBoard() {
+        this.modBusy = true;
+        try { this.boardData = await (await fetch('/board', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {}
+        this.modBusy = false;
+        if (this.backend === 'supabase' && !this.adminData) this.loadAdmin();   // 상태 변경 권한 판정용
+      },
+      async boardSubmit() {
+        if (!(this.boardForm.title || '').trim()) { this.boardMsg = '제목을 입력하세요'; return; }
+        this.boardBusy = true; this.boardMsg = '';
+        try {
+          const d = await (await fetch('/board', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'create', reviewer: this.reviewer, kind: this.boardForm.kind, title: this.boardForm.title, body: this.boardForm.body }) })).json();
+          if (d.error) { this.boardMsg = '오류: ' + d.error; }
+          else { this.boardData = d; this.boardForm = { kind: this.boardForm.kind, title: '', body: '' }; this.boardMsg = '등록됨 · 팀에 공유되었습니다'; }
+        } catch (e) { this.boardMsg = '오류: ' + e; }
+        this.boardBusy = false;
+      },
+      async boardStatus(b, status) {
+        try {
+          const d = await (await fetch('/board', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'status', id: b.id, status, reviewer: this.reviewer }) })).json();
+          if (d.error) { this.boardMsg = '오류: ' + d.error; } else this.boardData = d;
+        } catch (e) {}
+      },
+      async boardDelete(b) {
+        if (!(await this.dsConfirm('이 글을 삭제할까요?', { ok: '삭제', danger: true }))) return;
+        try {
+          const d = await (await fetch('/board', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'delete', id: b.id, reviewer: this.reviewer }) })).json();
+          if (d.error) { this.boardMsg = '오류: ' + d.error; } else this.boardData = d;
+        } catch (e) {}
       },
       detailGo(step) {                                   // 상세에서 목록 순서로 이전/다음 이동
         if (!this.detailNav) return;
@@ -379,7 +413,7 @@
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드(팀 관리자)', system: '데이터 관리 + API 키·모델 설정(운영 관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류', create: '검수 대상 콘텐츠를 판정·교정하고 결과를 모델·버전으로 비교합니다', evaluate: '정답셋 기준 평가 실행 · 불일치 건별 판정 · 모델별 A/B 비교', content: '콘텐츠 추가(수동·자동) → 모델 실행 → 실행 큐 · 용도(검수/평가) 지정', testset: '정답셋 현황·학습 반영 · 정답셋 목록 · 학습 데이터 추출', lab: '지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관' };
+        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드(팀 관리자)', system: '데이터 관리 + API 키·모델 설정(운영 관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류', create: '검수 대상 콘텐츠를 판정·교정하고 결과를 모델·버전으로 비교합니다', evaluate: '정답셋 기준 평가 실행 · 불일치 건별 판정 · 모델별 A/B 비교', content: '콘텐츠 추가(수동·자동) → 모델 실행 → 실행 큐 · 용도(검수/평가) 지정', testset: '정답셋 현황·학습 반영 · 정답셋 목록 · 학습 데이터 추출', lab: '지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관', board: '기능개선 제안 · 오류 제보 · 우리 팀에만 공개됩니다' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -406,6 +440,7 @@
         else if (id === 'create') { this.loadDash(); this.loadRaw(); }
         else if (id === 'evaluate') this.loadGoldenStatus();
         else if (id === 'arena') this.loadArena();
+        else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') this.loadAdmin();
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
         else if (id === 'lab') { this.loadDash(); this.loadTopics(); this.loadUser(); }
