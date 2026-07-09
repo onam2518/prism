@@ -769,6 +769,18 @@ class Store:
         c = self._conn()
         return {rv: (ch or "boksil") for rv, ch in c.execute("SELECT reviewer,char FROM reviewers")}
 
+    def rename_reviewer(self, old: str, new: str) -> dict:
+        """닉네임 변경(로컬): 검수자 키=이름이므로 이력 테이블의 키를 함께 이관."""
+        c = self._conn()
+        if c.execute("SELECT 1 FROM reviewers WHERE reviewer=?", (new,)).fetchone():
+            return {"ok": False, "error": "이미 사용 중인 닉네임입니다"}
+        moved = 0
+        for t in ("reviewers", "feedback", "patch_log", "gold_checks",
+                  "events", "eval_checks", "feedback_routes"):
+            moved += c.execute(f"UPDATE {t} SET reviewer=? WHERE reviewer=?", (new, old)).rowcount
+        c.commit()
+        return {"ok": True, "moved": moved}
+
     def yellow_count(self) -> int:
         """검수 대상(YELLOW) 총량. json_extract 미지원 빌드는 전체 수로 폴백."""
         c = self._conn()

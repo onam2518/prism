@@ -355,6 +355,9 @@
   .dvc__webbox{height:min(62vh,720px);border:1px solid var(--ds-divider-section);border-radius:var(--ds-radius-card);background:#fff;overflow:hidden}
   .dvc__web{border:0;background:#fff;transform-origin:0 0}
   .dve__lbl{font-size:11px;font-weight:700;color:var(--ds-muted);margin-bottom:6px}
+  /* 체크박스 라벨 정렬: x-show(alpine)가 표시 전환 시 inline display 를 지우므로 클래스로 고정 */
+  .chk-inline{display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+  .chk-inline>input[type=checkbox]{margin:0;flex:none}
   .dve__lead{font-size:13px;line-height:1.65;padding:10px 12px;border-radius:10px;background:var(--ds-primary-tint);color:var(--ds-text-secondary)}
   /* 내 판정 vs 팀 판정 분리 표기(팀 표 2개 이상일 때) */
   .dve__mine{display:flex;align-items:center;gap:8px;margin-top:8px}

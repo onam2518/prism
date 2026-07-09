@@ -197,7 +197,7 @@ PAGE = """<!doctype html>
           <input class="field onboard__name" type="email" placeholder="you@team.com" x-model="authEmail" style="margin-bottom:12px">
           <label class="onboard__lbl">비밀번호</label>
           <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw" x-on:keydown.enter="saveReviewer()" x-bind:style="authMode==='signup' ? 'margin-bottom:12px' : 'margin-bottom:8px'">
-          <label x-show="authMode==='login'" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ds-muted);cursor:pointer">
+          <label x-show="authMode==='login'" class="chk-inline" style="font-size:12px;color:var(--ds-muted)">
             <input type="checkbox" x-model="saveCred"> 아이디·비밀번호 저장 <span class="onboard__hint" style="margin:0">이 기기에만 저장됩니다</span></label>
           <template x-if="authMode==='signup'">
             <div>
@@ -1784,8 +1784,16 @@ PAGE = """<!doctype html>
             </div>
           </section>
           <!-- 내 검수 캐릭터 (육성) · 상단 히어로 -->
-          <section class="panel arena-charpanel"><div class="panel-hd"><b>내 검수 캐릭터</b><span class="meta" x-text="reviewer ? reviewer : '이름 미설정'"></span></div>
+          <section class="panel arena-charpanel"><div class="panel-hd"><b>내 검수 캐릭터</b><span class="meta" x-text="reviewer ? reviewer : '이름 미설정'"></span>
+              <button type="button" class="copybtn" x-show="reviewer" x-on:click="nickEdit = !nickEdit; nickNew = reviewer; nickMsg = ''" data-tip="표시 이름(닉네임)만 바꿉니다 · 팀·캐릭터·검수 이력은 유지" data-tip-pos="top">닉네임 변경</button>
+            </div>
             <div class="panel-bd">
+              <div x-show="nickEdit" x-cloak class="flex flex-wrap items-center gap-2" style="padding-bottom:10px">
+                <input x-model="nickNew" class="field" style="max-width:200px;height:32px" maxlength="20" placeholder="새 닉네임" x-on:keydown.enter="saveNick()">
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="nickBusy" x-on:click="saveNick()" x-text="nickBusy ? '저장 중…' : '저장'"></button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="nickEdit = false; nickMsg = ''">취소</button>
+                <span class="text-xs text-muted" x-text="nickMsg"></span>
+              </div>
               <div x-show="!reviewer" class="text-xs text-muted" style="padding:8px">로그인하면 나만의 <b class="text-ink">검수 캐릭터</b>가 생깁니다</div>
               <template x-if="reviewer && arenaMe">
                 <div class="charcard charcard--split" x-bind:data-tier="levelTier(arenaMe.level)">
@@ -2166,7 +2174,7 @@ PAGE = """<!doctype html>
           </template>
         </div>
         <div class="detailview__eval">
-          <div x-show="detail && (detail.grade || detail.model)" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':(detail && detail.grade==='R'?'ds-badge--error':'ds-badge--reason')" x-bind:data-tip="detail && !detail.grade ? '품질 호출이 실패해 판정을 보류했습니다 · 재실행하면 다시 판정합니다' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':(detail.grade==='R'?'차단 · R':'판정 보류 · 재실행 필요'))"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
+          <div x-show="detail && (detail.grade || detail.model)" class="flex flex-wrap items-center gap-1.5"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':(detail && detail.grade==='R'?'ds-badge--error':'ds-badge--reason')" x-bind:data-tip="detail && !detail.grade ? '품질 호출이 실패해 판정을 보류했습니다 · 재실행하면 다시 판정합니다' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':(detail.grade==='R'?'차단 · R':'판정 보류 · 재실행 필요'))"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
           <!-- 리드문 즉시 확인: 좌측이 원문 페이지 탭일 때도 우측에서 초안 리드문을 대조(회의 소요) -->
           <div class="dve__sec" x-show="detail && detail.summary"><div class="dve__lbl">리드문</div><div class="dve__lead" x-text="detail && detail.summary"></div></div>
           <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
@@ -2205,7 +2213,7 @@ PAGE = """<!doctype html>
           </div>
           <div class="dve__verdict">
             <div class="dve__lbl" style="display:flex;align-items:center;gap:8px">검수 판정
-              <label x-show="detailNav" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:400;color:var(--ds-muted);cursor:pointer;margin-left:auto">
+              <label x-show="detailNav" class="chk-inline" style="font-size:11px;font-weight:400;color:var(--ds-muted);margin-left:auto">
                 <input type="checkbox" x-model="autoNext" x-on:change="saveAutoNext()">저장 후 다음 미검수로
               </label>
             </div>

@@ -180,6 +180,24 @@
       detailNav: null,
       autoNext: (function () { try { return localStorage.getItem('prismAutoNext') !== '0'; } catch (e) { return true; } })(),
       saveAutoNext() { try { localStorage.setItem('prismAutoNext', this.autoNext ? '1' : '0'); } catch (e) {} },
+      // 닉네임 변경(홈 · 내 검수 캐릭터): 이름만 교체 · 팀·캐릭터·검수 이력 유지
+      nickEdit: false, nickNew: '', nickMsg: '', nickBusy: false,
+      async saveNick() {
+        const nv = (this.nickNew || '').trim();
+        if (!nv) { this.nickMsg = '닉네임을 입력하세요'; return; }
+        if (nv === this.reviewer) { this.nickEdit = false; this.nickMsg = ''; return; }
+        this.nickBusy = true; this.nickMsg = '';
+        try {
+          const d = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ mode: 'rename', reviewer: this.reviewer, name: nv, char: this.reviewerChar }) })).json();
+          if (!d.ok) { this.nickMsg = '오류: ' + (d.error || '변경 실패'); }
+          else {
+            this.reviewer = nv; try { localStorage.setItem('prism_reviewer', nv); } catch (e) {}
+            this.nickEdit = false; this.nickMsg = '';
+            this.loadArena();                        // 리더보드·캐릭터 카드에 새 이름 즉시 반영
+          }
+        } catch (e) { this.nickMsg = '오류: ' + e; }
+        this.nickBusy = false;
+      },
       detailGo(step) {                                   // 상세에서 목록 순서로 이전/다음 이동
         if (!this.detailNav) return;
         const i = this.detailNav.idx + step;

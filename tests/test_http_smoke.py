@@ -287,6 +287,20 @@ class TestButtonsEndToEnd(unittest.TestCase):
         u2 = next(x for x in r2["users"] if x["user_id"] == "smoke-u1")
         self.assertEqual((u2.get("gen_persona") or {}).get("id"), gp.get("id"))
 
+    # ── 홈 · 닉네임 변경: 이름만 교체 · 검수 이력(리더보드)이 새 이름으로 이관 ──
+    def test_12_reviewer_rename(self):
+        self.ok("/reviewer", {"reviewer": "개명전", "name": "개명전", "char": "boksil"})
+        self.ok("/reviewer", {"reviewer": "딱지", "name": "딱지", "char": "ddakji"})
+        self.ok("/feedback", {"hash": self.review_hash, "service": "뉴스", "title": "스모크 일반",
+                              "verdict": "good", "stage": "review", "note": "", "reviewer": "개명전"})
+        r = self.ok("/reviewer", {"mode": "rename", "reviewer": "개명전", "name": "딱지"})
+        self.assertFalse(r.get("ok"))                    # 사용 중 닉네임 거부
+        r = self.ok("/reviewer", {"mode": "rename", "reviewer": "개명전", "name": "개명후"})
+        self.assertTrue(r.get("ok"))
+        names = [b["reviewer"] for b in (self.ok("/arena").get("leaderboard") or [])]
+        self.assertIn("개명후", names)                    # 검수 이력(점수)이 새 이름으로
+        self.assertNotIn("개명전", names)
+
 
 if __name__ == "__main__":
     unittest.main()
