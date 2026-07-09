@@ -116,3 +116,12 @@ class TestTier2DefsHelp(unittest.TestCase):
         from prism import dictionaries as D
         for k in D.INTENT_EXAMPLES:
             self.assertIn(k, D.INTENT_VALUE_DEFS, k)
+
+
+class TestQualityKoNames(unittest.TestCase):
+    def test_quality_names_cover_all_metas(self):
+        """품질 병기(한글/영문) 전제: 모든 품질 메타 키에 한글 메타명 존재."""
+        from prism import dictionaries as D
+        for k in D.QUALITY_METAS:
+            self.assertIn(k, D.QUALITY_META_NAMES, k)
+            self.assertTrue(D.QUALITY_META_NAMES[k].strip(), k)
