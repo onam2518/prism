@@ -788,7 +788,7 @@ PAGE = """<!doctype html>
                   <tr><td class="text-ink">평균 리드문(자)</td><template x-for="(m,mi) in abCols" x-bind:key="'l'+mi"><td class="tnum" x-text="m.avgLead"></td></template></tr>
                   <tr><td class="text-ink">인텐트 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'i'+mi"><td><template x-for="t in (m.intents||[])" x-bind:key="'it'+mi+t"><span class="ds-badge ds-badge--intent" style="margin:1px;cursor:help" x-bind:data-tip="termDef('intent', t)" data-tip-pos="top" x-text="t"></span></template><span x-show="!(m.intents||[]).length" class="text-xs text-muted">·</span></td></template></tr>
                   <tr><td class="text-ink">카테고리 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'c'+mi"><td><template x-for="t in (m.categories||[])" x-bind:key="'ct'+mi+t"><span class="ds-badge ds-badge--category" style="margin:1px;cursor:help" x-bind:data-tip="termDef('category', t)" data-tip-pos="top" x-text="catKo(t)"></span></template><span x-show="!(m.categories||[]).length" class="text-xs text-muted">·</span></td></template></tr>
-                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'r'+mi"><td><template x-for="t in (m.reasons||[])" x-bind:key="'rt'+mi+t"><span class="ds-badge ds-badge--reason" style="margin:1px;cursor:help" x-bind:data-tip="termDef('reason', t)" data-tip-pos="top" x-text="t"></span></template><span x-show="!(m.reasons||[]).length" class="text-xs text-muted">·</span></td></template></tr>
+                  <tr><td class="text-ink">품질 사유 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'r'+mi"><td><template x-for="t in (m.reasons||[])" x-bind:key="'rt'+mi+t"><span class="ds-badge ds-badge--reason" style="margin:1px;cursor:help" x-bind:data-tip="termDef('reason', t)" data-tip-pos="top" x-text="reasonBoth(t)"></span></template><span x-show="!(m.reasons||[]).length" class="text-xs text-muted">·</span></td></template></tr>
                 </tbody></table></div>
               </template>
               <div x-show="!abCols.length" class="text-xs text-muted" style="margin:0 16px 10px">모델·버전 결과가 쌓이면 A/B 비교가 표시됩니다 · <b class="text-ink">콘텐츠 관리 · 모델 실행</b>으로 초안을 만들어 보세요</div>
@@ -871,7 +871,7 @@ PAGE = """<!doctype html>
           </div><div class="panel-bd">
             <div class="drow"><div class="k">검수</div><div class="v text-sm text-body" x-text="(qm.review || 'auto') + (qm.confidence != null ? (' · conf ' + qm.confidence) : '')"></div></div>
             <div class="drow"><div class="k">품질 사유</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', r)" data-tip-pos="top" x-text="r"></span></template>
+              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', r)" data-tip-pos="top" x-text="reasonBoth(r)"></span></template>
               <span x-show="!(qm.reasons || []).length" class="text-xs text-muted">없음(통과)</span>
             </div></div>
             <div class="drow"><div class="k">법령</div><div class="v">
@@ -1110,7 +1110,7 @@ PAGE = """<!doctype html>
                   <div class="tile" style="margin-top:10px">
                     <div class="t" style="margin:0 0 8px">유형별 일치율 · 어디가 약한지(수정 우선순위)</div>
                     <template x-for="(v,k) in (goldenResult.by_reason_bucket||{})" x-bind:key="k">
-                      <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="k==='normal' ? '문제 사유 없는 일반 콘텐츠' : termDef('reason', k)" data-tip-pos="top" x-text="k"></span> <span class="tnum text-muted" x-text="'('+v.n+')'"></span></span><span class="ds-progress__pct tnum" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
+                      <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="k==='normal' ? '문제 사유 없는 일반 콘텐츠' : termDef('reason', k)" data-tip-pos="top" x-text="reasonBoth(k)"></span> <span class="tnum text-muted" x-text="'('+v.n+')'"></span></span><span class="ds-progress__pct tnum" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
                     </template>
                   </div>
                   <div class="subhd" style="margin:16px 0 8px">평가 상세 · 불일치 건별 판정 <span class="meta">모델이 맞음=정답 교정 후보 · 정답 유지=모델 오답 확정</span></div>
@@ -1473,7 +1473,7 @@ PAGE = """<!doctype html>
                   </td>
                   <td class="text-muted" x-text="r.service"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span x-show="!(r.category||[]).length" class="text-xs text-muted">·</span></td>
-                  <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template><span x-show="!(r.reasons||[]).length" class="text-xs text-muted">·</span></td>
+                  <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="reasonBoth(c)"></span></template><span x-show="!(r.reasons||[]).length" class="text-xs text-muted">·</span></td>
                   <td x-on:click.stop>
                     <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="!(r.fb && r.fb.verdict)" x-on:click="openRawDetail(r)">검수하기</button>
                     <span class="text-xs text-muted tnum" x-show="r.fb && r.fb.verdict" style="cursor:pointer" x-on:click="openRawDetail(r)" data-tip="완료 · 클릭하면 상세에서 수정" data-tip-pos="top" x-text="'✓ ' + (r.fb && r.fb.ts ? fmtTs(r.fb.ts) : '완료')"></span>
@@ -2195,7 +2195,7 @@ PAGE = """<!doctype html>
               </template>
             </div>
           </div>
-          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="e"></span></template></div></div>
+          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="reasonBoth(e)"></span></template></div></div>
           <!-- 작업 이력: 판정·교정·재실행 타임라인(접이식 · 회의 소요) · 운영은 팀 생성자·슈퍼관리자 전용 -->
           <div class="dve__sec" x-show="backend !== 'supabase' || (adminData && adminData.isSuperAdmin)" x-cloak>
             <button type="button" class="copybtn" x-on:click="toggleHistory()" x-text="histOpen ? '작업 이력 닫기' : '작업 이력 보기'"></button>

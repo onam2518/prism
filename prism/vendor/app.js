@@ -534,6 +534,15 @@
         return (t1k[parts[0]] || parts[0]) + ' / ' + (t2k[parts[1]] || parts[1]);
       },
       catBoth(v) { const k = this.catKo(v); return (k && k !== v) ? (k + ' (' + v + ')') : v; },   // 병기(한글/영문순)
+      // 품질 사유 병기(한글/영문순 · UI·도움말 공용): 값·저장은 영문 키 유지, 렌더만 변환
+      reasonBoth(v) {
+        if (!v) return v;
+        if (v === 'normal') return '일반 (normal)';
+        const d = this.dictData;
+        if (!d) { if (!this._dictReq) { this._dictReq = true; this.loadDict(); } return v; }
+        const nm = (d.qualityNames || {})[v];
+        return nm ? (nm + ' (' + v + ')') : v;
+      },
       termDef(kind, val) {
         val = String(val == null ? '' : val).replace(/\s*\(\d+\)\s*$/, '');   // '값 (건수)' 형태 정규화
         if (kind === 'intent') return this.INTENT_DEF[val] || ('인텐트 · ' + val);
@@ -599,7 +608,11 @@
         if (c.grade) out.push({ kind: 'grade', v: String(c.grade) });
         return out.slice(0, 12);
       },
-      polCtxLabel(x) { return x.kind === 'category' ? this.catKo(String(x.v).split('/')[0].trim()) : x.v; },
+      polCtxLabel(x) {
+        if (x.kind === 'category') return this.catKo(String(x.v).split('/')[0].trim());
+        if (x.kind === 'reason') return this.reasonBoth(x.v);
+        return x.v;
+      },
       polStyle() { return this.polPos ? ('left:' + this.polPos.x + 'px; top:' + this.polPos.y + 'px; right:auto; bottom:auto;') : ''; },
       polDragStart(e) {
         if (e.target && e.target.closest && e.target.closest('button')) return;   // 닫기 버튼은 드래그 제외
