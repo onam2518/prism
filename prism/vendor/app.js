@@ -1133,9 +1133,10 @@
         this.loadGoldenStatus();
       },
       async adminAct(action, member) {
-        if (action === 'clear_feedback' && !(await this.dsConfirm('우리 팀의 평가 피드백을 모두 삭제할까요?', { ok: '삭제', danger: true }))) return;
+        if (action === 'clear_feedback' && !(await this.dsConfirm('우리 팀의 평가 피드백을 모두 삭제할까요? 게임 점수·레벨은 보존됩니다.', { ok: '삭제', danger: true }))) return;
         if (action === 'clear_contents' && !(await this.dsConfirm('우리 팀의 검토 콘텐츠를 모두 삭제할까요?', { ok: '삭제', danger: true }))) return;
         if (action === 'clear_golden' && !(await this.dsConfirm('정답셋(골든)을 모두 삭제할까요? 되돌릴 수 없습니다.', { ok: '삭제', danger: true }))) return;
+        if (action === 'reset_scores' && !(await this.dsConfirm('팀 전원의 게임 점수·레벨을 0부터 다시 시작할까요? 검수 데이터·배지·정답셋은 그대로 둡니다.', { ok: '초기화', danger: true }))) return;
         if (action === 'delete_team') {
           if (!(await this.dsConfirm('팀을 삭제할까요? 멤버 소속이 모두 해제됩니다.', { ok: '팀 삭제', danger: true }))) return;
           if (!(await this.dsConfirm('정말 삭제합니다. 되돌릴 수 없습니다.', { ok: '최종 삭제', danger: true }))) return;

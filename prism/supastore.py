@@ -694,20 +694,25 @@ class SupabaseStore:
             return round(0.5 + 0.5 * gs["acc"], 4) if gs.get("n", 0) >= 5 else 1.0
 
         leaderboard = []
-        for rid, v in board.items():
+        # 보너스(적립·초기화 오프셋)만 있는 검수자도 포함: 피드백 전체 삭제 후에도 보존 점수가 보이게
+        ids = set(board) | {k for k, b in bonuses.items() if k and (b or {}).get("total")}
+        for rid in ids:
+            v = board.get(rid) or {"reviews": 0, "corrections": 0,
+                                   "wk_reviews": 0, "wk_corr": 0, "pv_reviews": 0, "pv_corr": 0}
             gs = gold.get(rid) or {"n": 0, "acc": 0.0}
             mult = _mult(rid)
             base = (v["reviews"] * 10 + v["corrections"] * 25 + patches.get(rid, 0) * 5
                     + cons_match.get(rid, 0) * 5 + gs["n"] * 10)
-            pts = round(base * mult) + (bonuses.get(rid) or {}).get("total", 0)
+            # 초기화 오프셋(음수 이벤트)로 합이 음수가 될 수 있어 0 하한(레벨·리그 표시 정합)
+            pts = max(0, round(base * mult) + (bonuses.get(rid) or {}).get("total", 0))
             wk_base = v["wk_reviews"] * 10 + v["wk_corr"] * 25
             pv_base = v["pv_reviews"] * 10 + v["pv_corr"] * 25
             meta = names.get(rid, {})
-            leaderboard.append({"reviewer": meta.get("name", rid), "reviews": v["reviews"],
+            leaderboard.append({"reviewer": meta.get("name", rid), "reviewer_id": rid, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": level_of(pts), "streak": _streak(days_by.get(rid, set())),
                                 "char": meta.get("avatar", "boksil"), "progress": _prog(v["reviews"]),
-                                "week_points": round(wk_base * mult) + (bonuses.get(rid) or {}).get("week", 0),
+                                "week_points": max(0, round(wk_base * mult) + (bonuses.get(rid) or {}).get("week", 0)),
                                 "last_week_points": round(pv_base * mult),
                                 "gold_n": gs["n"], "gold_acc": gs["acc"], "quality_mult": mult,
                                 "consensus_matches": cons_match.get(rid, 0),

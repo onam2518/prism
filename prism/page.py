@@ -1558,11 +1558,12 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'system'" x-cloak class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>데이터 관리</b><span class="meta">삭제는 되돌릴 수 없습니다 · 우리 팀 데이터만 영향</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:12px"><li>삭제는 <b>되돌릴 수 없습니다</b> · 우리 팀 데이터만 영향합니다.</li><li>로컬 적재 데이터 초기화는 <b>이 기기</b>의 SQLite 에만 영향합니다.</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:12px"><li>삭제는 <b>되돌릴 수 없습니다</b> · 우리 팀 데이터만 영향합니다.</li><li>평가 피드백을 삭제해도 <b>게임 점수·레벨은 자동 보존</b>됩니다(적립 전환) · 점수를 비우려면 <b>게임 점수 초기화</b>를 쓰세요.</li><li>로컬 적재 데이터 초기화는 <b>이 기기</b>의 SQLite 에만 영향합니다.</li></ul>
             <div style="display:flex;gap:10px;flex-wrap:wrap">
               <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="adminAct('clear_feedback')">평가 피드백 전체 삭제</button>
               <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="adminAct('clear_contents')">검토 콘텐츠 전체 삭제</button>
               <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="adminAct('clear_golden')">정답셋 전체 삭제</button>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="adminAct('reset_scores')" data-tip="팀 전원의 리더보드 점수·레벨을 0부터 다시 시작합니다 · 검수 데이터·배지·정답셋은 그대로" data-tip-pos="top">게임 점수 초기화</button>
               <button type="button" x-show="backend !== 'supabase'" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-md" x-on:click="clearStore()">로컬 적재 데이터 초기화 <span class="tnum" x-text="'(' + (cfg.storedCount || 0) + '건)'"></span></button>
             </div>
             <div x-show="backend === 'supabase' && adminData && adminData.team" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))">
