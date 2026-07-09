@@ -930,7 +930,7 @@
   border:1px solid var(--ds-hairline);background:var(--ds-surface-white);color:var(--ds-ink);
   font:700 17px/1 GmarketSans,Pretendard,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.14);cursor:pointer}
 .polfab:hover{border-color:var(--ds-primary);color:var(--ds-primary)}
-.polpal{position:fixed;right:var(--ds-space-5);bottom:76px;z-index:80;width:372px;max-width:calc(100vw - 24px);
+.polpal{position:fixed;right:var(--ds-space-5);bottom:76px;z-index:80;width:min(920px,calc(100vw - 24px));max-width:calc(100vw - 24px);
   background:var(--ds-surface-white);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
   box-shadow:0 14px 44px rgba(0,0,0,.2);display:flex;flex-direction:column}
 .polpal__hd{display:flex;align-items:center;gap:8px;padding:10px var(--ds-pad-inset);cursor:grab;user-select:none;
@@ -940,11 +940,26 @@
 .polpal__hd .meta{font-size:11px;color:var(--ds-muted)}
 .polpal__bd{padding:10px var(--ds-pad-inset) var(--ds-pad-inset);display:flex;flex-direction:column;gap:8px;min-height:0}
 .polpal__ctx{display:flex;flex-wrap:wrap;gap:4px;padding-bottom:8px;border-bottom:1px dashed var(--ds-hairline)}
-.polpal__list{overflow:auto;max-height:46vh;display:flex;flex-direction:column;gap:6px}
+.polpal__list{overflow:auto;max-height:66vh;display:flex;flex-direction:column;gap:6px}
 .polpal__item{padding:8px 10px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-control);background:var(--ds-surface-white)}
 .polpal__item b{font-size:12.5px;color:var(--ds-ink)}
 .polpal__item div{color:var(--ds-body);margin-top:3px;line-height:1.55;white-space:pre-line}
 .polpal__item.is-hl{border-color:var(--ds-primary);background:var(--ds-primary-tint)}
+
+/* 정책 도움말 · 표 구조(기준표): Tier1 그룹 + (Tier2|정의|예시) · 인텐트/품질/등급 공용 */
+.poltbl{width:100%;border-collapse:collapse;font-size:12px}
+.poltbl th{position:sticky;top:0;z-index:1;background:var(--ds-surface-white);text-align:left;
+  font-size:10.5px;font-weight:700;color:var(--ds-muted);padding:5px 8px;border-bottom:1px solid var(--ds-hairline);white-space:nowrap}
+.poltbl td{padding:7px 8px;border-bottom:1px solid var(--ds-hairline);vertical-align:top;line-height:1.55;color:var(--ds-body)}
+.poltbl tr:last-child td{border-bottom:0}
+.poltbl tr.is-hl td{background:var(--ds-primary-tint)}
+.polsec{border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-control);padding:8px 10px 6px;background:var(--ds-surface-white)}
+.polsec__hd{padding:2px 0 6px}
+.polsec__hd b{font-size:12.5px;color:var(--ds-ink)}
+.polsec__hd.is-hl b{color:var(--ds-primary)}
+.polrule{margin:6px 0 2px;font-size:11.5px;color:var(--ds-muted);border-top:1px dashed var(--ds-hairline);padding-top:6px;line-height:1.6}
+.polrule summary{cursor:pointer;font-weight:600;color:var(--ds-body)}
+.polrule div{margin-top:4px;white-space:pre-line}
 
 
 /* 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 에이전트 카드 아래 · 전 메뉴 노출

@@ -566,36 +566,48 @@
       polToggle() { this.polOpen = !this.polOpen; if (this.polOpen && !this.dictData) this.loadDict(); this.polSave(); },
       polShow(kind, val) {                              // 값 태그 딥링크: 해당 정책 항목으로 점프·강조
         let v = String(val == null ? '' : val).replace(/\s*\(\d+\)\s*$/, '');
-        if (kind === 'category') v = v.split('/')[0].trim();    // 기준은 Tier 1 단위
+        if (kind === 'category') { const ps = v.split('/').map((s) => s.trim()); v = ps[1] || ps[0]; }   // Tier2 행 우선, 없으면 Tier1 그룹
         this.polTab = kind === 'reason' ? 'quality' : (kind === 'grade' ? 'grade' : (kind === 'category' ? 'category' : 'intent'));
         this.polQ = ''; this.polHl = v; this.polOpen = true;
         if (!this.dictData) this.loadDict();
         this.polSave();
         this.$nextTick(() => { try { const el = document.querySelector('.polpal [data-pol="' + (window.CSS && CSS.escape ? CSS.escape(v) : v) + '"]'); if (el) el.scrollIntoView({ block: 'center' }); } catch (e) {} });
       },
-      polEntries() {                                    // 탭 + 검색 → [{k(키), t(제목), d(기준)}]
+      polCatGroups() {                                  // 카테고리 탭: Tier1 그룹 → Tier2 표 행(정의·예시)
+        const d = this.dictData || {};
+        const q = (this.polQ || '').trim().toLowerCase();
+        const defs = d.tier2Defs || {};
+        return (d.iabTier1 || []).map((t1) => {
+          const rows = ((d.tier2 || {})[t1] || []).map((t2) => {
+            const dd = defs[t2] || {};
+            return { k: t2, def: dd.def || '', ex: dd.ex || '' };
+          }).filter((r) => !q || (t1 + ' ' + this.catKo(t1) + ' ' + r.k + ' ' + this.catKo(r.k) + ' ' + r.def + ' ' + r.ex).toLowerCase().indexOf(q) >= 0);
+          return { t1, rule: (d.categoryCriteria || {})[t1] || '', rows };
+        }).filter((g) => g.rows.length);
+      },
+      polRows() {                                       // 인텐트·품질·등급 탭 → 표 행 [{k,t,d,ex}]
         const d = this.dictData || {};
         let out = [];
         if (this.polTab === 'intent') {
           const defs = (d.intentDefs && Object.keys(d.intentDefs).length) ? d.intentDefs : this.INTENT_DEF;
-          out = Object.keys(defs).map((k) => ({ k, t: k, d: defs[k] }));
-        } else if (this.polTab === 'category') {
-          const cr = d.categoryCriteria || {};
-          const t1 = d.iabTier1 || [];
-          out = t1.map((k) => ({ k, t: k, d: cr[k] || ((d.tier2 && d.tier2[k] && d.tier2[k].length) ? ('Tier 2: ' + d.tier2[k].join(' · ')) : '') }));
-          Object.keys(cr).forEach((k) => { if (t1.indexOf(k) < 0) out.push({ k, t: k, d: cr[k] }); });
+          const ex = d.intentExamples || {};
+          out = Object.keys(defs).map((k) => ({ k, t: k, d: defs[k], ex: ex[k] || '' }));
         } else if (this.polTab === 'quality') {
           const qm = d.qualityMetas || {};
-          out = Object.keys(qm).map((k) => ({ k, t: ((d.qualityNames || {})[k] ? (d.qualityNames[k] + ' · ' + k) : k), d: qm[k] }));
-        } else {                                        // grade: 판정 계약(코드 원천 고정)
-          out = [
-            { k: 'G', t: 'G · 유통 가능', d: '품질 사유가 임계 미만. 서비스 노출 가능 판정.' },
-            { k: 'R', t: 'R · 유통 제외', d: '임계를 넘는 품질 사유가 1개 이상 확정. 사유 태그가 함께 표시됩니다.' },
-            { k: 'YELLOW', t: 'YELLOW · 판정 애매', d: '모델 확신이 낮거나 경계 사례. 사람 검수 대상으로 회수되어 검수 큐에 들어옵니다.' },
-          ];
+          const nm = d.qualityNames || {};
+          out = Object.keys(qm).map((k) => ({ k, t: nm[k] ? (nm[k] + ' (' + k + ')') : k, d: qm[k],
+            ex: ((d.qualityApplies || {})[k] === 'ugc') ? 'UGC' : '전체' }));
+        } else {                                        // grade: 판정 계약(사전 원천 · 미제공 시 내장 폴백)
+          out = (d.gradeDefs && d.gradeDefs.length)
+            ? d.gradeDefs.map((g) => ({ k: g.k, t: g.t, d: g.d, ex: '' }))
+            : [
+              { k: 'G', t: 'G · 유통 가능', d: '품질 사유가 임계 미만. 서비스 노출 가능 판정.', ex: '' },
+              { k: 'R', t: 'R · 유통 제외', d: '임계를 넘는 품질 사유가 1개 이상 확정. 사유 태그가 함께 표시됩니다.', ex: '' },
+              { k: 'YELLOW', t: 'YELLOW · 판정 애매', d: '모델 확신이 낮거나 경계 사례. 사람 검수 대상으로 회수되어 검수 큐에 들어옵니다.', ex: '' },
+            ];
         }
         const q = (this.polQ || '').trim().toLowerCase();
-        if (q) out = out.filter((e) => (e.t + ' ' + (e.d || '')).toLowerCase().indexOf(q) >= 0);
+        if (q) out = out.filter((e) => (e.t + ' ' + (e.d || '') + ' ' + (e.ex || '')).toLowerCase().indexOf(q) >= 0);
         return out;
       },
       polCtx() {                                        // 열려 있는 검수 상세의 값 → 관련 정책 바로가기

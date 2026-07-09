@@ -93,6 +93,31 @@ class TestCategoryKoDisplay(unittest.TestCase):
                          "Sports / Soccer (Domestic)")
 
 
+class TestTier2DefsHelp(unittest.TestCase):
+    """도움말 표 원천 계약: Tier2 전 항목 정의·예시 · 등급 판정 계약."""
+
+    def test_tier2_defs_cover_all(self):
+        from prism import dictionaries as D
+        all_t2 = [t for v in D.CONTENT_CATEGORY_TIER2.values() for t in v]
+        for t2 in all_t2:
+            self.assertIn(t2, D.TIER2_DEFS, t2)
+            d, ex = D.TIER2_DEFS[t2]
+            self.assertTrue(str(d).strip(), t2)          # 정의 필수
+            self.assertTrue(str(ex).strip(), t2)         # 예시(초안) 필수
+        self.assertEqual(set(D.TIER2_DEFS), set(all_t2))  # 사전에 없는 잉여 키 금지
+
+    def test_grade_defs_contract(self):
+        from prism import dictionaries as D
+        self.assertEqual([g["k"] for g in D.GRADE_DEFS], ["G", "R", "YELLOW"])
+        for g in D.GRADE_DEFS:
+            self.assertTrue(g["t"] and g["d"])
+
+    def test_intent_examples_subset_of_defs(self):
+        from prism import dictionaries as D
+        for k in D.INTENT_EXAMPLES:
+            self.assertIn(k, D.INTENT_VALUE_DEFS, k)
+
+
 class TestQualityKoNames(unittest.TestCase):
     def test_quality_names_cover_all_metas(self):
         """품질 병기(한글/영문) 전제: 모든 품질 메타 키에 한글 메타명 존재."""
