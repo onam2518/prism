@@ -504,6 +504,18 @@
         '보도자료·공식발표': '기관·기업의 공식 발표 기반', '후기·리뷰·비평': '사용·관람 경험의 평가·비평',
         '해설·팩트체크': '사안의 사실 검증·해설', '정형정보': '시세·일정·순위 등 정형 데이터 전달',
       },
+      // 카테고리 한글 표시(UI 전용): 값·저장·전달은 영문(공식 표기) 유지, 렌더링만 변환.
+      // 사전(dictData) 미로드 시 lazy 로드 후 원문 폴백 · 미등록 값도 원문 유지.
+      catKo(v) {
+        if (!v) return v;
+        const d = this.dictData;
+        if (!d) { if (!this._dictReq) { this._dictReq = true; this.loadDict(); } return v; }
+        const t1k = d.tier1Ko || {}, t2k = d.tier2Ko || {};
+        const parts = String(v).split('/').map((p) => p.trim());
+        if (parts.length === 1) return t1k[parts[0]] || t2k[parts[0]] || parts[0];
+        return (t1k[parts[0]] || parts[0]) + ' / ' + (t2k[parts[1]] || parts[1]);
+      },
+      catBoth(v) { const k = this.catKo(v); return (k && k !== v) ? (k + ' (' + v + ')') : v; },   // 병기(한글/영문순)
       termDef(kind, val) {
         val = String(val == null ? '' : val).replace(/\s*\(\d+\)\s*$/, '');   // '값 (건수)' 형태 정규화
         if (kind === 'intent') return this.INTENT_DEF[val] || ('인텐트 · ' + val);
@@ -569,7 +581,7 @@
         if (c.grade) out.push({ kind: 'grade', v: String(c.grade) });
         return out.slice(0, 12);
       },
-      polCtxLabel(x) { return x.kind === 'category' ? String(x.v).split('/')[0].trim() : x.v; },
+      polCtxLabel(x) { return x.kind === 'category' ? this.catKo(String(x.v).split('/')[0].trim()) : x.v; },
       polStyle() { return this.polPos ? ('left:' + this.polPos.x + 'px; top:' + this.polPos.y + 'px; right:auto; bottom:auto;') : ''; },
       polDragStart(e) {
         if (e.target && e.target.closest && e.target.closest('button')) return;   // 닫기 버튼은 드래그 제외

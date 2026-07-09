@@ -63,3 +63,31 @@ class TestVerify(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCategoryKoDisplay(unittest.TestCase):
+    """한글 표시명(UI 전용) 계약: 전 분류 커버 · 병기 형식 · 데이터 계층 불변."""
+
+    def test_ko_labels_cover_all_tiers(self):
+        from prism import dictionaries as D
+        for t1 in D.IAB_TIER1:
+            self.assertIn(t1, D.IAB_TIER1_KO, t1)
+        all_t2 = [t for v in D.CONTENT_CATEGORY_TIER2.values() for t in v]
+        self.assertEqual(len(all_t2), len(set(all_t2)))          # 평면 KO 맵 전제: Tier2 전역 유일
+        for t2 in all_t2:
+            self.assertIn(t2, D.TIER2_KO, t2)
+
+    def test_category_ko_and_bilingual(self):
+        from prism import dictionaries as D
+        self.assertEqual(D.category_ko("News and Politics / Politics"), "뉴스·정치 / 정치")
+        self.assertEqual(D.category_ko("Sports"), "스포츠")
+        self.assertEqual(D.category_ko("Politics"), "정치")       # Tier2 단독도 변환
+        self.assertEqual(D.category_ko("엉터리 / Unknown"), "엉터리 / Unknown")   # 미등록은 원문
+        self.assertEqual(D.category_bilingual("Sports"), "스포츠 (Sports)")
+        self.assertEqual(D.category_bilingual(""), "")
+
+    def test_canonical_values_stay_english(self):
+        from prism import dictionaries as D
+        # 정규화(저장 계층)는 한글 입력을 스냅하지 않는 한 영문 원문 유지 · KO 맵과 무관
+        self.assertEqual(D.normalize_content_category("Sports / Soccer (Domestic)"),
+                         "Sports / Soccer (Domestic)")

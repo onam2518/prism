@@ -495,6 +495,7 @@ def learn_data(team=None) -> dict:
 def learn_spec_md(team=None) -> str:
     """파인튜닝 스펙·소요서(.md) 생성: 살아있는 검수·골든 수치를 근거로 한 요구사항 문서.
     이 도구의 최종 산출물(관리자 주입 → 검수 → 골든 → 스펙·소요) · 기준치는 전부 논문 출처."""
+    from . import dictionaries as _D
     d = learn_data(team)
     if not d.get("ok"):
         return "# 파인튜닝 소요서\n\n데이터가 없습니다."
@@ -509,6 +510,7 @@ def learn_spec_md(team=None) -> str:
     L.append("- 입력: 콘텐츠(서비스명·제목·부제·본문)")
     L.append("- 출력: 리드문(summary) · 핵심 개체(entities) · 인텐트 · 콘텐츠 카테고리(IAB Tier1/2 사전) · 등급(G|R) · 품질 사유")
     L.append("- 분류 기준(taxonomy)은 프롬프트 외재화 방식 유지(재학습 없이 개편 가능 · Llama Guard, Inan et al. 2023)")
+    L.append("- 카테고리 공식 표기는 영문(IAB 는 공식 번역 미배포) · 본 문서의 한글은 표시용 병기")
     L.append("")
     L.append("## 2. 학습데이터 현황 (검수 합의 기반)")
     L.append(f"- 정답셋(골든): **{d['golden_n']}건** (검수 유래 승격 + 관리자 등록 · 등급 분포 {d.get('grade_dist')})")
@@ -542,7 +544,7 @@ def learn_spec_md(team=None) -> str:
     L.append("|---|---|---|")
     for c in sorted(d.get("coverage", []), key=lambda x: -x["lack"]):
         if c["lack"] > 0:
-            L.append(f"| {c['cls']} | {c['have']} | {c['lack']} |")
+            L.append(f"| {_D.category_bilingual(c['cls'])} | {c['have']} | {c['lack']} |")
     L.append("")
     L.append("## 4. 권장 학습 스펙 (전 항목 논문 근거)")
     L.append("- 방법: 오픈 베이스 LLM + LoRA/QLoRA 어댑터 · 학습 자원 GPU 1장급 (Hu et al. 2021 · Dettmers et al. 2023, 48GB 1장으로 65B)")

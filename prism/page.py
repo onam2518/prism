@@ -787,7 +787,7 @@ PAGE = """<!doctype html>
                   <tr><td class="text-ink">처리 건수</td><template x-for="(m,mi) in abCols" x-bind:key="'n'+mi"><td><b class="tnum" x-text="m.n"></b> <span class="abwin" x-show="abWin('n', mi)">▲</span></td></template></tr>
                   <tr><td class="text-ink">평균 리드문(자)</td><template x-for="(m,mi) in abCols" x-bind:key="'l'+mi"><td class="tnum" x-text="m.avgLead"></td></template></tr>
                   <tr><td class="text-ink">인텐트 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'i'+mi"><td><template x-for="t in (m.intents||[])" x-bind:key="'it'+mi+t"><span class="ds-badge ds-badge--intent" style="margin:1px;cursor:help" x-bind:data-tip="termDef('intent', t)" data-tip-pos="top" x-text="t"></span></template><span x-show="!(m.intents||[]).length" class="text-xs text-muted">·</span></td></template></tr>
-                  <tr><td class="text-ink">카테고리 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'c'+mi"><td><template x-for="t in (m.categories||[])" x-bind:key="'ct'+mi+t"><span class="ds-badge ds-badge--category" style="margin:1px;cursor:help" x-bind:data-tip="termDef('category', t)" data-tip-pos="top" x-text="t"></span></template><span x-show="!(m.categories||[]).length" class="text-xs text-muted">·</span></td></template></tr>
+                  <tr><td class="text-ink">카테고리 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'c'+mi"><td><template x-for="t in (m.categories||[])" x-bind:key="'ct'+mi+t"><span class="ds-badge ds-badge--category" style="margin:1px;cursor:help" x-bind:data-tip="termDef('category', t)" data-tip-pos="top" x-text="catKo(t)"></span></template><span x-show="!(m.categories||[]).length" class="text-xs text-muted">·</span></td></template></tr>
                   <tr><td class="text-ink">품질 사유 상위</td><template x-for="(m,mi) in abCols" x-bind:key="'r'+mi"><td><template x-for="t in (m.reasons||[])" x-bind:key="'rt'+mi+t"><span class="ds-badge ds-badge--reason" style="margin:1px;cursor:help" x-bind:data-tip="termDef('reason', t)" data-tip-pos="top" x-text="t"></span></template><span x-show="!(m.reasons||[]).length" class="text-xs text-muted">·</span></td></template></tr>
                 </tbody></table></div>
               </template>
@@ -934,15 +934,15 @@ PAGE = """<!doctype html>
             <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
             <span x-show="!(dictData && dictData.intentByService[dictGroup] && dictData.intentByService[dictGroup].length)" class="text-xs text-muted">항목 없음</span>
           </div></div>
-          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta tnum" x-text="dictData ? (dictData.iabTier1.length + ' Tier1') : ''"></span>
+          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta" style="cursor:help" data-tip="IAB Tech Lab 은 어떤 언어로도 공식 번역을 배포하지 않습니다 · 한글은 자사 표시 기준" data-tip-pos="top">공식 표기는 영문(IAB Content Taxonomy 기반) · 한글은 화면 표시용 병기</span>
             <button type="button" class="copybtn ml-auto" x-on:click="startEdit('iab_tier1', null, dictData.iabTier1, 'list', 'Tier1 목록')">Tier1 편집</button>
           </div>
             <div class="overflow-auto" style="max-height:340px"><table class="ds-table"><thead><tr><th style="width:210px">Tier1</th><th>Tier2</th><th style="width:52px" class="tnum" x-text="dictData ? (dictData.iabTier1.length) : ''"></th></tr></thead><tbody>
               <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c">
                 <tr>
-                  <td class="text-ink" style="font-weight:600;vertical-align:top" x-text="c"></td>
+                  <td class="text-ink" style="font-weight:600;vertical-align:top" x-text="catBoth(c)"></td>
                   <td><div class="flex flex-wrap gap-1.5">
-                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', t2)" data-tip-pos="top" x-text="t2"></span></template>
+                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', t2)" data-tip-pos="top" x-text="catBoth(t2)"></span></template>
                     <span x-show="!(dictData && dictData.tier2[c] && dictData.tier2[c].length)" class="text-xs text-muted">항목 없음</span>
                   </div></td>
                   <td style="vertical-align:top"><button type="button" class="copybtn" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button></td>
@@ -1298,7 +1298,7 @@ PAGE = """<!doctype html>
                   <tr>
                     <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" style="cursor:help" x-show="g.flagged && !g.fix_needed" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span> <span class="ds-badge ds-badge--warning" style="cursor:help" x-show="g.fix_needed" data-tip="평가 판정에서 '모델이 맞음' 합의 · 모델 결과가 맞다고 확정된 정답(제거 후 재등록 또는 검수 재확정 필요)" data-tip-pos="top">교정 필요</span></td>
                     <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
-                    <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template></td>
+                    <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template></td>
                     <td class="text-muted" x-text="g.model || '·'"></td>
                     <td class="tnum" x-text="g.version ? ('v' + g.version) : '·'"></td>
                     <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '직접' : '검수'"></span></td>
@@ -1375,7 +1375,7 @@ PAGE = """<!doctype html>
             <div class="panel-hd"><b>클래스 커버리지</b><span class="meta" style="cursor:help" data-tip="클래스당 8건이면 분류 부트스트랩이 가능(SetFit 2022)" data-tip-pos="top">목표 <b class="text-ink" x-text="learnData.per_class_target + '건/클래스'"></b></span></div>
             <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th style="cursor:help" data-tip="콘텐츠 카테고리 대분류" data-tip-pos="top">Tier1</th><th>보유</th><th>부족</th></tr></thead><tbody>
               <template x-for="c in [...learnData.coverage].sort((a,b)=>b.lack-a.lack)" x-bind:key="c.cls">
-                <tr><td x-text="c.cls"></td><td class="tnum" x-text="c.have"></td><td class="tnum" x-bind:class="c.lack>0?'text-ink':''" x-text="c.lack"></td></tr>
+                <tr><td x-text="catBoth(c.cls)"></td><td class="tnum" x-text="c.have"></td><td class="tnum" x-bind:class="c.lack>0?'text-ink':''" x-text="c.lack"></td></tr>
               </template>
             </tbody></table></div>
           </section>
@@ -1472,7 +1472,7 @@ PAGE = """<!doctype html>
                     <span class="ds-badge ds-badge--reason" style="margin-left:4px" x-show="r.split" data-tip="검수자 의견이 갈려 재검토가 필요합니다 · 우선 검수 대상" data-tip-pos="top">재검토 필요</span>
                   </td>
                   <td class="text-muted" x-text="r.service"></td>
-                  <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="c"></span></template><span x-show="!(r.category||[]).length" class="text-xs text-muted">·</span></td>
+                  <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span x-show="!(r.category||[]).length" class="text-xs text-muted">·</span></td>
                   <td><template x-for="c in (r.reasons||[])" x-bind:key="c"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="termDef('reason', c)" data-tip-pos="top" x-text="c"></span></template><span x-show="!(r.reasons||[]).length" class="text-xs text-muted">·</span></td>
                   <td x-on:click.stop>
                     <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="!(r.fb && r.fb.verdict)" x-on:click="openRawDetail(r)">검수하기</button>
@@ -2173,14 +2173,14 @@ PAGE = """<!doctype html>
           <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:pointer" x-bind:data-tip="termDef('intent', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('intent', e)" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">카테고리</div>
             <div class="flex flex-wrap gap-1 items-center">
-              <template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:pointer" x-bind:data-tip="termDef('category', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('category', e)" x-text="e"></span></template>
+              <template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:pointer" x-bind:data-tip="termDef('category', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('category', e)" x-text="catKo(e)"></span></template>
               <!-- 빈칸 감지 → 분류 필요 + 구조화 채우기(IAB Tier1/2) -->
               <template x-if="detail && !detail.category.length">
                 <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
                   <span class="ds-badge ds-badge--error">미분류 · 분류 필요</span>
                   <select class="field" style="height:30px;width:auto;padding:0 24px 0 8px;font-size:12px" x-on:change="fillCategory(detail, $event.target.value); $event.target.value=''">
                     <option value="">분류 선택…</option>
-                    <template x-for="opt in categoryOptions" x-bind:key="opt"><option x-bind:value="opt" x-text="opt"></option></template>
+                    <template x-for="opt in categoryOptions" x-bind:key="opt"><option x-bind:value="opt" x-text="catKo(opt)"></option></template>
                   </select>
                 </span>
               </template>
