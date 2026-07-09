@@ -61,11 +61,24 @@
   background:var(--ds-primary-tint);font-size:13px;line-height:1.55;color:var(--ds-text-secondary)}
 .m-lead em{display:block;font-style:normal;font-size:10px;font-weight:800;color:var(--ds-primary);
   letter-spacing:.5px;margin-bottom:4px}
-.m-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:11px}
-.m-chip{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:100px;border:1px solid var(--ds-hairline);
-  background:transparent;color:var(--ds-text-secondary);font-family:inherit}
-.m-chip--tap{border-color:var(--ds-primary);color:var(--ds-primary)}
-.m-body{margin-top:12px;font-size:13.5px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap}
+/* 메타 라벨 섹션(데스크탑 dve__sec 준용): 라벨 컬럼 + DS 색 배지(엔티티 보라·인텐트 파랑·카테고리 주황) */
+.m-metas{margin-top:12px;display:flex;flex-direction:column;gap:9px}
+.m-metarow{display:grid;grid-template-columns:52px 1fr;gap:10px;align-items:start}
+.m-metarow__lbl{font-size:11px;font-weight:700;color:var(--ds-muted);padding-top:4px}
+.m-metarow__vals{display:flex;gap:5px;flex-wrap:wrap;align-items:center;min-width:0}
+.m-metarow__vals .ds-badge{white-space:normal}
+.m-metarow__none{font-size:12px;color:var(--ds-muted);padding-top:2px}
+/* 인텐트 배지 = 탭 타겟(정의 시트): DS 배지에 터치 여백·ⓘ 표식만 덧댐 */
+.m-tap{gap:4px;padding:5px 10px;border:0;cursor:pointer;font-family:inherit;-webkit-appearance:none;appearance:none}
+.m-tap__i{font-size:9px;opacity:.7}
+.m-body{margin-top:13px;font-size:13.5px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap}
+
+/* 원문 페이지 보기 버튼 */
+.m-srcbtn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:14px;
+  height:44px;border-radius:var(--ds-radius-control,12px);border:1px solid var(--ds-hairline);
+  background:transparent;color:var(--ds-ink);font-size:13.5px;font-weight:700;font-family:inherit}
+.m-srcbtn svg{width:15px;height:15px;flex-shrink:0}
+.m-srcbtn:active{background:var(--ds-primary-tint)}
 .m-team{padding:9px 16px;border-top:1px solid var(--ds-divider-section);font-size:11.5px;color:var(--ds-muted)}
 .m-team b{color:var(--ds-ink)}
 
@@ -100,6 +113,24 @@
 .m-logout{display:block;text-align:center;margin-top:14px;font-size:12px;color:var(--ds-muted);
   background:none;border:0;font-family:inherit;width:100%}
 .m-def{font-size:13.5px;line-height:1.65;color:var(--ds-text-secondary);margin:0}
+
+/* ── 원문 전체화면(데스크탑 dvc__web iframe 준용 · sandbox·referrer 동일) ── */
+.m-src{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--ds-canvas)}
+.m-src__top{display:flex;align-items:center;gap:10px;flex-shrink:0;background:var(--ds-layer-popup);
+  border-bottom:1px solid var(--ds-divider-section);padding:calc(10px + env(safe-area-inset-top)) 14px 10px}
+.m-src__x{width:34px;height:34px;flex-shrink:0;border-radius:10px;border:1px solid var(--ds-hairline);
+  background:transparent;color:var(--ds-ink);font-size:15px;font-weight:800;font-family:inherit}
+.m-src__ttl{font-size:13px;font-weight:800;line-height:1.2;min-width:0}
+.m-src__ttl small{display:block;font-size:10.5px;font-weight:600;color:var(--ds-muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-src__newtab{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;font-weight:700;color:var(--ds-primary);text-decoration:none;
+  border:1px solid var(--ds-primary);border-radius:10px;padding:7px 12px}
+.m-src__frame{flex:1;min-height:0;background:#fff;overflow:hidden}
+.m-src__frame iframe{width:100%;height:100%;border:0;background:#fff}
+.m-src__note{flex-shrink:0;text-align:center;background:var(--ds-layer-popup);
+  border-top:1px solid var(--ds-divider-section);font-size:11px;color:var(--ds-muted);
+  padding:9px 16px calc(9px + env(safe-area-inset-bottom))}
 
 /* ── 완료 ── */
 .m-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;

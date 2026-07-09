@@ -90,12 +90,36 @@ MOBILE_PAGE = """<!doctype html>
           </div>
           <h2 class="m-card__title" x-text="cur().title"></h2>
           <div class="m-lead" x-show="cur().summary"><em>리드문 (초안)</em><span x-text="cur().summary"></span></div>
-          <div class="m-chips">
-            <template x-for="e in (cur().entities || [])" x-bind:key="'e' + e"><span class="m-chip" x-text="e"></span></template>
-            <template x-for="i in (cur().intent || [])" x-bind:key="'i' + i"><button type="button" class="m-chip m-chip--tap" x-on:click="intentDef(i)" x-text="i"></button></template>
-            <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><span class="m-chip" x-text="catKo(c)"></span></template>
+          <!-- 메타 라벨 섹션(데스크탑 상세 dve__sec 준용): 요소별 라벨 + DS 색 배지로 무엇이 무엇인지 구분 -->
+          <div class="m-metas">
+            <div class="m-metarow">
+              <span class="m-metarow__lbl">엔티티</span>
+              <div class="m-metarow__vals">
+                <template x-for="e in (cur().entities || [])" x-bind:key="'e' + e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template>
+                <span class="m-metarow__none" x-show="!(cur().entities || []).length">·</span>
+              </div>
+            </div>
+            <div class="m-metarow">
+              <span class="m-metarow__lbl">인텐트</span>
+              <div class="m-metarow__vals">
+                <template x-for="i in (cur().intent || [])" x-bind:key="'i' + i"><button type="button" class="ds-badge ds-badge--intent m-tap" x-on:click="intentDef(i)"><span x-text="i"></span><span class="m-tap__i" aria-hidden="true">ⓘ</span></button></template>
+                <span class="m-metarow__none" x-show="!(cur().intent || []).length">·</span>
+              </div>
+            </div>
+            <div class="m-metarow">
+              <span class="m-metarow__lbl">카테고리</span>
+              <div class="m-metarow__vals">
+                <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><span class="ds-badge ds-badge--category" x-text="catKo(c)"></span></template>
+                <span class="m-metarow__none" x-show="!(cur().category || []).length">·</span>
+              </div>
+            </div>
           </div>
-          <div class="m-body" x-text="cur().body || '본문이 저장되지 않은 콘텐츠입니다 · 데스크탑에서 원문 링크로 확인하세요'"></div>
+          <div class="m-body" x-text="cur().body || '본문이 저장되지 않은 콘텐츠입니다'"></div>
+          <!-- 원문 페이지 보기: url 있을 때만 · 앱 내 전체화면(iframe) + 새 탭 폴백 -->
+          <button type="button" class="m-srcbtn" x-show="cur().url" x-on:click="openSrc()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+            원문 페이지 보기
+          </button>
         </div>
         <div class="m-team" x-show="cur().fb && cur().fb.n" x-text="cur().fb ? teamLine(cur().fb) : ''"></div>
       </article>
@@ -160,6 +184,21 @@ MOBILE_PAGE = """<!doctype html>
     <div class="m-grab"></div>
     <h3 x-text="defTitle"></h3>
     <p class="m-def" x-text="defBody"></p>
+  </div>
+
+  <!-- ━━ 원문 전체화면(데스크탑 원문 페이지 탭 준용 · iframe + 새 탭 폴백) ━━ -->
+  <div class="m-src" x-show="srcOpen" x-cloak>
+    <header class="m-src__top">
+      <button type="button" class="m-src__x" x-on:click="closeSrc()" aria-label="닫기">✕</button>
+      <div class="m-src__ttl">원문 페이지<small x-show="srcService" x-text="srcService"></small></div>
+      <a class="m-src__newtab" x-bind:href="srcUrl" target="_blank" rel="noopener noreferrer">새 탭 <span aria-hidden="true">↗</span></a>
+    </header>
+    <div class="m-src__frame">
+      <template x-if="srcOpen">
+        <iframe x-bind:src="srcUrl" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer" loading="lazy" title="원문 페이지"></iframe>
+      </template>
+    </div>
+    <div class="m-src__note">화면이 비어 보이면 이 사이트가 내장 표시를 차단한 것입니다 · 새 탭으로 여세요</div>
   </div>
 
   <div class="m-toast" x-show="toast" x-text="toast"></div>

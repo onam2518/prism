@@ -7,6 +7,7 @@ window.mreview = () => ({
   items: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
   fix: { elems: ['summary'], note: '' },
   defTitle: '', defBody: '', dict: null,
+  srcOpen: false, srcUrl: '', srcService: '',   // 원문 전체화면(iframe) · 열 때 현재 카드 url 스냅샷
   // 데스크탑 app.js 와 동일 사전(요소·인텐트 정의) · 검수 화면 이원화의 유일한 중복
   FIX_ELEMENTS: [
     { id: 'summary', label: '리드문', stage: 'analyze' },
@@ -95,7 +96,7 @@ window.mreview = () => ({
   logout() {
     try { localStorage.removeItem('prism_token'); localStorage.removeItem('prism_rtoken'); localStorage.removeItem('prism_reviewer'); } catch (e) {}
     this.authToken = ''; this.rtoken = ''; this.reviewer = ''; this.name = '';
-    this.sheet = ''; this.view = 'login';
+    this.sheet = ''; this.srcOpen = false; this.view = 'login';
   },
 
   async boot() {
@@ -149,7 +150,10 @@ window.mreview = () => ({
   intentDef(v) { this.defTitle = v; this.defBody = this.INTENT_DEF[v] || '관점·형식을 나타내는 인텐트 값입니다.'; this.sheet = 'def'; },
 
   open(i) { this.idx = i; this.view = 'card'; },
-  back() { this.view = 'list'; },
+  back() { this.srcOpen = false; this.view = 'list'; },
+  // 원문 전체화면: url 스냅샷 후 열기(다음 카드로 넘어가도 표시 정합) · iframe 은 x-if 로 열 때만 로드
+  openSrc() { const c = this.cur(); if (!c || !c.url) return; this.srcUrl = c.url; this.srcService = c.service || ''; this.srcOpen = true; },
+  closeSrc() { this.srcOpen = false; },
   startReview() {
     const i = this.items.findIndex((it) => !this.reviewed(it));
     if (i >= 0) this.open(i);
