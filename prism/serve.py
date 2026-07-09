@@ -471,6 +471,8 @@ def dict_data() -> dict:
         "intentByService": {k: list(v) for k, v in D.INTENT_CATEGORIES_BY_SERVICE.items()},
         "iabTier1": list(D.IAB_TIER1),
         "tier2": {k: list(v) for k, v in getattr(D, "CONTENT_CATEGORY_TIER2", {}).items()},
+        "tier1Ko": dict(getattr(D, "IAB_TIER1_KO", {})),   # 한글 표시명(UI 전용 · 공식 표기는 영문)
+        "tier2Ko": dict(getattr(D, "TIER2_KO", {})),
         "iabMap": dict(getattr(D, "CATEGORY_IAB_MAP", {})),
         "domainGroups": {k: list(v) for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items()},
         "intentDefs": dict(getattr(D, "INTENT_VALUE_DEFS", {})),

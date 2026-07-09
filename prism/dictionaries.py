@@ -275,6 +275,80 @@ IAB_TIER1_DESC = {
     "Careers": "직업·채용·커리어", "Religion and Spirituality": "종교·운세·영성",
 }
 
+# ── 콘텐츠 카테고리 한글 표시명(UI 전용) ────────────────────────────────
+# 공식 표기는 영문이다(IAB Content Taxonomy 3.0 골격의 자사 사전 · IAB Tech Lab 은
+# 어떤 언어로도 공식 번역을 배포하지 않으므로 아래 한글은 자사 표시 기준).
+# 용도: 화면 렌더링과 정책·도움말 병기 표기에만 사용. 저장·평가·프롬프트·학습데이터·
+# 핸드오프 전달은 항상 영문 원문을 유지한다(상호운용은 영문+ID 로 성립).
+IAB_TIER1_KO = {
+    "News and Politics": "뉴스·정치", "Entertainment": "엔터테인먼트",
+    "Business and Finance": "비즈니스·금융", "Sports": "스포츠",
+    "Food and Drink": "음식·요리", "Travel": "여행",
+    "Family and Relationships": "가족·관계", "Education": "교육",
+    "Technology and Computing": "테크·컴퓨팅", "Books and Literature": "도서·문학",
+    "Medical Health": "의료·질병", "Hobbies and Interests": "취미·관심사",
+    "Health and Fitness": "건강·운동", "Home and Garden": "홈·리빙",
+    "Pets": "반려동물", "Style and Fashion": "패션·뷰티",
+    "Automotive": "자동차", "Video Gaming": "게임",
+    "Science": "과학", "Careers": "커리어·채용",
+    "Religion and Spirituality": "종교·운세",
+}
+# Tier2 한글 표시명(전역 평면 맵 · Tier2 명칭은 Tier1 간 중복이 없음을 테스트로 보장)
+TIER2_KO = {
+    "Politics": "정치", "Society": "사회", "Local News": "지역 뉴스", "Crime": "사건·사고",
+    "Disasters": "재해·재난", "Law": "법률", "International News": "국제 뉴스", "Weather": "날씨",
+    "Celebrity News": "연예(국내)", "Celebrity News (Foreign)": "연예(해외)", "Drama TV": "드라마",
+    "TV Shows": "TV·예능", "Movies": "영화", "Music": "음악", "Visual Art": "미술·시각예술",
+    "Performing Arts": "공연예술", "Humor": "유머",
+    "Economy": "경제", "Industries": "산업", "Business": "기업·비즈니스", "Investing": "투자",
+    "Banking": "은행·금융", "Insurance": "보험", "Real Estate Policy": "부동산 정책",
+    "Real Estate Listings": "부동산 매물",
+    "Soccer (Domestic)": "축구(국내)", "Soccer (International)": "축구(해외)",
+    "Baseball (Domestic)": "야구(국내)", "Baseball (International)": "야구(해외)",
+    "Basketball": "농구", "Volleyball": "배구", "Golf": "골프", "Martial Arts": "격투기·무술",
+    "Other Sports": "기타 스포츠",
+    "Cooking": "요리·레시피", "Food": "음식", "Beverages": "음료", "Dining Out": "외식·맛집",
+    "Domestic Travel": "국내 여행", "International Travel": "해외 여행", "Hotels": "호텔·숙박",
+    "Air Travel": "항공", "Travel Preparation": "여행 준비",
+    "Parenting": "육아", "Family": "가족", "Dating": "연애", "Weddings": "결혼·웨딩",
+    "Primary Education": "초등 교육", "Secondary Education": "중등 교육",
+    "Higher Education": "고등교육(대학)", "Language Learning": "어학", "Adult Education": "성인 교육",
+    "Computing": "컴퓨팅·AI", "Internet": "인터넷", "Information Security": "정보보안",
+    "Consumer Electronics": "전자제품",
+    "Fiction": "소설", "Non-Fiction": "논픽션", "Biographies": "전기·평전", "Essays": "에세이·일상글",
+    "Diseases and Conditions": "질병·질환", "Wellness": "웰니스",
+    "Arts and Crafts": "공예", "Collecting": "수집", "Outdoors": "아웃도어", "Military": "밀리터리",
+    "Healthy Living": "건강 생활", "Exercise and Fitness": "운동·피트니스",
+    "Interior Decorating": "인테리어", "Gardening": "가드닝·원예", "Home Improvement": "집수리·개선",
+    "Shopping": "쇼핑", "Lifestyle": "라이프스타일",
+    "Dogs": "강아지", "Cats": "고양이", "Birds": "조류", "Fish": "어류", "Other Pets": "기타 반려동물",
+    "Fashion Trends": "패션 트렌드", "Personal Care": "퍼스널 케어", "Accessories": "액세서리",
+    "Auto Type": "차종·신차", "Auto Repair": "정비·부품", "Auto Shows": "모터쇼",
+    "Video Games": "비디오 게임", "eSports": "e스포츠",
+    "Space and Astronomy": "우주·천문", "Biology": "생물", "Physics": "물리",
+    "Environment": "환경", "General Science": "과학 일반",
+    "Job Search": "구직·채용", "Career Advice": "커리어 조언",
+    "Religion": "종교", "Spirituality": "운세·영성",
+}
+
+def category_ko(path: str) -> str:
+    """'Tier1 / Tier2' 경로(또는 단일 값)의 한글 표시명. 미등록 값은 원문 유지."""
+    s = str(path or "").strip()
+    if not s:
+        return s
+    parts = [p.strip() for p in s.split("/")]
+    if len(parts) == 1:
+        return IAB_TIER1_KO.get(parts[0]) or TIER2_KO.get(parts[0]) or parts[0]
+    t1 = IAB_TIER1_KO.get(parts[0], parts[0])
+    t2 = TIER2_KO.get(parts[1], parts[1])
+    return f"{t1} / {t2}"
+
+def category_bilingual(path: str) -> str:
+    """병기 표기 '한글 (영문)' · 정책·도움말·문서용(공식 표기는 영문)."""
+    s = str(path or "").strip()
+    ko = category_ko(s)
+    return f"{ko} ({s})" if (s and ko != s) else s
+
 # 카테고리별 구분 기준(원문 사전 · ④ 콘텐츠 카테고리 호출의 시스템 메시지에 주입 · 캐싱 대상)
 CATEGORY_CRITERIA = {
     "News and Politics": ("정책·법안·정치인 발언·정부기관·정책 사업명은 Politics, 정책 외 사회 현상·통계·일반 사회 기사는 Society. "
