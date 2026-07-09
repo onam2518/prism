@@ -45,13 +45,24 @@ gh pr list --state merged --base main --limit 200 \
 해당 기간의 `prism/daily-log/*.md` 를 읽고 각 PR 의 배경·사용자 체감 효과를 파악한다.
 데일리로그가 커밋 제목보다 훨씬 정확한 소스이므로, 로그가 있으면 로그 서술을 우선한다.
 
-### 4. 패치노트 작성 원칙
+### 4. 패치노트 작성 원칙 (2026-07-09 사용자 확정)
 
-- **사용자(검수자·관리자) 관점의 효과** 중심으로 1줄씩. 내부 함수·파일명 남발 금지.
-  예: "판정을 바꿔도 목록에 바로 반영되지 않던 문제 수정" (O) / "_afetch 래퍼 전환" (X)
-- 분류: `✨ 새 기능` · `🐛 버그 수정` · `⚡ 성능·안정성` · `📝 문서·운영` (없는 분류는 생략)
-- 각 항목 끝에 PR 링크: `(<https://github.com/onam2518/prism/pull/60|#60>)`
-- 사소한 PR(오타·로그만)은 묶거나 생략 가능. 항목 수보다 읽는 사람이 얻는 정보가 기준.
+- **독자는 비개발 검수자·관리자.** 화면에서 보이는 단어만 쓴다. 개발 용어(UUID·머지·커밋·API·
+  배포·데이터 계층 등)는 쓰지 않거나 풀어쓴다.
+  예: "리더보드에 닉네임 대신 알 수 없는 영문·숫자 코드가 보이던 문제" (O) / "UUID 노출 수정" (X)
+- **말투는 해요체.**
+- **형식은 불릿 + 하위 불릿.** 상단 불릿(`•`)에 핵심 한 문장, 상세·조건·예시는 하위 불릿
+  (`    ◦` · 공백 4칸 들여쓰기)으로 내린다. **문장이 끝나면(마침표) 줄을 바꾼다.**
+  **em-dash(—) 는 쓰지 않는다.**
+- **PR 번호·링크는 본문에 쓰지 않는다** (독자에게 무의미). 범위 추적은 발송 시 `--mark` 기록으로만.
+- 분류 4종 고정 · 중요도순: `✨ 새 기능` · `🐛 버그 수정` · `⚡ 성능·안정성` · `📝 문서·운영`
+  (없는 분류는 생략). 검수 업무에 영향 큰 것부터.
+- 한 PR 을 여러 항목으로 쪼개거나 사소한 PR 들을 한 항목으로 묶는 것은 자유. 오타·내부 정리
+  수준은 생략. 항목 수보다 읽는 사람이 얻는 정보가 기준.
+- **머지된 PR 만 포함.** 오픈 PR 은 다음 회차로.
+- 머리는 header(🔭 Prism 패치노트 · 날짜)와 한 줄 요약 section.
+  꼬리는 **'프리즘 바로가기' 버튼**(actions 블록 · `url: https://prism-item.fly.dev`) 뒤에
+  날짜만 있는 context 라인.
 
 ### 5. payload 작성
 
@@ -60,13 +71,14 @@ section 3,000자(넘으면 블록 분할), blocks 최대 50개, 최상위 `text`
 
 ```json
 {
-  "text": "Prism 패치노트 · 7/8~7/9 · PR #60~#68",
+  "text": "Prism 패치노트 · 7/9",
   "blocks": [
-    {"type": "header", "text": {"type": "plain_text", "text": "🔭 Prism 패치노트 · 7/8 ~ 7/9"}},
-    {"type": "section", "text": {"type": "mrkdwn", "text": "한 줄 요약."}},
-    {"type": "section", "text": {"type": "mrkdwn", "text": "*✨ 새 기능*\n• 항목 (<https://github.com/onam2518/prism/pull/60|#60>)"}},
+    {"type": "header", "text": {"type": "plain_text", "text": "🔭 Prism 패치노트 · 7/9"}},
+    {"type": "section", "text": {"type": "mrkdwn", "text": "한 줄 요약이에요."}},
+    {"type": "section", "text": {"type": "mrkdwn", "text": "*✨ 새 기능*\n• 닉네임을 직접 바꿀 수 있어요.\n    ◦ 홈의 '내 검수 캐릭터'에서 변경해요.\n    ◦ 팀·캐릭터·검수 기록은 그대로 유지돼요."}},
     {"type": "divider"},
-    {"type": "context", "elements": [{"type": "mrkdwn", "text": "PR #60~#68 · 생성 2026-07-09"}]}
+    {"type": "actions", "elements": [{"type": "button", "text": {"type": "plain_text", "text": "프리즘 바로가기"}, "url": "https://prism-item.fly.dev", "style": "primary"}]},
+    {"type": "context", "elements": [{"type": "mrkdwn", "text": "2026-07-09 · Prism 업데이트 소식"}]}
   ]
 }
 ```
