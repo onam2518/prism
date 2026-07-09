@@ -1,0 +1,188 @@
+/* 모바일 검수 전용(/m) 앱 상태 · 데스크탑과 같은 API 계약(/auth·/reviewer·/raw·/feedback)만 사용.
+   화면은 검수 카드 스택 하나: 로그인 → 미검수 큐 한 장씩 → 판정/교정 → 완료. */
+window.mreview = () => ({
+  view: 'boot', sheet: '', backend: '', guideUrl: '',
+  email: '', pw: '', nick: '', err: '', busy: false,
+  authToken: '', rtoken: '', reviewer: '', name: '',
+  queue: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
+  fix: { elems: ['summary'], note: '' },
+  defTitle: '', defBody: '',
+  // 데스크탑 app.js 와 동일 사전(요소·인텐트 정의) · 검수 화면 이원화의 유일한 중복
+  FIX_ELEMENTS: [
+    { id: 'summary', label: '리드문', stage: 'analyze' },
+    { id: 'entities', label: '엔티티', stage: 'analyze' },
+    { id: 'intent', label: '인텐트', stage: 'analyze' },
+    { id: 'category', label: '카테고리', stage: 'analyze' },
+    { id: 'grade', label: '등급·유통', stage: 'judge' },
+    { id: 'quality', label: '품질 사유', stage: 'review' },
+  ],
+  INTENT_DEF: {
+    '속보·사건 추적': '새로 발생한 사건·이슈를 빠르게 전하고 후속 경과를 추적', '심층 분석': '배경·맥락·데이터로 사안을 깊이 해설',
+    '팬덤·화제성': '인물·작품에 대한 팬 반응·화제 중심', '실용 정보': '방법·팁·가이드 등 바로 쓰는 정보',
+    '감성·공감': '감정·경험을 나누며 공감을 유도', '오락·유머': '재미·유머 중심의 가벼운 콘텐츠',
+    '의견·논쟁': '찬반이 병렬로 오가는 주장·토론 콘텐츠(한쪽 논조가 뚜렷하면 옹호·지지/반박·비판)', '학술·전문': '전문 지식·연구·기술을 다룸',
+    '옹호·지지': '특정 사안·인물·정책을 지지하는 한쪽 논조의 콘텐츠', '반박·비판': '특정 사안·인물·정책·주장에 반대·비판하는 한쪽 논조의 콘텐츠',
+    '인터뷰': '인물 문답 중심의 전달 형식', '현장취재·르포': '현장에서 직접 취재한 심층 전달',
+    '그래픽·인포그래픽': '도표·시각 자료 중심의 전달', '포토·영상 중심': '사진·영상이 본문의 중심',
+    '보도자료·공식발표': '기관·기업의 공식 발표 기반', '후기·리뷰·비평': '사용·관람 경험의 평가·비평',
+  },
+
+  async init() {
+    try {
+      this.authToken = localStorage.getItem('prism_token') || '';
+      this.rtoken = localStorage.getItem('prism_rtoken') || '';
+      this.reviewer = localStorage.getItem('prism_reviewer') || '';
+      this.name = localStorage.getItem('prism_reviewer') || '';
+    } catch (e) {}
+    try {
+      const cfg = await (await fetch('/config')).json();
+      this.backend = cfg.backend || '';
+      const g = cfg.guideUrls || {};
+      this.guideUrl = g.guide_user || g.guide || '';
+    } catch (e) {}
+    if (this.backend === 'supabase' ? this.authToken : this.reviewer) await this.boot();
+    else this.view = 'login';
+  },
+
+  _hdrs() { const h = { 'Content-Type': 'application/json' }; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken; return h; },
+  // 인증 공통 fetch: 401 → 갱신 1회 → 재시도 → 그래도 만료면 로그인 화면(데스크탑 _afetch 와 동일 규약)
+  async afetch(url, opts) {
+    opts = opts || {};
+    const call = () => {
+      const h = Object.assign({}, opts.headers || {});
+      if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken;
+      return fetch(url, Object.assign({}, opts, { headers: h }));
+    };
+    let r = await call();
+    if (r.status === 401 && this.rtoken && await this.refresh()) r = await call();
+    if (r.status === 401 && this.backend === 'supabase') { this.err = '로그인이 만료됐습니다 · 다시 로그인해 주세요'; this.view = 'login'; }
+    return r;
+  },
+  async refresh() {
+    try {
+      const r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'refresh', refresh_token: this.rtoken }) })).json();
+      if (!(r && r.ok && r.access_token)) return false;
+      this.authToken = r.access_token;
+      if (r.refresh_token) this.rtoken = r.refresh_token;
+      try { localStorage.setItem('prism_token', this.authToken); localStorage.setItem('prism_rtoken', this.rtoken); } catch (e) {}
+      return true;
+    } catch (e) { return false; }
+  },
+
+  async login() {
+    const email = (this.email || '').trim(), pw = this.pw || '';
+    if (!email || !pw) { this.err = '이메일과 비밀번호를 입력하세요'; return; }
+    this.busy = true; this.err = '';
+    try {
+      const r = await (await fetch('/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'login', email: email, password: pw }) })).json();
+      if (!(r && r.ok && r.access_token)) { this.err = (r && r.error) || '로그인 실패'; this.busy = false; return; }
+      this.authToken = r.access_token; this.rtoken = r.refresh_token || '';
+      const p = await (await this.afetch('/reviewer', { method: 'POST', headers: this._hdrs(), body: JSON.stringify({ mode: 'login' }) })).json();
+      if (!(p && p.ok)) { this.err = (p && p.needSignup) ? '가입이 필요합니다 · 데스크탑에서 가입 후 이용하세요' : ((p && p.error) || '프로필 조회 실패'); this.busy = false; return; }
+      this.name = p.name || ''; this.reviewer = this.name;
+      try { localStorage.setItem('prism_token', this.authToken); localStorage.setItem('prism_rtoken', this.rtoken); localStorage.setItem('prism_reviewer', this.name); } catch (e) {}
+      await this.boot();
+    } catch (e) { this.err = '네트워크 오류 · 잠시 후 다시 시도하세요'; }
+    this.busy = false;
+  },
+  nickStart() {                                   // 로컬(sqlite) 모드: 닉네임만으로 시작(데스크탑과 동일 취급)
+    const n = (this.nick || '').trim();
+    if (!n) { this.err = '닉네임을 입력하세요'; return; }
+    this.reviewer = n; this.name = n;
+    try { localStorage.setItem('prism_reviewer', n); } catch (e) {}
+    this.boot();
+  },
+  logout() {
+    try { localStorage.removeItem('prism_token'); localStorage.removeItem('prism_rtoken'); localStorage.removeItem('prism_reviewer'); } catch (e) {}
+    this.authToken = ''; this.rtoken = ''; this.reviewer = ''; this.name = '';
+    this.sheet = ''; this.view = 'login';
+  },
+
+  async boot() {
+    this.view = 'boot';
+    await this.loadQueue();
+    this.loadPoints();
+    if (!this.helpSeen()) { this.sheet = 'help'; try { localStorage.setItem('prism_m_help', '1'); } catch (e) {} }
+  },
+  helpSeen() { try { return !!localStorage.getItem('prism_m_help'); } catch (e) { return true; } },
+  async loadQueue() {
+    try {
+      const q = this.backend === 'supabase' ? '' : ('&reviewer=' + encodeURIComponent(this.reviewer));
+      const r = await (await this.afetch('/raw?limit=200' + q)).json();
+      const items = (r && r.items) || [];
+      // 미검수 = 내 표 없는 콘텐츠(운영 uid 매칭 · 로컬은 표 자체가 없는 것) · 골드 문항은 v1 제외
+      this.queue = items.filter((it) => {
+        if (String(it.hash || '').indexOf('gold:') === 0) return false;
+        const fb = it.fb || {};
+        return this.backend === 'supabase' ? !fb.mine : !fb.n;
+      });
+      this.idx = 0; this.done = 0; this.fixed = 0;
+      this.view = this.queue.length ? 'main' : 'done';
+    } catch (e) { this.err = '목록을 불러오지 못했습니다'; this.view = this.queue.length ? 'main' : 'done'; }
+  },
+  async loadPoints() {
+    try {
+      const r = await (await this.afetch('/arena' + (this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''))).json();
+      const me = ((r && r.leaderboard) || []).find((x) => x.reviewer === this.name);
+      if (me) this.points = me.points;
+    } catch (e) {}
+  },
+
+  cur() { return this.queue[this.idx] || null; },
+  total() { return this.done + (this.queue.length - this.idx); },
+  progPct() { const t = this.total(); return t ? Math.round(this.done / t * 100) : 0; },
+  gradeLabel(g) { return g === 'G' ? '유통 가능 · G' : (g === 'R' ? '차단 · R' : '판정 보류 · 재실행 필요'); },
+  gradeClass(g) { return g === 'G' ? 'ds-badge--success' : (g === 'R' ? 'ds-badge--error' : 'ds-badge--reason'); },
+  teamLine(fb) { return '팀 의견 · 정확 ' + (fb.good || 0) + '개 · 수정 필요 ' + (fb.bad || 0) + '개'; },
+  intentDef(v) { this.defTitle = v; this.defBody = this.INTENT_DEF[v] || '관점·형식을 나타내는 인텐트 값입니다.'; this.sheet = 'def'; },
+
+  _lastPost: 0,
+  async _post(verdict, elements, note) {          // 검수 속도 제한(0.8초) 존중 · 연타 방지
+    const now = Date.now();
+    if (now - this._lastPost < 900) return 'skip';
+    this._lastPost = now;
+    const c = this.cur(); if (!c) return null;
+    const body = { hash: c.hash, service: c.service || '', title: c.title || '', model: c.model || '',
+                   verdict: verdict, stage: elements && elements.length ? this.elemStage(elements[0]) : 'analyze',
+                   note: note || '', reviewer: this.reviewer || '', name: this.name || '' };
+    if (elements && elements.length) body.elements = elements;
+    try { return await (await this.afetch('/feedback', { method: 'POST', headers: this._hdrs(), body: JSON.stringify(body) })).json(); }
+    catch (e) { return null; }
+  },
+  elemStage(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.stage : 'analyze'; },
+  elemLabel(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.label : ''; },
+
+  async good() {
+    if (await this._post('good') === 'skip') return;              // 연타 무시(진행도 안 넘김)
+    this._celebrate(10, '검수 완료');
+    this._advance();
+  },
+  openFix() {
+    const c = this.cur(); if (!c) return;
+    const fb = (c.fb || {});
+    // 직전 교정 이어쓰기: 내 메모·요소 프리필(선두 '[요소] ' 태그는 저장 시 재부착이라 벗긴다)
+    this.fix.note = String(fb.note || '').replace(/^\[[^\]]*\]\s*/, '');
+    this.fix.elems = (fb.elems && fb.elems.length) ? fb.elems.slice() : ['summary'];
+    this.sheet = 'fix';
+  },
+  toggleElem(id) {
+    const i = this.fix.elems.indexOf(id);
+    if (i >= 0) { if (this.fix.elems.length > 1) this.fix.elems.splice(i, 1); } else this.fix.elems.push(id);
+  },
+  async saveFix() {
+    const raw = (this.fix.note || '').trim(); if (!raw) return;
+    const hadNote = !!(((this.cur() || {}).fb || {}).note);
+    const tagged = '[' + this.fix.elems.map((e) => this.elemLabel(e)).join('·') + '] ' + raw;
+    if (await this._post('bad', this.fix.elems.slice(), tagged) === 'skip') return;
+    this.sheet = ''; this.fixed += 1;
+    this._celebrate(hadNote ? 10 : 25, hadNote ? '검수 완료' : '교정 반영');
+    this._advance();
+  },
+  _advance() { this.done += 1; this.idx += 1; if (!this.cur()) this.view = 'done'; },
+  _celebrate(pt, label) {
+    if (this.points !== null) this.points += pt;
+    this.toast = '✨ +' + pt + ' PT · ' + label;
+    if (this._toastT) clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => { this.toast = ''; }, 1600);
+  },
+});
