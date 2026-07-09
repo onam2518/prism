@@ -220,17 +220,61 @@ def admin_ingest(uid, team, endpoint, n, email="") -> dict:
     st.sync_contents(pairs, source="자동 인입", team=team)
     return {"ok": True, "fetched": len(contents), "queued": len(pairs)}
 
+def _score_rows(st, team) -> list:
+    """현재 리더보드(점수는 원천 데이터에서 파생 계산). 실패는 빈 목록(게임 계층은 베스트 에포트)."""
+    try:
+        return (st.arena_stats(team=team) or {}).get("leaderboard") or []
+    except Exception:
+        return []
+
+
+def carry_scores(st, team):
+    """피드백 전체 삭제 직전: 삭제로 사라질 점수 몫(검수·교정·합의)을 이벤트 적립으로 보존.
+    남는 원천(patch_log 5점 · gold_checks 10점 · 기존 보너스)에서 다시 계산될 몫은 빼서
+    이중 적립을 막는다 — 삭제 후 총점이 삭제 전과 같게(게임 진척도와 데이터 관리 분리)."""
+    bonuses = st.event_bonus(team) if hasattr(st, "event_bonus") else {}
+    day = int(time.time())                         # 초 단위 = 같은 초 재실행만 dedupe(멱등 안전망)
+    for row in _score_rows(st, team):
+        rid = row.get("reviewer_id") or ""
+        mult = row.get("quality_mult") or 1
+        surviving = round((int(row.get("patches") or 0) * 5 + int(row.get("gold_n") or 0) * 10) * mult)
+        carry = (int(row.get("points") or 0)
+                 - int((bonuses.get(rid) or {}).get("total") or 0) - surviving)
+        if rid and carry > 0:
+            st.log_event_once(rid, "score_carry", day, carry, meta="피드백 삭제 · 점수 보존", team=team)
+
+
+def reset_scores(st, team) -> int:
+    """게임 점수 초기화: 검수 데이터는 건드리지 않고 현재 총점만큼 음수 오프셋 이벤트를 적립.
+    파생 계산이라 원천 삭제 없이도 0부터 다시 시작한다(배지·검수 이력·골든 불변)."""
+    day = int(time.time())
+    n = 0
+    for row in _score_rows(st, team):
+        rid = row.get("reviewer_id") or ""
+        pts = int(row.get("points") or 0)
+        if rid and pts > 0 and st.log_event_once(rid, "score_reset", day, -pts,
+                                                 meta="관리자 점수 초기화", team=team):
+            n += 1
+    return n
+
+
 def admin_action(uid, team, data, email="") -> dict:
     """관리자 액션(데이터 삭제·멤버 제거). 팀 생성자만."""
     st = _SV.get_store()
     if _supa() and not is_admin_user(uid, team, email):    # 로컬 단독 실행 = 관리자 취급(타 라우트와 동일)
         return {"ok": False, "error": "관리자 전용입니다"}
     act = data.get("action")
-    data_ops = ("clear_feedback", "clear_contents", "clear_golden", "delete_team")
+    data_ops = ("clear_feedback", "clear_contents", "clear_golden", "delete_team", "reset_scores")
     if act in data_ops and _supa() and not is_sys_admin_user(uid, team, email):
         return {"ok": False, "error": "데이터 관리는 운영 관리자 전용입니다"}
     if act == "clear_feedback":
+        carry_scores(st, team)                     # 게임 점수·레벨은 보존(분리) · 초기화는 별도 버튼
         st.clear_team_feedback(team)
+        _SV._agg_bump()                            # 아레나·대시보드 집계 캐시 즉시 무효화
+    elif act == "reset_scores":                    # 게임 점수 초기화(검수 데이터·배지 불변)
+        n = reset_scores(st, team)
+        _SV._agg_bump()
+        return {"ok": True, "reset": n}
     elif act == "clear_contents":
         st.clear_team_contents(team)
     elif act == "clear_golden":                    # 정답셋 전체 삭제(되돌릴 수 없음)
