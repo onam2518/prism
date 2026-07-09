@@ -24,6 +24,13 @@ class TestPromptPolicy(unittest.TestCase):
         self.assertIn("복합 명사", blob)                     # 분해 금지 지침 존재
         self.assertIn("상한은 없다", blob)
 
+    def test_entity_count_cap_removed_merged_fallback(self):
+        # 통합 1콜 폴백 스키마도 분리형과 같은 정책(상한 없음)이어야 한다 (2026-07-09 잔존 표기 제거)
+        from prism import meta_prompts as MP
+        blob = MP.MERGED_SCHEMA + MP.MERGED_SELF_CHECK
+        self.assertNotIn("1~3", blob)
+        self.assertIn("상한 없음", blob)
+
     def test_agents_no_entity_truncation(self):
         import inspect
         from prism import agents as AG
@@ -79,6 +86,29 @@ class TestPromptPolicy(unittest.TestCase):
         d = D.INTENT_VALUE_DEFS["트렌드·시장 분석"]
         self.assertIn("소비·시장·라이프스타일일 때만", d)     # 여론조사 과포괄 차단
         self.assertNotIn("설문 기반 +", d)                   # 구 정의(무조건 통합) 재유입 방지
+
+    # ── 2026-07-09 정책 정합: 멜론=PGC · 품질 메타 우선순위는 상황부 규칙 ──
+    def test_melon_service_group_is_media(self):
+        from prism import dictionaries as D
+        self.assertEqual(D.SERVICE_GROUP["음악"], "media")    # 멜론 = PGC (위키 277118998)
+        # PGC 자동 비활성 메타가 음악 그룹에도 적용되는지 (political·hate·format 미검사)
+        active = D.active_quality_metas(D.SERVICE_GROUP["음악"])
+        for m in ("political", "hate", "format"):
+            self.assertNotIn(m, active)
+
+    def test_quality_priority_contextual_rules(self):
+        from prism import dictionaries as D
+        from prism import promptstore as P
+        self.assertFalse(hasattr(D, "QUALITY_PRIORITY"))      # 고정 우선순위 리스트 폐기
+        txt = D.priority_rules_text(["graphic", "ad", "shallow", "sexual", "hate", "profanity"])
+        self.assertIn("graphic 을 ad·shallow 보다 우선", txt)  # 비활성(political) 제외 렌더
+        self.assertIn("hate 을 profanity 보다 우선", txt)
+        self.assertIn("둘 다 명확하면 둘 다 부여", txt)
+        self.assertEqual(D.priority_rules_text(["clickbait", "spam"]), "")   # 해당 규칙 없음
+        sysmsg = P.render_quality_system(
+            D.active_quality_metas("ugc"), "ugc", json_guard="")
+        self.assertIn("동시 부여가 원칙", sysmsg)              # 절차 문구 갱신 반영
+        self.assertNotIn("graphic > sexual", sysmsg)          # 구 고정 체인 재유입 방지
 
 
 if __name__ == "__main__":
