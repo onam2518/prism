@@ -1,12 +1,12 @@
-/* 모바일 검수 전용(/m) 앱 상태 · 데스크탑과 같은 API 계약(/auth·/reviewer·/raw·/feedback)만 사용.
-   화면은 검수 카드 스택 하나: 로그인 → 미검수 큐 한 장씩 → 판정/교정 → 완료. */
+/* 모바일 검수 전용(/m) 앱 상태 · 데스크탑과 같은 API 계약(/auth·/reviewer·/raw·/feedback·/dict)만 사용.
+   v1.1: 목록 화면(탭 진입) + 카드 검수 · 카테고리 한글 표시(catKo · /dict 재사용). */
 window.mreview = () => ({
   view: 'boot', sheet: '', backend: '', guideUrl: '',
   email: '', pw: '', nick: '', err: '', busy: false,
   authToken: '', rtoken: '', reviewer: '', name: '',
-  queue: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
+  items: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
   fix: { elems: ['summary'], note: '' },
-  defTitle: '', defBody: '',
+  defTitle: '', defBody: '', dict: null,
   // 데스크탑 app.js 와 동일 사전(요소·인텐트 정의) · 검수 화면 이원화의 유일한 중복
   FIX_ELEMENTS: [
     { id: 'summary', label: '리드문', stage: 'analyze' },
@@ -100,25 +100,24 @@ window.mreview = () => ({
 
   async boot() {
     this.view = 'boot';
-    await this.loadQueue();
+    await this.loadItems();
     this.loadPoints();
+    this.loadDict();                               // 카테고리 한글 표시(비차단)
+    this.view = 'list';
     if (!this.helpSeen()) { this.sheet = 'help'; try { localStorage.setItem('prism_m_help', '1'); } catch (e) {} }
   },
   helpSeen() { try { return !!localStorage.getItem('prism_m_help'); } catch (e) { return true; } },
-  async loadQueue() {
+  async loadItems() {
     try {
       const q = this.backend === 'supabase' ? '' : ('&reviewer=' + encodeURIComponent(this.reviewer));
       const r = await (await this.afetch('/raw?limit=200' + q)).json();
-      const items = (r && r.items) || [];
-      // 미검수 = 내 표 없는 콘텐츠(운영 uid 매칭 · 로컬은 표 자체가 없는 것) · 골드 문항은 v1 제외
-      this.queue = items.filter((it) => {
-        if (String(it.hash || '').indexOf('gold:') === 0) return false;
-        const fb = it.fb || {};
-        return this.backend === 'supabase' ? !fb.mine : !fb.n;
-      });
+      // 골드 문항은 v1 제외 · 목록은 전체(검수 완료 포함) 노출, 미검수는 배지로 구분
+      this.items = ((r && r.items) || []).filter((it) => String(it.hash || '').indexOf('gold:') !== 0);
       this.idx = 0; this.done = 0; this.fixed = 0;
-      this.view = this.queue.length ? 'main' : 'done';
-    } catch (e) { this.err = '목록을 불러오지 못했습니다'; this.view = this.queue.length ? 'main' : 'done'; }
+    } catch (e) { this.err = '목록을 불러오지 못했습니다'; }
+  },
+  async loadDict() {
+    try { const d = await (await fetch('/dict')).json(); if (d) this.dict = d; } catch (e) {}
   },
   async loadPoints() {
     try {
@@ -128,13 +127,55 @@ window.mreview = () => ({
     } catch (e) {}
   },
 
-  cur() { return this.queue[this.idx] || null; },
-  total() { return this.done + (this.queue.length - this.idx); },
-  progPct() { const t = this.total(); return t ? Math.round(this.done / t * 100) : 0; },
+  // 카테고리 한글 표시(UI 전용 · 데스크탑 catKo 와 동일 규칙): 값·저장·전달은 영문 유지
+  catKo(v) {
+    if (!v || !this.dict) return v;
+    const t1k = this.dict.tier1Ko || {}, t2k = this.dict.tier2Ko || {};
+    const parts = String(v).split('/').map((p) => p.trim());
+    if (parts.length === 1) return t1k[parts[0]] || t2k[parts[0]] || parts[0];
+    return (t1k[parts[0]] || parts[0]) + ' / ' + (t2k[parts[1]] || parts[1]);
+  },
+
+  cur() { return this.items[this.idx] || null; },
+  reviewed(it) {                                   // 운영 = 내 표(uid 매칭) · 로컬 = 표 유무
+    const fb = (it && it.fb) || {};
+    return this.backend === 'supabase' ? !!fb.mine : !!fb.n;
+  },
+  unreviewedCount() { return this.items.filter((it) => !this.reviewed(it)).length; },
+  progPct() { const t = this.items.length; return t ? Math.round((t - this.unreviewedCount()) / t * 100) : 0; },
   gradeLabel(g) { return g === 'G' ? '유통 가능 · G' : (g === 'R' ? '차단 · R' : '판정 보류 · 재실행 필요'); },
   gradeClass(g) { return g === 'G' ? 'ds-badge--success' : (g === 'R' ? 'ds-badge--error' : 'ds-badge--reason'); },
   teamLine(fb) { return '팀 의견 · 정확 ' + (fb.good || 0) + '개 · 수정 필요 ' + (fb.bad || 0) + '개'; },
   intentDef(v) { this.defTitle = v; this.defBody = this.INTENT_DEF[v] || '관점·형식을 나타내는 인텐트 값입니다.'; this.sheet = 'def'; },
+
+  open(i) { this.idx = i; this.view = 'card'; },
+  back() { this.view = 'list'; },
+  startReview() {
+    const i = this.items.findIndex((it) => !this.reviewed(it));
+    if (i >= 0) this.open(i);
+  },
+  _advance() {                                     // 다음 미검수(현재 뒤 → 앞 순환) · 없으면 완료 화면
+    this.done += 1;
+    const n = this.items.length;
+    for (let s = 1; s <= n; s++) {
+      const j = (this.idx + s) % n;
+      if (!this.reviewed(this.items[j])) { this.idx = j; return; }
+    }
+    this.view = 'done';
+  },
+  _markMine(verdict, note, elems) {                // 목록 배지·진행률 즉시 반영(다음 /raw 전 표시 정합)
+    const c = this.cur(); if (!c) return;
+    const fb = Object.assign({}, c.fb || {});
+    if (!fb.mine) {
+      fb.n = (fb.n || 0) + 1;
+      const k = verdict === 'good' ? 'good' : 'bad';
+      fb[k] = (fb[k] || 0) + 1;
+    }
+    fb.mine = verdict;
+    if (note !== undefined) fb.note = note;
+    if (elems) fb.elems = elems.slice();
+    c.fb = fb;
+  },
 
   _lastPost: 0,
   async _post(verdict, elements, note) {          // 검수 속도 제한(0.8초) 존중 · 연타 방지
@@ -154,6 +195,7 @@ window.mreview = () => ({
 
   async good() {
     if (await this._post('good') === 'skip') return;              // 연타 무시(진행도 안 넘김)
+    this._markMine('good');
     this._celebrate(10, '검수 완료');
     this._advance();
   },
@@ -174,11 +216,11 @@ window.mreview = () => ({
     const hadNote = !!(((this.cur() || {}).fb || {}).note);
     const tagged = '[' + this.fix.elems.map((e) => this.elemLabel(e)).join('·') + '] ' + raw;
     if (await this._post('bad', this.fix.elems.slice(), tagged) === 'skip') return;
+    this._markMine('bad', tagged, this.fix.elems);
     this.sheet = ''; this.fixed += 1;
     this._celebrate(hadNote ? 10 : 25, hadNote ? '검수 완료' : '교정 반영');
     this._advance();
   },
-  _advance() { this.done += 1; this.idx += 1; if (!this.cur()) this.view = 'done'; },
   _celebrate(pt, label) {
     if (this.points !== null) this.points += pt;
     this.toast = '✨ +' + pt + ' PT · ' + label;
