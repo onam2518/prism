@@ -1567,6 +1567,21 @@ def register_reviewer(data: dict) -> dict:
     rv = (data.get("reviewer") or "").strip()        # 키: 이름(sqlite) 또는 uid(supabase 주입)
     if not rv:
         return {"ok": False, "error": "검수자 식별 실패"}
+    # 닉네임 변경: 이름만 교체(팀·캐릭터·이력 유지) · 오입력 자가 수정용
+    if data.get("mode") == "rename":
+        name = (data.get("name") or "").strip()[:20]
+        if not name:
+            return {"ok": False, "error": "닉네임을 입력하세요"}
+        ch = (data.get("char") or "boksil").strip()
+        if _supa():
+            st.set_reviewer(rv, name, ch)            # team_id 미전달 = 팀 유지(upsert 부분 갱신)
+        elif hasattr(st, "rename_reviewer"):
+            r = st.rename_reviewer(rv, name)         # sqlite: 키=이름 → 이력 키 이관
+            if not r.get("ok"):
+                return r
+        _agg_bump()                                  # 리더보드 등 집계에 새 이름 즉시 반영
+        broadcast({"type": "reviewer", "reviewer": name, "char": ch})
+        return {"ok": True, "name": name, "char": ch}
     # 로그인: 기존 프로필(이름·캐릭터·팀) 로드 · 재입력/재등록 없음
     if data.get("mode") == "login" and hasattr(st, "get_reviewer"):
         prof = st.get_reviewer(rv)

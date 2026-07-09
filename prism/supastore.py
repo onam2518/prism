@@ -137,7 +137,9 @@ class SupabaseStore:
 
     def ensure_team(self, uid, mode="create", name=None, code=None):
         """팀 생성/가입 → team_id. join: 초대코드 조회. create: 코드 생성·삽입."""
-        if mode == "join" and code:
+        if mode == "join":
+            if not code:            # 코드 없는 join 이 조용히 새 팀을 만들던 사고 방지(유령 '내 팀')
+                return None
             rows = self._get("teams", f"select=id&invite_code=eq.{urllib.parse.quote(code.strip().upper())}")
             return rows[0]["id"] if rows else None
         import hashlib
@@ -599,6 +601,10 @@ class SupabaseStore:
         점수 = (검수 10 + 교정 25 + 구조화 교정 5 + 합의 일치 5 + 골드 응답 10) × 품질 배율 + 미션 보너스."""
         names = self.reviewers_map(team)
         rows = self._all_feedback(team)
+        # 팀을 떠난(옮긴) 검수자의 과거 기여도 이름으로 표시: 팀 밖 id 는 전역 조회로 보강
+        missing = {r["reviewer_id"] for r in rows} - set(names)
+        if missing:
+            names.update({k: v for k, v in self.reviewers_map(None).items() if k in missing})
         DAY = 86400.0
         now = time.time()
         week_ago = now - 7 * DAY
