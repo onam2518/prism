@@ -47,6 +47,39 @@ class TestPromptPolicy(unittest.TestCase):
         self.assertIn("반박·비판", txt)
         self.assertIn("관점 축 구분", txt)                   # 경계 지침 주입
 
+    # ── 2026-07-09 교정: 관점 축 동시 성립 시 반박·비판 우선 + kNN은 관점 판정 제외 ──
+    def test_perspective_tiebreak_rule(self):
+        from prism import dictionaries as D
+        from prism import meta_prompts as MP
+        self.assertIn("반대하는 것이 논지의 중심", D.INTENT_VALUE_DEFS["반박·비판"])   # 정의 우선 규칙
+        self.assertIn("반박·비판을 우선", MP.intent_dictionary_text("뉴스"))          # 프롬프트 우선 규칙
+
+    def test_intent_anchors_exclude_perspective(self):
+        from prism import classify as C
+
+        class _FakeEmb:
+            def embed(self, text, is_query=False):
+                return [1.0, 0.0]
+
+        anchors = C.intent_category_anchors(_FakeEmb(), "뉴스")
+        self.assertNotIn("옹호·지지", anchors)               # 논조는 kNN 후보에서 제외
+        self.assertNotIn("반박·비판", anchors)
+        self.assertIn("심층 분석", anchors)                  # 나머지 후보는 유지
+
+    def test_merge_perspective_preserves_llm_verdict(self):
+        from prism.classify import merge_perspective
+        # 임베딩 top2 + LLM 관점 축 → 관점 축 보존, 상한 2 유지
+        self.assertEqual(merge_perspective(["트렌드·시장 분석", "정형정보"], ["반박·비판", "심층 분석"]),
+                         ["트렌드·시장 분석", "반박·비판"])
+        self.assertEqual(merge_perspective(["심층 분석"], []), ["심층 분석"])          # 관점 없으면 그대로
+        self.assertEqual(merge_perspective([], ["옹호·지지"]), ["옹호·지지"])          # emb 결과 없어도 보존
+
+    def test_trend_intent_def_scoped(self):
+        from prism import dictionaries as D
+        d = D.INTENT_VALUE_DEFS["트렌드·시장 분석"]
+        self.assertIn("소비·시장·라이프스타일일 때만", d)     # 여론조사 과포괄 차단
+        self.assertNotIn("설문 기반 +", d)                   # 구 정의(무조건 통합) 재유입 방지
+
 
 if __name__ == "__main__":
     unittest.main()
