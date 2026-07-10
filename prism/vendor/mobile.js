@@ -138,9 +138,9 @@ window.mreview = () => ({
   },
 
   cur() { return this.items[this.idx] || null; },
-  reviewed(it) {                                   // 운영 = 내 표(uid 매칭) · 로컬 = 표 유무
-    const fb = (it && it.fb) || {};
-    return this.backend === 'supabase' ? !!fb.mine : !!fb.n;
+  reviewed(it) {                                   // '완료' = 내 표(fb.mine) 기준 · 팀 합의(fb.n)가 아님
+    const fb = (it && it.fb) || {};                // 로컬도 loadItems 가 reviewer 를 보내 mine 이 채워진다
+    return !!fb.mine;                              // 타 검수자 표만 있으면 미검수로 남는다(2026-07-10)
   },
   unreviewedCount() { return this.items.filter((it) => !this.reviewed(it)).length; },
   progPct() { const t = this.items.length; return t ? Math.round((t - this.unreviewedCount()) / t * 100) : 0; },
