@@ -117,7 +117,7 @@ window.mreview = () => ({
     } catch (e) { this.err = '목록을 불러오지 못했습니다'; }
   },
   async loadDict() {
-    try { const d = await (await fetch('/dict')).json(); if (d) this.dict = d; } catch (e) {}
+    try { const d = await (await this.afetch('/dict')).json(); if (d) this.dict = d; } catch (e) {}   // 운영 게이트: 인증 GET
   },
   async loadPoints() {
     try {

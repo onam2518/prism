@@ -378,7 +378,7 @@
         this.polRestore();                             // 정책 팔레트 위치·탭 복원
         // 딥링크: ?m=run|dash|quality|... 로 특정 뷰 진입(설정은 ?settings)
         try { const q = new URLSearchParams(location.search); const m = q.get('m'); if (m) this.selectMod(m); if (q.has('settings')) this.selectMod('system'); } catch (e) {}
-        fetch('/vocab').then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {});
+        this.loadVocab();
         // Cmd/Ctrl + Enter 로 추출 실행
         window.addEventListener('keydown', (e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !this.loading) { e.preventDefault(); this.run(); }
@@ -486,17 +486,20 @@
       addWidget(id) { this.addMenuOpen = false; if (!this.placed) this.placed = []; if (!this.placed.includes(id)) { this.placed.push(id); this.saveHome(); } },
       removeWidget(id) { this.placed = (this.placed || []).filter((x) => x !== id); this.saveHome(); },
       useRecommended() { this.placed = ['launch-run', 'launch-dict', 'metrics', 'quality', 'intents']; this.saveHome(); },
-      async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard')).json(); } catch (e) { this._err('대시보드 불러오기 실패 · 다시 시도하세요'); } this.modBusy = false; },
+      // 데이터 GET 은 운영(supabase)에서 로그인 필수(서버 게이트 · 2026-07-10) → 인증 헤더 동봉.
+      // 로그인 전 401 은 JSON 으로 조용히 떨어지고, 로그인·가입 완료 시 재로드한다.
+      loadVocab() { fetch('/vocab', { headers: this._authHeaders() }).then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {}); },
+      async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard', { headers: this._authHeaders() })).json(); } catch (e) { this._err('대시보드 불러오기 실패 · 다시 시도하세요'); } this.modBusy = false; },
       async drill(kind, value) {
         this.drillOpen = true; this.drillBusy = true; this.drillData = { kind: kind, value: value, items: [] };
-        try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value))).json(); } catch (e) { this._err('콘텐츠 목록 불러오기 실패'); }
+        try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value), { headers: this._authHeaders() })).json(); } catch (e) { this._err('콘텐츠 목록 불러오기 실패'); }
         this.drillBusy = false;
       },
       async topicDrill(t) {                              // 토픽 → 묶인 콘텐츠(배치 결과 드릴다운과 동일 모달)
         if (!t || !t.cluster_id) return;
         this.drillOpen = true; this.drillBusy = true;
         this.drillData = { kind: 'topic', value: (t.name || t.label || t.cluster_id), items: [] };
-        try { this.drillData = await (await fetch('/topic-drill?cluster=' + encodeURIComponent(t.cluster_id))).json(); } catch (e) { this._err('토픽 콘텐츠 불러오기 실패'); }
+        try { this.drillData = await (await fetch('/topic-drill?cluster=' + encodeURIComponent(t.cluster_id), { headers: this._authHeaders() })).json(); } catch (e) { this._err('토픽 콘텐츠 불러오기 실패'); }
         this.drillBusy = false;
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : k === 'topic' ? '토픽' : '품질 사유'; },
@@ -804,6 +807,8 @@
         try { localStorage.removeItem('prism_reviewer'); localStorage.removeItem('prism_reviewer_char'); localStorage.removeItem('prism_token'); localStorage.removeItem('prism_rtoken'); } catch (e) {}
         this._loadCred();                              // 저장 선택 시 재로그인 편의(프리필 유지)
         this.reviewer = ''; this.authToken = ''; this.rtoken = ''; this.adminData = null; this.arenaData = null;
+        this.dashData = null; this.rawData = null;     // 팀 데이터 잔존 제거(다음 로그인 시 재로드)
+        if (this._es) { try { this._es.close(); } catch (e) {} this._es = null; }   // 구 토큰 SSE 종료
         this.mod = 'home'; this.reviewerEditing = true;
       },
       goldenMinGood: 1,
@@ -866,6 +871,7 @@
             if (!this.saveCred) { this.authEmail = ''; this.authPw = ''; }   // 상태 정리(저장 시 프리필 유지)
             this.reviewerEditing = false; this.authBusy = false; this.authMsg = ''; this.refreshConfig();
             this.loadAdmin();                                        // 관리자 메뉴 게이팅 즉시 갱신
+            this.loadDash(); this.loadVocab(); this.startLive();     // 로그인 전 401 이던 데이터·SSE 재개(서버 게이트)
             if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
             return;
           }
@@ -887,6 +893,7 @@
         if (!this.saveCred) { this.authEmail = ''; this.authPw = ''; }
         this.authPw2 = '';
         this.reviewerEditing = false; this.authBusy = false; this.refreshConfig();
+        this.loadDash(); this.loadVocab(); this.startLive();         // 가입 완료 = 로그인 상태 · 데이터·SSE 재개
         if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
       },
       _authErr(err, raw) {
@@ -905,7 +912,11 @@
       },
       startLive() {
         try {
-          const es = new EventSource('/events'); this._es = es;
+          if (this._es) { try { this._es.close(); } catch (e) {} this._es = null; }
+          // 운영(supabase)은 /events 도 로그인 필수 · EventSource 는 헤더를 못 실어 token 쿼리로 검증.
+          // 로그인 전엔 구독 보류(401 로 닫히면 브라우저가 재시도하지 않음) → 로그인·가입 시 재호출.
+          if (this.backend === 'supabase' && !this.authToken) return;
+          const es = new EventSource('/events' + (this.authToken ? ('?token=' + encodeURIComponent(this.authToken)) : '')); this._es = es;
           es.onmessage = (e) => { let d; try { d = JSON.parse(e.data); } catch (_) { return; } this.onLive(d); };
           es.onerror = () => {};                       // 자동 재연결(브라우저 기본)
         } catch (e) {}
@@ -954,6 +965,7 @@
             this.authToken = r.access_token;
             if (r.refresh_token) this.rtoken = r.refresh_token;     // supabase 는 갱신 시 회전
             try { localStorage.setItem('prism_token', this.authToken); localStorage.setItem('prism_rtoken', this.rtoken); } catch (e) {}
+            if (!this._es || this._es.readyState === 2) this.startLive();   // 만료로 닫힌 SSE 를 새 토큰으로 재구독
             return true;
           } catch (e) { return false; }
           finally { this._refreshBusy = null; }
@@ -1403,8 +1415,8 @@
         this.loadDash();
       },
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
-      async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults')).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
-      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics')).json(); } catch (e) {} this.modBusy = false; },
+      async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
+      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await this._afetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
       // 사전·정책 편집(사용자 직접 수정)
       editT: null, editKey: null, editKind: 'list', editVal: '', editTitle: '', editMsg: '', editExtra: '', editFilter: '',
@@ -1553,7 +1565,7 @@
               body: JSON.stringify({ api_key: this.keyInputs.solar }) });
           }
           try {                                    // Solar 는 실조회(키 있을 때) · 실패해도 전체는 계속
-            const j = await (await fetch('/models')).json();
+            const j = await (await fetch('/models', { headers: this._authHeaders() })).json();
             if (j.ok) {
               this.models = j.models;
               if (!this.cfgModel || !this.models.includes(this.cfgModel))
@@ -1709,7 +1721,7 @@
         this.ingestBusy[s.id] = false;
       },
       // 자동 인입 상태(진행률) 폴링 · 실행 큐/자동 인입 뷰에서 사용
-      async fetchIngestStatus() { try { const d = await (await fetch('/ingest-status')).json(); this.ingestJobs = d.jobs || []; if (d.running) this.loadDashThrottled(); return d; } catch (e) { return { jobs: [], running: false }; } },
+      async fetchIngestStatus() { try { const d = await (await fetch('/ingest-status', { headers: this._authHeaders() })).json(); this.ingestJobs = d.jobs || []; if (d.running) this.loadDashThrottled(); return d; } catch (e) { return { jobs: [], running: false }; } },
       pollIngestStatus() {
         if (this._ingestPoll) return;
         let seenRun = false, empties = 0;              // 작업 등록 전 첫 조회에 폴링이 꺼지던 결함 방지
@@ -1739,7 +1751,23 @@
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
         a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
       },
-      exportDash() { window.open('/export.csv', '_blank'); },
+      // CSV·리포트는 인증 GET 이라 링크(<a href>) 대신 fetch+Blob 으로 받는다(서버 게이트).
+      async exportDash() {
+        try {
+          const r = await this._afetch('/export.csv', { headers: this._authHeaders() });
+          const u = URL.createObjectURL(new Blob([await r.blob()], { type: 'text/csv' }));
+          const a = document.createElement('a'); a.href = u; a.download = 'prism_results.csv'; a.click();
+          setTimeout(() => URL.revokeObjectURL(u), 60000);
+        } catch (e) { this._err('CSV 다운로드 실패'); }
+      },
+      async openReport() {
+        try {
+          const r = await this._afetch('/report', { headers: this._authHeaders() });
+          const u = URL.createObjectURL(new Blob([await r.text()], { type: 'text/html' }));
+          window.open(u, '_blank');
+          setTimeout(() => URL.revokeObjectURL(u), 60000);
+        } catch (e) { this._err('리포트 열기 실패'); }
+      },
       exportTopics() {
         const d = this.topicData || {}; const rows = [['유형', '클러스터', '대표 엔티티', '멤버']];
         (d.single || []).forEach((t) => rows.push(['엔티티형', t.cluster_id, (t.entities || t.rep_entities || []).join(' · '), t.n_contents || '']));
