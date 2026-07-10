@@ -94,7 +94,11 @@
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
       goldenResult: null, goldenBusy: false, goldenMsg: '',
       rawData: null, rawSel: null,
-      async loadRaw() { try { const r = await (await fetch('/raw?limit=200', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this._absorbFreshFb(); } } catch (e) {} },
+      async loadRaw() { try { const p = new URLSearchParams({ limit: '200' }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await fetch('/raw?' + p.toString(), { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this._absorbFreshFb(); } } catch (e) {} },
+      // 검수 '완료' 판정은 팀 합의(fb.verdict)가 아니라 '내 표(fb.mine)' 기준이어야 한다.
+      // (그러지 않으면 타 검수자가 검수한 콘텐츠도 내 목록에서 완료로 보인다 · 2026-07-10)
+      // mine 은 서버가 검수자 식별 시에만 채운다 → 미제공(undefined)일 때만 합의로 폴백(골드 문항 등).
+      myVerdict(fb) { return (fb && (fb.mine !== undefined ? (fb.mine || '') : (fb.verdict || ''))) || ''; },
       // 목록 재조회(SSE 포함) 후: 열린 상세와 ←→ 탐색 목록은 '사본'이라 그대로 두면 예전 판정이
       // 계속 보인다(타 검수자·다른 기기 판정 미반영 · 2026-07-08 재현). 최신 fb 를 사본에 주입한다.
       _absorbFreshFb() {
@@ -108,7 +112,7 @@
       // 내 판정 직후: 모든 목록 사본(검수 목록·드릴 목록·탐색 목록)에 hash 기준 반영.
       // 기존에는 detailNav 가 있는 경로만 동기화돼 드릴 목록 재진입 시 예전 판정이 보였다.
       _syncFbByHash(hash, fb) {
-        const upd = (r) => { if (r && r.hash === hash) { r.fb = Object.assign({}, r.fb, fb); r._doneLocal = !!(fb && fb.verdict); if (fb && fb.good !== undefined) r.split = !!(fb.good && fb.bad); } };
+        const upd = (r) => { if (r && r.hash === hash) { r.fb = Object.assign({}, r.fb, fb); r._doneLocal = !!this.myVerdict(fb); if (fb && fb.good !== undefined) r.split = !!(fb.good && fb.bad); } };
         (((this.rawData || {}).items) || []).forEach(upd);
         (((this.drillData || {}).items) || []).forEach(upd);
         if (this.detailNav) (this.detailNav.list || []).forEach(upd);
@@ -246,7 +250,7 @@
         const nav = this.detailNav;
         for (let i = nav.idx + 1; i < nav.list.length; i++) {
           const r = nav.list[i];
-          if (!(r.fb && r.fb.verdict) && !r._doneLocal) {
+          if (!this.myVerdict(r.fb) && !r._doneLocal) {
             this.openDetail(this._rawToDetail(r));
             nav.idx = i;
             this.detailNav = nav;
@@ -269,8 +273,8 @@
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
           if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
-          if (this.rawRev === 'todo' && (r.fb && r.fb.verdict)) return false;
-          if (this.rawRev === 'done' && !(r.fb && r.fb.verdict)) return false;
+          if (this.rawRev === 'todo' && this.myVerdict(r.fb)) return false;
+          if (this.rawRev === 'done' && !this.myVerdict(r.fb)) return false;
           return true;
         });
       },
