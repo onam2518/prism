@@ -2321,8 +2321,9 @@ PAGE = """<!doctype html>
                 <input type="checkbox" x-model="autoNext" x-on:change="saveAutoNext()">저장 후 다음 미검수로
               </label>
             </div>
-            <!-- 검수 완료(판정 있음 · 수정 아님): 팀 합의 3상태(정확/수정/의견 갈림) + 내 판정 병기 + 추가 수정 -->
-            <template x-if="detail && detail.fb && detail.fb.verdict && !editVerdict">
+            <!-- 검수 완료 = '내 표(myVerdict)' 기준(목록·다음 미검수 이동과 동일 · 2026-07-10):
+                 남이 검수한 콘텐츠도 내가 안 했으면 아래 판정 UI 가 뜬다. 완료 시 팀 합의 3상태 + 내 판정 병기 + 추가 수정 -->
+            <template x-if="detail && myVerdict(detail.fb) && !editVerdict">
               <div>
                 <!-- 팀 표 2개 이상이면 주어를 명시(팀 판정)하고 내 판정을 분리 표기 · 단독 판정은 기존 표기 -->
                 <span class="ds-badge" x-bind:class="detail.fb.verdict==='good' ? 'ds-badge--success' : (detail.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')" x-bind:data-tip="detail.fb.verdict==='split' ? '정확과 수정 필요로 의견이 갈렸습니다 · 재검토 대상' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail.fb.n > 1 ? (detail.fb.verdict==='good' ? '팀 판정 · 정확' : (detail.fb.verdict==='split' ? '팀 판정 · 의견 갈림' : '팀 판정 · 수정 필요')) : (detail.fb.verdict==='good' ? '검수 완료 · 정확' : '검수 완료 · 수정 필요')"></span></span>
@@ -2332,18 +2333,19 @@ PAGE = """<!doctype html>
                   <span class="ds-badge" x-bind:class="detail.fb.mine==='good' ? 'ds-badge--success' : (detail.fb.mine==='bad' ? 'ds-badge--error' : 'ds-badge--neutral')" x-text="detail.fb.mine==='good' ? '정확' : (detail.fb.mine==='bad' ? '수정 필요' : '아직 없음')"></span>
                   <span class="text-xs text-muted" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개'"></span>
                 </div>
-                <div class="tbox" x-show="detail.fb.verdict!=='good' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
+                <div class="tbox" x-show="myVerdict(detail.fb)==='bad' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
                 <div style="display:flex;gap:var(--ds-space-2);margin-top:10px">
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEditVerdict()">추가 수정</button>
                   <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.fb.mine || (backend !== 'supabase' && detail.fb.n === 1)" x-cloak x-on:click="undoVerdict()" data-tip="내 표만 취소합니다 · 다른 검수자의 판정은 그대로 유지됩니다" data-tip-pos="top">내 판정 취소</button>
                 </div>
               </div>
             </template>
-            <!-- 미검수 또는 추가 수정 중 -->
-            <template x-if="detail && (!(detail.fb && detail.fb.verdict) || editVerdict)">
+            <!-- 미검수(내 표 없음) 또는 추가 수정 중 -->
+            <template x-if="detail && (!myVerdict(detail.fb) || editVerdict)">
               <div>
+                <div class="text-xs text-muted" x-show="detail.fb && detail.fb.n && !myVerdict(detail.fb)" x-cloak style="margin-bottom:8px" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개 · 내 판정을 남겨주세요'"></div>
                 <div style="display:flex;gap:8px">
-                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="!pendingBad && detail && detail.fb && (detail.fb.mine || detail.fb.verdict)==='good' ? 'is-on' : ''" x-on:click="reviewGood()"><span class="verdictbtn__dot"></span>정확</button>
+                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="!pendingBad && detail && myVerdict(detail.fb)==='good' ? 'is-on' : ''" x-on:click="reviewGood()"><span class="verdictbtn__dot"></span>정확</button>
                   <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="pendingBad ? 'is-on' : ''" x-on:click="pendingBad=true"><span class="verdictbtn__dot"></span>수정 필요</button>
                 </div>
                 <!-- 수정 필요: 요소·사유 입력 후 '완료 처리' 로만 확정 -->
@@ -2358,7 +2360,7 @@ PAGE = """<!doctype html>
                     <textarea x-model="detail.fb.note" rows="3" class="field" style="margin-top:8px" x-bind:placeholder="fbElems(detail.fb).map((e)=>elemLabel(e)).join('·') + ' 이(가) 왜 잘못됐는지 · 요소를 여러 개 고르면 각 단계로 나눠 반영됩니다'"></textarea>
                     <div style="display:flex;gap:var(--ds-space-2);margin-top:8px">
                       <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="reviewBadComplete()" x-bind:disabled="!(detail.fb.note||'').trim()" data-tip="선택한 요소와 메모를 '수정 필요' 판정으로 저장합니다" data-tip-pos="top">교정 저장</button>
-                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="pendingBad=false; if(!(detail.fb&&detail.fb.verdict)) editVerdict=false">취소</button>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="pendingBad=false; if(!myVerdict(detail.fb)) editVerdict=false">취소</button>
                     </div>
                   </div>
                 </template>

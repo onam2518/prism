@@ -492,14 +492,14 @@
       async loadDash() { this.modBusy = true; try { this.dashData = await (await fetch('/dashboard', { headers: this._authHeaders() })).json(); } catch (e) { this._err('대시보드 불러오기 실패 · 다시 시도하세요'); } this.modBusy = false; },
       async drill(kind, value) {
         this.drillOpen = true; this.drillBusy = true; this.drillData = { kind: kind, value: value, items: [] };
-        try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value), { headers: this._authHeaders() })).json(); } catch (e) { this._err('콘텐츠 목록 불러오기 실패'); }
+        try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value) + (this.reviewer ? '&reviewer=' + encodeURIComponent(this.reviewer) : ''), { headers: this._authHeaders() })).json(); } catch (e) { this._err('콘텐츠 목록 불러오기 실패'); }
         this.drillBusy = false;
       },
       async topicDrill(t) {                              // 토픽 → 묶인 콘텐츠(배치 결과 드릴다운과 동일 모달)
         if (!t || !t.cluster_id) return;
         this.drillOpen = true; this.drillBusy = true;
         this.drillData = { kind: 'topic', value: (t.name || t.label || t.cluster_id), items: [] };
-        try { this.drillData = await (await fetch('/topic-drill?cluster=' + encodeURIComponent(t.cluster_id), { headers: this._authHeaders() })).json(); } catch (e) { this._err('토픽 콘텐츠 불러오기 실패'); }
+        try { this.drillData = await (await fetch('/topic-drill?cluster=' + encodeURIComponent(t.cluster_id) + (this.reviewer ? '&reviewer=' + encodeURIComponent(this.reviewer) : ''), { headers: this._authHeaders() })).json(); } catch (e) { this._err('토픽 콘텐츠 불러오기 실패'); }
         this.drillBusy = false;
       },
       drillKindKr(k) { return k === 'intent' ? '인텐트' : k === 'category' ? '카테고리' : k === 'topic' ? '토픽' : '품질 사유'; },
@@ -525,7 +525,16 @@
       dvcZoom: (function () { try { const z = parseInt(localStorage.getItem('prismDetailZoom') || '100', 10); return [50, 75, 100].indexOf(z) >= 0 ? z : 100; } catch (e) { return 100; } })(),
       setDvcZoom(z) { this.dvcZoom = z; try { localStorage.setItem('prismDetailZoom', String(z)); } catch (e) {} },
       // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
-      openDetail(c) { this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {}; this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; this.histItems = []; if (this.histOpen) this.loadHistory(); },
+      openDetail(c) {
+        this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {};
+        // 결과 목록 등 집계 경로의 fb 는 팀 집계뿐(mine 없음) → /raw 사본에 같은 콘텐츠가 있으면
+        // 내 표가 담긴 fb 로 교체(상세의 '완료' 게이팅·프리필이 내 표 기준으로 일관 · 2026-07-10)
+        if (this.detail.fb.mine === undefined) {
+          const fresh = (((this.rawData || {}).items) || []).find((r) => r.hash === this.detail.hash);
+          if (fresh && fresh.fb) this.detail.fb = Object.assign({}, fresh.fb);
+        }
+        this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; this.histItems = []; if (this.histOpen) this.loadHistory();
+      },
       // 작업 이력(판정·교정·재실행 타임라인): 접이식 · 열려 있으면 항목 이동·판정 후 자동 갱신
       histOpen: false, histBusy: false, histItems: [],
       toggleHistory() { this.histOpen = !this.histOpen; if (this.histOpen) this.loadHistory(); },
@@ -545,7 +554,7 @@
       reviewGood() { this.pendingBad = false; this.setFeedback(this.detail, 'good'); this.editVerdict = false; this._afterVerdict(); },
       reviewBadComplete() {
         if (!(this.detail.fb.note || '').trim()) { this._err('무엇을 왜 고쳐야 하는지 입력하세요'); return; }
-        const cur = (this.detail.fb.mine !== undefined ? (this.detail.fb.mine || '') : (this.detail.fb.verdict || '')) || '';
+        const cur = this.myVerdict(this.detail.fb);
         this.detail.fb = this._fbRecount(Object.assign({}, this.detail.fb, { mine: 'bad', ts: Date.now() / 1000 }), cur, 'bad');
         this._syncFbByHash(this.detail.hash, this.detail.fb);
         this.saveFbNote(this.detail);
@@ -719,12 +728,12 @@
         const fb = this.detail && this.detail.fb; if (!fb) return;
         if (fb.note) fb.note = String(fb.note).replace(/^\[[^\]]*\]\s*/, '');
         this.editVerdict = true;
-        this.pendingBad = ((fb.mine || fb.verdict) === 'bad');
+        this.pendingBad = (this.myVerdict(fb) === 'bad');   // 내 표 기준(팀 합의로 새면 남의 교정 모드가 열림)
       },
       // 내 판정 취소: 내 표 행만 서버에서 삭제 · 남은 표 없으면 미검수로 복귀
       async undoVerdict() {
         const c = this.detail; if (!c || !c.fb) return;
-        let cur = (c.fb.mine !== undefined ? (c.fb.mine || '') : (c.fb.verdict || '')) || '';
+        let cur = this.myVerdict(c.fb);
         // 로컬(sqlite) 모드는 /raw 가 내 표를 식별하지 않는다(mine 항상 빈 값) → 단독 표는 내 표로 간주
         if (!cur && this.backend !== 'supabase' && c.fb.n === 1) cur = c.fb.verdict || '';
         if (!cur) return;
@@ -738,7 +747,7 @@
       async setFeedback(c, verdict) {
         // 재클릭 취소 비교는 '내 표(mine)' 기준. fb.verdict 는 팀 합의라 남의 표와 비교하면
         // 이미 합의가 같은 값일 때 내 첫 클릭이 취소('')로 전송되는 오동작이 난다.
-        const cur = (c.fb && (c.fb.mine !== undefined ? (c.fb.mine || '') : (c.fb.verdict || ''))) || '';
+        const cur = this.myVerdict(c.fb);
         const v = (cur === verdict) ? '' : verdict;        // 같은 버튼 재클릭 = 취소
         c.fb = this._fbRecount(Object.assign({}, c.fb, { mine: v, ts: (v ? Date.now() / 1000 : 0) }), cur, v);   // 수정 일시 기록
         this._syncFbByHash(c.hash, c.fb);

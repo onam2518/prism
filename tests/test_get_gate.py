@@ -53,8 +53,34 @@ class TestFbPublic(unittest.TestCase):
         self.assertEqual(out["note"], "메모")
 
     def test_empty(self):
+        """빈 피드백 = 0 값 딕셔너리(/raw 의 fb.n==0 계약 유지)."""
         from prism import serve as SV
-        self.assertEqual(SV._fb_public({}), {})
+        out = SV._fb_public({})
+        self.assertEqual(out["n"], 0)
+        self.assertEqual(out["verdict"], "")
+        self.assertNotIn("mine", out)
+        self.assertEqual(SV._fb_public({}, reviewer="uid-me")["mine"], "")
+
+    def test_mine_by_reviewer(self):
+        """reviewer 식별 시 '내 표(mine)'·내 교정(note·elems)만 실린다(내 표 기준 '완료' 원천)."""
+        from prism import serve as SV
+        fb = {"verdicts": [
+                  {"reviewer": "다른이", "reviewer_id": "uid-other", "verdict": "good",
+                   "stage": "analyze", "note": "남의 메모", "ts": 50.0, "element": ""},
+                  {"reviewer": "나", "reviewer_id": "uid-me", "verdict": "bad",
+                   "stage": "review", "note": "내 메모", "ts": 100.0, "element": "summary,intent"}],
+              "good": 1, "bad": 1, "n": 2, "consensus": "split", "agree": False,
+              "verdict": "split", "stage": "review", "note": "내 메모"}
+        out = SV._fb_public(fb, reviewer="uid-me")
+        self.assertEqual(out["mine"], "bad")
+        self.assertEqual(out["note"], "내 메모")
+        self.assertEqual(out["elems"], ["summary", "intent"])
+        self.assertEqual(out["verdict"], "split")     # 팀 합의는 별도 유지
+        no_match = SV._fb_public(fb, reviewer="uid-없음")
+        self.assertEqual(no_match["mine"], "")        # 식별됐지만 내 표 없음 = 미검수
+        self.assertEqual(no_match["note"], "")        # 남의 교정 프리필 방지
+        anon = SV._fb_public(fb)
+        self.assertNotIn("mine", anon)                # 미식별 = mine 없음(클라 myVerdict 합의 폴백)
 
 
 class TestGateSupabaseMode(unittest.TestCase):
