@@ -112,6 +112,19 @@ class TestE2ESmoke(unittest.TestCase):
         fb = _req(base, "/raw?limit=10")["items"][0]["fb"]
         self.assertEqual((fb["verdict"], fb["n"], fb["good"]), ("good", 1, 1))
 
+        # ④-b 골드 문항 계약(모바일 /m 카드가 의존): gold:* 판정 → 정오답 즉시 응답 ·
+        #     feedback 테이블 비오염(팀 검수 카운트에 안 섞임)
+        time.sleep(0.9)                            # 검수 속도 제한(검수자당 0.8초) 준수
+        g = _req(base, "/feedback", data={"hash": "gold:ok:e2esmokegold", "verdict": "good",
+                                          "reviewer": "스모크봇"},
+                 headers={"Content-Type": "application/json"})
+        self.assertTrue(g["ok"])
+        self.assertEqual((g["gold"]["correct"], g["gold"]["expected"]), (True, "good"))
+        self.assertEqual(_req(base, "/raw?limit=10")["n"], 1)      # 골드 응답이 검수 목록에 안 생김
+        mjs = _req(base, "/vendor/mobile.js?v=x")                  # 클라이언트 골드·정의 시트 탑재
+        self.assertIn("_goldReveal", mjs)
+        self.assertIn("showDef", mjs)
+
         # ⑤ 작업 이력: 판정이 타임라인에 남는다(로컬 sqlite 는 접근 제한 없음)
         hist = _req(base, "/history?hash=" + h)
         self.assertIn("판정 · 정확", [i["label"] for i in hist["items"]])

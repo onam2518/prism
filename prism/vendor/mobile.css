@@ -112,7 +112,7 @@
   font-size:13.5px;font-weight:700;text-decoration:none}
 .m-logout{display:block;text-align:center;margin-top:14px;font-size:12px;color:var(--ds-muted);
   background:none;border:0;font-family:inherit;width:100%}
-.m-def{font-size:13.5px;line-height:1.65;color:var(--ds-text-secondary);margin:0}
+.m-def{font-size:13.5px;line-height:1.65;color:var(--ds-text-secondary);margin:0;white-space:pre-line}
 
 /* ── 원문 전체화면(데스크탑 dvc__web iframe 준용 · sandbox·referrer 동일) ── */
 .m-src{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--ds-canvas)}
@@ -148,3 +148,6 @@
 .m-toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);
   z-index:50;background:var(--ds-success);color:#fff;font-size:13.5px;font-weight:800;
   padding:12px 20px;border-radius:100px;box-shadow:0 8px 22px rgba(24,186,69,.4);white-space:nowrap}
+/* info 변형: 골드 오답 등 축하 아닌 안내(경고 톤 · 성공 초록과 구분) · 긴 문구 줄바꿈 허용 */
+.m-toast--info{background:var(--ds-warning);box-shadow:0 8px 22px rgba(255,148,41,.4);
+  white-space:normal;text-align:center;max-width:86vw;box-sizing:border-box;border-radius:18px}

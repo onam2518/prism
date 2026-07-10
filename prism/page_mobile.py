@@ -85,32 +85,39 @@ MOBILE_PAGE = """<!doctype html>
         <div class="m-card__scroll">
           <div class="m-card__meta">
             <span class="ds-badge ds-badge--category" x-show="cur().service" x-text="cur().service"></span>
-            <span class="ds-badge" x-bind:class="gradeClass(cur().grade)"><span class="ds-badge__dot"></span><span x-text="gradeLabel(cur().grade)"></span></span>
+            <button type="button" class="ds-badge m-tap" x-bind:class="gradeClass(cur().grade)" x-on:click="showDef('grade', cur().grade)"><span class="ds-badge__dot"></span><span x-text="gradeLabel(cur().grade)"></span><span class="m-tap__i" aria-hidden="true">ⓘ</span></button>
             <span class="ds-badge ds-badge--neutral" x-show="cur().model" x-text="cur().model + (cur().version > 1 ? ' · v' + cur().version : '')"></span>
           </div>
           <h2 class="m-card__title" x-text="cur().title"></h2>
           <div class="m-lead" x-show="cur().summary"><em>리드문 (초안)</em><span x-text="cur().summary"></span></div>
-          <!-- 메타 라벨 섹션(데스크탑 상세 dve__sec 준용): 요소별 라벨 + DS 색 배지로 무엇이 무엇인지 구분 -->
+          <!-- 메타 라벨 섹션(데스크탑 상세 dve__sec 준용): 요소별 라벨 + DS 색 배지로 무엇이 무엇인지 구분.
+               모든 값 배지는 탭 = 정의 시트(데스크탑 호버 툴팁의 모바일 대응) · ⓘ = 값별 사전 정의 있음 -->
           <div class="m-metas">
             <div class="m-metarow">
               <span class="m-metarow__lbl">엔티티</span>
               <div class="m-metarow__vals">
-                <template x-for="e in (cur().entities || [])" x-bind:key="'e' + e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template>
+                <template x-for="e in (cur().entities || [])" x-bind:key="'e' + e"><button type="button" class="ds-badge ds-badge--entity m-tap" x-on:click="showDef('entity', e)"><span x-text="e"></span></button></template>
                 <span class="m-metarow__none" x-show="!(cur().entities || []).length">·</span>
               </div>
             </div>
             <div class="m-metarow">
               <span class="m-metarow__lbl">인텐트</span>
               <div class="m-metarow__vals">
-                <template x-for="i in (cur().intent || [])" x-bind:key="'i' + i"><button type="button" class="ds-badge ds-badge--intent m-tap" x-on:click="intentDef(i)"><span x-text="i"></span><span class="m-tap__i" aria-hidden="true">ⓘ</span></button></template>
+                <template x-for="i in (cur().intent || [])" x-bind:key="'i' + i"><button type="button" class="ds-badge ds-badge--intent m-tap" x-on:click="showDef('intent', i)"><span x-text="i"></span><span class="m-tap__i" aria-hidden="true">ⓘ</span></button></template>
                 <span class="m-metarow__none" x-show="!(cur().intent || []).length">·</span>
               </div>
             </div>
             <div class="m-metarow">
               <span class="m-metarow__lbl">카테고리</span>
               <div class="m-metarow__vals">
-                <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><span class="ds-badge ds-badge--category" x-text="catKo(c)"></span></template>
+                <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><button type="button" class="ds-badge ds-badge--category m-tap" x-on:click="showDef('category', c)"><span x-text="catKo(c)"></span><span class="m-tap__i" aria-hidden="true">ⓘ</span></button></template>
                 <span class="m-metarow__none" x-show="!(cur().category || []).length">·</span>
+              </div>
+            </div>
+            <div class="m-metarow" x-show="(cur().reasons || []).length">
+              <span class="m-metarow__lbl">품질 사유</span>
+              <div class="m-metarow__vals">
+                <template x-for="rs in (cur().reasons || [])" x-bind:key="'r' + rs"><button type="button" class="ds-badge ds-badge--reason m-tap" x-on:click="showDef('reason', rs)"><span x-text="reasonKo(rs)"></span><span class="m-tap__i" aria-hidden="true">ⓘ</span></button></template>
               </div>
             </div>
           </div>
@@ -137,7 +144,7 @@ MOBILE_PAGE = """<!doctype html>
     <p x-show="done" x-text="'판정 ' + done + '건 · 교정 ' + fixed + '건'"></p>
     <p x-show="!done">새 배치가 준비되면 여기서 이어집니다</p>
     <div class="m-stats" x-show="done">
-      <div class="m-stat"><b class="tnum" x-text="'+' + (done * 10 + fixed * 15)"></b><span>이번에 획득 PT</span></div>
+      <div class="m-stat"><b class="tnum" x-text="'+' + earned"></b><span>이번에 획득 PT</span></div>
       <div class="m-stat"><b class="tnum" x-text="done"></b><span>판정</span></div>
       <div class="m-stat"><b class="tnum" x-text="fixed"></b><span>교정</span></div>
     </div>
@@ -174,7 +181,11 @@ MOBILE_PAGE = """<!doctype html>
     </div>
     <div class="m-hsec">
       <h4>용어가 낯설면</h4>
-      <div class="m-hrow">카드의 파란 테두리 칩(인텐트)을 탭하면 그 값의 정의를 보여줍니다</div>
+      <div class="m-hrow">카드의 값 배지(인텐트·카테고리·품질 사유·등급)를 탭하면 그 값의 정의를 보여줍니다 · ⓘ 표시가 붙어 있어요</div>
+    </div>
+    <div class="m-hsec">
+      <h4>골드 문항</h4>
+      <div class="m-hrow">정답이 알려진 검증 문항이 가끔 섞여요 · 판정하면 바로 정오답을 알려주고, 정답이면 +10 PT</div>
     </div>
     <a class="m-guide" x-show="guideUrl" x-bind:href="guideUrl" target="_blank" rel="noopener">📖 상세 검수 가이드 열기</a>
     <button type="button" class="m-logout" x-on:click="logout()">로그아웃</button>
@@ -201,7 +212,7 @@ MOBILE_PAGE = """<!doctype html>
     <div class="m-src__note">화면이 비어 보이면 이 사이트가 내장 표시를 차단한 것입니다 · 새 탭으로 여세요</div>
   </div>
 
-  <div class="m-toast" x-show="toast" x-text="toast"></div>
+  <div class="m-toast" x-bind:class="toastKind ? ('m-toast--' + toastKind) : ''" x-show="toast" x-text="toast"></div>
 </div>
 <script src="/vendor/mobile.js"></script>
 <script defer src="/vendor/alpine.js"></script>
