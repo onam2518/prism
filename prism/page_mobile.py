@@ -16,6 +16,7 @@ MOBILE_PAGE = """<!doctype html>
 <title>Prism 검수</title>
 <link rel="icon" href="/vendor/prism-favicon.svg">
 <link rel="apple-touch-icon" href="/vendor/prism-icon-180.png">
+<link rel="manifest" href="/vendor/prism.webmanifest">
 <link href="/vendor/pretendard.css" rel="stylesheet">
 <link href="/vendor/ds-theme.css" rel="stylesheet">
 <link href="/vendor/ds-components.css" rel="stylesheet">

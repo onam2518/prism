@@ -90,6 +90,12 @@ class TestE2ESmoke(unittest.TestCase):
         self.assertIn("mreview()", _req(base, "/m/"))              # 트레일링 슬래시 허용
         self.assertIsInstance(_req(base, "/models"), dict)         # /models 는 여전히 JSON 라우트(비잠식)
 
+        # ①-c PWA 매니페스트: /m 이 링크하고, 벤더가 JSON 으로 서빙(홈 화면 설치 = standalone)
+        self.assertIn('rel="manifest"', m)
+        mani = _req(base, "/vendor/prism.webmanifest")
+        self.assertEqual((mani.get("start_url"), mani.get("display")), ("/m", "standalone"))
+        self.assertTrue(mani.get("icons"))
+
         # ② 단건 추출(mock LLM · 실제 파이프라인 경유)
         r = _req(base, "/run", data={"displayServiceName": "뉴스", "title": "스모크 기사",
                                      "body": "전 구간 흐름 검증 본문"},
