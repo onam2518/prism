@@ -619,7 +619,7 @@ def _dashboard_compute(team=None) -> dict:
         if st:
             fmap = st.feedback_map(team=team)
             for row in st.recent_meta(team=team):
-                row["fb"] = fmap.get(row["hash"], {})
+                row["fb"] = _fb_public(fmap.get(row["hash"], {}))
                 contents.append(row)
             fb_stats = st.feedback_stats(team=team)
     except Exception:
@@ -654,8 +654,10 @@ def drill_contents(kind: str, value: str, team=None) -> dict:
     return {"ok": True, "kind": kind, "value": value, "items": _attach_fb(out, team), "n": len(out)}
 
 
-def topic_drill(cluster_id: str) -> dict:
-    """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape."""
+def topic_drill(cluster_id: str, team=None) -> dict:
+    """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape.
+    ⚠️ rows 는 topics_data() 의 content_ids 인덱스와 정합해야 해서 무필터 유지 · 피드백 부착만
+    팀 스코프. 토픽 자체의 팀 파라미터화(topics_data)는 후속(실험실 메뉴 · 관리자용)."""
     rows = results_rows()
     if not rows or not cluster_id:
         return {"ok": True, "kind": "topic", "value": cluster_id or "", "items": [], "n": 0}
@@ -672,7 +674,7 @@ def topic_drill(cluster_id: str) -> dict:
         return {"ok": False, "kind": "topic", "value": cluster_id, "items": [], "n": 0,
                 "error": "토픽을 찾을 수 없습니다(데이터가 갱신되었을 수 있음)"}
     ids = cluster.get("content_ids") or []
-    out = _attach_fb([_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)])
+    out = _attach_fb([_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)], team)
     name = cluster.get("name") or cluster.get("label") or cluster_id
     return {"ok": True, "kind": "topic", "value": name, "items": out, "n": len(out)}
 
@@ -706,6 +708,23 @@ def _detail_row(r: dict) -> dict:
     }
 
 
+def _fb_public(fb: dict) -> dict:
+    """검수 집계를 클라이언트 공개 형태로 축약. verdicts 원본(검수자 식별자·개별 표)은
+    /history(팀 생성자·슈퍼관리자 전용)와 같은 민감도라 목록 응답에 싣지 않는다(2026-07-10).
+    필드 구성은 raw_rows 의 fb 와 동일 계열(verdict·n·good·bad·ts·note·stage)."""
+    if not fb:
+        return {}
+    last_ts = 0
+    for v in (fb.get("verdicts") or []):
+        try:
+            last_ts = max(last_ts, float(v.get("ts") or 0))
+        except Exception:
+            pass
+    return {"verdict": fb.get("consensus") or fb.get("verdict") or "",
+            "n": fb.get("n", 0), "good": fb.get("good", 0), "bad": fb.get("bad", 0),
+            "ts": last_ts, "note": fb.get("note") or "", "stage": fb.get("stage") or ""}
+
+
 def _attach_fb(items, team=None):
     """상세행 리스트에 검수 피드백 상태(fb: verdict·ts) 부착 → 콘텐츠 목록 어디서나 '검수 완료' 표기."""
     st = get_store()
@@ -716,7 +735,7 @@ def _attach_fb(items, team=None):
     except Exception:
         return items
     for it in items:
-        it["fb"] = fmap.get(it.get("hash"), {}) or {}
+        it["fb"] = _fb_public(fmap.get(it.get("hash"), {}) or {})
     return items
 
 
@@ -2416,6 +2435,20 @@ _JSON = "application/json; charset=utf-8"
 
 
 # ── HTTP 핸들러 ──────────────────────────────────────────────────────────────
+# 공개 GET 경로(무인증): 페이지 셸·정적 자산·백엔드 상태(/config 는 라우트에서 최소 필드로
+# 축약)·업로드 서식만. 그 외 데이터 GET 은 supabase(운영) 모드에서 로그인 필수(Handler._gate_get).
+_PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/template.csv",
+               "/usermeta-template.csv", "/usermeta-profile-template.csv"}
+
+
+def is_public_get(path: str) -> bool:
+    """무인증 허용 GET 경로 판정(쿼리 무시 · 말미 슬래시 정규화)."""
+    p = (path or "").split("?", 1)[0]
+    if p.startswith("/vendor/"):
+        return True
+    return (p.rstrip("/") or "/") in _PUBLIC_GET
+
+
 class Handler(BaseHTTPRequestHandler):
     server_mock = False
 
@@ -2444,7 +2477,23 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _gate_get(self):
+        """supabase(운영) 모드 데이터 GET 전역 게이트: 공개 경로 외에는 로그인(JWT) 필수.
+        무인증 GET 이 팀 필터 없이(team=None) 전 팀의 콘텐츠·검수 데이터를 내려주던
+        노출 차단(2026-07-10). sqlite(로컬 단독)는 기존대로 개방.
+        SSE(/events)는 EventSource 가 헤더를 못 실어 token 쿼리 파라미터로 검증."""
+        if not _supa() or is_public_get(self.path):
+            return True
+        if self.path.split("?", 1)[0].rstrip("/") == "/events":
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            return bool(validate_jwt((q.get("token") or [""])[0]))
+        return bool(self._bearer_uid())
+
     def do_GET(self):
+        if not self._gate_get():
+            self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+            return
         if self.path.startswith("/report"):
             self._send(200, build_report_html())
         elif self.path.startswith("/export.csv"):
@@ -2454,7 +2503,13 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(build_results_csv())
         elif self.path.startswith("/config"):
-            self._send(200, json.dumps(config_status(), ensure_ascii=False), _JSON)
+            cs = config_status()
+            # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
+            # 로그인 화면·배포 검증(curl /config: backend·configured)이 쓰는 최소 필드만 공개.
+            if _supa() and not self._bearer_uid():
+                cs = {k: cs[k] for k in ("bootId", "build", "configured", "forcedMock",
+                                         "backend", "authRequired", "keyManagedByServer") if k in cs}
+            self._send(200, json.dumps(cs, ensure_ascii=False), _JSON)
         elif self.path.startswith("/models"):
             self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/vocab"):
@@ -2464,7 +2519,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/topic-drill"):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(topic_drill(q.get("cluster", [""])[0]),
+            self._send(200, json.dumps(topic_drill(q.get("cluster", [""])[0], self._req_team()),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/topics"):
             self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
