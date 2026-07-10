@@ -1,5 +1,7 @@
 """프롬프트 외부화 + 버전관리."""
 from __future__ import annotations
+import functools
+import hashlib
 import json
 import os
 
@@ -58,11 +60,47 @@ def _seed_v32() -> dict:
     return v
 
 
+# 코드가 소유하는 내장 버전. 사용자 튜닝은 new_from 으로 만든 별도 키에 하고,
+# 내장 버전(v31·v32)은 시드 변경 시 코드 기준으로 재동기화된다.
+_BUILTIN_SEEDS = {"v31": _seed_v31, "v32": _seed_v32}
+
+
+@functools.lru_cache(maxsize=1)
+def _seed_stamp() -> str:
+    """내장 시드 내용에서 파생한 지문. 시드를 고치면 값이 자동으로 달라져,
+    기존 설치의 quality.json 도 다음 로드 때 재시드된다(수동 버전 범프 불필요)."""
+    payload = json.dumps({n: fn() for n, fn in _BUILTIN_SEEDS.items()},
+                         ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _default_data() -> dict:
+    return {"active": "v31", "seed_stamp": _seed_stamp(),
+            "versions": {n: fn() for n, fn in _BUILTIN_SEEDS.items()}}
+
+
+def _reseed_builtins(data: dict):
+    """내장 버전만 최신 코드 시드로 덮어쓴다. active 선택과 사용자 생성 버전은 보존."""
+    versions = data.setdefault("versions", {})
+    for name, fn in _BUILTIN_SEEDS.items():
+        versions[name] = fn()
+    if data.get("active") not in versions:   # active 가 사라졌으면 기본으로 복귀
+        data["active"] = "v31"
+    data["seed_stamp"] = _seed_stamp()
+    _save(data)
+
+
 def ensure_seeded():
+    """파일이 없으면 시드 생성. 있으면 시드 지문이 바뀐 경우에만 내장 버전을
+    코드 시드로 재동기화한다(시드 문구 개정이 기존 설치에도 전파되도록)."""
     os.makedirs(PROMPTS_DIR, exist_ok=True)
     if not os.path.exists(QUALITY_PATH):
-        data = {"active": "v31", "versions": {"v31": _seed_v31(), "v32": _seed_v32()}}
-        _save(data)
+        _save(_default_data())
+        return
+    with open(QUALITY_PATH, encoding="utf-8") as f:
+        data = json.load(f)
+    if data.get("seed_stamp") != _seed_stamp():
+        _reseed_builtins(data)
 
 
 def _load() -> dict:
