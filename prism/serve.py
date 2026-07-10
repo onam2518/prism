@@ -633,7 +633,7 @@ def _dashboard_compute(team=None) -> dict:
     }
 
 
-def drill_contents(kind: str, value: str, team=None) -> dict:
+def drill_contents(kind: str, value: str, team=None, reviewer: str = "") -> dict:
     """대시보드 드릴다운: intent|category|reason = value 로 판정된 콘텐츠 목록."""
     rows = results_rows(team=team)
     out = []
@@ -651,10 +651,10 @@ def drill_contents(kind: str, value: str, team=None) -> dict:
             hit = False
         if hit:
             out.append(_detail_row(r))
-    return {"ok": True, "kind": kind, "value": value, "items": _attach_fb(out, team), "n": len(out)}
+    return {"ok": True, "kind": kind, "value": value, "items": _attach_fb(out, team, reviewer), "n": len(out)}
 
 
-def topic_drill(cluster_id: str, team=None) -> dict:
+def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape.
     ⚠️ rows 는 topics_data() 의 content_ids 인덱스와 정합해야 해서 무필터 유지 · 피드백 부착만
     팀 스코프. 토픽 자체의 팀 파라미터화(topics_data)는 후속(실험실 메뉴 · 관리자용)."""
@@ -674,7 +674,7 @@ def topic_drill(cluster_id: str, team=None) -> dict:
         return {"ok": False, "kind": "topic", "value": cluster_id, "items": [], "n": 0,
                 "error": "토픽을 찾을 수 없습니다(데이터가 갱신되었을 수 있음)"}
     ids = cluster.get("content_ids") or []
-    out = _attach_fb([_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)], team)
+    out = _attach_fb([_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)], team, reviewer)
     name = cluster.get("name") or cluster.get("label") or cluster_id
     return {"ok": True, "kind": "topic", "value": name, "items": out, "n": len(out)}
 
@@ -708,25 +708,40 @@ def _detail_row(r: dict) -> dict:
     }
 
 
-def _fb_public(fb: dict) -> dict:
+def _fb_public(fb: dict, reviewer: str = "") -> dict:
     """검수 집계를 클라이언트 공개 형태로 축약. verdicts 원본(검수자 식별자·개별 표)은
     /history(팀 생성자·슈퍼관리자 전용)와 같은 민감도라 목록 응답에 싣지 않는다(2026-07-10).
-    필드 구성은 raw_rows 의 fb 와 동일 계열(verdict·n·good·bad·ts·note·stage)."""
-    if not fb:
-        return {}
+    reviewer 식별 시 '내 표(mine)'와 내 교정(note·elems)을 함께 내린다('완료' 판정과
+    추가 수정 프리필의 원천 · raw_rows·드릴 목록 공용 · 클라 myVerdict 는 mine 미제공
+    시에만 합의 폴백). 미식별이면 mine 을 싣지 않고 note·elems 는 최신 표(하위호환).
+    빈 피드백도 0 값 딕셔너리로 반환(/raw 의 fb.n==0 계약 · e2e 스모크가 검증)."""
+    fb = fb or {}
+    vs = fb.get("verdicts") or []
     last_ts = 0
-    for v in (fb.get("verdicts") or []):
+    for v in vs:
         try:
             last_ts = max(last_ts, float(v.get("ts") or 0))
         except Exception:
             pass
-    return {"verdict": fb.get("consensus") or fb.get("verdict") or "",
-            "n": fb.get("n", 0), "good": fb.get("good", 0), "bad": fb.get("bad", 0),
-            "ts": last_ts, "note": fb.get("note") or "", "stage": fb.get("stage") or ""}
+    out = {"verdict": fb.get("consensus") or fb.get("verdict") or "",
+           "n": fb.get("n", 0), "good": fb.get("good", 0), "bad": fb.get("bad", 0),
+           "ts": last_ts, "note": fb.get("note") or "", "stage": fb.get("stage") or "",
+           "elems": [e for e in ((vs[-1].get("element") or "") if vs else "").split(",") if e]}
+    if reviewer:
+        out["mine"], out["note"], out["stage"], out["elems"] = "", "", "", []
+        for v in reversed(vs):
+            if v.get("reviewer") == reviewer or v.get("reviewer_id") == reviewer:
+                out["mine"] = v.get("verdict") or ""
+                out["note"] = v.get("note") or ""
+                out["stage"] = v.get("stage") or ""
+                out["elems"] = [e for e in (v.get("element") or "").split(",") if e]
+                break
+    return out
 
 
-def _attach_fb(items, team=None):
-    """상세행 리스트에 검수 피드백 상태(fb: verdict·ts) 부착 → 콘텐츠 목록 어디서나 '검수 완료' 표기."""
+def _attach_fb(items, team=None, reviewer: str = ""):
+    """상세행 리스트에 검수 피드백 상태(fb: verdict·ts) 부착 → 콘텐츠 목록 어디서나 '검수 완료' 표기.
+    reviewer 를 주면 '완료' 판정이 내 표(mine) 기준으로 동작한다(드릴 경로 정합 · 2026-07-10)."""
     st = get_store()
     if not (st and hasattr(st, "feedback_map")):
         return items
@@ -735,7 +750,7 @@ def _attach_fb(items, team=None):
     except Exception:
         return items
     for it in items:
-        it["fb"] = _fb_public(fmap.get(it.get("hash"), {}) or {})
+        it["fb"] = _fb_public(fmap.get(it.get("hash"), {}) or {}, reviewer)
     return items
 
 
@@ -1812,27 +1827,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         if _is_pending_row(r):                     # 미실행(STEP 1 추가만) 콘텐츠는 검수 대상 아님
             continue
         fb = fmap.get(ch) or {}
-        last_ts = 0
-        for v in (fb.get("verdicts") or []):
-            try:
-                last_ts = max(last_ts, float(v.get("ts") or 0))
-            except Exception:
-                pass
-        # 내 판정(mine): 합의(consensus)와 별개로 요청 검수자 본인의 최신 표 · 상세 배지의 혼동 방지
-        # (합의가 동점 split 인데 배지가 '수정 필요'로 뭉뚱그려져 "정확으로 바꿨는데 수정필요로 조회" 혼란)
-        mine = ""
-        my_note, my_elems = "", []                 # 내 직전 교정(메모·요소) · '추가 수정' 이어쓰기 원천
-        if reviewer:
-            for v in reversed(fb.get("verdicts") or []):
-                if v.get("reviewer") == reviewer or v.get("reviewer_id") == reviewer:
-                    mine = v.get("verdict") or ""
-                    my_note = v.get("note") or ""
-                    my_elems = [e for e in (v.get("element") or "").split(",") if e]
-                    break
-        elif fb.get("verdicts"):                   # 로컬(sqlite): 검수자 식별 없음 → 최신 표의 교정을 원천으로
-            lv = fb["verdicts"][-1]
-            my_note = lv.get("note") or ""
-            my_elems = [e for e in (lv.get("element") or "").split(",") if e]
+        # 내 판정(mine)·내 교정(note·elems) 계산은 _fb_public 단일 원천(드릴 목록과 동일 규약).
+        # (합의가 동점 split 인데 배지가 '수정 필요'로 뭉뚱그려져 "정확으로 바꿨는데 수정필요로 조회" 혼란 방지)
         out.append({"hash": ch,
                     "service": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                     "body": ref.get("body", ""), "url": ref.get("source_url", ""),
@@ -1844,10 +1840,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "version": int(tr.get("version") or 1),
                     "review": qm.get("review", "") or "",
                     "split": bool(fb.get("good") and fb.get("bad")),
-                    "fb": {"verdict": fb.get("consensus") or fb.get("verdict") or "",
-                           "mine": mine, "n": fb.get("n", 0),
-                           "good": fb.get("good", 0), "bad": fb.get("bad", 0), "ts": last_ts,
-                           "note": my_note, "elems": my_elems},
+                    "fb": _fb_public(fb, reviewer),
                     "item_meta": im, "quality_meta": qm})
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트
     if reviewer:
@@ -2519,7 +2512,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/topic-drill"):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(topic_drill(q.get("cluster", [""])[0], self._req_team()),
+            self._send(200, json.dumps(topic_drill(q.get("cluster", [""])[0], self._req_team(),
+                                       reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/topics"):
             self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
@@ -2529,7 +2523,9 @@ class Handler(BaseHTTPRequestHandler):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
             self._send(200, json.dumps(drill_contents(q.get("kind", [""])[0], q.get("value", [""])[0],
-                                                       self._req_team()), ensure_ascii=False), _JSON)
+                                                       self._req_team(),
+                                                       reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/arena"):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
