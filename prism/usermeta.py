@@ -106,7 +106,9 @@ def _empty_user_meta(results_path: str) -> dict:
         "aggregate": {"personas": [[p["name"], 0] for p in PERSONAS],
                       "entity_categories": [], "intent_categories": [],
                       "intensity": [["고", 0], ["중", 0], ["저", 0]], "form_depth": [],
-                      "engagement": {"avg_click_rate": 0, "high": 0, "low": 0}},
+                      "engagement": {"avg_click_rate": 0, "high": 0, "low": 0},
+                      "persona_coherence": {"agree_rate": None, "n": 0},
+                      "entity_persona": {"personas": [p["name"] for p in PERSONAS], "rows": []}},
         "personas_def": pdefs, "scenarios": SCENARIOS,
         "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)",
     }
@@ -211,6 +213,59 @@ def _breadth(viewed):
     return min(1.0, len(cats) / 6.0)
 
 
+SIM_CAP = 500        # 유사도 O(n²) 상한(초과 사용자는 이웃 계산 생략)
+
+
+def _user_similarity(users, k=3, cap=SIM_CAP):
+    """사용자 유사도(코사인 · 인텐트/카테고리 가중 벡터) → 각자 top-k 이웃을
+    similar_users 로 부착하고, 최근접 이웃과 페르소나가 일치하는 비율(배정 정합성)을
+    돌려준다. 프로필이 비슷한 사용자는 같은 페르소나여야 한다는 SPiKE 의
+    pairwise 정합 아이디어의 경량(무학습) 판."""
+    import math
+    tgt = users[:cap]
+    vecs = []
+    for u in tgt:
+        v = {}
+        for c, w in (u.get("interest_entity_categories") or []):
+            v["e:" + c] = v.get("e:" + c, 0.0) + w
+        for c, w in (u.get("interest_intent_categories") or []):
+            v["i:" + c] = v.get("i:" + c, 0.0) + w
+        norm = math.sqrt(sum(x * x for x in v.values())) or 1.0
+        vecs.append({key: x / norm for key, x in v.items()})
+    agree = pairs = 0
+    for i, u in enumerate(tgt):
+        sims = []
+        for j, u2 in enumerate(tgt):
+            if i == j:
+                continue
+            s = sum(x * vecs[j].get(key, 0.0) for key, x in vecs[i].items())
+            if s > 0.05:
+                sims.append((round(s, 2), u2["user_id"], u2["persona"]))
+        sims.sort(key=lambda t: (-t[0], t[1]))
+        u["similar_users"] = [[uid, s] for s, uid, _ in sims[:k]]
+        if sims:
+            pairs += 1
+            agree += 1 if sims[0][2] == u["persona"] else 0
+    return {"agree_rate": round(agree / pairs, 2) if pairs else None, "n": pairs}
+
+
+def _entity_persona_matrix(users, top_n=12):
+    """엔티티 × 페르소나 친화도(로그 가중 합산): '이 엔티티는 어떤 페르소나가
+    소비하나'. 광고 타겟팅·능동 추천 시나리오의 실계산 근거."""
+    from collections import Counter, defaultdict
+    tot, mat = Counter(), defaultdict(Counter)
+    for u in users:
+        for e, w in (u.get("affinity_entities") or []):
+            mat[e][u["persona"]] += w
+            tot[e] += w
+    pnames = [p["name"] for p in PERSONAS]
+    rows = []
+    for e, _t in tot.most_common(top_n):
+        top_p = max(mat[e].items(), key=lambda kv: kv[1])[0]
+        rows.append([e, top_p, [round(mat[e].get(p, 0), 1) for p in pnames]])
+    return {"personas": pnames, "rows": rows}
+
+
 def _rep_contents(viewed, logs, k=5):
     """대표 소비 콘텐츠 top-k: 체류×클릭 가중이 큰 순. 페르소나 능동 생성의
     아이템 근거(제목·리드문·카테고리·맥락·체류)로 쓴다."""
@@ -290,7 +345,10 @@ def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) ->
                                              ["소비 폭", f"카테고리 다양성 {round(_breadth(viewed), 2)}"],
                                              ["페르소나(판별)", f"{pname} · {rule} · 신뢰도 {hit['conf']}"
                                               + (f" · 2순위 {hit['second']}" if hit["second"] else "")]]})
+    coherence = _user_similarity(users)
     agg = _aggregate_users(users)
+    agg["persona_coherence"] = coherence
+    agg["entity_persona"] = _entity_persona_matrix(users)
     return {"warning": "", "is_mock": False,
             "source": f"실 행동 로그 {logs_path} → 소비 형태·강도 → 페르소나 (실데이터)",
             "n_contents": len(rows), "users": users, "aggregate": agg,
@@ -464,6 +522,7 @@ def build_mock(results_path: str, n_users: int = 200) -> dict:
             intensity_cells[lv] += 1
         form_depth[u["form"]["깊이"]] += 1
     crs = [u["engagement"]["click_rate"] for u in users]
+    coherence = _user_similarity(users)
     aggregate = {
         "personas": [[p["name"], pdist.get(p["name"], 0)] for p in PERSONAS],
         "entity_categories": _sortc(ent_cat_users),
@@ -473,6 +532,8 @@ def build_mock(results_path: str, n_users: int = 200) -> dict:
         "engagement": {"avg_click_rate": round(sum(crs) / len(crs), 2) if crs else 0,
                        "high": sum(1 for c in crs if c >= 0.6),
                        "low": sum(1 for c in crs if c < 0.4)},
+        "persona_coherence": coherence,
+        "entity_persona": _entity_persona_matrix(users),
     }
     return {"warning": WARNING, "is_mock": True,
             "source": " results.jsonl (G 콘텐츠) → 합성 행동 로그 → 소비 형태·강도 → 페르소나",
