@@ -246,13 +246,17 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertGreater(a.get("next_batch_at") or 0, 0)
         self.assertGreaterEqual(a.get("next_version") or 0, 1)
         self.assertIn("next_model", a)                       # 어떤 모델의 버전인지 명기(미설정 시 빈 값 허용)
+        self.assertIsInstance(a.get("target_models"), list)  # 카드 모델 = 검수 대상 초안의 생성 모델(provenance)
         self.assertIn("last_version", a)                     # 완료 잔상(반영 완료 카드) 데이터
         self.assertGreater(a.get("quest_started_at") or 0, 0)
         self.assertEqual(a.get("quest_done"), 0)             # 생성 이전 검수 미포함(완주 착시 방지)
+        self.assertEqual(a.get("quest_avg_done"), 0)         # 팀 평균 진척(카드 게이지 원천)
         time.sleep(0.05)
         self.ok("/feedback", {"hash": self.review_hash, "service": "뉴스", "title": "스모크 일반",
                               "verdict": "good", "stage": "review", "note": "", "reviewer": "퀘스트이후"})
-        self.assertEqual(self.ok("/arena").get("quest_done"), 1)   # 생성 이후 검수만 진행으로
+        a = self.ok("/arena")
+        self.assertEqual(a.get("quest_done"), 1)             # 생성 이후 검수만 진행으로
+        self.assertIsNotNone(a.get("quest_avg_done"))        # 평균은 팀원 수 기준(0 이상 정수)
         self.ok("/config", {"learn_next_at": "2030-01-03T09:30"})  # 일시 수정: 시작점(창) 유지
         a = self.ok("/arena")
         self.assertEqual(a.get("quest_done"), 1)

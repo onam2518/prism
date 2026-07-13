@@ -1177,8 +1177,9 @@
       },
       deltaTxt(d) { const v = (d || 0) * 100; return (v >= 0 ? '+' : '') + v.toFixed(1) + '%p'; },
       questTotal() { return (this.arenaData && this.arenaData.total_targets) || 0; },
-      // 진행 = 서버 quest_done(퀘스트 생성 이후 검수분) 우선 · 없으면 구 산식(전 기간 누적) 폴백
-      questDone() { const a = this.arenaData; if (a && a.quest_done != null) return Math.min(a.quest_done, this.questTotal()); const t = this.questTotal(); return Math.max(0, t - ((a && a.queue) || 0)); },
+      // 진행 = 팀 평균 검수 건수(quest_avg_done) > 커버리지(quest_done) > 구 산식 순 폴백
+      questDone() { const a = this.arenaData; if (a && a.quest_avg_done != null) return Math.min(a.quest_avg_done, this.questTotal()); if (a && a.quest_done != null) return Math.min(a.quest_done, this.questTotal()); const t = this.questTotal(); return Math.max(0, t - ((a && a.queue) || 0)); },
+      questAvgLabel() { const a = this.arenaData; return a && a.quest_avg_done != null ? '팀 평균 ' : ''; },
       questLeft() { return Math.max(0, this.questTotal() - this.questDone()); },
       questPct() { const t = this.questTotal(); return t ? Math.round(this.questDone() / t * 100) : 0; },
       // 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보·추출(전 기준치 논문 근거)
