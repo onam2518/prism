@@ -211,6 +211,23 @@ def _breadth(viewed):
     return min(1.0, len(cats) / 6.0)
 
 
+def _rep_contents(viewed, logs, k=5):
+    """대표 소비 콘텐츠 top-k: 체류×클릭 가중이 큰 순. 페르소나 능동 생성의
+    아이템 근거(제목·리드문·카테고리·맥락·체류)로 쓴다."""
+    lbi = {l["content_idx"]: l for l in logs}
+    scored = []
+    for c in viewed:
+        l = lbi.get(c["idx"], {})
+        w = (l.get("dwell_sec", 10) / 30.0) * (2.0 if l.get("event") == "click" else 1.0)
+        scored.append((w, c, l))
+    scored.sort(key=lambda x: -x[0])
+    return [{"title": c["title"][:40], "summary": (c.get("summary") or "")[:80],
+             "cat": (c["entity_categories"][0] if c["entity_categories"] else "기타"),
+             "intent": (c["intent_categories"][0] if c["intent_categories"] else "기타"),
+             "dwell_sec": int(l.get("dwell_sec", 0) or 0), "event": l.get("event", "impression")}
+            for _, c, l in scored[:k]]
+
+
 def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) -> dict:
     from collections import defaultdict
     rows = _read_jsonl(results_path)
@@ -219,6 +236,7 @@ def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) ->
         im = r.get("item_meta") or {}
         item = {"idx": i, "title": r.get("content_ref", {}).get("title", ""),
                 "service": r.get("content_ref", {}).get("displayServiceName", ""),
+                "summary": (im.get("summary") or "").strip(),
                 "intent_categories": im.get("intent", []),
                 "entity_categories": [_t1(c) for c in (im.get("content_category") or [])],
                 "entities": im.get("entities", [])}
@@ -247,6 +265,7 @@ def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) ->
         form, intensity, prof = _profile_from_logs(viewed, logs)
         tf = _time_features(evs)
         form["시간대"] = tf["tod_label"]
+        rep = _rep_contents(viewed, logs)
         pname, rule = _nearest_persona(form, intensity, viewed, tf, prof["ents"])
         signals = [s for s, on in (("버스트", tf["burst"]), ("주야 이중", tf["dual_mode"]),
                                    ("드리프트", tf["drift"])) if on]
@@ -254,7 +273,7 @@ def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) ->
                       "persona": pname, "persona_id": _pid(pname),
                       "persona_full": pname, "topic": prof["ent"][0][0] if prof["ent"] else "기타",
                       "form": form, "intensity": intensity, "behavior_log": logs,
-                      "breadth": round(_breadth(viewed), 2),
+                      "breadth": round(_breadth(viewed), 2), "rep_contents": rep,
                       "interest_entity_categories": prof["ent"], "interest_intent_categories": prof["int"],
                       "affinity_entities": prof["ents"], "engagement": prof["eng"],
                       "persona_derivation": [["행동 로그(실데이터)", f"{len(logs)}건"],

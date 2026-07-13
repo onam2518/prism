@@ -6,6 +6,7 @@ LLM 호출 실패·mock 모드에서는 결정론 폴백으로 같은 구조를 
 """
 from __future__ import annotations
 import json
+import re
 
 # 프로필 스키마(식별 정보는 받지 않는다 · 실명/연락처 없음)
 PROFILE_FIELDS = ("user_id", "age_band", "interests", "day_part", "note")
@@ -68,11 +69,32 @@ def normalize_profile(raw: dict) -> dict:
 
 
 _SYSTEM = (
-    "너는 콘텐츠 소비 행동 분석가다. 사용자 메타(프로필)와 행동 로그에서 산출한 소비 프로필을 근거로 "
-    "이 사용자만의 페르소나 카드를 JSON 객체 하나로 만든다. 근거에 없는 사실을 지어내지 않는다.\n"
+    "너는 콘텐츠 소비 행동 분석가다. 사용자 메타(프로필)와 행동 로그에서 산출한 소비 프로필, "
+    "그리고 실제로 소비한 대표 콘텐츠(제목·리드문·맥락·체류)를 근거로 "
+    "이 사용자만의 페르소나 카드를 JSON 객체 하나로 만든다. 근거에 없는 사실을 지어내지 않는다. "
+    "수치는 입력에 있는 값을 그대로 쓴다(백분율 환산·어림 금지). "
+    "무엇을 어떻게 읽었는지(대표 콘텐츠의 주제·읽은 깊이)가 이름과 근거에 드러나야 한다.\n"
     '키: {"name": "한국어 별칭(2~8자, ~러/~형 같은 유형명)", "full": "수식어 포함 전체 이름(20자 이내)", '
     '"desc": "소비 행동 특징 한 문장(60자 이내)", "basis": ["판단 근거 3개(각 40자 이내)"]}'
 )
+
+_NUM = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _faithful(card: dict, grounds: str, profile: dict) -> bool:
+    """카드의 desc·basis 가 입력 근거에 충실한지 결정론 검증(fail-open 금지).
+    ① 등장 수치는 근거 문자열에 실재해야 함 ② 프로필에 없는 연령대 언급 금지."""
+    age = (profile or {}).get("age_band") or ""
+    for s in [card.get("desc", "")] + list(card.get("basis") or []):
+        s = str(s)
+        for num in _NUM.findall(s):
+            if num in grounds or num.split(".")[0] in grounds:
+                continue
+            return False
+        for ab in AGE_BANDS:
+            if ab != "미상" and ab in s and ab != age:
+                return False
+    return True
 
 
 def _fallback(profile: dict, u: dict) -> dict:
@@ -92,7 +114,8 @@ def _fallback(profile: dict, u: dict) -> dict:
 
 
 def _gen_one(llm, profile: dict, u: dict) -> dict:
-    """사용자 1명 페르소나 생성. LLM 결과가 스키마를 못 채우면 폴백."""
+    """사용자 1명 페르소나 생성. 아이템 근거(대표 소비 콘텐츠)를 경유해 서술하고,
+    LLM 결과가 스키마를 못 채우거나 근거 검증(_faithful)에 실패하면 폴백으로 강등."""
     user = json.dumps({
         "프로필": {k: profile.get(k) for k in ("age_band", "interests", "day_part") if profile.get(k)},
         "소비 형태": u.get("form"), "소비 강도": u.get("intensity"),
@@ -100,13 +123,19 @@ def _gen_one(llm, profile: dict, u: dict) -> dict:
         "관심 맥락": u.get("interest_intent_categories"),
         "선호 엔티티": [e[0] for e in (u.get("affinity_entities") or [])[:5]],
         "지표": u.get("engagement"),
+        "대표 소비 콘텐츠": u.get("rep_contents") or [],
     }, ensure_ascii=False)
     obj, _res = llm.complete_json(_SYSTEM, user, tag="persona_gen")
     if not (isinstance(obj, dict) and obj.get("name") and obj.get("desc")):
         return _fallback(profile, u)
     basis = obj.get("basis") if isinstance(obj.get("basis"), list) else []
-    return {"name": str(obj.get("name"))[:12], "full": str(obj.get("full") or obj.get("name"))[:20],
+    card = {"name": str(obj.get("name"))[:12], "full": str(obj.get("full") or obj.get("name"))[:20],
             "desc": str(obj.get("desc"))[:80], "basis": [str(b)[:60] for b in basis[:3]] or _fallback(profile, u)["basis"]}
+    if not _faithful(card, user, profile):
+        fb = _fallback(profile, u)
+        fb["downgraded"] = "근거 검증 실패(입력에 없는 수치·속성) · 결정론 폴백으로 대체"
+        return fb
+    return card
 
 
 def generate_personas(llm, profiles: dict, users: list, start_idx: int = 0) -> dict:
@@ -121,4 +150,6 @@ def generate_personas(llm, profiles: dict, users: list, start_idx: int = 0) -> d
                     "name": card["name"], "full": card["full"], "desc": card["desc"],
                     "basis": card["basis"], "form": u.get("form") or {},
                     "intensity": u.get("intensity") or {}}
+        if card.get("downgraded"):
+            out[uid]["downgraded"] = card["downgraded"]
     return out
