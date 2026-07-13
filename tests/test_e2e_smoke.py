@@ -88,6 +88,14 @@ class TestE2ESmoke(unittest.TestCase):
         self.assertIn("mreview()", m)
         self.assertIn("/vendor/mobile.js?v=", m)
         self.assertIn("mreview()", _req(base, "/m/"))              # 트레일링 슬래시 허용
+        # ①-c 모바일 v2: PWA manifest(홈화면 설치) · /vendor 서빙 + start_url=/m
+        self.assertIn('rel="manifest"', m)
+        wm = _req(base, "/vendor/m.webmanifest")
+        self.assertEqual((wm or {}).get("start_url"), "/m")
+        self.assertTrue((wm or {}).get("icons"))
+        # ①-d 모바일 v2: 정의 시트 확장(등급·사유·카테고리 탭 정의) 마커
+        for marker in ("catDef(", "gradeDef(", "reasonDef("):
+            self.assertIn(marker, m)
         self.assertIsInstance(_req(base, "/models"), dict)         # /models 는 여전히 JSON 라우트(비잠식)
 
         # ② 단건 추출(mock LLM · 실제 파이프라인 경유)

@@ -65,6 +65,8 @@
 .m-chip{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:100px;border:1px solid var(--ds-hairline);
   background:transparent;color:var(--ds-text-secondary);font-family:inherit}
 .m-chip--tap{border-color:var(--ds-primary);color:var(--ds-primary)}
+/* 탭 정의 배지(등급·품질 사유): DS 배지 시각은 유지하고 button 기본 스타일만 무효화 */
+.m-badge--tap{font-family:inherit;cursor:pointer;border:0;-webkit-appearance:none;appearance:none}
 .m-body{margin-top:12px;font-size:13.5px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap}
 .m-team{padding:9px 16px;border-top:1px solid var(--ds-divider-section);font-size:11.5px;color:var(--ds-muted)}
 .m-team b{color:var(--ds-ink)}

@@ -2828,6 +2828,7 @@ class Handler(BaseHTTPRequestHandler):
         ".woff": "font/woff",
         ".svg": "image/svg+xml",
         ".png": "image/png",
+        ".webmanifest": "application/manifest+json; charset=utf-8",
     }
 
     def _send_vendor(self, name):

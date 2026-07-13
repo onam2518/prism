@@ -95,8 +95,8 @@ window.mreview = () => ({
     try {
       const q = this.backend === 'supabase' ? '' : ('&reviewer=' + encodeURIComponent(this.reviewer));
       const r = await (await this.afetch('/raw?limit=200' + q)).json();
-      // 골드 문항은 v1 제외 · 목록은 전체(검수 완료 포함) 노출, 미검수는 배지로 구분
-      this.items = ((r && r.items) || []).filter((it) => String(it.hash || '').indexOf('gold:') !== 0);
+      // v2: 골드 문항(블라인드 검증 문항)도 포함 · 목록은 전체(검수 완료 포함) 노출, 미검수는 배지로 구분
+      this.items = (r && r.items) || [];
       this.idx = 0; this.done = 0; this.fixed = 0;
     } catch (e) { this.err = '목록을 불러오지 못했습니다'; }
   },
@@ -142,7 +142,28 @@ window.mreview = () => ({
   gradeLabel(g) { return g === 'G' ? '유통 가능 · G' : (g === 'R' ? '차단 · R' : '판정 보류 · 재실행 필요'); },
   gradeClass(g) { return g === 'G' ? 'ds-badge--success' : (g === 'R' ? 'ds-badge--error' : 'ds-badge--reason'); },
   teamLine(fb) { return '팀 의견 · 정확 ' + (fb.good || 0) + '개 · 수정 필요 ' + (fb.bad || 0) + '개'; },
-  intentDef(v) { this.defTitle = v; this.defBody = ((this.dict && this.dict.intentDefs) || {})[v] || '관점·형식을 나타내는 인텐트 값입니다.'; this.sheet = 'def'; },
+  intentDef(v) { this._def(v, ((this.dict && this.dict.intentDefs) || {})[v] || '관점·형식을 나타내는 인텐트 값입니다.'); },
+  // 정의 시트 확장(v2): 카테고리·등급·품질 사유도 탭 정의 · 원천은 전부 /dict
+  catDef(v) {
+    const d = this.dict || {};
+    const parts = String(v).split('/').map((p) => p.trim());
+    const t2 = parts[1] || parts[0];
+    const dd = (d.tier2Defs || {})[t2] || {};
+    const body = (dd.def || (d.categoryCriteria || {})[parts[0]] || '콘텐츠 카테고리입니다.')
+      + (dd.ex ? ' · 예: ' + dd.ex : '');
+    this._def(this.catKo(v), body);
+  },
+  gradeDef(g) {
+    const key = (g === 'G' || g === 'R') ? g : 'YELLOW';
+    const row = ((this.dict && this.dict.gradeDefs) || []).find((x) => x.k === key);
+    this._def(row ? row.t : this.gradeLabel(g), row ? row.d : '유통 가능 여부 판정 등급입니다.');
+  },
+  reasonKo(v) {                                    // 품질 사유 병기(한글/영문순 · 데스크탑 reasonBoth 와 동일 규칙)
+    const nm = ((this.dict && this.dict.qualityNames) || {})[v];
+    return nm ? (nm + ' (' + v + ')') : v;
+  },
+  reasonDef(v) { this._def(this.reasonKo(v), ((this.dict && this.dict.qualityMetas) || {})[v] || '유통 제외 판정의 품질 사유입니다.'); },
+  _def(title, body) { this.defTitle = title; this.defBody = body; if (!this.dict) this.loadDict(); this.sheet = 'def'; },
 
   open(i) { this.idx = i; this.view = 'card'; },
   back() { this.view = 'list'; },
@@ -189,10 +210,20 @@ window.mreview = () => ({
   elemStage(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.stage : 'analyze'; },
   elemLabel(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.label : ''; },
 
+  // 골드 문항 응답 = 응답 후 정오답 공개(즉시 학습 피드백 · 데스크탑과 동일 규약) · 반영 시 true
+  _goldReveal(r) {
+    if (!(r && r.gold)) return false;
+    if (r.gold.correct) this._celebrate(10, '골드 문항 정답');
+    else { this.toast = '🏅 골드 문항 · 아쉽지만 오답이에요'; if (this._toastT) clearTimeout(this._toastT); this._toastT = setTimeout(() => { this.toast = ''; }, 2200); }
+    return true;
+  },
+  _missions(r) { ((r && r.missions_completed) || []).forEach((m) => this._celebrate(m.bonus, '미션 달성 · ' + m.label)); },
   async good() {
-    if (await this._post('good') === 'skip') return;              // 연타 무시(진행도 안 넘김)
+    const r = await this._post('good');
+    if (r === 'skip') return;                       // 연타 무시(진행도 안 넘김)
     this._markMine('good');
-    this._celebrate(10, '검수 완료');
+    if (!this._goldReveal(r)) this._celebrate(10, '검수 완료');
+    this._missions(r);
     this._advance();
   },
   openFix() {
@@ -212,10 +243,12 @@ window.mreview = () => ({
     const raw = (this.fix.note || '').trim(); if (!raw) return;
     const hadNote = !!(((this.cur() || {}).fb || {}).note);
     const tagged = '[' + this.fix.elems.map((e) => this.elemLabel(e)).join('·') + '] ' + raw;
-    if (await this._post('bad', this.fix.elems.slice(), tagged) === 'skip') return;
+    const r = await this._post('bad', this.fix.elems.slice(), tagged);
+    if (r === 'skip') return;
     this._markMine('bad', tagged, this.fix.elems);
     this.sheet = ''; this.fixed += 1;
-    this._celebrate(hadNote ? 10 : 25, hadNote ? '검수 완료' : '교정 반영');
+    if (!this._goldReveal(r)) this._celebrate(hadNote ? 10 : 25, hadNote ? '검수 완료' : '교정 반영');
+    this._missions(r);
     this._advance();
   },
   _celebrate(pt, label) {

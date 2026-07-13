@@ -16,6 +16,10 @@ MOBILE_PAGE = """<!doctype html>
 <title>Prism 검수</title>
 <link rel="icon" href="/vendor/prism-favicon.svg">
 <link rel="apple-touch-icon" href="/vendor/prism-icon-180.png">
+<link rel="manifest" href="/vendor/m.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Prism 검수">
 <link href="/vendor/pretendard.css" rel="stylesheet">
 <link href="/vendor/ds-theme.css" rel="stylesheet">
 <link href="/vendor/ds-components.css" rel="stylesheet">
@@ -85,7 +89,10 @@ MOBILE_PAGE = """<!doctype html>
         <div class="m-card__scroll">
           <div class="m-card__meta">
             <span class="ds-badge ds-badge--category" x-show="cur().service" x-text="cur().service"></span>
-            <span class="ds-badge" x-bind:class="gradeClass(cur().grade)"><span class="ds-badge__dot"></span><span x-text="gradeLabel(cur().grade)"></span></span>
+            <button type="button" class="ds-badge m-badge--tap" x-bind:class="gradeClass(cur().grade)" x-on:click="gradeDef(cur().grade)"><span class="ds-badge__dot"></span><span x-text="gradeLabel(cur().grade)"></span></button>
+            <template x-for="rs in (cur().reasons || [])" x-bind:key="'r' + rs">
+              <button type="button" class="ds-badge ds-badge--reason m-badge--tap" x-on:click="reasonDef(rs)" x-text="reasonKo(rs)"></button>
+            </template>
             <span class="ds-badge ds-badge--neutral" x-show="cur().model" x-text="cur().model + (cur().version > 1 ? ' · v' + cur().version : '')"></span>
           </div>
           <h2 class="m-card__title" x-text="cur().title"></h2>
@@ -93,7 +100,7 @@ MOBILE_PAGE = """<!doctype html>
           <div class="m-chips">
             <template x-for="e in (cur().entities || [])" x-bind:key="'e' + e"><span class="m-chip" x-text="e"></span></template>
             <template x-for="i in (cur().intent || [])" x-bind:key="'i' + i"><button type="button" class="m-chip m-chip--tap" x-on:click="intentDef(i)" x-text="i"></button></template>
-            <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><span class="m-chip" x-text="catKo(c)"></span></template>
+            <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><button type="button" class="m-chip m-chip--tap" x-on:click="catDef(c)" x-text="catKo(c)"></button></template>
           </div>
           <div class="m-body" x-text="cur().body || '본문이 저장되지 않은 콘텐츠입니다 · 데스크탑에서 원문 링크로 확인하세요'"></div>
         </div>
@@ -150,7 +157,7 @@ MOBILE_PAGE = """<!doctype html>
     </div>
     <div class="m-hsec">
       <h4>용어가 낯설면</h4>
-      <div class="m-hrow">카드의 파란 테두리 칩(인텐트)을 탭하면 그 값의 정의를 보여줍니다</div>
+      <div class="m-hrow">카드의 등급·사유 배지와 인텐트·카테고리 칩을 탭하면 그 값의 정의를 보여줍니다</div>
     </div>
     <a class="m-guide" x-show="guideUrl" x-bind:href="guideUrl" target="_blank" rel="noopener">📖 상세 검수 가이드 열기</a>
     <button type="button" class="m-logout" x-on:click="logout()">로그아웃</button>
