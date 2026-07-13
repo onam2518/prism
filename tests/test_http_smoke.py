@@ -232,8 +232,9 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIn("dict_gap", ld)                   # 사전 갭 집계 노출
 
     def test_09_learn_quest_config(self):
-        """검수 목표(퀘스트) 일시 설정 왕복 + 창 스코프 진행률 + 해제(삭제)."""
-        # 퀘스트 생성 이전의 검수: 새 퀘스트 진행률(quest_done)에 포함되면 안 된다
+        """검수 목표(퀘스트) 일시 설정 왕복 + 초안 기준 진행률 + 해제(삭제)."""
+        # 유효 검수 = '현재 초안 생성 이후'의 표: 퀘스트 생성 전에 한 현행 초안 검수도 진행에 포함
+        # (생성 시각 창은 홈 팀 진척율과 어긋나고, 전 기간 누적은 재실행 전 옛 초안 검수까지 잡는다)
         self.ok("/feedback", {"hash": self.review_hash, "service": "뉴스", "title": "스모크 일반",
                               "verdict": "good", "stage": "review", "note": "", "reviewer": "퀘스트이전"})
         time.sleep(0.05)
@@ -249,17 +250,12 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIsInstance(a.get("target_models"), list)  # 카드 모델 = 검수 대상 초안의 생성 모델(provenance)
         self.assertIn("last_version", a)                     # 완료 잔상(반영 완료 카드) 데이터
         self.assertGreater(a.get("quest_started_at") or 0, 0)
-        self.assertEqual(a.get("quest_done"), 0)             # 생성 이전 검수 미포함(완주 착시 방지)
-        self.assertEqual(a.get("quest_avg_done"), 0)         # 팀 평균 진척(카드 게이지 원천)
-        time.sleep(0.05)
-        self.ok("/feedback", {"hash": self.review_hash, "service": "뉴스", "title": "스모크 일반",
-                              "verdict": "good", "stage": "review", "note": "", "reviewer": "퀘스트이후"})
+        self.assertGreaterEqual(a.get("quest_done"), 1)      # 현행 초안 검수는 생성 전이어도 유효
+        self.assertIsNotNone(a.get("quest_avg_done"))        # 팀 평균 진척(카드 게이지 원천 · 인원으로 나눔)
+        base_done = a.get("quest_done")
+        self.ok("/config", {"learn_next_at": "2030-01-03T09:30"})  # 일시 수정: 진행률 불변
         a = self.ok("/arena")
-        self.assertEqual(a.get("quest_done"), 1)             # 생성 이후 검수만 진행으로
-        self.assertIsNotNone(a.get("quest_avg_done"))        # 평균은 팀원 수 기준(0 이상 정수)
-        self.ok("/config", {"learn_next_at": "2030-01-03T09:30"})  # 일시 수정: 시작점(창) 유지
-        a = self.ok("/arena")
-        self.assertEqual(a.get("quest_done"), 1)
+        self.assertEqual(a.get("quest_done"), base_done)
         self.ok("/config", {"learn_next_at": "2020-01-01T04:00"})  # 과거 일시 거부(즉시 발화 함정 방지)
         self.assertEqual(self.ok("/config").get("learnNextAt"), "2030-01-03T09:30")
         self.ok("/config", {"learn_next_at": "엉터리"})           # 형식 오류 무시

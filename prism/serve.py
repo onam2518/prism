@@ -1758,22 +1758,30 @@ def _arena_compute(team=None) -> dict:
         # 퀘스트 진행률은 이번 퀘스트 창으로 스코프: 생성 이후 검수된 대상만 집계.
         # 전 기간 누적(total-queue)을 쓰면 직전 버전에서 끝낸 검수가 새 퀘스트에 '완주'로 잡힌다.
         if d.get("next_batch_at"):
+            # 유효 검수 = '그 콘텐츠의 현재(최신) 초안 생성 이후'의 표. 퀘스트 생성 시각 창은
+            # 생성 전에 해 둔 현행 초안 검수를 놓쳐 홈 팀 진척율과 어긋난다(hash×버전 스키마 전까지의 근사.
+            # 초안 시각 미상 콘텐츠는 전부 유효 취급 · 퀘스트 중 재실행은 가드로 차단되어 창이 흔들리지 않음)
+            try:
+                dts = st.draft_times(team) if hasattr(st, "draft_times") else {}
+            except Exception:
+                dts = {}
+            fm = st.feedback_map(team=team) or {}
+            per = {}                              # 검수자 → 유효 검수한 대상 집합
+            for ch, e in fm.items():
+                base = float(dts.get(ch) or 0)
+                for v in e.get("verdicts") or []:
+                    if _fb_epoch(v.get("ts")) >= base:
+                        rid = v.get("reviewer_id") or v.get("reviewer") or ""
+                        per.setdefault(rid, set()).add(ch)
+            d["quest_done"] = len(set().union(*per.values())) if per else 0   # 커버리지(구클라 폴백)
+            # 목표 '전량 완주'의 진척 = 팀 평균 검수 건수(홈 히어로의 팀 진척율과 같은 관점)
+            try:
+                members = len(set(st.reviewers_map(team) if hasattr(st, "reviewers_map") else {}) | set(per))
+            except Exception:
+                members = len(per)
+            d["quest_avg_done"] = round(sum(len(s) for s in per.values()) / members) if members else 0
             qs = float((_report_get("quest_meta", team) or {}).get("started_at") or 0)
             if qs:
-                fm = st.feedback_map(team=team) or {}
-                per = {}                              # 검수자 → 퀘스트 창 내 검수한 대상 집합
-                for ch, e in fm.items():
-                    for v in e.get("verdicts") or []:
-                        if _fb_epoch(v.get("ts")) >= qs:
-                            rid = v.get("reviewer_id") or v.get("reviewer") or ""
-                            per.setdefault(rid, set()).add(ch)
-                d["quest_done"] = len(set().union(*per.values())) if per else 0   # 커버리지(구클라 폴백)
-                # 목표 '전량 완주'의 진척 = 팀 평균 검수 건수(홈 히어로의 팀 진척율과 같은 관점)
-                try:
-                    members = len(set(st.reviewers_map(team) if hasattr(st, "reviewers_map") else {}) | set(per))
-                except Exception:
-                    members = len(per)
-                d["quest_avg_done"] = round(sum(len(s) for s in per.values()) / members) if members else 0
                 d["quest_started_at"] = qs
     except Exception:
         pass

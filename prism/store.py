@@ -582,6 +582,13 @@ class Store:
                    json.dumps(quality_meta or {}, ensure_ascii=False), time.time()))
         c.commit()
 
+    def draft_times(self, team=None) -> dict:
+        """콘텐츠별 최신 초안 생성 시각(epoch) · '현재 초안 이후 검수' 유효성 판정 원천."""
+        c = self._conn()
+        return {ch: float(ts or 0) for ch, ts in c.execute(
+            "SELECT content_hash, MAX(ts) FROM drafts WHERE team=? GROUP BY content_hash",
+            (team or "",))}
+
     def draft_history(self, content_hash: str, team=None, limit: int = 20) -> list:
         c = self._conn()
         rows = c.execute("SELECT model,version,item_meta,quality_meta,ts FROM drafts "
