@@ -1717,6 +1717,17 @@ def arena_data(team=None) -> dict:
     return _agg_cached(("arena", team), lambda: _arena_compute(team), ttl=15.0)
 
 
+def _fb_epoch(ts) -> float:
+    """feedback ts → epoch. sqlite=float · supabase=timestamptz 문자열(supastore._epoch 와 동일 해석)."""
+    try:
+        return float(ts)
+    except (TypeError, ValueError):
+        try:
+            return time.mktime(time.strptime(str(ts)[:19], "%Y-%m-%dT%H:%M:%S"))
+        except Exception:
+            return 0.0
+
+
 def _arena_compute(team=None) -> dict:
     st = get_store()
     if not st:
@@ -1735,6 +1746,16 @@ def _arena_compute(team=None) -> dict:
         d["next_batch_at"] = LO.next_batch_time(getattr(cfg, "learn_next_at", ""))
         d["last_version"] = seq                    # 완료 잔상(소진 후 '반영 완료' 카드)용
         d["last_batch_at"] = float((_report_get("learn_report", team) or {}).get("ts") or 0)
+        # 퀘스트 진행률은 이번 퀘스트 창으로 스코프: 생성 이후 검수된 대상만 집계.
+        # 전 기간 누적(total-queue)을 쓰면 직전 버전에서 끝낸 검수가 새 퀘스트에 '완주'로 잡힌다.
+        if d.get("next_batch_at"):
+            qs = float((_report_get("quest_meta", team) or {}).get("started_at") or 0)
+            if qs:
+                fm = st.feedback_map(team=team) or {}
+                done = sum(1 for e in fm.values()
+                           if any(_fb_epoch(v.get("ts")) >= qs for v in (e.get("verdicts") or [])))
+                d["quest_done"] = done                # 원값 노출(표시 상한은 클라 questDone 이 담당)
+                d["quest_started_at"] = qs
     except Exception:
         pass
     return d
@@ -2181,7 +2202,7 @@ def config_status() -> dict:
     }
 
 
-def apply_config(data: dict, allow_key: bool = False) -> dict:
+def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     """키/모델/엔드포인트/추론강도/추가지시 적용. 키만 프로세스 환경(+옵션 ~/.prism_key).
     운영(supabase): 키 변경은 운영 관리자(allow_key=True, /config 게이트에서 판정)만 허용.
     비관리자·미인증 요청의 키 필드는 무시(서버 키 보호)."""
@@ -2312,16 +2333,21 @@ def apply_config(data: dict, allow_key: bool = False) -> dict:
                 cfg.golden_min_good = max(1, min(9, int(data.get("golden_min_good") or 1)))
             except (TypeError, ValueError):
                 pass
-        if "learn_next_at" in data:               # 검수 목표(퀘스트) 일시 · 빈 값 = 목표 해제
+        if "learn_next_at" in data:               # 검수 목표(퀘스트) 일시 · 빈 값 = 목표 해제(삭제)
             v = str(data.get("learn_next_at") or "").strip()[:16]
             if not v:
                 cfg.learn_next_at = ""
+                _agg_bump()                        # 홈·사이드바 퀘스트 카드 즉시 소거
             else:
                 try:
                     time.strptime(v, "%Y-%m-%dT%H:%M")
                     # 과거 일시는 거부: 저장 즉시 반영이 돼버리는 함정 방지('⚡ 즉시 반영'이 정식 경로)
                     if LO.next_batch_time(v) > time.time() + 60:
+                        if not getattr(cfg, "learn_next_at", ""):
+                            # 새 퀘스트 생성 = 진행률 창의 시작점(일시 수정은 시작점 유지)
+                            _report_save("quest_meta", {"started_at": time.time(), "next_at": v}, team)
                         cfg.learn_next_at = v
+                        _agg_bump()
                 except ValueError:
                     pass
         if "desktop_allow_downloads" in data:
@@ -2869,7 +2895,7 @@ class Handler(BaseHTTPRequestHandler):
                         self._send(403, json.dumps({"error": "운영 관리자 전용입니다"}, ensure_ascii=False), _JSON)
                         return
                     save_team_links(data["team_links"])
-                self._send(200, json.dumps(apply_config(data, allow_key=allow_key),
+                self._send(200, json.dumps(apply_config(data, allow_key=allow_key, team=team),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)

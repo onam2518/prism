@@ -1143,6 +1143,17 @@
         } catch (e) { this.learnSchedMsg = '실패'; }
         setTimeout(() => { this.learnSchedMsg = ''; }, 2500);
       },
+      async deleteQuest() {                              // 퀘스트 삭제 = 목표 해제 · 검수 의견·점수는 불변
+        if (!(await this.dsConfirm('진행 중인 퀘스트를 삭제할까요? 반영 예약이 해제되고 팀 홈의 D-day 카드가 사라집니다 · 검수 의견은 그대로 남습니다', { ok: '삭제', danger: true }))) return;
+        try {
+          await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: '' }) });
+          this.learnNextAt = ''; this.nextBatchAt = 0; this.schedEditing = false;
+          this.learnSchedMsg = '퀘스트를 삭제했습니다';
+          this.loadLearnReport();
+          this.loadArena();
+        } catch (e) { this.learnSchedMsg = '실패'; }
+        setTimeout(() => { this.learnSchedMsg = ''; }, 2500);
+      },
       ddayTxt(ts) {                                  // 버전 시한까지 D-n (당일 = D-DAY)
         if (!ts) return '';
         const now = new Date(); const due = new Date(ts * 1000);
@@ -1157,16 +1168,18 @@
       },
       maybeQuestReminder() {                           // 마감 임박(D-1 이하) 1일 1회 리마인드
         const a = this.arenaData;
-        if (!(a && a.next_batch_at && a.queue)) return;
+        if (!(a && a.next_batch_at && this.questLeft())) return;
         const dd = this.ddayTxt(a.next_batch_at);
         if (dd !== 'D-DAY' && dd !== 'D-1') return;
         const mark = new Date().toDateString() + ':' + a.next_batch_at;
         try { if (localStorage.getItem('prismQuestRemind') === mark) return; localStorage.setItem('prismQuestRemind', mark); } catch (e) {}
-        this.liveToast('⏰ 팀 퀘스트 마감 임박 ' + dd + ' · 남은 ' + a.queue + '건, 완주까지 화이팅!');
+        this.liveToast('⏰ 팀 퀘스트 마감 임박 ' + dd + ' · 남은 ' + this.questLeft() + '건, 완주까지 화이팅!');
       },
       deltaTxt(d) { const v = (d || 0) * 100; return (v >= 0 ? '+' : '') + v.toFixed(1) + '%p'; },
       questTotal() { return (this.arenaData && this.arenaData.total_targets) || 0; },
-      questDone() { const t = this.questTotal(); return Math.max(0, t - ((this.arenaData && this.arenaData.queue) || 0)); },
+      // 진행 = 서버 quest_done(퀘스트 생성 이후 검수분) 우선 · 없으면 구 산식(전 기간 누적) 폴백
+      questDone() { const a = this.arenaData; if (a && a.quest_done != null) return Math.min(a.quest_done, this.questTotal()); const t = this.questTotal(); return Math.max(0, t - ((a && a.queue) || 0)); },
+      questLeft() { return Math.max(0, this.questTotal() - this.questDone()); },
       questPct() { const t = this.questTotal(); return t ? Math.round(this.questDone() / t * 100) : 0; },
       // 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보·추출(전 기준치 논문 근거)
       learnData: null, learnDataBusy: false,
