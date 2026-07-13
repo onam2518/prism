@@ -42,14 +42,14 @@ def _log(uid, idx, day_offset, hour, dwell=30, scroll=50, event="click", ts=True
     return row
 
 
-def _build(contents, logs):
+def _build(contents, logs, profiles=None):
     with tempfile.TemporaryDirectory() as d:
         rp, lp = os.path.join(d, "r.jsonl"), os.path.join(d, "l.jsonl")
         for path, rows in ((rp, contents), (lp, logs)):
             with open(path, "w", encoding="utf-8") as f:
                 for r in rows:
                     f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        return UM.build_from_logs(rp, lp)
+        return UM.build_from_logs(rp, lp, profiles=profiles)
 
 
 def _user(data, uid):
@@ -151,6 +151,47 @@ class TestNoTimestamp(unittest.TestCase):
         contents = [_content("News") for _ in range(3)]
         logs = [_log("u", i, 0, 12, ts=False) for i in range(3)]
         u = _user(_build(contents, logs), "u")
+        self.assertEqual(u["persona"], "라이트")
+        self.assertTrue(u["persona_provisional"])
+        self.assertEqual(u["persona_conf"], "저")
+
+
+class TestConfidenceAndColdStart(unittest.TestCase):
+    """U4 신뢰도·2순위 + U6 콜드스타트 프로필 프라이어."""
+
+    def test_explicit_rule_is_high_confidence(self):
+        contents = [_content("Sports", entities=["손흥민"]) for _ in range(10)]
+        logs = [_log("u", i, day_offset=(i * 3) % 14, hour=(9 + i * 2) % 24, dwell=50, scroll=70)
+                for i in range(10)]
+        u = _user(_build(contents, logs), "u")
+        self.assertEqual(u["persona_conf"], "고")
+        self.assertFalse(u["persona_provisional"])
+
+    def test_centroid_match_exposes_confidence_and_second(self):
+        contents = [_content("News") for _ in range(8)]
+        logs = [_log("u", i, 0, 12, dwell=60, scroll=75, ts=False) for i in range(8)]
+        u = _user(_build(contents, logs), "u")
+        names = [p["name"] for p in UM.PERSONAS]
+        self.assertIn(u["persona_conf"], ("고", "중", "저"))
+        self.assertIn(u["persona_second"], names)
+        self.assertIn("신뢰도", str(u["persona_derivation"]))
+
+    def test_cold_start_uses_declared_profile(self):
+        # 로그 3건뿐이어도 선언 프로필(출퇴근 이용)이 있으면 잠정 스낵러
+        contents = [_content("News") for _ in range(3)]
+        logs = [_log("u", i, 0, 12, ts=False) for i in range(3)]
+        prof = {"u": {"user_id": "u", "age_band": "30대", "interests": ["재테크"],
+                      "day_part": "출퇴근", "note": ""}}
+        u = _user(_build(contents, logs, profiles=prof), "u")
+        self.assertEqual(u["persona"], "스낵러")
+        self.assertTrue(u["persona_provisional"])
+        self.assertEqual(u["persona_conf"], "저")
+        self.assertIn("프로필 기반 잠정", str(u["persona_derivation"]))
+
+    def test_cold_start_without_profile_stays_light(self):
+        contents = [_content("News") for _ in range(3)]
+        logs = [_log("u", i, 0, 12, ts=False) for i in range(3)]
+        u = _user(_build(contents, logs, profiles={}), "u")
         self.assertEqual(u["persona"], "라이트")
 
 

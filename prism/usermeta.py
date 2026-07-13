@@ -266,12 +266,18 @@ def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) ->
         tf = _time_features(evs)
         form["시간대"] = tf["tod_label"]
         rep = _rep_contents(viewed, logs)
-        pname, rule = _nearest_persona(form, intensity, viewed, tf, prof["ents"])
+        uprof = (profiles or {}).get(uid)
+        hit = _nearest_persona(form, intensity, viewed, tf, prof["ents"], uprof)
+        pname, rule = hit["name"], hit["rule"]
         signals = [s for s, on in (("버스트", tf["burst"]), ("주야 이중", tf["dual_mode"]),
                                    ("드리프트", tf["drift"])) if on]
-        users.append({"user_id": uid, "profile": (profiles or {}).get(uid),
+        topic = (prof["ent"][0][0] if prof["ent"]
+                 else ((uprof or {}).get("interests") or ["기타"])[0])
+        users.append({"user_id": uid, "profile": uprof,
                       "persona": pname, "persona_id": _pid(pname),
-                      "persona_full": pname, "topic": prof["ent"][0][0] if prof["ent"] else "기타",
+                      "persona_full": pname, "topic": topic,
+                      "persona_conf": hit["conf"], "persona_second": hit["second"],
+                      "persona_provisional": hit["provisional"],
                       "form": form, "intensity": intensity, "behavior_log": logs,
                       "breadth": round(_breadth(viewed), 2), "rep_contents": rep,
                       "interest_entity_categories": prof["ent"], "interest_intent_categories": prof["int"],
@@ -282,7 +288,8 @@ def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) ->
                                              ["시간 신호", f"{tf['tod_label']} · ts {tf['n_ts']}/{len(logs)}건"
                                               + (" · " + " · ".join(signals) if signals else "")],
                                              ["소비 폭", f"카테고리 다양성 {round(_breadth(viewed), 2)}"],
-                                             ["페르소나(판별)", f"{pname} · {rule}"]]})
+                                             ["페르소나(판별)", f"{pname} · {rule} · 신뢰도 {hit['conf']}"
+                                              + (f" · 2순위 {hit['second']}" if hit["second"] else "")]]})
     agg = _aggregate_users(users)
     return {"warning": "", "is_mock": False,
             "source": f"실 행동 로그 {logs_path} → 소비 형태·강도 → 페르소나 (실데이터)",
@@ -322,36 +329,50 @@ def _profile_from_logs(viewed, logs):
     return form, intensity, {"ent": _top(w_ent, 5), "int": top_int, "ents": _top(ents, 8), "eng": eng}
 
 
-def _nearest_persona(form, intensity, viewed, tf=None, ents_top=None):
+# 콜드스타트 프라이어: 선언 이용 시간대(day_part) → 잠정 페르소나
+_DAYPART_PRIOR = {"출퇴근": "스낵러", "야간": "정독러", "주말": "라이트"}
+
+
+def _nearest_persona(form, intensity, viewed, tf=None, ents_top=None, profile=None):
     """페르소나 판별: 명시 신호 규칙(저데이터·버스트·이중모드·드리프트·주말·출퇴근·
     엔티티 집중) 우선 → 신호가 없으면 (깊이·강도·폭) 센트로이드 근접 매칭.
-    반환 = (페르소나명, 판별 근거 라벨)."""
+    반환 = {"name", "rule"(판별 근거), "conf"(고/중/저), "second"(2순위·경계 확인용),
+    "provisional"(로그 부족 잠정 여부)}."""
     tf = tf or {}
+    prof = profile or {}
+
+    def _hit(name, rule, conf="고", second=None, provisional=False):
+        return {"name": name, "rule": rule, "conf": conf, "second": second,
+                "provisional": provisional}
+
     if len(viewed) < 5:
-        return "라이트", "저데이터(5건 미만)"
+        prior = _DAYPART_PRIOR.get(prof.get("day_part") or "")
+        if prior:
+            return _hit(prior, f"프로필 기반 잠정({prof['day_part']} 이용 선언 · 로그 부족)",
+                        conf="저", second="라이트", provisional=True)
+        return _hit("라이트", "저데이터(5건 미만)", conf="저", provisional=True)
     if tf.get("burst"):
-        return "조사자", "단기 집중 소비(버스트)"
+        return _hit("조사자", "단기 집중 소비(버스트)")
     if tf.get("dual_mode"):
-        return "이중모드", "주간 훑기 · 야간 몰입 전환"
+        return _hit("이중모드", "주간 훑기 · 야간 몰입 전환")
     if tf.get("drift"):
-        return "전환기", "전·후반 관심 카테고리 전환"
+        return _hit("전환기", "전·후반 관심 카테고리 전환")
     if tf.get("weekend_share", 0) >= 0.7 and form.get("깊이") != "몰입":
-        return "라이트", "주말 편중 소비"
+        return _hit("라이트", "주말 편중 소비")
     if tf.get("commute_share", 0) >= 0.5 and form.get("깊이") == "훑기":
-        return "스낵러", "출퇴근 시간대 훑기"
+        return _hit("스낵러", "출퇴근 시간대 훑기")
     total_ew = sum(w for _, w in (ents_top or []))
     if ents_top and total_ew and ents_top[0][1] / total_ew >= 0.5 and len(viewed) >= 8:
-        return "팬덤", f"단일 엔티티 집중({ents_top[0][0]})"
+        return _hit("팬덤", f"단일 엔티티 집중({ents_top[0][0]})")
     depth = {"몰입": .9, "혼합": .5, "훑기": .2}.get(form["깊이"], .5)
     iv = [{"고": 1, "중": .6, "저": .25}.get(v, .5) for v in intensity.values()]
     inten = sum(iv) / len(iv) if iv else .3
     breadth = _breadth(viewed)
-    best, bd = "스낵러", 9
-    for name, (d, i, b) in _CENTROID.items():
-        dist = (d - depth) ** 2 + (i - inten) ** 2 + (b - breadth) ** 2
-        if dist < bd:
-            bd, best = dist, name
-    return best, "근접 매칭(깊이·강도·폭)"
+    ranked = sorted(((d - depth) ** 2 + (i - inten) ** 2 + (b - breadth) ** 2, name)
+                    for name, (d, i, b) in _CENTROID.items())
+    margin = ranked[1][0] - ranked[0][0]
+    conf = "고" if margin >= 0.15 else ("중" if margin >= 0.05 else "저")
+    return _hit(ranked[0][1], "근접 매칭(깊이·강도·폭)", conf=conf, second=ranked[1][1])
 
 
 def _pid(name):
