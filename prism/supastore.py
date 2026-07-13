@@ -337,10 +337,13 @@ class SupabaseStore:
 
     # ── 피드백(다중 의견) + REAP ──────────────────────────────────────────
     def save_feedback(self, content_hash, service, title, verdict, stage, note, ts, reviewer="(익명)", team=None, element=""):
+        # ts 를 명시 저장: upsert(재검수) 시 DB 기본값은 갱신되지 않아 표가 과거 시각에 굳는다
+        # (재실행 후 재검수가 '현재 초안 이후 검수'로 인정되기 위한 전제)
         row = {"content_hash": content_hash, "reviewer_id": reviewer,
                "service": service or "", "title": title or "",
                "verdict": verdict or "", "stage": stage or "analyze", "note": note or "",
-               "element": element or ""}
+               "element": element or "",
+               "ts": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(float(ts or time.time())))}
         if team:
             row["team_id"] = team
         self._upsert("feedback", [row])
@@ -907,6 +910,18 @@ class SupabaseStore:
         self._upsert("drafts", [{"content_hash": content_hash, "team_key": team or "",
                                  "model": model or "", "version": int(version or 1),
                                  "item_meta": item_meta or {}, "quality_meta": quality_meta or {}}])
+
+    def draft_times(self, team=None) -> dict:
+        """콘텐츠별 최신 초안 생성 시각(epoch) · '현재 초안 이후 검수' 유효성 판정 원천.
+        PostgREST 기본 상한(1000행)을 넘는 이력은 최신순 상위만 반영(콘텐츠당 초안 수가 적어 실질 무영향)."""
+        q = (f"select=content_hash,created_at&team_key=eq.{urllib.parse.quote(team or '')}"
+             "&order=created_at.desc")
+        out = {}
+        for r in self._get("drafts", q):
+            ch = r.get("content_hash") or ""
+            if ch and ch not in out:
+                out[ch] = _epoch(r.get("created_at"))
+        return out
 
     def draft_history(self, content_hash, team=None, limit: int = 20) -> list:
         q = (f"select=model,version,item_meta,quality_meta,created_at"
