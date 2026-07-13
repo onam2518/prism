@@ -309,7 +309,7 @@ PAGE = """<!doctype html>
         <div class="squest__obj" x-show="arenaData && questLeft()" x-text="'목표 · 검수 대상 ' + questTotal() + '건 전량 완주'"></div>
         <div class="squest__obj" x-show="arenaData && !questLeft()">목표 달성 · 반영을 기다리는 중</div>
         <div class="squest__bar"><div class="squest__fill" x-bind:class="arenaData && !questLeft() ? 'is-done' : ''" x-bind:style="'width:' + questPct() + '%'"></div></div>
-        <div class="squest__cnt"><b class="tnum" x-text="questDone() + ' / ' + questTotal()"></b><span class="tnum" x-text="questPct() + '%'"></span></div>
+        <div class="squest__cnt"><b class="tnum" x-text="questAvgLabel() + questDone() + ' / ' + questTotal()"></b><span class="tnum" x-text="questPct() + '%'"></span></div>
         <div class="squest__foot">
           <span>⏳ <span class="tnum" x-text="fmtTs(arenaData?arenaData.next_batch_at:0) + ' 반영'"></span></span>
           <span class="squest__go" x-show="arenaData && questLeft()" x-text="'남은 ' + questLeft() + '건 →'"></span>

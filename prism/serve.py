@@ -1742,7 +1742,16 @@ def _arena_compute(team=None) -> dict:
         cfg = Config.load()
         seq = int(st.batch_seq(team) if hasattr(st, "batch_seq") else 0)
         d["next_version"] = seq + 1
-        d["next_model"] = cfg.model or ""          # 어떤 모델의 어떤 버전인지 명기(퀘스트 카드)
+        # 카드의 모델 = 검수 대상 초안을 만든 모델(provenance) · 설정 모델은 폴백
+        # (설정 모델을 그대로 쓰면 claude 초안을 검수 중인데 solar 가 표기되는 오표기)
+        d["next_model"] = cfg.model or ""
+        try:
+            tm = st.target_models(team) if hasattr(st, "target_models") else []
+            d["target_models"] = tm
+            if tm:
+                d["next_model"] = " · ".join(tm)
+        except Exception:
+            d["target_models"] = []
         d["next_batch_at"] = LO.next_batch_time(getattr(cfg, "learn_next_at", ""))
         d["last_version"] = seq                    # 완료 잔상(소진 후 '반영 완료' 카드)용
         d["last_batch_at"] = float((_report_get("learn_report", team) or {}).get("ts") or 0)
@@ -1752,9 +1761,19 @@ def _arena_compute(team=None) -> dict:
             qs = float((_report_get("quest_meta", team) or {}).get("started_at") or 0)
             if qs:
                 fm = st.feedback_map(team=team) or {}
-                done = sum(1 for e in fm.values()
-                           if any(_fb_epoch(v.get("ts")) >= qs for v in (e.get("verdicts") or [])))
-                d["quest_done"] = done                # 원값 노출(표시 상한은 클라 questDone 이 담당)
+                per = {}                              # 검수자 → 퀘스트 창 내 검수한 대상 집합
+                for ch, e in fm.items():
+                    for v in e.get("verdicts") or []:
+                        if _fb_epoch(v.get("ts")) >= qs:
+                            rid = v.get("reviewer_id") or v.get("reviewer") or ""
+                            per.setdefault(rid, set()).add(ch)
+                d["quest_done"] = len(set().union(*per.values())) if per else 0   # 커버리지(구클라 폴백)
+                # 목표 '전량 완주'의 진척 = 팀 평균 검수 건수(홈 히어로의 팀 진척율과 같은 관점)
+                try:
+                    members = len(set(st.reviewers_map(team) if hasattr(st, "reviewers_map") else {}) | set(per))
+                except Exception:
+                    members = len(per)
+                d["quest_avg_done"] = round(sum(len(s) for s in per.values()) / members) if members else 0
                 d["quest_started_at"] = qs
     except Exception:
         pass

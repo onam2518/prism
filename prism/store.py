@@ -830,6 +830,24 @@ class Store:
         except Exception:
             return self.count()
 
+    def target_models(self, team=None) -> list:
+        """검수 대상(YELLOW) 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance)."""
+        c = self._conn()
+        try:
+            rows = c.execute(
+                "SELECT payload FROM results WHERE json_extract(payload,'$.quality_meta.review')='yellow'")
+        except Exception:
+            rows = c.execute("SELECT payload FROM results")
+        out = []
+        for (payload,) in rows:
+            try:
+                m = ((json.loads(payload) if payload else {}).get("trace") or {}).get("model", "") or ""
+            except Exception:
+                m = ""
+            if m and m not in out:
+                out.append(m)
+        return out
+
     def arena_stats(self, target: float = 0.9, team=None) -> dict:
         """평가 아레나(게임화) 지표 · 품질 가중.
         점수 = (검수 10 + 교정 25 + 구조화 교정 5 + 합의 일치 5 + 골드 응답 10) × 품질 배율 + 미션 보너스.

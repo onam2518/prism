@@ -135,6 +135,18 @@ class SupabaseStore:
             out[r["id"]] = {"name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil"}
         return out
 
+    def target_models(self, team=None) -> list:
+        """검수 대상 콘텐츠 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance)."""
+        q = "select=model"
+        if team:
+            q += f"&team_id=eq.{urllib.parse.quote(team)}"
+        out = []
+        for r in self._get("contents", q):
+            m = (r.get("model") or "").strip()
+            if m and m not in out:
+                out.append(m)
+        return out
+
     def ensure_team(self, uid, mode="create", name=None, code=None):
         """팀 생성/가입 → team_id. join: 초대코드 조회. create: 코드 생성·삽입."""
         if mode == "join":
