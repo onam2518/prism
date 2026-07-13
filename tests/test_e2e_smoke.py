@@ -93,9 +93,9 @@ class TestE2ESmoke(unittest.TestCase):
         wm = _req(base, "/vendor/m.webmanifest")
         self.assertEqual((wm or {}).get("start_url"), "/m")
         self.assertTrue((wm or {}).get("icons"))
-        # ①-d 모바일 v2: 정의 확장(등급·사유·카테고리 탭) + 요소 표 + 중앙 모달 + 테마 전환 마커
+        # ①-d 모바일 v2: 정의 확장(등급·사유·카테고리 탭) + 요소 표 + 중앙 모달 + 테마 전환 + 배포 감지 배너 마커
         for marker in ("catDef(", "gradeDef(", "reasonDef(", "m-meta__row", "m-modal", "toggleTheme(",
-                       "/vendor/gmarket.css"):
+                       "/vendor/gmarket.css", "updateAvail"):
             self.assertIn(marker, m)
         self.assertIsInstance(_req(base, "/models"), dict)         # /models 는 여전히 JSON 라우트(비잠식)
 

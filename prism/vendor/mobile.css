@@ -169,6 +169,14 @@
 .m-stat span{font-size:10.5px;color:var(--ds-muted)}
 .m-done .ds-btn{margin-top:18px;height:48px;padding:0 26px}
 
+/* ── 새 버전 배너: 상단 고정 필(하단 판정 버튼과 간섭 없음) ── */
+.m-update{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top));transform:translateX(-50%);
+  z-index:60;display:flex;align-items:center;gap:10px;padding:7px 9px 7px 15px;border-radius:100px;
+  background:var(--ds-layer-popup);border:1px solid var(--ds-hairline);
+  box-shadow:var(--ds-shadow-high,0 8px 30px rgba(0,0,0,.18));
+  font-size:12.5px;font-weight:600;color:var(--ds-text-secondary);white-space:nowrap}
+.m-update .ds-btn{height:32px;padding:0 13px;font-size:12px;border-radius:100px}
+
 /* ── 토스트 ── */
 .m-toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);
   z-index:50;background:var(--ds-success);color:#fff;font-size:13.5px;font-weight:800;

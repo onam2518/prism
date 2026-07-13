@@ -205,6 +205,12 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
     <button type="button" class="ds-btn ds-btn--secondary m-modal__ok" x-on:click="sheet = ''">확인</button>
   </div>
 
+  <!-- 새 버전 배너: 배포 감지(bootId 변화) · PC 와 동일 규약(분기 없이 새로고침 단일 유도) -->
+  <div class="m-update" x-show="updateAvail" x-cloak role="status">
+    <span>새 버전이 배포되었습니다</span>
+    <button type="button" class="ds-btn ds-btn--primary" x-on:click="location.reload()">새로고침</button>
+  </div>
+
   <div class="m-toast" x-show="toast" x-text="toast"></div>
 </div>
 <script src="/vendor/mobile.js"></script>

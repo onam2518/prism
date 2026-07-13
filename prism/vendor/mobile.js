@@ -7,6 +7,7 @@ window.mreview = () => ({
   items: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
   fix: { elems: ['summary'], note: '' },
   defTitle: '', defBody: '', dict: null,
+  updateAvail: false, _boot: '',                   // 새 버전 배포 감지(서버 부팅 ID 변화) · 새로고침 배너(PC 규약)
   // 요소·인텐트 정의 사전 = 서버 /dict 단일 원천(fixElements·intentDefs) · 데스크탑과 공용(이원화 부채 해소)
   get FIX_ELEMENTS() { return (this.dict && this.dict.fixElements) || []; },
 
@@ -24,9 +25,22 @@ window.mreview = () => ({
       this.backend = cfg.backend || '';
       const g = cfg.guideUrls || {};
       this.guideUrl = g.guide_user || g.guide || '';
+      this._seenBoot(cfg.bootId);
     } catch (e) {}
+    // 배포 감지: 모바일은 SSE 없이 탭 복귀 + 10분 주기로 bootId 재확인(홈화면 앱 복귀 케이스 커버)
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.checkBoot(); });
+    setInterval(() => this.checkBoot(), 10 * 60 * 1000);
     if (this.backend === 'supabase' ? this.authToken : this.reviewer) await this.boot();
     else this.view = 'login';
+  },
+  _seenBoot(b) {                                   // 최초 값 기억 · 달라지면 새 버전 배너(분기 없음 · 새로고침 단일 유도)
+    if (!b) return;
+    if (this._boot && this._boot !== b) this.updateAvail = true;
+    if (!this._boot) this._boot = b;
+  },
+  async checkBoot() {
+    if (this.updateAvail) return;                  // 이미 감지됨 · 재확인 불필요
+    try { this._seenBoot(((await (await fetch('/config')).json()) || {}).bootId); } catch (e) {}
   },
 
   _hdrs() { const h = { 'Content-Type': 'application/json' }; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken; return h; },
