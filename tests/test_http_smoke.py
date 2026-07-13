@@ -147,6 +147,15 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertEqual(len(d.get("intentForm") or []), 8)
         self.assertTrue(d.get("intentDefs"))                     # 정책 팔레트 원천(값 정의)
         self.assertTrue(d.get("categoryCriteria"))               # 카테고리 구분 기준 15종
+        # 검수 UI 공용 사전(데스크탑·모바일 단일 원천) 계약: 요소 사전 + 전 인텐트 값 정의 커버(드리프트 가드)
+        from prism import feedback_loop as FL
+        self.assertEqual([e["id"] for e in d.get("fixElements") or []], list(FL.ELEMENTS))
+        for e in d["fixElements"]:
+            self.assertTrue(e.get("label") and e.get("stage") in ("analyze", "judge", "review"))
+        all_intents = set(d.get("intentUniversal") or []) | set(d.get("intentForm") or [])
+        for vs in (d.get("intentByService") or {}).values():
+            all_intents |= set(vs)
+        self.assertFalse(all_intents - set(d["intentDefs"]), "정의 없는 인텐트 값(intentDefs 누락)")
         status, html = _req(self.port, "/")
         self.assertEqual(status, 200)
         self.assertIn("polpal", html)                            # 정책 팔레트 렌더 마커

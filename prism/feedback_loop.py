@@ -100,7 +100,7 @@ def meta_compile(llm, stage: str, raw_text: str) -> dict:
 ELEMENTS = ("summary", "entities", "intent", "category", "grade", "quality")
 ELEM_STAGE = {"summary": "analyze", "entities": "analyze", "intent": "analyze",
               "category": "analyze", "grade": "judge", "quality": "review"}
-_ELEM_KO = {"summary": "리드문", "entities": "엔티티", "intent": "인텐트",
+ELEM_KO = {"summary": "리드문", "entities": "엔티티", "intent": "인텐트",
             "category": "카테고리", "grade": "등급·유통", "quality": "품질 사유"}
 
 ROUTE_SYSTEM = (
@@ -126,7 +126,7 @@ def route_feedback(llm, fb: dict) -> list:
     fallback = [{"element": e, "stage": ELEM_STAGE[e], "directive": note} for e in hint if note]
     if not note or getattr(llm, "mock", False):
         return fallback
-    user = (f"[검수자 선택 요소 힌트] {', '.join(_ELEM_KO[e] + '(' + e + ')' for e in hint)}\n"
+    user = (f"[검수자 선택 요소 힌트] {', '.join(ELEM_KO[e] + '(' + e + ')' for e in hint)}\n"
             + _reap_user(fb))
     try:
         obj, _res = llm.complete_json(ROUTE_SYSTEM, user, tag="route")

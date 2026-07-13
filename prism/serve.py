@@ -479,7 +479,11 @@ def dict_data() -> dict:
         "gradeDefs": list(getattr(D, "GRADE_DEFS", [])),
         "iabMap": dict(getattr(D, "CATEGORY_IAB_MAP", {})),
         "domainGroups": {k: list(v) for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items()},
-        "intentDefs": dict(getattr(D, "INTENT_VALUE_DEFS", {})),
+        # 인텐트 정의 = 범용①(UI 전용) + 사전 원문 병합 · 데스크탑·모바일 검수 화면 공용 단일 원천
+        "intentDefs": {**getattr(D, "INTENT_UNIVERSAL_DEFS", {}), **getattr(D, "INTENT_VALUE_DEFS", {})},
+        # 교정 요소 사전(id·한글 라벨·단계) · feedback_loop 가 단일 원천(검수 UI 이원화 부채 해소)
+        "fixElements": [{"id": e, "label": FL.ELEM_KO.get(e, e), "stage": FL.ELEM_STAGE.get(e, "analyze")}
+                        for e in FL.ELEMENTS],
         "categoryCriteria": dict(getattr(D, "CATEGORY_CRITERIA", {})),
         "qualityMetas": dict(D.QUALITY_METAS),
         "qualityNames": dict(getattr(D, "QUALITY_META_NAMES", {})),
