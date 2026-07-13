@@ -41,7 +41,7 @@
 .m-help{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--ds-hairline);
   background:transparent;color:var(--ds-muted);font-size:13px;font-weight:800;font-family:inherit;
   display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.m-theme{font-size:12px;font-weight:600}
+.m-theme{font-size:12px;font-weight:600;margin-left:-4px}   /* ?·◐ 는 한 쌍(유틸 클러스터) · 상단바 gap 보다 좁게 */
 .m-prog{padding:7px 16px 12px}
 .m-prog__row{display:flex;justify-content:space-between;font-size:11px;color:var(--ds-muted);margin-bottom:6px}
 .m-prog__row b{color:var(--ds-ink)}
