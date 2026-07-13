@@ -1,7 +1,7 @@
 /* 모바일 검수 전용(/m) 앱 상태 · 데스크탑과 같은 API 계약(/auth·/reviewer·/raw·/feedback·/dict)만 사용.
    v1.1: 목록 화면(탭 진입) + 카드 검수 · 카테고리 한글 표시(catKo · /dict 재사용). */
 window.mreview = () => ({
-  view: 'boot', sheet: '', backend: '', guideUrl: '',
+  view: 'boot', sheet: '', backend: '', guideUrl: '', theme: 'light',
   email: '', pw: '', nick: '', err: '', busy: false,
   authToken: '', rtoken: '', reviewer: '', name: '',
   items: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
@@ -11,6 +11,8 @@ window.mreview = () => ({
   get FIX_ELEMENTS() { return (this.dict && this.dict.fixElements) || []; },
 
   async init() {
+    // 테마: head 선적용 스크립트가 저장값(prism_m_theme)>기기 설정으로 data-theme 를 먼저 세팅 · 여기선 상태만 동기화
+    this.theme = document.documentElement.getAttribute('data-theme') || 'light';
     try {
       this.authToken = localStorage.getItem('prism_token') || '';
       this.rtoken = localStorage.getItem('prism_rtoken') || '';
@@ -75,6 +77,11 @@ window.mreview = () => ({
     try { localStorage.setItem('prism_reviewer', n); } catch (e) {}
     this.boot();
   },
+  toggleTheme() {                                  // 라이트/다크 전환 · PC(app.js toggleTheme)와 동일 data-theme 규약
+    this.theme = this.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', this.theme);
+    try { localStorage.setItem('prism_m_theme', this.theme); } catch (e) {}
+  },
   logout() {
     try { localStorage.removeItem('prism_token'); localStorage.removeItem('prism_rtoken'); localStorage.removeItem('prism_reviewer'); } catch (e) {}
     this.authToken = ''; this.rtoken = ''; this.reviewer = ''; this.name = '';
@@ -95,8 +102,8 @@ window.mreview = () => ({
     try {
       const q = this.backend === 'supabase' ? '' : ('&reviewer=' + encodeURIComponent(this.reviewer));
       const r = await (await this.afetch('/raw?limit=200' + q)).json();
-      // 골드 문항은 v1 제외 · 목록은 전체(검수 완료 포함) 노출, 미검수는 배지로 구분
-      this.items = ((r && r.items) || []).filter((it) => String(it.hash || '').indexOf('gold:') !== 0);
+      // v2: 골드 문항(블라인드 검증 문항)도 포함 · 목록은 전체(검수 완료 포함) 노출, 미검수는 배지로 구분
+      this.items = (r && r.items) || [];
       this.idx = 0; this.done = 0; this.fixed = 0;
     } catch (e) { this.err = '목록을 불러오지 못했습니다'; }
   },
@@ -142,7 +149,28 @@ window.mreview = () => ({
   gradeLabel(g) { return g === 'G' ? '유통 가능 · G' : (g === 'R' ? '차단 · R' : '판정 보류 · 재실행 필요'); },
   gradeClass(g) { return g === 'G' ? 'ds-badge--success' : (g === 'R' ? 'ds-badge--error' : 'ds-badge--reason'); },
   teamLine(fb) { return '팀 의견 · 정확 ' + (fb.good || 0) + '개 · 수정 필요 ' + (fb.bad || 0) + '개'; },
-  intentDef(v) { this.defTitle = v; this.defBody = ((this.dict && this.dict.intentDefs) || {})[v] || '관점·형식을 나타내는 인텐트 값입니다.'; this.sheet = 'def'; },
+  intentDef(v) { this._def(v, ((this.dict && this.dict.intentDefs) || {})[v] || '관점·형식을 나타내는 인텐트 값입니다.'); },
+  // 정의 시트 확장(v2): 카테고리·등급·품질 사유도 탭 정의 · 원천은 전부 /dict
+  catDef(v) {
+    const d = this.dict || {};
+    const parts = String(v).split('/').map((p) => p.trim());
+    const t2 = parts[1] || parts[0];
+    const dd = (d.tier2Defs || {})[t2] || {};
+    const body = (dd.def || (d.categoryCriteria || {})[parts[0]] || '콘텐츠 카테고리입니다.')
+      + (dd.ex ? ' · 예: ' + dd.ex : '');
+    this._def(this.catKo(v), body);
+  },
+  gradeDef(g) {
+    const key = (g === 'G' || g === 'R') ? g : 'YELLOW';
+    const row = ((this.dict && this.dict.gradeDefs) || []).find((x) => x.k === key);
+    this._def(row ? row.t : this.gradeLabel(g), row ? row.d : '유통 가능 여부 판정 등급입니다.');
+  },
+  reasonKo(v) {                                    // 품질 사유 병기(한글/영문순 · 데스크탑 reasonBoth 와 동일 규칙)
+    const nm = ((this.dict && this.dict.qualityNames) || {})[v];
+    return nm ? (nm + ' (' + v + ')') : v;
+  },
+  reasonDef(v) { this._def(this.reasonKo(v), ((this.dict && this.dict.qualityMetas) || {})[v] || '유통 제외 판정의 품질 사유입니다.'); },
+  _def(title, body) { this.defTitle = title; this.defBody = body; if (!this.dict) this.loadDict(); this.sheet = 'def'; },
 
   open(i) { this.idx = i; this.view = 'card'; },
   back() { this.view = 'list'; },
@@ -189,10 +217,20 @@ window.mreview = () => ({
   elemStage(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.stage : 'analyze'; },
   elemLabel(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.label : ''; },
 
+  // 골드 문항 응답 = 응답 후 정오답 공개(즉시 학습 피드백 · 데스크탑과 동일 규약) · 반영 시 true
+  _goldReveal(r) {
+    if (!(r && r.gold)) return false;
+    if (r.gold.correct) this._celebrate(10, '골드 문항 정답');
+    else { this.toast = '🏅 골드 문항 · 아쉽지만 오답이에요'; if (this._toastT) clearTimeout(this._toastT); this._toastT = setTimeout(() => { this.toast = ''; }, 2200); }
+    return true;
+  },
+  _missions(r) { ((r && r.missions_completed) || []).forEach((m) => this._celebrate(m.bonus, '미션 달성 · ' + m.label)); },
   async good() {
-    if (await this._post('good') === 'skip') return;              // 연타 무시(진행도 안 넘김)
+    const r = await this._post('good');
+    if (r === 'skip') return;                       // 연타 무시(진행도 안 넘김)
     this._markMine('good');
-    this._celebrate(10, '검수 완료');
+    if (!this._goldReveal(r)) this._celebrate(10, '검수 완료');
+    this._missions(r);
     this._advance();
   },
   openFix() {
@@ -212,10 +250,12 @@ window.mreview = () => ({
     const raw = (this.fix.note || '').trim(); if (!raw) return;
     const hadNote = !!(((this.cur() || {}).fb || {}).note);
     const tagged = '[' + this.fix.elems.map((e) => this.elemLabel(e)).join('·') + '] ' + raw;
-    if (await this._post('bad', this.fix.elems.slice(), tagged) === 'skip') return;
+    const r = await this._post('bad', this.fix.elems.slice(), tagged);
+    if (r === 'skip') return;
     this._markMine('bad', tagged, this.fix.elems);
     this.sheet = ''; this.fixed += 1;
-    this._celebrate(hadNote ? 10 : 25, hadNote ? '검수 완료' : '교정 반영');
+    if (!this._goldReveal(r)) this._celebrate(hadNote ? 10 : 25, hadNote ? '검수 완료' : '교정 반영');
+    this._missions(r);
     this._advance();
   },
   _celebrate(pt, label) {

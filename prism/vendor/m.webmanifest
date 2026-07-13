@@ -1,0 +1,14 @@
+{
+  "name": "Prism 검수",
+  "short_name": "Prism",
+  "description": "이동 중에도 이어가는 팀 콘텐츠 검수",
+  "start_url": "/m",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#161718",
+  "theme_color": "#161718",
+  "icons": [
+    { "src": "/vendor/prism-favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/vendor/prism-icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}
