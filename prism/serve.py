@@ -2533,6 +2533,7 @@ class Handler(BaseHTTPRequestHandler):
             rv = self._bearer_uid() or q.get("reviewer", [""])[0]
             if rv:
                 d["missions"] = mission_progress(rv, self._req_team())
+            d["my_id"] = rv or ""                     # 내 행 식별 = reviewer_id(닉네임 변경·중복 표시명 무관)
             self._send(200, json.dumps(d, ensure_ascii=False), _JSON)
         elif self.path.startswith("/admin"):
             # 메뉴 게이팅의 원천: 인증 서버 일시 장애는 '비관리자(200)'가 아니라 503(재시도)으로 구분
