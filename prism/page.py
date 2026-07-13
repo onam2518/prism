@@ -306,14 +306,14 @@ PAGE = """<!doctype html>
         </div>
         <div class="squest__title" x-text="'🏁 v' + (arenaData?arenaData.next_version:'') + ' 버전 마감'"></div>
         <div class="squest__model" x-show="arenaData && arenaData.next_model" x-text="(arenaData?arenaData.next_model:'') + ' 새 버전 학습'"></div>
-        <div class="squest__obj" x-show="arenaData && arenaData.queue" x-text="'목표 · 검수 대상 ' + questTotal() + '건 전량 완주'"></div>
-        <div class="squest__obj" x-show="arenaData && !arenaData.queue">목표 달성 · 반영을 기다리는 중</div>
-        <div class="squest__bar"><div class="squest__fill" x-bind:class="arenaData && !arenaData.queue ? 'is-done' : ''" x-bind:style="'width:' + questPct() + '%'"></div></div>
+        <div class="squest__obj" x-show="arenaData && questLeft()" x-text="'목표 · 검수 대상 ' + questTotal() + '건 전량 완주'"></div>
+        <div class="squest__obj" x-show="arenaData && !questLeft()">목표 달성 · 반영을 기다리는 중</div>
+        <div class="squest__bar"><div class="squest__fill" x-bind:class="arenaData && !questLeft() ? 'is-done' : ''" x-bind:style="'width:' + questPct() + '%'"></div></div>
         <div class="squest__cnt"><b class="tnum" x-text="questDone() + ' / ' + questTotal()"></b><span class="tnum" x-text="questPct() + '%'"></span></div>
         <div class="squest__foot">
           <span>⏳ <span class="tnum" x-text="fmtTs(arenaData?arenaData.next_batch_at:0) + ' 반영'"></span></span>
-          <span class="squest__go" x-show="arenaData && arenaData.queue" x-text="'남은 ' + (arenaData?arenaData.queue:0) + '건 →'"></span>
-          <span class="squest__go" x-show="arenaData && !arenaData.queue">✓ 완주</span>
+          <span class="squest__go" x-show="arenaData && questLeft()" x-text="'남은 ' + questLeft() + '건 →'"></span>
+          <span class="squest__go" x-show="arenaData && !questLeft()">✓ 완주</span>
         </div>
       </div>
       <!-- 완료 잔상(목표 소진 후 72시간): 다음 퀘스트 생성까지의 공백을 잇는 상태 카드 -->
@@ -1278,6 +1278,7 @@ PAGE = """<!doctype html>
               </div>
               <div style="display:flex;align-items:center;gap:var(--ds-space-2);margin-top:12px;flex-wrap:wrap">
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!schedEditing" x-on:click="schedEdit()" x-text="nextBatchAt ? '수정' : '퀘스트 생성'"></button>
+                <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!schedEditing && nextBatchAt" x-on:click="deleteQuest()" data-tip="반영 예약을 해제합니다 · 검수 의견과 점수는 그대로 남습니다" data-tip-pos="top">퀘스트 삭제</button>
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="schedEditing" x-on:click="saveLearnSched()">저장</button>
                 <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
                 <span x-show="learnReport && learnReport.ts" style="width:1px;height:14px;background:var(--ds-hairline)" aria-hidden="true"></span>

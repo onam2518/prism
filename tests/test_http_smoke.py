@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.parse
 import urllib.request
@@ -231,7 +232,11 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIn("dict_gap", ld)                   # 사전 갭 집계 노출
 
     def test_09_learn_quest_config(self):
-        """검수 목표(퀘스트) 일시 설정 왕복 + 팀 퀘스트 데이터 노출 + 해제."""
+        """검수 목표(퀘스트) 일시 설정 왕복 + 창 스코프 진행률 + 해제(삭제)."""
+        # 퀘스트 생성 이전의 검수: 새 퀘스트 진행률(quest_done)에 포함되면 안 된다
+        self.ok("/feedback", {"hash": self.review_hash, "service": "뉴스", "title": "스모크 일반",
+                              "verdict": "good", "stage": "review", "note": "", "reviewer": "퀘스트이전"})
+        time.sleep(0.05)
         self.ok("/config", {"learn_next_at": "2030-01-02T09:30"})
         cfg = self.ok("/config")
         self.assertEqual(cfg.get("learnNextAt"), "2030-01-02T09:30")
@@ -242,11 +247,20 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertGreaterEqual(a.get("next_version") or 0, 1)
         self.assertIn("next_model", a)                       # 어떤 모델의 버전인지 명기(미설정 시 빈 값 허용)
         self.assertIn("last_version", a)                     # 완료 잔상(반영 완료 카드) 데이터
+        self.assertGreater(a.get("quest_started_at") or 0, 0)
+        self.assertEqual(a.get("quest_done"), 0)             # 생성 이전 검수 미포함(완주 착시 방지)
+        time.sleep(0.05)
+        self.ok("/feedback", {"hash": self.review_hash, "service": "뉴스", "title": "스모크 일반",
+                              "verdict": "good", "stage": "review", "note": "", "reviewer": "퀘스트이후"})
+        self.assertEqual(self.ok("/arena").get("quest_done"), 1)   # 생성 이후 검수만 진행으로
+        self.ok("/config", {"learn_next_at": "2030-01-03T09:30"})  # 일시 수정: 시작점(창) 유지
+        a = self.ok("/arena")
+        self.assertEqual(a.get("quest_done"), 1)
         self.ok("/config", {"learn_next_at": "2020-01-01T04:00"})  # 과거 일시 거부(즉시 발화 함정 방지)
-        self.assertEqual(self.ok("/config").get("learnNextAt"), "2030-01-02T09:30")
+        self.assertEqual(self.ok("/config").get("learnNextAt"), "2030-01-03T09:30")
         self.ok("/config", {"learn_next_at": "엉터리"})           # 형식 오류 무시
-        self.assertEqual(self.ok("/config").get("learnNextAt"), "2030-01-02T09:30")
-        self.ok("/config", {"learn_next_at": ""})                # 목표 해제
+        self.assertEqual(self.ok("/config").get("learnNextAt"), "2030-01-03T09:30")
+        self.ok("/config", {"learn_next_at": ""})                # 목표 해제 = 퀘스트 삭제
         self.assertEqual(self.ok("/config").get("learnNextAt"), "")
         self.assertEqual(self.ok("/arena").get("next_batch_at") or 0, 0)
 
