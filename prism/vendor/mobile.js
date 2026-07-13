@@ -7,25 +7,8 @@ window.mreview = () => ({
   items: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
   fix: { elems: ['summary'], note: '' },
   defTitle: '', defBody: '', dict: null,
-  // 데스크탑 app.js 와 동일 사전(요소·인텐트 정의) · 검수 화면 이원화의 유일한 중복
-  FIX_ELEMENTS: [
-    { id: 'summary', label: '리드문', stage: 'analyze' },
-    { id: 'entities', label: '엔티티', stage: 'analyze' },
-    { id: 'intent', label: '인텐트', stage: 'analyze' },
-    { id: 'category', label: '카테고리', stage: 'analyze' },
-    { id: 'grade', label: '등급·유통', stage: 'judge' },
-    { id: 'quality', label: '품질 사유', stage: 'review' },
-  ],
-  INTENT_DEF: {
-    '속보·사건 추적': '새로 발생한 사건·이슈를 빠르게 전하고 후속 경과를 추적', '심층 분석': '배경·맥락·데이터로 사안을 깊이 해설',
-    '팬덤·화제성': '인물·작품에 대한 팬 반응·화제 중심', '실용 정보': '방법·팁·가이드 등 바로 쓰는 정보',
-    '감성·공감': '감정·경험을 나누며 공감을 유도', '오락·유머': '재미·유머 중심의 가벼운 콘텐츠',
-    '의견·논쟁': '찬반이 병렬로 오가는 주장·토론 콘텐츠(한쪽 논조가 뚜렷하면 옹호·지지/반박·비판)', '학술·전문': '전문 지식·연구·기술을 다룸',
-    '옹호·지지': '특정 사안·인물·정책을 지지하는 한쪽 논조의 콘텐츠', '반박·비판': '특정 사안·인물·정책·주장에 반대·비판하는 한쪽 논조의 콘텐츠',
-    '인터뷰': '인물 문답 중심의 전달 형식', '현장취재·르포': '현장에서 직접 취재한 심층 전달',
-    '그래픽·인포그래픽': '도표·시각 자료 중심의 전달', '포토·영상 중심': '사진·영상이 본문의 중심',
-    '보도자료·공식발표': '기관·기업의 공식 발표 기반', '후기·리뷰·비평': '사용·관람 경험의 평가·비평',
-  },
+  // 요소·인텐트 정의 사전 = 서버 /dict 단일 원천(fixElements·intentDefs) · 데스크탑과 공용(이원화 부채 해소)
+  get FIX_ELEMENTS() { return (this.dict && this.dict.fixElements) || []; },
 
   async init() {
     try {
@@ -159,7 +142,7 @@ window.mreview = () => ({
   gradeLabel(g) { return g === 'G' ? '유통 가능 · G' : (g === 'R' ? '차단 · R' : '판정 보류 · 재실행 필요'); },
   gradeClass(g) { return g === 'G' ? 'ds-badge--success' : (g === 'R' ? 'ds-badge--error' : 'ds-badge--reason'); },
   teamLine(fb) { return '팀 의견 · 정확 ' + (fb.good || 0) + '개 · 수정 필요 ' + (fb.bad || 0) + '개'; },
-  intentDef(v) { this.defTitle = v; this.defBody = this.INTENT_DEF[v] || '관점·형식을 나타내는 인텐트 값입니다.'; this.sheet = 'def'; },
+  intentDef(v) { this.defTitle = v; this.defBody = ((this.dict && this.dict.intentDefs) || {})[v] || '관점·형식을 나타내는 인텐트 값입니다.'; this.sheet = 'def'; },
 
   open(i) { this.idx = i; this.view = 'card'; },
   back() { this.view = 'list'; },
@@ -218,6 +201,7 @@ window.mreview = () => ({
     // 직전 교정 이어쓰기: 내 메모·요소 프리필(선두 '[요소] ' 태그는 저장 시 재부착이라 벗긴다)
     this.fix.note = String(fb.note || '').replace(/^\[[^\]]*\]\s*/, '');
     this.fix.elems = (fb.elems && fb.elems.length) ? fb.elems.slice() : ['summary'];
+    if (!this.dict) this.loadDict();                 // 부팅 시 로드 실패 대비 재시도(요소 칩 원천)
     this.sheet = 'fix';
   },
   toggleElem(id) {

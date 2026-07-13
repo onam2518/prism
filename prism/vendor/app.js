@@ -390,6 +390,7 @@
         // 딥링크: ?m=run|dash|quality|... 로 특정 뷰 진입(설정은 ?settings)
         try { const q = new URLSearchParams(location.search); const m = q.get('m'); if (m) this.selectMod(m); if (q.has('settings')) this.selectMod('system'); } catch (e) {}
         this.loadVocab();
+        this.loadDict();                               // 검수 요소·인텐트 정의 등 UI 사전 선로드(/dict 단일 원천)
         // Cmd/Ctrl + Enter 로 추출 실행
         window.addEventListener('keydown', (e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !this.loading) { e.preventDefault(); this.run(); }
@@ -572,17 +573,11 @@
         this.pendingBad = false; this.editVerdict = false;
         this._afterVerdict();
       },
-      // 태그 용어 정의(호버 툴팁): 인텐트=고정 설명 · 품질 사유=사전(dictData) · 카테고리=경로
-      INTENT_DEF: {
-        '속보·사건 추적': '새로 발생한 사건·이슈를 빠르게 전하고 후속 경과를 추적', '심층 분석': '배경·맥락·데이터로 사안을 깊이 해설',
-        '팬덤·화제성': '인물·작품에 대한 팬 반응·화제 중심', '실용 정보': '방법·팁·가이드 등 바로 쓰는 정보',
-        '감성·공감': '감정·경험을 나누며 공감을 유도', '오락·유머': '재미·유머 중심의 가벼운 콘텐츠',
-        '의견·논쟁': '찬반이 병렬로 오가는 주장·토론 콘텐츠(한쪽 논조가 뚜렷하면 옹호·지지/반박·비판)', '학술·전문': '전문 지식·연구·기술을 다룸',
-        '옹호·지지': '특정 사안·인물·정책을 지지하는 한쪽 논조의 콘텐츠', '반박·비판': '특정 사안·인물·정책·주장에 반대·비판하는 한쪽 논조의 콘텐츠',
-        '인터뷰': '인물 문답 중심의 전달 형식', '현장취재·르포': '현장에서 직접 취재한 심층 전달',
-        '그래픽·인포그래픽': '도표·시각 자료 중심의 전달', '포토·영상 중심': '사진·영상이 본문의 중심',
-        '보도자료·공식발표': '기관·기업의 공식 발표 기반', '후기·리뷰·비평': '사용·관람 경험의 평가·비평',
-        '해설·팩트체크': '사안의 사실 검증·해설', '정형정보': '시세·일정·순위 등 정형 데이터 전달',
+      // 태그 용어 정의(호버 툴팁): 인텐트=사전(/dict intentDefs · 단일 원천) · 품질 사유=사전(dictData) · 카테고리=경로
+      get INTENT_DEF() {
+        const d = this.dictData;
+        if (!d) { if (!this._dictReq) { this._dictReq = true; this.loadDict(); } return {}; }
+        return d.intentDefs || {};
       },
       // 카테고리 한글 표시(UI 전용): 값·저장·전달은 영문(공식 표기) 유지, 렌더링만 변환.
       // 사전(dictData) 미로드 시 lazy 로드 후 원문 폴백 · 미등록 값도 원문 유지.
@@ -651,7 +646,7 @@
         const d = this.dictData || {};
         let out = [];
         if (this.polTab === 'intent') {
-          const defs = (d.intentDefs && Object.keys(d.intentDefs).length) ? d.intentDefs : this.INTENT_DEF;
+          const defs = d.intentDefs || {};
           const ex = d.intentExamples || {};
           out = Object.keys(defs).map((k) => ({ k, t: k, d: defs[k], ex: ex[k] || '' }));
         } else if (this.polTab === 'quality') {
@@ -704,15 +699,13 @@
         window.addEventListener('pointermove', move);
         window.addEventListener('pointerup', up);
       },
-      // 수정 대상 요소(파이프라인 단계 대신 '무엇을 고칠지'로 직관화). 각 요소 → 학습 단계 매핑.
-      FIX_ELEMENTS: [
-        { id: 'summary', label: '리드문', stage: 'analyze' },
-        { id: 'entities', label: '엔티티', stage: 'analyze' },
-        { id: 'intent', label: '인텐트', stage: 'analyze' },
-        { id: 'category', label: '카테고리', stage: 'analyze' },
-        { id: 'grade', label: '등급·유통', stage: 'judge' },
-        { id: 'quality', label: '품질 사유', stage: 'review' },
-      ],
+      // 수정 대상 요소(id·라벨·학습 단계) · 원천 = 서버 /dict fixElements(feedback_loop 단일 원천).
+      // 사전 미로드 시 lazy 로드 후 빈 목록(dictData 도착 시 Alpine 반응형으로 재렌더).
+      get FIX_ELEMENTS() {
+        const d = this.dictData;
+        if (!d) { if (!this._dictReq) { this._dictReq = true; this.loadDict(); } return []; }
+        return d.fixElements || [];
+      },
       elemStage(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.stage : 'analyze'; },
       elemLabel(id) { const e = this.FIX_ELEMENTS.find((x) => x.id === id); return e ? e.label : ''; },
       fmtTs(ts) {                                        // epoch(초) → 'M.D HH:mm'
@@ -891,7 +884,7 @@
             if (!this.saveCred) { this.authEmail = ''; this.authPw = ''; }   // 상태 정리(저장 시 프리필 유지)
             this.reviewerEditing = false; this.authBusy = false; this.authMsg = ''; this.refreshConfig();
             this.loadAdmin();                                        // 관리자 메뉴 게이팅 즉시 갱신
-            this.loadDash(); this.loadVocab(); this.startLive();     // 로그인 전 401 이던 데이터·SSE 재개(서버 게이트)
+            this.loadDash(); this.loadVocab(); this.loadDict(); this.startLive();   // 로그인 전 401 이던 데이터·SSE 재개(서버 게이트)
             if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
             return;
           }
@@ -913,7 +906,7 @@
         if (!this.saveCred) { this.authEmail = ''; this.authPw = ''; }
         this.authPw2 = '';
         this.reviewerEditing = false; this.authBusy = false; this.refreshConfig();
-        this.loadDash(); this.loadVocab(); this.startLive();         // 가입 완료 = 로그인 상태 · 데이터·SSE 재개
+        this.loadDash(); this.loadVocab(); this.loadDict(); this.startLive();       // 가입 완료 = 로그인 상태 · 데이터·SSE 재개
         if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
       },
       _authErr(err, raw) {

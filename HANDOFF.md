@@ -115,8 +115,8 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
     소요서 = `/learn-spec`(.md 자동 생성, 학습 데이터 탭 버튼): 실데이터 수치 + 기준치 + 권장 스펙 + 논문 출처.
   - **모델 재실행**: 콘텐츠 관리 · 수동 추출의 '다른 모델로 재실행' 패널(/rerun, 관리자). 같은 콘텐츠를
     지정 모델로 초안 재생성 · 이전 초안 patch_log(rerun:구→신) 보존 · save_many 무조건 upsert.
-    run_pipeline 에 model 파라미터(llm_for_model 라우팅). ⚠️ supabase 는 재실행 결과가 비-YELLOW 면
-    contents 미갱신(sync 필터) 엣지 있음.
+    run_pipeline 에 model 파라미터(llm_for_model 라우팅). (구 ⚠️ 비-YELLOW 미갱신 엣지는 2026-07-03
+    구조 감사에서 해소: sync_contents(include_all=True) upsert · 계약 테스트 test_save_many_include_all_nonyellow.)
   - **검수 대상 콘텐츠(구 원본 목록 · 콘텐츠 검수 첫 탭)**: 상단 **모델 칩 → 버전 선택 → 목록**
     구조(모델별 정답셋 전제 명기 배너). 검수 대기(YELLOW)·불일치 배지로 흡수(큐 탭 삭제, 골드 문항은
     /raw 에서 삽입). 검수열 = '검수하기'(상세 열기) / 완료 시 ✓일시. hash 키는 `_row_key` 정합.
