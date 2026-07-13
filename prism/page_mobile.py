@@ -20,7 +20,10 @@ MOBILE_PAGE = """<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Prism 검수">
+<script>/* 테마 선적용(렌더 전): 저장값 > 기기 설정 · PC 와 동일 data-theme 규약(폰트 변수도 이 속성에 묶임) */
+try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}</script>
 <link href="/vendor/pretendard.css" rel="stylesheet">
+<link href="/vendor/gmarket.css" rel="stylesheet">
 <link href="/vendor/ds-theme.css" rel="stylesheet">
 <link href="/vendor/ds-components.css" rel="stylesheet">
 <link href="/vendor/app.css" rel="stylesheet">
@@ -59,6 +62,7 @@ MOBILE_PAGE = """<!doctype html>
       <b>PRISM</b>
       <span class="m-top__me" x-text="name + (points !== null ? (' · ' + points + 'pt') : '')"></span>
       <button type="button" class="m-help" x-on:click="sheet = 'help'" aria-label="도움말">?</button>
+      <button type="button" class="m-help m-theme" x-on:click="toggleTheme()" x-text="theme === 'dark' ? '☀' : '☾'" aria-label="화면 모드 전환"></button>
     </header>
     <div class="m-prog">
       <div class="m-prog__row"><span>팀 검수 진행</span><b class="tnum" x-text="(items.length - unreviewedCount()) + ' / ' + items.length + '건'"></b></div>
@@ -87,22 +91,53 @@ MOBILE_PAGE = """<!doctype html>
     <template x-if="view === 'card' && cur()">
       <article class="m-card">
         <div class="m-card__scroll">
+          <!-- 컨텍스트: 출처·모델 → 제목 -->
           <div class="m-card__meta">
             <span class="ds-badge ds-badge--category" x-show="cur().service" x-text="cur().service"></span>
-            <button type="button" class="ds-badge m-badge--tap" x-bind:class="gradeClass(cur().grade)" x-on:click="gradeDef(cur().grade)"><span class="ds-badge__dot"></span><span x-text="gradeLabel(cur().grade)"></span></button>
-            <template x-for="rs in (cur().reasons || [])" x-bind:key="'r' + rs">
-              <button type="button" class="ds-badge ds-badge--reason m-badge--tap" x-on:click="reasonDef(rs)" x-text="reasonKo(rs)"></button>
-            </template>
             <span class="ds-badge ds-badge--neutral" x-show="cur().model" x-text="cur().model + (cur().version > 1 ? ' · v' + cur().version : '')"></span>
           </div>
           <h2 class="m-card__title" x-text="cur().title"></h2>
-          <div class="m-lead" x-show="cur().summary"><em>리드문 (초안)</em><span x-text="cur().summary"></span></div>
-          <div class="m-chips">
-            <template x-for="e in (cur().entities || [])" x-bind:key="'e' + e"><span class="m-chip" x-text="e"></span></template>
-            <template x-for="i in (cur().intent || [])" x-bind:key="'i' + i"><button type="button" class="m-chip m-chip--tap" x-on:click="intentDef(i)" x-text="i"></button></template>
-            <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><button type="button" class="m-chip m-chip--tap" x-on:click="catDef(c)" x-text="catKo(c)"></button></template>
-          </div>
-          <div class="m-body" x-text="cur().body || '본문이 저장되지 않은 콘텐츠입니다 · 데스크탑에서 원문 링크로 확인하세요'"></div>
+
+          <!-- 영역 1 · AI 초안(검수 대상): 판정 + 리드문 + 요소 표 -->
+          <section class="m-draft">
+            <div class="m-sec">AI 초안 · 검수 대상</div>
+            <div class="m-draft__grade">
+              <button type="button" class="ds-badge m-badge--tap" x-bind:class="gradeClass(cur().grade)" x-on:click="gradeDef(cur().grade)"><span class="ds-badge__dot"></span><span x-text="gradeLabel(cur().grade)"></span><i class="m-i">?</i></button>
+              <template x-for="rs in (cur().reasons || [])" x-bind:key="'r' + rs">
+                <button type="button" class="ds-badge ds-badge--reason m-badge--tap" x-on:click="reasonDef(rs)"><span x-text="reasonKo(rs)"></span><i class="m-i">?</i></button>
+              </template>
+            </div>
+            <div class="m-lead" x-show="cur().summary"><em>리드문</em><span x-text="cur().summary"></span></div>
+            <div class="m-meta">
+              <div class="m-meta__row">
+                <span class="m-meta__k">엔티티</span>
+                <div class="m-meta__v">
+                  <template x-for="e in (cur().entities || [])" x-bind:key="'e' + e"><span class="m-val" x-text="e"></span></template>
+                  <span class="m-val m-val--empty" x-show="!(cur().entities || []).length">없음</span>
+                </div>
+              </div>
+              <div class="m-meta__row">
+                <span class="m-meta__k">인텐트</span>
+                <div class="m-meta__v">
+                  <template x-for="i in (cur().intent || [])" x-bind:key="'i' + i"><button type="button" class="m-val m-val--def" x-on:click="intentDef(i)"><span x-text="i"></span><i class="m-i">?</i></button></template>
+                  <span class="m-val m-val--empty" x-show="!(cur().intent || []).length">없음</span>
+                </div>
+              </div>
+              <div class="m-meta__row">
+                <span class="m-meta__k">카테고리</span>
+                <div class="m-meta__v">
+                  <template x-for="c in (cur().category || [])" x-bind:key="'c' + c"><button type="button" class="m-val m-val--def" x-on:click="catDef(c)"><span x-text="catKo(c)"></span><i class="m-i">?</i></button></template>
+                  <span class="m-val m-val--empty" x-show="!(cur().category || []).length">미분류</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 영역 2 · 원문 본문(판정 근거) -->
+          <section class="m-orig">
+            <div class="m-sec">원문 본문</div>
+            <div class="m-body" x-text="cur().body || '본문이 저장되지 않은 콘텐츠입니다 · 데스크탑에서 원문 링크로 확인하세요'"></div>
+          </section>
         </div>
         <div class="m-team" x-show="cur().fb && cur().fb.n" x-text="cur().fb ? teamLine(cur().fb) : ''"></div>
       </article>
@@ -129,7 +164,7 @@ MOBILE_PAGE = """<!doctype html>
     <button type="button" class="m-logout" x-on:click="logout()">로그아웃</button>
   </section>
 
-  <!-- ━━ 바텀시트: 교정 / 도움말 / 용어 ━━ -->
+  <!-- ━━ 오버레이: 교정 = 바텀시트(키보드 입력) · 도움말/용어 정의 = 중앙 모달 ━━ -->
   <div class="m-dim" x-show="sheet" x-on:click="sheet = ''"></div>
 
   <div class="m-sheet" x-show="sheet === 'fix'">
@@ -147,26 +182,27 @@ MOBILE_PAGE = """<!doctype html>
     </div>
   </div>
 
-  <div class="m-sheet" x-show="sheet === 'help'">
-    <div class="m-grab"></div>
+  <div class="m-modal" x-show="sheet === 'help'">
+    <button type="button" class="m-modal__close" x-on:click="sheet = ''" aria-label="닫기">✕</button>
     <h3>검수 도움말</h3>
     <div class="m-hsec">
       <h4>판정 기준</h4>
-      <div class="m-hrow"><span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>정확</span><span>초안(리드문·엔티티·인텐트·카테고리)이 본문과 맞으면</span></div>
-      <div class="m-hrow"><span class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>수정 필요</span><span>틀린 요소를 골라 왜 틀렸는지 한 줄이면 충분해요 · 팀 학습 데이터가 됩니다</span></div>
+      <div class="m-hrow"><span class="m-hrow__k"><span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>정확</span></span><span>초안(리드문·엔티티·인텐트·카테고리)이 본문과 맞으면</span></div>
+      <div class="m-hrow"><span class="m-hrow__k"><span class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>수정 필요</span></span><span>틀린 요소를 골라 왜 틀렸는지 한 줄이면 충분해요 · 팀 학습 데이터가 됩니다</span></div>
     </div>
     <div class="m-hsec">
       <h4>용어가 낯설면</h4>
-      <div class="m-hrow">카드의 등급·사유 배지와 인텐트·카테고리 칩을 탭하면 그 값의 정의를 보여줍니다</div>
+      <div class="m-hrow"><span class="m-hrow__k"><i class="m-i m-i--demo">?</i></span><span>물음표가 붙은 값(등급·사유·인텐트·카테고리)을 탭하면 그 값의 정의를 보여줍니다</span></div>
     </div>
     <a class="m-guide" x-show="guideUrl" x-bind:href="guideUrl" target="_blank" rel="noopener">📖 상세 검수 가이드 열기</a>
     <button type="button" class="m-logout" x-on:click="logout()">로그아웃</button>
   </div>
 
-  <div class="m-sheet" x-show="sheet === 'def'">
-    <div class="m-grab"></div>
+  <div class="m-modal m-modal--def" x-show="sheet === 'def'">
+    <button type="button" class="m-modal__close" x-on:click="sheet = ''" aria-label="닫기">✕</button>
     <h3 x-text="defTitle"></h3>
     <p class="m-def" x-text="defBody"></p>
+    <button type="button" class="ds-btn ds-btn--secondary m-modal__ok" x-on:click="sheet = ''">확인</button>
   </div>
 
   <div class="m-toast" x-show="toast" x-text="toast"></div>

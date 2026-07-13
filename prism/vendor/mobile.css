@@ -2,7 +2,22 @@
    토큰은 ds-theme.css 의 var(--ds-*) 만 참조 → PC 디자인 변경을 자동 추종한다. */
 .mbody{margin:0;background:var(--ds-canvas);color:var(--ds-ink);
   font-family:"Pretendard Variable",Pretendard,-apple-system,sans-serif;
-  -webkit-text-size-adjust:100%}
+  -webkit-text-size-adjust:100%;word-break:keep-all;overflow-wrap:break-word}
+
+/* PC 폰트 규칙 동기화: UI 크롬(브랜드·섹션 라벨·타이틀·숫자)=GmarketSans(--ds-font-display,
+   app.css 가 [data-theme] 에서 활성화 · head 선적용 스크립트가 data-theme 보장) · 본문·표 값·입력=Pretendard.
+   ds-badge·ds-btn·verdictbtn·tnum 은 app.css 공용 규칙이 이미 display 폰트를 적용한다. */
+.m-top b,.m-login h1,.m-done h2,.m-sheet h3{font-family:var(--ds-font-display)}
+
+/* 탭 반응(프레스 상태): 터치 피드백 · 모션 최소화 설정 존중 */
+.m-row,.m-elem,.m-badge--tap,.m-val--def,.m-help,.m-back,.m-modal__close,.verdictbtn{
+  transition:transform .15s ease,opacity .15s ease}
+.m-row:active,.m-elem:active,.m-badge--tap:active,.m-modal__close:active,.verdictbtn:active{transform:scale(.97)}
+.m-val--def:active,.m-help:active,.m-back:active{opacity:.55}
+@media (prefers-reduced-motion: reduce){
+  .m-row,.m-elem,.m-badge--tap,.m-val--def,.m-help,.m-back,.m-modal__close,.verdictbtn{transition:none}
+  .m-row:active,.m-elem:active,.m-badge--tap:active,.m-modal__close:active,.verdictbtn:active{transform:none}
+}
 .mshell{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;
   padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 [x-cloak]{display:none!important}
@@ -24,9 +39,11 @@
 .m-top b{font-size:14px;letter-spacing:.4px}
 .m-top__me{margin-left:auto;font-size:11.5px;color:var(--ds-muted)}
 .m-help{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--ds-hairline);
-  background:transparent;color:var(--ds-muted);font-size:13px;font-weight:800;font-family:inherit}
-.m-prog{padding:6px 16px 10px}
-.m-prog__row{display:flex;justify-content:space-between;font-size:11px;color:var(--ds-muted);margin-bottom:5px}
+  background:transparent;color:var(--ds-muted);font-size:13px;font-weight:800;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.m-theme{font-size:12px;font-weight:600}
+.m-prog{padding:7px 16px 12px}
+.m-prog__row{display:flex;justify-content:space-between;font-size:11px;color:var(--ds-muted);margin-bottom:6px}
 .m-prog__row b{color:var(--ds-ink)}
 .m-bar{height:5px;border-radius:3px;background:var(--ds-hairline-soft,rgba(0,0,0,.08));overflow:hidden}
 .m-bar i{display:block;height:100%;border-radius:3px;background:var(--ds-primary);transition:width .3s}
@@ -37,15 +54,15 @@
 .m-listwrap{flex:1;min-height:0;display:flex;flex-direction:column;padding:2px 12px 12px}
 .m-start{width:100%;height:50px;font-size:14.5px;margin-bottom:10px;flex-shrink:0}
 .m-rows{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  display:flex;flex-direction:column;gap:8px;padding-bottom:8px}
-.m-row{display:flex;align-items:center;gap:10px;text-align:left;padding:13px 14px;
+  display:flex;flex-direction:column;gap:9px;padding-bottom:10px}
+.m-row{display:flex;align-items:center;gap:11px;text-align:left;padding:14px 15px;
   border:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));border-radius:14px;
   background:var(--ds-layer-popup);font-family:inherit;color:var(--ds-ink)}
 .m-row.is-done{opacity:.62}
 .m-row__dot{flex-shrink:0;width:8px;height:8px;border-radius:50%}
 .m-row__dot.g{background:var(--ds-success)}.m-row__dot.r{background:var(--ds-error)}.m-row__dot.h{background:var(--ds-warning)}
-.m-row__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.m-row__title{font-size:13.5px;font-weight:700;line-height:1.4;display:-webkit-box;
+.m-row__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.m-row__title{font-size:14px;font-weight:700;line-height:1.45;display:-webkit-box;
   -webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .m-row__meta{font-size:11px;color:var(--ds-muted)}
 .m-row .ds-badge{flex-shrink:0}
@@ -54,29 +71,62 @@
 .m-card{flex:1;min-height:0;margin:2px 12px 8px;background:var(--ds-layer-popup);
   border-radius:var(--ds-radius-xl,18px);box-shadow:var(--ds-shadow-low,0 2px 10px rgba(0,0,0,.06));
   display:flex;flex-direction:column;overflow:hidden}
-.m-card__scroll{flex:1;min-height:0;overflow-y:auto;padding:14px 16px 18px;-webkit-overflow-scrolling:touch}
-.m-card__meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-.m-card__title{font-size:17px;line-height:1.35;font-weight:800;margin:0}
-.m-lead{margin-top:11px;padding:11px 13px;border-radius:var(--ds-radius-md,12px);
-  background:var(--ds-primary-tint);font-size:13px;line-height:1.55;color:var(--ds-text-secondary)}
-.m-lead em{display:block;font-style:normal;font-size:10px;font-weight:800;color:var(--ds-primary);
-  letter-spacing:.5px;margin-bottom:4px}
-.m-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:11px}
-.m-chip{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:100px;border:1px solid var(--ds-hairline);
-  background:transparent;color:var(--ds-text-secondary);font-family:inherit}
-.m-chip--tap{border-color:var(--ds-primary);color:var(--ds-primary)}
+.m-card__scroll{flex:1;min-height:0;overflow-y:auto;padding:16px 17px 20px;-webkit-overflow-scrolling:touch}
+.m-card__meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:11px}
+.m-card__title{font-size:17px;line-height:1.4;font-weight:800;margin:0;text-wrap:balance}
+.m-lead{margin-top:11px;padding:12px 13px;border-radius:var(--ds-radius-md,12px);
+  background:var(--ds-primary-tint);font-size:13.5px;line-height:1.65;color:var(--ds-text-secondary)}
+.m-lead em{display:block;font-style:normal;font-size:10px;font-weight:700;color:var(--ds-primary);
+  letter-spacing:.6px;margin-bottom:5px;font-family:var(--ds-font-display)}
 /* 탭 정의 배지(등급·품질 사유): DS 배지 시각은 유지하고 button 기본 스타일만 무효화 */
 .m-badge--tap{font-family:inherit;cursor:pointer;border:0;-webkit-appearance:none;appearance:none}
-.m-body{margin-top:12px;font-size:13.5px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap}
-.m-team{padding:9px 16px;border-top:1px solid var(--ds-divider-section);font-size:11.5px;color:var(--ds-muted)}
+
+/* ── 영역 구분: 섹션 라벨 + AI 초안 패널 / 원문 본문 ── */
+.m-sec{font-size:10px;font-weight:700;letter-spacing:.8px;color:var(--ds-muted);margin-bottom:10px;
+  font-family:var(--ds-font-display)}
+.m-draft{margin-top:16px;padding:13px 14px 7px;border:1px solid var(--ds-hairline-soft,rgba(0,0,0,.07));
+  border-radius:var(--ds-radius-md,12px)}
+.m-draft__grade{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:11px}
+.m-draft .m-lead{margin-top:0;margin-bottom:3px}
+.m-orig{margin-top:18px;padding-top:15px;border-top:1px solid var(--ds-divider-section)}
+.m-body{font-size:14px;line-height:1.75;color:var(--ds-text-secondary);white-space:pre-wrap}
+
+/* ── 초안 요소 표(엔티티·인텐트·카테고리): 라벨 열 + 값 열 ── */
+.m-meta{margin-top:4px;display:flex;flex-direction:column}
+.m-meta__row{display:flex;gap:12px;padding:10.5px 0;border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))}
+.m-meta__row:first-child{border-top:0}
+.m-meta__k{flex:none;width:56px;font-size:12px;font-weight:800;color:var(--ds-text-secondary);
+  padding-top:2px;letter-spacing:-.1px}
+.m-meta__v{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;
+  font-size:13.5px;line-height:1.6;color:var(--ds-ink)}
+.m-val{font-weight:600}
+.m-val--empty{color:var(--ds-muted);font-weight:500}
+/* 정의 있는 값 = 동일 어포던스(점선 밑줄 + ? 아이콘) · 등급·사유 배지의 ? 와 같은 규약 */
+.m-val--def{background:none;border:0;padding:0;font-family:inherit;font-size:inherit;font-weight:600;
+  color:var(--ds-primary);display:inline-flex;align-items:center;gap:4px;text-align:left;
+  text-decoration:underline dotted;text-decoration-thickness:1px;text-underline-offset:3px}
+.m-i{flex:none;display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;
+  border-radius:50%;border:1px solid currentColor;font-size:8.5px;font-style:normal;font-weight:800;
+  line-height:1;opacity:.7}
+.m-i--demo{width:16px;height:16px;font-size:10px;color:var(--ds-primary);opacity:1;margin-top:1px}
+.m-team{padding:10px 17px;border-top:1px solid var(--ds-divider-section);font-size:11.5px;line-height:1.5;color:var(--ds-muted)}
 .m-team b{color:var(--ds-ink)}
 
 /* ── 하단 판정바: DS verdictbtn 을 모바일 터치 타겟으로 확장 ── */
 .m-actions{display:flex;gap:9px;padding:8px 12px 12px}
 .m-actions .verdictbtn{flex:1;height:52px;justify-content:center;font-size:15px}
 
-/* ── 바텀시트 공통 ── */
+/* ── 오버레이 공통(교정 = 바텀시트 · 도움말/용어 정의 = 중앙 모달) ── */
 .m-dim{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:40}
+.m-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;
+  width:min(360px,calc(100vw - 44px));max-height:74vh;max-height:74dvh;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;background:var(--ds-layer-popup);border-radius:20px;
+  padding:20px 20px 18px;box-shadow:var(--ds-shadow-high,0 18px 50px rgba(0,0,0,.3))}
+.m-modal h3{font-size:14.5px;font-weight:700;margin:0 0 12px;padding-right:28px;font-family:var(--ds-font-display)}
+.m-modal__close{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;border:0;
+  background:var(--ds-hairline-soft,rgba(0,0,0,.05));color:var(--ds-muted);font-size:13px;font-weight:800;
+  font-family:inherit;display:flex;align-items:center;justify-content:center}
+.m-modal__ok{width:100%;height:44px;margin-top:16px;font-size:13.5px}
 .m-sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--ds-layer-popup);
   border-radius:22px 22px 0 0;padding:12px 18px calc(20px + env(safe-area-inset-bottom));
   box-shadow:var(--ds-shadow-high,0 -8px 30px rgba(0,0,0,.2));max-height:78vh;max-height:78dvh;overflow-y:auto}
@@ -91,17 +141,21 @@
 .m-sheet__row .ds-btn{flex:1;height:48px;font-size:14px}
 .m-sheet__row .ds-btn--primary{flex:1.6}
 
-/* 도움말·용어 */
-.m-hrow{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:13px;line-height:1.55;color:var(--ds-text-secondary)}
-.m-hrow .ds-badge{flex-shrink:0;margin-top:1px}
-.m-hsec{margin-bottom:12px}
-.m-hsec h4{font-size:11.5px;font-weight:800;color:var(--ds-muted);letter-spacing:.4px;margin:0 0 4px}
+/* 도움말·용어: 판정 기준도 검수 카드와 동일한 표 규약(라벨 열 + 내용 열 + 행 헤어라인) */
+.m-hrow{display:flex;gap:11px;align-items:flex-start;padding:9px 0;font-size:13px;line-height:1.6;
+  color:var(--ds-text-secondary);border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))}
+.m-hrow:first-of-type{border-top:0}
+.m-hrow__k{flex:none;width:64px;display:flex;justify-content:flex-start;padding-top:1px}
+.m-hrow .ds-badge,.m-hrow .m-i{flex-shrink:0}
+.m-hsec{margin-bottom:14px}
+.m-hsec h4{font-size:10px;font-weight:700;color:var(--ds-muted);letter-spacing:.8px;margin:0 0 5px;
+  font-family:var(--ds-font-display)}
 .m-guide{display:flex;align-items:center;justify-content:center;gap:6px;height:46px;margin-top:6px;
   border-radius:13px;border:1px solid var(--ds-hairline);color:var(--ds-primary);
   font-size:13.5px;font-weight:700;text-decoration:none}
 .m-logout{display:block;text-align:center;margin-top:14px;font-size:12px;color:var(--ds-muted);
   background:none;border:0;font-family:inherit;width:100%}
-.m-def{font-size:13.5px;line-height:1.65;color:var(--ds-text-secondary);margin:0}
+.m-def{font-size:14px;line-height:1.7;color:var(--ds-text-secondary);margin:0}
 
 /* ── 완료 ── */
 .m-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;

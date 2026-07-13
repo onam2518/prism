@@ -1,7 +1,7 @@
 /* 모바일 검수 전용(/m) 앱 상태 · 데스크탑과 같은 API 계약(/auth·/reviewer·/raw·/feedback·/dict)만 사용.
    v1.1: 목록 화면(탭 진입) + 카드 검수 · 카테고리 한글 표시(catKo · /dict 재사용). */
 window.mreview = () => ({
-  view: 'boot', sheet: '', backend: '', guideUrl: '',
+  view: 'boot', sheet: '', backend: '', guideUrl: '', theme: 'light',
   email: '', pw: '', nick: '', err: '', busy: false,
   authToken: '', rtoken: '', reviewer: '', name: '',
   items: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
@@ -11,6 +11,8 @@ window.mreview = () => ({
   get FIX_ELEMENTS() { return (this.dict && this.dict.fixElements) || []; },
 
   async init() {
+    // 테마: head 선적용 스크립트가 저장값(prism_m_theme)>기기 설정으로 data-theme 를 먼저 세팅 · 여기선 상태만 동기화
+    this.theme = document.documentElement.getAttribute('data-theme') || 'light';
     try {
       this.authToken = localStorage.getItem('prism_token') || '';
       this.rtoken = localStorage.getItem('prism_rtoken') || '';
@@ -74,6 +76,11 @@ window.mreview = () => ({
     this.reviewer = n; this.name = n;
     try { localStorage.setItem('prism_reviewer', n); } catch (e) {}
     this.boot();
+  },
+  toggleTheme() {                                  // 라이트/다크 전환 · PC(app.js toggleTheme)와 동일 data-theme 규약
+    this.theme = this.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', this.theme);
+    try { localStorage.setItem('prism_m_theme', this.theme); } catch (e) {}
   },
   logout() {
     try { localStorage.removeItem('prism_token'); localStorage.removeItem('prism_rtoken'); localStorage.removeItem('prism_reviewer'); } catch (e) {}
