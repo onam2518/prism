@@ -100,6 +100,7 @@ window.mreview = () => ({
 
   async boot() {
     this.view = 'boot';
+    await this.syncProfile();                      // 데스크탑에서 닉네임 변경 시 localStorage 옛 이름 교체
     await this.loadItems();
     this.loadPoints();
     this.loadDict();                               // 카테고리 한글 표시(비차단)
@@ -122,8 +123,20 @@ window.mreview = () => ({
   async loadPoints() {
     try {
       const r = await (await this.afetch('/arena' + (this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''))).json();
-      const me = ((r && r.leaderboard) || []).find((x) => x.reviewer === this.name);
+      // 내 행 매칭 = reviewer_id(서버 my_id) 우선 · 이름 매칭은 닉네임 변경 직후 어긋난다(데스크탑과 동일 규약)
+      const rows = (r && r.leaderboard) || [];
+      const me = (r && r.my_id && rows.find((x) => x.reviewer_id === r.my_id)) || rows.find((x) => x.reviewer === this.name);
       if (me) this.points = me.points;
+    } catch (e) {}
+  },
+  async syncProfile() {                            // 프로필 = 서버 기준(기기 간 닉네임 동기화)
+    if (this.backend !== 'supabase' || !this.authToken) return;
+    try {
+      const p = await (await this.afetch('/reviewer', { method: 'POST', headers: this._hdrs(), body: JSON.stringify({ mode: 'login' }) })).json();
+      if (p && p.ok && p.name && p.name !== this.name) {
+        this.name = p.name; this.reviewer = p.name;
+        try { localStorage.setItem('prism_reviewer', p.name); } catch (e) {}
+      }
     } catch (e) {}
   },
 

@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -300,6 +301,10 @@ class TestButtonsEndToEnd(unittest.TestCase):
         names = [b["reviewer"] for b in (self.ok("/arena").get("leaderboard") or [])]
         self.assertIn("개명후", names)                    # 검수 이력(점수)이 새 이름으로
         self.assertNotIn("개명전", names)
+        # 내 행 식별자(my_id): 클라가 이름 문자열 대신 reviewer_id 로 자기 행을 찾는 근거
+        a = self.ok("/arena?reviewer=" + urllib.parse.quote("개명후"))
+        self.assertEqual(a.get("my_id"), "개명후")
+        self.assertTrue(any(b.get("reviewer_id") == a["my_id"] for b in a.get("leaderboard") or []))
 
     # ── 게시판: 등록(팀원) → 목록(최신순) → 상태 변경(관리자) → 삭제 ──
     def test_13_board(self):

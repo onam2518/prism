@@ -194,7 +194,7 @@
         if (nv === this.reviewer) { this.nickEdit = false; this.nickMsg = ''; return; }
         this.nickBusy = true; this.nickMsg = '';
         try {
-          const d = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ mode: 'rename', reviewer: this.reviewer, name: nv, char: this.reviewerChar }) })).json();
+          const d = await (await this._afetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ mode: 'rename', reviewer: this.reviewer, name: nv, char: this.reviewerChar }) })).json();
           if (!d.ok) { this.nickMsg = '오류: ' + (d.error || '변경 실패'); }
           else {
             this.reviewer = nv; try { localStorage.setItem('prism_reviewer', nv); } catch (e) {}
@@ -203,6 +203,17 @@
           }
         } catch (e) { this.nickMsg = '오류: ' + e; }
         this.nickBusy = false;
+      },
+      // 프로필 동기화(부팅): 다른 기기·탭에서 닉네임을 바꾼 경우 localStorage 의 옛 이름을 서버 기준으로 교체
+      async syncProfile() {
+        if (!this.authToken) return;                   // 토큰 없음(로컬 sqlite) = 이름이 곧 키라 동기화 불필요
+        try {
+          const p = await (await fetch('/reviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ mode: 'login' }) })).json();
+          if (p && p.ok && p.name && (p.name !== this.reviewer || (p.char || '') !== this.reviewerChar)) {
+            this.reviewer = p.name; this.reviewerChar = p.char || this.reviewerChar;
+            try { localStorage.setItem('prism_reviewer', this.reviewer); localStorage.setItem('prism_reviewer_char', this.reviewerChar); } catch (e) {}
+          }
+        } catch (e) {}
       },
       // 게시판(기능개선·오류 제보 · 팀 스코프)
       boardData: null, boardForm: { kind: 'bug', title: '', body: '' }, boardBusy: false, boardMsg: '',
@@ -362,7 +373,7 @@
       init() {
         this.loadReviewer();                           // 검수자·토큰(localStorage) · refreshConfig 의 관리자 로드보다 먼저
         if (this.authToken) {                          // 관리자 판정을 /config 성공에 묶지 않는다(새로고침 경합 방지)
-          const kick = () => this.ensureAdmin();
+          const kick = () => { this.ensureAdmin(); this.syncProfile(); };   // 프로필 = 서버 기준(닉네임 변경 기기 간 반영)
           this.rtoken ? this.authRefresh().then(kick, kick) : kick();   // 부팅 선갱신: 만료 토큰 새로고침 케이스
         }
         setInterval(() => { if (this.rtoken && this.authToken) this.authRefresh(); }, 45 * 60 * 1000);   // 1h 만료 전 주기 연장
@@ -1293,8 +1304,9 @@
         const m = this.arenaMe;                        // 멤버: 첫 판정 전까지 안내
         return !((m && m.reviews) || 0);
       },
-      get arenaMe() { const d = this.arenaData; if (!d || !this.reviewer) return null; return (d.leaderboard || []).find((r) => r.reviewer === this.reviewer) || null; },
-      get arenaMyRank() { const d = this.arenaData; if (!d || !this.reviewer) return 0; const i = (d.leaderboard || []).findIndex((r) => r.reviewer === this.reviewer); return i < 0 ? 0 : i + 1; },
+      // 내 행 매칭 = reviewer_id(서버 my_id) 우선: 이름 매칭은 닉네임 변경 직후 기기 간 캐시로 어긋난다
+      get arenaMe() { const d = this.arenaData; if (!d || !this.reviewer) return null; const rows = d.leaderboard || []; return (d.my_id && rows.find((r) => r.reviewer_id === d.my_id)) || rows.find((r) => r.reviewer === this.reviewer) || null; },
+      get arenaMyRank() { const d = this.arenaData; const m = this.arenaMe; if (!d || !m) return 0; const i = (d.leaderboard || []).indexOf(m); return i < 0 ? 0 : i + 1; },
       rankMedal(i) { return ['🥇', '🥈', '🥉'][i] || ('#' + (i + 1)); },
       // 주간 리그(D-9): 이번 주 점수 순위 + 승급/강등 존 + 지난주 대비 이동
       weeklyLeague() {
