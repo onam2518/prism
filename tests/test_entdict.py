@@ -297,6 +297,49 @@ class TestNamuFallback(EntdictBase):
         self.assertEqual(e["external_ids"]["wikidata"], "Q1")     # 외부키 매핑은 누적 보존
 
 
+class TestHttp429Backoff(unittest.TestCase):
+    """429 는 Retry-After 준수 재시도 · 다른 오류·재시도 소진은 그대로 전파."""
+
+    def _http_error(self, code, retry_after="0"):
+        import email.message
+        h = email.message.Message()
+        h["Retry-After"] = retry_after
+        import urllib.error
+        return urllib.error.HTTPError("http://x", code, "err", h, None)
+
+    def test_retries_on_429_then_succeeds(self):
+        calls = {"n": 0}
+
+        def fake_urlopen(req, timeout=0):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise self._http_error(429)
+            import io
+            class R(io.BytesIO):
+                def __enter__(self): return self
+                def __exit__(self, *a): return False
+            return R(b'{"ok": 1}')
+
+        import urllib.request as UR
+        orig = UR.urlopen
+        UR.urlopen = fake_urlopen
+        try:
+            self.assertEqual(ED._http_json("http://x"), {"ok": 1})
+        finally:
+            UR.urlopen = orig
+        self.assertEqual(calls["n"], 3)
+
+    def test_non_429_propagates(self):
+        import urllib.request as UR
+        orig = UR.urlopen
+        UR.urlopen = lambda req, timeout=0: (_ for _ in ()).throw(self._http_error(500))
+        try:
+            with self.assertRaises(Exception):
+                ED._http_json("http://x")
+        finally:
+            UR.urlopen = orig
+
+
 class TestOccupationSnap(unittest.TestCase):
     def test_snap(self):
         self.assertEqual(ED.snap_occupation(["배드민턴 선수"]), "스포츠인")
