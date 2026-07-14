@@ -87,6 +87,21 @@ def build(results_path: str, out_path: str, title: str = "아이템 메타 현�
     return info
 
 
+def _logo_data_uri(name: str) -> str:
+    """벤더 로고 SVG 를 data URI 로 인라인(외부 요청 0). 서빙·로컬파일·CLI 모든 컨텍스트에서
+    항상 표시된다(<img src=/vendor/…> 는 서버 서빙 시에만 로드돼 로컬 파일에선 깨졌음).
+    <img> 로 감싸므로 다중 로고 인라인 시의 SVG id 충돌(clipPath 등)도 없다."""
+    import base64
+    import os
+    p = os.path.join(os.path.dirname(__file__), "vendor", os.path.basename(name))
+    try:
+        with open(p, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        return "data:image/svg+xml;base64," + b64
+    except OSError:
+        return ""
+
+
 def build_integrated(results_path: str, out_path: str,
                      title: str = "Prism", n_users: int = 6,
                      logs_path: str = None, demo: bool = False, notice: str = "") -> dict:
@@ -104,6 +119,8 @@ def build_integrated(results_path: str, out_path: str,
         return h.replace("&", "&amp;").replace('"', "&quot;")
 
     page = TH.inject(_INTEGRATED).replace("__TITLE__", html.escape(title)) \
+        .replace("__LOGO_LIGHT__", _logo_data_uri("prism-logo-tagline-light.svg")) \
+        .replace("__LOGO_DARK__", _logo_data_uri("prism-logo-tagline-dark.svg")) \
         .replace("__CONTENT_SRCDOC__", esc(content_html)) \
         .replace("__TOPIC_SRCDOC__", esc(topic_html)) \
         .replace("__USER_SRCDOC__", esc(user_html))
@@ -145,7 +162,7 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 #hp dd{margin:2px 0 0;color:var(--ds-body);font-size:12.5px;line-height:1.5}
 #hp .pl{border-left:2px solid var(--ds-hairline);padding-left:10px;margin:6px 0}
 </style></head><body>
-<div class="tabbar"><span class="brand" aria-label="Prism"><img class="lg lg-light" src="/vendor/prism-logo-tagline-light.png" alt="Prism"><img class="lg lg-dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism"></span>
+<div class="tabbar"><span class="brand" aria-label="Prism"><img class="lg lg-light" src="__LOGO_LIGHT__" alt="Prism"><img class="lg lg-dark" src="__LOGO_DARK__" alt="Prism"></span>
  <span class="tab on" data-t="content">아이템 메타</span>
  <span class="tab" data-t="topic">토픽</span>
  <span class="tab" data-t="user">사용자 메타</span>
