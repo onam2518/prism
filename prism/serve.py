@@ -747,7 +747,40 @@ def media_action(data: dict) -> dict:
         if not raw.strip():
             return {"ok": False, "error": "\uc790\ub9c9 \uc6d0\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694"}
         return {"ok": True, **MX.parse_subtitles(raw, fmt)}
+    if action == "s5ab":                              # S5 \uba54\ud0c0\ucd94\ucd9c \ubaa8\ub378 A/B(\ubbf8\uc800\uc7a5)
+        text = (data.get("text") or "").strip()
+        models = data.get("models") or []
+        if not text:
+            return {"ok": False, "error": "\ud1b5\ud569 \uc6d0\uace0(\ud14d\uc2a4\ud2b8)\ub97c \uc785\ub825\ud558\uc138\uc694"}
+        if not models:
+            return {"ok": False, "error": "\ud6c4\ubcf4 \ubaa8\ub378\uc744 1\uac1c \uc774\uc0c1 \uc120\ud0dd\ud558\uc138\uc694"}
+        return media_s5ab(text, models, caption=data.get("caption", ""))
     return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791(\uc790\ub9c9 \ud30c\uc2f1\uc740 media_action, \uc601\uc0c1\uc740 media_native)"}
+
+
+def media_s5ab(text: str, models: list, *, caption: str = "") -> dict:
+    """S5 \uba54\ud0c0\ucd94\ucd9c \ubaa8\ub378 A/B(\uc2e4\ud5d8\uc2e4 \u00b7 \ubbf8\uc800\uc7a5). \uac19\uc740 \ud1b5\ud569 \uc6d0\uace0\ub97c \ud6c4\ubcf4 \ubaa8\ub378\ub4e4\uc5d0 \ud0dc\uc6cc
+    \uc544\uc774\ud15c \uba54\ud0c0(\ub9ac\ub4dc\ubb38\u00b7\uc778\ud150\ud2b8\u00b7\uc5d4\ud2f0\ud2f0\u00b7IAB)\ub97c \ub098\ub780\ud788 \ube44\uad50 \u2192 '\uc120\uc815 \ub300\uae30 \uc2ac\ub86f'\uc758 \ubaa8\ub378
+    \uad50\uccb4 \uc790\uc720\ub97c \uc2e4\uce21\uc73c\ub85c \uc99d\uba85. \ubaa8\ub378 \ub77c\uc6b0\ud305\uc740 llm_for_model \uc7ac\uc0ac\uc6a9(solar \uc9c1\uc811\u00b7\ub77c\uc6b0\ud130).
+
+    \ubb34\ud0a4(\ub610\ub294 \uc11c\ubc84 mock) \uc2dc route=mock \ub85c \ub3d9\uc77c \uc0b0\ucd9c \u2014 \uc2e4\ud0a4 \uc5f0\uacb0 \uc2dc \ubaa8\ub378\ubcc4\ub85c \uac08\ub9b0\ub2e4.
+    """
+    body = (caption.strip() + "\n" + text).strip() if caption.strip() else text
+    results = []
+    for m in list(dict.fromkeys(str(x) for x in models))[:6]:   # \uc911\ubcf5 \uc81c\uac70 \u00b7 \uc0c1\ud55c 6
+        try:
+            res = run_pipeline({"displayServiceName": "\uc601\uc0c1", "title": "", "subtitle": "", "body": body},
+                               mock=Handler.server_mock, model=m, persist=False)
+        except Exception as e:
+            results.append({"model": m, "error": str(e)[:120]})
+            continue
+        if res.get("error"):
+            results.append({"model": m, "error": res["error"]})
+            continue
+        out = res.get("output") or {}
+        results.append({"model": m, "mock": bool(res.get("mock")),
+                        "item_meta": out.get("item_meta") or {}})
+    return {"ok": True, "results": results}
 
 
 def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
