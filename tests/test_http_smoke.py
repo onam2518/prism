@@ -317,7 +317,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertGreater(td.get("n_contents") or 0, 0, "선행 테스트가 콘텐츠를 적재해야 함")
         # 카탈로그·설정·사용자 정의 컨테이너 노출(생성 폼 원천)
         self.assertIn("catalog", td)
-        self.assertEqual(set(td["catalog"]), {"intents", "cats", "keywords"})
+        self.assertEqual(set(td["catalog"]), {"intents", "cats", "keywords", "eattrs"})
         self.assertEqual(set(td.get("settings") or {}), {"co_min", "entity_min"})
         self.assertIsInstance(td.get("customDefs"), list)
         n = td["n_contents"]
@@ -373,6 +373,61 @@ class TestButtonsEndToEnd(unittest.TestCase):
         # 삭제 → 사용자 정의에서 제거
         after = self.ok("/topic-studio", {"action": "delete", "id": cid})
         self.assertFalse(any(d["id"] == cid for d in after["customDefs"]))
+
+    # ── 엔티티 사전 메뉴: 색인·수동 등재·편집(확정)·토픽 속성 조건까지 왕복 ──
+    def test_14_entdict_buttons(self):
+        # 엔티티가 나오는 콘텐츠 적재(mock 엔티티 = 빈도 상위 토큰) → 적재 훅이 사전에 등재
+        self.ok("/run", {"displayServiceName": "스포츠", "title": "안세영 안세영 결승 진출",
+                         "body": "안세영 선수가 결승에 진출했다. 안세영 경기력이 좋았다."})
+        d = self.ok("/entdict")
+        self.assertEqual(set(d), {"items", "stats", "meta"})
+        self.assertEqual(set(d["meta"]["types"]), {"PS", "OG", "LC", "AF", "EV", "TM"})
+        self.assertGreater(d["stats"]["total"], 0, "적재 훅이 개체를 등재해야 함")
+        self.assertTrue(any(e["name"] == "안세영" for e in d["items"]))
+        # 백필(기존 콘텐츠 색인) 멱등 · mock 서버는 위키데이터 보강 생략
+        bf = self.ok("/entdict", {"action": "backfill"})
+        self.assertTrue(bf["ok"])
+        self.assertEqual(bf["enrich_queued"], 0)                    # mock = 네트워크 0
+        # 수동 등재 → 목록 필터(q) → 상세 → 타입·속성 수동 확정 → 별칭
+        add = self.ok("/entdict", {"action": "add", "name": "스모크개체"})
+        self.assertTrue(add["ok"])
+        eid = add["entity"]["entity_id"]
+        self.assertEqual(add["entity"]["status"], "pending")
+        self.assertTrue(any(e["entity_id"] == eid for e in self.ok("/entdict?q=" + urllib.parse.quote("스모크"))["items"]))
+        up = self.ok("/entdict", {"action": "update", "id": eid, "type": "PS",
+                                  "attrs": {"gender": "여성", "occupation": "스포츠인"},
+                                  "alias": "스모크 선수"})
+        self.assertTrue(up["ok"])
+        self.assertEqual(up["entity"]["status"], "active")
+        self.assertEqual(up["entity"]["attr_meta"]["gender"]["status"], "confirmed")
+        self.assertIn("스모크 선수", up["aliases"])
+        det = self.ok("/entdict", {"action": "detail", "id": eid})
+        self.assertEqual(det["entity"]["attrs"]["gender"], "여성")
+        # enrich(mock) = 네트워크 없이 안전 응답 · 허용 외 타입 거부
+        self.assertTrue(self.ok("/entdict", {"action": "enrich", "id": eid}).get("mock"))
+        self.assertFalse(self.ok("/entdict", {"action": "update", "id": eid, "type": "XX"})["ok"])
+        # 완료 기준 e2e: 링크된 개체(안세영)에 속성 확정 → '여성 스포츠인' 토픽이 해당 콘텐츠를 잡는다
+        ase = next(e for e in self.ok("/entdict?q=" + urllib.parse.quote("안세영"))["items"]
+                   if e["name"] == "안세영")
+        self.ok("/entdict", {"action": "update", "id": ase["entity_id"], "type": "PS",
+                             "attrs": {"gender": "여성", "occupation": "스포츠인"}})
+        cat = self.ok("/topics")["catalog"]["eattrs"]               # 링크된 개체 속성만 후보로 노출
+        self.assertTrue(any(c["k"] == "gender:여성" for c in cat))
+        pv = self.ok("/topic-studio", {"action": "preview", "def": {
+            "name": "여성 스포츠인", "eattrs": ["gender:여성", "occupation:스포츠인", "몰래키:값"]}})
+        b = pv["preview"]["bundles"][0]
+        self.assertIn("성별=여성", b["label"])                       # 비허용 키는 sanitize 에서 제거
+        self.assertNotIn("몰래키", b["label"])
+        self.assertGreaterEqual(b["count"], 1)                      # 본문에 '여성' 없이 속성으로 매칭
+        saved = self.ok("/topic-studio", {"action": "save", "def": {
+            "name": "여성 스포츠인 스모크", "eattrs": ["gender:여성"]}})
+        mine = [g for g in saved.get("custom", []) if g["name"] == "여성 스포츠인 스모크"]
+        self.assertEqual(len(mine), 1)
+        self.assertTrue(any(x["dim"] == "eattrs" for x in mine[0]["must"]))   # 항상 필수
+        self.ok("/topic-studio", {"action": "delete", "id": mine[0]["id"]})
+        # 삭제 → 목록·링크 제거
+        self.assertTrue(self.ok("/entdict", {"action": "delete", "id": eid})["ok"])
+        self.assertFalse(any(e["entity_id"] == eid for e in self.ok("/entdict?q=" + urllib.parse.quote("스모크"))["items"]))
 
     # ── 홈 · 닉네임 변경: 이름만 교체 · 검수 이력(리더보드)이 새 이름으로 이관 ──
     def test_12_reviewer_rename(self):

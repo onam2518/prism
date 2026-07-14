@@ -120,6 +120,21 @@ class Store:
         CREATE TABLE IF NOT EXISTS assignment_cfg(
           content_hash TEXT, team TEXT NOT NULL DEFAULT '', min_reviewers INTEGER,
           PRIMARY KEY(content_hash, team));
+        -- 엔티티 사전: 개체 고유키·타입(NER 6종)·타입별 속성. 타입·속성은 적재 부여 메타(재판정 없음).
+        CREATE TABLE IF NOT EXISTS entities(
+          entity_id TEXT PRIMARY KEY, name TEXT, type TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'pending', attrs TEXT, attr_meta TEXT,
+          external_ids TEXT, merged_into TEXT NOT NULL DEFAULT '',
+          created_at REAL, updated_at REAL);
+        -- 별칭 조회 테이블(이형 표기 → 개체) · 표시용 별칭 목록도 여기서 파생.
+        CREATE TABLE IF NOT EXISTS entity_aliases(
+          alias TEXT PRIMARY KEY, entity_id TEXT);
+        -- 콘텐츠 ↔ 개체 링크. item_meta.entities(추출 산출물)는 불변 · 링크만 추가.
+        CREATE TABLE IF NOT EXISTS content_entities(
+          content_hash TEXT, entity_id TEXT, surface TEXT, team TEXT NOT NULL DEFAULT '',
+          ts REAL, PRIMARY KEY(content_hash, entity_id, team));
+        CREATE INDEX IF NOT EXISTS ix_centities_ent ON content_entities(entity_id);
+        CREATE INDEX IF NOT EXISTS ix_ealias_ent ON entity_aliases(entity_id);
         CREATE INDEX IF NOT EXISTS ix_assign_team ON assignments(team, reviewer);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         CREATE INDEX IF NOT EXISTS ix_gold_reviewer ON gold_checks(reviewer);
@@ -1267,6 +1282,152 @@ class Store:
         c = self._conn()
         return {rv: n for rv, n in c.execute(
             "SELECT reviewer, COUNT(*) FROM events WHERE kind LIKE 'golden:%' GROUP BY reviewer")}
+
+    # ── 엔티티 사전 ──────────────────────────────────────────────────────
+    _ENT_JSON = ("attrs", "attr_meta", "external_ids")
+
+    def _ent_row(self, r) -> dict:
+        e = {"entity_id": r[0], "name": r[1], "type": r[2] or "", "status": r[3] or "pending",
+             "attrs": r[4], "attr_meta": r[5], "external_ids": r[6],
+             "merged_into": r[7] or "", "created_at": r[8], "updated_at": r[9]}
+        for k in self._ENT_JSON:
+            try:
+                e[k] = json.loads(e[k]) if e[k] else {}
+            except (TypeError, ValueError):
+                e[k] = {}
+        return e
+
+    _ENT_SEL = "SELECT entity_id,name,type,status,attrs,attr_meta,external_ids,merged_into,created_at,updated_at FROM entities"
+
+    def ent_upsert(self, e: dict):
+        c = self._conn()
+        c.execute("""INSERT INTO entities(entity_id,name,type,status,attrs,attr_meta,external_ids,merged_into,created_at,updated_at)
+          VALUES(?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(entity_id) DO UPDATE SET
+            name=excluded.name, type=excluded.type, status=excluded.status,
+            attrs=excluded.attrs, attr_meta=excluded.attr_meta, external_ids=excluded.external_ids,
+            merged_into=excluded.merged_into, updated_at=excluded.updated_at""",
+          (e["entity_id"], e.get("name", ""), e.get("type", ""), e.get("status", "pending"),
+           json.dumps(e.get("attrs") or {}, ensure_ascii=False),
+           json.dumps(e.get("attr_meta") or {}, ensure_ascii=False),
+           json.dumps(e.get("external_ids") or {}, ensure_ascii=False),
+           e.get("merged_into", ""), e.get("created_at") or time.time(),
+           e.get("updated_at") or time.time()))
+        c.commit()
+
+    def ent_update(self, entity_id: str, fields: dict) -> bool:
+        """부분 갱신. dict 필드는 JSON 직렬화 · 없는 개체는 False."""
+        allowed = ("name", "type", "status", "attrs", "attr_meta", "external_ids",
+                   "merged_into", "updated_at")
+        sets, vals = [], []
+        for k in allowed:
+            if k not in fields:
+                continue
+            v = fields[k]
+            sets.append(f"{k}=?")
+            vals.append(json.dumps(v, ensure_ascii=False) if k in self._ENT_JSON else v)
+        if not sets:
+            return False
+        c = self._conn()
+        cur = c.execute(f"UPDATE entities SET {','.join(sets)} WHERE entity_id=?", (*vals, entity_id))
+        c.commit()
+        return cur.rowcount > 0
+
+    def ent_get(self, entity_id: str):
+        c = self._conn()
+        r = c.execute(self._ENT_SEL + " WHERE entity_id=?", (entity_id,)).fetchone()
+        return self._ent_row(r) if r else None
+
+    def ent_id_by_alias(self, name: str) -> str:
+        c = self._conn()
+        r = c.execute("SELECT entity_id FROM entity_aliases WHERE alias=?", (name,)).fetchone()
+        return r[0] if r else ""
+
+    def ent_alias_add(self, alias: str, entity_id: str):
+        c = self._conn()
+        c.execute("INSERT OR IGNORE INTO entity_aliases(alias,entity_id) VALUES(?,?)", (alias, entity_id))
+        c.commit()
+
+    def ent_aliases(self, entity_id: str) -> list:
+        c = self._conn()
+        return [a for a, in c.execute("SELECT alias FROM entity_aliases WHERE entity_id=? ORDER BY alias",
+                                      (entity_id,))]
+
+    def ent_link(self, content_hash, entity_id, surface="", team=None):
+        c = self._conn()
+        c.execute("""INSERT OR IGNORE INTO content_entities(content_hash,entity_id,surface,team,ts)
+                     VALUES(?,?,?,?,?)""", (content_hash, entity_id, surface, team or "", time.time()))
+        c.commit()
+
+    def ent_list(self, q: str = "", type_: str = "", status: str = "", limit: int = 300) -> list:
+        """목록(+콘텐츠 등장 수). q 는 이름·별칭 부분일치."""
+        c = self._conn()
+        cond, vals = [], []
+        if q:
+            cond.append("(name LIKE ? OR entity_id IN (SELECT entity_id FROM entity_aliases WHERE alias LIKE ?))")
+            vals += [f"%{q}%", f"%{q}%"]
+        if type_:
+            cond.append("type=?"); vals.append(type_)
+        if status:
+            cond.append("status=?"); vals.append(status)
+        where = (" WHERE " + " AND ".join(cond)) if cond else ""
+        rows = [self._ent_row(r) for r in c.execute(
+            self._ENT_SEL + where + " ORDER BY updated_at DESC LIMIT ?", (*vals, int(limit)))]
+        if rows:
+            ids = [e["entity_id"] for e in rows]
+            ph = ",".join("?" * len(ids))
+            counts = {eid: n for eid, n in c.execute(
+                f"SELECT entity_id, COUNT(DISTINCT content_hash) FROM content_entities WHERE entity_id IN ({ph}) GROUP BY entity_id", ids)}
+            for e in rows:
+                e["n_contents"] = counts.get(e["entity_id"], 0)
+        return rows
+
+    def ent_stats(self) -> dict:
+        c = self._conn()
+        total = c.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+        by_type = {t or "(보류)": n for t, n in c.execute("SELECT type, COUNT(*) FROM entities GROUP BY type")}
+        pending = c.execute("SELECT COUNT(*) FROM entities WHERE status='pending'").fetchone()[0]
+        enriched = c.execute("SELECT COUNT(*) FROM entities WHERE external_ids LIKE '%wikidata%'").fetchone()[0]
+        links = c.execute("SELECT COUNT(*) FROM content_entities").fetchone()[0]
+        return {"total": total, "byType": by_type, "pending": pending,
+                "enriched": enriched, "links": links}
+
+    def ent_pending_ids(self, limit: int = 200) -> list:
+        """보강 대상: 위키데이터 조회 이력(_enrich) 자체가 없는 개체(미스 기록은 재조회 제외)."""
+        c = self._conn()
+        return [r[0] for r in c.execute(
+            "SELECT entity_id FROM entities WHERE attr_meta IS NULL OR attr_meta NOT LIKE '%_enrich%' ORDER BY created_at LIMIT ?",
+            (int(limit),))]
+
+    def ent_delete(self, entity_id: str) -> bool:
+        c = self._conn()
+        cur = c.execute("DELETE FROM entities WHERE entity_id=?", (entity_id,))
+        c.execute("DELETE FROM entity_aliases WHERE entity_id=?", (entity_id,))
+        c.execute("DELETE FROM content_entities WHERE entity_id=?", (entity_id,))
+        c.commit()
+        return cur.rowcount > 0
+
+    def ent_attr_index(self, team=None) -> dict:
+        """{content_hash: [개체 속성 dict(type·name 포함), …]} · 토픽 엔티티 속성 조건의 원천."""
+        c = self._conn()
+        ents = {}
+        for r in c.execute(self._ENT_SEL):
+            e = self._ent_row(r)
+            ents[e["entity_id"]] = {"type": e["type"], "name": e["name"], **(e["attrs"] or {})}
+        out = {}
+        for ch, eid in c.execute(
+                "SELECT content_hash, entity_id FROM content_entities WHERE team=?", (team or "",)):
+            if eid in ents:
+                out.setdefault(ch, []).append(ents[eid])
+        return out
+
+    def ent_contents(self, entity_id: str, limit: int = 50) -> list:
+        """개체가 등장하는 콘텐츠(제목·등급) · 사전 상세 팝업용."""
+        c = self._conn()
+        return [{"hash": ch, "title": t or "", "grade": g or ""} for ch, t, g in c.execute(
+            """SELECT ce.content_hash, r.title, r.final_grade FROM content_entities ce
+               LEFT JOIN results r ON r.content_hash = ce.content_hash
+               WHERE ce.entity_id=? ORDER BY ce.ts DESC LIMIT ?""", (entity_id, int(limit)))]
 
     # runs / usage
     def start_run(self, run_id, n, config):

@@ -44,6 +44,8 @@
           { id: 'testset', label: '정답셋 관리', ic: 'eval', cond: 'opsadmin' },
           { id: 'admin', label: '팀 관리', ic: 'admin', cond: 'admin' },
           { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'opsadmin' },
+          // 엔티티 사전: 개체 고유키·타입(NER 6종)·속성(성별·국적·직업·소속…) 관리 · 사람 수정 가능
+          { id: 'entdict', label: '엔티티 사전', ic: 'user', cond: 'opsadmin' },
           // 스튜디오 = 설계 도구 묶음: 프롬프트(계약·래퍼) + 토픽(클러스터링 설계 · 실험실에서 승격)
           { id: 'studio', label: '스튜디오', ic: 'prompt', cond: 'opsadmin' },
           // 실험실: 지금 테스트하지 않는 탐구 요소(법령·사용자·미디어) 보관
@@ -76,7 +78,7 @@
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
       // 토픽 스튜디오: 자연어+차원으로 조건형 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
-      studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } },
+      studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], eattrs: [], kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } },
       studioPreview: { bundles: [], n_total: 0, must_n: 0, opt_n: 0 },
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
       modelsBusy: false, modelsMsgStudio: '',   // 토픽 스튜디오: 모델 목록 새로고침(라우터 포함) 상태
@@ -562,6 +564,7 @@
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
         else if (id === 'dict') this.loadDict();
+        else if (id === 'entdict') this.loadEntdict();
         else if (id === 'studio') { this.loadPromptDefaults(); this.loadTopics(); }
         if (id === 'content') { this.loadDash(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
       },
@@ -926,15 +929,6 @@
         this.mod = 'home'; this.reviewerEditing = true;
       },
       goldenMinGood: 1,
-      get isDesktop() { return typeof window.pywebview !== 'undefined'; },
-      dtAllowDl: true, dtPersist: true, dtMsg: '',
-      async saveDesktopOpts() {
-        try {
-          await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ desktop_allow_downloads: !!this.dtAllowDl, desktop_persist_storage: !!this.dtPersist }) });
-          this.dtMsg = '✓ 저장됨 · 앱 재시작 후 적용';
-        } catch (e) { this.dtMsg = '저장 실패'; }
-        setTimeout(() => { this.dtMsg = ''; }, 4000);
-      },
       _loadCred() {
         try {
           const raw = localStorage.getItem('prism_cred');
@@ -1609,7 +1603,19 @@
         const r = await (await this._afetch('/topic-studio', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
         return r;
       },
-      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords, req: this.studio.req, neg: this.studio.neg }; },
+      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords, eattrs: this.studio.eattrs, req: this.studio.req, neg: this.studio.neg }; },
+      // 엔티티 속성 조건(개체 사전 축): 'key:value' · 항상 필수(같은 개체 AND · 예: 여성 스포츠인)
+      eattrLabel(s) { const i = s.indexOf(':'); const ko = { type: '타입', gender: '성별', occupation: '직업', nationality: '국적', affiliation: '소속', org_kind: '조직', country: '국가', loc_kind: '장소', af_kind: '종류', ev_kind: '종류', domain: '도메인' }; return i < 0 ? s : (ko[s.slice(0, i)] || s.slice(0, i)) + '=' + s.slice(i + 1); },
+      studioAddEattr(v) {
+        const s = v || (this.studio.eaKey + ':' + (this.studio.eaVal || '').trim());
+        if (!s || s.endsWith(':') || this.studio.eattrs.includes(s)) return;
+        this.studio.eattrs.push(s); this.studio.eaVal = ''; this.schedulePreview();
+      },
+      studioDelEattr(s) { const i = this.studio.eattrs.indexOf(s); if (i >= 0) this.studio.eattrs.splice(i, 1); this.schedulePreview(); },
+      eattrCandidates() {
+        const all = (this.topicData && this.topicData.catalog && this.topicData.catalog.eattrs) || [];
+        return all.filter(c => !this.studio.eattrs.includes(c.k)).slice(0, 14);
+      },
       studioToggle(field, val) { const a = this.studio[field]; const i = a.indexOf(val); if (i >= 0) a.splice(i, 1); else a.push(val); this.schedulePreview(); },
       // 조건 칩 4상태: off(후보) → sel(선택·관련 묶음) → req(필수·모든 묶음 공통) → neg(제외·걸리면 탈락) → off
       studioState(dim, val) { if ((this.studio.neg[dim] || []).includes(val)) return 'neg'; if (!this.studio[dim].includes(val)) return 'off'; return this.studio.req[dim].includes(val) ? 'req' : 'sel'; },
@@ -1742,11 +1748,11 @@
         const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
         const rq = def.req || { cats: [], intents: [], keywords: [] };
         const ng = def.neg || { cats: [], intents: [], keywords: [] };
-        this.studio = { name: def.name || g.name || '', prompt: def.prompt || g.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], kwInput: '', editId: g.id, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [...(rq.cats || [])], intents: [...(rq.intents || [])], keywords: [...(rq.keywords || [])] }, neg: { cats: [...(ng.cats || [])], intents: [...(ng.intents || [])], keywords: [...(ng.keywords || [])] } };
+        this.studio = { name: def.name || g.name || '', prompt: def.prompt || g.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], eattrs: [...(def.eattrs || [])], kwInput: '', eaKey: 'gender', eaVal: '', editId: g.id, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [...(rq.cats || [])], intents: [...(rq.intents || [])], keywords: [...(rq.keywords || [])] }, neg: { cats: [...(ng.cats || [])], intents: [...(ng.intents || [])], keywords: [...(ng.keywords || [])] } };
         this.studioMsg = ''; this.studioPreviewNow();
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
       },
-      studioReset() { this.studio = { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } }; this.studioPreview = { bundles: [], n_total: (this.topicData && this.topicData.n_contents) || 0, must_n: 0, opt_n: 0 }; },
+      studioReset() { this.studio = { name: '', prompt: '', cats: [], intents: [], keywords: [], eattrs: [], kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } }; this.studioPreview = { bundles: [], n_total: (this.topicData && this.topicData.n_contents) || 0, must_n: 0, opt_n: 0 }; },
       async studioDelete(g) {
         if (!(await this.dsConfirm('토픽 “' + (g.name || g.id) + '” 을 삭제할까요?', { ok: '삭제', danger: true }))) return;
         try { const r = await this._studioPost({ action: 'delete', id: g.id }); if (r && !r.error) { this.topicData = r; this._syncTopicSettings(); if (this.studio.editId === g.id) this.studioReset(); } } catch (e) { this._err('삭제 실패'); }
@@ -1789,6 +1795,78 @@
       },
       qexN() { const d = this.topicData; return (d && d.n_eligible != null) ? Math.max(0, (d.n_contents || 0) - d.n_eligible) : 0; },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await this._afetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
+      // ── 엔티티 사전(별도 메뉴): 목록·필터·수동 편집(사람 확정)·위키데이터 보강 ──
+      entData: null, entQ: '', entType: '', entStatus: '', entMsg: '', entAddName: '',
+      entEdit: null, entEditAliases: [], entEditContents: [], entEditMsg: '', entAliasInput: '',
+      async loadEntdict() {
+        this.modBusy = true;
+        try {
+          const p = new URLSearchParams();
+          if (this.entQ.trim()) p.set('q', this.entQ.trim());
+          if (this.entType) p.set('type', this.entType);
+          if (this.entStatus) p.set('status', this.entStatus);
+          this.entData = await (await this._afetch('/entdict?' + p.toString())).json();
+        } catch (e) {}
+        this.modBusy = false;
+      },
+      async entAction(body) {
+        const r = await this._afetch('/entdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
+        return await r.json();
+      },
+      entTypeLabel(t) { return t ? (((this.entData && this.entData.meta.types[t]) || t) + ' · ' + t) : '보류'; },
+      entAttrSummary(e) {
+        const a = e.attrs || {}; const out = [];
+        ['gender', 'occupation', 'nationality', 'affiliation', 'org_kind', 'country', 'loc_kind', 'af_kind', 'ev_kind', 'domain'].forEach(k => { if (a[k]) out.push(a[k]); });
+        return out.join(' · ');
+      },
+      entAttrFields() {
+        const t = this.entEdit && this.entEdit.type;
+        return (t && this.entData && this.entData.meta.attrFields[t]) || [];
+      },
+      async openEntEdit(e) {
+        this.entEditMsg = ''; this.entAliasInput = '';
+        const d = await this.entAction({ action: 'detail', id: e.entity_id });
+        if (!d.ok) { this.entMsg = '오류: ' + (d.error || '조회 실패'); return; }
+        this.entEdit = JSON.parse(JSON.stringify(d.entity));
+        this.entEdit.attrs = this.entEdit.attrs || {};
+        this.entEditAliases = d.aliases || []; this.entEditContents = d.contents || [];
+      },
+      async saveEntEdit() {
+        if (!this.entEdit) return;
+        this.entEditMsg = '저장 중…';
+        const d = await this.entAction({ action: 'update', id: this.entEdit.entity_id, type: this.entEdit.type || '', attrs: this.entEdit.attrs || {}, alias: this.entAliasInput.trim() });
+        if (!d.ok) { this.entEditMsg = '오류: ' + (d.error || ''); return; }
+        this.entEdit = null; this.entMsg = '저장됨 · 수동 확정 필드는 재보강이 덮어쓰지 않습니다'; this.loadEntdict();
+      },
+      async entEnrich(e) {
+        this.entMsg = '위키데이터 보강 중… (' + e.name + ')';
+        const d = await this.entAction({ action: 'enrich', id: e.entity_id });
+        this.entMsg = !d.ok ? ('오류: ' + (d.error || '')) : (d.matched ? ('매칭됨 · ' + (d.qid || '') + (d.type ? (' · 타입 ' + d.type) : '')) : '위키데이터 미등재 · 보류 유지(수동 편집으로 확정 가능)');
+        this.loadEntdict();
+      },
+      async entEnrichAll() {
+        const d = await this.entAction({ action: 'enrich_pending' });
+        this.entMsg = d.ok ? ('미조회 개체 ' + (d.queued || 0) + '건 백그라운드 보강 시작 · 잠시 후 새로고침하세요') : ('오류: ' + (d.error || ''));
+      },
+      async entBackfill() {
+        if (!(await this.dsConfirm('적재된 콘텐츠의 엔티티를 사전에 색인할까요? 신규 개체는 백그라운드로 위키데이터 보강됩니다.', { ok: '색인' }))) return;
+        this.entMsg = '색인 중…';
+        const d = await this.entAction({ action: 'backfill' });
+        this.entMsg = d.ok ? ('색인 완료 · 콘텐츠 ' + d.scanned + '건 스캔 · 신규 개체 ' + d.created + ' · 링크 ' + d.linked + (d.enrich_queued ? (' · 보강 대기 ' + d.enrich_queued) : '')) : ('오류: ' + (d.error || ''));
+        this.loadEntdict();
+      },
+      async entDelete(e) {
+        if (!(await this.dsConfirm('“' + e.name + '” 개체를 사전에서 삭제할까요? 콘텐츠 링크도 함께 삭제됩니다.', { ok: '삭제', danger: true }))) return;
+        await this.entAction({ action: 'delete', id: e.entity_id });
+        this.loadEntdict();
+      },
+      async entAdd() {
+        const name = (this.entAddName || '').trim();
+        if (!name) return;
+        const d = await this.entAction({ action: 'add', name });
+        if (!d.ok) { this.entMsg = '오류: ' + (d.error || ''); return; }
+        this.entAddName = ''; this.entMsg = '등재됨(보류) · 행의 보강 버튼으로 위키데이터 조회'; this.loadEntdict();
+      },
       // 사전·정책 편집(사용자 직접 수정)
       editT: null, editKey: null, editKind: 'list', editVal: '', editTitle: '', editMsg: '', editExtra: '', editFilter: '',
       startEdit(target, key, value, kind, title) {
@@ -1962,8 +2040,6 @@
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.learnNextAt === 'string') this.learnNextAt = this.cfg.learnNextAt;
-          if (typeof this.cfg.desktopAllowDownloads === 'boolean') this.dtAllowDl = this.cfg.desktopAllowDownloads;
-          if (typeof this.cfg.desktopPersistStorage === 'boolean') this.dtPersist = this.cfg.desktopPersistStorage;
           if (!this.wrapDraft) this.syncWrapDraft();
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();

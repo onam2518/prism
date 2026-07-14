@@ -75,6 +75,44 @@ alter table public.prism_assignments enable row level security;   -- 정책 없�
 진척: 개인 분모 = 내 담당 수, 팀 진척 = Σ 콘텐츠별 min(검수인원,N)/N ÷ 배정 콘텐츠 수.
 > PK 에 team_id 포함 → team 단위 격리. team_id NULL(팀 미소속)은 실사용 없음(배정은 팀 관리자 기능).
 
+**엔티티 사전(`prism_entities` 외 2, 2026-07-14 · 적용됨 · `prism_entity_dictionary` 마이그레이션)**:
+```sql
+-- 개체 사전: 고유키(entity_id)·타입(NER 6종: PS·OG·LC·AF·EV·TM)·타입별 속성(attrs jsonb)
+create table if not exists public.prism_entities (
+  entity_id    text primary key,                  -- 'e_'+sha1(정규화 이름)[:12] 대리키
+  name         text not null,                     -- 정규 표기
+  type         text not null default '',          -- ''=보류(타입만 미부여 · 노출 유지)
+  status       text not null default 'pending',   -- active | pending | merged
+  attrs        jsonb not null default '{}',       -- 성별·국적·직업(대분류)·소속 등 타입별 속성
+  attr_meta    jsonb not null default '{}',       -- 필드별 {source: wikidata|manual, status: auto|confirmed}
+  external_ids jsonb not null default '{}',       -- {wikidata: QID, object_id: …} 외부 공통키 매핑
+  merged_into  text not null default '',
+  created_at   double precision,
+  updated_at   double precision
+);
+-- 별칭 조회(이형 표기 → 개체) · 위키데이터 정식 라벨도 보강 시 자동 등재
+create table if not exists public.prism_entity_aliases (
+  alias     text primary key,
+  entity_id text not null
+);
+create index if not exists ix_ealias_ent on public.prism_entity_aliases(entity_id);
+-- 콘텐츠 ↔ 개체 링크(팀 스코프) · item_meta.entities 추출 산출물은 불변, 링크만 추가
+create table if not exists public.prism_content_entities (
+  content_hash text not null,
+  entity_id    text not null,
+  surface      text not null default '',           -- 원문 표기(추출 문자열)
+  team         text not null default '',
+  ts           double precision,
+  primary key (content_hash, entity_id, team)
+);
+create index if not exists ix_centities_ent on public.prism_content_entities(entity_id);
+alter table public.prism_entities enable row level security;          -- 정책 없음 = service_role 전용
+alter table public.prism_entity_aliases enable row level security;
+alter table public.prism_content_entities enable row level security;
+```
+사전은 전역(개체는 팀 무관 사실), 콘텐츠 링크만 팀 스코프. 타입·속성 보강은 Wikidata(POC) ·
+수동 확정(attr_meta.status=confirmed) 필드는 재보강이 덮어쓰지 않음. 설계 배경: DNM 위키 366018723.
+
 ## 상세 설계 (확정)
 
 ### (a) 정체성 통일 · dual-mode 의 핵심

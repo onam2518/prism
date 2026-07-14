@@ -911,7 +911,7 @@ PAGE = """<!doctype html>
                 </div>
 
                 <!-- STEP 3 · 조건 -->
-                <div class="tstep" x-bind:class="{'is-done': !!(studio.cats.length||studio.intents.length||studio.keywords.length), 'is-active': tActive()===3}">
+                <div class="tstep" x-bind:class="{'is-done': !!(studio.cats.length||studio.intents.length||studio.keywords.length||studio.eattrs.length), 'is-active': tActive()===3}">
                   <div class="tstep__rail"><span class="tstep__dot"><span class="n">3</span><span class="c">✓</span></span></div>
                   <div class="tstep__body">
                     <div class="tstep__head"><b>조건 확인·조정</b><span class="tstep__guide">필수는 모든 묶음의 뼈대(반드시), 선택은 각각이 관련 묶음이 됩니다 · 칩을 누를수록 후보→선택→필수</span></div>
@@ -940,6 +940,23 @@ PAGE = """<!doctype html>
                       <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
                         <template x-for="k in studioKwChips()" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-bind:class="chipCls('keywords',k,'ds-badge--entity')" x-on:click="studioCycle('keywords',k)" data-tip="누를수록 선택→필수→제외→제거"><span x-show="studioState('keywords',k)==='req'" class="treq">★필수</span><span x-show="studioState('keywords',k)==='neg'" class="tneg">✖제외</span><span x-show="isAuto('keywords',k)" class="tauto">✨</span><span x-text="k"></span></span></template>
                         <template x-for="k in topKw()" x-bind:key="'kwc'+k.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioCycle('keywords',k.k)" data-tip="추가" x-text="'+ '+k.k"></span></template>
+                      </div>
+                    </div>
+                    <!-- 엔티티 속성 조건: 개체 사전(타입·성별·직업·국적·소속) 축 · 같은 개체 AND · 항상 필수 -->
+                    <div class="tcond__g">
+                      <div class="tcond__lbl">엔티티 속성 <span x-text="'· 선택 '+studio.eattrs.length"></span><span class="meta" style="cursor:help" data-tip="개체 사전의 속성으로 매칭 · 조건 전부를 '한 개체'가 만족해야 합니다 (예: 성별=여성 ∧ 직업=스포츠인 → 여성 스포츠인) · 항상 필수 취급" data-tip-pos="top">개체 사전 기반</span></div>
+                      <div style="display:flex;gap:8px">
+                        <select class="field" style="width:auto" x-model="studio.eaKey">
+                          <option value="type">타입</option><option value="gender">성별</option><option value="occupation">직업</option>
+                          <option value="nationality">국적</option><option value="affiliation">소속</option><option value="country">국가</option>
+                        </select>
+                        <input class="field" style="flex:1" x-model="studio.eaVal" x-on:keydown.enter.prevent="studioAddEattr()" placeholder="예) 여성 · 스포츠인 · 대한민국 (엔터로 추가)">
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="studioAddEattr()">추가</button>
+                      </div>
+                      <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
+                        <template x-for="s in studio.eattrs" x-bind:key="'ea'+s"><span class="ds-badge ds-badge--category" style="cursor:pointer" x-on:click="studioDelEattr(s)" data-tip="클릭해 제거"><span class="treq">★필수</span><span x-text="eattrLabel(s)"></span></span></template>
+                        <template x-for="c in eattrCandidates()" x-bind:key="'eac'+c.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioAddEattr(c.k)" data-tip="추가" x-text="'+ '+c.label+' ('+c.v+')'"></span></template>
+                        <span x-show="!studio.eattrs.length && !eattrCandidates().length" class="text-xs text-muted">엔티티 사전에 속성이 아직 없습니다 · 엔티티 사전 메뉴에서 색인·보강하세요</span>
                       </div>
                     </div>
                   </div>
@@ -1138,6 +1155,71 @@ PAGE = """<!doctype html>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
                 <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v.label"></div></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="copybtn" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
               </tbody></table></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 모듈: 엔티티 사전 · 개체 고유키·타입(NER 6종)·속성 관리 (별도 메뉴) ═══ -->
+      <div x-show="mod === 'entdict'" x-cloak class="w-full space-y-4">
+        <div class="panel"><div class="panel-bd flex items-center justify-between gap-3 flex-wrap">
+          <ul class="ds-bullets">
+            <li>콘텐츠 적재 시 엔티티가 <b>개체 사전에 자동 등재</b>됩니다 · 개체당 고유키 1개, 타입·속성은 등록 시 1회 부여(재판정 없음).</li>
+            <li>타입·속성(성별·국적·직업·소속 등)은 <b>위키데이터로 자동 보강</b>하고, 사람이 <b>직접 수정(확정)</b>할 수 있습니다 · 확정 필드는 재보강이 덮어쓰지 않습니다.</li>
+            <li>속성은 토픽 스튜디오의 <b>엔티티 속성 조건</b>이 됩니다 · 예) 성별=여성 ∧ 직업=스포츠인 → "여성 스포츠인" 토픽.</li>
+          </ul>
+          <div class="flex items-center gap-2">
+            <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="entBackfill()" data-tip="적재된 콘텐츠의 엔티티를 사전에 색인(기존 데이터 소급)" data-tip-pos="top">기존 콘텐츠 색인</button>
+            <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="entEnrichAll()" data-tip="위키데이터 미조회 개체를 백그라운드로 일괄 보강" data-tip-pos="top">미조회 일괄 보강</button>
+          </div>
+        </div></div>
+
+        <div class="panel" x-show="entData"><div class="panel-bd"><div class="ds-stat-grid" style="grid-template-columns:repeat(5,1fr)">
+          <div class="ds-stat"><div class="ds-stat__value ds-stat__value--accent tnum" x-text="(entData && entData.stats.total) || 0"></div><div class="ds-stat__label">총 개체</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="entData ? ((entData.stats.total || 0) - (((entData.stats.byType || {})['(보류)']) || 0)) : 0"></div><div class="ds-stat__label">타입 부여</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.pending) || 0"></div><div class="ds-stat__label">보류(타입 미부여)</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.enriched) || 0"></div><div class="ds-stat__label">위키데이터 매칭</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.links) || 0"></div><div class="ds-stat__label">콘텐츠 링크</div></div>
+        </div></div></div>
+
+        <div class="panel">
+          <div class="panel-hd"><b>개체 목록</b>
+            <span class="meta" aria-live="polite" x-text="entMsg"></span>
+          </div>
+          <div class="panel-bd">
+            <div class="flex items-center gap-2 flex-wrap" style="margin-bottom:10px">
+              <input type="text" class="field" style="width:220px" placeholder="이름·별칭 검색" x-model="entQ" x-on:keydown.enter="loadEntdict()">
+              <select class="field" style="width:auto" x-model="entType" x-on:change="loadEntdict()">
+                <option value="">타입 전체</option>
+                <template x-for="(ko,t) in (entData ? entData.meta.types : {})" x-bind:key="t"><option x-bind:value="t" x-text="ko + ' (' + t + ')'"></option></template>
+              </select>
+              <select class="field" style="width:auto" x-model="entStatus" x-on:change="loadEntdict()">
+                <option value="">상태 전체</option><option value="active">확정(active)</option><option value="pending">보류(pending)</option>
+              </select>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="loadEntdict()">검색</button>
+              <span style="flex:1"></span>
+              <input type="text" class="field" style="width:180px" placeholder="수동 등재 · 개체 이름" x-model="entAddName" x-on:keydown.enter="entAdd()">
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="entAdd()">등재</button>
+            </div>
+            <div class="overflow-auto" style="max-height:560px"><table class="ds-table"><thead><tr>
+              <th style="width:160px">개체</th><th style="width:120px">타입</th><th>속성</th>
+              <th style="width:100px">위키데이터</th><th style="width:64px" class="tnum">콘텐츠</th><th style="width:170px"></th>
+            </tr></thead><tbody>
+              <template x-for="e in ((entData && entData.items) || [])" x-bind:key="e.entity_id">
+                <tr>
+                  <td class="text-ink" style="font-weight:600" x-text="e.name"></td>
+                  <td><span class="ds-badge" x-bind:class="e.type ? 'ds-badge--entity' : 'ds-badge--neutral'" x-text="entTypeLabel(e.type)"></span></td>
+                  <td class="text-muted" x-text="entAttrSummary(e) || '—'"></td>
+                  <td><a x-show="e.external_ids && e.external_ids.wikidata" x-bind:href="'https://www.wikidata.org/wiki/' + (e.external_ids && e.external_ids.wikidata)" target="_blank" rel="noopener" class="text-violet" x-text="e.external_ids && e.external_ids.wikidata"></a><span x-show="!(e.external_ids && e.external_ids.wikidata)" class="text-xs text-muted" x-text="(e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'miss') ? '미등재' : '미조회'"></span></td>
+                  <td class="tnum" x-text="e.n_contents || 0"></td>
+                  <td><div class="flex items-center gap-1.5">
+                    <button type="button" class="copybtn" x-on:click="openEntEdit(e)">편집</button>
+                    <button type="button" class="copybtn" x-on:click="entEnrich(e)" data-tip="위키데이터 조회로 타입·속성 채우기" data-tip-pos="top">보강</button>
+                    <button type="button" class="copybtn" style="color:var(--ds-danger)" x-on:click="entDelete(e)">삭제</button>
+                  </div></td>
+                </tr>
+              </template>
+              <tr x-show="!((entData && entData.items) || []).length"><td colspan="6" class="text-xs text-muted" style="text-align:center;padding:24px">등재된 개체가 없습니다 · 콘텐츠를 적재하거나 "기존 콘텐츠 색인"을 실행하세요</td></tr>
+            </tbody></table></div>
           </div>
         </div>
       </div>
@@ -2009,19 +2091,6 @@ PAGE = """<!doctype html>
             </ul>
           </div>
         </section>
-        <section class="panel" data-fn x-show="isDesktop"><div class="panel-hd"><b>데스크탑 앱</b><span class="meta">네이티브 창(WKWebView) 옵션 · 앱 재시작 시 적용</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:12px">
-              <li><b>다운로드 허용</b>이 꺼져 있으면 템플릿·엑셀 내보내기 클릭이 무시됩니다.</li>
-              <li><b>저장 데이터 유지</b>가 꺼져 있으면 로그인 상태·저장된 아이디/비밀번호가 앱 재시작마다 사라집니다.</li>
-            </ul>
-            <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
-              <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" x-model="dtAllowDl" x-on:change="saveDesktopOpts()"> 다운로드 허용</label>
-              <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" x-model="dtPersist" x-on:change="saveDesktopOpts()"> 저장 데이터 유지(localStorage)</label>
-              <span class="text-xs text-muted" x-text="dtMsg || '변경은 앱을 완전히 종료 후 다시 열면 적용됩니다'"></span>
-            </div>
-          </div>
-        </section>
         <section class="panel" data-fn><div class="panel-hd"><b>API 키</b><span class="meta">추출 호출 키 · 팀원은 입력 없이 사용</span></div>
           <div class="panel-bd">
         <!-- 운영(공유 서버): 키는 서버에서 관리 → 팀원은 입력 불필요 -->
@@ -2469,6 +2538,59 @@ PAGE = """<!doctype html>
       <div class="ds-dialog__footer">
         <button type="button" class="ds-btn ds-btn--ghost" x-on:click="cancelEdit()">취소</button>
         <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveEdit()">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 엔티티 사전 편집 팝업: 타입·속성 수동 확정(사람 결정 우선 · 재보강이 덮어쓰지 않음) -->
+  <div class="ds-dialog-backdrop" x-show="entEdit" x-cloak x-on:mousedown.self="entEdit=null" x-on:keydown.escape.window="entEdit && (entEdit=null)" style="z-index:76">
+    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="개체 편집" style="max-width:560px;display:flex;flex-direction:column;max-height:88vh">
+      <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px"><span x-text="'개체 편집 · ' + (entEdit ? entEdit.name : '')"></span>
+        <span class="text-xs text-muted" style="font-weight:400" x-text="entEdit ? entEdit.entity_id : ''"></span></h2>
+      <div class="ds-dialog__body" style="overflow:auto;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label class="lbl">타입 (NER 6종 · 개체당 1개 · 비우면 보류)</label>
+          <select class="field" x-bind:value="entEdit ? entEdit.type : ''" x-on:change="entEdit.type=$event.target.value">
+            <option value="">(보류 · 타입 미부여)</option>
+            <template x-for="(ko,t) in (entData ? entData.meta.types : {})" x-bind:key="'et'+t"><option x-bind:value="t" x-text="ko + ' (' + t + ')'"></option></template>
+          </select>
+        </div>
+        <div x-show="entEdit && entEdit.type" x-cloak>
+          <label class="lbl">속성 (저장 시 수동 확정 · 위키데이터 재보강이 덮어쓰지 않음)</label>
+          <div class="space-y-2">
+            <template x-for="f in entAttrFields()" x-bind:key="'ef'+f[0]">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-muted" style="width:110px;flex:none" x-text="f[1]"></span>
+                <select x-show="f[0] === 'occupation'" class="field" style="flex:1" x-on:change="entEdit.attrs[f[0]]=$event.target.value">
+                  <option value="" x-bind:selected="!(entEdit && entEdit.attrs[f[0]])">(미지정)</option>
+                  <template x-for="g in (entData ? entData.meta.occupationGroups : [])" x-bind:key="'og'+g"><option x-bind:value="g" x-bind:selected="entEdit && entEdit.attrs[f[0]] === g" x-text="g"></option></template>
+                </select>
+                <input x-show="f[0] !== 'occupation'" type="text" class="field" style="flex:1" x-bind:value="(entEdit && entEdit.attrs[f[0]]) || ''" x-on:input="entEdit.attrs[f[0]]=$event.target.value">
+              </div>
+            </template>
+          </div>
+        </div>
+        <div>
+          <label class="lbl">별칭 (이형 표기 · 다음 적재부터 같은 개체로 흡수)</label>
+          <div class="flex flex-wrap gap-1.5" style="margin-bottom:6px">
+            <template x-for="a in entEditAliases" x-bind:key="'al'+a"><span class="ds-badge ds-badge--neutral" x-text="a"></span></template>
+          </div>
+          <input type="text" class="field" placeholder="별칭 추가 (저장 시 반영)" x-model="entAliasInput">
+        </div>
+        <div x-show="entEditContents.length">
+          <label class="lbl" x-text="'등장 콘텐츠 · ' + entEditContents.length + '건'"></label>
+          <div class="overflow-auto" style="max-height:140px"><table class="ds-table"><tbody>
+            <template x-for="(c,i) in entEditContents" x-bind:key="'ec'+i"><tr>
+              <td class="text-muted" x-text="c.title || c.hash"></td>
+              <td style="width:40px"><span class="ds-badge ds-badge--neutral" x-text="c.grade || '-'"></span></td>
+            </tr></template>
+          </tbody></table></div>
+        </div>
+        <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="entEditMsg"></span>
+      </div>
+      <div class="ds-dialog__footer">
+        <button type="button" class="ds-btn ds-btn--ghost" x-on:click="entEdit=null">취소</button>
+        <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveEntEdit()">저장(확정)</button>
       </div>
     </div>
   </div>

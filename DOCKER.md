@@ -40,4 +40,4 @@ LAN의 팀원은 `http://<호스트IP>:8765` 로 접속해 같은 검수 큐·�
 
 - 키 미주입 시 자동 mock — 설치·키 없이 UI 흐름 전체를 체험 가능.
 - 벤더 에셋(Tailwind/Alpine/Pretendard)은 `prism/vendor/` 에 포함 → 컨테이너는 **오프라인 동작**.
-- 이미지엔 코어(`prism/`)만 포함(`.dockerignore` 로 design-system·docs·desktop 제외).
+- 이미지엔 코어(`prism/`)만 포함(`.dockerignore` 로 design-system·docs 제외).

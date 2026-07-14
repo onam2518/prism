@@ -48,7 +48,7 @@ is_admin_user = AO.is_admin_user
 admin_data = AO.admin_data
 admin_ingest = AO.admin_ingest
 admin_action = AO.admin_action
-# 하위호환 별칭: 테스트·데스크탑·내부 라우트가 serve 네임스페이스로 참조
+# 하위호환 별칭: 테스트·내부 라우트가 serve 네임스페이스로 참조
 sync_learned = LO.sync_learned
 eval_golden = LO.eval_golden
 register_golden = LO.register_golden
@@ -139,6 +139,22 @@ def _save_drafts(st, pairs, team=None):
             pass
 
 
+def _entdict_after_save(st, pairs, team=None):
+    """적재 훅: 엔티티 사전 등록·링크(동기·로컬) + 신규 개체 위키데이터 보강(백그라운드).
+    타입·속성은 개체 사전 신규 등록 시 1회 부여(콘텐츠마다 재판정 없음 · DNM 366018723).
+    mock 서버·PRISM_ENTDICT_ENRICH=0 이면 네트워크 보강 생략(테스트 결정성·오프라인)."""
+    if not (st and hasattr(st, "ent_upsert")):
+        return
+    try:
+        from . import entdict as ED
+        r = ED.ingest_pairs(st, pairs, team=team or "")
+    except Exception:
+        return                                   # 사전 실패가 적재 자체를 막지 않는다
+    new_ids = r.get("new_ids") or []
+    if new_ids and not Handler.server_mock and os.environ.get("PRISM_ENTDICT_ENRICH", "1") == "1":
+        threading.Thread(target=ED.enrich_many, args=(st, new_ids), daemon=True).start()
+
+
 def store_save(pairs, source: str = "단건", team=None):
     """[(content, out), …] 를 영속 저장(+_LAST_RESULTS 미러). source: 출처. team: 소속 팀(supabase).
     적재 정책(dedup): 동일 콘텐츠 + 결과 무변경이면 적재 제외(skip), 변경 시 갱신, 신규는 추가."""
@@ -150,6 +166,7 @@ def store_save(pairs, source: str = "단건", team=None):
         try:
             r = st.save_dedup(pairs, _run_id(), source=source, team=team)
             _save_drafts(st, pairs, team=team)
+            _entdict_after_save(st, pairs, team=team)
             return r
         except Exception as e:
             import traceback
@@ -424,6 +441,7 @@ def rerun_content(content_hash: str, model: str, team=None) -> dict:
     except Exception:
         pass
     _save_drafts(st, [(fields, result.get("output") or {})], team=team)
+    _entdict_after_save(st, [(fields, result.get("output") or {})], team=team)
     if hasattr(st, "log_patch"):               # 이전 초안 보존(이력)
         try:
             st.log_patch(ch, "(재실행)", f"rerun:{old_model or '?'}->{model}",
@@ -495,6 +513,114 @@ def dict_data() -> dict:
                        for c, v in D.LEGAL_HARM_TYPES.items()},
         "intakePolicy": {k: dict(v) for k, v in getattr(D, "INTAKE_POLICY", {}).items()},
     }
+
+
+# ── 엔티티 사전 모듈(별도 메뉴) · 개체 고유키·타입·속성 관리 + 위키데이터 보강 ──
+def entdict_data(q: str = "", type_: str = "", status: str = "", limit: int = 300) -> dict:
+    """목록·통계·메타(타입/속성 필드 사전). 편집 폼·필터의 단일 원천."""
+    from . import entdict as ED
+    st = get_store()
+    meta = {"types": dict(ED.ENTITY_TYPES),
+            "attrFields": {t: [[k, lb] for k, lb in fs] for t, fs in ED.ATTR_FIELDS.items()},
+            "occupationGroups": [g for g, _ in ED.OCCUPATION_GROUPS] + ["기타"],
+            "eattrKeys": list(ED.ALLOWED_EATTR_KEYS)}
+    if not (st and hasattr(st, "ent_list")):
+        return {"items": [], "stats": {}, "meta": meta}
+    return {"items": st.ent_list(q=q, type_=type_, status=status, limit=limit),
+            "stats": st.ent_stats(), "meta": meta}
+
+
+def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
+    """변경·보강 액션. update 는 사람 확정(수동) — attr_meta 를 confirmed 로 마킹해
+    이후 위키데이터 재보강이 덮어쓰지 않게 한다(사전은 사람이 최종 결정)."""
+    from . import entdict as ED
+    st = get_store()
+    if not (st and hasattr(st, "ent_upsert")):
+        return {"ok": False, "error": "저장소 없음"}
+    action = (data.get("action") or "").strip()
+    eid = (data.get("id") or "").strip()
+
+    if action == "detail":
+        e = st.ent_get(eid)
+        if not e:
+            return {"ok": False, "error": "개체 없음"}
+        return {"ok": True, "entity": e, "aliases": st.ent_aliases(eid),
+                "contents": st.ent_contents(eid)}
+
+    if action == "update":
+        e = st.ent_get(eid)
+        if not e:
+            return {"ok": False, "error": "개체 없음"}
+        am = dict(e.get("attr_meta") or {})
+        fields = {"updated_at": time.time()}
+        if "type" in data:
+            t = (data.get("type") or "").strip()
+            if t and t not in ED.ENTITY_TYPES:
+                return {"ok": False, "error": f"허용되지 않는 타입: {t}"}
+            fields["type"] = t
+            fields["status"] = "active" if t else "pending"
+            am["type"] = {"source": "manual", "status": "confirmed"}
+        if isinstance(data.get("attrs"), dict):
+            attrs = dict(e.get("attrs") or {})
+            typ = fields.get("type", e.get("type") or "")
+            allowed = {k for k, _ in ED.ATTR_FIELDS.get(typ, [])}
+            for k, v in data["attrs"].items():
+                if allowed and k not in allowed:
+                    continue
+                v = str(v or "").strip()
+                if v:
+                    attrs[k] = v
+                    am[k] = {"source": "manual", "status": "confirmed"}
+                else:
+                    attrs.pop(k, None)
+                    am.pop(k, None)
+            fields["attrs"] = attrs
+        alias = ED.normalize_name(data.get("alias") or "")
+        if alias:
+            other = st.ent_id_by_alias(alias)
+            if other and other != eid:
+                return {"ok": False, "error": "이미 다른 개체의 별칭입니다"}
+            st.ent_alias_add(alias, eid)
+        fields["attr_meta"] = am
+        st.ent_update(eid, fields)
+        return {"ok": True, "entity": st.ent_get(eid), "aliases": st.ent_aliases(eid)}
+
+    if action == "add":
+        name = ED.normalize_name(data.get("name") or "")
+        if not name:
+            return {"ok": False, "error": "이름이 필요합니다"}
+        if st.ent_id_by_alias(name):
+            return {"ok": False, "error": "이미 등재된 개체(별칭 포함)입니다"}
+        e = ED._empty_entry(name)
+        st.ent_upsert(e)
+        st.ent_alias_add(name, e["entity_id"])
+        return {"ok": True, "entity": st.ent_get(e["entity_id"])}
+
+    if action == "delete":
+        return {"ok": st.ent_delete(eid)}
+
+    if action == "enrich":
+        if mock:
+            return {"ok": True, "mock": True, "matched": False}
+        return ED.enrich_entity(st, eid)
+
+    if action == "enrich_pending":
+        if mock:
+            return {"ok": True, "mock": True, "queued": 0}
+        ids = st.ent_pending_ids(int(data.get("limit") or 200))
+        if ids:
+            threading.Thread(target=ED.enrich_many, args=(st, ids), daemon=True).start()
+        return {"ok": True, "queued": len(ids)}
+
+    if action == "backfill":
+        rows = st.recent(int(data.get("limit") or 1000), team=team)
+        r = ED.ingest_rows(st, rows, team=team or "")
+        if r.get("new_ids") and not mock and os.environ.get("PRISM_ENTDICT_ENRICH", "1") == "1":
+            threading.Thread(target=ED.enrich_many, args=(st, r["new_ids"]), daemon=True).start()
+        return {"ok": True, "scanned": len(rows), "created": r["created"], "linked": r["linked"],
+                "enrich_queued": 0 if mock else len(r.get("new_ids") or [])}
+
+    return {"ok": False, "error": f"알 수 없는 액션: {action}"}
 
 
 _DICT_OVERRIDES_PATH = os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH), "dict_overrides.json")
@@ -596,7 +722,7 @@ def topics_data() -> dict:
     if not rows:
         return {"n_contents": 0, "single": [], "composite": [], "filter": [], "custom": [],
                 "customDefs": cfg["custom"], "settings": cfg["settings"], "exclusions": cfg["exclusions"],
-                "catalog": {"intents": [], "cats": [], "keywords": []}, "summary": {}}
+                "catalog": {"intents": [], "cats": [], "keywords": [], "eattrs": []}, "summary": {}}
     from . import topic as TP
     with tempfile.TemporaryDirectory() as d:
         rpath = os.path.join(d, "r.jsonl")
@@ -605,7 +731,7 @@ def topics_data() -> dict:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
         try:
             out = TP.build_topics(rpath, custom_defs=cfg["custom"], settings=cfg["settings"],
-                                  exclusions=cfg["exclusions"])
+                                  exclusions=cfg["exclusions"], ent_index=_ent_index())
             out["exclusions"] = cfg["exclusions"]
             return out
         except Exception as e:
@@ -613,6 +739,16 @@ def topics_data() -> dict:
                     "single": [], "composite": [], "filter": [], "custom": [],
                     "customDefs": cfg["custom"], "settings": cfg["settings"],
                     "exclusions": cfg["exclusions"], "summary": {}}
+
+
+def _ent_index() -> dict:
+    """토픽 매칭용 개체 속성 인덱스({content_hash: [속성 dict]}) · 사전 미구축이면 빈 dict.
+    토픽은 전역(무팀 results_rows) 뷰라 인덱스도 전역(team="")."""
+    st = get_store()
+    if not (st and hasattr(st, "ent_attr_index")):
+        return {}
+    from . import entdict as ED
+    return ED.attr_index(st, team="")
 
 
 def _sanitize_def(d: dict, existing_ids=None) -> dict:
@@ -634,6 +770,9 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     cats = _strlist(d.get("cats"))
     intents = _strlist(d.get("intents"))
     keywords = _strlist(d.get("keywords"))
+    # 개체 속성 조건: 허용 키('key:value')만 · 항상 필수(같은 개체 AND) · 최대 10개
+    from . import entdict as ED
+    eattrs = [s for s in _strlist(d.get("eattrs"), n=10) if ED.parse_eattr(s)]
     # 제외(neg): 선택과 독립인 배제 조건. 같은 값이 선택에도 있으면 선택을 우선(자기모순 방지).
     ng = d.get("neg") or {}
     neg = {k: [v for v in _strlist(ng.get(k))
@@ -651,7 +790,8 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
         while cid in ids:
             cid = base + "-" + str(n); n += 1
     return {"id": cid, "name": name or "(\ubb34\uc81c \ud1a0\ud53d)", "prompt": prompt,
-            "cats": cats, "intents": intents, "keywords": keywords, "req": req, "neg": neg}
+            "cats": cats, "intents": intents, "keywords": keywords, "eattrs": eattrs,
+            "req": req, "neg": neg}
 
 
 def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
@@ -718,7 +858,7 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
 
     if action == "preview":
         d = _sanitize_def(data.get("def") or {})
-        return {"ok": True, "preview": TP.preview_definition(rows, svc, d) if rows else
+        return {"ok": True, "preview": TP.preview_definition(rows, svc, d, ent_index=_ent_index()) if rows else
                 {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0}}
 
     if action == "suggest":
@@ -1423,6 +1563,7 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         if st and pairs:
             stats = st.save_dedup(pairs, "ingest-" + time.strftime("%Y%m%d-%H%M%S"), source="자동 인입")
             _save_drafts(st, pairs)
+            _entdict_after_save(st, pairs)
         msg = f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
         _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=True, last_msg=msg)
         _jobs_persist()
@@ -2501,8 +2642,6 @@ def config_status() -> dict:
         "availableModels": _candidate_models(cfg),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "learnNextAt": str(getattr(cfg, "learn_next_at", "") or ""),
-        "desktopAllowDownloads": bool(getattr(cfg, "desktop_allow_downloads", True)),
-        "desktopPersistStorage": bool(getattr(cfg, "desktop_persist_storage", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
         "metaCallModels": dict(getattr(cfg, "meta_call_models", {}) or {}),
         "familyWrappers": dict(getattr(cfg, "family_wrappers", {}) or {}),
@@ -2588,10 +2727,9 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_wrappers = "family_wrappers" in data and isinstance(data.get("family_wrappers"), dict)
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
-    has_desktop = ("desktop_allow_downloads" in data) or ("desktop_persist_storage" in data) \
-        or ("golden_min_good" in data) or ("learn_next_at" in data)
+    has_misc = ("golden_min_good" in data) or ("learn_next_at" in data)
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
-            or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_desktop):
+            or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
         if has_ingest:
             cfg.ingest_sources = data.get("ingest_sources") or []
@@ -2679,10 +2817,6 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                         _agg_bump()
                 except ValueError:
                     pass
-        if "desktop_allow_downloads" in data:
-            cfg.desktop_allow_downloads = bool(data.get("desktop_allow_downloads"))
-        if "desktop_persist_storage" in data:
-            cfg.desktop_persist_storage = bool(data.get("desktop_persist_storage"))
         for k in slot_keys:
             if k in data:
                 setattr(cfg, k, (data.get(k) or "").strip())
@@ -2866,6 +3000,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/vocab"):
             self._send(200, json.dumps(vocab(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/entdict"):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            self._send(200, json.dumps(entdict_data(
+                q=q.get("q", [""])[0], type_=q.get("type", [""])[0],
+                status=q.get("status", [""])[0], limit=int(q.get("limit", ["300"])[0])),
+                ensure_ascii=False), _JSON)
         elif self.path.startswith("/dict"):
             self._send(200, json.dumps(dict_data(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/topic-drill"):
@@ -3590,6 +3731,19 @@ class Handler(BaseHTTPRequestHandler):
                 p = json.loads(body or b"{}")
                 res = ingest_run_source(p, trigger="manual")
                 self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/entdict"):
+            try:
+                # 엔티티 사전 편집·보강 = 관리자 전용(사전·정책과 동일 게이트)
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(entdict_action(data, team=self._req_team(),
+                           mock=Handler.server_mock), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

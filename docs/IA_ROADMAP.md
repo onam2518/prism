@@ -55,7 +55,7 @@ Prism Admin
 
 - HTTP · `/run` `/run-batch` `/config` `/ping` `/models` `/vocab` `/template.csv` `/report` `/vendor/*`
 - 키 · `~/.prism_key`(Solar) · `~/.prism_bizrouter_key` · `~/.prism_timely_key` (config.json 은 키 제외)
-- 패키징 · pywebview `Prism.app` + PyInstaller + 꾸민 `.dmg`(미서명 T1)
+- 배포 · 웹 전용(Fly.io Docker · 데스크탑 패키징은 2026-07-14 제거)
 
 ---
 
