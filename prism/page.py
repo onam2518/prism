@@ -454,7 +454,7 @@ PAGE = """<!doctype html>
             <div style="display:flex;gap:var(--ds-space-2);flex-wrap:wrap;align-items:center">
               <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
               <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestBusy" x-on:click="ingestRun()" x-text="ingestBusy ? '가져오는 중…' : '가져오기 실행'"></button>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestOnceBusy" x-on:click="ingestRun()" x-text="ingestOnceBusy ? '가져오는 중…' : '가져오기 실행'"></button>
             </div>
             <span class="text-xs text-muted" style="display:block;margin-top:7px" x-text="ingestMsg"></span>
           </div>
@@ -2717,7 +2717,7 @@ PAGE = """<!doctype html>
       </div>
       <div class="ds-dialog__footer" style="margin-top:16px">
         <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-md" x-on:click="bulkOpen=false">취소</button>
-        <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || !bulkSelHashes.length || !bulkPick.length" x-on:click="saveBulk()" x-text="bulkBusy ? '배정 중…' : (bulkSelHashes.length + '건 배정 실행 →')"></button>
+        <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="assignBulkBusy || !bulkSelHashes.length || !bulkPick.length" x-on:click="saveBulk()" x-text="assignBulkBusy ? '배정 중…' : (bulkSelHashes.length + '건 배정 실행 →')"></button>
       </div>
     </div>
   </div>
@@ -3024,32 +3024,9 @@ PAGE = """<!doctype html>
 <!-- 위젯 홈 인터랙션(편집·리사이즈·드래그·틸트) · SERVICE_DESIGN §4.3 규격 -->
 <script>
   // ── 캐릭터 사용 정책(공통 규칙) ──────────────────────────────────────
-  // 캐릭터 = 추출 파이프라인 4단계 역할 위젯/뷰는 자신이 속한 단계의 캐릭터만 쓴다
-  //   추출 대식 · 분석 용희 · 검수 복실 · 판정·부여 딱지
-  // ① 모듈(뷰) = 그 모듈의 파이프라인 역할  ② 프롬프트 스튜디오 = 단계별 패널이 그 단계
-  // ③ 홈 위젯 = 위젯 역할(data-wid)  ④ 도우미·빈 상태 = 복실(안내)
-  var CHAR = { extract: 'daesik-batter', analyze: 'yonghee-pitcher', review: 'boksil-catcher', judge: 'ddakji-manager' };
-  var MOD_STAGE = { auto: 'extract', run: 'extract', queue: 'extract', intake: 'extract',
-                    dash: 'analyze', user: 'analyze', topic: 'analyze',
-                    quality: 'review', eval: 'review', dict: 'judge', prompt: null };
-  var WID_STAGE = { 'launch-run': 'extract', 'launch-batch': 'analyze', 'launch-dict': 'judge',
-                    metrics: 'extract', quality: 'review', intents: 'analyze', categories: 'analyze', process: 'analyze' };
-  function stageChar(st) { return CHAR[st] || 'yonghee-pitcher'; }
-  function panelStage(t) {
-    t = t || '';
-    if (/추출/.test(t)) return 'extract';
-    if (/분석/.test(t)) return 'analyze';
-    if (/검수|품질/.test(t)) return 'review';
-    if (/판정|부여|법령/.test(t)) return 'judge';
-    return 'analyze';
-  }
-  function viewMod(el) { var v = el.closest('[x-show]'); if (!v) return ''; var m = (v.getAttribute('x-show') || '').match(/mod === '(\\w+)'/); return m ? m[1] : ''; }
-  function prismCharForPanel(h, titleText) {
-    var mod = viewMod(h);
-    if (mod === 'studio') return stageChar(panelStage(titleText));   // 단계별
-    var st = MOD_STAGE[mod];
-    return st ? stageChar(st) : stageChar(panelStage(titleText));
-  }
+  // 캐릭터 = 추출 파이프라인 4단계 역할: 추출 대식 · 분석 용희 · 검수 복실 · 판정·부여 딱지
+  // (구 단계별 패널 캐릭터 매핑 MOD_STAGE·prismCharForPanel 은 호출부가 사라져 제거 —
+  //  구 메뉴 id 기준이라 재사용 시 전부 빗나간다 · 2026-07-14 감사)
   // 카드 속성(기능/정보) = 캐릭터+칩 고정 클러스터. 종류별 캐릭터 통일 · 항상 헤드 우측 끝.
   var KIND_CHAR = { fn: 'boksil-catcher', info: 'yonghee-pitcher' };
   function prismCardType(isFn) {
