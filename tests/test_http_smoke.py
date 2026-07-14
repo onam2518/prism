@@ -321,14 +321,22 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertEqual(set(td.get("settings") or {}), {"co_min", "entity_min"})
         self.assertIsInstance(td.get("customDefs"), list)
         n = td["n_contents"]
-        # 미리보기: 차원 미선택 = 전체 매칭(제약 없음)
+        # 미리보기: 조건 없음 = 단일 '핵심' 묶음 = 전체
         pv = self.ok("/topic-studio", {"action": "preview",
                                        "def": {"name": "전체", "cats": [], "intents": [], "keywords": []}})
-        self.assertEqual(pv["preview"]["count"], n)
         self.assertEqual(pv["preview"]["n_total"], n)
-        # 자연어 제안: 세 차원 키를 항상 반환 · 모델 지정 시 LLM 개입(mock 은 휴리스틱 폴백)
+        self.assertTrue(pv["preview"]["bundles"])
+        self.assertEqual(pv["preview"]["bundles"][0]["count"], n)   # 핵심 = 전체
+        # 필수/선택 → 다중 묶음: 필수=Sports, 선택 2개 → 핵심 1 + 관련 2
+        pv2 = self.ok("/topic-studio", {"action": "preview", "def": {
+            "name": "스포츠 인물", "cats": ["Sports"], "intents": ["인물·사연", "인터뷰"], "keywords": [],
+            "req": {"cats": ["Sports"], "intents": [], "keywords": []}}})
+        kinds = [b["kind"] for b in pv2["preview"]["bundles"]]
+        self.assertIn("core", kinds)                               # 핵심(전부)
+        self.assertGreaterEqual(kinds.count("related"), 2)          # 선택값마다 관련 묶음
+        # 자연어 제안: 필수/선택(req) 포함 반환 · 모델 지정 시 LLM 개입(mock 은 휴리스틱 폴백)
         sg = self.ok("/topic-studio", {"action": "suggest", "text": "심층 분석 콘텐츠", "model": "solar-pro2"})
-        self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords"})
+        self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords", "req"})
         self.assertIn(sg.get("via"), ("llm", "heuristic", "none"))
         self.assertEqual(sg.get("model"), "solar-pro2")            # 선택 모델 에코(버튼이 헛돌지 않음)
         self.assertIn("심층 분석", sg["suggest"]["intents"])         # 전체 아이템메타 분류(사전) 고려 · 데이터 유무 무관
@@ -336,20 +344,24 @@ class TestButtonsEndToEnd(unittest.TestCase):
         sg2 = self.ok("/topic-studio", {"action": "suggest", "text": "스포츠 주제의 인물들 콘텐츠", "model": "solar-pro2"})
         self.assertIn("인물·사연", sg2["suggest"]["intents"])
         self.assertIn("Sports", sg2["suggest"]["cats"])
-        # 저장 → 사용자 정의로 영속 + 조건형 풀 생성
+        self.assertIn("Sports", sg2["suggest"]["req"]["cats"])      # 휴리스틱 기본: 카테고리=필수
+        # 저장 → 사용자 정의로 영속 + 묶음(핵심) 생성
         saved = self.ok("/topic-studio", {"action": "save", "def": {
             "name": "스모크 토픽", "prompt": "스모크 자연어 설명", "cats": [], "intents": [], "keywords": []}})
-        mine = [c for c in saved.get("custom", []) if c["name"] == "스모크 토픽"]
+        mine = [g for g in saved.get("custom", []) if g["name"] == "스모크 토픽"]
         self.assertEqual(len(mine), 1)
-        self.assertEqual(mine[0]["count"], n)                       # 차원 미선택 = 전체
-        cid = mine[0]["cluster_id"]
-        self.assertTrue(any(d["id"] == cid for d in saved["customDefs"]))
+        g = mine[0]
+        self.assertEqual(g["core_count"], n)                       # 조건 없음 = 핵심 = 전체
+        did = g["id"]
+        self.assertTrue(any(d["id"] == did for d in saved["customDefs"]))
         # 재조회에서도 유지(영속)
-        self.assertTrue(any(d["id"] == cid for d in self.ok("/topics")["customDefs"]))
-        # 사용자 정의 토픽 드릴다운(자동 토픽과 동일 shape)
-        dr = self.ok("/topic-drill?cluster=" + urllib.parse.quote(cid))
+        self.assertTrue(any(d["id"] == did for d in self.ok("/topics")["customDefs"]))
+        # 묶음(핵심) 드릴다운(자동 토픽과 동일 shape)
+        core_cid = next(b["cluster_id"] for b in g["bundles"] if b["kind"] == "core")
+        dr = self.ok("/topic-drill?cluster=" + urllib.parse.quote(core_cid))
         self.assertTrue(dr["ok"])
         self.assertEqual(dr["n"], n)
+        cid = did
         # 클러스터링 튜닝 왕복(경계값 클램프 포함)
         st = self.ok("/topic-studio", {"action": "settings", "settings": {"co_min": 1, "entity_min": 4}})
         self.assertEqual(st["settings"], {"co_min": 1, "entity_min": 4})

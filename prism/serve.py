@@ -628,6 +628,10 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     cats = _strlist(d.get("cats"))
     intents = _strlist(d.get("intents"))
     keywords = _strlist(d.get("keywords"))
+    # \ud544\uc218(req): \uc120\ud0dd\ub41c \uac12\uc758 \ubd80\ubd84\uc9d1\ud569\ub9cc \uc778\uc815(\uac12 \uc5c6\uc73c\uba74 \ud558\uc704\ud638\ud658\uc73c\ub85c topic \uc774 '\uc804\ubd80 \ud544\uc218' \ucc98\ub9ac)
+    rq = d.get("req") or {}
+    sel = {"cats": set(cats), "intents": set(intents), "keywords": set(keywords)}
+    req = {k: [v for v in _strlist(rq.get(k)) if v in sel[k]] for k in ("cats", "intents", "keywords")}
     cid = (d.get("id") or "").strip()
     if not cid:
         base = "U-" + (TP._slug(name or prompt or "topic") or "topic")
@@ -636,33 +640,24 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
         while cid in ids:
             cid = base + "-" + str(n); n += 1
     return {"id": cid, "name": name or "(\ubb34\uc81c \ud1a0\ud53d)", "prompt": prompt,
-            "cats": cats, "intents": intents, "keywords": keywords}
+            "cats": cats, "intents": intents, "keywords": keywords, "req": req}
 
 
 def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     """\uc790\uc5f0\uc5b4 \uc124\uba85 \u2192 \ud1a0\ud53d \ucc28\uc6d0(\uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8\u00b7\ud0a4\uc6cc\ub4dc)\uc744 \uc120\ud0dd \ubaa8\ub378\ub85c \ub9e4\ud551.
     \ud5c8\uc6a9 \ubaa9\ub85d(\ud604\uc7ac \ub370\uc774\ud130\uc758 \uc2e4\uc7ac \uac12)\uc73c\ub85c\ub9cc \uc81c\uc57d \u00b7 \uc2e4\ud328 \uc2dc (None, \uc0ac\uc720) \ubc18\ud658(\ud638\ucd9c\ubd80\uc5d0\uc11c \ud734\ub9ac\uc2a4\ud2f1 \ud3f4\ubc31)."""
-    from . import topic as TP
+    from . import topic as TP, meta_prompts as MP
     tax = TP.meta_taxonomy()                       # \uc2dc\uc2a4\ud15c \uc804\uccb4 \uc544\uc774\ud15c\uba54\ud0c0 \ubd84\ub958(\ub370\uc774\ud130 \uc720\ubb34 \ubb34\uad00)
-    cat = TP.studio_catalog(rows, svc)             # \ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc2e4\uc7ac\ud558\ub294 \uac12(\uc6b0\uc120) + \uc5d4\ud2f0\ud2f0 \ud6c4\ubcf4
+    cat = TP.studio_catalog(rows, svc)             # \ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc2e4\uc7ac\ud558\ub294 \uac12(\uc6b0\uc120)
     data_cats = [c["k"] for c in cat["cats"]]
     data_int = [c["k"] for c in cat["intents"]]
     allow_cats = list(dict.fromkeys((tax["cats"] or []) + data_cats))   # \uc804\uccb4 \u222a \ub370\uc774\ud130
     allow_int = list(dict.fromkeys((tax["intents"] or []) + data_int))
-    hint_kw = [c["k"] for c in cat["keywords"][:40]]
     tier1_ko = getattr(TP, "_TIER1_KO", {}) or {}
     cats_ko = [((tier1_ko.get(c) or c) + "=" + c) for c in allow_cats]  # \uc601\ubb38 Tier1 + \ud55c\uae00 \ubcd1\uae30
-    sysp = ("\ub108\ub294 \ucf58\ud150\uce20 \ud050\ub808\uc774\uc158 \ud1a0\ud53d \uc124\uacc4 \ubcf4\uc870\uc790\ub2e4. \uc0ac\uc6a9\uc790\uc758 \uc790\uc5f0\uc5b4 \uc124\uba85\uc744, \uc544\ub798 '\uc6b0\ub9ac \uc2dc\uc2a4\ud15c\uc758 \uc804\uccb4 "
-            "\uc544\uc774\ud15c\uba54\ud0c0 \ubd84\ub958'(\uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8) \uc548\uc5d0\uc11c \uc758\ubbf8\uac00 \ub9de\ub294 \uac12\uc73c\ub85c\ub9cc \ub9e4\ud551\ud574 JSON \uac1d\uccb4 \ud558\ub098\ub85c\ub9cc \ub2f5\ud55c\ub2e4. "
-            "\ubaa9\ub85d\uc5d0 \uc5c6\ub294 \uac12\uc740 \uc808\ub300 \ub9cc\ub4e4\uc9c0 \uc54a\ub294\ub2e4. \ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc788\ub294 \uac12\uc744 \uc6b0\uc120\ud558\ub418, \uc124\uba85\uc5d0 \ubd80\ud569\ud558\uba74 \ub370\uc774\ud130\uc5d0 "
-            "\uc544\uc9c1 \uc5c6\ub294 \uac12\ub3c4 \uc120\ud0dd\ud560 \uc218 \uc788\ub2e4(\ubbf8\ub798 \ub9e4\uce6d). keywords \ub294 \uc124\uba85\uc5d0 \ub4f1\uc7a5\u00b7\ud568\uc758\ub41c \uc778\ubb3c\u00b7\uae30\uc5c5\u00b7\uc791\ud488 \ub4f1 "
-            '\uace0\uc720\uba85\uc0ac\ub9cc(\uc790\uc720\u00b7\ucd5c\ub300 5\uac1c). \ud615\uc2dd: {"cats":[],"intents":[],"keywords":[]}')
-    userp = ("\uc124\uba85: " + (text or "").strip() + "\n\n"
-             + "[\uc804\uccb4 \uce74\ud14c\uace0\ub9ac Tier1 \u00b7 \ud55c\uae00=\uc601\ubb38]: " + json.dumps(cats_ko, ensure_ascii=False) + "\n"
-             + "[\uc804\uccb4 \uc778\ud150\ud2b8]: " + json.dumps(allow_int, ensure_ascii=False) + "\n"
-             + "[\ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc788\ub294 \uac12(\uc6b0\uc120)] \uce74\ud14c\uace0\ub9ac: " + json.dumps(data_cats, ensure_ascii=False)
-             + " \u00b7 \uc778\ud150\ud2b8: " + json.dumps(data_int, ensure_ascii=False) + "\n"
-             + "[\ud0a4\uc6cc\ub4dc \ud6c4\ubcf4(\uc5d4\ud2f0\ud2f0)]: " + json.dumps(hint_kw, ensure_ascii=False))
+    # \ubaa8\ub378 \uacc4\uc5f4 \ucfe1\ubd81 \ub798\ud37c\ub85c \uc870\ub9bd(\ud544\uc218/\uc120\ud0dd \uc124\uacc4\uc790 \uc5ed\ud560) \u00b7 \uc2a4\ud29c\ub514\uc624 \uc624\ubc84\ub77c\uc774\ub4dc \uc0c1\uc18d
+    sysp = MP.topic_suggest_system(model, cats_ko, allow_int, data_cats, data_int)
+    userp = MP.topic_suggest_user(text)
     llm, route = llm_for_model(model, mock)
     if llm is None:
         return None, route
@@ -670,11 +665,27 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     if not isinstance(obj, dict) or obj.get("_fail"):
         return None, (isinstance(obj, dict) and obj.get("_fail_kind")) or "fail"
     ac, ai = set(allow_cats), set(allow_int)
-    sug = {
-        "cats": [c for c in (obj.get("cats") or []) if c in ac],
-        "intents": [c for c in (obj.get("intents") or []) if c in ai],
-        "keywords": [str(k).strip()[:60] for k in (obj.get("keywords") or []) if str(k).strip()][:5],
-    }
+    must, opt = obj.get("must") or {}, obj.get("optional") or {}
+
+    def _cv(dd, key, allow):
+        return [v for v in (dd.get(key) or []) if v in allow]
+
+    def _kw(dd):
+        return [str(k).strip()[:60] for k in (dd.get("keywords") or []) if str(k).strip()]
+
+    def _uniq(a, b):
+        out = list(a)
+        for x in b:
+            if x not in out:
+                out.append(x)
+        return out
+
+    m_cats, m_int, m_kw = _cv(must, "cats", ac), _cv(must, "intents", ai), _kw(must)
+    cats = _uniq(m_cats, _cv(opt, "cats", ac))
+    intents = _uniq(m_int, _cv(opt, "intents", ai))
+    keywords = _uniq(m_kw, _kw(opt))[:5]
+    sug = {"cats": cats, "intents": intents, "keywords": keywords,
+           "req": {"cats": m_cats, "intents": m_int, "keywords": [k for k in m_kw if k in keywords]}}
     return sug, route
 
 
@@ -688,12 +699,14 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
     if action == "preview":
         d = _sanitize_def(data.get("def") or {})
         return {"ok": True, "preview": TP.preview_definition(rows, svc, d) if rows else
-                {"count": 0, "n_total": 0, "rep_title": "", "samples": []}}
+                {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0}}
 
     if action == "suggest":
         text = data.get("text") or ""
         if not rows:
-            return {"ok": True, "suggest": {"cats": [], "intents": [], "keywords": []}, "via": "none"}
+            return {"ok": True, "via": "none",
+                    "suggest": {"cats": [], "intents": [], "keywords": [],
+                                "req": {"cats": [], "intents": [], "keywords": []}}}
         model = (data.get("model") or "").strip()          # "" = \uae30\ubcf8 \uc2e4\ud589 \ubaa8\ub378
         via, route, sug = "llm", "", None
         try:
@@ -887,15 +900,24 @@ def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     rows = results_rows()
     if not rows or not cluster_id:
         return {"ok": True, "kind": "topic", "value": cluster_id or "", "items": [], "n": 0}
-    td = topics_data()                        # single/composite/filter/custom (각 content_ids 보유)
+    td = topics_data()                        # single/composite/filter(각 content_ids) · custom(그룹→bundles)
     cluster = None
-    for grp in ("single", "composite", "filter", "custom"):
+    for grp in ("single", "composite", "filter"):
         for c in td.get(grp, []):
             if c.get("cluster_id") == cluster_id:
                 cluster = c
                 break
         if cluster:
             break
+    if not cluster:                            # 사용자 토픽: 그룹의 묶음(핵심·관련) 중에서 찾음
+        for g in td.get("custom", []):
+            for b in (g.get("bundles") or []):
+                if b.get("cluster_id") == cluster_id:
+                    cluster = dict(b)
+                    cluster["name"] = (g.get("name") or "") + " · " + (b.get("label") or "")
+                    break
+            if cluster:
+                break
     if not cluster:
         return {"ok": False, "kind": "topic", "value": cluster_id, "items": [], "n": 0,
                 "error": "토픽을 찾을 수 없습니다(데이터가 갱신되었을 수 있음)"}

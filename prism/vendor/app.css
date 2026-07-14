@@ -1058,3 +1058,29 @@
 /* 생성 스텝: 미리보기 */
 .tpreview{background:var(--ds-canvas);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:12px 13px}
 .tpreview__big{font-size:24px;font-weight:700;line-height:1.1}
+
+/* ── 토픽 스튜디오: 필수/선택 3상태 칩 · 묶음(핵심/관련) ── */
+.ds-badge.is-req{box-shadow:inset 0 0 0 1.5px var(--ds-primary);font-weight:700}
+.treq{font-size:9.5px;font-weight:800;color:var(--ds-primary-deep);margin-right:3px;letter-spacing:.02em}
+.tlegend .sw--sel{background:var(--ds-cat-interest-subtle);border:1px solid var(--ds-cat-interest-text)}
+.tlegend .sw--req{background:var(--ds-primary)}
+/* 미리보기 묶음 리스트 */
+.tpreview{display:flex;flex-direction:column;gap:6px}
+.tbundle{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:var(--ds-radius-md);
+  background:var(--ds-canvas);border:1px solid var(--ds-hairline)}
+.tbundle.core{border-color:var(--ds-primary);background:var(--ds-primary-tint)}
+.tbundle__k{flex:none;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 7px;white-space:nowrap;
+  background:var(--ds-surface);border:1px solid var(--ds-hairline);color:var(--ds-muted)}
+.tbundle.core .tbundle__k{color:var(--ds-primary-deep);border-color:var(--ds-primary)}
+.tbundle__l{flex:1;min-width:0;font-size:13px;color:var(--ds-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbundle__n{flex:none;font-size:13px;font-weight:700;color:var(--ds-ink);font-variant-numeric:tabular-nums}
+/* 내 토픽 그룹 */
+.tgroup{background:var(--ds-canvas);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:12px 13px}
+.tgroup__hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.tgroup__hd b{font:600 14px var(--ds-font-display);color:var(--ds-ink)}
+.tgroup__must{font-size:11.5px;color:var(--ds-primary-deep);margin-top:4px}
+.tbchip{font-size:11.5px;border-radius:7px;padding:3px 9px;background:var(--ds-surface);
+  border:1px solid var(--ds-hairline);color:var(--ds-body);display:inline-flex;align-items:center;gap:4px}
+.tbchip:hover{border-color:var(--ds-border-input-hover)}
+.tbchip.core{border-color:var(--ds-primary);background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
+.tbchip__k{font-weight:700;font-size:10px;opacity:.85}

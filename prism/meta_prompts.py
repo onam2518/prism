@@ -308,6 +308,47 @@ def call_system(model: str, call: str, display_service_name: str = "", learned: 
                     gold_examples(call), CALL_SELF_CHECK[call], learned)
 
 
+# ── 토픽 스튜디오: 조건값 자동생성(필수/선택 설계) · 모델 계열 쿡북 래퍼 재사용 ──
+# 추출 콜과 동일한 FAMILY_WRAPPER 로 조립 → 계열별 프롬프트 + 스튜디오 오버라이드(WRAPPER_OVERRIDES) 상속.
+TOPIC_SUGGEST_ROLE = (
+    "너는 콘텐츠 큐레이션 토픽 설계자다. 사용자의 자연어 설명을 읽고, 이 토픽을 규정하는 "
+    "'필수 조건'(반드시 만족 · 토픽의 정체성=주제·대상)과, 관련 콘텐츠를 넓히는 '선택 조건'"
+    "(각각이 별도 '관련 묶음'이 됨 · 관점·형식 등 곁가지)으로 나눠 조건값을 설계한다.")
+TOPIC_SUGGEST_SCHEMA = (
+    '{"must": {"cats": string[], "intents": string[], "keywords": string[]}, '
+    '"optional": {"cats": string[], "intents": string[], "keywords": string[]}}')
+TOPIC_SUGGEST_RULES = (
+    "- 목적: 하나의 토픽을 '핵심 묶음(필수+모든 선택)'과 '관련 묶음(필수+선택 하나씩)'으로 펼칠 수 있게 조건을 설계한다.\n"
+    "- must(필수): 이 토픽이 무엇에 관한 것인지 규정하는 축. 보통 주제 카테고리·대상 키워드 1~2개. 비우지 않는다.\n"
+    "- optional(선택): 관련 콘텐츠를 넓히는 관점·형식·세부 유형. 인텐트가 여기 오는 경우가 많다. 1~3개 제안해 묶음이 풍부해지게 한다.\n"
+    "- cats·intents 는 아래 허용 목록의 값만 쓴다(목록 외 생성 절대 금지). keywords 는 인물·기업·작품 등 고유명사만 자유(최대 5).\n"
+    "- 현재 데이터에 있는 값을 우선하되, 설명에 부합하면 데이터에 아직 없는 값도 가능(미래 매칭).")
+TOPIC_SUGGEST_SELF_CHECK = (
+    "- must 최소 1개인가 · must+optional 이 설명의 핵심을 담는가 · 허용 목록 외 cats/intents 를 만들지 않았는가 · "
+    "관련 묶음이 생기도록 optional 을 최소 1개 제안했는가")
+TOPIC_SUGGEST_EXAMPLES = (
+    '설명: "스포츠 주제의 인물들에 대한 콘텐츠 모아줘"\n'
+    '→ {"must":{"cats":["Sports"],"intents":[],"keywords":[]},'
+    '"optional":{"cats":[],"intents":["인물·사연","인터뷰","선수 분석 기사"],"keywords":[]}}\n'
+    '설명: "삼성전자 관련 경제 심층분석만"\n'
+    '→ {"must":{"cats":["Business and Finance"],"intents":[],"keywords":["삼성전자"]},'
+    '"optional":{"cats":[],"intents":["심층 분석","트렌드·시장 분석"],"keywords":[]}}')
+
+
+def topic_suggest_system(model: str, cats_ko, intents, data_cats, data_int) -> str:
+    """조건값 자동생성 시스템 프롬프트. 모델 계열 쿡북 래퍼로 조립 + 허용 목록(전체 분류·데이터 우선) 주입."""
+    rules = (TOPIC_SUGGEST_RULES
+             + "\n\n[전체 카테고리 Tier1 · 한글=영문]: " + _ja(cats_ko)
+             + "\n[전체 인텐트]: " + _ja(intents)
+             + "\n[현재 데이터에 있는 값(우선)] 카테고리: " + _ja(data_cats) + " · 인텐트: " + _ja(data_int))
+    return _compose(family_of(model), TOPIC_SUGGEST_ROLE, TOPIC_SUGGEST_SCHEMA, rules,
+                    TOPIC_SUGGEST_EXAMPLES, TOPIC_SUGGEST_SELF_CHECK, "")
+
+
+def topic_suggest_user(text: str) -> str:
+    return "설명: " + (text or "").strip()
+
+
 def call_user(call: str, content, prior: dict) -> str:
     """분리형 호출의 user 메시지(문서 §2.6 주입 변수)."""
     dsn = getattr(content, "displayServiceName", "") or ""

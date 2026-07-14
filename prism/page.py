@@ -907,32 +907,32 @@ PAGE = """<!doctype html>
                 <div class="tstep" x-bind:class="{'is-done': !!(studio.cats.length||studio.intents.length||studio.keywords.length), 'is-active': tActive()===3}">
                   <div class="tstep__rail"><span class="tstep__dot"><span class="n">3</span><span class="c">✓</span></span></div>
                   <div class="tstep__body">
-                    <div class="tstep__head"><b>조건 확인·조정</b><span class="tstep__guide">문장을 읽고 아래 조건으로 걸러냈어요 · 마음에 안 들면 직접 바꿀 수 있어요</span></div>
-                    <div class="tfilter"><span class="tfilter__badge">✨ 자동 필터</span><span class="tfilter__text" x-html="filterSummary()"></span></div>
-                    <div class="tlegend"><span class="sw sw--on"></span><b>켜진 칩</b> = 필터 적용 · <span class="sw sw--off"></span>회색 = 후보(누르면 추가) · <span class="tauto">✨</span> = 문장에서 자동 선택</div>
+                    <div class="tstep__head"><b>조건 확인·조정</b><span class="tstep__guide">필수는 모든 묶음의 뼈대(반드시), 선택은 각각이 관련 묶음이 됩니다 · 칩을 누를수록 후보→선택→필수</span></div>
+                    <div class="tfilter"><span class="tfilter__badge">✨ 묶음</span><span class="tfilter__text" x-html="bundleSummaryText()"></span></div>
+                    <div class="tlegend"><span class="sw sw--off"></span>회색=후보 · <span class="sw sw--sel"></span>색=선택(관련 묶음) · <span class="sw sw--req"></span><b>★필수</b>=반드시(모든 묶음 공통) · <span class="tauto">✨</span>=자동 선택 · <span style="color:var(--ds-muted)">칩을 누를수록 후보→선택→필수→후보</span></div>
                     <div class="tcond__g">
-                      <div class="tcond__lbl">카테고리 <span x-text="'· '+studio.cats.length+' 적용'"></span></div>
+                      <div class="tcond__lbl">카테고리 <span x-text="'· 선택 '+studio.cats.length+(studio.req.cats.length?(' (필수 '+studio.req.cats.length+')'):'')"></span></div>
                       <div class="flex flex-wrap gap-1.5">
-                        <template x-for="c in studioCatChips()" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.cats.includes(c.k)?'ds-badge--category':'ds-badge--neutral'" x-on:click="studioToggle('cats',c.k)"><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
+                        <template x-for="c in studioCatChips()" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('cats',c.k,'ds-badge--category')" x-on:click="studioCycle('cats',c.k)" data-tip="누를수록 후보→선택→필수"><span x-show="studioState('cats',c.k)==='req'" class="treq">★필수</span><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
                         <span x-show="!studioCatChips().length" class="text-xs text-muted">데이터에 카테고리가 없습니다</span>
                       </div>
                     </div>
                     <div class="tcond__g">
-                      <div class="tcond__lbl">인텐트 <span x-text="'· '+studio.intents.length+' 적용'"></span></div>
+                      <div class="tcond__lbl">인텐트 <span x-text="'· 선택 '+studio.intents.length+(studio.req.intents.length?(' (필수 '+studio.req.intents.length+')'):'')"></span></div>
                       <div class="flex flex-wrap gap-1.5">
-                        <template x-for="c in studioIntentChips()" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.intents.includes(c.k)?'ds-badge--intent':'ds-badge--neutral'" x-on:click="studioToggle('intents',c.k)"><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
+                        <template x-for="c in studioIntentChips()" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('intents',c.k,'ds-badge--intent')" x-on:click="studioCycle('intents',c.k)" data-tip="누를수록 후보→선택→필수"><span x-show="studioState('intents',c.k)==='req'" class="treq">★필수</span><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
                         <span x-show="!studioIntentChips().length" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
                       </div>
                     </div>
                     <div class="tcond__g">
-                      <div class="tcond__lbl">엔티티 키워드 <span x-text="'· '+studio.keywords.length+' 적용'"></span></div>
+                      <div class="tcond__lbl">엔티티 키워드 <span x-text="'· 선택 '+studio.keywords.length+(studio.req.keywords.length?(' (필수 '+studio.req.keywords.length+')'):'')"></span></div>
                       <div style="display:flex;gap:8px">
                         <input class="field" style="flex:1" x-model="studio.kwInput" x-on:keydown.enter.prevent="studioAddKw()" placeholder="예) 삼성 (엔터로 추가)">
                         <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="studioAddKw()">추가</button>
                       </div>
                       <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
-                        <template x-for="k in studio.keywords" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-on:click="studioToggle('keywords',k)" data-tip="클릭하면 제거"><span x-show="isAuto('keywords',k)" class="tauto">✨</span><span x-text="k+' ✕'"></span></span></template>
-                        <template x-for="k in topKw()" x-bind:key="'kwc'+k.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioToggle('keywords',k.k)" data-tip="추가" x-text="'+ '+k.k"></span></template>
+                        <template x-for="k in studio.keywords" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-bind:class="chipCls('keywords',k,'ds-badge--entity')" x-on:click="studioCycle('keywords',k)" data-tip="누를수록 선택→필수→제거"><span x-show="studioState('keywords',k)==='req'" class="treq">★필수</span><span x-show="isAuto('keywords',k)" class="tauto">✨</span><span x-text="k"></span></span></template>
+                        <template x-for="k in topKw()" x-bind:key="'kwc'+k.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioCycle('keywords',k.k)" data-tip="추가" x-text="'+ '+k.k"></span></template>
                       </div>
                     </div>
                   </div>
@@ -942,17 +942,18 @@ PAGE = """<!doctype html>
                 <div class="tstep" x-bind:class="{'is-active': tActive()===4}">
                   <div class="tstep__rail"><span class="tstep__dot"><span class="n">4</span><span class="c">✓</span></span></div>
                   <div class="tstep__body">
-                    <div class="tstep__head"><b>확인하고 생성</b><span class="tstep__guide">지금 조건으로 몇 건이 묶이는지 확인한 뒤 생성하세요</span></div>
+                    <div class="tstep__head"><b>확인하고 생성</b><span class="tstep__guide">이 토픽이 아래 묶음들로 펼쳐집니다 · 저장 후 묶음마다 개별로 드릴다운돼요<span x-show="studioBusy"> · 계산 중…</span></span></div>
                     <div class="tpreview">
-                      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
-                        <span class="tnum tpreview__big" x-text="(studioPreview.count||0)"></span>
-                        <span class="meta" x-text="'/ '+((studioPreview.n_total||topicData.n_contents))+'건 묶임'"></span>
-                        <span class="meta" x-show="studioBusy">· 계산 중…</span>
-                        <span class="meta" x-show="!studio.cats.length && !studio.intents.length && !studio.keywords.length">· 조건값 없음 = 전체</span>
-                      </div>
-                      <div class="text-xs text-muted" style="margin-top:2px" x-show="studioPreview.rep_title" x-text="'대표: '+studioPreview.rep_title"></div>
-                      <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
-                        <template x-for="s in (studioPreview.samples||[])" x-bind:key="'sm'+s.title"><span class="ds-badge" x-bind:class="s.grade==='G'?'ds-badge--success':'ds-badge--neutral'" x-text="s.title"></span></template>
+                      <template x-for="b in (studioPreview.bundles||[])" x-bind:key="'pv'+b.cluster_id">
+                        <div class="tbundle" x-bind:class="b.kind">
+                          <span class="tbundle__k" x-text="b.kind==='core'?'핵심':'관련'"></span>
+                          <span class="tbundle__l" x-text="bundleLabel(b)"></span>
+                          <span class="tbundle__n tnum" x-text="b.count+'건'"></span>
+                        </div>
+                      </template>
+                      <div x-show="!(studioPreview.bundles||[]).length" class="text-xs text-muted">조건값 없음 = 전체 <span x-text="(studioPreview.n_total||topicData.n_contents)"></span>건이 한 묶음</div>
+                      <div class="flex flex-wrap gap-1.5" style="margin-top:9px" x-show="coreSamples().length">
+                        <template x-for="s in coreSamples()" x-bind:key="'sm'+s.title"><span class="ds-badge" x-bind:class="s.grade==='G'?'ds-badge--success':'ds-badge--neutral'" x-text="s.title"></span></template>
                       </div>
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
@@ -966,21 +967,25 @@ PAGE = """<!doctype html>
             </div>
           </div>
 
-          <!-- 내 토픽 -->
-          <div class="panel"><div class="panel-hd"><b>내 토픽</b><span class="meta tnum" x-text="((topicData.customDefs||[]).length)+'개'"></span></div>
-            <div class="panel-bd">
-              <template x-if="!(topicData.customDefs||[]).length"><div class="text-sm text-muted">아직 만든 토픽이 없습니다 · 위에서 첫 토픽을 정의해 저장하세요.</div></template>
-              <div class="overflow-auto" x-show="(topicData.customDefs||[]).length"><table class="ds-table"><thead><tr><th>이름</th><th>자연어 설명</th><th>차원</th><th>매칭</th><th style="width:120px"></th></tr></thead><tbody>
-                <template x-for="c in (topicData.custom||[])" x-bind:key="c.cluster_id">
-                  <tr>
-                    <td class="text-ink" style="font-weight:600" x-text="c.name"></td>
-                    <td class="text-muted text-xs" x-text="c.prompt||'(설명 없음)'"></td>
-                    <td class="text-muted text-xs" x-text="dimSummary(c)"></td>
-                    <td><span class="text-ink" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(c)" x-on:keydown.enter="topicDrill(c)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left" x-text="c.count"></span></td>
-                    <td style="white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(c)">수정</button> <button type="button" class="copybtn" x-on:click="studioDelete(c)">삭제</button></td>
-                  </tr>
-                </template>
-              </tbody></table></div>
+          <!-- 내 토픽: 각 토픽이 여러 묶음(핵심+관련)으로 펼쳐짐 -->
+          <div class="panel"><div class="panel-hd"><b>내 토픽</b><span class="meta tnum" x-text="((topicData.custom||[]).length)+'개 · 묶음 '+(topicData.summary&&topicData.summary.custom_bundles||0)"></span></div>
+            <div class="panel-bd space-y-3">
+              <template x-if="!(topicData.custom||[]).length"><div class="text-sm text-muted">아직 만든 토픽이 없습니다 · 위에서 첫 토픽을 정의해 저장하세요.</div></template>
+              <template x-for="g in (topicData.custom||[])" x-bind:key="g.id">
+                <div class="tgroup">
+                  <div class="tgroup__hd">
+                    <b x-text="g.name"></b>
+                    <span class="meta text-xs" x-show="g.prompt" x-text="'· '+g.prompt"></span>
+                    <span style="margin-left:auto;white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="copybtn" x-on:click="studioDelete(g)">삭제</button></span>
+                  </div>
+                  <div class="tgroup__must" x-show="g.must && g.must.length" x-text="'필수: '+g.must.map(m=>m.dim==='cats'?catBoth(m.v):m.v).join(' · ')"></div>
+                  <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
+                    <template x-for="b in (g.bundles||[])" x-bind:key="b.cluster_id">
+                      <span class="tbchip" x-bind:class="b.kind" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(b)" x-on:keydown.enter="topicDrill(b)" data-tip="묶인 콘텐츠 보기" data-tip-pos="top"><span class="tbchip__k" x-text="b.kind==='core'?'핵심':'관련'"></span> <span x-text="bundleLabel(b)"></span> · <b x-text="b.count"></b></span>
+                    </template>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
 
