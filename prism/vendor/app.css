@@ -425,8 +425,9 @@
   .stepcard + .stepcard{margin-top:16px}
   .stepcard__hd{display:flex;align-items:center;gap:11px;margin-bottom:16px}
   .stepcard__no{flex:none;width:26px;height:26px;border-radius:8px;background:var(--ds-primary);color:#fff;
-    display:grid;place-items:center;font-size:var(--ds-size-label);font-weight:700;line-height:1}
-  .stepcard__ttl{font-family:var(--ds-font-sans);font-size:var(--ds-size-body);font-weight:var(--ds-weight-semibold);color:var(--ds-ink)}
+    display:grid;place-items:center;font-family:var(--ds-font-display);font-size:var(--ds-size-label);font-weight:700;line-height:1}
+  /* 타이틀 폰트 = 앱 헤더와 동일한 디스플레이(GmarketSans) · .stepline b 규칙에 정렬 */
+  .stepcard__ttl{font-family:var(--ds-font-display);font-size:var(--ds-size-body);font-weight:700;letter-spacing:-.01em;color:var(--ds-ink)}
   .stepcard__sub{margin-left:8px;font-size:var(--ds-size-label);font-weight:400;color:var(--ds-muted)}
   .stepcard__badge{margin-left:auto}
 
