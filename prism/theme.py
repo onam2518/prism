@@ -10,19 +10,41 @@
      통째로 고치지 않고도 팔레트·폰트·모드전환이 일괄 통일되게 한다(별칭이 --ds-* 를 가리켜
      라이트/다크에 따라 자동 swap). 신규 스타일은 `--ds-*` 를 직접 쓴다.
 
-폰트: 앱과 동일하게 서버 번들 폰트를 로드한다 — 본문 Pretendard(`/vendor/pretendard.css`),
-      디스플레이(제목·큰 숫자·탭) GmarketSans(`/vendor/gmarket.css`). 리포트가 prism 서버로
-      서빙되면(앱의 '전체 리포트') 절대경로 `/vendor/` 가 그대로 resolve 되고, iframe srcdoc 도
-      부모 origin 을 상속하므로 각 서브리포트에서 동일하게 로드된다. 오프라인 단독 파일에선
-      시스템 폰트로 graceful fallback(스택에 -apple-system 등 포함).
+폰트:
+  - 디스플레이(제목·큰 숫자·탭) GmarketSans → **@font-face data URI 로 인라인 임베드**.
+    리포트는 서빙(앱 '전체 리포트')뿐 아니라 파일로 저장·공유·CLI 출력되므로, /vendor 링크만으론
+    비서빙 컨텍스트에서 브랜드 디스플레이 폰트가 빠졌다(제목이 폴백 Pretendard 로 나옴).
+    인라인이면 서빙/로컬파일/공유 어디서든 GmarketSans 가 항상 뜬다(외부 요청 0).
+  - 본문 Pretendard → `/vendor/pretendard.css`(서빙 시) + 스택의 시스템 Pretendard/-apple-system
+    폴백(비서빙 시). 본문은 널리 설치된 폰트라 인라인 없이도 자연스럽게 표시된다.
 텍스트 원칙: em-dash 금지 · 값 태그엔 .hint 호버 정의.
 """
 
-# <head> 폰트: 앱과 동일한 서버 번들(로컬 /vendor). Pretendard(본문) + GmarketSans(디스플레이).
-FONT_HEAD = (
-    '<link rel="stylesheet" href="/vendor/pretendard.css">'
-    '<link rel="stylesheet" href="/vendor/gmarket.css">'
-)
+import base64
+import os
+
+_VENDOR_DIR = os.path.join(os.path.dirname(__file__), "vendor")
+
+# <head> 폰트: 본문 Pretendard(서빙 시 /vendor · 비서빙 시 시스템 폴백). 디스플레이는 아래 인라인.
+FONT_HEAD = '<link rel="stylesheet" href="/vendor/pretendard.css">'
+
+_GMARKET_FACE = None
+
+
+def _gmarket_fontface() -> str:
+    """GmarketSans(Bold) woff2 를 base64 @font-face 로 인라인. 1회 로드 후 캐시.
+    weight 범위 500~800 → 제목의 600·700 이 모두 이 페이스를 쓴다(별도 웨이트 불필요)."""
+    global _GMARKET_FACE
+    if _GMARKET_FACE is None:
+        try:
+            with open(os.path.join(_VENDOR_DIR, "GmarketSansBold.woff2"), "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("ascii")
+            _GMARKET_FACE = (
+                "@font-face{font-family:'GmarketSans';font-weight:500 800;font-style:normal;"
+                "font-display:swap;src:url(data:font/woff2;base64,%s) format('woff2')}" % b64)
+        except OSError:
+            _GMARKET_FACE = ""
+    return _GMARKET_FACE
 
 # ── 1) --ds-* 시맨틱 토큰(라이트 :root) + 2) 레거시 별칭 → --ds-* ──────────────
 # 템플릿의 :root 보다 뒤에 주입되어 별칭 값이 통일된다.
@@ -136,5 +158,5 @@ def inject(html: str) -> str:
     - 토큰+컴포넌트는 첫 `</style>` 앞에(템플릿 :root 보다 뒤 → 값 통일)
     """
     html = html.replace("<style>", FONT_HEAD + "<style>", 1)
-    html = html.replace("</style>", TOKENS + COMPONENTS + "</style>", 1)
+    html = html.replace("</style>", _gmarket_fontface() + TOKENS + COMPONENTS + "</style>", 1)
     return html
