@@ -123,6 +123,23 @@ class TestSanitizeAndSuggest(unittest.TestCase):
         self.assertEqual(sug["neg"], {"cats": [], "intents": [], "keywords": []})
 
 
+class TestSuggestPromptAllFamilies(unittest.TestCase):
+    def test_exclude_lands_in_every_family_wrapper(self):
+        """exclude 지시는 {SCHEMA}·{RULES}·{EXAMPLES} 슬롯으로 전 계열 래퍼에 조립된다.
+        (gemini·claude 래퍼는 {SELF_CHECK} 슬롯이 없는 기존 설계 — 핵심 제약은 RULES 로 커버)"""
+        from prism import meta_prompts as MP
+        models = {"gpt": "gpt-5.4", "gemini": "openrouter/gemini-2.5-pro",
+                  "claude": "claude-opus-4-8", "solar": "solar-pro2", "default": "unknown-x"}
+        marks = ('"exclude": {"cats"',                     # 스키마
+                 "exclude(제외)", "빼줘/제외/말고",          # 규칙(배제 표현 + must/optional 금지)
+                 "배제 대상은 must/optional 에 절대 넣지 않는다",
+                 '"exclude":{"cats":[],"intents":["속보","사건 경과 보도"]')  # 예시
+        for fam, model in models.items():
+            p = MP.topic_suggest_system(model, ["스포츠=Sports"], ["심층 분석"], ["Sports"], [])
+            for m in marks:
+                self.assertIn(m, p, f"{fam} 래퍼에 exclude 지시 누락: {m}")
+
+
 class TestNegWithExclusionOverlay(unittest.TestCase):
     def test_neg_and_per_content_exclusion_compose(self):
         """정의 제외(neg)와 개별 제외(오버레이)가 함께 동작."""
