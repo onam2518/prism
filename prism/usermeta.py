@@ -67,11 +67,6 @@ SCENARIOS = [
 _LV = {"저": 1, "중": 2, "고": 3}
 
 
-def _pcat(c):
-    v = c["entity_categories"][0] if c["entity_categories"] else "기타"
-    return _t1(v)
-
-
 def _t1(v):
     from .dashboard import tier1_remap
     return tier1_remap(v)
