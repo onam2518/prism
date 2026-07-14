@@ -135,10 +135,10 @@ _INTEGRATED = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 :root{--bg:var(--ds-canvas,#f4f5f7);--mut:var(--ds-muted,rgba(0,0,0,.48));--fg:var(--ds-ink,#000);--ac:var(--ds-primary,#1e84ff);--line:var(--ds-hairline,rgba(0,0,0,.08));--s2:var(--ds-surface-on,#f4f5f7)}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--ds-canvas);color:var(--ds-ink);
 font:14px var(--ds-font-body);-webkit-font-smoothing:antialiased}
-.tabbar{display:flex;align-items:center;gap:6px;height:52px;padding:0 18px;
+.tabbar{display:flex;align-items:center;gap:6px;height:62px;padding:0 20px;
 background:var(--ds-surface);border-bottom:1px solid var(--ds-hairline)}
 .tabbar .brand{margin-right:18px;display:flex;align-items:center;height:28px}
-.tabbar .brand .lg{height:24px;width:auto;display:none}
+.tabbar .brand .lg{height:44px;width:auto;display:none}
 .tabbar .brand .lg-light{display:block}
 @media (prefers-color-scheme:dark){.tabbar .brand .lg-light{display:none}.tabbar .brand .lg-dark{display:block}}
 [data-theme=light] .tabbar .brand .lg-light{display:block}[data-theme=light] .tabbar .brand .lg-dark{display:none}
@@ -150,7 +150,7 @@ background:var(--ds-surface);border-bottom:1px solid var(--ds-hairline)}
 .tab .badge2{font-size:9.5px;background:var(--ds-state-hover);color:var(--ds-muted);border-radius:5px;padding:2px 6px;margin-left:6px;font-weight:700}
 .help{margin-left:auto;cursor:pointer;color:var(--ds-muted);font-size:13px;font-weight:600;border:1px solid var(--ds-hairline);border-radius:8px;padding:6px 12px}
 .help:hover{color:var(--ds-ink);border-color:var(--ds-border-input-hover)}
-.wrap{position:absolute;top:53px;left:0;right:0;bottom:0;background:var(--ds-canvas)}
+.wrap{position:absolute;top:63px;left:0;right:0;bottom:0;background:var(--ds-canvas)}
 iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 #hov{position:fixed;inset:0;background:var(--ds-scrim,rgba(0,0,0,.48));display:none;z-index:20}
 #hp{position:fixed;top:0;right:0;height:100%;width:min(520px,96vw);background:var(--ds-surface);border-left:1px solid var(--ds-hairline);
