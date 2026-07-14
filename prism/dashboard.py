@@ -88,16 +88,20 @@ def build(results_path: str, out_path: str, title: str = "아이템 메타 현�
 
 
 def _logo_data_uri(name: str) -> str:
-    """벤더 로고 SVG 를 data URI 로 인라인(외부 요청 0). 서빙·로컬파일·CLI 모든 컨텍스트에서
+    """벤더 로고를 data URI 로 인라인(외부 요청 0). 서빙·로컬파일·CLI 모든 컨텍스트에서
     항상 표시된다(<img src=/vendor/…> 는 서버 서빙 시에만 로드돼 로컬 파일에선 깨졌음).
-    <img> 로 감싸므로 다중 로고 인라인 시의 SVG id 충돌(clipPath 등)도 없다."""
+
+    반드시 PNG 를 쓴다: 태그라인 로고 SVG 의 'PRISM' 워드마크는 <text> 요소인데 폰트 지정이
+    없어 <img> 격리 렌더 시 세리프(Times)로 폴백된다(SVG 는 페이지 폰트를 못 씀). PNG 는
+    브랜드 폰트(GmarketSans)가 래스터로 구워져 있어 앱과 동일하게 정확히 표시된다."""
     import base64
     import os
     p = os.path.join(os.path.dirname(__file__), "vendor", os.path.basename(name))
+    mime = "image/png" if name.lower().endswith(".png") else "image/svg+xml"
     try:
         with open(p, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("ascii")
-        return "data:image/svg+xml;base64," + b64
+        return "data:" + mime + ";base64," + b64
     except OSError:
         return ""
 
@@ -119,8 +123,8 @@ def build_integrated(results_path: str, out_path: str,
         return h.replace("&", "&amp;").replace('"', "&quot;")
 
     page = TH.inject(_INTEGRATED).replace("__TITLE__", html.escape(title)) \
-        .replace("__LOGO_LIGHT__", _logo_data_uri("prism-logo-tagline-light.svg")) \
-        .replace("__LOGO_DARK__", _logo_data_uri("prism-logo-tagline-dark.svg")) \
+        .replace("__LOGO_LIGHT__", _logo_data_uri("prism-logo-tagline-light.png")) \
+        .replace("__LOGO_DARK__", _logo_data_uri("prism-logo-tagline-dark.png")) \
         .replace("__CONTENT_SRCDOC__", esc(content_html)) \
         .replace("__TOPIC_SRCDOC__", esc(topic_html)) \
         .replace("__USER_SRCDOC__", esc(user_html))
