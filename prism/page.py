@@ -868,16 +868,21 @@ PAGE = """<!doctype html>
             <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.composite||0):0"></div><div class="t">사건형(자동)</div></div>
           </div>
 
-          <!-- 토픽 생성하기: 4단계 스텝(이름 → 자연어 → 조건 → 생성) -->
+          <!-- 토픽 생성하기: 수동(4단계 스텝) | 자동(묶기 기준) 탭 -->
           <div class="panel">
             <!-- 타이틀은 정적 텍스트 유지(헤드 데코레이터가 b.textContent 를 복사하므로 x-text 는 빈 타이틀이 된다) -->
-            <div class="panel-hd"><b>토픽 생성하기</b><span class="meta">이름 → 설명 → 조건 → 생성 · 4단계로 묶음을 정의합니다</span>
+            <div class="panel-hd"><b>토픽 생성하기</b><span class="meta">직접 정의하거나 자동 묶기 기준을 조절합니다</span>
               <span class="ds-badge ds-badge--status" x-show="studio.editId" x-cloak>수정 중</span>
-              <span class="meta tnum" style="margin-left:auto" x-text="tStepDone()+' / 4 단계'"></span>
-              <span class="tprog"><i x-bind:style="'width:'+(tStepDone()/4*100)+'%'"></i></span>
+              <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
+                <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='manual'?'sel':''" x-on:click="topicGenTab='manual'">수동 생성</button>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='auto'?'sel':''" x-on:click="topicGenTab='auto'">자동 생성</button>
+              </span>
+              <span class="meta tnum" x-show="topicGenTab==='manual'" x-text="tStepDone()+' / 4 단계'"></span>
+              <span class="tprog" x-show="topicGenTab==='manual'"><i x-bind:style="'width:'+(tStepDone()/4*100)+'%'"></i></span>
+              <span class="meta tnum" x-show="topicGenTab==='auto'" x-cloak x-text="'엔티티형 '+(topicData.summary&&topicData.summary.single||0)+' · 사건형 '+(topicData.summary&&topicData.summary.composite||0)"></span>
             </div>
             <div class="panel-bd">
-              <div class="tstepper">
+              <div class="tstepper" x-show="topicGenTab==='manual'">
 
                 <!-- STEP 1 · 이름 -->
                 <div class="tstep" x-bind:class="{'is-done': !!studio.name.trim(), 'is-active': tActive()===1}">
@@ -989,6 +994,33 @@ PAGE = """<!doctype html>
                 </div>
 
               </div>
+
+              <!-- 자동 생성 탭: 자동 토픽(엔티티형·사건형) 묶기 기준 -->
+              <div x-show="topicGenTab==='auto'" x-cloak class="space-y-4">
+                <div class="text-xs text-muted">자동 토픽(엔티티형·사건형)은 추출 결과에서 계속 생성됩니다 · 아래 기준은 묶는 촘촘함을 조절합니다</div>
+                <div>
+                  <label class="lbl">여러 기사를 ‘같은 사건’으로 묶는 기준</label>
+                  <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
+                    <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.co_min<=1?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.co_min=1">넓게 묶기</span>
+                    <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.co_min==2?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.co_min=2">보통</span>
+                    <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.co_min>=3?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.co_min=3">좁게 묶기</span>
+                  </div>
+                  <div class="text-xs text-muted" style="margin-top:4px" x-text="eventHint()"></div>
+                </div>
+                <div>
+                  <label class="lbl">인물·브랜드 하나를 토픽으로 만들 최소 기사 수</label>
+                  <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
+                    <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.entity_min<=1?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.entity_min=1">1건이라도</span>
+                    <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.entity_min==2?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.entity_min=2">2건 이상</span>
+                    <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.entity_min>=3?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.entity_min=3">3건 이상</span>
+                  </div>
+                  <div class="text-xs text-muted" style="margin-top:4px" x-text="entityHint()"></div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveTopicSettings()" x-bind:disabled="settingsSaving" x-text="settingsSaving?'적용 중…':'적용'"></button>
+                  <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="settingsMsg"></span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1039,34 +1071,6 @@ PAGE = """<!doctype html>
               <tr x-show="topicView!=='auto' && !(topicData.custom||[]).length"><td colspan="5" class="text-muted">아직 만든 토픽이 없습니다 · 위 토픽 생성하기에서 정의해 저장하세요</td></tr>
               <tr x-show="topicView!=='manual' && !((topicData.single||[]).length||(topicData.composite||[]).length)"><td colspan="5" class="text-muted">자동 생성 토픽 없음 · 데이터가 많을수록 · 자동으로 묶기 기준을 낮추면 더 형성됩니다</td></tr>
             </tbody></table></div>
-          </div>
-
-          <!-- 자동으로 묶기 설정: 쉬운 말 프리셋 -->
-          <div class="panel"><div class="panel-hd"><b>자동으로 묶기 설정</b><span class="meta">엔티티형·사건형 자동 토픽이 얼마나 촘촘하게 묶일지</span></div>
-            <div class="panel-bd space-y-4">
-              <div>
-                <label class="lbl">여러 기사를 ‘같은 사건’으로 묶는 기준</label>
-                <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
-                  <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.co_min<=1?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.co_min=1">넓게 묶기</span>
-                  <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.co_min==2?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.co_min=2">보통</span>
-                  <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.co_min>=3?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.co_min=3">좁게 묶기</span>
-                </div>
-                <div class="text-xs text-muted" style="margin-top:4px" x-text="eventHint()"></div>
-              </div>
-              <div>
-                <label class="lbl">인물·브랜드 하나를 토픽으로 만들 최소 기사 수</label>
-                <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
-                  <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.entity_min<=1?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.entity_min=1">1건이라도</span>
-                  <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.entity_min==2?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.entity_min=2">2건 이상</span>
-                  <span class="ds-badge" style="cursor:pointer" x-bind:class="settingsDraft.entity_min>=3?'ds-badge--entity':'ds-badge--neutral'" x-on:click="settingsDraft.entity_min=3">3건 이상</span>
-                </div>
-                <div class="text-xs text-muted" style="margin-top:4px" x-text="entityHint()"></div>
-              </div>
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveTopicSettings()" x-bind:disabled="settingsSaving" x-text="settingsSaving?'적용 중…':'적용'"></button>
-                <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="settingsMsg"></span>
-              </div>
-            </div>
           </div>
 
           <!-- 토픽에서 제외한 콘텐츠: 큐레이션 오버레이 관리(자동·사용자 토픽 공통) -->
