@@ -289,7 +289,7 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
             **({"duplicates": dropped} if dropped else {})}
 
 
-def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dict:
+def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persist: bool = True) -> dict:
     cfg = Config.load()
     if (model or "").strip():                # 모델 지정 재실행: 제공자·키를 모델에 맞게 라우팅
         llm, _route = llm_for_model(model.strip(), mock)
@@ -332,6 +332,9 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "") -> dic
         (out.setdefault("trace", {}))["version"] = (stv.batch_seq(team) + 1) if (stv and hasattr(stv, "batch_seq")) else 1
     except Exception:
         pass
+    if not persist:                              # 실험(미저장): 추출만 하고 results·초안·홀드아웃 미기록
+        return {"source": source, "mock": llm.mock, "content": content,
+                "signals": signals, "output": out}
     store_save([(content, out)], team=team)      # 영속 저장(+미러, 팀 태깅)
     if (fields.get("purpose") or "") == "eval":  # 평가용 지정: 검수 대상에서 제외(홀드아웃)
         try:
@@ -736,7 +739,31 @@ def media_action(data: dict) -> dict:
         if not raw.strip():
             return {"ok": False, "error": "\uc790\ub9c9 \uc6d0\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694"}
         return {"ok": True, **MX.parse_subtitles(raw, fmt)}
-    return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791(\uc99d\ubd84 1\uc740 \uc790\ub9c9 \ud30c\uc2f1\ub9cc \uc9c0\uc6d0)"}
+    return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791(\uc790\ub9c9 \ud30c\uc2f1\uc740 media_action, \uc601\uc0c1\uc740 media_native)"}
+
+
+def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
+                 description: str = "", model: str = "") -> dict:
+    """T4 \ub124\uc774\ud2f0\ube0c \ube44\ub514\uc624 \uc2e4\ud5d8(\uc2e4\ud5d8\uc2e4 \u00b7 \ubbf8\uc800\uc7a5). \uc601\uc0c1 \ud1b5\uc9dc \u2192 \ub77c\uc6b0\ud130 \uc704\uc784 \ud2b8\ub799 \u2192
+    S4 \ubcd1\ud569 \u2192 \ud569\uc131 Content \u2192 \uae30\uc874 \ucd94\ucd9c(S5) \u2192 ItemMeta. results \uc5d0 \uc800\uc7a5\ud558\uc9c0 \uc54a\ub294\ub2e4.
+
+    \ube44\uc804 \uc2ac\ub86f\uc774 \ub77c\uc6b0\ud130\uba74 \uadf8 \uc11c\ube44\uc2a4/\ubaa8\ub378\ub85c \ub124\uc774\ud2f0\ube0c \ud638\ucd9c, \uc544\ub2c8\uba74(\ub610\ub294 \uc11c\ubc84 mock) mock \ud3f4\ubc31.
+    """
+    from . import mediaext as MX
+    cfg = Config.load()
+    mock = Handler.server_mock
+    service = cfg.vision_provider if MX.is_router(cfg.vision_provider) else "bizrouter"
+    vmodel = cfg.vision_model or model
+    nv = MX.native_video_track(content_bytes, mime, vmodel, service, mock=mock)
+    merged = MX.merge_tracks(audio=nv.get("audio"), visual=nv.get("visual"))
+    content = MX.build_content(merged, caption=caption, description=description)
+    # S5 = \uae30\uc874 \ucd94\ucd9c \uc7ac\uc0ac\uc6a9(imagext \ub3d9\uc77c \uc124\uacc4) \u00b7 persist=False \ub85c \ubbf8\uc800\uc7a5
+    res = run_pipeline({"displayServiceName": content["displayServiceName"],
+                        "title": content["title"], "subtitle": content["subtitle"],
+                        "body": content["body"]},
+                       mock=mock, model=model, persist=False)
+    return {"ok": True, "mock": bool(res.get("mock")), "native": nv,
+            "merged": merged, "content": content, "output": res.get("output") or {}}
 
 
 def dashboard_data(team=None) -> dict:
@@ -3496,10 +3523,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
-        if self.path.startswith("/media-extract"):        # 미디어 메타 파이프라인: T1 자막 파싱(룰·조회성)
+        if self.path.startswith("/media-extract"):        # 미디어 메타 파이프라인: 자막 파싱(JSON) · 영상 네이티브(multipart)
             try:
-                data = json.loads(body or b"{}")
-                self._send(200, json.dumps(media_action(data), ensure_ascii=False), _JSON)
+                ctype = self.headers.get("Content-Type", "")
+                if "multipart/form-data" in ctype:        # 영상 업로드 → T4 네이티브 실험(미저장)
+                    fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
+                    f = fields.get("file") or {}
+                    if not f.get("bytes"):
+                        self._send(400, json.dumps({"ok": False, "error": "영상 파일이 필요합니다"}, ensure_ascii=False), _JSON)
+                        return
+                    res = media_native(f["bytes"], f.get("mime") or "video/mp4",
+                                       caption=fields.get("caption", ""),
+                                       description=fields.get("description", ""),
+                                       model=fields.get("model", ""))
+                    self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
+                else:
+                    data = json.loads(body or b"{}")
+                    self._send(200, json.dumps(media_action(data), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

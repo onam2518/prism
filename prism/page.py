@@ -1237,12 +1237,47 @@ PAGE = """<!doctype html>
           </div>
         </div>
 
+        <!-- T4 네이티브 비디오 실험 (영상 통짜 → 라우터 위임 → 병합 → 합성 Content → 기존 추출 ItemMeta · 실험·미저장) -->
+        <div class="panel"><div class="panel-hd"><b>T4 · 네이티브 비디오 실험</b><span class="meta">영상 업로드 → 라우터 위임(프레임+오디오 단일 호출) → 병합 → 합성 Content → 기존 추출(ItemMeta) · 실험이라 저장 안 함</span></div>
+          <div class="panel-bd space-y-4">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div style="flex:1;min-width:240px"><label class="lbl">영상 파일</label>
+                <input type="file" accept="video/*" class="field" x-on:change="mediaVidPick($event)">
+              </div>
+              <div style="flex:1;min-width:200px"><label class="lbl">캡션·설명 (선택)</label>
+                <input class="field" x-model="mediaVid.caption" placeholder="기존 텍스트 메타(제목·설명)와 결합">
+              </div>
+              <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaNative()" x-bind:disabled="mediaVidBusy||!mediaVid.file">실행</button>
+            </div>
+            <div x-show="mediaVidMsg" class="text-xs text-muted" x-text="mediaVidMsg"></div>
+            <div x-show="mediaVidRes" class="space-y-3">
+              <div x-show="mediaVidRes && mediaVidRes.mock"><span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock · 라우터 미연결(키 없음)</span></div>
+              <div><label class="lbl">발화 전사 (오디오 트랙)</label>
+                <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? (mediaVidRes.native.audio.transcript || '(발화 없음)') : ''"></pre></div>
+              <div><label class="lbl">비주얼 묘사</label>
+                <div class="text-sm text-body" x-text="mediaVidRes ? mediaVidRes.native.visual.description : ''"></div>
+                <div class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.native.visual.on_screen_text" x-text="'[화면 텍스트] ' + (mediaVidRes ? mediaVidRes.native.visual.on_screen_text : '')"></div></div>
+              <div><label class="lbl">통합 원고 (S4 병합)</label>
+                <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? mediaVidRes.merged.transcript : ''"></pre></div>
+              <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타 (S5 · 기존 추출 재사용)</b><span class="meta">실험 · 미저장</span></div>
+                <div class="panel-bd space-y-2">
+                  <div class="drow"><div class="k">리드문</div><div class="v text-sm text-body" x-text="mediaVidRes ? ((mediaVidRes.output.item_meta||{}).summary || '—') : ''"></div></div>
+                  <div class="drow"><div class="k">인텐트</div><div class="v flex flex-wrap gap-1.5"><template x-for="it in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">—</span></div></div>
+                  <div class="drow"><div class="k">엔티티</div><div class="v flex flex-wrap gap-1.5"><template x-for="e in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">—</span></div></div>
+                  <div class="drow"><div class="k">카테고리</div><div class="v flex flex-wrap gap-1.5"><template x-for="c in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">—</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 후속 슬롯 안내 -->
         <div class="panel"><div class="panel-hd"><b>후속 슬롯</b><span class="meta">설계 확정 대기</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets">
-              <li><b>raw 영상 분해</b> — 오디오·키프레임 추출. 의존성 0 원칙과 충돌 → ffmpeg(시스템 바이너리) vs 네이티브 비디오(라우터 위임) 결정 대기.</li>
+              <li><b>raw 영상 분해</b> — <b>네이티브 비디오(라우터 위임)로 결정</b>. 영상 통짜를 라우터로 보내 프레임+오디오 동시 토큰화(로컬 ffmpeg 미사용, 의존성 0 유지). <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>결정</span></li>
               <li><b>S5 메타추출 모델</b> — 인터페이스 고정(json_schema · 한국어 · 32K+), 후보 A/B(Solar Pro 3 · GPT · Gemini) 하네스는 별도 증분. <span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>모델 선정 대기</span></li>
+              <li><b>이미지 이관</b> — 콘텐츠 관리 이미지 처리를 이 미디어 탭으로 이관(실험실 전담). <span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>다음 증분</span></li>
             </ul>
           </div>
         </div>

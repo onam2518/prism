@@ -78,6 +78,7 @@
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
       // 미디어 메타 파이프라인(T1 자막 파싱 실험기)
       mediaSub: { raw: '', fmt: '' }, mediaRes: null, mediaBusy: false, mediaMsg: '',
+      mediaVid: { file: null, caption: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
@@ -1552,6 +1553,21 @@
           else { this.mediaMsg = (r && r.error) || '파싱 실패'; }
         } catch (e) { this.mediaMsg = '파싱 실패'; }
         this.mediaBusy = false;
+      },
+      // ── 미디어: T4 네이티브 비디오 실험(미저장) ──
+      mediaVidPick(e) { this.mediaVid.file = (e.target.files && e.target.files[0]) || null; this.mediaVidRes = null; this.mediaVidMsg = ''; },
+      async mediaNative() {
+        if (!this.mediaVid.file) return;
+        this.mediaVidBusy = true; this.mediaVidMsg = '영상 처리 중… (네이티브 트랙 → 병합 → 추출)'; this.mediaVidRes = null;
+        try {
+          const fd = new FormData();
+          fd.append('file', this.mediaVid.file);
+          if (this.mediaVid.caption) fd.append('caption', this.mediaVid.caption);
+          const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          if (r && r.ok) { this.mediaVidRes = r; this.mediaVidMsg = r.mock ? '완료 · mock(라우터 미연결)' : '완료'; }
+          else { this.mediaVidMsg = (r && r.error) || '처리 실패'; }
+        } catch (e) { this.mediaVidMsg = '처리 실패'; }
+        this.mediaVidBusy = false;
       },
       // ── 토픽 스튜디오 ──
       async _studioPost(payload) {
