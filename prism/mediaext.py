@@ -342,3 +342,108 @@ def build_content(merged: dict, *, displayServiceName: str = "영상",
         "subtitle": "",
         "body": body,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# T4 네이티브 비디오 (라우터 위임 · 영상 통짜 입력)
+#   raw 영상 분해 결정(2026-07): 의존성 0 원칙상 로컬 ffmpeg 미사용 → 영상 파일을
+#   라우터로 통짜 전송, Gemini 가 프레임+오디오를 동시 토큰화해 발화 전사와 비주얼
+#   묘사를 '한 호출'로 산출한다. 산출을 audio/visual 두 트랙으로 반환해 merge_tracks
+#   로 그대로 이어붙인다(=T2·T3 을 네이티브 경로로 대체).
+#   NOTE: 라우터의 영상 파트 규약은 게이트웨이마다 다르다(OpenAI 호환에 영상 표준
+#   없음). 아래는 data-URL video 파트 best-effort → 실 연결 시 라우터 계약에 맞춰
+#   파트 타입만 조정하면 된다. 무키/무모델/무영상 시 결정론적 mock 으로 UI 무중단.
+# ─────────────────────────────────────────────────────────────────────────
+
+_NATIVE_PROMPT = (
+    "이 영상을 보고(프레임과 오디오 모두) 아래 JSON 객체 하나만 출력하라. "
+    "코드펜스·설명 금지. 한국어로.\n"
+    '{"language":"주 언어","has_speech":true/false,"transcript":"발화 전체 전사'
+    '(없으면 빈 문자열)","segments":[{"start":초(number),"end":초(number),'
+    '"speaker":"화자 턴 라벨","text":"발화"}],"description":"영상이 무엇을 보여주는지'
+    ' 3~6문장(인물·사물·장소·브랜드·행동·상황·분위기·콘텐츠 성격, 추측 금지)",'
+    '"on_screen_text":"화면 텍스트/자막 전체(없으면 빈 문자열)",'
+    '"entities":["핵심 개체 1~8개, 고유명사 우선"],"scene":"장소·상황·성격 한 줄"}'
+)
+
+
+def _split_native(obj: dict) -> dict:
+    """네이티브 산출(dict) → merge_tracks 입력용 {audio, visual} 트랙으로 분리."""
+    obj = obj if isinstance(obj, dict) else {}
+    audio = {"language": obj.get("language") or "",
+             "has_speech": bool(obj.get("has_speech")),
+             "transcript": (obj.get("transcript") or "").strip(),
+             "segments": obj.get("segments") or []}
+    visual = {"description": (obj.get("description") or "").strip(),
+              "on_screen_text": (obj.get("on_screen_text") or "").strip(),
+              "entities": [e for e in (obj.get("entities") or []) if e],
+              "scene": (obj.get("scene") or "").strip()}
+    return {"audio": audio, "visual": visual}
+
+
+def native_video(content: bytes, mime: str, model: str, service: str = "bizrouter",
+                 timeout: int = 300) -> dict:
+    """영상 통짜 → 라우터(Gemini) 발화 전사 + 비주얼 묘사 단일 호출.
+
+    반환: {audio:{...}, visual:{...}}(merge_tracks 입력형). 무키/무모델 시 빈 dict.
+    """
+    key = router_key(service)
+    if not key or not model or not content:
+        return {}
+    data_url = f"data:{mime};base64,{base64.b64encode(content).decode()}"
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": [
+                {"type": "text", "text": _NATIVE_PROMPT},
+                # 라우터 영상 파트(게이트웨이 계약에 맞춰 조정 지점)
+                {"type": "video_url", "video_url": {"url": data_url}},
+            ]},
+        ],
+        "stream": False,
+    }
+    req = urllib.request.Request(router_chat_url(service), data=json.dumps(body).encode(),
+                                 method="POST")
+    req.add_header("Authorization", f"Bearer {key}")
+    req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    choices = payload.get("choices") or []
+    rawtxt = (choices[0]["message"]["content"] if choices else "") or ""
+    obj = _parse_json_lax(rawtxt)
+    if not obj and rawtxt.strip():
+        obj = {"description": rawtxt.strip(), "has_speech": False}
+    return _split_native(obj)
+
+
+def _mock_native() -> dict:
+    return _split_native({
+        "language": "ko", "has_speech": True,
+        "transcript": "[mock-T4] 네이티브 비디오 전사 자리표시자.",
+        "segments": [{"start": 0.0, "end": 4.0, "speaker": "S1", "text": "[mock] 발화 구간."}],
+        "description": "[mock-T4] 프레임과 오디오가 함께 담긴 영상으로, 현장 상황을 전달하는 콘텐츠로 보인다.",
+        "on_screen_text": "[mock] 화면 텍스트",
+        "entities": ["mock개체A"], "scene": "[mock] 현장, 정보성 콘텐츠 추정",
+    })
+
+
+def native_video_track(content: bytes, mime: str = "video/mp4", model: str = "",
+                       service: str = "bizrouter", *, mock: bool = False) -> dict:
+    """T4 실행 래퍼 — 키/모델/영상 없거나 mock 시 결정론적 mock. latency_ms 부착.
+
+    반환: {audio, visual, latency_ms, mock?}. merge_tracks(audio=…, visual=…)로 이어붙인다.
+    """
+    use_mock = mock or not _have_router(service, model) or not content
+    if use_mock:
+        r = _mock_native()
+        r["latency_ms"] = 0
+        r["mock"] = True
+        return r
+    t0 = time.time()
+    try:
+        r = native_video(content, mime, model, service) or _split_native({})
+    except Exception as e:
+        r = _split_native({})
+        r["note"] = f"네이티브 비디오 호출 실패: {e}"
+    r["latency_ms"] = int((time.time() - t0) * 1000)
+    return r
