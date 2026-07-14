@@ -2375,7 +2375,7 @@ PAGE = """<!doctype html>
   <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && (bulkOpen=false)" style="z-index:78">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">
       <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px;font-family:var(--ds-font-display)">검수자 일괄 배정
-        <span class="text-xs text-muted" style="font-family:var(--ds-font-body);font-weight:400">여러 콘텐츠에 담당자를 한 번에 지정합니다</span></h2>
+        <span class="text-xs text-muted" style="font-family:var(--ds-font-body);font-weight:400">여러 콘텐츠에 한 번에 지정합니다 · 슈퍼관리자 이상만 가능합니다</span></h2>
       <div class="ds-dialog__body" style="overflow:auto;padding:4px 0 2px">
 
         <!-- ① 콘텐츠 선택 -->
@@ -2467,7 +2467,6 @@ PAGE = """<!doctype html>
 
       </div>
       <div class="ds-dialog__footer" style="margin-top:16px">
-        <span class="text-xs text-muted ml-auto" style="margin-right:auto">슈퍼관리자 이상만 가능합니다</span>
         <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-md" x-on:click="bulkOpen=false">취소</button>
         <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="bulkBusy || !bulkSelHashes.length || !bulkPick.length" x-on:click="saveBulk()" x-text="bulkBusy ? '배정 중…' : (bulkSelHashes.length + '건 배정 실행 →')"></button>
       </div>
