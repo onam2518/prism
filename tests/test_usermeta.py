@@ -142,6 +142,10 @@ class TestNoTimestamp(unittest.TestCase):
         self.assertEqual(u["form"]["시간대"], "관측 부족")
         self.assertIn(u["persona"], [p["name"] for p in UM.PERSONAS])
         self.assertIn("근접 매칭", str(u["persona_derivation"]))
+        # 대표 소비 콘텐츠(페르소나 생성의 아이템 근거)가 체류 가중 순으로 산출된다
+        self.assertLessEqual(len(u["rep_contents"]), 5)
+        self.assertIn("title", u["rep_contents"][0])
+        self.assertIn("summary", u["rep_contents"][0])
 
     def test_under_five_views_is_light(self):
         contents = [_content("News") for _ in range(3)]
