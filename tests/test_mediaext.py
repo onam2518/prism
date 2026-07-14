@@ -101,5 +101,55 @@ class TestVisualTrackMock(unittest.TestCase):
         self.assertEqual(dropped, 3)
 
 
+class TestMergeAndContent(unittest.TestCase):
+    def _subs(self):
+        return M.parse_subtitles(SRT)   # cue_count=2
+
+    def test_subtitle_wins_over_transcription(self):
+        audio = {"has_speech": True, "transcript": "오디오 전사 원고"}
+        m = M.merge_tracks(subtitles=self._subs(), audio=audio)
+        self.assertEqual(m["spoken_source"], "subtitle")     # 자막 > 전사
+        self.assertIn("안녕하세요", m["transcript"])
+        self.assertNotIn("오디오 전사 원고", m["transcript"])
+        self.assertEqual(m["sources"], ["subtitle"])
+
+    def test_falls_back_to_transcription_when_no_subs(self):
+        audio = {"has_speech": True, "transcript": "오디오 전사 원고"}
+        m = M.merge_tracks(subtitles={"cue_count": 0}, audio=audio)
+        self.assertEqual(m["spoken_source"], "transcription")
+        self.assertIn("오디오 전사 원고", m["transcript"])
+
+    def test_visual_annotated_alongside(self):
+        visual = {"description": "야외 현장 영상", "on_screen_text": "속보",
+                  "entities": ["A정당"]}
+        m = M.merge_tracks(subtitles=self._subs(), visual=visual)
+        self.assertIn("[비주얼] 야외 현장 영상", m["transcript"])
+        self.assertIn("[화면 텍스트] 속보", m["transcript"])
+        self.assertIn("visual", m["sources"])
+        self.assertEqual(m["entities"], ["A정당"])
+
+    def test_visual_only_no_speech(self):
+        visual = {"description": "인물 사진"}
+        m = M.merge_tracks(visual=visual)
+        self.assertFalse(m["has_speech"])
+        self.assertEqual(m["spoken_source"], "")
+
+    def test_build_content_shape_and_lead(self):
+        m = M.merge_tracks(subtitles=self._subs())
+        c = M.build_content(m, caption="캡션문", description="기존 설명")
+        self.assertEqual(set(c), {"displayServiceName", "title", "subtitle", "body"})
+        self.assertEqual(c["displayServiceName"], "영상")
+        # 본문에 설명·캡션·원고가 순서대로 결합
+        self.assertLess(c["body"].index("기존 설명"), c["body"].index("캡션문"))
+        self.assertIn("안녕하세요", c["body"])
+        # 리드: 타임스탬프 프리픽스 제거 후 첫 문장
+        self.assertNotIn("[00:01]", c["title"])
+        self.assertIn("안녕하세요", c["title"])
+
+    def test_build_content_empty_title_fallback(self):
+        c = M.build_content({"transcript": "", "visual_desc": ""})
+        self.assertEqual(c["title"], "영상 콘텐츠")
+
+
 if __name__ == "__main__":
     unittest.main()

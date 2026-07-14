@@ -264,3 +264,81 @@ def visual_track(frames: list, model: str = "", service: str = "bizrouter",
                 "note": f"비주얼 묘사 호출 실패: {e}", "latency_ms": int((time.time() - t0) * 1000)}
     obj["latency_ms"] = int((time.time() - t0) * 1000)
     return obj
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# S4 병합 → 합성 Content (imagext.build_content 형제)
+#   트랙 원고(자막/전사/비주얼)를 타임라인 순으로 통합 원고 1개로 병합하고,
+#   Prism 4필드 Content 로 합성한다. 리드문·엔티티·인텐트·카테고리는 기존 추출
+#   파이프라인(run_item)이 이 Content 를 받아 뽑는다(=S5 는 기존 자산 재사용).
+#   우선순위: 자막(T1) > 오디오 전사(T2), 비주얼(T3) 병기.
+# ─────────────────────────────────────────────────────────────────────────
+
+def merge_tracks(subtitles: dict | None = None, audio: dict | None = None,
+                 visual: dict | None = None) -> dict:
+    """트랙 3종 → 통합 원고. 우선순위: 자막 > 전사, 비주얼 병기.
+
+    반환: {transcript, spoken_source, has_speech, visual_desc, on_screen_text,
+           entities, sources:[...]}. 입력 트랙은 각 track 래퍼 산출(dict) 그대로.
+    """
+    subtitles, audio, visual = subtitles or {}, audio or {}, visual or {}
+    sources = []
+    # 발화 트랙: 자막 우선(모델 0건·최우선 경로), 없으면 오디오 전사
+    spoken, spoken_source = "", ""
+    if (subtitles.get("cue_count") or 0) > 0 and subtitles.get("transcript"):
+        spoken, spoken_source = subtitles["transcript"].strip(), "subtitle"
+        sources.append("subtitle")
+    elif audio.get("has_speech") and (audio.get("transcript") or "").strip():
+        spoken, spoken_source = audio["transcript"].strip(), "transcription"
+        sources.append("transcription")
+    has_speech = bool(spoken)
+
+    visual_desc = (visual.get("description") or "").strip()
+    on_screen = (visual.get("on_screen_text") or "").strip()
+    if visual_desc or on_screen:
+        sources.append("visual")
+
+    # 통합 원고: 발화 원고 + [비주얼] 묘사 + [화면 텍스트] 병기(타임라인 순 = 트랙 순)
+    parts = []
+    if spoken:
+        parts.append(spoken)
+    if visual_desc:
+        parts.append("[비주얼] " + visual_desc)
+    if on_screen:
+        parts.append("[화면 텍스트] " + on_screen)
+    transcript = "\n".join(parts)
+
+    ents = [e for e in (visual.get("entities") or []) if e]
+    return {"transcript": transcript, "spoken_source": spoken_source,
+            "has_speech": has_speech, "visual_desc": visual_desc,
+            "on_screen_text": on_screen, "entities": ents, "sources": sources}
+
+
+def build_content(merged: dict, *, displayServiceName: str = "영상",
+                  title: str = "", caption: str = "", description: str = "") -> dict:
+    """병합 원고 → Prism 4필드 Content(기존 추출 파이프라인 입력).
+
+    caption(자막/캡션)·description(기존 설명 메타)은 본문 앞에 결합한다.
+    title 미지정 시 발화/비주얼 첫 문장에서 대표 리드를 끌어온다(분류 신호 확보).
+    """
+    body_parts = []
+    if description.strip():
+        body_parts.append(description.strip())
+    if caption.strip():
+        body_parts.append(caption.strip())
+    if merged.get("transcript"):
+        body_parts.append(merged["transcript"])
+    body = "\n".join(body_parts).strip()
+
+    if not title:
+        lead = (merged.get("transcript") or merged.get("visual_desc") or "").strip()
+        # 타임스탬프 프리픽스([mm:ss]) 제거 후 첫 문장
+        lead = re.sub(r"^\[[0-9:]+\]\s*", "", lead.split("\n")[0])
+        title = (lead.split(".")[0][:60] if lead else "영상 콘텐츠")
+
+    return {
+        "displayServiceName": displayServiceName or "영상",
+        "title": title,
+        "subtitle": "",
+        "body": body,
+    }
