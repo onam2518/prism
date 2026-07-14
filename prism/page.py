@@ -979,7 +979,7 @@ PAGE = """<!doctype html>
                       </template>
                       <div x-show="!(studioPreview.bundles||[]).length" class="text-xs text-muted">조건값 없음 = 전체 <span x-text="(studioPreview.n_total||topicData.n_contents)"></span>건이 한 묶음</div>
                       <div class="flex flex-wrap gap-1.5" style="margin-top:9px" x-show="coreSamples().length">
-                        <template x-for="s in coreSamples()" x-bind:key="'sm'+s.title"><span class="ds-badge" x-bind:class="s.grade==='G'?'ds-badge--success':'ds-badge--neutral'" x-text="s.title"></span></template>
+                        <template x-for="s in coreSamples()" x-bind:key="'sm'+(s.hash||s.title)"><span class="ds-badge" style="cursor:pointer" role="button" tabindex="0" x-bind:class="s.grade==='G'?'ds-badge--success':'ds-badge--neutral'" x-on:click="openDetail(s)" x-on:keydown.enter="openDetail(s)" data-tip="상세 보기 · 검수 화면과 동일" data-tip-pos="top" x-text="(s.title||'').slice(0,70)"></span></template>
                       </div>
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
