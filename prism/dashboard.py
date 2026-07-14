@@ -193,7 +193,7 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 <dl>
 <dt>엔티티형</dt><dd class="pl">단일 엔티티 단위 · "이 인물·기업에 해당하는 콘텐츠" · 영속</dd>
 <dt>사건형</dt><dd class="pl">사건 단위 · 엔티티가 여러 콘텐츠에 함께 등장(공출현)하면 자동 묶임 · 단기</dd>
-<dt>조건형</dt><dd class="pl">조건 단위 · 운영자가 "인텐트 × 콘텐츠 카테고리" 조건으로 정의 · 중장기</dd>
+<dt>수동(스튜디오)</dt><dd class="pl">조건 단위 · 운영자가 자연어+조건으로 직접 정의 · 중장기</dd>
 </dl>
 <h3>사용자 메타 (소비 측)</h3>
 <dl>

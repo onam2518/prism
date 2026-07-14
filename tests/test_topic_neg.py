@@ -1,7 +1,6 @@
 """토픽 제외 조건(neg): 정의 차원의 배제 — '속보는 빼줘'가 실제 매칭에서 동작.
 
 - 사용자 토픽: neg={cats,intents,keywords} · 하나라도 걸리면 모든 묶음에서 탈락(OR).
-- 기본 조건형: '경제 × 심층 분석'의 프롬프트 약속(속보 제외)이 not_intent 로 실동작.
 - 자동생성(휴리스틱): 배제 표현('빼줘/제외/말고')이 붙은 라벨은 선택이 아니라 neg 로.
 
 실행: python3 -m pytest tests/test_topic_neg.py -q  (stdlib unittest · 의존성 0)
@@ -36,15 +35,6 @@ def _rows():
         _row("연예 화제", entities=["넷플릭스"], intent=["흥미·화제"],
              cats=["Entertainment"]),                                            # 2
     ]
-
-
-class TestBuiltinFilterNeg(unittest.TestCase):
-    def test_econ_filter_finally_excludes_breaking(self):
-        """'경제 × 심층 분석(속보 제외)' — 프롬프트 약속이 매칭에서 실동작."""
-        d = _build(_rows())
-        econ = next(p for p in d["filter"] if p["name"] == "경제 × 심층 분석")
-        self.assertEqual(econ["content_ids"], [0])            # 속보 겸한 1번 탈락
-        self.assertIn("속보", econ["dims"]["제외 인텐트"])
 
 
 class TestCustomNeg(unittest.TestCase):

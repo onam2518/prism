@@ -76,7 +76,8 @@
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
-      // 토픽 스튜디오: 자연어+차원으로 조건형 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
+      topicView: 'all',                     // 토픽 현황 필터: all | manual(수동 생성) | auto(자동 생성)
+      // 토픽 스튜디오: 자연어+차원으로 조건 기반 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], eattrs: [], kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } },
       studioPreview: { bundles: [], n_total: 0, must_n: 0, opt_n: 0 },
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
@@ -2234,10 +2235,10 @@
         } catch (e) { this._err('리포트 열기 실패'); }
       },
       exportTopics() {
-        const d = this.topicData || {}; const rows = [['유형', '클러스터', '대표 엔티티', '멤버']];
-        (d.single || []).forEach((t) => rows.push(['엔티티형', t.cluster_id, (t.entities || t.rep_entities || []).join(' · '), t.n_contents || '']));
-        (d.composite || []).forEach((t) => rows.push(['사건형', t.cluster_id, (t.rep_entities || t.entities || []).join(' · '), t.n_contents || '']));
-        (d.filter || []).forEach((t) => rows.push(['조건형', t.cluster_id, (t.name || t.label || ''), t.n_contents || '']));
+        const d = this.topicData || {}; const rows = [['구분', '토픽', '구성', '콘텐츠']];
+        (d.custom || []).forEach((g) => rows.push(['수동', g.name, (g.prompt || ''), g.core_count || '']));
+        (d.single || []).forEach((t) => rows.push(['자동 · 엔티티형', t.cluster_id, (t.entities || t.rep_entities || []).join(' · '), t.n_contents || '']));
+        (d.composite || []).forEach((t) => rows.push(['자동 · 사건형', t.cluster_id, (t.rep_entities || t.entities || []).join(' · '), t.n_contents || '']));
         this._dl('prism_topics.csv', rows);
       },
       exportGolden() {                       // 정답셋 엑셀(CSV) 다운로드
