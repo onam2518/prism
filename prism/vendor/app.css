@@ -408,6 +408,28 @@
   .seg button.on{background:var(--ds-primary-tint);color:var(--ds-primary-deep);box-shadow:var(--ds-highlight)}
   .seg button:not(.on):hover{color:var(--ds-ink)}
 
+  /* 선택형 칩(담당자 다중선택 등) · 배정 UI 공통 */
+  .pickchip{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:var(--ds-radius-full);
+    border:1px solid var(--ds-hairline);background:var(--ds-surface);color:var(--ds-body);
+    font-family:var(--ds-font-body);font-size:var(--ds-size-label);font-weight:500;line-height:1.2;
+    cursor:pointer;user-select:none;transition:background .12s,border-color .12s,color .12s}
+  .pickchip:hover{border-color:var(--ds-primary)}
+  .pickchip.on{background:var(--ds-primary-tint);border-color:var(--ds-primary);color:var(--ds-primary-deep);font-weight:600}
+  .pickchip input{margin:0;width:14px;height:14px;accent-color:var(--ds-primary);pointer-events:none}
+  /* 목록 선택 체크박스(테이블) */
+  .bulkcb{margin:0;width:15px;height:15px;accent-color:var(--ds-primary);cursor:pointer;vertical-align:middle}
+
+  /* 스텝 카드(모달 내 단계별 영역 컴포넌트) · 흰 카드 on 캔버스 */
+  .stepcard{background:var(--ds-surface-white);border:1px solid var(--ds-border-card);border-radius:var(--ds-radius-lg);
+    padding:18px 20px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .stepcard + .stepcard{margin-top:16px}
+  .stepcard__hd{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+  .stepcard__no{flex:none;width:26px;height:26px;border-radius:8px;background:var(--ds-primary);color:#fff;
+    display:grid;place-items:center;font-size:var(--ds-size-label);font-weight:700;line-height:1}
+  .stepcard__ttl{font-family:var(--ds-font-sans);font-size:var(--ds-size-body);font-weight:var(--ds-weight-semibold);color:var(--ds-ink)}
+  .stepcard__sub{margin-left:8px;font-size:var(--ds-size-label);font-weight:400;color:var(--ds-muted)}
+  .stepcard__badge{margin-left:auto}
+
   /* 인포그래픽 · 타일·분포바·도넛 */
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
   .tile{border-radius:var(--ds-radius-md);padding:15px 16px;background:var(--ds-surface);border:1px solid var(--ds-border-card);box-shadow:0 1px 2px rgba(0,0,0,.04),0 6px 14px -8px rgba(0,0,0,.1)}
