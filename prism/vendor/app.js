@@ -81,6 +81,7 @@
       mediaSub: { raw: '', fmt: '' }, mediaRes: null, mediaBusy: false, mediaMsg: '',
       mediaVid: { file: null, caption: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
       mediaImg: { files: [], caption: '' }, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
+      mediaS5: { text: '', models: [] }, mediaS5Res: null, mediaS5Busy: false, mediaS5Msg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
@@ -1585,6 +1586,18 @@
           else { this.mediaImgMsg = (r && r.error) || '처리 실패'; }
         } catch (e) { this.mediaImgMsg = '처리 실패'; }
         this.mediaImgBusy = false;
+      },
+      // ── 미디어: S5 메타추출 모델 A/B(미저장) ──
+      mediaS5Toggle(m) { const a = this.mediaS5.models; const i = a.indexOf(m); if (i >= 0) a.splice(i, 1); else a.push(m); },
+      async mediaS5Run() {
+        if (!this.mediaS5.text.trim() || !this.mediaS5.models.length) { this.mediaS5Msg = '통합 원고와 후보 모델을 지정하세요'; return; }
+        this.mediaS5Busy = true; this.mediaS5Msg = '모델별 추출 중… (' + this.mediaS5.models.length + '개)'; this.mediaS5Res = null;
+        try {
+          const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 's5ab', text: this.mediaS5.text, models: this.mediaS5.models }) })).json();
+          if (r && r.ok) { this.mediaS5Res = r; this.mediaS5Msg = (r.results || []).some(x => x.mock) ? '완료 · mock(모델 미연결 시 동일 산출)' : '완료'; }
+          else { this.mediaS5Msg = (r && r.error) || 'A/B 실패'; }
+        } catch (e) { this.mediaS5Msg = 'A/B 실패'; }
+        this.mediaS5Busy = false;
       },
       // ── 토픽 스튜디오 ──
       async _studioPost(payload) {

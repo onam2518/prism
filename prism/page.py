@@ -1300,13 +1300,53 @@ PAGE = """<!doctype html>
           </div>
         </div>
 
+        <!-- S5 · 메타추출 모델 A/B (같은 통합 원고 → 후보 모델별 ItemMeta 나란히 · 실험·미저장) -->
+        <div class="panel"><div class="panel-hd"><b>S5 · 메타추출 모델 A/B</b><span class="meta">같은 통합 원고를 후보 모델에 태워 리드문·인텐트·엔티티·IAB 나란히 비교 · 모델 교체 자유 실측(인터페이스 종속 차단 증명)</span></div>
+          <div class="panel-bd space-y-4">
+            <div><label class="lbl">통합 원고 (S4 병합 결과 붙여넣기 또는 임의 콘텐츠 본문)</label>
+              <textarea class="field" style="min-height:100px;font-size:12px" x-model="mediaS5.text" placeholder="영상/이미지 통합 원고 또는 콘텐츠 본문"></textarea>
+            </div>
+            <div><label class="lbl">후보 모델 <span class="meta" x-text="'· 선택 ' + mediaS5.models.length"></span></label>
+              <div class="flex flex-wrap gap-1.5">
+                <template x-for="m in availableModels" x-bind:key="m">
+                  <span class="ds-badge" style="cursor:pointer" x-bind:class="mediaS5.models.includes(m) ? 'ds-badge--intent' : 'ds-badge--neutral'" x-on:click="mediaS5Toggle(m)" x-text="m"></span>
+                </template>
+                <span x-show="!availableModels.length" class="text-xs text-muted">사용 가능 모델이 없습니다 · 설정에서 모델을 지정하세요</span>
+              </div>
+            </div>
+            <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaS5Run()" x-bind:disabled="mediaS5Busy||!mediaS5.text.trim()||!mediaS5.models.length">A/B 실행</button>
+            <div x-show="mediaS5Msg" class="text-xs text-muted" x-text="mediaS5Msg"></div>
+            <div x-show="mediaS5Res" style="overflow-x:auto">
+              <div style="display:flex;gap:12px;min-width:min-content">
+                <template x-for="r in (mediaS5Res ? mediaS5Res.results : [])" x-bind:key="r.model">
+                  <div class="panel" style="margin:0;min-width:230px;flex:1">
+                    <div class="panel-hd"><b x-text="r.model"></b><span x-show="r.mock" class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock</span></div>
+                    <div class="panel-bd space-y-2">
+                      <template x-if="r.error"><div class="text-xs" style="color:var(--ds-error,#c0392b)" x-text="r.error"></div></template>
+                      <template x-if="!r.error">
+                        <div class="space-y-2">
+                          <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="(r.item_meta||{}).summary || '—'"></div></div>
+                          <div><div class="lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="it in ((r.item_meta||{}).intent||[])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template></div></div>
+                          <div><div class="lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in ((r.item_meta||{}).entities||[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template></div></div>
+                          <div><div class="lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="c in ((r.item_meta||{}).content_category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template></div></div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div class="text-xs text-muted">키 미연결 시 모든 모델이 route=mock 로 동일 산출됩니다 · 라우터/Upstage 키 연결 시 모델별로 갈립니다.</div>
+          </div>
+        </div>
+
         <!-- 후속 슬롯 안내 -->
-        <div class="panel"><div class="panel-hd"><b>후속 슬롯</b><span class="meta">설계 확정 대기</span></div>
+        <div class="panel"><div class="panel-hd"><b>후속 슬롯</b><span class="meta">진행 현황</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets">
-              <li><b>raw 영상 분해</b> — <b>네이티브 비디오(라우터 위임)로 결정</b>. 영상 통짜를 라우터로 보내 프레임+오디오 동시 토큰화(로컬 ffmpeg 미사용, 의존성 0 유지). <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>결정</span></li>
-              <li><b>S5 메타추출 모델</b> — 인터페이스 고정(json_schema · 한국어 · 32K+), 후보 A/B(Solar Pro 3 · GPT · Gemini) 하네스는 별도 증분. <span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>모델 선정 대기</span></li>
-              <li><b>이미지 이관</b> — 콘텐츠 관리 이미지 처리를 이 미디어 탭으로 이관(실험실 전담). <span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>다음 증분</span></li>
+              <li><b>raw 영상 분해</b> — <b>네이티브 비디오(라우터 위임)로 결정</b>. 영상 통짜를 라우터로 보내 프레임+오디오 동시 토큰화(로컬 ffmpeg 미사용). <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>결정</span></li>
+              <li><b>이미지 이관</b> — 콘텐츠 관리 이미지 처리를 이 미디어 탭으로 이관 완료(실험실 전담). <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>완료</span></li>
+              <li><b>S5 메타추출 모델</b> — 위 A/B 하네스로 후보 나란히 비교(인터페이스 고정: json_schema · 한국어 · 32K+). 라우터/Upstage 실연결 후 실측 선정. <span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>실연결 후 선정</span></li>
             </ul>
           </div>
         </div>
