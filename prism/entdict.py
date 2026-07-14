@@ -488,6 +488,8 @@ def _apply_source(store, e: dict, am: dict, now: float, source: str,
         fields["type"] = typ
         am["type"] = {"source": source, "status": "auto"}
         fields["status"] = "active"
+    elif e.get("status") == "unlisted":
+        fields["status"] = "pending"                       # 소스 히트 → 미등재 해제(타입은 보류 유지)
     am["_enrich"] = {"source": source, "result": "hit", "ts": now, **(extra or {})}
     store.ent_update(e["entity_id"], fields)
     return fields
@@ -529,13 +531,18 @@ def enrich_entity(store, entity_id: str) -> dict:
             store.ent_alias_add(normalize_name(label), entity_id)
         return {"ok": True, "matched": True, "source": "wikidata", "qid": qid,
                 "type": fields.get("type", e.get("type") or "")}
-    if nr and nr[0] == "ambiguous":                        # 둘 다 미해소 + 동음이의 → 보류
+    if nr and nr[0] == "ambiguous":                        # 둘 다 미해소 + 동음이의 → 보류(수동 확정 대기)
         am["_type_candidates"] = nr[1][:5]
         am["_enrich"] = {"source": "namuwiki", "result": "ambiguous", "ts": now}
         store.ent_update(entity_id, {"attr_meta": am, "updated_at": now})
         return {"ok": True, "matched": False, "ambiguous": True}
+    # 미등재(unlisted): 두 소스 모두 미스 = 복합명사구·개념어(TM 후보)일 가능성 —
+    # 개체 자체는 사전에 남기되(가치 있음) 보류 통계·기본 목록·재보강 대상에서 분리한다.
     am["_enrich"] = {"source": "namuwiki+wikidata", "result": "miss", "ts": now}
-    store.ent_update(entity_id, {"attr_meta": am, "updated_at": now})
+    fields = {"attr_meta": am, "updated_at": now}
+    if e.get("status") == "pending":                       # 확정(active)·수동 타입은 강등하지 않음
+        fields["status"] = "unlisted"
+    store.ent_update(entity_id, fields)
     return {"ok": True, "matched": False}
 
 

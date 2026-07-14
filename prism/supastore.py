@@ -989,11 +989,14 @@ class SupabaseStore:
             prefer="resolution=ignore-duplicates,return=minimal")
 
     def ent_list(self, q: str = "", type_: str = "", status: str = "", limit: int = 300) -> list:
+        """status: ''=미등재 제외(기본) · 'all'=전부 · 그 외 해당 상태만(SQLite 와 동일 계약)."""
         qs = [self._ENT_SEL, "order=updated_at.desc", f"limit={int(limit)}"]
         if type_:
             qs.append(f"type=eq.{urllib.parse.quote(type_)}")
-        if status:
+        if status and status != "all":
             qs.append(f"status=eq.{urllib.parse.quote(status)}")
+        elif not status:
+            qs.append("status=neq.unlisted")               # 기본 목록에서 미등재 분리
         if q:
             enc = urllib.parse.quote(f"*{q}*")
             alias_hits = self._get("entity_aliases", f"select=entity_id&alias=like.{enc}&limit=200")
@@ -1012,22 +1015,47 @@ class SupabaseStore:
                 counts.setdefault(l["entity_id"], set()).add(l["content_hash"])
             for e in rows:
                 e["n_contents"] = len(counts.get(e["entity_id"], ()))
+            if status == "unlisted":
+                rows.sort(key=lambda e: -e["n_contents"])
         return rows
 
     def ent_stats(self) -> dict:
         rows = self._get("entities", "select=type,status,external_ids&limit=20000")
         by_type = {}
-        pending = enriched = 0
+        pending = unlisted = enriched = 0
         for r in rows:
             t = r.get("type") or "(보류)"
             by_type[t] = by_type.get(t, 0) + 1
             if (r.get("status") or "") == "pending":
                 pending += 1
-            if isinstance(r.get("external_ids"), dict) and r["external_ids"].get("wikidata"):
+            if (r.get("status") or "") == "unlisted":
+                unlisted += 1
+            ext = r.get("external_ids")
+            if isinstance(ext, dict) and (ext.get("wikidata") or ext.get("namuwiki")):
                 enriched += 1
         n_links = len(self._get("content_entities", "select=entity_id&limit=20000"))
-        return {"total": len(rows), "byType": by_type, "pending": pending,
+        return {"total": len(rows), "byType": by_type, "pending": pending, "unlisted": unlisted,
                 "enriched": enriched, "links": n_links}
+
+    def ent_mark_unlisted(self) -> int:
+        """기존 데이터 정규화(1회성): 보강 미스 기록이 있는 보류 개체 → 미등재로 이행."""
+        rows = self._get("entities", "select=entity_id,attr_meta&status=eq.pending&limit=20000")
+        n = 0
+        for r in rows:
+            am = r.get("attr_meta")
+            if isinstance(am, dict) and (am.get("_enrich") or {}).get("result") == "miss":
+                self._req("PATCH", "entities",
+                          query=f"entity_id=eq.{urllib.parse.quote(r['entity_id'])}",
+                          body={"status": "unlisted"}, prefer="return=minimal")
+                n += 1
+        return n
+
+    def ent_purge_unlisted(self) -> int:
+        """미등재 일괄 정리(링크·별칭 포함 삭제) · 관리자 버튼."""
+        rows = self._get("entities", "select=entity_id&status=eq.unlisted&limit=20000")
+        for r in rows:
+            self.ent_delete(r["entity_id"])
+        return len(rows)
 
     def ent_pending_ids(self, limit: int = 200) -> list:
         rows = self._get("entities",

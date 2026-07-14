@@ -1360,7 +1360,9 @@ class Store:
         c.commit()
 
     def ent_list(self, q: str = "", type_: str = "", status: str = "", limit: int = 300) -> list:
-        """목록(+콘텐츠 등장 수). q 는 이름·별칭 부분일치."""
+        """목록(+콘텐츠 등장 수). q 는 이름·별칭 부분일치.
+        status: ''=미등재 제외(기본) · 'all'=전부 · 그 외 해당 상태만.
+        미등재(unlisted) 조회는 등장 수 내림차순 — 다빈도 미등재 = 진짜 개체(수동 확정 후보)."""
         c = self._conn()
         cond, vals = [], []
         if q:
@@ -1368,8 +1370,10 @@ class Store:
             vals += [f"%{q}%", f"%{q}%"]
         if type_:
             cond.append("type=?"); vals.append(type_)
-        if status:
+        if status and status != "all":
             cond.append("status=?"); vals.append(status)
+        elif not status:
+            cond.append("status<>'unlisted'")              # 기본 목록에서 미등재 분리
         where = (" WHERE " + " AND ".join(cond)) if cond else ""
         rows = [self._ent_row(r) for r in c.execute(
             self._ENT_SEL + where + " ORDER BY updated_at DESC LIMIT ?", (*vals, int(limit)))]
@@ -1380,6 +1384,8 @@ class Store:
                 f"SELECT entity_id, COUNT(DISTINCT content_hash) FROM content_entities WHERE entity_id IN ({ph}) GROUP BY entity_id", ids)}
             for e in rows:
                 e["n_contents"] = counts.get(e["entity_id"], 0)
+            if status == "unlisted":
+                rows.sort(key=lambda e: -e["n_contents"])
         return rows
 
     def ent_stats(self) -> dict:
@@ -1387,10 +1393,30 @@ class Store:
         total = c.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
         by_type = {t or "(보류)": n for t, n in c.execute("SELECT type, COUNT(*) FROM entities GROUP BY type")}
         pending = c.execute("SELECT COUNT(*) FROM entities WHERE status='pending'").fetchone()[0]
-        enriched = c.execute("SELECT COUNT(*) FROM entities WHERE external_ids LIKE '%wikidata%'").fetchone()[0]
+        unlisted = c.execute("SELECT COUNT(*) FROM entities WHERE status='unlisted'").fetchone()[0]
+        enriched = c.execute("SELECT COUNT(*) FROM entities WHERE external_ids LIKE '%wikidata%' OR external_ids LIKE '%namuwiki%'").fetchone()[0]
         links = c.execute("SELECT COUNT(*) FROM content_entities").fetchone()[0]
-        return {"total": total, "byType": by_type, "pending": pending,
+        return {"total": total, "byType": by_type, "pending": pending, "unlisted": unlisted,
                 "enriched": enriched, "links": links}
+
+    def ent_mark_unlisted(self) -> int:
+        """기존 데이터 정규화(1회성): 보강 미스 기록이 있는 보류 개체 → 미등재로 이행."""
+        c = self._conn()
+        cur = c.execute("""UPDATE entities SET status='unlisted'
+                           WHERE status='pending' AND attr_meta LIKE '%"result": "miss"%'""")
+        c.commit()
+        return cur.rowcount
+
+    def ent_purge_unlisted(self) -> int:
+        """미등재 일괄 정리(링크·별칭 포함 삭제) · 관리자 버튼."""
+        c = self._conn()
+        ids = [r[0] for r in c.execute("SELECT entity_id FROM entities WHERE status='unlisted'")]
+        for eid in ids:
+            c.execute("DELETE FROM entities WHERE entity_id=?", (eid,))
+            c.execute("DELETE FROM entity_aliases WHERE entity_id=?", (eid,))
+            c.execute("DELETE FROM content_entities WHERE entity_id=?", (eid,))
+        c.commit()
+        return len(ids)
 
     def ent_pending_ids(self, limit: int = 200) -> list:
         """보강 대상: 위키데이터 조회 이력(_enrich) 자체가 없는 개체(미스 기록은 재조회 제외)."""

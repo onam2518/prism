@@ -1920,6 +1920,13 @@
         await this.entAction({ action: 'delete', id: e.entity_id });
         this.loadEntdict();
       },
+      async entPurgeUnlisted() {
+        const n = (this.entData && this.entData.stats && this.entData.stats.unlisted) || 0;
+        if (!(await this.dsConfirm('미등재 개체 ' + n + '건을 일괄 삭제할까요? 콘텐츠 링크·별칭도 함께 삭제됩니다. 다빈도 개체(진짜 개체 후보)는 먼저 수동 확정을 권장합니다.', { ok: '정리', danger: true }))) return;
+        const d = await this.entAction({ action: 'purge_unlisted' });
+        this.entMsg = d.ok ? ('미등재 ' + (d.purged || 0) + '건 정리됨') : ('오류: ' + (d.error || ''));
+        this.loadEntdict();
+      },
       async entAdd() {
         const name = (this.entAddName || '').trim();
         if (!name) return;
