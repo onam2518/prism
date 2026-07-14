@@ -316,23 +316,32 @@ TOPIC_SUGGEST_ROLE = (
     "(각각이 별도 '관련 묶음'이 됨 · 관점·형식 등 곁가지)으로 나눠 조건값을 설계한다.")
 TOPIC_SUGGEST_SCHEMA = (
     '{"must": {"cats": string[], "intents": string[], "keywords": string[]}, '
-    '"optional": {"cats": string[], "intents": string[], "keywords": string[]}}')
+    '"optional": {"cats": string[], "intents": string[], "keywords": string[]}, '
+    '"exclude": {"cats": string[], "intents": string[], "keywords": string[]}}')
 TOPIC_SUGGEST_RULES = (
     "- 목적: 하나의 토픽을 '핵심 묶음(필수+모든 선택)'과 '관련 묶음(필수+선택 하나씩)'으로 펼칠 수 있게 조건을 설계한다.\n"
     "- must(필수): 이 토픽이 무엇에 관한 것인지 규정하는 축. 보통 주제 카테고리·대상 키워드 1~2개. 비우지 않는다.\n"
     "- optional(선택): 관련 콘텐츠를 넓히는 관점·형식·세부 유형. 인텐트가 여기 오는 경우가 많다. 1~3개 제안해 묶음이 풍부해지게 한다.\n"
+    "- exclude(제외): 설명에 '빼줘/제외/말고/없이' 같은 배제 표현이 붙은 값. 걸리면 모든 묶음에서 탈락한다. "
+    "배제 대상은 must/optional 에 절대 넣지 않는다. 배제 표현이 없으면 빈 배열.\n"
     "- cats·intents 는 아래 허용 목록의 값만 쓴다(목록 외 생성 절대 금지). keywords 는 인물·기업·작품 등 고유명사만 자유(최대 5).\n"
     "- 현재 데이터에 있는 값을 우선하되, 설명에 부합하면 데이터에 아직 없는 값도 가능(미래 매칭).")
 TOPIC_SUGGEST_SELF_CHECK = (
     "- must 최소 1개인가 · must+optional 이 설명의 핵심을 담는가 · 허용 목록 외 cats/intents 를 만들지 않았는가 · "
-    "관련 묶음이 생기도록 optional 을 최소 1개 제안했는가")
+    "관련 묶음이 생기도록 optional 을 최소 1개 제안했는가 · 배제 표현('빼줘' 등)의 대상을 exclude 로만 보냈는가")
 TOPIC_SUGGEST_EXAMPLES = (
     '설명: "스포츠 주제의 인물들에 대한 콘텐츠 모아줘"\n'
     '→ {"must":{"cats":["Sports"],"intents":[],"keywords":[]},'
-    '"optional":{"cats":[],"intents":["인물·사연","인터뷰","선수 분석 기사"],"keywords":[]}}\n'
+    '"optional":{"cats":[],"intents":["인물·사연","인터뷰","선수 분석 기사"],"keywords":[]},'
+    '"exclude":{"cats":[],"intents":[],"keywords":[]}}\n'
     '설명: "삼성전자 관련 경제 심층분석만"\n'
     '→ {"must":{"cats":["Business and Finance"],"intents":[],"keywords":["삼성전자"]},'
-    '"optional":{"cats":[],"intents":["심층 분석","트렌드·시장 분석"],"keywords":[]}}')
+    '"optional":{"cats":[],"intents":["심층 분석","트렌드·시장 분석"],"keywords":[]},'
+    '"exclude":{"cats":[],"intents":[],"keywords":[]}}\n'
+    '설명: "경제·산업 심층분석만 모으고 속보는 빼줘"\n'
+    '→ {"must":{"cats":["Business and Finance"],"intents":[],"keywords":[]},'
+    '"optional":{"cats":[],"intents":["심층 분석","트렌드·시장 분석"],"keywords":[]},'
+    '"exclude":{"cats":[],"intents":["속보","사건 경과 보도"],"keywords":[]}}')
 
 
 def topic_suggest_system(model: str, cats_ko, intents, data_cats, data_int) -> str:

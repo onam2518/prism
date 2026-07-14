@@ -910,18 +910,18 @@ PAGE = """<!doctype html>
                   <div class="tstep__body">
                     <div class="tstep__head"><b>조건 확인·조정</b><span class="tstep__guide">필수는 모든 묶음의 뼈대(반드시), 선택은 각각이 관련 묶음이 됩니다 · 칩을 누를수록 후보→선택→필수</span></div>
                     <div class="tfilter"><span class="tfilter__badge">✨ 묶음</span><span class="tfilter__text" x-html="bundleSummaryText()"></span></div>
-                    <div class="tlegend"><span class="sw sw--off"></span>회색=후보 · <span class="sw sw--sel"></span>색=선택(관련 묶음) · <span class="sw sw--req"></span><b>★필수</b>=반드시(모든 묶음 공통) · <span class="tauto">✨</span>=자동 선택 · <span style="color:var(--ds-muted)">칩을 누를수록 후보→선택→필수→후보</span></div>
+                    <div class="tlegend"><span class="sw sw--off"></span>회색=후보 · <span class="sw sw--sel"></span>색=선택(관련 묶음) · <span class="sw sw--req"></span><b>★필수</b>=반드시(모든 묶음 공통) · <span class="sw sw--neg"></span><b>✖제외</b>=걸리면 탈락(모든 묶음) · <span class="tauto">✨</span>=자동 선택 · <span style="color:var(--ds-muted)">칩을 누를수록 후보→선택→필수→제외→후보</span></div>
                     <div class="tcond__g">
                       <div class="tcond__lbl">카테고리 <span x-text="'· 선택 '+studio.cats.length+(studio.req.cats.length?(' (필수 '+studio.req.cats.length+')'):'')"></span></div>
                       <div class="flex flex-wrap gap-1.5">
-                        <template x-for="c in studioCatChips()" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('cats',c.k,'ds-badge--category')" x-on:click="studioCycle('cats',c.k)" data-tip="누를수록 후보→선택→필수"><span x-show="studioState('cats',c.k)==='req'" class="treq">★필수</span><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
+                        <template x-for="c in studioCatChips()" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('cats',c.k,'ds-badge--category')" x-on:click="studioCycle('cats',c.k)" data-tip="누를수록 후보→선택→필수→제외"><span x-show="studioState('cats',c.k)==='req'" class="treq">★필수</span><span x-show="studioState('cats',c.k)==='neg'" class="tneg">✖제외</span><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
                         <span x-show="!studioCatChips().length" class="text-xs text-muted">데이터에 카테고리가 없습니다</span>
                       </div>
                     </div>
                     <div class="tcond__g">
                       <div class="tcond__lbl">인텐트 <span x-text="'· 선택 '+studio.intents.length+(studio.req.intents.length?(' (필수 '+studio.req.intents.length+')'):'')"></span></div>
                       <div class="flex flex-wrap gap-1.5">
-                        <template x-for="c in studioIntentChips()" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('intents',c.k,'ds-badge--intent')" x-on:click="studioCycle('intents',c.k)" data-tip="누를수록 후보→선택→필수"><span x-show="studioState('intents',c.k)==='req'" class="treq">★필수</span><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
+                        <template x-for="c in studioIntentChips()" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('intents',c.k,'ds-badge--intent')" x-on:click="studioCycle('intents',c.k)" data-tip="누를수록 후보→선택→필수→제외"><span x-show="studioState('intents',c.k)==='req'" class="treq">★필수</span><span x-show="studioState('intents',c.k)==='neg'" class="tneg">✖제외</span><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
                         <span x-show="!studioIntentChips().length" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
                       </div>
                     </div>
@@ -932,7 +932,7 @@ PAGE = """<!doctype html>
                         <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="studioAddKw()">추가</button>
                       </div>
                       <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
-                        <template x-for="k in studio.keywords" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-bind:class="chipCls('keywords',k,'ds-badge--entity')" x-on:click="studioCycle('keywords',k)" data-tip="누를수록 선택→필수→제거"><span x-show="studioState('keywords',k)==='req'" class="treq">★필수</span><span x-show="isAuto('keywords',k)" class="tauto">✨</span><span x-text="k"></span></span></template>
+                        <template x-for="k in studioKwChips()" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-bind:class="chipCls('keywords',k,'ds-badge--entity')" x-on:click="studioCycle('keywords',k)" data-tip="누를수록 선택→필수→제외→제거"><span x-show="studioState('keywords',k)==='req'" class="treq">★필수</span><span x-show="studioState('keywords',k)==='neg'" class="tneg">✖제외</span><span x-show="isAuto('keywords',k)" class="tauto">✨</span><span x-text="k"></span></span></template>
                         <template x-for="k in topKw()" x-bind:key="'kwc'+k.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioCycle('keywords',k.k)" data-tip="추가" x-text="'+ '+k.k"></span></template>
                       </div>
                     </div>
@@ -980,6 +980,7 @@ PAGE = """<!doctype html>
                     <span style="margin-left:auto;white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="copybtn" x-on:click="studioDelete(g)">삭제</button></span>
                   </div>
                   <div class="tgroup__must" x-show="g.must && g.must.length" x-text="'필수: '+g.must.map(m=>m.dim==='cats'?catBoth(m.v):m.v).join(' · ')"></div>
+                  <div class="tgroup__must" x-show="g.neg && g.neg.length" style="color:var(--ds-error)" x-text="'제외: '+(g.neg||[]).map(m=>m.dim==='cats'?catBoth(m.v):m.v).join(' · ')"></div>
                   <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
                     <template x-for="b in (g.bundles||[])" x-bind:key="b.cluster_id">
                       <span class="tbchip" x-bind:class="b.kind" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(b)" x-on:keydown.enter="topicDrill(b)" data-tip="묶인 콘텐츠 보기" data-tip-pos="top"><span class="tbchip__k" x-text="b.kind==='core'?'핵심':'관련'"></span> <span x-text="bundleLabel(b)"></span> · <b x-text="b.count"></b><span class="text-xs" x-show="b.excluded_n" x-text="' (제외 '+b.excluded_n+')'" data-tip="운영자가 이 토픽에서 개별 제외한 콘텐츠 수"></span></span>
