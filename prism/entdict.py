@@ -177,10 +177,18 @@ _UA = "prism-entdict/0.1 (item meta pipeline; contact: ops)"
 
 
 def _http_json(url: str) -> dict:
-    """단일 네트워크 심(seam) · 테스트는 이 함수를 대체한다."""
+    """단일 네트워크 심(seam) · 테스트는 이 함수를 대체한다.
+    429(레이트리밋)는 Retry-After 준수(캡 60s · 기본 20s)로 최대 3회 재시도 —
+    일괄 보강처럼 연속 호출이 몰릴 때 실패가 조용히 누적되는 것을 막는다."""
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=8) as r:
-        return json.loads(r.read().decode("utf-8"))
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=8) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as ex:
+            if ex.code != 429 or attempt == 3:
+                raise
+            time.sleep(min(int(ex.headers.get("Retry-After") or 20), 60))
 
 
 def _wd(params: dict) -> dict:
