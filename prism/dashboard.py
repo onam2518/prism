@@ -123,6 +123,7 @@ def build_integrated(results_path: str, out_path: str,
         return h.replace("&", "&amp;").replace('"', "&quot;")
 
     page = TH.inject(_INTEGRATED).replace("__TITLE__", html.escape(title)) \
+        .replace("__FAVICON__", _logo_data_uri("prism-favicon.svg")) \
         .replace("__LOGO_LIGHT__", _logo_data_uri("prism-logo-tagline-light.png")) \
         .replace("__LOGO_DARK__", _logo_data_uri("prism-logo-tagline-dark.png")) \
         .replace("__CONTENT_SRCDOC__", esc(content_html)) \
@@ -135,6 +136,7 @@ def build_integrated(results_path: str, out_path: str,
 
 _INTEGRATED = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title>
+<link rel="icon" type="image/svg+xml" href="__FAVICON__">
 <style>
 :root{--bg:var(--ds-canvas,#f4f5f7);--mut:var(--ds-muted,rgba(0,0,0,.48));--fg:var(--ds-ink,#000);--ac:var(--ds-primary,#1e84ff);--line:var(--ds-hairline,rgba(0,0,0,.08));--s2:var(--ds-surface-on,#f4f5f7)}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--ds-canvas);color:var(--ds-ink);
