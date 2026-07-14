@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from itertools import combinations
 
 from .dashboard import _read_jsonl, _is_junk_entity, _canonical_entity_categories, tier1_remap
+from .dictionaries import IAB_TIER1_KO as _TIER1_KO
 from . import graphviz as GV
 from . import theme as TH
 
@@ -77,8 +78,9 @@ def build_entity_topics(rows, service_names, canon, min_contents=2):
     return pools
 
 
-# 사건형 토픽 : 엔티티 공출현(공통 ≥ CO_MIN) 클러스터
-def build_event_topics(rows, service_names):
+# 사건형 토픽 : 엔티티 공출현(공통 ≥ co_min) 클러스터
+def build_event_topics(rows, service_names, co_min=None):
+    co_min = CO_MIN if co_min is None else max(1, int(co_min))
     cent = _content_entities(rows, service_names)
     n = len(rows)
     # 역색인으로 공통 엔티티 ≥CO_MIN 인 콘텐츠 페어만 계산(전체 O(n^2) 회피)
@@ -92,7 +94,7 @@ def build_event_topics(rows, service_names):
             continue
         for a, b in combinations(idxs, 2):
             pair_common[(a, b)] += 1
-    edges = [(a, b) for (a, b), c in pair_common.items() if c >= CO_MIN]
+    edges = [(a, b) for (a, b), c in pair_common.items() if c >= co_min]
 
     # 연결요소(union-find)로 사건 클러스터 형성
     parent = list(range(n))
@@ -211,6 +213,120 @@ def build_condition_topics(rows, canon, service_names):
 def _slug(s: str) -> str:
     import re
     return re.sub(r"\s+", "-", (s or "").strip())[:40]
+
+
+# ── 토픽 스튜디오: 사용자가 자연어+구조 필터로 직접 만드는 조건형 토픽 ──
+# 조건형(FILTER_DEFS)과 동일한 매칭 의미(디멘션 내 OR · 디멘션 간 AND)를 쓰되,
+# 정의를 운영자가 UI 에서 만들고 저장한다. 차원 = 콘텐츠 카테고리(Tier1) × 인텐트 × 엔티티 키워드.
+
+def _content_dims(rows, service_names):
+    """콘텐츠별 매칭 차원 사전계산: (Tier1 카테고리셋, 인텐트셋, 엔티티리스트)."""
+    c_cat, c_int, c_ent = [], [], []
+    for r in rows:
+        im = r.get("item_meta") or {}
+        c_cat.append({tier1_remap(c) for c in (im.get("content_category") or [])})
+        c_int.append(set(im.get("intent") or []))
+        c_ent.append([e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)])
+    return c_cat, c_int, c_ent
+
+
+def _match_ids(dims, d):
+    """정의 d(cats/intents/keywords)에 부합하는 콘텐츠 인덱스. 각 차원은 OR, 차원 간 AND.
+    빈 차원은 무조건 통과(제약 없음) · 키워드는 엔티티 부분일치(대소문자 무시)."""
+    c_cat, c_int, c_ent = dims
+    cats = set(d.get("cats") or [])
+    intents = set(d.get("intents") or [])
+    kws = [k.strip().lower() for k in (d.get("keywords") or []) if str(k).strip()]
+    out = []
+    for i in range(len(c_cat)):
+        if cats and not (c_cat[i] & cats):
+            continue
+        if intents and not (c_int[i] & intents):
+            continue
+        if kws and not any(any(k in e.lower() for e in c_ent[i]) for k in kws):
+            continue
+        out.append(i)
+    return out
+
+
+def _def_pool(rows, dims, d):
+    """정의 → 조건형 풀 shape(드릴다운·그래프가 filter 와 동일하게 다룸)."""
+    matched = _match_ids(dims, d)
+    rep = sorted(matched, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))[:1]
+    cid = d.get("id") or ("U-" + _slug(d.get("name") or d.get("prompt") or "topic"))
+    return {
+        "type": "filter", "cluster_id": cid,
+        "name": d.get("name") or "(무제 토픽)", "prompt": d.get("prompt") or "",
+        "dims": {"콘텐츠 카테고리": sorted(d.get("cats") or []),
+                 "인텐트": sorted(d.get("intents") or []),
+                 "키워드": sorted(d.get("keywords") or [])},
+        "content_ids": matched, "count": len(matched),
+        "representative_content": rep[0] if rep else None,
+        "rep_title": _title(rows[rep[0]]) if rep else "",
+        "lifecycle": "사용자", "origin": "user", "active": len(matched) > 0,
+    }
+
+
+def build_custom_topics(rows, service_names, defs):
+    """저장된 사용자 정의 목록 → 조건형 풀 리스트(매칭 많은 순)."""
+    if not defs:
+        return []
+    dims = _content_dims(rows, service_names)
+    pools = [_def_pool(rows, dims, d) for d in defs]
+    pools.sort(key=lambda p: -p["count"])
+    return pools
+
+
+def preview_definition(rows, service_names, d, sample=6):
+    """생성 폼 실시간 미리보기: 저장 전 정의의 매칭 수·대표·표본 제목."""
+    dims = _content_dims(rows, service_names)
+    ids = _match_ids(dims, d)
+    ranked = sorted(ids, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))
+    return {
+        "count": len(ids), "n_total": len(rows),
+        "rep_title": _title(rows[ranked[0]]) if ranked else "",
+        "samples": [{"title": _title(rows[i])[:70], "grade": _grade(rows[i])} for i in ranked[:sample]],
+    }
+
+
+def studio_catalog(rows, service_names=None, top_kw=30):
+    """생성 폼 셀렉터 원천: 현재 데이터에 실재하는 인텐트·Tier1 카테고리·엔티티(키워드 후보) + 빈도.
+    하드코딩 사전이 아니라 데이터에서 뽑아 매칭이 실제로 성립하는 값만 노출."""
+    svc = service_names if service_names is not None else _service_names(rows)
+    int_c, cat_c, ent_c = Counter(), Counter(), Counter()
+    for r in rows:
+        im = r.get("item_meta") or {}
+        for t in (im.get("intent") or []):
+            if t:
+                int_c[t] += 1
+        for c in (im.get("content_category") or []):
+            cat_c[tier1_remap(c)] += 1
+        for e in (im.get("entities") or []):
+            if not _is_junk_entity(e, svc):
+                ent_c[e] += 1
+
+    def rank(c, k=None):
+        items = c.most_common(k) if k else sorted(c.items(), key=lambda x: (-x[1], x[0]))
+        return [{"k": a, "v": b} for a, b in items]
+
+    return {"intents": rank(int_c), "cats": rank(cat_c), "keywords": rank(ent_c, top_kw)}
+
+
+def suggest_dims(text, rows, service_names=None):
+    """자연어 문장 → 차원 제안(휴리스틱 · 모델 호출 없음, 의존성 0).
+    카탈로그의 인텐트·카테고리 라벨이 문장에 부분일치하면 채택, 문장 토큰 중
+    엔티티 카탈로그와 일치하는 것을 키워드 후보로. 즉각·결정적, 데이터 기반."""
+    cat = studio_catalog(rows, service_names)
+    t = (text or "").lower()
+    intents = [x["k"] for x in cat["intents"] if x["k"] and x["k"].lower() in t]
+    cats = [x["k"] for x in cat["cats"] if x["k"] and x["k"].lower() in t]
+    # 카테고리 한글 별칭도 시도(Tier1 영문 라벨이 문장에 없을 때)
+    for x in cat["cats"]:
+        ko = _TIER1_KO.get(x["k"]) if isinstance(_TIER1_KO, dict) else None
+        if ko and ko.lower() in t and x["k"] not in cats:
+            cats.append(x["k"])
+    keywords = [x["k"] for x in cat["keywords"] if x["k"] and x["k"].lower() in t][:5]
+    return {"cats": cats, "intents": intents, "keywords": keywords}
 
 
 # 토픽 탭 HTML (대시보드와 동일 토큰)
@@ -509,23 +625,32 @@ h2 .hint{font-size:10px}
 </body></html>"""
 
 
-def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120) -> dict:
+def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120,
+                 custom_defs=None, settings=None) -> dict:
     rows = _read_jsonl(results_path)
     svc = _service_names(rows)
     canon = _canonical_entity_categories(rows, svc)
-    single = build_entity_topics(rows, svc, canon)
-    composite = build_event_topics(rows, svc)
+    settings = settings or {}
+    co_min = max(1, int(settings.get("co_min") or CO_MIN))
+    entity_min = max(1, int(settings.get("entity_min") or 2))
+    single = build_entity_topics(rows, svc, canon, min_contents=entity_min)
+    composite = build_event_topics(rows, svc, co_min=co_min)
     filt = build_condition_topics(rows, canon, svc)
+    custom = build_custom_topics(rows, svc, custom_defs or [])
     # 콘텐츠 → 소속 토픽 역참조(한 콘텐츠가 세 유형 동시 소속 시연용)
     return {
         "n_contents": len(rows),
         "single": single[:max_single], "single_total": len(single),
         "composite": composite[:max_composite], "composite_total": len(composite),
         "filter": filt,
+        "custom": custom, "customDefs": list(custom_defs or []),
+        "settings": {"co_min": co_min, "entity_min": entity_min},
+        "catalog": studio_catalog(rows, svc),
         "titles": [_title(r) for r in rows],
         "grades": [_grade(r) for r in rows],
         "summary": {
             "single": len(single), "composite": len(composite), "filter": len(filt),
+            "custom": len(custom), "custom_active": sum(1 for p in custom if p["active"]),
             "composite_dup_avg": round(
                 sum(p["dup_rate"] for p in composite) / len(composite), 2) if composite else 0,
             "filter_active": sum(1 for p in filt if p["active"]),

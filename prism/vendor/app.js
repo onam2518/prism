@@ -72,6 +72,11 @@
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
+      // 토픽 스튜디오: 자연어+차원으로 조건형 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
+      studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null },
+      studioPreview: { count: 0, n_total: 0, rep_title: '', samples: [] },
+      studioMsg: '', studioBusy: false, studioSaving: false, _studioT: null,
+      settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
       saveCred: false, authBusy: false,        // 로그인: 아이디·비밀번호 저장(이 기기) · 진행 애니메이션
@@ -1444,7 +1449,67 @@
       },
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
-      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
+      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); } catch (e) {} this.modBusy = false; },
+      _syncTopicSettings() { const s = (this.topicData && this.topicData.settings) || {}; this.settingsDraft = { co_min: s.co_min || 2, entity_min: s.entity_min || 2 }; },
+      // ── 토픽 스튜디오 ──
+      async _studioPost(payload) {
+        const r = await (await this._afetch('/topic-studio', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
+        return r;
+      },
+      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords }; },
+      studioToggle(field, val) { const a = this.studio[field]; const i = a.indexOf(val); if (i >= 0) a.splice(i, 1); else a.push(val); this.schedulePreview(); },
+      studioAddKw() { const k = (this.studio.kwInput || '').trim(); if (k && !this.studio.keywords.includes(k)) this.studio.keywords.push(k); this.studio.kwInput = ''; this.schedulePreview(); },
+      topKw() { const sel = this.studio.keywords; const all = (this.topicData && this.topicData.catalog && this.topicData.catalog.keywords) || []; return all.filter(k => !sel.includes(k.k)).slice(0, 12); },
+      dimSummary(c) { const d = (c && c.dims) || {}; const parts = []; const cat = d['콘텐츠 카테고리'] || []; const intn = d['인텐트'] || []; const kw = d['키워드'] || []; if (cat.length) parts.push('카테고리 ' + cat.length); if (intn.length) parts.push('인텐트 ' + intn.length); if (kw.length) parts.push('키워드 ' + kw.join('·')); return parts.join(' · ') || '전체'; },
+      schedulePreview() { if (this._studioT) clearTimeout(this._studioT); this._studioT = setTimeout(() => this.studioPreviewNow(), 260); },
+      async studioPreviewNow() {
+        if (!this.topicData || !this.topicData.n_contents) return;
+        this.studioBusy = true;
+        try { const r = await this._studioPost({ action: 'preview', def: this.studioDef() }); if (r && r.preview) this.studioPreview = r.preview; } catch (e) {} this.studioBusy = false;
+      },
+      async studioSuggest() {
+        const text = (this.studio.prompt || this.studio.name || '').trim();
+        if (!text) { this.studioMsg = '자연어 설명을 입력한 뒤 추천하세요'; return; }
+        this.studioMsg = '추천 중…';
+        try {
+          const r = await this._studioPost({ action: 'suggest', text });
+          const s = (r && r.suggest) || {};
+          (s.cats || []).forEach(c => { if (!this.studio.cats.includes(c)) this.studio.cats.push(c); });
+          (s.intents || []).forEach(c => { if (!this.studio.intents.includes(c)) this.studio.intents.push(c); });
+          (s.keywords || []).forEach(c => { if (!this.studio.keywords.includes(c)) this.studio.keywords.push(c); });
+          const n = (s.cats || []).length + (s.intents || []).length + (s.keywords || []).length;
+          this.studioMsg = n ? (n + '개 차원을 추천했습니다 · 필요 시 조정하세요') : '문장에서 일치하는 차원을 찾지 못했습니다 · 직접 선택하세요';
+          this.schedulePreview();
+        } catch (e) { this.studioMsg = '추천 실패'; }
+      },
+      async studioSave() {
+        if (!this.studio.name.trim()) { this.studioMsg = '토픽 이름을 입력하세요'; return; }
+        this.studioSaving = true; this.studioMsg = '저장 중…';
+        try {
+          const r = await this._studioPost({ action: 'save', def: this.studioDef() });
+          if (r && r.error) { this.studioMsg = '오류: ' + r.error; }
+          else { this.topicData = r; this._syncTopicSettings(); this.studioMsg = '저장했습니다'; this.studioReset(); }
+        } catch (e) { this.studioMsg = '저장 실패'; } this.studioSaving = false;
+      },
+      studioEdit(c) {
+        const def = (this.topicData.customDefs || []).find(d => d.id === c.cluster_id) || {};
+        this.studio = { name: def.name || c.name || '', prompt: def.prompt || c.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], kwInput: '', editId: c.cluster_id };
+        this.studioMsg = ''; this.studioPreviewNow();
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+      },
+      studioReset() { this.studio = { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null }; this.studioPreview = { count: 0, n_total: (this.topicData && this.topicData.n_contents) || 0, rep_title: '', samples: [] }; },
+      async studioDelete(c) {
+        if (!(await this.dsConfirm('토픽 “' + (c.name || c.cluster_id) + '” 을 삭제할까요?', { ok: '삭제', danger: true }))) return;
+        try { const r = await this._studioPost({ action: 'delete', id: c.cluster_id }); if (r && !r.error) { this.topicData = r; this._syncTopicSettings(); if (this.studio.editId === c.cluster_id) this.studioReset(); } } catch (e) { this._err('삭제 실패'); }
+      },
+      async saveTopicSettings() {
+        this.settingsSaving = true; this.settingsMsg = '적용 중…';
+        try {
+          const r = await this._studioPost({ action: 'settings', settings: { co_min: this.settingsDraft.co_min, entity_min: this.settingsDraft.entity_min } });
+          if (r && r.error) { this.settingsMsg = '오류: ' + r.error; }
+          else { this.topicData = r; this._syncTopicSettings(); this.settingsMsg = '적용했습니다 · 자동 토픽을 재생성했습니다'; }
+        } catch (e) { this.settingsMsg = '적용 실패'; } this.settingsSaving = false;
+      },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await this._afetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
       // 사전·정책 편집(사용자 직접 수정)
       editT: null, editKey: null, editKind: 'list', editVal: '', editTitle: '', editMsg: '', editExtra: '', editFilter: '',

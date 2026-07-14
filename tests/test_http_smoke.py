@@ -311,6 +311,49 @@ class TestButtonsEndToEnd(unittest.TestCase):
         u2 = next(x for x in r2["users"] if x["user_id"] == "smoke-u1")
         self.assertEqual((u2.get("gen_persona") or {}).get("id"), gp.get("id"))
 
+    # ── 실험실 · 토픽 스튜디오: 자연어+차원 토픽 생성·미리보기·저장·튜닝 왕복 ──
+    def test_13_topic_studio(self):
+        td = self.ok("/topics")
+        self.assertGreater(td.get("n_contents") or 0, 0, "선행 테스트가 콘텐츠를 적재해야 함")
+        # 카탈로그·설정·사용자 정의 컨테이너 노출(생성 폼 원천)
+        self.assertIn("catalog", td)
+        self.assertEqual(set(td["catalog"]), {"intents", "cats", "keywords"})
+        self.assertEqual(set(td.get("settings") or {}), {"co_min", "entity_min"})
+        self.assertIsInstance(td.get("customDefs"), list)
+        n = td["n_contents"]
+        # 미리보기: 차원 미선택 = 전체 매칭(제약 없음)
+        pv = self.ok("/topic-studio", {"action": "preview",
+                                       "def": {"name": "전체", "cats": [], "intents": [], "keywords": []}})
+        self.assertEqual(pv["preview"]["count"], n)
+        self.assertEqual(pv["preview"]["n_total"], n)
+        # 자연어 제안: 세 차원 키를 항상 반환(휴리스틱 · 모델 비의존)
+        sg = self.ok("/topic-studio", {"action": "suggest", "text": "심층 분석 콘텐츠"})
+        self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords"})
+        # 저장 → 사용자 정의로 영속 + 조건형 풀 생성
+        saved = self.ok("/topic-studio", {"action": "save", "def": {
+            "name": "스모크 토픽", "prompt": "스모크 자연어 설명", "cats": [], "intents": [], "keywords": []}})
+        mine = [c for c in saved.get("custom", []) if c["name"] == "스모크 토픽"]
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0]["count"], n)                       # 차원 미선택 = 전체
+        cid = mine[0]["cluster_id"]
+        self.assertTrue(any(d["id"] == cid for d in saved["customDefs"]))
+        # 재조회에서도 유지(영속)
+        self.assertTrue(any(d["id"] == cid for d in self.ok("/topics")["customDefs"]))
+        # 사용자 정의 토픽 드릴다운(자동 토픽과 동일 shape)
+        dr = self.ok("/topic-drill?cluster=" + urllib.parse.quote(cid))
+        self.assertTrue(dr["ok"])
+        self.assertEqual(dr["n"], n)
+        # 클러스터링 튜닝 왕복(경계값 클램프 포함)
+        st = self.ok("/topic-studio", {"action": "settings", "settings": {"co_min": 1, "entity_min": 4}})
+        self.assertEqual(st["settings"], {"co_min": 1, "entity_min": 4})
+        self.assertEqual(self.ok("/topics")["settings"], {"co_min": 1, "entity_min": 4})
+        self.ok("/topic-studio", {"action": "settings", "settings": {"co_min": 99}})  # 상한 클램프
+        self.assertEqual(self.ok("/topics")["settings"]["co_min"], 6)
+        self.ok("/topic-studio", {"action": "settings", "settings": {"co_min": 2, "entity_min": 2}})
+        # 삭제 → 사용자 정의에서 제거
+        after = self.ok("/topic-studio", {"action": "delete", "id": cid})
+        self.assertFalse(any(d["id"] == cid for d in after["customDefs"]))
+
     # ── 홈 · 닉네임 변경: 이름만 교체 · 검수 이력(리더보드)이 새 이름으로 이관 ──
     def test_12_reviewer_rename(self):
         self.ok("/reviewer", {"reviewer": "개명전", "name": "개명전", "char": "boksil"})

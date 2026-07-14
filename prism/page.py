@@ -849,7 +849,7 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'lab'" x-cloak class="w-full" style="margin-bottom:10px">
         <div class="evaltabs">
           <button type="button" x-bind:class="labTab==='legal'?'sel':''" x-on:click="labTab='legal'">법령</button>
-          <button type="button" x-bind:class="labTab==='topic'?'sel':''" x-on:click="labTab='topic'; loadTopics()">토픽</button>
+          <button type="button" x-bind:class="labTab==='topic'?'sel':''" x-on:click="labTab='topic'; loadTopics()">토픽 스튜디오</button>
           <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
         </div>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
@@ -882,24 +882,114 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
-      <!-- ═══ 모듈: 토픽 (품질 · 토픽 통합 뷰) ═══ -->
+      <!-- ═══ 모듈: 토픽 스튜디오 (클러스터링 체계를 자연어로 설계·실험) ═══ -->
       <div x-show="mod === 'lab' && labTab === 'topic'" x-cloak class="w-full space-y-4">
+        <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+          <li><b>토픽 스튜디오</b> — 클러스터링 체계(어떤 콘텐츠를 어떻게 묶을지)를 <b>자연어 + 차원</b>으로 정의하고 즉시 실험합니다.</li>
+          <li>만든 토픽은 저장되어 자동 생성 토픽과 함께 드릴다운됩니다 · 자동 생성(엔티티형·사건형) 민감도는 아래 <b>클러스터링 설정</b>에서 조정합니다.</li>
+        </ul>
         <template x-if="!topicData || !topicData.n_contents"><div class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div></template>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
-          <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
-            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.single||0):0"></div><div class="t">엔티티형</div></div>
-            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.composite||0):0"></div><div class="t">사건형</div></div>
-            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.filter||0):0"></div><div class="t">조건형</div></div>
+          <div class="tiles" style="grid-template-columns:repeat(4,1fr)">
+            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.custom||0):0"></div><div class="t">내 토픽</div></div>
+            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.single||0):0"></div><div class="t">엔티티형(자동)</div></div>
+            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.composite||0):0"></div><div class="t">사건형(자동)</div></div>
+            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.filter||0):0"></div><div class="t">조건형(기본)</div></div>
           </div>
-          <div class="panel"><div class="panel-hd"><b>엔티티형 · 사건형 토픽</b><span class="meta tnum" x-text="topicData ? (topicData.n_contents + '건 기준') : ''"></span><button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
+
+          <!-- 토픽 만들기: 자연어 + 차원 → 실시간 미리보기 -->
+          <div class="panel"><div class="panel-hd"><b x-text="studio.editId ? '토픽 수정' : '토픽 만들기'"></b><span class="meta" x-text="studio.editId ? ('수정 중 · '+studio.editId) : '자연어 설명 + 콘텐츠 카테고리 × 인텐트 × 엔티티 키워드'"></span></div>
+            <div class="panel-bd space-y-4">
+              <div><label class="lbl">토픽 이름</label><input class="field" x-model="studio.name" placeholder="예) 경제 심층분석 큐레이션"></div>
+              <div><label class="lbl">자연어 설명</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <input class="field" style="flex:1;min-width:220px" x-model="studio.prompt" x-on:input="schedulePreview()" placeholder="예) 경제·산업 심층분석만, 속보 제외">
+                  <button type="button" class="ds-btn ds-btn--outline" x-on:click="studioSuggest()" data-tip="문장에서 차원(카테고리·인텐트·키워드) 자동 추천" data-tip-pos="top">✨ 자동 추천</button>
+                </div>
+              </div>
+              <div><label class="lbl">콘텐츠 카테고리 <span class="meta" x-text="'· 선택 '+studio.cats.length"></span></label>
+                <div class="flex flex-wrap gap-1.5">
+                  <template x-for="c in (topicData.catalog?topicData.catalog.cats:[])" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.cats.includes(c.k)?'ds-badge--category':'ds-badge--neutral'" x-on:click="studioToggle('cats',c.k)" x-text="catBoth(c.k)+' ('+c.v+')'"></span></template>
+                  <span x-show="!(topicData.catalog&&topicData.catalog.cats.length)" class="text-xs text-muted">데이터에 카테고리가 없습니다</span>
+                </div>
+              </div>
+              <div><label class="lbl">인텐트 <span class="meta" x-text="'· 선택 '+studio.intents.length"></span></label>
+                <div class="flex flex-wrap gap-1.5">
+                  <template x-for="c in (topicData.catalog?topicData.catalog.intents:[])" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.intents.includes(c.k)?'ds-badge--intent':'ds-badge--neutral'" x-on:click="studioToggle('intents',c.k)" x-text="c.k+' ('+c.v+')'"></span></template>
+                  <span x-show="!(topicData.catalog&&topicData.catalog.intents.length)" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
+                </div>
+              </div>
+              <div><label class="lbl">엔티티 키워드 <span class="meta">· 엔티티 이름 부분일치</span></label>
+                <div style="display:flex;gap:8px">
+                  <input class="field" style="flex:1" x-model="studio.kwInput" x-on:keydown.enter.prevent="studioAddKw()" placeholder="예) 삼성 (엔터로 추가)">
+                  <button type="button" class="ds-btn ds-btn--secondary" x-on:click="studioAddKw()">추가</button>
+                </div>
+                <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
+                  <template x-for="k in studio.keywords" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-on:click="studioToggle('keywords',k)" data-tip="클릭하면 제거" x-text="k+' ✕'"></span></template>
+                  <template x-for="k in topKw()" x-bind:key="'kwc'+k.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioToggle('keywords',k.k)" data-tip="추가" x-text="'+ '+k.k"></span></template>
+                </div>
+              </div>
+
+              <!-- 실시간 미리보기 -->
+              <div class="panel" style="box-shadow:none"><div class="panel-bd">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span class="tnum" style="font-size:24px;font-weight:700" x-text="(studioPreview.count||0)"></span>
+                  <span class="meta" x-text="'/ '+((studioPreview.n_total||topicData.n_contents))+'건 매칭'"></span>
+                  <span class="meta" x-show="studioBusy">· 계산 중…</span>
+                  <span class="meta" x-show="!studio.cats.length && !studio.intents.length && !studio.keywords.length">· 차원 미선택 = 전체</span>
+                </div>
+                <div class="text-xs text-muted" style="margin-top:2px" x-show="studioPreview.rep_title" x-text="'대표: '+studioPreview.rep_title"></div>
+                <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
+                  <template x-for="s in (studioPreview.samples||[])" x-bind:key="'sm'+s.title"><span class="ds-badge" x-bind:class="s.grade==='G'?'ds-badge--success':'ds-badge--neutral'" x-text="s.title"></span></template>
+                </div>
+              </div></div>
+
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <button type="button" class="ds-btn ds-btn--primary" x-on:click="studioSave()" x-bind:disabled="!studio.name.trim() || studioSaving" x-text="studioSaving?'저장 중…':(studio.editId?'수정 저장':'토픽 저장')"></button>
+                <button type="button" class="ds-btn ds-btn--outline" x-on:click="studioReset()" x-show="studio.editId || studio.name || studio.cats.length || studio.intents.length || studio.keywords.length">초기화</button>
+                <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="studioMsg"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 내 토픽 -->
+          <div class="panel"><div class="panel-hd"><b>내 토픽</b><span class="meta tnum" x-text="((topicData.customDefs||[]).length)+'개'"></span></div>
+            <div class="panel-bd">
+              <template x-if="!(topicData.customDefs||[]).length"><div class="text-sm text-muted">아직 만든 토픽이 없습니다 · 위에서 첫 토픽을 정의해 저장하세요.</div></template>
+              <div class="overflow-auto" x-show="(topicData.customDefs||[]).length"><table class="ds-table"><thead><tr><th>이름</th><th>자연어 설명</th><th>차원</th><th>매칭</th><th style="width:120px"></th></tr></thead><tbody>
+                <template x-for="c in (topicData.custom||[])" x-bind:key="c.cluster_id">
+                  <tr>
+                    <td class="text-ink" style="font-weight:600" x-text="c.name"></td>
+                    <td class="text-muted text-xs" x-text="c.prompt||'—'"></td>
+                    <td class="text-muted text-xs" x-text="dimSummary(c)"></td>
+                    <td><span class="text-ink" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(c)" x-on:keydown.enter="topicDrill(c)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left" x-text="c.count"></span></td>
+                    <td style="white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(c)">수정</button> <button type="button" class="copybtn" x-on:click="studioDelete(c)">삭제</button></td>
+                  </tr>
+                </template>
+              </tbody></table></div>
+            </div>
+          </div>
+
+          <!-- 클러스터링 설정: 자동 생성 민감도 -->
+          <div class="panel"><div class="panel-hd"><b>클러스터링 설정</b><span class="meta">자동 생성(엔티티형·사건형) 민감도 튜닝</span></div>
+            <div class="panel-bd" style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end">
+              <div><label class="lbl" data-tip="같은 사건으로 묶으려면 두 콘텐츠가 공유해야 하는 엔티티 최소 개수 · 낮을수록 사건형이 많이 생성" data-tip-pos="top" style="cursor:help">사건형 공출현 임계값</label><input type="number" min="1" max="6" class="field" style="width:88px" x-model.number="settingsDraft.co_min"></div>
+              <div><label class="lbl" data-tip="한 엔티티를 토픽으로 세우기 위한 최소 콘텐츠 수 · 높을수록 엔티티형이 적게 생성" data-tip-pos="top" style="cursor:help">엔티티형 최소 콘텐츠 수</label><input type="number" min="1" max="10" class="field" style="width:88px" x-model.number="settingsDraft.entity_min"></div>
+              <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveTopicSettings()" x-bind:disabled="settingsSaving" x-text="settingsSaving?'적용 중…':'적용'"></button>
+              <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="settingsMsg"></span>
+            </div>
+          </div>
+
+          <!-- 자동 생성 토픽 (참조) -->
+          <div class="panel"><div class="panel-hd"><b>자동 생성 토픽</b><span class="meta tnum" x-text="topicData ? (topicData.n_contents + '건 기준') : ''"></span><button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th>유형</th><th>클러스터</th><th>대표 엔티티</th><th>멤버</th></tr></thead><tbody>
               <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>엔티티형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.count||(t.content_ids?t.content_ids.length:''))"></td></tr></template>
               <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>사건형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.count||(t.content_ids?t.content_ids.length:''))"></td></tr></template>
-              <template x-if="!(topicData&&(topicData.single.length||topicData.composite.length))"><tr><td colspan="4" class="text-muted">엔티티 공유 클러스터 없음(데이터가 많을수록 형성)</td></tr></template>
+              <template x-if="!(topicData&&(topicData.single.length||topicData.composite.length))"><tr><td colspan="4" class="text-muted">엔티티 공유 클러스터 없음(데이터가 많을수록 · 임계값을 낮추면 더 형성)</td></tr></template>
             </tbody></table></div>
           </div>
-          <div class="panel"><div class="panel-hd"><b>조건형 토픽</b><span class="meta">관심사 × 소비 방식</span></div><div class="panel-bd flex flex-wrap gap-1.5">
-            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" role="button" tabindex="0" x-bind:class="t.active ? 'ds-badge--entity' : 'ds-badge--category'" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||'')):'')"></span></template>
+          <div class="panel"><div class="panel-hd"><b>조건형 토픽 (기본 제공)</b><span class="meta">운영 기본 필터 · 관심사 × 소비 방식</span></div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" role="button" tabindex="0" x-bind:class="t.active ? 'ds-badge--entity' : 'ds-badge--category'" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||t.count||'')):'')"></span></template>
           </div></div>
         </div>
       </div>
