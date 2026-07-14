@@ -1172,7 +1172,8 @@ PAGE = """<!doctype html>
           </ul>
           <div class="flex items-center gap-2">
             <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="entBackfill()" data-tip="적재된 콘텐츠의 엔티티를 사전에 색인(기존 데이터 소급)" data-tip-pos="top">기존 콘텐츠 색인</button>
-            <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="entEnrichAll()" data-tip="위키데이터 미조회 개체를 백그라운드로 일괄 보강" data-tip-pos="top">미조회 일괄 보강</button>
+            <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="entEnrichAll()" data-tip="아직 조회 안 한 개체만 보강(나무위키 → 위키데이터)" data-tip-pos="top">미조회 일괄 보강</button>
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="entEnrichAll('all')" data-tip="전체 개체를 나무위키 우선으로 다시 조회 · 수동 확정 필드는 보존" data-tip-pos="top">전체 재보강</button>
           </div>
         </div></div>
 
@@ -1209,10 +1210,10 @@ PAGE = """<!doctype html>
             </tr></thead><tbody>
               <template x-for="e in ((entData && entData.items) || [])" x-bind:key="e.entity_id">
                 <tr>
-                  <td class="text-ink" style="font-weight:600" x-text="e.name"></td>
+                  <td class="text-ink" style="font-weight:600;cursor:pointer" role="button" tabindex="0" x-on:click="openEntEdit(e)" x-on:keydown.enter="openEntEdit(e)" data-tip="클릭해 상세·수정" data-tip-pos="top" x-text="e.name"></td>
                   <td><span class="ds-badge" x-bind:class="e.type ? 'ds-badge--entity' : 'ds-badge--neutral'" x-text="entTypeLabel(e.type)"></span></td>
                   <td class="text-muted" x-text="entAttrSummary(e) || '—'"></td>
-                  <td><a x-show="e.external_ids && e.external_ids.wikidata" x-bind:href="'https://www.wikidata.org/wiki/' + (e.external_ids && e.external_ids.wikidata)" target="_blank" rel="noopener" class="text-violet" x-text="e.external_ids && e.external_ids.wikidata"></a><a x-show="!(e.external_ids && e.external_ids.wikidata) && e.external_ids && e.external_ids.namuwiki" x-bind:href="'https://namu.wiki/w/' + encodeURIComponent((e.external_ids && e.external_ids.namuwiki) || '')" target="_blank" rel="noopener" class="text-violet" data-tip="나무위키 폴백 · POC 전용(통검 연동 시 폐기)" data-tip-pos="top">나무위키</a><span x-show="!(e.external_ids && (e.external_ids.wikidata || e.external_ids.namuwiki))" class="text-xs text-muted" x-text="(e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'miss') ? '미등재' : ((e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'ambiguous') ? '동음이의(보류)' : '미조회')"></span></td>
+                  <td><a x-show="entSrc(e) === 'namuwiki'" x-bind:href="'https://namu.wiki/w/' + encodeURIComponent((e.external_ids && e.external_ids.namuwiki) || e.name)" target="_blank" rel="noopener" class="text-violet" data-tip="나무위키 · POC 전용(통검 연동 시 폐기)" data-tip-pos="top">나무위키</a><a x-show="entSrc(e) === 'wikidata'" x-bind:href="'https://www.wikidata.org/wiki/' + (e.external_ids && e.external_ids.wikidata)" target="_blank" rel="noopener" class="text-violet" x-text="e.external_ids && e.external_ids.wikidata"></a><span x-show="!entSrc(e)" class="text-xs text-muted" x-text="(e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'miss') ? '미등재' : ((e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'ambiguous') ? '동음이의(보류)' : '미조회')"></span></td>
                   <td class="tnum" x-text="e.n_contents || 0"></td>
                   <td><div class="flex items-center gap-1.5">
                     <button type="button" class="copybtn" x-on:click="openEntEdit(e)">편집</button>
@@ -2592,6 +2593,7 @@ PAGE = """<!doctype html>
         <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="entEditMsg"></span>
       </div>
       <div class="ds-dialog__footer">
+        <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" style="margin-right:auto" x-on:click="entEnrichInPopup()" data-tip="나무위키 → 위키데이터 순으로 다시 조회 · 확정 필드는 보존" data-tip-pos="top">보강</button>
         <button type="button" class="ds-btn ds-btn--ghost" x-on:click="entEdit=null">취소</button>
         <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveEntEdit()">저장(확정)</button>
       </div>
@@ -2884,7 +2886,7 @@ PAGE = """<!doctype html>
           <div x-show="detail && (detail.grade || detail.model)" class="flex flex-wrap items-center gap-1.5"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':(detail && detail.grade==='R'?'ds-badge--error':'ds-badge--reason')" x-bind:data-tip="detail && !detail.grade ? '품질 호출이 실패해 판정을 보류했습니다 · 재실행하면 다시 판정합니다' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':(detail.grade==='R'?'차단 · R':'판정 보류 · 재실행 필요'))"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
           <!-- 리드문 즉시 확인: 좌측이 원문 페이지 탭일 때도 우측에서 초안 리드문을 대조(회의 소요) -->
           <div class="dve__sec" x-show="detail && detail.summary"><div class="dve__lbl">리드문</div><div class="dve__lead" x-text="detail && detail.summary"></div></div>
-          <div class="dve__sec"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">엔티티 <span class="text-xs text-muted" style="font-weight:400" x-show="Object.keys(entLookup).length">· 사전 등재분은 타입 표시 · 클릭해 상세·수정·보강</span></div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge" style="cursor:pointer" x-bind:class="entLookup[e] ? 'ds-badge--entity' : 'ds-badge--neutral'" role="button" tabindex="0" x-on:click="openEntByName(e)" x-on:keydown.enter="openEntByName(e)" x-bind:data-tip="entLkTip(e)" data-tip-pos="top" x-text="e + (entLookup[e] && entLookup[e].type ? (' · ' + entLookup[e].type) : '')"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:pointer" x-bind:data-tip="termDef('intent', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('intent', e)" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
           <div class="dve__sec"><div class="dve__lbl">카테고리</div>
             <div class="flex flex-wrap gap-1 items-center">

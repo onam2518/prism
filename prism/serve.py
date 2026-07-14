@@ -643,7 +643,11 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
     if action == "enrich_pending":
         if mock:
             return {"ok": True, "mock": True, "queued": 0}
-        ids = st.ent_pending_ids(int(data.get("limit") or 200))
+        # scope=all → 전체 재보강(조회 이력 있어도 다시 · 소스 우선순위 변경 반영 · 확정 필드 보존)
+        if (data.get("scope") or "") == "all":
+            ids = st.ent_ids(int(data.get("limit") or 5000))
+        else:
+            ids = st.ent_pending_ids(int(data.get("limit") or 200))
         started = _enrich_start(st, ids)
         return {"ok": True, "queued": len(ids) if started else 0,
                 "already_running": bool(ids) and not started and _ENRICH_STATE["running"],
@@ -3045,6 +3049,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
         elif self.path.startswith("/vocab"):
             self._send(200, json.dumps(vocab(), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/entdict-lookup"):   # 검수 화면: 콘텐츠 엔티티 → 사전 정보(타입·속성)
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            names = [n for n in (q.get("names", [""])[0]).split("|") if n.strip()]
+            st = get_store()
+            found = st.ent_by_names(names) if (st and hasattr(st, "ent_by_names")) else {}
+            self._send(200, json.dumps({"ok": True, "entities": found}, ensure_ascii=False), _JSON)
         elif self.path.startswith("/entdict"):
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
@@ -3782,11 +3793,18 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/entdict"):
             try:
-                # 엔티티 사전 편집·보강 = 관리자 전용(사전·정책과 동일 게이트)
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
                 data = json.loads(body or b"{}")
+                # 권한 분리: 상세·수정·보강은 검수자(로그인)도 가능(검수 중 사전 교정 허용) ·
+                # 등재/삭제/일괄 보강/백필 같은 사전 전체 작업은 관리자 전용(사전·정책과 동일 게이트)
+                act = (data.get("action") or "").strip()
+                if _supa():
+                    if act in ("detail", "update", "enrich"):
+                        if not self._bearer_uid():
+                            self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+                            return
+                    elif not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                        self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                        return
                 self._send(200, json.dumps(entdict_action(data, team=self._req_team(),
                            mock=Handler.server_mock), ensure_ascii=False), _JSON)
             except Exception as e:
