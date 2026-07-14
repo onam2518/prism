@@ -636,7 +636,38 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
             "cats": cats, "intents": intents, "keywords": keywords}
 
 
-def topic_studio_action(data: dict) -> dict:
+def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
+    """\uc790\uc5f0\uc5b4 \uc124\uba85 \u2192 \ud1a0\ud53d \ucc28\uc6d0(\uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8\u00b7\ud0a4\uc6cc\ub4dc)\uc744 \uc120\ud0dd \ubaa8\ub378\ub85c \ub9e4\ud551.
+    \ud5c8\uc6a9 \ubaa9\ub85d(\ud604\uc7ac \ub370\uc774\ud130\uc758 \uc2e4\uc7ac \uac12)\uc73c\ub85c\ub9cc \uc81c\uc57d \u00b7 \uc2e4\ud328 \uc2dc (None, \uc0ac\uc720) \ubc18\ud658(\ud638\ucd9c\ubd80\uc5d0\uc11c \ud734\ub9ac\uc2a4\ud2f1 \ud3f4\ubc31)."""
+    from . import topic as TP
+    cat = TP.studio_catalog(rows, svc)
+    allow_cats = [c["k"] for c in cat["cats"]]
+    allow_int = [c["k"] for c in cat["intents"]]
+    hint_kw = [c["k"] for c in cat["keywords"][:40]]
+    sysp = ("\ub108\ub294 \ucf58\ud150\uce20 \ud050\ub808\uc774\uc158 \ud1a0\ud53d \uc124\uacc4 \ubcf4\uc870\uc790\ub2e4. \uc0ac\uc6a9\uc790\uc758 \uc790\uc5f0\uc5b4 \uc124\uba85\uc744 \uc544\ub798 \ud5c8\uc6a9 \ubaa9\ub85d\uc758 \uac12\uc73c\ub85c\ub9cc "
+            "\ub9e4\ud551\ud574 JSON \uac1d\uccb4 \ud558\ub098\ub85c\ub9cc \ub2f5\ud55c\ub2e4. \ubaa9\ub85d\uc5d0 \uc5c6\ub294 \uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8\ub294 \uc808\ub300 \ub9cc\ub4e4\uc9c0 \uc54a\ub294\ub2e4. "
+            "keywords \ub294 \uc124\uba85\uc5d0 \ub4f1\uc7a5\ud558\uac70\ub098 \uac15\ud558\uac8c \ud568\uc758\ub41c \uc778\ubb3c\u00b7\uae30\uc5c5\u00b7\uc791\ud488 \ub4f1 \uace0\uc720\uba85\uc0ac\ub9cc(\uc790\uc720\u00b7\ucd5c\ub300 5\uac1c). "
+            '\ud615\uc2dd: {"cats":[],"intents":[],"keywords":[]}')
+    userp = ("\uc124\uba85: " + (text or "").strip() + "\n\n"
+             + "\ud5c8\uc6a9 \uce74\ud14c\uace0\ub9ac: " + json.dumps(allow_cats, ensure_ascii=False) + "\n"
+             + "\ud5c8\uc6a9 \uc778\ud150\ud2b8: " + json.dumps(allow_int, ensure_ascii=False) + "\n"
+             + "\ucc38\uace0 \uc5d4\ud2f0\ud2f0(\ud0a4\uc6cc\ub4dc \ud6c4\ubcf4): " + json.dumps(hint_kw, ensure_ascii=False))
+    llm, route = llm_for_model(model, mock)
+    if llm is None:
+        return None, route
+    obj, _res = llm.complete_json(sysp, userp, tag="topic_suggest")
+    if not isinstance(obj, dict) or obj.get("_fail"):
+        return None, (isinstance(obj, dict) and obj.get("_fail_kind")) or "fail"
+    ac, ai = set(allow_cats), set(allow_int)
+    sug = {
+        "cats": [c for c in (obj.get("cats") or []) if c in ac],
+        "intents": [c for c in (obj.get("intents") or []) if c in ai],
+        "keywords": [str(k).strip()[:60] for k in (obj.get("keywords") or []) if str(k).strip()][:5],
+    }
+    return sug, route
+
+
+def topic_studio_action(data: dict, mock: bool = False) -> dict:
     """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd/\uc870\ud68c: save\u00b7delete\u00b7settings\u00b7preview\u00b7suggest."""
     from . import topic as TP
     action = (data.get("action") or "").strip()
@@ -649,9 +680,20 @@ def topic_studio_action(data: dict) -> dict:
                 {"count": 0, "n_total": 0, "rep_title": "", "samples": []}}
 
     if action == "suggest":
-        sug = TP.suggest_dims(data.get("text") or "", rows, svc) if rows else \
-            {"cats": [], "intents": [], "keywords": []}
-        return {"ok": True, "suggest": sug}
+        text = data.get("text") or ""
+        if not rows:
+            return {"ok": True, "suggest": {"cats": [], "intents": [], "keywords": []}, "via": "none"}
+        model = (data.get("model") or "").strip()          # "" = \uae30\ubcf8 \uc2e4\ud589 \ubaa8\ub378
+        via, route, sug = "llm", "", None
+        try:
+            sug, route = _studio_llm_suggest(text, model, rows, svc, mock)
+        except Exception as e:
+            sug, route = None, str(e)[:80]
+        # \ubaa8\ub378 \ud638\ucd9c \ubd88\uac00\u00b7\uc2e4\ud328\u00b7\ube48 \uacb0\uacfc \u2192 \ud734\ub9ac\uc2a4\ud2f1(\uc989\uc2dc\u00b7\uc758\uc874\uc131 0) \ud3f4\ubc31. \ubc84\ud2bc\uc774 \ud5db\ub3cc\uc9c0 \uc54a\uac8c.
+        if not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords")):
+            sug = TP.suggest_dims(text, rows, svc)
+            via = "heuristic"
+        return {"ok": True, "suggest": sug, "via": via, "model": model, "route": route}
 
     cfg = _studio_config()
     custom = list(cfg["custom"])
@@ -3423,7 +3465,8 @@ class Handler(BaseHTTPRequestHandler):
                     if _supa() and not is_admin_user(uid, team, email):
                         self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                         return
-                self._send(200, json.dumps(topic_studio_action(data), ensure_ascii=False), _JSON)
+                self._send(200, json.dumps(topic_studio_action(data, mock=Handler.server_mock),
+                                           ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

@@ -326,9 +326,11 @@ class TestButtonsEndToEnd(unittest.TestCase):
                                        "def": {"name": "전체", "cats": [], "intents": [], "keywords": []}})
         self.assertEqual(pv["preview"]["count"], n)
         self.assertEqual(pv["preview"]["n_total"], n)
-        # 자연어 제안: 세 차원 키를 항상 반환(휴리스틱 · 모델 비의존)
-        sg = self.ok("/topic-studio", {"action": "suggest", "text": "심층 분석 콘텐츠"})
+        # 자연어 제안: 세 차원 키를 항상 반환 · 모델 지정 시 LLM 개입(mock 은 휴리스틱 폴백)
+        sg = self.ok("/topic-studio", {"action": "suggest", "text": "심층 분석 콘텐츠", "model": "solar-pro2"})
         self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords"})
+        self.assertIn(sg.get("via"), ("llm", "heuristic", "none"))
+        self.assertEqual(sg.get("model"), "solar-pro2")            # 선택 모델 에코(버튼이 헛돌지 않음)
         # 저장 → 사용자 정의로 영속 + 조건형 풀 생성
         saved = self.ok("/topic-studio", {"action": "save", "def": {
             "name": "스모크 토픽", "prompt": "스모크 자연어 설명", "cats": [], "intents": [], "keywords": []}})
