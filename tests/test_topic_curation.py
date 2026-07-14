@@ -60,7 +60,7 @@ class TestEligibility(unittest.TestCase):
         d = _build(rows, settings={"entity_min": 1})
         self.assertEqual(d["n_contents"], 5)
         self.assertEqual(d["n_eligible"], 3)                 # 0·1·4 만
-        for grp in ("single", "composite", "filter"):
+        for grp in ("single", "composite"):
             for p in d[grp]:
                 self.assertFalse({2, 3} & set(p["content_ids"]),
                                  f"{grp}:{p['cluster_id']} 에 품질 미달 콘텐츠 포함")
@@ -128,16 +128,6 @@ class TestExclusionOverlay(unittest.TestCase):
         self.assertEqual(core["content_ids"], [0])
         self.assertEqual(core["excluded_n"], 1)
         self.assertEqual(g["core_count"], 1)
-
-    def test_filter_active_recomputed(self):
-        rows = [_rows()[4]]                                   # 연예 1건만
-        d0 = _build(rows)
-        ent = next(p for p in d0["filter"] if p["name"] == "연예 × 화제·인물")
-        self.assertTrue(ent["active"])
-        d = _build(rows, exclusions={ent["cluster_id"]: [_hash(rows, 0)]})
-        ent2 = next(p for p in d["filter"] if p["name"] == "연예 × 화제·인물")
-        self.assertEqual(ent2["count"], 0)
-        self.assertFalse(ent2["active"])                      # 전량 제외 → 저조 전환
 
     def test_row_hash_matches_feedback_key(self):
         from prism.store import content_hash

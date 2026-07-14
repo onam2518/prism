@@ -1,4 +1,4 @@
-"""토픽 생성 체계: 엔티티형/사건형/조건형."""
+"""토픽 생성 체계: 엔티티형/사건형(자동) + 사용자 정의(토픽 스튜디오)."""
 from __future__ import annotations
 from collections import Counter, defaultdict
 from itertools import combinations
@@ -178,76 +178,13 @@ def _dup_count(intent_sets: dict) -> int:
     return sum(v - 1 for v in c.values() if v > 1)
 
 
-# 조건형 토픽 : 운영자 정의 조건(인텐트 × 콘텐츠 카테고리)
-FILTER_DEFS = [
-    {"name": "시사 × 속보 추적", "prompt": "속보·사건 경과 추적이면서 시사·정치 콘텐츠 모아줘",
-     "ent": {"News and Politics"}, "intent": {"속보", "사건 경과 보도"}},
-    {"name": "경제 × 심층 분석", "prompt": "경제·산업 심층 분석 콘텐츠 필터(속보 제외)",
-     "ent": {"Business and Finance"}, "intent": {"분석·해설", "기획·심층"},
-     # 프롬프트가 약속한 '속보 제외'의 실제 매칭(제외 인텐트): 하나라도 걸리면 탈락
-     "not_intent": {"속보", "속보·사건 추적", "사건 경과 보도", "단독"}},
-    {"name": "연예 × 화제·인물", "prompt": "연예 화제성·인물 동정 콘텐츠만",
-     "ent": {"Entertainment"}, "intent": {"흥미·화제", "인물 동정"}},
-    {"name": "스포츠 콘텐츠", "prompt": "스포츠 콘텐츠 전부 모아줘",
-     "ent": {"Sports"}, "intent": set()},
-    {"name": "테크 × 분석·트렌드", "prompt": "테크 분석·트렌드 콘텐츠 필터",
-     "ent": {"Technology and Computing"}, "intent": {"분석·해설", "기획·심층", "흥미·화제"}},
-    {"name": "팩트체크 모음", "prompt": "팩트체크 성격 콘텐츠 엔티티 무관 전부",
-     "ent": set(), "intent": {"팩트체크"}},
-    {"name": "심층·기획 큐레이션", "prompt": "심층 분석·기획 콘텐츠 엔티티 무관",
-     "ent": set(), "intent": {"분석·해설", "기획·심층"}},
-    {"name": "라이프스타일 × 취미", "prompt": "음식·홈·취미 라이프스타일 콘텐츠",
-     "ent": {"Food and Drink", "Home and Garden", "Hobbies and Interests"},
-     "intent": {"라이프스타일", "리뷰·평가", "취미·DIY", "정보 전달/팁"}},
-]
-
-
-def build_condition_topics(rows, canon, service_names):
-    """각 운영자 필터 조건에 부합하는 콘텐츠 매칭. 1개 디멘션만 충족도 가능(OR within, AND across)."""
-    # 콘텐츠별 엔티티 Tier1 집합 + 인텐트 집합
-    c_ent, c_int = [], []
-    for r in rows:
-        im = r.get("item_meta") or {}
-        ecats = {tier1_remap(c) for c in (im.get("content_category") or [])}
-        c_ent.append(ecats)
-        c_int.append(set(im.get("intent") or []))
-    elig = [_eligible(r) for r in rows]
-    pools = []
-    for f in FILTER_DEFS:
-        matched = []
-        for i in range(len(rows)):
-            if not elig[i]:
-                continue
-            if f.get("not_intent") and (c_int[i] & f["not_intent"]):
-                continue
-            ent_ok = (not f.get("ent")) or bool(c_ent[i] & f["ent"])
-            int_ok = (not f.get("intent")) or bool(c_int[i] & f["intent"])
-            if ent_ok and int_ok:
-                matched.append(i)
-        rep = sorted(matched, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))[:1]
-        pools.append({
-            "type": "filter", "cluster_id": "F-" + _slug(f["name"]),
-            "name": f["name"], "prompt": f["prompt"],
-            "dims": {"콘텐츠 카테고리": sorted(f.get("ent", [])),
-                     "인텐트": sorted(f.get("intent", [])),
-                     "제외 인텐트": sorted(f.get("not_intent", []))},
-            "content_ids": matched, "count": len(matched),
-            "representative_content": rep[0] if rep else None,
-            "rep_title": _title(rows[rep[0]]) if rep else "",
-            "lifecycle": "중장기", "origin": "manual",
-            "active": len(matched) > 0,
-        })
-    pools.sort(key=lambda p: -p["count"])
-    return pools
-
-
 def _slug(s: str) -> str:
     import re
     return re.sub(r"\s+", "-", (s or "").strip())[:40]
 
 
-# ── 토픽 스튜디오: 사용자가 자연어+구조 필터로 직접 만드는 조건형 토픽 ──
-# 조건형(FILTER_DEFS)과 동일한 매칭 의미(디멘션 내 OR · 디멘션 간 AND)를 쓰되,
+# ── 토픽 스튜디오: 사용자가 자연어+구조 필터로 직접 만드는 조건 기반 토픽 ──
+# 매칭 의미는 디멘션 내 OR · 디멘션 간 AND 를 쓰되,
 # 정의를 운영자가 UI 에서 만들고 저장한다. 차원 = 콘텐츠 카테고리(Tier1) × 인텐트 × 엔티티 키워드.
 
 def _content_dims(rows, service_names, ent_index=None):
@@ -582,9 +519,9 @@ def suggest_dims(text, rows, service_names=None):
 
 # 토픽 탭 HTML (대시보드와 동일 토큰)
 
-# 관계도: 콘텐츠(묶음 멤버)가 어떤 풀(엔티티·사건·조건)에 어떻게 들어가는지
+# 관계도: 콘텐츠(묶음 멤버)가 어떤 풀(엔티티·사건)에 어떻게 들어가는지
 _GRAPH_COL = {"content": "#1e84ff", "entity": "#ff9429", "category": "#a05cff",
-              "event": "#18ba45", "filter": "#ff5c66"}
+              "event": "#18ba45"}
 _GRAPH_CMAX = 140                         # 콘텐츠 노드 상한(과밀 방지)
 
 
@@ -631,17 +568,6 @@ def _graph_data(d, rows):
             eid = "e:" + e
             add(eid, e, "entity", 3)
             links.append({"s": cid, "t": eid, "w": 1})
-    # 조건형: 조건 → 매칭 콘텐츠(조건 묶음) + 콘텐츠 카테고리
-    for p in d["filter"]:
-        if not p.get("active"):
-            continue
-        fid = "f:" + p["cluster_id"]
-        add(fid, p["name"], "filter", 6, hub=True)
-        add_members(fid, p.get("content_ids", []), 6, 1)
-        for cat in p["dims"].get("콘텐츠 카테고리", []):
-            kid = "k:" + cat
-            add(kid, cat, "category", 14, hub=True)
-            links.append({"s": fid, "t": kid, "w": 1})
     return list(nodes.values()), links
 
 
@@ -649,9 +575,9 @@ def _graph_section(d, rows):
     nodes, links = _graph_data(d, rows)
     return GV.vendor_script() + GV.section(
         "mpg", nodes, links, _GRAPH_COL,
-        "토픽 관계도", "콘텐츠가 어떤 묶음(엔티티·사건·조건)에 어떻게 구성되는지 · 호버=연결 강조",
+        "토픽 관계도", "콘텐츠가 어떤 묶음(엔티티·사건)에 어떻게 구성되는지 · 호버=연결 강조",
         legend=[("콘텐츠", "#1e84ff"), ("엔티티", "#ff9429"), ("콘텐츠 카테고리", "#a05cff"),
-                ("사건형 사건", "#18ba45"), ("조건형 조건", "#ff5c66")],
+                ("사건형 사건", "#18ba45")],
         height=480)
 
 
@@ -688,28 +614,10 @@ def render_html(results_path: str, notice: str = "") -> str:
         f'<div class="rep">대표: {esc(p["rep_title"][:50])}</div></div>'
         for p in d["composite"][:24]
     )
-    # 조건형: 운영자 조건 카드 · 상태 배지 + 큰 매칭 수
-    filt_cards = "".join(
-        f'<div class="pool filt {"" if p["active"] else "off"}"><div class="ph">'
-        f'<b>{esc(p["name"])}</b>'
-        f'<span class="phr"><span class="st {"" if p["active"] else "no"}"><i></i>{"활성" if p["active"] else "저조"}</span>'
-        f'<span class="lc">중장기</span></span></div>'
-        f'<div class="prompt">“{esc(p["prompt"])}”</div>'
-        f'<div class="dims">'
-        + (("".join(f'<span class="dim ent">{esc(x)}</span>' for x in p["dims"]["콘텐츠 카테고리"])) or "")
-        + (("".join(f'<span class="dim int">{esc(x)}</span>' for x in p["dims"]["인텐트"])) or "")
-        + (("".join(f'<span class="dim neg">✖ {esc(x)}</span>' for x in p["dims"].get("제외 인텐트", []))) or "")
-        + "</div>"
-        f'<div class="fmatch"><span class="big">{p["count"]}</span> 매칭 콘텐츠</div>'
-        f'<div class="rep">대표: {esc(p["rep_title"][:50])}</div></div>'
-        for p in d["filter"]
-    )
-
     html = _MP_HTML.replace("__N__", str(d["n_contents"])) \
         .replace("__NS__", str(s["single"])).replace("__NC__", str(s["composite"])) \
-        .replace("__NF__", f'{s["filter_active"]}/{s["filter"]}') \
         .replace("__DUP__", str(s["composite_dup_avg"])) \
-        .replace("__FILT__", filt_cards).replace("__COMP__", comp_cards) \
+        .replace("__COMP__", comp_cards) \
         .replace("__SINGLE__", single_rows) \
         .replace("__ST__", str(d["single_total"])) \
         .replace("__COMIN__", str(CO_MIN)) \
@@ -729,7 +637,7 @@ def build_html(results_path: str, out_path: str, notice: str = "") -> dict:
 
 _MP_HTML = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>토픽 생성 체계</title>
-<meta name="description" content="아이템 메타(엔티티·인텐트)를 엔티티형·사건형·조건형 3개 축으로 그룹핑하는 토픽 생성 체계">
+<meta name="description" content="아이템 메타(엔티티·인텐트)를 엔티티형·사건형 축으로 그룹핑하는 토픽 생성 체계">
 <style>
 :root{--bg:var(--ds-canvas,#f4f5f7);--surface:var(--ds-surface,#fff);--s2:var(--ds-surface-on,#f4f5f7);--line:var(--ds-hairline,rgba(0,0,0,.08));--mut:var(--ds-muted,rgba(0,0,0,.48));--fg:var(--ds-ink,#000);--fg2:var(--ds-body,rgba(0,0,0,.88));
 --pri:var(--ds-primary,#1e84ff);--ent:var(--ds-warning,#ff9429);--int:var(--ds-cat-sports,#5c77ff);--cat:var(--ds-cat-entertainment,#a05cff);
@@ -833,12 +741,11 @@ opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;box-shadow:
 h2 .hint{font-size:10px}
 </style></head><body>
 <header><span class="eyebrow">토픽 · 그룹핑 체계</span><h1>토픽 생성 체계</h1>
-<div class="sub">아이템 메타(엔티티·인텐트)를 서로 다른 축으로 그룹핑하는 3개 병렬 체계 · 콘텐츠 __N__건 기반 · 하나의 콘텐츠는 세 유형에 동시 소속 가능</div></header>
+<div class="sub">아이템 메타(엔티티·인텐트)를 서로 다른 축으로 그룹핑하는 병렬 체계 · 콘텐츠 __N__건 기반 · 하나의 콘텐츠는 여러 유형에 동시 소속 가능</div></header>
 <div class="wrap">
  <div class="cards">
   <div class="kpi"><b>__NS__</b><span>엔티티형 (엔티티)</span></div>
   <div class="kpi"><b>__NC__</b><span>사건형 (사건)</span></div>
-  <div class="kpi"><b>__NF__</b><span>조건형 (활성/전체)</span></div>
   <div class="kpi"><b>__DUP__</b><span>사건형 평균 중복률</span></div>
  </div>
  <div class="intro">
@@ -851,18 +758,9 @@ h2 .hint{font-size:10px}
    <h3>이 사건을 다룬 콘텐츠 <span class="hint" data-tip="• 엔티티 공출현(공통 ≥__COMIN__개)으로 자연 발생하는 사건 묶음
 • 중복 제거 · 앵글 분산">?</span></h3>
    <span class="lc">단기</span></div>
-  <div class="def"><span class="tag" style="background:var(--ds-primary-tint);color:var(--pri)">조건형</span>
-   <h3>이 조건에 부합하는 콘텐츠 <span class="hint" data-tip="• 운영자가 자연어로 정의한 조건
-• 인텐트 × 콘텐츠 카테고리">?</span></h3>
-   <span class="lc">중장기</span></div>
  </div>
 
  __GRAPH__
- <h2>조건형 토픽 · 운영자 정의 조건 <span class="cnt">__NF__</span>
-  <span class="hint" data-tip="• 필터(관심사) → 이슈(사건형) → 기사 3단계 드릴다운 진입점
-• 저조 필터는 자동 비활성화 권고">?</span></h2>
- <div class="grid">__FILT__</div>
-
  <h2>사건형 토픽 · 자동 검출 사건 <span class="cnt">상위 24</span>
   <span class="hint" data-tip="• 엔티티 ≥__COMIN__개 공출현으로 자동 생성
 • 대표 1건 + 관련 N건(중복 제거)
@@ -927,17 +825,14 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
     entity_min = max(1, int(settings.get("entity_min") or 2))
     single = build_entity_topics(rows, svc, canon, min_contents=entity_min)
     composite = build_event_topics(rows, svc, co_min=co_min)
-    filt = build_condition_topics(rows, canon, svc)
     custom = build_custom_topics(rows, svc, custom_defs or [], ent_index=ent_index)
     catalog = studio_catalog(rows, svc)
     catalog["eattrs"] = eattr_catalog(ent_index)       # 엔티티 사전 속성 조건 후보(빈도순)
     exmap = _exclusion_sets(exclusions)
     if exmap:
         hashes = [_row_hash(r) for r in rows]
-        for p in single + composite + filt:
+        for p in single + composite:
             _apply_exclusion(p, p["cluster_id"], rows, hashes, exmap)
-        for p in filt:
-            p["active"] = p["count"] > 0
         for g in custom:
             for b in (g.get("bundles") or []):
                 _apply_exclusion(b, g["id"], rows, hashes, exmap)
@@ -951,18 +846,16 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
         "n_eligible": sum(1 for r in rows if _eligible(r)),
         "single": single[:max_single], "single_total": len(single),
         "composite": composite[:max_composite], "composite_total": len(composite),
-        "filter": filt,
         "custom": custom, "customDefs": list(custom_defs or []),
         "settings": {"co_min": co_min, "entity_min": entity_min},
         "catalog": catalog,
         "titles": [_title(r) for r in rows],
         "grades": [_grade(r) for r in rows],
         "summary": {
-            "single": len(single), "composite": len(composite), "filter": len(filt),
+            "single": len(single), "composite": len(composite),
             "custom": len(custom), "custom_bundles": sum(g["n_bundles"] for g in custom),
             "composite_dup_avg": round(
                 sum(p["dup_rate"] for p in composite) / len(composite), 2) if composite else 0,
-            "filter_active": sum(1 for p in filt if p["active"]),
         },
     }
 

@@ -358,14 +358,14 @@ def cmd_dashboard(a):
     print(f"  열기:  open {out}")
 
 
-# topic (토픽 관리 체계: 엔티티형/사건형/조건형)
+# topic (토픽 관리 체계: 엔티티형/사건형)
 def cmd_topic(a):
     from . import topic as TP
     if a.out:
         TP.build_html(a.results, a.out)
         d = TP.build_topics(a.results)["summary"]
         print(f"✓ 토픽 → {a.out}")
-        print(f"  엔티티형 {d['single']} · 사건형 {d['composite']} · 조건형 {d['filter']}(활성 {d['filter_active']})")
+        print(f"  엔티티형 {d['single']} · 사건형 {d['composite']}")
         print(f"  열기:  open {a.out}")
     else:
         print(json.dumps(TP.build_topics(a.results), ensure_ascii=False, indent=2))
@@ -419,7 +419,7 @@ def cmd_report(a):
     umode = ("실데이터" if getattr(a, "logs", None)
              else ("목업" if getattr(a, "demo", False) else "미연결(빈 상태)"))
     print(f"✓ 리포트 → {out}  (콘텐츠 {info['contents']})")
-    print(f"  토픽: 엔티티형 {mp['single']} · 사건형 {mp['composite']} · 조건형 {mp['filter']}(활성 {mp['filter_active']})"
+    print(f"  토픽: 엔티티형 {mp['single']} · 사건형 {mp['composite']}"
           f"  ·  사용자 메타: {umode}")
     print(f"  열기:  open {out}")
 
@@ -708,7 +708,7 @@ def main(argv=None):
     pck.set_defaults(func=cmd_check)
 
     pmp = sub.add_parser("topic", aliases=["metapool"],
-                         help="토픽 엔티티형/사건형/조건형 생성 + HTML")
+                         help="토픽 엔티티형/사건형 생성 + HTML")
     pmp.add_argument("--results", default="results.jsonl")
     pmp.add_argument("--out")
     pmp.set_defaults(func=cmd_topic)
