@@ -250,25 +250,43 @@ def _slug(s: str) -> str:
 # 조건형(FILTER_DEFS)과 동일한 매칭 의미(디멘션 내 OR · 디멘션 간 AND)를 쓰되,
 # 정의를 운영자가 UI 에서 만들고 저장한다. 차원 = 콘텐츠 카테고리(Tier1) × 인텐트 × 엔티티 키워드.
 
-def _content_dims(rows, service_names):
-    """콘텐츠별 매칭 차원 사전계산: (Tier1 카테고리셋, 인텐트셋, 엔티티리스트, 자격)."""
-    c_cat, c_int, c_ent, elig = [], [], [], []
+def _content_dims(rows, service_names, ent_index=None):
+    """콘텐츠별 매칭 차원 사전계산: (Tier1 카테고리셋, 인텐트셋, 엔티티리스트, 자격, 개체속성리스트).
+    개체속성 = 엔티티 사전 링크(content_entities)의 타입·속성 dict 들 · 사전 미사용 시 빈 리스트.
+    콘텐츠 표면에 없는 속성(성별·직업 등)으로 매칭하는 축(예: '여성 스포츠인')."""
+    from .entdict import row_hash
+    c_cat, c_int, c_ent, elig, c_att = [], [], [], [], []
     for r in rows:
         im = r.get("item_meta") or {}
         c_cat.append({tier1_remap(c) for c in (im.get("content_category") or [])})
         c_int.append(set(im.get("intent") or []))
         c_ent.append([e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)])
         elig.append(_eligible(r))
-    return c_cat, c_int, c_ent, elig
+        c_att.append(ent_index.get(row_hash(r), []) if ent_index else [])
+    return c_cat, c_int, c_ent, elig, c_att
+
+
+def _eattr_conds(values):
+    """'key:value' 문자열들 → [(key, value)] (비허용 키·형식 오류는 제외)."""
+    from .entdict import parse_eattr
+    return [c for c in (parse_eattr(v) for v in (values or [])) if c]
+
+
+def _ent_match(ents, conds):
+    """개체 속성 조건은 '한 개체'가 전부(AND) 만족해야 매칭.
+    (콘텐츠에 여성 A와 스포츠인 B가 따로 있는 경우는 '여성 스포츠인'이 아니다)"""
+    return any(all(str(e.get(k, "")) == v for k, v in conds) for e in ents)
 
 
 def _match_ids(dims, d):
-    """정의 d(cats/intents/keywords)에 부합하는 콘텐츠 인덱스. 각 차원은 OR, 차원 간 AND.
-    빈 차원은 무조건 통과(제약 없음) · 키워드는 엔티티 부분일치(대소문자 무시)."""
-    c_cat, c_int, c_ent, elig = dims
+    """정의 d(cats/intents/keywords/eattrs)에 부합하는 콘텐츠 인덱스. 각 차원은 OR, 차원 간 AND.
+    빈 차원은 무조건 통과(제약 없음) · 키워드는 엔티티 부분일치(대소문자 무시) ·
+    eattrs(개체 속성)는 같은 개체 AND."""
+    c_cat, c_int, c_ent, elig, c_att = dims
     cats = set(d.get("cats") or [])
     intents = set(d.get("intents") or [])
     kws = [k.strip().lower() for k in (d.get("keywords") or []) if str(k).strip()]
+    econds = _eattr_conds(d.get("eattrs"))
     out = []
     for i in range(len(c_cat)):
         if not elig[i]:
@@ -278,6 +296,8 @@ def _match_ids(dims, d):
         if intents and not (c_int[i] & intents):
             continue
         if kws and not any(any(k in e.lower() for e in c_ent[i]) for k in kws):
+            continue
+        if econds and not _ent_match(c_att[i], econds):
             continue
         out.append(i)
     return out
@@ -300,6 +320,8 @@ def _def_bundles(d):
     else:
         req = {k: list(sel[k]) for k in _DIMS}          # 하위호환: 전부 필수
     must = [(k, v) for k in _DIMS for v in req[k]]
+    # 개체 속성 조건(eattrs)은 항상 필수: '같은 개체 AND' 의미라 선택(관련 묶음) 분해가 성립하지 않음
+    must += [("eattrs", v) for v in dict.fromkeys(str(x).strip() for x in (d.get("eattrs") or []) if str(x).strip())]
     opt = [(k, v) for k in _DIMS for v in sel[k] if v not in req[k]]
     specs = []
     if opt:
@@ -319,13 +341,28 @@ def _def_bundles(d):
     return out, must, opt
 
 
+# 개체 속성 키 한글 라벨(묶음 라벨 표시용)
+_EATTR_KO = {"type": "타입", "gender": "성별", "occupation": "직업", "nationality": "국적",
+             "affiliation": "소속", "org_kind": "조직", "country": "국가", "loc_kind": "장소",
+             "af_kind": "종류", "ev_kind": "종류", "domain": "도메인"}
+
+
+def _label_one(k, v):
+    if k != "eattrs":
+        return v
+    kk, _, vv = str(v).partition(":")
+    return f"{_EATTR_KO.get(kk, kk)}={vv}"
+
+
 def _valueset_label(vs):
-    return " · ".join(v for _, v in vs) if vs else "전체(조건 없음)"
+    return " · ".join(_label_one(k, v) for k, v in vs) if vs else "전체(조건 없음)"
 
 
 def _match_valueset(dims, vs):
-    """valueset(=[(dim,value)]) 를 전부 만족(AND)하는 콘텐츠 인덱스. 키워드는 엔티티 부분일치."""
-    c_cat, c_int, c_ent, elig = dims
+    """valueset(=[(dim,value)]) 를 전부 만족(AND)하는 콘텐츠 인덱스. 키워드는 엔티티 부분일치.
+    eattrs 는 모아서 '같은 개체 AND' 로 판정."""
+    c_cat, c_int, c_ent, elig, c_att = dims
+    econds = _eattr_conds([v for k, v in vs if k == "eattrs"])
     out = []
     for i in range(len(c_cat)):
         if not elig[i]:
@@ -338,10 +375,14 @@ def _match_valueset(dims, vs):
             elif k == "intents":
                 if v not in c_int[i]:
                     ok = False; break
+            elif k == "eattrs":
+                continue                               # 아래에서 일괄 판정
             else:  # keywords: 엔티티 부분일치
                 vl = v.lower()
                 if not any(vl in e.lower() for e in c_ent[i]):
                     ok = False; break
+        if ok and econds and not _ent_match(c_att[i], econds):
+            ok = False
         if ok:
             out.append(i)
     return out
@@ -350,7 +391,7 @@ def _match_valueset(dims, vs):
 def _neg_blocked(dims, neg) -> set:
     """제외 조건(neg={cats,intents,keywords})에 걸리는 콘텐츠 인덱스 집합.
     차원·값 무관 하나라도 걸리면 탈락(OR) · 토픽의 모든 묶음에 공통 적용 · 키워드는 엔티티 부분일치."""
-    c_cat, c_int, c_ent, elig = dims
+    c_cat, c_int, c_ent, elig, _c_att = dims
     cats = set((neg or {}).get("cats") or [])
     intents = set((neg or {}).get("intents") or [])
     kws = [str(k).strip().lower() for k in ((neg or {}).get("keywords") or []) if str(k).strip()]
@@ -383,11 +424,11 @@ def _bundle(rows, dims, cid, kind, vs, sample=0, blocked=None):
     return b
 
 
-def build_custom_topics(rows, service_names, defs):
+def build_custom_topics(rows, service_names, defs, ent_index=None):
     """저장된 사용자 정의 목록 → 그룹 리스트. 각 그룹 = 토픽 1개가 여러 묶음(핵심+관련)으로 펼쳐짐."""
     if not defs:
         return []
-    dims = _content_dims(rows, service_names)
+    dims = _content_dims(rows, service_names, ent_index=ent_index)
     groups = []
     for d in defs:
         specs, must, opt = _def_bundles(d)
@@ -401,8 +442,8 @@ def build_custom_topics(rows, service_names, defs):
         groups.append({
             "id": did, "type": "custom", "origin": "user",
             "name": d.get("name") or "(무제 토픽)", "prompt": d.get("prompt") or "",
-            "must": [{"dim": k, "v": v} for k, v in must],
-            "opt": [{"dim": k, "v": v} for k, v in opt],
+            "must": [{"dim": k, "v": v, "label": _label_one(k, v)} for k, v in must],
+            "opt": [{"dim": k, "v": v, "label": _label_one(k, v)} for k, v in opt],
             "neg": [{"dim": k, "v": v} for k in _DIMS for v in (neg.get(k) or [])],
             "bundles": bundles, "n_bundles": len(bundles),
             "core_count": next((b["count"] for b in bundles if b["kind"] == "core"), 0),
@@ -411,9 +452,9 @@ def build_custom_topics(rows, service_names, defs):
     return groups
 
 
-def preview_definition(rows, service_names, d, sample=6):
+def preview_definition(rows, service_names, d, sample=6, ent_index=None):
     """생성 폼 실시간 미리보기: 저장 전 정의의 묶음(핵심+관련)별 매칭 수·표본."""
-    dims = _content_dims(rows, service_names)
+    dims = _content_dims(rows, service_names, ent_index=ent_index)
     specs, must, opt = _def_bundles(d)
     blocked = _neg_blocked(dims, d.get("neg") or {})
     bundles = []
@@ -449,6 +490,21 @@ def studio_catalog(rows, service_names=None, top_kw=30):
         return [{"k": a, "v": b} for a, b in items]
 
     return {"intents": rank(int_c), "cats": rank(cat_c), "keywords": rank(ent_c, top_kw)}
+
+
+def eattr_catalog(ent_index, top=100) -> list:
+    """개체 속성 조건 후보: 엔티티 사전에 실재하는 'key:value' 빈도(콘텐츠 링크 기준).
+    토픽 스튜디오 '엔티티 속성' 셀렉터 원천 · 실제로 매칭이 성립하는 값만 노출."""
+    from .entdict import ALLOWED_EATTR_KEYS
+    cnt = Counter()
+    for ents in (ent_index or {}).values():
+        for e in ents:
+            for k in ALLOWED_EATTR_KEYS:
+                v = str(e.get(k) or "").strip()
+                if v:
+                    cnt[f"{k}:{v}"] += 1
+    return [{"k": a, "v": b, "label": _label_one("eattrs", a)}
+            for a, b in sorted(cnt.items(), key=lambda x: (-x[1], x[0]))[:top]]
 
 
 def meta_taxonomy():
@@ -886,7 +942,7 @@ def _apply_exclusion(pool, key, rows, hashes, exmap):
 
 
 def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120,
-                 custom_defs=None, settings=None, exclusions=None) -> dict:
+                 custom_defs=None, settings=None, exclusions=None, ent_index=None) -> dict:
     rows = _read_jsonl(results_path)
     svc = _service_names(rows)
     canon = _canonical_entity_categories(rows, svc)
@@ -896,7 +952,9 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
     single = build_entity_topics(rows, svc, canon, min_contents=entity_min)
     composite = build_event_topics(rows, svc, co_min=co_min)
     filt = build_condition_topics(rows, canon, svc)
-    custom = build_custom_topics(rows, svc, custom_defs or [])
+    custom = build_custom_topics(rows, svc, custom_defs or [], ent_index=ent_index)
+    catalog = studio_catalog(rows, svc)
+    catalog["eattrs"] = eattr_catalog(ent_index)       # 엔티티 사전 속성 조건 후보(빈도순)
     exmap = _exclusion_sets(exclusions)
     if exmap:
         hashes = [_row_hash(r) for r in rows]
@@ -920,7 +978,7 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
         "filter": filt,
         "custom": custom, "customDefs": list(custom_defs or []),
         "settings": {"co_min": co_min, "entity_min": entity_min},
-        "catalog": studio_catalog(rows, svc),
+        "catalog": catalog,
         "titles": [_title(r) for r in rows],
         "grades": [_grade(r) for r in rows],
         "summary": {

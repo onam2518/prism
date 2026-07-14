@@ -932,6 +932,149 @@ class SupabaseStore:
                   body={"item_meta": im}, prefer="return=minimal")
         return True
 
+    # ── 엔티티 사전(prism_entities · prism_entity_aliases · prism_content_entities) ──
+    #    SQLite Store 와 동일 메서드 계약 · DDL 은 SUPABASE_MIGRATION.md 참조.
+    _ENT_SEL = "select=entity_id,name,type,status,attrs,attr_meta,external_ids,merged_into,created_at,updated_at"
+
+    @staticmethod
+    def _ent_norm(r: dict) -> dict:
+        for k in ("attrs", "attr_meta", "external_ids"):
+            if not isinstance(r.get(k), dict):
+                r[k] = {}
+        r["type"] = r.get("type") or ""
+        r["status"] = r.get("status") or "pending"
+        r["merged_into"] = r.get("merged_into") or ""
+        return r
+
+    def ent_upsert(self, e: dict):
+        self._upsert("entities", [{
+            "entity_id": e["entity_id"], "name": e.get("name", ""), "type": e.get("type", ""),
+            "status": e.get("status", "pending"), "attrs": e.get("attrs") or {},
+            "attr_meta": e.get("attr_meta") or {}, "external_ids": e.get("external_ids") or {},
+            "merged_into": e.get("merged_into", ""),
+            "created_at": e.get("created_at") or time.time(),
+            "updated_at": e.get("updated_at") or time.time()}])
+
+    def ent_update(self, entity_id: str, fields: dict) -> bool:
+        allowed = ("name", "type", "status", "attrs", "attr_meta", "external_ids",
+                   "merged_into", "updated_at")
+        body = {k: fields[k] for k in allowed if k in fields}
+        if not body:
+            return False
+        self._req("PATCH", "entities", query=f"entity_id=eq.{urllib.parse.quote(entity_id)}",
+                  body=body, prefer="return=minimal")
+        return True
+
+    def ent_get(self, entity_id: str):
+        rows = self._get("entities", f"{self._ENT_SEL}&entity_id=eq.{urllib.parse.quote(entity_id)}")
+        return self._ent_norm(rows[0]) if rows else None
+
+    def ent_id_by_alias(self, name: str) -> str:
+        rows = self._get("entity_aliases", f"select=entity_id&alias=eq.{urllib.parse.quote(name)}")
+        return rows[0]["entity_id"] if rows else ""
+
+    def ent_alias_add(self, alias: str, entity_id: str):
+        self._req("POST", "entity_aliases", body=[{"alias": alias, "entity_id": entity_id}],
+                  prefer="resolution=ignore-duplicates,return=minimal")
+
+    def ent_aliases(self, entity_id: str) -> list:
+        rows = self._get("entity_aliases",
+                         f"select=alias&entity_id=eq.{urllib.parse.quote(entity_id)}&order=alias")
+        return [r["alias"] for r in rows]
+
+    def ent_link(self, content_hash, entity_id, surface="", team=None):
+        self._req("POST", "content_entities", body=[{
+            "content_hash": content_hash, "entity_id": entity_id, "surface": surface,
+            "team": team or "", "ts": time.time()}],
+            prefer="resolution=ignore-duplicates,return=minimal")
+
+    def ent_list(self, q: str = "", type_: str = "", status: str = "", limit: int = 300) -> list:
+        qs = [self._ENT_SEL, "order=updated_at.desc", f"limit={int(limit)}"]
+        if type_:
+            qs.append(f"type=eq.{urllib.parse.quote(type_)}")
+        if status:
+            qs.append(f"status=eq.{urllib.parse.quote(status)}")
+        if q:
+            enc = urllib.parse.quote(f"*{q}*")
+            alias_hits = self._get("entity_aliases", f"select=entity_id&alias=like.{enc}&limit=200")
+            ids = {r["entity_id"] for r in alias_hits}
+            ors = [f"name.like.{enc}"]
+            if ids:
+                ors.append("entity_id.in.(" + ",".join(urllib.parse.quote(i) for i in sorted(ids)) + ")")
+            qs.append("or=(" + ",".join(ors) + ")")
+        rows = [self._ent_norm(r) for r in self._get("entities", "&".join(qs))]
+        if rows:
+            ids = ",".join(urllib.parse.quote(e["entity_id"]) for e in rows)
+            links = self._get("content_entities",
+                              f"select=entity_id,content_hash&entity_id=in.({ids})&limit=10000")
+            counts = {}
+            for l in links:
+                counts.setdefault(l["entity_id"], set()).add(l["content_hash"])
+            for e in rows:
+                e["n_contents"] = len(counts.get(e["entity_id"], ()))
+        return rows
+
+    def ent_stats(self) -> dict:
+        rows = self._get("entities", "select=type,status,external_ids&limit=20000")
+        by_type = {}
+        pending = enriched = 0
+        for r in rows:
+            t = r.get("type") or "(보류)"
+            by_type[t] = by_type.get(t, 0) + 1
+            if (r.get("status") or "") == "pending":
+                pending += 1
+            if isinstance(r.get("external_ids"), dict) and r["external_ids"].get("wikidata"):
+                enriched += 1
+        n_links = len(self._get("content_entities", "select=entity_id&limit=20000"))
+        return {"total": len(rows), "byType": by_type, "pending": pending,
+                "enriched": enriched, "links": n_links}
+
+    def ent_pending_ids(self, limit: int = 200) -> list:
+        rows = self._get("entities",
+                         f"select=entity_id,attr_meta&order=created_at.asc&limit={int(limit) * 3}")
+        out = []
+        for r in rows:
+            am = r.get("attr_meta")
+            if not (isinstance(am, dict) and am.get("_enrich")):
+                out.append(r["entity_id"])
+            if len(out) >= limit:
+                break
+        return out
+
+    def ent_delete(self, entity_id: str) -> bool:
+        enc = urllib.parse.quote(entity_id)
+        self._req("DELETE", "content_entities", query=f"entity_id=eq.{enc}", prefer="return=minimal")
+        self._req("DELETE", "entity_aliases", query=f"entity_id=eq.{enc}", prefer="return=minimal")
+        self._req("DELETE", "entities", query=f"entity_id=eq.{enc}", prefer="return=minimal")
+        return True
+
+    def ent_attr_index(self, team=None) -> dict:
+        ents = {r["entity_id"]: {"type": r.get("type") or "", "name": r.get("name") or "",
+                                 **(r.get("attrs") if isinstance(r.get("attrs"), dict) else {})}
+                for r in self._get("entities", "select=entity_id,name,type,attrs&limit=20000")}
+        tq = f"&team=eq.{urllib.parse.quote(team or '')}"
+        links = self._get("content_entities", f"select=content_hash,entity_id{tq}&limit=50000")
+        out = {}
+        for l in links:
+            e = ents.get(l["entity_id"])
+            if e:
+                out.setdefault(l["content_hash"], []).append(e)
+        return out
+
+    def ent_contents(self, entity_id: str, limit: int = 50) -> list:
+        links = self._get("content_entities",
+                          f"select=content_hash,ts&entity_id=eq.{urllib.parse.quote(entity_id)}"
+                          f"&order=ts.desc&limit={int(limit)}")
+        if not links:
+            return []
+        ids = ",".join(urllib.parse.quote(l["content_hash"]) for l in links)
+        meta = {r["hash"]: r for r in self._get(
+            "contents", f"select=hash,title,final_grade&hash=in.({ids})")}
+        return [{"hash": l["content_hash"],
+                 "title": (meta.get(l["content_hash"]) or {}).get("title", "") or "",
+                 "grade": (meta.get(l["content_hash"]) or {}).get("final_grade", "") or ""}
+                for l in links]
+
     def retention(self, days: int = 30) -> int:
         """오래된 검토 콘텐츠 삭제(8GB 내 유지)."""
         cutoff = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - days * 86400))
