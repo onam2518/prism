@@ -111,5 +111,57 @@ class TestPromptPolicy(unittest.TestCase):
         self.assertNotIn("graphic > sexual", sysmsg)          # 구 고정 체인 재유입 방지
 
 
+# ── 2026-07-10 보완: 시드 지문 불일치 시 내장 버전 자동 재시드 ──
+class TestPromptSeedMigration(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from prism import promptstore as P
+        self.P = P
+        self._tmp = tempfile.mkdtemp()
+        self._orig = (P.PROMPTS_DIR, P.QUALITY_PATH)
+        P.PROMPTS_DIR = self._tmp
+        P.QUALITY_PATH = os.path.join(self._tmp, "quality.json")
+
+    def tearDown(self):
+        import shutil
+        self.P.PROMPTS_DIR, self.P.QUALITY_PATH = self._orig
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_fresh_seed_has_stamp_and_new_procedure(self):
+        import json as J
+        P = self.P
+        self.assertIn("동시 부여가 원칙", P.get("v31")["procedure"])   # 코드 시드 반영
+        data = J.load(open(P.QUALITY_PATH, encoding="utf-8"))
+        self.assertEqual(data["seed_stamp"], P._seed_stamp())          # 지문 기록
+
+    def test_stale_file_reseeds_builtins_preserving_custom(self):
+        import json as J
+        P = self.P
+        stale = {                                                      # 구 포맷: 지문 없음 + 옛 문구 + 커스텀
+            "active": "myv",
+            "versions": {
+                "v31": {**P._seed_v31(),
+                        "procedure": "[판정 절차]\n4. 복수일 때 대표 우선순위: {priority}."},
+                "myv": {**P._seed_v31(), "procedure": "내 튜닝 절차"},
+            },
+        }
+        os.makedirs(P.PROMPTS_DIR, exist_ok=True)
+        J.dump(stale, open(P.QUALITY_PATH, "w", encoding="utf-8"), ensure_ascii=False)
+        self.assertIn("동시 부여가 원칙", P.get("v31")["procedure"])   # 내장은 코드 시드로 갱신
+        self.assertEqual(P.active_name(), "myv")                       # active 선택 보존
+        self.assertEqual(P.get("myv")["procedure"], "내 튜닝 절차")     # 사용자 버전 보존
+        data = J.load(open(P.QUALITY_PATH, encoding="utf-8"))
+        self.assertEqual(data["seed_stamp"], P._seed_stamp())          # 지문 기록됨
+
+    def test_up_to_date_file_not_rewritten(self):
+        import json as J
+        P = self.P
+        P.get("v31")                                                   # 시드 생성(지문 최신)
+        before = open(P.QUALITY_PATH, encoding="utf-8").read()
+        P.get("v31"); P.active_name()                                  # 재로드해도
+        after = open(P.QUALITY_PATH, encoding="utf-8").read()
+        self.assertEqual(before, after)                                # 재작성 없음(멱등)
+
+
 if __name__ == "__main__":
     unittest.main()
