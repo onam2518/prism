@@ -75,7 +75,7 @@
       // 토픽 스튜디오: 자연어+차원으로 조건형 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null },
       studioPreview: { count: 0, n_total: 0, rep_title: '', samples: [] },
-      studioMsg: '', studioBusy: false, studioSaving: false, _studioT: null,
+      studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
       // 미디어 메타 파이프라인(T1 자막 파싱 실험기)
       mediaSub: { raw: '', fmt: '' }, mediaRes: null, mediaBusy: false, mediaMsg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
@@ -1484,7 +1484,11 @@
       },
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
-      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); } catch (e) {} this.modBusy = false; },
+      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); this._ensureStudioModels(); } catch (e) {} this.modBusy = false; },
+      async _ensureStudioModels() {                 // 자동 채우기 모델 선택지: 없으면 1회 조회(가벼움 · 실패 무해)
+        if ((this.models || []).length) return;
+        try { const j = await (await fetch('/models', { headers: this._authHeaders() })).json(); if (j && j.ok && Array.isArray(j.models)) { this.models = j.models; if (!this.cfgModel) this.cfgModel = j.current || ''; } } catch (e) {}
+      },
       _syncTopicSettings() { const s = (this.topicData && this.topicData.settings) || {}; this.settingsDraft = { co_min: s.co_min || 2, entity_min: s.entity_min || 2 }; },
       // ── 미디어: T1 자막 파싱(룰·모델 0건) ──
       async mediaParse() {
@@ -1515,18 +1519,32 @@
       },
       async studioSuggest() {
         const text = (this.studio.prompt || this.studio.name || '').trim();
-        if (!text) { this.studioMsg = '자연어 설명을 입력한 뒤 추천하세요'; return; }
-        this.studioMsg = '추천 중…';
+        if (!text) { this.studioMsg = '먼저 자연어로 설명을 적어 주세요'; return; }
+        this.studioSuggesting = true; this.studioMsg = '조건값을 채우는 중…';
         try {
-          const r = await this._studioPost({ action: 'suggest', text });
+          const r = await this._studioPost({ action: 'suggest', text, model: this.studioModel });
           const s = (r && r.suggest) || {};
           (s.cats || []).forEach(c => { if (!this.studio.cats.includes(c)) this.studio.cats.push(c); });
           (s.intents || []).forEach(c => { if (!this.studio.intents.includes(c)) this.studio.intents.push(c); });
           (s.keywords || []).forEach(c => { if (!this.studio.keywords.includes(c)) this.studio.keywords.push(c); });
           const n = (s.cats || []).length + (s.intents || []).length + (s.keywords || []).length;
-          this.studioMsg = n ? (n + '개 차원을 추천했습니다 · 필요 시 조정하세요') : '문장에서 일치하는 차원을 찾지 못했습니다 · 직접 선택하세요';
+          const src = r && r.via === 'llm' ? ('모델(' + (this.studioModel || '기본') + ')') : '규칙';
+          this.studioMsg = n ? (src + '이 조건값 ' + n + '개를 채웠습니다 · 켜고 끄며 조정하세요')
+            : (src + '이 일치하는 조건값을 찾지 못했습니다 · 직접 선택하세요');
           this.schedulePreview();
-        } catch (e) { this.studioMsg = '추천 실패'; }
+        } catch (e) { this.studioMsg = '채우기 실패 · 다시 시도하세요'; } this.studioSuggesting = false;
+      },
+      eventHint() {
+        const v = this.settingsDraft.co_min;
+        if (v <= 1) return '조금만 겹쳐도 한 사건으로 묶습니다 · 사건형 토픽이 많아집니다';
+        if (v >= 3) return '확실히 많이 겹칠 때만 묶습니다 · 사건형 토픽이 적어집니다';
+        return '적당히 겹칠 때 묶습니다 (기본)';
+      },
+      entityHint() {
+        const v = this.settingsDraft.entity_min;
+        if (v <= 1) return '기사가 1건이라도 그 인물·브랜드를 토픽으로 만듭니다 · 아주 촘촘';
+        if (v >= 3) return '기사가 3건 이상 쌓였을 때만 토픽으로 만듭니다 · 엄선';
+        return '기사가 2건 이상일 때 토픽으로 만듭니다 (기본)';
       },
       async studioSave() {
         if (!this.studio.name.trim()) { this.studioMsg = '토픽 이름을 입력하세요'; return; }
