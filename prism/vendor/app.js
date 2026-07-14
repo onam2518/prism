@@ -77,6 +77,7 @@
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
       topicView: 'all',                     // 토픽 현황 필터: all | manual(수동 생성) | auto(자동 생성)
+      topicGenTab: 'manual',                // 토픽 생성하기 탭: manual(4단계 정의) | auto(자동 묶기 기준)
       // 토픽 스튜디오: 자연어+차원으로 조건 기반 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], eattrs: [], kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } },
       studioPreview: { bundles: [], n_total: 0, must_n: 0, opt_n: 0 },
@@ -1780,6 +1781,7 @@
         } catch (e) { this.studioMsg = '저장 실패'; } this.studioSaving = false;
       },
       studioEdit(g) {
+        this.topicGenTab = 'manual';         // 수정은 수동 정의 위저드에서
         const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
         const rq = def.req || { cats: [], intents: [], keywords: [] };
         const ng = def.neg || { cats: [], intents: [], keywords: [] };
