@@ -813,7 +813,6 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'lab'" x-cloak class="w-full" style="margin-bottom:10px">
         <div class="evaltabs">
           <button type="button" x-bind:class="labTab==='legal'?'sel':''" x-on:click="labTab='legal'">법령</button>
-          <button type="button" x-bind:class="labTab==='topic'?'sel':''" x-on:click="labTab='topic'; loadTopics()">토픽 스튜디오</button>
           <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
           <button type="button" x-bind:class="labTab==='media'?'sel':''" x-on:click="labTab='media'">미디어</button>
         </div>
@@ -848,7 +847,14 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 토픽 스튜디오 (클러스터링 체계를 자연어로 설계·실험) ═══ -->
-      <div x-show="mod === 'lab' && labTab === 'topic'" x-cloak class="w-full space-y-4">
+      <!-- ═══ 모듈: 스튜디오 · 설계 도구 묶음(프롬프트 + 토픽 · 실험실에서 승격) ═══ -->
+      <div x-show="mod === 'studio'" x-cloak class="w-full" style="margin-bottom:10px">
+        <div class="evaltabs">
+          <button type="button" x-bind:class="studioTab==='prompt'?'sel':''" x-on:click="studioTab='prompt'">프롬프트</button>
+          <button type="button" x-bind:class="studioTab==='topic'?'sel':''" x-on:click="studioTab='topic'; loadTopics()">토픽</button>
+        </div>
+      </div>
+      <div x-show="mod === 'studio' && studioTab === 'topic'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li><b>토픽 스튜디오</b>는 클러스터링 체계(어떤 콘텐츠를 어떻게 묶을지)를 <b>자연어</b>로 정의하고 즉시 실험하는 공간입니다.</li>
           <li>원하는 묶음을 문장으로 설명하면 조건값이 자동으로 채워집니다 · 채워진 조건값은 직접 켜고 끌 수 있습니다.</li>
@@ -2334,7 +2340,7 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 프롬프트 스튜디오 (전용 도구) · 추출 단계별 프롬프트 ═══ -->
-      <div x-show="mod === 'prompt'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'studio' && studioTab === 'prompt'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>아이템 메타(리드문·엔티티·인텐트·카테고리)의 <b>코어 규칙·예시는 계약</b>(읽기 전용)이고, 수정은 <b>모델별 쿡북 래퍼</b> 단위로만 합니다.</li>
           <li>검수·판정 단계의 원천 프롬프트는 아래 코드블록에서 직접 수정합니다(관리자 전용) · 모델 지정 시 <b>모델별 분기 저장</b>.</li>
@@ -2893,7 +2899,7 @@ PAGE = """<!doctype html>
   function viewMod(el) { var v = el.closest('[x-show]'); if (!v) return ''; var m = (v.getAttribute('x-show') || '').match(/mod === '(\\w+)'/); return m ? m[1] : ''; }
   function prismCharForPanel(h, titleText) {
     var mod = viewMod(h);
-    if (mod === 'prompt') return stageChar(panelStage(titleText));   // 단계별
+    if (mod === 'studio') return stageChar(panelStage(titleText));   // 단계별
     var st = MOD_STAGE[mod];
     return st ? stageChar(st) : stageChar(panelStage(titleText));
   }
