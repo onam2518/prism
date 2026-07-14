@@ -195,5 +195,45 @@ class TestConfidenceAndColdStart(unittest.TestCase):
         self.assertEqual(u["persona"], "라이트")
 
 
+class TestSimilarityAndAffinity(unittest.TestCase):
+    """U5 사용자 유사도·배정 정합성 + U7 엔티티×페르소나 친화도."""
+
+    def _three_users(self):
+        # a·b = 같은 금융 소비(비슷) · c = 스포츠 단일 엔티티(다름 · 팬덤)
+        contents = ([_content("Finance", entities=["연준"], intent="기획·심층") for _ in range(8)]
+                    + [_content("Sports", entities=["손흥민"], intent="속보") for _ in range(10)])
+        logs = [_log(uid, i, day_offset=(i * 2) % 10, hour=13, dwell=60, scroll=70)
+                for uid in ("a", "b") for i in range(8)]
+        logs += [_log("c", 8 + i, day_offset=(i * 3) % 14, hour=(9 + i * 2) % 24,
+                      dwell=50, scroll=70) for i in range(10)]
+        return _build(contents, logs)
+
+    def test_similar_users_and_coherence(self):
+        data = self._three_users()
+        a = _user(data, "a")
+        self.assertEqual(a["similar_users"][0][0], "b")
+        self.assertGreater(a["similar_users"][0][1], 0.9)
+        coh = data["aggregate"]["persona_coherence"]
+        self.assertIsNotNone(coh["agree_rate"])
+        self.assertGreaterEqual(coh["n"], 2)
+
+    def test_entity_persona_matrix(self):
+        data = self._three_users()
+        ep = data["aggregate"]["entity_persona"]
+        self.assertEqual(ep["personas"], [p["name"] for p in UM.PERSONAS])
+        rows = {r[0]: r for r in ep["rows"]}
+        self.assertIn("손흥민", rows)
+        self.assertEqual(rows["손흥민"][1], "팬덤")   # c 는 단일 엔티티 집중 → 팬덤 귀속
+        self.assertEqual(len(rows["손흥민"][2]), len(UM.PERSONAS))
+
+    def test_empty_state_has_keys(self):
+        with tempfile.TemporaryDirectory() as d:
+            rp = os.path.join(d, "r.jsonl")
+            open(rp, "w").close()
+            data = UM.build_user_meta(rp)
+        self.assertIn("persona_coherence", data["aggregate"])
+        self.assertIn("entity_persona", data["aggregate"])
+
+
 if __name__ == "__main__":
     unittest.main()

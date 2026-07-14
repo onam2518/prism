@@ -1123,6 +1123,7 @@ PAGE = """<!doctype html>
               <span class="ds-badge ds-badge--category tnum" x-text="'프로필 ' + ((userData && userData.profiles_n) || 0) + '명'"></span>
               <span class="ds-badge ds-badge--intent tnum" x-text="'로그 사용자 ' + ((userData && userData.users) ? userData.users.length : 0) + '명'"></span>
               <span class="ds-badge ds-badge--success tnum"><span class="ds-badge__dot"></span><span x-text="'생성 페르소나 ' + ((userData && userData.generated_n) || 0) + '개'"></span></span>
+              <span x-show="userData && userData.aggregate && userData.aggregate.persona_coherence && userData.aggregate.persona_coherence.agree_rate !== null" class="ds-badge ds-badge--neutral tnum" style="cursor:help" data-tip="배정 정합성 · 소비 프로필이 가장 비슷한 이웃과 페르소나가 일치하는 비율 (낮으면 배정 기준 점검 필요)" data-tip-pos="top" x-text="'배정 정합성 ' + Math.round(((userData && userData.aggregate && userData.aggregate.persona_coherence && userData.aggregate.persona_coherence.agree_rate) || 0) * 100) + '%'"></span>
             </div>
           </div>
         </div></div>
@@ -1165,7 +1166,8 @@ PAGE = """<!doctype html>
           <template x-for="u in (userData?userData.users:[])" x-bind:key="u.user_id">
             <div class="panel"><div class="panel-hd">
               <b x-text="u.user_id"></b>
-              <span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="'기본 8종 근접 매칭 · ' + u.persona" data-tip-pos="top" x-text="u.persona"></span>
+              <span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="'기본 8종 판별 · ' + u.persona + (u.persona_conf ? (' · 신뢰도 ' + u.persona_conf) : '') + (u.persona_second ? (' · 2순위 ' + u.persona_second) : '')" data-tip-pos="top" x-text="u.persona + (u.persona_conf ? ' · ' + u.persona_conf : '')"></span>
+              <span x-show="u.persona_provisional" class="ds-badge ds-badge--warning" style="cursor:help" data-tip="로그가 부족해 선언 프로필로 잠정 배정 · 로그가 쌓이면 자동 재산출" data-tip-pos="top">잠정</span>
               <span x-show="u.gen_persona" class="ds-badge ds-badge--success" style="cursor:help" x-bind:data-tip="u.gen_persona ? ('이 사용자의 메타 + 소비로 생성한 전용 페르소나 · ' + u.gen_persona.desc) : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="u.gen_persona ? (u.gen_persona.name + ' · 생성됨') : ''"></span></span>
               <span class="meta tnum ml-auto" x-text="'조회 ' + u.engagement.views + ' · 클릭률 ' + u.engagement.click_rate + ' · 평균체류 ' + u.engagement.avg_dwell_sec + 's'"></span>
             </div><div class="panel-bd">
@@ -1182,8 +1184,24 @@ PAGE = """<!doctype html>
                 <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e[0])" data-tip-pos="top" x-text="e[0]"></span></template>
                 <span x-show="!(u.affinity_entities||[]).length" class="text-xs text-muted">·</span>
               </div></div>
+              <div class="drow" x-show="(u.similar_users||[]).length"><div class="k">비슷한 사용자</div><div class="v flex flex-wrap gap-1.5">
+                <template x-for="s in (u.similar_users||[])" x-bind:key="s[0]"><span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-bind:data-tip="'소비 프로필(관심 카테고리·맥락) 코사인 유사도 ' + s[1]" data-tip-pos="top" x-text="s[0] + ' (' + s[1] + ')'"></span></template>
+              </div></div>
             </div></div>
           </template>
+        </div>
+
+        <!-- 엔티티 × 페르소나 친화도 · 타겟팅/능동 추천의 실계산 근거 -->
+        <div class="panel" x-show="userData && userData.aggregate && userData.aggregate.entity_persona && userData.aggregate.entity_persona.rows && userData.aggregate.entity_persona.rows.length">
+          <div class="panel-hd"><b>엔티티 × 페르소나 친화도</b><span class="meta">체류·클릭 가중 합산 · 이 엔티티를 어떤 페르소나가 소비하나 (타겟팅 근거)</span></div>
+          <div class="overflow-auto"><table class="ds-table"><thead><tr><th>엔티티</th><th>주 소비 페르소나</th>
+            <template x-for="pn in ((userData && userData.aggregate && userData.aggregate.entity_persona) ? userData.aggregate.entity_persona.personas : [])" x-bind:key="'eph'+pn"><th class="tnum" x-text="pn"></th></template>
+          </tr></thead><tbody>
+            <template x-for="row in ((userData && userData.aggregate && userData.aggregate.entity_persona) ? userData.aggregate.entity_persona.rows : [])" x-bind:key="'ep'+row[0]">
+              <tr><td class="text-ink" x-text="row[0]"></td><td><span class="ds-badge ds-badge--entity" x-text="row[1]"></span></td>
+                <template x-for="(w, wi) in row[2]" x-bind:key="'epw'+row[0]+wi"><td class="tnum" x-bind:class="w ? '' : 'text-muted'" x-text="w || '·'"></td></template></tr>
+            </template>
+          </tbody></table></div>
         </div>
 
         <!-- 명세(페르소나 정의·공식) · 기본 8종 + 생성분 병행 -->
