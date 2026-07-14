@@ -1325,9 +1325,16 @@ PAGE = """<!doctype html>
               <div style="display:flex;gap:12px;min-width:min-content">
                 <template x-for="r in (mediaS5Res ? mediaS5Res.results : [])" x-bind:key="r.model">
                   <div class="panel" style="margin:0;min-width:230px;flex:1">
-                    <div class="panel-hd"><b x-text="r.model"></b><span x-show="r.mock" class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock</span></div>
+                    <div class="panel-hd"><b x-text="r.model"></b>
+                      <span x-show="r.mock" class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock</span>
+                      <span x-show="!r.mock && !r.error && r.empty" class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>빈 산출</span>
+                    </div>
                     <div class="panel-bd space-y-2">
                       <template x-if="r.error"><div class="text-xs" style="color:var(--ds-error,#c0392b)" x-text="r.error"></div></template>
+                      <!-- 빈 산출 진단: trace.fails 의 fail_kind 노출(예: parse_empty=침묵 빈응답) -->
+                      <template x-if="!r.error && !r.mock && r.empty">
+                        <div class="text-xs text-muted">진단: <span x-text="(r.fails&&r.fails.length) ? r.fails.map(f=>f.tag+'·'+f.kind).join(', ') : '실호출됐으나 메타 미산출(응답 공백 추정)'"></span></div>
+                      </template>
                       <template x-if="!r.error">
                         <div class="space-y-2">
                           <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="(r.item_meta||{}).summary || '—'"></div></div>

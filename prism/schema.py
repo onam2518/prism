@@ -108,6 +108,7 @@ class Trace:
     cost_usd: float = 0.0
     tokens: dict = field(default_factory=dict)
     by_call: dict = field(default_factory=dict)   # 호출 태그별 {n·cost·in·out·ms} · 콜별 모델 구성 근거
+    fails: list = field(default_factory=list)     # 콜 실패 표면화 [{tag,kind}] · 빈 산출 원인 진단(모델 A/B 등)
 
 
 @dataclass

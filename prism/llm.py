@@ -50,11 +50,16 @@ class LLMClient:
         #  · gpt-5*: max_tokens 미지원(라우터가 기본값 주입) → max_completion_tokens 명시
         #  · gpt-5* + reasoning_effort: temperature=0 거부(기본 1만 허용) → temperature 생략
         #  · claude-*: response_format json_object 거부(json_schema 만) → response_format 생략(_parse_json 이 복구)
+        #  · gemini-*: 라우터 경유 시 response_format json_object 를 400 이 아니라 '침묵 빈응답'(HTTP200·content 공백)으로
+        #    돌려줘(실측 2026-07 · gpt/claude/solar 정상, gemini 계열 전량 빈값) 400 학습 트리거가 안 걸린다.
+        #    → 계열 판정으로 선제 시드(response_format 생략, 프롬프트 계약 + _parse_json 복구에 의존).
         # 첫 400 안내문에서 배우고 즉시 재시도하며, 결과는 모델별 프로세스 캐시로 공유(배치 400 낭비 방지).
         bare = str(self.model or "").split("/")[-1]
         seed = set(LLMClient._PARAM_ADAPT.get(bare, ()))
         if bare.startswith("gpt-5"):
             seed.add("max_completion")
+        if bare.lower().startswith("gemini"):
+            seed.add("no_response_format")     # 침묵 빈응답 방지(400 미발생이라 자동학습 불가 → 선제 시드)
         self._adapt = seed                     # {"max_completion", "no_temperature", "no_response_format"}
         # 운영 집계(스레드세이프): 실패 분류 카운터
         self._lock = threading.Lock()

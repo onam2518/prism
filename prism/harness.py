@@ -269,6 +269,10 @@ def _assemble(ctx: HCtx) -> dict:
         b["out"] += r.out_tok
         b["ms"] += r.latency_ms
     t.by_call = by_call
+    # 콜 실패 표면화: LLMResult.fail_kind 를 trace 로 올려 빈 산출의 원인을 진단 가능하게 한다
+    # (모델 A/B 에서 '빈값인데 왜'를 하네스가 스스로 보고 · 예: gemini 침묵 빈응답 → parse_empty).
+    t.fails = [{"tag": getattr(r, "tag", "") or "", "kind": r.fail_kind}
+               for r in ctx.results if getattr(r, "fail_kind", None)]
     out = Output(ctx.content.ref(), ctx.routing, ctx.legal_meta, ctx.qm, ctx.item_meta, t)
     return out.to_dict(slim=ctx.methodology.slim)
 
