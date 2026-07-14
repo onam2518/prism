@@ -1963,6 +1963,10 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         pmap = st.purpose_map(team=team) if (st and hasattr(st, "purpose_map")) else {}
     except Exception:
         pmap = {}
+    try:                                           # 콘텐츠별 검수 담당 배정(있으면 표에 표시)
+        asg = st.assignees(team=team) if (st and hasattr(st, "assignees")) else {}
+    except Exception:
+        asg = {}
     out = []
     for r in reversed(rows[-int(limit):]):         # 최근순
         ref = r.get("content_ref") or {}
@@ -1989,6 +1993,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "review": qm.get("review", "") or "",
                     "split": bool(fb.get("good") and fb.get("bad")),
                     "fb": _fb_public(fb, reviewer),
+                    "assignees": (asg.get(ch) or {}).get("reviewers", []),
+                    "min_reviewers": (asg.get(ch) or {}).get("min", 0),
                     "item_meta": im, "quality_meta": qm})
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트
     if reviewer:
@@ -2150,8 +2156,10 @@ def review_queue(data: dict) -> dict:
         return {"ok": False, "error": "store unavailable", "items": []}
     only_un = data.get("only_unreviewed", True)
     limit = int(data.get("limit") or 100)
-    items = st.review_queue(limit=limit, only_unreviewed=bool(only_un), team=data.get("team"))
-    items = _inject_gold(items, (data.get("reviewer") or "").strip(), data.get("team"))
+    rv = (data.get("reviewer") or "").strip()
+    items = st.review_queue(limit=limit, only_unreviewed=bool(only_un), team=data.get("team"),
+                            reviewer=rv or None)                # 배정 콘텐츠 배타 노출
+    items = _inject_gold(items, rv, data.get("team"))
     return {"ok": True, "items": items, "n": len(items)}
 
 
@@ -3217,6 +3225,31 @@ class Handler(BaseHTTPRequestHandler):
                           and st.remove_content((data.get("hash") or "").strip(), team=self._req_team()))
                 _agg_bump()
                 self._send(200, json.dumps({"ok": ok}, ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/content-assign"):    # 관리자: 콘텐츠 검수 담당자 배정(배타적 노출)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                h = (data.get("hash") or "").strip()
+                reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
+                try:
+                    minr = int(data.get("min_reviewers") or 1)
+                except (TypeError, ValueError):
+                    minr = 1
+                st = get_store()
+                if not (h and st and hasattr(st, "set_assignees")):
+                    self._send(400, json.dumps({"error": "hash 누락 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
+                    return
+                st.set_assignees(h, reviewers, min_reviewers=minr, team=self._req_team())
+                _agg_bump()
+                cur = (st.assignees(team=self._req_team()) or {}).get(h) or {"reviewers": [], "min": 0}
+                self._send(200, json.dumps({"ok": True, "assignees": cur["reviewers"],
+                                            "min_reviewers": cur["min"]}, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

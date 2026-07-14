@@ -58,6 +58,23 @@ public.prism_events(id, team_id, reviewer_id, kind, day, bonus, meta,
 ```
 신규 3 테이블은 RLS enable + 정책 없음 = service_role(서버) 전용.
 
+**콘텐츠별 검수 담당 배정(`prism_assignments`, 2026-07-14 · 미적용 · 아래 SQL 을 Supabase SQL Editor 에서 실행 필요)**:
+```sql
+create table if not exists public.prism_assignments (
+  content_hash  text not null,
+  reviewer_id   uuid not null references public.prism_reviewers(id) on delete cascade,
+  team_id       uuid,
+  min_reviewers integer not null default 1,       -- 통과 기준 N(콘텐츠당 동일, 비정규화)
+  ts            timestamptz not null default now(),
+  primary key (content_hash, reviewer_id, team_id)
+);
+create index if not exists ix_assign_team on public.prism_assignments(team_id, reviewer_id);
+alter table public.prism_assignments enable row level security;   -- 정책 없음 = service_role(서버) 전용
+```
+배정되면 해당 콘텐츠는 담당자에게만 큐 노출(배타적). 미배정 콘텐츠는 기존 오픈 큐 유지.
+진척: 개인 분모 = 내 담당 수, 팀 진척 = Σ 콘텐츠별 min(검수인원,N)/N ÷ 배정 콘텐츠 수.
+> PK 에 team_id 포함 → team 단위 격리. team_id NULL(팀 미소속)은 실사용 없음(배정은 팀 관리자 기능).
+
 ## 상세 설계 (확정)
 
 ### (a) 정체성 통일 · dual-mode 의 핵심

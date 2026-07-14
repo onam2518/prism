@@ -147,6 +147,45 @@ class SupabaseStore:
                 out.append(m)
         return out
 
+    # ── 콘텐츠별 검수 담당 배정(배타적 노출 · 진척 개인화) ─────────────────
+    def set_assignees(self, content_hash, reviewers, min_reviewers=1, team=None):
+        """콘텐츠 검수 담당자 배정(교체) + 최소 검수인원 N. reviewers=[] 면 해제.
+        min_reviewers 는 각 배정 행에 비정규화 저장(콘텐츠당 동일)."""
+        h = (content_hash or "").strip()
+        if not h:
+            return
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        self._req("DELETE", "assignments",
+                  query=f"content_hash=eq.{urllib.parse.quote(h)}" + tq, prefer="return=minimal")
+        rvs = [r for r in dict.fromkeys(reviewers or []) if r]   # 중복 제거·순서 보존
+        if not rvs:
+            return
+        n = max(1, min(len(rvs), int(min_reviewers or 1)))       # N 은 배정 인원 이하로 클램프
+        rows = []
+        for rv in rvs:
+            row = {"content_hash": h, "reviewer_id": rv, "min_reviewers": n}
+            if team:
+                row["team_id"] = team
+            rows.append(row)
+        self._req("POST", "assignments", body=rows, prefer="return=minimal")
+
+    def clear_assignees(self, content_hash, team=None):
+        self.set_assignees(content_hash, [], team=team)
+
+    def assignees(self, team=None) -> dict:
+        """콘텐츠별 배정 현황 {hash: {"reviewers":[...], "min":N}} · 배정 콘텐츠만 포함."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        rows = self._get("assignments",
+                         "select=content_hash,reviewer_id,min_reviewers" + tq + "&order=ts")
+        out = {}
+        for r in rows:
+            d = out.setdefault(r["content_hash"], {"reviewers": [], "min": 1})
+            d["reviewers"].append(r["reviewer_id"])
+            d["min"] = max(1, int(r.get("min_reviewers") or 1))
+        for d in out.values():
+            d["min"] = max(1, min(len(d["reviewers"]), d["min"]))
+        return out
+
     def ensure_team(self, uid, mode="create", name=None, code=None):
         """팀 생성/가입 → team_id. join: 초대코드 조회. create: 코드 생성·삽입."""
         if mode == "join":
@@ -628,11 +667,13 @@ class SupabaseStore:
         good = bad = wk_good = wk_bad = 0
         board, days_by = {}, {}
         by_content = {}                               # {hash: [(reviewer, verdict)]}
+        reviewed_pairs = set()                        # (hash, reviewer) · 담당 진척 산정용
         for r in rows:
             rid = r["reviewer_id"]
             b = board.setdefault(rid, {"reviews": 0, "corrections": 0,
                                        "wk_reviews": 0, "wk_corr": 0, "pv_reviews": 0, "pv_corr": 0})
             b["reviews"] += 1
+            reviewed_pairs.add((r["content_hash"], rid))
             ts = _epoch(r.get("ts"))
             this_wk = ts >= week_ago
             last_wk = week_ago > ts >= prev_ago
@@ -701,7 +742,20 @@ class SupabaseStore:
         bonuses = self.event_bonus(team)
         gcontrib = self.golden_contrib_counts(team)
 
-        def _prog(rc):
+        # 담당 배정: 개인 진척 분모 = 내 담당 콘텐츠 수, 완료 = 내가 검수한 담당 콘텐츠 수
+        asg = self.assignees(team)                       # {hash: {"reviewers", "min"}}
+        mine_total, mine_done = {}, {}
+        for ch, a in asg.items():
+            for rv in a["reviewers"]:
+                mine_total[rv] = mine_total.get(rv, 0) + 1
+                if (ch, rv) in reviewed_pairs:
+                    mine_done[rv] = mine_done.get(rv, 0) + 1
+
+        def _prog(rid):
+            denom = mine_total.get(rid)                  # 배정 있는 검수자 → 개인 분모
+            if denom:
+                return round(mine_done.get(rid, 0) / denom, 4)
+            rc = board.get(rid, {}).get("reviews", 0)    # 미배정 → 기존 팀 전체 YELLOW 기준
             return round(min(rc, total_targets) / total_targets, 4) if total_targets else 0.0
 
         def _mult(rid):
@@ -726,7 +780,7 @@ class SupabaseStore:
             leaderboard.append({"reviewer": meta.get("name", rid), "reviewer_id": rid, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": level_of(pts), "streak": _streak(days_by.get(rid, set())),
-                                "char": meta.get("avatar", "boksil"), "progress": _prog(v["reviews"]),
+                                "char": meta.get("avatar", "boksil"), "progress": _prog(rid),
                                 "week_points": max(0, round(wk_base * mult) + (bonuses.get(rid) or {}).get("week", 0)),
                                 "last_week_points": round(pv_base * mult),
                                 "gold_n": gs["n"], "gold_acc": gs["acc"], "quality_mult": mult,
@@ -737,8 +791,17 @@ class SupabaseStore:
                                 "agree_rate": (round(agree_hit.get(rid, 0) / agree_n[rid], 4)
                                                if agree_n.get(rid) else None)})
         leaderboard.sort(key=lambda x: -x["points"])
-        members = set(names.keys()) | set(board.keys())  # 팀 전원(검수 이력 없어도 평균에 포함)
-        team_progress = round(sum(_prog(board.get(m, {}).get("reviews", 0)) for m in members) / len(members), 4) if (members and total_targets) else 0.0
+        if asg:
+            # 배정 기준 팀 진척 = Σ 콘텐츠별 min(검수인원, N)/N ÷ 배정 콘텐츠 수(부분 크레딧 합산)
+            tot = 0.0
+            for ch, a in asg.items():
+                n = a["min"] or 1
+                done = sum(1 for rv in a["reviewers"] if (ch, rv) in reviewed_pairs)
+                tot += min(done, n) / n
+            team_progress = round(tot / len(asg), 4)
+        else:
+            members = set(names.keys()) | set(board.keys())  # 팀 전원(검수 이력 없어도 평균에 포함)
+            team_progress = round(sum(_prog(m) for m in members) / len(members), 4) if (members and total_targets) else 0.0
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
                 "week_reviews": wk_good + wk_bad, "accuracy_delta": 0.0,
                 "target": target, "leaderboard": leaderboard,
@@ -776,13 +839,16 @@ class SupabaseStore:
         self._upsert("contents", rows)
         return len(rows)
 
-    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None) -> list:
-        """정렬 = split 재검토 우선 → 모델 확신 낮은 순(불확실성 샘플링) → 최신순."""
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None) -> list:
+        """정렬 = split 재검토 우선 → 모델 확신 낮은 순(불확실성 샘플링) → 최신순.
+        배정된 콘텐츠는 담당자 전용(배타적) · 담당자는 자기가 아직 검수 안 한 것만 봄."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("contents", "select=hash,service,title,body,source_url,final_grade,item_meta,quality_meta,review,model,created_at"
                          f"&review=eq.yellow{tq}&order=created_at.desc&limit={int(limit) * 4}")
-        fb = self._get("feedback", "select=content_hash,verdict" + tq)
+        fb = self._get("feedback", "select=content_hash,verdict,reviewer_id" + tq)
         reviewed = {r["content_hash"] for r in fb}
+        mine = {r["content_hash"] for r in fb if reviewer and r.get("reviewer_id") == reviewer}
+        asg = self.assignees(team)                    # {hash: {"reviewers", "min"}} · 배정 콘텐츠만
         by_c = {}
         for r in fb:
             if r.get("verdict") in ("good", "bad"):
@@ -792,8 +858,14 @@ class SupabaseStore:
         for r in rows:
             is_rev = r["hash"] in reviewed
             is_split = r["hash"] in split
-            if only_unreviewed and is_rev and not is_split:
-                continue
+            a = asg.get(r["hash"])
+            if a:                                     # 배정 콘텐츠 = 담당자 전용(배타적)
+                if not reviewer or reviewer not in a["reviewers"]:
+                    continue                          # 담당 아님(또는 미인증) → 숨김
+                if only_unreviewed and r["hash"] in mine and not is_split:
+                    continue                          # 내 몫은 이미 검수함
+            elif only_unreviewed and is_rev and not is_split:
+                continue                              # 미배정 = 오픈 큐(기존)
             qm = r.get("quality_meta") or {}
             im = r.get("item_meta") or {}
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
@@ -803,7 +875,9 @@ class SupabaseStore:
                         "grade": r.get("final_grade") or "", "reasons": qm.get("reasons", []) or [],
                         "review_reason": qm.get("review_reason", ""),
                         "reviewed": is_rev, "split": is_split, "model": r.get("model") or "",
-                        "confidence": qm.get("confidence"), "ts": r.get("created_at")})
+                        "confidence": qm.get("confidence"), "ts": r.get("created_at"),
+                        "assignees": (a or {}).get("reviewers", []),
+                        "min_reviewers": (a or {}).get("min", 0)})
         out.sort(key=lambda r: (0 if r["split"] else 1,
                                 r["confidence"] if isinstance(r.get("confidence"), (int, float)) else 1.0,
                                 -_epoch(r.get("ts"))))

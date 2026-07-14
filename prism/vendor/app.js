@@ -99,7 +99,40 @@
       // 골든셋 평가(정합성) 상태 + 테스트(로우 데이터) 상태
       goldenResult: null, goldenBusy: false, goldenMsg: '',
       rawData: null, rawSel: null,
-      async loadRaw() { try { const p = new URLSearchParams({ limit: '200' }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await fetch('/raw?' + p.toString(), { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this._absorbFreshFb(); } } catch (e) {} },
+      // 콘텐츠별 검수 담당 배정(관리자 전용): 편집 중 행·선택 담당자·최소 검수인원
+      assignSel: null, assignPick: [], assignMin: 1, assignBusy: false,
+      async loadRaw() { try { const p = new URLSearchParams({ limit: '200' }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await fetch('/raw?' + p.toString(), { headers: this._authHeaders() })).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); } } catch (e) {} },
+      // 배정 UI 게이트: 로컬(단독)은 항상, 운영(supabase)은 팀 관리자만 · team_members 원천 = adminData.members
+      get assignAdmin() { return this.backend !== 'supabase' || !!(this.adminData && this.adminData.isAdmin); },
+      get assignMembers() { return (this.adminData && this.adminData.members) || []; },
+      assigneeNames(r) {
+        const ids = (r && r.assignees) || []; const mem = this.assignMembers;
+        return ids.map((id) => { const m = mem.find((x) => x.id === id); return (m && m.name) || id; });
+      },
+      openAssign(r) {
+        if (this.assignSel && this.assignSel.hash === r.hash) { this.assignSel = null; return; }
+        this.assignSel = r; this.assignPick = ((r.assignees || []).slice()); this.assignMin = Math.max(1, r.min_reviewers || 1);
+      },
+      toggleAssign(id) {
+        const i = this.assignPick.indexOf(id);
+        if (i >= 0) this.assignPick.splice(i, 1); else this.assignPick.push(id);
+        if (this.assignMin > this.assignPick.length) this.assignMin = Math.max(1, this.assignPick.length);
+      },
+      async saveAssign() {
+        if (!this.assignSel) return;
+        const h = this.assignSel.hash; this.assignBusy = true;
+        try {
+          const body = JSON.stringify({ hash: h, reviewers: this.assignPick, min_reviewers: this.assignMin });
+          const r = await (await this._afetch('/content-assign', { method: 'POST', headers: this._authHeaders(), body })).json();
+          if (r && r.ok) {
+            // 낙관적 반영: 편집 대상 행에 즉시 배정 결과 반영(다음 loadRaw 전에도 표기 정합)
+            const row = ((this.rawData || {}).items || []).find((x) => x.hash === h);
+            if (row) { row.assignees = r.assignees || []; row.min_reviewers = r.min_reviewers || 0; }
+            this.assignSel = null;
+          } else this._err((r && r.error) || '배정 실패');
+        } catch (e) { this._err('배정 실패'); }
+        this.assignBusy = false;
+      },
       // 검수 '완료' 판정은 팀 합의(fb.verdict)가 아니라 '내 표(fb.mine)' 기준이어야 한다.
       // (그러지 않으면 타 검수자가 검수한 콘텐츠도 내 목록에서 완료로 보인다 · 2026-07-10)
       // mine 은 서버가 검수자 식별 시에만 채운다 → 미제공(undefined)일 때만 합의로 폴백(골드 문항 등).
