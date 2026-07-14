@@ -395,7 +395,8 @@ def _bundle(rows, dims, cid, kind, vs, sample=0, blocked=None):
         "rep_title": _title(rows[ranked[0]]) if ranked else "",
     }
     if sample:
-        b["samples"] = [{"title": _title(rows[i])[:70], "grade": _grade(rows[i])} for i in ranked[:sample]]
+        # i = 행 인덱스: 호출부(serve 미리보기)가 상세 화면 계약(_detail_row)으로 확장하는 키
+        b["samples"] = [{"i": i, "title": _title(rows[i])[:70], "grade": _grade(rows[i])} for i in ranked[:sample]]
     return b
 
 

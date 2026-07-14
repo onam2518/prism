@@ -897,8 +897,14 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
 
     if action == "preview":
         d = _sanitize_def(data.get("def") or {})
-        return {"ok": True, "preview": TP.preview_definition(rows, svc, d, ent_index=_ent_index()) if rows else
-                {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0}}
+        pv = (TP.preview_definition(rows, svc, d, ent_index=_ent_index()) if rows else
+              {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0})
+        # 표본을 상세 화면 계약(_detail_row)으로 확장: 미리보기 배지 클릭 → 공통 스플릿뷰로 바로 열람
+        for b in pv.get("bundles") or []:
+            if b.get("samples"):
+                b["samples"] = [_detail_row(rows[s["i"]]) for s in b["samples"]
+                                if isinstance(s.get("i"), int) and 0 <= s["i"] < len(rows)]
+        return {"ok": True, "preview": pv}
 
     if action == "suggest":
         text = data.get("text") or ""

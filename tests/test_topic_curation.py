@@ -217,6 +217,16 @@ class TestServeActions(unittest.TestCase):
         self.assertEqual((samsung["count"], samsung["excluded_n"]), (1, 1))
         self.assertEqual(S.topic_drill("S-삼성전자")["n"], 1)
 
+    def test_preview_samples_carry_detail_contract(self):
+        """미리보기 표본 배지 클릭 → 공통 상세 스플릿뷰: 표본이 상세 필드 전체를 갖춘다."""
+        out = self.S.topic_studio_action({"action": "preview",
+                                          "def": {"name": "x", "cats": ["Business and Finance"]}})
+        core = next(b for b in out["preview"]["bundles"] if b["kind"] == "core")
+        self.assertTrue(core.get("samples"))
+        for k in ("hash", "title", "body", "url", "entities", "intent", "category", "grade"):
+            self.assertIn(k, core["samples"][0], f"표본에 상세 필드 누락: {k}")
+        self.assertEqual(core["samples"][0]["title"], "삼성 분석1")
+
 
 if __name__ == "__main__":
     unittest.main()
