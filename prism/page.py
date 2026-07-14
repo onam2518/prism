@@ -898,71 +898,106 @@ PAGE = """<!doctype html>
             <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.filter||0):0"></div><div class="t">조건형(기본)</div></div>
           </div>
 
-          <!-- 토픽 만들기: 자연어 주도 → 조건값 자동 채움 → 실시간 미리보기 -->
-          <div class="panel"><div class="panel-hd"><b x-text="studio.editId ? '토픽 수정' : '토픽 만들기'"></b><span class="meta" x-text="studio.editId ? ('수정 중 · '+studio.editId) : '문장으로 설명하면 조건값이 채워집니다'"></span></div>
-            <div class="panel-bd space-y-4">
-              <div><label class="lbl">토픽 이름</label><input class="field" x-model="studio.name" placeholder="예) 경제 심층분석 큐레이션"></div>
+          <!-- 토픽 생성하기: 4단계 스텝(이름 → 자연어 → 조건 → 생성) -->
+          <div class="panel">
+            <div class="panel-hd"><b x-text="studio.editId ? '토픽 수정' : '토픽 생성하기'"></b>
+              <span class="meta tnum" style="margin-left:auto" x-text="tStepDone()+' / 4 단계'"></span>
+              <span class="tprog"><i x-bind:style="'width:'+(tStepDone()/4*100)+'%'"></i></span>
+            </div>
+            <div class="panel-bd">
+              <div class="tstepper">
 
-              <!-- 1) 자연어 (주 입력) -->
-              <div>
-                <label class="lbl">이렇게 묶고 싶어요 <span class="meta">· 자연어로 설명</span></label>
-                <textarea class="field" rows="2" style="resize:vertical" x-model="studio.prompt" x-on:input="schedulePreview()" placeholder="예) 경제·산업 심층분석만 모으고 속보는 빼줘"></textarea>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
-                  <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="studioSuggest()" x-bind:disabled="studioSuggesting || !studio.prompt.trim()" data-tip="설명을 읽고 아래 조건값(카테고리·인텐트·키워드)을 채웁니다" data-tip-pos="top" x-text="studioSuggesting ? '채우는 중…' : '✨ 자연어로 조건값 채우기'"></button>
-                  <span class="text-xs" style="color:var(--ds-muted)">모델</span>
-                  <select class="field" style="width:auto;height:32px;min-width:150px;padding:0 26px 0 10px" x-model="studioModel" data-tip="조건값을 채울 때 사용할 모델 · 기본 실행 모델을 쓰거나 지정" data-tip-pos="top">
-                    <option value="">기본 실행 모델</option>
-                    <template x-for="m in modelOptions" x-bind:key="'sm'+m"><option x-bind:value="m" x-text="m"></option></template>
-                  </select>
-                  <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="studioMsg"></span>
-                </div>
-              </div>
-
-              <!-- 2) 조건값 (자동 채워짐 · 직접 조정) -->
-              <div class="panel" style="box-shadow:none;background:var(--ds-surface-2,transparent)"><div class="panel-hd" style="padding-bottom:2px"><b style="font-size:13px">조건값</b><span class="meta">자연어로 채워지고, 직접 켜고 끌 수 있어요 · 비우면 전체</span></div>
-                <div class="panel-bd space-y-3">
-                  <div><label class="lbl">콘텐츠 카테고리 <span class="meta" x-text="'· 선택 '+studio.cats.length"></span></label>
-                    <div class="flex flex-wrap gap-1.5">
-                      <template x-for="c in (topicData.catalog?topicData.catalog.cats:[])" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.cats.includes(c.k)?'ds-badge--category':'ds-badge--neutral'" x-on:click="studioToggle('cats',c.k)" x-text="catBoth(c.k)+' ('+c.v+')'"></span></template>
-                      <span x-show="!(topicData.catalog&&topicData.catalog.cats.length)" class="text-xs text-muted">데이터에 카테고리가 없습니다</span>
-                    </div>
-                  </div>
-                  <div><label class="lbl">인텐트 <span class="meta" x-text="'· 선택 '+studio.intents.length"></span></label>
-                    <div class="flex flex-wrap gap-1.5">
-                      <template x-for="c in (topicData.catalog?topicData.catalog.intents:[])" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.intents.includes(c.k)?'ds-badge--intent':'ds-badge--neutral'" x-on:click="studioToggle('intents',c.k)" x-text="c.k+' ('+c.v+')'"></span></template>
-                      <span x-show="!(topicData.catalog&&topicData.catalog.intents.length)" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
-                    </div>
-                  </div>
-                  <div><label class="lbl">엔티티 키워드 <span class="meta">· 엔티티 이름 부분일치</span></label>
-                    <div style="display:flex;gap:8px">
-                      <input class="field" style="flex:1" x-model="studio.kwInput" x-on:keydown.enter.prevent="studioAddKw()" placeholder="예) 삼성 (엔터로 추가)">
-                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="studioAddKw()">추가</button>
-                    </div>
-                    <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
-                      <template x-for="k in studio.keywords" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-on:click="studioToggle('keywords',k)" data-tip="클릭하면 제거" x-text="k+' ✕'"></span></template>
-                      <template x-for="k in topKw()" x-bind:key="'kwc'+k.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioToggle('keywords',k.k)" data-tip="추가" x-text="'+ '+k.k"></span></template>
-                    </div>
+                <!-- STEP 1 · 이름 -->
+                <div class="tstep" x-bind:class="{'is-done': !!studio.name.trim(), 'is-active': tActive()===1}">
+                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">1</span><span class="c">✓</span></span></div>
+                  <div class="tstep__body">
+                    <div class="tstep__head"><b>이름 짓기</b><span class="tstep__guide">이 묶음을 뭐라고 부를까요?</span></div>
+                    <input class="field" x-model="studio.name" placeholder="예) 경제 심층분석 큐레이션">
                   </div>
                 </div>
-              </div>
 
-              <!-- 3) 실시간 미리보기 -->
-              <div class="panel" style="box-shadow:none"><div class="panel-bd">
-                <div style="display:flex;align-items:baseline;gap:10px">
-                  <span class="tnum" style="font-size:24px;font-weight:700" x-text="(studioPreview.count||0)"></span>
-                  <span class="meta" x-text="'/ '+((studioPreview.n_total||topicData.n_contents))+'건 묶임'"></span>
-                  <span class="meta" x-show="studioBusy">· 계산 중…</span>
-                  <span class="meta" x-show="!studio.cats.length && !studio.intents.length && !studio.keywords.length">· 조건값 없음 = 전체</span>
+                <!-- STEP 2 · 자연어 -->
+                <div class="tstep" x-bind:class="{'is-done': !!studio.prompt.trim(), 'is-active': tActive()===2}">
+                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">2</span><span class="c">✓</span></span></div>
+                  <div class="tstep__body">
+                    <div class="tstep__head"><b>말로 설명하기</b><span class="tstep__guide">원하는 묶음을 문장으로 · ‘조건값 자동생성’을 누르면 아래 조건이 채워집니다</span></div>
+                    <textarea class="field" rows="2" style="resize:vertical" x-model="studio.prompt" x-on:input="schedulePreview()" placeholder="예) 경제·산업 심층분석만 모으고 속보는 빼줘"></textarea>
+                    <div class="tairow">
+                      <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="studioSuggest()" x-bind:disabled="studioSuggesting || !studio.prompt.trim()" data-tip="설명을 읽고 아래 조건값을 자동으로 만듭니다" data-tip-pos="top" x-text="studioSuggesting ? '생성 중…' : '✨ 조건값 자동생성'"></button>
+                      <span class="tmodel">
+                        <span class="tmodel__lbl">모델</span>
+                        <select class="field tmodel__sel" x-model="studioModel" data-tip="조건값 생성에 쓸 모델 · 직접(Solar)·라우터 선택 가능" data-tip-pos="top">
+                          <option value="">기본 실행 모델</option>
+                          <template x-for="m in studioModelList" x-bind:key="m.key"><option x-bind:value="m.value" x-bind:disabled="m.header" x-text="m.text"></option></template>
+                        </select>
+                        <button type="button" class="ds-iconbtn ds-iconbtn--bordered ds-iconbtn--sm tmodel__rf" x-bind:class="modelsBusy?'is-spin':''" x-on:click="refreshStudioModels()" x-bind:disabled="modelsBusy" data-tip="모델 목록 새로고침 (라우터 포함)" data-tip-pos="top" aria-label="모델 목록 새로고침">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+                        </button>
+                      </span>
+                    </div>
+                    <div class="text-xs" style="color:var(--ds-muted);margin-top:7px" aria-live="polite" x-text="studioMsg || modelsMsgStudio"></div>
+                  </div>
                 </div>
-                <div class="text-xs text-muted" style="margin-top:2px" x-show="studioPreview.rep_title" x-text="'대표: '+studioPreview.rep_title"></div>
-                <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
-                  <template x-for="s in (studioPreview.samples||[])" x-bind:key="'sm'+s.title"><span class="ds-badge" x-bind:class="s.grade==='G'?'ds-badge--success':'ds-badge--neutral'" x-text="s.title"></span></template>
-                </div>
-              </div></div>
 
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <button type="button" class="ds-btn ds-btn--primary" x-on:click="studioSave()" x-bind:disabled="!studio.name.trim() || studioSaving" x-text="studioSaving?'저장 중…':(studio.editId?'수정 저장':'토픽 저장')"></button>
-                <button type="button" class="ds-btn ds-btn--outline" x-on:click="studioReset()" x-show="studio.editId || studio.name || studio.cats.length || studio.intents.length || studio.keywords.length">초기화</button>
+                <!-- STEP 3 · 조건 -->
+                <div class="tstep" x-bind:class="{'is-done': !!(studio.cats.length||studio.intents.length||studio.keywords.length), 'is-active': tActive()===3}">
+                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">3</span><span class="c">✓</span></span></div>
+                  <div class="tstep__body">
+                    <div class="tstep__head"><b>조건 확인·조정</b><span class="tstep__guide">문장을 읽고 아래 조건으로 걸러냈어요 · 마음에 안 들면 직접 바꿀 수 있어요</span></div>
+                    <div class="tfilter"><span class="tfilter__badge">✨ 자동 필터</span><span class="tfilter__text" x-html="filterSummary()"></span></div>
+                    <div class="tlegend"><span class="sw sw--on"></span><b>켜진 칩</b> = 필터 적용 · <span class="sw sw--off"></span>회색 = 후보(누르면 추가) · <span class="tauto">✨</span> = 문장에서 자동 선택</div>
+                    <div class="tcond__g">
+                      <div class="tcond__lbl">카테고리 <span x-text="'· '+studio.cats.length+' 적용'"></span></div>
+                      <div class="flex flex-wrap gap-1.5">
+                        <template x-for="c in (topicData.catalog?topicData.catalog.cats:[])" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.cats.includes(c.k)?'ds-badge--category':'ds-badge--neutral'" x-on:click="studioToggle('cats',c.k)"><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
+                        <span x-show="!(topicData.catalog&&topicData.catalog.cats.length)" class="text-xs text-muted">데이터에 카테고리가 없습니다</span>
+                      </div>
+                    </div>
+                    <div class="tcond__g">
+                      <div class="tcond__lbl">인텐트 <span x-text="'· '+studio.intents.length+' 적용'"></span></div>
+                      <div class="flex flex-wrap gap-1.5">
+                        <template x-for="c in (topicData.catalog?topicData.catalog.intents:[])" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.intents.includes(c.k)?'ds-badge--intent':'ds-badge--neutral'" x-on:click="studioToggle('intents',c.k)"><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
+                        <span x-show="!(topicData.catalog&&topicData.catalog.intents.length)" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
+                      </div>
+                    </div>
+                    <div class="tcond__g">
+                      <div class="tcond__lbl">엔티티 키워드 <span x-text="'· '+studio.keywords.length+' 적용'"></span></div>
+                      <div style="display:flex;gap:8px">
+                        <input class="field" style="flex:1" x-model="studio.kwInput" x-on:keydown.enter.prevent="studioAddKw()" placeholder="예) 삼성 (엔터로 추가)">
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="studioAddKw()">추가</button>
+                      </div>
+                      <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
+                        <template x-for="k in studio.keywords" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-on:click="studioToggle('keywords',k)" data-tip="클릭하면 제거"><span x-show="isAuto('keywords',k)" class="tauto">✨</span><span x-text="k+' ✕'"></span></span></template>
+                        <template x-for="k in topKw()" x-bind:key="'kwc'+k.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioToggle('keywords',k.k)" data-tip="추가" x-text="'+ '+k.k"></span></template>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- STEP 4 · 생성 -->
+                <div class="tstep" x-bind:class="{'is-active': tActive()===4}">
+                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">4</span><span class="c">✓</span></span></div>
+                  <div class="tstep__body">
+                    <div class="tstep__head"><b>확인하고 생성</b><span class="tstep__guide">지금 조건으로 몇 건이 묶이는지 확인한 뒤 생성하세요</span></div>
+                    <div class="tpreview">
+                      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                        <span class="tnum tpreview__big" x-text="(studioPreview.count||0)"></span>
+                        <span class="meta" x-text="'/ '+((studioPreview.n_total||topicData.n_contents))+'건 묶임'"></span>
+                        <span class="meta" x-show="studioBusy">· 계산 중…</span>
+                        <span class="meta" x-show="!studio.cats.length && !studio.intents.length && !studio.keywords.length">· 조건값 없음 = 전체</span>
+                      </div>
+                      <div class="text-xs text-muted" style="margin-top:2px" x-show="studioPreview.rep_title" x-text="'대표: '+studioPreview.rep_title"></div>
+                      <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
+                        <template x-for="s in (studioPreview.samples||[])" x-bind:key="'sm'+s.title"><span class="ds-badge" x-bind:class="s.grade==='G'?'ds-badge--success':'ds-badge--neutral'" x-text="s.title"></span></template>
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
+                      <button type="button" class="ds-btn ds-btn--primary" x-on:click="studioSave()" x-bind:disabled="!studio.name.trim() || studioSaving" x-text="studioSaving?'생성 중…':(studio.editId?'수정 저장':'토픽 생성')"></button>
+                      <button type="button" class="ds-btn ds-btn--outline" x-on:click="studioReset()" x-show="studio.editId || studio.name || studio.cats.length || studio.intents.length || studio.keywords.length">초기화</button>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
