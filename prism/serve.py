@@ -567,11 +567,31 @@ def reset_dict_overrides() -> dict:
     return out
 
 
+def _studio_config() -> dict:
+    """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \uc124\uc815(\uc0ac\uc6a9\uc790 \uc815\uc758 \uc870\uac74\ud615 \ud1a0\ud53d + \ud074\ub7ec\uc2a4\ud130\ub9c1 \ud29c\ub2dd) \ub85c\ub4dc.
+    \ud1a0\ud53d\uc740 \uc804\uc5ed(\ubb34\ud300 results_rows) \ubdf0\ub77c \uc124\uc815\ub3c4 \uc804\uc5ed(team="")\uc5d0 \uc601\uc18d\ud55c\ub2e4."""
+    st = get_store()
+    cfg = (st.get_report("topic_studio") if st else None) or {}
+    custom = cfg.get("custom") if isinstance(cfg.get("custom"), list) else []
+    settings = cfg.get("settings") if isinstance(cfg.get("settings"), dict) else {}
+    return {"custom": custom, "settings": settings}
+
+
+def _save_studio_config(cfg: dict):
+    st = get_store()
+    if st:
+        st.save_report("topic_studio", {"custom": cfg.get("custom") or [],
+                                        "settings": cfg.get("settings") or {}})
+
+
 def topics_data() -> dict:
-    """\ud1a0\ud53d \ubaa8\ub4c8: \uc801\uc7ac\ub41c \uacb0\uacfc\uc5d0\uc11c \uc5d4\ud2f0\ud2f0\ud615\u00b7\uc0ac\uac74\ud615\u00b7\uc870\uac74\ud615 \ud1a0\ud53d \ube4c\ub4dc."""
+    """\ud1a0\ud53d \ubaa8\ub4c8: \uc801\uc7ac\ub41c \uacb0\uacfc\uc5d0\uc11c \uc5d4\ud2f0\ud2f0\ud615\u00b7\uc0ac\uac74\ud615\u00b7\uc870\uac74\ud615 \ud1a0\ud53d + \uc0ac\uc6a9\uc790 \uc815\uc758 \ud1a0\ud53d \ube4c\ub4dc."""
     rows = results_rows()
+    cfg = _studio_config()
     if not rows:
-        return {"n_contents": 0, "single": [], "composite": [], "filter": [], "summary": {}}
+        return {"n_contents": 0, "single": [], "composite": [], "filter": [], "custom": [],
+                "customDefs": cfg["custom"], "settings": cfg["settings"],
+                "catalog": {"intents": [], "cats": [], "keywords": []}, "summary": {}}
     from . import topic as TP
     with tempfile.TemporaryDirectory() as d:
         rpath = os.path.join(d, "r.jsonl")
@@ -579,10 +599,86 @@ def topics_data() -> dict:
             for r in rows:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
         try:
-            return TP.build_topics(rpath)
+            return TP.build_topics(rpath, custom_defs=cfg["custom"], settings=cfg["settings"])
         except Exception as e:
             return {"error": str(e)[:200], "n_contents": len(rows),
-                    "single": [], "composite": [], "filter": [], "summary": {}}
+                    "single": [], "composite": [], "filter": [], "custom": [],
+                    "customDefs": cfg["custom"], "settings": cfg["settings"], "summary": {}}
+
+
+def _sanitize_def(d: dict, existing_ids=None) -> dict:
+    """\uc0ac\uc6a9\uc790 \uc815\uc758 \uc815\uaddc\ud654\u00b7\uac80\uc99d. id \uc5c6\uc73c\uba74 \uc0dd\uc131(\uc911\ubcf5 \ud68c\ud53c)."""
+    from . import topic as TP
+    name = (d.get("name") or "").strip()[:60]
+    prompt = (d.get("prompt") or "").strip()[:280]
+
+    def _strlist(v, n=20, ln=60):
+        out, seen = [], set()
+        for x in (v or []):
+            s = str(x).strip()[:ln]
+            if s and s not in seen:
+                seen.add(s); out.append(s)
+            if len(out) >= n:
+                break
+        return out
+
+    cats = _strlist(d.get("cats"))
+    intents = _strlist(d.get("intents"))
+    keywords = _strlist(d.get("keywords"))
+    cid = (d.get("id") or "").strip()
+    if not cid:
+        base = "U-" + (TP._slug(name or prompt or "topic") or "topic")
+        cid, n = base, 2
+        ids = set(existing_ids or [])
+        while cid in ids:
+            cid = base + "-" + str(n); n += 1
+    return {"id": cid, "name": name or "(\ubb34\uc81c \ud1a0\ud53d)", "prompt": prompt,
+            "cats": cats, "intents": intents, "keywords": keywords}
+
+
+def topic_studio_action(data: dict) -> dict:
+    """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd/\uc870\ud68c: save\u00b7delete\u00b7settings\u00b7preview\u00b7suggest."""
+    from . import topic as TP
+    action = (data.get("action") or "").strip()
+    rows = results_rows()
+    svc = TP._service_names(rows) if rows else set()
+
+    if action == "preview":
+        d = _sanitize_def(data.get("def") or {})
+        return {"ok": True, "preview": TP.preview_definition(rows, svc, d) if rows else
+                {"count": 0, "n_total": 0, "rep_title": "", "samples": []}}
+
+    if action == "suggest":
+        sug = TP.suggest_dims(data.get("text") or "", rows, svc) if rows else \
+            {"cats": [], "intents": [], "keywords": []}
+        return {"ok": True, "suggest": sug}
+
+    cfg = _studio_config()
+    custom = list(cfg["custom"])
+
+    if action == "save":
+        d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
+        idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
+        if idx >= 0:
+            custom[idx] = d
+        else:
+            custom.append(d)
+        _save_studio_config({"custom": custom, "settings": cfg["settings"]})
+    elif action == "delete":
+        cid = (data.get("id") or "").strip()
+        custom = [c for c in custom if c.get("id") != cid]
+        _save_studio_config({"custom": custom, "settings": cfg["settings"]})
+    elif action == "settings":
+        s = data.get("settings") or {}
+        settings = dict(cfg["settings"])
+        if s.get("co_min") is not None:
+            settings["co_min"] = max(1, min(6, int(s.get("co_min") or 2)))
+        if s.get("entity_min") is not None:
+            settings["entity_min"] = max(1, min(10, int(s.get("entity_min") or 2)))
+        _save_studio_config({"custom": custom, "settings": settings})
+    else:
+        return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791"}
+    return topics_data()
 
 
 def dashboard_data(team=None) -> dict:
@@ -665,9 +761,9 @@ def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     rows = results_rows()
     if not rows or not cluster_id:
         return {"ok": True, "kind": "topic", "value": cluster_id or "", "items": [], "n": 0}
-    td = topics_data()                        # single/composite/filter (각 content_ids 보유)
+    td = topics_data()                        # single/composite/filter/custom (각 content_ids 보유)
     cluster = None
-    for grp in ("single", "composite", "filter"):
+    for grp in ("single", "composite", "filter", "custom"):
         for c in td.get(grp, []):
             if c.get("cluster_id") == cluster_id:
                 cluster = c
@@ -3264,6 +3360,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(board_action(data, team=self._req_team(),
                            uid=self._bearer_uid() or "", email=self._bearer_email()),
                            ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/topic-studio"):        # 토픽 스튜디오: 생성·삭제·튜닝(변경은 관리자) · 미리보기·제안(조회)
+            try:
+                data = json.loads(body or b"{}")
+                action = (data.get("action") or "").strip()
+                # 조회성(preview·suggest)은 열람 권한이면 허용 · 변경성은 /config 와 동일 관리자 가드
+                if action not in ("preview", "suggest"):
+                    uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
+                    if _supa() and not is_admin_user(uid, team, email):
+                        self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                        return
+                self._send(200, json.dumps(topic_studio_action(data), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
