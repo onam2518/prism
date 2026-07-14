@@ -317,7 +317,8 @@ TOPIC_SUGGEST_ROLE = (
 TOPIC_SUGGEST_SCHEMA = (
     '{"must": {"cats": string[], "intents": string[], "keywords": string[]}, '
     '"optional": {"cats": string[], "intents": string[], "keywords": string[]}, '
-    '"exclude": {"cats": string[], "intents": string[], "keywords": string[]}}')
+    '"exclude": {"cats": string[], "intents": string[], "keywords": string[]}, '
+    '"eattrs": string[] ("key:value" · 개체 속성 후보 목록의 값만 · 해당 없으면 빈 배열)}')
 TOPIC_SUGGEST_RULES = (
     "- 목적: 하나의 토픽을 '핵심 묶음(필수+모든 선택)'과 '관련 묶음(필수+선택 하나씩)'으로 펼칠 수 있게 조건을 설계한다.\n"
     "- must(필수): 이 토픽이 무엇에 관한 것인지 규정하는 축. 보통 주제 카테고리·대상 키워드 1~2개. 비우지 않는다.\n"
@@ -325,10 +326,14 @@ TOPIC_SUGGEST_RULES = (
     "- exclude(제외): 설명에 '빼줘/제외/말고/없이' 같은 배제 표현이 붙은 값. 걸리면 모든 묶음에서 탈락한다. "
     "배제 대상은 must/optional 에 절대 넣지 않는다. 배제 표현이 없으면 빈 배열.\n"
     "- cats·intents 는 아래 허용 목록의 값만 쓴다(목록 외 생성 절대 금지). keywords 는 인물·기업·작품 등 고유명사만 자유(최대 5).\n"
-    "- 현재 데이터에 있는 값을 우선하되, 설명에 부합하면 데이터에 아직 없는 값도 가능(미래 매칭).")
+    "- 현재 데이터에 있는 값을 우선하되, 설명에 부합하면 데이터에 아직 없는 값도 가능(미래 매칭).\n"
+    "- eattrs(개체 속성): 설명이 '개체의 불변 속성'(성별·직업·국적·소속·타입)을 조건으로 삼을 때만 사용. "
+    "예) '여성 스포츠인' → [\"gender:여성\", \"occupation:스포츠인\"]. 조건 전부를 한 개체가 만족해야 하며 항상 필수 취급. "
+    "아래 개체 속성 후보 목록의 값만 쓴다(목록 외 생성 금지 · 후보가 없으면 keywords 로 대신하지 말고 빈 배열).")
 TOPIC_SUGGEST_SELF_CHECK = (
     "- must 최소 1개인가 · must+optional 이 설명의 핵심을 담는가 · 허용 목록 외 cats/intents 를 만들지 않았는가 · "
-    "관련 묶음이 생기도록 optional 을 최소 1개 제안했는가 · 배제 표현('빼줘' 등)의 대상을 exclude 로만 보냈는가")
+    "관련 묶음이 생기도록 optional 을 최소 1개 제안했는가 · 배제 표현('빼줘' 등)의 대상을 exclude 로만 보냈는가 · "
+    "개체 속성 조건이 설명에 있으면 eattrs 후보 목록의 값으로 옮겼는가(목록 외 값 생성 금지)")
 TOPIC_SUGGEST_EXAMPLES = (
     '설명: "스포츠 주제의 인물들에 대한 콘텐츠 모아줘"\n'
     '→ {"must":{"cats":["Sports"],"intents":[],"keywords":[]},'
@@ -344,12 +349,15 @@ TOPIC_SUGGEST_EXAMPLES = (
     '"exclude":{"cats":[],"intents":["속보","사건 경과 보도"],"keywords":[]}}')
 
 
-def topic_suggest_system(model: str, cats_ko, intents, data_cats, data_int) -> str:
-    """조건값 자동생성 시스템 프롬프트. 모델 계열 쿡북 래퍼로 조립 + 허용 목록(전체 분류·데이터 우선) 주입."""
+def topic_suggest_system(model: str, cats_ko, intents, data_cats, data_int, eattrs=None) -> str:
+    """조건값 자동생성 시스템 프롬프트. 모델 계열 쿡북 래퍼로 조립 + 허용 목록(전체 분류·데이터 우선) 주입.
+    eattrs = 엔티티 사전 실재 속성 후보('key:value (라벨 · N건)') · 개체 속성 조건 축."""
     rules = (TOPIC_SUGGEST_RULES
              + "\n\n[전체 카테고리 Tier1 · 한글=영문]: " + _ja(cats_ko)
              + "\n[전체 인텐트]: " + _ja(intents)
-             + "\n[현재 데이터에 있는 값(우선)] 카테고리: " + _ja(data_cats) + " · 인텐트: " + _ja(data_int))
+             + "\n[현재 데이터에 있는 값(우선)] 카테고리: " + _ja(data_cats) + " · 인텐트: " + _ja(data_int)
+             + "\n[개체 속성 후보(엔티티 사전 실재값 · 이 목록의 key:value 만)]: "
+             + (_ja(eattrs) if eattrs else "(없음 · eattrs 는 빈 배열)"))
     return _compose(family_of(model), TOPIC_SUGGEST_ROLE, TOPIC_SUGGEST_SCHEMA, rules,
                     TOPIC_SUGGEST_EXAMPLES, TOPIC_SUGGEST_SELF_CHECK, "")
 

@@ -337,7 +337,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertGreaterEqual(kinds.count("related"), 2)          # 선택값마다 관련 묶음
         # 자연어 제안: 필수/선택(req) 포함 반환 · 모델 지정 시 LLM 개입(mock 은 휴리스틱 폴백)
         sg = self.ok("/topic-studio", {"action": "suggest", "text": "심층 분석 콘텐츠", "model": "solar-pro2"})
-        self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords", "req", "neg"})
+        self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords", "eattrs", "req", "neg"})
         self.assertEqual(set(sg["suggest"]["neg"]), {"cats", "intents", "keywords"})
         self.assertIn(sg.get("via"), ("llm", "heuristic", "none"))
         self.assertEqual(sg.get("model"), "solar-pro2")            # 선택 모델 에코(버튼이 헛돌지 않음)
@@ -420,6 +420,11 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertTrue(self.ok("/entdict", {"action": "enrich_pending", "scope": "all"}).get("mock"))
         cat = self.ok("/topics")["catalog"]["eattrs"]               # 링크된 개체 속성만 후보로 노출
         self.assertTrue(any(c["k"] == "gender:여성" for c in cat))
+        # 조건값 자동생성: 프롬프트의 개체 속성 언급 → eattrs 제안(mock=휴리스틱 폴백 경로)
+        sg2 = self.ok("/topic-studio", {"action": "suggest", "text": "여성 스포츠인 콘텐츠 모아줘",
+                                        "model": "solar-pro2"})
+        self.assertIn("gender:여성", sg2["suggest"]["eattrs"])
+        self.assertIn("occupation:스포츠인", sg2["suggest"]["eattrs"])
         pv = self.ok("/topic-studio", {"action": "preview", "def": {
             "name": "여성 스포츠인", "eattrs": ["gender:여성", "occupation:스포츠인", "몰래키:값"]}})
         b = pv["preview"]["bundles"][0]

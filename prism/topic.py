@@ -471,12 +471,14 @@ def _neg_after(t, frag):
         p = i + 1
 
 
-def suggest_dims(text, rows, service_names=None):
+def suggest_dims(text, rows, service_names=None, eattr_cands=None):
     """자연어 문장 → 차원 제안(휴리스틱 · 모델 호출 없음, 의존성 0).
     전체 아이템메타 분류(사전) ∪ 현재 데이터 present 를 후보로. 전체 라벨 일치 또는
     라벨을 쪼갠 유의미 토큰 부분일치('인물들'→'인물·사연')까지 잡아 substring-only 누락을 줄인다.
     카테고리 영문 라벨은 토큰화하지 않음(and/health 등 과매칭 방지) · 한글 별칭만 토큰 허용.
-    배제 표현('속보는 빼줘')이 붙은 라벨은 선택이 아니라 제외 조건(neg)으로 제안한다."""
+    배제 표현('속보는 빼줘')이 붙은 라벨은 선택이 아니라 제외 조건(neg)으로 제안한다.
+    eattr_cands(엔티티 사전 실재 속성 · eattr_catalog 형식)가 오면 값 언급을 개체 속성 조건으로 제안
+    — '여성 스포츠인' → gender:여성 + occupation:스포츠인."""
     tax = meta_taxonomy()
     cat = studio_catalog(rows, service_names)
     all_cats = list(dict.fromkeys(tax["cats"] + [x["k"] for x in cat["cats"]]))
@@ -514,9 +516,19 @@ def suggest_dims(text, rows, service_names=None):
         if k and k.lower() in t:
             (neg_kw if _neg_after(t, k.lower()) else keywords).append(k)
     keywords, neg_kw = keywords[:5], neg_kw[:5]
+    # 개체 속성(eattrs): 사전 실재값('key:value')의 value 가 문장에 등장하면 조건으로.
+    # 빈도(v) 우선 정렬 · 같은 키는 최다빈도 1개만(성별=여성과 남성이 동시 제안되는 모순 방지).
+    eattrs, seen_keys = [], set()
+    for c in sorted(eattr_cands or [], key=lambda x: -(x.get("v") or 0)):
+        kk, _, vv = str(c.get("k") or "").partition(":")
+        if kk and vv and len(vv) >= 2 and vv.lower() in t and kk not in seen_keys:
+            seen_keys.add(kk)
+            eattrs.append(c["k"])
+        if len(eattrs) >= 4:
+            break
     # 필수/선택 기본값(휴리스틱): 주제·대상(카테고리·키워드)=필수(정체성), 관점·형식(인텐트)=선택(관련 확장)
     req = {"cats": list(cats), "intents": [], "keywords": list(keywords)}
-    return {"cats": cats, "intents": intents, "keywords": keywords, "req": req,
+    return {"cats": cats, "intents": intents, "keywords": keywords, "eattrs": eattrs, "req": req,
             "neg": {"cats": neg_cat, "intents": neg_int, "keywords": neg_kw}}
 
 
