@@ -23,7 +23,7 @@ import time
 import urllib.request
 
 from .imagext import (
-    ROUTERS, is_router, router_key, router_chat_url, _parse_json_lax,
+    is_router, router_key, router_chat_url, _parse_json_lax,
 )
 
 # ─────────────────────────────────────────────────────────────────────────

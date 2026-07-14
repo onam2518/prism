@@ -135,6 +135,58 @@
         } catch (e) { this._err('배정 실패'); }
         this.assignBusy = false;
       },
+      // ── 검수자 일괄 배정(슈퍼관리자 이상) · 리포트 옆 버튼 → ds-dialog 모달 ──
+      bulkOpen: false, bulkBusy: false,
+      bulkQ: '', bulkSvc: '', bulkGrade: '', bulkRev: 'todo', bulkAsg: 'unassigned',
+      bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {},
+      // 노출 게이트: 로컬은 항상, 운영은 슈퍼관리자·운영관리자(opsadmin)만
+      get opsAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isSysAdmin || this.adminData.isSuperAdmin)); },
+      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkOpen = true; this.loadRaw(); },
+      // 필터 결과(현재 표와 동일 규칙 + 배정 상태 필터)
+      get bulkFiltered() {
+        return (((this.rawData || {}).items) || []).filter((r) => {
+          if (this.bulkQ && !((r.title || '') + (r.category || []).join(' ') + (r.reasons || []).join(' ')).toLowerCase().includes(this.bulkQ.toLowerCase())) return false;
+          if (this.bulkGrade && (r.grade || '') !== this.bulkGrade) return false;
+          if (this.bulkSvc && (r.service || '') !== this.bulkSvc) return false;
+          if (this.bulkRev === 'todo' && this.myVerdict(r.fb)) return false;
+          if (this.bulkRev === 'done' && !this.myVerdict(r.fb)) return false;
+          if (this.bulkAsg === 'unassigned' && (r.assignees || []).length) return false;
+          if (this.bulkAsg === 'assigned' && !(r.assignees || []).length) return false;
+          return true;
+        });
+      },
+      get bulkSelHashes() { return this.bulkFiltered.filter((r) => this.bulkChecked[r.hash]).map((r) => r.hash); },
+      get bulkAllOn() { const f = this.bulkFiltered; return f.length > 0 && f.every((r) => this.bulkChecked[r.hash]); },
+      // 선택 항목 중 이미 배정된 건수(덮어쓰기 경고용)
+      get bulkOverwrite() { return this.bulkFiltered.filter((r) => this.bulkChecked[r.hash] && (r.assignees || []).length).length; },
+      // 체크 맵은 새 객체로 재할당(Alpine 반응성: 신규 키 추가도 안전하게 감지)
+      bulkToggle(h) { this.bulkChecked = Object.assign({}, this.bulkChecked, { [h]: !this.bulkChecked[h] }); },
+      bulkToggleAll() { const on = !this.bulkAllOn; const m = Object.assign({}, this.bulkChecked); this.bulkFiltered.forEach((r) => { m[r.hash] = on; }); this.bulkChecked = m; },
+      bulkRandom() {
+        const pool = this.bulkFiltered.slice();
+        for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+        const n = Math.max(0, Math.min(pool.length, parseInt(this.bulkRandN, 10) || 0));
+        const m = {};                                   // 재추출: 기존 선택 초기화
+        for (let i = 0; i < n; i++) m[pool[i].hash] = true;
+        this.bulkChecked = m;
+      },
+      bulkPickToggle(id) {
+        const i = this.bulkPick.indexOf(id);
+        if (i >= 0) this.bulkPick.splice(i, 1); else this.bulkPick.push(id);
+        if (this.bulkMin > this.bulkPick.length) this.bulkMin = Math.max(1, this.bulkPick.length);
+      },
+      async saveBulk() {
+        const hashes = this.bulkSelHashes;
+        if (!hashes.length || !this.bulkPick.length) return;
+        this.bulkBusy = true;
+        try {
+          const body = JSON.stringify({ hashes, reviewers: this.bulkPick, min_reviewers: this.bulkMin });
+          const r = await (await this._afetch('/content-assign-bulk', { method: 'POST', headers: this._authHeaders(), body })).json();
+          if (r && r.ok) { this.bulkOpen = false; this.loadRaw(); }
+          else this._err((r && r.error) || '일괄 배정 실패');
+        } catch (e) { this._err('일괄 배정 실패'); }
+        this.bulkBusy = false;
+      },
       // 검수 '완료' 판정은 팀 합의(fb.verdict)가 아니라 '내 표(fb.mine)' 기준이어야 한다.
       // (그러지 않으면 타 검수자가 검수한 콘텐츠도 내 목록에서 완료로 보인다 · 2026-07-10)
       // mine 은 서버가 검수자 식별 시에만 채운다 → 미제공(undefined)일 때만 합의로 폴백(골드 문항 등).

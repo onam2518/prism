@@ -172,6 +172,29 @@ class SupabaseStore:
     def clear_assignees(self, content_hash, team=None):
         self.set_assignees(content_hash, [], team=team)
 
+    def set_assignees_bulk(self, hashes, reviewers, min_reviewers=1, team=None) -> int:
+        """여러 콘텐츠 일괄 배정(덮어쓰기) · DELETE 1회(in.()) + POST 1회로 왕복 최소화.
+        reviewers=[] 이면 대상 전체 해제. 반환=처리한 콘텐츠 수."""
+        hs = [h for h in dict.fromkeys((c or "").strip() for c in (hashes or [])) if h]
+        if not hs:
+            return 0
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        inlist = ",".join(urllib.parse.quote(h) for h in hs)     # content_hash 는 16자 hex(안전)
+        self._req("DELETE", "assignments", query=f"content_hash=in.({inlist})" + tq, prefer="return=minimal")
+        rvs = [r for r in dict.fromkeys(reviewers or []) if r]
+        if not rvs:
+            return len(hs)
+        n = max(1, min(len(rvs), int(min_reviewers or 1)))
+        rows = []
+        for h in hs:
+            for rv in rvs:
+                row = {"content_hash": h, "reviewer_id": rv, "min_reviewers": n}
+                if team:
+                    row["team_id"] = team
+                rows.append(row)
+        self._req("POST", "assignments", body=rows, prefer="return=minimal")
+        return len(hs)
+
     def assignees(self, team=None) -> dict:
         """콘텐츠별 배정 현황 {hash: {"reviewers":[...], "min":N}} · 배정 콘텐츠만 포함."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""

@@ -186,5 +186,65 @@ class TestServeWiring(AssignmentBase):
         self.assertNotIn("h_a", [i["hash"] for i in qb["items"]])  # 비담당은 배타적으로 숨김
 
 
+class TestBulkAssign(AssignmentBase):
+    """일괄 배정(set_assignees_bulk): 다건 덮어쓰기 · 해제 · 부분크레딧 정합."""
+    def test_bulk_assign_overwrites_all(self):
+        st = self._store()
+        for h in ("h1", "h2", "h3"):
+            self._put(st, h)
+        st.set_assignees("h1", ["old"], min_reviewers=1, team="t")   # 기존 배정
+        n = st.set_assignees_bulk(["h1", "h2", "h3"], ["A", "B"], min_reviewers=2, team="t")
+        self.assertEqual(n, 3)
+        asg = st.assignees("t")
+        self.assertEqual(set(asg.keys()), {"h1", "h2", "h3"})
+        self.assertEqual(asg["h1"]["reviewers"], ["A", "B"])         # old 덮어씀
+        self.assertEqual(asg["h1"]["min"], 2)
+
+    def test_bulk_empty_reviewers_clears(self):
+        st = self._store()
+        self._put(st, "h1"); self._put(st, "h2")
+        st.set_assignees_bulk(["h1", "h2"], ["A"], team="t")
+        st.set_assignees_bulk(["h1"], [], team="t")                  # 빈 목록 = 해제
+        asg = st.assignees("t")
+        self.assertNotIn("h1", asg)
+        self.assertIn("h2", asg)
+
+    def test_bulk_dedupes_hashes(self):
+        st = self._store()
+        self._put(st, "h1")
+        n = st.set_assignees_bulk(["h1", "h1", ""], ["A"], team="t")
+        self.assertEqual(n, 1)
+
+    def test_bulk_min_clamped(self):
+        st = self._store()
+        self._put(st, "h1")
+        st.set_assignees_bulk(["h1"], ["A"], min_reviewers=9, team="t")   # N > 인원 → 클램프
+        self.assertEqual(st.assignees("t")["h1"]["min"], 1)
+
+
+class TestServeBulkEndpoint(AssignmentBase):
+    def _with_store(self):
+        from prism import serve
+        st = self._store()
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def test_bulk_reflected_in_queue_and_progress(self):
+        serve, st = self._with_store()
+        for h in ("hb1", "hb2", "hb3"):
+            self._put(st, h)
+        st.set_assignees_bulk(["hb1", "hb2", "hb3"], ["A"], team="")
+        # 배타 노출: A 는 담당 3건 보이고, B 는 안 보임(미배정 없음)
+        qa = [i["hash"] for i in serve.review_queue({"reviewer": "A"})["items"] if i["hash"].startswith("hb")]
+        qb = [i["hash"] for i in serve.review_queue({"reviewer": "B"})["items"] if i["hash"].startswith("hb")]
+        self.assertEqual(set(qa), {"hb1", "hb2", "hb3"})
+        self.assertEqual(qb, [])
+        # 진척 개인화: A 담당 3건 중 1건 검수 → 1/3
+        st.save_feedback("hb1", "s", "T", "good", "review", "", __import__("time").time(), reviewer="A", team="")
+        row = next(r for r in st.arena_stats(team="")["leaderboard"] if r["reviewer_id"] == "A")
+        self.assertAlmostEqual(row["progress"], round(1 / 3, 4))
+
+
 if __name__ == "__main__":
     unittest.main()
