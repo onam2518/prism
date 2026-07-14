@@ -1399,6 +1399,23 @@ class Store:
             "SELECT entity_id FROM entities WHERE attr_meta IS NULL OR attr_meta NOT LIKE '%_enrich%' ORDER BY created_at LIMIT ?",
             (int(limit),))]
 
+    def ent_ids(self, limit: int = 5000) -> list:
+        """전체 개체 id(등록 순) · 전체 재보강 대상."""
+        c = self._conn()
+        return [r[0] for r in c.execute("SELECT entity_id FROM entities ORDER BY created_at LIMIT ?",
+                                        (int(limit),))]
+
+    def ent_by_names(self, names) -> dict:
+        """{표기(별칭 포함): 개체 dict} · 검수 화면에서 콘텐츠 엔티티 → 사전 정보 표시용."""
+        out = {}
+        for n in list(dict.fromkeys(names or []))[:50]:
+            eid = self.ent_id_by_alias(" ".join(str(n or "").split()))
+            if eid:
+                e = self.ent_get(eid)
+                if e:
+                    out[n] = e
+        return out
+
     def ent_delete(self, entity_id: str) -> bool:
         c = self._conn()
         cur = c.execute("DELETE FROM entities WHERE entity_id=?", (entity_id,))

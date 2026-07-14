@@ -400,11 +400,16 @@ _NAMU_TYPE_RULES = [
     ("PS", ("선수", "가수", "배우", "정치인", "기업인", "방송인", "유튜버", "인터넷 방송인",
             "코미디언", "래퍼", "아이돌", "모델", "성우", "작가", "언론인", "교수")),
     ("OG", ("기업", "구단", "정당", "정부기관", "단체", "학교", "협회", "그룹", "팀", "기획사")),
-    ("LC", ("행정구역", "도시", "지역", "산", "섬", "관광지", "국가")),
-    ("AF", ("영화", "드라마", "예능", "프로그램", "게임", "음반", "노래", "웹툰", "소설",
+    ("LC", ("행정구역", "도시", "지역", "섬", "관광지")),
+    ("AF", ("영화", "드라마", "예능", "프로그램", "비디오 게임", "음반", "노래", "웹툰", "소설",
             "브랜드", "애플리케이션", "소프트웨어")),
     ("EV", ("스포츠 대회", "올림픽", "선거", "사건 사고", "축제", "시상식")),
 ]
+
+
+# 관계성 분류(개체 자신이 아닌 출신·가족·이력 표시)는 타입 판정에서 제외 — '○○학교 출신'이
+# 학교(OG)로, '권투 선수 자녀'가 선수(PS)로 오인돼 충돌·오판정을 만든다.
+_NAMU_REL_CATS = ("출신", "자녀", "데뷔", "출생", "친족", "가족", "부모", "형제")
 
 
 def namu_extract(html: str):
@@ -412,8 +417,19 @@ def namu_extract(html: str):
     cats = _namu_categories(html)
     if any("동음이의" in c for c in cats):
         return None, {}, cats                              # 동명이인 문서 → 자동 결정 없이 보류
-    tags = {t for t, kws in _NAMU_TYPE_RULES if any(k in c for c in cats for k in kws)}
-    typ = tags.pop() if len(tags) == 1 else ""
+    jcats = [c for c in cats if not any(x in c for x in _NAMU_REL_CATS)]
+    # 타입 = 분류 다수결. 인물 문서에도 '올림픽 참가'(EV)·'아시안 게임'(AF) 류 분류가 섞이므로
+    # 단일 태그 요구 대신 '명확한 다수(1위 > 2위)'만 자동 부여, 동률·근소는 보류(모호=미부여 정신 유지).
+    scores = {}
+    for t, kws in _NAMU_TYPE_RULES:
+        n = sum(1 for c in jcats if any(k in c for k in kws))
+        if n:
+            scores[t] = n
+    typ = ""
+    if scores:
+        top = sorted(scores.items(), key=lambda x: -x[1])
+        if len(top) == 1 or top[0][1] > top[1][1]:
+            typ = top[0][0]
     attrs = {}
     nat = _namu_field(html, "국적")
     if nat:
@@ -425,7 +441,7 @@ def namu_extract(html: str):
     aff = _namu_field(html, "소속") or _namu_field(html, "소속사") or _namu_field(html, "소속 구단")
     if aff and typ == "PS":
         attrs["affiliation"] = aff
-    occ_src = [_namu_field(html, "직업"), _namu_field(html, "종목")] + cats
+    occ_src = [_namu_field(html, "직업"), _namu_field(html, "종목")] + jcats
     if typ == "PS":
         grp = snap_occupation([s for s in occ_src if s])
         if grp:
@@ -433,100 +449,94 @@ def namu_extract(html: str):
         detail = _namu_field(html, "직업") or _namu_field(html, "종목")
         if detail:
             attrs["occupation_detail"] = detail
-        if any("여자" in c or "여성" in c for c in cats):
+        if any("여자" in c or "여성" in c for c in jcats):
             attrs["gender"] = "여성"
-        elif any("남자" in c or "남성" in c for c in cats):
+        elif any("남자" in c or "남성" in c for c in jcats):
             attrs["gender"] = "남성"
     return typ, attrs, cats
 
 
-def _enrich_from_namu(store, e: dict, am: dict, now: float):
-    """위키데이터 미스 시 나무위키 폴백. 성공 시 결과 dict, 문서 미존재·파싱 무산이면 None."""
+def _namu_try(e: dict):
+    """나무위키 조회 결과: ("hit", 타입, 속성) | ("ambiguous", 분류들) | None(게이트 꺼짐·미존재·빈약)."""
     if os.environ.get("PRISM_ENTDICT_NAMU", "1") != "1":
         return None
     html = namu_fetch(e["name"])
     if not html or "<title>" not in html:
         return None
     typ, attrs_new, cats = namu_extract(html)
-    if typ is None:                                        # 동음이의 → 보류 + 후보 기록
-        am["_type_candidates"] = cats[:5]
-        am["_enrich"] = {"source": "namuwiki", "result": "ambiguous", "ts": now}
-        store.ent_update(e["entity_id"], {"attr_meta": am, "updated_at": now})
-        return {"ok": True, "matched": False, "ambiguous": True}
+    if typ is None:
+        return ("ambiguous", cats)
     if not typ and not attrs_new:
-        return None                                        # 아무것도 못 얻음 → 미스 처리로 위임
+        return None                                        # 아무것도 못 얻음 → 다음 소스로
+    return ("hit", typ, attrs_new)
+
+
+def _apply_source(store, e: dict, am: dict, now: float, source: str,
+                  typ: str, attrs_new: dict, ext_key: str, ext_val: str, extra=None) -> dict:
+    """보강 결과 반영(소스 공통): 수동 확정(confirmed) 필드·타입은 덮어쓰지 않는다.
+    자동(auto) 값은 재보강 시 최신 소스가 갱신한다(나무위키 1순위)."""
     attrs = dict(e.get("attrs") or {})
     for k, v in attrs_new.items():
         if (am.get(k) or {}).get("status") == "confirmed":
             continue
         attrs[k] = v
-        am[k] = {"source": "namuwiki", "status": "auto"}
+        am[k] = {"source": source, "status": "auto"}
     ext = dict(e.get("external_ids") or {})
-    ext["namuwiki"] = e["name"]
+    ext[ext_key] = ext_val
     fields = {"attrs": attrs, "attr_meta": am, "external_ids": ext, "updated_at": now}
-    if typ and (am.get("type") or {}).get("status") != "confirmed" and not (e.get("type") or ""):
+    if typ and (am.get("type") or {}).get("status") != "confirmed":
         fields["type"] = typ
-        am["type"] = {"source": "namuwiki", "status": "auto"}
+        am["type"] = {"source": source, "status": "auto"}
         fields["status"] = "active"
-    am["_enrich"] = {"source": "namuwiki", "result": "hit", "ts": now}
+    am["_enrich"] = {"source": source, "result": "hit", "ts": now, **(extra or {})}
     store.ent_update(e["entity_id"], fields)
-    return {"ok": True, "matched": True, "source": "namuwiki",
-            "type": fields.get("type", e.get("type") or "")}
+    return fields
 
 
 def enrich_entity(store, entity_id: str) -> dict:
-    """개체 1건 보강: ① 위키데이터(구조화·안정) → ② 미스 시 나무위키 폴백(한국 커버리지 · POC 전용).
-    수동 확정(confirmed) 필드·수동 타입은 보존. 미히트도 기록(_enrich)해
-    '조회했으나 미등재'와 '미조회'를 구분한다."""
+    """개체 1건 보강: ① 나무위키(한국 커버리지·랭킹 · POC 전용) → ② 위키데이터 폴백.
+    나무위키 동음이의면 위키데이터로 시도, 그것도 미해소면 보류(동음이의 후보 기록).
+    수동 확정(confirmed) 필드·타입은 어느 소스도 덮어쓰지 않는다.
+    미히트도 기록(_enrich)해 '조회했으나 미등재'와 '미조회'를 구분한다."""
     e = store.ent_get(entity_id)
     if not e:
         return {"ok": False, "error": "개체 없음"}
     am = dict(e.get("attr_meta") or {})
     now = time.time()
+    nr = _namu_try(e)
+    if nr and nr[0] == "hit":
+        _, typ, attrs_new = nr
+        fields = _apply_source(store, e, am, now, "namuwiki", typ, attrs_new, "namuwiki", e["name"])
+        return {"ok": True, "matched": True, "source": "namuwiki",
+                "type": fields.get("type", e.get("type") or "")}
+    # ② 위키데이터 폴백(나무위키 미스·동음이의)
     try:
         hit = wd_search(e["name"])
     except (urllib.error.URLError, OSError, ValueError) as ex:
         return {"ok": False, "error": f"위키데이터 조회 실패: {str(ex)[:120]}"}
-    if not hit:
-        r = _enrich_from_namu(store, e, am, now)
-        if r is not None:
-            return r
-        am["_enrich"] = {"source": "wikidata+namuwiki", "result": "miss", "ts": now}
+    if hit:
+        qid = hit["id"]
+        ent = wd_entity(qid)
+        typ, p31 = map_type(ent)
+        new_attrs = extract_attrs(typ or e.get("type") or "", ent)
+        if not typ and not (e.get("type") or ""):
+            am["_type_candidates"] = p31[:5]               # 충돌·미판정 → 보류 + 후보 보존
+        fields = _apply_source(store, e, am, now, "wikidata", typ, new_attrs,
+                               "wikidata", qid, extra={"qid": qid})
+        # 위키데이터 정식 라벨(ko)도 별칭으로 등재 → 다음 적재부터 표기 변형 흡수
+        label = hit.get("label") or ""
+        if label and normalize_name(label) != e["name"]:
+            store.ent_alias_add(normalize_name(label), entity_id)
+        return {"ok": True, "matched": True, "source": "wikidata", "qid": qid,
+                "type": fields.get("type", e.get("type") or "")}
+    if nr and nr[0] == "ambiguous":                        # 둘 다 미해소 + 동음이의 → 보류
+        am["_type_candidates"] = nr[1][:5]
+        am["_enrich"] = {"source": "namuwiki", "result": "ambiguous", "ts": now}
         store.ent_update(entity_id, {"attr_meta": am, "updated_at": now})
-        return {"ok": True, "matched": False}
-    qid = hit["id"]
-    ent = wd_entity(qid)
-    typ, p31 = map_type(ent)
-    attrs = dict(e.get("attrs") or {})
-    new_attrs = extract_attrs(typ or e.get("type") or "", ent)
-    # 위키데이터 히트가 빈약(타입 미판정 ∧ 얻은 속성 0 · 예: 한국 인터넷 인물의 동명 오매칭)하면
-    # 나무위키 폴백을 우선 시도 — 성공 시 그 결과 채택, 실패 시 위키데이터 결과대로 진행.
-    if not typ and not new_attrs and not (e.get("type") or ""):
-        r = _enrich_from_namu(store, e, am, now)
-        if r is not None and r.get("matched"):
-            return r
-    for k, v in new_attrs.items():
-        if (am.get(k) or {}).get("status") == "confirmed":     # 사람 확정 우선
-            continue
-        attrs[k] = v
-        am[k] = {"source": "wikidata", "status": "auto"}
-    ext = dict(e.get("external_ids") or {})
-    ext["wikidata"] = qid
-    fields = {"attrs": attrs, "attr_meta": am, "external_ids": ext, "updated_at": now}
-    type_confirmed = (am.get("type") or {}).get("status") == "confirmed"
-    if typ and not type_confirmed:
-        fields["type"] = typ
-        am["type"] = {"source": "wikidata", "status": "auto"}
-        fields["status"] = "active"
-    elif not typ and not (e.get("type") or ""):
-        am["_type_candidates"] = p31[:5]                       # 충돌·미판정 → 보류 + 후보 보존
-    am["_enrich"] = {"source": "wikidata", "result": "hit", "qid": qid, "ts": now}
-    store.ent_update(entity_id, fields)
-    # 위키데이터 정식 라벨(ko)도 별칭으로 등재 → 다음 적재부터 표기 변형 흡수
-    label = hit.get("label") or ""
-    if label and normalize_name(label) != e["name"]:
-        store.ent_alias_add(normalize_name(label), entity_id)
-    return {"ok": True, "matched": True, "qid": qid, "type": fields.get("type", e.get("type") or "")}
+        return {"ok": True, "matched": False, "ambiguous": True}
+    am["_enrich"] = {"source": "namuwiki+wikidata", "result": "miss", "ts": now}
+    store.ent_update(entity_id, {"attr_meta": am, "updated_at": now})
+    return {"ok": True, "matched": False}
 
 
 ENRICH_DELAY = 0.4                                   # 개체 간 지연(초) · 위키데이터 429 회피(예의 호출)

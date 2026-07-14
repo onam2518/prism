@@ -216,13 +216,42 @@ class TestNamuFallback(EntdictBase):
             os.environ.pop("PRISM_ENTDICT_NAMU", None)
         self.assertFalse(r["matched"])                   # 게이트 꺼짐 → 폴백 미사용(미스 처리)
 
-    def test_wikidata_hit_skips_namu(self):
-        eid = self._register("안세영")                   # 위키데이터 히트 → 나무위키 미호출
-        calls = []
-        ED._http_text = lambda url: calls.append(url) or _NAMU_HTML
+    def test_namu_first_skips_wikidata(self):
+        """나무위키 1순위: 히트하면 위키데이터를 호출하지 않는다(소스 우선순위 계약)."""
+        eid = self._register("안세영")                   # 위키데이터에도 있는 개체
+        wd_calls = []
+        orig = ED._http_json
+        ED._http_json = lambda url: wd_calls.append(url) or orig(url)
+        try:
+            ED._http_text = lambda url: _NAMU_HTML
+            r = ED.enrich_entity(self.store, eid)
+        finally:
+            ED._http_json = orig
+        self.assertEqual(r["source"], "namuwiki")
+        self.assertEqual(wd_calls, [])                   # 위키데이터 미호출
+        e = self.store.ent_get(eid)
+        self.assertEqual((e["attr_meta"]["_enrich"] or {}).get("source"), "namuwiki")
+
+    def test_namu_ambiguous_falls_to_wikidata(self):
+        """나무위키 동음이의 → 위키데이터 폴백이 해소하면 위키데이터 채택."""
+        eid = self._register("안세영")
+        ED._http_text = lambda url: _NAMU_AMBIG
         r = ED.enrich_entity(self.store, eid)
-        self.assertEqual(r.get("qid"), "Q1")
-        self.assertEqual(calls, [])
+        self.assertTrue(r["matched"])
+        self.assertEqual(r["source"], "wikidata")
+        self.assertEqual(r["qid"], "Q1")
+
+    def test_reenrich_namu_overrides_auto_wikidata(self):
+        """전체 재보강 시나리오: 위키데이터 auto 값 위에 나무위키가 갱신(확정 아님 → 허용)."""
+        eid = self._register("안세영")
+        r1 = ED.enrich_entity(self.store, eid)           # 나무위키 미스(기본) → 위키데이터
+        self.assertEqual(r1["source"], "wikidata")
+        ED._http_text = lambda url: _NAMU_HTML           # 재보강: 나무위키 등장
+        r2 = ED.enrich_entity(self.store, eid)
+        self.assertEqual(r2["source"], "namuwiki")
+        e = self.store.ent_get(eid)
+        self.assertEqual(e["attr_meta"]["gender"]["source"], "namuwiki")
+        self.assertEqual(e["external_ids"]["wikidata"], "Q1")     # 외부키 매핑은 누적 보존
 
 
 class TestOccupationSnap(unittest.TestCase):

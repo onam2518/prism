@@ -411,6 +411,12 @@ class TestButtonsEndToEnd(unittest.TestCase):
                    if e["name"] == "안세영")
         self.ok("/entdict", {"action": "update", "id": ase["entity_id"], "type": "PS",
                              "attrs": {"gender": "여성", "occupation": "스포츠인"}})
+        # 검수 상세용 사전 조회: 콘텐츠 엔티티 표기(별칭 포함) → 개체 정보(타입·속성)
+        lk = self.ok("/entdict-lookup?names=" + urllib.parse.quote("안세영|사전에없는표기"))
+        self.assertEqual(lk["entities"]["안세영"]["attrs"]["gender"], "여성")
+        self.assertNotIn("사전에없는표기", lk["entities"])
+        # 전체 재보강(scope=all) 계약: mock 은 네트워크 생략 응답
+        self.assertTrue(self.ok("/entdict", {"action": "enrich_pending", "scope": "all"}).get("mock"))
         cat = self.ok("/topics")["catalog"]["eattrs"]               # 링크된 개체 속성만 후보로 노출
         self.assertTrue(any(c["k"] == "gender:여성" for c in cat))
         pv = self.ok("/topic-studio", {"action": "preview", "def": {

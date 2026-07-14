@@ -649,6 +649,41 @@
           if (fresh && fresh.fb) this.detail.fb = Object.assign({}, fresh.fb);
         }
         this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; this.histItems = []; if (this.histOpen) this.loadHistory();
+        this.loadEntLookup();                    // 엔티티 → 개체 사전 정보(타입·속성) 표시
+      },
+      // ── 검수 상세 × 엔티티 사전: 뱃지에 타입·속성 표시 · 클릭 = 상세 팝업(수정·보강 가능) ──
+      entLookup: {},
+      async loadEntLookup() {
+        this.entLookup = {};
+        const names = (this.detail && this.detail.entities) || [];
+        if (!names.length) return;
+        try {
+          const r = await (await this._afetch('/entdict-lookup?names=' + encodeURIComponent(names.join('|')))).json();
+          if (r && r.ok) this.entLookup = r.entities || {};
+        } catch (e) {}
+      },
+      entLkTip(name) {
+        const e = this.entLookup[name];
+        if (!e) return '개체 사전 미등재 · 클릭해 등재·확정할 수 있습니다(관리자)';
+        const t = e.type ? ((this.entData && this.entData.meta ? this.entData.meta.types[e.type] : e.type) || e.type) : '타입 보류';
+        const a = this.entAttrSummary(e);
+        return '개체 사전 · ' + t + (a ? (' · ' + a) : '') + ' · 클릭해 상세·수정';
+      },
+      async openEntByName(name) {
+        const e = this.entLookup[name];
+        if (!e) { this._err('개체 사전에 등재되지 않은 엔티티입니다 · 사전·정책 > 엔티티에서 등재하세요'); return; }
+        if (!this.entData) { try { this.entData = await (await this._afetch('/entdict?limit=1')).json(); } catch (er) {} }
+        this.openEntEdit(e);
+      },
+      async entEnrichInPopup() {
+        if (!this.entEdit) return;
+        this.entEditMsg = '보강 중…';
+        const d = await this.entAction({ action: 'enrich', id: this.entEdit.entity_id });
+        this.entEditMsg = !d.ok ? ('오류: ' + (d.error || ''))
+          : (d.matched ? ('보강됨 · ' + (d.source === 'namuwiki' ? '나무위키' : (d.qid || '위키데이터'))) : (d.ambiguous ? '동음이의 · 보류' : '미등재 · 보류'));
+        const det = await this.entAction({ action: 'detail', id: this.entEdit.entity_id });
+        if (det.ok) { this.entEdit = JSON.parse(JSON.stringify(det.entity)); this.entEdit.attrs = this.entEdit.attrs || {}; this.entEditAliases = det.aliases || []; this.entEditContents = det.contents || []; }
+        this.loadEntLookup();
       },
       // 작업 이력(판정·교정·재실행 타임라인): 접이식 · 열려 있으면 항목 이동·판정 후 자동 갱신
       histOpen: false, histBusy: false, histItems: [],
@@ -1825,6 +1860,10 @@
         return await r.json();
       },
       entTypeLabel(t) { return t ? (((this.entData && this.entData.meta.types[t]) || t) + ' · ' + t) : '보류'; },
+      entSrc(e) {   // 마지막 보강 소스(출처 컬럼): namuwiki | wikidata | ''(미조회·미스·동음이의)
+        const s = e && e.attr_meta && e.attr_meta._enrich;
+        return (s && s.result === 'hit') ? (s.source || '') : '';
+      },
       entAttrSummary(e) {
         const a = e.attrs || {}; const out = [];
         ['gender', 'occupation', 'nationality', 'affiliation', 'org_kind', 'country', 'loc_kind', 'af_kind', 'ev_kind', 'domain'].forEach(k => { if (a[k]) out.push(a[k]); });
@@ -1847,7 +1886,8 @@
         this.entEditMsg = '저장 중…';
         const d = await this.entAction({ action: 'update', id: this.entEdit.entity_id, type: this.entEdit.type || '', attrs: this.entEdit.attrs || {}, alias: this.entAliasInput.trim() });
         if (!d.ok) { this.entEditMsg = '오류: ' + (d.error || ''); return; }
-        this.entEdit = null; this.entMsg = '저장됨 · 수동 확정 필드는 재보강이 덮어쓰지 않습니다'; this.loadEntdict();
+        this.entEdit = null; this.entMsg = '저장됨 · 수동 확정 필드는 재보강이 덮어쓰지 않습니다'; this.loadEntdict(true);
+        if (this.detailOpen) this.loadEntLookup();       // 검수 상세에서 열었을 때 뱃지 정보 갱신
       },
       async entEnrich(e) {
         this.entMsg = '보강 중… (' + e.name + ')';
@@ -1857,12 +1897,13 @@
           : (d.ambiguous ? '동음이의 문서 · 자동 결정 없이 보류(수동 편집으로 확정)' : '위키데이터·나무위키 미등재 · 보류 유지(수동 편집으로 확정 가능)'));
         this.loadEntdict();
       },
-      async entEnrichAll() {
-        const d = await this.entAction({ action: 'enrich_pending' });
+      async entEnrichAll(scope) {
+        if (scope === 'all' && !(await this.dsConfirm('전체 개체를 재보강할까요? 나무위키 우선으로 다시 조회하며, 수동 확정 필드는 보존됩니다.', { ok: '전체 재보강' }))) return;
+        const d = await this.entAction({ action: 'enrich_pending', scope: scope || '' });
         if (!d.ok) { this.entMsg = '오류: ' + (d.error || ''); return; }
         if (d.mock) { this.entMsg = 'mock 모드 · 네트워크 보강은 생략됩니다'; return; }
         if (d.already_running) { this.loadEntdict(true); return; }        // 진행 중이면 진척 표시에 합류
-        if (!d.queued) { this.entMsg = '보강할 미조회 개체가 없습니다'; return; }
+        if (!d.queued) { this.entMsg = scope === 'all' ? '재보강할 개체가 없습니다' : '보강할 미조회 개체가 없습니다'; return; }
         this.entMsg = '일괄 보강 시작 · 0/' + d.queued;
         this.loadEntdict(true);                                           // 폴링 시작(진척 자동 갱신)
       },

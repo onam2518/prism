@@ -1041,6 +1041,26 @@ class SupabaseStore:
                 break
         return out
 
+    def ent_ids(self, limit: int = 5000) -> list:
+        rows = self._get("entities", f"select=entity_id&order=created_at.asc&limit={int(limit)}")
+        return [r["entity_id"] for r in rows]
+
+    def ent_by_names(self, names) -> dict:
+        """{표기(별칭 포함): 개체 dict} · 검수 화면 표시용(별칭·개체 각 1회 배치 조회)."""
+        names = [" ".join(str(n or "").split()) for n in dict.fromkeys(names or []) if str(n or "").strip()][:50]
+        if not names:
+            return {}
+        enc = ",".join('"' + urllib.parse.quote(n) + '"' for n in names)
+        alias_rows = self._get("entity_aliases", f"select=alias,entity_id&alias=in.({enc})")
+        by_alias = {r["alias"]: r["entity_id"] for r in alias_rows}
+        ids = sorted(set(by_alias.values()))
+        if not ids:
+            return {}
+        idq = ",".join(urllib.parse.quote(i) for i in ids)
+        ents = {r["entity_id"]: self._ent_norm(r)
+                for r in self._get("entities", f"{self._ENT_SEL}&entity_id=in.({idq})")}
+        return {n: ents[by_alias[n]] for n in names if n in by_alias and by_alias[n] in ents}
+
     def ent_delete(self, entity_id: str) -> bool:
         enc = urllib.parse.quote(entity_id)
         self._req("DELETE", "content_entities", query=f"entity_id=eq.{enc}", prefer="return=minimal")
