@@ -681,6 +681,22 @@ def topic_studio_action(data: dict) -> dict:
     return topics_data()
 
 
+def media_action(data: dict) -> dict:
+    """\ubbf8\ub514\uc5b4 \uba54\ud0c0 \ud30c\uc774\ud504\ub77c\uc778(\ud3ec\ud1a0\u00b7\uc601\uc0c1 \ud14d\uc2a4\ud2b8\ud654) \uc561\uc158 \ub514\uc2a4\ud328\uce58.
+
+    \uc99d\ubd84 1: T1 \uc790\ub9c9 \ud30c\uc2f1(\ub8f0\u00b7\ubaa8\ub378 0\uac74)\ub9cc \uc2e4\ub3d9\uc791. T2 \uc624\ub514\uc624 \uc804\uc0ac\u00b7T3 \ube44\uc8fc\uc5bc \ubb18\uc0ac\ub294
+    \ub77c\uc6b0\ud130/\ubbf8\ub514\uc5b4 \ubd84\ud574 \uacb0\uc815 \ud6c4 \ubcc4\ub3c4 \uc99d\ubd84\uc5d0\uc11c \ubd99\uc778\ub2e4(mediaext \ubaa8\ub4c8\uc5d0 \ud2b8\ub799\uc740 \uc774\ubbf8 \uc874\uc7ac)."""
+    from . import mediaext as MX
+    action = (data.get("action") or "subtitles").strip()
+    if action == "subtitles":
+        raw = data.get("raw") or ""
+        fmt = (data.get("fmt") or "").strip()
+        if not raw.strip():
+            return {"ok": False, "error": "\uc790\ub9c9 \uc6d0\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694"}
+        return {"ok": True, **MX.parse_subtitles(raw, fmt)}
+    return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791(\uc99d\ubd84 1\uc740 \uc790\ub9c9 \ud30c\uc2f1\ub9cc \uc9c0\uc6d0)"}
+
+
 def dashboard_data(team=None) -> dict:
     """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8 \uc9d1\uacc4. team \ubcc4 \uc2a4\ucf54\ud551 \u00b7 \uc9e7\uc740 TTL \uce90\uc2dc(\ubc18\ubcf5 \ub85c\ub4dc \uc2dc 5000\ud589 \uc7ac\uc2a4\uce94 \ubc29\uc9c0)."""
     return _agg_cached(("dash", team), lambda: _dashboard_compute(team))
@@ -3375,6 +3391,14 @@ class Handler(BaseHTTPRequestHandler):
                         self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                         return
                 self._send(200, json.dumps(topic_studio_action(data), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/media-extract"):        # 미디어 메타 파이프라인: T1 자막 파싱(룰·조회성)
+            try:
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(media_action(data), ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

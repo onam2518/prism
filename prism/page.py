@@ -851,6 +851,7 @@ PAGE = """<!doctype html>
           <button type="button" x-bind:class="labTab==='legal'?'sel':''" x-on:click="labTab='legal'">법령</button>
           <button type="button" x-bind:class="labTab==='topic'?'sel':''" x-on:click="labTab='topic'; loadTopics()">토픽 스튜디오</button>
           <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
+          <button type="button" x-bind:class="labTab==='media'?'sel':''" x-on:click="labTab='media'">미디어</button>
         </div>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
       </div>
@@ -1158,6 +1159,60 @@ PAGE = """<!doctype html>
             <template x-if="!(userData&&userData.personas_def&&userData.personas_def.length)"><tr><td colspan="3" class="text-muted">먼저 [실행·추출]에서 콘텐츠를 추출하세요</td></tr></template>
           </tbody></table></div>
           <div class="text-xs text-muted" style="margin:10px 16px 14px" x-show="userData && userData.formula" x-text="userData ? userData.formula : ''"></div>
+        </div>
+      </div>
+
+      <!-- ═══ 모듈: 미디어 메타 파이프라인 (포토·영상 텍스트화 → 메타추출 설계·실험) ═══ -->
+      <div x-show="mod === 'lab' && labTab === 'media'" x-cloak class="w-full space-y-4">
+        <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+          <li><b>포토·영상 메타 추출 파이프라인 v1</b> — Gemini Flash 기반 <b>텍스트화 트랙</b>(자막·오디오·비주얼)으로 통합 원고를 만들고, 텍스트 추론 모델이 <b>아이템 메타</b>(리드문·인텐트·엔티티·IAB)를 뽑습니다.</li>
+          <li>텍스트화는 Flash 고정, <b>메타추출 모델은 인터페이스로 종속을 차단한 선정 대기 슬롯</b>입니다 · 로컬 미디어 디코딩(ffmpeg) 미사용 → 입력은 이미 분해된 미디어(자막·오디오·프레임).</li>
+        </ul>
+
+        <!-- 파이프라인 트랙 현황 -->
+        <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
+          <div class="tile"><div class="t" style="font-weight:600">T1 자막 파싱</div><div class="text-xs text-muted" style="margin-top:4px">SRT/VTT → 타임스탬프 원고 · 룰(모델 0건)</div><span class="ds-badge ds-badge--success" style="margin-top:8px"><span class="ds-badge__dot"></span>실동작</span></div>
+          <div class="tile"><div class="t" style="font-weight:600">T2 오디오 전사</div><div class="text-xs text-muted" style="margin-top:4px">라우터 input_audio → 구조화 전사(Gemini Flash)</div><span class="ds-badge ds-badge--neutral" style="margin-top:8px"><span class="ds-badge__dot"></span>라우터 연결 대기</span></div>
+          <div class="tile"><div class="t" style="font-weight:600">T3 비주얼 묘사</div><div class="text-xs text-muted" style="margin-top:4px">프레임 k장 단일 호출 → 묘사+화면 텍스트</div><span class="ds-badge ds-badge--neutral" style="margin-top:8px"><span class="ds-badge__dot"></span>라우터 연결 대기</span></div>
+        </div>
+
+        <!-- T1 자막 파싱 실험기 (모델·ffmpeg 불필요 · 보유율 실측 = 비용 계획 기준점) -->
+        <div class="panel"><div class="panel-hd"><b>T1 · 자막 파싱 실험기</b><span class="meta">SRT/VTT 붙여넣기 → 타임스탬프 원고 · 자막 보유율이 비용 계획의 기준점</span></div>
+          <div class="panel-bd space-y-4">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div style="flex:1;min-width:260px"><label class="lbl">자막 원문 (SRT · VTT)</label>
+                <textarea class="field" style="min-height:120px;font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px" x-model="mediaSub.raw" placeholder="1&#10;00:00:01,000 --> 00:00:04,000&#10;안녕하세요 여러분"></textarea>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div><label class="lbl">형식</label>
+                  <select class="field" x-model="mediaSub.fmt" style="width:120px">
+                    <option value="">자동 판별</option><option value="srt">SRT</option><option value="vtt">VTT</option>
+                  </select>
+                </div>
+                <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaParse()" x-bind:disabled="mediaBusy||!mediaSub.raw.trim()">파싱</button>
+              </div>
+            </div>
+            <div x-show="mediaMsg" class="text-xs text-muted" x-text="mediaMsg"></div>
+            <div x-show="mediaRes" class="space-y-3">
+              <div class="tiles" style="grid-template-columns:repeat(2,1fr)">
+                <div class="tile"><div class="n tnum" x-text="mediaRes?mediaRes.cue_count:0"></div><div class="t">파싱된 큐</div></div>
+                <div class="tile"><div class="n tnum" style="text-transform:uppercase" x-text="mediaRes?mediaRes.format:''"></div><div class="t">판별 형식</div></div>
+              </div>
+              <div><label class="lbl">타임스탬프 원고</label>
+                <pre class="field" style="max-height:220px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px" x-text="mediaRes?mediaRes.transcript:''"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 후속 슬롯 안내 -->
+        <div class="panel"><div class="panel-hd"><b>후속 슬롯</b><span class="meta">설계 확정 대기</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets">
+              <li><b>raw 영상 분해</b> — 오디오·키프레임 추출. 의존성 0 원칙과 충돌 → ffmpeg(시스템 바이너리) vs 네이티브 비디오(라우터 위임) 결정 대기.</li>
+              <li><b>S5 메타추출 모델</b> — 인터페이스 고정(json_schema · 한국어 · 32K+), 후보 A/B(Solar Pro 3 · GPT · Gemini) 하네스는 별도 증분. <span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>모델 선정 대기</span></li>
+            </ul>
+          </div>
         </div>
       </div>
 
