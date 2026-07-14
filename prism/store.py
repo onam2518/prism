@@ -112,6 +112,15 @@ class Store:
         CREATE TABLE IF NOT EXISTS board(
           id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
           kind TEXT, title TEXT, body TEXT, reviewer TEXT, status TEXT, ts REAL);
+        -- 콘텐츠별 검수 담당 배정(팀 스코프). 배정되면 담당자에게만 큐 노출(배타적).
+        CREATE TABLE IF NOT EXISTS assignments(
+          content_hash TEXT, reviewer TEXT, team TEXT NOT NULL DEFAULT '', ts REAL,
+          PRIMARY KEY(content_hash, reviewer, team));
+        -- 콘텐츠별 최소 검수인원(통과 기준 N). 배정 있을 때만 유효 · 미설정 기본 1.
+        CREATE TABLE IF NOT EXISTS assignment_cfg(
+          content_hash TEXT, team TEXT NOT NULL DEFAULT '', min_reviewers INTEGER,
+          PRIMARY KEY(content_hash, team));
+        CREATE INDEX IF NOT EXISTS ix_assign_team ON assignments(team, reviewer);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
         CREATE INDEX IF NOT EXISTS ix_gold_reviewer ON gold_checks(reviewer);
         CREATE INDEX IF NOT EXISTS ix_events_reviewer ON events(reviewer, kind, day);
@@ -589,6 +598,44 @@ class Store:
             "SELECT content_hash, MAX(ts) FROM drafts WHERE team=? GROUP BY content_hash",
             (team or "",))}
 
+    # ── 콘텐츠별 검수 담당 배정(배타적 노출 · 진척 개인화) ─────────────────
+    def set_assignees(self, content_hash, reviewers, min_reviewers=1, team=None):
+        """콘텐츠 검수 담당자 배정(교체) + 최소 검수인원 N 설정.
+        reviewers=[] (빈 목록)이면 배정·N 모두 해제(오픈 큐로 복귀)."""
+        c = self._conn()
+        tm = team or ""
+        c.execute("DELETE FROM assignments WHERE content_hash=? AND team=?", (content_hash, tm))
+        now = time.time()
+        rvs = [r for r in dict.fromkeys(reviewers or []) if r]   # 중복 제거·순서 보존
+        for rv in rvs:
+            c.execute("INSERT INTO assignments(content_hash,reviewer,team,ts) VALUES(?,?,?,?)",
+                      (content_hash, rv, tm, now))
+        if rvs:
+            n = max(1, min(len(rvs), int(min_reviewers or 1)))   # N 은 배정 인원 이하로 클램프
+            c.execute("INSERT INTO assignment_cfg(content_hash,team,min_reviewers) VALUES(?,?,?) "
+                      "ON CONFLICT(content_hash,team) DO UPDATE SET min_reviewers=excluded.min_reviewers",
+                      (content_hash, tm, n))
+        else:
+            c.execute("DELETE FROM assignment_cfg WHERE content_hash=? AND team=?", (content_hash, tm))
+        c.commit()
+
+    def clear_assignees(self, content_hash, team=None):
+        self.set_assignees(content_hash, [], team=team)
+
+    def assignees(self, team=None) -> dict:
+        """콘텐츠별 배정 현황 {hash: {"reviewers":[...], "min":N}} · 큐·진척 산정 주입용.
+        배정된 콘텐츠만 키로 포함(미배정 콘텐츠는 오픈 큐)."""
+        c = self._conn()
+        tm = team or ""
+        out = {}
+        for ch, rv in c.execute(
+                "SELECT content_hash,reviewer FROM assignments WHERE team=? ORDER BY rowid", (tm,)):
+            out.setdefault(ch, {"reviewers": [], "min": 1})["reviewers"].append(rv)
+        for ch, n in c.execute("SELECT content_hash,min_reviewers FROM assignment_cfg WHERE team=?", (tm,)):
+            if ch in out:
+                out[ch]["min"] = max(1, min(len(out[ch]["reviewers"]), int(n or 1)))
+        return out
+
     def draft_history(self, content_hash: str, team=None, limit: int = 20) -> list:
         c = self._conn()
         rows = c.execute("SELECT model,version,item_meta,quality_meta,ts FROM drafts "
@@ -869,11 +916,13 @@ class Store:
         board = {}
         days_by = {}
         by_content = {}                               # 합의·불일치 산정용 {hash: [(reviewer, verdict)]}
+        reviewed_pairs = set()                        # (hash, reviewer) · 담당 진척 산정용
         for ch, rv, verdict, plan, ts in c.execute("SELECT content_hash,reviewer,verdict,plan,ts FROM feedback"):
             rv = rv or "(익명)"
             b = board.setdefault(rv, {"reviews": 0, "corrections": 0,
                                       "wk_reviews": 0, "wk_corr": 0, "pv_reviews": 0, "pv_corr": 0})
             b["reviews"] += 1
+            reviewed_pairs.add((ch, rv))
             g, d = (verdict == "good"), (verdict == "bad")
             if g or d:
                 by_content.setdefault(ch, []).append((rv, verdict))
@@ -941,8 +990,21 @@ class Store:
         bonuses = self.event_bonus()
         gcontrib = self.golden_contrib_counts()          # 골든 확정 기여(가시화·배지)
 
-        def _prog(rv_count):
-            return round(min(rv_count, total_targets) / total_targets, 4) if total_targets else 0.0
+        # 담당 배정: 개인 진척 분모 = 내 담당 콘텐츠 수, 완료 = 내가 검수한 담당 콘텐츠 수
+        asg = self.assignees(team)                       # {hash: {"reviewers", "min"}}
+        mine_total, mine_done = {}, {}
+        for ch, a in asg.items():
+            for rv in a["reviewers"]:
+                mine_total[rv] = mine_total.get(rv, 0) + 1
+                if (ch, rv) in reviewed_pairs:
+                    mine_done[rv] = mine_done.get(rv, 0) + 1
+
+        def _prog(rv):
+            denom = mine_total.get(rv)                   # 배정 있는 검수자 → 개인 분모
+            if denom:
+                return round(mine_done.get(rv, 0) / denom, 4)
+            rc = board.get(rv, {}).get("reviews", 0)     # 미배정 → 기존 팀 전체 YELLOW 기준
+            return round(min(rc, total_targets) / total_targets, 4) if total_targets else 0.0
 
         def _mult(rv):
             gs = gold.get(rv) or {}
@@ -965,7 +1027,7 @@ class Store:
             leaderboard.append({"reviewer": rv, "reviewer_id": rv, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": level_of(pts), "streak": _streak(days_by.get(rv, set())),
-                                "char": chars.get(rv, "boksil"), "progress": _prog(v["reviews"]),
+                                "char": chars.get(rv, "boksil"), "progress": _prog(rv),
                                 "week_points": max(0, round(wk_base * mult) + (bonuses.get(rv) or {}).get("week", 0)),
                                 "last_week_points": round(pv_base * mult),
                                 "gold_n": gs["n"], "gold_acc": gs["acc"], "quality_mult": mult,
@@ -976,19 +1038,34 @@ class Store:
                                 "agree_rate": (round(agree_hit.get(rv, 0) / agree_n[rv], 4)
                                                if agree_n.get(rv) else None)})
         leaderboard.sort(key=lambda x: -x["points"])
-        members = set(board.keys()) | set(chars.keys())  # 검수 이력 없는 팀원도 평균에 포함
-        team_progress = round(sum(_prog(board.get(m, {}).get("reviews", 0)) for m in members) / len(members), 4) if (members and total_targets) else 0.0
+        if asg:
+            # 배정 기준 팀 진척 = Σ 콘텐츠별 min(검수인원, N)/N ÷ 배정 콘텐츠 수(부분 크레딧 합산)
+            tot = 0.0
+            for ch, a in asg.items():
+                n = a["min"] or 1
+                done = sum(1 for rv in a["reviewers"] if (ch, rv) in reviewed_pairs)
+                tot += min(done, n) / n
+            team_progress = round(tot / len(asg), 4)
+        else:
+            members = set(board.keys()) | set(chars.keys())  # 검수 이력 없는 팀원도 평균에 포함
+            team_progress = round(sum(_prog(m) for m in members) / len(members), 4) if (members and total_targets) else 0.0
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
                 "week_reviews": wk_good + wk_bad, "accuracy_delta": round(accuracy - pv_acc, 4),
                 "target": target, "leaderboard": leaderboard,
                 "total_targets": total_targets, "team_progress": team_progress}
 
-    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None) -> list:
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None) -> list:
         """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠.
         정렬 = 모델 확신 낮은 순(불확실성 샘플링, Lewis & Gale 1994) → 최신순.
-        only_unreviewed 여도 의견이 갈린(split) 콘텐츠는 재검토 대상으로 포함(Aroyo & Welty 2015)."""
+        only_unreviewed 여도 의견이 갈린(split) 콘텐츠는 재검토 대상으로 포함(Aroyo & Welty 2015).
+        배정된 콘텐츠(assignees)는 담당자에게만 노출(배타적) · 담당자는 자기가 아직 검수 안 한 것만 봄."""
         c = self._conn()
         reviewed = {r[0] for r in c.execute("SELECT DISTINCT content_hash FROM feedback")}
+        asg = self.assignees(team)                    # {hash: {"reviewers", "min"}} · 배정 콘텐츠만
+        mine = set()                                  # 이 검수자가 이미 판정한 콘텐츠
+        if reviewer:
+            mine = {r[0] for r in c.execute(
+                "SELECT content_hash FROM feedback WHERE reviewer=?", (reviewer,))}
         split = set()                                 # good·bad 공존 콘텐츠(조정 필요)
         for (ch,) in c.execute("""SELECT content_hash FROM feedback WHERE verdict IN('good','bad')
                 GROUP BY content_hash HAVING COUNT(DISTINCT verdict) > 1"""):
@@ -1005,8 +1082,14 @@ class Store:
                 continue
             is_reviewed = ch in reviewed
             is_split = ch in split
-            if only_unreviewed and is_reviewed and not is_split:
-                continue
+            a = asg.get(ch)
+            if a:                                     # 배정 콘텐츠 = 담당자 전용(배타적)
+                if not reviewer or reviewer not in a["reviewers"]:
+                    continue                          # 담당 아님(또는 미인증) → 숨김
+                if only_unreviewed and ch in mine and not is_split:
+                    continue                          # 내 몫은 이미 검수함
+            elif only_unreviewed and is_reviewed and not is_split:
+                continue                              # 미배정 = 오픈 큐(기존)
             conf = qm.get("confidence")
             try:
                 model = ((json.loads(payload) if payload else {}).get("trace") or {}).get("model", "") or ""
@@ -1015,7 +1098,9 @@ class Store:
             out.append({"hash": ch, "service": svc or "", "title": ti or "",
                         "grade": grade or "", "review_reason": qm.get("review_reason", ""),
                         "reviewed": is_reviewed, "split": is_split, "model": model,
-                        "confidence": conf, "ts": ts})
+                        "confidence": conf, "ts": ts,
+                        "assignees": (a or {}).get("reviewers", []),
+                        "min_reviewers": (a or {}).get("min", 0)})
             if len(out) >= limit * 2:                 # 정렬 전 여유 수집
                 break
         # split 재검토 우선 → 저확신 순 → 최신순

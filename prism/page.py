@@ -1505,7 +1505,7 @@ PAGE = """<!doctype html>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
               <span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다" data-tip-pos="top">최근순</span>
             </div>
-            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th><th style="width:150px" x-show="assignAdmin" data-tip="검수 담당자 배정 · 배정 시 담당자에게만 노출됩니다" data-tip-pos="top">담당</th></tr></thead><tbody>
               <template x-for="r in rawFiltered" x-bind:key="r.hash">
                 <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="openRawDetail(r)" x-on:keydown.enter="openRawDetail(r)">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
@@ -1521,6 +1521,12 @@ PAGE = """<!doctype html>
                     <span class="text-xs text-muted tnum" x-show="myVerdict(r.fb)" style="cursor:pointer" x-on:click="openRawDetail(r)" data-tip="완료 · 클릭하면 상세에서 수정" data-tip-pos="top" x-text="'✓ ' + (r.fb && r.fb.ts ? fmtTs(r.fb.ts) : '완료')"></span>
                     <button type="button" class="copybtn" style="margin-left:6px" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" data-tip="JSON 원문 보기(표 아래 펼침)" data-tip-pos="top">{ }</button>
                   </td>
+                  <td x-show="assignAdmin" x-on:click.stop>
+                    <template x-for="nm in assigneeNames(r)" x-bind:key="nm"><span class="ds-badge ds-badge--intent" style="margin:1px" x-text="nm"></span></template>
+                    <span x-show="(r.assignees||[]).length" class="text-xs text-muted tnum" style="margin-left:2px" x-text="'· 최소 ' + (r.min_reviewers||1) + '명'"></span>
+                    <span x-show="!(r.assignees||[]).length" class="text-xs text-muted">미배정</span>
+                    <button type="button" class="copybtn" style="margin-left:6px" x-on:click="openAssign(r)" x-text="(assignSel && assignSel.hash===r.hash) ? '닫기' : '지정'"></button>
+                  </td>
                 </tr>
               </template>
             </tbody></table>
@@ -1530,6 +1536,30 @@ PAGE = """<!doctype html>
             <div x-show="rawSel" style="margin-top:10px">
               <div class="text-xs text-muted" style="margin-bottom:6px">JSON 원문 · <b class="text-ink" x-text="rawSel ? (rawSel.title || rawSel.hash) : ''"></b></div>
               <pre class="tbox" style="white-space:pre-wrap;font-size:11px;max-height:280px;overflow:auto" x-text="rawSel ? JSON.stringify({item_meta: rawSel.item_meta, quality_meta: rawSel.quality_meta}, null, 2) : ''"></pre>
+            </div>
+            <!-- 검수 담당자 배정 편집(관리자) · 배정 시 담당자에게만 검수 큐 노출(배타적) -->
+            <div x-show="assignSel && assignAdmin" class="tbox" style="margin-top:10px;padding:12px">
+              <div class="text-xs text-muted" style="margin-bottom:8px">검수 담당자 배정 · <b class="text-ink" x-text="assignSel ? (assignSel.title || assignSel.hash) : ''"></b></div>
+              <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:4px 0">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                <template x-for="m in assignMembers" x-bind:key="'asg'+m.id">
+                  <label class="ds-chip" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:4px 10px" x-bind:class="assignPick.includes(m.id) ? 'is-sel' : ''">
+                    <input type="checkbox" x-bind:checked="assignPick.includes(m.id)" x-on:change="toggleAssign(m.id)">
+                    <span x-text="m.name"></span>
+                  </label>
+                </template>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <label class="text-xs text-muted" style="display:inline-flex;align-items:center;gap:6px">최소 검수인원
+                  <input type="number" class="field" style="width:70px" min="1" x-bind:max="Math.max(1, assignPick.length)" x-model.number="assignMin">
+                  <span class="tnum" x-text="'/ 배정 ' + assignPick.length + '명'"></span>
+                </label>
+                <span class="ml-auto" style="display:flex;gap:8px">
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="assignSel=null">취소</button>
+                  <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="assignBusy" x-on:click="saveAssign()" x-text="assignBusy ? '저장 중…' : (assignPick.length ? '배정 저장' : '배정 해제')"></button>
+                </span>
+              </div>
+              <p class="text-xs text-muted" style="margin-top:8px;line-height:1.5">배정하면 이 콘텐츠는 <b class="text-ink">담당자에게만</b> 검수 큐에 노출됩니다. 최소 검수인원 N명이 검수하면 통과로 집계됩니다. 아무도 선택하지 않고 저장하면 배정이 해제되어 전체 공개(오픈 큐)로 돌아갑니다.</p>
             </div>
           </div>
         </section>
