@@ -2606,7 +2606,7 @@ PAGE = """<!doctype html>
         <!-- ① 콘텐츠 선택 -->
         <div class="stepcard">
           <div class="stepcard__hd">
-            <span class="stepcard__no">1</span>
+            <span class="stepcard__no">STEP 1</span>
             <span class="stepcard__ttl">콘텐츠 선택<span class="stepcard__sub">배정할 대상을 고르세요</span></span>
             <span class="ds-badge ds-badge--status stepcard__badge tnum" x-text="'선택 ' + bulkSelHashes.length + ' / ' + bulkFiltered.length + '건'"></span>
           </div>
@@ -2657,7 +2657,7 @@ PAGE = """<!doctype html>
         <!-- ② 담당자 지정 -->
         <div class="stepcard">
           <div class="stepcard__hd">
-            <span class="stepcard__no">2</span>
+            <span class="stepcard__no">STEP 2</span>
             <span class="stepcard__ttl">담당자 지정<span class="stepcard__sub">선택한 콘텐츠를 검수할 팀원</span></span>
             <span class="ds-badge ds-badge--status stepcard__badge" x-show="bulkPick.length" x-text="bulkPick.length + '명 선택'"></span>
           </div>
@@ -2677,7 +2677,7 @@ PAGE = """<!doctype html>
         <!-- ③ 확인 -->
         <div class="stepcard">
           <div class="stepcard__hd">
-            <span class="stepcard__no">3</span>
+            <span class="stepcard__no">STEP 3</span>
             <span class="stepcard__ttl">확인<span class="stepcard__sub">배정 내용을 확인하고 실행하세요</span></span>
           </div>
           <div class="tbox" style="padding:14px 16px">
