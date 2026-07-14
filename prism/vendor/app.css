@@ -1038,10 +1038,10 @@
 .tmodel__rf.is-spin svg{animation:tstudio-spin .7s linear infinite}
 @keyframes tstudio-spin{to{transform:rotate(360deg)}}
 /* 조건 스텝: 자동 필터 요약 · 범례 · 그룹 */
-.tfilter{display:flex;align-items:flex-start;gap:8px;background:var(--ds-primary-tint);
+.tfilter{display:flex;align-items:center;gap:8px;background:var(--ds-primary-tint);
   border:1px solid var(--ds-primary);border-radius:var(--ds-radius-md);padding:9px 11px;margin-bottom:9px}
-.tfilter__badge{flex:none;margin-top:1px;font-size:11px;font-weight:700;color:var(--ds-primary-deep);
-  background:var(--ds-surface);border:1px solid var(--ds-primary);border-radius:6px;padding:2px 7px;white-space:nowrap}
+.tfilter__badge{flex:none;display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:var(--ds-primary-deep);
+  background:var(--ds-surface);border:1px solid var(--ds-primary);border-radius:6px;padding:3px 7px;white-space:nowrap;line-height:1}
 .tfilter__text{font-size:12.5px;color:var(--ds-body);line-height:1.5}
 .tfilter__text b{color:var(--ds-ink);font-weight:600}
 .tlegend{font-size:11px;color:var(--ds-muted);line-height:1.6;margin-bottom:12px;
