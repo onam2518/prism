@@ -1721,7 +1721,7 @@ PAGE = """<!doctype html>
               <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:4px 0">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
               <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
                 <template x-for="m in assignMembers" x-bind:key="'asg'+m.id">
-                  <label class="ds-chip" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:4px 10px" x-bind:class="assignPick.includes(m.id) ? 'is-sel' : ''">
+                  <label class="pickchip" x-bind:class="assignPick.includes(m.id) ? 'on' : ''">
                     <input type="checkbox" x-bind:checked="assignPick.includes(m.id)" x-on:change="toggleAssign(m.id)">
                     <span x-text="m.name"></span>
                   </label>
@@ -2312,16 +2312,16 @@ PAGE = """<!doctype html>
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">
       <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px">검수자 일괄 배정
         <span class="text-xs text-muted" style="font-weight:400">여러 콘텐츠에 담당자를 한 번에 지정합니다</span></h2>
-      <div class="ds-dialog__body" style="overflow:auto;margin:0 -4px;padding:0 4px">
+      <div class="ds-dialog__body" style="overflow:auto;padding:4px 0 2px">
 
         <!-- ① 콘텐츠 선택 -->
-        <div style="padding:14px 0 16px;border-top:1px solid var(--ds-hairline)">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
-            <span class="ds-badge ds-badge--pro" style="width:22px;height:22px;justify-content:center;padding:0;border-radius:6px">1</span>
-            <b>콘텐츠 선택</b><span class="text-xs text-muted">배정할 대상을 고르세요</span>
-            <span class="ds-badge ds-badge--status ml-auto tnum" x-text="'선택 ' + bulkSelHashes.length + ' / ' + bulkFiltered.length + '건'"></span>
+        <div class="stepcard">
+          <div class="stepcard__hd">
+            <span class="stepcard__no">1</span>
+            <span class="stepcard__ttl">콘텐츠 선택<span class="stepcard__sub">배정할 대상을 고르세요</span></span>
+            <span class="ds-badge ds-badge--status stepcard__badge tnum" x-text="'선택 ' + bulkSelHashes.length + ' / ' + bulkFiltered.length + '건'"></span>
           </div>
-          <div class="filterbar" style="margin-bottom:10px">
+          <div class="filterbar" style="margin-bottom:12px">
             <input class="field" placeholder="제목·카테고리·사유 검색" x-model="bulkQ">
             <select class="field" style="width:auto" x-model="bulkGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
             <select class="field" style="width:auto" x-model="bulkSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="'b'+sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
@@ -2329,42 +2329,53 @@ PAGE = """<!doctype html>
             <select class="field" style="width:auto" x-model="bulkAsg"><option value="">배정 전체</option><option value="unassigned">미배정만</option><option value="assigned">배정됨만</option></select>
           </div>
           <!-- 무작위 수량 자동 선택: 현재 필터 결과 중 N건 랜덤 추출 -->
-          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:9px 11px;margin-bottom:10px;background:var(--ds-tint-bg);border-radius:var(--ds-radius-md)">
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 12px;margin-bottom:12px;background:var(--ds-tint-bg);border-radius:var(--ds-radius-md)">
             <b class="text-xs" style="color:var(--ds-primary)">⚄ 무작위 자동 선택</b>
             <input type="number" class="field" style="width:78px" min="1" x-model.number="bulkRandN">
             <span class="text-xs text-muted">건</span>
             <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="bulkRandom()">랜덤 선택</button>
             <span class="text-xs text-muted">필터 결과 중 무작위로 · 다시 누르면 재추출</span>
           </div>
-          <div style="border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);overflow:hidden">
-            <label style="display:flex;align-items:center;gap:9px;padding:8px 12px;background:var(--ds-surface-table);border-bottom:1px solid var(--ds-hairline);cursor:pointer;font-size:12px;color:var(--ds-muted)">
-              <input type="checkbox" x-bind:checked="bulkAllOn" x-on:change="bulkToggleAll()"><span>전체 선택</span></label>
-            <div style="max-height:230px;overflow:auto">
-              <template x-for="r in bulkFiltered" x-bind:key="'bk'+r.hash">
-                <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--ds-hairline-soft);cursor:pointer;font-size:12.5px" x-bind:style="bulkChecked[r.hash] ? 'background:var(--ds-tint-bg)' : ''">
-                  <input type="checkbox" x-bind:checked="!!bulkChecked[r.hash]" x-on:change="bulkToggle(r.hash)">
-                  <span class="text-ink" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="r.title || '(제목 없음)'"></span>
-                  <span class="ds-badge ds-badge--yellow" x-show="r.review==='yellow'" style="flex:none">YELLOW</span>
-                  <span class="ds-badge ds-badge--intent" x-show="(r.assignees||[]).length" style="flex:none" data-tip="이미 배정됨 · 저장 시 덮어씀" data-tip-pos="left" x-text="assigneeNames(r).join(', ')"></span>
-                  <span class="text-xs text-muted" style="flex:none;width:60px;text-align:right" x-text="r.service"></span>
-                </label>
-              </template>
-              <div x-show="!bulkFiltered.length" class="text-xs text-muted" style="padding:14px;text-align:center">조건에 맞는 콘텐츠가 없습니다</div>
-            </div>
+          <div class="overflow-auto" style="max-height:252px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md)">
+            <table class="ds-table" style="table-layout:fixed;width:100%;margin:0">
+              <thead><tr>
+                <th style="width:42px;text-align:center"><input type="checkbox" class="bulkcb" x-bind:checked="bulkAllOn" x-on:change="bulkToggleAll()" aria-label="전체 선택"></th>
+                <th>제목</th>
+                <th style="width:96px">서비스</th>
+                <th style="width:112px">배정</th>
+              </tr></thead>
+              <tbody>
+                <template x-for="r in bulkFiltered" x-bind:key="'bk'+r.hash">
+                  <tr style="cursor:pointer" x-bind:class="bulkChecked[r.hash] ? 'is-sel' : ''" x-on:click="bulkToggle(r.hash)">
+                    <td style="text-align:center"><input type="checkbox" class="bulkcb" x-bind:checked="!!bulkChecked[r.hash]" tabindex="-1" style="pointer-events:none"></td>
+                    <td class="text-ink" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      <span x-text="r.title || '(제목 없음)'"></span>
+                      <span class="ds-badge ds-badge--yellow" x-show="r.review==='yellow'" style="margin-left:5px">YELLOW</span>
+                    </td>
+                    <td class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="r.service || '·'"></td>
+                    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      <span class="ds-badge ds-badge--intent" x-show="(r.assignees||[]).length" data-tip="이미 배정됨 · 저장 시 덮어씀" data-tip-pos="left" x-text="assigneeNames(r).join(', ')"></span>
+                      <span x-show="!(r.assignees||[]).length" class="text-muted">·</span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <div x-show="!bulkFiltered.length" class="text-xs text-muted" style="padding:16px;text-align:center">조건에 맞는 콘텐츠가 없습니다</div>
           </div>
         </div>
 
         <!-- ② 담당자 지정 -->
-        <div style="padding:14px 0 16px;border-top:1px solid var(--ds-hairline)">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
-            <span class="ds-badge ds-badge--pro" style="width:22px;height:22px;justify-content:center;padding:0;border-radius:6px">2</span>
-            <b>담당자 지정</b><span class="text-xs text-muted">선택한 콘텐츠를 검수할 팀원</span>
-            <span class="ds-badge ds-badge--status ml-auto" x-show="bulkPick.length" x-text="bulkPick.length + '명 선택'"></span>
+        <div class="stepcard">
+          <div class="stepcard__hd">
+            <span class="stepcard__no">2</span>
+            <span class="stepcard__ttl">담당자 지정<span class="stepcard__sub">선택한 콘텐츠를 검수할 팀원</span></span>
+            <span class="ds-badge ds-badge--status stepcard__badge" x-show="bulkPick.length" x-text="bulkPick.length + '명 선택'"></span>
           </div>
-          <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:4px 0">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
+          <div style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
             <template x-for="m in assignMembers" x-bind:key="'bpk'+m.id">
-              <label class="ds-chip" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 11px" x-bind:class="bulkPick.includes(m.id) ? 'is-sel' : ''">
+              <label class="pickchip" x-bind:class="bulkPick.includes(m.id) ? 'on' : ''">
                 <input type="checkbox" x-bind:checked="bulkPick.includes(m.id)" x-on:change="bulkPickToggle(m.id)"><span x-text="m.name"></span>
               </label>
             </template>
@@ -2375,12 +2386,12 @@ PAGE = """<!doctype html>
         </div>
 
         <!-- ③ 확인 -->
-        <div style="padding:14px 0 4px;border-top:1px solid var(--ds-hairline)">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
-            <span class="ds-badge ds-badge--pro" style="width:22px;height:22px;justify-content:center;padding:0;border-radius:6px">3</span>
-            <b>확인</b><span class="text-xs text-muted">배정 내용을 확인하고 실행하세요</span>
+        <div class="stepcard">
+          <div class="stepcard__hd">
+            <span class="stepcard__no">3</span>
+            <span class="stepcard__ttl">확인<span class="stepcard__sub">배정 내용을 확인하고 실행하세요</span></span>
           </div>
-          <div class="tbox" style="padding:13px 15px">
+          <div class="tbox" style="padding:14px 16px">
             <div class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + (bulkPick.map(id => (assignMembers.find(m=>m.id===id)||{}).name || id).join(', ') || '(담당자 미선택)') + '에게 배정'"></div>
             <div class="text-xs text-muted" style="line-height:1.7">
               <div>· 최소 검수인원 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명</div>
