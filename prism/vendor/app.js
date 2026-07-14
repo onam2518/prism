@@ -73,8 +73,8 @@
       chatDraft: '',
       dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
       // 토픽 스튜디오: 자연어+차원으로 조건형 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
-      studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null, auto: { cats: [], intents: [], keywords: [] } },
-      studioPreview: { count: 0, n_total: 0, rep_title: '', samples: [] },
+      studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] } },
+      studioPreview: { bundles: [], n_total: 0, must_n: 0, opt_n: 0 },
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
       modelsBusy: false, modelsMsgStudio: '',   // 토픽 스튜디오: 모델 목록 새로고침(라우터 포함) 상태
       // 미디어 메타 파이프라인(T1 자막 파싱 실험기)
@@ -1591,8 +1591,31 @@
         const r = await (await this._afetch('/topic-studio', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
         return r;
       },
-      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords }; },
+      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords, req: this.studio.req }; },
       studioToggle(field, val) { const a = this.studio[field]; const i = a.indexOf(val); if (i >= 0) a.splice(i, 1); else a.push(val); this.schedulePreview(); },
+      // 조건 칩 3상태: off(후보) → sel(선택·관련 묶음) → req(필수·모든 묶음 공통) → off
+      studioState(dim, val) { if (!this.studio[dim].includes(val)) return 'off'; return this.studio.req[dim].includes(val) ? 'req' : 'sel'; },
+      studioCycle(dim, val) {
+        const sel = this.studio[dim], req = this.studio.req[dim];
+        const si = sel.indexOf(val), ri = req.indexOf(val);
+        if (si < 0) sel.push(val);                       // off → 선택
+        else if (ri < 0) req.push(val);                  // 선택 → 필수
+        else { sel.splice(si, 1); req.splice(ri, 1); }   // 필수 → off
+        this.schedulePreview();
+      },
+      bundleLabel(b) { return (b.valueset || []).map(v => v.dim === 'cats' ? this.catBoth(v.v) : v.v).join(' · ') || '전체(조건 없음)'; },
+      mustText() { const m = []; const c = this.studio.req; ['cats', 'intents', 'keywords'].forEach(d => (c[d] || []).forEach(v => m.push(d === 'cats' ? this.catBoth(v) : v))); return m.join(' · '); },
+      chipCls(dim, val, base) { const s = this.studioState(dim, val); if (s === 'off') return 'ds-badge--neutral'; return base + (s === 'req' ? ' is-req' : ''); },
+      coreSamples() { const c = (this.studioPreview.bundles || []).find(b => b.kind === 'core'); return (c && c.samples) || []; },
+      bundleSummaryText() {
+        const bs = (this.studioPreview.bundles) || [];
+        const n = (this.topicData && this.topicData.n_contents) || 0;
+        if (!bs.length) return '아직 조건이 없어요 · <b>전체 ' + n + '건</b>이 한 묶음입니다';
+        const core = bs.find(b => b.kind === 'core'); const rel = bs.filter(b => b.kind === 'related').length;
+        const mt = this.mustText();
+        const base = mt ? ('<b>' + mt + '</b> 을(를) 필수 뼈대로, ') : '';
+        return base + '핵심 <b>' + ((core && core.count) || 0) + '건</b>' + (rel ? (' + 관련 묶음 <b>' + rel + '개</b>로 펼쳐집니다') : ' (선택 조건을 더하면 관련 묶음이 생겨요)');
+      },
       studioAddKw() { const k = (this.studio.kwInput || '').trim(); if (k && !this.studio.keywords.includes(k)) this.studio.keywords.push(k); this.studio.kwInput = ''; this.schedulePreview(); },
       topKw() { const sel = this.studio.keywords; const all = (this.topicData && this.topicData.catalog && this.topicData.catalog.keywords) || []; return all.filter(k => !sel.includes(k.k)).slice(0, 12); },
       // 스텝 진행 상태 · 필터 요약 · 자동선택 표시 · 모델 목록(라우터 포함)
@@ -1646,6 +1669,9 @@
           (s.cats || []).forEach(c => { if (!this.studio.cats.includes(c)) this.studio.cats.push(c); });
           (s.intents || []).forEach(c => { if (!this.studio.intents.includes(c)) this.studio.intents.push(c); });
           (s.keywords || []).forEach(c => { if (!this.studio.keywords.includes(c)) this.studio.keywords.push(c); });
+          // 필수(req) 반영: 자동생성이 필수로 지정한 값을 필수 상태로(선택은 그대로 선택)
+          const rq = (s.req) || { cats: [], intents: [], keywords: [] };
+          ['cats', 'intents', 'keywords'].forEach(dim => { (rq[dim] || []).forEach(v => { if (this.studio[dim].includes(v) && !this.studio.req[dim].includes(v)) this.studio.req[dim].push(v); }); });
           this.studio.auto = { cats: (s.cats || []).slice(), intents: (s.intents || []).slice(), keywords: (s.keywords || []).slice() };
           const n = (s.cats || []).length + (s.intents || []).length + (s.keywords || []).length;
           const viaLlm = r && r.via === 'llm';
@@ -1682,16 +1708,17 @@
           else { this.topicData = r; this._syncTopicSettings(); this.studioMsg = '저장했습니다'; this.studioReset(); }
         } catch (e) { this.studioMsg = '저장 실패'; } this.studioSaving = false;
       },
-      studioEdit(c) {
-        const def = (this.topicData.customDefs || []).find(d => d.id === c.cluster_id) || {};
-        this.studio = { name: def.name || c.name || '', prompt: def.prompt || c.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], kwInput: '', editId: c.cluster_id, auto: { cats: [], intents: [], keywords: [] } };
+      studioEdit(g) {
+        const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
+        const rq = def.req || { cats: [], intents: [], keywords: [] };
+        this.studio = { name: def.name || g.name || '', prompt: def.prompt || g.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], kwInput: '', editId: g.id, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [...(rq.cats || [])], intents: [...(rq.intents || [])], keywords: [...(rq.keywords || [])] } };
         this.studioMsg = ''; this.studioPreviewNow();
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
       },
-      studioReset() { this.studio = { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null, auto: { cats: [], intents: [], keywords: [] } }; this.studioPreview = { count: 0, n_total: (this.topicData && this.topicData.n_contents) || 0, rep_title: '', samples: [] }; },
-      async studioDelete(c) {
-        if (!(await this.dsConfirm('토픽 “' + (c.name || c.cluster_id) + '” 을 삭제할까요?', { ok: '삭제', danger: true }))) return;
-        try { const r = await this._studioPost({ action: 'delete', id: c.cluster_id }); if (r && !r.error) { this.topicData = r; this._syncTopicSettings(); if (this.studio.editId === c.cluster_id) this.studioReset(); } } catch (e) { this._err('삭제 실패'); }
+      studioReset() { this.studio = { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] } }; this.studioPreview = { bundles: [], n_total: (this.topicData && this.topicData.n_contents) || 0, must_n: 0, opt_n: 0 }; },
+      async studioDelete(g) {
+        if (!(await this.dsConfirm('토픽 “' + (g.name || g.id) + '” 을 삭제할까요?', { ok: '삭제', danger: true }))) return;
+        try { const r = await this._studioPost({ action: 'delete', id: g.id }); if (r && !r.error) { this.topicData = r; this._syncTopicSettings(); if (this.studio.editId === g.id) this.studioReset(); } } catch (e) { this._err('삭제 실패'); }
       },
       async saveTopicSettings() {
         this.settingsSaving = true; this.settingsMsg = '적용 중…';

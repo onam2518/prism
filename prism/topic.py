@@ -249,43 +249,118 @@ def _match_ids(dims, d):
     return out
 
 
-def _def_pool(rows, dims, d):
-    """정의 → 조건형 풀 shape(드릴다운·그래프가 filter 와 동일하게 다룸)."""
-    matched = _match_ids(dims, d)
-    rep = sorted(matched, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))[:1]
-    cid = d.get("id") or ("U-" + _slug(d.get("name") or d.get("prompt") or "topic"))
-    return {
-        "type": "filter", "cluster_id": cid,
-        "name": d.get("name") or "(무제 토픽)", "prompt": d.get("prompt") or "",
-        "dims": {"콘텐츠 카테고리": sorted(d.get("cats") or []),
-                 "인텐트": sorted(d.get("intents") or []),
-                 "키워드": sorted(d.get("keywords") or [])},
-        "content_ids": matched, "count": len(matched),
-        "representative_content": rep[0] if rep else None,
-        "rep_title": _title(rows[rep[0]]) if rep else "",
-        "lifecycle": "사용자", "origin": "user", "active": len(matched) > 0,
+_DIMS = ("cats", "intents", "keywords")
+
+
+def _def_bundles(d):
+    """정의(필수/선택) → 묶음 명세. 필수는 모든 묶음에 AND, 선택은 각각이 별도 '관련' 묶음.
+    묶음 = (kind, valueset) · valueset = [(dim, value)] · 전부 AND 매칭.
+    · 핵심(core): 필수 ∧ 모든 선택
+    · 관련(related): 필수 ∧ 선택 하나 (선택값마다)
+    하위호환: req 가 전혀 없으면 선택 없이 '전부 필수'(= 기존 AND 단일 묶음)로 해석."""
+    sel = {k: [str(v) for v in (d.get(k) or []) if str(v).strip()] for k in _DIMS}
+    req_raw = d.get("req") or {}
+    has_req = any(req_raw.get(k) for k in _DIMS)
+    if has_req:
+        req = {k: [v for v in sel[k] if v in (req_raw.get(k) or [])] for k in _DIMS}
+    else:
+        req = {k: list(sel[k]) for k in _DIMS}          # 하위호환: 전부 필수
+    must = [(k, v) for k in _DIMS for v in req[k]]
+    opt = [(k, v) for k in _DIMS for v in sel[k] if v not in req[k]]
+    specs = []
+    if opt:
+        specs.append(("core", must + opt))
+        for o in opt:
+            specs.append(("related", must + [o]))
+    else:
+        specs.append(("core", must))
+    # 중복 valueset 제거(선택 1개면 핵심==관련)
+    seen, out = set(), []
+    for kind, vs in specs:
+        key = frozenset(vs)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((kind, vs))
+    return out, must, opt
+
+
+def _valueset_label(vs):
+    return " · ".join(v for _, v in vs) if vs else "전체(조건 없음)"
+
+
+def _match_valueset(dims, vs):
+    """valueset(=[(dim,value)]) 를 전부 만족(AND)하는 콘텐츠 인덱스. 키워드는 엔티티 부분일치."""
+    c_cat, c_int, c_ent = dims
+    out = []
+    for i in range(len(c_cat)):
+        ok = True
+        for k, v in vs:
+            if k == "cats":
+                if v not in c_cat[i]:
+                    ok = False; break
+            elif k == "intents":
+                if v not in c_int[i]:
+                    ok = False; break
+            else:  # keywords: 엔티티 부분일치
+                vl = v.lower()
+                if not any(vl in e.lower() for e in c_ent[i]):
+                    ok = False; break
+        if ok:
+            out.append(i)
+    return out
+
+
+def _bundle(rows, dims, cid, kind, vs, sample=0):
+    ids = _match_valueset(dims, vs)
+    ranked = sorted(ids, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))
+    b = {
+        "cluster_id": cid, "kind": kind, "label": _valueset_label(vs),
+        "valueset": [{"dim": k, "v": v} for k, v in vs],
+        "content_ids": ids, "count": len(ids),
+        "representative_content": ranked[0] if ranked else None,
+        "rep_title": _title(rows[ranked[0]]) if ranked else "",
     }
+    if sample:
+        b["samples"] = [{"title": _title(rows[i])[:70], "grade": _grade(rows[i])} for i in ranked[:sample]]
+    return b
 
 
 def build_custom_topics(rows, service_names, defs):
-    """저장된 사용자 정의 목록 → 조건형 풀 리스트(매칭 많은 순)."""
+    """저장된 사용자 정의 목록 → 그룹 리스트. 각 그룹 = 토픽 1개가 여러 묶음(핵심+관련)으로 펼쳐짐."""
     if not defs:
         return []
     dims = _content_dims(rows, service_names)
-    pools = [_def_pool(rows, dims, d) for d in defs]
-    pools.sort(key=lambda p: -p["count"])
-    return pools
+    groups = []
+    for d in defs:
+        specs, must, opt = _def_bundles(d)
+        did = d.get("id") or ("U-" + _slug(d.get("name") or d.get("prompt") or "topic"))
+        bundles = []
+        for idx, (kind, vs) in enumerate(specs):
+            cid = did + ("-core" if kind == "core" else "-r" + str(idx))
+            bundles.append(_bundle(rows, dims, cid, kind, vs))
+        groups.append({
+            "id": did, "type": "custom", "origin": "user",
+            "name": d.get("name") or "(무제 토픽)", "prompt": d.get("prompt") or "",
+            "must": [{"dim": k, "v": v} for k, v in must],
+            "opt": [{"dim": k, "v": v} for k, v in opt],
+            "bundles": bundles, "n_bundles": len(bundles),
+            "core_count": next((b["count"] for b in bundles if b["kind"] == "core"), 0),
+        })
+    groups.sort(key=lambda g: -(g.get("core_count") or 0))
+    return groups
 
 
 def preview_definition(rows, service_names, d, sample=6):
-    """생성 폼 실시간 미리보기: 저장 전 정의의 매칭 수·대표·표본 제목."""
+    """생성 폼 실시간 미리보기: 저장 전 정의의 묶음(핵심+관련)별 매칭 수·표본."""
     dims = _content_dims(rows, service_names)
-    ids = _match_ids(dims, d)
-    ranked = sorted(ids, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))
+    specs, must, opt = _def_bundles(d)
+    bundles = []
+    for idx, (kind, vs) in enumerate(specs):
+        bundles.append(_bundle(rows, dims, "prev-" + str(idx), kind, vs, sample=sample if kind == "core" else 0))
     return {
-        "count": len(ids), "n_total": len(rows),
-        "rep_title": _title(rows[ranked[0]]) if ranked else "",
-        "samples": [{"title": _title(rows[i])[:70], "grade": _grade(rows[i])} for i in ranked[:sample]],
+        "n_total": len(rows), "bundles": bundles,
+        "must_n": len(must), "opt_n": len(opt),
     }
 
 
@@ -369,7 +444,9 @@ def suggest_dims(text, rows, service_names=None):
         if ko and _hit(ko):                                  # 한글 별칭은 토큰 부분일치 허용('뉴스'→'뉴스·정치')
             cats.append(x)
     keywords = [x["k"] for x in cat["keywords"] if x["k"] and x["k"].lower() in t][:5]
-    return {"cats": cats, "intents": intents, "keywords": keywords}
+    # 필수/선택 기본값(휴리스틱): 주제·대상(카테고리·키워드)=필수(정체성), 관점·형식(인텐트)=선택(관련 확장)
+    req = {"cats": list(cats), "intents": [], "keywords": list(keywords)}
+    return {"cats": cats, "intents": intents, "keywords": keywords, "req": req}
 
 
 # 토픽 탭 HTML (대시보드와 동일 토큰)
@@ -693,7 +770,7 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
         "grades": [_grade(r) for r in rows],
         "summary": {
             "single": len(single), "composite": len(composite), "filter": len(filt),
-            "custom": len(custom), "custom_active": sum(1 for p in custom if p["active"]),
+            "custom": len(custom), "custom_bundles": sum(g["n_bundles"] for g in custom),
             "composite_dup_avg": round(
                 sum(p["dup_rate"] for p in composite) / len(composite), 2) if composite else 0,
             "filter_active": sum(1 for p in filt if p["active"]),
