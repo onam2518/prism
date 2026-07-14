@@ -212,6 +212,16 @@ def _agg_cached(key, fn, ttl: float = _AGG_TTL):
     return val
 
 
+def _batch_seq_cached(team) -> int:
+    """학습 반영 회차(초안 버전 산정용) · 30s 캐시.
+    일괄 실행(rerun_all)이 건마다 events 테이블 전체를 재조회하지 않게 한다 — 회차는
+    학습 배치 때만 바뀌고 그 쓰기 경로가 _agg_bump 를 호출하므로 스테일 위험 없음."""
+    def _get():
+        stv = get_store()
+        return stv.batch_seq(team) if (stv and hasattr(stv, "batch_seq")) else 0
+    return _agg_cached(("batchseq", team), _get)
+
+
 # ── multipart/form-data 파서 (cgi 제거된 3.13+ 대응, stdlib만) ───────────────
 def _parse_multipart(body: bytes, boundary: str) -> dict:
     """{name: value(str) | {"filename","mime","bytes"}} 형태로 반환."""
@@ -346,8 +356,7 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
     try:                                         # 초안 버전 = 학습 반영 회차 + 1
-        stv = get_store()
-        (out.setdefault("trace", {}))["version"] = (stv.batch_seq(team) + 1) if (stv and hasattr(stv, "batch_seq")) else 1
+        (out.setdefault("trace", {}))["version"] = _batch_seq_cached(team) + 1
     except Exception:
         pass
     if not persist:                              # 실험(미저장): 추출만 하고 results·초안·홀드아웃 미기록
@@ -379,7 +388,7 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
         return {"error": "퀘스트 진행 중에는 전체 재실행이 차단됩니다(검수 중 초안 교체 방지) · "
                          "'미실행만'은 가능하며, 반영 후 실행하거나 검수 목표 카드에서 일시를 비워 목표를 해제하세요"}
     rows = results_rows(team=team)
-    targets, seen = [], set()
+    targets, seen, row_by_hash = [], set(), {}
     for r in rows[-int(limit):]:
         if scope == "pending" and not _is_pending_row(r):
             continue                                 # 이미 실행된 건 제외
@@ -387,6 +396,7 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
         if ch and ch not in seen:
             seen.add(ch)
             targets.append(ch)
+            row_by_hash[ch] = r                      # 1회 로드분 재사용 · 건마다 전체 재조회(N×5000) 방지
     if not targets:
         return {"ok": True, "done": 0, "failed": 0, "model": model, "scope": scope,
                 "msg": "대상이 없습니다" + (" (미실행 콘텐츠 없음)" if scope == "pending" else "")}
@@ -396,7 +406,7 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
     _INGEST_STATE[jid]["hashes"] = list(targets)     # 작업 클릭 -> 결과 콘텐츠 보기
     try:
         for ch in targets:
-            res = rerun_content(ch, model, team=team)
+            res = rerun_content(ch, model, team=team, row=row_by_hash.get(ch))
             if res.get("error"):
                 failed += 1
                 _INGEST_STATE[jid]["failed"] = failed
@@ -410,25 +420,25 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
     return {"ok": True, "done": done, "failed": failed, "model": model}
 
 
-def rerun_content(content_hash: str, model: str, team=None) -> dict:
+def rerun_content(content_hash: str, model: str, team=None, row=None) -> dict:
     """같은 콘텐츠를 지정 모델로 재실행(초안 재생성 · 관리자). 기존 초안은 덮어쓰되
-    이전 초안을 patch_log 에 남겨(rerun:구모델) 이력·비교 근거를 보존한다."""
+    이전 초안을 patch_log 에 남겨(rerun:구모델) 이력·비교 근거를 보존한다.
+    row: 일괄 실행(rerun_all)이 미리 로드한 행 주입 — 건마다 전체 테이블 재조회 방지."""
     st = get_store()
     ch = (content_hash or "").strip()
     if not (st and ch):
         return {"error": "콘텐츠를 찾을 수 없습니다"}
-    row = None
-    fields = None
-    for r in results_rows(team=team):
-        ref = r.get("content_ref") or {}
-        if _row_key(ref) == ch:
-            row = r
-            fields = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
-                      "subtitle": ref.get("subtitle", ""), "body": ref.get("body", ""),
-                      "source_url": ref.get("source_url", "")}   # 재실행 upsert 가 원문 링크를 지우지 않게 보존
-            break
+    if row is None:
+        for r in results_rows(team=team):
+            if _row_key(r.get("content_ref") or {}) == ch:
+                row = r
+                break
     if not row:
         return {"error": "콘텐츠를 찾을 수 없습니다(본문 미보존 항목일 수 있음)"}
+    ref = row.get("content_ref") or {}
+    fields = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
+              "subtitle": ref.get("subtitle", ""), "body": ref.get("body", ""),
+              "source_url": ref.get("source_url", "")}   # 재실행 upsert 가 원문 링크를 지우지 않게 보존
     if quest_active() and not _is_pending_row(row):
         return {"error": "퀘스트 진행 중에는 검수 중 콘텐츠의 초안 재실행이 차단됩니다 · "
                          "반영 후 실행하거나 검수 목표 카드에서 목표를 해제하세요"}
@@ -586,6 +596,8 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
         return {"ok": False, "error": "저장소 없음"}
     action = (data.get("action") or "").strip()
     eid = (data.get("id") or "").strip()
+    if action != "detail":
+        _agg_bump()                                   # 등재·수정·보강은 토픽 엔티티 속성 인덱스에 반영 → 캐시 무효화
 
     if action == "detail":
         e = st.ent_get(eid)
@@ -773,6 +785,12 @@ def _save_studio_config(cfg: dict):
 
 
 def topics_data() -> dict:
+    """\ud1a0\ud53d \ubaa8\ub4c8 \ub370\uc774\ud130(30s \uce90\uc2dc). \ub4dc\ub9b4\ub2e4\uc6b4 \ud074\ub9ad\ub9c8\ub2e4 \uc804\uccb4 \uc7ac\ud074\ub7ec\uc2a4\ud130\ub9c1\ud558\ub358 \ube44\uc6a9 \uc81c\uac70 \u2014
+    \uc4f0\uae30(\ucd94\ucd9c\u00b7\uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd)\ub294 _agg_bump \ub85c \uc989\uc2dc \ubb34\ud6a8\ud654\ub41c\ub2e4."""
+    return _agg_cached(("topics",), _topics_compute)
+
+
+def _topics_compute() -> dict:
     """\ud1a0\ud53d \ubaa8\ub4c8: \uc801\uc7ac\ub41c \uacb0\uacfc\uc5d0\uc11c \uc5d4\ud2f0\ud2f0\ud615\u00b7\uc0ac\uac74\ud615\u00b7\uc870\uac74\ud615 \ud1a0\ud53d + \uc0ac\uc6a9\uc790 \uc815\uc758 \ud1a0\ud53d \ube4c\ub4dc."""
     rows = results_rows()
     cfg = _studio_config()
@@ -910,6 +928,8 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
     """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd/\uc870\ud68c: save\u00b7delete\u00b7settings\u00b7preview\u00b7suggest."""
     from . import topic as TP
     action = (data.get("action") or "").strip()
+    if action not in ("preview", "suggest"):
+        _agg_bump()                                   # \ubcc0\uacbd\uc131 \uc561\uc158(save\u00b7delete\u00b7settings\u00b7exclude \ub4f1) \u2192 \ud1a0\ud53d \uce90\uc2dc \ubb34\ud6a8\ud654
     rows = results_rows()
     svc = TP._service_names(rows) if rows else set()
 
@@ -1286,7 +1306,14 @@ def _write_jsonl(rows: list, out_path: str):
 def usermeta_data(logs_bytes: bytes = None, filename: str = "", team=None) -> dict:
     """사용자 메타 모듈: 행동 로그(업로드분 저장 → 재방문 유지)와 프로필을 조인해
     소비 형태·강도·선호 산출. 프로필·로그가 모두 갖춰진 사용자는 페르소나를
-    능동 생성(미생성분만 · 별도 버튼 없음)해 저장하고 기존 8종과 병행 표시."""
+    능동 생성(미생성분만 · 별도 버튼 없음)해 저장하고 기존 8종과 병행 표시.
+    조회 경로(업로드 없음)는 30s 캐시 — 요청마다 전량 재빌드(O(n²) 유사도 포함)하지 않는다."""
+    if logs_bytes is None:                             # 업로드는 저장 부수효과가 있어 캐시 우회
+        return _agg_cached(("usermeta", team), lambda: _usermeta_compute(None, "", team))
+    return _usermeta_compute(logs_bytes, filename, team)
+
+
+def _usermeta_compute(logs_bytes, filename, team) -> dict:
     from . import personagen as PG
     from . import usermeta as UM
     rows = results_rows()
@@ -1299,6 +1326,7 @@ def usermeta_data(logs_bytes: bytes = None, filename: str = "", team=None) -> di
         log_rows = _logs_rows(logs_bytes, filename)
         if log_rows and st and hasattr(st, "save_report"):
             st.save_report("usermeta_logs", {"rows": log_rows, "name": filename}, team=team)
+            _agg_bump()                               # 로그 갱신 → 사용자 메타 캐시 무효화
     else:
         log_rows = (_report_get("usermeta_logs", team, {}) or {}).get("rows") or []
     with tempfile.TemporaryDirectory() as d:
@@ -1342,6 +1370,7 @@ def usermeta_save_profiles(profs: list, team=None) -> dict:
             n += 1
     if n and st and hasattr(st, "save_report"):
         st.save_report("usermeta_profiles", {"users": cur}, team=team)
+        _agg_bump()                                   # 프로필 변경 → 사용자 메타 캐시 즉시 무효화
     out = usermeta_data(team=team)
     out["saved"] = n
     return out
@@ -1851,10 +1880,26 @@ def team_of(uid):
     return team
 
 
+_LLM_CACHE = {}                                        # (model, mock) → (llm, route) · 설정 변경 시 sync_prompt 가 클리어
+
+
 def llm_for_model(model: str, mock: bool):
     """모델 id 로 제공자·엔드포인트·키를 해석해 전용 LLMClient 구성(다중 모델 실호출 라우팅).
     solar* = Upstage 직접, 그 외 = 키 보유 라우터(bizrouter=provider/model · timely=bare id).
-    반환 (llm, route). 호출 불가(키 없음) 모델은 (None, 사유)."""
+    반환 (llm, route). 호출 불가(키 없음) 모델은 (None, 사유).
+    프로세스 캐시: 콜별 라우팅에서 LLM 호출 1건마다 새 클라이언트(=새 RateLimiter)가 만들어지면
+    RPM/TPM 창이 매번 초기화돼 레이트리밋이 무력화된다 — 같은 (모델, mock) 은 클라이언트 재사용."""
+    key = ((model or "").strip(), bool(mock))
+    hit = _LLM_CACHE.get(key)
+    if hit is not None:
+        return hit
+    out = _llm_for_model_build(model, mock)
+    if out[0] is not None:                             # 실패(키 없음)는 캐시하지 않음(키 등록 즉시 반영)
+        _LLM_CACHE[key] = out
+    return out
+
+
+def _llm_for_model_build(model: str, mock: bool):
     cfg = Config.load()                                # 모델별 사본(공유 cfg 변형 방지)
     mid = (model or "").strip() or cfg.model
     if mock:
@@ -1907,6 +1952,7 @@ def sync_prompt():
                        "call_models": {k: (v or "").strip()
                                        for k, v in (getattr(cfg, "meta_call_models", {}) or {}).items()
                                        if k in MP.CALLS}}
+        _LLM_CACHE.clear()                             # 키·엔드포인트·모델 설정 변경 반영
         AG.LLM_FOR_CALL = lambda mid: llm_for_model(mid, Handler.server_mock)[0]
         sync_learned()
     except Exception:
@@ -3875,6 +3921,7 @@ class Handler(BaseHTTPRequestHandler):
                     if _supa() and not is_admin_user(uid, team, email):
                         self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                         return
+                # 변경성 액션의 캐시 무효화는 topic_studio_action 내부에서 처리
                 self._send(200, json.dumps(topic_studio_action(data, mock=Handler.server_mock),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
@@ -4050,6 +4097,8 @@ def main():
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\n  종료")
+    finally:
+        srv.server_close()                             # 리스닝 소켓 정리(shutdown 은 accept 루프만 멈춘다)
 
 
 if __name__ == "__main__":

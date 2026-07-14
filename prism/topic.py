@@ -111,9 +111,12 @@ def build_event_topics(rows, service_names, co_min=None):
     for i, s in enumerate(cent):
         for e in s:
             ent_idx[e].append(i)
+    # 허브 도수 컷: 초고빈도 엔티티 하나가 O(k²) 페어 폭발을 일으킨다(500회 등장 = 12.5만 페어).
+    # 그런 엔티티는 사건 판별력도 낮으므로(어디에나 나옴) 페어 생성에서 제외 — junk 필터와 별개의 컷.
+    hub_cap = max(50, n // 10)
     pair_common = Counter()
     for e, idxs in ent_idx.items():
-        if len(idxs) < 2:
+        if len(idxs) < 2 or len(idxs) > hub_cap:
             continue
         for a, b in combinations(idxs, 2):
             pair_common[(a, b)] += 1

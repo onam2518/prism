@@ -720,8 +720,8 @@ def _persona_graph(data):
 
 
 def render_html(results_path: str, n_users: int = 200,
-                logs_path: str = None, demo: bool = False, notice: str = "") -> str:
-    data = build_user_meta(results_path, n_users, logs_path, demo)
+                logs_path: str = None, demo: bool = False, notice: str = "", data=None) -> str:
+    data = data if data is not None else build_user_meta(results_path, n_users, logs_path, demo)
     html = _HTML.replace("/*__DATA__*/", json.dumps(data, ensure_ascii=False))
     html = html.replace("__GRAPH__", _persona_graph(data))
     if notice:
@@ -732,10 +732,10 @@ def render_html(results_path: str, n_users: int = 200,
 
 def build_html(results_path: str, out_path: str, n_users: int = 200,
                logs_path: str = None, demo: bool = False, notice: str = "") -> dict:
-    htmltext = render_html(results_path, n_users, logs_path, demo, notice)
+    data = build_user_meta(results_path, n_users, logs_path, demo)   # 1회만 빌드(유사도 O(n²) 포함)
+    htmltext = render_html(results_path, n_users, logs_path, demo, notice, data=data)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(htmltext)
-    data = build_user_meta(results_path, n_users, logs_path, demo)
     return {"users": len(data["users"]), "out": out_path}
 
 

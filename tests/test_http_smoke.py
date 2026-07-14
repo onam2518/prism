@@ -55,6 +55,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.srv.shutdown()
+        cls.srv.server_close()   # 리스닝 소켓 정리(ResourceWarning 방지)
         cls.serve._STORE = None
         cls._cfg_mod.DEFAULT_CONFIG_PATH = cls._orig_cfg_path
 
