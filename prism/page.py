@@ -1977,19 +1977,6 @@ PAGE = """<!doctype html>
             </ul>
           </div>
         </section>
-        <section class="panel" data-fn x-show="isDesktop"><div class="panel-hd"><b>데스크탑 앱</b><span class="meta">네이티브 창(WKWebView) 옵션 · 앱 재시작 시 적용</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:12px">
-              <li><b>다운로드 허용</b>이 꺼져 있으면 템플릿·엑셀 내보내기 클릭이 무시됩니다.</li>
-              <li><b>저장 데이터 유지</b>가 꺼져 있으면 로그인 상태·저장된 아이디/비밀번호가 앱 재시작마다 사라집니다.</li>
-            </ul>
-            <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
-              <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" x-model="dtAllowDl" x-on:change="saveDesktopOpts()"> 다운로드 허용</label>
-              <label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" x-model="dtPersist" x-on:change="saveDesktopOpts()"> 저장 데이터 유지(localStorage)</label>
-              <span class="text-xs text-muted" x-text="dtMsg || '변경은 앱을 완전히 종료 후 다시 열면 적용됩니다'"></span>
-            </div>
-          </div>
-        </section>
         <section class="panel" data-fn><div class="panel-hd"><b>API 키</b><span class="meta">추출 호출 키 · 팀원은 입력 없이 사용</span></div>
           <div class="panel-bd">
         <!-- 운영(공유 서버): 키는 서버에서 관리 → 팀원은 입력 불필요 -->

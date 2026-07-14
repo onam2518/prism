@@ -48,7 +48,7 @@ is_admin_user = AO.is_admin_user
 admin_data = AO.admin_data
 admin_ingest = AO.admin_ingest
 admin_action = AO.admin_action
-# 하위호환 별칭: 테스트·데스크탑·내부 라우트가 serve 네임스페이스로 참조
+# 하위호환 별칭: 테스트·내부 라우트가 serve 네임스페이스로 참조
 sync_learned = LO.sync_learned
 eval_golden = LO.eval_golden
 register_golden = LO.register_golden
@@ -2457,8 +2457,6 @@ def config_status() -> dict:
         "availableModels": _candidate_models(cfg),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "learnNextAt": str(getattr(cfg, "learn_next_at", "") or ""),
-        "desktopAllowDownloads": bool(getattr(cfg, "desktop_allow_downloads", True)),
-        "desktopPersistStorage": bool(getattr(cfg, "desktop_persist_storage", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
         "metaCallModels": dict(getattr(cfg, "meta_call_models", {}) or {}),
         "familyWrappers": dict(getattr(cfg, "family_wrappers", {}) or {}),
@@ -2544,10 +2542,9 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_wrappers = "family_wrappers" in data and isinstance(data.get("family_wrappers"), dict)
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
-    has_desktop = ("desktop_allow_downloads" in data) or ("desktop_persist_storage" in data) \
-        or ("golden_min_good" in data) or ("learn_next_at" in data)
+    has_misc = ("golden_min_good" in data) or ("learn_next_at" in data)
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
-            or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_desktop):
+            or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
         if has_ingest:
             cfg.ingest_sources = data.get("ingest_sources") or []
@@ -2635,10 +2632,6 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                         _agg_bump()
                 except ValueError:
                     pass
-        if "desktop_allow_downloads" in data:
-            cfg.desktop_allow_downloads = bool(data.get("desktop_allow_downloads"))
-        if "desktop_persist_storage" in data:
-            cfg.desktop_persist_storage = bool(data.get("desktop_persist_storage"))
         for k in slot_keys:
             if k in data:
                 setattr(cfg, k, (data.get(k) or "").strip())

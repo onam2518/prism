@@ -87,9 +87,6 @@ class Config:
     meta_call_models: dict = field(default_factory=dict)
     # 모델 계열 쿡북 래퍼 오버라이드: {gpt|gemini|claude|solar|default: template}. 수정 단위는 계열 래퍼만.
     family_wrappers: dict = field(default_factory=dict)
-    # 데스크탑(pywebview) 셸 옵션 · 앱 재시작 시 적용
-    desktop_allow_downloads: bool = True     # 템플릿·엑셀 내보내기 다운로드 허용
-    desktop_persist_storage: bool = True     # localStorage 영속(로그인 토큰·저장된 아이디/비밀번호 유지)
     learn_next_at: str = ""               # 검수 목표(퀘스트) 일시 'YYYY-MM-DDTHH:MM' · 도달 시 학습 반영 1회 후 소진
 
     # 실행

@@ -49,12 +49,6 @@ python3 -m prism.serve --mock          # http://localhost:8765 · 키 없이 모
 - 실제 모델 호출은 화면의 시스템 설정에서 API 키 등록 (Upstage Solar 직접 또는 통합 라우터)
 - 옵션: `--port`(기본 8765), `--host`, `--mock`(키가 있어도 강제 모의)
 
-### 데스크탑 (macOS)
-
-- [Releases](https://github.com/onam2518/prism/releases)에서 최신 DMG 다운로드 후 설치
-- `Prism-x.y.z.dmg`: 운영 빌드 · 팀 로그인(Supabase 설정 시)과 로컬 단독 모드 지원
-- `Prism-QA-x.y.z.dmg`: QA 빌드 · 키·로그인 없이 목업 콘텐츠 10건 자동 시드 · 점검 항목은 [QA_CHECKLIST.md](QA_CHECKLIST.md) 참조
-
 ### Docker (팀 공유 서버)
 
 ```bash
@@ -91,7 +85,7 @@ python3 -m prism.cli doctor                          # API·모델·임베딩·D
 | 콘텐츠 관리* | STEP 1 콘텐츠 추가(수동·자동, 용도 지정) → STEP 2 모델 실행 → STEP 3 실행 큐 |
 | 정답셋 관리* | 검수 목표(퀘스트) 생성·학습 반영 · 정답셋 목록 · 학습 데이터(SFT/DPO/노하우/소요서·핸드오프 번들) |
 | 프롬프트 스튜디오* | 기준 계약(4호출 규칙, 읽기 전용) · 모델별 쿡북 래퍼 편집 · 최종 프롬프트 미리보기 |
-| 사전·정책* / 실험실* / 팀 관리 / 시스템 설정* | 분류 사전 · 탐구 요소 · 멤버/초대코드 · 데이터/API 키/데스크탑 옵션 |
+| 사전·정책* / 실험실* / 팀 관리 / 시스템 설정* | 분류 사전 · 탐구 요소 · 멤버/초대코드 · 데이터/API 키 |
 
 \* 관리자 메뉴 · 운영 관리자(허용목록)는 전체, 팀 관리자(생성자·위임)는 팀 관리만 표시
 
@@ -137,9 +131,8 @@ prism/serve.py (stdlib http.server)
 
 - **의존성 0 원칙**: 서버·테스트 전부 파이썬 표준 라이브러리 · 벤더 JS/CSS/폰트는 저장소에 동봉(오프라인 동작)
 - **모델 연결**: OpenAI 호환 `/v1/chat/completions` 이면 어디든 연결 가능 (Upstage 직접, 통합 라우터, 로컬 vLLM/Ollama)
-- **모의 모드(`--mock`)**: 키 없이 결정론적 모의 추출로 전 기능 동작 · 데모·테스트·QA 빌드의 기반
+- **모의 모드(`--mock`)**: 키 없이 결정론적 모의 추출로 전 기능 동작 · 데모·테스트·QA의 기반 (목업 시드는 `scripts/seed_qa.py` · 점검 항목은 [QA_CHECKLIST.md](QA_CHECKLIST.md))
 - **저장 이중화**: `Store`(SQLite)와 `SupabaseStore`(PostgREST)가 동일 계약 · 계약 테스트로 표류 방지
-- **데스크탑**: pywebview 네이티브 창 · 다운로드·저장 데이터 옵션은 시스템 설정에서 조정
 
 
 ## ⚙️ 환경 변수
@@ -147,7 +140,7 @@ prism/serve.py (stdlib http.server)
 | 변수 | 용도 |
 |---|---|
 | `PRISM_BACKEND` | `supabase` 지정 시 팀 모드 전환 (기본 로컬 SQLite) |
-| `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | 팀 모드 연결 정보 · 데스크탑 앱은 `~/.prism_supabase_url`·`~/.prism_supabase_key` 키 파일 자동 로드 |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | 팀 모드 연결 정보 (로컬 검증 시 `~/.prism_supabase_url`·`~/.prism_supabase_key` 키 파일 참조) |
 | `PRISM_ADMIN_EMAILS` | 운영 관리자 허용목록 (쉼표 구분 · `~/.prism_admin_emails` 파일도 가능) |
 | `PRISM_DB` | SQLite 경로 (기본 `prism.db` · Docker는 `/data/prism.db`) |
 | `UPSTAGE_API_KEY` | Upstage Solar 직접 연결 키 |
