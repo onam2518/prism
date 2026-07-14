@@ -871,7 +871,9 @@ PAGE = """<!doctype html>
 
           <!-- 토픽 생성하기: 4단계 스텝(이름 → 자연어 → 조건 → 생성) -->
           <div class="panel">
-            <div class="panel-hd"><b x-text="studio.editId ? '토픽 수정' : '토픽 생성하기'"></b>
+            <!-- 타이틀은 정적 텍스트 유지(헤드 데코레이터가 b.textContent 를 복사하므로 x-text 는 빈 타이틀이 된다) -->
+            <div class="panel-hd"><b>토픽 생성하기</b><span class="meta">이름 → 설명 → 조건 → 생성 · 4단계로 묶음을 정의합니다</span>
+              <span class="ds-badge ds-badge--status" x-show="studio.editId" x-cloak>수정 중</span>
               <span class="meta tnum" style="margin-left:auto" x-text="tStepDone()+' / 4 단계'"></span>
               <span class="tprog"><i x-bind:style="'width:'+(tStepDone()/4*100)+'%'"></i></span>
             </div>
@@ -880,7 +882,7 @@ PAGE = """<!doctype html>
 
                 <!-- STEP 1 · 이름 -->
                 <div class="tstep" x-bind:class="{'is-done': !!studio.name.trim(), 'is-active': tActive()===1}">
-                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">1</span><span class="c">✓</span></span></div>
+                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">STEP 1</span><span class="c">✓</span></span></div>
                   <div class="tstep__body">
                     <div class="tstep__head"><b>이름 짓기</b><span class="tstep__guide">이 묶음을 뭐라고 부를까요?</span></div>
                     <input class="field" x-model="studio.name" placeholder="예) 경제 심층분석 큐레이션">
@@ -889,7 +891,7 @@ PAGE = """<!doctype html>
 
                 <!-- STEP 2 · 자연어 -->
                 <div class="tstep" x-bind:class="{'is-done': !!studio.prompt.trim(), 'is-active': tActive()===2}">
-                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">2</span><span class="c">✓</span></span></div>
+                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">STEP 2</span><span class="c">✓</span></span></div>
                   <div class="tstep__body">
                     <div class="tstep__head"><b>말로 설명하기</b><span class="tstep__guide">원하는 묶음을 문장으로 · ‘조건값 자동생성’을 누르면 아래 조건이 채워집니다</span></div>
                     <textarea class="field" rows="2" style="resize:vertical" x-model="studio.prompt" x-on:input="schedulePreview()" placeholder="예) 경제·산업 심층분석만 모으고 속보는 빼줘"></textarea>
@@ -912,7 +914,7 @@ PAGE = """<!doctype html>
 
                 <!-- STEP 3 · 조건 -->
                 <div class="tstep" x-bind:class="{'is-done': !!(studio.cats.length||studio.intents.length||studio.keywords.length||studio.eattrs.length), 'is-active': tActive()===3}">
-                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">3</span><span class="c">✓</span></span></div>
+                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">STEP 3</span><span class="c">✓</span></span></div>
                   <div class="tstep__body">
                     <div class="tstep__head"><b>조건 확인·조정</b><span class="tstep__guide">필수는 모든 묶음의 뼈대(반드시), 선택은 각각이 관련 묶음이 됩니다 · 칩을 누를수록 후보→선택→필수</span></div>
                     <div class="tfilter"><span class="tfilter__badge">✨ 묶음</span><span class="tfilter__text" x-html="bundleSummaryText()"></span></div>
@@ -964,7 +966,7 @@ PAGE = """<!doctype html>
 
                 <!-- STEP 4 · 생성 -->
                 <div class="tstep" x-bind:class="{'is-active': tActive()===4}">
-                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">4</span><span class="c">✓</span></span></div>
+                  <div class="tstep__rail"><span class="tstep__dot"><span class="n">STEP 4</span><span class="c">✓</span></span></div>
                   <div class="tstep__body">
                     <div class="tstep__head"><b>확인하고 생성</b><span class="tstep__guide">이 토픽이 아래 묶음들로 펼쳐집니다 · 저장 후 묶음마다 개별로 드릴다운돼요<span x-show="studioBusy"> · 계산 중…</span></span></div>
                     <div class="tpreview">
