@@ -643,18 +643,26 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     """\uc790\uc5f0\uc5b4 \uc124\uba85 \u2192 \ud1a0\ud53d \ucc28\uc6d0(\uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8\u00b7\ud0a4\uc6cc\ub4dc)\uc744 \uc120\ud0dd \ubaa8\ub378\ub85c \ub9e4\ud551.
     \ud5c8\uc6a9 \ubaa9\ub85d(\ud604\uc7ac \ub370\uc774\ud130\uc758 \uc2e4\uc7ac \uac12)\uc73c\ub85c\ub9cc \uc81c\uc57d \u00b7 \uc2e4\ud328 \uc2dc (None, \uc0ac\uc720) \ubc18\ud658(\ud638\ucd9c\ubd80\uc5d0\uc11c \ud734\ub9ac\uc2a4\ud2f1 \ud3f4\ubc31)."""
     from . import topic as TP
-    cat = TP.studio_catalog(rows, svc)
-    allow_cats = [c["k"] for c in cat["cats"]]
-    allow_int = [c["k"] for c in cat["intents"]]
+    tax = TP.meta_taxonomy()                       # \uc2dc\uc2a4\ud15c \uc804\uccb4 \uc544\uc774\ud15c\uba54\ud0c0 \ubd84\ub958(\ub370\uc774\ud130 \uc720\ubb34 \ubb34\uad00)
+    cat = TP.studio_catalog(rows, svc)             # \ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc2e4\uc7ac\ud558\ub294 \uac12(\uc6b0\uc120) + \uc5d4\ud2f0\ud2f0 \ud6c4\ubcf4
+    data_cats = [c["k"] for c in cat["cats"]]
+    data_int = [c["k"] for c in cat["intents"]]
+    allow_cats = list(dict.fromkeys((tax["cats"] or []) + data_cats))   # \uc804\uccb4 \u222a \ub370\uc774\ud130
+    allow_int = list(dict.fromkeys((tax["intents"] or []) + data_int))
     hint_kw = [c["k"] for c in cat["keywords"][:40]]
-    sysp = ("\ub108\ub294 \ucf58\ud150\uce20 \ud050\ub808\uc774\uc158 \ud1a0\ud53d \uc124\uacc4 \ubcf4\uc870\uc790\ub2e4. \uc0ac\uc6a9\uc790\uc758 \uc790\uc5f0\uc5b4 \uc124\uba85\uc744 \uc544\ub798 \ud5c8\uc6a9 \ubaa9\ub85d\uc758 \uac12\uc73c\ub85c\ub9cc "
-            "\ub9e4\ud551\ud574 JSON \uac1d\uccb4 \ud558\ub098\ub85c\ub9cc \ub2f5\ud55c\ub2e4. \ubaa9\ub85d\uc5d0 \uc5c6\ub294 \uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8\ub294 \uc808\ub300 \ub9cc\ub4e4\uc9c0 \uc54a\ub294\ub2e4. "
-            "keywords \ub294 \uc124\uba85\uc5d0 \ub4f1\uc7a5\ud558\uac70\ub098 \uac15\ud558\uac8c \ud568\uc758\ub41c \uc778\ubb3c\u00b7\uae30\uc5c5\u00b7\uc791\ud488 \ub4f1 \uace0\uc720\uba85\uc0ac\ub9cc(\uc790\uc720\u00b7\ucd5c\ub300 5\uac1c). "
-            '\ud615\uc2dd: {"cats":[],"intents":[],"keywords":[]}')
+    tier1_ko = getattr(TP, "_TIER1_KO", {}) or {}
+    cats_ko = [((tier1_ko.get(c) or c) + "=" + c) for c in allow_cats]  # \uc601\ubb38 Tier1 + \ud55c\uae00 \ubcd1\uae30
+    sysp = ("\ub108\ub294 \ucf58\ud150\uce20 \ud050\ub808\uc774\uc158 \ud1a0\ud53d \uc124\uacc4 \ubcf4\uc870\uc790\ub2e4. \uc0ac\uc6a9\uc790\uc758 \uc790\uc5f0\uc5b4 \uc124\uba85\uc744, \uc544\ub798 '\uc6b0\ub9ac \uc2dc\uc2a4\ud15c\uc758 \uc804\uccb4 "
+            "\uc544\uc774\ud15c\uba54\ud0c0 \ubd84\ub958'(\uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8) \uc548\uc5d0\uc11c \uc758\ubbf8\uac00 \ub9de\ub294 \uac12\uc73c\ub85c\ub9cc \ub9e4\ud551\ud574 JSON \uac1d\uccb4 \ud558\ub098\ub85c\ub9cc \ub2f5\ud55c\ub2e4. "
+            "\ubaa9\ub85d\uc5d0 \uc5c6\ub294 \uac12\uc740 \uc808\ub300 \ub9cc\ub4e4\uc9c0 \uc54a\ub294\ub2e4. \ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc788\ub294 \uac12\uc744 \uc6b0\uc120\ud558\ub418, \uc124\uba85\uc5d0 \ubd80\ud569\ud558\uba74 \ub370\uc774\ud130\uc5d0 "
+            "\uc544\uc9c1 \uc5c6\ub294 \uac12\ub3c4 \uc120\ud0dd\ud560 \uc218 \uc788\ub2e4(\ubbf8\ub798 \ub9e4\uce6d). keywords \ub294 \uc124\uba85\uc5d0 \ub4f1\uc7a5\u00b7\ud568\uc758\ub41c \uc778\ubb3c\u00b7\uae30\uc5c5\u00b7\uc791\ud488 \ub4f1 "
+            '\uace0\uc720\uba85\uc0ac\ub9cc(\uc790\uc720\u00b7\ucd5c\ub300 5\uac1c). \ud615\uc2dd: {"cats":[],"intents":[],"keywords":[]}')
     userp = ("\uc124\uba85: " + (text or "").strip() + "\n\n"
-             + "\ud5c8\uc6a9 \uce74\ud14c\uace0\ub9ac: " + json.dumps(allow_cats, ensure_ascii=False) + "\n"
-             + "\ud5c8\uc6a9 \uc778\ud150\ud2b8: " + json.dumps(allow_int, ensure_ascii=False) + "\n"
-             + "\ucc38\uace0 \uc5d4\ud2f0\ud2f0(\ud0a4\uc6cc\ub4dc \ud6c4\ubcf4): " + json.dumps(hint_kw, ensure_ascii=False))
+             + "[\uc804\uccb4 \uce74\ud14c\uace0\ub9ac Tier1 \u00b7 \ud55c\uae00=\uc601\ubb38]: " + json.dumps(cats_ko, ensure_ascii=False) + "\n"
+             + "[\uc804\uccb4 \uc778\ud150\ud2b8]: " + json.dumps(allow_int, ensure_ascii=False) + "\n"
+             + "[\ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc788\ub294 \uac12(\uc6b0\uc120)] \uce74\ud14c\uace0\ub9ac: " + json.dumps(data_cats, ensure_ascii=False)
+             + " \u00b7 \uc778\ud150\ud2b8: " + json.dumps(data_int, ensure_ascii=False) + "\n"
+             + "[\ud0a4\uc6cc\ub4dc \ud6c4\ubcf4(\uc5d4\ud2f0\ud2f0)]: " + json.dumps(hint_kw, ensure_ascii=False))
     llm, route = llm_for_model(model, mock)
     if llm is None:
         return None, route

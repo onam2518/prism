@@ -913,15 +913,15 @@ PAGE = """<!doctype html>
                     <div class="tcond__g">
                       <div class="tcond__lbl">카테고리 <span x-text="'· '+studio.cats.length+' 적용'"></span></div>
                       <div class="flex flex-wrap gap-1.5">
-                        <template x-for="c in (topicData.catalog?topicData.catalog.cats:[])" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.cats.includes(c.k)?'ds-badge--category':'ds-badge--neutral'" x-on:click="studioToggle('cats',c.k)"><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
-                        <span x-show="!(topicData.catalog&&topicData.catalog.cats.length)" class="text-xs text-muted">데이터에 카테고리가 없습니다</span>
+                        <template x-for="c in studioCatChips()" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.cats.includes(c.k)?'ds-badge--category':'ds-badge--neutral'" x-on:click="studioToggle('cats',c.k)"><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
+                        <span x-show="!studioCatChips().length" class="text-xs text-muted">데이터에 카테고리가 없습니다</span>
                       </div>
                     </div>
                     <div class="tcond__g">
                       <div class="tcond__lbl">인텐트 <span x-text="'· '+studio.intents.length+' 적용'"></span></div>
                       <div class="flex flex-wrap gap-1.5">
-                        <template x-for="c in (topicData.catalog?topicData.catalog.intents:[])" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.intents.includes(c.k)?'ds-badge--intent':'ds-badge--neutral'" x-on:click="studioToggle('intents',c.k)"><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
-                        <span x-show="!(topicData.catalog&&topicData.catalog.intents.length)" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
+                        <template x-for="c in studioIntentChips()" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="studio.intents.includes(c.k)?'ds-badge--intent':'ds-badge--neutral'" x-on:click="studioToggle('intents',c.k)"><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
+                        <span x-show="!studioIntentChips().length" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
                       </div>
                     </div>
                     <div class="tcond__g">

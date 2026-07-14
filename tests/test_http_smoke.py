@@ -331,6 +331,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords"})
         self.assertIn(sg.get("via"), ("llm", "heuristic", "none"))
         self.assertEqual(sg.get("model"), "solar-pro2")            # 선택 모델 에코(버튼이 헛돌지 않음)
+        self.assertIn("심층 분석", sg["suggest"]["intents"])         # 전체 아이템메타 분류(사전) 고려 · 데이터 유무 무관
         # 저장 → 사용자 정의로 영속 + 조건형 풀 생성
         saved = self.ok("/topic-studio", {"action": "save", "def": {
             "name": "스모크 토픽", "prompt": "스모크 자연어 설명", "cats": [], "intents": [], "keywords": []}})

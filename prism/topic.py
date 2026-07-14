@@ -312,19 +312,41 @@ def studio_catalog(rows, service_names=None, top_kw=30):
     return {"intents": rank(int_c), "cats": rank(cat_c), "keywords": rank(ent_c, top_kw)}
 
 
+def meta_taxonomy():
+    """시스템 전체 아이템메타 분류 어휘(현재 데이터 유무와 무관): 카테고리(Tier1)·인텐트 전량.
+    조건값 자동생성이 '우리의 모든 아이템메타'를 후보로 고려하도록 사전(dictionaries)에서 직접 구성.
+    데이터에 아직 없는 값도 미래 매칭을 위해 조건으로 선택 가능."""
+    from . import dictionaries as D
+    cats = list(_TIER1_KO.keys()) if isinstance(_TIER1_KO, dict) else []
+    intents = []
+
+    def _add(seq):
+        for v in (seq or []):
+            if v and v not in intents:
+                intents.append(v)
+
+    _add(getattr(D, "INTENT_CATEGORIES_UNIVERSAL", []))
+    _add(getattr(D, "INTENT_FORM_UNIVERSAL", []))
+    for vs in (getattr(D, "INTENT_CATEGORIES_BY_SERVICE", {}) or {}).values():
+        _add(vs)
+    return {"cats": cats, "intents": intents}
+
+
 def suggest_dims(text, rows, service_names=None):
     """자연어 문장 → 차원 제안(휴리스틱 · 모델 호출 없음, 의존성 0).
-    카탈로그의 인텐트·카테고리 라벨이 문장에 부분일치하면 채택, 문장 토큰 중
-    엔티티 카탈로그와 일치하는 것을 키워드 후보로. 즉각·결정적, 데이터 기반."""
+    전체 아이템메타 분류(사전) ∪ 현재 데이터 present 를 후보로 부분일치. 문장에 나온 엔티티는 키워드로."""
+    tax = meta_taxonomy()
     cat = studio_catalog(rows, service_names)
+    all_cats = list(dict.fromkeys(tax["cats"] + [x["k"] for x in cat["cats"]]))
+    all_ints = list(dict.fromkeys(tax["intents"] + [x["k"] for x in cat["intents"]]))
     t = (text or "").lower()
-    intents = [x["k"] for x in cat["intents"] if x["k"] and x["k"].lower() in t]
-    cats = [x["k"] for x in cat["cats"] if x["k"] and x["k"].lower() in t]
+    intents = [x for x in all_ints if x and x.lower() in t]
+    cats = [x for x in all_cats if x and x.lower() in t]
     # 카테고리 한글 별칭도 시도(Tier1 영문 라벨이 문장에 없을 때)
-    for x in cat["cats"]:
-        ko = _TIER1_KO.get(x["k"]) if isinstance(_TIER1_KO, dict) else None
-        if ko and ko.lower() in t and x["k"] not in cats:
-            cats.append(x["k"])
+    for x in all_cats:
+        ko = _TIER1_KO.get(x) if isinstance(_TIER1_KO, dict) else None
+        if ko and ko.lower() in t and x not in cats:
+            cats.append(x)
     keywords = [x["k"] for x in cat["keywords"] if x["k"] and x["k"].lower() in t][:5]
     return {"cats": cats, "intents": intents, "keywords": keywords}
 
