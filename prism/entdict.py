@@ -514,12 +514,17 @@ def enrich_entity(store, entity_id: str) -> dict:
     am = dict(e.get("attr_meta") or {})
     now = time.time()
     nr = _namu_try(e)
+    namu_attrs = {}
     if nr and nr[0] == "hit":
         _, typ, attrs_new = nr
         fields = _apply_source(store, e, am, now, "namuwiki", typ, attrs_new, "namuwiki", e["name"])
-        return {"ok": True, "matched": True, "source": "namuwiki",
-                "type": fields.get("type", e.get("type") or "")}
-    # ② 위키데이터 폴백(나무위키 미스·동음이의)
+        if fields.get("type") or (e.get("type") or ""):
+            return {"ok": True, "matched": True, "source": "namuwiki",
+                    "type": fields.get("type", e.get("type") or "")}
+        # 타입 미판정(속성만 히트) → 위키데이터로 타입(P31)만 이어서 보강.
+        # 여기서 조기 반환하면 status 가 pending 에 고정돼 타입 의존 토픽 조건에서 영영 누락된다.
+        namu_attrs = attrs_new
+    # ② 위키데이터 폴백(나무위키 미스·동음이의·타입 미판정)
     try:
         hit = wd_search(e["name"])
     except (urllib.error.URLError, OSError, ValueError) as ex:
@@ -529,6 +534,8 @@ def enrich_entity(store, entity_id: str) -> dict:
         ent = wd_entity(qid)
         typ, p31 = map_type(ent)
         new_attrs = extract_attrs(typ or e.get("type") or "", ent)
+        # 나무위키가 같은 보강 사이클에서 채운 속성은 유지(소스 우선순위: 나무위키 1순위)
+        new_attrs = {k: v for k, v in new_attrs.items() if k not in namu_attrs}
         if not typ and not (e.get("type") or ""):
             am["_type_candidates"] = p31[:5]               # 충돌·미판정 → 보류 + 후보 보존
         fields = _apply_source(store, e, am, now, "wikidata", typ, new_attrs,
@@ -539,6 +546,8 @@ def enrich_entity(store, entity_id: str) -> dict:
             store.ent_alias_add(normalize_name(label), entity_id)
         return {"ok": True, "matched": True, "source": "wikidata", "qid": qid,
                 "type": fields.get("type", e.get("type") or "")}
+    if nr and nr[0] == "hit":                              # 나무위키 속성 히트 + 위키데이터 미스 → 보류 유지(미등재 강등 금지)
+        return {"ok": True, "matched": True, "source": "namuwiki", "type": e.get("type") or ""}
     if nr and nr[0] == "ambiguous":                        # 둘 다 미해소 + 동음이의 → 보류(수동 확정 대기)
         am["_type_candidates"] = nr[1][:5]
         am["_enrich"] = {"source": "namuwiki", "result": "ambiguous", "ts": now}
@@ -583,7 +592,9 @@ def attr_index(store, team="") -> dict:
     보류 개체도 포함(타입 의존 조건만 자연히 비활성 · 문서의 보류 정책)."""
     try:
         return store.ent_attr_index(team=team)
-    except Exception:
+    except Exception as e:
+        # 조용한 {} 는 엔티티 속성 토픽이 소리 없이 0건 매칭이 되는 원인 — 최소한 로그는 남긴다
+        print(f"[entdict] attr_index 실패 · 속성 조건 매칭 비활성: {e}")
         return {}
 
 

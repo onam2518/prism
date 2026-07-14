@@ -120,7 +120,10 @@ _CENTROID = {  # (depth, intensity, breadth) → 8 페르소나 시그니처
 
 
 def _parse_ts(v):
-    """행동 로그 ts(ISO 문자열 또는 epoch 초) → datetime. 실패 시 None."""
+    """행동 로그 ts(ISO 문자열 또는 epoch 초) → naive 로컬 datetime. 실패 시 None.
+    aware("Z"/오프셋 ISO)는 로컬 시각으로 변환 후 tzinfo 제거 — epoch(naive 로컬)와 통일한다.
+    혼재 시 aware/naive 비교 TypeError 로 sort 가 죽고, UTC 그대로 버킷팅하면
+    출퇴근·야간·주말 판정이 시간대만큼 밀린다(KST 면 9시간)."""
     if v is None or v == "":
         return None
     if isinstance(v, (int, float)):
@@ -129,7 +132,10 @@ def _parse_ts(v):
         except Exception:
             return None
     try:
-        return _dt.datetime.fromisoformat(str(v).strip().replace("Z", "+00:00"))
+        d = _dt.datetime.fromisoformat(str(v).strip().replace("Z", "+00:00"))
+        if d.tzinfo is not None:
+            d = d.astimezone().replace(tzinfo=None)
+        return d
     except Exception:
         return None
 
@@ -281,23 +287,32 @@ def _rep_contents(viewed, logs, k=5):
 def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) -> dict:
     from collections import defaultdict
     rows = _read_jsonl(results_path)
-    by_id = {}
+    # 조인 키 3종(추출 순서 인덱스 · 외부 id · 제목)은 네임스페이스를 분리한다 —
+    # 한 dict 에 섞으면 외부 id "2" 가 인덱스 2 항목을 덮어써 로그가 엉뚱한 콘텐츠에 조인된다.
+    # 조회 우선순위는 문서화된 계약(content_id = 추출 순서 0부터)대로 인덱스 > 외부 id > 제목.
+    by_idx, by_ext, by_title = {}, {}, {}
     for i, r in enumerate(rows):
         im = r.get("item_meta") or {}
+        qm = r.get("quality_meta") or {}
+        # 유통 가능(G) 콘텐츠만 실데이터 카탈로그에 편입 — build_mock·_empty_user_meta 와 동일 기준.
+        # R/YELLOW 가 섞이면 유통 불가 콘텐츠의 엔티티·인텐트가 페르소나·타겟팅에 오염된다.
+        if (qm.get("finalGrade") or "G") == "R":
+            continue
         item = {"idx": i, "title": r.get("content_ref", {}).get("title", ""),
                 "service": r.get("content_ref", {}).get("displayServiceName", ""),
                 "summary": (im.get("summary") or "").strip(),
                 "intent_categories": im.get("intent", []),
                 "entity_categories": [_t1(c) for c in (im.get("content_category") or [])],
                 "entities": im.get("entities", [])}
-        by_id[str(i)] = item
-        by_id[item["title"]] = item
+        by_idx[str(i)] = item
+        by_title.setdefault(item["title"], item)
         if r.get("content_ref", {}).get("id"):
-            by_id[str(r["content_ref"]["id"])] = item
+            by_ext.setdefault(str(r["content_ref"]["id"]), item)
 
     sess = defaultdict(list)
     for lg in _read_jsonl(logs_path):
-        it = by_id.get(str(lg.get("content_id")))
+        k = str(lg.get("content_id"))
+        it = by_idx.get(k) or by_ext.get(k) or by_title.get(k)
         if it:
             sess[lg.get("user_id", "?")].append((it, lg))
 

@@ -132,8 +132,12 @@ def transcribe_audio(content: bytes, mime: str, model: str, service: str = "bizr
         payload = json.loads(resp.read().decode("utf-8"))
     choices = payload.get("choices") or []
     rawtxt = (choices[0]["message"]["content"] if choices else "") or ""
+    if not rawtxt.strip():
+        # gemini 계열이 HTTP 200 + 빈 content 를 주는 침묵 실패(llm.py 에서 확인된 패턴) —
+        # 조용히 {} 를 돌려주면 '발화 없음'으로 오인되므로 명시적 실패로 승격(래퍼가 note 부착).
+        raise ValueError("빈 응답(HTTP 200 · content 공백)")
     obj = _parse_json_lax(rawtxt)
-    if not obj and rawtxt.strip():
+    if not obj:
         obj = {"transcript": rawtxt.strip(), "has_speech": True, "segments": [], "language": ""}
     return obj if isinstance(obj, dict) else {}
 
@@ -188,8 +192,10 @@ def describe_visual(frames: list, model: str, service: str = "bizrouter",
         payload = json.loads(resp.read().decode("utf-8"))
     choices = payload.get("choices") or []
     rawtxt = (choices[0]["message"]["content"] if choices else "") or ""
+    if not rawtxt.strip():
+        raise ValueError("빈 응답(HTTP 200 · content 공백)")   # 침묵 실패 → 명시 실패(래퍼가 note 부착)
     obj = _parse_json_lax(rawtxt)
-    if not obj and rawtxt.strip():
+    if not obj:
         obj = {"description": rawtxt.strip(), "on_screen_text": "", "entities": [], "scene": ""}
     if isinstance(obj, dict):
         obj["frame_count"] = len(kept)
@@ -410,8 +416,10 @@ def native_video(content: bytes, mime: str, model: str, service: str = "bizroute
         payload = json.loads(resp.read().decode("utf-8"))
     choices = payload.get("choices") or []
     rawtxt = (choices[0]["message"]["content"] if choices else "") or ""
+    if not rawtxt.strip():
+        raise ValueError("빈 응답(HTTP 200 · content 공백)")   # 침묵 실패 → 명시 실패(래퍼가 note 부착)
     obj = _parse_json_lax(rawtxt)
-    if not obj and rawtxt.strip():
+    if not obj:
         obj = {"description": rawtxt.strip(), "has_speech": False}
     return _split_native(obj)
 

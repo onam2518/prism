@@ -236,9 +236,11 @@ def vision_via_router(content: bytes, mime: str, model: str, service: str = "biz
         payload = json.loads(resp.read().decode("utf-8"))
     choices = payload.get("choices") or []
     raw = (choices[0]["message"]["content"] if choices else "") or ""
+    if not raw.strip():
+        raise ValueError("빈 응답(HTTP 200 · content 공백)")   # 침묵 실패 → 명시 실패(호출부 except 경로)
     obj = _parse_json_lax(raw)
     # 모델이 스키마를 못 지키고 평문만 주면 description 으로라도 보존
-    if not obj and raw.strip():
+    if not obj:
         obj = {"description": raw.strip(), "visible_text": "", "entities": [], "scene": ""}
     return obj if isinstance(obj, dict) else {}
 

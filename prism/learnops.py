@@ -31,9 +31,14 @@ def sync_learned():
         PR.LEARNED_BY_MODEL = {m: {stg: "\n".join(f"- {t}" for t in items)
                                    for stg, items in stages.items()}
                                for m, stages in bm.items() if m}
-    except Exception:
-        PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
-        PR.LEARNED_BY_MODEL = {}
+    except Exception as e:
+        # 스토어 일시 오류로 기존 학습 보정을 빈 값으로 리셋하면 안 된다(조용한 품질 후퇴).
+        # 기존 PR.LEARNED / LEARNED_BY_MODEL 을 그대로 유지하고, 미초기화 상태만 빈 값 시드.
+        if not getattr(PR, "LEARNED", None):
+            PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
+        if not getattr(PR, "LEARNED_BY_MODEL", None):
+            PR.LEARNED_BY_MODEL = {}
+        print(f"[learn] sync_learned 실패 · 기존 보정 유지: {e}")
 
 _LAST_EVAL_DETAIL = []                             # (폴백 캐시) 최근 평가 불일치 · 원천은 store reports
 

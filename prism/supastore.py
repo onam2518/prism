@@ -21,6 +21,8 @@ import urllib.request
 
 from .store import level_of
 
+_EVENT_ONCE_LOCK = threading.Lock()   # log_event_once 의 check-then-insert 직렬화(미션 보상 이중 지급 방지)
+
 
 def configured() -> bool:
     return bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_KEY"))
@@ -136,8 +138,9 @@ class SupabaseStore:
         return out
 
     def target_models(self, team=None) -> list:
-        """검수 대상 콘텐츠 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance)."""
-        q = "select=model"
+        """검수 대상 콘텐츠 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance).
+        분모와 동일하게 검수 대상(YELLOW)만 — 전량 적재 후 자동통과 건의 모델이 섞이지 않게."""
+        q = "select=model&review=eq.yellow"
         if team:
             q += f"&team_id=eq.{urllib.parse.quote(team)}"
         out = []
@@ -286,6 +289,7 @@ class SupabaseStore:
         self._req("DELETE", "drafts", query=f"content_hash=eq.{hq}" + tk, prefer="return=minimal")
         self._req("DELETE", "feedback", query=f"content_hash=eq.{hq}" + tid, prefer="return=minimal")
         self._req("DELETE", "eval_checks", query=f"hash=eq.{hq}" + tid, prefer="return=minimal")
+        self._req("DELETE", "assignments", query=f"content_hash=eq.{hq}" + tid, prefer="return=minimal")  # 유령 배정 → 진척 분모 오염 방지
         return True
 
     def set_source_url(self, content_hash, url, team=None) -> bool:
@@ -517,16 +521,18 @@ class SupabaseStore:
         return sum(1 for h in hashes if len(by_c.get(h, ())) > 1)
 
     def log_event_once(self, reviewer, kind, day, bonus, meta="", team=None) -> bool:
-        q = (f"reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
-             f"&kind=eq.{urllib.parse.quote(kind)}&day=eq.{int(day)}")
-        if self._get("events", "select=id&" + q):
-            return False
-        row = {"reviewer_id": reviewer or None, "kind": kind, "day": int(day),
-               "bonus": int(bonus), "meta": meta or ""}
-        if team:
-            row["team_id"] = team
-        self._req("POST", "events", body=[row], prefer="return=minimal")
-        return True
+        # check-then-insert 이중 지급 레이스 방지(단일 프로세스 서버 전제 · sqlite 구현과 동일)
+        with _EVENT_ONCE_LOCK:
+            q = (f"reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
+                 f"&kind=eq.{urllib.parse.quote(kind)}&day=eq.{int(day)}")
+            if self._get("events", "select=id&" + q):
+                return False
+            row = {"reviewer_id": reviewer or None, "kind": kind, "day": int(day),
+                   "bonus": int(bonus), "meta": meta or ""}
+            if team:
+                row["team_id"] = team
+            self._req("POST", "events", body=[row], prefer="return=minimal")
+            return True
 
     def event_bonus(self, team=None) -> dict:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
@@ -753,10 +759,12 @@ class SupabaseStore:
                 s += 1; d -= 1
             return s
 
-        # 검수 대상(팀 YELLOW 콘텐츠) 총량 → 진척율 분모(contents 는 YELLOW 만 적재)
+        # 검수 대상(팀 YELLOW 콘텐츠) 총량 → 진척율 분모.
+        # contents 는 2026-07-06 부터 전량 적재(include_all)라 review=yellow 필터가 필수 —
+        # 없으면 G/R 자동통과 건이 분모에 들어가 진척율이 과소 표시(sqlite yellow_count 와 계약 불일치).
         if team:
             total_targets = len([r for r in self._get(
-                "contents", "select=hash,model&team_id=eq." + urllib.parse.quote(team))
+                "contents", "select=hash,model&review=eq.yellow&team_id=eq." + urllib.parse.quote(team))
                 if (r.get("model") or "")])           # 미실행(추가만) 콘텐츠는 진척 분모에서 제외
         else:
             total_targets = self.count()
