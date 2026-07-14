@@ -332,6 +332,10 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIn(sg.get("via"), ("llm", "heuristic", "none"))
         self.assertEqual(sg.get("model"), "solar-pro2")            # 선택 모델 에코(버튼이 헛돌지 않음)
         self.assertIn("심층 분석", sg["suggest"]["intents"])         # 전체 아이템메타 분류(사전) 고려 · 데이터 유무 무관
+        # 토큰 부분일치: '인물들'(substring 아님)이 인텐트 '인물·사연' 을 잡아야 함(폴백 휴리스틱 강화)
+        sg2 = self.ok("/topic-studio", {"action": "suggest", "text": "스포츠 주제의 인물들 콘텐츠", "model": "solar-pro2"})
+        self.assertIn("인물·사연", sg2["suggest"]["intents"])
+        self.assertIn("Sports", sg2["suggest"]["cats"])
         # 저장 → 사용자 정의로 영속 + 조건형 풀 생성
         saved = self.ok("/topic-studio", {"action": "save", "def": {
             "name": "스모크 토픽", "prompt": "스모크 자연어 설명", "cats": [], "intents": [], "keywords": []}})

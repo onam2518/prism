@@ -1648,9 +1648,16 @@
           (s.keywords || []).forEach(c => { if (!this.studio.keywords.includes(c)) this.studio.keywords.push(c); });
           this.studio.auto = { cats: (s.cats || []).slice(), intents: (s.intents || []).slice(), keywords: (s.keywords || []).slice() };
           const n = (s.cats || []).length + (s.intents || []).length + (s.keywords || []).length;
-          const src = r && r.via === 'llm' ? ('모델(' + (this.studioModel || '기본') + ')') : '규칙';
-          this.studioMsg = n ? (src + '이 조건값 ' + n + '개를 채웠습니다 · 켜고 끄며 조정하세요')
-            : (src + '이 일치하는 조건값을 찾지 못했습니다 · 직접 선택하세요');
+          const viaLlm = r && r.via === 'llm';
+          const src = viaLlm ? ('모델(' + (this.studioModel || '기본') + ')') : '규칙';
+          // 모델을 골랐는데 규칙으로 떨어졌으면 이유를 밝힌다(모델이 빈 응답·키 없음 등 · 조용한 폴백 방지)
+          let why = '';
+          if (!viaLlm && this.studioModel) {
+            const rt = (r && r.route) || '';
+            why = rt === 'mock' ? ' · 모의 모드라 실제 모델 대신 규칙' : /키|key/i.test(rt) ? ' · 모델 키가 없어 규칙' : (' · ' + (this.studioModel) + ' 응답이 비어 규칙으로 대체');
+          }
+          this.studioMsg = n ? (src + '이 조건값 ' + n + '개를 채웠습니다' + why + ' · 켜고 끄며 조정하세요')
+            : (src + '이 일치하는 조건값을 찾지 못했습니다' + why + ' · 직접 선택하세요');
           this.schedulePreview();
         } catch (e) { this.studioMsg = '채우기 실패 · 다시 시도하세요'; } this.studioSuggesting = false;
       },
