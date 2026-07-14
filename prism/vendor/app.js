@@ -1583,6 +1583,9 @@
       tStepDone() { const s = this.studio; return (s.name.trim() ? 1 : 0) + (s.prompt.trim() ? 1 : 0) + ((s.cats.length || s.intents.length || s.keywords.length) ? 1 : 0); },
       tActive() { const s = this.studio; if (!s.name.trim()) return 1; if (!s.prompt.trim()) return 2; if (!(s.cats.length || s.intents.length || s.keywords.length)) return 3; return 4; },
       isAuto(field, val) { return (this.studio.auto[field] || []).includes(val) && this.studio[field].includes(val); },
+      // 조건 칩: 데이터 present + 선택됐지만 데이터엔 아직 없는 값(자동생성이 고른 전체 분류)까지 표시
+      studioCatChips() { const a = (this.topicData && this.topicData.catalog && this.topicData.catalog.cats) || []; const have = new Set(a.map(c => c.k)); return a.concat(this.studio.cats.filter(c => !have.has(c)).map(c => ({ k: c, v: 0 }))); },
+      studioIntentChips() { const a = (this.topicData && this.topicData.catalog && this.topicData.catalog.intents) || []; const have = new Set(a.map(c => c.k)); return a.concat(this.studio.intents.filter(c => !have.has(c)).map(c => ({ k: c, v: 0 }))); },
       filterSummary() {
         const s = this.studio, parts = [];
         if (s.cats.length) parts.push('<b>' + s.cats.map(c => this.catKo(c) || c).join(', ') + '</b> 카테고리');
