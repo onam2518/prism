@@ -515,9 +515,45 @@ def dict_data() -> dict:
     }
 
 
-# ── 엔티티 사전 모듈(별도 메뉴) · 개체 고유키·타입·속성 관리 + 위키데이터 보강 ──
+# ── 엔티티 사전 모듈 · 개체 고유키·타입·속성 관리 + 위키데이터/나무위키 보강 ──
+# 일괄 보강 진행 상태(단일 실행 가드): UI 가 GET /entdict 폴링으로 N/M 진척을 표시.
+_ENRICH_STATE = {"running": False, "total": 0, "done": 0, "hit": 0, "miss": 0, "fail": 0, "finished_at": 0}
+_ENRICH_LOCK = threading.Lock()
+
+
+def _enrich_run(st, ids):
+    from . import entdict as ED
+    S = _ENRICH_STATE
+    for i, eid in enumerate(ids):
+        if i:
+            time.sleep(ED.ENRICH_DELAY)              # 위키데이터 429 회피(예의 호출)
+        try:
+            r = ED.enrich_entity(st, eid)
+            if not r.get("ok"):
+                S["fail"] += 1
+            elif r.get("matched"):
+                S["hit"] += 1
+            else:
+                S["miss"] += 1
+        except Exception:
+            S["fail"] += 1
+        S["done"] += 1
+    S["running"] = False
+    S["finished_at"] = time.time()
+
+
+def _enrich_start(st, ids) -> bool:
+    """일괄 보강 백그라운드 시작. 이미 실행 중이거나 대상 없음 → False."""
+    with _ENRICH_LOCK:
+        if _ENRICH_STATE["running"] or not ids:
+            return False
+        _ENRICH_STATE.update(running=True, total=len(ids), done=0, hit=0, miss=0, fail=0, finished_at=0)
+    threading.Thread(target=_enrich_run, args=(st, list(ids)), daemon=True).start()
+    return True
+
+
 def entdict_data(q: str = "", type_: str = "", status: str = "", limit: int = 300) -> dict:
-    """목록·통계·메타(타입/속성 필드 사전). 편집 폼·필터의 단일 원천."""
+    """목록·통계·메타(타입/속성 필드 사전) + 일괄 보강 진행 상태. 편집 폼·필터의 단일 원천."""
     from . import entdict as ED
     st = get_store()
     meta = {"types": dict(ED.ENTITY_TYPES),
@@ -525,9 +561,9 @@ def entdict_data(q: str = "", type_: str = "", status: str = "", limit: int = 30
             "occupationGroups": [g for g, _ in ED.OCCUPATION_GROUPS] + ["기타"],
             "eattrKeys": list(ED.ALLOWED_EATTR_KEYS)}
     if not (st and hasattr(st, "ent_list")):
-        return {"items": [], "stats": {}, "meta": meta}
+        return {"items": [], "stats": {}, "meta": meta, "enrich": dict(_ENRICH_STATE)}
     return {"items": st.ent_list(q=q, type_=type_, status=status, limit=limit),
-            "stats": st.ent_stats(), "meta": meta}
+            "stats": st.ent_stats(), "meta": meta, "enrich": dict(_ENRICH_STATE)}
 
 
 def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
@@ -608,17 +644,20 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
         if mock:
             return {"ok": True, "mock": True, "queued": 0}
         ids = st.ent_pending_ids(int(data.get("limit") or 200))
-        if ids:
-            threading.Thread(target=ED.enrich_many, args=(st, ids), daemon=True).start()
-        return {"ok": True, "queued": len(ids)}
+        started = _enrich_start(st, ids)
+        return {"ok": True, "queued": len(ids) if started else 0,
+                "already_running": bool(ids) and not started and _ENRICH_STATE["running"],
+                "enrich": dict(_ENRICH_STATE)}
 
     if action == "backfill":
         rows = st.recent(int(data.get("limit") or 1000), team=team)
         r = ED.ingest_rows(st, rows, team=team or "")
+        queued = 0
         if r.get("new_ids") and not mock and os.environ.get("PRISM_ENTDICT_ENRICH", "1") == "1":
-            threading.Thread(target=ED.enrich_many, args=(st, r["new_ids"]), daemon=True).start()
+            if _enrich_start(st, r["new_ids"]):
+                queued = len(r["new_ids"])
         return {"ok": True, "scanned": len(rows), "created": r["created"], "linked": r["linked"],
-                "enrich_queued": 0 if mock else len(r.get("new_ids") or [])}
+                "enrich_queued": queued, "enrich": dict(_ENRICH_STATE)}
 
     return {"ok": False, "error": f"알 수 없는 액션: {action}"}
 

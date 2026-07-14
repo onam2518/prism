@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -350,9 +351,133 @@ def extract_attrs(typ: str, entity: dict) -> dict:
     return attrs
 
 
+# ── 나무위키 폴백(POC 전용) ──────────────────────────────────────────────
+# ⚠ 라이선스: 나무위키 콘텐츠는 CC BY-NC-SA(비영리·동일조건). 이 앱은 체계 검증용
+#   POC 이고 사전 데이터는 통검 DB 연동 시 전량 폐기 전제라 한정 사용한다(2026-07-14 협의).
+#   운영(상용) 전환·데이터 이전 금지 · 통검 연동 시 이 블록은 제거 대상.
+#   위키데이터 미스인 신규 개체당 1회 조회(저볼륨)로 제한 · PRISM_ENTDICT_NAMU=0 으로 끔.
+NAMU_URL = "https://namu.wiki/w/"
+_BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+
+def _http_text(url: str) -> str:
+    """HTML 조회 심(seam) · 테스트는 이 함수를 대체한다."""
+    req = urllib.request.Request(url, headers={"User-Agent": _BROWSER_UA})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def namu_fetch(name: str) -> str:
+    """문서 HTML. 미존재(404)·접근 불가는 빈 문자열."""
+    try:
+        return _http_text(NAMU_URL + urllib.parse.quote(normalize_name(name)))
+    except (urllib.error.URLError, OSError, ValueError):
+        return ""
+
+
+def _namu_categories(html: str) -> list:
+    cats = []
+    for href in _re.findall(r'href="/w/([^"#?]+)"', html or ""):
+        t = urllib.parse.unquote(href)
+        if t.startswith("분류:"):
+            cats.append(t[3:])
+    return cats
+
+
+def _namu_field(html: str, label: str) -> str:
+    """인포박스 셀: <strong>라벨</strong>…</td><td>값</td> 패턴 · 태그·각주 제거."""
+    m = _re.search(r"<strong[^>]*>" + _re.escape(label) + r"</strong>.*?</td>\s*<td[^>]*>(.*?)</td>",
+                   html or "", _re.S)
+    if not m:
+        return ""
+    txt = _re.sub(r"<[^>]+>", " ", m.group(1))
+    txt = _re.sub(r"\[[^\]]{0,20}\]", "", txt)             # 각주 [1]·[주석]
+    return " ".join(txt.split())[:60]
+
+
+# 분류(카테고리) 키워드 → 타입. 서로 다른 타입 후보 충돌 시 보류(위키데이터 P31 과 동일 정책).
+_NAMU_TYPE_RULES = [
+    ("PS", ("선수", "가수", "배우", "정치인", "기업인", "방송인", "유튜버", "인터넷 방송인",
+            "코미디언", "래퍼", "아이돌", "모델", "성우", "작가", "언론인", "교수")),
+    ("OG", ("기업", "구단", "정당", "정부기관", "단체", "학교", "협회", "그룹", "팀", "기획사")),
+    ("LC", ("행정구역", "도시", "지역", "산", "섬", "관광지", "국가")),
+    ("AF", ("영화", "드라마", "예능", "프로그램", "게임", "음반", "노래", "웹툰", "소설",
+            "브랜드", "애플리케이션", "소프트웨어")),
+    ("EV", ("스포츠 대회", "올림픽", "선거", "사건 사고", "축제", "시상식")),
+]
+
+
+def namu_extract(html: str):
+    """나무위키 문서 → (타입 or '', attrs, 분류 리스트). 동음이의 문서는 (None, …) = 보류."""
+    cats = _namu_categories(html)
+    if any("동음이의" in c for c in cats):
+        return None, {}, cats                              # 동명이인 문서 → 자동 결정 없이 보류
+    tags = {t for t, kws in _NAMU_TYPE_RULES if any(k in c for c in cats for k in kws)}
+    typ = tags.pop() if len(tags) == 1 else ""
+    attrs = {}
+    nat = _namu_field(html, "국적")
+    if nat:
+        attrs["nationality"] = nat.split()[0]
+    birth = _namu_field(html, "출생") or _namu_field(html, "설립")
+    m = _re.search(r"(19|20)\d{2}", birth)
+    if m and typ == "PS":
+        attrs["birth_year"] = m.group(0)
+    aff = _namu_field(html, "소속") or _namu_field(html, "소속사") or _namu_field(html, "소속 구단")
+    if aff and typ == "PS":
+        attrs["affiliation"] = aff
+    occ_src = [_namu_field(html, "직업"), _namu_field(html, "종목")] + cats
+    if typ == "PS":
+        grp = snap_occupation([s for s in occ_src if s])
+        if grp:
+            attrs["occupation"] = grp
+        detail = _namu_field(html, "직업") or _namu_field(html, "종목")
+        if detail:
+            attrs["occupation_detail"] = detail
+        if any("여자" in c or "여성" in c for c in cats):
+            attrs["gender"] = "여성"
+        elif any("남자" in c or "남성" in c for c in cats):
+            attrs["gender"] = "남성"
+    return typ, attrs, cats
+
+
+def _enrich_from_namu(store, e: dict, am: dict, now: float):
+    """위키데이터 미스 시 나무위키 폴백. 성공 시 결과 dict, 문서 미존재·파싱 무산이면 None."""
+    if os.environ.get("PRISM_ENTDICT_NAMU", "1") != "1":
+        return None
+    html = namu_fetch(e["name"])
+    if not html or "<title>" not in html:
+        return None
+    typ, attrs_new, cats = namu_extract(html)
+    if typ is None:                                        # 동음이의 → 보류 + 후보 기록
+        am["_type_candidates"] = cats[:5]
+        am["_enrich"] = {"source": "namuwiki", "result": "ambiguous", "ts": now}
+        store.ent_update(e["entity_id"], {"attr_meta": am, "updated_at": now})
+        return {"ok": True, "matched": False, "ambiguous": True}
+    if not typ and not attrs_new:
+        return None                                        # 아무것도 못 얻음 → 미스 처리로 위임
+    attrs = dict(e.get("attrs") or {})
+    for k, v in attrs_new.items():
+        if (am.get(k) or {}).get("status") == "confirmed":
+            continue
+        attrs[k] = v
+        am[k] = {"source": "namuwiki", "status": "auto"}
+    ext = dict(e.get("external_ids") or {})
+    ext["namuwiki"] = e["name"]
+    fields = {"attrs": attrs, "attr_meta": am, "external_ids": ext, "updated_at": now}
+    if typ and (am.get("type") or {}).get("status") != "confirmed" and not (e.get("type") or ""):
+        fields["type"] = typ
+        am["type"] = {"source": "namuwiki", "status": "auto"}
+        fields["status"] = "active"
+    am["_enrich"] = {"source": "namuwiki", "result": "hit", "ts": now}
+    store.ent_update(e["entity_id"], fields)
+    return {"ok": True, "matched": True, "source": "namuwiki",
+            "type": fields.get("type", e.get("type") or "")}
+
+
 def enrich_entity(store, entity_id: str) -> dict:
-    """개체 1건 위키데이터 보강. 수동 확정(confirmed) 필드·수동 타입은 보존.
-    미히트도 기록(_enrich)해 '조회했으나 미등재'와 '미조회'를 구분한다."""
+    """개체 1건 보강: ① 위키데이터(구조화·안정) → ② 미스 시 나무위키 폴백(한국 커버리지 · POC 전용).
+    수동 확정(confirmed) 필드·수동 타입은 보존. 미히트도 기록(_enrich)해
+    '조회했으나 미등재'와 '미조회'를 구분한다."""
     e = store.ent_get(entity_id)
     if not e:
         return {"ok": False, "error": "개체 없음"}
@@ -363,7 +488,10 @@ def enrich_entity(store, entity_id: str) -> dict:
     except (urllib.error.URLError, OSError, ValueError) as ex:
         return {"ok": False, "error": f"위키데이터 조회 실패: {str(ex)[:120]}"}
     if not hit:
-        am["_enrich"] = {"source": "wikidata", "result": "miss", "ts": now}
+        r = _enrich_from_namu(store, e, am, now)
+        if r is not None:
+            return r
+        am["_enrich"] = {"source": "wikidata+namuwiki", "result": "miss", "ts": now}
         store.ent_update(entity_id, {"attr_meta": am, "updated_at": now})
         return {"ok": True, "matched": False}
     qid = hit["id"]
@@ -371,6 +499,12 @@ def enrich_entity(store, entity_id: str) -> dict:
     typ, p31 = map_type(ent)
     attrs = dict(e.get("attrs") or {})
     new_attrs = extract_attrs(typ or e.get("type") or "", ent)
+    # 위키데이터 히트가 빈약(타입 미판정 ∧ 얻은 속성 0 · 예: 한국 인터넷 인물의 동명 오매칭)하면
+    # 나무위키 폴백을 우선 시도 — 성공 시 그 결과 채택, 실패 시 위키데이터 결과대로 진행.
+    if not typ and not new_attrs and not (e.get("type") or ""):
+        r = _enrich_from_namu(store, e, am, now)
+        if r is not None and r.get("matched"):
+            return r
     for k, v in new_attrs.items():
         if (am.get(k) or {}).get("status") == "confirmed":     # 사람 확정 우선
             continue
@@ -395,10 +529,15 @@ def enrich_entity(store, entity_id: str) -> dict:
     return {"ok": True, "matched": True, "qid": qid, "type": fields.get("type", e.get("type") or "")}
 
 
+ENRICH_DELAY = 0.4                                   # 개체 간 지연(초) · 위키데이터 429 회피(예의 호출)
+
+
 def enrich_many(store, entity_ids, limit: int = 200) -> dict:
     """여러 건 순차 보강(적재 후 백그라운드·UI 일괄 버튼 공용). 실패는 건너뛰고 집계만."""
     hit = miss = fail = 0
-    for eid in list(entity_ids)[:limit]:
+    for i, eid in enumerate(list(entity_ids)[:limit]):
+        if i:
+            time.sleep(ENRICH_DELAY)
         try:
             r = enrich_entity(store, eid)
         except Exception:

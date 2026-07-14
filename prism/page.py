@@ -1203,14 +1203,14 @@ PAGE = """<!doctype html>
             </div>
             <div class="overflow-auto" style="max-height:560px"><table class="ds-table"><thead><tr>
               <th style="width:160px">개체</th><th style="width:120px">타입</th><th>속성</th>
-              <th style="width:100px">위키데이터</th><th style="width:64px" class="tnum">콘텐츠</th><th style="width:170px"></th>
+              <th style="width:100px">출처</th><th style="width:64px" class="tnum">콘텐츠</th><th style="width:170px"></th>
             </tr></thead><tbody>
               <template x-for="e in ((entData && entData.items) || [])" x-bind:key="e.entity_id">
                 <tr>
                   <td class="text-ink" style="font-weight:600" x-text="e.name"></td>
                   <td><span class="ds-badge" x-bind:class="e.type ? 'ds-badge--entity' : 'ds-badge--neutral'" x-text="entTypeLabel(e.type)"></span></td>
                   <td class="text-muted" x-text="entAttrSummary(e) || '—'"></td>
-                  <td><a x-show="e.external_ids && e.external_ids.wikidata" x-bind:href="'https://www.wikidata.org/wiki/' + (e.external_ids && e.external_ids.wikidata)" target="_blank" rel="noopener" class="text-violet" x-text="e.external_ids && e.external_ids.wikidata"></a><span x-show="!(e.external_ids && e.external_ids.wikidata)" class="text-xs text-muted" x-text="(e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'miss') ? '미등재' : '미조회'"></span></td>
+                  <td><a x-show="e.external_ids && e.external_ids.wikidata" x-bind:href="'https://www.wikidata.org/wiki/' + (e.external_ids && e.external_ids.wikidata)" target="_blank" rel="noopener" class="text-violet" x-text="e.external_ids && e.external_ids.wikidata"></a><a x-show="!(e.external_ids && e.external_ids.wikidata) && e.external_ids && e.external_ids.namuwiki" x-bind:href="'https://namu.wiki/w/' + encodeURIComponent((e.external_ids && e.external_ids.namuwiki) || '')" target="_blank" rel="noopener" class="text-violet" data-tip="나무위키 폴백 · POC 전용(통검 연동 시 폐기)" data-tip-pos="top">나무위키</a><span x-show="!(e.external_ids && (e.external_ids.wikidata || e.external_ids.namuwiki))" class="text-xs text-muted" x-text="(e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'miss') ? '미등재' : ((e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'ambiguous') ? '동음이의(보류)' : '미조회')"></span></td>
                   <td class="tnum" x-text="e.n_contents || 0"></td>
                   <td><div class="flex items-center gap-1.5">
                     <button type="button" class="copybtn" x-on:click="openEntEdit(e)">편집</button>
