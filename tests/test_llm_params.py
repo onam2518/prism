@@ -145,6 +145,23 @@ class TestParamNegotiation(unittest.TestCase):
         self.assertEqual(len(sent), 1)                       # 안내문 없으면 비재시도 유지
         self.assertIn("_fail", obj)
 
+    def test_gemini_omits_response_format_upfront(self):
+        # gemini 계열: 라우터가 response_format json_object 를 400 아닌 '침묵 빈응답'으로 돌려줘
+        # 자동학습(400 안내문)이 안 걸린다 → 계열 판정으로 선제 시드(첫 콜부터 response_format 생략).
+        for model in ("gemini-2.5-pro", "gemini-1.5-pro", "google/gemini-2.5-flash"):
+            self.setUp()                                     # 캐시 격리
+            sent, obj, _ = self._run(self._client(model), [_ok_payload()])
+            self.assertEqual(len(sent), 1, model)
+            self.assertNotIn("response_format", sent[0], model)
+            self.assertEqual(obj, {"ok": True})
+
+    def test_gemini_seed_does_not_leak_to_other_families(self):
+        # 회귀 가드: gemini 선제 시드가 gpt/claude 첫 콜엔 영향 없어야(response_format 정상 전송)
+        for model in ("gpt-5.4", "claude-opus-4-8"):
+            self.setUp()
+            sent, _, _ = self._run(self._client(model), [_ok_payload()])
+            self.assertIn("response_format", sent[0], model)
+
 
 if __name__ == "__main__":
     unittest.main()

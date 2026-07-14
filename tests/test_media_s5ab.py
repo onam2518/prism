@@ -28,6 +28,11 @@ class TestMediaS5AB(unittest.TestCase):
             self.assertIn("item_meta", x)
             self.assertTrue(x["item_meta"].get("summary"))          # mock 채워짐
             self.assertIn("content_category", x["item_meta"])
+            # 계측 필드: 빈 산출 진단(mock 은 채워지므로 empty=False·fails 비어야)
+            self.assertIn("empty", x)
+            self.assertIn("fails", x)
+            self.assertFalse(x["empty"])
+            self.assertEqual(x["fails"], [])
 
     def test_dedup_and_cap(self):
         # 중복 제거 + 상한 6
@@ -50,6 +55,21 @@ class TestMediaS5AB(unittest.TestCase):
         S.media_s5ab(BODY, ["solar-pro2", "gpt-5.4"])
         after = len(S.results_rows()) if st else 0
         self.assertEqual(before, after)                             # 실험 · 미저장
+
+    def test_trace_surfaces_fail_kind(self):
+        # 콜 실패 시 trace.fails 에 fail_kind 가 표면화되는지(하네스 계측). 도달 불가 URL → network.
+        from prism import pipeline as PIPE
+        from prism.llm import LLMClient
+        from prism.config import Config, RetryPolicy
+        cfg = Config()
+        cfg.chat_url = "http://127.0.0.1:1/v1/chat/completions"      # 연결 거부(즉시 실패)
+        cfg.retry = RetryPolicy(max_retries=0)                       # 백오프 없이 1회
+        llm = LLMClient(config=cfg, api_key="k", model="gpt-5.4")   # 비-mock
+        out = PIPE.extract({"displayServiceName": "영상", "title": "", "subtitle": "",
+                            "body": "서울 도심 행사"}, llm, legal=False)
+        fails = (out.get("trace") or {}).get("fails")
+        self.assertTrue(fails)                                       # 최소 1건 표면화
+        self.assertTrue(any(f.get("kind") for f in fails))          # fail_kind 존재
 
 
 if __name__ == "__main__":
