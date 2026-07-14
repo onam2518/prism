@@ -1,5 +1,6 @@
 """사용자 메타: 목업(MOCKUP). 행동 로그 연결 시 실데이터."""
 from __future__ import annotations
+import datetime as _dt
 import json
 from collections import defaultdict as _dd
 from . import graphviz as GV
@@ -121,6 +122,95 @@ _CENTROID = {  # (depth, intensity, breadth) → 8 페르소나 시그니처
 }
 
 
+def _parse_ts(v):
+    """행동 로그 ts(ISO 문자열 또는 epoch 초) → datetime. 실패 시 None."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        try:
+            return _dt.datetime.fromtimestamp(v)
+        except Exception:
+            return None
+    try:
+        return _dt.datetime.fromisoformat(str(v).strip().replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _time_features(evs):
+    """행동 로그 ts → 시간 신호: 시간대 분포 · 주야 이중모드 · 버스트 · 관심 드리프트.
+    ts 가 있는 로그가 절반 미만이면 신호를 쓰지 않는다(관측 부족)."""
+    from collections import Counter
+    pts = []
+    for it, lg in evs:
+        d = _parse_ts(lg.get("ts"))
+        if d:
+            pts.append((d, it, lg))
+    n = len(pts)
+    tf = {"n_ts": n, "tod_label": "관측 부족", "dual_mode": False, "burst": False,
+          "drift": False, "weekend_share": 0.0, "commute_share": 0.0, "night_share": 0.0}
+    if n < max(3, len(evs) // 2):
+        return tf
+    pts.sort(key=lambda p: p[0])
+    buckets = Counter()
+    day_dw, night_dw = [], []
+    for d, it, lg in pts:
+        h, wd = d.hour, d.weekday()
+        if wd >= 5:
+            b = "주말"
+        elif h in (7, 8, 18, 19):
+            b = "출퇴근"
+        elif 9 <= h < 18:
+            b = "주간"
+        else:
+            b = "야간"
+        buckets[b] += 1
+        dw = int(lg.get("dwell_sec", 0) or 0)
+        if wd < 5 and 9 <= h < 18:
+            day_dw.append(dw)
+        elif h >= 20 or h < 6:
+            night_dw.append(dw)
+    dom, dn = buckets.most_common(1)[0]
+    tf["weekend_share"] = round(buckets["주말"] / n, 2)
+    tf["commute_share"] = round(buckets["출퇴근"] / n, 2)
+    tf["night_share"] = round(buckets["야간"] / n, 2)
+    tf["tod_label"] = ({"출퇴근": "출퇴근 집중", "주간": "평일 주간", "야간": "평일 야간",
+                        "주말": "주말 집중"}[dom] if dn / n >= 0.5 else "수시")
+    # 주·야 이중모드: 같은 사용자가 낮 = 훑기(짧은 체류) · 밤 = 몰입(긴 체류)
+    if len(day_dw) >= 3 and len(night_dw) >= 3:
+        if sum(day_dw) / len(day_dw) < 20 and sum(night_dw) / len(night_dw) >= 45:
+            tf["dual_mode"] = True
+            tf["tod_label"] = "주·야 이중"
+    # 버스트(조사자): 관측 기간 1주 이상인데 소비의 60%+ 가 연속 3일에 몰림
+    days = sorted({d.date() for d, _, _ in pts})
+    if (days[-1] - days[0]).days + 1 >= 7 and n >= 8:
+        per_day = Counter(d.date() for d, _, _ in pts)
+        best = max(sum(per_day.get(d0 + _dt.timedelta(days=k), 0) for k in range(3))
+                   for d0 in days)
+        if best / n >= 0.6:
+            tf["burst"] = True
+    # 드리프트(전환기): 전·후반 주 관심 카테고리가 다르고 상위 3개 겹침이 적다
+    if n >= 10:
+        half = n // 2
+        c1, c2 = Counter(), Counter()
+        for i, (d, it, lg) in enumerate(pts):
+            for cat in it["entity_categories"][:1]:
+                (c1 if i < half else c2)[cat] += 1
+        t1 = [k for k, _ in c1.most_common(3)]
+        t2 = [k for k, _ in c2.most_common(3)]
+        if t1 and t2 and t1[0] != t2[0]:
+            inter, union = len(set(t1) & set(t2)), len(set(t1) | set(t2))
+            if union and inter / union < 0.34:
+                tf["drift"] = True
+    return tf
+
+
+def _breadth(viewed):
+    """소비 폭 = 실제 소비한 콘텐츠 카테고리(Tier1) 다양성. 6종 이상이면 1.0."""
+    cats = {c["entity_categories"][0] for c in viewed if c["entity_categories"]}
+    return min(1.0, len(cats) / 6.0)
+
+
 def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) -> dict:
     from collections import defaultdict
     rows = _read_jsonl(results_path)
@@ -155,17 +245,25 @@ def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) ->
                  "intent": (it["intent_categories"][0] if it["intent_categories"] else "기타")}
                 for j, (it, lg) in enumerate(evs)]
         form, intensity, prof = _profile_from_logs(viewed, logs)
-        pname = _nearest_persona(form, intensity, viewed)
+        tf = _time_features(evs)
+        form["시간대"] = tf["tod_label"]
+        pname, rule = _nearest_persona(form, intensity, viewed, tf, prof["ents"])
+        signals = [s for s, on in (("버스트", tf["burst"]), ("주야 이중", tf["dual_mode"]),
+                                   ("드리프트", tf["drift"])) if on]
         users.append({"user_id": uid, "profile": (profiles or {}).get(uid),
                       "persona": pname, "persona_id": _pid(pname),
                       "persona_full": pname, "topic": prof["ent"][0][0] if prof["ent"] else "기타",
                       "form": form, "intensity": intensity, "behavior_log": logs,
+                      "breadth": round(_breadth(viewed), 2),
                       "interest_entity_categories": prof["ent"], "interest_intent_categories": prof["int"],
                       "affinity_entities": prof["ents"], "engagement": prof["eng"],
                       "persona_derivation": [["행동 로그(실데이터)", f"{len(logs)}건"],
                                              ["소비 형태(FORM)", " · ".join(f"{k}:{v}" for k, v in form.items())],
                                              ["소비 강도", " · ".join(f"{k}={v}" for k, v in list(intensity.items())[:4])],
-                                             ["페르소나(근접 매칭)", pname]]})
+                                             ["시간 신호", f"{tf['tod_label']} · ts {tf['n_ts']}/{len(logs)}건"
+                                              + (" · " + " · ".join(signals) if signals else "")],
+                                             ["소비 폭", f"카테고리 다양성 {round(_breadth(viewed), 2)}"],
+                                             ["페르소나(판별)", f"{pname} · {rule}"]]})
     agg = _aggregate_users(users)
     return {"warning": "", "is_mock": False,
             "source": f"실 행동 로그 {logs_path} → 소비 형태·강도 → 페르소나 (실데이터)",
@@ -205,19 +303,36 @@ def _profile_from_logs(viewed, logs):
     return form, intensity, {"ent": _top(w_ent, 5), "int": top_int, "ents": _top(ents, 8), "eng": eng}
 
 
-def _nearest_persona(form, intensity, viewed):
+def _nearest_persona(form, intensity, viewed, tf=None, ents_top=None):
+    """페르소나 판별: 명시 신호 규칙(저데이터·버스트·이중모드·드리프트·주말·출퇴근·
+    엔티티 집중) 우선 → 신호가 없으면 (깊이·강도·폭) 센트로이드 근접 매칭.
+    반환 = (페르소나명, 판별 근거 라벨)."""
+    tf = tf or {}
     if len(viewed) < 5:
-        return "라이트"
+        return "라이트", "저데이터(5건 미만)"
+    if tf.get("burst"):
+        return "조사자", "단기 집중 소비(버스트)"
+    if tf.get("dual_mode"):
+        return "이중모드", "주간 훑기 · 야간 몰입 전환"
+    if tf.get("drift"):
+        return "전환기", "전·후반 관심 카테고리 전환"
+    if tf.get("weekend_share", 0) >= 0.7 and form.get("깊이") != "몰입":
+        return "라이트", "주말 편중 소비"
+    if tf.get("commute_share", 0) >= 0.5 and form.get("깊이") == "훑기":
+        return "스낵러", "출퇴근 시간대 훑기"
+    total_ew = sum(w for _, w in (ents_top or []))
+    if ents_top and total_ew and ents_top[0][1] / total_ew >= 0.5 and len(viewed) >= 8:
+        return "팬덤", f"단일 엔티티 집중({ents_top[0][0]})"
     depth = {"몰입": .9, "혼합": .5, "훑기": .2}.get(form["깊이"], .5)
     iv = [{"고": 1, "중": .6, "저": .25}.get(v, .5) for v in intensity.values()]
     inten = sum(iv) / len(iv) if iv else .3
-    breadth = min(1.0, len({*()} | set()) or len(intensity) / 6)
+    breadth = _breadth(viewed)
     best, bd = "스낵러", 9
     for name, (d, i, b) in _CENTROID.items():
         dist = (d - depth) ** 2 + (i - inten) ** 2 + (b - breadth) ** 2
         if dist < bd:
             bd, best = dist, name
-    return best
+    return best, "근접 매칭(깊이·강도·폭)"
 
 
 def _pid(name):
