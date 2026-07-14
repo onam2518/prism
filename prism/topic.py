@@ -332,8 +332,8 @@ def suggest_dims(text, rows, service_names=None):
 # 토픽 탭 HTML (대시보드와 동일 토큰)
 
 # 관계도: 콘텐츠(묶음 멤버)가 어떤 풀(엔티티·사건·조건)에 어떻게 들어가는지
-_GRAPH_COL = {"content": "#5e6ad2", "entity": "#e2a33c", "category": "#a988e6",
-              "event": "#4cb9a7", "filter": "#d6688f"}
+_GRAPH_COL = {"content": "#1e84ff", "entity": "#ff9429", "category": "#a05cff",
+              "event": "#18ba45", "filter": "#ff5c66"}
 _GRAPH_CMAX = 140                         # 콘텐츠 노드 상한(과밀 방지)
 
 
@@ -399,8 +399,8 @@ def _graph_section(d, rows):
     return GV.vendor_script() + GV.section(
         "mpg", nodes, links, _GRAPH_COL,
         "토픽 관계도", "콘텐츠가 어떤 묶음(엔티티·사건·조건)에 어떻게 구성되는지 · 호버=연결 강조",
-        legend=[("콘텐츠", "#5e6ad2"), ("엔티티", "#e2a33c"), ("콘텐츠 카테고리", "#a988e6"),
-                ("사건형 사건", "#4cb9a7"), ("조건형 조건", "#d6688f")],
+        legend=[("콘텐츠", "#1e84ff"), ("엔티티", "#ff9429"), ("콘텐츠 카테고리", "#a05cff"),
+                ("사건형 사건", "#18ba45"), ("조건형 조건", "#ff5c66")],
         height=480)
 
 
@@ -479,12 +479,12 @@ _MP_HTML = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>토픽 생성 체계</title>
 <meta name="description" content="아이템 메타(엔티티·인텐트)를 엔티티형·사건형·조건형 3개 축으로 그룹핑하는 토픽 생성 체계">
 <style>
-:root{--bg:#08090c;--surface:#101216;--s2:#15181d;--line:#23262e;--mut:#8b909b;--fg:#f6f7f9;--fg2:#cfd4de;
---pri:#6872d6;--ent:#e0a648;--int:#46bda9;--cat:#ab8ee8;
---sh:0 1px 2px rgba(0,0,0,.45),0 10px 28px -16px rgba(0,0,0,.7);
---sh-hi:0 2px 6px rgba(0,0,0,.5),0 18px 44px -18px rgba(6,8,16,.85);
---font:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Pretendard,sans-serif;
---disp:"Space Grotesk","Plus Jakarta Sans",-apple-system,sans-serif}
+:root{--bg:var(--ds-canvas,#f4f5f7);--surface:var(--ds-surface,#fff);--s2:var(--ds-surface-on,#f4f5f7);--line:var(--ds-hairline,rgba(0,0,0,.08));--mut:var(--ds-muted,rgba(0,0,0,.48));--fg:var(--ds-ink,#000);--fg2:var(--ds-body,rgba(0,0,0,.88));
+--pri:var(--ds-primary,#1e84ff);--ent:var(--ds-warning,#ff9429);--int:var(--ds-cat-sports,#5c77ff);--cat:var(--ds-cat-entertainment,#a05cff);
+--sh:var(--ds-shadow-medium,0 1px 10px 0 rgba(0,0,0,.08));
+--sh-hi:var(--ds-shadow-high,0 2px 16px 0 rgba(0,0,0,.16));
+--font:var(--ds-font-body,'Pretendard Variable',-apple-system,sans-serif);
+--disp:var(--ds-font-display,'Pretendard Variable',-apple-system,sans-serif)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);
 color:var(--fg);font:14.5px/1.55 var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 header{padding:26px 28px 22px;border-bottom:1px solid var(--line);
@@ -498,14 +498,14 @@ h1{font-family:var(--disp);font-size:26px;margin:0;font-weight:600;letter-spacin
 .kpi{background:linear-gradient(180deg,rgba(255,255,255,.022),transparent 70%),var(--surface);
 border:1px solid var(--line);border-radius:14px;padding:17px 18px;box-shadow:var(--sh);
 transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s,box-shadow .22s}
-.kpi:hover{transform:translateY(-2px);border-color:#31353f;box-shadow:var(--sh-hi)}
+.kpi:hover{transform:translateY(-2px);border-color:var(--ds-border-input-hover);box-shadow:var(--sh-hi)}
 .kpi b{font-family:var(--disp);font-size:30px;font-weight:600;letter-spacing:-.02em;display:block;
 font-variant-numeric:tabular-nums;line-height:1.1}
 .kpi span{color:var(--mut);font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;margin-top:3px;display:block}
 .intro{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:26px}
 .def{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:17px;box-shadow:var(--sh);
 transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s}
-.def:hover{transform:translateY(-2px);border-color:#31353f}
+.def:hover{transform:translateY(-2px);border-color:var(--ds-border-input-hover)}
 .def h3{font-family:var(--disp);margin:0 0 6px;font-size:15px;font-weight:600;letter-spacing:-.01em}
 .def p{margin:0;color:var(--fg2);font-size:13px;line-height:1.55;text-wrap:pretty}
 .def .tag{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;margin-bottom:9px;display:inline-block;
@@ -523,22 +523,22 @@ transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s,box-shadow
 .lc{font-size:11px;color:var(--mut);white-space:nowrap}
 .prompt{color:var(--fg2);font-size:13px;font-style:italic;margin-bottom:10px}
 .pe{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
-.ent{font-size:12px;background:rgba(226,163,60,.14);color:var(--ent);border-radius:6px;padding:2px 8px}
+.ent{font-size:12px;background:rgba(255,148,41,.16);color:var(--ent);border-radius:6px;padding:2px 8px}
 .dims{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
 .dim{font-size:11px;border-radius:6px;padding:2px 8px}
-.dim.ent{background:rgba(169,136,230,.16);color:var(--cat)}
-.dim.int{background:rgba(76,185,167,.14);color:var(--int)}
+.dim.ent{background:rgba(160,92,255,.16);color:var(--cat)}
+.dim.int{background:rgba(92,119,255,.16);color:var(--int)}
 .pm{font-size:12px;color:var(--mut);margin-bottom:6px}
 .rep{font-size:12px;color:var(--fg2);border-top:1px dashed var(--line);padding-top:7px}
 .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px}
 .bar .lab{width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar .kk{width:150px;color:var(--mut);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bar .track{flex:1;background:#1a1b1d;border-radius:999px;height:8px;overflow:hidden}
+.bar .track{flex:1;background:var(--ds-surface-on);border-radius:999px;height:8px;overflow:hidden}
 .bar .fill{display:block;height:100%;border-radius:999px}
 .bar .n{width:34px;text-align:right;color:var(--mut);font-variant-numeric:tabular-nums}
 .note{color:var(--mut);font-size:12px;margin-top:8px}
 .single-wrap{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--sh)}
-.bar:hover .lab{color:#fff}.bar{transition:none}.bar .fill{transition:width .5s cubic-bezier(.32,.72,0,1)}
+.bar:hover .lab{color:var(--ds-ink)}.bar{transition:none}.bar .fill{transition:width .5s cubic-bezier(.32,.72,0,1)}
 /* ── component kit: 구조 확대(타입 액센트·중첩 하이라이트·상태 배지·스탯 타일) ── */
 .kpi{display:flex;flex-direction:column;gap:6px;min-height:92px;justify-content:flex-end;
 box-shadow:var(--sh),inset 0 1px 0 rgba(255,255,255,.03)}
@@ -560,7 +560,7 @@ background:rgba(70,189,169,.13);color:var(--int);white-space:nowrap}
 .fmatch{font-size:12.5px;color:var(--mut);margin-bottom:10px;display:flex;align-items:baseline;gap:7px}
 .fmatch .big{font-family:var(--disp);font-size:23px;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums;letter-spacing:-.015em}
 .angles{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:11px}
-.ang{font-size:11px;color:var(--fg2);background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
+.ang{font-size:11px;color:var(--fg2);background:var(--ds-state-hover);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
 .ent,.dim{border:1px solid transparent}
 .bar .rk{font-family:var(--disp);font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums;width:24px;text-align:right;opacity:.65}
 .cnt{font-family:var(--disp);font-size:11px;font-weight:600;color:var(--fg2);background:var(--s2);border:1px solid var(--line);
@@ -589,16 +589,16 @@ h2 .hint{font-size:10px}
   <div class="kpi"><b>__DUP__</b><span>사건형 평균 중복률</span></div>
  </div>
  <div class="intro">
-  <div class="def"><span class="tag" style="background:rgba(226,163,60,.16);color:var(--ent)">엔티티형</span>
+  <div class="def"><span class="tag" style="background:rgba(255,148,41,.16);color:var(--ent)">엔티티형</span>
    <h3>이 엔티티에 해당하는 콘텐츠 <span class="hint" data-tip="• 단일 엔티티 단위
 • 공통키(통검 DB) 자동 + 신생 키워드 수동 등록
 • lifecycle 영속">?</span></h3>
    <span class="lc">영속</span></div>
-  <div class="def"><span class="tag" style="background:rgba(76,185,167,.14);color:var(--int)">사건형</span>
+  <div class="def"><span class="tag" style="background:rgba(92,119,255,.16);color:var(--int)">사건형</span>
    <h3>이 사건을 다룬 콘텐츠 <span class="hint" data-tip="• 엔티티 공출현(공통 ≥__COMIN__개)으로 자연 발생하는 사건 묶음
 • 중복 제거 · 앵글 분산">?</span></h3>
    <span class="lc">단기</span></div>
-  <div class="def"><span class="tag" style="background:rgba(94,106,210,.16);color:var(--pri)">조건형</span>
+  <div class="def"><span class="tag" style="background:var(--ds-primary-tint);color:var(--pri)">조건형</span>
    <h3>이 조건에 부합하는 콘텐츠 <span class="hint" data-tip="• 운영자가 자연어로 정의한 조건
 • 인텐트 × 콘텐츠 카테고리">?</span></h3>
    <span class="lc">중장기</span></div>
