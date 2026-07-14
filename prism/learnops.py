@@ -497,11 +497,12 @@ def learn_data(team=None) -> dict:
                         "coverage": (round(knowhow_n / golden_n, 3) if golden_n else None)},
             "requirements": requirements}
 
-def learn_spec_md(team=None) -> str:
+def learn_spec_md(team=None, d=None) -> str:
     """파인튜닝 스펙·소요서(.md) 생성: 살아있는 검수·골든 수치를 근거로 한 요구사항 문서.
-    이 도구의 최종 산출물(관리자 주입 → 검수 → 골든 → 스펙·소요) · 기준치는 전부 논문 출처."""
+    이 도구의 최종 산출물(관리자 주입 → 검수 → 골든 → 스펙·소요) · 기준치는 전부 논문 출처.
+    d: 호출부가 이미 계산한 learn_data 주입(backlog_rows 와 동일 관례) — 번들 발행의 중복 전량 집계 방지."""
     from . import dictionaries as _D
-    d = learn_data(team)
+    d = d if d is not None else learn_data(team)
     if not d.get("ok"):
         return "# 파인튜닝 소요서\n\n데이터가 없습니다."
     rep = _SV._report_get("learn_report", team, _LAST_LEARN_REPORT) or {}
@@ -770,7 +771,7 @@ def handoff_bundle(team=None):
             files[fname] = text
     files["backlog.jsonl"] = "\n".join(json.dumps(r, ensure_ascii=False)
                                        for r in backlog_rows(team, d))
-    files["finetune_spec.md"] = learn_spec_md(team)
+    files["finetune_spec.md"] = learn_spec_md(team, d=d)   # 이미 계산한 learn_data 재사용(전량 집계 2회 방지)
     from . import dictionaries as D
     files["dictionaries.json"] = json.dumps({            # taxonomy 외재화 방식 → 사전 동봉이 재현 조건
         "iab_tier1": list(D.IAB_TIER1),

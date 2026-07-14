@@ -120,6 +120,11 @@ def validate_jwt(token: str, strict: bool = False):
             raise AuthBackendUnavailable()
     if uid:
         with _JWT_LOCK:
+            # 만료 항목 정리: 토큰이 1시간마다 로테이트되므로 방치하면 사용자×시간만큼 무한 성장
+            if len(_JWT_CACHE) > 512:
+                for k in [k for k, v in _JWT_CACHE.items() if v[1] <= now]:
+                    _JWT_CACHE.pop(k, None)
+                    _JWT_EMAIL.pop(k, None)
             _JWT_CACHE[token] = (uid, now + 60)
             _JWT_EMAIL[token] = (email, now + 60)
     return uid

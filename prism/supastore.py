@@ -51,7 +51,7 @@ class SupabaseStore:
             headers["Prefer"] = prefer
         data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
         path = url[len(self.url):]                       # /rest/v1/… (keep-alive 는 host 기준)
-        status, raw = self._http(method, path, data, headers)
+        status, raw, _ = self._http(method, path, data, headers)
         if status >= 400:
             raise RuntimeError(f"supabase {method} {table} HTTP{status}: {raw[:300]}")
         return json.loads(raw) if raw.strip() else []
@@ -72,7 +72,7 @@ class SupabaseStore:
             try:
                 c.request(method, path, body=data, headers=headers)
                 resp = c.getresponse()
-                return resp.status, resp.read().decode("utf-8", "replace")
+                return resp.status, resp.read().decode("utf-8", "replace"), dict(resp.getheaders())
             except (http.client.HTTPException, ConnectionError, OSError):
                 try:
                     c.close()
@@ -445,9 +445,13 @@ class SupabaseStore:
                  "after": r.get("after") or {}, "ts": _epoch(r.get("created_at"))} for r in rows]
 
     def patch_counts(self, team=None) -> dict:
+        """검수자별 교정 건수. 카운트만 필요하므로 before/after JSON 블롭을 내려받지 않는다
+        (아레나 집계 경로 · patch_rows(10000) 재사용 시 페이로드가 수 MB 까지 커짐)."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         out = {}
-        for r in self.patch_rows(limit=10000, team=team):
-            out[r["reviewer"]] = out.get(r["reviewer"], 0) + 1
+        for r in self._get("patch_log", f"select=reviewer_id{tq}&limit=20000"):
+            k = r.get("reviewer_id") or ""
+            out[k] = out.get(k, 0) + 1
         return out
 
     def save_gold_check(self, content_hash, reviewer, expected, verdict, team=None) -> bool:
@@ -567,7 +571,7 @@ class SupabaseStore:
         q = "select=content_hash,reviewer_id,verdict,stage,note,element,reap_plan,title,service,ts"
         if team:
             q += f"&team_id=eq.{urllib.parse.quote(team)}"
-        return self._get("feedback", q)
+        return self._get("feedback", q + "&limit=50000")   # 무제한 fetch 방지(명시 상한 · 다른 대량 쿼리와 동일 관례)
 
     def feedback_map(self, team=None) -> dict:
         """content_hash → 합의 집계(SQLite 와 동일 shape). reviewer 라벨은 표시명."""
@@ -1139,7 +1143,21 @@ class SupabaseStore:
 
     # ── dashboard/config 호환(검토 콘텐츠 기준) ──
     def count(self) -> int:
-        return len(self._get("contents", "select=hash"))
+        """행 수만 필요한데 전 행을 내려받지 않는다 — /config GET(로그인 화면 포함) 마다
+        실행되는 공개 경로라 Content-Range 카운트(Range 0-0)로 왕복 페이로드 최소화."""
+        headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
+                   "Accept": "application/json", "Prefer": "count=exact",
+                   "Range-Unit": "items", "Range": "0-0"}
+        url = f"{self.base}/prism_contents?select=hash"
+        status, raw, hdrs = self._http("GET", url[len(self.url):], None, headers)
+        if status < 400:
+            cr = hdrs.get("Content-Range") or hdrs.get("content-range") or ""
+            if "/" in cr:
+                try:
+                    return int(cr.rsplit("/", 1)[1])
+                except ValueError:
+                    pass
+        return len(self._get("contents", "select=hash"))   # 폴백(구 PostgREST 등)
 
     def grade_stats(self) -> dict:
         rows = self._get("contents", "select=final_grade")

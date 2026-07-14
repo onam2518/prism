@@ -104,6 +104,7 @@ class TestGateSupabaseMode(unittest.TestCase):
     def tearDownClass(cls):
         cls.SV._supa = cls._orig_supa
         cls.httpd.shutdown()
+        cls.httpd.server_close()   # 리스닝 소켓 정리(ResourceWarning 방지)
 
     def _get(self, path):
         try:
