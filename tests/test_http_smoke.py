@@ -380,7 +380,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.ok("/run", {"displayServiceName": "스포츠", "title": "안세영 안세영 결승 진출",
                          "body": "안세영 선수가 결승에 진출했다. 안세영 경기력이 좋았다."})
         d = self.ok("/entdict")
-        self.assertEqual(set(d), {"items", "stats", "meta"})
+        self.assertEqual(set(d), {"items", "stats", "meta", "enrich"})
         self.assertEqual(set(d["meta"]["types"]), {"PS", "OG", "LC", "AF", "EV", "TM"})
         self.assertGreater(d["stats"]["total"], 0, "적재 훅이 개체를 등재해야 함")
         self.assertTrue(any(e["name"] == "안세영" for e in d["items"]))

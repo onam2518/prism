@@ -1794,11 +1794,13 @@
       },
       qexN() { const d = this.topicData; return (d && d.n_eligible != null) ? Math.max(0, (d.n_contents || 0) - d.n_eligible) : 0; },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await this._afetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
-      // ── 엔티티 사전(별도 메뉴): 목록·필터·수동 편집(사람 확정)·위키데이터 보강 ──
+      // ── 엔티티 사전(별도 메뉴): 목록·필터·수동 편집(사람 확정)·위키데이터/나무위키 보강 ──
       entData: null, entQ: '', entType: '', entStatus: '', entMsg: '', entAddName: '',
       entEdit: null, entEditAliases: [], entEditContents: [], entEditMsg: '', entAliasInput: '',
-      async loadEntdict() {
-        this.modBusy = true;
+      _entPollT: null,
+      _entProgress(s) { return (s.done || 0) + '/' + (s.total || 0) + ' · 매칭 ' + (s.hit || 0) + ' · 미등재 ' + (s.miss || 0) + ((s.fail || 0) ? ' · 실패 ' + s.fail : ''); },
+      async loadEntdict(silent) {
+        if (!silent) this.modBusy = true;
         try {
           const p = new URLSearchParams();
           if (this.entQ.trim()) p.set('q', this.entQ.trim());
@@ -1806,7 +1808,17 @@
           if (this.entStatus) p.set('status', this.entStatus);
           this.entData = await (await this._afetch('/entdict?' + p.toString())).json();
         } catch (e) {}
-        this.modBusy = false;
+        if (!silent) this.modBusy = false;
+        // 일괄 보강 진척: 실행 중이면 1.5초 폴링으로 목록·카운트 실시간 갱신(수동 새로고침 불필요)
+        const s = (this.entData && this.entData.enrich) || {};
+        clearTimeout(this._entPollT);
+        if (s.running) {
+          this.entMsg = '일괄 보강 진행 중 · ' + this._entProgress(s);
+          this._entPollT = setTimeout(() => this.loadEntdict(true), 1500);
+        } else if (this._entPollT !== null && s.total) {
+          this._entPollT = null;
+          this.entMsg = '일괄 보강 완료 · ' + this._entProgress(s);
+        }
       },
       async entAction(body) {
         const r = await this._afetch('/entdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
@@ -1838,21 +1850,28 @@
         this.entEdit = null; this.entMsg = '저장됨 · 수동 확정 필드는 재보강이 덮어쓰지 않습니다'; this.loadEntdict();
       },
       async entEnrich(e) {
-        this.entMsg = '위키데이터 보강 중… (' + e.name + ')';
+        this.entMsg = '보강 중… (' + e.name + ')';
         const d = await this.entAction({ action: 'enrich', id: e.entity_id });
-        this.entMsg = !d.ok ? ('오류: ' + (d.error || '')) : (d.matched ? ('매칭됨 · ' + (d.qid || '') + (d.type ? (' · 타입 ' + d.type) : '')) : '위키데이터 미등재 · 보류 유지(수동 편집으로 확정 가능)');
+        this.entMsg = !d.ok ? ('오류: ' + (d.error || ''))
+          : (d.matched ? ('매칭됨 · ' + (d.qid || (d.source === 'namuwiki' ? '나무위키' : '')) + (d.type ? (' · 타입 ' + d.type) : ''))
+          : (d.ambiguous ? '동음이의 문서 · 자동 결정 없이 보류(수동 편집으로 확정)' : '위키데이터·나무위키 미등재 · 보류 유지(수동 편집으로 확정 가능)'));
         this.loadEntdict();
       },
       async entEnrichAll() {
         const d = await this.entAction({ action: 'enrich_pending' });
-        this.entMsg = d.ok ? ('미조회 개체 ' + (d.queued || 0) + '건 백그라운드 보강 시작 · 잠시 후 새로고침하세요') : ('오류: ' + (d.error || ''));
+        if (!d.ok) { this.entMsg = '오류: ' + (d.error || ''); return; }
+        if (d.mock) { this.entMsg = 'mock 모드 · 네트워크 보강은 생략됩니다'; return; }
+        if (d.already_running) { this.loadEntdict(true); return; }        // 진행 중이면 진척 표시에 합류
+        if (!d.queued) { this.entMsg = '보강할 미조회 개체가 없습니다'; return; }
+        this.entMsg = '일괄 보강 시작 · 0/' + d.queued;
+        this.loadEntdict(true);                                           // 폴링 시작(진척 자동 갱신)
       },
       async entBackfill() {
-        if (!(await this.dsConfirm('적재된 콘텐츠의 엔티티를 사전에 색인할까요? 신규 개체는 백그라운드로 위키데이터 보강됩니다.', { ok: '색인' }))) return;
+        if (!(await this.dsConfirm('적재된 콘텐츠의 엔티티를 사전에 색인할까요? 신규 개체는 위키데이터(미스 시 나무위키)로 백그라운드 보강됩니다.', { ok: '색인' }))) return;
         this.entMsg = '색인 중…';
         const d = await this.entAction({ action: 'backfill' });
-        this.entMsg = d.ok ? ('색인 완료 · 콘텐츠 ' + d.scanned + '건 스캔 · 신규 개체 ' + d.created + ' · 링크 ' + d.linked + (d.enrich_queued ? (' · 보강 대기 ' + d.enrich_queued) : '')) : ('오류: ' + (d.error || ''));
-        this.loadEntdict();
+        this.entMsg = d.ok ? ('색인 완료 · 콘텐츠 ' + d.scanned + '건 스캔 · 신규 개체 ' + d.created + ' · 링크 ' + d.linked) : ('오류: ' + (d.error || ''));
+        this.loadEntdict(true);                                           // 보강이 시작됐으면 폴링이 이어받음
       },
       async entDelete(e) {
         if (!(await this.dsConfirm('“' + e.name + '” 개체를 사전에서 삭제할까요? 콘텐츠 링크도 함께 삭제됩니다.', { ok: '삭제', danger: true }))) return;

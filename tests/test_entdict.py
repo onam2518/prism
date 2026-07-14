@@ -50,14 +50,35 @@ def _fake_http_json(url: str) -> dict:
     return {"entities": {i: {"labels": {"ko": {"value": _WD_LABELS.get(i, "")}}} for i in ids}}
 
 
+def _fake_http_text_miss(url: str) -> str:
+    raise OSError("no page")                       # 나무위키 문서 없음(네트워크 0 기본값)
+
+
+# 나무위키 폴백용 가짜 문서: 분류(여자 배드민턴 선수) + 인포박스(국적·출생·소속·종목)
+_NAMU_HTML = (
+    '<html><head><title>미등재개체 - 나무위키</title></head><body>'
+    '<a href="/w/%EB%B6%84%EB%A5%98:%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD%EC%9D%98%20'
+    '%EC%97%AC%EC%9E%90%20%EB%B0%B0%EB%93%9C%EB%AF%BC%ED%84%B4%20%EC%84%A0%EC%88%98">분류</a>'
+    '<table><tr><td><div><strong>국적</strong></div></td><td><div>대한민국 <img></div></td></tr>'
+    '<tr><td><div><strong>출생</strong></div></td><td><div>2002년 2월 5일 [1]</div></td></tr>'
+    '<tr><td><div><strong>소속</strong></div></td><td><div>삼성생명 배드민턴단</div></td></tr>'
+    '<tr><td><div><strong>종목</strong></div></td><td><div>배드민턴</div></td></tr></table></body></html>'
+)
+_NAMU_AMBIG = ('<html><head><title>동명 - 나무위키</title></head><body>'
+               '<a href="/w/%EB%B6%84%EB%A5%98:%EB%8F%99%EC%9D%8C%EC%9D%B4%EC%9D%98%EC%96%B4">분류</a></body></html>')
+
+
 class EntdictBase(unittest.TestCase):
     def setUp(self):
         self.store = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
         self._orig_http = ED._http_json
+        self._orig_text = ED._http_text
         ED._http_json = _fake_http_json
+        ED._http_text = _fake_http_text_miss
 
     def tearDown(self):
         ED._http_json = self._orig_http
+        ED._http_text = self._orig_text
 
 
 class TestGateAndRegister(EntdictBase):
@@ -138,6 +159,70 @@ class TestEnrich(EntdictBase):
         e2 = self.store.ent_get(eid)
         self.assertEqual(e2["attrs"]["affiliation"], "삼성생명 배드민턴단")   # 확정 보존
         self.assertEqual(e2["attrs"]["gender"], "여성")                     # 자동 필드는 갱신 유지
+
+
+class TestNamuFallback(EntdictBase):
+    """위키데이터 미스 → 나무위키 폴백(POC 전용 · CC BY-NC-SA 라 폐기 전제 데이터에만 사용)."""
+
+    def _register(self, name):
+        ED.ingest_meta(self.store, [("ch1", [name])])
+        return self.store.ent_id_by_alias(name)
+
+    def test_namu_fallback_fills_type_and_attrs(self):
+        eid = self._register("미등재개체")               # 위키데이터 미스
+        ED._http_text = lambda url: _NAMU_HTML
+        r = ED.enrich_entity(self.store, eid)
+        self.assertTrue(r["ok"] and r["matched"])
+        self.assertEqual(r["source"], "namuwiki")
+        e = self.store.ent_get(eid)
+        self.assertEqual(e["type"], "PS")               # 분류 '…선수' → PS
+        self.assertEqual(e["status"], "active")
+        self.assertEqual(e["attrs"]["gender"], "여성")   # 분류 '여자 …'
+        self.assertEqual(e["attrs"]["nationality"], "대한민국")
+        self.assertEqual(e["attrs"]["birth_year"], "2002")
+        self.assertEqual(e["attrs"]["occupation"], "스포츠인")
+        self.assertEqual(e["attrs"]["affiliation"], "삼성생명 배드민턴단")
+        self.assertEqual(e["attr_meta"]["gender"]["source"], "namuwiki")
+        self.assertEqual(e["external_ids"]["namuwiki"], "미등재개체")
+
+    def test_namu_ambiguous_stays_pending(self):
+        eid = self._register("동명개체")
+        ED._http_text = lambda url: _NAMU_AMBIG
+        r = ED.enrich_entity(self.store, eid)
+        self.assertTrue(r["ok"])
+        self.assertFalse(r["matched"])
+        self.assertTrue(r.get("ambiguous"))
+        e = self.store.ent_get(eid)
+        self.assertEqual(e["type"], "")                  # 동음이의 → 자동 결정 없이 보류
+        self.assertEqual(e["status"], "pending")
+        self.assertEqual(e["attr_meta"]["_enrich"]["result"], "ambiguous")
+
+    def test_namu_confirmed_not_overwritten(self):
+        eid = self._register("미등재개체")
+        e = self.store.ent_get(eid)
+        self.store.ent_update(eid, {"attrs": {"gender": "남성"},
+                                    "attr_meta": {"gender": {"source": "manual", "status": "confirmed"}}})
+        ED._http_text = lambda url: _NAMU_HTML
+        ED.enrich_entity(self.store, eid)
+        self.assertEqual(self.store.ent_get(eid)["attrs"]["gender"], "남성")   # 사람 확정 우선
+
+    def test_namu_gate_env_off(self):
+        eid = self._register("미등재개체")
+        ED._http_text = lambda url: _NAMU_HTML
+        os.environ["PRISM_ENTDICT_NAMU"] = "0"
+        try:
+            r = ED.enrich_entity(self.store, eid)
+        finally:
+            os.environ.pop("PRISM_ENTDICT_NAMU", None)
+        self.assertFalse(r["matched"])                   # 게이트 꺼짐 → 폴백 미사용(미스 처리)
+
+    def test_wikidata_hit_skips_namu(self):
+        eid = self._register("안세영")                   # 위키데이터 히트 → 나무위키 미호출
+        calls = []
+        ED._http_text = lambda url: calls.append(url) or _NAMU_HTML
+        r = ED.enrich_entity(self.store, eid)
+        self.assertEqual(r.get("qid"), "Q1")
+        self.assertEqual(calls, [])
 
 
 class TestOccupationSnap(unittest.TestCase):
