@@ -552,9 +552,13 @@ def _enrich_start(st, ids) -> bool:
     return True
 
 
+_ENT_NORMALIZED = False                                    # 미등재 이행(1회성) 실행 여부
+
+
 def entdict_data(q: str = "", type_: str = "", status: str = "", limit: int = 300) -> dict:
     """목록·통계·메타(타입/속성 필드 사전) + 일괄 보강 진행 상태. 편집 폼·필터의 단일 원천."""
     from . import entdict as ED
+    global _ENT_NORMALIZED
     st = get_store()
     meta = {"types": dict(ED.ENTITY_TYPES),
             "attrFields": {t: [[k, lb] for k, lb in fs] for t, fs in ED.ATTR_FIELDS.items()},
@@ -562,6 +566,12 @@ def entdict_data(q: str = "", type_: str = "", status: str = "", limit: int = 30
             "eattrKeys": list(ED.ALLOWED_EATTR_KEYS)}
     if not (st and hasattr(st, "ent_list")):
         return {"items": [], "stats": {}, "meta": meta, "enrich": dict(_ENRICH_STATE)}
+    if not _ENT_NORMALIZED:                                # 구 데이터: 미스 기록 보류 → 미등재 이행
+        _ENT_NORMALIZED = True
+        try:
+            st.ent_mark_unlisted()
+        except Exception:
+            pass
     return {"items": st.ent_list(q=q, type_=type_, status=status, limit=limit),
             "stats": st.ent_stats(), "meta": meta, "enrich": dict(_ENRICH_STATE)}
 
@@ -634,6 +644,9 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
 
     if action == "delete":
         return {"ok": st.ent_delete(eid)}
+
+    if action == "purge_unlisted":
+        return {"ok": True, "purged": st.ent_purge_unlisted()}
 
     if action == "enrich":
         if mock:

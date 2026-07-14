@@ -1190,11 +1190,12 @@ PAGE = """<!doctype html>
           </div>
         </div></div>
 
-        <div class="panel" x-show="entData"><div class="panel-bd"><div class="ds-stat-grid" style="grid-template-columns:repeat(5,1fr)">
+        <div class="panel" x-show="entData"><div class="panel-bd"><div class="ds-stat-grid" style="grid-template-columns:repeat(6,1fr)">
           <div class="ds-stat"><div class="ds-stat__value ds-stat__value--accent tnum" x-text="(entData && entData.stats.total) || 0"></div><div class="ds-stat__label">총 개체</div></div>
           <div class="ds-stat"><div class="ds-stat__value tnum" x-text="entData ? ((entData.stats.total || 0) - (((entData.stats.byType || {})['(보류)']) || 0)) : 0"></div><div class="ds-stat__label">타입 부여</div></div>
-          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.pending) || 0"></div><div class="ds-stat__label">보류(타입 미부여)</div></div>
-          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.enriched) || 0"></div><div class="ds-stat__label">위키데이터 매칭</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.pending) || 0"></div><div class="ds-stat__label" style="cursor:help" data-tip="타입 미부여 · 미조회 또는 동음이의 = 보강·수동 확정 대기" data-tip-pos="top">보강 대기(보류)</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.unlisted) || 0"></div><div class="ds-stat__label" style="cursor:help" data-tip="나무위키·위키데이터 모두 미스 · 복합명사구·개념어(TM 후보) — 개체는 사전에 남고 속성 축에서만 빠짐" data-tip-pos="top">미등재(소스 없음)</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.enriched) || 0"></div><div class="ds-stat__label">소스 매칭</div></div>
           <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.links) || 0"></div><div class="ds-stat__label">콘텐츠 링크</div></div>
         </div></div></div>
 
@@ -1210,9 +1211,11 @@ PAGE = """<!doctype html>
                 <template x-for="(ko,t) in (entData ? entData.meta.types : {})" x-bind:key="t"><option x-bind:value="t" x-text="ko + ' (' + t + ')'"></option></template>
               </select>
               <select class="field" style="width:auto" x-model="entStatus" x-on:change="loadEntdict()">
-                <option value="">상태 전체</option><option value="active">확정(active)</option><option value="pending">보류(pending)</option>
+                <option value="">기본(미등재 제외)</option><option value="active">확정(active)</option><option value="pending">보류(pending)</option>
+                <option value="unlisted">미등재(unlisted)</option><option value="all">전체(미등재 포함)</option>
               </select>
               <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="loadEntdict()">검색</button>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="entStatus === 'unlisted'" x-cloak x-on:click="entPurgeUnlisted()" data-tip="미등재 개체를 링크·별칭 포함 일괄 삭제 · 다빈도(진짜 개체 후보)는 먼저 수동 확정하세요" data-tip-pos="top">미등재 정리</button>
               <span style="flex:1"></span>
               <input type="text" class="field" style="width:180px" placeholder="수동 등재 · 개체 이름" x-model="entAddName" x-on:keydown.enter="entAdd()">
               <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="entAdd()">등재</button>

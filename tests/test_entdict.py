@@ -129,15 +129,58 @@ class TestEnrich(EntdictBase):
         self.assertEqual(e["external_ids"]["wikidata"], "Q1")
         self.assertEqual(e["attr_meta"]["gender"]["source"], "wikidata")
 
-    def test_enrich_miss_records_and_stays_pending(self):
+    def test_enrich_miss_becomes_unlisted(self):
+        """두 소스 모두 미스 → 미등재(unlisted) 분리: 개체는 남고 통계·기본 목록·재보강에서 빠짐."""
         eid = self._register("미등재개체")
         r = ED.enrich_entity(self.store, eid)
         self.assertTrue(r["ok"])
         self.assertFalse(r["matched"])
         e = self.store.ent_get(eid)
-        self.assertEqual(e["status"], "pending")
+        self.assertEqual(e["status"], "unlisted")
         self.assertEqual(e["attr_meta"]["_enrich"]["result"], "miss")
         self.assertNotIn(eid, self.store.ent_pending_ids())   # 조회 이력 있음 → 재조회 대상 아님
+        st = self.store.ent_stats()
+        self.assertEqual(st["unlisted"], 1)
+        self.assertEqual(st["pending"], 0)
+        # 기본 목록에서 제외 · unlisted/all 필터로 조회
+        self.assertFalse(self.store.ent_list())
+        self.assertEqual(len(self.store.ent_list(status="unlisted")), 1)
+        self.assertEqual(len(self.store.ent_list(status="all")), 1)
+
+    def test_unlisted_promoted_on_later_hit(self):
+        """미등재 개체가 이후 소스에 등재되면(재보강 히트) 미등재 해제."""
+        eid = self._register("안세영")
+        orig = ED._http_json
+        ED._http_json = lambda url: {"search": []}         # 첫 조회: 위키데이터도 미스
+        try:
+            ED.enrich_entity(self.store, eid)
+        finally:
+            ED._http_json = orig
+        self.assertEqual(self.store.ent_get(eid)["status"], "unlisted")
+        r = ED.enrich_entity(self.store, eid)              # 재보강: 위키데이터 히트
+        self.assertTrue(r["matched"])
+        self.assertEqual(self.store.ent_get(eid)["status"], "active")
+
+    def test_active_not_demoted_on_miss(self):
+        """수동 확정(active) 개체는 재보강 미스에도 미등재로 강등하지 않는다."""
+        eid = self._register("미등재개체")
+        e = self.store.ent_get(eid)
+        self.store.ent_update(eid, {"type": "TM", "status": "active",
+                                    "attr_meta": {"type": {"source": "manual", "status": "confirmed"}}})
+        ED.enrich_entity(self.store, eid)                  # 두 소스 미스
+        self.assertEqual(self.store.ent_get(eid)["status"], "active")
+
+    def test_mark_and_purge_unlisted(self):
+        """구 데이터 이행(mark) + 미등재 일괄 정리(purge)."""
+        eid = self._register("미등재개체")
+        # 구 형식: 미스 기록인데 status 는 pending (이행 대상)
+        self.store.ent_update(eid, {"status": "pending",
+                                    "attr_meta": {"_enrich": {"source": "wikidata", "result": "miss"}}})
+        self.assertEqual(self.store.ent_mark_unlisted(), 1)
+        self.assertEqual(self.store.ent_get(eid)["status"], "unlisted")
+        self.assertEqual(self.store.ent_purge_unlisted(), 1)
+        self.assertIsNone(self.store.ent_get(eid))
+        self.assertEqual(self.store.ent_id_by_alias("미등재개체"), "")     # 별칭도 정리
 
     def test_type_conflict_stays_pending_with_candidates(self):
         eid = self._register("혼합개체")
