@@ -956,7 +956,7 @@ PAGE = """<!doctype html>
                       <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
                         <template x-for="s in studio.eattrs" x-bind:key="'ea'+s"><span class="ds-badge ds-badge--category" style="cursor:pointer" x-on:click="studioDelEattr(s)" data-tip="클릭해 제거"><span class="treq">★필수</span><span x-text="eattrLabel(s)"></span></span></template>
                         <template x-for="c in eattrCandidates()" x-bind:key="'eac'+c.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioAddEattr(c.k)" data-tip="추가" x-text="'+ '+c.label+' ('+c.v+')'"></span></template>
-                        <span x-show="!studio.eattrs.length && !eattrCandidates().length" class="text-xs text-muted">엔티티 사전에 속성이 아직 없습니다 · 엔티티 사전 메뉴에서 색인·보강하세요</span>
+                        <span x-show="!studio.eattrs.length && !eattrCandidates().length" class="text-xs text-muted">엔티티 사전에 속성이 아직 없습니다 · 사전 · 정책의 엔티티 탭에서 색인·보강하세요</span>
                       </div>
                     </div>
                   </div>
@@ -1073,12 +1073,13 @@ PAGE = """<!doctype html>
         <div class="evaltabs">
           <button type="button" x-bind:class="dictTab==='intent'?'sel':''" x-on:click="dictTab='intent'">인텐트</button>
           <button type="button" x-bind:class="dictTab==='category'?'sel':''" x-on:click="dictTab='category'">카테고리</button>
-          <!-- 엔티티 사전(feat/entdict) 합류 시 이 자리에 '엔티티' 탭 -->
+          <button type="button" x-bind:class="dictTab==='entity'?'sel':''" x-on:click="dictTab='entity'; loadEntdict()">엔티티</button>
           <button type="button" x-bind:class="dictTab==='policy'?'sel':''" x-on:click="dictTab='policy'">정책</button>
         </div>
       </div>
       <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4">
-        <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
+        <!-- 공통 안내·편집 초기화는 편집형 사전 탭에만 · 엔티티 탭은 자체 헤더(자동 등재·보강) 사용 -->
+        <div class="panel" x-show="dictTab !== 'entity'"><div class="panel-bd flex items-center justify-between gap-3">
           <ul class="ds-bullets">
             <li>각 체계의 정책(사전·카테고리·법령)을 <b>직접 수정</b>할 수 있습니다.</li>
             <li>저장 시 즉시 추출에 반영되고 로컬에 영속됩니다.</li>
@@ -1159,8 +1160,8 @@ PAGE = """<!doctype html>
         </div>
       </div>
 
-      <!-- ═══ 모듈: 엔티티 사전 · 개체 고유키·타입(NER 6종)·속성 관리 (별도 메뉴) ═══ -->
-      <div x-show="mod === 'entdict'" x-cloak class="w-full space-y-4">
+      <!-- ═══ 모듈: 엔티티 사전 · 개체 고유키·타입(NER 6종)·속성 관리 (사전·정책 · 엔티티 탭) ═══ -->
+      <div x-show="mod === 'dict' && dictTab === 'entity'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3 flex-wrap">
           <ul class="ds-bullets">
             <li>콘텐츠 적재 시 엔티티가 <b>개체 사전에 자동 등재</b>됩니다 · 개체당 고유키 1개, 타입·속성은 등록 시 1회 부여(재판정 없음).</li>

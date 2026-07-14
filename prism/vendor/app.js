@@ -43,9 +43,8 @@
           { id: 'content', label: '콘텐츠 관리', ic: 'intake', cond: 'opsadmin' },
           { id: 'testset', label: '정답셋 관리', ic: 'eval', cond: 'opsadmin' },
           { id: 'admin', label: '팀 관리', ic: 'admin', cond: 'admin' },
+          // 사전 · 정책: 인텐트/카테고리/엔티티(개체 고유키·타입·속성)/정책 4탭
           { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'opsadmin' },
-          // 엔티티 사전: 개체 고유키·타입(NER 6종)·속성(성별·국적·직업·소속…) 관리 · 사람 수정 가능
-          { id: 'entdict', label: '엔티티 사전', ic: 'user', cond: 'opsadmin' },
           // 스튜디오 = 설계 도구 묶음: 프롬프트(계약·래퍼) + 토픽(클러스터링 설계 · 실험실에서 승격)
           { id: 'studio', label: '스튜디오', ic: 'prompt', cond: 'opsadmin' },
           // 실험실: 지금 테스트하지 않는 탐구 요소(법령·사용자·미디어) 보관
@@ -69,7 +68,7 @@
       testTab: 'status',                      // 정답셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
       labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | user(사용자) | media(미디어)
       studioTab: 'prompt',                    // 스튜디오: prompt(프롬프트 계약·래퍼) | topic(토픽 설계)
-      dictTab: 'intent',                      // 사전·정책: intent(인텐트) | category(카테고리) | policy(품질·법령·처리) · 엔티티 사전 합류 시 entity 추가
+      dictTab: 'intent',                      // 사전·정책: intent(인텐트) | category(카테고리) | entity(엔티티 사전) | policy(품질·법령·처리)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
       // 위젯 홈 인터랙션 상태
@@ -546,6 +545,7 @@
         if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
         if (id === 'prompt') { id = 'studio'; this.studioTab = 'prompt'; }   // 구 메뉴 · 위젯·URL 호환
         if (id === 'topic') { id = 'studio'; this.studioTab = 'topic'; }     // 실험실 시절 딥링크 호환
+        if (id === 'entdict') { id = 'dict'; this.dictTab = 'entity'; }      // 별도 메뉴 시절 딥링크 호환
         if (id === 'eval') id = 'evaluate';
         if (id === 'golden') id = 'testset';
         this.mod = id;
@@ -563,8 +563,7 @@
         else if (id === 'admin' || id === 'system') this.loadAdmin();
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
-        else if (id === 'dict') this.loadDict();
-        else if (id === 'entdict') this.loadEntdict();
+        else if (id === 'dict') { this.loadDict(); this.loadEntdict(); }
         else if (id === 'studio') { this.loadPromptDefaults(); this.loadTopics(); }
         if (id === 'content') { this.loadDash(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
       },
