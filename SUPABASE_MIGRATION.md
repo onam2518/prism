@@ -75,7 +75,7 @@ alter table public.prism_assignments enable row level security;   -- 정책 없�
 진척: 개인 분모 = 내 담당 수, 팀 진척 = Σ 콘텐츠별 min(검수인원,N)/N ÷ 배정 콘텐츠 수.
 > PK 에 team_id 포함 → team 단위 격리. team_id NULL(팀 미소속)은 실사용 없음(배정은 팀 관리자 기능).
 
-**엔티티 사전(`prism_entities` 외 2, 2026-07-14 · 미적용 · 아래 SQL 을 Supabase SQL Editor 에서 실행 필요)**:
+**엔티티 사전(`prism_entities` 외 2, 2026-07-14 · 적용됨 · `prism_entity_dictionary` 마이그레이션)**:
 ```sql
 -- 개체 사전: 고유키(entity_id)·타입(NER 6종: PS·OG·LC·AF·EV·TM)·타입별 속성(attrs jsonb)
 create table if not exists public.prism_entities (
