@@ -242,10 +242,15 @@ window.mreview = () => ({
   async good() {
     const r = await this._post('good');
     if (r === 'skip') return;                       // 연타 무시(진행도 안 넘김)
+    if (r === null) { this._netFail(); return; }    // 서버 미저장(오프라인 등) → 진행·점수 올리지 않음(판정 유실 방지)
     this._markMine('good');
     if (!this._goldReveal(r)) this._celebrate(10, '검수 완료');
     this._missions(r);
     this._advance();
+  },
+  _netFail() {
+    this.toast = '⚠️ 저장 실패 · 연결 확인 후 다시 시도해 주세요';
+    if (this._toastT) clearTimeout(this._toastT); this._toastT = setTimeout(() => { this.toast = ''; }, 2600);
   },
   openFix() {
     const c = this.cur(); if (!c) return;
@@ -266,6 +271,7 @@ window.mreview = () => ({
     const tagged = '[' + this.fix.elems.map((e) => this.elemLabel(e)).join('·') + '] ' + raw;
     const r = await this._post('bad', this.fix.elems.slice(), tagged);
     if (r === 'skip') return;
+    if (r === null) { this._netFail(); return; }    // 시트 유지(메모 보존) · 재시도 유도
     this._markMine('bad', tagged, this.fix.elems);
     this.sheet = ''; this.fixed += 1;
     if (!this._goldReveal(r)) this._celebrate(hadNote ? 10 : 25, hadNote ? '검수 완료' : '교정 반영');

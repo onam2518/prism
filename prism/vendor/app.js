@@ -146,7 +146,7 @@
         this.assignBusy = false;
       },
       // ── 검수자 일괄 배정(슈퍼관리자 이상) · 리포트 옆 버튼 → ds-dialog 모달 ──
-      bulkOpen: false, bulkBusy: false,
+      bulkOpen: false, assignBulkBusy: false,   // 일괄 '배정' 전용 · 일괄 '실행'(bulkBusy)과 분리(플래그 공유 시 상호 오염)
       bulkQ: '', bulkSvc: '', bulkGrade: '', bulkRev: 'todo', bulkAsg: 'unassigned',
       bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {},
       // 노출 게이트: 로컬은 항상, 운영은 슈퍼관리자·운영관리자(opsadmin)만
@@ -188,14 +188,14 @@
       async saveBulk() {
         const hashes = this.bulkSelHashes;
         if (!hashes.length || !this.bulkPick.length) return;
-        this.bulkBusy = true;
+        this.assignBulkBusy = true;
         try {
           const body = JSON.stringify({ hashes, reviewers: this.bulkPick, min_reviewers: this.bulkMin });
           const r = await (await this._afetch('/content-assign-bulk', { method: 'POST', headers: this._authHeaders(), body })).json();
           if (r && r.ok) { this.bulkOpen = false; this.loadRaw(); }
           else this._err((r && r.error) || '일괄 배정 실패');
         } catch (e) { this._err('일괄 배정 실패'); }
-        this.bulkBusy = false;
+        this.assignBulkBusy = false;
       },
       // 검수 '완료' 판정은 팀 합의(fb.verdict)가 아니라 '내 표(fb.mine)' 기준이어야 한다.
       // (그러지 않으면 타 검수자가 검수한 콘텐츠도 내 목록에서 완료로 보인다 · 2026-07-10)
@@ -554,20 +554,22 @@
         if (!this._noPush) {                          // URL 동기화(뒤로가기·새로고침 시 현재 화면 유지)
           try { const u = new URL(location.href); u.searchParams.set('m', id); history.pushState({ m: id }, '', u); } catch (e) {}
         }
-        if (id === 'content' || id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
-        if (id === 'studio' || id === 'testset') this.loadGoldenStatus();
-        if (id === 'studio') { this.syncWrapDraft(); this.loadPreview(); }
+        // 메뉴별 데이터 로드: 메뉴당 1회씩만(중복 fetch 제거) · 탭 데이터는 현재 탭 것만(나머지는 탭 클릭 시 lazy)
         if (id === 'home') { this.loadArena(); this.loadDash(); }
         else if (id === 'create') { this.loadDash(); this.loadRaw(); }
-        else if (id === 'evaluate') this.loadGoldenStatus();
+        else if (id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
         else if (id === 'arena') this.loadArena();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') this.loadAdmin();
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
-        else if (id === 'dict') { this.loadDict(); this.loadEntdict(); }
-        else if (id === 'studio') { this.loadPromptDefaults(); this.loadTopics(); }
-        if (id === 'content') { this.loadDash(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
+        else if (id === 'dict') { this.loadDict(); if (this.dictTab === 'entity') this.loadEntdict(); }
+        else if (id === 'studio') {
+          this.loadGoldenStatus();
+          if (this.studioTab === 'topic') this.loadTopics();
+          else { this.syncWrapDraft(); this.loadPreview(); this.loadPromptDefaults(); }
+        }
+        else if (id === 'content') { this.loadDash(); this.loadGoldenStatus(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
       },
       toggleTheme() {
         this.theme = this.theme === 'dark' ? 'light' : 'dark';
@@ -1073,9 +1075,9 @@
             const v = d.verdict === 'good' ? '정확' : d.verdict === 'bad' ? '문제' : '취소';
             this.liveToast(d.reviewer + '님 · 「' + (d.title || '콘텐츠') + '」 ' + v);
           }
-          if (this.mod === 'create') this.loadRaw();
-          if (this.mod === 'arena' || this.mod === 'home') this.loadArena();             // 정확도 게이지 실시간 상승
-          if (this.mod === 'dash' || this.mod === 'eval' || this.mod === 'home') this.loadDashThrottled();
+          if (this.mod === 'create') this.loadRawThrottled();                            // 다인 동시 검수 시 판정 1건마다 전체 재조회 방지
+          if (this.mod === 'arena' || this.mod === 'home') this.loadArenaThrottled();    // 정확도 게이지 실시간 상승(스로틀)
+          if (this.mod === 'evaluate' || this.mod === 'home') this.loadDashThrottled();  // dash·eval 은 selectMod 별칭이라 mod 로 영영 안 옴 → evaluate 로 교정
         } else if (d.type === 'reap') {
           if (d.plan) this.liveToast('개선안 반영 · ' + (d.plan.length > 42 ? d.plan.slice(0, 42) + '…' : d.plan));
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
@@ -1410,13 +1412,14 @@
       },
       copyInvite() { try { navigator.clipboard.writeText((this.adminData && this.adminData.team && this.adminData.team.invite_code) || ''); this.inviteCopied = true; setTimeout(() => { this.inviteCopied = false; }, 1500); } catch (e) {} },
       inviteCopied: false,
-      ingestEndpoint: '', ingestN: 20, ingestMsg: '', ingestBusy: false,
+      // ingestOnceBusy: 일회성 크롤러 가져오기 전용 · 소스별 맵(ingestBusy: {})과 키 충돌 금지(중복 선언 시 버튼 영구 비활성)
+      ingestEndpoint: '', ingestN: 20, ingestMsg: '', ingestOnceBusy: false,
       async ingestRun() {
         if (!(this.ingestEndpoint || '').trim()) { this.ingestMsg = '크롤러 엔드포인트를 입력하세요'; return; }
-        this.ingestBusy = true; this.ingestMsg = '인입·추출 중…';
+        this.ingestOnceBusy = true; this.ingestMsg = '인입·추출 중…';
         try { const r = await (await this._afetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'ingest', endpoint: this.ingestEndpoint, n: this.ingestN }) })).json();
           this.ingestMsg = r.ok ? ('✓ ' + r.fetched + '건 인입 → 검수 대기 ' + r.queued + '건 적재') : (r.error || '실패'); } catch (e) { this.ingestMsg = '오류'; }
-        this.ingestBusy = false;
+        this.ingestOnceBusy = false;
       },
       // 결과 출처 필터(자동 인입/단건/배치)
       get srcOptions() { const s = new Set(((this.dashData && this.dashData.contents) || []).map((c) => c.source || '단건')); return [...s]; },
@@ -1859,8 +1862,11 @@
         }
       },
       async entAction(body) {
-        const r = await this._afetch('/entdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
-        return await r.json();
+        // 호출부가 먼저 busy 메시지를 세팅하므로 여기서 예외가 새면 '저장 중…'이 영구 고정된다
+        try {
+          const r = await this._afetch('/entdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) });
+          return await r.json();
+        } catch (e) { return { ok: false, error: '네트워크 오류' }; }
       },
       entTypeLabel(t) { return t ? (((this.entData && this.entData.meta.types[t]) || t) + ' · ' + t) : '보류'; },
       entSrc(e) {   // 마지막 보강 소스(출처 컬럼): namuwiki | wikidata | ''(미조회·미스·동음이의)
@@ -2252,6 +2258,8 @@
         this._ingestPoll = setInterval(tick, 1500); tick();
       },
       loadDashThrottled() { const now = Date.now(); if (now - (this._lastDash || 0) > 4000) { this._lastDash = now; this.loadDash(); } },
+      loadRawThrottled() { const now = Date.now(); if (now - (this._lastRaw || 0) > 4000) { this._lastRaw = now; this.loadRaw(); } },
+      loadArenaThrottled() { const now = Date.now(); if (now - (this._lastArena || 0) > 4000) { this._lastArena = now; this.loadArena(); } },
       get runningJobs() { return (this.ingestJobs || []).filter((j) => j.running); },
       get runningCount() { return (this.loading ? 1 : 0) + this.runningJobs.length; },
       srcJob(s) { return (this.ingestJobs || []).find((j) => j.id === s.id); },
