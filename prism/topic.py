@@ -183,7 +183,9 @@ FILTER_DEFS = [
     {"name": "시사 × 속보 추적", "prompt": "속보·사건 경과 추적이면서 시사·정치 콘텐츠 모아줘",
      "ent": {"News and Politics"}, "intent": {"속보", "사건 경과 보도"}},
     {"name": "경제 × 심층 분석", "prompt": "경제·산업 심층 분석 콘텐츠 필터(속보 제외)",
-     "ent": {"Business and Finance"}, "intent": {"분석·해설", "기획·심층"}},
+     "ent": {"Business and Finance"}, "intent": {"분석·해설", "기획·심층"},
+     # 프롬프트가 약속한 '속보 제외'의 실제 매칭(제외 인텐트): 하나라도 걸리면 탈락
+     "not_intent": {"속보", "속보·사건 추적", "사건 경과 보도", "단독"}},
     {"name": "연예 × 화제·인물", "prompt": "연예 화제성·인물 동정 콘텐츠만",
      "ent": {"Entertainment"}, "intent": {"흥미·화제", "인물 동정"}},
     {"name": "스포츠 콘텐츠", "prompt": "스포츠 콘텐츠 전부 모아줘",
@@ -216,6 +218,8 @@ def build_condition_topics(rows, canon, service_names):
         for i in range(len(rows)):
             if not elig[i]:
                 continue
+            if f.get("not_intent") and (c_int[i] & f["not_intent"]):
+                continue
             ent_ok = (not f.get("ent")) or bool(c_ent[i] & f["ent"])
             int_ok = (not f.get("intent")) or bool(c_int[i] & f["intent"])
             if ent_ok and int_ok:
@@ -225,7 +229,8 @@ def build_condition_topics(rows, canon, service_names):
             "type": "filter", "cluster_id": "F-" + _slug(f["name"]),
             "name": f["name"], "prompt": f["prompt"],
             "dims": {"콘텐츠 카테고리": sorted(f.get("ent", [])),
-                     "인텐트": sorted(f.get("intent", []))},
+                     "인텐트": sorted(f.get("intent", [])),
+                     "제외 인텐트": sorted(f.get("not_intent", []))},
             "content_ids": matched, "count": len(matched),
             "representative_content": rep[0] if rep else None,
             "rep_title": _title(rows[rep[0]]) if rep else "",
@@ -342,8 +347,29 @@ def _match_valueset(dims, vs):
     return out
 
 
-def _bundle(rows, dims, cid, kind, vs, sample=0):
+def _neg_blocked(dims, neg) -> set:
+    """제외 조건(neg={cats,intents,keywords})에 걸리는 콘텐츠 인덱스 집합.
+    차원·값 무관 하나라도 걸리면 탈락(OR) · 토픽의 모든 묶음에 공통 적용 · 키워드는 엔티티 부분일치."""
+    c_cat, c_int, c_ent, elig = dims
+    cats = set((neg or {}).get("cats") or [])
+    intents = set((neg or {}).get("intents") or [])
+    kws = [str(k).strip().lower() for k in ((neg or {}).get("keywords") or []) if str(k).strip()]
+    if not (cats or intents or kws):
+        return set()
+    out = set()
+    for i in range(len(c_cat)):
+        if not elig[i]:
+            continue
+        if (cats and c_cat[i] & cats) or (intents and c_int[i] & intents) or \
+           (kws and any(any(k in e.lower() for e in c_ent[i]) for k in kws)):
+            out.add(i)
+    return out
+
+
+def _bundle(rows, dims, cid, kind, vs, sample=0, blocked=None):
     ids = _match_valueset(dims, vs)
+    if blocked:
+        ids = [i for i in ids if i not in blocked]
     ranked = sorted(ids, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))
     b = {
         "cluster_id": cid, "kind": kind, "label": _valueset_label(vs),
@@ -365,16 +391,19 @@ def build_custom_topics(rows, service_names, defs):
     groups = []
     for d in defs:
         specs, must, opt = _def_bundles(d)
+        neg = d.get("neg") or {}
+        blocked = _neg_blocked(dims, neg)
         did = d.get("id") or ("U-" + _slug(d.get("name") or d.get("prompt") or "topic"))
         bundles = []
         for idx, (kind, vs) in enumerate(specs):
             cid = did + ("-core" if kind == "core" else "-r" + str(idx))
-            bundles.append(_bundle(rows, dims, cid, kind, vs))
+            bundles.append(_bundle(rows, dims, cid, kind, vs, blocked=blocked))
         groups.append({
             "id": did, "type": "custom", "origin": "user",
             "name": d.get("name") or "(무제 토픽)", "prompt": d.get("prompt") or "",
             "must": [{"dim": k, "v": v} for k, v in must],
             "opt": [{"dim": k, "v": v} for k, v in opt],
+            "neg": [{"dim": k, "v": v} for k in _DIMS for v in (neg.get(k) or [])],
             "bundles": bundles, "n_bundles": len(bundles),
             "core_count": next((b["count"] for b in bundles if b["kind"] == "core"), 0),
         })
@@ -386,12 +415,14 @@ def preview_definition(rows, service_names, d, sample=6):
     """생성 폼 실시간 미리보기: 저장 전 정의의 묶음(핵심+관련)별 매칭 수·표본."""
     dims = _content_dims(rows, service_names)
     specs, must, opt = _def_bundles(d)
+    blocked = _neg_blocked(dims, d.get("neg") or {})
     bundles = []
     for idx, (kind, vs) in enumerate(specs):
-        bundles.append(_bundle(rows, dims, "prev-" + str(idx), kind, vs, sample=sample if kind == "core" else 0))
+        bundles.append(_bundle(rows, dims, "prev-" + str(idx), kind, vs,
+                               sample=sample if kind == "core" else 0, blocked=blocked))
     return {
         "n_total": sum(1 for x in dims[3] if x), "bundles": bundles,
-        "must_n": len(must), "opt_n": len(opt),
+        "must_n": len(must), "opt_n": len(opt), "neg_blocked": len(blocked),
     }
 
 
@@ -451,35 +482,70 @@ def _label_tokens(label):
             if len(tok) >= 2 and tok not in _SUGGEST_STOP]
 
 
+# 배제 표현: 라벨 언급 직후 이 표지가 이어지면 '빼 달라'는 뜻으로 해석("속보는 빼줘")
+_NEG_MARKS = ("빼", "제외", "말고", "제거", "없이")
+
+
+def _neg_after(t, frag):
+    """t 안의 frag 등장 위치 바로 뒤(조사 포함 8자)에 배제 표지가 있는가."""
+    p = 0
+    while True:
+        i = t.find(frag, p)
+        if i < 0:
+            return False
+        tail = t[i + len(frag): i + len(frag) + 8]
+        if any(m in tail for m in _NEG_MARKS):
+            return True
+        p = i + 1
+
+
 def suggest_dims(text, rows, service_names=None):
     """자연어 문장 → 차원 제안(휴리스틱 · 모델 호출 없음, 의존성 0).
     전체 아이템메타 분류(사전) ∪ 현재 데이터 present 를 후보로. 전체 라벨 일치 또는
     라벨을 쪼갠 유의미 토큰 부분일치('인물들'→'인물·사연')까지 잡아 substring-only 누락을 줄인다.
-    카테고리 영문 라벨은 토큰화하지 않음(and/health 등 과매칭 방지) · 한글 별칭만 토큰 허용."""
+    카테고리 영문 라벨은 토큰화하지 않음(and/health 등 과매칭 방지) · 한글 별칭만 토큰 허용.
+    배제 표현('속보는 빼줘')이 붙은 라벨은 선택이 아니라 제외 조건(neg)으로 제안한다."""
     tax = meta_taxonomy()
     cat = studio_catalog(rows, service_names)
     all_cats = list(dict.fromkeys(tax["cats"] + [x["k"] for x in cat["cats"]]))
     all_ints = list(dict.fromkeys(tax["intents"] + [x["k"] for x in cat["intents"]]))
     t = (text or "").lower()
 
-    def _hit(label):
+    def _hit_frags(label):
+        """라벨이 문장에 걸린 조각들(전체 라벨 + 유의미 토큰). 비면 미언급."""
+        frags = []
         ll = (label or "").lower()
         if ll and ll in t:
-            return True
-        return any(tok.lower() in t for tok in _label_tokens(label))
+            frags.append(ll)
+        frags += [tok.lower() for tok in _label_tokens(label) if tok.lower() in t]
+        return frags
 
-    intents = [x for x in all_ints if x and _hit(x)]
-    cats = []
+    def _split(label_frags):
+        return any(_neg_after(t, f) for f in label_frags)
+
+    intents, neg_int = [], []
+    for x in all_ints:
+        frags = _hit_frags(x) if x else []
+        if frags:
+            (neg_int if _split(frags) else intents).append(x)
+    cats, neg_cat = [], []
     for x in all_cats:
-        if x.lower() in t:                                   # 영문 Tier1 전체 라벨(토큰화 안 함)
-            cats.append(x); continue
+        frags = [x.lower()] if x.lower() in t else []        # 영문 Tier1 전체 라벨(토큰화 안 함)
         ko = _TIER1_KO.get(x) if isinstance(_TIER1_KO, dict) else None
-        if ko and _hit(ko):                                  # 한글 별칭은 토큰 부분일치 허용('뉴스'→'뉴스·정치')
-            cats.append(x)
-    keywords = [x["k"] for x in cat["keywords"] if x["k"] and x["k"].lower() in t][:5]
+        if not frags and ko:
+            frags = _hit_frags(ko)                           # 한글 별칭은 토큰 부분일치 허용('뉴스'→'뉴스·정치')
+        if frags:
+            (neg_cat if _split(frags) else cats).append(x)
+    keywords, neg_kw = [], []
+    for x in cat["keywords"]:
+        k = x["k"]
+        if k and k.lower() in t:
+            (neg_kw if _neg_after(t, k.lower()) else keywords).append(k)
+    keywords, neg_kw = keywords[:5], neg_kw[:5]
     # 필수/선택 기본값(휴리스틱): 주제·대상(카테고리·키워드)=필수(정체성), 관점·형식(인텐트)=선택(관련 확장)
     req = {"cats": list(cats), "intents": [], "keywords": list(keywords)}
-    return {"cats": cats, "intents": intents, "keywords": keywords, "req": req}
+    return {"cats": cats, "intents": intents, "keywords": keywords, "req": req,
+            "neg": {"cats": neg_cat, "intents": neg_int, "keywords": neg_kw}}
 
 
 # 토픽 탭 HTML (대시보드와 동일 토큰)
@@ -600,6 +666,7 @@ def render_html(results_path: str, notice: str = "") -> str:
         f'<div class="dims">'
         + (("".join(f'<span class="dim ent">{esc(x)}</span>' for x in p["dims"]["콘텐츠 카테고리"])) or "")
         + (("".join(f'<span class="dim int">{esc(x)}</span>' for x in p["dims"]["인텐트"])) or "")
+        + (("".join(f'<span class="dim neg">✖ {esc(x)}</span>' for x in p["dims"].get("제외 인텐트", []))) or "")
         + "</div>"
         f'<div class="fmatch"><span class="big">{p["count"]}</span> 매칭 콘텐츠</div>'
         f'<div class="rep">대표: {esc(p["rep_title"][:50])}</div></div>'
@@ -681,6 +748,7 @@ transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s,box-shadow
 .dim{font-size:11px;border-radius:6px;padding:2px 8px}
 .dim.ent{background:rgba(160,92,255,.16);color:var(--cat)}
 .dim.int{background:rgba(92,119,255,.16);color:var(--int)}
+.dim.neg{background:rgba(255,92,102,.14);color:#ff5c66}
 .pm{font-size:12px;color:var(--mut);margin-bottom:6px}
 .rep{font-size:12px;color:var(--fg2);border-top:1px dashed var(--line);padding-top:7px}
 .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px}

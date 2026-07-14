@@ -634,6 +634,11 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     cats = _strlist(d.get("cats"))
     intents = _strlist(d.get("intents"))
     keywords = _strlist(d.get("keywords"))
+    # 제외(neg): 선택과 독립인 배제 조건. 같은 값이 선택에도 있으면 선택을 우선(자기모순 방지).
+    ng = d.get("neg") or {}
+    neg = {k: [v for v in _strlist(ng.get(k))
+               if v not in {"cats": cats, "intents": intents, "keywords": keywords}[k]]
+           for k in ("cats", "intents", "keywords")}
     # \ud544\uc218(req): \uc120\ud0dd\ub41c \uac12\uc758 \ubd80\ubd84\uc9d1\ud569\ub9cc \uc778\uc815(\uac12 \uc5c6\uc73c\uba74 \ud558\uc704\ud638\ud658\uc73c\ub85c topic \uc774 '\uc804\ubd80 \ud544\uc218' \ucc98\ub9ac)
     rq = d.get("req") or {}
     sel = {"cats": set(cats), "intents": set(intents), "keywords": set(keywords)}
@@ -646,7 +651,7 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
         while cid in ids:
             cid = base + "-" + str(n); n += 1
     return {"id": cid, "name": name or "(\ubb34\uc81c \ud1a0\ud53d)", "prompt": prompt,
-            "cats": cats, "intents": intents, "keywords": keywords, "req": req}
+            "cats": cats, "intents": intents, "keywords": keywords, "req": req, "neg": neg}
 
 
 def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
@@ -690,8 +695,17 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     cats = _uniq(m_cats, _cv(opt, "cats", ac))
     intents = _uniq(m_int, _cv(opt, "intents", ai))
     keywords = _uniq(m_kw, _kw(opt))[:5]
+    # 제외(exclude → neg): 허용 목록으로 검증 · 선택과 겹치면 선택에서 뺀다(배제 의도 우선)
+    exc = obj.get("exclude") or {}
+    neg = {"cats": _cv(exc, "cats", ac), "intents": _cv(exc, "intents", ai),
+           "keywords": _kw(exc)[:5]}
+    cats = [x for x in cats if x not in neg["cats"]]
+    intents = [x for x in intents if x not in neg["intents"]]
+    keywords = [x for x in keywords if x not in neg["keywords"]]
     sug = {"cats": cats, "intents": intents, "keywords": keywords,
-           "req": {"cats": m_cats, "intents": m_int, "keywords": [k for k in m_kw if k in keywords]}}
+           "req": {"cats": [c for c in m_cats if c in cats], "intents": [i for i in m_int if i in intents],
+                   "keywords": [k for k in m_kw if k in keywords]},
+           "neg": neg}
     return sug, route
 
 
@@ -712,7 +726,8 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
         if not rows:
             return {"ok": True, "via": "none",
                     "suggest": {"cats": [], "intents": [], "keywords": [],
-                                "req": {"cats": [], "intents": [], "keywords": []}}}
+                                "req": {"cats": [], "intents": [], "keywords": []},
+                                "neg": {"cats": [], "intents": [], "keywords": []}}}
         model = (data.get("model") or "").strip()          # "" = \uae30\ubcf8 \uc2e4\ud589 \ubaa8\ub378
         via, route, sug = "llm", "", None
         try:
@@ -720,7 +735,8 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
         except Exception as e:
             sug, route = None, str(e)[:80]
         # \ubaa8\ub378 \ud638\ucd9c \ubd88\uac00\u00b7\uc2e4\ud328\u00b7\ube48 \uacb0\uacfc \u2192 \ud734\ub9ac\uc2a4\ud2f1(\uc989\uc2dc\u00b7\uc758\uc874\uc131 0) \ud3f4\ubc31. \ubc84\ud2bc\uc774 \ud5db\ub3cc\uc9c0 \uc54a\uac8c.
-        if not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords")):
+        if not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords")
+                           or any((sug.get("neg") or {}).values())):
             sug = TP.suggest_dims(text, rows, svc)
             via = "heuristic"
         return {"ok": True, "suggest": sug, "via": via, "model": model, "route": route}
