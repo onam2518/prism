@@ -120,9 +120,12 @@ _INTEGRATED = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 font:14px var(--ds-font-body);-webkit-font-smoothing:antialiased}
 .tabbar{display:flex;align-items:center;gap:6px;height:52px;padding:0 18px;
 background:var(--ds-surface);border-bottom:1px solid var(--ds-hairline)}
-.tabbar .brand{font-family:var(--ds-font-display);font-weight:700;font-size:15px;margin-right:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
-.tabbar .brand::before{content:"";width:18px;height:18px;border-radius:6px;
-background:var(--ds-primary)}
+.tabbar .brand{margin-right:18px;display:flex;align-items:center;height:28px}
+.tabbar .brand .lg{height:24px;width:auto;display:none}
+.tabbar .brand .lg-light{display:block}
+@media (prefers-color-scheme:dark){.tabbar .brand .lg-light{display:none}.tabbar .brand .lg-dark{display:block}}
+[data-theme=light] .tabbar .brand .lg-light{display:block}[data-theme=light] .tabbar .brand .lg-dark{display:none}
+[data-theme=dark] .tabbar .brand .lg-light{display:none}[data-theme=dark] .tabbar .brand .lg-dark{display:block}
 .tab{padding:8px 16px;border-radius:var(--ds-radius-md);cursor:pointer;color:var(--ds-muted);font-size:13px;font-weight:600;transition:.12s}
 .tab:hover{color:var(--ds-ink);background:var(--ds-state-hover)}
 .tab.on{background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
@@ -142,7 +145,7 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 #hp dd{margin:2px 0 0;color:var(--ds-body);font-size:12.5px;line-height:1.5}
 #hp .pl{border-left:2px solid var(--ds-hairline);padding-left:10px;margin:6px 0}
 </style></head><body>
-<div class="tabbar"><span class="brand">Prism</span>
+<div class="tabbar"><span class="brand" aria-label="Prism"><img class="lg lg-light" src="/vendor/prism-logo-tagline-light.png" alt="Prism"><img class="lg lg-dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism"></span>
  <span class="tab on" data-t="content">아이템 메타</span>
  <span class="tab" data-t="topic">토픽</span>
  <span class="tab" data-t="user">사용자 메타</span>

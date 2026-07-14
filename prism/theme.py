@@ -10,16 +10,18 @@
      통째로 고치지 않고도 팔레트·폰트·모드전환이 일괄 통일되게 한다(별칭이 --ds-* 를 가리켜
      라이트/다크에 따라 자동 swap). 신규 스타일은 `--ds-*` 를 직접 쓴다.
 
-폰트: 리포트는 독립 HTML(디스크·오프라인 가능)이라 Pretendard 를 CDN 링크로 로드하고
-      실패 시 시스템 폰트로 graceful fallback(스택에 -apple-system 등 포함).
+폰트: 앱과 동일하게 서버 번들 폰트를 로드한다 — 본문 Pretendard(`/vendor/pretendard.css`),
+      디스플레이(제목·큰 숫자·탭) GmarketSans(`/vendor/gmarket.css`). 리포트가 prism 서버로
+      서빙되면(앱의 '전체 리포트') 절대경로 `/vendor/` 가 그대로 resolve 되고, iframe srcdoc 도
+      부모 origin 을 상속하므로 각 서브리포트에서 동일하게 로드된다. 오프라인 단독 파일에선
+      시스템 폰트로 graceful fallback(스택에 -apple-system 등 포함).
 텍스트 원칙: em-dash 금지 · 값 태그엔 .hint 호버 정의.
 """
 
-# <head> 폰트(+preconnect). Pretendard Variable(동적 서브셋) · 오프라인은 시스템 폰트 폴백.
+# <head> 폰트: 앱과 동일한 서버 번들(로컬 /vendor). Pretendard(본문) + GmarketSans(디스플레이).
 FONT_HEAD = (
-    '<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>'
-    '<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/'
-    'dist/web/variable/pretendardvariable-dynamic-subset.min.css">'
+    '<link rel="stylesheet" href="/vendor/pretendard.css">'
+    '<link rel="stylesheet" href="/vendor/gmarket.css">'
 )
 
 # ── 1) --ds-* 시맨틱 토큰(라이트 :root) + 2) 레거시 별칭 → --ds-* ──────────────
@@ -41,7 +43,8 @@ TOKENS = r""":root{
 --ds-cat-interest:#ff9429;--ds-cat-interest-text:#cc6a0a;
 --ds-cat-community:#5e47eb;--ds-cat-community-text:#3c2bb8;
 --ds-font-sans:'Pretendard Variable','Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo',sans-serif;
---ds-font-body:var(--ds-font-sans);--ds-font-display:var(--ds-font-sans);
+--ds-font-body:var(--ds-font-sans);
+--ds-font-display:'GmarketSans','Pretendard Variable','Pretendard',-apple-system,'Apple SD Gothic Neo',sans-serif;
 --ds-radius-md:12px;--ds-radius-lg:16px;--ds-radius-chip:9999px;
 --ds-shadow-low:0 0 4px 0 rgba(0,0,0,.04);--ds-shadow-medium:0 1px 10px 0 rgba(0,0,0,.08);--ds-shadow-high:0 2px 16px 0 rgba(0,0,0,.16);
 --ds-focus-ring:0 0 0 3px rgba(30,132,255,.4);
