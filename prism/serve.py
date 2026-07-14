@@ -3287,6 +3287,31 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/content-assign-bulk"):   # 슈퍼관리자: 여러 콘텐츠 일괄 배정(덮어쓰기)
+            try:
+                if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                hashes = [str(h).strip() for h in (data.get("hashes") or []) if str(h).strip()]
+                reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
+                try:
+                    minr = int(data.get("min_reviewers") or 1)
+                except (TypeError, ValueError):
+                    minr = 1
+                st = get_store()
+                if not (hashes and st and hasattr(st, "set_assignees_bulk")):
+                    self._send(400, json.dumps({"error": "대상 없음 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
+                    return
+                n = st.set_assignees_bulk(hashes, reviewers, min_reviewers=minr, team=self._req_team())
+                _agg_bump()
+                self._send(200, json.dumps({"ok": True, "n": n, "reviewers": reviewers,
+                                            "min_reviewers": (max(1, min(len(reviewers), minr)) if reviewers else 0)},
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/content-assign"):    # 관리자: 콘텐츠 검수 담당자 배정(배타적 노출)
             try:
                 if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):

@@ -622,6 +622,27 @@ class Store:
     def clear_assignees(self, content_hash, team=None):
         self.set_assignees(content_hash, [], team=team)
 
+    def set_assignees_bulk(self, hashes, reviewers, min_reviewers=1, team=None) -> int:
+        """여러 콘텐츠에 같은 담당자·N 을 일괄 배정(덮어쓰기). 단일 트랜잭션.
+        reviewers=[] 이면 대상 전체 배정 해제. 반환=처리한 콘텐츠 수."""
+        c = self._conn()
+        tm = team or ""
+        hs = [h for h in dict.fromkeys(hashes or []) if h]       # 중복 제거
+        rvs = [r for r in dict.fromkeys(reviewers or []) if r]
+        n = max(1, min(len(rvs), int(min_reviewers or 1))) if rvs else 1
+        now = time.time()
+        for h in hs:
+            c.execute("DELETE FROM assignments WHERE content_hash=? AND team=?", (h, tm))
+            c.execute("DELETE FROM assignment_cfg WHERE content_hash=? AND team=?", (h, tm))
+            for rv in rvs:
+                c.execute("INSERT INTO assignments(content_hash,reviewer,team,ts) VALUES(?,?,?,?)",
+                          (h, rv, tm, now))
+            if rvs:
+                c.execute("INSERT INTO assignment_cfg(content_hash,team,min_reviewers) VALUES(?,?,?)",
+                          (h, tm, n))
+        c.commit()
+        return len(hs)
+
     def assignees(self, team=None) -> dict:
         """콘텐츠별 배정 현황 {hash: {"reviewers":[...], "min":N}} · 큐·진척 산정 주입용.
         배정된 콘텐츠만 키로 포함(미배정 콘텐츠는 오픈 큐)."""
