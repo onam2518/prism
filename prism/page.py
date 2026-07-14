@@ -1062,6 +1062,15 @@ PAGE = """<!doctype html>
       </div>
 
       <!-- ═══ 모듈: 사전 · 매핑 ═══ -->
+      <!-- 사전 · 정책: 탭형 · 사전(인텐트·카테고리 · 추출이 참조하는 어휘) / 정책(품질·법령·처리 · 판정 기준) -->
+      <div x-show="mod === 'dict'" x-cloak class="w-full" style="margin-bottom:10px">
+        <div class="evaltabs">
+          <button type="button" x-bind:class="dictTab==='intent'?'sel':''" x-on:click="dictTab='intent'">인텐트</button>
+          <button type="button" x-bind:class="dictTab==='category'?'sel':''" x-on:click="dictTab='category'">카테고리</button>
+          <!-- 엔티티 사전(feat/entdict) 합류 시 이 자리에 '엔티티' 탭 -->
+          <button type="button" x-bind:class="dictTab==='policy'?'sel':''" x-on:click="dictTab='policy'">정책</button>
+        </div>
+      </div>
       <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <ul class="ds-bullets">
@@ -1073,7 +1082,7 @@ PAGE = """<!doctype html>
 
         <!-- 편집은 팝업(편집 다이얼로그)에서 · 화면 하단 정의 -->
 
-        <div x-show="dictData" class="space-y-4">
+        <div x-show="dictData && dictTab === 'intent'" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>인텐트 · 범용 소비 방식(8)</b>
             <button type="button" class="copybtn" x-on:click="startEdit('intent_universal', null, dictData.intentUniversal, 'list', '인텐트 범용')">편집</button>
           </div><div class="panel-bd flex flex-wrap gap-1.5">
@@ -1091,6 +1100,8 @@ PAGE = """<!doctype html>
             <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
             <span x-show="!(dictData && dictData.intentByService[dictGroup] && dictData.intentByService[dictGroup].length)" class="text-xs text-muted">항목 없음</span>
           </div></div>
+        </div>
+        <div x-show="dictData && dictTab === 'category'" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta" style="cursor:help" data-tip="IAB Tech Lab 은 어떤 언어로도 공식 번역을 배포하지 않습니다 · 한글은 자사 표시 기준" data-tip-pos="top">공식 표기는 영문(IAB Content Taxonomy 기반) · 한글은 화면 표시용 병기</span>
             <button type="button" class="copybtn ml-auto" x-on:click="startEdit('iab_tier1', null, dictData.iabTier1, 'list', 'Tier1 목록')">Tier1 편집</button>
           </div>
@@ -1122,6 +1133,8 @@ PAGE = """<!doctype html>
                   <td><button type="button" class="copybtn" x-on:click="startEdit('category_iab_map', k, v, 'text', '매핑 · ' + k)">편집</button></td></tr></template>
               </tbody></table></div></div>
           </div>
+        </div>
+        <div x-show="dictData && dictTab === 'policy'" class="space-y-4">
           <div class="grid grid-cols-2 gap-4">
             <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>ID</th><th>메타명 · 정의</th><th>적용</th><th></th></tr></thead><tbody>
@@ -2459,7 +2472,7 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 인입 정책 (전용 도구) ═══ -->
       <!-- 수집(인입) 정책: 정책 표 성격 → 사전·정책 메뉴에 통합 렌더 -->
-      <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4" style="margin-top:16px">
+      <div x-show="mod === 'dict' && dictTab === 'policy'" x-cloak class="w-full space-y-4" style="margin-top:16px">
         <div class="ds-widget ds-widget--info" style="--w-accent:var(--ds-primary)">
           <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>ITEM TYPE 처리 정책</span></div><div class="ds-widget__actions"><span class="ds-badge ds-badge--neutral">131</span><span class="text-xs text-muted">직접 수정 가능</span><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">
