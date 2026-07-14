@@ -521,7 +521,7 @@ PAGE = """<!doctype html>
 
         <!-- 콘텐츠 추가 = 저장만(미실행 대기) · 초안 생성은 STEP 2 모델 실행이 담당 -->
         <section class="panel" data-fn>
-          <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">추가는 저장만 합니다 · 초안 생성은 STEP 2 모델 실행에서(이미지 제외)</span></div>
+          <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">추가는 저장만 합니다 · 초안 생성은 STEP 2 모델 실행에서 · 이미지·영상은 실험실 미디어 탭</span></div>
           <div class="panel-bd">
           <!-- 입력 방식 -->
           <div class="seg seg3 mb-5">
@@ -536,43 +536,7 @@ PAGE = """<!doctype html>
               <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
             </select>
           </div>
-          <!-- 이미지 -->
-          <div x-show="activeTabId === 'image'" x-cloak class="space-y-4"
-               x-on:paste.window="activeTabId === 'image' && onPasteImages($event)">
-            <!-- 디자인 시스템 파일럿: ImageDropzone + AttachmentChip (다크 스코프) -->
-            <div class="ds-pilot">
-              <label class="lbl">이미지 (여러 장이면 하나의 콘텐츠로 통합)</label>
-              <label class="ds-dropzone" x-bind:class="imgDrag ? 'drag' : ''"
-                     x-on:dragover.prevent="imgDrag = true" x-on:dragleave.prevent="imgDrag = false"
-                     x-on:drop.prevent="onDropImages($event)">
-                <span class="dz-ic">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m-4 4 4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-                </span>
-                <span class="dz-t" x-text="imgDrag ? '여기에 놓기' : '이미지를 끌어다 놓기'"></span>
-                <span class="dz-d" x-text="imgDrag ? '' : '클릭하여 선택 · 클립보드 붙여넣기 가능'"></span>
-                <input type="file" accept="image/*" multiple class="sr-only" x-on:change="onFiles($event)">
-              </label>
-              <!-- AttachmentChip 목록 -->
-              <div x-show="imgFiles.length" x-cloak class="ds-attachments">
-                <template x-for="(f, i) in imgFiles" x-bind:key="i">
-                  <span class="ds-attachment">
-                    <span class="ds-attachment__icon">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.6-3.6a2 2 0 0 0-2.8 0L6 20"/></svg>
-                    </span>
-                    <span class="ds-attachment__name" x-text="f.name"></span>
-                    <span class="ds-attachment__size" x-text="sizeLabel(f.size)"></span>
-                    <button type="button" class="ds-attachment__remove" x-on:click="removeImage(i)" aria-label="제거">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-                    </button>
-                  </span>
-                </template>
-              </div>
-            </div>
-            <div><label class="lbl">제목 (선택)</label>
-              <input x-model="imgTitle" class="field" placeholder="없으면 이미지에서 추론"></div>
-            <div><label class="lbl">캡션 (선택)</label>
-              <input x-model="imgCaption" class="field" placeholder="사진 설명이 있으면 함께 참조"></div>
-          </div>
+          <!-- 이미지 입력은 실험실 · 미디어 탭으로 이관됨(실험실 전담) -->
           <!-- 텍스트 -->
           <div x-show="activeTabId === 'text'" x-cloak class="space-y-4">
             <div><label class="lbl">제목 (title)</label>
@@ -1267,6 +1231,36 @@ PAGE = """<!doctype html>
               </div>
               <div><label class="lbl">타임스탬프 원고</label>
                 <pre class="field" style="max-height:220px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px" x-text="mediaRes?mediaRes.transcript:''"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 포토·이미지 실험 (업로드 → 시각 이해 → 합성 Content → 기존 추출 ItemMeta · 실험·미저장 · 콘텐츠 관리에서 이관) -->
+        <div class="panel"><div class="panel-hd"><b>포토 · 이미지 실험</b><span class="meta">이미지 업로드(여러 장 = 하나로 통합) → 시각 이해 → 합성 Content → 기존 추출(ItemMeta) · 실험이라 저장 안 함</span></div>
+          <div class="panel-bd space-y-4">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div style="flex:1;min-width:240px"><label class="lbl">이미지 파일 (여러 장 가능)</label>
+                <input type="file" accept="image/*" multiple class="field" x-on:change="mediaImgPick($event)">
+              </div>
+              <div style="flex:1;min-width:200px"><label class="lbl">캡션 (선택)</label>
+                <input class="field" x-model="mediaImg.caption" placeholder="사진 설명이 있으면 함께 참조">
+              </div>
+              <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaImgRun()" x-bind:disabled="mediaImgBusy||!mediaImg.files.length">실행</button>
+            </div>
+            <div x-show="mediaImg.files.length" class="text-xs text-muted" x-text="mediaImg.files.length + '장 선택됨'"></div>
+            <div x-show="mediaImgMsg" class="text-xs text-muted" x-text="mediaImgMsg"></div>
+            <div x-show="mediaImgRes" class="space-y-3">
+              <div x-show="mediaImgRes && mediaImgRes.mock"><span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock · 비전 미연결(키 없음)</span></div>
+              <div><label class="lbl">합성 Content (본문)</label>
+                <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaImgRes ? (mediaImgRes.content.body || '') : ''"></pre></div>
+              <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타 (기존 추출 재사용)</b><span class="meta">실험 · 미저장</span></div>
+                <div class="panel-bd space-y-2">
+                  <div class="drow"><div class="k">리드문</div><div class="v text-sm text-body" x-text="mediaImgRes ? ((mediaImgRes.output.item_meta||{}).summary || '—') : ''"></div></div>
+                  <div class="drow"><div class="k">인텐트</div><div class="v flex flex-wrap gap-1.5"><template x-for="it in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">—</span></div></div>
+                  <div class="drow"><div class="k">엔티티</div><div class="v flex flex-wrap gap-1.5"><template x-for="e in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">—</span></div></div>
+                  <div class="drow"><div class="k">카테고리</div><div class="v flex flex-wrap gap-1.5"><template x-for="c in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">—</span></div></div>
+                </div>
               </div>
             </div>
           </div>

@@ -3526,11 +3526,21 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/media-extract"):        # 미디어 메타 파이프라인: 자막 파싱(JSON) · 영상 네이티브(multipart)
             try:
                 ctype = self.headers.get("Content-Type", "")
-                if "multipart/form-data" in ctype:        # 영상 업로드 → T4 네이티브 실험(미저장)
+                if "multipart/form-data" in ctype:        # 업로드 → 미디어 실험(미저장): 이미지(image*) | 영상(file)
                     fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
+                    imgs = {k: v for k, v in fields.items()
+                            if k.startswith("image") and isinstance(v, dict) and v.get("bytes")}
+                    if imgs:                              # 이미지 실험: run_pipeline 이미지 분기 재사용(미저장)
+                        pf = {"displayServiceName": fields.get("displayServiceName", "포토"),
+                              "title": fields.get("title", ""), "caption": fields.get("caption", "")}
+                        pf.update(imgs)
+                        res = run_pipeline(pf, mock=Handler.server_mock,
+                                           model=fields.get("model", ""), persist=False)
+                        self._send(200, json.dumps({"ok": True, **res}, ensure_ascii=False), _JSON)
+                        return
                     f = fields.get("file") or {}
                     if not f.get("bytes"):
-                        self._send(400, json.dumps({"ok": False, "error": "영상 파일이 필요합니다"}, ensure_ascii=False), _JSON)
+                        self._send(400, json.dumps({"ok": False, "error": "이미지 또는 영상 파일이 필요합니다"}, ensure_ascii=False), _JSON)
                         return
                     res = media_native(f["bytes"], f.get("mime") or "video/mp4",
                                        caption=fields.get("caption", ""),
