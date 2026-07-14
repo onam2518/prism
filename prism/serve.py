@@ -1525,7 +1525,7 @@ def build_report_html() -> str:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
         out = os.path.join(d, "report.html")
         try:
-            DASH.build_integrated(rpath, out, title="Prism (이미지 트랙)")
+            DASH.build_integrated(rpath, out, title="Prism 리포트")
             return open(out, encoding="utf-8").read()
         except Exception as e:
             return f"<p>리포트 생성 실패: {e}</p>"
