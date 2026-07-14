@@ -220,7 +220,12 @@ def _parse_json(text: str) -> dict:
         raise EmptyError("empty")
     s = text.strip()
     try:
-        return json.loads(s)
+        obj = json.loads(s)
+        # dict 강제: 배열/문자열/null 이 그대로 흘러가면 호출부 obj.get 에서 AttributeError 로
+        # 배치 전체가 죽는다(response_format 미지원 계열에서 실제 발생 가능).
+        # dict 가 아니면 아래 { } 슬라이스 복구([{…}] → 내부 객체)로 폴백.
+        if isinstance(obj, dict):
+            return obj
     except json.JSONDecodeError:
         pass
     # 코드펜스 제거
@@ -232,7 +237,9 @@ def _parse_json(text: str) -> dict:
     i, j = s.find("{"), s.rfind("}")
     if i != -1 and j != -1 and j > i:
         try:
-            return json.loads(s[i:j + 1])
+            obj = json.loads(s[i:j + 1])
+            if isinstance(obj, dict):
+                return obj
         except json.JSONDecodeError:
             pass
     raise ParseError(f"unparseable: {text[:80]!r}")

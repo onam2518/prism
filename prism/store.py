@@ -7,6 +7,7 @@ import time
 import hashlib
 
 _local = threading.local()
+_EVENT_ONCE_LOCK = threading.Lock()   # log_event_once 의 check-then-insert 직렬화(미션 보상 이중 지급 방지)
 
 
 def content_hash(content: dict) -> str:
@@ -467,16 +468,18 @@ class Store:
             "SELECT DISTINCT content_hash FROM gold_checks WHERE reviewer=?", (reviewer or "(익명)",))}
 
     def log_event_once(self, reviewer, kind, day, bonus, meta="", team=None) -> bool:
-        """(reviewer, kind, day) 당 1회만 기록(미션 보상 중복 방지). 신규 기록 시 True."""
-        c = self._conn()
-        cur = c.execute("SELECT 1 FROM events WHERE reviewer=? AND kind=? AND day=?",
-                        (reviewer or "(익명)", kind, int(day))).fetchone()
-        if cur:
-            return False
-        c.execute("INSERT INTO events(reviewer,kind,day,bonus,meta,ts) VALUES(?,?,?,?,?,?)",
-                  (reviewer or "(익명)", kind, int(day), int(bonus), meta or "", time.time()))
-        c.commit()
-        return True
+        """(reviewer, kind, day) 당 1회만 기록(미션 보상 중복 방지). 신규 기록 시 True.
+        check-then-insert 는 멀티스레드 서버에서 이중 지급 레이스가 있어 프로세스 락으로 직렬화."""
+        with _EVENT_ONCE_LOCK:
+            c = self._conn()
+            cur = c.execute("SELECT 1 FROM events WHERE reviewer=? AND kind=? AND day=?",
+                            (reviewer or "(익명)", kind, int(day))).fetchone()
+            if cur:
+                return False
+            c.execute("INSERT INTO events(reviewer,kind,day,bonus,meta,ts) VALUES(?,?,?,?,?,?)",
+                      (reviewer or "(익명)", kind, int(day), int(bonus), meta or "", time.time()))
+            c.commit()
+            return True
 
     def event_bonus(self, team=None) -> dict:
         """reviewer → {total, week}(미션 등 이벤트 보너스 합)."""
@@ -735,6 +738,8 @@ class Store:
         c.execute("DELETE FROM content_purpose WHERE content_hash=?", (h,))
         c.execute("DELETE FROM feedback WHERE content_hash=?", (h,))
         c.execute("DELETE FROM eval_checks WHERE content_hash=?", (h,))
+        c.execute("DELETE FROM assignments WHERE content_hash=?", (h,))     # 유령 배정 잔존 시 팀 진척 분모 오염
+        c.execute("DELETE FROM assignment_cfg WHERE content_hash=?", (h,))
         c.commit()
         return cur.rowcount > 0
 
@@ -905,7 +910,8 @@ class Store:
             return {"ok": False, "error": "이미 사용 중인 닉네임입니다"}
         moved = 0
         for t in ("reviewers", "feedback", "patch_log", "gold_checks",
-                  "events", "eval_checks", "feedback_routes"):
+                  "events", "eval_checks", "feedback_routes",
+                  "assignments", "board"):                # 배정(배타 큐 노출 키)·게시글 작성자도 이관
             moved += c.execute(f"UPDATE {t} SET reviewer=? WHERE reviewer=?", (new, old)).rowcount
         c.commit()
         return {"ok": True, "moved": moved}

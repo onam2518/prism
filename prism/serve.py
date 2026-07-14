@@ -290,10 +290,11 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
     if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '추가됨'으로 속이지 않는다
         return {"error": "저장 실패 · 다시 시도하세요 (" + saved["error"][:120] + ")"}
     jid = "add:" + time.strftime("%H%M%S")               # 실행 이력에 추가 기록(클릭 -> 해당 콘텐츠)
-    _INGEST_STATE[jid] = {"name": source, "endpoint": "", "kind": "콘텐츠 추가", "started": time.time(),
-                          "running": False, "total": len(rows), "done": len(rows), "failed": 0,
-                          "last_run": time.time(), "last_msg": f"{len(rows)}건 추가 · 미실행 대기(STEP 2에서 실행)",
-                          "last_ok": True, "trigger": "manual", "hashes": [_chash(c) for c in rows]}
+    with _INGEST_LOCK:                                   # 키 삽입은 상태 순회와 레이스 · 락 필수
+        _INGEST_STATE[jid] = {"name": source, "endpoint": "", "kind": "콘텐츠 추가", "started": time.time(),
+                              "running": False, "total": len(rows), "done": len(rows), "failed": 0,
+                              "last_run": time.time(), "last_msg": f"{len(rows)}건 추가 · 미실행 대기(STEP 2에서 실행)",
+                              "last_ok": True, "trigger": "manual", "hashes": [_chash(c) for c in rows]}
     if (purpose or "") == "eval":
         try:
             from .store import content_hash as _chash
@@ -1703,7 +1704,9 @@ def ingest_status() -> dict:
     """실행 큐 상태(자동 인입 + 일괄 작업 · 진행률·예상 잔여시간) + 스케줄러 동작 여부."""
     jobs = []
     now = time.time()
-    for sid, s in _INGEST_STATE.items():
+    with _INGEST_LOCK:                        # 잡 등록(키 삽입) 스레드와의 순회 레이스 차단
+        snapshot = list(_INGEST_STATE.items())
+    for sid, s in snapshot:
         j = {"id": sid, **s}
         if s.get("running") and s.get("started"):
             j["elapsed_s"] = int(now - s["started"])
@@ -3568,6 +3571,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/meta-compile"):
             try:
+                # 실모델 호출(비용) 트리거 · 무인증 차단(형제 라우트 /learn-batch 와 동일 게이트)
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
                 self._send(200, json.dumps(meta_compile_run(self._req_team()),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
@@ -3614,6 +3621,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/eval-golden"):       # 등록 골든셋으로 평가 실행(기준 모델·콘텐츠 풀)
             try:
+                # 실모델 호출(비용) 트리거 · 무인증 차단
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
                 data = json.loads(body or b"{}")
                 self._send(200, json.dumps(eval_golden(self._req_team(),
                                            model=(data.get("model") or "").strip(),
@@ -3742,6 +3753,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/presence"):
             try:
+                # 팀 SSE 방송 트리거 · 미인증 직접 호출 차단(/eval-judge 와 동일 게이트)
+                if _supa() and not self._bearer_uid():
+                    self._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+                    return
                 p = json.loads(body or b"{}")
                 broadcast({"type": "presence", "reviewer": (p.get("reviewer") or "").strip(),
                            "hash": p.get("hash") or "", "action": p.get("action") or "viewing"})
