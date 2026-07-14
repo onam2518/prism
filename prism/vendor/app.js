@@ -1747,8 +1747,10 @@
             const ri = this.studio.req[dim].indexOf(v); if (ri >= 0) this.studio.req[dim].splice(ri, 1);
             if (!this.studio.neg[dim].includes(v)) { this.studio.neg[dim].push(v); negN++; }
           }); });
+          // 개체 속성(eattrs) 반영: 항상 필수 취급 · 사전 실재값만 서버가 검증해 내려줌
+          (s.eattrs || []).forEach(v => { if (!this.studio.eattrs.includes(v)) this.studio.eattrs.push(v); });
           this.studio.auto = { cats: (s.cats || []).slice(), intents: (s.intents || []).slice(), keywords: (s.keywords || []).slice() };
-          const n = (s.cats || []).length + (s.intents || []).length + (s.keywords || []).length + negN;
+          const n = (s.cats || []).length + (s.intents || []).length + (s.keywords || []).length + (s.eattrs || []).length + negN;
           const viaLlm = r && r.via === 'llm';
           const src = viaLlm ? ('모델(' + (this.studioModel || '기본') + ')') : '규칙';
           // 모델을 골랐는데 규칙으로 떨어졌으면 이유를 밝힌다(모델이 빈 응답·키 없음 등 · 조용한 폴백 방지)

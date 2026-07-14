@@ -881,8 +881,12 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     allow_int = list(dict.fromkeys((tax["intents"] or []) + data_int))
     tier1_ko = getattr(TP, "_TIER1_KO", {}) or {}
     cats_ko = [((tier1_ko.get(c) or c) + "=" + c) for c in allow_cats]  # \uc601\ubb38 Tier1 + \ud55c\uae00 \ubcd1\uae30
+    # \uac1c\uccb4 \uc18d\uc131 \ud6c4\ubcf4(\uc5d4\ud2f0\ud2f0 \uc0ac\uc804 \uc2e4\uc7ac\uac12): '\uc5ec\uc131 \uc2a4\ud3ec\uce20\uc778'\ub958 \uc124\uba85 \u2192 eattrs \uc870\uac74 \uc790\ub3d9\uc0dd\uc131
+    ecat = TP.eattr_catalog(_ent_index())
+    e_allow = [c["k"] for c in ecat]
+    e_prompt = [f'{c["k"]} ({c["label"]} \u00b7 {c["v"]}\uac74)' for c in ecat[:60]]
     # \ubaa8\ub378 \uacc4\uc5f4 \ucfe1\ubd81 \ub798\ud37c\ub85c \uc870\ub9bd(\ud544\uc218/\uc120\ud0dd \uc124\uacc4\uc790 \uc5ed\ud560) \u00b7 \uc2a4\ud29c\ub514\uc624 \uc624\ubc84\ub77c\uc774\ub4dc \uc0c1\uc18d
-    sysp = MP.topic_suggest_system(model, cats_ko, allow_int, data_cats, data_int)
+    sysp = MP.topic_suggest_system(model, cats_ko, allow_int, data_cats, data_int, eattrs=e_prompt)
     userp = MP.topic_suggest_user(text)
     llm, route = llm_for_model(model, mock)
     if llm is None:
@@ -917,7 +921,10 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     cats = [x for x in cats if x not in neg["cats"]]
     intents = [x for x in intents if x not in neg["intents"]]
     keywords = [x for x in keywords if x not in neg["keywords"]]
-    sug = {"cats": cats, "intents": intents, "keywords": keywords,
+    # 개체 속성(eattrs): 실재 후보 목록으로만 검증 · 항상 필수 취급이라 req 분리 불필요
+    ea = set(e_allow)
+    eattrs = [str(x).strip() for x in (obj.get("eattrs") or []) if str(x).strip() in ea][:6]
+    sug = {"cats": cats, "intents": intents, "keywords": keywords, "eattrs": eattrs,
            "req": {"cats": [c for c in m_cats if c in cats], "intents": [i for i in m_int if i in intents],
                    "keywords": [k for k in m_kw if k in keywords]},
            "neg": neg}
@@ -948,7 +955,7 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
         text = data.get("text") or ""
         if not rows:
             return {"ok": True, "via": "none",
-                    "suggest": {"cats": [], "intents": [], "keywords": [],
+                    "suggest": {"cats": [], "intents": [], "keywords": [], "eattrs": [],
                                 "req": {"cats": [], "intents": [], "keywords": []},
                                 "neg": {"cats": [], "intents": [], "keywords": []}}}
         model = (data.get("model") or "").strip()          # "" = \uae30\ubcf8 \uc2e4\ud589 \ubaa8\ub378
@@ -959,9 +966,10 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
             sug, route = None, str(e)[:80]
         # \ubaa8\ub378 \ud638\ucd9c \ubd88\uac00\u00b7\uc2e4\ud328\u00b7\ube48 \uacb0\uacfc \u2192 \ud734\ub9ac\uc2a4\ud2f1(\uc989\uc2dc\u00b7\uc758\uc874\uc131 0) \ud3f4\ubc31. \ubc84\ud2bc\uc774 \ud5db\ub3cc\uc9c0 \uc54a\uac8c.
         if not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords")
-                           or any((sug.get("neg") or {}).values())):
-            sug = TP.suggest_dims(text, rows, svc)
+                           or sug.get("eattrs") or any((sug.get("neg") or {}).values())):
+            sug = TP.suggest_dims(text, rows, svc, eattr_cands=TP.eattr_catalog(_ent_index()))
             via = "heuristic"
+        sug.setdefault("eattrs", [])
         return {"ok": True, "suggest": sug, "via": via, "model": model, "route": route}
 
     cfg = _studio_config()

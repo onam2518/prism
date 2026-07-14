@@ -398,6 +398,18 @@ class TestTopicEattr(unittest.TestCase):
         self.assertIsNone(ED.parse_eattr("gender:"))
         self.assertIsNone(ED.parse_eattr("여성"))
 
+    def test_suggest_dims_eattrs(self):
+        """자연어의 개체 속성 언급 → eattrs 제안(사전 실재값만 · 같은 키 최다빈도 1개 · 빈도순)."""
+        cands = [{"k": "type:PS", "v": 30}, {"k": "occupation:스포츠인", "v": 12},
+                 {"k": "gender:여성", "v": 10}, {"k": "gender:남성", "v": 8},
+                 {"k": "nationality:대한민국", "v": 5}]
+        sug = TP.suggest_dims("여성 스포츠인 콘텐츠 모아줘", self._rows(), set(), eattr_cands=cands)
+        self.assertEqual(sug["eattrs"], ["occupation:스포츠인", "gender:여성"])   # 빈도순 · 남성 제외(키 중복)
+        sug2 = TP.suggest_dims("경제 심층 분석", self._rows(), set(), eattr_cands=cands)
+        self.assertEqual(sug2["eattrs"], [])                                     # 속성 언급 없음 → 빈 배열
+        sug3 = TP.suggest_dims("여성 스포츠인", self._rows(), set())              # 후보 없음(사전 미구축)
+        self.assertEqual(sug3["eattrs"], [])
+
     def test_eattr_catalog(self):
         rows = self._rows()
         cat = TP.eattr_catalog(self._ent_index(rows))
