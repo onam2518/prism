@@ -140,7 +140,7 @@
   .keyline + .keyline{border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))}
   .keyline__nm{min-width:120px;font-size:12.5px;font-weight:700;color:var(--ds-ink);display:inline-flex;align-items:center;gap:7px}
   .stepline{display:flex;align-items:center;gap:10px;margin:2px 2px 0;min-height:32px}
-  .stepline__no{font-family:var(--ds-font-game);font-size:11px;font-weight:700;color:#fff;
+  .stepline__no,.stepcard__no{font-family:var(--ds-font-game);font-size:11px;font-weight:700;color:#fff;
     background:var(--ds-violet,#1e84ff);border-radius:var(--ds-radius-chip);padding:4px 11px;letter-spacing:.03em;flex:none}
   .stepline b{font-family:var(--ds-font-game);font-size:15px;font-weight:700;color:var(--ds-ink);letter-spacing:-.01em}
   .stepline .meta{font-size:11.5px;color:var(--ds-muted)}
@@ -424,8 +424,7 @@
     padding:18px 20px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
   .stepcard + .stepcard{margin-top:16px}
   .stepcard__hd{display:flex;align-items:center;gap:11px;margin-bottom:16px}
-  .stepcard__no{flex:none;width:26px;height:26px;border-radius:8px;background:var(--ds-primary);color:#fff;
-    display:grid;place-items:center;font-family:var(--ds-font-display);font-size:var(--ds-size-label);font-weight:700;line-height:1}
+  /* 스텝 번호 배지 = .stepline__no 와 공용(STEP N 필 · 콘텐츠 관리와 동일 룩) */
   /* 타이틀 폰트 = 앱 헤더와 동일한 디스플레이(GmarketSans) · .stepline b 규칙에 정렬 */
   .stepcard__ttl{font-family:var(--ds-font-display);font-size:var(--ds-size-body);font-weight:700;letter-spacing:-.01em;color:var(--ds-ink)}
   .stepcard__sub{margin-left:8px;font-size:var(--ds-size-label);font-weight:400;color:var(--ds-muted)}
