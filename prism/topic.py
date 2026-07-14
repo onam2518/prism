@@ -29,9 +29,12 @@ def _angle(intent: str) -> str:
 
 
 def _content_entities(rows, service_names):
-    """콘텐츠별 (정크 제외) 엔티티 집합."""
+    """콘텐츠별 (정크 제외) 엔티티 집합. 품질 미달은 빈 집합(사건 클러스터에 안 섞임)."""
     out = []
     for r in rows:
+        if not _eligible(r):
+            out.append(set())
+            continue
         im = r.get("item_meta") or {}
         ents = [e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)]
         out.append(set(ents))
@@ -51,11 +54,31 @@ def _title(r):
     return r.get("content_ref", {}).get("title", "")
 
 
-# 엔티티형 토픽 
+def _eligible(r) -> bool:
+    """토픽 편입 자격: 품질 통과(G)만. R·YELLOW(검수 대기)는 토픽 대상 자체가 아니다."""
+    return _grade(r) == "G"
+
+
+def _row_hash(r) -> str:
+    """콘텐츠 안정 식별자 = 검수 피드백과 동일한 content_hash. 위치 인덱스(content_ids)와
+    달리 재적재·재정렬에도 유지돼 제외(큐레이션) 키로 쓴다."""
+    from .store import content_hash
+    ref = r.get("content_ref") or {}
+    svc = ref.get("displayServiceName", "") or r.get("service", "")
+    title = ref.get("title", "") or r.get("title", "")
+    if title:
+        return content_hash({"displayServiceName": svc, "title": title,
+                             "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")})
+    return ref.get("body_hash", "") or r.get("hash", "") or ""
+
+
+# 엔티티형 토픽
 def build_entity_topics(rows, service_names, canon, min_contents=2):
     """단일 엔티티 → 콘텐츠. canon=엔티티→Tier1(정규화). 엔티티당 1개 풀."""
     ent_contents = defaultdict(list)
     for i, r in enumerate(rows):
+        if not _eligible(r):
+            continue
         im = r.get("item_meta") or {}
         for e in (im.get("entities") or []):
             if _is_junk_entity(e, service_names):
@@ -186,10 +209,13 @@ def build_condition_topics(rows, canon, service_names):
         ecats = {tier1_remap(c) for c in (im.get("content_category") or [])}
         c_ent.append(ecats)
         c_int.append(set(im.get("intent") or []))
+    elig = [_eligible(r) for r in rows]
     pools = []
     for f in FILTER_DEFS:
         matched = []
         for i in range(len(rows)):
+            if not elig[i]:
+                continue
             ent_ok = (not f.get("ent")) or bool(c_ent[i] & f["ent"])
             int_ok = (not f.get("intent")) or bool(c_int[i] & f["intent"])
             if ent_ok and int_ok:
@@ -220,25 +246,28 @@ def _slug(s: str) -> str:
 # 정의를 운영자가 UI 에서 만들고 저장한다. 차원 = 콘텐츠 카테고리(Tier1) × 인텐트 × 엔티티 키워드.
 
 def _content_dims(rows, service_names):
-    """콘텐츠별 매칭 차원 사전계산: (Tier1 카테고리셋, 인텐트셋, 엔티티리스트)."""
-    c_cat, c_int, c_ent = [], [], []
+    """콘텐츠별 매칭 차원 사전계산: (Tier1 카테고리셋, 인텐트셋, 엔티티리스트, 자격)."""
+    c_cat, c_int, c_ent, elig = [], [], [], []
     for r in rows:
         im = r.get("item_meta") or {}
         c_cat.append({tier1_remap(c) for c in (im.get("content_category") or [])})
         c_int.append(set(im.get("intent") or []))
         c_ent.append([e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)])
-    return c_cat, c_int, c_ent
+        elig.append(_eligible(r))
+    return c_cat, c_int, c_ent, elig
 
 
 def _match_ids(dims, d):
     """정의 d(cats/intents/keywords)에 부합하는 콘텐츠 인덱스. 각 차원은 OR, 차원 간 AND.
     빈 차원은 무조건 통과(제약 없음) · 키워드는 엔티티 부분일치(대소문자 무시)."""
-    c_cat, c_int, c_ent = dims
+    c_cat, c_int, c_ent, elig = dims
     cats = set(d.get("cats") or [])
     intents = set(d.get("intents") or [])
     kws = [k.strip().lower() for k in (d.get("keywords") or []) if str(k).strip()]
     out = []
     for i in range(len(c_cat)):
+        if not elig[i]:
+            continue
         if cats and not (c_cat[i] & cats):
             continue
         if intents and not (c_int[i] & intents):
@@ -291,9 +320,11 @@ def _valueset_label(vs):
 
 def _match_valueset(dims, vs):
     """valueset(=[(dim,value)]) 를 전부 만족(AND)하는 콘텐츠 인덱스. 키워드는 엔티티 부분일치."""
-    c_cat, c_int, c_ent = dims
+    c_cat, c_int, c_ent, elig = dims
     out = []
     for i in range(len(c_cat)):
+        if not elig[i]:
+            continue
         ok = True
         for k, v in vs:
             if k == "cats":
@@ -359,7 +390,7 @@ def preview_definition(rows, service_names, d, sample=6):
     for idx, (kind, vs) in enumerate(specs):
         bundles.append(_bundle(rows, dims, "prev-" + str(idx), kind, vs, sample=sample if kind == "core" else 0))
     return {
-        "n_total": len(rows), "bundles": bundles,
+        "n_total": sum(1 for x in dims[3] if x), "bundles": bundles,
         "must_n": len(must), "opt_n": len(opt),
     }
 
@@ -370,6 +401,8 @@ def studio_catalog(rows, service_names=None, top_kw=30):
     svc = service_names if service_names is not None else _service_names(rows)
     int_c, cat_c, ent_c = Counter(), Counter(), Counter()
     for r in rows:
+        if not _eligible(r):
+            continue
         im = r.get("item_meta") or {}
         for t in (im.get("intent") or []):
             if t:
@@ -745,8 +778,47 @@ h2 .hint{font-size:10px}
 </body></html>"""
 
 
+# ── 토픽 큐레이션: 개별 콘텐츠 제외(운영자 오버레이) ──
+# 메타도 정의도 맞지만 편집 판단으로 빼야 하는 콘텐츠를 토픽 단위로 걷어낸다.
+# 키 = 토픽 id(자동형 cluster_id · 사용자형 그룹 id) × content_hash 라 재적재에도 유지.
+# 사건형 cluster_id 는 대표 엔티티에서 파생되므로 클러스터 구성이 크게 바뀌면 제외가
+# 고아가 될 수 있다 → 관리 패널에서 복구·정리로 해소.
+
+def _exclusion_sets(exclusions) -> dict:
+    """설정의 exclusions({토픽id: [항목]}) → {토픽id: hash 집합}. 항목은 dict({h,…}) 또는 str."""
+    out = {}
+    for tid, lst in (exclusions or {}).items():
+        hs = set()
+        for e in (lst or []):
+            h = e.get("h") if isinstance(e, dict) else e
+            if h:
+                hs.add(str(h))
+        if hs:
+            out[str(tid)] = hs
+    return out
+
+
+def _apply_exclusion(pool, key, rows, hashes, exmap):
+    """풀의 content_ids 에서 제외 hash 를 걷어내고 수·대표를 재계산. excluded_n 로 표면화."""
+    exset = exmap.get(key)
+    ids = pool.get("content_ids") or []
+    if not exset or not ids:
+        return
+    kept = [i for i in ids if hashes[i] not in exset]
+    if len(kept) == len(ids):
+        return
+    pool["content_ids"] = kept
+    pool["count"] = len(kept)
+    pool["excluded_n"] = len(ids) - len(kept)
+    if "representative_content" in pool and pool.get("representative_content") not in kept:
+        ranked = sorted(kept, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))
+        pool["representative_content"] = ranked[0] if ranked else None
+        if "rep_title" in pool:
+            pool["rep_title"] = _title(rows[ranked[0]]) if ranked else ""
+
+
 def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120,
-                 custom_defs=None, settings=None) -> dict:
+                 custom_defs=None, settings=None, exclusions=None) -> dict:
     rows = _read_jsonl(results_path)
     svc = _service_names(rows)
     canon = _canonical_entity_categories(rows, svc)
@@ -757,9 +829,24 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
     composite = build_event_topics(rows, svc, co_min=co_min)
     filt = build_condition_topics(rows, canon, svc)
     custom = build_custom_topics(rows, svc, custom_defs or [])
+    exmap = _exclusion_sets(exclusions)
+    if exmap:
+        hashes = [_row_hash(r) for r in rows]
+        for p in single + composite + filt:
+            _apply_exclusion(p, p["cluster_id"], rows, hashes, exmap)
+        for p in filt:
+            p["active"] = p["count"] > 0
+        for g in custom:
+            for b in (g.get("bundles") or []):
+                _apply_exclusion(b, g["id"], rows, hashes, exmap)
+            g["core_count"] = next((b["count"] for b in g["bundles"] if b["kind"] == "core"), 0)
+        single.sort(key=lambda p: -p["count"])
+        composite.sort(key=lambda p: -p["count"])
+        custom.sort(key=lambda g: -(g.get("core_count") or 0))
     # 콘텐츠 → 소속 토픽 역참조(한 콘텐츠가 세 유형 동시 소속 시연용)
     return {
         "n_contents": len(rows),
+        "n_eligible": sum(1 for r in rows if _eligible(r)),
         "single": single[:max_single], "single_total": len(single),
         "composite": composite[:max_composite], "composite_total": len(composite),
         "filter": filt,
