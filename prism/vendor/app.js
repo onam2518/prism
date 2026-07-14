@@ -64,7 +64,7 @@
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 정답셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
-      labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | topic(토픽) | user(사용자)
+      labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | topic(토픽) | user(사용자) | media(미디어)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
       // 위젯 홈 인터랙션 상태
@@ -76,6 +76,8 @@
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], kwInput: '', editId: null },
       studioPreview: { count: 0, n_total: 0, rep_title: '', samples: [] },
       studioMsg: '', studioBusy: false, studioSaving: false, _studioT: null,
+      // 미디어 메타 파이프라인(T1 자막 파싱 실험기)
+      mediaSub: { raw: '', fmt: '' }, mediaRes: null, mediaBusy: false, mediaMsg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
@@ -1484,6 +1486,17 @@
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); } catch (e) {} this.modBusy = false; },
       _syncTopicSettings() { const s = (this.topicData && this.topicData.settings) || {}; this.settingsDraft = { co_min: s.co_min || 2, entity_min: s.entity_min || 2 }; },
+      // ── 미디어: T1 자막 파싱(룰·모델 0건) ──
+      async mediaParse() {
+        if (!this.mediaSub.raw.trim()) return;
+        this.mediaBusy = true; this.mediaMsg = '파싱 중…'; this.mediaRes = null;
+        try {
+          const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'subtitles', raw: this.mediaSub.raw, fmt: this.mediaSub.fmt }) })).json();
+          if (r && r.ok) { this.mediaRes = r; this.mediaMsg = r.cue_count ? (r.cue_count + '개 큐를 파싱했습니다') : '큐를 찾지 못했습니다 · 형식을 확인하세요'; }
+          else { this.mediaMsg = (r && r.error) || '파싱 실패'; }
+        } catch (e) { this.mediaMsg = '파싱 실패'; }
+        this.mediaBusy = false;
+      },
       // ── 토픽 스튜디오 ──
       async _studioPost(payload) {
         const r = await (await this._afetch('/topic-studio', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
