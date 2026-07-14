@@ -46,8 +46,9 @@
           { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'opsadmin' },
           // 엔티티 사전: 개체 고유키·타입(NER 6종)·속성(성별·국적·직업·소속…) 관리 · 사람 수정 가능
           { id: 'entdict', label: '엔티티 사전', ic: 'user', cond: 'opsadmin' },
-          { id: 'prompt', label: '프롬프트 스튜디오', ic: 'prompt', cond: 'opsadmin' },
-          // 실험실: 지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관
+          // 스튜디오 = 설계 도구 묶음: 프롬프트(계약·래퍼) + 토픽(클러스터링 설계 · 실험실에서 승격)
+          { id: 'studio', label: '스튜디오', ic: 'prompt', cond: 'opsadmin' },
+          // 실험실: 지금 테스트하지 않는 탐구 요소(법령·사용자·미디어) 보관
           { id: 'lab', label: '실험실', ic: 'auto', cond: 'opsadmin' },
           // 시스템 설정: 데이터 관리(상단) + API 키·모델(하단) 통합 · 운영 관리자 전용(위험 작업)
           { id: 'system', label: '시스템 설정', ic: 'system', cond: 'sysadmin' } ] },
@@ -66,7 +67,8 @@
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 정답셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
-      labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | topic(토픽) | user(사용자) | media(미디어)
+      labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | user(사용자) | media(미디어)
+      studioTab: 'prompt',                    // 스튜디오: prompt(프롬프트 계약·래퍼) | topic(토픽 설계)
       dictTab: 'intent',                      // 사전·정책: intent(인텐트) | category(카테고리) | policy(품질·법령·처리) · 엔티티 사전 합류 시 entity 추가
       queueTrig: '',                          // 실행 큐 자동/수동 필터
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
@@ -528,7 +530,7 @@
       },
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
-        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드(팀 관리자)', system: '데이터 관리 + API 키·모델 설정(운영 관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류', create: '검수 대상 콘텐츠를 판정·교정하고 결과를 모델·버전으로 비교합니다', evaluate: '정답셋 기준 평가 실행 · 불일치 건별 판정 · 모델별 A/B 비교', content: '콘텐츠 추가(수동·자동) → 모델 실행 → 실행 큐 · 용도(검수/평가) 지정', testset: '정답셋 현황·학습 반영 · 정답셋 목록 · 학습 데이터 추출', lab: '지금 테스트하지 않는 탐구 요소(법령·토픽·사용자) 보관', board: '기능개선 제안 · 오류 제보 · 우리 팀에만 공개됩니다' };
+        const m = { home: '검수 진척율을 함께 끝까지 · 검수할수록 진척·점수·배지로 성장합니다', auto: '콘텐츠 자동 인입 파이프라인 설정 (REST API · Kafka 등)', run: '수동으로 이미지·텍스트·엑셀 추출 (기본 운영은 자동 인입)', queue: '진행 중·대기 중인 추출 작업', dash: '추출 결과 집계 · 유통 G/R · 분포', review: 'YELLOW 사람검수 대기열 · 팀 다중 의견 + 실시간 협업', arena: '검수 진척율(개인·팀 평균) · 검수할수록 게이지가 차오르고 기여가 점수로', admin: '팀 멤버 · 초대 코드(팀 관리자)', system: '데이터 관리 + API 키·모델 설정(운영 관리자)', quality: '품질·법령 판정 + 엔티티·사건·조건 토픽', user: '행동 로그 → 소비 형태·강도·선호', eval: '콘텐츠별 평가 피드백(학습 루프) · 처리 이력·보정·비용', dict: '사전·카테고리·품질·법령 정책을 직접 수정', studio: '설계 도구 · 프롬프트(계약·래퍼·추론 강도) + 토픽(클러스터링 설계)', prompt: '추출 방향을 조향하는 시스템 프롬프트·추론 강도', intake: 'ITEM TYPE별 필터·처리 정책 + 콘텐츠 출처 분류', create: '검수 대상 콘텐츠를 판정·교정하고 결과를 모델·버전으로 비교합니다', evaluate: '정답셋 기준 평가 실행 · 불일치 건별 판정 · 모델별 A/B 비교', content: '콘텐츠 추가(수동·자동) → 모델 실행 → 실행 큐 · 용도(검수/평가) 지정', testset: '정답셋 현황·학습 반영 · 정답셋 목록 · 학습 데이터 추출', lab: '지금 테스트하지 않는 탐구 요소(법령·사용자·미디어) 보관', board: '기능개선 제안 · 오류 제보 · 우리 팀에만 공개됩니다' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -542,6 +544,8 @@
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
         if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
+        if (id === 'prompt') { id = 'studio'; this.studioTab = 'prompt'; }   // 구 메뉴 · 위젯·URL 호환
+        if (id === 'topic') { id = 'studio'; this.studioTab = 'topic'; }     // 실험실 시절 딥링크 호환
         if (id === 'eval') id = 'evaluate';
         if (id === 'golden') id = 'testset';
         this.mod = id;
@@ -549,8 +553,8 @@
           try { const u = new URL(location.href); u.searchParams.set('m', id); history.pushState({ m: id }, '', u); } catch (e) {}
         }
         if (id === 'content' || id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
-        if (id === 'prompt' || id === 'testset') this.loadGoldenStatus();
-        if (id === 'prompt') { this.syncWrapDraft(); this.loadPreview(); }
+        if (id === 'studio' || id === 'testset') this.loadGoldenStatus();
+        if (id === 'studio') { this.syncWrapDraft(); this.loadPreview(); }
         if (id === 'home') { this.loadArena(); this.loadDash(); }
         else if (id === 'create') { this.loadDash(); this.loadRaw(); }
         else if (id === 'evaluate') this.loadGoldenStatus();
@@ -558,10 +562,10 @@
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') this.loadAdmin();
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
-        else if (id === 'lab') { this.loadDash(); this.loadTopics(); this.loadUser(); }
+        else if (id === 'lab') { this.loadDash(); this.loadUser(); }
         else if (id === 'dict') this.loadDict();
         else if (id === 'entdict') this.loadEntdict();
-        else if (id === 'prompt') this.loadPromptDefaults();
+        else if (id === 'studio') { this.loadPromptDefaults(); this.loadTopics(); }
         if (id === 'content') { this.loadDash(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
       },
       toggleTheme() {
@@ -1039,7 +1043,7 @@
         } else if (d.type === 'reap') {
           if (d.plan) this.liveToast('개선안 반영 · ' + (d.plan.length > 42 ? d.plan.slice(0, 42) + '…' : d.plan));
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();
-          if (this.mod === 'prompt') this.loadPromptDefaults();   // 단계 프롬프트(LEARNED) 갱신
+          if (this.mod === 'studio') this.loadPromptDefaults();   // 단계 프롬프트(LEARNED) 갱신
         } else if (d.type === 'learn_batch') {           // 반영 완료 모먼트(팀 전체)
           this.liveToast('🎉 v' + (d.version || '') + ' 반영 완료' + (d.grade_accuracy != null ? ' · 정답 일치율 ' + this.pctTxt(d.grade_accuracy) : '') + (d.reverted ? ' · 보정 미반영(악화 방지)' : (d.improve_delta != null ? ' · 보정 효과 ' + this.deltaTxt(d.improve_delta) : '')) + ' · 새 퀘스트를 기다립니다');
           this.loadArena(); this.loadLearnReport();
