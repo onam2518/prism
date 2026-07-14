@@ -1,8 +1,8 @@
 /* Prism 앱 스크립트(Alpine) · serve.PAGE 에서 분리된 단일 원천. */
   document.addEventListener('alpine:init', () => {
     Alpine.data('prismApp', () => ({
-      tabItems: [{ id: 'image', label: '이미지' }, { id: 'text', label: '텍스트' }, { id: 'excel', label: '엑셀' }],
-      activeTabId: 'image',
+      tabItems: [{ id: 'text', label: '텍스트' }, { id: 'excel', label: '엑셀' }],   // 이미지는 실험실 미디어 탭 전담(이관)
+      activeTabId: 'text',
       // 위젯 홈 셸 · 홈(캔버스) + 카테고리 내비
       mod: 'home',
       dashTop: 'content',   // (구 현황 대시보드 잔여 상태 · 위젯 홈 호환용)
@@ -79,6 +79,7 @@
       // 미디어 메타 파이프라인(T1 자막 파싱 실험기)
       mediaSub: { raw: '', fmt: '' }, mediaRes: null, mediaBusy: false, mediaMsg: '',
       mediaVid: { file: null, caption: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
+      mediaImg: { files: [], caption: '' }, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
@@ -1568,6 +1569,21 @@
           else { this.mediaVidMsg = (r && r.error) || '처리 실패'; }
         } catch (e) { this.mediaVidMsg = '처리 실패'; }
         this.mediaVidBusy = false;
+      },
+      // ── 미디어: 포토·이미지 실험(미저장 · 콘텐츠 관리에서 이관) ──
+      mediaImgPick(e) { this.mediaImg.files = Array.from(e.target.files || []); this.mediaImgRes = null; this.mediaImgMsg = ''; },
+      async mediaImgRun() {
+        if (!this.mediaImg.files.length) return;
+        this.mediaImgBusy = true; this.mediaImgMsg = '이미지 처리 중… (시각 이해 → 추출)'; this.mediaImgRes = null;
+        try {
+          const fd = new FormData();
+          this.mediaImg.files.forEach((f, i) => fd.append('image' + i, f));
+          if (this.mediaImg.caption) fd.append('caption', this.mediaImg.caption);
+          const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
+          if (r && r.ok) { this.mediaImgRes = r; this.mediaImgMsg = r.mock ? '완료 · mock(비전 미연결)' : '완료'; }
+          else { this.mediaImgMsg = (r && r.error) || '처리 실패'; }
+        } catch (e) { this.mediaImgMsg = '처리 실패'; }
+        this.mediaImgBusy = false;
       },
       // ── 토픽 스튜디오 ──
       async _studioPost(payload) {
