@@ -151,5 +151,37 @@ class TestMergeAndContent(unittest.TestCase):
         self.assertEqual(c["title"], "영상 콘텐츠")
 
 
+class TestNativeVideo(unittest.TestCase):
+    def test_mock_shape(self):
+        r = M.native_video_track(b"\x00\x01", "video/mp4", model="", mock=True)
+        self.assertTrue(r.get("mock"))
+        self.assertEqual(r["latency_ms"], 0)
+        # merge_tracks 입력형: audio/visual 두 트랙
+        self.assertIn("audio", r); self.assertIn("visual", r)
+        self.assertTrue(r["audio"]["has_speech"])
+        self.assertIn("transcript", r["audio"])
+        self.assertIn("description", r["visual"])
+
+    def test_no_model_falls_back_to_mock(self):
+        r = M.native_video_track(b"\x00", "video/mp4", model="")
+        self.assertTrue(r.get("mock"))
+
+    def test_split_native_maps_fields(self):
+        t = M._split_native({"has_speech": True, "transcript": "말", "description": "장면",
+                             "on_screen_text": "자막", "entities": ["개체", ""]})
+        self.assertEqual(t["audio"]["transcript"], "말")
+        self.assertEqual(t["visual"]["description"], "장면")
+        self.assertEqual(t["visual"]["entities"], ["개체"])   # falsy 제거
+
+    def test_feeds_merge_tracks(self):
+        r = M.native_video_track(b"\x00", model="", mock=True)
+        m = M.merge_tracks(audio=r["audio"], visual=r["visual"])
+        self.assertEqual(m["spoken_source"], "transcription")   # 자막 없으니 전사 채택
+        self.assertIn("[비주얼]", m["transcript"])
+        c = M.build_content(m, displayServiceName="영상")
+        self.assertEqual(set(c), {"displayServiceName", "title", "subtitle", "body"})
+        self.assertTrue(c["body"])
+
+
 if __name__ == "__main__":
     unittest.main()
