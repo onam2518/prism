@@ -10,7 +10,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
   `/Users/pete.axz-pc/orca/prism` (키 파일 4종·flyctl 보유 · 구 tony 머신 표기는 07-06 시점 기록).
 - **main 직접 커밋·push 금지** · 기능 브랜치(`feat/…`) → PR → 머지 (2026-07-07 `CLAUDE.md` 규칙 ·
   멀티 세션 동시작업 안전. 커밋은 내 파일만 명시 스테이징 · 배포는 클린 워크트리 스냅샷에서만).
-- 릴리즈: `gh release`, 최신 **v0.5.17**(DMG는 QA 연습용만 유효 · 팀원은 브라우저 접속). 빌드: venv `~/.venvs/prism-pkg`(python3.12·pyinstaller·pywebview) + brew create-dmg, 절차는 데일리로그(2026-07-06)와 메모리 참조.
+- 릴리즈: `gh release`, 최신 **v0.5.17**. **데스크탑(DMG) 배포는 2026-07-14 제거(웹 전용)** — 팀원은 브라우저 접속, QA는 `scripts/seed_qa.py` + `--mock` 서버(QA_CHECKLIST.md).
 
 ## 실행 방법
 - **운영(팀원 포함)**: https://prism-item.fly.dev 브라우저 접속 (Fly 상시 서버 · supabase 모드).
@@ -19,13 +19,11 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
   로직 `prism/vendor/mobile.js`(+mobile.css) · 서버 로직 공유(기존 API 계약만 사용).
 - 로컬 개발: `PRISM_DB=$(mktemp -d)/t.db python3 -m prism.serve --mock --port <임시포트>` (운영 8765 회피 · DB 격리 · CLAUDE.md 규칙 6). 코드 바꾸면 **서버 재시작해야** 반영(페이지 메모리 로드).
 - 배포: main 최신화 → `git worktree add --detach <경로> origin/main` → 그 안에서 `fly deploy` → `curl https://prism-item.fly.dev/config` 검증(backend supabase · configured true).
-- 데스크탑 앱(`desktop/app.py`)은 관리자 사용 중단(스케줄러 이중 발화 방지) · QA 연습 빌드 용도만.
 
 ## 운영 모드 (중요 · supabase 전용화됨)
 - **로컬(sqlite 단독) 모드는 UI 상 제거**. 첫 화면 = 로그인/가입.
 - 모드 스위치: `PRISM_BACKEND=supabase` + `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` 셋 다 있으면 팀(supabase) 모드(`_supa()`), 아니면 sqlite.
-- **GUI 앱은 셸 env 미상속** → `desktop/app.py:_enable_supabase()`가 키파일에서 직접 로드:
-  - `~/.prism_supabase_key`(service_role 키) · `~/.prism_supabase_url`(project URL). 있으면 env 세팅 후 supabase 모드로 기동.
+- 로컬 supabase 검증 시 키파일 참조: `~/.prism_supabase_key`(service_role 키) · `~/.prism_supabase_url`(project URL) — env 로 주입해 기동.
 - **보안 게이트**: supabase 모드에서 `/store` clear·`/config` POST 는 `is_admin_user(uid, team, email)` 관리자 한정(비관리자 403). 관리자 허용목록 `~/.prism_admin_emails`(예: `pete.ryu@axzcorp.com`) 또는 `PRISM_ADMIN_EMAILS`.
 - **팀 생성 = 관리자 메뉴**. 일반 사용자는 팀 코드로 **참가만**, 또는 팀없음(solo).
 - ⚠️ service_role 키는 과거 세션에서 유출된 적 있음 → **로테이션 권장**. 값 echo/print/표시 금지, 공개 레포에 내부 식별자 노출 금지.
@@ -202,7 +200,6 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - `prism/store.py`·`supastore.py` · dual-mode 저장소 + golden.
 - `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` · 추출 파이프라인. `abtest.py` · 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).
 - `prism/imagext.py` · 이미지 인제스트(방식 A, 코어 무수정).
-- `desktop/app.py`·`Prism.spec`(v0.5.0)·`make_dmg.sh` · 패키징. 빌드 venv `/tmp/prism-pkg/bin/python`.
 - `scripts/make_demo.py` · GitHub Pages 데모(`docs/demo.html`) 재생성(fetch 스텁·CDN 폰트·vendor 복사).
 - `design-system/` · Anchor 디자인 시스템(`--ds-*` 토큰, GmarketSans/Pretendard 이중폰트).
 
@@ -313,7 +310,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
    동작·폰트·본문 재확인 필요(본문이 비면 "본문이 저장되지 않은 콘텐츠" 안내로 데이터/렌더 구분).
 3. **모델별 검수 판정(hash×model) 스키마 확장**: 설계안 별도 제출 예정(대공사 · 배치 제외).
 4. 데이터 대기(사용자 입력): 관점 인텐트 채택률(C1) · 샘플링 균형 표본 · 인텐트 매핑 오류 사례.
-5. **큐(실행 작업) 단위 퀘스트**(설계안 보류 유지) · DPO 축적·Dawid-Skene·라우트 2단계·Sparkle(T3).
+5. **큐(실행 작업) 단위 퀘스트**(설계안 보류 유지) · DPO 축적·Dawid-Skene·라우트 2단계.
 6. 규모 조건부 성능: /raw 페이지네이션 · feedback_map 증분화 · Pretendard 서브셋 분할 잔여.
 
 ## 메모리

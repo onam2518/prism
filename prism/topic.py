@@ -278,31 +278,6 @@ def _ent_match(ents, conds):
     return any(all(str(e.get(k, "")) == v for k, v in conds) for e in ents)
 
 
-def _match_ids(dims, d):
-    """정의 d(cats/intents/keywords/eattrs)에 부합하는 콘텐츠 인덱스. 각 차원은 OR, 차원 간 AND.
-    빈 차원은 무조건 통과(제약 없음) · 키워드는 엔티티 부분일치(대소문자 무시) ·
-    eattrs(개체 속성)는 같은 개체 AND."""
-    c_cat, c_int, c_ent, elig, c_att = dims
-    cats = set(d.get("cats") or [])
-    intents = set(d.get("intents") or [])
-    kws = [k.strip().lower() for k in (d.get("keywords") or []) if str(k).strip()]
-    econds = _eattr_conds(d.get("eattrs"))
-    out = []
-    for i in range(len(c_cat)):
-        if not elig[i]:
-            continue
-        if cats and not (c_cat[i] & cats):
-            continue
-        if intents and not (c_int[i] & intents):
-            continue
-        if kws and not any(any(k in e.lower() for e in c_ent[i]) for k in kws):
-            continue
-        if econds and not _ent_match(c_att[i], econds):
-            continue
-        out.append(i)
-    return out
-
-
 _DIMS = ("cats", "intents", "keywords")
 
 

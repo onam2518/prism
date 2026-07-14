@@ -924,15 +924,6 @@
         this.mod = 'home'; this.reviewerEditing = true;
       },
       goldenMinGood: 1,
-      get isDesktop() { return typeof window.pywebview !== 'undefined'; },
-      dtAllowDl: true, dtPersist: true, dtMsg: '',
-      async saveDesktopOpts() {
-        try {
-          await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ desktop_allow_downloads: !!this.dtAllowDl, desktop_persist_storage: !!this.dtPersist }) });
-          this.dtMsg = '✓ 저장됨 · 앱 재시작 후 적용';
-        } catch (e) { this.dtMsg = '저장 실패'; }
-        setTimeout(() => { this.dtMsg = ''; }, 4000);
-      },
       _loadCred() {
         try {
           const raw = localStorage.getItem('prism_cred');
@@ -2044,8 +2035,6 @@
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.learnNextAt === 'string') this.learnNextAt = this.cfg.learnNextAt;
-          if (typeof this.cfg.desktopAllowDownloads === 'boolean') this.dtAllowDl = this.cfg.desktopAllowDownloads;
-          if (typeof this.cfg.desktopPersistStorage === 'boolean') this.dtPersist = this.cfg.desktopPersistStorage;
           if (!this.wrapDraft) this.syncWrapDraft();
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();
