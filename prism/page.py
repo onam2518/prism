@@ -852,6 +852,7 @@ PAGE = """<!doctype html>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li><b>토픽 스튜디오</b>는 클러스터링 체계(어떤 콘텐츠를 어떻게 묶을지)를 <b>자연어</b>로 정의하고 즉시 실험하는 공간입니다.</li>
           <li>원하는 묶음을 문장으로 설명하면 조건값이 자동으로 채워집니다 · 채워진 조건값은 직접 켜고 끌 수 있습니다.</li>
+          <li>품질 통과(<b>G</b>) 콘텐츠만 토픽 대상이 됩니다<span x-show="qexN()"> · 현재 <b class="tnum" x-text="qexN()"></b>건이 품질 미달로 자동 제외</span> · 어울리지 않는 콘텐츠는 토픽을 열어 개별 <b>제외</b>할 수 있습니다.</li>
         </ul>
         <template x-if="!topicData || !topicData.n_contents"><div class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div></template>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
@@ -904,23 +905,23 @@ PAGE = """<!doctype html>
                 </div>
 
                 <!-- STEP 3 · 조건 -->
-                <div class="tstep" x-bind:class="{'is-done': !!(studio.cats.length||studio.intents.length||studio.keywords.length), 'is-active': tActive()===3}">
+                <div class="tstep" x-bind:class="{'is-done': !!(studio.cats.length||studio.intents.length||studio.keywords.length||studio.eattrs.length), 'is-active': tActive()===3}">
                   <div class="tstep__rail"><span class="tstep__dot"><span class="n">3</span><span class="c">✓</span></span></div>
                   <div class="tstep__body">
                     <div class="tstep__head"><b>조건 확인·조정</b><span class="tstep__guide">필수는 모든 묶음의 뼈대(반드시), 선택은 각각이 관련 묶음이 됩니다 · 칩을 누를수록 후보→선택→필수</span></div>
                     <div class="tfilter"><span class="tfilter__badge">✨ 묶음</span><span class="tfilter__text" x-html="bundleSummaryText()"></span></div>
-                    <div class="tlegend"><span class="sw sw--off"></span>회색=후보 · <span class="sw sw--sel"></span>색=선택(관련 묶음) · <span class="sw sw--req"></span><b>★필수</b>=반드시(모든 묶음 공통) · <span class="tauto">✨</span>=자동 선택 · <span style="color:var(--ds-muted)">칩을 누를수록 후보→선택→필수→후보</span></div>
+                    <div class="tlegend"><span class="sw sw--off"></span>회색=후보 · <span class="sw sw--sel"></span>색=선택(관련 묶음) · <span class="sw sw--req"></span><b>★필수</b>=반드시(모든 묶음 공통) · <span class="sw sw--neg"></span><b>✖제외</b>=걸리면 탈락(모든 묶음) · <span class="tauto">✨</span>=자동 선택 · <span style="color:var(--ds-muted)">칩을 누를수록 후보→선택→필수→제외→후보</span></div>
                     <div class="tcond__g">
                       <div class="tcond__lbl">카테고리 <span x-text="'· 선택 '+studio.cats.length+(studio.req.cats.length?(' (필수 '+studio.req.cats.length+')'):'')"></span></div>
                       <div class="flex flex-wrap gap-1.5">
-                        <template x-for="c in studioCatChips()" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('cats',c.k,'ds-badge--category')" x-on:click="studioCycle('cats',c.k)" data-tip="누를수록 후보→선택→필수"><span x-show="studioState('cats',c.k)==='req'" class="treq">★필수</span><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
+                        <template x-for="c in studioCatChips()" x-bind:key="'cat'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('cats',c.k,'ds-badge--category')" x-on:click="studioCycle('cats',c.k)" data-tip="누를수록 후보→선택→필수→제외"><span x-show="studioState('cats',c.k)==='req'" class="treq">★필수</span><span x-show="studioState('cats',c.k)==='neg'" class="tneg">✖제외</span><span x-show="isAuto('cats',c.k)" class="tauto">✨</span><span x-text="catBoth(c.k)+' ('+c.v+')'"></span></span></template>
                         <span x-show="!studioCatChips().length" class="text-xs text-muted">데이터에 카테고리가 없습니다</span>
                       </div>
                     </div>
                     <div class="tcond__g">
                       <div class="tcond__lbl">인텐트 <span x-text="'· 선택 '+studio.intents.length+(studio.req.intents.length?(' (필수 '+studio.req.intents.length+')'):'')"></span></div>
                       <div class="flex flex-wrap gap-1.5">
-                        <template x-for="c in studioIntentChips()" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('intents',c.k,'ds-badge--intent')" x-on:click="studioCycle('intents',c.k)" data-tip="누를수록 후보→선택→필수"><span x-show="studioState('intents',c.k)==='req'" class="treq">★필수</span><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
+                        <template x-for="c in studioIntentChips()" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('intents',c.k,'ds-badge--intent')" x-on:click="studioCycle('intents',c.k)" data-tip="누를수록 후보→선택→필수→제외"><span x-show="studioState('intents',c.k)==='req'" class="treq">★필수</span><span x-show="studioState('intents',c.k)==='neg'" class="tneg">✖제외</span><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
                         <span x-show="!studioIntentChips().length" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
                       </div>
                     </div>
@@ -931,8 +932,25 @@ PAGE = """<!doctype html>
                         <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="studioAddKw()">추가</button>
                       </div>
                       <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
-                        <template x-for="k in studio.keywords" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-bind:class="chipCls('keywords',k,'ds-badge--entity')" x-on:click="studioCycle('keywords',k)" data-tip="누를수록 선택→필수→제거"><span x-show="studioState('keywords',k)==='req'" class="treq">★필수</span><span x-show="isAuto('keywords',k)" class="tauto">✨</span><span x-text="k"></span></span></template>
+                        <template x-for="k in studioKwChips()" x-bind:key="'kw'+k"><span class="ds-badge ds-badge--entity" style="cursor:pointer" x-bind:class="chipCls('keywords',k,'ds-badge--entity')" x-on:click="studioCycle('keywords',k)" data-tip="누를수록 선택→필수→제외→제거"><span x-show="studioState('keywords',k)==='req'" class="treq">★필수</span><span x-show="studioState('keywords',k)==='neg'" class="tneg">✖제외</span><span x-show="isAuto('keywords',k)" class="tauto">✨</span><span x-text="k"></span></span></template>
                         <template x-for="k in topKw()" x-bind:key="'kwc'+k.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioCycle('keywords',k.k)" data-tip="추가" x-text="'+ '+k.k"></span></template>
+                      </div>
+                    </div>
+                    <!-- 엔티티 속성 조건: 개체 사전(타입·성별·직업·국적·소속) 축 · 같은 개체 AND · 항상 필수 -->
+                    <div class="tcond__g">
+                      <div class="tcond__lbl">엔티티 속성 <span x-text="'· 선택 '+studio.eattrs.length"></span><span class="meta" style="cursor:help" data-tip="개체 사전의 속성으로 매칭 · 조건 전부를 '한 개체'가 만족해야 합니다 (예: 성별=여성 ∧ 직업=스포츠인 → 여성 스포츠인) · 항상 필수 취급" data-tip-pos="top">개체 사전 기반</span></div>
+                      <div style="display:flex;gap:8px">
+                        <select class="field" style="width:auto" x-model="studio.eaKey">
+                          <option value="type">타입</option><option value="gender">성별</option><option value="occupation">직업</option>
+                          <option value="nationality">국적</option><option value="affiliation">소속</option><option value="country">국가</option>
+                        </select>
+                        <input class="field" style="flex:1" x-model="studio.eaVal" x-on:keydown.enter.prevent="studioAddEattr()" placeholder="예) 여성 · 스포츠인 · 대한민국 (엔터로 추가)">
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="studioAddEattr()">추가</button>
+                      </div>
+                      <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
+                        <template x-for="s in studio.eattrs" x-bind:key="'ea'+s"><span class="ds-badge ds-badge--category" style="cursor:pointer" x-on:click="studioDelEattr(s)" data-tip="클릭해 제거"><span class="treq">★필수</span><span x-text="eattrLabel(s)"></span></span></template>
+                        <template x-for="c in eattrCandidates()" x-bind:key="'eac'+c.k"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" x-on:click="studioAddEattr(c.k)" data-tip="추가" x-text="'+ '+c.label+' ('+c.v+')'"></span></template>
+                        <span x-show="!studio.eattrs.length && !eattrCandidates().length" class="text-xs text-muted">엔티티 사전에 속성이 아직 없습니다 · 엔티티 사전 메뉴에서 색인·보강하세요</span>
                       </div>
                     </div>
                   </div>
@@ -979,9 +997,10 @@ PAGE = """<!doctype html>
                     <span style="margin-left:auto;white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="copybtn" x-on:click="studioDelete(g)">삭제</button></span>
                   </div>
                   <div class="tgroup__must" x-show="g.must && g.must.length" x-text="'필수: '+g.must.map(m=>m.dim==='cats'?catBoth(m.v):m.v).join(' · ')"></div>
+                  <div class="tgroup__must" x-show="g.neg && g.neg.length" style="color:var(--ds-error)" x-text="'제외: '+(g.neg||[]).map(m=>m.dim==='cats'?catBoth(m.v):m.v).join(' · ')"></div>
                   <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
                     <template x-for="b in (g.bundles||[])" x-bind:key="b.cluster_id">
-                      <span class="tbchip" x-bind:class="b.kind" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(b)" x-on:keydown.enter="topicDrill(b)" data-tip="묶인 콘텐츠 보기" data-tip-pos="top"><span class="tbchip__k" x-text="b.kind==='core'?'핵심':'관련'"></span> <span x-text="bundleLabel(b)"></span> · <b x-text="b.count"></b></span>
+                      <span class="tbchip" x-bind:class="b.kind" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(b)" x-on:keydown.enter="topicDrill(b)" data-tip="묶인 콘텐츠 보기" data-tip-pos="top"><span class="tbchip__k" x-text="b.kind==='core'?'핵심':'관련'"></span> <span x-text="bundleLabel(b)"></span> · <b x-text="b.count"></b><span class="text-xs" x-show="b.excluded_n" x-text="' (제외 '+b.excluded_n+')'" data-tip="운영자가 이 토픽에서 개별 제외한 콘텐츠 수"></span></span>
                     </template>
                   </div>
                 </div>
@@ -1020,14 +1039,25 @@ PAGE = """<!doctype html>
           <!-- 자동 생성 토픽 (참조) -->
           <div class="panel"><div class="panel-hd"><b>자동 생성 토픽</b><span class="meta tnum" x-text="topicData ? (topicData.n_contents + '건 기준') : ''"></span><button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th>유형</th><th>클러스터</th><th>대표 엔티티</th><th>멤버</th></tr></thead><tbody>
-              <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>엔티티형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.count||(t.content_ids?t.content_ids.length:''))"></td></tr></template>
-              <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>사건형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.count||(t.content_ids?t.content_ids.length:''))"></td></tr></template>
+              <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>엔티티형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td></tr></template>
+              <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>사건형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td></tr></template>
               <template x-if="!(topicData&&(topicData.single.length||topicData.composite.length))"><tr><td colspan="4" class="text-muted">엔티티 공유 클러스터 없음(데이터가 많을수록 · 임계값을 낮추면 더 형성)</td></tr></template>
             </tbody></table></div>
           </div>
           <div class="panel"><div class="panel-hd"><b>조건형 토픽 (기본 제공)</b><span class="meta">운영 기본 필터 · 관심사 × 소비 방식</span></div><div class="panel-bd flex flex-wrap gap-1.5">
             <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" role="button" tabindex="0" x-bind:class="t.active ? 'ds-badge--entity' : 'ds-badge--category'" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||t.count||'')):'')"></span></template>
           </div></div>
+
+          <!-- 토픽에서 제외한 콘텐츠: 큐레이션 오버레이 관리(자동·사용자 토픽 공통) -->
+          <div class="panel" x-show="exclusionRows().length">
+            <div class="panel-hd"><b>토픽에서 제외한 콘텐츠</b><span class="meta tnum" x-text="exclusionRows().length+'건'"></span><span class="meta">매칭 조건은 그대로 · 개별 편집 판단으로 뺀 목록 · 복구하면 다시 묶입니다</span></div>
+            <div class="overflow-auto"><table class="ds-table"><thead><tr><th>토픽</th><th>콘텐츠</th><th></th></tr></thead><tbody>
+              <template x-for="e in exclusionRows()" x-bind:key="e.tid+e.h">
+                <tr><td x-text="e.topic || e.tid"></td><td class="text-ink" x-text="e.title || e.h"></td>
+                <td style="text-align:right"><button type="button" class="copybtn" x-show="topicAdmin" x-on:click="topicRestore(e.tid, e.h)">복구</button></td></tr>
+              </template>
+            </tbody></table></div>
+          </div>
         </div>
       </div>
 
@@ -1106,6 +1136,71 @@ PAGE = """<!doctype html>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
                 <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v.label"></div></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="copybtn" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
               </tbody></table></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 모듈: 엔티티 사전 · 개체 고유키·타입(NER 6종)·속성 관리 (별도 메뉴) ═══ -->
+      <div x-show="mod === 'entdict'" x-cloak class="w-full space-y-4">
+        <div class="panel"><div class="panel-bd flex items-center justify-between gap-3 flex-wrap">
+          <ul class="ds-bullets">
+            <li>콘텐츠 적재 시 엔티티가 <b>개체 사전에 자동 등재</b>됩니다 · 개체당 고유키 1개, 타입·속성은 등록 시 1회 부여(재판정 없음).</li>
+            <li>타입·속성(성별·국적·직업·소속 등)은 <b>위키데이터로 자동 보강</b>하고, 사람이 <b>직접 수정(확정)</b>할 수 있습니다 · 확정 필드는 재보강이 덮어쓰지 않습니다.</li>
+            <li>속성은 토픽 스튜디오의 <b>엔티티 속성 조건</b>이 됩니다 · 예) 성별=여성 ∧ 직업=스포츠인 → "여성 스포츠인" 토픽.</li>
+          </ul>
+          <div class="flex items-center gap-2">
+            <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="entBackfill()" data-tip="적재된 콘텐츠의 엔티티를 사전에 색인(기존 데이터 소급)" data-tip-pos="top">기존 콘텐츠 색인</button>
+            <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="entEnrichAll()" data-tip="위키데이터 미조회 개체를 백그라운드로 일괄 보강" data-tip-pos="top">미조회 일괄 보강</button>
+          </div>
+        </div></div>
+
+        <div class="panel" x-show="entData"><div class="panel-bd"><div class="ds-stat-grid" style="grid-template-columns:repeat(5,1fr)">
+          <div class="ds-stat"><div class="ds-stat__value ds-stat__value--accent tnum" x-text="(entData && entData.stats.total) || 0"></div><div class="ds-stat__label">총 개체</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="entData ? ((entData.stats.total || 0) - (((entData.stats.byType || {})['(보류)']) || 0)) : 0"></div><div class="ds-stat__label">타입 부여</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.pending) || 0"></div><div class="ds-stat__label">보류(타입 미부여)</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.enriched) || 0"></div><div class="ds-stat__label">위키데이터 매칭</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.links) || 0"></div><div class="ds-stat__label">콘텐츠 링크</div></div>
+        </div></div></div>
+
+        <div class="panel">
+          <div class="panel-hd"><b>개체 목록</b>
+            <span class="meta" aria-live="polite" x-text="entMsg"></span>
+          </div>
+          <div class="panel-bd">
+            <div class="flex items-center gap-2 flex-wrap" style="margin-bottom:10px">
+              <input type="text" class="field" style="width:220px" placeholder="이름·별칭 검색" x-model="entQ" x-on:keydown.enter="loadEntdict()">
+              <select class="field" style="width:auto" x-model="entType" x-on:change="loadEntdict()">
+                <option value="">타입 전체</option>
+                <template x-for="(ko,t) in (entData ? entData.meta.types : {})" x-bind:key="t"><option x-bind:value="t" x-text="ko + ' (' + t + ')'"></option></template>
+              </select>
+              <select class="field" style="width:auto" x-model="entStatus" x-on:change="loadEntdict()">
+                <option value="">상태 전체</option><option value="active">확정(active)</option><option value="pending">보류(pending)</option>
+              </select>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="loadEntdict()">검색</button>
+              <span style="flex:1"></span>
+              <input type="text" class="field" style="width:180px" placeholder="수동 등재 · 개체 이름" x-model="entAddName" x-on:keydown.enter="entAdd()">
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="entAdd()">등재</button>
+            </div>
+            <div class="overflow-auto" style="max-height:560px"><table class="ds-table"><thead><tr>
+              <th style="width:160px">개체</th><th style="width:120px">타입</th><th>속성</th>
+              <th style="width:100px">위키데이터</th><th style="width:64px" class="tnum">콘텐츠</th><th style="width:170px"></th>
+            </tr></thead><tbody>
+              <template x-for="e in ((entData && entData.items) || [])" x-bind:key="e.entity_id">
+                <tr>
+                  <td class="text-ink" style="font-weight:600" x-text="e.name"></td>
+                  <td><span class="ds-badge" x-bind:class="e.type ? 'ds-badge--entity' : 'ds-badge--neutral'" x-text="entTypeLabel(e.type)"></span></td>
+                  <td class="text-muted" x-text="entAttrSummary(e) || '—'"></td>
+                  <td><a x-show="e.external_ids && e.external_ids.wikidata" x-bind:href="'https://www.wikidata.org/wiki/' + (e.external_ids && e.external_ids.wikidata)" target="_blank" rel="noopener" class="text-violet" x-text="e.external_ids && e.external_ids.wikidata"></a><span x-show="!(e.external_ids && e.external_ids.wikidata)" class="text-xs text-muted" x-text="(e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'miss') ? '미등재' : '미조회'"></span></td>
+                  <td class="tnum" x-text="e.n_contents || 0"></td>
+                  <td><div class="flex items-center gap-1.5">
+                    <button type="button" class="copybtn" x-on:click="openEntEdit(e)">편집</button>
+                    <button type="button" class="copybtn" x-on:click="entEnrich(e)" data-tip="위키데이터 조회로 타입·속성 채우기" data-tip-pos="top">보강</button>
+                    <button type="button" class="copybtn" style="color:var(--ds-danger)" x-on:click="entDelete(e)">삭제</button>
+                  </div></td>
+                </tr>
+              </template>
+              <tr x-show="!((entData && entData.items) || []).length"><td colspan="6" class="text-xs text-muted" style="text-align:center;padding:24px">등재된 개체가 없습니다 · 콘텐츠를 적재하거나 "기존 콘텐츠 색인"을 실행하세요</td></tr>
+            </tbody></table></div>
           </div>
         </div>
       </div>
@@ -2428,6 +2523,59 @@ PAGE = """<!doctype html>
     </div>
   </div>
 
+  <!-- 엔티티 사전 편집 팝업: 타입·속성 수동 확정(사람 결정 우선 · 재보강이 덮어쓰지 않음) -->
+  <div class="ds-dialog-backdrop" x-show="entEdit" x-cloak x-on:mousedown.self="entEdit=null" x-on:keydown.escape.window="entEdit && (entEdit=null)" style="z-index:76">
+    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="개체 편집" style="max-width:560px;display:flex;flex-direction:column;max-height:88vh">
+      <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px"><span x-text="'개체 편집 · ' + (entEdit ? entEdit.name : '')"></span>
+        <span class="text-xs text-muted" style="font-weight:400" x-text="entEdit ? entEdit.entity_id : ''"></span></h2>
+      <div class="ds-dialog__body" style="overflow:auto;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label class="lbl">타입 (NER 6종 · 개체당 1개 · 비우면 보류)</label>
+          <select class="field" x-bind:value="entEdit ? entEdit.type : ''" x-on:change="entEdit.type=$event.target.value">
+            <option value="">(보류 · 타입 미부여)</option>
+            <template x-for="(ko,t) in (entData ? entData.meta.types : {})" x-bind:key="'et'+t"><option x-bind:value="t" x-text="ko + ' (' + t + ')'"></option></template>
+          </select>
+        </div>
+        <div x-show="entEdit && entEdit.type" x-cloak>
+          <label class="lbl">속성 (저장 시 수동 확정 · 위키데이터 재보강이 덮어쓰지 않음)</label>
+          <div class="space-y-2">
+            <template x-for="f in entAttrFields()" x-bind:key="'ef'+f[0]">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-muted" style="width:110px;flex:none" x-text="f[1]"></span>
+                <select x-show="f[0] === 'occupation'" class="field" style="flex:1" x-on:change="entEdit.attrs[f[0]]=$event.target.value">
+                  <option value="" x-bind:selected="!(entEdit && entEdit.attrs[f[0]])">(미지정)</option>
+                  <template x-for="g in (entData ? entData.meta.occupationGroups : [])" x-bind:key="'og'+g"><option x-bind:value="g" x-bind:selected="entEdit && entEdit.attrs[f[0]] === g" x-text="g"></option></template>
+                </select>
+                <input x-show="f[0] !== 'occupation'" type="text" class="field" style="flex:1" x-bind:value="(entEdit && entEdit.attrs[f[0]]) || ''" x-on:input="entEdit.attrs[f[0]]=$event.target.value">
+              </div>
+            </template>
+          </div>
+        </div>
+        <div>
+          <label class="lbl">별칭 (이형 표기 · 다음 적재부터 같은 개체로 흡수)</label>
+          <div class="flex flex-wrap gap-1.5" style="margin-bottom:6px">
+            <template x-for="a in entEditAliases" x-bind:key="'al'+a"><span class="ds-badge ds-badge--neutral" x-text="a"></span></template>
+          </div>
+          <input type="text" class="field" placeholder="별칭 추가 (저장 시 반영)" x-model="entAliasInput">
+        </div>
+        <div x-show="entEditContents.length">
+          <label class="lbl" x-text="'등장 콘텐츠 · ' + entEditContents.length + '건'"></label>
+          <div class="overflow-auto" style="max-height:140px"><table class="ds-table"><tbody>
+            <template x-for="(c,i) in entEditContents" x-bind:key="'ec'+i"><tr>
+              <td class="text-muted" x-text="c.title || c.hash"></td>
+              <td style="width:40px"><span class="ds-badge ds-badge--neutral" x-text="c.grade || '-'"></span></td>
+            </tr></template>
+          </tbody></table></div>
+        </div>
+        <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="entEditMsg"></span>
+      </div>
+      <div class="ds-dialog__footer">
+        <button type="button" class="ds-btn ds-btn--ghost" x-on:click="entEdit=null">취소</button>
+        <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveEntEdit()">저장(확정)</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 검수자 일괄 배정(슈퍼관리자 이상): ① 콘텐츠 선택 → ② 담당자 지정 → ③ 확인 · 배정 -->
   <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && (bulkOpen=false)" style="z-index:78">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">
@@ -2536,12 +2684,13 @@ PAGE = """<!doctype html>
       <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span></h2>
       <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
         <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
-        <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th><th>검수</th></tr></thead><tbody>
+        <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th><th>검수</th><th x-show="drillData && drillData.kind==='topic' && drillData.topic_id && topicAdmin"></th></tr></thead><tbody>
           <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
             <td x-text="c.service || '·'"></td>
             <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
             <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
             <td><span class="ds-badge" x-show="c.fb && c.fb.verdict" x-bind:class="c.fb && c.fb.verdict==='good' ? 'ds-badge--success' : (c.fb && c.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')" x-text="c.fb && c.fb.verdict==='good' ? '✓ 완료' : (c.fb && c.fb.verdict==='split' ? '✓ 재검토' : '✓ 수정')"></span><span class="text-xs text-muted" x-show="!(c.fb && c.fb.verdict)">·</span></td>
+            <td x-show="drillData && drillData.kind==='topic' && drillData.topic_id && topicAdmin"><button type="button" class="copybtn" x-on:click.stop="topicExclude(c)" data-tip="이 토픽에서 이 콘텐츠만 뺍니다 (조건은 그대로 · 복구 가능)" data-tip-pos="left">제외</button></td>
           </tr></template>
         </tbody></table>
         <div x-show="!drillBusy && drillData && !drillData.items.length" class="text-xs text-muted" style="padding:14px">해당 콘텐츠가 없습니다</div>

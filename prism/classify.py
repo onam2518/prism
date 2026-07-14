@@ -34,6 +34,29 @@ def intent_category_classify(emb, content, top_k=2, min_margin=0.0) -> tuple[lis
     return picks, round(margin, 4)
 
 
+# 2) 엔티티 필터 (entdict 에서 사용)
+import re as _re
+_VAGUE_WORDS = ("씨", "모씨", "피해자", "가해자", "네티즌", "누리꾼", "시민", "남성", "여성",
+                "남편", "아내", "부모", "자녀", "엄마", "아빠", "경찰", "누나", "동생",
+                "유튜버", "기자", "관계자", "직원", "회원", "사람", "일당", "용의자")
+
+
+def is_vague_entity(e: str) -> bool:
+    """카테고리 부여가 무의미한 익명/일반/수치 엔티티 → 분류 제외(Unclassified)."""
+    e = (e or "").strip()
+    if len(e) <= 1:
+        return True
+    if _re.fullmatch(r"[A-Za-z]씨", e):                       # A씨, B씨
+        return True
+    if _re.search(r"(^|\s)(김|이|박|최|정)?모\s?씨$", e):       # 김모 씨, 모 씨
+        return True
+    if _re.fullmatch(r"[\d,.\s]+(원|％|%|년|월|일|명|개|위|호|회|억|만|천)?", e):  # 수치·회차·금액
+        return True
+    if any(e == w or e.endswith(w) for w in _VAGUE_WORDS) and len(e) <= 5:
+        return True
+    return False
+
+
 class QualityExemplars:
     """라벨된 예시(gold)로 구성한 kNN 인덱스.
     label = {finalGrade, reasons}. 콘텐츠를 임베딩해 최근접 예시들로 투표."""
