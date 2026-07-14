@@ -1741,6 +1741,35 @@
           else { this.topicData = r; this._syncTopicSettings(); this.settingsMsg = '적용했습니다 · 자동 토픽을 재생성했습니다'; }
         } catch (e) { this.settingsMsg = '적용 실패'; } this.settingsSaving = false;
       },
+      // ── 토픽 큐레이션: 개별 콘텐츠 제외·복구(자동·사용자 토픽 공통 · 변경은 관리자) ──
+      get topicAdmin() { return this.backend !== 'supabase' || !!(this.adminData && this.adminData.isAdmin); },
+      async topicExclude(c) {
+        if (!this.drillData || !this.drillData.topic_id || !c.hash) return;
+        if (!(await this.dsConfirm('“' + (c.title || '').slice(0, 40) + '” 을(를) 이 토픽에서 제외할까요?\n매칭 조건은 그대로 두고 이 콘텐츠만 뺍니다 · 아래 ‘토픽에서 제외한 콘텐츠’에서 복구할 수 있어요', { ok: '제외', danger: true }))) return;
+        try {
+          const r = await this._studioPost({ action: 'exclude', id: this.drillData.topic_id, hash: c.hash, title: c.title || '', topic: this.drillData.value || '' });
+          if (r && r.error) { this._err(r.error); return; }
+          this.topicData = r; this._syncTopicSettings();
+          this.drillData.items = this.drillData.items.filter(x => x.hash !== c.hash);
+          this.drillData.n = this.drillData.items.length;
+        } catch (e) { this._err('제외 실패'); }
+      },
+      async topicRestore(tid, h) {
+        try {
+          const r = await this._studioPost({ action: 'restore', id: tid, hash: h });
+          if (r && r.error) { this._err(r.error); return; }
+          this.topicData = r; this._syncTopicSettings();
+        } catch (e) { this._err('복구 실패'); }
+      },
+      exclusionRows() {                                  // 관리 패널: {토픽id: [항목]} → 최신순 평탄화
+        const ex = (this.topicData && this.topicData.exclusions) || {}; const out = [];
+        for (const tid of Object.keys(ex)) for (const e of (ex[tid] || [])) {
+          const h = typeof e === 'string' ? e : ((e && e.h) || '');
+          if (h) out.push({ tid, h, title: (e && e.title) || '', topic: (e && e.topic) || tid, ts: (e && e.ts) || 0 });
+        }
+        out.sort((a, b) => b.ts - a.ts); return out;
+      },
+      qexN() { const d = this.topicData; return (d && d.n_eligible != null) ? Math.max(0, (d.n_contents || 0) - d.n_eligible) : 0; },
       async loadDict() { this.modBusy = true; try { this.dictData = await (await this._afetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
       // 사전·정책 편집(사용자 직접 수정)
       editT: null, editKey: null, editKind: 'list', editVal: '', editTitle: '', editMsg: '', editExtra: '', editFilter: '',

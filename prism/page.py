@@ -852,6 +852,7 @@ PAGE = """<!doctype html>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li><b>토픽 스튜디오</b>는 클러스터링 체계(어떤 콘텐츠를 어떻게 묶을지)를 <b>자연어</b>로 정의하고 즉시 실험하는 공간입니다.</li>
           <li>원하는 묶음을 문장으로 설명하면 조건값이 자동으로 채워집니다 · 채워진 조건값은 직접 켜고 끌 수 있습니다.</li>
+          <li>품질 통과(<b>G</b>) 콘텐츠만 토픽 대상이 됩니다<span x-show="qexN()"> · 현재 <b class="tnum" x-text="qexN()"></b>건이 품질 미달로 자동 제외</span> · 어울리지 않는 콘텐츠는 토픽을 열어 개별 <b>제외</b>할 수 있습니다.</li>
         </ul>
         <template x-if="!topicData || !topicData.n_contents"><div class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div></template>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
@@ -981,7 +982,7 @@ PAGE = """<!doctype html>
                   <div class="tgroup__must" x-show="g.must && g.must.length" x-text="'필수: '+g.must.map(m=>m.dim==='cats'?catBoth(m.v):m.v).join(' · ')"></div>
                   <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
                     <template x-for="b in (g.bundles||[])" x-bind:key="b.cluster_id">
-                      <span class="tbchip" x-bind:class="b.kind" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(b)" x-on:keydown.enter="topicDrill(b)" data-tip="묶인 콘텐츠 보기" data-tip-pos="top"><span class="tbchip__k" x-text="b.kind==='core'?'핵심':'관련'"></span> <span x-text="bundleLabel(b)"></span> · <b x-text="b.count"></b></span>
+                      <span class="tbchip" x-bind:class="b.kind" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(b)" x-on:keydown.enter="topicDrill(b)" data-tip="묶인 콘텐츠 보기" data-tip-pos="top"><span class="tbchip__k" x-text="b.kind==='core'?'핵심':'관련'"></span> <span x-text="bundleLabel(b)"></span> · <b x-text="b.count"></b><span class="text-xs" x-show="b.excluded_n" x-text="' (제외 '+b.excluded_n+')'" data-tip="운영자가 이 토픽에서 개별 제외한 콘텐츠 수"></span></span>
                     </template>
                   </div>
                 </div>
@@ -1020,14 +1021,25 @@ PAGE = """<!doctype html>
           <!-- 자동 생성 토픽 (참조) -->
           <div class="panel"><div class="panel-hd"><b>자동 생성 토픽</b><span class="meta tnum" x-text="topicData ? (topicData.n_contents + '건 기준') : ''"></span><button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th>유형</th><th>클러스터</th><th>대표 엔티티</th><th>멤버</th></tr></thead><tbody>
-              <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>엔티티형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.count||(t.content_ids?t.content_ids.length:''))"></td></tr></template>
-              <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>사건형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="t.n_contents || (t.count||(t.content_ids?t.content_ids.length:''))"></td></tr></template>
+              <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>엔티티형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td><td x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td></tr></template>
+              <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left"><td>사건형</td><td class="text-ink" x-text="t.cluster_id"></td><td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td><td x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td></tr></template>
               <template x-if="!(topicData&&(topicData.single.length||topicData.composite.length))"><tr><td colspan="4" class="text-muted">엔티티 공유 클러스터 없음(데이터가 많을수록 · 임계값을 낮추면 더 형성)</td></tr></template>
             </tbody></table></div>
           </div>
           <div class="panel"><div class="panel-hd"><b>조건형 토픽 (기본 제공)</b><span class="meta">운영 기본 필터 · 관심사 × 소비 방식</span></div><div class="panel-bd flex flex-wrap gap-1.5">
             <template x-for="t in (topicData?topicData.filter:[])" x-bind:key="t.cluster_id"><span class="ds-badge ds-badge--neutral" style="cursor:pointer" role="button" tabindex="0" x-bind:class="t.active ? 'ds-badge--entity' : 'ds-badge--category'" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" x-text="(t.name||t.label) + (t.active?(' · '+(t.n_contents||t.count||'')):'')"></span></template>
           </div></div>
+
+          <!-- 토픽에서 제외한 콘텐츠: 큐레이션 오버레이 관리(자동·사용자 토픽 공통) -->
+          <div class="panel" x-show="exclusionRows().length">
+            <div class="panel-hd"><b>토픽에서 제외한 콘텐츠</b><span class="meta tnum" x-text="exclusionRows().length+'건'"></span><span class="meta">매칭 조건은 그대로 · 개별 편집 판단으로 뺀 목록 · 복구하면 다시 묶입니다</span></div>
+            <div class="overflow-auto"><table class="ds-table"><thead><tr><th>토픽</th><th>콘텐츠</th><th></th></tr></thead><tbody>
+              <template x-for="e in exclusionRows()" x-bind:key="e.tid+e.h">
+                <tr><td x-text="e.topic || e.tid"></td><td class="text-ink" x-text="e.title || e.h"></td>
+                <td style="text-align:right"><button type="button" class="copybtn" x-show="topicAdmin" x-on:click="topicRestore(e.tid, e.h)">복구</button></td></tr>
+              </template>
+            </tbody></table></div>
+          </div>
         </div>
       </div>
 
@@ -2549,12 +2561,13 @@ PAGE = """<!doctype html>
       <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span></h2>
       <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
         <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
-        <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th><th>검수</th></tr></thead><tbody>
+        <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th><th>검수</th><th x-show="drillData && drillData.kind==='topic' && drillData.topic_id && topicAdmin"></th></tr></thead><tbody>
           <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
             <td x-text="c.service || '·'"></td>
             <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
             <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
             <td><span class="ds-badge" x-show="c.fb && c.fb.verdict" x-bind:class="c.fb && c.fb.verdict==='good' ? 'ds-badge--success' : (c.fb && c.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')" x-text="c.fb && c.fb.verdict==='good' ? '✓ 완료' : (c.fb && c.fb.verdict==='split' ? '✓ 재검토' : '✓ 수정')"></span><span class="text-xs text-muted" x-show="!(c.fb && c.fb.verdict)">·</span></td>
+            <td x-show="drillData && drillData.kind==='topic' && drillData.topic_id && topicAdmin"><button type="button" class="copybtn" x-on:click.stop="topicExclude(c)" data-tip="이 토픽에서 이 콘텐츠만 뺍니다 (조건은 그대로 · 복구 가능)" data-tip-pos="left">제외</button></td>
           </tr></template>
         </tbody></table>
         <div x-show="!drillBusy && drillData && !drillData.items.length" class="text-xs text-muted" style="padding:14px">해당 콘텐츠가 없습니다</div>
