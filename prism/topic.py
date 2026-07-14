@@ -332,20 +332,41 @@ def meta_taxonomy():
     return {"cats": cats, "intents": intents}
 
 
+# 여러 라벨에 공통으로 걸쳐 과매칭을 유발하는 일반어(토큰 부분일치에서 제외)
+_SUGGEST_STOP = {"분석", "정보", "보도", "소식", "콘텐츠", "기사", "방송", "발표", "중심"}
+
+
+def _label_tokens(label):
+    """라벨(·/공백/쉼표로 구분)을 유의미 토큰으로. 2자+ · 일반어 제외."""
+    import re as _re
+    return [tok for tok in _re.split(r"[·,/\s]+", label or "")
+            if len(tok) >= 2 and tok not in _SUGGEST_STOP]
+
+
 def suggest_dims(text, rows, service_names=None):
     """자연어 문장 → 차원 제안(휴리스틱 · 모델 호출 없음, 의존성 0).
-    전체 아이템메타 분류(사전) ∪ 현재 데이터 present 를 후보로 부분일치. 문장에 나온 엔티티는 키워드로."""
+    전체 아이템메타 분류(사전) ∪ 현재 데이터 present 를 후보로. 전체 라벨 일치 또는
+    라벨을 쪼갠 유의미 토큰 부분일치('인물들'→'인물·사연')까지 잡아 substring-only 누락을 줄인다.
+    카테고리 영문 라벨은 토큰화하지 않음(and/health 등 과매칭 방지) · 한글 별칭만 토큰 허용."""
     tax = meta_taxonomy()
     cat = studio_catalog(rows, service_names)
     all_cats = list(dict.fromkeys(tax["cats"] + [x["k"] for x in cat["cats"]]))
     all_ints = list(dict.fromkeys(tax["intents"] + [x["k"] for x in cat["intents"]]))
     t = (text or "").lower()
-    intents = [x for x in all_ints if x and x.lower() in t]
-    cats = [x for x in all_cats if x and x.lower() in t]
-    # 카테고리 한글 별칭도 시도(Tier1 영문 라벨이 문장에 없을 때)
+
+    def _hit(label):
+        ll = (label or "").lower()
+        if ll and ll in t:
+            return True
+        return any(tok.lower() in t for tok in _label_tokens(label))
+
+    intents = [x for x in all_ints if x and _hit(x)]
+    cats = []
     for x in all_cats:
+        if x.lower() in t:                                   # 영문 Tier1 전체 라벨(토큰화 안 함)
+            cats.append(x); continue
         ko = _TIER1_KO.get(x) if isinstance(_TIER1_KO, dict) else None
-        if ko and ko.lower() in t and x not in cats:
+        if ko and _hit(ko):                                  # 한글 별칭은 토큰 부분일치 허용('뉴스'→'뉴스·정치')
             cats.append(x)
     keywords = [x["k"] for x in cat["keywords"] if x["k"] and x["k"].lower() in t][:5]
     return {"cats": cats, "intents": intents, "keywords": keywords}
