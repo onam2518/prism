@@ -444,16 +444,38 @@ def learn_data(team=None) -> dict:
     agree = Q.percent_agreement(units)
     multi_units = sum(1 for u in units if len(u) >= 2)
     # 검수자 신뢰도: 합의 일치율(아레나) + 골드 정확도 + Dawid-Skene EM 오류율
+    # + 골든 합의 가중치(reviewer_weights · 실제 다수결에 쓰는 값) + 최근 7일 골드 추세
     ds = Q.dawid_skene_binary(Q.feedback_labels(fmap))
     arena = st.arena_stats(team=team)
+    try:
+        weights = _SV.reviewer_weights(team) or {}
+    except Exception:
+        weights = {}
+    DAY = 86400.0
+    now = time.time()
+    try:
+        wk_gold = st.gold_stats_since(now - 7 * DAY, team=team) if hasattr(st, "gold_stats_since") else {}
+        two_gold = st.gold_stats_since(now - 14 * DAY, team=team) if hasattr(st, "gold_stats_since") else {}
+    except Exception:
+        wk_gold, two_gold = {}, {}
     reviewers = []
     for row in arena.get("leaderboard", []):
         rv = row["reviewer"]
-        dsr = (ds.get("reviewers") or {}).get(row.get("reviewer_id") or rv) or {}   # DS 키(uuid 우선)로 조회 · feedback_labels 와 정렬
+        rid = row.get("reviewer_id") or rv                 # supabase=uuid · sqlite=닉네임 동일
+        dsr = (ds.get("reviewers") or {}).get(rid) or {}   # DS 키(uuid 우선)로 조회 · feedback_labels 와 정렬
+        w = wk_gold.get(rid) or wk_gold.get(rv) or {"n": 0, "correct": 0}
+        t = two_gold.get(rid) or two_gold.get(rv) or {"n": 0, "correct": 0}
+        pv_n = t["n"] - w["n"]                             # 그 전 7일 = 14일 창 - 최근 7일 창
+        pv_corr = t["correct"] - w["correct"]
+        trend = None                                       # 양쪽 표본 3건 이상일 때만(소표본 노이즈 방지)
+        if w["n"] >= 3 and pv_n >= 3:
+            trend = round(w["correct"] / w["n"] - pv_corr / pv_n, 4)
         reviewers.append({"reviewer": rv, "n": row.get("reviews", 0),
                           "agree_rate": row.get("agree_rate"),
                           "gold_n": row.get("gold_n", 0), "gold_acc": row.get("gold_acc"),
-                          "ds_error": dsr.get("error_rate")})
+                          "ds_error": dsr.get("error_rate"),
+                          "weight": weights.get(rid) if weights.get(rid) is not None else weights.get(rv),
+                          "gold_trend": trend, "gold_wk_n": w["n"], "gold_pv_n": max(0, pv_n)})
     # 골든 정합성 ± 95% CI(최근 일배치 평가 기준, Miller 2024)
     ev = (_SV._report_get("learn_report", team, _LAST_LEARN_REPORT) or {}).get("eval") or {}
     acc_ci = None

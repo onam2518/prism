@@ -461,6 +461,18 @@ class Store:
             out[rv] = {"n": n, "correct": corr, "acc": round(corr / n, 4) if n else 0.0}
         return out
 
+    def gold_stats_since(self, since_ts: float, team=None) -> dict:
+        """reviewer → {n, correct, acc} · since_ts(epoch) 이후 응답만(주간 추세 계산용)."""
+        c = self._conn()
+        out = {}
+        for rv, n, corr in c.execute(
+                "SELECT reviewer, COUNT(*), SUM(correct) FROM gold_checks WHERE ts>=? GROUP BY reviewer",
+                (float(since_ts),)):
+            n = int(n or 0)
+            corr = int(corr or 0)
+            out[rv] = {"n": n, "correct": corr, "acc": round(corr / n, 4) if n else 0.0}
+        return out
+
     def gold_answered(self, reviewer, team=None) -> set:
         """검수자가 이미 응답한 골드 문항 content_hash 집합(재출제 방지)."""
         c = self._conn()

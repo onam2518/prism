@@ -332,6 +332,63 @@ class TestLearnData(unittest.TestCase):
         self.assertIn("rejected", text)
 
 
+class TestReviewerCalibration(unittest.TestCase):
+    """검수자 캘리브레이션: 창 필터(gold_stats_since) · 합의 가중치·골드 추세 표면화."""
+
+    def _with_store(self):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def _gold(self, st, rows):
+        c = st._conn()
+        c.executemany("INSERT INTO gold_checks(content_hash,reviewer,expected,verdict,correct,ts) "
+                      "VALUES(?,?,?,?,?,?)", rows)
+        c.commit()
+
+    def test_gold_stats_since_window(self):
+        import time as _t
+        _serve, st = self._with_store()
+        now = _t.time()
+        DAY = 86400.0
+        self._gold(st, [("g1", "A", "ok", "ok", 1, now - DAY),
+                        ("g2", "A", "ok", "ok", 0, now - 10 * DAY)])
+        wk = st.gold_stats_since(now - 7 * DAY)
+        self.assertEqual((wk["A"]["n"], wk["A"]["correct"]), (1, 1))
+        two = st.gold_stats_since(now - 14 * DAY)
+        self.assertEqual((two["A"]["n"], two["A"]["correct"]), (2, 1))
+
+    def test_learn_data_carries_weight_and_trend(self):
+        import time as _t
+        serve, st = self._with_store()
+        now = _t.time()
+        DAY = 86400.0
+        st.save_feedback("h1", "s", "T", "good", "review", "", now, reviewer="A")   # 리더보드 진입
+        # 최근 7일: 3건 중 2정답 · 그 전 7일: 3건 중 1정답 → 추세 = 2/3 - 1/3
+        self._gold(st, [("w%d" % i, "A", "ok", "ok", 1 if i < 2 else 0, now - DAY) for i in range(3)])
+        self._gold(st, [("p%d" % i, "A", "ok", "ok", 1 if i < 1 else 0, now - 10 * DAY) for i in range(3)])
+        d = serve.learn_data(None)
+        row = next(r for r in d["reviewers"] if r["reviewer"] == "A")
+        # 골드 6건(≥5) · 정확도 3/6 → 가중치 0.5 + 0.5*0.5 = 0.75 (골든 다수결에 쓰는 실값)
+        self.assertAlmostEqual(row["weight"], 0.75, places=4)
+        self.assertAlmostEqual(row["gold_trend"], round(2 / 3 - 1 / 3, 4), places=4)
+        self.assertEqual((row["gold_wk_n"], row["gold_pv_n"]), (3, 3))
+
+    def test_trend_hidden_on_small_samples(self):
+        import time as _t
+        serve, st = self._with_store()
+        now = _t.time()
+        st.save_feedback("h1", "s", "T", "good", "review", "", now, reviewer="A")
+        self._gold(st, [("g1", "A", "ok", "ok", 1, now - 86400.0)])   # 표본 3건 미만 → 추세 미표시
+        d = serve.learn_data(None)
+        row = next(r for r in d["reviewers"] if r["reviewer"] == "A")
+        self.assertIsNone(row["gold_trend"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

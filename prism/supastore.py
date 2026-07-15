@@ -490,6 +490,18 @@ class SupabaseStore:
             e["acc"] = round(e["correct"] / e["n"], 4) if e["n"] else 0.0
         return out
 
+    def gold_stats_since(self, since_ts: float, team=None) -> dict:
+        """reviewer → {n, correct, acc} · since_ts(epoch) 이후 응답만(sqlite 와 동일 계약)."""
+        iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(float(since_ts)))
+        out = {}
+        for r in self._gold_rows(team, extra=f"&created_at=gte.{iso}"):
+            e = out.setdefault(r.get("reviewer_id") or "", {"n": 0, "correct": 0})
+            e["n"] += 1
+            e["correct"] += int(bool(r.get("correct")))
+        for e in out.values():
+            e["acc"] = round(e["correct"] / e["n"], 4) if e["n"] else 0.0
+        return out
+
     def gold_answered(self, reviewer, team=None) -> set:
         rows = self._gold_rows(team, extra=f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}")
         return {r["content_hash"] for r in rows}
