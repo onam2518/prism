@@ -1221,6 +1221,18 @@
         try { this.cmpResult = await (await this._afetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: [this.cmpA, this.cmpB], scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
         this.cmpBusy = false;
       },
+      // 비교 결과의 추천 모델을 기본 모델(cfg.model)로 승격 · /config POST(관리자 게이트는 서버가 판정)
+      applyBusy: false,
+      async applyModel(m) {
+        if (!m || this.applyBusy) return;
+        this.applyBusy = true;
+        try {
+          const r = await (await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: m }) })).json();
+          if (r && !r.error) { this.cfgModel = m; this.liveToast('기본 모델 적용 · ' + m + ' · 다음 실행부터 이 모델로 초안을 만듭니다'); }
+          else this._err((r && r.error) || '모델 적용 실패');
+        } catch (e) { this._err('모델 적용 실패'); }
+        this.applyBusy = false;
+      },
       myEvalVote(d) { const r = (d.judge && d.judge.reviewers) || {}; return r[this.reviewer] || ''; },
       evalConsensus(d) {
         const j = d.judge || {}; const mg = (this.goldenResult && this.goldenResult.min_good) || 1;

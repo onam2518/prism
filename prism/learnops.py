@@ -259,6 +259,17 @@ def build_golden_from_reviews(team=None) -> dict:
 
 _LAST_LEARN_REPORT = {}                               # 최근 일배치 결과(수신·표시용)
 
+def cheapest_passing_model(models: list, gate: float) -> str:
+    """'합격하는 가장 싼 모델' 추천: 등급 일치율이 게이트 이상인 모델 중 비용 최저.
+    비용 미계측(None)은 제외 · 동률이면 일치율 높은 쪽. 없으면 빈 문자열."""
+    ok = [m for m in (models or [])
+          if (m.get("grade_accuracy") or 0) >= gate and m.get("cost_usd") is not None]
+    if not ok:
+        return ""
+    ok.sort(key=lambda m: (m["cost_usd"], -(m.get("grade_accuracy") or 0)))
+    return ok[0].get("model") or ""
+
+
 def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict:
     """골든셋(사람 확정 정답)을 여러 모델에 실호출로 돌려 정합성 비교 → 최적 모델 선택 근거.
     모델별 제공자·엔드포인트를 라우팅(llm_for_model)하고, 키 없는 모델은 건너뛰되 사유를 노출."""
@@ -290,8 +301,10 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
         return {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
                 "skipped": skipped, "golden_n": len(rows)}
     out.sort(key=lambda r: (-(r.get("grade_accuracy") or 0), -(r.get("reason_jaccard") or 0)))
+    gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
     return {"ok": True, "models": out, "skipped": skipped,
-            "best": out[0]["model"], "golden_n": len(rows)}
+            "best": out[0]["model"], "golden_n": len(rows),
+            "eval_gate": gate, "cheapest_passing": cheapest_passing_model(out, gate)}
 
 def snapshot_prompts(team=None) -> dict:
     """학습 반영 직후, 다음 초안 버전(v = 반영 회차 + 1)이 쓰게 될 단계(콜)별 최종
