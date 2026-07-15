@@ -1045,6 +1045,7 @@ PAGE = """<!doctype html>
           <!-- 토픽 현황: 수동(스튜디오)+자동(엔티티형·사건형)을 한 양식으로 · 생성 방식 필터 -->
           <div class="panel"><div class="panel-hd"><b>토픽 현황</b>
               <span class="meta tnum" x-text="((topicData.custom||[]).length)+'개 수동 · '+(((topicData.single||[]).length)+((topicData.composite||[]).length))+'개 자동'"></span>
+              <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-show="topicData.snapshot && topicData.snapshot.last_ts" x-bind:data-tip="topicSnapTip()" data-tip-pos="bottom" x-text="'자동 리프레시 · ' + fmtTs(topicData.snapshot && topicData.snapshot.last_ts) + (topicData.snapshot && topicData.snapshot.delta && topicData.snapshot.delta.changed_n ? (' · 변화 ' + topicData.snapshot.delta.changed_n + '건') : ' · 변화 없음')"></span>
               <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='all'?'sel':''" x-on:click="topicView='all'">전체</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='manual'?'sel':''" x-on:click="topicView='manual'">수동 생성</button>

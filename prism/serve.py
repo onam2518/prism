@@ -870,6 +870,71 @@ def _topics_compute() -> dict:
                     "exclusions": cfg["exclusions"], "summary": {}}
 
 
+# ── 토픽 자동 리프레시 + 성과 스냅샷 ────────────────────────────────────────
+_TOPIC_SNAP_CAP = 90                                  # 보관 스냅샷 수(시간별 약 4일 · 추이 원천)
+
+
+def _topic_rows_brief(data: dict) -> dict:
+    """토픽 데이터 → 스냅샷 요약 {key: {label,type,n}} · 전 체계(엔티티·사건·사용자 정의) 공통 키."""
+    out = {}
+    for p in (data.get("single") or []) + (data.get("composite") or []):
+        k = p.get("cluster_id") or p.get("name") or ""
+        if k:
+            out[k] = {"label": p.get("name") or "", "type": p.get("type") or "",
+                      "n": int(p.get("count") or 0)}
+    for g in (data.get("custom") or []):
+        if g.get("id"):
+            out[g["id"]] = {"label": g.get("name") or "", "type": "custom",
+                            "n": int(g.get("core_count") or 0)}
+    return out
+
+
+def topic_snapshot() -> dict:
+    """토픽 현황 스냅샷 적재(성과 시계열 기초 · reports kind='topic_snapshots' · 토픽은 무팀 뷰).
+    직전 스냅샷 대비 변화(신규·소멸·건수 증감)를 계산해 함께 저장 → /topics 가 배지로 노출."""
+    _agg_bump()                                        # 강제 재계산: 열어둔 화면 낡음(수동 새로고침 의존) 해소
+    brief = _topic_rows_brief(topics_data())
+    rep = _report_get("topic_snapshots", None, {}) or {}
+    entries = rep.get("entries") or []
+    prev = ((entries[-1] or {}).get("topics") or {}) if entries else {}
+    changed = []
+    for k, v in brief.items():
+        pn = int((prev.get(k) or {}).get("n") or 0)
+        if v["n"] != pn:
+            changed.append({"id": k, "label": v["label"], "type": v["type"],
+                            "from": pn, "to": v["n"]})
+    gone = [{"id": k, "label": (v or {}).get("label") or ""}
+            for k, v in prev.items() if k not in brief]
+    delta = {"ts": time.time(), "changed": changed[:100], "gone": gone[:50],
+             "new_n": sum(1 for c in changed if not c["from"]),
+             "changed_n": len(changed), "gone_n": len(gone)}
+    entries.append({"ts": delta["ts"], "topics": brief})
+    _report_save("topic_snapshots", {"entries": entries[-_TOPIC_SNAP_CAP:],
+                                     "last_delta": delta}, None)
+    return delta
+
+
+_topic_sched_started = False
+
+
+def start_topic_scheduler(interval_min: int = 60):
+    """토픽 자동 리프레시(기본 1시간): 재계산 + 스냅샷 적재. 서버당 1회 · 데몬 스레드."""
+    global _topic_sched_started
+    if _topic_sched_started:
+        return
+    _topic_sched_started = True
+
+    def _loop():
+        while True:
+            try:
+                time.sleep(max(300, int(interval_min) * 60))
+                topic_snapshot()
+            except Exception as e:
+                print(f"  [warn] 토픽 스냅샷 실패: {e}")
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
 def _ent_index() -> dict:
     """토픽 매칭용 개체 속성 인덱스({content_hash: [속성 dict]}) · 사전 미구축이면 빈 dict.
     토픽은 전역(무팀 results_rows) 뷰라 인덱스도 전역(team="")."""
@@ -3268,7 +3333,14 @@ class Handler(BaseHTTPRequestHandler):
                                        reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/topics"):
-            self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
+            td = dict(topics_data())
+            try:                                       # 자동 스냅샷 메타(마지막 시각·변화) 동반
+                snap = _report_get("topic_snapshots", None, {}) or {}
+                td["snapshot"] = {"last_ts": ((snap.get("entries") or [{}])[-1] or {}).get("ts"),
+                                  "delta": snap.get("last_delta")}
+            except Exception:
+                td["snapshot"] = None
+            self._send(200, json.dumps(td, ensure_ascii=False), _JSON)
         elif self.path.startswith("/dashboard"):
             self._send(200, json.dumps(dashboard_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/drill"):
@@ -4322,6 +4394,7 @@ def main():
     _jobs_restore()                                    # 실행 이력 복원 · 배포로 끊긴 배치는 중단 표시
     start_ingest_scheduler()                           # 활성 소스 자동 폴링(백그라운드)
     start_learning_scheduler()                         # 매일 04:00 학습 일배치(합의 반영+골든+회귀평가)
+    start_topic_scheduler()                            # 토픽 자동 리프레시 + 성과 스냅샷(1시간)
     keyed = bool(IMG._api_key())
     mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 미설정 · UI에서 설정)")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
