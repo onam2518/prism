@@ -3702,6 +3702,47 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
+        if self.path.startswith("/apply-directive"):    # 버전 지시를 공통/특정 모델 프롬프트에 적용(관리자)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                v = int(data.get("version") or 0)
+                model = (data.get("model") or "common").strip()
+                stages = [s for s in (data.get("stages") or []) if s in ("extract", "analyze", "review", "judge")]
+                snap = _report_get(f"prompt_snapshot_v{v}", self._req_team()) or {}
+                learned = snap.get("learned") or {}
+                cfg = Config.load()
+                applied = []
+                for s in stages:
+                    d = (learned.get(s) or "").strip()
+                    if not d:
+                        continue
+                    if model == "common":                # 공통 = 모든 모델 프롬프트에 얹힘(stage_prompts)
+                        cur = dict(cfg.stage_prompts or {})
+                        base = (cur.get(s) or "").strip()
+                        if d not in base:
+                            cur[s] = (base + ("\n\n" if base else "") + d).strip()
+                            cfg.stage_prompts = cur
+                    else:                                 # 특정 모델 전용(model_prompts[model][stage])
+                        mp = dict(cfg.model_prompts or {})
+                        mm = dict(mp.get(model) or {})
+                        base = (mm.get(s) or "").strip()
+                        if d not in base:
+                            mm[s] = (base + ("\n\n" if base else "") + d).strip()
+                            mp[model] = mm
+                            cfg.model_prompts = mp
+                    applied.append(s)
+                cfg.save_template()
+                sync_prompt()
+                print(f"  [apply-directive] v{v} → {model} · 단계 {applied}")
+                self._send(200, json.dumps({"ok": True, "applied": applied, "model": model, "version": v},
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
         if self.path.startswith("/compare-models"):    # 골든셋 다중 모델 비교(관리자)
             try:
                 if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):

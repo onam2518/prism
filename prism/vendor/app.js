@@ -415,6 +415,7 @@
       },
       metaResults: null, metaBusy: false,
       verRows: [], verSel: null, verSnap: null, verBusy: false,   // 버전별 지시 히스토리(표)
+      dmOpen: false, dmVer: null, dmModel: 'common', dmSnap: null, dmStages: {}, dmBusy: false, dmMsg: '',   // 모델 적용 팝업
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
       loading: false,
@@ -1277,6 +1278,26 @@
       verDir(stage) { const s = this.verSnap; return (s && s.learned && s.learned[stage]) || ''; },
       verAmb(stage) { const r = this.verRow(this.verSel), res = (r && r.report && r.report.improve && r.report.improve.results) || {}; return (res[stage] && res[stage].ambiguities) || []; },
       verHasDir() { return ['extract', 'analyze', 'review', 'judge'].some(s => this.verDir(s)); },
+      async openDirModal(v) {                                    // 그 버전 지시를 모델에 적용하는 팝업
+        this.dmOpen = true; this.dmVer = v; this.dmModel = 'common'; this.dmMsg = ''; this.dmSnap = null; this.dmStages = {}; this.dmBusy = true;
+        try { const r = await (await this._afetch('/prompt-snapshot?v=' + v, { headers: this._authHeaders() })).json(); this.dmSnap = (r && r.ok) ? r.snapshot : null; } catch (e) {}
+        const l = (this.dmSnap && this.dmSnap.learned) || {};
+        ['extract', 'analyze', 'review', 'judge'].forEach(s => { if ((l[s] || '').trim()) this.dmStages[s] = true; });
+        this.dmBusy = false;
+      },
+      dmDir(stage) { const l = (this.dmSnap && this.dmSnap.learned) || {}; return (l[stage] || '').trim(); },
+      dmStageList() { return ['extract', 'analyze', 'review', 'judge'].filter(s => this.dmDir(s)); },
+      async applyDir() {                                         // 선택 모델(공통/특정)에 지시 적용
+        const stages = Object.keys(this.dmStages).filter(s => this.dmStages[s]);
+        if (!stages.length) { this.dmMsg = '적용할 단계를 선택하세요'; return; }
+        this.dmBusy = true; this.dmMsg = '';
+        try {
+          const r = await (await this._afetch('/apply-directive', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ version: this.dmVer, model: this.dmModel, stages: stages }) })).json();
+          if (r && r.ok) { this.dmMsg = '✓ v' + this.dmVer + ' 지시 ' + (r.applied || []).length + '개 · ' + (this.dmModel === 'common' ? '공통(전 모델)' : this.dmModel + ' 전용') + '에 적용됨'; setTimeout(() => { this.dmOpen = false; }, 1200); }
+          else this.dmMsg = (r && r.error) || '적용 실패';
+        } catch (e) { this.dmMsg = '적용 실패'; }
+        this.dmBusy = false;
+      },
       nextBatchAt: 0,
       // 학습 반영 주기(모델 버전 시한 · 관리자): N일마다 지정 시각에 반영 · 지금 실행 시 주기 재시작
       learnNextAt: '', learnSchedMsg: '', schedEditing: false,
