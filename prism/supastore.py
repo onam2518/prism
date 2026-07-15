@@ -696,18 +696,20 @@ class SupabaseStore:
         if rows:
             self._req("POST", "feedback_routes", body=rows, prefer="return=minimal")
 
-    def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
-        """공통(모델 미기록) 라우트만 · 모델 귀속 라우트는 routes_by_stage_model 참조."""
+    def routes_by_stage(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
+        """공통(모델 미기록) 라우트만 · 모델 귀속 라우트는 routes_by_stage_model 참조.
+        exclude: 관리자가 끈 지시 원문 집합(다음 컴파일부터 제외 · 원본 행 보존)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback_routes", "select=stage,directive"
                          f"{tq}&or=(model.is.null,model.eq.)"
                          f"&order=created_at.desc&limit={limit_per_stage * 4}")
         out = {}
         seen = set()
+        ex = exclude or set()
         for r in rows:
             st = r.get("stage") if r.get("stage") in ("extract", "analyze", "review", "judge") else "analyze"
             d = (r.get("directive") or "").strip()
-            if not d or (st, d) in seen:
+            if not d or d in ex or (st, d) in seen:
                 continue
             seen.add((st, d))
             lst = out.setdefault(st, [])
@@ -715,17 +717,18 @@ class SupabaseStore:
                 lst.append(d)
         return out
 
-    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None) -> dict:
+    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
         """모델 귀속 라우트: {model: {stage: [directive, …]}} · 모델별 learned 계층의 원천."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback_routes", "select=stage,directive,model"
                          f"{tq}&model=neq.&order=created_at.desc&limit={limit_per_stage * 8}")
         out = {}
         seen = set()
+        ex = exclude or set()
         for r in rows:
             st = r.get("stage") if r.get("stage") in ("extract", "analyze", "review", "judge") else "analyze"
             d, m = (r.get("directive") or "").strip(), (r.get("model") or "").strip()
-            if not d or not m or (m, st, d) in seen:
+            if not d or d in ex or not m or (m, st, d) in seen:
                 continue
             seen.add((m, st, d))
             lst = out.setdefault(m, {}).setdefault(st, [])
@@ -733,15 +736,18 @@ class SupabaseStore:
                 lst.append(d)
         return out
 
-    def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+    def learned_by_stage(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
+        ex = exclude or set()
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
-        for st, items in self.routes_by_stage(limit_per_stage, team=team).items():
+        for st, items in self.routes_by_stage(limit_per_stage, team=team, exclude=ex).items():
             out[st].extend(f"- {t}" for t in items)
         rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "", reverse=True)
         for r in rows:
             if r.get("verdict") != "bad":
                 continue
             text = (r.get("reap_plan") or "").strip() or (r.get("note") or "").strip()
+            if text in ex:
+                continue
             st = r.get("stage") if r.get("stage") in out else "analyze"
             line = f"- {text}"
             if text and len(out[st]) < limit_per_stage and line not in out[st]:

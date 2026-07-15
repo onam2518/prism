@@ -836,12 +836,14 @@ class Store:
                         it.get("directive", ""), model or "", now) for it in items if it.get("directive")])
         c.commit()
 
-    def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+    def routes_by_stage(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
         """공통(모델 미기록) 라우트만 · 모델 귀속 라우트는 routes_by_stage_model 로
-        해당 모델 프롬프트에만 병기한다(타 모델 오염·중복 방지)."""
+        해당 모델 프롬프트에만 병기한다(타 모델 오염·중복 방지).
+        exclude: 관리자가 끈 지시 원문 집합 · 다음 컴파일부터 제외(원본 행은 보존)."""
         c = self._conn()
         out = {}
         seen = set()
+        ex = exclude or set()
         try:
             rows = c.execute("SELECT stage,directive FROM feedback_routes "
                              "WHERE COALESCE(directive,'')!='' AND COALESCE(model,'')='' "
@@ -852,6 +854,8 @@ class Store:
         for stage, directive in rows:
             st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
             d = directive.strip()
+            if d in ex:
+                continue
             if (st, d) in seen:                        # 동일 지시 반복 제거(표시·프롬프트 병기 모두)
                 continue
             seen.add((st, d))
@@ -860,11 +864,12 @@ class Store:
                 lst.append(d)
         return out
 
-    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None) -> dict:
+    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
         """모델 귀속 라우트: {model: {stage: [directive, …]}} · 모델별 learned 계층의 원천."""
         c = self._conn()
         out = {}
         seen = set()
+        ex = exclude or set()
         try:
             rows = c.execute("SELECT stage,directive,COALESCE(model,'') FROM feedback_routes "
                              "WHERE COALESCE(directive,'')!='' AND COALESCE(model,'')!='' "
@@ -874,6 +879,8 @@ class Store:
         for stage, directive, model in rows:
             st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
             d, m = directive.strip(), model.strip()
+            if d in ex:
+                continue
             if (m, st, d) in seen:
                 continue
             seen.add((m, st, d))
@@ -882,12 +889,13 @@ class Store:
                 lst.append(d)
         return out
 
-    def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+    def learned_by_stage(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
         """단계별 학습 보정 텍스트: 오케스트레이터 라우팅(요소 재분류 지시) 우선 + REAP plan/메모 보완.
-        team 은 통일용(sqlite 무시)."""
+        team 은 통일용(sqlite 무시) · exclude 는 관리자가 끈 지시 원문(라우트·메모 공통 제외)."""
         c = self._conn()
+        ex = exclude or set()
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
-        routed = self.routes_by_stage(limit_per_stage)
+        routed = self.routes_by_stage(limit_per_stage, exclude=ex)
         for st, items in routed.items():
             out[st].extend(f"- {t}" for t in items)
         for stage, note, plan in c.execute(
@@ -896,6 +904,8 @@ class Store:
                 "ORDER BY ts DESC"):
             st = stage if stage in out else "analyze"
             text = (plan or "").strip() or (note or "").strip()
+            if text in ex:
+                continue
             line = f"- {text}"
             if text and len(out[st]) < limit_per_stage and line not in out[st]:
                 out[st].append(line)
