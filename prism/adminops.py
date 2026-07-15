@@ -168,10 +168,13 @@ def _team_super(uid, team) -> bool:
 
 def is_sys_admin_user(uid, team, email="") -> bool:
     """운영(시스템) 관리자 = 허용목록(~/.prism_admin_emails) 이메일. 팀 소속과 무관.
-    허용목록 미설정 시 팀 관리자 로직으로 폴백(단독 운영 호환)."""
+    허용목록 미설정 시: 로컬(sqlite) 단독 운영만 팀 관리자로 폴백. supabase(운영)에서 폴백하면
+    위임된 팀 관리자가 '운영 관리자 전용' 파괴 작업(데이터/팀 삭제·점수 초기화)을 수행하므로 fail-closed."""
     allow = admin_emails()
     if allow:
         return bool(email and email.strip().lower() in allow)
+    if _supa():
+        return False                              # 운영 모드 + 허용목록 미설정 = 운영 관리자 없음(파괴작업 차단)
     return _team_admin(uid, team)
 
 def is_super_admin_user(uid, team, email="") -> bool:
