@@ -191,6 +191,10 @@ def build_golden_from_reviews(team=None) -> dict:
         fmap = {}
     weights = _SV.reviewer_weights(team)               # 골드 정확도 기반 신뢰도(G-4)
     min_good = max(1, int(getattr(Config.load(), "golden_min_good", 1) or 1))   # 확정 최소 '정확' 인원
+    try:                                               # 리드 최종판정: 다수결보다 우선(타이브레이크)
+        finals = _SV.final_verdicts(team)
+    except Exception:
+        finals = {}
     try:
         existing = st.golden_hashes(team)
         by_source = {r["hash"]: r["source"] for r in st.golden_rows(team, limit=10000)} if hasattr(st, "golden_rows") else {}
@@ -212,7 +216,13 @@ def build_golden_from_reviews(team=None) -> dict:
                  for v in fb.get("verdicts", []) if v.get("verdict") == "good")
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
-        if not (fb.get("good", 0) >= min_good and gw > bw):   # 정확 최소 인원 + 가중 다수
+        fv = (finals.get(ch) or {}).get("verdict")     # 리드 최종판정(있으면 다수결보다 우선)
+        if fv == "bad":                                # 리드가 '수정 필요' 확정 → 승격 금지 + 검수 유래 골든 강등
+            disagree += 1
+            if ch in existing and by_source.get(ch, "review") == "review":
+                demote.append(ch)
+            continue
+        if fv != "good" and not (fb.get("good", 0) >= min_good and gw > bw):   # 정확 최소 인원 + 가중 다수
             disagree += 1
             # 검수 유래 골든이 뒤집힘(가중 열세) → 강등. 관리자 등록분(manual)은 보존.
             if ch in existing and by_source.get(ch, "review") == "review" and bw > gw:

@@ -2216,7 +2216,8 @@ PAGE = """<!doctype html>
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
                   <td class="text-ink"><span x-text="r.title || '(제목 없음)'"></span>
                     <span class="ds-badge ds-badge--yellow" style="cursor:help;margin-left:4px" x-show="r.review==='yellow'" data-tip="AI 확신이 낮아 사람 확인이 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
-                    <span class="ds-badge ds-badge--reason" style="margin-left:4px" x-show="r.split" data-tip="검수자 의견이 갈려 재검토가 필요합니다 · 우선 검수 대상" data-tip-pos="top">재검토 필요</span>
+                    <span class="ds-badge ds-badge--reason" style="margin-left:4px" x-show="r.split && !r.final" data-tip="검수자 의견이 갈려 재검토가 필요합니다 · 우선 검수 대상" data-tip-pos="top">재검토 필요</span>
+                    <span class="ds-badge" style="margin-left:4px;cursor:help" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" data-tip="리드(슈퍼관리자 이상)가 확정한 최종판정 · 정답셋 승격에서 다수결보다 우선" data-tip-pos="top" x-text="r.final==='good' ? '리드 확정 · 정확' : '리드 확정 · 수정'"></span>
                   </td>
                   <td class="text-muted" x-text="r.service"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span x-show="!(r.category||[]).length" class="text-xs text-muted">·</span></td>
@@ -3218,6 +3219,14 @@ PAGE = """<!doctype html>
                   <span class="dve__mine-lbl">내 판정</span>
                   <span class="ds-badge" x-bind:class="detail.fb.mine==='good' ? 'ds-badge--success' : (detail.fb.mine==='bad' ? 'ds-badge--error' : 'ds-badge--neutral')" x-text="detail.fb.mine==='good' ? '정확' : (detail.fb.mine==='bad' ? '수정 필요' : '아직 없음')"></span>
                   <span class="text-xs text-muted" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개'"></span>
+                </div>
+                <!-- 리드 최종판정: 의견 갈림을 리드(슈퍼관리자 이상)가 확정 · 골든 승격에서 다수결보다 우선 -->
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px" x-show="opsAdmin && (detail.fb.verdict==='split' || detail.final)" x-cloak>
+                  <span class="text-xs text-muted">리드 최종판정</span>
+                  <span class="ds-badge" x-show="detail.final" x-bind:class="detail.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="detail.final==='good' ? '확정 · 정확' : '확정 · 수정 필요'"></span>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.final!=='good'" x-on:click="setFinal(detail, 'good')" data-tip="이 콘텐츠를 '정확'으로 확정합니다 · 정답셋 승격에서 다수결보다 우선" data-tip-pos="top">정확으로 확정</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.final!=='bad'" x-on:click="setFinal(detail, 'bad')" data-tip="이 콘텐츠를 '수정 필요'로 확정합니다 · 정답셋 승격 금지" data-tip-pos="top">수정 필요로 확정</button>
+                  <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="detail.final" x-on:click="setFinal(detail, '')">철회</button>
                 </div>
                 <div class="tbox" x-show="myVerdict(detail.fb)==='bad' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
                 <div style="display:flex;gap:var(--ds-space-2);margin-top:10px">

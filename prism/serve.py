@@ -478,6 +478,28 @@ def routes_overview(team=None) -> dict:
         if t not in listed:
             items.append({"stage": "", "model": "", "text": t, "disabled": True})
     return {"ok": True, "items": items, "disabled_n": len(dis)}
+# ── 리드 최종판정(타이브레이크) ──────────────────────────────────────────────
+def final_verdicts(team=None) -> dict:
+    """리드(슈퍼관리자 이상)가 확정한 최종판정 {hash: {verdict, by, ts}} · 의견 갈림 해소.
+    reports kind='final_verdicts'(팀 스코프) · DDL 불필요 · 골든 승격에서 다수결보다 우선."""
+    rep = _report_get("final_verdicts", team, {}) or {}
+    return dict(rep.get("items") or {})
+
+
+def set_final_verdict(hash_, verdict, by="", team=None) -> dict:
+    """최종판정 저장/철회(verdict 빈 값 = 철회). 검수자 개별 의견 행은 건드리지 않는다."""
+    h = (hash_ or "").strip()
+    if not h:
+        return {"ok": False, "error": "hash 누락"}
+    rep = _report_get("final_verdicts", team, {}) or {}
+    items = dict(rep.get("items") or {})
+    if verdict in ("good", "bad"):
+        items[h] = {"verdict": verdict, "by": by or "", "ts": time.time()}
+    else:
+        items.pop(h, None)
+    _report_save("final_verdicts", {"items": items}, team)
+    _agg_bump()
+    return {"ok": True, "final": items.get(h)}
 
 
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
@@ -2803,6 +2825,10 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         asg = st.assignees(team=team) if (st and hasattr(st, "assignees")) else {}
     except Exception:
         asg = {}
+    try:                                           # 리드 최종판정(의견 갈림 해소 배지)
+        finals = final_verdicts(team)
+    except Exception:
+        finals = {}
     out = []
     for r in reversed(rows[-int(limit):]):         # 최근순
         ref = r.get("content_ref") or {}
@@ -2828,6 +2854,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "version": int(tr.get("version") or 1),
                     "review": qm.get("review", "") or "",
                     "split": bool(fb.get("good") and fb.get("bad")),
+                    "final": (finals.get(ch) or {}).get("verdict", ""),
                     "fb": _fb_public(fb, reviewer),
                     "assignees": (asg.get(ch) or {}).get("reviewers", []),
                     "min_reviewers": (asg.get(ch) or {}).get("min", 0),
@@ -4293,6 +4320,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(set_directive_disabled(data.get("text") or "",
                                                                   bool(data.get("disabled"))),
                                            ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/final-verdict"):     # 슈퍼관리자: 의견 갈림 최종판정(타이브레이크)
+            try:
+                if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(
+                    set_final_verdict(data.get("hash") or "", (data.get("verdict") or "").strip(),
+                                      by=(data.get("reviewer") or "").strip(), team=self._req_team()),
+                    ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
