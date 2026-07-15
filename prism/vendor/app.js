@@ -1237,11 +1237,6 @@
         try { await this._afetch('/golden-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: h }) }); } catch (e) {}
         this.loadGoldenList(); this.loadGoldenStatus(); this.loadLearnData();
       },
-      async runMetaCompile() {
-        this.metaBusy = true;
-        try { const r = await (await this._afetch('/meta-compile', { method: 'POST', headers: this._authHeaders() })).json(); this.metaResults = r.results || null; } catch (e) {}
-        this.metaBusy = false; this.loadPromptDefaults();
-      },
       // 일배치 학습(수동 실행): 개선 + 골든 축적 + 골든 회귀 평가 + 다중 모델 비교
       learnReport: null, learnBusy: false,
       async runLearnBatch() {
@@ -1434,7 +1429,6 @@
       // 결과 출처 필터(자동 인입/단건/배치)
       get srcOptions() { const s = new Set(((this.dashData && this.dashData.contents) || []).map((c) => c.source || '단건')); return [...s]; },
       get filteredContents() { const cs = (this.dashData && this.dashData.contents) || []; return this.srcFilter ? cs.filter((c) => (c.source || '단건') === this.srcFilter) : cs; },
-      srcBadgeClass(s) { return s === '자동 인입' ? 'ds-badge--intent' : s === '배치' ? 'ds-badge--category' : 'ds-badge--neutral'; },
       // 아레나 파생값(게이지·내 순위)
       get arenaPct() { const d = this.arenaData; return d ? Math.round((d.accuracy || 0) * 100) : 0; },
       get arenaTargetPct() { const d = this.arenaData; return d ? Math.round((d.target || 0.9) * 100) : 90; },
@@ -1665,7 +1659,6 @@
         const all = (this.topicData && this.topicData.catalog && this.topicData.catalog.eattrs) || [];
         return all.filter(c => !this.studio.eattrs.includes(c.k)).slice(0, 14);
       },
-      studioToggle(field, val) { const a = this.studio[field]; const i = a.indexOf(val); if (i >= 0) a.splice(i, 1); else a.push(val); this.schedulePreview(); },
       // 조건 칩 4상태: off(후보) → sel(선택·관련 묶음) → req(필수·모든 묶음 공통) → neg(제외·걸리면 탈락) → off
       studioState(dim, val) { if ((this.studio.neg[dim] || []).includes(val)) return 'neg'; if (!this.studio[dim].includes(val)) return 'off'; return this.studio.req[dim].includes(val) ? 'req' : 'sel'; },
       studioCycle(dim, val) {
@@ -1702,15 +1695,6 @@
       // 조건 칩: 데이터 present + 선택됐지만 데이터엔 아직 없는 값(자동생성이 고른 전체 분류)까지 표시
       studioCatChips() { const a = (this.topicData && this.topicData.catalog && this.topicData.catalog.cats) || []; const have = new Set(a.map(c => c.k)); return a.concat(this.studio.cats.filter(c => !have.has(c)).map(c => ({ k: c, v: 0 }))); },
       studioIntentChips() { const a = (this.topicData && this.topicData.catalog && this.topicData.catalog.intents) || []; const have = new Set(a.map(c => c.k)); return a.concat(this.studio.intents.filter(c => !have.has(c)).map(c => ({ k: c, v: 0 }))); },
-      filterSummary() {
-        const s = this.studio, parts = [];
-        if (s.cats.length) parts.push('<b>' + s.cats.map(c => this.catKo(c) || c).join(', ') + '</b> 카테고리');
-        if (s.intents.length) parts.push('<b>' + s.intents.join(', ') + '</b> 인텐트');
-        if (s.keywords.length) parts.push('키워드 <b>' + s.keywords.join(', ') + '</b>');
-        const n = (this.topicData && this.topicData.n_contents) || 0;
-        if (!parts.length) return '아직 조건이 없어요 · <b>전체 ' + n + '건</b>이 묶입니다';
-        return parts.join(' + ') + ' 에 해당하는 콘텐츠만 <b>골라냅니다</b>';
-      },
       get studioModelList() {          // 직접(Solar) + 라우터(Timely·BizRouter) optgroup 헤더 + 모델
         let groups = [];
         try { groups = this.textGroups || []; } catch (e) { groups = []; }
@@ -1729,7 +1713,6 @@
         catch (e) { this.modelsMsgStudio = '새로고침 실패'; }
         this.modelsBusy = false;
       },
-      dimSummary(c) { const d = (c && c.dims) || {}; const parts = []; const cat = d['콘텐츠 카테고리'] || []; const intn = d['인텐트'] || []; const kw = d['키워드'] || []; if (cat.length) parts.push('카테고리 ' + cat.length); if (intn.length) parts.push('인텐트 ' + intn.length); if (kw.length) parts.push('키워드 ' + kw.join('·')); return parts.join(' · ') || '전체'; },
       schedulePreview() { if (this._studioT) clearTimeout(this._studioT); this._studioT = setTimeout(() => this.studioPreviewNow(), 260); },
       async studioPreviewNow() {
         if (!this.topicData || !this.topicData.n_contents) return;
@@ -2022,7 +2005,6 @@
       get tr() { return (this.result && this.result.output && this.result.output.trace) || {}; },
       routerKeyPresent(p) { return p === 'bizrouter' ? !!this.cfg.hasBizKey : p === 'timely' ? !!this.cfg.hasTimelyKey : false; },
       isRouter(p) { return p === 'bizrouter' || p === 'timely'; },
-      providerHasKey(p) { return p === 'solar' || p === 'upstage_ie' ? !!this.cfg.hasKey : this.routerKeyPresent(p); },
       get textReady() { return this.isRouter(this.textProvider) ? this.routerKeyPresent(this.textProvider) : !!this.cfg.hasKey; },
       // ── 모델 선택(Atelier 방식): 소스별 그룹 + 연결된 제공자만 활성 ──
       get textGroups() {
@@ -2066,17 +2048,14 @@
         this.imgFiles.splice(i, 1); this.imgThumbs.splice(i, 1);
       },
       clearImages() { this.imgThumbs.forEach((u) => URL.revokeObjectURL(u)); this.imgFiles = []; this.imgThumbs = []; },
-      sizeLabel(b) { if (!b) return ''; if (b < 1024) return b + 'B'; if (b < 1048576) return (b / 1024).toFixed(0) + 'KB'; return (b / 1048576).toFixed(1) + 'MB'; },
       onExcel(e) { this.excelFile = e.target.files[0] || null; e.target.value = ''; this.status = ''; },
       onDropExcel(e) { this.xlsDrag = false; const f = e.dataTransfer.files[0]; if (f) this.excelFile = f; },
-      clearExcel() { this.excelFile = null; },
 
       // ── 결과 복사 / 내보내기 ──
       async copyText(t, label) {
         try { await navigator.clipboard.writeText(t || ''); this.flashCopy((label || '복사') + ' 됨'); }
         catch (e) { this.flashCopy('복사 실패'); }
       },
-      copyJSON() { this.copyText(JSON.stringify(this.result ? this.result.output : {}, null, 2), 'JSON'); },
       flashCopy(m) { this.copyMsg = m; clearTimeout(this._cpT); this._cpT = setTimeout(() => { this.copyMsg = ''; }, 1600); },
       exportBatchCsv() {
         const its = (this.batchResult && this.batchResult.items) || [];
