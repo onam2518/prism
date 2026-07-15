@@ -722,7 +722,9 @@ def _persona_graph(data):
 def render_html(results_path: str, n_users: int = 200,
                 logs_path: str = None, demo: bool = False, notice: str = "", data=None) -> str:
     data = data if data is not None else build_user_meta(results_path, n_users, logs_path, demo)
-    html = _HTML.replace("/*__DATA__*/", json.dumps(data, ensure_ascii=False))
+    # <script> 조기 종료 방어: DATA(콘텐츠 파생 카테고리·시나리오 = 사용자 통제)에 '</script>' 가
+    # 있어도 태그를 닫지 못하게 json 문자열에만 '</'→'<\/' 치환(dashboard·graphviz 와 동일 규약).
+    html = _HTML.replace("/*__DATA__*/", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
     html = html.replace("__GRAPH__", _persona_graph(data))
     if notice:
         html = html.replace("<body>", "<body>" + notice, 1)

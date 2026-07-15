@@ -3142,10 +3142,27 @@ class Handler(BaseHTTPRequestHandler):
     _GZIP_CT = ("text/html", "application/json", "text/css", "application/javascript",
                 "text/csv", "image/svg", "text/plain")
 
+    # 보안 응답 헤더. CSP 는 앱 구조(Alpine 표현식=unsafe-eval · 인라인 <script> 2개·인라인 스타일=
+    # unsafe-inline · data: 폰트/아이콘 · 원문 미리보기 iframe=https:)에 맞춘 실동작 정책.
+    # connect-src 'self' 로 XSS 발화 시 임의 호스트 유출을 차단, frame-ancestors/base-uri/object-src 로
+    # 클릭재킹·base 주입·플러그인을 봉쇄. (SSE 스트림은 _serve_sse 가 직접 헤더를 쓰므로 별도.)
+    _CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; "
+            "connect-src 'self'; frame-src 'self' https:; frame-ancestors 'none'; "
+            "base-uri 'self'; object-src 'none'")
+
+    def _security_headers(self):
+        self.send_header("Content-Security-Policy", self._CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
     def _send(self, code, body, ctype="text/html; charset=utf-8", cache=""):
         data = body.encode("utf-8") if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        self._security_headers()
         # 전송 압축: 텍스트 응답 · 1KB 이상 · 클라이언트 gzip 수용 시(첫 로드 4.7MB → ~1MB 실측 근거)
         if (code == 200 and len(data) > 1024
                 and any(t in ctype for t in self._GZIP_CT)

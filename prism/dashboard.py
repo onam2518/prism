@@ -60,7 +60,10 @@ def render(results_path: str, title: str = "아이템 메타 현황", notice: st
     nodes, links, gstats = _graph(rows)
     payload = {"agg": agg, "nodes": nodes, "links": links, "gstats": gstats,
                "rows": _table_rows(rows), "full": rows, "title": title}
-    htmltext = _HTML.replace("/*__DATA__*/", json.dumps(payload, ensure_ascii=False))
+    # <script> 조기 종료 방어: DATA(콘텐츠 제목·본문·엔티티·검수노트 = 사용자 통제)에 '</script>' 가
+    # 있어도 태그를 닫지 못하게 json 문자열에만 '</'→'<\/' 치환(전체 HTML 아님 · graphviz 와 동일 규약).
+    _data_js = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    htmltext = _HTML.replace("/*__DATA__*/", _data_js)
     htmltext = htmltext.replace("/*__FORCEGRAPH__*/", _vendor_js())
     htmltext = TH.inject(htmltext)
     if notice:
@@ -175,9 +178,9 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
  <span class="help" onclick="document.getElementById('hov').style.display='block';document.getElementById('hp').classList.add('on')">? 용어·구조</span>
 </div>
 <div class="wrap">
- <iframe id="f-content" class="on" srcdoc="__CONTENT_SRCDOC__"></iframe>
- <iframe id="f-topic" srcdoc="__TOPIC_SRCDOC__"></iframe>
- <iframe id="f-user" srcdoc="__USER_SRCDOC__"></iframe>
+ <iframe id="f-content" class="on" sandbox="allow-scripts" srcdoc="__CONTENT_SRCDOC__"></iframe>
+ <iframe id="f-topic" sandbox="allow-scripts" srcdoc="__TOPIC_SRCDOC__"></iframe>
+ <iframe id="f-user" sandbox="allow-scripts" srcdoc="__USER_SRCDOC__"></iframe>
 </div>
 <div id="hov" onclick="this.style.display='none';document.getElementById('hp').classList.remove('on')"></div>
 <div id="hp"><span class="x" onclick="document.getElementById('hov').style.display='none';this.parentNode.classList.remove('on')">✕</span>
