@@ -1851,9 +1851,9 @@ def start_ingest_scheduler():
     _INGEST_THREAD.start()
 
 
-def build_results_csv() -> bytes:
-    """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄."""
-    rows = results_rows()
+def build_results_csv(team=None) -> bytes:
+    """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄. team 스코프 강제(전 팀 유출 방지)."""
+    rows = results_rows(team=team)
     out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유"]
     def esc(v):
         s = str(v if v is not None else "")
@@ -1871,8 +1871,8 @@ def build_results_csv() -> bytes:
     return ("﻿" + "\r\n".join(out)).encode("utf-8")
 
 
-def build_report_html() -> str:
-    rows = results_rows()
+def build_report_html(team=None) -> str:
+    rows = results_rows(team=team)
     if not rows:
         return "<p>아직 실행 결과가 없습니다. 먼저 추출을 실행하세요.</p>"
     from . import dashboard as DASH
@@ -3120,6 +3120,10 @@ _JSON = "application/json; charset=utf-8"
 _PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/template.csv",
                "/usermeta-template.csv", "/usermeta-profile-template.csv"}
 
+# 팀 없이도 접근 가능한 인증 GET(전역 참조·관리자 판정 · 팀 콘텐츠 데이터 아님).
+# 그 외 데이터 GET 은 supabase 모드에서 팀 소속을 요구(team=None 전 팀 폴백 격리 붕괴 차단).
+_TEAMLESS_OK_GET = {"/admin", "/models", "/vocab", "/dict", "/ingest-status"}
+
 
 def is_public_get(path: str) -> bool:
     """무인증 허용 GET 경로 판정(쿼리 무시 · 말미 슬래시 정규화)."""
@@ -3164,24 +3168,36 @@ class Handler(BaseHTTPRequestHandler):
         SSE(/events)는 EventSource 가 헤더를 못 실어 token 쿼리 파라미터로 검증."""
         if not _supa() or is_public_get(self.path):
             return True
-        if self.path.split("?", 1)[0].rstrip("/") == "/events":
+        p = self.path.split("?", 1)[0].rstrip("/")
+        if p == "/events":
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
-            return bool(validate_jwt((q.get("token") or [""])[0]))
-        return bool(self._bearer_uid())
+            uid = validate_jwt((q.get("token") or [""])[0])
+            return bool(uid) and self._team_ok(uid, p)
+        uid = self._bearer_uid()
+        if not uid:
+            return False
+        return self._team_ok(uid, p)
+
+    def _team_ok(self, uid, path):
+        """팀 미소속 인증계정이 team=None 폴백으로 전 팀 데이터를 열람하던 격리 붕괴 차단(fail-closed).
+        운영 관리자(허용목록)와 팀 없이 동작해야 하는 경로(관리자 판정·전역 참조 사전)만 예외."""
+        if path in _TEAMLESS_OK_GET or is_sys_admin_user(uid, None, self._bearer_email()):
+            return True
+        return team_of(uid) is not None
 
     def do_GET(self):
         if not self._gate_get():
             self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
             return
         if self.path.startswith("/report"):
-            self._send(200, build_report_html())
+            self._send(200, build_report_html(team=self._req_team()))
         elif self.path.startswith("/export.csv"):
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
             self.send_header("Content-Disposition", "attachment; filename=prism_results.csv")
             self.end_headers()
-            self.wfile.write(build_results_csv())
+            self.wfile.write(build_results_csv(team=self._req_team()))
         elif self.path.startswith("/config"):
             cs = config_status()
             # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
@@ -3512,6 +3528,20 @@ class Handler(BaseHTTPRequestHandler):
         self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
         return False
 
+    def _require_team(self):
+        """supabase 모드: 로그인 + 팀 소속 필수(전 팀 데이터를 읽는 POST 라우트용).
+        팀 미소속 인증계정이 team=None 폴백으로 전 팀 콘텐츠·페르소나를 열람하던 격리 붕괴 차단."""
+        if not _supa():
+            return True
+        uid = self._bearer_uid()
+        if not uid:
+            self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+            return False
+        if is_sys_admin_user(uid, None, self._bearer_email()) or team_of(uid) is not None:
+            return True
+        self._send(403, json.dumps({"error": "팀 소속이 필요합니다"}, ensure_ascii=False), _JSON)
+        return False
+
     def _serve_sse(self):
         """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK."""
         self.send_response(200)
@@ -3631,6 +3661,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/auth"):                 # 로그인/가입 프록시(supabase)
             try:
+                # 무차별 대입·가입 남용 억제: IP당 최소간격 1s · 분당 12회(초과 시 429)
+                if rate_limited("auth:" + (self.client_address[0] if self.client_address else "?"),
+                                min_interval=1.0, per_min=12):
+                    self._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                               ensure_ascii=False), _JSON)
+                    return
                 self._send(200, json.dumps(auth_action(json.loads(body or b"{}")),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
@@ -3757,6 +3793,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/learn-report"):       # 최근 일배치 결과 수신(개선·골든·평가·모델비교)
+            if not self._require_team():                 # team=None 폴백 전 팀 리포트 노출 차단
+                return
             self._send(200, json.dumps({"ok": True, "report": _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT)}, ensure_ascii=False), _JSON)
             return
 
@@ -4127,7 +4165,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/usermeta-profiles"):   # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
             try:
-                if not self._require_login():
+                if not self._require_team():               # 팀 미소속 team=None 폴백 전 팀 콘텐츠 열람 차단
                     return
                 from . import personagen as PG
                 ctype = self.headers.get("Content-Type", "")
@@ -4147,7 +4185,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/usermeta"):
             try:
-                if not self._require_login():              # 익명 전 팀 콘텐츠 열람·LLM 호출 차단
+                if not self._require_team():               # 팀 미소속 team=None 폴백 전 팀 콘텐츠 열람·LLM 남용 차단
                     return
                 ctype = self.headers.get("Content-Type", "")
                 f = None
