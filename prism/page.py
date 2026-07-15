@@ -1893,6 +1893,20 @@ PAGE = """<!doctype html>
           </section>
         </div>
         </template>
+        <template x-if="learnData && (learnData.guide_ambiguities||[]).length">
+          <section class="panel"><div class="panel-hd"><b>가이드 명확화 필요</b><span class="meta">검수 의견이 서로 충돌해 프롬프트 지시로 합치지 못한 지점 · 정책 가이드를 손보면 해소됩니다</span></div>
+            <div class="panel-bd">
+              <div class="overflow-auto" style="max-height:260px"><table class="ds-table"><thead><tr><th style="width:80px">단계</th><th style="width:150px">모델</th><th>어떤 점에서 의견이 갈리나</th></tr></thead><tbody>
+                <template x-for="(a, ai) in learnData.guide_ambiguities" x-bind:key="'ga'+ai">
+                  <tr><td><span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[a.stage] || a.stage"></span></td>
+                    <td class="text-muted" x-text="a.model || '공통'"></td>
+                    <td class="text-ink" x-text="a.text"></td></tr>
+                </template>
+              </tbody></table></div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.guide_ambiguities_ts" x-text="'최근 학습 반영 기준 · ' + fmtTs(learnData.guide_ambiguities_ts)"></div>
+            </div>
+          </section>
+        </template>
         <template x-if="learnData && learnData.dict_gap && (((learnData.dict_gap.intent)||[]).length || ((learnData.dict_gap.category)||[]).length)">
           <section class="panel"><div class="panel-hd"><b>사전 갭</b><span class="meta">모델 산출이 사전과 안 맞아 드롭된 값 · 사전 별칭 추가 또는 프롬프트 보정 후보</span></div>
             <div class="panel-bd">

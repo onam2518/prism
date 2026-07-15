@@ -427,7 +427,8 @@ def learn_data(team=None) -> dict:
                           "gold_n": row.get("gold_n", 0), "gold_acc": row.get("gold_acc"),
                           "ds_error": dsr.get("error_rate")})
     # 골든 정합성 ± 95% CI(최근 일배치 평가 기준, Miller 2024)
-    ev = (_SV._report_get("learn_report", team, _LAST_LEARN_REPORT) or {}).get("eval") or {}
+    rep = _SV._report_get("learn_report", team, _LAST_LEARN_REPORT) or {}
+    ev = rep.get("eval") or {}
     acc_ci = None
     if ev.get("ok") and ev.get("n"):
         lo, hi = Q.binomial_ci(ev.get("grade_accuracy") or 0.0, int(ev["n"]))
@@ -483,7 +484,23 @@ def learn_data(team=None) -> dict:
         pass
     dict_gap = {k: sorted(v.items(), key=lambda x: -x[1])[:10] for k, v in gap.items()}
     dict_gap["retries"] = gap_retries
+    # 가이드 모호 신호: 최근 학습 반영의 메타컴파일이 '서로 충돌해 지시로 합치지 못한' 지적(ambiguities)
+    # → 정책 가이드 명확화 백로그. 공통(results) + 모델 귀속(model_results) 전부 집계.
+    guide_amb = []
+    improve = rep.get("improve") or {}
+    for stage in ("extract", "analyze", "review", "judge"):
+        for a in (((improve.get("results") or {}).get(stage) or {}).get("ambiguities") or []):
+            t = str(a).strip()
+            if t:
+                guide_amb.append({"stage": stage, "model": "", "text": t})
+    for m, stages in sorted((improve.get("model_results") or {}).items()):
+        for stage, r in (stages or {}).items():
+            for a in ((r or {}).get("ambiguities") or []):
+                t = str(a).strip()
+                if t:
+                    guide_amb.append({"stage": stage, "model": m, "text": t})
     return {"ok": True, "golden_n": golden_n, "grade_dist": grade_dist,
+            "guide_ambiguities": guide_amb, "guide_ambiguities_ts": rep.get("ts"),
             "dict_gap": dict_gap,
             "coverage": coverage, "covered": sum(1 for c in coverage if c["lack"] == 0),
             "class_total": len(coverage), "per_class_target": PER_CLASS_TARGET,
