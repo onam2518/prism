@@ -212,6 +212,18 @@ class SupabaseStore:
             d["min"] = max(1, min(len(d["reviewers"]), d["min"]))
         return out
 
+    def assignment_load(self, team=None) -> dict:
+        """검수자별 미완료 배정 부하 {reviewer_id: n} · 균등 분배 배정의 가중 원천.
+        부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(sqlite 와 동일 계약)."""
+        done = {(r.get("content_hash"), r.get("reviewer_id"))
+                for r in self._all_feedback(team) if r.get("verdict") in ("good", "bad")}
+        out = {}
+        for ch, a in (self.assignees(team) or {}).items():
+            for rv in a["reviewers"]:
+                if (ch, rv) not in done:
+                    out[rv] = out.get(rv, 0) + 1
+        return out
+
     def ensure_team(self, uid, mode="create", name=None, code=None):
         """팀 생성/가입 → team_id. join: 초대코드 조회. create: 코드 생성·삽입."""
         if mode == "join":

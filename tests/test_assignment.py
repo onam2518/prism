@@ -246,5 +246,72 @@ class TestServeBulkEndpoint(AssignmentBase):
         self.assertAlmostEqual(row["progress"], round(1 / 3, 4))
 
 
+class TestAssignmentLoad(AssignmentBase):
+    def test_load_counts_only_unreviewed(self):
+        st = self._store()
+        st.set_assignees("h1", ["A"], team="t")
+        st.set_assignees("h2", ["A", "B"], min_reviewers=2, team="t")
+        st.set_assignees("h3", ["B"], team="t")
+        # A 가 h1 판정 완료 → 완료분은 부하에서 제외: A=1(h2), B=2(h2,h3)
+        st.save_feedback("h1", "s", "T", "good", "review", "", _t.time(), reviewer="A", team="t")
+        load = st.assignment_load(team="t")
+        self.assertEqual(load.get("A", 0), 1)
+        self.assertEqual(load.get("B", 0), 2)
+
+    def test_cancelled_verdict_is_not_done(self):
+        st = self._store()
+        st.set_assignees("h1", ["A"], team="t")
+        # 취소가 남긴 빈 표(verdict='')는 완료가 아니다 → 부하 유지
+        st.save_feedback("h1", "s", "T", "", "review", "", _t.time(), reviewer="A", team="t")
+        self.assertEqual(st.assignment_load(team="t").get("A", 0), 1)
+
+
+class TestDistributeAssignments(AssignmentBase):
+    """균등 분배 배정: 항상 미완료 부하가 가장 적은 사람부터 채운다(serve.distribute_assignments)."""
+
+    def test_even_split_fresh(self):
+        from prism import serve
+        st = self._store()
+        hs = ["c%02d" % i for i in range(10)]
+        r = serve.distribute_assignments(st, hs, ["A", "B"], min_reviewers=1, team="t")
+        self.assertEqual(r["n"], 10)
+        self.assertEqual(sorted(r["per_reviewer"].values()), [5, 5])
+        asg = st.assignees("t")
+        self.assertEqual(len(asg), 10)
+        for a in asg.values():                            # 콘텐츠당 담당 1명 · N=1
+            self.assertEqual(len(a["reviewers"]), 1)
+            self.assertEqual(a["min"], 1)
+
+    def test_existing_load_evens_out(self):
+        from prism import serve
+        st = self._store()
+        for i in range(4):                                # A 는 이미 미완료 4건 보유
+            st.set_assignees("old%d" % i, ["A"], team="t")
+        r = serve.distribute_assignments(st, ["n%d" % i for i in range(6)], ["A", "B"],
+                                         min_reviewers=1, team="t")
+        # 새 6건은 B 5 / A 1 → 최종 부하 5:5 균등
+        self.assertEqual(r["per_reviewer"].get("B", 0), 5)
+        self.assertEqual(r["per_reviewer"].get("A", 0), 1)
+
+    def test_min_two_assigns_distinct_pairs(self):
+        from prism import serve
+        st = self._store()
+        hs = ["c%d" % i for i in range(4)]
+        r = serve.distribute_assignments(st, hs, ["A", "B", "C"], min_reviewers=2, team="t")
+        self.assertEqual(r["n"], 4)
+        asg = st.assignees("t")
+        for h in hs:                                      # 콘텐츠마다 서로 다른 2명 · N=2
+            self.assertEqual(len(set(asg[h]["reviewers"])), 2)
+            self.assertEqual(asg[h]["min"], 2)
+        self.assertEqual(sorted(r["per_reviewer"].values()), [2, 3, 3])   # 슬롯 8 을 3명이 고르게
+
+    def test_empty_inputs_noop(self):
+        from prism import serve
+        st = self._store()
+        self.assertEqual(serve.distribute_assignments(st, [], ["A"], team="t")["n"], 0)
+        self.assertEqual(serve.distribute_assignments(st, ["h"], [], team="t")["n"], 0)
+        self.assertEqual(st.assignees("t"), {})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -152,10 +152,10 @@
       // ── 검수자 일괄 배정(슈퍼관리자 이상) · 리포트 옆 버튼 → ds-dialog 모달 ──
       bulkOpen: false, assignBulkBusy: false,   // 일괄 '배정' 전용 · 일괄 '실행'(bulkBusy)과 분리(플래그 공유 시 상호 오염)
       bulkQ: '', bulkSvc: '', bulkGrade: '', bulkRev: 'todo', bulkAsg: 'unassigned',
-      bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {},
+      bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {}, bulkMode: 'same',
       // 노출 게이트: 로컬은 항상, 운영은 슈퍼관리자·운영관리자(opsadmin)만
       get opsAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isSysAdmin || this.adminData.isSuperAdmin)); },
-      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkOpen = true; this.loadRaw(); },
+      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkOpen = true; this.loadRaw(); },
       // 필터 결과(현재 표와 동일 규칙 + 배정 상태 필터)
       get bulkFiltered() {
         return (((this.rawData || {}).items) || []).filter((r) => {
@@ -194,12 +194,21 @@
         if (!hashes.length || !this.bulkPick.length) return;
         this.assignBulkBusy = true;
         try {
-          const body = JSON.stringify({ hashes, reviewers: this.bulkPick, min_reviewers: this.bulkMin });
+          // JSON.stringify 는 undefined 키를 버린다 → 기존(same) 모드 요청 본문은 이전과 동일 유지
+          const body = JSON.stringify({ hashes, reviewers: this.bulkPick, min_reviewers: this.bulkMin,
+            mode: this.bulkMode === 'distribute' ? 'distribute' : undefined });
           const r = await (await this._afetch('/content-assign-bulk', { method: 'POST', headers: this._authHeaders(), body })).json();
-          if (r && r.ok) { this.bulkOpen = false; this.loadRaw(); }
+          if (r && r.ok) {
+            this.bulkOpen = false; this.loadRaw();
+            if (r.mode === 'distribute') this.liveToast('나눠 배정 완료 · ' + this.bulkPerTxt(r.per_reviewer));
+          }
           else this._err((r && r.error) || '일괄 배정 실패');
         } catch (e) { this._err('일괄 배정 실패'); }
         this.assignBulkBusy = false;
+      },
+      // 분배 결과 요약: {reviewer_id: n} → "이름 n건 · 이름 n건"
+      bulkPerTxt(per) {
+        return Object.entries(per || {}).map(([id, n]) => ((this.assignMembers.find((m) => m.id === id) || {}).name || id) + ' ' + n + '건').join(' · ');
       },
       // 검수 '완료' 판정은 팀 합의(fb.verdict)가 아니라 '내 표(fb.mine)' 기준이어야 한다.
       // (그러지 않으면 타 검수자가 검수한 콘텐츠도 내 목록에서 완료로 보인다 · 2026-07-10)
