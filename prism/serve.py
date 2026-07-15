@@ -2923,6 +2923,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             v = str(data.get("learn_next_at") or "").strip()[:16]
             if not v:
                 cfg.learn_next_at = ""
+                cfg.learn_team = ""                # 퀘스트 해제 시 팀 태그도 비움
                 _agg_bump()                        # 홈·사이드바 퀘스트 카드 즉시 소거
             else:
                 try:
@@ -2933,6 +2934,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                             # 새 퀘스트 생성 = 진행률 창의 시작점(일시 수정은 시작점 유지)
                             _report_save("quest_meta", {"started_at": time.time(), "next_at": v}, team)
                         cfg.learn_next_at = v
+                        cfg.learn_team = team or ""   # 스케줄러가 이 팀으로 배치 → 골든·버전이 팀에 태깅
                         _agg_bump()
                 except ValueError:
                     pass

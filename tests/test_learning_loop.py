@@ -218,6 +218,49 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertEqual(rep["grade_accuracy"], 0.9)                         # 유지 프롬프트 기준 보고
         self.assertEqual((rep.get("eval_pre") or {}).get("grade_accuracy"), 0.9)
 
+    def test_run_due_batch_scopes_to_quest_team(self):
+        """퀘스트 도달 시 learn_team 으로 배치 실행 + 목표 소진. team 없이 돌리면 골든 승격·
+        버전(batch_seq)이 팀 스코프 조회에서 사라지는 회귀를 막는다(핵심 픽스)."""
+        import types
+        from prism import learnops as LO
+        cap = {}
+        cfg = types.SimpleNamespace(learn_next_at="2020-01-01T00:00", learn_team="team-X",
+                                    save_template=lambda: cap.__setitem__("saved", True))
+        o_batch, o_config = LO.learning_batch, LO.Config
+        self.addCleanup(lambda: (setattr(LO, "learning_batch", o_batch), setattr(LO, "Config", o_config)))
+        LO.learning_batch = lambda team=None, models=None: cap.__setitem__("team", team)
+        LO.Config = types.SimpleNamespace(load=lambda: cfg)
+        self.assertTrue(LO._run_due_batch(cfg, now=9_999_999_999))
+        self.assertEqual(cap.get("team"), "team-X")      # None 아님 = 그 팀으로 배치
+        self.assertEqual(cfg.learn_next_at, "")          # 목표 소진(1회 실행)
+        self.assertTrue(cap.get("saved"))
+
+    def test_run_due_batch_falls_back_to_none_without_team(self):
+        """learn_team 미설정(구 퀘스트·로컬 sqlite)이면 None 으로 폴백 — 기존 동작 보존."""
+        import types
+        from prism import learnops as LO
+        cap = {}
+        cfg = types.SimpleNamespace(learn_next_at="2020-01-01T00:00", learn_team="",
+                                    save_template=lambda: None)
+        o_batch, o_config = LO.learning_batch, LO.Config
+        self.addCleanup(lambda: (setattr(LO, "learning_batch", o_batch), setattr(LO, "Config", o_config)))
+        LO.learning_batch = lambda team=None, models=None: cap.__setitem__("team", team)
+        LO.Config = types.SimpleNamespace(load=lambda: cfg)
+        LO._run_due_batch(cfg, now=9_999_999_999)
+        self.assertIsNone(cap.get("team"))               # "" or None → None
+
+    def test_run_due_batch_skips_when_not_due(self):
+        """미래 일시면 배치 미실행 · False(도달 전 오작동 방지)."""
+        import types
+        from prism import learnops as LO
+        cap = {}
+        cfg = types.SimpleNamespace(learn_next_at="2099-01-01T00:00", learn_team="team-X")
+        o_batch = LO.learning_batch
+        self.addCleanup(lambda: setattr(LO, "learning_batch", o_batch))
+        LO.learning_batch = lambda team=None, models=None: cap.__setitem__("team", team)
+        self.assertFalse(LO._run_due_batch(cfg, now=0))
+        self.assertNotIn("team", cap)                    # 미실행
+
 
 class TestLearnData(unittest.TestCase):
     def test_learn_data_and_exports(self):
