@@ -1194,6 +1194,34 @@ def drill_contents(kind: str, value: str, team=None, reviewer: str = "") -> dict
     return {"ok": True, "kind": kind, "value": value, "items": _attach_fb(out, team, reviewer), "n": len(out)}
 
 
+def topic_personas(entities: list, team=None) -> list:
+    """엔티티 목록 → 타겟 페르소나 추천(상위 2 · 점유율). 엔티티×페르소나 친화도 행렬
+    (usermeta · '타겟팅 실계산 근거'로 이미 산출)을 소비 측으로 개통 — 데이터 없으면 빈 목록."""
+    try:
+        um = usermeta_data(team=team) or {}
+        ep = (um.get("aggregate") or {}).get("entity_persona") or {}
+    except Exception:
+        return []
+    pnames = ep.get("personas") or []
+    weights = {r[0]: r[2] for r in (ep.get("rows") or [])
+               if isinstance(r, (list, tuple)) and len(r) >= 3}
+    if not (pnames and weights and entities):
+        return []
+    totals = [0.0] * len(pnames)
+    hit = False
+    for e in entities:
+        w = weights.get(e)
+        if w:
+            hit = True
+            for i, v in enumerate(w[:len(pnames)]):
+                totals[i] += float(v or 0)
+    s = sum(totals)
+    if not hit or s <= 0:
+        return []
+    ranked = sorted(zip(pnames, totals), key=lambda x: -x[1])
+    return [{"persona": p, "share": round(v / s, 3)} for p, v in ranked[:2] if v > 0]
+
+
 def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape.
     ⚠️ rows 는 topics_data() 의 content_ids 인덱스와 정합해야 해서 무필터 유지 · 피드백 부착만
@@ -1226,8 +1254,14 @@ def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     ids = cluster.get("content_ids") or []
     out = _attach_fb([_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)], team, reviewer)
     name = cluster.get("name") or cluster.get("label") or cluster_id
+    ents = {}                                  # 타겟 페르소나: 이 토픽 콘텐츠의 빈발 엔티티로 추정
+    for i in ids[:100]:
+        if 0 <= i < len(rows):
+            for e in ((rows[i].get("item_meta") or {}).get("entities") or []):
+                ents[e] = ents.get(e, 0) + 1
+    top_ents = [e for e, _n in sorted(ents.items(), key=lambda x: -x[1])[:8]]
     return {"ok": True, "kind": "topic", "value": name, "items": out, "n": len(out),
-            "topic_id": topic_id}
+            "topic_id": topic_id, "personas": topic_personas(top_ents, team=team)}
 
 
 def _detail_row(r: dict) -> dict:

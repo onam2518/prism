@@ -2782,7 +2782,7 @@ PAGE = """<!doctype html>
   <!-- 대시보드 드릴다운: 분포 항목 → 판정된 콘텐츠 목록 -->
   <div class="ds-dialog-backdrop" x-show="drillOpen" x-cloak x-on:mousedown.self="drillOpen=false" style="z-index:72">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="콘텐츠 목록" style="max-width:620px">
-      <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span></h2>
+      <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="drillData && (drillData.personas||[]).length" data-tip="이 토픽 콘텐츠의 엔티티를 사용자 행동 로그의 페르소나 친화도와 조인한 추정 · 사용자 메타 데이터가 원천" data-tip-pos="bottom" x-text="'타겟 · ' + ((drillData&&drillData.personas)||[]).map(p => p.persona + ' ' + Math.round(p.share*100) + '%').join(' · ')"></span></h2>
       <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
         <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
         <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th><th>검수</th><th x-show="drillData && drillData.kind==='topic' && drillData.topic_id && topicAdmin"></th></tr></thead><tbody>
