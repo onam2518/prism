@@ -950,6 +950,57 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     return sug, route
 
 
+def _def_signature(d: dict) -> str:
+    """\ud1a0\ud53d \uc815\uc758 \u2192 \ube44\uad50\uc6a9 \uc11c\uba85 \ud14d\uc2a4\ud2b8(\uc774\ub984\u00b7\uc124\uba85\u00b7\uc870\uac74\uac12 \uc804\ubd80)."""
+    parts = [d.get("name") or "", d.get("prompt") or ""]
+    for k in ("cats", "intents", "keywords"):
+        parts.extend(d.get(k) or [])
+        parts.extend((d.get("req") or {}).get(k) or [])
+    return " ".join(str(p) for p in parts if p).strip()
+
+
+def _sig_tokens(s: str) -> set:
+    return {t for t in re.split(r"[^0-9A-Za-z\uac00-\ud7a3]+", (s or "").lower()) if len(t) >= 2}
+
+
+def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list:
+    """\uc800\uc7a5\ud558\ub824\ub294 \uc815\uc758\uc640 \ube44\uc2b7\ud55c \uae30\uc874 \uc0ac\uc6a9\uc790 \ud1a0\ud53d(\uc911\ubcf5 \uacbd\uace0 \ud6c4\ubcf4 \u00b7 \uc0c1\uc704 3).
+    \uc784\ubca0\ub529(\ud0a4 \uc788\uc73c\uba74 \u00b7 embed.py \uce90\uc2dc \uc7ac\uc0ac\uc6a9) \uc6b0\uc120, \ubb34\ud0a4\uba74 \ud1a0\ud070 \uc790\uce74\ub4dc(\uc784\uacc4 0.5) \ud3f4\ubc31.
+    \uc2e4\ud328\ub294 \uc870\uc6a9\ud788 \ube48 \ubaa9\ub85d \u2014 \uc800\uc7a5\uc744 \ub9c9\uc9c0 \uc54a\ub294\ub2e4(\uacbd\uace0 \uc804\uc6a9)."""
+    sig = _def_signature(new_def)
+    others = [c for c in (custom or []) if c.get("id") != new_def.get("id")]
+    if not sig or not others:
+        return []
+    out = []
+    try:
+        from .embed import EmbeddingClient, cosine
+        emb = EmbeddingClient(cache_path=Config.load().emb_cache_path)
+        if not emb.mock:                            # mock(\ud734\ub9ac\uc2a4\ud2f1) \uc784\ubca0\ub529\uc73c\ub85c\ub294 \uc720\uc0ac\ub3c4 \ud310\ub2e8 \uae08\uc9c0
+            qv = emb.embed(sig, is_query=True)
+            for c in others:
+                s = cosine(qv, emb.embed(_def_signature(c), is_query=False))
+                if s >= threshold:
+                    out.append({"id": c.get("id"), "name": c.get("name") or "",
+                                "score": round(s, 3), "via": "embedding"})
+            out.sort(key=lambda x: -x["score"])
+            return out[:3]
+    except Exception:
+        pass
+    qt = _sig_tokens(sig)
+    if not qt:
+        return []
+    for c in others:
+        ct = _sig_tokens(_def_signature(c))
+        if not ct:
+            continue
+        j = len(qt & ct) / len(qt | ct)
+        if j >= 0.5:
+            out.append({"id": c.get("id"), "name": c.get("name") or "",
+                        "score": round(j, 3), "via": "token"})
+    out.sort(key=lambda x: -x["score"])
+    return out[:3]
+
+
 def topic_studio_action(data: dict, mock: bool = False) -> dict:
     """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd/\uc870\ud68c: save\u00b7delete\u00b7settings\u00b7preview\u00b7suggest."""
     from . import topic as TP
@@ -1000,12 +1051,16 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
             # def 누락(키 오타 포함)이 조용히 '(무제 토픽)' 을 만드는 것 방지 — 명시 에러로 반환
             return {"ok": False, "error": "토픽 정의(def)가 필요합니다"}
         d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
+        dups = similar_topics(d, custom)             # 저장 전 기존 정의와 비교(경고 전용 · 저장은 진행)
         idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
         if idx >= 0:
             custom[idx] = d
         else:
             custom.append(d)
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
+        out = dict(topics_data())
+        out["similar"] = dups
+        return out
     elif action == "delete":
         cid = (data.get("id") or "").strip()
         custom = [c for c in custom if c.get("id") != cid]
