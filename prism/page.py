@@ -882,6 +882,22 @@ PAGE = """<!doctype html>
               <span class="meta tnum" x-show="topicGenTab==='auto'" x-cloak x-text="'엔티티형 '+(topicData.summary&&topicData.summary.single||0)+' · 사건형 '+(topicData.summary&&topicData.summary.composite||0)"></span>
             </div>
             <div class="panel-bd">
+              <!-- 추천: 떠오르는 엔티티 + 자동 사건 묶음 → 클릭으로 폼 프리필(reactive→proactive) -->
+              <div class="tbox" x-show="topicGenTab==='manual' && (((topicData.trending)||[]).length || ((topicData.composite)||[]).length)" style="padding:12px 14px;margin-bottom:14px">
+                <div class="text-xs" style="font-weight:700;margin-bottom:8px">추천 <span class="text-muted" style="font-weight:400">지금 데이터에서 뜨는 것들 · 누르면 아래 폼에 채워집니다</span></div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center" x-show="((topicData.trending)||[]).length">
+                  <span class="text-xs text-muted" style="width:100px">떠오르는 엔티티</span>
+                  <template x-for="t in (topicData.trending||[])" x-bind:key="'tr'+t.id">
+                    <button type="button" class="srcfilter__chip" x-on:click="suggestKeyword(t.name)" x-bind:data-tip="'최근 48시간 ' + t.recent + '건 언급 (그 전 ' + t.prev + '건) · 누르면 키워드로 추가'" data-tip-pos="top" x-text="t.name + ' ↑' + (t.recent - t.prev)"></button>
+                  </template>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px" x-show="((topicData.composite)||[]).length">
+                  <span class="text-xs text-muted" style="width:100px">자동 사건 묶음</span>
+                  <template x-for="p in (topicData.composite||[]).slice(0,5)" x-bind:key="'pc'+p.cluster_id">
+                    <button type="button" class="srcfilter__chip" x-on:click="promoteCluster(p)" x-bind:data-tip="'콘텐츠 ' + p.count + '건 · 누르면 이 사건을 수동 토픽 폼에 채웁니다'" data-tip-pos="top" x-text="p.name + ' (' + p.count + ')'"></button>
+                  </template>
+                </div>
+              </div>
               <div class="tstepper" x-show="topicGenTab==='manual'">
 
                 <!-- STEP 1 · 이름 -->

@@ -1031,6 +1031,34 @@ class SupabaseStore:
                 rows.sort(key=lambda e: -e["n_contents"])
         return rows
 
+    def ent_trending(self, hours: int = 48, limit: int = 8, team=None) -> list:
+        """언급 급증 엔티티(sqlite 와 동일 계약): 최근 hours시간 vs 그 전 같은 창."""
+        now = time.time()
+        cut1 = now - hours * 3600.0
+        cut0 = now - 2 * hours * 3600.0
+        tq = f"&team=eq.{urllib.parse.quote(team or '')}"
+        rows = self._get("content_entities",
+                         f"select=entity_id,surface,ts&ts=gte.{cut0}{tq}&limit=20000")
+        rec, prev = {}, {}
+        for r in rows:
+            ts = float(r.get("ts") or 0)
+            b = rec if ts >= cut1 else prev
+            e = b.setdefault(r["entity_id"], {"n": 0, "surface": r.get("surface") or r["entity_id"]})
+            e["n"] += 1
+        names = {}
+        if rec:
+            ids = ",".join(urllib.parse.quote(i) for i in sorted(rec))
+            names = {r["entity_id"]: r.get("name")
+                     for r in self._get("entities", f"select=entity_id,name&entity_id=in.({ids})")}
+        out = []
+        for eid, e in rec.items():
+            pv = (prev.get(eid) or {}).get("n", 0)
+            if e["n"] >= 2 and e["n"] > pv:
+                out.append({"id": eid, "name": names.get(eid) or e["surface"],
+                            "recent": e["n"], "prev": pv})
+        out.sort(key=lambda x: (-(x["recent"] - x["prev"]), -x["recent"]))
+        return out[:max(1, int(limit))]
+
     def ent_stats(self) -> dict:
         rows = self._get("entities", "select=type,status,external_ids&limit=20000")
         by_type = {}
