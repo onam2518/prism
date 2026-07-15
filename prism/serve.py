@@ -3514,6 +3514,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                 return
             self._send(200, json.dumps(golden_list(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/activity-daily"):    # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프)
+            from urllib.parse import urlparse, parse_qs
+            try:
+                q = parse_qs(urlparse(self.path).query)
+                days = int((q.get("days") or ["30"])[0])
+            except (TypeError, ValueError):
+                days = 30
+            st = get_store()
+            rows = (st.activity_daily(days=days, team=self._req_team())
+                    if (st and hasattr(st, "activity_daily")) else [])
+            self._send(200, json.dumps({"ok": True, "days": rows}, ensure_ascii=False), _JSON)
+
         elif self.path.startswith("/golden-status"):     # 골든 생성 현황(팀원 공개): 확정·분류필요·불일치
             st = get_store()
             _rep = _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT) or {}

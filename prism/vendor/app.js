@@ -593,7 +593,7 @@
         else if (id === 'arena') this.loadArena();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') this.loadAdmin();
-        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
+        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
         else if (id === 'dict') { this.loadDict(); if (this.dictTab === 'entity') this.loadEntdict(); }
         else if (id === 'studio') {
@@ -1267,6 +1267,17 @@
       },
       ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
       latTxt(ms) { return ms == null ? '·' : ((Math.round(ms / 100) / 10) + '초'); },   // 지연 표기: ms → 0.1초 단위
+      // 검수 활동 추이(일별 30일): 막대=검수량 · 툴팁에 교정·골드 정답률
+      activityData: null,
+      async loadActivity() {
+        try { const r = await (await this._afetch('/activity-daily?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.activityData = r.days; } catch (e) {}
+      },
+      get actMax() { return Math.max(1, ...((this.activityData || []).map((d) => d.reviews))); },
+      actSum(k, n) { return (this.activityData || []).slice(-n).reduce((s, d) => s + (d[k] || 0), 0); },
+      actTip(d) {
+        const g = d.gold_n ? (' · 골드 정답률 ' + Math.round((d.gold_correct / d.gold_n) * 100) + '% (' + d.gold_n + '문항)') : '';
+        return d.day.slice(5).replace('-', '/') + ' · 검수 ' + d.reviews + '건 · 교정 ' + d.corrections + '건' + g;
+      },
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
       async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.goldenStatus = r; this.loadVerHist(); } } catch (e) {} },

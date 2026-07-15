@@ -1698,7 +1698,7 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 정답셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
       <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport()">현황 · 학습 반영</button>
+        <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport(); loadActivity()">현황 · 학습 반영</button>
         <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
         <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
       </div></div>
@@ -1737,6 +1737,25 @@ PAGE = """<!doctype html>
                 </div>
               </template>
               <div x-show="!goldenStatus" class="text-xs text-muted">검수가 쌓이고 학습 반영이 돌면 현황이 표시됩니다(아래 검수 목표 카드의 ⚡ 즉시 반영으로 바로 반영 가능)</div>
+            </div>
+          </section>
+          <!-- 검수 활동 추이: 일별 검수량 막대(30일) · 툴팁에 교정·골드 정답률 -->
+          <section class="panel" data-fn x-init="loadActivity()"><div class="panel-hd"><b>검수 활동 추이</b><span class="meta">최근 30일 · 막대 = 하루 검수 건수 · 막대에 올리면 교정·골드 정답률</span>
+            <span class="ds-badge ds-badge--neutral tnum ml-auto" x-show="activityData" x-text="'7일 ' + actSum('reviews',7) + '건 · 30일 ' + actSum('reviews',30) + '건'"></span>
+          </div>
+            <div class="panel-bd">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:96px" x-show="activityData && activityData.length">
+                <template x-for="d in (activityData||[])" x-bind:key="d.day">
+                  <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:help" x-bind:data-tip="actTip(d)" data-tip-pos="top">
+                    <div x-bind:style="'height:' + Math.max(d.reviews ? 6 : 2, Math.round(d.reviews / actMax * 100)) + '%;background:' + (d.reviews ? 'var(--ds-primary)' : 'var(--ds-hairline)') + ';border-radius:3px 3px 0 0'"></div>
+                  </div>
+                </template>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:6px" x-show="activityData && activityData.length">
+                <span class="text-xs text-muted tnum" x-text="activityData ? activityData[0].day.slice(5).replace('-','/') : ''"></span>
+                <span class="text-xs text-muted tnum" x-text="activityData ? activityData[activityData.length-1].day.slice(5).replace('-','/') : ''"></span>
+              </div>
+              <div class="text-xs text-muted" x-show="!(activityData && activityData.length)">검수가 쌓이면 일별 추이가 표시됩니다</div>
             </div>
           </section>
           <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->

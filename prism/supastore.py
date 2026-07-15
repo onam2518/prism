@@ -502,6 +502,46 @@ class SupabaseStore:
             e["acc"] = round(e["correct"] / e["n"], 4) if e["n"] else 0.0
         return out
 
+    def activity_daily(self, days: int = 30, team=None) -> list:
+        """일별 검수 활동(sqlite 와 동일 계약 · 빈 날 포함 연속). 피드백/골드 응답을 로컬 일자로 버킷팅."""
+        import datetime as _dt
+        days = max(1, min(90, int(days or 30)))
+        today = _dt.date.today()
+        start_day = today - _dt.timedelta(days=days - 1)
+        start_ts = time.mktime(start_day.timetuple())
+        buckets = {}
+
+        def _b(ts):
+            d = _dt.date.fromtimestamp(ts).isoformat()
+            return buckets.setdefault(d, {"day": d, "reviews": 0, "corrections": 0,
+                                          "gold_n": 0, "gold_correct": 0})
+
+        for r in self._all_feedback(team):
+            if r.get("verdict") not in ("good", "bad"):
+                continue
+            ts = _epoch(r.get("ts"))
+            if ts < start_ts:
+                continue
+            e = _b(ts)
+            e["reviews"] += 1
+            if r["verdict"] == "bad":
+                e["corrections"] += 1
+        for r in self._gold_rows(team):
+            ts = _epoch(r.get("created_at"))
+            if ts < start_ts:
+                continue
+            e = _b(ts)
+            e["gold_n"] += 1
+            e["gold_correct"] += int(bool(r.get("correct")))
+        out = []
+        d = start_day
+        while d <= today:
+            k = d.isoformat()
+            out.append(buckets.get(k) or {"day": k, "reviews": 0, "corrections": 0,
+                                          "gold_n": 0, "gold_correct": 0})
+            d += _dt.timedelta(days=1)
+        return out
+
     def gold_answered(self, reviewer, team=None) -> set:
         rows = self._gold_rows(team, extra=f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}")
         return {r["content_hash"] for r in rows}
