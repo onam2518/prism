@@ -62,6 +62,18 @@
         if (c === 'sysadmin') return this.backend !== 'supabase' || (this.adminData && this.adminData.isSysAdmin);
         return this.backend === c;
       },
+      canMenu(id, cond) {                    // 메뉴별 권한(생성자 설정 매트릭스) 기반 가시성 · 서버 강제와 동일 판정
+        if (this.backend !== 'supabase') return true;            // 로컬 단독 = 전체
+        const ad = this.adminData || {};
+        if (ad.isCreator || ad.isSysAdmin) return true;          // 생성자·운영관리자 = 전체
+        if (id === 'system') return this.navVisible('sysadmin'); // 시스템 설정 = 운영관리자 고정
+        const row = (ad.menuPerms || {})[id];
+        if (row) {                                               // 유효 매트릭스(기본+생성자 설정)
+          const role = ad.isSuperAdmin ? 'super' : (ad.isAdmin ? 'admin' : null);
+          return role ? !!row[role] : false;
+        }
+        return this.navVisible(cond);                            // 매트릭스 없으면 기존 tier 폴백
+      },
       contentTab: 'run',                      // 콘텐츠 관리 STEP 1 카드: 수동(run)/자동(auto)
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
@@ -109,6 +121,8 @@
       queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
       adminData: null,        // 팀 관리(supabase)
+      menuPermsEdit: {},      // 메뉴 권한 매트릭스 편집 상태(생성자) · adminData.menuPerms 로 초기화
+      menuPermsMsg: '',
       bfBusy: false, bfMsg: '', bfMisses: [],   // 원문 링크 백필(시스템 설정)
       updateAvail: false,     // 새 버전 배포 감지(서버 부팅 ID 변화) · 새로고침 배너
       _adminBusy: false,      // ensureAdmin 동시 실행 가드(초기 이중 트리거 dedupe)
@@ -1142,7 +1156,22 @@
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
       async loadQueue() { this.modBusy = true; try { const p = new URLSearchParams(); if (!this.queueOnlyUnreviewed) p.set('all', '1'); if (this.reviewer) p.set('reviewer', this.reviewer); this.queueData = await (await fetch('/queue?' + p.toString(), { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; const r = await this._afetch('/arena' + p); const d = await r.json(); if (r.ok && d) { this.arenaData = d; this.maybeQuestReminder(); } } catch (e) {} this.checkBadges(); },
-      async loadAdmin() { try { this.adminData = await (await this._afetch('/admin', { headers: this._authHeaders() })).json(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
+      async loadAdmin() { try { this.adminData = await (await this._afetch('/admin', { headers: this._authHeaders() })).json(); this._initMenuPerms(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
+      _initMenuPerms() {                     // 유효 매트릭스 → 편집 상태(각 메뉴 {super,admin} 보장)
+        const src = (this.adminData && this.adminData.menuPerms) || {};
+        const order = (this.adminData && this.adminData.menuOrder) || [];
+        const out = {};
+        order.forEach((mid) => { const r = src[mid] || {}; out[mid] = { super: !!r.super, admin: !!r.admin }; });
+        this.menuPermsEdit = out;
+      },
+      async saveMenuPerms() {
+        this.menuPermsMsg = '저장 중…';
+        try {
+          const r = await (await this._afetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'set_menu_perms', perms: this.menuPermsEdit }) })).json();
+          if (r && r.ok) { if (this.adminData) this.adminData.menuPerms = r.menuPerms || this.menuPermsEdit; this.menuPermsMsg = '저장됐습니다'; }
+          else { this.menuPermsMsg = (r && r.error) || '저장 실패'; }
+        } catch (e) { this.menuPermsMsg = '저장 실패'; }
+      },
       // 관리자 판정 보장 로드: 일시 실패(배포 재시작·네트워크 순단)면 백오프 재시도.
       // 단발 loadAdmin 만으로는 실패 시 adminData 가 null 로 굳어 관리자에게 사용자 메뉴만 노출됐다(간헐 · 2026-07-07).
       // 세션 자동 갱신: supabase access token 은 1시간 만료 · refresh_token 으로 무중단 연장.

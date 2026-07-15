@@ -187,6 +187,63 @@ def is_admin_user(uid, team, email="") -> bool:
     권한 3단계: 운영 관리자(전부) > 슈퍼관리자(운영 작업) > 팀 관리자('팀 관리'만)."""
     return is_sys_admin_user(uid, team, email) or _team_super(uid, team) or _team_admin(uid, team)
 
+# ── 메뉴별 권한(생성자 설정 · 2단계 숨김/표시) ──────────────────────────────
+# 생성자·운영관리자 = 항상 전체 · 시스템 설정 = 운영관리자 전용(고정) · 그 외 관리자 메뉴는 생성자가
+# 슈퍼관리자/관리자별로 표시 여부 지정. 미설정(또는 컬럼 미마이그레이션) 시 기본 = 현재 동작.
+CONFIGURABLE_MENUS = ("content", "testset", "admin", "dict", "studio", "lab")
+MENU_LABELS = {"content": "콘텐츠 관리", "testset": "정답셋 관리", "admin": "팀 관리",
+               "dict": "사전 · 정책", "studio": "스튜디오", "lab": "실험실"}
+DEFAULT_MENU_PERMS = {                            # 기존 cond(opsadmin=슈퍼만 · admin=둘 다)와 동일
+    "content": {"super": True, "admin": False},
+    "testset": {"super": True, "admin": False},
+    "admin":   {"super": True, "admin": True},
+    "dict":    {"super": True, "admin": False},
+    "studio":  {"super": True, "admin": False},
+    "lab":     {"super": True, "admin": False},
+}
+
+
+def _team_role(uid, team) -> str:
+    """설정 대상 역할: 'super'(슈퍼관리자) | 'admin'(팀 관리자) | ''. 생성자·운영관리자는 별도(항상 전체)."""
+    if _team_super(uid, team):
+        return "super"
+    if _team_admin(uid, team):
+        return "admin"
+    return ""
+
+
+def effective_menu_perms(team) -> dict:
+    """기본 매트릭스 위에 생성자 설정을 덮은 유효 매트릭스(UI·프론트 게이팅 원천)."""
+    st = _SV.get_store()
+    stored = (st.menu_perms(team) if (st and hasattr(st, "menu_perms")) else {}) or {}
+    out = {}
+    for mid in CONFIGURABLE_MENUS:
+        base = dict(DEFAULT_MENU_PERMS.get(mid, {}))
+        base.update({k: bool(v) for k, v in (stored.get(mid) or {}).items() if k in ("super", "admin")})
+        out[mid] = base
+    return out
+
+
+def menu_allowed(uid, team, email, menu_id) -> bool:
+    """메뉴 접근 허용 여부(2단계). 생성자·운영관리자=전체 · 시스템=운영관리자 전용 ·
+    슈퍼/관리자=생성자 설정 매트릭스(미설정=기본=현재 동작). 백엔드 강제의 단일 판정원."""
+    if not _supa():
+        return True                                   # 로컬 단독 = 전체 접근
+    if is_sys_admin_user(uid, team, email):
+        return True                                   # 운영 관리자 = 전체
+    st = _SV.get_store()
+    t = st.team_info(team) if (st and team and hasattr(st, "team_info")) else None
+    if t and uid and uid == t.get("created_by"):
+        return True                                   # 생성자 = 전체
+    if menu_id == "system":
+        return False                                  # 시스템 설정 = 운영 관리자 전용(위 통과분만)
+    role = _team_role(uid, team)
+    if not role:
+        return False                                  # 관리자 아님
+    row = effective_menu_perms(team).get(menu_id) or DEFAULT_MENU_PERMS.get(menu_id, {})
+    return bool(row.get(role, False))
+
+
 def admin_data(uid, team, email="") -> dict:
     """팀 관리: 팀 정보·멤버·관리자 여부. supabase 전용.
     팀 미소속이어도 운영 관리자(허용목록)는 isSysAdmin/isAdmin 을 내려 관리자 메뉴가 열리게 한다."""
@@ -201,7 +258,10 @@ def admin_data(uid, team, email="") -> dict:
             "isSysAdmin": is_sys_admin_user(uid, team, email),
             "isSuperAdmin": is_super_admin_user(uid, team, email),
             "isCreator": bool(t and uid and t.get("created_by") == uid),
-            "team": t, "members": st.team_members(team), "goldenCount": gc}
+            "team": t, "members": st.team_members(team), "goldenCount": gc,
+            # 메뉴별 권한(생성자 설정): 유효 매트릭스 + 라벨(생성자 UI·프론트 게이팅 원천)
+            "menuPerms": effective_menu_perms(team), "menuLabels": MENU_LABELS,
+            "menuOrder": list(CONFIGURABLE_MENUS)}
 
 def admin_ingest(uid, team, endpoint, n, email="") -> dict:
     """관리자: 크롤러 엔드포인트에서 N건 당겨와 추출 → 전건 검토 대상으로 팀 큐 적재(배치).
@@ -306,6 +366,18 @@ def admin_action(uid, team, data, email="") -> dict:
         if not hasattr(st, fn):
             return {"ok": False, "error": "이 백엔드는 위임을 지원하지 않습니다"}
         getattr(st, fn)(team, data["member"], act in ("set_admin", "set_super"))
+    elif act == "set_menu_perms":                  # 메뉴별 권한 매트릭스 저장(생성자 전용)
+        t = st.team_info(team) if hasattr(st, "team_info") else None
+        if _supa() and not (t and uid and uid == t.get("created_by")):
+            return {"ok": False, "error": "메뉴 권한 설정은 팀 생성자만 할 수 있습니다"}
+        if not hasattr(st, "set_menu_perms"):
+            return {"ok": False, "error": "이 백엔드는 메뉴 권한을 지원하지 않습니다"}
+        incoming = data.get("perms") or {}
+        clean = {mid: {"super": bool((incoming.get(mid) or {}).get("super")),
+                       "admin": bool((incoming.get(mid) or {}).get("admin"))}
+                 for mid in CONFIGURABLE_MENUS if mid in incoming}
+        st.set_menu_perms(team, clean)
+        return {"ok": True, "menuPerms": effective_menu_perms(team)}
     elif act == "ingest":                          # 크롤러 수량 인입 → 검토 큐
         return admin_ingest(uid, team, data.get("endpoint"), data.get("n"), email)
     elif act == "create_team" and not hasattr(st, "ensure_team"):

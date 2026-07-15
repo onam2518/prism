@@ -775,6 +775,13 @@ class Store:
             d["reviewers"][rv] = v
         return out
 
+    def menu_perms(self, team=None) -> dict:
+        """로컬(sqlite) 단독 = 전체 접근이라 메뉴 권한 매트릭스는 무의미 → {}."""
+        return {}
+
+    def set_menu_perms(self, team, perms) -> bool:
+        return True
+
     def clear_team_feedback(self, team=None):
         """평가 피드백 전체 삭제(로컬 단일 팀). 시스템 설정 · 데이터 관리."""
         c = self._conn()

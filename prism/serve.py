@@ -46,6 +46,7 @@ admin_emails = AO.admin_emails
 is_sys_admin_user = AO.is_sys_admin_user
 is_super_admin_user = AO.is_super_admin_user
 is_admin_user = AO.is_admin_user
+menu_allowed = AO.menu_allowed
 admin_data = AO.admin_data
 admin_ingest = AO.admin_ingest
 admin_action = AO.admin_action
@@ -535,6 +536,26 @@ def _safe_url(u: str) -> str:
     u = (u or "").strip()
     low = u.lower()
     return u if (low.startswith("http://") or low.startswith("https://")) else ""
+
+
+# 메뉴별 권한(생성자 설정) 백엔드 강제: POST 액션(쓰기) 경로 → 메뉴 id.
+# 인프라(/config·/ingest-status)·멤버(/feedback·/board)·상태폴 경로는 미포함(가시성은 프론트 담당).
+_MENU_POST_ROUTES = (
+    ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
+    ("/media-extract", "lab"), ("/usermeta", "lab"),
+    ("/dict", "dict"),
+    ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
+    ("/ingest-run", "content"), ("/rerun", "content"), ("/run", "content"), ("/store", "content"),
+)
+
+
+def _menu_for_path(path: str):
+    """POST 경로 → 관리자 메뉴 id(없으면 None). 메뉴별 권한 백엔드 강제용."""
+    p = (path or "").split("?", 1)[0]
+    for prefix, menu in _MENU_POST_ROUTES:
+        if p == prefix or p.startswith(prefix):
+            return menu
+    return None
 
 
 def add_contents(contents: list, purpose: str = "", team=None, source: str = "단건") -> dict:
@@ -4250,6 +4271,12 @@ class Handler(BaseHTTPRequestHandler):
                                        ensure_ascii=False), _JSON)
             return
         body = self.rfile.read(length)
+
+        # 메뉴별 권한(생성자 설정) 백엔드 강제: 숨긴 메뉴의 액션은 서버가 차단(프론트 숨김만으론 보안 아님)
+        _menu = _menu_for_path(self.path)
+        if _menu and not menu_allowed(self._bearer_uid(), self._req_team(), self._bearer_email(), _menu):
+            self._send(403, json.dumps({"error": "이 메뉴에 대한 권한이 없습니다"}, ensure_ascii=False), _JSON)
+            return
 
         if self.path.startswith("/config"):
             try:
