@@ -296,7 +296,8 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
         out.append({"model": model, "route": route, "real": (not llm.mock), "n": min(len(rows), 200),
                     "grade_accuracy": m.get("grade_accuracy"), "reason_jaccard": m.get("reason_jaccard"),
                     "reason_exact_match": m.get("reason_exact_match"), "empty_rate": m.get("empty_rate"),
-                    "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens")})
+                    "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens"),
+                    "latency_p50_ms": m.get("latency_p50_ms"), "latency_p95_ms": m.get("latency_p95_ms")})
     if not out:
         return {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
                 "skipped": skipped, "golden_n": len(rows)}
