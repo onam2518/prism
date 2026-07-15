@@ -653,7 +653,7 @@ _PROFILE_KEYMAP = {
     "category_iab_map": "CATEGORY_IAB_MAP",
     "intake_policy": "INTAKE_POLICY",
 }
-_BASE_SNAPSHOT: dict | None = None      # 최초 override 직전의 원본 사전(초기화 즉시 복원용)
+_BASE_SNAPSHOT = None                   # dict | None · 최초 override 직전의 원본 사전(초기화 즉시 복원용) · 3.8 호환 무주석
 
 
 def apply_profile(prof: dict):
