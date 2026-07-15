@@ -1256,7 +1256,7 @@
       async loadLearnReport() { try { const r = await (await this._afetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; if (r && r.next_batch_at) this.nextBatchAt = r.next_batch_at; } catch (e) {} },
       nextBatchAt: 0,
       // 학습 반영 주기(모델 버전 시한 · 관리자): N일마다 지정 시각에 반영 · 지금 실행 시 주기 재시작
-      learnNextAt: '', learnSchedMsg: '', schedEditing: false,
+      learnNextAt: '', learnSchedMsg: '', schedEditing: false, learnRepeat: 0,
       schedEdit() {                                      // 퀘스트 생성/수정: 미지정이면 내일 04:00 프리필
         if (!this.learnNextAt) {
           const d = new Date(Date.now() + 86400000);
@@ -1267,7 +1267,7 @@
       },
       async saveLearnSched() {                           // 목표 일시 + 확정 최소 인원 통합 저장
         try {
-          const r = await (await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) })).json();
+          const r = await (await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1, learn_repeat_days: parseInt(this.learnRepeat, 10) || 0 }) })).json();
           if ((this.learnNextAt || '') !== (r.learnNextAt || '')) {   // 서버 거부(과거 일시 등)
             this.learnNextAt = r.learnNextAt || '';
             this.learnSchedMsg = '지난 일시는 지정할 수 없어요';
@@ -1284,7 +1284,7 @@
         if (!(await this.dsConfirm('진행 중인 퀘스트를 삭제할까요? 반영 예약이 해제되고 팀 홈의 D-day 카드가 사라집니다 · 검수 의견은 그대로 남습니다', { ok: '삭제', danger: true }))) return;
         try {
           await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: '' }) });
-          this.learnNextAt = ''; this.nextBatchAt = 0; this.schedEditing = false;
+          this.learnNextAt = ''; this.nextBatchAt = 0; this.schedEditing = false; this.learnRepeat = 0;
           this.learnSchedMsg = '퀘스트를 삭제했습니다';
           this.loadLearnReport();
           this.loadArena();
@@ -2127,6 +2127,7 @@
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.learnNextAt === 'string') this.learnNextAt = this.cfg.learnNextAt;
+          if (this.cfg.learnRepeatDays != null) this.learnRepeat = this.cfg.learnRepeatDays;
           if (!this.wrapDraft) this.syncWrapDraft();
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();

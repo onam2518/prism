@@ -2761,6 +2761,7 @@ def config_status() -> dict:
         "availableModels": _candidate_models(cfg),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "learnNextAt": str(getattr(cfg, "learn_next_at", "") or ""),
+        "learnRepeatDays": int(getattr(cfg, "learn_repeat_days", 0) or 0),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
         "metaCallModels": dict(getattr(cfg, "meta_call_models", {}) or {}),
         "familyWrappers": dict(getattr(cfg, "family_wrappers", {}) or {}),
@@ -2846,7 +2847,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_wrappers = "family_wrappers" in data and isinstance(data.get("family_wrappers"), dict)
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
-    has_misc = ("golden_min_good" in data) or ("learn_next_at" in data)
+    has_misc = ("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
@@ -2919,11 +2920,17 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 cfg.golden_min_good = max(1, min(9, int(data.get("golden_min_good") or 1)))
             except (TypeError, ValueError):
                 pass
+        if "learn_repeat_days" in data:           # 퀘스트 반복 주기(일) · 0=반복 없음 · 상한 31일
+            try:
+                cfg.learn_repeat_days = max(0, min(31, int(data.get("learn_repeat_days") or 0)))
+            except (TypeError, ValueError):
+                pass
         if "learn_next_at" in data:               # 검수 목표(퀘스트) 일시 · 빈 값 = 목표 해제(삭제)
             v = str(data.get("learn_next_at") or "").strip()[:16]
             if not v:
                 cfg.learn_next_at = ""
                 cfg.learn_team = ""                # 퀘스트 해제 시 팀 태그도 비움
+                cfg.learn_repeat_days = 0          # 반복 시리즈도 함께 종료
                 _agg_bump()                        # 홈·사이드바 퀘스트 카드 즉시 소거
             else:
                 try:

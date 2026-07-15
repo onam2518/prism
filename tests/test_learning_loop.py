@@ -261,6 +261,34 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertFalse(LO._run_due_batch(cfg, now=0))
         self.assertNotIn("team", cap)                    # 미실행
 
+    def test_run_due_batch_repeats_when_configured(self):
+        """반복 주기(learn_repeat_days)가 있으면 소진 대신 같은 시각 +N일 미래 회차로 재생성.
+        팀 태그 유지 · 새 진행률 창(quest_meta) 기록 · 밀린 회차는 미래 첫 회차까지 스킵."""
+        import datetime as _dt
+        import time as _t
+        import types
+        from prism import learnops as LO
+        cap = {}
+        cfg = types.SimpleNamespace(learn_next_at="2020-01-06T04:30", learn_team="team-X",
+                                    learn_repeat_days=7,
+                                    save_template=lambda: cap.__setitem__("saved", True))
+        o_batch, o_config, o_sv = LO.learning_batch, LO.Config, LO._SV
+        self.addCleanup(lambda: (setattr(LO, "learning_batch", o_batch),
+                                 setattr(LO, "Config", o_config), setattr(LO, "_SV", o_sv)))
+        LO.learning_batch = lambda team=None, models=None: cap.__setitem__("team", team)
+        LO.Config = types.SimpleNamespace(load=lambda: cfg)
+        LO._SV = types.SimpleNamespace(_report_save=lambda k, p, t=None: cap.__setitem__("qm", (k, p, t)))
+        self.assertTrue(LO._run_due_batch(cfg, now=9_999_999_999))
+        self.assertEqual(cap.get("team"), "team-X")
+        self.assertTrue(cfg.learn_next_at)                       # 소진 대신 재생성
+        nxt = _dt.datetime.strptime(cfg.learn_next_at, "%Y-%m-%dT%H:%M")
+        self.assertGreater(nxt.timestamp(), _t.time())           # 미래 회차
+        self.assertEqual((nxt.hour, nxt.minute), (4, 30))        # 같은 시각 유지
+        self.assertEqual((nxt - _dt.datetime(2020, 1, 6, 4, 30)).days % 7, 0)   # 7일 주기 정합
+        self.assertEqual(cfg.learn_team, "team-X")               # 팀 태그 유지
+        self.assertEqual((cap.get("qm") or (None,))[0], "quest_meta")   # 새 진행 창 기록
+        self.assertTrue(cap.get("saved"))
+
 
 class TestLearnData(unittest.TestCase):
     def test_learn_data_and_exports(self):
