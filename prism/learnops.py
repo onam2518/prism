@@ -840,6 +840,23 @@ def next_batch_time(next_at, now=None) -> float:
         return 0.0
 
 
+def _run_due_batch(cfg, now=None) -> bool:
+    """퀘스트 일시가 도달했으면 그 퀘스트를 만든 팀(learn_team)으로 학습 배치를 1회 실행하고
+    목표를 소진한다. 실행했으면 True. 스케줄러 루프와 테스트가 공유.
+    팀 태깅이 핵심: team 없이 돌리면 골든 승격·버전(batch_seq)이 팀 스코프 조회에서 사라진다."""
+    due = next_batch_time(getattr(cfg, "learn_next_at", ""))
+    if not due or due > (now if now is not None else time.time()):
+        return False
+    learning_batch(getattr(cfg, "learn_team", "") or None)   # 골든·버전을 그 팀에 태깅
+    try:                                          # 목표 소진(1회 실행 · 재실행 방지)
+        c = Config.load()
+        c.learn_next_at = ""
+        c.save_template()
+    except Exception:
+        pass
+    return True
+
+
 def start_learning_scheduler(hour: int = 4):
     """검수 목표(퀘스트) 스케줄러: 관리자가 지정한 일시(Config.learn_next_at)에 학습 반영을
     1회 실행하고 목표를 소진(비움)한다. 다음 목표는 관리자가 '퀘스트 생성'으로 다시 지정.
@@ -853,18 +870,11 @@ def start_learning_scheduler(hour: int = 4):
         while True:
             try:
                 cfg = Config.load()
-                due = next_batch_time(getattr(cfg, "learn_next_at", ""))
-                if not due or due > time.time():
+                if not _run_due_batch(cfg):
+                    due = next_batch_time(getattr(cfg, "learn_next_at", ""))
                     wait = 600 if not due else min(600, max(30, due - time.time()))
                     time.sleep(wait)
                     continue
-                learning_batch(None)
-                try:                                  # 목표 소진(1회 실행 · 재실행 방지)
-                    cfg = Config.load()
-                    cfg.learn_next_at = ""
-                    cfg.save_template()
-                except Exception:
-                    pass
                 time.sleep(60)
             except Exception as e:
                 print(f"  [warn] 학습 배치 실패: {e}")

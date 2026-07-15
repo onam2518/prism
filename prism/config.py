@@ -88,6 +88,7 @@ class Config:
     # 모델 계열 쿡북 래퍼 오버라이드: {gpt|gemini|claude|solar|default: template}. 수정 단위는 계열 래퍼만.
     family_wrappers: dict = field(default_factory=dict)
     learn_next_at: str = ""               # 검수 목표(퀘스트) 일시 'YYYY-MM-DDTHH:MM' · 도달 시 학습 반영 1회 후 소진
+    learn_team: str = ""                  # 그 퀘스트를 만든 팀 · 스케줄러가 이 팀으로 학습 배치를 돌려 골든·버전을 팀에 태깅
 
     # 실행
     concurrency: int = 12
