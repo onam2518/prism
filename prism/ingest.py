@@ -52,6 +52,11 @@ def _read_csv(path, delim):
     return (rd.fieldnames or []), rows
 
 
+# xlsx(=zip) 멤버 압축해제 상한(zip bomb 방어): 중앙 디렉터리가 선언한 uncompressed 크기가
+# 이 값을 넘으면 읽지 않는다(정상 스프레드시트는 훨씬 작다 · 50KB 업로드→52MB 전개 실증 방어).
+_MAX_XLSX_MEMBER = 48 * 1024 * 1024
+
+
 # xlsx: zip + xml (표준 라이브러리)
 def _read_xlsx(path):
     import zipfile
@@ -60,10 +65,16 @@ def _read_xlsx(path):
     def local(tag):
         return tag.rsplit("}", 1)[-1]
 
+    def read_capped(z, name):
+        info = z.getinfo(name)
+        if info.file_size > _MAX_XLSX_MEMBER:
+            raise ValueError(f"xlsx 멤버 과대({info.file_size} bytes) · 압축폭탄 의심")
+        return z.read(name)
+
     with zipfile.ZipFile(path) as z:
         shared = []
         if "xl/sharedStrings.xml" in z.namelist():
-            root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+            root = ET.fromstring(read_capped(z, "xl/sharedStrings.xml"))
             for si in root:
                 shared.append("".join(t.text or "" for t in si.iter()
                                       if local(t.tag) == "t"))
@@ -71,7 +82,7 @@ def _read_xlsx(path):
                       if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")), None)
         if not sheet:
             return [], []
-        root = ET.fromstring(z.read(sheet))
+        root = ET.fromstring(read_capped(z, sheet))
         grid = []
         for row in root.iter():
             if local(row.tag) != "row":

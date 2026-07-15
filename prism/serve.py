@@ -3117,6 +3117,12 @@ _JSON = "application/json; charset=utf-8"
 # ── HTTP 핸들러 ──────────────────────────────────────────────────────────────
 # 공개 GET 경로(무인증): 페이지 셸·정적 자산·백엔드 상태(/config 는 라우트에서 최소 필드로
 # 축약)·업로드 서식만. 그 외 데이터 GET 은 supabase(운영) 모드에서 로그인 필수(Handler._gate_get).
+# POST 본문 상한(메모리 DoS 방어) · 미디어/엑셀 업로드 여유. 환경변수로 조정 가능.
+try:
+    _MAX_BODY = int(os.environ.get("PRISM_MAX_BODY_MB", "32")) * 1024 * 1024
+except ValueError:
+    _MAX_BODY = 32 * 1024 * 1024
+
 _PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/template.csv",
                "/usermeta-template.csv", "/usermeta-profile-template.csv"}
 
@@ -3616,7 +3622,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, f.read(), self._VENDOR_CT[ext], cache=cache)
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
+        # 본문 크기 상한: 인증·라우팅보다 먼저 실행되는 read 가 무제한이면 프리-어스 메모리 DoS
+        # (스레드당 증폭). 비수치 Content-Length 는 400, 초과는 413. 거부 시 연결을 닫아 잔여 본문
+        # 재해석 방지.
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except (TypeError, ValueError):
+            self.close_connection = True
+            self._send(400, json.dumps({"error": "잘못된 Content-Length"}, ensure_ascii=False), _JSON)
+            return
+        if length < 0 or length > _MAX_BODY:
+            self.close_connection = True
+            self._send(413, json.dumps({"error": f"요청 본문이 너무 큽니다(상한 {_MAX_BODY // (1024 * 1024)}MB)"},
+                                       ensure_ascii=False), _JSON)
+            return
         body = self.rfile.read(length)
 
         if self.path.startswith("/config"):
