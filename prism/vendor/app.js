@@ -414,6 +414,7 @@
         this.bulkBusy = false;
       },
       metaResults: null, metaBusy: false,
+      verHist: [], verSel: null, verData: null, verSnap: null, verBusy: false,   // 버전별 지시 히스토리
       srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
       loading: false,
@@ -1228,7 +1229,7 @@
       ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
-      async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenStatus = r; } catch (e) {} },
+      async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.goldenStatus = r; this.loadVerHist(); } } catch (e) {} },
       // 관리자 골든 브라우저
       goldenList: null,
       async loadGoldenList() { try { const r = await (await this._afetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) {} },
@@ -1254,6 +1255,31 @@
         this.learnBusy = false; this.loadPromptDefaults(); this.loadGoldenStatus();
       },
       async loadLearnReport() { try { const r = await (await this._afetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; if (r && r.next_batch_at) this.nextBatchAt = r.next_batch_at; } catch (e) {} },
+      loadVerHist() {                                            // 버전 목록 = v2..현재(반영 회차+1) · 최신 먼저
+        const seq = (this.goldenStatus && this.goldenStatus.batch_seq != null) ? this.goldenStatus.batch_seq : 0;
+        const cur = seq + 1;
+        const list = [];
+        for (let v = cur; v >= 2; v--) list.push({ v: v, current: v === cur });
+        this.verHist = list;
+        if (!list.length) { this.verSel = null; this.verData = null; this.verSnap = null; return; }
+        if (this.verSel == null || !list.some(h => h.v === this.verSel)) this.selectVer(cur);
+      },
+      async selectVer(v) {                                       // 그 버전의 지시(스냅샷)+지표(리포트) 로드
+        this.verSel = v; this.verBusy = true; this.verData = null; this.verSnap = null;
+        try {
+          const [repR, snpR] = await Promise.all([
+            this._afetch('/learn-report?v=' + v, { headers: this._authHeaders() }),
+            this._afetch('/prompt-snapshot?v=' + v, { headers: this._authHeaders() }),
+          ]);
+          const rep = await repR.json(); const snp = await snpR.json();
+          this.verData = (rep && rep.ok) ? rep.report : null;
+          this.verSnap = (snp && snp.ok) ? snp.snapshot : null;
+        } catch (e) { this.verData = null; this.verSnap = null; }
+        this.verBusy = false;
+      },
+      verDir(stage) { const s = this.verSnap; return (s && s.learned && s.learned[stage]) || ''; },
+      verAmb(stage) { const d = this.verData, r = (d && d.improve && d.improve.results) || {}; return (r[stage] && r[stage].ambiguities) || []; },
+      verHasDir() { return ['extract', 'analyze', 'review', 'judge'].some(s => this.verDir(s)); },
       nextBatchAt: 0,
       // 학습 반영 주기(모델 버전 시한 · 관리자): N일마다 지정 시각에 반영 · 지금 실행 시 주기 재시작
       learnNextAt: '', learnSchedMsg: '', schedEditing: false,
