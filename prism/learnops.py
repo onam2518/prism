@@ -368,6 +368,12 @@ def learning_batch(team=None, models=None) -> dict:
     global _LAST_LEARN_REPORT
     _LAST_LEARN_REPORT = report
     _SV._report_save("learn_report", report, team)
+    try:                                        # 버전별 리포트도 영속(버전 히스토리 상세용)
+        sver = int((snap or {}).get("version") or 0)
+        if sver:
+            _SV._report_save(f"learn_report_v{sver}", report, team)
+    except Exception:
+        pass
     _SV._agg_bump()
     try:                                        # 반영 완료 모먼트: 접속 팀원 전체에 축하 토스트(SSE)
         stv2 = _SV.get_store()

@@ -3253,7 +3253,14 @@ class Handler(BaseHTTPRequestHandler):
             kind = f"prompt_snapshot_v{int(v)}" if v.isdigit() else "prompt_snapshot_latest"
             snap = _report_get(kind, self._req_team())
             self._send(200, json.dumps({"ok": bool(snap), "snapshot": snap}, ensure_ascii=False), _JSON)
-        elif self.path.startswith("/learn-report"):     # 최근 배치 결과(GET · 재시작에도 store 영속)
+        elif self.path.startswith("/learn-report"):     # 최근 배치 결과(GET) · ?v=N 이면 그 버전 리포트
+            from urllib.parse import parse_qs, urlparse
+            _rv = (parse_qs(urlparse(self.path).query).get("v") or [""])[0].strip()
+            if _rv.isdigit():                            # 버전 히스토리 상세(구버전은 미영속 → null)
+                _vrep = _report_get(f"learn_report_v{int(_rv)}", self._req_team())
+                self._send(200, json.dumps({"ok": bool(_vrep), "report": _vrep, "version": int(_rv)},
+                                           ensure_ascii=False), _JSON)
+                return
             rep = _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT)
             _c = Config.load()                           # 다음 반영 예정(검수 목표 일시 · 화면 표시용)
             nb = LO.next_batch_time(getattr(_c, "learn_next_at", ""))

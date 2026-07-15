@@ -1768,6 +1768,39 @@ PAGE = """<!doctype html>
                   </div>
                 </div>
               </template>
+
+              <!-- 버전별 지시 히스토리: 검수 목표(퀘스트)가 끝날 때마다 한 버전으로 반영 · 버전을 눌러 그 버전이 쓴 지시 확인 -->
+              <div class="subhd" style="margin:16px 0 8px" x-show="verHist.length">버전 히스토리 <span class="meta">검수 목표가 끝날 때마다 한 버전으로 반영됩니다 · 버전을 눌러 그 버전이 쓴 지시를 확인하세요</span></div>
+              <div class="verrail" x-show="verHist.length">
+                <template x-for="h in verHist" x-bind:key="h.v">
+                  <button type="button" class="verchip" x-bind:class="verSel===h.v ? 'is-sel' : ''" x-on:click="selectVer(h.v)">
+                    <span class="verchip__v tnum">v<span x-text="h.v"></span><span x-show="h.current" class="verchip__cur">현재</span></span>
+                  </button>
+                </template>
+              </div>
+              <div class="verdetail" x-show="verSel != null" x-cloak>
+                <div class="verstat" x-show="verData">
+                  <span x-show="verData && verData.ts">반영한 날 <b class="text-ink" x-text="fmtTs(verData?verData.ts:0)"></b></span>
+                  <span x-show="verData && verData.grade_accuracy != null">정답 맞힌 비율 <b class="text-ink tnum" x-text="pctTxt(verData?verData.grade_accuracy:null)"></b></span>
+                  <span x-show="verData && verData.improve_delta != null" x-text="'직전 대비 ' + deltaTxt(verData?verData.improve_delta:0)"></span>
+                  <span x-show="verData && verData.golden && verData.golden.confirmed != null">확정 정답 <b class="text-ink tnum" x-text="verData&&verData.golden?verData.golden.confirmed:0"></b>건</span>
+                </div>
+                <div class="meta" style="padding:4px 2px" x-show="!verBusy && !verData && !verSnap">이 버전의 저장된 상세가 없습니다.</div>
+                <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="'v'+stage">
+                  <div class="metarow" x-show="verDir(stage) || verAmb(stage).length">
+                    <span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
+                    <div style="flex:1;min-width:0">
+                      <ul class="metarow__dir" x-show="verDir(stage)">
+                        <template x-for="(s, i) in dirBullets(verDir(stage))" x-bind:key="i"><li x-text="s"></li></template>
+                      </ul>
+                      <template x-for="a in verAmb(stage)" x-bind:key="a">
+                        <div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <div class="meta" style="padding:4px 2px" x-show="verSnap && !verHasDir()">이 버전에서 보정된 지시가 없습니다(학습 전 기준선).</div>
+              </div>
             </div>
           </section>
       </div><!-- /정답셋 관리 · 현황 -->

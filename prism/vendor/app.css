@@ -576,6 +576,16 @@
   .metarow__dir li{position:relative;padding-left:14px;font-size:13px;color:var(--ds-ink);line-height:1.55}
   .metarow__dir li::before{content:"";position:absolute;left:2px;top:8px;width:4px;height:4px;border-radius:50%;background:var(--ds-primary)}
   .metarow__amb{font-size:11.5px;color:var(--ds-error);margin-top:var(--ds-space-1);line-height:1.5}
+  /* 버전별 지시 히스토리 */
+  .verrail{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:2px;scrollbar-width:thin}
+  .verchip{flex:0 0 auto;background:var(--ds-surface-on);border:1px solid var(--ds-hairline);border-radius:11px;padding:8px 13px;cursor:pointer;color:var(--ds-text-secondary);transition:border-color .12s,background .12s}
+  .verchip:hover{border-color:var(--ds-primary)}
+  .verchip.is-sel{background:var(--ds-primary-tint);border-color:var(--ds-primary)}
+  .verchip__v{font-size:14px;font-weight:800;color:var(--ds-ink)}
+  .verchip.is-sel .verchip__v{color:var(--ds-primary-deep)}
+  .verchip__cur{font-size:9.5px;font-weight:800;color:#fff;background:var(--ds-primary);border-radius:999px;padding:1px 6px;margin-left:5px;vertical-align:middle}
+  .verdetail{margin-top:12px}
+  .verstat{display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 10px;font-size:12px;color:var(--ds-muted)}
   .invite{display:flex;align-items:center;justify-content:space-between;gap:14px}
   .invite__code{font-family:var(--ds-font-mono,ui-monospace);font-size:26px;font-weight:800;letter-spacing:.12em;color:var(--ds-violet,#1e84ff)}
   /* ── 평가 아레나(게임화) ── */
