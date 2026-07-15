@@ -1957,18 +1957,12 @@ PAGE = """<!doctype html>
             <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다.</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
             <template x-if="goldenList && goldenList.items && goldenList.items.length">
               <div style="margin-top:12px">
-              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-                <span class="selctl__lbl" data-tip="정답이 확정될 당시의 초안 모델 · 정답 자체는 모델과 무관한 사람 확정값" data-tip-pos="top">유래 모델</span>
-                <button type="button" class="srcfilter__chip" x-bind:class="goldenModel==='' ? 'sel' : ''" x-on:click="goldenModel=''">전체</button>
-                <template x-for="m in goldenModelList" x-bind:key="'gm'+m"><button type="button" class="srcfilter__chip" x-bind:class="goldenModel===m ? 'sel' : ''" x-on:click="goldenModel=m" x-text="m || '(모델 미기록)'"></button></template>
-              </div>
-              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:150px">유래 모델</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
+              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
                 <template x-for="g in filteredGolden" x-bind:key="g.hash">
                   <tr>
                     <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" style="cursor:help" x-show="g.flagged && !g.fix_needed" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span> <span class="ds-badge ds-badge--warning" style="cursor:help" x-show="g.fix_needed" data-tip="평가 판정에서 '모델이 맞음' 합의 · 모델 결과가 맞다고 확정된 정답(제거 후 재등록 또는 검수 재확정 필요)" data-tip-pos="top">교정 필요</span></td>
                     <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
                     <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template></td>
-                    <td class="text-muted" x-text="g.model || '·'"></td>
                     <td class="tnum" x-text="g.version ? ('v' + g.version) : '·'"></td>
                     <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '직접' : '검수'"></span></td>
                     <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
