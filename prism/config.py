@@ -89,6 +89,9 @@ class Config:
     family_wrappers: dict = field(default_factory=dict)
     learn_next_at: str = ""               # 검수 목표(퀘스트) 일시 'YYYY-MM-DDTHH:MM' · 도달 시 학습 반영 1회 후 소진
     learn_team: str = ""                  # 그 퀘스트를 만든 팀 · 스케줄러가 이 팀으로 학습 배치를 돌려 골든·버전을 팀에 태깅
+    learn_repeat_days: int = 0            # 퀘스트 반복 주기(일) · 0=반복 없음 · 반영 후 같은 시각 +N일로 자동 재생성
+    fallback_models: list = field(default_factory=list)   # 산출 전량 빈값 시 순서 폴백 모델(최대 3 · 실호출만)
+    batch_budget_usd: float = 0.0         # 일괄 실행(재실행) 1회 비용 상한($) · 0 = 무제한
 
     # 실행
     concurrency: int = 12

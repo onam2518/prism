@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import heapq
 import json
 import os
 import queue as _queue
@@ -259,6 +260,248 @@ def _kv(disposition: str, key: str):
     return disposition[i + len(token):j]
 
 
+# ── 검수 배정: 균등 분배 ─────────────────────────────────────────────────────
+def distribute_assignments(st, hashes, reviewers, min_reviewers=1, team=None) -> dict:
+    """선택 콘텐츠를 선택 인원에게 균등 분배 배정(덮어쓰기).
+    시작 부하 = 검수자별 미완료 배정 수(assignment_load) → 항상 부하가 가장 적은
+    사람부터 채워 최종 부하가 고르게 되도록 한다. 콘텐츠당 담당 min_reviewers 명
+    (서로 다른 사람)씩 배정하고 통과 인원 N 도 같은 값으로 둔다.
+    반환: {"n": 처리 건수, "per_reviewer": {reviewer: 배정 건수}, "min_reviewers": N}"""
+    hs = [h for h in dict.fromkeys(hashes or []) if h]
+    rvs = [r for r in dict.fromkeys(reviewers or []) if r]
+    if not (hs and rvs):
+        return {"n": 0, "per_reviewer": {}, "min_reviewers": 0}
+    n_per = max(1, min(len(rvs), int(min_reviewers or 1)))
+    load = {}
+    if hasattr(st, "assignment_load"):
+        try:
+            load = st.assignment_load(team=team) or {}
+        except Exception:
+            load = {}                                    # 부하 조회 실패 시 0 부하로 분배(배정은 계속)
+    heap = [(int(load.get(r, 0)), i, r) for i, r in enumerate(rvs)]   # i = 동률 시 선택 순서 유지
+    heapq.heapify(heap)
+    groups = {}                                          # 담당 조합(tuple) → 콘텐츠 목록(호출 최소화)
+    for h in hs:
+        picked = [heapq.heappop(heap) for _ in range(n_per)]
+        groups.setdefault(tuple(p[2] for p in picked), []).append(h)
+        for ld, i, r in picked:
+            heapq.heappush(heap, (ld + 1, i, r))
+    per, n = {}, 0
+    for combo, chunk in groups.items():
+        n += st.set_assignees_bulk(chunk, list(combo), min_reviewers=n_per, team=team)
+        for r in combo:
+            per[r] = per.get(r, 0) + len(chunk)
+    return {"n": n, "per_reviewer": per, "min_reviewers": n_per}
+
+
+# ── 비용 롤업(일별×모델×콜) ──────────────────────────────────────────────────
+# supabase 는 콘텐츠에 트레이스(by_call·cost)를 저장하지 않아, 실행 시점 누적이 유일한
+# 영속 원천이다(reports kind='cost_rollup' · 팀 스코프). 단일 서버 프로세스 전제라
+# 프로세스 락으로 읽기-수정-쓰기를 직렬화한다(동시 배치의 유실 방지).
+_COST_LOCK = threading.Lock()
+
+
+def _log_cost_rollup(trace: dict, team=None):
+    """실행 1건의 비용·토큰을 일별 롤업 리포트에 누적. 실패는 실행을 막지 않는다."""
+    try:
+        trace = trace or {}
+        cost = float(trace.get("cost_usd") or 0.0)
+        by_call = trace.get("by_call") or {}
+        if not (cost or by_call):
+            return
+        import datetime as _dt
+        day = _dt.date.today().isoformat()
+        tokens = trace.get("tokens") or {}
+        model = (trace.get("model") or "").strip() or "(미기록)"
+        with _COST_LOCK:
+            rep = _report_get("cost_rollup", team, {}) or {}
+            days = rep.setdefault("days", {})
+            d = days.setdefault(day, {"cost": 0.0, "n": 0, "in": 0, "out": 0,
+                                      "models": {}, "calls": {}})
+            d["cost"] = round(d["cost"] + cost, 6)
+            d["n"] += 1
+            d["in"] += int(tokens.get("in") or 0)
+            d["out"] += int(tokens.get("out") or 0)
+            m = d["models"].setdefault(model, {"cost": 0.0, "n": 0})
+            m["cost"] = round(m["cost"] + cost, 6)
+            m["n"] += 1
+            for tag, b in by_call.items():
+                cle = d["calls"].setdefault(str(tag), {"cost": 0.0, "n": 0, "in": 0, "out": 0})
+                cle["cost"] = round(cle["cost"] + float((b or {}).get("cost") or 0.0), 6)
+                cle["n"] += int((b or {}).get("n") or 0)
+                cle["in"] += int((b or {}).get("in") or 0)
+                cle["out"] += int((b or {}).get("out") or 0)
+            if len(days) > 90:                       # 90일 초과분 정리(리포트 무한 성장 방지)
+                for k in sorted(days)[:-90]:
+                    days.pop(k, None)
+            _report_save("cost_rollup", rep, team)
+    except Exception:
+        pass
+
+
+# ── 실패 트리아지 원장(종류×모델×서비스) ─────────────────────────────────────
+# supabase 는 콘텐츠에 트레이스(fails)를 저장하지 않아 실행 시점 누적이 유일한 영속 원천.
+# reports kind='fail_rollup'(팀 스코프) · 단일 서버 프로세스 전제 프로세스 락 직렬화.
+_FAIL_LOCK = threading.Lock()
+
+
+def _log_fail_rollup(trace: dict, service: str = "", team=None):
+    """실행 1건의 콜 실패(trace.fails)를 일별 원장에 누적. 실패 없으면 무기록."""
+    try:
+        trace = trace or {}
+        fails = trace.get("fails") or []
+        if not fails:
+            return
+        import datetime as _dt
+        day = _dt.date.today().isoformat()
+        model = (trace.get("model") or "").strip() or "(미기록)"
+        svc = (service or "").strip() or "(미기록)"
+        with _FAIL_LOCK:
+            rep = _report_get("fail_rollup", team, {}) or {}
+            days = rep.setdefault("days", {})
+            d = days.setdefault(day, {})
+            for f in fails:
+                kind = str((f or {}).get("kind") or "unknown")
+                tag = str((f or {}).get("tag") or "")
+                key = "|".join((kind, model, svc, tag))
+                d[key] = int(d.get(key) or 0) + 1
+            if len(days) > 90:                       # 90일 초과분 정리
+                for k in sorted(days)[:-90]:
+                    days.pop(k, None)
+            _report_save("fail_rollup", rep, team)
+    except Exception:
+        pass
+
+
+def cost_rollup_data(team=None, days: int = 30) -> dict:
+    """비용 롤업 조회: 최근 days 일 연속 by_day + 창 내 모델별·콜별 합산."""
+    import datetime as _dt
+    days = max(1, min(90, int(days or 30)))
+    rep = _report_get("cost_rollup", team, {}) or {}
+    stored = rep.get("days") or {}
+    today = _dt.date.today()
+    by_day, by_model, by_call = [], {}, {}
+    total = {"cost": 0.0, "n": 0, "in": 0, "out": 0}
+    for i in range(days - 1, -1, -1):
+        k = (today - _dt.timedelta(days=i)).isoformat()
+        d = stored.get(k) or {}
+        by_day.append({"day": k, "cost": round(float(d.get("cost") or 0.0), 6),
+                       "n": int(d.get("n") or 0)})
+        total["cost"] = round(total["cost"] + float(d.get("cost") or 0.0), 6)
+        total["n"] += int(d.get("n") or 0)
+        total["in"] += int(d.get("in") or 0)
+        total["out"] += int(d.get("out") or 0)
+        for mk, mv in (d.get("models") or {}).items():
+            e = by_model.setdefault(mk, {"model": mk, "cost": 0.0, "n": 0})
+            e["cost"] = round(e["cost"] + float(mv.get("cost") or 0.0), 6)
+            e["n"] += int(mv.get("n") or 0)
+        for ck, cv in (d.get("calls") or {}).items():
+            e = by_call.setdefault(ck, {"call": ck, "cost": 0.0, "n": 0, "in": 0, "out": 0})
+            e["cost"] = round(e["cost"] + float(cv.get("cost") or 0.0), 6)
+            e["n"] += int(cv.get("n") or 0)
+            e["in"] += int(cv.get("in") or 0)
+            e["out"] += int(cv.get("out") or 0)
+    return {"ok": True, "window_days": days, "total": total, "by_day": by_day,
+            "by_model": sorted(by_model.values(), key=lambda x: -x["cost"]),
+            "by_call": sorted(by_call.values(), key=lambda x: -x["cost"])}
+def fail_rollup_data(team=None, days: int = 30) -> dict:
+    """실패 트리아지 조회: 창 내 종류별·모델별·서비스별·콜별 합산 + 상세 조합 상위."""
+    import datetime as _dt
+    days = max(1, min(90, int(days or 30)))
+    rep = _report_get("fail_rollup", team, {}) or {}
+    stored = rep.get("days") or {}
+    today = _dt.date.today()
+    keys = {(today - _dt.timedelta(days=i)).isoformat() for i in range(days)}
+    by_kind, by_model, by_service, by_call, combos = {}, {}, {}, {}, {}
+    total = 0
+    for day, counters in stored.items():
+        if day not in keys:
+            continue
+        for key, n in (counters or {}).items():
+            parts = (key.split("|") + ["", "", "", ""])[:4]
+            kind, model, svc, tag = parts
+            n = int(n or 0)
+            total += n
+            by_kind[kind] = by_kind.get(kind, 0) + n
+            by_model[model] = by_model.get(model, 0) + n
+            by_service[svc] = by_service.get(svc, 0) + n
+            if tag:
+                by_call[tag] = by_call.get(tag, 0) + n
+            ck = (kind, model, svc)
+            combos[ck] = combos.get(ck, 0) + n
+    def _sorted(d):
+        return [{"k": k, "n": n} for k, n in sorted(d.items(), key=lambda x: -x[1])]
+    top = [{"kind": k[0], "model": k[1], "service": k[2], "n": n}
+           for k, n in sorted(combos.items(), key=lambda x: -x[1])[:20]]
+    return {"ok": True, "window_days": days, "total": total,
+            "by_kind": _sorted(by_kind), "by_model": _sorted(by_model),
+            "by_service": _sorted(by_service), "by_call": _sorted(by_call), "top": top}
+# ── 학습 지시 무효화(개별 끄기) ──────────────────────────────────────────────
+def disabled_directives(team=None) -> set:
+    """관리자가 끈 학습 지시 원문 집합(전역 · reports kind='disabled_directives').
+    다음 학습 반영(컴파일)부터 제외 · 원본 라우트·메모 행은 보존(감사 가능)."""
+    rep = _report_get("disabled_directives", None, {}) or {}
+    return {str((i or {}).get("text") or "").strip()
+            for i in (rep.get("items") or []) if (i or {}).get("text")}
+
+
+def set_directive_disabled(text: str, disabled: bool) -> dict:
+    """지시 1건 끄기/켜기 · 텍스트 정확 일치 키(상한 200건)."""
+    text = (text or "").strip()
+    if not text:
+        return {"ok": False, "error": "지시 원문이 비어 있습니다"}
+    rep = _report_get("disabled_directives", None, {}) or {}
+    items = [i for i in (rep.get("items") or [])
+             if (i or {}).get("text") and i["text"].strip() != text]
+    if disabled:
+        items.append({"text": text, "ts": time.time()})
+    _report_save("disabled_directives", {"items": items[-200:]}, None)
+    return {"ok": True, "disabled": bool(disabled), "disabled_n": len(items)}
+
+
+def routes_overview(team=None) -> dict:
+    """지시 원본 목록(공통+모델 귀속) + 끔 상태 · '지시 원본 관리' 뷰의 원천."""
+    st = get_store()
+    if not st:
+        return {"ok": False, "items": []}
+    dis = disabled_directives()
+    items = []
+    for stage, lst in (st.routes_by_stage(50, team=team) or {}).items():
+        for t in lst:
+            items.append({"stage": stage, "model": "", "text": t, "disabled": t in dis})
+    for m, stages in (st.routes_by_stage_model(50, team=team) or {}).items():
+        for stage, lst in (stages or {}).items():
+            for t in lst:
+                items.append({"stage": stage, "model": m, "text": t, "disabled": t in dis})
+    listed = {i["text"] for i in items}
+    for t in sorted(dis):                          # 원본이 더 안 보여도 끔 목록은 관리 가능하게
+        if t not in listed:
+            items.append({"stage": "", "model": "", "text": t, "disabled": True})
+    return {"ok": True, "items": items, "disabled_n": len(dis)}
+# ── 리드 최종판정(타이브레이크) ──────────────────────────────────────────────
+def final_verdicts(team=None) -> dict:
+    """리드(슈퍼관리자 이상)가 확정한 최종판정 {hash: {verdict, by, ts}} · 의견 갈림 해소.
+    reports kind='final_verdicts'(팀 스코프) · DDL 불필요 · 골든 승격에서 다수결보다 우선."""
+    rep = _report_get("final_verdicts", team, {}) or {}
+    return dict(rep.get("items") or {})
+
+
+def set_final_verdict(hash_, verdict, by="", team=None) -> dict:
+    """최종판정 저장/철회(verdict 빈 값 = 철회). 검수자 개별 의견 행은 건드리지 않는다."""
+    h = (hash_ or "").strip()
+    if not h:
+        return {"ok": False, "error": "hash 누락"}
+    rep = _report_get("final_verdicts", team, {}) or {}
+    items = dict(rep.get("items") or {})
+    if verdict in ("good", "bad"):
+        items[h] = {"verdict": verdict, "by": by or "", "ts": time.time()}
+    else:
+        items.pop(h, None)
+    _report_save("final_verdicts", {"items": items}, team)
+    _agg_bump()
+    return {"ok": True, "final": items.get(h)}
+
+
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
 def quest_active() -> bool:
     """검수 목표(퀘스트) 진행 중 여부: 반영 일시가 미래로 설정돼 있으면 참.
@@ -268,6 +511,14 @@ def quest_active() -> bool:
         return LO.next_batch_time(getattr(cfg, "learn_next_at", "")) > time.time()
     except Exception:
         return False
+
+
+def _pipeline_empty(out: dict) -> bool:
+    """추출 산출이 전량 빈값인지(폴백 체인 트리거): 아이템 메타도 판정도 없다."""
+    im = (out or {}).get("item_meta") or {}
+    qm = (out or {}).get("quality_meta") or {}
+    return not (im.get("summary") or im.get("entities") or im.get("content_category")
+                or qm.get("finalGrade"))
 
 
 def _is_pending_row(r: dict) -> bool:
@@ -363,10 +614,29 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
+    # 폴백 체인: 실호출인데 산출이 전량 빈값이면 예비 모델로 1회씩 재시도(최대 3 · 성공 시 채택)
+    if not llm.mock and _pipeline_empty(out):
+        primary = ((getattr(llm, "model", "") or "").strip()
+                   or (model or "").strip() or (cfg.model or ""))
+        for fm in [str(m).strip() for m in (getattr(cfg, "fallback_models", None) or [])][:3]:
+            if not fm or fm == primary:
+                continue
+            fllm, _route = llm_for_model(fm, mock)
+            if fllm is None or fllm.mock:
+                continue
+            retry = PIPE.extract(content, fllm, legal=cfg.legal_enabled)
+            if not _pipeline_empty(retry):
+                (retry.setdefault("trace", {}))["fallback_from"] = primary or "(기본)"
+                out = retry
+                break
     try:                                         # 초안 버전 = 학습 반영 회차 + 1
         (out.setdefault("trace", {}))["version"] = _batch_seq_cached(team) + 1
     except Exception:
         pass
+    if not llm.mock:                             # 비용 원장: 실호출만 일별×모델×콜 누적(실험 포함)
+        _log_cost_rollup(out.get("trace") or {}, team=team)
+    if not llm.mock:                             # 실패 원장: 실호출의 콜 실패만 누적(트리아지 원천)
+        _log_fail_rollup(out.get("trace") or {}, service=content.get("displayServiceName", ""), team=team)
     if not persist:                              # 실험(미저장): 추출만 하고 results·초안·홀드아웃 미기록
         return {"source": source, "mock": llm.mock, "content": content,
                 "signals": signals, "output": out}
@@ -409,6 +679,9 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
         return {"ok": True, "done": 0, "failed": 0, "model": model, "scope": scope,
                 "msg": "대상이 없습니다" + (" (미실행 콘텐츠 없음)" if scope == "pending" else "")}
     done = failed = 0
+    spent = 0.0
+    budget = float(getattr(Config.load(), "batch_budget_usd", 0.0) or 0.0)   # 0 = 무제한
+    budget_stop = False
     jid = "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
     _job_begin(jid, model or "기본 모델", "일괄 실행", len(targets))
     _INGEST_STATE[jid]["hashes"] = list(targets)     # 작업 클릭 -> 결과 콘텐츠 보기
@@ -420,12 +693,22 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
                 _INGEST_STATE[jid]["failed"] = failed
             else:
                 done += 1
+                spent += float((((res.get("output") or {}).get("trace") or {}).get("cost_usd")) or 0.0)
             _INGEST_STATE[jid]["done"] += 1
+            if budget > 0 and spent >= budget:       # 예산 상한: 도달 시 남은 대상 중단(비용 통제)
+                budget_stop = True
+                break
     except Exception as e:
         _job_end(jid, False, f"{done}건 실행 후 중단 · {str(e)[:80]}")
         raise
-    _job_end(jid, failed == 0, f"{done}건 실행" + (f" · 실패 {failed}" if failed else " 완료"))
-    return {"ok": True, "done": done, "failed": failed, "model": model}
+    if budget_stop:
+        _job_end(jid, False, f"예산 상한 ${budget:g} 도달 · {done}건 실행(${spent:.4f}) 후 중단"
+                             + (f" · 실패 {failed}" if failed else ""))
+    else:
+        _job_end(jid, failed == 0, f"{done}건 실행" + (f" · 실패 {failed}" if failed else " 완료"))
+    return {"ok": True, "done": done, "failed": failed, "model": model,
+            "spent_usd": round(spent, 6), "budget_stop": budget_stop,
+            "skipped": (len(targets) - done - failed) if budget_stop else 0}
 
 
 def rerun_content(content_hash: str, model: str, team=None, row=None) -> dict:
@@ -827,12 +1110,83 @@ def _topics_compute() -> dict:
             out = TP.build_topics(rpath, custom_defs=cfg["custom"], settings=cfg["settings"],
                                   exclusions=cfg["exclusions"], ent_index=_ent_index())
             out["exclusions"] = cfg["exclusions"]
+            try:                                     # 추천 카드 원천: 최근 48시간 언급 급증 엔티티(전역)
+                st = get_store()
+                out["trending"] = (st.ent_trending(hours=48, limit=8, team="")
+                                   if (st and hasattr(st, "ent_trending")) else [])
+            except Exception:
+                out["trending"] = []
             return out
         except Exception as e:
             return {"error": str(e)[:200], "n_contents": len(rows),
                     "single": [], "composite": [], "filter": [], "custom": [],
                     "customDefs": cfg["custom"], "settings": cfg["settings"],
                     "exclusions": cfg["exclusions"], "summary": {}}
+
+
+# ── 토픽 자동 리프레시 + 성과 스냅샷 ────────────────────────────────────────
+_TOPIC_SNAP_CAP = 90                                  # 보관 스냅샷 수(시간별 약 4일 · 추이 원천)
+
+
+def _topic_rows_brief(data: dict) -> dict:
+    """토픽 데이터 → 스냅샷 요약 {key: {label,type,n}} · 전 체계(엔티티·사건·사용자 정의) 공통 키."""
+    out = {}
+    for p in (data.get("single") or []) + (data.get("composite") or []):
+        k = p.get("cluster_id") or p.get("name") or ""
+        if k:
+            out[k] = {"label": p.get("name") or "", "type": p.get("type") or "",
+                      "n": int(p.get("count") or 0)}
+    for g in (data.get("custom") or []):
+        if g.get("id"):
+            out[g["id"]] = {"label": g.get("name") or "", "type": "custom",
+                            "n": int(g.get("core_count") or 0)}
+    return out
+
+
+def topic_snapshot() -> dict:
+    """토픽 현황 스냅샷 적재(성과 시계열 기초 · reports kind='topic_snapshots' · 토픽은 무팀 뷰).
+    직전 스냅샷 대비 변화(신규·소멸·건수 증감)를 계산해 함께 저장 → /topics 가 배지로 노출."""
+    _agg_bump()                                        # 강제 재계산: 열어둔 화면 낡음(수동 새로고침 의존) 해소
+    brief = _topic_rows_brief(topics_data())
+    rep = _report_get("topic_snapshots", None, {}) or {}
+    entries = rep.get("entries") or []
+    prev = ((entries[-1] or {}).get("topics") or {}) if entries else {}
+    changed = []
+    for k, v in brief.items():
+        pn = int((prev.get(k) or {}).get("n") or 0)
+        if v["n"] != pn:
+            changed.append({"id": k, "label": v["label"], "type": v["type"],
+                            "from": pn, "to": v["n"]})
+    gone = [{"id": k, "label": (v or {}).get("label") or ""}
+            for k, v in prev.items() if k not in brief]
+    delta = {"ts": time.time(), "changed": changed[:100], "gone": gone[:50],
+             "new_n": sum(1 for c in changed if not c["from"]),
+             "changed_n": len(changed), "gone_n": len(gone)}
+    entries.append({"ts": delta["ts"], "topics": brief})
+    _report_save("topic_snapshots", {"entries": entries[-_TOPIC_SNAP_CAP:],
+                                     "last_delta": delta}, None)
+    return delta
+
+
+_topic_sched_started = False
+
+
+def start_topic_scheduler(interval_min: int = 60):
+    """토픽 자동 리프레시(기본 1시간): 재계산 + 스냅샷 적재. 서버당 1회 · 데몬 스레드."""
+    global _topic_sched_started
+    if _topic_sched_started:
+        return
+    _topic_sched_started = True
+
+    def _loop():
+        while True:
+            try:
+                time.sleep(max(300, int(interval_min) * 60))
+                topic_snapshot()
+            except Exception as e:
+                print(f"  [warn] 토픽 스냅샷 실패: {e}")
+
+    threading.Thread(target=_loop, daemon=True).start()
 
 
 def _ent_index() -> dict:
@@ -950,6 +1304,57 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     return sug, route
 
 
+def _def_signature(d: dict) -> str:
+    """\ud1a0\ud53d \uc815\uc758 \u2192 \ube44\uad50\uc6a9 \uc11c\uba85 \ud14d\uc2a4\ud2b8(\uc774\ub984\u00b7\uc124\uba85\u00b7\uc870\uac74\uac12 \uc804\ubd80)."""
+    parts = [d.get("name") or "", d.get("prompt") or ""]
+    for k in ("cats", "intents", "keywords"):
+        parts.extend(d.get(k) or [])
+        parts.extend((d.get("req") or {}).get(k) or [])
+    return " ".join(str(p) for p in parts if p).strip()
+
+
+def _sig_tokens(s: str) -> set:
+    return {t for t in re.split(r"[^0-9A-Za-z\uac00-\ud7a3]+", (s or "").lower()) if len(t) >= 2}
+
+
+def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list:
+    """\uc800\uc7a5\ud558\ub824\ub294 \uc815\uc758\uc640 \ube44\uc2b7\ud55c \uae30\uc874 \uc0ac\uc6a9\uc790 \ud1a0\ud53d(\uc911\ubcf5 \uacbd\uace0 \ud6c4\ubcf4 \u00b7 \uc0c1\uc704 3).
+    \uc784\ubca0\ub529(\ud0a4 \uc788\uc73c\uba74 \u00b7 embed.py \uce90\uc2dc \uc7ac\uc0ac\uc6a9) \uc6b0\uc120, \ubb34\ud0a4\uba74 \ud1a0\ud070 \uc790\uce74\ub4dc(\uc784\uacc4 0.5) \ud3f4\ubc31.
+    \uc2e4\ud328\ub294 \uc870\uc6a9\ud788 \ube48 \ubaa9\ub85d \u2014 \uc800\uc7a5\uc744 \ub9c9\uc9c0 \uc54a\ub294\ub2e4(\uacbd\uace0 \uc804\uc6a9)."""
+    sig = _def_signature(new_def)
+    others = [c for c in (custom or []) if c.get("id") != new_def.get("id")]
+    if not sig or not others:
+        return []
+    out = []
+    try:
+        from .embed import EmbeddingClient, cosine
+        emb = EmbeddingClient(cache_path=Config.load().emb_cache_path)
+        if not emb.mock:                            # mock(\ud734\ub9ac\uc2a4\ud2f1) \uc784\ubca0\ub529\uc73c\ub85c\ub294 \uc720\uc0ac\ub3c4 \ud310\ub2e8 \uae08\uc9c0
+            qv = emb.embed(sig, is_query=True)
+            for c in others:
+                s = cosine(qv, emb.embed(_def_signature(c), is_query=False))
+                if s >= threshold:
+                    out.append({"id": c.get("id"), "name": c.get("name") or "",
+                                "score": round(s, 3), "via": "embedding"})
+            out.sort(key=lambda x: -x["score"])
+            return out[:3]
+    except Exception:
+        pass
+    qt = _sig_tokens(sig)
+    if not qt:
+        return []
+    for c in others:
+        ct = _sig_tokens(_def_signature(c))
+        if not ct:
+            continue
+        j = len(qt & ct) / len(qt | ct)
+        if j >= 0.5:
+            out.append({"id": c.get("id"), "name": c.get("name") or "",
+                        "score": round(j, 3), "via": "token"})
+    out.sort(key=lambda x: -x["score"])
+    return out[:3]
+
+
 def topic_studio_action(data: dict, mock: bool = False) -> dict:
     """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd/\uc870\ud68c: save\u00b7delete\u00b7settings\u00b7preview\u00b7suggest."""
     from . import topic as TP
@@ -1000,12 +1405,16 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
             # def 누락(키 오타 포함)이 조용히 '(무제 토픽)' 을 만드는 것 방지 — 명시 에러로 반환
             return {"ok": False, "error": "토픽 정의(def)가 필요합니다"}
         d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
+        dups = similar_topics(d, custom)             # 저장 전 기존 정의와 비교(경고 전용 · 저장은 진행)
         idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
         if idx >= 0:
             custom[idx] = d
         else:
             custom.append(d)
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
+        out = dict(topics_data())
+        out["similar"] = dups
+        return out
     elif action == "delete":
         cid = (data.get("id") or "").strip()
         custom = [c for c in custom if c.get("id") != cid]
@@ -1098,7 +1507,7 @@ def media_s5ab(text: str, models: list, *, caption: str = "") -> dict:
 
 
 def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
-                 description: str = "", model: str = "") -> dict:
+                 description: str = "", model: str = "", subtitles: str = "") -> dict:
     """T4 \ub124\uc774\ud2f0\ube0c \ube44\ub514\uc624 \uc2e4\ud5d8(\uc2e4\ud5d8\uc2e4 \u00b7 \ubbf8\uc800\uc7a5). \uc601\uc0c1 \ud1b5\uc9dc \u2192 \ub77c\uc6b0\ud130 \uc704\uc784 \ud2b8\ub799 \u2192
     S4 \ubcd1\ud569 \u2192 \ud569\uc131 Content \u2192 \uae30\uc874 \ucd94\ucd9c(S5) \u2192 ItemMeta. results \uc5d0 \uc800\uc7a5\ud558\uc9c0 \uc54a\ub294\ub2e4.
 
@@ -1107,10 +1516,19 @@ def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
     from . import mediaext as MX
     cfg = Config.load()
     mock = Handler.server_mock
-    service = cfg.vision_provider if MX.is_router(cfg.vision_provider) else "bizrouter"
-    vmodel = cfg.vision_model or model
-    nv = MX.native_video_track(content_bytes, mime, vmodel, service, mock=mock)
-    merged = MX.merge_tracks(audio=nv.get("audio"), visual=nv.get("visual"))
+    subs = MX.parse_subtitles(subtitles) if (subtitles or "").strip() else {}
+    if subs.get("cue_count"):
+        # 자막 우선(T1 · 모델 0건): 발화 원고가 이미 있으니 영상 모델 호출을 건너뛴다(비용 0).
+        # 설계안 명시("자막 보유율 실측이 비용 계획의 기준점")의 라우팅 실현 · 응답 shape 는 유지.
+        nv = {"skipped": True, "skip_reason": "자막 보유 · 영상 모델 호출 생략(비용 0)",
+              "audio": {"transcript": "", "has_speech": False},
+              "visual": {"description": "", "on_screen_text": "", "entities": []}}
+        merged = MX.merge_tracks(subtitles=subs)
+    else:
+        service = cfg.vision_provider if MX.is_router(cfg.vision_provider) else "bizrouter"
+        vmodel = cfg.vision_model or model
+        nv = MX.native_video_track(content_bytes, mime, vmodel, service, mock=mock)
+        merged = MX.merge_tracks(audio=nv.get("audio"), visual=nv.get("visual"))
     content = MX.build_content(merged, caption=caption, description=description)
     # S5 = \uae30\uc874 \ucd94\ucd9c \uc7ac\uc0ac\uc6a9(imagext \ub3d9\uc77c \uc124\uacc4) \u00b7 persist=False \ub85c \ubbf8\uc800\uc7a5
     res = run_pipeline({"displayServiceName": content["displayServiceName"],
@@ -1194,6 +1612,34 @@ def drill_contents(kind: str, value: str, team=None, reviewer: str = "") -> dict
     return {"ok": True, "kind": kind, "value": value, "items": _attach_fb(out, team, reviewer), "n": len(out)}
 
 
+def topic_personas(entities: list, team=None) -> list:
+    """엔티티 목록 → 타겟 페르소나 추천(상위 2 · 점유율). 엔티티×페르소나 친화도 행렬
+    (usermeta · '타겟팅 실계산 근거'로 이미 산출)을 소비 측으로 개통 — 데이터 없으면 빈 목록."""
+    try:
+        um = usermeta_data(team=team) or {}
+        ep = (um.get("aggregate") or {}).get("entity_persona") or {}
+    except Exception:
+        return []
+    pnames = ep.get("personas") or []
+    weights = {r[0]: r[2] for r in (ep.get("rows") or [])
+               if isinstance(r, (list, tuple)) and len(r) >= 3}
+    if not (pnames and weights and entities):
+        return []
+    totals = [0.0] * len(pnames)
+    hit = False
+    for e in entities:
+        w = weights.get(e)
+        if w:
+            hit = True
+            for i, v in enumerate(w[:len(pnames)]):
+                totals[i] += float(v or 0)
+    s = sum(totals)
+    if not hit or s <= 0:
+        return []
+    ranked = sorted(zip(pnames, totals), key=lambda x: -x[1])
+    return [{"persona": p, "share": round(v / s, 3)} for p, v in ranked[:2] if v > 0]
+
+
 def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape.
     ⚠️ rows 는 topics_data() 의 content_ids 인덱스와 정합해야 해서 무필터 유지 · 피드백 부착만
@@ -1226,8 +1672,14 @@ def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     ids = cluster.get("content_ids") or []
     out = _attach_fb([_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)], team, reviewer)
     name = cluster.get("name") or cluster.get("label") or cluster_id
+    ents = {}                                  # 타겟 페르소나: 이 토픽 콘텐츠의 빈발 엔티티로 추정
+    for i in ids[:100]:
+        if 0 <= i < len(rows):
+            for e in ((rows[i].get("item_meta") or {}).get("entities") or []):
+                ents[e] = ents.get(e, 0) + 1
+    top_ents = [e for e, _n in sorted(ents.items(), key=lambda x: -x[1])[:8]]
     return {"ok": True, "kind": "topic", "value": name, "items": out, "n": len(out),
-            "topic_id": topic_id}
+            "topic_id": topic_id, "personas": topic_personas(top_ents, team=team)}
 
 
 def _detail_row(r: dict) -> dict:
@@ -2502,11 +2954,33 @@ def _row_key(ref: dict) -> str:
                          "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")})
 
 
+def _lack_classes(team=None) -> set:
+    """골든 보유가 부족한(클래스당 8건 미만 · SetFit 기준) Tier1 집합.
+    능동학습 라벨 예산 배분의 원천 — 이 분류의 검수가 정답셋 커버리지에 더 기여한다."""
+    def _calc():
+        st = get_store()
+        if not (st and hasattr(st, "get_golden")):
+            return set()
+        from . import dictionaries as D
+        per = {}
+        try:
+            for g in st.get_golden(team) or []:
+                t1s = {str(c).split("/")[0].strip()
+                       for c in ((g.get("expected") or {}).get("content_category") or []) if c}
+                for t1 in t1s:
+                    per[t1] = per.get(t1, 0) + 1
+        except Exception:
+            return set()
+        return {t1 for t1 in D.IAB_TIER1 if per.get(t1, 0) < 8}
+    return _agg_cached(("lackcls", team), _calc)
+
+
 def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
     """검수 대상 콘텐츠: 판정 결과 전체를 한 표로(모델·버전·필터 · 빠른 검수).
     검수 대기(YELLOW)·불일치도 포함되며, 검수자 식별 시 골드 문항을 섞는다."""
     rows = results_rows(team=team)
     st = get_store()
+    lack = _lack_classes(team)                     # 부족 분류(정답셋 커버리지) 배지 원천
     try:
         fmap = st.feedback_map(team=team) if st else {}
     except Exception:
@@ -2519,6 +2993,10 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         asg = st.assignees(team=team) if (st and hasattr(st, "assignees")) else {}
     except Exception:
         asg = {}
+    try:                                           # 리드 최종판정(의견 갈림 해소 배지)
+        finals = final_verdicts(team)
+    except Exception:
+        finals = {}
     out = []
     for r in reversed(rows[-int(limit):]):         # 최근순
         ref = r.get("content_ref") or {}
@@ -2544,12 +3022,16 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "version": int(tr.get("version") or 1),
                     "review": qm.get("review", "") or "",
                     "split": bool(fb.get("good") and fb.get("bad")),
+                    "final": (finals.get(ch) or {}).get("verdict", ""),
+                    "class_gap": bool(lack and {str(c).split("/")[0].strip()
+                                                for c in (im.get("content_category") or [])} & lack),
                     "fb": _fb_public(fb, reviewer),
                     "assignees": (asg.get(ch) or {}).get("reviewers", []),
                     "min_reviewers": (asg.get(ch) or {}).get("min", 0),
                     "item_meta": im, "quality_meta": qm})
-    # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트
-    if reviewer:
+    # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트.
+    # 검수할 실제 콘텐츠가 있을 때만 섞는다 — 콘텐츠 전체 삭제 후 골드만 홀로 남는 오인 방지.
+    if reviewer and out:
         gold_items = _inject_gold([], reviewer, team)
         for g in gold_items:
             out.insert(0, {"hash": g["hash"], "service": g.get("service", ""), "title": g.get("title", ""),
@@ -2711,7 +3193,8 @@ def review_queue(data: dict) -> dict:
     rv = (data.get("reviewer") or "").strip()
     items = st.review_queue(limit=limit, only_unreviewed=bool(only_un), team=data.get("team"),
                             reviewer=rv or None)                # 배정 콘텐츠 배타 노출
-    items = _inject_gold(items, rv, data.get("team"))
+    if items:                                                   # 실제 큐가 있을 때만 골드 삽입(빈 큐에 골드만 뜨는 것 방지)
+        items = _inject_gold(items, rv, data.get("team"))
     return {"ok": True, "items": items, "n": len(items)}
 
 
@@ -2809,10 +3292,18 @@ def broadcast(event: dict, team=None):
             pass
 
 
-def _candidate_models(cfg) -> list:
-    """프롬프트 스튜디오 모델 선택지: 설정된 모델 + 저장된 모델 키 + 흔한 기본값(오프라인 대비)."""
+def _candidate_models(cfg, team=None) -> list:
+    """프롬프트 스튜디오·모델 적용 선택지: 실제 초안 만든 모델(target_models) + 설정 모델 +
+    저장된 모델 키 + 흔한 기본값(오프라인 대비)."""
+    tm = []
+    try:                                          # 실제 실행 이력의 모델 우선(설정에 없어도 노출)
+        st = get_store()
+        if st and hasattr(st, "target_models"):
+            tm = st.target_models(team) or []
+    except Exception:
+        tm = []
     seen, out = set(), []
-    pool = [cfg.text_model, cfg.vision_model,
+    pool = [*tm, cfg.text_model, cfg.vision_model,
             *list((cfg.stage_models or {}).values()),
             *list((cfg.model_prompts or {}).keys())]
     for m in pool + ["solar-pro2", "gpt-5.4", "claude-opus-4-8", "gemini-2.5-pro"]:
@@ -2871,7 +3362,7 @@ def _unmask_ingest_sources(new, old):
     return out
 
 
-def config_status() -> dict:
+def config_status(team=None) -> dict:
     cfg = Config.load()
     base = (cfg.chat_url or "").rsplit("/chat/completions", 1)[0]
     return {
@@ -2886,9 +3377,12 @@ def config_status() -> dict:
         "stagePromptsMeta": dict(cfg.stage_prompts_meta or {}),
         "stageModels": dict(cfg.stage_models or {}),
         "modelPrompts": dict(cfg.model_prompts or {}),
-        "availableModels": _candidate_models(cfg),
+        "availableModels": _candidate_models(cfg, team),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "learnNextAt": str(getattr(cfg, "learn_next_at", "") or ""),
+        "learnRepeatDays": int(getattr(cfg, "learn_repeat_days", 0) or 0),
+        "fallbackModels": list(getattr(cfg, "fallback_models", None) or []),
+        "batchBudgetUsd": float(getattr(cfg, "batch_budget_usd", 0.0) or 0.0),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
         "metaCallModels": dict(getattr(cfg, "meta_call_models", {}) or {}),
         "familyWrappers": dict(getattr(cfg, "family_wrappers", {}) or {}),
@@ -2970,7 +3464,9 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_wrappers = "family_wrappers" in data and isinstance(data.get("family_wrappers"), dict)
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
-    has_misc = ("golden_min_good" in data) or ("learn_next_at" in data)
+    has_misc = ("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
+    has_misc = (("golden_min_good" in data) or ("learn_next_at" in data)
+                or ("fallback_models" in data) or ("batch_budget_usd" in data))
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
@@ -3046,11 +3542,26 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 cfg.golden_min_good = max(1, min(9, int(data.get("golden_min_good") or 1)))
             except (TypeError, ValueError):
                 pass
+        if "learn_repeat_days" in data:           # 퀘스트 반복 주기(일) · 0=반복 없음 · 상한 31일
+            try:
+                cfg.learn_repeat_days = max(0, min(31, int(data.get("learn_repeat_days") or 0)))
+            except (TypeError, ValueError):
+                pass
+        if "fallback_models" in data:             # 폴백 체인(빈 산출 시 예비 모델 · 최대 3)
+            fl = data.get("fallback_models")
+            if isinstance(fl, list):
+                cfg.fallback_models = [str(m).strip() for m in fl if str(m).strip()][:3]
+        if "batch_budget_usd" in data:            # 일괄 실행 비용 상한($ · 0=무제한 · 상한 1000)
+            try:
+                cfg.batch_budget_usd = max(0.0, min(1000.0, float(data.get("batch_budget_usd") or 0)))
+            except (TypeError, ValueError):
+                pass
         if "learn_next_at" in data:               # 검수 목표(퀘스트) 일시 · 빈 값 = 목표 해제(삭제)
             v = str(data.get("learn_next_at") or "").strip()[:16]
             if not v:
                 cfg.learn_next_at = ""
                 cfg.learn_team = ""                # 퀘스트 해제 시 팀 태그도 비움
+                cfg.learn_repeat_days = 0          # 반복 시리즈도 함께 종료
                 _agg_bump()                        # 홈·사이드바 퀘스트 카드 즉시 소거
             else:
                 try:
@@ -3074,7 +3585,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             pass
         _agg_bump()                               # 설정 파생 캐시 무효화(아레나 퀘스트 시한 등 즉시 반영)
     sync_prompt()
-    return config_status()
+    return config_status(team)
 
 
 def list_models() -> dict:
@@ -3278,7 +3789,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(build_results_csv(team=self._req_team()))
         elif self.path.startswith("/config"):
-            cs = config_status()
+            cs = config_status(self._req_team())
             # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
             # 로그인 화면·배포 검증(curl /config: backend·configured)이 쓰는 최소 필드만 공개.
             if _supa() and not self._bearer_uid():
@@ -3312,7 +3823,14 @@ class Handler(BaseHTTPRequestHandler):
                                        reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/topics"):
-            self._send(200, json.dumps(topics_data(), ensure_ascii=False), _JSON)
+            td = dict(topics_data())
+            try:                                       # 자동 스냅샷 메타(마지막 시각·변화) 동반
+                snap = _report_get("topic_snapshots", None, {}) or {}
+                td["snapshot"] = {"last_ts": ((snap.get("entries") or [{}])[-1] or {}).get("ts"),
+                                  "delta": snap.get("last_delta")}
+            except Exception:
+                td["snapshot"] = None
+            self._send(200, json.dumps(td, ensure_ascii=False), _JSON)
         elif self.path.startswith("/dashboard"):
             self._send(200, json.dumps(dashboard_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/drill"):
@@ -3481,11 +3999,50 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                 return
             self._send(200, json.dumps(learn_data(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/cost-rollup"):       # 비용 롤업(일별×모델×콜 · 관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            from urllib.parse import urlparse, parse_qs
+            try:
+                dq = int((parse_qs(urlparse(self.path).query).get("days") or ["30"])[0])
+            except (TypeError, ValueError):
+                dq = 30
+            self._send(200, json.dumps(cost_rollup_data(self._req_team(), days=dq),
+                                       ensure_ascii=False), _JSON)
+        elif self.path.startswith("/fail-rollup"):       # 실패 트리아지(종류×모델×서비스 · 관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            from urllib.parse import urlparse, parse_qs
+            try:
+                fq = int((parse_qs(urlparse(self.path).query).get("days") or ["30"])[0])
+            except (TypeError, ValueError):
+                fq = 30
+            self._send(200, json.dumps(fail_rollup_data(self._req_team(), days=fq),
+                                       ensure_ascii=False), _JSON)
+        elif self.path.startswith("/routes-raw"):        # 학습 지시 원본 목록 + 끔 상태(관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            self._send(200, json.dumps(routes_overview(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/golden-list"):       # 관리자 골든 브라우저
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                 return
             self._send(200, json.dumps(golden_list(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/activity-daily"):    # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프)
+            from urllib.parse import urlparse, parse_qs
+            try:
+                q = parse_qs(urlparse(self.path).query)
+                days = int((q.get("days") or ["30"])[0])
+            except (TypeError, ValueError):
+                days = 30
+            st = get_store()
+            rows = (st.activity_daily(days=days, team=self._req_team())
+                    if (st and hasattr(st, "activity_daily")) else [])
+            self._send(200, json.dumps({"ok": True, "days": rows}, ensure_ascii=False), _JSON)
+
         elif self.path.startswith("/golden-status"):     # 골든 생성 현황(팀원 공개): 확정·분류필요·불일치
             st = get_store()
             _rep = _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT) or {}
@@ -4007,6 +4564,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not (hashes and st and hasattr(st, "set_assignees_bulk")):
                     self._send(400, json.dumps({"error": "대상 없음 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
                     return
+                if (data.get("mode") or "") == "distribute":   # 균등 분배: 부하 적은 사람부터
+                    if not reviewers:
+                        self._send(400, json.dumps({"error": "분배할 담당자를 선택하세요"}, ensure_ascii=False), _JSON)
+                        return
+                    r = distribute_assignments(st, hashes, reviewers, min_reviewers=minr,
+                                               team=self._req_team())
+                    _agg_bump()
+                    self._send(200, json.dumps({"ok": True, "mode": "distribute", "n": r["n"],
+                                                "per_reviewer": r["per_reviewer"],
+                                                "min_reviewers": r["min_reviewers"]},
+                                               ensure_ascii=False), _JSON)
+                    return
                 n = st.set_assignees_bulk(hashes, reviewers, min_reviewers=minr, team=self._req_team())
                 _agg_bump()
                 self._send(200, json.dumps({"ok": True, "n": n, "reviewers": reviewers,
@@ -4037,6 +4606,33 @@ class Handler(BaseHTTPRequestHandler):
                 cur = (st.assignees(team=self._req_team()) or {}).get(h) or {"reviewers": [], "min": 0}
                 self._send(200, json.dumps({"ok": True, "assignees": cur["reviewers"],
                                             "min_reviewers": cur["min"]}, ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/route-disable"):     # 관리자: 학습 지시 개별 끄기/켜기
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(set_directive_disabled(data.get("text") or "",
+                                                                  bool(data.get("disabled"))),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/final-verdict"):     # 슈퍼관리자: 의견 갈림 최종판정(타이브레이크)
+            try:
+                if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(
+                    set_final_verdict(data.get("hash") or "", (data.get("verdict") or "").strip(),
+                                      by=(data.get("reviewer") or "").strip(), team=self._req_team()),
+                    ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
@@ -4254,7 +4850,8 @@ class Handler(BaseHTTPRequestHandler):
                     res = media_native(f["bytes"], f.get("mime") or "video/mp4",
                                        caption=fields.get("caption", ""),
                                        description=fields.get("description", ""),
-                                       model=fields.get("model", ""))
+                                       model=fields.get("model", ""),
+                                       subtitles=fields.get("subtitles", ""))
                     self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
                 else:
                     data = json.loads(body or b"{}")
@@ -4396,6 +4993,7 @@ def main():
     _jobs_restore()                                    # 실행 이력 복원 · 배포로 끊긴 배치는 중단 표시
     start_ingest_scheduler()                           # 활성 소스 자동 폴링(백그라운드)
     start_learning_scheduler()                         # 매일 04:00 학습 일배치(합의 반영+골든+회귀평가)
+    start_topic_scheduler()                            # 토픽 자동 리프레시 + 성과 스냅샷(1시간)
     keyed = bool(IMG._api_key())
     mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 미설정 · UI에서 설정)")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)

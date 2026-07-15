@@ -89,7 +89,7 @@
       modelsBusy: false, modelsMsgStudio: '',   // 토픽 스튜디오: 모델 목록 새로고침(라우터 포함) 상태
       // 미디어 메타 파이프라인(T1 자막 파싱 실험기)
       mediaSub: { raw: '', fmt: '' }, mediaRes: null, mediaBusy: false, mediaMsg: '',
-      mediaVid: { file: null, caption: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
+      mediaVid: { file: null, caption: '', subs: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
       mediaImg: { files: [], caption: '' }, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
       mediaS5: { text: '', models: [] }, mediaS5Res: null, mediaS5Busy: false, mediaS5Msg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
@@ -152,10 +152,10 @@
       // ── 검수자 일괄 배정(슈퍼관리자 이상) · 리포트 옆 버튼 → ds-dialog 모달 ──
       bulkOpen: false, assignBulkBusy: false,   // 일괄 '배정' 전용 · 일괄 '실행'(bulkBusy)과 분리(플래그 공유 시 상호 오염)
       bulkQ: '', bulkSvc: '', bulkGrade: '', bulkRev: 'todo', bulkAsg: 'unassigned',
-      bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {},
+      bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {}, bulkMode: 'same',
       // 노출 게이트: 로컬은 항상, 운영은 슈퍼관리자·운영관리자(opsadmin)만
       get opsAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isSysAdmin || this.adminData.isSuperAdmin)); },
-      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkOpen = true; this.loadRaw(); },
+      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkOpen = true; this.loadRaw(); },
       // 필터 결과(현재 표와 동일 규칙 + 배정 상태 필터)
       get bulkFiltered() {
         return (((this.rawData || {}).items) || []).filter((r) => {
@@ -194,12 +194,21 @@
         if (!hashes.length || !this.bulkPick.length) return;
         this.assignBulkBusy = true;
         try {
-          const body = JSON.stringify({ hashes, reviewers: this.bulkPick, min_reviewers: this.bulkMin });
+          // JSON.stringify 는 undefined 키를 버린다 → 기존(same) 모드 요청 본문은 이전과 동일 유지
+          const body = JSON.stringify({ hashes, reviewers: this.bulkPick, min_reviewers: this.bulkMin,
+            mode: this.bulkMode === 'distribute' ? 'distribute' : undefined });
           const r = await (await this._afetch('/content-assign-bulk', { method: 'POST', headers: this._authHeaders(), body })).json();
-          if (r && r.ok) { this.bulkOpen = false; this.loadRaw(); }
+          if (r && r.ok) {
+            this.bulkOpen = false; this.loadRaw();
+            if (r.mode === 'distribute') this.liveToast('나눠 배정 완료 · ' + this.bulkPerTxt(r.per_reviewer));
+          }
           else this._err((r && r.error) || '일괄 배정 실패');
         } catch (e) { this._err('일괄 배정 실패'); }
         this.assignBulkBusy = false;
+      },
+      // 분배 결과 요약: {reviewer_id: n} → "이름 n건 · 이름 n건"
+      bulkPerTxt(per) {
+        return Object.entries(per || {}).map(([id, n]) => ((this.assignMembers.find((m) => m.id === id) || {}).name || id) + ' ' + n + '건').join(' · ');
       },
       // 검수 '완료' 판정은 팀 합의(fb.verdict)가 아니라 '내 표(fb.mine)' 기준이어야 한다.
       // (그러지 않으면 타 검수자가 검수한 콘텐츠도 내 목록에서 완료로 보인다 · 2026-07-10)
@@ -283,13 +292,29 @@
         const L = pick(p.l), R = pick(p.r);
         return Object.keys(L).map((k) => ({ k: k, l: L[k], r: R[k], diff: L[k] !== R[k] }));
       },
-      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', fb: Object.assign({}, r.fb) }; },
+      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', final: r.final || '', fb: Object.assign({}, r.fb) }; },
       openRawDetail(r) {                                 // 목록 컨텍스트 보존 -> 상세에서 이전/다음·자동 이동
         const list = this.rawFiltered.slice();
         this.openDetail(this._rawToDetail(r));
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
       },
       detailNav: null,
+      // 목록 키보드 포커스(J/K 이동 대상 행) · 필터가 바뀌면 handler 쪽 클램프로 정합 유지
+      rawFocusIdx: -1,
+      _rawFocusScroll() {
+        try { const el = document.querySelector('[data-rawrow="' + this.rawFocusIdx + '"]'); if (el) el.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+      },
+      // 리드 최종판정(타이브레이크 · 슈퍼관리자 이상): 의견 갈림을 확정하고 골든 승격에 우선 반영
+      async setFinal(c, v) {
+        try {
+          const r = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, verdict: v, reviewer: this.reviewer }) })).json();
+          if (r && r.ok) {
+            c.final = v || '';
+            this._syncFbByHash && this.loadRaw();
+            this.liveToast(v ? ('리드 최종판정 · ' + (v === 'good' ? '정확' : '수정 필요') + ' 확정') : '최종판정을 철회했어요');
+          } else this._err((r && r.error) || '저장 실패');
+        } catch (e) { this._err('저장 실패'); }
+      },
       autoNext: (function () { try { return localStorage.getItem('prismAutoNext') !== '0'; } catch (e) { return true; } })(),
       saveAutoNext() { try { localStorage.setItem('prismAutoNext', this.autoNext ? '1' : '0'); } catch (e) {} },
       // 닉네임 변경(홈 · 내 검수 캐릭터): 이름만 교체 · 팀·캐릭터·검수 이력 유지
@@ -384,8 +409,9 @@
       },
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
       get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
+      rawGapFirst: false,                        // 부족 분류 우선 보기(능동학습: 라벨 예산을 부족 클래스로)
       get rawFiltered() {
-        return (((this.rawData||{}).items)||[]).filter((r) => {
+        const out = (((this.rawData||{}).items)||[]).filter((r) => {
           if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
@@ -394,6 +420,8 @@
           if (this.rawRev === 'done' && !this.myVerdict(r.fb)) return false;
           return true;
         });
+        // 안정 정렬: 부족 분류를 앞으로 올리되 그룹 안에서는 기존(최근순) 유지
+        return this.rawGapFirst ? out.slice().sort((a, b) => (b.class_gap ? 1 : 0) - (a.class_gap ? 1 : 0)) : out;
       },
 
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
@@ -515,6 +543,18 @@
           else if (e.code === 'ArrowLeft') { e.preventDefault(); this.detailGo(-1); }
           else if (e.code === 'Escape') { this.detailOpen = false; }
         });
+        // 검수 목록 단축키: J/K=행 이동 · Enter=상세 열기 (콘텐츠 검수 목록에서 · 상세 닫힘 · 입력 중 무시)
+        window.addEventListener('keydown', (e) => {
+          if (this.detailOpen || this.mod !== 'create' || this.createTab !== 'raw') return;
+          const t = e.target;
+          if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          const list = this.rawFiltered;
+          if (!list.length) return;
+          if (e.code === 'KeyJ') { e.preventDefault(); this.rawFocusIdx = Math.min(list.length - 1, this.rawFocusIdx + 1); this._rawFocusScroll(); }
+          else if (e.code === 'KeyK') { e.preventDefault(); this.rawFocusIdx = Math.max(0, (this.rawFocusIdx < 0 ? 1 : this.rawFocusIdx) - 1); this._rawFocusScroll(); }
+          else if (e.code === 'Enter' && this.rawFocusIdx >= 0 && list[this.rawFocusIdx]) { e.preventDefault(); this.openRawDetail(list[this.rawFocusIdx]); }
+        });
         // 브라우저 뒤로/앞으로 = 메뉴 이동(URL ?m= 동기화)
         window.addEventListener('popstate', (e) => {
           const m = (e.state && e.state.m) || new URLSearchParams(location.search).get('m') || 'home';
@@ -567,7 +607,7 @@
         else if (id === 'arena') this.loadArena();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') this.loadAdmin();
-        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); }
+        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); this.loadFails(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
         else if (id === 'dict') { this.loadDict(); if (this.dictTab === 'entity') this.loadEntdict(); }
         else if (id === 'studio') {
@@ -1149,14 +1189,8 @@
           this._err('팀 관리 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요');
         } finally { this._adminBusy = false; }
       },
-      goldenModel: '',                        // 정답셋 목록 · 유래 모델 필터
-      get goldenModelList() {
-        const its = (this.goldenList && this.goldenList.items) || [];
-        return [...new Set(its.map(g => g.model || ''))].sort();
-      },
-      get filteredGolden() {
-        const its = (this.goldenList && this.goldenList.items) || [];
-        return this.goldenModel === '' ? its : its.filter(g => (g.model || '') === this.goldenModel);
+      get filteredGolden() {                   // 정답셋 목록 · 모델별 분리 없음(정답은 모델 무관 사람 확정값)
+        return (this.goldenList && this.goldenList.items) || [];
       },
       // 프롬프트 스튜디오 · 기준 계약/계열 래퍼/미리보기
       contractCall: 'summary', wrapFam: 'solar', wrapDraft: '', wrapMsg: '',
@@ -1212,6 +1246,18 @@
         try { this.cmpResult = await (await this._afetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: [this.cmpA, this.cmpB], scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
         this.cmpBusy = false;
       },
+      // 비교 결과의 추천 모델을 기본 모델(cfg.model)로 승격 · /config POST(관리자 게이트는 서버가 판정)
+      applyBusy: false,
+      async applyModel(m) {
+        if (!m || this.applyBusy) return;
+        this.applyBusy = true;
+        try {
+          const r = await (await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: m }) })).json();
+          if (r && !r.error) { this.cfgModel = m; this.liveToast('기본 모델 적용 · ' + m + ' · 다음 실행부터 이 모델로 초안을 만듭니다'); }
+          else this._err((r && r.error) || '모델 적용 실패');
+        } catch (e) { this._err('모델 적용 실패'); }
+        this.applyBusy = false;
+      },
       myEvalVote(d) { const r = (d.judge && d.judge.reviewers) || {}; return r[this.reviewer] || ''; },
       evalConsensus(d) {
         const j = d.judge || {}; const mg = (this.goldenResult && this.goldenResult.min_good) || 1;
@@ -1228,6 +1274,41 @@
         } catch (e) { this._err('판정 저장 실패'); }
       },
       ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
+      latTxt(ms) { return ms == null ? '·' : ((Math.round(ms / 100) / 10) + '초'); },   // 지연 표기: ms → 0.1초 단위
+      // 검수 활동 추이(일별 30일): 막대=검수량 · 툴팁에 교정·골드 정답률
+      activityData: null,
+      async loadActivity() {
+        try { const r = await (await this._afetch('/activity-daily?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.activityData = r.days; } catch (e) {}
+      },
+      get actMax() { return Math.max(1, ...((this.activityData || []).map((d) => d.reviews))); },
+      actSum(k, n) { return (this.activityData || []).slice(-n).reduce((s, d) => s + (d[k] || 0), 0); },
+      actTip(d) {
+        const g = d.gold_n ? (' · 골드 정답률 ' + Math.round((d.gold_correct / d.gold_n) * 100) + '% (' + d.gold_n + '문항)') : '';
+        return d.day.slice(5).replace('-', '/') + ' · 검수 ' + d.reviews + '건 · 교정 ' + d.corrections + '건' + g;
+      },
+      // 비용 롤업(일별×모델×콜 · 관리자): 실행 시점 누적 원장(reports cost_rollup)
+      costData: null,
+      async loadCost() {
+        try { const r = await (await this._afetch('/cost-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.costData = r; } catch (e) {}
+      },
+      get costMax() { return Math.max(0.000001, ...(((this.costData || {}).by_day) || []).map((d) => d.cost)); },
+      usdTxt(v) { return v == null ? '·' : ('$' + (Math.round(v * 10000) / 10000)); },
+      // 실패 트리아지(종류×모델×서비스 · 관리자): 실행 시점 누적 원장(reports fail_rollup)
+      failData: null,
+      async loadFails() {
+        try { const r = await (await this._afetch('/fail-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.failData = r; } catch (e) {}
+      },
+      failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 실패', auth: '인증 오류', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
+      // 학습 지시 원본 관리(개별 끄기 · 관리자): 끈 지시는 다음 학습 반영부터 제외
+      routesOpen: false, routesRaw: null,
+      async loadRoutesRaw() { try { const r = await (await this._afetch('/routes-raw', { headers: this._authHeaders() })).json(); if (r && r.ok) this.routesRaw = r; } catch (e) {} },
+      async toggleRoute(r) {
+        try {
+          const res = await (await this._afetch('/route-disable', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ text: r.text, disabled: !r.disabled }) })).json();
+          if (res && res.ok) { r.disabled = !r.disabled; this.liveToast(r.disabled ? '지시를 껐어요 · 다음 학습 반영부터 제외' : '지시를 다시 켰어요'); }
+          else this._err((res && res.error) || '변경 실패');
+        } catch (e) { this._err('변경 실패'); }
+      },
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
       async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.goldenStatus = r; this.loadVerHist(); } } catch (e) {} },
@@ -1300,7 +1381,7 @@
       },
       nextBatchAt: 0,
       // 학습 반영 주기(모델 버전 시한 · 관리자): N일마다 지정 시각에 반영 · 지금 실행 시 주기 재시작
-      learnNextAt: '', learnSchedMsg: '', schedEditing: false,
+      learnNextAt: '', learnSchedMsg: '', schedEditing: false, learnRepeat: 0,
       schedEdit() {                                      // 퀘스트 생성/수정: 미지정이면 내일 04:00 프리필
         if (!this.learnNextAt) {
           const d = new Date(Date.now() + 86400000);
@@ -1311,7 +1392,7 @@
       },
       async saveLearnSched() {                           // 목표 일시 + 확정 최소 인원 통합 저장
         try {
-          const r = await (await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1 }) })).json();
+          const r = await (await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: this.learnNextAt || '', golden_min_good: parseInt(this.goldenMinGood, 10) || 1, learn_repeat_days: parseInt(this.learnRepeat, 10) || 0 }) })).json();
           if ((this.learnNextAt || '') !== (r.learnNextAt || '')) {   // 서버 거부(과거 일시 등)
             this.learnNextAt = r.learnNextAt || '';
             this.learnSchedMsg = '지난 일시는 지정할 수 없어요';
@@ -1328,7 +1409,7 @@
         if (!(await this.dsConfirm('진행 중인 퀘스트를 삭제할까요? 반영 예약이 해제되고 팀 홈의 D-day 카드가 사라집니다 · 검수 의견은 그대로 남습니다', { ok: '삭제', danger: true }))) return;
         try {
           await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ learn_next_at: '' }) });
-          this.learnNextAt = ''; this.nextBatchAt = 0; this.schedEditing = false;
+          this.learnNextAt = ''; this.nextBatchAt = 0; this.schedEditing = false; this.learnRepeat = 0;
           this.learnSchedMsg = '퀘스트를 삭제했습니다';
           this.loadLearnReport();
           this.loadArena();
@@ -1632,6 +1713,13 @@
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); this._ensureStudioModels(); } catch (e) {} this.modBusy = false; },
+      // 자동 리프레시 배지 툴팁: 지난 스냅샷 대비 변화 요약(상위 5개)
+      topicSnapTip() {
+        const s = (this.topicData || {}).snapshot || {}; const d = s.delta || {};
+        if (!d.changed_n && !d.gone_n) return '1시간마다 자동으로 다시 매칭하고 변화를 기록합니다 · 지난 확인에서 변화 없음';
+        const top = (d.changed || []).slice(0, 5).map((c) => c.label + ' ' + c.from + '→' + c.to + '건').join(' · ');
+        return '지난 스냅샷 대비 변화 ' + (d.changed_n || 0) + '건' + (d.new_n ? (' (신규 토픽 ' + d.new_n + ')') : '') + (d.gone_n ? (' · 사라짐 ' + d.gone_n + '개') : '') + (top ? (' — ' + top) : '');
+      },
       async _ensureStudioModels() {                 // 자동 채우기 모델 선택지: 없으면 1회 조회(가벼움 · 실패 무해)
         if ((this.models || []).length) return;
         try { const j = await (await fetch('/models', { headers: this._authHeaders() })).json(); if (j && j.ok && Array.isArray(j.models)) { this.models = j.models; if (!this.cfgModel) this.cfgModel = j.current || ''; } } catch (e) {}
@@ -1657,8 +1745,9 @@
           const fd = new FormData();
           fd.append('file', this.mediaVid.file);
           if (this.mediaVid.caption) fd.append('caption', this.mediaVid.caption);
+          if ((this.mediaVid.subs || '').trim()) fd.append('subtitles', this.mediaVid.subs);   // 자막 우선: 있으면 영상 모델 호출 생략
           const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
-          if (r && r.ok) { this.mediaVidRes = r; this.mediaVidMsg = r.mock ? '완료 · mock(라우터 미연결)' : '완료'; }
+          if (r && r.ok) { this.mediaVidRes = r; this.mediaVidMsg = (r.native && r.native.skipped) ? '완료 · 자막 우선(영상 모델 호출 없음 · 비용 0)' : (r.mock ? '완료 · mock(라우터 미연결)' : '완료'); }
           else { this.mediaVidMsg = (r && r.error) || '처리 실패'; }
         } catch (e) { this.mediaVidMsg = '처리 실패'; }
         this.mediaVidBusy = false;
@@ -1737,6 +1826,20 @@
         return base + '핵심 <b>' + ((core && core.count) || 0) + '건</b>' + (rel ? (' + 관련 묶음 <b>' + rel + '개</b>로 펼쳐집니다') : ' (선택 조건을 더하면 관련 묶음이 생겨요)') + (ngt ? (' · <b>✖ ' + ngt + '</b> 제외') : '');
       },
       studioAddKw() { const k = (this.studio.kwInput || '').trim(); if (k) { const ni = this.studio.neg.keywords.indexOf(k); if (ni >= 0) this.studio.neg.keywords.splice(ni, 1); if (!this.studio.keywords.includes(k)) this.studio.keywords.push(k); } this.studio.kwInput = ''; this.schedulePreview(); },
+      // 추천 카드: 떠오르는 엔티티 → 키워드 추가 · 자동 사건 묶음 → 수동 토픽 폼 프리필
+      suggestKeyword(name) {
+        this.studio.kwInput = name; this.studioAddKw();
+        if (!this.studio.name.trim()) this.studio.name = name + ' 모아보기';
+        this.liveToast('키워드 추가 · ' + name);
+      },
+      promoteCluster(p) {
+        const ents = (p.representative_entities || []).slice(0, 3);
+        this.studio.name = (p.name || ents.join(' · ')) + ' 큐레이션';
+        ents.forEach((e) => { if (!this.studio.keywords.includes(e)) this.studio.keywords.push(e); });
+        if (!this.studio.prompt.trim()) this.studio.prompt = ents.join(', ') + ' 관련 콘텐츠를 모아줘';
+        this.schedulePreview();
+        this.liveToast('사건 묶음을 폼에 채웠어요 · 조건을 다듬고 저장하세요');
+      },
       topKw() { const sel = this.studio.keywords, ng = this.studio.neg.keywords || []; const all = (this.topicData && this.topicData.catalog && this.topicData.catalog.keywords) || []; return all.filter(k => !sel.includes(k.k) && !ng.includes(k.k)).slice(0, 12); },
       // 스텝 진행 상태 · 필터 요약 · 자동선택 표시 · 모델 목록(라우터 포함)
       tStepDone() { const s = this.studio; return (s.name.trim() ? 1 : 0) + (s.prompt.trim() ? 1 : 0) + ((s.cats.length || s.intents.length || s.keywords.length) ? 1 : 0); },
@@ -1825,7 +1928,11 @@
         try {
           const r = await this._studioPost({ action: 'save', def: this.studioDef() });
           if (r && r.error) { this.studioMsg = '오류: ' + r.error; }
-          else { this.topicData = r; this._syncTopicSettings(); this.studioMsg = '저장했습니다'; this.studioReset(); }
+          else {
+            this.topicData = r; this._syncTopicSettings(); this.studioMsg = '저장했습니다'; this.studioReset();
+            const dup = (r.similar || [])[0];        // 중복 의심: 저장은 되고 경고만(합칠지 판단은 사람이)
+            if (dup) this.liveToast('⚠ 비슷한 토픽이 이미 있어요 · 「' + dup.name + '」 (' + Math.round(dup.score * 100) + '% 유사) · 겹치면 하나로 합쳐 주세요');
+          }
         } catch (e) { this.studioMsg = '저장 실패'; } this.studioSaving = false;
       },
       studioEdit(g) {
@@ -1879,7 +1986,9 @@
         out.sort((a, b) => b.ts - a.ts); return out;
       },
       qexN() { const d = this.topicData; return (d && d.n_eligible != null) ? Math.max(0, (d.n_contents || 0) - d.n_eligible) : 0; },
-      async loadDict() { this.modBusy = true; try { this.dictData = await (await this._afetch('/dict')).json(); if (!this.dictGroup) this.dictGroup = (this.dictData.serviceGroups || [])[0] || ''; } catch (e) {} this.modBusy = false; },
+      async loadDict() { this.modBusy = true; try { const r = await this._afetch('/dict'); const d = await r.json(); if (r.ok && d && !d.error && d.serviceGroups) { this.dictData = d; if (!this.dictGroup) this.dictGroup = (d.serviceGroups || [])[0] || ''; } } catch (e) {} this.modBusy = false; },
+      // 성공 응답(사전 본문)일 때만 dictData 반영 · 401 등 오류 본문을 넣으면 dictData.iabMap 등이
+      // undefined 라 Object.keys() 마운트 크래시로 본문 전체가 안 뜬다(초기 토큰 준비 전 /dict 401 레이스·토큰 만료).
       // ── 엔티티 사전(별도 메뉴): 목록·필터·수동 편집(사람 확정)·위키데이터/나무위키 보강 ──
       entData: null, entQ: '', entType: '', entStatus: '', entMsg: '', entAddName: '',
       entEdit: null, entEditAliases: [], entEditContents: [], entEditMsg: '', entAliasInput: '',
@@ -2011,7 +2120,7 @@
       },
       async resetDict() {
         if (!(await this.dsConfirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)', { ok: '초기화', danger: true }))) return;
-        try { const r = await this._afetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); this.dictData = await r.json(); } catch (e) {}
+        try { const r = await this._afetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); const d = await r.json(); if (r.ok && d && !d.error && d.serviceGroups) this.dictData = d; } catch (e) {}
       },
       async loadUser() { this.modBusy = true; try { this.userData = await (await this._afetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
       async uploadUserLog(e) {
@@ -2156,6 +2265,7 @@
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.learnNextAt === 'string') this.learnNextAt = this.cfg.learnNextAt;
+          if (this.cfg.learnRepeatDays != null) this.learnRepeat = this.cfg.learnRepeatDays;
           if (!this.wrapDraft) this.syncWrapDraft();
           if (!this.cmpA && this.availableModels.length) { this.cmpA = this.availableModels[0]; this.cmpB = this.availableModels[1] || ''; }   // A/B 기본 슬롯
           if (Array.isArray(this.cfg.ingestSources)) this.ingestSources = this.cfg.ingestSources.slice();
@@ -2342,8 +2452,8 @@
       },
       exportGolden() {                       // 정답셋 엑셀(CSV) 다운로드
         const its = (this.goldenList && this.goldenList.items) || [];
-        const rows = [['제목', '등급', '카테고리', '유래 모델', '버전', '출처', '교정 필요']];
-        its.forEach((g) => rows.push([g.title || '', g.grade || '', (g.category || []).join(' · '), g.model || '', g.version ? ('v' + g.version) : '', g.source === 'manual' ? '직접' : '검수', g.fix_needed ? 'Y' : '']));
+        const rows = [['제목', '등급', '카테고리', '버전', '출처', '교정 필요']];
+        its.forEach((g) => rows.push([g.title || '', g.grade || '', (g.category || []).join(' · '), g.version ? ('v' + g.version) : '', g.source === 'manual' ? '직접' : '검수', g.fix_needed ? 'Y' : '']));
         this._dl('prism_golden.csv', rows);
       },
       exportUsers() {

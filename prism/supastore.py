@@ -220,6 +220,18 @@ class SupabaseStore:
             d["min"] = max(1, min(len(d["reviewers"]), d["min"]))
         return out
 
+    def assignment_load(self, team=None) -> dict:
+        """검수자별 미완료 배정 부하 {reviewer_id: n} · 균등 분배 배정의 가중 원천.
+        부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(sqlite 와 동일 계약)."""
+        done = {(r.get("content_hash"), r.get("reviewer_id"))
+                for r in self._all_feedback(team) if r.get("verdict") in ("good", "bad")}
+        out = {}
+        for ch, a in (self.assignees(team) or {}).items():
+            for rv in a["reviewers"]:
+                if (ch, rv) not in done:
+                    out[rv] = out.get(rv, 0) + 1
+        return out
+
     def ensure_team(self, uid, mode="create", name=None, code=None):
         """팀 생성/가입 → team_id. join: 초대코드 조회. create: 코드 생성·삽입."""
         if mode == "join":
@@ -486,6 +498,58 @@ class SupabaseStore:
             e["acc"] = round(e["correct"] / e["n"], 4) if e["n"] else 0.0
         return out
 
+    def gold_stats_since(self, since_ts: float, team=None) -> dict:
+        """reviewer → {n, correct, acc} · since_ts(epoch) 이후 응답만(sqlite 와 동일 계약)."""
+        iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(float(since_ts)))
+        out = {}
+        for r in self._gold_rows(team, extra=f"&created_at=gte.{iso}"):
+            e = out.setdefault(r.get("reviewer_id") or "", {"n": 0, "correct": 0})
+            e["n"] += 1
+            e["correct"] += int(bool(r.get("correct")))
+        for e in out.values():
+            e["acc"] = round(e["correct"] / e["n"], 4) if e["n"] else 0.0
+        return out
+
+    def activity_daily(self, days: int = 30, team=None) -> list:
+        """일별 검수 활동(sqlite 와 동일 계약 · 빈 날 포함 연속). 피드백/골드 응답을 로컬 일자로 버킷팅."""
+        import datetime as _dt
+        days = max(1, min(90, int(days or 30)))
+        today = _dt.date.today()
+        start_day = today - _dt.timedelta(days=days - 1)
+        start_ts = time.mktime(start_day.timetuple())
+        buckets = {}
+
+        def _b(ts):
+            d = _dt.date.fromtimestamp(ts).isoformat()
+            return buckets.setdefault(d, {"day": d, "reviews": 0, "corrections": 0,
+                                          "gold_n": 0, "gold_correct": 0})
+
+        for r in self._all_feedback(team):
+            if r.get("verdict") not in ("good", "bad"):
+                continue
+            ts = _epoch(r.get("ts"))
+            if ts < start_ts:
+                continue
+            e = _b(ts)
+            e["reviews"] += 1
+            if r["verdict"] == "bad":
+                e["corrections"] += 1
+        for r in self._gold_rows(team):
+            ts = _epoch(r.get("created_at"))
+            if ts < start_ts:
+                continue
+            e = _b(ts)
+            e["gold_n"] += 1
+            e["gold_correct"] += int(bool(r.get("correct")))
+        out = []
+        d = start_day
+        while d <= today:
+            k = d.isoformat()
+            out.append(buckets.get(k) or {"day": k, "reviews": 0, "corrections": 0,
+                                          "gold_n": 0, "gold_correct": 0})
+            d += _dt.timedelta(days=1)
+        return out
+
     def gold_answered(self, reviewer, team=None) -> set:
         rows = self._gold_rows(team, extra=f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}")
         return {r["content_hash"] for r in rows}
@@ -640,18 +704,20 @@ class SupabaseStore:
         if rows:
             self._req("POST", "feedback_routes", body=rows, prefer="return=minimal")
 
-    def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
-        """공통(모델 미기록) 라우트만 · 모델 귀속 라우트는 routes_by_stage_model 참조."""
+    def routes_by_stage(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
+        """공통(모델 미기록) 라우트만 · 모델 귀속 라우트는 routes_by_stage_model 참조.
+        exclude: 관리자가 끈 지시 원문 집합(다음 컴파일부터 제외 · 원본 행 보존)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback_routes", "select=stage,directive"
                          f"{tq}&or=(model.is.null,model.eq.)"
                          f"&order=created_at.desc&limit={limit_per_stage * 4}")
         out = {}
         seen = set()
+        ex = exclude or set()
         for r in rows:
             st = r.get("stage") if r.get("stage") in ("extract", "analyze", "review", "judge") else "analyze"
             d = (r.get("directive") or "").strip()
-            if not d or (st, d) in seen:
+            if not d or d in ex or (st, d) in seen:
                 continue
             seen.add((st, d))
             lst = out.setdefault(st, [])
@@ -659,17 +725,18 @@ class SupabaseStore:
                 lst.append(d)
         return out
 
-    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None) -> dict:
+    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
         """모델 귀속 라우트: {model: {stage: [directive, …]}} · 모델별 learned 계층의 원천."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback_routes", "select=stage,directive,model"
                          f"{tq}&model=neq.&order=created_at.desc&limit={limit_per_stage * 8}")
         out = {}
         seen = set()
+        ex = exclude or set()
         for r in rows:
             st = r.get("stage") if r.get("stage") in ("extract", "analyze", "review", "judge") else "analyze"
             d, m = (r.get("directive") or "").strip(), (r.get("model") or "").strip()
-            if not d or not m or (m, st, d) in seen:
+            if not d or d in ex or not m or (m, st, d) in seen:
                 continue
             seen.add((m, st, d))
             lst = out.setdefault(m, {}).setdefault(st, [])
@@ -677,15 +744,18 @@ class SupabaseStore:
                 lst.append(d)
         return out
 
-    def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+    def learned_by_stage(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
+        ex = exclude or set()
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
-        for st, items in self.routes_by_stage(limit_per_stage, team=team).items():
+        for st, items in self.routes_by_stage(limit_per_stage, team=team, exclude=ex).items():
             out[st].extend(f"- {t}" for t in items)
         rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "", reverse=True)
         for r in rows:
             if r.get("verdict") != "bad":
                 continue
             text = (r.get("reap_plan") or "").strip() or (r.get("note") or "").strip()
+            if text in ex:
+                continue
             st = r.get("stage") if r.get("stage") in out else "analyze"
             line = f"- {text}"
             if text and len(out[st]) < limit_per_stage and line not in out[st]:
@@ -1039,6 +1109,34 @@ class SupabaseStore:
             if status == "unlisted":
                 rows.sort(key=lambda e: -e["n_contents"])
         return rows
+
+    def ent_trending(self, hours: int = 48, limit: int = 8, team=None) -> list:
+        """언급 급증 엔티티(sqlite 와 동일 계약): 최근 hours시간 vs 그 전 같은 창."""
+        now = time.time()
+        cut1 = now - hours * 3600.0
+        cut0 = now - 2 * hours * 3600.0
+        tq = f"&team=eq.{urllib.parse.quote(team or '')}"
+        rows = self._get("content_entities",
+                         f"select=entity_id,surface,ts&ts=gte.{cut0}{tq}&limit=20000")
+        rec, prev = {}, {}
+        for r in rows:
+            ts = float(r.get("ts") or 0)
+            b = rec if ts >= cut1 else prev
+            e = b.setdefault(r["entity_id"], {"n": 0, "surface": r.get("surface") or r["entity_id"]})
+            e["n"] += 1
+        names = {}
+        if rec:
+            ids = ",".join(urllib.parse.quote(i) for i in sorted(rec))
+            names = {r["entity_id"]: r.get("name")
+                     for r in self._get("entities", f"select=entity_id,name&entity_id=in.({ids})")}
+        out = []
+        for eid, e in rec.items():
+            pv = (prev.get(eid) or {}).get("n", 0)
+            if e["n"] >= 2 and e["n"] > pv:
+                out.append({"id": eid, "name": names.get(eid) or e["surface"],
+                            "recent": e["n"], "prev": pv})
+        out.sort(key=lambda x: (-(x["recent"] - x["prev"]), -x["recent"]))
+        return out[:max(1, int(limit))]
 
     def ent_stats(self) -> dict:
         rows = self._get("entities", "select=type,status,external_ids&limit=20000")

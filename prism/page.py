@@ -900,6 +900,22 @@ PAGE = """<!doctype html>
               <span class="meta tnum" x-show="topicGenTab==='auto'" x-cloak x-text="'엔티티형 '+(topicData.summary&&topicData.summary.single||0)+' · 사건형 '+(topicData.summary&&topicData.summary.composite||0)"></span>
             </div>
             <div class="panel-bd">
+              <!-- 추천: 떠오르는 엔티티 + 자동 사건 묶음 → 클릭으로 폼 프리필(reactive→proactive) -->
+              <div class="tbox" x-show="topicGenTab==='manual' && (((topicData.trending)||[]).length || ((topicData.composite)||[]).length)" style="padding:12px 14px;margin-bottom:14px">
+                <div class="text-xs" style="font-weight:700;margin-bottom:8px">추천 <span class="text-muted" style="font-weight:400">지금 데이터에서 뜨는 것들 · 누르면 아래 폼에 채워집니다</span></div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center" x-show="((topicData.trending)||[]).length">
+                  <span class="text-xs text-muted" style="width:100px">떠오르는 엔티티</span>
+                  <template x-for="t in (topicData.trending||[])" x-bind:key="'tr'+t.id">
+                    <button type="button" class="srcfilter__chip" x-on:click="suggestKeyword(t.name)" x-bind:data-tip="'최근 48시간 ' + t.recent + '건 언급 (그 전 ' + t.prev + '건) · 누르면 키워드로 추가'" data-tip-pos="top" x-text="t.name + ' ↑' + (t.recent - t.prev)"></button>
+                  </template>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px" x-show="((topicData.composite)||[]).length">
+                  <span class="text-xs text-muted" style="width:100px">자동 사건 묶음</span>
+                  <template x-for="p in (topicData.composite||[]).slice(0,5)" x-bind:key="'pc'+p.cluster_id">
+                    <button type="button" class="srcfilter__chip" x-on:click="promoteCluster(p)" x-bind:data-tip="'콘텐츠 ' + p.count + '건 · 누르면 이 사건을 수동 토픽 폼에 채웁니다'" data-tip-pos="top" x-text="p.name + ' (' + p.count + ')'"></button>
+                  </template>
+                </div>
+              </div>
               <div class="tstepper" x-show="topicGenTab==='manual'">
 
                 <!-- STEP 1 · 이름 -->
@@ -1045,6 +1061,7 @@ PAGE = """<!doctype html>
           <!-- 토픽 현황: 수동(스튜디오)+자동(엔티티형·사건형)을 한 양식으로 · 생성 방식 필터 -->
           <div class="panel"><div class="panel-hd"><b>토픽 현황</b>
               <span class="meta tnum" x-text="((topicData.custom||[]).length)+'개 수동 · '+(((topicData.single||[]).length)+((topicData.composite||[]).length))+'개 자동'"></span>
+              <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-show="topicData.snapshot && topicData.snapshot.last_ts" x-bind:data-tip="topicSnapTip()" data-tip-pos="bottom" x-text="'자동 리프레시 · ' + fmtTs(topicData.snapshot && topicData.snapshot.last_ts) + (topicData.snapshot && topicData.snapshot.delta && topicData.snapshot.delta.changed_n ? (' · 변화 ' + topicData.snapshot.delta.changed_n + '건') : ' · 변화 없음')"></span>
               <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='all'?'sel':''" x-on:click="topicView='all'">전체</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='manual'?'sel':''" x-on:click="topicView='manual'">수동 생성</button>
@@ -1459,15 +1476,19 @@ PAGE = """<!doctype html>
               </div>
               <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaNative()" x-bind:disabled="mediaVidBusy||!mediaVid.file">실행</button>
             </div>
+            <div><label class="lbl">자막 원문 (선택 · SRT/VTT)</label>
+              <textarea class="field" rows="3" x-model="mediaVid.subs" placeholder="자막을 붙여넣으면 영상 모델을 부르지 않고 자막으로 원고를 만듭니다 (비용 0)"></textarea>
+            </div>
             <div x-show="mediaVidMsg" class="text-xs text-muted" x-text="mediaVidMsg"></div>
             <div x-show="mediaVidRes" class="space-y-3">
               <div x-show="mediaVidRes && mediaVidRes.mock"><span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock · 라우터 미연결(키 없음)</span></div>
+              <div x-show="mediaVidRes && mediaVidRes.native && mediaVidRes.native.skipped"><span class="ds-badge ds-badge--success" style="cursor:help" data-tip="자막이 있어 발화 원고를 자막에서 얻었습니다 · 영상 모델 호출이 없어 비용이 들지 않아요" data-tip-pos="top"><span class="ds-badge__dot"></span>자막 우선 · 영상 모델 호출 생략</span></div>
               <div><label class="lbl">발화 전사 (오디오 트랙)</label>
                 <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? (mediaVidRes.native.audio.transcript || '(발화 없음)') : ''"></pre></div>
               <div><label class="lbl">비주얼 묘사</label>
                 <div class="text-sm text-body" x-text="mediaVidRes ? mediaVidRes.native.visual.description : ''"></div>
                 <div class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.native.visual.on_screen_text" x-text="'[화면 텍스트] ' + (mediaVidRes ? mediaVidRes.native.visual.on_screen_text : '')"></div></div>
-              <div><label class="lbl">통합 원고 (S4 병합)</label>
+              <div><label class="lbl">통합 원고 (S4 병합) <span class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.merged.spoken_source" x-text="'· 발화 출처: ' + (mediaVidRes && mediaVidRes.merged.spoken_source === 'subtitle' ? '자막(모델 0건)' : '오디오 전사')"></span></label>
                 <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? mediaVidRes.merged.transcript : ''"></pre></div>
               <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타 (S5 · 기존 추출 재사용)</b><span class="meta">실험 · 미저장</span></div>
                 <div class="panel-bd space-y-2">
@@ -1664,7 +1685,7 @@ PAGE = """<!doctype html>
               <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
                 <div>
                   <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">항목</th>
-                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : 'background:var(--ds-violet,#1e84ff)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span></th></template>
+                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : 'background:var(--ds-violet,#1e84ff)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span> <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="m.model===cmpResult.cheapest_passing" x-bind:data-tip="'등급 일치율 ' + pctTxt(cmpResult.eval_gate) + ' 이상 합격 모델 중 비용이 가장 낮아요'" data-tip-pos="top">💰 합격 최저 비용</span></th></template>
                   </tr></thead><tbody>
                     <tr><td class="text-ink">호출</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cr'+mi"><td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-bind:data-tip="m.real ? '실제 API 호출 결과' : '모의 응답 · API 키를 설정하면 실호출됩니다'" data-tip-pos="top" style="cursor:help" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td></template></tr>
                     <tr><td class="text-ink">등급 일치율 <span class="text-xs text-muted">(신뢰구간)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cg'+mi"><td>
@@ -1676,8 +1697,14 @@ PAGE = """<!doctype html>
                     <tr><td class="text-ink">사유 일치</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cj'+mi"><td><b class="tnum" x-text="pctTxt(m.reason_jaccard)"></b> <span class="abwin" x-show="cmpWin('reason_jaccard', mi)">▲</span></td></template></tr>
                     <tr><td class="text-ink">빈 결과</td><template x-for="(m,mi) in cmpCols" x-bind:key="'ce'+mi"><td class="tnum" x-text="pctTxt(m.empty_rate)"></td></template></tr>
                     <tr><td class="text-ink">비용($)</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cc'+mi"><td class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></td></template></tr>
+                    <tr><td class="text-ink">응답 속도 <span class="text-xs text-muted">(보통 · 느릴 때)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cl'+mi"><td class="tnum" style="cursor:help" data-tip="콘텐츠 1건 추출에 걸린 시간 · 보통=중간값(p50) · 느릴 때=상위 5% 경계(p95)" data-tip-pos="top" x-text="latTxt(m.latency_p50_ms) + ' · ' + latTxt(m.latency_p95_ms)"></td></template></tr>
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
+                  <!-- 원클릭 승격: 합격 최저 비용 모델 → 기본 모델(다음 실행 초안 생성 모델) -->
+                  <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap" x-show="assignAdmin && cmpResult.cheapest_passing">
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="applyBusy || cfgModel===cmpResult.cheapest_passing" x-on:click="applyModel(cmpResult.cheapest_passing)" x-text="cfgModel===cmpResult.cheapest_passing ? '이미 기본 모델입니다 · ' + cmpResult.cheapest_passing : (applyBusy ? '적용 중…' : '기본 모델로 적용 · ' + cmpResult.cheapest_passing)"></button>
+                    <span class="text-xs text-muted">합격 기준 = 등급 일치율 <span class="tnum" x-text="pctTxt(cmpResult.eval_gate)"></span> 이상 · 그중 비용이 가장 낮은 모델을 추천합니다</span>
+                  </div>
                   <div class="text-xs text-muted" style="margin-top:4px">신뢰구간이 겹치면 우열 판단 보류 · 정답셋이 쌓일수록 오차가 줄어듭니다</div>
                 </div>
               </template>
@@ -1687,7 +1714,7 @@ PAGE = """<!doctype html>
 
       <!-- ═══ 모듈: 정답셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
       <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport()">현황 · 학습 반영</button>
+        <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport(); loadActivity()">현황 · 학습 반영</button>
         <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
         <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
       </div></div>
@@ -1728,6 +1755,76 @@ PAGE = """<!doctype html>
               <div x-show="!goldenStatus" class="text-xs text-muted">검수가 쌓이고 학습 반영이 돌면 현황이 표시됩니다(아래 검수 목표 카드의 ⚡ 즉시 반영으로 바로 반영 가능)</div>
             </div>
           </section>
+          <!-- 검수 활동 추이: 일별 검수량 막대(30일) · 툴팁에 교정·골드 정답률 -->
+          <section class="panel" data-fn x-init="loadActivity()"><div class="panel-hd"><b>검수 활동 추이</b><span class="meta">최근 30일 · 막대 = 하루 검수 건수 · 막대에 올리면 교정·골드 정답률</span>
+            <span class="ds-badge ds-badge--neutral tnum ml-auto" x-show="activityData" x-text="'7일 ' + actSum('reviews',7) + '건 · 30일 ' + actSum('reviews',30) + '건'"></span>
+          </div>
+            <div class="panel-bd">
+              <div style="display:flex;align-items:flex-end;gap:2px;height:96px" x-show="activityData && activityData.length">
+                <template x-for="d in (activityData||[])" x-bind:key="d.day">
+                  <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:help" x-bind:data-tip="actTip(d)" data-tip-pos="top">
+                    <div x-bind:style="'height:' + Math.max(d.reviews ? 6 : 2, Math.round(d.reviews / actMax * 100)) + '%;background:' + (d.reviews ? 'var(--ds-primary)' : 'var(--ds-hairline)') + ';border-radius:3px 3px 0 0'"></div>
+                  </div>
+                </template>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:6px" x-show="activityData && activityData.length">
+                <span class="text-xs text-muted tnum" x-text="activityData ? activityData[0].day.slice(5).replace('-','/') : ''"></span>
+                <span class="text-xs text-muted tnum" x-text="activityData ? activityData[activityData.length-1].day.slice(5).replace('-','/') : ''"></span>
+              </div>
+              <div class="text-xs text-muted" x-show="!(activityData && activityData.length)">검수가 쌓이면 일별 추이가 표시됩니다</div>
+            </div>
+          </section>
+          <!-- 모델 실행 비용: 일별×모델×콜 원장(실행 시점 누적 · 관리자) -->
+          <section class="panel" data-fn x-init="loadCost()"><div class="panel-hd"><b>모델 실행 비용</b><span class="meta">최근 30일 · 실행할 때마다 쌓이는 원장(실호출만) · 어느 모델·콜이 비용을 쓰는지</span>
+            <span class="ds-badge ds-badge--neutral tnum ml-auto" x-show="costData" x-text="usdTxt((costData && costData.total.cost) || 0) + ' · ' + ((costData && costData.total.n) || 0) + '건'"></span>
+          </div>
+            <div class="panel-bd">
+              <template x-if="costData && costData.total && costData.total.n">
+                <div>
+                  <div style="display:flex;align-items:flex-end;gap:2px;height:72px">
+                    <template x-for="d in (costData.by_day||[])" x-bind:key="'cd'+d.day">
+                      <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:help" x-bind:data-tip="d.day.slice(5).replace('-','/') + ' · ' + usdTxt(d.cost) + ' · 실행 ' + d.n + '건'" data-tip-pos="top">
+                        <div x-bind:style="'height:' + Math.max(d.cost ? 6 : 2, Math.round(d.cost / costMax * 100)) + '%;background:' + (d.cost ? 'var(--ds-violet,#1e84ff)' : 'var(--ds-hairline)') + ';border-radius:3px 3px 0 0'"></div>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="grid grid-cols-2 gap-4" style="margin-top:14px">
+                    <div><div class="subhd" style="margin:0 0 6px">모델별</div>
+                      <table class="ds-table"><thead><tr><th>모델</th><th style="width:90px">비용</th><th style="width:64px">실행</th></tr></thead><tbody>
+                        <template x-for="m in (costData.by_model||[]).slice(0,8)" x-bind:key="'cm'+m.model">
+                          <tr><td class="text-ink" x-text="m.model"></td><td class="tnum" x-text="usdTxt(m.cost)"></td><td class="tnum" x-text="m.n"></td></tr>
+                        </template>
+                      </tbody></table></div>
+                    <div><div class="subhd" style="margin:0 0 6px">콜별 <span class="meta">리드문·엔티티·인텐트·카테고리·품질</span></div>
+                      <table class="ds-table"><thead><tr><th>콜</th><th style="width:90px">비용</th><th style="width:110px">토큰(입·출)</th></tr></thead><tbody>
+                        <template x-for="c in (costData.by_call||[]).slice(0,8)" x-bind:key="'cc'+c.call">
+                          <tr><td class="text-ink" x-text="c.call"></td><td class="tnum" x-text="usdTxt(c.cost)"></td><td class="tnum" x-text="c['in'] + ' · ' + c.out"></td></tr>
+                        </template>
+                      </tbody></table></div>
+                  </div>
+                </div>
+              </template>
+              <div class="text-xs text-muted" x-show="!(costData && costData.total && costData.total.n)">실호출 실행이 생기면 이곳에 비용이 쌓입니다 (mock 실행은 집계하지 않아요)</div>
+          <!-- 실행 실패 진단: 콜 실패를 종류×모델×서비스로 · 라우터 계약 회귀·빈 응답 패턴 조기 발견 -->
+          <section class="panel" data-fn x-init="loadFails()" x-show="failData && failData.total"><div class="panel-hd"><b>실행 실패 진단</b><span class="meta">최근 30일 · 콜 실패를 종류×모델×서비스로 모아 패턴을 보여줍니다</span>
+            <span class="ds-badge ds-badge--error tnum ml-auto" x-show="failData" x-text="'실패 ' + ((failData && failData.total) || 0) + '건'"></span>
+          </div>
+            <div class="panel-bd">
+              <div class="flex flex-wrap gap-1" style="align-items:center;margin-bottom:10px">
+                <span class="text-xs text-muted" style="width:64px">종류</span>
+                <template x-for="k in ((failData&&failData.by_kind)||[])" x-bind:key="'fk'+k.k"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="k.k" data-tip-pos="top" x-text="failKindKr(k.k) + ' ' + k.n"></span></template>
+              </div>
+              <div class="flex flex-wrap gap-1" style="align-items:center;margin-bottom:10px">
+                <span class="text-xs text-muted" style="width:64px">콜</span>
+                <template x-for="k in ((failData&&failData.by_call)||[])" x-bind:key="'fc'+k.k"><span class="ds-badge ds-badge--neutral" x-text="k.k + ' ' + k.n"></span></template>
+              </div>
+              <div class="overflow-auto" style="max-height:220px"><table class="ds-table"><thead><tr><th>종류</th><th>모델</th><th>서비스</th><th style="width:64px">건수</th></tr></thead><tbody>
+                <template x-for="(t, ti) in ((failData&&failData.top)||[])" x-bind:key="'ft'+ti">
+                  <tr><td x-text="failKindKr(t.kind)"></td><td class="text-ink" x-text="t.model"></td><td class="text-muted" x-text="t.service"></td><td class="tnum" x-text="t.n"></td></tr>
+                </template>
+              </tbody></table></div>
+            </div>
+          </section>
           <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->
           <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>검수 목표 / 퀘스트 생성</b><span class="meta">지정한 일시까지 모인 검수 의견이 새 버전 프롬프트에 반영됩니다</span>
             <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚡ 즉시 반영'"></button>
@@ -1742,6 +1839,15 @@ PAGE = """<!doctype html>
                     <template x-for="n in [1,2,3,4,5]" x-bind:key="n"><option x-bind:value="n" x-text="n + '명'" x-bind:selected="parseInt(goldenMinGood,10)===n"></option></template>
                   </select>
                 </span>
+                <span class="selctl" data-tip="반영이 끝나면 같은 시각으로 다음 퀘스트를 자동 생성합니다 · 매번 다시 만들 필요가 없어요" data-tip-pos="top"><span class="selctl__lbl">반복</span>
+                  <select class="field" x-model.number="learnRepeat" x-bind:disabled="!schedEditing">
+                    <option value="0">반복 없음</option>
+                    <option value="1">매일</option>
+                    <option value="7">매주</option>
+                    <option value="14">2주마다</option>
+                  </select>
+                </span>
+                <span class="ds-badge ds-badge--neutral tnum" x-show="nextBatchAt && parseInt(learnRepeat,10)" x-text="'반복 · ' + (parseInt(learnRepeat,10)===1 ? '매일' : parseInt(learnRepeat,10) === 7 ? '매주' : learnRepeat + '일마다')"></span>
                 <span class="ds-badge ds-badge--intent tnum" x-show="nextBatchAt" style="cursor:help" data-tip="홈·사이드바의 팀 퀘스트(vN 마감 D-day)와 같은 일정입니다" data-tip-pos="top" x-text="'퀘스트 진행 중 · ' + fmtTs(nextBatchAt) + ' 반영'"></span>
                 <span class="ds-badge ds-badge--neutral" x-show="!nextBatchAt" style="cursor:help" data-tip="목표 일시를 지정하면 홈·사이드바에 팀 퀘스트(D-day)가 생깁니다" data-tip-pos="top">목표 미설정 · 퀘스트를 생성하세요</span>
               </div>
@@ -1815,6 +1921,53 @@ PAGE = """<!doctype html>
                             <template x-for="a in verAmb(stage)" x-bind:key="a"><div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div></template>
                           </div>
                         </div>
+              <!-- 지시 원본 관리: 잘못 들어간 보정 하나만 끄기(전체 재컴파일 불필요 · 원본 보존) -->
+              <div style="margin-top:10px">
+                <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="routesOpen = !routesOpen; if (routesOpen) loadRoutesRaw()" x-text="routesOpen ? '지시 원본 관리 접기' : '지시 원본 관리 · 개별 끄기'"></button>
+                <template x-if="routesOpen">
+                  <div style="margin-top:8px">
+                    <div class="overflow-auto" style="max-height:260px"><table class="ds-table"><thead><tr><th style="width:70px">단계</th><th style="width:140px">모델</th><th>지시</th><th style="width:104px"></th></tr></thead><tbody>
+                      <template x-for="(r, ri) in ((routesRaw&&routesRaw.items)||[])" x-bind:key="'rr'+ri">
+                        <tr x-bind:style="r.disabled ? 'opacity:.55' : ''">
+                          <td><span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[r.stage] || '·'"></span></td>
+                          <td class="text-muted" x-text="r.model || '공통'"></td>
+                          <td class="text-ink" x-text="r.text"></td>
+                          <td><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="toggleRoute(r)" x-text="r.disabled ? '다시 켜기' : '끄기'"></button></td>
+                        </tr>
+                      </template>
+                      <template x-if="!((routesRaw&&routesRaw.items)||[]).length"><tr><td colspan="4" class="text-muted">검수 교정이 쌓이면 지시 원본이 표시됩니다</td></tr></template>
+                    </tbody></table></div>
+                    <div class="text-xs text-muted" style="margin-top:6px">끈 지시는 다음 학습 반영(컴파일)부터 제외됩니다 · 원본 기록은 지워지지 않아요</div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- 버전별 지시 히스토리: 검수 목표(퀘스트)가 끝날 때마다 한 버전으로 반영 · 버전을 눌러 그 버전이 쓴 지시 확인 -->
+              <div class="subhd" style="margin:16px 0 8px" x-show="verHist.length">버전 히스토리 <span class="meta">검수 목표가 끝날 때마다 한 버전으로 반영됩니다 · 버전을 눌러 그 버전이 쓴 지시를 확인하세요</span></div>
+              <div class="verrail" x-show="verHist.length">
+                <template x-for="h in verHist" x-bind:key="h.v">
+                  <button type="button" class="verchip" x-bind:class="verSel===h.v ? 'is-sel' : ''" x-on:click="selectVer(h.v)">
+                    <span class="verchip__v tnum">v<span x-text="h.v"></span><span x-show="h.current" class="verchip__cur">현재</span></span>
+                  </button>
+                </template>
+              </div>
+              <div class="verdetail" x-show="verSel != null" x-cloak>
+                <div class="verstat" x-show="verData">
+                  <span x-show="verData && verData.ts">반영한 날 <b class="text-ink" x-text="fmtTs(verData?verData.ts:0)"></b></span>
+                  <span x-show="verData && verData.grade_accuracy != null">정답 맞힌 비율 <b class="text-ink tnum" x-text="pctTxt(verData?verData.grade_accuracy:null)"></b></span>
+                  <span x-show="verData && verData.improve_delta != null" x-text="'직전 대비 ' + deltaTxt(verData?verData.improve_delta:0)"></span>
+                  <span x-show="verData && verData.golden && verData.golden.confirmed != null">확정 정답 <b class="text-ink tnum" x-text="verData&&verData.golden?verData.golden.confirmed:0"></b>건</span>
+                </div>
+                <div class="meta" style="padding:4px 2px" x-show="!verBusy && !verData && !verSnap">이 버전의 저장된 상세가 없습니다.</div>
+                <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="'v'+stage">
+                  <div class="metarow" x-show="verDir(stage) || verAmb(stage).length">
+                    <span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
+                    <div style="flex:1;min-width:0">
+                      <ul class="metarow__dir" x-show="verDir(stage)">
+                        <template x-for="(s, i) in dirBullets(verDir(stage))" x-bind:key="i"><li x-text="s"></li></template>
+                      </ul>
+                      <template x-for="a in verAmb(stage)" x-bind:key="a">
+                        <div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div>
                       </template>
                       <div class="meta" style="padding:2px 2px" x-show="!verBusy && verSnap && !verHasDir()">이 버전에서 보정된 지시가 없습니다(학습 전 기준선).</div>
                     </div>
@@ -1869,18 +2022,12 @@ PAGE = """<!doctype html>
             <ul class="ds-bullets" style="margin-bottom:10px"><li>정답은 <b>검수 '정확' 합의</b>가 학습 반영 때 누적 승격됩니다.</li><li>평가와 어긋나 <b>오류 의심 · 교정 필요</b> 표시된 항목은 확인 후 제거하세요(정답 오류는 모델 순위를 뒤집습니다).</li></ul>
             <template x-if="goldenList && goldenList.items && goldenList.items.length">
               <div style="margin-top:12px">
-              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-                <span class="selctl__lbl" data-tip="정답이 확정될 당시의 초안 모델 · 정답 자체는 모델과 무관한 사람 확정값" data-tip-pos="top">유래 모델</span>
-                <button type="button" class="srcfilter__chip" x-bind:class="goldenModel==='' ? 'sel' : ''" x-on:click="goldenModel=''">전체</button>
-                <template x-for="m in goldenModelList" x-bind:key="'gm'+m"><button type="button" class="srcfilter__chip" x-bind:class="goldenModel===m ? 'sel' : ''" x-on:click="goldenModel=m" x-text="m || '(모델 미기록)'"></button></template>
-              </div>
-              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:150px">유래 모델</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
+              <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
                 <template x-for="g in filteredGolden" x-bind:key="g.hash">
                   <tr>
                     <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" style="cursor:help" x-show="g.flagged && !g.fix_needed" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span> <span class="ds-badge ds-badge--warning" style="cursor:help" x-show="g.fix_needed" data-tip="평가 판정에서 '모델이 맞음' 합의 · 모델 결과가 맞다고 확정된 정답(제거 후 재등록 또는 검수 재확정 필요)" data-tip-pos="top">교정 필요</span></td>
                     <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
                     <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template></td>
-                    <td class="text-muted" x-text="g.model || '·'"></td>
                     <td class="tnum" x-text="g.version ? ('v' + g.version) : '·'"></td>
                     <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '직접' : '검수'"></span></td>
                     <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
@@ -1961,21 +2108,39 @@ PAGE = """<!doctype html>
             </tbody></table></div>
           </section>
           <section class="panel" data-fn style="margin:0">
-            <div class="panel-hd"><b>검수자 신뢰도</b><span class="meta">합의 일치 + 골드 정확도 + 통계 추정</span></div>
+            <div class="panel-hd"><b>검수자 신뢰도</b><span class="meta">합의 일치 + 골드 정확도 + 통계 추정 + 합의 가중치·추세</span></div>
             <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>검수자</th><th style="cursor:help" data-tip="검수한 콘텐츠 수" data-tip-pos="top">검수</th>
               <th style="cursor:help" data-tip="다수 의견과 같은 판정을 낸 비율" data-tip-pos="top">합의 일치</th>
               <th style="cursor:help" data-tip="정답을 아는 검증 문항의 정확도 · 문항 5개 이상일 때 표시(점수 배율에 반영)" data-tip-pos="top">골드</th>
-              <th style="cursor:help" data-tip="통계 모델(Dawid-Skene 1979)이 추정한 검수자 오류율 · 참고 지표" data-tip-pos="top">EM 오류율</th></tr></thead><tbody>
+              <th style="cursor:help" data-tip="통계 모델(Dawid-Skene 1979)이 추정한 검수자 오류율 · 참고 지표" data-tip-pos="top">EM 오류율</th>
+              <th style="cursor:help" data-tip="정답셋 확정 다수결에서 이 검수자 표의 무게 · 검증 문항 정확도와 통계 추정으로 계산 · 표본 5건 미만은 기본 1.0" data-tip-pos="top">합의 가중치</th>
+              <th style="cursor:help" data-tip="최근 7일 골드 정확도에서 그 전 7일을 뺀 변화 · 양쪽 표본 3건 이상일 때 표시" data-tip-pos="top">골드 추세(7일)</th></tr></thead><tbody>
               <template x-for="r in learnData.reviewers" x-bind:key="r.reviewer">
                 <tr><td class="text-ink" x-text="r.reviewer"></td><td class="tnum" x-text="r.n"></td>
                   <td class="tnum" x-text="r.agree_rate == null ? '·' : pctTxt(r.agree_rate)"></td>
                   <td class="tnum" x-text="r.gold_n >= 5 ? (pctTxt(r.gold_acc) + ' (' + r.gold_n + ')') : ('· (' + (r.gold_n||0) + ')')"></td>
-                  <td class="tnum" x-text="r.ds_error == null ? '·' : pctTxt(r.ds_error)"></td></tr>
+                  <td class="tnum" x-text="r.ds_error == null ? '·' : pctTxt(r.ds_error)"></td>
+                  <td class="tnum" x-text="r.weight == null ? '1.00 (기본)' : r.weight.toFixed(2)"></td>
+                  <td class="tnum" x-bind:style="r.gold_trend == null ? '' : (r.gold_trend >= 0 ? 'color:var(--ds-success,#0a8a4a)' : 'color:var(--ds-error,#d43c2f)')" x-text="r.gold_trend == null ? '·' : ((r.gold_trend >= 0 ? '▲ ' : '▼ ') + pctTxt(Math.abs(r.gold_trend)))"></td></tr>
               </template>
-              <template x-if="!learnData.reviewers.length"><tr><td colspan="5" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
+              <template x-if="!learnData.reviewers.length"><tr><td colspan="7" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
             </tbody></table></div>
           </section>
         </div>
+        </template>
+        <template x-if="learnData && (learnData.guide_ambiguities||[]).length">
+          <section class="panel"><div class="panel-hd"><b>가이드 명확화 필요</b><span class="meta">검수 의견이 서로 충돌해 프롬프트 지시로 합치지 못한 지점 · 정책 가이드를 손보면 해소됩니다</span></div>
+            <div class="panel-bd">
+              <div class="overflow-auto" style="max-height:260px"><table class="ds-table"><thead><tr><th style="width:80px">단계</th><th style="width:150px">모델</th><th>어떤 점에서 의견이 갈리나</th></tr></thead><tbody>
+                <template x-for="(a, ai) in learnData.guide_ambiguities" x-bind:key="'ga'+ai">
+                  <tr><td><span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[a.stage] || a.stage"></span></td>
+                    <td class="text-muted" x-text="a.model || '공통'"></td>
+                    <td class="text-ink" x-text="a.text"></td></tr>
+                </template>
+              </tbody></table></div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.guide_ambiguities_ts" x-text="'최근 학습 반영 기준 · ' + fmtTs(learnData.guide_ambiguities_ts)"></div>
+            </div>
+          </section>
         </template>
         <template x-if="learnData && learnData.dict_gap && (((learnData.dict_gap.intent)||[]).length || ((learnData.dict_gap.category)||[]).length)">
           <section class="panel"><div class="panel-hd"><b>사전 갭</b><span class="meta">모델 산출이 사전과 안 맞아 드롭된 값 · 사전 별칭 추가 또는 프롬프트 보정 후보</span></div>
@@ -2035,23 +2200,26 @@ PAGE = """<!doctype html>
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = <b>검수 상세</b>(판정·교정) · 상세에서 A/S/←→ 단축키와 자동 다음 이동을 쓸 수 있습니다 · JSON 원문은 행 우측 <b>{ }</b>.</li><li x-show="rawModel">현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다.</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = <b>검수 상세</b>(판정·교정) · 목록에서 <b>J/K</b>=행 이동 · <b>Enter</b>=상세 열기 · 상세에서 A/S/←→ 단축키와 자동 다음 이동을 쓸 수 있습니다 · JSON 원문은 행 우측 <b>{ }</b>.</li><li x-show="rawModel">현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다.</li></ul>
             <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
             <div class="filterbar">
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
               <select class="field" style="width:auto" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
               <select class="field" style="width:auto" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
               <select class="field" style="width:auto" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
+              <button type="button" class="srcfilter__chip" x-bind:class="rawGapFirst ? 'sel' : ''" x-on:click="rawGapFirst = !rawGapFirst" data-tip="정답셋이 부족한 분류의 콘텐츠를 앞으로 올립니다 · 이 분류의 검수가 정답셋 채우기에 더 기여해요" data-tip-pos="top">분류 부족 우선</button>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
-              <span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다" data-tip-pos="top">최근순</span>
+              <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="rawGapFirst ? '부족 분류 먼저 · 그 안에서는 최근 실행순' : '정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다'" data-tip-pos="top" x-text="rawGapFirst ? '부족 분류 우선' : '최근순'"></span>
             </div>
             <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th><th style="width:150px" x-show="assignAdmin" data-tip="검수 담당자 배정 · 배정 시 담당자에게만 노출됩니다" data-tip-pos="top">담당</th></tr></thead><tbody>
-              <template x-for="r in rawFiltered" x-bind:key="r.hash">
-                <tr style="cursor:pointer" role="button" tabindex="0" x-bind:class="rawSel && rawSel.hash === r.hash ? 'is-sel' : ''" x-on:click="openRawDetail(r)" x-on:keydown.enter="openRawDetail(r)">
+              <template x-for="(r, ri) in rawFiltered" x-bind:key="r.hash">
+                <tr style="cursor:pointer" role="button" tabindex="0" x-bind:data-rawrow="ri" x-bind:class="(rawSel && rawSel.hash === r.hash ? 'is-sel ' : '') + (rawFocusIdx === ri ? 'is-kfocus' : '')" x-on:click="openRawDetail(r)" x-on:keydown.enter="openRawDetail(r)">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
                   <td class="text-ink"><span x-text="r.title || '(제목 없음)'"></span>
                     <span class="ds-badge ds-badge--yellow" style="cursor:help;margin-left:4px" x-show="r.review==='yellow'" data-tip="AI 확신이 낮아 사람 확인이 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
-                    <span class="ds-badge ds-badge--reason" style="margin-left:4px" x-show="r.split" data-tip="검수자 의견이 갈려 재검토가 필요합니다 · 우선 검수 대상" data-tip-pos="top">재검토 필요</span>
+                    <span class="ds-badge ds-badge--reason" style="margin-left:4px" x-show="r.split && !r.final" data-tip="검수자 의견이 갈려 재검토가 필요합니다 · 우선 검수 대상" data-tip-pos="top">재검토 필요</span>
+                    <span class="ds-badge" style="margin-left:4px;cursor:help" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" data-tip="리드(슈퍼관리자 이상)가 확정한 최종판정 · 정답셋 승격에서 다수결보다 우선" data-tip-pos="top" x-text="r.final==='good' ? '리드 확정 · 정확' : '리드 확정 · 수정'"></span>
+                    <span class="ds-badge ds-badge--intent" style="margin-left:4px;cursor:help" x-show="r.class_gap" data-tip="이 분류는 정답셋이 부족합니다(클래스당 8건 미만) · 이 콘텐츠의 검수가 더 가치 있어요" data-tip-pos="top">분류 부족</span>
                   </td>
                   <td class="text-muted" x-text="r.service"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span x-show="!(r.category||[]).length" class="text-xs text-muted">·</span></td>
@@ -2776,6 +2944,11 @@ PAGE = """<!doctype html>
             <span class="ds-badge ds-badge--status stepcard__badge" x-show="bulkPick.length" x-text="bulkPick.length + '명 선택'"></span>
           </div>
           <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
+          <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) -->
+          <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
+            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 사람들에게 콘텐츠를 나눠 배정합니다 · 밀린 배정이 적은 사람부터 채워요" data-tip-pos="top">균등 분배</button>
+          </div>
           <div style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
             <template x-for="m in assignMembers" x-bind:key="'bpk'+m.id">
               <label class="pickchip" x-bind:class="bulkPick.includes(m.id) ? 'on' : ''">
@@ -2783,9 +2956,9 @@ PAGE = """<!doctype html>
               </label>
             </template>
           </div>
-          <label class="text-xs text-muted" style="display:inline-flex;align-items:center;gap:8px">최소 검수인원
+          <label class="text-xs text-muted" style="display:inline-flex;align-items:center;gap:8px"><span x-text="bulkMode==='distribute' ? '콘텐츠당 담당 인원' : '최소 검수인원'"></span>
             <input type="number" class="field" style="width:72px" min="1" x-bind:max="Math.max(1, bulkPick.length)" x-model.number="bulkMin">
-            <span class="tnum" x-text="'/ 배정 ' + bulkPick.length + '명 · N명 검수 시 통과'"></span></label>
+            <span class="tnum" x-text="bulkMode==='distribute' ? ('/ 선택 ' + bulkPick.length + '명 · 콘텐츠마다 N명씩 나눠 배정') : ('/ 배정 ' + bulkPick.length + '명 · N명 검수 시 통과')"></span></label>
         </div>
 
         <!-- ③ 확인 -->
@@ -2795,9 +2968,10 @@ PAGE = """<!doctype html>
             <span class="stepcard__ttl">확인<span class="stepcard__sub">배정 내용을 확인하고 실행하세요</span></span>
           </div>
           <div class="tbox" style="padding:14px 16px">
-            <div class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + (bulkPick.map(id => (assignMembers.find(m=>m.id===id)||{}).name || id).join(', ') || '(담당자 미선택)') + '에게 배정'"></div>
+            <div class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + (bulkPick.map(id => (assignMembers.find(m=>m.id===id)||{}).name || id).join(', ') || '(담당자 미선택)') + (bulkMode==='distribute' ? '에게 나눠 배정' : '에게 배정')"></div>
             <div class="text-xs text-muted" style="line-height:1.7">
-              <div>· 최소 검수인원 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명</div>
+              <div x-show="bulkMode!=='distribute'">· 최소 검수인원 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명</div>
+              <div x-show="bulkMode==='distribute'">· 콘텐츠마다 담당 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명 · 밀린 배정이 적은 사람부터 고르게 나눕니다</div>
               <div>· 배정 후 <b class="text-ink">담당자에게만</b> 검수 큐에 표시(배타적)</div>
             </div>
             <div class="ds-badge ds-badge--warning" x-show="bulkOverwrite" style="margin-top:10px" x-text="'⚠ 선택 중 ' + bulkOverwrite + '건은 이미 배정돼 있습니다 · 저장 시 덮어씁니다'"></div>
@@ -2815,7 +2989,7 @@ PAGE = """<!doctype html>
   <!-- 대시보드 드릴다운: 분포 항목 → 판정된 콘텐츠 목록 -->
   <div class="ds-dialog-backdrop" x-show="drillOpen" x-cloak x-on:mousedown.self="drillOpen=false" style="z-index:72">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="콘텐츠 목록" style="max-width:620px">
-      <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span></h2>
+      <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="drillData && (drillData.personas||[]).length" data-tip="이 토픽 콘텐츠의 엔티티를 사용자 행동 로그의 페르소나 친화도와 조인한 추정 · 사용자 메타 데이터가 원천" data-tip-pos="bottom" x-text="'타겟 · ' + ((drillData&&drillData.personas)||[]).map(p => p.persona + ' ' + Math.round(p.share*100) + '%').join(' · ')"></span></h2>
       <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
         <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
         <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th><th>검수</th><th x-show="drillData && drillData.kind==='topic' && drillData.topic_id && topicAdmin"></th></tr></thead><tbody>
@@ -3047,6 +3221,14 @@ PAGE = """<!doctype html>
                   <span class="dve__mine-lbl">내 판정</span>
                   <span class="ds-badge" x-bind:class="detail.fb.mine==='good' ? 'ds-badge--success' : (detail.fb.mine==='bad' ? 'ds-badge--error' : 'ds-badge--neutral')" x-text="detail.fb.mine==='good' ? '정확' : (detail.fb.mine==='bad' ? '수정 필요' : '아직 없음')"></span>
                   <span class="text-xs text-muted" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개'"></span>
+                </div>
+                <!-- 리드 최종판정: 의견 갈림을 리드(슈퍼관리자 이상)가 확정 · 골든 승격에서 다수결보다 우선 -->
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px" x-show="opsAdmin && (detail.fb.verdict==='split' || detail.final)" x-cloak>
+                  <span class="text-xs text-muted">리드 최종판정</span>
+                  <span class="ds-badge" x-show="detail.final" x-bind:class="detail.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="detail.final==='good' ? '확정 · 정확' : '확정 · 수정 필요'"></span>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.final!=='good'" x-on:click="setFinal(detail, 'good')" data-tip="이 콘텐츠를 '정확'으로 확정합니다 · 정답셋 승격에서 다수결보다 우선" data-tip-pos="top">정확으로 확정</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.final!=='bad'" x-on:click="setFinal(detail, 'bad')" data-tip="이 콘텐츠를 '수정 필요'로 확정합니다 · 정답셋 승격 금지" data-tip-pos="top">수정 필요로 확정</button>
+                  <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="detail.final" x-on:click="setFinal(detail, '')">철회</button>
                 </div>
                 <div class="tbox" x-show="myVerdict(detail.fb)==='bad' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
                 <div style="display:flex;gap:var(--ds-space-2);margin-top:10px">

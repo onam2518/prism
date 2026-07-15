@@ -304,6 +304,34 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertFalse(LO._run_due_batch(cfg, now=0))
         self.assertNotIn("team", cap)                    # 미실행
 
+    def test_run_due_batch_repeats_when_configured(self):
+        """반복 주기(learn_repeat_days)가 있으면 소진 대신 같은 시각 +N일 미래 회차로 재생성.
+        팀 태그 유지 · 새 진행률 창(quest_meta) 기록 · 밀린 회차는 미래 첫 회차까지 스킵."""
+        import datetime as _dt
+        import time as _t
+        import types
+        from prism import learnops as LO
+        cap = {}
+        cfg = types.SimpleNamespace(learn_next_at="2020-01-06T04:30", learn_team="team-X",
+                                    learn_repeat_days=7,
+                                    save_template=lambda: cap.__setitem__("saved", True))
+        o_batch, o_config, o_sv = LO.learning_batch, LO.Config, LO._SV
+        self.addCleanup(lambda: (setattr(LO, "learning_batch", o_batch),
+                                 setattr(LO, "Config", o_config), setattr(LO, "_SV", o_sv)))
+        LO.learning_batch = lambda team=None, models=None: cap.__setitem__("team", team)
+        LO.Config = types.SimpleNamespace(load=lambda: cfg)
+        LO._SV = types.SimpleNamespace(_report_save=lambda k, p, t=None: cap.__setitem__("qm", (k, p, t)))
+        self.assertTrue(LO._run_due_batch(cfg, now=9_999_999_999))
+        self.assertEqual(cap.get("team"), "team-X")
+        self.assertTrue(cfg.learn_next_at)                       # 소진 대신 재생성
+        nxt = _dt.datetime.strptime(cfg.learn_next_at, "%Y-%m-%dT%H:%M")
+        self.assertGreater(nxt.timestamp(), _t.time())           # 미래 회차
+        self.assertEqual((nxt.hour, nxt.minute), (4, 30))        # 같은 시각 유지
+        self.assertEqual((nxt - _dt.datetime(2020, 1, 6, 4, 30)).days % 7, 0)   # 7일 주기 정합
+        self.assertEqual(cfg.learn_team, "team-X")               # 팀 태그 유지
+        self.assertEqual((cap.get("qm") or (None,))[0], "quest_meta")   # 새 진행 창 기록
+        self.assertTrue(cap.get("saved"))
+
 
 class TestLearnData(unittest.TestCase):
     def test_learn_data_and_exports(self):
@@ -330,6 +358,164 @@ class TestLearnData(unittest.TestCase):
         fn, text = serve.learn_export("dpo", None)
         self.assertEqual(len(text.splitlines()), 1)
         self.assertIn("rejected", text)
+
+    def test_learn_data_surfaces_guide_ambiguities(self):
+        """메타컴파일 ambiguities(의견 충돌)가 학습 데이터에 '가이드 명확화 필요'로 집계된다."""
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        serve._report_save("learn_report", {"ok": True, "ts": 123.0, "improve": {
+            "results": {"analyze": {"directive": "", "ambiguities": ["'속보'와 '단신' 중 어느 표기인지 갈림"]},
+                        "review": {"directive": "", "ambiguities": []}},
+            "model_results": {"gpt-x": {"judge": {"directive": "", "ambiguities": ["등급을 얼마나 보수적으로 볼지 갈림"]}}},
+        }}, None)
+        d = serve.learn_data(None)
+        amb = d["guide_ambiguities"]
+        self.assertEqual(len(amb), 2)
+        self.assertEqual(amb[0], {"stage": "analyze", "model": "",
+                                  "text": "'속보'와 '단신' 중 어느 표기인지 갈림"})
+        self.assertEqual((amb[1]["stage"], amb[1]["model"]), ("judge", "gpt-x"))
+        self.assertEqual(d["guide_ambiguities_ts"], 123.0)
+
+    def test_learn_data_empty_ambiguities_when_no_report(self):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        d = serve.learn_data(None)
+        self.assertEqual(d["guide_ambiguities"], [])
+
+
+class TestReviewerCalibration(unittest.TestCase):
+    """검수자 캘리브레이션: 창 필터(gold_stats_since) · 합의 가중치·골드 추세 표면화."""
+
+    def _with_store(self):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def _gold(self, st, rows):
+        c = st._conn()
+        c.executemany("INSERT INTO gold_checks(content_hash,reviewer,expected,verdict,correct,ts) "
+                      "VALUES(?,?,?,?,?,?)", rows)
+        c.commit()
+
+    def test_gold_stats_since_window(self):
+        import time as _t
+        _serve, st = self._with_store()
+        now = _t.time()
+        DAY = 86400.0
+        self._gold(st, [("g1", "A", "ok", "ok", 1, now - DAY),
+                        ("g2", "A", "ok", "ok", 0, now - 10 * DAY)])
+        wk = st.gold_stats_since(now - 7 * DAY)
+        self.assertEqual((wk["A"]["n"], wk["A"]["correct"]), (1, 1))
+        two = st.gold_stats_since(now - 14 * DAY)
+        self.assertEqual((two["A"]["n"], two["A"]["correct"]), (2, 1))
+
+    def test_learn_data_carries_weight_and_trend(self):
+        import time as _t
+        serve, st = self._with_store()
+        now = _t.time()
+        DAY = 86400.0
+        st.save_feedback("h1", "s", "T", "good", "review", "", now, reviewer="A")   # 리더보드 진입
+        # 최근 7일: 3건 중 2정답 · 그 전 7일: 3건 중 1정답 → 추세 = 2/3 - 1/3
+        self._gold(st, [("w%d" % i, "A", "ok", "ok", 1 if i < 2 else 0, now - DAY) for i in range(3)])
+        self._gold(st, [("p%d" % i, "A", "ok", "ok", 1 if i < 1 else 0, now - 10 * DAY) for i in range(3)])
+        d = serve.learn_data(None)
+        row = next(r for r in d["reviewers"] if r["reviewer"] == "A")
+        # 골드 6건(≥5) · 정확도 3/6 → 가중치 0.5 + 0.5*0.5 = 0.75 (골든 다수결에 쓰는 실값)
+        self.assertAlmostEqual(row["weight"], 0.75, places=4)
+        self.assertAlmostEqual(row["gold_trend"], round(2 / 3 - 1 / 3, 4), places=4)
+        self.assertEqual((row["gold_wk_n"], row["gold_pv_n"]), (3, 3))
+
+    def test_trend_hidden_on_small_samples(self):
+        import time as _t
+        serve, st = self._with_store()
+        now = _t.time()
+        st.save_feedback("h1", "s", "T", "good", "review", "", now, reviewer="A")
+        self._gold(st, [("g1", "A", "ok", "ok", 1, now - 86400.0)])   # 표본 3건 미만 → 추세 미표시
+        d = serve.learn_data(None)
+        row = next(r for r in d["reviewers"] if r["reviewer"] == "A")
+        self.assertIsNone(row["gold_trend"])
+
+
+class TestBatchRegressions(unittest.TestCase):
+    """강화된 회귀 게이트(_batch_regressions): 스칼라 2%p + 유해 미탐 + 버킷 10%p."""
+
+    def test_within_tolerance_passes(self):
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0,
+               "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9},
+                                    "tiny": {"n": 2, "grade_acc": 1.0}}}
+        post = {"grade_accuracy": 0.89, "harm_miss_rate": 0.0,
+                "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.85},
+                                     "tiny": {"n": 2, "grade_acc": 0.0}}}   # 소표본 급락은 무시
+        self.assertEqual(_batch_regressions(pre, post), [])
+
+    def test_harm_and_bucket_regressions_detected(self):
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0,
+               "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9}}}
+        post = {"grade_accuracy": 0.9, "harm_miss_rate": 0.05,
+                "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.7}}}
+        r = _batch_regressions(pre, post)
+        self.assertEqual(len(r), 2)
+        self.assertTrue(any("유해 미탐" in x for x in r))
+        self.assertTrue(any("버킷 ad" in x for x in r))
+
+    def test_missing_post_bucket_not_regression(self):
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0,
+               "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9}}}
+        post = {"grade_accuracy": 0.85, "harm_miss_rate": 0.0, "by_reason_bucket": {}}
+        self.assertEqual(_batch_regressions(pre, post), ["정합성 -5.0% 악화"])
+
+    def test_learning_batch_reverts_on_harm_regression(self):
+        """정확도가 올라도 유해 미탐이 악화되면 원복(단일 스칼라 가드의 사각 해소)."""
+        import json as _j
+        import tempfile
+        from prism import config as C
+        from prism import learnops as LO
+        from prism import prompts as PR
+        from prism import serve
+        from prism.store import Store
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        cfgp = os.path.join(tempfile.mkdtemp(), "config.json")
+        open(cfgp, "w", encoding="utf-8").write(_j.dumps({}))
+        orig_p = C.DEFAULT_CONFIG_PATH
+        C.DEFAULT_CONFIG_PATH = cfgp
+        self.addCleanup(lambda: setattr(C, "DEFAULT_CONFIG_PATH", orig_p))
+        old_learned = dict(PR.LEARNED)
+        old_bm = PR.LEARNED_BY_MODEL
+        self.addCleanup(lambda: (PR.LEARNED.update(old_learned), setattr(PR, "LEARNED_BY_MODEL", old_bm)))
+        PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
+        PR.LEARNED_BY_MODEL = {}
+        evals = [{"ok": True, "grade_accuracy": 0.90, "harm_miss_rate": 0.00, "evaluated": 10},
+                 {"ok": True, "grade_accuracy": 0.92, "harm_miss_rate": 0.10, "evaluated": 10}]
+        def fake_eval(team=None, model="", scope="all"):
+            return evals.pop(0) if evals else {"ok": True, "grade_accuracy": 0.92,
+                                               "harm_miss_rate": 0.10, "evaluated": 10}
+        def fake_improve(team=None):
+            PR.LEARNED = {"extract": "", "analyze": "- 미탐 악화 지시", "review": "", "judge": ""}
+            return {"ok": True, "results": {"analyze": {"directive": "- 미탐 악화 지시"}}}
+        orig_e, orig_i = LO.eval_golden, LO.meta_compile_run
+        LO.eval_golden, LO.meta_compile_run = fake_eval, fake_improve
+        self.addCleanup(lambda: (setattr(LO, "eval_golden", orig_e), setattr(LO, "meta_compile_run", orig_i)))
+        rep = LO.learning_batch(None)
+        self.assertTrue(rep["improve"].get("reverted"))
+        self.assertIn("유해 미탐", rep["improve"].get("revert_reason", ""))
+        self.assertEqual(PR.LEARNED["analyze"], "")                          # 원복됨
+        self.assertEqual(rep["grade_accuracy"], 0.90)                        # 유지 프롬프트 기준 보고
 
 
 if __name__ == "__main__":
@@ -361,6 +547,34 @@ class TestQASeed(unittest.TestCase):
         self.assertEqual(len(serve.raw_rows()["items"]), 10)    # 평가용 제외(검수 대기 2 포함)
         again = qa_seed.seed(verbose=False)
         self.assertTrue(again.get("skipped"))                   # 멱등
+
+
+class TestCheapestPassing(unittest.TestCase):
+    """'합격하는 가장 싼 모델' 추천: 게이트 이상 중 비용 최저 · 비용 미계측 제외."""
+
+    def test_picks_cheapest_above_gate(self):
+        from prism.learnops import cheapest_passing_model
+        models = [
+            {"model": "big", "grade_accuracy": 0.95, "cost_usd": 0.40},
+            {"model": "mid", "grade_accuracy": 0.90, "cost_usd": 0.10},
+            {"model": "tiny", "grade_accuracy": 0.70, "cost_usd": 0.01},   # 게이트 미달
+        ]
+        self.assertEqual(cheapest_passing_model(models, 0.85), "mid")
+
+    def test_no_cost_excluded_and_tie_prefers_accuracy(self):
+        from prism.learnops import cheapest_passing_model
+        models = [
+            {"model": "nocost", "grade_accuracy": 0.99, "cost_usd": None},   # 비용 미계측 제외
+            {"model": "a", "grade_accuracy": 0.90, "cost_usd": 0.10},
+            {"model": "b", "grade_accuracy": 0.92, "cost_usd": 0.10},        # 동률 → 일치율 높은 쪽
+        ]
+        self.assertEqual(cheapest_passing_model(models, 0.85), "b")
+
+    def test_none_passing_returns_empty(self):
+        from prism.learnops import cheapest_passing_model
+        self.assertEqual(cheapest_passing_model(
+            [{"model": "x", "grade_accuracy": 0.5, "cost_usd": 0.01}], 0.85), "")
+        self.assertEqual(cheapest_passing_model([], 0.85), "")
 
 
 if __name__ == "__main__":

@@ -25,9 +25,14 @@ def sync_learned():
     모델 귀속 라우트는 LEARNED_BY_MODEL 계층으로 분리(그 모델 프롬프트에만 병기)."""
     try:
         st = _SV.get_store()
-        learned = st.learned_by_stage() if st else {}
+        try:                                       # 관리자가 끈 지시(개별 무효화)는 컴파일에서 제외
+            ex = _SV.disabled_directives()
+        except Exception:
+            ex = set()
+        learned = st.learned_by_stage(exclude=ex) if st else {}
         PR.LEARNED = {k: (learned.get(k) or "") for k in ("extract", "analyze", "review", "judge")}
-        bm = st.routes_by_stage_model() if (st and hasattr(st, "routes_by_stage_model")) else {}
+        bm = (st.routes_by_stage_model(exclude=ex)
+              if (st and hasattr(st, "routes_by_stage_model")) else {})
         PR.LEARNED_BY_MODEL = {m: {stg: "\n".join(f"- {t}" for t in items)
                                    for stg, items in stages.items()}
                                for m, stages in bm.items() if m}
@@ -186,6 +191,10 @@ def build_golden_from_reviews(team=None) -> dict:
         fmap = {}
     weights = _SV.reviewer_weights(team)               # 골드 정확도 기반 신뢰도(G-4)
     min_good = max(1, int(getattr(Config.load(), "golden_min_good", 1) or 1))   # 확정 최소 '정확' 인원
+    try:                                               # 리드 최종판정: 다수결보다 우선(타이브레이크)
+        finals = _SV.final_verdicts(team)
+    except Exception:
+        finals = {}
     try:
         existing = st.golden_hashes(team)
         by_source = {r["hash"]: r["source"] for r in st.golden_rows(team, limit=10000)} if hasattr(st, "golden_rows") else {}
@@ -207,7 +216,13 @@ def build_golden_from_reviews(team=None) -> dict:
                  for v in fb.get("verdicts", []) if v.get("verdict") == "good")
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
-        if not (fb.get("good", 0) >= min_good and gw > bw):   # 정확 최소 인원 + 가중 다수
+        fv = (finals.get(ch) or {}).get("verdict")     # 리드 최종판정(있으면 다수결보다 우선)
+        if fv == "bad":                                # 리드가 '수정 필요' 확정 → 승격 금지 + 검수 유래 골든 강등
+            disagree += 1
+            if ch in existing and by_source.get(ch, "review") == "review":
+                demote.append(ch)
+            continue
+        if fv != "good" and not (fb.get("good", 0) >= min_good and gw > bw):   # 정확 최소 인원 + 가중 다수
             disagree += 1
             # 검수 유래 골든이 뒤집힘(가중 열세) → 강등. 관리자 등록분(manual)은 보존.
             if ch in existing and by_source.get(ch, "review") == "review" and bw > gw:
@@ -259,6 +274,17 @@ def build_golden_from_reviews(team=None) -> dict:
 
 _LAST_LEARN_REPORT = {}                               # 최근 일배치 결과(수신·표시용)
 
+def cheapest_passing_model(models: list, gate: float) -> str:
+    """'합격하는 가장 싼 모델' 추천: 등급 일치율이 게이트 이상인 모델 중 비용 최저.
+    비용 미계측(None)은 제외 · 동률이면 일치율 높은 쪽. 없으면 빈 문자열."""
+    ok = [m for m in (models or [])
+          if (m.get("grade_accuracy") or 0) >= gate and m.get("cost_usd") is not None]
+    if not ok:
+        return ""
+    ok.sort(key=lambda m: (m["cost_usd"], -(m.get("grade_accuracy") or 0)))
+    return ok[0].get("model") or ""
+
+
 def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict:
     """골든셋(사람 확정 정답)을 여러 모델에 실호출로 돌려 정합성 비교 → 최적 모델 선택 근거.
     모델별 제공자·엔드포인트를 라우팅(llm_for_model)하고, 키 없는 모델은 건너뛰되 사유를 노출."""
@@ -285,13 +311,16 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
         out.append({"model": model, "route": route, "real": (not llm.mock), "n": min(len(rows), 200),
                     "grade_accuracy": m.get("grade_accuracy"), "reason_jaccard": m.get("reason_jaccard"),
                     "reason_exact_match": m.get("reason_exact_match"), "empty_rate": m.get("empty_rate"),
-                    "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens")})
+                    "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens"),
+                    "latency_p50_ms": m.get("latency_p50_ms"), "latency_p95_ms": m.get("latency_p95_ms")})
     if not out:
         return {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
                 "skipped": skipped, "golden_n": len(rows)}
     out.sort(key=lambda r: (-(r.get("grade_accuracy") or 0), -(r.get("reason_jaccard") or 0)))
+    gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
     return {"ok": True, "models": out, "skipped": skipped,
-            "best": out[0]["model"], "golden_n": len(rows)}
+            "best": out[0]["model"], "golden_n": len(rows),
+            "eval_gate": gate, "cheapest_passing": cheapest_passing_model(out, gate)}
 
 def snapshot_prompts(team=None) -> dict:
     """학습 반영 직후, 다음 초안 버전(v = 반영 회차 + 1)이 쓰게 될 단계(콜)별 최종
@@ -327,10 +356,37 @@ def snapshot_prompts(team=None) -> dict:
     _SV._report_save("prompt_snapshot_latest", payload, team)
     return {"version": ver, "calls": list(calls.keys())}
 
+def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5) -> list:
+    """개선 후 평가가 전보다 나빠진 지점 목록(원복 사유 문구 · 없으면 빈 목록).
+    ① 정합성 2%p 초과 악화 ② 유해 미탐률(harm_miss_rate) 악화
+    ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제).
+    cli tune RegressionGuard 를 서버 자동 배치로 이식(단일 스칼라 가드의 사각 해소)."""
+    out = []
+    try:
+        d = round((post.get("grade_accuracy") or 0.0) - (pre.get("grade_accuracy") or 0.0), 4)
+    except (TypeError, ValueError):
+        return out
+    if d < -0.02:
+        out.append(f"정합성 {d:+.1%} 악화")
+    pre_miss = float(pre.get("harm_miss_rate") or 0.0)
+    post_miss = float(post.get("harm_miss_rate") or 0.0)
+    if post_miss > pre_miss + 1e-9:
+        out.append(f"유해 미탐 {pre_miss:.1%}→{post_miss:.1%} 악화")
+    post_b = post.get("by_reason_bucket") or {}
+    for b, pv in (pre.get("by_reason_bucket") or {}).items():
+        if int((pv or {}).get("n") or 0) < min_bucket_n:
+            continue
+        ba = float((pv or {}).get("grade_acc") or 0.0)
+        ca = float((post_b.get(b) or {}).get("grade_acc", ba))
+        if ca < ba - 0.10:
+            out.append(f"버킷 {b} {ba:.0%}→{ca:.0%} 회귀")
+    return out
+
+
 def learning_batch(team=None, models=None) -> dict:
     """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
-    ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성이 2%p 넘게 악화되면 개선을 반영하지 않고
-    이전 프롬프트를 유지한다(개선의 방향 검증 · 진동 방지의 완결)."""
+    ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성 2%p 초과 악화·유해 미탐 악화·버킷 회귀
+    중 하나라도 걸리면 개선을 반영하지 않고 이전 프롬프트를 유지한다(방향 검증 · 진동 방지)."""
     golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
     prev_learned = dict(PR.LEARNED)
     prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
@@ -344,12 +400,13 @@ def learning_batch(team=None, models=None) -> dict:
             delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
         except (TypeError, ValueError):
             delta = None
-        if delta is not None and delta < -0.02:          # 악화 가드: 이전 프롬프트로 원복
+        regressions = _batch_regressions(eval_pre, evalr) if evalr.get("ok") else []
+        if regressions:                                  # 악화 가드: 이전 프롬프트로 원복
             PR.LEARNED = prev_learned
             PR.LEARNED_BY_MODEL = prev_by_model
             improve = dict(improve or {})
             improve["reverted"] = True
-            improve["revert_reason"] = f"정합성 {delta:+.1%} 악화 → 이번 보정 미반영(이전 프롬프트 유지)"
+            improve["revert_reason"] = " · ".join(regressions) + " → 이번 보정 미반영(이전 프롬프트 유지)"
             evalr = eval_pre                             # 유지되는 프롬프트 기준 점수로 보고
     else:
         evalr = eval_pre
@@ -431,18 +488,41 @@ def learn_data(team=None) -> dict:
     agree = Q.percent_agreement(units)
     multi_units = sum(1 for u in units if len(u) >= 2)
     # 검수자 신뢰도: 합의 일치율(아레나) + 골드 정확도 + Dawid-Skene EM 오류율
+    # + 골든 합의 가중치(reviewer_weights · 실제 다수결에 쓰는 값) + 최근 7일 골드 추세
     ds = Q.dawid_skene_binary(Q.feedback_labels(fmap))
     arena = st.arena_stats(team=team)
+    try:
+        weights = _SV.reviewer_weights(team) or {}
+    except Exception:
+        weights = {}
+    DAY = 86400.0
+    now = time.time()
+    try:
+        wk_gold = st.gold_stats_since(now - 7 * DAY, team=team) if hasattr(st, "gold_stats_since") else {}
+        two_gold = st.gold_stats_since(now - 14 * DAY, team=team) if hasattr(st, "gold_stats_since") else {}
+    except Exception:
+        wk_gold, two_gold = {}, {}
     reviewers = []
     for row in arena.get("leaderboard", []):
         rv = row["reviewer"]
-        dsr = (ds.get("reviewers") or {}).get(row.get("reviewer_id") or rv) or {}   # DS 키(uuid 우선)로 조회 · feedback_labels 와 정렬
+        rid = row.get("reviewer_id") or rv                 # supabase=uuid · sqlite=닉네임 동일
+        dsr = (ds.get("reviewers") or {}).get(rid) or {}   # DS 키(uuid 우선)로 조회 · feedback_labels 와 정렬
+        w = wk_gold.get(rid) or wk_gold.get(rv) or {"n": 0, "correct": 0}
+        t = two_gold.get(rid) or two_gold.get(rv) or {"n": 0, "correct": 0}
+        pv_n = t["n"] - w["n"]                             # 그 전 7일 = 14일 창 - 최근 7일 창
+        pv_corr = t["correct"] - w["correct"]
+        trend = None                                       # 양쪽 표본 3건 이상일 때만(소표본 노이즈 방지)
+        if w["n"] >= 3 and pv_n >= 3:
+            trend = round(w["correct"] / w["n"] - pv_corr / pv_n, 4)
         reviewers.append({"reviewer": rv, "n": row.get("reviews", 0),
                           "agree_rate": row.get("agree_rate"),
                           "gold_n": row.get("gold_n", 0), "gold_acc": row.get("gold_acc"),
-                          "ds_error": dsr.get("error_rate")})
+                          "ds_error": dsr.get("error_rate"),
+                          "weight": weights.get(rid) if weights.get(rid) is not None else weights.get(rv),
+                          "gold_trend": trend, "gold_wk_n": w["n"], "gold_pv_n": max(0, pv_n)})
     # 골든 정합성 ± 95% CI(최근 일배치 평가 기준, Miller 2024)
-    ev = (_SV._report_get("learn_report", team, _LAST_LEARN_REPORT) or {}).get("eval") or {}
+    rep = _SV._report_get("learn_report", team, _LAST_LEARN_REPORT) or {}
+    ev = rep.get("eval") or {}
     acc_ci = None
     if ev.get("ok") and ev.get("n"):
         lo, hi = Q.binomial_ci(ev.get("grade_accuracy") or 0.0, int(ev["n"]))
@@ -498,7 +578,23 @@ def learn_data(team=None) -> dict:
         pass
     dict_gap = {k: sorted(v.items(), key=lambda x: -x[1])[:10] for k, v in gap.items()}
     dict_gap["retries"] = gap_retries
+    # 가이드 모호 신호: 최근 학습 반영의 메타컴파일이 '서로 충돌해 지시로 합치지 못한' 지적(ambiguities)
+    # → 정책 가이드 명확화 백로그. 공통(results) + 모델 귀속(model_results) 전부 집계.
+    guide_amb = []
+    improve = rep.get("improve") or {}
+    for stage in ("extract", "analyze", "review", "judge"):
+        for a in (((improve.get("results") or {}).get(stage) or {}).get("ambiguities") or []):
+            t = str(a).strip()
+            if t:
+                guide_amb.append({"stage": stage, "model": "", "text": t})
+    for m, stages in sorted((improve.get("model_results") or {}).items()):
+        for stage, r in (stages or {}).items():
+            for a in ((r or {}).get("ambiguities") or []):
+                t = str(a).strip()
+                if t:
+                    guide_amb.append({"stage": stage, "model": m, "text": t})
     return {"ok": True, "golden_n": golden_n, "grade_dist": grade_dist,
+            "guide_ambiguities": guide_amb, "guide_ambiguities_ts": rep.get("ts"),
             "dict_gap": dict_gap,
             "coverage": coverage, "covered": sum(1 for c in coverage if c["lack"] == 0),
             "class_total": len(coverage), "per_class_target": PER_CLASS_TARGET,
@@ -863,10 +959,25 @@ def _run_due_batch(cfg, now=None) -> bool:
     if not due or due > (now if now is not None else time.time()):
         return False
     learning_batch(getattr(cfg, "learn_team", "") or None)   # 골든·버전을 그 팀에 태깅
-    try:                                          # 목표 소진(1회 실행 · 재실행 방지)
+    try:
         c = Config.load()
-        c.learn_next_at = ""
-        c.save_template()
+        rep = int(getattr(c, "learn_repeat_days", 0) or 0)
+        if rep > 0:                               # 반복 퀘스트: 같은 시각 +N일로 자동 재생성(팀 태그 유지)
+            import datetime as _dt
+            nxt = _dt.datetime.fromtimestamp(due)
+            now_ts = time.time()
+            while nxt.timestamp() <= now_ts + 60:  # 서버 정지 등으로 밀렸으면 미래 첫 회차까지 스킵
+                nxt += _dt.timedelta(days=rep)
+            c.learn_next_at = nxt.strftime("%Y-%m-%dT%H:%M")
+            c.save_template()
+            try:                                   # 새 진행률 창 시작점(홈 퀘스트 카드 D-day 원천)
+                _SV._report_save("quest_meta", {"started_at": now_ts, "next_at": c.learn_next_at},
+                                 getattr(c, "learn_team", "") or None)
+            except Exception:
+                pass
+        else:                                     # 목표 소진(1회 실행 · 재실행 방지)
+            c.learn_next_at = ""
+            c.save_template()
     except Exception:
         pass
     return True
@@ -906,14 +1017,19 @@ def meta_compile_run(team=None) -> dict:
         return {"ok": False, "error": "store unavailable"}
     cfg = Config.load()
     llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
-    raw = st.learned_by_stage(team=team)
+    try:                                           # 관리자가 끈 지시(개별 무효화)는 컴파일에서 제외
+        ex = _SV.disabled_directives()
+    except Exception:
+        ex = set()
+    raw = st.learned_by_stage(team=team, exclude=ex)
     results = {}
     for stage, text in raw.items():
         results[stage] = FL.meta_compile(llm, stage, text)
     # 컴파일된 directive 를 단계 프롬프트(LEARNED)로 반영 · raw 누적 대체
     PR.LEARNED = {k: (results.get(k, {}).get("directive") or "") for k in ("extract", "analyze", "review", "judge")}
     # 모델 귀속 라우트는 모델별 그룹으로 따로 컴파일 → 그 모델 프롬프트에만 병기
-    by_model = st.routes_by_stage_model(team=team) if hasattr(st, "routes_by_stage_model") else {}
+    by_model = (st.routes_by_stage_model(team=team, exclude=ex)
+                if hasattr(st, "routes_by_stage_model") else {})
     model_results = {}
     for m, stages in sorted(by_model.items()):
         model_results[m] = {stage: FL.meta_compile(llm, stage, "\n".join(f"- {t}" for t in items))

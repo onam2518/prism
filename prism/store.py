@@ -461,6 +461,54 @@ class Store:
             out[rv] = {"n": n, "correct": corr, "acc": round(corr / n, 4) if n else 0.0}
         return out
 
+    def gold_stats_since(self, since_ts: float, team=None) -> dict:
+        """reviewer → {n, correct, acc} · since_ts(epoch) 이후 응답만(주간 추세 계산용)."""
+        c = self._conn()
+        out = {}
+        for rv, n, corr in c.execute(
+                "SELECT reviewer, COUNT(*), SUM(correct) FROM gold_checks WHERE ts>=? GROUP BY reviewer",
+                (float(since_ts),)):
+            n = int(n or 0)
+            corr = int(corr or 0)
+            out[rv] = {"n": n, "correct": corr, "acc": round(corr / n, 4) if n else 0.0}
+        return out
+
+    def activity_daily(self, days: int = 30, team=None) -> list:
+        """일별 검수 활동(최근 days일 · 빈 날 포함 연속): [{day, reviews, corrections, gold_n, gold_correct}].
+        day='YYYY-MM-DD'(로컬) · 검수=판정(good/bad) 수 · 교정=bad 수 · 골드=검증 문항 응답."""
+        import datetime as _dt
+        days = max(1, min(90, int(days or 30)))
+        today = _dt.date.today()
+        start_day = today - _dt.timedelta(days=days - 1)
+        start_ts = time.mktime(start_day.timetuple())
+        buckets = {}
+
+        def _b(ts):
+            d = _dt.date.fromtimestamp(float(ts or 0)).isoformat()
+            return buckets.setdefault(d, {"day": d, "reviews": 0, "corrections": 0,
+                                          "gold_n": 0, "gold_correct": 0})
+
+        c = self._conn()
+        for v, ts in c.execute(
+                "SELECT verdict, ts FROM feedback WHERE ts>=? AND verdict IN ('good','bad')",
+                (start_ts,)):
+            e = _b(ts)
+            e["reviews"] += 1
+            if v == "bad":
+                e["corrections"] += 1
+        for corr, ts in c.execute("SELECT correct, ts FROM gold_checks WHERE ts>=?", (start_ts,)):
+            e = _b(ts)
+            e["gold_n"] += 1
+            e["gold_correct"] += int(corr or 0)
+        out = []
+        d = start_day
+        while d <= today:
+            k = d.isoformat()
+            out.append(buckets.get(k) or {"day": k, "reviews": 0, "corrections": 0,
+                                          "gold_n": 0, "gold_correct": 0})
+            d += _dt.timedelta(days=1)
+        return out
+
     def gold_answered(self, reviewer, team=None) -> set:
         """검수자가 이미 응답한 골드 문항 content_hash 집합(재출제 방지)."""
         c = self._conn()
@@ -675,6 +723,20 @@ class Store:
                 out[ch]["min"] = max(1, min(len(out[ch]["reviewers"]), int(n or 1)))
         return out
 
+    def assignment_load(self, team=None) -> dict:
+        """검수자별 미완료 배정 부하 {reviewer: n} · 균등 분배 배정의 가중 원천.
+        부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(완료분은 부하 아님)."""
+        c = self._conn()
+        tm = team or ""
+        done = {(ch, rv) for ch, rv in c.execute(
+            "SELECT content_hash,reviewer FROM feedback WHERE verdict IN ('good','bad')")}
+        out = {}
+        for ch, rv in c.execute(
+                "SELECT content_hash,reviewer FROM assignments WHERE team=?", (tm,)):
+            if (ch, rv) not in done:
+                out[rv] = out.get(rv, 0) + 1
+        return out
+
     def draft_history(self, content_hash: str, team=None, limit: int = 20) -> list:
         c = self._conn()
         rows = c.execute("SELECT model,version,item_meta,quality_meta,ts FROM drafts "
@@ -774,12 +836,14 @@ class Store:
                         it.get("directive", ""), model or "", now) for it in items if it.get("directive")])
         c.commit()
 
-    def routes_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+    def routes_by_stage(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
         """공통(모델 미기록) 라우트만 · 모델 귀속 라우트는 routes_by_stage_model 로
-        해당 모델 프롬프트에만 병기한다(타 모델 오염·중복 방지)."""
+        해당 모델 프롬프트에만 병기한다(타 모델 오염·중복 방지).
+        exclude: 관리자가 끈 지시 원문 집합 · 다음 컴파일부터 제외(원본 행은 보존)."""
         c = self._conn()
         out = {}
         seen = set()
+        ex = exclude or set()
         try:
             rows = c.execute("SELECT stage,directive FROM feedback_routes "
                              "WHERE COALESCE(directive,'')!='' AND COALESCE(model,'')='' "
@@ -790,6 +854,8 @@ class Store:
         for stage, directive in rows:
             st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
             d = directive.strip()
+            if d in ex:
+                continue
             if (st, d) in seen:                        # 동일 지시 반복 제거(표시·프롬프트 병기 모두)
                 continue
             seen.add((st, d))
@@ -798,11 +864,12 @@ class Store:
                 lst.append(d)
         return out
 
-    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None) -> dict:
+    def routes_by_stage_model(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
         """모델 귀속 라우트: {model: {stage: [directive, …]}} · 모델별 learned 계층의 원천."""
         c = self._conn()
         out = {}
         seen = set()
+        ex = exclude or set()
         try:
             rows = c.execute("SELECT stage,directive,COALESCE(model,'') FROM feedback_routes "
                              "WHERE COALESCE(directive,'')!='' AND COALESCE(model,'')!='' "
@@ -812,6 +879,8 @@ class Store:
         for stage, directive, model in rows:
             st = stage if stage in ("extract", "analyze", "review", "judge") else "analyze"
             d, m = directive.strip(), model.strip()
+            if d in ex:
+                continue
             if (m, st, d) in seen:
                 continue
             seen.add((m, st, d))
@@ -820,12 +889,13 @@ class Store:
                 lst.append(d)
         return out
 
-    def learned_by_stage(self, limit_per_stage: int = 20, team=None) -> dict:
+    def learned_by_stage(self, limit_per_stage: int = 20, team=None, exclude=None) -> dict:
         """단계별 학습 보정 텍스트: 오케스트레이터 라우팅(요소 재분류 지시) 우선 + REAP plan/메모 보완.
-        team 은 통일용(sqlite 무시)."""
+        team 은 통일용(sqlite 무시) · exclude 는 관리자가 끈 지시 원문(라우트·메모 공통 제외)."""
         c = self._conn()
+        ex = exclude or set()
         out = {"extract": [], "analyze": [], "review": [], "judge": []}
-        routed = self.routes_by_stage(limit_per_stage)
+        routed = self.routes_by_stage(limit_per_stage, exclude=ex)
         for st, items in routed.items():
             out[st].extend(f"- {t}" for t in items)
         for stage, note, plan in c.execute(
@@ -834,6 +904,8 @@ class Store:
                 "ORDER BY ts DESC"):
             st = stage if stage in out else "analyze"
             text = (plan or "").strip() or (note or "").strip()
+            if text in ex:
+                continue
             line = f"- {text}"
             if text and len(out[st]) < limit_per_stage and line not in out[st]:
                 out[st].append(line)
@@ -1393,6 +1465,35 @@ class Store:
             if status == "unlisted":
                 rows.sort(key=lambda e: -e["n_contents"])
         return rows
+
+    def ent_trending(self, hours: int = 48, limit: int = 8, team=None) -> list:
+        """언급 급증 엔티티 [{id,name,recent,prev}]: 최근 hours시간 vs 그 전 같은 창 비교.
+        추천 토픽 카드의 원천 · 최소 2건 + 증가분 있는 것만 · 증가폭 내림차순."""
+        c = self._conn()
+        now = time.time()
+        cut1 = now - hours * 3600.0
+        cut0 = now - 2 * hours * 3600.0
+        rec, prev = {}, {}
+        for eid, surface, ts in c.execute(
+                "SELECT entity_id, surface, ts FROM content_entities WHERE ts>=? AND team=?",
+                (cut0, team or "")):
+            b = rec if (ts or 0) >= cut1 else prev
+            e = b.setdefault(eid, {"n": 0, "surface": surface or eid})
+            e["n"] += 1
+        names = {}
+        if rec:
+            ids = list(rec)
+            ph = ",".join("?" * len(ids))
+            names = {i: n for i, n in c.execute(
+                f"SELECT entity_id, name FROM entities WHERE entity_id IN ({ph})", ids)}
+        out = []
+        for eid, e in rec.items():
+            pv = (prev.get(eid) or {}).get("n", 0)
+            if e["n"] >= 2 and e["n"] > pv:
+                out.append({"id": eid, "name": names.get(eid) or e["surface"],
+                            "recent": e["n"], "prev": pv})
+        out.sort(key=lambda x: (-(x["recent"] - x["prev"]), -x["recent"]))
+        return out[:max(1, int(limit))]
 
     def ent_stats(self) -> dict:
         c = self._conn()
