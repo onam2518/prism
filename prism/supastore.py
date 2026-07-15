@@ -527,8 +527,9 @@ class SupabaseStore:
     def log_event_once(self, reviewer, kind, day, bonus, meta="", team=None) -> bool:
         # check-then-insert 이중 지급 레이스 방지(단일 프로세스 서버 전제 · sqlite 구현과 동일)
         with _EVENT_ONCE_LOCK:
-            q = (f"reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
-                 f"&kind=eq.{urllib.parse.quote(kind)}&day=eq.{int(day)}")
+            # reviewer_id 는 uuid(nullable) · 시스템 이벤트는 reviewer 없이 NULL 로 기록/조회
+            rq = (f"reviewer_id=eq.{urllib.parse.quote(reviewer)}" if reviewer else "reviewer_id=is.null")
+            q = f"{rq}&kind=eq.{urllib.parse.quote(kind)}&day=eq.{int(day)}"
             if self._get("events", "select=id&" + q):
                 return False
             row = {"reviewer_id": reviewer or None, "kind": kind, "day": int(day),
