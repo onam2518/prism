@@ -1076,7 +1076,7 @@ def media_s5ab(text: str, models: list, *, caption: str = "") -> dict:
 
 
 def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
-                 description: str = "", model: str = "") -> dict:
+                 description: str = "", model: str = "", subtitles: str = "") -> dict:
     """T4 \ub124\uc774\ud2f0\ube0c \ube44\ub514\uc624 \uc2e4\ud5d8(\uc2e4\ud5d8\uc2e4 \u00b7 \ubbf8\uc800\uc7a5). \uc601\uc0c1 \ud1b5\uc9dc \u2192 \ub77c\uc6b0\ud130 \uc704\uc784 \ud2b8\ub799 \u2192
     S4 \ubcd1\ud569 \u2192 \ud569\uc131 Content \u2192 \uae30\uc874 \ucd94\ucd9c(S5) \u2192 ItemMeta. results \uc5d0 \uc800\uc7a5\ud558\uc9c0 \uc54a\ub294\ub2e4.
 
@@ -1085,10 +1085,19 @@ def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
     from . import mediaext as MX
     cfg = Config.load()
     mock = Handler.server_mock
-    service = cfg.vision_provider if MX.is_router(cfg.vision_provider) else "bizrouter"
-    vmodel = cfg.vision_model or model
-    nv = MX.native_video_track(content_bytes, mime, vmodel, service, mock=mock)
-    merged = MX.merge_tracks(audio=nv.get("audio"), visual=nv.get("visual"))
+    subs = MX.parse_subtitles(subtitles) if (subtitles or "").strip() else {}
+    if subs.get("cue_count"):
+        # 자막 우선(T1 · 모델 0건): 발화 원고가 이미 있으니 영상 모델 호출을 건너뛴다(비용 0).
+        # 설계안 명시("자막 보유율 실측이 비용 계획의 기준점")의 라우팅 실현 · 응답 shape 는 유지.
+        nv = {"skipped": True, "skip_reason": "자막 보유 · 영상 모델 호출 생략(비용 0)",
+              "audio": {"transcript": "", "has_speech": False},
+              "visual": {"description": "", "on_screen_text": "", "entities": []}}
+        merged = MX.merge_tracks(subtitles=subs)
+    else:
+        service = cfg.vision_provider if MX.is_router(cfg.vision_provider) else "bizrouter"
+        vmodel = cfg.vision_model or model
+        nv = MX.native_video_track(content_bytes, mime, vmodel, service, mock=mock)
+        merged = MX.merge_tracks(audio=nv.get("audio"), visual=nv.get("visual"))
     content = MX.build_content(merged, caption=caption, description=description)
     # S5 = \uae30\uc874 \ucd94\ucd9c \uc7ac\uc0ac\uc6a9(imagext \ub3d9\uc77c \uc124\uacc4) \u00b7 persist=False \ub85c \ubbf8\uc800\uc7a5
     res = run_pipeline({"displayServiceName": content["displayServiceName"],
@@ -3960,7 +3969,8 @@ class Handler(BaseHTTPRequestHandler):
                     res = media_native(f["bytes"], f.get("mime") or "video/mp4",
                                        caption=fields.get("caption", ""),
                                        description=fields.get("description", ""),
-                                       model=fields.get("model", ""))
+                                       model=fields.get("model", ""),
+                                       subtitles=fields.get("subtitles", ""))
                     self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
                 else:
                     data = json.loads(body or b"{}")

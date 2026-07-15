@@ -1441,15 +1441,19 @@ PAGE = """<!doctype html>
               </div>
               <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaNative()" x-bind:disabled="mediaVidBusy||!mediaVid.file">실행</button>
             </div>
+            <div><label class="lbl">자막 원문 (선택 · SRT/VTT)</label>
+              <textarea class="field" rows="3" x-model="mediaVid.subs" placeholder="자막을 붙여넣으면 영상 모델을 부르지 않고 자막으로 원고를 만듭니다 (비용 0)"></textarea>
+            </div>
             <div x-show="mediaVidMsg" class="text-xs text-muted" x-text="mediaVidMsg"></div>
             <div x-show="mediaVidRes" class="space-y-3">
               <div x-show="mediaVidRes && mediaVidRes.mock"><span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock · 라우터 미연결(키 없음)</span></div>
+              <div x-show="mediaVidRes && mediaVidRes.native && mediaVidRes.native.skipped"><span class="ds-badge ds-badge--success" style="cursor:help" data-tip="자막이 있어 발화 원고를 자막에서 얻었습니다 · 영상 모델 호출이 없어 비용이 들지 않아요" data-tip-pos="top"><span class="ds-badge__dot"></span>자막 우선 · 영상 모델 호출 생략</span></div>
               <div><label class="lbl">발화 전사 (오디오 트랙)</label>
                 <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? (mediaVidRes.native.audio.transcript || '(발화 없음)') : ''"></pre></div>
               <div><label class="lbl">비주얼 묘사</label>
                 <div class="text-sm text-body" x-text="mediaVidRes ? mediaVidRes.native.visual.description : ''"></div>
                 <div class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.native.visual.on_screen_text" x-text="'[화면 텍스트] ' + (mediaVidRes ? mediaVidRes.native.visual.on_screen_text : '')"></div></div>
-              <div><label class="lbl">통합 원고 (S4 병합)</label>
+              <div><label class="lbl">통합 원고 (S4 병합) <span class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.merged.spoken_source" x-text="'· 발화 출처: ' + (mediaVidRes && mediaVidRes.merged.spoken_source === 'subtitle' ? '자막(모델 0건)' : '오디오 전사')"></span></label>
                 <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? mediaVidRes.merged.transcript : ''"></pre></div>
               <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타 (S5 · 기존 추출 재사용)</b><span class="meta">실험 · 미저장</span></div>
                 <div class="panel-bd space-y-2">

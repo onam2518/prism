@@ -72,5 +72,32 @@ class TestMediaS5AB(unittest.TestCase):
         self.assertTrue(any(f.get("kind") for f in fails))          # fail_kind 존재
 
 
+class TestMediaNativeSubtitleFirst(unittest.TestCase):
+    """자막 우선 라우팅: 자막이 있으면 영상 모델 호출을 건너뛴다(모델 0건 · 비용 0)."""
+
+    def setUp(self):
+        S.Handler.server_mock = True
+
+    SRT = "1\n00:00:01,000 --> 00:00:03,000\n안녕하세요 서울 행사 소식입니다\n\n2\n00:00:03,000 --> 00:00:05,000\n시민들이 현장에 모였습니다\n"
+
+    def test_subtitles_skip_native_call(self):
+        r = S.media_native(b"\x00\x01", "video/mp4", subtitles=self.SRT)
+        self.assertTrue(r["ok"])
+        self.assertTrue(r["native"].get("skipped"))                  # 영상 모델 미호출
+        self.assertEqual(r["merged"]["spoken_source"], "subtitle")
+        self.assertIn("서울 행사", r["merged"]["transcript"])
+        self.assertTrue((r["output"].get("item_meta") or {}).get("summary"))   # S5 는 정상 수행
+
+    def test_no_subtitles_runs_native_track(self):
+        r = S.media_native(b"\x00\x01", "video/mp4")
+        self.assertTrue(r["ok"])
+        self.assertFalse(r["native"].get("skipped"))                 # 기존 경로 유지
+        self.assertIn("audio", r["native"])
+
+    def test_unparseable_subtitles_fall_back_to_native(self):
+        r = S.media_native(b"\x00\x01", "video/mp4", subtitles="타임스탬프 없는 텍스트")
+        self.assertFalse(r["native"].get("skipped"))                 # 큐 0건 → 자막 취급 안 함
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -89,7 +89,7 @@
       modelsBusy: false, modelsMsgStudio: '',   // 토픽 스튜디오: 모델 목록 새로고침(라우터 포함) 상태
       // 미디어 메타 파이프라인(T1 자막 파싱 실험기)
       mediaSub: { raw: '', fmt: '' }, mediaRes: null, mediaBusy: false, mediaMsg: '',
-      mediaVid: { file: null, caption: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
+      mediaVid: { file: null, caption: '', subs: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
       mediaImg: { files: [], caption: '' }, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
       mediaS5: { text: '', models: [] }, mediaS5Res: null, mediaS5Busy: false, mediaS5Msg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
@@ -1614,8 +1614,9 @@
           const fd = new FormData();
           fd.append('file', this.mediaVid.file);
           if (this.mediaVid.caption) fd.append('caption', this.mediaVid.caption);
+          if ((this.mediaVid.subs || '').trim()) fd.append('subtitles', this.mediaVid.subs);   // 자막 우선: 있으면 영상 모델 호출 생략
           const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
-          if (r && r.ok) { this.mediaVidRes = r; this.mediaVidMsg = r.mock ? '완료 · mock(라우터 미연결)' : '완료'; }
+          if (r && r.ok) { this.mediaVidRes = r; this.mediaVidMsg = (r.native && r.native.skipped) ? '완료 · 자막 우선(영상 모델 호출 없음 · 비용 0)' : (r.mock ? '완료 · mock(라우터 미연결)' : '완료'); }
           else { this.mediaVidMsg = (r && r.error) || '처리 실패'; }
         } catch (e) { this.mediaVidMsg = '처리 실패'; }
         this.mediaVidBusy = false;
