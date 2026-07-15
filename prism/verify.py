@@ -24,6 +24,12 @@ def verify_quality(qm, active_metas: list) -> list:
     qm.reasons = clean
     if not qm.finalGrade and qm.review == "yellow":
         return notes                           # 판정 보류(호출 실패)는 G 로 보정하지 않는다(fail-open 금지)
+    if qm.finalGrade == "R" and not clean:     # 모델은 R 인데 사유가 전부 사전외/비활성 → 자동 G 로 뒤집지 않고 검수 보류
+        qm.review = "yellow"
+        qm.review_reason = qm.review_reason or "R 판정이나 사유가 전부 사전 밖 · 검수 보류"
+        qm.finalGrade = ""                     # 보류 표식(자동 G 아님 · fail-open 금지)
+        notes.append("finalGrade R·사유 전량 사전외 → 검수 보류(G 강제 안 함)")
+        return notes
     forced = "R" if clean else "G"
     if qm.finalGrade != forced:
         notes.append(f"finalGrade 정합 보정: {qm.finalGrade}→{forced}")

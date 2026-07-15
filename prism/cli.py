@@ -170,7 +170,8 @@ def _extract_batch(a, cfg, llm, emb, kw, out_path):
         except Exception as e:
             errors.append((i, str(e)))
             results[i] = {"content_ref": {"title": rows[i].get("title", "")},
-                          "quality_meta": {"finalGrade": "G", "reasons": []},
+                          "quality_meta": {"finalGrade": "", "reasons": [], "review": "yellow",
+                                           "review_reason": "extract 예외 · 판정 보류"},
                           "item_meta": None,
                           "trace": {"fallbacks": [f"extract 예외: {e}"],
                                     "cost_usd": 0, "tokens": {"in": 0, "out": 0}}}

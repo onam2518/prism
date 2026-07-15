@@ -251,6 +251,11 @@ def _assemble(ctx: HCtx) -> dict:
 
     주의: emb 는 배치 공유 클라이언트라 per-content 누적비용을 여기 더하면 중복계상된다.
     임베딩 비용은 호출측(cli)에서 배치 단위로 1회만 합산한다 → 여기선 LLM 비용만."""
+    # 법령 평가 실패(호출 장애) → 깨끗한 자동 G 로 유통하지 않고 사람 검수로 보류(fail-open 금지)
+    if getattr(ctx.legal_meta, "failed", False) and ctx.qm and ctx.qm.finalGrade == "G" and ctx.qm.review != "yellow":
+        ctx.qm.review = "yellow"
+        ctx.qm.review_reason = ctx.qm.review_reason or "법령 평가 호출 실패 · 판정 보류"
+        ctx.fallbacks.append("legal_fail → 판정 보류(사람 검수)")
     t = ctx.trace
     t.model = getattr(ctx.llm, "model", "") or ""      # 초안 생성 모델 기록
     t.agent_verdicts = [v for v in ctx.verdicts if v.get("evidence") or v.get("fail")]
