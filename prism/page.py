@@ -1032,7 +1032,9 @@ PAGE = """<!doctype html>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='manual'?'sel':''" x-on:click="topicView='manual'">수동 생성</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='auto'?'sel':''" x-on:click="topicView='auto'">자동 생성</button>
               </span>
-              <button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
+              <button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button>
+              <!-- 토픽은 조건 재평가 방식(서버 캐시는 쓰기마다 무효화) · 탭을 열어둔 채 추출·검수·사전 보강이 진행되면 화면만 낡음 → 수동 재조회 -->
+              <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-bind:disabled="modBusy" x-on:click="loadTopics()" data-tip="새로고침 · 새 콘텐츠·등급 변경 재매칭" data-tip-pos="bottom" aria-label="토픽 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th>구분</th><th>토픽</th><th>구성</th><th>콘텐츠</th><th style="text-align:right">관리</th></tr></thead><tbody>
               <template x-for="g in (topicData.custom||[])" x-bind:key="g.id">
                 <tr x-show="topicView!=='auto'">
