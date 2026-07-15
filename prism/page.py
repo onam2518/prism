@@ -199,7 +199,7 @@ PAGE = """<!doctype html>
           <label class="onboard__lbl">비밀번호</label>
           <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw" x-on:keydown.enter="saveReviewer()" x-bind:style="authMode==='signup' ? 'margin-bottom:12px' : 'margin-bottom:8px'">
           <label x-show="authMode==='login'" class="chk-inline" style="font-size:12px;color:var(--ds-muted)">
-            <input type="checkbox" x-model="saveCred"> 아이디·비밀번호 저장 <span class="onboard__hint" style="margin:0">이 기기에만 저장됩니다</span></label>
+            <input type="checkbox" x-model="saveCred"> 아이디 저장 <span class="onboard__hint" style="margin:0">비밀번호는 저장하지 않습니다(이 기기)</span></label>
           <template x-if="authMode==='signup'">
             <div>
               <label class="onboard__lbl">비밀번호 확인</label>

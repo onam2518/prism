@@ -2089,13 +2089,15 @@ def _validate_public_url(url: str):
                                    proto=socket.IPPROTO_TCP)
     except Exception as e:
         return f"호스트 확인 실패: {str(e)[:80]}"
+    _cgnat = ipaddress.ip_network("100.64.0.0/10")     # RFC6598 CGNAT(클라우드·k8s 내부 대역)
     for info in infos:
         try:
             ip = ipaddress.ip_address(info[4][0])
         except ValueError:
             return "주소 확인 실패"
         if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-                or ip.is_multicast or ip.is_unspecified):
+                or ip.is_multicast or ip.is_unspecified
+                or (ip.version == 4 and ip in _cgnat)):
             return "사설/내부 대역 주소는 허용되지 않습니다"
     return None
 
@@ -2125,7 +2127,10 @@ def _fetch_records(endpoint: str, limit: int, method: str, auth: str):
         req.add_header("Authorization", auth)
     try:
         with urllib.request.build_opener(_SafeRedirect()).open(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8", "replace"))
+            raw = resp.read(_FETCH_MAX + 1)          # 응답 크기 상한(메모리 소진 방어)
+            if len(raw) > _FETCH_MAX:
+                return None, f"응답이 너무 큽니다(상한 {_FETCH_MAX // (1024 * 1024)}MB)"
+            data = json.loads(raw.decode("utf-8", "replace"))
     except Exception as e:
         return None, f"API 호출 실패: {str(e)[:160]}"
     if isinstance(data, dict):
@@ -2303,12 +2308,16 @@ def start_ingest_scheduler():
     _INGEST_THREAD.start()
 
 
-def build_results_csv() -> bytes:
-    """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄."""
-    rows = results_rows()
+def build_results_csv(team=None) -> bytes:
+    """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄. team 스코프 강제(전 팀 유출 방지)."""
+    rows = results_rows(team=team)
     out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유"]
     def esc(v):
         s = str(v if v is not None else "")
+        # CSV 수식 인젝션 중화: 셀 선두 = + - @ 및 탭/CR 은 스프레드시트가 수식/DDE 로 실행 →
+        # 선행 작은따옴표로 무력화(RFC4180 따옴표 이스케이프는 유지).
+        if s[:1] in ("=", "+", "-", "@", "\t", "\r"):
+            s = "'" + s
         return '"' + s.replace('"', '""') + '"'
     for r in rows:
         im = r.get("item_meta") or {}
@@ -2323,8 +2332,8 @@ def build_results_csv() -> bytes:
     return ("﻿" + "\r\n".join(out)).encode("utf-8")
 
 
-def build_report_html() -> str:
-    rows = results_rows()
+def build_report_html(team=None) -> str:
+    rows = results_rows(team=team)
     if not rows:
         return "<p>아직 실행 결과가 없습니다. 먼저 추출을 실행하세요.</p>"
     from . import dashboard as DASH
@@ -2348,6 +2357,15 @@ _ROUTER_KEY_PATHS = {
     "bizrouter": os.path.expanduser("~/.prism_bizrouter_key"),
     "timely": os.path.expanduser("~/.prism_timely_key"),
 }
+
+
+def _write_private(path, text):
+    """비밀 파일(키)을 0600 으로 원자적 기록. O_CREAT mode 로 신규는 처음부터 0600,
+    기존 파일은 write 전에 fchmod 로 강제 → open→write→chmod 사이 0644 노출 창 제거."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        os.fchmod(f.fileno(), 0o600)
+        f.write(text)
 
 
 def load_persisted_key():
@@ -2512,7 +2530,8 @@ def apply_feedback(data: dict) -> dict:
             if prev:                               # 원 표는 삭제돼도 취소 사실은 작업 이력에 남긴다(감사 추적)
                 st.log_patch(ch, reviewer, "undo:verdict", prev, "", team=data.get("_team"))
             broadcast({"type": "feedback", "hash": ch, "reviewer": disp, "verdict": "",
-                       "title": data.get("title", ""), "service": data.get("service", ""), "ts": time.time()})
+                       "title": data.get("title", ""), "service": data.get("service", ""), "ts": time.time()},
+                      team=data.get("_team"))
             _agg_bump()
             return {"ok": True, "feedback": st.feedback_stats(),
                     "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
@@ -2526,7 +2545,8 @@ def apply_feedback(data: dict) -> dict:
                          team=data.get("_team"), element=",".join(elements))
         broadcast({"type": "feedback", "hash": ch, "reviewer": disp,
                    "verdict": verdict, "title": data.get("title", ""),
-                   "service": data.get("service", ""), "ts": time.time()})
+                   "service": data.get("service", ""), "ts": time.time()},
+                  team=data.get("_team"))
         if verdict == "bad" and note:              # 오케스트레이터: 원문 재분류(요소·단계 분기) + REAP 가공
             fb = {"stage": stage, "note": note, "title": data.get("title", ""),
                   "elements": elements, "_team": data.get("_team"),
@@ -2664,7 +2684,7 @@ def _reap_async(content_hash: str, reviewer: str, fb: dict):
         broadcast({"type": "reap", "hash": content_hash, "reviewer": reviewer,
                    "stage": reap.get("stage", ""), "plan": reap.get("plan", ""),
                    "ask": reap.get("ask", ""),
-                   "routed": [r["element"] for r in routes]})
+                   "routed": [r["element"] for r in routes]}, team=fb.get("_team"))
     except Exception as e:
         print(f"  [warn] 피드백 후처리 실패(hash={content_hash[:12]}): {e}")
 
@@ -2699,7 +2719,8 @@ def register_reviewer(data: dict) -> dict:
             if not r.get("ok"):
                 return r
         _agg_bump()                                  # 리더보드 등 집계에 새 이름 즉시 반영
-        broadcast({"type": "reviewer", "reviewer": name, "char": ch})
+        broadcast({"type": "reviewer", "reviewer": name, "char": ch},
+                  team=(st.reviewer_team(rv) if (_supa() and hasattr(st, "reviewer_team")) else None))
         return {"ok": True, "name": name, "char": ch}
     # 로그인: 기존 프로필(이름·캐릭터·팀) 로드 · 재입력/재등록 없음
     if data.get("mode") == "login" and hasattr(st, "get_reviewer"):
@@ -2723,7 +2744,7 @@ def register_reviewer(data: dict) -> dict:
             st.set_reviewer(rv, name, ch, team)
     else:
         st.set_reviewer(rv, name, ch)
-    broadcast({"type": "reviewer", "reviewer": name, "char": ch})
+    broadcast({"type": "reviewer", "reviewer": name, "char": ch}, team=team)
     info = st.team_info(team) if (team and hasattr(st, "team_info")) else None
     return {"ok": True, "team": info}                # info.invite_code 로 초대코드 표시
 
@@ -3239,29 +3260,32 @@ def rate_limited(key: str, min_interval: float = 0.8, per_min: int = 40) -> bool
         return False
 
 
-# ── 실시간 협업(SSE): 검수 이벤트를 접속 중인 팀원에게 브로드캐스트 ──
-_subscribers = []                      # list[queue.Queue]
+# ── 실시간 협업(SSE): 검수 이벤트를 접속 중인 '같은 팀' 팀원에게만 브로드캐스트 ──
+_subscribers = []                      # list[(team, queue.Queue)]
 _sub_lock = threading.Lock()
 
 
-def _sse_subscribe():
+def _sse_subscribe(team=None):
     q = _queue.Queue(maxsize=128)
     with _sub_lock:
-        _subscribers.append(q)
+        _subscribers.append((team, q))
     return q
 
 
 def _sse_unsubscribe(q):
     with _sub_lock:
-        if q in _subscribers:
-            _subscribers.remove(q)
+        _subscribers[:] = [(t, sq) for (t, sq) in _subscribers if sq is not q]
 
 
-def broadcast(event: dict):
-    """접속 중 모든 SSE 구독자에게 이벤트 푸시(논블로킹, 큐 가득 차면 드롭)."""
+def broadcast(event: dict, team=None):
+    """SSE 이벤트 푸시(논블로킹, 큐 가득 차면 드롭). team 이 지정되면 같은 팀 구독자에게만
+    전달해 교차팀 실시간 유출(hash·title·검수자·verdict)을 차단. team=None(로컬 sqlite 단일 팀
+    또는 팀 무관 이벤트)이면 모든 구독자."""
     with _sub_lock:
         subs = list(_subscribers)
-    for q in subs:
+    for (sub_team, q) in subs:
+        if team is not None and sub_team != team:
+            continue
         try:
             q.put_nowait(event)
         except _queue.Full:
@@ -3307,6 +3331,37 @@ def save_team_links(data: dict):
                                       for k in ("guide", "guide_user", "guide_admin")})
 
 
+_AUTH_MASK = "***"                                 # 인입 소스 auth(외부 API 비밀 토큰) 마스크 센티널
+
+
+def _source_key(s):
+    return s.get("id") or ("ep:" + (s.get("endpoint") or "")) if isinstance(s, dict) else None
+
+
+def _mask_ingest_sources(sources):
+    """인입 소스의 auth(비밀 토큰)를 마스킹해 응답에 실값이 노출되지 않게 한다."""
+    out = []
+    for s in sources:
+        if isinstance(s, dict) and s.get("auth"):
+            out.append({**s, "auth": _AUTH_MASK})
+        else:
+            out.append(s)
+    return out
+
+
+def _unmask_ingest_sources(new, old):
+    """저장 시 auth 가 마스크 센티널이면 기존 저장값을 복원(마스킹된 응답 재저장이 실값을 덮어쓰지 않게).
+    매칭 실패한 센티널은 빈 값으로(리터럴 '***' 를 자격증명으로 저장하지 않음)."""
+    prev = {_source_key(s): s.get("auth") for s in (old or []) if isinstance(s, dict)}
+    out = []
+    for s in new:
+        if isinstance(s, dict) and s.get("auth") == _AUTH_MASK:
+            out.append({**s, "auth": prev.get(_source_key(s), "")})
+        else:
+            out.append(s)
+    return out
+
+
 def config_status(team=None) -> dict:
     cfg = Config.load()
     base = (cfg.chat_url or "").rsplit("/chat/completions", 1)[0]
@@ -3334,7 +3389,7 @@ def config_status(team=None) -> dict:
         "familyWrapperDefaults": dict(MP.FAMILY_WRAPPER_DEFAULT),
         "metaCalls": list(MP.CALLS),
         "metaContract": {"rules": dict(MP.CALL_RULES), "examples": MP.gold_examples(None)},
-        "ingestSources": list(cfg.ingest_sources or []),
+        "ingestSources": _mask_ingest_sources(cfg.ingest_sources or []),
         "guideUrls": team_links(),
         "storedCount": (get_store().count() if get_store() else 0),
         "build": _build_id(),
@@ -3369,9 +3424,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
         _seed_solar_defaults()                        # 키만 저장해도 바로 호출 가능하게
         if data.get("persist"):
             try:
-                with open(_KEY_PATH, "w", encoding="utf-8") as f:
-                    f.write(key)
-                os.chmod(_KEY_PATH, 0o600)
+                _write_private(_KEY_PATH, key)        # 0600 원자적(생성~chmod 사이 0644 창 제거)
             except Exception:
                 pass
     elif data.get("forget"):                      # 저장된 키 삭제
@@ -3388,9 +3441,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             os.environ[env] = rkey
             if data.get("persist"):
                 try:
-                    with open(path, "w", encoding="utf-8") as f:
-                        f.write(rkey)
-                    os.chmod(path, 0o600)
+                    _write_private(path, rkey)        # 0600 원자적
                 except Exception:
                     pass
         elif data.get("forget_" + service):
@@ -3420,7 +3471,10 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
         if has_ingest:
-            cfg.ingest_sources = data.get("ingest_sources") or []
+            # 마스킹된 auth 센티널은 기존 실값으로 복원(마스킹 응답 재저장이 시크릿을 덮어쓰지 않게).
+            # RHS cfg.ingest_sources 는 할당 전 평가라 기존값(방금 Config.load 로 로드됨).
+            cfg.ingest_sources = _unmask_ingest_sources(data.get("ingest_sources") or [],
+                                                        cfg.ingest_sources or [])
         if has_smodels:
             sm = data.get("stage_models") or {}
             cfg.stage_models = {k: (sm.get(k) or "").strip() for k in ("extract", "analyze", "review", "judge")}
@@ -3628,8 +3682,20 @@ _JSON = "application/json; charset=utf-8"
 # ── HTTP 핸들러 ──────────────────────────────────────────────────────────────
 # 공개 GET 경로(무인증): 페이지 셸·정적 자산·백엔드 상태(/config 는 라우트에서 최소 필드로
 # 축약)·업로드 서식만. 그 외 데이터 GET 은 supabase(운영) 모드에서 로그인 필수(Handler._gate_get).
+# POST 본문 상한(메모리 DoS 방어) · 미디어/엑셀 업로드 여유. 환경변수로 조정 가능.
+try:
+    _MAX_BODY = int(os.environ.get("PRISM_MAX_BODY_MB", "32")) * 1024 * 1024
+except ValueError:
+    _MAX_BODY = 32 * 1024 * 1024
+
+_FETCH_MAX = 16 * 1024 * 1024           # 인입 아웃바운드 응답 크기 상한(메모리 소진 방어)
+
 _PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/template.csv",
                "/usermeta-template.csv", "/usermeta-profile-template.csv"}
+
+# 팀 없이도 접근 가능한 인증 GET(전역 참조·관리자 판정 · 팀 콘텐츠 데이터 아님).
+# 그 외 데이터 GET 은 supabase 모드에서 팀 소속을 요구(team=None 전 팀 폴백 격리 붕괴 차단).
+_TEAMLESS_OK_GET = {"/admin", "/models", "/vocab", "/dict", "/ingest-status"}
 
 
 def is_public_get(path: str) -> bool:
@@ -3649,10 +3715,27 @@ class Handler(BaseHTTPRequestHandler):
     _GZIP_CT = ("text/html", "application/json", "text/css", "application/javascript",
                 "text/csv", "image/svg", "text/plain")
 
+    # 보안 응답 헤더. CSP 는 앱 구조(Alpine 표현식=unsafe-eval · 인라인 <script> 2개·인라인 스타일=
+    # unsafe-inline · data: 폰트/아이콘 · 원문 미리보기 iframe=https:)에 맞춘 실동작 정책.
+    # connect-src 'self' 로 XSS 발화 시 임의 호스트 유출을 차단, frame-ancestors/base-uri/object-src 로
+    # 클릭재킹·base 주입·플러그인을 봉쇄. (SSE 스트림은 _serve_sse 가 직접 헤더를 쓰므로 별도.)
+    _CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; "
+            "connect-src 'self'; frame-src 'self' https:; frame-ancestors 'none'; "
+            "base-uri 'self'; object-src 'none'")
+
+    def _security_headers(self):
+        self.send_header("Content-Security-Policy", self._CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
     def _send(self, code, body, ctype="text/html; charset=utf-8", cache=""):
         data = body.encode("utf-8") if isinstance(body, str) else body
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        self._security_headers()
         # 전송 압축: 텍스트 응답 · 1KB 이상 · 클라이언트 gzip 수용 시(첫 로드 4.7MB → ~1MB 실측 근거)
         if (code == 200 and len(data) > 1024
                 and any(t in ctype for t in self._GZIP_CT)
@@ -3675,24 +3758,36 @@ class Handler(BaseHTTPRequestHandler):
         SSE(/events)는 EventSource 가 헤더를 못 실어 token 쿼리 파라미터로 검증."""
         if not _supa() or is_public_get(self.path):
             return True
-        if self.path.split("?", 1)[0].rstrip("/") == "/events":
+        p = self.path.split("?", 1)[0].rstrip("/")
+        if p == "/events":
             from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
-            return bool(validate_jwt((q.get("token") or [""])[0]))
-        return bool(self._bearer_uid())
+            uid = validate_jwt((q.get("token") or [""])[0])
+            return bool(uid) and self._team_ok(uid, p)
+        uid = self._bearer_uid()
+        if not uid:
+            return False
+        return self._team_ok(uid, p)
+
+    def _team_ok(self, uid, path):
+        """팀 미소속 인증계정이 team=None 폴백으로 전 팀 데이터를 열람하던 격리 붕괴 차단(fail-closed).
+        운영 관리자(허용목록)와 팀 없이 동작해야 하는 경로(관리자 판정·전역 참조 사전)만 예외."""
+        if path in _TEAMLESS_OK_GET or is_sys_admin_user(uid, None, self._bearer_email()):
+            return True
+        return team_of(uid) is not None
 
     def do_GET(self):
         if not self._gate_get():
             self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
             return
         if self.path.startswith("/report"):
-            self._send(200, build_report_html())
+            self._send(200, build_report_html(team=self._req_team()))
         elif self.path.startswith("/export.csv"):
             self.send_response(200)
             self.send_header("Content-Type", "text/csv; charset=utf-8")
             self.send_header("Content-Disposition", "attachment; filename=prism_results.csv")
             self.end_headers()
-            self.wfile.write(build_results_csv())
+            self.wfile.write(build_results_csv(team=self._req_team()))
         elif self.path.startswith("/config"):
             cs = config_status(self._req_team())
             # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
@@ -4069,6 +4164,20 @@ class Handler(BaseHTTPRequestHandler):
         self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
         return False
 
+    def _require_team(self):
+        """supabase 모드: 로그인 + 팀 소속 필수(전 팀 데이터를 읽는 POST 라우트용).
+        팀 미소속 인증계정이 team=None 폴백으로 전 팀 콘텐츠·페르소나를 열람하던 격리 붕괴 차단."""
+        if not _supa():
+            return True
+        uid = self._bearer_uid()
+        if not uid:
+            self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+            return False
+        if is_sys_admin_user(uid, None, self._bearer_email()) or team_of(uid) is not None:
+            return True
+        self._send(403, json.dumps({"error": "팀 소속이 필요합니다"}, ensure_ascii=False), _JSON)
+        return False
+
     def _serve_sse(self):
         """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK."""
         self.send_response(200)
@@ -4077,7 +4186,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")     # 프록시 버퍼링 방지
         self.end_headers()
-        q = _sse_subscribe()
+        q = _sse_subscribe(self._req_team())         # 구독을 구독자 팀에 묶어 교차팀 이벤트 수신 차단
         try:
             # 접속 인사에 부팅 ID 동봉: 배포로 서버가 교체되면 재연결 시 값이 달라진다(새 버전 배너 트리거)
             self.wfile.write(("data: " + json.dumps({"type": "hello", "boot": _BOOT_ID}) + "\n\n").encode("utf-8"))
@@ -4126,7 +4235,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, f.read(), self._VENDOR_CT[ext], cache=cache)
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
+        # 본문 크기 상한: 인증·라우팅보다 먼저 실행되는 read 가 무제한이면 프리-어스 메모리 DoS
+        # (스레드당 증폭). 비수치 Content-Length 는 400, 초과는 413. 거부 시 연결을 닫아 잔여 본문
+        # 재해석 방지.
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except (TypeError, ValueError):
+            self.close_connection = True
+            self._send(400, json.dumps({"error": "잘못된 Content-Length"}, ensure_ascii=False), _JSON)
+            return
+        if length < 0 or length > _MAX_BODY:
+            self.close_connection = True
+            self._send(413, json.dumps({"error": f"요청 본문이 너무 큽니다(상한 {_MAX_BODY // (1024 * 1024)}MB)"},
+                                       ensure_ascii=False), _JSON)
+            return
         body = self.rfile.read(length)
 
         if self.path.startswith("/config"):
@@ -4152,6 +4274,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/ping"):
+            if not self._require_login():                  # 미인증 실모델 호출(소액 과금·키 탐지) 차단
+                return
             try:
                 d = json.loads(body or b"{}")
             except Exception:
@@ -4188,6 +4312,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/auth"):                 # 로그인/가입 프록시(supabase)
             try:
+                # 무차별 대입·가입 남용 억제: IP당 최소간격 1s · 분당 12회(초과 시 429)
+                if rate_limited("auth:" + (self.client_address[0] if self.client_address else "?"),
+                                min_interval=1.0, per_min=12):
+                    self._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                               ensure_ascii=False), _JSON)
+                    return
                 self._send(200, json.dumps(auth_action(json.loads(body or b"{}")),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
@@ -4219,6 +4349,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/badges"):                # 배지 획득 영속(기기 간 기준선)
             try:
+                if not self._require_login():              # 미인증 임의 uid 배지 기록 차단
+                    return
                 data = json.loads(body or b"{}")
                 uid = self._bearer_uid() or (data.get("reviewer") or "").strip()
                 self._send(200, json.dumps(save_badges(uid, data.get("earned")),
@@ -4314,6 +4446,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/learn-report"):       # 최근 일배치 결과 수신(개선·골든·평가·모델비교)
+            if not self._require_team():                 # team=None 폴백 전 팀 리포트 노출 차단
+                return
             self._send(200, json.dumps({"ok": True, "report": _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT)}, ensure_ascii=False), _JSON)
             return
 
@@ -4353,7 +4487,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
                     return
                 data = json.loads(body or b"{}")
-                rv = (data.get("reviewer") or "").strip()
+                # 검수자 귀속은 서버가 Bearer uid 로 강제(바디 reviewer 위조로 합의 스터핑·점수 파밍 방지).
+                rv = self._bearer_uid() if _supa() else (data.get("reviewer") or "").strip()
                 verdict = (data.get("verdict") or "").strip()
                 ch = (data.get("hash") or "").strip()
                 if not rv or not ch or verdict not in ("adopt", "reject"):
@@ -4562,8 +4697,11 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
                     return
                 p = json.loads(body or b"{}")
-                broadcast({"type": "presence", "reviewer": (p.get("reviewer") or "").strip(),
-                           "hash": p.get("hash") or "", "action": p.get("action") or "viewing"})
+                # 검수자 귀속은 서버 uid 로 강제(프레즌스 사칭 방지) · 같은 팀에만 방송
+                rv = self._bearer_uid() if _supa() else (p.get("reviewer") or "").strip()
+                broadcast({"type": "presence", "reviewer": rv,
+                           "hash": p.get("hash") or "", "action": p.get("action") or "viewing"},
+                          team=self._req_team())
                 self._send(200, json.dumps({"ok": True}, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
@@ -4724,7 +4862,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/usermeta-profiles"):   # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
             try:
-                if not self._require_login():
+                if not self._require_team():               # 팀 미소속 team=None 폴백 전 팀 콘텐츠 열람 차단
                     return
                 from . import personagen as PG
                 ctype = self.headers.get("Content-Type", "")
@@ -4744,7 +4882,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/usermeta"):
             try:
-                if not self._require_login():              # 익명 전 팀 콘텐츠 열람·LLM 호출 차단
+                if not self._require_team():               # 팀 미소속 team=None 폴백 전 팀 콘텐츠 열람·LLM 남용 차단
                     return
                 ctype = self.headers.get("Content-Type", "")
                 f = None

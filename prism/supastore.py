@@ -12,12 +12,17 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import threading
 import os
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+# content_hash = sha1[:16] = 16진수 16자. PostgREST in.()/eq. 필터에 넣기 전 형식 검증(심층방어):
+# quote() 가 구분자를 인코딩하더라도, 형식 밖 입력을 애초에 거른다.
+_HASH_RE = re.compile(r"^[0-9a-f]{16}$")
 
 from .store import level_of
 
@@ -53,7 +58,10 @@ class SupabaseStore:
         path = url[len(self.url):]                       # /rest/v1/… (keep-alive 는 host 기준)
         status, raw, _ = self._http(method, path, data, headers)
         if status >= 400:
-            raise RuntimeError(f"supabase {method} {table} HTTP{status}: {raw[:300]}")
+            # 상세(PostgREST 에러 본문 = 테이블·제약·컬럼·SQL 힌트)는 서버 로그만.
+            # 예외 메시지엔 스키마 내부를 담지 않는다(500 응답 str(e) 로 유출 방지).
+            print(f"  [supabase] {method} {table} HTTP{status}: {raw[:300]}")
+            raise RuntimeError(f"supabase {method} {table} 실패(HTTP{status})")
         return json.loads(raw) if raw.strip() else []
 
     _TLS = threading.local()                             # 스레드별 keep-alive 연결(ThreadingHTTPServer 대응)
@@ -178,11 +186,11 @@ class SupabaseStore:
     def set_assignees_bulk(self, hashes, reviewers, min_reviewers=1, team=None) -> int:
         """여러 콘텐츠 일괄 배정(덮어쓰기) · DELETE 1회(in.()) + POST 1회로 왕복 최소화.
         reviewers=[] 이면 대상 전체 해제. 반환=처리한 콘텐츠 수."""
-        hs = [h for h in dict.fromkeys((c or "").strip() for c in (hashes or [])) if h]
+        hs = [h for h in dict.fromkeys((c or "").strip() for c in (hashes or [])) if _HASH_RE.match(h)]
         if not hs:
             return 0
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        inlist = ",".join(urllib.parse.quote(h) for h in hs)     # content_hash 는 16자 hex(안전)
+        inlist = ",".join(urllib.parse.quote(h) for h in hs)     # 형식 검증 완료(16진수 16자) · 인코딩 병행
         self._req("DELETE", "assignments", query=f"content_hash=in.({inlist})" + tq, prefer="return=minimal")
         rvs = [r for r in dict.fromkeys(reviewers or []) if r]
         if not rvs:
