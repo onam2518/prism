@@ -149,10 +149,21 @@ def st_quality(ctx: HCtx):
     ctx.fallbacks += V.verify_quality(qm, ctx.routing.active_quality_metas)
 
 
+_COMMERCE_METAS = {"ad", "spam"}                 # 광고성 계열(상거래) · D3 우선순위 적용 대상(유해·법령 메타 제외)
+_AD_SUPPRESS_INTENTS = {"보도자료·공식발표"}       # 이 편집 인텐트가 붙으면 commerce 단독 R 을 사람 검수로 내린다
+
+
+def _commerce_only_r(qm) -> bool:
+    """품질이 R 이고 사유가 광고성 계열(ad·spam)뿐 — 유해·법령 사유는 없음(D3(a) 대상 케이스)."""
+    rs = (qm.reasons or []) if qm else []
+    return bool(qm) and qm.finalGrade == "R" and bool(rs) and all(r in _COMMERCE_METAS for r in rs)
+
+
 def st_item(ctx: HCtx):
     """아이템 메타(G 또는 YELLOW). 임베딩 kNN 카테고리(2-pass) + 사전화."""
     m = ctx.methodology
-    gate_item = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow")
+    # 광고성 단독 R 도 아이템을 돌려 인텐트를 확보한다(D3: 편집 인텐트로 광고성-R 을 내릴지 판정하기 위함)
+    gate_item = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow" or _commerce_only_r(ctx.qm))
     if not (gate_item and ctx.routing.content_track != "image_only"):
         return
     im, ires = A.run_item(ctx.llm, ctx.content, parallel=m.parallel_calls)
@@ -238,9 +249,9 @@ def _run_quality_item_parallel(ctx: HCtx):
     ctx.results += cq.results + ci.results
     ctx.verdicts += cq.verdicts + ci.verdicts
     ctx.fallbacks += cq.fallbacks + ci.fallbacks
-    gate = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow")
+    gate = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow" or _commerce_only_r(ctx.qm))
     if gate and ctx.routing.content_track != "image_only":
-        ctx.item_meta = ci.item_meta
+        ctx.item_meta = ci.item_meta                   # 광고성 단독 R 은 인텐트 확인 위해 아이템 메타 보존(D3)
     elif ci.item_meta is not None:
         ctx.item_meta = None
         ctx.fallbacks.append("병렬 스테이지: R 판정 → 아이템 메타 폐기(비용 트레이드오프)")
@@ -256,6 +267,15 @@ def _assemble(ctx: HCtx) -> dict:
         ctx.qm.review = "yellow"
         ctx.qm.review_reason = ctx.qm.review_reason or "법령 평가 호출 실패 · 판정 보류"
         ctx.fallbacks.append("legal_fail → 판정 보류(사람 검수)")
+    # D3(a · 260715 회의): 우선순위 인텐트 > 품질 G/R > 광고성 사유. 광고성 계열(ad·spam) 단독 R 인데
+    # 정당한 편집 인텐트(보도자료·공식발표)가 부여됐으면 Red 로 승격하지 않고 사람 검수로 보류.
+    # 유해·법령 사유가 하나라도 있으면(_commerce_only_r=False) 적용하지 않아 모더레이션은 그대로.
+    if (_commerce_only_r(ctx.qm) and ctx.item_meta
+            and (set(ctx.item_meta.intent or []) & _AD_SUPPRESS_INTENTS)):
+        ctx.qm.review = "yellow"
+        ctx.qm.review_reason = ctx.qm.review_reason or "광고성 사유 vs 편집 인텐트(보도자료·공식발표) 상충 · 사람 검수 보류"
+        ctx.qm.finalGrade = ""                          # Red 미승격 · 판정 보류(자동 G 도 아님)
+        ctx.fallbacks.append("commerce_R + 편집 인텐트 → 판정 보류(사람 검수)")
     t = ctx.trace
     t.model = getattr(ctx.llm, "model", "") or ""      # 초안 생성 모델 기록
     t.agent_verdicts = [v for v in ctx.verdicts if v.get("evidence") or v.get("fail")]
