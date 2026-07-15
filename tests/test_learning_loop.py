@@ -448,6 +448,76 @@ class TestReviewerCalibration(unittest.TestCase):
         self.assertIsNone(row["gold_trend"])
 
 
+class TestBatchRegressions(unittest.TestCase):
+    """강화된 회귀 게이트(_batch_regressions): 스칼라 2%p + 유해 미탐 + 버킷 10%p."""
+
+    def test_within_tolerance_passes(self):
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0,
+               "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9},
+                                    "tiny": {"n": 2, "grade_acc": 1.0}}}
+        post = {"grade_accuracy": 0.89, "harm_miss_rate": 0.0,
+                "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.85},
+                                     "tiny": {"n": 2, "grade_acc": 0.0}}}   # 소표본 급락은 무시
+        self.assertEqual(_batch_regressions(pre, post), [])
+
+    def test_harm_and_bucket_regressions_detected(self):
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0,
+               "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9}}}
+        post = {"grade_accuracy": 0.9, "harm_miss_rate": 0.05,
+                "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.7}}}
+        r = _batch_regressions(pre, post)
+        self.assertEqual(len(r), 2)
+        self.assertTrue(any("유해 미탐" in x for x in r))
+        self.assertTrue(any("버킷 ad" in x for x in r))
+
+    def test_missing_post_bucket_not_regression(self):
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0,
+               "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9}}}
+        post = {"grade_accuracy": 0.85, "harm_miss_rate": 0.0, "by_reason_bucket": {}}
+        self.assertEqual(_batch_regressions(pre, post), ["정합성 -5.0% 악화"])
+
+    def test_learning_batch_reverts_on_harm_regression(self):
+        """정확도가 올라도 유해 미탐이 악화되면 원복(단일 스칼라 가드의 사각 해소)."""
+        import json as _j
+        import tempfile
+        from prism import config as C
+        from prism import learnops as LO
+        from prism import prompts as PR
+        from prism import serve
+        from prism.store import Store
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        cfgp = os.path.join(tempfile.mkdtemp(), "config.json")
+        open(cfgp, "w", encoding="utf-8").write(_j.dumps({}))
+        orig_p = C.DEFAULT_CONFIG_PATH
+        C.DEFAULT_CONFIG_PATH = cfgp
+        self.addCleanup(lambda: setattr(C, "DEFAULT_CONFIG_PATH", orig_p))
+        old_learned = dict(PR.LEARNED)
+        old_bm = PR.LEARNED_BY_MODEL
+        self.addCleanup(lambda: (PR.LEARNED.update(old_learned), setattr(PR, "LEARNED_BY_MODEL", old_bm)))
+        PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
+        PR.LEARNED_BY_MODEL = {}
+        evals = [{"ok": True, "grade_accuracy": 0.90, "harm_miss_rate": 0.00, "evaluated": 10},
+                 {"ok": True, "grade_accuracy": 0.92, "harm_miss_rate": 0.10, "evaluated": 10}]
+        def fake_eval(team=None, model="", scope="all"):
+            return evals.pop(0) if evals else {"ok": True, "grade_accuracy": 0.92,
+                                               "harm_miss_rate": 0.10, "evaluated": 10}
+        def fake_improve(team=None):
+            PR.LEARNED = {"extract": "", "analyze": "- 미탐 악화 지시", "review": "", "judge": ""}
+            return {"ok": True, "results": {"analyze": {"directive": "- 미탐 악화 지시"}}}
+        orig_e, orig_i = LO.eval_golden, LO.meta_compile_run
+        LO.eval_golden, LO.meta_compile_run = fake_eval, fake_improve
+        self.addCleanup(lambda: (setattr(LO, "eval_golden", orig_e), setattr(LO, "meta_compile_run", orig_i)))
+        rep = LO.learning_batch(None)
+        self.assertTrue(rep["improve"].get("reverted"))
+        self.assertIn("유해 미탐", rep["improve"].get("revert_reason", ""))
+        self.assertEqual(PR.LEARNED["analyze"], "")                          # 원복됨
+        self.assertEqual(rep["grade_accuracy"], 0.90)                        # 유지 프롬프트 기준 보고
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
