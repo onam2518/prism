@@ -147,12 +147,19 @@ class TestServeActions(unittest.TestCase):
         self.S = S
         self._tmp = tempfile.TemporaryDirectory()
         self._orig_store, self._orig_last = S._STORE, list(S._LAST_RESULTS)
+        self._orig_mock = S.Handler.server_mock
+        S.Handler.server_mock = True                     # 적재 훅의 위키데이터 보강 스레드 차단(결정론)
         S._STORE = Store(os.path.join(self._tmp.name, "t.db"))
-        S._LAST_RESULTS[:] = _rows()
+        # 실제 저장 경로로 적재: 빈 스토어 + 메모리 잔상 조합은 유령 콘텐츠 버그의 재료라
+        # results_rows 가 더는 메모리로 폴백하지 않는다(2026-07-15) — 스토어에 직접 영속.
+        pairs = [({k: (r["content_ref"].get(k) or "") for k in
+                   ("displayServiceName", "title", "subtitle", "body")}, r) for r in _rows()]
+        S.store_save(pairs, source="test")
 
     def tearDown(self):
         self.S._STORE = self._orig_store
         self.S._LAST_RESULTS[:] = self._orig_last
+        self.S.Handler.server_mock = self._orig_mock
         self._tmp.cleanup()
 
     def test_exclude_restore_roundtrip(self):

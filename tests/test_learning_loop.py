@@ -308,13 +308,14 @@ class TestQASeed(unittest.TestCase):
         self.addCleanup(lambda: setattr(serve, "_STORE", None))
         from prism import qa_seed
         out = qa_seed.seed(verbose=False)
-        self.assertTrue(out["ok"] and out["contents"] == 10)
+        self.assertTrue(out["ok"] and out["contents"] == 12)          # 확정 10 + 검수 대기(YELLOW) 2
         rows = st.recent_meta(50)
-        self.assertEqual(len(rows), 10)
+        self.assertEqual(len(rows), 12)
         self.assertEqual(sum(1 for r in rows if r["purpose"] == "eval"), 2)
         self.assertGreaterEqual(st.golden_count(), 1)
         self.assertEqual(st.batch_seq(), 1)                    # 학습 반영 1회 → 다음 버전 v2
-        self.assertEqual(len(serve.raw_rows()["items"]), 8)     # 평가용 제외
+        self.assertEqual(st.yellow_count(), 2)                 # 진척 게이지 분모(검수 대기)
+        self.assertEqual(len(serve.raw_rows()["items"]), 10)    # 평가용 제외(검수 대기 2 포함)
         again = qa_seed.seed(verbose=False)
         self.assertTrue(again.get("skipped"))                   # 멱등
 

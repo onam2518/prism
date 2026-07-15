@@ -120,7 +120,7 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
     등록 전 검증·정규화: finalGrade G|R 강제, content_category 사전 스냅, title 필수."""
     from . import dictionaries as D
     st = _SV.get_store()
-    if not _SV.is_admin_user(uid, team, email):
+    if _SV._supa() and not _SV.is_admin_user(uid, team, email):   # 로컬(sqlite)은 개방(타 관리자 라우트와 동일 게이트)
         return {"ok": False, "error": "관리자 전용입니다"}
     valid, skipped = [], 0
     for r in rows:

@@ -176,13 +176,13 @@ def store_save(pairs, source: str = "단건", team=None):
 
 
 def results_rows(limit: int = 5000, team=None) -> list:
-    """집계용 결과 행 · 영속 저장소 우선(누적), 없으면 메모리(_LAST_RESULTS)."""
+    """집계용 결과 행 · 영속 저장소 우선(누적) · 메모리(_LAST_RESULTS) 폴백은 저장소 부재·오류 시만.
+    저장소의 빈 결과는 그대로 신뢰한다 — 전체 삭제 직후 메모리 잔상이 폴백으로 되살아나
+    화면에 유령 콘텐츠가 남는 문제 방지."""
     st = get_store()
     if st:
         try:
-            rows = st.recent(limit, team=team)
-            if rows:
-                return rows
+            return st.recent(limit, team=team)
         except Exception:
             pass
     return _LAST_RESULTS
@@ -619,12 +619,14 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
             fields["type"] = t
             fields["status"] = "active" if t else "pending"
             am["type"] = {"source": "manual", "status": "confirmed"}
+        skipped = []                              # 타입 스키마에 없는 속성 키(조용한 유실 방지 · 호출자에 알림)
         if isinstance(data.get("attrs"), dict):
             attrs = dict(e.get("attrs") or {})
             typ = fields.get("type", e.get("type") or "")
             allowed = {k for k, _ in ED.ATTR_FIELDS.get(typ, [])}
             for k, v in data["attrs"].items():
                 if allowed and k not in allowed:
+                    skipped.append(k)
                     continue
                 v = str(v or "").strip()
                 if v:
@@ -642,7 +644,10 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
             st.ent_alias_add(alias, eid)
         fields["attr_meta"] = am
         st.ent_update(eid, fields)
-        return {"ok": True, "entity": st.ent_get(eid), "aliases": st.ent_aliases(eid)}
+        out = {"ok": True, "entity": st.ent_get(eid), "aliases": st.ent_aliases(eid)}
+        if skipped:
+            out["skipped_attrs"] = skipped
+        return out
 
     if action == "add":
         name = ED.normalize_name(data.get("name") or "")
@@ -755,13 +760,18 @@ def edit_dict(data: dict) -> dict:
 
 
 def reset_dict_overrides() -> dict:
-    """편집 초기화: overrides 삭제(베이스 사전은 다음 재시작 시 복원)."""
+    """편집 초기화: overrides 파일 삭제 + 원본 사전 즉시 복원(재시작 불필요)."""
     try:
         os.remove(_DICT_OVERRIDES_PATH)
     except OSError:
         pass
+    from . import dictionaries as D
+    try:
+        D.restore_base()                 # 메모리에 적용된 override 도 즉시 걷어냄
+    except Exception:
+        pass
     out = dict_data()
-    out["resetNote"] = "초기화됨 · 베이스 사전은 서버 재시작 시 완전 복원"
+    out["resetNote"] = "초기화됨 · 원본 사전으로 복원"
     return out
 
 
@@ -977,6 +987,9 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
     exclusions = {k: list(v or []) for k, v in (cfg["exclusions"] or {}).items()}
 
     if action == "save":
+        if not isinstance(data.get("def"), dict) or not data["def"]:
+            # def 누락(키 오타 포함)이 조용히 '(무제 토픽)' 을 만드는 것 방지 — 명시 에러로 반환
+            return {"ok": False, "error": "토픽 정의(def)가 필요합니다"}
         d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
         idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
         if idx >= 0:
@@ -3392,8 +3405,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, _mpage_versioned())
         elif self.path.startswith("/vendor/"):
             self._send_vendor(self.path.split("?", 1)[0].rsplit("/", 1)[-1])
-        else:
+        elif self.path.split("?", 1)[0] == "/favicon.ico":     # 브라우저 기본 요청: SPA 폴스루(323KB HTML) 방지
+            self._send_vendor("prism-favicon.svg")
+        elif self.path.split("?", 1)[0].rstrip("/") in ("", "/"):
             self._send(200, _page_versioned())
+        else:                                                  # 미등록 경로 404: API 오타가 SPA HTML 200 으로 가려지지 않게
+            self._send(404, json.dumps({"error": "not found", "path": self.path.split("?", 1)[0][:80]},
+                                       ensure_ascii=False), _JSON)
 
     def _bearer_uid(self):
         auth = self.headers.get("Authorization", "")
@@ -3526,6 +3544,8 @@ class Handler(BaseHTTPRequestHandler):
                 st = get_store()
                 if payload.get("clear") and st:
                     st.clear()
+                    _LAST_RESULTS[:] = []          # 메모리 미러 동반 정리(삭제 후 잔상 방지)
+                    _agg_bump()
                 self._send(200, json.dumps({"ok": True, "count": (st.count() if st else 0)},
                                            ensure_ascii=False), _JSON)
             except Exception as e:

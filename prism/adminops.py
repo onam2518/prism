@@ -282,6 +282,8 @@ def admin_action(uid, team, data, email="") -> dict:
         return {"ok": True, "reset": n}
     elif act == "clear_contents":
         st.clear_team_contents(team)
+        _SV._LAST_RESULTS[:] = []                  # 메모리 미러 동반 정리(삭제 후 잔상 방지)
+        _SV._agg_bump()                            # 대시보드·아레나 집계 캐시 즉시 무효화
     elif act == "clear_golden":                    # 정답셋 전체 삭제(되돌릴 수 없음)
         st.register_golden(team, [], replace=True, source="manual")
     elif act == "delete_team":                     # 팀 삭제: 멤버 소속 해제 + 팀 행 삭제
