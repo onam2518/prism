@@ -2207,8 +2207,9 @@ PAGE = """<!doctype html>
               <select class="field" style="width:auto" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
               <select class="field" style="width:auto" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
               <select class="field" style="width:auto" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
+              <button type="button" class="srcfilter__chip" x-bind:class="rawGapFirst ? 'sel' : ''" x-on:click="rawGapFirst = !rawGapFirst" data-tip="정답셋이 부족한 분류의 콘텐츠를 앞으로 올립니다 · 이 분류의 검수가 정답셋 채우기에 더 기여해요" data-tip-pos="top">분류 부족 우선</button>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
-              <span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다" data-tip-pos="top">최근순</span>
+              <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="rawGapFirst ? '부족 분류 먼저 · 그 안에서는 최근 실행순' : '정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다'" data-tip-pos="top" x-text="rawGapFirst ? '부족 분류 우선' : '최근순'"></span>
             </div>
             <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th><th style="width:150px" x-show="assignAdmin" data-tip="검수 담당자 배정 · 배정 시 담당자에게만 노출됩니다" data-tip-pos="top">담당</th></tr></thead><tbody>
               <template x-for="(r, ri) in rawFiltered" x-bind:key="r.hash">
@@ -2218,6 +2219,7 @@ PAGE = """<!doctype html>
                     <span class="ds-badge ds-badge--yellow" style="cursor:help;margin-left:4px" x-show="r.review==='yellow'" data-tip="AI 확신이 낮아 사람 확인이 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
                     <span class="ds-badge ds-badge--reason" style="margin-left:4px" x-show="r.split && !r.final" data-tip="검수자 의견이 갈려 재검토가 필요합니다 · 우선 검수 대상" data-tip-pos="top">재검토 필요</span>
                     <span class="ds-badge" style="margin-left:4px;cursor:help" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" data-tip="리드(슈퍼관리자 이상)가 확정한 최종판정 · 정답셋 승격에서 다수결보다 우선" data-tip-pos="top" x-text="r.final==='good' ? '리드 확정 · 정확' : '리드 확정 · 수정'"></span>
+                    <span class="ds-badge ds-badge--intent" style="margin-left:4px;cursor:help" x-show="r.class_gap" data-tip="이 분류는 정답셋이 부족합니다(클래스당 8건 미만) · 이 콘텐츠의 검수가 더 가치 있어요" data-tip-pos="top">분류 부족</span>
                   </td>
                   <td class="text-muted" x-text="r.service"></td>
                   <td><template x-for="c in (r.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span x-show="!(r.category||[]).length" class="text-xs text-muted">·</span></td>
