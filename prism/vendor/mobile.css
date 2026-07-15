@@ -115,6 +115,14 @@
 /* ── 하단 판정바: DS verdictbtn 을 모바일 터치 타겟으로 확장 ── */
 .m-actions{display:flex;gap:9px;padding:8px 12px 12px}
 .m-actions .verdictbtn{flex:1;height:52px;justify-content:center;font-size:15px}
+.m-swipetip{padding:0 12px 10px;text-align:center;font-size:11px;color:var(--ds-muted)}
+
+/* ── 카드 스와이프 판정: 손을 떼면 원위치 복귀 · 미는 방향의 판정 힌트 표시 ── */
+.m-card{position:relative;transition:transform .18s ease}
+.m-swipehint{position:absolute;top:14px;z-index:5;padding:7px 13px;border-radius:999px;
+  font-size:14px;font-weight:800;color:#fff;opacity:0;pointer-events:none}
+.m-swipehint--good{left:14px;background:var(--ds-success,#0a8a4a)}
+.m-swipehint--bad{right:14px;background:var(--ds-error,#d43c2f)}
 
 /* ── 오버레이 공통(교정 = 바텀시트 · 도움말/용어 정의 = 중앙 모달) ── */
 .m-dim{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:40}

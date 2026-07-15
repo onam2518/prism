@@ -290,6 +290,11 @@
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
       },
       detailNav: null,
+      // 목록 키보드 포커스(J/K 이동 대상 행) · 필터가 바뀌면 handler 쪽 클램프로 정합 유지
+      rawFocusIdx: -1,
+      _rawFocusScroll() {
+        try { const el = document.querySelector('[data-rawrow="' + this.rawFocusIdx + '"]'); if (el) el.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+      },
       autoNext: (function () { try { return localStorage.getItem('prismAutoNext') !== '0'; } catch (e) { return true; } })(),
       saveAutoNext() { try { localStorage.setItem('prismAutoNext', this.autoNext ? '1' : '0'); } catch (e) {} },
       // 닉네임 변경(홈 · 내 검수 캐릭터): 이름만 교체 · 팀·캐릭터·검수 이력 유지
@@ -512,6 +517,18 @@
           else if (e.code === 'ArrowRight') { e.preventDefault(); this.detailGo(1); }
           else if (e.code === 'ArrowLeft') { e.preventDefault(); this.detailGo(-1); }
           else if (e.code === 'Escape') { this.detailOpen = false; }
+        });
+        // 검수 목록 단축키: J/K=행 이동 · Enter=상세 열기 (콘텐츠 검수 목록에서 · 상세 닫힘 · 입력 중 무시)
+        window.addEventListener('keydown', (e) => {
+          if (this.detailOpen || this.mod !== 'create' || this.createTab !== 'raw') return;
+          const t = e.target;
+          if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          const list = this.rawFiltered;
+          if (!list.length) return;
+          if (e.code === 'KeyJ') { e.preventDefault(); this.rawFocusIdx = Math.min(list.length - 1, this.rawFocusIdx + 1); this._rawFocusScroll(); }
+          else if (e.code === 'KeyK') { e.preventDefault(); this.rawFocusIdx = Math.max(0, (this.rawFocusIdx < 0 ? 1 : this.rawFocusIdx) - 1); this._rawFocusScroll(); }
+          else if (e.code === 'Enter' && this.rawFocusIdx >= 0 && list[this.rawFocusIdx]) { e.preventDefault(); this.openRawDetail(list[this.rawFocusIdx]); }
         });
         // 브라우저 뒤로/앞으로 = 메뉴 이동(URL ?m= 동기화)
         window.addEventListener('popstate', (e) => {

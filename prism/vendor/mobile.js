@@ -188,6 +188,29 @@ window.mreview = () => ({
 
   open(i) { this.idx = i; this.view = 'card'; },
   back() { this.view = 'list'; },
+
+  // ── 카드 스와이프 판정: 오른쪽으로 밀기=정확 · 왼쪽으로 밀기=수정 시트 ──
+  // 세로 스크롤과 구분(|dy| 우세면 무시) · 시트 열림 중에는 비활성 · 판정 자체는 good()/openFix() 재사용
+  swipeDx: 0, _swX: 0, _swY: 0, _swOn: false,
+  swStart(e) {
+    const t = e.touches && e.touches[0];
+    if (!t || this.sheet) return;
+    this._swX = t.clientX; this._swY = t.clientY; this._swOn = true; this.swipeDx = 0;
+  },
+  swMove(e) {
+    if (!this._swOn) return;
+    const t = e.touches && e.touches[0]; if (!t) return;
+    const dx = t.clientX - this._swX, dy = t.clientY - this._swY;
+    if (Math.abs(dy) > Math.abs(dx) * 1.2) { this.swipeDx = 0; return; }   // 세로 스크롤 우선
+    this.swipeDx = Math.max(-120, Math.min(120, dx));
+  },
+  swEnd() {
+    if (!this._swOn) return;
+    this._swOn = false;
+    const dx = this.swipeDx; this.swipeDx = 0;
+    if (dx >= 70) this.good();                       // → 정확(저장 실패·연타 처리는 good 이 담당)
+    else if (dx <= -70) this.openFix();              // ← 수정 시트(메모 입력 후 저장)
+  },
   startReview() {
     const i = this.items.findIndex((it) => !this.reviewed(it));
     if (i >= 0) this.open(i);

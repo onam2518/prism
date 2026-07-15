@@ -70,6 +70,8 @@
   .fbrow__main{min-width:0}
   .fbrow__title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ds-ink);flex-wrap:wrap}
   .ds-table tr.is-sel td{background:var(--ds-primary-tint)}
+  /* 목록 키보드 포커스(J/K): 배경(is-sel)과 겹쳐도 구분되는 상·하 인셋 라인 */
+  .ds-table tr.is-kfocus td{box-shadow:inset 0 1px 0 var(--ds-primary),inset 0 -1px 0 var(--ds-primary);background:var(--ds-primary-tint)}
   .fbrow__titlelink{cursor:pointer;border-radius:4px;transition:color .12s,background .12s}
   .fbrow__titlelink:hover{color:var(--ds-primary);text-decoration:underline;text-underline-offset:2px}
   .fbrow__titlelink:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
