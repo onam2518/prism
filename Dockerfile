@@ -17,5 +17,9 @@ VOLUME ["/data"]
 
 EXPOSE 8765
 
+# 헬스체크(의존성 0 · curl 없이 stdlib): /config 200 확인. Fly 체크와 별개로 로컬 docker run 에도 유효.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/config', timeout=4).status==200 else 1)" || exit 1
+
 # 팀 공유(LAN HITL)를 위해 0.0.0.0 바인드. 키 없으면 자동 mock.
 CMD ["python", "-m", "prism.serve", "--host", "0.0.0.0", "--port", "8765"]

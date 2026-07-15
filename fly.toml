@@ -9,6 +9,7 @@ primary_region = 'nrt'            # 도쿄(한국 팀 지연 최소) · 생성 �
 
 [env]
   PRISM_CONFIG = '/data/config.json'   # 컨테이너 재시작에도 설정(퀘스트 일시 등) 보존
+  PRISM_BACKEND = 'supabase'           # 운영 백엔드 강제: 시크릿 유실 시 조용한 sqlite 폴백 대신 시작 실패(main sys.exit → 머신 unhealthy)
 
 [[mounts]]
   source = 'data'
@@ -21,6 +22,15 @@ primary_region = 'nrt'            # 도쿄(한국 팀 지연 최소) · 생성 �
   auto_start_machines = true
   min_machines_running = 1
   processes = ['app']
+
+  # 헬스체크: /config(공개 GET)가 200 이어야 정상. 백엔드 미가용이면 main 이 종료 → 머신 unhealthy 로
+  # 감지되고 이전 릴리스가 유지된다(장애 배포 무중단 롤백 · 2026-07-15 장애 재발방지).
+  [[http_service.checks]]
+    interval = '15s'
+    timeout = '4s'
+    grace_period = '30s'          # 부팅(supabase 연결확인·스케줄러 시작) 여유 · 오탐 배포실패 방지
+    method = 'GET'
+    path = '/config'
 
 [[vm]]
   memory = '512mb'
