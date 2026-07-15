@@ -579,9 +579,10 @@
   /* 학습 보정 지시 · 버전 히스토리(표) */
   .verchip__cur{font-size:9.5px;font-weight:800;color:#fff;background:var(--ds-primary);border-radius:999px;padding:1px 6px;margin-left:5px;vertical-align:middle}
   .vht{border:1px solid var(--ds-hairline);border-radius:12px;overflow:hidden}
-  .vht__head,.vht__row{display:grid;grid-template-columns:1.1fr 1.1fr .9fr .9fr .8fr;gap:8px;align-items:center;padding:10px 13px}
+  .vht__head,.vht__row{display:grid;grid-template-columns:1fr 1.05fr .85fr .85fr .7fr .95fr;gap:8px;align-items:center;padding:10px 13px}
   .vht__head{background:var(--ds-surface-on);font-size:11px;font-weight:700;color:var(--ds-muted)}
   .vht__head .num,.vht__row .num{text-align:right;justify-self:end}
+  .vht__head .act,.vht__row .act{justify-self:end}
   .vht__group{border-top:1px solid var(--ds-hairline-soft)}
   .vht__group:first-of-type{border-top:0}
   .vht__row{width:100%;background:transparent;border:0;cursor:pointer;font-size:12.5px;color:var(--ds-text-secondary);text-align:left;font-family:inherit}
@@ -591,6 +592,27 @@
   .vht__row.is-open .vht__v{color:var(--ds-primary-deep)}
   .vhdelta{font-size:11.5px;font-weight:800;color:var(--ds-success-deep)}
   .vht__acc{padding:6px 14px 12px;background:var(--ds-surface-on)}
+  .vhapply{background:var(--ds-surface);border:1px solid var(--ds-hairline);color:var(--ds-primary-deep);border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+  .vhapply:hover{border-color:var(--ds-primary);background:var(--ds-primary-tint)}
+  /* 모델 적용 팝업 */
+  .dmov{position:fixed;inset:0;background:rgba(8,12,20,.42);display:flex;align-items:center;justify-content:center;padding:18px;z-index:60}
+  .dmodal{background:var(--ds-surface);border:1px solid var(--ds-hairline);border-radius:16px;box-shadow:0 14px 40px rgba(0,0,0,.28);width:100%;max-width:520px;max-height:88vh;overflow:auto}
+  .dmodal__hd{display:flex;align-items:center;gap:8px;padding:15px 18px;border-bottom:1px solid var(--ds-hairline-soft)}
+  .dmodal__hd b{font-size:14px;color:var(--ds-ink);font-weight:800}
+  .dmodal__x{margin-left:auto;background:var(--ds-surface-on);border:1px solid var(--ds-hairline);color:var(--ds-text-secondary);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:15px;line-height:1}
+  .dmodal__bd{padding:16px 18px}
+  .dmfld{margin-bottom:15px}
+  .dmfld label{font-size:11.5px;font-weight:700;color:var(--ds-muted);display:block;margin-bottom:7px}
+  .dmfld select{width:100%;background:var(--ds-surface);border:1px solid var(--ds-hairline);color:var(--ds-text-secondary);border-radius:9px;padding:9px 11px;font-family:inherit;font-size:13px;cursor:pointer}
+  .dmhint{font-size:11.5px;color:var(--ds-muted);margin-top:6px;line-height:1.5}
+  .dmchk{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border:1px solid var(--ds-hairline);border-radius:10px;margin-bottom:7px;cursor:pointer;background:var(--ds-surface-on)}
+  .dmchk input{margin-top:3px;flex:0 0 auto}
+  .dmtx{font-size:12px;color:var(--ds-ink);line-height:1.45}
+  .dmodal__ft{display:flex;align-items:center;gap:10px;padding:13px 18px;border-top:1px solid var(--ds-hairline-soft);flex-wrap:wrap}
+  .dmbtn{background:var(--ds-primary);color:#fff;border:0;border-radius:9px;padding:9px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+  .dmbtn[disabled]{opacity:.55;cursor:default}
+  .dmbtn--ghost{background:var(--ds-surface-on);color:var(--ds-text-secondary);border:1px solid var(--ds-hairline)}
+  .dmmsg{font-size:12px;color:var(--ds-success-deep);font-weight:700}
   .invite{display:flex;align-items:center;justify-content:space-between;gap:14px}
   .invite__code{font-family:var(--ds-font-mono,ui-monospace);font-size:26px;font-weight:800;letter-spacing:.12em;color:var(--ds-violet,#1e84ff)}
   /* ── 평가 아레나(게임화) ── */

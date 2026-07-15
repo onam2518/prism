@@ -1794,16 +1794,17 @@ PAGE = """<!doctype html>
           <section class="panel" data-fn x-show="goldenStatus" x-cloak><div class="panel-hd"><b>학습 보정 지시 · 버전 히스토리</b><span class="meta">검수 목표가 끝날 때마다 한 버전으로 반영 · 버전별 보정 효과와 그때 쓴 지시(행을 눌러 펼치기)</span></div>
             <div class="panel-bd">
               <div class="vht" x-show="verRows.length">
-                <div class="vht__head"><span>버전</span><span>반영한 날</span><span class="num">정답 일치율</span><span class="num">보정 효과</span><span class="num">확정 정답</span></div>
+                <div class="vht__head"><span>버전</span><span>반영한 날</span><span class="num">정답 일치율</span><span class="num">보정 효과</span><span class="num">확정 정답</span><span class="act">모델 적용</span></div>
                 <template x-for="r in verRows" x-bind:key="r.v">
                   <div class="vht__group">
-                    <button type="button" class="vht__row" x-bind:class="verSel===r.v ? 'is-open' : ''" x-on:click="selectVer(r.v)">
+                    <div class="vht__row" role="button" tabindex="0" x-bind:class="verSel===r.v ? 'is-open' : ''" x-on:click="selectVer(r.v)" x-on:keydown.enter="selectVer(r.v)">
                       <span class="vht__v tnum">v<span x-text="r.v"></span><span x-show="r.cur" class="verchip__cur">현재</span></span>
                       <span class="tnum" x-text="r.ts ? fmtTs(r.ts) : '·'"></span>
                       <span class="num tnum" x-text="r.acc != null ? pctTxt(r.acc) : '·'"></span>
                       <span class="num"><span class="vhdelta" x-show="r.delta != null" x-text="deltaTxt(r.delta || 0)"></span><span x-show="r.delta == null">·</span></span>
                       <span class="num tnum" x-text="r.confirmed != null ? r.confirmed : '·'"></span>
-                    </button>
+                      <span class="act"><button type="button" class="vhapply" x-on:click.stop="openDirModal(r.v)">⚙ 모델 적용</button></span>
+                    </div>
                     <div class="vht__acc" x-show="verSel === r.v" x-cloak>
                       <div class="meta" style="padding:2px 2px 6px" x-show="verBusy">불러오는 중…</div>
                       <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="'vh'+stage">
@@ -1823,6 +1824,36 @@ PAGE = """<!doctype html>
               <div class="meta" style="padding:4px 2px" x-show="!verRows.length">아직 반영된 버전이 없습니다 · 검수 목표를 채우거나 ⚡즉시 반영하면 v2가 만들어집니다.</div>
             </div>
           </section>
+
+          <!-- 모델 적용 팝업: 그 버전 지시를 공통/특정 모델 프롬프트에 얹기 -->
+          <div class="dmov" x-show="dmOpen" x-cloak x-on:click="dmOpen=false">
+            <div class="dmodal" x-on:click.stop>
+              <div class="dmodal__hd"><b x-text="'v' + dmVer + ' 지시를 모델 프롬프트에 적용'"></b><button type="button" class="dmodal__x" x-on:click="dmOpen=false">×</button></div>
+              <div class="dmodal__bd">
+                <div class="dmfld">
+                  <label>적용 대상 모델</label>
+                  <select x-model="dmModel">
+                    <option value="common">공통 · 전 모델 (기본)</option>
+                    <template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m + ' 전용'"></option></template>
+                  </select>
+                  <div class="dmhint" x-text="dmModel==='common' ? '공통을 고르면 어떤 모델로 실행하든 이 지시가 적용됩니다.' : (dmModel + ' 전용으로 저장 → 그 모델로 실행할 때만 추가됩니다(다른 모델엔 영향 없음).')"></div>
+                </div>
+                <div class="dmfld">
+                  <label>적용할 지시 (체크 해제로 제외)</label>
+                  <div class="meta" x-show="dmBusy && !dmSnap" style="padding:4px 2px">불러오는 중…</div>
+                  <template x-for="s in dmStageList()" x-bind:key="s">
+                    <label class="dmchk"><input type="checkbox" x-model="dmStages[s]"><span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[s]"></span><span class="dmtx" x-text="dmDir(s)"></span></label>
+                  </template>
+                  <div class="meta" x-show="dmSnap && !dmStageList().length" style="padding:4px 2px">이 버전엔 적용할 지시가 없습니다.</div>
+                </div>
+              </div>
+              <div class="dmodal__ft">
+                <button type="button" class="dmbtn" x-bind:disabled="dmBusy" x-on:click="applyDir()">적용</button>
+                <button type="button" class="dmbtn dmbtn--ghost" x-on:click="dmOpen=false">취소</button>
+                <span class="dmmsg" x-text="dmMsg" x-show="dmMsg"></span>
+              </div>
+            </div>
+          </div>
       </div><!-- /정답셋 관리 · 현황 -->
 
 
