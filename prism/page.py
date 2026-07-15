@@ -1646,7 +1646,7 @@ PAGE = """<!doctype html>
               <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
                 <div>
                   <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">항목</th>
-                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : 'background:var(--ds-violet,#1e84ff)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span></th></template>
+                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : 'background:var(--ds-violet,#1e84ff)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span> <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="m.model===cmpResult.cheapest_passing" x-bind:data-tip="'등급 일치율 ' + pctTxt(cmpResult.eval_gate) + ' 이상 합격 모델 중 비용이 가장 낮아요'" data-tip-pos="top">💰 합격 최저 비용</span></th></template>
                   </tr></thead><tbody>
                     <tr><td class="text-ink">호출</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cr'+mi"><td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-bind:data-tip="m.real ? '실제 API 호출 결과' : '모의 응답 · API 키를 설정하면 실호출됩니다'" data-tip-pos="top" style="cursor:help" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td></template></tr>
                     <tr><td class="text-ink">등급 일치율 <span class="text-xs text-muted">(신뢰구간)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cg'+mi"><td>
@@ -1660,6 +1660,11 @@ PAGE = """<!doctype html>
                     <tr><td class="text-ink">비용($)</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cc'+mi"><td class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></td></template></tr>
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
+                  <!-- 원클릭 승격: 합격 최저 비용 모델 → 기본 모델(다음 실행 초안 생성 모델) -->
+                  <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap" x-show="assignAdmin && cmpResult.cheapest_passing">
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="applyBusy || cfgModel===cmpResult.cheapest_passing" x-on:click="applyModel(cmpResult.cheapest_passing)" x-text="cfgModel===cmpResult.cheapest_passing ? '이미 기본 모델입니다 · ' + cmpResult.cheapest_passing : (applyBusy ? '적용 중…' : '기본 모델로 적용 · ' + cmpResult.cheapest_passing)"></button>
+                    <span class="text-xs text-muted">합격 기준 = 등급 일치율 <span class="tnum" x-text="pctTxt(cmpResult.eval_gate)"></span> 이상 · 그중 비용이 가장 낮은 모델을 추천합니다</span>
+                  </div>
                   <div class="text-xs text-muted" style="margin-top:4px">신뢰구간이 겹치면 우열 판단 보류 · 정답셋이 쌓일수록 오차가 줄어듭니다</div>
                 </div>
               </template>

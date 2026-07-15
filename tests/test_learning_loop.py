@@ -319,5 +319,33 @@ class TestQASeed(unittest.TestCase):
         self.assertTrue(again.get("skipped"))                   # 멱등
 
 
+class TestCheapestPassing(unittest.TestCase):
+    """'합격하는 가장 싼 모델' 추천: 게이트 이상 중 비용 최저 · 비용 미계측 제외."""
+
+    def test_picks_cheapest_above_gate(self):
+        from prism.learnops import cheapest_passing_model
+        models = [
+            {"model": "big", "grade_accuracy": 0.95, "cost_usd": 0.40},
+            {"model": "mid", "grade_accuracy": 0.90, "cost_usd": 0.10},
+            {"model": "tiny", "grade_accuracy": 0.70, "cost_usd": 0.01},   # 게이트 미달
+        ]
+        self.assertEqual(cheapest_passing_model(models, 0.85), "mid")
+
+    def test_no_cost_excluded_and_tie_prefers_accuracy(self):
+        from prism.learnops import cheapest_passing_model
+        models = [
+            {"model": "nocost", "grade_accuracy": 0.99, "cost_usd": None},   # 비용 미계측 제외
+            {"model": "a", "grade_accuracy": 0.90, "cost_usd": 0.10},
+            {"model": "b", "grade_accuracy": 0.92, "cost_usd": 0.10},        # 동률 → 일치율 높은 쪽
+        ]
+        self.assertEqual(cheapest_passing_model(models, 0.85), "b")
+
+    def test_none_passing_returns_empty(self):
+        from prism.learnops import cheapest_passing_model
+        self.assertEqual(cheapest_passing_model(
+            [{"model": "x", "grade_accuracy": 0.5, "cost_usd": 0.01}], 0.85), "")
+        self.assertEqual(cheapest_passing_model([], 0.85), "")
+
+
 if __name__ == "__main__":
     unittest.main()
