@@ -39,6 +39,19 @@ class TestServeGamification(unittest.TestCase):
         self.assertEqual(r["gold"]["correct"], variant == "ok")
         self.assertEqual(serve._inject_gold([], "tester"), [])       # 응답한 문항 재출제 안 함
 
+    def test_gold_not_injected_into_empty_list(self):
+        """콘텐츠 전체 삭제(빈 목록) 후 골드 문항만 홀로 남지 않아야 한다.
+        (clear_contents 는 정답셋을 지우지 않으므로 골드가 큐에 계속 섞여 1건이 남던 문제.)"""
+        serve, st = self._with_store()
+        content = {"displayServiceName": "뉴스", "title": "골드 문항", "subtitle": "", "body": "본문"}
+        st.register_golden(None, [{"content": content,
+                                   "expected": {"finalGrade": "G", "reasons": [],
+                                                "content_category": ["Sports"], "summary": "s"}}])
+        self.assertEqual(len(serve._inject_gold([], "tester")), 1)    # 골드 후보 자체는 존재
+        raw = serve.raw_rows(reviewer="tester")                       # 검수 대상 0건
+        self.assertEqual(raw["n"], 0)                                 # 골드가 홀로 뜨지 않음
+        self.assertEqual(serve.review_queue({"reviewer": "tester"})["n"], 0)   # 빈 큐에도 골드 없음
+
     def test_missions_progress_and_once(self):
         import time as _t
         serve, st = self._with_store()
