@@ -1675,7 +1675,10 @@ def _fetch_records(endpoint: str, limit: int, method: str, auth: str):
         req.add_header("Authorization", auth)
     try:
         with urllib.request.build_opener(_SafeRedirect()).open(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8", "replace"))
+            raw = resp.read(_FETCH_MAX + 1)          # 응답 크기 상한(메모리 소진 방어)
+            if len(raw) > _FETCH_MAX:
+                return None, f"응답이 너무 큽니다(상한 {_FETCH_MAX // (1024 * 1024)}MB)"
+            data = json.loads(raw.decode("utf-8", "replace"))
     except Exception as e:
         return None, f"API 호출 실패: {str(e)[:160]}"
     if isinstance(data, dict):
@@ -1859,6 +1862,10 @@ def build_results_csv(team=None) -> bytes:
     out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유"]
     def esc(v):
         s = str(v if v is not None else "")
+        # CSV 수식 인젝션 중화: 셀 선두 = + - @ 및 탭/CR 은 스프레드시트가 수식/DDE 로 실행 →
+        # 선행 작은따옴표로 무력화(RFC4180 따옴표 이스케이프는 유지).
+        if s[:1] in ("=", "+", "-", "@", "\t", "\r"):
+            s = "'" + s
         return '"' + s.replace('"', '""') + '"'
     for r in rows:
         im = r.get("item_meta") or {}
@@ -1898,6 +1905,15 @@ _ROUTER_KEY_PATHS = {
     "bizrouter": os.path.expanduser("~/.prism_bizrouter_key"),
     "timely": os.path.expanduser("~/.prism_timely_key"),
 }
+
+
+def _write_private(path, text):
+    """비밀 파일(키)을 0600 으로 원자적 기록. O_CREAT mode 로 신규는 처음부터 0600,
+    기존 파일은 write 전에 fchmod 로 강제 → open→write→chmod 사이 0644 노출 창 제거."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        os.fchmod(f.fileno(), 0o600)
+        f.write(text)
 
 
 def load_persisted_key():
@@ -2914,9 +2930,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
         _seed_solar_defaults()                        # 키만 저장해도 바로 호출 가능하게
         if data.get("persist"):
             try:
-                with open(_KEY_PATH, "w", encoding="utf-8") as f:
-                    f.write(key)
-                os.chmod(_KEY_PATH, 0o600)
+                _write_private(_KEY_PATH, key)        # 0600 원자적(생성~chmod 사이 0644 창 제거)
             except Exception:
                 pass
     elif data.get("forget"):                      # 저장된 키 삭제
@@ -2933,9 +2947,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             os.environ[env] = rkey
             if data.get("persist"):
                 try:
-                    with open(path, "w", encoding="utf-8") as f:
-                        f.write(rkey)
-                    os.chmod(path, 0o600)
+                    _write_private(path, rkey)        # 0600 원자적
                 except Exception:
                     pass
         elif data.get("forget_" + service):
@@ -3164,6 +3176,8 @@ try:
     _MAX_BODY = int(os.environ.get("PRISM_MAX_BODY_MB", "32")) * 1024 * 1024
 except ValueError:
     _MAX_BODY = 32 * 1024 * 1024
+
+_FETCH_MAX = 16 * 1024 * 1024           # 인입 아웃바운드 응답 크기 상한(메모리 소진 방어)
 
 _PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/template.csv",
                "/usermeta-template.csv", "/usermeta-profile-template.csv"}
@@ -3703,6 +3717,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/ping"):
+            if not self._require_login():                  # 미인증 실모델 호출(소액 과금·키 탐지) 차단
+                return
             try:
                 d = json.loads(body or b"{}")
             except Exception:
@@ -3776,6 +3792,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/badges"):                # 배지 획득 영속(기기 간 기준선)
             try:
+                if not self._require_login():              # 미인증 임의 uid 배지 기록 차단
+                    return
                 data = json.loads(body or b"{}")
                 uid = self._bearer_uid() or (data.get("reviewer") or "").strip()
                 self._send(200, json.dumps(save_badges(uid, data.get("earned")),
