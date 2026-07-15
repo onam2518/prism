@@ -1456,6 +1456,35 @@ class Store:
                 rows.sort(key=lambda e: -e["n_contents"])
         return rows
 
+    def ent_trending(self, hours: int = 48, limit: int = 8, team=None) -> list:
+        """언급 급증 엔티티 [{id,name,recent,prev}]: 최근 hours시간 vs 그 전 같은 창 비교.
+        추천 토픽 카드의 원천 · 최소 2건 + 증가분 있는 것만 · 증가폭 내림차순."""
+        c = self._conn()
+        now = time.time()
+        cut1 = now - hours * 3600.0
+        cut0 = now - 2 * hours * 3600.0
+        rec, prev = {}, {}
+        for eid, surface, ts in c.execute(
+                "SELECT entity_id, surface, ts FROM content_entities WHERE ts>=? AND team=?",
+                (cut0, team or "")):
+            b = rec if (ts or 0) >= cut1 else prev
+            e = b.setdefault(eid, {"n": 0, "surface": surface or eid})
+            e["n"] += 1
+        names = {}
+        if rec:
+            ids = list(rec)
+            ph = ",".join("?" * len(ids))
+            names = {i: n for i, n in c.execute(
+                f"SELECT entity_id, name FROM entities WHERE entity_id IN ({ph})", ids)}
+        out = []
+        for eid, e in rec.items():
+            pv = (prev.get(eid) or {}).get("n", 0)
+            if e["n"] >= 2 and e["n"] > pv:
+                out.append({"id": eid, "name": names.get(eid) or e["surface"],
+                            "recent": e["n"], "prev": pv})
+        out.sort(key=lambda x: (-(x["recent"] - x["prev"]), -x["recent"]))
+        return out[:max(1, int(limit))]
+
     def ent_stats(self) -> dict:
         c = self._conn()
         total = c.execute("SELECT COUNT(*) FROM entities").fetchone()[0]

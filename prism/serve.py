@@ -942,6 +942,12 @@ def _topics_compute() -> dict:
             out = TP.build_topics(rpath, custom_defs=cfg["custom"], settings=cfg["settings"],
                                   exclusions=cfg["exclusions"], ent_index=_ent_index())
             out["exclusions"] = cfg["exclusions"]
+            try:                                     # 추천 카드 원천: 최근 48시간 언급 급증 엔티티(전역)
+                st = get_store()
+                out["trending"] = (st.ent_trending(hours=48, limit=8, team="")
+                                   if (st and hasattr(st, "ent_trending")) else [])
+            except Exception:
+                out["trending"] = []
             return out
         except Exception as e:
             return {"error": str(e)[:200], "n_contents": len(rows),

@@ -1802,6 +1802,20 @@
         return base + '핵심 <b>' + ((core && core.count) || 0) + '건</b>' + (rel ? (' + 관련 묶음 <b>' + rel + '개</b>로 펼쳐집니다') : ' (선택 조건을 더하면 관련 묶음이 생겨요)') + (ngt ? (' · <b>✖ ' + ngt + '</b> 제외') : '');
       },
       studioAddKw() { const k = (this.studio.kwInput || '').trim(); if (k) { const ni = this.studio.neg.keywords.indexOf(k); if (ni >= 0) this.studio.neg.keywords.splice(ni, 1); if (!this.studio.keywords.includes(k)) this.studio.keywords.push(k); } this.studio.kwInput = ''; this.schedulePreview(); },
+      // 추천 카드: 떠오르는 엔티티 → 키워드 추가 · 자동 사건 묶음 → 수동 토픽 폼 프리필
+      suggestKeyword(name) {
+        this.studio.kwInput = name; this.studioAddKw();
+        if (!this.studio.name.trim()) this.studio.name = name + ' 모아보기';
+        this.liveToast('키워드 추가 · ' + name);
+      },
+      promoteCluster(p) {
+        const ents = (p.representative_entities || []).slice(0, 3);
+        this.studio.name = (p.name || ents.join(' · ')) + ' 큐레이션';
+        ents.forEach((e) => { if (!this.studio.keywords.includes(e)) this.studio.keywords.push(e); });
+        if (!this.studio.prompt.trim()) this.studio.prompt = ents.join(', ') + ' 관련 콘텐츠를 모아줘';
+        this.schedulePreview();
+        this.liveToast('사건 묶음을 폼에 채웠어요 · 조건을 다듬고 저장하세요');
+      },
       topKw() { const sel = this.studio.keywords, ng = this.studio.neg.keywords || []; const all = (this.topicData && this.topicData.catalog && this.topicData.catalog.keywords) || []; return all.filter(k => !sel.includes(k.k) && !ng.includes(k.k)).slice(0, 12); },
       // 스텝 진행 상태 · 필터 요약 · 자동선택 표시 · 모델 목록(라우터 포함)
       tStepDone() { const s = this.studio; return (s.name.trim() ? 1 : 0) + (s.prompt.trim() ? 1 : 0) + ((s.cats.length || s.intents.length || s.keywords.length) ? 1 : 0); },
