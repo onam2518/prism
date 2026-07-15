@@ -177,10 +177,43 @@ WD_API = "https://www.wikidata.org/w/api.php"
 _UA = "prism-entdict/0.1 (item meta pipeline; contact: ops)"
 
 
+# 위키데이터 서킷 브레이커: 429 백오프(sleep 20~60s)는 오류 없이 시간만 먹어 일괄 보강이
+# 건당 수십 초로 늘어진다(2026-07-15 실측 · 645건 예상 3.5h). 배치 중 429 재시도가 임계를
+# 넘거나 조회 실패가 연속되면 남은 배치는 위키데이터를 건너뛴다(나무위키 단독 · 보류는 다음
+# 배치에서 재시도). 수동 차단은 PRISM_ENTDICT_WD=0.
+_WD_BREAKER = {"retry429": 0, "consec_fail": 0, "tripped": False}
+_WD_TRIP_429 = 8                                     # 배치 누적 429 재시도 허용치
+_WD_TRIP_FAIL = 3                                    # 연속 조회 실패(타임아웃 등) 허용치
+
+
+def wd_available() -> bool:
+    """위키데이터 사용 가능 여부: env 게이트 + 배치 브레이커."""
+    if os.environ.get("PRISM_ENTDICT_WD", "1") != "1":
+        return False
+    return not _WD_BREAKER["tripped"]
+
+
+def _wd_breaker_reset():
+    _WD_BREAKER.update({"retry429": 0, "consec_fail": 0, "tripped": False})
+
+
+def _wd_note_429():
+    _WD_BREAKER["retry429"] += 1
+    if _WD_BREAKER["retry429"] >= _WD_TRIP_429:
+        _WD_BREAKER["tripped"] = True
+
+
+def _wd_note_result(failed: bool):
+    _WD_BREAKER["consec_fail"] = _WD_BREAKER["consec_fail"] + 1 if failed else 0
+    if _WD_BREAKER["consec_fail"] >= _WD_TRIP_FAIL:
+        _WD_BREAKER["tripped"] = True
+
+
 def _http_json(url: str) -> dict:
     """단일 네트워크 심(seam) · 테스트는 이 함수를 대체한다.
     429(레이트리밋)는 Retry-After 준수(캡 60s · 기본 20s)로 최대 3회 재시도 —
-    일괄 보강처럼 연속 호출이 몰릴 때 실패가 조용히 누적되는 것을 막는다."""
+    일괄 보강처럼 연속 호출이 몰릴 때 실패가 조용히 누적되는 것을 막는다.
+    재시도는 브레이커에 집계돼 배치가 429 폭주를 만나면 위키데이터를 거둬낸다."""
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     for attempt in range(4):
         try:
@@ -189,6 +222,7 @@ def _http_json(url: str) -> dict:
         except urllib.error.HTTPError as ex:
             if ex.code != 429 or attempt == 3:
                 raise
+            _wd_note_429()
             time.sleep(min(int(ex.headers.get("Retry-After") or 20), 60))
 
 
@@ -546,11 +580,16 @@ def enrich_entity(store, entity_id: str) -> dict:
         # 여기서 조기 반환하면 status 가 pending 에 고정돼 타입 의존 토픽 조건에서 영영 누락된다.
         namu_attrs = attrs_new
         e.update(fields)                                   # 뒤이은 위키데이터 반영이 방금 쓴 속성을 스테일 e 로 되돌리지 않게
-    # ② 위키데이터 폴백(나무위키 미스·동음이의·타입 미판정)
-    try:
-        hit = wd_search(e["name"])
-    except (urllib.error.URLError, OSError, ValueError) as ex:
-        return {"ok": False, "error": f"위키데이터 조회 실패: {str(ex)[:120]}"}
+    # ② 위키데이터 폴백(나무위키 미스·동음이의·타입 미판정) · 게이트/브레이커 닫힘 = 건너뛰기
+    wd_on = wd_available()
+    hit = None
+    if wd_on:
+        try:
+            hit = wd_search(e["name"])
+            _wd_note_result(failed=False)
+        except (urllib.error.URLError, OSError, ValueError) as ex:
+            _wd_note_result(failed=True)
+            return {"ok": False, "error": f"위키데이터 조회 실패: {str(ex)[:120]}"}
     if hit:
         qid = hit["id"]
         ent = wd_entity(qid)
@@ -575,11 +614,12 @@ def enrich_entity(store, entity_id: str) -> dict:
         am["_enrich"] = {"source": "namuwiki", "result": "ambiguous", "ts": now}
         store.ent_update(entity_id, {"attr_meta": am, "updated_at": now})
         return {"ok": True, "matched": False, "ambiguous": True}
-    # 미등재(unlisted): 두 소스 모두 미스 = 복합명사구·개념어(TM 후보)일 가능성 —
+    # 미등재(unlisted): 두 소스 모두 '조회했는데' 미스 = 복합명사구·개념어(TM 후보)일 가능성 —
     # 개체 자체는 사전에 남기되(가치 있음) 보류 통계·기본 목록·재보강 대상에서 분리한다.
-    am["_enrich"] = {"source": "namuwiki+wikidata", "result": "miss", "ts": now}
+    # 위키데이터를 건너뛴 배치(게이트·브레이커)는 미스로 단정할 수 없어 보류를 유지한다.
+    am["_enrich"] = {"source": "namuwiki+wikidata" if wd_on else "namuwiki", "result": "miss", "ts": now}
     fields = {"attr_meta": am, "updated_at": now}
-    if e.get("status") == "pending":                       # 확정(active)·수동 타입은 강등하지 않음
+    if e.get("status") == "pending" and wd_on:             # 확정(active)·수동 타입은 강등하지 않음
         fields["status"] = "unlisted"
     store.ent_update(entity_id, fields)
     return {"ok": True, "matched": False}
@@ -589,7 +629,10 @@ ENRICH_DELAY = 0.4                                   # 개체 간 지연(초) ·
 
 
 def enrich_many(store, entity_ids, limit: int = 200) -> dict:
-    """여러 건 순차 보강(적재 후 백그라운드·UI 일괄 버튼 공용). 실패는 건너뛰고 집계만."""
+    """여러 건 순차 보강(적재 후 백그라운드·UI 일괄 버튼 공용). 실패는 건너뛰고 집계만.
+    배치 시작마다 위키데이터 브레이커를 리셋한다. 429 폭주·연속 실패로 배치 중 차단(tripped)돼도
+    다음 배치는 다시 시도한다(일시 장애와 영구 차단의 구분)."""
+    _wd_breaker_reset()
     hit = miss = fail = 0
     for i, eid in enumerate(list(entity_ids)[:limit]):
         if i:
@@ -605,7 +648,7 @@ def enrich_many(store, entity_ids, limit: int = 200) -> dict:
             hit += 1
         else:
             miss += 1
-    return {"hit": hit, "miss": miss, "fail": fail}
+    return {"hit": hit, "miss": miss, "fail": fail, "wd_tripped": _WD_BREAKER["tripped"]}
 
 
 # ── 토픽 연동: 콘텐츠 → 소속 개체 속성 인덱스 ──────────────────────────────
