@@ -288,7 +288,7 @@ PAGE = """<!doctype html>
         <nav class="ds-navgroup" x-show="navVisible(grp.gcond)">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
-            <button type="button" class="ds-navitem" x-show="navVisible(it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+            <button type="button" class="ds-navitem" x-show="canMenu(it.id, it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
               <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
               <span x-text="it.label"></span>
             </button>
@@ -2305,6 +2305,35 @@ PAGE = """<!doctype html>
             </template>
             <div x-show="!(adminData&&adminData.members&&adminData.members.length)" class="text-xs text-muted" style="padding:8px">멤버가 없습니다</div>
             <p class="text-xs text-muted" style="padding:8px 8px 0;line-height:1.5">🎖 <b class="text-ink">검수 마스터</b>(레벨 10) 멤버에게 관리자 권한을 위임해 골든셋·정책 관리를 함께 맡길 수 있습니다.</p>
+          </div>
+        </section>
+        <!-- 메뉴 권한(생성자 전용): 슈퍼관리자·관리자에게 보여줄 관리자 메뉴를 메뉴별로 지정 -->
+        <section class="panel" x-show="adminData && adminData.isCreator" x-cloak>
+          <div class="panel-hd"><b>메뉴 권한</b><span class="meta">슈퍼관리자·관리자에게 보여줄 메뉴 지정</span><span class="ds-badge ds-badge--status ml-auto">생성자 전용</span></div>
+          <div class="panel-bd">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:280px">
+                <thead><tr style="color:var(--ds-muted)">
+                  <th style="text-align:left;padding:6px 8px;font-weight:500">메뉴</th>
+                  <th style="padding:6px 8px;font-weight:500">슈퍼관리자</th>
+                  <th style="padding:6px 8px;font-weight:500">관리자</th>
+                </tr></thead>
+                <tbody>
+                  <template x-for="mid in (adminData.menuOrder||[])" x-bind:key="mid">
+                    <tr style="border-top:1px solid var(--ds-hairline-soft)">
+                      <td style="padding:8px" x-text="(adminData.menuLabels||{})[mid]||mid"></td>
+                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].super"></td>
+                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].admin"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="saveMenuPerms()">저장</button>
+              <span class="text-xs text-muted" x-text="menuPermsMsg"></span>
+            </div>
+            <p class="text-xs text-muted" style="margin-top:10px;line-height:1.5">체크 = 해당 역할에게 메뉴 노출(동작 가능) · 해제 = 숨김. 생성자·운영관리자는 항상 전체 · 시스템 설정은 운영관리자 전용(고정).</p>
           </div>
         </section>
         <div x-show="adminData && !adminData.isAdmin" class="text-xs text-muted" style="padding:4px">멤버 관리는 팀 관리자(생성자·위임)만 가능합니다.</div>

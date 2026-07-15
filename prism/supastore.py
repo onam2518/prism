@@ -251,6 +251,24 @@ class SupabaseStore:
         rows = self._get("teams", f"select=id,name,invite_code,created_by&id=eq.{urllib.parse.quote(team_id)}")
         return rows[0] if rows else None
 
+    def menu_perms(self, team) -> dict:
+        """팀 메뉴 권한 매트릭스 {menu_id: {super: bool, admin: bool}}(생성자 설정).
+        컬럼 미마이그레이션·미설정이면 {} → 호출측이 기본 매트릭스(현재 동작)로 폴백."""
+        if not team:
+            return {}
+        try:
+            rows = self._get("teams", f"select=menu_perms&id=eq.{urllib.parse.quote(team)}")
+        except Exception:
+            return {}                                     # menu_perms 컬럼 미존재(마이그레이션 전) → 폴백
+        return (rows[0].get("menu_perms") if rows else {}) or {}
+
+    def set_menu_perms(self, team, perms: dict) -> bool:
+        if not team:
+            return False
+        self._req("PATCH", "teams", query=f"id=eq.{urllib.parse.quote(team)}",
+                  body={"menu_perms": perms or {}}, prefer="return=minimal")
+        return True
+
     def team_members(self, team) -> list:
         rows = self._get("reviewers", f"select=id,name,avatar,is_admin,super_admin&team_id=eq.{urllib.parse.quote(team)}&order=name")
         return [{"id": r["id"], "name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil",
