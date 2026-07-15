@@ -97,6 +97,7 @@ class TestE2ESmoke(unittest.TestCase):
         for marker in ("catDef(", "gradeDef(", "reasonDef(", "m-meta__row", "m-modal", "toggleTheme(",
                        "/vendor/gmarket.css", "updateAvail"):
             self.assertIn(marker, m)
+        self.assertIn("'+' + earned", m)           # 완료 화면 획득 PT = 실누적(earned) · 추정식 아님
         self.assertIsInstance(_req(base, "/models"), dict)         # /models 는 여전히 JSON 라우트(비잠식)
 
         # ② 단건 추출(mock LLM · 실제 파이프라인 경유)
