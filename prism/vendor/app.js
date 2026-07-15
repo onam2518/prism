@@ -1609,6 +1609,13 @@
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); this._ensureStudioModels(); } catch (e) {} this.modBusy = false; },
+      // 자동 리프레시 배지 툴팁: 지난 스냅샷 대비 변화 요약(상위 5개)
+      topicSnapTip() {
+        const s = (this.topicData || {}).snapshot || {}; const d = s.delta || {};
+        if (!d.changed_n && !d.gone_n) return '1시간마다 자동으로 다시 매칭하고 변화를 기록합니다 · 지난 확인에서 변화 없음';
+        const top = (d.changed || []).slice(0, 5).map((c) => c.label + ' ' + c.from + '→' + c.to + '건').join(' · ');
+        return '지난 스냅샷 대비 변화 ' + (d.changed_n || 0) + '건' + (d.new_n ? (' (신규 토픽 ' + d.new_n + ')') : '') + (d.gone_n ? (' · 사라짐 ' + d.gone_n + '개') : '') + (top ? (' — ' + top) : '');
+      },
       async _ensureStudioModels() {                 // 자동 채우기 모델 선택지: 없으면 1회 조회(가벼움 · 실패 무해)
         if ((this.models || []).length) return;
         try { const j = await (await fetch('/models', { headers: this._authHeaders() })).json(); if (j && j.ok && Array.isArray(j.models)) { this.models = j.models; if (!this.cfgModel) this.cfgModel = j.current || ''; } } catch (e) {}
