@@ -9,7 +9,7 @@ from __future__ import annotations
 from . import dictionaries as D
 
 QMETA_VERSION = "qmeta@v31"
-IMETA_VERSION = "imeta@v9"   # v9: 기준 문서(contextual-meta-extraction v2.1) 코어 규칙 + 모델 계열 래핑
+IMETA_VERSION = "imeta@v10"  # v10: 260715 회의 개편(카테고리 50% 임계·캡션 게이트·보도자료 우선·사설칼럼 통합) · v9=기준 문서 코어 규칙
 LEGAL_VERSION = "legal@v3"
 
 _JSON_GUARD = (
