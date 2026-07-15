@@ -75,6 +75,7 @@ class EntdictBase(unittest.TestCase):
         self._orig_text = ED._http_text
         ED._http_json = _fake_http_json
         ED._http_text = _fake_http_text_miss
+        ED._wd_breaker_reset()                     # 위키데이터 브레이커 상태 격리(테스트 간 누수 방지)
 
     def tearDown(self):
         ED._http_json = self._orig_http
@@ -378,6 +379,67 @@ class TestHttp429Backoff(unittest.TestCase):
                 ED._http_json("http://x")
         finally:
             UR.urlopen = orig
+
+
+class TestWdBreaker(EntdictBase):
+    """위키데이터 게이트·서킷 브레이커: 일괄 보강에서 429 폭주·연속 실패가 지속되면
+    남은 배치는 위키데이터를 거둬낸다(나무위키 단독 · 다음 배치에서 재시도)."""
+
+    def setUp(self):
+        super().setUp()
+        self._env = os.environ.pop("PRISM_ENTDICT_WD", None)
+        self._delay = ED.ENRICH_DELAY
+        ED.ENRICH_DELAY = 0
+    def tearDown(self):
+        super().tearDown()
+        ED._wd_breaker_reset()
+        ED.ENRICH_DELAY = self._delay
+        if self._env is None:
+            os.environ.pop("PRISM_ENTDICT_WD", None)
+        else:
+            os.environ["PRISM_ENTDICT_WD"] = self._env
+
+    def _register(self, name):
+        ED.ingest_meta(self.store, [("ch1", [name])])
+        return self.store.ent_id_by_alias(name)
+
+    def test_env_gate_skips_wikidata_and_keeps_pending(self):
+        os.environ["PRISM_ENTDICT_WD"] = "0"
+        eid = self._register("미등재개체")               # 나무위키도 미스(기본 심)
+        called = {"n": 0}
+        def boom(url):
+            called["n"] += 1
+            raise AssertionError("위키데이터를 호출하면 안 된다")
+        ED._http_json = boom
+        r = ED.enrich_entity(self.store, eid)
+        self.assertTrue(r["ok"])
+        self.assertFalse(r["matched"])
+        self.assertEqual(called["n"], 0)
+        e = self.store.ent_get(eid)
+        self.assertEqual(e["status"], "pending")        # 미확인 미스 → unlisted 강등 금지
+        self.assertEqual(e["attr_meta"]["_enrich"]["source"], "namuwiki")
+
+    def test_consecutive_failures_trip_breaker(self):
+        ids = [self._register(f"개체{i}") for i in range(5)]
+        calls = {"n": 0}
+        def timeout(url):
+            calls["n"] += 1
+            raise OSError("timed out")
+        ED._http_json = timeout
+        r = ED.enrich_many(self.store, ids, limit=10)
+        self.assertEqual(r["fail"], 3)                  # 연속 3회 실패 → 차단(tripped)
+        self.assertTrue(r["wd_tripped"])
+        self.assertEqual(calls["n"], 3)                 # 4·5번째는 위키데이터를 건너뜀
+        self.assertEqual(r["miss"], 2)
+        self.assertEqual(self.store.ent_get(ids[4])["status"], "pending")   # 차단 중 미스 = 보류 유지
+
+    def test_429_storm_trips_and_next_batch_resets(self):
+        for _ in range(ED._WD_TRIP_429):
+            ED._wd_note_429()
+        self.assertFalse(ED.wd_available())             # 429 재시도 누적 → 차단
+        r = ED.enrich_many(self.store, [], limit=1)     # 새 배치 = 리셋
+        self.assertFalse(r["wd_tripped"])
+        self.assertTrue(ED.wd_available())
 
 
 def _cat_link(name):
