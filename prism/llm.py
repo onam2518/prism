@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import os
+import sys
 import threading
 import time
 import urllib.request
@@ -13,6 +14,7 @@ from .ratelimit import RateLimiter, backoff_delay, classify_http_error
 # 공시 단가 fallback (config 없을 때), USD per 1M tokens
 PRICE_IN = 0.15
 PRICE_OUT = 0.60
+_warned_implicit_mock = False
 
 
 class LLMResult:
@@ -41,7 +43,13 @@ class LLMClient:
         self.cfg = config or Config.load()
         self.model = model or self.cfg.model
         self.api_key = api_key or self.cfg.api_key or os.environ.get("PRISM_API_KEY", os.environ.get("UPSTAGE_API_KEY", ""))
+        self.implicit_mock = (not mock) and (not self.api_key)   # 키 부재로 인한 암묵 mock(요청한 mock 과 구분)
         self.mock = mock or not self.api_key
+        if self.implicit_mock:                                  # 배포에서 조용한 휴리스틱 라벨 생산을 로그로 표면화
+            global _warned_implicit_mock
+            if not _warned_implicit_mock:
+                _warned_implicit_mock = True
+                sys.stderr.write("[prism] WARNING: LLM API 키 없음 → mock(휴리스틱) 라벨 사용 · 실판정 아님\n")
         self.reasoning_effort = reasoning_effort or self.cfg.reasoning_effort
         self.timeout = timeout or self.cfg.timeout
         self.limiter = limiter or RateLimiter(self.cfg.rate.rpm, self.cfg.rate.tpm)
