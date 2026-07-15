@@ -69,6 +69,49 @@ class TestGoldenCreation(unittest.TestCase):
         self.assertEqual(g["need_category"], 1)
         self.assertEqual(g["need_list"][0]["title"], "분류 없는 합의")
 
+    def test_manual_golden_same_hash_not_overwritten(self):
+        # P1-7: 같은 콘텐츠에 관리자 수동 골든이 있으면 검수 합의로 덮어쓰지 않는다(정답 소실 방지).
+        serve, st = self._with_store()
+        from prism.store import content_hash
+        title = "겹치는 콘텐츠"
+        content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문 " + title}
+        st.register_golden(None, [{"content": content,
+                                   "expected": {"finalGrade": "R", "content_category": ["Sports"], "reasons": ["graphic"]}}],
+                           replace=True, source="manual")
+        self._put_reviewed(st, title, [("A", "good"), ("B", "good")], cats=("Sports",))   # 검수는 G
+        serve.build_golden_from_reviews(None)
+        ch = content_hash(content)
+        golds = st.get_golden(None)
+        self.assertEqual(len(golds), 1)                                   # 검수 유래로 별도 추가 안 됨
+        self.assertEqual(golds[0]["expected"]["finalGrade"], "R")        # 관리자 R 유지(검수 G 로 안 바뀜)
+        self.assertEqual(st.golden_source_counts(None).get("manual"), 1)  # source 도 manual 유지
+        self.assertIn(ch, st.golden_hashes())
+
+    def test_empty_grade_not_promoted(self):
+        # P1-11: finalGrade 가 빈(판정 보류·judge 실패) 콘텐츠는 합의가 있어도 골든 승격 제외.
+        import json as _j
+        import time as _t
+        from prism.store import content_hash
+        serve, st = self._with_store()
+        title = "빈 등급 콘텐츠"
+        content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문 " + title}
+        ch = content_hash(content)
+        im = {"summary": title, "entities": [], "intent": [], "content_category": ["Sports"]}
+        payload = {"quality_meta": {"review": "yellow", "finalGrade": "", "reasons": []},
+                   "item_meta": im, "content_ref": dict(content)}
+        c = st._conn()
+        c.execute("INSERT OR REPLACE INTO results(content_hash,service,title,final_grade,reasons,item_meta,payload,created_at) "
+                  "VALUES(?,?,?,?,?,?,?,?)",
+                  (ch, "뉴스", title, "", "[]", _j.dumps(im), _j.dumps(payload), _t.time()))
+        c.commit()
+        now = _t.time()
+        st.save_feedback(ch, "뉴스", title, "good", "review", "", now, reviewer="A")
+        st.save_feedback(ch, "뉴스", title, "good", "review", "", now, reviewer="B")
+        g = serve.build_golden_from_reviews(None)
+        self.assertEqual(g["need_grade"], 1)
+        self.assertEqual(g["confirmed"], 0)                              # 승격 안 됨
+        self.assertNotIn(ch, st.golden_hashes())
+
     def test_register_validation_and_merge(self):
         serve, st = self._with_store()
         orig = serve.is_admin_user
