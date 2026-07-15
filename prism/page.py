@@ -1966,18 +1966,22 @@ PAGE = """<!doctype html>
             </tbody></table></div>
           </section>
           <section class="panel" data-fn style="margin:0">
-            <div class="panel-hd"><b>검수자 신뢰도</b><span class="meta">합의 일치 + 골드 정확도 + 통계 추정</span></div>
+            <div class="panel-hd"><b>검수자 신뢰도</b><span class="meta">합의 일치 + 골드 정확도 + 통계 추정 + 합의 가중치·추세</span></div>
             <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>검수자</th><th style="cursor:help" data-tip="검수한 콘텐츠 수" data-tip-pos="top">검수</th>
               <th style="cursor:help" data-tip="다수 의견과 같은 판정을 낸 비율" data-tip-pos="top">합의 일치</th>
               <th style="cursor:help" data-tip="정답을 아는 검증 문항의 정확도 · 문항 5개 이상일 때 표시(점수 배율에 반영)" data-tip-pos="top">골드</th>
-              <th style="cursor:help" data-tip="통계 모델(Dawid-Skene 1979)이 추정한 검수자 오류율 · 참고 지표" data-tip-pos="top">EM 오류율</th></tr></thead><tbody>
+              <th style="cursor:help" data-tip="통계 모델(Dawid-Skene 1979)이 추정한 검수자 오류율 · 참고 지표" data-tip-pos="top">EM 오류율</th>
+              <th style="cursor:help" data-tip="정답셋 확정 다수결에서 이 검수자 표의 무게 · 검증 문항 정확도와 통계 추정으로 계산 · 표본 5건 미만은 기본 1.0" data-tip-pos="top">합의 가중치</th>
+              <th style="cursor:help" data-tip="최근 7일 골드 정확도에서 그 전 7일을 뺀 변화 · 양쪽 표본 3건 이상일 때 표시" data-tip-pos="top">골드 추세(7일)</th></tr></thead><tbody>
               <template x-for="r in learnData.reviewers" x-bind:key="r.reviewer">
                 <tr><td class="text-ink" x-text="r.reviewer"></td><td class="tnum" x-text="r.n"></td>
                   <td class="tnum" x-text="r.agree_rate == null ? '·' : pctTxt(r.agree_rate)"></td>
                   <td class="tnum" x-text="r.gold_n >= 5 ? (pctTxt(r.gold_acc) + ' (' + r.gold_n + ')') : ('· (' + (r.gold_n||0) + ')')"></td>
-                  <td class="tnum" x-text="r.ds_error == null ? '·' : pctTxt(r.ds_error)"></td></tr>
+                  <td class="tnum" x-text="r.ds_error == null ? '·' : pctTxt(r.ds_error)"></td>
+                  <td class="tnum" x-text="r.weight == null ? '1.00 (기본)' : r.weight.toFixed(2)"></td>
+                  <td class="tnum" x-bind:style="r.gold_trend == null ? '' : (r.gold_trend >= 0 ? 'color:var(--ds-success,#0a8a4a)' : 'color:var(--ds-error,#d43c2f)')" x-text="r.gold_trend == null ? '·' : ((r.gold_trend >= 0 ? '▲ ' : '▼ ') + pctTxt(Math.abs(r.gold_trend)))"></td></tr>
               </template>
-              <template x-if="!learnData.reviewers.length"><tr><td colspan="5" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
+              <template x-if="!learnData.reviewers.length"><tr><td colspan="7" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
             </tbody></table></div>
           </section>
         </div>
