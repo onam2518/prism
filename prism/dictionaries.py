@@ -641,26 +641,49 @@ DOMAIN_GROUP_MAP = {
 
 
 
+_PROFILE_KEYMAP = {
+    "service_group": "SERVICE_GROUP",
+    "intent_universal": "INTENT_CATEGORIES_UNIVERSAL",
+    "intent_by_service": "INTENT_CATEGORIES_BY_SERVICE",
+    "iab_tier1": "IAB_TIER1",
+    "tier2": "CONTENT_CATEGORY_TIER2",
+    "quality_metas": "QUALITY_METAS",
+    "legal_types": "LEGAL_HARM_TYPES",
+    "domain_groups": "DOMAIN_GROUP_MAP",
+    "category_iab_map": "CATEGORY_IAB_MAP",
+    "intake_policy": "INTAKE_POLICY",
+}
+_BASE_SNAPSHOT = None                   # dict | None · 최초 override 직전의 원본 사전(초기화 즉시 복원용) · 3.8 호환 무주석
+
+
 def apply_profile(prof: dict):
     """회사별/운영자 프로파일로 사전을 비파괴 override. 코어 파이프라인은 그대로, 사전만 교체.
     어드민 편집(사용자 직접 수정)에서도 동일 경로 사용."""
+    import copy
+    global _BASE_SNAPSHOT
     g = globals()
-    keymap = {
-        "service_group": "SERVICE_GROUP",
-        "intent_universal": "INTENT_CATEGORIES_UNIVERSAL",
-        "intent_by_service": "INTENT_CATEGORIES_BY_SERVICE",
-        "iab_tier1": "IAB_TIER1",
-        "tier2": "CONTENT_CATEGORY_TIER2",
-        "quality_metas": "QUALITY_METAS",
-        "legal_types": "LEGAL_HARM_TYPES",
-        "domain_groups": "DOMAIN_GROUP_MAP",
-        "category_iab_map": "CATEGORY_IAB_MAP",
-        "intake_policy": "INTAKE_POLICY",
-    }
-    for pk, gk in keymap.items():
+    if _BASE_SNAPSHOT is None:           # 첫 override 전에 원본 보존 → restore_base 로 재시작 없이 복원
+        _BASE_SNAPSHOT = {gk: copy.deepcopy(g.get(gk)) for gk in _PROFILE_KEYMAP.values()}
+    for pk, gk in _PROFILE_KEYMAP.items():
         if pk in prof:
             cur = g.get(gk)
             if isinstance(cur, dict) and isinstance(prof[pk], dict):
                 cur.update(prof[pk])
             else:
                 g[gk] = prof[pk]
+
+
+def restore_base():
+    """편집 override 를 걷어내고 원본 사전으로 즉시 복원(서버 재시작 불필요).
+    dict 는 참조 유지(in-place), 그 외는 재할당 — apply_profile 과 동일한 참조 규약."""
+    import copy
+    g = globals()
+    if _BASE_SNAPSHOT is None:
+        return
+    for gk, base in _BASE_SNAPSHOT.items():
+        cur = g.get(gk)
+        if isinstance(cur, dict) and isinstance(base, dict):
+            cur.clear()
+            cur.update(copy.deepcopy(base))
+        else:
+            g[gk] = copy.deepcopy(base)

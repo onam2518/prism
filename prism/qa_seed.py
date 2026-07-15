@@ -1,7 +1,7 @@
-"""QA 목업 시드: 콘텐츠 10건 + 검수·교정·정답·평가 판정 예시를 로컬 스토어에 적재.
+"""QA 목업 시드: 콘텐츠 12건(확정 10 + 검수 대기 2) + 검수·교정·정답·평가 판정 예시를 로컬 스토어에 적재.
 
 QA 점검(scripts/seed_qa.py)에서 사용. mock LLM 기준으로
-등급(G/R)·검수 대기·의견 갈림·용도(검수/평가)·골든·버전(v2)·판정까지 전 화면에
+등급(G/R)·검수 대기(YELLOW)·의견 갈림·용도(검수/평가)·골든·버전(v2)·판정까지 전 화면에
 데이터가 보이도록 구성한다. 스토어가 비어 있을 때만 시드(멱등).
 """
 from __future__ import annotations
@@ -33,6 +33,17 @@ QA_CONTENTS = [
      "body": "최저가 쿠폰과 할인 링크를 모았다. 지금 구매하면 추가 할인을 받을 수 있다는 광고성 문구가 반복된다."},
 ]
 
+# 검수 대기(YELLOW) 2건: mock 은 임베딩 프리필터가 없어 자연 발생하지 않으므로 직접 표기.
+# 진척 게이지 분모(yellow_count)·검수 대기 큐(/queue) 화면 검증용.
+QA_YELLOW = [
+    ({"displayServiceName": "뉴스", "title": "전기요금 개편안 발표, 가구별 영향은",
+      "body": "정부가 전기요금 개편안을 발표했다. 사용량 구간별 요율이 조정되며 가구별 영향은 사용 패턴에 따라 갈린다."},
+     "신뢰도 중간대역(모의 · conf=0.62)"),
+    ({"displayServiceName": "콘텐츠", "title": "신형 전기차 시승기, 겨울철 주행거리 실측",
+      "body": "신형 전기차를 일주일간 시승했다. 공인 주행거리와 겨울철 실측치 차이, 충전 요금까지 표로 정리했다."},
+     "불일치: emb=G vs llm=R(모의)"),
+]
+
 
 def seed(team=None, verbose=True) -> dict:
     """스토어가 비어 있으면 QA 목업을 적재. 반환: 시드 요약 카운트."""
@@ -52,6 +63,17 @@ def seed(team=None, verbose=True) -> dict:
     # ① 콘텐츠 10건(모의 추출 · 초안 v1)
     for c in QA_CONTENTS:
         serve.run_pipeline(dict(c), mock=True, team=team)
+
+    # ①-b 검수 대기(YELLOW) 2건: 추출 후 review 플래그를 표기해 영속(진척 게이지·대기 큐 검증)
+    yellow_pairs = []
+    for c, reason in QA_YELLOW:
+        r = serve.run_pipeline(dict(c), mock=True, team=team, persist=False)
+        out = r.get("output") or {}
+        qm = out.setdefault("quality_meta", {})
+        qm["review"] = "yellow"
+        qm["review_reason"] = reason
+        yellow_pairs.append((r["content"], out))
+    serve.store_save(yellow_pairs, source="qa", team=team)
 
     hashes = {c["title"]: content_hash({"displayServiceName": c["displayServiceName"],
                                         "title": c["title"], "subtitle": "", "body": c["body"]})
@@ -91,8 +113,10 @@ def seed(team=None, verbose=True) -> dict:
     # ⑤ 학습 반영 1회(골든 승격 + batch_seq → 다음 실행 버전 v2 표기)
     serve.learning_batch(team)
 
-    out = {"ok": True, "contents": len(QA_CONTENTS), "feedback": sum(len(v) for _, v in fb),
+    out = {"ok": True, "contents": len(QA_CONTENTS) + len(QA_YELLOW), "yellow": len(QA_YELLOW),
+           "feedback": sum(len(v) for _, v in fb),
            "eval_purpose": 2, "golden": (st.golden_count(team) if hasattr(st, "golden_count") else None)}
     if verbose:
-        print(f"  [qa] 시드 완료 · 콘텐츠 {out['contents']} · 검수 {out['feedback']} · 평가용 2 · 골든 {out['golden']}")
+        print(f"  [qa] 시드 완료 · 콘텐츠 {out['contents']}(대기 {out['yellow']}) · 검수 {out['feedback']} · "
+              f"평가용 2 · 골든 {out['golden']}")
     return out

@@ -175,8 +175,9 @@ PAGE = """<!doctype html>
       <div class="onboard__brand">
         <img class="onboard__logo onboard__logo--light" src="/vendor/prism-logo-tagline-light.png" alt="Prism · A lens on content & users">
         <img class="onboard__logo onboard__logo--dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism · A lens on content & users"></div>
-      <h2 class="onboard__title" x-text="authBusy ? (authMode==='signup' ? '가입 중' : '로그인 중') : (authToken ? '검수자 정보 변경' : (authMode==='signup'?'가입하고 시작':'로그인'))"></h2>
-      <p class="onboard__lead">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 내 검수가 점수가 되고 캐릭터가 성장해요. 계정으로 로그인하면 <b>어느 기기에서나</b> 이어집니다.</p>
+      <h2 class="onboard__title" x-text="authBusy ? (authMode==='signup' ? '가입 중' : '로그인 중') : (authToken ? '검수자 정보 변경' : (backend!=='supabase' ? '검수자 등록' : (authMode==='signup'?'가입하고 시작':'로그인')))"></h2>
+      <p class="onboard__lead" x-show="backend==='supabase'">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 내 검수가 점수가 되고 캐릭터가 성장해요. 계정으로 로그인하면 <b>어느 기기에서나</b> 이어집니다.</p>
+      <p class="onboard__lead" x-show="backend!=='supabase'" x-cloak>로컬 모드입니다 · 로그인 없이 <b>닉네임과 캐릭터만</b> 정하면 바로 시작해요. 내 검수가 점수가 되고 캐릭터가 성장합니다.</p>
 
       <!-- 로그인 진행 애니메이션(정보 변경 화면 플래시 방지) -->
       <div x-show="authBusy" x-cloak class="onboard__busy">
@@ -184,8 +185,8 @@ PAGE = """<!doctype html>
         <div class="onboard__busy-dots"><i></i><i></i><i></i></div>
         <p x-text="authMode==='signup' ? '가입을 완료하고 있어요' : '프로필을 불러오고 있어요'"></p>
       </div>
-      <!-- ① 로그인/가입 (비로그인) -->
-      <div x-show="!authToken && !authBusy">
+      <!-- ① 로그인/가입 (비로그인 · supabase 운영 모드) -->
+      <div x-show="backend==='supabase' && !authToken && !authBusy">
         <div class="onboard__authtabs">
           <button type="button" x-bind:class="authMode==='login'?'sel':''" x-on:click="authMode='login';authMsg=''">로그인</button>
           <button type="button" x-bind:class="authMode==='signup'?'sel':''" x-on:click="authMode='signup';authMsg=''">가입</button>
@@ -232,6 +233,23 @@ PAGE = """<!doctype html>
         </template>
       </div>
 
+      <!-- ①-b 로컬(sqlite) 검수자 등록: 인증 없음 · 닉네임·캐릭터만 (QA_CHECKLIST §0 로그인 벽 없음) -->
+      <div x-show="backend!=='supabase' && !authToken && !authBusy" x-cloak class="onboard__group">
+        <div class="onboard__grouphd">검수자</div>
+        <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시</span></label>
+        <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()" style="margin-bottom:12px">
+        <label class="onboard__lbl">캐릭터 선택</label>
+        <div class="onboard__chars" style="margin-bottom:0">
+          <template x-for="c in charOptions" x-bind:key="'local-'+c.id">
+            <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
+              <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
+              <b x-text="c.label"></b><small x-text="c.role"></small>
+            </button>
+          </template>
+        </div>
+        <div class="onboard__authmsg" x-show="authMsg" x-text="authMsg"></div>
+      </div>
+
       <!-- ② 프로필 편집 (로그인 상태) · 닉네임·캐릭터만 -->
       <div x-show="authToken && !authBusy" class="onboard__group">
         <div class="onboard__grouphd">프로필</div>
@@ -249,9 +267,9 @@ PAGE = """<!doctype html>
       </div>
 
       <button type="button" class="ds-btn ds-btn--primary onboard__cta" x-show="!authBusy"
-              x-bind:disabled="authToken ? !(reviewer||'').trim() : (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!authPw2 || !(reviewer||'').trim() || (!noTeam && !(inviteCode||'').trim()))))"
+              x-bind:disabled="(authToken || backend!=='supabase') ? !(reviewer||'').trim() : (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!authPw2 || !(reviewer||'').trim() || (!noTeam && !(inviteCode||'').trim()))))"
               x-on:click="saveReviewer()"
-              x-text="authToken ? '저장하고 시작' : (authMode==='signup'?'가입하고 시작':'로그인하고 시작')"></button>
+              x-text="authToken ? '저장하고 시작' : (backend!=='supabase' ? '시작하기' : (authMode==='signup'?'가입하고 시작':'로그인하고 시작'))"></button>
       <button type="button" class="onboard__skip" x-show="authToken && !authBusy" x-on:click="reviewerEditing=false">닫기</button>
     </div>
   </div>
