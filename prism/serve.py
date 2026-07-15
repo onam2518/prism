@@ -294,6 +294,84 @@ def distribute_assignments(st, hashes, reviewers, min_reviewers=1, team=None) ->
     return {"n": n, "per_reviewer": per, "min_reviewers": n_per}
 
 
+# ── 비용 롤업(일별×모델×콜) ──────────────────────────────────────────────────
+# supabase 는 콘텐츠에 트레이스(by_call·cost)를 저장하지 않아, 실행 시점 누적이 유일한
+# 영속 원천이다(reports kind='cost_rollup' · 팀 스코프). 단일 서버 프로세스 전제라
+# 프로세스 락으로 읽기-수정-쓰기를 직렬화한다(동시 배치의 유실 방지).
+_COST_LOCK = threading.Lock()
+
+
+def _log_cost_rollup(trace: dict, team=None):
+    """실행 1건의 비용·토큰을 일별 롤업 리포트에 누적. 실패는 실행을 막지 않는다."""
+    try:
+        trace = trace or {}
+        cost = float(trace.get("cost_usd") or 0.0)
+        by_call = trace.get("by_call") or {}
+        if not (cost or by_call):
+            return
+        import datetime as _dt
+        day = _dt.date.today().isoformat()
+        tokens = trace.get("tokens") or {}
+        model = (trace.get("model") or "").strip() or "(미기록)"
+        with _COST_LOCK:
+            rep = _report_get("cost_rollup", team, {}) or {}
+            days = rep.setdefault("days", {})
+            d = days.setdefault(day, {"cost": 0.0, "n": 0, "in": 0, "out": 0,
+                                      "models": {}, "calls": {}})
+            d["cost"] = round(d["cost"] + cost, 6)
+            d["n"] += 1
+            d["in"] += int(tokens.get("in") or 0)
+            d["out"] += int(tokens.get("out") or 0)
+            m = d["models"].setdefault(model, {"cost": 0.0, "n": 0})
+            m["cost"] = round(m["cost"] + cost, 6)
+            m["n"] += 1
+            for tag, b in by_call.items():
+                cle = d["calls"].setdefault(str(tag), {"cost": 0.0, "n": 0, "in": 0, "out": 0})
+                cle["cost"] = round(cle["cost"] + float((b or {}).get("cost") or 0.0), 6)
+                cle["n"] += int((b or {}).get("n") or 0)
+                cle["in"] += int((b or {}).get("in") or 0)
+                cle["out"] += int((b or {}).get("out") or 0)
+            if len(days) > 90:                       # 90일 초과분 정리(리포트 무한 성장 방지)
+                for k in sorted(days)[:-90]:
+                    days.pop(k, None)
+            _report_save("cost_rollup", rep, team)
+    except Exception:
+        pass
+
+
+def cost_rollup_data(team=None, days: int = 30) -> dict:
+    """비용 롤업 조회: 최근 days 일 연속 by_day + 창 내 모델별·콜별 합산."""
+    import datetime as _dt
+    days = max(1, min(90, int(days or 30)))
+    rep = _report_get("cost_rollup", team, {}) or {}
+    stored = rep.get("days") or {}
+    today = _dt.date.today()
+    by_day, by_model, by_call = [], {}, {}
+    total = {"cost": 0.0, "n": 0, "in": 0, "out": 0}
+    for i in range(days - 1, -1, -1):
+        k = (today - _dt.timedelta(days=i)).isoformat()
+        d = stored.get(k) or {}
+        by_day.append({"day": k, "cost": round(float(d.get("cost") or 0.0), 6),
+                       "n": int(d.get("n") or 0)})
+        total["cost"] = round(total["cost"] + float(d.get("cost") or 0.0), 6)
+        total["n"] += int(d.get("n") or 0)
+        total["in"] += int(d.get("in") or 0)
+        total["out"] += int(d.get("out") or 0)
+        for mk, mv in (d.get("models") or {}).items():
+            e = by_model.setdefault(mk, {"model": mk, "cost": 0.0, "n": 0})
+            e["cost"] = round(e["cost"] + float(mv.get("cost") or 0.0), 6)
+            e["n"] += int(mv.get("n") or 0)
+        for ck, cv in (d.get("calls") or {}).items():
+            e = by_call.setdefault(ck, {"call": ck, "cost": 0.0, "n": 0, "in": 0, "out": 0})
+            e["cost"] = round(e["cost"] + float(cv.get("cost") or 0.0), 6)
+            e["n"] += int(cv.get("n") or 0)
+            e["in"] += int(cv.get("in") or 0)
+            e["out"] += int(cv.get("out") or 0)
+    return {"ok": True, "window_days": days, "total": total, "by_day": by_day,
+            "by_model": sorted(by_model.values(), key=lambda x: -x["cost"]),
+            "by_call": sorted(by_call.values(), key=lambda x: -x["cost"])}
+
+
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
 def quest_active() -> bool:
     """검수 목표(퀘스트) 진행 중 여부: 반영 일시가 미래로 설정돼 있으면 참.
@@ -402,6 +480,8 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
         (out.setdefault("trace", {}))["version"] = _batch_seq_cached(team) + 1
     except Exception:
         pass
+    if not llm.mock:                             # 비용 원장: 실호출만 일별×모델×콜 누적(실험 포함)
+        _log_cost_rollup(out.get("trace") or {}, team=team)
     if not persist:                              # 실험(미저장): 추출만 하고 results·초안·홀드아웃 미기록
         return {"source": source, "mock": llm.mock, "content": content,
                 "signals": signals, "output": out}
@@ -3517,6 +3597,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                 return
             self._send(200, json.dumps(learn_data(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/cost-rollup"):       # 비용 롤업(일별×모델×콜 · 관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            from urllib.parse import urlparse, parse_qs
+            try:
+                dq = int((parse_qs(urlparse(self.path).query).get("days") or ["30"])[0])
+            except (TypeError, ValueError):
+                dq = 30
+            self._send(200, json.dumps(cost_rollup_data(self._req_team(), days=dq),
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/golden-list"):       # 관리자 골든 브라우저
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)

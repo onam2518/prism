@@ -1758,6 +1758,39 @@ PAGE = """<!doctype html>
               <div class="text-xs text-muted" x-show="!(activityData && activityData.length)">검수가 쌓이면 일별 추이가 표시됩니다</div>
             </div>
           </section>
+          <!-- 모델 실행 비용: 일별×모델×콜 원장(실행 시점 누적 · 관리자) -->
+          <section class="panel" data-fn x-init="loadCost()"><div class="panel-hd"><b>모델 실행 비용</b><span class="meta">최근 30일 · 실행할 때마다 쌓이는 원장(실호출만) · 어느 모델·콜이 비용을 쓰는지</span>
+            <span class="ds-badge ds-badge--neutral tnum ml-auto" x-show="costData" x-text="usdTxt((costData && costData.total.cost) || 0) + ' · ' + ((costData && costData.total.n) || 0) + '건'"></span>
+          </div>
+            <div class="panel-bd">
+              <template x-if="costData && costData.total && costData.total.n">
+                <div>
+                  <div style="display:flex;align-items:flex-end;gap:2px;height:72px">
+                    <template x-for="d in (costData.by_day||[])" x-bind:key="'cd'+d.day">
+                      <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:help" x-bind:data-tip="d.day.slice(5).replace('-','/') + ' · ' + usdTxt(d.cost) + ' · 실행 ' + d.n + '건'" data-tip-pos="top">
+                        <div x-bind:style="'height:' + Math.max(d.cost ? 6 : 2, Math.round(d.cost / costMax * 100)) + '%;background:' + (d.cost ? 'var(--ds-violet,#1e84ff)' : 'var(--ds-hairline)') + ';border-radius:3px 3px 0 0'"></div>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="grid grid-cols-2 gap-4" style="margin-top:14px">
+                    <div><div class="subhd" style="margin:0 0 6px">모델별</div>
+                      <table class="ds-table"><thead><tr><th>모델</th><th style="width:90px">비용</th><th style="width:64px">실행</th></tr></thead><tbody>
+                        <template x-for="m in (costData.by_model||[]).slice(0,8)" x-bind:key="'cm'+m.model">
+                          <tr><td class="text-ink" x-text="m.model"></td><td class="tnum" x-text="usdTxt(m.cost)"></td><td class="tnum" x-text="m.n"></td></tr>
+                        </template>
+                      </tbody></table></div>
+                    <div><div class="subhd" style="margin:0 0 6px">콜별 <span class="meta">리드문·엔티티·인텐트·카테고리·품질</span></div>
+                      <table class="ds-table"><thead><tr><th>콜</th><th style="width:90px">비용</th><th style="width:110px">토큰(입·출)</th></tr></thead><tbody>
+                        <template x-for="c in (costData.by_call||[]).slice(0,8)" x-bind:key="'cc'+c.call">
+                          <tr><td class="text-ink" x-text="c.call"></td><td class="tnum" x-text="usdTxt(c.cost)"></td><td class="tnum" x-text="c['in'] + ' · ' + c.out"></td></tr>
+                        </template>
+                      </tbody></table></div>
+                  </div>
+                </div>
+              </template>
+              <div class="text-xs text-muted" x-show="!(costData && costData.total && costData.total.n)">실호출 실행이 생기면 이곳에 비용이 쌓입니다 (mock 실행은 집계하지 않아요)</div>
+            </div>
+          </section>
           <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->
           <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>검수 목표 / 퀘스트 생성</b><span class="meta">지정한 일시까지 모인 검수 의견이 새 버전 프롬프트에 반영됩니다</span>
             <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚡ 즉시 반영'"></button>

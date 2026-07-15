@@ -593,7 +593,7 @@
         else if (id === 'arena') this.loadArena();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') this.loadAdmin();
-        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); }
+        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
         else if (id === 'dict') { this.loadDict(); if (this.dictTab === 'entity') this.loadEntdict(); }
         else if (id === 'studio') {
@@ -1278,6 +1278,13 @@
         const g = d.gold_n ? (' · 골드 정답률 ' + Math.round((d.gold_correct / d.gold_n) * 100) + '% (' + d.gold_n + '문항)') : '';
         return d.day.slice(5).replace('-', '/') + ' · 검수 ' + d.reviews + '건 · 교정 ' + d.corrections + '건' + g;
       },
+      // 비용 롤업(일별×모델×콜 · 관리자): 실행 시점 누적 원장(reports cost_rollup)
+      costData: null,
+      async loadCost() {
+        try { const r = await (await this._afetch('/cost-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.costData = r; } catch (e) {}
+      },
+      get costMax() { return Math.max(0.000001, ...(((this.costData || {}).by_day) || []).map((d) => d.cost)); },
+      usdTxt(v) { return v == null ? '·' : ('$' + (Math.round(v * 10000) / 10000)); },
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
       async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.goldenStatus = r; this.loadVerHist(); } } catch (e) {} },
