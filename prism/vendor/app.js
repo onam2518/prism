@@ -1702,14 +1702,15 @@
       mustText() { const m = []; const c = this.studio.req; ['cats', 'intents', 'keywords'].forEach(d => (c[d] || []).forEach(v => m.push(d === 'cats' ? this.catBoth(v) : v))); return m.join(' · '); },
       chipCls(dim, val, base) { const s = this.studioState(dim, val); if (s === 'off') return 'ds-badge--neutral'; if (s === 'neg') return 'ds-badge--error is-neg'; return base + (s === 'req' ? ' is-req' : ''); },
       coreSamples() { const c = (this.studioPreview.bundles || []).find(b => b.kind === 'core'); return (c && c.samples) || []; },
+      _escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
       bundleSummaryText() {
         const bs = (this.studioPreview.bundles) || [];
         const n = (this.topicData && this.topicData.n_contents) || 0;
         if (!bs.length) return '아직 조건이 없어요 · <b>전체 ' + n + '건</b>이 한 묶음입니다';
         const core = bs.find(b => b.kind === 'core'); const rel = bs.filter(b => b.kind === 'related').length;
-        const mt = this.mustText();
+        const mt = this._escHtml(this.mustText());   // 사용자 자유입력 키워드 · x-html 삽입 전 이스케이프
         const base = mt ? ('<b>' + mt + '</b> 을(를) 필수 뼈대로, ') : '';
-        const ngt = this.negText();
+        const ngt = this._escHtml(this.negText());
         return base + '핵심 <b>' + ((core && core.count) || 0) + '건</b>' + (rel ? (' + 관련 묶음 <b>' + rel + '개</b>로 펼쳐집니다') : ' (선택 조건을 더하면 관련 묶음이 생겨요)') + (ngt ? (' · <b>✖ ' + ngt + '</b> 제외') : '');
       },
       studioAddKw() { const k = (this.studio.kwInput || '').trim(); if (k) { const ni = this.studio.neg.keywords.indexOf(k); if (ni >= 0) this.studio.neg.keywords.splice(ni, 1); if (!this.studio.keywords.includes(k)) this.studio.keywords.push(k); } this.studio.kwInput = ''; this.schedulePreview(); },

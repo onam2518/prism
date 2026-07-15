@@ -278,6 +278,14 @@ def _is_pending_row(r: dict) -> bool:
     return not ((tr.get("model") or "") or (r.get("item_meta") or {}) or (qm.get("finalGrade") or ""))
 
 
+def _safe_url(u: str) -> str:
+    """저장용 원문 링크 정제: http/https 만 허용(javascript:·data: 등 스크립트 스킴 차단). 그 외는 빈 문자열.
+    원문 iframe 이 이 값을 src 로 로드하므로 스킴 화이트리스트로 저장형 XSS 를 차단한다."""
+    u = (u or "").strip()
+    low = u.lower()
+    return u if (low.startswith("http://") or low.startswith("https://")) else ""
+
+
 def add_contents(contents: list, purpose: str = "", team=None, source: str = "단건") -> dict:
     """STEP 1 콘텐츠 추가: 저장만 하고 모델은 돌리지 않는다(미실행 대기).
     실행은 STEP 2 모델 실행(일괄 실행 큐 · scope=pending)이 담당 · 실행 시 같은 hash 로 upsert."""
@@ -293,7 +301,7 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
     rows = list(uniq.values())
     pairs = [(c, {"content_ref": {"displayServiceName": c.get("displayServiceName", ""),
                                   "title": c.get("title", ""), "subtitle": c.get("subtitle", ""),
-                                  "source_url": c.get("source_url", "") or c.get("url", ""),
+                                  "source_url": _safe_url(c.get("source_url", "") or c.get("url", "")),
                                   "body": c.get("body", ""), "body_hash": _chash(c)},
                   "quality_meta": {}, "item_meta": {}, "trace": {}}) for c in rows]
     saved = store_save(pairs, source=source, team=team)
@@ -1594,20 +1602,63 @@ _INGEST_THREAD = None
 _INGEST_STOP = threading.Event()
 
 
+def _validate_public_url(url: str):
+    """인입 URL 검증(SSRF 방어): http/https 스킴만 허용 + 해석된 IP 가 모두 공인 대역인지 확인.
+    사설·루프백·링크로컬(169.254 클라우드 메타데이터)·예약·멀티캐스트 대역은 거부.
+    통과 시 None, 실패 시 사유 문자열. (잔여: DNS 리바인딩 TOCTOU 는 미방어 — 내부 도구 전제)"""
+    import socket
+    import ipaddress
+    from urllib.parse import urlparse
+    try:
+        p = urlparse((url or "").strip())
+    except Exception:
+        return "URL 파싱 실패"
+    if p.scheme not in ("http", "https"):
+        return "http/https URL 만 허용됩니다"
+    host = p.hostname
+    if not host:
+        return "호스트가 없습니다"
+    try:
+        infos = socket.getaddrinfo(host, p.port or (443 if p.scheme == "https" else 80),
+                                   proto=socket.IPPROTO_TCP)
+    except Exception as e:
+        return f"호스트 확인 실패: {str(e)[:80]}"
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return "주소 확인 실패"
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                or ip.is_multicast or ip.is_unspecified):
+            return "사설/내부 대역 주소는 허용되지 않습니다"
+    return None
+
+
 def _fetch_records(endpoint: str, limit: int, method: str, auth: str):
     """REST 엔드포인트에서 레코드 배열을 가져옴. (rows, error) 반환."""
     import urllib.request
+    import urllib.error
     endpoint = (endpoint or "").strip()
     if not endpoint:
         return None, "엔드포인트가 비어 있습니다"
     url = endpoint
     if "limit=" not in url and (method or "GET").upper() == "GET":
         url += ("&" if "?" in url else "?") + "limit=" + str(int(limit))
+    err = _validate_public_url(url)
+    if err:
+        return None, err
+
+    class _SafeRedirect(urllib.request.HTTPRedirectHandler):   # 리다이렉트 대상도 매 홉 재검증(내부망 우회 차단)
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if _validate_public_url(newurl):
+                raise urllib.error.URLError("리다이렉트 대상이 허용되지 않는 주소입니다")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
     req = urllib.request.Request(url, method=(method or "GET").upper())
     if auth:
         req.add_header("Authorization", auth)
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.build_opener(_SafeRedirect()).open(req, timeout=20) as resp:
             data = json.loads(resp.read().decode("utf-8", "replace"))
     except Exception as e:
         return None, f"API 호출 실패: {str(e)[:160]}"
@@ -1973,7 +2024,13 @@ def apply_feedback(data: dict) -> dict:
     if not st:
         return {"ok": False, "error": "store unavailable"}
     if data.get("clear"):
-        st.clear_feedback()
+        team = data.get("_team")
+        if _supa() and not team:                    # 팀 스코프 없이 전 팀 삭제 금지(멀티테넌시 격리)
+            return {"ok": False, "error": "팀 스코프가 필요합니다"}
+        if hasattr(st, "clear_team_feedback"):
+            st.clear_team_feedback(team)
+        else:
+            st.clear_feedback()
     else:
         ch = (data.get("hash") or "").strip()
         if not ch:
@@ -3424,6 +3481,16 @@ class Handler(BaseHTTPRequestHandler):
         data["_team"] = (st.reviewer_team(uid) if (st and hasattr(st, "reviewer_team")) else None)
         return True
 
+    def _require_login(self):
+        """supabase 모드: 유효한 로그인(Bearer uid) 필수. 통과 시 True, 실패 시 401 응답 후 False.
+        조회성·실험(LLM 호출) 엔드포인트의 익명 접근·비용 남용을 차단한다."""
+        if not _supa():
+            return True
+        if self._bearer_uid():
+            return True
+        self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+        return False
+
     def _serve_sse(self):
         """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK."""
         self.send_response(200)
@@ -3519,13 +3586,20 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/store"):
             try:
                 payload = json.loads(body or b"{}")
+                team = self._req_team()
                 if payload.get("clear") and _supa() and not is_admin_user(
-                        self._bearer_uid(), self._req_team(), self._bearer_email()):
+                        self._bearer_uid(), team, self._bearer_email()):
                     self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                     return
                 st = get_store()
                 if payload.get("clear") and st:
-                    st.clear()
+                    if _supa() and not team:            # 팀 스코프 없이 전 팀 삭제 금지
+                        self._send(403, json.dumps({"error": "팀 스코프가 필요합니다"}, ensure_ascii=False), _JSON)
+                        return
+                    if hasattr(st, "clear_team_contents"):
+                        st.clear_team_contents(team)
+                    else:
+                        st.clear()
                 self._send(200, json.dumps({"ok": True, "count": (st.count() if st else 0)},
                                            ensure_ascii=False), _JSON)
             except Exception as e:
@@ -3543,7 +3617,14 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/feedback"):
             try:
                 data = json.loads(body or b"{}")
-                if not data.get("clear") and not self._inject_reviewer(data):
+                if data.get("clear"):
+                    # 전체 초기화 = 관리자 전용 + 팀 스코프(무인증·전 팀 삭제 방지)
+                    uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
+                    if _supa() and not is_admin_user(uid, team, email):
+                        self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                        return
+                    data["_team"] = team
+                elif not self._inject_reviewer(data):
                     self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
                     return
                 rl_key = (data.get("reviewer") or "").strip() or self.client_address[0]
@@ -3932,12 +4013,14 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 data = json.loads(body or b"{}")
                 action = (data.get("action") or "").strip()
-                # 조회성(preview·suggest)은 열람 권한이면 허용 · 변경성은 /config 와 동일 관리자 가드
+                # 조회성(preview·suggest)은 로그인 필수(익명 LLM 호출·데이터 열람 차단) · 변경성은 /config 와 동일 관리자 가드
                 if action not in ("preview", "suggest"):
                     uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
                     if _supa() and not is_admin_user(uid, team, email):
                         self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                         return
+                elif not self._require_login():
+                    return
                 # 변경성 액션의 캐시 무효화는 topic_studio_action 내부에서 처리
                 self._send(200, json.dumps(topic_studio_action(data, mock=Handler.server_mock),
                                            ensure_ascii=False), _JSON)
@@ -3947,6 +4030,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/media-extract"):        # 미디어 메타 파이프라인: 자막 파싱(JSON) · 영상 네이티브(multipart)
             try:
+                if not self._require_login():              # 익명 LLM 호출(비용 남용) 차단
+                    return
                 ctype = self.headers.get("Content-Type", "")
                 if "multipart/form-data" in ctype:        # 업로드 → 미디어 실험(미저장): 이미지(image*) | 영상(file)
                     fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
@@ -3978,6 +4063,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/usermeta-profiles"):   # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
             try:
+                if not self._require_login():
+                    return
                 from . import personagen as PG
                 ctype = self.headers.get("Content-Type", "")
                 if "multipart/form-data" in ctype:
@@ -3996,6 +4083,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/usermeta"):
             try:
+                if not self._require_login():              # 익명 전 팀 콘텐츠 열람·LLM 호출 차단
+                    return
                 ctype = self.headers.get("Content-Type", "")
                 f = None
                 if "multipart/form-data" in ctype:

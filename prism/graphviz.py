@@ -61,6 +61,7 @@ def section(gid: str, nodes: list, links: list, col: dict,
     js = (_JS.replace("__DATA__", json.dumps({"nodes": nodes, "links": links}, ensure_ascii=False))
           .replace("__COL__", json.dumps(col, ensure_ascii=False))
           .replace("__GID__", gid))
+    js = js.replace("</", "<\\/")   # <script> 조기 종료 방어: 라벨(LLM 추출 개체명)에 '</script>' 가 있어도 안전
     leg = ""
     if legend:
         leg = ('<div style="display:flex;gap:15px;flex-wrap:wrap;margin-top:9px;font-size:12px;color:var(--ds-muted,rgba(0,0,0,.48))">'
