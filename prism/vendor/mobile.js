@@ -4,7 +4,7 @@ window.mreview = () => ({
   view: 'boot', sheet: '', backend: '', guideUrl: '', theme: 'light',
   email: '', pw: '', nick: '', err: '', busy: false,
   authToken: '', rtoken: '', reviewer: '', name: '',
-  items: [], idx: 0, done: 0, fixed: 0, points: null, toast: '', _toastT: null,
+  items: [], idx: 0, done: 0, fixed: 0, earned: 0, points: null, toast: '', _toastT: null,
   fix: { elems: ['summary'], note: '' },
   defTitle: '', defBody: '', dict: null,
   updateAvail: false, _boot: '',                   // 새 버전 배포 감지(서버 부팅 ID 변화) · 새로고침 배너(PC 규약)
@@ -118,7 +118,7 @@ window.mreview = () => ({
       const r = await (await this.afetch('/raw?limit=200' + q)).json();
       // v2: 골드 문항(블라인드 검증 문항)도 포함 · 목록은 전체(검수 완료 포함) 노출, 미검수는 배지로 구분
       this.items = (r && r.items) || [];
-      this.idx = 0; this.done = 0; this.fixed = 0;
+      this.idx = 0; this.done = 0; this.fixed = 0; this.earned = 0;
     } catch (e) { this.err = '목록을 불러오지 못했습니다'; }
   },
   async loadDict() {
@@ -280,6 +280,9 @@ window.mreview = () => ({
   },
   _celebrate(pt, label) {
     if (this.points !== null) this.points += pt;
+    // 완료 화면 '이번에 획득 PT' = 실누적. 모든 지급(일반·골드 정답·미션 보너스)이 이 함수를
+    // 지나므로 여기서만 더한다 — 추정식(판정×10+교정×15)은 골드 오답·이어쓰기·미션에서 어긋났다.
+    this.earned += pt;
     this.toast = '✨ +' + pt + ' PT · ' + label;
     if (this._toastT) clearTimeout(this._toastT);
     this._toastT = setTimeout(() => { this.toast = ''; }, 1600);

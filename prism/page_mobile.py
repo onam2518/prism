@@ -155,7 +155,7 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
     <p x-show="done" x-text="'판정 ' + done + '건 · 교정 ' + fixed + '건'"></p>
     <p x-show="!done">새 배치가 준비되면 여기서 이어집니다</p>
     <div class="m-stats" x-show="done">
-      <div class="m-stat"><b class="tnum" x-text="'+' + (done * 10 + fixed * 15)"></b><span>이번에 획득 PT</span></div>
+      <div class="m-stat"><b class="tnum" x-text="'+' + earned"></b><span>이번에 획득 PT</span></div>
       <div class="m-stat"><b class="tnum" x-text="done"></b><span>판정</span></div>
       <div class="m-stat"><b class="tnum" x-text="fixed"></b><span>교정</span></div>
     </div>
