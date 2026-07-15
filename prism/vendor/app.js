@@ -593,7 +593,7 @@
         else if (id === 'arena') this.loadArena();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') this.loadAdmin();
-        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
+        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); this.loadFails(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
         else if (id === 'dict') { this.loadDict(); if (this.dictTab === 'entity') this.loadEntdict(); }
         else if (id === 'studio') {
@@ -1285,6 +1285,12 @@
       },
       get costMax() { return Math.max(0.000001, ...(((this.costData || {}).by_day) || []).map((d) => d.cost)); },
       usdTxt(v) { return v == null ? '·' : ('$' + (Math.round(v * 10000) / 10000)); },
+      // 실패 트리아지(종류×모델×서비스 · 관리자): 실행 시점 누적 원장(reports fail_rollup)
+      failData: null,
+      async loadFails() {
+        try { const r = await (await this._afetch('/fail-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.failData = r; } catch (e) {}
+      },
+      failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 실패', auth: '인증 오류', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
       async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.goldenStatus = r; this.loadVerHist(); } } catch (e) {} },

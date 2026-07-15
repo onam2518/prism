@@ -339,6 +339,40 @@ def _log_cost_rollup(trace: dict, team=None):
         pass
 
 
+# ── 실패 트리아지 원장(종류×모델×서비스) ─────────────────────────────────────
+# supabase 는 콘텐츠에 트레이스(fails)를 저장하지 않아 실행 시점 누적이 유일한 영속 원천.
+# reports kind='fail_rollup'(팀 스코프) · 단일 서버 프로세스 전제 프로세스 락 직렬화.
+_FAIL_LOCK = threading.Lock()
+
+
+def _log_fail_rollup(trace: dict, service: str = "", team=None):
+    """실행 1건의 콜 실패(trace.fails)를 일별 원장에 누적. 실패 없으면 무기록."""
+    try:
+        trace = trace or {}
+        fails = trace.get("fails") or []
+        if not fails:
+            return
+        import datetime as _dt
+        day = _dt.date.today().isoformat()
+        model = (trace.get("model") or "").strip() or "(미기록)"
+        svc = (service or "").strip() or "(미기록)"
+        with _FAIL_LOCK:
+            rep = _report_get("fail_rollup", team, {}) or {}
+            days = rep.setdefault("days", {})
+            d = days.setdefault(day, {})
+            for f in fails:
+                kind = str((f or {}).get("kind") or "unknown")
+                tag = str((f or {}).get("tag") or "")
+                key = "|".join((kind, model, svc, tag))
+                d[key] = int(d.get(key) or 0) + 1
+            if len(days) > 90:                       # 90일 초과분 정리
+                for k in sorted(days)[:-90]:
+                    days.pop(k, None)
+            _report_save("fail_rollup", rep, team)
+    except Exception:
+        pass
+
+
 def cost_rollup_data(team=None, days: int = 30) -> dict:
     """비용 롤업 조회: 최근 days 일 연속 by_day + 창 내 모델별·콜별 합산."""
     import datetime as _dt
@@ -370,6 +404,38 @@ def cost_rollup_data(team=None, days: int = 30) -> dict:
     return {"ok": True, "window_days": days, "total": total, "by_day": by_day,
             "by_model": sorted(by_model.values(), key=lambda x: -x["cost"]),
             "by_call": sorted(by_call.values(), key=lambda x: -x["cost"])}
+def fail_rollup_data(team=None, days: int = 30) -> dict:
+    """실패 트리아지 조회: 창 내 종류별·모델별·서비스별·콜별 합산 + 상세 조합 상위."""
+    import datetime as _dt
+    days = max(1, min(90, int(days or 30)))
+    rep = _report_get("fail_rollup", team, {}) or {}
+    stored = rep.get("days") or {}
+    today = _dt.date.today()
+    keys = {(today - _dt.timedelta(days=i)).isoformat() for i in range(days)}
+    by_kind, by_model, by_service, by_call, combos = {}, {}, {}, {}, {}
+    total = 0
+    for day, counters in stored.items():
+        if day not in keys:
+            continue
+        for key, n in (counters or {}).items():
+            parts = (key.split("|") + ["", "", "", ""])[:4]
+            kind, model, svc, tag = parts
+            n = int(n or 0)
+            total += n
+            by_kind[kind] = by_kind.get(kind, 0) + n
+            by_model[model] = by_model.get(model, 0) + n
+            by_service[svc] = by_service.get(svc, 0) + n
+            if tag:
+                by_call[tag] = by_call.get(tag, 0) + n
+            ck = (kind, model, svc)
+            combos[ck] = combos.get(ck, 0) + n
+    def _sorted(d):
+        return [{"k": k, "n": n} for k, n in sorted(d.items(), key=lambda x: -x[1])]
+    top = [{"kind": k[0], "model": k[1], "service": k[2], "n": n}
+           for k, n in sorted(combos.items(), key=lambda x: -x[1])[:20]]
+    return {"ok": True, "window_days": days, "total": total,
+            "by_kind": _sorted(by_kind), "by_model": _sorted(by_model),
+            "by_service": _sorted(by_service), "by_call": _sorted(by_call), "top": top}
 
 
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
@@ -482,6 +548,8 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
         pass
     if not llm.mock:                             # 비용 원장: 실호출만 일별×모델×콜 누적(실험 포함)
         _log_cost_rollup(out.get("trace") or {}, team=team)
+    if not llm.mock:                             # 실패 원장: 실호출의 콜 실패만 누적(트리아지 원천)
+        _log_fail_rollup(out.get("trace") or {}, service=content.get("displayServiceName", ""), team=team)
     if not persist:                              # 실험(미저장): 추출만 하고 results·초안·홀드아웃 미기록
         return {"source": source, "mock": llm.mock, "content": content,
                 "signals": signals, "output": out}
@@ -3613,6 +3681,17 @@ class Handler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 dq = 30
             self._send(200, json.dumps(cost_rollup_data(self._req_team(), days=dq),
+                                       ensure_ascii=False), _JSON)
+        elif self.path.startswith("/fail-rollup"):       # 실패 트리아지(종류×모델×서비스 · 관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            from urllib.parse import urlparse, parse_qs
+            try:
+                fq = int((parse_qs(urlparse(self.path).query).get("days") or ["30"])[0])
+            except (TypeError, ValueError):
+                fq = 30
+            self._send(200, json.dumps(fail_rollup_data(self._req_team(), days=fq),
                                        ensure_ascii=False), _JSON)
         elif self.path.startswith("/golden-list"):       # 관리자 골든 브라우저
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):

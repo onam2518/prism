@@ -1805,6 +1805,24 @@ PAGE = """<!doctype html>
                 </div>
               </template>
               <div class="text-xs text-muted" x-show="!(costData && costData.total && costData.total.n)">실호출 실행이 생기면 이곳에 비용이 쌓입니다 (mock 실행은 집계하지 않아요)</div>
+          <!-- 실행 실패 진단: 콜 실패를 종류×모델×서비스로 · 라우터 계약 회귀·빈 응답 패턴 조기 발견 -->
+          <section class="panel" data-fn x-init="loadFails()" x-show="failData && failData.total"><div class="panel-hd"><b>실행 실패 진단</b><span class="meta">최근 30일 · 콜 실패를 종류×모델×서비스로 모아 패턴을 보여줍니다</span>
+            <span class="ds-badge ds-badge--error tnum ml-auto" x-show="failData" x-text="'실패 ' + ((failData && failData.total) || 0) + '건'"></span>
+          </div>
+            <div class="panel-bd">
+              <div class="flex flex-wrap gap-1" style="align-items:center;margin-bottom:10px">
+                <span class="text-xs text-muted" style="width:64px">종류</span>
+                <template x-for="k in ((failData&&failData.by_kind)||[])" x-bind:key="'fk'+k.k"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="k.k" data-tip-pos="top" x-text="failKindKr(k.k) + ' ' + k.n"></span></template>
+              </div>
+              <div class="flex flex-wrap gap-1" style="align-items:center;margin-bottom:10px">
+                <span class="text-xs text-muted" style="width:64px">콜</span>
+                <template x-for="k in ((failData&&failData.by_call)||[])" x-bind:key="'fc'+k.k"><span class="ds-badge ds-badge--neutral" x-text="k.k + ' ' + k.n"></span></template>
+              </div>
+              <div class="overflow-auto" style="max-height:220px"><table class="ds-table"><thead><tr><th>종류</th><th>모델</th><th>서비스</th><th style="width:64px">건수</th></tr></thead><tbody>
+                <template x-for="(t, ti) in ((failData&&failData.top)||[])" x-bind:key="'ft'+ti">
+                  <tr><td x-text="failKindKr(t.kind)"></td><td class="text-ink" x-text="t.model"></td><td class="text-muted" x-text="t.service"></td><td class="tnum" x-text="t.n"></td></tr>
+                </template>
+              </tbody></table></div>
             </div>
           </section>
           <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->
