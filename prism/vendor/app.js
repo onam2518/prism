@@ -409,8 +409,9 @@
       },
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
       get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
+      rawGapFirst: false,                        // 부족 분류 우선 보기(능동학습: 라벨 예산을 부족 클래스로)
       get rawFiltered() {
-        return (((this.rawData||{}).items)||[]).filter((r) => {
+        const out = (((this.rawData||{}).items)||[]).filter((r) => {
           if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
@@ -419,6 +420,8 @@
           if (this.rawRev === 'done' && !this.myVerdict(r.fb)) return false;
           return true;
         });
+        // 안정 정렬: 부족 분류를 앞으로 올리되 그룹 안에서는 기존(최근순) 유지
+        return this.rawGapFirst ? out.slice().sort((a, b) => (b.class_gap ? 1 : 0) - (a.class_gap ? 1 : 0)) : out;
       },
 
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)

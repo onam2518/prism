@@ -2897,11 +2897,33 @@ def _row_key(ref: dict) -> str:
                          "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")})
 
 
+def _lack_classes(team=None) -> set:
+    """골든 보유가 부족한(클래스당 8건 미만 · SetFit 기준) Tier1 집합.
+    능동학습 라벨 예산 배분의 원천 — 이 분류의 검수가 정답셋 커버리지에 더 기여한다."""
+    def _calc():
+        st = get_store()
+        if not (st and hasattr(st, "get_golden")):
+            return set()
+        from . import dictionaries as D
+        per = {}
+        try:
+            for g in st.get_golden(team) or []:
+                t1s = {str(c).split("/")[0].strip()
+                       for c in ((g.get("expected") or {}).get("content_category") or []) if c}
+                for t1 in t1s:
+                    per[t1] = per.get(t1, 0) + 1
+        except Exception:
+            return set()
+        return {t1 for t1 in D.IAB_TIER1 if per.get(t1, 0) < 8}
+    return _agg_cached(("lackcls", team), _calc)
+
+
 def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
     """검수 대상 콘텐츠: 판정 결과 전체를 한 표로(모델·버전·필터 · 빠른 검수).
     검수 대기(YELLOW)·불일치도 포함되며, 검수자 식별 시 골드 문항을 섞는다."""
     rows = results_rows(team=team)
     st = get_store()
+    lack = _lack_classes(team)                     # 부족 분류(정답셋 커버리지) 배지 원천
     try:
         fmap = st.feedback_map(team=team) if st else {}
     except Exception:
@@ -2944,6 +2966,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "review": qm.get("review", "") or "",
                     "split": bool(fb.get("good") and fb.get("bad")),
                     "final": (finals.get(ch) or {}).get("verdict", ""),
+                    "class_gap": bool(lack and {str(c).split("/")[0].strip()
+                                                for c in (im.get("content_category") or [])} & lack),
                     "fb": _fb_public(fb, reviewer),
                     "assignees": (asg.get(ch) or {}).get("reviewers", []),
                     "min_reviewers": (asg.get(ch) or {}).get("min", 0),
