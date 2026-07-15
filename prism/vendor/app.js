@@ -1925,7 +1925,11 @@
         try {
           const r = await this._studioPost({ action: 'save', def: this.studioDef() });
           if (r && r.error) { this.studioMsg = '오류: ' + r.error; }
-          else { this.topicData = r; this._syncTopicSettings(); this.studioMsg = '저장했습니다'; this.studioReset(); }
+          else {
+            this.topicData = r; this._syncTopicSettings(); this.studioMsg = '저장했습니다'; this.studioReset();
+            const dup = (r.similar || [])[0];        // 중복 의심: 저장은 되고 경고만(합칠지 판단은 사람이)
+            if (dup) this.liveToast('⚠ 비슷한 토픽이 이미 있어요 · 「' + dup.name + '」 (' + Math.round(dup.score * 100) + '% 유사) · 겹치면 하나로 합쳐 주세요');
+          }
         } catch (e) { this.studioMsg = '저장 실패'; } this.studioSaving = false;
       },
       studioEdit(g) {
