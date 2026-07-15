@@ -1175,14 +1175,8 @@
           this._err('팀 관리 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요');
         } finally { this._adminBusy = false; }
       },
-      goldenModel: '',                        // 정답셋 목록 · 유래 모델 필터
-      get goldenModelList() {
-        const its = (this.goldenList && this.goldenList.items) || [];
-        return [...new Set(its.map(g => g.model || ''))].sort();
-      },
-      get filteredGolden() {
-        const its = (this.goldenList && this.goldenList.items) || [];
-        return this.goldenModel === '' ? its : its.filter(g => (g.model || '') === this.goldenModel);
+      get filteredGolden() {                   // 정답셋 목록 · 모델별 분리 없음(정답은 모델 무관 사람 확정값)
+        return (this.goldenList && this.goldenList.items) || [];
       },
       // 프롬프트 스튜디오 · 기준 계약/계열 래퍼/미리보기
       contractCall: 'summary', wrapFam: 'solar', wrapDraft: '', wrapMsg: '',
@@ -2438,8 +2432,8 @@
       },
       exportGolden() {                       // 정답셋 엑셀(CSV) 다운로드
         const its = (this.goldenList && this.goldenList.items) || [];
-        const rows = [['제목', '등급', '카테고리', '유래 모델', '버전', '출처', '교정 필요']];
-        its.forEach((g) => rows.push([g.title || '', g.grade || '', (g.category || []).join(' · '), g.model || '', g.version ? ('v' + g.version) : '', g.source === 'manual' ? '직접' : '검수', g.fix_needed ? 'Y' : '']));
+        const rows = [['제목', '등급', '카테고리', '버전', '출처', '교정 필요']];
+        its.forEach((g) => rows.push([g.title || '', g.grade || '', (g.category || []).join(' · '), g.version ? ('v' + g.version) : '', g.source === 'manual' ? '직접' : '검수', g.fix_needed ? 'Y' : '']));
         this._dl('prism_golden.csv', rows);
       },
       exportUsers() {
