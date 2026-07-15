@@ -89,7 +89,9 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
     </div>
 
     <template x-if="view === 'card' && cur()">
-      <article class="m-card">
+      <article class="m-card" x-on:touchstart="swStart($event)" x-on:touchmove="swMove($event)" x-on:touchend="swEnd()" x-bind:style="swipeDx ? ('transform:translateX(' + swipeDx + 'px);transition:none') : ''">
+        <div class="m-swipehint m-swipehint--good" x-bind:style="'opacity:' + Math.min(1, Math.max(0, swipeDx - 24) / 60)">✓ 정확</div>
+        <div class="m-swipehint m-swipehint--bad" x-bind:style="'opacity:' + Math.min(1, Math.max(0, -swipeDx - 24) / 60)">✎ 수정</div>
         <div class="m-card__scroll">
           <!-- 컨텍스트: 출처·모델 → 제목 -->
           <div class="m-card__meta">
@@ -146,6 +148,7 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
       <button type="button" class="verdictbtn verdictbtn--bad" x-on:click="openFix()"><span class="verdictbtn__dot"></span>수정 필요</button>
       <button type="button" class="verdictbtn verdictbtn--good" x-on:click="good()"><span class="verdictbtn__dot"></span>정확</button>
     </footer>
+    <div class="m-swipetip" x-show="view === 'card'">카드를 옆으로 밀어도 판정할 수 있어요 · → 정확 · ← 수정</div>
   </section>
 
   <!-- ━━ 완료 ━━ -->
