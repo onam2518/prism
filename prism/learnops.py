@@ -320,10 +320,37 @@ def snapshot_prompts(team=None) -> dict:
     _SV._report_save("prompt_snapshot_latest", payload, team)
     return {"version": ver, "calls": list(calls.keys())}
 
+def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5) -> list:
+    """개선 후 평가가 전보다 나빠진 지점 목록(원복 사유 문구 · 없으면 빈 목록).
+    ① 정합성 2%p 초과 악화 ② 유해 미탐률(harm_miss_rate) 악화
+    ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제).
+    cli tune RegressionGuard 를 서버 자동 배치로 이식(단일 스칼라 가드의 사각 해소)."""
+    out = []
+    try:
+        d = round((post.get("grade_accuracy") or 0.0) - (pre.get("grade_accuracy") or 0.0), 4)
+    except (TypeError, ValueError):
+        return out
+    if d < -0.02:
+        out.append(f"정합성 {d:+.1%} 악화")
+    pre_miss = float(pre.get("harm_miss_rate") or 0.0)
+    post_miss = float(post.get("harm_miss_rate") or 0.0)
+    if post_miss > pre_miss + 1e-9:
+        out.append(f"유해 미탐 {pre_miss:.1%}→{post_miss:.1%} 악화")
+    post_b = post.get("by_reason_bucket") or {}
+    for b, pv in (pre.get("by_reason_bucket") or {}).items():
+        if int((pv or {}).get("n") or 0) < min_bucket_n:
+            continue
+        ba = float((pv or {}).get("grade_acc") or 0.0)
+        ca = float((post_b.get(b) or {}).get("grade_acc", ba))
+        if ca < ba - 0.10:
+            out.append(f"버킷 {b} {ba:.0%}→{ca:.0%} 회귀")
+    return out
+
+
 def learning_batch(team=None, models=None) -> dict:
     """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
-    ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성이 2%p 넘게 악화되면 개선을 반영하지 않고
-    이전 프롬프트를 유지한다(개선의 방향 검증 · 진동 방지의 완결)."""
+    ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성 2%p 초과 악화·유해 미탐 악화·버킷 회귀
+    중 하나라도 걸리면 개선을 반영하지 않고 이전 프롬프트를 유지한다(방향 검증 · 진동 방지)."""
     golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
     prev_learned = dict(PR.LEARNED)
     prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
@@ -337,12 +364,13 @@ def learning_batch(team=None, models=None) -> dict:
             delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
         except (TypeError, ValueError):
             delta = None
-        if delta is not None and delta < -0.02:          # 악화 가드: 이전 프롬프트로 원복
+        regressions = _batch_regressions(eval_pre, evalr) if evalr.get("ok") else []
+        if regressions:                                  # 악화 가드: 이전 프롬프트로 원복
             PR.LEARNED = prev_learned
             PR.LEARNED_BY_MODEL = prev_by_model
             improve = dict(improve or {})
             improve["reverted"] = True
-            improve["revert_reason"] = f"정합성 {delta:+.1%} 악화 → 이번 보정 미반영(이전 프롬프트 유지)"
+            improve["revert_reason"] = " · ".join(regressions) + " → 이번 보정 미반영(이전 프롬프트 유지)"
             evalr = eval_pre                             # 유지되는 프롬프트 기준 점수로 보고
     else:
         evalr = eval_pre
