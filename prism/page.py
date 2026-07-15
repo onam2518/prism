@@ -1757,7 +1757,11 @@ PAGE = """<!doctype html>
                 <div x-show="metaResults && metaResults[stage] && (metaResults[stage].directive || (metaResults[stage].ambiguities||[]).length)" class="metarow">
                   <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="({extract:'① 리드문·엔티티 호출에 병기', analyze:'③ 인텐트·④ 카테고리 호출에 병기', review:'품질 판정 프롬프트에 병기', judge:'법령·유통 판정 프롬프트에 병기'})[stage]" data-tip-pos="top" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
                   <div style="flex:1;min-width:0">
-                    <div class="metarow__dir" x-text="metaResults&&metaResults[stage]?metaResults[stage].directive:''"></div>
+                    <ul class="metarow__dir" x-show="metaResults&&metaResults[stage]&&metaResults[stage].directive">
+                      <template x-for="(s, i) in dirBullets(metaResults&&metaResults[stage]?metaResults[stage].directive:'')" x-bind:key="i">
+                        <li x-text="s"></li>
+                      </template>
+                    </ul>
                     <template x-for="a in (metaResults&&metaResults[stage]?metaResults[stage].ambiguities:[])" x-bind:key="a">
                       <div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div>
                     </template>

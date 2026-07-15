@@ -1313,6 +1313,12 @@
         this.liveToast('⏰ 팀 퀘스트 마감 임박 ' + dd + ' · 남은 ' + this.questLeft() + '건, 완주까지 화이팅!');
       },
       deltaTxt(d) { const v = (d || 0) * 100; return (v >= 0 ? '+' : '') + v.toFixed(1) + '%p'; },
+      dirBullets(text) {                                 // 학습 보정 지시문 → 본문 불릿(줄 단위 우선, 없으면 문장 단위)
+        if (!text) return [];
+        const t = String(text).trim();
+        const src = t.indexOf('\n') >= 0 ? t : t.replace(/([다라마요]\.)\s+/g, '$1\n');   // 문장 종결 뒤 개행
+        return src.split('\n').map(s => s.replace(/^[\s\-–—·•*]+/, '').trim()).filter(Boolean);
+      },
       questTotal() { return (this.arenaData && this.arenaData.total_targets) || 0; },
       // 진행 = 팀 평균 검수 건수(quest_avg_done) > 커버리지(quest_done) > 구 산식 순 폴백
       questDone() { const a = this.arenaData; if (a && a.quest_avg_done != null) return Math.min(a.quest_avg_done, this.questTotal()); if (a && a.quest_done != null) return Math.min(a.quest_done, this.questTotal()); const t = this.questTotal(); return Math.max(0, t - ((a && a.queue) || 0)); },
