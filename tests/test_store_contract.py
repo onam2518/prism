@@ -249,5 +249,34 @@ class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
                                       "review": "yellow", "team_id": self.team}])
 
 
+class TestSupastoreSystemEventNull(unittest.TestCase):
+    """시스템 이벤트(learn_batch 등)는 reviewer 없이 NULL uuid 로 기록돼야 한다.
+    prism_events.reviewer_id 는 uuid 컬럼(nullable) · '(system)' 문자열은 uuid 위반이라
+    supabase insert 가 실패해 학습 회차가 안 쌓였다(버전 v1 고착 · 회귀 방지).
+    네트워크 없이 조회/삽입 구성만 검증(__init__ 우회)."""
+
+    def _stub(self):
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore.__new__(SupabaseStore)
+        cap = {}
+        st._get = lambda table, query="": (cap.__setitem__("get_q", query) or [])   # 중복 없음
+        st._req = lambda method, table, **kw: cap.__setitem__("row", (kw.get("body") or [{}])[0])
+        return st, cap
+
+    def test_null_reviewer_uses_is_null_and_null_id(self):
+        st, cap = self._stub()
+        self.assertTrue(st.log_event_once(None, "learn_batch", 1720000000, 0, team="t1"))
+        self.assertIn("reviewer_id=is.null", cap["get_q"])       # 조회는 IS NULL
+        self.assertNotIn("reviewer_id=eq.", cap["get_q"])
+        self.assertIsNone(cap["row"].get("reviewer_id"))         # 삽입은 NULL(uuid 위반 회피)
+        self.assertEqual(cap["row"].get("kind"), "learn_batch")
+
+    def test_real_reviewer_uses_eq(self):
+        st, cap = self._stub()
+        st.log_event_once("uuid-123", "mission:x", 1720000000, 10, team="t1")
+        self.assertIn("reviewer_id=eq.uuid-123", cap["get_q"])   # 실제 reviewer 는 그대로
+        self.assertEqual(cap["row"].get("reviewer_id"), "uuid-123")
+
+
 if __name__ == "__main__":
     unittest.main()
