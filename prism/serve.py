@@ -513,6 +513,14 @@ def quest_active() -> bool:
         return False
 
 
+def _pipeline_empty(out: dict) -> bool:
+    """추출 산출이 전량 빈값인지(폴백 체인 트리거): 아이템 메타도 판정도 없다."""
+    im = (out or {}).get("item_meta") or {}
+    qm = (out or {}).get("quality_meta") or {}
+    return not (im.get("summary") or im.get("entities") or im.get("content_category")
+                or qm.get("finalGrade"))
+
+
 def _is_pending_row(r: dict) -> bool:
     """미실행(STEP 1 추가만) 행 판별: 모델 기록도 산출(item_meta)도 판정(finalGrade)도 없다.
     R 등급(아이템 폐기)은 item_meta 가 비어도 판정이 있으므로 미실행이 아니다."""
@@ -606,6 +614,21 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
+    # 폴백 체인: 실호출인데 산출이 전량 빈값이면 예비 모델로 1회씩 재시도(최대 3 · 성공 시 채택)
+    if not llm.mock and _pipeline_empty(out):
+        primary = ((getattr(llm, "model", "") or "").strip()
+                   or (model or "").strip() or (cfg.model or ""))
+        for fm in [str(m).strip() for m in (getattr(cfg, "fallback_models", None) or [])][:3]:
+            if not fm or fm == primary:
+                continue
+            fllm, _route = llm_for_model(fm, mock)
+            if fllm is None or fllm.mock:
+                continue
+            retry = PIPE.extract(content, fllm, legal=cfg.legal_enabled)
+            if not _pipeline_empty(retry):
+                (retry.setdefault("trace", {}))["fallback_from"] = primary or "(기본)"
+                out = retry
+                break
     try:                                         # 초안 버전 = 학습 반영 회차 + 1
         (out.setdefault("trace", {}))["version"] = _batch_seq_cached(team) + 1
     except Exception:
@@ -656,6 +679,9 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
         return {"ok": True, "done": 0, "failed": 0, "model": model, "scope": scope,
                 "msg": "대상이 없습니다" + (" (미실행 콘텐츠 없음)" if scope == "pending" else "")}
     done = failed = 0
+    spent = 0.0
+    budget = float(getattr(Config.load(), "batch_budget_usd", 0.0) or 0.0)   # 0 = 무제한
+    budget_stop = False
     jid = "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
     _job_begin(jid, model or "기본 모델", "일괄 실행", len(targets))
     _INGEST_STATE[jid]["hashes"] = list(targets)     # 작업 클릭 -> 결과 콘텐츠 보기
@@ -667,12 +693,22 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
                 _INGEST_STATE[jid]["failed"] = failed
             else:
                 done += 1
+                spent += float((((res.get("output") or {}).get("trace") or {}).get("cost_usd")) or 0.0)
             _INGEST_STATE[jid]["done"] += 1
+            if budget > 0 and spent >= budget:       # 예산 상한: 도달 시 남은 대상 중단(비용 통제)
+                budget_stop = True
+                break
     except Exception as e:
         _job_end(jid, False, f"{done}건 실행 후 중단 · {str(e)[:80]}")
         raise
-    _job_end(jid, failed == 0, f"{done}건 실행" + (f" · 실패 {failed}" if failed else " 완료"))
-    return {"ok": True, "done": done, "failed": failed, "model": model}
+    if budget_stop:
+        _job_end(jid, False, f"예산 상한 ${budget:g} 도달 · {done}건 실행(${spent:.4f}) 후 중단"
+                             + (f" · 실패 {failed}" if failed else ""))
+    else:
+        _job_end(jid, failed == 0, f"{done}건 실행" + (f" · 실패 {failed}" if failed else " 완료"))
+    return {"ok": True, "done": done, "failed": failed, "model": model,
+            "spent_usd": round(spent, 6), "budget_stop": budget_stop,
+            "skipped": (len(targets) - done - failed) if budget_stop else 0}
 
 
 def rerun_content(content_hash: str, model: str, team=None, row=None) -> dict:
@@ -3290,6 +3326,8 @@ def config_status(team=None) -> dict:
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "learnNextAt": str(getattr(cfg, "learn_next_at", "") or ""),
         "learnRepeatDays": int(getattr(cfg, "learn_repeat_days", 0) or 0),
+        "fallbackModels": list(getattr(cfg, "fallback_models", None) or []),
+        "batchBudgetUsd": float(getattr(cfg, "batch_budget_usd", 0.0) or 0.0),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
         "metaCallModels": dict(getattr(cfg, "meta_call_models", {}) or {}),
         "familyWrappers": dict(getattr(cfg, "family_wrappers", {}) or {}),
@@ -3376,6 +3414,8 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
     has_misc = ("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
+    has_misc = (("golden_min_good" in data) or ("learn_next_at" in data)
+                or ("fallback_models" in data) or ("batch_budget_usd" in data))
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
@@ -3451,6 +3491,15 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
         if "learn_repeat_days" in data:           # 퀘스트 반복 주기(일) · 0=반복 없음 · 상한 31일
             try:
                 cfg.learn_repeat_days = max(0, min(31, int(data.get("learn_repeat_days") or 0)))
+            except (TypeError, ValueError):
+                pass
+        if "fallback_models" in data:             # 폴백 체인(빈 산출 시 예비 모델 · 최대 3)
+            fl = data.get("fallback_models")
+            if isinstance(fl, list):
+                cfg.fallback_models = [str(m).strip() for m in fl if str(m).strip()][:3]
+        if "batch_budget_usd" in data:            # 일괄 실행 비용 상한($ · 0=무제한 · 상한 1000)
+            try:
+                cfg.batch_budget_usd = max(0.0, min(1000.0, float(data.get("batch_budget_usd") or 0)))
             except (TypeError, ValueError):
                 pass
         if "learn_next_at" in data:               # 검수 목표(퀘스트) 일시 · 빈 값 = 목표 해제(삭제)
