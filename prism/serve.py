@@ -436,6 +436,48 @@ def fail_rollup_data(team=None, days: int = 30) -> dict:
     return {"ok": True, "window_days": days, "total": total,
             "by_kind": _sorted(by_kind), "by_model": _sorted(by_model),
             "by_service": _sorted(by_service), "by_call": _sorted(by_call), "top": top}
+# ── 학습 지시 무효화(개별 끄기) ──────────────────────────────────────────────
+def disabled_directives(team=None) -> set:
+    """관리자가 끈 학습 지시 원문 집합(전역 · reports kind='disabled_directives').
+    다음 학습 반영(컴파일)부터 제외 · 원본 라우트·메모 행은 보존(감사 가능)."""
+    rep = _report_get("disabled_directives", None, {}) or {}
+    return {str((i or {}).get("text") or "").strip()
+            for i in (rep.get("items") or []) if (i or {}).get("text")}
+
+
+def set_directive_disabled(text: str, disabled: bool) -> dict:
+    """지시 1건 끄기/켜기 · 텍스트 정확 일치 키(상한 200건)."""
+    text = (text or "").strip()
+    if not text:
+        return {"ok": False, "error": "지시 원문이 비어 있습니다"}
+    rep = _report_get("disabled_directives", None, {}) or {}
+    items = [i for i in (rep.get("items") or [])
+             if (i or {}).get("text") and i["text"].strip() != text]
+    if disabled:
+        items.append({"text": text, "ts": time.time()})
+    _report_save("disabled_directives", {"items": items[-200:]}, None)
+    return {"ok": True, "disabled": bool(disabled), "disabled_n": len(items)}
+
+
+def routes_overview(team=None) -> dict:
+    """지시 원본 목록(공통+모델 귀속) + 끔 상태 · '지시 원본 관리' 뷰의 원천."""
+    st = get_store()
+    if not st:
+        return {"ok": False, "items": []}
+    dis = disabled_directives()
+    items = []
+    for stage, lst in (st.routes_by_stage(50, team=team) or {}).items():
+        for t in lst:
+            items.append({"stage": stage, "model": "", "text": t, "disabled": t in dis})
+    for m, stages in (st.routes_by_stage_model(50, team=team) or {}).items():
+        for stage, lst in (stages or {}).items():
+            for t in lst:
+                items.append({"stage": stage, "model": m, "text": t, "disabled": t in dis})
+    listed = {i["text"] for i in items}
+    for t in sorted(dis):                          # 원본이 더 안 보여도 끔 목록은 관리 가능하게
+        if t not in listed:
+            items.append({"stage": "", "model": "", "text": t, "disabled": True})
+    return {"ok": True, "items": items, "disabled_n": len(dis)}
 
 
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
@@ -3693,6 +3735,11 @@ class Handler(BaseHTTPRequestHandler):
                 fq = 30
             self._send(200, json.dumps(fail_rollup_data(self._req_team(), days=fq),
                                        ensure_ascii=False), _JSON)
+        elif self.path.startswith("/routes-raw"):        # 학습 지시 원본 목록 + 끔 상태(관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            self._send(200, json.dumps(routes_overview(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/golden-list"):       # 관리자 골든 브라우저
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
@@ -4233,6 +4280,19 @@ class Handler(BaseHTTPRequestHandler):
                 cur = (st.assignees(team=self._req_team()) or {}).get(h) or {"reviewers": [], "min": 0}
                 self._send(200, json.dumps({"ok": True, "assignees": cur["reviewers"],
                                             "min_reviewers": cur["min"]}, ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/route-disable"):     # 관리자: 학습 지시 개별 끄기/켜기
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(set_directive_disabled(data.get("text") or "",
+                                                                  bool(data.get("disabled"))),
+                                           ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return

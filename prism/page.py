@@ -1921,6 +1921,53 @@ PAGE = """<!doctype html>
                             <template x-for="a in verAmb(stage)" x-bind:key="a"><div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div></template>
                           </div>
                         </div>
+              <!-- 지시 원본 관리: 잘못 들어간 보정 하나만 끄기(전체 재컴파일 불필요 · 원본 보존) -->
+              <div style="margin-top:10px">
+                <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="routesOpen = !routesOpen; if (routesOpen) loadRoutesRaw()" x-text="routesOpen ? '지시 원본 관리 접기' : '지시 원본 관리 · 개별 끄기'"></button>
+                <template x-if="routesOpen">
+                  <div style="margin-top:8px">
+                    <div class="overflow-auto" style="max-height:260px"><table class="ds-table"><thead><tr><th style="width:70px">단계</th><th style="width:140px">모델</th><th>지시</th><th style="width:104px"></th></tr></thead><tbody>
+                      <template x-for="(r, ri) in ((routesRaw&&routesRaw.items)||[])" x-bind:key="'rr'+ri">
+                        <tr x-bind:style="r.disabled ? 'opacity:.55' : ''">
+                          <td><span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[r.stage] || '·'"></span></td>
+                          <td class="text-muted" x-text="r.model || '공통'"></td>
+                          <td class="text-ink" x-text="r.text"></td>
+                          <td><button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="toggleRoute(r)" x-text="r.disabled ? '다시 켜기' : '끄기'"></button></td>
+                        </tr>
+                      </template>
+                      <template x-if="!((routesRaw&&routesRaw.items)||[]).length"><tr><td colspan="4" class="text-muted">검수 교정이 쌓이면 지시 원본이 표시됩니다</td></tr></template>
+                    </tbody></table></div>
+                    <div class="text-xs text-muted" style="margin-top:6px">끈 지시는 다음 학습 반영(컴파일)부터 제외됩니다 · 원본 기록은 지워지지 않아요</div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- 버전별 지시 히스토리: 검수 목표(퀘스트)가 끝날 때마다 한 버전으로 반영 · 버전을 눌러 그 버전이 쓴 지시 확인 -->
+              <div class="subhd" style="margin:16px 0 8px" x-show="verHist.length">버전 히스토리 <span class="meta">검수 목표가 끝날 때마다 한 버전으로 반영됩니다 · 버전을 눌러 그 버전이 쓴 지시를 확인하세요</span></div>
+              <div class="verrail" x-show="verHist.length">
+                <template x-for="h in verHist" x-bind:key="h.v">
+                  <button type="button" class="verchip" x-bind:class="verSel===h.v ? 'is-sel' : ''" x-on:click="selectVer(h.v)">
+                    <span class="verchip__v tnum">v<span x-text="h.v"></span><span x-show="h.current" class="verchip__cur">현재</span></span>
+                  </button>
+                </template>
+              </div>
+              <div class="verdetail" x-show="verSel != null" x-cloak>
+                <div class="verstat" x-show="verData">
+                  <span x-show="verData && verData.ts">반영한 날 <b class="text-ink" x-text="fmtTs(verData?verData.ts:0)"></b></span>
+                  <span x-show="verData && verData.grade_accuracy != null">정답 맞힌 비율 <b class="text-ink tnum" x-text="pctTxt(verData?verData.grade_accuracy:null)"></b></span>
+                  <span x-show="verData && verData.improve_delta != null" x-text="'직전 대비 ' + deltaTxt(verData?verData.improve_delta:0)"></span>
+                  <span x-show="verData && verData.golden && verData.golden.confirmed != null">확정 정답 <b class="text-ink tnum" x-text="verData&&verData.golden?verData.golden.confirmed:0"></b>건</span>
+                </div>
+                <div class="meta" style="padding:4px 2px" x-show="!verBusy && !verData && !verSnap">이 버전의 저장된 상세가 없습니다.</div>
+                <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="'v'+stage">
+                  <div class="metarow" x-show="verDir(stage) || verAmb(stage).length">
+                    <span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
+                    <div style="flex:1;min-width:0">
+                      <ul class="metarow__dir" x-show="verDir(stage)">
+                        <template x-for="(s, i) in dirBullets(verDir(stage))" x-bind:key="i"><li x-text="s"></li></template>
+                      </ul>
+                      <template x-for="a in verAmb(stage)" x-bind:key="a">
+                        <div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div>
                       </template>
                       <div class="meta" style="padding:2px 2px" x-show="!verBusy && verSnap && !verHasDir()">이 버전에서 보정된 지시가 없습니다(학습 전 기준선).</div>
                     </div>

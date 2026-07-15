@@ -1291,6 +1291,16 @@
         try { const r = await (await this._afetch('/fail-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.failData = r; } catch (e) {}
       },
       failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 실패', auth: '인증 오류', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
+      // 학습 지시 원본 관리(개별 끄기 · 관리자): 끈 지시는 다음 학습 반영부터 제외
+      routesOpen: false, routesRaw: null,
+      async loadRoutesRaw() { try { const r = await (await this._afetch('/routes-raw', { headers: this._authHeaders() })).json(); if (r && r.ok) this.routesRaw = r; } catch (e) {} },
+      async toggleRoute(r) {
+        try {
+          const res = await (await this._afetch('/route-disable', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ text: r.text, disabled: !r.disabled }) })).json();
+          if (res && res.ok) { r.disabled = !r.disabled; this.liveToast(r.disabled ? '지시를 껐어요 · 다음 학습 반영부터 제외' : '지시를 다시 켰어요'); }
+          else this._err((res && res.error) || '변경 실패');
+        } catch (e) { this._err('변경 실패'); }
+      },
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
       async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.goldenStatus = r; this.loadVerHist(); } } catch (e) {} },

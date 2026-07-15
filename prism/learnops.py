@@ -25,9 +25,14 @@ def sync_learned():
     모델 귀속 라우트는 LEARNED_BY_MODEL 계층으로 분리(그 모델 프롬프트에만 병기)."""
     try:
         st = _SV.get_store()
-        learned = st.learned_by_stage() if st else {}
+        try:                                       # 관리자가 끈 지시(개별 무효화)는 컴파일에서 제외
+            ex = _SV.disabled_directives()
+        except Exception:
+            ex = set()
+        learned = st.learned_by_stage(exclude=ex) if st else {}
         PR.LEARNED = {k: (learned.get(k) or "") for k in ("extract", "analyze", "review", "judge")}
-        bm = st.routes_by_stage_model() if (st and hasattr(st, "routes_by_stage_model")) else {}
+        bm = (st.routes_by_stage_model(exclude=ex)
+              if (st and hasattr(st, "routes_by_stage_model")) else {})
         PR.LEARNED_BY_MODEL = {m: {stg: "\n".join(f"- {t}" for t in items)
                                    for stg, items in stages.items()}
                                for m, stages in bm.items() if m}
@@ -1002,14 +1007,19 @@ def meta_compile_run(team=None) -> dict:
         return {"ok": False, "error": "store unavailable"}
     cfg = Config.load()
     llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
-    raw = st.learned_by_stage(team=team)
+    try:                                           # 관리자가 끈 지시(개별 무효화)는 컴파일에서 제외
+        ex = _SV.disabled_directives()
+    except Exception:
+        ex = set()
+    raw = st.learned_by_stage(team=team, exclude=ex)
     results = {}
     for stage, text in raw.items():
         results[stage] = FL.meta_compile(llm, stage, text)
     # 컴파일된 directive 를 단계 프롬프트(LEARNED)로 반영 · raw 누적 대체
     PR.LEARNED = {k: (results.get(k, {}).get("directive") or "") for k in ("extract", "analyze", "review", "judge")}
     # 모델 귀속 라우트는 모델별 그룹으로 따로 컴파일 → 그 모델 프롬프트에만 병기
-    by_model = st.routes_by_stage_model(team=team) if hasattr(st, "routes_by_stage_model") else {}
+    by_model = (st.routes_by_stage_model(team=team, exclude=ex)
+                if hasattr(st, "routes_by_stage_model") else {})
     model_results = {}
     for m, stages in sorted(by_model.items()):
         model_results[m] = {stage: FL.meta_compile(llm, stage, "\n".join(f"- {t}" for t in items))
