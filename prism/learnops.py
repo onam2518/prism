@@ -352,9 +352,11 @@ def learning_batch(team=None, models=None) -> dict:
     try:                                        # 학습 반영 회차 기록 → 초안 버전(v = 회차+1)
         stv = _SV.get_store()
         if stv and hasattr(stv, "log_event_once"):
-            stv.log_event_once("(system)", "learn_batch", int(time.time()), 0, team=team)
-    except Exception:
-        pass
+            # reviewer_id 는 uuid 컬럼(nullable) · 시스템 이벤트는 reviewer 없이 NULL 로 기록한다.
+            # '(system)' 문자열은 uuid 위반이라 supabase insert 가 실패 → 회차 미기록 → 버전 v1 고착의 원인.
+            stv.log_event_once(None, "learn_batch", int(time.time()), 0, team=team)
+    except Exception as e:
+        print(f"  [warn] learn_batch 회차 기록 실패: {e}")
     try:                                        # 이번 회차가 만든 프롬프트를 버전과 함께 영속
         snap = snapshot_prompts(team)
     except Exception:

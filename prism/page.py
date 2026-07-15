@@ -2953,7 +2953,7 @@ PAGE = """<!doctype html>
           <template x-if="dvcView()==='web'">
             <div class="dvc__webwrap">
               <div class="dvc__webbox">
-                <iframe class="dvc__web" x-bind:src="detail && detail.url" x-bind:style="'transform:scale('+(dvcZoom/100)+');width:'+(10000/dvcZoom)+'%;height:'+(10000/dvcZoom)+'%'" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer" loading="lazy" title="원문 페이지"></iframe>
+                <iframe class="dvc__web" x-bind:src="detail && detail.url" x-bind:style="'transform:scale('+(dvcZoom/100)+');width:'+(10000/dvcZoom)+'%;height:'+(10000/dvcZoom)+'%'" sandbox="allow-scripts allow-popups allow-forms" referrerpolicy="no-referrer" loading="lazy" title="원문 페이지"></iframe>
               </div>
               <div class="dvc__note" style="margin-top:var(--ds-space-2)">화면이 비어 보이면 이 사이트가 내장 표시를 차단한 것입니다</div>
             </div>
