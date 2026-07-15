@@ -191,7 +191,7 @@ def build_golden_from_reviews(team=None) -> dict:
         by_source = {r["hash"]: r["source"] for r in st.golden_rows(team, limit=10000)} if hasattr(st, "golden_rows") else {}
     except Exception:
         existing, by_source = set(), {}
-    entries, need_list, no_cat, disagree = [], [], 0, 0
+    entries, need_list, no_cat, no_grade, disagree = [], [], 0, 0, 0
     demote = []                                    # 합의가 뒤집힌 검수 유래 골든(강등 대상)
     contributors = {}                              # hash → 정확 판정 검수자 키 목록(신규 확정 보상)
     for r in rows:
@@ -215,6 +215,11 @@ def build_golden_from_reviews(team=None) -> dict:
             continue
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
+        if qm.get("finalGrade", "") not in ("G", "R"):   # 빈/보류 등급(judge 실패·판정 보류)은 골든 승격 제외 · grade_accuracy 잠식 방지
+            no_grade += 1
+            need_list.append({"hash": ch, "title": content.get("title", ""),
+                              "service": content.get("displayServiceName", ""), "reason": "grade"})
+            continue
         cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
         if not cats:                                  # 카테고리 공백 → 골든 미확정(채워야 함)
             no_cat += 1
@@ -229,6 +234,8 @@ def build_golden_from_reviews(team=None) -> dict:
                             for v in fb.get("verdicts", []) if v.get("verdict") == "good"]
     new = 0
     for e in entries:
+        if by_source.get(e["hash"]) == "manual":         # 관리자 확정(manual) 골든은 검수 유래로 덮어쓰지 않음(정답 소실 방지)
+            continue
         st.upsert_golden(e["hash"], e["content"], e["expected"], team=team, source="review")
         if e["hash"] not in existing:
             new += 1
@@ -247,8 +254,8 @@ def build_golden_from_reviews(team=None) -> dict:
             pass
     total = st.golden_count(team) if hasattr(st, "golden_count") else len(entries)
     return {"ok": True, "confirmed": len(entries), "new": new, "demoted": len(demote),
-            "total": total, "need_category": no_cat, "need_list": need_list[:50],
-            "disagree": disagree, "min_good": min_good}
+            "total": total, "need_category": no_cat, "need_grade": no_grade,
+            "need_list": need_list[:50], "disagree": disagree, "min_good": min_good}
 
 _LAST_LEARN_REPORT = {}                               # 최근 일배치 결과(수신·표시용)
 
