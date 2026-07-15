@@ -75,7 +75,11 @@
       chatOpen: false, addMenuOpen: false, editing: false, theme: 'light',
       chatMsgs: [{ from: 'bot', text: '무엇을 도와드릴까요? 작업을 말로 지시해 보세요' }],
       chatDraft: '',
-      dashData: null, topicData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
+      dashData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
+      // topicData 는 서버 '데이터 없음' 응답(serve.topics_data)과 같은 빈 계약으로 초기화 —
+      // null 이면 로드 전 첫 렌더에서 토픽 패널의 topicData.* 표현식들이 콘솔 TypeError 를 던진다(표시 영향은 없던 잔재)
+      topicData: { n_contents: 0, single: [], composite: [], filter: [], custom: [], customDefs: [],
+                   settings: {}, exclusions: {}, catalog: { intents: [], cats: [], keywords: [], eattrs: [] }, summary: {} },
       topicView: 'all',                     // 토픽 현황 필터: all | manual(수동 생성) | auto(자동 생성)
       topicGenTab: 'manual',                // 토픽 생성하기 탭: manual(4단계 정의) | auto(자동 묶기 기준)
       // 토픽 스튜디오: 자연어+차원으로 조건 기반 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
