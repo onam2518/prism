@@ -121,10 +121,12 @@ def feedback_units(fmap: dict) -> list:
 
 
 def feedback_labels(fmap: dict) -> dict:
-    """feedback_map → Dawid-Skene 입력 {unit: {reviewer: 0|1}}."""
+    """feedback_map → Dawid-Skene 입력 {unit: {reviewer_key: 0|1}}.
+    검수자 키는 reviewer_id(uuid) 우선 · 없으면 표시명(sqlite). gold_stats(uuid 키)·
+    build_golden_from_reviews(uuid 우선 조회)와 동일 키를 써야 신뢰도 블렌드가 성립한다."""
     out = {}
     for ch, e in fmap.items():
-        rv = {v.get("reviewer"): (1 if v.get("verdict") == "good" else 0)
+        rv = {(v.get("reviewer_id") or v.get("reviewer")): (1 if v.get("verdict") == "good" else 0)
               for v in e.get("verdicts", []) if v.get("verdict") in ("good", "bad")}
         if rv:
             out[ch] = rv

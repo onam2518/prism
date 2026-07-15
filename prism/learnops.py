@@ -429,7 +429,7 @@ def learn_data(team=None) -> dict:
     reviewers = []
     for row in arena.get("leaderboard", []):
         rv = row["reviewer"]
-        dsr = (ds.get("reviewers") or {}).get(rv) or {}
+        dsr = (ds.get("reviewers") or {}).get(row.get("reviewer_id") or rv) or {}   # DS 키(uuid 우선)로 조회 · feedback_labels 와 정렬
         reviewers.append({"reviewer": rv, "n": row.get("reviews", 0),
                           "agree_rate": row.get("agree_rate"),
                           "gold_n": row.get("gold_n", 0), "gold_acc": row.get("gold_acc"),
