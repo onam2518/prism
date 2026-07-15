@@ -2343,12 +2343,14 @@ def arena_data(team=None) -> dict:
 
 
 def _fb_epoch(ts) -> float:
-    """feedback ts → epoch. sqlite=float · supabase=timestamptz 문자열(supastore._epoch 와 동일 해석)."""
+    """feedback ts → epoch. sqlite=float · supabase=timestamptz(UTC) 문자열(supastore._epoch 와 동일 해석).
+    UTC 저장분이므로 calendar.timegm 으로 UTC 해석 — mktime(로컬 해석)은 비UTC 호스트에서 스큐."""
     try:
         return float(ts)
     except (TypeError, ValueError):
         try:
-            return time.mktime(time.strptime(str(ts)[:19], "%Y-%m-%dT%H:%M:%S"))
+            import calendar
+            return calendar.timegm(time.strptime(str(ts)[:19], "%Y-%m-%dT%H:%M:%S"))
         except Exception:
             return 0.0
 

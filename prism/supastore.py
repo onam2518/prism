@@ -1325,11 +1325,14 @@ class SupabaseStore:
 
 
 def _epoch(ts) -> float:
-    """timestamptz 문자열 → epoch. 실패 시 0."""
+    """timestamptz(UTC) 문자열 → epoch. 실패 시 0.
+    저장은 UTC(gmtime)로 하므로 읽기도 UTC 로 해석해야 한다(calendar.timegm).
+    time.mktime 은 struct_time 을 로컬 타임존으로 해석해 비UTC 호스트(KST 등)에서 스큐를 만든다."""
     if not ts:
         return 0.0
     try:
+        import calendar
         s = str(ts)[:19]
-        return time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M:%S"))
+        return calendar.timegm(time.strptime(s, "%Y-%m-%dT%H:%M:%S"))
     except Exception:
         return 0.0
