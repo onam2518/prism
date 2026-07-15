@@ -108,6 +108,16 @@ class TestGateAndRegister(EntdictBase):
         self.store.ent_alias_add("안세영 선수", eid)
         self.assertEqual(self.store.ent_id_by_alias("안세영 선수"), eid)
 
+    def test_attr_index_team_scoped_links_visible_globally(self):
+        # 운영 회귀: 링크가 실제 팀(비어있지 않은 값)으로 저장돼도, 토픽은 전역(무팀) 뷰라
+        # ent_attr_index(team="") 가 그 링크를 찾아야 한다(과거엔 team=eq.'' 로 0건 → eattrs 조용히 빔).
+        ED.ingest_meta(self.store, [("chT", ["안세영", "배드민턴"])], team="team-uuid-123")
+        glob = self.store.ent_attr_index(team="")      # 전역 조회 = 팀 필터 없음
+        self.assertIn("chT", glob)
+        self.assertEqual(len(glob["chT"]), 2)
+        scoped = self.store.ent_attr_index(team="team-uuid-123")   # 특정 팀 조회도 여전히 동작
+        self.assertIn("chT", scoped)
+
 
 class TestEnrich(EntdictBase):
     def _register(self, name):

@@ -1112,7 +1112,9 @@ class SupabaseStore:
         ents = {r["entity_id"]: {"type": r.get("type") or "", "name": r.get("name") or "",
                                  **(r.get("attrs") if isinstance(r.get("attrs"), dict) else {})}
                 for r in self._get("entities", "select=entity_id,name,type,attrs&limit=20000")}
-        tq = f"&team=eq.{urllib.parse.quote(team or '')}"
+        # falsy team = 전역(무팀 필터 없음) · recent() 과 동일 규칙. team=eq.'' 로 걸면
+        # 링크가 실제 팀(uuid)으로 저장된 운영에서 0건이 되어 토픽 개체속성이 조용히 비었다.
+        tq = f"&team=eq.{urllib.parse.quote(team)}" if team else ""
         links = self._get("content_entities", f"select=content_hash,entity_id{tq}&limit=50000")
         out = {}
         for l in links:

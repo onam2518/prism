@@ -1464,8 +1464,13 @@ class Store:
             e = self._ent_row(r)
             ents[e["entity_id"]] = {"type": e["type"], "name": e["name"], **(e["attrs"] or {})}
         out = {}
-        for ch, eid in c.execute(
-                "SELECT content_hash, entity_id FROM content_entities WHERE team=?", (team or "",)):
+        # falsy team = 전역(무팀 필터 없음) · supastore·recent 과 동일 규칙(운영 팀 링크 누락 방지)
+        q = "SELECT content_hash, entity_id FROM content_entities"
+        params = ()
+        if team:
+            q += " WHERE team=?"
+            params = (team,)
+        for ch, eid in c.execute(q, params):
             if eid in ents:
                 out.setdefault(ch, []).append(ents[eid])
         return out
