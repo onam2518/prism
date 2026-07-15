@@ -473,6 +473,42 @@ class Store:
             out[rv] = {"n": n, "correct": corr, "acc": round(corr / n, 4) if n else 0.0}
         return out
 
+    def activity_daily(self, days: int = 30, team=None) -> list:
+        """일별 검수 활동(최근 days일 · 빈 날 포함 연속): [{day, reviews, corrections, gold_n, gold_correct}].
+        day='YYYY-MM-DD'(로컬) · 검수=판정(good/bad) 수 · 교정=bad 수 · 골드=검증 문항 응답."""
+        import datetime as _dt
+        days = max(1, min(90, int(days or 30)))
+        today = _dt.date.today()
+        start_day = today - _dt.timedelta(days=days - 1)
+        start_ts = time.mktime(start_day.timetuple())
+        buckets = {}
+
+        def _b(ts):
+            d = _dt.date.fromtimestamp(float(ts or 0)).isoformat()
+            return buckets.setdefault(d, {"day": d, "reviews": 0, "corrections": 0,
+                                          "gold_n": 0, "gold_correct": 0})
+
+        c = self._conn()
+        for v, ts in c.execute(
+                "SELECT verdict, ts FROM feedback WHERE ts>=? AND verdict IN ('good','bad')",
+                (start_ts,)):
+            e = _b(ts)
+            e["reviews"] += 1
+            if v == "bad":
+                e["corrections"] += 1
+        for corr, ts in c.execute("SELECT correct, ts FROM gold_checks WHERE ts>=?", (start_ts,)):
+            e = _b(ts)
+            e["gold_n"] += 1
+            e["gold_correct"] += int(corr or 0)
+        out = []
+        d = start_day
+        while d <= today:
+            k = d.isoformat()
+            out.append(buckets.get(k) or {"day": k, "reviews": 0, "corrections": 0,
+                                          "gold_n": 0, "gold_correct": 0})
+            d += _dt.timedelta(days=1)
+        return out
+
     def gold_answered(self, reviewer, team=None) -> set:
         """검수자가 이미 응답한 골드 문항 content_hash 집합(재출제 방지)."""
         c = self._conn()
