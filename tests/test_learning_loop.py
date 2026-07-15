@@ -331,6 +331,37 @@ class TestLearnData(unittest.TestCase):
         self.assertEqual(len(text.splitlines()), 1)
         self.assertIn("rejected", text)
 
+    def test_learn_data_surfaces_guide_ambiguities(self):
+        """메타컴파일 ambiguities(의견 충돌)가 학습 데이터에 '가이드 명확화 필요'로 집계된다."""
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        serve._report_save("learn_report", {"ok": True, "ts": 123.0, "improve": {
+            "results": {"analyze": {"directive": "", "ambiguities": ["'속보'와 '단신' 중 어느 표기인지 갈림"]},
+                        "review": {"directive": "", "ambiguities": []}},
+            "model_results": {"gpt-x": {"judge": {"directive": "", "ambiguities": ["등급을 얼마나 보수적으로 볼지 갈림"]}}},
+        }}, None)
+        d = serve.learn_data(None)
+        amb = d["guide_ambiguities"]
+        self.assertEqual(len(amb), 2)
+        self.assertEqual(amb[0], {"stage": "analyze", "model": "",
+                                  "text": "'속보'와 '단신' 중 어느 표기인지 갈림"})
+        self.assertEqual((amb[1]["stage"], amb[1]["model"]), ("judge", "gpt-x"))
+        self.assertEqual(d["guide_ambiguities_ts"], 123.0)
+
+    def test_learn_data_empty_ambiguities_when_no_report(self):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        d = serve.learn_data(None)
+        self.assertEqual(d["guide_ambiguities"], [])
+
 
 class TestReviewerCalibration(unittest.TestCase):
     """검수자 캘리브레이션: 창 필터(gold_stats_since) · 합의 가중치·골드 추세 표면화."""
