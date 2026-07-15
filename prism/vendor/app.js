@@ -292,7 +292,7 @@
         const L = pick(p.l), R = pick(p.r);
         return Object.keys(L).map((k) => ({ k: k, l: L[k], r: R[k], diff: L[k] !== R[k] }));
       },
-      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', fb: Object.assign({}, r.fb) }; },
+      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', final: r.final || '', fb: Object.assign({}, r.fb) }; },
       openRawDetail(r) {                                 // 목록 컨텍스트 보존 -> 상세에서 이전/다음·자동 이동
         const list = this.rawFiltered.slice();
         this.openDetail(this._rawToDetail(r));
@@ -303,6 +303,17 @@
       rawFocusIdx: -1,
       _rawFocusScroll() {
         try { const el = document.querySelector('[data-rawrow="' + this.rawFocusIdx + '"]'); if (el) el.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+      },
+      // 리드 최종판정(타이브레이크 · 슈퍼관리자 이상): 의견 갈림을 확정하고 골든 승격에 우선 반영
+      async setFinal(c, v) {
+        try {
+          const r = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, verdict: v, reviewer: this.reviewer }) })).json();
+          if (r && r.ok) {
+            c.final = v || '';
+            this._syncFbByHash && this.loadRaw();
+            this.liveToast(v ? ('리드 최종판정 · ' + (v === 'good' ? '정확' : '수정 필요') + ' 확정') : '최종판정을 철회했어요');
+          } else this._err((r && r.error) || '저장 실패');
+        } catch (e) { this._err('저장 실패'); }
       },
       autoNext: (function () { try { return localStorage.getItem('prismAutoNext') !== '0'; } catch (e) { return true; } })(),
       saveAutoNext() { try { localStorage.setItem('prismAutoNext', this.autoNext ? '1' : '0'); } catch (e) {} },
