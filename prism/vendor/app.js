@@ -975,16 +975,16 @@
       goldenMinGood: 1,
       _loadCred() {
         try {
-          const raw = localStorage.getItem('prism_cred');
-          if (!raw) return;
-          const d = JSON.parse(decodeURIComponent(escape(atob(raw))));
-          this.authEmail = d.e || ''; this.authPw = d.p || ''; this.saveCred = true;
+          localStorage.removeItem('prism_cred');       // 레거시: 평문 비밀번호 저장분 제거(마이그레이션)
+          const email = localStorage.getItem('prism_email');
+          if (email) { this.authEmail = email; this.saveCred = true; }   // 아이디만 프리필(비밀번호는 재입력)
         } catch (e) {}
       },
       _storeCred(email, pw) {
         try {
-          if (this.saveCred) localStorage.setItem('prism_cred', btoa(unescape(encodeURIComponent(JSON.stringify({ e: email, p: pw })))));
-          else localStorage.removeItem('prism_cred');
+          localStorage.removeItem('prism_cred');       // 비밀번호는 저장하지 않는다(XSS/공용PC 탈취 방지)
+          if (this.saveCred) localStorage.setItem('prism_email', email);
+          else localStorage.removeItem('prism_email');
         } catch (e) {}
       },
       async saveReviewer() {
