@@ -40,6 +40,15 @@ def load_methodology(spec: str) -> H.Methodology:
     raise ValueError(f"방법론을 찾을 수 없습니다: {spec} (프리셋 {list(PRESETS)} 또는 JSON 경로)")
 
 
+def _percentile(vals: list, p: float):
+    """정렬 후 선형 인덱스 백분위(소표본 전제 · 보간 없음). 빈 목록이면 None."""
+    if not vals:
+        return None
+    s = sorted(vals)
+    i = max(0, min(len(s) - 1, int(round(p * (len(s) - 1)))))
+    return round(float(s[i]), 1)
+
+
 def score(rows: list, outs: list) -> dict:
     """골든셋 정답(rows[i].expected)과 산출(outs[i])을 비교해 지표 산출.
     cli.cmd_eval 과 동일 지표 · 채점 로직 단일 소스."""
@@ -49,6 +58,7 @@ def score(rows: list, outs: list) -> dict:
     n = len(rows)
     per_reason = {}
     yellow_n = auto_n = auto_hit = 0
+    lat = []                                     # 건별 총 지연(ms) · p50/p95 산출용
     for row, out in zip(rows, outs):
         if out is None:
             empties += 1
@@ -59,6 +69,10 @@ def score(rows: list, outs: list) -> dict:
         cost += tr.get("cost_usd", 0.0)
         tin += tr.get("tokens", {}).get("in", 0)
         tout += tr.get("tokens", {}).get("out", 0)
+        lt = tr.get("latency_ms")
+        t_ms = lt.get("total") if isinstance(lt, dict) else lt
+        if t_ms:
+            lat.append(float(t_ms))
         if any("fail" in str(f) or "unparse" in str(f) for f in tr.get("fallbacks", [])):
             empties += 1
         # 주의: fail/unparse 행도 아래 등급·이유 채점에 그대로 포함된다(empty_rate 와 비배타).
@@ -91,6 +105,8 @@ def score(rows: list, outs: list) -> dict:
         "empty_rate": round(empties / n, 4) if n else 0,
         "cost_usd": round(cost, 6),
         "tokens": {"in": tin, "out": tout},
+        "latency_p50_ms": _percentile(lat, 0.5),
+        "latency_p95_ms": _percentile(lat, 0.95),
         "by_reason_bucket": by_reason,
         "yellow_rate": round(yellow_n / n, 4) if n else 0,
         "auto_coverage": round(auto_n / n, 4) if n else 0,
@@ -132,8 +148,9 @@ def evaluate(rows: list, methodology: H.Methodology, llm, **kw) -> dict:
 
 # 비교에 노출하는 핵심 지표(높을수록 좋음 / 낮을수록 좋음 구분은 _BETTER_LOWER)
 _AB_KEYS = ["grade_accuracy", "auto_grade_accuracy", "reason_jaccard",
-            "harm_miss_rate", "empty_rate", "yellow_rate", "cost_usd"]
-_BETTER_LOWER = {"harm_miss_rate", "empty_rate", "cost_usd"}
+            "harm_miss_rate", "empty_rate", "yellow_rate", "cost_usd",
+            "latency_p50_ms", "latency_p95_ms"]
+_BETTER_LOWER = {"harm_miss_rate", "empty_rate", "cost_usd", "latency_p50_ms", "latency_p95_ms"}
 
 
 def ab_test(rows: list, meth_a: H.Methodology, meth_b: H.Methodology, llm, **kw) -> dict:

@@ -1658,6 +1658,7 @@ PAGE = """<!doctype html>
                     <tr><td class="text-ink">사유 일치</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cj'+mi"><td><b class="tnum" x-text="pctTxt(m.reason_jaccard)"></b> <span class="abwin" x-show="cmpWin('reason_jaccard', mi)">▲</span></td></template></tr>
                     <tr><td class="text-ink">빈 결과</td><template x-for="(m,mi) in cmpCols" x-bind:key="'ce'+mi"><td class="tnum" x-text="pctTxt(m.empty_rate)"></td></template></tr>
                     <tr><td class="text-ink">비용($)</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cc'+mi"><td class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></td></template></tr>
+                    <tr><td class="text-ink">응답 속도 <span class="text-xs text-muted">(보통 · 느릴 때)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cl'+mi"><td class="tnum" style="cursor:help" data-tip="콘텐츠 1건 추출에 걸린 시간 · 보통=중간값(p50) · 느릴 때=상위 5% 경계(p95)" data-tip-pos="top" x-text="latTxt(m.latency_p50_ms) + ' · ' + latTxt(m.latency_p95_ms)"></td></template></tr>
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
                   <div class="text-xs text-muted" style="margin-top:4px">신뢰구간이 겹치면 우열 판단 보류 · 정답셋이 쌓일수록 오차가 줄어듭니다</div>

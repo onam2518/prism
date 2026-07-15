@@ -1226,6 +1226,7 @@
         } catch (e) { this._err('판정 저장 실패'); }
       },
       ciOf(p, n) { if (p == null || !n) return '·'; const s = Math.sqrt(Math.max(p * (1 - p), 0) / n); return this.pctTxt(Math.max(0, p - 1.96 * s)) + '~' + this.pctTxt(Math.min(1, p + 1.96 * s)); },
+      latTxt(ms) { return ms == null ? '·' : ((Math.round(ms / 100) / 10) + '초'); },   // 지연 표기: ms → 0.1초 단위
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
       async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenStatus = r; } catch (e) {} },
