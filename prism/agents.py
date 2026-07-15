@@ -193,6 +193,9 @@ def run_legal(llm, content) -> tuple[LegalMeta, list]:
     obj, res = llm.complete_json(sys, P._content_block(content), tag="legal_route")
     results = [res]
     lm = LegalMeta(enabled=True)
+    if obj.get("_fail"):                        # 라우터 호출 실패 → 유형 열거 불가 · GREEN 으로 유통 안 함(fail-closed)
+        lm.failed = True
+        return lm, results
     for cand in obj.get("harm_types", []) or []:
         code, conf = cand.get("code"), cand.get("confidence", 0)
         if not code or conf < 0.3:
@@ -203,6 +206,9 @@ def run_legal(llm, content) -> tuple[LegalMeta, list]:
         ssys = P.legal_scorer_system(code)
         sobj, sres = llm.complete_json(ssys, P._content_block(content), tag=f"legal:{code}")
         results.append(sres)
+        if sobj.get("_fail"):                   # 스코어러 실패 → 이 유형 점수 불신 · 보류 표식(0점 GREEN 방지)
+            lm.failed = True
+            continue
         a, b, c = sobj.get("a", 0), sobj.get("b", 0), sobj.get("c", 0)
         total = a + b + c
         lm.harm_types.append(HarmType(

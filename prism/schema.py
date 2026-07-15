@@ -75,6 +75,7 @@ class LegalMeta:
     harm_types: list = field(default_factory=list)
     representative_grade: str = "GREEN"
     representative_score: int = 0
+    failed: bool = False          # 라우터/스코어러 호출 실패 → fail-closed(GREEN 유통 금지·사람 검수 보류)
 
 
 @dataclass
