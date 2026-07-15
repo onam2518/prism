@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import heapq
 import json
 import os
 import queue as _queue
@@ -257,6 +258,40 @@ def _kv(disposition: str, key: str):
         return None
     j = disposition.find('"', i + len(token))
     return disposition[i + len(token):j]
+
+
+# ── 검수 배정: 균등 분배 ─────────────────────────────────────────────────────
+def distribute_assignments(st, hashes, reviewers, min_reviewers=1, team=None) -> dict:
+    """선택 콘텐츠를 선택 인원에게 균등 분배 배정(덮어쓰기).
+    시작 부하 = 검수자별 미완료 배정 수(assignment_load) → 항상 부하가 가장 적은
+    사람부터 채워 최종 부하가 고르게 되도록 한다. 콘텐츠당 담당 min_reviewers 명
+    (서로 다른 사람)씩 배정하고 통과 인원 N 도 같은 값으로 둔다.
+    반환: {"n": 처리 건수, "per_reviewer": {reviewer: 배정 건수}, "min_reviewers": N}"""
+    hs = [h for h in dict.fromkeys(hashes or []) if h]
+    rvs = [r for r in dict.fromkeys(reviewers or []) if r]
+    if not (hs and rvs):
+        return {"n": 0, "per_reviewer": {}, "min_reviewers": 0}
+    n_per = max(1, min(len(rvs), int(min_reviewers or 1)))
+    load = {}
+    if hasattr(st, "assignment_load"):
+        try:
+            load = st.assignment_load(team=team) or {}
+        except Exception:
+            load = {}                                    # 부하 조회 실패 시 0 부하로 분배(배정은 계속)
+    heap = [(int(load.get(r, 0)), i, r) for i, r in enumerate(rvs)]   # i = 동률 시 선택 순서 유지
+    heapq.heapify(heap)
+    groups = {}                                          # 담당 조합(tuple) → 콘텐츠 목록(호출 최소화)
+    for h in hs:
+        picked = [heapq.heappop(heap) for _ in range(n_per)]
+        groups.setdefault(tuple(p[2] for p in picked), []).append(h)
+        for ld, i, r in picked:
+            heapq.heappush(heap, (ld + 1, i, r))
+    per, n = {}, 0
+    for combo, chunk in groups.items():
+        n += st.set_assignees_bulk(chunk, list(combo), min_reviewers=n_per, team=team)
+        for r in combo:
+            per[r] = per.get(r, 0) + len(chunk)
+    return {"n": n, "per_reviewer": per, "min_reviewers": n_per}
 
 
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
@@ -3719,6 +3754,18 @@ class Handler(BaseHTTPRequestHandler):
                 st = get_store()
                 if not (hashes and st and hasattr(st, "set_assignees_bulk")):
                     self._send(400, json.dumps({"error": "대상 없음 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
+                    return
+                if (data.get("mode") or "") == "distribute":   # 균등 분배: 부하 적은 사람부터
+                    if not reviewers:
+                        self._send(400, json.dumps({"error": "분배할 담당자를 선택하세요"}, ensure_ascii=False), _JSON)
+                        return
+                    r = distribute_assignments(st, hashes, reviewers, min_reviewers=minr,
+                                               team=self._req_team())
+                    _agg_bump()
+                    self._send(200, json.dumps({"ok": True, "mode": "distribute", "n": r["n"],
+                                                "per_reviewer": r["per_reviewer"],
+                                                "min_reviewers": r["min_reviewers"]},
+                                               ensure_ascii=False), _JSON)
                     return
                 n = st.set_assignees_bulk(hashes, reviewers, min_reviewers=minr, team=self._req_team())
                 _agg_bump()

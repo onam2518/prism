@@ -675,6 +675,20 @@ class Store:
                 out[ch]["min"] = max(1, min(len(out[ch]["reviewers"]), int(n or 1)))
         return out
 
+    def assignment_load(self, team=None) -> dict:
+        """검수자별 미완료 배정 부하 {reviewer: n} · 균등 분배 배정의 가중 원천.
+        부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(완료분은 부하 아님)."""
+        c = self._conn()
+        tm = team or ""
+        done = {(ch, rv) for ch, rv in c.execute(
+            "SELECT content_hash,reviewer FROM feedback WHERE verdict IN ('good','bad')")}
+        out = {}
+        for ch, rv in c.execute(
+                "SELECT content_hash,reviewer FROM assignments WHERE team=?", (tm,)):
+            if (ch, rv) not in done:
+                out[rv] = out.get(rv, 0) + 1
+        return out
+
     def draft_history(self, content_hash: str, team=None, limit: int = 20) -> list:
         c = self._conn()
         rows = c.execute("SELECT model,version,item_meta,quality_meta,ts FROM drafts "

@@ -2692,6 +2692,11 @@ PAGE = """<!doctype html>
             <span class="ds-badge ds-badge--status stepcard__badge" x-show="bulkPick.length" x-text="bulkPick.length + '명 선택'"></span>
           </div>
           <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
+          <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) -->
+          <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
+            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 사람들에게 콘텐츠를 나눠 배정합니다 · 밀린 배정이 적은 사람부터 채워요" data-tip-pos="top">균등 분배</button>
+          </div>
           <div style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
             <template x-for="m in assignMembers" x-bind:key="'bpk'+m.id">
               <label class="pickchip" x-bind:class="bulkPick.includes(m.id) ? 'on' : ''">
@@ -2699,9 +2704,9 @@ PAGE = """<!doctype html>
               </label>
             </template>
           </div>
-          <label class="text-xs text-muted" style="display:inline-flex;align-items:center;gap:8px">최소 검수인원
+          <label class="text-xs text-muted" style="display:inline-flex;align-items:center;gap:8px"><span x-text="bulkMode==='distribute' ? '콘텐츠당 담당 인원' : '최소 검수인원'"></span>
             <input type="number" class="field" style="width:72px" min="1" x-bind:max="Math.max(1, bulkPick.length)" x-model.number="bulkMin">
-            <span class="tnum" x-text="'/ 배정 ' + bulkPick.length + '명 · N명 검수 시 통과'"></span></label>
+            <span class="tnum" x-text="bulkMode==='distribute' ? ('/ 선택 ' + bulkPick.length + '명 · 콘텐츠마다 N명씩 나눠 배정') : ('/ 배정 ' + bulkPick.length + '명 · N명 검수 시 통과')"></span></label>
         </div>
 
         <!-- ③ 확인 -->
@@ -2711,9 +2716,10 @@ PAGE = """<!doctype html>
             <span class="stepcard__ttl">확인<span class="stepcard__sub">배정 내용을 확인하고 실행하세요</span></span>
           </div>
           <div class="tbox" style="padding:14px 16px">
-            <div class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + (bulkPick.map(id => (assignMembers.find(m=>m.id===id)||{}).name || id).join(', ') || '(담당자 미선택)') + '에게 배정'"></div>
+            <div class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + (bulkPick.map(id => (assignMembers.find(m=>m.id===id)||{}).name || id).join(', ') || '(담당자 미선택)') + (bulkMode==='distribute' ? '에게 나눠 배정' : '에게 배정')"></div>
             <div class="text-xs text-muted" style="line-height:1.7">
-              <div>· 최소 검수인원 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명</div>
+              <div x-show="bulkMode!=='distribute'">· 최소 검수인원 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명</div>
+              <div x-show="bulkMode==='distribute'">· 콘텐츠마다 담당 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명 · 밀린 배정이 적은 사람부터 고르게 나눕니다</div>
               <div>· 배정 후 <b class="text-ink">담당자에게만</b> 검수 큐에 표시(배타적)</div>
             </div>
             <div class="ds-badge ds-badge--warning" x-show="bulkOverwrite" style="margin-top:10px" x-text="'⚠ 선택 중 ' + bulkOverwrite + '건은 이미 배정돼 있습니다 · 저장 시 덮어씁니다'"></div>
