@@ -2829,10 +2829,18 @@ def broadcast(event: dict):
             pass
 
 
-def _candidate_models(cfg) -> list:
-    """프롬프트 스튜디오 모델 선택지: 설정된 모델 + 저장된 모델 키 + 흔한 기본값(오프라인 대비)."""
+def _candidate_models(cfg, team=None) -> list:
+    """프롬프트 스튜디오·모델 적용 선택지: 실제 초안 만든 모델(target_models) + 설정 모델 +
+    저장된 모델 키 + 흔한 기본값(오프라인 대비)."""
+    tm = []
+    try:                                          # 실제 실행 이력의 모델 우선(설정에 없어도 노출)
+        st = get_store()
+        if st and hasattr(st, "target_models"):
+            tm = st.target_models(team) or []
+    except Exception:
+        tm = []
     seen, out = set(), []
-    pool = [cfg.text_model, cfg.vision_model,
+    pool = [*tm, cfg.text_model, cfg.vision_model,
             *list((cfg.stage_models or {}).values()),
             *list((cfg.model_prompts or {}).keys())]
     for m in pool + ["solar-pro2", "gpt-5.4", "claude-opus-4-8", "gemini-2.5-pro"]:
@@ -2860,7 +2868,7 @@ def save_team_links(data: dict):
                                       for k in ("guide", "guide_user", "guide_admin")})
 
 
-def config_status() -> dict:
+def config_status(team=None) -> dict:
     cfg = Config.load()
     base = (cfg.chat_url or "").rsplit("/chat/completions", 1)[0]
     return {
@@ -2875,7 +2883,7 @@ def config_status() -> dict:
         "stagePromptsMeta": dict(cfg.stage_prompts_meta or {}),
         "stageModels": dict(cfg.stage_models or {}),
         "modelPrompts": dict(cfg.model_prompts or {}),
-        "availableModels": _candidate_models(cfg),
+        "availableModels": _candidate_models(cfg, team),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "learnNextAt": str(getattr(cfg, "learn_next_at", "") or ""),
         "learnRepeatDays": int(getattr(cfg, "learn_repeat_days", 0) or 0),
@@ -3071,7 +3079,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             pass
         _agg_bump()                               # 설정 파생 캐시 무효화(아레나 퀘스트 시한 등 즉시 반영)
     sync_prompt()
-    return config_status()
+    return config_status(team)
 
 
 def list_models() -> dict:
@@ -3234,7 +3242,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(build_results_csv())
         elif self.path.startswith("/config"):
-            cs = config_status()
+            cs = config_status(self._req_team())
             # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
             # 로그인 화면·배포 검증(curl /config: backend·configured)이 쓰는 최소 필드만 공개.
             if _supa() and not self._bearer_uid():
