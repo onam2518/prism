@@ -916,10 +916,25 @@ def _run_due_batch(cfg, now=None) -> bool:
     if not due or due > (now if now is not None else time.time()):
         return False
     learning_batch(getattr(cfg, "learn_team", "") or None)   # 골든·버전을 그 팀에 태깅
-    try:                                          # 목표 소진(1회 실행 · 재실행 방지)
+    try:
         c = Config.load()
-        c.learn_next_at = ""
-        c.save_template()
+        rep = int(getattr(c, "learn_repeat_days", 0) or 0)
+        if rep > 0:                               # 반복 퀘스트: 같은 시각 +N일로 자동 재생성(팀 태그 유지)
+            import datetime as _dt
+            nxt = _dt.datetime.fromtimestamp(due)
+            now_ts = time.time()
+            while nxt.timestamp() <= now_ts + 60:  # 서버 정지 등으로 밀렸으면 미래 첫 회차까지 스킵
+                nxt += _dt.timedelta(days=rep)
+            c.learn_next_at = nxt.strftime("%Y-%m-%dT%H:%M")
+            c.save_template()
+            try:                                   # 새 진행률 창 시작점(홈 퀘스트 카드 D-day 원천)
+                _SV._report_save("quest_meta", {"started_at": now_ts, "next_at": c.learn_next_at},
+                                 getattr(c, "learn_team", "") or None)
+            except Exception:
+                pass
+        else:                                     # 목표 소진(1회 실행 · 재실행 방지)
+            c.learn_next_at = ""
+            c.save_template()
     except Exception:
         pass
     return True

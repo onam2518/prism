@@ -1752,6 +1752,15 @@ PAGE = """<!doctype html>
                     <template x-for="n in [1,2,3,4,5]" x-bind:key="n"><option x-bind:value="n" x-text="n + '명'" x-bind:selected="parseInt(goldenMinGood,10)===n"></option></template>
                   </select>
                 </span>
+                <span class="selctl" data-tip="반영이 끝나면 같은 시각으로 다음 퀘스트를 자동 생성합니다 · 매번 다시 만들 필요가 없어요" data-tip-pos="top"><span class="selctl__lbl">반복</span>
+                  <select class="field" x-model.number="learnRepeat" x-bind:disabled="!schedEditing">
+                    <option value="0">반복 없음</option>
+                    <option value="1">매일</option>
+                    <option value="7">매주</option>
+                    <option value="14">2주마다</option>
+                  </select>
+                </span>
+                <span class="ds-badge ds-badge--neutral tnum" x-show="nextBatchAt && parseInt(learnRepeat,10)" x-text="'반복 · ' + (parseInt(learnRepeat,10)===1 ? '매일' : parseInt(learnRepeat,10) === 7 ? '매주' : learnRepeat + '일마다')"></span>
                 <span class="ds-badge ds-badge--intent tnum" x-show="nextBatchAt" style="cursor:help" data-tip="홈·사이드바의 팀 퀘스트(vN 마감 D-day)와 같은 일정입니다" data-tip-pos="top" x-text="'퀘스트 진행 중 · ' + fmtTs(nextBatchAt) + ' 반영'"></span>
                 <span class="ds-badge ds-badge--neutral" x-show="!nextBatchAt" style="cursor:help" data-tip="목표 일시를 지정하면 홈·사이드바에 팀 퀘스트(D-day)가 생깁니다" data-tip-pos="top">목표 미설정 · 퀘스트를 생성하세요</span>
               </div>
