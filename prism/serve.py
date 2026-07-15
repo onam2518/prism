@@ -542,6 +542,7 @@ _ENRICH_LOCK = threading.Lock()
 
 def _enrich_run(st, ids):
     from . import entdict as ED
+    ED._wd_breaker_reset()                          # 배치 시작마다 브레이커 리셋: 이전 배치의 tripped 가 이 배치를 영구 차단하지 않게
     S = _ENRICH_STATE
     for i, eid in enumerate(ids):
         if i:

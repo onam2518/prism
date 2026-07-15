@@ -209,6 +209,15 @@ def _wd_note_result(failed: bool):
         _WD_BREAKER["tripped"] = True
 
 
+def _retry_after_sec(ex, default=20, cap=60) -> int:
+    """HTTPError 의 Retry-After 를 안전하게 초로 파싱. RFC 합법 HTTP-date·음수·비수치는 default."""
+    v = ex.headers.get("Retry-After") if getattr(ex, "headers", None) else None
+    try:
+        return max(0, min(int(v), cap))
+    except (ValueError, TypeError):
+        return default              # HTTP-date 형식 등은 기본 대기(크래시 방지)
+
+
 def _http_json(url: str) -> dict:
     """단일 네트워크 심(seam) · 테스트는 이 함수를 대체한다.
     429(레이트리밋)는 Retry-After 준수(캡 60s · 기본 20s)로 최대 3회 재시도 —
@@ -223,7 +232,7 @@ def _http_json(url: str) -> dict:
             if ex.code != 429 or attempt == 3:
                 raise
             _wd_note_429()
-            time.sleep(min(int(ex.headers.get("Retry-After") or 20), 60))
+            time.sleep(_retry_after_sec(ex, default=20, cap=60))
 
 
 def _wd(params: dict) -> dict:
@@ -583,18 +592,21 @@ def enrich_entity(store, entity_id: str) -> dict:
     # ② 위키데이터 폴백(나무위키 미스·동음이의·타입 미판정) · 게이트/브레이커 닫힘 = 건너뛰기
     wd_on = wd_available()
     hit = None
+    ent = None
+    typ, p31, new_attrs = "", [], {}
     if wd_on:
         try:
             hit = wd_search(e["name"])
+            if hit:                                        # 검색·엔티티·라벨 조회를 한 try 로 묶어
+                ent = wd_entity(hit["id"])                 # wd_entity/wd_labels 실패도 브레이커가 집계(과거 이 둘은 보호 밖)
+                typ, p31 = map_type(ent)
+                new_attrs = extract_attrs(typ or e.get("type") or "", ent)
             _wd_note_result(failed=False)
         except (urllib.error.URLError, OSError, ValueError) as ex:
             _wd_note_result(failed=True)
             return {"ok": False, "error": f"위키데이터 조회 실패: {str(ex)[:120]}"}
     if hit:
         qid = hit["id"]
-        ent = wd_entity(qid)
-        typ, p31 = map_type(ent)
-        new_attrs = extract_attrs(typ or e.get("type") or "", ent)
         # 나무위키가 같은 보강 사이클에서 채운 속성은 유지(소스 우선순위: 나무위키 1순위)
         new_attrs = {k: v for k, v in new_attrs.items() if k not in namu_attrs}
         if not typ and not (e.get("type") or ""):
