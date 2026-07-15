@@ -296,6 +296,36 @@ class TestNamuFallback(EntdictBase):
         self.assertEqual(e["attr_meta"]["gender"]["source"], "namuwiki")
         self.assertEqual(e["external_ids"]["wikidata"], "Q1")     # 외부키 매핑은 누적 보존
 
+    def test_reenrich_wrong_auto_type_corrected_via_wikidata(self):
+        """과거 오분류(자동 EV) + 나무위키 보류(속성만) → 위키데이터가 타입 재판정(PS 교정).
+        기존에는 '타입이 이미 있으면' 조기 반환해 오분류가 재보강에서 영영 남았다(2026-07-15)."""
+        eid = self._register("안세영")
+        self.store.ent_update(eid, {"type": "EV", "status": "active",
+                                    "attr_meta": {"type": {"source": "namuwiki", "status": "auto"}}})
+        attrs_only = ('<html><head><title>안세영 - 나무위키</title></head><body>'
+                      '<table><tr><td><div><strong><span>국적</span></strong></div></td>'
+                      '<td><div>대한민국</div></td></tr></table></body></html>')
+        ED._http_text = lambda url: attrs_only           # 분류 없음 → 타입 보류 · 속성만 히트
+        r = ED.enrich_entity(self.store, eid)
+        self.assertTrue(r["matched"])
+        self.assertEqual(r["source"], "wikidata")        # 조기 반환 없이 재판정으로 이어짐
+        e = self.store.ent_get(eid)
+        self.assertEqual(e["type"], "PS")                # 오분류 EV → PS 교정
+        self.assertEqual(e["attrs"]["nationality"], "대한민국")   # 나무위키 속성은 유지(1순위)
+
+    def test_reenrich_confirmed_type_returns_early(self):
+        """수동 확정 타입은 나무위키 보류여도 위키데이터 재판정 없이 유지(조기 반환)."""
+        eid = self._register("안세영")
+        self.store.ent_update(eid, {"type": "EV", "status": "active",
+                                    "attr_meta": {"type": {"source": "manual", "status": "confirmed"}}})
+        attrs_only = ('<html><head><title>안세영 - 나무위키</title></head><body>'
+                      '<table><tr><td><div><strong><span>국적</span></strong></div></td>'
+                      '<td><div>대한민국</div></td></tr></table></body></html>')
+        ED._http_text = lambda url: attrs_only
+        r = ED.enrich_entity(self.store, eid)
+        self.assertEqual(r["source"], "namuwiki")
+        self.assertEqual(self.store.ent_get(eid)["type"], "EV")   # 확정 타입 불변
+
 
 class TestHttp429Backoff(unittest.TestCase):
     """429 는 Retry-After 준수 재시도 · 다른 오류·재시도 소진은 그대로 전파."""
@@ -338,6 +368,58 @@ class TestHttp429Backoff(unittest.TestCase):
                 ED._http_json("http://x")
         finally:
             UR.urlopen = orig
+
+
+def _cat_link(name):
+    import urllib.parse
+    return '<a href="/w/%s">분류</a>' % urllib.parse.quote("분류:" + name)
+
+
+class TestNamuExtract(unittest.TestCase):
+    """나무위키 실서비스 마크업 파싱 + 분류당 1표(PS 우선) 타입 판정(2026-07-15 오분류 수정).
+    리디아 고 재현: '올림픽 골프 메달리스트' 분류 3개가 EV 로 이중 집계돼 선수가 이벤트로 판정되고,
+    <strong><span>국적</span></strong> 중첩 라벨이 안 잡혀 attrs 가 전부 비던 결함."""
+
+    _LYDIA = (
+        '<html><head><title>리디아 고 - 나무위키</title></head><body>'
+        + _cat_link("뉴질랜드의 여자 골프 선수") + _cat_link("뉴질랜드의 올림픽 골프 메달리스트")
+        + _cat_link("2016 리우데자네이루 올림픽 골프 메달리스트") + _cat_link("2020 도쿄 올림픽 골프 메달리스트")
+        + _cat_link("동작구 출신 인물")
+        + "<table><tr><td><div><strong data-v-1><span style='color:#fff'>국적</span></strong></div></td>"
+        + "<td style='text-align:left'><div><a title='뉴질랜드'>뉴질랜드</a>&#91;1&#93;</div></td></tr>"
+        + "<tr><td><div><strong><span>출생</span></strong></div></td><td><div>1997년 4월 24일</div></td></tr>"
+        + "<tr><td><div><strong><span>종목</span></strong></div></td><td><div>골프</div></td></tr></table>"
+        + "</body></html>")
+
+    def test_person_beats_event_categories(self):
+        typ, attrs, cats = ED.namu_extract(self._LYDIA)
+        self.assertEqual(typ, "PS")                     # 메달리스트 분류 = 인물 1표 · EV 이중 집계 금지
+        self.assertEqual(attrs["nationality"], "뉴질랜드")   # 중첩 라벨(<strong><span>) 파싱
+        self.assertEqual(attrs["birth_year"], "1997")
+        self.assertEqual(attrs["occupation"], "스포츠인")
+        self.assertEqual(attrs["gender"], "여성")
+
+    def test_nested_label_and_entity_footnote(self):
+        v = ED._namu_field(self._LYDIA, "국적")
+        self.assertEqual(v, "뉴질랜드")                  # &#91;1&#93; 각주 unescape 후 제거
+
+    def test_director_is_person_not_work(self):
+        html = ('<html><head><title>감독 - 나무위키</title></head><body>'
+                + _cat_link("대한민국의 영화 감독") + _cat_link("1969년 출생") + "</body></html>")
+        typ, attrs, cats = ED.namu_extract(html)
+        self.assertEqual(typ, "PS")                     # '영화 감독' = 인물(감독) · AF(영화) 아님
+
+    def test_event_doc_still_event(self):
+        html = ('<html><head><title>축제 - 나무위키</title></head><body>'
+                + _cat_link("대한민국의 축제") + _cat_link("창원시") + "</body></html>")
+        typ, attrs, cats = ED.namu_extract(html)
+        self.assertEqual(typ, "EV")
+
+    def test_nation_doc_is_location(self):
+        html = ('<html><head><title>나라 - 나무위키</title></head><body>'
+                + _cat_link("동아시아의 국가") + _cat_link("공화국") + "</body></html>")
+        typ, attrs, cats = ED.namu_extract(html)
+        self.assertEqual(typ, "LC")                     # 국가 문서가 EV 로 새지 않는다
 
 
 class TestOccupationSnap(unittest.TestCase):

@@ -13,6 +13,7 @@ POC 보강: 공개 NER 모델 대신 Wikidata(무키·stdlib urllib) 조회로 �
 from __future__ import annotations
 
 import hashlib
+import html as _html
 import json
 import os
 import time
@@ -393,22 +394,32 @@ def _namu_categories(html: str) -> list:
 
 
 def _namu_field(html: str, label: str) -> str:
-    """인포박스 셀: <strong>라벨</strong>…</td><td>값</td> 패턴 · 태그·각주 제거."""
-    m = _re.search(r"<strong[^>]*>" + _re.escape(label) + r"</strong>.*?</td>\s*<td[^>]*>(.*?)</td>",
+    """인포박스 셀: <strong>라벨</strong>…</td><td>값</td> 패턴 · 태그·각주 제거.
+    실서비스 마크업은 라벨이 <strong><span style=…>라벨</span></strong> 처럼 중첩되므로
+    strong 안의 태그를 허용한다(라벨 직결만 매칭하면 전 문서에서 빈 값 · 2026-07-15).
+    각주는 &#91;1&#93; 처럼 엔티티로 렌더되므로 unescape 후 제거한다."""
+    m = _re.search(r"<strong[^>]*>(?:\s*<[^>]+>)*\s*" + _re.escape(label)
+                   + r"\s*(?:</[^>]+>\s*)*</strong>.*?</td>\s*<td[^>]*>(.*?)</td>",
                    html or "", _re.S)
     if not m:
         return ""
     txt = _re.sub(r"<[^>]+>", " ", m.group(1))
+    txt = _html.unescape(txt)
     txt = _re.sub(r"\[[^\]]{0,20}\]", "", txt)             # 각주 [1]·[주석]
     return " ".join(txt.split())[:60]
 
 
 # 분류(카테고리) 키워드 → 타입. 서로 다른 타입 후보 충돌 시 보류(위키데이터 P31 과 동일 정책).
+# 한 분류는 규칙 순서대로 첫 매칭 타입에만 1표(PS 최우선): '올림픽 골프 메달리스트' 같은 인물
+# 분류가 대회명(올림픽)으로 EV 에 이중 집계돼 사람이 이벤트로 판정되던 오판 방지(리디아 고 · 2026-07-15).
 _NAMU_TYPE_RULES = [
     ("PS", ("선수", "가수", "배우", "정치인", "기업인", "방송인", "유튜버", "인터넷 방송인",
-            "코미디언", "래퍼", "아이돌", "모델", "성우", "작가", "언론인", "교수")),
-    ("OG", ("기업", "구단", "정당", "정부기관", "단체", "학교", "협회", "그룹", "팀", "기획사")),
-    ("LC", ("행정구역", "도시", "지역", "섬", "관광지")),
+            "코미디언", "래퍼", "아이돌", "모델", "성우", "작가", "언론인", "교수",
+            "감독", "대통령", "국무총리", "장관", "국회의원", "총장", "판사", "검사",
+            "메달리스트", "수상자", "인물", "회장", "위원장", "지도자")),
+    ("OG", ("기업", "구단", "정당", "정부기관", "단체", "학교", "대학", "협회", "그룹", "팀",
+            "기획사", "방송국", "언론사", "은행", "기관", "위원회")),
+    ("LC", ("행정구역", "도시", "지역", "섬", "관광지", "국가", "수도")),
     ("AF", ("영화", "드라마", "예능", "프로그램", "비디오 게임", "음반", "노래", "웹툰", "소설",
             "브랜드", "애플리케이션", "소프트웨어")),
     ("EV", ("스포츠 대회", "올림픽", "선거", "사건 사고", "축제", "시상식")),
@@ -426,13 +437,18 @@ def namu_extract(html: str):
     if any("동음이의" in c for c in cats):
         return None, {}, cats                              # 동명이인 문서 → 자동 결정 없이 보류
     jcats = [c for c in cats if not any(x in c for x in _NAMU_REL_CATS)]
-    # 타입 = 분류 다수결. 인물 문서에도 '올림픽 참가'(EV)·'아시안 게임'(AF) 류 분류가 섞이므로
-    # 단일 태그 요구 대신 '명확한 다수(1위 > 2위)'만 자동 부여, 동률·근소는 보류(모호=미부여 정신 유지).
+    # 타입 = 분류 다수결(분류당 1표 · 규칙 순서 첫 매칭 = 우선순위). 인물 분류에는 대회·작품명이
+    # 섞이므로('올림픽 메달리스트'·'영화 감독') 같은 분류의 이중 집계를 금지하고 PS 를 최우선 판정.
+    # 자동 부여는 '명확한 다수(1위 > 2위)'만, 동률·근소는 보류(모호=미부여 정신 유지).
     scores = {}
-    for t, kws in _NAMU_TYPE_RULES:
-        n = sum(1 for c in jcats if any(k in c for k in kws))
-        if n:
-            scores[t] = n
+    for c in jcats:
+        if c.endswith("위원"):                             # '…위원회 위원'(구성원=사람)이 위원회(OG)로 새지 않게
+            scores["PS"] = scores.get("PS", 0) + 1
+            continue
+        for t, kws in _NAMU_TYPE_RULES:
+            if any(k in c for k in kws):
+                scores[t] = scores.get(t, 0) + 1
+                break                                      # 분류당 1표(첫 매칭 타입)
     typ = ""
     if scores:
         top = sorted(scores.items(), key=lambda x: -x[1])
@@ -446,7 +462,9 @@ def namu_extract(html: str):
     m = _re.search(r"(19|20)\d{2}", birth)
     if m and typ == "PS":
         attrs["birth_year"] = m.group(0)
-    aff = _namu_field(html, "소속") or _namu_field(html, "소속사") or _namu_field(html, "소속 구단")
+    # 구체 라벨 우선: 일반 '소속'은 경력표의 부제('기간' 등)를 잘못 물 수 있어 마지막 폴백
+    aff = (_namu_field(html, "소속사") or _namu_field(html, "소속 구단")
+           or _namu_field(html, "소속 정당") or _namu_field(html, "소속"))
     if aff and typ == "PS":
         attrs["affiliation"] = aff
     occ_src = [_namu_field(html, "직업"), _namu_field(html, "종목")] + jcats
@@ -518,12 +536,16 @@ def enrich_entity(store, entity_id: str) -> dict:
     if nr and nr[0] == "hit":
         _, typ, attrs_new = nr
         fields = _apply_source(store, e, am, now, "namuwiki", typ, attrs_new, "namuwiki", e["name"])
-        if fields.get("type") or (e.get("type") or ""):
+        # 조기 반환은 '이번 사이클에 타입 판정' 또는 '수동 확정 타입'일 때만. 기존 자동(auto)
+        # 타입만 있는데 나무위키가 보류면 위키데이터로 재판정을 이어간다 — 과거 오분류(자동)가
+        # 재보강에서 영영 교정되지 않던 결함(홍상수 AF 잔존 · 2026-07-15).
+        if fields.get("type") or (am.get("type") or {}).get("status") == "confirmed":
             return {"ok": True, "matched": True, "source": "namuwiki",
                     "type": fields.get("type", e.get("type") or "")}
         # 타입 미판정(속성만 히트) → 위키데이터로 타입(P31)만 이어서 보강.
         # 여기서 조기 반환하면 status 가 pending 에 고정돼 타입 의존 토픽 조건에서 영영 누락된다.
         namu_attrs = attrs_new
+        e.update(fields)                                   # 뒤이은 위키데이터 반영이 방금 쓴 속성을 스테일 e 로 되돌리지 않게
     # ② 위키데이터 폴백(나무위키 미스·동음이의·타입 미판정)
     try:
         hit = wd_search(e["name"])
