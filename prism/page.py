@@ -1805,6 +1805,8 @@ PAGE = """<!doctype html>
                 </div>
               </template>
               <div class="text-xs text-muted" x-show="!(costData && costData.total && costData.total.n)">실호출 실행이 생기면 이곳에 비용이 쌓입니다 (mock 실행은 집계하지 않아요)</div>
+            </div>
+          </section>
           <!-- 실행 실패 진단: 콜 실패를 종류×모델×서비스로 · 라우터 계약 회귀·빈 응답 패턴 조기 발견 -->
           <section class="panel" data-fn x-init="loadFails()" x-show="failData && failData.total"><div class="panel-hd"><b>실행 실패 진단</b><span class="meta">최근 30일 · 콜 실패를 종류×모델×서비스로 모아 패턴을 보여줍니다</span>
             <span class="ds-badge ds-badge--error tnum ml-auto" x-show="failData" x-text="'실패 ' + ((failData && failData.total) || 0) + '건'"></span>
@@ -1896,6 +1898,7 @@ PAGE = """<!doctype html>
             </div>
           </section>
 
+
           <!-- 학습 보정 지시 · 버전 히스토리(독립 카드 · 표): 버전별 보정 효과 + 행 클릭 시 그 버전이 쓴 지시 -->
           <section class="panel" data-fn x-show="goldenStatus" x-cloak><div class="panel-hd"><b>학습 보정 지시 · 버전 히스토리</b><span class="meta">검수 목표가 끝날 때마다 한 버전으로 반영 · 버전별 보정 효과와 그때 쓴 지시(행을 눌러 펼치기)</span></div>
             <div class="panel-bd">
@@ -1921,6 +1924,14 @@ PAGE = """<!doctype html>
                             <template x-for="a in verAmb(stage)" x-bind:key="a"><div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div></template>
                           </div>
                         </div>
+                      </template>
+                      <div class="meta" style="padding:2px 2px" x-show="!verBusy && verSnap && !verHasDir()">이 버전에서 보정된 지시가 없습니다(학습 전 기준선).</div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <div class="meta" style="padding:4px 2px" x-show="!verRows.length">아직 반영된 버전이 없습니다 · 검수 목표를 채우거나 ⚡즉시 반영하면 v2가 만들어집니다.</div>
+
               <!-- 지시 원본 관리: 잘못 들어간 보정 하나만 끄기(전체 재컴파일 불필요 · 원본 보존) -->
               <div style="margin-top:10px">
                 <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="routesOpen = !routesOpen; if (routesOpen) loadRoutesRaw()" x-text="routesOpen ? '지시 원본 관리 접기' : '지시 원본 관리 · 개별 끄기'"></button>
@@ -1941,40 +1952,6 @@ PAGE = """<!doctype html>
                   </div>
                 </template>
               </div>
-
-              <!-- 버전별 지시 히스토리: 검수 목표(퀘스트)가 끝날 때마다 한 버전으로 반영 · 버전을 눌러 그 버전이 쓴 지시 확인 -->
-              <div class="subhd" style="margin:16px 0 8px" x-show="verHist.length">버전 히스토리 <span class="meta">검수 목표가 끝날 때마다 한 버전으로 반영됩니다 · 버전을 눌러 그 버전이 쓴 지시를 확인하세요</span></div>
-              <div class="verrail" x-show="verHist.length">
-                <template x-for="h in verHist" x-bind:key="h.v">
-                  <button type="button" class="verchip" x-bind:class="verSel===h.v ? 'is-sel' : ''" x-on:click="selectVer(h.v)">
-                    <span class="verchip__v tnum">v<span x-text="h.v"></span><span x-show="h.current" class="verchip__cur">현재</span></span>
-                  </button>
-                </template>
-              </div>
-              <div class="verdetail" x-show="verSel != null" x-cloak>
-                <div class="verstat" x-show="verData">
-                  <span x-show="verData && verData.ts">반영한 날 <b class="text-ink" x-text="fmtTs(verData?verData.ts:0)"></b></span>
-                  <span x-show="verData && verData.grade_accuracy != null">정답 맞힌 비율 <b class="text-ink tnum" x-text="pctTxt(verData?verData.grade_accuracy:null)"></b></span>
-                  <span x-show="verData && verData.improve_delta != null" x-text="'직전 대비 ' + deltaTxt(verData?verData.improve_delta:0)"></span>
-                  <span x-show="verData && verData.golden && verData.golden.confirmed != null">확정 정답 <b class="text-ink tnum" x-text="verData&&verData.golden?verData.golden.confirmed:0"></b>건</span>
-                </div>
-                <div class="meta" style="padding:4px 2px" x-show="!verBusy && !verData && !verSnap">이 버전의 저장된 상세가 없습니다.</div>
-                <template x-for="stage in ['extract','analyze','review','judge']" x-bind:key="'v'+stage">
-                  <div class="metarow" x-show="verDir(stage) || verAmb(stage).length">
-                    <span class="ds-badge ds-badge--neutral" x-text="({extract:'추출',analyze:'분석',review:'검수',judge:'판정'})[stage]"></span>
-                    <div style="flex:1;min-width:0">
-                      <ul class="metarow__dir" x-show="verDir(stage)">
-                        <template x-for="(s, i) in dirBullets(verDir(stage))" x-bind:key="i"><li x-text="s"></li></template>
-                      </ul>
-                      <template x-for="a in verAmb(stage)" x-bind:key="a">
-                        <div class="metarow__amb">⚠ 의견 갈림(가이드 명확화 필요): <span x-text="a"></span></div>
-                      </template>
-                      <div class="meta" style="padding:2px 2px" x-show="!verBusy && verSnap && !verHasDir()">이 버전에서 보정된 지시가 없습니다(학습 전 기준선).</div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-              <div class="meta" style="padding:4px 2px" x-show="!verRows.length">아직 반영된 버전이 없습니다 · 검수 목표를 채우거나 ⚡즉시 반영하면 v2가 만들어집니다.</div>
             </div>
           </section>
 
