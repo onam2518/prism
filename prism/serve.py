@@ -503,6 +503,27 @@ def set_final_verdict(hash_, verdict, by="", team=None) -> dict:
     return {"ok": True, "final": items.get(h)}
 
 
+# ── 배정 감사 추적 ───────────────────────────────────────────────────────────
+def _log_assign(by: str, mode: str, n: int, reviewers: list, minr: int, team=None):
+    """배정 실행 기록(reports kind='assign_log' · 상한 100): 누가 · 언제 · 어떤 방식으로 ·
+    몇 건을 · 누구에게. '별도 지정 안 했는데 배정돼 있음 · 누가?'를 없애는 감사 원장."""
+    try:
+        rep = _report_get("assign_log", team, {}) or {}
+        items = list(rep.get("items") or [])
+        items.append({"ts": time.time(), "by": (by or "(미상)")[:80], "mode": mode,
+                      "n": int(n or 0), "reviewers": [str(r)[:40] for r in (reviewers or [])][:10],
+                      "min": int(minr or 0)})
+        _report_save("assign_log", {"items": items[-100:]}, team)
+    except Exception:
+        pass
+
+
+def assign_log_data(team=None) -> dict:
+    """배정 이력 조회(최신순)."""
+    rep = _report_get("assign_log", team, {}) or {}
+    return {"ok": True, "items": list(reversed(rep.get("items") or []))}
+
+
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
 def quest_active() -> bool:
     """검수 목표(퀘스트) 진행 중 여부: 반영 일시가 미래로 설정돼 있으면 참.
@@ -4042,6 +4063,11 @@ class Handler(BaseHTTPRequestHandler):
                 fq = 30
             self._send(200, json.dumps(fail_rollup_data(self._req_team(), days=fq),
                                        ensure_ascii=False), _JSON)
+        elif self.path.startswith("/assign-log"):        # 배정 이력(누가·언제·어떻게 · 관리자)
+            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            self._send(200, json.dumps(assign_log_data(self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/routes-raw"):        # 학습 지시 원본 목록 + 끔 상태(관리자)
             if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
@@ -4591,12 +4617,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not (hashes and st and hasattr(st, "set_assignees_bulk")):
                     self._send(400, json.dumps({"error": "대상 없음 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
                     return
+                actor = (self._bearer_email() or self._bearer_uid()
+                         or (data.get("reviewer") or "").strip() or "(로컬)")
                 if (data.get("mode") or "") == "distribute":   # 균등 분배: 부하 적은 사람부터
                     if not reviewers:
                         self._send(400, json.dumps({"error": "분배할 담당자를 선택하세요"}, ensure_ascii=False), _JSON)
                         return
                     r = distribute_assignments(st, hashes, reviewers, min_reviewers=minr,
                                                team=self._req_team())
+                    _log_assign(actor, "균등 분배", r["n"], reviewers, r["min_reviewers"], self._req_team())
                     _agg_bump()
                     self._send(200, json.dumps({"ok": True, "mode": "distribute", "n": r["n"],
                                                 "per_reviewer": r["per_reviewer"],
@@ -4604,6 +4633,8 @@ class Handler(BaseHTTPRequestHandler):
                                                ensure_ascii=False), _JSON)
                     return
                 n = st.set_assignees_bulk(hashes, reviewers, min_reviewers=minr, team=self._req_team())
+                _log_assign(actor, ("일괄 배정" if reviewers else "일괄 해제"), n, reviewers,
+                            (max(1, min(len(reviewers), minr)) if reviewers else 0), self._req_team())
                 _agg_bump()
                 self._send(200, json.dumps({"ok": True, "n": n, "reviewers": reviewers,
                                             "min_reviewers": (max(1, min(len(reviewers), minr)) if reviewers else 0)},
@@ -4629,6 +4660,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(400, json.dumps({"error": "hash 누락 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
                     return
                 st.set_assignees(h, reviewers, min_reviewers=minr, team=self._req_team())
+                _log_assign((self._bearer_email() or self._bearer_uid()
+                             or (data.get("reviewer") or "").strip() or "(로컬)"),
+                            ("개별 배정" if reviewers else "개별 해제"), 1, reviewers, minr, self._req_team())
                 _agg_bump()
                 cur = (st.assignees(team=self._req_team()) or {}).get(h) or {"reviewers": [], "min": 0}
                 self._send(200, json.dumps({"ok": True, "assignees": cur["reviewers"],

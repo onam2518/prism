@@ -2985,6 +2985,14 @@ PAGE = """<!doctype html>
           </div>
         </div>
 
+        <!-- 배정 이력: 누가·언제·어떻게 (감사 추적 · '누가 배정했지?' 방지) -->
+        <div class="tbox" x-show="assignLog && assignLog.length" style="padding:10px 14px;margin-top:12px">
+          <div class="text-xs" style="font-weight:700;margin-bottom:6px">최근 배정 이력</div>
+          <template x-for="(it, ii) in (assignLog||[]).slice(0,5)" x-bind:key="'al'+ii">
+            <div class="text-xs text-muted tnum" style="line-height:1.8" x-text="assignLogTxt(it)"></div>
+          </template>
+        </div>
+
       </div>
       <div class="ds-dialog__footer" style="margin-top:16px">
         <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-md" x-on:click="bulkOpen=false">취소</button>
