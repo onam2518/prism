@@ -727,7 +727,37 @@ PAGE = """<!doctype html>
       <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
         <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
         <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadModelStats(); loadRaw()">결과 비교</button>
+        <button type="button" x-show="isFinalReviewer || opsAdmin" x-bind:class="createTab==='final'?'sel':''" x-on:click="createTab='final'; loadFinalQueue()">최종 검수 <span class="tnum" x-show="finalQueue && finalQueue.n" x-text="'(' + (finalQueue ? finalQueue.n : 0) + ')'"></span></button>
       </div></div>
+
+      <!-- 최종 검수(2층): 기초 검수를 거쳤지만 골든으로 확정되지 못한 미확정분 · 편입/제외 결정 -->
+      <div x-show="mod === 'create' && createTab === 'final'" x-cloak class="w-full space-y-4">
+        <section class="panel"><div class="panel-hd"><b>최종 검수</b><span class="meta">의견이 갈리거나 분류가 빈 콘텐츠만 올라옵니다 · 편입 = 다음 학습 반영 때 정답셋 승격 · 제외 = 승격 금지</span>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadFinalQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="최종 검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = 상세(원문·기초 의견 확인) · <b>편입/제외</b>는 기초 다수결보다 우선하며 언제든 <b>철회</b>할 수 있습니다.</li><li>'분류 없음' 건은 상세에서 분류를 채우면 편입 없이도 다음 반영 때 자동 승격됩니다.</li></ul>
+            <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:110px">상태</th><th style="width:210px;text-align:right">결정</th></tr></thead><tbody>
+              <template x-for="r in ((finalQueue&&finalQueue.items)||[])" x-bind:key="'fq'+r.hash">
+                <tr>
+                  <td class="text-ink" style="cursor:pointer" x-on:click="openFinalDetail(r)"><span x-text="r.title || '(제목 없음)'"></span></td>
+                  <td class="tnum text-xs text-muted" x-text="'정확 ' + ((r.fb&&r.fb.good)||0) + ' · 수정 ' + ((r.fb&&r.fb.bad)||0)"></td>
+                  <td><span class="ds-badge" style="cursor:help" x-bind:class="r.final_reason==='의견 갈림' ? 'ds-badge--reason' : 'ds-badge--warning'" x-bind:data-tip="r.final_reason==='의견 갈림' ? '기초 검수자 의견이 정확/수정으로 갈렸습니다' : '정확 합의됐지만 분류(카테고리)가 비어 승격이 보류된 상태'" data-tip-pos="top" x-text="r.final_reason"></span></td>
+                  <td><span class="ds-badge" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="r.final==='good' ? '편입 확정' : '제외 확정'"></span><span class="text-xs text-muted" x-show="!r.final">대기</span></td>
+                  <td style="text-align:right" x-on:click.stop>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="r.final!=='good'" x-on:click="finalDecide(r,'good')" data-tip="정답셋 편입 확정 · 다수결보다 우선" data-tip-pos="top">편입</button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="r.final!=='bad'" x-on:click="finalDecide(r,'bad')" data-tip="정답셋 승격 금지" data-tip-pos="top">제외</button>
+                    <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="r.final" x-on:click="finalDecide(r,'')">철회</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody></table>
+            <div x-show="finalBusy" class="text-xs text-muted" style="padding:10px">불러오는 중…</div>
+            <div x-show="!finalBusy && !((finalQueue&&finalQueue.items)||[]).length" class="text-xs text-muted" style="padding:10px">미확정 콘텐츠가 없습니다 · 기초 검수에서 의견이 갈리거나 분류가 비면 여기로 올라옵니다</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="w-full">
         <div class="space-y-4">
           <!-- 요소 단위 모델별 결과 현황: 같은 정보요소를 모델 축으로 비교 -->
@@ -2292,12 +2322,14 @@ PAGE = """<!doctype html>
                   <span x-show="adminData.team && m.id===adminData.team.created_by" class="ds-badge ds-badge--status" style="margin-left:6px">생성자</span>
                   <span x-show="m.super_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--category" style="margin-left:6px;cursor:help" data-tip="생성자가 부여한 슈퍼관리자 · 운영 작업 메뉴 전체 사용 가능(시스템 설정 제외)" data-tip-pos="top">슈퍼관리자</span>
                   <span x-show="m.is_admin && !m.super_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--intent" style="margin-left:6px;cursor:help" data-tip="위임된 팀 관리자 · 팀 관리 메뉴 사용 가능" data-tip-pos="top">관리자</span>
+                  <span x-show="finalReviewers.includes(m.id)" class="ds-badge ds-badge--success" style="margin-left:6px;cursor:help" data-tip="최종검수자 · 기초 검수에서 의견이 갈리거나 분류가 빈 콘텐츠의 정답셋 편입/제외를 결정" data-tip-pos="top">최종검수자</span>
                 </span>
                 <template x-if="adminData&&adminData.team && m.id!==adminData.team.created_by">
                   <span style="display:flex;gap:6px">
                     <!-- 권한 지정은 팀 생성자 전용(서버도 동일 게이트) · 부여받은 관리자에게는 미표시 -->
                     <button type="button" x-show="adminData.isCreator" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="adminAct(m.super_admin ? 'unset_super' : 'set_super', m.id)" x-text="m.super_admin ? '슈퍼관리자 해제' : '슈퍼관리자 지정'"></button>
                     <button type="button" x-show="adminData.isCreator" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-on:click="adminAct(m.is_admin ? 'unset_admin' : 'set_admin', m.id)" x-text="m.is_admin ? '관리자 해제' : '관리자 지정'"></button>
+                    <button type="button" x-show="opsAdmin" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="toggleFinalRole(m)" x-bind:data-tip="finalReviewers.includes(m.id) ? '기초검수자로 되돌립니다' : '미확정(의견 갈림·분류 공백) 콘텐츠의 정답셋 편입/제외 결정 권한을 줍니다'" data-tip-pos="top" x-text="finalReviewers.includes(m.id) ? '최종검수자 해제' : '최종검수자 지정'"></button>
                     <button type="button" x-show="adminData.isAdmin" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="adminAct('remove_member', m.id)">제거</button>
                   </span>
                 </template>

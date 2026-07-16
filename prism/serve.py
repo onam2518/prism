@@ -503,6 +503,88 @@ def set_final_verdict(hash_, verdict, by="", team=None) -> dict:
     return {"ok": True, "final": items.get(h)}
 
 
+# ── 2층 검수: 최종검수자 역할 + 최종검수 큐 ─────────────────────────────────
+def reviewer_roles(team=None) -> dict:
+    """최종검수자 역할 {reviewer_id: 'final'} · reports kind='reviewer_roles'(팀 스코프 · DDL 불필요).
+    기초검수자는 기본값(기록 없음) · 역할은 사람 단위(배정 건 단위 아님 · 혼선 방지)."""
+    rep = _report_get("reviewer_roles", team, {}) or {}
+    return dict(rep.get("items") or {})
+
+
+def set_reviewer_role(rid: str, role: str, team=None) -> dict:
+    """역할 지정/해제: role='final' 지정 · 그 외 값 = 해제(기초로 복귀)."""
+    rid = (rid or "").strip()
+    if not rid:
+        return {"ok": False, "error": "대상이 없습니다"}
+    rep = _report_get("reviewer_roles", team, {}) or {}
+    items = dict(rep.get("items") or {})
+    if role == "final":
+        items[rid] = "final"
+    else:
+        items.pop(rid, None)
+    _report_save("reviewer_roles", {"items": items}, team)
+    _agg_bump()
+    return {"ok": True, "final_reviewers": sorted(items)}
+
+
+def is_final_reviewer(uid, team=None) -> bool:
+    return bool(uid) and uid in reviewer_roles(team)
+
+
+def final_review_queue(team=None, reviewer: str = "") -> dict:
+    """최종검수 큐: 기초 검수를 거쳤지만 골든으로 확정되지 못한 미확정분만.
+    대상 = ① 의견 갈림(split · 가중 다수결 미결) ② 정확 합의인데 분류 공백.
+    기초 합의 기준은 build_golden_from_reviews 와 동일 · 판정은 final_verdicts(편입/제외)로."""
+    from .store import content_hash
+    st = get_store()
+    if not st:
+        return {"ok": False, "items": [], "n": 0}
+    rows = results_rows(team=team)
+    try:
+        fmap = st.feedback_map(team=team)
+    except Exception:
+        fmap = {}
+    weights = reviewer_weights(team)
+    min_good = max(1, int(getattr(Config.load(), "golden_min_good", 1) or 1))
+    finals = final_verdicts(team)
+    try:
+        golden = st.golden_hashes(team)
+    except Exception:
+        golden = set()
+    out = []
+    for r in reversed(rows):                       # 최근순
+        ref = r.get("content_ref") or {}
+        content = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
+                   "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
+        ch = content_hash(content)
+        fb = fmap.get(ch)
+        if not fb or ch in golden:                 # 기초 검수 없음 · 이미 골든 확정 → 대상 아님
+            continue
+        gw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
+                 for v in fb.get("verdicts", []) if v.get("verdict") == "good")
+        bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
+                 for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
+        im = r.get("item_meta") or {}
+        cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
+        agreed = fb.get("good", 0) >= min_good and gw > bw
+        if agreed and cats:                        # 정상 확정 경로(다음 학습 반영 때 승격) → 대상 아님
+            continue
+        if agreed and not cats:
+            reason = "분류 없음"
+        elif fb.get("good") and fb.get("bad"):     # 의견 갈림(가중 미결 포함)
+            reason = "의견 갈림"
+        else:                                      # 수정필요 일방 합의·기초 표 부족 → 기초 큐 몫
+            continue
+        d = _detail_row(r)
+        d["final_reason"] = reason
+        d["final"] = (finals.get(ch) or {}).get("verdict", "")
+        out.append(d)
+        if len(out) >= 200:
+            break
+    out = _attach_fb(out, team, reviewer)
+    return {"ok": True, "items": out, "n": len(out)}
+
+
 # ── 배정 감사 추적 ───────────────────────────────────────────────────────────
 def _log_assign(by: str, mode: str, n: int, reviewers: list, minr: int, team=None):
     """배정 실행 기록(reports kind='assign_log' · 상한 100): 누가 · 언제 · 어떤 방식으로 ·
@@ -3890,7 +3972,16 @@ class Handler(BaseHTTPRequestHandler):
             if rv:
                 d["missions"] = mission_progress(rv, self._req_team())
             d["my_id"] = rv or ""                     # 내 행 식별 = reviewer_id(닉네임 변경·중복 표시명 무관)
+            d["final_reviewers"] = sorted(reviewer_roles(self._req_team()))   # 2층 검수: 역할 노출(탭 게이팅)
             self._send(200, json.dumps(d, ensure_ascii=False), _JSON)
+        elif self.path.startswith("/final-queue"):    # 최종검수 큐(미확정분 · 최종검수자/관리자)
+            uid = self._bearer_uid()
+            if _supa() and not (is_admin_user(uid, self._req_team(), self._bearer_email())
+                                or is_final_reviewer(uid, self._req_team())):
+                self._send(403, json.dumps({"error": "최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
+                return
+            self._send(200, json.dumps(final_review_queue(self._req_team(), reviewer=uid or ""),
+                                       ensure_ascii=False), _JSON)
         elif self.path.startswith("/admin"):
             # 메뉴 게이팅의 원천: 인증 서버 일시 장애는 '비관리자(200)'가 아니라 503(재시도)으로 구분
             auth = self.headers.get("Authorization", "")
@@ -4684,10 +4775,24 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
-        if self.path.startswith("/final-verdict"):     # 슈퍼관리자: 의견 갈림 최종판정(타이브레이크)
+        if self.path.startswith("/reviewer-role"):     # 슈퍼관리자: 최종검수자 역할 지정/해제
             try:
                 if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
                     self._send(403, json.dumps({"error": "슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(set_reviewer_role(data.get("id") or "",
+                                                             (data.get("role") or "").strip(),
+                                                             self._req_team()), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/final-verdict"):     # 최종판정(타이브레이크): 슈퍼관리자 또는 최종검수자
+            try:
+                if _supa() and not (is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email())
+                                    or is_final_reviewer(self._bearer_uid(), self._req_team())):
+                    self._send(403, json.dumps({"error": "슈퍼관리자 또는 최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
                     return
                 data = json.loads(body or b"{}")
                 self._send(200, json.dumps(
