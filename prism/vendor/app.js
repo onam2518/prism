@@ -348,8 +348,9 @@
           } else this._err((res && res.error) || '저장 실패');
         } catch (e) { this._err('저장 실패'); }
       },
-      // 최종검수 컨텍스트: 최종 검수 탭에서 상세로 들어오면 결정 바(편입·고쳐서 편입·제외)가 상세에 뜬다
+      // 최종검수 컨텍스트: 최종 검수 탭에서 상세로 들어오면 '검수 판정' 자리가 '최종검수 결정'으로 바뀐다
       finalCtx: null,
+      get finalMode() { return !!(this.finalCtx && this.detail && this.finalCtx.hash === this.detail.hash); },
       openFinalDetail(r) {                          // 목록 = 결정 현황판 · 결정은 상세 안에서
         const list = ((this.finalQueue || {}).items || []).slice();
         this.openDetail(this._rawToDetail(r));
@@ -641,8 +642,8 @@
           const t = e.target;
           if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
           if (e.metaKey || e.ctrlKey || e.altKey) return;
-          if (e.code === 'KeyA') { e.preventDefault(); this.reviewGood(); }
-          else if (e.code === 'KeyS') { e.preventDefault(); this.openEditVerdict(); this.pendingBad = true; }
+          if (e.code === 'KeyA') { e.preventDefault(); if (this.finalMode) this.finalDecide(this.finalCtx, 'good'); else this.reviewGood(); }
+          else if (e.code === 'KeyS') { e.preventDefault(); if (this.finalMode) this.finalDecide(this.finalCtx, 'bad'); else { this.openEditVerdict(); this.pendingBad = true; } }
           else if (e.code === 'ArrowRight') { e.preventDefault(); this.detailGo(1); }
           else if (e.code === 'ArrowLeft') { e.preventDefault(); this.detailGo(-1); }
           else if (e.code === 'Escape') { this.detailOpen = false; }
