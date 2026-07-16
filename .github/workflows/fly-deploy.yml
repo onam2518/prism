@@ -32,10 +32,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: 실행 중 배치 대기 (최대 10분 · 배포가 배치를 끊지 않게)
+        # 공개 /config 의 ingesting 플래그로 판정한다. (구: /ingest-status 는 supabase 모드에서
+        # 401 이라 curl -sf 가 빈값 → 항상 '배치 없음' 오판 → 큐 보호가 무력화됐음 · 2026-07-16 수정)
         run: |
           for i in $(seq 1 40); do
-            busy=$(curl -sf --max-time 10 https://prism-item.fly.dev/ingest-status \
-              | python3 -c "import json,sys; print(1 if json.load(sys.stdin).get('running') else 0)" \
+            busy=$(curl -sf --max-time 10 https://prism-item.fly.dev/config \
+              | python3 -c "import json,sys; print(1 if json.load(sys.stdin).get('ingesting') else 0)" \
               2>/dev/null || echo 0)
             if [ "$busy" != "1" ]; then echo "실행 중 배치 없음 → 배포 진행"; exit 0; fi
             echo "배치 실행 중 · 15초 후 재확인 ($i/40)"; sleep 15

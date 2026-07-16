@@ -3649,6 +3649,9 @@ def config_status(team=None) -> dict:
         "backend": "supabase" if _supa() else "sqlite",
         "authRequired": bool(_supa()),                 # supabase 모드 → ID/PW 로그인 필요
         "keyManagedByServer": bool(_supa()),           # 운영: 키는 서버 관리(UI 키 입력 숨김)
+        # 큐 실행 여부(공개 · 무인증): 배포 워크플로가 이걸 보고 배치가 끝날 때까지 배포를 대기한다
+        # (기존 /ingest-status 는 supabase 모드에서 401 이라 워크플로의 큐 보호가 무력화됐음).
+        "ingesting": bool(ingest_status().get("running") or _ENRICH_STATE.get("running")),
         # 모델 슬롯
         "hasBizKey": bool(IMG.router_key("bizrouter")),
         "bizPersisted": os.path.exists(_ROUTER_KEY_PATHS["bizrouter"]),
@@ -4048,7 +4051,7 @@ class Handler(BaseHTTPRequestHandler):
             # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
             # 로그인 화면·배포 검증(curl /config: backend·configured)이 쓰는 최소 필드만 공개.
             if _supa() and not self._bearer_uid():
-                cs = {k: cs[k] for k in ("bootId", "build", "configured", "forcedMock",
+                cs = {k: cs[k] for k in ("bootId", "build", "configured", "forcedMock", "ingesting",
                                          "backend", "authRequired", "keyManagedByServer") if k in cs}
             self._send(200, json.dumps(cs, ensure_ascii=False), _JSON)
         elif self.path.startswith("/models"):
