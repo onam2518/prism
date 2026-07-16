@@ -85,6 +85,9 @@ class TestFinalQueue(TwoTierBase):
         serve.set_final_verdict(ch_split, "good", by="리드", team=None)
         q2 = serve.final_review_queue(None)
         self.assertEqual({i["title"]: i["final"] for i in q2["items"]}.get("의견 갈림 건"), "good")
+        row2 = {i["title"]: i for i in q2["items"]}["의견 갈림 건"]
+        self.assertEqual(row2["final_by"], "리드")                # 목록 = 결정 현황판(누가 · 언제)
+        self.assertGreater(float(row2["final_ts"]), 0)
         serve.build_golden_from_reviews(None)                    # 학습 반영 시 승격
         self.assertIn(ch_split, st.golden_hashes())
         q3 = serve.final_review_queue(None)

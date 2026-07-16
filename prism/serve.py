@@ -578,7 +578,10 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         d = _detail_row(r)
         d["version"] = int((r.get("trace") or {}).get("version") or 0) or None   # 초안 프롬프트 버전(재실행 여부 식별)
         d["final_reason"] = reason
-        d["final"] = (finals.get(ch) or {}).get("verdict", "")
+        fv = finals.get(ch) or {}
+        d["final"] = fv.get("verdict", "")
+        d["final_by"] = fv.get("by", "")               # 목록 = 결정 현황판: 누가 · 언제
+        d["final_ts"] = fv.get("ts", 0)
         out.append(d)
         if len(out) >= 200:
             break
