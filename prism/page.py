@@ -784,6 +784,10 @@ PAGE = """<!doctype html>
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='G' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline'" x-on:click="fa.grade='G'">G · 정상</button>
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='R' ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="fa.grade='R'">R · 차단</button>
               </div></div>
+              <!-- 운영자 수동 노출제한: 상위 노출 부적절하나 기준이 명확치 않은 콘텐츠 · 등급/학습과 분리(라벨 아님) -->
+              <div x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)"><span class="text-xs text-muted">노출제한 · 운영자 수동(라벨·학습과 분리)</span><div style="margin-top:4px">
+                <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.row && fa.row.ops_hold ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="toggleOpsHold(fa.row)" x-text="fa && fa.row && fa.row.ops_hold ? '✓ 노출제한 중 · 해제' : '상위 노출 제한'" data-tip="상위 노출에 부적절한 콘텐츠를 수동 표시 · 등급·학습에 영향 없이 내보내기(CSV)에만 표시" data-tip-pos="top"></button>
+              </div></div>
             </div>
             <div class="flex gap-2" style="margin-top:16px;justify-content:flex-end">
               <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="faOpen=false">취소</button>
