@@ -434,6 +434,15 @@
           note: (r.fb && r.fb.note) || '', elems: (r.fb && r.fb.elems) || [] };
         this.faOpen = true;
       },
+      async toggleOpsHold(r) {                  // 운영자 수동 노출제한 토글(라벨·학습과 분리)
+        if (!r || !r.hash) return;
+        const on = !r.ops_hold;
+        try {
+          const res = await (await this._afetch('/ops-hold', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, on: on }) })).json();
+          if (res && res.ok) { r.ops_hold = on; if (this.detail && this.detail.hash === r.hash) this.detail.ops_hold = on; }
+          else this._err((res && res.error) || '노출제한 저장 실패');
+        } catch (e) { this._err('노출제한 저장 실패'); }
+      },
       async saveFinalAnswer() {
         const f = this.fa; if (!f || this.faBusy) return;
         this.faBusy = true;

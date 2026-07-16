@@ -1041,6 +1041,21 @@ class SupabaseStore:
                   body={"item_meta": im}, prefer="return=minimal")
         return True
 
+    def set_ops_hold(self, content_hash, on, team=None) -> bool:
+        """운영자 수동 노출제한 플래그: quality_meta.ops_hold 에 저장(라벨 아님 · 학습 미포함).
+        final_grade·reasons 는 건드리지 않아 등급/학습에 영향 없음."""
+        h = (content_hash or "").strip()
+        if not h:
+            return False
+        rows = self._get("contents", f"select=quality_meta&hash=eq.{urllib.parse.quote(h)}")
+        if not rows:
+            return False
+        qm = rows[0].get("quality_meta") or {}
+        qm["ops_hold"] = bool(on)
+        self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(h)}",
+                  body={"quality_meta": qm}, prefer="return=minimal")
+        return True
+
     def update_quality(self, content_hash, grade: str, reasons=None):
         """최종검수자 등급 교정: final_grade + quality_meta 동시 갱신. 반환 = 이전 등급(행 없으면 None)."""
         rows = self._get("contents", f"select=final_grade,quality_meta&hash=eq.{urllib.parse.quote(content_hash)}")

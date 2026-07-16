@@ -200,6 +200,25 @@ class Store:
         c.commit()
         return True
 
+    def set_ops_hold(self, content_hash, on, team=None) -> bool:
+        """운영자 수동 노출제한 플래그: payload.quality_meta.ops_hold 에 저장.
+        품질 라벨(finalGrade·reasons)이 아니라 별도 키라 학습 루프(골든·피드백)가 읽지 않는다(학습 미포함)."""
+        c = self._conn()
+        row = c.execute("SELECT payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
+        if not row:
+            return False
+        try:
+            payload = json.loads(row[0])
+        except (TypeError, ValueError):
+            return False
+        qm = payload.get("quality_meta") or {}
+        qm["ops_hold"] = bool(on)
+        payload["quality_meta"] = qm
+        c.execute("UPDATE results SET payload=? WHERE content_hash=?",
+                  (json.dumps(payload, ensure_ascii=False), content_hash))
+        c.commit()
+        return True
+
     def save_result(self, content: dict, out: dict, run_id: str):
         ch = content_hash(content)
         qm = out.get("quality_meta", {})

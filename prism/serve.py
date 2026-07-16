@@ -2538,7 +2538,7 @@ def start_ingest_scheduler():
 def build_results_csv(team=None) -> bytes:
     """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄. team 스코프 강제(전 팀 유출 방지)."""
     rows = results_rows(team=team)
-    out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유"]
+    out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유,노출제한"]
     def esc(v):
         s = str(v if v is not None else "")
         # CSV 수식 인젝션 중화: 셀 선두 = + - @ 및 탭/CR 은 스프레드시트가 수식/DDE 로 실행 →
@@ -2555,6 +2555,7 @@ def build_results_csv(team=None) -> bytes:
             c.get("title", ""), c.get("displayServiceName", ""), im.get("summary", ""),
             " · ".join(im.get("entities") or []), " · ".join(im.get("intent") or []),
             cat, qm.get("finalGrade", ""), " · ".join(qm.get("reasons") or []),
+            "제한" if qm.get("ops_hold") else "",
         ]))
     return ("﻿" + "\r\n".join(out)).encode("utf-8")
 
@@ -3275,6 +3276,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "fb": _fb_public(fb, reviewer),
                     "assignees": (asg.get(ch) or {}).get("reviewers", []),
                     "min_reviewers": (asg.get(ch) or {}).get("min", 0),
+                    "ops_hold": bool(qm.get("ops_hold")),   # 운영자 수동 노출제한(라벨 아님 · 학습 미포함)
                     "item_meta": im, "quality_meta": qm})
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트.
     # 검수할 실제 콘텐츠가 있을 때만 섞는다 — 콘텐츠 전체 삭제 후 골드만 홀로 남는 오인 방지.
@@ -4616,6 +4618,24 @@ class Handler(BaseHTTPRequestHandler):
                                                ensure_ascii=False), _JSON)
                     return
                 self._send(200, json.dumps(apply_feedback(data), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/ops-hold"):              # 운영자 수동 노출제한 토글(라벨 아님 · 학습 미포함)
+            try:
+                uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
+                if _supa() and not is_admin_user(uid, team, email):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                ch = (data.get("hash") or "").strip()
+                st = get_store()
+                ok = bool(ch and st and hasattr(st, "set_ops_hold")
+                          and st.set_ops_hold(ch, bool(data.get("on")), team=team))
+                if ok:
+                    _agg_bump()                            # 목록·집계 캐시 무효화(즉시 반영)
+                self._send(200, json.dumps({"ok": ok}, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
