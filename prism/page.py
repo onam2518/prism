@@ -776,7 +776,10 @@ PAGE = """<!doctype html>
               <label class="block"><span class="text-xs text-muted">분류 · 쉼표로 여러 개 (예: Sports / Baseball, News)</span>
                 <input type="text" class="field w-full" x-bind:value="fa ? fa.cats : ''" x-on:input="fa.cats=$event.target.value"></label>
               <label class="block"><span class="text-xs text-muted">의도 · 쉼표로 여러 개</span>
-                <input type="text" class="field w-full" x-bind:value="fa ? fa.intent : ''" x-on:input="fa.intent=$event.target.value"></label>
+                <input type="text" class="field w-full" x-bind:value="fa ? fa.intent : ''" x-on:input="fa.intent=$event.target.value">
+                <template x-if="fa && fa.row && intentMismatch(fa.intent, fa.row.service).length">
+                  <span class="text-xs" style="color:var(--ds-error,#d92d20);display:block;margin-top:4px">⚠ 이 서비스(<span x-text="fa.row.service"></span>)의 분류값이 아닌 인텐트: <b x-text="intentMismatch(fa.intent, fa.row.service).join(', ')"></b> · 범용 또는 이 서비스 값인지 확인하세요</span>
+                </template></label>
               <div><span class="text-xs text-muted">등급</span><div class="flex gap-2" style="margin-top:4px">
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='G' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline'" x-on:click="fa.grade='G'">G · 정상</button>
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='R' ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="fa.grade='R'">R · 차단</button>

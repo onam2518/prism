@@ -827,6 +827,17 @@
       // 데이터 GET 은 운영(supabase)에서 로그인 필수(서버 게이트 · 2026-07-10) → 인증 헤더 동봉.
       // 로그인 전 401 은 JSON 으로 조용히 떨어지고, 로그인·가입 완료 시 재로드한다.
       loadVocab() { fetch('/vocab', { headers: this._authHeaders() }).then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {}); },
+      intentMismatch(text, service) {           // 검수자가 콘텐츠 서비스와 다른 서비스-전용 인텐트를 넣었는지(범용①·②는 제외)
+        const d = this.dictData || {}; const bySvc = d.intentByService || {};
+        if (!Object.keys(bySvc).length) return [];   // 사전 미로드 시 경고 안 함
+        const key = (d.serviceKeyMap || {})[service] || service;
+        const uni = new Set([].concat(d.intentUniversal || [], d.intentForm || []));
+        const own = new Set(bySvc[key] || []);
+        const owner = {};                        // 서비스-전용 값 → 소속 서비스들
+        Object.keys(bySvc).forEach(s => (bySvc[s] || []).forEach(val => { (owner[val] = owner[val] || []).push(s); }));
+        return (text || '').split(',').map(s => s.trim()).filter(Boolean)
+          .filter(t => !uni.has(t) && !own.has(t) && owner[t] && owner[t].indexOf(key) < 0);
+      },
       async loadDash() { this.modBusy = true; try { const r = await this._afetch('/dashboard'); const d = await r.json(); if (r.ok && d && !d.error) this.dashData = d; } catch (e) {} this.modBusy = false; },
       // _afetch 사용: 토큰 만료 시 자동 갱신·재로그인 안내(만료를 '불러오기 실패'로 오인하던 문제) · 성공 응답만 반영
       async drill(kind, value) {
