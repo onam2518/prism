@@ -167,9 +167,10 @@
       bulkOpen: false, assignBulkBusy: false,   // 일괄 '배정' 전용 · 일괄 '실행'(bulkBusy)과 분리(플래그 공유 시 상호 오염)
       bulkQ: '', bulkSvc: '', bulkGrade: '', bulkRev: 'todo', bulkAsg: 'unassigned',
       bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {}, bulkMode: 'same',
+      bulkGrpN: 1, bulkPickG: [],   // 그룹 선택: 그룹 수 · 그룹별 담당자(bulkChecked 값 = 그룹 번호 1..G)
       // 노출 게이트: 로컬은 항상, 운영은 슈퍼관리자·운영관리자(opsadmin)만
       get opsAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isSysAdmin || this.adminData.isSuperAdmin)); },
-      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkOpen = true; this.loadRaw(); this.loadAssignLog(); },
+      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkGrpN = 1; this.bulkPickG = []; this.bulkOpen = true; this.loadRaw(); this.loadAssignLog(); },
       // 배정 감사 이력: 누가·언제·어떤 방식으로 몇 건을 배정/해제했는지(모달 하단 표시)
       assignLog: null,
       async loadAssignLog() { try { const r = await (await this._afetch('/assign-log', { headers: this._authHeaders() })).json(); if (r && r.ok) this.assignLog = r.items; } catch (e) {} },
@@ -194,15 +195,58 @@
       get bulkAllOn() { const f = this.bulkFiltered; return f.length > 0 && f.every((r) => this.bulkChecked[r.hash]); },
       // 선택 항목 중 이미 배정된 건수(덮어쓰기 경고용)
       get bulkOverwrite() { return this.bulkFiltered.filter((r) => this.bulkChecked[r.hash] && (r.assignees || []).length).length; },
+      // 그룹 수(입력 방어: 빈칸·NaN → 1 · 상한 8) · 2 이상이면 그룹 모드
+      get bulkGrps() { return Math.max(1, Math.min(8, parseInt(this.bulkGrpN, 10) || 1)); },
+      // 그룹별 선택 건수 [그룹1건수, 그룹2건수, …]
+      get bulkGrpCounts() {
+        const c = Array(this.bulkGrps).fill(0);
+        this.bulkFiltered.forEach((r) => { const g = parseInt(this.bulkChecked[r.hash], 10) || 0; if (g >= 1 && g <= c.length) c[g - 1]++; });
+        return c;
+      },
+      // 그룹 모드 실행 가능: 모든 그룹에 콘텐츠 1건·담당자 1명 이상
+      get bulkGrpReady() {
+        if (this.bulkGrps <= 1) return true;
+        return this.bulkGrpCounts.every((n) => n > 0)
+          && Array.from({ length: this.bulkGrps }, (_, i) => this.bulkPickAt(i + 1)).every((p) => p.length > 0);
+      },
+      bulkGrpHashes(g) { return this.bulkFiltered.filter((r) => parseInt(this.bulkChecked[r.hash], 10) === g).map((r) => r.hash); },
+      bulkPickAt(g) { return this.bulkPickG[g - 1] || []; },
+      bulkPickGToggle(g, id) {
+        const arr = this.bulkPickAt(g).slice();
+        const i = arr.indexOf(id);
+        if (i >= 0) arr.splice(i, 1); else arr.push(id);
+        const next = this.bulkPickG.slice(); next[g - 1] = arr; this.bulkPickG = next;   // 재할당(반응성)
+      },
+      // 그룹 수 변경: 기존 선택의 그룹 번호가 무의미해지므로 선택·담당자 초기화(단일↔그룹 전환 포함)
+      bulkGrpChanged() { this.bulkChecked = {}; this.bulkPickG = []; if (this.bulkGrps > 1) this.bulkMode = 'same'; },
+      bulkNames(ids) { return (ids || []).map((id) => ((this.assignMembers.find((m) => m.id === id) || {}).name || id)).join(', '); },
       // 체크 맵은 새 객체로 재할당(Alpine 반응성: 신규 키 추가도 안전하게 감지)
-      bulkToggle(h) { this.bulkChecked = Object.assign({}, this.bulkChecked, { [h]: !this.bulkChecked[h] }); },
-      bulkToggleAll() { const on = !this.bulkAllOn; const m = Object.assign({}, this.bulkChecked); this.bulkFiltered.forEach((r) => { m[r.hash] = on; }); this.bulkChecked = m; },
+      bulkToggle(h) {
+        if (this.bulkGrps > 1) {   // 그룹 모드: 클릭마다 미선택 → 그룹1 → 그룹2 → … → 해제 순환
+          const cur = parseInt(this.bulkChecked[h], 10) || 0;
+          const next = cur >= this.bulkGrps ? 0 : cur + 1;
+          this.bulkChecked = Object.assign({}, this.bulkChecked, { [h]: next || false });
+          return;
+        }
+        this.bulkChecked = Object.assign({}, this.bulkChecked, { [h]: !this.bulkChecked[h] });
+      },
+      bulkToggleAll() {
+        const on = !this.bulkAllOn; const m = Object.assign({}, this.bulkChecked);
+        let g = 0;   // 그룹 모드 전체 선택: 겹치지 않게 그룹을 순환하며 배정
+        this.bulkFiltered.forEach((r) => { m[r.hash] = on ? (this.bulkGrps > 1 ? ((g++ % this.bulkGrps) + 1) : true) : false; });
+        this.bulkChecked = m;
+      },
       bulkRandom() {
         const pool = this.bulkFiltered.slice();
         for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
         const n = Math.max(0, Math.min(pool.length, parseInt(this.bulkRandN, 10) || 0));
         const m = {};                                   // 재추출: 기존 선택 초기화
-        for (let i = 0; i < n; i++) m[pool[i].hash] = true;
+        if (this.bulkGrps > 1) {                        // 그룹 모드: 그룹마다 N건씩 서로 겹치지 않게 추출
+          let k = 0;
+          for (let g = 1; g <= this.bulkGrps; g++) for (let i = 0; i < n && k < pool.length; i++) m[pool[k++].hash] = g;
+        } else {
+          for (let i = 0; i < n; i++) m[pool[i].hash] = true;
+        }
         this.bulkChecked = m;
       },
       bulkPickToggle(id) {
@@ -211,6 +255,7 @@
         if (this.bulkMin > this.bulkPick.length) this.bulkMin = Math.max(1, this.bulkPick.length);
       },
       async saveBulk() {
+        if (this.bulkGrps > 1) return this.saveBulkGroups();
         const hashes = this.bulkSelHashes;
         if (!hashes.length || !this.bulkPick.length) return;
         this.assignBulkBusy = true;
@@ -225,6 +270,29 @@
           }
           else this._err((r && r.error) || '일괄 배정 실패');
         } catch (e) { this._err('일괄 배정 실패'); }
+        this.assignBulkBusy = false;
+      },
+      // 그룹 모드 실행: 그룹별 (콘텐츠, 담당자)를 기존 엔드포인트로 순차 호출(덮어쓰기라 재시도 안전).
+      // 중간 실패 시 몇 그룹까지 반영됐는지 알리고 모달은 열어 둔다 → 그대로 재실행하면 이어서 복구.
+      async saveBulkGroups() {
+        if (this.assignBulkBusy || !this.bulkGrpReady) return;
+        this.assignBulkBusy = true;
+        const G = this.bulkGrps;
+        const groups = Array.from({ length: G }, (_, i) => ({ g: i + 1, hashes: this.bulkGrpHashes(i + 1), reviewers: this.bulkPickAt(i + 1) }));
+        const done = [];
+        try {
+          for (const grp of groups) {
+            const body = JSON.stringify({ hashes: grp.hashes, reviewers: grp.reviewers, min_reviewers: this.bulkMin });
+            const r = await (await this._afetch('/content-assign-bulk', { method: 'POST', headers: this._authHeaders(), body })).json();
+            if (!(r && r.ok)) {
+              this._err('그룹' + grp.g + ' 배정 실패' + (done.length ? ' · 그룹' + done.join('·') + '은 반영됨' : '') + ((r && r.error) ? ' · ' + r.error : ''));
+              this.assignBulkBusy = false; return;
+            }
+            done.push(grp.g);
+          }
+          this.bulkOpen = false; this.loadRaw();
+          this.liveToast('그룹별 배정 완료 · ' + groups.map((grp) => '그룹' + grp.g + ' ' + grp.hashes.length + '건 → ' + this.bulkNames(grp.reviewers)).join(' · '));
+        } catch (e) { this._err('일괄 배정 실패' + (done.length ? ' · 그룹' + done.join('·') + '은 반영됨' : '')); }
         this.assignBulkBusy = false;
       },
       // 분배 결과 요약: {reviewer_id: n} → "이름 n건 · 이름 n건"
