@@ -3180,6 +3180,12 @@ def board_action(data: dict, team=None, uid: str = "", email: str = "") -> dict:
             if data.get("status") not in ("open", "doing", "done"):
                 return {"ok": False, "error": "상태 값이 올바르지 않습니다"}
             st.board_set_status(it["id"], data["status"], team=team)
+        elif act == "answer":                          # 문의 답변(관리자 전용)
+            if not admin:
+                return {"ok": False, "error": "답변은 관리자 전용입니다"}
+            if not hasattr(st, "board_answer"):
+                return {"ok": False, "error": "이 백엔드는 답변을 지원하지 않습니다"}
+            st.board_answer(it["id"], (data.get("answer") or "").strip()[:2000], team=team)
         elif act == "delete":
             if not (admin or (it["author_id"] and it["author_id"] == (uid or rv))):
                 return {"ok": False, "error": "작성자 또는 관리자만 삭제할 수 있습니다"}

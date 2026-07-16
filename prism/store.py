@@ -147,6 +147,11 @@ class Store:
             c.execute("ALTER TABLE results ADD COLUMN source TEXT"); c.commit()   # 출처 필터
         if "source" not in [r[1] for r in c.execute("PRAGMA table_info(golden)")]:
             c.execute("ALTER TABLE golden ADD COLUMN source TEXT DEFAULT 'review'"); c.commit()   # 골든 출처(review|manual)
+        bcols = [r[1] for r in c.execute("PRAGMA table_info(board)")]
+        if "answer" not in bcols:
+            c.execute("ALTER TABLE board ADD COLUMN answer TEXT"); c.commit()          # 게시판 관리자 답변
+        if "answered_at" not in bcols:
+            c.execute("ALTER TABLE board ADD COLUMN answered_at REAL"); c.commit()
 
     def _migrate_feedback(self, c):
         """구 스키마(PK=content_hash, 단일 의견) → 신 스키마(PK=content_hash+reviewer) 이행.
@@ -976,17 +981,27 @@ class Store:
 
     def board_list(self, team=None, limit: int = 200) -> list:
         c = self._conn()
-        rows = c.execute("SELECT id,kind,title,body,reviewer,status,ts FROM board "
+        rows = c.execute("SELECT id,kind,title,body,reviewer,status,ts,answer,answered_at FROM board "
                          "WHERE team=? ORDER BY id DESC LIMIT ?", (team or "", int(limit)))
         return [{"id": r[0], "kind": r[1], "title": r[2], "body": r[3],
-                 "author_id": r[4], "status": r[5], "ts": r[6]} for r in rows]
+                 "author_id": r[4], "status": r[5], "ts": r[6],
+                 "answer": r[7] or "", "answered_at": r[8] or 0} for r in rows]
 
     def board_get(self, bid: int, team=None):
         c = self._conn()
-        r = c.execute("SELECT id,kind,title,body,reviewer,status,ts FROM board WHERE id=? AND team=?",
+        r = c.execute("SELECT id,kind,title,body,reviewer,status,ts,answer,answered_at FROM board WHERE id=? AND team=?",
                       (int(bid), team or "")).fetchone()
         return ({"id": r[0], "kind": r[1], "title": r[2], "body": r[3],
-                 "author_id": r[4], "status": r[5], "ts": r[6]} if r else None)
+                 "author_id": r[4], "status": r[5], "ts": r[6],
+                 "answer": r[7] or "", "answered_at": r[8] or 0} if r else None)
+
+    def board_answer(self, bid: int, answer: str, team=None) -> bool:
+        """게시판 글에 관리자 답변 저장(문의 응답)."""
+        c = self._conn()
+        n = c.execute("UPDATE board SET answer=?, answered_at=? WHERE id=? AND team=?",
+                      (answer or "", time.time(), int(bid), team or "")).rowcount
+        c.commit()
+        return n > 0
 
     def board_set_status(self, bid: int, status: str, team=None) -> bool:
         c = self._conn()

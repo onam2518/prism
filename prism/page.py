@@ -1651,7 +1651,14 @@ PAGE = """<!doctype html>
             <template x-for="b in (boardData ? boardData.items : [])" x-bind:key="b.id">
               <tr>
                 <td><span class="ds-badge" x-bind:class="b.kind==='bug' ? 'ds-badge--error' : 'ds-badge--intent'" x-text="b.kind==='bug' ? '오류' : '기능개선'"></span></td>
-                <td><div class="text-ink" style="font-weight:600" x-text="b.title"></div><div class="tbox" x-show="b.body" x-text="b.body"></div></td>
+                <td><div class="text-ink" style="font-weight:600" x-text="b.title"></div><div class="tbox" x-show="b.body" x-text="b.body"></div>
+                  <div x-show="b.answer" class="tbox" style="margin-top:6px;padding:8px 10px;background:var(--ds-surface-2,rgba(30,132,255,.06));border-radius:8px;border-left:3px solid var(--ds-primary,#1e84ff)"><b class="text-xs" style="color:var(--ds-primary,#1e84ff)">답변</b> <span x-text="b.answer"></span></div>
+                  <template x-if="boardAdmin">
+                    <div style="margin-top:6px;display:flex;gap:6px">
+                      <input class="field" style="height:30px;flex:1;min-width:120px" x-bind:value="b.answer||''" x-on:input="b.answer=$event.target.value" placeholder="문의에 답변 입력…" x-on:keydown.enter="boardAnswer(b)">
+                      <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="boardAnswer(b)">답변 저장</button>
+                    </div>
+                  </template></td>
                 <td class="text-body" x-text="b.author"></td>
                 <td>
                   <template x-if="boardAdmin">

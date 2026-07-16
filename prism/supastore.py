@@ -1354,21 +1354,30 @@ class SupabaseStore:
     def _board_row(self, r) -> dict:
         return {"id": r["id"], "kind": r.get("kind"), "title": r.get("title"), "body": r.get("body"),
                 "author_id": r.get("author_id") or "", "status": r.get("status") or "open",
-                "ts": _epoch(r.get("created_at"))}
+                "ts": _epoch(r.get("created_at")),
+                "answer": r.get("answer") or "", "answered_at": _epoch(r.get("answered_at"))}
 
     def board_list(self, team=None, limit: int = 200) -> list:
-        q = (f"select=id,kind,title,body,author_id,status,created_at"
+        q = (f"select=id,kind,title,body,author_id,status,created_at,answer,answered_at"
              f"&team_key=eq.{urllib.parse.quote(team or '')}&order=id.desc&limit={int(limit)}")
         return [self._board_row(r) for r in self._get("board", q)]
 
     def board_get(self, bid: int, team=None):
-        rows = self._get("board", f"select=id,kind,title,body,author_id,status,created_at"
+        rows = self._get("board", f"select=id,kind,title,body,author_id,status,created_at,answer,answered_at"
                                   f"&id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}")
         return self._board_row(rows[0]) if rows else None
 
     def board_set_status(self, bid: int, status: str, team=None) -> bool:
         self._req("PATCH", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}",
                   body={"status": status}, prefer="return=minimal")
+        return True
+
+    def board_answer(self, bid: int, answer: str, team=None) -> bool:
+        """게시판 글에 관리자 답변 저장(문의 응답)."""
+        import time as _t
+        ts = _t.strftime("%Y-%m-%dT%H:%M:%S+00:00", _t.gmtime())
+        self._req("PATCH", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}",
+                  body={"answer": answer or "", "answered_at": ts}, prefer="return=minimal")
         return True
 
     def board_delete(self, bid: int, team=None) -> bool:
