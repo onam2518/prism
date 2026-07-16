@@ -1041,6 +1041,20 @@ class SupabaseStore:
                   body={"item_meta": im}, prefer="return=minimal")
         return True
 
+    def update_quality(self, content_hash, grade: str, reasons=None):
+        """최종검수자 등급 교정: final_grade + quality_meta 동시 갱신. 반환 = 이전 등급(행 없으면 None)."""
+        rows = self._get("contents", f"select=final_grade,quality_meta&hash=eq.{urllib.parse.quote(content_hash)}")
+        if not rows:
+            return None
+        prev = rows[0].get("final_grade") or ""
+        qm = rows[0].get("quality_meta") or {}
+        qm["finalGrade"] = grade
+        if reasons is not None:
+            qm["reasons"] = reasons
+        self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(content_hash)}",
+                  body={"final_grade": grade, "quality_meta": qm}, prefer="return=minimal")
+        return prev
+
     # ── 엔티티 사전(prism_entities · prism_entity_aliases · prism_content_entities) ──
     #    SQLite Store 와 동일 메서드 계약 · DDL 은 SUPABASE_MIGRATION.md 참조.
     _ENT_SEL = "select=entity_id,name,type,status,attrs,attr_meta,external_ids,merged_into,created_at,updated_at"

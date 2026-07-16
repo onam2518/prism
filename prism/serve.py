@@ -3015,26 +3015,40 @@ def _report_get(kind: str, team=None, default=None):
 
 def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     """검수자 구조화 교정(빈 카테고리 채우기 등) → 저장된 item_meta 패치. 골든 완성에 기여.
-    교정 전/후를 patch_log 에 append(선호쌍 데이터 원천 · 다중 요소 교정 무손실)."""
+    교정 전/후를 patch_log 에 append(선호쌍 데이터 원천 · 다중 요소 교정 무손실).
+    finalGrade(G|R)·reasons 키는 quality_meta 교정으로 분기(최종검수 '고쳐서 편입')."""
     st = get_store()
     if not (st and hasattr(st, "update_item_meta")):
         return {"ok": False, "error": "지원하지 않는 저장소"}
     ch = (content_hash or "").strip()
+    patch = dict(patch or {})
+    grade = patch.pop("finalGrade", None)
+    reasons = patch.pop("reasons", None)
     before = None
-    if hasattr(st, "get_item_meta"):
+    if patch and hasattr(st, "get_item_meta"):
         try:
             cur = st.get_item_meta(ch)
             if isinstance(cur, dict):
-                before = {k: cur.get(k) for k in (patch or {})}   # 패치 대상 키의 이전 값만
+                before = {k: cur.get(k) for k in patch}           # 패치 대상 키의 이전 값만
         except Exception:
             before = None
-    ok = st.update_item_meta(ch, patch or {})
+    ok = st.update_item_meta(ch, patch) if patch else False
     if ok and before is not None and hasattr(st, "log_patch"):
-        element = "category" if "content_category" in (patch or {}) else ",".join(sorted(patch or {}))
+        element = "category" if "content_category" in patch else ",".join(sorted(patch))
         try:
-            st.log_patch(ch, reviewer or "(익명)", element, before, patch or {}, team=team)
+            st.log_patch(ch, reviewer or "(익명)", element, before, patch, team=team)
         except Exception:
             pass
+    if grade in ("G", "R") and hasattr(st, "update_quality"):     # 등급 교정(이전 등급을 이력에 보존)
+        prev = st.update_quality(ch, grade, reasons)
+        if prev is not None:
+            ok = True
+            if prev != grade and hasattr(st, "log_patch"):
+                try:
+                    st.log_patch(ch, reviewer or "(익명)", "grade",
+                                 {"finalGrade": prev}, {"finalGrade": grade}, team=team)
+                except Exception:
+                    pass
     _agg_bump()
     return {"ok": bool(ok)}
 
