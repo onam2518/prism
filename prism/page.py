@@ -2961,7 +2961,7 @@ PAGE = """<!doctype html>
           <div class="stepcard__hd">
             <span class="stepcard__no">STEP 1</span>
             <span class="stepcard__ttl">콘텐츠 선택<span class="stepcard__sub">배정할 대상을 고르세요</span></span>
-            <span class="ds-badge ds-badge--status stepcard__badge tnum" x-text="'선택 ' + bulkSelHashes.length + ' / ' + bulkFiltered.length + '건'"></span>
+            <span class="ds-badge ds-badge--status stepcard__badge tnum" x-text="bulkGrps > 1 ? ('선택 ' + bulkGrpCounts.join('·') + ' / ' + bulkFiltered.length + '건') : ('선택 ' + bulkSelHashes.length + ' / ' + bulkFiltered.length + '건')"></span>
           </div>
           <div class="filterbar" style="margin-bottom:12px">
             <input class="field" placeholder="제목·카테고리·사유 검색" x-model="bulkQ">
@@ -2970,13 +2970,15 @@ PAGE = """<!doctype html>
             <select class="field" style="width:auto" x-model="bulkRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
             <select class="field" style="width:auto" x-model="bulkAsg"><option value="">배정 전체</option><option value="unassigned">미배정만</option><option value="assigned">배정됨만</option></select>
           </div>
-          <!-- 무작위 수량 자동 선택: 현재 필터 결과 중 N건 랜덤 추출 -->
+          <!-- 무작위 수량 자동 선택: 현재 필터 결과 중 N건 × G그룹 랜덤 추출(그룹끼리 비중복) -->
           <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 12px;margin-bottom:12px;background:var(--ds-tint-bg);border-radius:var(--ds-radius-md)">
             <b class="text-xs" style="color:var(--ds-primary)">⚄ 무작위 자동 선택</b>
             <input type="number" class="field" style="width:78px" min="1" x-model.number="bulkRandN">
-            <span class="text-xs text-muted">건</span>
+            <span class="text-xs text-muted">건 ×</span>
+            <input type="number" class="field" style="width:64px" min="1" max="8" x-model.number="bulkGrpN" x-on:input="bulkGrpChanged()" data-tip="2 이상이면 그룹마다 담당자를 따로 지정할 수 있어요" data-tip-pos="top">
+            <span class="text-xs text-muted">그룹</span>
             <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="bulkRandom()">랜덤 선택</button>
-            <span class="text-xs text-muted">필터 결과 중 무작위로 · 다시 누르면 재추출</span>
+            <span class="text-xs text-muted" x-text="bulkGrps > 1 ? '그룹마다 ' + bulkRandN + '건씩 서로 겹치지 않게 추출 · 행 클릭 = 그룹 순환' : '필터 결과 중 무작위로 · 다시 누르면 재추출'"></span>
           </div>
           <div class="overflow-auto" style="max-height:252px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md)">
             <table class="ds-table" style="table-layout:fixed;width:100%;margin:0">
@@ -2991,6 +2993,7 @@ PAGE = """<!doctype html>
                   <tr style="cursor:pointer" x-bind:class="bulkChecked[r.hash] ? 'is-sel' : ''" x-on:click="bulkToggle(r.hash)">
                     <td style="text-align:center"><input type="checkbox" class="bulkcb" x-bind:checked="!!bulkChecked[r.hash]" tabindex="-1" style="pointer-events:none"></td>
                     <td class="text-ink" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      <span class="ds-badge ds-badge--intent tnum" x-show="bulkGrps > 1 && bulkChecked[r.hash]" style="margin-right:5px" x-text="'그룹' + bulkChecked[r.hash]"></span>
                       <span x-text="r.title || '(제목 없음)'"></span>
                       <span class="ds-badge ds-badge--yellow" x-show="r.review==='yellow'" style="margin-left:5px">YELLOW</span>
                     </td>
@@ -3015,21 +3018,34 @@ PAGE = """<!doctype html>
             <span class="ds-badge ds-badge--status stepcard__badge" x-show="bulkPick.length" x-text="bulkPick.length + '명 선택'"></span>
           </div>
           <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
-          <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) -->
-          <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
+          <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) · 그룹 모드에선 그룹별 지정으로 대체 -->
+          <div x-show="bulkGrps <= 1" style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
             <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
             <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 사람들에게 콘텐츠를 나눠 배정합니다 · 밀린 배정이 적은 사람부터 채워요" data-tip-pos="top">균등 분배</button>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
+          <div x-show="bulkGrps <= 1" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
             <template x-for="m in assignMembers" x-bind:key="'bpk'+m.id">
               <label class="pickchip" x-bind:class="bulkPick.includes(m.id) ? 'on' : ''">
                 <input type="checkbox" x-bind:checked="bulkPick.includes(m.id)" x-on:change="bulkPickToggle(m.id)"><span x-text="m.name"></span>
               </label>
             </template>
           </div>
+          <!-- 그룹 모드: 그룹마다 담당자를 따로 지정(그룹 전체가 같은 담당자에게 배정) -->
+          <div x-show="bulkGrps > 1" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+            <template x-for="g in bulkGrps" x-bind:key="'bgp'+g">
+              <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                <span class="ds-badge ds-badge--status tnum" style="flex:none" x-text="'그룹' + g + ' · ' + (bulkGrpCounts[g-1] || 0) + '건'"></span>
+                <template x-for="m in assignMembers" x-bind:key="'bpk'+g+'-'+m.id">
+                  <label class="pickchip" x-bind:class="bulkPickAt(g).includes(m.id) ? 'on' : ''">
+                    <input type="checkbox" x-bind:checked="bulkPickAt(g).includes(m.id)" x-on:change="bulkPickGToggle(g, m.id)"><span x-text="m.name"></span>
+                  </label>
+                </template>
+              </div>
+            </template>
+          </div>
           <label class="text-xs text-muted" style="display:inline-flex;align-items:center;gap:8px"><span x-text="bulkMode==='distribute' ? '콘텐츠당 담당 인원' : '최소 검수인원'"></span>
-            <input type="number" class="field" style="width:72px" min="1" x-bind:max="Math.max(1, bulkPick.length)" x-model.number="bulkMin">
-            <span class="tnum" x-text="bulkMode==='distribute' ? ('/ 선택 ' + bulkPick.length + '명 · 콘텐츠마다 N명씩 나눠 배정') : ('/ 배정 ' + bulkPick.length + '명 · N명 검수 시 통과')"></span></label>
+            <input type="number" class="field" style="width:72px" min="1" x-bind:max="bulkGrps > 1 ? null : Math.max(1, bulkPick.length)" x-model.number="bulkMin">
+            <span class="tnum" x-text="bulkGrps > 1 ? '· N명 검수 시 통과 · 그룹 담당자 수를 넘으면 자동으로 낮춰 적용' : (bulkMode==='distribute' ? ('/ 선택 ' + bulkPick.length + '명 · 콘텐츠마다 N명씩 나눠 배정') : ('/ 배정 ' + bulkPick.length + '명 · N명 검수 시 통과'))"></span></label>
         </div>
 
         <!-- ③ 확인 -->
@@ -3039,10 +3055,15 @@ PAGE = """<!doctype html>
             <span class="stepcard__ttl">확인<span class="stepcard__sub">배정 내용을 확인하고 실행하세요</span></span>
           </div>
           <div class="tbox" style="padding:14px 16px">
-            <div class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + (bulkPick.map(id => (assignMembers.find(m=>m.id===id)||{}).name || id).join(', ') || '(담당자 미선택)') + (bulkMode==='distribute' ? '에게 나눠 배정' : '에게 배정')"></div>
+            <div x-show="bulkGrps <= 1" class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + (bulkPick.map(id => (assignMembers.find(m=>m.id===id)||{}).name || id).join(', ') || '(담당자 미선택)') + (bulkMode==='distribute' ? '에게 나눠 배정' : '에게 배정')"></div>
+            <div x-show="bulkGrps > 1" class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + bulkGrps + '개 그룹으로 나눠 배정'"></div>
             <div class="text-xs text-muted" style="line-height:1.7">
-              <div x-show="bulkMode!=='distribute'">· 최소 검수인원 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명</div>
-              <div x-show="bulkMode==='distribute'">· 콘텐츠마다 담당 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명 · 밀린 배정이 적은 사람부터 고르게 나눕니다</div>
+              <template x-for="g in bulkGrps" x-bind:key="'bgc'+g">
+                <div x-show="bulkGrps > 1">· 그룹<span x-text="g"></span> <b class="text-ink tnum" x-text="(bulkGrpCounts[g-1] || 0) + '건'"></b> → <span class="text-ink" x-text="bulkNames(bulkPickAt(g)) || '(담당자 미선택)'"></span></div>
+              </template>
+              <div x-show="bulkMode!=='distribute' && bulkGrps <= 1">· 최소 검수인원 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명</div>
+              <div x-show="bulkGrps > 1">· 최소 검수인원 <b class="text-ink" x-text="bulkMin"></b>명 (그룹 담당자 수를 넘으면 자동으로 낮춰 적용)</div>
+              <div x-show="bulkMode==='distribute' && bulkGrps <= 1">· 콘텐츠마다 담당 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명 · 밀린 배정이 적은 사람부터 고르게 나눕니다</div>
               <div>· 배정 후 <b class="text-ink">담당자에게만</b> 검수 큐에 표시(배타적)</div>
             </div>
             <div class="ds-badge ds-badge--warning" x-show="bulkOverwrite" style="margin-top:10px" x-text="'⚠ 선택 중 ' + bulkOverwrite + '건은 이미 배정돼 있습니다 · 저장 시 덮어씁니다'"></div>
@@ -3060,7 +3081,7 @@ PAGE = """<!doctype html>
       </div>
       <div class="ds-dialog__footer" style="margin-top:16px">
         <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-md" x-on:click="bulkOpen=false">취소</button>
-        <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="assignBulkBusy || !bulkSelHashes.length || !bulkPick.length" x-on:click="saveBulk()" x-text="assignBulkBusy ? '배정 중…' : (bulkSelHashes.length + '건 배정 실행 →')"></button>
+        <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="assignBulkBusy || !bulkSelHashes.length || (bulkGrps > 1 ? !bulkGrpReady : !bulkPick.length)" x-on:click="saveBulk()" x-text="assignBulkBusy ? '배정 중…' : (bulkGrps > 1 ? (bulkSelHashes.length + '건 · ' + bulkGrps + '그룹 배정 실행 →') : (bulkSelHashes.length + '건 배정 실행 →'))"></button>
       </div>
     </div>
   </div>
