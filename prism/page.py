@@ -736,10 +736,11 @@ PAGE = """<!doctype html>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadFinalQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="최종 검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = 상세(원문·기초 의견 확인) · <b>편입/제외</b>는 기초 다수결보다 우선하며 언제든 <b>철회</b>할 수 있습니다.</li><li>'분류 없음' 건은 상세에서 분류를 채우면 편입 없이도 다음 반영 때 자동 승격됩니다.</li></ul>
-            <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:110px">상태</th><th style="width:210px;text-align:right">결정</th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:76px" data-tip="현재 초안의 프롬프트 버전 · 학습 반영이 돌면 미확정분은 새 버전으로 자동 재실행됩니다" data-tip-pos="top">초안</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:110px">상태</th><th style="width:210px;text-align:right">결정</th></tr></thead><tbody>
               <template x-for="r in ((finalQueue&&finalQueue.items)||[])" x-bind:key="'fq'+r.hash">
                 <tr>
                   <td class="text-ink" style="cursor:pointer" x-on:click="openFinalDetail(r)"><span x-text="r.title || '(제목 없음)'"></span></td>
+                  <td><span class="ds-badge ds-badge--neutral tnum" x-text="r.version ? ('v' + r.version) : '·'"></span> <button type="button" class="copybtn" x-on:click="openCmpModal(r)" data-tip="이전 초안과 나란히 비교(달라진 필드 하이라이트)" data-tip-pos="top">비교</button></td>
                   <td class="tnum text-xs text-muted" x-text="'정확 ' + ((r.fb&&r.fb.good)||0) + ' · 수정 ' + ((r.fb&&r.fb.bad)||0)"></td>
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.final_reason==='의견 갈림' ? 'ds-badge--reason' : 'ds-badge--warning'" x-bind:data-tip="r.final_reason==='의견 갈림' ? '기초 검수자 의견이 정확/수정으로 갈렸습니다' : '정확 합의됐지만 분류(카테고리)가 비어 승격이 보류된 상태'" data-tip-pos="top" x-text="r.final_reason"></span></td>
                   <td><span class="ds-badge" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="r.final==='good' ? '편입 확정' : '제외 확정'"></span><span class="text-xs text-muted" x-show="!r.final">대기</span></td>

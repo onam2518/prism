@@ -1,8 +1,11 @@
-"""2층 검수 1단계: 최종검수자 역할(사람 단위) + 최종검수 큐(미확정분 편입/제외).
+"""2층 검수: 최종검수자 역할(사람 단위) + 최종검수 큐(미확정분 편입/제외) +
+학습 반영 후 미확정분 새 버전 자동 재실행(3-1).
 
 실행: python3 -m pytest tests/ -q  (stdlib unittest · 의존성 0)
 계약: 큐 대상 = ① 의견 갈림(split) ② 정확 합의인데 분류 공백. 정상 확정 경로·수정 일방
 합의·기초 표 부족·기확정 골든은 제외. 판정 저장은 final_verdicts(#173) 재사용.
+재실행: rerun_unconfirmed 는 큐 대상만 · batch_budget_usd 상한 · learning_batch 가
+final_rerun_after_batch(기본 켬)일 때 반영 직후 훅 호출.
 """
 import json as _j
 import os
@@ -38,6 +41,16 @@ class TwoTierBase(unittest.TestCase):
         for rv, v in verdicts:
             st.save_feedback(ch, "뉴스", title, v, "review", "", _t.time(), reviewer=rv)
         return ch
+
+
+class CfgMixin:
+    def _isolate_cfg(self, payload):
+        from prism import config as C
+        p = os.path.join(tempfile.mkdtemp(), "config.json")
+        open(p, "w", encoding="utf-8").write(_j.dumps(payload))
+        orig = C.DEFAULT_CONFIG_PATH
+        C.DEFAULT_CONFIG_PATH = p
+        self.addCleanup(lambda: setattr(C, "DEFAULT_CONFIG_PATH", orig))
 
 
 class TestReviewerRoles(TwoTierBase):
@@ -77,6 +90,96 @@ class TestFinalQueue(TwoTierBase):
         q3 = serve.final_review_queue(None)
         self.assertNotIn("의견 갈림 건", [i["title"] for i in q3["items"]])   # 확정분은 큐에서 사라짐
         self.assertIn(ch_nocat, [i["hash"] for i in q3["items"]])           # 분류 공백은 잔류
+
+
+class TestRerunUnconfirmed(TwoTierBase, CfgMixin):
+    def _stub_rerun(self, serve, cost=0.02):
+        calls = []
+        def fake(ch, model, team=None, row=None, force_quest=False):
+            calls.append((ch, force_quest))
+            return {"output": {"trace": {"cost_usd": cost}}}
+        orig = serve.rerun_content
+        serve.rerun_content = fake
+        self.addCleanup(lambda: setattr(serve, "rerun_content", orig))
+        return calls
+
+    def test_targets_queue_only(self):
+        serve, st = self._with_store()
+        self._isolate_cfg({})
+        ch_split = self._put_reviewed(st, "의견 갈림 건", [("A", "good"), ("B", "bad")])
+        ch_nocat = self._put_reviewed(st, "분류 없는 합의", [("A", "good"), ("B", "good")], cats=())
+        self._put_reviewed(st, "정상 확정 경로", [("A", "good"), ("B", "good")])          # 재실행 비대상
+        calls = self._stub_rerun(serve)
+        r = serve.rerun_unconfirmed(None)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["done"], 2)
+        self.assertEqual(r["failed"], 0)
+        self.assertEqual({c[0] for c in calls}, {ch_split, ch_nocat})
+        self.assertTrue(all(fq for _, fq in calls))            # 퀘스트 가드 정당 우회 플래그
+        self.assertAlmostEqual(r["spent_usd"], 0.04)
+
+    def test_budget_cap_stops_remaining(self):
+        serve, st = self._with_store()
+        self._isolate_cfg({"batch_budget_usd": 0.02})          # 1건 비용으로 상한 도달
+        self._put_reviewed(st, "갈림1", [("A", "good"), ("B", "bad")])
+        self._put_reviewed(st, "갈림2", [("A", "good"), ("B", "bad")])
+        calls = self._stub_rerun(serve, cost=0.02)
+        r = serve.rerun_unconfirmed(None)
+        self.assertEqual(len(calls), 1)                        # 상한 도달 → 남은 대상 중단
+        self.assertEqual(r["done"], 1)
+
+    def test_empty_queue_noop(self):
+        serve, _st = self._with_store()
+        self._isolate_cfg({})
+        def boom(*a, **k):
+            raise AssertionError("빈 큐에서 재실행 호출 금지")
+        orig = serve.rerun_content
+        serve.rerun_content = boom
+        self.addCleanup(lambda: setattr(serve, "rerun_content", orig))
+        r = serve.rerun_unconfirmed(None)
+        self.assertEqual((r["done"], r["failed"], r["spent_usd"]), (0, 0, 0.0))
+
+
+class TestBatchHook(TwoTierBase, CfgMixin):
+    def _stub_batch_env(self):
+        """learning_batch 를 스토어만으로 돌리는 최소 픽스처(delta 테스트와 동일 접근)."""
+        from prism import learnops as LO
+        from prism import prompts as PR
+        old_learned = dict(PR.LEARNED)
+        old_bm = PR.LEARNED_BY_MODEL
+        self.addCleanup(lambda: (PR.LEARNED.update(old_learned), setattr(PR, "LEARNED_BY_MODEL", old_bm)))
+        PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
+        PR.LEARNED_BY_MODEL = {}
+        orig_e, orig_i = LO.eval_golden, LO.meta_compile_run
+        LO.eval_golden = lambda team=None, model="", scope="all": {"ok": True, "grade_accuracy": 0.9, "evaluated": 10}
+        LO.meta_compile_run = lambda team=None: {"ok": True, "results": {}}
+        self.addCleanup(lambda: (setattr(LO, "eval_golden", orig_e), setattr(LO, "meta_compile_run", orig_i)))
+        return LO
+
+    def test_batch_runs_final_rerun_by_default(self):
+        serve, _st = self._with_store()
+        self._isolate_cfg({})                                   # final_rerun_after_batch 기본 True
+        LO = self._stub_batch_env()
+        cap = {}
+        orig = serve.rerun_unconfirmed
+        serve.rerun_unconfirmed = lambda team=None: cap.update(team=team) or {"ok": True, "done": 3, "failed": 0, "spent_usd": 0.01}
+        self.addCleanup(lambda: setattr(serve, "rerun_unconfirmed", orig))
+        rep = LO.learning_batch(None)
+        self.assertTrue(rep["ok"])
+        self.assertEqual((rep.get("final_rerun") or {}).get("done"), 3)     # 훅 결과가 회차 보고서에 동반
+        self.assertIn("team", cap)
+
+    def test_batch_skips_when_disabled(self):
+        serve, _st = self._with_store()
+        self._isolate_cfg({"final_rerun_after_batch": False})
+        LO = self._stub_batch_env()
+        def boom(team=None):
+            raise AssertionError("끔 상태에서 재실행 호출 금지")
+        orig = serve.rerun_unconfirmed
+        serve.rerun_unconfirmed = boom
+        self.addCleanup(lambda: setattr(serve, "rerun_unconfirmed", orig))
+        rep = LO.learning_batch(None)
+        self.assertIsNone(rep.get("final_rerun"))
 
 
 if __name__ == "__main__":

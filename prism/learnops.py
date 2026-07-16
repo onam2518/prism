@@ -425,11 +425,19 @@ def learning_batch(team=None, models=None) -> dict:
         snap = snapshot_prompts(team)
     except Exception:
         snap = {}
+    final_rerun = None
+    try:                                        # 2층 검수 3-1: 미확정분을 방금 반영된 새 버전으로 재실행
+        if bool(getattr(Config.load(), "final_rerun_after_batch", True)) and hasattr(_SV, "rerun_unconfirmed"):
+            final_rerun = _SV.rerun_unconfirmed(team)
+            if final_rerun and final_rerun.get("done"):
+                print(f"  [batch] 미확정분 {final_rerun['done']}건을 새 버전으로 재실행(최종검수용)")
+    except Exception:
+        final_rerun = None
     report = {"ok": True, "ts": time.time(), "improve": improve, "golden": golden,
               "eval": evalr, "compare": compare, "prompt_snapshot": snap,
               "eval_pre": ({"grade_accuracy": eval_pre.get("grade_accuracy"), "n": eval_pre.get("evaluated")}
                            if eval_pre.get("ok") else None),
-              "improve_delta": delta,
+              "improve_delta": delta, "final_rerun": final_rerun,
               "grade_accuracy": evalr.get("grade_accuracy") if evalr.get("ok") else None}
     global _LAST_LEARN_REPORT
     _LAST_LEARN_REPORT = report
