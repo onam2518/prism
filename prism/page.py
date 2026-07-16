@@ -736,6 +736,7 @@ PAGE = """<!doctype html>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadFinalQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="최종 검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = 상세(원문·기초 의견 확인) · <b>편입/제외</b>는 기초 다수결보다 우선하며 언제든 <b>철회</b>할 수 있습니다.</li><li>'분류 없음' 건은 상세에서 분류를 채우면 편입 없이도 다음 반영 때 자동 승격됩니다.</li></ul>
+            <div class="text-xs text-muted tnum" style="margin-bottom:9px" x-show="finalQueue && finalQueue.stats && finalQueue.stats.total" x-text="'누적 최종판정 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.total)||0) + '건 · 편입 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.good)||0) + ' · 제외 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.bad)||0)"></div>
             <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:76px" data-tip="현재 초안의 프롬프트 버전 · 학습 반영이 돌면 미확정분은 새 버전으로 자동 재실행됩니다" data-tip-pos="top">초안</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:110px">상태</th><th style="width:210px;text-align:right">결정</th></tr></thead><tbody>
               <template x-for="r in ((finalQueue&&finalQueue.items)||[])" x-bind:key="'fq'+r.hash">
                 <tr>

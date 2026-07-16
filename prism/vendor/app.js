@@ -332,9 +332,16 @@
       async finalDecide(r, v) {                    // 편입(good)/제외(bad)/철회('') · 기존 /final-verdict 재사용
         try {
           const res = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, verdict: v, reviewer: this.reviewer }) })).json();
+          if (res && res.ok && res.gold) {         // 골드 캘리브레이션 문항: 정오 알림 후 목록에서 제거(원장 무오염)
+            this.liveToast(res.gold.correct ? '골드 문항 정답 · 판정 정확도에 반영됐어요' : ('골드 문항 오답 · 정답은 ' + (res.gold.expected === 'good' ? '편입' : '제외') + '이었어요'));
+            this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
+            (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+            return;
+          }
           if (res && res.ok) {
             r.final = v || '';
             this.liveToast(v === 'good' ? '골든 편입 확정 · 다음 학습 반영 때 정답셋으로 승격됩니다' : (v === 'bad' ? '제외 확정 · 정답셋으로 승격되지 않습니다' : '최종판정을 철회했어요'));
+            (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
           } else this._err((res && res.error) || '저장 실패');
         } catch (e) { this._err('저장 실패'); }
       },
@@ -364,6 +371,7 @@
             c.final = v || '';
             this._syncFbByHash && this.loadRaw();
             this.liveToast(v ? ('리드 최종판정 · ' + (v === 'good' ? '정확' : '수정 필요') + ' 확정') : '최종판정을 철회했어요');
+            (r.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
           } else this._err((r && r.error) || '저장 실패');
         } catch (e) { this._err('저장 실패'); }
       },

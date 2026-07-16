@@ -182,5 +182,59 @@ class TestBatchHook(TwoTierBase, CfgMixin):
         self.assertIsNone(rep.get("final_rerun"))
 
 
+class TestFinalGamification(TwoTierBase, CfgMixin):
+    def _seed_golden(self, serve, st):
+        """정상 확정 경로 1건을 골든으로 승격시켜 캘리브레이션 후보를 만든다."""
+        ch = self._put_reviewed(st, "골든 확정 건", [("A", "good"), ("B", "good")])
+        serve.build_golden_from_reviews(None)
+        return ch
+
+    def test_gold_calibration_injected_and_recorded(self):
+        serve, st = self._with_store()
+        self._isolate_cfg({})
+        gold_h = self._seed_golden(serve, st)
+        self._put_reviewed(st, "의견 갈림 건", [("A", "good"), ("B", "bad")])   # 실 항목이 있어야 출제
+        q = serve.final_review_queue(None, reviewer="F")
+        golds = [i for i in q["items"] if i["hash"].startswith("goldf:")]
+        self.assertEqual(len(golds), 1)
+        g = golds[0]
+        self.assertEqual(g["final_reason"], "의견 갈림")                # 블라인드: 실 항목과 동일 외형
+        self.assertEqual((g["fb"]["good"], g["fb"]["bad"]), (1, 1))
+        parts = g["hash"].split(":")
+        self.assertEqual(parts[2], gold_h)
+        # 정답 응답 → gold_checks 분리 기록 · final_verdicts 무오염 · 같은 문항 재출제 없음
+        expected = "good" if parts[1] == "ok" else "bad"
+        r = serve.apply_gold_answer({"hash": g["hash"], "verdict": expected, "reviewer": "F", "_team": None})
+        self.assertTrue(r["ok"])
+        self.assertTrue(r["gold"]["correct"])
+        self.assertEqual(serve.final_verdicts(None), {})
+        q2 = serve.final_review_queue(None, reviewer="F")
+        self.assertFalse([i for i in q2["items"] if i["hash"].startswith("goldf:")])
+
+    def test_gold_check_config_off(self):
+        serve, st = self._with_store()
+        self._isolate_cfg({"final_gold_check": False})
+        self._seed_golden(serve, st)
+        self._put_reviewed(st, "의견 갈림 건", [("A", "good"), ("B", "bad")])
+        q = serve.final_review_queue(None, reviewer="F")
+        self.assertFalse([i for i in q["items"] if i["hash"].startswith("goldf:")])
+
+    def test_final_mission_and_stats(self):
+        serve, st = self._with_store()
+        self._isolate_cfg({})
+        ch = self._put_reviewed(st, "의견 갈림 건", [("A", "good"), ("B", "bad")])
+        serve.set_reviewer_role("F", "final", None)
+        self.assertNotIn("final1", [m["id"] for m in serve.mission_progress("A", None)])   # 기초에겐 미노출
+        serve.set_final_verdict(ch, "good", by="F", team=None)
+        ms = {m["id"]: m for m in serve.mission_progress("F", None)}
+        self.assertTrue(ms["final1"]["completed"])
+        fresh = serve._check_missions("F", None)
+        self.assertIn("final1", [m["id"] for m in fresh])              # 달성 보상 1회
+        self.assertNotIn("final1", [m["id"] for m in serve._check_missions("F", None)])   # 중복 보상 없음
+        q = serve.final_review_queue(None)
+        self.assertEqual((q["stats"]["total"], q["stats"]["good"], q["stats"]["bad"]), (1, 1, 0))
+        self.assertEqual(q["stats"]["by"]["F"]["n"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -91,6 +91,7 @@ class Config:
     learn_team: str = ""                  # 그 퀘스트를 만든 팀 · 스케줄러가 이 팀으로 학습 배치를 돌려 골든·버전을 팀에 태깅
     learn_repeat_days: int = 0            # 퀘스트 반복 주기(일) · 0=반복 없음 · 반영 후 같은 시각 +N일로 자동 재생성
     final_rerun_after_batch: bool = True  # 학습 반영 후 미확정분을 새 버전으로 자동 재실행(2층 검수 3-1)
+    final_gold_check: bool = True         # 최종검수 큐에 골드 캘리브레이션 문항 블라인드 출제(정확도→신뢰가중)
     fallback_models: list = field(default_factory=list)   # 산출 전량 빈값 시 순서 폴백 모델(최대 3 · 실호출만)
     batch_budget_usd: float = 0.0         # 일괄 실행(재실행) 1회 비용 상한($) · 0 = 무제한
 

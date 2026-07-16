@@ -583,7 +583,76 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         if len(out) >= 200:
             break
     out = _attach_fb(out, team, reviewer)
-    return {"ok": True, "items": out, "n": len(out)}
+    if reviewer and out and bool(getattr(Config.load(), "final_gold_check", True)):
+        out = _inject_gold_final(out, reviewer, team)   # 골드 캘리브레이션(블라인드 · 응답은 gold_checks 로)
+    return {"ok": True, "items": out, "n": len(out), "stats": _final_stats(finals)}
+
+
+def _final_stats(finals: dict) -> dict:
+    """최종검수자 지표: 누적 판정·편입/제외(철회분은 원장에서 빠져 자동 제외) · by = 판정자별."""
+    by = {}
+    for v in (finals or {}).values():
+        k = (v.get("by") or "").strip() or "(미상)"
+        d = by.setdefault(k, {"n": 0, "good": 0, "bad": 0})
+        d["n"] += 1
+        d["good" if v.get("verdict") == "good" else "bad"] += 1
+    return {"total": sum(d["n"] for d in by.values()),
+            "good": sum(d["good"] for d in by.values()),
+            "bad": sum(d["bad"] for d in by.values()), "by": by}
+
+
+def _finals_today(reviewer: str, team=None) -> int:
+    """오늘 확정한 최종판정 수(미션 final1 판정용 · 철회분 제외)."""
+    if not reviewer:
+        return 0
+    day = int(time.time() // 86400)
+    return sum(1 for v in final_verdicts(team).values()
+               if (v.get("by") or "") == reviewer and int(float(v.get("ts") or 0) // 86400) == day)
+
+
+def _inject_gold_final(items: list, reviewer: str, team=None) -> list:
+    """최종검수 큐 골드 캘리브레이션(블라인드): 기확정 골든 1건을 미확정분처럼 섞어 출제.
+    변형은 기초 골드(G-1)와 동일 규칙 — hash 짝수 = 원본(정답 편입) / 홀수 = 등급 뒤집기(정답 제외).
+    hash 'goldf:' 접두 → /final-verdict 가 gold_checks 로 분리 기록(final_verdicts 무오염 ·
+    정확도는 gold_stats 를 타고 신뢰가중에 합류). 선택·위치는 (검수자, 일자) 시드로 결정적 ·
+    응답한 문항은 재출제 안 함(기초 골드와 응답 원장 공유)."""
+    st = get_store()
+    if not (reviewer and st and hasattr(st, "get_golden") and hasattr(st, "gold_answered")):
+        return items
+    try:
+        golden = st.get_golden(team)
+        answered = st.gold_answered(reviewer, team=team)
+    except Exception:
+        return items
+    from .store import content_hash as _chash
+    cands = []
+    for g in golden:
+        content, exp = g.get("content") or {}, g.get("expected") or {}
+        h = _chash(content)
+        if h not in answered and content.get("title"):
+            cands.append((h, content, exp))
+    if not cands:
+        return items
+    import hashlib as _hl
+    import random as _rd
+    day = int(time.time() // 86400)
+    rng = _rd.Random(int(_hl.sha1(f"goldf:{reviewer}:{day}".encode()).hexdigest()[:8], 16))
+    h, content, exp = cands[rng.randrange(len(cands))]
+    flip = int(h, 16) % 2 == 1                     # 홀수 = 등급 뒤집기(정답 '제외')
+    grade = exp.get("finalGrade", "") or "G"
+    out = list(items)
+    out.insert(rng.randint(0, len(out)), {
+        "hash": f"goldf:{'bad' if flip else 'ok'}:{h}",
+        "title": content.get("title", ""), "subtitle": content.get("subtitle", ""),
+        "service": content.get("displayServiceName", ""), "url": "", "model": "",
+        "body": content.get("body", ""), "summary": exp.get("summary", ""),
+        "entities": exp.get("entities", []) or [], "intent": exp.get("intent", []) or [],
+        "category": exp.get("content_category", []) or [],
+        "grade": ("R" if grade == "G" else "G") if flip else grade,
+        "reasons": exp.get("reasons", []) or [], "version": None,
+        "final_reason": "의견 갈림", "final": "",
+        "fb": {"n": 2, "good": 1, "bad": 1, "verdict": "", "ts": 0}})
+    return out
 
 
 def rerun_unconfirmed(team=None, limit: int = 100) -> dict:
@@ -2751,10 +2820,12 @@ MISSIONS = [
     {"id": "split1", "label": "불일치 재검토", "total": 1, "bonus": 15},
     {"id": "fill1", "label": "분류 채우기", "total": 1, "bonus": 10},
 ]
+MISSION_FINAL = {"id": "final1", "label": "최종 판정", "total": 1, "bonus": 20}   # 최종검수자 전용
 
 
 def mission_progress(reviewer, team=None) -> list:
-    """검수자별 오늘의 미션 진행도. 판정은 저장된 행동 데이터로만(자가 신고 없음)."""
+    """검수자별 오늘의 미션 진행도. 판정은 저장된 행동 데이터로만(자가 신고 없음).
+    최종검수자에겐 final1(최종 판정 1건)이 추가된다 — 기초 검수자 목록엔 미노출."""
     st = get_store()
     if not (st and reviewer and hasattr(st, "feedback_today")):
         return []
@@ -2763,10 +2834,14 @@ def mission_progress(reviewer, team=None) -> list:
                 "gold1": st.gold_today(reviewer, team=team).get("correct", 0),
                 "split1": st.split_reviewed_today(reviewer, team=team),
                 "fill1": (st.patches_today(reviewer, team=team) if hasattr(st, "patches_today") else 0)}
+        ms = list(MISSIONS)
+        if reviewer in reviewer_roles(team):
+            ms.append(MISSION_FINAL)
+            done["final1"] = _finals_today(reviewer, team)
     except Exception:
         return []
     out = []
-    for m in MISSIONS:
+    for m in ms:
         d = min(done.get(m["id"], 0), m["total"])
         out.append({**m, "done": d, "completed": d >= m["total"]})
     return out
@@ -3538,6 +3613,7 @@ def config_status(team=None) -> dict:
         "fallbackModels": list(getattr(cfg, "fallback_models", None) or []),
         "batchBudgetUsd": float(getattr(cfg, "batch_budget_usd", 0.0) or 0.0),
         "finalRerunAfterBatch": bool(getattr(cfg, "final_rerun_after_batch", True)),
+        "finalGoldCheck": bool(getattr(cfg, "final_gold_check", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
         "metaCallModels": dict(getattr(cfg, "meta_call_models", {}) or {}),
         "familyWrappers": dict(getattr(cfg, "family_wrappers", {}) or {}),
@@ -3621,7 +3697,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_4c = "meta_four_calls" in data
     has_misc = (("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
                 or ("fallback_models" in data) or ("batch_budget_usd" in data)
-                or ("final_rerun_after_batch" in data))
+                or ("final_rerun_after_batch" in data) or ("final_gold_check" in data))
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
@@ -3713,6 +3789,8 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 pass
         if "final_rerun_after_batch" in data:     # 학습 반영 후 미확정분 새 버전 자동 재실행(2층 검수 3-1)
             cfg.final_rerun_after_batch = bool(data.get("final_rerun_after_batch"))
+        if "final_gold_check" in data:            # 최종검수 골드 캘리브레이션 출제 켬/끔
+            cfg.final_gold_check = bool(data.get("final_gold_check"))
         if "learn_next_at" in data:               # 검수 목표(퀘스트) 일시 · 빈 값 = 목표 해제(삭제)
             v = str(data.get("learn_next_at") or "").strip()[:16]
             if not v:
@@ -4828,10 +4906,22 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(403, json.dumps({"error": "슈퍼관리자 또는 최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
                     return
                 data = json.loads(body or b"{}")
-                self._send(200, json.dumps(
-                    set_final_verdict(data.get("hash") or "", (data.get("verdict") or "").strip(),
-                                      by=(data.get("reviewer") or "").strip(), team=self._req_team()),
-                    ensure_ascii=False), _JSON)
+                self._inject_reviewer(data)            # supabase: reviewer=uid 통일(미션·골드 원장 정합)
+                team = self._req_team()
+                if "_team" not in data:
+                    data["_team"] = team
+                rv = (data.get("reviewer") or "").strip()
+                if (data.get("hash") or "").startswith("goldf:"):
+                    # 골드 캘리브레이션 응답 → gold_checks 분리 기록(최종판정 원장 무오염)
+                    self._send(200, json.dumps(apply_gold_answer(data), ensure_ascii=False), _JSON)
+                    return
+                res = set_final_verdict(data.get("hash") or "", (data.get("verdict") or "").strip(),
+                                        by=rv, team=team)
+                if res.get("ok") and (data.get("verdict") or "").strip():
+                    ms = _check_missions(rv, team)
+                    if ms:
+                        res["missions_completed"] = ms
+                self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
