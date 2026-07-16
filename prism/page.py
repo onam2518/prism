@@ -735,21 +735,21 @@ PAGE = """<!doctype html>
         <section class="panel"><div class="panel-hd"><b>최종 검수</b><span class="meta">의견이 갈리거나 분류가 빈 콘텐츠만 올라옵니다 · 편입 = 다음 학습 반영 때 정답셋 승격 · 제외 = 승격 금지</span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadFinalQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="최종 검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = 상세(원문·기초 의견 확인) · <b>편입/제외</b>는 기초 다수결보다 우선하며 언제든 <b>철회</b>할 수 있습니다.</li><li>'분류 없음' 건은 상세에서 분류를 채우면 편입 없이도 다음 반영 때 자동 승격됩니다.</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:11px"><li>목록은 <b>결정 현황판</b>입니다 · 결정(편입 · 고쳐서 편입 · 제외)은 <b>검수하기</b>로 상세에 들어가 원문·기초 의견을 보며 내립니다.</li><li>결정은 기초 다수결보다 우선하며, 결정된 건도 <b>수정</b>으로 다시 들어가 바꾸거나 철회할 수 있습니다.</li></ul>
             <div class="text-xs text-muted tnum" style="margin-bottom:9px" x-show="finalQueue && finalQueue.stats && finalQueue.stats.total" x-text="'누적 최종판정 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.total)||0) + '건 · 편입 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.good)||0) + ' · 제외 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.bad)||0)"></div>
-            <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:76px" data-tip="현재 초안의 프롬프트 버전 · 학습 반영이 돌면 미확정분은 새 버전으로 자동 재실행됩니다" data-tip-pos="top">초안</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:110px">상태</th><th style="width:280px;text-align:right">결정</th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:76px" data-tip="현재 초안의 프롬프트 버전 · 학습 반영이 돌면 미확정분은 새 버전으로 자동 재실행됩니다" data-tip-pos="top">초안</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:170px">결정 현황</th><th style="width:104px;text-align:right">결정</th></tr></thead><tbody>
               <template x-for="r in ((finalQueue&&finalQueue.items)||[])" x-bind:key="'fq'+r.hash">
                 <tr>
                   <td class="text-ink" style="cursor:pointer" x-on:click="openFinalDetail(r)"><span x-text="r.title || '(제목 없음)'"></span></td>
                   <td><span class="ds-badge ds-badge--neutral tnum" x-text="r.version ? ('v' + r.version) : '·'"></span> <button type="button" class="copybtn" x-on:click="openCmpModal(r)" data-tip="이전 초안과 나란히 비교(달라진 필드 하이라이트)" data-tip-pos="top">비교</button></td>
                   <td class="tnum text-xs text-muted" x-text="'정확 ' + ((r.fb&&r.fb.good)||0) + ' · 수정 ' + ((r.fb&&r.fb.bad)||0)"></td>
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.final_reason==='의견 갈림' ? 'ds-badge--reason' : 'ds-badge--warning'" x-bind:data-tip="r.final_reason==='의견 갈림' ? '기초 검수자 의견이 정확/수정으로 갈렸습니다' : '정확 합의됐지만 분류(카테고리)가 비어 승격이 보류된 상태'" data-tip-pos="top" x-text="r.final_reason"></span></td>
-                  <td><span class="ds-badge" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="r.final==='good' ? '편입 확정' : '제외 확정'"></span><span class="text-xs text-muted" x-show="!r.final">대기</span></td>
+                  <td><span class="ds-badge" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="r.final==='good' ? '편입 확정' : '제외 확정'"></span>
+                    <div class="text-xs text-muted tnum" x-show="r.final && (r.final_by || r.final_ts)" x-text="(r.final_by || '') + (r.final_ts ? (' · ' + fmtTs(r.final_ts)) : '')"></div>
+                    <span class="text-xs text-muted" x-show="!r.final">대기</span></td>
                   <td style="text-align:right" x-on:click.stop>
-                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="r.final!=='good'" x-on:click="finalDecide(r,'good')" data-tip="정답셋 편입 확정 · 다수결보다 우선" data-tip-pos="top">편입</button>
-                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="r.final!=='good'" x-on:click="openFinalAnswer(r)" data-tip="요약·분류·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 정답이 됩니다" data-tip-pos="top">고쳐서 편입</button>
-                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="r.final!=='bad'" x-on:click="finalDecide(r,'bad')" data-tip="정답셋 승격 금지" data-tip-pos="top">제외</button>
-                    <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="r.final" x-on:click="finalDecide(r,'')">철회</button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="!r.final" x-on:click="openFinalDetail(r)" data-tip="상세에서 원문·기초 의견을 보고 편입 · 고쳐서 편입 · 제외를 결정" data-tip-pos="top">검수하기</button>
+                    <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="r.final" x-on:click="openFinalDetail(r)" data-tip="상세에서 결정을 바꾸거나 철회" data-tip-pos="top">수정</button>
                   </td>
                 </tr>
               </template>
@@ -760,8 +760,9 @@ PAGE = """<!doctype html>
           </div>
         </section>
 
-        <!-- 정답 확정(고쳐서 편입): 초안 필드를 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 골든 정답 -->
-        <div class="ds-dialog-backdrop" x-show="faOpen" x-cloak x-transition.opacity x-on:mousedown.self="faOpen=false" style="z-index:74">
+        <!-- 정답 확정(고쳐서 편입): 초안 필드를 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 골든 정답
+             z-index 는 콘텐츠 상세(74)보다 위 · 상세의 결정 바에서 열리는 흐름 -->
+        <div class="ds-dialog-backdrop" x-show="faOpen" x-cloak x-transition.opacity x-on:mousedown.self="faOpen=false" style="z-index:76">
           <div class="badgemodal" x-show="faOpen" x-transition style="max-width:620px" x-on:keydown.escape.window="faOpen=false">
             <div class="flex items-center" style="margin-bottom:2px"><b style="font-size:15px">정답 확정</b>
               <button type="button" class="ds-iconbtn ml-auto" x-on:click="faOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
@@ -3280,6 +3281,21 @@ PAGE = """<!doctype html>
                 </div>
               </template>
               <div x-show="!histBusy && !histItems.length" class="text-xs text-muted">아직 기록이 없습니다</div>
+            </div>
+          </div>
+          <!-- 최종검수 결정(2층): 최종 검수 탭에서 들어온 경우에만 · 목록은 현황판, 결정은 여기서 -->
+          <div class="dve__sec" x-show="finalCtx && detail && finalCtx.hash === detail.hash" x-cloak style="border:1px solid var(--ds-hairline);border-radius:10px;padding:10px 12px">
+            <div class="dve__lbl">최종검수 결정</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span class="ds-badge" x-show="finalCtx && finalCtx.final" x-bind:class="finalCtx && finalCtx.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="finalCtx && finalCtx.final==='good' ? '편입 확정' : '제외 확정'"></span>
+              <span class="text-xs text-muted tnum" x-show="finalCtx && finalCtx.final" x-text="finalCtx ? ((finalCtx.final_by || '') + (finalCtx.final_ts ? (' · ' + fmtTs(finalCtx.final_ts)) : '')) : ''"></span>
+              <span class="text-xs text-muted" x-show="finalCtx && !finalCtx.final" x-text="'결정 전 · 사유: ' + (finalCtx ? finalCtx.final_reason : '')"></span>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx && finalCtx.final!=='good'" x-on:click="finalDecide(finalCtx,'good')" data-tip="이 초안 그대로 정답셋 편입 확정 · 다수결보다 우선" data-tip-pos="top">편입</button>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx && finalCtx.final!=='good'" x-on:click="openFinalAnswer(finalCtx)" data-tip="요약·분류·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 정답" data-tip-pos="top">고쳐서 편입</button>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="finalCtx && finalCtx.final!=='bad'" x-on:click="finalDecide(finalCtx,'bad')" data-tip="정답셋 승격 금지" data-tip-pos="top">제외</button>
+              <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="finalCtx && finalCtx.final" x-on:click="finalDecide(finalCtx,'')">철회</button>
             </div>
           </div>
           <div class="dve__verdict">

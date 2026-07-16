@@ -336,18 +336,24 @@
             this.liveToast(res.gold.correct ? '골드 문항 정답 · 판정 정확도에 반영됐어요' : ('골드 문항 오답 · 정답은 ' + (res.gold.expected === 'good' ? '편입' : '제외') + '이었어요'));
             this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
             (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+            if (this.finalCtx && this.finalCtx.hash === r.hash) { this.detailOpen = false; this.finalCtx = null; }
             return;
           }
           if (res && res.ok) {
             r.final = v || '';
+            r.final_by = v ? (this.reviewer || '') : '';
+            r.final_ts = v ? (Date.now() / 1000) : 0;
             this.liveToast(v === 'good' ? '골든 편입 확정 · 다음 학습 반영 때 정답셋으로 승격됩니다' : (v === 'bad' ? '제외 확정 · 정답셋으로 승격되지 않습니다' : '최종판정을 철회했어요'));
             (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
           } else this._err((res && res.error) || '저장 실패');
         } catch (e) { this._err('저장 실패'); }
       },
-      openFinalDetail(r) {                          // 상세 참고용(기초 의견·원문 확인) · 판정은 목록 버튼으로
+      // 최종검수 컨텍스트: 최종 검수 탭에서 상세로 들어오면 결정 바(편입·고쳐서 편입·제외)가 상세에 뜬다
+      finalCtx: null,
+      openFinalDetail(r) {                          // 목록 = 결정 현황판 · 결정은 상세 안에서
         const list = ((this.finalQueue || {}).items || []).slice();
         this.openDetail(this._rawToDetail(r));
+        this.finalCtx = r;
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
       },
       // 정답 확정(고쳐서 편입): 요약·분류·의도·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 골든 정답
@@ -376,6 +382,9 @@
               try { pr = await (await this._afetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: f.hash, patch: patch, reviewer: this.reviewer || '' }) })).json(); } catch (e) {}
               if (!(pr && pr.ok)) { this._err((pr && pr.error) || '교정 저장 실패 · 편입은 진행되지 않았어요'); return; }
               r0.summary = f.summary; r0.category = cats; r0.intent = intent; r0.grade = f.grade;   // 목록 즉시 반영
+              if (this.detail && this.detail.hash === f.hash) {                                     // 열려 있는 상세도 동기화
+                this.detail.summary = f.summary; this.detail.category = cats; this.detail.intent = intent; this.detail.grade = f.grade;
+              }
               (pr.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
             }
           }
@@ -476,7 +485,9 @@
         const i = this.detailNav.idx + step;
         if (i < 0 || i >= this.detailNav.list.length) return;
         const nav = this.detailNav;
+        const wasFinal = !!this.finalCtx;                // 최종검수 흐름이면 다음 항목도 결정 바 유지
         this.openDetail(this._rawToDetail(nav.list[i]));
+        if (wasFinal) this.finalCtx = nav.list[i];
         nav.idx = i;
         this.detailNav = nav;
       },
@@ -785,6 +796,7 @@
       setDvcZoom(z) { this.dvcZoom = z; try { localStorage.setItem('prismDetailZoom', String(z)); } catch (e) {} },
       // 콘텐츠 상세 스플릿뷰(공통): 어떤 목록에서든 openDetail(content) 로 진입
       openDetail(c) {
+        this.finalCtx = null;                    // 최종검수 결정 바는 최종 검수 탭 진입(openFinalDetail)에서만
         this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {};
         // 결과 목록 등 집계 경로의 fb 는 팀 집계뿐(mine 없음) → /raw 사본에 같은 콘텐츠가 있으면
         // 내 표가 담긴 fb 로 교체(상세의 '완료' 게이팅·프리필이 내 표 기준으로 일관 · 2026-07-10)
