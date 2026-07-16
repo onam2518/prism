@@ -1018,6 +1018,7 @@ def dict_data() -> dict:
         "intentUniversal": list(D.INTENT_CATEGORIES_UNIVERSAL),
         "intentForm": list(getattr(D, "INTENT_FORM_UNIVERSAL", [])),
         "intentByService": {k: list(v) for k, v in D.INTENT_CATEGORIES_BY_SERVICE.items()},
+        "serviceKeyMap": dict(getattr(D, "_SERVICE_NAME_MAP", {})),   # displayServiceName → 서비스 카테고리 키(검수 인텐트 불일치 경고용)
         "iabTier1": list(D.IAB_TIER1),
         "tier2": {k: list(v) for k, v in getattr(D, "CONTENT_CATEGORY_TIER2", {}).items()},
         "tier1Ko": dict(getattr(D, "IAB_TIER1_KO", {})),   # 한글 표시명(UI 전용 · 공식 표기는 영문)
