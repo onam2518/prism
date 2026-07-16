@@ -320,6 +320,44 @@
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
       },
       detailNav: null,
+      // ── 2층 검수: 최종검수자 역할 + 최종검수 큐(미확정분 편입/제외 결정) ──
+      finalQueue: null, finalBusy: false,
+      get finalReviewers() { return (this.arenaData && this.arenaData.final_reviewers) || []; },
+      get isFinalReviewer() { return !!(this.arenaData && this.arenaData.my_id && this.finalReviewers.includes(this.arenaData.my_id)); },
+      async loadFinalQueue() {
+        this.finalBusy = true;
+        try { const r = await (await this._afetch('/final-queue', { headers: this._authHeaders() })).json(); if (r && r.ok) this.finalQueue = r; } catch (e) {}
+        this.finalBusy = false;
+      },
+      async finalDecide(r, v) {                    // 편입(good)/제외(bad)/철회('') · 기존 /final-verdict 재사용
+        try {
+          const res = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, verdict: v, reviewer: this.reviewer }) })).json();
+          if (res && res.ok && res.gold) {         // 골드 캘리브레이션 문항: 정오 알림 후 목록에서 제거(원장 무오염)
+            this.liveToast(res.gold.correct ? '골드 문항 정답 · 판정 정확도에 반영됐어요' : ('골드 문항 오답 · 정답은 ' + (res.gold.expected === 'good' ? '편입' : '제외') + '이었어요'));
+            this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
+            (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+            return;
+          }
+          if (res && res.ok) {
+            r.final = v || '';
+            this.liveToast(v === 'good' ? '골든 편입 확정 · 다음 학습 반영 때 정답셋으로 승격됩니다' : (v === 'bad' ? '제외 확정 · 정답셋으로 승격되지 않습니다' : '최종판정을 철회했어요'));
+            (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+          } else this._err((res && res.error) || '저장 실패');
+        } catch (e) { this._err('저장 실패'); }
+      },
+      openFinalDetail(r) {                          // 상세 참고용(기초 의견·원문 확인) · 판정은 목록 버튼으로
+        const list = ((this.finalQueue || {}).items || []).slice();
+        this.openDetail(this._rawToDetail(r));
+        this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
+      },
+      async toggleFinalRole(m) {                    // 팀 관리: 최종검수자 지정/해제(슈퍼관리자 이상)
+        const nv = this.finalReviewers.includes(m.id) ? '' : 'final';
+        try {
+          const r = await (await this._afetch('/reviewer-role', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: m.id, role: nv }) })).json();
+          if (r && r.ok) { if (this.arenaData) this.arenaData.final_reviewers = r.final_reviewers; this.liveToast(nv ? (m.name + ' · 최종검수자로 지정') : (m.name + ' · 최종검수자 해제')); }
+          else this._err((r && r.error) || '변경 실패');
+        } catch (e) { this._err('변경 실패'); }
+      },
       // 목록 키보드 포커스(J/K 이동 대상 행) · 필터가 바뀌면 handler 쪽 클램프로 정합 유지
       rawFocusIdx: -1,
       _rawFocusScroll() {
@@ -333,6 +371,7 @@
             c.final = v || '';
             this._syncFbByHash && this.loadRaw();
             this.liveToast(v ? ('리드 최종판정 · ' + (v === 'good' ? '정확' : '수정 필요') + ' 확정') : '최종판정을 철회했어요');
+            (r.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
           } else this._err((r && r.error) || '저장 실패');
         } catch (e) { this._err('저장 실패'); }
       },
