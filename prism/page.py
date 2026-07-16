@@ -3304,30 +3304,33 @@ PAGE = """<!doctype html>
               <div x-show="!histBusy && !histItems.length" class="text-xs text-muted">아직 기록이 없습니다</div>
             </div>
           </div>
-          <!-- 최종검수 결정(2층): 최종 검수 탭에서 들어온 경우에만 · 목록은 현황판, 결정은 여기서 -->
-          <div class="dve__sec" x-show="finalCtx && detail && finalCtx.hash === detail.hash" x-cloak style="border:1px solid var(--ds-hairline);border-radius:10px;padding:10px 12px">
-            <div class="dve__lbl">최종검수 결정</div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span class="ds-badge" x-show="finalCtx && finalCtx.final" x-bind:class="finalCtx && finalCtx.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="finalCtx && finalCtx.final==='good' ? '편입 확정' : '제외 확정'"></span>
-              <span class="text-xs text-muted tnum" x-show="finalCtx && finalCtx.final" x-text="finalCtx ? ((finalCtx.final_by || '') + (finalCtx.final_ts ? (' · ' + fmtTs(finalCtx.final_ts)) : '')) : ''"></span>
-              <span class="text-xs text-muted" x-show="finalCtx && !finalCtx.final" x-text="'결정 전 · 사유: ' + (finalCtx ? finalCtx.final_reason : '')"></span>
-            </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
-              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx && finalCtx.final!=='good'" x-on:click="finalDecide(finalCtx,'good')" data-tip="이 초안 그대로 정답셋 편입 확정 · 다수결보다 우선" data-tip-pos="top">편입</button>
-              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx && finalCtx.final!=='good'" x-on:click="openFinalAnswer(finalCtx)" data-tip="요약·분류·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 정답" data-tip-pos="top">고쳐서 편입</button>
-              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="finalCtx && finalCtx.final!=='bad'" x-on:click="finalDecide(finalCtx,'bad')" data-tip="정답셋 승격 금지" data-tip-pos="top">제외</button>
-              <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="finalCtx && finalCtx.final" x-on:click="finalDecide(finalCtx,'')">철회</button>
-            </div>
-          </div>
           <div class="dve__verdict">
-            <div class="dve__lbl" style="display:flex;align-items:center;gap:8px">검수 판정
-              <label x-show="detailNav" class="chk-inline" style="font-size:11px;font-weight:400;color:var(--ds-muted);margin-left:auto">
+            <div class="dve__lbl" style="display:flex;align-items:center;gap:8px"><span x-text="finalMode ? '최종검수 결정' : '검수 판정'"></span>
+              <label x-show="detailNav && !finalMode" class="chk-inline" style="font-size:11px;font-weight:400;color:var(--ds-muted);margin-left:auto">
                 <input type="checkbox" x-model="autoNext" x-on:change="saveAutoNext()">저장 후 다음 미검수로
               </label>
             </div>
+            <!-- 최종검수 흐름(finalMode): '검수 판정' 자리가 통째로 '최종검수 결정'이 된다 · 기초 판정 UI 는 숨김
+                 (단축키도 A=편입 · S=제외 로 전환) -->
+            <template x-if="finalMode">
+              <div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span class="ds-badge" x-show="finalCtx.final" x-bind:class="finalCtx.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="finalCtx.final==='good' ? '편입 확정' : '제외 확정'"></span>
+                  <span class="text-xs text-muted tnum" x-show="finalCtx.final" x-text="(finalCtx.final_by || '') + (finalCtx.final_ts ? (' · ' + fmtTs(finalCtx.final_ts)) : '')"></span>
+                  <span class="text-xs text-muted" x-show="!finalCtx.final" x-text="'결정 전 · 사유: ' + (finalCtx.final_reason || '')"></span>
+                </div>
+                <div class="text-xs text-muted" style="margin-top:6px" x-text="'기초 의견 · 정확 ' + ((finalCtx.fb&&finalCtx.fb.good)||0) + '개 · 수정 필요 ' + ((finalCtx.fb&&finalCtx.fb.bad)||0) + '개'"></div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx.final!=='good'" x-on:click="finalDecide(finalCtx,'good')" data-tip="이 초안 그대로 정답셋 편입 확정 · 다수결보다 우선 (단축키 A)" data-tip-pos="top">편입</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx.final!=='good'" x-on:click="openFinalAnswer(finalCtx)" data-tip="요약·분류·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 정답" data-tip-pos="top">고쳐서 편입</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="finalCtx.final!=='bad'" x-on:click="finalDecide(finalCtx,'bad')" data-tip="정답셋 승격 금지 (단축키 S)" data-tip-pos="top">제외</button>
+                  <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="finalCtx.final" x-on:click="finalDecide(finalCtx,'')">철회</button>
+                </div>
+              </div>
+            </template>
             <!-- 검수 완료 = '내 표(myVerdict)' 기준(목록·다음 미검수 이동과 동일 · 2026-07-10):
                  남이 검수한 콘텐츠도 내가 안 했으면 아래 판정 UI 가 뜬다. 완료 시 팀 합의 3상태 + 내 판정 병기 + 추가 수정 -->
-            <template x-if="detail && myVerdict(detail.fb) && !editVerdict">
+            <template x-if="!finalMode && detail && myVerdict(detail.fb) && !editVerdict">
               <div>
                 <!-- 팀 표 2개 이상이면 주어를 명시(팀 판정)하고 내 판정을 분리 표기 · 단독 판정은 기존 표기 -->
                 <span class="ds-badge" x-bind:class="detail.fb.verdict==='good' ? 'ds-badge--success' : (detail.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')" x-bind:data-tip="detail.fb.verdict==='split' ? '정확과 수정 필요로 의견이 갈렸습니다 · 재검토 대상' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail.fb.n > 1 ? (detail.fb.verdict==='good' ? '팀 판정 · 정확' : (detail.fb.verdict==='split' ? '팀 판정 · 의견 갈림' : '팀 판정 · 수정 필요')) : (detail.fb.verdict==='good' ? '검수 완료 · 정확' : '검수 완료 · 수정 필요')"></span></span>
@@ -3353,7 +3356,7 @@ PAGE = """<!doctype html>
               </div>
             </template>
             <!-- 미검수(내 표 없음) 또는 추가 수정 중 -->
-            <template x-if="detail && (!myVerdict(detail.fb) || editVerdict)">
+            <template x-if="!finalMode && detail && (!myVerdict(detail.fb) || editVerdict)">
               <div>
                 <div class="text-xs text-muted" x-show="detail.fb && detail.fb.n && !myVerdict(detail.fb)" x-cloak style="margin-bottom:8px" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개 · 내 판정을 남겨주세요'"></div>
                 <div style="display:flex;gap:8px">
