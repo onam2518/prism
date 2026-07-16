@@ -737,7 +737,7 @@ PAGE = """<!doctype html>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = 상세(원문·기초 의견 확인) · <b>편입/제외</b>는 기초 다수결보다 우선하며 언제든 <b>철회</b>할 수 있습니다.</li><li>'분류 없음' 건은 상세에서 분류를 채우면 편입 없이도 다음 반영 때 자동 승격됩니다.</li></ul>
             <div class="text-xs text-muted tnum" style="margin-bottom:9px" x-show="finalQueue && finalQueue.stats && finalQueue.stats.total" x-text="'누적 최종판정 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.total)||0) + '건 · 편입 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.good)||0) + ' · 제외 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.bad)||0)"></div>
-            <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:76px" data-tip="현재 초안의 프롬프트 버전 · 학습 반영이 돌면 미확정분은 새 버전으로 자동 재실행됩니다" data-tip-pos="top">초안</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:110px">상태</th><th style="width:210px;text-align:right">결정</th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:76px" data-tip="현재 초안의 프롬프트 버전 · 학습 반영이 돌면 미확정분은 새 버전으로 자동 재실행됩니다" data-tip-pos="top">초안</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:110px">상태</th><th style="width:280px;text-align:right">결정</th></tr></thead><tbody>
               <template x-for="r in ((finalQueue&&finalQueue.items)||[])" x-bind:key="'fq'+r.hash">
                 <tr>
                   <td class="text-ink" style="cursor:pointer" x-on:click="openFinalDetail(r)"><span x-text="r.title || '(제목 없음)'"></span></td>
@@ -747,6 +747,7 @@ PAGE = """<!doctype html>
                   <td><span class="ds-badge" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="r.final==='good' ? '편입 확정' : '제외 확정'"></span><span class="text-xs text-muted" x-show="!r.final">대기</span></td>
                   <td style="text-align:right" x-on:click.stop>
                     <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="r.final!=='good'" x-on:click="finalDecide(r,'good')" data-tip="정답셋 편입 확정 · 다수결보다 우선" data-tip-pos="top">편입</button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="r.final!=='good'" x-on:click="openFinalAnswer(r)" data-tip="요약·분류·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 정답이 됩니다" data-tip-pos="top">고쳐서 편입</button>
                     <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="r.final!=='bad'" x-on:click="finalDecide(r,'bad')" data-tip="정답셋 승격 금지" data-tip-pos="top">제외</button>
                     <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="r.final" x-on:click="finalDecide(r,'')">철회</button>
                   </td>
@@ -758,6 +759,34 @@ PAGE = """<!doctype html>
             </div>
           </div>
         </section>
+
+        <!-- 정답 확정(고쳐서 편입): 초안 필드를 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 골든 정답 -->
+        <div class="ds-dialog-backdrop" x-show="faOpen" x-cloak x-transition.opacity x-on:mousedown.self="faOpen=false" style="z-index:74">
+          <div class="badgemodal" x-show="faOpen" x-transition style="max-width:620px" x-on:keydown.escape.window="faOpen=false">
+            <div class="flex items-center" style="margin-bottom:2px"><b style="font-size:15px">정답 확정</b>
+              <button type="button" class="ds-iconbtn ml-auto" x-on:click="faOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+            <div class="text-xs text-muted" style="margin-bottom:10px" x-text="fa ? fa.title : ''"></div>
+            <div class="text-xs" style="background:var(--ds-primary-tint);border-radius:8px;padding:8px 11px;margin-bottom:12px" x-show="fa && (fa.note || (fa.elems||[]).length)">
+              <b>기초 검수 의견</b> · <span x-text="fa ? [fa.note, (fa.elems||[]).join(', ')].filter(Boolean).join(' · ') : ''"></span>
+            </div>
+            <div class="space-y-3" x-show="fa">
+              <label class="block"><span class="text-xs text-muted">요약</span>
+                <textarea class="field w-full" rows="3" x-bind:value="fa ? fa.summary : ''" x-on:input="fa.summary=$event.target.value"></textarea></label>
+              <label class="block"><span class="text-xs text-muted">분류 · 쉼표로 여러 개 (예: Sports / Baseball, News)</span>
+                <input type="text" class="field w-full" x-bind:value="fa ? fa.cats : ''" x-on:input="fa.cats=$event.target.value"></label>
+              <label class="block"><span class="text-xs text-muted">의도 · 쉼표로 여러 개</span>
+                <input type="text" class="field w-full" x-bind:value="fa ? fa.intent : ''" x-on:input="fa.intent=$event.target.value"></label>
+              <div><span class="text-xs text-muted">등급</span><div class="flex gap-2" style="margin-top:4px">
+                <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='G' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline'" x-on:click="fa.grade='G'">G · 정상</button>
+                <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='R' ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="fa.grade='R'">R · 차단</button>
+              </div></div>
+            </div>
+            <div class="flex gap-2" style="margin-top:16px;justify-content:flex-end">
+              <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="faOpen=false">취소</button>
+              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="faBusy" x-on:click="saveFinalAnswer()" data-tip="수정한 내용을 저장하고 이 상태를 정답으로 편입" data-tip-pos="top" x-text="faBusy ? '저장 중…' : '저장하고 편입'"></button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="w-full">

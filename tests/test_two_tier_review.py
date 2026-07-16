@@ -236,5 +236,41 @@ class TestFinalGamification(TwoTierBase, CfgMixin):
         self.assertEqual(q["stats"]["by"]["F"]["n"], 1)
 
 
+class TestFinalAnswerEdit(TwoTierBase, CfgMixin):
+    """정답 확정(고쳐서 편입): 최종검수자가 필드를 직접 고치면 그 수정본이 골든 정답이 된다."""
+
+    def test_patch_grade_and_fields_update_row(self):
+        serve, st = self._with_store()
+        ch = self._put_reviewed(st, "고칠 건", [("A", "good"), ("B", "bad")])
+        r = serve.patch_content_meta(ch, {"summary": "고친 요약", "finalGrade": "R"}, reviewer="F")
+        self.assertTrue(r["ok"])
+        row = next(x for x in serve.results_rows() if (x.get("content_ref") or {}).get("title") == "고칠 건")
+        self.assertEqual((row.get("item_meta") or {}).get("summary"), "고친 요약")
+        self.assertEqual((row.get("quality_meta") or {}).get("finalGrade"), "R")
+        self.assertGreaterEqual(st.patches_today("F"), 1)          # 교정 이력(감사·미션) 기록
+
+    def test_grade_only_patch_ok(self):
+        serve, st = self._with_store()
+        ch = self._put_reviewed(st, "등급만", [("A", "good"), ("B", "bad")])
+        self.assertTrue(serve.patch_content_meta(ch, {"finalGrade": "R"}, reviewer="F")["ok"])
+        self.assertFalse(serve.patch_content_meta("없는해시", {"finalGrade": "G"}, reviewer="F")["ok"])
+        self.assertFalse(serve.patch_content_meta(ch, {"finalGrade": "X"}, reviewer="F")["ok"])   # 허용 밖 등급
+
+    def test_correction_becomes_golden_expected(self):
+        serve, st = self._with_store()
+        self._isolate_cfg({})
+        ch = self._put_reviewed(st, "의견 갈림 건", [("A", "good"), ("B", "bad")])
+        self.assertIn(ch, [i["hash"] for i in serve.final_review_queue(None)["items"]])
+        serve.patch_content_meta(ch, {"summary": "확정 요약", "content_category": ["News"],
+                                      "finalGrade": "R"}, reviewer="리드")
+        serve.set_final_verdict(ch, "good", by="리드", team=None)   # 고쳐서 편입
+        serve.build_golden_from_reviews(None)
+        g = next(x for x in st.get_golden(None) if x["content"].get("title") == "의견 갈림 건")
+        self.assertEqual(g["expected"]["summary"], "확정 요약")      # 수정본이 곧 정답
+        self.assertEqual(g["expected"]["content_category"], ["News"])
+        self.assertEqual(g["expected"]["finalGrade"], "R")
+        self.assertNotIn(ch, [i["hash"] for i in serve.final_review_queue(None)["items"]])   # 확정 후 큐에서 제거
+
+
 if __name__ == "__main__":
     unittest.main()

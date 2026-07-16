@@ -350,6 +350,39 @@
         this.openDetail(this._rawToDetail(r));
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
       },
+      // 정답 확정(고쳐서 편입): 요약·분류·의도·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 골든 정답
+      faOpen: false, faBusy: false, fa: null,
+      openFinalAnswer(r) {
+        this.fa = { hash: r.hash, title: r.title || '(제목 없음)', row: r,
+          summary: r.summary || '', cats: (r.category || []).join(', '),
+          intent: (r.intent || []).join(', '), grade: r.grade === 'R' ? 'R' : 'G',
+          note: (r.fb && r.fb.note) || '', elems: (r.fb && r.fb.elems) || [] };
+        this.faOpen = true;
+      },
+      async saveFinalAnswer() {
+        const f = this.fa; if (!f || this.faBusy) return;
+        this.faBusy = true;
+        try {
+          if (!(f.hash || '').startsWith('goldf:')) {   // 골드 문항은 편집 대상이 아니라 판정만 기록됨
+            const r0 = f.row; const patch = {};
+            const cats = f.cats.split(',').map((s) => s.trim()).filter(Boolean);
+            const intent = f.intent.split(',').map((s) => s.trim()).filter(Boolean);
+            if (f.summary !== (r0.summary || '')) patch.summary = f.summary;
+            if (cats.join('|') !== (r0.category || []).join('|')) patch.content_category = cats;
+            if (intent.join('|') !== (r0.intent || []).join('|')) patch.intent = intent;
+            if (f.grade !== (r0.grade || '')) patch.finalGrade = f.grade;
+            if (Object.keys(patch).length) {
+              let pr = null;
+              try { pr = await (await this._afetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: f.hash, patch: patch, reviewer: this.reviewer || '' }) })).json(); } catch (e) {}
+              if (!(pr && pr.ok)) { this._err((pr && pr.error) || '교정 저장 실패 · 편입은 진행되지 않았어요'); return; }
+              r0.summary = f.summary; r0.category = cats; r0.intent = intent; r0.grade = f.grade;   // 목록 즉시 반영
+              (pr.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+            }
+          }
+          await this.finalDecide(f.row, 'good');
+          this.faOpen = false;
+        } finally { this.faBusy = false; }
+      },
       async toggleFinalRole(m) {                    // 팀 관리: 최종검수자 지정/해제(슈퍼관리자 이상)
         const nv = this.finalReviewers.includes(m.id) ? '' : 'final';
         try {

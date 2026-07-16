@@ -1286,6 +1286,34 @@ class Store:
         c.commit()
         return True
 
+    def update_quality(self, content_hash, grade: str, reasons=None):
+        """최종검수자 등급 교정: final_grade 컬럼 + payload.quality_meta 동시 갱신.
+        반환 = 이전 등급 문자열(행 없으면 None) · patch_log 의 교정 전/후 기록용."""
+        c = self._conn()
+        row = c.execute("SELECT final_grade,payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
+        if not row:
+            return None
+        prev = row[0] or ""
+        try:
+            pl = json.loads(row[1]) if row[1] else {}
+        except Exception:
+            pl = {}
+        pl = pl if isinstance(pl, dict) else {}
+        qm = pl.get("quality_meta")
+        qm = qm if isinstance(qm, dict) else {}
+        qm["finalGrade"] = grade
+        if reasons is not None:
+            qm["reasons"] = reasons
+        pl["quality_meta"] = qm
+        if reasons is not None:
+            c.execute("UPDATE results SET final_grade=?, reasons=?, payload=? WHERE content_hash=?",
+                      (grade, json.dumps(reasons, ensure_ascii=False), json.dumps(pl, ensure_ascii=False), content_hash))
+        else:
+            c.execute("UPDATE results SET final_grade=?, payload=? WHERE content_hash=?",
+                      (grade, json.dumps(pl, ensure_ascii=False), content_hash))
+        c.commit()
+        return prev
+
     # ── 골든셋(검수 확정 정답셋 · 누적) ──
     def upsert_golden(self, content_hash, content, expected, team=None, source="review"):
         """골든 엔트리 upsert(누적). content_hash 키 · source = review(검수 유래)|manual(관리자 등록)."""
