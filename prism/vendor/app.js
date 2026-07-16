@@ -551,6 +551,12 @@
           if (d.error) { this.boardMsg = '오류: ' + d.error; } else this.boardData = d;
         } catch (e) {}
       },
+      async boardAnswer(b) {                    // 문의 답변 저장(관리자)
+        try {
+          const d = await (await fetch('/board', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'answer', id: b.id, answer: b.answer || '', reviewer: this.reviewer }) })).json();
+          if (d.error) { this.boardMsg = '오류: ' + d.error; } else { this.boardData = d; this.boardMsg = '답변이 저장·공유되었습니다'; }
+        } catch (e) { this.boardMsg = '답변 저장 실패'; }
+      },
       async boardDelete(b) {
         if (!(await this.dsConfirm('이 글을 삭제할까요?', { ok: '삭제', danger: true }))) return;
         try {
