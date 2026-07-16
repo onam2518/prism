@@ -1647,18 +1647,12 @@ PAGE = """<!doctype html>
             </div>
           </div></div>
         <div class="panel"><div class="panel-hd"><b>접수 목록</b><span class="meta tnum" x-text="boardData ? (boardData.n + '건 · 최신순') : ''"></span></div>
-          <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:86px">유형</th><th>제목 · 내용</th><th style="width:100px">작성자</th><th style="width:120px">상태</th><th style="width:130px"></th></tr></thead><tbody>
+          <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:86px">유형</th><th>제목 · 내용</th><th style="width:100px">작성자</th><th style="width:120px">상태</th><th style="width:168px">답변</th><th style="width:96px"></th></tr></thead><tbody>
             <template x-for="b in (boardData ? boardData.items : [])" x-bind:key="b.id">
               <tr>
                 <td><span class="ds-badge" x-bind:class="b.kind==='bug' ? 'ds-badge--error' : 'ds-badge--intent'" x-text="b.kind==='bug' ? '오류' : '기능개선'"></span></td>
                 <td><div class="text-ink" style="font-weight:600" x-text="b.title"></div><div class="tbox" x-show="b.body" x-text="b.body"></div>
-                  <div x-show="b.answer" class="tbox" style="margin-top:6px;padding:8px 10px;background:var(--ds-surface-2,rgba(30,132,255,.06));border-radius:8px;border-left:3px solid var(--ds-primary,#1e84ff)"><b class="text-xs" style="color:var(--ds-primary,#1e84ff)">답변</b> <span x-text="b.answer"></span></div>
-                  <template x-if="boardAdmin">
-                    <div style="margin-top:6px;display:flex;gap:6px">
-                      <input class="field" style="height:30px;flex:1;min-width:120px" x-bind:value="b.answer||''" x-on:input="b.answer=$event.target.value" placeholder="문의에 답변 입력…" x-on:keydown.enter="boardAnswer(b)">
-                      <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="boardAnswer(b)">답변 저장</button>
-                    </div>
-                  </template></td>
+                  <span x-show="b.answer" class="ds-badge ds-badge--success" style="margin-top:6px"><span class="ds-badge__dot"></span>답변 완료</span></td>
                 <td class="text-body" x-text="b.author"></td>
                 <td>
                   <template x-if="boardAdmin">
@@ -1669,12 +1663,48 @@ PAGE = """<!doctype html>
                     <span class="ds-badge" x-bind:class="b.status==='done' ? 'ds-badge--success' : (b.status==='doing' ? 'ds-badge--intent' : 'ds-badge--neutral')"><span class="ds-badge__dot"></span><span x-text="b.status==='done' ? '완료' : (b.status==='doing' ? '처리 중' : '접수')"></span></span>
                   </template>
                 </td>
+                <td>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                    <button type="button" x-show="boardAdmin && !b.answer" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="openBoardAns(b, true)">등록하기</button>
+                    <button type="button" x-show="boardAdmin && b.answer" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="openBoardAns(b, true)">수정하기</button>
+                    <button type="button" x-show="b.answer" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="openBoardAns(b, false)">답변 보기</button>
+                    <span x-show="!b.answer && !boardAdmin" class="text-xs" style="color:var(--ds-muted)">답변 대기</span>
+                  </div>
+                </td>
                 <td><span class="text-xs text-muted tnum" x-text="fmtTs(b.ts)"></span>
                   <button type="button" class="copybtn" x-show="b.mine || boardAdmin" x-on:click="boardDelete(b)" style="margin-left:6px">삭제</button></td>
               </tr>
             </template>
-            <template x-if="!(boardData && boardData.items && boardData.items.length)"><tr><td colspan="5" class="text-muted">아직 글이 없습니다 · 불편한 점이나 아이디어를 첫 글로 남겨보세요</td></tr></template>
+            <template x-if="!(boardData && boardData.items && boardData.items.length)"><tr><td colspan="6" class="text-muted">아직 글이 없습니다 · 불편한 점이나 아이디어를 첫 글로 남겨보세요</td></tr></template>
           </tbody></table></div>
+        </div>
+        <!-- 문의 답변 팝업: 보기/등록/수정 겸용 · ds-dialog 규격 -->
+        <div class="ds-dialog-backdrop" x-show="baOpen" x-cloak x-transition.opacity x-on:mousedown.self="baOpen=false" x-on:keydown.escape.window="baOpen && (baOpen=false)" style="z-index:77">
+          <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="문의 답변" style="max-width:600px;display:flex;flex-direction:column;max-height:88vh">
+            <h2 class="ds-dialog__title" x-text="baItem ? (baEdit ? (baItem.answer ? '답변 수정' : '답변 등록') : '답변 보기') : ''"></h2>
+            <div class="ds-dialog__body" style="display:flex;flex-direction:column;gap:14px;overflow:auto">
+              <div x-show="baItem">
+                <div class="text-xs" style="color:var(--ds-muted);margin-bottom:2px">문의</div>
+                <div class="text-ink" style="font-weight:600" x-text="baItem && baItem.title"></div>
+                <div class="tbox" x-show="baItem && baItem.body" x-text="baItem && baItem.body" style="margin-top:4px"></div>
+              </div>
+              <div>
+                <div class="text-xs" style="color:var(--ds-muted);margin-bottom:2px">답변</div>
+                <template x-if="baEdit">
+                  <textarea x-model="baText" rows="8" class="field" style="min-height:180px" placeholder="문의에 대한 답변을 입력하세요" x-on:keydown.escape="baOpen=false"></textarea>
+                </template>
+                <template x-if="!baEdit">
+                  <div class="tbox" style="white-space:pre-wrap;line-height:1.6" x-text="baItem && (baItem.answer || '아직 답변이 없습니다')"></div>
+                </template>
+              </div>
+              <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="baMsg"></span>
+            </div>
+            <div class="ds-dialog__footer">
+              <button type="button" class="ds-btn ds-btn--ghost" x-on:click="baOpen=false">닫기</button>
+              <button type="button" x-show="!baEdit && boardAdmin" class="ds-btn ds-btn--outline ds-btn--c-primary" x-on:click="baEdit=true">수정</button>
+              <button type="button" x-show="baEdit" class="ds-btn ds-btn--primary" x-bind:disabled="baBusy" x-on:click="saveBoardAns()" x-text="baBusy ? '저장 중…' : '답변 저장'"></button>
+            </div>
+          </div>
         </div>
       </div>
 

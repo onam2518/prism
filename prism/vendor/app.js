@@ -551,11 +551,24 @@
           if (d.error) { this.boardMsg = '오류: ' + d.error; } else this.boardData = d;
         } catch (e) {}
       },
-      async boardAnswer(b) {                    // 문의 답변 저장(관리자)
+      baOpen: false, baItem: null, baText: '', baEdit: false, baBusy: false, baMsg: '',
+      openBoardAns(b, edit) {                   // 문의 답변 팝업 열기(보기/등록/수정)
+        this.baItem = b; this.baText = b.answer || ''; this.baEdit = !!edit; this.baMsg = ''; this.baOpen = true;
+      },
+      async saveBoardAns() {                    // 팝업에서 답변 저장(관리자)
+        if (!this.baItem || this.baBusy) return;
+        this.baBusy = true; this.baMsg = '';
         try {
-          const d = await (await fetch('/board', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'answer', id: b.id, answer: b.answer || '', reviewer: this.reviewer }) })).json();
-          if (d.error) { this.boardMsg = '오류: ' + d.error; } else { this.boardData = d; this.boardMsg = '답변이 저장·공유되었습니다'; }
-        } catch (e) { this.boardMsg = '답변 저장 실패'; }
+          const d = await (await fetch('/board', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'answer', id: this.baItem.id, answer: this.baText || '', reviewer: this.reviewer }) })).json();
+          if (d.error) { this.baMsg = '오류: ' + d.error; }
+          else {
+            this.boardData = d;
+            const it = (d.items || []).find((x) => x.id === this.baItem.id);
+            if (it) this.baItem = it;
+            this.baEdit = false; this.baMsg = '답변이 저장·공유되었습니다';
+          }
+        } catch (e) { this.baMsg = '답변 저장 실패'; }
+        this.baBusy = false;
       },
       async boardDelete(b) {
         if (!(await this.dsConfirm('이 글을 삭제할까요?', { ok: '삭제', danger: true }))) return;
