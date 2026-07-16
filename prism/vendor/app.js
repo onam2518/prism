@@ -169,7 +169,14 @@
       bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {}, bulkMode: 'same',
       // 노출 게이트: 로컬은 항상, 운영은 슈퍼관리자·운영관리자(opsadmin)만
       get opsAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isSysAdmin || this.adminData.isSuperAdmin)); },
-      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkOpen = true; this.loadRaw(); },
+      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkOpen = true; this.loadRaw(); this.loadAssignLog(); },
+      // 배정 감사 이력: 누가·언제·어떤 방식으로 몇 건을 배정/해제했는지(모달 하단 표시)
+      assignLog: null,
+      async loadAssignLog() { try { const r = await (await this._afetch('/assign-log', { headers: this._authHeaders() })).json(); if (r && r.ok) this.assignLog = r.items; } catch (e) {} },
+      assignLogTxt(it) {
+        const who = (it.reviewers || []).map((id) => ((this.assignMembers.find((m) => m.id === id) || {}).name || String(id).slice(0, 6))).join('·');
+        return this.fmtTs(it.ts) + ' · ' + it.by + ' · ' + it.mode + ' ' + it.n + '건' + (who ? (' → ' + who) : '');
+      },
       // 필터 결과(현재 표와 동일 규칙 + 배정 상태 필터)
       get bulkFiltered() {
         return (((this.rawData || {}).items) || []).filter((r) => {
