@@ -4614,7 +4614,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
             return
 
-        if self.path.startswith("/reviewer"):
+        if self.path.startswith("/reviewer") and not self.path.startswith("/reviewer-role"):
+            # startswith 디스패치라 /reviewer-role(최종검수자 지정)이 여기 삼켜지지 않게 제외
             _TEAM_CACHE.pop(self._bearer_uid() or "", None)   # 가입·팀 변경 즉시 반영
             try:
                 data = json.loads(body or b"{}")
