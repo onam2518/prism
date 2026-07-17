@@ -34,6 +34,13 @@
   </div>
   </div><!-- /.appbody -->
 
+  <!-- 푸터: 문서 전체 스크롤 전환과 함께 도입 · 페이지 최하단(짧은 페이지도 바닥 고정) -->
+  <footer class="appfoot">
+    <span class="appfoot__brand">PRISM</span>
+    <span>콘텐츠 메타 스튜디오 · 빌드 <span class="tnum" x-text="(cfg && cfg.build) || '—'"></span></span>
+    <button type="button" class="appfoot__link" x-on:click="selectMod('board')">문의·제안 → 게시판</button>
+  </footer>
+
   <!-- ✎ 편집 팝업 · 편집 버튼 클릭 시 바로 수정(사전·정책 등) -->
   <div class="ds-dialog-backdrop" x-show="editT" x-cloak x-on:mousedown.self="cancelEdit()" style="z-index:75">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="편집" style="max-width:520px">
