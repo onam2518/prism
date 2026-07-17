@@ -117,6 +117,7 @@ _inject_gold_final = RV._inject_gold_final
 rerun_unconfirmed = RV.rerun_unconfirmed
 _log_assign = RV._log_assign
 assign_log_data = RV.assign_log_data
+award_quest_bonus = RV.award_quest_bonus
 apply_feedback = RV.apply_feedback
 apply_gold_answer = RV.apply_gold_answer
 mission_progress = RV.mission_progress

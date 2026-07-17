@@ -290,6 +290,65 @@ def assign_log_data(team=None) -> dict:
     return {"ok": True, "items": list(reversed(rep.get("items") or []))}
 
 
+QUEST_BONUS_PT = 100        # 기한 내 배정 완주 보너스 · 검수 10건 값(미션 10~20P 대비 대형 목표감)
+
+
+def award_quest_bonus(team=None) -> dict:
+    """퀘스트 완주 보상: 학습 반영(배치) 시점에 '기한 내 내 배정 전량 검수'한 검수자에게
+    +100P 지급. 유효 검수 판정은 퀘스트 진척(quest_team_progress)과 동일 관점(대상 스코프 ×
+    현행 초안 이후 검수). 회차 키(questbonus:v{다음 버전})로 log_event_once → 회차당 1회(멱등).
+    배정이 없던 검수자는 완주 기준이 없어 대상 아님(카드도 보상 줄을 배정자에게만 노출)."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "log_event_once") and hasattr(st, "assignees")):
+        return {"ok": False, "awarded": [], "bonus": QUEST_BONUS_PT}
+    try:
+        dts = st.draft_times(team) if hasattr(st, "draft_times") else {}
+    except Exception:
+        dts = {}
+    try:
+        targets = (st.review_targets(team) if hasattr(st, "review_targets")
+                   else st.yellow_hashes(team) if hasattr(st, "yellow_hashes") else None)
+    except Exception:
+        targets = None
+    per = {}                                    # 검수자 → 유효 검수한 대상 집합
+    for ch, e in (st.feedback_map(team=team) or {}).items():
+        if targets is not None and ch not in targets:
+            continue
+        base = float(dts.get(ch) or 0)
+        for v in e.get("verdicts") or []:
+            if _fb_epoch(v.get("ts")) >= base:
+                rid = v.get("reviewer_id") or v.get("reviewer") or ""
+                per.setdefault(rid, set()).add(ch)
+    try:
+        asg = st.assignees(team=team) or {}
+    except Exception:
+        asg = {}
+    asg = {ch: a for ch, a in asg.items() if targets is None or ch in targets}
+    by_rv = {}                                  # 배정 검수자 → [완료, 배정]
+    for ch, a in asg.items():
+        for rv in (a.get("reviewers") or []):
+            c = by_rv.setdefault(rv, [0, 0])
+            c[1] += 1
+            if ch in (per.get(rv) or ()):
+                c[0] += 1
+    try:
+        ver = int(st.batch_seq(team) if hasattr(st, "batch_seq") else 0) + 1   # 이번에 반영될 버전
+    except Exception:
+        ver = 0
+    key = f"questbonus:v{ver}"
+    awarded = []
+    for rv, (done, total) in sorted(by_rv.items()):
+        if total and done >= total:
+            try:
+                if st.log_event_once(rv, key, 0, QUEST_BONUS_PT, team=team):
+                    awarded.append(rv)
+            except Exception:
+                pass
+    if awarded:
+        _SV._agg_bump()                          # 아레나 점수 즉시 반영
+    return {"ok": True, "awarded": awarded, "bonus": QUEST_BONUS_PT, "version": ver}
+
+
 # ── 파이프라인 실행 ──────────────────────────────────────────────────────────
 def apply_feedback(data: dict) -> dict:
     """콘텐츠별 평가 피드백 저장 → 학습 루프 즉시 반영. {clear:true} 면 전체 초기화."""
