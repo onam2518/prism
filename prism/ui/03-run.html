@@ -1,0 +1,130 @@
+      <!-- ═══ 모듈: 실행 · 추출 ═══ -->
+      <div x-show="mod === 'content' && contentTab === 'run'" class="w-full space-y-4">
+
+        <!-- 콘텐츠 추가 = 저장만(미실행 대기) · 초안 생성은 STEP 2 모델 실행이 담당 -->
+        <section class="panel" data-fn>
+          <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">추가는 저장만 합니다 · 초안 생성은 STEP 2 모델 실행에서 · 이미지·영상은 실험실 미디어 탭</span></div>
+          <div class="panel-bd">
+          <!-- 입력 방식 -->
+          <div class="seg seg3 mb-5">
+            <template x-for="t in tabItems" x-bind:key="t.id">
+              <button type="button" x-on:click="selectTab(t.id)" x-bind:class="activeTabId === t.id ? 'on' : ''" x-text="t.label"></button>
+            </template>
+          </div>
+          <!-- 콘텐츠 그룹: 입력 시 지정(이미지·텍스트 공용) 엑셀은 컬럼에서 자동 -->
+          <div x-show="activeTabId !== 'excel'" x-cloak class="mb-4">
+            <label class="lbl">콘텐츠 그룹</label>
+            <select x-model="group" class="field">
+              <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+            </select>
+          </div>
+          <!-- 이미지 입력은 실험실 · 미디어 탭으로 이관됨(실험실 전담) -->
+          <!-- 텍스트 -->
+          <div x-show="activeTabId === 'text'" x-cloak class="space-y-4">
+            <div><label class="lbl">제목 (title)</label>
+              <input x-model="txtTitle" class="field" placeholder="기사 제목"></div>
+            <div><label class="lbl">본문 (body)</label>
+              <textarea x-model="txtBody" rows="5" class="field" placeholder="본문 내용"></textarea></div>
+            <div><label class="lbl">원문 링크 (선택)</label>
+              <input x-model="txtUrl" class="field" placeholder="https:// 원문 주소 · 검수 화면에서 원문 페이지를 바로 볼 수 있습니다"></div>
+          </div>
+          <!-- 엑셀 -->
+          <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
+            <div class="flex items-center justify-between gap-2 rounded-lg border border-black/[0.08] bg-black/[0.02] px-3 py-2.5">
+              <div class="text-xs text-muted">컬럼 양식 · <span class="text-body">콘텐츠 그룹 · 제목 · 부제 · 본문 · 원문 링크</span> (제목·본문 필수)</div>
+              <span class="inline-flex shrink-0 items-center gap-2">
+              <a href="/template.xlsx" download
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-black/[0.12] px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-black/[0.06]">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                엑셀 템플릿
+              </a>
+              <a href="/template.csv" download class="text-xs text-muted hover:text-ink" style="text-decoration:underline" data-tip="같은 양식의 CSV(UTF-8 BOM)" data-tip-pos="top">CSV</a>
+              </span>
+            </div>
+            <div>
+              <label class="lbl">엑셀 / CSV (제목·본문 컬럼 자동 매핑)</label>
+              <label class="dropzone" x-bind:class="xlsDrag ? 'drag' : ''"
+                     x-on:dragover.prevent="xlsDrag = true" x-on:dragleave.prevent="xlsDrag = false"
+                     x-on:drop.prevent="onDropExcel($event)">
+                <span class="name" x-text="xlsDrag ? '여기에 놓기' : (excelLabel + ' · 끌어다 놓기 가능')"></span>
+                <span class="pick">
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                  파일 선택
+                </span>
+                <input type="file" accept=".xlsx,.csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="onExcel($event)">
+              </label>
+              <p class="mt-1.5 text-xs text-muted">행마다 한 콘텐츠로 일괄 추출합니다 컬럼명이 제목/본문/서비스명과 달라도 자동 추론합니다 (최대 200행)</p>
+            </div>
+          </div>
+
+          <div class="mt-5 flex items-center gap-3">
+            <button type="button" x-on:click="run()" x-bind:disabled="loading"
+              class="ds-btn ds-btn--primary ds-btn--s-lg disabled:opacity-50">
+              <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
+              <span x-text="loading ? '추가 중' : '콘텐츠 추가'"></span>
+            </button>
+            <span aria-live="polite" class="ml-auto text-sm" style="color:var(--ds-error)" x-text="status"></span>
+          </div>
+          </div>
+        </section>
+
+
+        <!-- 엑셀 배치 결과 + 인포그래픽 -->
+        <div x-show="batchResult" x-cloak x-transition.opacity.duration.250ms class="mt-6 space-y-4">
+          <!-- 집계 인포그래픽 -->
+          <section class="panel">
+            <div class="panel-hd"><b>집계</b><span class="meta tnum" x-text="batchResult ? (batchStats.n + '건 분석') : ''"></span>
+              <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-[#ff9429]/15 px-2 py-0.5 text-xs font-semibold text-[#ff9429]">MOCK</span>
+              <button type="button" class="copybtn ml-auto" x-on:click="exportBatchCsv()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                CSV 내보내기
+              </button>
+            </div>
+            <div class="panel-bd space-y-5">
+              <div class="tiles">
+                <div class="tile"><div class="n tnum" x-text="batchStats.n"></div><div class="t">총 건수</div></div>
+                <div class="tile"><div class="n tnum" x-text="batchStats.g"></div><div class="t">유통가능 G</div></div>
+                <div class="tile"><div class="n tnum" x-text="batchStats.ents"></div><div class="t">엔티티 수</div></div>
+                <div class="tile"><div class="n tnum" x-text="batchStats.avgLen"></div><div class="t">평균 리드문(자)</div></div>
+              </div>
+              <div class="flex items-center gap-6">
+                <div class="ring" x-bind:style="'background:conic-gradient(var(--ds-primary) ' + batchStats.gPct + '%, var(--ds-hairline-soft) 0)'">
+                  <i><span class="pv tnum" x-text="batchStats.gPct + '%'"></span><span class="pl">유통가능</span></i>
+                </div>
+                <div class="min-w-0 flex-1 space-y-2.5">
+                  <div class="lbl" style="margin-bottom:2px">인텐트 분포 (상위 5)</div>
+                  <template x-for="it in batchStats.intents" x-bind:key="it.k">
+                    <div class="bar">
+                      <span class="lab" x-text="it.k"></span>
+                      <span class="track"><span class="fill" x-bind:style="'width:' + Math.max(it.pct, 4) + '%'"></span></span>
+                      <span class="pc tnum" x-text="it.v + '건'"></span>
+                    </div>
+                  </template>
+                  <div x-show="!batchStats.intents.length" class="text-xs text-muted">인텐트 데이터 없음</div>
+                </div>
+              </div>
+              <p x-show="batchResult && batchResult.mapping" class="text-xs text-muted" style="margin:0" x-text="batchResult && batchResult.mapping ? ('매핑: ' + Object.entries(batchResult.mapping).map(e=>e[0]+'←'+e[1]).join(' · ') + ' · 건별 결과는 아래 추가된 콘텐츠·검수 목록에서 확인합니다') : ''"></p>
+            </div>
+          </section>
+        </div>
+
+        <!-- 단건 처리 이력(마지막 수동 추출의 보정·비용·지연 · 관리자 추적용) -->
+        <div x-show="result" class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>처리 이력</b><span class="meta" x-text="tr.prompt_version || ''"></span><button type="button" class="copybtn" x-show="tr && tr.content_id !== undefined" x-on:click="exportEval()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div><div class="panel-bd">
+            <div class="drow"><div class="k">보정</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="f in (tr.fallbacks || [])" x-bind:key="f"><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="실행 중 발생한 폴백·재시도 기록" data-tip-pos="top" x-text="f"></span></template>
+              <span x-show="!(tr.fallbacks||[]).length" class="text-xs text-muted">없음</span>
+            </div></div>
+            <div class="drow" x-show="tr.by_call && Object.keys(tr.by_call).length"><div class="k">콜별 비용</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="[k,v] in Object.entries(tr.by_call || {})" x-bind:key="'bc'+k"><span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-bind:data-tip="'호출 ' + v.n + '회 · 토큰 in ' + v['in'] + ' / out ' + v.out + ' · ' + v.ms + 'ms'" data-tip-pos="top" x-text="k + ' $' + (v.cost||0).toFixed(4)"></span></template>
+            </div></div>
+            <div class="drow"><div class="k">검증 verdict</div><div class="v flex flex-wrap gap-1.5">
+              <template x-for="(v,i) in (tr.agent_verdicts || [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" data-tip="에이전트별 판정 근거(트레이스)" data-tip-pos="top" x-text="(typeof v==='string')?v:JSON.stringify(v)"></span></template>
+              <span x-show="!(tr.agent_verdicts||[]).length" class="text-xs text-muted">없음</span>
+            </div></div>
+            <div class="drow"><div class="k">비용 · 토큰</div><div class="v text-sm text-body tnum" x-text="'$' + (tr.cost_usd||0).toFixed(4) + ' · ' + JSON.stringify(tr.tokens||{})"></div></div>
+            <div class="drow"><div class="k">지연(ms)</div><div class="v text-sm text-body tnum" x-text="JSON.stringify(tr.latency_ms||{})"></div></div>
+          </div></div>
+        </div>
+      </div>
+
