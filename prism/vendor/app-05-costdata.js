@@ -200,12 +200,17 @@ window.PRISM_APP_PARTS.push(() => ({
         const idx = (d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()) % this.QUEST_CHEERS.length;
         return this.QUEST_CHEERS[idx];
       },
-      questMates() {                                     // 파티 = 팀원 캐릭터(리더보드 순 · 나 제외 · 3명) · 부족하면 기본 캐릭터
+      questMates() {                                     // 파티 = 팀원 캐릭터(리더보드 순 · 나 제외 · 3명)
+        // 캐릭터 종류 기준 중복 제거: 팀원들이 같은 캐릭터를 써도 씬에는 서로 다른 친구들만
+        // (리드=내 캐릭터 포함 4종이라 항상 상이한 3명 구성 가능 · 부족분은 미사용 캐릭터로 채움)
         const d = this.arenaData; const me = (d && d.my_id) || this.reviewer || '';
-        const chars = (((d && d.leaderboard) || []).filter((r) => (r.reviewer_id || r.reviewer) !== me)
-          .map((r) => r.char).filter(Boolean));
-        const fill = ['daesik', 'yonghee', 'ddakji', 'boksil'].filter((c) => c !== this.reviewerChar);
-        for (let i = 0; chars.length < 3; i++) chars.push(fill[i % fill.length]);
+        const seen = new Set([this.reviewerChar]);
+        const chars = [];
+        (((d && d.leaderboard) || []).filter((r) => (r.reviewer_id || r.reviewer) !== me)).forEach((r) => {
+          if (r.char && !seen.has(r.char)) { seen.add(r.char); chars.push(r.char); }
+        });
+        const fill = ['boksil', 'daesik', 'yonghee', 'ddakji'].filter((c) => !seen.has(c));
+        while (chars.length < 3 && fill.length) chars.push(fill.shift());
         return chars.slice(0, 3);
       },
       // 완주(커버리지) 건수 — 남은 건수·목표 문구의 원천(게이지 %와 분리)

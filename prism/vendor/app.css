@@ -810,9 +810,14 @@
   /* padding-top = 톱바(고정)와 사이드바·콘텐츠 사이 여백(좌우 22px 와 균형) */
   .appbody{flex:1;min-height:0;display:grid;grid-template-columns:232px minmax(0,1fr);gap:18px;
     padding:22px 22px 0;overflow:hidden;align-items:stretch}
-  /* 사이드바: 고정 내용이 길면 자체 스크롤(스크롤바 숨김) */
-  .leftcol{grid-column:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;scrollbar-width:none}
-  .leftcol::-webkit-scrollbar{display:none}
+  /* 사이드바: 고정 내용이 길면 자체 스크롤 · 얇은 스크롤바 상시 제공
+     (기존엔 숨김(scrollbar-width:none) — 뷰포트가 낮으면 잘렸는데 스크롤 가능함을 알 수 없었음) */
+  .leftcol{grid-column:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.18) transparent;padding-right:2px}
+  .leftcol::-webkit-scrollbar{display:block;width:6px}
+  .leftcol::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:3px;border:0;background-clip:border-box}
+  [data-theme='dark'] .leftcol{scrollbar-color:rgba(255,255,255,.22) transparent}
+  [data-theme='dark'] .leftcol::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22)}
   /* 콘텐츠(위젯) 영역: 여기에만 스크롤 적용 */
   .home{grid-column:2;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 2px 26px 0}
   .ds-sidebar .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 12px;font-family:var(--ds-font-sans);font-weight:600;font-size:var(--ds-size-subtitle)}
