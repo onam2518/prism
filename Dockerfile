@@ -9,6 +9,10 @@ WORKDIR /app
 COPY prism/ ./prism/
 COPY data/*.template.jsonl ./data/
 
+# 빌드 버전(CI 가 배포 실행 번호를 주입 → /config·푸터에 v1.N 로 표시 · 로컬 빌드는 dev)
+ARG BUILD_NO=
+ENV PRISM_BUILD_NO=$BUILD_NO
+
 # DB·런 산출물은 볼륨(/data)에 영속화. 키는 런타임 env.
 ENV PRISM_DB=/data/prism.db \
     PYTHONUNBUFFERED=1

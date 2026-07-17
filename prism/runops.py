@@ -27,12 +27,19 @@ def _run_id() -> str:
     return "run-" + str(int(time.time() * 1000))
 
 
+_BUILD_MAJOR = 1                # 큰 마일스톤에 수동 증가 · 마이너 = 배포 실행 번호(CI 자동)
+
+
 def _build_id() -> str:
-    """빌드 식별자(이 모듈 파일의 수정시각) · 설치본이 최신인지 확인용."""
+    """빌드 버전. 운영 = v{major}.{배포 실행 번호}(CI 가 PRISM_BUILD_NO 로 구움 · 자동 증가).
+    로컬/개발(번호 없음)은 dev + 파일 수정시각으로 구분한다."""
+    no = (os.environ.get("PRISM_BUILD_NO") or "").strip()
+    if no.isdigit():
+        return f"v{_BUILD_MAJOR}.{no}"
     try:
-        return time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(__file__)))
+        return "dev " + time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(__file__)))
     except Exception:
-        return "?"
+        return "dev"
 
 
 def _save_drafts(st, pairs, team=None):
