@@ -2427,6 +2427,7 @@ def main():
     start_ingest_scheduler()                           # 활성 소스 자동 폴링(백그라운드)
     start_learning_scheduler()                         # 매일 04:00 학습 일배치(합의 반영+골든+회귀평가)
     start_topic_scheduler()                            # 토픽 자동 리프레시 + 성과 스냅샷(1시간)
+    AO.start_retention_scheduler()                     # 보존 기한 정리 · PRISM_RETENTION_DAYS 설정 시에만
     keyed = bool(IMG._api_key())
     mode = "MOCK(강제)" if a.mock else ("실모델" if keyed else "MOCK(키 미설정 · UI에서 설정)")
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
