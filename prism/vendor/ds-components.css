@@ -1408,7 +1408,7 @@
 @media (prefers-reduced-motion: reduce) { .ds-coach { animation: none; } .ds-coach-target { transition: none; } }
 
 /* ════════════════════════════════════════════════════════════
-   Assistant · 하단 플로팅 캐릭터 버튼 + 대화 팝업 (채널톡 스타일)
+   Assistant · 하단 플로팅 캐릭터 버튼 + 작업 상태창
    ════════════════════════════════════════════════════════════ */
 /* 플로팅 독: 작업 상태창 + 캐릭터(배경 없이 크게). 사이드바 아래(좌하단) */
 .ds-fab-dock { position: fixed; left: 22px; bottom: 22px; z-index: 1150; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
