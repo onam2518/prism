@@ -1359,11 +1359,26 @@ class SupabaseStore:
                  "grade": (meta.get(l["content_hash"]) or {}).get("final_grade", "") or ""}
                 for l in links]
 
-    def retention(self, days: int = 30) -> int:
-        """오래된 검토 콘텐츠 삭제(8GB 내 유지)."""
+    def retention(self, days: int = 30, max_rows: int = 5000) -> int:
+        """오래된 검토 콘텐츠 정리(용량 유지 · 일배치 호출 전제).
+        평가용(purpose=eval)은 보존한다 — 평가 전용 홀드아웃이 시간 경과로 사라지면 안 됨.
+        골든·patch_log 는 자체 테이블(콘텐츠 사본 보유)이라 영향 없음.
+        파생 행(초안·피드백·평가판정·배정)을 함께 지운다 — 남기면 고아 배정이
+        행 상한·진척 분모·'내 담당' 수를 오염(remove_content 와 동일한 연쇄 규칙).
+        반환 = 정리한 콘텐츠 수. max_rows 로 1회 작업량을 제한한다(일배치라 잔여분은 다음 회차)."""
         cutoff = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - days * 86400))
-        self._req("DELETE", "contents", query=f"created_at=lt.{cutoff}", prefer="return=minimal")
-        return 0
+        rows = self._get("contents", f"select=hash&created_at=lt.{cutoff}"
+                                     f"&or=(purpose.is.null,purpose.neq.eval)&limit={int(max_rows)}")
+        hs = [str(r.get("hash") or "") for r in rows]
+        hs = [h for h in hs if _HASH_RE.match(h)]
+        for i in range(0, len(hs), 100):
+            ids = ",".join(urllib.parse.quote(h) for h in hs[i:i + 100])
+            self._req("DELETE", "contents", query=f"hash=in.({ids})", prefer="return=minimal")
+            self._req("DELETE", "drafts", query=f"content_hash=in.({ids})", prefer="return=minimal")
+            self._req("DELETE", "feedback", query=f"content_hash=in.({ids})", prefer="return=minimal")
+            self._req("DELETE", "eval_checks", query=f"hash=in.({ids})", prefer="return=minimal")
+            self._req("DELETE", "assignments", query=f"content_hash=in.({ids})", prefer="return=minimal")
+        return len(hs)
 
     # ── dashboard/config 호환(검토 콘텐츠 기준) ──
     def count(self) -> int:
