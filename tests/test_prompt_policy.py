@@ -18,11 +18,28 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 class TestPromptPolicy(unittest.TestCase):
     def test_entity_count_cap_removed(self):
         from prism import meta_prompts as MP
-        # 엔티티 콜 관련 텍스트만 검사(인텐트의 '총 1~3개 권장'은 별개 정책 · 유지)
         blob = MP.CALL_RULES["entities"] + MP.CALL_SCHEMAS["entities"] + MP.CALL_SELF_CHECK["entities"]
         self.assertNotIn("1~3", blob)                       # 상한 표기 재유입 방지
         self.assertIn("복합 명사", blob)                     # 분해 금지 지침 존재
         self.assertIn("상한은 없다", blob)
+
+    def test_intent_count_cap_removed(self):
+        # 인텐트도 엔티티와 동일 정책: N개 · 상한 없음 (2026-07-17 · 구 '총 1~3개 권장' 폐기)
+        from prism import meta_prompts as MP
+        blob = MP.CALL_RULES["intent"]
+        self.assertNotIn("1~3", blob)
+        self.assertNotIn("0~2", blob)
+        self.assertIn("상한은 없다", blob)
+
+    def test_verify_no_intent_truncation(self):
+        # 검증 단계가 사전 화이트리스트 정제만 하고 개수를 절단하지 않는다
+        from prism import verify as V
+        from prism import dictionaries as D
+        from prism.schema import ItemMeta, Content
+        vals = D.intent_categories_for("뉴스")[:5]
+        im = ItemMeta(summary="s", entities=[], intent=list(vals), content_category=[])
+        V.verify_item(im, Content(displayServiceName="뉴스", title="t", body="b"))
+        self.assertEqual(im.intent, vals)                   # 5개 그대로 보존([:2] 절단 재유입 방지)
 
     def test_entity_count_cap_removed_merged_fallback(self):
         # 통합 1콜 폴백 스키마도 분리형과 같은 정책(상한 없음)이어야 한다 (2026-07-09 잔존 표기 제거)
@@ -75,9 +92,9 @@ class TestPromptPolicy(unittest.TestCase):
 
     def test_merge_perspective_preserves_llm_verdict(self):
         from prism.classify import merge_perspective
-        # 임베딩 top2 + LLM 관점 축 → 관점 축 보존, 상한 2 유지
+        # 임베딩 kNN + LLM 관점 축 → 관점 축 보존 · 개수 상한 없음(base 절단 금지 · 관점은 우선 규칙상 1개)
         self.assertEqual(merge_perspective(["트렌드·시장 분석", "정형정보"], ["반박·비판", "심층 분석"]),
-                         ["트렌드·시장 분석", "반박·비판"])
+                         ["트렌드·시장 분석", "정형정보", "반박·비판"])
         self.assertEqual(merge_perspective(["심층 분석"], []), ["심층 분석"])          # 관점 없으면 그대로
         self.assertEqual(merge_perspective([], ["옹호·지지"]), ["옹호·지지"])          # emb 결과 없어도 보존
 

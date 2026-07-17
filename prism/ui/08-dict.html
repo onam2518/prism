@@ -26,7 +26,7 @@
           </div><div class="panel-bd flex flex-wrap gap-1.5">
             <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
           </div></div>
-          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용 형식·전달(8)</b><span class="meta">소비 방식과 교차 부여 가능 · 합산 0~2개 권장</span></div><div class="panel-bd flex flex-wrap gap-1.5">
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용 형식·전달(8)</b><span class="meta">소비 방식과 교차 부여 가능 · 상한 없음(핵심만)</span></div><div class="panel-bd flex flex-wrap gap-1.5">
             <template x-for="i in ((dictData&&dictData.intentForm)||[])" x-bind:key="'if'+i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
           </div></div>
           <div class="panel"><div class="panel-hd"><b>인텐트 · 서비스별</b>
