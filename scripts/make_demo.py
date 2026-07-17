@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 import time as _time0
 
@@ -361,13 +362,21 @@ def build() -> str:
     html = html.replace('<link href="/vendor/ds-components.css" rel="stylesheet">', f'<style>{comp_css}</style>')
     # 앱 CSS·JS(분리 파일) 인라인 · 이후의 /vendor/·폰트·result 치환이 앱 코드에도 닿도록 여기서 병합
     app_css = open(os.path.join(ROOT, "prism", "vendor", "app.css"), encoding="utf-8").read()
-    app_js = open(os.path.join(ROOT, "prism", "vendor", "app.js"), encoding="utf-8").read()
-    # 공개 표면(Pages) 정책: 내부 기준 문서 식별자가 든 주석 라인은 데모에서 제거
-    _internal = ("DNM", "1311", "1312", "278036632", "278856094", "365789408", "364314733")
-    app_js = "\n".join(l for l in app_js.splitlines()
-                       if not (l.lstrip().startswith("//") and any(m in l for m in _internal)))
+
+    def _read_app_js(name):
+        js = open(os.path.join(ROOT, "prism", "vendor", name), encoding="utf-8").read()
+        # 공개 표면(Pages) 정책: 내부 기준 문서 식별자가 든 주석 라인은 데모에서 제거
+        _internal = ("DNM", "1311", "1312", "278036632", "278856094", "365789408", "364314733")
+        return "\n".join(l for l in js.splitlines()
+                         if not (l.lstrip().startswith("//") and any(m in l for m in _internal)))
+
     html = html.replace('<link href="/vendor/app.css" rel="stylesheet">', f'<style>{app_css}</style>')
-    html = html.replace('<script src="/vendor/app.js"></script>', f'<script>{app_js}</script>')
+    # 앱 조각(app-NN-*.js) + 로더(app.js) 전부 인라인(조각 추가 시 자동 포착 · 로드 순서 = 파일명 순)
+    for part in sorted(p for p in os.listdir(os.path.join(ROOT, "prism", "vendor"))
+                       if re.match(r"app-\d\d-.*\.js$", p)):
+        html = html.replace(f'<script src="/vendor/{part}"></script>',
+                            f'<script>{_read_app_js(part)}</script>')
+    html = html.replace('<script src="/vendor/app.js"></script>', f'<script>{_read_app_js("app.js")}</script>')
     # 벤더 에셋(캐릭터·로고 SVG) → docs/demo-assets/ (Pages 루트 내부, main() 에서 복사)
     #   ../prism/vendor 는 Pages(docs=루트)에서 사이트 밖으로 나가 404 → 루트 내부 상대경로로.
     # src="/vendor/ 뿐 아니라 charOptions 의 JS 경로('/vendor/…')까지 포함해 전역 치환
