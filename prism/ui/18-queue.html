@@ -38,7 +38,7 @@
           <button type="button" class="srcfilter__chip sel" x-show="jobFilter" x-cloak x-on:click="jobFilter = null" x-text="jobFilter ? (jobFilter.name + ' 결과 ' + contentRows.length + '건 · 전체 보기 ×') : ''"></button>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
-          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:170px"></th></tr></thead><tbody>
+          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:240px"></th></tr></thead><tbody>
             <template x-for="c in contentRows" x-bind:key="'pp'+c.hash">
               <tr>
                 <td class="text-ink" x-text="c.title || '(제목 없음)'"></td>
@@ -48,7 +48,8 @@
                 <td><span class="ds-badge" x-bind:class="c.purpose === 'eval' ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="c.purpose === 'eval' ? '평가용' : '검수용'"></span></td>
                 <td><div class="flex items-center gap-1.5">
                   <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button>
-                  <button type="button" class="ds-btn ds-btn--outline" x-bind:class="delArm === c.hash ? 'ds-btn--c-danger' : ''" style="height:26px;padding:0 10px;font-size:11px" x-on:click="removeContent(c)" x-text="delArm === c.hash ? '삭제 확인' : '삭제'" data-tip="검수 목록·결과 비교(초안)·피드백까지 함께 삭제됩니다" data-tip-pos="left"></button>
+                  <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="rerunBusy[c.hash]" x-on:click="rerunOne(c)" x-text="rerunBusy[c.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 이전 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="left"></button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger" style="height:26px;padding:0 10px;font-size:11px" x-on:click="removeContent(c)" x-text="delArm === c.hash ? '삭제 확인' : '삭제'" data-tip="검수 목록·결과 비교(초안)·피드백까지 함께 삭제됩니다" data-tip-pos="left"></button>
                 </div></td>
               </tr>
             </template>

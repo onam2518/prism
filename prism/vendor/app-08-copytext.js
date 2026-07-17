@@ -160,6 +160,18 @@ window.PRISM_APP_PARTS.push(() => ({
         return all.filter((c) => set.has(c.hash));
       },
       fmtEta(s) { s = Math.max(0, Math.round(s || 0)); return s >= 60 ? (Math.floor(s / 60) + '분 ' + (s % 60) + '초') : (s + '초'); },
+      // 개별 콘텐츠 재실행: STEP 2 사용 모델(bulkModel)로 이 건만 초안 재생성(/rerun · 이력 보존)
+      rerunBusy: {},
+      async rerunOne(c) {
+        if (this.rerunBusy[c.hash]) return;
+        this.rerunBusy = { ...this.rerunBusy, [c.hash]: true };
+        try {
+          const r = await (await this._afetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, model: this.bulkModel || '' }) })).json();
+          if (r && !r.error) { this.liveToast((c.title || '콘텐츠') + ' · 재실행 완료'); this.loadDash(); this.loadRaw && this.loadRaw(); }
+          else this._err((r && r.error) || '재실행 실패');
+        } catch (e) { this._err('재실행 실패'); }
+        this.rerunBusy = { ...this.rerunBusy, [c.hash]: false };
+      },
       async removeContent(c) {
         if (this.delArm !== c.hash) {              // 1차 클릭 = 확인 대기(3초)
           this.delArm = c.hash;
