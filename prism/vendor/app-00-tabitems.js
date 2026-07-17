@@ -141,6 +141,9 @@ window.PRISM_APP_PARTS.push(() => ({
         const ids = (r && r.assignees) || []; const mem = this.assignMembers;
         return ids.map((id) => { const m = mem.find((x) => x.id === id); return (m && m.name) || id; });
       },
+      // 골드 문항(정답 검증용 가상 행 · hash 'gold:*')은 배정 대상 아님 — 배정해도 새로고침 시
+      // 재주입 행에 반영되지 않아 '지정했는데 미배정' 혼란만 남긴다(개별·일괄 모두 제외)
+      isGoldRow(r) { return String((r && r.hash) || '').indexOf('gold:') === 0; },
       openAssign(r) {
         if (this.assignSel && this.assignSel.hash === r.hash) { this.assignSel = null; return; }
         this.assignSel = r; this.assignPick = ((r.assignees || []).slice()); this.assignMin = Math.max(1, r.min_reviewers || 1);
@@ -184,6 +187,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // 필터 결과(현재 표와 동일 규칙 + 배정 상태 필터)
       get bulkFiltered() {
         return (((this.rawData || {}).items) || []).filter((r) => {
+          if (this.isGoldRow(r)) return false;   // 골드 문항(가상 행)은 배정 풀에서 제외
           if (this.bulkQ && !((r.title || '') + (r.category || []).join(' ') + (r.reasons || []).join(' ')).toLowerCase().includes(this.bulkQ.toLowerCase())) return false;
           if (this.bulkGrade && (r.grade || '') !== this.bulkGrade) return false;
           if (this.bulkSvc && (r.service || '') !== this.bulkSvc) return false;
