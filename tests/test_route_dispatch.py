@@ -19,8 +19,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestDispatchShadowing(unittest.TestCase):
-    """do_GET/do_POST 의 startswith 라우트 나열 순서에서, 앞선 짧은 접두가
-    뒤의 더 긴 라우트를 가로채는 조합이 없어야 한다(부정 가드 `not ...`은 제외)."""
+    """가로채기 가드. do_POST(아직 if/elif): startswith 나열 순서에서 앞선 짧은 접두가
+    뒤의 긴 라우트를 삼키면 안 된다(부정 가드 `not ...`은 제외). do_GET(라우트 테이블):
+    최장 접두 우선 순서 불변식을 검증한다."""
 
     def _routes(self, fn):
         """긍정 라우트 나열 순서와, `not startswith(...)` 로 명시 제외된 접두 집합."""
