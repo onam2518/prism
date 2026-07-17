@@ -561,24 +561,6 @@
   </div>
 
   <!-- ⚙ 설정 = 고정 팝업(Dialog) · 위젯 아님(§9.5) -->
-  <!-- 플로팅 도우미(채널톡 스타일) · 모든 기능 허브 -->
-  <div class="ds-chat" x-show="chatOpen" x-cloak>
-    <div class="ds-chat__head">
-      <span class="ds-chat__av"><img x-bind:src="charImg(reviewer ? reviewerChar : 'boksil')" alt=""></span>
-      <div><div class="ds-chat__title" x-text="(reviewer || 'Prism') + ' 에이전트'"></div><div class="ds-chat__sub"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span>보통 1분 내 응답</div></div>
-      <span style="margin-left:auto"><button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="chatOpen = false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></span>
-    </div>
-    <div class="ds-chat__body">
-      <template x-for="(m, i) in chatMsgs" x-bind:key="i"><div class="ds-chat__msg" x-bind:class="m.from === 'me' ? 'ds-chat__msg--me' : 'ds-chat__msg--bot'" x-text="m.text"></div></template>
-    </div>
-    <div class="ds-chat__quick">
-      <button type="button" class="chatchip" x-on:click="chatAct('extract')">＋ 새 추출</button>
-      <button type="button" class="chatchip" x-on:click="chatAct('dict')">사전 편집</button>
-      <button type="button" class="chatchip" x-on:click="chatAct('settings')">설정</button>
-    </div>
-    <div class="ds-chat__foot"><textarea class="ds-chat__input" x-model="chatDraft" rows="1" placeholder="작업을 지시하세요…" x-on:keydown.enter.prevent="chatSend()"></textarea><button type="button" class="ds-chat__send" x-on:click="chatSend()" aria-label="보내기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h10M8 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
-  </div>
-
   <!-- 복사 토스트 -->
   <div x-show="copyMsg" x-cloak x-transition.opacity class="toast" x-text="copyMsg" aria-live="polite"></div>
 

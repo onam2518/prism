@@ -302,8 +302,8 @@
     </aside>
     <!-- 도우미 = 사이드 위젯 바로 아래(다크 박스 + 캐릭터) -->
     <div class="side-assistant">
-      <!-- 사용자 프로필 카드(야구카드형): 내 캐릭터 + 이름. 누르면 '유저명 에이전트' 열림. 미설정 시 프로필 설정 -->
-      <button type="button" class="side-profile" x-on:click="reviewer ? (chatOpen = !chatOpen) : (reviewerEditing = true)" x-bind:data-tier="(reviewer && arenaMe) ? levelTier(arenaMe.level) : 0" aria-label="내 프로필·에이전트">
+      <!-- 사용자 프로필 카드(야구카드형): 내 캐릭터 + 이름. 누르면 프로필 설정(이름·캐릭터 편집) -->
+      <button type="button" class="side-profile" x-on:click="reviewerEditing = true" x-bind:data-tier="(reviewer && arenaMe) ? levelTier(arenaMe.level) : 0" aria-label="내 프로필">
         <span class="side-profile__glow"></span>
         <span class="side-profile__gain" x-show="reviewer && arenaMe && arenaMe.week_points>0" x-text="arenaMe && arenaMe.week_points ? ('+' + arenaMe.week_points + ' XP') : ''"></span>
         <span class="side-profile__avatar">
@@ -313,10 +313,9 @@
         <span class="side-profile__name">
           <span class="side-assistant__spin" x-show="loading || modBusy"></span>
           <span x-text="reviewer || '프로필 설정'"></span>
-          <span class="side-profile__tag" x-show="reviewer && !(loading || modBusy)">에이전트</span>
         </span>
         <span class="side-profile__score" x-show="reviewer && arenaMe && !(loading || modBusy)"><b x-text="(arenaMe ? arenaMe.points : 0)"></b> pt</span>
-        <span class="side-profile__sub" x-show="!(reviewer && arenaMe) || (loading || modBusy)" x-text="(loading || modBusy) ? '처리하고 있어요…' : (reviewer ? '내 에이전트 열기' : '이름·캐릭터를 설정하세요')"></span>
+        <span class="side-profile__sub" x-show="!(reviewer && arenaMe) || (loading || modBusy)" x-text="(loading || modBusy) ? '처리하고 있어요…' : (reviewer ? '프로필 편집' : '이름·캐릭터를 설정하세요')"></span>
         <span class="side-profile__edit" x-show="reviewer" x-on:click.stop="reviewerEditing = true" role="button" aria-label="프로필 편집" data-tip="편집" data-tip-pos="left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
       </button>
       <!-- 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 유형 태그 + D-day + 목표 + 진행 게이지 + 시한 · 전 메뉴 노출 -->
