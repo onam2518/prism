@@ -38,10 +38,10 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 배정 | `distribute_assignments` `assign_log_data` | /content-assign* /assign-log |
 | 게임화 | `arena_data` `mission_progress` `save_badges` `reviewer_weights` | /arena /badges |
 | 학습 연동 | `learn-*` 핸들러(실체는 learnops) `apply_gold_answer` `disabled_directives` | /learn-* /golden* /apply-directive |
-| 토픽 | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
-| 엔티티 사전 | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
+| 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
+| 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
 | 사용자 메타 | `usermeta_*` `build_template_xlsx` | /usermeta* |
-| 미디어 | `media_action` `media_s5ab` `media_native` | /media-extract |
+| 미디어 → **mediaops.py** | `media_action` `media_s5ab` `media_native` | /media-extract |
 | 인입·잡 | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` | /ingest-* /backfill-urls |
 | 대시보드·롤업 | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` | /dashboard /drill /cost-rollup /fail-rollup |
 | 게시판 | `board_data` `board_action` | /board |
@@ -87,10 +87,12 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   접두 매칭 · 관리자 게이트/다운로드 응답 공통화.
 - [x] **1단계 — POST 라우트 테이블**: do_POST 39분기를 같은 패턴으로. admin/super/
   login/team 게이트를 등록 옵션으로, try/except→500 복붙을 디스패처로 흡수.
-- [ ] **2단계 — serve.py 도메인 추출**: 위 클러스터 표 단위로 `prism/<도메인>ops.py`
-  분리. 이관 순서는 상태 의존이 적은 것부터(토픽 → 사전 → 미디어 → 대시보드 →
-  검수). 테스트·LO/AO 역참조 호환을 위해 serve 에 `from .xxx import *` 재수출을
-  남기고, `_STORE` 등 전역 상태는 serve 에 유지(위 주의점).
+- [x] **2단계(1차) — 도메인 추출: 토픽·사전·미디어**: `topicops.py`(477줄) ·
+  `dictops.py`(302줄) · `mediaops.py`(100줄) 분리, `_SV` 주입(learnops 관례) +
+  serve 재수출로 테스트·핸들러 호환. 몽키패치 계약: 테스트가 serve.topics_data ·
+  serve._DICT_OVERRIDES_PATH 를 패치하므로 모듈 내부 상호 호출·상태 접근은 `_SV.` 경유.
+- [ ] **2단계(2차) — 도메인 추출: 대시보드·롤업·검수**: `dashboard_data`/`drill_contents`,
+  `cost/fail_rollup`, 검수(1층·2층) 클러스터. 검수는 상태 의존이 가장 커서 마지막.
 - [ ] **3단계 — page.py 분할**: `PAGE` 를 화면 섹션별 파일(`prism/ui/*.html`)로 쪼개
   import 시 이어붙이기. 분할 직후 커밋에서 기존 PAGE 와 바이트 동일함을 테스트로
   증명 → 이후 섹션 파일이 세션 간 충돌 단위가 된다.
