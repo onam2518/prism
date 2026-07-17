@@ -194,5 +194,22 @@ class TestQuestTargetScope(ArenaScopeBase):
         self.assertEqual(d.get("quest_team_progress"), 1.0)   # A 1/1 만 평균에 참여
 
 
+class TestQuestBonus(ArenaScopeBase):
+    """기한 내 배정 완주 보너스(+100P): 학습 반영 시점 지급 · 회차당 1회(멱등) · 배정자만."""
+
+    def test_award_once_to_assignment_completers(self):
+        from prism import serve
+        st = self._seed()
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        self.assertEqual(serve.award_quest_bonus(None)["awarded"], [])   # 배정 없음 = 대상 없음
+        st.set_assignees("h1", ["A"], min_reviewers=1)   # A: 배정 h1 완주(1/1)
+        st.set_assignees("h2", ["B"], min_reviewers=1)   # B: 배정 h2 미완주(0/1)
+        r = serve.award_quest_bonus(None)
+        self.assertEqual(r["awarded"], ["A"])
+        self.assertEqual(r["bonus"], 100)
+        self.assertEqual(serve.award_quest_bonus(None)["awarded"], [])   # 같은 회차 재실행 = 멱등
+
+
 if __name__ == "__main__":
     unittest.main()

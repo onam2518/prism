@@ -1047,6 +1047,35 @@
 .squest__cnt{display:flex;justify-content:space-between;margin-top:4px;font:700 10.5px/1 var(--ds-font-game);color:var(--ds-body)}
 .squest__foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:10.5px;color:var(--ds-muted)}
 .squest__go{font:700 10.5px/1 var(--ds-font-game);color:var(--ds-primary)}
+/* ── 확정 시안(원정대): 캐릭터 씬 + 응원 문구 + 2×2 타일 + 보상 ── */
+.squest__party{position:relative;height:134px;border-radius:10px;overflow:hidden;margin-top:10px;
+  background:linear-gradient(180deg,var(--ds-primary-tint),transparent 72%)}
+.squest__ribbon{position:absolute;top:9px;left:50%;transform:translate(-50%,0);font:700 11px/1 var(--ds-font-game);
+  color:#fff;background:var(--ds-primary);padding:6px 14px;border-radius:3px;letter-spacing:.1em;white-space:nowrap;
+  box-shadow:0 2px 6px rgba(30,132,255,.4);z-index:3}
+.squest__ribbon::before,.squest__ribbon::after{content:'';position:absolute;top:3px;width:10px;height:17px;background:var(--ds-primary-deep);z-index:-1}
+.squest__ribbon::before{left:-7px;transform:skewY(-14deg)}
+.squest__ribbon::after{right:-7px;transform:skewY(14deg)}
+.squest__lead{position:absolute;left:14px;bottom:10px;width:58px;height:72px;object-fit:contain;object-position:bottom;
+  z-index:2;animation:squestBob 1.4s ease-in-out infinite;pointer-events:none}
+.squest__mate{position:absolute;bottom:8px;width:44px;height:56px;object-fit:contain;object-position:bottom;
+  filter:grayscale(.4) opacity(.55);pointer-events:none}
+.squest__path{position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--ds-hairline)}
+.squest__path i{display:block;height:100%;background:linear-gradient(90deg,var(--ds-primary),#66a8ff);transition:width .5s}
+.squest__cheer{margin-top:10px;font:700 13.5px/1.4 var(--ds-font-game);color:var(--ds-ink);text-wrap:balance}
+.squest__enc{margin-top:3px;font-size:10.5px;color:var(--ds-muted)}
+.squest__tiles{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
+.squest__tile{border:1px solid var(--ds-hairline);border-radius:9px;padding:8px 10px}
+.squest__tile small{display:block;font-size:9px;color:var(--ds-muted);letter-spacing:.04em;margin-bottom:2px}
+.squest__tile b{font:700 14px/1.35 var(--ds-font-game);color:var(--ds-ink)}
+.squest__tile--hot b{color:var(--ds-error)}
+.squest__tile--mine b{color:var(--ds-success-deep)}
+.squest__reward{margin-top:10px;padding-top:9px;border-top:1px dashed var(--ds-hairline);font-size:10.5px;
+  display:flex;justify-content:space-between;align-items:center;color:var(--ds-muted)}
+.squest__pt{font:700 11.5px/1 var(--ds-font-game);color:#c98a00;background:rgba(255,193,32,.16);padding:5px 9px;border-radius:999px;white-space:nowrap}
+[data-theme='dark'] .squest__pt{color:#ffc120;background:rgba(255,193,32,.14)}
+.squest__meta{display:flex;justify-content:space-between;align-items:center;margin-top:9px;font-size:10.5px;color:var(--ds-muted)}
+@media (prefers-reduced-motion:reduce){.squest__lead{animation:none}}
 
 /* ── 토픽 스튜디오: 생성 스텝퍼(이름 → 자연어 → 조건 → 생성) ── */
 .tprog{display:inline-block;width:70px;height:6px;border-radius:999px;background:var(--ds-hairline-soft);overflow:hidden;vertical-align:middle;margin-left:8px}

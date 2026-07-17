@@ -171,6 +171,43 @@ window.PRISM_APP_PARTS.push(() => ({
       questMyDone() { return Math.min(this.arenaAssignedDone || 0, this.questMyTotal()); },
       questMyLeft() { return Math.max(0, this.questMyTotal() - this.questMyDone()); },
       questLeftMine() { return this.questMyTotal() ? this.questMyLeft() : this.questLeft(); },
+      // 오늘의 응원(확정 시안): 리본 = 영어 핵심 단어 · 타이틀 = 문구 · 날짜 로테이션(팀 전원 동일)
+      QUEST_CHEERS: [
+        { kw: 'STEADY!', msg: '오늘도 한 건씩, 꾸준함이 이겨요' },
+        { kw: "LET'S GO!", msg: '몸 풀렸으면 바로 한 건 가보자고' },
+        { kw: 'HOMERUN!', msg: '이 페이스면 오늘 홈런각이에요' },
+        { kw: 'FOCUS!', msg: '지금 10분이면 3건은 거뜬해요' },
+        { kw: 'ON BASE!', msg: '짧게 쳐도 좋아요, 일단 출루' },
+        { kw: 'PACE UP!', msg: '어제의 나보다 한 건만 더' },
+        { kw: 'TEAMWORK!', msg: '내 한 건이 팀의 진척이 돼요' },
+        { kw: 'SLIDE!', msg: '마감 전 세이프, 지금이 타이밍' },
+        { kw: 'STREAK!', msg: '어제도 오늘도, 연승 이어가요' },
+        { kw: 'NICE CATCH!', msg: '어려운 건 잡아내는 게 실력' },
+        { kw: 'RHYTHM!', msg: '한 건 두 건, 리듬 타면 금방이에요' },
+        { kw: 'SHARP!', msg: '빠르게보다 정확하게, 그게 프로' },
+        { kw: 'LEVEL UP!', msg: '오늘 검수한 만큼 모델이 똑똑해져요' },
+        { kw: 'CLUTCH!', msg: '지금이 승부처, 한 건만 더' },
+        { kw: 'WARM-UP!', msg: '가볍게 한 건으로 시동 걸어요' },
+        { kw: 'COMEBACK!', msg: '지금 시작해도 충분히 역전이에요' },
+        { kw: 'CLOSER!', msg: '9회말 마무리, 깔끔하게 가요' },
+        { kw: 'STARTER!', msg: '오늘의 선발은 바로 당신' },
+        { kw: 'EASY!', msg: '천천히 봐도 좋아요, 정확하면 충분' },
+        { kw: 'FULL SWING!', msg: '망설이지 말고 풀스윙으로 가요' },
+      ],
+      questCheer() {                                     // 내 몫 완료 시엔 풀과 무관하게 DONE! 상태 고정
+        if (this.questMyTotal() && !this.questMyLeft()) return { kw: 'DONE!', msg: '내 몫 끝! 이제 팀을 도와줘요', done: true };
+        const d = new Date();
+        const idx = (d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()) % this.QUEST_CHEERS.length;
+        return this.QUEST_CHEERS[idx];
+      },
+      questMates() {                                     // 파티 = 팀원 캐릭터(리더보드 순 · 나 제외 · 3명) · 부족하면 기본 캐릭터
+        const d = this.arenaData; const me = (d && d.my_id) || this.reviewer || '';
+        const chars = (((d && d.leaderboard) || []).filter((r) => (r.reviewer_id || r.reviewer) !== me)
+          .map((r) => r.char).filter(Boolean));
+        const fill = ['daesik', 'yonghee', 'ddakji', 'boksil'].filter((c) => c !== this.reviewerChar);
+        for (let i = 0; chars.length < 3; i++) chars.push(fill[i % fill.length]);
+        return chars.slice(0, 3);
+      },
       // 완주(커버리지) 건수 — 남은 건수·목표 문구의 원천(게이지 %와 분리)
       questCover() { const a = this.arenaData; if (a && a.quest_done != null) return Math.min(a.quest_done, this.questTotal()); return this.questDone(); },
       questLeft() { return Math.max(0, this.questTotal() - this.questCover()); },
