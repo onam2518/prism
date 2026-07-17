@@ -20,8 +20,9 @@
    커밋된 ref 를 `git worktree add --detach <경로> <커밋>` 으로 받아 그 안에서 배포한다.
 6. **로컬 실행 격리**: 서버 구동 시 운영 기본 포트(8765)를 피하고,
    `PRISM_DB=$(mktemp -d)/t.db` 로 실 DB 를 격리한다. 세션 종료 전 띄운 프로세스를 정리한다.
-7. **허브 파일 주의**: `prism/serve.py`(HTTP 디스패치)·`prism/page.py`(UI)·
-   `prism/vendor/app.js` 는 거의 모든 기능이 지나가는 파일이라 세션 간 충돌이 가장 잦다.
+7. **허브 파일 주의**: `prism/serve.py`(HTTP 디스패치)는 거의 모든 기능이 지나가는
+   파일이라 세션 간 충돌이 가장 잦다. (UI 는 2026-07-17 분할: 마크업 `prism/ui/NN-*.html`
+   조각 · 앱 JS `vendor/app-NN-*.js` 조각 — 겹치지 않는 화면이면 동시 수정 안전)
    이 파일들의 다른 세션 미커밋 변경을 발견하면 겹치는 편집을 피하고 사용자에게 알린다.
 
 ## 빌드·테스트
@@ -38,7 +39,8 @@
 - **작업 시작 전 `ARCHITECTURE.md` 를 먼저 볼 것**: serve.py 도메인 클러스터 지도 ·
   라우트 추가 방법 · 리팩토링 로드맵. 기능 위치를 찾느라 큰 파일을 통독하지 않는다.
 - HTTP 디스패치 `serve.py` · 학습·골든·소요서·핸드오프 번들 `learnops.py` ·
-  UI `page.py`(+`vendor/app.js`) · 저장 계층 `store.py`(SQLite) / `supastore.py`(팀)
+  UI 마크업 `prism/ui/NN-*.html`(합성: `page.py`) · 앱 JS `vendor/app-NN-*.js`(로더:
+  `vendor/app.js`) · 저장 계층 `store.py`(SQLite) / `supastore.py`(팀)
 - 새 GET 라우트는 `serve.py` 의 `@_get_route` 테이블에 등록(최장 접두 우선 · 순서 무관).
   POST 도 동일하게 `@_post_route` 테이블(게이트 옵션 admin·super·login·team 지원).
 - 새 도메인 기능은 serve.py 에 쌓지 말고 별도 모듈로 시작(`usermeta.py`·`entdict.py` 패턴).
