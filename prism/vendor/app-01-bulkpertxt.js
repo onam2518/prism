@@ -87,7 +87,14 @@ window.PRISM_APP_PARTS.push(() => ({
         const L = pick(p.l), R = pick(p.r);
         return Object.keys(L).map((k) => ({ k: k, l: L[k], r: R[k], diff: L[k] !== R[k] }));
       },
-      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', final: r.final || '', fb: Object.assign({}, r.fb) }; },
+      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', final: r.final || '', assignees: r.assignees || [], fb: Object.assign({}, r.fb) }; },
+      // 배정 배타 검수(UI): 지정 검수자가 있는데 내가 아니면 판정 버튼 비활성(서버 게이트는 백스톱).
+      detailAssignBlocked() {
+        const d = this.detail;
+        if (!d || !d.assignees || !d.assignees.length) return false;
+        const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || '';
+        return d.assignees.indexOf(me) < 0;
+      },
       openRawDetail(r) {                                 // 목록 컨텍스트 보존 -> 상세에서 이전/다음·자동 이동
         const list = this.rawFiltered.slice();
         this.openDetail(this._rawToDetail(r));

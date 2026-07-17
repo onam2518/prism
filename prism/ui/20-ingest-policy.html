@@ -532,9 +532,11 @@
             <template x-if="!finalMode && detail && (!myVerdict(detail.fb) || editVerdict)">
               <div>
                 <div class="text-xs text-muted" x-show="detail.fb && detail.fb.n && !myVerdict(detail.fb)" x-cloak style="margin-bottom:8px" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개 · 내 판정을 남겨주세요'"></div>
+                <!-- 배정 배타: 다른 검수자 담당이면 판정 비활성(생성자·관리자 포함 · 배정 수정으로 해소) -->
+                <div class="text-xs text-muted" x-show="detailAssignBlocked()" x-cloak style="margin-bottom:8px">🔒 다른 검수자에게 배정된 콘텐츠예요 · 직접 검수하려면 콘텐츠 관리에서 배정을 수정하세요</div>
                 <div style="display:flex;gap:8px">
-                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="!pendingBad && detail && myVerdict(detail.fb)==='good' ? 'is-on' : ''" x-on:click="reviewGood()"><span class="verdictbtn__dot"></span>정확</button>
-                  <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="pendingBad ? 'is-on' : ''" x-on:click="pendingBad=true"><span class="verdictbtn__dot"></span>수정 필요</button>
+                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:disabled="detailAssignBlocked()" x-bind:class="!pendingBad && detail && myVerdict(detail.fb)==='good' ? 'is-on' : ''" x-on:click="reviewGood()"><span class="verdictbtn__dot"></span>정확</button>
+                  <button type="button" class="verdictbtn verdictbtn--bad" x-bind:disabled="detailAssignBlocked()" x-bind:class="pendingBad ? 'is-on' : ''" x-on:click="pendingBad=true"><span class="verdictbtn__dot"></span>수정 필요</button>
                 </div>
                 <!-- 수정 필요: 요소·사유 입력 후 '완료 처리' 로만 확정 -->
                 <template x-if="pendingBad">
