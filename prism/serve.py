@@ -42,17 +42,25 @@ AO._SV = sys.modules[__name__]      # 관리자·인증 도메인에도 동일 �
 
 from . import topicops as TPO
 from . import mediaops as MO
-from .topicops import (topics_data, topic_studio_action, topic_snapshot,     # noqa: F401
-                       start_topic_scheduler, similar_topics, topic_drill,
-                       topic_personas, _sanitize_def, _ent_index, _TOPIC_SNAP_CAP)
-from .mediaops import media_action, media_s5ab, media_native                 # noqa: F401
-from .dictops import (dict_data, load_dict_overrides, edit_dict,           # noqa: F401
+from . import dictops as DO
+from .topicops import (topics_data, topic_studio_action,
+                       start_topic_scheduler, topic_drill)
+from .mediaops import media_action, media_native
+from .dictops import (dict_data, load_dict_overrides, edit_dict,
                       reset_dict_overrides, entdict_data, entdict_action, _ENRICH_STATE)
 
 TPO._SV = sys.modules[__name__]     # 토픽 도메인 주입(라우트 분리 4차)
 MO._SV = sys.modules[__name__]      # 미디어 실험실 주입(동일)
-from . import dictops as DO
 DO._SV = sys.modules[__name__]      # 사전 편집 도메인 주입(동일)
+
+# 테스트·외부 호환 재수출(serve.<이름> 계약 유지) · 대입 형태 = pyflakes 미사용 오탐 회피
+topic_snapshot = TPO.topic_snapshot
+similar_topics = TPO.similar_topics
+topic_personas = TPO.topic_personas
+_sanitize_def = TPO._sanitize_def
+_ent_index = TPO._ent_index
+_TOPIC_SNAP_CAP = TPO._TOPIC_SNAP_CAP
+media_s5ab = MO.media_s5ab
 
 # 사전 편집 오버라이드 파일 경로 · 테스트가 이 바인딩을 패치하므로 serve 에 유지(dictops 는 _SV 경유)
 _DICT_OVERRIDES_PATH = os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH), "dict_overrides.json")
