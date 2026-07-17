@@ -221,18 +221,6 @@ window.PRISM_APP_PARTS.push(() => ({
         this.theme = this.theme === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', this.theme);
       },
-      // ── 플로팅 도우미(채팅 허브) ──
-      chatSend(text) {
-        const v = (text != null ? text : this.chatDraft).trim(); if (!v) return;
-        this.chatMsgs.push({ from: 'me', text: v }); this.chatDraft = '';
-        setTimeout(() => { this.chatMsgs.push({ from: 'bot', text: '알겠어요 "' + v + '" 작업을 큐에 넣었어요' }); }, 380);
-      },
-      chatAct(act) {
-        this.chatOpen = false;
-        if (act === 'extract') this.selectMod('run');
-        else if (act === 'settings') this.selectMod('system');
-        else if (act === 'dict') this.selectMod('dict');
-      },
       // ── 홈 위젯 구성(실동작 위젯만) + 직접 배치 + localStorage 영속 ──
       placed: null,                              // 배치된 위젯 id 목록(첫 방문 = 빈 배열)
       homeCatalog: [

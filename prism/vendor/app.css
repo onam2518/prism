@@ -959,14 +959,6 @@
     border-left:1px solid var(--ds-hairline-soft)}
   /* 헤더 그룹 구분선(정보·컨트롤·카드속성 사이 동일 간격·구분선 원칙) */
   .hd-divider{align-self:center;width:1px;height:18px;background:var(--ds-hairline-soft);margin:0 4px;flex:none}
-  /* 채팅 퀵액션 = 칩 */
-  .ds-chat__quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:var(--ds-space-2)}
-  .chatchip{display:inline-flex;align-items:center;gap:var(--ds-space-1);height:28px;padding:0 12px;border-radius:var(--ds-radius-chip);
-    border:1px solid var(--ds-hairline);background:var(--ds-surface-white);color:var(--ds-text-secondary);
-    font-family:var(--ds-font-display);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;
-    box-shadow:0 1px 1px rgba(16,24,40,.03);transition:border-color .12s,color .12s,background .12s,transform .1s}
-  .chatchip:hover{border-color:var(--ds-primary);color:var(--ds-primary-deep);background:var(--ds-primary-tint)}
-  .chatchip:active{transform:translateY(1px)}
   /* 서술형 설명 = 상단 불릿(문장 단위·마침표). 텍스트 뭉침 방지 */
   .ds-bullets{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
   .ds-bullets li{position:relative;padding-left:15px;font-size:12.5px;line-height:1.55;color:var(--ds-muted)}
