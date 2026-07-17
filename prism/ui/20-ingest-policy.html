@@ -202,9 +202,9 @@
           </div>
           <!-- 그룹 모드: 그룹마다 담당자를 따로 지정(그룹 전체가 같은 담당자에게 배정)
                그룹 배지를 제목 줄로 분리 + 2번째 그룹부터 구분선 — 칩이 줄바꿈돼도 그룹 경계가 보이게 -->
-          <div x-show="bulkGrps > 1" style="display:flex;flex-direction:column;gap:14px;margin-bottom:14px">
+          <div x-show="bulkGrps > 1" style="display:flex;flex-direction:column;gap:22px;margin-bottom:14px">
             <template x-for="g in bulkGrps" x-bind:key="'bgp'+g">
-              <div x-bind:style="g > 1 ? 'border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));padding-top:14px' : ''">
+              <div x-bind:style="g > 1 ? 'border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));padding-top:20px' : ''">
                 <span class="ds-badge ds-badge--status tnum" style="display:inline-flex;margin-bottom:9px" x-text="'그룹' + g + ' · ' + (bulkGrpCounts[g-1] || 0) + '건'"></span>
                 <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
                   <template x-for="m in assignMembers" x-bind:key="'bpk'+g+'-'+m.id">
