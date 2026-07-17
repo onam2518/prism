@@ -35,7 +35,12 @@
 
 ## 구조 힌트
 
+- **작업 시작 전 `ARCHITECTURE.md` 를 먼저 볼 것**: serve.py 도메인 클러스터 지도 ·
+  라우트 추가 방법 · 리팩토링 로드맵. 기능 위치를 찾느라 큰 파일을 통독하지 않는다.
 - HTTP 디스패치 `serve.py` · 학습·골든·소요서·핸드오프 번들 `learnops.py` ·
   UI `page.py`(+`vendor/app.js`) · 저장 계층 `store.py`(SQLite) / `supastore.py`(팀)
+- 새 GET 라우트는 `serve.py` 의 `@_get_route` 테이블에 등록(최장 접두 우선 · 순서 무관).
+  POST 는 아직 if/elif — 긴 접두를 짧은 접두보다 앞에(가드: `tests/test_route_dispatch.py`).
+- 새 도메인 기능은 serve.py 에 쌓지 말고 별도 모듈로 시작(`usermeta.py`·`entdict.py` 패턴).
 - 문서: 개발 인수인계 `HANDOFF.md` · 학습 설계 `LEARNING_DESIGN.md` · 테스트 구조 `TESTING.md` ·
   배포 `DOCKER.md`, `fly.toml`(앱 `prism-item` · nrt)
