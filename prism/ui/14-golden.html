@@ -494,10 +494,12 @@
                     <button type="button" class="copybtn" style="margin-left:6px" x-on:click="rawSel = (rawSel && rawSel.hash === r.hash) ? null : r" data-tip="JSON 원문 보기(표 아래 펼침)" data-tip-pos="top">{ }</button>
                   </td>
                   <td x-show="assignAdmin" x-on:click.stop>
+                    <!-- 골드 문항(가상 검증 행)은 배정 개념 없음: 지정 버튼·미배정 라벨 대신 '·' -->
+                    <span x-show="isGoldRow(r)" class="text-xs text-muted" style="cursor:help" data-tip="골드 문항(정답 검증용)은 배정 대상이 아닙니다" data-tip-pos="top">·</span>
                     <template x-for="nm in assigneeNames(r)" x-bind:key="nm"><span class="ds-badge ds-badge--intent" style="margin:1px" x-text="nm"></span></template>
                     <span x-show="(r.assignees||[]).length" class="text-xs text-muted tnum" style="margin-left:2px" x-text="'· 최소 ' + (r.min_reviewers||1) + '명'"></span>
-                    <span x-show="!(r.assignees||[]).length" class="text-xs text-muted">미배정</span>
-                    <button type="button" class="copybtn" style="margin-left:6px" x-on:click="openAssign(r)" x-text="(assignSel && assignSel.hash===r.hash) ? '닫기' : '지정'"></button>
+                    <span x-show="!isGoldRow(r) && !(r.assignees||[]).length" class="text-xs text-muted">미배정</span>
+                    <button type="button" class="copybtn" style="margin-left:6px" x-show="!isGoldRow(r)" x-on:click="openAssign(r)" x-text="(assignSel && assignSel.hash===r.hash) ? '닫기' : '지정'"></button>
                   </td>
                 </tr>
               </template>

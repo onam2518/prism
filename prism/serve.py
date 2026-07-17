@@ -1771,7 +1771,10 @@ def _p_content_remove(h, body):
 @_post_route("/content-assign-bulk", gate="super")   # 여러 콘텐츠 일괄 배정(덮어쓰기)
 def _p_content_assign_bulk(h, body):
     data = json.loads(body or b"{}")
-    hashes = [str(x).strip() for x in (data.get("hashes") or []) if str(x).strip()]
+    # 골드 문항(가상 검증 행 · 'gold:*')은 배정 대상 아님 — 저장돼도 재주입 행에 반영되지
+    # 않아 '배정했는데 새로고침하면 미배정' 증상만 남긴다(개별 라우트와 동일 정책)
+    hashes = [str(x).strip() for x in (data.get("hashes") or [])
+              if str(x).strip() and not str(x).strip().startswith("gold:")]
     reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
     try:
         minr = int(data.get("min_reviewers") or 1)
@@ -1813,6 +1816,10 @@ def _p_content_assign(h, body):
     st = get_store()
     if not (ch and st and hasattr(st, "set_assignees")):
         h._send(400, json.dumps({"error": "hash 누락 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
+        return None
+    if ch.startswith("gold:"):                       # 골드 문항(가상 검증 행): 배정 개념 없음
+        h._send(400, json.dumps({"error": "골드 문항(정답 검증용)은 배정 대상이 아닙니다"},
+                                ensure_ascii=False), _JSON)
         return None
     st.set_assignees(ch, reviewers, min_reviewers=minr, team=h._req_team())
     _log_assign((h._bearer_email() or h._bearer_uid()
