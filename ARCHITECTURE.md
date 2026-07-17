@@ -57,8 +57,9 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   ```
   디스패치는 **최장 접두 우선**이라 등록 순서·가로채기 걱정이 없다.
   무인증 공개가 필요하면 `_PUBLIC_GET`, 팀 없이 허용이면 `_TEAMLESS_OK_GET` 에 추가.
-- **POST**: 아직 `do_POST` if/elif. **긴 접두를 짧은 접두보다 앞에** 둘 것
-  (가드: `tests/test_route_dispatch.py`). → 로드맵 1단계에서 테이블화 예정.
+- **POST**: 같은 패턴의 `@_post_route("/경로", gate=...)`. 핸들러는 `fn(h, body)` —
+  본문 파싱(JSON/multipart)은 핸들러 몫, 예외는 디스패처가 일괄 500 처리.
+  `gate`: `"admin"`(403) · `"super"`(403) · `"login"`(401) · `"team"` · `""`(내부 판단).
 
 ## 상태·컴포지션 주의점
 
@@ -84,9 +85,8 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 
 - [x] **0단계 — GET 라우트 테이블** (이 PR): if/elif 44분기 → 선언 테이블 + 최장
   접두 매칭 · 관리자 게이트/다운로드 응답 공통화.
-- [ ] **1단계 — POST 라우트 테이블**: do_POST 40여 분기를 같은 패턴으로.
-  본문 파싱(JSON/multipart)·`_inject_reviewer`·`_require_team` 게이트를 등록
-  옵션으로 흡수. 완료 시 test_route_dispatch 의 소스 스캔 가드 제거.
+- [x] **1단계 — POST 라우트 테이블**: do_POST 39분기를 같은 패턴으로. admin/super/
+  login/team 게이트를 등록 옵션으로, try/except→500 복붙을 디스패처로 흡수.
 - [ ] **2단계 — serve.py 도메인 추출**: 위 클러스터 표 단위로 `prism/<도메인>ops.py`
   분리. 이관 순서는 상태 의존이 적은 것부터(토픽 → 사전 → 미디어 → 대시보드 →
   검수). 테스트·LO/AO 역참조 호환을 위해 serve 에 `from .xxx import *` 재수출을
