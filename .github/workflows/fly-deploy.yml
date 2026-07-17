@@ -46,7 +46,8 @@ jobs:
           exit 1
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Fly.io 배포 (원격 빌더)
-        run: flyctl deploy --remote-only --config fly.toml
+        # BUILD_NO = 이 워크플로 누적 실행 번호 → 앱 버전 v1.N (수동 관리 없는 단조 증가)
+        run: flyctl deploy --remote-only --config fly.toml --build-arg BUILD_NO=${{ github.run_number }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - name: 배포 사후 검증 (/config · backend supabase · configured true)
