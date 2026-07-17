@@ -2625,7 +2625,9 @@ PAGE = """<!doctype html>
             <div class="arena-gauge__target" x-bind:style="'left:' + teamProgressPct + '%'" title="팀 평균"></div>
           </div>
           <div class="arena-hero__foot">
-            <span>검수 대상 <b class="text-ink" x-text="reviewTargets"></b>건 중 내가 <b class="text-ink" x-text="(arenaMe?arenaMe.reviews:0)"></b>건 검수</span>
+            <!-- 캡션 분모·분자 = 진척율(%)과 동일 모집단: 배정 있으면 내 담당, 없으면 현재 검수 대상 -->
+            <span x-show="arenaAssignedTotal">내 담당 <b class="text-ink" x-text="arenaAssignedTotal"></b>건 중 <b class="text-ink" x-text="arenaAssignedDone"></b>건 검수</span>
+            <span x-show="!arenaAssignedTotal">검수 대상 <b class="text-ink" x-text="reviewTargets"></b>건 중 내가 <b class="text-ink" x-text="arenaTargetReviews"></b>건 검수</span>
           </div>
         </section>
 
