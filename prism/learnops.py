@@ -1017,6 +1017,11 @@ def start_learning_scheduler(hour: int = 4):
                 time.sleep(60)
             except Exception as e:
                 print(f"  [warn] 학습 배치 실패: {e}")
+                try:
+                    from . import alerts as AL
+                    AL.on_batch_fail(e)            # 조용한 학습 중단 방지(웹훅 미설정 시 무동작)
+                except Exception:
+                    pass
                 time.sleep(600)
 
     threading.Thread(target=_loop, daemon=True).start()

@@ -12,6 +12,8 @@ import os
 import tempfile
 import threading
 
+from . import alerts as AL
+
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
 
 
@@ -52,6 +54,8 @@ def _log_cost_rollup(trace: dict, team=None):
                 for k in sorted(days)[:-90]:
                     days.pop(k, None)
             _SV._report_save("cost_rollup", rep, team)
+            day_total = d["cost"]
+        AL.on_cost(day, day_total)                   # 당일 임계 초과 통지(웹훅 미설정 시 무동작)
     except Exception:
         pass
 
@@ -86,6 +90,8 @@ def _log_fail_rollup(trace: dict, service: str = "", team=None):
                 for k in sorted(days)[:-90]:
                     days.pop(k, None)
             _SV._report_save("fail_rollup", rep, team)
+        first = (fails[0] or {}) if fails else {}
+        AL.on_fail(len(fails), kind=str(first.get("kind") or ""), model=model)   # 급증 통지
     except Exception:
         pass
 
