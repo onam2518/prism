@@ -22,6 +22,7 @@ import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 # 서버 부팅 ID: 배포(프로세스 교체) 감지 + 벤더 자산 캐시버스터의 단일 원천
 _BOOT_ID = "%d-%d" % (int(time.time()), os.getpid())
@@ -38,6 +39,31 @@ from .config import Config, DEFAULT_CONFIG_PATH
 
 LO._SV = sys.modules[__name__]      # 학습 도메인에 서버 컴포지션 주입(-m 실행의 __main__ 포함)
 AO._SV = sys.modules[__name__]      # 관리자·인증 도메인에도 동일 주입
+
+from . import topicops as TPO
+from . import mediaops as MO
+from . import dictops as DO
+from .topicops import (topics_data, topic_studio_action,
+                       start_topic_scheduler, topic_drill)
+from .mediaops import media_action, media_native
+from .dictops import (dict_data, load_dict_overrides, edit_dict,
+                      reset_dict_overrides, entdict_data, entdict_action, _ENRICH_STATE)
+
+TPO._SV = sys.modules[__name__]     # 토픽 도메인 주입(라우트 분리 4차)
+MO._SV = sys.modules[__name__]      # 미디어 실험실 주입(동일)
+DO._SV = sys.modules[__name__]      # 사전 편집 도메인 주입(동일)
+
+# 테스트·외부 호환 재수출(serve.<이름> 계약 유지) · 대입 형태 = pyflakes 미사용 오탐 회피
+topic_snapshot = TPO.topic_snapshot
+similar_topics = TPO.similar_topics
+topic_personas = TPO.topic_personas
+_sanitize_def = TPO._sanitize_def
+_ent_index = TPO._ent_index
+_TOPIC_SNAP_CAP = TPO._TOPIC_SNAP_CAP
+media_s5ab = MO.media_s5ab
+
+# 사전 편집 오버라이드 파일 경로 · 테스트가 이 바인딩을 패치하므로 serve 에 유지(dictops 는 _SV 경유)
+_DICT_OVERRIDES_PATH = os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH), "dict_overrides.json")
 _supa = AO._supa
 auth_action = AO.auth_action
 validate_jwt = AO.validate_jwt
@@ -1010,762 +1036,6 @@ def build_template_csv() -> bytes:
 
 
 # \u2500\u2500 \uc5b4\ub4dc\ubbfc \ubaa8\ub4c8 \ub370\uc774\ud130(\uc2e4\ub370\uc774\ud130 \uc5f0\uacb0) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-def dict_data() -> dict:
-    """\uc0ac\uc804\u00b7\ub9e4\ud551 \ubaa8\ub4c8: \uc778\ud150\ud2b8\u00b7\ucf58\ud150\uce20 \uce74\ud14c\uace0\ub9ac\u00b7\ud488\uc9c8\u00b7\ubc95\ub839 \uc0ac\uc804\uc744 \uadf8\ub300\ub85c \ub178\ucd9c."""
-    from . import dictionaries as D
-    return {
-        "serviceGroups": list(D.SERVICE_GROUP.keys()),
-        "intentUniversal": list(D.INTENT_CATEGORIES_UNIVERSAL),
-        "intentForm": list(getattr(D, "INTENT_FORM_UNIVERSAL", [])),
-        "intentByService": {k: list(v) for k, v in D.INTENT_CATEGORIES_BY_SERVICE.items()},
-        "serviceKeyMap": dict(getattr(D, "_SERVICE_NAME_MAP", {})),   # displayServiceName → 서비스 카테고리 키(검수 인텐트 불일치 경고용)
-        "iabTier1": list(D.IAB_TIER1),
-        "tier2": {k: list(v) for k, v in getattr(D, "CONTENT_CATEGORY_TIER2", {}).items()},
-        "tier1Ko": dict(getattr(D, "IAB_TIER1_KO", {})),   # 한글 표시명(UI 전용 · 공식 표기는 영문)
-        "tier2Ko": dict(getattr(D, "TIER2_KO", {})),
-        # 도움말 표 원천: Tier2 정의·예시 / 인텐트 예시 / 등급 판정 계약
-        "tier2Defs": {k: {"def": v[0], "ex": v[1]} for k, v in getattr(D, "TIER2_DEFS", {}).items()},
-        "intentExamples": dict(getattr(D, "INTENT_EXAMPLES", {})),
-        "gradeDefs": list(getattr(D, "GRADE_DEFS", [])),
-        "iabMap": dict(getattr(D, "CATEGORY_IAB_MAP", {})),
-        "domainGroups": {k: list(v) for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items()},
-        # 인텐트 정의 = 범용①(UI 전용) + 사전 원문 병합 · 데스크탑·모바일 검수 화면 공용 단일 원천
-        "intentDefs": {**getattr(D, "INTENT_UNIVERSAL_DEFS", {}), **getattr(D, "INTENT_VALUE_DEFS", {})},
-        # 교정 요소 사전(id·한글 라벨·단계) · feedback_loop 가 단일 원천(검수 UI 이원화 부채 해소)
-        "fixElements": [{"id": e, "label": FL.ELEM_KO.get(e, e), "stage": FL.ELEM_STAGE.get(e, "analyze")}
-                        for e in FL.ELEMENTS],
-        "categoryCriteria": dict(getattr(D, "CATEGORY_CRITERIA", {})),
-        "qualityMetas": dict(D.QUALITY_METAS),
-        "qualityNames": dict(getattr(D, "QUALITY_META_NAMES", {})),
-        "qualityApplies": dict(getattr(D, "QUALITY_META_APPLIES", {})),
-        "legalTypes": {c: {"label": v.get("label", c), "article": v.get("article", "")}
-                       for c, v in D.LEGAL_HARM_TYPES.items()},
-        "intakePolicy": {k: dict(v) for k, v in getattr(D, "INTAKE_POLICY", {}).items()},
-    }
-
-
-# ── 엔티티 사전 모듈 · 개체 고유키·타입·속성 관리 + 위키데이터/나무위키 보강 ──
-# 일괄 보강 진행 상태(단일 실행 가드): UI 가 GET /entdict 폴링으로 N/M 진척을 표시.
-_ENRICH_STATE = {"running": False, "total": 0, "done": 0, "hit": 0, "miss": 0, "fail": 0, "finished_at": 0}
-_ENRICH_LOCK = threading.Lock()
-
-
-def _enrich_run(st, ids):
-    from . import entdict as ED
-    ED._wd_breaker_reset()                          # 배치 시작마다 브레이커 리셋: 이전 배치의 tripped 가 이 배치를 영구 차단하지 않게
-    S = _ENRICH_STATE
-    for i, eid in enumerate(ids):
-        if i:
-            time.sleep(ED.ENRICH_DELAY)              # 위키데이터 429 회피(예의 호출)
-        try:
-            r = ED.enrich_entity(st, eid)
-            if not r.get("ok"):
-                S["fail"] += 1
-            elif r.get("matched"):
-                S["hit"] += 1
-            else:
-                S["miss"] += 1
-        except Exception:
-            S["fail"] += 1
-        S["done"] += 1
-    S["running"] = False
-    S["finished_at"] = time.time()
-
-
-def _enrich_start(st, ids) -> bool:
-    """일괄 보강 백그라운드 시작. 이미 실행 중이거나 대상 없음 → False."""
-    with _ENRICH_LOCK:
-        if _ENRICH_STATE["running"] or not ids:
-            return False
-        _ENRICH_STATE.update(running=True, total=len(ids), done=0, hit=0, miss=0, fail=0, finished_at=0)
-    threading.Thread(target=_enrich_run, args=(st, list(ids)), daemon=True).start()
-    return True
-
-
-_ENT_NORMALIZED = False                                    # 미등재 이행(1회성) 실행 여부
-
-
-def entdict_data(q: str = "", type_: str = "", status: str = "", limit: int = 300) -> dict:
-    """목록·통계·메타(타입/속성 필드 사전) + 일괄 보강 진행 상태. 편집 폼·필터의 단일 원천."""
-    from . import entdict as ED
-    global _ENT_NORMALIZED
-    st = get_store()
-    meta = {"types": dict(ED.ENTITY_TYPES),
-            "attrFields": {t: [[k, lb] for k, lb in fs] for t, fs in ED.ATTR_FIELDS.items()},
-            "occupationGroups": [g for g, _ in ED.OCCUPATION_GROUPS] + ["기타"],
-            "eattrKeys": list(ED.ALLOWED_EATTR_KEYS)}
-    if not (st and hasattr(st, "ent_list")):
-        return {"items": [], "stats": {}, "meta": meta, "enrich": dict(_ENRICH_STATE)}
-    if not _ENT_NORMALIZED:                                # 구 데이터: 미스 기록 보류 → 미등재 이행
-        _ENT_NORMALIZED = True
-        try:
-            st.ent_mark_unlisted()
-        except Exception:
-            pass
-    return {"items": st.ent_list(q=q, type_=type_, status=status, limit=limit),
-            "stats": st.ent_stats(), "meta": meta, "enrich": dict(_ENRICH_STATE)}
-
-
-def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
-    """변경·보강 액션. update 는 사람 확정(수동) — attr_meta 를 confirmed 로 마킹해
-    이후 위키데이터 재보강이 덮어쓰지 않게 한다(사전은 사람이 최종 결정)."""
-    from . import entdict as ED
-    st = get_store()
-    if not (st and hasattr(st, "ent_upsert")):
-        return {"ok": False, "error": "저장소 없음"}
-    action = (data.get("action") or "").strip()
-    eid = (data.get("id") or "").strip()
-    if action != "detail":
-        _agg_bump()                                   # 등재·수정·보강은 토픽 엔티티 속성 인덱스에 반영 → 캐시 무효화
-
-    if action == "detail":
-        e = st.ent_get(eid)
-        if not e:
-            return {"ok": False, "error": "개체 없음"}
-        return {"ok": True, "entity": e, "aliases": st.ent_aliases(eid),
-                "contents": st.ent_contents(eid)}
-
-    if action == "update":
-        e = st.ent_get(eid)
-        if not e:
-            return {"ok": False, "error": "개체 없음"}
-        am = dict(e.get("attr_meta") or {})
-        fields = {"updated_at": time.time()}
-        if "type" in data:
-            t = (data.get("type") or "").strip()
-            if t and t not in ED.ENTITY_TYPES:
-                return {"ok": False, "error": f"허용되지 않는 타입: {t}"}
-            fields["type"] = t
-            fields["status"] = "active" if t else "pending"
-            am["type"] = {"source": "manual", "status": "confirmed"}
-        skipped = []                              # 타입 스키마에 없는 속성 키(조용한 유실 방지 · 호출자에 알림)
-        if isinstance(data.get("attrs"), dict):
-            attrs = dict(e.get("attrs") or {})
-            typ = fields.get("type", e.get("type") or "")
-            allowed = {k for k, _ in ED.ATTR_FIELDS.get(typ, [])}
-            for k, v in data["attrs"].items():
-                if allowed and k not in allowed:
-                    skipped.append(k)
-                    continue
-                v = str(v or "").strip()
-                if v:
-                    attrs[k] = v
-                    am[k] = {"source": "manual", "status": "confirmed"}
-                else:
-                    attrs.pop(k, None)
-                    am.pop(k, None)
-            fields["attrs"] = attrs
-        alias = ED.normalize_name(data.get("alias") or "")
-        if alias:
-            other = st.ent_id_by_alias(alias)
-            if other and other != eid:
-                return {"ok": False, "error": "이미 다른 개체의 별칭입니다"}
-            st.ent_alias_add(alias, eid)
-        fields["attr_meta"] = am
-        st.ent_update(eid, fields)
-        out = {"ok": True, "entity": st.ent_get(eid), "aliases": st.ent_aliases(eid)}
-        if skipped:
-            out["skipped_attrs"] = skipped
-        return out
-
-    if action == "add":
-        name = ED.normalize_name(data.get("name") or "")
-        if not name:
-            return {"ok": False, "error": "이름이 필요합니다"}
-        if st.ent_id_by_alias(name):
-            return {"ok": False, "error": "이미 등재된 개체(별칭 포함)입니다"}
-        e = ED._empty_entry(name)
-        st.ent_upsert(e)
-        st.ent_alias_add(name, e["entity_id"])
-        return {"ok": True, "entity": st.ent_get(e["entity_id"])}
-
-    if action == "delete":
-        return {"ok": st.ent_delete(eid)}
-
-    if action == "purge_unlisted":
-        return {"ok": True, "purged": st.ent_purge_unlisted()}
-
-    if action == "enrich":
-        if mock:
-            return {"ok": True, "mock": True, "matched": False}
-        return ED.enrich_entity(st, eid)
-
-    if action == "enrich_pending":
-        if mock:
-            return {"ok": True, "mock": True, "queued": 0}
-        # scope=all → 전체 재보강(조회 이력 있어도 다시 · 소스 우선순위 변경 반영 · 확정 필드 보존)
-        if (data.get("scope") or "") == "all":
-            ids = st.ent_ids(int(data.get("limit") or 5000))
-        else:
-            ids = st.ent_pending_ids(int(data.get("limit") or 200))
-        started = _enrich_start(st, ids)
-        return {"ok": True, "queued": len(ids) if started else 0,
-                "already_running": bool(ids) and not started and _ENRICH_STATE["running"],
-                "enrich": dict(_ENRICH_STATE)}
-
-    if action == "backfill":
-        rows = st.recent(int(data.get("limit") or 1000), team=team)
-        r = ED.ingest_rows(st, rows, team=team or "")
-        queued = 0
-        if r.get("new_ids") and not mock and os.environ.get("PRISM_ENTDICT_ENRICH", "1") == "1":
-            if _enrich_start(st, r["new_ids"]):
-                queued = len(r["new_ids"])
-        return {"ok": True, "scanned": len(rows), "created": r["created"], "linked": r["linked"],
-                "enrich_queued": queued, "enrich": dict(_ENRICH_STATE)}
-
-    return {"ok": False, "error": f"알 수 없는 액션: {action}"}
-
-
-_DICT_OVERRIDES_PATH = os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH), "dict_overrides.json")
-
-
-def _read_overrides() -> dict:
-    try:
-        if os.path.exists(_DICT_OVERRIDES_PATH):
-            with open(_DICT_OVERRIDES_PATH, encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
-
-
-def load_dict_overrides():
-    """저장된 사전 편집(overrides)을 dictionaries 에 적용(서버 시작 시)."""
-    from . import dictionaries as D
-    ov = _read_overrides()
-    if ov:
-        try:
-            D.apply_profile(ov)
-        except Exception:
-            pass
-
-
-def edit_dict(data: dict) -> dict:
-    """사전·정책 편집(사용자 직접 수정). target(+key) 에 value 를 덮어쓰고 영속화·적용."""
-    from . import dictionaries as D
-    target = (data.get("target") or "").strip()
-    allowed = {"intent_universal", "intent_by_service", "iab_tier1", "tier2",
-               "quality_metas", "legal_types", "domain_groups", "category_iab_map", "intake_policy"}
-    if target not in allowed:
-        return {"error": f"편집 불가 target: {target}"}
-    ov = _read_overrides()
-    key = data.get("key")
-    val = data.get("value")
-    if key is not None:
-        if not isinstance(ov.get(target), dict):
-            # 베이스 dict 를 복사해 시작(부분 키 편집이 다른 키를 지우지 않도록)
-            base = getattr(D, {"intent_by_service": "INTENT_CATEGORIES_BY_SERVICE",
-                               "tier2": "CONTENT_CATEGORY_TIER2", "quality_metas": "QUALITY_METAS",
-                               "legal_types": "LEGAL_HARM_TYPES", "domain_groups": "DOMAIN_GROUP_MAP",
-                               "category_iab_map": "CATEGORY_IAB_MAP",
-                               "intake_policy": "INTAKE_POLICY"}.get(target, ""), {})
-            ov[target] = {k: (list(v) if isinstance(v, list) else v) for k, v in dict(base).items()}
-        ov[target][key] = val
-    else:
-        ov[target] = val
-    try:
-        os.makedirs(os.path.dirname(_DICT_OVERRIDES_PATH) or ".", exist_ok=True)
-        with open(_DICT_OVERRIDES_PATH, "w", encoding="utf-8") as f:
-            json.dump(ov, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        return {"error": "저장 실패: " + str(e)[:120]}
-    try:
-        D.apply_profile(ov)
-    except Exception as e:
-        return {"error": "적용 실패: " + str(e)[:120]}
-    out = dict_data()
-    out["saved"] = True
-    return out
-
-
-def reset_dict_overrides() -> dict:
-    """편집 초기화: overrides 파일 삭제 + 원본 사전 즉시 복원(재시작 불필요)."""
-    try:
-        os.remove(_DICT_OVERRIDES_PATH)
-    except OSError:
-        pass
-    from . import dictionaries as D
-    try:
-        D.restore_base()                 # 메모리에 적용된 override 도 즉시 걷어냄
-    except Exception:
-        pass
-    out = dict_data()
-    out["resetNote"] = "초기화됨 · 원본 사전으로 복원"
-    return out
-
-
-def _studio_config() -> dict:
-    """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \uc124\uc815(\uc0ac\uc6a9\uc790 \uc815\uc758 \uc870\uac74\ud615 \ud1a0\ud53d + \ud074\ub7ec\uc2a4\ud130\ub9c1 \ud29c\ub2dd) \ub85c\ub4dc.
-    \ud1a0\ud53d\uc740 \uc804\uc5ed(\ubb34\ud300 results_rows) \ubdf0\ub77c \uc124\uc815\ub3c4 \uc804\uc5ed(team="")\uc5d0 \uc601\uc18d\ud55c\ub2e4."""
-    st = get_store()
-    cfg = (st.get_report("topic_studio") if st else None) or {}
-    custom = cfg.get("custom") if isinstance(cfg.get("custom"), list) else []
-    settings = cfg.get("settings") if isinstance(cfg.get("settings"), dict) else {}
-    exclusions = cfg.get("exclusions") if isinstance(cfg.get("exclusions"), dict) else {}
-    return {"custom": custom, "settings": settings, "exclusions": exclusions}
-
-
-def _save_studio_config(cfg: dict):
-    st = get_store()
-    if st:
-        st.save_report("topic_studio", {"custom": cfg.get("custom") or [],
-                                        "settings": cfg.get("settings") or {},
-                                        "exclusions": cfg.get("exclusions") or {}})
-
-
-def topics_data() -> dict:
-    """\ud1a0\ud53d \ubaa8\ub4c8 \ub370\uc774\ud130(30s \uce90\uc2dc). \ub4dc\ub9b4\ub2e4\uc6b4 \ud074\ub9ad\ub9c8\ub2e4 \uc804\uccb4 \uc7ac\ud074\ub7ec\uc2a4\ud130\ub9c1\ud558\ub358 \ube44\uc6a9 \uc81c\uac70 \u2014
-    \uc4f0\uae30(\ucd94\ucd9c\u00b7\uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd)\ub294 _agg_bump \ub85c \uc989\uc2dc \ubb34\ud6a8\ud654\ub41c\ub2e4."""
-    return _agg_cached(("topics",), _topics_compute)
-
-
-def _topics_compute() -> dict:
-    """\ud1a0\ud53d \ubaa8\ub4c8: \uc801\uc7ac\ub41c \uacb0\uacfc\uc5d0\uc11c \uc5d4\ud2f0\ud2f0\ud615\u00b7\uc0ac\uac74\ud615\u00b7\uc870\uac74\ud615 \ud1a0\ud53d + \uc0ac\uc6a9\uc790 \uc815\uc758 \ud1a0\ud53d \ube4c\ub4dc."""
-    rows = results_rows()
-    cfg = _studio_config()
-    if not rows:
-        return {"n_contents": 0, "single": [], "composite": [], "filter": [], "custom": [],
-                "customDefs": cfg["custom"], "settings": cfg["settings"], "exclusions": cfg["exclusions"],
-                "catalog": {"intents": [], "cats": [], "keywords": [], "eattrs": []}, "summary": {}}
-    from . import topic as TP
-    with tempfile.TemporaryDirectory() as d:
-        rpath = os.path.join(d, "r.jsonl")
-        with open(rpath, "w", encoding="utf-8") as f:
-            for r in rows:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        try:
-            out = TP.build_topics(rpath, custom_defs=cfg["custom"], settings=cfg["settings"],
-                                  exclusions=cfg["exclusions"], ent_index=_ent_index())
-            out["exclusions"] = cfg["exclusions"]
-            try:                                     # 추천 카드 원천: 최근 48시간 언급 급증 엔티티(전역)
-                st = get_store()
-                out["trending"] = (st.ent_trending(hours=48, limit=8, team="")
-                                   if (st and hasattr(st, "ent_trending")) else [])
-            except Exception:
-                out["trending"] = []
-            return out
-        except Exception as e:
-            return {"error": str(e)[:200], "n_contents": len(rows),
-                    "single": [], "composite": [], "filter": [], "custom": [],
-                    "customDefs": cfg["custom"], "settings": cfg["settings"],
-                    "exclusions": cfg["exclusions"], "summary": {}}
-
-
-# ── 토픽 자동 리프레시 + 성과 스냅샷 ────────────────────────────────────────
-_TOPIC_SNAP_CAP = 90                                  # 보관 스냅샷 수(시간별 약 4일 · 추이 원천)
-
-
-def _topic_rows_brief(data: dict) -> dict:
-    """토픽 데이터 → 스냅샷 요약 {key: {label,type,n}} · 전 체계(엔티티·사건·사용자 정의) 공통 키."""
-    out = {}
-    for p in (data.get("single") or []) + (data.get("composite") or []):
-        k = p.get("cluster_id") or p.get("name") or ""
-        if k:
-            out[k] = {"label": p.get("name") or "", "type": p.get("type") or "",
-                      "n": int(p.get("count") or 0)}
-    for g in (data.get("custom") or []):
-        if g.get("id"):
-            out[g["id"]] = {"label": g.get("name") or "", "type": "custom",
-                            "n": int(g.get("core_count") or 0)}
-    return out
-
-
-def topic_snapshot() -> dict:
-    """토픽 현황 스냅샷 적재(성과 시계열 기초 · reports kind='topic_snapshots' · 토픽은 무팀 뷰).
-    직전 스냅샷 대비 변화(신규·소멸·건수 증감)를 계산해 함께 저장 → /topics 가 배지로 노출."""
-    _agg_bump()                                        # 강제 재계산: 열어둔 화면 낡음(수동 새로고침 의존) 해소
-    brief = _topic_rows_brief(topics_data())
-    rep = _report_get("topic_snapshots", None, {}) or {}
-    entries = rep.get("entries") or []
-    prev = ((entries[-1] or {}).get("topics") or {}) if entries else {}
-    changed = []
-    for k, v in brief.items():
-        pn = int((prev.get(k) or {}).get("n") or 0)
-        if v["n"] != pn:
-            changed.append({"id": k, "label": v["label"], "type": v["type"],
-                            "from": pn, "to": v["n"]})
-    gone = [{"id": k, "label": (v or {}).get("label") or ""}
-            for k, v in prev.items() if k not in brief]
-    delta = {"ts": time.time(), "changed": changed[:100], "gone": gone[:50],
-             "new_n": sum(1 for c in changed if not c["from"]),
-             "changed_n": len(changed), "gone_n": len(gone)}
-    entries.append({"ts": delta["ts"], "topics": brief})
-    _report_save("topic_snapshots", {"entries": entries[-_TOPIC_SNAP_CAP:],
-                                     "last_delta": delta}, None)
-    return delta
-
-
-_topic_sched_started = False
-
-
-def start_topic_scheduler(interval_min: int = 60):
-    """토픽 자동 리프레시(기본 1시간): 재계산 + 스냅샷 적재. 서버당 1회 · 데몬 스레드."""
-    global _topic_sched_started
-    if _topic_sched_started:
-        return
-    _topic_sched_started = True
-
-    def _loop():
-        while True:
-            try:
-                time.sleep(max(300, int(interval_min) * 60))
-                topic_snapshot()
-            except Exception as e:
-                print(f"  [warn] 토픽 스냅샷 실패: {e}")
-
-    threading.Thread(target=_loop, daemon=True).start()
-
-
-def _ent_index() -> dict:
-    """토픽 매칭용 개체 속성 인덱스({content_hash: [속성 dict]}) · 사전 미구축이면 빈 dict.
-    토픽은 전역(무팀 results_rows) 뷰라 인덱스도 전역(team="")."""
-    st = get_store()
-    if not (st and hasattr(st, "ent_attr_index")):
-        return {}
-    from . import entdict as ED
-    return ED.attr_index(st, team="")
-
-
-def _sanitize_def(d: dict, existing_ids=None) -> dict:
-    """\uc0ac\uc6a9\uc790 \uc815\uc758 \uc815\uaddc\ud654\u00b7\uac80\uc99d. id \uc5c6\uc73c\uba74 \uc0dd\uc131(\uc911\ubcf5 \ud68c\ud53c)."""
-    from . import topic as TP
-    name = (d.get("name") or "").strip()[:60]
-    prompt = (d.get("prompt") or "").strip()[:280]
-
-    def _strlist(v, n=20, ln=60):
-        out, seen = [], set()
-        for x in (v or []):
-            s = str(x).strip()[:ln]
-            if s and s not in seen:
-                seen.add(s); out.append(s)
-            if len(out) >= n:
-                break
-        return out
-
-    cats = _strlist(d.get("cats"))
-    intents = _strlist(d.get("intents"))
-    keywords = _strlist(d.get("keywords"))
-    # 개체 속성 조건: 허용 키('key:value')만 · 항상 필수(같은 개체 AND) · 최대 10개
-    from . import entdict as ED
-    eattrs = [s for s in _strlist(d.get("eattrs"), n=10) if ED.parse_eattr(s)]
-    # 제외(neg): 선택과 독립인 배제 조건. 같은 값이 선택에도 있으면 선택을 우선(자기모순 방지).
-    ng = d.get("neg") or {}
-    neg = {k: [v for v in _strlist(ng.get(k))
-               if v not in {"cats": cats, "intents": intents, "keywords": keywords}[k]]
-           for k in ("cats", "intents", "keywords")}
-    # \ud544\uc218(req): \uc120\ud0dd\ub41c \uac12\uc758 \ubd80\ubd84\uc9d1\ud569\ub9cc \uc778\uc815(\uac12 \uc5c6\uc73c\uba74 \ud558\uc704\ud638\ud658\uc73c\ub85c topic \uc774 '\uc804\ubd80 \ud544\uc218' \ucc98\ub9ac)
-    rq = d.get("req") or {}
-    sel = {"cats": set(cats), "intents": set(intents), "keywords": set(keywords)}
-    req = {k: [v for v in _strlist(rq.get(k)) if v in sel[k]] for k in ("cats", "intents", "keywords")}
-    cid = (d.get("id") or "").strip()
-    if not cid:
-        base = "U-" + (TP._slug(name or prompt or "topic") or "topic")
-        cid, n = base, 2
-        ids = set(existing_ids or [])
-        while cid in ids:
-            cid = base + "-" + str(n); n += 1
-    return {"id": cid, "name": name or "(\ubb34\uc81c \ud1a0\ud53d)", "prompt": prompt,
-            "cats": cats, "intents": intents, "keywords": keywords, "eattrs": eattrs,
-            "req": req, "neg": neg}
-
-
-def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
-    """\uc790\uc5f0\uc5b4 \uc124\uba85 \u2192 \ud1a0\ud53d \ucc28\uc6d0(\uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8\u00b7\ud0a4\uc6cc\ub4dc)\uc744 \uc120\ud0dd \ubaa8\ub378\ub85c \ub9e4\ud551.
-    \ud5c8\uc6a9 \ubaa9\ub85d(\ud604\uc7ac \ub370\uc774\ud130\uc758 \uc2e4\uc7ac \uac12)\uc73c\ub85c\ub9cc \uc81c\uc57d \u00b7 \uc2e4\ud328 \uc2dc (None, \uc0ac\uc720) \ubc18\ud658(\ud638\ucd9c\ubd80\uc5d0\uc11c \ud734\ub9ac\uc2a4\ud2f1 \ud3f4\ubc31)."""
-    from . import topic as TP, meta_prompts as MP
-    tax = TP.meta_taxonomy()                       # \uc2dc\uc2a4\ud15c \uc804\uccb4 \uc544\uc774\ud15c\uba54\ud0c0 \ubd84\ub958(\ub370\uc774\ud130 \uc720\ubb34 \ubb34\uad00)
-    cat = TP.studio_catalog(rows, svc)             # \ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc2e4\uc7ac\ud558\ub294 \uac12(\uc6b0\uc120)
-    data_cats = [c["k"] for c in cat["cats"]]
-    data_int = [c["k"] for c in cat["intents"]]
-    allow_cats = list(dict.fromkeys((tax["cats"] or []) + data_cats))   # \uc804\uccb4 \u222a \ub370\uc774\ud130
-    allow_int = list(dict.fromkeys((tax["intents"] or []) + data_int))
-    tier1_ko = getattr(TP, "_TIER1_KO", {}) or {}
-    cats_ko = [((tier1_ko.get(c) or c) + "=" + c) for c in allow_cats]  # \uc601\ubb38 Tier1 + \ud55c\uae00 \ubcd1\uae30
-    # \uac1c\uccb4 \uc18d\uc131 \ud6c4\ubcf4(\uc5d4\ud2f0\ud2f0 \uc0ac\uc804 \uc2e4\uc7ac\uac12): '\uc5ec\uc131 \uc2a4\ud3ec\uce20\uc778'\ub958 \uc124\uba85 \u2192 eattrs \uc870\uac74 \uc790\ub3d9\uc0dd\uc131
-    ecat = TP.eattr_catalog(_ent_index())
-    e_allow = [c["k"] for c in ecat]
-    e_prompt = [f'{c["k"]} ({c["label"]} \u00b7 {c["v"]}\uac74)' for c in ecat[:60]]
-    # \ubaa8\ub378 \uacc4\uc5f4 \ucfe1\ubd81 \ub798\ud37c\ub85c \uc870\ub9bd(\ud544\uc218/\uc120\ud0dd \uc124\uacc4\uc790 \uc5ed\ud560) \u00b7 \uc2a4\ud29c\ub514\uc624 \uc624\ubc84\ub77c\uc774\ub4dc \uc0c1\uc18d
-    sysp = MP.topic_suggest_system(model, cats_ko, allow_int, data_cats, data_int, eattrs=e_prompt)
-    userp = MP.topic_suggest_user(text)
-    llm, route = llm_for_model(model, mock)
-    if llm is None:
-        return None, route
-    obj, _res = llm.complete_json(sysp, userp, tag="topic_suggest")
-    if not isinstance(obj, dict) or obj.get("_fail"):
-        return None, (isinstance(obj, dict) and obj.get("_fail_kind")) or "fail"
-    ac, ai = set(allow_cats), set(allow_int)
-    must, opt = obj.get("must") or {}, obj.get("optional") or {}
-
-    def _cv(dd, key, allow):
-        return [v for v in (dd.get(key) or []) if v in allow]
-
-    def _kw(dd):
-        return [str(k).strip()[:60] for k in (dd.get("keywords") or []) if str(k).strip()]
-
-    def _uniq(a, b):
-        out = list(a)
-        for x in b:
-            if x not in out:
-                out.append(x)
-        return out
-
-    m_cats, m_int, m_kw = _cv(must, "cats", ac), _cv(must, "intents", ai), _kw(must)
-    cats = _uniq(m_cats, _cv(opt, "cats", ac))
-    intents = _uniq(m_int, _cv(opt, "intents", ai))
-    keywords = _uniq(m_kw, _kw(opt))[:5]
-    # 제외(exclude → neg): 허용 목록으로 검증 · 선택과 겹치면 선택에서 뺀다(배제 의도 우선)
-    exc = obj.get("exclude") or {}
-    neg = {"cats": _cv(exc, "cats", ac), "intents": _cv(exc, "intents", ai),
-           "keywords": _kw(exc)[:5]}
-    cats = [x for x in cats if x not in neg["cats"]]
-    intents = [x for x in intents if x not in neg["intents"]]
-    keywords = [x for x in keywords if x not in neg["keywords"]]
-    # 개체 속성(eattrs): 실재 후보 목록으로만 검증 · 항상 필수 취급이라 req 분리 불필요
-    ea = set(e_allow)
-    eattrs = [str(x).strip() for x in (obj.get("eattrs") or []) if str(x).strip() in ea][:6]
-    sug = {"cats": cats, "intents": intents, "keywords": keywords, "eattrs": eattrs,
-           "req": {"cats": [c for c in m_cats if c in cats], "intents": [i for i in m_int if i in intents],
-                   "keywords": [k for k in m_kw if k in keywords]},
-           "neg": neg}
-    return sug, route
-
-
-def _def_signature(d: dict) -> str:
-    """\ud1a0\ud53d \uc815\uc758 \u2192 \ube44\uad50\uc6a9 \uc11c\uba85 \ud14d\uc2a4\ud2b8(\uc774\ub984\u00b7\uc124\uba85\u00b7\uc870\uac74\uac12 \uc804\ubd80)."""
-    parts = [d.get("name") or "", d.get("prompt") or ""]
-    for k in ("cats", "intents", "keywords"):
-        parts.extend(d.get(k) or [])
-        parts.extend((d.get("req") or {}).get(k) or [])
-    return " ".join(str(p) for p in parts if p).strip()
-
-
-def _sig_tokens(s: str) -> set:
-    return {t for t in re.split(r"[^0-9A-Za-z\uac00-\ud7a3]+", (s or "").lower()) if len(t) >= 2}
-
-
-def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list:
-    """\uc800\uc7a5\ud558\ub824\ub294 \uc815\uc758\uc640 \ube44\uc2b7\ud55c \uae30\uc874 \uc0ac\uc6a9\uc790 \ud1a0\ud53d(\uc911\ubcf5 \uacbd\uace0 \ud6c4\ubcf4 \u00b7 \uc0c1\uc704 3).
-    \uc784\ubca0\ub529(\ud0a4 \uc788\uc73c\uba74 \u00b7 embed.py \uce90\uc2dc \uc7ac\uc0ac\uc6a9) \uc6b0\uc120, \ubb34\ud0a4\uba74 \ud1a0\ud070 \uc790\uce74\ub4dc(\uc784\uacc4 0.5) \ud3f4\ubc31.
-    \uc2e4\ud328\ub294 \uc870\uc6a9\ud788 \ube48 \ubaa9\ub85d \u2014 \uc800\uc7a5\uc744 \ub9c9\uc9c0 \uc54a\ub294\ub2e4(\uacbd\uace0 \uc804\uc6a9)."""
-    sig = _def_signature(new_def)
-    others = [c for c in (custom or []) if c.get("id") != new_def.get("id")]
-    if not sig or not others:
-        return []
-    out = []
-    try:
-        from .embed import EmbeddingClient, cosine
-        emb = EmbeddingClient(cache_path=Config.load().emb_cache_path)
-        if not emb.mock:                            # mock(\ud734\ub9ac\uc2a4\ud2f1) \uc784\ubca0\ub529\uc73c\ub85c\ub294 \uc720\uc0ac\ub3c4 \ud310\ub2e8 \uae08\uc9c0
-            qv = emb.embed(sig, is_query=True)
-            for c in others:
-                s = cosine(qv, emb.embed(_def_signature(c), is_query=False))
-                if s >= threshold:
-                    out.append({"id": c.get("id"), "name": c.get("name") or "",
-                                "score": round(s, 3), "via": "embedding"})
-            out.sort(key=lambda x: -x["score"])
-            return out[:3]
-    except Exception:
-        pass
-    qt = _sig_tokens(sig)
-    if not qt:
-        return []
-    for c in others:
-        ct = _sig_tokens(_def_signature(c))
-        if not ct:
-            continue
-        j = len(qt & ct) / len(qt | ct)
-        if j >= 0.5:
-            out.append({"id": c.get("id"), "name": c.get("name") or "",
-                        "score": round(j, 3), "via": "token"})
-    out.sort(key=lambda x: -x["score"])
-    return out[:3]
-
-
-def topic_studio_action(data: dict, mock: bool = False) -> dict:
-    """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd/\uc870\ud68c: save\u00b7delete\u00b7settings\u00b7preview\u00b7suggest."""
-    from . import topic as TP
-    action = (data.get("action") or "").strip()
-    if action not in ("preview", "suggest"):
-        _agg_bump()                                   # \ubcc0\uacbd\uc131 \uc561\uc158(save\u00b7delete\u00b7settings\u00b7exclude \ub4f1) \u2192 \ud1a0\ud53d \uce90\uc2dc \ubb34\ud6a8\ud654
-    rows = results_rows()
-    svc = TP._service_names(rows) if rows else set()
-
-    if action == "preview":
-        d = _sanitize_def(data.get("def") or {})
-        pv = (TP.preview_definition(rows, svc, d, ent_index=_ent_index()) if rows else
-              {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0})
-        # 표본을 상세 화면 계약(_detail_row)으로 확장: 미리보기 배지 클릭 → 공통 스플릿뷰로 바로 열람
-        for b in pv.get("bundles") or []:
-            if b.get("samples"):
-                b["samples"] = [_detail_row(rows[s["i"]]) for s in b["samples"]
-                                if isinstance(s.get("i"), int) and 0 <= s["i"] < len(rows)]
-        return {"ok": True, "preview": pv}
-
-    if action == "suggest":
-        text = data.get("text") or ""
-        if not rows:
-            return {"ok": True, "via": "none",
-                    "suggest": {"cats": [], "intents": [], "keywords": [], "eattrs": [],
-                                "req": {"cats": [], "intents": [], "keywords": []},
-                                "neg": {"cats": [], "intents": [], "keywords": []}}}
-        model = (data.get("model") or "").strip()          # "" = \uae30\ubcf8 \uc2e4\ud589 \ubaa8\ub378
-        via, route, sug = "llm", "", None
-        try:
-            sug, route = _studio_llm_suggest(text, model, rows, svc, mock)
-        except Exception as e:
-            sug, route = None, str(e)[:80]
-        # \ubaa8\ub378 \ud638\ucd9c \ubd88\uac00\u00b7\uc2e4\ud328\u00b7\ube48 \uacb0\uacfc \u2192 \ud734\ub9ac\uc2a4\ud2f1(\uc989\uc2dc\u00b7\uc758\uc874\uc131 0) \ud3f4\ubc31. \ubc84\ud2bc\uc774 \ud5db\ub3cc\uc9c0 \uc54a\uac8c.
-        if not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords")
-                           or sug.get("eattrs") or any((sug.get("neg") or {}).values())):
-            sug = TP.suggest_dims(text, rows, svc, eattr_cands=TP.eattr_catalog(_ent_index()))
-            via = "heuristic"
-        sug.setdefault("eattrs", [])
-        return {"ok": True, "suggest": sug, "via": via, "model": model, "route": route}
-
-    cfg = _studio_config()
-    custom = list(cfg["custom"])
-    exclusions = {k: list(v or []) for k, v in (cfg["exclusions"] or {}).items()}
-
-    if action == "save":
-        if not isinstance(data.get("def"), dict) or not data["def"]:
-            # def 누락(키 오타 포함)이 조용히 '(무제 토픽)' 을 만드는 것 방지 — 명시 에러로 반환
-            return {"ok": False, "error": "토픽 정의(def)가 필요합니다"}
-        d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
-        dups = similar_topics(d, custom)             # 저장 전 기존 정의와 비교(경고 전용 · 저장은 진행)
-        idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
-        if idx >= 0:
-            custom[idx] = d
-        else:
-            custom.append(d)
-        _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
-        out = dict(topics_data())
-        out["similar"] = dups
-        return out
-    elif action == "delete":
-        cid = (data.get("id") or "").strip()
-        custom = [c for c in custom if c.get("id") != cid]
-        exclusions.pop(cid, None)               # 토픽 삭제 시 그 토픽의 제외 목록도 정리
-        _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
-    elif action == "settings":
-        s = data.get("settings") or {}
-        settings = dict(cfg["settings"])
-        if s.get("co_min") is not None:
-            settings["co_min"] = max(1, min(6, int(s.get("co_min") or 2)))
-        if s.get("entity_min") is not None:
-            settings["entity_min"] = max(1, min(10, int(s.get("entity_min") or 2)))
-        _save_studio_config({"custom": custom, "settings": settings, "exclusions": exclusions})
-    elif action in ("exclude", "restore"):
-        # 큐레이션 오버레이: 토픽(자동=cluster_id · 사용자=그룹 id)에서 콘텐츠(hash) 개별 제외/복구.
-        # 매칭 정의는 그대로 두는 편집 판단 — 메타 교정(검수)·정의 수정과 구분되는 세 번째 수단.
-        tid = (data.get("id") or "").strip()[:80]
-        h = (data.get("hash") or "").strip()[:80]
-        if not tid or not h:
-            return {"ok": False, "error": "토픽 id 와 콘텐츠 hash 가 필요합니다"}
-        lst = [e for e in (exclusions.get(tid) or [])
-               if (e.get("h") if isinstance(e, dict) else e) != h]
-        if action == "exclude":
-            lst.append({"h": h, "title": str(data.get("title") or "")[:80],
-                        "topic": str(data.get("topic") or "")[:60], "ts": time.time()})
-            lst = lst[-300:]                     # 토픽당 상한(폭주 방지)
-        if lst:
-            exclusions[tid] = lst
-        else:
-            exclusions.pop(tid, None)
-        _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
-    else:
-        return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791"}
-    return topics_data()
-
-
-def media_action(data: dict) -> dict:
-    """\ubbf8\ub514\uc5b4 \uba54\ud0c0 \ud30c\uc774\ud504\ub77c\uc778(\ud3ec\ud1a0\u00b7\uc601\uc0c1 \ud14d\uc2a4\ud2b8\ud654) \uc561\uc158 \ub514\uc2a4\ud328\uce58.
-
-    \uc99d\ubd84 1: T1 \uc790\ub9c9 \ud30c\uc2f1(\ub8f0\u00b7\ubaa8\ub378 0\uac74)\ub9cc \uc2e4\ub3d9\uc791. T2 \uc624\ub514\uc624 \uc804\uc0ac\u00b7T3 \ube44\uc8fc\uc5bc \ubb18\uc0ac\ub294
-    \ub77c\uc6b0\ud130/\ubbf8\ub514\uc5b4 \ubd84\ud574 \uacb0\uc815 \ud6c4 \ubcc4\ub3c4 \uc99d\ubd84\uc5d0\uc11c \ubd99\uc778\ub2e4(mediaext \ubaa8\ub4c8\uc5d0 \ud2b8\ub799\uc740 \uc774\ubbf8 \uc874\uc7ac)."""
-    from . import mediaext as MX
-    action = (data.get("action") or "subtitles").strip()
-    if action == "subtitles":
-        raw = data.get("raw") or ""
-        fmt = (data.get("fmt") or "").strip()
-        if not raw.strip():
-            return {"ok": False, "error": "\uc790\ub9c9 \uc6d0\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694"}
-        return {"ok": True, **MX.parse_subtitles(raw, fmt)}
-    if action == "s5ab":                              # S5 \uba54\ud0c0\ucd94\ucd9c \ubaa8\ub378 A/B(\ubbf8\uc800\uc7a5)
-        text = (data.get("text") or "").strip()
-        models = data.get("models") or []
-        if not text:
-            return {"ok": False, "error": "\ud1b5\ud569 \uc6d0\uace0(\ud14d\uc2a4\ud2b8)\ub97c \uc785\ub825\ud558\uc138\uc694"}
-        if not models:
-            return {"ok": False, "error": "\ud6c4\ubcf4 \ubaa8\ub378\uc744 1\uac1c \uc774\uc0c1 \uc120\ud0dd\ud558\uc138\uc694"}
-        return media_s5ab(text, models, caption=data.get("caption", ""))
-    return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791(\uc790\ub9c9 \ud30c\uc2f1\uc740 media_action, \uc601\uc0c1\uc740 media_native)"}
-
-
-def media_s5ab(text: str, models: list, *, caption: str = "") -> dict:
-    """S5 \uba54\ud0c0\ucd94\ucd9c \ubaa8\ub378 A/B(\uc2e4\ud5d8\uc2e4 \u00b7 \ubbf8\uc800\uc7a5). \uac19\uc740 \ud1b5\ud569 \uc6d0\uace0\ub97c \ud6c4\ubcf4 \ubaa8\ub378\ub4e4\uc5d0 \ud0dc\uc6cc
-    \uc544\uc774\ud15c \uba54\ud0c0(\ub9ac\ub4dc\ubb38\u00b7\uc778\ud150\ud2b8\u00b7\uc5d4\ud2f0\ud2f0\u00b7IAB)\ub97c \ub098\ub780\ud788 \ube44\uad50 \u2192 '\uc120\uc815 \ub300\uae30 \uc2ac\ub86f'\uc758 \ubaa8\ub378
-    \uad50\uccb4 \uc790\uc720\ub97c \uc2e4\uce21\uc73c\ub85c \uc99d\uba85. \ubaa8\ub378 \ub77c\uc6b0\ud305\uc740 llm_for_model \uc7ac\uc0ac\uc6a9(solar \uc9c1\uc811\u00b7\ub77c\uc6b0\ud130).
-
-    \ubb34\ud0a4(\ub610\ub294 \uc11c\ubc84 mock) \uc2dc route=mock \ub85c \ub3d9\uc77c \uc0b0\ucd9c \u2014 \uc2e4\ud0a4 \uc5f0\uacb0 \uc2dc \ubaa8\ub378\ubcc4\ub85c \uac08\ub9b0\ub2e4.
-    """
-    body = (caption.strip() + "\n" + text).strip() if caption.strip() else text
-    results = []
-    for m in list(dict.fromkeys(str(x) for x in models))[:6]:   # \uc911\ubcf5 \uc81c\uac70 \u00b7 \uc0c1\ud55c 6
-        try:
-            res = run_pipeline({"displayServiceName": "\uc601\uc0c1", "title": "", "subtitle": "", "body": body},
-                               mock=Handler.server_mock, model=m, persist=False)
-        except Exception as e:
-            results.append({"model": m, "error": str(e)[:120]})
-            continue
-        if res.get("error"):
-            results.append({"model": m, "error": res["error"]})
-            continue
-        out = res.get("output") or {}
-        im = out.get("item_meta") or {}
-        tr = out.get("trace") or {}
-        # 계측: 빈 산출 진단 — item_meta 가 비었는데 mock 도 아니면 실패. trace.fails 로 사유 노출
-        #  (예: gemini 침묵 빈응답 → kind=parse_empty). 하네스가 '왜 빈값'을 스스로 보고한다.
-        empty = not (im.get("summary") or im.get("entities") or im.get("content_category"))
-        results.append({"model": m, "mock": bool(res.get("mock")),
-                        "item_meta": im, "empty": empty,
-                        "fails": tr.get("fails") or []})
-    return {"ok": True, "results": results}
-
-
-def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
-                 description: str = "", model: str = "", subtitles: str = "") -> dict:
-    """T4 \ub124\uc774\ud2f0\ube0c \ube44\ub514\uc624 \uc2e4\ud5d8(\uc2e4\ud5d8\uc2e4 \u00b7 \ubbf8\uc800\uc7a5). \uc601\uc0c1 \ud1b5\uc9dc \u2192 \ub77c\uc6b0\ud130 \uc704\uc784 \ud2b8\ub799 \u2192
-    S4 \ubcd1\ud569 \u2192 \ud569\uc131 Content \u2192 \uae30\uc874 \ucd94\ucd9c(S5) \u2192 ItemMeta. results \uc5d0 \uc800\uc7a5\ud558\uc9c0 \uc54a\ub294\ub2e4.
-
-    \ube44\uc804 \uc2ac\ub86f\uc774 \ub77c\uc6b0\ud130\uba74 \uadf8 \uc11c\ube44\uc2a4/\ubaa8\ub378\ub85c \ub124\uc774\ud2f0\ube0c \ud638\ucd9c, \uc544\ub2c8\uba74(\ub610\ub294 \uc11c\ubc84 mock) mock \ud3f4\ubc31.
-    """
-    from . import mediaext as MX
-    cfg = Config.load()
-    mock = Handler.server_mock
-    subs = MX.parse_subtitles(subtitles) if (subtitles or "").strip() else {}
-    if subs.get("cue_count"):
-        # 자막 우선(T1 · 모델 0건): 발화 원고가 이미 있으니 영상 모델 호출을 건너뛴다(비용 0).
-        # 설계안 명시("자막 보유율 실측이 비용 계획의 기준점")의 라우팅 실현 · 응답 shape 는 유지.
-        nv = {"skipped": True, "skip_reason": "자막 보유 · 영상 모델 호출 생략(비용 0)",
-              "audio": {"transcript": "", "has_speech": False},
-              "visual": {"description": "", "on_screen_text": "", "entities": []}}
-        merged = MX.merge_tracks(subtitles=subs)
-    else:
-        service = cfg.vision_provider if MX.is_router(cfg.vision_provider) else "bizrouter"
-        vmodel = cfg.vision_model or model
-        nv = MX.native_video_track(content_bytes, mime, vmodel, service, mock=mock)
-        merged = MX.merge_tracks(audio=nv.get("audio"), visual=nv.get("visual"))
-    content = MX.build_content(merged, caption=caption, description=description)
-    # S5 = \uae30\uc874 \ucd94\ucd9c \uc7ac\uc0ac\uc6a9(imagext \ub3d9\uc77c \uc124\uacc4) \u00b7 persist=False \ub85c \ubbf8\uc800\uc7a5
-    res = run_pipeline({"displayServiceName": content["displayServiceName"],
-                        "title": content["title"], "subtitle": content["subtitle"],
-                        "body": content["body"]},
-                       mock=mock, model=model, persist=False)
-    return {"ok": True, "mock": bool(res.get("mock")), "native": nv,
-            "merged": merged, "content": content, "output": res.get("output") or {}}
-
-
 def dashboard_data(team=None) -> dict:
     """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8 \uc9d1\uacc4. team \ubcc4 \uc2a4\ucf54\ud551 \u00b7 \uc9e7\uc740 TTL \uce90\uc2dc(\ubc18\ubcf5 \ub85c\ub4dc \uc2dc 5000\ud589 \uc7ac\uc2a4\uce94 \ubc29\uc9c0)."""
     return _agg_cached(("dash", team), lambda: _dashboard_compute(team))
@@ -1837,76 +1107,6 @@ def drill_contents(kind: str, value: str, team=None, reviewer: str = "") -> dict
         if hit:
             out.append(_detail_row(r))
     return {"ok": True, "kind": kind, "value": value, "items": _attach_fb(out, team, reviewer), "n": len(out)}
-
-
-def topic_personas(entities: list, team=None) -> list:
-    """엔티티 목록 → 타겟 페르소나 추천(상위 2 · 점유율). 엔티티×페르소나 친화도 행렬
-    (usermeta · '타겟팅 실계산 근거'로 이미 산출)을 소비 측으로 개통 — 데이터 없으면 빈 목록."""
-    try:
-        um = usermeta_data(team=team) or {}
-        ep = (um.get("aggregate") or {}).get("entity_persona") or {}
-    except Exception:
-        return []
-    pnames = ep.get("personas") or []
-    weights = {r[0]: r[2] for r in (ep.get("rows") or [])
-               if isinstance(r, (list, tuple)) and len(r) >= 3}
-    if not (pnames and weights and entities):
-        return []
-    totals = [0.0] * len(pnames)
-    hit = False
-    for e in entities:
-        w = weights.get(e)
-        if w:
-            hit = True
-            for i, v in enumerate(w[:len(pnames)]):
-                totals[i] += float(v or 0)
-    s = sum(totals)
-    if not hit or s <= 0:
-        return []
-    ranked = sorted(zip(pnames, totals), key=lambda x: -x[1])
-    return [{"persona": p, "share": round(v / s, 3)} for p, v in ranked[:2] if v > 0]
-
-
-def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
-    """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape.
-    ⚠️ rows 는 topics_data() 의 content_ids 인덱스와 정합해야 해서 무필터 유지 · 피드백 부착만
-    팀 스코프. 토픽 자체의 팀 파라미터화(topics_data)는 후속(실험실 메뉴 · 관리자용)."""
-    rows = results_rows()
-    if not rows or not cluster_id:
-        return {"ok": True, "kind": "topic", "value": cluster_id or "", "items": [], "n": 0}
-    td = topics_data()                        # single/composite/filter(각 content_ids) · custom(그룹→bundles)
-    cluster, topic_id = None, cluster_id      # topic_id = 제외(큐레이션) 키 · 사용자 토픽은 그룹 id
-    for grp in ("single", "composite", "filter"):
-        for c in td.get(grp, []):
-            if c.get("cluster_id") == cluster_id:
-                cluster = c
-                break
-        if cluster:
-            break
-    if not cluster:                            # 사용자 토픽: 그룹의 묶음(핵심·관련) 중에서 찾음
-        for g in td.get("custom", []):
-            for b in (g.get("bundles") or []):
-                if b.get("cluster_id") == cluster_id:
-                    cluster = dict(b)
-                    cluster["name"] = (g.get("name") or "") + " · " + (b.get("label") or "")
-                    topic_id = g.get("id") or cluster_id   # 제외는 그룹 전체(모든 묶음)에 적용
-                    break
-            if cluster:
-                break
-    if not cluster:
-        return {"ok": False, "kind": "topic", "value": cluster_id, "items": [], "n": 0,
-                "error": "토픽을 찾을 수 없습니다(데이터가 갱신되었을 수 있음)"}
-    ids = cluster.get("content_ids") or []
-    out = _attach_fb([_detail_row(rows[i]) for i in ids if 0 <= i < len(rows)], team, reviewer)
-    name = cluster.get("name") or cluster.get("label") or cluster_id
-    ents = {}                                  # 타겟 페르소나: 이 토픽 콘텐츠의 빈발 엔티티로 추정
-    for i in ids[:100]:
-        if 0 <= i < len(rows):
-            for e in ((rows[i].get("item_meta") or {}).get("entities") or []):
-                ents[e] = ents.get(e, 0) + 1
-    top_ents = [e for e, _n in sorted(ents.items(), key=lambda x: -x[1])[:8]]
-    return {"ok": True, "kind": "topic", "value": name, "items": out, "n": len(out),
-            "topic_id": topic_id, "personas": topic_personas(top_ents, team=team)}
 
 
 def _detail_row(r: dict) -> dict:
@@ -3977,6 +3177,953 @@ def is_public_get(path: str) -> bool:
     return (p.rstrip("/") or "/") in _PUBLIC_GET
 
 
+# ═══ GET 라우트 테이블 ════════════════════════════════════════════════════
+# 등록: @_get_route("/prefix") · 관리자 전용은 admin=True(공통 403 게이트 _admin_gate).
+# 디스패치(do_GET)는 최장 접두 우선이라 나열 순서와 무관 — 짧은 라우트가 긴 라우트를
+# 가로채던 계열의 운영 사고(2026-07-16 /reviewer vs /reviewer-role)가 구조적으로 불가능.
+# 핸들러 계약: fn(h, q) → dict 반환 = 200 JSON 응답 · None 반환 = 핸들러가 직접 응답을 씀.
+# (h = Handler 인스턴스 · q = parse_qs 쿼리 dict) · 가드: tests/test_route_dispatch.py
+_GET_ROUTES = {}
+
+
+def _get_route(prefix: str, admin: bool = False):
+    def deco(fn):
+        _GET_ROUTES[prefix] = (fn, admin)
+        return fn
+    return deco
+
+
+@_get_route("/report")
+def _g_report(h, q):
+    h._send(200, build_report_html(team=h._req_team()))
+
+
+@_get_route("/export.csv")
+def _g_export_csv(h, q):
+    h._send_file(build_results_csv(team=h._req_team()), "text/csv; charset=utf-8",
+                 "prism_results.csv")
+
+
+@_get_route("/config")
+def _g_config(h, q):
+    cs = config_status(h._req_team())
+    # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
+    # 로그인 화면·배포 검증(curl /config: backend·configured)이 쓰는 최소 필드만 공개.
+    if _supa() and not h._bearer_uid():
+        cs = {k: cs[k] for k in ("bootId", "build", "configured", "forcedMock", "ingesting",
+                                 "backend", "authRequired", "keyManagedByServer") if k in cs}
+    return cs
+
+
+@_get_route("/models")
+def _g_models(h, q):
+    return list_models()
+
+
+@_get_route("/vocab")
+def _g_vocab(h, q):
+    return vocab()
+
+
+@_get_route("/entdict-lookup")                       # 검수 화면: 콘텐츠 엔티티 → 사전 정보(타입·속성)
+def _g_entdict_lookup(h, q):
+    names = [n for n in (q.get("names", [""])[0]).split("|") if n.strip()]
+    st = get_store()
+    found = st.ent_by_names(names) if (st and hasattr(st, "ent_by_names")) else {}
+    return {"ok": True, "entities": found}
+
+
+@_get_route("/entdict")
+def _g_entdict(h, q):
+    return entdict_data(q=q.get("q", [""])[0], type_=q.get("type", [""])[0],
+                        status=q.get("status", [""])[0], limit=int(q.get("limit", ["300"])[0]))
+
+
+@_get_route("/dict")
+def _g_dict(h, q):
+    return dict_data()
+
+
+@_get_route("/topic-drill")
+def _g_topic_drill(h, q):
+    return topic_drill(q.get("cluster", [""])[0], h._req_team(),
+                       reviewer=(h._bearer_uid() or q.get("reviewer", [""])[0]))
+
+
+@_get_route("/topics")
+def _g_topics(h, q):
+    td = dict(topics_data())
+    try:                                             # 자동 스냅샷 메타(마지막 시각·변화) 동반
+        snap = _report_get("topic_snapshots", None, {}) or {}
+        td["snapshot"] = {"last_ts": ((snap.get("entries") or [{}])[-1] or {}).get("ts"),
+                          "delta": snap.get("last_delta")}
+    except Exception:
+        td["snapshot"] = None
+    return td
+
+
+@_get_route("/dashboard")
+def _g_dashboard(h, q):
+    return dashboard_data(h._req_team())
+
+
+@_get_route("/drill")
+def _g_drill(h, q):
+    return drill_contents(q.get("kind", [""])[0], q.get("value", [""])[0], h._req_team(),
+                          reviewer=(h._bearer_uid() or q.get("reviewer", [""])[0]))
+
+
+@_get_route("/arena")
+def _g_arena(h, q):
+    d = dict(arena_data(h._req_team()))
+    rv = h._bearer_uid() or q.get("reviewer", [""])[0]
+    if rv:
+        d["missions"] = mission_progress(rv, h._req_team())
+    d["my_id"] = rv or ""                            # 내 행 식별 = reviewer_id(닉네임 변경·중복 표시명 무관)
+    d["final_reviewers"] = sorted(reviewer_roles(h._req_team()))   # 2층 검수: 역할 노출(탭 게이팅)
+    return d
+
+
+@_get_route("/final-queue")                          # 최종검수 큐(미확정분 · 최종검수자/관리자)
+def _g_final_queue(h, q):
+    uid = h._bearer_uid()
+    if _supa() and not (is_admin_user(uid, h._req_team(), h._bearer_email())
+                        or is_final_reviewer(uid, h._req_team())):
+        h._send(403, json.dumps({"error": "최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
+        return None
+    return final_review_queue(h._req_team(), reviewer=uid or "")
+
+
+@_get_route("/admin")
+def _g_admin(h, q):
+    # 메뉴 게이팅의 원천: 인증 서버 일시 장애는 '비관리자(200)'가 아니라 503(재시도)으로 구분
+    auth = h.headers.get("Authorization", "")
+    token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+    try:
+        uid = AO.validate_jwt(token, strict=True)
+    except AO.AuthBackendUnavailable:
+        h._send(503, json.dumps({"ok": False, "error": "인증 서버 연결 지연 · 자동 재시도됩니다"},
+                                ensure_ascii=False), _JSON)
+        return None
+    if token and _supa() and not uid:
+        # 토큰이 있는데 무효 = 만료(1시간) · '비관리자(200)'로 뭉개면 관리자 메뉴가 조용히 강등된다
+        h._send(401, json.dumps({"ok": False, "error": "로그인이 만료됐습니다 · 세션 갱신 필요"},
+                                ensure_ascii=False), _JSON)
+        return None
+    return admin_data(uid, h._req_team(), h._bearer_email())
+
+
+@_get_route("/queue")
+def _g_queue(h, q):
+    return review_queue({"only_unreviewed": q.get("all", ["0"])[0] not in ("1", "true"),
+                         "limit": (q.get("limit", ["100"])[0]), "team": h._req_team(),
+                         "reviewer": h._bearer_uid() or q.get("reviewer", [""])[0]})
+
+
+@_get_route("/raw")                                  # 검수 대상 콘텐츠(모델·버전 필터 표)
+def _g_raw(h, q):
+    return raw_rows(int(q.get("limit", ["100"])[0]), h._req_team(),
+                    reviewer=(h._bearer_uid() or q.get("reviewer", [""])[0]))
+
+
+@_get_route("/model-stats")                          # 결과 비교: 요소 단위 모델별 현황
+def _g_model_stats(h, q):
+    return model_stats(h._req_team())
+
+
+@_get_route("/history")                              # 검수 상세: 콘텐츠 작업 이력(판정·교정·재실행)
+def _g_history(h, q):
+    # 운영(supabase): 팀 생성자·슈퍼관리자 전용(누가 언제 판정했는지 = 민감 정보) · 로컬 단독 실행은 그대로
+    if _supa() and not is_super_admin_user(h._bearer_uid(), h._req_team(), h._bearer_email()):
+        h._send(403, json.dumps({"error": "팀 생성자·슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
+        return None
+    return content_history(q.get("hash", [""])[0], h._req_team())
+
+
+@_get_route("/drafts")                               # 결과 비교: 콘텐츠별 초안 스냅샷
+def _g_drafts(h, q):
+    return drafts_for(q.get("hash", [""])[0], h._req_team())
+
+
+@_get_route("/events")
+def _g_events(h, q):
+    h._serve_sse()
+
+
+@_get_route("/reap")
+def _g_reap(h, q):
+    return reap_for({"hash": q.get("hash", [""])[0]})
+
+
+@_get_route("/ingest-status")
+def _g_ingest_status(h, q):
+    return ingest_status()
+
+
+@_get_route("/prompt-preview", admin=True)           # 프롬프트 스튜디오: 콜별×모델별 최종 합성 프롬프트(관리자)
+def _g_prompt_preview(h, q):
+    model = (q.get("model") or [""])[0]
+    call = (q.get("call") or ["merged"])[0]
+    svc = (q.get("service") or ["뉴스"])[0]
+    from .schema import Content
+    c = Content(displayServiceName=svc, title="(미리보기)", subtitle="", body="(미리보기 본문)")
+    sync_prompt()
+    try:
+        if call in MP.CALLS:
+            sysp = PR.call_system(c, call, model)
+            userp = MP.call_user(call, c, {"summary": "(리드문)", "entities": ["(엔티티)"], "intent": ["(인텐트)"]})
+        else:
+            sysp = PR.item_system(c, model)
+            userp = PR.item_user(c)
+        return {"ok": True, "family": MP.family_of(model), "call": call,
+                "system": sysp, "user": userp}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
+@_get_route("/prompt-snapshot", admin=True)          # 버전별 프롬프트 스냅샷(v 미지정 = 최신 · 관리자)
+def _g_prompt_snapshot(h, q):
+    v = (q.get("v") or [""])[0].strip()
+    kind = f"prompt_snapshot_v{int(v)}" if v.isdigit() else "prompt_snapshot_latest"
+    snap = _report_get(kind, h._req_team())
+    return {"ok": bool(snap), "snapshot": snap}
+
+
+@_get_route("/learn-report")                         # 최근 배치 결과(GET) · ?v=N 이면 그 버전 리포트
+def _g_learn_report(h, q):
+    _rv = (q.get("v") or [""])[0].strip()
+    if _rv.isdigit():                                # 버전 히스토리 상세(구버전은 미영속 → null)
+        _vrep = _report_get(f"learn_report_v{int(_rv)}", h._req_team())
+        return {"ok": bool(_vrep), "report": _vrep, "version": int(_rv)}
+    rep = _report_get("learn_report", h._req_team(), LO._LAST_LEARN_REPORT)
+    _c = Config.load()                               # 다음 반영 예정(검수 목표 일시 · 화면 표시용)
+    nb = LO.next_batch_time(getattr(_c, "learn_next_at", ""))
+    return {"ok": True, "report": rep, "next_batch_at": nb}
+
+
+@_get_route("/learn-export", admin=True)             # 학습데이터 JSONL 다운로드(관리자)
+def _g_learn_export(h, q):
+    fname, text = learn_export(q.get("kind", ["sft"])[0], h._req_team())
+    if not fname:
+        h._send(400, json.dumps({"error": text}, ensure_ascii=False), _JSON)
+        return None
+    h._send_file(text.encode("utf-8"), "application/x-ndjson; charset=utf-8", fname)
+
+
+@_get_route("/learn-spec", admin=True)               # 파인튜닝 스펙·소요서(.md · 관리자)
+def _g_learn_spec(h, q):
+    h._send_file(learn_spec_md(h._req_team()).encode("utf-8"), "text/markdown; charset=utf-8",
+                 "prism_finetune_spec.md")
+
+
+@_get_route("/handoff-export", admin=True)           # 모델러 핸드오프 번들(.zip · 관리자)
+def _g_handoff_export(h, q):
+    fname, blob = handoff_bundle(h._req_team())
+    if not fname:
+        h._send(400, json.dumps({"error": blob}, ensure_ascii=False), _JSON)
+        return None
+    h._send_file(blob, "application/zip", fname)
+
+
+@_get_route("/learn-data", admin=True)               # 학습 데이터 현황(관리자)
+def _g_learn_data(h, q):
+    return learn_data(h._req_team())
+
+
+@_get_route("/cost-rollup", admin=True)              # 비용 롤업(일별×모델×콜 · 관리자)
+def _g_cost_rollup(h, q):
+    try:
+        dq = int((q.get("days") or ["30"])[0])
+    except (TypeError, ValueError):
+        dq = 30
+    return cost_rollup_data(h._req_team(), days=dq)
+
+
+@_get_route("/fail-rollup", admin=True)              # 실패 트리아지(종류×모델×서비스 · 관리자)
+def _g_fail_rollup(h, q):
+    try:
+        fq = int((q.get("days") or ["30"])[0])
+    except (TypeError, ValueError):
+        fq = 30
+    return fail_rollup_data(h._req_team(), days=fq)
+
+
+@_get_route("/assign-log", admin=True)               # 배정 이력(누가·언제·어떻게 · 관리자)
+def _g_assign_log(h, q):
+    return assign_log_data(h._req_team())
+
+
+@_get_route("/routes-raw", admin=True)               # 학습 지시 원본 목록 + 끔 상태(관리자)
+def _g_routes_raw(h, q):
+    return routes_overview(h._req_team())
+
+
+@_get_route("/golden-list", admin=True)              # 관리자 골든 브라우저
+def _g_golden_list(h, q):
+    return golden_list(h._req_team())
+
+
+@_get_route("/activity-daily")                       # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프)
+def _g_activity_daily(h, q):
+    try:
+        days = int((q.get("days") or ["30"])[0])
+    except (TypeError, ValueError):
+        days = 30
+    st = get_store()
+    rows = (st.activity_daily(days=days, team=h._req_team())
+            if (st and hasattr(st, "activity_daily")) else [])
+    return {"ok": True, "days": rows}
+
+
+@_get_route("/golden-status")                        # 골든 생성 현황(팀원 공개): 확정·분류필요·불일치
+def _g_golden_status(h, q):
+    st = get_store()
+    _rep = _report_get("learn_report", h._req_team(), LO._LAST_LEARN_REPORT) or {}
+    g = _rep.get("golden") or {}
+    # 검수 진행(반영 대기): 골든은 학습 반영 시에만 확정되므로, 반영 전에도 검수가
+    # 쌓이고 있음을 현황에 표시(전부 0 + 안내 없음 = "표시가 안 된다" 혼란 방지)
+    reviewed_n = good_n = 0
+    try:
+        for e in (st.feedback_map(team=h._req_team()) or {}).values():
+            reviewed_n += 1
+            if e.get("consensus") == "good":
+                good_n += 1
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "batch_seq": (st.batch_seq(h._req_team()) if (st and hasattr(st, "batch_seq")) else 0),
+        "total": (st.golden_count(h._req_team()) if (st and hasattr(st, "golden_count")) else 0),
+        "source_counts": (st.golden_source_counts(h._req_team())
+                          if (st and hasattr(st, "golden_source_counts")) else {}),
+        "reviewed": {"contents": reviewed_n, "good": good_n},
+        "last_batch": {k: g.get(k) for k in ("confirmed", "new", "demoted", "need_category",
+                                             "disagree", "min_good")},
+        "need_list": g.get("need_list") or [],
+        "ts": _rep.get("ts")}
+
+
+@_get_route("/prompt-defaults")
+def _g_prompt_defaults(h, q):
+    sync_learned()
+    return {"defaults": PR.stage_defaults(),
+            "learned": {k: bool((PR.LEARNED or {}).get(k))
+                        for k in ("extract", "analyze", "review", "judge")}}
+
+
+@_get_route("/usermeta-template.csv")
+def _g_usermeta_template_csv(h, q):
+    h._send_file(build_usermeta_template_csv(), "text/csv; charset=utf-8",
+                 "prism_behavior_log.csv")
+
+
+@_get_route("/usermeta-profile-template.csv")
+def _g_usermeta_profile_template_csv(h, q):
+    from . import personagen as PG
+    h._send_file(PG.profile_template_csv(), "text/csv; charset=utf-8", "prism_user_profile.csv")
+
+
+@_get_route("/usermeta")
+def _g_usermeta(h, q):
+    return usermeta_data(team=h._req_team())
+
+
+@_get_route("/board")                                # 게시판: 기능개선·오류 제보(팀 스코프)
+def _g_board(h, q):
+    return board_data(h._req_team(), h._bearer_uid() or "")
+
+
+@_get_route("/template.xlsx")
+def _g_template_xlsx(h, q):
+    h._send_file(build_template_xlsx(),
+                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                 "prism_template.xlsx")
+
+
+@_get_route("/template.csv")
+def _g_template_csv(h, q):
+    h._send_file(build_template_csv(), "text/csv; charset=utf-8", "prism_template.csv")
+
+
+# 디스패치 순서: 접두 길이 내림차순 → /entdict-lookup 이 /entdict 보다, /usermeta-*.csv 가
+# /usermeta 보다 항상 먼저 검사된다(등록 순서 무관 · 가로채기 불가).
+_GET_ORDER = sorted(_GET_ROUTES, key=len, reverse=True)
+
+
+# ═══ POST 라우트 테이블 ═══════════════════════════════════════════════════
+# 등록: @_post_route("/prefix", gate=...) · 디스패치(do_POST)는 GET 과 동일하게 최장 접두
+# 우선(나열 순서 무관 · 가로채기 불가). 핸들러 계약: fn(h, body) → dict = 200 JSON ·
+# None = 직접 응답. 예외는 디스패처가 일괄 500 처리(분기별 try/except 복붙 제거).
+# gate: "admin"(403) · "super"(403) · "login"(401) · "team"(401/403) · ""(핸들러 내부 판단).
+_POST_ROUTES = {}
+
+
+def _post_route(prefix: str, gate: str = ""):
+    def deco(fn):
+        _POST_ROUTES[prefix] = (fn, gate)
+        return fn
+    return deco
+
+
+@_post_route("/config", gate="admin")                # 운영: 팀 공유 설정 변경은 관리자만
+def _p_config(h, body):
+    uid, team, email = h._bearer_uid(), h._req_team(), h._bearer_email()
+    # API 키 등록·삭제는 운영 관리자만(관리자 로컬 앱 = 서버 · ~/.prism_key 저장)
+    allow_key = (not _supa()) or is_sys_admin_user(uid, team, email)
+    data = json.loads(body or b"{}")
+    if isinstance(data.get("team_links"), dict):
+        # 팀 가이드 링크(전역 공유) = 운영 관리자만
+        if not allow_key:
+            h._send(403, json.dumps({"error": "운영 관리자 전용입니다"}, ensure_ascii=False), _JSON)
+            return None
+        save_team_links(data["team_links"])
+    return apply_config(data, allow_key=allow_key, team=team)
+
+
+@_post_route("/ping", gate="login")                  # 미인증 실모델 호출(소액 과금·키 탐지) 차단
+def _p_ping(h, body):
+    try:
+        d = json.loads(body or b"{}")
+    except Exception:
+        d = {}
+    svc = (d.get("service") or "").strip()
+    return ping_router(svc) if svc in IMG.ROUTERS else ping_model()
+
+
+@_post_route("/store")
+def _p_store(h, body):
+    payload = json.loads(body or b"{}")
+    team = h._req_team()
+    if payload.get("clear") and _supa() and not is_admin_user(
+            h._bearer_uid(), team, h._bearer_email()):
+        h._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+        return None
+    st = get_store()
+    if payload.get("clear") and st:
+        if _supa() and not team:                     # 팀 스코프 없이 전 팀 삭제 금지
+            h._send(403, json.dumps({"error": "팀 스코프가 필요합니다"}, ensure_ascii=False), _JSON)
+            return None
+        if hasattr(st, "clear_team_contents"):
+            st.clear_team_contents(team)
+        else:
+            st.clear()
+        _LAST_RESULTS[:] = []                        # 메모리 미러 동반 정리(삭제 후 잔상 방지)
+        _agg_bump()
+    return {"ok": True, "count": (st.count() if st else 0)}
+
+
+@_post_route("/auth")                                # 로그인/가입 프록시(supabase)
+def _p_auth(h, body):
+    # 무차별 대입·가입 남용 억제: IP당 최소간격 1s · 분당 12회(초과 시 429)
+    if rate_limited("auth:" + (h.client_address[0] if h.client_address else "?"),
+                    min_interval=1.0, per_min=12):
+        h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                ensure_ascii=False), _JSON)
+        return None
+    return auth_action(json.loads(body or b"{}"))
+
+
+@_post_route("/feedback")
+def _p_feedback(h, body):
+    data = json.loads(body or b"{}")
+    if data.get("clear"):
+        # 전체 초기화 = 관리자 전용 + 팀 스코프(무인증·전 팀 삭제 방지)
+        uid, team, email = h._bearer_uid(), h._req_team(), h._bearer_email()
+        if _supa() and not is_admin_user(uid, team, email):
+            h._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+            return None
+        data["_team"] = team
+    elif not h._inject_reviewer(data):
+        h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+        return None
+    rl_key = (data.get("reviewer") or "").strip() or h.client_address[0]
+    if not data.get("clear") and rate_limited(rl_key):
+        h._send(429, json.dumps({"error": "잠시 후 다시 시도하세요(검수 속도 제한)"},
+                                ensure_ascii=False), _JSON)
+        return None
+    return apply_feedback(data)
+
+
+@_post_route("/ops-hold", gate="admin")              # 운영자 수동 노출제한 토글(라벨 아님 · 학습 미포함)
+def _p_ops_hold(h, body):
+    data = json.loads(body or b"{}")
+    ch = (data.get("hash") or "").strip()
+    st = get_store()
+    ok = bool(ch and st and hasattr(st, "set_ops_hold")
+              and st.set_ops_hold(ch, bool(data.get("on")), team=h._req_team()))
+    if ok:
+        _agg_bump()                                  # 목록·집계 캐시 무효화(즉시 반영)
+    return {"ok": ok}
+
+
+@_post_route("/badges", gate="login")                # 배지 획득 영속(기기 간 기준선) · 임의 uid 기록 차단
+def _p_badges(h, body):
+    data = json.loads(body or b"{}")
+    uid = h._bearer_uid() or (data.get("reviewer") or "").strip()
+    return save_badges(uid, data.get("earned"))
+
+
+@_post_route("/reviewer")                            # 검수자 등록·가입 (최장 접두 매칭이 /reviewer-role 분리)
+def _p_reviewer(h, body):
+    _TEAM_CACHE.pop(h._bearer_uid() or "", None)     # 가입·팀 변경 즉시 반영
+    data = json.loads(body or b"{}")
+    if not h._inject_reviewer(data):
+        h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+        return None
+    return register_reviewer(data)
+
+
+@_post_route("/admin")                               # 권한 판단은 admin_action 내부(uid 기반)
+def _p_admin(h, body):
+    return admin_action(h._bearer_uid(), h._req_team(), json.loads(body or b"{}"),
+                        h._bearer_email())
+
+
+@_post_route("/learn-batch", gate="admin")           # 일배치 학습 수동 실행: 개선+골든+회귀평가
+def _p_learn_batch(h, body):
+    data = json.loads(body or b"{}")
+    return learning_batch(h._req_team(), data.get("models"))
+
+
+@_post_route("/apply-directive", gate="admin")       # 버전 지시를 공통/특정 모델 프롬프트에 적용
+def _p_apply_directive(h, body):
+    data = json.loads(body or b"{}")
+    v = int(data.get("version") or 0)
+    model = (data.get("model") or "common").strip()
+    stages = [s for s in (data.get("stages") or []) if s in ("extract", "analyze", "review", "judge")]
+    snap = _report_get(f"prompt_snapshot_v{v}", h._req_team()) or {}
+    learned = snap.get("learned") or {}
+    cfg = Config.load()
+    applied = []
+    for s in stages:
+        d = (learned.get(s) or "").strip()
+        if not d:
+            continue
+        if model == "common":                        # 공통 = 모든 모델 프롬프트에 얹힘(stage_prompts)
+            cur = dict(cfg.stage_prompts or {})
+            base = (cur.get(s) or "").strip()
+            if d not in base:
+                cur[s] = (base + ("\n\n" if base else "") + d).strip()
+                cfg.stage_prompts = cur
+        else:                                        # 특정 모델 전용(model_prompts[model][stage])
+            mp = dict(cfg.model_prompts or {})
+            mm = dict(mp.get(model) or {})
+            base = (mm.get(s) or "").strip()
+            if d not in base:
+                mm[s] = (base + ("\n\n" if base else "") + d).strip()
+                mp[model] = mm
+                cfg.model_prompts = mp
+        applied.append(s)
+    cfg.save_template()
+    sync_prompt()
+    print(f"  [apply-directive] v{v} → {model} · 단계 {applied}")
+    return {"ok": True, "applied": applied, "model": model, "version": v}
+
+
+@_post_route("/compare-models", gate="admin")        # 골든셋 다중 모델 비교
+def _p_compare_models(h, body):
+    data = json.loads(body or b"{}")
+    return compare_models_on_golden(data.get("models"), h._req_team(),
+                                    scope=(data.get("scope") or "all").strip())
+
+
+@_post_route("/learn-report", gate="team")           # 최근 일배치 결과 수신 · team=None 전 팀 노출 차단
+def _p_learn_report(h, body):
+    return {"ok": True, "report": _report_get("learn_report", h._req_team(), LO._LAST_LEARN_REPORT)}
+
+
+@_post_route("/patch-meta")                          # 검수자 구조화 교정(빈 카테고리 채우기 등)
+def _p_patch_meta(h, body):
+    data = json.loads(body or b"{}")
+    if not h._inject_reviewer(data):
+        h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+        return None
+    res = patch_content_meta(data.get("hash"), data.get("patch"),
+                             h._req_team(), reviewer=data.get("reviewer") or "")
+    if res.get("ok"):                                # 분류 채우기 미션 판정(1회 보상)
+        fresh = _check_missions((data.get("reviewer") or "").strip(), h._req_team())
+        if fresh:
+            res["missions_completed"] = fresh
+    return res
+
+
+@_post_route("/meta-compile", gate="admin")          # 실모델 호출(비용) 트리거 · /learn-batch 와 동일 게이트
+def _p_meta_compile(h, body):
+    return meta_compile_run(h._req_team())
+
+
+@_post_route("/eval-judge")                          # 평가 상세 · 건별 판정(집단 지성)
+def _p_eval_judge(h, body):
+    # 팀원 기능이지만 미인증 직접 호출은 차단(supabase 모드 · 판정 위조 방지)
+    if _supa() and not h._bearer_uid():
+        h._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+        return None
+    data = json.loads(body or b"{}")
+    # 검수자 귀속은 서버가 Bearer uid 로 강제(바디 reviewer 위조로 합의 스터핑·점수 파밍 방지).
+    rv = h._bearer_uid() if _supa() else (data.get("reviewer") or "").strip()
+    verdict = (data.get("verdict") or "").strip()
+    ch = (data.get("hash") or "").strip()
+    if not rv or not ch or verdict not in ("adopt", "reject"):
+        return {"ok": False, "error": "판정 값이 올바르지 않습니다"}
+    if rate_limited(f"evj:{rv}"):
+        h._send(429, json.dumps({"error": "잠시 후 다시 시도하세요(판정 속도 제한)"},
+                                ensure_ascii=False), _JSON)
+        return None
+    st = get_store()
+    ok = bool(st and hasattr(st, "save_eval_check")
+              and st.save_eval_check(ch, rv, verdict, str(data.get("expected") or ""),
+                                     str(data.get("got") or ""), team=h._req_team()))
+    if ok:
+        try:                                         # 판정 보상: 콘텐츠당 1회 +5pt(재판정은 upsert 만)
+            st.log_event_once(rv, "evja:" + ch, 0, 5, team=h._req_team())
+        except Exception:
+            pass
+    counts = {}
+    try:
+        counts = (st.eval_check_counts(team=h._req_team()) or {}).get(ch) or {}
+    except Exception:
+        pass
+    _agg_bump()
+    return {"ok": ok, "judge": counts or {"adopt": 0, "reject": 0, "reviewers": {}}}
+
+
+@_post_route("/eval-golden", gate="admin")           # 등록 골든셋으로 평가 실행(실모델 비용 트리거)
+def _p_eval_golden(h, body):
+    data = json.loads(body or b"{}")
+    return eval_golden(h._req_team(), model=(data.get("model") or "").strip(),
+                       scope=(data.get("scope") or "all").strip())
+
+
+@_post_route("/content-remove", gate="admin")        # 콘텐츠 개별 삭제(파생 데이터 연쇄)
+def _p_content_remove(h, body):
+    data = json.loads(body or b"{}")
+    st = get_store()
+    ok = bool(st and hasattr(st, "remove_content")
+              and st.remove_content((data.get("hash") or "").strip(), team=h._req_team()))
+    _agg_bump()
+    return {"ok": ok}
+
+
+@_post_route("/content-assign-bulk", gate="super")   # 여러 콘텐츠 일괄 배정(덮어쓰기)
+def _p_content_assign_bulk(h, body):
+    data = json.loads(body or b"{}")
+    hashes = [str(x).strip() for x in (data.get("hashes") or []) if str(x).strip()]
+    reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
+    try:
+        minr = int(data.get("min_reviewers") or 1)
+    except (TypeError, ValueError):
+        minr = 1
+    st = get_store()
+    if not (hashes and st and hasattr(st, "set_assignees_bulk")):
+        h._send(400, json.dumps({"error": "대상 없음 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
+        return None
+    actor = (h._bearer_email() or h._bearer_uid()
+             or (data.get("reviewer") or "").strip() or "(로컬)")
+    if (data.get("mode") or "") == "distribute":     # 균등 분배: 부하 적은 사람부터
+        if not reviewers:
+            h._send(400, json.dumps({"error": "분배할 담당자를 선택하세요"}, ensure_ascii=False), _JSON)
+            return None
+        r = distribute_assignments(st, hashes, reviewers, min_reviewers=minr,
+                                   team=h._req_team())
+        _log_assign(actor, "균등 분배", r["n"], reviewers, r["min_reviewers"], h._req_team())
+        _agg_bump()
+        return {"ok": True, "mode": "distribute", "n": r["n"],
+                "per_reviewer": r["per_reviewer"], "min_reviewers": r["min_reviewers"]}
+    n = st.set_assignees_bulk(hashes, reviewers, min_reviewers=minr, team=h._req_team())
+    _log_assign(actor, ("일괄 배정" if reviewers else "일괄 해제"), n, reviewers,
+                (max(1, min(len(reviewers), minr)) if reviewers else 0), h._req_team())
+    _agg_bump()
+    return {"ok": True, "n": n, "reviewers": reviewers,
+            "min_reviewers": (max(1, min(len(reviewers), minr)) if reviewers else 0)}
+
+
+@_post_route("/content-assign", gate="admin")        # 콘텐츠 검수 담당자 배정(배타적 노출)
+def _p_content_assign(h, body):
+    data = json.loads(body or b"{}")
+    ch = (data.get("hash") or "").strip()
+    reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
+    try:
+        minr = int(data.get("min_reviewers") or 1)
+    except (TypeError, ValueError):
+        minr = 1
+    st = get_store()
+    if not (ch and st and hasattr(st, "set_assignees")):
+        h._send(400, json.dumps({"error": "hash 누락 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
+        return None
+    st.set_assignees(ch, reviewers, min_reviewers=minr, team=h._req_team())
+    _log_assign((h._bearer_email() or h._bearer_uid()
+                 or (data.get("reviewer") or "").strip() or "(로컬)"),
+                ("개별 배정" if reviewers else "개별 해제"), 1, reviewers, minr, h._req_team())
+    _agg_bump()
+    cur = (st.assignees(team=h._req_team()) or {}).get(ch) or {"reviewers": [], "min": 0}
+    return {"ok": True, "assignees": cur["reviewers"], "min_reviewers": cur["min"]}
+
+
+@_post_route("/route-disable", gate="admin")         # 학습 지시 개별 끄기/켜기
+def _p_route_disable(h, body):
+    data = json.loads(body or b"{}")
+    return set_directive_disabled(data.get("text") or "", bool(data.get("disabled")))
+
+
+@_post_route("/reviewer-role", gate="super")         # 최종검수자 역할 지정/해제
+def _p_reviewer_role(h, body):
+    data = json.loads(body or b"{}")
+    return set_reviewer_role(data.get("id") or "", (data.get("role") or "").strip(),
+                             h._req_team())
+
+
+@_post_route("/final-verdict")                       # 최종판정(타이브레이크): 슈퍼관리자 또는 최종검수자
+def _p_final_verdict(h, body):
+    if _supa() and not (is_super_admin_user(h._bearer_uid(), h._req_team(), h._bearer_email())
+                        or is_final_reviewer(h._bearer_uid(), h._req_team())):
+        h._send(403, json.dumps({"error": "슈퍼관리자 또는 최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
+        return None
+    data = json.loads(body or b"{}")
+    h._inject_reviewer(data)                         # supabase: reviewer=uid 통일(미션·골드 원장 정합)
+    team = h._req_team()
+    if "_team" not in data:
+        data["_team"] = team
+    rv = (data.get("reviewer") or "").strip()
+    if (data.get("hash") or "").startswith("goldf:"):
+        # 골드 캘리브레이션 응답 → gold_checks 분리 기록(최종판정 원장 무오염)
+        return apply_gold_answer(data)
+    res = set_final_verdict(data.get("hash") or "", (data.get("verdict") or "").strip(),
+                            by=rv, team=team)
+    if res.get("ok") and (data.get("verdict") or "").strip():
+        ms = _check_missions(rv, team)
+        if ms:
+            res["missions_completed"] = ms
+    return res
+
+
+@_post_route("/golden-remove", gate="admin")         # 골든 개별 삭제(라벨 오류 후보 처리)
+def _p_golden_remove(h, body):
+    data = json.loads(body or b"{}")
+    st = get_store()
+    ok = bool(st and hasattr(st, "remove_golden")
+              and st.remove_golden((data.get("hash") or "").strip(), team=h._req_team()))
+    _agg_bump()
+    return {"ok": ok}
+
+
+@_post_route("/golden")                              # 골든셋 등록(.jsonl 업로드 · merge 지원 · 권한은 register_golden 내부)
+def _p_golden(h, body):
+    ctype = h.headers.get("Content-Type", "")
+    merge = False
+    if "multipart/form-data" in ctype:
+        fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
+        f = fields.get("file")
+        raw = f.get("bytes", b"") if isinstance(f, dict) else b""
+        merge = str(fields.get("merge") or "").strip().lower() in ("1", "true")
+    else:
+        raw = body
+    rows = [json.loads(ln) for ln in raw.decode("utf-8", "replace").splitlines() if ln.strip()]
+    return register_golden(h._bearer_uid(), h._req_team(), rows, h._bearer_email(), merge=merge)
+
+
+@_post_route("/backfill-urls", gate="admin")         # 원문 링크 백필(source_url 만 갱신 · 초안·판정 불변)
+def _p_backfill_urls(h, body):
+    ctype = h.headers.get("Content-Type", "")
+    if "multipart/form-data" not in ctype:
+        h._send(400, json.dumps({"error": "매핑 파일이 필요합니다(multipart)"}, ensure_ascii=False), _JSON)
+        return None
+    fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
+    f = fields.get("file")
+    if not isinstance(f, dict) or not f.get("bytes"):
+        h._send(400, json.dumps({"error": "파일이 없습니다"}, ensure_ascii=False), _JSON)
+        return None
+    return backfill_urls(f["bytes"], f.get("filename", "map.csv"), team=h._req_team())
+
+
+@_post_route("/presence")                            # 팀 SSE 방송 트리거 · 미인증 직접 호출 차단
+def _p_presence(h, body):
+    if _supa() and not h._bearer_uid():
+        h._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+        return None
+    p = json.loads(body or b"{}")
+    # 검수자 귀속은 서버 uid 로 강제(프레즌스 사칭 방지) · 같은 팀에만 방송
+    rv = h._bearer_uid() if _supa() else (p.get("reviewer") or "").strip()
+    broadcast({"type": "presence", "reviewer": rv,
+               "hash": p.get("hash") or "", "action": p.get("action") or "viewing"},
+              team=h._req_team())
+    return {"ok": True}
+
+
+@_post_route("/purpose", gate="admin")               # 콘텐츠 용도 지정(검수용/평가용)
+def _p_purpose(h, body):
+    data = json.loads(body or b"{}")
+    st = get_store()
+    n = st.set_purpose([x for x in (data.get("hashes") or []) if x],
+                       (data.get("purpose") or "").strip(), team=h._req_team()) if st else 0
+    _agg_bump()
+    return {"ok": bool(n), "n": n}
+
+
+@_post_route("/rerun-all", gate="admin")             # 전체 콘텐츠 일괄 실행
+def _p_rerun_all(h, body):
+    data = json.loads(body or b"{}")
+    scope = (data.get("scope") or "all").strip()
+    return rerun_all((data.get("model") or "").strip(), h._req_team(),
+                     scope=(scope if scope in ("all", "pending") else "all"))
+
+
+@_post_route("/rerun", gate="admin")                 # 같은 콘텐츠를 다른 모델로 재실행
+def _p_rerun(h, body):
+    data = json.loads(body or b"{}")
+    return rerun_content(data.get("hash"), (data.get("model") or "").strip(), h._req_team())
+
+
+@_post_route("/ingest-run", gate="admin")            # 콘텐츠 인입은 관리자 통제(수동·자동 공통)
+def _p_ingest_run(h, body):
+    return ingest_run_source(json.loads(body or b"{}"), trigger="manual")
+
+
+@_post_route("/entdict")
+def _p_entdict(h, body):
+    data = json.loads(body or b"{}")
+    # 권한 분리: 상세·수정·보강은 검수자(로그인)도 가능(검수 중 사전 교정 허용) ·
+    # 등재/삭제/일괄 보강/백필 같은 사전 전체 작업은 관리자 전용(사전·정책과 동일 게이트)
+    act = (data.get("action") or "").strip()
+    if _supa():
+        if act in ("detail", "update", "enrich"):
+            if not h._bearer_uid():
+                h._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+                return None
+        elif not is_admin_user(h._bearer_uid(), h._req_team(), h._bearer_email()):
+            h._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+            return None
+    return entdict_action(data, team=h._req_team(), mock=Handler.server_mock)
+
+
+@_post_route("/dict", gate="admin")                  # 사전·정책 편집 = 관리자 전용(UI 게이팅과 정합)
+def _p_dict(h, body):
+    payload = json.loads(body or b"{}")
+    fn = reset_dict_overrides if payload.get("reset") else (lambda: edit_dict(payload))
+    return fn()
+
+
+@_post_route("/board")                               # 게시판: 등록·상태 변경·삭제(팀 스코프)
+def _p_board(h, body):
+    data = json.loads(body or b"{}")
+    if not h._inject_reviewer(data):
+        h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
+        return None
+    return board_action(data, team=h._req_team(), uid=h._bearer_uid() or "",
+                        email=h._bearer_email())
+
+
+@_post_route("/topic-studio")                        # 토픽 스튜디오: 생성·삭제·튜닝(변경은 관리자) · 미리보기·제안(조회)
+def _p_topic_studio(h, body):
+    data = json.loads(body or b"{}")
+    action = (data.get("action") or "").strip()
+    # 조회성(preview·suggest)은 로그인 필수(익명 LLM 호출·데이터 열람 차단) · 변경성은 /config 와 동일 관리자 가드
+    if action not in ("preview", "suggest"):
+        if not h._admin_gate():
+            return None
+    elif not h._require_login():
+        return None
+    # 변경성 액션의 캐시 무효화는 topic_studio_action 내부에서 처리
+    return topic_studio_action(data, mock=Handler.server_mock)
+
+
+@_post_route("/media-extract", gate="login")         # 미디어 메타 파이프라인: 자막 파싱(JSON) · 영상 네이티브(multipart)
+def _p_media_extract(h, body):
+    ctype = h.headers.get("Content-Type", "")
+    if "multipart/form-data" in ctype:               # 업로드 → 미디어 실험(미저장): 이미지(image*) | 영상(file)
+        fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
+        imgs = {k: v for k, v in fields.items()
+                if k.startswith("image") and isinstance(v, dict) and v.get("bytes")}
+        if imgs:                                     # 이미지 실험: run_pipeline 이미지 분기 재사용(미저장)
+            pf = {"displayServiceName": fields.get("displayServiceName", "포토"),
+                  "title": fields.get("title", ""), "caption": fields.get("caption", "")}
+            pf.update(imgs)
+            res = run_pipeline(pf, mock=Handler.server_mock,
+                               model=fields.get("model", ""), persist=False)
+            return {"ok": True, **res}
+        f = fields.get("file") or {}
+        if not f.get("bytes"):
+            h._send(400, json.dumps({"ok": False, "error": "이미지 또는 영상 파일이 필요합니다"}, ensure_ascii=False), _JSON)
+            return None
+        return media_native(f["bytes"], f.get("mime") or "video/mp4",
+                            caption=fields.get("caption", ""),
+                            description=fields.get("description", ""),
+                            model=fields.get("model", ""),
+                            subtitles=fields.get("subtitles", ""))
+    return media_action(json.loads(body or b"{}"))
+
+
+@_post_route("/usermeta-profiles", gate="team")      # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
+def _p_usermeta_profiles(h, body):
+    from . import personagen as PG
+    ctype = h.headers.get("Content-Type", "")
+    if "multipart/form-data" in ctype:
+        boundary = ctype.split("boundary=", 1)[1].strip()
+        f = _parse_multipart(body, boundary).get("file")
+        profs = (PG.parse_profiles(f["bytes"], f.get("filename", "profiles.csv"))
+                 if isinstance(f, dict) and f.get("bytes") else [])
+    else:
+        p = json.loads(body or b"{}")
+        profs = p.get("profiles") or ([p.get("profile")] if p.get("profile") else [])
+    return usermeta_save_profiles(profs, team=h._req_team())
+
+
+@_post_route("/usermeta", gate="team")               # 행동 로그 업로드/현황 · 팀 미소속 전 팀 열람 차단
+def _p_usermeta(h, body):
+    ctype = h.headers.get("Content-Type", "")
+    f = None
+    if "multipart/form-data" in ctype:
+        boundary = ctype.split("boundary=", 1)[1].strip()
+        f = _parse_multipart(body, boundary).get("file")
+    logs = f["bytes"] if isinstance(f, dict) and f.get("bytes") else None
+    name = f.get("filename", "logs.csv") if isinstance(f, dict) else ""
+    return usermeta_data(logs, name, team=h._req_team())
+
+
+@_post_route("/run")                                 # 추출 실행(단건 /run · 배치 /run-batch) = 콘텐츠 인입
+def _p_run(h, body):
+    # 관리자 통제(supabase 모드) · 만료 로그인은 메시지로 구분
+    if _supa() and not is_admin_user(h._bearer_uid(), h._req_team(), h._bearer_email()):
+        msg = ("로그인이 만료됐습니다 · 다시 로그인 후 시도하세요" if not h._bearer_uid()
+               else "콘텐츠 인입은 관리자 전용입니다")
+        h._send(403, json.dumps({"error": msg}, ensure_ascii=False), _JSON)
+        return None
+    ctype = h.headers.get("Content-Type", "")
+    try:
+        if "multipart/form-data" in ctype:
+            boundary = ctype.split("boundary=", 1)[1].strip()
+            fields = _parse_multipart(body, boundary)
+        else:
+            fields = json.loads(body or b"{}")
+        add_only = str(fields.get("add_only") or "") in ("1", "true")
+        if h.path.startswith("/run-batch"):
+            f = fields.get("file")
+            if not isinstance(f, dict) or not f.get("bytes"):
+                result = {"error": "파일이 없습니다"}
+            else:
+                result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"),
+                                   purpose=str(fields.get("purpose") or ""), team=h._req_team(),
+                                   add_only=add_only)
+        elif add_only:                               # STEP 1 = 추가만(모델 미실행)
+            result = add_contents([{
+                "displayServiceName": fields.get("displayServiceName", ""),
+                "title": fields.get("title", ""), "subtitle": fields.get("subtitle", ""),
+                "body": fields.get("body", ""),
+                "source_url": fields.get("source_url", ""),
+            }], purpose=str(fields.get("purpose") or ""), team=h._req_team())
+        else:
+            result = run_pipeline(fields, mock=h.server_mock, team=h._req_team())
+        return result
+    except Exception:
+        import traceback
+        traceback.print_exc()                        # 인입 실패는 원인 추적용 트레이스 유지(기존 동작)
+        raise
+
+
+# 디스패치 순서: 접두 길이 내림차순 → /reviewer-role·/content-assign-bulk·/golden-remove·
+# /rerun-all·/usermeta-profiles 가 짧은 형제 라우트보다 항상 먼저 검사된다.
+_POST_ORDER = sorted(_POST_ROUTES, key=len, reverse=True)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_mock = False
 
@@ -4051,363 +4198,27 @@ class Handler(BaseHTTPRequestHandler):
         if not self._gate_get():
             self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
             return
-        if self.path.startswith("/report"):
-            self._send(200, build_report_html(team=self._req_team()))
-        elif self.path.startswith("/export.csv"):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", "attachment; filename=prism_results.csv")
-            self.end_headers()
-            self.wfile.write(build_results_csv(team=self._req_team()))
-        elif self.path.startswith("/config"):
-            cs = config_status(self._req_team())
-            # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
-            # 로그인 화면·배포 검증(curl /config: backend·configured)이 쓰는 최소 필드만 공개.
-            if _supa() and not self._bearer_uid():
-                cs = {k: cs[k] for k in ("bootId", "build", "configured", "forcedMock", "ingesting",
-                                         "backend", "authRequired", "keyManagedByServer") if k in cs}
-            self._send(200, json.dumps(cs, ensure_ascii=False), _JSON)
-        elif self.path.startswith("/models"):
-            self._send(200, json.dumps(list_models(), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/vocab"):
-            self._send(200, json.dumps(vocab(), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/entdict-lookup"):   # 검수 화면: 콘텐츠 엔티티 → 사전 정보(타입·속성)
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            names = [n for n in (q.get("names", [""])[0]).split("|") if n.strip()]
-            st = get_store()
-            found = st.ent_by_names(names) if (st and hasattr(st, "ent_by_names")) else {}
-            self._send(200, json.dumps({"ok": True, "entities": found}, ensure_ascii=False), _JSON)
-        elif self.path.startswith("/entdict"):
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(entdict_data(
-                q=q.get("q", [""])[0], type_=q.get("type", [""])[0],
-                status=q.get("status", [""])[0], limit=int(q.get("limit", ["300"])[0])),
-                ensure_ascii=False), _JSON)
-        elif self.path.startswith("/dict"):
-            self._send(200, json.dumps(dict_data(), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/topic-drill"):
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(topic_drill(q.get("cluster", [""])[0], self._req_team(),
-                                       reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/topics"):
-            td = dict(topics_data())
-            try:                                       # 자동 스냅샷 메타(마지막 시각·변화) 동반
-                snap = _report_get("topic_snapshots", None, {}) or {}
-                td["snapshot"] = {"last_ts": ((snap.get("entries") or [{}])[-1] or {}).get("ts"),
-                                  "delta": snap.get("last_delta")}
-            except Exception:
-                td["snapshot"] = None
-            self._send(200, json.dumps(td, ensure_ascii=False), _JSON)
-        elif self.path.startswith("/dashboard"):
-            self._send(200, json.dumps(dashboard_data(self._req_team()), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/drill"):
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(drill_contents(q.get("kind", [""])[0], q.get("value", [""])[0],
-                                                       self._req_team(),
-                                                       reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/arena"):
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            d = dict(arena_data(self._req_team()))
-            rv = self._bearer_uid() or q.get("reviewer", [""])[0]
-            if rv:
-                d["missions"] = mission_progress(rv, self._req_team())
-            d["my_id"] = rv or ""                     # 내 행 식별 = reviewer_id(닉네임 변경·중복 표시명 무관)
-            d["final_reviewers"] = sorted(reviewer_roles(self._req_team()))   # 2층 검수: 역할 노출(탭 게이팅)
-            self._send(200, json.dumps(d, ensure_ascii=False), _JSON)
-        elif self.path.startswith("/final-queue"):    # 최종검수 큐(미확정분 · 최종검수자/관리자)
-            uid = self._bearer_uid()
-            if _supa() and not (is_admin_user(uid, self._req_team(), self._bearer_email())
-                                or is_final_reviewer(uid, self._req_team())):
-                self._send(403, json.dumps({"error": "최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
+        p = self.path.split("?", 1)[0]
+        q = parse_qs(urlparse(self.path).query)
+        for prefix in _GET_ORDER:                    # 라우트 테이블(최장 접두 우선) · 등록은 _get_route
+            if p.startswith(prefix):
+                fn, admin = _GET_ROUTES[prefix]
+                if admin and not self._admin_gate():
+                    return
+                out = fn(self, q)
+                if out is not None:                  # dict 반환 = 200 JSON · None = 핸들러가 직접 응답
+                    self._send(200, json.dumps(out, ensure_ascii=False), _JSON)
                 return
-            self._send(200, json.dumps(final_review_queue(self._req_team(), reviewer=uid or ""),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/admin"):
-            # 메뉴 게이팅의 원천: 인증 서버 일시 장애는 '비관리자(200)'가 아니라 503(재시도)으로 구분
-            auth = self.headers.get("Authorization", "")
-            token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
-            try:
-                uid = AO.validate_jwt(token, strict=True)
-            except AO.AuthBackendUnavailable:
-                self._send(503, json.dumps({"ok": False, "error": "인증 서버 연결 지연 · 자동 재시도됩니다"},
-                                           ensure_ascii=False), _JSON)
-                return
-            if token and _supa() and not uid:
-                # 토큰이 있는데 무효 = 만료(1시간) · '비관리자(200)'로 뭉개면 관리자 메뉴가 조용히 강등된다
-                self._send(401, json.dumps({"ok": False, "error": "로그인이 만료됐습니다 · 세션 갱신 필요"},
-                                           ensure_ascii=False), _JSON)
-                return
-            self._send(200, json.dumps(admin_data(uid, self._req_team(), self._bearer_email()),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/queue"):
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            data = {"only_unreviewed": q.get("all", ["0"])[0] not in ("1", "true"),
-                    "limit": (q.get("limit", ["100"])[0]), "team": self._req_team(),
-                    "reviewer": self._bearer_uid() or q.get("reviewer", [""])[0]}
-            self._send(200, json.dumps(review_queue(data), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/raw"):               # 검수 대상 콘텐츠(모델·버전 필터 표)
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(raw_rows(int(q.get("limit", ["100"])[0]), self._req_team(),
-                                       reviewer=(self._bearer_uid() or q.get("reviewer", [""])[0])),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/model-stats"):       # 결과 비교: 요소 단위 모델별 현황
-            self._send(200, json.dumps(model_stats(self._req_team()), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/history"):           # 검수 상세: 콘텐츠 작업 이력(판정·교정·재실행)
-            # 운영(supabase): 팀 생성자·슈퍼관리자 전용(누가 언제 판정했는지 = 민감 정보) · 로컬 단독 실행은 그대로
-            if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "팀 생성자·슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(content_history(q.get("hash", [""])[0], self._req_team()),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/drafts"):            # 결과 비교: 콘텐츠별 초안 스냅샷
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(drafts_for(q.get("hash", [""])[0], self._req_team()),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/events"):
-            self._serve_sse()
-        elif self.path.startswith("/reap"):
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            self._send(200, json.dumps(reap_for({"hash": q.get("hash", [""])[0]}),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/ingest-status"):
-            self._send(200, json.dumps(ingest_status(), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/prompt-preview"):    # 프롬프트 스튜디오: 콜별×모델별 최종 합성 프롬프트(관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            from urllib.parse import parse_qs, urlparse
-            q = parse_qs(urlparse(self.path).query)
-            model = (q.get("model") or [""])[0]
-            call = (q.get("call") or ["merged"])[0]
-            svc = (q.get("service") or ["뉴스"])[0]
-            from .schema import Content
-            c = Content(displayServiceName=svc, title="(미리보기)", subtitle="", body="(미리보기 본문)")
-            sync_prompt()
-            try:
-                if call in MP.CALLS:
-                    sysp = PR.call_system(c, call, model)
-                    userp = MP.call_user(call, c, {"summary": "(리드문)", "entities": ["(엔티티)"], "intent": ["(인텐트)"]})
-                else:
-                    sysp = PR.item_system(c, model)
-                    userp = PR.item_user(c)
-                body_out = {"ok": True, "family": MP.family_of(model), "call": call,
-                            "system": sysp, "user": userp}
-            except Exception as e:
-                body_out = {"ok": False, "error": str(e)[:300]}
-            self._send(200, json.dumps(body_out, ensure_ascii=False), _JSON)
-
-        elif self.path.startswith("/prompt-snapshot"):  # 버전별 프롬프트 스냅샷(v 미지정 = 최신 · 관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            from urllib.parse import parse_qs, urlparse
-            q = parse_qs(urlparse(self.path).query)
-            v = (q.get("v") or [""])[0].strip()
-            kind = f"prompt_snapshot_v{int(v)}" if v.isdigit() else "prompt_snapshot_latest"
-            snap = _report_get(kind, self._req_team())
-            self._send(200, json.dumps({"ok": bool(snap), "snapshot": snap}, ensure_ascii=False), _JSON)
-        elif self.path.startswith("/learn-report"):     # 최근 배치 결과(GET) · ?v=N 이면 그 버전 리포트
-            from urllib.parse import parse_qs, urlparse
-            _rv = (parse_qs(urlparse(self.path).query).get("v") or [""])[0].strip()
-            if _rv.isdigit():                            # 버전 히스토리 상세(구버전은 미영속 → null)
-                _vrep = _report_get(f"learn_report_v{int(_rv)}", self._req_team())
-                self._send(200, json.dumps({"ok": bool(_vrep), "report": _vrep, "version": int(_rv)},
-                                           ensure_ascii=False), _JSON)
-                return
-            rep = _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT)
-            _c = Config.load()                           # 다음 반영 예정(검수 목표 일시 · 화면 표시용)
-            nb = LO.next_batch_time(getattr(_c, "learn_next_at", ""))
-            self._send(200, json.dumps({"ok": True, "report": rep, "next_batch_at": nb},
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/learn-export"):      # 학습데이터 JSONL 다운로드(관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            from urllib.parse import urlparse, parse_qs
-            q = parse_qs(urlparse(self.path).query)
-            fname, text = learn_export(q.get("kind", ["sft"])[0], self._req_team())
-            if not fname:
-                self._send(400, json.dumps({"error": text}, ensure_ascii=False), _JSON)
-                return
-            data = text.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
-            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-        elif self.path.startswith("/learn-spec"):        # 파인튜닝 스펙·소요서(.md · 관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            data = learn_spec_md(self._req_team()).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/markdown; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="prism_finetune_spec.md"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-        elif self.path.startswith("/handoff-export"):    # 모델러 핸드오프 번들(.zip · 관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            fname, blob = handoff_bundle(self._req_team())
-            if not fname:
-                self._send(400, json.dumps({"error": blob}, ensure_ascii=False), _JSON)
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", "application/zip")
-            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
-            self.send_header("Content-Length", str(len(blob)))
-            self.end_headers()
-            self.wfile.write(blob)
-        elif self.path.startswith("/learn-data"):        # 학습 데이터 현황(관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            self._send(200, json.dumps(learn_data(self._req_team()), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/cost-rollup"):       # 비용 롤업(일별×모델×콜 · 관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            from urllib.parse import urlparse, parse_qs
-            try:
-                dq = int((parse_qs(urlparse(self.path).query).get("days") or ["30"])[0])
-            except (TypeError, ValueError):
-                dq = 30
-            self._send(200, json.dumps(cost_rollup_data(self._req_team(), days=dq),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/fail-rollup"):       # 실패 트리아지(종류×모델×서비스 · 관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            from urllib.parse import urlparse, parse_qs
-            try:
-                fq = int((parse_qs(urlparse(self.path).query).get("days") or ["30"])[0])
-            except (TypeError, ValueError):
-                fq = 30
-            self._send(200, json.dumps(fail_rollup_data(self._req_team(), days=fq),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/assign-log"):        # 배정 이력(누가·언제·어떻게 · 관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            self._send(200, json.dumps(assign_log_data(self._req_team()), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/routes-raw"):        # 학습 지시 원본 목록 + 끔 상태(관리자)
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            self._send(200, json.dumps(routes_overview(self._req_team()), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/golden-list"):       # 관리자 골든 브라우저
-            if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                return
-            self._send(200, json.dumps(golden_list(self._req_team()), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/activity-daily"):    # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프)
-            from urllib.parse import urlparse, parse_qs
-            try:
-                q = parse_qs(urlparse(self.path).query)
-                days = int((q.get("days") or ["30"])[0])
-            except (TypeError, ValueError):
-                days = 30
-            st = get_store()
-            rows = (st.activity_daily(days=days, team=self._req_team())
-                    if (st and hasattr(st, "activity_daily")) else [])
-            self._send(200, json.dumps({"ok": True, "days": rows}, ensure_ascii=False), _JSON)
-
-        elif self.path.startswith("/golden-status"):     # 골든 생성 현황(팀원 공개): 확정·분류필요·불일치
-            st = get_store()
-            _rep = _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT) or {}
-            g = _rep.get("golden") or {}
-            # 검수 진행(반영 대기): 골든은 학습 반영 시에만 확정되므로, 반영 전에도 검수가
-            # 쌓이고 있음을 현황에 표시(전부 0 + 안내 없음 = "표시가 안 된다" 혼란 방지)
-            reviewed_n = good_n = 0
-            try:
-                for e in (st.feedback_map(team=self._req_team()) or {}).values():
-                    reviewed_n += 1
-                    if e.get("consensus") == "good":
-                        good_n += 1
-            except Exception:
-                pass
-            self._send(200, json.dumps({
-                "ok": True,
-                "batch_seq": (st.batch_seq(self._req_team()) if (st and hasattr(st, "batch_seq")) else 0),
-                "total": (st.golden_count(self._req_team()) if (st and hasattr(st, "golden_count")) else 0),
-                "source_counts": (st.golden_source_counts(self._req_team())
-                                  if (st and hasattr(st, "golden_source_counts")) else {}),
-                "reviewed": {"contents": reviewed_n, "good": good_n},
-                "last_batch": {k: g.get(k) for k in ("confirmed", "new", "demoted", "need_category",
-                                                     "disagree", "min_good")},
-                "need_list": g.get("need_list") or [],
-                "ts": _rep.get("ts")}, ensure_ascii=False), _JSON)
-        elif self.path.startswith("/prompt-defaults"):
-            sync_learned()
-            self._send(200, json.dumps({"defaults": PR.stage_defaults(),
-                "learned": {k: bool((PR.LEARNED or {}).get(k)) for k in ("extract", "analyze", "review", "judge")}},
-                ensure_ascii=False), _JSON)
-        elif self.path.startswith("/usermeta-template.csv"):
-            data = build_usermeta_template_csv()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="prism_behavior_log.csv"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-        elif self.path.startswith("/usermeta-profile-template.csv"):
-            from . import personagen as PG
-            data = PG.profile_template_csv()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="prism_user_profile.csv"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-        elif self.path.startswith("/usermeta"):
-            self._send(200, json.dumps(usermeta_data(team=self._req_team()), ensure_ascii=False), _JSON)
-        elif self.path.startswith("/board"):             # 게시판: 기능개선·오류 제보(팀 스코프)
-            self._send(200, json.dumps(board_data(self._req_team(), self._bearer_uid() or ""),
-                                       ensure_ascii=False), _JSON)
-        elif self.path.startswith("/template.xlsx"):
-            data = build_template_xlsx()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            self.send_header("Content-Disposition", 'attachment; filename="prism_template.xlsx"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-            return
-
-        elif self.path.startswith("/template.csv"):
-            data = build_template_csv()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="prism_template.csv"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-        elif self.path.split("?", 1)[0].rstrip("/") == "/m":   # 모바일 검수 전용(검수만 덜어낸 카드 UI)
-            self._send(200, _mpage_versioned())
-        elif self.path.startswith("/vendor/"):
-            self._send_vendor(self.path.split("?", 1)[0].rsplit("/", 1)[-1])
-        elif self.path.split("?", 1)[0] == "/favicon.ico":     # 브라우저 기본 요청: SPA 폴스루(323KB HTML) 방지
+        if p.startswith("/vendor/"):
+            self._send_vendor(p.rsplit("/", 1)[-1])
+        elif p == "/favicon.ico":                    # 브라우저 기본 요청: SPA 폴스루(323KB HTML) 방지
             self._send_vendor("prism-favicon.svg")
-        elif self.path.split("?", 1)[0].rstrip("/") in ("", "/"):
+        elif p.rstrip("/") == "/m":                  # 모바일 검수 전용(검수만 덜어낸 카드 UI)
+            self._send(200, _mpage_versioned())
+        elif p.rstrip("/") in ("", "/"):
             self._send(200, _page_versioned())
-        else:                                                  # 미등록 경로 404: API 오타가 SPA HTML 200 으로 가려지지 않게
-            self._send(404, json.dumps({"error": "not found", "path": self.path.split("?", 1)[0][:80]},
+        else:                                        # 미등록 경로 404: API 오타가 SPA HTML 200 으로 가려지지 않게
+            self._send(404, json.dumps({"error": "not found", "path": p[:80]},
                                        ensure_ascii=False), _JSON)
 
     def _bearer_uid(self):
@@ -4462,6 +4273,30 @@ class Handler(BaseHTTPRequestHandler):
             return True
         self._send(403, json.dumps({"error": "팀 소속이 필요합니다"}, ensure_ascii=False), _JSON)
         return False
+
+    def _admin_gate(self):
+        """관리자 전용 라우트 공통 게이트: supabase(운영)에서 비관리자 403 · 로컬 단독은 개방.
+        (GET 라우트 테이블 admin=True 등록분이 공유 · 개별 핸들러의 게이트 복붙 제거)"""
+        if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+            self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+            return False
+        return True
+
+    def _super_gate(self):
+        """슈퍼관리자 전용 라우트 공통 게이트(POST 테이블 gate='super')."""
+        if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+            self._send(403, json.dumps({"error": "슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
+            return False
+        return True
+
+    def _send_file(self, data: bytes, ctype: str, filename: str):
+        """다운로드(첨부 파일) 공통 응답."""
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_sse(self):
         """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK."""
@@ -4542,744 +4377,26 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, json.dumps({"error": "이 메뉴에 대한 권한이 없습니다"}, ensure_ascii=False), _JSON)
             return
 
-        if self.path.startswith("/config"):
-            try:
-                # 운영(supabase): 팀 공유 설정(모델·프롬프트·인입 등)은 관리자만 변경
-                uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
-                if _supa() and not is_admin_user(uid, team, email):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                # API 키 등록·삭제는 운영 관리자만(관리자 로컬 앱 = 서버 · ~/.prism_key 저장)
-                allow_key = (not _supa()) or is_sys_admin_user(uid, team, email)
-                data = json.loads(body or b"{}")
-                if isinstance(data.get("team_links"), dict):
-                    # 팀 가이드 링크(전역 공유) = 운영 관리자만
-                    if not allow_key:
-                        self._send(403, json.dumps({"error": "운영 관리자 전용입니다"}, ensure_ascii=False), _JSON)
+        p = self.path.split("?", 1)[0]
+        for prefix in _POST_ORDER:                   # 라우트 테이블(최장 접두 우선) · 등록은 _post_route
+            if p.startswith(prefix):
+                fn, gate = _POST_ROUTES[prefix]
+                try:
+                    if gate == "admin" and not self._admin_gate():
                         return
-                    save_team_links(data["team_links"])
-                self._send(200, json.dumps(apply_config(data, allow_key=allow_key, team=team),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/ping"):
-            if not self._require_login():                  # 미인증 실모델 호출(소액 과금·키 탐지) 차단
+                    if gate == "super" and not self._super_gate():
+                        return
+                    if gate == "login" and not self._require_login():
+                        return
+                    if gate == "team" and not self._require_team():
+                        return
+                    out = fn(self, body)
+                    if out is not None:              # dict 반환 = 200 JSON · None = 핸들러가 직접 응답
+                        self._send(200, json.dumps(out, ensure_ascii=False), _JSON)
+                except Exception as e:
+                    self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
                 return
-            try:
-                d = json.loads(body or b"{}")
-            except Exception:
-                d = {}
-            svc = (d.get("service") or "").strip()
-            out = ping_router(svc) if svc in IMG.ROUTERS else ping_model()
-            self._send(200, json.dumps(out, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/store"):
-            try:
-                payload = json.loads(body or b"{}")
-                team = self._req_team()
-                if payload.get("clear") and _supa() and not is_admin_user(
-                        self._bearer_uid(), team, self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                st = get_store()
-                if payload.get("clear") and st:
-                    if _supa() and not team:            # 팀 스코프 없이 전 팀 삭제 금지
-                        self._send(403, json.dumps({"error": "팀 스코프가 필요합니다"}, ensure_ascii=False), _JSON)
-                        return
-                    if hasattr(st, "clear_team_contents"):
-                        st.clear_team_contents(team)
-                    else:
-                        st.clear()
-                    _LAST_RESULTS[:] = []          # 메모리 미러 동반 정리(삭제 후 잔상 방지)
-                    _agg_bump()
-                self._send(200, json.dumps({"ok": True, "count": (st.count() if st else 0)},
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/auth"):                 # 로그인/가입 프록시(supabase)
-            try:
-                # 무차별 대입·가입 남용 억제: IP당 최소간격 1s · 분당 12회(초과 시 429)
-                if rate_limited("auth:" + (self.client_address[0] if self.client_address else "?"),
-                                min_interval=1.0, per_min=12):
-                    self._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
-                                               ensure_ascii=False), _JSON)
-                    return
-                self._send(200, json.dumps(auth_action(json.loads(body or b"{}")),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/feedback"):
-            try:
-                data = json.loads(body or b"{}")
-                if data.get("clear"):
-                    # 전체 초기화 = 관리자 전용 + 팀 스코프(무인증·전 팀 삭제 방지)
-                    uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
-                    if _supa() and not is_admin_user(uid, team, email):
-                        self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                        return
-                    data["_team"] = team
-                elif not self._inject_reviewer(data):
-                    self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
-                    return
-                rl_key = (data.get("reviewer") or "").strip() or self.client_address[0]
-                if not data.get("clear") and rate_limited(rl_key):
-                    self._send(429, json.dumps({"error": "잠시 후 다시 시도하세요(검수 속도 제한)"},
-                                               ensure_ascii=False), _JSON)
-                    return
-                self._send(200, json.dumps(apply_feedback(data), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/ops-hold"):              # 운영자 수동 노출제한 토글(라벨 아님 · 학습 미포함)
-            try:
-                uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
-                if _supa() and not is_admin_user(uid, team, email):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                ch = (data.get("hash") or "").strip()
-                st = get_store()
-                ok = bool(ch and st and hasattr(st, "set_ops_hold")
-                          and st.set_ops_hold(ch, bool(data.get("on")), team=team))
-                if ok:
-                    _agg_bump()                            # 목록·집계 캐시 무효화(즉시 반영)
-                self._send(200, json.dumps({"ok": ok}, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/badges"):                # 배지 획득 영속(기기 간 기준선)
-            try:
-                if not self._require_login():              # 미인증 임의 uid 배지 기록 차단
-                    return
-                data = json.loads(body or b"{}")
-                uid = self._bearer_uid() or (data.get("reviewer") or "").strip()
-                self._send(200, json.dumps(save_badges(uid, data.get("earned")),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/reviewer") and not self.path.startswith("/reviewer-role"):
-            # startswith 디스패치라 /reviewer-role(최종검수자 지정)이 여기 삼켜지지 않게 제외
-            _TEAM_CACHE.pop(self._bearer_uid() or "", None)   # 가입·팀 변경 즉시 반영
-            try:
-                data = json.loads(body or b"{}")
-                if not self._inject_reviewer(data):
-                    self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
-                    return
-                self._send(200, json.dumps(register_reviewer(data), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/admin"):
-            try:
-                self._send(200, json.dumps(admin_action(self._bearer_uid(), self._req_team(),
-                           json.loads(body or b"{}"), self._bearer_email()), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/learn-batch"):        # 일배치 학습 수동 실행(관리자): 개선+골든+회귀평가
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                self._send(200, json.dumps(learning_batch(self._req_team(), data.get("models")),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/apply-directive"):    # 버전 지시를 공통/특정 모델 프롬프트에 적용(관리자)
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                v = int(data.get("version") or 0)
-                model = (data.get("model") or "common").strip()
-                stages = [s for s in (data.get("stages") or []) if s in ("extract", "analyze", "review", "judge")]
-                snap = _report_get(f"prompt_snapshot_v{v}", self._req_team()) or {}
-                learned = snap.get("learned") or {}
-                cfg = Config.load()
-                applied = []
-                for s in stages:
-                    d = (learned.get(s) or "").strip()
-                    if not d:
-                        continue
-                    if model == "common":                # 공통 = 모든 모델 프롬프트에 얹힘(stage_prompts)
-                        cur = dict(cfg.stage_prompts or {})
-                        base = (cur.get(s) or "").strip()
-                        if d not in base:
-                            cur[s] = (base + ("\n\n" if base else "") + d).strip()
-                            cfg.stage_prompts = cur
-                    else:                                 # 특정 모델 전용(model_prompts[model][stage])
-                        mp = dict(cfg.model_prompts or {})
-                        mm = dict(mp.get(model) or {})
-                        base = (mm.get(s) or "").strip()
-                        if d not in base:
-                            mm[s] = (base + ("\n\n" if base else "") + d).strip()
-                            mp[model] = mm
-                            cfg.model_prompts = mp
-                    applied.append(s)
-                cfg.save_template()
-                sync_prompt()
-                print(f"  [apply-directive] v{v} → {model} · 단계 {applied}")
-                self._send(200, json.dumps({"ok": True, "applied": applied, "model": model, "version": v},
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/compare-models"):    # 골든셋 다중 모델 비교(관리자)
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                self._send(200, json.dumps(compare_models_on_golden(data.get("models"), self._req_team(),
-                                           scope=(data.get("scope") or "all").strip()),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/learn-report"):       # 최근 일배치 결과 수신(개선·골든·평가·모델비교)
-            if not self._require_team():                 # team=None 폴백 전 팀 리포트 노출 차단
-                return
-            self._send(200, json.dumps({"ok": True, "report": _report_get("learn_report", self._req_team(), LO._LAST_LEARN_REPORT)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/patch-meta"):          # 검수자 구조화 교정(빈 카테고리 채우기 등)
-            try:
-                data = json.loads(body or b"{}")
-                if not self._inject_reviewer(data):
-                    self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
-                    return
-                res = patch_content_meta(data.get("hash"), data.get("patch"),
-                                         self._req_team(), reviewer=data.get("reviewer") or "")
-                if res.get("ok"):                       # 분류 채우기 미션 판정(1회 보상)
-                    fresh = _check_missions((data.get("reviewer") or "").strip(), self._req_team())
-                    if fresh:
-                        res["missions_completed"] = fresh
-                self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/meta-compile"):
-            try:
-                # 실모델 호출(비용) 트리거 · 무인증 차단(형제 라우트 /learn-batch 와 동일 게이트)
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                self._send(200, json.dumps(meta_compile_run(self._req_team()),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/eval-judge"):        # 평가 상세 · 건별 판정(집단 지성)
-            try:
-                # 팀원 기능이지만 미인증 직접 호출은 차단(supabase 모드 · 판정 위조 방지)
-                if _supa() and not self._bearer_uid():
-                    self._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                # 검수자 귀속은 서버가 Bearer uid 로 강제(바디 reviewer 위조로 합의 스터핑·점수 파밍 방지).
-                rv = self._bearer_uid() if _supa() else (data.get("reviewer") or "").strip()
-                verdict = (data.get("verdict") or "").strip()
-                ch = (data.get("hash") or "").strip()
-                if not rv or not ch or verdict not in ("adopt", "reject"):
-                    self._send(200, json.dumps({"ok": False, "error": "판정 값이 올바르지 않습니다"}, ensure_ascii=False), _JSON)
-                    return
-                if rate_limited(f"evj:{rv}"):
-                    self._send(429, json.dumps({"error": "잠시 후 다시 시도하세요(판정 속도 제한)"},
-                                               ensure_ascii=False), _JSON)
-                    return
-                st = get_store()
-                ok = bool(st and hasattr(st, "save_eval_check")
-                          and st.save_eval_check(ch, rv, verdict, str(data.get("expected") or ""),
-                                                 str(data.get("got") or ""), team=self._req_team()))
-                if ok:
-                    try:                          # 판정 보상: 콘텐츠당 1회 +5pt(재판정은 upsert 만)
-                        st.log_event_once(rv, "evja:" + ch, 0, 5, team=self._req_team())
-                    except Exception:
-                        pass
-                counts = {}
-                try:
-                    counts = (st.eval_check_counts(team=self._req_team()) or {}).get(ch) or {}
-                except Exception:
-                    pass
-                _agg_bump()
-                self._send(200, json.dumps({"ok": ok, "judge": counts or {"adopt": 0, "reject": 0, "reviewers": {}}},
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/eval-golden"):       # 등록 골든셋으로 평가 실행(기준 모델·콘텐츠 풀)
-            try:
-                # 실모델 호출(비용) 트리거 · 무인증 차단
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                self._send(200, json.dumps(eval_golden(self._req_team(),
-                                           model=(data.get("model") or "").strip(),
-                                           scope=(data.get("scope") or "all").strip()), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/content-remove"):    # 관리자: 콘텐츠 개별 삭제(파생 데이터 연쇄)
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                st = get_store()
-                ok = bool(st and hasattr(st, "remove_content")
-                          and st.remove_content((data.get("hash") or "").strip(), team=self._req_team()))
-                _agg_bump()
-                self._send(200, json.dumps({"ok": ok}, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/content-assign-bulk"):   # 슈퍼관리자: 여러 콘텐츠 일괄 배정(덮어쓰기)
-            try:
-                if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                hashes = [str(h).strip() for h in (data.get("hashes") or []) if str(h).strip()]
-                reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
-                try:
-                    minr = int(data.get("min_reviewers") or 1)
-                except (TypeError, ValueError):
-                    minr = 1
-                st = get_store()
-                if not (hashes and st and hasattr(st, "set_assignees_bulk")):
-                    self._send(400, json.dumps({"error": "대상 없음 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
-                    return
-                actor = (self._bearer_email() or self._bearer_uid()
-                         or (data.get("reviewer") or "").strip() or "(로컬)")
-                if (data.get("mode") or "") == "distribute":   # 균등 분배: 부하 적은 사람부터
-                    if not reviewers:
-                        self._send(400, json.dumps({"error": "분배할 담당자를 선택하세요"}, ensure_ascii=False), _JSON)
-                        return
-                    r = distribute_assignments(st, hashes, reviewers, min_reviewers=minr,
-                                               team=self._req_team())
-                    _log_assign(actor, "균등 분배", r["n"], reviewers, r["min_reviewers"], self._req_team())
-                    _agg_bump()
-                    self._send(200, json.dumps({"ok": True, "mode": "distribute", "n": r["n"],
-                                                "per_reviewer": r["per_reviewer"],
-                                                "min_reviewers": r["min_reviewers"]},
-                                               ensure_ascii=False), _JSON)
-                    return
-                n = st.set_assignees_bulk(hashes, reviewers, min_reviewers=minr, team=self._req_team())
-                _log_assign(actor, ("일괄 배정" if reviewers else "일괄 해제"), n, reviewers,
-                            (max(1, min(len(reviewers), minr)) if reviewers else 0), self._req_team())
-                _agg_bump()
-                self._send(200, json.dumps({"ok": True, "n": n, "reviewers": reviewers,
-                                            "min_reviewers": (max(1, min(len(reviewers), minr)) if reviewers else 0)},
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/content-assign"):    # 관리자: 콘텐츠 검수 담당자 배정(배타적 노출)
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                h = (data.get("hash") or "").strip()
-                reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
-                try:
-                    minr = int(data.get("min_reviewers") or 1)
-                except (TypeError, ValueError):
-                    minr = 1
-                st = get_store()
-                if not (h and st and hasattr(st, "set_assignees")):
-                    self._send(400, json.dumps({"error": "hash 누락 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
-                    return
-                st.set_assignees(h, reviewers, min_reviewers=minr, team=self._req_team())
-                _log_assign((self._bearer_email() or self._bearer_uid()
-                             or (data.get("reviewer") or "").strip() or "(로컬)"),
-                            ("개별 배정" if reviewers else "개별 해제"), 1, reviewers, minr, self._req_team())
-                _agg_bump()
-                cur = (st.assignees(team=self._req_team()) or {}).get(h) or {"reviewers": [], "min": 0}
-                self._send(200, json.dumps({"ok": True, "assignees": cur["reviewers"],
-                                            "min_reviewers": cur["min"]}, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/route-disable"):     # 관리자: 학습 지시 개별 끄기/켜기
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                self._send(200, json.dumps(set_directive_disabled(data.get("text") or "",
-                                                                  bool(data.get("disabled"))),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/reviewer-role"):     # 슈퍼관리자: 최종검수자 역할 지정/해제
-            try:
-                if _supa() and not is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "슈퍼관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                self._send(200, json.dumps(set_reviewer_role(data.get("id") or "",
-                                                             (data.get("role") or "").strip(),
-                                                             self._req_team()), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/final-verdict"):     # 최종판정(타이브레이크): 슈퍼관리자 또는 최종검수자
-            try:
-                if _supa() and not (is_super_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email())
-                                    or is_final_reviewer(self._bearer_uid(), self._req_team())):
-                    self._send(403, json.dumps({"error": "슈퍼관리자 또는 최종검수자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                self._inject_reviewer(data)            # supabase: reviewer=uid 통일(미션·골드 원장 정합)
-                team = self._req_team()
-                if "_team" not in data:
-                    data["_team"] = team
-                rv = (data.get("reviewer") or "").strip()
-                if (data.get("hash") or "").startswith("goldf:"):
-                    # 골드 캘리브레이션 응답 → gold_checks 분리 기록(최종판정 원장 무오염)
-                    self._send(200, json.dumps(apply_gold_answer(data), ensure_ascii=False), _JSON)
-                    return
-                res = set_final_verdict(data.get("hash") or "", (data.get("verdict") or "").strip(),
-                                        by=rv, team=team)
-                if res.get("ok") and (data.get("verdict") or "").strip():
-                    ms = _check_missions(rv, team)
-                    if ms:
-                        res["missions_completed"] = ms
-                self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/golden-remove"):     # 관리자: 골든 개별 삭제(라벨 오류 후보 처리)
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                st = get_store()
-                ok = bool(st and hasattr(st, "remove_golden")
-                          and st.remove_golden((data.get("hash") or "").strip(), team=self._req_team()))
-                _agg_bump()
-                self._send(200, json.dumps({"ok": ok}, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/golden"):            # 관리자: 골든셋 등록(.jsonl 업로드 · merge 지원)
-            try:
-                ctype = self.headers.get("Content-Type", "")
-                merge = False
-                if "multipart/form-data" in ctype:
-                    fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
-                    f = fields.get("file")
-                    raw = f.get("bytes", b"") if isinstance(f, dict) else b""
-                    merge = str(fields.get("merge") or "").strip().lower() in ("1", "true")
-                else:
-                    raw = body
-                rows = [json.loads(ln) for ln in raw.decode("utf-8", "replace").splitlines() if ln.strip()]
-                self._send(200, json.dumps(register_golden(self._bearer_uid(), self._req_team(), rows,
-                                           self._bearer_email(), merge=merge), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/backfill-urls"):   # 관리자: 원문 링크 백필(source_url 만 갱신 · 초안·판정 불변)
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                ctype = self.headers.get("Content-Type", "")
-                if "multipart/form-data" not in ctype:
-                    self._send(400, json.dumps({"error": "매핑 파일이 필요합니다(multipart)"}, ensure_ascii=False), _JSON)
-                    return
-                fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
-                f = fields.get("file")
-                if not isinstance(f, dict) or not f.get("bytes"):
-                    self._send(400, json.dumps({"error": "파일이 없습니다"}, ensure_ascii=False), _JSON)
-                    return
-                r = backfill_urls(f["bytes"], f.get("filename", "map.csv"), team=self._req_team())
-                self._send(200, json.dumps(r, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/presence"):
-            try:
-                # 팀 SSE 방송 트리거 · 미인증 직접 호출 차단(/eval-judge 와 동일 게이트)
-                if _supa() and not self._bearer_uid():
-                    self._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
-                    return
-                p = json.loads(body or b"{}")
-                # 검수자 귀속은 서버 uid 로 강제(프레즌스 사칭 방지) · 같은 팀에만 방송
-                rv = self._bearer_uid() if _supa() else (p.get("reviewer") or "").strip()
-                broadcast({"type": "presence", "reviewer": rv,
-                           "hash": p.get("hash") or "", "action": p.get("action") or "viewing"},
-                          team=self._req_team())
-                self._send(200, json.dumps({"ok": True}, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/purpose"):           # 관리자: 콘텐츠 용도 지정(검수용/평가용)
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                st = get_store()
-                n = st.set_purpose([h for h in (data.get("hashes") or []) if h],
-                                   (data.get("purpose") or "").strip(), team=self._req_team()) if st else 0
-                _agg_bump()
-                self._send(200, json.dumps({"ok": bool(n), "n": n}, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/rerun-all"):         # 관리자: 전체 콘텐츠 일괄 실행
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                scope = (data.get("scope") or "all").strip()
-                self._send(200, json.dumps(rerun_all((data.get("model") or "").strip(), self._req_team(),
-                                                     scope=(scope if scope in ("all", "pending") else "all")),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/rerun"):             # 관리자: 같은 콘텐츠를 다른 모델로 재실행
-            try:
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                data = json.loads(body or b"{}")
-                self._send(200, json.dumps(rerun_content(data.get("hash"), (data.get("model") or "").strip(),
-                                           self._req_team()), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/ingest-run"):
-            try:
-                # 콘텐츠 인입은 관리자 통제(수동·자동 공통)
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                p = json.loads(body or b"{}")
-                res = ingest_run_source(p, trigger="manual")
-                self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/entdict"):
-            try:
-                data = json.loads(body or b"{}")
-                # 권한 분리: 상세·수정·보강은 검수자(로그인)도 가능(검수 중 사전 교정 허용) ·
-                # 등재/삭제/일괄 보강/백필 같은 사전 전체 작업은 관리자 전용(사전·정책과 동일 게이트)
-                act = (data.get("action") or "").strip()
-                if _supa():
-                    if act in ("detail", "update", "enrich"):
-                        if not self._bearer_uid():
-                            self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
-                            return
-                    elif not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                        self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                        return
-                self._send(200, json.dumps(entdict_action(data, team=self._req_team(),
-                           mock=Handler.server_mock), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/dict"):
-            try:
-                # 사전·정책 편집 = 관리자 전용(supabase 모드 · UI 게이팅과 정합)
-                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                    return
-                payload = json.loads(body or b"{}")
-                fn = reset_dict_overrides if payload.get("reset") else (lambda: edit_dict(payload))
-                self._send(200, json.dumps(fn(), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/board"):               # 게시판: 등록·상태 변경·삭제(팀 스코프)
-            try:
-                data = json.loads(body or b"{}")
-                if not self._inject_reviewer(data):
-                    self._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
-                    return
-                self._send(200, json.dumps(board_action(data, team=self._req_team(),
-                           uid=self._bearer_uid() or "", email=self._bearer_email()),
-                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/topic-studio"):        # 토픽 스튜디오: 생성·삭제·튜닝(변경은 관리자) · 미리보기·제안(조회)
-            try:
-                data = json.loads(body or b"{}")
-                action = (data.get("action") or "").strip()
-                # 조회성(preview·suggest)은 로그인 필수(익명 LLM 호출·데이터 열람 차단) · 변경성은 /config 와 동일 관리자 가드
-                if action not in ("preview", "suggest"):
-                    uid, team, email = self._bearer_uid(), self._req_team(), self._bearer_email()
-                    if _supa() and not is_admin_user(uid, team, email):
-                        self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
-                        return
-                elif not self._require_login():
-                    return
-                # 변경성 액션의 캐시 무효화는 topic_studio_action 내부에서 처리
-                self._send(200, json.dumps(topic_studio_action(data, mock=Handler.server_mock),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/media-extract"):        # 미디어 메타 파이프라인: 자막 파싱(JSON) · 영상 네이티브(multipart)
-            try:
-                if not self._require_login():              # 익명 LLM 호출(비용 남용) 차단
-                    return
-                ctype = self.headers.get("Content-Type", "")
-                if "multipart/form-data" in ctype:        # 업로드 → 미디어 실험(미저장): 이미지(image*) | 영상(file)
-                    fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
-                    imgs = {k: v for k, v in fields.items()
-                            if k.startswith("image") and isinstance(v, dict) and v.get("bytes")}
-                    if imgs:                              # 이미지 실험: run_pipeline 이미지 분기 재사용(미저장)
-                        pf = {"displayServiceName": fields.get("displayServiceName", "포토"),
-                              "title": fields.get("title", ""), "caption": fields.get("caption", "")}
-                        pf.update(imgs)
-                        res = run_pipeline(pf, mock=Handler.server_mock,
-                                           model=fields.get("model", ""), persist=False)
-                        self._send(200, json.dumps({"ok": True, **res}, ensure_ascii=False), _JSON)
-                        return
-                    f = fields.get("file") or {}
-                    if not f.get("bytes"):
-                        self._send(400, json.dumps({"ok": False, "error": "이미지 또는 영상 파일이 필요합니다"}, ensure_ascii=False), _JSON)
-                        return
-                    res = media_native(f["bytes"], f.get("mime") or "video/mp4",
-                                       caption=fields.get("caption", ""),
-                                       description=fields.get("description", ""),
-                                       model=fields.get("model", ""),
-                                       subtitles=fields.get("subtitles", ""))
-                    self._send(200, json.dumps(res, ensure_ascii=False), _JSON)
-                else:
-                    data = json.loads(body or b"{}")
-                    self._send(200, json.dumps(media_action(data), ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/usermeta-profiles"):   # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
-            try:
-                if not self._require_team():               # 팀 미소속 team=None 폴백 전 팀 콘텐츠 열람 차단
-                    return
-                from . import personagen as PG
-                ctype = self.headers.get("Content-Type", "")
-                if "multipart/form-data" in ctype:
-                    boundary = ctype.split("boundary=", 1)[1].strip()
-                    f = _parse_multipart(body, boundary).get("file")
-                    profs = (PG.parse_profiles(f["bytes"], f.get("filename", "profiles.csv"))
-                             if isinstance(f, dict) and f.get("bytes") else [])
-                else:
-                    p = json.loads(body or b"{}")
-                    profs = p.get("profiles") or ([p.get("profile")] if p.get("profile") else [])
-                self._send(200, json.dumps(usermeta_save_profiles(profs, team=self._req_team()),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if self.path.startswith("/usermeta"):
-            try:
-                if not self._require_team():               # 팀 미소속 team=None 폴백 전 팀 콘텐츠 열람·LLM 남용 차단
-                    return
-                ctype = self.headers.get("Content-Type", "")
-                f = None
-                if "multipart/form-data" in ctype:
-                    boundary = ctype.split("boundary=", 1)[1].strip()
-                    f = _parse_multipart(body, boundary).get("file")
-                logs = f["bytes"] if isinstance(f, dict) and f.get("bytes") else None
-                name = f.get("filename", "logs.csv") if isinstance(f, dict) else ""
-                self._send(200, json.dumps(usermeta_data(logs, name, team=self._req_team()),
-                                           ensure_ascii=False), _JSON)
-            except Exception as e:
-                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
-            return
-
-        if not self.path.startswith("/run"):
-            self._send(404, "not found")
-            return
-        # 추출 실행(단건·배치) = 콘텐츠 인입 → 관리자 통제(supabase 모드)
-        if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
-            msg = ("로그인이 만료됐습니다 · 다시 로그인 후 시도하세요" if not self._bearer_uid()
-                   else "콘텐츠 인입은 관리자 전용입니다")
-            self._send(403, json.dumps({"error": msg}, ensure_ascii=False), _JSON)
-            return
-        ctype = self.headers.get("Content-Type", "")
-        try:
-            if "multipart/form-data" in ctype:
-                boundary = ctype.split("boundary=", 1)[1].strip()
-                fields = _parse_multipart(body, boundary)
-            else:
-                fields = json.loads(body or b"{}")
-            add_only = str(fields.get("add_only") or "") in ("1", "true")
-            if self.path.startswith("/run-batch"):
-                f = fields.get("file")
-                if not isinstance(f, dict) or not f.get("bytes"):
-                    result = {"error": "파일이 없습니다"}
-                else:
-                    result = run_batch(f["bytes"], f.get("filename", "upload.xlsx"),
-                                       purpose=str(fields.get("purpose") or ""), team=self._req_team(),
-                                       add_only=add_only)
-            elif add_only:                             # STEP 1 = 추가만(모델 미실행)
-                result = add_contents([{
-                    "displayServiceName": fields.get("displayServiceName", ""),
-                    "title": fields.get("title", ""), "subtitle": fields.get("subtitle", ""),
-                    "body": fields.get("body", ""),
-                    "source_url": fields.get("source_url", ""),
-                }], purpose=str(fields.get("purpose") or ""), team=self._req_team())
-            else:
-                result = run_pipeline(fields, mock=self.server_mock, team=self._req_team())
-            self._send(200, json.dumps(result, ensure_ascii=False), _JSON)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+        self._send(404, "not found")
 
 
 from .page import PAGE                             # 앱 마크업(라우트 분리 3차)

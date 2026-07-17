@@ -1,0 +1,92 @@
+      <!-- ═══ 모듈: 팀 관리 (멀티테넌시 · 팀 모드 전용) ═══ -->
+      <div x-show="mod === 'admin'" x-cloak class="w-full space-y-4">
+        <section class="panel" x-show="backend !== 'supabase'"><div class="panel-hd"><b>팀 관리</b><span class="meta">로컬 단독 실행</span></div>
+          <div class="panel-bd"><ul class="ds-bullets">
+            <li>팀 기능(팀 생성 · 초대 코드 · 멤버 관리)은 <b>팀 모드(공유 서버)</b>에서 동작합니다.</li>
+            <li>지금은 로컬 단독 실행이라 팀 없이 <b>개인 검수</b>로 진행됩니다 · 검수·평가·정답셋 등 나머지 기능은 동일하게 사용할 수 있습니다.</li>
+          </ul></div>
+        </section>
+        <template x-if="backend === 'supabase'">
+        <div class="space-y-4">
+        <section class="panel" data-fn><div class="panel-hd"><b>새 팀 만들기</b><span class="ds-badge ds-badge--neutral">관리자</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:11px">
+              <li>새 팀을 만들면 <b>초대 코드</b>가 발급됩니다.</li>
+              <li>팀원은 가입 시 이 코드로 참가합니다(팀 생성은 관리자만).</li>
+            </ul>
+            <div style="display:flex;gap:var(--ds-space-2);flex-wrap:wrap;align-items:center">
+              <input class="field" style="flex:1;min-width:200px;height:38px" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="newTeamName" x-on:keydown.enter="createTeam()">
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-on:click="createTeam()" x-bind:disabled="!(newTeamName||'').trim()">만들기</button>
+              <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="teamMsg"></span>
+            </div>
+          </div>
+        </section>
+        <section class="panel"><div class="panel-hd"><b>팀 정보</b><span class="meta" x-text="adminData&&adminData.team ? adminData.team.name : ''"></span></div>
+          <div class="panel-bd">
+            <div class="invite">
+              <div><div class="text-xs text-muted" style="margin-bottom:4px">초대 코드 · 팀원에게 공유하면 같은 팀으로 참가합니다</div>
+                <div class="invite__code" x-text="adminData&&adminData.team ? adminData.team.invite_code : '·'"></div></div>
+              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="copyInvite()" x-text="inviteCopied ? '복사됨 ✓' : '복사'"></button>
+            </div>
+          </div>
+        </section>
+        <section class="panel"><div class="panel-hd"><b>멤버</b><span class="meta" x-text="(adminData&&adminData.members?adminData.members.length:0)+'명'"></span></div>
+          <div class="panel-bd">
+            <template x-for="m in (adminData?adminData.members:[])" x-bind:key="m.id">
+              <div class="lb-row">
+                <span class="lb-av" data-tier="0"><img x-bind:src="charImg(m.avatar)" alt=""></span>
+                <span class="lb-name"><span x-text="m.name"></span>
+                  <span x-show="adminData.team && m.id===adminData.team.created_by" class="ds-badge ds-badge--status" style="margin-left:6px">생성자</span>
+                  <span x-show="m.super_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--category" style="margin-left:6px;cursor:help" data-tip="생성자가 부여한 슈퍼관리자 · 운영 작업 메뉴 전체 사용 가능(시스템 설정 제외)" data-tip-pos="top">슈퍼관리자</span>
+                  <span x-show="m.is_admin && !m.super_admin && !(adminData.team && m.id===adminData.team.created_by)" class="ds-badge ds-badge--intent" style="margin-left:6px;cursor:help" data-tip="위임된 팀 관리자 · 팀 관리 메뉴 사용 가능" data-tip-pos="top">관리자</span>
+                  <span x-show="finalReviewers.includes(m.id)" class="ds-badge ds-badge--success" style="margin-left:6px;cursor:help" data-tip="최종검수자 · 기초 검수에서 의견이 갈리거나 분류가 빈 콘텐츠의 정답셋 편입/제외를 결정" data-tip-pos="top">최종검수자</span>
+                </span>
+                <template x-if="adminData&&adminData.team && m.id!==adminData.team.created_by">
+                  <span style="display:flex;gap:6px">
+                    <!-- 권한 지정은 팀 생성자 전용(서버도 동일 게이트) · 부여받은 관리자에게는 미표시 -->
+                    <button type="button" x-show="adminData.isCreator" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="adminAct(m.super_admin ? 'unset_super' : 'set_super', m.id)" x-text="m.super_admin ? '슈퍼관리자 해제' : '슈퍼관리자 지정'"></button>
+                    <button type="button" x-show="adminData.isCreator" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm" x-on:click="adminAct(m.is_admin ? 'unset_admin' : 'set_admin', m.id)" x-text="m.is_admin ? '관리자 해제' : '관리자 지정'"></button>
+                    <button type="button" x-show="opsAdmin" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="toggleFinalRole(m)" x-bind:data-tip="finalReviewers.includes(m.id) ? '기초검수자로 되돌립니다' : '미확정(의견 갈림·분류 공백) 콘텐츠의 정답셋 편입/제외 결정 권한을 줍니다'" data-tip-pos="top" x-text="finalReviewers.includes(m.id) ? '최종검수자 해제' : '최종검수자 지정'"></button>
+                    <button type="button" x-show="adminData.isAdmin" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="adminAct('remove_member', m.id)">제거</button>
+                  </span>
+                </template>
+              </div>
+            </template>
+            <div x-show="!(adminData&&adminData.members&&adminData.members.length)" class="text-xs text-muted" style="padding:8px">멤버가 없습니다</div>
+            <p class="text-xs text-muted" style="padding:8px 8px 0;line-height:1.5">🎖 <b class="text-ink">검수 마스터</b>(레벨 10) 멤버에게 관리자 권한을 위임해 골든셋·정책 관리를 함께 맡길 수 있습니다.</p>
+          </div>
+        </section>
+        <!-- 메뉴 권한(생성자 전용): 슈퍼관리자·관리자에게 보여줄 관리자 메뉴를 메뉴별로 지정 -->
+        <section class="panel" x-show="adminData && adminData.isCreator" x-cloak>
+          <div class="panel-hd"><b>메뉴 권한</b><span class="meta">슈퍼관리자·관리자에게 보여줄 메뉴 지정</span><span class="ds-badge ds-badge--status ml-auto">생성자 전용</span></div>
+          <div class="panel-bd">
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:280px">
+                <thead><tr style="color:var(--ds-muted)">
+                  <th style="text-align:left;padding:6px 8px;font-weight:500">메뉴</th>
+                  <th style="padding:6px 8px;font-weight:500">슈퍼관리자</th>
+                  <th style="padding:6px 8px;font-weight:500">관리자</th>
+                </tr></thead>
+                <tbody>
+                  <template x-for="mid in (adminData.menuOrder||[])" x-bind:key="mid">
+                    <tr style="border-top:1px solid var(--ds-hairline-soft)">
+                      <td style="padding:8px" x-text="(adminData.menuLabels||{})[mid]||mid"></td>
+                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].super"></td>
+                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].admin"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="saveMenuPerms()">저장</button>
+              <span class="text-xs text-muted" x-text="menuPermsMsg"></span>
+            </div>
+            <p class="text-xs text-muted" style="margin-top:10px;line-height:1.5">체크 = 해당 역할에게 메뉴 노출(동작 가능) · 해제 = 숨김. 생성자·운영관리자는 항상 전체 · 시스템 설정은 운영관리자 전용(고정).</p>
+          </div>
+        </section>
+        <div x-show="adminData && !adminData.isAdmin" class="text-xs text-muted" style="padding:4px">멤버 관리는 팀 관리자(생성자·위임)만 가능합니다.</div>
+        </div>
+        </template>
+      </div>
+

@@ -1,0 +1,587 @@
+      <!-- ═══ 모듈: 인입 정책 (전용 도구) ═══ -->
+      <!-- 수집(인입) 정책: 정책 표 성격 → 사전·정책 메뉴에 통합 렌더 -->
+      <div x-show="mod === 'dict' && dictTab === 'policy'" x-cloak class="w-full space-y-4" style="margin-top:16px">
+        <div class="ds-widget ds-widget--info" style="--w-accent:var(--ds-primary)">
+          <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>ITEM TYPE 처리 정책</span></div><div class="ds-widget__actions"><span class="ds-badge ds-badge--neutral">131</span><span class="text-xs text-muted">직접 수정 가능</span><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
+          <div class="ds-widget__body">
+            <div class="overflow-auto"><table class="ds-table"><thead><tr><th>ITEM TYPE</th><th>필터 대상</th><th>처리 방식</th><th>상태</th><th></th></tr></thead><tbody>
+              <template x-for="(row, t) in (dictData ? dictData.intakePolicy : {})" x-bind:key="t">
+                <tr>
+                  <td class="text-ink" x-text="t"></td>
+                  <td x-text="row.filter"></td>
+                  <td><div class="tbox" x-text="row.method"></div></td>
+                  <td><span class="ds-badge" x-bind:class="row.status === '구현' ? 'ds-badge--success' : (row.status === 'PoC' ? 'ds-badge--intent' : 'ds-badge--neutral')" style="cursor:help" data-tip="구현 상태 · 구현=운영 반영, PoC=검증 단계, 설계=문서 단계" data-tip-pos="top"><span x-show="row.status==='구현'" class="ds-badge__dot"></span><span x-text="row.status"></span></span></td>
+                  <td><button type="button" class="copybtn" x-on:click="startEditIntake(t, row)">편집</button></td>
+                </tr>
+              </template>
+              <template x-if="!dictData || !dictData.intakePolicy"><tr><td colspan="5" class="text-muted">불러오는 중…</td></tr></template>
+            </tbody></table></div>
+          </div>
+        </div>
+        <div class="ds-widget ds-widget--info" style="--w-accent:#a05cff;min-height:auto">
+          <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span><span>콘텐츠 출처 분류</span></div><div class="ds-widget__actions"><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
+          <div class="ds-widget__body">
+            <ul class="ds-bullets" style="margin-bottom:11px">
+              <li><b>식별 표준</b>: C2PA(자격 증명) · SynthID(워터마크).</li>
+              <li>발행자 정보로 <b>PGC/UGC 1차 식별</b>.</li>
+            </ul>
+            <div class="flex flex-wrap gap-1.5"><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="기존 미디어(언론·방송)가 제작한 콘텐츠" data-tip-pos="top">PGC 기존 미디어</span><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="일반 사용자가 만든 콘텐츠" data-tip-pos="top">UGC 사용자 생성</span><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="AI 가 생성한 콘텐츠" data-tip-pos="top">AIGC AI 생성</span><span class="ds-badge ds-badge--category" style="cursor:help" data-tip="AI 로 보정·편집된 콘텐츠" data-tip-pos="top">AIEC AI 보정</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  </div><!-- /.appbody -->
+
+  <!-- ✎ 편집 팝업 · 편집 버튼 클릭 시 바로 수정(사전·정책 등) -->
+  <div class="ds-dialog-backdrop" x-show="editT" x-cloak x-on:mousedown.self="cancelEdit()" style="z-index:75">
+    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="편집" style="max-width:520px">
+      <h2 class="ds-dialog__title" x-text="'편집 · ' + editTitle"></h2>
+      <div class="ds-dialog__body" style="display:flex;flex-direction:column;gap:12px">
+        <div x-show="editT === 'intake_policy'" x-cloak>
+          <label class="lbl">필터 대상</label>
+          <select x-model="editFilter" class="field"><option value="O">O (필터)</option><option value="△">△ (부분)</option><option value="X">X (미적용)</option></select>
+        </div>
+        <div>
+          <label class="lbl" x-text="editKind === 'list' ? '항목 (한 줄에 하나씩)' : (editT === 'intake_policy' ? '처리 방식' : '값')"></label>
+          <textarea x-model="editVal" x-bind:rows="editT === 'intake_policy' ? 3 : 8" class="field" x-bind:style="editT === 'intake_policy' ? '' : 'min-height:180px'" x-on:keydown.escape="cancelEdit()"></textarea>
+        </div>
+        <div x-show="editT === 'legal_types'" x-cloak>
+          <label class="lbl">근거 법령(조항)</label>
+          <input x-model="editExtra" class="field" placeholder="예) 정보통신망법 제44조의7">
+        </div>
+        <div x-show="editT === 'intake_policy'" x-cloak>
+          <label class="lbl">상태</label>
+          <input x-model="editExtra" class="field" placeholder="예) 구현 / PoC / 계획">
+        </div>
+        <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="editMsg"></span>
+      </div>
+      <div class="ds-dialog__footer">
+        <button type="button" class="ds-btn ds-btn--ghost" x-on:click="cancelEdit()">취소</button>
+        <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveEdit()">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 엔티티 사전 편집 팝업: 타입·속성 수동 확정(사람 결정 우선 · 재보강이 덮어쓰지 않음) -->
+  <div class="ds-dialog-backdrop" x-show="entEdit" x-cloak x-on:mousedown.self="entEdit=null" x-on:keydown.escape.window="entEdit && (entEdit=null)" style="z-index:76">
+    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="개체 편집" style="max-width:560px;display:flex;flex-direction:column;max-height:88vh">
+      <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px"><span x-text="'개체 편집 · ' + (entEdit ? entEdit.name : '')"></span>
+        <span class="text-xs text-muted" style="font-weight:400" x-text="entEdit ? entEdit.entity_id : ''"></span></h2>
+      <div class="ds-dialog__body" style="overflow:auto;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label class="lbl">타입 (NER 6종 · 개체당 1개 · 비우면 보류)</label>
+          <select class="field" x-bind:value="entEdit ? entEdit.type : ''" x-on:change="entEdit.type=$event.target.value">
+            <option value="">(보류 · 타입 미부여)</option>
+            <template x-for="(ko,t) in (entData ? entData.meta.types : {})" x-bind:key="'et'+t"><option x-bind:value="t" x-text="ko + ' (' + t + ')'"></option></template>
+          </select>
+        </div>
+        <div x-show="entEdit && entEdit.type" x-cloak>
+          <label class="lbl">속성 (저장 시 수동 확정 · 위키데이터 재보강이 덮어쓰지 않음)</label>
+          <div class="space-y-2">
+            <template x-for="f in entAttrFields()" x-bind:key="'ef'+f[0]">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-muted" style="width:110px;flex:none" x-text="f[1]"></span>
+                <select x-show="f[0] === 'occupation'" class="field" style="flex:1" x-on:change="entEdit.attrs[f[0]]=$event.target.value">
+                  <option value="" x-bind:selected="!(entEdit && entEdit.attrs[f[0]])">(미지정)</option>
+                  <template x-for="g in (entData ? entData.meta.occupationGroups : [])" x-bind:key="'og'+g"><option x-bind:value="g" x-bind:selected="entEdit && entEdit.attrs[f[0]] === g" x-text="g"></option></template>
+                </select>
+                <input x-show="f[0] !== 'occupation'" type="text" class="field" style="flex:1" x-bind:value="(entEdit && entEdit.attrs[f[0]]) || ''" x-on:input="entEdit.attrs[f[0]]=$event.target.value">
+              </div>
+            </template>
+          </div>
+        </div>
+        <div>
+          <label class="lbl">별칭 (이형 표기 · 다음 적재부터 같은 개체로 흡수)</label>
+          <div class="flex flex-wrap gap-1.5" style="margin-bottom:6px">
+            <template x-for="a in entEditAliases" x-bind:key="'al'+a"><span class="ds-badge ds-badge--neutral" x-text="a"></span></template>
+          </div>
+          <input type="text" class="field" placeholder="별칭 추가 (저장 시 반영)" x-model="entAliasInput">
+        </div>
+        <div x-show="entEditContents.length">
+          <label class="lbl" x-text="'등장 콘텐츠 · ' + entEditContents.length + '건'"></label>
+          <div class="overflow-auto" style="max-height:140px"><table class="ds-table"><tbody>
+            <template x-for="(c,i) in entEditContents" x-bind:key="'ec'+i"><tr>
+              <td class="text-muted" x-text="c.title || c.hash"></td>
+              <td style="width:40px"><span class="ds-badge ds-badge--neutral" x-text="c.grade || '-'"></span></td>
+            </tr></template>
+          </tbody></table></div>
+        </div>
+        <span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="entEditMsg"></span>
+      </div>
+      <div class="ds-dialog__footer">
+        <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" style="margin-right:auto" x-on:click="entEnrichInPopup()" data-tip="나무위키 → 위키데이터 순으로 다시 조회 · 확정 필드는 보존" data-tip-pos="top">보강</button>
+        <button type="button" class="ds-btn ds-btn--ghost" x-on:click="entEdit=null">취소</button>
+        <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveEntEdit()">저장(확정)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 검수자 일괄 배정(슈퍼관리자 이상): ① 콘텐츠 선택 → ② 담당자 지정 → ③ 확인 · 배정 -->
+  <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && (bulkOpen=false)" style="z-index:78">
+    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">
+      <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px;font-family:var(--ds-font-display)">검수자 일괄 배정
+        <span class="text-xs text-muted" style="font-family:var(--ds-font-body);font-weight:400">여러 콘텐츠에 한 번에 지정합니다 · 슈퍼관리자 이상만 가능합니다</span></h2>
+      <div class="ds-dialog__body" style="overflow:auto;padding:4px 0 2px">
+
+        <!-- ① 콘텐츠 선택 -->
+        <div class="stepcard">
+          <div class="stepcard__hd">
+            <span class="stepcard__no">STEP 1</span>
+            <span class="stepcard__ttl">콘텐츠 선택<span class="stepcard__sub">배정할 대상을 고르세요</span></span>
+            <span class="ds-badge ds-badge--status stepcard__badge tnum" x-text="bulkGrps > 1 ? ('선택 ' + bulkGrpCounts.join('·') + ' / ' + bulkFiltered.length + '건') : ('선택 ' + bulkSelHashes.length + ' / ' + bulkFiltered.length + '건')"></span>
+          </div>
+          <div class="filterbar" style="margin-bottom:12px">
+            <input class="field" placeholder="제목·카테고리·사유 검색" x-model="bulkQ">
+            <select class="field" style="width:auto" x-model="bulkGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
+            <select class="field" style="width:auto" x-model="bulkSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="'b'+sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+            <select class="field" style="width:auto" x-model="bulkRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
+            <select class="field" style="width:auto" x-model="bulkAsg"><option value="">배정 전체</option><option value="unassigned">미배정만</option><option value="assigned">배정됨만</option></select>
+          </div>
+          <!-- 무작위 수량 자동 선택: 현재 필터 결과 중 N건 × G그룹 랜덤 추출(그룹끼리 비중복) -->
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 12px;margin-bottom:12px;background:var(--ds-tint-bg);border-radius:var(--ds-radius-md)">
+            <b class="text-xs" style="color:var(--ds-primary)">⚄ 무작위 자동 선택</b>
+            <input type="number" class="field" style="width:78px" min="1" x-model.number="bulkRandN">
+            <span class="text-xs text-muted">건 ×</span>
+            <input type="number" class="field" style="width:64px" min="1" max="8" x-model.number="bulkGrpN" x-on:input="bulkGrpChanged()" data-tip="2 이상이면 그룹마다 담당자를 따로 지정할 수 있어요" data-tip-pos="top">
+            <span class="text-xs text-muted">그룹</span>
+            <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="bulkRandom()">랜덤 선택</button>
+            <span class="text-xs text-muted" x-text="bulkGrps > 1 ? '그룹마다 ' + bulkRandN + '건씩 서로 겹치지 않게 추출 · 행 클릭 = 그룹 순환' : '필터 결과 중 무작위로 · 다시 누르면 재추출'"></span>
+            <span class="ds-badge ds-badge--warning" x-show="bulkRandMsg" x-text="bulkRandMsg"></span>
+          </div>
+          <div class="overflow-auto" style="max-height:252px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md)">
+            <table class="ds-table" style="table-layout:fixed;width:100%;margin:0">
+              <thead><tr>
+                <th style="width:42px;text-align:center"><input type="checkbox" class="bulkcb" x-bind:checked="bulkAllOn" x-on:change="bulkToggleAll()" aria-label="전체 선택"></th>
+                <th>제목</th>
+                <th style="width:96px">서비스</th>
+                <th style="width:112px">배정</th>
+              </tr></thead>
+              <tbody>
+                <template x-for="r in bulkFiltered" x-bind:key="'bk'+r.hash">
+                  <tr style="cursor:pointer" x-bind:class="bulkChecked[r.hash] ? 'is-sel' : ''" x-on:click="bulkToggle(r.hash)">
+                    <td style="text-align:center"><input type="checkbox" class="bulkcb" x-bind:checked="!!bulkChecked[r.hash]" tabindex="-1" style="pointer-events:none"></td>
+                    <td class="text-ink" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      <span class="ds-badge ds-badge--intent tnum" x-show="bulkGrps > 1 && bulkChecked[r.hash]" style="margin-right:5px" x-text="'그룹' + bulkChecked[r.hash]"></span>
+                      <span x-text="r.title || '(제목 없음)'"></span>
+                      <span class="ds-badge ds-badge--yellow" x-show="r.review==='yellow'" style="margin-left:5px">YELLOW</span>
+                    </td>
+                    <td class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="r.service || '·'"></td>
+                    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      <span class="ds-badge ds-badge--intent" x-show="(r.assignees||[]).length" data-tip="이미 배정됨 · 저장 시 덮어씀" data-tip-pos="left" x-text="assigneeNames(r).join(', ')"></span>
+                      <span x-show="!(r.assignees||[]).length" class="text-muted">·</span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <div x-show="!bulkFiltered.length" class="text-xs text-muted" style="padding:16px;text-align:center">조건에 맞는 콘텐츠가 없습니다</div>
+          </div>
+        </div>
+
+        <!-- ② 담당자 지정 -->
+        <div class="stepcard">
+          <div class="stepcard__hd">
+            <span class="stepcard__no">STEP 2</span>
+            <span class="stepcard__ttl">담당자 지정<span class="stepcard__sub">선택한 콘텐츠를 검수할 팀원</span></span>
+            <span class="ds-badge ds-badge--status stepcard__badge" x-show="bulkPick.length" x-text="bulkPick.length + '명 선택'"></span>
+          </div>
+          <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
+          <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) · 그룹 모드에선 그룹별 지정으로 대체 -->
+          <div x-show="bulkGrps <= 1" style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
+            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 사람들에게 콘텐츠를 나눠 배정합니다 · 밀린 배정이 적은 사람부터 채워요" data-tip-pos="top">균등 분배</button>
+          </div>
+          <div x-show="bulkGrps <= 1" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
+            <template x-for="m in assignMembers" x-bind:key="'bpk'+m.id">
+              <label class="pickchip" x-bind:class="bulkPick.includes(m.id) ? 'on' : ''">
+                <input type="checkbox" x-bind:checked="bulkPick.includes(m.id)" x-on:change="bulkPickToggle(m.id)"><span x-text="m.name"></span>
+              </label>
+            </template>
+          </div>
+          <!-- 그룹 모드: 그룹마다 담당자를 따로 지정(그룹 전체가 같은 담당자에게 배정)
+               그룹 배지를 제목 줄로 분리 + 2번째 그룹부터 구분선 — 칩이 줄바꿈돼도 그룹 경계가 보이게 -->
+          <div x-show="bulkGrps > 1" style="display:flex;flex-direction:column;gap:14px;margin-bottom:14px">
+            <template x-for="g in bulkGrps" x-bind:key="'bgp'+g">
+              <div x-bind:style="g > 1 ? 'border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));padding-top:14px' : ''">
+                <span class="ds-badge ds-badge--status tnum" style="display:inline-flex;margin-bottom:9px" x-text="'그룹' + g + ' · ' + (bulkGrpCounts[g-1] || 0) + '건'"></span>
+                <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                  <template x-for="m in assignMembers" x-bind:key="'bpk'+g+'-'+m.id">
+                    <label class="pickchip" x-bind:class="bulkPickAt(g).includes(m.id) ? 'on' : ''">
+                      <input type="checkbox" x-bind:checked="bulkPickAt(g).includes(m.id)" x-on:change="bulkPickGToggle(g, m.id)"><span x-text="m.name"></span>
+                    </label>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+          <label class="text-xs text-muted" style="display:inline-flex;align-items:center;gap:8px"><span x-text="bulkMode==='distribute' ? '콘텐츠당 담당 인원' : '최소 검수인원'"></span>
+            <input type="number" class="field" style="width:72px" min="1" x-bind:max="bulkGrps > 1 ? null : Math.max(1, bulkPick.length)" x-model.number="bulkMin">
+            <span class="tnum" x-text="bulkGrps > 1 ? '· N명 검수 시 통과 · 그룹 담당자 수를 넘으면 자동으로 낮춰 적용' : (bulkMode==='distribute' ? ('/ 선택 ' + bulkPick.length + '명 · 콘텐츠마다 N명씩 나눠 배정') : ('/ 배정 ' + bulkPick.length + '명 · N명 검수 시 통과'))"></span></label>
+        </div>
+
+        <!-- ③ 확인 -->
+        <div class="stepcard">
+          <div class="stepcard__hd">
+            <span class="stepcard__no">STEP 3</span>
+            <span class="stepcard__ttl">확인<span class="stepcard__sub">배정 내용을 확인하고 실행하세요</span></span>
+          </div>
+          <div class="tbox" style="padding:14px 16px">
+            <div x-show="bulkGrps <= 1" class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + (bulkPick.map(id => (assignMembers.find(m=>m.id===id)||{}).name || id).join(', ') || '(담당자 미선택)') + (bulkMode==='distribute' ? '에게 나눠 배정' : '에게 배정')"></div>
+            <div x-show="bulkGrps > 1" class="text-ink" style="font-weight:650;margin-bottom:8px" x-text="'콘텐츠 ' + bulkSelHashes.length + '건을 ' + bulkGrps + '개 그룹으로 나눠 배정'"></div>
+            <div class="text-xs text-muted" style="line-height:1.7">
+              <template x-for="g in bulkGrps" x-bind:key="'bgc'+g">
+                <div x-show="bulkGrps > 1">· 그룹<span x-text="g"></span> <b class="text-ink tnum" x-text="(bulkGrpCounts[g-1] || 0) + '건'"></b> → <span class="text-ink" x-text="bulkNames(bulkPickAt(g)) || '(담당자 미선택)'"></span></div>
+              </template>
+              <div x-show="bulkMode!=='distribute' && bulkGrps <= 1">· 최소 검수인원 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명</div>
+              <div x-show="bulkGrps > 1">· 최소 검수인원 <b class="text-ink" x-text="bulkMin"></b>명 (그룹 담당자 수를 넘으면 자동으로 낮춰 적용)</div>
+              <div x-show="bulkMode==='distribute' && bulkGrps <= 1">· 콘텐츠마다 담당 <b class="text-ink" x-text="Math.min(bulkMin, Math.max(1, bulkPick.length))"></b>명 · 밀린 배정이 적은 사람부터 고르게 나눕니다</div>
+              <div>· 배정 후 <b class="text-ink">담당자에게만</b> 검수 큐에 표시(배타적)</div>
+            </div>
+            <div class="ds-badge ds-badge--warning" x-show="bulkOverwrite" style="margin-top:10px" x-text="'⚠ 선택 중 ' + bulkOverwrite + '건은 이미 배정돼 있습니다 · 저장 시 덮어씁니다'"></div>
+          </div>
+        </div>
+
+        <!-- 배정 이력: 누가·언제·어떻게 (감사 추적 · '누가 배정했지?' 방지) -->
+        <div class="tbox" x-show="assignLog && assignLog.length" style="padding:10px 14px;margin-top:12px">
+          <div class="text-xs" style="font-weight:700;margin-bottom:6px">최근 배정 이력</div>
+          <template x-for="(it, ii) in (assignLog||[]).slice(0,5)" x-bind:key="'al'+ii">
+            <div class="text-xs text-muted tnum" style="line-height:1.8" x-text="assignLogTxt(it)"></div>
+          </template>
+        </div>
+
+      </div>
+      <div class="ds-dialog__footer" style="margin-top:16px">
+        <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-md" x-on:click="bulkOpen=false">취소</button>
+        <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="assignBulkBusy || !bulkSelHashes.length || (bulkGrps > 1 ? !bulkGrpReady : !bulkPick.length)" x-on:click="saveBulk()" x-text="assignBulkBusy ? '배정 중…' : (bulkGrps > 1 ? (bulkSelHashes.length + '건 · ' + bulkGrps + '그룹 배정 실행 →') : (bulkSelHashes.length + '건 배정 실행 →'))"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 대시보드 드릴다운: 분포 항목 → 판정된 콘텐츠 목록 -->
+  <div class="ds-dialog-backdrop" x-show="drillOpen" x-cloak x-on:mousedown.self="drillOpen=false" style="z-index:72">
+    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="콘텐츠 목록" style="max-width:620px">
+      <h2 class="ds-dialog__title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span x-text="drillData ? (drillKindKr(drillData.kind) + ' · ' + drillData.value) : ''"></span><span class="ds-badge ds-badge--neutral" x-text="drillData ? (drillData.n + '건') : ''"></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="drillData && (drillData.personas||[]).length" data-tip="이 토픽 콘텐츠의 엔티티를 사용자 행동 로그의 페르소나 친화도와 조인한 추정 · 사용자 메타 데이터가 원천" data-tip-pos="bottom" x-text="'타겟 · ' + ((drillData&&drillData.personas)||[]).map(p => p.persona + ' ' + Math.round(p.share*100) + '%').join(' · ')"></span></h2>
+      <div class="ds-dialog__body" style="max-height:64vh;overflow:auto;margin-top:6px">
+        <div x-show="drillBusy" class="text-xs text-muted" style="padding:14px">불러오는 중…</div>
+        <table class="ds-table" x-show="!drillBusy && drillData && drillData.items.length"><thead><tr><th>서비스</th><th>제목</th><th>등급</th><th>검수</th><th x-show="drillData && drillData.kind==='topic' && drillData.topic_id && topicAdmin"></th></tr></thead><tbody>
+          <template x-for="(c,i) in (drillData?drillData.items:[])" x-bind:key="i"><tr style="cursor:pointer" role="button" tabindex="0" x-on:click="openDetail(c)" x-on:keydown.enter="openDetail(c)" data-tip="상세·검수 열기" data-tip-pos="left">
+            <td x-text="c.service || '·'"></td>
+            <td class="text-ink" x-text="c.title || c.summary || '·'"></td>
+            <td><span class="ds-badge" x-bind:class="c.grade==='G'?'ds-badge--success':'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="c.grade || '·'"></span></span></td>
+            <td><span class="ds-badge" x-show="c.fb && c.fb.verdict" x-bind:class="c.fb && c.fb.verdict==='good' ? 'ds-badge--success' : (c.fb && c.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')" x-text="c.fb && c.fb.verdict==='good' ? '✓ 완료' : (c.fb && c.fb.verdict==='split' ? '✓ 재검토' : '✓ 수정')"></span><span class="text-xs text-muted" x-show="!(c.fb && c.fb.verdict)">·</span></td>
+            <td x-show="drillData && drillData.kind==='topic' && drillData.topic_id && topicAdmin"><button type="button" class="copybtn" x-on:click.stop="topicExclude(c)" data-tip="이 토픽에서 이 콘텐츠만 뺍니다 (조건은 그대로 · 복구 가능)" data-tip-pos="left">제외</button></td>
+          </tr></template>
+        </tbody></table>
+        <div x-show="!drillBusy && drillData && !drillData.items.length" class="text-xs text-muted" style="padding:14px">해당 콘텐츠가 없습니다</div>
+      </div>
+      <div style="text-align:right;margin-top:14px"><button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-md" x-on:click="drillOpen=false">닫기</button></div>
+    </div>
+  </div>
+
+  <!-- 새 버전 배너: 배포 감지(서버 부팅 ID 변화) · 분기 없이 새로고침 단일 유도(세션 만료면 새로고침 후 로그인 화면) -->
+  <div class="updatebar" x-show="updateAvail" x-cloak role="status">
+    <span>새 버전이 배포되었습니다 · 새로고침 후 이용해 주세요</span>
+    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="location.reload()">새로고침</button>
+  </div>
+  <!-- 확인 모달(공통): 네이티브 confirm 대체 · 자동화(CDP) 렌더러 블로킹 방지 + DS 일관 -->
+  <div class="ds-dialog-backdrop" x-show="confirmOpen" x-cloak x-on:mousedown.self="confirmAnswer(false)" x-on:keydown.escape.window="confirmOpen && confirmAnswer(false)" style="z-index:80">
+    <div class="ds-dialog" role="alertdialog" aria-modal="true" aria-label="확인" style="max-width:440px">
+      <h2 class="ds-dialog__title" x-text="confirmTitle"></h2>
+      <div class="ds-dialog__body"><p style="margin:0;white-space:pre-line" x-text="confirmMsg"></p></div>
+      <div class="ds-dialog__footer">
+        <button type="button" class="ds-btn ds-btn--ghost" x-on:click="confirmAnswer(false)">취소</button>
+        <button type="button" class="ds-btn" x-bind:class="confirmDanger ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--primary'" x-on:click="confirmAnswer(true)" x-text="confirmOk"></button>
+      </div>
+    </div>
+  </div>
+  <!-- 콘텐츠 상세 스플릿뷰(공통 컴포넌트): 좌 추출 원문 렌더 · 우 평가 -->
+  <!-- 정책 팔레트(플로팅 도움말): 검수 중 사전·정책 기준 참조 · 드래그 이동 · 위치 기억 -->
+  <button type="button" class="polfab" x-show="!polOpen" x-cloak x-on:click="polToggle()" data-tip="정책 도움말 · 인텐트/카테고리/품질 사유 기준" data-tip-pos="left" aria-label="정책 도움말 열기">?</button>
+  <div class="polpal" x-show="polOpen" x-cloak x-ref="polpal" x-bind:style="polStyle()">
+    <div class="polpal__hd" x-on:pointerdown="polDragStart($event)">
+      <b>정책 도움말</b><span class="meta">드래그로 이동</span>
+      <button type="button" class="ds-iconbtn ds-iconbtn--sm ml-auto" x-on:click="polOpen=false; polSave()" aria-label="정책 도움말 닫기"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="polpal__bd">
+      <div class="polpal__ctx" x-show="polCtx().length">
+        <span class="text-xs text-muted" style="width:100%">현재 검수 항목의 값 · 눌러서 기준 보기</span>
+        <template x-for="(x,xi) in polCtx()" x-bind:key="'pc'+xi+x.v">
+          <button type="button" class="ds-badge" x-bind:class="{intent:'ds-badge--intent',category:'ds-badge--category',reason:'ds-badge--reason',grade:(x.v==='G'?'ds-badge--success':'ds-badge--error')}[x.kind]" style="cursor:pointer" x-bind:data-tip="termDef(x.kind, x.v) + ' · 눌러서 기준 보기'" data-tip-pos="top" x-on:click="polShow(x.kind, x.v)" x-text="polCtxLabel(x)"></button>
+        </template>
+      </div>
+      <span class="srcfilter" style="display:flex;gap:var(--ds-space-1)">
+        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='intent'?'sel':''" x-on:click="polTab='intent'; polHl=''; polSave()">인텐트</button>
+        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='category'?'sel':''" x-on:click="polTab='category'; polHl=''; polSave()">카테고리</button>
+        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='quality'?'sel':''" x-on:click="polTab='quality'; polHl=''; polSave()">품질 사유</button>
+        <button type="button" class="srcfilter__chip" x-bind:class="polTab==='grade'?'sel':''" x-on:click="polTab='grade'; polHl=''; polSave()">등급</button>
+      </span>
+      <input type="text" class="field" placeholder="정책 검색 (값·기준 텍스트)" x-model="polQ">
+      <div class="polpal__list">
+        <!-- 카테고리: Tier1 그룹 → (Tier2 | 정의 | 예시) 표 + 분기 규칙 접힘 -->
+        <template x-if="polTab==='category'">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div class="text-xs text-muted">공식 표기는 영문(IAB Content Taxonomy 기반) · 한글은 표시용 병기 · 예시는 초안(팀 확정 대상)</div>
+            <template x-for="g in polCatGroups()" x-bind:key="'pg'+g.t1">
+              <div class="polsec">
+                <div class="polsec__hd" x-bind:data-pol="g.t1" x-bind:class="polHl===g.t1 ? 'is-hl' : ''"><b x-text="catBoth(g.t1)"></b></div>
+                <table class="poltbl">
+                  <thead><tr><th style="width:172px">Tier2</th><th>정의</th><th style="width:186px">예시</th></tr></thead>
+                  <tbody><template x-for="r in g.rows" x-bind:key="'pr'+r.k">
+                    <tr x-bind:data-pol="r.k" x-bind:class="polHl===r.k ? 'is-hl' : ''">
+                      <td><span class="ds-badge ds-badge--category" x-text="catBoth(r.k)"></span></td>
+                      <td x-text="r.def || '·'"></td>
+                      <td class="text-muted" x-text="r.ex || '·'"></td>
+                    </tr>
+                  </template></tbody>
+                </table>
+                <details class="polrule" x-show="g.rule"><summary>분기 규칙 · 경합 시 우선순위</summary><div x-text="g.rule"></div></details>
+              </div>
+            </template>
+            <div x-show="!polCatGroups().length" class="text-xs text-muted">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
+          </div>
+        </template>
+        <!-- 인텐트: 인텐트 | 정의 | 예시 -->
+        <template x-if="polTab==='intent'">
+          <div>
+            <table class="poltbl">
+              <thead><tr><th style="width:158px">인텐트</th><th>정의</th><th style="width:178px">예시 (초안)</th></tr></thead>
+              <tbody><template x-for="e in polRows()" x-bind:key="'pi'+e.k">
+                <tr x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
+                  <td><span class="ds-badge ds-badge--intent" x-text="e.t"></span></td>
+                  <td x-text="e.d || '·'"></td>
+                  <td class="text-muted" x-text="e.ex || '·'"></td>
+                </tr>
+              </template></tbody>
+            </table>
+            <div x-show="!polRows().length" class="text-xs text-muted" style="margin-top:6px">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
+          </div>
+        </template>
+        <!-- 품질 사유: 사유(병기) | 정의·판정 기준 | 적용 -->
+        <template x-if="polTab==='quality'">
+          <div>
+            <table class="poltbl">
+              <thead><tr><th style="width:186px">사유</th><th>정의 · 판정 기준</th><th style="width:52px">적용</th></tr></thead>
+              <tbody><template x-for="e in polRows()" x-bind:key="'pq'+e.k">
+                <tr x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
+                  <td><span class="ds-badge ds-badge--reason" x-text="e.t"></span></td>
+                  <td x-text="e.d || '·'"></td>
+                  <td x-text="e.ex"></td>
+                </tr>
+              </template></tbody>
+            </table>
+            <div x-show="!polRows().length" class="text-xs text-muted" style="margin-top:6px">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
+          </div>
+        </template>
+        <!-- 등급: 등급 | 판정 기준 -->
+        <template x-if="polTab==='grade'">
+          <div>
+            <table class="poltbl">
+              <thead><tr><th style="width:186px">등급</th><th>판정 기준</th></tr></thead>
+              <tbody><template x-for="e in polRows()" x-bind:key="'pgd'+e.k">
+                <tr x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
+                  <td><span class="ds-badge" x-bind:class="e.k==='G'?'ds-badge--success':(e.k==='R'?'ds-badge--error':'ds-badge--neutral')" x-text="e.t"></span></td>
+                  <td x-text="e.d || '·'"></td>
+                </tr>
+              </template></tbody>
+            </table>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+  <div class="ds-dialog-backdrop" x-show="detailOpen" x-cloak x-on:mousedown.self="detailOpen=false" style="z-index:74">
+    <div class="detailview" x-bind:class="dvcView()==='web' ? 'detailview--wide' : ''" role="dialog" aria-modal="true" aria-label="콘텐츠 상세">
+      <div class="detailview__hd">
+        <span style="display:flex;align-items:center;gap:8px">
+          <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailBack" x-on:click="detailOpen=false; drillOpen=true" data-tip="목록으로" data-tip-pos="bottom" aria-label="목록으로 뒤로가기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <b>콘텐츠 상세 · 검수</b>
+          <span class="text-xs text-muted tnum" x-show="detailNav" x-text="detailNav ? ((detailNav.idx + 1) + ' / ' + detailNav.list.length) : ''"></span>
+        </span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span class="text-xs text-muted" x-show="detailNav" style="cursor:help" data-tip="단축키 · A 정확 · S 수정 · ← → 이전/다음 · Esc 닫기" data-tip-pos="bottom">⌨ 단축키</span>
+          <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailNav" x-bind:disabled="!detailNav || detailNav.idx <= 0" x-on:click="detailGo(-1)" data-tip="이전 항목 (←)" data-tip-pos="bottom" aria-label="이전 항목"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailNav" x-bind:disabled="!detailNav || detailNav.idx >= detailNav.list.length - 1" x-on:click="detailGo(1)" data-tip="다음 항목 (→)" data-tip-pos="bottom" aria-label="다음 항목"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="detailOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        </span>
+      </div>
+      <div class="detailview__body">
+        <div class="detailview__content">
+          <!-- 원문 링크가 있으면 좌측 패널을 '추출 텍스트 ↔ 원문 페이지' 탭으로 전환(검수자 대조 편의) -->
+          <div class="dvc__viewtabs" x-show="detail && detail.url" x-cloak>
+            <span class="srcfilter" style="display:inline-flex;gap:var(--ds-space-1)">
+              <button type="button" class="srcfilter__chip" x-bind:class="dvcView()==='text'?'sel':''" x-on:click="setDvcView('text')">추출 텍스트</button>
+              <button type="button" class="srcfilter__chip" x-bind:class="dvcView()==='web'?'sel':''" x-on:click="setDvcView('web')">원문 페이지</button>
+            </span>
+            <!-- 배율 3단계: 작게(50)·보통(75)·크게(100) · 축소하면 한 화면에 더 담긴다 · 선택은 기억 -->
+            <span class="srcfilter" style="display:inline-flex;gap:var(--ds-space-1);margin-left:auto" x-show="dvcView()==='web'" x-cloak>
+              <template x-for="o in [{z:50,t:'작게'},{z:75,t:'보통'},{z:100,t:'크게'}]" x-bind:key="'dz'+o.z">
+                <button type="button" class="srcfilter__chip" x-bind:class="dvcZoom===o.z?'sel':''" x-on:click="setDvcZoom(o.z)" x-bind:data-tip="o.z+'%'" data-tip-pos="top" x-text="o.t"></button>
+              </template>
+            </span>
+          </div>
+          <div class="dvc__service" x-text="detail && (detail.service || '·')"></div>
+          <h2 class="dvc__title" x-text="detail && (detail.title || '(제목 없음)')"></h2>
+          <div class="dvc__subtitle" x-show="detail && detail.subtitle" x-text="detail && detail.subtitle"></div>
+          <template x-if="dvcView()==='text'">
+            <div>
+              <div class="dvc__bodytext" x-show="detail && detail.body" x-text="detail && detail.body"></div>
+              <div class="dvc__note" x-show="detail && !detail.body">전체 본문은 저장되지 않습니다 · 리드문·메타 기준으로 검수하세요</div>
+            </div>
+          </template>
+          <template x-if="dvcView()==='web'">
+            <div class="dvc__webwrap">
+              <div class="dvc__webbox">
+                <iframe class="dvc__web" x-bind:src="detail && detail.url" x-bind:style="'transform:scale('+(dvcZoom/100)+');width:'+(10000/dvcZoom)+'%;height:'+(10000/dvcZoom)+'%'" sandbox="allow-scripts allow-popups allow-forms" referrerpolicy="no-referrer" loading="lazy" title="원문 페이지"></iframe>
+              </div>
+              <div class="dvc__note" style="margin-top:var(--ds-space-2)">화면이 비어 보이면 이 사이트가 내장 표시를 차단한 것입니다</div>
+            </div>
+          </template>
+        </div>
+        <div class="detailview__eval">
+          <div x-show="detail && (detail.grade || detail.model)" class="flex flex-wrap items-center gap-1.5"><span class="ds-badge" x-bind:class="detail && detail.grade==='G'?'ds-badge--success':(detail && detail.grade==='R'?'ds-badge--error':'ds-badge--reason')" x-bind:data-tip="detail && !detail.grade ? '품질 호출이 실패해 판정을 보류했습니다 · 재실행하면 다시 판정합니다' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail && (detail.grade==='G'?'유통 가능 · G':(detail.grade==='R'?'차단 · R':'판정 보류 · 재실행 필요'))"></span></span><span class="ds-badge ds-badge--intent" style="cursor:help" x-show="detail && detail.model" data-tip="이 결과 초안을 만든 모델 · 교정 피드백이 이 모델 프롬프트로 귀속됩니다" data-tip-pos="top" x-text="detail ? detail.model : ''"></span></div>
+          <!-- 리드문 즉시 확인: 좌측이 원문 페이지 탭일 때도 우측에서 초안 리드문을 대조(회의 소요) -->
+          <div class="dve__sec" x-show="detail && detail.summary"><div class="dve__lbl">리드문</div><div class="dve__lead" x-text="detail && detail.summary"></div></div>
+          <div class="dve__sec"><div class="dve__lbl">엔티티 <span class="text-xs text-muted" style="font-weight:400" x-show="Object.keys(entLookup).length">· 사전 등재분은 타입 표시 · 클릭해 상세·수정·보강</span></div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.entities:[])" x-bind:key="e"><span class="ds-badge" style="cursor:pointer" x-bind:class="entLookup[e] ? 'ds-badge--entity' : 'ds-badge--neutral'" role="button" tabindex="0" x-on:click="openEntByName(e)" x-on:keydown.enter="openEntByName(e)" x-bind:data-tip="entLkTip(e)" data-tip-pos="top" x-text="e + (entLookup[e] && entLookup[e].type ? (' · ' + entLookup[e].type) : '')"></span></template><span x-show="detail && !detail.entities.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.intent:[])" x-bind:key="e"><span class="ds-badge ds-badge--intent" style="cursor:pointer" x-bind:data-tip="termDef('intent', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('intent', e)" x-text="e"></span></template><span x-show="detail && !detail.intent.length" class="text-xs text-muted">·</span></div></div>
+          <div class="dve__sec"><div class="dve__lbl">카테고리</div>
+            <div class="flex flex-wrap gap-1 items-center">
+              <template x-for="e in (detail?detail.category:[])" x-bind:key="e"><span class="ds-badge ds-badge--category" style="cursor:pointer" x-bind:data-tip="termDef('category', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('category', e)" x-text="catKo(e)"></span></template>
+              <!-- 빈칸 감지 → 분류 필요 + 구조화 채우기(IAB Tier1/2) -->
+              <template x-if="detail && !detail.category.length">
+                <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span class="ds-badge ds-badge--error">미분류 · 분류 필요</span>
+                  <select class="field" style="height:30px;width:auto;padding:0 24px 0 8px;font-size:12px" x-on:change="fillCategory(detail, $event.target.value); $event.target.value=''">
+                    <option value="">분류 선택…</option>
+                    <template x-for="opt in categoryOptions" x-bind:key="opt"><option x-bind:value="opt" x-text="catKo(opt)"></option></template>
+                  </select>
+                </span>
+              </template>
+            </div>
+          </div>
+          <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="reasonBoth(e)"></span></template></div></div>
+          <!-- 작업 이력: 판정·교정·재실행 타임라인(접이식 · 회의 소요) · 운영은 팀 생성자·슈퍼관리자 전용 -->
+          <div class="dve__sec" x-show="backend !== 'supabase' || (adminData && adminData.isSuperAdmin)" x-cloak>
+            <button type="button" class="copybtn" x-on:click="toggleHistory()" x-text="histOpen ? '작업 이력 닫기' : '작업 이력 보기'"></button>
+            <div x-show="histOpen" x-cloak class="histbox">
+              <div class="text-xs text-muted" x-show="histBusy">불러오는 중…</div>
+              <template x-for="(h,hi) in histItems" x-bind:key="hi">
+                <div class="histrow">
+                  <span class="histrow__ts tnum" x-text="histWhen(h.ts)"></span>
+                  <span class="histrow__who" x-show="h.who" x-text="h.who"></span>
+                  <span class="histrow__label" x-bind:class="h.kind==='verdict' ? '' : 'is-sub'" x-text="h.label"></span>
+                  <span class="histrow__note" x-show="h.note" x-bind:data-tip="h.note" data-tip-pos="left">메모</span>
+                </div>
+              </template>
+              <div x-show="!histBusy && !histItems.length" class="text-xs text-muted">아직 기록이 없습니다</div>
+            </div>
+          </div>
+          <div class="dve__verdict">
+            <div class="dve__lbl" style="display:flex;align-items:center;gap:8px"><span x-text="finalMode ? '최종검수 결정' : '검수 판정'"></span>
+              <label x-show="detailNav && !finalMode" class="chk-inline" style="font-size:11px;font-weight:400;color:var(--ds-muted);margin-left:auto">
+                <input type="checkbox" x-model="autoNext" x-on:change="saveAutoNext()">저장 후 다음 미검수로
+              </label>
+            </div>
+            <!-- 최종검수 흐름(finalMode): '검수 판정' 자리가 통째로 '최종검수 결정'이 된다 · 기초 판정 UI 는 숨김
+                 (단축키도 A=편입 · S=제외 로 전환) -->
+            <template x-if="finalMode">
+              <div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span class="ds-badge" x-show="finalCtx.final" x-bind:class="finalCtx.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="finalCtx.final==='good' ? '편입 확정' : '제외 확정'"></span>
+                  <span class="text-xs text-muted tnum" x-show="finalCtx.final" x-text="(finalCtx.final_by || '') + (finalCtx.final_ts ? (' · ' + fmtTs(finalCtx.final_ts)) : '')"></span>
+                  <span class="text-xs text-muted" x-show="!finalCtx.final" x-text="'결정 전 · 사유: ' + (finalCtx.final_reason || '')"></span>
+                </div>
+                <div class="text-xs text-muted" style="margin-top:6px" x-text="'기초 의견 · 정확 ' + ((finalCtx.fb&&finalCtx.fb.good)||0) + '개 · 수정 필요 ' + ((finalCtx.fb&&finalCtx.fb.bad)||0) + '개'"></div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx.final!=='good'" x-on:click="finalDecide(finalCtx,'good')" data-tip="이 초안 그대로 정답셋 편입 확정 · 다수결보다 우선 (단축키 A)" data-tip-pos="top">편입</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx.final!=='good'" x-on:click="openFinalAnswer(finalCtx)" data-tip="요약·분류·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 정답" data-tip-pos="top">고쳐서 편입</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="finalCtx.final!=='bad'" x-on:click="finalDecide(finalCtx,'bad')" data-tip="정답셋 승격 금지 (단축키 S)" data-tip-pos="top">제외</button>
+                  <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="finalCtx.final" x-on:click="finalDecide(finalCtx,'')">철회</button>
+                </div>
+              </div>
+            </template>
+            <!-- 검수 완료 = '내 표(myVerdict)' 기준(목록·다음 미검수 이동과 동일 · 2026-07-10):
+                 남이 검수한 콘텐츠도 내가 안 했으면 아래 판정 UI 가 뜬다. 완료 시 팀 합의 3상태 + 내 판정 병기 + 추가 수정 -->
+            <template x-if="!finalMode && detail && myVerdict(detail.fb) && !editVerdict">
+              <div>
+                <!-- 팀 표 2개 이상이면 주어를 명시(팀 판정)하고 내 판정을 분리 표기 · 단독 판정은 기존 표기 -->
+                <span class="ds-badge" x-bind:class="detail.fb.verdict==='good' ? 'ds-badge--success' : (detail.fb.verdict==='split' ? 'ds-badge--reason' : 'ds-badge--error')" x-bind:data-tip="detail.fb.verdict==='split' ? '정확과 수정 필요로 의견이 갈렸습니다 · 재검토 대상' : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="detail.fb.n > 1 ? (detail.fb.verdict==='good' ? '팀 판정 · 정확' : (detail.fb.verdict==='split' ? '팀 판정 · 의견 갈림' : '팀 판정 · 수정 필요')) : (detail.fb.verdict==='good' ? '검수 완료 · 정확' : '검수 완료 · 수정 필요')"></span></span>
+                <span class="text-xs text-muted" x-show="detail.fb.ts" x-text="'· 최종 수정 ' + fmtTs(detail.fb.ts)" style="margin-left:6px"></span>
+                <div class="dve__mine" x-show="detail.fb.n > 1" x-cloak>
+                  <span class="dve__mine-lbl">내 판정</span>
+                  <span class="ds-badge" x-bind:class="detail.fb.mine==='good' ? 'ds-badge--success' : (detail.fb.mine==='bad' ? 'ds-badge--error' : 'ds-badge--neutral')" x-text="detail.fb.mine==='good' ? '정확' : (detail.fb.mine==='bad' ? '수정 필요' : '아직 없음')"></span>
+                  <span class="text-xs text-muted" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개'"></span>
+                </div>
+                <!-- 리드 최종판정: 의견 갈림을 리드(슈퍼관리자 이상)가 확정 · 골든 승격에서 다수결보다 우선 -->
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px" x-show="opsAdmin && (detail.fb.verdict==='split' || detail.final)" x-cloak>
+                  <span class="text-xs text-muted">리드 최종판정</span>
+                  <span class="ds-badge" x-show="detail.final" x-bind:class="detail.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="detail.final==='good' ? '확정 · 정확' : '확정 · 수정 필요'"></span>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.final!=='good'" x-on:click="setFinal(detail, 'good')" data-tip="이 콘텐츠를 '정확'으로 확정합니다 · 정답셋 승격에서 다수결보다 우선" data-tip-pos="top">정확으로 확정</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.final!=='bad'" x-on:click="setFinal(detail, 'bad')" data-tip="이 콘텐츠를 '수정 필요'로 확정합니다 · 정답셋 승격 금지" data-tip-pos="top">수정 필요로 확정</button>
+                  <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="detail.final" x-on:click="setFinal(detail, '')">철회</button>
+                </div>
+                <div class="tbox" x-show="myVerdict(detail.fb)==='bad' && detail.fb.note" style="margin-top:8px" x-text="detail.fb.note"></div>
+                <div style="display:flex;gap:var(--ds-space-2);margin-top:10px">
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEditVerdict()">추가 수정</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.fb.mine || (backend !== 'supabase' && detail.fb.n === 1)" x-cloak x-on:click="undoVerdict()" data-tip="내 표만 취소합니다 · 다른 검수자의 판정은 그대로 유지됩니다" data-tip-pos="top">내 판정 취소</button>
+                </div>
+              </div>
+            </template>
+            <!-- 미검수(내 표 없음) 또는 추가 수정 중 -->
+            <template x-if="!finalMode && detail && (!myVerdict(detail.fb) || editVerdict)">
+              <div>
+                <div class="text-xs text-muted" x-show="detail.fb && detail.fb.n && !myVerdict(detail.fb)" x-cloak style="margin-bottom:8px" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개 · 내 판정을 남겨주세요'"></div>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="verdictbtn verdictbtn--good" x-bind:class="!pendingBad && detail && myVerdict(detail.fb)==='good' ? 'is-on' : ''" x-on:click="reviewGood()"><span class="verdictbtn__dot"></span>정확</button>
+                  <button type="button" class="verdictbtn verdictbtn--bad" x-bind:class="pendingBad ? 'is-on' : ''" x-on:click="pendingBad=true"><span class="verdictbtn__dot"></span>수정 필요</button>
+                </div>
+                <!-- 수정 필요: 요소·사유 입력 후 '완료 처리' 로만 확정 -->
+                <template x-if="pendingBad">
+                  <div style="margin-top:10px">
+                    <div class="dve__lbl" style="margin-bottom:6px">어떤 요소를 고칠까요?</div>
+                    <div class="fixelems">
+                      <template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id">
+                        <button type="button" class="fixelem" x-bind:class="fbElems(detail.fb).includes(fe.id) ? 'sel' : ''" x-on:click="toggleFixElem(detail.fb, fe.id)" x-text="fe.label"></button>
+                      </template>
+                    </div>
+                    <textarea x-model="detail.fb.note" rows="3" class="field" style="margin-top:8px" x-bind:placeholder="fbElems(detail.fb).map((e)=>elemLabel(e)).join('·') + ' 이(가) 왜 잘못됐는지 · 요소를 여러 개 고르면 각 단계로 나눠 반영됩니다'"></textarea>
+                    <div style="display:flex;gap:var(--ds-space-2);margin-top:8px">
+                      <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="reviewBadComplete()" x-bind:disabled="!(detail.fb.note||'').trim()" data-tip="선택한 요소와 메모를 '수정 필요' 판정으로 저장합니다" data-tip-pos="top">교정 저장</button>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="pendingBad=false; if(!myVerdict(detail.fb)) editVerdict=false">취소</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⚙ 설정 = 고정 팝업(Dialog) · 위젯 아님(§9.5) -->
+  <!-- 플로팅 도우미(채널톡 스타일) · 모든 기능 허브 -->
+  <div class="ds-chat" x-show="chatOpen" x-cloak>
+    <div class="ds-chat__head">
+      <span class="ds-chat__av"><img x-bind:src="charImg(reviewer ? reviewerChar : 'boksil')" alt=""></span>
+      <div><div class="ds-chat__title" x-text="(reviewer || 'Prism') + ' 에이전트'"></div><div class="ds-chat__sub"><span class="ds-statusdot ds-statusdot--ok"><span class="ds-statusdot__dot"></span></span>보통 1분 내 응답</div></div>
+      <span style="margin-left:auto"><button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="chatOpen = false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></span>
+    </div>
+    <div class="ds-chat__body">
+      <template x-for="(m, i) in chatMsgs" x-bind:key="i"><div class="ds-chat__msg" x-bind:class="m.from === 'me' ? 'ds-chat__msg--me' : 'ds-chat__msg--bot'" x-text="m.text"></div></template>
+    </div>
+    <div class="ds-chat__quick">
+      <button type="button" class="chatchip" x-on:click="chatAct('extract')">＋ 새 추출</button>
+      <button type="button" class="chatchip" x-on:click="chatAct('dict')">사전 편집</button>
+      <button type="button" class="chatchip" x-on:click="chatAct('settings')">설정</button>
+    </div>
+    <div class="ds-chat__foot"><textarea class="ds-chat__input" x-model="chatDraft" rows="1" placeholder="작업을 지시하세요…" x-on:keydown.enter.prevent="chatSend()"></textarea><button type="button" class="ds-chat__send" x-on:click="chatSend()" aria-label="보내기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h10M8 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+  </div>
+
+  <!-- 복사 토스트 -->
+  <div x-show="copyMsg" x-cloak x-transition.opacity class="toast" x-text="copyMsg" aria-live="polite"></div>
+
+</div>
+
+<!-- 위젯 홈 인터랙션(편집·리사이즈·드래그·틸트) · SERVICE_DESIGN §4.3 규격 -->

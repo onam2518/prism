@@ -1,0 +1,170 @@
+      <!-- ═══ 모듈: 미디어 메타 파이프라인 (포토·영상 텍스트화 → 메타추출 설계·실험) ═══ -->
+      <div x-show="mod === 'lab' && labTab === 'media'" x-cloak class="w-full space-y-4">
+        <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+          <li><b>포토·영상 메타 추출 파이프라인 v1</b> — Gemini Flash 기반 <b>텍스트화 트랙</b>(자막·오디오·비주얼)으로 통합 원고를 만들고, 텍스트 추론 모델이 <b>아이템 메타</b>(리드문·인텐트·엔티티·IAB)를 뽑습니다.</li>
+          <li>텍스트화는 Flash 고정, <b>메타추출 모델은 인터페이스로 종속을 차단한 선정 대기 슬롯</b>입니다 · 로컬 미디어 디코딩(ffmpeg) 미사용 → 입력은 이미 분해된 미디어(자막·오디오·프레임).</li>
+        </ul>
+
+        <!-- 파이프라인 트랙 현황 -->
+        <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
+          <div class="tile"><div class="t" style="font-weight:600">T1 자막 파싱</div><div class="text-xs text-muted" style="margin-top:4px">SRT/VTT → 타임스탬프 원고 · 룰(모델 0건)</div><span class="ds-badge ds-badge--success" style="margin-top:8px"><span class="ds-badge__dot"></span>실동작</span></div>
+          <div class="tile"><div class="t" style="font-weight:600">T2 오디오 전사</div><div class="text-xs text-muted" style="margin-top:4px">라우터 input_audio → 구조화 전사(Gemini Flash)</div><span class="ds-badge ds-badge--neutral" style="margin-top:8px"><span class="ds-badge__dot"></span>라우터 연결 대기</span></div>
+          <div class="tile"><div class="t" style="font-weight:600">T3 비주얼 묘사</div><div class="text-xs text-muted" style="margin-top:4px">프레임 k장 단일 호출 → 묘사+화면 텍스트</div><span class="ds-badge ds-badge--neutral" style="margin-top:8px"><span class="ds-badge__dot"></span>라우터 연결 대기</span></div>
+        </div>
+
+        <!-- T1 자막 파싱 실험기 (모델·ffmpeg 불필요 · 보유율 실측 = 비용 계획 기준점) -->
+        <div class="panel"><div class="panel-hd"><b>T1 · 자막 파싱 실험기</b><span class="meta">SRT/VTT 붙여넣기 → 타임스탬프 원고 · 자막 보유율이 비용 계획의 기준점</span></div>
+          <div class="panel-bd space-y-4">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div style="flex:1;min-width:260px"><label class="lbl">자막 원문 (SRT · VTT)</label>
+                <textarea class="field" style="min-height:120px;font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px" x-model="mediaSub.raw" placeholder="1&#10;00:00:01,000 --> 00:00:04,000&#10;안녕하세요 여러분"></textarea>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div><label class="lbl">형식</label>
+                  <select class="field" x-model="mediaSub.fmt" style="width:120px">
+                    <option value="">자동 판별</option><option value="srt">SRT</option><option value="vtt">VTT</option>
+                  </select>
+                </div>
+                <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaParse()" x-bind:disabled="mediaBusy||!mediaSub.raw.trim()">파싱</button>
+              </div>
+            </div>
+            <div x-show="mediaMsg" class="text-xs text-muted" x-text="mediaMsg"></div>
+            <div x-show="mediaRes" class="space-y-3">
+              <div class="tiles" style="grid-template-columns:repeat(2,1fr)">
+                <div class="tile"><div class="n tnum" x-text="mediaRes?mediaRes.cue_count:0"></div><div class="t">파싱된 큐</div></div>
+                <div class="tile"><div class="n tnum" style="text-transform:uppercase" x-text="mediaRes?mediaRes.format:''"></div><div class="t">판별 형식</div></div>
+              </div>
+              <div><label class="lbl">타임스탬프 원고</label>
+                <pre class="field" style="max-height:220px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px" x-text="mediaRes?mediaRes.transcript:''"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 포토·이미지 실험 (업로드 → 시각 이해 → 합성 Content → 기존 추출 ItemMeta · 실험·미저장 · 콘텐츠 관리에서 이관) -->
+        <div class="panel"><div class="panel-hd"><b>포토 · 이미지 실험</b><span class="meta">이미지 업로드(여러 장 = 하나로 통합) → 시각 이해 → 합성 Content → 기존 추출(ItemMeta) · 실험이라 저장 안 함</span></div>
+          <div class="panel-bd space-y-4">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div style="flex:1;min-width:240px"><label class="lbl">이미지 파일 (여러 장 가능)</label>
+                <input type="file" accept="image/*" multiple class="field" x-on:change="mediaImgPick($event)">
+              </div>
+              <div style="flex:1;min-width:200px"><label class="lbl">캡션 (선택)</label>
+                <input class="field" x-model="mediaImg.caption" placeholder="사진 설명이 있으면 함께 참조">
+              </div>
+              <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaImgRun()" x-bind:disabled="mediaImgBusy||!mediaImg.files.length">실행</button>
+            </div>
+            <div x-show="mediaImg.files.length" class="text-xs text-muted" x-text="mediaImg.files.length + '장 선택됨'"></div>
+            <div x-show="mediaImgMsg" class="text-xs text-muted" x-text="mediaImgMsg"></div>
+            <div x-show="mediaImgRes" class="space-y-3">
+              <div x-show="mediaImgRes && mediaImgRes.mock"><span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock · 비전 미연결(키 없음)</span></div>
+              <div><label class="lbl">합성 Content (본문)</label>
+                <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaImgRes ? (mediaImgRes.content.body || '') : ''"></pre></div>
+              <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타 (기존 추출 재사용)</b><span class="meta">실험 · 미저장</span></div>
+                <div class="panel-bd space-y-2">
+                  <div class="drow"><div class="k">리드문</div><div class="v text-sm text-body" x-text="mediaImgRes ? ((mediaImgRes.output.item_meta||{}).summary || '—') : ''"></div></div>
+                  <div class="drow"><div class="k">인텐트</div><div class="v flex flex-wrap gap-1.5"><template x-for="it in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">—</span></div></div>
+                  <div class="drow"><div class="k">엔티티</div><div class="v flex flex-wrap gap-1.5"><template x-for="e in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">—</span></div></div>
+                  <div class="drow"><div class="k">카테고리</div><div class="v flex flex-wrap gap-1.5"><template x-for="c in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">—</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- T4 네이티브 비디오 실험 (영상 통짜 → 라우터 위임 → 병합 → 합성 Content → 기존 추출 ItemMeta · 실험·미저장) -->
+        <div class="panel"><div class="panel-hd"><b>T4 · 네이티브 비디오 실험</b><span class="meta">영상 업로드 → 라우터 위임(프레임+오디오 단일 호출) → 병합 → 합성 Content → 기존 추출(ItemMeta) · 실험이라 저장 안 함</span></div>
+          <div class="panel-bd space-y-4">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div style="flex:1;min-width:240px"><label class="lbl">영상 파일</label>
+                <input type="file" accept="video/*" class="field" x-on:change="mediaVidPick($event)">
+              </div>
+              <div style="flex:1;min-width:200px"><label class="lbl">캡션·설명 (선택)</label>
+                <input class="field" x-model="mediaVid.caption" placeholder="기존 텍스트 메타(제목·설명)와 결합">
+              </div>
+              <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaNative()" x-bind:disabled="mediaVidBusy||!mediaVid.file">실행</button>
+            </div>
+            <div><label class="lbl">자막 원문 (선택 · SRT/VTT)</label>
+              <textarea class="field" rows="3" x-model="mediaVid.subs" placeholder="자막을 붙여넣으면 영상 모델을 부르지 않고 자막으로 원고를 만듭니다 (비용 0)"></textarea>
+            </div>
+            <div x-show="mediaVidMsg" class="text-xs text-muted" x-text="mediaVidMsg"></div>
+            <div x-show="mediaVidRes" class="space-y-3">
+              <div x-show="mediaVidRes && mediaVidRes.mock"><span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock · 라우터 미연결(키 없음)</span></div>
+              <div x-show="mediaVidRes && mediaVidRes.native && mediaVidRes.native.skipped"><span class="ds-badge ds-badge--success" style="cursor:help" data-tip="자막이 있어 발화 원고를 자막에서 얻었습니다 · 영상 모델 호출이 없어 비용이 들지 않아요" data-tip-pos="top"><span class="ds-badge__dot"></span>자막 우선 · 영상 모델 호출 생략</span></div>
+              <div><label class="lbl">발화 전사 (오디오 트랙)</label>
+                <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? (mediaVidRes.native.audio.transcript || '(발화 없음)') : ''"></pre></div>
+              <div><label class="lbl">비주얼 묘사</label>
+                <div class="text-sm text-body" x-text="mediaVidRes ? mediaVidRes.native.visual.description : ''"></div>
+                <div class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.native.visual.on_screen_text" x-text="'[화면 텍스트] ' + (mediaVidRes ? mediaVidRes.native.visual.on_screen_text : '')"></div></div>
+              <div><label class="lbl">통합 원고 (S4 병합) <span class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.merged.spoken_source" x-text="'· 발화 출처: ' + (mediaVidRes && mediaVidRes.merged.spoken_source === 'subtitle' ? '자막(모델 0건)' : '오디오 전사')"></span></label>
+                <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? mediaVidRes.merged.transcript : ''"></pre></div>
+              <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타 (S5 · 기존 추출 재사용)</b><span class="meta">실험 · 미저장</span></div>
+                <div class="panel-bd space-y-2">
+                  <div class="drow"><div class="k">리드문</div><div class="v text-sm text-body" x-text="mediaVidRes ? ((mediaVidRes.output.item_meta||{}).summary || '—') : ''"></div></div>
+                  <div class="drow"><div class="k">인텐트</div><div class="v flex flex-wrap gap-1.5"><template x-for="it in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">—</span></div></div>
+                  <div class="drow"><div class="k">엔티티</div><div class="v flex flex-wrap gap-1.5"><template x-for="e in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">—</span></div></div>
+                  <div class="drow"><div class="k">카테고리</div><div class="v flex flex-wrap gap-1.5"><template x-for="c in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">—</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- S5 · 메타추출 모델 A/B (같은 통합 원고 → 후보 모델별 ItemMeta 나란히 · 실험·미저장) -->
+        <div class="panel"><div class="panel-hd"><b>S5 · 메타추출 모델 A/B</b><span class="meta">같은 통합 원고를 후보 모델에 태워 리드문·인텐트·엔티티·IAB 나란히 비교 · 모델 교체 자유 실측(인터페이스 종속 차단 증명)</span></div>
+          <div class="panel-bd space-y-4">
+            <div><label class="lbl">통합 원고 (S4 병합 결과 붙여넣기 또는 임의 콘텐츠 본문)</label>
+              <textarea class="field" style="min-height:100px;font-size:12px" x-model="mediaS5.text" placeholder="영상/이미지 통합 원고 또는 콘텐츠 본문"></textarea>
+            </div>
+            <div><label class="lbl">후보 모델 <span class="meta" x-text="'· 선택 ' + mediaS5.models.length"></span></label>
+              <div class="flex flex-wrap gap-1.5">
+                <template x-for="m in availableModels" x-bind:key="m">
+                  <span class="ds-badge" style="cursor:pointer" x-bind:class="mediaS5.models.includes(m) ? 'ds-badge--intent' : 'ds-badge--neutral'" x-on:click="mediaS5Toggle(m)" x-text="m"></span>
+                </template>
+                <span x-show="!availableModels.length" class="text-xs text-muted">사용 가능 모델이 없습니다 · 설정에서 모델을 지정하세요</span>
+              </div>
+            </div>
+            <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaS5Run()" x-bind:disabled="mediaS5Busy||!mediaS5.text.trim()||!mediaS5.models.length">A/B 실행</button>
+            <div x-show="mediaS5Msg" class="text-xs text-muted" x-text="mediaS5Msg"></div>
+            <div x-show="mediaS5Res" style="overflow-x:auto">
+              <div style="display:flex;gap:12px;min-width:min-content">
+                <template x-for="r in (mediaS5Res ? mediaS5Res.results : [])" x-bind:key="r.model">
+                  <div class="panel" style="margin:0;min-width:230px;flex:1">
+                    <div class="panel-hd"><b x-text="r.model"></b>
+                      <span x-show="r.mock" class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock</span>
+                      <span x-show="!r.mock && !r.error && r.empty" class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>빈 산출</span>
+                    </div>
+                    <div class="panel-bd space-y-2">
+                      <template x-if="r.error"><div class="text-xs" style="color:var(--ds-error,#c0392b)" x-text="r.error"></div></template>
+                      <!-- 빈 산출 진단: trace.fails 의 fail_kind 노출(예: parse_empty=침묵 빈응답) -->
+                      <template x-if="!r.error && !r.mock && r.empty">
+                        <div class="text-xs text-muted">진단: <span x-text="(r.fails&&r.fails.length) ? r.fails.map(f=>f.tag+'·'+f.kind).join(', ') : '실호출됐으나 메타 미산출(응답 공백 추정)'"></span></div>
+                      </template>
+                      <template x-if="!r.error">
+                        <div class="space-y-2">
+                          <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="(r.item_meta||{}).summary || '—'"></div></div>
+                          <div><div class="lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="it in ((r.item_meta||{}).intent||[])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template></div></div>
+                          <div><div class="lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in ((r.item_meta||{}).entities||[])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template></div></div>
+                          <div><div class="lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="c in ((r.item_meta||{}).content_category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template></div></div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div class="text-xs text-muted">키 미연결 시 모든 모델이 route=mock 로 동일 산출됩니다 · 라우터/Upstage 키 연결 시 모델별로 갈립니다.</div>
+          </div>
+        </div>
+
+        <!-- 후속 슬롯 안내 -->
+        <div class="panel"><div class="panel-hd"><b>후속 슬롯</b><span class="meta">진행 현황</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets">
+              <li><b>raw 영상 분해</b> — <b>네이티브 비디오(라우터 위임)로 결정</b>. 영상 통짜를 라우터로 보내 프레임+오디오 동시 토큰화(로컬 ffmpeg 미사용). <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>결정</span></li>
+              <li><b>이미지 이관</b> — 콘텐츠 관리 이미지 처리를 이 미디어 탭으로 이관 완료(실험실 전담). <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>완료</span></li>
+              <li><b>S5 메타추출 모델</b> — 위 A/B 하네스로 후보 나란히 비교(인터페이스 고정: json_schema · 한국어 · 32K+). 라우터/Upstage 실연결 후 실측 선정. <span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>실연결 후 선정</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
