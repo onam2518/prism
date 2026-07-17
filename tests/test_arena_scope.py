@@ -159,6 +159,40 @@ class TestQuestTargetScope(ArenaScopeBase):
         self.assertEqual(d.get("quest_avg_done"), 1)
         self.assertLessEqual(d.get("quest_avg_done"), d.get("total_targets"))
 
+    def _quest_compute(self, st):
+        from prism import serve
+        from prism.config import Config
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        cfg = Config()
+        cfg.learn_next_at = "2030-01-02T09:30"
+        with mock.patch.object(Config, "load", staticmethod(lambda path=None: cfg)):
+            return serve._arena_compute(None)
+
+    def test_team_progress_is_mean_of_personal_ratios_with_assignments(self):
+        """배정 운영: 게이지 = 개인별(완료/배정) 진척의 팀 평균 — 총 대상 수가 커도 왜곡 없음.
+        A 는 배정 h1 을 완료(1/1), B 는 배정 h2 미완료(0/1) → 팀 평균 0.5."""
+        st = self._seed()
+        st.set_assignees("h1", ["A"], min_reviewers=1)   # A 는 h1 을 이미 검수(유효)
+        st.set_assignees("h2", ["B"], min_reviewers=1)   # h2(자동통과·배정으로 대상 편입) 미검수
+        d = self._quest_compute(st)
+        self.assertEqual(d.get("total_targets"), 2)
+        self.assertEqual(d.get("quest_team_progress"), 0.5)
+
+    def test_team_progress_without_assignments_uses_total_targets(self):
+        """미배정 운영: 개인 분모 = 총 대상 → 기존 '평균 건수/총건수' 관점과 동치."""
+        st = self._seed()                                # 대상 h1 뿐 · A 만 유효 검수 1건
+        d = self._quest_compute(st)
+        self.assertEqual(d.get("quest_team_progress"), 1.0)
+
+    def test_orphan_assignment_ignored_in_team_progress(self):
+        """삭제된 콘텐츠(고아 배정)는 개인 분모에 안 잡힌다(대상 스코프 필터)."""
+        st = self._seed()
+        st.set_assignees("h1", ["A"], min_reviewers=1)
+        st.set_assignees("h3", ["B"], min_reviewers=1)   # h3 은 삭제됨 → 무시
+        d = self._quest_compute(st)
+        self.assertEqual(d.get("quest_team_progress"), 1.0)   # A 1/1 만 평균에 참여
+
 
 if __name__ == "__main__":
     unittest.main()

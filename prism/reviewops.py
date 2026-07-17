@@ -324,6 +324,17 @@ def apply_feedback(data: dict) -> dict:
             _SV._agg_bump()
             return {"ok": True, "feedback": st.feedback_stats(),
                     "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
+        # 배정 배타 검수: 지정 검수자가 있는 콘텐츠는 지정된 사람만 판정할 수 있다.
+        # 생성자·관리자도 예외 없음(직접 검수하려면 콘텐츠 관리에서 배정을 수정) ·
+        # 미지정 콘텐츠는 종전대로 전원 가능 · 판정 취소(위 분기)는 배정과 무관하게 허용.
+        try:
+            asg1 = ((st.assignees(team=data.get("_team")) or {}).get(ch)
+                    if hasattr(st, "assignees") else None)
+        except Exception:
+            asg1 = None
+        if asg1 and asg1.get("reviewers") and reviewer not in asg1["reviewers"]:
+            return {"ok": False, "error": "다른 검수자에게 배정된 콘텐츠입니다 · "
+                                          "직접 검수하려면 콘텐츠 관리에서 배정을 수정하세요"}
         note = (data.get("note") or "").strip()
         elements = [e for e in (data.get("elements") or []) if e in FL.ELEMENTS]
         if not elements and (data.get("element") or "").strip() in FL.ELEMENTS:
@@ -674,6 +685,29 @@ def _arena_compute(team=None) -> dict:
             except Exception:
                 members = len(per)
             d["quest_avg_done"] = round(sum(len(s) for s in per.values()) / members) if members else 0
+            # 퀘스트 게이지 = '개인별 진척도의 팀 평균'(0..1). 총 대상(예: 200)보다 개인 배정이
+            # 적은 운영에서 '평균 건수/총건수'가 영구 미달로 왜곡되는 것 방지 —
+            # 배정이 있으면 개인 분모 = 그 사람의 배정(대상 내), 없으면 총 대상(기존 관점과 동치).
+            try:
+                asg = st.assignees(team=team) if hasattr(st, "assignees") else {}
+            except Exception:
+                asg = {}
+            asg = {ch: a for ch, a in (asg or {}).items()
+                   if targets is None or ch in targets}
+            if asg:
+                by_rv = {}                        # 배정 검수자 → [완료, 배정]
+                for ch, a in asg.items():
+                    for rv in (a.get("reviewers") or []):
+                        cnt = by_rv.setdefault(rv, [0, 0])
+                        cnt[1] += 1
+                        if ch in (per.get(rv) or ()):
+                            cnt[0] += 1
+                progs = [c[0] / c[1] for c in by_rv.values() if c[1]]
+                d["quest_team_progress"] = round(sum(progs) / len(progs), 4) if progs else 0.0
+            else:
+                tt = int(d.get("total_targets") or 0)
+                d["quest_team_progress"] = (round(sum(min(len(s), tt) for s in per.values())
+                                                  / (members * tt), 4) if members and tt else 0.0)
             qs = float((_SV._report_get("quest_meta", team) or {}).get("started_at") or 0)
             if qs:
                 d["quest_started_at"] = qs

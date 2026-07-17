@@ -1019,9 +1019,16 @@
 
 /* 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 에이전트 카드 아래 · 전 메뉴 노출
    구조 = 유형 태그 + D-day(임박 시 경고색) + 제목 + 목표 + 진행 게이지/카운트 + 시한 + CTA */
-.squest{margin-top:var(--ds-space-2);padding:12px 14px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
+.squest{position:relative;margin-top:var(--ds-space-2);padding:12px 14px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
   background:var(--ds-surface-white);cursor:pointer;user-select:none;text-align:left}
 .squest:hover{border-color:var(--ds-primary)}
+/* 퀘스트 캐릭터(플래그 대체 · 내 프로필 캐릭터가 응원): 우측에 큼직하게 + 둥실 애니메이션 */
+.squest__char{position:absolute;right:6px;top:26px;width:64px;height:64px;object-fit:contain;pointer-events:none;
+  filter:drop-shadow(0 3px 5px rgba(0,0,0,.14));animation:squestBob 3.2s ease-in-out infinite}
+@keyframes squestBob{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-5px) rotate(3deg)}}
+@media (prefers-reduced-motion:reduce){.squest__char{animation:none}}
+.squest__title,.squest__model{padding-right:70px}   /* 캐릭터와 텍스트 겹침 방지 */
+.squest__obj{padding-right:70px}
 .squest__hd{display:flex;align-items:center;justify-content:space-between}
 .squest__type{font:700 9.5px/1 var(--ds-font-game);letter-spacing:.06em;color:var(--ds-primary-deep);
   background:var(--ds-primary-tint);padding:3px 8px;border-radius:var(--ds-radius-chip)}

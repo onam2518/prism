@@ -325,16 +325,22 @@
           <span class="squest__type">팀 퀘스트</span>
           <span class="squest__dday" x-bind:class="['D-DAY','D-1'].indexOf(ddayTxt(arenaData?arenaData.next_batch_at:0)) >= 0 ? 'is-urgent' : ''" x-text="ddayTxt(arenaData?arenaData.next_batch_at:0)"></span>
         </div>
-        <div class="squest__title" x-text="'🏁 v' + (arenaData?arenaData.next_version:'') + ' 버전 마감'"></div>
+        <!-- 플래그 대신 내 캐릭터가 응원(우측 · CSS 애니메이션) -->
+        <img class="squest__char" x-bind:src="charImg(reviewerChar)" alt="" aria-hidden="true">
+        <div class="squest__title" x-text="'v' + (arenaData?arenaData.next_version:'') + ' 버전 마감'"></div>
         <div class="squest__model" x-show="arenaData && arenaData.next_model" x-text="(arenaData?arenaData.next_model:'') + ' 새 버전 학습'"></div>
-        <div class="squest__obj" x-show="arenaData && questLeft()" x-text="'목표 · 검수 대상 ' + questTotal() + '건 전량 완주'"></div>
-        <div class="squest__obj" x-show="arenaData && !questLeft()">목표 달성 · 반영을 기다리는 중</div>
+        <!-- 목표·남은 건수 = 배정 운영이면 총 대상(예: 200)이 아니라 '내 배정' 기준 -->
+        <div class="squest__obj" x-show="arenaData && questMyTotal()" x-text="questMyLeft() ? ('목표 · 내 배정 ' + questMyTotal() + '건 완주') : (questLeft() ? '내 몫 완료 · 팀 완주 응원 중' : '목표 달성 · 반영을 기다리는 중')"></div>
+        <div class="squest__obj" x-show="arenaData && !questMyTotal() && questLeft()" x-text="'목표 · 검수 대상 ' + questTotal() + '건 전량 완주'"></div>
+        <div class="squest__obj" x-show="arenaData && !questMyTotal() && !questLeft()">목표 달성 · 반영을 기다리는 중</div>
         <div class="squest__bar"><div class="squest__fill" x-bind:class="arenaData && !questLeft() ? 'is-done' : ''" x-bind:style="'width:' + questPct() + '%'"></div></div>
-        <div class="squest__cnt"><b class="tnum" x-text="questAvgLabel() + questDone() + ' / ' + questTotal()"></b><span class="tnum" x-text="questPct() + '%'"></span></div>
+        <!-- 게이지 수치 = 개인별 진척도(완료/배정)의 팀 평균 · 우측은 내 몫(배정 시) · 구서버는 평균 건수 폴백 -->
+        <div class="squest__cnt" x-show="questTeamPct() != null"><b class="tnum" x-text="'팀 평균 진척 ' + questPct() + '%'"></b><span class="tnum" x-text="questMyTotal() ? ('내 완주 ' + questMyDone() + ' / ' + questMyTotal()) : ('완주 ' + questCover() + ' / ' + questTotal())"></span></div>
+        <div class="squest__cnt" x-show="questTeamPct() == null"><b class="tnum" x-text="questAvgLabel() + questDone() + ' / ' + questTotal()"></b><span class="tnum" x-text="questPct() + '%'"></span></div>
         <div class="squest__foot">
           <span>⏳ <span class="tnum" x-text="fmtTs(arenaData?arenaData.next_batch_at:0) + ' 반영'"></span></span>
-          <span class="squest__go" x-show="arenaData && questLeft()" x-text="'남은 ' + questLeft() + '건 →'"></span>
-          <span class="squest__go" x-show="arenaData && !questLeft()">✓ 완주</span>
+          <span class="squest__go" x-show="arenaData && questLeftMine()" x-text="'남은 ' + questLeftMine() + '건 →'"></span>
+          <span class="squest__go" x-show="arenaData && !questLeftMine()" x-text="questMyTotal() && questLeft() ? '✓ 내 몫 완료' : '✓ 완주'"></span>
         </div>
       </div>
       <!-- 완료 잔상(목표 소진 후 72시간): 다음 퀘스트 생성까지의 공백을 잇는 상태 카드 -->
@@ -343,6 +349,7 @@
           <span class="squest__type">팀 퀘스트</span>
           <span class="squest__dday squest__dday--done">완료</span>
         </div>
+        <img class="squest__char" x-bind:src="charImg(reviewerChar)" alt="" aria-hidden="true">
         <div class="squest__title" x-text="'🏆 v' + (arenaData?arenaData.last_version:'') + ' 반영 완료'"></div>
         <div class="squest__obj">새 퀘스트 대기 중</div>
       </div>
