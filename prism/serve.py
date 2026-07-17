@@ -1941,8 +1941,10 @@ def _p_rerun_all(h, body):
 
 @_post_route("/rerun", gate="admin")                 # 같은 콘텐츠를 다른 모델로 재실행
 def _p_rerun(h, body):
+    # force: 퀘스트 진행 중에도 이 한 건만 의도적 재실행(클라이언트 확인 모달 경유 · 관리자 판단)
     data = json.loads(body or b"{}")
-    return rerun_content(data.get("hash"), (data.get("model") or "").strip(), h._req_team())
+    return rerun_content(data.get("hash"), (data.get("model") or "").strip(), h._req_team(),
+                         force_quest=bool(data.get("force")))
 
 
 @_post_route("/ingest-run", gate="admin")            # 콘텐츠 인입은 관리자 통제(수동·자동 공통)
