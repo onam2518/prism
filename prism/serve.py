@@ -3113,9 +3113,15 @@ def _arena_compute(team=None) -> dict:
                 dts = st.draft_times(team) if hasattr(st, "draft_times") else {}
             except Exception:
                 dts = {}
+            try:                                  # 모집단 = 현재 검수 대상(YELLOW) — 분모(total_targets)와 동일.
+                targets = st.yellow_hashes(team) if hasattr(st, "yellow_hashes") else None
+            except Exception:
+                targets = None
             fm = st.feedback_map(team=team) or {}
             per = {}                              # 검수자 → 유효 검수한 대상 집합
             for ch, e in fm.items():
+                if targets is not None and ch not in targets:
+                    continue                      # 대상 아님(이미 확정·삭제·자동통과) → 옛 검수가 새 퀘스트를 완주시키는 것 방지
                 base = float(dts.get(ch) or 0)
                 for v in e.get("verdicts") or []:
                     if _fb_epoch(v.get("ts")) >= base:

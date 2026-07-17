@@ -236,8 +236,24 @@ class TestButtonsEndToEnd(unittest.TestCase):
         """검수 목표(퀘스트) 일시 설정 왕복 + 초안 기준 진행률 + 해제(삭제)."""
         # 유효 검수 = '현재 초안 생성 이후'의 표: 퀘스트 생성 전에 한 현행 초안 검수도 진행에 포함
         # (생성 시각 창은 홈 팀 진척율과 어긋나고, 전 기간 누적은 재실행 전 옛 초안 검수까지 잡는다)
-        self.ok("/feedback", {"hash": self.review_hash, "service": "뉴스", "title": "스모크 일반",
+        # 모집단 = 현재 검수 대상(YELLOW) — 분모(total_targets)와 동일. 목 실행은 review=auto 라
+        # 살아있는 콘텐츠를 YELLOW 로 마킹해 퀘스트 카드 시나리오를 재현한다.
+        # (review_hash 는 test_05 clear_contents 로 삭제됨 — 그 고아 피드백은 진행에 안 잡혀야 함)
+        self.ok("/run", {"displayServiceName": "뉴스", "title": "퀘스트 대상", "body": "본문 Q"})
+        dash = self.ok("/dashboard")
+        qh = next(c["hash"] for c in dash["contents"] if c["title"] == "퀘스트 대상")
+        st = self.serve.get_store()
+        c = st._conn()
+        p = json.loads(c.execute("SELECT payload FROM results WHERE content_hash=?", (qh,)).fetchone()[0])
+        p.setdefault("quality_meta", {})["review"] = "yellow"
+        c.execute("UPDATE results SET payload=? WHERE content_hash=?",
+                  (json.dumps(p, ensure_ascii=False), qh))
+        c.commit()
+        self.serve._agg_bump()                       # 스토어 직접 수정 → 아레나 캐시 무효화
+        self.ok("/feedback", {"hash": qh, "service": "뉴스", "title": "퀘스트 대상",
                               "verdict": "good", "stage": "review", "note": "", "reviewer": "퀘스트이전"})
+        self.ok("/feedback", {"hash": self.review_hash, "service": "뉴스", "title": "스모크 일반",
+                              "verdict": "good", "stage": "review", "note": "", "reviewer": "고아검수"})
         time.sleep(0.05)
         self.ok("/config", {"learn_next_at": "2030-01-02T09:30"})
         cfg = self.ok("/config")
@@ -251,8 +267,10 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIsInstance(a.get("target_models"), list)  # 카드 모델 = 검수 대상 초안의 생성 모델(provenance)
         self.assertIn("last_version", a)                     # 완료 잔상(반영 완료 카드) 데이터
         self.assertGreater(a.get("quest_started_at") or 0, 0)
-        self.assertGreaterEqual(a.get("quest_done"), 1)      # 현행 초안 검수는 생성 전이어도 유효
+        self.assertEqual(a.get("quest_done"), 1)             # 현행 초안(YELLOW) 검수는 생성 전이어도 유효
         self.assertIsNotNone(a.get("quest_avg_done"))        # 팀 평균 진척(카드 게이지 원천 · 인원으로 나눔)
+        # 삭제된 콘텐츠의 고아 피드백·비대상(auto) 검수는 진행에 안 잡힘 → 생성 직후 '완주' 오표기 방지
+        self.assertLessEqual(a.get("quest_avg_done"), a.get("total_targets"))
         base_done = a.get("quest_done")
         self.ok("/config", {"learn_next_at": "2030-01-03T09:30"})  # 일시 수정: 진행률 불변
         a = self.ok("/arena")
@@ -264,6 +282,9 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.ok("/config", {"learn_next_at": ""})                # 목표 해제 = 퀘스트 삭제
         self.assertEqual(self.ok("/config").get("learnNextAt"), "")
         self.assertEqual(self.ok("/arena").get("next_batch_at") or 0, 0)
+        c.execute("DELETE FROM results WHERE content_hash=?", (qh,))   # 후속 테스트 상태 원복(적재 수 전제)
+        c.commit()
+        self.serve._agg_bump()
 
     def test_10_prompt_snapshot_after_batch(self):
         """학습 반영이 남긴 버전별 프롬프트 스냅샷: 최신 + v 지정 조회(버전 재현 근거)."""

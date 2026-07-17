@@ -145,6 +145,14 @@ class SupabaseStore:
             out[r["id"]] = {"name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil"}
         return out
 
+    def yellow_hashes(self, team=None) -> set:
+        """검수 대상(YELLOW·실행됨) 해시 집합 · 진척율/퀘스트 분자·분모가 공유하는 모집단.
+        미실행(추가만) 콘텐츠는 arena_stats 분모와 동일하게 제외."""
+        q = "select=hash,model&review=eq.yellow"
+        if team:
+            q += f"&team_id=eq.{urllib.parse.quote(team)}"
+        return {r["hash"] for r in self._get("contents", q) if (r.get("model") or "")}
+
     def target_models(self, team=None) -> list:
         """검수 대상 콘텐츠 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance).
         분모와 동일하게 검수 대상(YELLOW)만 — 전량 적재 후 자동통과 건의 모델이 섞이지 않게."""
@@ -860,15 +868,19 @@ class SupabaseStore:
                 s += 1; d -= 1
             return s
 
-        # 검수 대상(팀 YELLOW 콘텐츠) 총량 → 진척율 분모.
+        # 검수 대상(팀 YELLOW 콘텐츠) 집합 → 진척율 분모이자 분자(검수 건수)의 공통 모집단.
         # contents 는 2026-07-06 부터 전량 적재(include_all)라 review=yellow 필터가 필수 —
         # 없으면 G/R 자동통과 건이 분모에 들어가 진척율이 과소 표시(sqlite yellow_count 와 계약 불일치).
         if team:
-            total_targets = len([r for r in self._get(
-                "contents", "select=hash,model&review=eq.yellow&team_id=eq." + urllib.parse.quote(team))
-                if (r.get("model") or "")])           # 미실행(추가만) 콘텐츠는 진척 분모에서 제외
-        else:
+            targets = self.yellow_hashes(team)
+            total_targets = len(targets)
+        else:                                         # 팀 미스코프(레거시): 전체 콘텐츠 = 모집단
+            targets = None
             total_targets = self.count()
+        tgt_done = {}                                 # 검수자 → 현재 검수 대상 중 검수한 건수
+        for ch, rid in reviewed_pairs:
+            if targets is None or ch in targets:
+                tgt_done[rid] = tgt_done.get(rid, 0) + 1
         gold = self.gold_stats(team)
         patches = self.patch_counts(team)
         bonuses = self.event_bonus(team)
@@ -887,7 +899,7 @@ class SupabaseStore:
             denom = mine_total.get(rid)                  # 배정 있는 검수자 → 개인 분모
             if denom:
                 return round(mine_done.get(rid, 0) / denom, 4)
-            rc = board.get(rid, {}).get("reviews", 0)    # 미배정 → 기존 팀 전체 YELLOW 기준
+            rc = tgt_done.get(rid, 0)                    # 미배정 → 현재 검수 대상 중 검수한 건수(누적 아님)
             return round(min(rc, total_targets) / total_targets, 4) if total_targets else 0.0
 
         def _mult(rid):
@@ -913,6 +925,10 @@ class SupabaseStore:
                                 "corrections": v["corrections"], "points": pts,
                                 "level": level_of(pts), "streak": _streak(days_by.get(rid, set())),
                                 "char": meta.get("avatar", "boksil"), "progress": _prog(rid),
+                                # 홈 히어로 캡션용: 현재 검수 대상 기준(누적 reviews 와 분리)
+                                "target_reviews": tgt_done.get(rid, 0),
+                                "assigned_total": mine_total.get(rid, 0),
+                                "assigned_done": mine_done.get(rid, 0),
                                 "week_points": max(0, round(wk_base * mult) + (bonuses.get(rid) or {}).get("week", 0)),
                                 "last_week_points": round(pv_base * mult),
                                 "gold_n": gs["n"], "gold_acc": gs["acc"], "quality_mult": mult,

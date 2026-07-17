@@ -1029,15 +1029,19 @@ class Store:
         c.commit()
         return {"ok": True, "moved": moved}
 
-    def yellow_count(self) -> int:
-        """검수 대상(YELLOW) 총량. json_extract 미지원 빌드는 전체 수로 폴백."""
+    def yellow_hashes(self, team=None) -> set:
+        """검수 대상(YELLOW) 해시 집합 · 진척율/퀘스트의 분자·분모가 공유하는 모집단.
+        json_extract 미지원 빌드는 전체 해시로 폴백(yellow_count 와 동일 계약)."""
         c = self._conn()
         try:
-            return int(c.execute(
-                "SELECT COUNT(*) FROM results WHERE json_extract(payload,'$.quality_meta.review')='yellow'"
-            ).fetchone()[0])
+            return {r[0] for r in c.execute(
+                "SELECT content_hash FROM results WHERE json_extract(payload,'$.quality_meta.review')='yellow'")}
         except Exception:
-            return self.count()
+            return {r[0] for r in c.execute("SELECT content_hash FROM results")}
+
+    def yellow_count(self) -> int:
+        """검수 대상(YELLOW) 총량. json_extract 미지원 빌드는 전체 수로 폴백."""
+        return len(self.yellow_hashes())
 
     def target_models(self, team=None) -> list:
         """검수 대상(YELLOW) 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance)."""
@@ -1139,7 +1143,12 @@ class Store:
             return s
 
         chars = self.reviewers_map()
-        total_targets = self.yellow_count()              # 검수 대상 = YELLOW 총량(분모 정합)
+        targets = self.yellow_hashes()                   # 검수 대상 = 현재 YELLOW 집합(분자·분모 공통 모집단)
+        total_targets = len(targets)
+        tgt_done = {}                                    # 검수자 → 현재 검수 대상 중 검수한 건수
+        for ch, rv in reviewed_pairs:
+            if ch in targets:
+                tgt_done[rv] = tgt_done.get(rv, 0) + 1
         gold = self.gold_stats()
         patches = self.patch_counts()
         bonuses = self.event_bonus()
@@ -1158,7 +1167,7 @@ class Store:
             denom = mine_total.get(rv)                   # 배정 있는 검수자 → 개인 분모
             if denom:
                 return round(mine_done.get(rv, 0) / denom, 4)
-            rc = board.get(rv, {}).get("reviews", 0)     # 미배정 → 기존 팀 전체 YELLOW 기준
+            rc = tgt_done.get(rv, 0)                     # 미배정 → 현재 검수 대상 중 검수한 건수(누적 아님)
             return round(min(rc, total_targets) / total_targets, 4) if total_targets else 0.0
 
         def _mult(rv):
@@ -1183,6 +1192,10 @@ class Store:
                                 "corrections": v["corrections"], "points": pts,
                                 "level": level_of(pts), "streak": _streak(days_by.get(rv, set())),
                                 "char": chars.get(rv, "boksil"), "progress": _prog(rv),
+                                # 홈 히어로 캡션용: 현재 검수 대상 기준(누적 reviews 와 분리)
+                                "target_reviews": tgt_done.get(rv, 0),
+                                "assigned_total": mine_total.get(rv, 0),
+                                "assigned_done": mine_done.get(rv, 0),
                                 "week_points": max(0, round(wk_base * mult) + (bonuses.get(rv) or {}).get("week", 0)),
                                 "last_week_points": round(pv_base * mult),
                                 "gold_n": gs["n"], "gold_acc": gs["acc"], "quality_mult": mult,

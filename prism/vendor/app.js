@@ -1795,6 +1795,10 @@
       get myProgressPct() { const m = this.arenaMe; return m ? Math.round((m.progress || 0) * 100) : 0; },
       get teamProgressPct() { const d = this.arenaData; return d ? Math.round((d.team_progress || 0) * 100) : 0; },
       get reviewTargets() { const d = this.arenaData; return d ? (d.total_targets || 0) : 0; },
+      // 히어로 캡션: 진척율(%)과 같은 모집단으로 표기(누적 reviews 금지 — '대상 4건 중 45건' 모순 방지)
+      get arenaAssignedTotal() { const m = this.arenaMe; return (m && m.assigned_total) || 0; },
+      get arenaAssignedDone() { const m = this.arenaMe; return (m && m.assigned_done) || 0; },
+      get arenaTargetReviews() { const m = this.arenaMe; if (!m) return 0; const v = m.target_reviews != null ? m.target_reviews : m.reviews; return Math.min(v || 0, this.reviewTargets); },
       // 시작하기(온보딩) 카드: 권한별 노출 · '다음부터 표시 안 함' localStorage 영속
       starterHide: (() => { try { return localStorage.getItem('prism_starter_hide') === '1'; } catch (e) { return false; } })(),
       hideStarter() { this.starterHide = true; try { localStorage.setItem('prism_starter_hide', '1'); } catch (e) {} },
