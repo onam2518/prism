@@ -131,7 +131,7 @@
       rawData: null, rawSel: null,
       // 콘텐츠별 검수 담당 배정(관리자 전용): 편집 중 행·선택 담당자·최소 검수인원
       assignSel: null, assignPick: [], assignMin: 1, assignBusy: false,
-      async loadRaw() { try { const p = new URLSearchParams({ limit: '200' }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); } } catch (e) {} },
+      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || 200) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); } } catch (e) {} },
       // 배정 UI 게이트: 로컬(단독)은 항상, 운영(supabase)은 팀 관리자만 · team_members 원천 = adminData.members
       get assignAdmin() { return this.backend !== 'supabase' || !!(this.adminData && this.adminData.isAdmin); },
       get assignMembers() { return (this.adminData && this.adminData.members) || []; },
@@ -166,11 +166,12 @@
       // ── 검수자 일괄 배정(슈퍼관리자 이상) · 리포트 옆 버튼 → ds-dialog 모달 ──
       bulkOpen: false, assignBulkBusy: false,   // 일괄 '배정' 전용 · 일괄 '실행'(bulkBusy)과 분리(플래그 공유 시 상호 오염)
       bulkQ: '', bulkSvc: '', bulkGrade: '', bulkRev: 'todo', bulkAsg: 'unassigned',
-      bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {}, bulkMode: 'same',
+      bulkPick: [], bulkMin: 1, bulkRandN: 50, bulkChecked: {}, bulkMode: 'same', bulkRandMsg: '',
       bulkGrpN: 1, bulkPickG: [],   // 그룹 선택: 그룹 수 · 그룹별 담당자(bulkChecked 값 = 그룹 번호 1..G)
       // 노출 게이트: 로컬은 항상, 운영은 슈퍼관리자·운영관리자(opsadmin)만
       get opsAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isSysAdmin || this.adminData.isSuperAdmin)); },
-      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkGrpN = 1; this.bulkPickG = []; this.bulkOpen = true; this.loadRaw(); this.loadAssignLog(); },
+      // 배정 모달 풀은 넉넉히(1000): 표시용 200 캡을 그대로 쓰면 그 너머 콘텐츠가 배정에서 조용히 빠진다
+      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkGrpN = 1; this.bulkPickG = []; this.bulkRandMsg = ''; this.bulkOpen = true; this.loadRaw(1000); this.loadAssignLog(); },
       // 배정 감사 이력: 누가·언제·어떤 방식으로 몇 건을 배정/해제했는지(모달 하단 표시)
       assignLog: null,
       async loadAssignLog() { try { const r = await (await this._afetch('/assign-log', { headers: this._authHeaders() })).json(); if (r && r.ok) this.assignLog = r.items; } catch (e) {} },
@@ -239,15 +240,22 @@
       bulkRandom() {
         const pool = this.bulkFiltered.slice();
         for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
-        const n = Math.max(0, Math.min(pool.length, parseInt(this.bulkRandN, 10) || 0));
+        const want = Math.max(0, parseInt(this.bulkRandN, 10) || 0);
+        const n = Math.min(pool.length, want);
         const m = {};                                   // 재추출: 기존 선택 초기화
+        let picked = 0;
         if (this.bulkGrps > 1) {                        // 그룹 모드: 그룹마다 N건씩 서로 겹치지 않게 추출
           let k = 0;
-          for (let g = 1; g <= this.bulkGrps; g++) for (let i = 0; i < n && k < pool.length; i++) m[pool[k++].hash] = g;
+          for (let g = 1; g <= this.bulkGrps; g++) for (let i = 0; i < n && k < pool.length; i++) { m[pool[k++].hash] = g; picked++; }
         } else {
-          for (let i = 0; i < n; i++) m[pool[i].hash] = true;
+          for (let i = 0; i < n; i++) { m[pool[i].hash] = true; picked++; }
         }
         this.bulkChecked = m;
+        // 풀 부족으로 요청보다 적게 뽑히면 명시(조용한 축소가 '100건씩 했는데 96건' 혼란을 만든다)
+        const need = want * this.bulkGrps;
+        this.bulkRandMsg = picked < need
+          ? '⚠ 요청 ' + need + '건(' + want + '건 × ' + this.bulkGrps + (this.bulkGrps > 1 ? '그룹' : '') + ') 중 ' + picked + '건만 추출됨 · 필터 결과가 ' + pool.length + '건뿐입니다'
+          : '';
       },
       bulkPickToggle(id) {
         const i = this.bulkPick.indexOf(id);

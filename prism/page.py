@@ -3024,6 +3024,7 @@ PAGE = """<!doctype html>
             <span class="text-xs text-muted">그룹</span>
             <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="bulkRandom()">랜덤 선택</button>
             <span class="text-xs text-muted" x-text="bulkGrps > 1 ? '그룹마다 ' + bulkRandN + '건씩 서로 겹치지 않게 추출 · 행 클릭 = 그룹 순환' : '필터 결과 중 무작위로 · 다시 누르면 재추출'"></span>
+            <span class="ds-badge ds-badge--warning" x-show="bulkRandMsg" x-text="bulkRandMsg"></span>
           </div>
           <div class="overflow-auto" style="max-height:252px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md)">
             <table class="ds-table" style="table-layout:fixed;width:100%;margin:0">

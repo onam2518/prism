@@ -90,8 +90,40 @@ class SupabaseStore:
                 if attempt:
                     raise
 
+    _PAGE = 1000                                     # PostgREST 서버 max-rows(기본 1000)와 동일한 페이지 크기
+    _PAGE_ORDER = {                                  # offset 페이징의 안정 정렬(PK) · order 없인 중복/누락 가능
+        "reviewers": "id", "contents": "hash", "assignments": "content_hash,reviewer_id",
+        "feedback": "content_hash,reviewer_id", "golden": "id", "gold_checks": "id",
+        "events": "id", "board": "id", "eval_checks": "hash,reviewer", "patch_log": "id",
+        "reports": "kind,team_key", "drafts": "content_hash,model,version",
+        "feedback_routes": "id", "entities": "entity_id", "entity_aliases": "alias",
+        "content_entities": "content_hash,entity_id", "teams": "id",
+    }
+
     def _get(self, table, query=""):
-        return self._req("GET", table, query=query)
+        """GET 조회 · 서버 행 상한을 넘어도 끝까지 수집.
+        PostgREST 는 요청 limit 과 무관하게 서버 max-rows(기본 1000)로 응답을 클램프한다
+        (2026-07-17 실측: limit=50000 요청 → 1000행). 배정 1018행 중 최신 18행이 조용히
+        잘려 화면 배정 수·배타 큐·진척이 어긋났다 → offset 페이지로 모은다.
+        query 의 limit= 은 '호출자가 원하는 상한'으로 해석해 그 수까지만 수집한다."""
+        m = re.search(r"(?:^|&)limit=(\d+)", query)
+        want = int(m.group(1)) if m else None
+        base = re.sub(r"(?:^|&)limit=\d+", "", query).strip("&")
+        if "order=" not in base:                     # 안정 정렬 보장(없으면 페이지 간 순서 미정)
+            pk = self._PAGE_ORDER.get(table)
+            if pk:
+                base += ("&" if base else "") + "order=" + pk
+        out, off = [], 0
+        while True:
+            page = self._PAGE if want is None else min(self._PAGE, want - len(out))
+            if page <= 0:
+                return out
+            sep = "&" if base else ""
+            rows = self._req("GET", table, query=f"{base}{sep}limit={page}&offset={off}") or []
+            out.extend(rows)
+            if len(rows) < page:
+                return out
+            off += len(rows)
 
     def _upsert(self, table, rows):
         if not rows:
@@ -152,6 +184,19 @@ class SupabaseStore:
         if team:
             q += f"&team_id=eq.{urllib.parse.quote(team)}"
         return {r["hash"] for r in self._get("contents", q) if (r.get("model") or "")}
+
+    def review_targets(self, team=None) -> set:
+        """진척율·퀘스트의 모집단 = 현재 YELLOW ∪ (배정된 살아있는 콘텐츠).
+        일괄 배정 운영은 자동통과(auto) 콘텐츠도 배정해 검수시키므로 배정분이 곧 팀의
+        검수 목표다. 삭제된 콘텐츠의 고아 배정은 제외(분모 오염 방지)."""
+        q = "select=hash,model,review"
+        if team:
+            q += f"&team_id=eq.{urllib.parse.quote(team)}"
+        rows = [r for r in self._get("contents", q) if (r.get("model") or "")]
+        live = {r["hash"] for r in rows}
+        yellow = {r["hash"] for r in rows if (r.get("review") or "") == "yellow"}
+        assigned = set(self.assignees(team) or {})
+        return yellow | (assigned & live)
 
     def target_models(self, team=None) -> list:
         """검수 대상 콘텐츠 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance).
@@ -233,8 +278,12 @@ class SupabaseStore:
         부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(sqlite 와 동일 계약)."""
         done = {(r.get("content_hash"), r.get("reviewer_id"))
                 for r in self._all_feedback(team) if r.get("verdict") in ("good", "bad")}
+        q = "select=hash" + (f"&team_id=eq.{urllib.parse.quote(team)}" if team else "")
+        live = {r["hash"] for r in self._get("contents", q)}   # 고아 배정은 부하 아님(분배 왜곡 방지)
         out = {}
         for ch, a in (self.assignees(team) or {}).items():
+            if ch not in live:
+                continue
             for rv in a["reviewers"]:
                 if (ch, rv) not in done:
                     out[rv] = out.get(rv, 0) + 1
@@ -321,6 +370,8 @@ class SupabaseStore:
     def clear_team_contents(self, team):
         self._req("DELETE", "contents", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
         self._req("DELETE", "drafts", query=f"team_key=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
+        # 배정도 함께 비운다 — 남기면 고아 배정이 쌓여 행 상한·진척 분모·'내 담당' 수를 오염
+        self._req("DELETE", "assignments", query=f"team_id=eq.{urllib.parse.quote(team)}", prefer="return=minimal")
 
     def remove_content(self, content_hash: str, team=None) -> bool:
         """콘텐츠 개별 삭제(관리자): 결과 + 파생(초안 이력·검수 피드백·평가 판정) 연쇄 삭제.
@@ -868,11 +919,10 @@ class SupabaseStore:
                 s += 1; d -= 1
             return s
 
-        # 검수 대상(팀 YELLOW 콘텐츠) 집합 → 진척율 분모이자 분자(검수 건수)의 공통 모집단.
-        # contents 는 2026-07-06 부터 전량 적재(include_all)라 review=yellow 필터가 필수 —
-        # 없으면 G/R 자동통과 건이 분모에 들어가 진척율이 과소 표시(sqlite yellow_count 와 계약 불일치).
+        # 검수 대상 집합 = YELLOW ∪ 배정된 살아있는 콘텐츠 → 진척율 분모이자 분자의 공통 모집단.
+        # (일괄 배정 운영은 auto 콘텐츠도 배정해 검수시키므로 YELLOW 만으로는 팀 목표와 어긋남)
         if team:
-            targets = self.yellow_hashes(team)
+            targets = self.review_targets(team)
             total_targets = len(targets)
         else:                                         # 팀 미스코프(레거시): 전체 콘텐츠 = 모집단
             targets = None
@@ -887,7 +937,9 @@ class SupabaseStore:
         gcontrib = self.golden_contrib_counts(team)
 
         # 담당 배정: 개인 진척 분모 = 내 담당 콘텐츠 수, 완료 = 내가 검수한 담당 콘텐츠 수
-        asg = self.assignees(team)                       # {hash: {"reviewers", "min"}}
+        # 삭제된 콘텐츠의 고아 배정은 제외(분모·'내 담당' 수 오염 방지)
+        asg = {ch: a for ch, a in (self.assignees(team) or {}).items()
+               if targets is None or ch in targets}
         mine_total, mine_done = {}, {}
         for ch, a in asg.items():
             for rv in a["reviewers"]:

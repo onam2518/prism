@@ -76,6 +76,70 @@ class TestArenaStatsTargetScope(ArenaScopeBase):
         self.assertEqual(a["team_progress"], 0.0)
 
 
+class TestAssignedTargets(ArenaScopeBase):
+    """모집단 = YELLOW ∪ 배정된 살아있는 콘텐츠: 일괄 배정 운영(auto 포함)의 분모 정합."""
+
+    def test_assigned_auto_content_counts_as_target(self):
+        st = self._seed()
+        st.set_assignees("h2", ["A"], min_reviewers=1)   # 자동통과(auto) 콘텐츠를 배정
+        self.assertEqual(st.review_targets(), {"h1", "h2"})
+        a = st.arena_stats()
+        self.assertEqual(a["total_targets"], 2)
+        rows = {r["reviewer"]: r for r in a["leaderboard"]}
+        self.assertEqual(rows["A"]["target_reviews"], 2)  # h1(yellow)+h2(배정) 둘 다 유효 검수
+        self.assertEqual(rows["A"]["progress"], 1.0)      # 담당 h2 1건 중 1건 완료
+
+    def test_orphan_assignment_excluded_from_targets(self):
+        st = self._seed()
+        st.set_assignees("h3", ["B"], min_reviewers=1)   # h3 는 삭제된 콘텐츠(고아 배정)
+        self.assertEqual(st.review_targets(), {"h1"})
+        rows = {r["reviewer"]: r for r in st.arena_stats()["leaderboard"]}
+        self.assertEqual(rows["B"]["assigned_total"], 0)  # 고아는 '내 담당' 수에서 제외
+        self.assertEqual(rows["B"]["progress"], 0.0)
+
+    def test_clear_contents_removes_assignments(self):
+        st = self._seed()
+        st.set_assignees("h1", ["A"], min_reviewers=1)
+        st.clear_team_contents()
+        self.assertEqual(st.assignees(), {})              # 고아 배정 잔존 금지
+
+
+class TestSupastorePagination(unittest.TestCase):
+    """supabase _get 페이지네이션: PostgREST 는 요청 limit 과 무관하게 서버 max-rows(1000)로
+    응답을 클램프한다(2026-07-17 실측) → 1000행 초과 테이블이 조용히 잘리지 않아야 한다."""
+
+    def _store_with_rows(self, total):
+        os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+        os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-key")
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore()
+        data = [{"content_hash": f"h{i:04d}", "reviewer_id": "r"} for i in range(total)]
+        calls = []
+
+        def fake_req(method, table, *, query="", body=None, prefer=""):
+            calls.append(query)
+            import re as _re
+            lim = int(_re.search(r"limit=(\d+)", query).group(1))
+            off = int((_re.search(r"offset=(\d+)", query) or [None, "0"])[1])
+            return [dict(r) for r in data[off:off + min(lim, 1000)]]  # 서버 max-rows=1000 클램프 모사
+
+        st._req = fake_req
+        return st, calls
+
+    def test_collects_beyond_server_cap(self):
+        st, calls = self._store_with_rows(2500)
+        rows = st._get("assignments", "select=content_hash,reviewer_id")
+        self.assertEqual(len(rows), 2500)                 # 1000 캡을 넘어 전량 수집
+        self.assertTrue(all("order=" in q for q in calls))  # offset 페이징 안정 정렬 보장
+
+    def test_explicit_limit_is_caller_cap_not_server_cap(self):
+        st, _ = self._store_with_rows(2500)
+        rows = st._get("feedback", "select=content_hash&limit=1500")
+        self.assertEqual(len(rows), 1500)                 # limit=1500 이 1000 에서 잘리지 않음
+        rows = st._get("feedback", "select=content_hash&limit=50")
+        self.assertEqual(len(rows), 50)                   # 소량 상한은 그대로 존중
+
+
 class TestQuestTargetScope(ArenaScopeBase):
     def test_fresh_quest_not_completed_by_old_reviews(self):
         """퀘스트 생성 직후: 옛(확정·삭제) 콘텐츠 검수가 진행률로 잡혀 '완주' 되면 안 된다."""
