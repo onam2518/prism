@@ -34,10 +34,12 @@
   </div>
   </div><!-- /.appbody -->
 
-  <!-- 푸터: 문서 전체 스크롤 전환과 함께 도입 · 페이지 최하단(짧은 페이지도 바닥 고정) -->
+  <!-- 푸터: 프리즘 로고 → DAUM 플랫폼 기획 → 빌드 순 · 페이지 최하단(짧은 페이지도 바닥 고정) -->
   <footer class="appfoot">
-    <span class="appfoot__brand">PRISM</span>
-    <span>콘텐츠 메타 스튜디오 · 빌드 <span class="tnum" x-text="(cfg && cfg.build) || '—'"></span></span>
+    <img class="appfoot__prism appfoot__prism--light" src="/vendor/prism-logo-tagline-light.png" alt="Prism">
+    <img class="appfoot__prism appfoot__prism--dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism">
+    <span class="appfoot__daum"><img src="/vendor/daum-logo.png" alt="Daum"> 플랫폼 기획</span>
+    <span>빌드 <span class="tnum" x-text="(cfg && cfg.build) || '—'"></span></span>
     <button type="button" class="appfoot__link" x-on:click="selectMod('board')">문의·제안 → 게시판</button>
   </footer>
 
