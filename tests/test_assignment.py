@@ -249,6 +249,8 @@ class TestServeBulkEndpoint(AssignmentBase):
 class TestAssignmentLoad(AssignmentBase):
     def test_load_counts_only_unreviewed(self):
         st = self._store()
+        for h in ("h1", "h2", "h3"):
+            self._put(st, h)
         st.set_assignees("h1", ["A"], team="t")
         st.set_assignees("h2", ["A", "B"], min_reviewers=2, team="t")
         st.set_assignees("h3", ["B"], team="t")
@@ -260,9 +262,18 @@ class TestAssignmentLoad(AssignmentBase):
 
     def test_cancelled_verdict_is_not_done(self):
         st = self._store()
+        self._put(st, "h1")
         st.set_assignees("h1", ["A"], team="t")
         # 취소가 남긴 빈 표(verdict='')는 완료가 아니다 → 부하 유지
         st.save_feedback("h1", "s", "T", "", "review", "", _t.time(), reviewer="A", team="t")
+        self.assertEqual(st.assignment_load(team="t").get("A", 0), 1)
+
+    def test_orphan_assignment_is_not_load(self):
+        """삭제된 콘텐츠의 고아 배정은 부하가 아니다(균등 분배 왜곡 방지)."""
+        st = self._store()
+        self._put(st, "live")
+        st.set_assignees("live", ["A"], team="t")
+        st.set_assignees("ghost", ["A"], team="t")       # results 에 없음 = 고아
         self.assertEqual(st.assignment_load(team="t").get("A", 0), 1)
 
 
@@ -286,6 +297,7 @@ class TestDistributeAssignments(AssignmentBase):
         from prism import serve
         st = self._store()
         for i in range(4):                                # A 는 이미 미완료 4건 보유
+            self._put(st, "old%d" % i)
             st.set_assignees("old%d" % i, ["A"], team="t")
         r = serve.distribute_assignments(st, ["n%d" % i for i in range(6)], ["A", "B"],
                                          min_reviewers=1, team="t")

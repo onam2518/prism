@@ -3113,8 +3113,9 @@ def _arena_compute(team=None) -> dict:
                 dts = st.draft_times(team) if hasattr(st, "draft_times") else {}
             except Exception:
                 dts = {}
-            try:                                  # 모집단 = 현재 검수 대상(YELLOW) — 분모(total_targets)와 동일.
-                targets = st.yellow_hashes(team) if hasattr(st, "yellow_hashes") else None
+            try:                                  # 모집단 = 검수 대상(YELLOW ∪ 배정) — 분모(total_targets)와 동일.
+                targets = (st.review_targets(team) if hasattr(st, "review_targets")
+                           else st.yellow_hashes(team) if hasattr(st, "yellow_hashes") else None)
             except Exception:
                 targets = None
             fm = st.feedback_map(team=team) or {}

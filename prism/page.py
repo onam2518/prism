@@ -1650,9 +1650,9 @@ PAGE = """<!doctype html>
           <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:86px">유형</th><th>제목 · 내용</th><th style="width:100px">작성자</th><th style="width:120px">상태</th><th style="width:168px">답변</th><th style="width:96px"></th></tr></thead><tbody>
             <template x-for="b in (boardData ? boardData.items : [])" x-bind:key="b.id">
               <tr>
-                <td><span class="ds-badge" x-bind:class="b.kind==='bug' ? 'ds-badge--error' : 'ds-badge--intent'" x-text="b.kind==='bug' ? '오류' : '기능개선'"></span></td>
-                <td><div class="text-ink" style="font-weight:600" x-text="b.title"></div><div class="tbox" x-show="b.body" x-text="b.body"></div>
-                  <span x-show="b.answer" class="ds-badge ds-badge--success" style="margin-top:6px"><span class="ds-badge__dot"></span>답변 완료</span></td>
+                <td><span class="ds-badge" x-bind:class="b.kind==='bug' ? 'ds-badge--error' : 'ds-badge--intent'" x-text="b.kind==='bug' ? '오류' : '기능개선'"></span>
+                  <div x-show="b.answer" style="margin-top:6px"><span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>답변 완료</span></div></td>
+                <td><div class="text-ink" style="font-weight:600" x-text="b.title"></div><div class="tbox" x-show="b.body" x-text="b.body"></div></td>
                 <td class="text-body" x-text="b.author"></td>
                 <td>
                   <template x-if="boardAdmin">
@@ -1666,7 +1666,6 @@ PAGE = """<!doctype html>
                 <td>
                   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
                     <button type="button" x-show="boardAdmin && !b.answer" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="openBoardAns(b, true)">등록하기</button>
-                    <button type="button" x-show="boardAdmin && b.answer" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="openBoardAns(b, true)">수정하기</button>
                     <button type="button" x-show="b.answer" class="ds-btn ds-btn--outline ds-btn--s-sm" x-on:click="openBoardAns(b, false)">답변 보기</button>
                     <span x-show="!b.answer && !boardAdmin" class="text-xs" style="color:var(--ds-muted)">답변 대기</span>
                   </div>
@@ -3025,6 +3024,7 @@ PAGE = """<!doctype html>
             <span class="text-xs text-muted">그룹</span>
             <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="bulkRandom()">랜덤 선택</button>
             <span class="text-xs text-muted" x-text="bulkGrps > 1 ? '그룹마다 ' + bulkRandN + '건씩 서로 겹치지 않게 추출 · 행 클릭 = 그룹 순환' : '필터 결과 중 무작위로 · 다시 누르면 재추출'"></span>
+            <span class="ds-badge ds-badge--warning" x-show="bulkRandMsg" x-text="bulkRandMsg"></span>
           </div>
           <div class="overflow-auto" style="max-height:252px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md)">
             <table class="ds-table" style="table-layout:fixed;width:100%;margin:0">

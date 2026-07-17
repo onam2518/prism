@@ -755,8 +755,9 @@ class Store:
         done = {(ch, rv) for ch, rv in c.execute(
             "SELECT content_hash,reviewer FROM feedback WHERE verdict IN ('good','bad')")}
         out = {}
-        for ch, rv in c.execute(
-                "SELECT content_hash,reviewer FROM assignments WHERE team=?", (tm,)):
+        for ch, rv in c.execute(                      # 고아 배정(삭제된 콘텐츠)은 부하 아님(분배 왜곡 방지)
+                "SELECT a.content_hash, a.reviewer FROM assignments a "
+                "JOIN results r ON r.content_hash = a.content_hash WHERE a.team=?", (tm,)):
             if (ch, rv) not in done:
                 out[rv] = out.get(rv, 0) + 1
         return out
@@ -813,10 +814,13 @@ class Store:
         c.commit()
 
     def clear_team_contents(self, team=None):
-        """검토 콘텐츠(추출 결과) 전체 삭제(로컬 단일 팀). 초안 이력도 함께 비운다."""
+        """검토 콘텐츠(추출 결과) 전체 삭제(로컬 단일 팀). 초안 이력·배정도 함께 비운다.
+        (배정을 남기면 고아 배정이 진척 분모·'내 담당' 수를 오염)"""
         c = self._conn()
         c.execute("DELETE FROM results")
         c.execute("DELETE FROM drafts")
+        c.execute("DELETE FROM assignments")
+        c.execute("DELETE FROM assignment_cfg")
         c.commit()
 
     def remove_content(self, content_hash: str, team=None) -> bool:
@@ -1043,6 +1047,15 @@ class Store:
         """검수 대상(YELLOW) 총량. json_extract 미지원 빌드는 전체 수로 폴백."""
         return len(self.yellow_hashes())
 
+    def review_targets(self, team=None) -> set:
+        """진척율·퀘스트의 모집단 = 현재 YELLOW ∪ (배정된 살아있는 콘텐츠).
+        일괄 배정 운영은 자동통과(auto) 콘텐츠도 배정해 검수시키므로 배정분이 곧 팀의
+        검수 목표다. 삭제된 콘텐츠의 고아 배정은 제외(분모 오염 방지)."""
+        c = self._conn()
+        live = {r[0] for r in c.execute("SELECT content_hash FROM results")}
+        assigned = set(self.assignees(team) or {})
+        return self.yellow_hashes() | (assigned & live)
+
     def target_models(self, team=None) -> list:
         """검수 대상(YELLOW) 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance)."""
         c = self._conn()
@@ -1143,7 +1156,7 @@ class Store:
             return s
 
         chars = self.reviewers_map()
-        targets = self.yellow_hashes()                   # 검수 대상 = 현재 YELLOW 집합(분자·분모 공통 모집단)
+        targets = self.review_targets(team)              # 검수 대상 = YELLOW ∪ 배정(분자·분모 공통 모집단)
         total_targets = len(targets)
         tgt_done = {}                                    # 검수자 → 현재 검수 대상 중 검수한 건수
         for ch, rv in reviewed_pairs:
@@ -1155,7 +1168,8 @@ class Store:
         gcontrib = self.golden_contrib_counts()          # 골든 확정 기여(가시화·배지)
 
         # 담당 배정: 개인 진척 분모 = 내 담당 콘텐츠 수, 완료 = 내가 검수한 담당 콘텐츠 수
-        asg = self.assignees(team)                       # {hash: {"reviewers", "min"}}
+        # 삭제된 콘텐츠의 고아 배정은 제외(분모·'내 담당' 수 오염 방지)
+        asg = {ch: a for ch, a in (self.assignees(team) or {}).items() if ch in targets}
         mine_total, mine_done = {}, {}
         for ch, a in asg.items():
             for rv in a["reviewers"]:
