@@ -161,16 +161,23 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       fmtEta(s) { s = Math.max(0, Math.round(s || 0)); return s >= 60 ? (Math.floor(s / 60) + '분 ' + (s % 60) + '초') : (s + '초'); },
       // 개별 콘텐츠 재실행: STEP 2 사용 모델(bulkModel)로 이 건만 초안 재생성(/rerun · 이력 보존)
+      // 퀘스트 진행 중 서버 차단에 걸리면 확인 모달을 거쳐 이 한 건만 강행(force) — 기본 보호는 유지
       rerunBusy: {},
-      async rerunOne(c) {
+      async rerunOne(c, force) {
         if (this.rerunBusy[c.hash]) return;
         this.rerunBusy = { ...this.rerunBusy, [c.hash]: true };
+        let retryConfirm = false;
         try {
-          const r = await (await this._afetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, model: this.bulkModel || '' }) })).json();
+          const r = await (await this._afetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, model: this.bulkModel || '', force: !!force }) })).json();
           if (r && !r.error) { this.liveToast((c.title || '콘텐츠') + ' · 재실행 완료'); this.loadDash(); this.loadRaw && this.loadRaw(); }
+          else if (r && !force && /퀘스트/.test(r.error || '')) retryConfirm = true;
           else this._err((r && r.error) || '재실행 실패');
         } catch (e) { this._err('재실행 실패'); }
         this.rerunBusy = { ...this.rerunBusy, [c.hash]: false };
+        if (retryConfirm) {
+          const ok = await this.dsConfirm('퀘스트(검수 목표) 진행 중입니다. 초안을 새로 만들면 이 콘텐츠의 기존 검수 의견과 어긋날 수 있습니다. 이 건만 재실행할까요?', { title: '퀘스트 중 재실행', ok: '재실행', danger: true });
+          if (ok) await this.rerunOne(c, true);
+        }
       },
       async removeContent(c) {
         if (this.delArm !== c.hash) {              // 1차 클릭 = 확인 대기(3초)

@@ -76,6 +76,26 @@ class TestAdminTiers(unittest.TestCase):
         r3 = SV.rerun_all("solar-pro2", scope="all")
         self.assertNotIn("error", r3)
 
+    def test_single_rerun_quest_guard_and_force(self):
+        """개별 재실행: 퀘스트 중 기본 차단 · force_quest(확인 모달 경유)면 이 건만 허용.
+        반복 퀘스트 운영에서 개별 재실행이 영구 불가가 되던 2026-07-17 증상의 회귀 방지."""
+        import tempfile
+        import prism.serve as SV
+        import prism.runops as RN
+        from prism.store import Store
+        SV._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self.addCleanup(lambda: setattr(SV, "_STORE", None))
+        orig = SV.quest_active
+        SV.quest_active = lambda: True
+        self.addCleanup(lambda: setattr(SV, "quest_active", orig))
+        row = {"content_ref": {"displayServiceName": "뉴스", "title": "T", "subtitle": "", "body": "B"},
+               "trace": {"model": "solar-pro2", "version": 1},
+               "item_meta": {}, "quality_meta": {}}
+        r = RN.rerun_content("hx", "", row=row)
+        self.assertIn("퀘스트 진행 중", r.get("error", ""))
+        r2 = RN.rerun_content("hx", "", row=row, force_quest=True)
+        self.assertNotIn("퀘스트 진행 중", r2.get("error", "") or "")
+
     def test_local_store_clear_helpers(self):
         import tempfile
         from prism.store import Store
