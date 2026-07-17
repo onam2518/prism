@@ -72,11 +72,13 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 
 ## UI 구조
 
-- `page.py` = `PAGE` 단일 HTML 문자열(마크업·Alpine 템플릿 전부). `vendor/app.js` =
-  Alpine 데이터·메서드(데스크톱), `vendor/mobile.js` = /m 전용.
+- 마크업: `prism/ui/NN-*.html` 화면 섹션 조각 22개를 `page.py` 가 파일명 순으로
+  이어붙여 `PAGE` 합성. **화면 수정 = 해당 조각 파일만 편집** · 새 화면 모듈은 새 조각.
+- 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 9개 + 로더 `vendor/app.js` 가
+  디스크립터 병합(게터 보존 · 조각 간 `this` 공유). 조각 → 로더 로드 순서는
+  `ui/00-head.html` 의 script 태그가 원천. `vendor/mobile.js` = /m 전용(단일 파일).
 - 캐시버스터: 부팅 ID(`_BOOT_ID`)를 `?v=` 로 주입(serve 하단 `_PAGE_V` 재작성).
-- 화면 수정 시: 마크업은 page.py, 동작·상태는 app.js — 둘 다 허브 파일이라
-  다른 세션 미커밋 변경 확인 후 작업(CLAUDE.md 규칙 7).
+- 정적 데모(scripts/make_demo.py)는 app 조각을 자동 글롭 인라인 — 조각 추가 시 무수정.
 
 ## 리팩토링 로드맵 (작업 효율 개선 · 단계별 독립 PR)
 
@@ -93,10 +95,9 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   serve._DICT_OVERRIDES_PATH 를 패치하므로 모듈 내부 상호 호출·상태 접근은 `_SV.` 경유.
 - [ ] **2단계(2차) — 도메인 추출: 대시보드·롤업·검수**: `dashboard_data`/`drill_contents`,
   `cost/fail_rollup`, 검수(1층·2층) 클러스터. 검수는 상태 의존이 가장 커서 마지막.
-- [ ] **3단계 — page.py 분할**: `PAGE` 를 화면 섹션별 파일(`prism/ui/*.html`)로 쪼개
-  import 시 이어붙이기. 분할 직후 커밋에서 기존 PAGE 와 바이트 동일함을 테스트로
-  증명 → 이후 섹션 파일이 세션 간 충돌 단위가 된다.
-- [ ] **4단계 — app.js 분할**: 화면(탭)별 파일로 나누고 `Object.assign` 믹스인으로
-  Alpine 데이터 합성. `<script>` 로드 순서는 PAGE 에서 고정.
+- [x] **3단계 — page.py 분할** (PR #220): `PAGE` → `prism/ui/NN-*.html` 22조각,
+  파일명 순 합성. 분할 전후 sha256 동일 검증 — 렌더 불변.
+- [x] **4단계 — app.js 분할** (PR #221): `app-NN-*.js` 9조각 + 병합 로더
+  (`getOwnPropertyDescriptors` — 게터 보존). node 동등성 검증(프로퍼티 754개 동일).
 - [ ] **지속 — 새 도메인은 새 모듈**: usermeta.py·entdict.py 처럼 시작부터 별도
   파일 + serve 는 라우트 등록만. serve.py 가 다시 자라는 것을 막는 유일한 방법.
