@@ -94,6 +94,8 @@
   .verdictbtn--bad .verdictbtn__dot{background:var(--ds-error)}
   .verdictbtn:hover{transform:translateY(-1px);border-color:var(--ds-border-input-hover)}
   .verdictbtn:active{transform:translateY(1px) scale(.97)}
+  .verdictbtn[disabled]{opacity:.45;cursor:not-allowed}
+  .verdictbtn[disabled]:hover,.verdictbtn[disabled]:active{transform:none;border-color:var(--ds-hairline)}
   .verdictbtn--good.is-on{border-color:var(--ds-success);color:var(--ds-success-deep);background:rgba(24,186,69,.12);
     box-shadow:0 0 0 3px rgba(24,186,69,.15),0 8px 18px -8px rgba(24,186,69,.6)}
   .verdictbtn--bad.is-on{border-color:var(--ds-error);color:var(--ds-error-deep);background:rgba(255,78,51,.10);
