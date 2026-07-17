@@ -14,13 +14,14 @@ def intent_category_anchors(emb, display_name: str) -> dict:
     return {c: emb.embed(c, is_query=False) for c in cats}
 
 
-def merge_perspective(emb_intents: list, llm_intents: list, cap: int = 2) -> list:
-    """임베딩 kNN 인텐트에 LLM의 관점 축 판정을 병합. 논조는 kNN이 못 보는 축이라 LLM 값을 보존한다."""
+def merge_perspective(emb_intents: list, llm_intents: list) -> list:
+    """임베딩 kNN 인텐트에 LLM의 관점 축 판정을 병합. 논조는 kNN이 못 보는 축이라 LLM 값을 보존한다.
+    개수 상한 없음(인텐트도 엔티티와 동일 정책) · 관점 축은 우선 규칙상 1개만(동시 성립 시 반박·비판 우선)."""
     persp = [v for v in (llm_intents or []) if v in PERSPECTIVE_INTENTS]
     if not persp:
         return list(emb_intents or [])
     base = [c for c in (emb_intents or []) if c not in PERSPECTIVE_INTENTS]
-    return (base[: max(0, cap - 1)] + persp[:1])[:cap]
+    return base + persp[:1]
 
 
 def intent_category_classify(emb, content, top_k=2, min_margin=0.0) -> tuple[list, float]:
