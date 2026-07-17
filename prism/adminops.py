@@ -254,7 +254,10 @@ def admin_data(uid, team, email="") -> dict:
                 "isCreator": False, "team": None, "members": []}
     gc = st.golden_count(team) if hasattr(st, "golden_count") else 0
     t = st.team_info(team)
-    return {"ok": True, "isAdmin": is_admin_user(uid, team, email),
+    adm = is_admin_user(uid, team, email)
+    if t and not adm:                              # 초대코드는 관리자에게만 — 일반 팀원 응답에서 제거
+        t = {k: v for k, v in t.items() if k != "invite_code"}   # (재게시·무단 가입 확산 방지)
+    return {"ok": True, "isAdmin": adm,
             "isSysAdmin": is_sys_admin_user(uid, team, email),
             "isSuperAdmin": is_super_admin_user(uid, team, email),
             "isCreator": bool(t and uid and t.get("created_by") == uid),
