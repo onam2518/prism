@@ -10,10 +10,11 @@
 브라우저 (page.py 의 PAGE 단일 HTML + vendor/app.js Alpine 앱, /m 은 mobile.js)
    │  fetch(JSON) / SSE(/events)
    ▼
-serve.py  ─ HTTP 서버(stdlib http.server) + 대부분의 비즈니스 로직  ← 최대 허브(≈5.4k줄)
-   │         GET: 라우트 테이블(_GET_ROUTES · 최장 접두 우선)   POST: do_POST if/elif
-   ├─ learnops.py   학습 일배치·골든·소요서·핸드오프 (serve 를 LO._SV 로 역참조)
-   ├─ adminops.py   인증(JWT)·관리자 판정 (serve 를 AO._SV 로 역참조)
+serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) + 컴포지션 루트
+   │         (전역 상태 _STORE/_agg/SSE · 설정/LLM 라우팅 · 각 도메인에 _SV 주입) ≈2.4k줄
+   ├─ *ops.py 도메인 모듈(serve 를 _SV 로 역참조 · 아래 표): learnops(학습) adminops(인증)
+   │   reviewops(검수·배정·게임화) runops(실행 파이프라인) ingestops(인입·잡)
+   │   topicops(토픽) dictops(사전) dashops(대시보드·롤업·리포트) mediaops umops boardops
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
    ├─ topic.py / entdict.py / dictionaries.py / usermeta.py / mediaext.py / imagext.py
    │              도메인 모듈(비교적 잘 분리된 편 · 새 기능은 이 패턴을 따를 것)
@@ -32,7 +33,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 |---|---|---|
 | 런타임 상태 | `get_store` `backend_mode` `_agg_cached` `broadcast` `_sse_*` `rate_limited` | /events |
 | 설정·모델 | `config_status` `apply_config` `list_models` `llm_for_model` `ping_*` `sync_prompt` | /config /models /ping |
-| 실행 파이프라인 | `run_pipeline` `run_batch` `rerun_*` `add_contents` `store_save` | /run /run-batch /rerun* |
+| 실행 파이프라인 → **runops.py** | `run_pipeline` `run_batch` `rerun_*` `add_contents` `store_save` | /run /run-batch /rerun* |
 | 검수(1층) → **reviewops.py** | `apply_feedback` `review_queue` `raw_rows` `patch_content_meta` `content_history` `drafts_for` | /feedback /queue /raw /history /drafts |
 | 검수(2층·최종) → **reviewops.py** | `final_review_queue` `set_final_verdict` `reviewer_roles` `_inject_gold_final` | /final-queue /final-verdict /reviewer-role |
 | 배정 → **reviewops.py** | `distribute_assignments` `assign_log_data` | /content-assign* /assign-log |
@@ -40,11 +41,11 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 학습 연동 | `learn-*` 핸들러(실체는 learnops) `apply_gold_answer` `disabled_directives` | /learn-* /golden* /apply-directive |
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
 | 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
-| 사용자 메타 | `usermeta_*` `build_template_xlsx` | /usermeta* |
+| 사용자 메타 → **umops.py** | `usermeta_*` `build_template_xlsx` | /usermeta* |
 | 미디어 → **mediaops.py** | `media_action` `media_s5ab` `media_native` | /media-extract |
-| 인입·잡 | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` | /ingest-* /backfill-urls |
+| 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` | /ingest-* /backfill-urls |
 | 대시보드·롤업 → **dashops.py** | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` | /dashboard /drill /cost-rollup /fail-rollup |
-| 게시판 | `board_data` `board_action` | /board |
+| 게시판 → **boardops.py** | `board_data` `board_action` | /board |
 | HTTP 계층 | `Handler`(게이트 `_gate_get` `_admin_gate` `_require_*` · 응답 `_send` `_send_file`) | 전 라우트 |
 
 ### 라우트 추가 방법
@@ -96,6 +97,10 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 - [x] **2단계(2차) — 도메인 추출: 대시보드·롤업·검수**: `reviewops.py`(검수 1층·2층·
   배정·게임화) · `dashops.py`(대시보드·드릴·비용/실패 롤업) 분리. 몽키패치 계약 추가:
   serve._supa·serve._inject_gold·serve.rerun_unconfirmed 도 `_SV.` 경유.
+- [x] **2단계(3차) — 도메인 추출: 실행·인입·유저메타·게시판·리포트**: `runops.py` ·
+  `ingestops.py`(_INGEST_STATE 는 serve 재수출과 같은 객체 공유 — 재바인딩 금지) ·
+  `umops.py` · `boardops.py` · 리포트 빌더는 dashops 로. serve 잔류 = HTTP 계층 +
+  컴포지션 루트(전역 상태·설정/LLM — 의도된 책임)이며 2,435줄.
 - [x] **3단계 — page.py 분할** (PR #220): `PAGE` → `prism/ui/NN-*.html` 22조각,
   파일명 순 합성. 분할 전후 sha256 동일 검증 — 렌더 불변.
 - [x] **4단계 — app.js 분할** (PR #221): `app-NN-*.js` 9조각 + 병합 로더

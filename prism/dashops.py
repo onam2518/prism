@@ -7,6 +7,9 @@
 """
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 import threading
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
@@ -222,3 +225,49 @@ def drill_contents(kind: str, value: str, team=None, reviewer: str = "") -> dict
         if hit:
             out.append(_SV._detail_row(r))
     return {"ok": True, "kind": kind, "value": value, "items": _SV._attach_fb(out, team, reviewer), "n": len(out)}
+
+
+def build_results_csv(team=None) -> bytes:
+    """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄. team 스코프 강제(전 팀 유출 방지)."""
+    rows = _SV.results_rows(team=team)
+    out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유,노출제한"]
+    def esc(v):
+        s = str(v if v is not None else "")
+        # CSV 수식 인젝션 중화: 셀 선두 = + - @ 및 탭/CR 은 스프레드시트가 수식/DDE 로 실행 →
+        # 선행 작은따옴표로 무력화(RFC4180 따옴표 이스케이프는 유지).
+        if s[:1] in ("=", "+", "-", "@", "\t", "\r"):
+            s = "'" + s
+        return '"' + s.replace('"', '""') + '"'
+    for r in rows:
+        im = r.get("item_meta") or {}
+        qm = r.get("quality_meta") or {}
+        c = r.get("content") or {}
+        cat = " · ".join(im.get("content_category") or [])
+        out.append(",".join(esc(x) for x in [
+            c.get("title", ""), c.get("displayServiceName", ""), im.get("summary", ""),
+            " · ".join(im.get("entities") or []), " · ".join(im.get("intent") or []),
+            cat, qm.get("finalGrade", ""), " · ".join(qm.get("reasons") or []),
+            "제한" if qm.get("ops_hold") else "",
+        ]))
+    return ("﻿" + "\r\n".join(out)).encode("utf-8")
+
+
+def build_report_html(team=None) -> str:
+    rows = _SV.results_rows(team=team)
+    if not rows:
+        return "<p>아직 실행 결과가 없습니다. 먼저 추출을 실행하세요.</p>"
+    from . import dashboard as DASH
+    with tempfile.TemporaryDirectory() as d:
+        rpath = os.path.join(d, "results.jsonl")
+        with open(rpath, "w", encoding="utf-8") as f:
+            for r in rows:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        out = os.path.join(d, "report.html")
+        try:
+            DASH.build_integrated(rpath, out, title="Prism 리포트")
+            return open(out, encoding="utf-8").read()
+        except Exception as e:
+            return f"<p>리포트 생성 실패: {e}</p>"
+
+
+# ── 설정(API 키 / 모델 / 엔드포인트) ─────────────────────────────────────────
