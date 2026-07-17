@@ -143,14 +143,15 @@ window.PRISM_APP_PARTS.push(() => ({
         const a = this.arenaData;
         return !!(a && !a.next_batch_at && a.last_batch_at && (Date.now() / 1000 - a.last_batch_at) < 72 * 3600);
       },
-      maybeQuestReminder() {                           // 마감 임박(D-1 이하) 1일 1회 리마인드
+      maybeQuestReminder() {                           // 마감 임박(D-1 이하) 1일 1회 리마인드 · 배정 있으면 내 몫 기준
         const a = this.arenaData;
-        if (!(a && a.next_batch_at && this.questLeft())) return;
+        const left = this.questLeftMine();
+        if (!(a && a.next_batch_at && left)) return;
         const dd = this.ddayTxt(a.next_batch_at);
         if (dd !== 'D-DAY' && dd !== 'D-1') return;
         const mark = new Date().toDateString() + ':' + a.next_batch_at;
         try { if (localStorage.getItem('prismQuestRemind') === mark) return; localStorage.setItem('prismQuestRemind', mark); } catch (e) {}
-        this.liveToast('⏰ 팀 퀘스트 마감 임박 ' + dd + ' · 남은 ' + this.questLeft() + '건, 완주까지 화이팅!');
+        this.liveToast('⏰ 팀 퀘스트 마감 임박 ' + dd + ' · 남은 ' + (this.questMyTotal() ? '내 배정 ' : '') + left + '건, 완주까지 화이팅!');
       },
       deltaTxt(d) { const v = (d || 0) * 100; return (v >= 0 ? '+' : '') + v.toFixed(1) + '%p'; },
       dirBullets(text) {                                 // 학습 보정 지시문 → 본문 불릿(줄 단위 우선, 없으면 문장 단위)
@@ -163,8 +164,17 @@ window.PRISM_APP_PARTS.push(() => ({
       // 진행 = 팀 평균 검수 건수(quest_avg_done) > 커버리지(quest_done) > 구 산식 순 폴백
       questDone() { const a = this.arenaData; if (a && a.quest_avg_done != null) return Math.min(a.quest_avg_done, this.questTotal()); if (a && a.quest_done != null) return Math.min(a.quest_done, this.questTotal()); const t = this.questTotal(); return Math.max(0, t - ((a && a.queue) || 0)); },
       questAvgLabel() { const a = this.arenaData; return a && a.quest_avg_done != null ? '팀 평균 ' : ''; },
-      questLeft() { return Math.max(0, this.questTotal() - this.questDone()); },
-      questPct() { const t = this.questTotal(); return t ? Math.round(this.questDone() / t * 100) : 0; },
+      // 개인별 진척도(완료/배정)의 팀 평균(%) — 총 대상보다 배정이 적어도 왜곡 없음 · 구서버는 null
+      questTeamPct() { const a = this.arenaData; return a && a.quest_team_progress != null ? Math.round(a.quest_team_progress * 100) : null; },
+      // 내 배정 기준 개인화: 목표·남은 건수는 총 대상(예: 200)이 아니라 '내 몫'으로 표시
+      questMyTotal() { return this.arenaAssignedTotal || 0; },
+      questMyDone() { return Math.min(this.arenaAssignedDone || 0, this.questMyTotal()); },
+      questMyLeft() { return Math.max(0, this.questMyTotal() - this.questMyDone()); },
+      questLeftMine() { return this.questMyTotal() ? this.questMyLeft() : this.questLeft(); },
+      // 완주(커버리지) 건수 — 남은 건수·목표 문구의 원천(게이지 %와 분리)
+      questCover() { const a = this.arenaData; if (a && a.quest_done != null) return Math.min(a.quest_done, this.questTotal()); return this.questDone(); },
+      questLeft() { return Math.max(0, this.questTotal() - this.questCover()); },
+      questPct() { const p = this.questTeamPct(); if (p != null) return p; const t = this.questTotal(); return t ? Math.round(this.questDone() / t * 100) : 0; },
       // 학습 데이터 현황(관리자): 커버리지·일치도·신뢰도·오류 후보·추출(전 기준치 논문 근거)
       learnData: null, learnDataBusy: false,
       async loadLearnData() {

@@ -378,5 +378,53 @@ class TestGoldRowNotAssignable(AssignmentBase):
         self.assertNotIn("gold:bad:4b246f7c6caba1a7", asg)
 
 
+class TestExclusiveVerdict(AssignmentBase):
+    """배정 배타 검수(서버 강제): 지정 검수자가 있는 콘텐츠는 지정된 사람만 판정.
+    생성자·관리자도 예외 없음(직접 검수 = 배정 수정으로) · 미지정은 전원 · 취소는 허용."""
+
+    def _with_store(self):
+        from prism import serve
+        st = self._store()
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def _verdict(self, serve, ch, reviewer, verdict="good"):
+        return serve.apply_feedback({"hash": ch, "verdict": verdict, "reviewer": reviewer,
+                                     "service": "s", "title": ch})
+
+    def test_non_assignee_blocked_assignee_allowed(self):
+        serve, st = self._with_store()
+        self._put(st, "h1")
+        st.set_assignees("h1", ["A"], min_reviewers=1)
+        r = self._verdict(serve, "h1", "B")               # 비지정자(생성자여도) 차단
+        self.assertFalse(r["ok"])
+        self.assertIn("배정", r["error"])
+        self.assertEqual(st.feedback_map().get("h1"), None)
+        self.assertTrue(self._verdict(serve, "h1", "A")["ok"])   # 지정자는 정상
+
+    def test_unassigned_open_to_all(self):
+        serve, st = self._with_store()
+        self._put(st, "h1")
+        self.assertTrue(self._verdict(serve, "h1", "B")["ok"])   # 미지정 = 오픈 큐 유지
+
+    def test_reassign_unblocks(self):
+        serve, st = self._with_store()
+        self._put(st, "h1")
+        st.set_assignees("h1", ["A"], min_reviewers=1)
+        self.assertFalse(self._verdict(serve, "h1", "B")["ok"])
+        st.set_assignees("h1", ["A", "B"], min_reviewers=1)      # 배정 수정 = 검수 가능
+        self.assertTrue(self._verdict(serve, "h1", "B")["ok"])
+
+    def test_undo_allowed_after_unassignment(self):
+        serve, st = self._with_store()
+        self._put(st, "h1")
+        self.assertTrue(self._verdict(serve, "h1", "B")["ok"])   # 미지정 상태에서 판정
+        st.set_assignees("h1", ["A"], min_reviewers=1)           # 이후 다른 사람에게 배정
+        r = self._verdict(serve, "h1", "B", verdict="")          # 내 표 취소는 배정과 무관
+        self.assertTrue(r["ok"])
+        self.assertEqual(st.feedback_map().get("h1"), None)
+
+
 if __name__ == "__main__":
     unittest.main()
