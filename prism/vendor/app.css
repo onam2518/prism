@@ -811,7 +811,12 @@
   /* 푸터: 문서 최하단(짧은 페이지에서도 바닥 고정 · appshell flex 의 마지막 행) */
   .appfoot{display:flex;align-items:center;gap:12px;margin:26px 22px 0;padding:14px 4px 18px;
     border-top:1px solid var(--ds-hairline-soft);color:var(--ds-muted);font-size:11.5px}
-  .appfoot__brand{font:700 11px/1 var(--ds-font-game);letter-spacing:.14em;color:var(--ds-ink)}
+  .appfoot__prism{height:20px;width:auto;display:block;opacity:.92}
+  .appfoot__prism--dark{display:none}
+  [data-theme='dark'] .appfoot__prism--light{display:none}
+  [data-theme='dark'] .appfoot__prism--dark{display:block}
+  .appfoot__daum{display:inline-flex;align-items:center;gap:6px;color:var(--ds-body)}
+  .appfoot__daum img{height:12px;width:auto;display:block}
   .appfoot__link{margin-left:auto;background:none;border:0;cursor:pointer;color:var(--ds-primary);font:600 11.5px/1 var(--ds-font-sans);padding:0}
   .appfoot__link:hover{text-decoration:underline}
   /* 사이드바: 자연 높이 · 문서와 함께 스크롤(내부 스크롤 없음 — 잘림·이중 스크롤 해소) */
