@@ -33,17 +33,17 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 런타임 상태 | `get_store` `backend_mode` `_agg_cached` `broadcast` `_sse_*` `rate_limited` | /events |
 | 설정·모델 | `config_status` `apply_config` `list_models` `llm_for_model` `ping_*` `sync_prompt` | /config /models /ping |
 | 실행 파이프라인 | `run_pipeline` `run_batch` `rerun_*` `add_contents` `store_save` | /run /run-batch /rerun* |
-| 검수(1층) | `apply_feedback` `review_queue` `raw_rows` `patch_content_meta` `content_history` `drafts_for` | /feedback /queue /raw /history /drafts |
-| 검수(2층·최종) | `final_review_queue` `set_final_verdict` `reviewer_roles` `_inject_gold_final` | /final-queue /final-verdict /reviewer-role |
-| 배정 | `distribute_assignments` `assign_log_data` | /content-assign* /assign-log |
-| 게임화 | `arena_data` `mission_progress` `save_badges` `reviewer_weights` | /arena /badges |
+| 검수(1층) → **reviewops.py** | `apply_feedback` `review_queue` `raw_rows` `patch_content_meta` `content_history` `drafts_for` | /feedback /queue /raw /history /drafts |
+| 검수(2층·최종) → **reviewops.py** | `final_review_queue` `set_final_verdict` `reviewer_roles` `_inject_gold_final` | /final-queue /final-verdict /reviewer-role |
+| 배정 → **reviewops.py** | `distribute_assignments` `assign_log_data` | /content-assign* /assign-log |
+| 게임화 → **reviewops.py** | `arena_data` `mission_progress` `save_badges` `reviewer_weights` | /arena /badges |
 | 학습 연동 | `learn-*` 핸들러(실체는 learnops) `apply_gold_answer` `disabled_directives` | /learn-* /golden* /apply-directive |
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
 | 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
 | 사용자 메타 | `usermeta_*` `build_template_xlsx` | /usermeta* |
 | 미디어 → **mediaops.py** | `media_action` `media_s5ab` `media_native` | /media-extract |
 | 인입·잡 | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` | /ingest-* /backfill-urls |
-| 대시보드·롤업 | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` | /dashboard /drill /cost-rollup /fail-rollup |
+| 대시보드·롤업 → **dashops.py** | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` | /dashboard /drill /cost-rollup /fail-rollup |
 | 게시판 | `board_data` `board_action` | /board |
 | HTTP 계층 | `Handler`(게이트 `_gate_get` `_admin_gate` `_require_*` · 응답 `_send` `_send_file`) | 전 라우트 |
 
@@ -93,8 +93,9 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   `dictops.py`(302줄) · `mediaops.py`(100줄) 분리, `_SV` 주입(learnops 관례) +
   serve 재수출로 테스트·핸들러 호환. 몽키패치 계약: 테스트가 serve.topics_data ·
   serve._DICT_OVERRIDES_PATH 를 패치하므로 모듈 내부 상호 호출·상태 접근은 `_SV.` 경유.
-- [ ] **2단계(2차) — 도메인 추출: 대시보드·롤업·검수**: `dashboard_data`/`drill_contents`,
-  `cost/fail_rollup`, 검수(1층·2층) 클러스터. 검수는 상태 의존이 가장 커서 마지막.
+- [x] **2단계(2차) — 도메인 추출: 대시보드·롤업·검수**: `reviewops.py`(검수 1층·2층·
+  배정·게임화) · `dashops.py`(대시보드·드릴·비용/실패 롤업) 분리. 몽키패치 계약 추가:
+  serve._supa·serve._inject_gold·serve.rerun_unconfirmed 도 `_SV.` 경유.
 - [x] **3단계 — page.py 분할** (PR #220): `PAGE` → `prism/ui/NN-*.html` 22조각,
   파일명 순 합성. 분할 전후 sha256 동일 검증 — 렌더 불변.
 - [x] **4단계 — app.js 분할** (PR #221): `app-NN-*.js` 9조각 + 병합 로더
