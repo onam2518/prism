@@ -187,6 +187,7 @@ eval_runs_list = EVO.eval_runs_list
 eval_run_report = EVO.eval_run_report
 rubric_start = EVO.rubric_start
 rubric_cancel = EVO.rubric_cancel
+eval_run_compare = EVO.eval_run_compare
 snapshot_prompts = LO.snapshot_prompts
 learning_batch = LO.learning_batch
 learn_data = LO.learn_data
@@ -1440,6 +1441,16 @@ def _g_golden_list(h, q):
 @_get_route("/eval-runs")                            # 평가 런 이력(런 단위 영속 · Atelier 이식)
 def _g_eval_runs(h, q):
     return eval_runs_list(h._req_team())
+
+
+@_get_route("/eval-run-compare")                     # 두 런 비교(a=기준·b=대상) · 회귀 가드 판정
+def _g_eval_run_compare(h, q):
+    try:
+        a = int((q.get("a") or ["0"])[0])
+        b = int((q.get("b") or ["0"])[0])
+    except (TypeError, ValueError):
+        a = b = 0
+    return eval_run_compare(a, b, h._req_team())
 
 
 @_get_route("/eval-run")                             # 런 리포트(진행 중이면 부분 리포트 · 폴링용)

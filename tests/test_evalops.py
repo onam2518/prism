@@ -228,5 +228,58 @@ class TestEvalRubric(unittest.TestCase):
         self.assertIn("채점할 건이 없습니다", r.get("error", ""))
 
 
+class TestEvalRunCompare(unittest.TestCase):
+    """런 비교·회귀 가드: 학습배치 _batch_regressions 와 단일 소스 판정."""
+
+    def _with_serve(self):
+        from prism import serve
+        st = _mk_store()
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def _done_run(self, st, ga, harm=0.0):
+        """지표를 지정한 완주 런 행 생성(실행 없이 · n=10 기준)."""
+        rid = st.eval_run_create("", "", "all", 10)
+        m = {"n": 10, "grade_hit": int(round(ga * 10)), "reason_exact": 8,
+             "jaccard_sum": 8.0, "harm_miss": int(round(harm * 10)), "empty": 0,
+             "cost_usd": 0.01, "tok_in": 100, "tok_out": 100, "lat": [5.0],
+             "yellow": 0, "auto_n": 10, "auto_hit": int(round(ga * 10)), "per_reason": {}}
+        st.eval_run_update(rid, status="done", cursor=10, metrics=m, finished=time.time())
+        return rid
+
+    def test_regression_blocks_adoption(self):
+        serve, st = self._with_serve()
+        a = self._done_run(st, 0.9)
+        b = self._done_run(st, 0.8)                    # 등급 일치율 -10%p → 회귀
+        r = serve.eval_run_compare(a, b, None)
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(r["verdict"], "regressed")
+        self.assertTrue(any("정합성" in g for g in r["regressions"]))
+
+    def test_improved_and_even(self):
+        serve, st = self._with_serve()
+        a = self._done_run(st, 0.7)
+        b = self._done_run(st, 0.8)
+        self.assertEqual(serve.eval_run_compare(a, b, None)["verdict"], "improved")
+        self.assertEqual(serve.eval_run_compare(a, a, None)["verdict"], "even")
+
+    def test_harm_miss_worsening_regresses(self):
+        serve, st = self._with_serve()
+        a = self._done_run(st, 0.8, harm=0.0)
+        b = self._done_run(st, 0.8, harm=0.1)          # 유해 미탐 악화 → 정합성 동일해도 회귀
+        r = serve.eval_run_compare(a, b, None)
+        self.assertEqual(r["verdict"], "regressed")
+        self.assertTrue(any("유해" in g for g in r["regressions"]))
+
+    def test_requires_done_runs(self):
+        serve, st = self._with_serve()
+        a = self._done_run(st, 0.8)
+        b = st.eval_run_create("", "", "all", 10)      # running
+        r = serve.eval_run_compare(a, b, None)
+        self.assertFalse(r.get("ok"))
+        self.assertIn("완주한 런", r.get("error", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
