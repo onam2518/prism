@@ -149,6 +149,18 @@ alter table public.prism_eval_results enable row level security;
 기존 즉시 평가(`/eval-golden`)와 채점 규칙 동일(abtest.score 단일 소스) · 런 영속화로
 이력 비교·서버 재시작 후 재개를 더한다. 설계 원천: Atelier(구 PromptForge) eval_runs/eval_run_results.
 
+**루브릭 진단(`prism_eval_rubric` 마이그레이션, 2026-07-18 · 적용됨 · Atelier rubric-judge 이식)**:
+```sql
+alter table public.prism_eval_runs
+  add column if not exists rubric_status text not null default '',   -- ''|running|done|failed|cancelled
+  add column if not exists rubric_cursor integer not null default 0,
+  add column if not exists rubric jsonb;                             -- 축별 평균 + n
+alter table public.prism_eval_results
+  add column if not exists rubric jsonb;    -- {accuracy,format,policy,conciseness,note} 1~5
+```
+완주 런의 건별 산출을 LLM 심사관이 4축(정확성·형식·정책·간결성) 1~5점으로 배치 채점
+(RUBRIC_CHUNK=10건/호출 · 미채점 건만 재실행). 낮은 축 = 프롬프트 개선 우선순위.
+
 ## 테이블 네임스페이스 정리 방침 (2026-07-18)
 
 같은 Supabase 프로젝트(구 PromptForge)에 두 제품의 테이블이 공존해 왔다. Atelier 를
