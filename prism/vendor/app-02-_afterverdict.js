@@ -209,11 +209,17 @@ window.PRISM_APP_PARTS.push(() => ({
         else if (id === 'admin' || id === 'system') this.loadAdmin();
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); this.loadFails(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
-        else if (id === 'dict') { this.loadDict(); if (this.dictTab === 'entity') this.loadEntdict(); }
+        else if (id === 'dict') {
+          this.loadDict();
+          if (this.dictTab === 'entity') this.loadEntdict();
+          else if (this.dictTab === 'prompt') this.loadStageDrafts();
+          else if (this.dictTab === 'engine') { this.syncWrapDraft(); this.loadPreview(); this.loadPromptDefaults(); }
+        }
         else if (id === 'studio') {
           this.loadGoldenStatus();
           if (this.studioTab === 'topic') this.loadTopics();
-          else { this.syncWrapDraft(); this.loadPreview(); this.loadPromptDefaults(); }
+          else if (this.promptSub === 'deploy') this.loadDeploys();      // 프롬프트 탭 = 빌더+하위(배포·라이브러리)
+          else if (this.promptSub === 'library') this.loadLibrary();
         }
         else if (id === 'content') { this.loadDash(); this.loadGoldenStatus(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); }
       },

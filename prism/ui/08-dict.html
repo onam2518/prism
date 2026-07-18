@@ -7,6 +7,7 @@
           <button type="button" x-bind:class="dictTab==='entity'?'sel':''" x-on:click="dictTab='entity'; loadEntdict()">엔티티</button>
           <button type="button" x-bind:class="dictTab==='policy'?'sel':''" x-on:click="dictTab='policy'">정책</button>
           <button type="button" x-bind:class="dictTab==='prompt'?'sel':''" x-on:click="dictTab='prompt'; loadStageDrafts()">메타 프롬프트</button>
+          <button type="button" x-bind:class="dictTab==='engine'?'sel':''" x-on:click="dictTab='engine'; syncWrapDraft(); loadPreview(); loadPromptDefaults()">프롬프트 엔진</button>
         </div>
       </div>
       <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4">
@@ -111,6 +112,68 @@
               </div>
             </section>
           </template>
+        </div>
+        <!-- 프롬프트 엔진: 운영 추출 파이프라인의 계약·계열 래퍼·미리보기·추론 강도(스튜디오에서 이동) -->
+        <div x-show="dictTab === 'engine'" class="space-y-4">
+          <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+            <li>아이템 메타(리드문·엔티티·인텐트·카테고리)의 <b>코어 규칙·예시는 계약</b>(읽기 전용)이고, 수정은 <b>모델별 쿡북 래퍼</b> 단위로만 합니다.</li>
+            <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="verTxt"></b> · 새 프롬프트 제작은 <b>스튜디오 → 프롬프트(빌더)</b>에서.</li>
+          </ul>
+          <section class="panel" data-fn><div class="panel-hd"><b>기준 계약 · 아이템 메타 4호출</b><span class="meta">코어 규칙·골드 예시는 계약(읽기 전용) · 수정은 기준 문서 개정으로</span>
+            <span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract || learnedStages.analyze" style="cursor:help" data-tip="배치 결과 피드백이 각 호출 프롬프트에 자동 병기 중">학습 보정 반영</span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets" style="margin-bottom:10px">
+                <li>추출은 <b>분리형 순차 4호출</b>입니다: ① 리드문 → ② 엔티티 → ③ 인텐트(사전: 범용①·② + 서비스 분기) → ④ 콘텐츠 카테고리(사전: Tier1/Tier2 + 구분 기준). 리드문이 비면 후속 호출을 생략합니다.</li>
+                <li>호출 사이 <b>기계 검증</b>: 사전 불일치 값 드롭 · 전량 드롭 시 1회 재요청 · 엔티티 1~3개 강제.</li>
+              </ul>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+                <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'ct'+cl">
+                  <button type="button" class="srcfilter__chip" x-bind:class="contractCall===cl ? 'sel' : ''" x-on:click="contractCall=cl" x-text="callLabel(cl)"></button>
+                </template>
+                <button type="button" class="srcfilter__chip" x-bind:class="contractCall==='examples' ? 'sel' : ''" x-on:click="contractCall='examples'">골드 예시</button>
+              </div>
+              <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>계약 원문 · 읽기 전용<span class="codeblock__stage" x-text="contractCall==='examples' ? '골드 예시' : callLabel(contractCall)"></span></div><textarea readonly spellcheck="false" x-bind:value="contractText"></textarea></div>
+            </div></section>
+          <section class="panel" data-fn><div class="panel-hd"><b>모델별 쿡북 래퍼</b><span class="meta">수정 단위는 계열 래퍼만 · 코어 규칙·사전·예시는 자동 삽입</span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets" style="margin-bottom:10px">
+                <li>계열별 쿡북 관례(GPT 출력 계약 · Gemini 스키마 재명시 · Claude 배경 제공 · Solar CRITICAL+자가 검증)를 이 래퍼가 담당합니다.</li>
+                <li>플레이스홀더 <b>{ROLE} {SCHEMA} {RULES} {EXAMPLES} {SELF_CHECK} {LEARNED}</b> 위치에 계약 요소가 삽입됩니다 · 비우고 저장하면 기본 래퍼로 복원됩니다.</li>
+              </ul>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+                <template x-for="f in ['gpt','gemini','claude','solar']" x-bind:key="'fw'+f">
+                  <button type="button" class="srcfilter__chip" x-bind:class="wrapFam===f ? 'sel' : ''" x-on:click="wrapFam=f; syncWrapDraft()" x-text="f"></button>
+                </template>
+              </div>
+              <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>계열 래퍼 템플릿<span class="codeblock__stage" x-text="wrapFam + ((cfg.familyWrappers||{})[wrapFam] ? ' · 수정됨' : ' · 기본')"></span></div><textarea x-model="wrapDraft" spellcheck="false" placeholder="이 계열의 래퍼 템플릿을 수정하세요"></textarea></div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+                <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveWrapper()">저장</button>
+                <button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreWrapper()">기본값 복원</button>
+                <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="wrapMsg"></span>
+              </div>
+            </div></section>
+          <section class="panel" data-fn><div class="panel-hd"><b>최종 프롬프트 미리보기</b><span class="meta">호출×모델×서비스 조합의 실제 합성 결과</span></div>
+            <div class="panel-bd">
+              <div class="filterbar" style="margin:0 0 10px">
+                <span class="selctl"><span class="selctl__lbl">모델</span>
+                  <select class="field" x-model="pvModel" x-on:change="loadPreview()"><template x-for="m in availableModels" x-bind:key="'pv'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                <span class="selctl"><span class="selctl__lbl">호출</span>
+                  <select class="field" x-model="pvCall" x-on:change="loadPreview()">
+                    <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'pc'+cl"><option x-bind:value="cl" x-text="callLabel(cl)"></option></template>
+                  </select></span>
+                <span class="selctl"><span class="selctl__lbl">서비스</span>
+                  <select class="field" x-model="pvService" x-on:change="loadPreview()"><template x-for="g in groups" x-bind:key="'pg'+g"><option x-bind:value="g" x-text="g"></option></template></select></span>
+                <span class="text-xs text-muted" x-text="pvData ? ('계열 ' + pvData.family) : ''"></span>
+              </div>
+              <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="pvModel"></span></div><textarea readonly spellcheck="false" x-bind:value="pvData ? pvData.system : '모델·호출을 선택하면 합성 결과가 표시됩니다'"></textarea></div>
+              <div class="codeblock" style="margin-top:10px"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>user<span class="codeblock__stage">입력 템플릿</span></div><textarea readonly spellcheck="false" style="min-height:90px" x-bind:value="pvData ? pvData.user : ''"></textarea></div>
+            </div></section>
+          <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통 · 선택 시 즉시 저장</span></div>
+            <div class="panel-bd">
+              <div class="ds-segmented" style="max-width:300px">
+                <template x-for="o in reasoningOpts" x-bind:key="o.id"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="reasoning === o.id ? 'true' : 'false'" x-on:click="setReasoning(o.id)" x-text="o.label"></button></template>
+              </div>
+            </div></section>
         </div>
       </div>
 

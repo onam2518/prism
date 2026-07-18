@@ -1072,7 +1072,13 @@ def builder_compile(spec: dict, team=None) -> dict:
     if not families:
         return {"ok": False, "error": "대상 모델 계열을 하나 이상 선택하세요"}
     cfg = Config.load()
-    llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
+    meta_model = (spec.get("meta_model") or "").strip()
+    if meta_model:                               # ② 메타 컴파일러 모델 지정(미지정=현재 설정 모델)
+        llm, route = _SV.llm_for_model(meta_model, _SV.Handler.server_mock)
+        if llm is None:
+            return {"ok": False, "error": f"메타 컴파일러 모델 호출 불가({route}): {meta_model}"}
+    else:
+        llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
     parts = [f"## 과업\n{task}"]
     for key, label in (("role", "역할"), ("background", "배경·의도"),
                        ("constraints", "제약(반드시 지킬 것)"), ("format", "출력 형식"),
@@ -1107,3 +1113,31 @@ def builder_compile(spec: dict, team=None) -> dict:
     return {"ok": True, "prompts": prompts, "notes": str(data.get("notes") or "")[:500],
             "families": families,
             "cost_usd": round(getattr(res, "cost_usd", 0.0) or 0.0, 6)}
+
+
+def builder_test(system: str, user_input: str, model: str = "", team=None) -> dict:
+    """빌더 산출 프롬프트를 지정 테스트 모델로 1회 실행해 원문 출력 확인(적용 전 검증).
+    JSON 강제 없이 자유 텍스트로 받는다 — 형식 준수 여부 자체가 관찰 대상."""
+    system = (system or "").strip()
+    user_input = (user_input or "").strip()
+    if not system:
+        return {"ok": False, "error": "테스트할 시스템 프롬프트가 없습니다 · 먼저 컴파일하세요"}
+    if not user_input:
+        return {"ok": False, "error": "샘플 입력을 넣어주세요"}
+    cfg = Config.load()
+    used = (model or "").strip()
+    if used:
+        llm, route = _SV.llm_for_model(used, _SV.Handler.server_mock)
+        if llm is None:
+            return {"ok": False, "error": f"테스트 모델 호출 불가({route}): {used}"}
+    else:
+        llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
+        used = cfg.model or getattr(llm, "model", "") or ""
+    try:
+        res = llm.complete_text(system[:12000], user_input[:6000], tag="builder-test")
+    except Exception as e:
+        return {"ok": False, "error": f"테스트 실행 실패: {e}"}
+    return {"ok": True, "model": used, "output": (res.text or "")[:6000],
+            "latency_ms": res.latency_ms,
+            "cost_usd": round(getattr(res, "cost_usd", 0.0) or 0.0, 6),
+            "tokens": {"in": res.in_tok, "out": res.out_tok}}

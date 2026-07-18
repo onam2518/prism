@@ -61,3 +61,56 @@ class TestBuilderCompile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBuilderTest(unittest.TestCase):
+    """빌더 ④ 테스트 실행: 프롬프트·입력 게이트 · 텍스트 완성 스텁 · mock 경로."""
+
+    def _with_serve(self, text=None):
+        import tempfile
+        from prism import serve
+        from prism.store import Store
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self._orig_mock = serve.Handler.server_mock
+        serve.Handler.server_mock = True
+        self.addCleanup(lambda: (setattr(serve, "_STORE", None),
+                                 setattr(serve.Handler, "server_mock", self._orig_mock)))
+        if text is not None:
+            orig = serve.make_text_llm
+
+            class _Res:
+                latency_ms = 42
+                cost_usd = 0.001
+                in_tok = 10
+                out_tok = 20
+
+                def __init__(self, t):
+                    self.text = t
+
+            class _Stub:
+                model = "stub-model"
+
+                def complete_text(self, system, user, tag=""):
+                    return _Res(text)
+            serve.make_text_llm = lambda cfg, mock: _Stub()
+            self.addCleanup(lambda: setattr(serve, "make_text_llm", orig))
+        return serve
+
+    def test_gates(self):
+        serve = self._with_serve()
+        self.assertIn("컴파일", serve.builder_test("", "입력").get("error", ""))
+        self.assertIn("샘플", serve.builder_test("시스템", "").get("error", ""))
+
+    def test_runs_and_reports(self):
+        serve = self._with_serve(text='{"finalGrade": "G"}')
+        r = serve.builder_test("당신은 분류기다", "본문 샘플")
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(r["output"], '{"finalGrade": "G"}')
+        self.assertEqual(r["latency_ms"], 42)
+        self.assertEqual(r["tokens"], {"in": 10, "out": 20})
+
+    def test_mock_llm_returns_text(self):
+        serve = self._with_serve()                       # 스텁 없이 실제 mock LLM 경로
+        r = serve.builder_test("당신은 분류기다", "본문 샘플")
+        self.assertTrue(r.get("ok"), r)
+        self.assertTrue(r["output"])                     # mock 도 텍스트 산출
