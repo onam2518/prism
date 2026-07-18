@@ -42,17 +42,7 @@
   })();
 </script>
 <style>
-  /* 앱 레벨 별칭 · 역사적 변수명(--ds-violet*·--ds-surface2·--ds-solar)을
-     Anchor 토큰(ds-theme.css)으로 매핑. 고정 위젯 테두리는 Blue 틴트로 전환. */
-  :root{
-    --ds-violet: var(--ds-primary);
-    --ds-violet-hover: var(--ds-primary-hover);
-    --ds-violet-deep: var(--ds-primary-deep);
-    --ds-violet-tint: var(--ds-primary-tint);
-    --ds-surface2: var(--ds-surface-white);
-    --ds-solar: var(--ds-success);
-    --ds-hair: var(--ds-hairline);
-  }
+  /* (구 --ds-violet*·surface2·solar 별칭은 2026-07-18 실토큰 치환으로 제거) */
 </style>
 <!-- 앱 조각(프로퍼티 그룹) → 로더(app.js) 순으로 로드 · 로더가 디스크립터 병합(앱 분할 6차) -->
 <script src="/vendor/app-00-tabitems.js"></script>

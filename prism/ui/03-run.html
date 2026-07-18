@@ -74,7 +74,7 @@
           <!-- 집계 인포그래픽 -->
           <section class="panel">
             <div class="panel-hd"><b>집계</b><span class="meta tnum" x-text="batchResult ? (batchStats.n + '건 분석') : ''"></span>
-              <span x-show="batchResult && batchResult.mock" class="inline-flex items-center rounded-md bg-[#ff9429]/15 px-2 py-0.5 text-xs font-semibold text-[#ff9429]">MOCK</span>
+              <span x-show="batchResult && batchResult.mock" class="ds-badge ds-badge--warning">MOCK</span>
               <button type="button" class="copybtn ml-auto" x-on:click="exportBatchCsv()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
                 CSV 내보내기
