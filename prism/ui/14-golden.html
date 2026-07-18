@@ -6,6 +6,29 @@
       </div></div>
       <!-- 정답셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
       <div x-show="mod === 'testset' && testTab === 'status'" x-cloak class="w-full space-y-4">
+          <!-- 감독의 훈련 일지(캐릭터 브리핑 · 채택 시안 C-3): 반영마다 버전이 오르는 성장 궤적(실데이터) -->
+          <section class="panel" data-fn><div class="panel-hd"><b>감독의 훈련 일지</b><span class="meta">학습 반영마다 정답을 프롬프트에 새기고 · 버전이 오릅니다</span></div>
+            <div class="panel-bd">
+              <div class="jour">
+                <div class="jour__coach">
+                  <div class="brf__speech">"쌓인 정답, 오늘도 프롬프트에 새긴다."</div>
+                  <img src="/vendor/ddakji-manager.svg" alt="감독 딱지">
+                </div>
+                <div class="jour__book">
+                  <template x-for="r in verRows.slice(0, 4)" x-bind:key="'je'+r.v">
+                    <div class="jentry">
+                      <span class="jentry__date tnum" x-text="r.ts ? fmtTs(r.ts) : '·'"></span>
+                      <span class="jentry__ver tnum" x-text="'v' + (r.v-1) + ' → v' + r.v"></span>
+                      <span class="jentry__body">반영 정답 <span class="jentry__add tnum" x-text="r.confirmed != null ? ('+' + r.confirmed) : '·'"></span><span class="ds-badge ds-badge--success" style="margin-left:8px" x-show="r.cur">현재 버전</span></span>
+                      <span class="jentry__acc tnum" x-text="r.acc != null ? (Math.round(r.acc*100) + '%' + (r.delta ? (' (' + (r.delta>0?'+':'') + Math.round(r.delta*100) + '%p)') : '')) : '·'"></span>
+                    </div>
+                  </template>
+                  <div class="jentry" x-show="!verRows.length"><span class="jentry__body">아직 반영된 버전이 없습니다 · 검수가 쌓이고 학습 반영이 돌면 이 일지에 성장 궤적이 기록됩니다</span></div>
+                </div>
+              </div>
+              <div class="jour__foot">정답을 모으는 것으로 끝이 아니라 <b>반영될 때마다 버전이 오르고 팀이 강해집니다</b> · 점수가 낮아진 보정은 채택하지 않습니다(자동 원복)</div>
+            </div>
+          </section>
           <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
           <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다 · 현재 프롬프트 <span class="tnum" x-text="verTxt"></span></span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenStatus()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -437,6 +460,23 @@
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
+        <!-- 타순으로 보는 검수(캐릭터 브리핑 · 채택 시안 B-4): 대기열→판정·합의→정답셋 흐름(예시) -->
+        <section class="panel" data-fn><div class="panel-hd"><b>타순으로 보는 검수</b><span class="meta">YELLOW 대기열 → 판정·합의 → 정답셋 · 예시로 보는 상태들</span></div>
+          <div class="panel-bd">
+            <div class="rvq">
+              <div class="rvq__hd">타순 · 검수 대상 콘텐츠 · 상태 (예시)</div>
+              <div class="rvq__row"><span class="rvq__ord">1</span><span class="rvq__ttl">AI 규제 해설 브리핑</span><span class="rvq__st"><span class="rvq-call rvq-call--ok">정확</span><span class="rvq__who">합의 3명 → 정답셋</span></span></div>
+              <div class="rvq__row"><span class="rvq__ord">2</span><span class="rvq__ttl">부동산 시황 요약</span><span class="rvq__st"><span class="rvq-call rvq-call--fix">수정</span><span class="rvq__who">대식 교정 → 고쳐서 편입</span></span></div>
+              <div class="rvq__row"><span class="rvq__ord">3</span><span class="rvq__ttl">연예 소식 정리</span><span class="rvq__st"><span class="rvq-call rvq-call--split">의견 갈림</span><span class="rvq__who">→ 딱지 최종 검수</span></span></div>
+              <div class="rvq__row"><span class="rvq__ord">4</span><span class="rvq__ttl">스포츠 시즌 정리 기사</span><span class="rvq__st"><span class="rvq__who">2명 보는 중 · 실시간</span><span class="rvq-call rvq-call--wait"><span class="rvq-dot"></span>검토 중</span></span></div>
+              <div class="rvq__row"><span class="rvq__ord">5</span><span class="rvq__ttl">오늘의 날씨 브리핑</span><span class="rvq__st"><span class="rvq-call rvq-call--wait"><span class="rvq-dot"></span>YELLOW 대기</span></span></div>
+            </div>
+            <div class="rvq-bench">
+              <div style="display:flex;gap:8px;align-items:flex-end"><img src="/vendor/yonghee-pitcher.svg" alt=""><img src="/vendor/daesik-batter.svg" alt=""><img src="/vendor/boksil-catcher.svg" alt=""><img src="/vendor/ddakji-manager.svg" alt=""></div>
+              <div class="cap">용희가 던진 초안이 <b>YELLOW로 대기</b> → 대식이 정확/수정 판정하고 필요하면 교정 → 여럿의 콜이 <b>합의</b>를 이루면 복실의 정답셋으로, 갈리면 딱지의 최종 검수로. 같은 타순을 여러 검수자가 실시간으로 함께 봅니다.</div>
+            </div>
+          </div>
+        </section>
         <!-- 모델 선택(별도 영역 · selctl 정책): 아래 목록의 기준 모델 지정 -->
         <section class="panel" data-fn><div class="panel-hd"><b>모델 선택</b><span class="meta">아래 목록의 기준 모델 지정</span></div>
           <div class="panel-bd">

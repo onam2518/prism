@@ -10,12 +10,37 @@
 
       <!-- ── 프롬프트 · 빌더: STEP 1 선언 → STEP 2 컴파일 → 테스트 → 적용·저장 ── -->
       <div x-show="mod === 'studio' && studioTab === 'prompt' && promptSub === 'builder'" x-cloak class="w-full space-y-4">
-        <ul class="ds-bullets hintbox" style="padding:14px 16px">
-          <li>순서: <b>STEP 1 스펙 선언</b> → <b>STEP 2 컴파일</b>(메타 컴파일러·대상 계열 설정) → <b>테스트 실행</b>(샘플 입력으로 확인) → <b>적용·저장</b>(단계 지시 적용 · 라이브러리 · 배포).</li>
-          <li>운영 중인 추출 엔진(계약·계열 래퍼·미리보기·추론 강도)은 <b>사전 · 정책 → 프롬프트 엔진</b> 탭에서 관리합니다.</li>
-        </ul>
+        <!-- 감독의 발주서(캐릭터 브리핑 · 채택 시안 D-2): 한 벌 선언 → 계열별 프롬프트 자동 -->
+        <section class="panel" data-fn><div class="panel-hd"><b>감독의 발주서 · 이 화면의 흐름</b><span class="meta">한 벌 선언 → 계열별 프롬프트 자동</span></div>
+          <div class="panel-bd">
+            <div class="brf">
+              <div class="brf__left">
+                <div class="brf__speech">"필요한 걸 말로 적기만 해. 계열마다 어투가 다른 건 컴파일러가 맞춘다 — 우린 던져보고 확인만 하면 돼."</div>
+                <img src="/vendor/ddakji-manager.svg" alt="감독 딱지">
+              </div>
+              <div class="brf__board">
+                <div class="brf__row">
+                  <span class="brf__tag brf__tag--now"><span class="brf__pin"></span>STEP 1 스펙 선언</span>
+                  <span class="brf__arrow">→</span>
+                  <span class="brf__hub">메타 컴파일러</span>
+                  <span class="brf__arrow">→</span>
+                  <span class="brf__fan"><span class="brf__tag">Claude 그립</span><span class="brf__tag">GPT 그립</span><span class="brf__tag">Gemini 그립</span><span class="brf__tag">Solar 그립</span></span>
+                </div>
+                <div class="brf__row">
+                  <span class="brf__tag">테스트 실행 · 용희</span><span class="brf__arrow">→</span>
+                  <span class="brf__tag">적용 · 단계 지시(딱지) · 라이브러리(복실)</span><span class="brf__arrow">↦ 배포</span>
+                </div>
+                <div class="brf__legend">
+                  <span>채운 자석 = 당신이 적는 유일한 입력(과업·역할·제약·출력 형식)</span>
+                  <span>점선 태그 = 컴파일러가 계열마다 자동 생성 · 채택 전 테스트 필수</span>
+                  <span>운영 엔진(계약·래퍼·미리보기)은 사전 · 정책 → 프롬프트 엔진에서</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
-        <section class="panel" data-fn><div class="panel-hd"><span class="stepline__no">STEP 1</span><b>스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
+        <section class="panel" data-fn><div class="panel-hd"><b style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">STEP 1</span>스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
           <div class="panel-bd">
             <div class="grid grid-cols-2 gap-4">
               <div><div class="selctl__lbl" style="margin-bottom:4px">과업 (필수)</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.task" placeholder="예: 커머스 콘텐츠에서 리드문·엔티티를 추출하고 품질 등급을 판정한다"></textarea></div>
@@ -27,7 +52,7 @@
             </div>
           </div>
         </section>
-        <section class="panel" data-fn><div class="panel-hd"><span class="stepline__no">STEP 2</span><b>컴파일 설정 · 실행</b><span class="meta">어떤 두뇌로 설계하고 · 어느 계열용으로 만들지</span></div>
+        <section class="panel" data-fn><div class="panel-hd"><b style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">STEP 2</span>컴파일 설정 · 실행</b><span class="meta">어떤 두뇌로 설계하고 · 어느 계열용으로 만들지</span></div>
           <div class="panel-bd">
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <span class="selctl" data-tip="스펙을 읽고 프롬프트를 설계하는 메타 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">메타 컴파일러</span>
