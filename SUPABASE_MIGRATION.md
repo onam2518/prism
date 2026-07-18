@@ -161,6 +161,24 @@ alter table public.prism_eval_results
 완주 런의 건별 산출을 LLM 심사관이 4축(정확성·형식·정책·간결성) 1~5점으로 배치 채점
 (RUBRIC_CHUNK=10건/호출 · 미채점 건만 재실행). 낮은 축 = 프롬프트 개선 우선순위.
 
+**오토파일럿(`prism_autopilot_runs`, 2026-07-18 · 적용됨 · Atelier autopilot 이식)**:
+```sql
+create table if not exists public.prism_autopilot_runs (
+  id bigint generated always as identity primary key,
+  team_id uuid, status text not null default 'running',   -- running|done|stopped|failed
+  target numeric not null default 0.9, max_rounds integer not null default 5,
+  round integer not null default 0,
+  start_accuracy numeric, best_accuracy numeric, last_accuracy numeric,
+  history jsonb,                       -- 라운드별 {round,accuracy,pre,delta,reverted,version}
+  stop_reason text, error text, created_by text not null default '',
+  created_at timestamptz not null default now(), heartbeat_at timestamptz, finished_at timestamptz
+);
+create index if not exists ix_autopilot_team on public.prism_autopilot_runs(team_id, id desc);
+alter table public.prism_autopilot_runs enable row level security;
+```
+한 라운드 = learnops.learning_batch(피드백 보정→같은 정답셋 재평가 · 악화 자동 원복).
+종료 = 목표 달성 · 개선 정체(2라운드 연속 무향상) · 최대 라운드(cap 10) · 수동 중지.
+
 ## 테이블 네임스페이스 정리 방침 (2026-07-18)
 
 같은 Supabase 프로젝트(구 PromptForge)에 두 제품의 테이블이 공존해 왔다. Atelier 를

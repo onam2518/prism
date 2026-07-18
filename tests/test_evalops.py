@@ -283,3 +283,90 @@ class TestEvalRunCompare(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAutopilot(unittest.TestCase):
+    """오토파일럿(자동 개선 루프): 목표 달성·정체 종료·골든 게이트·단일 실행·수동 중지."""
+
+    def _with_serve(self):
+        from prism import serve
+        st = _mk_store()
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def _patch_batch(self, accs, delay=0.0):
+        """learning_batch 를 라운드별 정확도 시퀀스로 대체(마지막 값 반복)."""
+        import prism.learnops as LO
+        orig = LO.learning_batch
+        state = {"i": 0}
+
+        def fake(team=None, models=None):
+            import time as _t
+            if delay:
+                _t.sleep(delay)
+            i = state["i"]
+            state["i"] += 1
+            acc = accs[min(i, len(accs) - 1)]
+            return {"ok": True, "grade_accuracy": acc,
+                    "eval_pre": {"grade_accuracy": max(0.0, round(acc - 0.05, 4))},
+                    "improve": {"reverted": False}, "improve_delta": 0.05,
+                    "prompt_snapshot": {"version": i + 1}}
+        LO.learning_batch = fake
+        self.addCleanup(lambda: setattr(LO, "learning_batch", orig))
+
+    def _wait(self, st, timeout=60):
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            run = st.autopilot_latest(None)
+            if run and run["status"] != "running":
+                return run
+            time.sleep(0.05)
+        self.fail("오토파일럿이 제한 시간 안에 끝나지 않았습니다")
+
+    def test_target_reached(self):
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        self._patch_batch([0.7, 0.85, 0.93])
+        r = serve.autopilot_start(None, target=0.9, max_rounds=5)
+        self.assertTrue(r.get("ok"), r)
+        run = self._wait(st)
+        self.assertEqual(run["status"], "done")
+        self.assertIn("목표 달성", run["stop_reason"])
+        self.assertEqual(run["round"], 3)
+        self.assertEqual(len(run["history"]), 3)
+        self.assertEqual(run["best_accuracy"], 0.93)
+        self.assertEqual(run["start_accuracy"], 0.65)   # 1라운드 개선 전 점수
+        self.assertFalse(run["history"][0]["reverted"])
+
+    def test_stall_stops(self):
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        self._patch_batch([0.7, 0.7, 0.7, 0.7])
+        serve.autopilot_start(None, target=0.95, max_rounds=5)
+        run = self._wait(st)
+        self.assertEqual(run["status"], "done")
+        self.assertIn("정체", run["stop_reason"])
+        self.assertEqual(run["round"], 3)               # 1라운드 최고 경신 후 2연속 무향상
+
+    def test_requires_golden(self):
+        serve, st = self._with_serve()
+        r = serve.autopilot_start(None)
+        self.assertFalse(r.get("ok"))
+        self.assertIn("정답셋", r.get("error", ""))
+
+    def test_single_active_and_manual_stop(self):
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        self._patch_batch([0.6], delay=0.3)             # 느린 라운드 · 목표 미달로 계속 돎
+        r = serve.autopilot_start(None, target=0.99, max_rounds=8)
+        self.assertTrue(r.get("ok"), r)
+        r2 = serve.autopilot_start(None)
+        self.assertFalse(r2.get("ok"))
+        self.assertIn("이미", r2.get("error", ""))
+        rs = serve.autopilot_stop(None)
+        self.assertTrue(rs.get("ok"), rs)
+        run = self._wait(st)
+        self.assertEqual(run["status"], "stopped")
+        self.assertIn("수동 중지", run["stop_reason"])
+        self.assertTrue(serve.autopilot_status(None)["ok"])

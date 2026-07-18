@@ -98,7 +98,7 @@ class SupabaseStore:
         "reports": "kind,team_key", "drafts": "content_hash,model,version",
         "feedback_routes": "id", "entities": "entity_id", "entity_aliases": "alias",
         "content_entities": "content_hash,entity_id", "teams": "id",
-        "eval_runs": "id", "eval_results": "run_id,content_hash",
+        "eval_runs": "id", "eval_results": "run_id,content_hash", "autopilot_runs": "id",
     }
 
     def _get(self, table, query=""):
@@ -1593,6 +1593,48 @@ class SupabaseStore:
     def eval_result_hashes(self, run_id, team=None) -> set:
         rows = self._get("eval_results", f"select=content_hash&run_id=eq.{int(run_id)}")
         return {r.get("content_hash") or "" for r in rows}
+
+    # ── 오토파일럿 런 · Atelier autopilot 이식 · SQLite Store 와 동일 계약 ──
+    def autopilot_create(self, team, target, max_rounds, created_by="") -> int:
+        row = {"status": "running", "target": float(target), "max_rounds": int(max_rounds),
+               "round": 0, "created_by": created_by or ""}
+        if team:
+            row["team_id"] = team
+        rows = self._req("POST", "autopilot_runs", body=[row], prefer="return=representation")
+        return int(rows[0]["id"]) if rows else 0
+
+    def autopilot_update(self, run_id, team=None, **fields):
+        body = {}
+        for k in ("status", "round", "start_accuracy", "best_accuracy", "last_accuracy",
+                  "stop_reason", "error", "history"):
+            if k in fields:
+                body[k] = fields[k]
+        for k in ("heartbeat", "finished"):
+            if k in fields and fields[k]:
+                body[k + "_at"] = _iso(fields[k])
+        if not body:
+            return
+        self._req("PATCH", "autopilot_runs", query=f"id=eq.{int(run_id)}",
+                  body=body, prefer="return=minimal")
+
+    def _pilot_row(self, r) -> dict:
+        return {"id": int(r.get("id") or 0), "status": r.get("status") or "",
+                "target": r.get("target"), "max_rounds": int(r.get("max_rounds") or 0),
+                "round": int(r.get("round") or 0), "start_accuracy": r.get("start_accuracy"),
+                "best_accuracy": r.get("best_accuracy"), "last_accuracy": r.get("last_accuracy"),
+                "history": r.get("history") or [], "stop_reason": r.get("stop_reason") or "",
+                "error": r.get("error") or "", "created_by": r.get("created_by") or "",
+                "ts": _epoch(r.get("created_at")), "heartbeat": _epoch(r.get("heartbeat_at")),
+                "finished": _epoch(r.get("finished_at"))}
+
+    def autopilot_get(self, run_id, team=None):
+        rows = self._get("autopilot_runs", f"select=*&id=eq.{int(run_id)}")
+        return self._pilot_row(rows[0]) if rows else None
+
+    def autopilot_latest(self, team=None):
+        rows = self._get("autopilot_runs",
+                         f"select=*&{self._team_q(team)}&order=id.desc&limit=1")
+        return self._pilot_row(rows[0]) if rows else None
 
     def set_purpose(self, hashes, purpose, team=None) -> int:
         """콘텐츠 용도 지정: review(검수용)|eval(평가용 홀드아웃)."""

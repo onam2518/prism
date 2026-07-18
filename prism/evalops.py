@@ -244,6 +244,138 @@ def eval_run_compare(a_id: int, b_id: int, team=None) -> dict:
     return {"ok": True, "a": ra, "b": rb, "regressions": regressions, "verdict": verdict}
 
 
+# ── 오토파일럿(자동 개선 루프 · Atelier autopilot 이식) ─────────────────────
+# 한 라운드 = learnops.learning_batch(피드백→프롬프트 보정→같은 정답셋 재평가 ·
+# 악화 시 자동 원복). 오토파일럿은 그 라운드를 목표 달성까지 반복하는 상태머신:
+# 종료 = 목표 달성 · 개선 정체(2라운드 연속 향상 없음) · 최대 라운드 · 수동 중지.
+_PILOT_ACTIVE: dict = {}        # run_id → Thread
+_PILOT_STOP: set = set()
+PILOT_ROUNDS_CAP = 10           # 폭주 방지 상한(Atelier max_versions cap 상응)
+PILOT_STALL_ROUNDS = 2          # 연속 무향상 허용 라운드(초과 시 정체 종료)
+
+
+def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="") -> dict:
+    st = _SV.get_store()
+    if not (st and hasattr(st, "autopilot_create")):
+        return {"ok": False, "error": "스토어가 오토파일럿을 지원하지 않습니다"}
+    try:
+        target = float(target)
+        max_rounds = int(max_rounds)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "목표·라운드 값이 올바르지 않습니다"}
+    if not (0.5 <= target <= 1.0):
+        return {"ok": False, "error": "목표 일치율은 50~100% 사이여야 합니다"}
+    max_rounds = max(1, min(PILOT_ROUNDS_CAP, max_rounds))
+    if not (hasattr(st, "golden_count") and st.golden_count(team)):
+        return {"ok": False, "error": "정답셋이 없습니다 · 검수 합의 또는 수동 등록으로 먼저 쌓으세요"}
+    latest = st.autopilot_latest(team)
+    if latest and latest.get("status") == "running":
+        with _LOCK:
+            alive = latest["id"] in _PILOT_ACTIVE and _PILOT_ACTIVE[latest["id"]].is_alive()
+        if alive:
+            return {"ok": False, "error": "이미 오토파일럿이 실행 중입니다"}
+        st.autopilot_update(latest["id"], team=team, status="stopped",
+                            stop_reason="서버 재시작으로 중단", finished=time.time())
+    rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "")
+    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds),
+                          name=f"prism-autopilot-{rid}", daemon=True)
+    with _LOCK:
+        _PILOT_ACTIVE[rid] = th
+    th.start()
+    return {"ok": True, "id": rid, "target": target, "max_rounds": max_rounds}
+
+
+def autopilot_stop(team=None) -> dict:
+    """실행 중 오토파일럿 중지 요청(라운드 경계에서 멈춤 · 반영된 라운드는 유지)."""
+    st = _SV.get_store()
+    latest = st.autopilot_latest(team) if (st and hasattr(st, "autopilot_latest")) else None
+    if not latest or latest.get("status") != "running":
+        return {"ok": False, "error": "실행 중인 오토파일럿이 없습니다"}
+    rid = latest["id"]
+    with _LOCK:
+        alive = rid in _PILOT_ACTIVE and _PILOT_ACTIVE[rid].is_alive()
+    if not alive:                                # 재시작 유실 → 상태만 정리
+        st.autopilot_update(rid, team=team, status="stopped",
+                            stop_reason="서버 재시작으로 중단", finished=time.time())
+        return {"ok": True, "id": rid}
+    _PILOT_STOP.add(rid)
+    return {"ok": True, "id": rid}
+
+
+def autopilot_status(team=None) -> dict:
+    st = _SV.get_store()
+    if not (st and hasattr(st, "autopilot_latest")):
+        return {"ok": True, "run": None}
+    run = st.autopilot_latest(team)
+    if run:
+        with _LOCK:
+            run["stalled"] = bool(run.get("status") == "running"
+                                  and not (run["id"] in _PILOT_ACTIVE
+                                           and _PILOT_ACTIVE[run["id"]].is_alive()))
+    return {"ok": True, "run": run}
+
+
+def _pilot_loop(rid: int, team, target: float, max_rounds: int):
+    """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속."""
+    from . import learnops as LO
+    st = _SV.get_store()
+    history = []
+    best = None
+    no_improve = 0
+    try:
+        for rnd in range(1, max_rounds + 1):
+            if rid in _PILOT_STOP:
+                st.autopilot_update(rid, team=team, status="stopped",
+                                    stop_reason=f"수동 중지(라운드 {rnd - 1} 완료)",
+                                    finished=time.time())
+                return
+            st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
+            rep = LO.learning_batch(team)
+            acc = rep.get("grade_accuracy")
+            if acc is None:
+                st.autopilot_update(rid, team=team, status="failed",
+                                    error="라운드 평가 불가 · 정답셋·모델 설정을 확인하세요",
+                                    history=history, finished=time.time())
+                return
+            pre = (rep.get("eval_pre") or {}).get("grade_accuracy")
+            reverted = bool((rep.get("improve") or {}).get("reverted"))
+            history.append({"round": rnd, "accuracy": acc, "pre": pre,
+                            "delta": rep.get("improve_delta"), "reverted": reverted,
+                            "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
+            improved = best is None or acc > best + 1e-9
+            best = acc if improved else best
+            fields = {"last_accuracy": acc, "best_accuracy": best,
+                      "history": history, "heartbeat": time.time()}
+            if rnd == 1:
+                fields["start_accuracy"] = pre if pre is not None else acc
+            st.autopilot_update(rid, team=team, **fields)
+            if acc >= target - 1e-9:
+                st.autopilot_update(rid, team=team, status="done",
+                                    stop_reason=f"목표 달성 · 일치율 {acc:.0%} ≥ 목표 {target:.0%}",
+                                    finished=time.time())
+                return
+            no_improve = 0 if improved else no_improve + 1
+            if no_improve >= PILOT_STALL_ROUNDS:
+                st.autopilot_update(rid, team=team, status="done",
+                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 향상 없음(최고 {best:.0%})",
+                                    finished=time.time())
+                return
+        st.autopilot_update(rid, team=team, status="done",
+                            stop_reason=f"최대 라운드({max_rounds}) 도달 · 최고 {best:.0%}",
+                            finished=time.time())
+    except Exception as e:
+        try:
+            st.autopilot_update(rid, team=team, status="failed", error=str(e)[:300],
+                                history=history, finished=time.time())
+        except Exception:
+            pass
+        print(f"  [autopilot] #{rid} 실패: {e}")
+    finally:
+        with _LOCK:
+            _PILOT_ACTIVE.pop(rid, None)
+        _PILOT_STOP.discard(rid)
+
+
 # ── 루브릭 저지(4축 · Atelier rubric-judge 이식) ────────────────────────────
 def _clamp15(v) -> int:
     """1~5 정수로 클램프(비수치는 중립 3). Atelier clamp 와 동일 규칙."""
