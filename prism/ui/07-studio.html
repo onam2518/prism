@@ -3,6 +3,7 @@
       <div x-show="mod === 'studio'" x-cloak class="w-full" style="margin-bottom:10px">
         <div class="evaltabs">
           <button type="button" x-bind:class="studioTab==='prompt'?'sel':''" x-on:click="studioTab='prompt'">프롬프트</button>
+          <button type="button" x-bind:class="studioTab==='builder'?'sel':''" x-on:click="studioTab='builder'">빌더</button>
           <button type="button" x-bind:class="studioTab==='topic'?'sel':''" x-on:click="studioTab='topic'; loadTopics()">토픽</button>
         </div>
       </div>

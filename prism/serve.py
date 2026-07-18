@@ -198,6 +198,7 @@ learn_spec_md = LO.learn_spec_md
 learn_export = LO.learn_export
 handoff_bundle = LO.handoff_bundle
 meta_compile_run = LO.meta_compile_run
+builder_compile = LO.builder_compile
 start_learning_scheduler = LO.start_learning_scheduler
 from .llm import LLMClient
 
@@ -413,6 +414,7 @@ def _safe_url(u: str) -> str:
 # 인프라(/config·/ingest-status)·멤버(/feedback·/board)·상태폴 경로는 미포함(가시성은 프론트 담당).
 _MENU_POST_ROUTES = (
     ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
+    ("/builder-compile", "studio"),
     ("/media-extract", "lab"), ("/usermeta", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
@@ -1752,6 +1754,12 @@ def _p_patch_meta(h, body):
         if fresh:
             res["missions_completed"] = fresh
     return res
+
+
+@_post_route("/builder-compile", gate="admin")       # 선언형 스펙→계열별 프롬프트 컴파일(실모델 비용)
+def _p_builder_compile(h, body):
+    data = json.loads(body or b"{}")
+    return builder_compile(data.get("spec") or data, h._req_team())
 
 
 @_post_route("/meta-compile", gate="admin")          # 실모델 호출(비용) 트리거 · /learn-batch 와 동일 게이트

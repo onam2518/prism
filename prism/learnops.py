@@ -1055,3 +1055,55 @@ def meta_compile_run(team=None) -> dict:
     PR.LEARNED_BY_MODEL = {m: {stg: (r.get("directive") or "") for stg, r in cr.items()}
                            for m, cr in model_results.items()}
     return {"ok": True, "results": results, "model_results": model_results}
+
+
+def builder_compile(spec: dict, team=None) -> dict:
+    """선언형 스펙 → 대상 모델 계열별 시스템 프롬프트 컴파일(Atelier step1 이식).
+    입력: {role, task(필수), background, constraints, format, examples, families[]}.
+    각 계열의 공식 쿡북 distilled 가이드(model_guides.PROMPTING_GUIDES)를 메타 호출에
+    주입해 한 번의 호출로 계열별 프롬프트를 생성한다. 적용은 기존 /config 경로
+    (stage_prompts)를 재사용 — 빌더는 '만드는 곳', 반영 경로는 단일 소스 유지."""
+    from . import model_guides as MG
+    spec = spec or {}
+    task = (spec.get("task") or "").strip()
+    if not task:
+        return {"ok": False, "error": "과업(무엇을 하는 프롬프트인지)을 입력하세요"}
+    families = [f for f in (spec.get("families") or []) if f in MG.PROMPTING_GUIDES]
+    if not families:
+        return {"ok": False, "error": "대상 모델 계열을 하나 이상 선택하세요"}
+    cfg = Config.load()
+    llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
+    parts = [f"## 과업\n{task}"]
+    for key, label in (("role", "역할"), ("background", "배경·의도"),
+                       ("constraints", "제약(반드시 지킬 것)"), ("format", "출력 형식"),
+                       ("examples", "예시(입력 → 기대 출력)")):
+        v = (spec.get(key) or "").strip()
+        if v:
+            parts.append(f"## {label}\n{v[:2000]}")
+    guides = "\n\n".join(MG.render_guide_block(f) for f in families)
+    fam_list = ", ".join(families)
+    system = ("당신은 프롬프트 엔지니어링 컴파일러입니다. 사용자의 선언형 스펙을 읽고 "
+              "대상 모델 계열별로 그 계열의 공식 가이드에 최적화된 시스템 프롬프트를 "
+              "각각 작성합니다. 스펙에 없는 요구를 지어내지 않습니다. 반드시 JSON 만 출력합니다.")
+    user = f"""# 선언형 스펙
+
+{chr(10).join(parts)}
+
+# 계열별 공식 가이드 (이 규칙대로 각 계열 프롬프트를 최적화)
+
+{guides}
+
+# 출력 형식 (반드시 이 JSON 만 · 계열 키: {fam_list})
+
+{{"prompts": {{"<계열>": "<그 계열용 완성 시스템 프롬프트>"}}, "notes": "<계열 간 차이 요약 1~2문장>"}}"""
+    try:
+        data, res = llm.complete_json(system, user, tag="builder")
+    except Exception as e:
+        return {"ok": False, "error": f"컴파일 실패: {e}"}
+    got = data.get("prompts") or {}
+    prompts = {f: str(got.get(f) or "").strip() for f in families}
+    if not any(prompts.values()):
+        return {"ok": False, "error": "컴파일 결과가 비었습니다 · 모델 설정(API 키)을 확인하세요"}
+    return {"ok": True, "prompts": prompts, "notes": str(data.get("notes") or "")[:500],
+            "families": families,
+            "cost_usd": round(getattr(res, "cost_usd", 0.0) or 0.0, 6)}
