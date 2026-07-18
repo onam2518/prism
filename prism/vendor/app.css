@@ -1161,3 +1161,67 @@
 .dug__nm{font-size:12px;font-weight:700;color:var(--ds-ink)}
 .dug__rl{font-size:11px;color:var(--ds-muted)}
 .dug__foot{margin-top:12px;font-size:11.5px;color:var(--ds-muted)}
+
+/* ── 캐릭터 브리핑 · 감독의 작전판(coach+board): 설명 영역 공통(채택 시안 A-2·D-2) ── */
+.brf{display:flex;gap:20px;align-items:flex-start}
+.brf__left{flex:0 0 158px;text-align:center}
+.brf__left img{height:140px;margin:0 auto;display:block}
+.brf__speech{position:relative;background:var(--ds-surface-on);border-radius:14px;padding:10px 12px;
+  font-size:12.5px;font-weight:600;color:var(--ds-body);margin-bottom:10px;text-align:left}
+.brf__speech:after{content:"";position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);
+  border:8px solid transparent;border-top-color:var(--ds-surface-on);border-bottom:0}
+.brf__board{flex:1;min-width:0;background:var(--ds-surface-on);border:1px solid var(--ds-hairline);
+  border-radius:14px;padding:14px 16px}
+.brf__row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.brf__tag{display:inline-flex;align-items:center;gap:7px;border:1.6px dashed var(--ds-hairline);
+  border-radius:10px;padding:6px 11px;font-size:12.5px;font-weight:600;color:var(--ds-muted);background:var(--ds-surface-white)}
+.brf__tag--now{border-style:solid;border-color:var(--ds-success);color:var(--ds-success-deep);background:rgba(24,186,69,.13)}
+.brf__pin{width:10px;height:10px;border-radius:50%;background:var(--ds-muted);opacity:.45;flex:none}
+.brf__tag--now .brf__pin{background:var(--ds-error);opacity:1;box-shadow:0 0 0 2.5px rgba(255,78,51,.22)}
+.brf__hub{display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:var(--ds-primary-deep);
+  background:var(--ds-primary-tint);border-radius:8px;padding:6px 11px}
+.brf__fan{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.brf__arrow{color:var(--ds-muted);font-size:12px}
+.brf__legend{font-size:11.5px;color:var(--ds-muted);display:flex;gap:14px;flex-wrap:wrap}
+@media (max-width:720px){.brf{flex-direction:column}.brf__left{flex:none;margin:0 auto}}
+
+/* ── 캐릭터 브리핑 · 검수 타순표(채택 시안 B-4) ── */
+.rvq{background:var(--ds-surface-on);border:1px solid var(--ds-hairline);border-radius:14px;overflow:hidden}
+.rvq__hd{padding:9px 15px;border-bottom:1px solid var(--ds-hairline);font-size:10.5px;letter-spacing:.12em;
+  color:var(--ds-muted);font-weight:700}
+.rvq__row{display:flex;align-items:center;gap:12px;padding:10px 15px;border-bottom:1px solid var(--ds-hairline-soft);
+  background:var(--ds-surface-white)}
+.rvq__row:last-child{border-bottom:0}
+.rvq__ord{width:26px;font-size:12px;font-weight:800;color:var(--ds-muted)}
+.rvq__ttl{flex:1;min-width:0;font-size:13px;color:var(--ds-ink)}
+.rvq__st{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.rvq__who{font-size:11px;color:var(--ds-muted)}
+.rvq-call{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;border-radius:8px;
+  padding:3px 9px;white-space:nowrap}
+.rvq-call--ok{background:rgba(24,186,69,.14);color:var(--ds-success-deep)}
+.rvq-call--fix{background:rgba(255,148,41,.14);color:var(--ds-warning)}
+.rvq-call--split{background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
+.rvq-call--wait{background:var(--ds-surface-on);color:var(--ds-muted)}
+.rvq-dot{width:8px;height:8px;border-radius:50%;background:var(--ds-warning);flex:none}
+.rvq-bench{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px}
+.rvq-bench img{height:46px}
+.rvq-bench .cap{font-size:12px;color:var(--ds-muted);flex:1;min-width:230px}
+.rvq-bench .cap b{color:var(--ds-ink)}
+
+/* ── 캐릭터 브리핑 · 감독의 훈련 일지(채택 시안 C-3): 버전 성장 기록 ── */
+.jour{display:flex;gap:18px;align-items:flex-start}
+.jour__coach{flex:0 0 150px;text-align:center}
+.jour__coach img{height:118px;margin:0 auto;display:block}
+.jour__book{flex:1;min-width:0;border:1px solid var(--ds-hairline);border-radius:14px;
+  background:var(--ds-surface-white);overflow:hidden}
+.jentry{display:flex;gap:12px;align-items:center;padding:10px 14px;
+  border-bottom:1px dashed var(--ds-hairline-soft);font-size:12.5px;flex-wrap:wrap}
+.jentry:last-child{border-bottom:0}
+.jentry__date{width:56px;color:var(--ds-muted);font-weight:700;font-size:11.5px;flex:none}
+.jentry__ver{width:86px;font-weight:800;color:var(--ds-ink);flex:none}
+.jentry__body{flex:1;min-width:140px;color:var(--ds-body)}
+.jentry__add{color:var(--ds-success-deep);font-weight:700}
+.jentry__acc{font-weight:700;color:var(--ds-muted)}
+.jour__foot{margin-top:11px;font-size:12px;color:var(--ds-muted);line-height:1.55}
+.jour__foot b{color:var(--ds-success-deep)}
+@media (max-width:720px){.jour{flex-direction:column}.jour__coach{flex:none;margin:0 auto}}

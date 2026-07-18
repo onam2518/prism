@@ -9,6 +9,31 @@
           </span>
         </div>
       </div>
+      <!-- 감독의 작전판(캐릭터 브리핑 · 채택 시안 A-2): 이 화면의 흐름·용도 개념 안내 -->
+      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin-bottom:12px">
+        <section class="panel" data-fn><div class="panel-hd"><b>감독의 작전판 · 이 화면의 흐름</b><span class="meta">용도 지정 → 추가 → 실행 → 큐</span></div>
+          <div class="panel-bd">
+            <div class="brf">
+              <div class="brf__left">
+                <div class="brf__speech">"먼저 용도부터 정한다 — 검수용이냐 평가용이냐. 그다음 복실이 모으고(STEP 1), 용희가 던지고(STEP 2), 큐에서 지켜본다(STEP 3). 그게 이 흐름 전부야."</div>
+                <img src="/vendor/ddakji-manager.svg" alt="감독 딱지">
+              </div>
+              <div class="brf__board">
+                <div class="brf__row">
+                  <span class="brf__tag brf__tag--now"><span class="brf__pin"></span>STEP 1 콘텐츠 추가 · 복실 (지금 여기)</span><span class="brf__arrow">→</span>
+                  <span class="brf__tag"><span class="brf__pin"></span>STEP 2 모델 실행 · 용희</span><span class="brf__arrow">→</span>
+                  <span class="brf__tag"><span class="brf__pin"></span>STEP 3 실행 큐 · 진척·이력</span>
+                </div>
+                <div class="brf__legend">
+                  <span>용도: 검수용 = 대식의 검수로 · 평가용 = 검수 제외 홀드아웃</span>
+                  <span>STEP 2 실행 = 초안 생성(모의 모드 OK) · 진행은 STEP 3 실행 큐에서</span>
+                  <span>추가는 저장만 · 초안은 반드시 STEP 2 에서 만들어집니다</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
       <div x-show="mod === 'content' && contentTab === 'auto'" x-cloak class="w-full space-y-4">
         <template x-if="!(backend === 'supabase' && adminData && adminData.isAdmin)">
           <ul class="ds-bullets hintbox" style="padding:14px 16px">
