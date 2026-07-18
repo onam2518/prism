@@ -1731,8 +1731,11 @@ PAGE = """<!doctype html>
           <section class="panel"><div class="panel-hd"><b>평가 실행</b><span class="meta">위 기준으로 정답셋과 비교 · 요약과 건별 판정</span></div>
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:11px"><li>검수 합의로 쌓인 <b>정답셋(테스트셋)</b>과 모델 결과를 비교해 요약 수치와 <b>불일치 목록</b>을 만듭니다.</li><li>불일치 건은 검수처럼 <b>건별 판정</b>합니다 · <b>모델이 맞음</b>=정답을 고칠 후보로 표시 · <b>정답 유지</b>=모델 오답으로 확정.</li><li>평가 건수가 적으면 오차가 큽니다 · 신뢰구간이 겹치면 우열 판단을 미룹니다.</li></ul>
-              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? '평가 중… (전건 추출)' : '평가 실행'"></button>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? ('평가 중… ' + (goldenResult && goldenResult.total ? ((goldenResult.cursor||0) + '/' + goldenResult.total) : '(전건 추출)')) : '평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
+              <template x-if="goldenBusy && goldenResult && goldenResult.total">
+                <div class="ds-progress" style="margin-top:10px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:' + Math.max(((goldenResult.cursor||0)/goldenResult.total)*100, 3) + '%'"></div></div></div>
+              </template>
               <template x-if="goldenResult && goldenResult.ok">
                 <div>
                   <!-- 결과 카드화: 산개한 숫자·막대를 타일과 박스로 묶어 시선 고정 -->
@@ -1772,6 +1775,31 @@ PAGE = """<!doctype html>
                   <div x-show="!(goldenResult.detail||[]).length" class="text-xs text-muted">불일치 없음 · 건별 판정할 항목이 없습니다</div>
                   <button type="button" class="ds-btn ds-btn--secondary" style="margin-top:12px" x-on:click="selectMod('prompt')">원천 프롬프트 수정하러 가기 →</button>
                 </div>
+              </template>
+            </div>
+          </section>
+          <!-- 평가 이력: 런 단위 영속(Atelier 이식) · 다시 열기 · 중단 런 재개 -->
+          <section class="panel"><div class="panel-hd"><b>평가 이력</b><span class="meta">평가는 런 단위로 저장됩니다 · 다시 열어 리포트 확인 · 중단된 런은 재개</span></div>
+            <div class="panel-bd">
+              <div class="text-xs text-muted" x-show="!evalRuns.length">아직 실행한 평가가 없습니다 · 위에서 평가를 실행하면 이력이 쌓입니다</div>
+              <template x-if="evalRuns.length">
+                <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th style="width:54px">#</th><th style="width:110px">시각</th><th>모델</th><th style="width:90px">범위</th><th style="width:150px">상태</th><th style="width:90px">일치율</th><th style="width:170px"></th></tr></thead><tbody>
+                  <template x-for="r in evalRuns" x-bind:key="'er'+r.id">
+                    <tr x-bind:style="evalRunId===r.id ? 'background:var(--panel-hd-bg, rgba(0,0,0,.03))' : ''">
+                      <td class="tnum" x-text="r.id"></td>
+                      <td class="tnum" x-text="fmtTs(r.ts)"></td>
+                      <td x-text="r.model || '현재 설정 모델'"></td>
+                      <td x-text="r.scope === 'eval' ? '평가용만' : '전체 정답셋'"></td>
+                      <td><span class="ds-badge" x-bind:class="r.status==='done' ? 'ds-badge--success' : (r.status==='failed' ? 'ds-badge--error' : (r.stalled ? 'ds-badge--warning' : 'ds-badge--neutral'))" x-text="evalRunStatusTxt(r)"></span></td>
+                      <td class="tnum" x-text="r.grade_accuracy != null ? Math.round(r.grade_accuracy*100)+'%' : '·'"></td>
+                      <td><span style="display:inline-flex;gap:6px">
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalRun(r.id)">보기</button>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='running' && !r.stalled" x-on:click="cancelEvalRun(r.id)">중단</button>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.stalled || r.status==='failed'" data-tip="저장된 건을 빼고 남은 건만 이어서 실행합니다" data-tip-pos="top" x-on:click="resumeEvalRun(r.id)">재개</button>
+                      </span></td>
+                    </tr>
+                  </template>
+                </tbody></table></div>
               </template>
             </div>
           </section>

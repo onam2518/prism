@@ -34,10 +34,12 @@ from . import agents as AG
 from . import meta_prompts as MP
 from . import learnops as LO
 from . import adminops as AO
+from . import evalops as EVO
 from .config import Config, DEFAULT_CONFIG_PATH
 
 LO._SV = sys.modules[__name__]      # 학습 도메인에 서버 컴포지션 주입(-m 실행의 __main__ 포함)
 AO._SV = sys.modules[__name__]      # 관리자·인증 도메인에도 동일 주입
+EVO._SV = sys.modules[__name__]     # 평가 런 도메인에도 동일 주입
 _supa = AO._supa
 auth_action = AO.auth_action
 validate_jwt = AO.validate_jwt
@@ -65,6 +67,11 @@ learn_export = LO.learn_export
 handoff_bundle = LO.handoff_bundle
 meta_compile_run = LO.meta_compile_run
 start_learning_scheduler = LO.start_learning_scheduler
+eval_run_start = EVO.eval_run_start
+eval_run_resume = EVO.eval_run_resume
+eval_run_cancel = EVO.eval_run_cancel
+eval_runs_list = EVO.eval_runs_list
+eval_run_report = EVO.eval_run_report
 from .llm import LLMClient
 
 # 마지막 실행 결과(리포트 생성용 · 즉시 응답 미러)
@@ -4316,6 +4323,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
                 return
             self._send(200, json.dumps(golden_list(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/eval-runs"):         # 평가 런 이력(런 단위 영속 · Atelier 이식)
+            self._send(200, json.dumps(eval_runs_list(self._req_team()), ensure_ascii=False), _JSON)
+        elif self.path.startswith("/eval-run"):          # 런 리포트(진행 중이면 부분 리포트 · 폴링용)
+            from urllib.parse import urlparse, parse_qs
+            try:
+                rid = int((parse_qs(urlparse(self.path).query).get("id") or ["0"])[0])
+            except (TypeError, ValueError):
+                rid = 0
+            self._send(200, json.dumps(eval_run_report(rid, self._req_team()), ensure_ascii=False), _JSON)
         elif self.path.startswith("/activity-daily"):    # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프)
             from urllib.parse import urlparse, parse_qs
             try:
@@ -4824,6 +4840,45 @@ class Handler(BaseHTTPRequestHandler):
                     pass
                 _agg_bump()
                 self._send(200, json.dumps({"ok": ok, "judge": counts or {"adopt": 0, "reject": 0, "reviewers": {}}},
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/eval-run-start"):    # 평가 런 시작(백그라운드 · 이력 영속)
+            try:
+                # 실모델 호출(비용) 트리거 · 무인증 차단(/eval-golden 과 동일 기준)
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(eval_run_start(self._req_team(),
+                                           model=(data.get("model") or "").strip(),
+                                           scope=(data.get("scope") or "all").strip(),
+                                           created_by=self._bearer_uid() or ""), ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/eval-run-resume"):   # 중단 런 재개(남은 건만 실행)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(eval_run_resume(int(data.get("id") or 0), self._req_team()),
+                                           ensure_ascii=False), _JSON)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+            return
+
+        if self.path.startswith("/eval-run-cancel"):   # 실행 중 런 중단(저장 결과 유지)
+            try:
+                if _supa() and not is_admin_user(self._bearer_uid(), self._req_team(), self._bearer_email()):
+                    self._send(403, json.dumps({"error": "관리자 전용입니다"}, ensure_ascii=False), _JSON)
+                    return
+                data = json.loads(body or b"{}")
+                self._send(200, json.dumps(eval_run_cancel(int(data.get("id") or 0), self._req_team()),
                                            ensure_ascii=False), _JSON)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)

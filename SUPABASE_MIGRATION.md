@@ -113,6 +113,53 @@ alter table public.prism_content_entities enable row level security;
 사전은 전역(개체는 팀 무관 사실), 콘텐츠 링크만 팀 스코프. 타입·속성 보강은 Wikidata(POC) ·
 수동 확정(attr_meta.status=confirmed) 필드는 재보강이 덮어쓰지 않음. 설계 배경: DNM 위키 366018723.
 
+**평가 런(`prism_eval_runs` 외 1, 2026-07-18 · Atelier eval_runs 체계 이식)**:
+```sql
+-- 평가 런: 골든셋 평가 실행 단위(이력). 청크마다 cursor 갱신 → 진행률 폴링·중단 재개.
+create table if not exists public.prism_eval_runs (
+  id          bigint generated always as identity primary key,
+  team_id     uuid,
+  model       text not null default '',              -- ''=당시 기본 모델
+  scope       text not null default 'all',           -- all=전체 정답셋 | eval=평가용 홀드아웃
+  status      text not null default 'running',       -- running | done | failed | cancelled
+  cursor      integer not null default 0,
+  total       integer not null default 0,
+  metrics     jsonb,                                 -- 증분 카운터(n·grade_hit·per_reason 등)
+  error       text,
+  created_by  text not null default '',              -- 시작한 관리자 uid
+  created_at  timestamptz not null default now(),
+  finished_at timestamptz
+);
+create index if not exists ix_eval_runs_team on public.prism_eval_runs(team_id, id desc);
+-- 건별 결과: 기대 vs 실제 등급·사유 스냅샷(불일치 감사·재개 판별 원천). 재실행 upsert 안전.
+create table if not exists public.prism_eval_results (
+  run_id       bigint not null references public.prism_eval_runs(id) on delete cascade,
+  content_hash text not null,
+  title        text not null default '',
+  expected     jsonb,
+  got          jsonb,
+  passed       boolean,
+  error        text not null default '',
+  created_at   timestamptz not null default now(),
+  primary key (run_id, content_hash)
+);
+alter table public.prism_eval_runs enable row level security;     -- 정책 없음 = service_role 전용
+alter table public.prism_eval_results enable row level security;
+```
+기존 즉시 평가(`/eval-golden`)와 채점 규칙 동일(abtest.score 단일 소스) · 런 영속화로
+이력 비교·서버 재시작 후 재개를 더한다. 설계 원천: Atelier(구 PromptForge) eval_runs/eval_run_results.
+
+## 테이블 네임스페이스 정리 방침 (2026-07-18)
+
+같은 Supabase 프로젝트(구 PromptForge)에 두 제품의 테이블이 공존해 왔다. Atelier 를
+Prism 으로 이식(기능 흡수)하면서 **`prism_` 접두사를 유일한 정식 네임스페이스**로 통일한다.
+
+- **정식**: `prism_*` — 신규 테이블은 반드시 이 접두사(supastore 가 접두사를 하드코딩).
+- **legacy(Atelier · 구 PromptForge)**: 무접두사 22개(`sessions`·`versions`·`model_results`·
+  `test_cases`·`test_results`·`usage_logs`·`profiles`·`teams`·`datasets`·`eval_runs` 등).
+  Atelier 앱 은퇴 후 보존 가치 확인 → 아카이브(export) → 삭제. **삭제는 소유자 확인 후에만.**
+- **백업**: `prism_*_bak_20260707` 7개 — 복구 시효 지나면 삭제 후보.
+
 ## 상세 설계 (확정)
 
 ### (a) 정체성 통일 · dual-mode 의 핵심

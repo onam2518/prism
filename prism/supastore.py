@@ -98,6 +98,7 @@ class SupabaseStore:
         "reports": "kind,team_key", "drafts": "content_hash,model,version",
         "feedback_routes": "id", "entities": "entity_id", "entity_aliases": "alias",
         "content_entities": "content_hash,entity_id", "teams": "id",
+        "eval_runs": "id", "eval_results": "run_id,content_hash",
     }
 
     def _get(self, table, query=""):
@@ -1501,6 +1502,69 @@ class SupabaseStore:
                 d["reviewers"][r.get("reviewer") or "(익명)"] = v
         return out
 
+    # ── 평가 런(이력) · Atelier eval_runs 이식 · SQLite Store 와 동일 계약 ──
+    def eval_run_create(self, team, model, scope, total, created_by="") -> int:
+        row = {"model": model or "", "scope": scope or "all", "status": "running",
+               "cursor": 0, "total": int(total), "created_by": created_by or ""}
+        if team:
+            row["team_id"] = team
+        rows = self._req("POST", "eval_runs", body=[row], prefer="return=representation")
+        return int(rows[0]["id"]) if rows else 0
+
+    def eval_run_update(self, run_id, team=None, **fields):
+        """부분 갱신(status·cursor·total·metrics·error·finished). finished 는 epoch→ISO."""
+        body = {}
+        for k in ("status", "cursor", "total", "error"):
+            if k in fields:
+                body[k] = fields[k]
+        if "metrics" in fields:
+            body["metrics"] = fields["metrics"]
+        if "finished" in fields and fields["finished"]:
+            body["finished_at"] = _iso(fields["finished"])
+        if not body:
+            return
+        self._req("PATCH", "eval_runs", query=f"id=eq.{int(run_id)}",
+                  body=body, prefer="return=minimal")
+
+    def _eval_run_row(self, r) -> dict:
+        return {"id": int(r.get("id") or 0), "model": r.get("model") or "",
+                "scope": r.get("scope") or "all", "status": r.get("status") or "",
+                "cursor": int(r.get("cursor") or 0), "total": int(r.get("total") or 0),
+                "metrics": r.get("metrics"), "error": r.get("error") or "",
+                "created_by": r.get("created_by") or "",
+                "ts": _epoch(r.get("created_at")), "finished": _epoch(r.get("finished_at"))}
+
+    def eval_run_get(self, run_id, team=None):
+        rows = self._get("eval_runs", f"select=*&id=eq.{int(run_id)}")
+        return self._eval_run_row(rows[0]) if rows else None
+
+    def eval_runs_list(self, team=None, limit=20) -> list:
+        rows = self._get("eval_runs",
+                         f"select=*&{self._team_q(team)}&order=id.desc&limit={int(limit)}")
+        return [self._eval_run_row(r) for r in rows]
+
+    def eval_results_add(self, run_id, rows, team=None):
+        """건별 결과 일괄 upsert(재개 시 같은 건 재실행돼도 안전)."""
+        if not rows:
+            return
+        payload = [{"run_id": int(run_id), "content_hash": r.get("hash") or "",
+                    "title": r.get("title") or "", "expected": r.get("expected"),
+                    "got": r.get("got"), "passed": bool(r.get("passed")),
+                    "error": r.get("error") or ""} for r in rows]
+        self._upsert("eval_results", payload)
+
+    def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000) -> list:
+        q = (f"select=content_hash,title,expected,got,passed,error&run_id=eq.{int(run_id)}"
+             + ("&passed=is.false" if only_fail else "") + f"&limit={int(limit)}")
+        return [{"hash": r.get("content_hash") or "", "title": r.get("title") or "",
+                 "expected": r.get("expected"), "got": r.get("got"),
+                 "passed": bool(r.get("passed")), "error": r.get("error") or ""}
+                for r in self._get("eval_results", q)]
+
+    def eval_result_hashes(self, run_id, team=None) -> set:
+        rows = self._get("eval_results", f"select=content_hash&run_id=eq.{int(run_id)}")
+        return {r.get("content_hash") or "" for r in rows}
+
     def set_purpose(self, hashes, purpose, team=None) -> int:
         """콘텐츠 용도 지정: review(검수용)|eval(평가용 홀드아웃)."""
         if purpose not in ("review", "eval"):
@@ -1552,6 +1616,11 @@ class SupabaseStore:
         # 목록에 안 뜨는 결함이 있었다(2026-07-06). 검수 대기 구분은 review 컬럼이 담당.
         n = self.sync_contents(pairs, source, team=team, include_all=True)
         return {"inserted": n, "updated": 0, "skipped": 0}
+
+
+def _iso(epoch) -> str:
+    """epoch → timestamptz(UTC) 문자열. _epoch 과 왕복 일관(gmtime 기준)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(float(epoch or 0)))
 
 
 def _epoch(ts) -> float:

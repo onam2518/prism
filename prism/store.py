@@ -134,6 +134,17 @@ class Store:
         CREATE TABLE IF NOT EXISTS content_entities(
           content_hash TEXT, entity_id TEXT, surface TEXT, team TEXT NOT NULL DEFAULT '',
           ts REAL, PRIMARY KEY(content_hash, entity_id, team));
+        -- 평가 런(이력): 골든셋 평가 실행 단위(Atelier eval_runs 이식). 청크마다 cursor 갱신 → 진행률·재개.
+        CREATE TABLE IF NOT EXISTS eval_runs(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
+          model TEXT, scope TEXT, status TEXT, cursor INTEGER NOT NULL DEFAULT 0,
+          total INTEGER NOT NULL DEFAULT 0, metrics TEXT, error TEXT,
+          created_by TEXT, ts REAL, finished REAL);
+        -- 평가 런 건별 결과: 기대 vs 실제 등급·사유 스냅샷(불일치 감사·재개 판별 원천).
+        CREATE TABLE IF NOT EXISTS eval_results(
+          run_id INTEGER, content_hash TEXT, title TEXT,
+          expected TEXT, got TEXT, passed INTEGER, error TEXT, ts REAL,
+          PRIMARY KEY(run_id, content_hash));
         CREATE INDEX IF NOT EXISTS ix_centities_ent ON content_entities(entity_id);
         CREATE INDEX IF NOT EXISTS ix_ealias_ent ON entity_aliases(entity_id);
         CREATE INDEX IF NOT EXISTS ix_assign_team ON assignments(team, reviewer);
@@ -1032,6 +1043,92 @@ class Store:
             moved += c.execute(f"UPDATE {t} SET reviewer=? WHERE reviewer=?", (new, old)).rowcount
         c.commit()
         return {"ok": True, "moved": moved}
+
+    # ── 평가 런(이력) · Atelier eval_runs 이식 · supastore 와 동일 계약 ──────
+    def eval_run_create(self, team, model, scope, total, created_by="") -> int:
+        c = self._conn()
+        cur = c.execute("INSERT INTO eval_runs(team,model,scope,status,cursor,total,created_by,ts) "
+                        "VALUES(?,?,?,?,0,?,?,?)",
+                        (team or "", model or "", scope or "all", "running",
+                         int(total), created_by or "", time.time()))
+        c.commit()
+        return int(cur.lastrowid)
+
+    def eval_run_update(self, run_id, team=None, **fields):
+        """부분 갱신(status·cursor·total·metrics·error·finished). metrics 는 JSON 직렬화."""
+        sets, vals = [], []
+        for k in ("status", "cursor", "total", "error", "finished"):
+            if k in fields:
+                sets.append(f"{k}=?")
+                vals.append(fields[k])
+        if "metrics" in fields:
+            sets.append("metrics=?")
+            vals.append(json.dumps(fields["metrics"], ensure_ascii=False))
+        if not sets:
+            return
+        vals.append(int(run_id))
+        c = self._conn()
+        c.execute(f"UPDATE eval_runs SET {', '.join(sets)} WHERE id=?", vals)
+        c.commit()
+
+    def _eval_run_row(self, r) -> dict:
+        try:
+            metrics = json.loads(r[7]) if r[7] else None
+        except Exception:
+            metrics = None
+        return {"id": r[0], "model": r[2] or "", "scope": r[3] or "all", "status": r[4] or "",
+                "cursor": int(r[5] or 0), "total": int(r[6] or 0), "metrics": metrics,
+                "error": r[8] or "", "created_by": r[9] or "", "ts": r[10], "finished": r[11]}
+
+    _EVAL_RUN_COLS = "id,team,model,scope,status,cursor,total,metrics,error,created_by,ts,finished"
+
+    def eval_run_get(self, run_id, team=None):
+        c = self._conn()
+        r = c.execute(f"SELECT {self._EVAL_RUN_COLS} FROM eval_runs WHERE id=?",
+                      (int(run_id),)).fetchone()
+        return self._eval_run_row(r) if r else None
+
+    def eval_runs_list(self, team=None, limit=20) -> list:
+        c = self._conn()
+        return [self._eval_run_row(r) for r in c.execute(
+            f"SELECT {self._EVAL_RUN_COLS} FROM eval_runs ORDER BY id DESC LIMIT ?", (int(limit),))]
+
+    def eval_results_add(self, run_id, rows, team=None):
+        """건별 결과 일괄 upsert(재개 시 같은 건 재실행돼도 안전)."""
+        if not rows:
+            return
+        c = self._conn()
+        now = time.time()
+        c.executemany(
+            "INSERT INTO eval_results(run_id,content_hash,title,expected,got,passed,error,ts) "
+            "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(run_id,content_hash) DO UPDATE SET "
+            "title=excluded.title, expected=excluded.expected, got=excluded.got, "
+            "passed=excluded.passed, error=excluded.error, ts=excluded.ts",
+            [(int(run_id), r.get("hash") or "", r.get("title") or "",
+              json.dumps(r.get("expected"), ensure_ascii=False),
+              json.dumps(r.get("got"), ensure_ascii=False),
+              int(bool(r.get("passed"))), r.get("error") or "", now) for r in rows])
+        c.commit()
+
+    def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000) -> list:
+        c = self._conn()
+        q = ("SELECT content_hash,title,expected,got,passed,error FROM eval_results "
+             "WHERE run_id=?" + (" AND passed=0" if only_fail else "") + " LIMIT ?")
+        out = []
+        for r in c.execute(q, (int(run_id), int(limit))):
+            def _j(v):
+                try:
+                    return json.loads(v) if v else None
+                except Exception:
+                    return None
+            out.append({"hash": r[0], "title": r[1] or "", "expected": _j(r[2]),
+                        "got": _j(r[3]), "passed": bool(r[4]), "error": r[5] or ""})
+        return out
+
+    def eval_result_hashes(self, run_id, team=None) -> set:
+        c = self._conn()
+        return {r[0] for r in c.execute(
+            "SELECT content_hash FROM eval_results WHERE run_id=?", (int(run_id),))}
 
     def yellow_hashes(self, team=None) -> set:
         """검수 대상(YELLOW) 해시 집합 · 진척율/퀘스트의 분자·분모가 공유하는 모집단.
