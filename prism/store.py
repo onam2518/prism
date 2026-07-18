@@ -155,6 +155,17 @@ class Store:
           start_accuracy REAL, best_accuracy REAL, last_accuracy REAL,
           history TEXT, stop_reason TEXT, error TEXT, created_by TEXT,
           ts REAL, heartbeat REAL, finished REAL);
+        -- 프롬프트 배포: 스냅샷 버전을 slug 에 pin · 외부가 Bearer 키로 당겨 씀(Atelier deployments 이식).
+        CREATE TABLE IF NOT EXISTS deployments(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
+          slug TEXT UNIQUE, name TEXT, version INTEGER NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1, created_by TEXT, ts REAL, updated REAL);
+        -- 배포 API 키: sha256 해시만 저장(평문 미보관) · revoked 로 무효화.
+        CREATE TABLE IF NOT EXISTS deployment_keys(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, deployment_id INTEGER,
+          key_hash TEXT, key_prefix TEXT, revoked INTEGER NOT NULL DEFAULT 0,
+          ts REAL, last_used REAL);
+        CREATE INDEX IF NOT EXISTS ix_depkeys_dep ON deployment_keys(deployment_id);
         CREATE INDEX IF NOT EXISTS ix_centities_ent ON content_entities(entity_id);
         CREATE INDEX IF NOT EXISTS ix_ealias_ent ON entity_aliases(entity_id);
         CREATE INDEX IF NOT EXISTS ix_assign_team ON assignments(team, reviewer);
@@ -1224,6 +1235,85 @@ class Store:
         r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs "
                       "ORDER BY id DESC LIMIT 1").fetchone()
         return self._pilot_row(r) if r else None
+
+    # ── 프롬프트 배포 · Atelier deployments 이식 · supastore 와 동일 계약 ───
+    def _deploy_row(self, r) -> dict:
+        return {"id": r[0], "team": r[1] or "", "slug": r[2] or "", "name": r[3] or "",
+                "version": int(r[4] or 0), "active": bool(r[5]),
+                "created_by": r[6] or "", "ts": r[7], "updated": r[8]}
+
+    _DEPLOY_COLS = "id,team,slug,name,version,active,created_by,ts,updated"
+
+    def deploy_save(self, team, dep_id=None, slug="", name="", version=0,
+                    active=True, created_by="") -> int:
+        c = self._conn()
+        now = time.time()
+        if dep_id:
+            c.execute("UPDATE deployments SET slug=?, name=?, version=?, active=?, updated=? "
+                      "WHERE id=?", (slug, name, int(version), int(bool(active)), now, int(dep_id)))
+            c.commit()
+            return int(dep_id)
+        cur = c.execute("INSERT INTO deployments(team,slug,name,version,active,created_by,ts,updated) "
+                        "VALUES(?,?,?,?,?,?,?,?)",
+                        (team or "", slug, name, int(version), int(bool(active)),
+                         created_by or "", now, now))
+        c.commit()
+        return int(cur.lastrowid)
+
+    def deploy_get(self, dep_id, team=None):
+        c = self._conn()
+        r = c.execute(f"SELECT {self._DEPLOY_COLS} FROM deployments WHERE id=?",
+                      (int(dep_id),)).fetchone()
+        return self._deploy_row(r) if r else None
+
+    def deploy_by_slug(self, slug):
+        c = self._conn()
+        r = c.execute(f"SELECT {self._DEPLOY_COLS} FROM deployments WHERE slug=?",
+                      (slug or "",)).fetchone()
+        return self._deploy_row(r) if r else None
+
+    def deploys_list(self, team=None) -> list:
+        c = self._conn()
+        return [self._deploy_row(r) for r in c.execute(
+            f"SELECT {self._DEPLOY_COLS} FROM deployments ORDER BY id DESC")]
+
+    def deploy_remove(self, dep_id, team=None) -> bool:
+        c = self._conn()
+        n = c.execute("DELETE FROM deployments WHERE id=?", (int(dep_id),)).rowcount
+        c.execute("DELETE FROM deployment_keys WHERE deployment_id=?", (int(dep_id),))
+        c.commit()
+        return bool(n)
+
+    def deploy_key_add(self, dep_id, key_hash, key_prefix) -> int:
+        c = self._conn()
+        cur = c.execute("INSERT INTO deployment_keys(deployment_id,key_hash,key_prefix,ts) "
+                        "VALUES(?,?,?,?)", (int(dep_id), key_hash, key_prefix, time.time()))
+        c.commit()
+        return int(cur.lastrowid)
+
+    def deploy_keys_for(self, dep_id, meta_only=False) -> list:
+        c = self._conn()
+        out = []
+        for r in c.execute("SELECT id,key_hash,key_prefix,revoked,ts,last_used "
+                           "FROM deployment_keys WHERE deployment_id=? ORDER BY id", (int(dep_id),)):
+            row = {"id": r[0], "prefix": r[2] or "", "revoked": bool(r[3]),
+                   "ts": r[4], "last_used": r[5]}
+            if not meta_only:
+                row["hash"] = r[1] or ""
+            out.append(row)
+        return out
+
+    def deploy_key_revoke(self, key_id, dep_id) -> bool:
+        c = self._conn()
+        n = c.execute("UPDATE deployment_keys SET revoked=1 WHERE id=? AND deployment_id=?",
+                      (int(key_id), int(dep_id))).rowcount
+        c.commit()
+        return bool(n)
+
+    def deploy_key_touch(self, key_id):
+        c = self._conn()
+        c.execute("UPDATE deployment_keys SET last_used=? WHERE id=?", (time.time(), int(key_id)))
+        c.commit()
 
     def yellow_hashes(self, team=None) -> set:
         """검수 대상(YELLOW) 해시 집합 · 진척율/퀘스트의 분자·분모가 공유하는 모집단.

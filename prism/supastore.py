@@ -99,6 +99,7 @@ class SupabaseStore:
         "feedback_routes": "id", "entities": "entity_id", "entity_aliases": "alias",
         "content_entities": "content_hash,entity_id", "teams": "id",
         "eval_runs": "id", "eval_results": "run_id,content_hash", "autopilot_runs": "id",
+        "deployments": "id", "deployment_keys": "id",
     }
 
     def _get(self, table, query=""):
@@ -1635,6 +1636,76 @@ class SupabaseStore:
         rows = self._get("autopilot_runs",
                          f"select=*&{self._team_q(team)}&order=id.desc&limit=1")
         return self._pilot_row(rows[0]) if rows else None
+
+    # ── 프롬프트 배포 · Atelier deployments 이식 · SQLite Store 와 동일 계약 ─
+    def _deploy_row(self, r) -> dict:
+        return {"id": int(r.get("id") or 0), "team": r.get("team_id") or "",
+                "slug": r.get("slug") or "", "name": r.get("name") or "",
+                "version": int(r.get("version") or 0), "active": bool(r.get("active")),
+                "created_by": r.get("created_by") or "",
+                "ts": _epoch(r.get("created_at")), "updated": _epoch(r.get("updated_at"))}
+
+    def deploy_save(self, team, dep_id=None, slug="", name="", version=0,
+                    active=True, created_by="") -> int:
+        if dep_id:
+            self._req("PATCH", "deployments", query=f"id=eq.{int(dep_id)}",
+                      body={"slug": slug, "name": name, "version": int(version),
+                            "active": bool(active), "updated_at": _iso(time.time())},
+                      prefer="return=minimal")
+            return int(dep_id)
+        row = {"slug": slug, "name": name, "version": int(version),
+               "active": bool(active), "created_by": created_by or ""}
+        if team:
+            row["team_id"] = team
+        rows = self._req("POST", "deployments", body=[row], prefer="return=representation")
+        return int(rows[0]["id"]) if rows else 0
+
+    def deploy_get(self, dep_id, team=None):
+        rows = self._get("deployments", f"select=*&id=eq.{int(dep_id)}")
+        return self._deploy_row(rows[0]) if rows else None
+
+    def deploy_by_slug(self, slug):
+        rows = self._get("deployments", f"select=*&slug=eq.{urllib.parse.quote(slug or '')}")
+        return self._deploy_row(rows[0]) if rows else None
+
+    def deploys_list(self, team=None) -> list:
+        rows = self._get("deployments", f"select=*&{self._team_q(team)}&order=id.desc")
+        return [self._deploy_row(r) for r in rows]
+
+    def deploy_remove(self, dep_id, team=None) -> bool:
+        self._req("DELETE", "deployments", query=f"id=eq.{int(dep_id)}",
+                  prefer="return=minimal")                # 키는 FK on delete cascade
+        return True
+
+    def deploy_key_add(self, dep_id, key_hash, key_prefix) -> int:
+        rows = self._req("POST", "deployment_keys",
+                         body=[{"deployment_id": int(dep_id), "key_hash": key_hash,
+                                "key_prefix": key_prefix}],
+                         prefer="return=representation")
+        return int(rows[0]["id"]) if rows else 0
+
+    def deploy_keys_for(self, dep_id, meta_only=False) -> list:
+        rows = self._get("deployment_keys",
+                         f"select=*&deployment_id=eq.{int(dep_id)}&order=id")
+        out = []
+        for r in rows:
+            row = {"id": int(r.get("id") or 0), "prefix": r.get("key_prefix") or "",
+                   "revoked": bool(r.get("revoked")), "ts": _epoch(r.get("created_at")),
+                   "last_used": _epoch(r.get("last_used_at"))}
+            if not meta_only:
+                row["hash"] = r.get("key_hash") or ""
+            out.append(row)
+        return out
+
+    def deploy_key_revoke(self, key_id, dep_id) -> bool:
+        self._req("PATCH", "deployment_keys",
+                  query=f"id=eq.{int(key_id)}&deployment_id=eq.{int(dep_id)}",
+                  body={"revoked": True}, prefer="return=minimal")
+        return True
+
+    def deploy_key_touch(self, key_id):
+        self._req("PATCH", "deployment_keys", query=f"id=eq.{int(key_id)}",
+                  body={"last_used_at": _iso(time.time())}, prefer="return=minimal")
 
     def set_purpose(self, hashes, purpose, team=None) -> int:
         """콘텐츠 용도 지정: review(검수용)|eval(평가용 홀드아웃)."""
