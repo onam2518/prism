@@ -1088,26 +1088,7 @@
 /* ── 토픽 스튜디오: 생성 스텝퍼(이름 → 자연어 → 조건 → 생성) ── */
 .tprog{display:inline-block;width:70px;height:6px;border-radius:999px;background:var(--ds-hairline-soft);overflow:hidden;vertical-align:middle;margin-left:8px}
 .tprog i{display:block;height:100%;background:linear-gradient(90deg,var(--ds-primary),var(--ds-success));transition:width .35s var(--ds-ease-standard,ease)}
-.tstepper{display:flex;flex-direction:column}
-.tstep{position:relative;display:grid;grid-template-columns:76px minmax(0,1fr);gap:var(--ds-space-3);padding-bottom:var(--ds-space-5)}
-.tstep:last-child{padding-bottom:0}
-.tstep__rail{position:relative;display:flex;justify-content:center;align-items:flex-start}
-.tstep:not(:last-child) .tstep__rail::after{content:"";position:absolute;top:26px;bottom:calc(-1 * var(--ds-space-5) + 2px);left:50%;width:2px;transform:translateX(-50%);background:var(--ds-hairline-soft)}
-.tstep.is-done:not(:last-child) .tstep__rail::after{background:var(--ds-success)}
-/* 스텝 배지 = STEP N 필(.stepline__no 와 동일 룩) + 위저드 상태색(대기/진행/완료) */
-.tstep__dot{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;
-  border-radius:var(--ds-radius-chip);padding:4px 11px;font:700 11px/1 var(--ds-font-game);letter-spacing:.03em;
-  background:var(--ds-surface);border:1.5px solid var(--ds-hairline);
-  color:var(--ds-muted);transition:background .2s,border-color .2s,color .2s,box-shadow .2s}
-.tstep.is-active .tstep__dot{border-color:var(--ds-primary);background:var(--ds-primary);color:#fff;box-shadow:0 0 0 4px var(--ds-primary-tint)}
-.tstep.is-done .tstep__dot{border-color:var(--ds-success);background:var(--ds-success);color:#fff}
-.tstep__dot .c{display:none;font-size:13px}
-.tstep.is-done .tstep__dot .n{display:none}
-.tstep.is-done .tstep__dot .c{display:block}
-.tstep__body{min-width:0;padding-top:3px}
-.tstep__head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:9px}
-.tstep__head b{font:600 14.5px/1.2 var(--ds-font-display);color:var(--ds-ink);letter-spacing:-.005em}
-.tstep__guide{color:var(--ds-muted);font-size:12px;line-height:1.45}
+/* (구 tstep 스텝퍼는 ds-steps--labeled 정식 변형으로 흡수 · ds-components.css) */
 /* 자연어 스텝: 자동생성 버튼 ↔ 모델 박스 간격 확보 */
 .tairow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:10px}
 .tmodel{display:inline-flex;align-items:center;gap:8px;margin-left:auto;background:var(--ds-canvas);
