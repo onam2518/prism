@@ -202,6 +202,21 @@ alter table public.prism_deployment_keys enable row level security;
 공개 서빙 `GET /api/v1/prompt?slug=` + `Authorization: Bearer pr_live_…`(deployops 자체 검증).
 pin 교체 = 호출측 무변경 즉시 프롬프트 교체.
 
+**프롬프트 라이브러리(`prism_prompt_library`, 2026-07-18 · 적용됨 · Atelier prompt_library 이식)**:
+```sql
+create table if not exists public.prism_prompt_library (
+  id bigint generated always as identity primary key,
+  team_id uuid, name text not null default '', domain text not null default '',
+  prompt text not null default '', note text not null default '',
+  source text not null default 'manual',       -- manual | builder 등 출처
+  pinned boolean not null default false, created_by text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists ix_prompt_library_team on public.prism_prompt_library(team_id, pinned, id desc);
+alter table public.prism_prompt_library enable row level security;
+```
+스튜디오 라이브러리 탭: 패턴 저장·핀 우선 정렬·복사·단계 원천 지시 적용(빌더 결과 저장 연동).
+
 ## 테이블 네임스페이스 정리 방침 (2026-07-18)
 
 같은 Supabase 프로젝트(구 PromptForge)에 두 제품의 테이블이 공존해 왔다. Atelier 를

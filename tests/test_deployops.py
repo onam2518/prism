@@ -94,3 +94,27 @@ class TestDeployops(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPromptLibrary(unittest.TestCase):
+    """프롬프트 라이브러리: 저장·핀 우선 정렬·삭제(스토어 계약)."""
+
+    def _with_store(self):
+        import tempfile
+        from prism.store import Store
+        return Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+
+    def test_crud_and_pin_order(self):
+        st = self._with_store()
+        a = st.lib_add(None, "패턴 A", "검수", "프롬프트 A", source="builder")
+        b = st.lib_add(None, "패턴 B", "판정", "프롬프트 B")
+        items = st.lib_list(None)
+        self.assertEqual([i["id"] for i in items], [b, a])      # 최신 우선
+        st.lib_pin(a, True)
+        items = st.lib_list(None)
+        self.assertEqual(items[0]["id"], a)                     # 핀 우선
+        self.assertTrue(items[0]["pinned"])
+        self.assertEqual(items[0]["source"], "builder")
+        self.assertTrue(st.lib_remove(b))
+        self.assertEqual(len(st.lib_list(None)), 1)
+        self.assertFalse(st.lib_remove(999))

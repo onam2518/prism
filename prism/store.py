@@ -166,6 +166,11 @@ class Store:
           key_hash TEXT, key_prefix TEXT, revoked INTEGER NOT NULL DEFAULT 0,
           ts REAL, last_used REAL);
         CREATE INDEX IF NOT EXISTS ix_depkeys_dep ON deployment_keys(deployment_id);
+        -- 프롬프트 라이브러리: 잘 나온 프롬프트 패턴 저장·재사용(Atelier prompt_library 이식).
+        CREATE TABLE IF NOT EXISTS prompt_library(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
+          name TEXT, domain TEXT, prompt TEXT, note TEXT, source TEXT,
+          pinned INTEGER NOT NULL DEFAULT 0, created_by TEXT, ts REAL);
         CREATE INDEX IF NOT EXISTS ix_centities_ent ON content_entities(entity_id);
         CREATE INDEX IF NOT EXISTS ix_ealias_ent ON entity_aliases(entity_id);
         CREATE INDEX IF NOT EXISTS ix_assign_team ON assignments(team, reviewer);
@@ -1235,6 +1240,39 @@ class Store:
         r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs "
                       "ORDER BY id DESC LIMIT 1").fetchone()
         return self._pilot_row(r) if r else None
+
+    # ── 프롬프트 라이브러리 · Atelier prompt_library 이식 · supastore 동일 계약 ─
+    def lib_add(self, team, name, domain, prompt, note="", source="manual",
+                created_by="") -> int:
+        c = self._conn()
+        cur = c.execute("INSERT INTO prompt_library(team,name,domain,prompt,note,source,"
+                        "created_by,ts) VALUES(?,?,?,?,?,?,?,?)",
+                        (team or "", name or "", domain or "", prompt or "",
+                         note or "", source or "manual", created_by or "", time.time()))
+        c.commit()
+        return int(cur.lastrowid)
+
+    def lib_list(self, team=None, limit=200) -> list:
+        c = self._conn()
+        return [{"id": r[0], "name": r[1] or "", "domain": r[2] or "",
+                 "prompt": r[3] or "", "note": r[4] or "", "source": r[5] or "",
+                 "pinned": bool(r[6]), "ts": r[7]}
+                for r in c.execute("SELECT id,name,domain,prompt,note,source,pinned,ts "
+                                   "FROM prompt_library ORDER BY pinned DESC, id DESC "
+                                   "LIMIT ?", (int(limit),))]
+
+    def lib_remove(self, lib_id, team=None) -> bool:
+        c = self._conn()
+        n = c.execute("DELETE FROM prompt_library WHERE id=?", (int(lib_id),)).rowcount
+        c.commit()
+        return bool(n)
+
+    def lib_pin(self, lib_id, pinned, team=None) -> bool:
+        c = self._conn()
+        n = c.execute("UPDATE prompt_library SET pinned=? WHERE id=?",
+                      (int(bool(pinned)), int(lib_id))).rowcount
+        c.commit()
+        return bool(n)
 
     # ── 프롬프트 배포 · Atelier deployments 이식 · supastore 와 동일 계약 ───
     def _deploy_row(self, r) -> dict:
