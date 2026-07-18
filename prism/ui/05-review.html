@@ -53,7 +53,7 @@
               <label class="block"><span class="text-xs text-muted">의도 · 쉼표로 여러 개</span>
                 <input type="text" class="field w-full" x-bind:value="fa ? fa.intent : ''" x-on:input="fa.intent=$event.target.value">
                 <template x-if="fa && fa.row && intentMismatch(fa.intent, fa.row.service).length">
-                  <span class="text-xs" style="color:var(--ds-error,#d92d20);display:block;margin-top:4px">⚠ 이 서비스(<span x-text="fa.row.service"></span>)의 분류값이 아닌 인텐트: <b x-text="intentMismatch(fa.intent, fa.row.service).join(', ')"></b> · 범용 또는 이 서비스 값인지 확인하세요</span>
+                  <span class="text-xs" style="color:var(--ds-error);display:block;margin-top:4px">⚠ 이 서비스(<span x-text="fa.row.service"></span>)의 분류값이 아닌 인텐트: <b x-text="intentMismatch(fa.intent, fa.row.service).join(', ')"></b> · 범용 또는 이 서비스 값인지 확인하세요</span>
                 </template></label>
               <div><span class="text-xs text-muted">등급</span><div class="flex gap-2" style="margin-top:4px">
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='G' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline'" x-on:click="fa.grade='G'">G · 정상</button>
@@ -103,7 +103,7 @@
               <div class="subhd" style="margin-top:4px">요소별 현황 <span class="meta">막대 = 유통 가능 비율 · ▲ = 우세</span></div>
               <template x-if="abCols.length">
                 <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:130px">항목</th>
-                  <template x-for="(m,mi) in abCols" x-bind:key="'h'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : 'background:var(--ds-violet,#1e84ff)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.key"></span></th></template>
+                  <template x-for="(m,mi) in abCols" x-bind:key="'h'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:var(--ds-warning)' : 'background:var(--ds-primary)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.key"></span></th></template>
                 </tr></thead><tbody>
                   <tr><td class="text-ink">유통 가능 G</td><template x-for="(m,mi) in abCols" x-bind:key="'g'+mi"><td>
                     <span class="abbar" x-bind:class="mi ? 'abbar--b' : ''">
@@ -140,7 +140,7 @@
       <!-- 콘텐츠별 초안 비교 팝업 -->
       <div class="ds-dialog-backdrop" x-show="cmpModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="cmpModalOpen=false" style="z-index:74">
         <div class="badgemodal" x-show="cmpModalOpen" x-transition style="max-width:860px">
-          <div class="panel-hd" style="padding:0 0 12px;margin-bottom:var(--ds-space-3);border-bottom:1px solid var(--ds-hairline,rgba(0,0,0,.08))"><b>모델별 콘텐츠 상세 비교</b><span class="meta" x-text="cmpTitle"></span>
+          <div class="panel-hd" style="padding:0 0 12px;margin-bottom:var(--ds-space-3);border-bottom:1px solid var(--ds-hairline)"><b>모델별 콘텐츠 상세 비교</b><span class="meta" x-text="cmpTitle"></span>
             <button type="button" class="ds-iconbtn ml-auto" x-on:click="cmpModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
           </div>
           <!-- 상단(모델·버전별 결과 현황)에서 설정한 A/B 를 그대로 상속(공통 콘텐츠 대상) -->
@@ -156,7 +156,7 @@
             </span>
           </div>
           <template x-if="draftPair">
-            <div class="overflow-auto" style="max-height:60vh"><table class="ds-table"><thead><tr><th style="width:100px">필드</th><th><span class="selctl__tag" style="background:var(--ds-violet,#1e84ff)">A</span> <span x-text="draftPair.l.label"></span></th><th><span class="selctl__tag" style="background:#ff6a3d">B</span> <span x-text="draftPair.r.label"></span></th></tr></thead><tbody>
+            <div class="overflow-auto" style="max-height:60vh"><table class="ds-table"><thead><tr><th style="width:100px">필드</th><th><span class="selctl__tag" style="background:var(--ds-primary)">A</span> <span x-text="draftPair.l.label"></span></th><th><span class="selctl__tag" style="background:var(--ds-warning)">B</span> <span x-text="draftPair.r.label"></span></th></tr></thead><tbody>
               <template x-for="f in draftDiff" x-bind:key="'MF'+f.k">
                 <tr x-bind:class="f.diff ? 'is-sel' : ''">
                   <td class="text-ink"><span x-text="f.k"></span> <span class="ds-badge ds-badge--error" x-show="f.diff" style="margin-left:4px">다름</span></td>

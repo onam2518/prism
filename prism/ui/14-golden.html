@@ -23,7 +23,7 @@
                   </div>
                   <!-- 반영 전 안내: 검수는 쌓였는데 정답이 0이면 "표시가 안 된다"로 오해 · 골든은 학습 반영 시 확정 -->
                   <div class="text-xs text-muted" style="margin-bottom:10px" x-show="!goldenStatus.total && goldenStatus.reviewed && goldenStatus.reviewed.contents">
-                    검수 <b class="text-ink tnum" x-text="goldenStatus.reviewed.contents"></b>건이 쌓였고 아직 학습 반영 전입니다 · 정답 확정은 학습 반영 때 이뤄집니다(검수 목표 카드의 ⚡ 즉시 반영 또는 목표 일시 도달 시)
+                    검수 <b class="text-ink tnum" x-text="goldenStatus.reviewed.contents"></b>건이 쌓였고 아직 학습 반영 전입니다 · 정답 확정은 학습 반영 때 이뤄집니다(검수 목표 카드의 즉시 반영 또는 목표 일시 도달 시)
                   </div>
                   <div x-show="(goldenStatus.need_list||[]).length">
                     <div class="subhd" style="margin:4px 0 8px">분류 필요 <span class="meta">카테고리를 채우면 다음 학습 반영 때 정답으로 승격 (+5pt·미션)</span></div>
@@ -38,7 +38,7 @@
                   </div>
                 </div>
               </template>
-              <div x-show="!goldenStatus" class="text-xs text-muted">검수가 쌓이고 학습 반영이 돌면 현황이 표시됩니다(아래 검수 목표 카드의 ⚡ 즉시 반영으로 바로 반영 가능)</div>
+              <div x-show="!goldenStatus" class="text-xs text-muted">검수가 쌓이고 학습 반영이 돌면 현황이 표시됩니다(아래 검수 목표 카드의 즉시 반영으로 바로 반영 가능)</div>
             </div>
           </section>
           <!-- 검수 활동 추이: 일별 검수량 막대(30일) · 툴팁에 교정·골드 정답률 -->
@@ -82,7 +82,7 @@
           </section>
           <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->
           <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>검수 목표 / 퀘스트 생성</b><span class="meta">지정한 일시까지 모인 검수 의견이 새 버전 프롬프트에 반영됩니다</span>
-            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '⚡ 즉시 반영'"></button>
+            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '즉시 반영'"></button>
           </div>
             <div class="panel-bd">
               <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap">
@@ -128,7 +128,7 @@
               <ul class="ds-bullets" style="margin-top:10px">
                 <li>의견을 모아 <b>지정한 일시(모델 버전 시한)</b>에 한 번에 반영해 결과가 흔들리지 않게 합니다 · 반영 후 목표는 소진되고 새 퀘스트를 생성합니다.</li>
                 <li>'정확' 합의는 <b>정답셋</b>으로 쌓이고, 바뀐 프롬프트는 정답셋으로 다시 평가합니다.</li>
-                <li>'⚡ 즉시 반영'은 목표 일시와 무관하게 지금까지 모인 의견을 바로 반영합니다.</li>
+                <li>'즉시 반영'은 목표 일시와 무관하게 지금까지 모인 의견을 바로 반영합니다.</li>
               </ul>
               <!-- 학습 보정 지시(단계별 · 중복 정리) -->
               <div class="subhd" style="margin:12px 0 8px" x-show="metaResults && ['extract','analyze','review','judge'].some(st => metaResults[st] && (metaResults[st].directive || (metaResults[st].ambiguities||[]).length))">학습 보정 지시 <span class="meta">검수 피드백을 정리해 각 단계 프롬프트에 병기합니다</span></div>
@@ -183,7 +183,7 @@
                   </div>
                 </template>
               </div>
-              <div class="meta" style="padding:4px 2px" x-show="!verRows.length">아직 반영된 버전이 없습니다 · 검수 목표를 채우거나 ⚡즉시 반영하면 v2가 만들어집니다.</div>
+              <div class="meta" style="padding:4px 2px" x-show="!verRows.length">아직 반영된 버전이 없습니다 · 검수 목표를 채우거나 즉시 반영하면 v2가 만들어집니다.</div>
 
               <!-- 지시 원본 관리: 잘못 들어간 보정 하나만 끄기(전체 재컴파일 불필요 · 원본 보존) -->
               <div style="margin-top:10px">
@@ -218,7 +218,7 @@
                   <div style="display:flex;align-items:flex-end;gap:2px;height:72px">
                     <template x-for="d in (costData.by_day||[])" x-bind:key="'cd'+d.day">
                       <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:help" x-bind:data-tip="d.day.slice(5).replace('-','/') + ' · ' + usdTxt(d.cost) + ' · 실행 ' + d.n + '건'" data-tip-pos="top">
-                        <div x-bind:style="'height:' + Math.max(d.cost ? 6 : 2, Math.round(d.cost / costMax * 100)) + '%;background:' + (d.cost ? 'var(--ds-violet,#1e84ff)' : 'var(--ds-hairline)') + ';border-radius:3px 3px 0 0'"></div>
+                        <div x-bind:style="'height:' + Math.max(d.cost ? 6 : 2, Math.round(d.cost / costMax * 100)) + '%;background:' + (d.cost ? 'var(--ds-primary)' : 'var(--ds-hairline)') + ';border-radius:3px 3px 0 0'"></div>
                       </div>
                     </template>
                   </div>
@@ -385,7 +385,7 @@
                   <td class="tnum" x-text="r.gold_n >= 5 ? (pctTxt(r.gold_acc) + ' (' + r.gold_n + ')') : ('· (' + (r.gold_n||0) + ')')"></td>
                   <td class="tnum" x-text="r.ds_error == null ? '·' : pctTxt(r.ds_error)"></td>
                   <td class="tnum" x-text="r.weight == null ? '1.00 (기본)' : r.weight.toFixed(2)"></td>
-                  <td class="tnum" x-bind:style="r.gold_trend == null ? '' : (r.gold_trend >= 0 ? 'color:var(--ds-success,#0a8a4a)' : 'color:var(--ds-error,#d43c2f)')" x-text="r.gold_trend == null ? '·' : ((r.gold_trend >= 0 ? '▲ ' : '▼ ') + pctTxt(Math.abs(r.gold_trend)))"></td></tr>
+                  <td class="tnum" x-bind:style="r.gold_trend == null ? '' : (r.gold_trend >= 0 ? 'color:var(--ds-success)' : 'color:var(--ds-error)')" x-text="r.gold_trend == null ? '·' : ((r.gold_trend >= 0 ? '▲ ' : '▼ ') + pctTxt(Math.abs(r.gold_trend)))"></td></tr>
               </template>
               <template x-if="!learnData.reviewers.length"><tr><td colspan="7" class="text-muted">검수 데이터가 쌓이면 표시됩니다</td></tr></template>
             </tbody></table></div>

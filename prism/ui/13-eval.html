@@ -153,7 +153,7 @@
                   <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">항목</th><th>기준 <span class="tnum" x-text="'#'+evalCmp.a.id"></span></th><th>대상 <span class="tnum" x-text="'#'+evalCmp.b.id"></span></th><th style="width:90px">변화</th></tr></thead><tbody>
                     <template x-for="row in evalCmpRows" x-bind:key="'cmr'+row.k">
                       <tr><td class="text-ink" x-text="row.k"></td><td class="tnum" x-text="row.a"></td><td class="tnum" x-text="row.b"></td>
-                        <td><b class="tnum" x-bind:style="row.cls==='down' ? 'color:var(--ds-red,#d64545)' : (row.cls==='up' ? 'color:var(--ds-green,#2e9e5b)' : '')" x-text="row.dTxt"></b></td></tr>
+                        <td><b class="tnum" x-bind:style="row.cls==='down' ? 'color:var(--ds-error-deep)' : (row.cls==='up' ? 'color:var(--ds-success-deep)' : '')" x-text="row.dTxt"></b></td></tr>
                     </template>
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:6px">비교 원칙(Atelier 이식): 대상 런이 기준보다 나쁘면 프롬프트 변경을 채택하지 않습니다 · 개선이면 학습 반영/스튜디오에서 적용하세요</div>
@@ -196,7 +196,7 @@
                           <td class="tnum" x-text="hh.round"></td>
                           <td class="tnum" x-text="hh.version ? ('v'+hh.version) : '·'"></td>
                           <td class="tnum" x-text="(hh.pre!=null ? Math.round(hh.pre*100)+'%' : '·') + ' → ' + Math.round(hh.accuracy*100)+'%'"></td>
-                          <td><b class="tnum" x-bind:style="(hh.delta||0) > 0 ? 'color:var(--ds-green,#2e9e5b)' : ((hh.delta||0) < 0 ? 'color:var(--ds-red,#d64545)' : '')" x-text="hh.delta!=null ? ((hh.delta>0?'+':'') + Math.round(hh.delta*100) + '%p') : '·'"></b></td>
+                          <td><b class="tnum" x-bind:style="(hh.delta||0) > 0 ? 'color:var(--ds-success-deep)' : ((hh.delta||0) < 0 ? 'color:var(--ds-error-deep)' : '')" x-text="hh.delta!=null ? ((hh.delta>0?'+':'') + Math.round(hh.delta*100) + '%p') : '·'"></b></td>
                           <td><span class="ds-badge" x-bind:class="hh.reverted ? 'ds-badge--warning' : 'ds-badge--success'" x-bind:data-tip="hh.reverted ? '이 라운드 보정은 점수를 낮춰 반영하지 않았습니다(이전 프롬프트 유지)' : '이 라운드 보정이 반영됐습니다'" data-tip-pos="top" style="cursor:help" x-text="hh.reverted ? '원복' : '반영'"></span></td>
                         </tr>
                       </template>
@@ -223,7 +223,7 @@
               <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
                 <div>
                   <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">항목</th>
-                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:#ff6a3d' : 'background:var(--ds-violet,#1e84ff)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span> <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="m.model===cmpResult.cheapest_passing" x-bind:data-tip="'등급 일치율 ' + pctTxt(cmpResult.eval_gate) + ' 이상 합격 모델 중 비용이 가장 낮아요'" data-tip-pos="top">💰 합격 최저 비용</span></th></template>
+                    <template x-for="(m,mi) in cmpCols" x-bind:key="'ch'+mi"><th><span class="selctl__tag" x-bind:style="mi ? 'background:var(--ds-warning)' : 'background:var(--ds-primary)'" x-text="mi ? 'B' : 'A'"></span> <span x-text="m.model"></span> <span class="ds-badge ds-badge--success" x-show="m.model===cmpResult.best">★ best</span> <span class="ds-badge ds-badge--intent" style="cursor:help" x-show="m.model===cmpResult.cheapest_passing" x-bind:data-tip="'등급 일치율 ' + pctTxt(cmpResult.eval_gate) + ' 이상 합격 모델 중 비용이 가장 낮아요'" data-tip-pos="top">합격 최저 비용</span></th></template>
                   </tr></thead><tbody>
                     <tr><td class="text-ink">호출</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cr'+mi"><td><span class="ds-badge" x-bind:class="m.real ? 'ds-badge--neutral' : 'ds-badge--warning'" x-bind:data-tip="m.real ? '실제 API 호출 결과' : '모의 응답 · API 키를 설정하면 실호출됩니다'" data-tip-pos="top" style="cursor:help" x-text="m.real ? (m.route||'실호출') : 'mock'"></span></td></template></tr>
                     <tr><td class="text-ink">등급 일치율 <span class="text-xs text-muted">(신뢰구간)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cg'+mi"><td>
