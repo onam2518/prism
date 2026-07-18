@@ -185,6 +185,8 @@ eval_run_resume = EVO.eval_run_resume
 eval_run_cancel = EVO.eval_run_cancel
 eval_runs_list = EVO.eval_runs_list
 eval_run_report = EVO.eval_run_report
+rubric_start = EVO.rubric_start
+rubric_cancel = EVO.rubric_cancel
 snapshot_prompts = LO.snapshot_prompts
 learning_batch = LO.learning_batch
 learn_data = LO.learn_data
@@ -1798,6 +1800,18 @@ def _p_eval_run_resume(h, body):
 def _p_eval_run_cancel(h, body):
     data = json.loads(body or b"{}")
     return eval_run_cancel(int(data.get("id") or 0), h._req_team())
+
+
+@_post_route("/eval-rubric-start", gate="admin")     # 완주 런 루브릭 채점(4축 · LLM 심사 비용)
+def _p_eval_rubric_start(h, body):
+    data = json.loads(body or b"{}")
+    return rubric_start(int(data.get("id") or 0), h._req_team())
+
+
+@_post_route("/eval-rubric-cancel", gate="admin")    # 루브릭 채점 중단(채점된 건 유지)
+def _p_eval_rubric_cancel(h, body):
+    data = json.loads(body or b"{}")
+    return rubric_cancel(int(data.get("id") or 0), h._req_team())
 
 
 @_post_route("/content-remove", gate="admin")        # 콘텐츠 개별 삭제(파생 데이터 연쇄)

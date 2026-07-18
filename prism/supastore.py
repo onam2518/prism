@@ -1527,13 +1527,12 @@ class SupabaseStore:
         return int(rows[0]["id"]) if rows else 0
 
     def eval_run_update(self, run_id, team=None, **fields):
-        """부분 갱신(status·cursor·total·metrics·error·finished). finished 는 epoch→ISO."""
+        """부분 갱신(status·cursor·total·metrics·error·finished·rubric_*). finished 는 epoch→ISO."""
         body = {}
-        for k in ("status", "cursor", "total", "error"):
+        for k in ("status", "cursor", "total", "error",
+                  "rubric_status", "rubric_cursor", "metrics", "rubric"):
             if k in fields:
                 body[k] = fields[k]
-        if "metrics" in fields:
-            body["metrics"] = fields["metrics"]
         if "finished" in fields and fields["finished"]:
             body["finished_at"] = _iso(fields["finished"])
         if not body:
@@ -1547,7 +1546,9 @@ class SupabaseStore:
                 "cursor": int(r.get("cursor") or 0), "total": int(r.get("total") or 0),
                 "metrics": r.get("metrics"), "error": r.get("error") or "",
                 "created_by": r.get("created_by") or "",
-                "ts": _epoch(r.get("created_at")), "finished": _epoch(r.get("finished_at"))}
+                "ts": _epoch(r.get("created_at")), "finished": _epoch(r.get("finished_at")),
+                "rubric_status": r.get("rubric_status") or "",
+                "rubric_cursor": int(r.get("rubric_cursor") or 0), "rubric": r.get("rubric")}
 
     def eval_run_get(self, run_id, team=None):
         rows = self._get("eval_runs", f"select=*&id=eq.{int(run_id)}")
@@ -1569,12 +1570,25 @@ class SupabaseStore:
         self._upsert("eval_results", payload)
 
     def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000) -> list:
-        q = (f"select=content_hash,title,expected,got,passed,error&run_id=eq.{int(run_id)}"
+        q = (f"select=content_hash,title,expected,got,passed,error,rubric&run_id=eq.{int(run_id)}"
              + ("&passed=is.false" if only_fail else "") + f"&limit={int(limit)}")
         return [{"hash": r.get("content_hash") or "", "title": r.get("title") or "",
                  "expected": r.get("expected"), "got": r.get("got"),
-                 "passed": bool(r.get("passed")), "error": r.get("error") or ""}
+                 "passed": bool(r.get("passed")), "error": r.get("error") or "",
+                 "rubric": r.get("rubric")}
                 for r in self._get("eval_results", q)]
+
+    def eval_results_missing_rubric(self, run_id, team=None, limit=2000) -> list:
+        """루브릭 미채점 건(hash·expected·got) · 재실행 시 남은 건만 채점하는 원천."""
+        q = (f"select=content_hash,expected,got&run_id=eq.{int(run_id)}"
+             f"&rubric=is.null&limit={int(limit)}")
+        return [{"hash": r.get("content_hash") or "", "expected": r.get("expected"),
+                 "got": r.get("got")} for r in self._get("eval_results", q)]
+
+    def eval_result_rubric_set(self, run_id, content_hash, rubric, team=None):
+        self._req("PATCH", "eval_results",
+                  query=f"run_id=eq.{int(run_id)}&content_hash=eq.{urllib.parse.quote(content_hash or '')}",
+                  body={"rubric": rubric}, prefer="return=minimal")
 
     def eval_result_hashes(self, run_id, team=None) -> set:
         rows = self._get("eval_results", f"select=content_hash&run_id=eq.{int(run_id)}")

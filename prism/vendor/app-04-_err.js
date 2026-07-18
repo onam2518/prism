@@ -261,8 +261,9 @@ window.PRISM_APP_PARTS.push(() => ({
           try { r = await (await this._afetch('/eval-run?id=' + id, { headers: this._authHeaders() })).json(); } catch (e) {}
           if (!r || this.evalRunId !== id) { this.goldenBusy = false; return; }
           this.goldenResult = r;
-          if (r.status === 'running') { this.goldenBusy = true; this._evalPollT = setTimeout(tick, 2500); }
-          else { this.goldenBusy = false; this.loadEvalRuns(); }
+          this.goldenBusy = (r.status === 'running');
+          if (r.status === 'running' || r.rubric_status === 'running') { this._evalPollT = setTimeout(tick, 2500); }
+          else { this.loadEvalRuns(); }
         };
         tick();
       },
@@ -284,6 +285,14 @@ window.PRISM_APP_PARTS.push(() => ({
       evalRunStatusTxt(r) {
         if (r.status === 'running') return r.stalled ? '중단됨(재개 가능)' : ('실행 중 ' + (r.cursor || 0) + '/' + (r.total || 0));
         return { done: '완료', failed: '실패', cancelled: '중단' }[r.status] || r.status;
+      },
+      async startRubric() {                    // 루브릭 진단(4축 · Atelier 이식): 완주 런 대상 배치 채점
+        if (!this.evalRunId) return;
+        try {
+          const r = await (await this._afetch('/eval-rubric-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: this.evalRunId }) })).json();
+          if (r && r.ok) this.pollEvalRun(this.evalRunId);
+          else this._err((r && r.error) || '루브릭 채점 시작 실패');
+        } catch (e) { this._err('루브릭 채점 시작 실패'); }
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 이항 95% CI 표기
       cmpA: '', cmpB: '', cmpBusy: false, cmpResult: null,

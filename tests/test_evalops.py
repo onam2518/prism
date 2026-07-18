@@ -150,5 +150,83 @@ class TestEvalRunFlow(unittest.TestCase):
         self.assertEqual(st.eval_run_get(rid)["status"], "cancelled")
 
 
+class TestEvalRubric(unittest.TestCase):
+    """루브릭 진단(4축 · Atelier rubric-judge 이식): 채점 흐름·게이트·미채점만 재실행."""
+
+    def _with_serve(self):
+        from prism import serve
+        from prism import evalops
+        st = _mk_store()
+        serve._STORE = st
+        self._orig_mock = serve.Handler.server_mock
+        serve.Handler.server_mock = True
+        self.addCleanup(lambda: (setattr(serve, "_STORE", None),
+                                 setattr(serve.Handler, "server_mock", self._orig_mock)))
+        return serve, evalops, st
+
+    def _done_run(self, serve, evalops, st, n=4):
+        """골든 n건으로 평가 런을 완주시키고 run_id 반환."""
+        _seed_golden(st, n)
+        r = serve.eval_run_start(None)
+        t0 = time.time()
+        while time.time() - t0 < 60:
+            if st.eval_run_get(r["id"])["status"] != "running":
+                break
+            time.sleep(0.1)
+        self.assertEqual(st.eval_run_get(r["id"])["status"], "done")
+        return r["id"]
+
+    def _patch_judge(self, evalops, scores):
+        orig = evalops._judge_batch
+        evalops._judge_batch = lambda llm, items: {it["id"]: dict(scores) for it in items}
+        self.addCleanup(lambda: setattr(evalops, "_judge_batch", orig))
+
+    def _wait_rubric(self, st, rid, timeout=60):
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            run = st.eval_run_get(rid)
+            if run.get("rubric_status") in ("done", "failed", "cancelled"):
+                return run
+            time.sleep(0.1)
+        self.fail("루브릭 채점이 제한 시간 안에 끝나지 않았습니다")
+
+    def test_rubric_flow_and_aggregate(self):
+        serve, evalops, st = self._with_serve()
+        rid = self._done_run(serve, evalops, st, n=4)
+        self._patch_judge(evalops, {"accuracy": 5, "format": 4, "policy": 5,
+                                    "conciseness": 3, "note": "양호"})
+        r = serve.rubric_start(rid, None)
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(r["pending"], 4)
+        run = self._wait_rubric(st, rid)
+        self.assertEqual(run["rubric_status"], "done")
+        self.assertEqual(run["rubric"]["n"], 4)
+        self.assertEqual(run["rubric"]["accuracy"], 5.0)
+        self.assertEqual(run["rubric"]["conciseness"], 3.0)
+        rows = st.eval_results_list(rid)
+        self.assertTrue(all((x.get("rubric") or {}).get("note") == "양호" for x in rows))
+        rep = serve.eval_run_report(rid)
+        self.assertEqual(rep["rubric_status"], "done")
+        self.assertEqual(rep["rubric"]["n"], 4)
+
+    def test_rubric_requires_done_run(self):
+        serve, evalops, st = self._with_serve()
+        rid = st.eval_run_create("", "", "all", 3)     # running 상태
+        r = serve.rubric_start(rid, None)
+        self.assertFalse(r.get("ok"))
+        self.assertIn("완주", r.get("error", ""))
+
+    def test_rubric_rerun_only_missing(self):
+        serve, evalops, st = self._with_serve()
+        rid = self._done_run(serve, evalops, st, n=3)
+        self._patch_judge(evalops, {"accuracy": 4, "format": 4, "policy": 4,
+                                    "conciseness": 4, "note": ""})
+        serve.rubric_start(rid, None)
+        self._wait_rubric(st, rid)
+        r = serve.rubric_start(rid, None)              # 전건 채점 완료 → 재실행 거부
+        self.assertFalse(r.get("ok"))
+        self.assertIn("채점할 건이 없습니다", r.get("error", ""))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -139,11 +139,14 @@ class Store:
           id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
           model TEXT, scope TEXT, status TEXT, cursor INTEGER NOT NULL DEFAULT 0,
           total INTEGER NOT NULL DEFAULT 0, metrics TEXT, error TEXT,
-          created_by TEXT, ts REAL, finished REAL);
+          created_by TEXT, ts REAL, finished REAL,
+          rubric_status TEXT NOT NULL DEFAULT '', rubric_cursor INTEGER NOT NULL DEFAULT 0,
+          rubric TEXT);
         -- 평가 런 건별 결과: 기대 vs 실제 등급·사유 스냅샷(불일치 감사·재개 판별 원천).
+        -- rubric = 4축 저지 채점(accuracy/format/policy/conciseness/note · Atelier 이식).
         CREATE TABLE IF NOT EXISTS eval_results(
           run_id INTEGER, content_hash TEXT, title TEXT,
-          expected TEXT, got TEXT, passed INTEGER, error TEXT, ts REAL,
+          expected TEXT, got TEXT, passed INTEGER, error TEXT, ts REAL, rubric TEXT,
           PRIMARY KEY(run_id, content_hash));
         CREATE INDEX IF NOT EXISTS ix_centities_ent ON content_entities(entity_id);
         CREATE INDEX IF NOT EXISTS ix_ealias_ent ON entity_aliases(entity_id);
@@ -158,6 +161,12 @@ class Store:
             c.execute("ALTER TABLE results ADD COLUMN source TEXT"); c.commit()   # 출처 필터
         if "source" not in [r[1] for r in c.execute("PRAGMA table_info(golden)")]:
             c.execute("ALTER TABLE golden ADD COLUMN source TEXT DEFAULT 'review'"); c.commit()   # 골든 출처(review|manual)
+        if "rubric" not in [r[1] for r in c.execute("PRAGMA table_info(eval_results)")]:
+            c.execute("ALTER TABLE eval_results ADD COLUMN rubric TEXT"); c.commit()   # 루브릭 채점(Atelier 이식)
+        if "rubric_status" not in [r[1] for r in c.execute("PRAGMA table_info(eval_runs)")]:
+            c.execute("ALTER TABLE eval_runs ADD COLUMN rubric_status TEXT NOT NULL DEFAULT ''")
+            c.execute("ALTER TABLE eval_runs ADD COLUMN rubric_cursor INTEGER NOT NULL DEFAULT 0")
+            c.execute("ALTER TABLE eval_runs ADD COLUMN rubric TEXT"); c.commit()
         bcols = [r[1] for r in c.execute("PRAGMA table_info(board)")]
         if "answer" not in bcols:
             c.execute("ALTER TABLE board ADD COLUMN answer TEXT"); c.commit()          # 게시판 관리자 답변
@@ -1055,15 +1064,17 @@ class Store:
         return int(cur.lastrowid)
 
     def eval_run_update(self, run_id, team=None, **fields):
-        """부분 갱신(status·cursor·total·metrics·error·finished). metrics 는 JSON 직렬화."""
+        """부분 갱신(status·cursor·total·metrics·error·finished·rubric_*). json 필드는 직렬화."""
         sets, vals = [], []
-        for k in ("status", "cursor", "total", "error", "finished"):
+        for k in ("status", "cursor", "total", "error", "finished",
+                  "rubric_status", "rubric_cursor"):
             if k in fields:
                 sets.append(f"{k}=?")
                 vals.append(fields[k])
-        if "metrics" in fields:
-            sets.append("metrics=?")
-            vals.append(json.dumps(fields["metrics"], ensure_ascii=False))
+        for k in ("metrics", "rubric"):
+            if k in fields:
+                sets.append(f"{k}=?")
+                vals.append(json.dumps(fields[k], ensure_ascii=False))
         if not sets:
             return
         vals.append(int(run_id))
@@ -1072,15 +1083,18 @@ class Store:
         c.commit()
 
     def _eval_run_row(self, r) -> dict:
-        try:
-            metrics = json.loads(r[7]) if r[7] else None
-        except Exception:
-            metrics = None
+        def _j(v):
+            try:
+                return json.loads(v) if v else None
+            except Exception:
+                return None
         return {"id": r[0], "model": r[2] or "", "scope": r[3] or "all", "status": r[4] or "",
-                "cursor": int(r[5] or 0), "total": int(r[6] or 0), "metrics": metrics,
-                "error": r[8] or "", "created_by": r[9] or "", "ts": r[10], "finished": r[11]}
+                "cursor": int(r[5] or 0), "total": int(r[6] or 0), "metrics": _j(r[7]),
+                "error": r[8] or "", "created_by": r[9] or "", "ts": r[10], "finished": r[11],
+                "rubric_status": r[12] or "", "rubric_cursor": int(r[13] or 0), "rubric": _j(r[14])}
 
-    _EVAL_RUN_COLS = "id,team,model,scope,status,cursor,total,metrics,error,created_by,ts,finished"
+    _EVAL_RUN_COLS = ("id,team,model,scope,status,cursor,total,metrics,error,created_by,"
+                      "ts,finished,rubric_status,rubric_cursor,rubric")
 
     def eval_run_get(self, run_id, team=None):
         c = self._conn()
@@ -1112,7 +1126,7 @@ class Store:
 
     def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000) -> list:
         c = self._conn()
-        q = ("SELECT content_hash,title,expected,got,passed,error FROM eval_results "
+        q = ("SELECT content_hash,title,expected,got,passed,error,rubric FROM eval_results "
              "WHERE run_id=?" + (" AND passed=0" if only_fail else "") + " LIMIT ?")
         out = []
         for r in c.execute(q, (int(run_id), int(limit))):
@@ -1122,8 +1136,29 @@ class Store:
                 except Exception:
                     return None
             out.append({"hash": r[0], "title": r[1] or "", "expected": _j(r[2]),
-                        "got": _j(r[3]), "passed": bool(r[4]), "error": r[5] or ""})
+                        "got": _j(r[3]), "passed": bool(r[4]), "error": r[5] or "",
+                        "rubric": _j(r[6])})
         return out
+
+    def eval_results_missing_rubric(self, run_id, team=None, limit=2000) -> list:
+        """루브릭 미채점 건(hash·expected·got) · 재실행 시 남은 건만 채점하는 원천."""
+        c = self._conn()
+        out = []
+        for r in c.execute("SELECT content_hash,expected,got FROM eval_results "
+                           "WHERE run_id=? AND rubric IS NULL LIMIT ?", (int(run_id), int(limit))):
+            def _j(v):
+                try:
+                    return json.loads(v) if v else None
+                except Exception:
+                    return None
+            out.append({"hash": r[0], "expected": _j(r[1]), "got": _j(r[2])})
+        return out
+
+    def eval_result_rubric_set(self, run_id, content_hash, rubric, team=None):
+        c = self._conn()
+        c.execute("UPDATE eval_results SET rubric=? WHERE run_id=? AND content_hash=?",
+                  (json.dumps(rubric, ensure_ascii=False), int(run_id), content_hash or ""))
+        c.commit()
 
     def eval_result_hashes(self, run_id, team=None) -> set:
         c = self._conn()

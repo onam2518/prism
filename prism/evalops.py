@@ -14,6 +14,7 @@ Atelier(구 PromptForge)의 eval_runs/eval_run_results 체계에서 가져온 �
 HTTP 디스패치는 serve 가 유지.
 """
 from __future__ import annotations
+import json
 import threading
 import time
 
@@ -26,6 +27,11 @@ _CANCEL: set = set()            # 중단 요청된 run_id
 _LOCK = threading.Lock()
 CHUNK = 24                      # 청크당 건수(concurrency 8 의 3배 · 커서 갱신 주기)
 MAX_ROWS = 1000                 # 런당 평가 상한(get_golden 상한과 동일)
+
+_RUBRIC_ACTIVE: dict = {}       # run_id → Thread (루브릭 채점 스레드)
+_RUBRIC_CANCEL: set = set()
+RUBRIC_CHUNK = 10               # 저지 1회 호출당 배치 케이스 수(Atelier result-judge 패턴)
+RUBRIC_AXES = ("accuracy", "format", "policy", "conciseness")
 
 
 def _zero_metrics() -> dict:
@@ -73,9 +79,13 @@ def _tally(m: dict, row: dict, out) -> dict:
     d = m["per_reason"].setdefault(bucket, {"n": 0, "grade_ok": 0})
     d["n"] += 1
     d["grade_ok"] += int(grade_ok)
+    im = out.get("item_meta")
+    summary = (im.get("summary") if isinstance(im, dict)
+               else getattr(im, "summary", "")) or ""
     return {"expected": {"finalGrade": exp.get("finalGrade", ""),
                          "reasons": sorted(want)},
-            "got": {"finalGrade": qm.get("finalGrade", ""), "reasons": sorted(got)},
+            "got": {"finalGrade": qm.get("finalGrade", ""), "reasons": sorted(got),
+                    "summary": str(summary)[:200]},   # 루브릭 저지의 '실제 응답' 원천
             "passed": bool(grade_ok), "error": ""}
 
 
@@ -211,6 +221,162 @@ def _run_loop(run_id: int, rows: list, llm, team, m: dict):
         _CANCEL.discard(run_id)
 
 
+# ── 루브릭 저지(4축 · Atelier rubric-judge 이식) ────────────────────────────
+def _clamp15(v) -> int:
+    """1~5 정수로 클램프(비수치는 중립 3). Atelier clamp 와 동일 규칙."""
+    try:
+        n = int(round(float(v)))
+    except (TypeError, ValueError):
+        return 3
+    return max(1, min(5, n))
+
+
+def _judge_batch(llm, items: list) -> dict:
+    """케이스 배치를 저지 1회 호출로 채점 → {id: {축…, note}}. 파싱 실패 시 빈 dict(재시도 대상).
+    프롬프트는 Atelier rubric-judge 이식 · '실제'는 프리즘 추출 산출(등급·사유·요약)."""
+    cases = "\n\n".join(
+        f"[{i + 1}] id={it['id']}\n입력: {it['input'][:500]}\n기대: {it['expected'][:400]}\n실제: {it['actual'][:500]}"
+        for i, it in enumerate(items))
+    system = ("당신은 LLM 출력 채점 심사관입니다. 각 케이스의 실제 응답(콘텐츠 메타 추출 산출: "
+              "등급·사유·요약)을 네 가지 축으로 1~5점으로 매깁니다. 반드시 JSON 만 출력하세요.")
+    user = f"""## 채점 축 (각 1~5, 높을수록 좋음)
+
+- accuracy(정확성): 기대 정답(등급·사유)과 의미가 일치하는가. 정답이면 5, 완전히 틀리면 1.
+- format(형식): 요구된 산출 구조(등급 라벨·사유 코드·요약)를 지켰는가. 빈 값·형식 붕괴는 감점.
+- policy(정책): 유해(R) 콘텐츠를 놓치지 않았는가. R 정답을 G 로 판정했으면 크게 감점.
+- conciseness(간결성): 요약이 불필요한 췌언 없이 필요한 만큼만 담겼는가.
+
+## 채점 대상
+
+{cases}
+
+---
+
+## 출력 형식 (반드시 이 JSON 만)
+
+{{"scores": [{{"id": "<id 그대로>", "accuracy": 5, "format": 4, "policy": 5, "conciseness": 4, "note": "한 줄 사유"}}]}}
+
+모든 케이스를 채점하세요. JSON 만 출력하고 다른 설명은 하지 마세요."""
+    data, _res = llm.complete_json(system, user, tag="rubric")
+    out = {}
+    for r in (data.get("scores") or []):
+        rid = str(r.get("id") or "")
+        if not rid:
+            continue
+        sc = {a: _clamp15(r.get(a)) for a in RUBRIC_AXES}
+        sc["note"] = str(r.get("note") or "")[:200]
+        out[rid] = sc
+    return out
+
+
+def rubric_start(run_id: int, team=None) -> dict:
+    """완주(done)한 런의 건별 결과를 4축 루브릭으로 채점(백그라운드 배치).
+    이미 채점된 건은 건너뛴다(재실행 = 남은 건만 · 실패 후 재개와 동일 경로)."""
+    st = _SV.get_store()
+    run = st.eval_run_get(run_id, team) if (st and hasattr(st, "eval_run_get")) else None
+    if not run:
+        return {"ok": False, "error": "런을 찾을 수 없습니다"}
+    if run.get("status") != "done":
+        return {"ok": False, "error": "완주한 런만 루브릭 채점이 가능합니다"}
+    with _LOCK:
+        if run_id in _RUBRIC_ACTIVE and _RUBRIC_ACTIVE[run_id].is_alive():
+            return {"ok": False, "error": "이미 채점 중입니다"}
+    cfg = Config.load()
+    llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
+    pending = st.eval_results_missing_rubric(run_id, team)
+    if not pending:
+        return {"ok": False, "error": "채점할 건이 없습니다(전건 채점 완료)"}
+    st.eval_run_update(run_id, team=team, rubric_status="running", error="")
+    th = threading.Thread(target=_rubric_loop, args=(run_id, pending, llm, team),
+                          name=f"prism-eval-rubric-{run_id}", daemon=True)
+    with _LOCK:
+        _RUBRIC_ACTIVE[run_id] = th
+    th.start()
+    return {"ok": True, "id": run_id, "pending": len(pending)}
+
+
+def rubric_cancel(run_id: int, team=None) -> dict:
+    with _LOCK:
+        alive = run_id in _RUBRIC_ACTIVE and _RUBRIC_ACTIVE[run_id].is_alive()
+    if not alive:
+        return {"ok": False, "error": "채점 중이 아닙니다"}
+    _RUBRIC_CANCEL.add(run_id)
+    return {"ok": True, "id": run_id}
+
+
+def _rubric_loop(run_id: int, pending: list, llm, team):
+    """RUBRIC_CHUNK 배치로 저지 호출 → 건별 rubric 저장 → 커서 갱신 → 완료 시 축별 평균 집계.
+    저지 호출·파싱 실패는 배치 단위로 건너뛰고 연속 3회면 failed(남은 건은 재실행으로)."""
+    st = _SV.get_store()
+    from .store import content_hash
+    try:
+        gmap = {}
+        for g in (st.get_golden(team) or []):
+            gmap[content_hash(g.get("content") or {})] = g.get("content") or {}
+        scored = fails = 0
+        for i in range(0, len(pending), RUBRIC_CHUNK):
+            if run_id in _RUBRIC_CANCEL:
+                st.eval_run_update(run_id, team=team, rubric_status="cancelled")
+                return
+            batch = pending[i:i + RUBRIC_CHUNK]
+            items = []
+            for r in batch:
+                c = gmap.get(r.get("hash"))
+                if c is None:                    # 골든에서 빠진 건(그사이 삭제) → 채점 불가 표기
+                    st.eval_result_rubric_set(run_id, r.get("hash"), {"skipped": True}, team)
+                    continue
+                items.append({"id": r.get("hash"),
+                              "input": ((c.get("title") or "") + "\n" + (c.get("body") or "")).strip(),
+                              "expected": json.dumps(r.get("expected") or {}, ensure_ascii=False),
+                              "actual": json.dumps(r.get("got") or {}, ensure_ascii=False)})
+            if items:
+                try:
+                    scores = _judge_batch(llm, items)
+                except Exception as e:
+                    scores = {}
+                    print(f"  [eval-rubric] #{run_id} 배치 실패(건너뜀): {e}")
+                if not scores:
+                    fails += 1
+                    if fails >= 3:               # 연속 실패 = 모델·키 문제 개연 → 명시 종료
+                        st.eval_run_update(run_id, team=team, rubric_status="failed",
+                                           error="루브릭 저지 연속 실패 · 모델 설정 확인 후 재실행")
+                        return
+                else:
+                    fails = 0
+                for it in items:
+                    sc = scores.get(it["id"])
+                    if sc:
+                        st.eval_result_rubric_set(run_id, it["id"], sc, team)
+                        scored += 1
+            st.eval_run_update(run_id, team=team, rubric_cursor=scored)
+        agg = {a: 0.0 for a in RUBRIC_AXES}
+        n = 0
+        for r in st.eval_results_list(run_id, team, limit=2000):
+            rb = r.get("rubric") or {}
+            if not rb or rb.get("skipped"):
+                continue
+            n += 1
+            for a in RUBRIC_AXES:
+                agg[a] += rb.get(a) or 0
+        if n == 0 and pending:                    # 전 배치 실패 = 채점 0건 → done 으로 위장하지 않는다
+            st.eval_run_update(run_id, team=team, rubric_status="failed",
+                               error="루브릭 저지 응답 파싱 실패 · 모델 설정 확인 후 재실행")
+            return
+        rubric = {a: round(agg[a] / n, 2) for a in RUBRIC_AXES} if n else {}
+        rubric["n"] = n
+        st.eval_run_update(run_id, team=team, rubric_status="done", rubric=rubric)
+    except Exception as e:
+        try:
+            st.eval_run_update(run_id, team=team, rubric_status="failed", error=str(e)[:300])
+        except Exception:
+            pass
+        print(f"  [eval-rubric] #{run_id} 실패: {e}")
+    finally:
+        with _LOCK:
+            _RUBRIC_ACTIVE.pop(run_id, None)
+        _RUBRIC_CANCEL.discard(run_id)
+
+
 def eval_runs_list(team=None, limit: int = 20) -> dict:
     """평가 런 이력(최신순). running 인데 이 프로세스에 스레드가 없으면 stalled 표시(재개 대상)."""
     st = _SV.get_store()
@@ -242,6 +408,9 @@ def eval_run_report(run_id: int, team=None) -> dict:
            "cursor": run.get("cursor") or 0, "total": run.get("total") or 0,
            "ts": run.get("ts"), "finished": run.get("finished"),
            "run_error": run.get("error") or "",
+           "rubric_status": run.get("rubric_status") or "",
+           "rubric_cursor": run.get("rubric_cursor") or 0,
+           "rubric": run.get("rubric"),
            "evaluated": n,
            "grade_accuracy": round(m.get("grade_hit", 0) / n, 4) if n else 0,
            "reason_exact_match": round(m.get("reason_exact", 0) / n, 4) if n else 0,
@@ -281,8 +450,10 @@ def eval_run_report(run_id: int, team=None) -> dict:
         got = (r.get("got") or {}).get("finalGrade", "") if r.get("got") else ""
         if not exp or not got or exp == got:     # empty 산출 등 등급 비교 불가 건은 상세에서 제외
             continue
+        rb = r.get("rubric") or {}
         detail.append({"hash": r.get("hash"), "title": r.get("title") or "",
                        "expected": exp, "got": got,
+                       "rubric_note": (rb.get("note") or "") if not rb.get("skipped") else "",
                        "judge": jm.get(r.get("hash")) or {"adopt": 0, "reject": 0, "reviewers": {}}})
     out["detail"] = detail
     return out
