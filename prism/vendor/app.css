@@ -1167,3 +1167,20 @@
 .tbchip:hover{border-color:var(--ds-border-input-hover)}
 .tbchip.core{border-color:var(--ds-primary);background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
 .tbchip__k{font-weight:700;font-size:10px;opacity:.85}
+
+/* ── 평가 파이프라인 팀 브리핑(더그아웃): 캐릭터 4인 자기소개 대화 ── */
+.dugout{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.dug{display:flex;flex-direction:column}
+.dug__bubble{position:relative;flex:1;background:var(--ds-surface-on);border-radius:14px;
+  padding:11px 13px;font-size:12.5px;color:var(--ds-body)}
+.dug__bubble b{display:block;font-size:11px;letter-spacing:.05em;color:var(--ds-muted);margin-bottom:3px}
+.dug__bubble:after{content:"";position:absolute;bottom:-8px;left:32px;
+  border:8px solid transparent;border-top-color:var(--ds-surface-on);border-bottom:0}
+.dug--now .dug__bubble{background:rgba(24,186,69,.13)}
+.dug--now .dug__bubble b{color:var(--ds-success-deep)}
+.dug--now .dug__bubble:after{border-top-color:rgba(24,186,69,.13)}
+.dug__person{display:flex;align-items:center;gap:9px;margin-top:12px;padding-left:6px}
+.dug__person img{height:60px;width:auto}
+.dug__nm{font-size:12px;font-weight:700;color:var(--ds-ink)}
+.dug__rl{font-size:11px;color:var(--ds-muted)}
+.dug__foot{margin-top:12px;font-size:11.5px;color:var(--ds-muted)}

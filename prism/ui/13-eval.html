@@ -1,22 +1,28 @@
       <!-- ═══ 모듈: 테스트셋 생성 · 골든/검수/원본 뷰 ═══ -->
       <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
       <div x-show="mod === 'evaluate'" x-cloak class="w-full space-y-4">
-          <!-- 프로세스 안내: 이 메뉴가 폐루프의 어디인지(검수→골든→평가→진단→개선) 한눈에 -->
-          <section class="panel" data-fn><div class="panel-hd"><b>평가 파이프라인 · 이 메뉴의 위치</b><span class="meta">초안 → 검수 → 정답셋 → 평가 → 진단 → 프롬프트 개선의 폐루프</span></div>
+          <!-- 프로세스 안내(더그아웃 브리핑): 캐릭터 4인이 파이프라인을 자기소개 대화로 안내 -->
+          <section class="panel" data-fn><div class="panel-hd"><b>평가 파이프라인 · 팀 브리핑</b><span class="meta">초안 → 검수 → 정답셋 → 평가 → 진단 → 개선 · ↺ 재평가 폐루프</span></div>
             <div class="panel-bd">
-              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                <span class="ds-badge ds-badge--neutral">① 콘텐츠 실행 · 초안 메타</span><span class="text-muted">→</span>
-                <span class="ds-badge ds-badge--neutral">② 검수 · 합의</span><span class="text-muted">→</span>
-                <span class="ds-badge ds-badge--neutral">③ 정답셋(골든) 확정</span><span class="text-muted">→</span>
-                <span class="ds-badge ds-badge--success">④ 평가 런 · 모델별 비교 (지금 여기)</span><span class="text-muted">→</span>
-                <span class="ds-badge ds-badge--success">⑤ 루브릭 진단 (지금 여기)</span><span class="text-muted">→</span>
-                <span class="ds-badge ds-badge--neutral">⑥ 프롬프트 개선 · 학습 반영</span><span class="text-muted">↺ ④ 재평가</span>
+              <div class="dugout">
+                <div class="dug">
+                  <div class="dug__bubble"><b>① 콘텐츠 실행</b>제가 모델로 초안 메타를 던져요. 아직 정답은 아니에요!</div>
+                  <div class="dug__person"><img src="/vendor/yonghee-pitcher.svg" alt=""><span><span class="dug__nm">용희</span><br><span class="dug__rl">투수 · 초안 생성</span></span></div>
+                </div>
+                <div class="dug">
+                  <div class="dug__bubble"><b>② 검수 · ③ 정답셋</b>제가 검수로 걸러내죠. 합의된 것만 정답셋으로 쌓입니다.</div>
+                  <div class="dug__person"><img src="/vendor/daesik-batter.svg" alt=""><span><span class="dug__nm">대식</span><br><span class="dug__rl">타자 · 검수 합의</span></span></div>
+                </div>
+                <div class="dug dug--now">
+                  <div class="dug__bubble"><b>④ 평가 런 · ⑤ 루브릭 진단 — 지금 여기</b>이 메뉴예요! 정답셋 기준으로 같은 메타가 다시 나오는지 재고, 약한 축(정확성·형식·정책·간결성)을 진단해요.</div>
+                  <div class="dug__person"><img src="/vendor/boksil-catcher.svg" alt=""><span><span class="dug__nm">복실</span><br><span class="dug__rl">포수 · 평가·진단</span></span></div>
+                </div>
+                <div class="dug">
+                  <div class="dug__bubble"><b>⑥ 프롬프트 개선</b>진단대로 고치고 재평가! 점수 떨어지면 채택 안 한다. 이게 우리 루프다.</div>
+                  <div class="dug__person"><img src="/vendor/ddakji-manager.svg" alt=""><span><span class="dug__nm">딱지</span><br><span class="dug__rl">감독 · 개선 지휘</span></span></div>
+                </div>
               </div>
-              <ul class="ds-bullets" style="margin:11px 0 0">
-                <li>모델이 뽑은 <b>초안 메타</b>를 사람이 <b>검수</b>해 합의하면 <b>정답셋</b>이 쌓입니다 · ①~③은 콘텐츠·검수·정답셋 메뉴에서.</li>
-                <li>이 메뉴는 그 정답셋을 기준으로 <b>같은 메타가 다시 나오는지</b>를 잽니다 · 평가는 런 단위로 저장되어 버전 간 추이를 비교합니다.</li>
-                <li>일치율이 낮으면 <b>루브릭 진단(4축)</b>으로 어느 축(정확성·형식·정책·간결성)이 약한지 좁히고, <b>프롬프트 스튜디오·학습 반영</b>으로 고친 뒤 재평가로 확인합니다.</li>
-              </ul>
+              <div class="dug__foot">①~③은 콘텐츠·검수·정답셋 메뉴에서 · ⑥은 프롬프트 스튜디오·학습 반영에서 · 오토파일럿이 ↺ 루프를 자동 반복합니다</div>
             </div>
           </section>
           <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
