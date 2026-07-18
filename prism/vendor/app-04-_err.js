@@ -318,6 +318,31 @@ window.PRISM_APP_PARTS.push(() => ({
         }
         return rows;
       },
+      // 오토파일럿(자동 개선 루프 · Atelier 이식): 시작/중지 + 상태 폴링(라운드가 길어 5s)
+      pilot: null, pilotTarget: '0.9', pilotRounds: '5', pilotBusy: false, pilotMsg: '', _pilotPollT: null,
+      async loadPilot() {
+        try {
+          const r = await (await this._afetch('/autopilot-status', { headers: this._authHeaders() })).json();
+          if (r && r.ok) {
+            this.pilot = r.run;
+            clearTimeout(this._pilotPollT);
+            if (r.run && r.run.status === 'running' && !r.run.stalled) this._pilotPollT = setTimeout(() => this.loadPilot(), 5000);
+          }
+        } catch (e) {}
+      },
+      async startPilot() {
+        this.pilotBusy = true; this.pilotMsg = '';
+        try {
+          const r = await (await this._afetch('/autopilot-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ target: parseFloat(this.pilotTarget), max_rounds: parseInt(this.pilotRounds, 10) }) })).json();
+          if (!r || !r.ok) this.pilotMsg = (r && r.error) || '시작 실패';
+          this.loadPilot();
+        } catch (e) { this.pilotMsg = '시작 실패'; }
+        this.pilotBusy = false;
+      },
+      async stopPilot() {
+        try { await (await this._afetch('/autopilot-stop', { method: 'POST', headers: this._authHeaders(), body: '{}' })).json(); } catch (e) {}
+        this.loadPilot();
+      },
       async startRubric() {                    // 루브릭 진단(4축 · Atelier 이식): 완주 런 대상 배치 채점
         if (!this.evalRunId) return;
         try {

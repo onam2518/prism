@@ -148,6 +148,13 @@ class Store:
           run_id INTEGER, content_hash TEXT, title TEXT,
           expected TEXT, got TEXT, passed INTEGER, error TEXT, ts REAL, rubric TEXT,
           PRIMARY KEY(run_id, content_hash));
+        -- 오토파일럿 런: 자동 개선 루프(라운드=learning_batch) 상태머신 · 이력(Atelier autopilot 이식).
+        CREATE TABLE IF NOT EXISTS autopilot_runs(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
+          status TEXT, target REAL, max_rounds INTEGER, round INTEGER NOT NULL DEFAULT 0,
+          start_accuracy REAL, best_accuracy REAL, last_accuracy REAL,
+          history TEXT, stop_reason TEXT, error TEXT, created_by TEXT,
+          ts REAL, heartbeat REAL, finished REAL);
         CREATE INDEX IF NOT EXISTS ix_centities_ent ON content_entities(entity_id);
         CREATE INDEX IF NOT EXISTS ix_ealias_ent ON entity_aliases(entity_id);
         CREATE INDEX IF NOT EXISTS ix_assign_team ON assignments(team, reviewer);
@@ -1164,6 +1171,59 @@ class Store:
         c = self._conn()
         return {r[0] for r in c.execute(
             "SELECT content_hash FROM eval_results WHERE run_id=?", (int(run_id),))}
+
+    # ── 오토파일럿 런 · Atelier autopilot 이식 · supastore 와 동일 계약 ─────
+    def autopilot_create(self, team, target, max_rounds, created_by="") -> int:
+        c = self._conn()
+        cur = c.execute("INSERT INTO autopilot_runs(team,status,target,max_rounds,round,created_by,ts) "
+                        "VALUES(?,?,?,?,0,?,?)",
+                        (team or "", "running", float(target), int(max_rounds),
+                         created_by or "", time.time()))
+        c.commit()
+        return int(cur.lastrowid)
+
+    def autopilot_update(self, run_id, team=None, **fields):
+        sets, vals = [], []
+        for k in ("status", "round", "start_accuracy", "best_accuracy", "last_accuracy",
+                  "stop_reason", "error", "heartbeat", "finished"):
+            if k in fields:
+                sets.append(f"{k}=?")
+                vals.append(fields[k])
+        if "history" in fields:
+            sets.append("history=?")
+            vals.append(json.dumps(fields["history"], ensure_ascii=False))
+        if not sets:
+            return
+        vals.append(int(run_id))
+        c = self._conn()
+        c.execute(f"UPDATE autopilot_runs SET {', '.join(sets)} WHERE id=?", vals)
+        c.commit()
+
+    _PILOT_COLS = ("id,team,status,target,max_rounds,round,start_accuracy,best_accuracy,"
+                   "last_accuracy,history,stop_reason,error,created_by,ts,heartbeat,finished")
+
+    def _pilot_row(self, r) -> dict:
+        try:
+            history = json.loads(r[9]) if r[9] else []
+        except Exception:
+            history = []
+        return {"id": r[0], "status": r[2] or "", "target": r[3], "max_rounds": int(r[4] or 0),
+                "round": int(r[5] or 0), "start_accuracy": r[6], "best_accuracy": r[7],
+                "last_accuracy": r[8], "history": history, "stop_reason": r[10] or "",
+                "error": r[11] or "", "created_by": r[12] or "", "ts": r[13],
+                "heartbeat": r[14], "finished": r[15]}
+
+    def autopilot_get(self, run_id, team=None):
+        c = self._conn()
+        r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs WHERE id=?",
+                      (int(run_id),)).fetchone()
+        return self._pilot_row(r) if r else None
+
+    def autopilot_latest(self, team=None):
+        c = self._conn()
+        r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs "
+                      "ORDER BY id DESC LIMIT 1").fetchone()
+        return self._pilot_row(r) if r else None
 
     def yellow_hashes(self, team=None) -> set:
         """검수 대상(YELLOW) 해시 집합 · 진척율/퀘스트의 분자·분모가 공유하는 모집단.

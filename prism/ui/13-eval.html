@@ -155,6 +155,53 @@
               </template>
             </div>
           </section>
+          <!-- 오토파일럿: 자동 개선 루프(Atelier 이식) · 라운드=학습 반영→재평가 · 악화 자동 원복 -->
+          <section class="panel"><div class="panel-hd"><b>오토파일럿 · 자동 개선 루프</b><span class="meta">목표 달성까지 학습 반영 → 재평가 반복 · 악화 라운드는 자동 원복</span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets" style="margin-bottom:11px">
+                <li>한 라운드 = <b>학습 반영</b>(검수 피드백 → 프롬프트 보정) 후 같은 정답셋으로 <b>재평가</b> · 점수가 나빠지면 그 라운드 보정은 반영하지 않습니다(자동 원복).</li>
+                <li>종료 조건: <b>목표 달성</b> · <b>개선 정체</b>(2라운드 연속 향상 없음) · <b>최대 라운드</b> · 수동 중지 · 라운드마다 실모델 호출 비용이 듭니다.</li>
+              </ul>
+              <div x-show="!(pilot && pilot.status==='running')" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <span class="selctl"><span class="selctl__lbl">목표 일치율</span>
+                  <select class="field" x-model="pilotTarget"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option></select></span>
+                <span class="selctl"><span class="selctl__lbl">최대 라운드</span>
+                  <select class="field" x-model="pilotRounds"><option value="3">3</option><option value="5">5</option><option value="8">8</option></select></span>
+                <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="pilotBusy" x-on:click="startPilot()">오토파일럿 시작</button>
+                <span class="text-xs text-muted" x-show="pilotMsg" x-text="pilotMsg"></span>
+              </div>
+              <template x-if="pilot">
+                <div style="margin-top:10px">
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <span class="ds-badge" x-bind:class="pilot.status==='running' ? (pilot.stalled ? 'ds-badge--warning' : 'ds-badge--intent') : (pilot.status==='done' ? 'ds-badge--success' : (pilot.status==='failed' ? 'ds-badge--error' : 'ds-badge--neutral'))"
+                      x-text="pilot.status==='running' ? (pilot.stalled ? '중단됨(서버 재시작)' : ('라운드 ' + pilot.round + '/' + pilot.max_rounds + ' 진행 중')) : ({done:'완료',stopped:'중지',failed:'실패'}[pilot.status] || pilot.status)"></span>
+                    <span class="text-xs text-muted tnum" x-text="'목표 ' + Math.round((pilot.target||0)*100) + '%'"></span>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="pilot.status==='running' && !pilot.stalled" x-on:click="stopPilot()">중지</button>
+                  </div>
+                  <div class="tiles" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+                    <div class="tile"><div class="n tnum" x-text="pilot.start_accuracy!=null ? Math.round(pilot.start_accuracy*100)+'%' : '·'"></div><div class="t">시작 일치율</div></div>
+                    <div class="tile"><div class="n tnum" x-text="pilot.last_accuracy!=null ? Math.round(pilot.last_accuracy*100)+'%' : '·'"></div><div class="t">현재 일치율</div></div>
+                    <div class="tile tile--hero"><div class="n tnum" x-text="pilot.best_accuracy!=null ? Math.round(pilot.best_accuracy*100)+'%' : '·'"></div><div class="t">최고 일치율</div></div>
+                  </div>
+                  <template x-if="(pilot.history||[]).length">
+                    <div class="overflow-auto" style="margin-top:10px"><table class="ds-table"><thead><tr><th style="width:70px">라운드</th><th style="width:80px">버전</th><th>전 → 후</th><th style="width:90px">변화</th><th style="width:110px">반영</th></tr></thead><tbody>
+                      <template x-for="hh in pilot.history" x-bind:key="'ph'+hh.round">
+                        <tr>
+                          <td class="tnum" x-text="hh.round"></td>
+                          <td class="tnum" x-text="hh.version ? ('v'+hh.version) : '·'"></td>
+                          <td class="tnum" x-text="(hh.pre!=null ? Math.round(hh.pre*100)+'%' : '·') + ' → ' + Math.round(hh.accuracy*100)+'%'"></td>
+                          <td><b class="tnum" x-bind:style="(hh.delta||0) > 0 ? 'color:var(--ds-green,#2e9e5b)' : ((hh.delta||0) < 0 ? 'color:var(--ds-red,#d64545)' : '')" x-text="hh.delta!=null ? ((hh.delta>0?'+':'') + Math.round(hh.delta*100) + '%p') : '·'"></b></td>
+                          <td><span class="ds-badge" x-bind:class="hh.reverted ? 'ds-badge--warning' : 'ds-badge--success'" x-bind:data-tip="hh.reverted ? '이 라운드 보정은 점수를 낮춰 반영하지 않았습니다(이전 프롬프트 유지)' : '이 라운드 보정이 반영됐습니다'" data-tip-pos="top" style="cursor:help" x-text="hh.reverted ? '원복' : '반영'"></span></td>
+                        </tr>
+                      </template>
+                    </tbody></table></div>
+                  </template>
+                  <div class="text-xs text-muted" style="margin-top:8px" x-show="pilot.stop_reason" x-text="'종료: ' + pilot.stop_reason"></div>
+                  <span class="text-xs text-muted" x-show="pilot.error" x-text="pilot.error"></span>
+                </div>
+              </template>
+            </div>
+          </section>
           <!-- 모델별 비교: 같은 정답셋을 여러 모델에 실호출 -->
           <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">같은 정답셋으로 A·B 모델을 실호출 비교</span></div>
             <div class="panel-bd">
