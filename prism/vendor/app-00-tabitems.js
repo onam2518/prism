@@ -81,8 +81,8 @@ window.PRISM_APP_PARTS.push(() => ({
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 정답셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
       labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | user(사용자) | media(미디어)
-      studioTab: 'prompt',                    // 스튜디오: prompt(프롬프트 계약·래퍼) | topic(토픽 설계)
-      dictTab: 'intent',                      // 사전·정책: intent(인텐트) | category(카테고리) | entity(엔티티 사전) | policy(품질·법령·처리)
+      studioTab: 'prompt',                    // 스튜디오: prompt(빌더+배포+라이브러리) | topic(토픽 설계)
+      dictTab: 'intent',                      // 사전·정책: intent | category | entity | policy | prompt(단계 지시) | engine(계약·래퍼·미리보기)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
       // 위젯 홈 인터랙션 상태

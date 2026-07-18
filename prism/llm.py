@@ -81,6 +81,15 @@ class LLMClient:
         LLMClient._PARAM_ADAPT.setdefault(bare, set()).add(name)
 
     # 공개 API
+    def complete_text(self, system: str, user: str, tag: str = "") -> LLMResult:
+        """자유 텍스트 완성(JSON 강제·파싱 없음) · 빌더 테스트 실행 등 산출 원문 확인용."""
+        if self.mock:
+            _obj, res = self._mock(system, user, tag)
+            return res
+        res = self._call(system, user, json_mode=False)
+        res.tag = tag or res.tag
+        return res
+
     def complete_json(self, system: str, user: str, tag: str = "") -> tuple[dict, LLMResult]:
         """JSON 객체를 강제 파싱해 반환. 실패 시 1회 재시도 후 빈 dict + 표식."""
         if self.mock:
@@ -156,7 +165,7 @@ class LLMClient:
                           price_out=self.cfg.prices.chat_out, fail_kind=kind, tag=tag))
 
     # 내부
-    def _call(self, system: str, user: str) -> LLMResult:
+    def _call(self, system: str, user: str, json_mode: bool = True) -> LLMResult:
         body = {
             "model": self.model,
             "messages": [
@@ -165,7 +174,7 @@ class LLMClient:
             ],
             "stream": False,
         }
-        if "no_response_format" not in self._adapt:
+        if json_mode and "no_response_format" not in self._adapt:
             # 일부 모델(라우터 경유 claude 등)은 json_object 를 거부 → 생략(프롬프트 계약 + _parse_json 복구)
             body["response_format"] = {"type": "json_object"}
         if "no_temperature" not in self._adapt:

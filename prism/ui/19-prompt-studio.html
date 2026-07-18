@@ -1,80 +1,22 @@
-      <!-- ═══ 모듈: 프롬프트 스튜디오 (전용 도구) · 추출 단계별 프롬프트 ═══ -->
-      <div x-show="mod === 'studio' && studioTab === 'prompt'" x-cloak class="w-full space-y-4">
-        <ul class="ds-bullets hintbox" style="padding:14px 16px">
-          <li>아이템 메타(리드문·엔티티·인텐트·카테고리)의 <b>코어 규칙·예시는 계약</b>(읽기 전용)이고, 수정은 <b>모델별 쿡북 래퍼</b> 단위로만 합니다.</li>
-          <li>검수·판정 단계의 원천 프롬프트는 아래 코드블록에서 직접 수정합니다(관리자 전용) · 모델 지정 시 <b>모델별 분기 저장</b>.</li>
-          <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="verTxt"></b>.</li>
-          <li>보완은 <b>콘텐츠 검수</b>의 교정 피드백이 자동 반영됩니다.</li>
-        </ul>
-        <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
-        <!-- 아이템 메타(추출·분석) = 분리형 4호출 계약. 코어 규칙·예시는 읽기 전용, 수정은 모델 계열 쿡북 래퍼 단위 -->
-        <section class="panel" data-fn><div class="panel-hd"><b>기준 계약 · 아이템 메타 4호출</b><span class="meta">코어 규칙·골드 예시는 계약(읽기 전용) · 수정은 기준 문서 개정으로</span>
-          <span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract || learnedStages.analyze" style="cursor:help" data-tip="배치 결과 피드백이 각 호출 프롬프트에 자동 병기 중">학습 보정 반영</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px">
-              <li>추출은 <b>분리형 순차 4호출</b>입니다: ① 리드문 → ② 엔티티 → ③ 인텐트(사전: 범용①·② + 서비스 분기) → ④ 콘텐츠 카테고리(사전: Tier1/Tier2 + 구분 기준). 리드문이 비면 후속 호출을 생략합니다.</li>
-              <li>호출 사이 <b>기계 검증</b>: 사전 불일치 값 드롭 · 전량 드롭 시 1회 재요청 · 엔티티 1~3개 강제.</li>
-              <li>프롬프트는 <b>학습 반영 회차(버전)</b>마다 보정됩니다 · 현재 프롬프트 버전 <b class="text-ink tnum" x-text="verTxt"></b>.</li>
-            </ul>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-              <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'ct'+cl">
-                <button type="button" class="srcfilter__chip" x-bind:class="contractCall===cl ? 'sel' : ''" x-on:click="contractCall=cl" x-text="callLabel(cl)"></button>
-              </template>
-              <button type="button" class="srcfilter__chip" x-bind:class="contractCall==='examples' ? 'sel' : ''" x-on:click="contractCall='examples'">골드 예시</button>
-            </div>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>계약 원문 · 읽기 전용<span class="codeblock__stage" x-text="contractCall==='examples' ? '골드 예시' : callLabel(contractCall)"></span></div><textarea readonly spellcheck="false" x-bind:value="contractText"></textarea></div>
-          </div></section>
-        <section class="panel" data-fn><div class="panel-hd"><b>모델별 쿡북 래퍼</b><span class="meta">수정 단위는 계열 래퍼만 · 코어 규칙·사전·예시는 자동 삽입</span></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:10px">
-              <li>계열별 쿡북 관례(GPT 출력 계약 · Gemini 스키마 재명시 · Claude 배경 제공 · Solar CRITICAL+자가 검증)를 이 래퍼가 담당합니다.</li>
-              <li>플레이스홀더 <b>{ROLE} {SCHEMA} {RULES} {EXAMPLES} {SELF_CHECK} {LEARNED}</b> 위치에 계약 요소가 삽입됩니다 · 비우고 저장하면 기본 래퍼로 복원됩니다.</li>
-            </ul>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-              <template x-for="f in ['gpt','gemini','claude','solar']" x-bind:key="'fw'+f">
-                <button type="button" class="srcfilter__chip" x-bind:class="wrapFam===f ? 'sel' : ''" x-on:click="wrapFam=f; syncWrapDraft()" x-text="f"></button>
-              </template>
-            </div>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>계열 래퍼 템플릿<span class="codeblock__stage" x-text="wrapFam + ((cfg.familyWrappers||{})[wrapFam] ? ' · 수정됨' : ' · 기본')"></span></div><textarea x-model="wrapDraft" spellcheck="false" placeholder="이 계열의 래퍼 템플릿을 수정하세요"></textarea></div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
-              <button type="button" class="ds-btn ds-btn--primary" x-on:click="saveWrapper()">저장</button>
-              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="restoreWrapper()">기본값 복원</button>
-              <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="wrapMsg"></span>
-            </div>
-          </div></section>
-        <section class="panel" data-fn><div class="panel-hd"><b>최종 프롬프트 미리보기</b><span class="meta">호출×모델×서비스 조합의 실제 합성 결과</span></div>
-          <div class="panel-bd">
-            <div class="filterbar" style="margin:0 0 10px">
-              <span class="selctl"><span class="selctl__lbl">모델</span>
-                <select class="field" x-model="pvModel" x-on:change="loadPreview()"><template x-for="m in availableModels" x-bind:key="'pv'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
-              <span class="selctl"><span class="selctl__lbl">호출</span>
-                <select class="field" x-model="pvCall" x-on:change="loadPreview()">
-                  <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'pc'+cl"><option x-bind:value="cl" x-text="callLabel(cl)"></option></template>
-                </select></span>
-              <span class="selctl"><span class="selctl__lbl">서비스</span>
-                <select class="field" x-model="pvService" x-on:change="loadPreview()"><template x-for="g in groups" x-bind:key="'pg'+g"><option x-bind:value="g" x-text="g"></option></template></select></span>
-              <span class="text-xs text-muted" x-text="pvData ? ('계열 ' + pvData.family) : ''"></span>
-            </div>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="pvModel"></span></div><textarea readonly spellcheck="false" x-bind:value="pvData ? pvData.system : '모델·호출을 선택하면 합성 결과가 표시됩니다'"></textarea></div>
-            <div class="codeblock" style="margin-top:10px"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>user<span class="codeblock__stage">입력 템플릿</span></div><textarea readonly spellcheck="false" style="min-height:90px" x-bind:value="pvData ? pvData.user : ''"></textarea></div>
-          </div></section>
-        <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통 · 선택 시 즉시 저장</span></div>
-          <div class="panel-bd">
-            <div class="ds-segmented" style="max-width:300px">
-              <template x-for="o in reasoningOpts" x-bind:key="o.id"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="reasoning === o.id ? 'true' : 'false'" x-on:click="setReasoning(o.id)" x-text="o.label"></button></template>
-            </div>
-          </div></section>
+      <!-- ═══ 모듈: 프롬프트 스튜디오 · 선언형 빌더(제작) + 하위(배포 · 라이브러리) ═══
+           운영 엔진(계약·계열 래퍼·미리보기·추론 강도)은 사전·정책 → 프롬프트 엔진 탭으로 이동 -->
+      <div x-show="mod === 'studio' && studioTab === 'prompt'" x-cloak class="w-full" style="margin-bottom:10px">
+        <div class="evaltabs">
+          <button type="button" x-bind:class="promptSub==='builder'?'sel':''" x-on:click="promptSub='builder'">빌더</button>
+          <button type="button" x-bind:class="promptSub==='deploy'?'sel':''" x-on:click="promptSub='deploy'; loadDeploys()">배포</button>
+          <button type="button" x-bind:class="promptSub==='library'?'sel':''" x-on:click="promptSub='library'; loadLibrary()">라이브러리</button>
+        </div>
       </div>
 
-
-      <!-- ═══ 스튜디오 · 빌더: 선언형 스펙 → 계열별 프롬프트 컴파일(Atelier step1 이식) ═══ -->
-      <div x-show="mod === 'studio' && studioTab === 'builder'" x-cloak class="w-full space-y-4">
-        <section class="panel" data-fn><div class="panel-hd"><b>선언형 프롬프트 빌더</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
+      <!-- ── 프롬프트 · 빌더: ①선언 → ②컴파일 설정 → ③컴파일 → ④테스트 → ⑤적용(순서 명시) ── -->
+      <div x-show="mod === 'studio' && studioTab === 'prompt' && promptSub === 'builder'" x-cloak class="w-full space-y-4">
+        <ul class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>순서: <b>① 스펙 선언</b> → <b>② 컴파일 설정</b>(메타 컴파일러·대상 계열) → <b>③ 컴파일</b> → <b>④ 테스트 실행</b>(샘플 입력으로 확인) → <b>⑤ 적용·저장</b>(단계 지시 적용 · 라이브러리 · 배포).</li>
+          <li>운영 중인 추출 엔진(계약·계열 래퍼·미리보기·추론 강도)은 <b>사전 · 정책 → 프롬프트 엔진</b> 탭에서 관리합니다.</li>
+        </ul>
+        <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
+        <section class="panel" data-fn><div class="panel-hd"><b>① 스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px">
-              <li>과업·제약·출력 형식·예시를 <b>선언</b>하면 메타 컴파일러가 계열별 공식 쿡북 distilled 가이드(Claude·GPT·Gemini·Solar·DeepSeek)에 맞춰 <b>계열별 시스템 프롬프트</b>를 만듭니다.</li>
-              <li>결과는 복사해 쓰거나, <b>단계 원천 지시</b>(추출·분석·검수·판정)로 바로 적용합니다 · 적용된 지시는 <b>사전 · 정책 → 메타 프롬프트</b> 탭에서도 관리됩니다.</li>
-            </ul>
             <div class="grid grid-cols-2 gap-4">
               <div><div class="selctl__lbl" style="margin-bottom:4px">과업 (필수)</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.task" placeholder="예: 커머스 콘텐츠에서 리드문·엔티티를 추출하고 품질 등급을 판정한다"></textarea></div>
               <div><div class="selctl__lbl" style="margin-bottom:4px">역할</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.role" placeholder="예: 당신은 콘텐츠 메타 추출 전문가다"></textarea></div>
@@ -83,12 +25,18 @@
               <div><div class="selctl__lbl" style="margin-bottom:4px">출력 형식</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.format" placeholder='예: JSON {"summary": "...", "finalGrade": "G|R"}'></textarea></div>
               <div><div class="selctl__lbl" style="margin-bottom:4px">예시 (입력 → 기대 출력)</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.examples" placeholder="입력: ... → 기대: ..."></textarea></div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px">
+          </div>
+        </section>
+        <section class="panel" data-fn><div class="panel-hd"><b>② 컴파일 설정 · ③ 컴파일</b><span class="meta">어떤 두뇌로 설계하고 · 어느 계열용으로 만들지</span></div>
+          <div class="panel-bd">
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <span class="selctl" data-tip="스펙을 읽고 프롬프트를 설계하는 메타 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">메타 컴파일러</span>
+                <select class="field" x-model="bSpec.meta_model"><option value="">현재 설정 모델</option><template x-for="m in availableModels" x-bind:key="'bm'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
               <span class="selctl__lbl">대상 계열</span>
               <template x-for="f in bFamilies" x-bind:key="'bf'+f.id">
                 <button type="button" class="srcfilter__chip" x-bind:class="bSpec.families.includes(f.id)?'sel':''" x-on:click="toggleBFamily(f.id)" x-text="f.label"></button>
               </template>
-              <button type="button" class="ds-btn ds-btn--primary" style="margin-left:auto" x-bind:disabled="bBusy" x-on:click="runBuilder()" x-text="bBusy ? '컴파일 중…' : '컴파일'"></button>
+              <button type="button" class="ds-btn ds-btn--primary" style="margin-left:auto" x-bind:disabled="bBusy" x-on:click="runBuilder()" x-text="bBusy ? '컴파일 중…' : '③ 컴파일'"></button>
             </div>
             <div class="text-xs text-muted" style="margin-top:6px" x-show="bMsg" x-text="bMsg"></div>
           </div>
@@ -98,15 +46,34 @@
             <div class="text-xs text-muted" x-show="bResult.notes" x-text="'계열 간 차이: ' + bResult.notes"></div>
             <template x-for="fam in bResult.families" x-bind:key="'bp'+fam">
               <section class="panel" x-show="bResult.prompts[fam]">
-                <div class="panel-hd"><b x-text="bFamilyLabel(fam)"></b><span class="meta">컴파일된 시스템 프롬프트</span></div>
+                <div class="panel-hd"><b x-text="bFamilyLabel(fam)"></b><span class="meta">컴파일된 시스템 프롬프트 · ④ 테스트 → ⑤ 적용</span></div>
                 <div class="panel-bd">
                   <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="fam"></span></div><textarea readonly spellcheck="false" x-bind:value="bResult.prompts[fam]"></textarea></div>
+                  <!-- ④ 테스트 실행: 적용 전 샘플 입력으로 산출 확인(형식 준수 여부가 관찰 대상) -->
+                  <div style="margin-top:10px;border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px">
+                    <div class="selctl__lbl" style="margin-bottom:6px">④ 테스트 실행 · 적용 전 확인</div>
+                    <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+                      <textarea class="field" style="flex:1;min-width:240px;min-height:56px" x-model="bTestInput" placeholder="샘플 입력(콘텐츠 본문 등)을 붙여넣으세요"></textarea>
+                      <span class="selctl" data-tip="컴파일된 프롬프트를 실제로 실행해 볼 모델" data-tip-pos="top"><span class="selctl__lbl">테스트 모델</span>
+                        <select class="field" x-model="bTestModel"><option value="">현재 설정 모델</option><template x-for="m in availableModels" x-bind:key="'bt'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                      <button type="button" class="ds-btn ds-btn--secondary" x-bind:disabled="bTestBusy" x-on:click="testBuilder(fam)" x-text="bTestBusy ? '실행 중…' : '실행'"></button>
+                    </div>
+                    <template x-if="bTestOut && bTestOut.fam === fam">
+                      <div style="margin-top:8px">
+                        <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>출력<span class="codeblock__stage" x-text="bTestOut.model"></span></div><textarea readonly spellcheck="false" style="min-height:90px" x-bind:value="bTestOut.output"></textarea></div>
+                        <div class="text-xs text-muted tnum" style="margin-top:4px" x-text="(bTestOut.latency_ms||0) + 'ms · $' + (bTestOut.cost_usd||0) + ' · 토큰 ' + ((bTestOut.tokens||{}).in||0) + '/' + ((bTestOut.tokens||{}).out||0)"></div>
+                      </div>
+                    </template>
+                    <span class="text-xs text-muted" x-show="bTestMsg" x-text="bTestMsg"></span>
+                  </div>
+                  <!-- ⑤ 적용·저장 -->
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+                    <span class="selctl__lbl">⑤ 적용 · 저장</span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="copyText(bResult.prompts[fam], bFamilyLabel(fam) + ' 프롬프트')">복사</button>
                     <span class="selctl"><span class="selctl__lbl">적용 대상 단계</span>
                       <select class="field" x-model="bApplyStage"><option value="">선택…</option><option value="extract">추출(extract)</option><option value="analyze">분석(analyze)</option><option value="review">검수(review)</option><option value="judge">판정(judge)</option></select></span>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="!bApplyStage || bApplyBusy" data-tip="이 프롬프트를 해당 단계의 원천 지시(공통)로 저장합니다" data-tip-pos="top" x-on:click="applyBuilder(fam)" x-text="bApplyBusy ? '적용 중…' : '단계 원천 지시로 적용'"></button>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="라이브러리 탭으로 가져가 패턴으로 저장합니다" data-tip-pos="top" x-on:click="saveBuilderToLibrary(fam)">라이브러리에 저장</button>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="!bApplyStage || bApplyBusy" data-tip="이 프롬프트를 해당 단계의 원천 지시(공통)로 저장합니다 · 사전·정책 → 메타 프롬프트 탭에서 관리" data-tip-pos="top" x-on:click="applyBuilder(fam)" x-text="bApplyBusy ? '적용 중…' : '단계 원천 지시로 적용'"></button>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="라이브러리 하위 탭으로 가져가 패턴으로 저장합니다" data-tip-pos="top" x-on:click="saveBuilderToLibrary(fam)">라이브러리에 저장</button>
                   </div>
                 </div>
               </section>
@@ -115,8 +82,8 @@
         </template>
       </div>
 
-      <!-- ═══ 스튜디오 · 배포: 프롬프트 스냅샷 버전 pin → 외부 API 서빙(Atelier deployments 이식) ═══ -->
-      <div x-show="mod === 'studio' && studioTab === 'deploy'" x-cloak class="w-full space-y-4">
+      <!-- ── 프롬프트 · 배포: 스냅샷 버전 pin → 외부 API 서빙(Atelier deployments 이식) ── -->
+      <div x-show="mod === 'studio' && studioTab === 'prompt' && promptSub === 'deploy'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>프롬프트 배포 · 외부 API 제공</b><span class="meta">스냅샷 버전을 slug 에 고정(pin) · 외부 서비스가 키로 당겨 씁니다</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
@@ -174,13 +141,13 @@
         </section>
       </div>
 
-      <!-- ═══ 스튜디오 · 라이브러리: 프롬프트 패턴 저장·재사용(Atelier prompt_library 이식) ═══ -->
-      <div x-show="mod === 'studio' && studioTab === 'library'" x-cloak class="w-full space-y-4">
+      <!-- ── 프롬프트 · 라이브러리: 패턴 저장·재사용(Atelier prompt_library 이식) ── -->
+      <div x-show="mod === 'studio' && studioTab === 'prompt' && promptSub === 'library'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>프롬프트 라이브러리</b><span class="meta">잘 나온 프롬프트를 저장해 두고 · 복사·단계 적용으로 재사용</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
               <li>빌더 결과·직접 작성한 프롬프트를 <b>패턴으로 저장</b>합니다 · 자주 쓰는 항목은 <b>핀</b>으로 위에 고정.</li>
-              <li>항목은 복사해 쓰거나 <b>단계 원천 지시로 적용</b>할 수 있습니다(적용 경로는 정책 · 메타 프롬프트 탭과 동일).</li>
+              <li>항목은 복사해 쓰거나 <b>단계 원천 지시로 적용</b>할 수 있습니다(적용 경로는 사전·정책 · 메타 프롬프트 탭과 동일).</li>
             </ul>
             <div class="grid grid-cols-2 gap-4">
               <div><div class="selctl__lbl" style="margin-bottom:4px">이름 (필수)</div><input class="field" style="width:100%" x-model="libNew.name" placeholder="예: 커머스 등급 분류 v2"></div>

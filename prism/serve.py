@@ -201,6 +201,7 @@ learn_export = LO.learn_export
 handoff_bundle = LO.handoff_bundle
 meta_compile_run = LO.meta_compile_run
 builder_compile = LO.builder_compile
+builder_test = LO.builder_test
 deployment_save = DEP.deployment_save
 deployment_remove = DEP.deployment_remove
 deployments_list = DEP.deployments_list
@@ -422,7 +423,7 @@ def _safe_url(u: str) -> str:
 # 인프라(/config·/ingest-status)·멤버(/feedback·/board)·상태폴 경로는 미포함(가시성은 프론트 담당).
 _MENU_POST_ROUTES = (
     ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
-    ("/builder-compile", "studio"), ("/deployment", "studio"),
+    ("/builder", "studio"), ("/deployment", "studio"),
     ("/prompt-library", "studio"),
     ("/media-extract", "lab"), ("/usermeta", "lab"),
     ("/dict", "dict"),
@@ -1845,6 +1846,13 @@ def _p_deployment_key_new(h, body):
 def _p_deployment_key_revoke(h, body):
     d = json.loads(body or b"{}")
     return deployment_key_revoke(int(d.get("id") or 0), int(d.get("key_id") or 0), h._req_team())
+
+
+@_post_route("/builder-test", gate="admin")          # 컴파일 산출을 테스트 모델로 1회 실행(실모델 비용)
+def _p_builder_test(h, body):
+    data = json.loads(body or b"{}")
+    return builder_test(data.get("system") or "", data.get("input") or "",
+                        model=(data.get("model") or "").strip(), team=h._req_team())
 
 
 @_post_route("/builder-compile", gate="admin")       # 선언형 스펙→계열별 프롬프트 컴파일(실모델 비용)

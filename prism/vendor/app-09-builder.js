@@ -2,10 +2,24 @@
    로더(app.js)가 파일명 순으로 디스크립터 병합(게터 보존) · 조각 간 this 공유. */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
-      // ── 스튜디오 · 선언형 프롬프트 빌더(Atelier step1 이식) ──
-      bSpec: { task: '', role: '', background: '', constraints: '', format: '', examples: '', families: ['solar'] },
+      // ── 스튜디오 · 프롬프트 탭(빌더 기본) + 하위(배포·라이브러리) ──
+      promptSub: 'builder',                    // 프롬프트 하위 탭: builder | deploy | library
+      // ── 선언형 프롬프트 빌더(Atelier step1 이식) · meta_model = 메타 컴파일러 선택 ──
+      bSpec: { task: '', role: '', background: '', constraints: '', format: '', examples: '', families: ['solar'], meta_model: '' },
       bFamilies: [{ id: 'claude', label: 'Claude' }, { id: 'gpt', label: 'GPT' }, { id: 'gemini', label: 'Gemini' }, { id: 'solar', label: 'Solar' }, { id: 'deepseek', label: 'DeepSeek' }],
       bBusy: false, bMsg: '', bResult: null, bApplyStage: '', bApplyBusy: false,
+      bTestInput: '', bTestModel: '', bTestOut: null, bTestBusy: false, bTestMsg: '',
+      async testBuilder(fam) {                 // ④ 테스트: 컴파일 산출을 테스트 모델로 1회 실행
+        const p = this.bResult && this.bResult.ok && this.bResult.prompts[fam];
+        if (!p) return;
+        this.bTestBusy = true; this.bTestMsg = ''; this.bTestOut = null;
+        try {
+          const r = await (await this._afetch('/builder-test', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ system: p, input: this.bTestInput, model: this.bTestModel }) })).json();
+          if (r && r.ok) this.bTestOut = { ...r, fam };
+          else this.bTestMsg = (r && r.error) || '테스트 실패';
+        } catch (e) { this.bTestMsg = '테스트 실패'; }
+        this.bTestBusy = false;
+      },
       bFamilyLabel(f) { const x = this.bFamilies.find((v) => v.id === f); return x ? x.label : f; },
       toggleBFamily(id) {
         const a = this.bSpec.families; const i = a.indexOf(id);
@@ -145,7 +159,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const p = this.bResult && this.bResult.ok && this.bResult.prompts[fam];
         if (!p) return;
         this.libNew = { name: (this.bSpec.task || '').slice(0, 40) + ' · ' + this.bFamilyLabel(fam), domain: '', prompt: p, note: '' };
-        this.studioTab = 'library'; this.loadLibrary();
+        this.promptSub = 'library'; this.loadLibrary();
         this.libMsg = '빌더 결과를 불러왔습니다 · 이름을 다듬고 저장하세요';
       },
 }));
