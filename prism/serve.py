@@ -62,12 +62,14 @@ from . import umops as UMO
 from . import ingestops as IG
 from . import boardops as BD
 from . import evalops as EVO
+from . import deployops as DEP
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
+DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Atelier deployments 이식)
 
 _run_id = RN._run_id
 _build_id = RN._build_id
@@ -199,6 +201,12 @@ learn_export = LO.learn_export
 handoff_bundle = LO.handoff_bundle
 meta_compile_run = LO.meta_compile_run
 builder_compile = LO.builder_compile
+deployment_save = DEP.deployment_save
+deployment_remove = DEP.deployment_remove
+deployments_list = DEP.deployments_list
+deployment_key_new = DEP.deployment_key_new
+deployment_key_revoke = DEP.deployment_key_revoke
+serve_prompt = DEP.serve_prompt
 start_learning_scheduler = LO.start_learning_scheduler
 from .llm import LLMClient
 
@@ -414,7 +422,7 @@ def _safe_url(u: str) -> str:
 # 인프라(/config·/ingest-status)·멤버(/feedback·/board)·상태폴 경로는 미포함(가시성은 프론트 담당).
 _MENU_POST_ROUTES = (
     ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
-    ("/builder-compile", "studio"),
+    ("/builder-compile", "studio"), ("/deployment", "studio"),
     ("/media-extract", "lab"), ("/usermeta", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
@@ -1142,7 +1150,8 @@ except ValueError:
 _FETCH_MAX = 16 * 1024 * 1024           # 인입 아웃바운드 응답 크기 상한(메모리 소진 방어)
 
 _PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/template.csv",
-               "/usermeta-template.csv", "/usermeta-profile-template.csv"}
+               "/usermeta-template.csv", "/usermeta-profile-template.csv",
+               "/api/v1/prompt"}   # 배포 프롬프트 서빙(자체 Bearer 키 검증 · deployops)
 
 # 팀 없이도 접근 가능한 인증 GET(전역 참조·관리자 판정 · 팀 콘텐츠 데이터 아님).
 # 그 외 데이터 GET 은 supabase 모드에서 팀 소속을 요구(team=None 전 팀 폴백 격리 붕괴 차단).
@@ -1453,6 +1462,20 @@ def _g_autopilot_status(h, q):
     return autopilot_status(h._req_team())
 
 
+@_get_route("/deployments", admin=True)              # 배포 목록(키 메타 포함 · 스튜디오)
+def _g_deployments(h, q):
+    return deployments_list(h._req_team())
+
+
+@_get_route("/api/v1/prompt")                        # 공개 서빙: slug + Bearer pr_live_ 키(자체 검증)
+def _g_api_prompt(h, q):
+    status, body = serve_prompt((q.get("slug") or [""])[0],
+                                h.headers.get("Authorization") or "",
+                                call=(q.get("call") or [""])[0])
+    h._send(status, json.dumps(body, ensure_ascii=False), _JSON)
+    return None
+
+
 @_get_route("/eval-run-compare")                     # 두 런 비교(a=기준·b=대상) · 회귀 가드 판정
 def _g_eval_run_compare(h, q):
     try:
@@ -1754,6 +1777,32 @@ def _p_patch_meta(h, body):
         if fresh:
             res["missions_completed"] = fresh
     return res
+
+
+@_post_route("/deployment-save", gate="admin")       # 배포 생성/수정(슬러그·버전 pin)
+def _p_deployment_save(h, body):
+    d = json.loads(body or b"{}")
+    return deployment_save(h._req_team(), dep_id=d.get("id"), slug=d.get("slug") or "",
+                           name=d.get("name") or "", version=d.get("version") or 0,
+                           active=d.get("active", True), created_by=h._bearer_uid() or "")
+
+
+@_post_route("/deployment-remove", gate="admin")
+def _p_deployment_remove(h, body):
+    d = json.loads(body or b"{}")
+    return deployment_remove(int(d.get("id") or 0), h._req_team())
+
+
+@_post_route("/deployment-key-new", gate="admin")    # 키 발급(평문 1회 노출 · sha256 저장)
+def _p_deployment_key_new(h, body):
+    d = json.loads(body or b"{}")
+    return deployment_key_new(int(d.get("id") or 0), h._req_team())
+
+
+@_post_route("/deployment-key-revoke", gate="admin")
+def _p_deployment_key_revoke(h, body):
+    d = json.loads(body or b"{}")
+    return deployment_key_revoke(int(d.get("id") or 0), int(d.get("key_id") or 0), h._req_team())
 
 
 @_post_route("/builder-compile", gate="admin")       # 선언형 스펙→계열별 프롬프트 컴파일(실모델 비용)

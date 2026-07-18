@@ -113,3 +113,62 @@
           </div>
         </template>
       </div>
+
+      <!-- ═══ 스튜디오 · 배포: 프롬프트 스냅샷 버전 pin → 외부 API 서빙(Atelier deployments 이식) ═══ -->
+      <div x-show="mod === 'studio' && studioTab === 'deploy'" x-cloak class="w-full space-y-4">
+        <section class="panel" data-fn><div class="panel-hd"><b>프롬프트 배포 · 외부 API 제공</b><span class="meta">스냅샷 버전을 slug 에 고정(pin) · 외부 서비스가 키로 당겨 씁니다</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:11px">
+              <li>배포 = <b>slug + 프롬프트 스냅샷 버전 pin</b> · pin 을 바꾸면 호출측 코드 수정 없이 서빙 프롬프트가 즉시 교체됩니다(버전 0 = 항상 최신).</li>
+              <li>API 키는 <b>발급 순간 1회만</b> 표시됩니다(서버는 해시만 저장) · 유출 시 회수하고 새로 발급하세요.</li>
+              <li>호출 예: <code class="tnum" x-text="'curl -H \'Authorization: Bearer pr_live_…\' ' + location.origin + '/api/v1/prompt?slug=<slug>'"></code></li>
+            </ul>
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+              <span class="selctl"><span class="selctl__lbl">slug</span><input class="field" style="width:180px" x-model="newDep.slug" placeholder="ex) item-extract"></span>
+              <span class="selctl"><span class="selctl__lbl">이름</span><input class="field" style="width:200px" x-model="newDep.name" placeholder="용도 설명"></span>
+              <span class="selctl"><span class="selctl__lbl">버전 pin (0=최신)</span><input class="field tnum" style="width:110px" type="number" min="0" x-model="newDep.version"></span>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="depBusy" x-on:click="saveDeploy()">배포 만들기</button>
+              <span class="text-xs text-muted" x-show="depMsg" x-text="depMsg"></span>
+            </div>
+          </div>
+        </section>
+        <template x-if="newKey.key">
+          <section class="panel"><div class="panel-hd"><b>새 API 키</b><span class="meta">지금 복사하세요 · 다시 표시되지 않습니다</span></div>
+            <div class="panel-bd" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <code class="tnum" style="font-size:13px" x-text="newKey.key"></code>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="copyText(newKey.key, 'API 키')">복사</button>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="newKey = {}">닫기</button>
+            </div>
+          </section>
+        </template>
+        <section class="panel"><div class="panel-hd"><b>배포 목록</b><span class="meta tnum" x-text="deploys.length + '개'"></span></div>
+          <div class="panel-bd">
+            <div class="text-xs text-muted" x-show="!deploys.length">아직 배포가 없습니다 · 위에서 slug 를 만들고 키를 발급하세요</div>
+            <template x-for="d in deploys" x-bind:key="'dp'+d.id">
+              <div style="border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <b class="tnum" x-text="'/' + d.slug"></b>
+                  <span class="text-xs text-muted" x-text="d.name"></span>
+                  <span class="ds-badge ds-badge--neutral tnum" x-text="d.version ? ('v' + d.version + ' 고정') : '항상 최신'"></span>
+                  <span class="ds-badge" x-bind:class="d.active ? 'ds-badge--success' : 'ds-badge--warning'" x-text="d.active ? '서빙 중' : '중지'"></span>
+                  <span style="margin-left:auto;display:inline-flex;gap:6px">
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="newKeyFor(d)">키 발급</button>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="toggleDeploy(d)" x-text="d.active ? '중지' : '재개'"></button>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="배포와 키를 삭제합니다 · 호출측은 즉시 401" data-tip-pos="top" x-on:click="removeDeploy(d)">삭제</button>
+                  </span>
+                </div>
+                <div style="margin-top:8px" x-show="(d.keys||[]).length">
+                  <template x-for="k in d.keys" x-bind:key="'dk'+k.id">
+                    <div class="text-xs" style="display:flex;gap:10px;align-items:center;padding:3px 0">
+                      <code class="tnum" x-text="k.prefix"></code>
+                      <span class="ds-badge ds-badge--neutral" x-show="k.revoked">회수됨</span>
+                      <span class="text-muted tnum" x-text="k.last_used ? ('마지막 사용 ' + fmtTs(k.last_used)) : '미사용'"></span>
+                      <button type="button" class="copybtn" x-show="!k.revoked" x-on:click="revokeKey(d, k)">회수</button>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </section>
+      </div>

@@ -74,4 +74,39 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this.stageMsg = { ...this.stageMsg, [id]: '복원 실패: ' + (e.message || '') }; }
         this.stageBusy = false;
       },
+      // ── 스튜디오 · 배포(Atelier deployments 이식): pin + API 키 관리 ──
+      deploys: [], newDep: { slug: '', name: '', version: 0 }, newKey: {}, depBusy: false, depMsg: '',
+      async loadDeploys() {
+        try { const r = await (await this._afetch('/deployments', { headers: this._authHeaders() })).json(); if (r && r.ok) this.deploys = r.items || []; } catch (e) {}
+      },
+      async saveDeploy() {
+        this.depBusy = true; this.depMsg = '';
+        try {
+          const r = await (await this._afetch('/deployment-save', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(this.newDep) })).json();
+          if (r && r.ok) { this.newDep = { slug: '', name: '', version: 0 }; this.liveToast('배포 생성됨'); this.loadDeploys(); }
+          else this.depMsg = (r && r.error) || '생성 실패';
+        } catch (e) { this.depMsg = '생성 실패'; }
+        this.depBusy = false;
+      },
+      async toggleDeploy(d) {
+        try {
+          await (await this._afetch('/deployment-save', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: d.id, slug: d.slug, name: d.name, version: d.version, active: !d.active }) })).json();
+        } catch (e) {}
+        this.loadDeploys();
+      },
+      async removeDeploy(d) {
+        try { await (await this._afetch('/deployment-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: d.id }) })).json(); } catch (e) {}
+        this.loadDeploys();
+      },
+      async newKeyFor(d) {
+        try {
+          const r = await (await this._afetch('/deployment-key-new', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: d.id }) })).json();
+          if (r && r.ok) { this.newKey = r; this.loadDeploys(); }
+          else this.depMsg = (r && r.error) || '키 발급 실패';
+        } catch (e) { this.depMsg = '키 발급 실패'; }
+      },
+      async revokeKey(d, k) {
+        try { await (await this._afetch('/deployment-key-revoke', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: d.id, key_id: k.id }) })).json(); } catch (e) {}
+        this.loadDeploys();
+      },
 }));

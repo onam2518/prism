@@ -179,6 +179,29 @@ alter table public.prism_autopilot_runs enable row level security;
 한 라운드 = learnops.learning_batch(피드백 보정→같은 정답셋 재평가 · 악화 자동 원복).
 종료 = 목표 달성 · 개선 정체(2라운드 연속 무향상) · 최대 라운드(cap 10) · 수동 중지.
 
+**프롬프트 배포(`prism_deployments` 외 1, 2026-07-18 · 적용됨 · Atelier deployments 이식)**:
+```sql
+create table if not exists public.prism_deployments (
+  id bigint generated always as identity primary key,
+  team_id uuid, slug text not null unique, name text not null default '',
+  version integer not null default 0,          -- prompt_snapshot_v{N} pin · 0=항상 최신
+  active boolean not null default true, created_by text not null default '',
+  created_at timestamptz not null default now(), updated_at timestamptz
+);
+create table if not exists public.prism_deployment_keys (
+  id bigint generated always as identity primary key,
+  deployment_id bigint not null references public.prism_deployments(id) on delete cascade,
+  key_hash text not null,                      -- sha256 · 평문 미보관(발급 시 1회 표시)
+  key_prefix text not null default '', revoked boolean not null default false,
+  created_at timestamptz not null default now(), last_used_at timestamptz
+);
+create index if not exists ix_depkeys_dep on public.prism_deployment_keys(deployment_id);
+alter table public.prism_deployments enable row level security;
+alter table public.prism_deployment_keys enable row level security;
+```
+공개 서빙 `GET /api/v1/prompt?slug=` + `Authorization: Bearer pr_live_…`(deployops 자체 검증).
+pin 교체 = 호출측 무변경 즉시 프롬프트 교체.
+
 ## 테이블 네임스페이스 정리 방침 (2026-07-18)
 
 같은 Supabase 프로젝트(구 PromptForge)에 두 제품의 테이블이 공존해 왔다. Atelier 를
