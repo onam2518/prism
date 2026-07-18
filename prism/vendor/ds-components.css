@@ -681,6 +681,28 @@
 .ds-step--pending .ds-step__title { color: var(--ds-muted); }
 .ds-step__check { width: 11px; height: 11px; }
 
+/* 라벨형 스텝(정식 변형): 마커가 점이 아니라 "STEP N" 필 배지 — 구 tstep(app.css 지역 포크) 흡수.
+   위저드형 순차 입력(스텝 안에 폼)이 있을 때 사용 · done 은 semantic success(완료 체크). */
+.ds-steps--labeled .ds-step { grid-template-columns: 76px minmax(0, 1fr); padding-bottom: var(--ds-space-5); }
+.ds-steps--labeled .ds-step:last-child { padding-bottom: 0; }
+.ds-steps--labeled .ds-step__body { padding-bottom: 0; }   /* 라벨형은 스텝 자체 여백 사용(이중 여백 방지) */
+.ds-step__pill {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center;
+  white-space: nowrap; border-radius: var(--ds-radius-chip); padding: 4px 11px;
+  font: 700 11px/1 var(--ds-font-game); letter-spacing: .03em;
+  background: var(--ds-surface); border: 1.5px solid var(--ds-hairline); color: var(--ds-muted);
+  transition: background .2s, border-color .2s, color .2s, box-shadow .2s;
+}
+.ds-step--active .ds-step__pill { border-color: var(--ds-primary); background: var(--ds-primary); color: var(--ds-on-primary); box-shadow: 0 0 0 4px var(--ds-primary-tint); }
+.ds-step--done .ds-step__pill { border-color: var(--ds-success); background: var(--ds-success); color: #fff; }
+.ds-step__pill .c { display: none; font-size: 13px; }
+.ds-step--done .ds-step__pill .n { display: none; }
+.ds-step--done .ds-step__pill .c { display: block; }
+.ds-steps--labeled .ds-step--done .ds-step__line { background: var(--ds-success); }
+.ds-step__head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 9px; }
+.ds-step__head b { font: 600 14.5px/1.2 var(--ds-font-display); color: var(--ds-ink); letter-spacing: -.005em; }
+.ds-step__guide { color: var(--ds-muted); font-size: var(--ds-size-caption); line-height: 1.45; }
+
 /* ── AttachmentChip (파일 업로드 칩) ──────────────────────── */
 .ds-attachment {
   display: inline-flex;

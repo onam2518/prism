@@ -8,14 +8,14 @@
         </div>
       </div>
 
-      <!-- ── 프롬프트 · 빌더: ①선언 → ②컴파일 설정 → ③컴파일 → ④테스트 → ⑤적용(순서 명시) ── -->
+      <!-- ── 프롬프트 · 빌더: STEP 1 선언 → STEP 2 컴파일 → 테스트 → 적용·저장 ── -->
       <div x-show="mod === 'studio' && studioTab === 'prompt' && promptSub === 'builder'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
-          <li>순서: <b>① 스펙 선언</b> → <b>② 컴파일 설정</b>(메타 컴파일러·대상 계열) → <b>③ 컴파일</b> → <b>④ 테스트 실행</b>(샘플 입력으로 확인) → <b>⑤ 적용·저장</b>(단계 지시 적용 · 라이브러리 · 배포).</li>
+          <li>순서: <b>STEP 1 스펙 선언</b> → <b>STEP 2 컴파일</b>(메타 컴파일러·대상 계열 설정) → <b>테스트 실행</b>(샘플 입력으로 확인) → <b>적용·저장</b>(단계 지시 적용 · 라이브러리 · 배포).</li>
           <li>운영 중인 추출 엔진(계약·계열 래퍼·미리보기·추론 강도)은 <b>사전 · 정책 → 프롬프트 엔진</b> 탭에서 관리합니다.</li>
         </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
-        <section class="panel" data-fn><div class="panel-hd"><b>① 스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
+        <section class="panel" data-fn><div class="panel-hd"><span class="stepline__no">STEP 1</span><b>스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
           <div class="panel-bd">
             <div class="grid grid-cols-2 gap-4">
               <div><div class="selctl__lbl" style="margin-bottom:4px">과업 (필수)</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.task" placeholder="예: 커머스 콘텐츠에서 리드문·엔티티를 추출하고 품질 등급을 판정한다"></textarea></div>
@@ -27,7 +27,7 @@
             </div>
           </div>
         </section>
-        <section class="panel" data-fn><div class="panel-hd"><b>② 컴파일 설정 · ③ 컴파일</b><span class="meta">어떤 두뇌로 설계하고 · 어느 계열용으로 만들지</span></div>
+        <section class="panel" data-fn><div class="panel-hd"><span class="stepline__no">STEP 2</span><b>컴파일 설정 · 실행</b><span class="meta">어떤 두뇌로 설계하고 · 어느 계열용으로 만들지</span></div>
           <div class="panel-bd">
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <span class="selctl" data-tip="스펙을 읽고 프롬프트를 설계하는 메타 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">메타 컴파일러</span>
@@ -36,7 +36,7 @@
               <template x-for="f in bFamilies" x-bind:key="'bf'+f.id">
                 <button type="button" class="srcfilter__chip" x-bind:class="bSpec.families.includes(f.id)?'sel':''" x-on:click="toggleBFamily(f.id)" x-text="f.label"></button>
               </template>
-              <button type="button" class="ds-btn ds-btn--primary" style="margin-left:auto" x-bind:disabled="bBusy" x-on:click="runBuilder()" x-text="bBusy ? '컴파일 중…' : '③ 컴파일'"></button>
+              <button type="button" class="ds-btn ds-btn--primary" style="margin-left:auto" x-bind:disabled="bBusy" x-on:click="runBuilder()" x-text="bBusy ? '컴파일 중…' : '컴파일'"></button>
             </div>
             <div class="text-xs text-muted" style="margin-top:6px" x-show="bMsg" x-text="bMsg"></div>
           </div>
@@ -46,12 +46,12 @@
             <div class="text-xs text-muted" x-show="bResult.notes" x-text="'계열 간 차이: ' + bResult.notes"></div>
             <template x-for="fam in bResult.families" x-bind:key="'bp'+fam">
               <section class="panel" x-show="bResult.prompts[fam]">
-                <div class="panel-hd"><b x-text="bFamilyLabel(fam)"></b><span class="meta">컴파일된 시스템 프롬프트 · ④ 테스트 → ⑤ 적용</span></div>
+                <div class="panel-hd"><b x-text="bFamilyLabel(fam)"></b><span class="meta">컴파일된 시스템 프롬프트 · 테스트 후 적용</span></div>
                 <div class="panel-bd">
                   <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="fam"></span></div><textarea readonly spellcheck="false" x-bind:value="bResult.prompts[fam]"></textarea></div>
-                  <!-- ④ 테스트 실행: 적용 전 샘플 입력으로 산출 확인(형식 준수 여부가 관찰 대상) -->
+                  <!-- 테스트 실행: 적용 전 샘플 입력으로 산출 확인(형식 준수 여부가 관찰 대상) -->
                   <div style="margin-top:10px;border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px">
-                    <div class="selctl__lbl" style="margin-bottom:6px">④ 테스트 실행 · 적용 전 확인</div>
+                    <div class="selctl__lbl" style="margin-bottom:6px">테스트 실행 · 적용 전 확인</div>
                     <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
                       <textarea class="field" style="flex:1;min-width:240px;min-height:56px" x-model="bTestInput" placeholder="샘플 입력(콘텐츠 본문 등)을 붙여넣으세요"></textarea>
                       <span class="selctl" data-tip="컴파일된 프롬프트를 실제로 실행해 볼 모델" data-tip-pos="top"><span class="selctl__lbl">테스트 모델</span>
@@ -66,9 +66,9 @@
                     </template>
                     <span class="text-xs text-muted" x-show="bTestMsg" x-text="bTestMsg"></span>
                   </div>
-                  <!-- ⑤ 적용·저장 -->
+                  <!-- 적용·저장 -->
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
-                    <span class="selctl__lbl">⑤ 적용 · 저장</span>
+                    <span class="selctl__lbl">적용 · 저장</span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="copyText(bResult.prompts[fam], bFamilyLabel(fam) + ' 프롬프트')">복사</button>
                     <span class="selctl"><span class="selctl__lbl">적용 대상 단계</span>
                       <select class="field" x-model="bApplyStage"><option value="">선택…</option><option value="extract">추출(extract)</option><option value="analyze">분석(analyze)</option><option value="review">검수(review)</option><option value="judge">판정(judge)</option></select></span>

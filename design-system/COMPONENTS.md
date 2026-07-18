@@ -17,6 +17,11 @@ Primitive (13)
   Button(+pill·trailingIcon) · IconButton(+[data-tip]) · Input(+composer) · Select · Card
   · Badge(+meta칩) · Tabs · Table · Dialog · Toast · Toggle · Steps · AttachmentChip
 
+> **순서·단계 UI 규칙(2026-07-18 확정)**: 세로 레일형은 `ds-steps`/`ds-step`(위저드형은
+> `ds-steps--labeled` — STEP N 필 마커) 하나만, 가로 흐름 헤더형은 `stepline`(+모달 카드
+> 변형 `stepcard`) 하나만 쓴다. 이 2계열 외 신규 스텝 스타일·원문자(①②③) 순서 표기 금지.
+> (구 `tstep` 은 `ds-steps--labeled` 로 흡수 · 2026-07-18)
+
 Composite (4)
   Citation · Composer · SourceRail · AnswerBlock
 
