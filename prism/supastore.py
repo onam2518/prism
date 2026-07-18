@@ -99,7 +99,7 @@ class SupabaseStore:
         "feedback_routes": "id", "entities": "entity_id", "entity_aliases": "alias",
         "content_entities": "content_hash,entity_id", "teams": "id",
         "eval_runs": "id", "eval_results": "run_id,content_hash", "autopilot_runs": "id",
-        "deployments": "id", "deployment_keys": "id",
+        "deployments": "id", "deployment_keys": "id", "prompt_library": "id",
     }
 
     def _get(self, table, query=""):
@@ -1636,6 +1636,36 @@ class SupabaseStore:
         rows = self._get("autopilot_runs",
                          f"select=*&{self._team_q(team)}&order=id.desc&limit=1")
         return self._pilot_row(rows[0]) if rows else None
+
+    # ── 프롬프트 라이브러리 · Atelier prompt_library 이식 · Store 동일 계약 ──
+    def lib_add(self, team, name, domain, prompt, note="", source="manual",
+                created_by="") -> int:
+        row = {"name": name or "", "domain": domain or "", "prompt": prompt or "",
+               "note": note or "", "source": source or "manual",
+               "created_by": created_by or ""}
+        if team:
+            row["team_id"] = team
+        rows = self._req("POST", "prompt_library", body=[row], prefer="return=representation")
+        return int(rows[0]["id"]) if rows else 0
+
+    def lib_list(self, team=None, limit=200) -> list:
+        rows = self._get("prompt_library",
+                         f"select=*&{self._team_q(team)}&order=pinned.desc,id.desc&limit={int(limit)}")
+        return [{"id": int(r.get("id") or 0), "name": r.get("name") or "",
+                 "domain": r.get("domain") or "", "prompt": r.get("prompt") or "",
+                 "note": r.get("note") or "", "source": r.get("source") or "",
+                 "pinned": bool(r.get("pinned")), "ts": _epoch(r.get("created_at"))}
+                for r in rows]
+
+    def lib_remove(self, lib_id, team=None) -> bool:
+        self._req("DELETE", "prompt_library", query=f"id=eq.{int(lib_id)}",
+                  prefer="return=minimal")
+        return True
+
+    def lib_pin(self, lib_id, pinned, team=None) -> bool:
+        self._req("PATCH", "prompt_library", query=f"id=eq.{int(lib_id)}",
+                  body={"pinned": bool(pinned)}, prefer="return=minimal")
+        return True
 
     # ── 프롬프트 배포 · Atelier deployments 이식 · SQLite Store 와 동일 계약 ─
     def _deploy_row(self, r) -> dict:

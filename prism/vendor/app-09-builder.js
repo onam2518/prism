@@ -109,4 +109,43 @@ window.PRISM_APP_PARTS.push(() => ({
         try { await (await this._afetch('/deployment-key-revoke', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: d.id, key_id: k.id }) })).json(); } catch (e) {}
         this.loadDeploys();
       },
+      // ── 스튜디오 · 라이브러리(Atelier prompt_library 이식): 저장·핀·재사용 ──
+      library: [], libNew: { name: '', domain: '', prompt: '', note: '' }, libBusy: false, libMsg: '',
+      async loadLibrary() {
+        try { const r = await (await this._afetch('/prompt-library', { headers: this._authHeaders() })).json(); if (r && r.ok) this.library = r.items || []; } catch (e) {}
+      },
+      async saveLibrary() {
+        this.libBusy = true; this.libMsg = '';
+        try {
+          const r = await (await this._afetch('/prompt-library-save', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(this.libNew) })).json();
+          if (r && r.ok) { this.libNew = { name: '', domain: '', prompt: '', note: '' }; this.liveToast('라이브러리에 저장됨'); this.loadLibrary(); }
+          else this.libMsg = (r && r.error) || '저장 실패';
+        } catch (e) { this.libMsg = '저장 실패'; }
+        this.libBusy = false;
+      },
+      async removeLibrary(it) {
+        try { await (await this._afetch('/prompt-library-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: it.id }) })).json(); } catch (e) {}
+        this.loadLibrary();
+      },
+      async pinLibrary(it) {
+        try { await (await this._afetch('/prompt-library-pin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: it.id, pinned: !it.pinned }) })).json(); } catch (e) {}
+        this.loadLibrary();
+      },
+      async applyLibrary(it) {
+        if (!this.bApplyStage || !it.prompt) return;
+        try {
+          const sp = Object.assign({ extract: '', analyze: '', review: '', judge: '' }, (this.cfg && this.cfg.stagePrompts) || {});
+          sp[this.bApplyStage] = it.prompt;
+          const r = await (await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ stage_prompts: sp, stage: this.bApplyStage }) })).json();
+          if (r && !r.error) { this.liveToast('"' + it.name + '" 을 ' + this.bApplyStage + ' 단계에 적용'); await this.refreshConfig(); }
+          else this.libMsg = (r && r.error) || '적용 실패';
+        } catch (e) { this.libMsg = '적용 실패'; }
+      },
+      saveBuilderToLibrary(fam) {           // 빌더 결과 → 라이브러리 바로 저장
+        const p = this.bResult && this.bResult.ok && this.bResult.prompts[fam];
+        if (!p) return;
+        this.libNew = { name: (this.bSpec.task || '').slice(0, 40) + ' · ' + this.bFamilyLabel(fam), domain: '', prompt: p, note: '' };
+        this.studioTab = 'library'; this.loadLibrary();
+        this.libMsg = '빌더 결과를 불러왔습니다 · 이름을 다듬고 저장하세요';
+      },
 }));

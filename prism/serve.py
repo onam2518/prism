@@ -423,6 +423,7 @@ def _safe_url(u: str) -> str:
 _MENU_POST_ROUTES = (
     ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
     ("/builder-compile", "studio"), ("/deployment", "studio"),
+    ("/prompt-library", "studio"),
     ("/media-extract", "lab"), ("/usermeta", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
@@ -1462,6 +1463,13 @@ def _g_autopilot_status(h, q):
     return autopilot_status(h._req_team())
 
 
+@_get_route("/prompt-library", admin=True)           # 프롬프트 라이브러리 목록(스튜디오)
+def _g_prompt_library(h, q):
+    st = get_store()
+    items = st.lib_list(h._req_team()) if (st and hasattr(st, "lib_list")) else []
+    return {"ok": True, "items": items}
+
+
 @_get_route("/deployments", admin=True)              # 배포 목록(키 메타 포함 · 스튜디오)
 def _g_deployments(h, q):
     return deployments_list(h._req_team())
@@ -1777,6 +1785,40 @@ def _p_patch_meta(h, body):
         if fresh:
             res["missions_completed"] = fresh
     return res
+
+
+@_post_route("/prompt-library-save", gate="admin")   # 라이브러리 저장(패턴 재사용 원천)
+def _p_prompt_library_save(h, body):
+    d = json.loads(body or b"{}")
+    name = (d.get("name") or "").strip()
+    prompt = (d.get("prompt") or "").strip()
+    if not name or not prompt:
+        return {"ok": False, "error": "이름과 프롬프트 본문을 입력하세요"}
+    st = get_store()
+    if not (st and hasattr(st, "lib_add")):
+        return {"ok": False, "error": "스토어가 라이브러리를 지원하지 않습니다"}
+    lid = st.lib_add(h._req_team(), name[:80], (d.get("domain") or "").strip()[:40],
+                     prompt, note=(d.get("note") or "").strip()[:300],
+                     source=(d.get("source") or "manual").strip()[:40],
+                     created_by=h._bearer_uid() or "")
+    return {"ok": True, "id": lid}
+
+
+@_post_route("/prompt-library-remove", gate="admin")
+def _p_prompt_library_remove(h, body):
+    d = json.loads(body or b"{}")
+    st = get_store()
+    ok = bool(st and hasattr(st, "lib_remove") and st.lib_remove(int(d.get("id") or 0), h._req_team()))
+    return {"ok": ok} if ok else {"ok": False, "error": "항목을 찾을 수 없습니다"}
+
+
+@_post_route("/prompt-library-pin", gate="admin")
+def _p_prompt_library_pin(h, body):
+    d = json.loads(body or b"{}")
+    st = get_store()
+    ok = bool(st and hasattr(st, "lib_pin")
+              and st.lib_pin(int(d.get("id") or 0), bool(d.get("pinned")), h._req_team()))
+    return {"ok": ok} if ok else {"ok": False, "error": "항목을 찾을 수 없습니다"}
 
 
 @_post_route("/deployment-save", gate="admin")       # 배포 생성/수정(슬러그·버전 pin)
