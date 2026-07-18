@@ -61,11 +61,13 @@ from . import runops as RN
 from . import umops as UMO
 from . import ingestops as IG
 from . import boardops as BD
+from . import evalops as EVO
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
+EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
 
 _run_id = RN._run_id
 _build_id = RN._build_id
@@ -178,6 +180,11 @@ register_golden = LO.register_golden
 golden_list = LO.golden_list
 build_golden_from_reviews = LO.build_golden_from_reviews
 compare_models_on_golden = LO.compare_models_on_golden
+eval_run_start = EVO.eval_run_start
+eval_run_resume = EVO.eval_run_resume
+eval_run_cancel = EVO.eval_run_cancel
+eval_runs_list = EVO.eval_runs_list
+eval_run_report = EVO.eval_run_report
 snapshot_prompts = LO.snapshot_prompts
 learning_batch = LO.learning_batch
 learn_data = LO.learn_data
@@ -1428,6 +1435,20 @@ def _g_golden_list(h, q):
     return golden_list(h._req_team())
 
 
+@_get_route("/eval-runs")                            # 평가 런 이력(런 단위 영속 · Atelier 이식)
+def _g_eval_runs(h, q):
+    return eval_runs_list(h._req_team())
+
+
+@_get_route("/eval-run")                             # 런 리포트(진행 중이면 부분 리포트 · 폴링용)
+def _g_eval_run(h, q):
+    try:
+        rid = int((q.get("id") or ["0"])[0])
+    except (TypeError, ValueError):
+        rid = 0
+    return eval_run_report(rid, h._req_team())
+
+
 @_get_route("/activity-daily")                       # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프)
 def _g_activity_daily(h, q):
     try:
@@ -1757,6 +1778,26 @@ def _p_eval_golden(h, body):
     data = json.loads(body or b"{}")
     return eval_golden(h._req_team(), model=(data.get("model") or "").strip(),
                        scope=(data.get("scope") or "all").strip())
+
+
+@_post_route("/eval-run-start", gate="admin")        # 평가 런 시작(백그라운드 · 이력 영속)
+def _p_eval_run_start(h, body):
+    data = json.loads(body or b"{}")
+    return eval_run_start(h._req_team(), model=(data.get("model") or "").strip(),
+                          scope=(data.get("scope") or "all").strip(),
+                          created_by=h._bearer_uid() or "")
+
+
+@_post_route("/eval-run-resume", gate="admin")       # 중단 런 재개(남은 건만 실행)
+def _p_eval_run_resume(h, body):
+    data = json.loads(body or b"{}")
+    return eval_run_resume(int(data.get("id") or 0), h._req_team())
+
+
+@_post_route("/eval-run-cancel", gate="admin")       # 실행 중 런 중단(저장 결과 유지)
+def _p_eval_run_cancel(h, body):
+    data = json.loads(body or b"{}")
+    return eval_run_cancel(int(data.get("id") or 0), h._req_team())
 
 
 @_post_route("/content-remove", gate="admin")        # 콘텐츠 개별 삭제(파생 데이터 연쇄)

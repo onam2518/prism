@@ -203,7 +203,7 @@ window.PRISM_APP_PARTS.push(() => ({
         // 메뉴별 데이터 로드: 메뉴당 1회씩만(중복 fetch 제거) · 탭 데이터는 현재 탭 것만(나머지는 탭 클릭 시 lazy)
         if (id === 'home') { this.loadArena(); this.loadDash(); }
         else if (id === 'create') { this.loadDash(); this.loadRaw(); }
-        else if (id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); }
+        else if (id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); this.loadEvalRuns(); }
         else if (id === 'arena') this.loadArena();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') this.loadAdmin();

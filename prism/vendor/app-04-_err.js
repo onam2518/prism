@@ -244,10 +244,46 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this._err('용도 전환 실패'); }
       },
       evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
+      // 평가 런(이력 영속 · Atelier 이식): 시작 → 백그라운드 실행 → 폴링으로 진행률·리포트
+      evalRuns: [], evalRunId: null, _evalPollT: null,
       async runGolden() {
         this.goldenBusy = true; this.goldenResult = null;
-        try { this.goldenResult = await (await this._afetch('/eval-golden', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.evalModel, scope: this.evalScope }) })).json(); } catch (e) {}
-        this.goldenBusy = false;
+        try {
+          const r = await (await this._afetch('/eval-run-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.evalModel, scope: this.evalScope }) })).json();
+          if (!r || !r.ok) { this.goldenResult = r; this.goldenBusy = false; return; }
+          this.evalRunId = r.id; this.loadEvalRuns(); this.pollEvalRun(r.id);
+        } catch (e) { this.goldenBusy = false; }
+      },
+      pollEvalRun(id) {                        // 런 리포트 폴링: 실행 중엔 부분 리포트로 진행률 표시
+        clearTimeout(this._evalPollT);
+        const tick = async () => {
+          let r = null;
+          try { r = await (await this._afetch('/eval-run?id=' + id, { headers: this._authHeaders() })).json(); } catch (e) {}
+          if (!r || this.evalRunId !== id) { this.goldenBusy = false; return; }
+          this.goldenResult = r;
+          if (r.status === 'running') { this.goldenBusy = true; this._evalPollT = setTimeout(tick, 2500); }
+          else { this.goldenBusy = false; this.loadEvalRuns(); }
+        };
+        tick();
+      },
+      async loadEvalRuns() {
+        try { const r = await (await this._afetch('/eval-runs', { headers: this._authHeaders() })).json(); if (r && r.ok) this.evalRuns = r.items || []; } catch (e) {}
+      },
+      openEvalRun(id) { this.evalRunId = id; this.goldenResult = null; this.pollEvalRun(id); },
+      async cancelEvalRun(id) {
+        try { await (await this._afetch('/eval-run-cancel', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id }) })).json(); } catch (e) {}
+        this.loadEvalRuns(); if (this.evalRunId === id) this.pollEvalRun(id);
+      },
+      async resumeEvalRun(id) {
+        try {
+          const r = await (await this._afetch('/eval-run-resume', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id }) })).json();
+          if (r && r.ok) { this.evalRunId = id; this.pollEvalRun(id); }
+        } catch (e) {}
+        this.loadEvalRuns();
+      },
+      evalRunStatusTxt(r) {
+        if (r.status === 'running') return r.stalled ? '중단됨(재개 가능)' : ('실행 중 ' + (r.cursor || 0) + '/' + (r.total || 0));
+        return { done: '완료', failed: '실패', cancelled: '중단' }[r.status] || r.status;
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 이항 95% CI 표기
       cmpA: '', cmpB: '', cmpBusy: false, cmpResult: null,
