@@ -172,6 +172,20 @@ Prism 으로 이식(기능 흡수)하면서 **`prism_` 접두사를 유일한 �
   Atelier 앱 은퇴 후 보존 가치 확인 → 아카이브(export) → 삭제. **삭제는 소유자 확인 후에만.**
 - **백업**: `prism_*_bak_20260707` 7개 — 복구 시효 지나면 삭제 후보.
 
+**은퇴 실행(2026-07-18 · 적용됨 · `atelier_retire_step1_decouple`/`step2_legacy_schema`)**:
+최근 7일 호출 0 · 마지막 실사용 2026-06-17 확인 후 되돌림 가능한 범위로 실행.
+```
+① cron 중지: promptforge_autopilot_tick(매분!) · promptforge_daily_cleanup
+② 가입 트리거 분리: on_auth_user_created(auth.users→profiles) drop
+   — auth 는 Prism 과 공유라 profiles 의존을 먼저 끊어야 가입이 안 깨진다
+③ 무접두사 22개 → `legacy` 스키마 이동(41MB 데이터 보존 · PostgREST 비노출)
+   복원: alter table legacy.<t> set schema public;
+④ Atelier 전용 함수 drop(claim_next_forge_version·cleanup_promptforge_data·
+   trigger_eval_tick·invoke_autopilot_tick·inc_*_fork) · set_updated_at 은 유지(트리거 참조)
+```
+→ public 스키마 = `prism_*` 26개(운영 19 + `_bak_20260707` 7)로 통일.
+남은 일(소유자 확인 후): `drop schema legacy cascade` · bak 7개 drop · Atelier 깃 레포 아카이브.
+
 ## 상세 설계 (확정)
 
 ### (a) 정체성 통일 · dual-mode 의 핵심
