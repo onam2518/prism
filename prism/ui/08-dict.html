@@ -6,6 +6,7 @@
           <button type="button" x-bind:class="dictTab==='category'?'sel':''" x-on:click="dictTab='category'">카테고리</button>
           <button type="button" x-bind:class="dictTab==='entity'?'sel':''" x-on:click="dictTab='entity'; loadEntdict()">엔티티</button>
           <button type="button" x-bind:class="dictTab==='policy'?'sel':''" x-on:click="dictTab='policy'">정책</button>
+          <button type="button" x-bind:class="dictTab==='prompt'?'sel':''" x-on:click="dictTab='prompt'; loadStageDrafts()">메타 프롬프트</button>
         </div>
       </div>
       <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4">
@@ -88,6 +89,28 @@
                 <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v.label"></div></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="copybtn" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
               </tbody></table></div></div>
           </div>
+        </div>
+        <!-- 메타 프롬프트: 아이템 메타 추출 파이프라인의 단계 원천 지시(정책 동선에서 관리) -->
+        <div x-show="dictTab === 'prompt'" class="space-y-4">
+          <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+            <li>아이템 메타(리드문·엔티티·인텐트·카테고리·품질·법령)를 만드는 <b>단계별 원천 지시</b>입니다 · 비우고 저장하면 기본값으로 복원됩니다.</li>
+            <li>검수 피드백에서 컴파일된 <b>학습 보정(LEARNED)</b>은 별도 블록으로 자동 병기됩니다 · 새 프롬프트 제작·계열별 최적화는 <b>스튜디오 → 빌더</b>에서.</li>
+          </ul>
+          <template x-for="s in stageDefs" x-bind:key="'sd'+s.id">
+            <section class="panel">
+              <div class="panel-hd"><b x-text="s.label"></b>
+                <span class="ds-badge ds-badge--intent" style="margin-left:8px;cursor:help" x-show="stageLearned[s.id]" data-tip="검수 피드백에서 컴파일된 학습 보정이 이 단계에 병기되고 있습니다" data-tip-pos="top">학습 보정 병기 중</span>
+                <span class="meta" x-text="(cfg.stagePrompts && cfg.stagePrompts[s.id]) ? '수정됨' : '기본값'"></span></div>
+              <div class="panel-bd">
+                <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>원천 지시<span class="codeblock__stage" x-text="s.id"></span></div><textarea x-model="stageDrafts[s.id]" spellcheck="false" style="min-height:120px"></textarea></div>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+                  <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="stageBusy" x-on:click="saveStage(s.id)">저장</button>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-md" x-bind:disabled="stageBusy" data-tip="이 단계 지시를 기본값으로 되돌립니다" data-tip-pos="top" x-on:click="resetStage(s.id)">기본값 복원</button>
+                  <span class="text-xs text-muted" x-text="stageMsg[s.id] || ''"></span>
+                </div>
+              </div>
+            </section>
+          </template>
         </div>
       </div>
 
