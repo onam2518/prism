@@ -123,10 +123,35 @@
                         <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalRun(r.id)">보기</button>
                         <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='running' && !r.stalled" x-on:click="cancelEvalRun(r.id)">중단</button>
                         <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.stalled || r.status==='failed'" data-tip="저장된 건을 빼고 남은 건만 이어서 실행합니다" data-tip-pos="top" x-on:click="resumeEvalRun(r.id)">재개</button>
+                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='done'" x-bind:class="cmpRunA===r.id ? 'is-on' : ''" data-tip="이 런을 비교 기준(개선 전)으로 지정합니다" data-tip-pos="top" x-on:click="setCmpBase(r.id)" x-text="cmpRunA===r.id ? '기준 ✓' : '기준'"></button>
+                        <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="r.status==='done' && cmpRunA && cmpRunA!==r.id" x-bind:disabled="evalCmpBusy" data-tip="기준 런 대비 이 런의 개선/회귀를 판정합니다" data-tip-pos="top" x-on:click="compareRuns(r.id)">비교</button>
                       </span></td>
                     </tr>
                   </template>
                 </tbody></table></div>
+              </template>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="evalRuns.length && !cmpRunA">런 비교: 완주한 런에서 <b>기준</b>(개선 전)을 고른 뒤 다른 런의 <b>비교</b>를 누르세요 · 프롬프트를 고친 전후를 재는 용도입니다</div>
+              <span class="text-xs text-muted" x-show="evalCmp && !evalCmp.ok" x-text="evalCmp ? evalCmp.error : ''"></span>
+              <!-- 비교 결과: 회귀 가드(학습배치와 동일 기준) · 회귀 발견 시 적용 보류 권고 -->
+              <template x-if="evalCmp && evalCmp.ok">
+                <div class="tile" style="margin-top:10px">
+                  <div class="t" style="margin:0 0 8px">런 비교 · <span class="tnum" x-text="'#' + evalCmp.a.id + ' (기준) → #' + evalCmp.b.id + ' (대상)'"></span>
+                    <span class="ds-badge" style="margin-left:8px;cursor:help" data-tip-pos="top"
+                      x-bind:class="evalCmp.verdict==='regressed' ? 'ds-badge--error' : (evalCmp.verdict==='improved' ? 'ds-badge--success' : 'ds-badge--neutral')"
+                      x-bind:data-tip="evalCmp.verdict==='regressed' ? '점수가 낮아지면 채택하지 않습니다(보수 채택 · 학습 일배치의 자동 원복과 동일 기준)' : '기준 대비 악화 지점이 없습니다'"
+                      x-text="evalCmp.verdict==='regressed' ? '회귀 발견 · 적용 보류 권고' : (evalCmp.verdict==='improved' ? '개선 · 적용 가능' : '동등 · 큰 차이 없음')"></span>
+                  </div>
+                  <ul class="ds-bullets" x-show="(evalCmp.regressions||[]).length" style="margin:0 0 8px">
+                    <template x-for="(g,gi) in evalCmp.regressions" x-bind:key="'rg'+gi"><li x-text="g"></li></template>
+                  </ul>
+                  <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">항목</th><th>기준 <span class="tnum" x-text="'#'+evalCmp.a.id"></span></th><th>대상 <span class="tnum" x-text="'#'+evalCmp.b.id"></span></th><th style="width:90px">변화</th></tr></thead><tbody>
+                    <template x-for="row in evalCmpRows" x-bind:key="'cmr'+row.k">
+                      <tr><td class="text-ink" x-text="row.k"></td><td class="tnum" x-text="row.a"></td><td class="tnum" x-text="row.b"></td>
+                        <td><b class="tnum" x-bind:style="row.cls==='down' ? 'color:var(--ds-red,#d64545)' : (row.cls==='up' ? 'color:var(--ds-green,#2e9e5b)' : '')" x-text="row.dTxt"></b></td></tr>
+                    </template>
+                  </tbody></table></div>
+                  <div class="text-xs text-muted" style="margin-top:6px">비교 원칙(Atelier 이식): 대상 런이 기준보다 나쁘면 프롬프트 변경을 채택하지 않습니다 · 개선이면 학습 반영/스튜디오에서 적용하세요</div>
+                </div>
               </template>
             </div>
           </section>

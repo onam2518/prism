@@ -286,6 +286,38 @@ window.PRISM_APP_PARTS.push(() => ({
         if (r.status === 'running') return r.stalled ? '중단됨(재개 가능)' : ('실행 중 ' + (r.cursor || 0) + '/' + (r.total || 0));
         return { done: '완료', failed: '실패', cancelled: '중단' }[r.status] || r.status;
       },
+      // 런 비교(기준 A vs 대상 B) · 회귀 가드: 학습배치와 같은 기준(conservative acceptance)
+      cmpRunA: null, evalCmp: null, evalCmpBusy: false,
+      setCmpBase(id) { this.cmpRunA = (this.cmpRunA === id ? null : id); this.evalCmp = null; },
+      async compareRuns(bId) {
+        if (!this.cmpRunA || this.cmpRunA === bId) return;
+        this.evalCmpBusy = true; this.evalCmp = null;
+        try { this.evalCmp = await (await this._afetch('/eval-run-compare?a=' + this.cmpRunA + '&b=' + bId, { headers: this._authHeaders() })).json(); } catch (e) {}
+        this.evalCmpBusy = false;
+      },
+      get evalCmpRows() {                      // 비교 표 행: a·b 표시값 + 델타(inv=낮을수록 좋음)
+        const c = this.evalCmp; if (!c || !c.ok) return [];
+        const pct = (v) => v == null ? '·' : Math.round(v * 100) + '%';
+        const mk = (k, f, inv, fmt) => {
+          const av = c.a[f], bv = c.b[f];
+          const d = (av == null || bv == null) ? null : (bv - av);
+          const good = d == null || Math.abs(d) < 1e-9 ? '' : ((d > 0) !== !!inv ? 'up' : 'down');
+          const dTxt = d == null ? '·' : (Math.abs(d) < 1e-9 ? '=' : ((d > 0 ? '+' : '') + (fmt === 'raw' ? (Math.round(d * 100) / 100) : Math.round(d * 100) + '%p')));
+          return { k, a: fmt === 'raw' ? (av == null ? '·' : av) : pct(av), b: fmt === 'raw' ? (bv == null ? '·' : bv) : pct(bv), dTxt, cls: good };
+        };
+        const rows = [mk('등급 일치율', 'grade_accuracy'), mk('사유 일치', 'reason_jaccard'),
+                      mk('유해 놓침', 'harm_miss_rate', true), mk('빈 결과', 'empty_rate', true),
+                      mk('비용($)', 'cost_usd', true, 'raw')];
+        if (c.a.rubric && c.a.rubric.n && c.b.rubric && c.b.rubric.n) {
+          const ax = [['정확성', 'accuracy'], ['형식', 'format'], ['정책', 'policy'], ['간결성', 'conciseness']];
+          for (const [k, f] of ax) {
+            const av = c.a.rubric[f], bv = c.b.rubric[f];
+            const d = (av == null || bv == null) ? null : Math.round((bv - av) * 100) / 100;
+            rows.push({ k: '루브릭 · ' + k, a: av + '/5', b: bv + '/5', dTxt: d == null ? '·' : (d === 0 ? '=' : (d > 0 ? '+' : '') + d), cls: d == null || d === 0 ? '' : (d > 0 ? 'up' : 'down') });
+          }
+        }
+        return rows;
+      },
       async startRubric() {                    // 루브릭 진단(4축 · Atelier 이식): 완주 런 대상 배치 채점
         if (!this.evalRunId) return;
         try {

@@ -221,6 +221,29 @@ def _run_loop(run_id: int, rows: list, llm, team, m: dict):
         _CANCEL.discard(run_id)
 
 
+def eval_run_compare(a_id: int, b_id: int, team=None) -> dict:
+    """두 런 비교(a=기준 · b=대상 · 보통 b 가 나중 버전). 회귀 판정은 학습 일배치의
+    가드(learnops._batch_regressions)와 단일 소스 — 수동 프롬프트 변경에도 같은
+    conservative acceptance(점수 낮아지면 채택 안 함 · Atelier 원칙) 기준을 적용한다."""
+    ra = eval_run_report(a_id, team)
+    rb = eval_run_report(b_id, team)
+    if not ra.get("ok"):
+        return {"ok": False, "error": f"기준 런(#{a_id})을 찾을 수 없습니다"}
+    if not rb.get("ok"):
+        return {"ok": False, "error": f"대상 런(#{b_id})을 찾을 수 없습니다"}
+    if ra.get("status") != "done" or rb.get("status") != "done":
+        return {"ok": False, "error": "완주한 런끼리만 비교할 수 있습니다"}
+    from . import learnops as LO
+    regressions = LO._batch_regressions(ra, rb)
+    if regressions:                              # 부분 개선이라도 회귀 지점이 있으면 보류(보수 채택)
+        verdict = "regressed"
+    elif (rb.get("grade_accuracy") or 0) > (ra.get("grade_accuracy") or 0) + 1e-9:
+        verdict = "improved"
+    else:
+        verdict = "even"
+    return {"ok": True, "a": ra, "b": rb, "regressions": regressions, "verdict": verdict}
+
+
 # ── 루브릭 저지(4축 · Atelier rubric-judge 이식) ────────────────────────────
 def _clamp15(v) -> int:
     """1~5 정수로 클램프(비수치는 중립 3). Atelier clamp 와 동일 규칙."""
