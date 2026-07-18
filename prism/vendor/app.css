@@ -21,8 +21,8 @@
   .codeblock textarea{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"D2Coding",monospace}
   .homehead__title{font-family:var(--ds-font-display)}   /* 3192 라인 재정의 방지(뒤에서 승리) */
   html{scroll-behavior:smooth}
-  /* 문서를 뷰포트에 고정 → 스크롤은 .appbody 안에서만 상단 바(.topbar)는 절대 안 따라옴 */
-  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  /* 문서 전체 스크롤(우측 스크롤바 하나) · 상단 바는 sticky 로 고정 유지 */
+  html,body{min-height:100%;overscroll-behavior:none}
   body{font-family:var(--ds-font);font-size:14px;line-height:1.5;letter-spacing:-.003em;color:var(--ds-ink);
     background:var(--ds-canvas);word-break:keep-all;overflow-wrap:break-word}
   ::selection{background:var(--ds-primary);color:var(--ds-on-primary)}
@@ -94,6 +94,8 @@
   .verdictbtn--bad .verdictbtn__dot{background:var(--ds-error)}
   .verdictbtn:hover{transform:translateY(-1px);border-color:var(--ds-border-input-hover)}
   .verdictbtn:active{transform:translateY(1px) scale(.97)}
+  .verdictbtn[disabled]{opacity:.45;cursor:not-allowed}
+  .verdictbtn[disabled]:hover,.verdictbtn[disabled]:active{transform:none;border-color:var(--ds-hairline)}
   .verdictbtn--good.is-on{border-color:var(--ds-success);color:var(--ds-success-deep);background:rgba(24,186,69,.12);
     box-shadow:0 0 0 3px rgba(24,186,69,.15),0 8px 18px -8px rgba(24,186,69,.6)}
   .verdictbtn--bad.is-on{border-color:var(--ds-error);color:var(--ds-error-deep);background:rgba(255,78,51,.10);
@@ -462,11 +464,10 @@
 
   /* ════ 위젯 홈 셸 ════ */
   /* 상단 바(로고|타이틀 고정) + 아래(사이드바|콘텐츠) · 타이틀을 로고 위치에 고정해 정렬 표준화 */
-  .appshell{display:flex;flex-direction:column;max-width:1320px;margin:0 auto;height:100dvh;overflow:hidden}
-  /* 상단 바·사이드바는 완전 고정 스크롤은 콘텐츠(.home) 내부에서만 → 톱바를 절대 침범하지 않음 */
+  .appshell{display:flex;flex-direction:column;max-width:1320px;margin:0 auto;min-height:100dvh}
   .topbar{flex:none;display:flex;align-items:stretch;gap:0;height:68px;margin:16px 22px 0;
     background:var(--ds-fixed-bg);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-xl);
-    box-shadow:0 1px 2px rgba(0,0,0,.05),var(--ds-highlight);position:relative;z-index:30}
+    box-shadow:0 1px 2px rgba(0,0,0,.05),var(--ds-highlight);position:sticky;top:0;z-index:30}
   /* 로고 영역 = 카드 왼쪽~구분선(폭 232 = 사이드바 폭), 콘텐츠 가운데 정렬 */
   .topbar__brand{width:232px;flex:none;display:flex;align-items:center;justify-content:center;gap:10px;border-right:1px solid var(--ds-hairline)}
   /* 제공된 풀 로고(배지+PRISM+태그라인) · 라이트/다크 스왑 */
@@ -804,15 +805,24 @@
   @media (prefers-reduced-motion:reduce){.badgeburst__orb,.badgeburst__spark,.badgeburst__card{animation:none}}
   .conn-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ds-ink);white-space:nowrap}
   .conn-chip--off{color:var(--ds-muted)}
-  /* 본문 영역: 뷰포트 남은 높이를 꽉 채우되 자체는 스크롤 안 함(overflow:hidden) 사이드바·콘텐츠가 각자 내부 스크롤 */
-  /* padding-top = 톱바(고정)와 사이드바·콘텐츠 사이 여백(좌우 22px 와 균형) */
-  .appbody{flex:1;min-height:0;display:grid;grid-template-columns:232px minmax(0,1fr);gap:18px;
-    padding:22px 22px 0;overflow:hidden;align-items:stretch}
-  /* 사이드바: 고정 내용이 길면 자체 스크롤(스크롤바 숨김) */
-  .leftcol{grid-column:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;scrollbar-width:none}
-  .leftcol::-webkit-scrollbar{display:none}
-  /* 콘텐츠(위젯) 영역: 여기에만 스크롤 적용 */
-  .home{grid-column:2;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 2px 26px 0}
+  /* 본문 영역: 문서 흐름(내부 스크롤 없음 · 페이지 전체가 스크롤) · flex:1 = 짧은 페이지에서 푸터를 바닥으로 */
+  .appbody{flex:1;display:grid;grid-template-columns:232px minmax(0,1fr);gap:18px;
+    padding:22px 22px 0;align-items:start}
+  /* 푸터: 문서 최하단(짧은 페이지에서도 바닥 고정 · appshell flex 의 마지막 행) */
+  .appfoot{display:flex;align-items:center;gap:12px;margin:26px 22px 0;padding:14px 4px 18px;
+    border-top:1px solid var(--ds-hairline-soft);color:var(--ds-muted);font-size:11.5px}
+  .appfoot__prism{height:20px;width:auto;display:block;opacity:.92}
+  .appfoot__prism--dark{display:none}
+  [data-theme='dark'] .appfoot__prism--light{display:none}
+  [data-theme='dark'] .appfoot__prism--dark{display:block}
+  .appfoot__daum{display:inline-flex;align-items:center;gap:6px;color:var(--ds-body)}
+  .appfoot__daum img{height:12px;width:auto;display:block}
+  .appfoot__link{margin-left:auto;background:none;border:0;cursor:pointer;color:var(--ds-primary);font:600 11.5px/1 var(--ds-font-sans);padding:0}
+  .appfoot__link:hover{text-decoration:underline}
+  /* 사이드바: 자연 높이 · 문서와 함께 스크롤(내부 스크롤 없음 — 잘림·이중 스크롤 해소) */
+  .leftcol{grid-column:1;display:flex;flex-direction:column}
+  /* 콘텐츠(위젯) 영역: 문서 흐름 · 가로 넘침은 clip(내부 표는 각자 overflow-x:auto) */
+  .home{grid-column:2;min-width:0;overflow-x:clip;padding:0 2px 26px 0}
   .ds-sidebar .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 12px;font-family:var(--ds-font-sans);font-weight:600;font-size:var(--ds-size-subtitle)}
   .ds-sidebar .brand .logo{width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:none}
   .ds-sidebar .brand .logo img{width:100%;height:100%}
@@ -959,14 +969,6 @@
     border-left:1px solid var(--ds-hairline-soft)}
   /* 헤더 그룹 구분선(정보·컨트롤·카드속성 사이 동일 간격·구분선 원칙) */
   .hd-divider{align-self:center;width:1px;height:18px;background:var(--ds-hairline-soft);margin:0 4px;flex:none}
-  /* 채팅 퀵액션 = 칩 */
-  .ds-chat__quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:var(--ds-space-2)}
-  .chatchip{display:inline-flex;align-items:center;gap:var(--ds-space-1);height:28px;padding:0 12px;border-radius:var(--ds-radius-chip);
-    border:1px solid var(--ds-hairline);background:var(--ds-surface-white);color:var(--ds-text-secondary);
-    font-family:var(--ds-font-display);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;
-    box-shadow:0 1px 1px rgba(16,24,40,.03);transition:border-color .12s,color .12s,background .12s,transform .1s}
-  .chatchip:hover{border-color:var(--ds-primary);color:var(--ds-primary-deep);background:var(--ds-primary-tint)}
-  .chatchip:active{transform:translateY(1px)}
   /* 서술형 설명 = 상단 불릿(문장 단위·마침표). 텍스트 뭉침 방지 */
   .ds-bullets{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
   .ds-bullets li{position:relative;padding-left:15px;font-size:12.5px;line-height:1.55;color:var(--ds-muted)}
@@ -1027,9 +1029,16 @@
 
 /* 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 에이전트 카드 아래 · 전 메뉴 노출
    구조 = 유형 태그 + D-day(임박 시 경고색) + 제목 + 목표 + 진행 게이지/카운트 + 시한 + CTA */
-.squest{margin-top:var(--ds-space-2);padding:12px 14px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
+.squest{position:relative;margin-top:var(--ds-space-2);padding:12px 14px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
   background:var(--ds-surface-white);cursor:pointer;user-select:none;text-align:left}
 .squest:hover{border-color:var(--ds-primary)}
+/* 퀘스트 캐릭터(플래그 대체 · 내 프로필 캐릭터가 응원): 우측에 큼직하게 + 둥실 애니메이션 */
+.squest__char{position:absolute;right:6px;top:26px;width:64px;height:64px;object-fit:contain;pointer-events:none;
+  filter:drop-shadow(0 3px 5px rgba(0,0,0,.14));animation:squestBob 3.2s ease-in-out infinite}
+@keyframes squestBob{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-5px) rotate(3deg)}}
+@media (prefers-reduced-motion:reduce){.squest__char{animation:none}}
+.squest__title,.squest__model{padding-right:70px}   /* 캐릭터와 텍스트 겹침 방지 */
+.squest__obj{padding-right:70px}
 .squest__hd{display:flex;align-items:center;justify-content:space-between}
 .squest__type{font:700 9.5px/1 var(--ds-font-game);letter-spacing:.06em;color:var(--ds-primary-deep);
   background:var(--ds-primary-tint);padding:3px 8px;border-radius:var(--ds-radius-chip)}
@@ -1046,6 +1055,35 @@
 .squest__cnt{display:flex;justify-content:space-between;margin-top:4px;font:700 10.5px/1 var(--ds-font-game);color:var(--ds-body)}
 .squest__foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:10.5px;color:var(--ds-muted)}
 .squest__go{font:700 10.5px/1 var(--ds-font-game);color:var(--ds-primary)}
+/* ── 확정 시안(원정대): 캐릭터 씬 + 응원 문구 + 2×2 타일 + 보상 ── */
+.squest__party{position:relative;height:134px;border-radius:10px;overflow:hidden;margin-top:10px;
+  background:linear-gradient(180deg,var(--ds-primary-tint),transparent 72%)}
+.squest__ribbon{position:absolute;top:9px;left:50%;transform:translate(-50%,0);font:700 11px/1 var(--ds-font-game);
+  color:#fff;background:var(--ds-primary);padding:6px 14px;border-radius:3px;letter-spacing:.1em;white-space:nowrap;
+  box-shadow:0 2px 6px rgba(30,132,255,.4);z-index:3}
+.squest__ribbon::before,.squest__ribbon::after{content:'';position:absolute;top:3px;width:10px;height:17px;background:var(--ds-primary-deep);z-index:-1}
+.squest__ribbon::before{left:-7px;transform:skewY(-14deg)}
+.squest__ribbon::after{right:-7px;transform:skewY(14deg)}
+.squest__lead{position:absolute;left:14px;bottom:10px;width:58px;height:72px;object-fit:contain;object-position:bottom;
+  z-index:2;animation:squestBob 1.4s ease-in-out infinite;pointer-events:none}
+.squest__mate{position:absolute;bottom:8px;width:44px;height:56px;object-fit:contain;object-position:bottom;
+  filter:grayscale(.4) opacity(.55);pointer-events:none}
+.squest__path{position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--ds-hairline)}
+.squest__path i{display:block;height:100%;background:linear-gradient(90deg,var(--ds-primary),#66a8ff);transition:width .5s}
+.squest__cheer{margin-top:10px;font:700 13.5px/1.4 var(--ds-font-game);color:var(--ds-ink);text-wrap:balance}
+.squest__enc{margin-top:3px;font-size:10.5px;color:var(--ds-muted)}
+.squest__tiles{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
+.squest__tile{border:1px solid var(--ds-hairline);border-radius:9px;padding:8px 10px}
+.squest__tile small{display:block;font-size:9px;color:var(--ds-muted);letter-spacing:.04em;margin-bottom:2px}
+.squest__tile b{font:700 14px/1.35 var(--ds-font-game);color:var(--ds-ink)}
+.squest__tile--hot b{color:var(--ds-error)}
+.squest__tile--mine b{color:var(--ds-success-deep)}
+.squest__reward{margin-top:10px;padding-top:9px;border-top:1px dashed var(--ds-hairline);font-size:10.5px;
+  display:flex;justify-content:space-between;align-items:center;color:var(--ds-muted)}
+.squest__pt{font:700 11.5px/1 var(--ds-font-game);color:#c98a00;background:rgba(255,193,32,.16);padding:5px 9px;border-radius:999px;white-space:nowrap}
+[data-theme='dark'] .squest__pt{color:#ffc120;background:rgba(255,193,32,.14)}
+.squest__meta{display:flex;justify-content:space-between;align-items:center;margin-top:9px;font-size:10.5px;color:var(--ds-muted)}
+@media (prefers-reduced-motion:reduce){.squest__lead{animation:none}}
 
 /* ── 토픽 스튜디오: 생성 스텝퍼(이름 → 자연어 → 조건 → 생성) ── */
 .tprog{display:inline-block;width:70px;height:6px;border-radius:999px;background:var(--ds-hairline-soft);overflow:hidden;vertical-align:middle;margin-left:8px}

@@ -325,5 +325,106 @@ class TestDistributeAssignments(AssignmentBase):
         self.assertEqual(st.assignees("t"), {})
 
 
+class _FakeHandler:
+    """라우트 핸들러 직접 호출용 스텁: 인증 없음(로컬) · _send 기록."""
+    def __init__(self):
+        self.sent = []
+
+    def _send(self, status, body, *a, **k):
+        self.sent.append((status, body))
+
+    def _bearer_email(self):
+        return ""
+
+    def _bearer_uid(self):
+        return ""
+
+    def _req_team(self):
+        return None
+
+
+class TestGoldRowNotAssignable(AssignmentBase):
+    """골드 문항(가상 검증 행 · hash 'gold:*')은 배정 대상이 아니다.
+
+    재주입 행이 배정을 읽지 않아 '지정했는데 새로고침하면 미배정'으로 보이던
+    2026-07-17 결함의 회귀 방지 — 개별 라우트는 400, 일괄 라우트는 조용히 제외."""
+
+    def _with_store(self):
+        from prism import serve
+        st = self._store()
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def test_single_assign_rejects_gold_hash(self):
+        serve, st = self._with_store()
+        h = _FakeHandler()
+        body = _j.dumps({"hash": "gold:bad:4b246f7c6caba1a7", "reviewers": ["A"],
+                         "min_reviewers": 1}).encode("utf-8")
+        r = serve._p_content_assign(h, body)
+        self.assertIsNone(r)
+        self.assertEqual(h.sent[0][0], 400)
+        self.assertEqual(st.assignees(None), {})          # 저장 안 됨
+
+    def test_bulk_assign_drops_gold_hashes(self):
+        serve, st = self._with_store()
+        h = _FakeHandler()
+        body = _j.dumps({"hashes": ["gold:bad:4b246f7c6caba1a7", "h1"],
+                         "reviewers": ["A"], "min_reviewers": 1}).encode("utf-8")
+        r = serve._p_content_assign_bulk(h, body)
+        self.assertEqual(r["n"], 1)                       # 골드 제외 · 실제 콘텐츠만
+        asg = st.assignees(None)
+        self.assertIn("h1", asg)
+        self.assertNotIn("gold:bad:4b246f7c6caba1a7", asg)
+
+
+class TestExclusiveVerdict(AssignmentBase):
+    """배정 배타 검수(서버 강제): 지정 검수자가 있는 콘텐츠는 지정된 사람만 판정.
+    생성자·관리자도 예외 없음(직접 검수 = 배정 수정으로) · 미지정은 전원 · 취소는 허용."""
+
+    def _with_store(self):
+        from prism import serve
+        st = self._store()
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        return serve, st
+
+    def _verdict(self, serve, ch, reviewer, verdict="good"):
+        return serve.apply_feedback({"hash": ch, "verdict": verdict, "reviewer": reviewer,
+                                     "service": "s", "title": ch})
+
+    def test_non_assignee_blocked_assignee_allowed(self):
+        serve, st = self._with_store()
+        self._put(st, "h1")
+        st.set_assignees("h1", ["A"], min_reviewers=1)
+        r = self._verdict(serve, "h1", "B")               # 비지정자(생성자여도) 차단
+        self.assertFalse(r["ok"])
+        self.assertIn("배정", r["error"])
+        self.assertEqual(st.feedback_map().get("h1"), None)
+        self.assertTrue(self._verdict(serve, "h1", "A")["ok"])   # 지정자는 정상
+
+    def test_unassigned_open_to_all(self):
+        serve, st = self._with_store()
+        self._put(st, "h1")
+        self.assertTrue(self._verdict(serve, "h1", "B")["ok"])   # 미지정 = 오픈 큐 유지
+
+    def test_reassign_unblocks(self):
+        serve, st = self._with_store()
+        self._put(st, "h1")
+        st.set_assignees("h1", ["A"], min_reviewers=1)
+        self.assertFalse(self._verdict(serve, "h1", "B")["ok"])
+        st.set_assignees("h1", ["A", "B"], min_reviewers=1)      # 배정 수정 = 검수 가능
+        self.assertTrue(self._verdict(serve, "h1", "B")["ok"])
+
+    def test_undo_allowed_after_unassignment(self):
+        serve, st = self._with_store()
+        self._put(st, "h1")
+        self.assertTrue(self._verdict(serve, "h1", "B")["ok"])   # 미지정 상태에서 판정
+        st.set_assignees("h1", ["A"], min_reviewers=1)           # 이후 다른 사람에게 배정
+        r = self._verdict(serve, "h1", "B", verdict="")          # 내 표 취소는 배정과 무관
+        self.assertTrue(r["ok"])
+        self.assertEqual(st.feedback_map().get("h1"), None)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,93 @@
+      <!-- ═══ 모듈: 사전 · 매핑 ═══ -->
+      <!-- 사전 · 정책: 탭형 · 사전(인텐트·카테고리 · 추출이 참조하는 어휘) / 정책(품질·법령·처리 · 판정 기준) -->
+      <div x-show="mod === 'dict'" x-cloak class="w-full" style="margin-bottom:10px">
+        <div class="evaltabs">
+          <button type="button" x-bind:class="dictTab==='intent'?'sel':''" x-on:click="dictTab='intent'">인텐트</button>
+          <button type="button" x-bind:class="dictTab==='category'?'sel':''" x-on:click="dictTab='category'">카테고리</button>
+          <button type="button" x-bind:class="dictTab==='entity'?'sel':''" x-on:click="dictTab='entity'; loadEntdict()">엔티티</button>
+          <button type="button" x-bind:class="dictTab==='policy'?'sel':''" x-on:click="dictTab='policy'">정책</button>
+        </div>
+      </div>
+      <div x-show="mod === 'dict'" x-cloak class="w-full space-y-4">
+        <!-- 공통 안내·편집 초기화는 편집형 사전 탭에만 · 엔티티 탭은 자체 헤더(자동 등재·보강) 사용 -->
+        <div class="panel" x-show="dictTab !== 'entity'"><div class="panel-bd flex items-center justify-between gap-3">
+          <ul class="ds-bullets">
+            <li>각 체계의 정책(사전·카테고리·법령)을 <b>직접 수정</b>할 수 있습니다.</li>
+            <li>저장 시 즉시 추출에 반영되고 로컬에 영속됩니다.</li>
+          </ul>
+          <button type="button" x-on:click="resetDict()" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">편집 초기화</button>
+        </div></div>
+
+        <!-- 편집은 팝업(편집 다이얼로그)에서 · 화면 하단 정의 -->
+
+        <div x-show="dictData && dictTab === 'intent'" class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용 소비 방식(8)</b>
+            <button type="button" class="copybtn" x-on:click="startEdit('intent_universal', null, dictData.intentUniversal, 'list', '인텐트 범용')">편집</button>
+          </div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="i in (dictData?dictData.intentUniversal:[])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
+          </div></div>
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 범용 형식·전달(8)</b><span class="meta">소비 방식과 교차 부여 가능 · 상한 없음(핵심만)</span></div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="i in ((dictData&&dictData.intentForm)||[])" x-bind:key="'if'+i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
+          </div></div>
+          <div class="panel"><div class="panel-hd"><b>인텐트 · 서비스별</b>
+            <select x-model="dictGroup" class="field" style="width:auto;height:32px;padding:0 28px 0 10px">
+              <template x-for="g in (dictData?dictData.serviceGroups:[])" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+            </select>
+            <button type="button" class="copybtn" x-on:click="startEdit('intent_by_service', dictGroup, (dictData.intentByService[dictGroup]||[]), 'list', '인텐트 · ' + dictGroup)">편집</button>
+          </div><div class="panel-bd flex flex-wrap gap-1.5">
+            <template x-for="i in (dictData && dictData.intentByService[dictGroup] ? dictData.intentByService[dictGroup] : [])" x-bind:key="i"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', i)" data-tip-pos="top" x-text="i"></span></template>
+            <span x-show="!(dictData && dictData.intentByService[dictGroup] && dictData.intentByService[dictGroup].length)" class="text-xs text-muted">항목 없음</span>
+          </div></div>
+        </div>
+        <div x-show="dictData && dictTab === 'category'" class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>콘텐츠 카테고리 · Tier1 / Tier2</b><span class="meta" style="cursor:help" data-tip="IAB Tech Lab 은 어떤 언어로도 공식 번역을 배포하지 않습니다 · 한글은 자사 표시 기준" data-tip-pos="top">공식 표기는 영문(IAB Content Taxonomy 기반) · 한글은 화면 표시용 병기</span>
+            <button type="button" class="copybtn ml-auto" x-on:click="startEdit('iab_tier1', null, dictData.iabTier1, 'list', 'Tier1 목록')">Tier1 편집</button>
+          </div>
+            <div class="overflow-auto" style="max-height:340px"><table class="ds-table"><thead><tr><th style="width:210px">Tier1</th><th>Tier2</th><th style="width:52px" class="tnum" x-text="dictData ? (dictData.iabTier1.length) : ''"></th></tr></thead><tbody>
+              <template x-for="c in (dictData?dictData.iabTier1:[])" x-bind:key="c">
+                <tr>
+                  <td class="text-ink" style="font-weight:600;vertical-align:top" x-text="catBoth(c)"></td>
+                  <td><div class="flex flex-wrap gap-1.5">
+                    <template x-for="t2 in (dictData && dictData.tier2[c] ? dictData.tier2[c] : [])" x-bind:key="t2"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', t2)" data-tip-pos="top" x-text="catBoth(t2)"></span></template>
+                    <span x-show="!(dictData && dictData.tier2[c] && dictData.tier2[c].length)" class="text-xs text-muted">항목 없음</span>
+                  </div></td>
+                  <td style="vertical-align:top"><button type="button" class="copybtn" x-on:click="startEdit('tier2', c, (dictData.tier2[c]||[]), 'list', 'Tier2 · ' + c)">편집</button></td>
+                </tr>
+              </template>
+            </tbody></table></div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th style="width:120px">그룹</th><th>포함 Tier1</th><th style="width:52px"></th></tr></thead><tbody>
+                <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
+                  <tr><td style="vertical-align:top"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', g)" data-tip-pos="top" x-text="g"></span></td>
+                    <td class="text-muted" x-text="ts.join(' · ')"></td>
+                    <td style="vertical-align:top"><button type="button" class="copybtn" x-on:click="startEdit('domain_groups', g, ts, 'list', '도메인 그룹 · ' + g)">편집</button></td></tr>
+                </template>
+              </tbody></table></div></div>
+            <div class="panel"><div class="panel-hd"><b>자사 ↔ IAB v3.0 매핑</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.iabMap).length+'건':''"></span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>자사 경로</th><th>IAB 공식</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.iabMap:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v"></div></td>
+                  <td><button type="button" class="copybtn" x-on:click="startEdit('category_iab_map', k, v, 'text', '매핑 · ' + k)">편집</button></td></tr></template>
+              </tbody></table></div></div>
+          </div>
+        </div>
+        <div x-show="dictData && dictTab === 'policy'" class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>ID</th><th>메타명 · 정의</th><th>적용</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr>
+                  <td class="text-ink" x-text="k"></td>
+                  <td><div class="tbox"><span class="nm" x-text="(dictData.qualityNames&&dictData.qualityNames[k])||''"></span><span x-text="v"></span></div></td>
+                  <td><span class="ds-badge ds-badge--neutral" x-bind:class="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'ds-badge--intent':'ds-badge--category'" style="cursor:help" data-tip="적용 범위 · UGC=이용자 생성 콘텐츠에만, 전체=모든 서비스에 적용" data-tip-pos="top" x-text="(dictData.qualityApplies&&dictData.qualityApplies[k]==='ugc')?'UGC':'전체'"></span></td>
+                  <td><button type="button" class="copybtn" x-on:click="startEdit('quality_metas', k, v, 'text', '품질 · ' + k)">편집</button></td>
+                </tr></template>
+              </tbody></table></div></div>
+            <div class="panel"><div class="panel-hd"><b>법령 위반 유형</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.legalTypes).length+'종':''"></span></div>
+              <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>코드</th><th>유형</th><th>근거</th><th></th></tr></thead><tbody>
+                <template x-for="(v,k) in (dictData?dictData.legalTypes:{})" x-bind:key="k"><tr><td class="text-ink" x-text="k"></td><td><div class="tbox" x-text="v.label"></div></td><td class="text-muted" x-text="v.article"></td><td><button type="button" class="copybtn" x-on:click="startEditLegal(k, v)">편집</button></td></tr></template>
+              </tbody></table></div></div>
+          </div>
+        </div>
+      </div>
+

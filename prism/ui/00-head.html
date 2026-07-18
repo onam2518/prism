@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prism</title>
+<meta name="description" content="이미지·텍스트·엑셀에서 리드문·엔티티·인텐트·콘텐츠 카테고리를 추출하는 콘텐츠 메타 도구">
+<link rel="icon" type="image/svg+xml" href="/vendor/prism-favicon.svg">
+<link rel="apple-touch-icon" href="/vendor/prism-icon-180.png">
+<link href="/vendor/pretendard.css" rel="stylesheet">
+<link href="/vendor/gmarket.css" rel="stylesheet">
+<link href="/vendor/ds-theme.css" rel="stylesheet">
+<link href="/vendor/ds-components.css" rel="stylesheet">
+<script>
+  // 전역 호버 툴팁: [data-tip] 위임 · position:fixed 로 overflow/스택 컨텍스트에 안 잘림
+  (function () {
+    var tip = null;
+    function box() {
+      if (!tip) { tip = document.createElement('div'); tip.id = 'tipfloat'; document.body.appendChild(tip); }
+      return tip;
+    }
+    function show(el) {
+      var t = el.getAttribute('data-tip'); if (!t) return;
+      var b = box(); b.textContent = t; b.style.display = 'block';
+      var r = el.getBoundingClientRect(), pos = el.getAttribute('data-tip-pos') || 'top';
+      var tw = b.offsetWidth, th = b.offsetHeight, x, y;
+      if (pos === 'bottom') { x = r.left + r.width / 2 - tw / 2; y = r.bottom + 8; }
+      else if (pos === 'left') { x = r.left - tw - 8; y = r.top + r.height / 2 - th / 2; }
+      else if (pos === 'right') { x = r.right + 8; y = r.top + r.height / 2 - th / 2; }
+      else { x = r.left + r.width / 2 - tw / 2; y = r.top - th - 8; }
+      x = Math.max(8, Math.min(x, window.innerWidth - tw - 8));
+      y = Math.max(8, Math.min(y, window.innerHeight - th - 8));
+      b.style.left = x + 'px'; b.style.top = y + 'px';
+    }
+    function hide() { if (tip) tip.style.display = 'none'; }
+    document.addEventListener('mouseover', function (e) {
+      var el = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (el) show(el); else hide();
+    });
+    document.addEventListener('scroll', hide, true);
+    document.addEventListener('mousedown', hide, true);
+  })();
+</script>
+<style>
+  /* 앱 레벨 별칭 · 역사적 변수명(--ds-violet*·--ds-surface2·--ds-solar)을
+     Anchor 토큰(ds-theme.css)으로 매핑. 고정 위젯 테두리는 Blue 틴트로 전환. */
+  :root{
+    --ds-violet: var(--ds-primary);
+    --ds-violet-hover: var(--ds-primary-hover);
+    --ds-violet-deep: var(--ds-primary-deep);
+    --ds-violet-tint: var(--ds-primary-tint);
+    --ds-surface2: var(--ds-surface-white);
+    --ds-solar: var(--ds-success);
+    --ds-hair: var(--ds-hairline);
+  }
+</style>
+<!-- 앱 조각(프로퍼티 그룹) → 로더(app.js) 순으로 로드 · 로더가 디스크립터 병합(앱 분할 6차) -->
+<script src="/vendor/app-00-tabitems.js"></script>
+<script src="/vendor/app-01-bulkpertxt.js"></script>
+<script src="/vendor/app-02-_afterverdict.js"></script>
+<script src="/vendor/app-03-opendetail.js"></script>
+<script src="/vendor/app-04-_err.js"></script>
+<script src="/vendor/app-05-costdata.js"></script>
+<script src="/vendor/app-06-weeklyleague.js"></script>
+<script src="/vendor/app-07-eventhint.js"></script>
+<script src="/vendor/app-08-copytext.js"></script>
+<script src="/vendor/app.js"></script>
+<script defer src="/vendor/alpine.js"></script>
+<link href="/vendor/app.css" rel="stylesheet">
+<link href="/vendor/tw.css" rel="stylesheet">
+</head>
+<body class="antialiased">
+<div class="ds-grain" aria-hidden="true"></div>
+<div x-data="prismApp()" class="appshell" data-theme="light">
+
+  <!-- ━━━━━ 상단 바: 로고 | 타이틀(고정) | 도구 ━━━━━ -->
+  <header class="topbar">
+    <div class="topbar__brand" x-on:click="selectMod('home')" style="cursor:pointer" role="button" aria-label="홈으로">
+      <img class="topbar__logo topbar__logo--light" src="/vendor/prism-logo-tagline-light.png" alt="Prism · A lens on content & users">
+      <img class="topbar__logo topbar__logo--dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism · A lens on content & users"></div>
+    <div class="topbar__title">
+      <div class="homehead__title" x-text="modLabel"></div>
+      <div class="homehead__sub" x-text="modSub"></div>
+    </div>
+    <div class="topbar__tools">
+      <!-- 사용자 식별(이름·캐릭터)은 사이드바 프로필 카드로 이관. 상단바엔 미표시 -->
+      <!-- 연결 신호등: 모델별 표시 없이 단일 신호 dot (초록=연결·회색=미설정/서버관리·주황=MOCK). 상세는 호버 -->
+      <button type="button" class="topbar__conn topbar__conn--dot" x-on:click="if (navVisible('sysadmin')) selectMod('system')"
+        x-bind:data-tip="cfg.forcedMock ? 'MOCK (강제)' : (connCount ? '연결됨' : (cfg.keyManagedByServer ? '서버 관리 (연결됨)' : '키 미설정'))" data-tip-pos="bottom" aria-label="연결 상태">
+        <span class="ds-statusdot" x-bind:class="cfg.forcedMock ? 'ds-statusdot--mock' : ((connCount || (cfg.keyManagedByServer && cfg.hasKey)) ? 'ds-statusdot--ok' : 'ds-statusdot--mock')"><span class="ds-statusdot__dot"></span></span>
+      </button>
+      <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="openReport()" data-tip="전체 리포트 생성·보기" data-tip-pos="bottom" aria-label="전체 리포트"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M9 12h6M9 16h6M9 8h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="toggleTheme()" x-bind:data-tip="theme === 'dark' ? '라이트 모드' : '다크 모드'" data-tip-pos="bottom" aria-label="테마 전환">
+        <svg x-show="theme !== 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <svg x-show="theme === 'dark'" x-cloak width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" x-show="reviewer" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="logout()" data-tip="로그아웃" data-tip-pos="bottom" aria-label="로그아웃"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 12H4m0 0 4-4m-4 4 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 4h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div class="addmenu" x-bind:class="addMenuOpen ? 'open' : ''" x-on:click.outside="addMenuOpen = false">
+        <template x-for="w in homeCatalog" x-bind:key="w.id">
+          <button type="button" x-on:click="addWidget(w.id)" x-bind:disabled="hasWidget(w.id)" x-bind:style="hasWidget(w.id) ? 'opacity:.45;cursor:default' : ''">
+            <span x-text="(hasWidget(w.id) ? '✓ ' : '＋ ') + w.label"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+  </header>
+
+  <!-- 실시간 협업 토스트: 다른 검수자의 검수 활동 -->
+  <div class="live-toast" x-show="liveMsg" x-cloak x-transition.opacity>
+    <span class="live-toast__dot"></span><span x-text="liveMsg"></span>
+  </div>
+
+  <!-- 전역 에러 토스트(조용한 실패 노출 · A-2) -->
+  <div class="err-toast" x-show="errMsg" x-cloak x-transition.opacity x-on:click="errMsg=''">
+    <span class="err-toast__ic">⚠</span><span x-text="errMsg"></span>
+  </div>
+
+  <!-- 검수 완료 점수 상승(+PT) 리워드 토스트 · key 로 연속 검수 시 애니메이션 재시작 -->
+  <template x-if="ptToast">
+    <div class="pttoast" x-bind:key="ptToast.id">
+      <span class="pttoast__spark">✨</span>
+      <span class="pttoast__pt" x-text="'+' + ptToast.pts + ' PT'"></span>
+      <span class="pttoast__lbl" x-show="ptToast.label" x-text="ptToast.label"></span>
+    </div>
+  </template>
+
+  <!-- 배지 전체 보기 모달(목록 + 달성 여부·진행도) -->
+  <div class="ds-dialog-backdrop" x-show="badgeModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="badgeModalOpen=false" style="z-index:74">
+    <div class="badgemodal" x-show="badgeModalOpen" x-transition>
+      <div class="badgemodal__hd">
+        <div class="badgemodal__ttl">배지 컬렉션</div>
+        <template x-if="arenaMe">
+          <div class="badgemodal__lvwrap">
+            <span class="badgemodal__lv" x-text="'Lv.' + arenaMe.level"></span>
+            <span class="badgemodal__count"><b x-text="badgeGot"></b> / <span x-text="badges().length"></span></span>
+          </div>
+        </template>
+        <button type="button" class="ds-iconbtn" x-on:click="badgeModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      </div>
+      <template x-if="arenaMe">
+        <div class="badgemodal__xp">
+          <div class="charcard__xpbar"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
+          <div class="badgemodal__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
+        </div>
+      </template>
+      <div class="badgemodal__grid">
+        <template x-for="(bd, i) in badges()" x-bind:key="i">
+          <div class="bmcard" x-bind:class="bd.got ? 'got' : 'locked'" x-bind:style="bd.got ? ('--bc:' + bd.color) : ''">
+            <span class="bmcard__cat" x-text="bd.cat"></span>
+            <span class="gbadge__orb bmcard__orb"><span class="gbadge__ic" x-text="bd.got ? bd.icon : '🔒'"></span></span>
+            <span class="bmcard__label" x-text="bd.label"></span>
+            <span class="bmcard__exp" x-text="'+' + bd.exp + ' EXP'"></span>
+            <span class="bmcard__desc" x-text="bd.desc"></span>
+            <span class="bmcard__foot" x-bind:class="bd.got ? 'is-got' : ''"
+                  x-text="bd.got ? '✓ 달성 완료' : (Math.min(bd.cur, bd.target) + ' / ' + bd.target + ' ' + bd.unit)"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- 배지 달성 축하 오버레이(성취감) -->
+  <div class="badgeburst" x-show="badgeToast" x-cloak x-transition.opacity x-on:click="badgeToast = null">
+    <div class="badgeburst__card" x-bind:style="badgeToast ? ('--bc:' + badgeToast.color) : ''">
+      <template x-for="i in 12" x-bind:key="i"><span class="badgeburst__spark" x-bind:style="'--i:' + i"></span></template>
+      <div class="badgeburst__orb"><span class="badgeburst__ic" x-text="badgeToast && badgeToast.icon"></span></div>
+      <div class="badgeburst__ttl">🎉 배지 달성!</div>
+      <div class="badgeburst__label" x-text="badgeToast && badgeToast.label"></div>
+      <div class="badgeburst__exp" x-text="badgeToast && ('+' + badgeToast.exp + ' EXP')"></div>
+      <div class="badgeburst__hint" x-text="badgeToast && badgeToast.desc"></div>
+    </div>
+  </div>
+
+  <!-- 검수자 등록 온보딩(딤드 + 중앙 모달). 첫 방문 시 자동, 칩 클릭 시 변경 -->
+  <div class="onboard" x-show="reviewerEditing" x-cloak x-transition.opacity
+       x-on:click.self="if (reviewer) reviewerEditing = false"
+       x-on:keydown.escape.window="if (reviewer) reviewerEditing = false">
+    <div class="onboard__card" x-transition>
+      <div class="onboard__brand">
+        <img class="onboard__logo onboard__logo--light" src="/vendor/prism-logo-tagline-light.png" alt="Prism · A lens on content & users">
+        <img class="onboard__logo onboard__logo--dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism · A lens on content & users"></div>
+      <h2 class="onboard__title" x-text="authBusy ? (authMode==='signup' ? '가입 중' : '로그인 중') : (authToken ? '검수자 정보 변경' : (backend!=='supabase' ? '검수자 등록' : (authMode==='signup'?'가입하고 시작':'로그인')))"></h2>
+      <p class="onboard__lead" x-show="backend==='supabase'">팀이 함께 콘텐츠를 검수해 정확도를 끌어올립니다. 내 검수가 점수가 되고 캐릭터가 성장해요. 계정으로 로그인하면 <b>어느 기기에서나</b> 이어집니다.</p>
+      <p class="onboard__lead" x-show="backend!=='supabase'" x-cloak>로컬 모드입니다 · 로그인 없이 <b>닉네임과 캐릭터만</b> 정하면 바로 시작해요. 내 검수가 점수가 되고 캐릭터가 성장합니다.</p>
+
+      <!-- 로그인 진행 애니메이션(정보 변경 화면 플래시 방지) -->
+      <div x-show="authBusy" x-cloak class="onboard__busy">
+        <span class="onboard__busy-ring"><img x-bind:src="charImg(reviewerChar)" alt=""></span>
+        <div class="onboard__busy-dots"><i></i><i></i><i></i></div>
+        <p x-text="authMode==='signup' ? '가입을 완료하고 있어요' : '프로필을 불러오고 있어요'"></p>
+      </div>
+      <!-- ① 로그인/가입 (비로그인 · supabase 운영 모드) -->
+      <div x-show="backend==='supabase' && !authToken && !authBusy">
+        <div class="onboard__authtabs">
+          <button type="button" x-bind:class="authMode==='login'?'sel':''" x-on:click="authMode='login';authMsg=''">로그인</button>
+          <button type="button" x-bind:class="authMode==='signup'?'sel':''" x-on:click="authMode='signup';authMsg=''">가입</button>
+        </div>
+        <!-- 그룹 A · 계정: 이메일·비밀번호(+확인)·닉네임·캐릭터 -->
+        <div class="onboard__group">
+          <div class="onboard__grouphd">계정</div>
+          <label class="onboard__lbl">이메일</label>
+          <input class="field onboard__name" type="email" placeholder="you@team.com" x-model="authEmail" style="margin-bottom:12px">
+          <label class="onboard__lbl">비밀번호</label>
+          <input class="field onboard__name" type="password" placeholder="••••••••" x-model="authPw" x-on:keydown.enter="saveReviewer()" x-bind:style="authMode==='signup' ? 'margin-bottom:12px' : 'margin-bottom:8px'">
+          <label x-show="authMode==='login'" class="chk-inline" style="font-size:12px;color:var(--ds-muted)">
+            <input type="checkbox" x-model="saveCred"> 아이디 저장 <span class="onboard__hint" style="margin:0">비밀번호는 저장하지 않습니다(이 기기)</span></label>
+          <template x-if="authMode==='signup'">
+            <div>
+              <label class="onboard__lbl">비밀번호 확인</label>
+              <input class="field onboard__name" type="password" placeholder="비밀번호 다시 입력" x-model="authPw2" x-on:keydown.enter="saveReviewer()" style="margin-bottom:12px">
+              <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시</span></label>
+              <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()" style="margin-bottom:12px">
+              <label class="onboard__lbl">캐릭터 선택</label>
+              <div class="onboard__chars" style="margin-bottom:0">
+                <template x-for="c in charOptions" x-bind:key="c.id">
+                  <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
+                    <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
+                    <b x-text="c.label"></b><small x-text="c.role"></small>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="onboard__authmsg" x-show="authMsg" x-text="authMsg"></div>
+        <!-- 그룹 B · 팀(가입 시): 코드 참가 또는 팀 없음. 팀 생성은 관리자 메뉴 -->
+        <template x-if="authMode==='signup'">
+          <div class="onboard__group onboard__group--b">
+            <div class="onboard__grouphd" style="display:flex;align-items:center;justify-content:space-between">
+              <span>팀 참가</span>
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--ds-muted);cursor:pointer;text-transform:none;letter-spacing:0">
+                <input type="checkbox" x-model="noTeam"> 팀 없음</label>
+            </div>
+            <input x-show="!noTeam" class="field onboard__name" placeholder="팀 초대 코드 (예: A1B2C3D4)" x-model="inviteCode" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:700" x-on:keydown.enter="saveReviewer()">
+            <p class="onboard__hint" style="text-align:left;display:block;margin-bottom:0" x-text="noTeam ? '팀 없이 시작합니다. 나중에 관리자에게 코드를 받아 참가할 수 있어요.' : '관리자에게 받은 코드를 입력하면 같은 팀으로 참가합니다.'"></p>
+          </div>
+        </template>
+      </div>
+
+      <!-- ①-b 로컬(sqlite) 검수자 등록: 인증 없음 · 닉네임·캐릭터만 (QA_CHECKLIST §0 로그인 벽 없음) -->
+      <div x-show="backend!=='supabase' && !authToken && !authBusy" x-cloak class="onboard__group">
+        <div class="onboard__grouphd">검수자</div>
+        <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시</span></label>
+        <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()" style="margin-bottom:12px">
+        <label class="onboard__lbl">캐릭터 선택</label>
+        <div class="onboard__chars" style="margin-bottom:0">
+          <template x-for="c in charOptions" x-bind:key="'local-'+c.id">
+            <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
+              <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
+              <b x-text="c.label"></b><small x-text="c.role"></small>
+            </button>
+          </template>
+        </div>
+        <div class="onboard__authmsg" x-show="authMsg" x-text="authMsg"></div>
+      </div>
+
+      <!-- ② 프로필 편집 (로그인 상태) · 닉네임·캐릭터만 -->
+      <div x-show="authToken && !authBusy" class="onboard__group">
+        <div class="onboard__grouphd">프로필</div>
+        <label class="onboard__lbl">닉네임 <span class="onboard__hint"> 리더보드·검수에 표시</span></label>
+        <input class="field onboard__name" placeholder="예) 김검수" x-model="reviewer" x-on:keydown.enter="saveReviewer()">
+        <label class="onboard__lbl">캐릭터 선택</label>
+        <div class="onboard__chars" style="margin-bottom:0">
+          <template x-for="c in charOptions" x-bind:key="c.id">
+            <button type="button" class="ochar" x-bind:class="reviewerChar===c.id ? 'sel' : ''" x-on:click="reviewerChar=c.id">
+              <span class="ochar__ring"><img x-bind:src="c.img" x-bind:alt="c.label"></span>
+              <b x-text="c.label"></b><small x-text="c.role"></small>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <button type="button" class="ds-btn ds-btn--primary onboard__cta" x-show="!authBusy"
+              x-bind:disabled="(authToken || backend!=='supabase') ? !(reviewer||'').trim() : (!(authEmail||'').trim() || !authPw || (authMode==='signup' && (!authPw2 || !(reviewer||'').trim() || (!noTeam && !(inviteCode||'').trim()))))"
+              x-on:click="saveReviewer()"
+              x-text="authToken ? '저장하고 시작' : (backend!=='supabase' ? '시작하기' : (authMode==='signup'?'가입하고 시작':'로그인하고 시작'))"></button>
+      <button type="button" class="onboard__skip" x-show="authToken && !authBusy" x-on:click="reviewerEditing=false">닫기</button>
+    </div>
+  </div>
+
+  <div class="appbody">
+  <!-- ━━━━━ 좌측 컬럼 · 내비 + 도우미 ━━━━━ -->
+  <div class="leftcol">
+    <aside class="ds-sidebar">
+      <!-- 홈 = 그룹 밖 독립 최상단 -->
+      <nav class="ds-navgroup" style="margin-bottom:6px;padding-bottom:var(--ds-space-2);border-bottom:1px solid var(--ds-hairline-soft)">
+        <button type="button" class="ds-navitem" x-bind:class="mod === 'home' ? 'ds-navitem--active' : ''" x-on:click="selectMod('home')">
+          <span class="ds-navitem__icon" x-html="navIcons.home"></span><span>홈</span>
+        </button>
+      </nav>
+      <template x-for="grp in mods" x-bind:key="grp.g">
+        <nav class="ds-navgroup" x-show="navVisible(grp.gcond)">
+          <div class="ds-navgroup__label" x-text="grp.g"></div>
+          <template x-for="it in grp.items" x-bind:key="it.id">
+            <button type="button" class="ds-navitem" x-show="canMenu(it.id, it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+              <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
+              <span x-text="it.label"></span>
+            </button>
+          </template>
+        </nav>
+      </template>
+    </aside>
+    <!-- 도우미 = 사이드 위젯 바로 아래(다크 박스 + 캐릭터) -->
+    <div class="side-assistant">
+      <!-- 사용자 프로필 카드(야구카드형): 내 캐릭터 + 이름. 누르면 프로필 설정(이름·캐릭터 편집) -->
+      <button type="button" class="side-profile" x-on:click="reviewerEditing = true" x-bind:data-tier="(reviewer && arenaMe) ? levelTier(arenaMe.level) : 0" aria-label="내 프로필">
+        <span class="side-profile__glow"></span>
+        <span class="side-profile__gain" x-show="reviewer && arenaMe && arenaMe.week_points>0" x-text="arenaMe && arenaMe.week_points ? ('+' + arenaMe.week_points + ' XP') : ''"></span>
+        <span class="side-profile__avatar">
+          <img x-bind:src="charImg(reviewer ? reviewerChar : 'boksil')" alt="">
+          <span class="side-profile__lvl" x-show="reviewer && arenaMe" x-text="'Lv.' + (arenaMe ? arenaMe.level : 0)"></span>
+        </span>
+        <span class="side-profile__name">
+          <span class="side-assistant__spin" x-show="loading || modBusy"></span>
+          <span x-text="reviewer || '프로필 설정'"></span>
+        </span>
+        <span class="side-profile__score" x-show="reviewer && arenaMe && !(loading || modBusy)"><b x-text="(arenaMe ? arenaMe.points : 0)"></b> pt</span>
+        <span class="side-profile__sub" x-show="!(reviewer && arenaMe) || (loading || modBusy)" x-text="(loading || modBusy) ? '처리하고 있어요…' : (reviewer ? '프로필 편집' : '이름·캐릭터를 설정하세요')"></span>
+        <span class="side-profile__edit" x-show="reviewer" x-on:click.stop="reviewerEditing = true" role="button" aria-label="프로필 편집" data-tip="편집" data-tip-pos="left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+      </button>
+      <!-- 팀 퀘스트 카드(확정 시안 · 원정대): 캐릭터 씬(리본=오늘의 응원 키워드 · 바닥 트랙=팀 평균)
+           → 응원 문구 → 2×2 스탯 타일(내 몫 개인화) → 완주 보상(+100P) → 마감 메타 -->
+      <div class="squest" x-show="arenaData && arenaData.next_batch_at" x-cloak x-on:click="selectMod('review')" role="button" tabindex="0"
+           x-bind:data-tip="'다음 학습 반영 ' + fmtTs(arenaData?arenaData.next_batch_at:0) + ' · 그전까지의 검수 의견이 ' + ((arenaData&&arenaData.next_model)||'기준 모델') + ' v' + (arenaData?arenaData.next_version:'') + ' 프롬프트에 반영됩니다 · 눌러서 검수하러 가기'" data-tip-pos="right">
+        <div class="squest__hd">
+          <span class="squest__type">팀 퀘스트</span>
+          <span class="squest__dday" x-bind:class="['D-DAY','D-1'].indexOf(ddayTxt(arenaData?arenaData.next_batch_at:0)) >= 0 ? 'is-urgent' : ''" x-text="ddayTxt(arenaData?arenaData.next_batch_at:0)"></span>
+        </div>
+        <div class="squest__party">
+          <span class="squest__ribbon" x-text="questCheer().kw"></span>
+          <img class="squest__lead" x-bind:src="charImg(reviewerChar)" alt="" aria-hidden="true">
+          <template x-for="(mc, mi) in questMates()" x-bind:key="mi">
+            <img class="squest__mate" x-bind:src="charImg(mc)" x-bind:style="'left:' + (82 + mi * 46) + 'px'" alt="" aria-hidden="true">
+          </template>
+          <div class="squest__path"><i x-bind:style="'width:' + questPct() + '%'"></i></div>
+        </div>
+        <div class="squest__cheer" x-text="'“' + questCheer().msg + '”'"></div>
+        <div class="squest__enc" x-text="questCheer().done ? '완주 확정 · 반영일에 포인트 지급' : '오늘의 응원 · 매일 바뀝니다'"></div>
+        <div class="squest__tiles">
+          <div class="squest__tile squest__tile--mine"><small x-text="questMyTotal() ? '내 남은 건수' : '남은 건수'"></small><b class="tnum" x-text="questLeftMine() + '건' + (questLeftMine() ? '' : ' ✓')"></b></div>
+          <div class="squest__tile"><small x-text="questMyTotal() ? '내 완주' : '완주'"></small><b class="tnum" x-text="questMyTotal() ? (questMyDone() + ' / ' + questMyTotal()) : (questCover() + ' / ' + questTotal())"></b></div>
+          <div class="squest__tile"><small>팀 평균 진척</small><b class="tnum" x-text="questPct() + '%'"></b></div>
+          <div class="squest__tile squest__tile--hot"><small>마감까지</small><b x-text="ddayTxt(arenaData?arenaData.next_batch_at:0)"></b></div>
+        </div>
+        <!-- 완주 보상: 배정자에게만(미배정은 완주 기준이 없음 · 서버 지급 규칙과 동일) -->
+        <div class="squest__reward" x-show="questMyTotal()">
+          <span x-text="questCheer().done ? '🏆 기한 내 완주 달성!' : '✨ 기한 내 완주하면'"></span>
+          <span class="squest__pt" x-text="questCheer().done ? '+100P 확보' : '+100P'"></span>
+        </div>
+        <div class="squest__meta">
+          <span class="tnum" x-text="'마감 ' + fmtTs(arenaData?arenaData.next_batch_at:0)"></span>
+          <span class="squest__go" x-text="questCheer().done ? '팀 돕기 →' : (questLeftMine() ? '검수하러 →' : '✓ 완주')"></span>
+        </div>
+      </div>
+      <!-- 완료 잔상(목표 소진 후 72시간): 다음 퀘스트 생성까지의 공백을 잇는 상태 카드 -->
+      <div class="squest squest--done" x-show="questDoneRecent()" x-cloak data-tip="관리자가 검수 목표에서 새 퀘스트를 생성하면 다시 시작됩니다" data-tip-pos="right">
+        <div class="squest__hd">
+          <span class="squest__type">팀 퀘스트</span>
+          <span class="squest__dday squest__dday--done">완료</span>
+        </div>
+        <img class="squest__char" x-bind:src="charImg(reviewerChar)" alt="" aria-hidden="true">
+        <div class="squest__title" x-text="'🏆 v' + (arenaData?arenaData.last_version:'') + ' 반영 완료'"></div>
+        <div class="squest__obj">새 퀘스트 대기 중</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ━━━━━ 우측 = 상단 메뉴 위젯 + 캔버스 ━━━━━ -->
+  <div class="home">
+    <div class="canvas">

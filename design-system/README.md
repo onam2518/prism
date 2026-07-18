@@ -7,7 +7,7 @@ Prism UI의 디자인 토큰과 React 컴포넌트. **Source of truth = Anchor D
 **문서**
 - **위젯형 SaaS 표준(제품 비종속)** → [`WIDGET_SAAS_STANDARD.md`](./WIDGET_SAAS_STANDARD.md) · 위젯형 SaaS 표준 디자인 정책
 - **서비스 디자인 가이드(최상위)** → [`SERVICE_DESIGN.md`](./SERVICE_DESIGN.md) · 위젯 홈 중심 종합 가이드(Prism)
-- **비주얼 원칙** → [`anchor/DESIGN.md`](./anchor/DESIGN.md) · **UX·플로우·에셋 원칙** → [`PRINCIPLES.md`](./PRINCIPLES.md) · **컴포넌트 구조** → [`COMPONENTS.md`](./COMPONENTS.md) · **산정/로드맵** → [`COMPONENT_ROADMAP.md`](./COMPONENT_ROADMAP.md) · **로고** → [`LOGO.md`](./LOGO.md)
+- **비주얼 원칙** → [`anchor/DESIGN.md`](./anchor/DESIGN.md) · **UX·플로우·에셋 원칙** → [`PRINCIPLES.md`](./PRINCIPLES.md) · **컴포넌트 구조** → [`COMPONENTS.md`](./COMPONENTS.md) · **산정/로드맵** → [`COMPONENT_ROADMAP.md`](./COMPONENT_ROADMAP.md) · **로고** → [`LOGO.md`](./LOGO.md) · **게이미피케이션** → [`GAMIFICATION.md`](./GAMIFICATION.md)
 
 **화면**
 - **위젯 홈(중심)** → `preview/widget-home.html` · 위젯 추가·삭제·재배치·리사이즈 · 기능/정보 구분 · 온보딩 · 설정 팝업

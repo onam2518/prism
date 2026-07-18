@@ -1,0 +1,94 @@
+      <!-- ═══ 모듈: 자동 인입(파이프라인 소스 설정) · 관리자 전용 ═══ -->
+      <!-- ═══ 모듈: 콘텐츠 관리(관리자) · 원페이지 STEP: 1 추가(수동/자동·용도) → 2 모델 실행 → 3 실행 큐 ═══ -->
+      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin-bottom:12px">
+        <div class="stepline"><span class="stepline__no">STEP 1</span><b>콘텐츠 추가</b><span class="meta">수동·자동으로 콘텐츠를 모으고 용도를 지정합니다</span>
+          <span class="ml-auto" style="display:flex;gap:6px;align-items:center">
+            <span class="selctl" data-tip="검수용=검수·정답 축적 대상 · 평가용=검수 목록에서 제외되는 평가 전용 홀드아웃" data-tip-pos="bottom"><span class="selctl__lbl">추가 용도</span><select class="field" x-model="addPurpose"><option value="review">검수용</option><option value="eval">평가용</option></select></span>
+            <button type="button" class="srcfilter__chip" x-bind:class="contentTab==='run'?'sel':''" x-on:click="contentTab='run'">수동 추가</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="contentTab==='auto'?'sel':''" x-on:click="contentTab='auto'; fetchIngestStatus()">자동 추가</button>
+          </span>
+        </div>
+      </div>
+      <div x-show="mod === 'content' && contentTab === 'auto'" x-cloak class="w-full space-y-4">
+        <template x-if="!(backend === 'supabase' && adminData && adminData.isAdmin)">
+          <ul class="ds-bullets hintbox" style="padding:14px 16px">
+            <li>자동 인입은 <b>운영(팀) 관리자</b> 전용입니다.</li>
+            <li>로컬 단독 실행에서는 <b>수동 추출</b>을 사용하세요.</li>
+          </ul>
+        </template>
+        <template x-if="backend === 'supabase' && adminData && adminData.isAdmin">
+        <div class="w-full space-y-4">
+        <ul class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>콘텐츠를 <b>자동으로 추가</b>하는 수집 소스를 설정합니다.</li>
+          <li>등록·활성화한 소스로 들어온 콘텐츠가 자동으로 추가되어 초안이 생성됩니다.</li>
+          <li>일회성 처리는 <b>수동 추가</b>를 사용하세요.</li>
+        </ul>
+        <!-- 일회성 인입: 크롤러에서 수량 목표로 당겨오기(구 팀 관리 패널 이동) -->
+        <section class="panel" data-fn><div class="panel-hd"><b>일회성 가져오기</b><span class="meta">크롤러에서 수량 목표로 당겨와 추가</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:10px"><li>크롤러 엔드포인트에서 <b>수량 목표</b>로 당겨와 추출 → 전건을 팀 <b>검수 대기</b>에 적재합니다.</li><li>실시간 스트리밍 부담 없이 배치로 처리합니다.</li></ul>
+            <div style="display:flex;gap:var(--ds-space-2);flex-wrap:wrap;align-items:center">
+              <input class="field" style="flex:1;min-width:240px" placeholder="크롤러 엔드포인트 · JSON 배열 반환 GET (예: https://my-crawler/items)" x-model="ingestEndpoint">
+              <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestOnceBusy" x-on:click="ingestRun()" x-text="ingestOnceBusy ? '가져오는 중…' : '가져오기 실행'"></button>
+            </div>
+            <span class="text-xs text-muted" style="display:block;margin-top:7px" x-text="ingestMsg"></span>
+          </div>
+        </section>
+        <section class="panel" data-fn><div class="panel-hd"><b>인입 소스 추가</b></div>
+          <div class="panel-bd" style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <div style="flex:1;min-width:160px"><label class="lbl">유형</label>
+                <select x-model="newSrc.type" class="field"><option value="api">REST API · 웹훅</option><option value="kafka">Kafka 브로커</option></select></div>
+              <div style="flex:1;min-width:160px"><label class="lbl">이름</label><input x-model="newSrc.name" class="field" placeholder="예) 뉴스 수집 API"></div>
+            </div>
+            <template x-if="newSrc.type === 'api'">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div><label class="lbl">엔드포인트 URL</label><input x-model="newSrc.endpoint" class="field" placeholder="https://… (폴링 GET 또는 웹훅 수신)"></div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:120px"><label class="lbl">메서드</label><select x-model="newSrc.method" class="field"><option>GET</option><option>POST</option><option>WEBHOOK</option></select></div>
+                  <div style="flex:2;min-width:180px"><label class="lbl">인증 헤더 (선택)</label><input x-model="newSrc.auth" class="field" placeholder="Authorization: Bearer …"></div>
+                  <div style="flex:1;min-width:90px"><label class="lbl">폴링(초)</label><input x-model="newSrc.interval" class="field" placeholder="60"></div>
+                </div>
+              </div>
+            </template>
+            <template x-if="newSrc.type === 'kafka'">
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <div><label class="lbl">브로커</label><input x-model="newSrc.brokers" class="field" placeholder="broker1:9092,broker2:9092"></div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:140px"><label class="lbl">토픽</label><input x-model="newSrc.topic" class="field" placeholder="content.ingest"></div>
+                  <div style="flex:1;min-width:140px"><label class="lbl">컨슈머 그룹</label><input x-model="newSrc.group" class="field" placeholder="prism-ingest"></div>
+                </div>
+              </div>
+            </template>
+            <div style="display:flex;align-items:center;gap:10px"><button type="button" x-on:click="addSource()" class="ds-btn ds-btn--primary">소스 추가</button><span class="text-xs" style="color:var(--ds-muted)" aria-live="polite" x-text="ingestMsg"></span></div>
+          </div>
+        </section>
+        <section class="panel"><div class="panel-hd"><b>등록된 인입 소스</b><span class="meta" x-text="ingestSources.length + '개'"></span></div>
+          <div class="panel-bd">
+            <ul x-show="ingestSources.length" class="ds-bullets" style="margin-bottom:11px"><li><b>활성</b> 소스는 <b>폴링(초)</b> 주기마다 백그라운드로 자동 인입되고, <b>실행 큐</b>에 진행률이 표시됩니다.</li><li>즉시 한 번만 받으려면 <b>지금 인입</b>, 멈추려면 <b>중지</b>.</li></ul>
+            <div x-show="!ingestSources.length" class="ds-empty" style="border:0;padding:16px 4px"><div class="ds-empty__desc">아직 등록된 소스가 없습니다 위에서 API · Kafka 소스를 추가하세요</div></div>
+            <template x-for="s in ingestSources" x-bind:key="s.id">
+              <div class="drow" style="grid-template-columns:1fr auto;align-items:center;border-bottom:1px solid var(--ds-hairline-soft)">
+                <div>
+                  <div style="display:flex;align-items:center;gap:var(--ds-space-2);flex-wrap:wrap">
+                    <span class="ds-badge" x-bind:class="s.type === 'kafka' ? 'ds-badge--intent' : 'ds-badge--entity'" style="cursor:help" data-tip="자동 인입 소스 유형 · Kafka 스트림 또는 API 폴링" data-tip-pos="top" x-text="s.type === 'kafka' ? 'Kafka' : 'API'"></span>
+                    <b class="text-ink" x-text="s.name"></b>
+                    <span class="ds-badge" x-bind:class="s.enabled ? 'ds-badge--success' : 'ds-badge--neutral'"><span x-show="s.enabled" class="ds-badge__dot"></span><span x-text="s.enabled ? '활성' : '중지'"></span></span>
+                  </div>
+                  <div class="text-xs text-muted" style="margin-top:3px" x-text="s.type === 'kafka' ? (s.brokers + ' · ' + s.topic) : (s.method + ' ' + s.endpoint)"></div>
+                  <div x-show="srcRunning(s) || ingestRunMsg[s.id] || (srcJob(s) && srcJob(s).last_msg)" class="text-xs" style="margin-top:5px" x-bind:style="(ingestRunMsg[s.id]||'').startsWith('오류') || (srcJob(s) && srcJob(s).last_ok === false) ? 'color:var(--ds-error)' : 'color:var(--ds-primary)'" x-text="srcRunning(s) ? ('인입 중 ' + (srcJob(s) ? (srcJob(s).done + (srcJob(s).total ? ('/' + srcJob(s).total) : '') + '건') : '…')) : (ingestRunMsg[s.id] || (srcJob(s) ? srcJob(s).last_msg : ''))"></div>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button type="button" class="ds-btn ds-btn--primary" style="height:30px;padding:0 12px" x-show="s.type !== 'kafka'" x-bind:disabled="srcRunning(s)" x-on:click="ingestNow(s)" x-text="srcRunning(s) ? '인입 중…' : '지금 인입'"></button>
+                  <button type="button" class="copybtn" x-on:click="toggleSource(s)" x-text="s.enabled ? '중지' : '활성'"></button>
+                  <button type="button" class="copybtn" x-on:click="removeSource(s.id)" style="color:var(--ds-error);border-color:rgba(255,78,51,.3)">삭제</button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </section>
+        </div>
+        </template>
+      </div>
+

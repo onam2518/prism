@@ -53,7 +53,7 @@ def verify_item(im, content) -> list:
             clean_int.append(c)
         else:
             notes.append(f"intent 사전외 제거: {c}")
-    im.intent = clean_int[:2]  # 1~2개
+    im.intent = clean_int      # 상한 없음 · 핵심만(엔티티와 동일 정책 · 프롬프트가 통제)
 
     # content_category: 콘텐츠 단위 N개(1312). Tier1 화이트리스트 강제·중복 제거
     clean_ec = []

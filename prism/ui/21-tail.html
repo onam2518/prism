@@ -1,0 +1,111 @@
+<script>
+  // ── 캐릭터 사용 정책(공통 규칙) ──────────────────────────────────────
+  // 캐릭터 = 추출 파이프라인 4단계 역할: 추출 대식 · 분석 용희 · 검수 복실 · 판정·부여 딱지
+  // (구 단계별 패널 캐릭터 매핑 MOD_STAGE·prismCharForPanel 은 호출부가 사라져 제거 —
+  //  구 메뉴 id 기준이라 재사용 시 전부 빗나간다 · 2026-07-14 감사)
+  // 카드 속성(기능/정보) = 캐릭터+칩 고정 클러스터. 종류별 캐릭터 통일 · 항상 헤드 우측 끝.
+  var KIND_CHAR = { fn: 'boksil-catcher', info: 'yonghee-pitcher' };
+  function prismCardType(isFn) {
+    var kind = isFn ? 'fn' : 'info';
+    var wrap = document.createElement('span'); wrap.className = 'ds-cardtype';
+    wrap.innerHTML = '<span class="wz-char wz-char--sm"><img src="/vendor/' + KIND_CHAR[kind] + '.svg" alt=""></span>'
+      + '<span class="ds-widget__kind ds-widget__kind--' + kind + '">' + (isFn ? '기능' : '정보') + '</span>';
+    return wrap;
+  }
+  // 헤더 액션: 정보(메타·라벨)와 컨트롤(버튼) 경계에 구분선 자동 삽입(전 카드 공통). 카드속성 구분선과 동일 규칙.
+  function insertHdDivider(actions) {
+    var kids = Array.prototype.slice.call(actions.children);
+    for (var i = 1; i < kids.length; i++) {
+      var el = kids[i];
+      var isCtrl = el.matches && el.matches('button, a.ds-btn, .ds-btn, .copybtn, .ds-iconbtn');
+      if (isCtrl && !(kids[i - 1].classList && kids[i - 1].classList.contains('hd-divider'))) {
+        var d = document.createElement('span'); d.className = 'hd-divider'; d.setAttribute('aria-hidden', 'true');
+        actions.insertBefore(d, el);
+        break;                                      // 정보|컨트롤 경계 1곳
+      }
+    }
+  }
+  (function () {
+    var grid = document.getElementById('grid'); if (!grid) return;
+    var ORDER = ['', 'ds-widget--md', 'ds-widget--lg', 'ds-widget--tall', 'ds-widget--wide', 'ds-widget--xl'];
+    function editing() { return grid.classList.contains('ds-widgetgrid--edit'); }
+    // 선택 + 8핸들(우하단 리사이즈)
+    var SELH = '<div class="ds-widget__sel" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>';
+    var selected = null;
+    function deselect() { if (selected) { selected.classList.remove('ds-widget--selected'); var s = selected.querySelector('.ds-widget__sel'); if (s) s.remove(); selected = null; } }
+    function select(w) { deselect(); w.classList.add('ds-widget--selected'); w.insertAdjacentHTML('beforeend', SELH); selected = w; }
+    function cycleSize(w) {
+      var cur = 0; ORDER.forEach(function (c, i) { if (c && w.classList.contains(c)) cur = i; });
+      ORDER.forEach(function (c) { if (c) w.classList.remove(c); });
+      var nx = ORDER[(cur + 1) % ORDER.length]; if (nx) w.classList.add(nx);
+    }
+    grid.addEventListener('click', function (e) {
+      if (!editing()) return;
+      if (e.target.closest('.ds-widget__remove')) return;   // 제거는 Alpine removeWidget 가 처리
+      var rs = e.target.closest('.ds-widget__sel i:nth-child(5)');
+      if (rs && selected) { cycleSize(selected); return; }
+      var w = e.target.closest('.ds-widget');
+      if (w) { if (w !== selected) select(w); } else deselect();
+    });
+    // 드래그 재배치
+    var dragEl = null;
+    grid.addEventListener('dragstart', function (e) { if (!editing()) return; dragEl = e.target.closest('.ds-widget'); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; });
+    grid.addEventListener('dragover', function (e) { if (!editing() || !dragEl) return; e.preventDefault(); var t = e.target.closest('.ds-widget'); if (t && t !== dragEl) { var r = t.getBoundingClientRect(); var after = (e.clientY - r.top) / r.height > 0.5; grid.insertBefore(dragEl, after ? t.nextSibling : t); } });
+    grid.addEventListener('drop', function (e) { e.preventDefault(); dragEl = null; });
+    new MutationObserver(function () {
+      var on = editing();
+      grid.querySelectorAll('.ds-widget').forEach(function (w) { w.setAttribute('draggable', on ? 'true' : 'false'); });
+      if (!on) deselect();
+    }).observe(grid, { attributes: true, attributeFilter: ['class'] });
+    // 카드 3D 틸트 + 포일
+    document.querySelectorAll('.ds-personacard').forEach(function (card) {
+      card.addEventListener('pointermove', function (e) { var r = card.getBoundingClientRect(), px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height; card.style.setProperty('--ry', ((px - .5) * 16) + 'deg'); card.style.setProperty('--rx', ((.5 - py) * 16) + 'deg'); card.style.setProperty('--mx', (px * 100) + '%'); card.style.setProperty('--my', (py * 100) + '%'); });
+      card.addEventListener('pointerleave', function () { card.style.setProperty('--ry', '0deg'); card.style.setProperty('--rx', '0deg'); card.style.setProperty('--mx', '50%'); card.style.setProperty('--my', '30%'); });
+    });
+    // 홈 위젯: 왼쪽 아이콘 제거(타이틀 왼쪽선 = 본문 정렬) + 캐릭터를 헤드 오른쪽으로
+    grid.querySelectorAll('.ds-widget__head').forEach(function (head) {
+      var t = head.querySelector('.ds-widget__title'); if (!t) return;
+      var chip = t.querySelector('.ds-widget__icon-chip');
+      var w = head.closest('.ds-widget'); var wid = w ? (w.getAttribute('data-wid') || '') : '';
+      if (chip) chip.remove();
+      var actions = head.querySelector('.ds-widget__actions');
+      if (!actions) { actions = document.createElement('div'); actions.className = 'ds-widget__actions'; head.appendChild(actions); }
+      var ek = actions.querySelector('.ds-widget__kind');            // 기존 인라인 칩 → 통일 클러스터로 교체
+      var isFn = ek ? ek.classList.contains('ds-widget__kind--fn') : false;
+      if (ek) ek.remove();
+      insertHdDivider(actions);                                       // 정보|컨트롤 구분선
+      actions.appendChild(prismCardType(isFn));                       // 캐릭터+칩 고정(우측 끝)
+    });
+  })();
+
+  // ── 출력 패널(.panel) → 카탈로그 위젯 헤드로 변환(아이콘칩 + 타이틀 + 정보 칩) ──
+  // 정적 패널은 즉시, Alpine x-for 로 생성되는 동적 패널은 MutationObserver 로 덮는다
+  (function () {
+    function decorate(root) {
+      (root || document).querySelectorAll('.panel-hd:not([data-wz])').forEach(function (h) {
+        h.setAttribute('data-wz', '1');
+        var b = h.querySelector('b');
+        var titleText = b ? b.textContent : '';
+        // 타이틀 = 텍스트만(왼쪽선을 본문과 정렬) 캐릭터는 헤드 오른쪽으로
+        var title = document.createElement('div'); title.className = 'ds-widget__title';
+        var span = document.createElement('span');
+        span.textContent = titleText; if (b) b.remove();
+        title.appendChild(span);
+        var actions = document.createElement('div'); actions.className = 'ds-widget__actions';
+        while (h.firstChild) actions.appendChild(h.firstChild);   // 남은 메타·버튼 → actions
+        insertHdDivider(actions);                                 // 정보|컨트롤 구분선(전 카드 공통)
+        actions.appendChild(prismCardType(!!h.closest('[data-fn]')));   // 캐릭터+칩 고정 클러스터(우측 끝)
+        h.appendChild(title); h.appendChild(actions);
+      });
+    }
+    decorate(document);
+    var host = document.querySelector('.home') || document.body;
+    var pending = false;
+    new MutationObserver(function () {
+      if (pending) return; pending = true;
+      requestAnimationFrame(function () { pending = false; decorate(document); });
+    }).observe(host, { childList: true, subtree: true });
+  })();
+</script>
+</body>
+</html>

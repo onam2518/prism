@@ -254,7 +254,10 @@ def admin_data(uid, team, email="") -> dict:
                 "isCreator": False, "team": None, "members": []}
     gc = st.golden_count(team) if hasattr(st, "golden_count") else 0
     t = st.team_info(team)
-    return {"ok": True, "isAdmin": is_admin_user(uid, team, email),
+    adm = is_admin_user(uid, team, email)
+    if t and not adm:                              # 초대코드는 관리자에게만 — 일반 팀원 응답에서 제거
+        t = {k: v for k, v in t.items() if k != "invite_code"}   # (재게시·무단 가입 확산 방지)
+    return {"ok": True, "isAdmin": adm,
             "isSysAdmin": is_sys_admin_user(uid, team, email),
             "isSuperAdmin": is_super_admin_user(uid, team, email),
             "isCreator": bool(t and uid and t.get("created_by") == uid),
@@ -396,3 +399,34 @@ def admin_action(uid, team, data, email="") -> dict:
     else:
         return {"ok": False, "error": "알 수 없는 액션"}
     return {"ok": True}
+
+
+# ── 데이터 보존 기한(retention) 스케줄러 ────────────────────────────────────
+# supabase 콘텐츠는 무기한 누적되면 용량·조회 성능을 잠식한다(설계 기준 8GB).
+# 삭제 작업이라 명시적 opt-in: PRISM_RETENTION_DAYS(>0) 설정 시에만 가동한다.
+# 평가용(purpose=eval) 보존·파생 행 연쇄 정리는 supastore.retention 이 보장.
+def _retention_loop(days: int):
+    time.sleep(120)                                # 기동 직후 부하 회피(헬스체크·복원 우선)
+    while True:
+        try:
+            st = _SV.get_store()
+            n = st.retention(days=days) if hasattr(st, "retention") else 0
+            if n:
+                print(f"  [retention] {days}일 초과 검토 콘텐츠 {n}건 정리(평가용 보존 · 파생 연쇄)")
+        except Exception as e:
+            print(f"  [warn] retention 실패(다음 회차 재시도): {e}")
+        time.sleep(24 * 3600)
+
+
+def start_retention_scheduler():
+    try:
+        days = int(os.environ.get("PRISM_RETENTION_DAYS", "0") or 0)
+    except ValueError:
+        print("  [warn] PRISM_RETENTION_DAYS 값이 정수가 아님 · retention 미가동")
+        return False
+    if days <= 0:
+        return False
+    threading.Thread(target=_retention_loop, args=(days,),
+                     name="prism-retention", daemon=True).start()
+    print(f"  [retention] 가동 · 보존 {days}일 · 일 1회(평가용 제외)")
+    return True

@@ -1,0 +1,348 @@
+"""인입·잡 도메인 (serve 에서 분리 · 라우트 분리 4차 · 로드맵 2단계 3차).
+
+외부 소스 폴링(ingest_run_source·스케줄러)·공인 URL 검증(SSRF 방어)·실행 이력
+잡 레지스트리(_job_*·_jobs_persist/restore·ingest_status)·원문 링크 백필을 담당.
+HTTP 디스패치는 serve 가 유지.
+
+컴포지션: 스토어·파이프라인·리포트 영속은 serve 가 `_SV` 로 주입(learnops 관례).
+_INGEST_STATE 는 테스트가 serve._INGEST_STATE 로 뮤테이션하므로 재바인딩 금지
+(serve 재수출과 같은 객체를 공유한다).
+"""
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import threading
+import time
+
+from . import pipeline as PIPE
+from .config import Config
+
+_SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
+
+
+def backfill_urls(file_bytes: bytes, filename: str, team=None) -> dict:
+    """원문 링크 백필(관리자): 해시/제목 ↔ URL 매핑 표로 기존 콘텐츠의 source_url 만 갱신.
+    초안(item_meta)·검수 판정·적재 시각은 건드리지 않는다 — 해시가 서비스+제목+부제+본문으로만
+    계산되므로 링크 교체는 콘텐츠 정체성을 바꾸지 않는다(링크 없이 인입된 과거분 구제)."""
+    from . import ingest as ING
+    ext = os.path.splitext(filename or "")[1].lower() or ".csv"
+    fd, tmp = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(file_bytes)
+        try:
+            headers, rows = ING.read_table(tmp)
+        except ValueError as e:
+            return {"error": str(e)}
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+    def _find(names):
+        for h in headers or []:
+            if str(h or "").strip().lower().replace(" ", "").replace("_", "") in names:
+                return h
+        return None
+    url_col = _find(set(ING.ALIASES["source_url"]))
+    hash_col = _find({"hash", "해시", "contenthash", "콘텐츠해시"})
+    title_col = _find(set(ING.ALIASES["title"]))
+    if not url_col or not (hash_col or title_col):
+        return {"error": "필수 컬럼을 찾지 못했습니다 · URL(링크) 컬럼과 해시 또는 제목 컬럼이 필요합니다",
+                "headers": headers}
+    st = _SV.get_store()
+    if not (st and hasattr(st, "set_source_url")):
+        return {"error": "저장소가 준비되지 않았습니다"}
+    by_hash, by_title = {}, {}                     # 현재 적재분 색인: 매칭 + 변화 없음 판별
+    for r in _SV.results_rows(team=team):
+        ref = r.get("content_ref") or {}
+        h = _SV._row_key(ref)
+        by_hash[h] = ref.get("source_url", "") or r.get("url", "")
+        t = (ref.get("title", "") or r.get("title", "")).strip()
+        if t:
+            by_title.setdefault(t, []).append(h)
+    updated = unchanged = no_match = ambiguous = bad_url = 0
+    misses = []                                    # 미매칭 표본(최대 10) · 사용자가 원인 파악
+    for row in rows:
+        url = str(row.get(url_col) or "").strip()
+        h = str(row.get(hash_col) or "").strip() if hash_col else ""
+        t = str(row.get(title_col) or "").strip() if title_col else ""
+        if not (url.startswith("http://") or url.startswith("https://")):
+            bad_url += 1
+            continue
+        if h and h in by_hash:
+            target = h
+        elif t and t in by_title:
+            if len(by_title[t]) > 1:               # 동일 제목 다건 = 오적용 위험 → 해시로만 허용
+                ambiguous += 1
+                if len(misses) < 10:
+                    misses.append(f"{t} (동일 제목 {len(by_title[t])}건 · 해시로 지정 필요)")
+                continue
+            target = by_title[t][0]
+        else:
+            no_match += 1
+            if len(misses) < 10:
+                misses.append(h or t or "(해시·제목 빈 행)")
+            continue
+        if by_hash.get(target, "") == url:
+            unchanged += 1
+            continue
+        if st.set_source_url(target, url, team=team):
+            by_hash[target] = url
+            updated += 1
+        else:
+            no_match += 1
+    if updated:
+        _SV._agg_bump()
+    return {"ok": True, "rows": len(rows), "updated": updated, "unchanged": unchanged,
+            "noMatch": no_match, "ambiguous": ambiguous, "badUrl": bad_url, "misses": misses}
+
+
+# ── 자동 인입: 작업 상태(진행률) + 백그라운드 폴링 스케줄러 ──
+_INGEST_STATE = {}                         # {sid: {name,endpoint,running,total,done,last_run,last_msg,last_ok,trigger}}
+_INGEST_LOCK = threading.Lock()
+_INGEST_THREAD = None
+_INGEST_STOP = threading.Event()
+
+
+def _validate_public_url(url: str):
+    """인입 URL 검증(SSRF 방어): http/https 스킴만 허용 + 해석된 IP 가 모두 공인 대역인지 확인.
+    사설·루프백·링크로컬(169.254 클라우드 메타데이터)·예약·멀티캐스트 대역은 거부.
+    통과 시 None, 실패 시 사유 문자열. (잔여: DNS 리바인딩 TOCTOU 는 미방어 — 내부 도구 전제)"""
+    import socket
+    import ipaddress
+    from urllib.parse import urlparse
+    try:
+        p = urlparse((url or "").strip())
+    except Exception:
+        return "URL 파싱 실패"
+    if p.scheme not in ("http", "https"):
+        return "http/https URL 만 허용됩니다"
+    host = p.hostname
+    if not host:
+        return "호스트가 없습니다"
+    try:
+        infos = socket.getaddrinfo(host, p.port or (443 if p.scheme == "https" else 80),
+                                   proto=socket.IPPROTO_TCP)
+    except Exception as e:
+        return f"호스트 확인 실패: {str(e)[:80]}"
+    _cgnat = ipaddress.ip_network("100.64.0.0/10")     # RFC6598 CGNAT(클라우드·k8s 내부 대역)
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return "주소 확인 실패"
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                or ip.is_multicast or ip.is_unspecified
+                or (ip.version == 4 and ip in _cgnat)):
+            return "사설/내부 대역 주소는 허용되지 않습니다"
+    return None
+
+
+def _fetch_records(endpoint: str, limit: int, method: str, auth: str):
+    """REST 엔드포인트에서 레코드 배열을 가져옴. (rows, error) 반환."""
+    import urllib.request
+    import urllib.error
+    endpoint = (endpoint or "").strip()
+    if not endpoint:
+        return None, "엔드포인트가 비어 있습니다"
+    url = endpoint
+    if "limit=" not in url and (method or "GET").upper() == "GET":
+        url += ("&" if "?" in url else "?") + "limit=" + str(int(limit))
+    err = _validate_public_url(url)
+    if err:
+        return None, err
+
+    class _SafeRedirect(urllib.request.HTTPRedirectHandler):   # 리다이렉트 대상도 매 홉 재검증(내부망 우회 차단)
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if _validate_public_url(newurl):
+                raise urllib.error.URLError("리다이렉트 대상이 허용되지 않는 주소입니다")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    req = urllib.request.Request(url, method=(method or "GET").upper())
+    if auth:
+        req.add_header("Authorization", auth)
+    try:
+        with urllib.request.build_opener(_SafeRedirect()).open(req, timeout=20) as resp:
+            raw = resp.read(_SV._FETCH_MAX + 1)          # 응답 크기 상한(메모리 소진 방어)
+            if len(raw) > _SV._FETCH_MAX:
+                return None, f"응답이 너무 큽니다(상한 {_SV._FETCH_MAX // (1024 * 1024)}MB)"
+            data = json.loads(raw.decode("utf-8", "replace"))
+    except Exception as e:
+        return None, f"API 호출 실패: {str(e)[:160]}"
+    if isinstance(data, dict):
+        rows = next((data[k] for k in ("records", "data", "items", "results")
+                     if isinstance(data.get(k), list)), None)
+        rows = rows if rows is not None else [data]
+    else:
+        rows = data
+    if not isinstance(rows, list) or not rows:
+        return None, "레코드가 없습니다(빈 응답)"
+    return rows, None
+
+
+def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
+    """소스 1건 인입(진행률 추적). fetch → 매핑 → 건별 추출(진행 갱신) → dedup 적재."""
+    from . import ingest as ING
+    sid = source.get("id") or ("ep:" + (source.get("endpoint") or ""))
+    limit = int(source.get("limit") or 100)
+    with _INGEST_LOCK:
+        if _INGEST_STATE.get(sid, {}).get("running"):
+            return {"ok": False, "error": "이미 인입 중", "skipped_run": True}
+        _INGEST_STATE[sid] = {"name": source.get("name") or "소스", "endpoint": source.get("endpoint", ""),
+                              "kind": "자동 인입", "started": time.time(),
+                              "running": True, "total": 0, "done": 0, "last_run": _INGEST_STATE.get(sid, {}).get("last_run", 0),
+                              "last_msg": "수신 중…", "last_ok": None, "trigger": trigger}
+    try:
+        rows, err = _fetch_records(source.get("endpoint", ""), limit,
+                                   source.get("method", "GET"), source.get("auth", ""))
+        if err:
+            _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=err)
+            _jobs_persist()
+            return {"ok": False, "error": err}
+        try:
+            contents, m = ING.to_contents_rows(rows[:limit])
+        except Exception as e:
+            msg = str(e)[:200]
+            _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=msg)
+            _jobs_persist()
+            return {"ok": False, "error": msg, "headers": list(rows[0].keys()) if rows else []}
+        _INGEST_STATE[sid].update(total=len(contents), done=0, last_msg="추출 중…")
+        cfg = Config.load()
+        llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
+        pairs = []
+        for c in contents:
+            try:
+                pairs.append((c, PIPE.extract(c, llm, legal=cfg.legal_enabled)))
+            except Exception:
+                pass
+            _INGEST_STATE[sid]["done"] += 1
+        stats = {"inserted": 0, "updated": 0, "skipped": 0}
+        st = _SV.get_store()
+        if st and pairs:
+            stats = st.save_dedup(pairs, "ingest-" + time.strftime("%Y%m%d-%H%M%S"), source="자동 인입")
+            _SV._save_drafts(st, pairs)
+            _SV._entdict_after_save(st, pairs)
+        msg = f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
+        _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=True, last_msg=msg)
+        _jobs_persist()
+        return {"ok": True, "fetched": len(rows), "extracted": len(pairs),
+                "mapping": m, "mock": llm.mock, **stats}
+    except Exception as e:
+        _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=str(e)[:160])
+        _jobs_persist()
+        return {"ok": False, "error": str(e)[:160]}
+
+
+def _fmt_dur(seconds: float) -> str:
+    s = max(0, int(seconds))
+    return (f"{s // 60}분 {s % 60}초" if s >= 60 else f"{s}초")
+
+
+def _job_begin(jid: str, name: str, kind: str, total: int, trigger: str = "manual"):
+    """일괄 작업(엑셀·일괄 실행)을 실행 큐에 등록(진행률·ETA 추적)."""
+    with _INGEST_LOCK:
+        _INGEST_STATE[jid] = {"name": name, "endpoint": "", "kind": kind, "started": time.time(),
+                              "running": True, "total": int(total), "done": 0, "failed": 0,
+                              "last_run": 0, "last_msg": "추출 중…", "last_ok": None, "trigger": trigger}
+    _jobs_persist()
+
+
+def _job_end(jid: str, ok: bool, msg: str):
+    s = _INGEST_STATE.get(jid)
+    if not s:
+        return
+    dur = _fmt_dur(time.time() - (s.get("started") or time.time()))
+    s.update(running=False, last_run=time.time(), last_ok=ok, last_msg=f"{msg} · 소요 {dur}")
+    _jobs_persist()
+
+
+def _jobs_persist():
+    """실행 큐 스냅샷 영속(reports 패턴 · 전역 kind='jobs'): 배포·재시작에도 이력 유지.
+    시작·종료 등 상태 전이 때만 기록(건별 진행률은 기록하지 않아 저장소 부담 없음) · 최근 20건."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "save_report")):
+        return
+    try:
+        with _INGEST_LOCK:
+            items = sorted(_INGEST_STATE.items(),
+                           key=lambda kv: kv[1].get("started") or kv[1].get("last_run") or 0)[-20:]
+            snap = {k: dict(v) for k, v in items}
+        st.save_report("jobs", snap)
+    except Exception:
+        pass
+
+
+def _jobs_restore():
+    """부팅 시 실행 이력 복원. 재시작(배포)으로 끊긴 '실행 중' 작업은 중단으로 표시해
+    유령 진행률을 막고, 관리자에게 재실행이 필요함을 알린다."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "get_report")):
+        return
+    try:
+        snap = st.get_report("jobs")
+        if not isinstance(snap, dict):
+            return
+        with _INGEST_LOCK:
+            for k, v in snap.items():
+                if k in _INGEST_STATE or not isinstance(v, dict):
+                    continue
+                if v.get("running"):
+                    v.update(running=False, last_ok=False,
+                             last_run=v.get("started") or time.time(),
+                             last_msg="서버 재시작(배포)으로 중단됨 · 다시 실행하세요")
+                _INGEST_STATE[k] = v
+    except Exception:
+        pass
+
+
+def ingest_status() -> dict:
+    """실행 큐 상태(자동 인입 + 일괄 작업 · 진행률·예상 잔여시간) + 스케줄러 동작 여부."""
+    jobs = []
+    now = time.time()
+    with _INGEST_LOCK:                        # 잡 등록(키 삽입) 스레드와의 순회 레이스 차단
+        snapshot = list(_INGEST_STATE.items())
+    for sid, s in snapshot:
+        j = {"id": sid, **s}
+        if s.get("running") and s.get("started"):
+            j["elapsed_s"] = int(now - s["started"])
+            if s.get("done") and s.get("total"):
+                rate = (now - s["started"]) / max(1, s["done"])
+                j["per_item_ms"] = int(rate * 1000)
+                j["eta_s"] = int(rate * max(0, s["total"] - s["done"]))
+        jobs.append(j)
+    return {"jobs": jobs, "scheduler": bool(_INGEST_THREAD and _INGEST_THREAD.is_alive()),
+            "running": any(j["running"] for j in jobs)}
+
+
+def _ingest_scheduler():
+    """활성 API 소스를 interval 초마다 자동 폴링(백그라운드). 5분 등 가이드대로."""
+    while not _INGEST_STOP.wait(timeout=10):
+        try:
+            cfg = Config.load()
+            now = time.time()
+            for s in (cfg.ingest_sources or []):
+                if s.get("type") == "kafka" or not s.get("enabled"):
+                    continue                                   # 중지/카프카는 자동 폴링 안 함
+                sid = s.get("id") or ("ep:" + (s.get("endpoint") or ""))
+                stt = _INGEST_STATE.get(sid, {})
+                if stt.get("running"):
+                    continue
+                interval = max(15, int(s.get("interval") or 300))
+                if now - stt.get("last_run", 0) >= interval:
+                    ingest_run_source(s, trigger="auto")
+        except Exception:
+            pass
+
+
+def start_ingest_scheduler():
+    """백그라운드 자동 인입 스케줄러 시작(중복 방지)."""
+    global _INGEST_THREAD
+    if _INGEST_THREAD and _INGEST_THREAD.is_alive():
+        return
+    _INGEST_STOP.clear()
+    _INGEST_THREAD = threading.Thread(target=_ingest_scheduler, name="prism-ingest", daemon=True)
+    _INGEST_THREAD.start()
