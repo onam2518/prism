@@ -184,7 +184,10 @@ Prism 으로 이식(기능 흡수)하면서 **`prism_` 접두사를 유일한 �
    trigger_eval_tick·invoke_autopilot_tick·inc_*_fork) · set_updated_at 은 유지(트리거 참조)
 ```
 → public 스키마 = `prism_*` 26개(운영 19 + `_bak_20260707` 7)로 통일.
-남은 일(소유자 확인 후): `drop schema legacy cascade` · bak 7개 drop · Atelier 깃 레포 아카이브.
+~~남은 일(소유자 확인 후): `drop schema legacy cascade` · bak 7개 drop~~
+**은퇴 완결(2026-07-18 · 소유자 승인 · `atelier_retire_step3_purge`)**: legacy 스키마(22개
+테이블 · 41MB)·`prism_*_bak_20260707` 7개 영구 삭제 → public = `prism_*` 운영 19개만 잔존.
+남은 일: Atelier 깃 레포 아카이브(GitHub 설정 · 코드 밖 작업).
 
 ## 상세 설계 (확정)
 
