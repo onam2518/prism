@@ -214,42 +214,129 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!(await this.dsConfirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)', { ok: '초기화', danger: true }))) return;
         try { const r = await this._afetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); const d = await r.json(); if (r.ok && d && !d.error && d.serviceGroups) this.dictData = d; } catch (e) {}
       },
-      async loadUser() { this.modBusy = true; try { this.userData = await (await this._afetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
-      async uploadUserLog(e) {
-        const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-        this.modBusy = true; this.pfMsg = '';
-        try { const fd = new FormData(); fd.append('file', f);
-          const d = await (await this._afetch('/usermeta', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
-          if (d.error) { this.pfMsg = '오류: ' + d.error; } else { this.userData = d; this.pfMsg = this._genMsg(d); } }
-        catch (err) {} this.modBusy = false;
-      },
-      // 실험실 · 사용자: 프로필(사용자 메타) 입력 → 행동 로그와 모이면 서버가 페르소나 능동 생성
-      pf: { user_id: '', age_band: '', interests: '', day_part: '' }, pfMsg: '',
-      _genMsg(d) {
-        if (d.generated_n) return '생성 페르소나 ' + d.generated_n + '개 · 재료가 모인 사용자는 자동 생성됩니다';
-        if ((d.profiles_n || 0) && !(d.users || []).length) return '행동 로그가 연결되면 자동 생성됩니다';
-        if (!(d.profiles_n || 0) && (d.users || []).length) return '프로필이 저장되면 자동 생성됩니다';
-        return '';
-      },
-      async saveProfile() {
-        if (!this.pf.user_id.trim()) { this.pfMsg = 'user_id 를 입력하세요'; return; }
-        this.modBusy = true; this.pfMsg = '';
+      loadUser() { this.loadMem(); this.loadDemoLab(); },   // 실험실 · 사용자 탭 진입점(시연 + 생성 과정만 로드)
+      // ── 실험실 · 사용자: 생성 과정(파일 기반 메모리) ──
+      // 자동 기록은 시연(demoClose→event)이 담당 · 여기는 파일 확인·수동 조작(전체 쓰기
+      // 버전 토큰 · 끝에 추가 · 삭제)과 주입 미리보기. 응답의 wrote 로 방금 기록분 하이라이트.
+      memData: null, memSel: '', memDraft: '', memVer: 0, memLine: '', memMsg: '',
+      memNew: { kind: 'topics', name: '' }, memInject: false, memFlash: '', memLog: [], memBusy: false,
+      async loadMem() { try { const d = await (await this._afetch('/usermeta-memory', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) this.memData = d; } catch (e) {} },
+      memFile(p) { return ((this.memData && this.memData.files) || []).find(f => f.path === p) || null; },
+      memOpen(p) { const f = this.memFile(p); if (!f) return; this.memSel = p; this.memDraft = f.content; this.memVer = f.ver; this.memMsg = ''; },
+      async memPost(body, okMsg) {
+        this.memBusy = true; this.memMsg = '';
         try {
-          const d = await (await this._afetch('/usermeta-profiles', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ profile: this.pf }) })).json();
-          if (d.error) { this.pfMsg = '오류: ' + d.error; }
-          else { this.userData = d; this.pf = { user_id: '', age_band: '', interests: '', day_part: '' }; this.pfMsg = '프로필 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
-        } catch (e) { this.pfMsg = '오류: ' + e; }
-        this.modBusy = false;
+          const d = await (await this._afetch('/usermeta-memory', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
+          if (!d || d.error) { this.memMsg = '오류: ' + (d ? d.error : '응답 없음'); this.memBusy = false; return null; }
+          this.memData = d;
+          if (d.wrote) {
+            this.memLog.unshift(d.wrote); this.memLog = this.memLog.slice(0, 4);
+            this.memFlash = d.wrote.path; setTimeout(() => { this.memFlash = ''; }, 1600);
+          }
+          if (this.memSel) { const f = this.memFile(this.memSel); if (f) { this.memDraft = f.content; this.memVer = f.ver; } else { this.memSel = ''; this.memDraft = ''; } }
+          if (okMsg) this.memMsg = okMsg;
+          this.memBusy = false; return d;
+        } catch (e) { this.memMsg = '오류: ' + e; this.memBusy = false; return null; }
       },
-      async uploadProfiles(e) {
-        const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-        this.modBusy = true; this.pfMsg = '';
-        try { const fd = new FormData(); fd.append('file', f);
-          const d = await (await this._afetch('/usermeta-profiles', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
-          if (d.error) { this.pfMsg = '오류: ' + d.error; }
-          else { this.userData = d; this.pfMsg = (d.saved || 0) + '명 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
-        } catch (err) { this.pfMsg = '오류: ' + err; }
-        this.modBusy = false;
+      memTemplate(p) {
+        return '---\n파일: /' + p + '\n설명: 한 줄 설명을 적어 주세요\n출처: 직접 입력\n별칭: \n---\n- [stated] 사용자가 직접 말한 사실만 한 줄씩 적습니다\n';
+      },
+      async memCreate() {
+        const k = this.memNew.kind; let p = k;
+        if (k !== 'profile.md' && k !== 'preferences.md') {
+          const n = (this.memNew.name || '').trim();
+          if (!n) { this.memMsg = '파일 이름을 입력하세요 (한글·영문·숫자·-_)'; return; }
+          p = k + '/' + n + (n.endsWith('.md') ? '' : '.md');
+        }
+        if (this.memFile(p)) { this.memOpen(p); return; }
+        const d = await this.memPost({ op: 'write', path: p, content: this.memTemplate(p) }, '파일 생성됨 · /' + p);
+        if (d) { this.memNew.name = ''; this.memOpen(p); this.memMsg = '파일 생성됨 · /' + p; }
+      },
+      async memSave() { if (this.memSel) await this.memPost({ op: 'write', path: this.memSel, content: this.memDraft, ver: this.memVer }, '저장됨 (전체 쓰기)'); },
+      async memAppendLine() {
+        const t = (this.memLine || '').trim(); if (!t || !this.memSel) return;
+        const line = t.indexOf('- [') === 0 ? t : '- [stated] ' + t;
+        const d = await this.memPost({ op: 'append', path: this.memSel, line }, '끝에 추가됨');
+        if (d) this.memLine = '';
+      },
+      async memDelete() {
+        if (!this.memSel) return;
+        if (!(await this.dsConfirm('/' + this.memSel + ' 파일을 삭제할까요? 삭제는 명시적 요청이 있을 때만 실행됩니다.', { ok: '삭제', danger: true }))) return;
+        await this.memPost({ op: 'delete', path: this.memSel }, '삭제됨');
+      },
+      // ── 실험실 · 사용자: 소비 시연(STEP 1 소비·수집 → 2 측정·로직 → 3 결론 → 4 활용) ──
+      // 좌측 피드(Anchor DS)에서의 실제 행동을 이벤트로 서버에 보내고, 우측 3단(실시간·누적·로직)을
+      // 응답으로 갱신. 체류는 실측 초 × 10 배속(가상 체류)으로 보내 실로직 임계값(30·45초)을 체감시킨다.
+      labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연·생성) | policy(정책)
+      demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
+      demoQ: '', demoQFilter: '',
+      demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false, demoDefsOpen: false,
+      demoX: 10,                                    // 가상 체류 배속(화면에 명시)
+      async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; this.demoImpress(); } } catch (e) {} },
+      async demoPost(body) {
+        this.demoBusy = true; this.demoMsg = '';
+        try {
+          const d = await (await this._afetch('/usermeta-demo', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
+          if (!d || d.error) { this.demoMsg = '오류: ' + (d ? d.error : '응답 없음'); this.demoBusy = false; return null; }
+          this.demoData = d; this.demoBusy = false;
+          if (d.wrote) this.loadMem();               // 시연이 파일을 썼으면 결론의 파일 열람용으로 동기화
+          return d;
+        } catch (e) { this.demoMsg = '오류: ' + e; this.demoBusy = false; return null; }
+      },
+      demoImpress() {                               // 피드 진입 1회 → 보이는 콘텐츠 일괄 노출 이벤트
+        if (this.demoImpressed || !this.demoData || !this.demoData.contents.length) return;
+        this.demoImpressed = true;
+        this.demoPost({ op: 'event', event: 'impression', idxs: this.demoData.contents.map(c => c.idx) });
+      },
+      demoVirtualDwell() { return this.demoReading ? Math.max(1, Math.round((Date.now() - this.demoReading.t0) / 1000 * this.demoX)) : 0; },
+      demoOpen(c) {                                 // 카드 탭 = 클릭 이벤트 + 읽기 화면 · 체류 타이머 시작
+        if (this.demoReading) return;
+        this.demoReading = { idx: c.idx, t0: Date.now(), c, reacted: '', comments: [] };
+        this.demoTick = 0;
+        this._demoTimer = setInterval(() => { this.demoTick = this.demoVirtualDwell(); }, 300);
+        this.demoPost({ op: 'event', event: 'click', idx: c.idx });
+      },
+      async demoClose() {                           // 나가기: 체류로 정독(30초 이상)/훑기 자동 판정 → Usage 기록
+        if (!this.demoReading) return;
+        const idx = this.demoReading.idx, dwell = this.demoVirtualDwell();
+        clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null;
+        const act = dwell >= 30 ? 'read' : 'skim';
+        await this.demoPost({ op: 'event', event: act, idx, dwell_sec: dwell, scroll_pct: act === 'read' ? 95 : 20 });
+      },
+      async demoReact(emo) {                        // 감정 반응 → Event(Like) · 다시 누르면 감정 변경(서버가 최신 1건만 집계)
+        if (!this.demoReading || this.demoBusy || this.demoReading.reacted === emo) return;
+        const d = await this.demoPost({ op: 'event', event: 'react', idx: this.demoReading.idx, emotion: emo });
+        if (d && this.demoReading) this.demoReading.reacted = emo;
+      },
+      demoCmt: '', demoFileSel: '',
+      demoShowFile(f) { this.demoFileSel = this.demoFileSel === f ? '' : f; if (this.demoFileSel && !this.memFile(f.replace(/^\//, ''))) this.loadMem(); },
+      demoFileBody() { const f = this.memFile((this.demoFileSel || '').replace(/^\//, '')); return f ? f.content : '불러오는 중 · 잠시 후 다시 눌러주세요'; },
+      async demoComment() {                         // 댓글 → Event(WriteComment) + 메모리 [stated]
+        const t = (this.demoCmt || '').trim();
+        if (!t || !this.demoReading) return;
+        const d = await this.demoPost({ op: 'event', event: 'comment', idx: this.demoReading.idx, text: t });
+        if (d && this.demoReading) { (this.demoReading.comments = this.demoReading.comments || []).push(t); this.demoCmt = ''; }
+      },
+      demoFmtT(s) { const v = Math.max(0, s | 0); return Math.floor(v / 60) + ':' + ('0' + (v % 60)).slice(-2); },
+      demoFeed() {                                  // 검색어로 피드 필터(제목·요약·백단 메타 매칭 · 화면엔 메타 비노출)
+        const cs = (this.demoData && this.demoData.contents) || [];
+        const q = (this.demoQFilter || '').trim();
+        if (!q) return cs;
+        const toks = q.split(/\s+/).filter(t => t.length >= 2);
+        if (!toks.length) return cs;
+        return cs.filter(c => toks.some(t => (c.title || '').includes(t) || (c.summary || '').includes(t) || (c.cat || '').includes(t) || (c.intent || '').includes(t) || (c.cat_ko || '').includes(t) || (c.intent_ko || '').includes(t)));
+      },
+      async demoSearch() {                          // 콘텐츠 찾기 · Event(Search)+ViewSearchResults · 검색어는 [stated]
+        const q = (this.demoQ || '').trim();
+        if (!q) return;
+        const d = await this.demoPost({ op: 'event', event: 'search', query: q });
+        if (d) this.demoQFilter = q;
+      },
+      async demoReset() {
+        if (!(await this.dsConfirm('시연 세션을 처음부터 다시 시작할까요? 수집한 이벤트와 결론이 지워집니다(메모리 파일은 유지).', { ok: '처음부터', danger: true }))) return;
+        if (this.demoReading) { clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; }
+        const d = await this.demoPost({ op: 'reset' });
+        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoFileSel = ''; this.demoImpress(); this.loadMem(); }
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },

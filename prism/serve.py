@@ -59,6 +59,7 @@ DS._SV = sys.modules[__name__]      # 대시보드·롤업 주입(동일)
 
 from . import runops as RN
 from . import umops as UMO
+from . import memfs as MF
 from . import ingestops as IG
 from . import boardops as BD
 from . import evalops as EVO
@@ -66,6 +67,7 @@ from . import deployops as DEP
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
+MF._SV = sys.modules[__name__]      # 파일 기반 메모리(실험실) 주입(동일)
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
@@ -1569,6 +1571,16 @@ def _g_usermeta(h, q):
     return usermeta_data(team=h._req_team())
 
 
+@_get_route("/usermeta-memory")                      # 파일 기반 메모리(실험실): 파일 트리·주입 미리보기·소비 카탈로그
+def _g_usermeta_memory(h, q):
+    return MF.memory_data(team=h._req_team())
+
+
+@_get_route("/usermeta-demo")                        # 소비 시연(실험실 STEP 1~4): 피드·세션·실시간 측정·결론
+def _g_usermeta_demo(h, q):
+    return MF.demo_data(team=h._req_team())
+
+
 @_get_route("/board")                                # 게시판: 기능개선·오류 제보(팀 스코프)
 def _g_board(h, q):
     return board_data(h._req_team(), h._bearer_uid() or "")
@@ -2233,6 +2245,16 @@ def _p_usermeta_profiles(h, body):
         p = json.loads(body or b"{}")
         profs = p.get("profiles") or ([p.get("profile")] if p.get("profile") else [])
     return usermeta_save_profiles(profs, team=h._req_team())
+
+
+@_post_route("/usermeta-memory", gate="team")        # 파일 기반 메모리(실험실): 소비 자동 기록·쓰기·추가·삭제
+def _p_usermeta_memory(h, body):
+    return MF.memory_ops(json.loads(body or b"{}"), team=h._req_team())
+
+
+@_post_route("/usermeta-demo", gate="team")          # 소비 시연 조작: event(행동 수집)·finish(결론)·reset
+def _p_usermeta_demo(h, body):
+    return MF.demo_ops(json.loads(body or b"{}"), team=h._req_team())
 
 
 @_post_route("/usermeta", gate="team")               # 행동 로그 업로드/현황 · 팀 미소속 전 팀 열람 차단
