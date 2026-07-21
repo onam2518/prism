@@ -23,6 +23,7 @@
                   <div class="flex items-center gap-2" style="margin:10px 0 12px;min-height:32px">
                     <span class="selctl__lbl">서비스 화면 예시</span>
                     <span class="ml-auto flex items-center gap-1">
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-right:8px" x-on:click="demoTheme = demoTheme==='dark' ? 'light' : 'dark'" data-tip="시연 화면만 테마 전환 · 수집·측정과 무관" data-tip-pos="top" x-text="demoTheme==='dark' ? '라이트' : '다크'"></button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='a' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('a')" data-tip="시안 A · 한 줄기 피드 · 이유는 칩 하나" data-tip-pos="top">피드형</button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='b' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('b')" data-tip="시안 B · 블록 제목이 곧 추천 이유" data-tip-pos="top">블록형</button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='c' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('c')" data-tip="시안 C · 물어보면 생기는 주제 보드(메모리 연동)" data-tip-pos="top">보드형</button>
@@ -31,7 +32,7 @@
                   </div>
                   <!-- 시연 화면은 디자인 교체 전제(anchor-scope 격리): 이벤트 계약(impression·search·click·
                        read/skim·react·comment)만 지키면 화면을 통째로 갈아끼울 수 있다 · 시안 4종이 그 증명 -->
-                  <div class="anchor-scope">
+                  <div class="anchor-scope" x-bind:class="demoTheme==='light' ? 'an-mode-light' : 'an-mode-dark'">
                     <div class="an-phone"><div class="an-screen">
                       <div class="an-status tnum"><span>9:41</span><span>●●●</span></div>
                       <div class="an-appbar">MY 콘텐츠</div>
@@ -285,7 +286,7 @@
                 </div>
                 <div class="demo-obs"><div class="cap">선호 · 소비 강도</div>
                   <template x-for="g in ((demoData && demoData.live.cats) || [])" x-bind:key="'dg'+g.name">
-                    <div class="demo-gauge tnum"><span class="lbl" x-text="g.name"></span><span class="bar"><i x-bind:style="'width:' + g.pct + '%'"></i></span><span class="v" x-text="g.pct + '%'"></span></div>
+                    <div class="demo-gauge tnum"><span class="lbl" x-text="g.ko || g.name"></span><span class="bar"><i x-bind:style="'width:' + g.pct + '%'"></i></span><span class="v" x-text="g.pct + '%'"></span></div>
                   </template>
                   <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
                     <template x-for="(v, k) in ((demoData && demoData.live.intensity) || {})" x-bind:key="'di'+k">

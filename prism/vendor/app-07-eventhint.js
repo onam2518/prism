@@ -271,6 +271,7 @@ window.PRISM_APP_PARTS.push(() => ({
       demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
       demoQ: '', demoQFilter: '',
       demoVariant: 'b', demoBoardSel: '', demoCardSel: 'main',          // 시안 선택(a 피드형·b 블록형·c 보드형·d 대화형) · 이벤트 계약은 동일
+      demoTheme: 'dark',                            // 시연 폰 테마(다크/라이트) · 화면 전환일 뿐 수집·측정과 무관해 리셋 없음
       demoSlug(s) { return (s || '').trim().replace(/[^0-9A-Za-z가-힣]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase(); },
       demoKo(c) { return (c && (c.cat_ko || c.cat)) || ''; },
       demoCats() {                                  // 시안 A 관심 칩: 피드 주제의 사용자 표기(최대 5)
@@ -330,14 +331,17 @@ window.PRISM_APP_PARTS.push(() => ({
       demoDrag: null, demoDragMoved: false,
       demoDragStart(e) {
         const el = e.currentTarget;
-        this.demoDrag = { el, x: e.clientX, left: el.scrollLeft, moved: false };
-        if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) {} }
+        this.demoDrag = { el, x: e.clientX, left: el.scrollLeft, moved: false, pid: e.pointerId };
       },
       demoDragMove(e) {
         const d = this.demoDrag; if (!d) return;
         const dx = e.clientX - d.x;
-        if (Math.abs(dx) > 4) d.moved = true;
-        d.el.scrollLeft = d.left - dx;
+        // 캡처는 드래그 판정 후에만: pointerdown 시점에 걸면 자식 버튼의 click 이 컨테이너로 재타게팅되어 칩 탭이 죽는다(Chrome)
+        if (!d.moved && Math.abs(dx) > 4) {
+          d.moved = true;
+          if (d.el.setPointerCapture) { try { d.el.setPointerCapture(d.pid); } catch (err) {} }
+        }
+        if (d.moved) d.el.scrollLeft = d.left - dx;
       },
       demoDragEnd() {
         this.demoDragMoved = !!(this.demoDrag && this.demoDrag.moved);

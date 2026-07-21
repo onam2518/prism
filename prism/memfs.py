@@ -678,7 +678,7 @@ def demo_ops(body: dict, team=None) -> dict:
                 rec["emo"] = emo
                 rec["path"] = wrote["path"]
                 sess["last_logic"] = ("반응 '" + emo + "' → Event(Like) · 호응 가중 +" + str(REACT_W)
-                                      + " 을 " + c["cat"] + " 선호에 합산 · 감정은 Custom Properties 기록 · /"
+                                      + " 을 " + (_cat_ko(c["cat"]) or c["cat"]) + " 선호에 합산 · 감정은 Custom Properties 기록 · /"
                                       + wrote["path"] + " 에 [observed]")
             elif ev == "comment":                    # 댓글 = 직접 발화 → Event(WriteComment) + [stated] 기록
                 text = (body.get("text") or "").strip()[:200]
@@ -693,7 +693,7 @@ def demo_ops(body: dict, team=None) -> dict:
                 rec["text"] = text[:40]
                 rec["path"] = wrote["path"]
                 sess["last_logic"] = ("댓글 → Event(WriteComment) · 호응 가중 +" + str(COMMENT_W)
-                                      + " 을 " + c["cat"] + " 선호에 합산 · 직접 말한 의견이라 /"
+                                      + " 을 " + (_cat_ko(c["cat"]) or c["cat"]) + " 선호에 합산 · 직접 말한 의견이라 /"
                                       + wrote["path"] + " 에 [stated] 로 기록(관찰과 구분)")
             else:
                 files = _files(team)
@@ -706,7 +706,7 @@ def demo_ops(body: dict, team=None) -> dict:
                 clicked = any(e.get("idx") == idx and e.get("event") == "click" for e in events)
                 wt = round((dwell / 30.0) * (2.0 if clicked else 1.0), 1)
                 sess["last_logic"] = ("체류 " + str(dwell) + "초 ÷ 30 × 클릭가중 "
-                                      + ("2.0" if clicked else "1.0") + " → " + c["cat"] + " +" + str(wt)
+                                      + ("2.0" if clicked else "1.0") + " → " + (_cat_ko(c["cat"]) or c["cat"]) + " +" + str(wt)
                                       + " · /" + wrote["path"] + " 에 [observed] 기록")
             events.append(rec)
         else:
