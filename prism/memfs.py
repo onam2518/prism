@@ -232,6 +232,12 @@ def memory_ops(body: dict, team=None) -> dict:
 
 DEMO_KIND = "usermeta_demo"
 DEMO_EVENTS_MAX = 400
+# 프롬프트 별도 수집체계: TIARA Search 이벤트(행동)와 별개로 프롬프트 원문·응답 결과를
+# 상세 보존한다 · usermeta_prompts = {"items": [{q, t, results_n, cats, zero, clicked}]}
+# 활용: 커버리지(응답률) · 공급 갭(무결과 프롬프트 = 수요는 있는데 콘텐츠가 없는 주제) ·
+# 프롬프트 → 소비 전환율. 참고 발상: 프롬프트 트래킹(응답에 등장했는가가 곧 가시성).
+PROMPT_KIND = "usermeta_prompts"
+PROMPTS_MAX = 200
 EV_LABEL = {"impression": "노출", "click": "클릭", "skim": "훑고 나감",
             "read": "끝까지 읽음", "react": "반응", "comment": "댓글", "search": "검색"}
 EMOTIONS = ("추천해요", "좋아요", "감동이에요", "화나요", "슬퍼요")   # 기사 하단 감정 반응 5종
@@ -268,6 +274,52 @@ def _demo_session(team) -> dict:
     sess.pop("finished", None)                       # 구 버전(단계형 결론) 잔재 키 정리
     sess.pop("conclusion", None)
     return sess
+
+
+def _prompts(team) -> list:
+    return list((_SV._report_get(PROMPT_KIND, team, {}) or {}).get("items") or [])
+
+
+def _prompts_save(team, items):
+    st = _SV.get_store()
+    if st and hasattr(st, "save_report"):
+        st.save_report(PROMPT_KIND, {"items": items[-PROMPTS_MAX:]}, team=team)
+
+
+def _prompt_matches(q, catalog) -> list:
+    """프롬프트와 맞는 콘텐츠 목록 · 사용자 표기(CAT_KO·INT_KO)도 이해."""
+    toks = [t for t in re.split(r"\s+", q) if len(t) >= 2]
+    out = []
+    for c in catalog:
+        if any(t in c["title"] or t in c["cat"] or t in c["intent"]
+               or t in CAT_KO.get(c["cat"], "") or t in INT_KO.get(c["intent"], "") for t in toks):
+            out.append(c)
+    return out
+
+
+def prompt_report(team=None) -> dict:
+    """프롬프트 분석: 커버리지 · 전환 · 최근 목록 · 공급 갭 · 자주 쓴 표현."""
+    from collections import Counter
+    items = _prompts(team)
+    n = len(items)
+    if not n:
+        return {"n": 0, "coverage_pct": 0, "conversion_pct": 0,
+                "recent": [], "gaps": [], "terms": []}
+    answered = [i for i in items if not i.get("zero")]
+    clicked = [i for i in items if i.get("clicked")]
+    terms = Counter()
+    for i in items:
+        for t in re.split(r"\s+", i.get("q") or ""):
+            if len(t) >= 2:
+                terms[t] += 1
+    return {"n": n,
+            "coverage_pct": round(len(answered) / n * 100),
+            "conversion_pct": round(len(clicked) / n * 100),
+            "recent": [{"q": i.get("q", ""), "t": i.get("t", ""),
+                        "results_n": i.get("results_n", 0), "zero": bool(i.get("zero")),
+                        "clicked": bool(i.get("clicked"))} for i in reversed(items[-8:])],
+            "gaps": [i.get("q", "") for i in items if i.get("zero")][-5:],
+            "terms": [{"t": t, "n": c} for t, c in terms.most_common(5)]}
 
 
 def _demo_save(team, sess):
@@ -397,6 +449,7 @@ def demo_data(team=None) -> dict:
            "logic": sess.get("last_logic") or "",
            "personas": _personas_brief(),
            "suggests": _suggests(catalog),
+           "prompts": prompt_report(team),
            "formula": "가중치 = 체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) + 호응(반응 1.0 · 댓글 1.5) → 카테고리·맥락별 합산 → 상대 등급(저/중/고)"}
     if consumed:                                     # 결론도 실시간 · 소비가 쌓일 때마다 자동 재판정
         out["conclusion"] = _conclusion(events, catalog, team)
@@ -502,10 +555,13 @@ def demo_ops(body: dict, team=None) -> dict:
             q = (body.get("query") or "").strip()[:60]
             if not q:
                 return {"error": "찾고 싶은 콘텐츠를 입력하세요"}
-            toks = [t for t in re.split(r"\s+", q) if len(t) >= 2]
-            hit = next((c for c in catalog for t in toks
-                        if t in c["title"] or t in c["cat"] or t in c["intent"]
-                        or t in CAT_KO.get(c["cat"], "") or t in INT_KO.get(c["intent"], "")), None)
+            matches = _prompt_matches(q, catalog)
+            hit = matches[0] if matches else None
+            prompts = _prompts(team)                 # 별도 수집체계: 프롬프트 원문·응답 결과 보존
+            prompts.append({"q": q, "t": _now_t(), "results_n": len(matches),
+                            "cats": sorted({m["cat"] for m in matches}),
+                            "zero": not matches, "clicked": False})
+            _prompts_save(team, prompts)
             files = _files(team)
             wrote, err = _observe(files, q, hit["cat"] if hit else "기타",
                                   hit["intent"] if hit else "검색", "검색 · 원하는 콘텐츠 선언", tag="stated")
@@ -514,8 +570,10 @@ def demo_ops(body: dict, team=None) -> dict:
             _persist(team, files)
             events.append({"idx": -1, "event": "search", "dwell": 0, "scroll": 0,
                            "t": _now_t(), "title": q, "path": wrote["path"]})
-            sess["last_logic"] = ("검색 '" + q + "' · Event(Search) + 결과 화면 Pageview(ViewSearchResults) · "
-                                  "검색어는 부가 정보로 남고, 직접 선언이라 /" + wrote["path"] + " 에 [stated] 기록")
+            sess["last_logic"] = ("검색 '" + q + "' · Event(Search) + 결과 " + str(len(matches))
+                                  + "건(ViewSearchResults) · 프롬프트 원문은 별도 수집체계에 보존"
+                                  + ("" if matches else " · 무결과 = 공급 갭 신호")
+                                  + " · 직접 선언이라 /" + wrote["path"] + " 에 [stated] 기록")
         elif ev in ("click", "read", "skim", "react", "comment"):
             try:
                 idx = int(body.get("idx"))
@@ -528,6 +586,11 @@ def demo_ops(body: dict, team=None) -> dict:
             scroll = max(0, min(100, int(body.get("scroll_pct") or 0)))
             rec = {"idx": idx, "event": ev, "dwell": dwell, "scroll": scroll, "t": _now_t(),
                    "title": c["title"][:40], "cat": c["cat"], "intent": c["intent"], "path": ""}
+            if ev == "click" and body.get("from_search"):   # 프롬프트 → 소비 전환 표시
+                prompts = _prompts(team)
+                if prompts and not prompts[-1].get("clicked"):
+                    prompts[-1]["clicked"] = True
+                    _prompts_save(team, prompts)
             if ev == "click":
                 sess["last_logic"] = ('클릭 "' + c["title"][:24] + '" → Event(ClickContent) + 읽기 화면 '
                                       "Pageview(ViewContent) · 이 콘텐츠의 소비 가중 ×2.0")
@@ -583,9 +646,10 @@ def demo_ops(body: dict, team=None) -> dict:
         sess["events"] = events[-DEMO_EVENTS_MAX:]
         _demo_save(team, sess)
 
-    elif op == "reset":                              # 세션만 초기화 · 메모리 파일은 유지
+    elif op == "reset":                              # 세션·프롬프트 수집 초기화 · 메모리 파일은 유지
         sess = {}
         _demo_save(team, sess)
+        _prompts_save(team, [])
 
     else:
         return {"error": "지원하지 않는 조작입니다: " + str(op)[:20]}

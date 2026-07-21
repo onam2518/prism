@@ -199,6 +199,23 @@ class TestDemoSession(unittest.TestCase):
         self.assertNotIn("error", d)
         self.assertIn("business-and-finance", MF.memory_data(team="t1")["files"][0]["path"])
 
+    def test_prompt_collection_coverage_gap_conversion(self):
+        # 별도 수집체계: 응답 프롬프트 + 무결과(공급 갭) + 전환
+        MF.demo_ops({"op": "event", "event": "search", "query": "반도체 심층"}, team="t1")
+        MF.demo_ops({"op": "event", "event": "click", "idx": 0, "from_search": True}, team="t1")
+        d = MF.demo_ops({"op": "event", "event": "search", "query": "우주 다큐 몰아보기"}, team="t1")
+        pr = d["prompts"]
+        self.assertEqual(pr["n"], 2)
+        self.assertEqual(pr["coverage_pct"], 50)          # 1/2 응답
+        self.assertEqual(pr["conversion_pct"], 50)        # 1/2 전환
+        self.assertEqual(pr["gaps"], ["우주 다큐 몰아보기"])
+        self.assertIn("공급 갭", d["logic"])
+        self.assertTrue(pr["recent"][0]["zero"])
+        self.assertTrue(pr["recent"][1]["clicked"])
+        self.assertTrue(any(t["t"] == "반도체" for t in pr["terms"]) or pr["terms"])
+        d2 = MF.demo_ops({"op": "reset"}, team="t1")      # 리셋 시 프롬프트 수집도 초기화
+        self.assertEqual(d2["prompts"]["n"], 0)
+
     def test_search_records_stated_and_filters_topic(self):
         d = MF.demo_ops({"op": "event", "event": "search", "query": "반도체 심층 몰아보기"}, team="t1")
         self.assertIn("Search", d["logic"])

@@ -294,7 +294,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.demoReading = { idx: c.idx, t0: Date.now(), c, reacted: '', comments: [] };
         this.demoTick = 0;
         this._demoTimer = setInterval(() => { this.demoTick = this.demoVirtualDwell(); }, 300);
-        this.demoPost({ op: 'event', event: 'click', idx: c.idx });
+        this.demoPost({ op: 'event', event: 'click', idx: c.idx, from_search: !!this.demoQFilter });
       },
       async demoClose() {                           // 나가기: 체류로 정독(30초 이상)/훑기 자동 판정 → Usage 기록
         if (!this.demoReading) return;
