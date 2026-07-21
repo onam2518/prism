@@ -17,10 +17,10 @@
                 <li>아래 <b>측정 결과 · 로직 · 결론</b> 영역이 행동할 때마다 실시간으로 다시 계산됩니다 · 별도 실행 버튼 없음.</li>
                 <li>검색어와 댓글은 직접 말한 것이라 메모리에 <code class="text-violet">[stated]</code>, 소비 관찰은 <code class="text-violet">[observed]</code> 로 기록됩니다.</li>
               </ul>
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <div class="flex items-center gap-2" style="margin-bottom:6px">
-                    <span class="selctl__lbl">실제 서비스 화면</span>
+              <div class="grid grid-cols-2" style="gap:0">
+                <div style="padding-right:20px">
+                  <div class="flex items-center gap-2" style="margin-bottom:8px">
+                    <span class="selctl__lbl">서비스 화면 예시</span>
                     <span class="ml-auto flex items-center gap-1">
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='a' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='a'" data-tip="시안 A · 한 줄기 피드 · 이유는 칩 하나" data-tip-pos="top">피드형</button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='b' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='b'" data-tip="시안 B · 블록 제목이 곧 추천 이유" data-tip-pos="top">블록형</button>
@@ -208,8 +208,8 @@
                     </div></div>
                   </div>
                 </div>
-                <div>
-                  <div class="selctl__lbl" style="margin-bottom:6px">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 TIARA 이벤트로 쌓입니다</span></div>
+                <div style="border-left:1px solid var(--ds-hairline);padding-left:20px">
+                  <div class="selctl__lbl" style="margin-bottom:8px">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 TIARA 이벤트로 쌓입니다</span></div>
                   <div class="demo-code" style="max-height:500px;min-height:200px">
                     <template x-for="(l, li) in ((demoData && demoData.stream) || [])" x-bind:key="'ds'+li+l">
                       <div class="ln" x-bind:class="li===0 ? 'is-new' : ''" x-text="l"></div>
