@@ -102,5 +102,112 @@
           </tbody></table></div>
           <div class="text-xs text-muted" style="margin:10px 16px 14px" x-show="userData && userData.formula" x-text="userData ? userData.formula : ''"></div>
         </div>
+
+        <!-- 파일 기반 메모리(실험 구동): 소비 시연 → 그 턴에 파일 자동 기록(실시간) · 조작 5종 · 주입 미리보기 -->
+        <div class="panel"><div class="panel-hd"><b>파일 기반 메모리</b>
+            <span class="meta tnum" x-text="memData ? ('파일 ' + memData.files.length + '/' + memData.limits.max_files) : ''"></span>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadMem()" data-tip="새로고침" data-tip-pos="bottom" aria-label="메모리 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
+              <li>파일시스템 기반 메모리 설계를 그대로 구동하는 실험입니다 · 왼쪽에서 <b>우리가 추출한 콘텐츠를 소비</b>하면 <b>그 턴에</b> 오른쪽 <code class="text-violet">/topics/주제.md</code> 파일로 자동 기록됩니다.</li>
+              <li>파일을 누르면 <b>읽기 · 전체 쓰기(버전 토큰 확인) · 끝에 추가([stated]) · 삭제(확인 후)</b>를 직접 해볼 수 있습니다.</li>
+              <li>새 대화가 시작되면 파일 목록이 자동 주입됩니다 · <b>주입 미리보기</b> 버튼으로 실제 주입 블록을 확인하세요.</li>
+            </ul>
+            <div class="grid grid-cols-2 gap-4">
+              <!-- ① 소비 시연: 추출 콘텐츠(G 등급)를 훑기·정독·저장으로 소비 -->
+              <div>
+                <div class="selctl__lbl" style="margin-bottom:6px">① 콘텐츠 소비 시연</div>
+                <div class="text-xs text-muted" x-show="memData && !memData.contents.length">먼저 [실행 · 추출]에서 콘텐츠를 추출하세요 · 소비할 콘텐츠가 여기에 나타납니다.</div>
+                <div class="space-y-2" style="max-height:430px;overflow:auto;padding-right:2px">
+                  <template x-for="c in ((memData && memData.contents) || [])" x-bind:key="'mc'+c.idx">
+                    <div class="tbox">
+                      <span class="nm" x-text="c.title"></span>
+                      <div class="flex items-center gap-1.5 flex-wrap" style="margin-top:4px">
+                        <span class="ds-badge ds-badge--category" x-text="c.cat"></span>
+                        <span class="ds-badge ds-badge--intent" x-text="c.intent"></span>
+                        <span class="ml-auto flex items-center gap-1">
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memConsume(c,'skim')" data-tip="3초 훑고 지나감 → [observed] 한 줄 기록" data-tip-pos="top">훑기</button>
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memConsume(c,'read')" data-tip="끝까지 읽음 → [observed] 한 줄 기록" data-tip-pos="top">정독</button>
+                          <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memConsume(c,'save')" data-tip="저장함 → [observed] 한 줄 기록" data-tip-pos="top">저장</button>
+                        </span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              <!-- ② 메모리 파일(실시간): 소비 즉시 이쪽 파일이 생기고 자란다 · 방금 기록분 하이라이트 -->
+              <div>
+                <div class="flex items-center" style="margin-bottom:6px">
+                  <span class="selctl__lbl">② 메모리 파일 (실시간)</span>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="memInject = !memInject" x-text="memInject ? '주입 미리보기 닫기' : '주입 미리보기'"></button>
+                </div>
+                <div x-show="memLog.length" class="space-y-1" style="margin-bottom:8px">
+                  <template x-for="(w, wi) in memLog" x-bind:key="'ml'+wi">
+                    <div class="text-xs" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span x-show="wi===0" class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>방금</span> <b class="text-ink" x-text="'/' + w.path"></b> <span class="text-muted" x-text="'← ' + w.line"></span></div>
+                  </template>
+                </div>
+                <pre x-show="memInject" class="tbox" style="white-space:pre-wrap;font-size:12px;margin-bottom:8px" x-text="memData ? memData.injection : ''"></pre>
+                <div class="text-xs text-muted" x-show="memData && !memData.files.length" style="margin-bottom:8px">현재 이 계정의 메모리는 비어 있는 상태 · 왼쪽에서 콘텐츠를 소비하거나 아래에서 파일을 만들어 보세요.</div>
+                <div class="space-y-2" style="max-height:240px;overflow:auto;padding-right:2px">
+                  <template x-for="f in ((memData && memData.files) || [])" x-bind:key="'mf'+f.path">
+                    <div class="tbox" style="cursor:pointer" x-bind:style="(memSel===f.path ? 'border-color:var(--ds-primary);' : '') + (memFlash===f.path ? 'background:var(--ds-surface);' : '')" x-on:click="memOpen(f.path)">
+                      <div class="flex items-center gap-1.5">
+                        <b class="text-ink text-sm" x-text="'/' + f.path"></b>
+                        <span x-show="memFlash===f.path" class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>방금 기록됨</span>
+                        <span class="meta tnum ml-auto" x-text="'v' + f.ver + ' · ' + f.bytes + 'B'"></span>
+                      </div>
+                      <div class="text-xs text-muted" x-show="f.desc" x-text="f.desc"></div>
+                    </div>
+                  </template>
+                </div>
+                <div class="flex items-center gap-2" style="margin-top:8px">
+                  <select x-model="memNew.kind" class="field" style="width:150px">
+                    <option value="profile.md">/profile.md</option>
+                    <option value="preferences.md">/preferences.md</option>
+                    <option value="topics">/topics/…</option>
+                    <option value="areas">/areas/…</option>
+                    <option value="people">/people/…</option>
+                  </select>
+                  <input x-model="memNew.name" class="field" style="flex:1;min-width:0" placeholder="이름 (한글·영문·숫자·-_)" x-show="memNew.kind!=='profile.md' && memNew.kind!=='preferences.md'" x-on:keydown.enter="memCreate()">
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memCreate()">새 파일</button>
+                </div>
+                <div class="text-xs text-muted" style="margin-top:4px" x-show="memMsg" x-text="memMsg"></div>
+              </div>
+            </div>
+            <!-- 선택 파일 편집기: 읽기 · 전체 쓰기(버전 토큰 검사) · 끝에 추가([stated]) · 삭제(확인 후) -->
+            <div x-show="memSel" x-cloak style="margin-top:12px">
+              <div class="flex items-center gap-2" style="margin-bottom:6px">
+                <b class="text-ink text-sm" x-text="'/' + memSel"></b>
+                <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" data-tip="버전 토큰 · 저장 시 서버 버전과 일치해야 덮어씁니다 (그 사이 파일이 바뀌었으면 충돌 안내)" data-tip-pos="top" x-text="'버전 v' + memVer"></span>
+                <span class="ml-auto flex items-center gap-1">
+                  <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memSave()">저장 (전체 쓰기)</button>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memDelete()">삭제</button>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="memSel=''">닫기</button>
+                </span>
+              </div>
+              <textarea x-model="memDraft" class="field" spellcheck="false" style="width:100%;min-height:170px;resize:vertical;font-size:12.5px"></textarea>
+              <div class="flex items-center gap-2" style="margin-top:6px">
+                <input x-model="memLine" class="field" style="flex:1" placeholder="사용자가 직접 말한 사실 한 줄 · [stated] 태그가 자동으로 붙습니다" x-on:keydown.enter="memAppendLine()">
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memAppendLine()">끝에 추가</button>
+              </div>
+            </div>
+            <!-- 설계 명세(설명): 폴더 구조 + 파일 형식 · 조작 · 저장 제외 · 한계 -->
+            <div style="margin-top:14px">
+              <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:200px">폴더 구조</th><th>담는 내용</th></tr></thead><tbody>
+                <tr><td><code class="text-violet">/profile.md</code></td><td>이름 · 직업 등 수개월 후에도 유효한 기본 정보</td></tr>
+                <tr><td><code class="text-violet">/topics/도메인.md</code></td><td>취향 · 습관 · 반복 주제 (예: food.md, schedule.md) · 소비 시연이 자동 기록하는 곳</td></tr>
+                <tr><td><code class="text-violet">/areas/이름.md</code></td><td>진행 중인 프로젝트 · 업무 · 마감</td></tr>
+                <tr><td><code class="text-violet">/people/이름.md</code></td><td>대화에 등장하는 인물의 관계 맥락</td></tr>
+                <tr><td><code class="text-violet">/preferences.md</code></td><td>응답 형식과 스타일에 대한 요구사항</td></tr>
+              </tbody></table></div>
+              <div style="margin-top:12px">
+                <div class="drow"><div class="k">파일 형식</div><div class="v text-sm text-body">상단에 메타데이터(파일명 · 한 줄 설명 · 출처 · 별칭)를 두고, 본문은 사용자가 직접 말한 사실만 <code class="text-violet">[stated]</code> 태그로 한 줄씩 기록합니다 · 소비 시연의 자동 기록은 <code class="text-violet">[observed]</code> 태그로 구분합니다(추론 · 검색 결과 · 제안은 저장 대상이 아님).</div></div>
+                <div class="drow"><div class="k">조작 방식</div><div class="v text-sm text-body">읽기 · 전체 쓰기 · 부분 수정 · 끝에 추가 · 삭제 5종 · 삭제는 명시적 요청이 있을 때만 실행하며, 수정 시에는 기존 파일을 먼저 읽고 버전 토큰을 확인한 뒤 덮어씁니다(위 편집기가 그대로 구현).</div></div>
+                <div class="drow"><div class="k">저장 제외</div><div class="v text-sm text-body">건강 정보 · 정치 성향 · 가족 실명 · 주소 · 금융 정보 등 민감 정보는 직접 말해도 기록하지 않습니다.</div></div>
+                <div class="drow"><div class="k">한계</div><div class="v text-sm text-body">텍스트 요약 수준이라 대화 전체 맥락은 보존되지 않음 · 파일당 크기 제한(4,000바이트)이 있어 한도에 닿으면 저장이 거절됨 · 진술을 검증 없이 기록하므로 오래되거나 틀린 정보가 남을 수 있음.</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 

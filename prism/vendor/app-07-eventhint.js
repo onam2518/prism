@@ -214,7 +214,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!(await this.dsConfirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)', { ok: '초기화', danger: true }))) return;
         try { const r = await this._afetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); const d = await r.json(); if (r.ok && d && !d.error && d.serviceGroups) this.dictData = d; } catch (e) {}
       },
-      async loadUser() { this.modBusy = true; try { this.userData = await (await this._afetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
+      async loadUser() { this.loadMem(); this.modBusy = true; try { this.userData = await (await this._afetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
       async uploadUserLog(e) {
         const f = e.target.files[0]; e.target.value = ''; if (!f) return;
         this.modBusy = true; this.pfMsg = '';
@@ -250,6 +250,56 @@ window.PRISM_APP_PARTS.push(() => ({
           else { this.userData = d; this.pfMsg = (d.saved || 0) + '명 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
         } catch (err) { this.pfMsg = '오류: ' + err; }
         this.modBusy = false;
+      },
+      // ── 실험실 · 사용자: 파일 기반 메모리(설계 실험 구동) ──
+      // 소비 시연(memConsume)이 그 턴에 서버 자동 기록 → 응답의 wrote 로 방금 기록분을
+      // 하이라이트·로그에 실시간 반영. 수동 조작은 전체 쓰기(버전 토큰)·끝에 추가·삭제.
+      memData: null, memSel: '', memDraft: '', memVer: 0, memLine: '', memMsg: '',
+      memNew: { kind: 'topics', name: '' }, memInject: false, memFlash: '', memLog: [], memBusy: false,
+      async loadMem() { try { const d = await (await this._afetch('/usermeta-memory', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) this.memData = d; } catch (e) {} },
+      memFile(p) { return ((this.memData && this.memData.files) || []).find(f => f.path === p) || null; },
+      memOpen(p) { const f = this.memFile(p); if (!f) return; this.memSel = p; this.memDraft = f.content; this.memVer = f.ver; this.memMsg = ''; },
+      async memPost(body, okMsg) {
+        this.memBusy = true; this.memMsg = '';
+        try {
+          const d = await (await this._afetch('/usermeta-memory', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
+          if (!d || d.error) { this.memMsg = '오류: ' + (d ? d.error : '응답 없음'); this.memBusy = false; return null; }
+          this.memData = d;
+          if (d.wrote) {
+            this.memLog.unshift(d.wrote); this.memLog = this.memLog.slice(0, 4);
+            this.memFlash = d.wrote.path; setTimeout(() => { this.memFlash = ''; }, 1600);
+          }
+          if (this.memSel) { const f = this.memFile(this.memSel); if (f) { this.memDraft = f.content; this.memVer = f.ver; } else { this.memSel = ''; this.memDraft = ''; } }
+          if (okMsg) this.memMsg = okMsg;
+          this.memBusy = false; return d;
+        } catch (e) { this.memMsg = '오류: ' + e; this.memBusy = false; return null; }
+      },
+      async memConsume(c, action) { const d = await this.memPost({ op: 'consume', idx: c.idx, action }); if (d && d.wrote) this.memOpen(d.wrote.path); },
+      memTemplate(p) {
+        return '---\n파일: /' + p + '\n설명: 한 줄 설명을 적어 주세요\n출처: 직접 입력\n별칭: \n---\n- [stated] 사용자가 직접 말한 사실만 한 줄씩 적습니다\n';
+      },
+      async memCreate() {
+        const k = this.memNew.kind; let p = k;
+        if (k !== 'profile.md' && k !== 'preferences.md') {
+          const n = (this.memNew.name || '').trim();
+          if (!n) { this.memMsg = '파일 이름을 입력하세요 (한글·영문·숫자·-_)'; return; }
+          p = k + '/' + n + (n.endsWith('.md') ? '' : '.md');
+        }
+        if (this.memFile(p)) { this.memOpen(p); return; }
+        const d = await this.memPost({ op: 'write', path: p, content: this.memTemplate(p) }, '파일 생성됨 · /' + p);
+        if (d) { this.memNew.name = ''; this.memOpen(p); this.memMsg = '파일 생성됨 · /' + p; }
+      },
+      async memSave() { if (this.memSel) await this.memPost({ op: 'write', path: this.memSel, content: this.memDraft, ver: this.memVer }, '저장됨 (전체 쓰기)'); },
+      async memAppendLine() {
+        const t = (this.memLine || '').trim(); if (!t || !this.memSel) return;
+        const line = t.indexOf('- [') === 0 ? t : '- [stated] ' + t;
+        const d = await this.memPost({ op: 'append', path: this.memSel, line }, '끝에 추가됨');
+        if (d) this.memLine = '';
+      },
+      async memDelete() {
+        if (!this.memSel) return;
+        if (!(await this.dsConfirm('/' + this.memSel + ' 파일을 삭제할까요? 삭제는 명시적 요청이 있을 때만 실행됩니다.', { ok: '삭제', danger: true }))) return;
+        await this.memPost({ op: 'delete', path: this.memSel }, '삭제됨');
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },
