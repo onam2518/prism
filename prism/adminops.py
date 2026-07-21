@@ -35,14 +35,24 @@ def _supa():
         return os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_KEY"]
     return None
 
-def _auth_post(url, path, key, body):
-    req = urllib.request.Request(url + path, method="POST",
+def _auth_req(url, path, key, body, method="POST"):
+    req = urllib.request.Request(url + path, method=method,
                                  data=json.dumps(body).encode("utf-8"),
                                  headers={"apikey": key, "Authorization": f"Bearer {key}",
                                           "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=20) as r:
         raw = r.read().decode("utf-8")
         return json.loads(raw) if raw.strip() else {}
+
+def _auth_post(url, path, key, body):
+    return _auth_req(url, path, key, body, method="POST")
+
+def _gen_temp_password(n: int = 12) -> str:
+    """혼동 없는 임시 비밀번호(생성자 전달용) · 대소문자·숫자에서 0/O·1/l/I 제외.
+    로그인 규칙(6자 이상)을 넉넉히 충족 · 재설정 후 사용자가 바꾸도록 안내한다."""
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(max(8, n)))
 
 def auth_action(data: dict) -> dict:
     """로그인/가입/세션 갱신 프록시(서버만 키 보유). mode=login|signup|refresh. 키는 프론트에 노출 안 함.
@@ -369,6 +379,31 @@ def admin_action(uid, team, data, email="") -> dict:
         if not hasattr(st, fn):
             return {"ok": False, "error": "이 백엔드는 위임을 지원하지 않습니다"}
         getattr(st, fn)(team, data["member"], act in ("set_admin", "set_super"))
+    elif act == "reset_password" and data.get("member"):
+        # 비밀번호 재설정: 팀 생성자만 · 대상 멤버에 임시 비밀번호를 발급(Supabase auth admin).
+        # 원문 조회는 불가(해시 저장)이므로 새 임시 비번을 만들어 생성자에게 1회 반환한다.
+        s = _supa()
+        if not s:
+            return {"ok": False, "error": "비밀번호 재설정은 팀 모드(supabase)에서만 가능합니다"}
+        t = st.team_info(team) if hasattr(st, "team_info") else None
+        if not (t and uid and uid == t.get("created_by")):
+            return {"ok": False, "error": "비밀번호 재설정은 팀 생성자만 할 수 있습니다"}
+        if data["member"] == t.get("created_by"):
+            return {"ok": False, "error": "생성자 본인의 비밀번호는 이 기능으로 바꿀 수 없습니다"}
+        members = st.team_members(team) if hasattr(st, "team_members") else []
+        target = next((m for m in members if m["id"] == data["member"]), None)
+        if not target:
+            return {"ok": False, "error": "팀 멤버가 아닙니다"}
+        url, key = s
+        temp = _gen_temp_password()
+        try:
+            _auth_req(url, f"/auth/v1/admin/users/{data['member']}", key,
+                      {"password": temp}, method="PUT")
+        except urllib.error.HTTPError as e:
+            return {"ok": False, "error": f"재설정 실패(HTTP{e.code})"}
+        except Exception as e:
+            return {"ok": False, "error": f"재설정 실패 · {str(e)[:120]}"}
+        return {"ok": True, "tempPassword": temp, "member": target.get("name") or data["member"]}
     elif act == "set_menu_perms":                  # 메뉴별 권한 매트릭스 저장(생성자 전용)
         t = st.team_info(team) if hasattr(st, "team_info") else None
         if _supa() and not (t and uid and uid == t.get("created_by")):

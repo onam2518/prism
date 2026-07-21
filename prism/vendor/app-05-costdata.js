@@ -282,6 +282,16 @@ window.PRISM_APP_PARTS.push(() => ({
         try { await this._afetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: action, member: member }) }); } catch (e) {}
         this.loadAdmin();
       },
+      // 비밀번호 재설정(생성자 전용): 임시 비번을 발급받아 1회 표시 · 생성자가 직접 전달
+      pwReset: null,
+      async resetMemberPassword(m) {
+        if (!(await this.dsConfirm((m.name || '이 멤버') + ' 님의 비밀번호를 재설정할까요? 임시 비밀번호가 발급되며, 기존 비밀번호로는 더 이상 로그인할 수 없습니다.', { ok: '재설정' }))) return;
+        try {
+          const r = await (await this._afetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'reset_password', member: m.id }) })).json();
+          if (r && r.ok && r.tempPassword) this.pwReset = { member: r.member || m.name, pw: r.tempPassword };
+          else this._err((r && r.error) || '재설정에 실패했습니다');
+        } catch (e) { this._err('재설정 요청이 실패했습니다 · 네트워크 상태를 확인하세요'); }
+      },
       // 원문 링크 백필: 매핑 파일 업로드 → source_url 만 갱신(초안·판정 불변) · 결과 요약 표시
       async backfillUrls() {
         const f = this.$refs.bfFile && this.$refs.bfFile.files[0];
