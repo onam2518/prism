@@ -1,10 +1,11 @@
 /* 모바일 검수 전용(/m) 앱 상태 · 데스크탑과 같은 API 계약(/auth·/reviewer·/raw·/feedback·/dict)만 사용.
-   v1.1: 목록 화면(탭 진입) + 카드 검수 · 카테고리 한글 표시(catKo · /dict 재사용). */
+   v1.1: 목록 화면(탭 진입) + 카드 검수 · 카테고리 한글 표시(catKo · /dict 재사용).
+   v1.2: 원문 열기 링크 · 배정 배타 잠금(PC #229 대응) · 서버 거부 응답 토스트. */
 window.mreview = () => ({
   view: 'boot', sheet: '', backend: '', guideUrl: '', theme: 'light',
   email: '', pw: '', nick: '', err: '', busy: false,
   authToken: '', rtoken: '', reviewer: '', name: '',
-  items: [], idx: 0, done: 0, fixed: 0, earned: 0, points: null, toast: '', _toastT: null,
+  items: [], idx: 0, done: 0, fixed: 0, earned: 0, points: null, myId: '', toast: '', _toastT: null,
   fix: { elems: ['summary'], note: '' },
   defTitle: '', defBody: '', dict: null,
   updateAvail: false, _boot: '',                   // 새 버전 배포 감지(서버 부팅 ID 변화) · 새로고침 배너(PC 규약)
@@ -129,6 +130,7 @@ window.mreview = () => ({
       const r = await (await this.afetch('/arena' + (this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''))).json();
       // 내 행 매칭 = reviewer_id(서버 my_id) 우선 · 이름 매칭은 닉네임 변경 직후 어긋난다(데스크탑과 동일 규약)
       const rows = (r && r.leaderboard) || [];
+      this.myId = (r && r.my_id) || '';              // 배정 배타 판정용(데스크탑 detailAssignBlocked 과 동일 규약)
       const me = (r && r.my_id && rows.find((x) => x.reviewer_id === r.my_id)) || rows.find((x) => x.reviewer === this.name);
       if (me) this.points = me.points;
     } catch (e) {}
@@ -158,8 +160,18 @@ window.mreview = () => ({
     const fb = (it && it.fb) || {};                // 로컬도 loadItems 가 reviewer 를 보내 mine 이 채워진다
     return !!fb.mine;                              // 타 검수자 표만 있으면 미검수로 남는다(2026-07-10)
   },
-  unreviewedCount() { return this.items.filter((it) => !this.reviewed(it)).length; },
-  progPct() { const t = this.items.length; return t ? Math.round((t - this.unreviewedCount()) / t * 100) : 0; },
+  // 배정 배타(PC #229 와 동일 규약): 지정 검수자가 있는데 내가 아니면 잠금(보기만) · 서버 게이트는 백스톱
+  blocked(it) {
+    const a = (it && it.assignees) || [];
+    if (!a.length) return false;
+    const me = this.myId || this.name || this.reviewer;
+    return a.indexOf(me) < 0;
+  },
+  pool() { return this.items.filter((it) => !this.blocked(it)); },   // 내가 판정할 수 있는 것만 · 진행률·검수 시작의 분모
+  unreviewedCount() { return this.pool().filter((it) => !this.reviewed(it)).length; },
+  progDone() { return this.pool().filter((it) => this.reviewed(it)).length; },
+  progTotal() { return this.pool().length; },
+  progPct() { const t = this.progTotal(); return t ? Math.round(this.progDone() / t * 100) : 0; },
   gradeLabel(g) { return g === 'G' ? '유통 가능 · G' : (g === 'R' ? '차단 · R' : '판정 보류 · 재실행 필요'); },
   gradeClass(g) { return g === 'G' ? 'ds-badge--success' : (g === 'R' ? 'ds-badge--error' : 'ds-badge--reason'); },
   teamLine(fb) { return '팀 의견 · 정확 ' + (fb.good || 0) + '개 · 수정 필요 ' + (fb.bad || 0) + '개'; },
@@ -208,19 +220,20 @@ window.mreview = () => ({
     if (!this._swOn) return;
     this._swOn = false;
     const dx = this.swipeDx; this.swipeDx = 0;
+    if (this.blocked(this.cur())) return;            // 잠금 카드는 스와이프 판정도 무시
     if (dx >= 70) this.good();                       // → 정확(저장 실패·연타 처리는 good 이 담당)
     else if (dx <= -70) this.openFix();              // ← 수정 시트(메모 입력 후 저장)
   },
   startReview() {
-    const i = this.items.findIndex((it) => !this.reviewed(it));
+    const i = this.items.findIndex((it) => !this.reviewed(it) && !this.blocked(it));
     if (i >= 0) this.open(i);
   },
-  _advance() {                                     // 다음 미검수(현재 뒤 → 앞 순환) · 없으면 완료 화면
+  _advance() {                                     // 다음 미검수(현재 뒤 → 앞 순환 · 잠금 제외) · 없으면 완료 화면
     this.done += 1;
     const n = this.items.length;
     for (let s = 1; s <= n; s++) {
       const j = (this.idx + s) % n;
-      if (!this.reviewed(this.items[j])) { this.idx = j; return; }
+      if (!this.reviewed(this.items[j]) && !this.blocked(this.items[j])) { this.idx = j; return; }
     }
     this.view = 'done';
   },
@@ -263,20 +276,22 @@ window.mreview = () => ({
   },
   _missions(r) { ((r && r.missions_completed) || []).forEach((m) => this._celebrate(m.bonus, '미션 달성 · ' + m.label)); },
   async good() {
+    if (this.blocked(this.cur())) return;
     const r = await this._post('good');
     if (r === 'skip') return;                       // 연타 무시(진행도 안 넘김)
     if (r === null) { this._netFail(); return; }    // 서버 미저장(오프라인 등) → 진행·점수 올리지 않음(판정 유실 방지)
+    if (r.ok === false) { this._netFail(r.error); return; }   // 서버 거부(배정 배타 등) → 로컬 반영·진행 금지
     this._markMine('good');
     if (!this._goldReveal(r)) this._celebrate(10, '검수 완료');
     this._missions(r);
     this._advance();
   },
-  _netFail() {
-    this.toast = '⚠️ 저장 실패 · 연결 확인 후 다시 시도해 주세요';
+  _netFail(msg) {
+    this.toast = '⚠️ ' + (msg || '저장 실패 · 연결 확인 후 다시 시도해 주세요');
     if (this._toastT) clearTimeout(this._toastT); this._toastT = setTimeout(() => { this.toast = ''; }, 2600);
   },
   openFix() {
-    const c = this.cur(); if (!c) return;
+    const c = this.cur(); if (!c || this.blocked(c)) return;
     const fb = (c.fb || {});
     // 직전 교정 이어쓰기: 내 메모·요소 프리필(선두 '[요소] ' 태그는 저장 시 재부착이라 벗긴다)
     this.fix.note = String(fb.note || '').replace(/^\[[^\]]*\]\s*/, '');
@@ -295,6 +310,7 @@ window.mreview = () => ({
     const r = await this._post('bad', this.fix.elems.slice(), tagged);
     if (r === 'skip') return;
     if (r === null) { this._netFail(); return; }    // 시트 유지(메모 보존) · 재시도 유도
+    if (r.ok === false) { this._netFail(r.error); return; }   // 서버 거부 → 시트 유지·진행 금지
     this._markMine('bad', tagged, this.fix.elems);
     this.sheet = ''; this.fixed += 1;
     if (!this._goldReveal(r)) this._celebrate(hadNote ? 10 : 25, hadNote ? '검수 완료' : '교정 반영');
