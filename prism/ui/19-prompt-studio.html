@@ -10,35 +10,12 @@
 
       <!-- ── 프롬프트 · 빌더: STEP 1 선언 → STEP 2 컴파일 → 테스트 → 적용·저장 ── -->
       <div x-show="mod === 'studio' && studioTab === 'prompt' && promptSub === 'builder'" x-cloak class="w-full space-y-4">
-        <!-- 감독의 발주서(캐릭터 브리핑 · 채택 시안 D-2): 한 벌 선언 → 계열별 프롬프트 자동 -->
-        <section class="panel" data-fn><div class="panel-hd"><b>감독의 발주서 · 이 화면의 흐름</b><span class="meta">한 벌 선언 → 계열별 프롬프트 자동</span></div>
-          <div class="panel-bd">
-            <div class="brf">
-              <div class="brf__left">
-                <div class="brf__speech">"필요한 걸 말로 적기만 해. 계열마다 어투가 다른 건 컴파일러가 맞춘다 — 우린 던져보고 확인만 하면 돼."</div>
-                <img src="/vendor/ddakji-manager.svg" alt="감독 딱지">
-              </div>
-              <div class="brf__board">
-                <div class="brf__row">
-                  <span class="brf__tag brf__tag--now"><span class="brf__pin"></span>STEP 1 스펙 선언</span>
-                  <span class="brf__arrow">→</span>
-                  <span class="brf__hub">메타 컴파일러</span>
-                  <span class="brf__arrow">→</span>
-                  <span class="brf__fan"><span class="brf__tag">Claude 그립</span><span class="brf__tag">GPT 그립</span><span class="brf__tag">Gemini 그립</span><span class="brf__tag">Solar 그립</span></span>
-                </div>
-                <div class="brf__row">
-                  <span class="brf__tag">테스트 실행 · 용희</span><span class="brf__arrow">→</span>
-                  <span class="brf__tag">적용 · 단계 지시(딱지) · 라이브러리(복실)</span><span class="brf__arrow">↦ 배포</span>
-                </div>
-                <div class="brf__legend">
-                  <span>채운 자석 = 당신이 적는 유일한 입력(과업·역할·제약·출력 형식)</span>
-                  <span>점선 태그 = 컴파일러가 계열마다 자동 생성 · 채택 전 테스트 필수</span>
-                  <span>운영 엔진(계약·래퍼·미리보기)은 사전 · 정책 → 프롬프트 엔진에서</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+        <!-- 프로세스 안내(표준 · 시안 A): 설계 도구(파이프라인 밖) → 캐릭터 없이 표준 힌트박스 -->
+        <ul class="ds-bullets hintbox" style="padding:14px 16px">
+          <li>과업·역할·제약·출력 형식을 <b>말로 선언</b>하면, 메타 컴파일러가 <b>계열(Claude·GPT·Gemini·Solar)별 프롬프트</b>를 만듭니다.</li>
+          <li>만든 프롬프트는 <b>테스트</b>를 거쳐 적용·라이브러리 저장·배포합니다(채택 전 테스트 필수).</li>
+          <li>운영 엔진(계약·래퍼·미리보기)은 <b>사전 · 정책 → 프롬프트 엔진</b>에서 관리합니다.</li>
+        </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
         <section class="panel" data-fn><div class="panel-hd"><b style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">STEP 1</span>스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
           <div class="panel-bd">

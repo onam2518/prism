@@ -1,30 +1,19 @@
       <!-- ═══ 모듈: 테스트셋 생성 · 골든/검수/원본 뷰 ═══ -->
       <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
       <div x-show="mod === 'evaluate'" x-cloak class="w-full space-y-4">
-          <!-- 프로세스 안내(더그아웃 브리핑): 캐릭터 4인이 파이프라인을 자기소개 대화로 안내 -->
-          <section class="panel" data-fn><div class="panel-hd"><b>평가 파이프라인 · 팀 브리핑</b><span class="meta">초안 → 검수 → 정답셋 → 평가 → 진단 → 개선 · ↺ 재평가 폐루프</span></div>
-            <div class="panel-bd">
-              <div class="dugout">
-                <div class="dug">
-                  <div class="dug__bubble"><b>① 콘텐츠 실행</b>제가 모델로 초안 메타를 던져요. 아직 정답은 아니에요!</div>
-                  <div class="dug__person"><img src="/vendor/yonghee-pitcher.svg" alt=""><span><span class="dug__nm">용희</span><br><span class="dug__rl">투수 · 초안 생성</span></span></div>
-                </div>
-                <div class="dug">
-                  <div class="dug__bubble"><b>② 검수 · ③ 정답셋</b>제가 검수로 걸러내죠. 합의된 것만 정답셋으로 쌓입니다.</div>
-                  <div class="dug__person"><img src="/vendor/daesik-batter.svg" alt=""><span><span class="dug__nm">대식</span><br><span class="dug__rl">타자 · 검수 합의</span></span></div>
-                </div>
-                <div class="dug dug--now">
-                  <div class="dug__bubble"><b>④ 평가 런 · ⑤ 루브릭 진단 — 지금 여기</b>이 메뉴예요! 정답셋 기준으로 같은 메타가 다시 나오는지 재고, 약한 축(정확성·형식·정책·간결성)을 진단해요.</div>
-                  <div class="dug__person"><img src="/vendor/boksil-catcher.svg" alt=""><span><span class="dug__nm">복실</span><br><span class="dug__rl">포수 · 평가·진단</span></span></div>
-                </div>
-                <div class="dug">
-                  <div class="dug__bubble"><b>⑥ 프롬프트 개선</b>진단대로 고치고 재평가! 점수 떨어지면 채택 안 한다. 이게 우리 루프다.</div>
-                  <div class="dug__person"><img src="/vendor/ddakji-manager.svg" alt=""><span><span class="dug__nm">딱지</span><br><span class="dug__rl">감독 · 개선 지휘</span></span></div>
-                </div>
-              </div>
-              <div class="dug__foot">①~③은 콘텐츠·검수·정답셋 메뉴에서 · ⑥은 프롬프트 스튜디오·학습 반영에서 · 오토파일럿이 ↺ 루프를 자동 반복합니다</div>
+          <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 용희(학습·평가) -->
+          <div class="ds-guide">
+            <span class="ds-guide__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span>
+            <div class="ds-guide__bubble">
+              <div class="ds-guide__who">용희 · 학습·평가 담당</div>
+              <div class="ds-guide__say">정답셋을 기준으로 모델 결과를 재는 화면입니다.</div>
+              <ul class="ds-bullets">
+                <li>검수 합의로 쌓인 <b>정답셋</b>과 모델 결과를 비교해 요약 수치와 <b>불일치 목록</b>을 만듭니다(건수가 적으면 오차가 큽니다).</li>
+                <li>불일치 건은 하나씩 판정합니다 · <b>모델이 맞음</b> = 정답 교정 후보 · <b>정답 유지</b> = 모델 오답 확정.</li>
+                <li>평가·진단 결과는 <b>프롬프트 개선(학습 반영)</b>으로 이어집니다 · 점수가 낮아진 보정은 채택되지 않습니다.</li>
+              </ul>
             </div>
-          </section>
+          </div>
           <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
             <div class="panel-bd">
               <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -45,7 +34,6 @@
           </section>
           <section class="panel"><div class="panel-hd"><b>평가 실행</b><span class="meta">위 기준으로 정답셋과 비교 · 요약과 건별 판정</span></div>
             <div class="panel-bd">
-              <ul class="ds-bullets" style="margin-bottom:11px"><li>검수 합의로 쌓인 <b>정답셋(테스트셋)</b>과 모델 결과를 비교해 요약 수치와 <b>불일치 목록</b>을 만듭니다.</li><li>불일치 건은 검수처럼 <b>건별 판정</b>합니다 · <b>모델이 맞음</b>=정답을 고칠 후보로 표시 · <b>정답 유지</b>=모델 오답으로 확정.</li><li>평가 건수가 적으면 오차가 큽니다 · 신뢰구간이 겹치면 우열 판단을 미룹니다.</li></ul>
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? ('평가 중… ' + (goldenResult && goldenResult.total ? ((goldenResult.cursor||0) + '/' + goldenResult.total) : '(전건 추출)')) : '평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
               <template x-if="goldenBusy && goldenResult && goldenResult.total">

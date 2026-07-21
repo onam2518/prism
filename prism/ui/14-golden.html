@@ -4,17 +4,27 @@
         <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
         <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
       </div></div>
+      <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 용희(학습·평가) -->
+      <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:12px">
+        <div class="ds-guide">
+          <span class="ds-guide__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span>
+          <div class="ds-guide__bubble">
+            <div class="ds-guide__who">용희 · 학습·평가 담당</div>
+            <div class="ds-guide__say">검수로 쌓인 정답셋을 관리하고 학습 반영을 실행하는 화면입니다.</div>
+            <ul class="ds-bullets">
+              <li>검수에서 <b>'정확' 합의</b>된 건이 학습 반영 때 정답셋으로 승격됩니다.</li>
+              <li><b>학습 반영</b>은 검수 피드백으로 프롬프트를 보정하고 버전을 하나 올립니다(점수가 낮아진 보정은 자동 원복).</li>
+              <li>쌓인 데이터는 <b>정답셋 목록 · 학습 데이터</b> 탭에서 확인하고 내려받습니다.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
       <!-- 정답셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
       <div x-show="mod === 'testset' && testTab === 'status'" x-cloak class="w-full space-y-4">
-          <!-- 감독의 훈련 일지(캐릭터 브리핑 · 채택 시안 C-3): 반영마다 버전이 오르는 성장 궤적(실데이터) -->
-          <section class="panel" data-fn><div class="panel-hd"><b>감독의 훈련 일지</b><span class="meta">학습 반영마다 정답을 프롬프트에 새기고 · 버전이 오릅니다</span></div>
+          <!-- 학습 반영 이력(실데이터 · verRows): 반영일 · 버전 · 반영 정답 · 일치율 -->
+          <section class="panel" data-fn><div class="panel-hd"><b>학습 반영 이력</b><span class="meta">반영마다 프롬프트가 보정되고 버전이 오릅니다</span></div>
             <div class="panel-bd">
-              <div class="jour">
-                <div class="jour__coach">
-                  <div class="brf__speech">"쌓인 정답, 오늘도 프롬프트에 새긴다."</div>
-                  <img src="/vendor/ddakji-manager.svg" alt="감독 딱지">
-                </div>
-                <div class="jour__book">
+              <div class="jour__book">
                   <template x-for="r in verRows.slice(0, 4)" x-bind:key="'je'+r.v">
                     <div class="jentry">
                       <span class="jentry__date tnum" x-text="r.ts ? fmtTs(r.ts) : '·'"></span>
@@ -23,15 +33,14 @@
                       <span class="jentry__acc tnum" x-text="r.acc != null ? (Math.round(r.acc*100) + '%' + (r.delta ? (' (' + (r.delta>0?'+':'') + Math.round(r.delta*100) + '%p)') : '')) : '·'"></span>
                     </div>
                   </template>
-                  <div class="jentry" x-show="!verRows.length"><span class="jentry__body">아직 반영된 버전이 없습니다 · 검수가 쌓이고 학습 반영이 돌면 이 일지에 성장 궤적이 기록됩니다</span></div>
+                  <div class="jentry" x-show="!verRows.length"><span class="jentry__body">아직 반영된 버전이 없습니다 · 검수가 쌓이고 학습 반영이 돌면 여기에 기록됩니다</span></div>
                 </div>
-              </div>
-              <div class="jour__foot">정답을 모으는 것으로 끝이 아니라 <b>반영될 때마다 버전이 오르고 팀이 강해집니다</b> · 점수가 낮아진 보정은 채택하지 않습니다(자동 원복)</div>
+              <div class="jour__foot">일치율이 낮아진 보정은 채택하지 않습니다(자동 원복)</div>
             </div>
           </section>
           <!-- 골든 생성 현황: 누적·최근 배치·분류 필요 -->
-          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>테스트셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다 · 현재 프롬프트 <span class="tnum" x-text="verTxt"></span></span>
-            <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenStatus()" data-tip="새로고침" data-tip-pos="bottom" aria-label="골든 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <section class="panel" data-fn x-init="loadGoldenStatus()"><div class="panel-hd"><b>정답셋 현황</b><span class="meta">검수에서 '정확' 합의가 정답으로 쌓입니다 · 현재 프롬프트 <span class="tnum" x-text="verTxt"></span></span>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadGoldenStatus()" data-tip="새로고침" data-tip-pos="bottom" aria-label="정답셋 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </div>
             <div class="panel-bd">
               <template x-if="goldenStatus">
@@ -298,7 +307,7 @@
 
 
       <div x-show="mod === 'testset' && testTab === 'golden'" x-cloak class="w-full space-y-4">
-        <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋(골든) 목록</b>
+        <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋 목록</b>
           <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수로 확정 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 직접 등록 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
           <span class="ml-auto" style="display:flex;gap:6px">
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-show="goldenList && goldenList.items && goldenList.items.length" x-on:click="exportGolden()" data-tip="엑셀 다운로드 (CSV)" data-tip-pos="bottom" aria-label="정답셋 엑셀 다운로드"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg></button>
@@ -337,13 +346,13 @@
               <template x-if="learnData">
                 <div>
                   <div class="tiles" style="grid-template-columns:repeat(5,1fr)">
-                    <div class="tile" style="cursor:help" data-tip="사람 검수 합의로 확정된 정답 데이터 · 평가와 학습의 기준" data-tip-pos="top"><div class="n tnum" x-text="learnData.golden_n"></div><div class="t">골든(정답)</div></div>
+                    <div class="tile" style="cursor:help" data-tip="사람 검수 합의로 확정된 정답 데이터 · 평가와 학습의 기준" data-tip-pos="top"><div class="n tnum" x-text="learnData.golden_n"></div><div class="t">정답셋</div></div>
                     <div class="tile" style="cursor:help" data-tip="카테고리(클래스)별 목표 8건(SetFit 2022)을 채운 클래스 수" data-tip-pos="top"><div class="n tnum" x-text="learnData.covered + '/' + learnData.class_total"></div><div class="t">클래스 충족</div></div>
                     <div class="tile" style="cursor:help" data-tip="검수자 간 판정 일치도(Krippendorff's alpha) · 참고 지표(임계값 기계 적용 금지 · Artstein & Poesio 2008)" data-tip-pos="top"><div class="n tnum" x-text="learnData.alpha == null ? '·' : learnData.alpha"></div><div class="t">일치도 α</div></div>
-                    <div class="tile" style="cursor:help" data-tip="최근 골든 평가에서 모델과 정답이 어긋난 건(기계 플래그 → 사람 확정 · Northcutt 2021)" data-tip-pos="top"><div class="n tnum" x-text="(learnData.label_flags||[]).length"></div><div class="t">오류 의심</div></div>
+                    <div class="tile" style="cursor:help" data-tip="최근 정답셋 평가에서 모델과 정답이 어긋난 건(기계 플래그 → 사람 확정 · Northcutt 2021)" data-tip-pos="top"><div class="n tnum" x-text="(learnData.label_flags||[]).length"></div><div class="t">오류 의심</div></div>
                     <div class="tile" style="cursor:help" data-tip="같은 콘텐츠에 검수자 판정이 갈린 건 · 재검토 우선 대상" data-tip-pos="top"><div class="n tnum" x-text="learnData.split_n"></div><div class="t">의견 불일치</div></div>
                   </div>
-                  <div class="text-xs text-muted" style="margin-top:12px" x-show="learnData.acc_ci">골든 정합성 <b class="text-ink" style="cursor:help" data-tip="정답셋과 현재 모델의 등급 일치율 · 95% 신뢰구간(Miller 2024): 표본이 적을수록 구간이 넓어집니다" data-tip-pos="top" x-text="ciTxt(learnData.acc_ci)"></b> · 신뢰구간이 겹치는 비교는 판정 보류</div>
+                  <div class="text-xs text-muted" style="margin-top:12px" x-show="learnData.acc_ci">정답셋 정합성 <b class="text-ink" style="cursor:help" data-tip="정답셋과 현재 모델의 등급 일치율 · 95% 신뢰구간(Miller 2024): 표본이 적을수록 구간이 넓어집니다" data-tip-pos="top" x-text="ciTxt(learnData.acc_ci)"></b> · 신뢰구간이 겹치는 비교는 판정 보류</div>
                 </div>
               </template>
               <div x-show="!learnData" class="text-xs text-muted">집계를 불러오는 중이거나, 관리자 권한이 필요합니다</div>
@@ -357,11 +366,11 @@
                 <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="지도 미세조정(Supervised Fine-Tuning) 학습쌍 · 콘텐츠 → 확정 메타" data-tip-pos="top" x-on:click="exportLearn('sft')">SFT 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.sft + ')'"></span></button>
                 <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="선호 학습(DPO)용 교정 전/후 쌍 · 상세 화면에서 교정할수록 쌓입니다" data-tip-pos="top" x-on:click="exportLearn('dpo')">선호쌍(DPO) 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.dpo + ')'"></span></button>
                 <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="판정 이유(rationale) 데이터 · 근거 증류 학습(Distilling Step-by-Step)용" data-tip-pos="top" x-on:click="exportLearn('rationale')">판단근거 내보내기 <span class="tnum" x-text="'(' + learnData.extractable.rationale + ')'"></span></button>
-                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="골든마다 사람 판단의 궤적(판정 노트·REAP 사유·교정 전/후·합의)을 결속 · '왜 이 정답인가' 검증용" data-tip-pos="top" x-on:click="exportLearn('knowhow')">노하우 내보내기 <span class="tnum" x-text="'(' + (learnData.extractable.knowhow == null ? '·' : learnData.extractable.knowhow) + ')'"></span></button>
+                <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" data-tip="정답셋마다 사람 판단의 궤적(판정 노트·REAP 사유·교정 전/후·합의)을 결속 · '왜 이 정답인가' 검증용" data-tip-pos="top" x-on:click="exportLearn('knowhow')">노하우 내보내기 <span class="tnum" x-text="'(' + (learnData.extractable.knowhow == null ? '·' : learnData.extractable.knowhow) + ')'"></span></button>
                 <button type="button" class="ds-btn ds-btn--secondary" style="height:32px" x-on:click="exportSpec()" data-tip="현재 수치·기준치·권장 스펙을 한 문서로(파인튜닝 소요서 .md)" data-tip-pos="top">소요서(.md) 생성</button>
                 <button type="button" class="ds-btn ds-btn--primary" style="height:32px" x-on:click="exportHandoff()" data-tip="모델러 전달용 한 파일(.zip): 학습데이터 3종 + 노하우·백로그 + 소요서 + 프롬프트·사전 스냅샷 + manifest(건수·체크섬·직전 발행 대비 증분)" data-tip-pos="top">핸드오프 번들(.zip)</button>
               </div>
-              <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.knowhow">노하우 결속 <b class="text-ink tnum" x-text="(learnData.knowhow ? learnData.knowhow.n : 0) + '/' + learnData.golden_n + '건'"></b> · 골든에 사람 판단 사유(검수 노트·교정 이력)가 연결된 비율 · 결속률이 낮으면 검수 노트 작성을 독려하세요</div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="learnData.knowhow">노하우 결속 <b class="text-ink tnum" x-text="(learnData.knowhow ? learnData.knowhow.n : 0) + '/' + learnData.golden_n + '건'"></b> · 정답셋에 사람 판단 사유(검수 노트·교정 이력)가 연결된 비율 · 결속률이 낮으면 검수 노트 작성을 독려하세요</div>
             </div>
         </section>
         </template>
@@ -460,23 +469,19 @@
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
-        <!-- 타순으로 보는 검수(캐릭터 브리핑 · 채택 시안 B-4): 대기열→판정·합의→정답셋 흐름(예시) -->
-        <section class="panel" data-fn><div class="panel-hd"><b>타순으로 보는 검수</b><span class="meta">YELLOW 대기열 → 판정·합의 → 정답셋 · 예시로 보는 상태들</span></div>
-          <div class="panel-bd">
-            <div class="rvq">
-              <div class="rvq__hd">타순 · 검수 대상 콘텐츠 · 상태 (예시)</div>
-              <div class="rvq__row"><span class="rvq__ord">1</span><span class="rvq__ttl">AI 규제 해설 브리핑</span><span class="rvq__st"><span class="rvq-call rvq-call--ok">정확</span><span class="rvq__who">합의 3명 → 정답셋</span></span></div>
-              <div class="rvq__row"><span class="rvq__ord">2</span><span class="rvq__ttl">부동산 시황 요약</span><span class="rvq__st"><span class="rvq-call rvq-call--fix">수정</span><span class="rvq__who">대식 교정 → 고쳐서 편입</span></span></div>
-              <div class="rvq__row"><span class="rvq__ord">3</span><span class="rvq__ttl">연예 소식 정리</span><span class="rvq__st"><span class="rvq-call rvq-call--split">의견 갈림</span><span class="rvq__who">→ 딱지 최종 검수</span></span></div>
-              <div class="rvq__row"><span class="rvq__ord">4</span><span class="rvq__ttl">스포츠 시즌 정리 기사</span><span class="rvq__st"><span class="rvq__who">2명 보는 중 · 실시간</span><span class="rvq-call rvq-call--wait"><span class="rvq-dot"></span>검토 중</span></span></div>
-              <div class="rvq__row"><span class="rvq__ord">5</span><span class="rvq__ttl">오늘의 날씨 브리핑</span><span class="rvq__st"><span class="rvq-call rvq-call--wait"><span class="rvq-dot"></span>YELLOW 대기</span></span></div>
-            </div>
-            <div class="rvq-bench">
-              <div style="display:flex;gap:8px;align-items:flex-end"><img src="/vendor/yonghee-pitcher.svg" alt=""><img src="/vendor/daesik-batter.svg" alt=""><img src="/vendor/boksil-catcher.svg" alt=""><img src="/vendor/ddakji-manager.svg" alt=""></div>
-              <div class="cap">용희가 던진 초안이 <b>YELLOW로 대기</b> → 대식이 정확/수정 판정하고 필요하면 교정 → 여럿의 콜이 <b>합의</b>를 이루면 복실의 정답셋으로, 갈리면 딱지의 최종 검수로. 같은 타순을 여러 검수자가 실시간으로 함께 봅니다.</div>
-            </div>
+        <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 복실(검수) -->
+        <div class="ds-guide">
+          <span class="ds-guide__av"><img src="/vendor/boksil-catcher.svg" alt=""></span>
+          <div class="ds-guide__bubble">
+            <div class="ds-guide__who">복실 · 검수 담당</div>
+            <div class="ds-guide__say">모델이 만든 초안을 사람이 판정하고 고치는 화면입니다.</div>
+            <ul class="ds-bullets">
+              <li>모델 실행으로 만들어진 <b>초안</b>이 올라옵니다 · 확신이 낮은 건은 <b>YELLOW</b>로 표시됩니다.</li>
+              <li>행을 열어 <b>정확 · 수정</b>을 판정하고, 필요하면 내용을 고칩니다 · 여러 검수자가 실시간으로 함께 봅니다.</li>
+              <li>판정이 합의되면 학습 반영 때 <b>정답셋</b>으로 쌓이고, 의견이 갈리면 <b>최종 검수</b>로 넘어갑니다.</li>
+            </ul>
           </div>
-        </section>
+        </div>
         <!-- 모델 선택(별도 영역 · selctl 정책): 아래 목록의 기준 모델 지정 -->
         <section class="panel" data-fn><div class="panel-hd"><b>모델 선택</b><span class="meta">아래 목록의 기준 모델 지정</span></div>
           <div class="panel-bd">
@@ -497,6 +502,7 @@
         </section>
         <section class="panel" data-fn><div class="panel-hd"><b>검수 대상 콘텐츠</b><span class="meta tnum" x-text="rawData ? (rawData.n + '건 · 최근순') : ''"></span>
           <span class="ml-auto" style="display:flex;gap:var(--ds-space-2);align-items:center">
+            <span class="copybtn" style="cursor:help" data-tip="목록: J/K 행 이동 · Enter 상세 열기 · 상세: A=정확 S=수정 ←→=이동(자동 다음) · JSON 원문은 행 우측 { }" data-tip-pos="bottom">⌨ 단축키</span>
             <button type="button" class="copybtn" x-on:click="exportDash()" data-tip="전체 결과 CSV 다운로드" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>CSV</button>
             <button type="button" class="copybtn" x-on:click="openReport()" data-tip="브라우저용 HTML 리포트 열기" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>리포트</button>
             <button type="button" class="copybtn" x-show="opsAdmin" x-on:click="openBulk()" data-tip="여러 콘텐츠에 검수 담당자를 한 번에 배정" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M15 11a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M17 14a4 4 0 0 1 4 4v2"/></svg>일괄 배정</button>
@@ -504,7 +510,7 @@
           </span>
         </div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>행 클릭 = <b>검수 상세</b>(판정·교정) · 목록에서 <b>J/K</b>=행 이동 · <b>Enter</b>=상세 열기 · 상세에서 A/S/←→ 단축키와 자동 다음 이동을 쓸 수 있습니다 · JSON 원문은 행 우측 <b>{ }</b>.</li><li x-show="rawModel">현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다.</li></ul>
+            <ul class="ds-bullets" style="margin-bottom:11px" x-show="rawModel" x-cloak><li>현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다.</li></ul>
             <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
             <div class="filterbar">
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">

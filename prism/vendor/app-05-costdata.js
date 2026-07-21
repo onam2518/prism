@@ -31,7 +31,7 @@ window.PRISM_APP_PARTS.push(() => ({
       goldenList: null,
       async loadGoldenList() { try { const r = await (await this._afetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) {} },
       async removeGolden(h) {
-        if (!(await this.dsConfirm('이 골든 항목을 제거할까요? (평가 정답셋에서 빠집니다)', { ok: '제거', danger: true }))) return;
+        if (!(await this.dsConfirm('이 정답 항목을 제거할까요? (정답셋에서 빠집니다)', { ok: '제거', danger: true }))) return;
         try { await this._afetch('/golden-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: h }) }); } catch (e) {}
         this.loadGoldenList(); this.loadGoldenStatus(); this.loadLearnData();
       },
@@ -273,7 +273,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async adminAct(action, member) {
         if (action === 'clear_feedback' && !(await this.dsConfirm('우리 팀의 평가 피드백을 모두 삭제할까요? 게임 점수·레벨은 보존됩니다.', { ok: '삭제', danger: true }))) return;
         if (action === 'clear_contents' && !(await this.dsConfirm('우리 팀의 검토 콘텐츠를 모두 삭제할까요?', { ok: '삭제', danger: true }))) return;
-        if (action === 'clear_golden' && !(await this.dsConfirm('정답셋(골든)을 모두 삭제할까요? 되돌릴 수 없습니다.', { ok: '삭제', danger: true }))) return;
+        if (action === 'clear_golden' && !(await this.dsConfirm('정답셋을 모두 삭제할까요? 되돌릴 수 없습니다.', { ok: '삭제', danger: true }))) return;
         if (action === 'reset_scores' && !(await this.dsConfirm('팀 전원의 게임 점수·레벨을 0부터 다시 시작할까요? 검수 데이터·배지·정답셋은 그대로 둡니다.', { ok: '초기화', danger: true }))) return;
         if (action === 'delete_team') {
           if (!(await this.dsConfirm('팀을 삭제할까요? 멤버 소속이 모두 해제됩니다.', { ok: '팀 삭제', danger: true }))) return;
