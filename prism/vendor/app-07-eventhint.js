@@ -394,7 +394,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this._demoInflight++; this.demoBusy = true;
         const p = (this._demoQueue || Promise.resolve()).then(() => this._demoPostNow(body))
           .finally(() => { if (--this._demoInflight <= 0) { this._demoInflight = 0; this.demoBusy = false; } });
-        this._demoQueue = p;
+        this._demoQueue = p.catch(() => {});   // 거부가 큐를 영구 정지시키지 않게(현재는 _demoPostNow 가 항상 fulfill)
         return p;
       },
       async _demoPostNow(body) {
