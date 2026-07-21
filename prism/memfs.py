@@ -81,7 +81,7 @@ def injection_text(files: dict) -> str:
     return "\n".join(out)
 
 
-def _catalog(team=None, limit: int = 30) -> list:
+def _catalog(team=None, limit: int = 100) -> list:
     """소비 시연용 카탈로그: 추출 결과 중 유통 가능(G) 콘텐츠 · idx 는 추출 순서.
     사용자 메타 파이프라인 입력(viewed)과 같은 필드를 유지해 측정 로직을 재사용한다."""
     from .usermeta import _t1
@@ -244,7 +244,13 @@ EMOTIONS = ("추천해요", "좋아요", "감동이에요", "화나요", "슬퍼
 EMO_POS = ("추천해요", "좋아요", "감동이에요")   # 긍정 · 나머지(화나요·슬퍼요)는 부정 분포로 집계
 REACT_W = 1.0                    # 호응 가중: 반응 1건당 선호 합산치
 COMMENT_W = 1.5                  # 호응 가중: 댓글 1건당(더 강한 참여 신호)
-# 사용자 친화 표기: 추천 칩·검색 매칭 전용 · 내부 값(IAB 카테고리·인텐트)은 화면에 노출하지 않는다
+# 사용자 친화 표기: 화면 노출은 한글 표시명이 원칙 · 정본은 사전(dictionaries.IAB_TIER1_KO ·
+# UI 전용 자사 표기)이고 아래 CAT_KO 는 사전에 없을 때의 보조 표기만 담당한다
+def _cat_ko(cat: str) -> str:
+    from . import dictionaries as D
+    return getattr(D, "IAB_TIER1_KO", {}).get(cat) or CAT_KO.get(cat, "") or (cat or "")
+
+
 CAT_KO = {"News and Politics": "뉴스·시사", "Sports": "스포츠", "Entertainment": "연예",
           "Business and Finance": "경제·재테크", "Technology and Computing": "테크·IT",
           "Science": "과학", "Food & Drink": "푸드", "Travel": "여행",
@@ -292,7 +298,7 @@ def _prompt_matches(q, catalog) -> list:
     out = []
     for c in catalog:
         if any(t in c["title"] or t in c["cat"] or t in c["intent"]
-               or t in CAT_KO.get(c["cat"], "") or t in INT_KO.get(c["intent"], "") for t in toks):
+               or t in _cat_ko(c["cat"]) or t in INT_KO.get(c["intent"], "") for t in toks):
             out.append(c)
     return out
 
@@ -388,7 +394,8 @@ def _live_measures(events, catalog) -> dict:
     mx = max([v for _, v in top_int], default=1)
     intensity = {k: ("고" if v >= mx * .66 else "중" if v >= mx * .33 else "저") for k, v in top_int}
     total = sum(w for _, w in top_ent) or 1.0
-    cats = [{"name": k, "w": round(w, 1), "pct": round(w / total * 100)} for k, w in top_ent]
+    cats = [{"name": k, "ko": _cat_ko(k), "w": round(w, 1), "pct": round(w / total * 100)}
+            for k, w in top_ent]
     return {"form": form, "intensity": intensity, "cats": cats,
             "ints": top_int, "ents": ents, "eng": eng, "breadth": breadth, "resp": resp}
 
@@ -420,8 +427,8 @@ def _suggests(catalog) -> list:
     매핑에 없는 내부 값은 노출하지 않는다(사용자 친화 표기 원칙)."""
     out, seen = [], set()
     for c in catalog:
-        ko = CAT_KO.get(c["cat"])
-        if ko and ko not in seen:
+        ko = _cat_ko(c["cat"])
+        if ko and ko != c["cat"] and ko not in seen:
             seen.add(ko)
             out.append(ko + " 몰아보기")
         if len(out) >= 2:
@@ -436,20 +443,23 @@ def _suggests(catalog) -> list:
 
 def demo_data(team=None) -> dict:
     catalog = _catalog(team)
+    rows = _SV.results_rows(team=team)
+    n_r = sum(1 for r in rows if (r.get("quality_meta") or {}).get("finalGrade", "G") == "R")
     sess = _demo_session(team)
     events = sess.get("events") or []
     imp = len({e.get("idx") for e in events if e.get("event") == "impression"})
     consumed = len({e.get("idx") for e in events if e.get("event") in ("read", "skim")})
     out = {"contents": [dict({k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent")},
-                             cat_ko=CAT_KO.get(c["cat"], ""), intent_ko=INT_KO.get(c["intent"], ""))
+                             cat_ko=_cat_ko(c["cat"]), intent_ko=INT_KO.get(c["intent"], ""))
                         for c in catalog],
            "session": {"events_n": len(events), "impressions": imp, "consumed": consumed},
-           "stream": [_ev_line(e) for e in reversed(events[-30:])],
+           "stream": [_ev_line(e) for e in events[-30:]],   # 시간순 · 콘솔처럼 위부터 채움
            "live": _live_measures(events, catalog),
            "logic": sess.get("last_logic") or "",
            "personas": _personas_brief(),
            "suggests": _suggests(catalog),
            "prompts": prompt_report(team),
+           "catalog_stat": {"total": len(rows), "shown": len(catalog), "r": n_r},
            "formula": "가중치 = 체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) + 호응(반응 1.0 · 댓글 1.5) → 카테고리·맥락별 합산 → 상대 등급(저/중/고)"}
     if consumed:                                     # 결론도 실시간 · 소비가 쌓일 때마다 자동 재판정
         out["conclusion"] = _conclusion(events, catalog, team)
@@ -466,7 +476,7 @@ def _gen_persona(live) -> dict:
     """동적 생성 페르소나: 사전형 부여가 아니라 측정값에서 이름·설명을 그때그때 조립.
     (온라인 LLM 없이 결정적 생성 · 운영의 능동 생성(personagen)과 같은 철학의 시연판)"""
     cats = live.get("cats") or []
-    ck = CAT_KO.get(cats[0]["name"], cats[0]["name"]) if cats else "새 관심사"
+    ck = _cat_ko(cats[0]["name"]) if cats else "새 관심사"
     depth = (live.get("form") or {}).get("깊이", "")
     d_name = {"몰입": "정독가", "혼합": "골라읽기형", "훑기": "훑어보기형"}.get(depth, "탐색가")
     d_desc = {"몰입": "끝까지 읽는 편이에요", "혼합": "골라 가며 읽어요", "훑기": "빠르게 훑고 지나가요"}.get(depth, "이제 막 둘러보는 중이에요")

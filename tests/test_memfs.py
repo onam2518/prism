@@ -150,8 +150,9 @@ class TestDemoSession(unittest.TestCase):
         for s in d["suggests"]:                          # 사용자 언어만 · 내부 카테고리명 비노출
             self.assertNotIn("News and Politics", s)
             self.assertNotIn("Business", s)
-        self.assertIn("경제·재테크 몰아보기", d["suggests"])
-        self.assertEqual(d["contents"][0]["cat_ko"], "경제·재테크")
+        bf_ko = MF._cat_ko("Business and Finance")     # 정본 = 사전(IAB_TIER1_KO)
+        self.assertIn(bf_ko + " 몰아보기", d["suggests"])
+        self.assertEqual(d["contents"][0]["cat_ko"], bf_ko)
 
     def test_impression_batch_dedup(self):
         MF.demo_ops({"op": "event", "event": "impression", "idxs": [0, 1, 2]}, team="t1")
@@ -167,8 +168,8 @@ class TestDemoSession(unittest.TestCase):
         self.assertIn("클릭가중 2.0", d["logic"])
         self.assertEqual(d["wrote"]["path"], "topics/business-and-finance.md")
         self.assertTrue(d["live"]["cats"][0]["name"].startswith("Business"))
-        self.assertIn("[Usage] UsagePage", d["stream"][0])   # 콘솔형 로그 라인
-        self.assertIn("dwell=50s", d["stream"][0])
+        self.assertIn("[Usage] UsagePage", d["stream"][-1])   # 콘솔형 로그 라인
+        self.assertIn("dwell=50s", d["stream"][-1])
         self.assertIn("conclusion", d)                   # 소비 즉시 실시간 결론
 
     def test_click_only_not_consumed(self):
@@ -195,7 +196,8 @@ class TestDemoSession(unittest.TestCase):
         self.assertEqual(len([x for x in c["chain"] if "클릭" in x["act"]]), 5)
 
     def test_search_understands_user_language_chip(self):
-        d = MF.demo_ops({"op": "event", "event": "search", "query": "경제·재테크 몰아보기"}, team="t1")
+        d = MF.demo_ops({"op": "event", "event": "search",
+                         "query": MF._cat_ko("Business and Finance") + " 몰아보기"}, team="t1")
         self.assertNotIn("error", d)
         self.assertIn("business-and-finance", MF.memory_data(team="t1")["files"][0]["path"])
 
@@ -220,7 +222,7 @@ class TestDemoSession(unittest.TestCase):
         d = MF.demo_ops({"op": "event", "event": "search", "query": "반도체 심층 몰아보기"}, team="t1")
         self.assertIn("Search", d["logic"])
         self.assertIn("ViewSearchResults", d["logic"])
-        self.assertIn('[Event] Search query=', d["stream"][0])
+        self.assertIn('[Event] Search query=', d["stream"][-1])
         body = MF.memory_data(team="t1")["files"][0]["content"]
         self.assertIn("[stated]", body)
         self.assertIn("반도체 심층 몰아보기", body)
@@ -244,7 +246,7 @@ class TestDemoSession(unittest.TestCase):
         MF.demo_ops({"op": "event", "event": "click", "idx": 0}, team="t1")
         d = MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "화나요"}, team="t1")
         self.assertIn("Custom Properties", d["logic"])
-        self.assertIn("[Event] Like emotion='화나요'", d["stream"][0])
+        self.assertIn("[Event] Like emotion='화나요'", d["stream"][-1])
         body = MF.memory_data(team="t1")["files"][0]["content"]
         self.assertIn("[observed]", body)
         self.assertIn("반응 '화나요'", body)

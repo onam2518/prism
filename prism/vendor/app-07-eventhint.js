@@ -369,6 +369,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (!d || d.error) { this.demoMsg = '오류: ' + (d ? d.error : '응답 없음'); this.demoBusy = false; return null; }
           this.demoData = d; this.demoBusy = false;
           if (d.wrote) this.loadMem();               // 시연이 파일을 썼으면 결론의 파일 열람용으로 동기화
+          this.$nextTick(() => { const el = this.$refs.demolog; if (el) el.scrollTop = el.scrollHeight; });
           return d;
         } catch (e) { this.demoMsg = '오류: ' + e; this.demoBusy = false; return null; }
       },
@@ -406,6 +407,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const d = await this.demoPost({ op: 'event', event: 'comment', idx: this.demoReading.idx, text: t });
         if (d && this.demoReading) { (this.demoReading.comments = this.demoReading.comments || []).push(t); this.demoCmt = ''; }
       },
+      demoWhen(i) { return ['방금', '10분 전', '1시간 전', '2시간 전', '어제'][Math.min(i | 0, 4)]; },   // 예시용 시간 메타(위치 기반)
       demoFmtT(s) { const v = Math.max(0, s | 0); return Math.floor(v / 60) + ':' + ('0' + (v % 60)).slice(-2); },
       demoFeed() {                                  // 검색어로 피드 필터(제목·요약·백단 메타 매칭 · 화면엔 메타 비노출)
         const cs = (this.demoData && this.demoData.contents) || [];
