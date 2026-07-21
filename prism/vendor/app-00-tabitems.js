@@ -87,7 +87,7 @@ window.PRISM_APP_PARTS.push(() => ({
       get filteredJobs() { return (this.runningJobs || []).filter((j) => !this.queueTrig || (this.queueTrig === 'auto' ? j.trigger === 'auto' : j.trigger !== 'auto')); },
       // 위젯 홈 인터랙션 상태
       addMenuOpen: false, editing: false, theme: 'light',
-      dashData: null, dictData: null, userData: null, modBusy: false, dictGroup: '',
+      dashData: null, dictData: null, modBusy: false, dictGroup: '',
       // topicData 는 서버 '데이터 없음' 응답(serve.topics_data)과 같은 빈 계약으로 초기화 —
       // null 이면 로드 전 첫 렌더에서 토픽 패널의 topicData.* 표현식들이 콘솔 TypeError 를 던진다(표시 영향은 없던 잔재)
       topicData: { n_contents: 0, single: [], composite: [], filter: [], custom: [], customDefs: [],

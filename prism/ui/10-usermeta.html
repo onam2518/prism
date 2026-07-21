@@ -1,29 +1,20 @@
       <!-- ═══ 모듈: 사용자 메타 · 프로필 + 행동 로그 → 페르소나 능동 생성 ═══ -->
       <div x-show="mod === 'lab' && labTab === 'user'" x-cloak class="w-full space-y-4">
-        <div class="panel"><div class="panel-bd">
-          <div class="flex items-center justify-between gap-3 flex-wrap">
-            <ul class="ds-bullets">
-              <li>사용자 정보(프로필)와 행동 로그(TIARA형)가 <b>모두 모이면</b> 사용자마다 페르소나를 <b>자동 생성</b>합니다 · 별도 실행 버튼 없음.</li>
-              <li>행동 로그는 추출 콘텐츠와 조인해 <b>소비 형태 · 강도 · 선호</b>를 산출 · <code class="text-violet">content_id</code> = 추출 순서(0부터).</li>
-              <li>실명 · 연락처 등 식별 정보는 입력하지 마세요 · 프로필은 페르소나 생성 시 외부 AI로 전달됩니다.</li>
-            </ul>
-            <div class="flex items-center gap-2 flex-wrap" x-show="userData">
-              <span class="ds-badge ds-badge--category tnum" x-text="'프로필 ' + ((userData && userData.profiles_n) || 0) + '명'"></span>
-              <span class="ds-badge ds-badge--intent tnum" x-text="'로그 사용자 ' + ((userData && userData.users) ? userData.users.length : 0) + '명'"></span>
-              <span class="ds-badge ds-badge--success tnum"><span class="ds-badge__dot"></span><span x-text="'생성 페르소나 ' + ((userData && userData.generated_n) || 0) + '개'"></span></span>
-              <span x-show="userData && userData.aggregate && userData.aggregate.persona_coherence && userData.aggregate.persona_coherence.agree_rate !== null" class="ds-badge ds-badge--neutral tnum" style="cursor:help" data-tip="배정 정합성 · 소비 프로필이 가장 비슷한 이웃과 페르소나가 일치하는 비율 (낮으면 배정 기준 점검 필요)" data-tip-pos="top" x-text="'배정 정합성 ' + Math.round(((userData && userData.aggregate && userData.aggregate.persona_coherence && userData.aggregate.persona_coherence.agree_rate) || 0) * 100) + '%'"></span>
-            </div>
-          </div>
-        </div></div>
+        <!-- 사용자 서브뷰: 시연·생성(run) ↔ 정책(policy · 사용 로그 체계 = TIARA + 측정·판정·기록 정책) -->
+        <div class="flex items-center gap-2">
+          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='run' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='run'">시연 · 생성</button>
+          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='policy' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='policy'">정책</button>
+        </div>
 
+        <div x-show="labUserView==='run'" class="space-y-4">
         <!-- ═══ 소비 시연(STEP 1~4 · 채택 시안 B+A+D): 좌 = 실제 서비스 화면(Anchor DS) · 우 = 실시간 측정 3단
              STEP 2 측정·로직 → STEP 3 결론(판정 근거 인과 카드) → STEP 4 활용 · 하단 바 = 이 단계의 결론 ═══ -->
-        <div class="panel"><div class="panel-hd"><b>소비 시연</b>
+        <div class="panel"><div class="panel-hd"><b>시연 과정</b><span class="meta">STEP 1~4</span>
             <span class="meta tnum" x-text="demoData ? ('이벤트 ' + demoData.session.events_n + '건 · 소비 ' + demoData.session.consumed + '건') : ''"></span>
             <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-bind:disabled="demoBusy" x-on:click="demoReset()">처음부터</button></div>
           <div class="panel-bd">
             <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
-              <li>왼쪽은 <b>실제 서비스처럼 보이는 피드</b>(Anchor 디자인 시스템)입니다 · 카드를 눌러 읽으면 노출 · 클릭 · 체류가 <b>그대로 행동 로그</b>로 잡힙니다.</li>
+              <li>왼쪽은 <b>실제 서비스처럼 보이는 피드</b>입니다 · 제목을 눌러 읽고, 하단에서 <b>감정 반응 · 댓글</b>까지 남겨보세요 — 노출 · 클릭 · 체류 · 반응 · 댓글이 그대로 행동 로그가 됩니다.</li>
               <li>오른쪽 3단이 <b>그 턴에</b> 반응합니다 — 실시간 이벤트 → 누적 측정 → 지금 로직(방금 행동이 들어간 공식 · 메모리 파일 기록).</li>
               <li>사용을 마치면 <b>결론(페르소나 판정 + 근거)</b>을 내고, 그 결론이 어디에 쓰이는지 <b>다음 스텝(활용)</b>까지 이어집니다.</li>
             </ul>
@@ -43,29 +34,45 @@
                 <div class="selctl__lbl" style="margin-bottom:6px">실제 서비스 화면 <span class="text-muted" style="font-weight:400">— 만지는 대로 행동 로그 수집</span></div>
                 <div class="anchor-scope">
                   <div class="an-app">
-                    <div class="an-appbar">투데이<span class="an-live">● 수집 중</span></div>
+                    <div class="an-appbar">MY 콘텐츠<span class="an-live">● 수집 중</span></div>
                     <!-- 읽기 화면: 카드 탭 = 클릭 이벤트 · 체류 타이머(실측 × 배속) -->
+                    <!-- 기사 뷰(플로우: 제목·리드 요약 → 본문 → 감정 반응 → 댓글 → 나가기) · 정독/훑기는 체류로 자동 판정 -->
                     <div x-show="demoReading" x-cloak>
                       <div class="an-article">
-                        <span class="an-badge" x-bind:class="demoCatCls(demoReading ? demoReading.c.cat : '')" x-text="demoReading ? demoReading.c.cat : ''"></span>
+                        <div class="an-art-src"><span x-text="demoReading ? (demoReading.c.service || '콘텐츠') : ''"></span><span class="an-badge" x-bind:class="demoCatCls(demoReading ? demoReading.c.cat : '')" x-text="demoReading ? demoReading.c.cat : ''"></span><span class="ml-auto an-btn an-btn--neutral" style="min-height:32px;padding:6px 12px;font-size:14px;cursor:pointer" x-on:click="demoClose()">← 나가기</span></div>
                         <div class="an-article-t" x-text="demoReading ? demoReading.c.title : ''"></div>
-                        <div class="an-article-b" x-text="demoReading ? (demoReading.c.summary || '요약이 없는 콘텐츠입니다 · 실제 화면에서는 본문이 표시됩니다.') : ''"></div>
-                        <div class="an-article-m" x-text="demoReading ? ((demoReading.c.service ? demoReading.c.service + ' · ' : '') + '체류 ' + demoFmtT(demoTick) + ' (실측 × ' + demoX + ' 배속)') : ''"></div>
-                        <div class="an-actions">
-                          <button type="button" class="an-btn an-btn--primary" x-on:click="demoClose('read')">다 읽었어요</button>
-                          <button type="button" class="an-btn an-btn--neutral" x-on:click="demoClose('skim')">훑고 나가기</button>
-                          <button type="button" class="an-btn an-btn--ghost" x-on:click="demoClose('save')">저장</button>
+                        <div class="an-article-m" x-text="demoReading ? ('방금 · 체류 ' + demoFmtT(demoTick) + ' (실측 × ' + demoX + ' 배속)') : ''"></div>
+                        <div class="an-lead" x-show="demoReading && demoReading.c.summary" x-text="demoReading ? demoReading.c.summary : ''"></div>
+                        <div class="an-article-b" x-text="demoReading ? (demoReading.c.summary || '본문이 없는 콘텐츠입니다 · 실제 화면에서는 기사 본문이 표시됩니다.') : ''"></div>
+                        <div class="an-sect">
+                          <div class="an-sect-cap">이 콘텐츠에 대해 어떻게 생각하시나요?</div>
+                          <div class="an-react">
+                            <template x-for="emo in [['🤓','추천해요'],['😍','좋아요'],['🥹','감동이에요'],['😡','화나요'],['😢','슬퍼요']]" x-bind:key="'emo'+emo[1]">
+                              <button type="button" class="an-emo" x-bind:class="demoReading && demoReading.reacted===emo[1] ? 'is-on' : ''" x-bind:disabled="demoBusy || (demoReading && demoReading.reacted && demoReading.reacted!==emo[1])" x-on:click="demoReact(emo[1])"><span class="e" x-text="emo[0]"></span><span x-text="emo[1]"></span></button>
+                            </template>
+                          </div>
+                        </div>
+                        <div class="an-sect">
+                          <div class="an-cmt-row">
+                            <input class="an-cmt-in" x-model="demoCmt" placeholder="댓글로 의견을 남겨주세요." x-on:keydown.enter="demoComment()">
+                            <button type="button" class="an-btn an-btn--primary" x-bind:disabled="demoBusy" x-on:click="demoComment()">등록</button>
+                          </div>
+                          <template x-for="(cm, cmi) in ((demoReading && demoReading.comments) || [])" x-bind:key="'cm'+cmi">
+                            <div class="an-cmt-item"><span class="who">나</span><span x-text="cm"></span><span class="when">방금 전</span></div>
+                          </template>
                         </div>
                       </div>
                     </div>
                     <div class="an-feed" x-show="!demoReading" style="max-height:430px">
-                      <template x-for="c in ((demoData && demoData.contents) || [])" x-bind:key="'dc'+c.idx">
-                        <button type="button" class="an-card" x-on:click="demoOpen(c)">
-                          <div class="an-card-t" x-text="c.title"></div>
-                          <div class="an-card-s" x-show="c.summary" x-text="c.summary"></div>
-                          <div class="an-card-m"><span class="an-badge" x-bind:class="demoCatCls(c.cat)" x-text="c.service || c.cat"></span></div>
-                        </button>
-                      </template>
+                      <!-- 다음 메인형 헤드라인 리스트: 카드 1장 + 행 구분선 · 제목 한 줄 · 메타(서비스명) -->
+                      <div class="an-list" x-show="demoData && demoData.contents.length">
+                        <template x-for="c in ((demoData && demoData.contents) || [])" x-bind:key="'dc'+c.idx">
+                          <button type="button" class="an-row" x-on:click="demoOpen(c)">
+                            <div class="an-row-t" x-text="c.title"></div>
+                            <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
+                          </button>
+                        </template>
+                      </div>
                       <div x-show="demoData && !demoData.contents.length" style="padding:24px;text-align:center;color:var(--an-txsub);font-size:14px">먼저 [실행 · 추출]에서 콘텐츠를 추출하세요 · 여기 피드로 나타납니다</div>
                     </div>
                   </div>
@@ -122,7 +129,7 @@
                 <ul class="ds-bullets" style="margin-top:6px">
                   <li>노출은 분모(클릭률 · 소비율)로만 쓰이고, <b>체류와 클릭</b>이 가중치를 만듭니다.</li>
                   <li>깊이 판정: 평균 체류 45초 이상 + 스크롤 60% 이상이면 <b>몰입</b>, 15초 미만이면 <b>훑기</b>.</li>
-                  <li>같은 계산이 운영 행동 로그(TIARA형)에도 그대로 적용됩니다 — 아래 행동 로그 업로드와 같은 파이프라인.</li>
+                  <li>운영에서는 실제 서비스의 행동 로그(TIARA형 · <code class="text-violet">content_id</code> = 추출 순서 0부터)가 같은 파이프라인으로 들어옵니다 — 시연과 동일 계산.</li>
                 </ul>
               </div>
             </div>
@@ -150,6 +157,22 @@
                       <template x-for="(ch, ci) in (demoData.conclusion.chain || [])" x-bind:key="'dch'+ci">
                         <div class="demo-chain tnum"><span class="text-muted" x-text="ch.t"></span> <b class="text-ink" x-text="ch.act"></b><span class="demo-chain-arrow">→</span><span x-text="ch.measure"></span><span class="demo-chain-arrow">→</span><code class="text-violet" x-text="ch.file"></code></div>
                       </template>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:8px" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '판정 기준 접기' : '판정 기준 8종 보기'"></button>
+                    <!-- 판정 기준(기본 페르소나 8종) · 구 '페르소나 정의' 표를 정책 참고로 흡수 · 로그 부족 시 선언 프로필로 잠정 배정 후 자동 재산출 -->
+                    <div x-show="demoDefsOpen" x-cloak class="space-y-1" style="margin-top:8px">
+                      <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'dpd'+pd.name">
+                        <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'— ' + pd.desc"></span></div>
+                      </template>
+                      <div class="text-xs text-muted" style="margin-top:4px">로그가 5건 미만이면 잠정 배정하고, 소비가 쌓이면 자동 재판정합니다 · 명시 신호(버스트 · 주야 이중 · 드리프트 · 엔티티 집중) 우선, 없으면 깊이 · 강도 · 폭 근접 매칭.</div>
+                    </div>
+                  </div>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:8px" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '판정 기준 접기' : '판정 기준 8종 보기'"></button>
+                    <!-- 판정 기준(기본 페르소나 8종) · 구 '페르소나 정의' 표를 정책 참고로 흡수 · 로그 부족 시 선언 프로필로 잠정 배정 후 자동 재산출 -->
+                    <div x-show="demoDefsOpen" x-cloak class="space-y-1" style="margin-top:8px">
+                      <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'dpd'+pd.name">
+                        <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'— ' + pd.desc"></span></div>
+                      </template>
+                      <div class="text-xs text-muted" style="margin-top:4px">로그가 5건 미만이면 잠정 배정하고, 소비가 쌓이면 자동 재판정합니다 · 명시 신호(버스트 · 주야 이중 · 드리프트 · 엔티티 집중) 우선, 없으면 깊이 · 강도 · 폭 근접 매칭.</div>
                     </div>
                   </div>
                   <div class="demo-obs"><div class="cap">메모리 반영 (파일 기반 메모리)</div>
@@ -176,7 +199,7 @@
                   </div>
                 </template>
               </div>
-              <div class="text-xs text-muted" style="margin-top:10px">같은 판정 로직이 아래 <b>행동 로그 업로드 → 사용자별 페르소나</b>에 그대로 적용됩니다 · 여러 사용자 규모의 결과는 아래 사용자 카드와 친화도 표에서 확인하세요.</div>
+              <div class="text-xs text-muted" style="margin-top:10px">운영 정책: 사용자 정보 입력 없이 <b>소비만으로 시작</b>하고, 같은 판정이 운영 행동 로그로 사용자마다 자동 산출됩니다 · 실명 · 연락처 등 식별 정보는 어떤 경로로도 수집 · 기록하지 않습니다.</div>
             </div>
 
             <div class="demo-foot"><b class="text-ink">이 단계의 결론</b><span class="text-body" x-text="demoFoot()"></span>
@@ -189,107 +212,20 @@
           </div>
         </div>
 
-        <!-- 입력: 프로필(신규) + 행동 로그(기존) 2열 · 두 재료가 모이는 순간 서버가 생성 -->
-        <div class="grid grid-cols-2 gap-4">
-          <div class="panel"><div class="panel-hd"><b>사용자 정보 (프로필)</b><span class="meta">저장 즉시 재료 확인 · 모이면 자동 생성</span></div>
-            <div class="panel-bd">
-              <div class="flex items-center gap-2" style="margin-bottom:10px">
-                <a href="/usermeta-profile-template.csv" download class="ds-btn ds-btn--secondary ds-btn--s-sm">템플릿</a>
-                <label class="ds-btn ds-btn--secondary ds-btn--s-sm" style="cursor:pointer">CSV 업로드
-                  <input type="file" accept=".csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="uploadProfiles($event)"></label>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <div style="flex:1;min-width:110px"><label class="lbl">user_id</label><input x-model="pf.user_id" class="field" placeholder="u1"></div>
-                <div style="flex:1;min-width:100px"><label class="lbl">연령대</label><select x-model="pf.age_band" class="field"><option value="">선택</option><template x-for="a in ((userData && userData.profile_fields) ? userData.profile_fields.age_bands : [])" x-bind:key="a"><option x-bind:value="a" x-text="a"></option></template></select></div>
-                <div style="flex:1;min-width:110px"><label class="lbl">주 이용 시간대</label><select x-model="pf.day_part" class="field"><option value="">선택</option><template x-for="dp in ((userData && userData.profile_fields) ? userData.profile_fields.day_parts : [])" x-bind:key="dp"><option x-bind:value="dp" x-text="dp"></option></template></select></div>
-              </div>
-              <div style="margin-top:8px"><label class="lbl">관심 선언 (쉼표 구분)</label><input x-model="pf.interests" class="field" placeholder="재테크, 야구"></div>
-              <div class="flex items-center gap-2" style="margin-top:10px">
-                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="modBusy" x-on:click="saveProfile()" x-text="modBusy ? '처리 중…' : '프로필 저장'"></button>
-                <span class="text-xs text-muted" x-text="pfMsg"></span>
-              </div>
-            </div>
-          </div>
-          <div class="panel"><div class="panel-hd"><b>행동 로그</b><span class="meta">노출 · 클릭 · 체류 · 업로드분은 저장되어 재방문 시 유지</span></div>
-            <div class="panel-bd">
-              <div class="flex items-center gap-2" style="margin-bottom:10px">
-                <a href="/usermeta-template.csv" download class="ds-btn ds-btn--secondary ds-btn--s-sm">템플릿</a>
-                <label class="ds-btn ds-btn--primary ds-btn--s-sm" style="cursor:pointer">행동 로그 업로드
-                  <input type="file" accept=".csv,.tsv,.jsonl,.json" class="sr-only" x-on:change="uploadUserLog($event)"></label>
-              </div>
-              <div class="text-xs text-muted" x-show="userData && userData.source" x-text="userData ? userData.source : ''"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 실데이터 사용자 · 생성 페르소나가 있으면 카드에 병행 표시 -->
-        <div x-show="userData && userData.users && userData.users.length" class="space-y-3">
-          <template x-for="u in (userData?userData.users:[])" x-bind:key="u.user_id">
-            <div class="panel"><div class="panel-hd">
-              <b x-text="u.user_id"></b>
-              <span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="'기본 8종 판별 · ' + u.persona + (u.persona_conf ? (' · 신뢰도 ' + u.persona_conf) : '') + (u.persona_second ? (' · 2순위 ' + u.persona_second) : '')" data-tip-pos="top" x-text="u.persona + (u.persona_conf ? ' · ' + u.persona_conf : '')"></span>
-              <span x-show="u.persona_provisional" class="ds-badge ds-badge--warning" style="cursor:help" data-tip="로그가 부족해 선언 프로필로 잠정 배정 · 로그가 쌓이면 자동 재산출" data-tip-pos="top">잠정</span>
-              <span x-show="u.gen_persona" class="ds-badge ds-badge--success" style="cursor:help" x-bind:data-tip="u.gen_persona ? ('이 사용자의 메타 + 소비로 생성한 전용 페르소나 · ' + u.gen_persona.desc) : ''" data-tip-pos="top"><span class="ds-badge__dot"></span><span x-text="u.gen_persona ? (u.gen_persona.name + ' · 생성됨') : ''"></span></span>
-              <span class="meta tnum ml-auto" x-text="'조회 ' + u.engagement.views + ' · 클릭률 ' + u.engagement.click_rate + ' · 평균체류 ' + u.engagement.avg_dwell_sec + 's'"></span>
-            </div><div class="panel-bd">
-              <div class="drow" x-show="u.profile"><div class="k">프로필</div><div class="v text-sm text-body" x-text="u.profile ? [u.profile.age_band, (u.profile.interests||[]).join(' · '), u.profile.day_part].filter(Boolean).join('  ·  ') : ''"></div></div>
-              <div class="drow" x-show="u.gen_persona"><div class="k">생성 페르소나</div><div class="v">
-                <div class="text-sm"><b class="text-ink" x-text="u.gen_persona ? (u.gen_persona.full || u.gen_persona.name) : ''"></b><span class="text-muted" x-text="u.gen_persona ? (' · ' + u.gen_persona.desc) : ''"></span></div>
-                <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="(b, bi) in ((u.gen_persona && u.gen_persona.basis) || [])" x-bind:key="'gb'+bi"><span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="판단 근거 · 행동 로그와 프로필에서 도출" data-tip-pos="top" x-text="b"></span></template></div>
-              </div></div>
-              <div class="drow"><div class="k">소비 형태</div><div class="v text-sm text-body" x-text="Object.entries(u.form).map(e=>e[0]+':'+e[1]).join(' · ')"></div></div>
-              <div class="drow"><div class="k">소비 강도</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="(v,k) in u.intensity" x-bind:key="k"><span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:class="v==='고'?'ds-badge--entity':(v==='중'?'ds-badge--intent':'ds-badge--category')" x-bind:data-tip="'맥락(인텐트) ' + k + ' 소비 강도 ' + v + ' · 체류·클릭 가중 상대 등급'" data-tip-pos="top" x-text="k + ' (' + v + ')'"></span></template>
-              </div></div>
-              <div class="drow"><div class="k">선호 엔티티</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="e in (u.affinity_entities||[])" x-bind:key="e[0]"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e[0])" data-tip-pos="top" x-text="e[0]"></span></template>
-                <span x-show="!(u.affinity_entities||[]).length" class="text-xs text-muted">·</span>
-              </div></div>
-              <div class="drow" x-show="(u.similar_users||[]).length"><div class="k">비슷한 사용자</div><div class="v flex flex-wrap gap-1.5">
-                <template x-for="s in (u.similar_users||[])" x-bind:key="s[0]"><span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-bind:data-tip="'소비 프로필(관심 카테고리·맥락) 코사인 유사도 ' + s[1]" data-tip-pos="top" x-text="s[0] + ' (' + s[1] + ')'"></span></template>
-              </div></div>
-            </div></div>
-          </template>
-        </div>
-
-        <!-- 엔티티 × 페르소나 친화도 · 타겟팅/능동 추천의 실계산 근거 -->
-        <div class="panel" x-show="userData && userData.aggregate && userData.aggregate.entity_persona && userData.aggregate.entity_persona.rows && userData.aggregate.entity_persona.rows.length">
-          <div class="panel-hd"><b>엔티티 × 페르소나 친화도</b><span class="meta">체류·클릭 가중 합산 · 이 엔티티를 어떤 페르소나가 소비하나 (타겟팅 근거)</span></div>
-          <div class="overflow-auto"><table class="ds-table"><thead><tr><th>엔티티</th><th>주 소비 페르소나</th>
-            <template x-for="pn in ((userData && userData.aggregate && userData.aggregate.entity_persona) ? userData.aggregate.entity_persona.personas : [])" x-bind:key="'eph'+pn"><th class="tnum" x-text="pn"></th></template>
-          </tr></thead><tbody>
-            <template x-for="row in ((userData && userData.aggregate && userData.aggregate.entity_persona) ? userData.aggregate.entity_persona.rows : [])" x-bind:key="'ep'+row[0]">
-              <tr><td class="text-ink" x-text="row[0]"></td><td><span class="ds-badge ds-badge--entity" x-text="row[1]"></span></td>
-                <template x-for="(w, wi) in row[2]" x-bind:key="'epw'+row[0]+wi"><td class="tnum" x-bind:class="w ? '' : 'text-muted'" x-text="w || '·'"></td></template></tr>
-            </template>
-          </tbody></table></div>
-        </div>
-
-        <!-- 명세(페르소나 정의·공식) · 기본 8종 + 생성분 병행 -->
-        <div class="panel"><div class="panel-hd"><b>페르소나 정의</b><span class="meta" x-text="'기본 8종' + ((userData && userData.generated_n) ? (' + 생성 ' + userData.generated_n) : '') + ' · 형태 + 맥락별 강도 시그니처'"></span><button type="button" class="copybtn" x-show="userData && userData.users && userData.users.length" x-on:click="exportUsers()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button></div>
-          <div class="overflow-auto"><table class="ds-table"><thead><tr><th>페르소나</th><th>설명</th><th>형태(깊이·체류)</th></tr></thead><tbody>
-            <template x-for="p in (userData?userData.personas_def:[])" x-bind:key="p.id">
-              <tr><td class="text-ink"><span x-text="p.full || p.name"></span><span x-show="p.generated" class="ds-badge ds-badge--success" style="margin-left:6px;cursor:help" x-bind:data-tip="p.generated ? ('사용자 ' + p.user_id + ' 전용 생성 페르소나') : ''" data-tip-pos="top">생성됨</span></td><td><div class="tbox" x-text="p.desc"></div></td><td x-text="(p.form['깊이']||'') + ' · ' + (p.form['체류·완주']||'')"></td></tr>
-            </template>
-            <template x-if="!(userData&&userData.personas_def&&userData.personas_def.length)"><tr><td colspan="3" class="text-muted">먼저 [실행·추출]에서 콘텐츠를 추출하세요</td></tr></template>
-          </tbody></table></div>
-          <div class="text-xs text-muted" style="margin:10px 16px 14px" x-show="userData && userData.formula" x-text="userData ? userData.formula : ''"></div>
-        </div>
-
         <!-- 파일 기반 메모리(실험 구동): 소비 시연 → 그 턴에 파일 자동 기록(실시간) · 조작 5종 · 주입 미리보기 -->
-        <div class="panel"><div class="panel-hd"><b>파일 기반 메모리</b>
+        <div class="panel"><div class="panel-hd"><b>생성 과정</b><span class="meta">파일 기반 메모리</span>
             <span class="meta tnum" x-text="memData ? ('파일 ' + memData.files.length + '/' + memData.limits.max_files) : ''"></span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadMem()" data-tip="새로고침" data-tip-pos="bottom" aria-label="메모리 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           <div class="panel-bd">
             <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
-              <li>파일시스템 기반 메모리를 그대로 구동합니다 · 위 <b>소비 시연</b>에서 콘텐츠를 소비하면 <b>그 턴에</b> <code class="text-violet">/topics/주제.md</code> 파일로 자동 기록됩니다.</li>
-              <li>파일을 누르면 <b>읽기 · 전체 쓰기(버전 토큰 확인) · 끝에 추가([stated]) · 삭제(확인 후)</b>를 직접 해볼 수 있습니다.</li>
-              <li>새 대화가 시작되면 파일 목록이 자동 주입됩니다 · <b>주입 미리보기</b> 버튼으로 실제 주입 블록을 확인하세요.</li>
+              <li><b>생성 1 · 자동 기록</b> — 위 시연에서 소비하면 <b>그 턴에</b> <code class="text-violet">/topics/주제.md</code> 파일로 기록됩니다(파일시스템 기반).</li>
+              <li><b>생성 2 · 확인 · 조작</b> — 파일을 눌러 읽기 · 전체 쓰기(버전 토큰 확인) · 끝에 추가([stated]) · 삭제(확인 후)를 직접 해봅니다.</li>
+              <li><b>생성 3 · 주입</b> — 새 대화가 시작되면 파일 목록이 자동 주입됩니다 · [주입 미리보기]로 실제 블록을 확인하세요.</li>
             </ul>
             <!-- 메모리 파일: 위 소비 시연이 기록하는 파일 트리 + 수동 조작(전체 쓰기·추가·삭제) -->
             <div>
                 <div class="flex items-center" style="margin-bottom:6px">
-                  <span class="selctl__lbl">메모리 파일</span>
+                  <span class="selctl__lbl">생성된 파일</span>
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="memInject = !memInject" x-text="memInject ? '주입 미리보기 닫기' : '주입 미리보기'"></button>
                 </div>
                 <div x-show="memLog.length" class="space-y-1" style="margin-bottom:8px">
@@ -359,5 +295,58 @@
             </div>
           </div>
         </div>
-      </div>
+        </div>
 
+        <!-- ═══ 정책: 이 화면이 실제로 남기는 로그 체계(TIARA)와 측정 · 판정 · 기록 정책 ═══ -->
+        <div x-show="labUserView==='policy'" x-cloak class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>로그 체계</b><span class="meta">TIARA · 전사 통합 사용자 행동로그</span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
+                <li>시연 · 운영의 행동 수집은 <b>TIARA</b>(전사 통합 사용자 행동로그 수집 플랫폼 · 기존 Tiara · Kinsight · S2Events 통합) 체계를 따릅니다.</li>
+                <li>아래 표는 이 화면이 <b>실제로 남기는 로그</b>와 TIARA 표준(ActionType · ActionKind)의 매핑입니다 — 추후 실사용자 로그도 같은 체계로 들어옵니다.</li>
+                <li>자세한 정의는 <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/286294107" target="_blank" rel="noopener" class="text-violet" style="text-decoration:underline">TIARA 스펙 시트</a>에서 확인하세요.</li>
+              </ul>
+              <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:170px">ActionType</th><th>정의</th><th style="width:220px">이 화면에서</th></tr></thead><tbody>
+                <tr><td><code class="text-violet">ViewableImpression</code></td><td>화면에 <b>실제로 보인</b> 콘텐츠의 노출 기록(예: 영역 50% 이상) · 측정값 "노출수" → CTR 분모</td><td>피드 진입 시 보인 카드 일괄 기록(중복 무시)</td></tr>
+                <tr><td><code class="text-violet">Event</code></td><td>클릭 등 사용자가 직접 취한 행동 · 측정값 "이벤트수"</td><td>카드 탭(콘텐츠 클릭) · 저장 버튼</td></tr>
+                <tr><td><code class="text-violet">Pageview</code></td><td>사용자가 하나의 화면을 볼 때(필수 타입) · 측정값 "페이지뷰"</td><td>읽기 화면 진입</td></tr>
+                <tr><td><code class="text-violet">Usage</code></td><td>페이지 단위 <b>체류시간 · 스크롤 비율</b> · ms 기록 → 초 변환 · <b>최대 600초(10분)</b> 초과분은 최대값 저장</td><td>읽기 종료 시 체류 · 스크롤 기록(600초 클램프 동일 적용)</td></tr>
+              </tbody></table></div>
+              <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:170px">시연 행동</th><th style="width:220px">TIARA 매핑</th><th>수집 값</th></tr></thead><tbody>
+                <tr><td>피드 진입(노출)</td><td>ViewableImpression</td><td><code class="text-violet">content_id</code> 목록 · 클릭률 · 소비율의 분모로만 사용</td></tr>
+                <tr><td>카드 탭</td><td>Event · <code class="text-violet">ClickContent</code> (+ 읽기 화면 Pageview · <code class="text-violet">ViewContent</code>)</td><td>클릭 콘텐츠 · 이후 해당 콘텐츠 가중 ×2.0</td></tr>
+                <tr><td>나가기(읽기 종료)</td><td>Usage · <code class="text-violet">UsagePage</code></td><td><code class="text-violet">dwell_sec</code>(체류) · <code class="text-violet">scroll_pct</code>(스크롤) · 체류 30초 이상=정독, 미만=훑기 자동 판정</td></tr>
+                <tr><td>감정 반응(추천 · 좋아요 · 감동 · 화나요 · 슬퍼요)</td><td>Event · <code class="text-violet">Like</code></td><td>감정 상세는 Custom Properties 에 기록(스펙 권고) · 메모리 [observed]</td></tr>
+                <tr><td>댓글 등록</td><td>Event · <code class="text-violet">WriteComment</code></td><td>댓글 본문은 <b>직접 발화</b> → 메모리에 <code class="text-violet">[stated]</code> 로 기록</td></tr>
+              </tbody></table></div>
+              <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:170px">수집 필드</th><th>정의</th></tr></thead><tbody>
+                <tr><td><code class="text-violet">user_id</code></td><td>사용자 구분 키 · 실명 · 연락처 등 식별 정보는 어떤 경로로도 수집하지 않음</td></tr>
+                <tr><td><code class="text-violet">content_id</code></td><td>추출 순서(0부터) · 조인 우선순위는 인덱스 → 외부 id → 제목</td></tr>
+                <tr><td><code class="text-violet">event</code></td><td>impression · click · read · skim · react · comment (TIARA ActionType 매핑은 위 표)</td></tr>
+                <tr><td><code class="text-violet">dwell_sec</code> · <code class="text-violet">scroll_pct</code></td><td>체류 초(최대 600) · 스크롤 %(0~100)</td></tr>
+                <tr><td><code class="text-violet">ts</code></td><td>이벤트 시각 · 시간대 신호(버스트 · 주야 이중 · 드리프트) 산출에 사용</td></tr>
+              </tbody></table></div>
+              <div class="text-xs text-muted" style="margin-top:10px">원문:
+                <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/286196173" target="_blank" rel="noopener" class="text-violet">로그 데이터 스키마 상세</a> ·
+                <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/285868533" target="_blank" rel="noopener" class="text-violet">ActionType</a> ·
+                <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/286458229" target="_blank" rel="noopener" class="text-violet">ActionKind</a> ·
+                <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/285901486" target="_blank" rel="noopener" class="text-violet">로그뷰어 사용하기</a></div>
+            </div>
+          </div>
+
+          <div class="panel"><div class="panel-hd"><b>측정 · 판정 · 기록 정책</b><span class="meta">시연과 운영이 같은 계산</span></div>
+            <div class="panel-bd">
+              <div class="drow"><div class="k">가중치 공식</div><div class="v text-sm text-body">체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) → 카테고리 · 맥락(인텐트)별 합산 → 상대 등급(저 / 중 / 고)</div></div>
+              <div class="drow"><div class="k">깊이 판정</div><div class="v text-sm text-body">평균 체류 45초 이상 + 스크롤 60% 이상 = <b>몰입</b> · 15초 미만 = <b>훑기</b> · 그 사이 = 혼합</div></div>
+              <div class="drow"><div class="k">판정 순서</div><div class="v text-sm text-body">명시 신호(버스트 · 주야 이중 · 드리프트 · 주말 편중 · 출퇴근 훑기 · 엔티티 집중) 우선 → 없으면 깊이 · 강도 · 폭 근접 매칭 · 소비 5건 미만은 <b>잠정</b> 배정 후 로그가 쌓이면 자동 재판정</div></div>
+              <div class="drow"><div class="k">메모리 기록</div><div class="v text-sm text-body">소비 관찰은 <code class="text-violet">[observed]</code> · 사용자가 직접 말한 사실은 <code class="text-violet">[stated]</code> 로 구분 기록 · 파일당 4,000바이트 · 64개 제한 · 삭제는 명시 요청이 있을 때만</div></div>
+              <div class="drow"><div class="k">개인정보</div><div class="v text-sm text-body">건강 · 정치 성향 · 가족 실명 · 주소 · 금융 등 민감 정보는 기록하지 않음 · TIARA Location(위치 수집) 타입은 사용하지 않음</div></div>
+              <div style="margin-top:10px"><div class="selctl__lbl" style="margin-bottom:4px">판정 기준 · 기본 페르소나 8종</div>
+                <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'ppd'+pd.name">
+                  <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'— ' + pd.desc"></span></div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>

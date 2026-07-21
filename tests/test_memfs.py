@@ -108,26 +108,6 @@ class TestMemfs(unittest.TestCase):
         self.assertEqual(d2["files"], [])
         self.assertIn("없습니다", MF.memory_ops({"op": "append", "path": "profile.md", "line": "x"}, team="t1")["error"])
 
-    # ── 소비 시연 → 자동 기록 ──
-    def test_consume_creates_topic_file(self):
-        d = MF.memory_ops({"op": "consume", "idx": 0, "action": "read"}, team="t1")
-        self.assertNotIn("error", d)
-        self.assertEqual(d["wrote"]["path"], "topics/business-and-finance.md")
-        body = d["files"][0]["content"]
-        self.assertIn("[observed]", body)
-        self.assertIn("반도체 실적 심층 분석", body)
-        self.assertIn("끝까지 읽음", body)
-        self.assertIn("1회", d["files"][0]["desc"])
-        # 3회 소비 → 설명 줄이 '반복 소비 주제'로 자란다
-        MF.memory_ops({"op": "consume", "idx": 0, "action": "skim"}, team="t1")
-        d3 = MF.memory_ops({"op": "consume", "idx": 0, "action": "save"}, team="t1")
-        self.assertIn("반복 소비 주제", d3["files"][0]["desc"])
-        self.assertEqual(d3["files"][0]["content"].count("- [observed]"), 3)
-
-    def test_consume_bad_idx(self):
-        self.assertIn("찾을 수 없습니다", MF.memory_ops({"op": "consume", "idx": 99}, team="t1")["error"])
-        self.assertIn("올바르지", MF.memory_ops({"op": "consume", "idx": "x"}, team="t1")["error"])
-
     # ── 주입 미리보기 · 팀 격리 ──
     def test_injection_and_team_scope(self):
         MF.memory_ops({"op": "write", "path": "profile.md",
@@ -227,3 +207,32 @@ class TestDemoSession(unittest.TestCase):
         self.assertIn("올바르지", MF.demo_ops({"op": "event", "event": "read", "idx": "x"}, team="t1")["error"])
         self.assertIn("지원하지", MF.demo_ops({"op": "event", "event": "hover", "idx": 0}, team="t1")["error"])
         self.assertIn("지원하지", MF.demo_ops({"op": "hack"}, team="t1")["error"])
+
+    def test_react_records_observed_and_custom_props_logic(self):
+        MF.demo_ops({"op": "event", "event": "click", "idx": 0}, team="t1")
+        d = MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "화나요"}, team="t1")
+        self.assertIn("Custom Properties", d["logic"])
+        self.assertIn("반응 '화나요'", d["stream"][0])
+        body = MF.memory_data(team="t1")["files"][0]["content"]
+        self.assertIn("[observed]", body)
+        self.assertIn("반응 '화나요'", body)
+        self.assertIn("지원하지 않는 반응", MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "글쎄요"}, team="t1")["error"])
+
+    def test_comment_recorded_as_stated(self):
+        d = MF.demo_ops({"op": "event", "event": "comment", "idx": 0, "text": "반도체는 지금이 저점 같다"}, team="t1")
+        self.assertIn("WriteComment", d["logic"])
+        body = MF.memory_data(team="t1")["files"][0]["content"]
+        self.assertIn('- [stated]', body)
+        self.assertIn("반도체는 지금이 저점 같다", body)
+        self.assertNotIn("소비 기록 · 1회", body.splitlines()[2])   # 댓글은 [observed] 횟수에 미포함
+        self.assertIn("내용을 입력", MF.demo_ops({"op": "event", "event": "comment", "idx": 0, "text": " "}, team="t1")["error"])
+
+    def test_react_comment_in_conclusion_chain(self):
+        MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
+        MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "좋아요"}, team="t1")
+        MF.demo_ops({"op": "event", "event": "comment", "idx": 0, "text": "좋은 분석"}, team="t1")
+        c = MF.demo_ops({"op": "finish"}, team="t1")["conclusion"]
+        acts = [x["act"] for x in c["chain"]]
+        self.assertTrue(any("반응 '좋아요'" in a for a in acts))
+        self.assertTrue(any("댓글" in a for a in acts))
+        self.assertTrue(any("[stated]" in x["measure"] for x in c["chain"]))

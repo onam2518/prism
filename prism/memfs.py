@@ -1,9 +1,8 @@
 """파일 기반 메모리(실험실 · 사용자 메타): 마크다운 파일 트리를 팀 스코프로 저장.
 
 설계 실험을 비개발자가 화면에서 직접 구동하는 백엔드 —
-- 소비 시연: 추출 콘텐츠를 훑기·정독·저장으로 소비하면 그 턴에 /topics/<주제>.md 로 자동 기록
-- 수동 조작: 읽기 · 전체 쓰기(버전 토큰 검사) · 끝에 추가 · 삭제(명시 요청이 있을 때만)
-- 새 대화 주입: 파일 목록 → 주입 블록 미리보기 생성
+- 시연 과정(STEP 1~4): 실서비스형 피드 소비 → 실시간 측정 → 결론(페르소나 판정) → 활용
+- 생성 과정: 소비가 그 턴에 /topics/<주제>.md 로 자동 기록 + 수동 조작(전체 쓰기·추가·삭제) + 주입
 저장은 store 의 report KV(usermeta_memory) 를 재사용한다 · 실제 파일시스템을 쓰지 않아
 배포·테스트 격리가 안전하고, 파일당 크기·파일 수 제한을 서버가 강제한다.
 
@@ -23,11 +22,6 @@ ROOT_FILES = ("profile.md", "preferences.md")
 DIRS = ("topics", "areas", "people")
 _NAME = re.compile(r"^[0-9A-Za-z가-힣][0-9A-Za-z가-힣_-]{0,38}\.md$")
 _ORDER = {"profile.md": 0, "preferences.md": 1, "topics": 2, "areas": 3, "people": 4}
-
-# 소비 액션 → (기록 문구, 체류초, 스크롤%) · 시연이므로 결정적 값
-ACTIONS = {"skim": ("훑고 지나감", 3, 20), "read": ("끝까지 읽음", 45, 95),
-           "save": ("저장함", 60, 100)}
-
 
 def _now() -> str:
     return _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -158,35 +152,15 @@ def _bump_desc(content: str, cat: str, n: int) -> str:
     return "\n".join(lines) + ("\n" if content.endswith("\n") else "")
 
 
-def _consume(files, body, team):
-    """소비 이벤트 → 해당 주제 파일에 [observed] 한 줄 자동 기록. (wrote, err) 반환."""
-    try:
-        idx = int(body.get("idx"))
-    except (TypeError, ValueError):
-        return None, "콘텐츠 번호가 올바르지 않습니다"
-    rows = _SV.results_rows(team=team)
-    if idx < 0 or idx >= len(rows):
-        return None, "콘텐츠를 찾을 수 없습니다 · 새로고침 후 다시 시도하세요"
-    from .usermeta import _t1
-    r = rows[idx]
-    im = r.get("item_meta") or {}
-    title = ((r.get("content_ref") or {}).get("title") or "")[:60] or "(제목 없음)"
-    cats = im.get("content_category") or []
-    cat = _t1(cats[0]) if cats else "기타"
-    intent = (im.get("intent") or ["기타"])[0]
-    label, dwell, _scroll = ACTIONS.get(body.get("action") or "read", ACTIONS["read"])
-    return _observe(files, title, cat, intent, label, dwell)
-
-
-def _observe(files, title, cat, intent, label, dwell):
-    """관찰 1건 → /topics/<주제>.md 에 [observed] 한 줄 기록(공용 · 소비 시연도 사용)."""
+def _observe(files, title, cat, intent, label, dwell=None, tag="observed"):
+    """관찰([observed]) 또는 발화([stated]) 1건 → /topics/<주제>.md 에 한 줄 기록(공용)."""
     path = "topics/" + _slug(cat) + ".md"
     if path not in files and len(files) >= MAX_FILES:
         return None, "파일 수 제한(" + str(MAX_FILES) + "개)에 도달했습니다"
     prev = (files.get(path) or {}).get("content") or _topic_header(path, cat, 0)
-    n = prev.count("- [observed]") + 1
-    line = ('- [observed] ' + _now() + ' · "' + title + '" ' + label +
-            " · 체류 " + str(dwell) + "초 (" + intent + ")")
+    n = prev.count("- [observed]") + (1 if tag == "observed" else 0)
+    line = ('- [' + tag + '] ' + _now() + ' · "' + title + '" ' + label +
+            (" · 체류 " + str(dwell) + "초" if dwell is not None else "") + " (" + intent + ")")
     content = _bump_desc(prev, cat, n)
     if not content.endswith("\n"):
         content += "\n"
@@ -199,19 +173,14 @@ def _observe(files, title, cat, intent, label, dwell):
 
 
 def memory_ops(body: dict, team=None) -> dict:
-    """조작 5종 중 쓰기 계열(consume·write·append·delete) · 읽기는 GET.
+    """조작 5종 중 쓰기 계열(write·append·delete) · 읽기는 GET · 소비 기록은 시연(demo_ops)이 담당.
     성공 시 최신 memory_data + wrote(방금 기록분) 반환 · 실패는 {"error": ...}."""
     body = body or {}
     op = body.get("op") or ""
     files = _files(team)
     wrote = None
 
-    if op == "consume":
-        wrote, err = _consume(files, body, team)
-        if err:
-            return {"error": err}
-
-    elif op == "write":                              # 전체 쓰기 · 신규 생성 겸용
+    if op == "write":                                # 전체 쓰기 · 신규 생성 겸용
         path = valid_path(body.get("path"))
         if not path:
             return {"error": "경로가 규칙에 맞지 않습니다 · profile.md · preferences.md · "
@@ -267,7 +236,15 @@ def memory_ops(body: dict, team=None) -> dict:
 DEMO_KIND = "usermeta_demo"
 DEMO_EVENTS_MAX = 400
 EV_LABEL = {"impression": "노출", "click": "클릭", "skim": "훑고 나감",
-            "read": "끝까지 읽음", "save": "저장함"}
+            "read": "끝까지 읽음", "save": "저장함", "react": "반응", "comment": "댓글"}
+EMOTIONS = ("추천해요", "좋아요", "감동이에요", "화나요", "슬퍼요")   # 기사 하단 감정 반응 5종
+# TIARA(전사 통합 행동로그) 체계 매핑 — pplan/286294107 스펙 시트 기준.
+# 노출=ViewableImpression(실제 보인 콘텐츠만) · 클릭=Event(ClickContent · 읽기 화면은 Pageview
+# ViewContent 병행) · 읽기 종료=Usage(UsagePage · 체류·스크롤) · 저장=Event(표준 Kind 없음 →
+# 액션명 구분 권고). Usage 체류 최대 600초(10분) 초과분은 스펙대로 최대값으로 잘라 저장.
+TIARA_TAG = {"impression": "ViewImp", "click": "Event", "read": "Usage",
+             "skim": "Usage", "save": "Event", "react": "Event", "comment": "Event"}
+USAGE_MAX_SEC = 600
 
 
 def _now_t() -> str:
@@ -322,7 +299,11 @@ def _live_measures(events, catalog) -> dict:
 
 
 def _ev_line(e) -> str:
-    s = e.get("t", "") + " " + EV_LABEL.get(e.get("event"), e.get("event", "")) + ' "' + (e.get("title") or "")[:24] + '"'
+    lab = EV_LABEL.get(e.get("event"), e.get("event", ""))
+    if e.get("emo"):
+        lab += " '" + e["emo"] + "'"
+    s = (e.get("t", "") + " [" + TIARA_TAG.get(e.get("event"), "-") + "] "
+         + lab + ' "' + (e.get("title") or "")[:24] + '"')
     if e.get("dwell"):
         s += " · 체류 " + str(e["dwell"]) + "초"
     if e.get("path"):
@@ -343,10 +324,17 @@ def demo_data(team=None) -> dict:
            "stream": [_ev_line(e) for e in reversed(events[-8:])],
            "live": _live_measures(events, catalog),
            "logic": sess.get("last_logic") or "",
+           "personas": _personas_brief(),
            "formula": "가중치 = 체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) → 카테고리·맥락별 합산 → 상대 등급(저/중/고)"}
     if sess.get("finished") and sess.get("conclusion"):
         out["conclusion"] = sess["conclusion"]
     return out
+
+
+def _personas_brief() -> list:
+    """판정 기준(기본 페르소나 8종) 요약 · 구 '페르소나 정의' 표를 STEP 3 정책 참고로 흡수."""
+    from . import usermeta as UM
+    return [{"name": p["name"], "full": p["full"], "desc": p["desc"]} for p in UM.PERSONAS]
 
 
 def _conclusion(events, catalog, team=None) -> dict:
@@ -369,6 +357,14 @@ def _conclusion(events, catalog, team=None) -> dict:
         elif e.get("event") == "click":
             chain.append({"t": e.get("t", ""), "act": '클릭 · "' + (e.get("title") or "") + '"',
                           "measure": "이 콘텐츠 이후 가중 ×2.0", "file": "측정만"})
+        elif e.get("event") == "react":
+            chain.append({"t": e.get("t", ""), "act": "반응 '" + (e.get("emo") or "") + "' · \"" + (e.get("title") or "") + '"',
+                          "measure": "Event(Like) · 감정은 Custom Properties",
+                          "file": ("/" + e["path"]) if e.get("path") else "측정만"})
+        elif e.get("event") == "comment":
+            chain.append({"t": e.get("t", ""), "act": '댓글 · "' + (e.get("text") or "") + '"',
+                          "measure": "직접 발화 → [stated] 기록",
+                          "file": ("/" + e["path"]) if e.get("path") else "측정만"})
     top_cat = live["cats"][0]["name"] if live["cats"] else "기타"
     top_int = live["ints"][0][0] if live.get("ints") else "기타"
     depth = live["form"].get("깊이", "·")
@@ -421,7 +417,7 @@ def demo_ops(body: dict, team=None) -> dict:
                     events.append({"idx": i, "event": "impression", "dwell": 0, "scroll": 0,
                                    "t": _now_t(), "title": byidx[i]["title"][:40]})
             sess["last_logic"] = "노출 " + str(len(seen)) + "건 등록 — 노출은 클릭률·소비율의 분모로만 쓰입니다"
-        elif ev in ("click", "read", "skim", "save"):
+        elif ev in ("click", "read", "skim", "save", "react", "comment"):
             try:
                 idx = int(body.get("idx"))
             except (TypeError, ValueError):
@@ -429,12 +425,41 @@ def demo_ops(body: dict, team=None) -> dict:
             c = byidx.get(idx)
             if not c:
                 return {"error": "콘텐츠를 찾을 수 없습니다 · 새로고침 후 다시 시도하세요"}
-            dwell = max(0, min(3600, int(body.get("dwell_sec") or 0)))
+            dwell = max(0, min(USAGE_MAX_SEC, int(body.get("dwell_sec") or 0)))   # TIARA Usage 최대 10분
             scroll = max(0, min(100, int(body.get("scroll_pct") or 0)))
             rec = {"idx": idx, "event": ev, "dwell": dwell, "scroll": scroll, "t": _now_t(),
                    "title": c["title"][:40], "cat": c["cat"], "intent": c["intent"], "path": ""}
             if ev == "click":
-                sess["last_logic"] = '클릭 "' + c["title"][:24] + '" → 이 콘텐츠의 소비 가중 ×2.0'
+                sess["last_logic"] = ('클릭 "' + c["title"][:24] + '" → Event(ClickContent) + 읽기 화면 '
+                                      "Pageview(ViewContent) · 이 콘텐츠의 소비 가중 ×2.0")
+            elif ev == "react":                      # 감정 반응 → Event(Like) · 감정 상세는 Custom Properties
+                emo = body.get("emotion") or ""
+                if emo not in EMOTIONS:
+                    return {"error": "지원하지 않는 반응입니다"}
+                files = _files(team)
+                wrote, err = _observe(files, c["title"] or "(제목 없음)", c["cat"], c["intent"],
+                                      "반응 '" + emo + "'")
+                if err:
+                    return {"error": err}
+                _persist(team, files)
+                rec["emo"] = emo
+                rec["path"] = wrote["path"]
+                sess["last_logic"] = ("반응 '" + emo + "' → Event(Like) · 감정 상세는 Custom Properties 기록 · /"
+                                      + wrote["path"] + " 에 [observed]")
+            elif ev == "comment":                    # 댓글 = 직접 발화 → Event(WriteComment) + [stated] 기록
+                text = (body.get("text") or "").strip()[:200]
+                if not text:
+                    return {"error": "댓글 내용을 입력하세요"}
+                files = _files(team)
+                wrote, err = _observe(files, text, c["cat"], c["intent"],
+                                      '— "' + c["title"][:24] + '" 에 남긴 의견', tag="stated")
+                if err:
+                    return {"error": err}
+                _persist(team, files)
+                rec["text"] = text[:40]
+                rec["path"] = wrote["path"]
+                sess["last_logic"] = ('댓글 → Event(WriteComment) · 직접 말한 의견이라 /' + wrote["path"]
+                                      + " 에 [stated] 로 기록(관찰과 구분)")
             else:
                 files = _files(team)
                 wrote, err = _observe(files, c["title"] or "(제목 없음)", c["cat"], c["intent"],

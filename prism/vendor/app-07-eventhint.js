@@ -214,46 +214,10 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!(await this.dsConfirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)', { ok: '초기화', danger: true }))) return;
         try { const r = await this._afetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); const d = await r.json(); if (r.ok && d && !d.error && d.serviceGroups) this.dictData = d; } catch (e) {}
       },
-      async loadUser() { this.loadMem(); this.loadDemoLab(); this.modBusy = true; try { this.userData = await (await this._afetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
-      async uploadUserLog(e) {
-        const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-        this.modBusy = true; this.pfMsg = '';
-        try { const fd = new FormData(); fd.append('file', f);
-          const d = await (await this._afetch('/usermeta', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
-          if (d.error) { this.pfMsg = '오류: ' + d.error; } else { this.userData = d; this.pfMsg = this._genMsg(d); } }
-        catch (err) {} this.modBusy = false;
-      },
-      // 실험실 · 사용자: 프로필(사용자 메타) 입력 → 행동 로그와 모이면 서버가 페르소나 능동 생성
-      pf: { user_id: '', age_band: '', interests: '', day_part: '' }, pfMsg: '',
-      _genMsg(d) {
-        if (d.generated_n) return '생성 페르소나 ' + d.generated_n + '개 · 재료가 모인 사용자는 자동 생성됩니다';
-        if ((d.profiles_n || 0) && !(d.users || []).length) return '행동 로그가 연결되면 자동 생성됩니다';
-        if (!(d.profiles_n || 0) && (d.users || []).length) return '프로필이 저장되면 자동 생성됩니다';
-        return '';
-      },
-      async saveProfile() {
-        if (!this.pf.user_id.trim()) { this.pfMsg = 'user_id 를 입력하세요'; return; }
-        this.modBusy = true; this.pfMsg = '';
-        try {
-          const d = await (await this._afetch('/usermeta-profiles', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ profile: this.pf }) })).json();
-          if (d.error) { this.pfMsg = '오류: ' + d.error; }
-          else { this.userData = d; this.pf = { user_id: '', age_band: '', interests: '', day_part: '' }; this.pfMsg = '프로필 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
-        } catch (e) { this.pfMsg = '오류: ' + e; }
-        this.modBusy = false;
-      },
-      async uploadProfiles(e) {
-        const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-        this.modBusy = true; this.pfMsg = '';
-        try { const fd = new FormData(); fd.append('file', f);
-          const d = await (await this._afetch('/usermeta-profiles', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
-          if (d.error) { this.pfMsg = '오류: ' + d.error; }
-          else { this.userData = d; this.pfMsg = (d.saved || 0) + '명 저장됨' + (this._genMsg(d) ? ' · ' + this._genMsg(d) : ''); }
-        } catch (err) { this.pfMsg = '오류: ' + err; }
-        this.modBusy = false;
-      },
-      // ── 실험실 · 사용자: 파일 기반 메모리(설계 실험 구동) ──
-      // 소비 시연(memConsume)이 그 턴에 서버 자동 기록 → 응답의 wrote 로 방금 기록분을
-      // 하이라이트·로그에 실시간 반영. 수동 조작은 전체 쓰기(버전 토큰)·끝에 추가·삭제.
+      loadUser() { this.loadMem(); this.loadDemoLab(); },   // 실험실 · 사용자 탭 진입점(시연 + 생성 과정만 로드)
+      // ── 실험실 · 사용자: 생성 과정(파일 기반 메모리) ──
+      // 자동 기록은 시연(demoClose→event)이 담당 · 여기는 파일 확인·수동 조작(전체 쓰기
+      // 버전 토큰 · 끝에 추가 · 삭제)과 주입 미리보기. 응답의 wrote 로 방금 기록분 하이라이트.
       memData: null, memSel: '', memDraft: '', memVer: 0, memLine: '', memMsg: '',
       memNew: { kind: 'topics', name: '' }, memInject: false, memFlash: '', memLog: [], memBusy: false,
       async loadMem() { try { const d = await (await this._afetch('/usermeta-memory', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) this.memData = d; } catch (e) {} },
@@ -274,7 +238,6 @@ window.PRISM_APP_PARTS.push(() => ({
           this.memBusy = false; return d;
         } catch (e) { this.memMsg = '오류: ' + e; this.memBusy = false; return null; }
       },
-      async memConsume(c, action) { const d = await this.memPost({ op: 'consume', idx: c.idx, action }); if (d && d.wrote) this.memOpen(d.wrote.path); },
       memTemplate(p) {
         return '---\n파일: /' + p + '\n설명: 한 줄 설명을 적어 주세요\n출처: 직접 입력\n별칭: \n---\n- [stated] 사용자가 직접 말한 사실만 한 줄씩 적습니다\n';
       },
@@ -304,8 +267,9 @@ window.PRISM_APP_PARTS.push(() => ({
       // ── 실험실 · 사용자: 소비 시연(STEP 1 소비·수집 → 2 측정·로직 → 3 결론 → 4 활용) ──
       // 좌측 피드(Anchor DS)에서의 실제 행동을 이벤트로 서버에 보내고, 우측 3단(실시간·누적·로직)을
       // 응답으로 갱신. 체류는 실측 초 × 10 배속(가상 체류)으로 보내 실로직 임계값(30·45초)을 체감시킨다.
+      labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연·생성) | policy(정책)
       demoData: null, demoStep: 1, demoReading: null, demoTick: 0, _demoTimer: null,
-      demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false,
+      demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false, demoDefsOpen: false,
       demoX: 10,                                    // 가상 체류 배속(화면에 명시)
       async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; if (d.session && d.session.finished && d.conclusion) this.demoStep = Math.max(this.demoStep, 3); this.demoImpress(); } } catch (e) {} },
       async demoPost(body) {
@@ -324,17 +288,29 @@ window.PRISM_APP_PARTS.push(() => ({
       demoVirtualDwell() { return this.demoReading ? Math.max(1, Math.round((Date.now() - this.demoReading.t0) / 1000 * this.demoX)) : 0; },
       demoOpen(c) {                                 // 카드 탭 = 클릭 이벤트 + 읽기 화면 · 체류 타이머 시작
         if (this.demoReading) return;
-        this.demoReading = { idx: c.idx, t0: Date.now(), c };
+        this.demoReading = { idx: c.idx, t0: Date.now(), c, reacted: '', comments: [] };
         this.demoTick = 0;
         this._demoTimer = setInterval(() => { this.demoTick = this.demoVirtualDwell(); }, 300);
         this.demoPost({ op: 'event', event: 'click', idx: c.idx });
       },
-      async demoClose(action) {                     // 읽기 종료: read(다 읽음)·skim(훑고 나감)·save(저장)
+      async demoClose() {                           // 나가기: 체류로 정독(30초 이상)/훑기 자동 판정 → Usage 기록
         if (!this.demoReading) return;
         const idx = this.demoReading.idx, dwell = this.demoVirtualDwell();
         clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null;
-        const scroll = action === 'skim' ? 20 : (action === 'save' ? 100 : 95);
-        await this.demoPost({ op: 'event', event: action, idx, dwell_sec: dwell, scroll_pct: scroll });
+        const act = dwell >= 30 ? 'read' : 'skim';
+        await this.demoPost({ op: 'event', event: act, idx, dwell_sec: dwell, scroll_pct: act === 'read' ? 95 : 20 });
+      },
+      async demoReact(emo) {                        // 감정 반응 → Event(Like) · 콘텐츠당 1회
+        if (!this.demoReading || this.demoReading.reacted) return;
+        const d = await this.demoPost({ op: 'event', event: 'react', idx: this.demoReading.idx, emotion: emo });
+        if (d && this.demoReading) this.demoReading.reacted = emo;
+      },
+      demoCmt: '',
+      async demoComment() {                         // 댓글 → Event(WriteComment) + 메모리 [stated]
+        const t = (this.demoCmt || '').trim();
+        if (!t || !this.demoReading) return;
+        const d = await this.demoPost({ op: 'event', event: 'comment', idx: this.demoReading.idx, text: t });
+        if (d && this.demoReading) { (this.demoReading.comments = this.demoReading.comments || []).push(t); this.demoCmt = ''; }
       },
       demoCatCls(cat) {                             // 카테고리 → Anchor 카테고리 색(뉴스·스포츠·연예·관심사)
         if (cat === 'Sports') return 'an-cat-sports';
@@ -350,7 +326,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       async demoNext() {
         if (!this.demoCanNext()) return;
-        if (this.demoReading) await this.demoClose('read');
+        if (this.demoReading) await this.demoClose();
         if (this.demoStep === 2 && !(this.demoData && this.demoData.session.finished)) {
           const d = await this.demoPost({ op: 'finish' }); if (!d) return;
         }
