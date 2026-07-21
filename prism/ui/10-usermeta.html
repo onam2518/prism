@@ -23,6 +23,7 @@
                   <div class="flex items-center gap-2" style="margin:10px 0 12px;min-height:32px">
                     <span class="selctl__lbl">서비스 화면 예시</span>
                     <span class="ml-auto flex items-center gap-1">
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-right:8px" x-on:click="demoTheme = demoTheme==='dark' ? 'light' : 'dark'" data-tip="시연 화면만 테마 전환 · 수집·측정과 무관" data-tip-pos="top" x-text="demoTheme==='dark' ? '라이트' : '다크'"></button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='a' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('a')" data-tip="시안 A · 한 줄기 피드 · 이유는 칩 하나" data-tip-pos="top">피드형</button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='b' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('b')" data-tip="시안 B · 블록 제목이 곧 추천 이유" data-tip-pos="top">블록형</button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='c' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('c')" data-tip="시안 C · 물어보면 생기는 주제 보드(메모리 연동)" data-tip-pos="top">보드형</button>
@@ -31,14 +32,14 @@
                   </div>
                   <!-- 시연 화면은 디자인 교체 전제(anchor-scope 격리): 이벤트 계약(impression·search·click·
                        read/skim·react·comment)만 지키면 화면을 통째로 갈아끼울 수 있다 · 시안 4종이 그 증명 -->
-                  <div class="anchor-scope">
+                  <div class="anchor-scope" x-bind:class="demoTheme==='light' ? 'an-mode-light' : 'an-mode-dark'">
                     <div class="an-phone"><div class="an-screen">
                       <div class="an-status tnum"><span>9:41</span><span>●●●</span></div>
                       <div class="an-appbar">MY 콘텐츠</div>
                       <!-- 기사 뷰(전 시안 공통 · 같은 이벤트 계약) -->
                       <div x-show="demoReading" x-cloak>
                         <div class="an-article">
-                          <div class="an-art-src"><span x-text="demoReading ? (demoReading.c.service || '콘텐츠') : ''"></span><span class="ml-auto an-btn an-btn--neutral" style="min-height:32px;padding:6px 12px;font-size:14px;cursor:pointer" x-on:click="demoClose()">← 나가기</span></div>
+                          <div class="an-art-src"><span x-text="demoReading ? (demoReading.c.service || '콘텐츠') : ''"></span><button type="button" class="ml-auto an-btn an-btn--neutral" style="min-height:32px;padding:6px 12px;font-size:14px;cursor:pointer" x-on:click="demoClose()">← 나가기</button></div>
                           <div class="an-article-t" x-text="demoReading ? demoReading.c.title : ''"></div>
                           <div class="an-article-m" x-text="demoReading ? ((demoReading.c.service || '콘텐츠') + ' · 오늘 · 체류 ' + demoFmtT(demoTick) + ' (실측 × ' + demoX + ' 배속)') : ''"></div>
                           <div class="an-lead" x-show="demoReading && demoReading.c.summary" x-text="demoReading ? demoReading.c.summary : ''"></div>
@@ -65,7 +66,7 @@
 
                       <div x-show="!demoReading">
                         <!-- 시안 A · 피드형: 한 줄기 카드 스택 · 이유는 칩 하나 · 칩 = 조용한 필터 -->
-                        <div x-show="demoVariant==='a'">
+                        <div x-show="demoVariant==='a'" x-cloak>
                           <div class="an-search">
                             <div class="an-search-cap">원하는 콘텐츠를 찾아드려요 · 찾을수록 추천이 취향에 가까워집니다</div>
                             <div class="an-search-box">
@@ -82,7 +83,7 @@
                           <div class="an-list" style="margin:14px 16px" x-show="demoFeed().length">
                             <template x-for="(c, ci) in demoFeed()" x-bind:key="'av'+c.idx">
                               <button type="button" class="an-row" x-on:click="demoOpen(c)">
-                                <div class="an-hrow" style="display:flex;gap:10px;align-items:flex-start">
+                                <div style="display:flex;gap:10px;align-items:flex-start">
                                   <span class="an-thumb2" style="width:46px;height:46px"></span>
                                   <div style="flex:1;min-width:0">
                                     <div class="an-row-t" style="white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden" x-text="c.title"></div>
@@ -285,7 +286,7 @@
                 </div>
                 <div class="demo-obs"><div class="cap">선호 · 소비 강도</div>
                   <template x-for="g in ((demoData && demoData.live.cats) || [])" x-bind:key="'dg'+g.name">
-                    <div class="demo-gauge tnum"><span class="lbl" x-text="g.name"></span><span class="bar"><i x-bind:style="'width:' + g.pct + '%'"></i></span><span class="v" x-text="g.pct + '%'"></span></div>
+                    <div class="demo-gauge tnum"><span class="lbl" x-text="g.ko || g.name"></span><span class="bar"><i x-bind:style="'width:' + g.pct + '%'"></i></span><span class="v" x-text="g.pct + '%'"></span></div>
                   </template>
                   <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
                     <template x-for="(v, k) in ((demoData && demoData.live.intensity) || {})" x-bind:key="'di'+k">
@@ -500,7 +501,7 @@
                 <li>자세한 정의는 <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/286294107" target="_blank" rel="noopener" class="text-violet" style="text-decoration:underline">TIARA 스펙 시트</a>에서 확인하세요.</li>
               </ul>
               <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:170px">ActionType</th><th>정의</th><th style="width:220px">이 화면에서</th></tr></thead><tbody>
-                <tr><td><code class="text-violet">ViewableImpression</code></td><td>화면에 <b>실제로 보인</b> 콘텐츠의 노출 기록(예: 영역 50% 이상) · 측정값 "노출수" → CTR 분모</td><td>피드 진입 시 보인 카드 일괄 기록(중복 무시)</td></tr>
+                <tr><td><code class="text-violet">ViewableImpression</code></td><td>화면에 <b>실제로 보인</b> 콘텐츠의 노출 기록(예: 영역 50% 이상) · 측정값 "노출수" → CTR 분모</td><td>시연 단순화: 피드 진입 시 카탈로그 일괄 기록(중복 무시) · 실서비스는 실노출만 집계</td></tr>
                 <tr><td><code class="text-violet">Event</code></td><td>클릭 등 사용자가 직접 취한 행동 · 측정값 "이벤트수"</td><td>카드 탭 · 검색 · 감정 반응 · 댓글</td></tr>
                 <tr><td><code class="text-violet">Pageview</code></td><td>사용자가 하나의 화면을 볼 때(필수 타입) · 측정값 "페이지뷰"</td><td>읽기 화면 · 검색 결과 화면 진입</td></tr>
                 <tr><td><code class="text-violet">Usage</code></td><td>페이지 단위 <b>체류시간 · 스크롤 비율</b> · ms 기록 → 초 변환 · <b>최대 600초(10분)</b> 초과분은 최대값 저장</td><td>읽기 종료 시 체류 · 스크롤 기록(600초 클램프 동일 적용)</td></tr>

@@ -271,6 +271,7 @@ window.PRISM_APP_PARTS.push(() => ({
       demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
       demoQ: '', demoQFilter: '',
       demoVariant: 'b', demoBoardSel: '', demoCardSel: 'main',          // 시안 선택(a 피드형·b 블록형·c 보드형·d 대화형) · 이벤트 계약은 동일
+      demoTheme: 'dark',                            // 시연 폰 테마(다크/라이트) · 화면 전환일 뿐 수집·측정과 무관해 리셋 없음
       demoSlug(s) { return (s || '').trim().replace(/[^0-9A-Za-z가-힣]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase(); },
       demoKo(c) { return (c && (c.cat_ko || c.cat)) || ''; },
       demoCats() {                                  // 시안 A 관심 칩: 피드 주제의 사용자 표기(최대 5)
@@ -304,12 +305,13 @@ window.PRISM_APP_PARTS.push(() => ({
           if (m.length) out.push({ t: "물어보신 '" + lastQ + "' 소식이에요", s: '', items: m, num: false });
         }
         const cats = (this.demoData && this.demoData.live && this.demoData.live.cats) || [];
+        const inCat = (c, name) => c.cat === name || ((c.entity_categories || []).indexOf(name) >= 0);   // 가중 집계는 전체 카테고리 기준
         if (cats[0]) {
-          const m = take(base.filter(c => c.cat === cats[0].name), 2);
+          const m = take(base.filter(c => inCat(c, cats[0].name)), 2);
           if (m.length) out.push({ t: '요즘 자주 보시는 ' + (this.demoKo(m[0]) || '주제'), s: '읽으신 기록으로 골랐어요', items: m, num: false });
         }
         if (cats[1]) {
-          const m = take(base.filter(c => c.cat === cats[1].name), 2);
+          const m = take(base.filter(c => inCat(c, cats[1].name)), 2);
           if (m.length) out.push({ t: '관심 두시는 ' + (this.demoKo(m[0]) || '주제') + ' 소식', s: '', items: m, num: false });
         }
         const rest = take(base, 4);
@@ -322,7 +324,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return files.map(f => {
           const slug = f.path.slice(7).replace(/\.md$/, '');
           const items = cs.filter(c => this.demoSlug(c.cat) === slug);
-          const label = items.length ? (this.demoKo(items[0]) || slug) : slug;
+          const label = items.length ? (this.demoKo(items[0]) || slug) : slug.replace(/-/g, ' ');   // 무결과 보드는 검색어 원형에 가깝게
           return { path: f.path, slug, label, desc: f.desc, items };
         });
       },
@@ -330,17 +332,21 @@ window.PRISM_APP_PARTS.push(() => ({
       demoDrag: null, demoDragMoved: false,
       demoDragStart(e) {
         const el = e.currentTarget;
-        this.demoDrag = { el, x: e.clientX, left: el.scrollLeft, moved: false };
-        if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) {} }
+        this.demoDrag = { el, x: e.clientX, left: el.scrollLeft, moved: false, pid: e.pointerId };
       },
       demoDragMove(e) {
         const d = this.demoDrag; if (!d) return;
         const dx = e.clientX - d.x;
-        if (Math.abs(dx) > 4) d.moved = true;
-        d.el.scrollLeft = d.left - dx;
+        // 캡처는 드래그 판정 후에만: pointerdown 시점에 걸면 자식 버튼의 click 이 컨테이너로 재타게팅되어 칩 탭이 죽는다(Chrome)
+        if (!d.moved && Math.abs(dx) > 4) {
+          d.moved = true;
+          if (d.el.setPointerCapture) { try { d.el.setPointerCapture(d.pid); } catch (err) {} }
+        }
+        if (d.moved) d.el.scrollLeft = d.left - dx;
       },
       demoDragEnd() {
-        this.demoDragMoved = !!(this.demoDrag && this.demoDrag.moved);
+        if (!this.demoDrag) return;                 // pointerup 뒤 이어지는 pointerleave 중복 호출이 억제 플래그를 지우지 않게
+        this.demoDragMoved = !!this.demoDrag.moved;
         this.demoDrag = null;
         if (this.demoDragMoved) setTimeout(() => { this.demoDragMoved = false; }, 0);
       },
@@ -381,18 +387,26 @@ window.PRISM_APP_PARTS.push(() => ({
         return bs.find(b => b.path === this.demoBoardSel) || bs[0];
       },
       demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false, demoDefsOpen: false,
+      _demoQueue: null, _demoInflight: 0,
       demoX: 10,                                    // 가상 체류 배속(화면에 명시)
       async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; this.demoImpress(); } } catch (e) {} },
-      async demoPost(body) {
-        this.demoBusy = true; this.demoMsg = '';
+      demoPost(body) {                              // 순차 큐: 서버가 세션을 통째로 읽고-쓰므로 동시 요청은 앞선 이벤트를 덮어쓴다
+        this._demoInflight++; this.demoBusy = true;
+        const p = (this._demoQueue || Promise.resolve()).then(() => this._demoPostNow(body))
+          .finally(() => { if (--this._demoInflight <= 0) { this._demoInflight = 0; this.demoBusy = false; } });
+        this._demoQueue = p;
+        return p;
+      },
+      async _demoPostNow(body) {
+        this.demoMsg = '';
         try {
           const d = await (await this._afetch('/usermeta-demo', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
-          if (!d || d.error) { this.demoMsg = '오류: ' + (d ? d.error : '응답 없음'); this.demoBusy = false; return null; }
-          this.demoData = d; this.demoBusy = false;
+          if (!d || d.error) { this.demoMsg = '오류: ' + (d ? d.error : '응답 없음'); return null; }
+          this.demoData = d;
           if (d.wrote) this.loadMem();               // 시연이 파일을 썼으면 결론의 파일 열람용으로 동기화
           this.$nextTick(() => { const el = this.$refs.demolog; if (el) el.scrollTop = el.scrollHeight; });
           return d;
-        } catch (e) { this.demoMsg = '오류: ' + e; this.demoBusy = false; return null; }
+        } catch (e) { this.demoMsg = '오류: ' + e; return null; }
       },
       demoImpress() {                               // 피드 진입 1회 → 보이는 콘텐츠 일괄 노출 이벤트
         if (this.demoImpressed || !this.demoData || !this.demoData.contents.length) return;
@@ -410,12 +424,12 @@ window.PRISM_APP_PARTS.push(() => ({
       async demoClose() {                           // 나가기: 체류로 정독(30초 이상)/훑기 자동 판정 → Usage 기록
         if (!this.demoReading) return;
         const idx = this.demoReading.idx, dwell = this.demoVirtualDwell();
-        clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null;
+        clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; this.demoCmt = '';
         const act = dwell >= 30 ? 'read' : 'skim';
         await this.demoPost({ op: 'event', event: act, idx, dwell_sec: dwell, scroll_pct: act === 'read' ? 95 : 20 });
       },
       async demoReact(emo) {                        // 감정 반응 → Event(Like) · 다시 누르면 감정 변경(서버가 최신 1건만 집계)
-        if (!this.demoReading || this.demoBusy || this.demoReading.reacted === emo) return;
+        if (!this.demoReading || this.demoReading.reacted === emo) return;
         const d = await this.demoPost({ op: 'event', event: 'react', idx: this.demoReading.idx, emotion: emo });
         if (d && this.demoReading) this.demoReading.reacted = emo;
       },
@@ -444,7 +458,10 @@ window.PRISM_APP_PARTS.push(() => ({
         const q = (this.demoQ || '').trim();
         if (!q) return;
         const d = await this.demoPost({ op: 'event', event: 'search', query: q });
-        if (d) this.demoQFilter = q;
+        if (d) {
+          this.demoQFilter = q;
+          if (d.wrote && d.wrote.path) this.demoBoardSel = d.wrote.path;   // 시안 C: 방금 물어본 주제의 보드로 이동
+        }
       },
       async _demoResetCore() {                      // 세션 리셋 공통부(이벤트·프롬프트 초기화 · 메모리 파일 유지)
         if (this.demoReading) { clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; }
@@ -457,11 +474,12 @@ window.PRISM_APP_PARTS.push(() => ({
         await this._demoResetCore();
       },
       async demoSwitch(v) {                         // 시안 전환 = 독립 실험: 로그·측정·결론·프롬프트 초기화
-        if (v === this.demoVariant || this.demoBusy) return;
+        if (v === this.demoVariant) return;
         const hasLog = !!(this.demoData && this.demoData.session && this.demoData.session.events_n);
         if (hasLog && !(await this.dsConfirm('시안을 바꾸면 지금까지의 로그 · 측정 · 결론이 초기화됩니다(시안별 독립 실험). 계속할까요?', { ok: '바꾸고 초기화', danger: true }))) return;
         this.demoVariant = v;
-        if (hasLog) await this._demoResetCore(); else this.demoImpress();
+        if (hasLog) await this._demoResetCore();
+        else { this.demoQ = ''; this.demoQFilter = ''; this.demoImpress(); }   // 리셋 없는 경로도 칩 필터 잔존 방지
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },

@@ -391,15 +391,18 @@ def _live_measures(events, catalog) -> dict:
         ents, eng = prof["ents"], prof["eng"]
         breadth = round(UM._breadth(viewed), 2)
     resp = {"reacts": 0, "comments": 0, "pos": 0, "neg": 0, "emos": {}, "boost": 0.0}
+    byidx = {c["idx"]: c for c in catalog}
     for e in events:
         ev = e.get("event")
         if ev not in ("react", "comment"):
             continue
         w = COMMENT_W if ev == "comment" else REACT_W
-        if e.get("cat"):
-            w_ent[e["cat"]] += w
-        if e.get("intent"):
-            w_int[e["intent"]] += w
+        c = byidx.get(e.get("idx")) or {}
+        # 소비 가중(_profile_from_logs)과 같은 기준: 콘텐츠의 모든 카테고리·인텐트에 합산(첫 값 편중 방지)
+        for ec in c.get("entity_categories") or ([e["cat"]] if e.get("cat") else []):
+            w_ent[ec] += w
+        for ic in c.get("intent_categories") or ([e["intent"]] if e.get("intent") else []):
+            w_int[ic] += w
         resp["boost"] = round(resp["boost"] + w, 1)
         if ev == "react":
             resp["reacts"] += 1
@@ -468,7 +471,7 @@ def demo_data(team=None) -> dict:
     events = sess.get("events") or []
     imp = len({e.get("idx") for e in events if e.get("event") == "impression"})
     consumed = len({e.get("idx") for e in events if e.get("event") in ("read", "skim")})
-    out = {"contents": [dict({k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent")},
+    out = {"contents": [dict({k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent", "entity_categories")},
                              cat_ko=_cat_ko(c["cat"]), intent_ko=INT_KO.get(c["intent"], ""))
                         for c in catalog],
            "session": {"events_n": len(events), "impressions": imp, "consumed": consumed},
@@ -678,7 +681,7 @@ def demo_ops(body: dict, team=None) -> dict:
                 rec["emo"] = emo
                 rec["path"] = wrote["path"]
                 sess["last_logic"] = ("반응 '" + emo + "' → Event(Like) · 호응 가중 +" + str(REACT_W)
-                                      + " 을 " + c["cat"] + " 선호에 합산 · 감정은 Custom Properties 기록 · /"
+                                      + " 을 " + (_cat_ko(c["cat"]) or c["cat"]) + " 선호에 합산 · 감정은 Custom Properties 기록 · /"
                                       + wrote["path"] + " 에 [observed]")
             elif ev == "comment":                    # 댓글 = 직접 발화 → Event(WriteComment) + [stated] 기록
                 text = (body.get("text") or "").strip()[:200]
@@ -693,7 +696,7 @@ def demo_ops(body: dict, team=None) -> dict:
                 rec["text"] = text[:40]
                 rec["path"] = wrote["path"]
                 sess["last_logic"] = ("댓글 → Event(WriteComment) · 호응 가중 +" + str(COMMENT_W)
-                                      + " 을 " + c["cat"] + " 선호에 합산 · 직접 말한 의견이라 /"
+                                      + " 을 " + (_cat_ko(c["cat"]) or c["cat"]) + " 선호에 합산 · 직접 말한 의견이라 /"
                                       + wrote["path"] + " 에 [stated] 로 기록(관찰과 구분)")
             else:
                 files = _files(team)
@@ -706,7 +709,7 @@ def demo_ops(body: dict, team=None) -> dict:
                 clicked = any(e.get("idx") == idx and e.get("event") == "click" for e in events)
                 wt = round((dwell / 30.0) * (2.0 if clicked else 1.0), 1)
                 sess["last_logic"] = ("체류 " + str(dwell) + "초 ÷ 30 × 클릭가중 "
-                                      + ("2.0" if clicked else "1.0") + " → " + c["cat"] + " +" + str(wt)
+                                      + ("2.0" if clicked else "1.0") + " → " + (_cat_ko(c["cat"]) or c["cat"]) + " +" + str(wt)
                                       + " · /" + wrote["path"] + " 에 [observed] 기록")
             events.append(rec)
         else:
