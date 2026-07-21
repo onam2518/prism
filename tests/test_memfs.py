@@ -256,6 +256,11 @@ class TestDemoSession(unittest.TestCase):
         d2 = MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "화나요"}, team="t1")
         self.assertEqual(d2["live"]["resp"]["neg"], 1)    # 부정 감정 분포
         self.assertEqual(d2["live"]["resp"]["emos"]["화나요"], 1)
+        # 같은 콘텐츠에 감정을 바꿔 누르면 교체(중복 가중 없음)
+        d3 = MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "좋아요"}, team="t1")
+        self.assertEqual(d3["live"]["resp"]["reacts"], 2)          # idx1 + idx0 각 1건
+        self.assertEqual(d3["live"]["resp"]["emos"].get("화나요"), None)
+        self.assertEqual(d3["live"]["resp"]["emos"]["좋아요"], 2)
 
     def test_react_comment_in_conclusion_chain(self):
         MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")

@@ -303,8 +303,8 @@ window.PRISM_APP_PARTS.push(() => ({
         const act = dwell >= 30 ? 'read' : 'skim';
         await this.demoPost({ op: 'event', event: act, idx, dwell_sec: dwell, scroll_pct: act === 'read' ? 95 : 20 });
       },
-      async demoReact(emo) {                        // 감정 반응 → Event(Like) · 콘텐츠당 1회
-        if (!this.demoReading || this.demoReading.reacted) return;
+      async demoReact(emo) {                        // 감정 반응 → Event(Like) · 다시 누르면 감정 변경(서버가 최신 1건만 집계)
+        if (!this.demoReading || this.demoBusy || this.demoReading.reacted === emo) return;
         const d = await this.demoPost({ op: 'event', event: 'react', idx: this.demoReading.idx, emotion: emo });
         if (d && this.demoReading) this.demoReading.reacted = emo;
       },

@@ -535,6 +535,9 @@ def demo_ops(body: dict, team=None) -> dict:
                 emo = body.get("emotion") or ""
                 if emo not in EMOTIONS:
                     return {"error": "지원하지 않는 반응입니다"}
+                # 반응은 콘텐츠당 최신 1건만 유지 · 감정을 바꿔 누르면 교체(호응 중복 가중 방지)
+                events = [e for e in events
+                          if not (e.get("event") == "react" and e.get("idx") == idx)]
                 files = _files(team)
                 wrote, err = _observe(files, c["title"] or "(제목 없음)", c["cat"], c["intent"],
                                       "반응 '" + emo + "'")

@@ -1262,8 +1262,8 @@
     font-size:12px;font-weight:400;line-height:1.2;color:var(--an-txq)}       /* label.normal */
   .an-emo .e{font-size:26px;line-height:1}
   .an-emo:hover{background-image:linear-gradient(var(--an-hover),var(--an-hover))}
-  .an-emo.is-on{background:var(--an-cat-news-bg);color:var(--an-cat-news-tx);font-weight:700}
-  .an-emo:disabled{cursor:default;opacity:.45}
+  .an-emo.is-on{background:var(--an-cat-news-bg);color:var(--an-cat-news-tx);font-weight:700;
+    outline:2px solid var(--an-primary);outline-offset:-2px}
   .an-cmt-row{display:flex;gap:8px;align-items:center}
   .an-cmt-in{flex:1;min-width:0;border:1px solid var(--an-btn-bd);border-radius:100px;background:var(--an-base);
     padding:10px 16px;font-family:inherit;font-size:15px;color:var(--an-tx1)}

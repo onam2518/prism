@@ -51,7 +51,7 @@
                             <div class="an-sect-cap">이 콘텐츠에 대해 어떻게 생각하시나요?</div>
                             <div class="an-react">
                               <template x-for="emo in [['🤓','추천해요'],['😍','좋아요'],['🥹','감동이에요'],['😡','화나요'],['😢','슬퍼요']]" x-bind:key="'emo'+emo[1]">
-                                <button type="button" class="an-emo" x-bind:class="demoReading && demoReading.reacted===emo[1] ? 'is-on' : ''" x-bind:disabled="demoBusy || (demoReading && demoReading.reacted && demoReading.reacted!==emo[1])" x-on:click="demoReact(emo[1])"><span class="e" x-text="emo[0]"></span><span x-text="emo[1]"></span></button>
+                                <button type="button" class="an-emo" x-bind:class="demoReading && demoReading.reacted===emo[1] ? 'is-on' : ''" x-on:click="demoReact(emo[1])"><span class="e" x-text="emo[0]"></span><span x-text="emo[1]"></span></button>
                               </template>
                             </div>
                           </div>
