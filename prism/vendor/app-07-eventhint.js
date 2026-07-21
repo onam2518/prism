@@ -390,11 +390,22 @@ window.PRISM_APP_PARTS.push(() => ({
         const d = await this.demoPost({ op: 'event', event: 'search', query: q });
         if (d) this.demoQFilter = q;
       },
-      async demoReset() {
-        if (!(await this.dsConfirm('시연 세션을 처음부터 다시 시작할까요? 수집한 이벤트와 결론이 지워집니다(메모리 파일은 유지).', { ok: '처음부터', danger: true }))) return;
+      async _demoResetCore() {                      // 세션 리셋 공통부(이벤트·프롬프트 초기화 · 메모리 파일 유지)
         if (this.demoReading) { clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; }
         const d = await this.demoPost({ op: 'reset' });
-        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoFileSel = ''; this.demoImpress(); this.loadMem(); }
+        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoFileSel = ''; this.demoBoardSel = ''; this.demoImpress(); this.loadMem(); }
+        return !!d;
+      },
+      async demoReset() {
+        if (!(await this.dsConfirm('시연 세션을 처음부터 다시 시작할까요? 수집한 이벤트와 결론이 지워집니다(메모리 파일은 유지).', { ok: '처음부터', danger: true }))) return;
+        await this._demoResetCore();
+      },
+      async demoSwitch(v) {                         // 시안 전환 = 독립 실험: 로그·측정·결론·프롬프트 초기화
+        if (v === this.demoVariant || this.demoBusy) return;
+        const hasLog = !!(this.demoData && this.demoData.session && this.demoData.session.events_n);
+        if (hasLog && !(await this.dsConfirm('시안을 바꾸면 지금까지의 로그 · 측정 · 결론이 초기화됩니다(시안별 독립 실험). 계속할까요?', { ok: '바꾸고 초기화', danger: true }))) return;
+        this.demoVariant = v;
+        if (hasLog) await this._demoResetCore(); else this.demoImpress();
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },

@@ -1312,6 +1312,9 @@
   .an-numrow .n{color:var(--an-primary);font-weight:800;font-size:15px;width:18px;flex:none}
   .an-ask{margin:10px 12px 2px;background:var(--an-surface);border:1.5px solid var(--an-primary);
     border-radius:16px;padding:12px 46px 12px 14px;position:relative}
+  .an-search-go--icon{background:transparent;padding:4px 6px;display:inline-flex;align-items:center}
+  .an-search-go--icon:hover{background:rgba(255,255,255,.06);border-radius:50%}
+  .an-ask .send--icon{background:transparent;width:32px;height:32px}
   .an-ask input{width:100%;border:0;background:transparent;outline:none;font-family:inherit;
     font-size:15px;color:var(--an-tx1)}
   .an-ask .send{position:absolute;right:9px;bottom:8px;width:30px;height:30px;border-radius:50%;

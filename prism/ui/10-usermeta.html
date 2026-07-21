@@ -22,10 +22,10 @@
                   <div class="flex items-center gap-2" style="margin-bottom:8px">
                     <span class="selctl__lbl">서비스 화면 예시</span>
                     <span class="ml-auto flex items-center gap-1">
-                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='a' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='a'" data-tip="시안 A · 한 줄기 피드 · 이유는 칩 하나" data-tip-pos="top">피드형</button>
-                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='b' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='b'" data-tip="시안 B · 블록 제목이 곧 추천 이유" data-tip-pos="top">블록형</button>
-                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='c' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='c'" data-tip="시안 C · 물어보면 생기는 주제 보드(메모리 연동)" data-tip-pos="top">보드형</button>
-                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='d' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='d'" data-tip="시안 D · 프롬프트 우선 · 카드마다 설명 한 줄" data-tip-pos="top">대화형</button>
+                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='a' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('a')" data-tip="시안 A · 한 줄기 피드 · 이유는 칩 하나" data-tip-pos="top">피드형</button>
+                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='b' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('b')" data-tip="시안 B · 블록 제목이 곧 추천 이유" data-tip-pos="top">블록형</button>
+                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='c' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('c')" data-tip="시안 C · 물어보면 생기는 주제 보드(메모리 연동)" data-tip-pos="top">보드형</button>
+                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='d' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('d')" data-tip="시안 D · 프롬프트 우선 · 카드마다 설명 한 줄" data-tip-pos="top">대화형</button>
                     </span>
                   </div>
                   <!-- 시연 화면은 디자인 교체 전제(anchor-scope 격리): 이벤트 계약(impression·search·click·
@@ -69,7 +69,7 @@
                             <div class="an-search-cap">원하는 콘텐츠를 찾아드려요 · 찾을수록 추천이 취향에 가까워집니다</div>
                             <div class="an-search-box">
                               <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
-                              <button type="button" class="an-search-go" x-bind:disabled="demoBusy" x-on:click="demoSearch()">찾기</button>
+                              <button type="button" class="an-search-go an-search-go--icon" aria-label="찾기" data-tip="찾기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#59D2F2" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A8DF8" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#5B5BEF" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#6D8DF9" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
                           <div class="an-chipbar">
@@ -98,7 +98,7 @@
                           <div class="an-search">
                             <div class="an-search-box">
                               <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
-                              <button type="button" class="an-search-go" x-bind:disabled="demoBusy" x-on:click="demoSearch()">찾기</button>
+                              <button type="button" class="an-search-go an-search-go--icon" aria-label="찾기" data-tip="찾기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#59D2F2" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A8DF8" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#5B5BEF" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#6D8DF9" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
                           <template x-for="(b, bi) in demoBlocks()" x-bind:key="'bk'+bi+b.t">
@@ -133,7 +133,7 @@
                             <div class="an-search-cap">물어보면 그 주제의 보드가 생기고, 다음부터 새 소식이 거기 쌓여요</div>
                             <div class="an-search-box">
                               <input class="an-search-in" x-model="demoQ" placeholder="무엇이 궁금하세요?" x-on:keydown.enter="demoSearch()">
-                              <button type="button" class="an-search-go" x-bind:disabled="demoBusy" x-on:click="demoSearch()">만들기</button>
+                              <button type="button" class="an-search-go an-search-go--icon" aria-label="보드 만들기" data-tip="보드 만들기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#59D2F2" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A8DF8" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#5B5BEF" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#6D8DF9" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
                           <template x-if="demoBoard()">
@@ -164,7 +164,7 @@
                         <div x-show="demoVariant==='d'" x-cloak>
                           <div class="an-ask">
                             <input x-model="demoQ" placeholder="어떤 콘텐츠가 보고 싶으세요?" x-on:keydown.enter="demoSearch()">
-                            <button type="button" class="send" x-bind:disabled="demoBusy" x-on:click="demoSearch()">↑</button>
+                            <button type="button" class="send send--icon" aria-label="보내기" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#59D2F2" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A8DF8" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#5B5BEF" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#6D8DF9" stroke-width="5" stroke-linecap="round"/></svg></button>
                           </div>
                           <div class="an-chipbar">
                             <template x-for="s in ((demoData && demoData.suggests) || [])" x-bind:key="'dg'+s">
