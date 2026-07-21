@@ -1,148 +1,145 @@
-      <!-- ═══ 모듈: 사용자 메타 · 프로필 + 행동 로그 → 페르소나 능동 생성 ═══ -->
+      <!-- ═══ 모듈: 사용자 메타(실험실) · 서브탭 3개 = 시연 | 생성 과정 | 정책 (분리형 모듈 · 독립 관리) ═══ -->
       <div x-show="mod === 'lab' && labTab === 'user'" x-cloak class="w-full space-y-4">
-        <!-- 사용자 서브뷰: 시연·생성(run) ↔ 정책(policy · 사용 로그 체계 = TIARA + 측정·판정·기록 정책) -->
         <div class="flex items-center gap-2">
-          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='run' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='run'">시연 · 생성</button>
+          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='run' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='run'">시연</button>
+          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='gen' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='gen'">생성 과정</button>
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='policy' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='policy'">정책</button>
         </div>
 
+        <!-- ═══ 시연: 상단 2단(실제 서비스 화면 | 실시간 로그 누적) + 하단 1단(측정 결과 · 로직 · 결론 개별 패널) ═══ -->
         <div x-show="labUserView==='run'" class="space-y-4">
-        <!-- ═══ 소비 시연(STEP 1~4 · 채택 시안 B+A+D): 좌 = 실제 서비스 화면(Anchor DS) · 우 = 실시간 측정 3단
-             STEP 2 측정·로직 → STEP 3 결론(판정 근거 인과 카드) → STEP 4 활용 · 하단 바 = 이 단계의 결론 ═══ -->
-        <div class="panel"><div class="panel-hd"><b>시연 과정</b><span class="meta">STEP 1~4</span>
-            <span class="meta tnum" x-text="demoData ? ('이벤트 ' + demoData.session.events_n + '건 · 소비 ' + demoData.session.consumed + '건') : ''"></span>
-            <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-bind:disabled="demoBusy" x-on:click="demoReset()">처음부터</button></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
-              <li>왼쪽은 <b>실제 서비스처럼 보이는 피드</b>입니다 · 제목을 눌러 읽고, 하단에서 <b>감정 반응 · 댓글</b>까지 남겨보세요 — 노출 · 클릭 · 체류 · 반응 · 댓글이 그대로 행동 로그가 됩니다.</li>
-              <li>오른쪽 3단이 <b>그 턴에</b> 반응합니다 — 실시간 이벤트 → 누적 측정 → 지금 로직(방금 행동이 들어간 공식 · 메모리 파일 기록).</li>
-              <li>사용을 마치면 <b>결론(페르소나 판정 + 근거)</b>을 내고, 그 결론이 어디에 쓰이는지 <b>다음 스텝(활용)</b>까지 이어집니다.</li>
-            </ul>
-            <div class="demo-stepbar">
-              <button type="button" class="demo-step" x-bind:class="demoStep===1 ? 'is-on' : ''" x-on:click="demoGo(1)"><span class="n">1</span>소비 · 수집</button>
-              <span class="demo-arrow">›</span>
-              <button type="button" class="demo-step" x-bind:class="demoStep===2 ? 'is-on' : ''" x-bind:disabled="demoStep < 2 && !demoCanNext()" x-on:click="demoGo(2)"><span class="n">2</span>측정 결과 · 로직</button>
-              <span class="demo-arrow">›</span>
-              <button type="button" class="demo-step" x-bind:class="demoStep===3 ? 'is-on' : ''" x-bind:disabled="demoStep < 2" x-on:click="demoGo(3)"><span class="n">3</span>결론</button>
-              <span class="demo-arrow">›</span>
-              <button type="button" class="demo-step" x-bind:class="demoStep===4 ? 'is-on' : ''" x-bind:disabled="demoStep < 3" x-on:click="demoGo(4)"><span class="n">4</span>다음 스텝 · 활용</button>
-            </div>
-
-            <!-- STEP 1 · 소비·수집: 반반 분할 -->
-            <div x-show="demoStep===1" class="grid grid-cols-2 gap-4">
-              <div>
-                <div class="selctl__lbl" style="margin-bottom:6px">실제 서비스 화면 <span class="text-muted" style="font-weight:400">— 만지는 대로 행동 로그 수집</span></div>
-                <div class="anchor-scope">
-                  <div class="an-app">
-                    <div class="an-appbar">MY 콘텐츠<span class="an-live">● 수집 중</span></div>
-                    <!-- 읽기 화면: 카드 탭 = 클릭 이벤트 · 체류 타이머(실측 × 배속) -->
-                    <!-- 기사 뷰(플로우: 제목·리드 요약 → 본문 → 감정 반응 → 댓글 → 나가기) · 정독/훑기는 체류로 자동 판정 -->
-                    <div x-show="demoReading" x-cloak>
-                      <div class="an-article">
-                        <div class="an-art-src"><span x-text="demoReading ? (demoReading.c.service || '콘텐츠') : ''"></span><span class="an-badge" x-bind:class="demoCatCls(demoReading ? demoReading.c.cat : '')" x-text="demoReading ? demoReading.c.cat : ''"></span><span class="ml-auto an-btn an-btn--neutral" style="min-height:32px;padding:6px 12px;font-size:14px;cursor:pointer" x-on:click="demoClose()">← 나가기</span></div>
-                        <div class="an-article-t" x-text="demoReading ? demoReading.c.title : ''"></div>
-                        <div class="an-article-m" x-text="demoReading ? ('방금 · 체류 ' + demoFmtT(demoTick) + ' (실측 × ' + demoX + ' 배속)') : ''"></div>
-                        <div class="an-lead" x-show="demoReading && demoReading.c.summary" x-text="demoReading ? demoReading.c.summary : ''"></div>
-                        <div class="an-article-b" x-text="demoReading ? (demoReading.c.summary || '본문이 없는 콘텐츠입니다 · 실제 화면에서는 기사 본문이 표시됩니다.') : ''"></div>
-                        <div class="an-sect">
-                          <div class="an-sect-cap">이 콘텐츠에 대해 어떻게 생각하시나요?</div>
-                          <div class="an-react">
-                            <template x-for="emo in [['🤓','추천해요'],['😍','좋아요'],['🥹','감동이에요'],['😡','화나요'],['😢','슬퍼요']]" x-bind:key="'emo'+emo[1]">
-                              <button type="button" class="an-emo" x-bind:class="demoReading && demoReading.reacted===emo[1] ? 'is-on' : ''" x-bind:disabled="demoBusy || (demoReading && demoReading.reacted && demoReading.reacted!==emo[1])" x-on:click="demoReact(emo[1])"><span class="e" x-text="emo[0]"></span><span x-text="emo[1]"></span></button>
+          <div class="panel"><div class="panel-hd"><b>시연</b>
+              <span class="meta tnum" x-text="demoData ? ('이벤트 ' + demoData.session.events_n + '건 · 소비 ' + demoData.session.consumed + '건') : ''"></span>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-bind:disabled="demoBusy" x-on:click="demoReset()">처음부터</button></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
+                <li>왼쪽 <b>실제 서비스 화면</b>에서 콘텐츠를 찾고 · 읽고 · 반응하고 · 댓글을 남겨보세요. 그 행동이 오른쪽 <b>실시간 로그</b>로 즉시 쌓입니다.</li>
+                <li>아래 <b>측정 결과 · 로직 · 결론</b> 영역이 행동할 때마다 실시간으로 다시 계산됩니다 · 별도 실행 버튼 없음.</li>
+                <li>검색어와 댓글은 직접 말한 것이라 메모리에 <code class="text-violet">[stated]</code>, 소비 관찰은 <code class="text-violet">[observed]</code> 로 기록됩니다.</li>
+              </ul>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="selctl__lbl" style="margin-bottom:6px">실제 서비스 화면 <span class="text-muted" style="font-weight:400">· 카테고리 등 백단 메타는 노출하지 않습니다</span></div>
+                  <div class="anchor-scope">
+                    <div class="an-app">
+                      <div class="an-appbar">MY 콘텐츠<span class="an-live">● 수집 중</span></div>
+                      <!-- 콘텐츠 찾기(프롬프트 폼) · 검색어 = 직접 선언 → Event(Search) + [stated] -->
+                      <div class="an-search" x-show="!demoReading">
+                        <div class="an-search-cap">원하는 콘텐츠를 찾아드려요 · 찾을수록 추천이 취향에 가까워집니다</div>
+                        <div class="an-search-box">
+                          <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
+                          <button type="button" class="an-search-go" x-bind:disabled="demoBusy" x-on:click="demoSearch()">찾기</button>
+                        </div>
+                        <div class="an-chips">
+                          <template x-for="s in ((demoData && demoData.suggests) || [])" x-bind:key="'sg'+s">
+                            <button type="button" class="an-chip" x-on:click="demoQ = s; demoSearch()" x-text="s"></button>
+                          </template>
+                        </div>
+                        <div class="an-search-note" x-show="demoQFilter"><span x-text="'\'' + demoQFilter + '\' 결과 ' + demoFeed().length + '건'"></span><button type="button" x-on:click="demoQFilter=''; demoQ=''">전체 보기</button></div>
+                      </div>
+                      <!-- 기사 뷰(플로우: 제목 · 리드 요약 · 본문 · 감정 반응 · 댓글 · 나가기) · 정독/훑기는 체류로 자동 판정 -->
+                      <div x-show="demoReading" x-cloak>
+                        <div class="an-article">
+                          <div class="an-art-src"><span x-text="demoReading ? (demoReading.c.service || '콘텐츠') : ''"></span><span class="ml-auto an-btn an-btn--neutral" style="min-height:32px;padding:6px 12px;font-size:14px;cursor:pointer" x-on:click="demoClose()">← 나가기</span></div>
+                          <div class="an-article-t" x-text="demoReading ? demoReading.c.title : ''"></div>
+                          <div class="an-article-m" x-text="demoReading ? ('방금 · 체류 ' + demoFmtT(demoTick) + ' (실측 × ' + demoX + ' 배속)') : ''"></div>
+                          <div class="an-lead" x-show="demoReading && demoReading.c.summary" x-text="demoReading ? demoReading.c.summary : ''"></div>
+                          <div class="an-article-b" x-text="demoReading ? (demoReading.c.summary || '본문이 없는 콘텐츠입니다 · 실제 화면에서는 기사 본문이 표시됩니다.') : ''"></div>
+                          <div class="an-sect">
+                            <div class="an-sect-cap">이 콘텐츠에 대해 어떻게 생각하시나요?</div>
+                            <div class="an-react">
+                              <template x-for="emo in [['🤓','추천해요'],['😍','좋아요'],['🥹','감동이에요'],['😡','화나요'],['😢','슬퍼요']]" x-bind:key="'emo'+emo[1]">
+                                <button type="button" class="an-emo" x-bind:class="demoReading && demoReading.reacted===emo[1] ? 'is-on' : ''" x-bind:disabled="demoBusy || (demoReading && demoReading.reacted && demoReading.reacted!==emo[1])" x-on:click="demoReact(emo[1])"><span class="e" x-text="emo[0]"></span><span x-text="emo[1]"></span></button>
+                              </template>
+                            </div>
+                          </div>
+                          <div class="an-sect">
+                            <div class="an-cmt-row">
+                              <input class="an-cmt-in" x-model="demoCmt" placeholder="댓글로 의견을 남겨주세요." x-on:keydown.enter="demoComment()">
+                              <button type="button" class="an-btn an-btn--primary" x-bind:disabled="demoBusy" x-on:click="demoComment()">등록</button>
+                            </div>
+                            <template x-for="(cm, cmi) in ((demoReading && demoReading.comments) || [])" x-bind:key="'cm'+cmi">
+                              <div class="an-cmt-item"><span class="who">나</span><span x-text="cm"></span><span class="when">방금 전</span></div>
                             </template>
                           </div>
                         </div>
-                        <div class="an-sect">
-                          <div class="an-cmt-row">
-                            <input class="an-cmt-in" x-model="demoCmt" placeholder="댓글로 의견을 남겨주세요." x-on:keydown.enter="demoComment()">
-                            <button type="button" class="an-btn an-btn--primary" x-bind:disabled="demoBusy" x-on:click="demoComment()">등록</button>
-                          </div>
-                          <template x-for="(cm, cmi) in ((demoReading && demoReading.comments) || [])" x-bind:key="'cm'+cmi">
-                            <div class="an-cmt-item"><span class="who">나</span><span x-text="cm"></span><span class="when">방금 전</span></div>
+                      </div>
+                      <!-- 피드: 다음 메인형 헤드라인 리스트(카드 1장 + 행 구분선 · 제목 한 줄 · 서비스명 메타) -->
+                      <div class="an-feed" x-show="!demoReading" style="max-height:430px">
+                        <div class="an-list" x-show="demoFeed().length">
+                          <template x-for="c in demoFeed()" x-bind:key="'dc'+c.idx">
+                            <button type="button" class="an-row" x-on:click="demoOpen(c)">
+                              <div class="an-row-t" x-text="c.title"></div>
+                              <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
+                            </button>
                           </template>
                         </div>
+                        <div x-show="demoData && !demoData.contents.length" style="padding:24px;text-align:center;color:var(--an-txsub);font-size:14px">먼저 [실행 · 추출]에서 콘텐츠를 추출하세요 · 여기 피드로 나타납니다</div>
+                        <div x-show="demoData && demoData.contents.length && !demoFeed().length" style="padding:24px;text-align:center;color:var(--an-txsub);font-size:14px">찾는 콘텐츠가 없습니다 · 다른 말로 찾아보세요</div>
                       </div>
-                    </div>
-                    <div class="an-feed" x-show="!demoReading" style="max-height:430px">
-                      <!-- 다음 메인형 헤드라인 리스트: 카드 1장 + 행 구분선 · 제목 한 줄 · 메타(서비스명) -->
-                      <div class="an-list" x-show="demoData && demoData.contents.length">
-                        <template x-for="c in ((demoData && demoData.contents) || [])" x-bind:key="'dc'+c.idx">
-                          <button type="button" class="an-row" x-on:click="demoOpen(c)">
-                            <div class="an-row-t" x-text="c.title"></div>
-                            <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
-                          </button>
-                        </template>
-                      </div>
-                      <div x-show="demoData && !demoData.contents.length" style="padding:24px;text-align:center;color:var(--an-txsub);font-size:14px">먼저 [실행 · 추출]에서 콘텐츠를 추출하세요 · 여기 피드로 나타납니다</div>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div>
-                <div class="selctl__lbl" style="margin-bottom:6px">실시간 측정 <span class="text-muted" style="font-weight:400">— 행동하는 그 턴에 계산 · 기록</span></div>
-                <div class="space-y-2">
-                  <div class="demo-obs"><div class="cap">① 실시간 이벤트</div>
+                <div>
+                  <div class="selctl__lbl" style="margin-bottom:6px">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 TIARA 이벤트로 쌓입니다</span></div>
+                  <div class="demo-code" style="max-height:500px;min-height:200px">
                     <template x-for="(l, li) in ((demoData && demoData.stream) || [])" x-bind:key="'ds'+li+l">
-                      <div class="demo-log tnum" x-bind:style="li===0 ? 'color:var(--ds-ink);font-weight:600' : ''" x-text="l"></div>
+                      <div class="ln" x-bind:class="li===0 ? 'is-new' : ''" x-text="l"></div>
                     </template>
-                    <div class="demo-log" x-show="!(demoData && demoData.stream.length)">아직 이벤트가 없습니다 · 피드에 들어오면 노출부터 잡힙니다</div>
-                  </div>
-                  <div class="demo-obs"><div class="cap">② 누적 측정</div>
-                    <template x-for="g in ((demoData && demoData.live.cats) || [])" x-bind:key="'dg'+g.name">
-                      <div class="demo-gauge tnum"><span class="lbl" x-text="g.name"></span><span class="bar"><i x-bind:style="'width:' + g.pct + '%'"></i></span><span class="v" x-text="g.pct + '%'"></span></div>
-                    </template>
-                    <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
-                      <template x-for="(v, k) in ((demoData && demoData.live.intensity) || {})" x-bind:key="'di'+k">
-                        <span class="ds-badge" x-bind:class="v==='고' ? 'ds-badge--entity' : (v==='중' ? 'ds-badge--intent' : 'ds-badge--neutral')" style="cursor:help" x-bind:data-tip="'맥락(인텐트) ' + k + ' 소비 강도 ' + v" data-tip-pos="top" x-text="k + ' ' + v"></span>
-                      </template>
-                    </div>
-                    <div class="text-xs text-muted tnum" style="margin-top:6px" x-show="demoData && demoData.live.eng.views" x-text="demoData ? ('소비 ' + demoData.live.eng.views + '건 · 클릭률 ' + demoData.live.eng.click_rate + ' · 평균 체류 ' + demoData.live.eng.avg_dwell_sec + '초') : ''"></div>
-                    <div class="demo-log" x-show="!(demoData && demoData.live.cats.length)">소비가 생기면 카테고리 가중과 강도가 여기 쌓입니다</div>
-                  </div>
-                  <div class="demo-obs" style="border-color:var(--ds-primary)"><div class="cap" style="color:var(--ds-primary)">③ 지금 로직</div>
-                    <div class="text-sm text-body" x-text="(demoData && demoData.logic) || '행동이 일어나면 그 행동이 들어간 공식이 여기 표시됩니다'"></div>
+                    <div class="ln is-hint" x-show="!(demoData && demoData.stream.length)">// 아직 이벤트가 없습니다 · 피드에 들어오면 노출부터 기록됩니다</div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- STEP 2 · 측정 결과 · 로직 -->
-            <div x-show="demoStep===2" x-cloak class="grid grid-cols-2 gap-4">
-              <div class="demo-obs"><div class="cap">소비 형태 (FORM)</div>
-                <template x-for="(v, k) in ((demoData && demoData.live.form) || {})" x-bind:key="'df'+k">
-                  <div class="drow"><div class="k" x-text="k"></div><div class="v text-sm text-body" x-text="v"></div></div>
-                </template>
-                <div class="text-xs text-muted tnum" style="margin-top:8px" x-text="demoData ? ('카테고리 다양성(소비 폭) ' + demoData.live.breadth + ' · 소비 ' + demoData.live.eng.views + '건 · 클릭 ' + demoData.live.eng.clicks + '건') : ''"></div>
-              </div>
-              <div class="demo-obs"><div class="cap">소비 강도 · 선호 카테고리</div>
-                <template x-for="g in ((demoData && demoData.live.cats) || [])" x-bind:key="'dg2'+g.name">
-                  <div class="demo-gauge tnum"><span class="lbl" x-text="g.name"></span><span class="bar"><i x-bind:style="'width:' + g.pct + '%'"></i></span><span class="v" x-text="'+' + g.w"></span></div>
-                </template>
-                <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
-                  <template x-for="(v, k) in ((demoData && demoData.live.intensity) || {})" x-bind:key="'di2'+k">
-                    <span class="ds-badge" x-bind:class="v==='고' ? 'ds-badge--entity' : (v==='중' ? 'ds-badge--intent' : 'ds-badge--neutral')" x-text="k + ' ' + v"></span>
+          <!-- 측정 결과(실시간): 소비가 생길 때마다 다시 계산 · 개별 영역이라 서비스 화면과 독립 -->
+          <div class="panel"><div class="panel-hd"><b>측정 결과</b><span class="meta">행동할 때마다 실시간 재계산</span></div>
+            <div class="panel-bd">
+              <div class="grid grid-cols-2 gap-4" x-show="demoData && demoData.live.cats.length">
+                <div class="demo-obs"><div class="cap">소비 형태 (FORM)</div>
+                  <template x-for="(v, k) in ((demoData && demoData.live.form) || {})" x-bind:key="'df'+k">
+                    <div class="drow"><div class="k" x-text="k"></div><div class="v text-sm text-body" x-text="v"></div></div>
                   </template>
+                  <div class="text-xs text-muted tnum" style="margin-top:8px" x-text="demoData ? ('카테고리 다양성(소비 폭) ' + demoData.live.breadth + ' · 소비 ' + demoData.live.eng.views + '건 · 클릭 ' + demoData.live.eng.clicks + '건 · 평균 체류 ' + demoData.live.eng.avg_dwell_sec + '초') : ''"></div>
+                </div>
+                <div class="demo-obs"><div class="cap">선호 · 소비 강도</div>
+                  <template x-for="g in ((demoData && demoData.live.cats) || [])" x-bind:key="'dg'+g.name">
+                    <div class="demo-gauge tnum"><span class="lbl" x-text="g.name"></span><span class="bar"><i x-bind:style="'width:' + g.pct + '%'"></i></span><span class="v" x-text="g.pct + '%'"></span></div>
+                  </template>
+                  <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
+                    <template x-for="(v, k) in ((demoData && demoData.live.intensity) || {})" x-bind:key="'di'+k">
+                      <span class="ds-badge" x-bind:class="v==='고' ? 'ds-badge--entity' : (v==='중' ? 'ds-badge--intent' : 'ds-badge--neutral')" style="cursor:help" x-bind:data-tip="'맥락(인텐트) ' + k + ' 소비 강도 ' + v" data-tip-pos="top" x-text="k + ' ' + v"></span>
+                    </template>
+                  </div>
                 </div>
               </div>
-              <div class="demo-obs" style="grid-column:1/-1"><div class="cap">계산 로직</div>
-                <div class="text-sm text-body" x-text="demoData ? demoData.formula : ''"></div>
-                <ul class="ds-bullets" style="margin-top:6px">
-                  <li>노출은 분모(클릭률 · 소비율)로만 쓰이고, <b>체류와 클릭</b>이 가중치를 만듭니다.</li>
-                  <li>깊이 판정: 평균 체류 45초 이상 + 스크롤 60% 이상이면 <b>몰입</b>, 15초 미만이면 <b>훑기</b>.</li>
-                  <li>운영에서는 실제 서비스의 행동 로그(TIARA형 · <code class="text-violet">content_id</code> = 추출 순서 0부터)가 같은 파이프라인으로 들어옵니다 — 시연과 동일 계산.</li>
-                </ul>
-              </div>
+              <div class="text-xs text-muted" x-show="!(demoData && demoData.live.cats.length)">아직 소비가 없습니다 · 시연에서 콘텐츠를 읽으면 형태 · 선호 · 강도가 여기 나타납니다.</div>
             </div>
+          </div>
 
-            <!-- STEP 3 · 결론: 페르소나 판정 + 근거(인과 카드 · 시안 D 차용) + 메모리 반영 -->
-            <div x-show="demoStep===3" x-cloak>
+          <!-- 로직: 방금 행동이 들어간 공식 + 계산 규칙 -->
+          <div class="panel"><div class="panel-hd"><b>로직</b><span class="meta">방금 행동이 들어간 공식</span></div>
+            <div class="panel-bd">
+              <div class="demo-obs" style="border-color:var(--ds-primary);margin-bottom:10px"><div class="cap" style="color:var(--ds-primary)">지금 로직</div>
+                <div class="text-sm text-body" x-text="(demoData && demoData.logic) || '행동이 일어나면 그 행동이 들어간 공식이 여기 표시됩니다'"></div>
+              </div>
+              <div class="drow"><div class="k">가중치 공식</div><div class="v text-sm text-body" x-text="demoData ? demoData.formula : ''"></div></div>
+              <div class="drow"><div class="k">깊이 판정</div><div class="v text-sm text-body">평균 체류 45초 이상 + 스크롤 60% 이상 = 몰입 · 15초 미만 = 훑기 · 그 사이 = 혼합</div></div>
+              <div class="drow"><div class="k">운영 동일 적용</div><div class="v text-sm text-body">운영에서는 실제 서비스의 행동 로그(TIARA형 · <code class="text-violet">content_id</code> = 추출 순서 0부터)가 같은 파이프라인으로 들어옵니다 · 시연과 동일 계산.</div></div>
+            </div>
+          </div>
+
+          <!-- 결론(실시간 판정): 소비가 쌓일 때마다 자동 재판정 · 근거와 활용까지 -->
+          <div class="panel"><div class="panel-hd"><b>결론</b><span class="meta">소비가 쌓일 때마다 자동 재판정</span></div>
+            <div class="panel-bd">
               <template x-if="demoData && demoData.conclusion && demoData.conclusion.persona">
                 <div class="space-y-3">
                   <div class="demo-obs" style="border-color:var(--ds-primary)">
                     <div class="flex items-center gap-2 flex-wrap">
                       <b class="text-ink" style="font-size:15px" x-text="demoData.conclusion.persona.full"></b>
                       <span class="ds-badge ds-badge--entity" x-text="'신뢰도 ' + demoData.conclusion.persona.conf"></span>
-                      <span x-show="demoData.conclusion.persona.provisional" class="ds-badge ds-badge--warning" style="cursor:help" data-tip="소비 5건 미만 → 잠정 판정 · 더 소비하면 자동 재판정" data-tip-pos="top">잠정</span>
+                      <span x-show="demoData.conclusion.persona.provisional" class="ds-badge ds-badge--warning" style="cursor:help" data-tip="소비 5건 미만 · 잠정 판정 · 더 소비하면 자동 재판정" data-tip-pos="top">잠정</span>
                       <span class="meta ml-auto" x-text="demoData.conclusion.persona.rule"></span>
                     </div>
                     <div class="text-sm text-body" style="margin-top:4px" x-text="demoData.conclusion.persona.desc"></div>
@@ -152,78 +149,58 @@
                     <template x-for="(b, bi) in (demoData.conclusion.basis || [])" x-bind:key="'db'+bi">
                       <div class="drow"><div class="k" x-text="b[0]"></div><div class="v text-sm text-body" x-text="b[1]"></div></div>
                     </template>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:8px" x-on:click="demoChainOpen = !demoChainOpen" x-text="demoChainOpen ? '행동별 근거 접기' : '행동별 근거 펼쳐보기 (행동 → 측정 → 기록)'"></button>
+                    <div class="flex items-center gap-2" style="margin-top:8px">
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoChainOpen = !demoChainOpen" x-text="demoChainOpen ? '행동별 근거 접기' : '행동별 근거 펼쳐보기 (행동 → 측정 → 기록)'"></button>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '판정 기준 접기' : '판정 기준 8종 보기'"></button>
+                    </div>
                     <div x-show="demoChainOpen" x-cloak class="space-y-2" style="margin-top:8px;max-height:260px;overflow:auto">
                       <template x-for="(ch, ci) in (demoData.conclusion.chain || [])" x-bind:key="'dch'+ci">
                         <div class="demo-chain tnum"><span class="text-muted" x-text="ch.t"></span> <b class="text-ink" x-text="ch.act"></b><span class="demo-chain-arrow">→</span><span x-text="ch.measure"></span><span class="demo-chain-arrow">→</span><code class="text-violet" x-text="ch.file"></code></div>
                       </template>
-                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:8px" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '판정 기준 접기' : '판정 기준 8종 보기'"></button>
-                    <!-- 판정 기준(기본 페르소나 8종) · 구 '페르소나 정의' 표를 정책 참고로 흡수 · 로그 부족 시 선언 프로필로 잠정 배정 후 자동 재산출 -->
+                    </div>
+                    <!-- 판정 기준(기본 페르소나 8종) · 로그 부족 시 잠정 배정 후 자동 재판정 -->
                     <div x-show="demoDefsOpen" x-cloak class="space-y-1" style="margin-top:8px">
                       <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'dpd'+pd.name">
-                        <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'— ' + pd.desc"></span></div>
+                        <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'· ' + pd.desc"></span></div>
                       </template>
                       <div class="text-xs text-muted" style="margin-top:4px">로그가 5건 미만이면 잠정 배정하고, 소비가 쌓이면 자동 재판정합니다 · 명시 신호(버스트 · 주야 이중 · 드리프트 · 엔티티 집중) 우선, 없으면 깊이 · 강도 · 폭 근접 매칭.</div>
                     </div>
                   </div>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:8px" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '판정 기준 접기' : '판정 기준 8종 보기'"></button>
-                    <!-- 판정 기준(기본 페르소나 8종) · 구 '페르소나 정의' 표를 정책 참고로 흡수 · 로그 부족 시 선언 프로필로 잠정 배정 후 자동 재산출 -->
-                    <div x-show="demoDefsOpen" x-cloak class="space-y-1" style="margin-top:8px">
-                      <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'dpd'+pd.name">
-                        <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'— ' + pd.desc"></span></div>
-                      </template>
-                      <div class="text-xs text-muted" style="margin-top:4px">로그가 5건 미만이면 잠정 배정하고, 소비가 쌓이면 자동 재판정합니다 · 명시 신호(버스트 · 주야 이중 · 드리프트 · 엔티티 집중) 우선, 없으면 깊이 · 강도 · 폭 근접 매칭.</div>
-                    </div>
+                  <div class="grid grid-cols-3 gap-4">
+                    <template x-for="(s, si) in (demoData.conclusion.scenarios || [])" x-bind:key="'dsc'+si">
+                      <div class="demo-obs"><div class="cap" x-text="'활용 ' + (si + 1)"></div>
+                        <b class="text-ink text-sm" x-text="s.title"></b>
+                        <div class="text-sm text-body" style="margin-top:3px" x-text="s.desc"></div>
+                      </div>
+                    </template>
                   </div>
-                  <div class="demo-obs"><div class="cap">메모리 반영 (파일 기반 메모리)</div>
-                    <div class="flex flex-wrap gap-1.5" style="margin-bottom:6px">
-                      <template x-for="f in (demoData.conclusion.memory.files || [])" x-bind:key="'dmf'+f">
-                        <code class="text-violet" style="font-size:12px" x-text="f"></code>
-                      </template>
-                      <span class="text-xs text-muted" x-show="!(demoData.conclusion.memory.files || []).length">이번 세션에 기록된 파일이 없습니다</span>
-                    </div>
-                    <pre class="tbox" style="white-space:pre-wrap;font-size:12px;margin:0" x-text="demoData.conclusion.memory.injection"></pre>
+                  <div class="text-xs text-muted">이번 세션 기록 파일:
+                    <template x-for="f in (demoData.conclusion.memory.files || [])" x-bind:key="'dmf'+f">
+                      <code class="text-violet" style="font-size:12px;margin-right:6px" x-text="f"></code>
+                    </template>
+                    <span x-show="!(demoData.conclusion.memory.files || []).length">없음</span>
+                    · 파일 내용과 주입 미리보기는 [생성 과정] 탭에서 확인하세요.
                   </div>
                 </div>
               </template>
-              <div x-show="!(demoData && demoData.conclusion)" class="text-xs text-muted">아직 결론이 없습니다 · STEP 2에서 [다음 스텝 → 결론 내기]를 누르면 판정합니다.</div>
-            </div>
-
-            <!-- STEP 4 · 다음 스텝(활용): 이 결론이 실제로 쓰이는 곳 -->
-            <div x-show="demoStep===4" x-cloak>
-              <div class="grid grid-cols-3 gap-4" x-show="demoData && demoData.conclusion && demoData.conclusion.scenarios">
-                <template x-for="(s, si) in ((demoData && demoData.conclusion && demoData.conclusion.scenarios) || [])" x-bind:key="'dsc'+si">
-                  <div class="demo-obs"><div class="cap" x-text="'활용 ' + (si + 1)"></div>
-                    <b class="text-ink text-sm" x-text="s.title"></b>
-                    <div class="text-sm text-body" style="margin-top:3px" x-text="s.desc"></div>
-                  </div>
-                </template>
-              </div>
+              <div x-show="!(demoData && demoData.conclusion && demoData.conclusion.persona)" class="text-xs text-muted">아직 소비가 없습니다 · 시연에서 콘텐츠를 읽으면 판정이 실시간으로 나타납니다.</div>
               <div class="text-xs text-muted" style="margin-top:10px">운영 정책: 사용자 정보 입력 없이 <b>소비만으로 시작</b>하고, 같은 판정이 운영 행동 로그로 사용자마다 자동 산출됩니다 · 실명 · 연락처 등 식별 정보는 어떤 경로로도 수집 · 기록하지 않습니다.</div>
-            </div>
-
-            <div class="demo-foot"><b class="text-ink">이 단계의 결론</b><span class="text-body" x-text="demoFoot()"></span>
-              <span class="ml-auto flex items-center gap-2">
-                <span class="text-xs text-muted" x-show="demoMsg" x-text="demoMsg"></span>
-                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="demoStep < 4" x-bind:disabled="demoBusy || !demoCanNext()" x-on:click="demoNext()" x-text="demoStep===2 ? '다음 스텝 → 결론 내기' : '다음 스텝 →'"></button>
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="demoStep===4" x-bind:disabled="demoBusy" x-on:click="demoReset()">처음부터 다시</button>
-              </span>
             </div>
           </div>
         </div>
 
-        <!-- 파일 기반 메모리(실험 구동): 소비 시연 → 그 턴에 파일 자동 기록(실시간) · 조작 5종 · 주입 미리보기 -->
-        <div class="panel"><div class="panel-hd"><b>생성 과정</b><span class="meta">파일 기반 메모리</span>
-            <span class="meta tnum" x-text="memData ? ('파일 ' + memData.files.length + '/' + memData.limits.max_files) : ''"></span>
-            <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadMem()" data-tip="새로고침" data-tip-pos="bottom" aria-label="메모리 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
-          <div class="panel-bd">
-            <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
-              <li><b>생성 1 · 자동 기록</b> — 위 시연에서 소비하면 <b>그 턴에</b> <code class="text-violet">/topics/주제.md</code> 파일로 기록됩니다(파일시스템 기반).</li>
-              <li><b>생성 2 · 확인 · 조작</b> — 파일을 눌러 읽기 · 전체 쓰기(버전 토큰 확인) · 끝에 추가([stated]) · 삭제(확인 후)를 직접 해봅니다.</li>
-              <li><b>생성 3 · 주입</b> — 새 대화가 시작되면 파일 목록이 자동 주입됩니다 · [주입 미리보기]로 실제 블록을 확인하세요.</li>
-            </ul>
-            <!-- 메모리 파일: 위 소비 시연이 기록하는 파일 트리 + 수동 조작(전체 쓰기·추가·삭제) -->
-            <div>
+        <!-- ═══ 생성 과정: 파일 기반 메모리(자동 기록 확인 + 수동 조작 + 주입) ═══ -->
+        <div x-show="labUserView==='gen'" x-cloak class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>생성 과정</b><span class="meta">파일 기반 메모리</span>
+              <span class="meta tnum" x-text="memData ? ('파일 ' + memData.files.length + '/' + memData.limits.max_files) : ''"></span>
+              <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadMem()" data-tip="새로고침" data-tip-pos="bottom" aria-label="메모리 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
+                <li><b>생성 1 · 자동 기록</b>: [시연] 탭에서 소비하면 <b>그 턴에</b> <code class="text-violet">/topics/주제.md</code> 파일로 기록됩니다(파일시스템 기반).</li>
+                <li><b>생성 2 · 확인 · 조작</b>: 파일을 눌러 읽기 · 전체 쓰기(버전 토큰 확인) · 끝에 추가([stated]) · 삭제(확인 후)를 직접 해봅니다.</li>
+                <li><b>생성 3 · 주입</b>: 새 대화가 시작되면 파일 목록이 자동 주입됩니다 · [주입 미리보기]로 실제 블록을 확인하세요.</li>
+              </ul>
+              <div>
                 <div class="flex items-center" style="margin-bottom:6px">
                   <span class="selctl__lbl">생성된 파일</span>
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="memInject = !memInject" x-text="memInject ? '주입 미리보기 닫기' : '주입 미리보기'"></button>
@@ -234,7 +211,7 @@
                   </template>
                 </div>
                 <pre x-show="memInject" class="tbox" style="white-space:pre-wrap;font-size:12px;margin-bottom:8px" x-text="memData ? memData.injection : ''"></pre>
-                <div class="text-xs text-muted" x-show="memData && !memData.files.length" style="margin-bottom:8px">현재 이 계정의 메모리는 비어 있는 상태 · 왼쪽에서 콘텐츠를 소비하거나 아래에서 파일을 만들어 보세요.</div>
+                <div class="text-xs text-muted" x-show="memData && !memData.files.length" style="margin-bottom:8px">현재 이 계정의 메모리는 비어 있는 상태 · [시연] 탭에서 콘텐츠를 소비하거나 아래에서 파일을 만들어 보세요.</div>
                 <div class="space-y-2" style="max-height:240px;overflow:auto;padding-right:2px">
                   <template x-for="f in ((memData && memData.files) || [])" x-bind:key="'mf'+f.path">
                     <div class="tbox" style="cursor:pointer" x-bind:style="(memSel===f.path ? 'border-color:var(--ds-primary);' : '') + (memFlash===f.path ? 'background:var(--ds-surface);' : '')" x-on:click="memOpen(f.path)">
@@ -259,42 +236,42 @@
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memCreate()">새 파일</button>
                 </div>
                 <div class="text-xs text-muted" style="margin-top:4px" x-show="memMsg" x-text="memMsg"></div>
-            </div>
-            <!-- 선택 파일 편집기: 읽기 · 전체 쓰기(버전 토큰 검사) · 끝에 추가([stated]) · 삭제(확인 후) -->
-            <div x-show="memSel" x-cloak style="margin-top:12px">
-              <div class="flex items-center gap-2" style="margin-bottom:6px">
-                <b class="text-ink text-sm" x-text="'/' + memSel"></b>
-                <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" data-tip="버전 토큰 · 저장 시 서버 버전과 일치해야 덮어씁니다 (그 사이 파일이 바뀌었으면 충돌 안내)" data-tip-pos="top" x-text="'버전 v' + memVer"></span>
-                <span class="ml-auto flex items-center gap-1">
-                  <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memSave()">저장 (전체 쓰기)</button>
-                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memDelete()">삭제</button>
-                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="memSel=''">닫기</button>
-                </span>
               </div>
-              <textarea x-model="memDraft" class="field" spellcheck="false" style="width:100%;min-height:170px;resize:vertical;font-size:12.5px"></textarea>
-              <div class="flex items-center gap-2" style="margin-top:6px">
-                <input x-model="memLine" class="field" style="flex:1" placeholder="사용자가 직접 말한 사실 한 줄 · [stated] 태그가 자동으로 붙습니다" x-on:keydown.enter="memAppendLine()">
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memAppendLine()">끝에 추가</button>
+              <!-- 선택 파일 편집기: 읽기 · 전체 쓰기(버전 토큰 검사) · 끝에 추가([stated]) · 삭제(확인 후) -->
+              <div x-show="memSel" x-cloak style="margin-top:12px">
+                <div class="flex items-center gap-2" style="margin-bottom:6px">
+                  <b class="text-ink text-sm" x-text="'/' + memSel"></b>
+                  <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" data-tip="버전 토큰 · 저장 시 서버 버전과 일치해야 덮어씁니다 (그 사이 파일이 바뀌었으면 충돌 안내)" data-tip-pos="top" x-text="'버전 v' + memVer"></span>
+                  <span class="ml-auto flex items-center gap-1">
+                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memSave()">저장 (전체 쓰기)</button>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memDelete()">삭제</button>
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="memSel=''">닫기</button>
+                  </span>
+                </div>
+                <textarea x-model="memDraft" class="field" spellcheck="false" style="width:100%;min-height:170px;resize:vertical;font-size:12.5px"></textarea>
+                <div class="flex items-center gap-2" style="margin-top:6px">
+                  <input x-model="memLine" class="field" style="flex:1" placeholder="사용자가 직접 말한 사실 한 줄 · [stated] 태그가 자동으로 붙습니다" x-on:keydown.enter="memAppendLine()">
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memAppendLine()">끝에 추가</button>
+                </div>
               </div>
-            </div>
-            <!-- 설계 명세(설명): 폴더 구조 + 파일 형식 · 조작 · 저장 제외 · 한계 -->
-            <div style="margin-top:14px">
-              <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:200px">폴더 구조</th><th>담는 내용</th></tr></thead><tbody>
-                <tr><td><code class="text-violet">/profile.md</code></td><td>이름 · 직업 등 수개월 후에도 유효한 기본 정보</td></tr>
-                <tr><td><code class="text-violet">/topics/도메인.md</code></td><td>취향 · 습관 · 반복 주제 (예: food.md, schedule.md) · 소비 시연이 자동 기록하는 곳</td></tr>
-                <tr><td><code class="text-violet">/areas/이름.md</code></td><td>진행 중인 프로젝트 · 업무 · 마감</td></tr>
-                <tr><td><code class="text-violet">/people/이름.md</code></td><td>대화에 등장하는 인물의 관계 맥락</td></tr>
-                <tr><td><code class="text-violet">/preferences.md</code></td><td>응답 형식과 스타일에 대한 요구사항</td></tr>
-              </tbody></table></div>
-              <div style="margin-top:12px">
-                <div class="drow"><div class="k">파일 형식</div><div class="v text-sm text-body">상단에 메타데이터(파일명 · 한 줄 설명 · 출처 · 별칭)를 두고, 본문은 사용자가 직접 말한 사실만 <code class="text-violet">[stated]</code> 태그로 한 줄씩 기록합니다 · 소비 시연의 자동 기록은 <code class="text-violet">[observed]</code> 태그로 구분합니다(추론 · 검색 결과 · 제안은 저장 대상이 아님).</div></div>
-                <div class="drow"><div class="k">조작 방식</div><div class="v text-sm text-body">읽기 · 전체 쓰기 · 부분 수정 · 끝에 추가 · 삭제 5종 · 삭제는 명시적 요청이 있을 때만 실행하며, 수정 시에는 기존 파일을 먼저 읽고 버전 토큰을 확인한 뒤 덮어씁니다(위 편집기가 그대로 구현).</div></div>
-                <div class="drow"><div class="k">저장 제외</div><div class="v text-sm text-body">건강 정보 · 정치 성향 · 가족 실명 · 주소 · 금융 정보 등 민감 정보는 직접 말해도 기록하지 않습니다.</div></div>
-                <div class="drow"><div class="k">한계</div><div class="v text-sm text-body">텍스트 요약 수준이라 대화 전체 맥락은 보존되지 않음 · 파일당 크기 제한(4,000바이트)이 있어 한도에 닿으면 저장이 거절됨 · 진술을 검증 없이 기록하므로 오래되거나 틀린 정보가 남을 수 있음.</div></div>
+              <!-- 설계 명세: 폴더 구조(콘텐츠 사용자 기준) + 파일 형식 · 조작 · 저장 제외 · 한계 -->
+              <div style="margin-top:14px">
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:200px">폴더 구조</th><th>담는 내용</th></tr></thead><tbody>
+                  <tr><td><code class="text-violet">/profile.md</code></td><td>연령대 · 주 이용 시간대 등 수개월 후에도 유효한 기본 정보 (실명 · 연락처는 담지 않음)</td></tr>
+                  <tr><td><code class="text-violet">/topics/주제.md</code></td><td>관심 주제 · 소비 습관 · 반복 소비 기록 (예: 반도체.md, 야구.md) · 시연이 자동 기록하는 곳</td></tr>
+                  <tr><td><code class="text-violet">/areas/이름.md</code></td><td>기간이 있는 관심사 · 따라가는 중인 사건 (예: 이사준비.md, 월드컵.md)</td></tr>
+                  <tr><td><code class="text-violet">/people/이름.md</code></td><td>관심 인물 · 팀 · 크리에이터 (예: 손흥민.md)</td></tr>
+                  <tr><td><code class="text-violet">/preferences.md</code></td><td>콘텐츠 보기 취향 (심층 / 훑기 · 텍스트 / 영상 · 알림 방식 등)</td></tr>
+                </tbody></table></div>
+                <div style="margin-top:12px">
+                  <div class="drow"><div class="k">파일 형식</div><div class="v text-sm text-body">상단에 메타데이터(파일명 · 한 줄 설명 · 출처 · 별칭)를 두고, 본문은 사용자가 직접 말한 사실만 <code class="text-violet">[stated]</code> 태그로 한 줄씩 기록합니다 · 소비 관찰 자동 기록은 <code class="text-violet">[observed]</code> 태그로 구분합니다(추론 · 검색 결과 · 제안은 저장 대상이 아님).</div></div>
+                  <div class="drow"><div class="k">조작 방식</div><div class="v text-sm text-body">읽기 · 전체 쓰기 · 부분 수정 · 끝에 추가 · 삭제 5종 · 삭제는 명시적 요청이 있을 때만 실행하며, 수정 시에는 기존 파일을 먼저 읽고 버전 토큰을 확인한 뒤 덮어씁니다(위 편집기가 그대로 구현).</div></div>
+                  <div class="drow"><div class="k">저장 제외</div><div class="v text-sm text-body">건강 정보 · 정치 성향 · 가족 실명 · 주소 · 금융 정보 등 민감 정보는 직접 말해도 기록하지 않습니다.</div></div>
+                  <div class="drow"><div class="k">한계</div><div class="v text-sm text-body">텍스트 요약 수준이라 대화 전체 맥락은 보존되지 않음 · 파일당 크기 제한(4,000바이트)이 있어 한도에 닿으면 저장이 거절됨 · 진술을 검증 없이 기록하므로 오래되거나 틀린 정보가 남을 수 있음.</div></div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
         </div>
 
         <!-- ═══ 정책: 이 화면이 실제로 남기는 로그 체계(TIARA)와 측정 · 판정 · 기록 정책 ═══ -->
@@ -303,17 +280,18 @@
             <div class="panel-bd">
               <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
                 <li>시연 · 운영의 행동 수집은 <b>TIARA</b>(전사 통합 사용자 행동로그 수집 플랫폼 · 기존 Tiara · Kinsight · S2Events 통합) 체계를 따릅니다.</li>
-                <li>아래 표는 이 화면이 <b>실제로 남기는 로그</b>와 TIARA 표준(ActionType · ActionKind)의 매핑입니다 — 추후 실사용자 로그도 같은 체계로 들어옵니다.</li>
+                <li>아래 표는 이 화면이 <b>실제로 남기는 로그</b>와 TIARA 표준(ActionType · ActionKind)의 매핑입니다 · 추후 실사용자 로그도 같은 체계로 들어옵니다.</li>
                 <li>자세한 정의는 <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/286294107" target="_blank" rel="noopener" class="text-violet" style="text-decoration:underline">TIARA 스펙 시트</a>에서 확인하세요.</li>
               </ul>
               <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:170px">ActionType</th><th>정의</th><th style="width:220px">이 화면에서</th></tr></thead><tbody>
                 <tr><td><code class="text-violet">ViewableImpression</code></td><td>화면에 <b>실제로 보인</b> 콘텐츠의 노출 기록(예: 영역 50% 이상) · 측정값 "노출수" → CTR 분모</td><td>피드 진입 시 보인 카드 일괄 기록(중복 무시)</td></tr>
-                <tr><td><code class="text-violet">Event</code></td><td>클릭 등 사용자가 직접 취한 행동 · 측정값 "이벤트수"</td><td>카드 탭(콘텐츠 클릭) · 저장 버튼</td></tr>
-                <tr><td><code class="text-violet">Pageview</code></td><td>사용자가 하나의 화면을 볼 때(필수 타입) · 측정값 "페이지뷰"</td><td>읽기 화면 진입</td></tr>
+                <tr><td><code class="text-violet">Event</code></td><td>클릭 등 사용자가 직접 취한 행동 · 측정값 "이벤트수"</td><td>카드 탭 · 검색 · 감정 반응 · 댓글</td></tr>
+                <tr><td><code class="text-violet">Pageview</code></td><td>사용자가 하나의 화면을 볼 때(필수 타입) · 측정값 "페이지뷰"</td><td>읽기 화면 · 검색 결과 화면 진입</td></tr>
                 <tr><td><code class="text-violet">Usage</code></td><td>페이지 단위 <b>체류시간 · 스크롤 비율</b> · ms 기록 → 초 변환 · <b>최대 600초(10분)</b> 초과분은 최대값 저장</td><td>읽기 종료 시 체류 · 스크롤 기록(600초 클램프 동일 적용)</td></tr>
               </tbody></table></div>
-              <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:170px">시연 행동</th><th style="width:220px">TIARA 매핑</th><th>수집 값</th></tr></thead><tbody>
+              <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:190px">시연 행동</th><th style="width:230px">TIARA 매핑</th><th>수집 값</th></tr></thead><tbody>
                 <tr><td>피드 진입(노출)</td><td>ViewableImpression</td><td><code class="text-violet">content_id</code> 목록 · 클릭률 · 소비율의 분모로만 사용</td></tr>
+                <tr><td>콘텐츠 찾기(프롬프트 검색)</td><td>Event · <code class="text-violet">Search</code> + 결과 화면 Pageview · <code class="text-violet">ViewSearchResults</code></td><td>검색어는 부가 정보로 수집 · 직접 선언이라 메모리 <code class="text-violet">[stated]</code> 기록</td></tr>
                 <tr><td>카드 탭</td><td>Event · <code class="text-violet">ClickContent</code> (+ 읽기 화면 Pageview · <code class="text-violet">ViewContent</code>)</td><td>클릭 콘텐츠 · 이후 해당 콘텐츠 가중 ×2.0</td></tr>
                 <tr><td>나가기(읽기 종료)</td><td>Usage · <code class="text-violet">UsagePage</code></td><td><code class="text-violet">dwell_sec</code>(체류) · <code class="text-violet">scroll_pct</code>(스크롤) · 체류 30초 이상=정독, 미만=훑기 자동 판정</td></tr>
                 <tr><td>감정 반응(추천 · 좋아요 · 감동 · 화나요 · 슬퍼요)</td><td>Event · <code class="text-violet">Like</code></td><td>감정 상세는 Custom Properties 에 기록(스펙 권고) · 메모리 [observed]</td></tr>
@@ -322,7 +300,7 @@
               <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:170px">수집 필드</th><th>정의</th></tr></thead><tbody>
                 <tr><td><code class="text-violet">user_id</code></td><td>사용자 구분 키 · 실명 · 연락처 등 식별 정보는 어떤 경로로도 수집하지 않음</td></tr>
                 <tr><td><code class="text-violet">content_id</code></td><td>추출 순서(0부터) · 조인 우선순위는 인덱스 → 외부 id → 제목</td></tr>
-                <tr><td><code class="text-violet">event</code></td><td>impression · click · read · skim · react · comment (TIARA ActionType 매핑은 위 표)</td></tr>
+                <tr><td><code class="text-violet">event</code></td><td>impression · search · click · read · skim · react · comment (TIARA ActionType 매핑은 위 표)</td></tr>
                 <tr><td><code class="text-violet">dwell_sec</code> · <code class="text-violet">scroll_pct</code></td><td>체류 초(최대 600) · 스크롤 %(0~100)</td></tr>
                 <tr><td><code class="text-violet">ts</code></td><td>이벤트 시각 · 시간대 신호(버스트 · 주야 이중 · 드리프트) 산출에 사용</td></tr>
               </tbody></table></div>
@@ -339,11 +317,11 @@
               <div class="drow"><div class="k">가중치 공식</div><div class="v text-sm text-body">체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) → 카테고리 · 맥락(인텐트)별 합산 → 상대 등급(저 / 중 / 고)</div></div>
               <div class="drow"><div class="k">깊이 판정</div><div class="v text-sm text-body">평균 체류 45초 이상 + 스크롤 60% 이상 = <b>몰입</b> · 15초 미만 = <b>훑기</b> · 그 사이 = 혼합</div></div>
               <div class="drow"><div class="k">판정 순서</div><div class="v text-sm text-body">명시 신호(버스트 · 주야 이중 · 드리프트 · 주말 편중 · 출퇴근 훑기 · 엔티티 집중) 우선 → 없으면 깊이 · 강도 · 폭 근접 매칭 · 소비 5건 미만은 <b>잠정</b> 배정 후 로그가 쌓이면 자동 재판정</div></div>
-              <div class="drow"><div class="k">메모리 기록</div><div class="v text-sm text-body">소비 관찰은 <code class="text-violet">[observed]</code> · 사용자가 직접 말한 사실은 <code class="text-violet">[stated]</code> 로 구분 기록 · 파일당 4,000바이트 · 64개 제한 · 삭제는 명시 요청이 있을 때만</div></div>
+              <div class="drow"><div class="k">메모리 기록</div><div class="v text-sm text-body">소비 관찰은 <code class="text-violet">[observed]</code> · 검색어와 댓글 등 직접 말한 것은 <code class="text-violet">[stated]</code> 로 구분 기록 · 파일당 4,000바이트 · 64개 제한 · 삭제는 명시 요청이 있을 때만</div></div>
               <div class="drow"><div class="k">개인정보</div><div class="v text-sm text-body">건강 · 정치 성향 · 가족 실명 · 주소 · 금융 등 민감 정보는 기록하지 않음 · TIARA Location(위치 수집) 타입은 사용하지 않음</div></div>
               <div style="margin-top:10px"><div class="selctl__lbl" style="margin-bottom:4px">판정 기준 · 기본 페르소나 8종</div>
                 <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'ppd'+pd.name">
-                  <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'— ' + pd.desc"></span></div>
+                  <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'· ' + pd.desc"></span></div>
                 </template>
               </div>
             </div>

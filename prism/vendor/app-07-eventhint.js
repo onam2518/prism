@@ -268,10 +268,11 @@ window.PRISM_APP_PARTS.push(() => ({
       // 좌측 피드(Anchor DS)에서의 실제 행동을 이벤트로 서버에 보내고, 우측 3단(실시간·누적·로직)을
       // 응답으로 갱신. 체류는 실측 초 × 10 배속(가상 체류)으로 보내 실로직 임계값(30·45초)을 체감시킨다.
       labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연·생성) | policy(정책)
-      demoData: null, demoStep: 1, demoReading: null, demoTick: 0, _demoTimer: null,
+      demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
+      demoQ: '', demoQFilter: '',
       demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false, demoDefsOpen: false,
       demoX: 10,                                    // 가상 체류 배속(화면에 명시)
-      async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; if (d.session && d.session.finished && d.conclusion) this.demoStep = Math.max(this.demoStep, 3); this.demoImpress(); } } catch (e) {} },
+      async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; this.demoImpress(); } } catch (e) {} },
       async demoPost(body) {
         this.demoBusy = true; this.demoMsg = '';
         try {
@@ -312,44 +313,26 @@ window.PRISM_APP_PARTS.push(() => ({
         const d = await this.demoPost({ op: 'event', event: 'comment', idx: this.demoReading.idx, text: t });
         if (d && this.demoReading) { (this.demoReading.comments = this.demoReading.comments || []).push(t); this.demoCmt = ''; }
       },
-      demoCatCls(cat) {                             // 카테고리 → Anchor 카테고리 색(뉴스·스포츠·연예·관심사)
-        if (cat === 'Sports') return 'an-cat-sports';
-        if (cat === 'Entertainment') return 'an-cat-ent';
-        if (cat === 'News and Politics') return 'an-cat-news';
-        if (!cat || cat === '기타') return 'an-cat-etc';
-        return 'an-cat-int';
-      },
       demoFmtT(s) { const v = Math.max(0, s | 0); return Math.floor(v / 60) + ':' + ('0' + (v % 60)).slice(-2); },
-      demoCanNext() {
-        if (this.demoStep === 1) return !!(this.demoData && this.demoData.session.consumed);
-        return this.demoStep < 4;
+      demoFeed() {                                  // 검색어로 피드 필터(제목·요약·백단 메타 매칭 · 화면엔 메타 비노출)
+        const cs = (this.demoData && this.demoData.contents) || [];
+        const q = (this.demoQFilter || '').trim();
+        if (!q) return cs;
+        const toks = q.split(/\s+/).filter(t => t.length >= 2);
+        if (!toks.length) return cs;
+        return cs.filter(c => toks.some(t => (c.title || '').includes(t) || (c.summary || '').includes(t) || (c.cat || '').includes(t) || (c.intent || '').includes(t)));
       },
-      async demoNext() {
-        if (!this.demoCanNext()) return;
-        if (this.demoReading) await this.demoClose();
-        if (this.demoStep === 2 && !(this.demoData && this.demoData.session.finished)) {
-          const d = await this.demoPost({ op: 'finish' }); if (!d) return;
-        }
-        this.demoStep = Math.min(4, this.demoStep + 1);
-      },
-      demoGo(n) {                                   // 스텝바 직접 이동(결론 이후엔 자유 왕복)
-        if (n === this.demoStep) return;
-        if (n > this.demoStep) { if (n === this.demoStep + 1) this.demoNext(); return; }
-        this.demoStep = n;
-      },
-      demoFoot() {                                  // 하단 바: 이 단계의 결론 한 줄
-        const d = this.demoData, s = d && d.session;
-        if (!d) return '';
-        if (this.demoStep === 1) return s.consumed ? ('콘텐츠 ' + s.consumed + '건 소비 · 이벤트 ' + s.events_n + '건 수집 — 측정을 볼 준비가 됐습니다') : '왼쪽 피드에서 콘텐츠를 눌러 읽어 보세요 · 행동이 곧 데이터가 됩니다';
-        if (this.demoStep === 2) return '수집분이 소비 형태 · 강도 · 선호로 계산됐습니다 — 다음 스텝에서 결론(판정)을 냅니다';
-        if (this.demoStep === 3) { const c = d.conclusion; return c && c.persona ? ('판정: ' + c.persona.full + ' · 신뢰도 ' + c.persona.conf + ' — 이 결론이 어디에 쓰이는지 다음 스텝에서 봅니다') : '결론을 계산하는 중입니다'; }
-        return '측정 → 결론 → 활용까지 한 바퀴를 돌았습니다 · [처음부터]로 다른 소비 패턴을 실험해 보세요';
+      async demoSearch() {                          // 콘텐츠 찾기 · Event(Search)+ViewSearchResults · 검색어는 [stated]
+        const q = (this.demoQ || '').trim();
+        if (!q) return;
+        const d = await this.demoPost({ op: 'event', event: 'search', query: q });
+        if (d) this.demoQFilter = q;
       },
       async demoReset() {
         if (!(await this.dsConfirm('시연 세션을 처음부터 다시 시작할까요? 수집한 이벤트와 결론이 지워집니다(메모리 파일은 유지).', { ok: '처음부터', danger: true }))) return;
         if (this.demoReading) { clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; }
         const d = await this.demoPost({ op: 'reset' });
-        if (d) { this.demoStep = 1; this.demoImpressed = false; this.demoChainOpen = false; this.loadMem(); }
+        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoImpress(); this.loadMem(); }
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },

@@ -1,6 +1,6 @@
 """파일 기반 메모리(실험실 · 사용자 메타): 마크다운 파일 트리를 팀 스코프로 저장.
 
-설계 실험을 비개발자가 화면에서 직접 구동하는 백엔드 —
+설계 실험을 비개발자가 화면에서 직접 구동하는 백엔드.
 - 시연 과정(STEP 1~4): 실서비스형 피드 소비 → 실시간 측정 → 결론(페르소나 판정) → 활용
 - 생성 과정: 소비가 그 턴에 /topics/<주제>.md 로 자동 기록 + 수동 조작(전체 쓰기·추가·삭제) + 주입
 저장은 store 의 report KV(usermeta_memory) 를 재사용한다 · 실제 파일시스템을 쓰지 않아
@@ -74,7 +74,7 @@ def injection_text(files: dict) -> str:
            "아래는 이 계정의 메모리 파일 목록입니다. 필요한 파일만 읽어 활용합니다.", ""]
     for p in sorted(files, key=_order_key):
         d = _desc(files[p].get("content", ""))
-        out.append("- /" + p + (" — " + d if d else ""))
+        out.append("- /" + p + (" · " + d if d else ""))
     return "\n".join(out)
 
 
@@ -236,14 +236,15 @@ def memory_ops(body: dict, team=None) -> dict:
 DEMO_KIND = "usermeta_demo"
 DEMO_EVENTS_MAX = 400
 EV_LABEL = {"impression": "노출", "click": "클릭", "skim": "훑고 나감",
-            "read": "끝까지 읽음", "save": "저장함", "react": "반응", "comment": "댓글"}
+            "read": "끝까지 읽음", "save": "저장함", "react": "반응", "comment": "댓글",
+            "search": "검색"}
 EMOTIONS = ("추천해요", "좋아요", "감동이에요", "화나요", "슬퍼요")   # 기사 하단 감정 반응 5종
-# TIARA(전사 통합 행동로그) 체계 매핑 — pplan/286294107 스펙 시트 기준.
+# TIARA(전사 통합 행동로그) 체계 매핑 · pplan/286294107 스펙 시트 기준.
 # 노출=ViewableImpression(실제 보인 콘텐츠만) · 클릭=Event(ClickContent · 읽기 화면은 Pageview
 # ViewContent 병행) · 읽기 종료=Usage(UsagePage · 체류·스크롤) · 저장=Event(표준 Kind 없음 →
 # 액션명 구분 권고). Usage 체류 최대 600초(10분) 초과분은 스펙대로 최대값으로 잘라 저장.
 TIARA_TAG = {"impression": "ViewImp", "click": "Event", "read": "Usage",
-             "skim": "Usage", "save": "Event", "react": "Event", "comment": "Event"}
+             "skim": "Usage", "save": "Event", "react": "Event", "comment": "Event", "search": "Event"}
 USAGE_MAX_SEC = 600
 
 
@@ -299,16 +300,40 @@ def _live_measures(events, catalog) -> dict:
 
 
 def _ev_line(e) -> str:
-    lab = EV_LABEL.get(e.get("event"), e.get("event", ""))
-    if e.get("emo"):
-        lab += " '" + e["emo"] + "'"
-    s = (e.get("t", "") + " [" + TIARA_TAG.get(e.get("event"), "-") + "] "
-         + lab + ' "' + (e.get("title") or "")[:24] + '"')
-    if e.get("dwell"):
-        s += " · 체류 " + str(e["dwell"]) + "초"
-    if e.get("path"):
-        s += " → /" + e["path"]
-    return s
+    """콘솔형 로그 한 줄 · TIARA ActionType/ActionKind 를 코드처럼 그대로 노출."""
+    t = e.get("t", "")
+    ev = e.get("event")
+    idx = e.get("idx")
+    title = (e.get("title") or "")[:22]
+    if ev == "impression":
+        return t + ' [ViewImp] content_id=' + str(idx) + ' "' + title + '"'
+    if ev == "click":
+        return t + ' [Event] ClickContent content_id=' + str(idx) + ' "' + title + '"'
+    if ev in ("read", "skim"):
+        return (t + " [Usage] UsagePage content_id=" + str(idx) + " dwell=" + str(e.get("dwell") or 0)
+                + "s scroll=" + str(e.get("scroll") or 0) + '% "' + title + '"')
+    if ev == "react":
+        return t + " [Event] Like emotion='" + (e.get("emo") or "") + "' content_id=" + str(idx)
+    if ev == "comment":
+        return t + ' [Event] WriteComment content_id=' + str(idx) + ' text="' + (e.get("text") or "") + '"'
+    if ev == "search":
+        return t + ' [Event] Search query="' + title + '"'
+    return t + " [" + TIARA_TAG.get(ev, "-") + "] " + str(ev)
+
+
+def _suggests(catalog) -> list:
+    """프롬프트 폼의 추천 유도 문구 · 실제 피드의 주제·맥락에서 생성."""
+    out, seen = [], set()
+    for c in catalog:
+        if c["cat"] != "기타" and c["cat"] not in seen:
+            seen.add(c["cat"])
+            out.append(c["cat"] + " 몰아보기")
+        if len(out) >= 2:
+            break
+    ints = [c["intent"] for c in catalog if c.get("intent") and c["intent"] != "기타"]
+    if ints:
+        out.append(ints[0] + " 콘텐츠만")
+    return out[:3] or ["오늘 이슈 몰아보기"]
 
 
 def demo_data(team=None) -> dict:
@@ -319,15 +344,15 @@ def demo_data(team=None) -> dict:
     consumed = len({e.get("idx") for e in events if e.get("event") in ("read", "skim", "save")})
     out = {"contents": [{k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent")}
                         for c in catalog],
-           "session": {"events_n": len(events), "impressions": imp, "consumed": consumed,
-                       "finished": bool(sess.get("finished"))},
-           "stream": [_ev_line(e) for e in reversed(events[-8:])],
+           "session": {"events_n": len(events), "impressions": imp, "consumed": consumed},
+           "stream": [_ev_line(e) for e in reversed(events[-30:])],
            "live": _live_measures(events, catalog),
            "logic": sess.get("last_logic") or "",
            "personas": _personas_brief(),
+           "suggests": _suggests(catalog),
            "formula": "가중치 = 체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) → 카테고리·맥락별 합산 → 상대 등급(저/중/고)"}
-    if sess.get("finished") and sess.get("conclusion"):
-        out["conclusion"] = sess["conclusion"]
+    if consumed:                                     # 결론도 실시간 · 소비가 쌓일 때마다 자동 재판정
+        out["conclusion"] = _conclusion(events, catalog, team)
     return out
 
 
@@ -361,6 +386,10 @@ def _conclusion(events, catalog, team=None) -> dict:
             chain.append({"t": e.get("t", ""), "act": "반응 '" + (e.get("emo") or "") + "' · \"" + (e.get("title") or "") + '"',
                           "measure": "Event(Like) · 감정은 Custom Properties",
                           "file": ("/" + e["path"]) if e.get("path") else "측정만"})
+        elif e.get("event") == "search":
+            chain.append({"t": e.get("t", ""), "act": "검색 · '" + (e.get("title") or "") + "'",
+                          "measure": "원하는 콘텐츠 직접 선언 · 검색어 부가 정보",
+                          "file": ("/" + e["path"]) if e.get("path") else "측정만"})
         elif e.get("event") == "comment":
             chain.append({"t": e.get("t", ""), "act": '댓글 · "' + (e.get("text") or "") + '"',
                           "measure": "직접 발화 → [stated] 기록",
@@ -370,7 +399,7 @@ def _conclusion(events, catalog, team=None) -> dict:
     depth = live["form"].get("깊이", "·")
     scenarios = [
         {"title": "소비 형태 기반 홈 재배치",
-         "desc": depth + " 소비형 — " + ("심층·이어보기 슬롯을 위로 올립니다" if depth == "몰입"
+         "desc": depth + " 소비형: " + ("심층·이어보기 슬롯을 위로 올립니다" if depth == "몰입"
                                         else "숏폼·이슈 카드를 위로 올립니다")},
         {"title": "능동형 컴포넌트",
          "desc": top_cat + " × " + top_int + " 조건의 큐레이션 슬롯을 능동 삽입합니다"},
@@ -393,7 +422,7 @@ def _conclusion(events, catalog, team=None) -> dict:
 
 
 def demo_ops(body: dict, team=None) -> dict:
-    """소비 시연 조작: event(노출·클릭·훑기·정독·저장) · finish(결론) · reset(처음부터)."""
+    """소비 시연 조작: event(노출·검색·클릭·정독·훑기·반응·댓글) · reset(처음부터) · 결론은 실시간."""
     body = body or {}
     op = body.get("op") or ""
     sess = _demo_session(team)
@@ -416,7 +445,24 @@ def demo_ops(body: dict, team=None) -> dict:
                     seen.add(i)
                     events.append({"idx": i, "event": "impression", "dwell": 0, "scroll": 0,
                                    "t": _now_t(), "title": byidx[i]["title"][:40]})
-            sess["last_logic"] = "노출 " + str(len(seen)) + "건 등록 — 노출은 클릭률·소비율의 분모로만 쓰입니다"
+            sess["last_logic"] = "노출 " + str(len(seen)) + "건 등록 · 노출은 클릭률·소비율의 분모로만 쓰입니다"
+        elif ev == "search":
+            q = (body.get("query") or "").strip()[:60]
+            if not q:
+                return {"error": "찾고 싶은 콘텐츠를 입력하세요"}
+            toks = [t for t in re.split(r"\s+", q) if len(t) >= 2]
+            hit = next((c for c in catalog for t in toks
+                        if t in c["title"] or t in c["cat"] or t in c["intent"]), None)
+            files = _files(team)
+            wrote, err = _observe(files, q, hit["cat"] if hit else "기타",
+                                  hit["intent"] if hit else "검색", "검색 · 원하는 콘텐츠 선언", tag="stated")
+            if err:
+                return {"error": err}
+            _persist(team, files)
+            events.append({"idx": -1, "event": "search", "dwell": 0, "scroll": 0,
+                           "t": _now_t(), "title": q, "path": wrote["path"]})
+            sess["last_logic"] = ("검색 '" + q + "' · Event(Search) + 결과 화면 Pageview(ViewSearchResults) · "
+                                  "검색어는 부가 정보로 남고, 직접 선언이라 /" + wrote["path"] + " 에 [stated] 기록")
         elif ev in ("click", "read", "skim", "save", "react", "comment"):
             try:
                 idx = int(body.get("idx"))
@@ -452,7 +498,7 @@ def demo_ops(body: dict, team=None) -> dict:
                     return {"error": "댓글 내용을 입력하세요"}
                 files = _files(team)
                 wrote, err = _observe(files, text, c["cat"], c["intent"],
-                                      '— "' + c["title"][:24] + '" 에 남긴 의견', tag="stated")
+                                      '· "' + c["title"][:24] + '" 기사에 남긴 의견', tag="stated")
                 if err:
                     return {"error": err}
                 _persist(team, files)
@@ -477,15 +523,6 @@ def demo_ops(body: dict, team=None) -> dict:
         else:
             return {"error": "지원하지 않는 이벤트입니다: " + str(ev)[:20]}
         sess["events"] = events[-DEMO_EVENTS_MAX:]
-        if sess.get("finished"):                     # 결론 후 재소비 → 결론 무효화(다시 마치면 재판정)
-            sess.pop("finished", None)
-            sess.pop("conclusion", None)
-        _demo_save(team, sess)
-
-    elif op == "finish":
-        sess["events"] = events
-        sess["finished"] = True
-        sess["conclusion"] = _conclusion(events, catalog, team)
         _demo_save(team, sess)
 
     elif op == "reset":                              # 세션만 초기화 · 메모리 파일은 유지

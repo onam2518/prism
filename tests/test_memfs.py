@@ -113,7 +113,7 @@ class TestMemfs(unittest.TestCase):
         MF.memory_ops({"op": "write", "path": "profile.md",
                        "content": "---\n파일: /profile.md\n설명: 기본 정보\n---\n"}, team="t1")
         inj = MF.memory_data(team="t1")["injection"]
-        self.assertIn("- /profile.md — 기본 정보", inj)
+        self.assertIn("- /profile.md · 기본 정보", inj)
         self.assertEqual(MF.memory_data(team="t2")["files"], [])   # 다른 팀은 빈 상태
 
     def test_unknown_op(self):
@@ -143,9 +143,11 @@ class TestDemoSession(unittest.TestCase):
     def test_empty_demo(self):
         d = MF.demo_data(team="t1")
         self.assertEqual(len(d["contents"]), 5)          # R 제외
-        self.assertEqual(d["session"], {"events_n": 0, "impressions": 0, "consumed": 0, "finished": False})
+        self.assertEqual(d["session"], {"events_n": 0, "impressions": 0, "consumed": 0})
         self.assertEqual(d["stream"], [])
         self.assertEqual(d["live"]["cats"], [])
+        self.assertNotIn("conclusion", d)                # 소비 전에는 결론 없음
+        self.assertTrue(d["suggests"])                   # 추천 유도 문구
 
     def test_impression_batch_dedup(self):
         MF.demo_ops({"op": "event", "event": "impression", "idxs": [0, 1, 2]}, team="t1")
@@ -161,39 +163,43 @@ class TestDemoSession(unittest.TestCase):
         self.assertIn("클릭가중 2.0", d["logic"])
         self.assertEqual(d["wrote"]["path"], "topics/business-and-finance.md")
         self.assertTrue(d["live"]["cats"][0]["name"].startswith("Business"))
+        self.assertIn("[Usage] UsagePage", d["stream"][0])   # 콘솔형 로그 라인
+        self.assertIn("dwell=50s", d["stream"][0])
+        self.assertIn("conclusion", d)                   # 소비 즉시 실시간 결론
 
     def test_click_only_not_consumed(self):
         d = MF.demo_ops({"op": "event", "event": "click", "idx": 1}, team="t1")
         self.assertEqual(d["session"]["consumed"], 0)     # 클릭만으로는 소비 아님
         self.assertEqual(d["live"]["eng"]["views"], 0)
 
-    def test_finish_low_data_provisional(self):
-        MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
-        d = MF.demo_ops({"op": "finish"}, team="t1")
+    def test_live_conclusion_low_data_provisional(self):
+        d = MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
         c = d["conclusion"]
         self.assertTrue(c["persona"]["provisional"])      # 5건 미만 → 잠정
         self.assertIn("잠정", c["note"])
         self.assertEqual(len(c["chain"]), 1)
         self.assertIn("topics/business-and-finance.md", c["memory"]["files"][0])
         self.assertEqual(len(c["scenarios"]), 3)
-        self.assertTrue(d["session"]["finished"])
 
-    def test_finish_five_reads_not_provisional(self):
+    def test_live_conclusion_five_reads_not_provisional(self):
         for i in (0, 1, 2, 3, 5):
             MF.demo_ops({"op": "event", "event": "click", "idx": i}, team="t1")
-            MF.demo_ops({"op": "event", "event": "read", "idx": i, "dwell_sec": 60, "scroll_pct": 95}, team="t1")
-        d = MF.demo_ops({"op": "finish"}, team="t1")
+            d = MF.demo_ops({"op": "event", "event": "read", "idx": i, "dwell_sec": 60, "scroll_pct": 95}, team="t1")
         c = d["conclusion"]
         self.assertFalse(c["persona"]["provisional"])     # 5건 이상 → 본판정
         self.assertEqual(d["session"]["consumed"], 5)
         self.assertEqual(len([x for x in c["chain"] if "클릭" in x["act"]]), 5)
 
-    def test_new_event_invalidates_conclusion(self):
-        MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 40}, team="t1")
-        MF.demo_ops({"op": "finish"}, team="t1")
-        d = MF.demo_ops({"op": "event", "event": "read", "idx": 1, "dwell_sec": 10}, team="t1")
-        self.assertFalse(d["session"]["finished"])        # 재소비 → 결론 무효화
-        self.assertNotIn("conclusion", d)
+    def test_search_records_stated_and_filters_topic(self):
+        d = MF.demo_ops({"op": "event", "event": "search", "query": "반도체 심층 몰아보기"}, team="t1")
+        self.assertIn("Search", d["logic"])
+        self.assertIn("ViewSearchResults", d["logic"])
+        self.assertIn('[Event] Search query=', d["stream"][0])
+        body = MF.memory_data(team="t1")["files"][0]["content"]
+        self.assertIn("[stated]", body)
+        self.assertIn("반도체 심층 몰아보기", body)
+        self.assertIn("business-and-finance", MF.memory_data(team="t1")["files"][0]["path"])
+        self.assertIn("입력하세요", MF.demo_ops({"op": "event", "event": "search", "query": " "}, team="t1")["error"])
 
     def test_reset_keeps_memory_files(self):
         MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 40}, team="t1")
@@ -212,7 +218,7 @@ class TestDemoSession(unittest.TestCase):
         MF.demo_ops({"op": "event", "event": "click", "idx": 0}, team="t1")
         d = MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "화나요"}, team="t1")
         self.assertIn("Custom Properties", d["logic"])
-        self.assertIn("반응 '화나요'", d["stream"][0])
+        self.assertIn("[Event] Like emotion='화나요'", d["stream"][0])
         body = MF.memory_data(team="t1")["files"][0]["content"]
         self.assertIn("[observed]", body)
         self.assertIn("반응 '화나요'", body)
@@ -230,8 +236,7 @@ class TestDemoSession(unittest.TestCase):
     def test_react_comment_in_conclusion_chain(self):
         MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
         MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "좋아요"}, team="t1")
-        MF.demo_ops({"op": "event", "event": "comment", "idx": 0, "text": "좋은 분석"}, team="t1")
-        c = MF.demo_ops({"op": "finish"}, team="t1")["conclusion"]
+        c = MF.demo_ops({"op": "event", "event": "comment", "idx": 0, "text": "좋은 분석"}, team="t1")["conclusion"]
         acts = [x["act"] for x in c["chain"]]
         self.assertTrue(any("반응 '좋아요'" in a for a in acts))
         self.assertTrue(any("댓글" in a for a in acts))

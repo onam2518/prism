@@ -1175,7 +1175,7 @@
 
 /* ═══════════ Anchor 디자인 시스템 스코프(실험실 소비 시연 · 좌측 '실제 서비스 화면' 전용) ═══════════
    출처: Anchor DS v0.1 · tokens.json v0.5.1(semantic.light/dark) · Button.md 유효 조합.
-   규칙: HEX 는 tokens.json 시맨틱 값의 박제(스냅샷) — 임의 색 도입 금지 · 다크는 프리즘 방식
+   규칙: HEX 는 tokens.json 시맨틱 값의 박제(스냅샷) · 임의 색 도입 금지 · 다크는 프리즘 방식
    ([data-theme] · prefers-color-scheme)으로 같은 변수를 스왑. 카테고리 매핑: 뉴스=Blue(Info) ·
    스포츠=Indigo · 연예=Violet · 그 외 관심사=Orange · 기타=LightGray. */
   .anchor-scope{
@@ -1229,13 +1229,24 @@
   .an-row-t{font-size:16px;font-weight:400;line-height:1.32;color:var(--an-tx1);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}                /* body.medium.normal */
   .an-row-m{margin-top:4px;font-size:14px;font-weight:400;line-height:1.32;color:var(--an-txsub)}  /* caption.normal */
-  .an-badge{display:inline-block;border-radius:4px;padding:2px 6px;
-    font-size:12px;font-weight:700;line-height:1.2}                           /* label.strong */
-  .an-cat-news{background:var(--an-cat-news-bg);color:var(--an-cat-news-tx)}
-  .an-cat-sports{background:var(--an-cat-sports-bg);color:var(--an-cat-sports-tx)}
-  .an-cat-ent{background:var(--an-cat-ent-bg);color:var(--an-cat-ent-tx)}
-  .an-cat-int{background:var(--an-cat-int-bg);color:var(--an-cat-int-tx)}
-  .an-cat-etc{background:var(--an-hover);color:var(--an-txq)}
+  /* 콘텐츠 찾기(프롬프트 폼): 라운드 검색바 + 추천 유도 칩 · 백단 메타(카테고리)는 소비 화면에 비노출 */
+  .an-search{padding:8px 12px 0}
+  .an-search-cap{font-size:12px;font-weight:400;line-height:1.2;color:var(--an-txsub);margin:0 4px 6px}
+  .an-search-box{display:flex;align-items:center;gap:8px;background:var(--an-surface);
+    border:1px solid var(--an-btn-bd);border-radius:100px;padding:4px 4px 4px 18px}
+  .an-search-box:focus-within{border-color:var(--an-primary)}
+  .an-search-in{flex:1;min-width:0;border:0;background:transparent;font-family:inherit;
+    font-size:15px;color:var(--an-tx1);outline:none}
+  .an-search-go{flex:none;border:0;cursor:pointer;border-radius:100px;min-height:34px;padding:6px 16px;
+    background:var(--an-primary);color:#ffffff;font-family:inherit;font-size:14px;font-weight:700}
+  .an-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .an-chip{border:1px solid var(--an-btn-bd);background:var(--an-surface);border-radius:100px;
+    padding:6px 12px;cursor:pointer;font-family:inherit;font-size:13px;color:var(--an-tx2)}
+  .an-chip:hover{background-image:linear-gradient(var(--an-hover),var(--an-hover))}
+  .an-search-note{display:flex;align-items:center;gap:8px;margin-top:8px;
+    font-size:13px;color:var(--an-txsub)}
+  .an-search-note button{border:0;background:transparent;cursor:pointer;font-family:inherit;
+    font-size:13px;color:var(--an-primary);font-weight:700;padding:0}
   .an-article{background:var(--an-surface);margin:10px 12px 12px;border-radius:16px;
     box-shadow:var(--an-shadow-low);padding:16px;max-height:520px;overflow:auto}
   .an-art-src{font-size:15px;font-weight:700;line-height:1.32;color:var(--an-tx1);display:flex;align-items:center;gap:8px}
@@ -1267,23 +1278,11 @@
     font-family:inherit;font-size:15px;font-weight:700;line-height:1.32;color:var(--an-tx2)}  /* Size Lg · body.small.strong */
   .an-btn:hover{background-image:linear-gradient(var(--an-hover),var(--an-hover))}
   .an-btn:focus-visible{outline:2px solid var(--an-primary);outline-offset:2px;border-radius:10px}
-  .an-btn--primary{background:var(--an-primary);color:#ffffff}                /* Solid·Primary — 화면당 1개 */
+  .an-btn--primary{background:var(--an-primary);color:#ffffff}                /* Solid·Primary · 화면당 1개 */
   .an-btn--neutral{background:var(--an-neutral);border:1px solid var(--an-btn-bd)}  /* Outline·Neutral */
   .an-btn--ghost{border:1px solid var(--an-btn-bd)}                           /* Outline·Ghost */
 
 /* ── 소비 시연(실험실) 관측 패널: 스텝바 · 실시간 3단 · 게이지 · 인과 카드 (프리즘 토큰) ── */
-  .demo-stepbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;border:1px solid var(--ds-hairline);
-    border-radius:10px;background:var(--ds-surface);padding:8px 12px;margin-bottom:12px}
-  .demo-step{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
-    color:var(--ds-muted);border:0;background:transparent;cursor:pointer;padding:2px 4px;font-family:inherit}
-  .demo-step .n{width:17px;height:17px;border-radius:50%;background:var(--ds-hairline);color:var(--ds-muted);
-    display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800}
-  .demo-step.is-on{color:var(--ds-primary)}
-  .demo-step.is-on .n{background:var(--ds-primary);color:#fff}
-  .demo-step:disabled{cursor:default;opacity:.5}
-  .demo-arrow{color:var(--ds-muted);opacity:.5;font-size:11px}
-  .demo-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--ds-hairline);
-    border-radius:10px;background:var(--ds-surface);padding:9px 12px;margin-top:12px;font-size:12.5px}
   .demo-obs{border:1px solid var(--ds-hairline);border-radius:10px;background:var(--ds-surface-white);
     padding:9px 12px}
   .demo-obs .cap{font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--ds-muted);margin-bottom:5px}
@@ -1298,3 +1297,10 @@
   .demo-chain{border:1px solid var(--ds-hairline);border-radius:9px;background:var(--ds-surface-white);
     padding:7px 10px;font-size:12px}
   .demo-chain .demo-chain-arrow{color:var(--ds-primary);font-weight:800;padding:0 2px}
+  /* 실시간 로그(콘솔형): 코드가 누적되듯 아래로 붙고 최신 줄이 하단 고정(column-reverse) */
+  .demo-code{background:#16181d;border:1px solid #262a33;border-radius:10px;padding:10px 12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.6;
+    color:#9aa4b2;display:flex;flex-direction:column-reverse;overflow:auto}
+  .demo-code .ln{white-space:pre-wrap;word-break:break-all}
+  .demo-code .ln.is-new{color:#eaf1fb;font-weight:600}
+  .demo-code .ln.is-hint{color:#5c6572}
