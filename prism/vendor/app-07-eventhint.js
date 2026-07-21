@@ -270,6 +270,95 @@ window.PRISM_APP_PARTS.push(() => ({
       labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연·생성) | policy(정책)
       demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
       demoQ: '', demoQFilter: '',
+      demoVariant: 'b', demoBoardSel: '', demoCardSel: 'main',          // 시안 선택(a 피드형·b 블록형·c 보드형·d 대화형) · 이벤트 계약은 동일
+      demoSlug(s) { return (s || '').trim().replace(/[^0-9A-Za-z가-힣]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase(); },
+      demoKo(c) { return (c && (c.cat_ko || c.cat)) || ''; },
+      demoCats() {                                  // 시안 A 관심 칩: 피드 주제의 사용자 표기(최대 5)
+        const seen = new Set(), out = [];
+        for (const c of ((this.demoData && this.demoData.contents) || [])) {
+          const k = this.demoKo(c);
+          if (k && !seen.has(k)) { seen.add(k); out.push(k); }
+          if (out.length >= 5) break;
+        }
+        return out;
+      },
+      demoCatTap(k) { this.demoQFilter = this.demoQFilter === k ? '' : k; },   // 칩 = 조용한 필터(검색과 달리 기록 없음)
+      demoLastQ() { const r = (this.demoData && this.demoData.prompts && this.demoData.prompts.recent) || []; return r.length ? r[0].q : ''; },
+      demoHist() { return ((this.demoData && this.demoData.prompts && this.demoData.prompts.recent) || []).slice(0, 3); },
+      demoRerun(q) { this.demoQ = q; this.demoSearch(); },
+      demoWhy(c) {                                  // 시안 D 카드 설명 한 줄: 근거 하나만 · 사용자 언어
+        if (this.demoQFilter) return "물어보신 '" + this.demoQFilter + "'";
+        const k = this.demoKo(c);
+        return k ? '자주 보는 ' + k : '새로 들어온 콘텐츠';
+      },
+      demoBlocks() {                                // 시안 B: 이유가 다른 블록 · 재료 없으면 블록 자체가 빠짐
+        const base = this.demoFeed(), used = new Set(), out = [];
+        const take = (arr, n) => { const r = []; for (const c of arr) { if (!used.has(c.idx)) { used.add(c.idx); r.push(c); if (r.length >= n) break; } } return r; };
+        const lastQ = this.demoLastQ();
+        if (lastQ) {
+          const toks = lastQ.split(/\s+/).filter(t => t.length >= 2);
+          const m = take(base.filter(c => toks.some(t => (c.title || '').includes(t) || (c.cat || '').includes(t) || (c.cat_ko || '').includes(t) || (c.intent || '').includes(t) || (c.intent_ko || '').includes(t))), 2);
+          if (m.length) out.push({ t: "물어보신 '" + lastQ + "' 소식이에요", s: '', items: m, num: false });
+        }
+        const cats = (this.demoData && this.demoData.live && this.demoData.live.cats) || [];
+        if (cats[0]) {
+          const m = take(base.filter(c => c.cat === cats[0].name), 2);
+          if (m.length) out.push({ t: '요즘 자주 보시는 ' + (this.demoKo(m[0]) || '주제'), s: '읽으신 기록으로 골랐어요', items: m, num: false });
+        }
+        if (cats[1]) {
+          const m = take(base.filter(c => c.cat === cats[1].name), 2);
+          if (m.length) out.push({ t: '관심 두시는 ' + (this.demoKo(m[0]) || '주제') + ' 소식', s: '', items: m, num: false });
+        }
+        const rest = take(base, 4);
+        if (rest.length) out.push({ t: '지금 많이 읽히는 콘텐츠', s: '취향과 상관없이 모두에게 같아요', items: rest, num: true });
+        return out;
+      },
+      demoBoards() {                                // 시안 C: 메모리 주제 파일 = 보드
+        const files = ((this.memData && this.memData.files) || []).filter(f => f.path.indexOf('topics/') === 0);
+        const cs = (this.demoData && this.demoData.contents) || [];
+        return files.map(f => {
+          const slug = f.path.slice(7).replace(/\.md$/, '');
+          const items = cs.filter(c => this.demoSlug(c.cat) === slug);
+          const label = items.length ? (this.demoKo(items[0]) || slug) : slug;
+          return { path: f.path, slug, label, desc: f.desc, items };
+        });
+      },
+      demoPersonaArt(name) { return ({ '정독러': '📚', '스낵러': '🍿', '조사자': '🔍', '이중모드': '🌗', '편식러': '🎯', '팬덤': '⭐', '전환기': '🧭', '라이트': '🍃' })[name] || '👤'; },
+      demoDef(name) { return ((this.demoData && this.demoData.personas) || []).find(p => p.name === name) || null; },
+      demoTierCls() {                               // 신뢰도 = 카드 등급(고 골드 · 중 실버 · 저/잠정 다크)
+        const p = this.demoData && this.demoData.conclusion && this.demoData.conclusion.persona;
+        if (!p || p.provisional || p.conf === '저') return 'pcard--dim';
+        return p.conf === '고' ? 'pcard--gold' : 'pcard--silver';
+      },
+      demoTierLabel() {
+        const p = this.demoData && this.demoData.conclusion && this.demoData.conclusion.persona;
+        if (!p) return '';
+        return p.provisional ? '잠정 판정' : ('신뢰도 ' + p.conf + ' · 1순위');
+      },
+      demoBasis() {                                 // 판정 근거: 선택한 카드 기준으로 판정 행만 교체
+        const c = this.demoData && this.demoData.conclusion;
+        if (!c) return [];
+        const rows = (c.basis || []).map(r => r.slice());
+        if (this.demoCardSel === 'second' && c.persona && c.persona.second) {
+          const d = this.demoDef(c.persona.second) || {};
+          for (let i = 0; i < rows.length; i++) {
+            if (rows[i][0] === '판정') rows[i] = ['판정', '참고 원형 2순위: ' + (d.full || c.persona.second) + (d.desc ? ' · ' + d.desc : '') + ' · 생성 페르소나가 이 원형과의 경계에 있습니다'];
+          }
+        }
+        return rows;
+      },
+      demoStats() {                                 // 카드 스탯 = 판정 근거(깊이 · 체류 · 폭)
+        const l = (this.demoData && this.demoData.live) || {};
+        const depth = ({ '몰입': 90, '혼합': 55, '훑기': 25 })[(l.form || {})['깊이']] || 20;
+        const dwell = Math.min(100, Math.round(((l.eng || {}).avg_dwell_sec || 0) / 60 * 100));
+        const breadth = Math.round((l.breadth || 0) * 100);
+        return [['깊이', depth], ['체류', dwell], ['폭', breadth]];
+      },
+      demoBoard() {
+        const bs = this.demoBoards();
+        if (!bs.length) return null;
+        return bs.find(b => b.path === this.demoBoardSel) || bs[0];
+      },
       demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false, demoDefsOpen: false,
       demoX: 10,                                    // 가상 체류 배속(화면에 명시)
       async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; this.demoImpress(); } } catch (e) {} },
@@ -294,7 +383,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.demoReading = { idx: c.idx, t0: Date.now(), c, reacted: '', comments: [] };
         this.demoTick = 0;
         this._demoTimer = setInterval(() => { this.demoTick = this.demoVirtualDwell(); }, 300);
-        this.demoPost({ op: 'event', event: 'click', idx: c.idx });
+        this.demoPost({ op: 'event', event: 'click', idx: c.idx, from_search: !!this.demoQFilter });
       },
       async demoClose() {                           // 나가기: 체류로 정독(30초 이상)/훑기 자동 판정 → Usage 기록
         if (!this.demoReading) return;
@@ -332,11 +421,22 @@ window.PRISM_APP_PARTS.push(() => ({
         const d = await this.demoPost({ op: 'event', event: 'search', query: q });
         if (d) this.demoQFilter = q;
       },
-      async demoReset() {
-        if (!(await this.dsConfirm('시연 세션을 처음부터 다시 시작할까요? 수집한 이벤트와 결론이 지워집니다(메모리 파일은 유지).', { ok: '처음부터', danger: true }))) return;
+      async _demoResetCore() {                      // 세션 리셋 공통부(이벤트·프롬프트 초기화 · 메모리 파일 유지)
         if (this.demoReading) { clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; }
         const d = await this.demoPost({ op: 'reset' });
-        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoFileSel = ''; this.demoImpress(); this.loadMem(); }
+        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoFileSel = ''; this.demoBoardSel = ''; this.demoCardSel = 'main'; this.demoImpress(); this.loadMem(); }
+        return !!d;
+      },
+      async demoReset() {
+        if (!(await this.dsConfirm('시연 세션을 처음부터 다시 시작할까요? 수집한 이벤트와 결론이 지워집니다(메모리 파일은 유지).', { ok: '처음부터', danger: true }))) return;
+        await this._demoResetCore();
+      },
+      async demoSwitch(v) {                         // 시안 전환 = 독립 실험: 로그·측정·결론·프롬프트 초기화
+        if (v === this.demoVariant || this.demoBusy) return;
+        const hasLog = !!(this.demoData && this.demoData.session && this.demoData.session.events_n);
+        if (hasLog && !(await this.dsConfirm('시안을 바꾸면 지금까지의 로그 · 측정 · 결론이 초기화됩니다(시안별 독립 실험). 계속할까요?', { ok: '바꾸고 초기화', danger: true }))) return;
+        this.demoVariant = v;
+        if (hasLog) await this._demoResetCore(); else this.demoImpress();
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },

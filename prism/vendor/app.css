@@ -1214,26 +1214,30 @@
     --an-shadow-low:0 0 4px 0 rgba(0,0,0,.08);
     --an-cat-sports-tx:#8094ff;--an-cat-ent-tx:#b078ff;--an-cat-int-tx:#ffa245}
   .an-app{background:var(--an-base);border:1px solid var(--an-card-bd);border-radius:12px;overflow:hidden}
-  .an-appbar{display:flex;align-items:center;gap:8px;padding:12px 16px 4px;
-    font-size:18px;font-weight:700;line-height:1.2;color:var(--an-tx1)}       /* title.small */
+  .an-appbar{display:flex;align-items:center;gap:8px;padding:14px 18px 6px;
+    font-size:19px;font-weight:700;line-height:1.2;color:var(--an-tx1)}
   .an-feed{display:flex;flex-direction:column;gap:8px;padding:10px 12px 12px;overflow:auto}
   /* 헤드라인 리스트(다음 메인형): 흰 라운드 카드 1장 + 행 구분선 · 제목 한 줄 · 메타(서비스 · 상태) */
   .an-list{background:var(--an-surface);border-radius:16px;box-shadow:var(--an-shadow-low);
     padding:4px 0;overflow:hidden}
   .an-row{display:block;width:100%;text-align:left;padding:13px 16px;border:0;background:transparent;
     cursor:pointer;font-family:inherit}
+  .an-row:focus{outline:none}
   .an-row + .an-row{border-top:1px solid var(--an-divider)}
   .an-row:hover{background-image:linear-gradient(var(--an-hover),var(--an-hover))}
   .an-row:focus-visible{outline:2px solid var(--an-primary);outline-offset:-2px}
-  .an-row-t{font-size:16px;font-weight:400;line-height:1.32;color:var(--an-tx1);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}                /* body.medium.normal */
-  .an-row-m{margin-top:4px;font-size:14px;font-weight:400;line-height:1.32;color:var(--an-txsub)}  /* caption.normal */
+  .an-row-t{font-size:14.5px;font-weight:600;line-height:1.42;color:var(--an-tx1);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .an-row-m{margin-top:5px;font-size:11.5px;font-weight:400;line-height:1.3;color:var(--an-txsub);
+    display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   /* 콘텐츠 찾기(프롬프트 폼): 라운드 검색바 + 추천 유도 칩 · 백단 메타(카테고리)는 소비 화면에 비노출 */
   .an-search{padding:8px 12px 0}
   .an-search-cap{font-size:12px;font-weight:400;line-height:1.2;color:var(--an-txsub);margin:0 4px 6px}
-  .an-search-box{display:flex;align-items:center;gap:8px;background:var(--an-surface);
-    border:1px solid var(--an-btn-bd);border-radius:100px;padding:4px 4px 4px 18px}
-  .an-search-box:focus-within{border-color:var(--an-primary)}
+  .an-search-box{display:flex;align-items:center;gap:8px;border-radius:100px;padding:4px 4px 4px 18px;
+    border:1.5px solid transparent;
+    background:linear-gradient(var(--an-surface),var(--an-surface)) padding-box,
+      linear-gradient(100deg,#3d9bff,#a06bff,#ff8a5c) border-box}   /* 참조 화면의 그라데이션 링 */
+  .an-search-box:focus-within{box-shadow:0 0 0 2px rgba(61,155,255,.25)}
   .an-search-in{flex:1;min-width:0;border:0;background:transparent;font-family:inherit;
     font-size:15px;color:var(--an-tx1);outline:none}
   .an-search-go{flex:none;border:0;cursor:pointer;border-radius:100px;min-height:34px;padding:6px 16px;
@@ -1249,10 +1253,10 @@
   .an-article{background:var(--an-surface);margin:10px 12px 12px;border-radius:16px;
     box-shadow:var(--an-shadow-low);padding:16px;max-height:520px;overflow:auto}
   .an-art-src{font-size:15px;font-weight:700;line-height:1.32;color:var(--an-tx1);display:flex;align-items:center;gap:8px}
-  .an-article-t{font-size:20px;font-weight:700;line-height:1.2;color:var(--an-tx1);margin:10px 0 6px;text-wrap:balance}  /* title.medium */
+  .an-article-t{font-size:21px;font-weight:700;line-height:1.28;color:var(--an-tx1);margin:12px 0 7px;text-wrap:balance}
   .an-article-m{font-size:14px;font-weight:400;line-height:1.32;color:var(--an-txsub);margin-bottom:12px}
-  .an-lead{border-left:2px solid var(--an-card-bd);padding:2px 0 2px 12px;margin-bottom:12px;
-    font-size:15px;font-weight:400;line-height:1.6;color:var(--an-tx2)}       /* 리드 요약(세로 바) */
+  .an-lead{border-left:3px solid rgba(255,255,255,.75);padding:2px 0 2px 12px;margin-bottom:12px;
+    font-size:14.5px;font-weight:400;line-height:1.7;color:var(--an-tx2)}     /* 리드 요약(흰 세로 바 · 참조 화면) */
   .an-article-b{font-size:17px;font-weight:400;line-height:1.52;color:var(--an-tx2)}  /* body.large.readingNormal */
   .an-sect{border-top:1px solid var(--an-divider);margin-top:14px;padding-top:12px}
   .an-sect-cap{font-size:14px;font-weight:400;color:var(--an-txsub);text-align:center;margin-bottom:10px}
@@ -1260,13 +1264,14 @@
   .an-emo{display:flex;flex-direction:column;align-items:center;gap:3px;border:0;background:transparent;
     cursor:pointer;padding:6px 8px;border-radius:12px;font-family:inherit;
     font-size:12px;font-weight:400;line-height:1.2;color:var(--an-txq)}       /* label.normal */
-  .an-emo .e{font-size:26px;line-height:1}
+  .an-emo .e{font-size:30px;line-height:1}
   .an-emo:hover{background-image:linear-gradient(var(--an-hover),var(--an-hover))}
   .an-emo.is-on{background:var(--an-cat-news-bg);color:var(--an-cat-news-tx);font-weight:700;
     outline:2px solid var(--an-primary);outline-offset:-2px}
   .an-cmt-row{display:flex;gap:8px;align-items:center}
-  .an-cmt-in{flex:1;min-width:0;border:1px solid var(--an-btn-bd);border-radius:100px;background:var(--an-base);
-    padding:10px 16px;font-family:inherit;font-size:15px;color:var(--an-tx1)}
+  .an-cmt-in{flex:1;min-width:0;border:1px solid transparent;border-radius:14px;background:#26282c;
+    padding:11px 16px;font-family:inherit;font-size:14px;color:var(--an-tx1)}
+  .an-cmt-in::placeholder{color:rgba(255,255,255,.42)}
   .an-cmt-in:focus{outline:none;border-color:var(--an-primary)}
   .an-cmt-item{padding:9px 0;border-bottom:1px solid var(--an-divider);font-size:15px;color:var(--an-tx2)}
   .an-cmt-item .who{font-size:14px;font-weight:700;color:var(--an-tx1);margin-right:6px}
@@ -1280,6 +1285,45 @@
   .an-btn--primary{background:var(--an-primary);color:#ffffff}                /* Solid·Primary · 화면당 1개 */
   .an-btn--neutral{background:var(--an-neutral);border:1px solid var(--an-btn-bd)}  /* Outline·Neutral */
   .an-btn--ghost{border:1px solid var(--an-btn-bd)}                           /* Outline·Ghost */
+  /* ── 폰 목업 프레임: 시연 화면을 실기기처럼 · 내부 스크롤 ──
+     내부 팔레트는 참조 스크린샷(다음 앱 다크 모드) 기반으로 페이지 테마와 무관하게 다크 고정:
+     짙은 캔버스 · 어두운 카드 · 흰 굵은 제목 · 그라데이션 링 검색바 · 활성 칩은 흰 배경 */
+  .an-phone{max-width:335px;margin:0 auto;background:#26282e;border-radius:36px;padding:9px;
+    box-shadow:0 10px 34px rgba(0,0,0,.28);
+    --an-base:#0f1012;--an-surface:#1c1e21;--an-tx1:#ffffff;--an-tx2:rgba(255,255,255,.9);
+    --an-txq:rgba(255,255,255,.66);--an-txsub:rgba(255,255,255,.48);
+    --an-card-bd:rgba(255,255,255,.07);--an-divider:rgba(255,255,255,.07);
+    --an-hover:rgba(255,255,255,.05);--an-neutral:#33363b;--an-btn-bd:rgba(255,255,255,.16);
+    --an-shadow-low:none;
+    --an-cat-news-tx:#6db2ff;--an-cat-sports-tx:#8b9cff;--an-cat-ent-tx:#c08bff;--an-cat-int-tx:#ffb35c}
+  .an-screen{background:var(--an-base);border-radius:28px;height:625px;overflow:auto;position:relative}
+  .an-status{display:flex;justify-content:space-between;align-items:center;padding:9px 20px 0;
+    font-size:11px;font-weight:700;color:var(--an-tx1)}
+  /* ── 시안 공통 컴포넌트 ── */
+  .an-sect-h{padding:16px 16px 4px;font-size:16.5px;font-weight:700;line-height:1.3;color:var(--an-tx1)}
+  .an-sect-sub{padding:0 16px 8px;font-size:12px;font-weight:400;color:var(--an-txsub)}
+  .an-chipbar{display:flex;gap:6px;overflow-x:auto;padding:8px 12px 2px;scrollbar-width:none}
+  .an-chip2{flex:none;background:var(--an-surface);border:1px solid var(--an-btn-bd);border-radius:100px;
+    padding:7px 14px;font-size:13px;font-weight:400;color:var(--an-tx2);cursor:pointer;font-family:inherit}
+  .an-chip2.on{background:#ffffff;border-color:#ffffff;color:#101113;font-weight:700}  /* 참조 화면의 활성 칩 */
+  .an-thumb2{background:var(--an-neutral);opacity:.45;border-radius:10px;flex:none}
+  .an-why{font-size:12px;font-weight:600;color:var(--an-primary);margin-top:4px}
+  .an-numrow{display:flex;gap:10px;align-items:flex-start}
+  .an-numrow .n{color:var(--an-primary);font-weight:800;font-size:15px;width:18px;flex:none}
+  .an-ask{margin:10px 12px 2px;background:var(--an-surface);border:1.5px solid var(--an-primary);
+    border-radius:16px;padding:12px 46px 12px 14px;position:relative}
+  .an-search-go--icon{background:transparent;padding:4px 6px;display:inline-flex;align-items:center}
+  .an-search-go--icon:hover{background:rgba(255,255,255,.06);border-radius:50%}
+  .an-ask .send--icon{background:transparent;width:32px;height:32px}
+  .an-ask input{width:100%;border:0;background:transparent;outline:none;font-family:inherit;
+    font-size:15px;color:var(--an-tx1)}
+  .an-ask .send{position:absolute;right:9px;bottom:8px;width:30px;height:30px;border-radius:50%;
+    background:var(--an-primary);color:#ffffff;border:0;font-size:15px;cursor:pointer}
+  .an-parse{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:8px 14px 0;font-size:12px;color:var(--an-txsub)}
+  .an-parse .tg{background:var(--an-hover);border-radius:6px;padding:3px 8px;font-size:11.5px;color:var(--an-txq)}
+  .an-gap{margin:10px 12px;background:var(--an-surface);border-radius:14px;box-shadow:var(--an-shadow-low);padding:13px 15px}
+  .an-gap b{font-size:14px;color:var(--an-tx1)}
+  .an-gap .d{font-size:12px;color:var(--an-txsub);margin-top:3px}
 
 /* ── 소비 시연(실험실) 관측 패널: 스텝바 · 실시간 3단 · 게이지 · 인과 카드 (프리즘 토큰) ── */
   .demo-obs{border:1px solid var(--ds-hairline);border-radius:10px;background:var(--ds-surface-white);
@@ -1296,6 +1340,38 @@
   .demo-chain{border:1px solid var(--ds-hairline);border-radius:9px;background:var(--ds-surface-white);
     padding:7px 10px;font-size:12px}
   .demo-chain .demo-chain-arrow{color:var(--ds-primary);font-weight:800;padding:0 2px}
+  /* 페르소나 캐릭터 카드: P1 트로피형(결론) · 신뢰도=카드 등급 · 2순위는 peek */
+  .pcard-strip{display:flex;gap:12px;overflow-x:auto;align-items:center;padding:6px 2px}
+  .pcard{flex:none;width:150px;height:210px;border-radius:16px;display:flex;flex-direction:column;
+    align-items:center;padding:12px 11px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.15);
+    color:#2b2412;font-family:inherit;border:0;text-align:center}
+  .pcard--gold{background:linear-gradient(160deg,#f9e7a8,#e8c258 45%,#b98a24)}
+  .pcard--silver{background:linear-gradient(160deg,#eef1f5,#c9d0d8 45%,#98a2ad);color:#2c3138}
+  .pcard--dim{background:linear-gradient(160deg,#4a4d55,#2b2d33);color:rgba(255,255,255,.88)}
+  .pcard .tier{align-self:flex-start;font-size:10px;font-weight:800;letter-spacing:.05em;opacity:.75}
+  .pcard .art{font-size:50px;line-height:1;margin:12px 0 8px;filter:drop-shadow(0 4px 8px rgba(0,0,0,.2))}
+  .pcard .nm{font-size:13px;font-weight:800;line-height:1.3;text-wrap:balance}
+  .pcard .stats{width:100%;margin-top:auto;display:flex;flex-direction:column;gap:3px;font-size:9px;font-weight:700}
+  .pcard .stats .r{display:flex;align-items:center;gap:5px}
+  .pcard .stats .r span:first-child{width:24px;text-align:left}
+  .pcard .stats .bar{flex:1;height:4px;border-radius:99px;background:rgba(0,0,0,.18);overflow:hidden}
+  .pcard .stats .bar i{display:block;height:100%;background:rgba(0,0,0,.55);border-radius:99px}
+  .pcard--dim .stats .bar{background:rgba(255,255,255,.2)}
+  .pcard--dim .stats .bar i{background:rgba(255,255,255,.8)}
+  .pcard.peek{transform:scale(.88);opacity:.6}
+  .pcard-dots{display:flex;gap:5px;justify-content:center;margin-top:6px}
+  .pcard-dots i{width:5px;height:5px;border-radius:50%;background:var(--ds-hairline)}
+  .pcard-dots i.on{background:var(--ds-primary)}
+  /* P3 도감(판정 기준 8종): 판정된 카드만 컬러 · 나머지 잠금 */
+  .pdex{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 6px;align-items:center}
+  .pdex-card{flex:none;width:88px;height:122px;border-radius:12px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:5px;font-size:10.5px;font-weight:700;cursor:help;
+    background:linear-gradient(160deg,#f9e7a8,#c99b34);color:#2b2412;border:0;font-family:inherit}
+  .pdex-card .art{font-size:30px;line-height:1}
+  .pdex-card.second{background:linear-gradient(160deg,#eef1f5,#a7b0ba);color:#2c3138}
+  .pdex-card.lock{background:var(--ds-surface);border:1px dashed var(--ds-hairline);color:var(--ds-muted)}
+  .pdex-card.lock .art{filter:grayscale(1);opacity:.4}
+  .pdex-card.big{transform:scale(1.12)}
   /* 실시간 로그(콘솔형): 코드가 누적되듯 아래로 붙고 최신 줄이 하단 고정(column-reverse) */
   .demo-code{background:#16181d;border:1px solid #262a33;border-radius:10px;padding:10px 12px;
     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.6;
