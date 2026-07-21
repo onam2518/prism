@@ -151,10 +151,12 @@ window.PRISM_APP_PARTS.push(() => ({
           this.polMatch.items = list; this.polMatch.loading = false;
         }
       },
-      // 매칭 콘텐츠 → 상세를 새 탭으로(딥링크 ?m=create&detail=<hash>)
-      openContentNewTab(hash) {
-        try { const u = new URL(location.href); u.searchParams.set('m', 'create'); u.searchParams.set('detail', hash); window.open(u.toString(), '_blank'); }
-        catch (e) { window.open('?m=create&detail=' + encodeURIComponent(hash), '_blank'); }
+      // 매칭 콘텐츠 → 상세를 같은 창에 나란히 오픈(정책 팔레트는 열린 채 유지 · 드래그로 배치)
+      // 이전/다음 이동은 매칭 목록 안에서 순환(별도 목록 컨텍스트 보존)
+      openMatchDetail(c) {
+        const list = (this.polMatch ? this.polMatch.items : []).slice();
+        this.openDetail(this._rawToDetail(c));
+        this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === c.hash)) };
       },
       polCatGroups() {                                  // 카테고리 탭: Tier1 그룹 → Tier2 표 행(정의·예시)
         const d = this.dictData || {};
