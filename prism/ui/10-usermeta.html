@@ -213,7 +213,7 @@
                   <!-- 노출 기준 설명은 좌측 폰 아래가 아니라 우측 컬럼 위에 두면 폰 높이에 영향이 없다 -->
                   <div class="flex items-center" style="margin:10px 0 12px;min-height:32px"><span class="selctl__lbl">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 TIARA 이벤트로 쌓입니다</span></span></div>
                   <div class="demo-code-win">
-                    <div class="demo-code-bar"><i></i><i></i><i></i><span>행동 로그 · TIARA</span></div>
+                    <div class="demo-code-bar"><i></i><i></i><i></i><span>행동 로그</span></div>
                     <div class="demo-code" style="max-height:560px;min-height:220px" x-ref="demolog">
                       <template x-for="(l, li) in ((demoData && demoData.stream) || [])" x-bind:key="'ds'+li+l">
                         <div class="ln" x-bind:class="li===((demoData && demoData.stream.length) || 0) - 1 ? 'is-new' : ''" x-text="l"></div>
