@@ -39,7 +39,7 @@
                         <div class="an-article">
                           <div class="an-art-src"><span x-text="demoReading ? (demoReading.c.service || '콘텐츠') : ''"></span><span class="ml-auto an-btn an-btn--neutral" style="min-height:32px;padding:6px 12px;font-size:14px;cursor:pointer" x-on:click="demoClose()">← 나가기</span></div>
                           <div class="an-article-t" x-text="demoReading ? demoReading.c.title : ''"></div>
-                          <div class="an-article-m" x-text="demoReading ? ('방금 · 체류 ' + demoFmtT(demoTick) + ' (실측 × ' + demoX + ' 배속)') : ''"></div>
+                          <div class="an-article-m" x-text="demoReading ? ((demoReading.c.service || '콘텐츠') + ' · 오늘 · 체류 ' + demoFmtT(demoTick) + ' (실측 × ' + demoX + ' 배속)') : ''"></div>
                           <div class="an-lead" x-show="demoReading && demoReading.c.summary" x-text="demoReading ? demoReading.c.summary : ''"></div>
                           <div class="an-article-b" x-text="demoReading ? (demoReading.c.summary || '본문이 없는 콘텐츠입니다 · 실제 화면에서는 기사 본문이 표시됩니다.') : ''"></div>
                           <div class="an-sect">
@@ -69,7 +69,7 @@
                             <div class="an-search-cap">원하는 콘텐츠를 찾아드려요 · 찾을수록 추천이 취향에 가까워집니다</div>
                             <div class="an-search-box">
                               <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
-                              <button type="button" class="an-search-go an-search-go--icon" aria-label="찾기" data-tip="찾기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#59D2F2" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A8DF8" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#5B5BEF" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#6D8DF9" stroke-width="5" stroke-linecap="round"/></svg></button>
+                              <button type="button" class="an-search-go an-search-go--icon" x-bind:class="demoBusy ? 'is-spin' : ''" aria-label="찾기" data-tip="찾기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#3EC9F5" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A7DF7" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#6E56F0" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#E85B8A" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
                           <div class="an-chipbar">
@@ -78,14 +78,14 @@
                               <button type="button" class="an-chip2" x-bind:class="demoQFilter===k ? 'on' : ''" x-on:click="demoCatTap(k)" x-text="k"></button>
                             </template>
                           </div>
-                          <div class="an-list" style="margin:10px 12px" x-show="demoFeed().length">
-                            <template x-for="c in demoFeed()" x-bind:key="'av'+c.idx">
+                          <div class="an-list" style="margin:14px 16px" x-show="demoFeed().length">
+                            <template x-for="(c, ci) in demoFeed()" x-bind:key="'av'+c.idx">
                               <button type="button" class="an-row" x-on:click="demoOpen(c)">
                                 <div class="an-hrow" style="display:flex;gap:10px;align-items:flex-start">
                                   <span class="an-thumb2" style="width:46px;height:46px"></span>
                                   <div style="flex:1;min-width:0">
                                     <div class="an-row-t" style="white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden" x-text="c.title"></div>
-                                    <div class="an-row-m"><span x-show="demoKo(c)" style="background:var(--an-cat-news-bg);color:var(--an-cat-news-tx);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700" x-text="demoKo(c)"></span> <span x-text="(c.service || '콘텐츠') + ' · 방금'"></span></div>
+                                    <div class="an-row-m"><span x-show="demoKo(c)" style="background:var(--an-cat-news-bg);color:var(--an-cat-news-tx);border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700" x-text="demoKo(c)"></span><span x-text="(c.service || '콘텐츠') + ' · ' + demoWhen(ci)"></span></div>
                                   </div>
                                 </div>
                               </button>
@@ -98,21 +98,21 @@
                           <div class="an-search">
                             <div class="an-search-box">
                               <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
-                              <button type="button" class="an-search-go an-search-go--icon" aria-label="찾기" data-tip="찾기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#59D2F2" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A8DF8" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#5B5BEF" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#6D8DF9" stroke-width="5" stroke-linecap="round"/></svg></button>
+                              <button type="button" class="an-search-go an-search-go--icon" x-bind:class="demoBusy ? 'is-spin' : ''" aria-label="찾기" data-tip="찾기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#3EC9F5" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A7DF7" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#6E56F0" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#E85B8A" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
                           <template x-for="(b, bi) in demoBlocks()" x-bind:key="'bk'+bi+b.t">
                             <div>
                               <div class="an-sect-h" x-text="b.t"></div>
                               <div class="an-sect-sub" x-show="b.s" x-text="b.s"></div>
-                              <div class="an-list" style="margin:0 12px 4px">
+                              <div class="an-list" style="margin:0 16px 6px">
                                 <template x-for="(c, ci) in b.items" x-bind:key="'bv'+c.idx">
                                   <button type="button" class="an-row" x-on:click="demoOpen(c)">
                                     <div class="an-numrow">
                                       <span class="n" x-show="b.num" x-text="ci + 1"></span>
                                       <div style="flex:1;min-width:0">
                                         <div class="an-row-t" x-text="c.title"></div>
-                                        <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
+                                        <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · ' + demoWhen(ci)"></div>
                                       </div>
                                     </div>
                                   </button>
@@ -133,24 +133,24 @@
                             <div class="an-search-cap">물어보면 그 주제의 보드가 생기고, 다음부터 새 소식이 거기 쌓여요</div>
                             <div class="an-search-box">
                               <input class="an-search-in" x-model="demoQ" placeholder="무엇이 궁금하세요?" x-on:keydown.enter="demoSearch()">
-                              <button type="button" class="an-search-go an-search-go--icon" aria-label="보드 만들기" data-tip="보드 만들기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#59D2F2" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A8DF8" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#5B5BEF" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#6D8DF9" stroke-width="5" stroke-linecap="round"/></svg></button>
+                              <button type="button" class="an-search-go an-search-go--icon" x-bind:class="demoBusy ? 'is-spin' : ''" aria-label="보드 만들기" data-tip="보드 만들기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#3EC9F5" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A7DF7" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#6E56F0" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#E85B8A" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
                           <template x-if="demoBoard()">
                             <div>
                               <div class="an-sect-h" x-text="demoBoard().label"></div>
                               <div class="an-sect-sub" x-text="'내 기록으로 만든 보드 · 새 소식 ' + demoBoard().items.length + '건'"></div>
-                              <div class="an-list" style="margin:0 12px" x-show="demoBoard().items.length">
+                              <div class="an-list" style="margin:0 16px" x-show="demoBoard().items.length">
                                 <div class="an-row" style="cursor:default">
                                   <div class="an-row-m" style="margin:0 0 5px;font-weight:700;color:var(--an-tx1);font-size:13px">오늘 이 보드에서 알아둘 것</div>
                                   <template x-for="(c, ci) in demoBoard().items.slice(0, 3)" x-bind:key="'br'+c.idx">
                                     <div class="an-row-m" style="margin-top:3px" x-text="(ci + 1) + '. ' + c.title"></div>
                                   </template>
                                 </div>
-                                <template x-for="c in demoBoard().items" x-bind:key="'cv'+c.idx">
+                                <template x-for="(c, ci) in demoBoard().items" x-bind:key="'cv'+c.idx">
                                   <button type="button" class="an-row" x-on:click="demoOpen(c)">
                                     <div class="an-row-t" x-text="c.title"></div>
-                                    <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
+                                    <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · ' + demoWhen(ci)"></div>
                                   </button>
                                 </template>
                               </div>
@@ -164,7 +164,7 @@
                         <div x-show="demoVariant==='d'" x-cloak>
                           <div class="an-ask">
                             <input x-model="demoQ" placeholder="어떤 콘텐츠가 보고 싶으세요?" x-on:keydown.enter="demoSearch()">
-                            <button type="button" class="send send--icon" aria-label="보내기" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#59D2F2" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A8DF8" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#5B5BEF" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#6D8DF9" stroke-width="5" stroke-linecap="round"/></svg></button>
+                            <button type="button" class="send send--icon" x-bind:class="demoBusy ? 'is-spin' : ''" aria-label="보내기" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#3EC9F5" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A7DF7" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#6E56F0" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#E85B8A" stroke-width="5" stroke-linecap="round"/></svg></button>
                           </div>
                           <div class="an-chipbar">
                             <template x-for="s in ((demoData && demoData.suggests) || [])" x-bind:key="'dg'+s">
@@ -175,12 +175,12 @@
                             <span>이렇게 찾았어요</span><span class="tg" x-text="demoQFilter"></span><span class="tg tnum" x-text="demoFeed().length + '건'"></span>
                             <button type="button" style="margin-left:auto;border:0;background:none;color:var(--an-primary);font-weight:700;font-size:12px;cursor:pointer;font-family:inherit" x-on:click="demoQFilter=''; demoQ=''">전체 보기</button>
                           </div>
-                          <div class="an-list" style="margin:10px 12px" x-show="demoFeed().length">
-                            <template x-for="c in demoFeed()" x-bind:key="'dv'+c.idx">
+                          <div class="an-list" style="margin:14px 16px" x-show="demoFeed().length">
+                            <template x-for="(c, ci) in demoFeed()" x-bind:key="'dv'+c.idx">
                               <button type="button" class="an-row" x-on:click="demoOpen(c)">
                                 <div class="an-row-t" x-text="c.title"></div>
                                 <div class="an-why" x-text="demoWhy(c)"></div>
-                                <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
+                                <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · ' + demoWhen(ci)"></div>
                               </button>
                             </template>
                           </div>
@@ -191,7 +191,7 @@
                           </div>
                           <div x-show="demoHist().length">
                             <div class="an-sect-h" style="font-size:14px">지난번에 물어보신 것</div>
-                            <div class="an-list" style="margin:0 12px 10px">
+                            <div class="an-list" style="margin:0 16px 12px">
                               <template x-for="(r, ri) in demoHist()" x-bind:key="'hs'+ri+r.q">
                                 <button type="button" class="an-row" x-on:click="demoRerun(r.q)">
                                   <div class="an-row-t" x-text="r.q"></div>
@@ -207,14 +207,19 @@
                       </div>
                     </div></div>
                   </div>
+                  <div class="text-xs text-muted" style="margin-top:10px;text-align:center" x-show="demoData && demoData.catalog_stat && demoData.catalog_stat.total > demoData.catalog_stat.shown" x-text="demoData ? ('등록 ' + demoData.catalog_stat.total + '건 중 유통 가능 ' + demoData.catalog_stat.shown + '건 노출 · 품질 미달(R) ' + demoData.catalog_stat.r + '건은 실서비스 기준으로 제외') : ''"></div>
                 </div>
                 <div style="border-left:1px solid var(--ds-hairline);padding-left:20px">
+                  <!-- 노출 기준 설명은 좌측 폰 아래가 아니라 우측 컬럼 위에 두면 폰 높이에 영향이 없다 -->
                   <div class="flex items-center" style="margin:10px 0 12px;min-height:32px"><span class="selctl__lbl">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 TIARA 이벤트로 쌓입니다</span></span></div>
-                  <div class="demo-code" style="max-height:500px;min-height:200px">
-                    <template x-for="(l, li) in ((demoData && demoData.stream) || [])" x-bind:key="'ds'+li+l">
-                      <div class="ln" x-bind:class="li===0 ? 'is-new' : ''" x-text="l"></div>
-                    </template>
-                    <div class="ln is-hint" x-show="!(demoData && demoData.stream.length)">// 아직 이벤트가 없습니다 · 피드에 들어오면 노출부터 기록됩니다</div>
+                  <div class="demo-code-win">
+                    <div class="demo-code-bar"><i></i><i></i><i></i><span>행동 로그 · TIARA</span></div>
+                    <div class="demo-code" style="max-height:560px;min-height:220px" x-ref="demolog">
+                      <template x-for="(l, li) in ((demoData && demoData.stream) || [])" x-bind:key="'ds'+li+l">
+                        <div class="ln" x-bind:class="li===((demoData && demoData.stream.length) || 0) - 1 ? 'is-new' : ''" x-text="l"></div>
+                      </template>
+                      <div class="ln is-hint" x-show="!(demoData && demoData.stream.length)">// 아직 이벤트가 없습니다 · 피드에 들어오면 노출부터 기록됩니다</div>
+                    </div>
                   </div>
                 </div>
               </div>
