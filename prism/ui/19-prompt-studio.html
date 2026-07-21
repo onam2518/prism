@@ -17,7 +17,8 @@
           <li>운영 엔진(계약·래퍼·미리보기)은 <b>사전 · 정책 → 프롬프트 엔진</b>에서 관리합니다.</li>
         </ul>
         <datalist id="modelopts"><template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m"></option></template></datalist>
-        <section class="panel" data-fn><div class="panel-hd"><b style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">STEP 1</span>스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
+        <div class="stepline"><span class="stepline__no">STEP 1</span><b>스펙 선언</b><span class="meta">무엇을 원하는지 선언하면 · 계열별 공식 가이드에 맞춘 프롬프트로 컴파일</span></div>
+        <section class="panel" data-fn><div class="panel-hd"><b>스펙 선언</b></div>
           <div class="panel-bd">
             <div class="grid grid-cols-2 gap-4">
               <div><div class="selctl__lbl" style="margin-bottom:4px">과업 (필수)</div><textarea class="field" style="width:100%;min-height:64px" x-model="bSpec.task" placeholder="예: 커머스 콘텐츠에서 리드문·엔티티를 추출하고 품질 등급을 판정한다"></textarea></div>
@@ -29,7 +30,8 @@
             </div>
           </div>
         </section>
-        <section class="panel" data-fn><div class="panel-hd"><b style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">STEP 2</span>컴파일 설정 · 실행</b><span class="meta">어떤 두뇌로 설계하고 · 어느 계열용으로 만들지</span></div>
+        <div class="stepline"><span class="stepline__no">STEP 2</span><b>컴파일 설정 · 실행</b><span class="meta">어떤 두뇌로 설계하고 · 어느 계열용으로 만들지</span></div>
+        <section class="panel" data-fn><div class="panel-hd"><b>컴파일 설정 · 실행</b></div>
           <div class="panel-bd">
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <span class="selctl" data-tip="스펙을 읽고 프롬프트를 설계하는 메타 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">메타 컴파일러</span>
