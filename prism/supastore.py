@@ -1024,6 +1024,7 @@ class SupabaseStore:
                    "title": content.get("title", ""), "subtitle": content.get("subtitle", ""),
                    "body": content.get("body", ""),
                    "source_url": content.get("source_url", "") or content.get("url", ""),
+                   "image_urls": content.get("image_urls") or [],   # 참조용(사진 확인) · migrate_content_images.sql 선적용 필요
                    "source": source, "final_grade": qm.get("finalGrade", ""),
                    "item_meta": out.get("item_meta"), "quality_meta": qm,
                    "model": (out.get("trace") or {}).get("model", "") or "",
@@ -1756,7 +1757,7 @@ class SupabaseStore:
 
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,item_meta,quality_meta,model,version"
+        rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,image_urls,item_meta,quality_meta,model,version"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
         # subtitle 보존: 재구성 콘텐츠의 해시가 저장 해시와 일치해야 재실행 upsert·골든 매칭이
         # 같은 행을 가리킨다(과거엔 subtitle 소실로 부제 있는 콘텐츠가 유령 행을 만들었음).
@@ -1765,6 +1766,7 @@ class SupabaseStore:
                 "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
                                 "subtitle": r.get("subtitle", "") or "", "body": r.get("body", ""),
                                 "source_url": r.get("source_url", ""),
+                                "image_urls": r.get("image_urls") or [],
                                 "body_hash": r.get("hash", "")}} for r in rows]
         out.reverse()
         return out

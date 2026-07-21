@@ -846,6 +846,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         out.append({"hash": ch,
                     "service": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
                     "body": ref.get("body", ""), "url": ref.get("source_url", ""),
+                    "images": ref.get("image_urls", []) or [],
                     "grade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
                     "category": im.get("content_category", []) or [],
                     "summary": im.get("summary", ""), "entities": im.get("entities", []) or [],
@@ -868,7 +869,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         gold_items = _SV._inject_gold([], reviewer, team)
         for g in gold_items:
             out.insert(0, {"hash": g["hash"], "service": g.get("service", ""), "title": g.get("title", ""),
-                           "body": g.get("body", ""), "url": "",
+                           "body": g.get("body", ""), "url": "", "images": [],
                            "grade": g.get("grade", ""), "reasons": g.get("reasons", []) or [],
                            "category": g.get("category", []) or [],
                            "summary": g.get("summary", ""), "entities": g.get("entities", []) or [],

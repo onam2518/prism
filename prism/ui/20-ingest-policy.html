@@ -478,10 +478,23 @@
             <div>
               <div class="dvc__bodytext" x-show="detail && detail.body" x-text="detail && detail.body"></div>
               <div class="dvc__note" x-show="detail && !detail.body">전체 본문은 저장되지 않습니다 · 리드문·메타 기준으로 검수하세요</div>
+              <!-- 저장된 이미지(수집 시 전달된 참조 URL · 게시판 #9): 회원 전용 원문도 사진 확인 가능 · 없으면 영역 미노출 -->
+              <div x-show="detail && detail.images && detail.images.length" x-cloak>
+                <div class="dve__lbl" style="margin-top:var(--ds-space-4)" x-text="'저장된 이미지 · ' + (((detail && detail.images) || []).length) + '장'"></div>
+                <div class="dvc__imgs">
+                  <template x-for="(u, ui) in ((detail && detail.images) || [])" x-bind:key="'dimg'+ui">
+                    <a x-bind:href="u" target="_blank" rel="noopener noreferrer" data-tip="새 탭에서 원본 보기" data-tip-pos="top">
+                      <img x-bind:src="u" referrerpolicy="no-referrer" loading="lazy" alt="저장된 이미지" x-on:error="$event.target.closest('a').style.display='none'">
+                    </a>
+                  </template>
+                </div>
+              </div>
             </div>
           </template>
           <template x-if="dvcView()==='web'">
             <div class="dvc__webwrap">
+              <!-- 카페(cafe.daum.net 계열)는 비회원 열람이 막힐 수 있어 사전 안내(게시판 #9) -->
+              <div class="dvc__note" x-show="detail && detail.url && detail.url.indexOf('cafe.daum.net') >= 0" style="margin:0 0 var(--ds-space-2)">카페 회원 전용 글일 수 있어요 · 아래 저장된 본문·이미지로 확인해 주세요</div>
               <div class="dvc__webbox">
                 <iframe class="dvc__web" x-bind:src="detail && detail.url" x-bind:style="'transform:scale('+(dvcZoom/100)+');width:'+(10000/dvcZoom)+'%;height:'+(10000/dvcZoom)+'%'" sandbox="allow-scripts allow-popups allow-forms" referrerpolicy="no-referrer" loading="lazy" title="원문 페이지"></iframe>
               </div>

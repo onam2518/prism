@@ -21,6 +21,30 @@ def normalize_text(s) -> str:
     return s.strip()
 
 
+# 참조용 이미지 URL 상한(검수 표시 목적 · 과대 페이로드 방지)
+MAX_IMAGE_URLS = 8
+
+
+def normalize_image_urls(v) -> list:
+    """참조용 이미지 URL 정규화: 단일 문자열·콤마 구분 문자열·목록 모두 수용.
+    http/https 만 허용(스크립트 스킴의 저장형 XSS 차단 · serve._safe_url 과 같은 정책),
+    중복 제거, 상위 MAX_IMAGE_URLS 개까지."""
+    if v is None:
+        return []
+    items = v if isinstance(v, (list, tuple)) else str(v).split(",")
+    out = []
+    for u in items:
+        u = str(u or "").strip()
+        low = u.lower()
+        if not (low.startswith("http://") or low.startswith("https://")):
+            continue
+        if u not in out:
+            out.append(u)
+        if len(out) >= MAX_IMAGE_URLS:
+            break
+    return out
+
+
 @dataclass
 class Content:
     """입력 4필드 고정. 4필드 외는 받지도 추론하지도 않는다."""
@@ -29,6 +53,9 @@ class Content:
     subtitle: str = ""
     body: str = ""
     source_url: str = ""      # 참조용 원문 링크(추출 입력 아님 · 있으면 상세에서 '원문' 링크)
+    # 참조용 이미지 URL 목록(추출 입력 아님 · source_url 과 같은 참조 패턴 ·
+    # 회원 전용 원문의 사진 확인용으로 검수 상세에 표시). 해시·정체성(4필드)에는 불포함.
+    image_urls: list = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Content":
@@ -38,6 +65,7 @@ class Content:
             subtitle=normalize_text(d.get("subtitle", "")),
             body=normalize_text(d.get("body", "")),
             source_url=normalize_text(d.get("source_url", "") or d.get("url", "")),
+            image_urls=normalize_image_urls(d.get("image_urls") or d.get("images")),
         )
 
     def body_hash(self) -> str:
@@ -49,6 +77,7 @@ class Content:
             "title": self.title,
             "subtitle": self.subtitle,
             "source_url": self.source_url,
+            "image_urls": list(self.image_urls or []),
             "body": self.body,
             "body_hash": self.body_hash(),
         }

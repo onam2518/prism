@@ -4,7 +4,7 @@ window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
       openDetail(c) {
         this.finalCtx = null;                    // 최종검수 결정 바는 최종 검수 탭 진입(openFinalDetail)에서만
-        this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {};
+        this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], images: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {};
         // 결과 목록 등 집계 경로의 fb 는 팀 집계뿐(mine 없음) → /raw 사본에 같은 콘텐츠가 있으면
         // 내 표가 담긴 fb 로 교체(상세의 '완료' 게이팅·프리필이 내 표 기준으로 일관 · 2026-07-10)
         if (this.detail.fb.mine === undefined) {
