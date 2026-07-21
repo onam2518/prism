@@ -1380,26 +1380,6 @@
   .pdex-card.lock{background:var(--ds-surface);border:1px dashed var(--ds-hairline);color:var(--ds-muted)}
   .pdex-card.lock .art{filter:grayscale(1);opacity:.4}
   .pdex-card.big{transform:scale(1.12)}
-  /* 결론 리포트(R1 진단서형 + R2 세 줄 요약 헤더) */
-  .rpt{border:1px solid var(--ds-hairline);border-radius:12px;background:var(--ds-surface-white);padding:18px 22px}
-  .rpt-hd{display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--ds-ink);padding-bottom:10px}
-  .rpt-hd b{font-size:15px;color:var(--ds-ink)}
-  .rpt-hd .meta{margin-left:auto}
-  .rpt-tldr{border-left:3px solid var(--ds-primary);background:var(--ds-surface);border-radius:0 10px 10px 0;
-    padding:10px 14px;margin:12px 0 2px;font-size:13px}
-  .rpt-tldr .cap{font-size:10px;font-weight:800;letter-spacing:.08em;color:var(--ds-primary);margin-bottom:3px}
-  .rpt-hero{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:12px 0 4px}
-  .rpt-kpi{flex:1;min-width:230px;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-  .rpt-kpi > div{background:var(--ds-surface);border:1px solid var(--ds-hairline);border-radius:9px;
-    padding:9px 12px;text-align:center}
-  .rpt-kpi b{display:block;font-size:16px;color:var(--ds-ink)}
-  .rpt-kpi span{font-size:10.5px;color:var(--ds-muted)}
-  .rpt-sec{display:flex;gap:9px;align-items:baseline;border-top:1px solid var(--ds-hairline);
-    margin-top:14px;padding-top:12px}
-  .rpt-sec .no{font-weight:800;color:var(--ds-primary);font-size:11px;flex:none}
-  .rpt-sec b{color:var(--ds-ink);font-size:13px}
-  .rpt-sec .meta{margin-left:auto}
-  .rpt-foot{border-top:1px solid var(--ds-hairline);margin-top:14px;padding-top:10px;
     font-size:11px;color:var(--ds-muted)}
   /* 실시간 로그(콘솔형): 코드가 누적되듯 아래로 붙고 최신 줄이 하단 고정(column-reverse) */
   .demo-code-win{background:#16181d;border:1px solid #262a33;border-radius:12px;overflow:hidden}

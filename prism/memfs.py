@@ -292,13 +292,32 @@ def _prompts_save(team, items):
         st.save_report(PROMPT_KIND, {"items": items[-PROMPTS_MAX:]}, team=team)
 
 
+def _token_cats(t: str) -> set:
+    """검색 토큰 → 카테고리 집합: 도메인 그룹 별칭(스포츠·시사 등)과 한글 표시명 사전으로 확장."""
+    from . import dictionaries as D
+    cats = set()
+    for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items():
+        if t in k or k in t:
+            cats.update(v)
+    for cat, ko in getattr(D, "IAB_TIER1_KO", {}).items():
+        if t in ko or ko in t:
+            cats.add(cat)
+    return cats
+
+
 def _prompt_matches(q, catalog) -> list:
-    """프롬프트와 맞는 콘텐츠 목록 · 사용자 표기(CAT_KO·INT_KO)도 이해."""
+    """프롬프트와 맞는 콘텐츠: 제목·요약·엔티티 문자 일치 + 별칭·표시명 사전의 카테고리 확장.
+    이 결과가 화면 필터의 정본이다(클라이언트가 따로 판단하지 않는다)."""
     toks = [t for t in re.split(r"\s+", q) if len(t) >= 2]
+    tok_cats = set()
+    for t in toks:
+        tok_cats |= _token_cats(t)
     out = []
     for c in catalog:
-        if any(t in c["title"] or t in c["cat"] or t in c["intent"]
-               or t in _cat_ko(c["cat"]) or t in INT_KO.get(c["intent"], "") for t in toks):
+        text_hit = any(t in c["title"] or t in c["summary"] or t in c["cat"] or t in c["intent"]
+                       or t in _cat_ko(c["cat"]) or t in INT_KO.get(c["intent"], "")
+                       or any(t in e for e in (c.get("entities") or [])) for t in toks)
+        if text_hit or c["cat"] in tok_cats:
             out.append(c)
     return out
 
@@ -460,6 +479,7 @@ def demo_data(team=None) -> dict:
            "suggests": _suggests(catalog),
            "prompts": prompt_report(team),
            "catalog_stat": {"total": len(rows), "shown": len(catalog), "r": n_r},
+           "search": sess.get("last_search"),
            "formula": "가중치 = 체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) + 호응(반응 1.0 · 댓글 1.5) → 카테고리·맥락별 합산 → 상대 등급(저/중/고)"}
     if consumed:                                     # 결론도 실시간 · 소비가 쌓일 때마다 자동 재판정
         out["conclusion"] = _conclusion(events, catalog, team)
@@ -602,13 +622,16 @@ def demo_ops(body: dict, team=None) -> dict:
                 return {"error": "찾고 싶은 콘텐츠를 입력하세요"}
             matches = _prompt_matches(q, catalog)
             hit = matches[0] if matches else None
+            sess["last_search"] = {"q": q, "idxs": [m["idx"] for m in matches]}
             prompts = _prompts(team)                 # 별도 수집체계: 프롬프트 원문·응답 결과 보존
             prompts.append({"q": q, "t": _now_t(), "results_n": len(matches),
                             "cats": sorted({m["cat"] for m in matches}),
                             "zero": not matches, "clicked": False})
             _prompts_save(team, prompts)
             files = _files(team)
-            wrote, err = _observe(files, q, hit["cat"] if hit else "기타",
+            # 매칭이 없으면 '기타'가 아니라 검색어 이름의 주제 파일로 기록한다
+            # (보드형에서 검색어가 곧 보드 이름이 되어야 자연스럽다)
+            wrote, err = _observe(files, q, hit["cat"] if hit else q,
                                   hit["intent"] if hit else "검색", "검색 · 원하는 콘텐츠 선언", tag="stated")
             if err:
                 return {"error": err}

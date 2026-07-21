@@ -33,9 +33,10 @@ class _SV:
         return self.rows
 
 
-def _row(title, cat="Business and Finance", intent="기획·심층", grade="G"):
+def _row(title, cat="Business and Finance", intent="기획·심층", grade="G", entities=None):
     return {"content_ref": {"title": title},
-            "item_meta": {"content_category": [cat], "intent": [intent], "summary": "요약"},
+            "item_meta": {"content_category": [cat], "intent": [intent], "summary": "요약",
+                          "entities": entities or []},
             "quality_meta": {"finalGrade": grade}}
 
 
@@ -129,7 +130,7 @@ class TestDemoSession(unittest.TestCase):
     def setUp(self):
         self._old = MF._SV
         rows = [_row("반도체 실적 심층 분석"),
-                _row("야구 개막전 하이라이트", cat="Sports", intent="흥미·화제"),
+                _row("야구 개막전 하이라이트", cat="Sports", intent="흥미·화제", entities=["손흥민"]),
                 _row("걸그룹 데뷔 무대", cat="Entertainment", intent="흥미·화제"),
                 _row("금리 전망 해설", intent="분석·해설"),
                 _row("유통 불가", grade="R"),
@@ -211,12 +212,23 @@ class TestDemoSession(unittest.TestCase):
         self.assertEqual(pr["coverage_pct"], 50)          # 1/2 응답
         self.assertEqual(pr["conversion_pct"], 50)        # 1/2 전환
         self.assertEqual(pr["gaps"], ["우주 다큐 몰아보기"])
+        paths = [f["path"] for f in MF.memory_data(team="t1")["files"]]
+        self.assertIn("topics/우주-다큐-몰아보기.md", paths)   # 무결과 검색 = 검색어 이름의 주제 파일
         self.assertIn("공급 갭", d["logic"])
         self.assertTrue(pr["recent"][0]["zero"])
         self.assertTrue(pr["recent"][1]["clicked"])
         self.assertTrue(any(t["t"] == "반도체" for t in pr["terms"]) or pr["terms"])
         d2 = MF.demo_ops({"op": "reset"}, team="t1")      # 리셋 시 프롬프트 수집도 초기화
         self.assertEqual(d2["prompts"]["n"], 0)
+
+    def test_search_alias_and_entity_matching(self):
+        # '스포츠' 별칭(DOMAIN_GROUP_MAP) → Sports 카테고리 매칭 · 엔티티 이름도 매칭
+        d = MF.demo_ops({"op": "event", "event": "search", "query": "스포츠"}, team="t1")
+        self.assertIn("결과 1건", d["logic"])
+        self.assertEqual(d["search"]["q"], "스포츠")
+        self.assertEqual(len(d["search"]["idxs"]), 1)
+        d2 = MF.demo_ops({"op": "event", "event": "search", "query": "손흥민 소식"}, team="t1")
+        self.assertEqual(len(d2["search"]["idxs"]), 1)     # 엔티티 매칭
 
     def test_search_records_stated_and_filters_topic(self):
         d = MF.demo_ops({"op": "event", "event": "search", "query": "반도체 심층 몰아보기"}, team="t1")

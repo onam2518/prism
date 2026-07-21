@@ -296,8 +296,11 @@ window.PRISM_APP_PARTS.push(() => ({
         const take = (arr, n) => { const r = []; for (const c of arr) { if (!used.has(c.idx)) { used.add(c.idx); r.push(c); if (r.length >= n) break; } } return r; };
         const lastQ = this.demoLastQ();
         if (lastQ) {
-          const toks = lastQ.split(/\s+/).filter(t => t.length >= 2);
-          const m = take(base.filter(c => toks.some(t => (c.title || '').includes(t) || (c.cat || '').includes(t) || (c.cat_ko || '').includes(t) || (c.intent || '').includes(t) || (c.intent_ko || '').includes(t))), 2);
+          const ls = this.demoData && this.demoData.search;
+          let pool;
+          if (ls && ls.q === lastQ) { const set = new Set(ls.idxs || []); pool = base.filter(c => set.has(c.idx)); }
+          else { const toks = lastQ.split(/\s+/).filter(t => t.length >= 2); pool = base.filter(c => toks.some(t => (c.title || '').includes(t) || (c.cat || '').includes(t) || (c.cat_ko || '').includes(t) || (c.intent || '').includes(t) || (c.intent_ko || '').includes(t))); }
+          const m = take(pool, 2);
           if (m.length) out.push({ t: "물어보신 '" + lastQ + "' 소식이에요", s: '', items: m, num: false });
         }
         const cats = (this.demoData && this.demoData.live && this.demoData.live.cats) || [];
@@ -427,10 +430,12 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       demoWhen(i) { return ['방금', '10분 전', '1시간 전', '2시간 전', '어제'][Math.min(i | 0, 4)]; },   // 예시용 시간 메타(위치 기반)
       demoFmtT(s) { const v = Math.max(0, s | 0); return Math.floor(v / 60) + ':' + ('0' + (v % 60)).slice(-2); },
-      demoFeed() {                                  // 검색어로 피드 필터(제목·요약·백단 메타 매칭 · 화면엔 메타 비노출)
+      demoFeed() {                                  // 검색어 필터: 서버 매칭 결과가 정본 · 칩 필터만 로컬 판단
         const cs = (this.demoData && this.demoData.contents) || [];
         const q = (this.demoQFilter || '').trim();
         if (!q) return cs;
+        const ls = this.demoData && this.demoData.search;
+        if (ls && ls.q === q) { const set = new Set(ls.idxs || []); return cs.filter(c => set.has(c.idx)); }
         const toks = q.split(/\s+/).filter(t => t.length >= 2);
         if (!toks.length) return cs;
         return cs.filter(c => toks.some(t => (c.title || '').includes(t) || (c.summary || '').includes(t) || (c.cat || '').includes(t) || (c.intent || '').includes(t) || (c.cat_ko || '').includes(t) || (c.intent_ko || '').includes(t)));
