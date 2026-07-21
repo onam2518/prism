@@ -12,7 +12,6 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
-import time
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
 
