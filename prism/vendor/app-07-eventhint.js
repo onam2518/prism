@@ -278,7 +278,9 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           const d = await (await this._afetch('/usermeta-demo', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
           if (!d || d.error) { this.demoMsg = '오류: ' + (d ? d.error : '응답 없음'); this.demoBusy = false; return null; }
-          this.demoData = d; this.demoBusy = false; return d;
+          this.demoData = d; this.demoBusy = false;
+          if (d.wrote) this.loadMem();               // 시연이 파일을 썼으면 결론의 파일 열람용으로 동기화
+          return d;
         } catch (e) { this.demoMsg = '오류: ' + e; this.demoBusy = false; return null; }
       },
       demoImpress() {                               // 피드 진입 1회 → 보이는 콘텐츠 일괄 노출 이벤트
@@ -306,7 +308,9 @@ window.PRISM_APP_PARTS.push(() => ({
         const d = await this.demoPost({ op: 'event', event: 'react', idx: this.demoReading.idx, emotion: emo });
         if (d && this.demoReading) this.demoReading.reacted = emo;
       },
-      demoCmt: '',
+      demoCmt: '', demoFileSel: '',
+      demoShowFile(f) { this.demoFileSel = this.demoFileSel === f ? '' : f; if (this.demoFileSel && !this.memFile(f.replace(/^\//, ''))) this.loadMem(); },
+      demoFileBody() { const f = this.memFile((this.demoFileSel || '').replace(/^\//, '')); return f ? f.content : '불러오는 중 · 잠시 후 다시 눌러주세요'; },
       async demoComment() {                         // 댓글 → Event(WriteComment) + 메모리 [stated]
         const t = (this.demoCmt || '').trim();
         if (!t || !this.demoReading) return;
@@ -332,7 +336,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!(await this.dsConfirm('시연 세션을 처음부터 다시 시작할까요? 수집한 이벤트와 결론이 지워집니다(메모리 파일은 유지).', { ok: '처음부터', danger: true }))) return;
         if (this.demoReading) { clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; }
         const d = await this.demoPost({ op: 'reset' });
-        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoImpress(); this.loadMem(); }
+        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoFileSel = ''; this.demoImpress(); this.loadMem(); }
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },

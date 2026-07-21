@@ -242,6 +242,21 @@ class TestDemoSession(unittest.TestCase):
         self.assertNotIn("소비 기록 · 1회", body.splitlines()[2])   # 댓글은 [observed] 횟수에 미포함
         self.assertIn("내용을 입력", MF.demo_ops({"op": "event", "event": "comment", "idx": 0, "text": " "}, team="t1")["error"])
 
+    def test_reactions_boost_preference_and_intensity(self):
+        # 읽지 않은 콘텐츠라도 반응·댓글이 호응 가중으로 선호에 합산된다
+        MF.demo_ops({"op": "event", "event": "react", "idx": 1, "emotion": "좋아요"}, team="t1")
+        d = MF.demo_ops({"op": "event", "event": "comment", "idx": 1, "text": "역전승 최고"}, team="t1")
+        resp = d["live"]["resp"]
+        self.assertEqual((resp["reacts"], resp["comments"], resp["pos"], resp["neg"]), (1, 1, 1, 0))
+        self.assertEqual(resp["boost"], 2.5)              # 반응 1.0 + 댓글 1.5
+        self.assertEqual(d["live"]["cats"][0]["name"], "Sports")
+        self.assertEqual(d["live"]["cats"][0]["w"], 2.5)
+        self.assertIn("흥미·화제", d["live"]["intensity"])  # 강도(판정 입력)에도 반영
+        self.assertIn("호응 가중 +1.5", d["logic"])
+        d2 = MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "화나요"}, team="t1")
+        self.assertEqual(d2["live"]["resp"]["neg"], 1)    # 부정 감정 분포
+        self.assertEqual(d2["live"]["resp"]["emos"]["화나요"], 1)
+
     def test_react_comment_in_conclusion_chain(self):
         MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
         MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "좋아요"}, team="t1")
@@ -250,3 +265,4 @@ class TestDemoSession(unittest.TestCase):
         self.assertTrue(any("반응 '좋아요'" in a for a in acts))
         self.assertTrue(any("댓글" in a for a in acts))
         self.assertTrue(any("[stated]" in x["measure"] for x in c["chain"]))
+        self.assertTrue(any(b[0] == "호응" and "가중 +2.5" in b[1] for b in c["basis"]))

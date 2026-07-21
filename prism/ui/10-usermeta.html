@@ -115,6 +115,16 @@
                     </template>
                   </div>
                 </div>
+                <div class="demo-obs" style="grid-column:1/-1"><div class="cap">호응 (반응 · 댓글)</div>
+                  <div class="text-sm text-body tnum" x-show="demoData && demoData.live.resp && (demoData.live.resp.reacts || demoData.live.resp.comments)">
+                    <span x-text="demoData ? ('반응 ' + demoData.live.resp.reacts + '건 (긍정 ' + demoData.live.resp.pos + ' · 부정 ' + demoData.live.resp.neg + ') · 댓글 ' + demoData.live.resp.comments + '건 · 선호 가중 +' + demoData.live.resp.boost) : ''"></span>
+                    <template x-for="(n, emo) in ((demoData && demoData.live.resp && demoData.live.resp.emos) || {})" x-bind:key="'de'+emo">
+                      <span class="ds-badge ds-badge--neutral" style="margin-left:6px" x-text="emo + ' ' + n"></span>
+                    </template>
+                  </div>
+                  <div class="text-xs text-muted" x-show="!(demoData && demoData.live.resp && (demoData.live.resp.reacts || demoData.live.resp.comments))">아직 반응 · 댓글이 없습니다 · 기사에서 감정을 남기거나 댓글을 써보세요.</div>
+                  <div class="text-xs text-muted" style="margin-top:4px">반응 +1.0 · 댓글 +1.5 가중이 위 선호 · 강도에 합산됩니다 · 콘텐츠와 주제에 대한 호응 판단의 핵심 신호입니다.</div>
+                </div>
               </div>
               <div class="text-xs text-muted" x-show="!(demoData && demoData.live.cats.length)">아직 소비가 없습니다 · 시연에서 콘텐츠를 읽으면 형태 · 선호 · 강도가 여기 나타납니다.</div>
             </div>
@@ -141,6 +151,7 @@
                     <div class="flex items-center gap-2 flex-wrap">
                       <b class="text-ink" style="font-size:15px" x-text="demoData.conclusion.persona.full"></b>
                       <span class="ds-badge ds-badge--entity" x-text="'신뢰도 ' + demoData.conclusion.persona.conf"></span>
+                      <span x-show="demoData.conclusion.persona.second" class="ds-badge ds-badge--intent" style="cursor:help" data-tip="중복 매칭 허용 · 두 번째로 가까운 페르소나 병행 표기" data-tip-pos="top" x-text="'2순위 ' + demoData.conclusion.persona.second"></span>
                       <span x-show="demoData.conclusion.persona.provisional" class="ds-badge ds-badge--warning" style="cursor:help" data-tip="소비 5건 미만 · 잠정 판정 · 더 소비하면 자동 재판정" data-tip-pos="top">잠정</span>
                       <span class="meta ml-auto" x-text="demoData.conclusion.persona.rule"></span>
                     </div>
@@ -161,11 +172,13 @@
                       </template>
                     </div>
                     <!-- 판정 기준(기본 페르소나 8종) · 로그 부족 시 잠정 배정 후 자동 재판정 -->
-                    <div x-show="demoDefsOpen" x-cloak class="space-y-1" style="margin-top:8px">
-                      <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'dpd'+pd.name">
-                        <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'· ' + pd.desc"></span></div>
-                      </template>
-                      <div class="text-xs text-muted" style="margin-top:4px">로그가 5건 미만이면 잠정 배정하고, 소비가 쌓이면 자동 재판정합니다 · 명시 신호(버스트 · 주야 이중 · 드리프트 · 엔티티 집중) 우선, 없으면 깊이 · 강도 · 폭 근접 매칭.</div>
+                    <div x-show="demoDefsOpen" x-cloak style="margin-top:8px">
+                      <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:190px">페르소나</th><th>특징</th></tr></thead><tbody>
+                        <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'dpd'+pd.name">
+                          <tr><td class="text-ink" x-text="pd.full"></td><td x-text="pd.desc"></td></tr>
+                        </template>
+                      </tbody></table></div>
+                      <div class="text-xs text-muted" style="margin-top:6px">한 사용자가 여러 기준에 걸치면 1순위와 2순위를 병행 표기합니다 · 로그가 5건 미만이면 잠정 배정 후 소비가 쌓이면 자동 재판정 · 명시 신호(버스트 · 주야 이중 · 드리프트 · 엔티티 집중) 우선, 없으면 깊이 · 강도 · 폭 근접 매칭.</div>
                     </div>
                   </div>
                   <div class="grid grid-cols-3 gap-4">
@@ -176,12 +189,15 @@
                       </div>
                     </template>
                   </div>
-                  <div class="text-xs text-muted">이번 세션 기록 파일:
-                    <template x-for="f in (demoData.conclusion.memory.files || [])" x-bind:key="'dmf'+f">
-                      <code class="text-violet" style="font-size:12px;margin-right:6px" x-text="f"></code>
-                    </template>
-                    <span x-show="!(demoData.conclusion.memory.files || []).length">없음</span>
-                    · 파일 내용과 주입 미리보기는 [생성 과정] 탭에서 확인하세요.
+                  <div class="demo-obs"><div class="cap">이번 세션에 생성 · 갱신된 메모리 파일 · 누르면 내용이 열립니다</div>
+                    <div class="flex flex-wrap gap-1.5">
+                      <template x-for="f in (demoData.conclusion.memory.files || [])" x-bind:key="'dmf'+f">
+                        <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoFileSel===f ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoShowFile(f)"><code style="font-size:12px" x-text="f"></code></button>
+                      </template>
+                      <span class="text-xs text-muted" x-show="!(demoData.conclusion.memory.files || []).length">이번 세션에 기록된 파일이 없습니다</span>
+                    </div>
+                    <pre x-show="demoFileSel" x-cloak class="tbox" style="white-space:pre-wrap;font-size:12px;margin:8px 0 0" x-text="demoFileBody()"></pre>
+                    <div class="text-xs text-muted" style="margin-top:6px">파일 수정 · 삭제와 주입 미리보기는 [생성 과정] 탭에서 합니다.</div>
                   </div>
                 </div>
               </template>
@@ -317,14 +333,18 @@
           <div class="panel"><div class="panel-hd"><b>측정 · 판정 · 기록 정책</b><span class="meta">시연과 운영이 같은 계산</span></div>
             <div class="panel-bd">
               <div class="drow"><div class="k">가중치 공식</div><div class="v text-sm text-body">체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) → 카테고리 · 맥락(인텐트)별 합산 → 상대 등급(저 / 중 / 고)</div></div>
+              <div class="drow"><div class="k">호응 가중</div><div class="v text-sm text-body">반응 +1.0 · 댓글 +1.5 를 카테고리 · 맥락 선호에 합산(강도를 거쳐 판정에도 반영) · 감정은 긍정(추천 · 좋아요 · 감동) / 부정(화나요 · 슬퍼요) 분포로 별도 집계 · 콘텐츠와 주제에 대한 호응 판단의 핵심 신호</div></div>
               <div class="drow"><div class="k">깊이 판정</div><div class="v text-sm text-body">평균 체류 45초 이상 + 스크롤 60% 이상 = <b>몰입</b> · 15초 미만 = <b>훑기</b> · 그 사이 = 혼합</div></div>
               <div class="drow"><div class="k">판정 순서</div><div class="v text-sm text-body">명시 신호(버스트 · 주야 이중 · 드리프트 · 주말 편중 · 출퇴근 훑기 · 엔티티 집중) 우선 → 없으면 깊이 · 강도 · 폭 근접 매칭 · 소비 5건 미만은 <b>잠정</b> 배정 후 로그가 쌓이면 자동 재판정</div></div>
               <div class="drow"><div class="k">메모리 기록</div><div class="v text-sm text-body">소비 관찰은 <code class="text-violet">[observed]</code> · 검색어와 댓글 등 직접 말한 것은 <code class="text-violet">[stated]</code> 로 구분 기록 · 파일당 4,000바이트 · 64개 제한 · 삭제는 명시 요청이 있을 때만</div></div>
               <div class="drow"><div class="k">개인정보</div><div class="v text-sm text-body">건강 · 정치 성향 · 가족 실명 · 주소 · 금융 등 민감 정보는 기록하지 않음 · TIARA Location(위치 수집) 타입은 사용하지 않음</div></div>
-              <div style="margin-top:10px"><div class="selctl__lbl" style="margin-bottom:4px">판정 기준 · 기본 페르소나 8종</div>
-                <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'ppd'+pd.name">
-                  <div class="demo-log" style="white-space:normal"><b class="text-ink" x-text="pd.full"></b> <span class="text-muted" x-text="'· ' + pd.desc"></span></div>
-                </template>
+              <div style="margin-top:10px"><div class="selctl__lbl" style="margin-bottom:6px">판정 기준 · 기본 페르소나 8종</div>
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:190px">페르소나</th><th>특징</th></tr></thead><tbody>
+                  <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'ppd'+pd.name">
+                    <tr><td class="text-ink" x-text="pd.full"></td><td x-text="pd.desc"></td></tr>
+                  </template>
+                </tbody></table></div>
+                <div class="text-xs text-muted" style="margin-top:6px">페르소나는 배타 분류가 아니라 <b>중복 매칭</b>을 허용합니다 · 여러 기준에 걸치면 1순위 · 2순위를 병행 표기하고, 경계가 좁으면 신뢰도를 낮춰 표시합니다.</div>
               </div>
             </div>
           </div>

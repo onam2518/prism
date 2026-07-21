@@ -235,6 +235,9 @@ DEMO_EVENTS_MAX = 400
 EV_LABEL = {"impression": "노출", "click": "클릭", "skim": "훑고 나감",
             "read": "끝까지 읽음", "react": "반응", "comment": "댓글", "search": "검색"}
 EMOTIONS = ("추천해요", "좋아요", "감동이에요", "화나요", "슬퍼요")   # 기사 하단 감정 반응 5종
+EMO_POS = ("추천해요", "좋아요", "감동이에요")   # 긍정 · 나머지(화나요·슬퍼요)는 부정 분포로 집계
+REACT_W = 1.0                    # 호응 가중: 반응 1건당 선호 합산치
+COMMENT_W = 1.5                  # 호응 가중: 댓글 1건당(더 강한 참여 신호)
 # 사용자 친화 표기: 추천 칩·검색 매칭 전용 · 내부 값(IAB 카테고리·인텐트)은 화면에 노출하지 않는다
 CAT_KO = {"News and Politics": "뉴스·시사", "Sports": "스포츠", "Entertainment": "연예",
           "Business and Finance": "경제·재테크", "Technology and Computing": "테크·IT",
@@ -295,19 +298,47 @@ def _viewed_logs(events, catalog):
 
 
 def _live_measures(events, catalog) -> dict:
-    """실시간 측정: usermeta 실로직으로 소비 형태·강도·선호를 즉시 재계산."""
+    """실시간 측정: usermeta 실로직(체류·클릭) + 호응(반응·댓글) 가중을 합산해 즉시 재계산.
+    호응은 콘텐츠·주제에 대한 참여 신호라 선호·강도에 반영되고, 강도는 판정에도 들어간다."""
+    from collections import Counter
     from . import usermeta as UM
     viewed, logs = _viewed_logs(events, catalog)
-    if not viewed:
-        return {"form": {}, "intensity": {}, "cats": [], "ints": [], "ents": [],
-                "eng": {"views": 0, "clicks": 0, "click_rate": 0, "avg_dwell_sec": 0}, "breadth": 0}
-    form, intensity, prof = UM._profile_from_logs(viewed, logs)
-    form["시간대"] = "시연 세션"
-    total = sum(w for _, w in prof["ent"]) or 1.0
-    cats = [{"name": k, "w": round(w, 1), "pct": round(w / total * 100)} for k, w in prof["ent"]]
+    w_ent, w_int = Counter(), Counter()
+    form, ents, eng = {}, [], {"views": 0, "clicks": 0, "click_rate": 0, "avg_dwell_sec": 0}
+    breadth = 0
+    if viewed:
+        form, _intensity, prof = UM._profile_from_logs(viewed, logs)
+        form["시간대"] = "시연 세션"
+        w_ent.update(dict(prof["ent"]))
+        w_int.update(dict(prof["int"]))
+        ents, eng = prof["ents"], prof["eng"]
+        breadth = round(UM._breadth(viewed), 2)
+    resp = {"reacts": 0, "comments": 0, "pos": 0, "neg": 0, "emos": {}, "boost": 0.0}
+    for e in events:
+        ev = e.get("event")
+        if ev not in ("react", "comment"):
+            continue
+        w = COMMENT_W if ev == "comment" else REACT_W
+        if e.get("cat"):
+            w_ent[e["cat"]] += w
+        if e.get("intent"):
+            w_int[e["intent"]] += w
+        resp["boost"] = round(resp["boost"] + w, 1)
+        if ev == "react":
+            resp["reacts"] += 1
+            emo = e.get("emo") or ""
+            resp["emos"][emo] = resp["emos"].get(emo, 0) + 1
+            resp["pos" if emo in EMO_POS else "neg"] += 1
+        else:
+            resp["comments"] += 1
+    top_ent = sorted(w_ent.items(), key=lambda x: -x[1])[:5]
+    top_int = sorted(w_int.items(), key=lambda x: -x[1])[:6]
+    mx = max([v for _, v in top_int], default=1)
+    intensity = {k: ("고" if v >= mx * .66 else "중" if v >= mx * .33 else "저") for k, v in top_int}
+    total = sum(w for _, w in top_ent) or 1.0
+    cats = [{"name": k, "w": round(w, 1), "pct": round(w / total * 100)} for k, w in top_ent]
     return {"form": form, "intensity": intensity, "cats": cats,
-            "ints": prof["int"], "ents": prof["ents"], "eng": prof["eng"],
-            "breadth": round(UM._breadth(viewed), 2)}
+            "ints": top_int, "ents": ents, "eng": eng, "breadth": breadth, "resp": resp}
 
 
 def _ev_line(e) -> str:
@@ -366,7 +397,7 @@ def demo_data(team=None) -> dict:
            "logic": sess.get("last_logic") or "",
            "personas": _personas_brief(),
            "suggests": _suggests(catalog),
-           "formula": "가중치 = 체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) → 카테고리·맥락별 합산 → 상대 등급(저/중/고)"}
+           "formula": "가중치 = 체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) + 호응(반응 1.0 · 댓글 1.5) → 카테고리·맥락별 합산 → 상대 등급(저/중/고)"}
     if consumed:                                     # 결론도 실시간 · 소비가 쌓일 때마다 자동 재판정
         out["conclusion"] = _conclusion(events, catalog, team)
     return out
@@ -400,7 +431,7 @@ def _conclusion(events, catalog, team=None) -> dict:
                           "measure": "이 콘텐츠 이후 가중 ×2.0", "file": "측정만"})
         elif e.get("event") == "react":
             chain.append({"t": e.get("t", ""), "act": "반응 '" + (e.get("emo") or "") + "' · \"" + (e.get("title") or "") + '"',
-                          "measure": "Event(Like) · 감정은 Custom Properties",
+                          "measure": "호응 가중 +" + str(REACT_W) + " · 감정은 Custom Properties",
                           "file": ("/" + e["path"]) if e.get("path") else "측정만"})
         elif e.get("event") == "search":
             chain.append({"t": e.get("t", ""), "act": "검색 · '" + (e.get("title") or "") + "'",
@@ -408,7 +439,7 @@ def _conclusion(events, catalog, team=None) -> dict:
                           "file": ("/" + e["path"]) if e.get("path") else "측정만"})
         elif e.get("event") == "comment":
             chain.append({"t": e.get("t", ""), "act": '댓글 · "' + (e.get("text") or "") + '"',
-                          "measure": "직접 발화 → [stated] 기록",
+                          "measure": "호응 가중 +" + str(COMMENT_W) + " · 직접 발화 → [stated] 기록",
                           "file": ("/" + e["path"]) if e.get("path") else "측정만"})
     top_cat = live["cats"][0]["name"] if live["cats"] else "기타"
     top_int = live["ints"][0][0] if live.get("ints") else "기타"
@@ -421,10 +452,15 @@ def _conclusion(events, catalog, team=None) -> dict:
          "desc": top_cat + " × " + top_int + " 조건의 큐레이션 슬롯을 능동 삽입합니다"},
         {"title": "광고 타겟팅",
          "desc": top_cat + " 관심 × " + top_int + " 선호 교차로 정밀 매칭합니다"}]
+    resp = live.get("resp") or {}
+    resp_line = ("반응 " + str(resp.get("reacts", 0)) + "건(긍정 " + str(resp.get("pos", 0)) + " · 부정 "
+                 + str(resp.get("neg", 0)) + ") · 댓글 " + str(resp.get("comments", 0)) + "건 · 선호 가중 +"
+                 + str(resp.get("boost", 0)))
     return {"persona": {"name": hit["name"], "full": pdef.get("full", hit["name"]),
                         "desc": pdef.get("desc", ""), "conf": hit["conf"], "rule": hit["rule"],
                         "second": hit.get("second"), "provisional": bool(hit.get("provisional"))},
             "basis": [["소비 콘텐츠", str(len(viewed)) + "건 · 카테고리 다양성 " + str(live["breadth"])],
+                      ["호응", resp_line],
                       ["소비 형태", " · ".join(k + " " + v for k, v in live["form"].items())],
                       ["소비 강도", " · ".join(k + " " + v for k, v in list(live["intensity"].items())[:4]) or "·"],
                       ["판정", hit["name"] + " · " + hit["rule"] + " · 신뢰도 " + hit["conf"]
@@ -507,7 +543,8 @@ def demo_ops(body: dict, team=None) -> dict:
                 _persist(team, files)
                 rec["emo"] = emo
                 rec["path"] = wrote["path"]
-                sess["last_logic"] = ("반응 '" + emo + "' → Event(Like) · 감정 상세는 Custom Properties 기록 · /"
+                sess["last_logic"] = ("반응 '" + emo + "' → Event(Like) · 호응 가중 +" + str(REACT_W)
+                                      + " 을 " + c["cat"] + " 선호에 합산 · 감정은 Custom Properties 기록 · /"
                                       + wrote["path"] + " 에 [observed]")
             elif ev == "comment":                    # 댓글 = 직접 발화 → Event(WriteComment) + [stated] 기록
                 text = (body.get("text") or "").strip()[:200]
@@ -521,8 +558,9 @@ def demo_ops(body: dict, team=None) -> dict:
                 _persist(team, files)
                 rec["text"] = text[:40]
                 rec["path"] = wrote["path"]
-                sess["last_logic"] = ('댓글 → Event(WriteComment) · 직접 말한 의견이라 /' + wrote["path"]
-                                      + " 에 [stated] 로 기록(관찰과 구분)")
+                sess["last_logic"] = ("댓글 → Event(WriteComment) · 호응 가중 +" + str(COMMENT_W)
+                                      + " 을 " + c["cat"] + " 선호에 합산 · 직접 말한 의견이라 /"
+                                      + wrote["path"] + " 에 [stated] 로 기록(관찰과 구분)")
             else:
                 files = _files(team)
                 wrote, err = _observe(files, c["title"] or "(제목 없음)", c["cat"], c["intent"],
