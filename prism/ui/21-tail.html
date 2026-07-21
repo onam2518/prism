@@ -85,11 +85,14 @@
       (root || document).querySelectorAll('.panel-hd:not([data-wz])').forEach(function (h) {
         h.setAttribute('data-wz', '1');
         var b = h.querySelector('b');
-        var titleText = b ? b.textContent : '';
-        // 타이틀 = 텍스트만(왼쪽선을 본문과 정렬) 캐릭터는 헤드 오른쪽으로
+        // 타이틀 = b 의 내용 이동(텍스트 복사 아님) · STEP 배지 등 제목 안 마크업 보존 · 캐릭터는 헤드 오른쪽으로
         var title = document.createElement('div'); title.className = 'ds-widget__title';
         var span = document.createElement('span');
-        span.textContent = titleText; if (b) b.remove();
+        if (b) {
+          if (b.getAttribute('style')) span.setAttribute('style', b.getAttribute('style'));
+          while (b.firstChild) span.appendChild(b.firstChild);
+          b.remove();
+        }
         title.appendChild(span);
         var actions = document.createElement('div'); actions.className = 'ds-widget__actions';
         while (h.firstChild) actions.appendChild(h.firstChild);   // 남은 메타·버튼 → actions
