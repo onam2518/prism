@@ -423,10 +423,8 @@
               <button type="button" class="srcfilter__chip" x-bind:class="dvcView()==='text'?'sel':''" x-on:click="setDvcView('text')">추출 텍스트</button>
               <button type="button" class="srcfilter__chip" x-bind:class="dvcView()==='web'?'sel':''" x-on:click="setDvcView('web')">원문 페이지</button>
             </span>
-            <!-- 원문 바로가기: 사이트가 내장 표시를 차단하면 임베드가 빈 화면이라 새 탭 확인 경로가 필요(게시판 제안) -->
-            <a class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" style="margin-left:auto;text-decoration:none" x-bind:href="detail && detail.url" target="_blank" rel="noopener noreferrer" data-tip="원문을 새 탭에서 엽니다 · 내장 화면이 비어 보일 때 이 링크로 확인하세요" data-tip-pos="top">원문 바로가기 ↗</a>
             <!-- 배율 3단계: 작게(50)·보통(75)·크게(100) · 축소하면 한 화면에 더 담긴다 · 선택은 기억 -->
-            <span class="srcfilter" style="display:inline-flex;gap:var(--ds-space-1)" x-show="dvcView()==='web'" x-cloak>
+            <span class="srcfilter" style="display:inline-flex;gap:var(--ds-space-1);margin-left:auto" x-show="dvcView()==='web'" x-cloak>
               <template x-for="o in [{z:50,t:'작게'},{z:75,t:'보통'},{z:100,t:'크게'}]" x-bind:key="'dz'+o.z">
                 <button type="button" class="srcfilter__chip" x-bind:class="dvcZoom===o.z?'sel':''" x-on:click="setDvcZoom(o.z)" x-bind:data-tip="o.z+'%'" data-tip-pos="top" x-text="o.t"></button>
               </template>
@@ -472,6 +470,10 @@
             </div>
           </div>
           <div class="dve__sec" x-show="detail && detail.reasons && detail.reasons.length"><div class="dve__lbl">품질 사유</div><div class="flex flex-wrap gap-1"><template x-for="e in (detail?detail.reasons:[])" x-bind:key="e"><span class="ds-badge ds-badge--reason" style="cursor:pointer" x-bind:data-tip="termDef('reason', e) + ' · 눌러서 기준 보기'" data-tip-pos="right" x-on:click="polShow('reason', e)" x-text="reasonBoth(e)"></span></template></div></div>
+          <!-- 원문 바로가기: 사이트가 내장 표시를 차단하면 임베드가 빈 화면이라 새 탭 확인 경로가 필요(게시판 제안) -->
+          <div class="dve__sec" x-show="detail && detail.url" x-cloak>
+            <a class="copybtn" style="text-decoration:none" x-bind:href="detail && detail.url" target="_blank" rel="noopener noreferrer" data-tip="원문을 새 탭에서 엽니다 · 내장 화면이 비어 보일 때 이 링크로 확인하세요" data-tip-pos="top">원문 바로가기 ↗</a>
+          </div>
           <!-- 작업 이력: 판정·교정·재실행 타임라인(접이식 · 회의 소요) · 운영은 팀 생성자·슈퍼관리자 전용 -->
           <div class="dve__sec" x-show="backend !== 'supabase' || (adminData && adminData.isSuperAdmin)" x-cloak>
             <button type="button" class="copybtn" x-on:click="toggleHistory()" x-text="histOpen ? '작업 이력 닫기' : '작업 이력 보기'"></button>
