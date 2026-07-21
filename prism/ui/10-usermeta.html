@@ -10,7 +10,8 @@
         <div x-show="labUserView==='run'" class="space-y-4">
           <div class="panel"><div class="panel-hd"><b>시연</b>
               <span class="meta tnum" x-text="demoData ? ('이벤트 ' + demoData.session.events_n + '건 · 소비 ' + demoData.session.consumed + '건') : ''"></span>
-              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-bind:disabled="demoBusy" x-on:click="demoReset()">처음부터</button></div>
+              <span class="ml-auto flex items-center gap-2"><span class="text-xs" style="color:var(--ds-primary)" x-show="demoMsg" x-text="demoMsg"></span>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="demoBusy" x-on:click="demoReset()">처음부터</button></span></div>
             <div class="panel-bd">
               <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
                 <li>왼쪽 폰 화면에서 콘텐츠를 찾고 · 읽고 · 반응하고 · 댓글을 남겨보세요. 그 행동이 오른쪽 <b>실시간 로그</b>로 즉시 쌓입니다. 상단 버튼으로 <b>시안 4종(피드형 · 블록형 · 보드형 · 대화형)</b>을 갈아끼우며 비교할 수 있고, 어느 시안이든 수집 · 측정은 동일합니다.</li>
@@ -186,7 +187,7 @@
                           </div>
                           <div class="an-gap" x-show="demoData && demoData.contents.length && demoQFilter && !demoFeed().length">
                             <b x-text="'\'' + demoQFilter + '\' 콘텐츠는 지금 없어요'"></b>
-                            <div class="d">이 요청은 기억해 뒀어요 · 들어오면 바로 보여드릴게요</div>
+                            <div class="d">이 요청은 기억해 뒀어요 · 들어오면 바로 보여드릴게요<span x-show="demoData && demoData.catalog_stat && demoData.catalog_stat.r"> · 등록은 됐지만 품질 검수에서 제외된 콘텐츠일 수도 있어요</span></div>
                             <div style="margin-top:9px"><span class="an-btn an-btn--primary" style="min-height:34px;font-size:13px">들어오면 알려주기</span></div>
                           </div>
                           <div x-show="demoHist().length">
@@ -203,7 +204,7 @@
                         </div>
 
                         <div x-show="demoData && !demoData.contents.length" style="padding:26px 20px;text-align:center;color:var(--an-txsub);font-size:14px">먼저 [실행 · 추출]에서 콘텐츠를 추출하세요 · 여기 피드로 나타납니다</div>
-                        <div x-show="demoVariant!=='d' && demoData && demoData.contents.length && demoQFilter && !demoFeed().length" style="padding:22px 20px;text-align:center;color:var(--an-txsub);font-size:13px">찾는 콘텐츠가 없어요 · <button type="button" style="border:0;background:none;color:var(--an-primary);font-weight:700;cursor:pointer;font-family:inherit;font-size:13px" x-on:click="demoQFilter=''; demoQ=''">전체 보기</button></div>
+                        <div x-show="demoVariant!=='d' && demoData && demoData.contents.length && demoQFilter && !demoFeed().length" style="padding:22px 20px;text-align:center;color:var(--an-txsub);font-size:13px">찾는 콘텐츠가 없어요<span x-show="demoData && demoData.catalog_stat && demoData.catalog_stat.r"> · 등록은 됐지만 품질 검수에서 제외된 콘텐츠일 수 있어요</span> · <button type="button" style="border:0;background:none;color:var(--an-primary);font-weight:700;cursor:pointer;font-family:inherit;font-size:13px" x-on:click="demoQFilter=''; demoQ=''">전체 보기</button></div>
                       </div>
                     </div></div>
                   </div>
@@ -313,14 +314,13 @@
               <!-- 결론 리포트(채택안 R1 진단서형 + R2 세 줄 요약 헤더): 번호 섹션으로 위계를 만들고
                    요약이 결론의 결론을 맡는다 · 내용은 기존 그대로, 배치와 위계만 재구성 -->
               <template x-if="demoData && demoData.conclusion && demoData.conclusion.persona">
-                <div class="rpt">
-                  <div class="rpt-hd"><b>소비 진단 리포트</b><span class="meta tnum" x-text="'이벤트 ' + demoData.session.events_n + '건 기준 · 소비가 쌓일 때마다 자동 재판정'"></span></div>
-                  <div class="rpt-tldr"><div class="cap">세 줄 요약</div>
+                <div>
+                  <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
                     <template x-for="(t, ti) in (demoData.conclusion.tldr || [])" x-bind:key="'tl'+ti">
-                      <div class="text-body" x-text="'①②③'[ti] + ' ' + t"></div>
+                      <li x-text="t"></li>
                     </template>
-                  </div>
-                  <div class="rpt-hero">
+                  </ul>
+                  <div class="flex gap-4 flex-wrap" style="align-items:center">
                     <div>
                       <div class="pcard-strip" style="padding:2px">
                         <button type="button" class="pcard" x-bind:class="demoTierCls() + (demoCardSel==='main' ? '' : ' peek')" x-on:click="demoCardSel='main'" data-tip="소비 신호로 방금 생성된 페르소나" data-tip-pos="top">
@@ -343,17 +343,15 @@
                       </div>
                       <div class="pcard-dots" x-show="demoData.conclusion.persona.second"><i x-bind:class="demoCardSel==='main' ? 'on' : ''"></i><i x-bind:class="demoCardSel==='second' ? 'on' : ''"></i></div>
                     </div>
-                    <div class="rpt-kpi tnum">
-                      <div><b x-text="demoData.conclusion.kpi.consumed + '건'"></b><span>소비 콘텐츠</span></div>
-                      <div><b x-text="'+' + demoData.conclusion.kpi.boost"></b><span>호응 가중</span></div>
-                      <div><b x-text="demoData.conclusion.kpi.depth"></b><span>소비 깊이</span></div>
-                      <div><b x-text="demoData.conclusion.kpi.breadth"></b><span>카테고리 다양성</span></div>
+                    <div class="ds-stat-grid tnum" style="flex:1;min-width:250px;grid-template-columns:repeat(2,1fr)">
+                      <div class="ds-stat"><div class="ds-stat__value ds-stat__value--accent" x-text="demoData.conclusion.kpi.consumed + '건'"></div><div class="ds-stat__label">소비 콘텐츠</div></div>
+                      <div class="ds-stat"><div class="ds-stat__value" x-text="'+' + demoData.conclusion.kpi.boost"></div><div class="ds-stat__label">호응 가중</div></div>
+                      <div class="ds-stat"><div class="ds-stat__value" x-text="demoData.conclusion.kpi.depth"></div><div class="ds-stat__label">소비 깊이</div></div>
+                      <div class="ds-stat"><div class="ds-stat__value" x-text="demoData.conclusion.kpi.breadth"></div><div class="ds-stat__label">카테고리 다양성</div></div>
                     </div>
                   </div>
 
-                  <div class="rpt-sec"><span class="no">01</span><b>판정 근거</b>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm meta" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '참고 원형 접기' : '가까운 원형 보기(참고 8종)'"></button>
-                  </div>
+                  <div class="flex items-center gap-2" style="border-top:1px solid var(--ds-hairline);margin-top:16px;padding-top:13px;margin-bottom:8px"><b class="text-ink" style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">1</span>판정 근거</b><span class="ml-auto"><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '참고 원형 접기' : '가까운 원형 보기(참고 8종)'"></button></span></div>
                   <div>
                     <template x-for="(b, bi) in demoBasis()" x-bind:key="'db'+bi+demoCardSel">
                       <div class="drow"><div class="k" x-text="b[0]"></div><div class="v text-sm text-body" x-text="b[1]"></div></div>
@@ -372,9 +370,7 @@
                     </div>
                   </div>
 
-                  <div class="rpt-sec"><span class="no">02</span><b>행동 기록</b>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm meta" x-on:click="demoChainOpen = !demoChainOpen" x-text="demoChainOpen ? '접기' : '펼쳐보기 (행동 → 측정 → 기록)'"></button>
-                  </div>
+                  <div class="flex items-center gap-2" style="border-top:1px solid var(--ds-hairline);margin-top:16px;padding-top:13px;margin-bottom:8px"><b class="text-ink" style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">2</span>행동 기록</b><span class="ml-auto"><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoChainOpen = !demoChainOpen" x-text="demoChainOpen ? '접기' : '펼쳐보기 (행동 → 측정 → 기록)'"></button></span></div>
                   <div x-show="demoChainOpen" x-cloak class="space-y-2" style="margin-top:4px;max-height:260px;overflow:auto">
                     <template x-for="(ch, ci) in (demoData.conclusion.chain || [])" x-bind:key="'dch'+ci">
                       <div class="demo-chain tnum"><span class="text-muted" x-text="ch.t"></span> <b class="text-ink" x-text="ch.act"></b><span class="demo-chain-arrow">→</span><span x-text="ch.measure"></span><span class="demo-chain-arrow">→</span><code class="text-violet" x-text="ch.file"></code></div>
@@ -382,14 +378,14 @@
                   </div>
                   <div class="text-xs text-muted" x-show="!demoChainOpen" style="margin-top:4px" x-text="'이번 세션 행동 ' + ((demoData.conclusion.chain || []).length) + '건이 기록돼 있습니다'"></div>
 
-                  <div class="rpt-sec"><span class="no">03</span><b>활용 제안</b></div>
+                  <div class="flex items-center gap-2" style="border-top:1px solid var(--ds-hairline);margin-top:16px;padding-top:13px;margin-bottom:8px"><b class="text-ink" style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">3</span>활용 제안</b></div>
                   <div>
                     <template x-for="(s, si) in (demoData.conclusion.scenarios || [])" x-bind:key="'dsc'+si">
                       <div class="drow"><div class="k" x-text="s.title"></div><div class="v text-sm text-body" x-text="s.desc"></div></div>
                     </template>
                   </div>
 
-                  <div class="rpt-sec"><span class="no">04</span><b>남은 기록</b></div>
+                  <div class="flex items-center gap-2" style="border-top:1px solid var(--ds-hairline);margin-top:16px;padding-top:13px;margin-bottom:8px"><b class="text-ink" style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">4</span>남은 기록</b></div>
                   <div>
                     <div class="flex flex-wrap gap-1.5">
                       <template x-for="f in (demoData.conclusion.memory.files || [])" x-bind:key="'dmf'+f">
@@ -401,7 +397,7 @@
                     <div class="text-xs text-muted" style="margin-top:6px">파일 수정 · 삭제와 주입 미리보기는 [생성 과정] 탭에서 합니다.</div>
                   </div>
 
-                  <div class="rpt-foot">운영 정책: 사용자 정보 입력 없이 소비만으로 시작하고, 같은 판정이 운영 행동 로그로 사용자마다 자동 산출됩니다 · 실명 · 연락처 등 식별 정보는 어떤 경로로도 수집 · 기록하지 않습니다.</div>
+                  <div class="text-xs text-muted" style="border-top:1px solid var(--ds-hairline);margin-top:16px;padding-top:11px">운영 정책: 사용자 정보 입력 없이 소비만으로 시작하고, 같은 판정이 운영 행동 로그로 사용자마다 자동 산출됩니다 · 실명 · 연락처 등 식별 정보는 어떤 경로로도 수집 · 기록하지 않습니다.</div>
                 </div>
               </template>
               <div x-show="!(demoData && demoData.conclusion && demoData.conclusion.persona)" class="text-xs text-muted">아직 소비가 없습니다 · 시연에서 콘텐츠를 읽으면 판정이 실시간으로 나타납니다.</div>
