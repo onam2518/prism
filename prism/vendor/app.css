@@ -1036,6 +1036,19 @@
 .polrule summary{cursor:pointer;font-weight:600;color:var(--ds-body)}
 .polrule div{margin-top:4px;white-space:pre-line}
 
+/* 정책 팔레트 · 값 매칭 콘텐츠 목록: 값 클릭 → 해당 메타 콘텐츠 · 클릭 시 상세를 나란히 오픈(같은 창) */
+.polmatch{display:flex;flex-direction:column;gap:8px;min-height:0}
+.polmatch__hd{display:flex;align-items:center;gap:6px}
+.polmatch__hd b{font-size:12.5px;color:var(--ds-ink)}
+.polmatch__list{overflow:auto;max-height:60vh;display:flex;flex-direction:column;gap:6px}
+.polmatch__row{display:block;width:100%;text-align:left;padding:8px 10px;cursor:pointer;
+  border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-control);background:var(--ds-surface-white);
+  transition:border-color var(--ds-motion-fast) var(--ds-ease-standard),background-color var(--ds-motion-fast) var(--ds-ease-standard)}
+.polmatch__row:hover{border-color:var(--ds-primary);background:var(--ds-primary-tint)}
+.polmatch__row b{display:block;font-size:12.5px;color:var(--ds-ink);line-height:1.35;font-weight:600}
+.polmatch__row span{font-size:11px;color:var(--ds-muted)}
+.polmatch__empty{padding:16px;text-align:center;color:var(--ds-muted);font-size:12px}
+
 
 /* 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 에이전트 카드 아래 · 전 메뉴 노출
    구조 = 유형 태그 + D-day(임박 시 경고색) + 제목 + 목표 + 진행 게이지/카운트 + 시한 + CTA */

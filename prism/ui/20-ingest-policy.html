@@ -314,20 +314,37 @@
       <button type="button" class="ds-iconbtn ds-iconbtn--sm ml-auto" x-on:click="polOpen=false; polMatch=null; polSave()" aria-label="정책 도움말 닫기"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
     </div>
     <div class="polpal__bd">
-      <div class="polpal__ctx" x-show="polCtx().length">
+      <div class="polpal__ctx" x-show="polCtx().length && !polMatch">
         <span class="text-xs text-muted" style="width:100%">현재 검수 항목의 값 · 눌러서 기준 보기</span>
         <template x-for="(x,xi) in polCtx()" x-bind:key="'pc'+xi+x.v">
           <button type="button" class="ds-badge" x-bind:class="{intent:'ds-badge--intent',category:'ds-badge--category',reason:'ds-badge--reason',grade:(x.v==='G'?'ds-badge--success':'ds-badge--error')}[x.kind]" style="cursor:pointer" x-bind:data-tip="termDef(x.kind, x.v) + ' · 눌러서 기준 보기'" data-tip-pos="top" x-on:click="polShow(x.kind, x.v)" x-text="polCtxLabel(x)"></button>
         </template>
       </div>
-      <span class="srcfilter" style="display:flex;gap:var(--ds-space-1)">
+      <span class="srcfilter" style="display:flex;gap:var(--ds-space-1)" x-show="!polMatch">
         <button type="button" class="srcfilter__chip" x-bind:class="polTab==='intent'?'sel':''" x-on:click="polTab='intent'; polHl=''; polMatch=null; polSave()">인텐트</button>
         <button type="button" class="srcfilter__chip" x-bind:class="polTab==='category'?'sel':''" x-on:click="polTab='category'; polHl=''; polMatch=null; polSave()">카테고리</button>
         <button type="button" class="srcfilter__chip" x-bind:class="polTab==='quality'?'sel':''" x-on:click="polTab='quality'; polHl=''; polMatch=null; polSave()">품질 사유</button>
         <button type="button" class="srcfilter__chip" x-bind:class="polTab==='grade'?'sel':''" x-on:click="polTab='grade'; polHl=''; polMatch=null; polSave()">등급</button>
       </span>
-      <input type="text" class="field" placeholder="정책 검색 (값·기준 텍스트)" x-model="polQ">
-      <div class="polpal__list">
+      <input type="text" class="field" placeholder="정책 검색 (값·기준 텍스트)" x-model="polQ" x-show="!polMatch">
+      <!-- 값 클릭 → 매칭 콘텐츠 목록(정책 목록 대체 · 같은 스크롤 영역) · 콘텐츠 클릭 = 상세를 나란히 오픈 -->
+      <div class="polmatch" x-show="polMatch" x-cloak>
+        <div class="polmatch__hd">
+          <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="polMatch=null" data-tip="정책 목록으로" data-tip-pos="bottom" aria-label="정책 목록으로"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <b x-text="polMatch ? polMatch.label : ''"></b>
+          <span class="text-xs text-muted tnum ml-auto" x-text="polMatch ? (polMatch.loading ? '불러오는 중…' : (polMatch.items.length + '건')) : ''"></span>
+        </div>
+        <div class="polmatch__list">
+          <template x-for="c in (polMatch ? polMatch.items : [])" x-bind:key="'pm'+c.hash">
+            <button type="button" class="polmatch__row" x-on:click="openMatchDetail(c)" data-tip="상세 열기(나란히)" data-tip-pos="left">
+              <b x-text="c.title || '(제목 없음)'"></b>
+              <span x-text="(c.service || '·') + (c.model ? (' · ' + c.model) : '') + (c.grade ? (' · ' + c.grade) : '')"></span>
+            </button>
+          </template>
+          <div x-show="polMatch && !polMatch.loading && !polMatch.items.length" class="polmatch__empty">이 값으로 분류된 콘텐츠가 없습니다</div>
+        </div>
+      </div>
+      <div class="polpal__list" x-show="!polMatch">
         <!-- 카테고리: Tier1 그룹 → (Tier2 | 정의 | 예시) 표 + 분기 규칙 접힘 -->
         <template x-if="polTab==='category'">
           <div style="display:flex;flex-direction:column;gap:10px">
@@ -397,23 +414,6 @@
             </table>
           </div>
         </template>
-      </div>
-    </div>
-    <!-- 값 클릭 → 이 메타로 분류된 콘텐츠 목록(오버레이) · 콘텐츠 클릭 = 상세 새 탭 -->
-    <div class="polmatch" x-show="polMatch" x-cloak style="position:absolute;inset:0;background:var(--ds-surface-white);border-radius:inherit;overflow:hidden;display:flex;flex-direction:column;z-index:3">
-      <div class="polpal__hd" style="cursor:default">
-        <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="polMatch=null" data-tip="정책 목록으로" data-tip-pos="bottom" aria-label="정책 목록으로"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        <b style="margin-left:2px" x-text="polMatch ? polMatch.label : ''"></b>
-        <span class="text-xs text-muted tnum ml-auto" x-text="polMatch ? (polMatch.loading ? '불러오는 중…' : (polMatch.items.length + '건')) : ''"></span>
-      </div>
-      <div style="flex:1;overflow-y:auto;padding:6px 4px">
-        <template x-for="c in (polMatch ? polMatch.items : [])" x-bind:key="'pm'+c.hash">
-          <button type="button" class="polmatch__row" style="display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));padding:8px 10px;cursor:pointer" x-on:click="openContentNewTab(c.hash)" data-tip="새 탭에서 상세 열기" data-tip-pos="left">
-            <span class="text-ink" style="display:block;font-size:12.5px;line-height:1.35" x-text="c.title || '(제목 없음)'"></span>
-            <span class="text-xs text-muted" x-text="(c.service || '·') + (c.model ? (' · ' + c.model) : '') + (c.grade ? (' · ' + c.grade) : '')"></span>
-          </button>
-        </template>
-        <div x-show="polMatch && !polMatch.loading && !polMatch.items.length" class="text-xs text-muted" style="padding:14px;text-align:center">이 값으로 분류된 콘텐츠가 없습니다</div>
       </div>
     </div>
   </div>
