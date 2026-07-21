@@ -151,12 +151,19 @@ window.PRISM_APP_PARTS.push(() => ({
           this.polMatch.items = list; this.polMatch.loading = false;
         }
       },
-      // 매칭 콘텐츠 → 상세를 같은 창에 나란히 오픈(정책 팔레트는 열린 채 유지 · 드래그로 배치)
-      // 이전/다음 이동은 매칭 목록 안에서 순환(별도 목록 컨텍스트 보존)
+      // 매칭 콘텐츠 클릭: 검수 상세가 이미 떠 있으면 옆에 '읽기 전용 비교'로, 아니면 검수 상세로 연다.
+      // (검수 상세 이전/다음 이동은 매칭 목록 안에서 순환 · 별도 목록 컨텍스트 보존)
       openMatchDetail(c) {
+        if (this.detailOpen) { this.openContentView(c); return; }
         const list = (this.polMatch ? this.polMatch.items : []).slice();
         this.openDetail(this._rawToDetail(c));
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === c.hash)) };
+      },
+      // 읽기 전용 콘텐츠 뷰(비교·참조 전용 · 검수/판정/이력 없음): 검수 상세 옆에 나란히
+      cmpOpen: false, cmp: null,
+      openContentView(c) {
+        this.cmp = Object.assign({ entities: [], intent: [], category: [], reasons: [] }, this._rawToDetail(c));
+        this.cmpOpen = true;
       },
       polCatGroups() {                                  // 카테고리 탭: Tier1 그룹 → Tier2 표 행(정의·예시)
         const d = this.dictData || {};
