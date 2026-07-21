@@ -65,7 +65,7 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
       <button type="button" class="m-help m-theme" x-on:click="toggleTheme()" x-text="theme === 'dark' ? '☀' : '☾'" aria-label="화면 모드 전환"></button>
     </header>
     <div class="m-prog">
-      <div class="m-prog__row"><span>팀 검수 진행</span><b class="tnum" x-text="(items.length - unreviewedCount()) + ' / ' + items.length + '건'"></b></div>
+      <div class="m-prog__row"><span>팀 검수 진행</span><b class="tnum" x-text="progDone() + ' / ' + progTotal() + '건'"></b></div>
       <div class="m-bar"><i x-bind:style="'width:' + progPct() + '%'"></i></div>
     </div>
 
@@ -81,7 +81,8 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
               <span class="m-row__meta" x-text="it.service + (it.model ? ' · ' + it.model : '')"></span>
             </span>
             <span class="ds-badge ds-badge--success" x-show="reviewed(it)">검수함</span>
-            <span class="ds-badge ds-badge--neutral" x-show="!reviewed(it)">미검수</span>
+            <span class="ds-badge ds-badge--neutral" x-show="!reviewed(it) && blocked(it)">🔒 배정됨</span>
+            <span class="ds-badge ds-badge--neutral" x-show="!reviewed(it) && !blocked(it)">미검수</span>
           </button>
         </template>
       </div>
@@ -135,20 +136,21 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
             </div>
           </section>
 
-          <!-- 영역 2 · 원문 본문(판정 근거) -->
+          <!-- 영역 2 · 원문 본문(판정 근거) · 원문 열기 = 새 탭(모바일은 임베드 없음 · PC 원문 바로가기 대응) -->
           <section class="m-orig">
-            <div class="m-sec">원문 본문</div>
-            <div class="m-body" x-text="cur().body || '본문이 저장되지 않은 콘텐츠입니다 · 데스크탑에서 원문 링크로 확인하세요'"></div>
+            <div class="m-sec">원문 본문 <a class="m-srclink" x-show="cur().url" x-bind:href="cur().url" target="_blank" rel="noopener noreferrer">원문 열기 ↗</a></div>
+            <div class="m-body" x-text="cur().body || ('본문이 저장되지 않은 콘텐츠입니다 · ' + (cur().url ? '위 원문 열기로 확인하세요' : '리드문·메타 기준으로 검수하세요'))"></div>
           </section>
         </div>
         <div class="m-team" x-show="cur().fb && cur().fb.n" x-text="cur().fb ? teamLine(cur().fb) : ''"></div>
       </article>
     </template>
     <footer class="m-actions" x-show="view === 'card'">
-      <button type="button" class="verdictbtn verdictbtn--bad" x-on:click="openFix()"><span class="verdictbtn__dot"></span>수정 필요</button>
-      <button type="button" class="verdictbtn verdictbtn--good" x-on:click="good()"><span class="verdictbtn__dot"></span>정확</button>
+      <button type="button" class="verdictbtn verdictbtn--bad" x-bind:disabled="cur() && blocked(cur())" x-on:click="openFix()"><span class="verdictbtn__dot"></span>수정 필요</button>
+      <button type="button" class="verdictbtn verdictbtn--good" x-bind:disabled="cur() && blocked(cur())" x-on:click="good()"><span class="verdictbtn__dot"></span>정확</button>
     </footer>
-    <div class="m-swipetip" x-show="view === 'card'">카드를 옆으로 밀어도 판정할 수 있어요 · → 정확 · ← 수정</div>
+    <div class="m-swipetip" x-show="view === 'card' && cur() && blocked(cur())">🔒 다른 검수자에게 배정된 콘텐츠예요 · 보기만 가능해요</div>
+    <div class="m-swipetip" x-show="view === 'card' && !(cur() && blocked(cur()))">카드를 옆으로 밀어도 판정할 수 있어요 · → 정확 · ← 수정</div>
   </section>
 
   <!-- ━━ 완료 ━━ -->

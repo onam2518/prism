@@ -84,6 +84,8 @@
 /* ── 영역 구분: 섹션 라벨 + AI 초안 패널 / 원문 본문 ── */
 .m-sec{font-size:10px;font-weight:700;letter-spacing:.8px;color:var(--ds-muted);margin-bottom:10px;
   font-family:var(--ds-font-display)}
+.m-srclink{float:right;font-size:12px;font-weight:600;letter-spacing:0;color:var(--ds-primary);
+  text-decoration:none;padding:2px 4px;margin:-2px -4px}
 .m-draft{margin-top:16px;padding:13px 14px 7px;border:1px solid var(--ds-hairline-soft,rgba(0,0,0,.07));
   border-radius:var(--ds-radius-md,12px)}
 .m-draft__grade{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:11px}
