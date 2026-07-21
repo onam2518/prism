@@ -117,6 +117,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // ── 정책 팔레트(플로팅 도움말): 검수 중 사전·정책 기준 참조 · 드래그 이동 ──
       polOpen: false, polTab: 'intent', polQ: '', polHl: '', polPos: null, polDrag: null,
+      polMatch: null,                                  // 값 클릭 → 매칭 콘텐츠 목록 오버레이 {kind,value,label,items}
       polRestore() {
         try { const p = JSON.parse(localStorage.getItem('prismPolPal') || 'null'); if (p) { this.polPos = p.pos || null; this.polTab = p.tab || 'intent'; } } catch (e) {}
       },
@@ -130,6 +131,30 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!this.dictData) this.loadDict();
         this.polSave();
         this.$nextTick(() => { try { const el = document.querySelector('.polpal [data-pol="' + (window.CSS && CSS.escape ? CSS.escape(v) : v) + '"]'); if (el) el.scrollIntoView({ block: 'center' }); } catch (e) {} });
+      },
+      // 값 클릭 → 이 메타로 분류된 콘텐츠 목록(도움말로 연결되는 모든 메타: 인텐트·카테고리·품질 사유·등급)
+      async polShowMatch(kind, key, label) {
+        this.polMatch = { kind, value: key, label: label || key, items: [], loading: true };
+        if (!(this.rawData && this.rawData.items && this.rawData.items.length)) { try { await this.loadRaw(2000); } catch (e) {} }
+        const items = ((this.rawData || {}).items) || [];
+        const catParts = (v) => String(v).split('/').map((s) => s.trim());
+        const hit = (r) => {
+          if (kind === 'intent') return (r.intent || []).includes(key);
+          if (kind === 'reason') return (r.reasons || []).includes(key);
+          if (kind === 'category') return (r.category || []).some((c) => c === key || catParts(c).includes(key));
+          if (kind === 'grade') return key === 'YELLOW' ? (r.review === 'yellow') : ((r.grade || '') === key);
+          return false;
+        };
+        const list = items.filter((r) => !this.isGoldRow(r) && hit(r));
+        // 현재 열린 매칭 대상이 그대로면 갱신(비동기 로드 중 다른 값 클릭 시 최신 것만 반영)
+        if (this.polMatch && this.polMatch.kind === kind && this.polMatch.value === key) {
+          this.polMatch.items = list; this.polMatch.loading = false;
+        }
+      },
+      // 매칭 콘텐츠 → 상세를 새 탭으로(딥링크 ?m=create&detail=<hash>)
+      openContentNewTab(hash) {
+        try { const u = new URL(location.href); u.searchParams.set('m', 'create'); u.searchParams.set('detail', hash); window.open(u.toString(), '_blank'); }
+        catch (e) { window.open('?m=create&detail=' + encodeURIComponent(hash), '_blank'); }
       },
       polCatGroups() {                                  // 카테고리 탭: Tier1 그룹 → Tier2 표 행(정의·예시)
         const d = this.dictData || {};

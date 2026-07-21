@@ -10,8 +10,17 @@ window.PRISM_APP_PARTS.push(() => ({
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
       get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
       rawGapFirst: false,                        // 부족 분류 우선 보기(능동학습: 라벨 예산을 부족 클래스로)
+      // 배정 배타 노출: 지정 검수자가 있는데 내가 아니면 목록에서 숨김(미배정은 전원 노출).
+      // my_id 우선(닉네임 변경에 안전) · 로컬(sqlite)은 이름 폴백 · detailAssignBlocked 과 동일 규약.
+      assignedToOther(r) {
+        const a = (r && r.assignees) || [];
+        if (!a.length) return false;
+        const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || '';
+        return a.indexOf(me) < 0;
+      },
       get rawFiltered() {
         const out = (((this.rawData||{}).items)||[]).filter((r) => {
+          if (this.assignedToOther(r)) return false;   // 내 배정분 + 미배정분만(타인 배정분 숨김)
           if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
@@ -124,7 +133,13 @@ window.PRISM_APP_PARTS.push(() => ({
         this.loadArena();                              // 홈 = 아레나
         this.polRestore();                             // 정책 팔레트 위치·탭 복원
         // 딥링크: ?m=run|dash|quality|... 로 특정 뷰 진입(설정은 ?settings)
-        try { const q = new URLSearchParams(location.search); const m = q.get('m'); if (m) this.selectMod(m); if (q.has('settings')) this.selectMod('system'); } catch (e) {}
+        try {
+          const q = new URLSearchParams(location.search); const m = q.get('m');
+          const dh = q.get('detail');                  // 콘텐츠 상세 딥링크(정책 팔레트 매칭 목록 → 새 탭)
+          if (dh) { this._pendingDetail = dh; this._pendingRetry = false; this.selectMod('create'); this.loadRaw(2000); }
+          else if (m) this.selectMod(m);
+          if (q.has('settings')) this.selectMod('system');
+        } catch (e) {}
         this.loadVocab();
         this.loadDict();                               // 검수 요소·인텐트 정의 등 UI 사전 선로드(/dict 단일 원천)
         // Cmd/Ctrl + Enter 로 추출 실행
