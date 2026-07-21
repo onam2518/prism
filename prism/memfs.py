@@ -391,15 +391,18 @@ def _live_measures(events, catalog) -> dict:
         ents, eng = prof["ents"], prof["eng"]
         breadth = round(UM._breadth(viewed), 2)
     resp = {"reacts": 0, "comments": 0, "pos": 0, "neg": 0, "emos": {}, "boost": 0.0}
+    byidx = {c["idx"]: c for c in catalog}
     for e in events:
         ev = e.get("event")
         if ev not in ("react", "comment"):
             continue
         w = COMMENT_W if ev == "comment" else REACT_W
-        if e.get("cat"):
-            w_ent[e["cat"]] += w
-        if e.get("intent"):
-            w_int[e["intent"]] += w
+        c = byidx.get(e.get("idx")) or {}
+        # 소비 가중(_profile_from_logs)과 같은 기준: 콘텐츠의 모든 카테고리·인텐트에 합산(첫 값 편중 방지)
+        for ec in c.get("entity_categories") or ([e["cat"]] if e.get("cat") else []):
+            w_ent[ec] += w
+        for ic in c.get("intent_categories") or ([e["intent"]] if e.get("intent") else []):
+            w_int[ic] += w
         resp["boost"] = round(resp["boost"] + w, 1)
         if ev == "react":
             resp["reacts"] += 1
@@ -468,7 +471,7 @@ def demo_data(team=None) -> dict:
     events = sess.get("events") or []
     imp = len({e.get("idx") for e in events if e.get("event") == "impression"})
     consumed = len({e.get("idx") for e in events if e.get("event") in ("read", "skim")})
-    out = {"contents": [dict({k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent")},
+    out = {"contents": [dict({k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent", "entity_categories")},
                              cat_ko=_cat_ko(c["cat"]), intent_ko=INT_KO.get(c["intent"], ""))
                         for c in catalog],
            "session": {"events_n": len(events), "impressions": imp, "consumed": consumed},
