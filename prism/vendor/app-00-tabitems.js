@@ -131,7 +131,15 @@ window.PRISM_APP_PARTS.push(() => ({
       rawData: null, rawSel: null,
       // 콘텐츠별 검수 담당 배정(관리자 전용): 편집 중 행·선택 담당자·최소 검수인원
       assignSel: null, assignPick: [], assignMin: 1, assignBusy: false,
-      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || 200) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); } } catch (e) {} },
+      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || 200) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail(); } } catch (e) {} },
+      // 딥링크 ?detail=<hash> 소진: 로드된 목록에서 찾아 상세 열기(없으면 1회 더 넓게 재조회 후 포기)
+      _consumePendingDetail() {
+        const h = this._pendingDetail;
+        const it = (((this.rawData || {}).items) || []).find((r) => r.hash === h);
+        if (it) { this._pendingDetail = null; this._pendingRetry = false; this.openRawDetail(it); }
+        else if (!this._pendingRetry) { this._pendingRetry = true; this.loadRaw(3000); }
+        else { this._pendingDetail = null; this._pendingRetry = false; }
+      },
       // 배정 UI 게이트: 로컬(단독)은 항상, 운영(supabase)은 팀 관리자만 · team_members 원천 = adminData.members
       get assignAdmin() { return this.backend !== 'supabase' || !!(this.adminData && this.adminData.isAdmin); },
       get assignMembers() { return (this.adminData && this.adminData.members) || []; },
