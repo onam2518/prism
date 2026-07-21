@@ -124,7 +124,7 @@ window.PRISM_APP_PARTS.push(() => ({
             r.final = v || '';
             r.final_by = v ? (this.reviewer || '') : '';
             r.final_ts = v ? (Date.now() / 1000) : 0;
-            this.liveToast(v === 'good' ? '골든 편입 확정 · 다음 학습 반영 때 정답셋으로 승격됩니다' : (v === 'bad' ? '제외 확정 · 정답셋으로 승격되지 않습니다' : '최종판정을 철회했어요'));
+            this.liveToast(v === 'good' ? '편입 확정 · 다음 학습 반영 때 정답셋으로 승격됩니다' : (v === 'bad' ? '제외 확정 · 정답셋으로 승격되지 않습니다' : '최종판정을 철회했어요'));
             (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
           } else this._err((res && res.error) || '저장 실패');
         } catch (e) { this._err('저장 실패'); }
@@ -132,7 +132,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // 최종검수 컨텍스트: 최종 검수 탭에서 상세로 들어오면 '검수 판정' 자리가 '최종검수 결정'으로 바뀐다
       finalCtx: null,
       get finalMode() { return !!(this.finalCtx && this.detail && this.finalCtx.hash === this.detail.hash); },
-      openFinalDetail(r) {                          // 목록 = 결정 현황판 · 결정은 상세 안에서
+      openFinalDetail(r) {                          // 목록 = 결정 현황 · 결정은 상세 안에서
         const list = ((this.finalQueue || {}).items || []).slice();
         this.openDetail(this._rawToDetail(r));
         this.finalCtx = r;

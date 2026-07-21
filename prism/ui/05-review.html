@@ -7,10 +7,22 @@
 
       <!-- 최종 검수(2층): 기초 검수를 거쳤지만 골든으로 확정되지 못한 미확정분 · 편입/제외 결정 -->
       <div x-show="mod === 'create' && createTab === 'final'" x-cloak class="w-full space-y-4">
-        <section class="panel"><div class="panel-hd"><b>최종 검수</b><span class="meta">의견이 갈리거나 분류가 빈 콘텐츠만 올라옵니다 · 편입 = 다음 학습 반영 때 정답셋 승격 · 제외 = 승격 금지</span>
+        <section class="panel"><div class="panel-hd"><b>최종 검수</b><span class="meta tnum" x-text="finalQueue ? (finalQueue.n + '건 대기') : ''"></span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadFinalQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="최종 검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           <div class="panel-bd">
-            <ul class="ds-bullets" style="margin-bottom:11px"><li>목록은 <b>결정 현황판</b>입니다 · 결정(편입 · 고쳐서 편입 · 제외)은 <b>검수하기</b>로 상세에 들어가 원문·기초 의견을 보며 내립니다.</li><li>결정은 기초 다수결보다 우선하며, 결정된 건도 <b>수정</b>으로 다시 들어가 바꾸거나 철회할 수 있습니다.</li></ul>
+            <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 딱지(확정) -->
+            <div class="ds-guide" style="margin-bottom:11px">
+              <span class="ds-guide__av"><img src="/vendor/ddakji-manager.svg" alt=""></span>
+              <div class="ds-guide__bubble">
+                <div class="ds-guide__who">딱지 · 확정 담당</div>
+                <div class="ds-guide__say">의견이 갈린 콘텐츠를 편입할지 제외할지 결정하는 화면입니다.</div>
+                <ul class="ds-bullets">
+                  <li>기초 검수에서 <b>의견이 갈렸거나 분류가 빈</b> 콘텐츠만 올라옵니다.</li>
+                  <li><b>검수하기</b>로 상세를 열어 편입 · 고쳐서 편입 · 제외 중 하나를 결정합니다(결정은 기초 다수결보다 우선).</li>
+                  <li>편입한 건은 다음 학습 반영 때 <b>정답셋</b>이 됩니다 · 결정은 <b>수정</b>으로 언제든 바꿉니다.</li>
+                </ul>
+              </div>
+            </div>
             <div class="text-xs text-muted tnum" style="margin-bottom:9px" x-show="finalQueue && finalQueue.stats && finalQueue.stats.total" x-text="'누적 최종판정 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.total)||0) + '건 · 편입 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.good)||0) + ' · 제외 ' + ((finalQueue&&finalQueue.stats&&finalQueue.stats.bad)||0)"></div>
             <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:76px" data-tip="현재 초안의 프롬프트 버전 · 학습 반영이 돌면 미확정분은 새 버전으로 자동 재실행됩니다" data-tip-pos="top">초안</th><th style="width:130px">기초 의견</th><th style="width:96px">사유</th><th style="width:170px">결정 현황</th><th style="width:104px;text-align:right">결정</th></tr></thead><tbody>
               <template x-for="r in ((finalQueue&&finalQueue.items)||[])" x-bind:key="'fq'+r.hash">
@@ -74,6 +86,18 @@
 
       <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="w-full">
         <div class="space-y-4">
+          <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 복실(검수) -->
+          <div class="ds-guide">
+            <span class="ds-guide__av"><img src="/vendor/boksil-catcher.svg" alt=""></span>
+            <div class="ds-guide__bubble">
+              <div class="ds-guide__who">복실 · 검수 담당</div>
+              <div class="ds-guide__say">같은 콘텐츠를 모델·버전 A/B로 나란히 비교하는 화면입니다.</div>
+              <ul class="ds-bullets">
+                <li>비교할 모델과 버전을 <b>A·B 슬롯</b>에 지정합니다.</li>
+                <li>요소별 현황과 콘텐츠별 비교로 어느 쪽이 나은지 확인합니다.</li>
+              </ul>
+            </div>
+          </div>
           <!-- 요소 단위 모델별 결과 현황: 같은 정보요소를 모델 축으로 비교 -->
           <!-- A/B 선택: 비교할 모델과 버전 지정(별도 패널 · abslot 디자인) -->
           <section class="panel" data-fn><div class="panel-hd"><b>A/B 선택</b><span class="meta">비교할 모델과 버전을 A·B 슬롯에 지정</span>
