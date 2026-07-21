@@ -19,7 +19,7 @@
               </ul>
               <div class="grid grid-cols-2" style="gap:0">
                 <div style="padding-right:20px">
-                  <div class="flex items-center gap-2" style="margin-bottom:8px">
+                  <div class="flex items-center gap-2" style="margin:10px 0 12px;min-height:32px">
                     <span class="selctl__lbl">서비스 화면 예시</span>
                     <span class="ml-auto flex items-center gap-1">
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='a' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('a')" data-tip="시안 A · 한 줄기 피드 · 이유는 칩 하나" data-tip-pos="top">피드형</button>
@@ -209,7 +209,7 @@
                   </div>
                 </div>
                 <div style="border-left:1px solid var(--ds-hairline);padding-left:20px">
-                  <div class="selctl__lbl" style="margin-bottom:8px">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 TIARA 이벤트로 쌓입니다</span></div>
+                  <div class="flex items-center" style="margin:10px 0 12px;min-height:32px"><span class="selctl__lbl">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 TIARA 이벤트로 쌓입니다</span></span></div>
                   <div class="demo-code" style="max-height:500px;min-height:200px">
                     <template x-for="(l, li) in ((demoData && demoData.stream) || [])" x-bind:key="'ds'+li+l">
                       <div class="ln" x-bind:class="li===0 ? 'is-new' : ''" x-text="l"></div>
@@ -307,42 +307,35 @@
             <div class="panel-bd">
               <template x-if="demoData && demoData.conclusion && demoData.conclusion.persona">
                 <div class="space-y-3">
-                  <!-- 페르소나 캐릭터 카드(P1 트로피형): 신뢰도=카드 등급 · 2순위 peek · 카드 탭=근거 열기 -->
+                  <!-- 페르소나 캐릭터 카드(P1 트로피형): 카드만 중앙 노출 · 설명은 아래 판정 근거가 담당
+                       여러 장이면 카드 선택 시 아래 판정 근거의 판정 행이 그 카드 기준으로 바뀐다 -->
                   <div class="demo-obs" style="border-color:var(--ds-primary)">
-                    <div class="flex gap-4 flex-wrap" style="align-items:flex-start">
-                      <div>
-                        <div class="pcard-strip">
-                          <button type="button" class="pcard" x-bind:class="demoTierCls()" x-on:click="demoChainOpen = !demoChainOpen" data-tip="카드를 누르면 행동별 근거가 열립니다" data-tip-pos="top">
-                            <span class="tier" x-text="demoTierLabel()"></span>
-                            <span class="art" x-text="demoData.conclusion.persona.art || '👤'"></span>
-                            <span class="nm" x-text="demoData.conclusion.persona.full"></span>
-                            <span class="stats">
-                              <template x-for="s in demoStats()" x-bind:key="'st'+s[0]">
-                                <span class="r"><span x-text="s[0]"></span><span class="bar"><i x-bind:style="'width:' + s[1] + '%'"></i></span></span>
-                              </template>
-                            </span>
-                          </button>
-                          <template x-if="demoData.conclusion.persona.second">
-                            <button type="button" class="pcard pcard--silver peek" x-on:click="demoDefsOpen = true" data-tip="참고 원형 2순위 · 생성 페르소나가 두 원형 경계에 있으면 함께 봅니다" data-tip-pos="top">
-                              <span class="tier">2순위</span>
-                              <span class="art" x-text="demoPersonaArt(demoData.conclusion.persona.second)"></span>
-                              <span class="nm" x-text="(demoDef(demoData.conclusion.persona.second) || { full: demoData.conclusion.persona.second }).full"></span>
-                            </button>
+                    <div class="pcard-strip" style="justify-content:center">
+                      <button type="button" class="pcard" x-bind:class="demoTierCls() + (demoCardSel==='main' ? '' : ' peek')" x-on:click="demoCardSel='main'" data-tip="소비 신호로 방금 생성된 페르소나" data-tip-pos="top">
+                        <span class="tier" x-text="demoTierLabel()"></span>
+                        <span class="art" x-text="demoData.conclusion.persona.art || '👤'"></span>
+                        <span class="nm" x-text="demoData.conclusion.persona.full"></span>
+                        <span class="stats">
+                          <template x-for="s in demoStats()" x-bind:key="'st'+s[0]">
+                            <span class="r"><span x-text="s[0]"></span><span class="bar"><i x-bind:style="'width:' + s[1] + '%'"></i></span></span>
                           </template>
-                        </div>
-                        <div class="pcard-dots" x-show="demoData.conclusion.persona.second"><i class="on"></i><i></i></div>
-                      </div>
-                      <div style="flex:1;min-width:220px">
-                        <div class="text-sm text-body" x-text="demoData.conclusion.persona.desc"></div>
-                        <div class="text-xs text-muted" style="margin-top:6px" x-text="demoData.conclusion.persona.rule"></div>
-                        <div class="text-xs text-muted" style="margin-top:6px" x-show="demoData.conclusion.note" x-text="demoData.conclusion.note"></div>
-                      </div>
+                        </span>
+                      </button>
+                      <template x-if="demoData.conclusion.persona.second">
+                        <button type="button" class="pcard pcard--silver" x-bind:class="demoCardSel==='second' ? '' : 'peek'" x-on:click="demoCardSel='second'" data-tip="참고 원형 2순위 · 누르면 아래 근거가 이 카드 기준으로 바뀝니다" data-tip-pos="top">
+                          <span class="tier">참고 원형 2순위</span>
+                          <span class="art" x-text="demoPersonaArt(demoData.conclusion.persona.second)"></span>
+                          <span class="nm" x-text="(demoDef(demoData.conclusion.persona.second) || { full: demoData.conclusion.persona.second }).full"></span>
+                        </button>
+                      </template>
                     </div>
+                    <div class="pcard-dots" x-show="demoData.conclusion.persona.second"><i x-bind:class="demoCardSel==='main' ? 'on' : ''"></i><i x-bind:class="demoCardSel==='second' ? 'on' : ''"></i></div>
                   </div>
                   <div class="demo-obs"><div class="cap">판정 근거</div>
-                    <template x-for="(b, bi) in (demoData.conclusion.basis || [])" x-bind:key="'db'+bi">
+                    <template x-for="(b, bi) in demoBasis()" x-bind:key="'db'+bi+demoCardSel">
                       <div class="drow"><div class="k" x-text="b[0]"></div><div class="v text-sm text-body" x-text="b[1]"></div></div>
                     </template>
+                    <div class="text-xs text-muted" style="margin-top:6px" x-show="demoData.conclusion.note" x-text="demoData.conclusion.note"></div>
                     <div class="flex items-center gap-2" style="margin-top:8px">
                       <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoChainOpen = !demoChainOpen" x-text="demoChainOpen ? '행동별 근거 접기' : '행동별 근거 펼쳐보기 (행동 → 측정 → 기록)'"></button>
                       <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '참고 원형 접기' : '가까운 원형 보기(참고 8종)'"></button>

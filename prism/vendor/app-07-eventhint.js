@@ -270,7 +270,7 @@ window.PRISM_APP_PARTS.push(() => ({
       labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연·생성) | policy(정책)
       demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
       demoQ: '', demoQFilter: '',
-      demoVariant: 'b', demoBoardSel: '',          // 시안 선택(a 피드형·b 블록형·c 보드형·d 대화형) · 이벤트 계약은 동일
+      demoVariant: 'b', demoBoardSel: '', demoCardSel: 'main',          // 시안 선택(a 피드형·b 블록형·c 보드형·d 대화형) · 이벤트 계약은 동일
       demoSlug(s) { return (s || '').trim().replace(/[^0-9A-Za-z가-힣]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase(); },
       demoKo(c) { return (c && (c.cat_ko || c.cat)) || ''; },
       demoCats() {                                  // 시안 A 관심 칩: 피드 주제의 사용자 표기(최대 5)
@@ -334,6 +334,18 @@ window.PRISM_APP_PARTS.push(() => ({
         const p = this.demoData && this.demoData.conclusion && this.demoData.conclusion.persona;
         if (!p) return '';
         return p.provisional ? '잠정 판정' : ('신뢰도 ' + p.conf + ' · 1순위');
+      },
+      demoBasis() {                                 // 판정 근거: 선택한 카드 기준으로 판정 행만 교체
+        const c = this.demoData && this.demoData.conclusion;
+        if (!c) return [];
+        const rows = (c.basis || []).map(r => r.slice());
+        if (this.demoCardSel === 'second' && c.persona && c.persona.second) {
+          const d = this.demoDef(c.persona.second) || {};
+          for (let i = 0; i < rows.length; i++) {
+            if (rows[i][0] === '판정') rows[i] = ['판정', '참고 원형 2순위: ' + (d.full || c.persona.second) + (d.desc ? ' · ' + d.desc : '') + ' · 생성 페르소나가 이 원형과의 경계에 있습니다'];
+          }
+        }
+        return rows;
       },
       demoStats() {                                 // 카드 스탯 = 판정 근거(깊이 · 체류 · 폭)
         const l = (this.demoData && this.demoData.live) || {};
@@ -412,7 +424,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async _demoResetCore() {                      // 세션 리셋 공통부(이벤트·프롬프트 초기화 · 메모리 파일 유지)
         if (this.demoReading) { clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; }
         const d = await this.demoPost({ op: 'reset' });
-        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoFileSel = ''; this.demoBoardSel = ''; this.demoImpress(); this.loadMem(); }
+        if (d) { this.demoImpressed = false; this.demoChainOpen = false; this.demoDefsOpen = false; this.demoQ = ''; this.demoQFilter = ''; this.demoFileSel = ''; this.demoBoardSel = ''; this.demoCardSel = 'main'; this.demoImpress(); this.loadMem(); }
         return !!d;
       },
       async demoReset() {
