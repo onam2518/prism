@@ -270,6 +270,64 @@ window.PRISM_APP_PARTS.push(() => ({
       labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연·생성) | policy(정책)
       demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
       demoQ: '', demoQFilter: '',
+      demoVariant: 'b', demoBoardSel: '',          // 시안 선택(a 피드형·b 블록형·c 보드형·d 대화형) · 이벤트 계약은 동일
+      demoSlug(s) { return (s || '').trim().replace(/[^0-9A-Za-z가-힣]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase(); },
+      demoKo(c) { return (c && (c.cat_ko || c.cat)) || ''; },
+      demoCats() {                                  // 시안 A 관심 칩: 피드 주제의 사용자 표기(최대 5)
+        const seen = new Set(), out = [];
+        for (const c of ((this.demoData && this.demoData.contents) || [])) {
+          const k = this.demoKo(c);
+          if (k && !seen.has(k)) { seen.add(k); out.push(k); }
+          if (out.length >= 5) break;
+        }
+        return out;
+      },
+      demoCatTap(k) { this.demoQFilter = this.demoQFilter === k ? '' : k; },   // 칩 = 조용한 필터(검색과 달리 기록 없음)
+      demoLastQ() { const r = (this.demoData && this.demoData.prompts && this.demoData.prompts.recent) || []; return r.length ? r[0].q : ''; },
+      demoHist() { return ((this.demoData && this.demoData.prompts && this.demoData.prompts.recent) || []).slice(0, 3); },
+      demoRerun(q) { this.demoQ = q; this.demoSearch(); },
+      demoWhy(c) {                                  // 시안 D 카드 설명 한 줄: 근거 하나만 · 사용자 언어
+        if (this.demoQFilter) return "물어보신 '" + this.demoQFilter + "'";
+        const k = this.demoKo(c);
+        return k ? '자주 보는 ' + k : '새로 들어온 콘텐츠';
+      },
+      demoBlocks() {                                // 시안 B: 이유가 다른 블록 · 재료 없으면 블록 자체가 빠짐
+        const base = this.demoFeed(), used = new Set(), out = [];
+        const take = (arr, n) => { const r = []; for (const c of arr) { if (!used.has(c.idx)) { used.add(c.idx); r.push(c); if (r.length >= n) break; } } return r; };
+        const lastQ = this.demoLastQ();
+        if (lastQ) {
+          const toks = lastQ.split(/\s+/).filter(t => t.length >= 2);
+          const m = take(base.filter(c => toks.some(t => (c.title || '').includes(t) || (c.cat || '').includes(t) || (c.cat_ko || '').includes(t) || (c.intent || '').includes(t) || (c.intent_ko || '').includes(t))), 2);
+          if (m.length) out.push({ t: "물어보신 '" + lastQ + "' 소식이에요", s: '', items: m, num: false });
+        }
+        const cats = (this.demoData && this.demoData.live && this.demoData.live.cats) || [];
+        if (cats[0]) {
+          const m = take(base.filter(c => c.cat === cats[0].name), 2);
+          if (m.length) out.push({ t: '요즘 자주 보시는 ' + (this.demoKo(m[0]) || '주제'), s: '읽으신 기록으로 골랐어요', items: m, num: false });
+        }
+        if (cats[1]) {
+          const m = take(base.filter(c => c.cat === cats[1].name), 2);
+          if (m.length) out.push({ t: '관심 두시는 ' + (this.demoKo(m[0]) || '주제') + ' 소식', s: '', items: m, num: false });
+        }
+        const rest = take(base, 4);
+        if (rest.length) out.push({ t: '지금 많이 읽히는 콘텐츠', s: '취향과 상관없이 모두에게 같아요', items: rest, num: true });
+        return out;
+      },
+      demoBoards() {                                // 시안 C: 메모리 주제 파일 = 보드
+        const files = ((this.memData && this.memData.files) || []).filter(f => f.path.indexOf('topics/') === 0);
+        const cs = (this.demoData && this.demoData.contents) || [];
+        return files.map(f => {
+          const slug = f.path.slice(7).replace(/\.md$/, '');
+          const items = cs.filter(c => this.demoSlug(c.cat) === slug);
+          const label = items.length ? (this.demoKo(items[0]) || slug) : slug;
+          return { path: f.path, slug, label, desc: f.desc, items };
+        });
+      },
+      demoBoard() {
+        const bs = this.demoBoards();
+        if (!bs.length) return null;
+        return bs.find(b => b.path === this.demoBoardSel) || bs[0];
+      },
       demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false, demoDefsOpen: false,
       demoX: 10,                                    // 가상 체류 배속(화면에 명시)
       async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; this.demoImpress(); } } catch (e) {} },

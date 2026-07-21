@@ -13,33 +13,28 @@
               <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-bind:disabled="demoBusy" x-on:click="demoReset()">처음부터</button></div>
             <div class="panel-bd">
               <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
-                <li>왼쪽 <b>실제 서비스 화면</b>에서 콘텐츠를 찾고 · 읽고 · 반응하고 · 댓글을 남겨보세요. 그 행동이 오른쪽 <b>실시간 로그</b>로 즉시 쌓입니다.</li>
+                <li>왼쪽 폰 화면에서 콘텐츠를 찾고 · 읽고 · 반응하고 · 댓글을 남겨보세요. 그 행동이 오른쪽 <b>실시간 로그</b>로 즉시 쌓입니다. 상단 버튼으로 <b>시안 4종(피드형 · 블록형 · 보드형 · 대화형)</b>을 갈아끼우며 비교할 수 있고, 어느 시안이든 수집 · 측정은 동일합니다.</li>
                 <li>아래 <b>측정 결과 · 로직 · 결론</b> 영역이 행동할 때마다 실시간으로 다시 계산됩니다 · 별도 실행 버튼 없음.</li>
                 <li>검색어와 댓글은 직접 말한 것이라 메모리에 <code class="text-violet">[stated]</code>, 소비 관찰은 <code class="text-violet">[observed]</code> 로 기록됩니다.</li>
               </ul>
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <div class="selctl__lbl" style="margin-bottom:6px">실제 서비스 화면 <span class="text-muted" style="font-weight:400">· 카테고리 등 백단 메타는 노출하지 않습니다</span></div>
-                  <!-- 시연 화면은 디자인 교체 전제(anchor-scope 에 격리): 이벤트 계약(demoPost 의
-                       impression·search·click·read/skim·react·comment)만 지키면 화면을 통째로 갈아끼울 수 있다 -->
+                  <div class="flex items-center gap-2" style="margin-bottom:6px">
+                    <span class="selctl__lbl">실제 서비스 화면</span>
+                    <span class="ml-auto flex items-center gap-1">
+                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='a' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='a'" data-tip="시안 A · 한 줄기 피드 · 이유는 칩 하나" data-tip-pos="top">피드형</button>
+                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='b' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='b'" data-tip="시안 B · 블록 제목이 곧 추천 이유" data-tip-pos="top">블록형</button>
+                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='c' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='c'" data-tip="시안 C · 물어보면 생기는 주제 보드(메모리 연동)" data-tip-pos="top">보드형</button>
+                      <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='d' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoVariant='d'" data-tip="시안 D · 프롬프트 우선 · 카드마다 설명 한 줄" data-tip-pos="top">대화형</button>
+                    </span>
+                  </div>
+                  <!-- 시연 화면은 디자인 교체 전제(anchor-scope 격리): 이벤트 계약(impression·search·click·
+                       read/skim·react·comment)만 지키면 화면을 통째로 갈아끼울 수 있다 · 시안 4종이 그 증명 -->
                   <div class="anchor-scope">
-                    <div class="an-app">
+                    <div class="an-phone"><div class="an-screen">
+                      <div class="an-status tnum"><span>9:41</span><span>●●●</span></div>
                       <div class="an-appbar">MY 콘텐츠</div>
-                      <!-- 콘텐츠 찾기(프롬프트 폼) · 검색어 = 직접 선언 → Event(Search) + [stated] -->
-                      <div class="an-search" x-show="!demoReading">
-                        <div class="an-search-cap">원하는 콘텐츠를 찾아드려요 · 찾을수록 추천이 취향에 가까워집니다</div>
-                        <div class="an-search-box">
-                          <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
-                          <button type="button" class="an-search-go" x-bind:disabled="demoBusy" x-on:click="demoSearch()">찾기</button>
-                        </div>
-                        <div class="an-chips">
-                          <template x-for="s in ((demoData && demoData.suggests) || [])" x-bind:key="'sg'+s">
-                            <button type="button" class="an-chip" x-on:click="demoQ = s; demoSearch()" x-text="s"></button>
-                          </template>
-                        </div>
-                        <div class="an-search-note" x-show="demoQFilter"><span x-text="'\'' + demoQFilter + '\' 결과 ' + demoFeed().length + '건'"></span><button type="button" x-on:click="demoQFilter=''; demoQ=''">전체 보기</button></div>
-                      </div>
-                      <!-- 기사 뷰(플로우: 제목 · 리드 요약 · 본문 · 감정 반응 · 댓글 · 나가기) · 정독/훑기는 체류로 자동 판정 -->
+                      <!-- 기사 뷰(전 시안 공통 · 같은 이벤트 계약) -->
                       <div x-show="demoReading" x-cloak>
                         <div class="an-article">
                           <div class="an-art-src"><span x-text="demoReading ? (demoReading.c.service || '콘텐츠') : ''"></span><span class="ml-auto an-btn an-btn--neutral" style="min-height:32px;padding:6px 12px;font-size:14px;cursor:pointer" x-on:click="demoClose()">← 나가기</span></div>
@@ -66,20 +61,151 @@
                           </div>
                         </div>
                       </div>
-                      <!-- 피드: 다음 메인형 헤드라인 리스트(카드 1장 + 행 구분선 · 제목 한 줄 · 서비스명 메타) -->
-                      <div class="an-feed" x-show="!demoReading" style="max-height:430px">
-                        <div class="an-list" x-show="demoFeed().length">
-                          <template x-for="c in demoFeed()" x-bind:key="'dc'+c.idx">
-                            <button type="button" class="an-row" x-on:click="demoOpen(c)">
-                              <div class="an-row-t" x-text="c.title"></div>
-                              <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
-                            </button>
+
+                      <div x-show="!demoReading">
+                        <!-- 시안 A · 피드형: 한 줄기 카드 스택 · 이유는 칩 하나 · 칩 = 조용한 필터 -->
+                        <div x-show="demoVariant==='a'">
+                          <div class="an-search">
+                            <div class="an-search-cap">원하는 콘텐츠를 찾아드려요 · 찾을수록 추천이 취향에 가까워집니다</div>
+                            <div class="an-search-box">
+                              <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
+                              <button type="button" class="an-search-go" x-bind:disabled="demoBusy" x-on:click="demoSearch()">찾기</button>
+                            </div>
+                          </div>
+                          <div class="an-chipbar">
+                            <button type="button" class="an-chip2" x-bind:class="!demoQFilter ? 'on' : ''" x-on:click="demoQFilter=''; demoQ=''">전체</button>
+                            <template x-for="k in demoCats()" x-bind:key="'ac'+k">
+                              <button type="button" class="an-chip2" x-bind:class="demoQFilter===k ? 'on' : ''" x-on:click="demoCatTap(k)" x-text="k"></button>
+                            </template>
+                          </div>
+                          <div class="an-list" style="margin:10px 12px" x-show="demoFeed().length">
+                            <template x-for="c in demoFeed()" x-bind:key="'av'+c.idx">
+                              <button type="button" class="an-row" x-on:click="demoOpen(c)">
+                                <div class="an-hrow" style="display:flex;gap:10px;align-items:flex-start">
+                                  <span class="an-thumb2" style="width:46px;height:46px"></span>
+                                  <div style="flex:1;min-width:0">
+                                    <div class="an-row-t" style="white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden" x-text="c.title"></div>
+                                    <div class="an-row-m"><span x-show="demoKo(c)" style="background:var(--an-cat-news-bg);color:var(--an-cat-news-tx);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700" x-text="demoKo(c)"></span> <span x-text="(c.service || '콘텐츠') + ' · 방금'"></span></div>
+                                  </div>
+                                </div>
+                              </button>
+                            </template>
+                          </div>
+                        </div>
+
+                        <!-- 시안 B · 블록형: 이유가 다른 블록 · 재료 없으면 블록이 통째로 빠짐 -->
+                        <div x-show="demoVariant==='b'" x-cloak>
+                          <div class="an-search">
+                            <div class="an-search-box">
+                              <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
+                              <button type="button" class="an-search-go" x-bind:disabled="demoBusy" x-on:click="demoSearch()">찾기</button>
+                            </div>
+                          </div>
+                          <template x-for="(b, bi) in demoBlocks()" x-bind:key="'bk'+bi+b.t">
+                            <div>
+                              <div class="an-sect-h" x-text="b.t"></div>
+                              <div class="an-sect-sub" x-show="b.s" x-text="b.s"></div>
+                              <div class="an-list" style="margin:0 12px 4px">
+                                <template x-for="(c, ci) in b.items" x-bind:key="'bv'+c.idx">
+                                  <button type="button" class="an-row" x-on:click="demoOpen(c)">
+                                    <div class="an-numrow">
+                                      <span class="n" x-show="b.num" x-text="ci + 1"></span>
+                                      <div style="flex:1;min-width:0">
+                                        <div class="an-row-t" x-text="c.title"></div>
+                                        <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
+                                      </div>
+                                    </div>
+                                  </button>
+                                </template>
+                              </div>
+                            </div>
                           </template>
                         </div>
-                        <div x-show="demoData && !demoData.contents.length" style="padding:24px;text-align:center;color:var(--an-txsub);font-size:14px">먼저 [실행 · 추출]에서 콘텐츠를 추출하세요 · 여기 피드로 나타납니다</div>
-                        <div x-show="demoData && demoData.contents.length && !demoFeed().length" style="padding:24px;text-align:center;color:var(--an-txsub);font-size:14px">찾는 콘텐츠가 없습니다 · 다른 말로 찾아보세요</div>
+
+                        <!-- 시안 C · 보드형: 물어보면 보드가 생기고(검색 → 메모리 topics 파일) 그 파일이 곧 보드 -->
+                        <div x-show="demoVariant==='c'" x-cloak>
+                          <div class="an-chipbar" x-show="demoBoards().length">
+                            <template x-for="b in demoBoards()" x-bind:key="'bd'+b.path">
+                              <button type="button" class="an-chip2" x-bind:class="(demoBoard() && demoBoard().path===b.path) ? 'on' : ''" x-on:click="demoBoardSel=b.path" x-text="b.label + (b.items.length ? ' ' + b.items.length : '')"></button>
+                            </template>
+                          </div>
+                          <div class="an-search">
+                            <div class="an-search-cap">물어보면 그 주제의 보드가 생기고, 다음부터 새 소식이 거기 쌓여요</div>
+                            <div class="an-search-box">
+                              <input class="an-search-in" x-model="demoQ" placeholder="무엇이 궁금하세요?" x-on:keydown.enter="demoSearch()">
+                              <button type="button" class="an-search-go" x-bind:disabled="demoBusy" x-on:click="demoSearch()">만들기</button>
+                            </div>
+                          </div>
+                          <template x-if="demoBoard()">
+                            <div>
+                              <div class="an-sect-h" x-text="demoBoard().label"></div>
+                              <div class="an-sect-sub" x-text="'내 기록으로 만든 보드 · 새 소식 ' + demoBoard().items.length + '건'"></div>
+                              <div class="an-list" style="margin:0 12px" x-show="demoBoard().items.length">
+                                <div class="an-row" style="cursor:default">
+                                  <div class="an-row-m" style="margin:0 0 5px;font-weight:700;color:var(--an-tx1);font-size:13px">오늘 이 보드에서 알아둘 것</div>
+                                  <template x-for="(c, ci) in demoBoard().items.slice(0, 3)" x-bind:key="'br'+c.idx">
+                                    <div class="an-row-m" style="margin-top:3px" x-text="(ci + 1) + '. ' + c.title"></div>
+                                  </template>
+                                </div>
+                                <template x-for="c in demoBoard().items" x-bind:key="'cv'+c.idx">
+                                  <button type="button" class="an-row" x-on:click="demoOpen(c)">
+                                    <div class="an-row-t" x-text="c.title"></div>
+                                    <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
+                                  </button>
+                                </template>
+                              </div>
+                              <div x-show="!demoBoard().items.length" style="padding:20px;text-align:center;color:var(--an-txsub);font-size:13px">이 보드에 새 콘텐츠가 들어오면 여기 쌓여요</div>
+                            </div>
+                          </template>
+                          <div x-show="!demoBoards().length" style="padding:28px 20px;text-align:center;color:var(--an-txsub);font-size:14px">아직 보드가 없어요<br>위에 물어보면 첫 보드가 생깁니다</div>
+                        </div>
+
+                        <!-- 시안 D · 대화형: 프롬프트가 주인공 · 카드마다 설명 한 줄 · 무결과는 솔직하게 -->
+                        <div x-show="demoVariant==='d'" x-cloak>
+                          <div class="an-ask">
+                            <input x-model="demoQ" placeholder="어떤 콘텐츠가 보고 싶으세요?" x-on:keydown.enter="demoSearch()">
+                            <button type="button" class="send" x-bind:disabled="demoBusy" x-on:click="demoSearch()">↑</button>
+                          </div>
+                          <div class="an-chipbar">
+                            <template x-for="s in ((demoData && demoData.suggests) || [])" x-bind:key="'dg'+s">
+                              <button type="button" class="an-chip2" x-on:click="demoQ = s; demoSearch()" x-text="s"></button>
+                            </template>
+                          </div>
+                          <div class="an-parse" x-show="demoQFilter">
+                            <span>이렇게 찾았어요</span><span class="tg" x-text="demoQFilter"></span><span class="tg tnum" x-text="demoFeed().length + '건'"></span>
+                            <button type="button" style="margin-left:auto;border:0;background:none;color:var(--an-primary);font-weight:700;font-size:12px;cursor:pointer;font-family:inherit" x-on:click="demoQFilter=''; demoQ=''">전체 보기</button>
+                          </div>
+                          <div class="an-list" style="margin:10px 12px" x-show="demoFeed().length">
+                            <template x-for="c in demoFeed()" x-bind:key="'dv'+c.idx">
+                              <button type="button" class="an-row" x-on:click="demoOpen(c)">
+                                <div class="an-row-t" x-text="c.title"></div>
+                                <div class="an-why" x-text="demoWhy(c)"></div>
+                                <div class="an-row-m" x-text="(c.service || '콘텐츠') + ' · 방금'"></div>
+                              </button>
+                            </template>
+                          </div>
+                          <div class="an-gap" x-show="demoData && demoData.contents.length && demoQFilter && !demoFeed().length">
+                            <b x-text="'\'' + demoQFilter + '\' 콘텐츠는 지금 없어요'"></b>
+                            <div class="d">이 요청은 기억해 뒀어요 · 들어오면 바로 보여드릴게요</div>
+                            <div style="margin-top:9px"><span class="an-btn an-btn--primary" style="min-height:34px;font-size:13px">들어오면 알려주기</span></div>
+                          </div>
+                          <div x-show="demoHist().length">
+                            <div class="an-sect-h" style="font-size:14px">지난번에 물어보신 것</div>
+                            <div class="an-list" style="margin:0 12px 10px">
+                              <template x-for="(r, ri) in demoHist()" x-bind:key="'hs'+ri+r.q">
+                                <button type="button" class="an-row" x-on:click="demoRerun(r.q)">
+                                  <div class="an-row-t" x-text="r.q"></div>
+                                  <div class="an-row-m"><span x-text="r.zero ? '그때는 없었어요' : ('결과 ' + r.results_n + '건')"></span><span style="color:var(--an-primary);font-weight:700;margin-left:auto">다시 보기</span></div>
+                                </button>
+                              </template>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div x-show="demoData && !demoData.contents.length" style="padding:26px 20px;text-align:center;color:var(--an-txsub);font-size:14px">먼저 [실행 · 추출]에서 콘텐츠를 추출하세요 · 여기 피드로 나타납니다</div>
+                        <div x-show="demoVariant!=='d' && demoData && demoData.contents.length && demoQFilter && !demoFeed().length" style="padding:22px 20px;text-align:center;color:var(--an-txsub);font-size:13px">찾는 콘텐츠가 없어요 · <button type="button" style="border:0;background:none;color:var(--an-primary);font-weight:700;cursor:pointer;font-family:inherit;font-size:13px" x-on:click="demoQFilter=''; demoQ=''">전체 보기</button></div>
                       </div>
-                    </div>
+                    </div></div>
                   </div>
                 </div>
                 <div>

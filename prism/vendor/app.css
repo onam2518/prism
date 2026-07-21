@@ -1280,6 +1280,34 @@
   .an-btn--primary{background:var(--an-primary);color:#ffffff}                /* Solid·Primary · 화면당 1개 */
   .an-btn--neutral{background:var(--an-neutral);border:1px solid var(--an-btn-bd)}  /* Outline·Neutral */
   .an-btn--ghost{border:1px solid var(--an-btn-bd)}                           /* Outline·Ghost */
+  /* ── 폰 목업 프레임: 시연 화면을 실기기처럼 · 내부 스크롤 ── */
+  .an-phone{max-width:335px;margin:0 auto;background:#17181c;border-radius:36px;padding:9px;
+    box-shadow:0 10px 34px rgba(0,0,0,.22)}
+  .an-screen{background:var(--an-base);border-radius:28px;height:625px;overflow:auto;position:relative}
+  .an-status{display:flex;justify-content:space-between;align-items:center;padding:9px 20px 0;
+    font-size:11px;font-weight:700;color:var(--an-tx1)}
+  /* ── 시안 공통 컴포넌트 ── */
+  .an-sect-h{padding:14px 16px 4px;font-size:16px;font-weight:700;line-height:1.3;color:var(--an-tx1)}
+  .an-sect-sub{padding:0 16px 8px;font-size:12px;font-weight:400;color:var(--an-txsub)}
+  .an-chipbar{display:flex;gap:6px;overflow-x:auto;padding:8px 12px 2px;scrollbar-width:none}
+  .an-chip2{flex:none;background:var(--an-surface);border:1px solid var(--an-btn-bd);border-radius:100px;
+    padding:7px 14px;font-size:13px;font-weight:400;color:var(--an-tx2);cursor:pointer;font-family:inherit}
+  .an-chip2.on{background:#303233;border-color:#303233;color:#ffffff;font-weight:700}
+  .an-thumb2{background:var(--an-neutral);opacity:.45;border-radius:10px;flex:none}
+  .an-why{font-size:12px;font-weight:600;color:var(--an-primary);margin-top:4px}
+  .an-numrow{display:flex;gap:10px;align-items:flex-start}
+  .an-numrow .n{color:var(--an-primary);font-weight:800;font-size:15px;width:18px;flex:none}
+  .an-ask{margin:10px 12px 2px;background:var(--an-surface);border:1.5px solid var(--an-primary);
+    border-radius:16px;padding:12px 46px 12px 14px;position:relative}
+  .an-ask input{width:100%;border:0;background:transparent;outline:none;font-family:inherit;
+    font-size:15px;color:var(--an-tx1)}
+  .an-ask .send{position:absolute;right:9px;bottom:8px;width:30px;height:30px;border-radius:50%;
+    background:var(--an-primary);color:#ffffff;border:0;font-size:15px;cursor:pointer}
+  .an-parse{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:8px 14px 0;font-size:12px;color:var(--an-txsub)}
+  .an-parse .tg{background:var(--an-hover);border-radius:6px;padding:3px 8px;font-size:11.5px;color:var(--an-txq)}
+  .an-gap{margin:10px 12px;background:var(--an-surface);border-radius:14px;box-shadow:var(--an-shadow-low);padding:13px 15px}
+  .an-gap b{font-size:14px;color:var(--an-tx1)}
+  .an-gap .d{font-size:12px;color:var(--an-txsub);margin-top:3px}
 
 /* ── 소비 시연(실험실) 관측 패널: 스텝바 · 실시간 3단 · 게이지 · 인과 카드 (프리즘 토큰) ── */
   .demo-obs{border:1px solid var(--ds-hairline);border-radius:10px;background:var(--ds-surface-white);
