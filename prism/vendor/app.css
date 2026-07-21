@@ -387,6 +387,17 @@
   .histrow__note{margin-left:auto;flex:none;font-size:11px;color:var(--ds-primary);cursor:help;text-decoration:underline dotted}
   .dve__verdict{margin-top:auto;padding-top:var(--ds-space-4);border-top:1px solid var(--ds-divider-section)}
   @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}
+  /* 읽기 전용 콘텐츠 비교 뷰: 정책 팔레트 매칭 목록에서 상세가 이미 열려 있으면 옆에 나란히(검수 없이 내용만) */
+  .cmpview{background:var(--ds-layer-popup);border-radius:var(--ds-radius-xl);box-shadow:var(--ds-shadow-high);width:min(520px,42vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+  .cmpview__hd{display:flex;align-items:center;justify-content:space-between;padding:var(--ds-space-4) var(--ds-space-5);border-bottom:1px solid var(--ds-divider-section)}
+  .cmpview__hd b{font-size:15px;color:var(--ds-ink)}
+  .cmpview__bd{padding:22px 24px;overflow:auto;display:flex;flex-direction:column;gap:var(--ds-space-4)}
+  .cmpview__src{margin-left:6px;font-size:12px;font-weight:600;color:var(--ds-primary);text-decoration:none}
+  /* 나란히(스플릿): 검수 상세 + 비교 뷰 동시 표시 시 폭을 나눠 겹치지 않게 */
+  .ds-dialog-backdrop.is-split{gap:var(--ds-space-4)}
+  .ds-dialog-backdrop.is-split .detailview,.ds-dialog-backdrop.is-split .detailview--wide{width:min(760px,54vw)}
+  .ds-dialog-backdrop.is-split .cmpview{width:min(480px,40vw)}
+  @media (max-width:900px){.ds-dialog-backdrop.is-split{flex-direction:column;gap:var(--ds-space-2)}.ds-dialog-backdrop.is-split .detailview,.ds-dialog-backdrop.is-split .detailview--wide,.ds-dialog-backdrop.is-split .cmpview{width:94vw;max-height:44vh}}
   .panel-hd b{color:var(--ds-ink);font-size:16px;font-weight:700;letter-spacing:-.01em}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
   .panel-bd{padding:var(--ds-pad-inset,16px) var(--ds-pad-panel-x,20px) var(--ds-pad-panel-x,20px)}

@@ -417,8 +417,32 @@
       </div>
     </div>
   </div>
-  <div class="ds-dialog-backdrop" x-show="detailOpen" x-cloak x-on:mousedown.self="detailOpen=false" style="z-index:74">
-    <div class="detailview" x-bind:class="dvcView()==='web' ? 'detailview--wide' : ''" role="dialog" aria-modal="true" aria-label="콘텐츠 상세">
+  <div class="ds-dialog-backdrop" x-show="detailOpen || cmpOpen" x-cloak x-on:mousedown.self="detailOpen=false; cmpOpen=false" style="z-index:74" x-bind:class="(detailOpen && cmpOpen) ? 'is-split' : ''">
+    <!-- 읽기 전용 비교 뷰(좌): 매칭 목록에서 상세가 이미 열려 있을 때 옆에 나란히 · 검수 없이 내용만 확인 -->
+    <div class="cmpview" x-show="cmpOpen" x-cloak role="dialog" aria-label="콘텐츠 보기(읽기 전용)">
+      <div class="cmpview__hd">
+        <span style="display:flex;align-items:center;gap:8px"><b>콘텐츠 보기</b><span class="ds-badge ds-badge--neutral">읽기 전용</span></span>
+        <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-on:click="cmpOpen=false" data-tip="비교 닫기" data-tip-pos="bottom" aria-label="비교 닫기"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="cmpview__bd">
+        <div class="dvc__service" x-text="cmp && (cmp.service || '·')"></div>
+        <h2 class="dvc__title" x-text="cmp && (cmp.title || '(제목 없음)')"></h2>
+        <div class="dvc__subtitle" x-show="cmp && cmp.subtitle" x-text="cmp && cmp.subtitle"></div>
+        <div x-show="cmp && (cmp.grade || cmp.model)" class="flex flex-wrap items-center gap-1.5">
+          <span class="ds-badge" x-show="cmp && cmp.grade" x-bind:class="cmp && cmp.grade==='G'?'ds-badge--success':(cmp && cmp.grade==='R'?'ds-badge--error':'ds-badge--reason')"><span class="ds-badge__dot"></span><span x-text="cmp && (cmp.grade==='G'?'유통 가능 · G':(cmp.grade==='R'?'차단 · R':'판정 보류'))"></span></span>
+          <span class="ds-badge ds-badge--intent" x-show="cmp && cmp.model" x-text="cmp ? cmp.model : ''"></span>
+        </div>
+        <div class="dve__sec" x-show="cmp && cmp.summary"><div class="dve__lbl">리드문</div><div class="dve__lead" x-text="cmp && cmp.summary"></div></div>
+        <div class="dve__sec" x-show="cmp && cmp.entities && cmp.entities.length"><div class="dve__lbl">엔티티</div><div class="flex flex-wrap gap-1"><template x-for="e in (cmp?cmp.entities:[])" x-bind:key="'ce'+e"><span class="ds-badge ds-badge--neutral" x-text="e"></span></template></div></div>
+        <div class="dve__sec" x-show="cmp && cmp.intent && cmp.intent.length"><div class="dve__lbl">인텐트</div><div class="flex flex-wrap gap-1"><template x-for="e in (cmp?cmp.intent:[])" x-bind:key="'ci'+e"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', e)" data-tip-pos="top" x-text="e"></span></template></div></div>
+        <div class="dve__sec" x-show="cmp && cmp.category && cmp.category.length"><div class="dve__lbl">카테고리</div><div class="flex flex-wrap gap-1"><template x-for="e in (cmp?cmp.category:[])" x-bind:key="'cc'+e"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', e)" data-tip-pos="top" x-text="catKo(e)"></span></template></div></div>
+        <div class="dve__sec"><div class="dve__lbl">본문 <a class="cmpview__src" x-show="cmp && cmp.url" x-bind:href="cmp && cmp.url" target="_blank" rel="noopener noreferrer">원문 열기 ↗</a></div>
+          <div class="dvc__bodytext" x-show="cmp && cmp.body" style="margin-top:0" x-text="cmp && cmp.body"></div>
+          <div class="dvc__note" x-show="cmp && !cmp.body">전체 본문은 저장되지 않습니다 · 리드문·메타 기준으로 확인하세요</div>
+        </div>
+      </div>
+    </div>
+    <div class="detailview" x-show="detailOpen" x-bind:class="dvcView()==='web' ? 'detailview--wide' : ''" role="dialog" aria-modal="true" aria-label="콘텐츠 상세">
       <div class="detailview__hd">
         <span style="display:flex;align-items:center;gap:8px">
           <button type="button" class="ds-iconbtn ds-iconbtn--sm" x-show="detailBack" x-on:click="detailOpen=false; drillOpen=true" data-tip="목록으로" data-tip-pos="bottom" aria-label="목록으로 뒤로가기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
