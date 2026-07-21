@@ -94,6 +94,7 @@ build_usermeta_template_csv = UMO.build_usermeta_template_csv
 backfill_urls = IG.backfill_urls
 _validate_public_url = IG._validate_public_url
 _fetch_records = IG._fetch_records
+check_source_url = IG.check_source_url
 ingest_run_source = IG.ingest_run_source
 _fmt_dur = IG._fmt_dur
 _job_begin = IG._job_begin
@@ -475,6 +476,7 @@ def _detail_row(r: dict) -> dict:
         "category": im.get("content_category", []) or [],
         "grade": qm.get("finalGrade", "") or r.get("grade", ""),
         "reasons": qm.get("reasons", []) or [],
+        "source_status": ref.get("source_status") or {},   # 원문 소실 신고 플래그(게시판 #10)
     }
 
 
@@ -1707,6 +1709,32 @@ def _p_ops_hold(h, body):
     if ok:
         _agg_bump()                                  # 목록·집계 캐시 무효화(즉시 반영)
     return {"ok": ok}
+
+
+@_post_route("/source-status", gate="login")         # 원문 소실 신고 토글(게시판 #10 · A안) · 검수자 신고라 admin 아닌 login
+def _p_source_status(h, body):
+    data = json.loads(body or b"{}")
+    ch = (data.get("hash") or "").strip()
+    by = h._bearer_uid() or (data.get("reviewer") or "").strip()   # supabase = uid(사칭 불가) · 로컬 = 표시명
+    state = "gone" if data.get("on") else ""
+    st = get_store()
+    ok = bool(ch and st and hasattr(st, "set_source_status")
+              and st.set_source_status(ch, state, by, team=h._req_team()))
+    if ok:
+        _agg_bump()                                  # 목록·집계 캐시 무효화(즉시 반영)
+    return {"ok": ok, "state": state}
+
+
+@_post_route("/check-source", gate="login")          # 온디맨드 원문 상태 확인(게시판 #10 · B안 축소형) · 판정만, 확정은 검수자 버튼
+def _p_check_source(h, body):
+    # 외부 GET 을 유발하는 라우트라 남용 억제: IP당 최소간격 1s · 분당 12회(초과 429)
+    if rate_limited("chksrc:" + (h.client_address[0] if h.client_address else "?"),
+                    min_interval=1.0, per_min=12):
+        h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                ensure_ascii=False), _JSON)
+        return None
+    data = json.loads(body or b"{}")
+    return check_source_url((data.get("url") or "").strip())
 
 
 @_post_route("/badges", gate="login")                # 배지 획득 영속(기기 간 기준선) · 임의 uid 기록 차단

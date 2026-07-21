@@ -485,7 +485,13 @@
               <div class="dvc__webbox">
                 <iframe class="dvc__web" x-bind:src="detail && detail.url" x-bind:style="'transform:scale('+(dvcZoom/100)+');width:'+(10000/dvcZoom)+'%;height:'+(10000/dvcZoom)+'%'" sandbox="allow-scripts allow-popups allow-forms" referrerpolicy="no-referrer" loading="lazy" title="원문 페이지"></iframe>
               </div>
-              <div class="dvc__note" style="margin-top:var(--ds-space-2)">화면이 비어 보이면 이 사이트가 내장 표시를 차단한 것입니다 · <a x-bind:href="detail && detail.url" target="_blank" rel="noopener noreferrer" style="color:var(--ds-primary);font-weight:600">원문 바로가기 ↗</a>로 새 탭에서 확인하세요</div>
+              <div class="dvc__note" style="margin-top:var(--ds-space-2)">화면이 비어 보이면 이 사이트가 내장 표시를 차단한 것입니다 · <a x-bind:href="detail && detail.url" target="_blank" rel="noopener noreferrer" style="color:var(--ds-primary);font-weight:600">원문 바로가기 ↗</a>로 새 탭에서 확인하세요 · 페이지가 떠도 <b>"권한이 없거나 존재하지 않는 글"</b> 같은 안내문이면 원문이 삭제·비공개된 것(원문 소실)입니다</div>
+              <!-- 원문 소실 신고(게시판 #10): 상태 확인은 서버 판정 참고용 · 확정은 검수자 토글 -->
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:var(--ds-space-2)">
+                <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-bind:disabled="srcCheckBusy" x-on:click="checkSource(detail)" data-tip="서버가 원문 주소를 대신 열어 상태를 확인합니다 · 소실 추정·일시 오류·정상 응답으로 판정" data-tip-pos="top" x-text="srcCheckBusy ? '확인 중…' : '원문 상태 확인'"></button>
+                <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="srcGone(detail) ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="toggleSourceGone(detail)" x-text="srcGone(detail) ? '✓ 원문 소실 표시 중 · 해제' : '원문 확인 불가 표시'" data-tip="원문이 삭제·비공개라 대조 확인이 불가한 콘텐츠를 표시 · 등급·학습에 영향 없이 목록에 배지로 보입니다" data-tip-pos="top"></button>
+                <span class="text-xs" x-show="srcCheckMsg" x-bind:style="srcCheckMsg.indexOf('소실') >= 0 ? 'color:var(--ds-error)' : 'color:var(--ds-muted)'" x-text="srcCheckMsg"></span>
+              </div>
             </div>
           </template>
         </div>
