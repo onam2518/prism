@@ -524,7 +524,7 @@ def _conclusion(events, catalog, team=None) -> dict:
             chain.append({"t": e.get("t", ""), "act": '댓글 · "' + (e.get("text") or "") + '"',
                           "measure": "호응 가중 +" + str(COMMENT_W) + " · 직접 발화 → [stated] 기록",
                           "file": ("/" + e["path"]) if e.get("path") else "측정만"})
-    top_cat = live["cats"][0]["name"] if live["cats"] else "기타"
+    top_cat = _cat_ko(live["cats"][0]["name"]) if live["cats"] else "기타"
     top_int = live["ints"][0][0] if live.get("ints") else "기타"
     depth = live["form"].get("깊이", "·")
     scenarios = [
@@ -539,7 +539,17 @@ def _conclusion(events, catalog, team=None) -> dict:
     resp_line = ("반응 " + str(resp.get("reacts", 0)) + "건(긍정 " + str(resp.get("pos", 0)) + " · 부정 "
                  + str(resp.get("neg", 0)) + ") · 댓글 " + str(resp.get("comments", 0)) + "건 · 선호 가중 +"
                  + str(resp.get("boost", 0)))
-    return {"persona": {"name": gen["name"], "full": gen["name"], "desc": gen["desc"],
+    resp0 = live.get("resp") or {}
+    tldr = [
+        top_cat + " 중심으로 " + str(len(viewed)) + "건을 소비했습니다 · 반응 "
+        + str(resp0.get("reacts", 0)) + "건 · 댓글 " + str(resp0.get("comments", 0)) + "건",
+        "「" + gen["name"] + "」 으로 판정했습니다"
+        + (" · 잠정(소비 5건 미만)" if hit.get("provisional") else " · 신뢰도 " + hit["conf"]),
+        scenarios[0]["title"] + ": " + scenarios[0]["desc"]]
+    kpi = {"consumed": len(viewed), "boost": resp0.get("boost", 0),
+           "depth": depth, "breadth": live["breadth"]}
+    return {"tldr": tldr, "kpi": kpi,
+            "persona": {"name": gen["name"], "full": gen["name"], "desc": gen["desc"],
                         "art": gen["art"], "conf": hit["conf"],
                         "rule": "소비 신호로 방금 생성 · 가까운 원형: " + hit["name"]
                                 + ((" · 2순위 " + hit["second"]) if hit.get("second") else "")

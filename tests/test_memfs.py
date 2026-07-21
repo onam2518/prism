@@ -281,6 +281,18 @@ class TestDemoSession(unittest.TestCase):
         self.assertEqual(d3["live"]["resp"]["emos"].get("화나요"), None)
         self.assertEqual(d3["live"]["resp"]["emos"]["좋아요"], 2)
 
+    def test_conclusion_report_tldr_kpi_korean(self):
+        MF.demo_ops({"op": "event", "event": "click", "idx": 0}, team="t1")
+        d = MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
+        c = d["conclusion"]
+        self.assertEqual(len(c["tldr"]), 3)               # 세 줄 요약
+        self.assertIn("판정했습니다", c["tldr"][1])
+        self.assertEqual(c["kpi"]["consumed"], 1)
+        self.assertIn("depth", c["kpi"])
+        for s in c["scenarios"]:                          # 활용 문구에 영문 카테고리 비노출
+            self.assertNotIn("Business and Finance", s["desc"])
+        self.assertIn(MF._cat_ko("Business and Finance"), c["scenarios"][1]["desc"])
+
     def test_react_comment_in_conclusion_chain(self):
         MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
         MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "좋아요"}, team="t1")
