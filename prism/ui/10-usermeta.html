@@ -23,7 +23,10 @@
                   <div class="flex items-center gap-2" style="margin:10px 0 12px;min-height:32px">
                     <span class="selctl__lbl">서비스 화면 예시</span>
                     <span class="ml-auto flex items-center gap-1">
-                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-right:8px" x-on:click="demoTheme = demoTheme==='dark' ? 'light' : 'dark'" data-tip="시연 화면만 테마 전환 · 수집·측정과 무관" data-tip-pos="top" x-text="demoTheme==='dark' ? '라이트' : '다크'"></button>
+                      <button type="button" class="ds-iconbtn ds-iconbtn--bordered" style="margin-right:8px" x-on:click="demoTheme = demoTheme==='dark' ? 'light' : 'dark'" x-bind:data-tip="demoTheme==='dark' ? '시연 화면 라이트 모드' : '시연 화면 다크 모드'" data-tip-pos="top" aria-label="시연 화면 테마 전환">
+                        <svg x-show="demoTheme==='dark'" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                        <svg x-show="demoTheme!=='dark'" x-cloak width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                      </button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='a' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('a')" data-tip="시안 A · 한 줄기 피드 · 이유는 칩 하나" data-tip-pos="top">피드형</button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='b' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('b')" data-tip="시안 B · 블록 제목이 곧 추천 이유" data-tip-pos="top">블록형</button>
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="demoVariant==='c' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="demoSwitch('c')" data-tip="시안 C · 물어보면 생기는 주제 보드(메모리 연동)" data-tip-pos="top">보드형</button>
