@@ -1285,7 +1285,7 @@
     --an-shadow-low:none;
     --an-cat-news-tx:#6db2ff;--an-cat-sports-tx:#8b9cff;--an-cat-ent-tx:#c08bff;--an-cat-int-tx:#ffb35c}
   /* 시연 테마 토글(an-mode-light): 폰이 기본 다크 토큰을 자체 정의하므로 라이트도 폰 레벨에서 스왑
-     · 앱 테마 · OS 설정과 무관 · 아래 3건은 다크 전제 하드코딩의 라이트 대응 */
+     · 앱 테마 · OS 설정과 무관 · 아래는 다크 전제 하드코딩(활성 칩 · 호버 · 댓글 입력 · 리드 바)의 라이트 대응 */
   .an-mode-light .an-phone{
     --an-base:#f4f5f7;--an-surface:#ffffff;--an-tx1:#000000;--an-tx2:rgba(0,0,0,.88);
     --an-txq:rgba(0,0,0,.64);--an-txsub:rgba(0,0,0,.48);
@@ -1296,6 +1296,9 @@
   .an-mode-light .an-chip2.on{background:#101113;border-color:#101113;color:#ffffff}
   .an-mode-light .an-search-go--icon:hover{background:rgba(0,0,0,.05)}
   .an-mode-light .an-ask .send:hover{background:rgba(0,0,0,.06)}
+  .an-mode-light .an-cmt-in{background:var(--an-base)}
+  .an-mode-light .an-cmt-in::placeholder{color:rgba(0,0,0,.42)}
+  .an-mode-light .an-lead{border-left-color:rgba(0,0,0,.24)}
   .an-screen{background:var(--an-base);border-radius:28px;height:660px;overflow:auto;position:relative;padding-bottom:26px}
   .an-status{display:flex;justify-content:space-between;align-items:center;padding:12px 22px 0;
     font-size:11px;font-weight:700;color:var(--an-tx1)}
