@@ -65,8 +65,7 @@ class TestMemfs(unittest.TestCase):
         d = MF.memory_data(team="t1")
         self.assertEqual(d["files"], [])
         self.assertIn("비어 있습니다", d["injection"])
-        self.assertEqual(len(d["contents"]), 2)          # R 등급 제외
-        self.assertEqual(d["contents"][0]["cat"], "Business and Finance")
+        self.assertNotIn("contents", d)                  # 소비 카탈로그는 시연(demo) 소관
 
     # ── 전체 쓰기(생성 · 버전 토큰) ──
     def test_write_and_version_conflict(self):
@@ -148,6 +147,11 @@ class TestDemoSession(unittest.TestCase):
         self.assertEqual(d["live"]["cats"], [])
         self.assertNotIn("conclusion", d)                # 소비 전에는 결론 없음
         self.assertTrue(d["suggests"])                   # 추천 유도 문구
+        for s in d["suggests"]:                          # 사용자 언어만 · 내부 카테고리명 비노출
+            self.assertNotIn("News and Politics", s)
+            self.assertNotIn("Business", s)
+        self.assertIn("경제·재테크 몰아보기", d["suggests"])
+        self.assertEqual(d["contents"][0]["cat_ko"], "경제·재테크")
 
     def test_impression_batch_dedup(self):
         MF.demo_ops({"op": "event", "event": "impression", "idxs": [0, 1, 2]}, team="t1")
@@ -189,6 +193,11 @@ class TestDemoSession(unittest.TestCase):
         self.assertFalse(c["persona"]["provisional"])     # 5건 이상 → 본판정
         self.assertEqual(d["session"]["consumed"], 5)
         self.assertEqual(len([x for x in c["chain"] if "클릭" in x["act"]]), 5)
+
+    def test_search_understands_user_language_chip(self):
+        d = MF.demo_ops({"op": "event", "event": "search", "query": "경제·재테크 몰아보기"}, team="t1")
+        self.assertNotIn("error", d)
+        self.assertIn("business-and-finance", MF.memory_data(team="t1")["files"][0]["path"])
 
     def test_search_records_stated_and_filters_topic(self):
         d = MF.demo_ops({"op": "event", "event": "search", "query": "반도체 심층 몰아보기"}, team="t1")

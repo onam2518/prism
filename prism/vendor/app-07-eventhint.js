@@ -320,7 +320,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!q) return cs;
         const toks = q.split(/\s+/).filter(t => t.length >= 2);
         if (!toks.length) return cs;
-        return cs.filter(c => toks.some(t => (c.title || '').includes(t) || (c.summary || '').includes(t) || (c.cat || '').includes(t) || (c.intent || '').includes(t)));
+        return cs.filter(c => toks.some(t => (c.title || '').includes(t) || (c.summary || '').includes(t) || (c.cat || '').includes(t) || (c.intent || '').includes(t) || (c.cat_ko || '').includes(t) || (c.intent_ko || '').includes(t)));
       },
       async demoSearch() {                          // 콘텐츠 찾기 · Event(Search)+ViewSearchResults · 검색어는 [stated]
         const q = (this.demoQ || '').trim();

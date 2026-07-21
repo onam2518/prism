@@ -20,9 +20,11 @@
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <div class="selctl__lbl" style="margin-bottom:6px">실제 서비스 화면 <span class="text-muted" style="font-weight:400">· 카테고리 등 백단 메타는 노출하지 않습니다</span></div>
+                  <!-- 시연 화면은 디자인 교체 전제(anchor-scope 에 격리): 이벤트 계약(demoPost 의
+                       impression·search·click·read/skim·react·comment)만 지키면 화면을 통째로 갈아끼울 수 있다 -->
                   <div class="anchor-scope">
                     <div class="an-app">
-                      <div class="an-appbar">MY 콘텐츠<span class="an-live">● 수집 중</span></div>
+                      <div class="an-appbar">MY 콘텐츠</div>
                       <!-- 콘텐츠 찾기(프롬프트 폼) · 검색어 = 직접 선언 → Event(Search) + [stated] -->
                       <div class="an-search" x-show="!demoReading">
                         <div class="an-search-cap">원하는 콘텐츠를 찾아드려요 · 찾을수록 추천이 취향에 가까워집니다</div>

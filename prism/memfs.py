@@ -3,8 +3,11 @@
 설계 실험을 비개발자가 화면에서 직접 구동하는 백엔드.
 - 시연 과정(STEP 1~4): 실서비스형 피드 소비 → 실시간 측정 → 결론(페르소나 판정) → 활용
 - 생성 과정: 소비가 그 턴에 /topics/<주제>.md 로 자동 기록 + 수동 조작(전체 쓰기·추가·삭제) + 주입
-저장은 store 의 report KV(usermeta_memory) 를 재사용한다 · 실제 파일시스템을 쓰지 않아
-배포·테스트 격리가 안전하고, 파일당 크기·파일 수 제한을 서버가 강제한다.
+저장(report KV · 팀 스코프 · 실제 파일시스템 미사용):
+- usermeta_memory = {"files": {경로: {content, ver, updated}}}
+- usermeta_demo   = {"events": [{idx, event, dwell, scroll, t, title, cat, intent, path, emo?, text?}],
+                     "last_logic": str}  · 결론·측정은 저장하지 않고 매 요청 실계산(실시간)
+파일당 크기·파일 수 제한은 서버가 강제한다.
 
 컴포지션: 스토어·결과 행은 serve 가 `_SV` 로 주입(umops 관례).
 """
@@ -102,11 +105,6 @@ def _catalog(team=None, limit: int = 30) -> list:
     return out
 
 
-def demo_contents(team=None, limit: int = 30) -> list:
-    return [{k: c[k] for k in ("idx", "title", "summary", "cat", "intent")}
-            for c in _catalog(team, limit)]
-
-
 def memory_data(team=None) -> dict:
     files = _files(team)
     items = []
@@ -117,7 +115,6 @@ def memory_data(team=None) -> dict:
                       "bytes": len(body.encode("utf-8")), "content": body,
                       "updated": f.get("updated", "")})
     return {"files": items, "injection": injection_text(files),
-            "contents": demo_contents(team),
             "limits": {"max_files": MAX_FILES, "max_bytes": MAX_BYTES}}
 
 
@@ -236,15 +233,26 @@ def memory_ops(body: dict, team=None) -> dict:
 DEMO_KIND = "usermeta_demo"
 DEMO_EVENTS_MAX = 400
 EV_LABEL = {"impression": "노출", "click": "클릭", "skim": "훑고 나감",
-            "read": "끝까지 읽음", "save": "저장함", "react": "반응", "comment": "댓글",
-            "search": "검색"}
+            "read": "끝까지 읽음", "react": "반응", "comment": "댓글", "search": "검색"}
 EMOTIONS = ("추천해요", "좋아요", "감동이에요", "화나요", "슬퍼요")   # 기사 하단 감정 반응 5종
+# 사용자 친화 표기: 추천 칩·검색 매칭 전용 · 내부 값(IAB 카테고리·인텐트)은 화면에 노출하지 않는다
+CAT_KO = {"News and Politics": "뉴스·시사", "Sports": "스포츠", "Entertainment": "연예",
+          "Business and Finance": "경제·재테크", "Technology and Computing": "테크·IT",
+          "Science": "과학", "Food & Drink": "푸드", "Travel": "여행",
+          "Style & Fashion": "패션·뷰티", "Healthy Living": "건강", "Video Gaming": "게임",
+          "Music and Audio": "음악", "Movies": "영화", "Television": "TV·방송",
+          "Personal Finance": "재테크", "Automotive": "자동차"}
+INT_KO = {"기획·심층": "깊이 있는 분석만", "분석·해설": "차분한 해설 기사만",
+          "흥미·화제": "가볍게 볼 화제만", "속보": "지금 뜨는 속보만",
+          "속보·사건 추적": "지금 뜨는 속보만", "사건 경과 보도": "사건 흐름 따라잡기",
+          "인물 동정": "인물 소식만", "유머": "웃음 충전 콘텐츠",
+          "라이프스타일": "일상 꿀팁 모음", "의견·논평": "여러 시각의 논평"}
 # TIARA(전사 통합 행동로그) 체계 매핑 · pplan/286294107 스펙 시트 기준.
 # 노출=ViewableImpression(실제 보인 콘텐츠만) · 클릭=Event(ClickContent · 읽기 화면은 Pageview
 # ViewContent 병행) · 읽기 종료=Usage(UsagePage · 체류·스크롤) · 저장=Event(표준 Kind 없음 →
 # 액션명 구분 권고). Usage 체류 최대 600초(10분) 초과분은 스펙대로 최대값으로 잘라 저장.
 TIARA_TAG = {"impression": "ViewImp", "click": "Event", "read": "Usage",
-             "skim": "Usage", "save": "Event", "react": "Event", "comment": "Event", "search": "Event"}
+             "skim": "Usage", "react": "Event", "comment": "Event", "search": "Event"}
 USAGE_MAX_SEC = 600
 
 
@@ -253,7 +261,10 @@ def _now_t() -> str:
 
 
 def _demo_session(team) -> dict:
-    return dict(_SV._report_get(DEMO_KIND, team, {}) or {})
+    sess = dict(_SV._report_get(DEMO_KIND, team, {}) or {})
+    sess.pop("finished", None)                       # 구 버전(단계형 결론) 잔재 키 정리
+    sess.pop("conclusion", None)
+    return sess
 
 
 def _demo_save(team, sess):
@@ -272,7 +283,7 @@ def _viewed_logs(events, catalog):
         a = acc.setdefault(e["idx"], {"clicked": False, "dwell": 0, "scroll": 0, "consumed": False})
         if e["event"] == "click":
             a["clicked"] = True
-        if e["event"] in ("read", "skim", "save"):
+        if e["event"] in ("read", "skim"):
             a["consumed"] = True
         a["dwell"] = max(a["dwell"], int(e.get("dwell") or 0))
         a["scroll"] = max(a["scroll"], int(e.get("scroll") or 0))
@@ -322,18 +333,22 @@ def _ev_line(e) -> str:
 
 
 def _suggests(catalog) -> list:
-    """프롬프트 폼의 추천 유도 문구 · 실제 피드의 주제·맥락에서 생성."""
+    """프롬프트 폼의 추천 유도 문구 · 실제 피드의 주제·맥락에서 사용자 언어로만 생성.
+    매핑에 없는 내부 값은 노출하지 않는다(사용자 친화 표기 원칙)."""
     out, seen = [], set()
     for c in catalog:
-        if c["cat"] != "기타" and c["cat"] not in seen:
-            seen.add(c["cat"])
-            out.append(c["cat"] + " 몰아보기")
+        ko = CAT_KO.get(c["cat"])
+        if ko and ko not in seen:
+            seen.add(ko)
+            out.append(ko + " 몰아보기")
         if len(out) >= 2:
             break
-    ints = [c["intent"] for c in catalog if c.get("intent") and c["intent"] != "기타"]
-    if ints:
-        out.append(ints[0] + " 콘텐츠만")
-    return out[:3] or ["오늘 이슈 몰아보기"]
+    for c in catalog:
+        ko = INT_KO.get(c.get("intent") or "")
+        if ko and ko not in out:
+            out.append(ko)
+            break
+    return out[:3] or ["오늘의 인기 콘텐츠 보기"]
 
 
 def demo_data(team=None) -> dict:
@@ -341,8 +356,9 @@ def demo_data(team=None) -> dict:
     sess = _demo_session(team)
     events = sess.get("events") or []
     imp = len({e.get("idx") for e in events if e.get("event") == "impression"})
-    consumed = len({e.get("idx") for e in events if e.get("event") in ("read", "skim", "save")})
-    out = {"contents": [{k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent")}
+    consumed = len({e.get("idx") for e in events if e.get("event") in ("read", "skim")})
+    out = {"contents": [dict({k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent")},
+                             cat_ko=CAT_KO.get(c["cat"], ""), intent_ko=INT_KO.get(c["intent"], ""))
                         for c in catalog],
            "session": {"events_n": len(events), "impressions": imp, "consumed": consumed},
            "stream": [_ev_line(e) for e in reversed(events[-30:])],
@@ -374,7 +390,7 @@ def _conclusion(events, catalog, team=None) -> dict:
     pdef = next((p for p in UM.PERSONAS if p["name"] == hit["name"]), {})
     chain = []
     for e in events:
-        if e.get("event") in ("read", "skim", "save"):
+        if e.get("event") in ("read", "skim"):
             chain.append({"t": e.get("t", ""), "act": EV_LABEL[e["event"]] + ' · "' + (e.get("title") or "") + '"',
                           "measure": (e.get("cat") or "") + " 가중 +" + str(round((e.get("dwell") or 0) / 30.0, 1))
                                      + " · 체류 " + str(e.get("dwell") or 0) + "초 (" + (e.get("intent") or "") + ")",
@@ -452,7 +468,8 @@ def demo_ops(body: dict, team=None) -> dict:
                 return {"error": "찾고 싶은 콘텐츠를 입력하세요"}
             toks = [t for t in re.split(r"\s+", q) if len(t) >= 2]
             hit = next((c for c in catalog for t in toks
-                        if t in c["title"] or t in c["cat"] or t in c["intent"]), None)
+                        if t in c["title"] or t in c["cat"] or t in c["intent"]
+                        or t in CAT_KO.get(c["cat"], "") or t in INT_KO.get(c["intent"], "")), None)
             files = _files(team)
             wrote, err = _observe(files, q, hit["cat"] if hit else "기타",
                                   hit["intent"] if hit else "검색", "검색 · 원하는 콘텐츠 선언", tag="stated")
@@ -463,7 +480,7 @@ def demo_ops(body: dict, team=None) -> dict:
                            "t": _now_t(), "title": q, "path": wrote["path"]})
             sess["last_logic"] = ("검색 '" + q + "' · Event(Search) + 결과 화면 Pageview(ViewSearchResults) · "
                                   "검색어는 부가 정보로 남고, 직접 선언이라 /" + wrote["path"] + " 에 [stated] 기록")
-        elif ev in ("click", "read", "skim", "save", "react", "comment"):
+        elif ev in ("click", "read", "skim", "react", "comment"):
             try:
                 idx = int(body.get("idx"))
             except (TypeError, ValueError):
