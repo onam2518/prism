@@ -323,6 +323,24 @@ window.PRISM_APP_PARTS.push(() => ({
           return { path: f.path, slug, label, desc: f.desc, items };
         });
       },
+      // 가로 스크롤 인터랙션: 데스크톱 마우스용 드래그 스와이프 + 세로 휠 → 가로 이동
+      demoDrag: null, demoDragMoved: false,
+      demoDragStart(e) {
+        const el = e.currentTarget;
+        this.demoDrag = { el, x: e.clientX, left: el.scrollLeft, moved: false };
+        if (el.setPointerCapture) { try { el.setPointerCapture(e.pointerId); } catch (err) {} }
+      },
+      demoDragMove(e) {
+        const d = this.demoDrag; if (!d) return;
+        const dx = e.clientX - d.x;
+        if (Math.abs(dx) > 4) d.moved = true;
+        d.el.scrollLeft = d.left - dx;
+      },
+      demoDragEnd() {
+        this.demoDragMoved = !!(this.demoDrag && this.demoDrag.moved);
+        this.demoDrag = null;
+        if (this.demoDragMoved) setTimeout(() => { this.demoDragMoved = false; }, 0);
+      },
       demoPersonaArt(name) { return ({ '정독러': '📚', '스낵러': '🍿', '조사자': '🔍', '이중모드': '🌗', '편식러': '🎯', '팬덤': '⭐', '전환기': '🧭', '라이트': '🍃' })[name] || '👤'; },
       demoDef(name) { return ((this.demoData && this.demoData.personas) || []).find(p => p.name === name) || null; },
       demoTierCls() {                               // 신뢰도 = 카드 등급(고 골드 · 중 실버 · 저/잠정 다크)
