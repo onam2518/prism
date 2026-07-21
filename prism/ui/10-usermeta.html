@@ -307,16 +307,37 @@
             <div class="panel-bd">
               <template x-if="demoData && demoData.conclusion && demoData.conclusion.persona">
                 <div class="space-y-3">
+                  <!-- 페르소나 캐릭터 카드(P1 트로피형): 신뢰도=카드 등급 · 2순위 peek · 카드 탭=근거 열기 -->
                   <div class="demo-obs" style="border-color:var(--ds-primary)">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <b class="text-ink" style="font-size:15px" x-text="demoData.conclusion.persona.full"></b>
-                      <span class="ds-badge ds-badge--entity" x-text="'신뢰도 ' + demoData.conclusion.persona.conf"></span>
-                      <span x-show="demoData.conclusion.persona.second" class="ds-badge ds-badge--intent" style="cursor:help" data-tip="중복 매칭 허용 · 두 번째로 가까운 페르소나 병행 표기" data-tip-pos="top" x-text="'2순위 ' + demoData.conclusion.persona.second"></span>
-                      <span x-show="demoData.conclusion.persona.provisional" class="ds-badge ds-badge--warning" style="cursor:help" data-tip="소비 5건 미만 · 잠정 판정 · 더 소비하면 자동 재판정" data-tip-pos="top">잠정</span>
-                      <span class="meta ml-auto" x-text="demoData.conclusion.persona.rule"></span>
+                    <div class="flex gap-4 flex-wrap" style="align-items:flex-start">
+                      <div>
+                        <div class="pcard-strip">
+                          <button type="button" class="pcard" x-bind:class="demoTierCls()" x-on:click="demoChainOpen = !demoChainOpen" data-tip="카드를 누르면 행동별 근거가 열립니다" data-tip-pos="top">
+                            <span class="tier" x-text="demoTierLabel()"></span>
+                            <span class="art" x-text="demoData.conclusion.persona.art || '👤'"></span>
+                            <span class="nm" x-text="demoData.conclusion.persona.full"></span>
+                            <span class="stats">
+                              <template x-for="s in demoStats()" x-bind:key="'st'+s[0]">
+                                <span class="r"><span x-text="s[0]"></span><span class="bar"><i x-bind:style="'width:' + s[1] + '%'"></i></span></span>
+                              </template>
+                            </span>
+                          </button>
+                          <template x-if="demoData.conclusion.persona.second">
+                            <button type="button" class="pcard pcard--silver peek" x-on:click="demoDefsOpen = true" data-tip="참고 원형 2순위 · 생성 페르소나가 두 원형 경계에 있으면 함께 봅니다" data-tip-pos="top">
+                              <span class="tier">2순위</span>
+                              <span class="art" x-text="demoPersonaArt(demoData.conclusion.persona.second)"></span>
+                              <span class="nm" x-text="(demoDef(demoData.conclusion.persona.second) || { full: demoData.conclusion.persona.second }).full"></span>
+                            </button>
+                          </template>
+                        </div>
+                        <div class="pcard-dots" x-show="demoData.conclusion.persona.second"><i class="on"></i><i></i></div>
+                      </div>
+                      <div style="flex:1;min-width:220px">
+                        <div class="text-sm text-body" x-text="demoData.conclusion.persona.desc"></div>
+                        <div class="text-xs text-muted" style="margin-top:6px" x-text="demoData.conclusion.persona.rule"></div>
+                        <div class="text-xs text-muted" style="margin-top:6px" x-show="demoData.conclusion.note" x-text="demoData.conclusion.note"></div>
+                      </div>
                     </div>
-                    <div class="text-sm text-body" style="margin-top:4px" x-text="demoData.conclusion.persona.desc"></div>
-                    <div class="text-xs text-muted" style="margin-top:4px" x-show="demoData.conclusion.note" x-text="demoData.conclusion.note"></div>
                   </div>
                   <div class="demo-obs"><div class="cap">판정 근거</div>
                     <template x-for="(b, bi) in (demoData.conclusion.basis || [])" x-bind:key="'db'+bi">
@@ -324,7 +345,7 @@
                     </template>
                     <div class="flex items-center gap-2" style="margin-top:8px">
                       <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoChainOpen = !demoChainOpen" x-text="demoChainOpen ? '행동별 근거 접기' : '행동별 근거 펼쳐보기 (행동 → 측정 → 기록)'"></button>
-                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '판정 기준 접기' : '판정 기준 8종 보기'"></button>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="demoDefsOpen = !demoDefsOpen" x-text="demoDefsOpen ? '참고 원형 접기' : '가까운 원형 보기(참고 8종)'"></button>
                     </div>
                     <div x-show="demoChainOpen" x-cloak class="space-y-2" style="margin-top:8px;max-height:260px;overflow:auto">
                       <template x-for="(ch, ci) in (demoData.conclusion.chain || [])" x-bind:key="'dch'+ci">
@@ -332,13 +353,16 @@
                       </template>
                     </div>
                     <!-- 판정 기준(기본 페르소나 8종) · 로그 부족 시 잠정 배정 후 자동 재판정 -->
+                    <!-- P3 도감형: 판정된 카드만 컬러로 열리고 나머지는 잠금 · 잠긴 카드 툴팁 = 열리는 조건 학습 -->
                     <div x-show="demoDefsOpen" x-cloak style="margin-top:8px">
-                      <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:190px">페르소나</th><th>특징</th></tr></thead><tbody>
+                      <div class="pdex">
                         <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'dpd'+pd.name">
-                          <tr><td class="text-ink" x-text="pd.full"></td><td x-text="pd.desc"></td></tr>
+                          <button type="button" class="pdex-card" x-bind:class="(demoData.conclusion && demoData.conclusion.persona && demoData.conclusion.persona.base===pd.name) ? 'big' : ((demoData.conclusion && demoData.conclusion.persona && demoData.conclusion.persona.second===pd.name) ? 'second' : 'lock')" x-bind:data-tip="pd.full + ' · ' + pd.desc" data-tip-pos="top">
+                            <span class="art" x-text="demoPersonaArt(pd.name)"></span><span x-text="pd.name"></span>
+                          </button>
                         </template>
-                      </tbody></table></div>
-                      <div class="text-xs text-muted" style="margin-top:6px">한 사용자가 여러 기준에 걸치면 1순위와 2순위를 병행 표기합니다 · 로그가 5건 미만이면 잠정 배정 후 소비가 쌓이면 자동 재판정 · 명시 신호(버스트 · 주야 이중 · 드리프트 · 엔티티 집중) 우선, 없으면 깊이 · 강도 · 폭 근접 매칭.</div>
+                      </div>
+                      <div class="text-xs text-muted" style="margin-top:6px">기본 8종은 부여용 사전이 아니라 <b>판별 참고 원형</b>입니다 · 실제 페르소나는 소비 신호로 그때그때 생성되고, 여기서는 그 생성 결과가 어느 원형에 가까운지만 열어 보여줍니다(1순위 확대 · 2순위 실버) · 로그가 쌓이면 자동 재생성.</div>
                     </div>
                   </div>
                   <div class="grid grid-cols-3 gap-4">

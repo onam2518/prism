@@ -323,6 +323,25 @@ window.PRISM_APP_PARTS.push(() => ({
           return { path: f.path, slug, label, desc: f.desc, items };
         });
       },
+      demoPersonaArt(name) { return ({ '정독러': '📚', '스낵러': '🍿', '조사자': '🔍', '이중모드': '🌗', '편식러': '🎯', '팬덤': '⭐', '전환기': '🧭', '라이트': '🍃' })[name] || '👤'; },
+      demoDef(name) { return ((this.demoData && this.demoData.personas) || []).find(p => p.name === name) || null; },
+      demoTierCls() {                               // 신뢰도 = 카드 등급(고 골드 · 중 실버 · 저/잠정 다크)
+        const p = this.demoData && this.demoData.conclusion && this.demoData.conclusion.persona;
+        if (!p || p.provisional || p.conf === '저') return 'pcard--dim';
+        return p.conf === '고' ? 'pcard--gold' : 'pcard--silver';
+      },
+      demoTierLabel() {
+        const p = this.demoData && this.demoData.conclusion && this.demoData.conclusion.persona;
+        if (!p) return '';
+        return p.provisional ? '잠정 판정' : ('신뢰도 ' + p.conf + ' · 1순위');
+      },
+      demoStats() {                                 // 카드 스탯 = 판정 근거(깊이 · 체류 · 폭)
+        const l = (this.demoData && this.demoData.live) || {};
+        const depth = ({ '몰입': 90, '혼합': 55, '훑기': 25 })[(l.form || {})['깊이']] || 20;
+        const dwell = Math.min(100, Math.round(((l.eng || {}).avg_dwell_sec || 0) / 60 * 100));
+        const breadth = Math.round((l.breadth || 0) * 100);
+        return [['깊이', depth], ['체류', dwell], ['폭', breadth]];
+      },
       demoBoard() {
         const bs = this.demoBoards();
         if (!bs.length) return null;

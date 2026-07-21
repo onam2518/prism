@@ -462,6 +462,26 @@ def _personas_brief() -> list:
     return [{"name": p["name"], "full": p["full"], "desc": p["desc"]} for p in UM.PERSONAS]
 
 
+def _gen_persona(live) -> dict:
+    """동적 생성 페르소나: 사전형 부여가 아니라 측정값에서 이름·설명을 그때그때 조립.
+    (온라인 LLM 없이 결정적 생성 · 운영의 능동 생성(personagen)과 같은 철학의 시연판)"""
+    cats = live.get("cats") or []
+    ck = CAT_KO.get(cats[0]["name"], cats[0]["name"]) if cats else "새 관심사"
+    depth = (live.get("form") or {}).get("깊이", "")
+    d_name = {"몰입": "정독가", "혼합": "골라읽기형", "훑기": "훑어보기형"}.get(depth, "탐색가")
+    d_desc = {"몰입": "끝까지 읽는 편이에요", "혼합": "골라 가며 읽어요", "훑기": "빠르게 훑고 지나가요"}.get(depth, "이제 막 둘러보는 중이에요")
+    resp = live.get("resp") or {}
+    talk = resp.get("comments", 0) > 0 or resp.get("reacts", 0) > 0
+    name = ("의견 남기는 " if talk else "") + ck + " " + d_name
+    dwell = (live.get("eng") or {}).get("avg_dwell_sec", 0)
+    desc = ck + " 콘텐츠에 평균 " + str(int(dwell)) + "초 머물고 " + d_desc
+    if talk:
+        desc += " · 반응 " + str(resp.get("reacts", 0)) + "번, 댓글 " + str(resp.get("comments", 0)) + "번으로 호응을 남겼어요"
+    art = {"뉴스·시사": "📰", "경제·재테크": "📈", "스포츠": "⚾", "연예": "🎬",
+           "테크·IT": "🤖", "과학": "🔬", "여행": "✈️", "게임": "🎮"}.get(ck, "📖")
+    return {"name": name, "desc": desc, "art": art}
+
+
 def _conclusion(events, catalog, team=None) -> dict:
     """사용 종료 → 결론: 실측 요약 + 페르소나 판정(실로직) + 인과 카드 + 메모리 반영."""
     from . import usermeta as UM
@@ -471,7 +491,7 @@ def _conclusion(events, catalog, team=None) -> dict:
         return {"empty": True, "note": "소비된 콘텐츠가 없습니다 · STEP 1 에서 콘텐츠를 읽어 주세요"}
     hit = UM._nearest_persona(live["form"], live["intensity"], viewed,
                               tf={}, ents_top=live.get("ents"), profile=None)
-    pdef = next((p for p in UM.PERSONAS if p["name"] == hit["name"]), {})
+    gen = _gen_persona(live)                         # 표시 주인공 = 동적 생성 · hit(8종)는 가까운 원형 참고
     chain = []
     for e in events:
         if e.get("event") in ("read", "skim"):
@@ -509,15 +529,20 @@ def _conclusion(events, catalog, team=None) -> dict:
     resp_line = ("반응 " + str(resp.get("reacts", 0)) + "건(긍정 " + str(resp.get("pos", 0)) + " · 부정 "
                  + str(resp.get("neg", 0)) + ") · 댓글 " + str(resp.get("comments", 0)) + "건 · 선호 가중 +"
                  + str(resp.get("boost", 0)))
-    return {"persona": {"name": hit["name"], "full": pdef.get("full", hit["name"]),
-                        "desc": pdef.get("desc", ""), "conf": hit["conf"], "rule": hit["rule"],
-                        "second": hit.get("second"), "provisional": bool(hit.get("provisional"))},
+    return {"persona": {"name": gen["name"], "full": gen["name"], "desc": gen["desc"],
+                        "art": gen["art"], "conf": hit["conf"],
+                        "rule": "소비 신호로 방금 생성 · 가까운 원형: " + hit["name"]
+                                + ((" · 2순위 " + hit["second"]) if hit.get("second") else "")
+                                + " (" + hit["rule"] + ")",
+                        "base": hit["name"], "second": hit.get("second"),
+                        "provisional": bool(hit.get("provisional"))},
             "basis": [["소비 콘텐츠", str(len(viewed)) + "건 · 카테고리 다양성 " + str(live["breadth"])],
                       ["호응", resp_line],
                       ["소비 형태", " · ".join(k + " " + v for k, v in live["form"].items())],
                       ["소비 강도", " · ".join(k + " " + v for k, v in list(live["intensity"].items())[:4]) or "·"],
-                      ["판정", hit["name"] + " · " + hit["rule"] + " · 신뢰도 " + hit["conf"]
-                       + ((" · 2순위 " + hit["second"]) if hit.get("second") else "")]],
+                      ["판정", gen["name"] + "(동적 생성) · 가까운 원형 " + hit["name"]
+                       + ((" · 2순위 " + hit["second"]) if hit.get("second") else "")
+                       + " · 신뢰도 " + hit["conf"]]],
             "chain": chain,
             "memory": {"files": sorted({"/" + e["path"] for e in events if e.get("path")}),
                        "injection": injection_text(_files(team))},

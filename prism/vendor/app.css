@@ -1340,6 +1340,38 @@
   .demo-chain{border:1px solid var(--ds-hairline);border-radius:9px;background:var(--ds-surface-white);
     padding:7px 10px;font-size:12px}
   .demo-chain .demo-chain-arrow{color:var(--ds-primary);font-weight:800;padding:0 2px}
+  /* 페르소나 캐릭터 카드: P1 트로피형(결론) · 신뢰도=카드 등급 · 2순위는 peek */
+  .pcard-strip{display:flex;gap:12px;overflow-x:auto;align-items:center;padding:6px 2px}
+  .pcard{flex:none;width:150px;height:210px;border-radius:16px;display:flex;flex-direction:column;
+    align-items:center;padding:12px 11px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.15);
+    color:#2b2412;font-family:inherit;border:0;text-align:center}
+  .pcard--gold{background:linear-gradient(160deg,#f9e7a8,#e8c258 45%,#b98a24)}
+  .pcard--silver{background:linear-gradient(160deg,#eef1f5,#c9d0d8 45%,#98a2ad);color:#2c3138}
+  .pcard--dim{background:linear-gradient(160deg,#4a4d55,#2b2d33);color:rgba(255,255,255,.88)}
+  .pcard .tier{align-self:flex-start;font-size:10px;font-weight:800;letter-spacing:.05em;opacity:.75}
+  .pcard .art{font-size:50px;line-height:1;margin:12px 0 8px;filter:drop-shadow(0 4px 8px rgba(0,0,0,.2))}
+  .pcard .nm{font-size:13px;font-weight:800;line-height:1.3;text-wrap:balance}
+  .pcard .stats{width:100%;margin-top:auto;display:flex;flex-direction:column;gap:3px;font-size:9px;font-weight:700}
+  .pcard .stats .r{display:flex;align-items:center;gap:5px}
+  .pcard .stats .r span:first-child{width:24px;text-align:left}
+  .pcard .stats .bar{flex:1;height:4px;border-radius:99px;background:rgba(0,0,0,.18);overflow:hidden}
+  .pcard .stats .bar i{display:block;height:100%;background:rgba(0,0,0,.55);border-radius:99px}
+  .pcard--dim .stats .bar{background:rgba(255,255,255,.2)}
+  .pcard--dim .stats .bar i{background:rgba(255,255,255,.8)}
+  .pcard.peek{transform:scale(.88);opacity:.6}
+  .pcard-dots{display:flex;gap:5px;justify-content:center;margin-top:6px}
+  .pcard-dots i{width:5px;height:5px;border-radius:50%;background:var(--ds-hairline)}
+  .pcard-dots i.on{background:var(--ds-primary)}
+  /* P3 도감(판정 기준 8종): 판정된 카드만 컬러 · 나머지 잠금 */
+  .pdex{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 6px;align-items:center}
+  .pdex-card{flex:none;width:88px;height:122px;border-radius:12px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:5px;font-size:10.5px;font-weight:700;cursor:help;
+    background:linear-gradient(160deg,#f9e7a8,#c99b34);color:#2b2412;border:0;font-family:inherit}
+  .pdex-card .art{font-size:30px;line-height:1}
+  .pdex-card.second{background:linear-gradient(160deg,#eef1f5,#a7b0ba);color:#2c3138}
+  .pdex-card.lock{background:var(--ds-surface);border:1px dashed var(--ds-hairline);color:var(--ds-muted)}
+  .pdex-card.lock .art{filter:grayscale(1);opacity:.4}
+  .pdex-card.big{transform:scale(1.12)}
   /* 실시간 로그(콘솔형): 코드가 누적되듯 아래로 붙고 최신 줄이 하단 고정(column-reverse) */
   .demo-code{background:#16181d;border:1px solid #262a33;border-radius:10px;padding:10px 12px;
     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.6;
