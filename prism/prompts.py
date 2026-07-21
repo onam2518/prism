@@ -9,7 +9,7 @@ from __future__ import annotations
 from . import dictionaries as D
 
 QMETA_VERSION = "qmeta@v31"
-IMETA_VERSION = "imeta@v12"  # v12: 인텐트 수량 상한 제거(N개 · 핵심만, 엔티티와 동일 정책) · v11=게시판 피드백 · v10=260715 회의 개편
+IMETA_VERSION = "imeta@v13"  # v13: 인텐트 출처 무관 원칙 + 실용 정보·팬덤 경계(게시판 #7) · v12: 인텐트 수량 상한 제거 · v11=게시판 피드백 · v10=260715 회의 개편
 LEGAL_VERSION = "legal@v3"
 
 _JSON_GUARD = (
