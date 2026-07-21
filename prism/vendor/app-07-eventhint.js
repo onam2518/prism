@@ -214,7 +214,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!(await this.dsConfirm('사전 편집을 모두 초기화할까요? (베이스 사전은 재시작 시 완전 복원)', { ok: '초기화', danger: true }))) return;
         try { const r = await this._afetch('/dict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reset: true }) }); const d = await r.json(); if (r.ok && d && !d.error && d.serviceGroups) this.dictData = d; } catch (e) {}
       },
-      async loadUser() { this.loadMem(); this.modBusy = true; try { this.userData = await (await this._afetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
+      async loadUser() { this.loadMem(); this.loadDemoLab(); this.modBusy = true; try { this.userData = await (await this._afetch('/usermeta', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); } catch (e) {} this.modBusy = false; },
       async uploadUserLog(e) {
         const f = e.target.files[0]; e.target.value = ''; if (!f) return;
         this.modBusy = true; this.pfMsg = '';
@@ -300,6 +300,80 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!this.memSel) return;
         if (!(await this.dsConfirm('/' + this.memSel + ' 파일을 삭제할까요? 삭제는 명시적 요청이 있을 때만 실행됩니다.', { ok: '삭제', danger: true }))) return;
         await this.memPost({ op: 'delete', path: this.memSel }, '삭제됨');
+      },
+      // ── 실험실 · 사용자: 소비 시연(STEP 1 소비·수집 → 2 측정·로직 → 3 결론 → 4 활용) ──
+      // 좌측 피드(Anchor DS)에서의 실제 행동을 이벤트로 서버에 보내고, 우측 3단(실시간·누적·로직)을
+      // 응답으로 갱신. 체류는 실측 초 × 10 배속(가상 체류)으로 보내 실로직 임계값(30·45초)을 체감시킨다.
+      demoData: null, demoStep: 1, demoReading: null, demoTick: 0, _demoTimer: null,
+      demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false,
+      demoX: 10,                                    // 가상 체류 배속(화면에 명시)
+      async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; if (d.session && d.session.finished && d.conclusion) this.demoStep = Math.max(this.demoStep, 3); this.demoImpress(); } } catch (e) {} },
+      async demoPost(body) {
+        this.demoBusy = true; this.demoMsg = '';
+        try {
+          const d = await (await this._afetch('/usermeta-demo', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body) })).json();
+          if (!d || d.error) { this.demoMsg = '오류: ' + (d ? d.error : '응답 없음'); this.demoBusy = false; return null; }
+          this.demoData = d; this.demoBusy = false; return d;
+        } catch (e) { this.demoMsg = '오류: ' + e; this.demoBusy = false; return null; }
+      },
+      demoImpress() {                               // 피드 진입 1회 → 보이는 콘텐츠 일괄 노출 이벤트
+        if (this.demoImpressed || !this.demoData || !this.demoData.contents.length) return;
+        this.demoImpressed = true;
+        this.demoPost({ op: 'event', event: 'impression', idxs: this.demoData.contents.map(c => c.idx) });
+      },
+      demoVirtualDwell() { return this.demoReading ? Math.max(1, Math.round((Date.now() - this.demoReading.t0) / 1000 * this.demoX)) : 0; },
+      demoOpen(c) {                                 // 카드 탭 = 클릭 이벤트 + 읽기 화면 · 체류 타이머 시작
+        if (this.demoReading) return;
+        this.demoReading = { idx: c.idx, t0: Date.now(), c };
+        this.demoTick = 0;
+        this._demoTimer = setInterval(() => { this.demoTick = this.demoVirtualDwell(); }, 300);
+        this.demoPost({ op: 'event', event: 'click', idx: c.idx });
+      },
+      async demoClose(action) {                     // 읽기 종료: read(다 읽음)·skim(훑고 나감)·save(저장)
+        if (!this.demoReading) return;
+        const idx = this.demoReading.idx, dwell = this.demoVirtualDwell();
+        clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null;
+        const scroll = action === 'skim' ? 20 : (action === 'save' ? 100 : 95);
+        await this.demoPost({ op: 'event', event: action, idx, dwell_sec: dwell, scroll_pct: scroll });
+      },
+      demoCatCls(cat) {                             // 카테고리 → Anchor 카테고리 색(뉴스·스포츠·연예·관심사)
+        if (cat === 'Sports') return 'an-cat-sports';
+        if (cat === 'Entertainment') return 'an-cat-ent';
+        if (cat === 'News and Politics') return 'an-cat-news';
+        if (!cat || cat === '기타') return 'an-cat-etc';
+        return 'an-cat-int';
+      },
+      demoFmtT(s) { const v = Math.max(0, s | 0); return Math.floor(v / 60) + ':' + ('0' + (v % 60)).slice(-2); },
+      demoCanNext() {
+        if (this.demoStep === 1) return !!(this.demoData && this.demoData.session.consumed);
+        return this.demoStep < 4;
+      },
+      async demoNext() {
+        if (!this.demoCanNext()) return;
+        if (this.demoReading) await this.demoClose('read');
+        if (this.demoStep === 2 && !(this.demoData && this.demoData.session.finished)) {
+          const d = await this.demoPost({ op: 'finish' }); if (!d) return;
+        }
+        this.demoStep = Math.min(4, this.demoStep + 1);
+      },
+      demoGo(n) {                                   // 스텝바 직접 이동(결론 이후엔 자유 왕복)
+        if (n === this.demoStep) return;
+        if (n > this.demoStep) { if (n === this.demoStep + 1) this.demoNext(); return; }
+        this.demoStep = n;
+      },
+      demoFoot() {                                  // 하단 바: 이 단계의 결론 한 줄
+        const d = this.demoData, s = d && d.session;
+        if (!d) return '';
+        if (this.demoStep === 1) return s.consumed ? ('콘텐츠 ' + s.consumed + '건 소비 · 이벤트 ' + s.events_n + '건 수집 — 측정을 볼 준비가 됐습니다') : '왼쪽 피드에서 콘텐츠를 눌러 읽어 보세요 · 행동이 곧 데이터가 됩니다';
+        if (this.demoStep === 2) return '수집분이 소비 형태 · 강도 · 선호로 계산됐습니다 — 다음 스텝에서 결론(판정)을 냅니다';
+        if (this.demoStep === 3) { const c = d.conclusion; return c && c.persona ? ('판정: ' + c.persona.full + ' · 신뢰도 ' + c.persona.conf + ' — 이 결론이 어디에 쓰이는지 다음 스텝에서 봅니다') : '결론을 계산하는 중입니다'; }
+        return '측정 → 결론 → 활용까지 한 바퀴를 돌았습니다 · [처음부터]로 다른 소비 패턴을 실험해 보세요';
+      },
+      async demoReset() {
+        if (!(await this.dsConfirm('시연 세션을 처음부터 다시 시작할까요? 수집한 이벤트와 결론이 지워집니다(메모리 파일은 유지).', { ok: '처음부터', danger: true }))) return;
+        if (this.demoReading) { clearInterval(this._demoTimer); this._demoTimer = null; this.demoReading = null; }
+        const d = await this.demoPost({ op: 'reset' });
+        if (d) { this.demoStep = 1; this.demoImpressed = false; this.demoChainOpen = false; this.loadMem(); }
       },
       get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
       get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },

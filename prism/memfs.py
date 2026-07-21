@@ -84,8 +84,9 @@ def injection_text(files: dict) -> str:
     return "\n".join(out)
 
 
-def demo_contents(team=None, limit: int = 30) -> list:
-    """소비 시연용 카탈로그: 추출 결과 중 유통 가능(G) 콘텐츠 · idx 는 추출 순서."""
+def _catalog(team=None, limit: int = 30) -> list:
+    """소비 시연용 카탈로그: 추출 결과 중 유통 가능(G) 콘텐츠 · idx 는 추출 순서.
+    사용자 메타 파이프라인 입력(viewed)과 같은 필드를 유지해 측정 로직을 재사용한다."""
     from .usermeta import _t1
     out = []
     for i, r in enumerate(_SV.results_rows(team=team)):
@@ -95,12 +96,21 @@ def demo_contents(team=None, limit: int = 30) -> list:
         cats = im.get("content_category") or []
         out.append({"idx": i,
                     "title": ((r.get("content_ref") or {}).get("title") or "")[:60],
-                    "summary": (im.get("summary") or "").strip()[:90],
+                    "service": (r.get("content_ref") or {}).get("displayServiceName", ""),
+                    "summary": (im.get("summary") or "").strip()[:160],
+                    "intent_categories": im.get("intent") or [],
+                    "entity_categories": [_t1(c) for c in cats],
+                    "entities": im.get("entities") or [],
                     "cat": _t1(cats[0]) if cats else "기타",
                     "intent": (im.get("intent") or ["기타"])[0]})
         if len(out) >= limit:
             break
     return out
+
+
+def demo_contents(team=None, limit: int = 30) -> list:
+    return [{k: c[k] for k in ("idx", "title", "summary", "cat", "intent")}
+            for c in _catalog(team, limit)]
 
 
 def memory_data(team=None) -> dict:
@@ -165,6 +175,11 @@ def _consume(files, body, team):
     cat = _t1(cats[0]) if cats else "기타"
     intent = (im.get("intent") or ["기타"])[0]
     label, dwell, _scroll = ACTIONS.get(body.get("action") or "read", ACTIONS["read"])
+    return _observe(files, title, cat, intent, label, dwell)
+
+
+def _observe(files, title, cat, intent, label, dwell):
+    """관찰 1건 → /topics/<주제>.md 에 [observed] 한 줄 기록(공용 · 소비 시연도 사용)."""
     path = "topics/" + _slug(cat) + ".md"
     if path not in files and len(files) >= MAX_FILES:
         return None, "파일 수 제한(" + str(MAX_FILES) + "개)에 도달했습니다"
@@ -241,4 +256,221 @@ def memory_ops(body: dict, team=None) -> dict:
     _persist(team, files)
     out = memory_data(team)
     out["wrote"] = wrote
+    return out
+
+
+# ═══ 소비 시연 세션(STEP 1 소비·수집 → 2 측정·로직 → 3 결론 → 4 활용) ═══
+# 시안 B(단계 진행) 뼈대 + STEP 1 우측 A(실시간 3단) + STEP 3 D(인과 카드) 절충 · 채택안.
+# 좌측 피드에서 발생한 실제 행동(노출·클릭·체류)을 이벤트로 쌓고,
+# 측정·판정은 usermeta 의 실로직(_profile_from_logs · _nearest_persona)을 그대로 재사용한다.
+
+DEMO_KIND = "usermeta_demo"
+DEMO_EVENTS_MAX = 400
+EV_LABEL = {"impression": "노출", "click": "클릭", "skim": "훑고 나감",
+            "read": "끝까지 읽음", "save": "저장함"}
+
+
+def _now_t() -> str:
+    return _dt.datetime.now().strftime("%H:%M:%S")
+
+
+def _demo_session(team) -> dict:
+    return dict(_SV._report_get(DEMO_KIND, team, {}) or {})
+
+
+def _demo_save(team, sess):
+    st = _SV.get_store()
+    if st and hasattr(st, "save_report"):
+        st.save_report(DEMO_KIND, sess, team=team)
+
+
+def _viewed_logs(events, catalog):
+    """이벤트 → 파이프라인 입력 접기: 콘텐츠당 최종 상태 1행(클릭 여부 · 최대 체류·스크롤)."""
+    byidx = {c["idx"]: c for c in catalog}
+    acc = {}
+    for e in events:
+        if e.get("event") == "impression" or e.get("idx") not in byidx:
+            continue
+        a = acc.setdefault(e["idx"], {"clicked": False, "dwell": 0, "scroll": 0, "consumed": False})
+        if e["event"] == "click":
+            a["clicked"] = True
+        if e["event"] in ("read", "skim", "save"):
+            a["consumed"] = True
+        a["dwell"] = max(a["dwell"], int(e.get("dwell") or 0))
+        a["scroll"] = max(a["scroll"], int(e.get("scroll") or 0))
+    acc = {i: a for i, a in acc.items() if a["consumed"]}
+    viewed = [byidx[i] for i in acc]
+    logs = [{"content_idx": i, "event": "click" if a["clicked"] else "impression",
+             "dwell_sec": a["dwell"], "scroll_pct": a["scroll"]} for i, a in acc.items()]
+    return viewed, logs
+
+
+def _live_measures(events, catalog) -> dict:
+    """실시간 측정: usermeta 실로직으로 소비 형태·강도·선호를 즉시 재계산."""
+    from . import usermeta as UM
+    viewed, logs = _viewed_logs(events, catalog)
+    if not viewed:
+        return {"form": {}, "intensity": {}, "cats": [], "ints": [], "ents": [],
+                "eng": {"views": 0, "clicks": 0, "click_rate": 0, "avg_dwell_sec": 0}, "breadth": 0}
+    form, intensity, prof = UM._profile_from_logs(viewed, logs)
+    form["시간대"] = "시연 세션"
+    total = sum(w for _, w in prof["ent"]) or 1.0
+    cats = [{"name": k, "w": round(w, 1), "pct": round(w / total * 100)} for k, w in prof["ent"]]
+    return {"form": form, "intensity": intensity, "cats": cats,
+            "ints": prof["int"], "ents": prof["ents"], "eng": prof["eng"],
+            "breadth": round(UM._breadth(viewed), 2)}
+
+
+def _ev_line(e) -> str:
+    s = e.get("t", "") + " " + EV_LABEL.get(e.get("event"), e.get("event", "")) + ' "' + (e.get("title") or "")[:24] + '"'
+    if e.get("dwell"):
+        s += " · 체류 " + str(e["dwell"]) + "초"
+    if e.get("path"):
+        s += " → /" + e["path"]
+    return s
+
+
+def demo_data(team=None) -> dict:
+    catalog = _catalog(team)
+    sess = _demo_session(team)
+    events = sess.get("events") or []
+    imp = len({e.get("idx") for e in events if e.get("event") == "impression"})
+    consumed = len({e.get("idx") for e in events if e.get("event") in ("read", "skim", "save")})
+    out = {"contents": [{k: c[k] for k in ("idx", "title", "summary", "service", "cat", "intent")}
+                        for c in catalog],
+           "session": {"events_n": len(events), "impressions": imp, "consumed": consumed,
+                       "finished": bool(sess.get("finished"))},
+           "stream": [_ev_line(e) for e in reversed(events[-8:])],
+           "live": _live_measures(events, catalog),
+           "logic": sess.get("last_logic") or "",
+           "formula": "가중치 = 체류초 ÷ 30 × 클릭가중(클릭 2.0 · 비클릭 1.0) → 카테고리·맥락별 합산 → 상대 등급(저/중/고)"}
+    if sess.get("finished") and sess.get("conclusion"):
+        out["conclusion"] = sess["conclusion"]
+    return out
+
+
+def _conclusion(events, catalog, team=None) -> dict:
+    """사용 종료 → 결론: 실측 요약 + 페르소나 판정(실로직) + 인과 카드 + 메모리 반영."""
+    from . import usermeta as UM
+    viewed, _logs = _viewed_logs(events, catalog)
+    live = _live_measures(events, catalog)
+    if not viewed:
+        return {"empty": True, "note": "소비된 콘텐츠가 없습니다 · STEP 1 에서 콘텐츠를 읽어 주세요"}
+    hit = UM._nearest_persona(live["form"], live["intensity"], viewed,
+                              tf={}, ents_top=live.get("ents"), profile=None)
+    pdef = next((p for p in UM.PERSONAS if p["name"] == hit["name"]), {})
+    chain = []
+    for e in events:
+        if e.get("event") in ("read", "skim", "save"):
+            chain.append({"t": e.get("t", ""), "act": EV_LABEL[e["event"]] + ' · "' + (e.get("title") or "") + '"',
+                          "measure": (e.get("cat") or "") + " 가중 +" + str(round((e.get("dwell") or 0) / 30.0, 1))
+                                     + " · 체류 " + str(e.get("dwell") or 0) + "초 (" + (e.get("intent") or "") + ")",
+                          "file": ("/" + e["path"]) if e.get("path") else "측정만"})
+        elif e.get("event") == "click":
+            chain.append({"t": e.get("t", ""), "act": '클릭 · "' + (e.get("title") or "") + '"',
+                          "measure": "이 콘텐츠 이후 가중 ×2.0", "file": "측정만"})
+    top_cat = live["cats"][0]["name"] if live["cats"] else "기타"
+    top_int = live["ints"][0][0] if live.get("ints") else "기타"
+    depth = live["form"].get("깊이", "·")
+    scenarios = [
+        {"title": "소비 형태 기반 홈 재배치",
+         "desc": depth + " 소비형 — " + ("심층·이어보기 슬롯을 위로 올립니다" if depth == "몰입"
+                                        else "숏폼·이슈 카드를 위로 올립니다")},
+        {"title": "능동형 컴포넌트",
+         "desc": top_cat + " × " + top_int + " 조건의 큐레이션 슬롯을 능동 삽입합니다"},
+        {"title": "광고 타겟팅",
+         "desc": top_cat + " 관심 × " + top_int + " 선호 교차로 정밀 매칭합니다"}]
+    return {"persona": {"name": hit["name"], "full": pdef.get("full", hit["name"]),
+                        "desc": pdef.get("desc", ""), "conf": hit["conf"], "rule": hit["rule"],
+                        "second": hit.get("second"), "provisional": bool(hit.get("provisional"))},
+            "basis": [["소비 콘텐츠", str(len(viewed)) + "건 · 카테고리 다양성 " + str(live["breadth"])],
+                      ["소비 형태", " · ".join(k + " " + v for k, v in live["form"].items())],
+                      ["소비 강도", " · ".join(k + " " + v for k, v in list(live["intensity"].items())[:4]) or "·"],
+                      ["판정", hit["name"] + " · " + hit["rule"] + " · 신뢰도 " + hit["conf"]
+                       + ((" · 2순위 " + hit["second"]) if hit.get("second") else "")]],
+            "chain": chain,
+            "memory": {"files": sorted({"/" + e["path"] for e in events if e.get("path")}),
+                       "injection": injection_text(_files(team))},
+            "scenarios": scenarios,
+            "note": ("소비 5건 미만이라 잠정 판정입니다 · STEP 1 에서 더 소비하면 판별이 정교해집니다"
+                     if len(viewed) < 5 else "")}
+
+
+def demo_ops(body: dict, team=None) -> dict:
+    """소비 시연 조작: event(노출·클릭·훑기·정독·저장) · finish(결론) · reset(처음부터)."""
+    body = body or {}
+    op = body.get("op") or ""
+    sess = _demo_session(team)
+    events = list(sess.get("events") or [])
+    catalog = _catalog(team)
+    byidx = {c["idx"]: c for c in catalog}
+    wrote = None
+
+    if op == "event":
+        ev = body.get("event") or ""
+        if ev == "impression":                       # 피드 진입 → 보인 콘텐츠 일괄 노출(중복 무시)
+            idxs = body.get("idxs") or ([body.get("idx")] if body.get("idx") is not None else [])
+            seen = {e.get("idx") for e in events if e.get("event") == "impression"}
+            for i in idxs:
+                try:
+                    i = int(i)
+                except (TypeError, ValueError):
+                    continue
+                if i in byidx and i not in seen:
+                    seen.add(i)
+                    events.append({"idx": i, "event": "impression", "dwell": 0, "scroll": 0,
+                                   "t": _now_t(), "title": byidx[i]["title"][:40]})
+            sess["last_logic"] = "노출 " + str(len(seen)) + "건 등록 — 노출은 클릭률·소비율의 분모로만 쓰입니다"
+        elif ev in ("click", "read", "skim", "save"):
+            try:
+                idx = int(body.get("idx"))
+            except (TypeError, ValueError):
+                return {"error": "콘텐츠 번호가 올바르지 않습니다"}
+            c = byidx.get(idx)
+            if not c:
+                return {"error": "콘텐츠를 찾을 수 없습니다 · 새로고침 후 다시 시도하세요"}
+            dwell = max(0, min(3600, int(body.get("dwell_sec") or 0)))
+            scroll = max(0, min(100, int(body.get("scroll_pct") or 0)))
+            rec = {"idx": idx, "event": ev, "dwell": dwell, "scroll": scroll, "t": _now_t(),
+                   "title": c["title"][:40], "cat": c["cat"], "intent": c["intent"], "path": ""}
+            if ev == "click":
+                sess["last_logic"] = '클릭 "' + c["title"][:24] + '" → 이 콘텐츠의 소비 가중 ×2.0'
+            else:
+                files = _files(team)
+                wrote, err = _observe(files, c["title"] or "(제목 없음)", c["cat"], c["intent"],
+                                      EV_LABEL[ev], dwell)
+                if err:
+                    return {"error": err}
+                _persist(team, files)
+                rec["path"] = wrote["path"]
+                clicked = any(e.get("idx") == idx and e.get("event") == "click" for e in events)
+                wt = round((dwell / 30.0) * (2.0 if clicked else 1.0), 1)
+                sess["last_logic"] = ("체류 " + str(dwell) + "초 ÷ 30 × 클릭가중 "
+                                      + ("2.0" if clicked else "1.0") + " → " + c["cat"] + " +" + str(wt)
+                                      + " · /" + wrote["path"] + " 에 [observed] 기록")
+            events.append(rec)
+        else:
+            return {"error": "지원하지 않는 이벤트입니다: " + str(ev)[:20]}
+        sess["events"] = events[-DEMO_EVENTS_MAX:]
+        if sess.get("finished"):                     # 결론 후 재소비 → 결론 무효화(다시 마치면 재판정)
+            sess.pop("finished", None)
+            sess.pop("conclusion", None)
+        _demo_save(team, sess)
+
+    elif op == "finish":
+        sess["events"] = events
+        sess["finished"] = True
+        sess["conclusion"] = _conclusion(events, catalog, team)
+        _demo_save(team, sess)
+
+    elif op == "reset":                              # 세션만 초기화 · 메모리 파일은 유지
+        sess = {}
+        _demo_save(team, sess)
+
+    else:
+        return {"error": "지원하지 않는 조작입니다: " + str(op)[:20]}
+
+    out = demo_data(team)
+    if wrote:
+        out["wrote"] = wrote
     return out

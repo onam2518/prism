@@ -1576,6 +1576,11 @@ def _g_usermeta_memory(h, q):
     return MF.memory_data(team=h._req_team())
 
 
+@_get_route("/usermeta-demo")                        # 소비 시연(실험실 STEP 1~4): 피드·세션·실시간 측정·결론
+def _g_usermeta_demo(h, q):
+    return MF.demo_data(team=h._req_team())
+
+
 @_get_route("/board")                                # 게시판: 기능개선·오류 제보(팀 스코프)
 def _g_board(h, q):
     return board_data(h._req_team(), h._bearer_uid() or "")
@@ -2245,6 +2250,11 @@ def _p_usermeta_profiles(h, body):
 @_post_route("/usermeta-memory", gate="team")        # 파일 기반 메모리(실험실): 소비 자동 기록·쓰기·추가·삭제
 def _p_usermeta_memory(h, body):
     return MF.memory_ops(json.loads(body or b"{}"), team=h._req_team())
+
+
+@_post_route("/usermeta-demo", gate="team")          # 소비 시연 조작: event(행동 수집)·finish(결론)·reset
+def _p_usermeta_demo(h, body):
+    return MF.demo_ops(json.loads(body or b"{}"), team=h._req_team())
 
 
 @_post_route("/usermeta", gate="team")               # 행동 로그 업로드/현황 · 팀 미소속 전 팀 열람 차단

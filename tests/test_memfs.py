@@ -142,3 +142,88 @@ class TestMemfs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDemoSession(unittest.TestCase):
+    """소비 시연 세션(STEP 1~4): 이벤트 수집 → 실시간 측정 → 결론(실로직 재사용) → 리셋."""
+
+    def setUp(self):
+        self._old = MF._SV
+        rows = [_row("반도체 실적 심층 분석"),
+                _row("야구 개막전 하이라이트", cat="Sports", intent="흥미·화제"),
+                _row("걸그룹 데뷔 무대", cat="Entertainment", intent="흥미·화제"),
+                _row("금리 전망 해설", intent="분석·해설"),
+                _row("유통 불가", grade="R"),
+                _row("전기차 시장 분석", cat="Technology and Computing", intent="분석·해설")]
+        MF._SV = _SV(rows=rows)
+
+    def tearDown(self):
+        MF._SV = self._old
+
+    def test_empty_demo(self):
+        d = MF.demo_data(team="t1")
+        self.assertEqual(len(d["contents"]), 5)          # R 제외
+        self.assertEqual(d["session"], {"events_n": 0, "impressions": 0, "consumed": 0, "finished": False})
+        self.assertEqual(d["stream"], [])
+        self.assertEqual(d["live"]["cats"], [])
+
+    def test_impression_batch_dedup(self):
+        MF.demo_ops({"op": "event", "event": "impression", "idxs": [0, 1, 2]}, team="t1")
+        d = MF.demo_ops({"op": "event", "event": "impression", "idxs": [1, 2, 3]}, team="t1")
+        self.assertEqual(d["session"]["impressions"], 4)  # 중복 노출 무시
+
+    def test_click_then_read_collapses_to_one_viewed(self):
+        MF.demo_ops({"op": "event", "event": "click", "idx": 0}, team="t1")
+        d = MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
+        self.assertEqual(d["session"]["consumed"], 1)
+        self.assertEqual(d["live"]["eng"]["views"], 1)
+        self.assertEqual(d["live"]["eng"]["clicks"], 1)   # 클릭 병합
+        self.assertIn("클릭가중 2.0", d["logic"])
+        self.assertEqual(d["wrote"]["path"], "topics/business-and-finance.md")
+        self.assertTrue(d["live"]["cats"][0]["name"].startswith("Business"))
+
+    def test_click_only_not_consumed(self):
+        d = MF.demo_ops({"op": "event", "event": "click", "idx": 1}, team="t1")
+        self.assertEqual(d["session"]["consumed"], 0)     # 클릭만으로는 소비 아님
+        self.assertEqual(d["live"]["eng"]["views"], 0)
+
+    def test_finish_low_data_provisional(self):
+        MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 50, "scroll_pct": 95}, team="t1")
+        d = MF.demo_ops({"op": "finish"}, team="t1")
+        c = d["conclusion"]
+        self.assertTrue(c["persona"]["provisional"])      # 5건 미만 → 잠정
+        self.assertIn("잠정", c["note"])
+        self.assertEqual(len(c["chain"]), 1)
+        self.assertIn("topics/business-and-finance.md", c["memory"]["files"][0])
+        self.assertEqual(len(c["scenarios"]), 3)
+        self.assertTrue(d["session"]["finished"])
+
+    def test_finish_five_reads_not_provisional(self):
+        for i in (0, 1, 2, 3, 5):
+            MF.demo_ops({"op": "event", "event": "click", "idx": i}, team="t1")
+            MF.demo_ops({"op": "event", "event": "read", "idx": i, "dwell_sec": 60, "scroll_pct": 95}, team="t1")
+        d = MF.demo_ops({"op": "finish"}, team="t1")
+        c = d["conclusion"]
+        self.assertFalse(c["persona"]["provisional"])     # 5건 이상 → 본판정
+        self.assertEqual(d["session"]["consumed"], 5)
+        self.assertEqual(len([x for x in c["chain"] if "클릭" in x["act"]]), 5)
+
+    def test_new_event_invalidates_conclusion(self):
+        MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 40}, team="t1")
+        MF.demo_ops({"op": "finish"}, team="t1")
+        d = MF.demo_ops({"op": "event", "event": "read", "idx": 1, "dwell_sec": 10}, team="t1")
+        self.assertFalse(d["session"]["finished"])        # 재소비 → 결론 무효화
+        self.assertNotIn("conclusion", d)
+
+    def test_reset_keeps_memory_files(self):
+        MF.demo_ops({"op": "event", "event": "read", "idx": 0, "dwell_sec": 40}, team="t1")
+        self.assertEqual(len(MF.memory_data(team="t1")["files"]), 1)
+        d = MF.demo_ops({"op": "reset"}, team="t1")
+        self.assertEqual(d["session"]["events_n"], 0)
+        self.assertEqual(len(MF.memory_data(team="t1")["files"]), 1)   # 메모리 파일은 유지
+
+    def test_bad_inputs(self):
+        self.assertIn("찾을 수 없습니다", MF.demo_ops({"op": "event", "event": "read", "idx": 99}, team="t1")["error"])
+        self.assertIn("올바르지", MF.demo_ops({"op": "event", "event": "read", "idx": "x"}, team="t1")["error"])
+        self.assertIn("지원하지", MF.demo_ops({"op": "event", "event": "hover", "idx": 0}, team="t1")["error"])
+        self.assertIn("지원하지", MF.demo_ops({"op": "hack"}, team="t1")["error"])
