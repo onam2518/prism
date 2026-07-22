@@ -45,4 +45,12 @@
   POST 도 동일하게 `@_post_route` 테이블(게이트 옵션 admin·super·login·team 지원).
 - 새 도메인 기능은 serve.py 에 쌓지 말고 별도 모듈로 시작(`usermeta.py`·`entdict.py` 패턴).
 - 문서: 개발 인수인계 `HANDOFF.md` · 학습 설계 `LEARNING_DESIGN.md` · 테스트 구조 `TESTING.md` ·
-  배포 `DOCKER.md`, `fly.toml`(앱 `prism-item` · nrt)
+  배포 `DOCKER.md`, `fly.toml`(앱 `prism-item` · nrt) · 아티팩트 URL 색인 `docs/ARTIFACTS.md`
+
+## 아티팩트 산출물 기록
+
+- 프리즘 관련 **아티팩트를 새로 배포하면** `docs/ARTIFACTS.md` 표에 최신순(맨 위)으로 한 줄 추가한다:
+  `| 최종 수정일 | [제목](URL) |`. 프리즘과 무관한 자료(티큐·ordent 등)는 기재하지 않는다.
+- 같은 URL 을 재배포(갱신)한 경우 새 행을 만들지 말고 기존 행의 날짜만 갱신한다.
+- 이 색인 갱신도 다른 변경과 동일하게 브랜치 → PR → 머지로 반영한다(main 직접 커밋 금지).
+  아티팩트 배포와 같은 작업 흐름 안에서 함께 처리한다.
