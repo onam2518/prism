@@ -4,7 +4,7 @@
 // 사용: node capture_screens.mjs <shots.json> <outdir>
 // shots.json: {
 //   "base": "http://127.0.0.1:8978",            // 생략 가능(기본값)
-//   "viewport": {"w":1440,"h":900,"scale":2},    // 생략 가능
+//   "viewport": {"w":1440,"h":900,"scale":3},    // 생략 가능(기본 3배 = 4320×2700)
 //   "shots": [ {"name":"labrun","url":"/?m=lab","clicks":["사용자"]} ]
 // }
 // - clicks 는 버튼 텍스트 **정확 일치(===)** 로 찾는다. 부분 일치는 네비 메뉴 오클릭 위험.
@@ -25,7 +25,7 @@ if (!cfgArg || !outArg) {
 }
 const cfg = JSON.parse(readFileSync(cfgArg, 'utf8'));
 const base = cfg.base || 'http://127.0.0.1:8978';
-const vp = cfg.viewport || { w: 1440, h: 900, scale: 2 };
+const vp = cfg.viewport || { w: 1440, h: 900, scale: 3 };   // 3배 = 4320×2700 · 8K 슬라이드에서도 선명
 const outDir = resolve(outArg);
 mkdirSync(outDir, { recursive: true });
 const port = Number(process.env.CDP_PORT || 9378);

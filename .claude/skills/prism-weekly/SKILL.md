@@ -79,7 +79,9 @@ python3 scripts/seed_qa.py
 PRISM_BACKEND=sqlite PRISM_DB=$D/qa.db PRISM_CONFIG=$D/qa_config.json PRISM_ENTDICT_ENRICH=0 \
   python3 -m prism.serve --mock --port 8978 &      # 8765 회피
 node .claude/skills/prism-weekly/capture_screens.mjs <shots.json> <scratchpad>/shots
-cd <scratchpad>/shots && for f in *.png; do sips -Z 1440 -s format jpeg -s formatOptions 82 "$f" --out "${f%.png}.jpg"; done
+cd <scratchpad>/shots && for f in *.png; do sips -s format jpeg -s formatOptions 90 "$f" --out "${f%.png}.jpg"; done
+# 해상도 유지(리사이즈 금지 · 캡처 원본 4320×2700). 슬라이드를 8K 로 재캡처하므로
+# 여기서 줄이면 PPT 에서 뭉개진다. HTML 이 너무 커져 Artifact 배포가 실패할 때만 -Z 2880 로 낮춘다.
 ```
 
 - `shots.json` 예: `{"base":"http://127.0.0.1:8978","shots":[{"name":"labrun","url":"/?m=lab","clicks":["사용자"]}]}`
@@ -131,12 +133,14 @@ prism-slides 스킬 규칙을 따르되, 아래 구성 · 레이아웃 규칙을
 
 ```bash
 SK=.claude/skills/prism-weekly
-node $SK/capture_deck.mjs <최종덱.html> <scratchpad>/slides       # 장당 3840×2160 PNG
+node $SK/capture_deck.mjs <최종덱.html> <scratchpad>/slides       # 장당 7680×4320 PNG(기본 4배)
 python3 $SK/build_pptx.py <scratchpad>/프리즘_주간회의_YYYYMMDD.pptx <scratchpad>/slides
 cp <scratchpad>/프리즘_주간회의_YYYYMMDD.pptx ~/Desktop/
 ```
 
 - 이미지 방식이라 PPT 안에서 텍스트 수정 불가. 수정 요청 시 소스 수정 → 5~6단계 반복.
+- 기본 4배(8K)가 화질 상한: 5배 이상은 캡처 지연·용량만 늘고 육안 차이가 없다.
+  PPTX 가 수십 MB 로 커질 수 있다 · 공유처 용량 제한에 걸리면 scale 인자 3으로 재캡처.
 
 ## 7. 마무리
 
