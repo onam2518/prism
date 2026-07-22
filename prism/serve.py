@@ -1345,7 +1345,10 @@ def _g_drafts(h, q):
 
 @_get_route("/events")
 def _g_events(h, q):
-    h._serve_sse()
+    # EventSource 는 Authorization 헤더를 못 싣어 token 쿼리로 인증한다. 구독 팀도 이 토큰으로 해석한다
+    # (_req_team 은 헤더 전용이라 SSE 에선 항상 None → 운영에서 팀 스코프가 무력화되던 회귀 수정).
+    team = team_of(validate_jwt((q.get("token") or [""])[0])) if _supa() else None
+    h._serve_sse(team)
 
 
 @_get_route("/reap")
@@ -2517,15 +2520,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _serve_sse(self):
-        """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK."""
+    def _serve_sse(self, team=None):
+        """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK.
+        team 은 _g_events 가 쿼리 token 으로 해석해 넘긴다(EventSource 는 헤더 인증 불가)."""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")     # 프록시 버퍼링 방지
         self.end_headers()
-        q = _sse_subscribe(self._req_team())         # 구독을 구독자 팀에 묶어 교차팀 이벤트 수신 차단
+        q = _sse_subscribe(team)                     # 구독을 구독자 팀에 묶어 교차팀 이벤트 수신 차단
         try:
             # 접속 인사에 부팅 ID 동봉: 배포로 서버가 교체되면 재연결 시 값이 달라진다(새 버전 배너 트리거)
             self.wfile.write(("data: " + json.dumps({"type": "hello", "boot": _BOOT_ID}) + "\n\n").encode("utf-8"))

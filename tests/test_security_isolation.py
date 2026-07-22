@@ -107,6 +107,42 @@ class TestExportTeamScope(unittest.TestCase):
         SV.build_report_html(team="teamB")
         self.assertEqual(seen, ["teamA", "teamB"])           # team=None 전 팀 폴백 아님
 
+    def test_usermeta_passes_team(self):
+        """usermeta 콘텐츠 조회도 team 스코프(supabase 다중팀 전 팀 혼입·content_id 오정렬 방지)."""
+        from prism import serve as SV, umops as UM
+        seen = []
+        orig = SV.results_rows
+        SV.results_rows = lambda limit=5000, team=None: (seen.append(team) or [])
+        self.addCleanup(lambda: setattr(SV, "results_rows", orig))
+        UM._usermeta_compute(None, "", "teamA")              # rows 비면 조기 반환 → 조회 team 만 확인
+        self.assertEqual(seen, ["teamA"])                    # team=None 전 팀 폴백 아님
+
+
+class TestJwtEmailExpiry(unittest.TestCase):
+    """jwt_email 만료 항목 재사용 금지: 폐기·만료 토큰이 관리자 허용목록 게이트를 통과하던 회귀 차단."""
+
+    def test_expired_email_not_returned(self):
+        import time
+        from prism import adminops as AO
+        orig_vj = AO.validate_jwt
+        AO.validate_jwt = lambda tok, strict=False: None      # 재검증 실패(폐기 토큰) · 캐시 재적재 안 함
+        self.addCleanup(lambda: setattr(AO, "validate_jwt", orig_vj))
+        with AO._JWT_LOCK:
+            AO._JWT_EMAIL["tokX"] = ("admin@corp.com", time.time() - 1)   # 이미 만료
+        self.addCleanup(lambda: AO._JWT_EMAIL.pop("tokX", None))
+        self.assertEqual(AO.jwt_email("tokX"), "")            # 만료 → fail-closed
+
+    def test_fresh_email_returned(self):
+        import time
+        from prism import adminops as AO
+        orig_vj = AO.validate_jwt
+        AO.validate_jwt = lambda tok, strict=False: None
+        self.addCleanup(lambda: setattr(AO, "validate_jwt", orig_vj))
+        with AO._JWT_LOCK:
+            AO._JWT_EMAIL["tokY"] = ("admin@corp.com", time.time() + 60)  # 유효
+        self.addCleanup(lambda: AO._JWT_EMAIL.pop("tokY", None))
+        self.assertEqual(AO.jwt_email("tokY"), "admin@corp.com")
+
 
 if __name__ == "__main__":
     unittest.main()

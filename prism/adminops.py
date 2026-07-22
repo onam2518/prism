@@ -124,6 +124,9 @@ def validate_jwt(token: str, strict: bool = False):
             email = (u.get("email") or "").strip().lower()
     except urllib.error.HTTPError:
         uid = None                                   # 4xx = 토큰 무효(확정 · 재시도 무의미)
+        with _JWT_LOCK:                              # 폐기 토큰 즉시 퇴출(uid·email 경로 모두 신뢰 중단)
+            _JWT_CACHE.pop(token, None)
+            _JWT_EMAIL.pop(token, None)
     except Exception:
         uid = None                                   # 네트워크/타임아웃 = 일시 장애
         if strict:
@@ -152,7 +155,7 @@ def jwt_email(token: str) -> str:
     validate_jwt(token)                          # 캐시 채우기(email 동반)
     with _JWT_LOCK:
         hit = _JWT_EMAIL.get(token)
-    return hit[0] if hit else ""
+    return hit[0] if hit and hit[1] > time.time() else ""   # 만료 항목 재사용 금지(폐기 토큰 관리자 게이트 통과 차단)
 
 def admin_emails() -> set:
     """관리자 허용목록(엄격 모드). env PRISM_ADMIN_EMAILS 또는 ~/.prism_admin_emails(콤마/개행 구분)."""
