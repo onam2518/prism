@@ -597,6 +597,10 @@ def team_of(uid):
         return hit[0]
     st = get_store()
     team = st.reviewer_team(uid) if (st and hasattr(st, "reviewer_team")) else None
+    if len(_TEAM_CACHE) > 512:                        # 만료 항목 정리(장기 가동 시 무한 성장 방지 · 스냅샷 순회로 크기변경 안전)
+        for k, v in list(_TEAM_CACHE.items()):
+            if v[1] <= now:
+                _TEAM_CACHE.pop(k, None)
     _TEAM_CACHE[uid] = (team, now + 60)
     return team
 
@@ -710,6 +714,9 @@ def rate_limited(key: str, min_interval: float = 0.8, per_min: int = 40) -> bool
     """key(검수자/IP)별 최소 간격·분당 상한. 초과 시 True(=429)."""
     now = time.time()
     with _RL_LOCK:
+        if len(_RL_HITS) > 512:                       # 만료 키 일괄 정리(장기 가동 시 무한 성장 방지)
+            for k in [k for k, v in _RL_HITS.items() if not v or now - v[-1] > 60]:
+                _RL_HITS.pop(k, None)
         q = _RL_HITS.setdefault(key, [])
         while q and now - q[0] > 60:
             q.pop(0)
@@ -2514,6 +2521,7 @@ class Handler(BaseHTTPRequestHandler):
     def _send_file(self, data: bytes, ctype: str, filename: str):
         """다운로드(첨부 파일) 공통 응답."""
         self.send_response(200)
+        self._security_headers()                         # nosniff·HSTS 등 공통 보안 헤더(다운로드에도 무해)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(data)))

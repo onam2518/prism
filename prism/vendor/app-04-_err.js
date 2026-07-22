@@ -375,7 +375,7 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this._err('모델 적용 실패'); }
         this.applyBusy = false;
       },
-      myEvalVote(d) { const r = (d.judge && d.judge.reviewers) || {}; return r[this.reviewer] || ''; },
+      myEvalVote(d) { const r = (d.judge && d.judge.reviewers) || {}; const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || ''; return r[me] || r[this.reviewer] || ''; },
       evalConsensus(d) {
         const j = d.judge || {}; const mg = (this.goldenResult && this.goldenResult.min_good) || 1;
         if ((j.adopt || 0) >= mg && (j.adopt || 0) > (j.reject || 0)) return 'adopt';

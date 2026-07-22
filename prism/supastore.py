@@ -1089,7 +1089,8 @@ class SupabaseStore:
     def contents_by_hash(self, team=None, limit: int = 5000) -> dict:
         """content_hash → 콘텐츠 dict(학습데이터 추출용)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", f"select=hash,service,title,subtitle,body{tq}&limit={int(limit)}")
+        rows = self._get("contents", f"select=hash,service,title,subtitle,body{tq}"
+                         f"&order=created_at.desc,hash&limit={int(limit)}")   # sqlite 와 동일 최신 N건(created_at 비유일 → hash 타이브레이크로 페이징 안정)
         return {r["hash"]: {"displayServiceName": r.get("service") or "", "title": r.get("title") or "",
                             "subtitle": r.get("subtitle") or "", "body": r.get("body") or ""} for r in rows}
 

@@ -315,7 +315,7 @@ def build_results_csv(team=None) -> bytes:
     for r in rows:
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
-        c = r.get("content") or {}
+        c = r.get("content_ref") or {}
         cat = " · ".join(im.get("content_category") or [])
         out.append(",".join(esc(x) for x in [
             c.get("title", ""), c.get("displayServiceName", ""), im.get("summary", ""),

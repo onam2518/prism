@@ -59,5 +59,38 @@ class TestSplitReviewedTodayScoped(unittest.TestCase):
         self.assertFalse([q for (t, q) in st._calls if "content_hash=in.(" in q])  # 조기 반환
 
 
+class TestCacheEviction(unittest.TestCase):
+    """장기 가동 시 무한 성장 방지: 상한 초과 시 만료 항목 일괄 정리(동작 불변)."""
+
+    def test_rl_hits_evicts_expired(self):
+        import time
+        from prism import serve as SV
+        with SV._RL_LOCK:
+            SV._RL_HITS.clear()
+            old = time.time() - 120                       # 60s 초과 = 판정 무영향
+            for i in range(600):
+                SV._RL_HITS[f"k{i}"] = [old]
+        self.addCleanup(lambda: SV._RL_HITS.clear())
+        SV.rate_limited("fresh")                          # len>512 → 만료 키 일괄 정리 트리거
+        self.assertNotIn("k0", SV._RL_HITS)               # 만료 키 제거
+        self.assertIn("fresh", SV._RL_HITS)
+        self.assertLess(len(SV._RL_HITS), 600)
+
+    def test_team_cache_evicts_expired(self):
+        import time
+        from prism import serve as SV
+        SV._TEAM_CACHE.clear()
+        past = time.time() - 10                           # 이미 만료
+        for i in range(600):
+            SV._TEAM_CACHE[f"u{i}"] = ("t", past)
+        orig = SV.get_store
+        SV.get_store = lambda: None                       # reviewer_team 없음 → team=None
+        self.addCleanup(lambda: setattr(SV, "get_store", orig))
+        self.addCleanup(lambda: SV._TEAM_CACHE.clear())
+        SV.team_of("newuid")                              # len>512 → 만료분 정리 + 신규 삽입
+        self.assertNotIn("u0", SV._TEAM_CACHE)
+        self.assertIn("newuid", SV._TEAM_CACHE)
+
+
 if __name__ == "__main__":
     unittest.main()

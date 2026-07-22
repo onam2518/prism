@@ -1034,7 +1034,8 @@ class Store:
         n = int(c.execute("SELECT COUNT(*) FROM feedback").fetchone()[0])
         bad = int(c.execute("SELECT COUNT(*) FROM feedback WHERE verdict='bad'").fetchone()[0])
         good = int(c.execute("SELECT COUNT(*) FROM feedback WHERE verdict='good'").fetchone()[0])
-        learned = sum(1 for _ in c.execute("SELECT 1 FROM feedback WHERE verdict='bad' AND note!=''"))
+        learned = int(c.execute("SELECT COUNT(*) FROM feedback WHERE verdict='bad' "
+                                "AND (COALESCE(plan,'')!='' OR COALESCE(note,'')!='')").fetchone()[0])
         contents = int(c.execute("SELECT COUNT(DISTINCT content_hash) FROM feedback").fetchone()[0])
         reviewers = int(c.execute("SELECT COUNT(DISTINCT reviewer) FROM feedback").fetchone()[0])
         # 불일치: 한 콘텐츠에 good·bad 가 모두 달린 건수(팀 합의 점검용)

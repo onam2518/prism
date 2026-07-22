@@ -916,7 +916,7 @@ def handoff_bundle(team=None):
     def _nl(name):
         return len([x for x in (files.get(name) or "").split("\n") if x.strip()])
     log = list((_SV._report_get("handoff_log", team) or {}).get("entries") or [])
-    seq = len(log) + 1
+    seq = int(log[-1]["seq"]) + 1 if log else 1     # 마지막 항목 파생(len 기반은 로그 트림·삭제 시 고착·역행)
     counts = {"golden": d.get("golden_n", 0), "sft": _nl("prism_sft.jsonl"),
               "dpo": _nl("prism_dpo.jsonl"), "rationale": _nl("prism_rationale.jsonl"),
               "knowhow": _nl("prism_knowhow.jsonl"), "backlog": _nl("backlog.jsonl"),
