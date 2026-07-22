@@ -13,6 +13,7 @@ import tempfile
 import threading
 
 from . import alerts as AL
+from .store import day_key
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
 
@@ -28,8 +29,7 @@ def _log_cost_rollup(trace: dict, team=None):
         by_call = trace.get("by_call") or {}
         if not (cost or by_call):
             return
-        import datetime as _dt
-        day = _dt.date.today().isoformat()
+        day = day_key()
         tokens = trace.get("tokens") or {}
         model = (trace.get("model") or "").strip() or "(미기록)"
         with _COST_LOCK:
@@ -66,15 +66,29 @@ def _log_cost_rollup(trace: dict, team=None):
 _FAIL_LOCK = threading.Lock()
 
 
-def _log_fail_rollup(trace: dict, service: str = "", team=None):
-    """실행 1건의 콜 실패(trace.fails)를 일별 원장에 누적. 실패 없으면 무기록."""
+_RECENT_FAIL_CAP = 100          # 최근 실패 콘텐츠 목록 상한(원장 무한 성장 방지)
+
+
+def _log_fail_rollup(trace: dict, service: str = "", team=None,
+                     content_hash: str = "", title: str = ""):
+    """실행 1건의 콜 실패(trace.fails)를 일별 원장에 누적. 실패 없으면 카운터 무기록.
+    content_hash 가 있으면 '최근 실패 콘텐츠' 목록(recent)도 관리: 실패 시 등재(중복은
+    최신으로 교체) · 무실패 성공 실행 시 제거 — 재실행으로 해소된 건이 목록에 남지 않는다."""
     try:
         trace = trace or {}
         fails = trace.get("fails") or []
+        ch = (content_hash or "").strip()
         if not fails:
+            if ch:                                   # 성공 실행 → 해소된 콘텐츠는 목록에서 제거
+                with _FAIL_LOCK:
+                    rep = _SV._report_get("fail_rollup", team, {}) or {}
+                    rec = rep.get("recent") or []
+                    kept = [e for e in rec if (e or {}).get("hash") != ch]
+                    if len(kept) != len(rec):
+                        rep["recent"] = kept
+                        _SV._report_save("fail_rollup", rep, team)
             return
-        import datetime as _dt
-        day = _dt.date.today().isoformat()
+        day = day_key()
         model = (trace.get("model") or "").strip() or "(미기록)"
         svc = (service or "").strip() or "(미기록)"
         with _FAIL_LOCK:
@@ -89,6 +103,12 @@ def _log_fail_rollup(trace: dict, service: str = "", team=None):
             if len(days) > 90:                       # 90일 초과분 정리
                 for k in sorted(days)[:-90]:
                     days.pop(k, None)
+            if ch:                                   # 개별 재실행 대상 식별용(콘텐츠 단위)
+                kinds = sorted({str((f or {}).get("kind") or "unknown") for f in fails})
+                rec = [e for e in (rep.get("recent") or []) if (e or {}).get("hash") != ch]
+                rec.insert(0, {"hash": ch, "title": (title or "").strip(),
+                               "service": svc, "model": model, "kinds": kinds, "day": day})
+                rep["recent"] = rec[:_RECENT_FAIL_CAP]
             _SV._report_save("fail_rollup", rep, team)
         first = (fails[0] or {}) if fails else {}
         AL.on_fail(len(fails), kind=str(first.get("kind") or ""), model=model)   # 급증 통지
@@ -98,15 +118,15 @@ def _log_fail_rollup(trace: dict, service: str = "", team=None):
 
 def cost_rollup_data(team=None, days: int = 30) -> dict:
     """비용 롤업 조회: 최근 days 일 연속 by_day + 창 내 모델별·콜별 합산."""
-    import datetime as _dt
+    import time as _t
     days = max(1, min(90, int(days or 30)))
     rep = _SV._report_get("cost_rollup", team, {}) or {}
     stored = rep.get("days") or {}
-    today = _dt.date.today()
+    now = _t.time()
     by_day, by_model, by_call = [], {}, {}
     total = {"cost": 0.0, "n": 0, "in": 0, "out": 0}
     for i in range(days - 1, -1, -1):
-        k = (today - _dt.timedelta(days=i)).isoformat()
+        k = day_key(now - i * 86400)
         d = stored.get(k) or {}
         by_day.append({"day": k, "cost": round(float(d.get("cost") or 0.0), 6),
                        "n": int(d.get("n") or 0)})
@@ -128,13 +148,14 @@ def cost_rollup_data(team=None, days: int = 30) -> dict:
             "by_model": sorted(by_model.values(), key=lambda x: -x["cost"]),
             "by_call": sorted(by_call.values(), key=lambda x: -x["cost"])}
 def fail_rollup_data(team=None, days: int = 30) -> dict:
-    """실패 트리아지 조회: 창 내 종류별·모델별·서비스별·콜별 합산 + 상세 조합 상위."""
-    import datetime as _dt
+    """실패 트리아지 조회: 창 내 종류별·모델별·서비스별·콜별 합산 + 상세 조합 상위
+    + 최근 실패 콘텐츠(recent · 개별 재실행 대상)."""
+    import time as _t
     days = max(1, min(90, int(days or 30)))
     rep = _SV._report_get("fail_rollup", team, {}) or {}
     stored = rep.get("days") or {}
-    today = _dt.date.today()
-    keys = {(today - _dt.timedelta(days=i)).isoformat() for i in range(days)}
+    now = _t.time()
+    keys = {day_key(now - i * 86400) for i in range(days)}
     by_kind, by_model, by_service, by_call, combos = {}, {}, {}, {}, {}
     total = 0
     for day, counters in stored.items():
@@ -156,9 +177,54 @@ def fail_rollup_data(team=None, days: int = 30) -> dict:
         return [{"k": k, "n": n} for k, n in sorted(d.items(), key=lambda x: -x[1])]
     top = [{"kind": k[0], "model": k[1], "service": k[2], "n": n}
            for k, n in sorted(combos.items(), key=lambda x: -x[1])[:20]]
+    recent = [e for e in (rep.get("recent") or []) if (e or {}).get("day") in keys]
     return {"ok": True, "window_days": days, "total": total,
             "by_kind": _sorted(by_kind), "by_model": _sorted(by_model),
-            "by_service": _sorted(by_service), "by_call": _sorted(by_call), "top": top}
+            "by_service": _sorted(by_service), "by_call": _sorted(by_call), "top": top,
+            "recent": recent}
+
+
+# ── 검수 활동 원장(append-only) ──────────────────────────────────────────────
+# feedback 은 (콘텐츠,검수자)당 1행 upsert 라 재검수하면 과거 활동의 ts 가 최신으로
+# 이동한다(추이 드레인). 판정 행위 시점에 일별 카운터로 증분 기록해 활동 추이를 보존.
+_ACT_LOCK = threading.Lock()
+
+
+def _log_activity_rollup(team=None, reviews=0, corrections=0, gold_n=0, gold_correct=0):
+    """검수 활동 1건(판정·골드 응답)을 append-only 일별 롤업에 누적. 실패해도 검수는 계속."""
+    try:
+        with _ACT_LOCK:
+            rep = _SV._report_get("activity_rollup", team, {}) or {}
+            days = rep.setdefault("days", {})
+            d = days.setdefault(day_key(), {"reviews": 0, "corrections": 0,
+                                            "gold_n": 0, "gold_correct": 0})
+            d["reviews"] = int(d.get("reviews") or 0) + int(reviews)
+            d["corrections"] = int(d.get("corrections") or 0) + int(corrections)
+            d["gold_n"] = int(d.get("gold_n") or 0) + int(gold_n)
+            d["gold_correct"] = int(d.get("gold_correct") or 0) + int(gold_correct)
+            if len(days) > 90:                       # 90일 초과분 정리
+                for k in sorted(days)[:-90]:
+                    days.pop(k, None)
+            _SV._report_save("activity_rollup", rep, team)
+    except Exception:
+        pass
+
+
+def activity_daily_data(team=None, days: int = 30) -> dict:
+    """검수 활동 추이 조회: 스토어 재구성(feedback·gold 스캔) + append-only 롤업을
+    일별 max 로 병합. 롤업 도입 전 과거 날짜는 재구성 값, 이후는 롤업이 우세하다."""
+    st = _SV.get_store()
+    rows = (st.activity_daily(days=days, team=team)
+            if (st and hasattr(st, "activity_daily")) else [])
+    stored = (_SV._report_get("activity_rollup", team, {}) or {}).get("days") or {}
+    for r in rows:
+        d = stored.get((r or {}).get("day"))
+        if d:
+            for k in ("reviews", "corrections", "gold_n", "gold_correct"):
+                r[k] = max(int(r.get(k) or 0), int(d.get(k) or 0))
+    return {"ok": True, "days": rows}
+
+
 # ── 학습 지시 무효화(개별 끄기) ──────────────────────────────────────────────
 def dashboard_data(team=None) -> dict:
     """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8 \uc9d1\uacc4. team \ubcc4 \uc2a4\ucf54\ud551 \u00b7 \uc9e7\uc740 TTL \uce90\uc2dc(\ubc18\ubcf5 \ub85c\ub4dc \uc2dc 5000\ud589 \uc7ac\uc2a4\uce94 \ubc29\uc9c0)."""

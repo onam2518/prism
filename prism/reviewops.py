@@ -402,6 +402,10 @@ def apply_feedback(data: dict) -> dict:
         st.save_feedback(ch, data.get("service", ""), data.get("title", ""),
                          verdict, stage, note, time.time(), reviewer=reviewer,
                          team=data.get("_team"), element=",".join(elements))
+        # 활동 원장(append-only): feedback 은 upsert 라 재검수 시 과거 활동이 이동 —
+        # 판정 행위 시점에 일별 누적해 검수 활동 추이를 보존한다
+        _SV._log_activity_rollup(team=data.get("_team"), reviews=1,
+                                 corrections=(1 if verdict == "bad" else 0))
         _SV.broadcast({"type": "feedback", "hash": ch, "reviewer": disp,
                    "verdict": verdict, "title": data.get("title", ""),
                    "service": data.get("service", ""), "ts": time.time()},
@@ -441,6 +445,8 @@ def apply_gold_answer(data: dict) -> dict:
     expected = "good" if parts[1] == "ok" else "bad"
     reviewer = (data.get("reviewer") or "").strip() or "(익명)"
     correct = st.save_gold_check(parts[2], reviewer, expected, verdict, team=data.get("_team"))
+    _SV._log_activity_rollup(team=data.get("_team"), gold_n=1,
+                             gold_correct=(1 if correct else 0))   # 활동 원장(골드 응답)
     missions = _check_missions(reviewer, data.get("_team"))
     _SV._agg_bump()
     out = {"ok": True, "gold": {"correct": bool(correct), "expected": expected}}

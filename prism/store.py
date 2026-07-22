@@ -1,6 +1,7 @@
 """SQLite 영속성 (운영 하드닝). 결과·usage·판정사례를 파일 DB에 적재."""
 from __future__ import annotations
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -14,6 +15,22 @@ def content_hash(content: dict) -> str:
     s = (content.get("displayServiceName", "") + "\x1f" + content.get("title", "")
          + "\x1f" + content.get("subtitle", "") + "\x1f" + content.get("body", ""))
     return hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
+
+
+def _tz_sec() -> int:
+    """일 경계 타임존 오프셋(초). PRISM_TZ_MIN(분) · 기본 540 = KST(UTC+9).
+    운영 서버(fly · UTC)가 서버 로컬 날짜로 버킷팅하면 검수팀(KST)의 자정~09시
+    활동이 전날 막대에 붙는다 → 일별 집계는 팀 로컬 날짜로 고정한다."""
+    try:
+        return int(os.environ.get("PRISM_TZ_MIN", "540")) * 60
+    except ValueError:
+        return 540 * 60
+
+
+def day_key(ts=None) -> str:
+    """epoch → 팀 타임존 기준 'YYYY-MM-DD'. 일별 롤업·활동 추이의 공통 버킷 키."""
+    t = time.time() if ts is None else float(ts or 0)
+    return time.strftime("%Y-%m-%d", time.gmtime(t + _tz_sec()))
 
 
 LEVEL_MAX = 50
@@ -569,16 +586,18 @@ class Store:
 
     def activity_daily(self, days: int = 30, team=None) -> list:
         """일별 검수 활동(최근 days일 · 빈 날 포함 연속): [{day, reviews, corrections, gold_n, gold_correct}].
-        day='YYYY-MM-DD'(로컬) · 검수=판정(good/bad) 수 · 교정=bad 수 · 골드=검증 문항 응답."""
-        import datetime as _dt
+        day = 팀 타임존(day_key) 기준 · 검수=판정(good/bad) 수 · 교정=bad 수 · 골드=검증 문항 응답.
+        주의: feedback 은 (콘텐츠,검수자)당 1행 upsert 라 재검수하면 과거 활동이 최신 날짜로
+        이동한다 — 화면 추이는 dashops.activity_daily_data 가 append-only 롤업과 병합해 보정."""
+        import calendar
         days = max(1, min(90, int(days or 30)))
-        today = _dt.date.today()
-        start_day = today - _dt.timedelta(days=days - 1)
-        start_ts = time.mktime(start_day.timetuple())
+        now = time.time()
+        keys = [day_key(now - i * 86400) for i in range(days - 1, -1, -1)]
+        start_ts = calendar.timegm(time.strptime(keys[0], "%Y-%m-%d")) - _tz_sec()
         buckets = {}
 
         def _b(ts):
-            d = _dt.date.fromtimestamp(float(ts or 0)).isoformat()
+            d = day_key(ts)
             return buckets.setdefault(d, {"day": d, "reviews": 0, "corrections": 0,
                                           "gold_n": 0, "gold_correct": 0})
 
@@ -594,14 +613,8 @@ class Store:
             e = _b(ts)
             e["gold_n"] += 1
             e["gold_correct"] += int(corr or 0)
-        out = []
-        d = start_day
-        while d <= today:
-            k = d.isoformat()
-            out.append(buckets.get(k) or {"day": k, "reviews": 0, "corrections": 0,
-                                          "gold_n": 0, "gold_correct": 0})
-            d += _dt.timedelta(days=1)
-        return out
+        return [buckets.get(k) or {"day": k, "reviews": 0, "corrections": 0,
+                                   "gold_n": 0, "gold_correct": 0} for k in keys]
 
     def gold_answered(self, reviewer, team=None) -> set:
         """검수자가 이미 응답한 골드 문항 content_hash 집합(재출제 방지)."""

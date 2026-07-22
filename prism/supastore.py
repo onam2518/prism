@@ -24,7 +24,7 @@ import urllib.request
 # quote() 가 구분자를 인코딩하더라도, 형식 밖 입력을 애초에 거른다.
 _HASH_RE = re.compile(r"^[0-9a-f]{16}$")
 
-from .store import level_of
+from .store import level_of, day_key, _tz_sec
 
 _EVENT_ONCE_LOCK = threading.Lock()   # log_event_once 의 check-then-insert 직렬화(미션 보상 이중 지급 방지)
 
@@ -590,16 +590,18 @@ class SupabaseStore:
         return out
 
     def activity_daily(self, days: int = 30, team=None) -> list:
-        """일별 검수 활동(sqlite 와 동일 계약 · 빈 날 포함 연속). 피드백/골드 응답을 로컬 일자로 버킷팅."""
-        import datetime as _dt
+        """일별 검수 활동(sqlite 와 동일 계약 · 빈 날 포함 연속). 피드백/골드 응답을
+        팀 타임존(day_key · 기본 KST)으로 버킷팅 — 서버(UTC) 날짜로 자르면
+        자정~09시(KST) 활동이 전날 막대에 붙는다."""
+        import calendar
         days = max(1, min(90, int(days or 30)))
-        today = _dt.date.today()
-        start_day = today - _dt.timedelta(days=days - 1)
-        start_ts = time.mktime(start_day.timetuple())
+        now = time.time()
+        keys = [day_key(now - i * 86400) for i in range(days - 1, -1, -1)]
+        start_ts = calendar.timegm(time.strptime(keys[0], "%Y-%m-%d")) - _tz_sec()
         buckets = {}
 
         def _b(ts):
-            d = _dt.date.fromtimestamp(ts).isoformat()
+            d = day_key(ts)
             return buckets.setdefault(d, {"day": d, "reviews": 0, "corrections": 0,
                                           "gold_n": 0, "gold_correct": 0})
 
@@ -620,14 +622,8 @@ class SupabaseStore:
             e = _b(ts)
             e["gold_n"] += 1
             e["gold_correct"] += int(bool(r.get("correct")))
-        out = []
-        d = start_day
-        while d <= today:
-            k = d.isoformat()
-            out.append(buckets.get(k) or {"day": k, "reviews": 0, "corrections": 0,
-                                          "gold_n": 0, "gold_correct": 0})
-            d += _dt.timedelta(days=1)
-        return out
+        return [buckets.get(k) or {"day": k, "reviews": 0, "corrections": 0,
+                                   "gold_n": 0, "gold_correct": 0} for k in keys]
 
     def gold_answered(self, reviewer, team=None) -> set:
         rows = self._gold_rows(team, extra=f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}")
