@@ -9,6 +9,8 @@ import csv
 import json
 import os
 
+from .schema import normalize_image_urls
+
 # 필드별 별칭(소문자 비교, 한/영). 위에서부터 우선.
 ALIASES = {
     "title": ["title", "제목", "헤드라인", "headline", "표제", "글제목", "제목명",
@@ -19,12 +21,29 @@ ALIASES = {
     "displayServiceName": ["displayservicename", "콘텐츠그룹", "서비스명", "service", "서비스", "구분",
                            "채널", "channel", "category", "카테고리", "매체", "섹션",
                            "section", "source", "type", "지면"],
+    # 참조용 이미지 URL(선택). 회원 전용 원문(카페 등)의 사진 확인용 · 검수 상세에 표시.
+    # source_url 보다 먼저 배정해야 'image_url' 류 헤더가 원문 링크로 오배정되지 않는다
+    # (source_url 의 포함 매칭 별칭 'url' 이 imageurl 을 삼키는 것 방지).
+    "image_urls": ["imageurls", "imageurl", "images", "image", "imgurls", "imgurl",
+                   "imgs", "img", "thumbnailurls", "thumbnailurl", "thumbnails",
+                   "thumbnail", "thumburl", "thumb", "photos", "photo",
+                   "이미지", "이미지url", "이미지주소", "이미지링크", "썸네일", "사진"],
     # 참조용 원문 링크(선택). 있으면 상세뷰 '원문 열기' 로 연결.
     "source_url": ["sourceurl", "url", "link", "permalink", "href", "링크", "원문링크",
                    "원문url", "articleurl", "weburl", "원문주소", "주소", "originurl"],
 }
 REQUIRED = ["title", "body"]            # 이 둘이 잡혀야 '가능'
 OPTIONAL_DEFAULT = {"subtitle": "", "displayServiceName": "", "source_url": ""}
+
+
+def _item_from_row(r: dict, mapping: dict) -> dict:
+    """매핑된 원본 행 → 콘텐츠 dict. image_urls 만 목록 정규화(그 외는 문자열)."""
+    item = dict(OPTIONAL_DEFAULT)
+    item["image_urls"] = []
+    for field, col in mapping.items():
+        v = r.get(col, "")
+        item[field] = normalize_image_urls(v) if field == "image_urls" else str(v or "")
+    return item
 
 
 def read_table(path: str) -> tuple[list, list]:
@@ -179,12 +198,7 @@ def to_contents_rows(rows: list, override: dict = None) -> tuple:
     missing = [f for f in REQUIRED if f not in m]
     if missing:
         raise ValueError(f"필수 필드 미발견: {', '.join(missing)} (헤더: {', '.join(map(str, headers))[:200]})")
-    out = []
-    for r in rows:
-        item = dict(OPTIONAL_DEFAULT)
-        for field, col in m.items():
-            item[field] = str(r.get(col, "") or "")
-        out.append(item)
+    out = [_item_from_row(r, m) for r in rows]
     return out, m
 
 
@@ -195,13 +209,7 @@ def to_contents(path: str, override: dict = None) -> list:
         raise ValueError(a["reason"])
     headers, rows = read_table(path)
     m = a["mapping"]
-    out = []
-    for r in rows:
-        item = dict(OPTIONAL_DEFAULT)
-        for field, col in m.items():
-            item[field] = str(r.get(col, "") or "")
-        out.append(item)
-    return out
+    return [_item_from_row(r, m) for r in rows]
 
 
 def parse_map(s: str) -> dict:

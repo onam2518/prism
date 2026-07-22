@@ -469,6 +469,7 @@ def _detail_row(r: dict) -> dict:
         "model": (r.get("trace") or {}).get("model", "") or r.get("model", "") or "",
         "service": ref.get("displayServiceName", "") or r.get("service", ""),
         "url": ref.get("source_url", "") or r.get("url", ""),
+        "images": ref.get("image_urls", []) or r.get("images", []) or [],
         "body": ref.get("body", ""),
         "summary": im.get("summary", ""),
         "entities": im.get("entities", []) or [],
