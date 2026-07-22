@@ -862,6 +862,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "assignees": (asg.get(ch) or {}).get("reviewers", []),
                     "min_reviewers": (asg.get(ch) or {}).get("min", 0),
                     "ops_hold": bool(qm.get("ops_hold")),   # 운영자 수동 노출제한(라벨 아님 · 학습 미포함)
+                    "source_status": ref.get("source_status") or {},   # 원문 소실 신고 플래그(게시판 #10)
                     "item_meta": im, "quality_meta": qm})
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트.
     # 검수할 실제 콘텐츠가 있을 때만 섞는다 — 콘텐츠 전체 삭제 후 골드만 홀로 남는 오인 방지.

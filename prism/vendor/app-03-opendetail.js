@@ -12,6 +12,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (fresh && fresh.fb) this.detail.fb = Object.assign({}, fresh.fb);
         }
         this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; this.histItems = []; if (this.histOpen) this.loadHistory();
+        this.srcCheckMsg = ''; this.srcCheckBusy = false;   // 원문 상태 확인 결과는 콘텐츠별(이전 항목 잔상 제거)
         this.loadEntLookup();                    // 엔티티 → 개체 사전 정보(타입·속성) 표시
       },
       // ── 검수 상세 × 엔티티 사전: 뱃지에 타입·속성 표시 · 클릭 = 상세 팝업(수정·보강 가능) ──

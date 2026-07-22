@@ -87,7 +87,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const L = pick(p.l), R = pick(p.r);
         return Object.keys(L).map((k) => ({ k: k, l: L[k], r: R[k], diff: L[k] !== R[k] }));
       },
-      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', images: r.images || [], summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', final: r.final || '', assignees: r.assignees || [], fb: Object.assign({}, r.fb) }; },
+      _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', images: r.images || [], summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', final: r.final || '', assignees: r.assignees || [], source_status: r.source_status || {}, fb: Object.assign({}, r.fb) }; },
       // 배정 배타 검수(UI): 지정 검수자가 있는데 내가 아니면 판정 버튼 비활성(서버 게이트는 백스톱).
       detailAssignBlocked() {
         const d = this.detail;
@@ -155,6 +155,41 @@ window.PRISM_APP_PARTS.push(() => ({
           if (res && res.ok) { r.ops_hold = on; if (this.detail && this.detail.hash === r.hash) this.detail.ops_hold = on; }
           else this._err((res && res.error) || '노출제한 저장 실패');
         } catch (e) { this._err('노출제한 저장 실패'); }
+      },
+      srcGone(r) { return !!(r && r.source_status && r.source_status.state === 'gone'); },
+      async toggleSourceGone(r) {               // 원문 소실 신고 토글(게시판 #10 · 라벨·학습과 분리)
+        if (!r || !r.hash) return;
+        const on = !this.srcGone(r);
+        try {
+          const res = await (await this._afetch('/source-status', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: r.hash, on: on, reviewer: this.reviewer || '' }) })).json();
+          if (res && res.ok) {
+            const ss = { state: on ? 'gone' : '', by: this.reviewer || '', ts: Date.now() / 1000 };
+            r.source_status = ss;
+            if (this.detail && this.detail.hash === r.hash) this.detail.source_status = ss;
+            [(this.rawData || {}).items, (this.finalQueue || {}).items, (this.dashData || {}).contents].forEach((list) => {
+              const t = (list || []).find((x) => x.hash === r.hash); if (t) t.source_status = ss;   // 목록 배지 즉시 반영
+            });
+            this.liveToast(on ? '원문 소실로 표시했어요 · 목록에 배지가 붙습니다' : '원문 소실 표시를 해제했어요');
+          } else this._err((res && res.error) || '원문 소실 표시 저장 실패');
+        } catch (e) { this._err('원문 소실 표시 저장 실패'); }
+      },
+      // 온디맨드 원문 상태 확인(게시판 #10): 서버가 판정(gone·temp·unknown·ok)만 반환 · 확정은 위 토글 버튼
+      srcCheckBusy: false, srcCheckMsg: '',
+      async checkSource(r) {
+        if (!(r && r.url) || this.srcCheckBusy) return;
+        this.srcCheckBusy = true; this.srcCheckMsg = '원문 상태 확인 중…';
+        try {
+          const res = await (await this._afetch('/check-source', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ url: r.url }) })).json();
+          this.srcCheckMsg = (res && res.ok) ? this._srcStateMsg(res) : ((res && res.error) || '확인 실패 · 잠시 후 다시 시도하세요');
+        } catch (e) { this.srcCheckMsg = '확인 실패 · 잠시 후 다시 시도하세요'; }
+        this.srcCheckBusy = false;
+      },
+      _srcStateMsg(res) {
+        const c = res.code ? (' · HTTP ' + res.code) : '';
+        if (res.state === 'gone') return '원문 소실로 보입니다' + c + (res.sign ? (' · 안내문 "' + res.sign + '" 감지') : '') + ' · 맞으면 아래 버튼으로 표시하세요';
+        if (res.state === 'temp') return '일시 오류로 보입니다' + c + ' · 잠시 후 다시 확인하세요';
+        if (res.state === 'ok') return '원문 페이지가 응답합니다' + c + ' · 내용 일치는 직접 대조하세요';
+        return '자동 판정이 어렵습니다' + c + ' · 원문 바로가기로 직접 확인하세요';
       },
       async saveFinalAnswer() {
         const f = this.fa; if (!f || this.faBusy) return;
