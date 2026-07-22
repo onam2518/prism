@@ -32,42 +32,36 @@
           </div>
         </section>
       </div>
-      <!-- 실행 실패 진단: 콜 실패를 종류×모델×서비스로 + 최근 실패 콘텐츠 개별 재실행(정답셋 관리에서 이동 · 2026-07-22) -->
-      <div x-show="mod === 'content' && failData && failData.total" x-cloak class="w-full" style="margin-top:14px">
-        <section class="panel" data-fn x-init="loadFails()"><div class="panel-hd"><b>실행 실패 진단</b><span class="meta">최근 30일 · 콜 실패를 종류×모델×서비스로 모아 패턴을 보여줍니다</span>
-          <span class="ds-badge ds-badge--error tnum ml-auto" x-show="failData" x-text="'실패 ' + ((failData && failData.total) || 0) + '건'"></span>
+      <!-- 실행 실패 진단: 최근 실패 콘텐츠 개별 재실행(빈 목록도 상시 노출 · 정답셋 관리에서 이동 2026-07-22)
+           조합 상위 표는 화면에서 제외 · 집계(top·by_*)는 /fail-rollup 응답에 유지(필요 시 재노출) -->
+      <div x-show="mod === 'content' && failData" x-cloak class="w-full" style="margin-top:14px">
+        <section class="panel" data-fn x-init="loadFails()"><div class="panel-hd"><b>실행 실패 진단</b><span class="meta">최근 30일 · 실패한 콘텐츠를 모아 건별 재실행으로 해소합니다</span>
+          <span class="ds-badge ds-badge--error tnum ml-auto" x-show="failData && failData.total" x-text="'실패 ' + ((failData && failData.total) || 0) + '건'"></span>
         </div>
           <div class="panel-bd">
-            <div class="flex flex-wrap gap-1" style="align-items:center;margin-bottom:10px">
+            <div class="flex flex-wrap gap-1" style="align-items:center;margin-bottom:10px" x-show="((failData&&failData.by_kind)||[]).length">
               <span class="text-xs text-muted" style="width:64px">종류</span>
               <template x-for="k in ((failData&&failData.by_kind)||[])" x-bind:key="'fk'+k.k"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="k.k" data-tip-pos="top" x-text="failKindKr(k.k) + ' ' + k.n"></span></template>
             </div>
-            <div class="flex flex-wrap gap-1" style="align-items:center;margin-bottom:10px">
+            <div class="flex flex-wrap gap-1" style="align-items:center;margin-bottom:10px" x-show="((failData&&failData.by_call)||[]).length">
               <span class="text-xs text-muted" style="width:64px">콜</span>
               <template x-for="k in ((failData&&failData.by_call)||[])" x-bind:key="'fc'+k.k"><span class="ds-badge ds-badge--neutral" x-text="k.k + ' ' + k.n"></span></template>
             </div>
-            <!-- 최근 실패 콘텐츠: 건별 재실행 · 성공하면 서버가 목록에서 제거 -->
-            <div x-show="((failData&&failData.recent)||[]).length">
-              <div class="subhd" style="margin:4px 0 8px">최근 실패 콘텐츠 <span class="meta">실패가 있었던 콘텐츠를 건별로 다시 실행합니다 · 성공하면 목록에서 사라집니다</span></div>
-              <div class="overflow-auto" style="max-height:240px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:180px">실패 종류</th><th style="width:64px">일자</th><th style="width:100px"></th></tr></thead><tbody>
-                <template x-for="f in ((failData&&failData.recent)||[])" x-bind:key="'fr'+f.hash">
-                  <tr>
-                    <td class="text-ink" x-text="f.title || '(제목 없음)'"></td>
-                    <td class="text-muted" x-text="f.service || '·'"></td>
-                    <td class="text-muted" x-text="f.model || '·'"></td>
-                    <td><template x-for="k in (f.kinds||[])" x-bind:key="'frk'+f.hash+k"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="k" data-tip-pos="top" x-text="failKindKr(k)"></span></template></td>
-                    <td class="tnum text-muted" x-text="(f.day||'').slice(5).replace('-','/')"></td>
-                    <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="rerunBusy[f.hash]" x-on:click="rerunFail(f)" x-text="rerunBusy[f.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 건당 비용 발생" data-tip-pos="left"></button></td>
-                  </tr>
-                </template>
-              </tbody></table></div>
-            </div>
-            <div class="subhd" style="margin:12px 0 8px" x-show="((failData&&failData.top)||[]).length">실패 조합 상위 <span class="meta">종류×모델×서비스 패턴 · 라우터 회귀·빈 응답 조기 발견</span></div>
-            <div class="overflow-auto" style="max-height:220px"><table class="ds-table"><thead><tr><th>종류</th><th>모델</th><th>서비스</th><th style="width:64px">건수</th></tr></thead><tbody>
-              <template x-for="(t, ti) in ((failData&&failData.top)||[])" x-bind:key="'ft'+ti">
-                <tr><td x-text="failKindKr(t.kind)"></td><td class="text-ink" x-text="t.model"></td><td class="text-muted" x-text="t.service"></td><td class="tnum" x-text="t.n"></td></tr>
+            <!-- 최근 실패 콘텐츠: 건별 재실행 · 성공하면 서버가 목록에서 제거 · 빈 목록도 표시(동작 예고) -->
+            <div class="subhd" style="margin:4px 0 8px">최근 실패 콘텐츠 <span class="meta">실패가 있었던 콘텐츠를 건별로 다시 실행합니다 · 성공하면 목록에서 사라집니다</span></div>
+            <div class="overflow-auto" style="max-height:240px" x-show="((failData&&failData.recent)||[]).length"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:180px">실패 종류</th><th style="width:64px">일자</th><th style="width:100px"></th></tr></thead><tbody>
+              <template x-for="f in ((failData&&failData.recent)||[])" x-bind:key="'fr'+f.hash">
+                <tr>
+                  <td class="text-ink" x-text="f.title || '(제목 없음)'"></td>
+                  <td class="text-muted" x-text="f.service || '·'"></td>
+                  <td class="text-muted" x-text="f.model || '·'"></td>
+                  <td><template x-for="k in (f.kinds||[])" x-bind:key="'frk'+f.hash+k"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="k" data-tip-pos="top" x-text="failKindKr(k)"></span></template></td>
+                  <td class="tnum text-muted" x-text="(f.day||'').slice(5).replace('-','/')"></td>
+                  <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="rerunBusy[f.hash]" x-on:click="rerunFail(f)" x-text="rerunBusy[f.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 건당 비용 발생" data-tip-pos="left"></button></td>
+                </tr>
               </template>
             </tbody></table></div>
+            <div class="text-xs text-muted" x-show="!((failData&&failData.recent)||[]).length">최근 30일 실패한 콘텐츠가 없습니다 · 실행 실패가 생기면 여기에 등재되고, 재실행이 성공하면 자동으로 사라집니다</div>
           </div>
         </section>
       </div>
