@@ -9,14 +9,18 @@
         <!-- ─────────────── 이미지 ─────────────── -->
         <div x-show="mediaTab==='image'" x-cloak class="space-y-4">
           <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
-            <li>이미지를 올리고 <b>시각 이해 방식</b>을 고른 뒤 실행하면, 이미지에서 뽑은 신호로 본문을 합성해 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다. 여러 장은 하나의 콘텐츠로 통합합니다. (실험 · 저장 안 함)</li>
+            <li>이미지를 올리고 <b>시각 이해 방식</b>을 고른 뒤 실행하면, 이미지에서 뽑은 신호로 본문을 합성해 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다.</li>
+            <li>여러 장은 하나의 콘텐츠로 통합합니다. (실험 · 저장 안 함)</li>
           </ul>
 
           <div class="panel"><div class="panel-hd"><b>이미지 · 메타 추출</b><span class="meta">업로드 → 시각 이해 → 합성 본문 → 기존 추출(ItemMeta)</span></div>
             <div class="panel-bd space-y-4">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
                 <div style="flex:1;min-width:220px"><label class="lbl">이미지 파일 (여러 장 가능)</label>
-                  <input type="file" accept="image/*" multiple class="field" x-on:change="mediaImgPick($event)">
+                  <div class="mediaup">
+                    <label class="mediaup__btn">파일 선택<input type="file" accept="image/*" multiple class="sr-only" x-on:change="mediaImgPick($event)"></label>
+                    <span class="mediaup__hint" x-text="mediaImg.files.length ? (mediaImg.files.length + '장 선택됨 · 하나로 통합') : '선택된 파일 없음 · 여러 장 가능'"></span>
+                  </div>
                 </div>
                 <div style="flex:1;min-width:180px"><label class="lbl">캡션 (선택)</label>
                   <input class="field" x-model="mediaImg.caption" placeholder="사진 설명이 있으면 함께 참조">
@@ -29,7 +33,11 @@
                 </div>
                 <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaImgRun()" x-bind:disabled="mediaImgBusy||!mediaImg.files.length">실행</button>
               </div>
-              <div x-show="mediaImg.files.length" class="text-xs text-muted" x-text="mediaImg.files.length + '장 선택됨'"></div>
+              <div x-show="mediaImg.thumbs.length" class="mediaup__thumbs">
+                <template x-for="(t,i) in mediaImg.thumbs" x-bind:key="t">
+                  <div class="mediaup__thumb"><img x-bind:src="t" alt=""><button type="button" title="제거" x-on:click="mediaImgDrop(i)">×</button></div>
+                </template>
+              </div>
               <div x-show="mediaImgMsg" class="text-xs text-muted" x-text="mediaImgMsg"></div>
               <div x-show="mediaImgRes" class="space-y-3">
                 <div class="flex flex-wrap items-center gap-1.5">
@@ -55,14 +63,18 @@
         <!-- ─────────────── 영상 ─────────────── -->
         <div x-show="mediaTab==='video'" x-cloak class="space-y-4">
           <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
-            <li>영상을 올리면 프레임+오디오를 한 번에 토큰화해 통합 원고를 만들고 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다. <b>자막을 붙여넣으면 영상 모델 호출 없이 자막으로 원고를 만듭니다(비용 0).</b> (실험 · 저장 안 함)</li>
+            <li>영상을 올리면 프레임+오디오를 한 번에 토큰화해 통합 원고를 만들고 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다.</li>
+            <li><b>자막을 붙여넣으면 영상 모델 호출 없이 자막으로 원고를 만듭니다(비용 0).</b> (실험 · 저장 안 함)</li>
           </ul>
 
           <div class="panel"><div class="panel-hd"><b>영상 · 메타 추출</b><span class="meta">업로드 → 라우터 위임(프레임+오디오 단일 호출) → 통합 원고 → 기존 추출(ItemMeta)</span></div>
             <div class="panel-bd space-y-4">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
                 <div style="flex:1;min-width:240px"><label class="lbl">영상 파일</label>
-                  <input type="file" accept="video/*" class="field" x-on:change="mediaVidPick($event)">
+                  <div class="mediaup">
+                    <label class="mediaup__btn">파일 선택<input type="file" accept="video/*" class="sr-only" x-on:change="mediaVidPick($event)"></label>
+                    <span class="mediaup__hint" x-text="mediaVid.file ? mediaVid.file.name : '선택된 파일 없음'"></span>
+                  </div>
                 </div>
                 <div style="flex:1;min-width:200px"><label class="lbl">캡션·설명 (선택)</label>
                   <input class="field" x-model="mediaVid.caption" placeholder="기존 텍스트 메타(제목·설명)와 결합">
