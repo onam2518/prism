@@ -154,13 +154,14 @@ window.PRISM_APP_PARTS.push(() => ({
         this.mediaVidBusy = false;
       },
       // ── 미디어: 이미지(미저장) ──
-      mediaImgPick(e) {
-        (this.mediaImg.thumbs || []).forEach((u) => URL.revokeObjectURL(u));   // 이전 썸네일 URL 해제(누수 방지)
-        this.mediaImg.files = Array.from(e.target.files || []);
-        this.mediaImg.thumbs = this.mediaImg.files.map((f) => URL.createObjectURL(f));
-        this.mediaImgRes = null; this.mediaImgMsg = '';
+      mediaImgAdd(list) {                                  // 선택·드롭 공통: 이미지 파일을 목록에 추가(썸네일 생성)
+        const fs = Array.from(list || []).filter((f) => f && (f.type || '').startsWith('image/'));
+        fs.forEach((f) => { this.mediaImg.files.push(f); this.mediaImg.thumbs.push(URL.createObjectURL(f)); });
+        if (fs.length) { this.mediaImgRes = null; this.mediaImgMsg = ''; }
       },
-      mediaImgDrop(i) {                                    // 선택 목록에서 i번째 이미지 제거(썸네일 미리보기 × 버튼)
+      mediaImgPick(e) { this.mediaImgAdd(e.target.files); e.target.value = ''; },   // value 초기화 = 같은 파일 재선택 허용
+      mediaImgDropZone(e) { this.mediaImgDrag = false; this.mediaImgAdd(e.dataTransfer && e.dataTransfer.files); },
+      mediaImgDrop(i) {                                    // 선택 목록에서 i번째 이미지 제거(썸네일 × 버튼)
         const u = this.mediaImg.thumbs[i]; if (u) URL.revokeObjectURL(u);
         this.mediaImg.files.splice(i, 1);
         this.mediaImg.thumbs.splice(i, 1);
@@ -171,7 +172,10 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           const fd = new FormData();
           this.mediaImg.files.forEach((f, i) => fd.append('image' + i, f));
-          if (this.mediaImg.caption) fd.append('caption', this.mediaImg.caption);
+          if (this.mediaImg.group) fd.append('displayServiceName', this.mediaImg.group);   // 콘텐츠 그룹(서비스)
+          if (this.mediaImg.title) fd.append('title', this.mediaImg.title);
+          if (this.mediaImg.body) fd.append('body', this.mediaImg.body);                   // 이미지와 함께 붙는 본문
+          if (this.mediaImg.url) fd.append('source_url', this.mediaImg.url);
           const [vp, vm] = String(this.mediaImg.vision || 'upstage_ie').split(':');   // 선택 시각 슬롯 → provider/model
           if (vp) fd.append('vision_provider', vp);
           if (vm) fd.append('vision_model', vm);

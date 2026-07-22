@@ -129,5 +129,28 @@ class TestRunPipelineVisionUsed(unittest.TestCase):
         self.assertEqual(res["source"], "image")
 
 
+class TestContentFormMerge(unittest.TestCase):
+    """시안 C: 이미지에 콘텐츠 정보(그룹·제목·본문·원문)를 함께 실어 단일 메타로."""
+
+    def test_build_content_merges_text_body_first(self):
+        from prism import imagext
+        c = imagext.build_content([{"vision": "장면 묘사", "ocr": ""}],
+                                  caption="캡", text_body="본문")
+        # 사용자 본문 · 캡션 · 이미지 신호 순
+        self.assertEqual(c["body"].split("\n"), ["본문", "캡", "(이미지 1) 장면 묘사"])
+
+    def test_run_pipeline_carries_group_title_body_url(self):
+        from prism import serve
+        fields = {"displayServiceName": "커뮤니티", "title": "제목", "body": "본문텍스트",
+                  "source_url": "https://x.com/1",
+                  "image0": {"bytes": IMG_BYTES, "filename": "a.jpg", "mime": "image/jpeg"}}
+        res = serve.run_pipeline(fields, mock=True, persist=False)
+        content = res["content"]
+        self.assertEqual(content["displayServiceName"], "커뮤니티")
+        self.assertEqual(content["title"], "제목")
+        self.assertTrue(content["body"].startswith("본문텍스트"))   # 본문이 이미지 신호 앞
+        self.assertEqual(content["source_url"], "https://x.com/1")
+
+
 if __name__ == "__main__":
     unittest.main()

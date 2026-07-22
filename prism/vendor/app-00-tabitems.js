@@ -101,7 +101,8 @@ window.PRISM_APP_PARTS.push(() => ({
       // 미디어(이미지·영상 → 메타 추출)
       mediaTab: 'image',                      // 미디어 하위 탭: image(이미지) | video(영상)
       mediaVid: { file: null, caption: '', subs: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
-      mediaImg: { files: [], caption: '', vision: 'upstage_ie', thumbs: [] }, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
+      mediaImg: { files: [], thumbs: [], vision: 'upstage_ie', group: '뉴스', title: '', body: '', url: '' },
+      mediaImgDrag: false, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',

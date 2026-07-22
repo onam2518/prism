@@ -2282,7 +2282,8 @@ def _p_media_extract(h, body):
             vm = (fields.get("vision_model") or "").strip()
             vision = (vp, vm) if vp else None        # 선택 시각 슬롯(없으면 전역 config)
             pf = {"displayServiceName": fields.get("displayServiceName", "포토"),
-                  "title": fields.get("title", ""), "caption": fields.get("caption", "")}
+                  "title": fields.get("title", ""), "caption": fields.get("caption", ""),
+                  "body": fields.get("body", ""), "source_url": fields.get("source_url", "")}
             pf.update(imgs)
             res = run_pipeline(pf, mock=Handler.server_mock,
                                model=fields.get("model", ""), persist=False, vision=vision)
