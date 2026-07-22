@@ -132,7 +132,8 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
             **({"duplicates": dropped} if dropped else {})}
 
 
-def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persist: bool = True) -> dict:
+def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persist: bool = True,
+                 vision=None) -> dict:
     cfg = Config.load()
     if (model or "").strip():                # 모델 지정 재실행: 제공자·키를 모델에 맞게 라우팅
         llm, _route = _SV.llm_for_model(model.strip(), mock)
@@ -148,10 +149,13 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
     images = [v for _, v in imgs]
     source = "text"
     signals = []
+    vision_used = None
     if images:
         source = "image"
         images, dropped = IMG.cap_images(images)   # 장수 상한(비전 호출 전)
-        signals = IMG.extract_signals(images, mock=llm.mock)
+        signals = IMG.extract_signals(images, mock=llm.mock, vision=vision)
+        _vp, _vm = vision if vision else IMG._vision_cfg()   # 실제 요청 슬롯(UI 표기용 · 순수사진 폴백은 signals note)
+        vision_used = {"provider": _vp, "model": _vm}
         content = IMG.build_content(
             signals,
             displayServiceName=fields.get("displayServiceName", "포토"),
@@ -200,7 +204,7 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
                              title=content.get("title", ""))
     if not persist:                              # 실험(미저장): 추출만 하고 results·초안·홀드아웃 미기록
         return {"source": source, "mock": llm.mock, "content": content,
-                "signals": signals, "output": out}
+                "signals": signals, "output": out, "vision_used": vision_used}
     store_save([(content, out)], team=team)      # 영속 저장(+미러, 팀 태깅)
     if (fields.get("purpose") or "") == "eval":  # 평가용 지정: 검수 대상에서 제외(홀드아웃)
         try:
@@ -216,6 +220,7 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
         "content": content,
         "signals": signals,
         "output": out,
+        "vision_used": vision_used,
     }
 
 

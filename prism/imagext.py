@@ -254,6 +254,21 @@ def _vision_cfg():
         return "upstage_ie", ""
 
 
+# 순수 사진 폴백 기본 라우터 시각 모델. Upstage IE(문서 시각 이해)는 텍스트 요소가 없는
+# 순수 사진을 못 읽어(NoTextInImage) 장면 인식 0건이 된다. 이때 라우터 멀티모달로 1회
+# 자동 폴백한다. 모델은 리포트(2026-07-22 · 샘플 20장)에서 장면 인식 20/20 · 고유명사
+# 최고로 검증된 gemini-3.5-flash 를 쓴다(검증 안 된 라우터는 자동 폴백 대상에서 제외).
+DEFAULT_ROUTER_VISION = {"timely": "gemini-3.5-flash"}
+
+
+def _router_fallback():
+    """순수 사진 폴백용 (service, model). 검증된 라우터 키가 연결돼 있으면 그 기본 모델, 없으면 None."""
+    for svc, model in DEFAULT_ROUTER_VISION.items():
+        if router_key(svc):
+            return svc, model
+    return None
+
+
 def _mock_signal(idx: int) -> dict:
     """키 없이 UI 흐름을 검증하기 위한 결정론적 합성 신호."""
     return {
@@ -276,18 +291,21 @@ def _compose_vision(obj: dict) -> str:
     return " ".join(parts)
 
 
-def extract_signals(images: list, *, mock: bool = False) -> list:
+def extract_signals(images: list, *, mock: bool = False, vision=None) -> list:
     """이미지 목록 → 이미지별 {ocr, vision, latency_ms, note?} 신호.
 
     images: [{"bytes": b"...", "filename": "a.png", "mime": "image/png"}, ...]
-    각 이미지는 Information Extraction 으로 시각 이해(설명·엔티티·장면·보이는 텍스트).
-    텍스트 미검출(순수 사진)이면 Document OCR 로 폴백. mock=True/무키 시 mock.
+    vision: (provider, model) per-call 시각 슬롯 오버라이드. None 이면 전역 config(_vision_cfg).
+    각 이미지는 선택된 슬롯으로 시각 이해(설명·엔티티·장면·보이는 텍스트).
+    IE 선택 시 순수 사진(텍스트 미검출)이면 라우터 멀티모달로 1회 자동 폴백,
+    그래도 비면 Document OCR 로 텍스트 확보 시도. mock=True/무키 시 mock.
     """
-    provider, vmodel = _vision_cfg()
+    provider, vmodel = vision if vision else _vision_cfg()
     router = is_router(provider)
     # 비전 슬롯에 필요한 키가 있는지로 mock 판단(라우터=라우터키, upstage_ie=Solar키)
     have_vision = (router_key(provider) and vmodel) if router else bool(_api_key())
     use_mock = mock or (not have_vision and not _api_key())
+    fb = None if router else _router_fallback()   # IE 선택 시에만 순수 사진 라우터 폴백 준비
     out = []
     for i, im in enumerate(images, 1):
         if use_mock:
@@ -298,27 +316,37 @@ def extract_signals(images: list, *, mock: bool = False) -> list:
         t0 = time.time()
         mime = im.get("mime", "image/png")
         name = im.get("filename", f"image{i}.png")
-        vision, ocr, note = "", "", ""
+        vision_txt, ocr, note = "", "", ""
         try:
             if router and router_key(provider) and vmodel:
                 obj = vision_via_router(im["bytes"], mime, vmodel, provider)
             else:
                 obj = vision_understand(im["bytes"], mime)   # Upstage IE
-            vision = _compose_vision(obj)
+            vision_txt = _compose_vision(obj)
             ocr = (obj.get("visible_text") or "").strip()
         except NoTextInImage:
-            note = "이미지에서 텍스트가 검출되지 않아 Upstage 시각 이해를 적용하지 못했습니다(순수 사진은 라우터 멀티모달 권장)."
-            print(f"  [warn] 시각 이해 불가({name}): no text elements")
+            if fb:                                            # 순수 사진 → 라우터 멀티모달 1회 폴백(리포트 #2)
+                try:
+                    obj = vision_via_router(im["bytes"], mime, fb[1], fb[0])
+                    vision_txt = _compose_vision(obj)
+                    ocr = (obj.get("visible_text") or "").strip()
+                    note = f"순수 사진 · {fb[1]}({fb[0]}) 라우터 폴백"
+                except Exception as e:
+                    note = "라우터 폴백 시각 이해에 실패했습니다."
+                    print(f"  [warn] 라우터 폴백 실패({name}): {e}")
+            else:
+                note = "이미지에서 텍스트가 검출되지 않아 Upstage 시각 이해를 적용하지 못했습니다(순수 사진은 라우터 멀티모달 권장)."
+                print(f"  [warn] 시각 이해 불가({name}): no text elements")
         except Exception as e:
             note = "시각 이해 호출에 실패했습니다."
             print(f"  [warn] 비전({provider}) 실패({name}): {e}")
         # vision 이 비었으면 Document OCR 로라도 텍스트 확보 시도(Solar 키 있을 때)
-        if not vision and not ocr and _api_key():
+        if not vision_txt and not ocr and _api_key():
             try:
                 ocr = ocr_image(im["bytes"], name, mime)
             except Exception as e:
                 print(f"  [warn] OCR 폴백 실패({name}): {e}")
-        sig = {"ocr": ocr, "vision": vision,
+        sig = {"ocr": ocr, "vision": vision_txt,
                "latency_ms": int((time.time() - t0) * 1000)}
         if note:
             sig["note"] = note

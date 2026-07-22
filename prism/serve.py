@@ -779,6 +779,27 @@ def _candidate_models(cfg, team=None) -> list:
     return out
 
 
+def _vision_candidates(cfg) -> list:
+    """이미지 탭 시각 슬롯 선택지: 기본(Upstage IE) + 연결된 라우터의 검증 후보 + 현재 설정 슬롯.
+    id 형식 = 'upstage_ie' | 'provider:model'. 라우터 후보는 키가 있을 때만 노출한다."""
+    out = [{"id": "upstage_ie", "label": "기본 · 문서 시각 이해(Upstage)"}]
+    seen = {"upstage_ie"}
+    # 리포트(2026-07-22 · 샘플 20장) 검증 후보 — Timely 라우터. 키 연결 시에만.
+    if IMG.router_key("timely"):
+        for m, tag in (("gemini-3.5-flash", " · 권장"), ("gpt-5.4-mini", " · 빠름"),
+                       ("claude-haiku-4-5", "")):
+            cid = f"timely:{m}"
+            if cid not in seen:
+                seen.add(cid); out.append({"id": cid, "label": f"{m} (Timely){tag}"})
+    # 관리자가 설정한 슬롯이 라우터면 포함(후보에 없던 조합도 선택 가능하게)
+    if IMG.is_router(cfg.vision_provider or "") and (cfg.vision_model or ""):
+        cid = f"{cfg.vision_provider}:{cfg.vision_model}"
+        if cid not in seen:
+            seen.add(cid)
+            out.append({"id": cid, "label": f"{cfg.vision_model} ({cfg.vision_provider}) · 설정"})
+    return out
+
+
 def team_links() -> dict:
     """팀 가이드 링크(reports kind='team_links' 전역 행 · 운영 관리자가 시스템 설정에서 등록).
     내부 위키 URL 은 코드에 두지 않는다(공개 데모 docs/demo.html 유출 방지)."""
@@ -844,6 +865,7 @@ def config_status(team=None) -> dict:
         "stageModels": dict(cfg.stage_models or {}),
         "modelPrompts": dict(cfg.model_prompts or {}),
         "availableModels": _candidate_models(cfg, team),
+        "visionCandidates": _vision_candidates(cfg),
         "goldenMinGood": int(getattr(cfg, "golden_min_good", 1) or 1),
         "learnNextAt": str(getattr(cfg, "learn_next_at", "") or ""),
         "learnRepeatDays": int(getattr(cfg, "learn_repeat_days", 0) or 0),
@@ -2252,11 +2274,14 @@ def _p_media_extract(h, body):
         imgs = {k: v for k, v in fields.items()
                 if k.startswith("image") and isinstance(v, dict) and v.get("bytes")}
         if imgs:                                     # 이미지 실험: run_pipeline 이미지 분기 재사용(미저장)
+            vp = (fields.get("vision_provider") or "").strip()
+            vm = (fields.get("vision_model") or "").strip()
+            vision = (vp, vm) if vp else None        # 선택 시각 슬롯(없으면 전역 config)
             pf = {"displayServiceName": fields.get("displayServiceName", "포토"),
                   "title": fields.get("title", ""), "caption": fields.get("caption", "")}
             pf.update(imgs)
             res = run_pipeline(pf, mock=Handler.server_mock,
-                               model=fields.get("model", ""), persist=False)
+                               model=fields.get("model", ""), persist=False, vision=vision)
             return {"ok": True, **res}
         f = fields.get("file") or {}
         if not f.get("bytes"):
