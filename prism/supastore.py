@@ -657,17 +657,21 @@ class SupabaseStore:
         return len(rows)
 
     def split_reviewed_today(self, reviewer, team=None) -> int:
-        """검수자가 오늘 의견 갈린(split) 콘텐츠에 판정한 건수(불일치 재검토 미션 판정용)."""
+        """검수자가 오늘 의견 갈린(split) 콘텐츠에 판정한 건수(불일치 재검토 미션 판정용).
+        오늘 내가 판정한 해시 집합에 한정해 조회한다(과거: feedback 전량 스캔 → 미션 확인마다 5만행 페이징)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         mine = self._get("feedback", "select=content_hash"
                          f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
                          f"&ts=gte.{self._today_iso()}{tq}")
-        if not mine:
+        hashes = sorted({r["content_hash"] for r in mine if _HASH_RE.match(r.get("content_hash") or "")})
+        if not hashes:
             return 0
-        hashes = {r["content_hash"] for r in mine}
         by_c = {}
-        for r in self._all_feedback(team):
-            if r.get("verdict") in ("good", "bad"):
+        for i in range(0, len(hashes), 100):              # in.() URL 길이 한계 대비 청크 분할(해시는 하루 수십 건)
+            hlist = ",".join(hashes[i:i + 100])
+            rows = self._get("feedback", "select=content_hash,verdict"
+                             f"&content_hash=in.({hlist})&verdict=in.(good,bad){tq}")
+            for r in rows:
                 by_c.setdefault(r["content_hash"], set()).add(r["verdict"])
         return sum(1 for h in hashes if len(by_c.get(h, ())) > 1)
 
