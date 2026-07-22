@@ -137,18 +137,7 @@ window.PRISM_APP_PARTS.push(() => ({
         try { const j = await (await fetch('/models', { headers: this._authHeaders() })).json(); if (j && j.ok && Array.isArray(j.models)) { this.models = j.models; if (!this.cfgModel) this.cfgModel = j.current || ''; } } catch (e) {}
       },
       _syncTopicSettings() { const s = (this.topicData && this.topicData.settings) || {}; this.settingsDraft = { co_min: s.co_min || 2, entity_min: s.entity_min || 2 }; },
-      // ── 미디어: T1 자막 파싱(룰·모델 0건) ──
-      async mediaParse() {
-        if (!this.mediaSub.raw.trim()) return;
-        this.mediaBusy = true; this.mediaMsg = '파싱 중…'; this.mediaRes = null;
-        try {
-          const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'subtitles', raw: this.mediaSub.raw, fmt: this.mediaSub.fmt }) })).json();
-          if (r && r.ok) { this.mediaRes = r; this.mediaMsg = r.cue_count ? (r.cue_count + '개 큐를 파싱했습니다') : '큐를 찾지 못했습니다 · 형식을 확인하세요'; }
-          else { this.mediaMsg = (r && r.error) || '파싱 실패'; }
-        } catch (e) { this.mediaMsg = '파싱 실패'; }
-        this.mediaBusy = false;
-      },
-      // ── 미디어: T4 네이티브 비디오 실험(미저장) ──
+      // ── 미디어: 영상(미저장) ──
       mediaVidPick(e) { this.mediaVid.file = (e.target.files && e.target.files[0]) || null; this.mediaVidRes = null; this.mediaVidMsg = ''; },
       async mediaNative() {
         if (!this.mediaVid.file) return;
@@ -164,7 +153,7 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this.mediaVidMsg = '처리 실패'; }
         this.mediaVidBusy = false;
       },
-      // ── 미디어: 포토·이미지 실험(미저장 · 콘텐츠 관리에서 이관) ──
+      // ── 미디어: 이미지(미저장) ──
       mediaImgPick(e) { this.mediaImg.files = Array.from(e.target.files || []); this.mediaImgRes = null; this.mediaImgMsg = ''; },
       async mediaImgRun() {
         if (!this.mediaImg.files.length) return;
@@ -173,23 +162,14 @@ window.PRISM_APP_PARTS.push(() => ({
           const fd = new FormData();
           this.mediaImg.files.forEach((f, i) => fd.append('image' + i, f));
           if (this.mediaImg.caption) fd.append('caption', this.mediaImg.caption);
+          const [vp, vm] = String(this.mediaImg.vision || 'upstage_ie').split(':');   // 선택 시각 슬롯 → provider/model
+          if (vp) fd.append('vision_provider', vp);
+          if (vm) fd.append('vision_model', vm);
           const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (r && r.ok) { this.mediaImgRes = r; this.mediaImgMsg = r.mock ? '완료 · mock(비전 미연결)' : '완료'; }
           else { this.mediaImgMsg = (r && r.error) || '처리 실패'; }
         } catch (e) { this.mediaImgMsg = '처리 실패'; }
         this.mediaImgBusy = false;
-      },
-      // ── 미디어: S5 메타추출 모델 A/B(미저장) ──
-      mediaS5Toggle(m) { const a = this.mediaS5.models; const i = a.indexOf(m); if (i >= 0) a.splice(i, 1); else a.push(m); },
-      async mediaS5Run() {
-        if (!this.mediaS5.text.trim() || !this.mediaS5.models.length) { this.mediaS5Msg = '통합 원고와 후보 모델을 지정하세요'; return; }
-        this.mediaS5Busy = true; this.mediaS5Msg = '모델별 추출 중… (' + this.mediaS5.models.length + '개)'; this.mediaS5Res = null;
-        try {
-          const r = await (await this._afetch('/media-extract', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 's5ab', text: this.mediaS5.text, models: this.mediaS5.models }) })).json();
-          if (r && r.ok) { this.mediaS5Res = r; this.mediaS5Msg = (r.results || []).some(x => x.mock) ? '완료 · mock(모델 미연결 시 동일 산출)' : '완료'; }
-          else { this.mediaS5Msg = (r && r.error) || 'A/B 실패'; }
-        } catch (e) { this.mediaS5Msg = 'A/B 실패'; }
-        this.mediaS5Busy = false;
       },
       // ── 토픽 스튜디오 ──
       async _studioPost(payload) {

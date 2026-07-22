@@ -54,6 +54,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
           if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
+          if (Array.isArray(this.cfg.visionCandidates)) this.visionCandidates = this.cfg.visionCandidates;
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
           if (typeof this.cfg.learnNextAt === 'string') this.learnNextAt = this.cfg.learnNextAt;
           if (this.cfg.learnRepeatDays != null) this.learnRepeat = this.cfg.learnRepeatDays;
