@@ -232,6 +232,16 @@
   select.field{appearance:none;-webkit-appearance:none;padding-right:34px;cursor:pointer;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235c6a6a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 11px center}
+  /* 파일 선택: 고정 height 를 쓰면 네이티브 버튼·파일명이 박스 밖으로 삐져나온다 → 높이 자동·flex 수직 중앙 */
+  input[type=file].field{height:auto;min-height:var(--ctrl-h);padding:0 var(--ctrl-px);
+    display:flex;align-items:center;font-size:13px;color:var(--ds-muted);cursor:pointer;overflow:hidden}
+  input[type=file].field::file-selector-button{margin:0 10px 0 0;padding:6px 12px;border-radius:var(--ds-radius-sm);
+    border:1px solid var(--ds-hairline);background:var(--ds-surface);color:var(--ds-ink);
+    font-family:var(--ds-font);font-size:13px;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s}
+  input[type=file].field::file-selector-button:hover{border-color:var(--ds-primary);background:var(--ds-surface-white)}
+  input[type=file].field::-webkit-file-upload-button{margin:0 10px 0 0;padding:6px 12px;border-radius:var(--ds-radius-sm);
+    border:1px solid var(--ds-hairline);background:var(--ds-surface);color:var(--ds-ink);
+    font-family:var(--ds-font);font-size:13px;font-weight:600;cursor:pointer}
 
   /* ── DS 파일럿: ImageDropzone · Hero · Empty (라이트 토큰) ── */
   .ds-pilot{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font)}
