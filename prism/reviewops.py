@@ -1033,7 +1033,8 @@ def review_queue(data: dict) -> dict:
     limit = int(data.get("limit") or 100)
     rv = (data.get("reviewer") or "").strip()
     items = st.review_queue(limit=limit, only_unreviewed=bool(only_un), team=data.get("team"),
-                            reviewer=rv or None)                # 배정 콘텐츠 배타 노출
+                            reviewer=rv or None,                # 배정 콘텐츠 배타 노출
+                            see_all=bool(data.get("see_all")))  # 생성자·슈퍼관리자 = 배타 우회(전체 열람)
     if items:                                                   # 실제 큐가 있을 때만 골드 삽입(빈 큐에 골드만 뜨는 것 방지)
         items = _SV._inject_gold(items, rv, data.get("team"))
     return {"ok": True, "items": items, "n": len(items)}
