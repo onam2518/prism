@@ -10,6 +10,7 @@
 import os
 import queue as _q
 import sys
+import types
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -107,6 +108,43 @@ class TestSseTeamScope(unittest.TestCase):
         SV.broadcast({"z": 1}, team="teamA")
         with self.assertRaises(_q.Empty):
             q.get_nowait()
+
+
+class TestSseQueryTokenTeam(unittest.TestCase):
+    """/events(EventSource)는 Authorization 헤더를 못 싣어 token 쿼리로 인증한다.
+    구독 팀도 이 토큰으로 해석해야 한다(헤더 전용 _req_team 사용 시 운영에서 전원 team=None
+    → 팀 스코프 전면 무력화 + 교차팀 유출 회귀). _serve_sse 는 블로킹 루프라 캡처용으로 대체."""
+
+    def setUp(self):
+        import prism.serve as SV
+        self.SV = SV
+        self._orig = (SV._supa, SV.validate_jwt, SV.team_of)
+        SV._supa = lambda: ("http://x", "k")
+        SV.validate_jwt = lambda tok, strict=False: {"tokA": "uidA"}.get(tok)
+        SV.team_of = lambda uid: {"uidA": "teamA"}.get(uid)
+
+    def tearDown(self):
+        self.SV._supa, self.SV.validate_jwt, self.SV.team_of = self._orig
+
+    def _capture(self):
+        got = []
+        return got, types.SimpleNamespace(_serve_sse=lambda team=None: got.append(team))
+
+    def test_events_resolves_team_from_query_token(self):
+        got, h = self._capture()
+        self.SV._g_events(h, {"token": ["tokA"]})
+        self.assertEqual(got, ["teamA"])                 # 쿼리 token → 구독 팀 해석
+
+    def test_events_no_token_team_none(self):
+        got, h = self._capture()
+        self.SV._g_events(h, {})
+        self.assertEqual(got, [None])                    # 토큰 없음 → None(전 팀 폴백 아님)
+
+    def test_events_local_mode_team_none(self):
+        self.SV._supa = lambda: None
+        got, h = self._capture()
+        self.SV._g_events(h, {"token": ["tokA"]})
+        self.assertEqual(got, [None])                    # sqlite 단독은 팀 스코프 없음
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ def usermeta_data(logs_bytes: bytes = None, filename: str = "", team=None) -> di
 def _usermeta_compute(logs_bytes, filename, team) -> dict:
     from . import personagen as PG
     from . import usermeta as UM
-    rows = _SV.results_rows()
+    rows = _SV.results_rows(team=team)               # 팀 스코프: supabase 다중팀에서 전 팀 콘텐츠 혼입·content_id 오정렬 방지
     if not rows:
         return {"empty": True, "n_contents": 0, "users": [], "personas_def": [],
                 "note": "먼저 [실행 · 추출]에서 콘텐츠를 추출하세요. content_id 는 추출 순서(0부터)와 매칭됩니다."}

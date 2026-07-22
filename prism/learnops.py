@@ -460,7 +460,7 @@ def learning_batch(team=None, models=None) -> dict:
         _SV.broadcast({"type": "learn_batch", "version": done_ver,
                        "grade_accuracy": report.get("grade_accuracy"),
                        "improve_delta": delta, "reverted": bool((improve or {}).get("reverted")),
-                       "confirmed": golden.get("confirmed"), "ts": report["ts"]})
+                       "confirmed": golden.get("confirmed"), "ts": report["ts"]}, team=team)   # 팀 스코프 브로드캐스트(교차팀 유출 차단)
     except Exception:
         pass
     print(f"  [batch] 학습 일배치 · 골든 확정 {golden.get('confirmed')} · 카테고리필요 "
