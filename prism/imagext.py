@@ -355,10 +355,12 @@ def extract_signals(images: list, *, mock: bool = False, vision=None) -> list:
 
 
 def build_content(signals: list, *, displayServiceName: str = "포토",
-                  title: str = "", caption: str = "", dropped: int = 0) -> dict:
+                  title: str = "", caption: str = "", text_body: str = "",
+                  dropped: int = 0) -> dict:
     """이미지 신호(들)를 Prism 4필드 Content 로 합성.
 
     여러 이미지는 하나의 콘텐츠로 통합: body 에 이미지별 신호를 순서대로 누적.
+    text_body: 이미지와 함께 입력한 본문(이미지 신호 앞에 붙는다) · 본문·이미지 공존 콘텐츠 대응.
     가중치: 제목 미지정 시 '대표(앞 장 우선)' 신호에서 한 줄을 끌어온다(분류 신호 확보).
     dropped>0(장수 상한 초과로 버린 수)이면 본문에 명시해 누락을 숨기지 않는다.
     """
@@ -371,9 +373,9 @@ def build_content(signals: list, *, displayServiceName: str = "포토",
             parts.append(f"[이미지 텍스트] {s['ocr']}")
         if parts:
             blocks.append(f"(이미지 {i}) " + " ".join(parts))
-    body = "\n".join(blocks)
-    if caption:
-        body = f"{caption}\n{body}".strip()
+    composed = "\n".join(blocks)
+    # 사용자 본문 · 캡션 · 이미지 신호 순으로 하나의 본문에 통합
+    body = "\n".join(p for p in ((text_body or "").strip(), (caption or "").strip(), composed) if p)
     if dropped > 0:
         body += (f"\n(첨부 {len(signals) + dropped}장 중 상한 {MAX_IMAGES}장만 반영, "
                  f"{dropped}장 제외)")

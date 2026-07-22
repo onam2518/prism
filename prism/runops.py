@@ -161,8 +161,12 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
             displayServiceName=fields.get("displayServiceName", "포토"),
             title=fields.get("title", ""),
             caption=fields.get("caption", ""),
+            text_body=fields.get("body", ""),
             dropped=dropped,
         )
+        _su = fields.get("source_url", "") or fields.get("url", "")
+        if _su:                                   # 원문 링크(참조 · 정체성 해시 불변)
+            content["source_url"] = _su
     else:
         content = {
             "displayServiceName": fields.get("displayServiceName", ""),

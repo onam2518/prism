@@ -9,34 +9,56 @@
         <!-- ─────────────── 이미지 ─────────────── -->
         <div x-show="mediaTab==='image'" x-cloak class="space-y-4">
           <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
-            <li>이미지를 올리고 <b>시각 이해 방식</b>을 고른 뒤 실행하면, 이미지에서 뽑은 신호로 본문을 합성해 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다.</li>
-            <li>여러 장은 하나의 콘텐츠로 통합합니다. (실험 · 저장 안 함)</li>
+            <li>콘텐츠 정보(그룹·제목·본문)와 이미지를 함께 넣고 <b>시각 이해 방식</b>을 고른 뒤 실행하면, 본문과 이미지 신호를 합쳐 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다.</li>
+            <li>이미지 여러 장은 하나의 콘텐츠로 통합합니다. (실험 · 저장 안 함)</li>
           </ul>
 
-          <div class="panel"><div class="panel-hd"><b>이미지 · 메타 추출</b><span class="meta">업로드 → 시각 이해 → 합성 본문 → 기존 추출(ItemMeta)</span></div>
+          <div class="panel"><div class="panel-hd"><b>이미지 · 메타 추출</b><span class="meta">콘텐츠 정보 + 이미지 → 시각 이해 → 합성 본문 → 기존 추출(ItemMeta)</span></div>
             <div class="panel-bd space-y-4">
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-                <div style="flex:1;min-width:220px"><label class="lbl">이미지 파일 (여러 장 가능)</label>
-                  <div class="mediaup">
-                    <label class="mediaup__btn">파일 선택<input type="file" accept="image/*" multiple class="sr-only" x-on:change="mediaImgPick($event)"></label>
-                    <span class="mediaup__hint" x-text="mediaImg.files.length ? (mediaImg.files.length + '장 선택됨 · 하나로 통합') : '선택된 파일 없음 · 여러 장 가능'"></span>
-                  </div>
-                </div>
-                <div style="flex:1;min-width:180px"><label class="lbl">캡션 (선택)</label>
-                  <input class="field" x-model="mediaImg.caption" placeholder="사진 설명이 있으면 함께 참조">
-                </div>
-                <div style="min-width:210px"><label class="lbl">시각 이해 방식</label>
-                  <select class="field" x-model="mediaImg.vision">
-                    <template x-for="v in visionCandidates" x-bind:key="v.id"><option x-bind:value="v.id" x-text="v.label"></option></template>
-                    <option x-show="!visionCandidates.length" value="upstage_ie">기본 · 문서 시각 이해(Upstage)</option>
+                <div style="flex:0 0 200px;min-width:160px"><label class="lbl">콘텐츠 그룹</label>
+                  <select class="field" x-model="mediaImg.group">
+                    <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
                   </select>
                 </div>
-                <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaImgRun()" x-bind:disabled="mediaImgBusy||!mediaImg.files.length">실행</button>
+                <div style="flex:1;min-width:220px"><label class="lbl">제목</label>
+                  <input class="field" x-model="mediaImg.title" placeholder="기사·게시글 제목">
+                </div>
+              </div>
+              <div><label class="lbl">본문 (선택)</label>
+                <textarea class="field" rows="4" x-model="mediaImg.body" placeholder="이미지 외 본문이 있으면 함께 · 이미지만 있으면 비워도 됩니다"></textarea>
+              </div>
+              <div><label class="lbl">이미지 첨부 (여러 장 = 하나로 통합)</label>
+                <label class="dropzone" x-bind:class="mediaImgDrag ? 'drag' : ''"
+                       x-on:dragover.prevent="mediaImgDrag = true" x-on:dragleave.prevent="mediaImgDrag = false"
+                       x-on:drop.prevent="mediaImgDropZone($event)">
+                  <span class="name" x-text="mediaImgDrag ? '여기에 놓기' : (mediaImg.files.length ? (mediaImg.files.length + '장 선택됨 · 하나로 통합') : '파일을 끌어다 놓거나 선택하세요')"></span>
+                  <span class="pick">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                    파일 선택
+                  </span>
+                  <input type="file" accept="image/*" multiple class="sr-only" x-on:change="mediaImgPick($event)">
+                </label>
               </div>
               <div x-show="mediaImg.thumbs.length" class="mediaup__thumbs">
                 <template x-for="(t,i) in mediaImg.thumbs" x-bind:key="t">
                   <div class="mediaup__thumb"><img x-bind:src="t" alt=""><button type="button" title="제거" x-on:click="mediaImgDrop(i)">×</button></div>
                 </template>
+              </div>
+              <div style="border-top:1px solid var(--ds-hairline)"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div style="flex:1;min-width:220px"><label class="lbl">원문 링크 (선택)</label>
+                  <input class="field" x-model="mediaImg.url" placeholder="https:// 원문 주소">
+                </div>
+                <div style="flex:0 0 240px;min-width:200px"><label class="lbl">시각 이해 방식</label>
+                  <select class="field" x-model="mediaImg.vision">
+                    <template x-for="v in visionCandidates" x-bind:key="v.id"><option x-bind:value="v.id" x-text="v.label"></option></template>
+                    <option x-show="!visionCandidates.length" value="upstage_ie">기본 · 문서 시각 이해(Upstage)</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:flex-end">
+                <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaImgRun()" x-bind:disabled="mediaImgBusy||!mediaImg.files.length">실행</button>
               </div>
               <div x-show="mediaImgMsg" class="text-xs text-muted" x-text="mediaImgMsg"></div>
               <div x-show="mediaImgRes" class="space-y-3">
