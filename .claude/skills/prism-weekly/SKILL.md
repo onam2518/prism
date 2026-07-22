@@ -1,120 +1,152 @@
 ---
 name: prism-weekly
-description: 프리즘 주간회의 자료 PPTX 생성. 사용자가 "주간회의 자료 만들어줘", "위클리 자료 준비", "주간 보고 만들어줘"처럼 요청할 때 사용. 에이전트 팀 병렬 수집(변경사항 · 검수 데이터 분석 · 소요 접수) → prism-slides 덱 작성 → Artifact 사전 검수 → 승인 후 슬라이드 이미지 방식 PPTX 변환 · 전달.
+description: 프리즘 주간회의 자료 PPTX 생성. 사용자가 "주간회의 자료 만들어줘", "위클리 자료 준비", "주간 보고 만들어줘"처럼 요청할 때 사용. 에이전트 팀 병렬 수집(변경사항 · 검수 데이터 분석 · 정책 안건) → 화면 캡처 포함 prism-slides 덱 작성 → Artifact 사전 검수 → 승인 후 슬라이드 이미지 방식 PPTX 변환 · 전달.
 ---
 
 # prism-weekly · 주간회의 자료 생성
 
 3가지 꼭지로 주간회의 PPTX 를 만든다.
 
-1. 지난주까지 변경사항(기능 · 정책)
+1. 지난주까지 변경사항(기능 · 정책) · 주요 개편은 화면 캡처와 함께 상세 소개
 2. 지난주까지 검수 데이터 분석
-3. 추가 논의 필요과제 · 개선 필요과제 소요 접수
+3. 정책 논의 안건(상위 의사결정 필요 건만 · 개발 과제 제외)
 
-산출 흐름: **에이전트 3팀 병렬 수집 → 종합 → prism-slides HTML 덱 → Artifact 사전 검수(사용자 승인) → 슬라이드 이미지 캡처 → PPTX → `~/Desktop/` 전달.**
+산출 흐름: **에이전트 병렬 수집 → 화면 캡처 → 종합 → prism-slides HTML 덱 → Artifact 사전 검수(사용자 승인) → 슬라이드 이미지 캡처 → PPTX → `~/Desktop/` 전달.**
 사용자 승인 전에는 절대 PPTX 를 만들지 않는다.
 
 ## 사전 조건
 
 - 키 파일: `~/.prism_supabase_url` · `~/.prism_supabase_key` (운영 Supabase 읽기 조회용)
-- 도구: `gh`(머지 PR 수집) · Google Chrome + Node 22 이상(캡처) · prism-slides 스킬(`~/.claude/skills/prism-slides`)
+- 도구: `gh` · Google Chrome + Node 22 이상 · prism-slides 스킬(`~/.claude/skills/prism-slides`)
 - **운영 DB 는 읽기 전용**: PostgREST 에 GET 만 보낸다. POST · PATCH · DELETE 금지.
   service key 를 출력 · 로그 · 슬라이드 · 에이전트 반환값에 남기지 않는다.
-- 마커 파일 `~/.prism_weekly_last`: `YYYY-MM-DD<TAB>끝PR번호` (지난 자료가 커버한 끝 시점).
-  없으면 사용자에게 시작점을 묻는다.
+- **운영 DB 시간 컬럼은 timestamptz 다(epoch 아님)**: 기간 필터는 UTC ISO 로.
+  예: KST 7/14 00:00 = `ts=gte.2026-07-13T15:00:00Z`.
+- 마커 파일 `~/.prism_weekly_last`: `YYYY-MM-DD<TAB>끝PR번호`. 없으면 사용자에게 시작점을 묻는다.
+- 변경사항 상세의 정본: 컨플루언스 **"Prism 기능 및 변경 사항"** (DNM · pageId `419037211`).
+  최신이면 과제 배경 · AS-IS/TO-BE 를 여기서 가져다 쓴다(Atlassian MCP `getConfluencePage`).
 
 ## 1. 범위 결정
 
 - 기본 범위: 마커 다음날 00:00(KST)부터 실행일 기준 직전 일요일 24:00(KST)까지.
 - 사용자 인자(날짜 · PR 번호)가 있으면 그것을 우선한다.
-- gh 의 mergedAt 과 DB 의 ts(epoch 초)는 UTC 다. KST(+9h) 변환 후 비교한다.
-- 에이전트에게 넘길 때는 KST 표기와 epoch 값을 둘 다 계산해 전달한다.
+- 에이전트에게 넘길 때 KST 표기와 UTC ISO 경계를 둘 다 계산해 전달한다.
+- PR 번호가 낮아도 기간 내 머지된 장기 브랜치가 흔하다. mergedAt 으로만 필터하고,
+  의심스러우면 gh 로 직접 재검증한다.
 
 ## 2. 에이전트 팀 병렬 수집
 
-Agent tool 3개를 **한 메시지에 동시에** 스폰한다. 각 에이전트에게 기간(KST 시작 · 끝 + epoch 값)과
-아래 임무 · 반환 형식을 그대로 전달한다. 반환은 사람용 문장이 아니라 원시 데이터(JSON)로 받는다.
+1차 3팀을 **한 메시지에 동시에** 스폰한다. 반환은 원시 데이터(JSON)로 받는다.
 
 ### A. 변경사항 수집
-
-- `gh pr list --state merged --limit 200 --json number,title,mergedAt,body` 로 기간 내 머지 PR 수집.
-- 과제 그룹핑(prism-changelog 규칙 준용): 정책 변화와 신규 기능이 각각 항목 ·
-  리팩토링과 자잘한 버그픽스는 "기반 정비" 한 항목으로 묶음 · docs 단독 PR 은 관련 과제 비고로 흡수.
-  근거가 부족하면 `git log` 커밋 본문과 `HANDOFF.md` 로 배경을 보강.
-- 반환: `[{과제명, 구분(기능|정책|기반), 배경 한 줄, asis, tobe, pr번호들}]` · 8~12건 이내.
+- `gh pr list --state merged --limit 200 --json number,title,mergedAt,body` → 기간 필터.
+- 과제 그룹핑(prism-changelog 규칙 준용): 정책 · 신규 기능 각각 항목, 리팩토링 · 버그픽스는 "기반 정비" 묶음, docs 는 비고 흡수. 8~12건.
+- 반환: `[{과제명, 구분(기능|정책|기반), 배경, asis, tobe, prs}]`.
 
 ### B. 검수 데이터 분석
-
-- 운영 Supabase PostgREST 를 GET 으로만 조회한다:
-
+- 조회 예(GET 만 · timestamptz):
   ```bash
   U=$(cat ~/.prism_supabase_url)/rest/v1; K=$(cat ~/.prism_supabase_key)
-  curl -s "$U/prism_feedback?select=verdict,reviewer,stage,ts&ts=gte.<시작epoch>&ts=lt.<끝epoch>" \
+  curl -s "$U/prism_feedback?select=verdict,reviewer,stage,ts&ts=gte.<시작ISO>&ts=lt.<끝ISO>" \
     -H "apikey: $K" -H "Authorization: Bearer $K"
   ```
+  테이블: `prism_feedback` · `prism_golden` · `prism_gold_checks` · `prism_assignments` · 팀 컬럼 `team_id` ·
+  검수자 이름은 `prism_reviewers` 매핑. 1000행 제한 시 limit/offset 페이지네이션.
+- 지표(정의는 `prism/dashops.py` `_dashboard_compute` 와 일치): 기간 검수 건수 · verdict 분포 ·
+  stage 분포 · 참여자와 1인당 처리량 · 골든 신규/누적 · 골드체크 정답률 · 전주 대비.
+  기간 길이가 다르면 하루 평균으로 비교한다. 표본 적은 지표(골드체크 등)는 "참고치" 명시.
+- 반환: `{지표, 전주 대비, 눈에 띄는 점 1~3개}`.
 
-  주요 테이블: `prism_feedback`(판정 원장: verdict · reviewer · stage · ts) · `prism_golden`(정답셋) ·
-  `prism_gold_checks`(골드 문항 판정 correct) · `prism_assignments`(배정) · 팀 구분 컬럼은 `team_id`.
-  PostgREST 는 기본 1000행 제한이므로 건수가 많으면 `limit`/`offset` 또는 `Range` 헤더로 페이지네이션.
-- 집계 지표(정의는 `prism/dashops.py` 의 `_dashboard_compute` 와 일치시킨다):
-  기간 내 검수 건수 · verdict 분포 · 참여 검수자 수와 1인당 처리량 · 골든셋 신규 적립과 누적 ·
-  골드체크 정답률 · 전주 대비 증감.
-- 반환: `{지표별 수치, 전주 대비, 눈에 띄는 점 1~3개(실데이터 근거)}`.
+### C. 정책 안건 수집 (PART 3 용)
+- **정책 · 운영 기준 · 거버넌스만. 개발 과제(성능 · 리팩토링 · 버그 · 마이그레이션)는 제외한다.**
+- 수집원: 코드의 결정 대기 기본값(golden_min_good, 보존 기한, 권한 매트릭스 등) ·
+  기간 PR 본문의 "추후 결정 · 협의 필요" · HANDOFF.md · LEARNING_DESIGN.md · 회의에서 미룬 기준.
+- 반환: `[{안건, 상황(현재 기본값 · 수치 인용), 결정할 것, 근거(파일:라인 또는 PR)}]` · 5~8건.
 
-### C. 소요 접수
+### 2차 수집 (1차 결과 확인 후 필요 시)
+- **상세(detail)**: 주요 신규 기능 · 대규모 개편 3~5건에 대해 what/why/할 수 있는 것/흐름/기본값/PR 수집.
+- **게시판 반영(boarddone)**: `prism_board?select=*` 로 처리 완료 건과 답변을 모으고 반영 PR 매칭.
+  미처리 건이 있으면 논의 안건 후보로도 넘긴다.
 
-- 게시판: `prism_board?status=in.(open,doing)&select=id,kind,title,body,reviewer,status,ts` 로
-  미처리 기능개선 제안(kind=feature)과 오류 제보(kind=bug)를 수집.
-- 보강: `HANDOFF.md` 잔여 과제 · `docs/CODE_AUDIT_2026-07-15.md` 백로그 ·
-  사용자가 대화에서 언급한 이월 안건.
-- 반환: `[{제목, 출처(게시판|백로그|감사), 상태, 접수일, 논의포인트 한 줄}]`.
+## 3. 화면 캡처 (주요 기능 상세용)
 
-## 3. 덱 작성 (prism-slides)
+운영 데이터를 쓰지 않는다. 격리 목 서버 + 시드로 찍는다.
 
-prism-slides 스킬 규칙을 그대로 따른다(예제 CSS 복사 · 빌드 · 스크린샷 검증). 표준 구성 10~16장:
+```bash
+D=<scratchpad>/qa && mkdir -p $D && cd <저장소>
+export PRISM_BACKEND=sqlite PRISM_DB=$D/qa.db PRISM_CONFIG=$D/qa_config.json PRISM_ENTDICT_ENRICH=0
+python3 scripts/seed_qa.py
+PRISM_BACKEND=sqlite PRISM_DB=$D/qa.db PRISM_CONFIG=$D/qa_config.json PRISM_ENTDICT_ENRICH=0 \
+  python3 -m prism.serve --mock --port 8978 &      # 8765 회피
+node .claude/skills/prism-weekly/capture_screens.mjs <shots.json> <scratchpad>/shots
+cd <scratchpad>/shots && for f in *.png; do sips -Z 1440 -s format jpeg -s formatOptions 82 "$f" --out "${f%.png}.jpg"; done
+```
+
+- `shots.json` 예: `{"base":"http://127.0.0.1:8978","shots":[{"name":"labrun","url":"/?m=lab","clicks":["사용자"]}]}`
+  모듈 은 URL `?m=` (lab 실험실 · studio 스튜디오 · create 콘텐츠 검수 · evaluate 평가 · dict 사전정책 · board 게시판).
+- **함정: 탭 클릭은 버튼 텍스트 정확 일치(===)로 찾는다.** 부분 일치는 네비 메뉴("사전 · 정책")를 잘못 누른다.
+  스크립트 기본이 정확 일치이므로 clicks 에 버튼 라벨을 그대로 쓴다(예: 실험실 서브탭 `["사용자","정책"]`).
+- 검수자 등록 모달은 스크립트가 localStorage 프리셋으로 우회한다.
+- 슬라이드 소스에는 `__SHOT_<이름대문자>__` 플레이스홀더(img src)로 넣고, prism-slides 빌드 후
+  `python3 .claude/skills/prism-weekly/embed_shots.py <빌드.html> <최종.html> <shots 디렉토리>` 로 치환한다
+  (토큰 `__SHOT_LABRUN__` ↔ 파일 `labrun.jpg` 소문자 일치 규약).
+- 종료 시 목 서버 · headless Chrome 프로세스를 반드시 정리한다.
+
+## 4. 덱 작성 (prism-slides)
+
+prism-slides 스킬 규칙을 따르되, 아래 구성 · 레이아웃 규칙을 지킨다(사용자 확정 사항).
+
+### 표준 구성 (18~22장)
 
 | 순서 | 내용 | 캐릭터 |
 | --- | --- | --- |
-| 표지 | "프리즘 주간회의 · MM.DD" + 팀 그리드 | 4종 |
-| 목차 | 3꼭지 agenda | 없음 |
-| PART 1 | 변경사항: 과제 카드(기능/정책 배지) · AS-IS→TO-BE | 딱지(감독) |
-| PART 2 | 검수 데이터: 숫자 타일 · verdict 밴드 · 추이 | 대식(타자) · 품질 지표는 복실(포수) |
-| PART 3 | 소요 접수: 논의 안건 체크리스트 · 출처 배지 | 용희(투수) |
-| 마무리 | 오늘 결정할 것 요약 | 딱지 |
+| 표지 · 목차 | "프리즘 주간회의 · MM.DD" + 3꼭지 agenda | 팀 그리드 |
+| PART 1 divider | 변경사항 | 딱지(감독) |
+| 전체 지도 | 과제 12건 표(과제 · 구분 칩 · 한 줄) | 없음 |
+| **주요 기능 상세 4~6장** | 대규모 개편 · 신규 기능당 1~2장, **화면 캡처 필수** | 없음 |
+| 그 밖의 기능 | 나머지 기능 카드 | 없음 |
+| 게시판 반영 | 접수 의견 → 반영 표(제안자 표기 · 미처리 건수 명시) | 없음 |
+| 정책 요약 | 정책 카드 + 화면 + 기반 정비 한 줄 | 딱지 말풍선 |
+| **정책 상세** | **AS-IS → TO-BE 표**(무엇이 · 전에는 · 이제는) | 없음 |
+| PART 2 divider + 3장 | 숫자 타일 · verdict 밴드 · 골든셋/검수자 | 대식 · 복실 |
+| PART 3 divider + 2장 | 정책 안건 체크리스트(그룹 2개로 분할) | 용희 말풍선 |
+| 마무리 | 오늘 정할 것 3건 **가로형 행**(안건 · 지금 상황 · 오늘 정할 것) + 팀 스트립 | 4종 |
 
-글쓰기: em dash 금지 · 쉬운 일상어 · 수치는 실데이터 인용(`.tag.ex` 실례 배지) · 결론 먼저.
+### 레이아웃 규칙 (필수)
 
-## 4. Artifact 사전 검수
+- **개수별 배치**: 짝수 4건 = 2×2 로 페이지를 채움(카드 · 글자 확대) · 홀수 5건 = 윗줄 3 + 아랫줄 2 가운데 정렬 ·
+  3건 이하 = 한 줄. (CSS: `.n4 { grid-template-columns:1fr 1fr }` · `.n5 { repeat(6,1fr); >* {span 2}; :nth-child(4){2/span 2} }`)
+- **기능 상세 슬라이드(featrow)**: **화면 캡처 왼쪽 · 텍스트 오른쪽**. 텍스트는 테두리 박스(.txtbox) 안에 · 글자 1.05em ·
+  **두 박스 높이 동일**(텍스트가 길면 이미지가 object-fit: cover 로 늘어나 하단 크롭) · **캡션은 그리드 밖 이미지 아래 좌측정렬**.
+- **마무리**: 안건별 가로형 행 = [번호+안건명(노란 배경) | 지금 상황 | 오늘 정할 것] 3열 그리드.
+- **용어**: "2층"처럼 구조 이름으로 사람 행위를 표현하지 않는다("최종 검수자가 확정"). 쉬운 일상어 · em dash 금지 ·
+  수치는 실데이터 인용 · 표본 적으면 참고치 명시.
 
-빌드된 HTML 을 Artifact 로 배포하고 사용자 확인을 받는다. 피드백이 오면
-소스 수정 → 재빌드 → **같은 파일 경로로 재배포**를 반복한다.
-**사용자가 승인하기 전에는 5단계로 넘어가지 않는다.**
+## 5. Artifact 사전 검수
 
-## 5. PPTX 변환 (슬라이드 이미지 방식)
+빌드 + 캡처 임베드된 HTML 을 Artifact 로 배포하고 사용자 확인을 받는다. 피드백 반영 시
+같은 파일 경로로 재배포(같은 URL 유지). **승인 전에는 6단계로 넘어가지 않는다.**
+
+## 6. PPTX 변환 (슬라이드 이미지 방식)
 
 ```bash
-SK=.claude/skills/prism-weekly            # 저장소 루트 기준
-node $SK/capture_deck.mjs <덱.html> <scratchpad>/slides        # 장당 3840×2160 PNG
+SK=.claude/skills/prism-weekly
+node $SK/capture_deck.mjs <최종덱.html> <scratchpad>/slides       # 장당 3840×2160 PNG
 python3 $SK/build_pptx.py <scratchpad>/프리즘_주간회의_YYYYMMDD.pptx <scratchpad>/slides
 cp <scratchpad>/프리즘_주간회의_YYYYMMDD.pptx ~/Desktop/
 ```
 
-- `capture_deck.mjs`: Chrome headless CDP 로 `.slide` 를 순서대로 활성화해 캡처.
-  HUD · 진행바 · 애니메이션은 자동 제거. 종료 시 Chrome 프로세스가 남지 않았는지 확인.
-- `build_pptx.py`: PNG 를 16:9 전면 이미지로 삽입. 최초 실행 시 스킬 폴더에
-  `.venv`(python-pptx) 를 자동 생성한다.
-- 이미지 방식이라 PPT 안에서 텍스트 수정은 불가. 수정 요청이 오면 소스 HTML 을 고치고
-  4~5단계를 다시 돈다.
+- 이미지 방식이라 PPT 안에서 텍스트 수정 불가. 수정 요청 시 소스 수정 → 5~6단계 반복.
 
-## 6. 마무리
+## 7. 마무리
 
-- `~/.prism_weekly_last` 를 `커버끝날짜<TAB>끝PR번호` 로 갱신.
-- 띄운 프로세스(http.server · headless Chrome) 정리.
-- 보고: PPTX 경로(`~/Desktop/…`) · Artifact 링크 · 꼭지별 한 줄 요약.
+- `~/.prism_weekly_last` 를 `커버끝날짜<TAB>덱에 반영된 끝 PR 번호` 로 갱신.
+- 띄운 프로세스(목 서버 · headless Chrome · http.server) 정리.
+- 보고: PPTX 경로 · Artifact 링크 · 꼭지별 한 줄 요약.
 
 ## 주의사항
 
-- 운영 DB 쓰기 요청 금지 · service key 노출 금지.
-- 데이터가 빈 꼭지(예: 신규 소요 0건)도 슬라이드는 만들되 "이번 주 없음"으로 명시한다.
+- 운영 DB 쓰기 금지 · service key 노출 금지.
+- 데이터가 빈 꼭지도 슬라이드는 만들되 "이번 주 없음"으로 명시한다.
 - 팀이 여럿 조회되면(team_id 여러 값) 합산할지 팀별로 나눌지 사용자에게 확인한다.
-- 슬라이드 내용이 1080px 높이를 넘치면 캡처가 잘린다. Artifact 검수 단계에서 넘침을 확인해 둔다.
+- 슬라이드 내용이 1080px 높이를 넘치면 캡처가 잘린다. Artifact 검수 단계에서 넘침을 확인한다.
