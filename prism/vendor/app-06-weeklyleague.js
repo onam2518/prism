@@ -154,7 +154,17 @@ window.PRISM_APP_PARTS.push(() => ({
         this.mediaVidBusy = false;
       },
       // ── 미디어: 이미지(미저장) ──
-      mediaImgPick(e) { this.mediaImg.files = Array.from(e.target.files || []); this.mediaImgRes = null; this.mediaImgMsg = ''; },
+      mediaImgPick(e) {
+        (this.mediaImg.thumbs || []).forEach((u) => URL.revokeObjectURL(u));   // 이전 썸네일 URL 해제(누수 방지)
+        this.mediaImg.files = Array.from(e.target.files || []);
+        this.mediaImg.thumbs = this.mediaImg.files.map((f) => URL.createObjectURL(f));
+        this.mediaImgRes = null; this.mediaImgMsg = '';
+      },
+      mediaImgDrop(i) {                                    // 선택 목록에서 i번째 이미지 제거(썸네일 미리보기 × 버튼)
+        const u = this.mediaImg.thumbs[i]; if (u) URL.revokeObjectURL(u);
+        this.mediaImg.files.splice(i, 1);
+        this.mediaImg.thumbs.splice(i, 1);
+      },
       async mediaImgRun() {
         if (!this.mediaImg.files.length) return;
         this.mediaImgBusy = true; this.mediaImgMsg = '이미지 처리 중… (시각 이해 → 추출)'; this.mediaImgRes = null;
