@@ -92,7 +92,7 @@
               <div class="text-xs text-muted" x-show="!(activityData && activityData.length)">검수가 쌓이면 일별 추이가 표시됩니다</div>
             </div>
           </section>
-          <!-- 실행 실패 진단은 콘텐츠 관리(STEP 3 실행 큐 아래 · 18-queue.html)로 이동(2026-07-22) -->
+          <!-- 실패 진단(현 '메타 생성 실패 콘텐츠')은 콘텐츠 관리(STEP 3 실행 큐 아래 · 18-queue.html)로 이동(2026-07-22) -->
           <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->
           <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>검수 목표 / 퀘스트 생성</b><span class="meta">지정한 일시까지 모인 검수 의견이 새 버전 프롬프트에 반영됩니다</span>
             <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '즉시 반영'"></button>

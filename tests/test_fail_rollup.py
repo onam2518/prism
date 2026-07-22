@@ -64,6 +64,7 @@ class TestFailRollup(unittest.TestCase):
         d = serve.fail_rollup_data(None, days=7)
         self.assertEqual([e["hash"] for e in d["recent"]], ["h1"])
         self.assertEqual(d["recent"][0]["kinds"], ["api"])
+        self.assertEqual(d["recent"][0]["calls"], ["summary"])
         self.assertEqual(d["recent"][0]["title"], "제목1")
         # 같은 콘텐츠 재실패 → 중복 등재 없이 최신 정보로 교체
         serve._log_fail_rollup({"model": "m2", "fails": [{"tag": "lead", "kind": "parse_empty"}]},
@@ -72,6 +73,7 @@ class TestFailRollup(unittest.TestCase):
         self.assertEqual(len(d["recent"]), 1)
         self.assertEqual(d["recent"][0]["model"], "m2")
         self.assertEqual(d["recent"][0]["kinds"], ["parse_empty"])
+        self.assertEqual(d["recent"][0]["calls"], ["lead"])
         # 성공(무실패) 실행 → 목록에서 제거 · 실패 카운터는 그대로
         serve._log_fail_rollup({"model": "m2", "fails": []}, service="뉴스", team=None,
                                content_hash="h1", title="제목1")
