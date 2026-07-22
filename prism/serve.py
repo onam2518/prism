@@ -2353,11 +2353,12 @@ class Handler(BaseHTTPRequestHandler):
                 "text/csv", "image/svg", "text/plain")
 
     # 보안 응답 헤더. CSP 는 앱 구조(Alpine 표현식=unsafe-eval · 인라인 <script> 2개·인라인 스타일=
-    # unsafe-inline · data: 폰트/아이콘 · 원문 미리보기 iframe=https:)에 맞춘 실동작 정책.
+    # unsafe-inline · data: 폰트/아이콘 · 원문 미리보기 iframe=https: · 수집 이미지 표시 img=https:,
+    # 게시판 #9)에 맞춘 실동작 정책.
     # connect-src 'self' 로 XSS 발화 시 임의 호스트 유출을 차단, frame-ancestors/base-uri/object-src 로
     # 클릭재킹·base 주입·플러그인을 봉쇄. (SSE 스트림은 _serve_sse 가 직접 헤더를 쓰므로 별도.)
     _CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; "
             "connect-src 'self'; frame-src 'self' https:; frame-ancestors 'none'; "
             "base-uri 'self'; object-src 'none'")
 
