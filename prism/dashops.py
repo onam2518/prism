@@ -105,9 +105,11 @@ def _log_fail_rollup(trace: dict, service: str = "", team=None,
                     days.pop(k, None)
             if ch:                                   # 개별 재실행 대상 식별용(콘텐츠 단위)
                 kinds = sorted({str((f or {}).get("kind") or "unknown") for f in fails})
+                calls = sorted({str((f or {}).get("tag") or "") for f in fails} - {""})
                 rec = [e for e in (rep.get("recent") or []) if (e or {}).get("hash") != ch]
                 rec.insert(0, {"hash": ch, "title": (title or "").strip(),
-                               "service": svc, "model": model, "kinds": kinds, "day": day})
+                               "service": svc, "model": model, "kinds": kinds,
+                               "calls": calls, "day": day})
                 rep["recent"] = rec[:_RECENT_FAIL_CAP]
             _SV._report_save("fail_rollup", rep, team)
         first = (fails[0] or {}) if fails else {}
