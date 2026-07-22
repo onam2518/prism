@@ -320,21 +320,23 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
 def build_template_csv() -> bytes:
     """엑셀 일괄 입력용 CSV 템플릿(UTF-8 BOM → Excel 한글 정상). 헤더+예시 2행.
 
-    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문·원문 링크. 제목·본문이 필수(원문 링크는 선택).
+    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문·원문 링크·이미지 URL.
+    제목·본문이 필수(원문 링크·이미지 URL 은 선택 · 이미지는 쉼표로 여러 개, 게시판 #9).
     """
     import csv
     import io
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크"])
+    w.writerow(["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크", "이미지 URL"])
     w.writerow(["뉴스", "삼성전자 노조 임금 협상 결렬",
                 "중앙노동위 조정 불성립",
                 "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다.",
-                "https://v.daum.net/v/20260101000000000"])
+                "https://v.daum.net/v/20260101000000000",
+                "https://img1.daumcdn.net/example/photo1.jpg"])
     w.writerow(["스포츠", "손흥민 시즌 10호골",
                 "",
                 "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다.",
-                ""])
+                "", ""])
     return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
@@ -346,13 +348,14 @@ def build_template_xlsx() -> bytes:
     import zipfile
     from xml.sax.saxutils import escape
 
-    rows = [["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크"],
+    rows = [["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크", "이미지 URL"],
             ["뉴스", "삼성전자 노조 임금 협상 결렬", "중앙노동위 조정 불성립",
              "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다.",
-             "https://v.daum.net/v/20260101000000000"],
+             "https://v.daum.net/v/20260101000000000",
+             "https://img1.daumcdn.net/example/photo1.jpg"],
             ["스포츠", "손흥민 시즌 10호골", "",
              "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다.",
-             ""]]
+             "", ""]]
 
     def cell(r, ci, v):
         col = chr(ord("A") + ci)
