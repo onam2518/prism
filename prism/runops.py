@@ -192,7 +192,12 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
     if not llm.mock:                             # 비용 원장: 실호출만 일별×모델×콜 누적(실험 포함)
         _SV._log_cost_rollup(out.get("trace") or {}, team=team)
     if not llm.mock:                             # 실패 원장: 실호출의 콜 실패만 누적(트리아지 원천)
-        _SV._log_fail_rollup(out.get("trace") or {}, service=content.get("displayServiceName", ""), team=team)
+        # 콘텐츠 식별은 영속 실행만 전달: 실패 → 최근 실패 목록 등재(개별 재실행 대상) ·
+        # 무실패 성공 → 목록에서 해소. 실험(persist=False)은 저장이 없어 재실행 불가라 제외.
+        from .store import content_hash as _chash
+        _SV._log_fail_rollup(out.get("trace") or {}, service=content.get("displayServiceName", ""),
+                             team=team, content_hash=(_chash(content) if persist else ""),
+                             title=content.get("title", ""))
     if not persist:                              # 실험(미저장): 추출만 하고 results·초안·홀드아웃 미기록
         return {"source": source, "mock": llm.mock, "content": content,
                 "signals": signals, "output": out}

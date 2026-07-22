@@ -14,6 +14,11 @@ window.PRISM_APP_PARTS.push(() => ({
         try { const r = await (await this._afetch('/fail-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.failData = r; } catch (e) {}
       },
       failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 실패', auth: '인증 오류', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
+      // 실패 콘텐츠 개별 재실행: STEP 2 사용 모델로 이 건만 재생성 · 무실패 성공이면 서버가 recent 에서 제거
+      async rerunFail(f) {
+        await this.rerunOne({ hash: f.hash, title: f.title });
+        this.loadFails();
+      },
       // 학습 지시 원본 관리(개별 끄기 · 관리자): 끈 지시는 다음 학습 반영부터 제외
       routesOpen: false, routesRaw: null,
       async loadRoutesRaw() { try { const r = await (await this._afetch('/routes-raw', { headers: this._authHeaders() })).json(); if (r && r.ok) this.routesRaw = r; } catch (e) {} },

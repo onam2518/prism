@@ -55,6 +55,30 @@ class TestFailRollup(unittest.TestCase):
         self.assertEqual(serve.fail_rollup_data("team-A", days=7)["total"], 1)
         self.assertEqual(serve.fail_rollup_data("team-B", days=7)["total"], 0)
 
+    def test_recent_failed_contents_and_resolve(self):
+        """content_hash 전달 시 최근 실패 콘텐츠 등재(중복 = 최신 교체) ·
+        무실패 성공 실행이 오면 목록에서 해소(카운터는 유지)."""
+        serve = self._serve()
+        serve._log_fail_rollup({"model": "m1", "fails": [{"tag": "summary", "kind": "api"}]},
+                               service="뉴스", team=None, content_hash="h1", title="제목1")
+        d = serve.fail_rollup_data(None, days=7)
+        self.assertEqual([e["hash"] for e in d["recent"]], ["h1"])
+        self.assertEqual(d["recent"][0]["kinds"], ["api"])
+        self.assertEqual(d["recent"][0]["title"], "제목1")
+        # 같은 콘텐츠 재실패 → 중복 등재 없이 최신 정보로 교체
+        serve._log_fail_rollup({"model": "m2", "fails": [{"tag": "lead", "kind": "parse_empty"}]},
+                               service="뉴스", team=None, content_hash="h1", title="제목1")
+        d = serve.fail_rollup_data(None, days=7)
+        self.assertEqual(len(d["recent"]), 1)
+        self.assertEqual(d["recent"][0]["model"], "m2")
+        self.assertEqual(d["recent"][0]["kinds"], ["parse_empty"])
+        # 성공(무실패) 실행 → 목록에서 제거 · 실패 카운터는 그대로
+        serve._log_fail_rollup({"model": "m2", "fails": []}, service="뉴스", team=None,
+                               content_hash="h1", title="제목1")
+        d = serve.fail_rollup_data(None, days=7)
+        self.assertEqual(d["recent"], [])
+        self.assertEqual(d["total"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

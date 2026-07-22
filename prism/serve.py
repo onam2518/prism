@@ -152,8 +152,10 @@ _dashboard_compute = DS._dashboard_compute
 drill_contents = DS.drill_contents
 cost_rollup_data = DS.cost_rollup_data
 fail_rollup_data = DS.fail_rollup_data
+activity_daily_data = DS.activity_daily_data
 _log_cost_rollup = DS._log_cost_rollup
 _log_fail_rollup = DS._log_fail_rollup
+_log_activity_rollup = DS._log_activity_rollup
 
 # 테스트·외부 호환 재수출(serve.<이름> 계약 유지) · 대입 형태 = pyflakes 미사용 오탐 회피
 topic_snapshot = TPO.topic_snapshot
@@ -1509,16 +1511,13 @@ def _g_eval_run(h, q):
     return eval_run_report(rid, h._req_team())
 
 
-@_get_route("/activity-daily")                       # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프)
+@_get_route("/activity-daily")                       # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프 · 롤업 병합)
 def _g_activity_daily(h, q):
     try:
         days = int((q.get("days") or ["30"])[0])
     except (TypeError, ValueError):
         days = 30
-    st = get_store()
-    rows = (st.activity_daily(days=days, team=h._req_team())
-            if (st and hasattr(st, "activity_daily")) else [])
-    return {"ok": True, "days": rows}
+    return activity_daily_data(h._req_team(), days=days)
 
 
 @_get_route("/golden-status")                        # 골든 생성 현황(팀원 공개): 확정·분류필요·불일치
