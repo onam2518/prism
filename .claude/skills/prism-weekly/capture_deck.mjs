@@ -4,7 +4,9 @@
 // 사용: node capture_deck.mjs <deck.html> <outdir> [scale]
 //   deck.html : prism-slides 빌드 산출물(단일 HTML) 경로 또는 URL
 //   outdir    : slide-01.png … 저장 디렉토리(없으면 생성)
-//   scale     : deviceScaleFactor(기본 2 = 3840×2160 픽셀)
+//   scale     : deviceScaleFactor(기본 4 = 7680×4320 픽셀 · PPT 화질 상한)
+//               5 이상은 캡처 지연·메모리만 늘고 육안 차이가 없어 4를 상한 기본으로 둔다.
+//               PPTX 용량이 부담이면 3(5760×3240)으로 낮춘다.
 // 요구: Google Chrome · Node 22 이상(내장 WebSocket · fetch).
 // 캡처 전 #hud · #progress 를 숨기고 애니메이션을 끈 뒤 .slide 를 순서대로 활성화한다.
 
@@ -22,7 +24,7 @@ if (!deckArg || !outArg) {
 const deckUrl = /^https?:/.test(deckArg) ? deckArg : 'file://' + resolve(deckArg);
 const outDir = resolve(outArg);
 mkdirSync(outDir, { recursive: true });
-const scale = Number(scaleArg || 2);
+const scale = Number(scaleArg || 4);
 const port = Number(process.env.CDP_PORT || 9377);
 
 const chrome = spawn(CHROME, [
