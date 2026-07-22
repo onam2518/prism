@@ -21,7 +21,6 @@ window.PRISM_APP_PARTS.push(() => ({
       levelTitle(L) { return ['새내기 검수자', '숙련 검수자', '베테랑 검수자', '검수 마스터', '전설의 검수자'][this.levelTier(L)]; },
       levelEmoji(L) { return ['🌱', '🔰', '⭐', '🏆', '👑'][this.levelTier(L)]; },
       // 게이미피케이션(KB 프레임워크 적용): Flow 단계 + 배지 컬렉션(성취) + 오늘의 미션(도전)
-      flowStage(L) { return L >= 10 ? 'Master' : L >= 4 ? 'Regular' : 'Rookie'; },
       flowStageKr(L) { return L >= 10 ? '마스터' : L >= 4 ? '정착' : '입문'; },
       badges() {
         const m = this.arenaMe; const r = (m&&m.reviews)||0, c = (m&&m.corrections)||0, s = (m&&m.streak)||0, L = (m&&m.level)||0;
@@ -123,11 +122,6 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       ensureReviewer() { if (!(this.reviewer || '').trim()) { this.reviewerEditing = true; return false; } return true; },
       notifyViewing(it) { try { fetch('/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer: this.reviewer, hash: it.hash, action: 'viewing' }) }); } catch (e) {} },
-      async clearFeedback() {
-        if (!(await this.dsConfirm('누적된 평가 피드백과 학습 보정을 모두 초기화할까요?', { ok: '초기화', danger: true }))) return;
-        try { await fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }) }); } catch (e) {}
-        this.loadDash();
-      },
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); this._ensureStudioModels(); } catch (e) {} this.modBusy = false; },

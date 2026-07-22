@@ -19,7 +19,7 @@
   .topbar__wm small{font-family:var(--ds-font)}   /* 영문 태그라인은 Pretendard 유지 */
   .codeblock textarea,.field,input,textarea,select{font-family:var(--ds-font)}   /* 입력·코드블록은 가독성 위해 Pretendard/모노 유지 */
   .codeblock textarea{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"D2Coding",monospace}
-  .homehead__title{font-family:var(--ds-font-display)}   /* 3192 라인 재정의 방지(뒤에서 승리) */
+  .homehead__title{font-family:var(--ds-font-display)}   /* 폰트 그룹 규칙보다 뒤에 둬 재정의 방지 */
   html{scroll-behavior:smooth}
   /* 문서 전체 스크롤(우측 스크롤바 하나) · 상단 바는 sticky 로 고정 유지 */
   html,body{min-height:100%;overscroll-behavior:none}

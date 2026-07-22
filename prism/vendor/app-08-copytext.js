@@ -276,10 +276,6 @@ window.PRISM_APP_PARTS.push(() => ({
       //   summary(리드문) · entities(엔티티) · intent(인텐트) · content_category(콘텐츠 카테고리)
       get im() { return (this.result && this.result.output.item_meta) || {}; },
       get q() { return (this.result && this.result.output.quality_meta) || {}; },
-      get contentCats() {
-        // 1312: 콘텐츠 단위 카테고리 N개(복수 매핑) → 리스트 그대로
-        return this.im.content_category || [];
-      },
 
       // 엑셀 배치 인포그래픽: 총건·등급분포·인텐트 상위·평균 리드문 길이
       get batchStats() {

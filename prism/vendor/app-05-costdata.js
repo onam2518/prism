@@ -168,7 +168,6 @@ window.PRISM_APP_PARTS.push(() => ({
       questTotal() { return (this.arenaData && this.arenaData.total_targets) || 0; },
       // 진행 = 팀 평균 검수 건수(quest_avg_done) > 커버리지(quest_done) > 구 산식 순 폴백
       questDone() { const a = this.arenaData; if (a && a.quest_avg_done != null) return Math.min(a.quest_avg_done, this.questTotal()); if (a && a.quest_done != null) return Math.min(a.quest_done, this.questTotal()); const t = this.questTotal(); return Math.max(0, t - ((a && a.queue) || 0)); },
-      questAvgLabel() { const a = this.arenaData; return a && a.quest_avg_done != null ? '팀 평균 ' : ''; },
       // 개인별 진척도(완료/배정)의 팀 평균(%) — 총 대상보다 배정이 적어도 왜곡 없음 · 구서버는 null
       questTeamPct() { const a = this.arenaData; return a && a.quest_team_progress != null ? Math.round(a.quest_team_progress * 100) : null; },
       // 내 배정 기준 개인화: 목표·남은 건수는 총 대상(예: 200)이 아니라 '내 몫'으로 표시
@@ -338,12 +337,7 @@ window.PRISM_APP_PARTS.push(() => ({
           this.ingestMsg = r.ok ? ('✓ ' + r.fetched + '건 인입 → 검수 대기 ' + r.queued + '건 적재') : (r.error || '실패'); } catch (e) { this.ingestMsg = '오류'; }
         this.ingestOnceBusy = false;
       },
-      // 결과 출처 필터(자동 인입/단건/배치)
-      get srcOptions() { const s = new Set(((this.dashData && this.dashData.contents) || []).map((c) => c.source || '단건')); return [...s]; },
-      get filteredContents() { const cs = (this.dashData && this.dashData.contents) || []; return this.srcFilter ? cs.filter((c) => (c.source || '단건') === this.srcFilter) : cs; },
       // 아레나 파생값(게이지·내 순위)
-      get arenaPct() { const d = this.arenaData; return d ? Math.round((d.accuracy || 0) * 100) : 0; },
-      get arenaTargetPct() { const d = this.arenaData; return d ? Math.round((d.target || 0.9) * 100) : 90; },
       // 검수 진척율: 개인(내가 검수한 대상 비율) · 팀(팀원 평균)
       get myProgressPct() { const m = this.arenaMe; return m ? Math.round((m.progress || 0) * 100) : 0; },
       get teamProgressPct() { const d = this.arenaData; return d ? Math.round((d.team_progress || 0) * 100) : 0; },

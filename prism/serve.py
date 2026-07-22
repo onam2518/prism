@@ -347,7 +347,7 @@ def _kv(disposition: str, key: str):
     return disposition[i + len(token):j]
 
 
-# ── 검수 배정: 균등 분배 ─────────────────────────────────────────────────────
+# ── 학습 지시 무효화(개별 끄기) ─────────────────────────────────────────────────────
 def disabled_directives(team=None) -> set:
     """관리자가 끈 학습 지시 원문 집합(전역 · reports kind='disabled_directives').
     다음 학습 반영(컴파일)부터 제외 · 원본 라우트·메모 행은 보존(감사 가능)."""
