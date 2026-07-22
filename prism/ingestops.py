@@ -142,6 +142,58 @@ def _validate_public_url(url: str):
     return None
 
 
+# 원문 소실 soft-404 시그니처(게시판 #10): HTTP 200 인데 본문이 '없는 글' 안내문인 페이지.
+# 소스(플랫폼)별로 키를 나눠 확장한다 · 판정 참고용이라 문구는 보수적으로 유지.
+SOURCE_GONE_SIGNS = {
+    "tistory": ("권한이 없거나 존재하지 않는", "삭제된 게시물", "존재하지 않는 게시글"),
+    "common": ("삭제되었거나 존재하지 않는 페이지",),
+}
+_CHECK_READ_MAX = 256 * 1024                # 시그니처 스캔용 본문 읽기 상한(메모리 방어)
+
+
+def check_source_url(url: str, timeout: float = 6.0) -> dict:
+    """원문 URL 온디맨드 상태 확인(게시판 #10 · B안 축소형). 판정 결과만 반환하며
+    절대 자동으로 플래그를 확정하지 않는다(확정은 검수자의 '원문 확인 불가 표시' 버튼).
+    분류: gone(404/410 또는 200+soft-404 시그니처) · temp(타임아웃·5xx·연결 실패) ·
+    unknown(403 등 · 사람 판단) · ok(정상 응답 · 내용 대조는 사람 몫).
+    반환: {ok, state, code, sign} · URL 검증 실패 시 {ok: False, error}."""
+    import urllib.request
+    import urllib.error
+    url = (url or "").strip()
+    if not url:
+        return {"ok": False, "error": "원문 링크가 없습니다"}
+    err = _validate_public_url(url)
+    if err:
+        return {"ok": False, "error": err}
+
+    class _SafeRedirect(urllib.request.HTTPRedirectHandler):   # 리다이렉트 대상도 매 홉 재검증(내부망 우회 차단)
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if _validate_public_url(newurl):
+                raise urllib.error.URLError("리다이렉트 대상이 허용되지 않는 주소입니다")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    # 기본 urllib UA 는 일부 사이트가 무조건 403 → 판별력 확보용 식별 UA(가장 아님)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; PrismSourceCheck)"})
+    try:
+        with urllib.request.build_opener(_SafeRedirect()).open(req, timeout=timeout) as resp:
+            code = int(getattr(resp, "status", None) or resp.getcode() or 0)
+            body = resp.read(_CHECK_READ_MAX).decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        code = int(e.code or 0)
+        if code in (404, 410):
+            return {"ok": True, "state": "gone", "code": code, "sign": ""}
+        if 500 <= code <= 599:
+            return {"ok": True, "state": "temp", "code": code, "sign": ""}
+        return {"ok": True, "state": "unknown", "code": code, "sign": ""}   # 403 등 = 사람 판단
+    except Exception:                                                       # 타임아웃·연결 실패·DNS 등
+        return {"ok": True, "state": "temp", "code": 0, "sign": ""}
+    for signs in SOURCE_GONE_SIGNS.values():
+        for s in signs:
+            if s in body:
+                return {"ok": True, "state": "gone", "code": code, "sign": s}
+    return {"ok": True, "state": "ok", "code": code, "sign": ""}
+
+
 def _fetch_records(endpoint: str, limit: int, method: str, auth: str):
     """REST 엔드포인트에서 레코드 배열을 가져옴. (rows, error) 반환."""
     import urllib.request

@@ -267,6 +267,30 @@ class Store:
         c.commit()
         return True
 
+    def set_source_status(self, content_hash, state, by, team=None) -> bool:
+        """원문 소실 신고 플래그(게시판 #10): payload.content_ref.source_status 에 저장.
+        state = "gone"(원문 확인 불가) 또는 ""(해제) · by = 신고자 · ts = 기록 시각.
+        품질 라벨(finalGrade·reasons)과 별개 키라 학습 루프가 읽지 않는다(ops_hold 와 동일 설계).
+        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
+        state = (state or "").strip()
+        if state not in ("", "gone"):
+            return False
+        c = self._conn()
+        row = c.execute("SELECT payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
+        if not row:
+            return False
+        try:
+            payload = json.loads(row[0])
+        except (TypeError, ValueError):
+            return False
+        ref = payload.get("content_ref") or {}
+        ref["source_status"] = {"state": state, "by": by or "", "ts": time.time()}
+        payload["content_ref"] = ref
+        c.execute("UPDATE results SET payload=? WHERE content_hash=?",
+                  (json.dumps(payload, ensure_ascii=False), content_hash))
+        c.commit()
+        return True
+
     def save_result(self, content: dict, out: dict, run_id: str):
         ch = content_hash(content)
         qm = out.get("quality_meta", {})
@@ -435,17 +459,20 @@ class Store:
                 imd = json.loads(im) if im else {}
             except Exception:
                 imd = {}
-            model, version = "", 1
+            model, version, sstat = "", 1, {}
             try:
-                tr = (json.loads(payload) if payload else {}).get("trace") or {}
+                pl = json.loads(payload) if payload else {}
+                tr = pl.get("trace") or {}
                 model = tr.get("model", "") or ""
                 version = int(tr.get("version") or 1)
+                sstat = (pl.get("content_ref") or {}).get("source_status") or {}
             except Exception:
                 pass
             cat = " · ".join((imd or {}).get("content_category") or [])
             rows.append({"hash": ch, "service": svc or "", "title": ti or "",
                          "grade": grade or "", "summary": (imd or {}).get("summary", ""),
-                         "category": cat, "source": src or "단건", "model": model, "version": version})
+                         "category": cat, "source": src or "단건", "model": model, "version": version,
+                         "source_status": sstat})
         pm = self.purpose_map(team)
         for r in rows:
             r["purpose"] = pm.get(r["hash"], "review")

@@ -41,7 +41,7 @@
           <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:240px"></th></tr></thead><tbody>
             <template x-for="c in contentRows" x-bind:key="'pp'+c.hash">
               <tr>
-                <td class="text-ink" x-text="c.title || '(제목 없음)'"></td>
+                <td class="text-ink"><span x-text="c.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--warning" x-show="srcGone(c)" style="cursor:help" data-tip="원문이 삭제·비공개로 확인 불가 표시된 콘텐츠(검수 상세의 원문 페이지 탭에서 신고·해제)" data-tip-pos="top">원문 소실</span></td>
                 <td class="text-muted" x-text="c.service || '·'"></td>
                 <td class="text-muted" x-text="c.model || '·'"></td>
                 <td><span x-show="c.model" class="tnum" x-text="'v' + (c.version || 1)"></span><span x-show="!c.model" class="ds-badge ds-badge--warning" style="cursor:help" data-tip="STEP 2 모델 실행에서 초안을 생성하세요" data-tip-pos="top">미실행</span></td>

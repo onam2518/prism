@@ -1126,6 +1126,26 @@ class SupabaseStore:
                   body={"quality_meta": qm}, prefer="return=minimal")
         return True
 
+    def set_source_status(self, content_hash, state, by, team=None) -> bool:
+        """원문 소실 신고 플래그(게시판 #10) · SQLite Store 와 동일 계약.
+        contents 에 content_ref 컬럼이 없어 quality_meta.source_status 에 두고,
+        recent()/recent_meta() 가 content_ref.source_status 로 승격해 읽기 경로를 통일한다.
+        final_grade·reasons 는 건드리지 않아 등급/학습에 영향 없음(ops_hold 와 동일 설계)."""
+        state = (state or "").strip()
+        if state not in ("", "gone"):
+            return False
+        h = (content_hash or "").strip()
+        if not h:
+            return False
+        rows = self._get("contents", f"select=quality_meta&hash=eq.{urllib.parse.quote(h)}")
+        if not rows:
+            return False
+        qm = rows[0].get("quality_meta") or {}
+        qm["source_status"] = {"state": state, "by": by or "", "ts": time.time()}
+        self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(h)}",
+                  body={"quality_meta": qm}, prefer="return=minimal")
+        return True
+
     def update_quality(self, content_hash, grade: str, reasons=None):
         """최종검수자 등급 교정: final_grade + quality_meta 동시 갱신. 반환 = 이전 등급(행 없으면 None)."""
         rows = self._get("contents", f"select=final_grade,quality_meta&hash=eq.{urllib.parse.quote(content_hash)}")
@@ -1408,7 +1428,7 @@ class SupabaseStore:
 
     def recent_meta(self, limit: int = 200, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,source,model,version,purpose"
+        rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,quality_meta,source,model,version,purpose"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
         out = []
         for r in rows:
@@ -1417,7 +1437,8 @@ class SupabaseStore:
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
                         "grade": r.get("final_grade") or "", "summary": im.get("summary", ""),
                         "category": cat, "source": r.get("source") or "단건", "model": r.get("model") or "",
-                        "version": int(r.get("version") or 1), "purpose": r.get("purpose") or "review"})
+                        "version": int(r.get("version") or 1), "purpose": r.get("purpose") or "review",
+                        "source_status": (r.get("quality_meta") or {}).get("source_status") or {}})
         return out
 
     def save_report(self, kind: str, payload, team=None):
@@ -1765,6 +1786,9 @@ class SupabaseStore:
                 "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
                                 "subtitle": r.get("subtitle", "") or "", "body": r.get("body", ""),
                                 "source_url": r.get("source_url", ""),
+                                # 원문 소실 플래그: 저장은 quality_meta.source_status(컬럼 사정) ·
+                                # 읽기는 sqlite 와 동일하게 content_ref 경로로 승격(단일 읽기 계약)
+                                "source_status": (r.get("quality_meta") or {}).get("source_status") or {},
                                 "body_hash": r.get("hash", "")}} for r in rows]
         out.reverse()
         return out
