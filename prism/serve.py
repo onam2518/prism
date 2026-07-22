@@ -1342,9 +1342,13 @@ def _g_admin(h, q):
 
 @_get_route("/queue")
 def _g_queue(h, q):
+    uid = h._bearer_uid()
+    # 생성자(팀 생성자·슈퍼관리자)는 배정 배타 규칙을 우회해 전체 큐를 본다(/history 열람 권한과 동일 기준).
+    see_all = is_super_admin_user(uid, h._req_team(), h._bearer_email())
     return review_queue({"only_unreviewed": q.get("all", ["0"])[0] not in ("1", "true"),
                          "limit": (q.get("limit", ["100"])[0]), "team": h._req_team(),
-                         "reviewer": h._bearer_uid() or q.get("reviewer", [""])[0]})
+                         "reviewer": uid or q.get("reviewer", [""])[0],
+                         "see_all": see_all})
 
 
 @_get_route("/raw")                                  # 검수 대상 콘텐츠(모델·버전 필터 표)

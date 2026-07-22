@@ -1042,9 +1042,11 @@ class SupabaseStore:
         self._upsert("contents", rows)
         return len(rows)
 
-    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None) -> list:
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None,
+                     see_all: bool = False) -> list:
         """정렬 = split 재검토 우선 → 모델 확신 낮은 순(불확실성 샘플링) → 최신순.
-        배정된 콘텐츠는 담당자 전용(배타적) · 담당자는 자기가 아직 검수 안 한 것만 봄."""
+        배정된 콘텐츠는 담당자 전용(배타적) · 담당자는 자기가 아직 검수 안 한 것만 봄.
+        see_all=True(생성자·슈퍼관리자)는 배정 배타 규칙을 우회해 남의 담당 콘텐츠도 큐에 노출한다."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("contents", "select=hash,service,title,body,source_url,final_grade,item_meta,quality_meta,review,model,created_at"
                          f"&review=eq.yellow{tq}&order=created_at.desc&limit={int(limit) * 4}")
@@ -1062,13 +1064,13 @@ class SupabaseStore:
             is_rev = r["hash"] in reviewed
             is_split = r["hash"] in split
             a = asg.get(r["hash"])
-            if a:                                     # 배정 콘텐츠 = 담당자 전용(배타적)
+            if a and not see_all:                     # 배정 콘텐츠 = 담당자 전용(배타적) · 생성자는 예외
                 if not reviewer or reviewer not in a["reviewers"]:
                     continue                          # 담당 아님(또는 미인증) → 숨김
                 if only_unreviewed and r["hash"] in mine and not is_split:
                     continue                          # 내 몫은 이미 검수함
             elif only_unreviewed and is_rev and not is_split:
-                continue                              # 미배정 = 오픈 큐(기존)
+                continue                              # 미배정 오픈 큐 · 생성자 전체 열람도 검수완료분은 동일 규칙
             qm = r.get("quality_meta") or {}
             im = r.get("item_meta") or {}
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",

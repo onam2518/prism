@@ -88,6 +88,22 @@ class TestExclusiveQueue(AssignmentBase):
         self.assertEqual(row["assignees"], ["A", "B"])
         self.assertEqual(row["min_reviewers"], 2)
 
+    def test_creator_see_all_bypasses_exclusivity(self):
+        # 생성자(see_all)는 남의 담당 콘텐츠도 큐에 보인다 · 일반 검수자는 여전히 배타적.
+        st = self._store()
+        self._put(st, "h_open")                       # 미배정(오픈)
+        self._put(st, "h_a")                          # A 담당
+        st.set_assignees("h_a", ["A"], team="t")
+        # 일반 검수자 B: A 담당은 숨김(기존 배타 규칙 유지)
+        qb = {r["hash"] for r in st.review_queue(team="t", reviewer="B")}
+        self.assertEqual(qb, {"h_open"})
+        # 생성자 C(see_all): 담당 아니어도 오픈 + 남의 담당 모두 보임
+        qc = {r["hash"] for r in st.review_queue(team="t", reviewer="C", see_all=True)}
+        self.assertEqual(qc, {"h_open", "h_a"})
+        # 미인증이라도 see_all 이면 전체(서버 경로는 uid 를 넘기지만 스코핑은 see_all 이 결정)
+        qn = {r["hash"] for r in st.review_queue(team="t", see_all=True)}
+        self.assertEqual(qn, {"h_open", "h_a"})
+
 
 class TestProgressPersonalized(AssignmentBase):
     def test_individual_denominator_is_my_assignment_count(self):

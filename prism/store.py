@@ -1597,11 +1597,13 @@ class Store:
                 "target": target, "leaderboard": leaderboard,
                 "total_targets": total_targets, "team_progress": team_progress}
 
-    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None) -> list:
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None,
+                     see_all: bool = False) -> list:
         """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠.
         정렬 = 모델 확신 낮은 순(불확실성 샘플링, Lewis & Gale 1994) → 최신순.
         only_unreviewed 여도 의견이 갈린(split) 콘텐츠는 재검토 대상으로 포함(Aroyo & Welty 2015).
-        배정된 콘텐츠(assignees)는 담당자에게만 노출(배타적) · 담당자는 자기가 아직 검수 안 한 것만 봄."""
+        배정된 콘텐츠(assignees)는 담당자에게만 노출(배타적) · 담당자는 자기가 아직 검수 안 한 것만 봄.
+        see_all=True(생성자·슈퍼관리자)는 배정 배타 규칙을 우회해 남의 담당 콘텐츠도 큐에 노출한다."""
         c = self._conn()
         reviewed = {r[0] for r in c.execute("SELECT DISTINCT content_hash FROM feedback")}
         asg = self.assignees(team)                    # {hash: {"reviewers", "min"}} · 배정 콘텐츠만
@@ -1626,13 +1628,13 @@ class Store:
             is_reviewed = ch in reviewed
             is_split = ch in split
             a = asg.get(ch)
-            if a:                                     # 배정 콘텐츠 = 담당자 전용(배타적)
+            if a and not see_all:                     # 배정 콘텐츠 = 담당자 전용(배타적) · 생성자는 예외
                 if not reviewer or reviewer not in a["reviewers"]:
                     continue                          # 담당 아님(또는 미인증) → 숨김
                 if only_unreviewed and ch in mine and not is_split:
                     continue                          # 내 몫은 이미 검수함
             elif only_unreviewed and is_reviewed and not is_split:
-                continue                              # 미배정 = 오픈 큐(기존)
+                continue                              # 미배정 오픈 큐 · 생성자 전체 열람도 검수완료분은 동일 규칙
             conf = qm.get("confidence")
             try:
                 model = ((json.loads(payload) if payload else {}).get("trace") or {}).get("model", "") or ""
