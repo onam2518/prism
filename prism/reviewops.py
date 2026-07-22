@@ -381,7 +381,7 @@ def apply_feedback(data: dict) -> dict:
                        "title": data.get("title", ""), "service": data.get("service", ""), "ts": time.time()},
                       team=data.get("_team"))
             _SV._agg_bump()
-            return {"ok": True, "feedback": st.feedback_stats(),
+            return {"ok": True, "feedback": st.feedback_stats(team=data.get("_team")),
                     "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
         # 배정 배타 검수: 지정 검수자가 있는 콘텐츠는 지정된 사람만 판정할 수 있다.
         # 생성자·관리자도 예외 없음(직접 검수하려면 콘텐츠 관리에서 배정을 수정) ·
@@ -425,7 +425,7 @@ def apply_feedback(data: dict) -> dict:
         missions = _check_missions(reviewer, data.get("_team"))
     # 프롬프트 반영은 '일배치 학습'에서 합의 후 1회(진동 방지). 여기선 수집만.
     _SV._agg_bump()                                    # 피드백/진척율 변경 → 집계·아레나 캐시 무효화
-    out = {"ok": True, "feedback": st.feedback_stats(),
+    out = {"ok": True, "feedback": st.feedback_stats(team=data.get("_team")),
            "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
     if not data.get("clear") and missions:
         out["missions_completed"] = missions       # 이번 행동으로 새로 달성된 미션(1회 보상)
