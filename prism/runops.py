@@ -340,7 +340,7 @@ def build_template_csv() -> bytes:
     return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
-# \u2500\u2500 \uc5b4\ub4dc\ubbfc \ubaa8\ub4c8 \ub370\uc774\ud130(\uc2e4\ub370\uc774\ud130 \uc5f0\uacb0) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ── 어드민 모듈 데이터(실데이터 연결) ─────────────────────────────────────────
 def build_template_xlsx() -> bytes:
     """엑셀 일괄 입력용 .xlsx 템플릿(의존성 0: zipfile+xml, inline string).
     헤더·예시는 CSV 템플릿과 동일 · ingest._read_xlsx 와 왕복 호환."""

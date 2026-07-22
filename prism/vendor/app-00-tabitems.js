@@ -7,7 +7,6 @@ window.PRISM_APP_PARTS.push(() => ({
       activeTabId: 'text',
       // 위젯 홈 셸 · 홈(캔버스) + 카테고리 내비
       mod: 'home',
-      dashTop: 'content',   // (구 현황 대시보드 잔여 상태 · 위젯 홈 호환용)
       drillOpen: false, drillData: null, drillBusy: false,  // 대시보드 드릴다운
       detailOpen: false, detail: null,   // 콘텐츠 상세(공통 컴포넌트): 좌 원문 렌더 · 우 평가
       badgeToast: null,   // 배지 달성 축하 오버레이

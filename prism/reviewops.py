@@ -58,10 +58,7 @@ def distribute_assignments(st, hashes, reviewers, min_reviewers=1, team=None) ->
     return {"n": n, "per_reviewer": per, "min_reviewers": n_per}
 
 
-# ── 비용 롤업(일별×모델×콜) ──────────────────────────────────────────────────
-# supabase 는 콘텐츠에 트레이스(by_call·cost)를 저장하지 않아, 실행 시점 누적이 유일한
-# 영속 원천이다(reports kind='cost_rollup' · 팀 스코프). 단일 서버 프로세스 전제라
-# 프로세스 락으로 읽기-수정-쓰기를 직렬화한다(동시 배치의 유실 방지).
+# ── 리드 최종판정(의견 갈림 해소) ──────────────────────────────────────────────────
 def final_verdicts(team=None) -> dict:
     """리드(슈퍼관리자 이상)가 확정한 최종판정 {hash: {verdict, by, ts}} · 의견 갈림 해소.
     reports kind='final_verdicts'(팀 스코프) · DDL 불필요 · 골든 승격에서 다수결보다 우선."""
@@ -1081,6 +1078,3 @@ def _inject_gold(items: list, reviewer: str, team=None) -> list:
                 "reviewed": False, "split": False, "confidence": None, "ts": None}
         out.insert(rng.randint(0, len(out)), item)
     return out
-
-
-# ── 검수 엔드포인트 레이트리밋(스팸 클릭 억제) ──

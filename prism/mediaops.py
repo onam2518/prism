@@ -25,7 +25,7 @@ def media_action(data: dict) -> dict:
         if not raw.strip():
             return {"ok": False, "error": "\uc790\ub9c9 \uc6d0\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694"}
         return {"ok": True, **MX.parse_subtitles(raw, fmt)}
-    if action == "s5ab":                              # S5 \uba54\ud0c0\ucd94\ucd9c \ubaa8\ub378 A/B(\ubbf8\uc800\uc7a5)
+    if action == "s5ab":                              # S5 메타추출 모델 A/B(미저장)
         text = (data.get("text") or "").strip()
         models = data.get("models") or []
         if not text:
@@ -45,7 +45,7 @@ def media_s5ab(text: str, models: list, *, caption: str = "") -> dict:
     """
     body = (caption.strip() + "\n" + text).strip() if caption.strip() else text
     results = []
-    for m in list(dict.fromkeys(str(x) for x in models))[:6]:   # \uc911\ubcf5 \uc81c\uac70 \u00b7 \uc0c1\ud55c 6
+    for m in list(dict.fromkeys(str(x) for x in models))[:6]:   # 중복 제거 · 상한 6
         try:
             res = _SV.run_pipeline({"displayServiceName": "\uc601\uc0c1", "title": "", "subtitle": "", "body": body},
                                mock=_SV.Handler.server_mock, model=m, persist=False)
@@ -91,7 +91,7 @@ def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
         nv = MX.native_video_track(content_bytes, mime, vmodel, service, mock=mock)
         merged = MX.merge_tracks(audio=nv.get("audio"), visual=nv.get("visual"))
     content = MX.build_content(merged, caption=caption, description=description)
-    # S5 = \uae30\uc874 \ucd94\ucd9c \uc7ac\uc0ac\uc6a9(imagext \ub3d9\uc77c \uc124\uacc4) \u00b7 persist=False \ub85c \ubbf8\uc800\uc7a5
+    # S5 = 기존 추출 재사용(imagext 동일 설계) · persist=False 로 미저장
     res = _SV.run_pipeline({"displayServiceName": content["displayServiceName"],
                         "title": content["title"], "subtitle": content["subtitle"],
                         "body": content["body"]},

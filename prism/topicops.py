@@ -181,7 +181,7 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     neg = {k: [v for v in _strlist(ng.get(k))
                if v not in {"cats": cats, "intents": intents, "keywords": keywords}[k]]
            for k in ("cats", "intents", "keywords")}
-    # \ud544\uc218(req): \uc120\ud0dd\ub41c \uac12\uc758 \ubd80\ubd84\uc9d1\ud569\ub9cc \uc778\uc815(\uac12 \uc5c6\uc73c\uba74 \ud558\uc704\ud638\ud658\uc73c\ub85c topic \uc774 '\uc804\ubd80 \ud544\uc218' \ucc98\ub9ac)
+    # 필수(req): 선택된 값의 부분집합만 인정(값 없으면 하위호환으로 topic 이 '전부 필수' 처리)
     rq = d.get("req") or {}
     sel = {"cats": set(cats), "intents": set(intents), "keywords": set(keywords)}
     req = {k: [v for v in _strlist(rq.get(k)) if v in sel[k]] for k in ("cats", "intents", "keywords")}
@@ -201,19 +201,19 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     """\uc790\uc5f0\uc5b4 \uc124\uba85 \u2192 \ud1a0\ud53d \ucc28\uc6d0(\uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8\u00b7\ud0a4\uc6cc\ub4dc)\uc744 \uc120\ud0dd \ubaa8\ub378\ub85c \ub9e4\ud551.
     \ud5c8\uc6a9 \ubaa9\ub85d(\ud604\uc7ac \ub370\uc774\ud130\uc758 \uc2e4\uc7ac \uac12)\uc73c\ub85c\ub9cc \uc81c\uc57d \u00b7 \uc2e4\ud328 \uc2dc (None, \uc0ac\uc720) \ubc18\ud658(\ud638\ucd9c\ubd80\uc5d0\uc11c \ud734\ub9ac\uc2a4\ud2f1 \ud3f4\ubc31)."""
     from . import topic as TP, meta_prompts as MP
-    tax = TP.meta_taxonomy()                       # \uc2dc\uc2a4\ud15c \uc804\uccb4 \uc544\uc774\ud15c\uba54\ud0c0 \ubd84\ub958(\ub370\uc774\ud130 \uc720\ubb34 \ubb34\uad00)
-    cat = TP.studio_catalog(rows, svc)             # \ud604\uc7ac \ub370\uc774\ud130\uc5d0 \uc2e4\uc7ac\ud558\ub294 \uac12(\uc6b0\uc120)
+    tax = TP.meta_taxonomy()                       # 시스템 전체 아이템메타 분류(데이터 유무 무관)
+    cat = TP.studio_catalog(rows, svc)             # 현재 데이터에 실재하는 값(우선)
     data_cats = [c["k"] for c in cat["cats"]]
     data_int = [c["k"] for c in cat["intents"]]
-    allow_cats = list(dict.fromkeys((tax["cats"] or []) + data_cats))   # \uc804\uccb4 \u222a \ub370\uc774\ud130
+    allow_cats = list(dict.fromkeys((tax["cats"] or []) + data_cats))   # 전체 ∪ 데이터
     allow_int = list(dict.fromkeys((tax["intents"] or []) + data_int))
     tier1_ko = getattr(TP, "_TIER1_KO", {}) or {}
-    cats_ko = [((tier1_ko.get(c) or c) + "=" + c) for c in allow_cats]  # \uc601\ubb38 Tier1 + \ud55c\uae00 \ubcd1\uae30
-    # \uac1c\uccb4 \uc18d\uc131 \ud6c4\ubcf4(\uc5d4\ud2f0\ud2f0 \uc0ac\uc804 \uc2e4\uc7ac\uac12): '\uc5ec\uc131 \uc2a4\ud3ec\uce20\uc778'\ub958 \uc124\uba85 \u2192 eattrs \uc870\uac74 \uc790\ub3d9\uc0dd\uc131
+    cats_ko = [((tier1_ko.get(c) or c) + "=" + c) for c in allow_cats]  # 영문 Tier1 + 한글 병기
+    # 개체 속성 후보(엔티티 사전 실재값): '여성 스포츠인'류 설명 → eattrs 조건 자동생성
     ecat = TP.eattr_catalog(_ent_index())
     e_allow = [c["k"] for c in ecat]
     e_prompt = [f'{c["k"]} ({c["label"]} \u00b7 {c["v"]}\uac74)' for c in ecat[:60]]
-    # \ubaa8\ub378 \uacc4\uc5f4 \ucfe1\ubd81 \ub798\ud37c\ub85c \uc870\ub9bd(\ud544\uc218/\uc120\ud0dd \uc124\uacc4\uc790 \uc5ed\ud560) \u00b7 \uc2a4\ud29c\ub514\uc624 \uc624\ubc84\ub77c\uc774\ub4dc \uc0c1\uc18d
+    # 모델 계열 쿡북 래퍼로 조립(필수/선택 설계자 역할) · 스튜디오 오버라이드 상속
     sysp = MP.topic_suggest_system(model, cats_ko, allow_int, data_cats, data_int, eattrs=e_prompt)
     userp = MP.topic_suggest_user(text)
     llm, route = _SV.llm_for_model(model, mock)
@@ -284,7 +284,7 @@ def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list
     try:
         from .embed import EmbeddingClient, cosine
         emb = EmbeddingClient(cache_path=Config.load().emb_cache_path)
-        if not emb.mock:                            # mock(\ud734\ub9ac\uc2a4\ud2f1) \uc784\ubca0\ub529\uc73c\ub85c\ub294 \uc720\uc0ac\ub3c4 \ud310\ub2e8 \uae08\uc9c0
+        if not emb.mock:                            # mock(휴리스틱) 임베딩으로는 유사도 판단 금지
             qv = emb.embed(sig, is_query=True)
             for c in others:
                 s = cosine(qv, emb.embed(_def_signature(c), is_query=False))
@@ -315,7 +315,7 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
     from . import topic as TP
     action = (data.get("action") or "").strip()
     if action not in ("preview", "suggest"):
-        _SV._agg_bump()                                   # \ubcc0\uacbd\uc131 \uc561\uc158(save\u00b7delete\u00b7settings\u00b7exclude \ub4f1) \u2192 \ud1a0\ud53d \uce90\uc2dc \ubb34\ud6a8\ud654
+        _SV._agg_bump()                                   # 변경성 액션(save·delete·settings·exclude 등) → 토픽 캐시 무효화
     rows = _SV.results_rows()
     svc = TP._service_names(rows) if rows else set()
 
@@ -337,13 +337,13 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
                     "suggest": {"cats": [], "intents": [], "keywords": [], "eattrs": [],
                                 "req": {"cats": [], "intents": [], "keywords": []},
                                 "neg": {"cats": [], "intents": [], "keywords": []}}}
-        model = (data.get("model") or "").strip()          # "" = \uae30\ubcf8 \uc2e4\ud589 \ubaa8\ub378
+        model = (data.get("model") or "").strip()          # "" = 기본 실행 모델
         via, route, sug = "llm", "", None
         try:
             sug, route = _studio_llm_suggest(text, model, rows, svc, mock)
         except Exception as e:
             sug, route = None, str(e)[:80]
-        # \ubaa8\ub378 \ud638\ucd9c \ubd88\uac00\u00b7\uc2e4\ud328\u00b7\ube48 \uacb0\uacfc \u2192 \ud734\ub9ac\uc2a4\ud2f1(\uc989\uc2dc\u00b7\uc758\uc874\uc131 0) \ud3f4\ubc31. \ubc84\ud2bc\uc774 \ud5db\ub3cc\uc9c0 \uc54a\uac8c.
+        # 모델 호출 불가·실패·빈 결과 → 휴리스틱(즉시·의존성 0) 폴백. 버튼이 헛돌지 않게.
         if not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords")
                            or sug.get("eattrs") or any((sug.get("neg") or {}).values())):
             sug = TP.suggest_dims(text, rows, svc, eattr_cands=TP.eattr_catalog(_ent_index()))

@@ -227,7 +227,7 @@ def activity_daily_data(team=None, days: int = 30) -> dict:
     return {"ok": True, "days": rows}
 
 
-# ── 학습 지시 무효화(개별 끄기) ──────────────────────────────────────────────
+# ── 대시보드 집계·리포트 ──────────────────────────────────────────────
 def dashboard_data(team=None) -> dict:
     """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8 \uc9d1\uacc4. team \ubcc4 \uc2a4\ucf54\ud551 \u00b7 \uc9e7\uc740 TTL \uce90\uc2dc(\ubc18\ubcf5 \ub85c\ub4dc \uc2dc 5000\ud589 \uc7ac\uc2a4\uce94 \ubc29\uc9c0)."""
     return _SV._agg_cached(("dash", team), lambda: _dashboard_compute(team))
@@ -342,6 +342,3 @@ def build_report_html(team=None) -> str:
             return open(out, encoding="utf-8").read()
         except Exception as e:
             return f"<p>리포트 생성 실패: {e}</p>"
-
-
-# ── 설정(API 키 / 모델 / 엔드포인트) ─────────────────────────────────────────

@@ -53,7 +53,6 @@ window.PRISM_APP_PARTS.push(() => ({
       metaResults: null, metaBusy: false,
       verRows: [], verSel: null, verSnap: null, verBusy: false,   // 버전별 지시 히스토리(표)
       dmOpen: false, dmVer: null, dmModel: 'common', dmSnap: null, dmStages: {}, dmBusy: false, dmMsg: '',   // 모델 적용 팝업
-      srcFilter: '',          // 결과 출처 필터(자동 인입/단건/배치)
       liveMsg: '', liveSeen: {}, _es: null,
       loading: false,
       status: '',
@@ -176,7 +175,6 @@ window.PRISM_APP_PARTS.push(() => ({
           this._noPush = true; this.selectMod(m); this._noPush = false;
         });
       },
-      get tabLabel() { return (this.tabItems.find(t => t.id === this.activeTabId) || {}).label || ''; },
       get modLabel() {
         if (this.mod === 'home') return '홈';
         for (const g of this.mods) for (const it of g.items) if (it.id === this.mod) return it.label;
