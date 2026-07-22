@@ -9,6 +9,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-07-22 | [프리즘 콘텐츠 · 서비스 플로우 와이어프레임](https://claude.ai/code/artifact/8394cdfb-6293-4522-9a40-de60aa3b1116) |
 | 2026-07-22 | [프리즘 주간회의 · 2026.07.22](https://claude.ai/code/artifact/188e7ca9-1f0f-4de5-a963-797a83e227e6) |
 | 2026-07-22 | [포토 이미지 실험 1차 · 방식 A 품질 검증](https://claude.ai/code/artifact/40a48a35-a529-4495-89f9-5c5ef48bc7bf) |
 | 2026-07-21 | [MY 콘텐츠 탭 · 구성안](https://claude.ai/code/artifact/762ef566-1220-4f06-a07f-6c2012da44db) |
