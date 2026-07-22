@@ -237,7 +237,7 @@ window.PRISM_APP_PARTS.push(() => ({
           const r = await (await this._afetch('/final-verdict', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, verdict: v, reviewer: this.reviewer }) })).json();
           if (r && r.ok) {
             c.final = v || '';
-            this._syncFbByHash && this.loadRaw();
+            this.loadRaw();   // 리드 최종판정 후 전체 재조회(final 은 fb 밖 필드라 _syncFbByHash 로는 동기화 불가)
             this.liveToast(v ? ('리드 최종판정 · ' + (v === 'good' ? '정확' : '수정 필요') + ' 확정') : '최종판정을 철회했어요');
             (r.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
           } else this._err((r && r.error) || '저장 실패');

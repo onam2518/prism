@@ -32,7 +32,7 @@ def media_action(data: dict) -> dict:
             return {"ok": False, "error": "\ud1b5\ud569 \uc6d0\uace0(\ud14d\uc2a4\ud2b8)\ub97c \uc785\ub825\ud558\uc138\uc694"}
         if not models:
             return {"ok": False, "error": "\ud6c4\ubcf4 \ubaa8\ub378\uc744 1\uac1c \uc774\uc0c1 \uc120\ud0dd\ud558\uc138\uc694"}
-        return media_s5ab(text, models, caption=data.get("caption", ""))
+        return media_s5ab(text, models, caption=data.get("caption") or "")
     return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791(\uc790\ub9c9 \ud30c\uc2f1\uc740 media_action, \uc601\uc0c1\uc740 media_native)"}
 
 

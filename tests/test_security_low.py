@@ -22,7 +22,7 @@ class TestCsvFormulaInjection(unittest.TestCase):
         row = {"item_meta": {"summary": "=HYPERLINK(\"http://evil\")", "entities": ["@SUM(1)"],
                              "intent": [], "content_category": []},
                "quality_meta": {"finalGrade": "G", "reasons": ["-1+1"]},
-               "content": {"title": "+cmd", "displayServiceName": "뉴스"}}
+               "content_ref": {"title": "+cmd", "displayServiceName": "뉴스"}}
         orig = SV.results_rows
         SV.results_rows = lambda limit=5000, team=None: [row]
         self.addCleanup(lambda: setattr(SV, "results_rows", orig))
@@ -31,6 +31,8 @@ class TestCsvFormulaInjection(unittest.TestCase):
         self.assertIn('"\'@SUM(1)"', csv)
         self.assertIn('"\'-1+1"', csv)
         self.assertNotIn('"=HYPERLINK', csv)         # 원본 수식 시작 형태는 없음
+        self.assertIn('"\'+cmd"', csv)               # 제목 열이 content_ref 에서 채워짐(+ 는 수식 중화) · 구버그(content 키)면 공란
+        self.assertIn("뉴스", csv)                    # 서비스 열도 content_ref 에서 채워짐
 
 
 class TestHashFormatValidation(unittest.TestCase):

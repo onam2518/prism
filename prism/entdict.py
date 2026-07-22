@@ -422,7 +422,7 @@ def _http_text(url: str) -> str:
 def namu_fetch(name: str) -> str:
     """문서 HTML. 미존재(404)·접근 불가는 빈 문자열."""
     try:
-        return _http_text(NAMU_URL + urllib.parse.quote(normalize_name(name)))
+        return _http_text(NAMU_URL + urllib.parse.quote(normalize_name(name), safe=""))
     except (urllib.error.URLError, OSError, ValueError):
         return ""
 

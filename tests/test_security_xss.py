@@ -81,7 +81,7 @@ class TestSecurityHeaders(unittest.TestCase):
         cls._cfg.DEFAULT_CONFIG_PATH = cls._orig_cfg
 
     def test_headers_present_on_page_and_json(self):
-        for path in ("/", "/config"):
+        for path in ("/", "/config", "/template.csv"):   # /template.csv = 다운로드(_send_file) 경로도 보안 헤더 필요
             h = _headers(self.port, path)
             self.assertIn("content-security-policy", h, path)
             self.assertIn("frame-ancestors 'none'", h["content-security-policy"])
