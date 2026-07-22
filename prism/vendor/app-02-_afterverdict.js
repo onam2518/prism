@@ -84,6 +84,7 @@ window.PRISM_APP_PARTS.push(() => ({
       models: [], modelsMsg: '',
       reasoning: 'default', systemPrompt: '', legalEnabled: false,
       availableModels: [],
+      visionCandidates: [],                   // 이미지 탭 시각 슬롯 선택지(/config visionCandidates)
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],
 
       // 모델 슬롯 + 스텝식 설정

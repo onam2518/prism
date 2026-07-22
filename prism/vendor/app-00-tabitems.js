@@ -99,11 +99,10 @@ window.PRISM_APP_PARTS.push(() => ({
       studioPreview: { bundles: [], n_total: 0, must_n: 0, opt_n: 0 },
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
       modelsBusy: false, modelsMsgStudio: '',   // 토픽 스튜디오: 모델 목록 새로고침(라우터 포함) 상태
-      // 미디어 메타 파이프라인(T1 자막 파싱 실험기)
-      mediaSub: { raw: '', fmt: '' }, mediaRes: null, mediaBusy: false, mediaMsg: '',
+      // 미디어(이미지·영상 → 메타 추출)
+      mediaTab: 'image',                      // 미디어 하위 탭: image(이미지) | video(영상)
       mediaVid: { file: null, caption: '', subs: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
-      mediaImg: { files: [], caption: '' }, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
-      mediaS5: { text: '', models: [] }, mediaS5Res: null, mediaS5Busy: false, mediaS5Msg: '',
+      mediaImg: { files: [], caption: '', vision: 'upstage_ie' }, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
       // 팀 실시간 협업: 검수자 식별(이름+캐릭터) · 검수 대기 · 라이브 이벤트
       reviewer: '', reviewerEditing: false, reviewerChar: 'boksil',
