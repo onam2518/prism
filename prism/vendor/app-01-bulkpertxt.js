@@ -90,6 +90,7 @@ window.PRISM_APP_PARTS.push(() => ({
       _rawToDetail(r) { return { hash: r.hash, title: r.title, service: r.service, body: r.body || '', url: r.url || '', images: r.images || [], summary: r.summary || '', entities: r.entities || [], intent: r.intent || [], category: r.category || [], grade: r.grade || '', reasons: r.reasons || [], model: r.model || '', final: r.final || '', assignees: r.assignees || [], source_status: r.source_status || {}, fb: Object.assign({}, r.fb) }; },
       // 배정 배타 검수(UI): 지정 검수자가 있는데 내가 아니면 판정 버튼 비활성(서버 게이트는 백스톱).
       detailAssignBlocked() {
+        if (this.opsAdmin) return false;                 // 생성자·슈퍼관리자: 배정 무관 검수 가능
         const d = this.detail;
         if (!d || !d.assignees || !d.assignees.length) return false;
         const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || '';
