@@ -60,13 +60,13 @@
             </div>
             <!-- 편집 필드: 요약(주관식 유지) + 분류·의도·엔티티 = 하이브리드 선택형(시안 3 · 추천 칩 상시 + 검색 드롭다운 병행)
                  인텐트·카테고리 = 사전 한정 · 엔티티만 "새 엔티티로 추가" 자유 입력 · 저장 값 형태는 기존 계약 그대로(배열) -->
-            <template x-if="fa"><div class="space-y-3">
-              <label class="block"><span class="text-xs text-muted">요약</span>
+            <template x-if="fa"><div>
+              <label class="fa-sec"><span class="text-xs text-muted fa-lbl">요약</span>
                 <textarea class="field w-full" rows="3" x-bind:value="fa.summary" x-on:input="fa.summary=$event.target.value"></textarea></label>
               <template x-for="fld in faFields" x-bind:key="'faf'+fld.id">
-                <div>
-                  <div class="text-xs text-muted"><span x-text="fld.label"></span> <span style="color:var(--ds-placeholder)" x-text="'· ' + fld.pol"></span></div>
-                  <div class="flex flex-wrap gap-1 items-center" style="margin-top:4px">
+                <div class="fa-sec">
+                  <div class="text-xs text-muted fa-lbl"><span x-text="fld.label"></span> <span style="color:var(--ds-placeholder)" x-text="'· ' + fld.pol"></span></div>
+                  <div class="flex flex-wrap gap-1 items-center">
                     <template x-for="(v,i) in fa[fld.key]" x-bind:key="'fav'+fld.id+i+v">
                       <button type="button" class="ds-badge" x-bind:class="'ds-badge--' + fld.kind + (hybFree('fa'+fld.id, v) ? ' is-free' : '')" x-on:click="hybRemove('fa'+fld.id, fa[fld.key], v)" x-bind:data-tip="'클릭해 삭제 · ' + v" data-tip-pos="top" x-bind:aria-label="'삭제 · ' + v"><span x-text="hybDisp(fld.kind, v) + (hybFree('fa'+fld.id, v) ? ' · 신규' : '')"></span>&nbsp;×</button>
                     </template>
@@ -76,7 +76,7 @@
                     <span class="text-xs" style="color:var(--ds-error);display:block;margin-top:4px">⚠ 이 서비스(<span x-text="fa.row.service"></span>)의 분류값이 아닌 인텐트: <b x-text="intentMismatch(fa.intent.join(','), fa.row.service).join(', ')"></b> · 추천·검색에서 이 서비스 값으로 바꿔 주세요</span>
                   </template>
                   <!-- 추천 칩(점선 + ＋): 탭 1회 추가 · 추가된 값은 자동 제외 · 사유(서비스 분기·리드문 매칭·기존 라벨 하위) 소형 표기 -->
-                  <div class="flex flex-wrap gap-1 items-center" style="margin-top:6px" x-show="hybReco(fld.kind, fa.row, fa[fld.key]).length">
+                  <div class="flex flex-wrap gap-1 items-center" style="margin-top:8px" x-show="hybReco(fld.kind, fa.row, fa[fld.key]).length">
                     <span class="text-xs" style="color:var(--ds-placeholder)">추천</span>
                     <template x-for="rc in hybReco(fld.kind, fa.row, fa[fld.key])" x-bind:key="'far'+fld.id+rc.v">
                       <button type="button" class="hybreco" x-on:click="hybAdd('fa'+fld.id, fa[fld.key], rc.v)" x-bind:data-tip="'탭해서 추가 · ' + rc.v" data-tip-pos="top"><span class="hybreco__plus">＋</span><span x-text="hybDisp(fld.kind, rc.v)"></span><span class="hybreco__why" x-text="rc.why"></span></button>
@@ -100,16 +100,16 @@
                   </div>
                 </div>
               </template>
-              <div><span class="text-xs text-muted">등급</span><div class="flex gap-2" style="margin-top:4px">
+              <div class="fa-sec"><span class="text-xs text-muted fa-lbl">등급</span><div class="flex gap-2">
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='G' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline'" x-on:click="fa.grade='G'">G · 정상</button>
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='R' ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="fa.grade='R'">R · 차단</button>
               </div></div>
               <!-- 운영자 수동 노출제한: 상위 노출 부적절하나 기준이 명확치 않은 콘텐츠 · 등급/학습과 분리(라벨 아님) -->
-              <div x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)"><span class="text-xs text-muted">노출제한 · 운영자 수동(라벨·학습과 분리)</span><div style="margin-top:4px">
+              <div class="fa-sec" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)"><span class="text-xs text-muted fa-lbl">노출제한 · 운영자 수동(라벨·학습과 분리)</span><div>
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.row && fa.row.ops_hold ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="toggleOpsHold(fa.row)" x-text="fa && fa.row && fa.row.ops_hold ? '✓ 노출제한 중 · 해제' : '상위 노출 제한'" data-tip="상위 노출에 부적절한 콘텐츠를 수동 표시 · 등급·학습에 영향 없이 내보내기(CSV)에만 표시" data-tip-pos="top"></button>
               </div></div>
             </div></template>
-            <div class="flex gap-2" style="margin-top:16px;justify-content:flex-end">
+            <div class="flex gap-2" style="margin-top:6px;padding-top:14px;border-top:1px solid var(--ds-hairline);justify-content:flex-end">
               <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="faOpen=false">취소</button>
               <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="faBusy" x-on:click="saveFinalAnswer()" data-tip="수정한 내용을 저장하고 이 상태를 정답으로 편입" data-tip-pos="top" x-text="faBusy ? '저장 중…' : '저장하고 편입'"></button>
             </div>

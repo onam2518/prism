@@ -414,7 +414,11 @@
   .hybreco:hover{border-color:var(--ds-primary);color:var(--ds-primary-deep);background:var(--ds-primary-tint)}
   .hybreco__plus{font-weight:800;color:var(--ds-primary)}
   .hybreco__why{font-size:10px;font-weight:500;color:var(--ds-muted)}
-  .hybwrap{position:relative;margin-top:6px}
+  /* 정답 확정 팝업 영역 리듬: 섹션 사이 구분선 + 상하 호흡(피드백 260723) */
+  .fa-sec{display:block;padding:13px 0 15px}
+  .fa-sec ~ .fa-sec{border-top:1px solid var(--ds-hairline)}
+  .fa-sec .fa-lbl{display:block;margin-bottom:7px;line-height:1.5}
+  .hybwrap{position:relative;margin-top:8px}
   .hybdd{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--ds-surface-white);
     border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);box-shadow:var(--ds-shadow-elevated);
     max-height:240px;overflow:auto}
