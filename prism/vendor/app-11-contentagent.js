@@ -438,23 +438,43 @@ window.PRISM_APP_PARTS.push(() => ({
           { title: '내 관심으로 만들기', hint: '고르면 그 조건으로 위젯이 생겨요', items: mine },
         ];
       },
-      caGalPick: null,                     // 갤러리에서 고른 템플릿(미리보기 대기)
-      caGalPreview(g) {                    // 누르면 고정 배치(템플릿)를 미리 보여준다
+      caGalPick: null,                     // 고른 템플릿(배치 대기)
+      caGalPos: 0,                         // 홈에서 놓일 위치(0 = 맨 위)
+      caGalPreview(g) {                    // 고르면 배치까지 정하고 홈 스냅샷으로 확인
         const base = g.mk();
         this.caGalPick = { key: g.key, name: g.name, desc: g.desc, src: base.src,
                            size: g.key === 'reco' ? 'lg' : 'md',
                            cond: Object.assign({ ents: [], topics: [], fields: [], kinds: [], excl: [], tone: '' }, base.cond) };
+        this.caGalPos = this.caWidgets.length;      // 기본은 맨 아래
       },
-      caGalRows() {                        // 미리보기용 행(실제 콘텐츠로 채움)
-        const p = this.caGalPick; if (!p) return [];
-        return this.caWidgetRows({ id: '_pv', name: p.name, size: p.size, src: p.src, cond: p.cond, pins: [], hidden: [] });
+      _caGalWidget() {
+        const p = this.caGalPick; if (!p) return null;
+        return { id: '_new', name: p.name, size: p.size, src: p.src, cond: p.cond, pins: [], hidden: [], _new: true };
+      },
+      caGalSnapshot() {                    // 적용했을 때의 홈 전체(새 위젯이 낀 상태)
+        const w = this._caGalWidget(); if (!w) return [];
+        const out = this.caWidgets.slice();
+        out.splice(Math.max(0, Math.min(this.caGalPos, out.length)), 0, w);
+        return out;
+      },
+      caGalMove(dir) {                     // 놓일 위치를 위/아래로
+        const n = this.caWidgets.length;
+        this.caGalPos = Math.max(0, Math.min(this.caGalPos + dir, n));
+      },
+      caGalPosLabel() {
+        const n = this.caWidgets.length;
+        if (!n) return '첫 번째';
+        if (this.caGalPos === 0) return '맨 위';
+        if (this.caGalPos >= n) return '맨 아래';
+        return (this.caGalPos + 1) + '번째';
       },
       caGalApply() {
         const p = this.caGalPick; if (!p) return;
-        this.caWidgets.push({ id: 'w' + Date.now(), name: p.name, size: p.size, src: p.src,
-                              cond: JSON.parse(JSON.stringify(p.cond)), pins: [], hidden: [] });
+        const w = { id: 'w' + Date.now(), name: p.name, size: p.size, src: p.src,
+                    cond: JSON.parse(JSON.stringify(p.cond)), pins: [], hidden: [] };
+        this.caWidgets.splice(Math.max(0, Math.min(this.caGalPos, this.caWidgets.length)), 0, w);
         this.caSave(); this.caGalPick = null; this.caEntered = false;
-        this.caToast('「' + p.name + '」 위젯을 홈에 추가했어요');
+        this.caToast('「' + w.name + '」 위젯을 ' + this.caGalPosLabel() + '에 놓았어요');
       },
       caAddFromGallery(g) {
         const base = g.mk();
