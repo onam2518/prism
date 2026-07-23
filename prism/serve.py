@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlparse
 # 서버 부팅 ID: 배포(프로세스 교체) 감지 + 벤더 자산 캐시버스터의 단일 원천
 _BOOT_ID = "%d-%d" % (int(time.time()), os.getpid())
 
+from . import entconf as EC
 from . import imagext as IMG
 from . import pipeline as _PIPE_MOD
 PIPE = _PIPE_MOD    # 테스트가 serve.PIPE.extract 를 패치 · 별칭 유지(runops 와 같은 모듈 객체)
@@ -475,6 +476,8 @@ def _detail_row(r: dict) -> dict:
         "body": ref.get("body", ""),
         "summary": im.get("summary", ""),
         "entities": im.get("entities", []) or [],
+        # 읽기 시점 확신도 병행 노출(entconf.py) · entities 키는 계약 유지(하위 호환)
+        "entities_scored": EC.scored_entities(im, ref),
         "intent": im.get("intent", []) or [],
         "category": im.get("content_category", []) or [],
         "grade": qm.get("finalGrade", "") or r.get("grade", ""),
