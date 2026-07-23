@@ -164,6 +164,34 @@
         .ca-grip{ color:var(--caTxtSub); font-size:15px; cursor:grab; }
         .ca-arrbtn{ position:absolute; right:16px; bottom:132px; z-index:5; border:0; background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caR100); padding:11px 16px; font-size:14px; font-weight:700; box-shadow:var(--caShadowH); cursor:pointer; font-family:inherit; }
         .ca-view.pc .ca-arrbtn{ bottom:74px; }
+        /* 온보딩 */
+        .ca-ob{ position:absolute; inset:0; z-index:20; background:var(--caSurf); display:flex; flex-direction:column; padding:22px 20px 20px; }
+        .ca-obh{ font-size:22px; font-weight:700; line-height:1.2; margin-bottom:6px; }
+        .ca-obs{ font-size:15px; color:var(--caTxtSub); margin-bottom:18px; }
+        .ca-obg{ display:grid; grid-template-columns:1fr 1fr; gap:10px; overflow-y:auto; }
+        .ca-obt{ border:1.5px solid var(--caCard); border-radius:var(--caR12); background:var(--caSurf); padding:16px 14px; font-size:16px; font-weight:700; color:var(--caTxt2); cursor:pointer; text-align:left; font-family:inherit; }
+        .ca-obt.on{ border-color:var(--caPrimary); background:var(--caPrimarySub); color:var(--caPrimary); }
+        .ca-obf{ margin-top:auto; padding-top:16px; display:flex; gap:10px; align-items:center; }
+        .ca-obdots{ display:flex; gap:5px; justify-content:center; margin-bottom:14px; }
+        .ca-obdots i{ width:7px; height:7px; border-radius:var(--caR100); background:var(--caCard); }
+        .ca-obdots i.on{ width:18px; background:var(--caPrimary); }
+        /* 갤러리 */
+        .ca-gal{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .ca-galt{ border:1px solid var(--caCard); border-radius:var(--caR12); background:var(--caSurf); padding:12px; cursor:pointer; text-align:left; font-family:inherit; }
+        .ca-galt:hover{ border-color:var(--caPrimary); }
+        .ca-galt .n{ font-size:16px; font-weight:700; color:var(--caTxt); }
+        .ca-galt .d{ font-size:13px; color:var(--caTxtSub); margin-top:3px; }
+        /* 다양성 슬라이더 */
+        .ca-fresh{ background:var(--caSurf); border-radius:var(--caR12); box-shadow:var(--caShadowM); padding:14px 16px; margin-bottom:12px; }
+        .ca-fresh input[type=range]{ width:100%; accent-color:var(--caPrimary); }
+        .ca-frl{ display:flex; justify-content:space-between; font-size:13px; color:var(--caTxtSub); font-weight:600; margin-top:4px; }
+        /* 대화 */
+        .ca-chat{ display:flex; flex-direction:column; gap:6px; margin:10px 0; }
+        .ca-bub{ max-width:88%; padding:9px 12px; border-radius:var(--caR12); font-size:14px; line-height:1.4; }
+        .ca-bub.me{ background:var(--caPrimary); color:#fff; align-self:flex-end; }
+        .ca-bub.bot{ background:var(--caSurfOn); color:var(--caTxt2); align-self:flex-start; }
+        .ca-crow{ display:flex; gap:8px; }
+        .ca-crow input{ flex:1; border:1px solid var(--caInput); border-radius:var(--caR100); padding:10px 14px; font-size:15px; background:var(--caSurf); color:var(--caTxt); font-family:inherit; }
         .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#303233; color:#fff; padding:13px 20px; border-radius:var(--caR12); font-size:15px; font-weight:600; z-index:60; box-shadow:var(--caShadowH); }
       </style>
 
@@ -187,6 +215,33 @@
       <!-- 시연 무대: 홈 화면(+플로팅) → 매니저 시트 -->
       <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root ca-stage">
         <div class="ca-view" x-bind:class="caDevice==='pc'?'pc':''">
+          <!-- 온보딩 -->
+          <div class="ca-ob" x-show="caOnboard" x-cloak>
+            <div class="ca-obdots"><i x-bind:class="caObStep===1?'on':''"></i><i x-bind:class="caObStep===2?'on':''"></i></div>
+            <div x-show="caObStep===1">
+              <div class="ca-obh">어떤 소식에 관심 있으세요?</div>
+              <div class="ca-obs">고른 관심으로 첫 화면을 만들어 드려요</div>
+              <div class="ca-obg">
+                <template x-for="f in caObFields()" x-bind:key="f">
+                  <button type="button" class="ca-obt" x-bind:class="caObPick.indexOf(f)>=0?'on':''" x-on:click="caObToggle(f)" x-text="caLabel('topic', f)"></button>
+                </template>
+              </div>
+            </div>
+            <div x-show="caObStep===2" x-cloak>
+              <div class="ca-obh">어떤 소식이 더 좋아요?</div>
+              <div class="ca-obs">첫 화면 순서를 맞추는 데만 써요</div>
+              <div class="ca-obg" style="grid-template-columns:1fr">
+                <button type="button" class="ca-obt" x-bind:class="caObTone==='깊게'?'on':''" x-on:click="caObTone='깊게'">깊이 있게 읽는 글</button>
+                <button type="button" class="ca-obt" x-bind:class="caObTone==='빠르게'?'on':''" x-on:click="caObTone='빠르게'">빠르게 훑는 짧은 소식</button>
+                <button type="button" class="ca-obt" x-bind:class="caObTone==='가볍게'?'on':''" x-on:click="caObTone='가볍게'">가볍게 보는 이야기</button>
+              </div>
+            </div>
+            <div class="ca-obf">
+              <button type="button" class="ca-ghost" x-on:click="caObSkip()">건너뛰기</button>
+              <button type="button" class="ca-btn" style="flex:1" x-on:click="caObNext()" x-text="caObStep===1 ? '다음' : '내 뉴스 보기'"></button>
+            </div>
+          </div>
+
           <!-- 홈 -->
           <div class="ca-appbar">
             <span class="ca-logo"></span>
@@ -225,25 +280,27 @@
                   <button type="button" class="ca-wbtn danger" x-on:click="caRemove(w)">삭제</button>
                 </div>
                 <template x-for="r in caWidgetRows(w)" x-bind:key="w.id + '-' + r.a.id">
-                  <div class="ca-item">
-                    <div style="flex:1;min-width:0">
-                      <div class="ca-ttl" x-text="r.a.t"></div>
-                      <div class="ca-meta">
-                        <span x-text="r.a.src"></span>
-                        <span class="ca-pin" x-show="caIsPinned(w, r.a.id)" x-cloak>고정</span>
+                  <div>
+                    <div class="ca-item" x-on:click="caOpen(r.a)" style="cursor:pointer">
+                      <div style="flex:1;min-width:0">
+                        <div class="ca-ttl" x-text="r.a.t"></div>
+                        <div class="ca-meta">
+                          <span x-text="r.a.src"></span>
+                          <span class="ca-pin" x-show="caIsPinned(w, r.a.id)" x-cloak>고정</span>
+                        </div>
+                      </div>
+                      <span class="ca-th"></span>
+                    </div>
+                    <div class="ca-why">
+                      <b>왜 이 소식?</b> <span x-text="caRowWhy(w, r)"></span>
+                      <div class="ca-fbs">
+                        <button type="button" class="ca-fb" x-bind:class="caIsPinned(w, r.a.id)?'on':''" x-on:click.stop="caTogglePin(w, r.a.id)" x-text="caIsPinned(w, r.a.id) ? '고정 해제' : '좋아요'"></button>
+                        <button type="button" class="ca-fb" x-on:click.stop="caDislike(w, r.a.id)">관심없음</button>
                       </div>
                     </div>
-                    <span class="ca-th"></span>
                   </div>
                 </template>
                 <template x-if="!caWidgetRows(w).length"><div class="ca-empty">조건에 맞는 소식이 아직 없어요</div></template>
-                <div class="ca-why" x-show="caWidgetRows(w).length">
-                  <b>왜 이 소식?</b> <span x-text="caWidgetWhy(w)"></span>
-                  <div class="ca-fbs">
-                    <button type="button" class="ca-fb on" x-on:click="caTogglePin(w, caWidgetRows(w)[0].a.id)" x-text="caIsPinned(w, caWidgetRows(w)[0].a.id) ? '고정 해제' : '좋아요 · 고정'"></button>
-                    <button type="button" class="ca-fb" x-on:click="caDislike(w, caWidgetRows(w)[0].a.id)">관심없음</button>
-                  </div>
-                </div>
               </div>
             </template>
           </div>
@@ -253,7 +310,7 @@
 
           <!-- 배치 · 플로팅 진입 -->
           <button type="button" class="ca-arrbtn" x-show="!caEntered" x-on:click="caToggleArrange()" x-text="caArrange ? '배치 완료' : '위젯 배치'"></button>
-          <button type="button" class="ca-fab" x-show="!caEntered" x-on:click="caEntered=true; caTab='make'; caEditId=''; caDraft=null"><span class="av"></span>내 콘텐츠 매니저</button>
+          <button type="button" class="ca-fab" x-show="!caEntered" x-on:click="caEntered=true; caTab='gallery'; caEditId=''; caDraft=null"><span class="av"></span>내 콘텐츠 매니저</button>
 
           <!-- 매니저 시트 -->
           <div class="ca-sheet" x-show="caEntered" x-cloak>
@@ -263,8 +320,21 @@
             </div>
             <div class="ca-shb">
               <div class="ca-mtabs">
-                <button type="button" x-bind:class="caTab==='make'?'sel':''" x-on:click="caTab='make'">위젯 만들기</button>
+                <button type="button" x-bind:class="caTab==='gallery'?'sel':''" x-on:click="caTab='gallery'">위젯 고르기</button>
+                <button type="button" x-bind:class="caTab==='make'?'sel':''" x-on:click="caTab='make'">말로 만들기</button>
                 <button type="button" x-bind:class="caTab==='edit'?'sel':''" x-on:click="caTab='edit'">홈 편집</button>
+              </div>
+
+              <!-- 위젯 고르기(갤러리) -->
+              <div x-show="caTab==='gallery'" x-cloak>
+                <div class="ca-lab">어떤 위젯을 홈에 놓을까요?</div>
+                <div class="ca-gal">
+                  <template x-for="g in caGalleryItems()" x-bind:key="g.key">
+                    <button type="button" class="ca-galt" x-on:click="caAddFromGallery(g)">
+                      <div class="n" x-text="g.name"></div><div class="d" x-text="g.desc"></div>
+                    </button>
+                  </template>
+                </div>
               </div>
 
               <!-- 위젯 만들기 -->
@@ -360,6 +430,19 @@
                         <button type="button" x-bind:class="caDraft&&caDraft.size==='md'?'on':''" x-on:click="caDraft.size='md'">보통</button>
                         <button type="button" x-bind:class="caDraft&&caDraft.size==='lg'?'on':''" x-on:click="caDraft.size='lg'">크게</button>
                       </div>
+                      <div class="ca-lab" style="margin-top:14px">말로 다듬기</div>
+                      <div class="ca-chat" x-show="caChat.length" x-cloak>
+                        <template x-for="(c, i) in caChat" x-bind:key="i">
+                          <div style="display:flex;flex-direction:column;gap:6px">
+                            <span class="ca-bub me" x-text="c.me"></span>
+                            <span class="ca-bub bot" x-text="c.bot"></span>
+                          </div>
+                        </template>
+                      </div>
+                      <div class="ca-crow">
+                        <input x-model="caChatText" placeholder="예) 광고는 빼줘 · 이름은 아침뉴스로" x-on:keydown.enter="caRefine()">
+                        <button type="button" class="ca-btn sm" x-on:click="caRefine()">보내기</button>
+                      </div>
                       <button type="button" class="ca-btn" style="margin-top:14px" x-on:click="caCreate(); caEntered=false" x-text="caEditId ? '수정 저장' : '홈에 위젯 만들기'"></button>
                     </div>
                   </div>
@@ -368,6 +451,11 @@
 
               <!-- 홈 편집 -->
               <div x-show="caTab==='edit'" x-cloak>
+                <div class="ca-fresh">
+                  <div class="ca-lab" style="margin-bottom:6px">새로운 소식 얼마나</div>
+                  <input type="range" min="0" max="100" step="10" x-model.number="caFresh" x-on:change="caSave()">
+                  <div class="ca-frl"><span>익숙하게</span><span x-text="caFresh >= 60 ? '새로운 소식도 섞어요' : '내가 고른 것 위주'"></span><span>새롭게</span></div>
+                </div>
                 <div class="ca-lab">위젯 크기·순서·삭제 · 바꾸면 홈에 바로 반영됩니다</div>
                 <template x-for="(w, i) in caWidgets" x-bind:key="'e'+w.id">
                   <div class="ca-erow">

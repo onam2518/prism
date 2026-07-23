@@ -44,6 +44,12 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       caLabels(kind, arr) { return (arr || []).map((v) => this.caLabel(kind, v)); },
       // 인텐트(추출 메타) → 읽는 방식(사용자 말) 대응
+      _caGoodEnt(e) {                      // 추출 토막(조사 결합·한 글자)은 위젯 후보에서 제외
+        const s = String(e || '').trim();
+        if (s.length < 2 || s.length > 20) return false;
+        if (/(이|가|은|는|을|를|의|에|에서|으로|와|과|도|만)$/.test(s) && s.length <= 4) return false;
+        return true;
+      },
       caToneOf(intents) {
         const s = (intents || []).join(' ');
         if (/심층|기획|분석|해설/.test(s)) return '깊게';
@@ -69,7 +75,7 @@ window.PRISM_APP_PARTS.push(() => ({
                         src: it.service || '', ago: '', summary: it.summary || '',
                         url: it.url || '', ents: ents.slice(0, 6), topics: cats,
                         kinds: intents, tone: this.caToneOf(intents), field: field });
-            ents.slice(0, 6).forEach((e) => { eSet[e] = 1; });
+            ents.slice(0, 6).forEach((e) => { if (this._caGoodEnt(e)) eSet[e] = 1; });
             cats.forEach((c) => { tSet[c] = 1; fSet[c] = 1; });
             intents.forEach((k) => { kSet[k] = 1; });
           });
@@ -95,6 +101,13 @@ window.PRISM_APP_PARTS.push(() => ({
       caArrange: false,                    // 홈 배치 모드(핸드폰 홈처럼 흔들림·드래그)
       caDragId: '', caOverId: '',          // 드래그 중인 위젯 · 올라간 위젯
       caEditId: '',                        // 수정 중인 기존 위젯 id('' = 새로 만들기)
+      caOnboard: false, caObStep: 1,       // 온보딩(첫 진입 · 관심 고르기 → 보는 방식 → 완료)
+      caObPick: [], caObTone: '',          // 온보딩 선택값(분야 · 읽는 방식)
+      caFresh: 40,                         // 새로운 소식 얼마나(0 익숙하게 ↔ 100 새롭게)
+      caSeen: {},                          // 소비 기록(열어본 소식) · '나를 위한 추천' 근거
+      caGallery: false,                    // 위젯 갤러리 열림
+      caChat: [],                          // 대화로 다듬기 기록 [{me,bot}]
+      caChatText: '',
       caDevice: 'mobile',                  // 시연 화면: mobile | pc
       caEntered: false,                    // 홈 화면에서 플로팅 버튼으로 진입했는지
 
@@ -104,19 +117,65 @@ window.PRISM_APP_PARTS.push(() => ({
         if (this.caWidgets.length) return;
         try {
           const raw = localStorage.getItem('prism_ca');
-          if (raw) { const s = JSON.parse(raw); if (s && s.widgets && s.widgets.length) { this.caWidgets = s.widgets; return; } }
+          if (raw) {
+            const s = JSON.parse(raw);
+            if (s) {
+              if (typeof s.fresh === 'number') this.caFresh = s.fresh;
+              if (s.seen) this.caSeen = s.seen;
+              if (s.widgets && s.widgets.length) { this.caWidgets = s.widgets; return; }
+            }
+          }
         } catch (e) {}
-        this.caWidgets = [                 // 기본 위젯: 전체 소식 + 깊이 읽기(등록 콘텐츠에 맞춰 자동 채움)
-          { id: 'w1', name: '지금 뜨는 소식', size: 'lg', cond: { ents: [], topics: [], fields: [], kinds: [], excl: [], tone: '' }, pins: [], hidden: [] },
-          { id: 'w2', name: '깊이 읽기', size: 'md', cond: { ents: [], topics: [], fields: [], kinds: [], excl: [], tone: '깊게' }, pins: [], hidden: [] },
-        ];
-        this.caSave();
+        this.caOnboard = true;             // 저장분이 없으면 온보딩부터(빈 화면을 주지 않는다)
+        this.caWidgets = [];               // 온보딩이 첫 위젯을 만든다
       },
       caSave() {
-        try { localStorage.setItem('prism_ca', JSON.stringify({ widgets: this.caWidgets })); } catch (e) {}
+        try {
+          localStorage.setItem('prism_ca', JSON.stringify({
+            widgets: this.caWidgets, fresh: this.caFresh, seen: this.caSeen, onboarded: !this.caOnboard,
+          }));
+        } catch (e) {}
+      },
+      // ── 온보딩: 관심 분야 → 보는 방식 → 첫 위젯 자동 생성(빈 화면 없이 시작) ──
+      caObFields() {                       // 등록 콘텐츠에 실제로 있는 분야만 제시
+        return (this.caDict.topics || []).slice(0, 8);
+      },
+      caObToggle(v) {
+        const i = this.caObPick.indexOf(v);
+        if (i >= 0) this.caObPick.splice(i, 1); else this.caObPick.push(v);
+      },
+      caObNext() {
+        if (this.caObStep === 1) {
+          if (!this.caObPick.length) { this.caToast('관심 있는 분야를 하나 이상 골라주세요'); return; }
+          this.caObStep = 2; return;
+        }
+        this.caObDone();
+      },
+      caObDone() {                         // 고른 관심 → 위젯으로
+        const mk = (name, cond, size) => ({ id: 'w' + (this._caSeq = (this._caSeq || 0) + 1) + '-' + this.caObStep,
+                                            name: name, size: size || 'md', src: 'cond',
+                                            cond: Object.assign({ ents: [], topics: [], fields: [], kinds: [], excl: [], tone: '' }, cond),
+                                            pins: [], hidden: [] });
+        const out = [mk('나를 위한 추천', {}, 'lg')];
+        out[0].src = 'reco';
+        this.caObPick.forEach((f) => out.push(mk(this.caLabel('topic', f) + ' 소식', { topics: [f] })));
+        if (this.caObTone) {
+          const t = this.caObTone;
+          out.push(mk(t === '깊게' ? '깊이 읽기' : (t === '가볍게' ? '가볍게 보기' : '빠른 소식'), { tone: t }, 'sm'));
+        }
+        this.caWidgets = out;
+        this.caOnboard = false; this.caObStep = 1;
+        this.caSave();
+        this.caToast('첫 화면을 준비했어요 · 언제든 바꿀 수 있어요');
+      },
+      caObSkip() {                         // 건너뛰어도 빈 화면을 주지 않는다
+        this.caObPick = (this.caDict.topics || []).slice(0, 1);
+        this.caObDone();
       },
       caReset() {
-        this.caWidgets = []; try { localStorage.removeItem('prism_ca'); } catch (e) {}
+        this.caWidgets = []; this.caOnboard = true; this.caObStep = 1; this.caObPick = []; this.caObTone = '';
+        this.caEntered = false; this.caArrange = false; this.caSeen = {}; this.caFresh = 40;
+        try { localStorage.removeItem('prism_ca'); } catch (e) {}
         this.caBoot(); this.caToast('처음 상태로 되돌렸습니다');
       },
       _caJosa(w, withF, noF) {             // 받침 있으면 withF, 없으면 noF (예: 이라/라 · 은/는)
@@ -215,6 +274,31 @@ window.PRISM_APP_PARTS.push(() => ({
         if ((d.kinds || []).length) out.push(this.caLabel('kind', d.kinds[0]) + '만 모아서');
         return out.slice(0, 3);
       },
+      // ── 대화로 다듬기: 지금 조건에 자연어 요청을 얹는다 ──
+      async caRefine() {
+        const t = (this.caChatText || '').trim();
+        if (!t || !this.caDraft) return;
+        this.caChatText = '';
+        const before = JSON.parse(JSON.stringify(this.caDraft.cond));
+        const seg = this._caSplit(t);
+        const pick = (arr, text, kind) => (arr || []).filter((w) => this._caHas(w, text, kind));
+        const c = this.caDraft.cond;
+        const add = (key, vals) => { vals.forEach((v) => { if ((c[key] || []).indexOf(v) < 0) (c[key] = c[key] || []).push(v); }); };
+        const del = (key, vals) => { vals.forEach((v) => { const i = (c[key] || []).indexOf(v); if (i >= 0) c[key].splice(i, 1); }); };
+        const negK = pick(this.caDict.kinds, seg.neg, 'kind'), negT = pick(this.caDict.topics, seg.neg, 'topic');
+        add('excl', negK.concat(negT)); del('kinds', negK); del('topics', negT);
+        add('ents', pick(this.caDict.ents, seg.pos, 'ent'));
+        add('topics', pick(this.caDict.topics, seg.pos, 'topic').filter((v) => (c.excl || []).indexOf(v) < 0));
+        add('kinds', pick(this.caDict.kinds, seg.pos, 'kind').filter((v) => (c.excl || []).indexOf(v) < 0));
+        this.caTone.forEach((x) => { if (x.words.some((wd) => seg.pos.indexOf(wd) >= 0)) c.tone = x.k; });
+        if (/이름/.test(t)) {                                   // "이름은 ~로"
+          const m = t.match(/이름[은는]?\s*['\"]?([^'\"]+?)['\"]?\s*(으?로|로)/);
+          if (m && m[1]) this.caDraft.name = m[1].trim().slice(0, 30);
+        }
+        const changed = JSON.stringify(before) !== JSON.stringify(c);
+        this.caChat.push({ me: t, bot: changed ? '반영했어요 · 미리보기를 확인해 보세요' : '무슨 뜻인지 몰라 그대로 뒀어요 · 다르게 말해 주세요' });
+        if (this.caChat.length > 6) this.caChat.shift();
+      },
       caSuggestName(c) {
         const base = c.ents[0] ? this.caLabel('ent', c.ents[0])
                    : (c.topics[0] ? this.caLabel('topic', c.topics[0])
@@ -303,13 +387,73 @@ window.PRISM_APP_PARTS.push(() => ({
         this.caTab = 'home';
         this.caToast('「' + w.name + '」 위젯을 홈에 추가했어요');
       },
+      // ── 위젯 갤러리: 실제 콘텐츠 메타로 만드는 위젯 종류 ──
+      caGalleryItems() {
+        const d = this.caDict || {};
+        const out = [
+          { key: 'reco', name: '나를 위한 추천', desc: '내가 자주 본 것 기반', mk: () => ({ src: 'reco', cond: {} }) },
+          { key: 'hot', name: '지금 많이 보는', desc: '전체에서 많이 보는 소식', mk: () => ({ src: 'hot', cond: {} }) },
+        ];
+        (d.topics || []).slice(0, 4).forEach((t) => out.push({
+          key: 'topic:' + t, name: this.caLabel('topic', t), desc: '주제·분야',
+          mk: () => ({ src: 'cond', cond: { topics: [t] } }) }));
+        (d.ents || []).slice(0, 2).forEach((e) => out.push({
+          key: 'ent:' + e, name: e, desc: '인물·팀 팔로우',
+          mk: () => ({ src: 'cond', cond: { ents: [e] } }) }));
+        out.push({ key: 'tone', name: '깊이 읽기', desc: '분석·해설 위주',
+                   mk: () => ({ src: 'cond', cond: { tone: '깊게' } }) });
+        return out;
+      },
+      caAddFromGallery(g) {
+        const base = g.mk();
+        const w = { id: 'w' + Date.now(), name: g.name, size: g.key === 'reco' ? 'lg' : 'md', src: base.src,
+                    cond: Object.assign({ ents: [], topics: [], fields: [], kinds: [], excl: [], tone: '' }, base.cond),
+                    pins: [], hidden: [] };
+        this.caWidgets.push(w); this.caSave(); this.caGallery = false; this.caEntered = false;
+        this.caToast('「' + w.name + '」 위젯을 홈에 추가했어요');
+      },
+      // 소비 기록(카드 열람) · '나를 위한 추천'과 다양성의 근거
+      caOpen(a) {
+        this.caSeen[a.id] = (this.caSeen[a.id] || 0) + 1;
+        (a.topics || []).forEach((t) => { this.caSeen['t:' + t] = (this.caSeen['t:' + t] || 0) + 1; });
+        this.caSave(); this.caToast('읽은 소식으로 기억할게요 · 추천에 반영됩니다');
+      },
+      caSeenScore(a) {                     // 이 소식 자체를 본 횟수(가중) + 같은 주제를 본 횟수
+        let n = (this.caSeen[a.id] || 0) * 3;
+        (a.topics || []).forEach((t) => { n += (this.caSeen['t:' + t] || 0); });
+        return n;
+      },
       caWidgetRows(w) {
-        const rows = this.caMatch(w.cond, false)
-          .filter((r) => (w.hidden || []).indexOf(r.a.id) < 0);
-        const pin = (w.pins || []);
-        rows.sort((x, y) => (pin.indexOf(y.a.id) - pin.indexOf(x.a.id)));   // 고정 먼저
         const cap = w.size === 'lg' ? 5 : (w.size === 'md' ? 3 : 2);
-        return rows.slice(0, cap);
+        const hidden = (w.hidden || []);
+        const pin = (w.pins || []);
+        let rows;
+        if (w.src === 'reco') {            // 나를 위한 추천: 내가 자주 본 주제 우선
+          rows = (this.caPool || []).filter((a) => hidden.indexOf(a.id) < 0)
+            .map((a) => ({ a: a, ok: true, why: this.caSeenScore(a) ? '자주 보는 주제예요' : '새로 살펴볼 만해요' }))
+            .sort((x, y) => this.caSeenScore(y.a) - this.caSeenScore(x.a));
+        } else if (w.src === 'hot') {      // 지금 많이 보는: 전체 인기(시연은 최신순 = 지금 뜨는)
+          rows = (this.caPool || []).filter((a) => hidden.indexOf(a.id) < 0)
+            .map((a, i) => ({ a: a, ok: true, why: '지금 많이 보는 소식 ' + (i + 1) + '위' }));
+        } else {
+          rows = this.caMatch(w.cond, false).filter((r) => hidden.indexOf(r.a.id) < 0);
+        }
+        rows.sort((x, y) => (pin.indexOf(y.a.id) - pin.indexOf(x.a.id)));   // 고정 먼저
+        const keep = rows.slice(0, cap);
+        // 새로운 소식 얼마나: 값이 클수록 조건 밖 소식을 한 칸 섞는다(익숙함 ↔ 새로움)
+        if (this.caFresh >= 60 && keep.length === cap && w.src !== 'hot') {
+          const ids = keep.map((r) => r.a.id);
+          const rest = (this.caPool || []).filter((a) => ids.indexOf(a.id) < 0 && hidden.indexOf(a.id) < 0);
+          // 조건 밖(=아직 이 위젯에 안 뜬) 소식 중 내가 덜 본 것부터
+          const fresh = rest.slice().sort((x, y) => this.caSeenScore(x) - this.caSeenScore(y))[0];
+          if (fresh) keep[cap - 1] = { a: fresh, ok: true, why: '평소 안 보던 소식이라 골라봤어요' };
+        }
+        return keep;
+      },
+      // 카드마다 "왜 이 소식?"(사용자 말)
+      caRowWhy(w, r) {
+        if (r && r.why) return r.why;
+        return this.caWidgetWhy(w);
       },
       caIsPinned(w, id) { return (w.pins || []).indexOf(id) >= 0; },
       caTogglePin(w, id) {
