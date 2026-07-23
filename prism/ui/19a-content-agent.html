@@ -146,6 +146,24 @@
         .ca-esz span.on{ background:var(--caPrimary); color:#fff; font-weight:700; }
         .ca-ico{ border:1px solid var(--caCard); background:var(--caSurf); color:var(--caTxt3); border-radius:var(--caR8); width:32px; height:30px; font-size:14px; cursor:pointer; font-family:inherit; }
         .ca-ico:disabled{ opacity:.3; cursor:default; }
+        /* 배치 모드: 핸드폰 홈처럼 흔들림 + 드래그 */
+        .ca-w.arr{ border:1px dashed var(--caPrimary); cursor:grab; }
+        .ca-w.arr:active{ cursor:grabbing; }
+        .ca-w.drag{ opacity:.45; }
+        .ca-w.over{ outline:2px solid var(--caPrimary); outline-offset:2px; }
+        @media (prefers-reduced-motion:no-preference){
+          .ca-w.arr{ animation:caWig 1.6s ease-in-out infinite; transform-origin:50% 50%; }
+          @keyframes caWig{ 0%,100%{ transform:rotate(-.28deg); } 50%{ transform:rotate(.28deg); } }
+        }
+        .ca-wtools{ display:flex; align-items:center; gap:6px; padding:0 16px 12px; flex-wrap:wrap; }
+        .ca-wtools .ca-esz{ display:inline-flex; border:1px solid var(--caCard); border-radius:var(--caR8); overflow:hidden; }
+        .ca-wtools .ca-esz span{ font-size:13px; font-weight:600; padding:6px 10px; color:var(--caTxt3); cursor:pointer; }
+        .ca-wtools .ca-esz span.on{ background:var(--caPrimary); color:#fff; font-weight:700; }
+        .ca-wbtn{ border:1px solid var(--caCard); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caR8); padding:6px 11px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-wbtn.danger{ color:var(--caAccent); border-color:var(--caAccentSub); }
+        .ca-grip{ color:var(--caTxtSub); font-size:15px; cursor:grab; }
+        .ca-arrbtn{ position:absolute; right:16px; bottom:132px; z-index:5; border:0; background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caR100); padding:11px 16px; font-size:14px; font-weight:700; box-shadow:var(--caShadowH); cursor:pointer; font-family:inherit; }
+        .ca-view.pc .ca-arrbtn{ bottom:74px; }
         .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#303233; color:#fff; padding:13px 20px; border-radius:var(--caR12); font-size:15px; font-weight:600; z-index:60; box-shadow:var(--caShadowH); }
       </style>
 
@@ -184,11 +202,27 @@
               <div class="ca-w"><div class="ca-empty">위젯이 없습니다 · 오른쪽 아래 <b>내 콘텐츠 매니저</b>에서 만들어 보세요</div></div>
             </template>
             <template x-for="w in caWidgets" x-bind:key="w.id">
-              <div class="ca-w" x-bind:class="w.size==='lg'?'wide':''">
+              <div class="ca-w"
+                   x-bind:class="(w.size==='lg'?'wide ':'') + (caArrange?'arr ':'') + (caDragId===w.id?'drag ':'') + (caOverId===w.id?'over':'')"
+                   x-bind:draggable="caArrange ? 'true' : 'false'"
+                   x-on:dragstart="caDragStart(w, $event)"
+                   x-on:dragover="caDragOver(w, $event)"
+                   x-on:drop.prevent="caDragEnd()"
+                   x-on:dragend="caDragEnd()">
                 <div class="ca-wh">
+                  <span class="ca-grip" x-show="caArrange" x-cloak>⠿</span>
                   <span class="ca-cat" x-bind:class="caWidgetCat(w)" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
                   <span class="ca-wt" x-text="w.name"></span>
                   <span class="ca-auto" x-text="caSizeLabel(w.size)"></span>
+                </div>
+                <div class="ca-wtools" x-show="caArrange" x-cloak>
+                  <span class="ca-esz">
+                    <span x-bind:class="w.size==='sm'?'on':''" x-on:click="caSetSize(w,'sm')">작게</span>
+                    <span x-bind:class="w.size==='md'?'on':''" x-on:click="caSetSize(w,'md')">보통</span>
+                    <span x-bind:class="w.size==='lg'?'on':''" x-on:click="caSetSize(w,'lg')">크게</span>
+                  </span>
+                  <button type="button" class="ca-wbtn" x-on:click="caEditWidget(w)">수정</button>
+                  <button type="button" class="ca-wbtn danger" x-on:click="caRemove(w)">삭제</button>
                 </div>
                 <template x-for="r in caWidgetRows(w)" x-bind:key="w.id + '-' + r.a.id">
                   <div class="ca-item">
@@ -217,8 +251,9 @@
             <div class="on"><i></i>홈</div><div><i></i>탐색</div><div><i></i>구독</div><div><i></i>내정보</div>
           </div>
 
-          <!-- 플로팅 진입 -->
-          <button type="button" class="ca-fab" x-show="!caEntered" x-on:click="caEntered=true; caTab='make'"><span class="av"></span>내 콘텐츠 매니저</button>
+          <!-- 배치 · 플로팅 진입 -->
+          <button type="button" class="ca-arrbtn" x-show="!caEntered" x-on:click="caToggleArrange()" x-text="caArrange ? '배치 완료' : '위젯 배치'"></button>
+          <button type="button" class="ca-fab" x-show="!caEntered" x-on:click="caEntered=true; caTab='make'; caEditId=''; caDraft=null"><span class="av"></span>내 콘텐츠 매니저</button>
 
           <!-- 매니저 시트 -->
           <div class="ca-sheet" x-show="caEntered" x-cloak>
@@ -234,7 +269,11 @@
 
               <!-- 위젯 만들기 -->
               <div x-show="caTab==='make'">
-                <div class="ca-lab">어떤 소식을 모을까요?</div>
+                <div class="ca-lab" x-text="caEditId ? '이 위젯을 어떻게 바꿀까요?' : '어떤 소식을 모을까요?'"></div>
+                <div class="ca-wrow" x-show="caEditId" x-cloak style="margin-bottom:8px">
+                  <span class="said">수정 중</span><span x-text="caDraft ? caDraft.name : ''"></span>
+                  <button type="button" class="ca-ghost" style="padding:5px 10px" x-on:click="caCancelEdit()">새로 만들기로</button>
+                </div>
                 <textarea class="ca-in" x-model="caText" placeholder="원하는 소식을 한 문장으로 · 예) 경제 소식 깊이 있게, 광고는 빼고"></textarea>
                 <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
                   <button type="button" class="ca-btn sm" x-bind:disabled="caThinking" x-on:click="caUnderstand()" x-text="caThinking ? '이해하는 중…' : '이해하기'"></button>
@@ -321,7 +360,7 @@
                         <button type="button" x-bind:class="caDraft&&caDraft.size==='md'?'on':''" x-on:click="caDraft.size='md'">보통</button>
                         <button type="button" x-bind:class="caDraft&&caDraft.size==='lg'?'on':''" x-on:click="caDraft.size='lg'">크게</button>
                       </div>
-                      <button type="button" class="ca-btn" style="margin-top:14px" x-on:click="caCreate(); caEntered=false">홈에 위젯 만들기</button>
+                      <button type="button" class="ca-btn" style="margin-top:14px" x-on:click="caCreate(); caEntered=false" x-text="caEditId ? '수정 저장' : '홈에 위젯 만들기'"></button>
                     </div>
                   </div>
                 </div>
