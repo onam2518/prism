@@ -17,8 +17,8 @@
           font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
           color:var(--caTxt); -webkit-font-smoothing:antialiased;
         }
-        /* 시연 무대는 다음 앱 다크 홈이 기준 — 무대 안은 항상 다크 토큰 */
-        .ca-stagewrap{
+        /* 시연 무대 스킨: 라이트 기본 · .dark 일 때만 다크 토큰(다음 앱 두 모드 모두 지원) */
+        .ca-stagewrap.dark{
           --caBody:#111112; --caSurf:#1F1F22; --caCard:#1F1F22; --caMuted:#1111127F; --caPop:#28292C;
           --caTxt:#DFE2E5; --caTxt2:#AAAFB5; --caTxt3:#6F747C; --caAcc:#2694FE; --caAccMuted:#0082FB3F;
           --caErr:#F5394F; --caLine:rgba(223,226,229,.2);
@@ -61,7 +61,7 @@
         /* 상태바(폰) */
         .ca-status{ display:flex; align-items:center; padding:10px 24px 2px; font-size:12px; font-weight:700; color:var(--caTxt); flex:none; }
         .ca-status .r{ margin-left:auto; letter-spacing:2px; opacity:.75; }
-        .ca-view{ background:var(--caBody); overflow:hidden; position:relative; width:100%; height:100%;
+        .ca-view{ background:var(--caBody); overflow:hidden; overflow-x:clip; position:relative; width:100%; height:100%;
           display:flex; flex-direction:column; min-height:0; }
         .ca-scroll{ flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
         .ca-view *{ scrollbar-width:none; }
@@ -72,13 +72,13 @@
         .ca-view.pc .ca-top{ padding:var(--caS6) var(--caS6) var(--caS4); display:flex; justify-content:center; }
         .ca-sbwrap{ display:block; padding:1.5px; border-radius:var(--caRadFull); background:linear-gradient(90deg,#FF5C66,#FFB300,#22C55E,#2694FE,#A05CFF); width:100%; }
         .ca-view.pc .ca-sbwrap{ max-width:660px; }
-        .ca-sb{ display:flex; align-items:center; gap:10px; height:46px; background:var(--caBody); border-radius:var(--caRadFull); padding:0 16px; }
+        .ca-sb{ display:flex; align-items:center; gap:10px; height:48px; background:var(--caBody); border-radius:var(--caRadFull); padding:0 16px; }
         .ca-dlogo{ width:22px; height:22px; border-radius:6px; background:conic-gradient(from 200deg,#2694FE,#A05CFF,#FF5C66,#FFB300,#22C55E,#2694FE); flex:none; }
         .ca-sb .ph{ flex:1; color:var(--caTxt3); font-size:15px; }
         .ca-sb .ic{ width:18px; height:18px; border-radius:4px; background:var(--caTxt3); opacity:.55; }
         /* 서비스 칩(PC) */
         .ca-svc{ display:flex; gap:10px; padding:0 var(--caS6) var(--caS4); flex-wrap:wrap; justify-content:center; flex:none; }
-        .ca-svc span{ display:inline-flex; align-items:center; gap:7px; background:var(--caSurf); border-radius:var(--caRadFull); padding:7px 14px 7px 8px; font-size:14px; font-weight:600; color:var(--caTxt); }
+        .ca-svc span{ display:inline-flex; align-items:center; gap:8px; background:var(--caSurf); border-radius:var(--caRadFull); padding:7px 14px 7px 8px; font-size:14px; font-weight:600; color:var(--caTxt); }
         .ca-svc i{ width:20px; height:20px; border-radius:7px; display:block; }
         /* 실시간 */
         .ca-live{ display:flex; align-items:center; gap:8px; padding:0 var(--caS4) var(--caS3); font-size:14px; color:var(--caTxt2); flex:none; }
@@ -119,7 +119,7 @@
         .ca-cat.interest{ color:#FF9429; background:rgba(255,148,41,.16); }
         .ca-auto{ margin-left:auto; font-size:12px; font-weight:700; color:var(--caTxt3); }
         .ca-info{ color:var(--caTxt3); font-size:13px; }
-        .ca-item{ display:flex; gap:var(--caS3); padding:11px var(--caS4); align-items:flex-start; border-top:1px solid var(--caLine); }
+        .ca-item{ display:flex; gap:var(--caS3); padding:12px var(--caS4); align-items:flex-start; border-top:1px solid var(--caLine); }
         .ca-item:first-of-type{ border-top:0; }
         .ca-ttl{ font-size:16px; font-weight:400; line-height:1.4; color:var(--caTxt); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
         .ca-meta{ font-size:13px; line-height:1.32; color:var(--caTxt3); margin-top:6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
@@ -131,13 +131,13 @@
           font-size:12px; line-height:1.35; color:var(--caTxt3); }
         .ca-why b{ color:var(--caAcc); font-weight:700; }
         .ca-fbs{ display:inline-flex; gap:5px; margin:0 0 0 auto; }
-        .ca-fb{ border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRadFull); padding:3px 9px; font-size:11.5px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-fb{ border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRadFull); padding:4px 8px; font-size:11.5px; font-weight:600; cursor:pointer; font-family:inherit; }
         .ca-fb.on{ border-color:var(--caAcc); color:var(--caAcc); }
         .ca-empty{ padding:var(--caS5) var(--caS4); text-align:center; font-size:15px; color:var(--caTxt3); }
         .ca-addw{ border:1px dashed var(--caAcc); border-radius:var(--caRadLg); background:transparent; color:var(--caAcc); padding:var(--caS4); text-align:center; font-size:15px; font-weight:700; cursor:pointer; }
         /* 사이드(로그인·날씨·쇼핑 목업) */
         .ca-sidecard{ background:var(--caCard); border-radius:var(--caRadLg); padding:var(--caS4); }
-        .ca-login{ background:#FEE500; color:#181600; border-radius:var(--caRad); padding:13px; text-align:center; font-size:15px; font-weight:700; }
+        .ca-login{ background:#FEE500; color:#181600; border-radius:var(--caRad); padding:12px; text-align:center; font-size:15px; font-weight:700; }
         .ca-sublinks{ display:flex; justify-content:center; gap:14px; margin-top:12px; font-size:13px; color:var(--caTxt2); }
         .ca-wthr{ display:flex; align-items:center; gap:12px; }
         .ca-wthr .t{ margin-left:auto; font-size:26px; font-weight:700; }
@@ -190,20 +190,20 @@
         .ca-lab{ font-size:14px; font-weight:700; color:var(--caTxt2); margin:0 0 8px; }
         .ca-in{ width:100%; border:1px solid var(--caLine); border-radius:var(--caRad); padding:12px 14px; font-size:16px; line-height:1.4; color:var(--caTxt); background:var(--caSurf); font-family:inherit; resize:vertical; min-height:60px; }
         .ca-in:focus{ outline:none; border-color:var(--caAcc); }
-        .ca-btn{ width:100%; background:var(--caAcc); color:var(--caOnAcc); border:0; border-radius:var(--caRad); padding:13px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+        .ca-btn{ width:100%; background:var(--caAcc); color:var(--caOnAcc); border:0; border-radius:var(--caRad); padding:12px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
         .ca-btn.sm{ width:auto; padding:10px 18px; }
         .ca-btn:disabled{ opacity:.5; cursor:default; }
         .ca-grp{ margin-bottom:12px; }
         .ca-gl{ font-size:14px; font-weight:700; color:var(--caTxt2); margin-bottom:7px; }
         .ca-chips{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-        .ca-ch{ display:inline-flex; align-items:center; gap:6px; border-radius:var(--caRadFull); padding:7px 10px 7px 13px; font-size:14px; font-weight:600; border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt); }
+        .ca-ch{ display:inline-flex; align-items:center; gap:6px; border-radius:var(--caRadFull); padding:8px 12px; font-size:14px; font-weight:600; border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt); }
         .ca-ch .x{ color:var(--caTxt3); cursor:pointer; font-size:13px; }
         .ca-ch.inc{ border-color:var(--caAcc); color:var(--caAcc); background:var(--caAccMuted); }
         .ca-ch.exc{ border-color:var(--caErr); color:var(--caErr); }
         .ca-ch.exc .p{ text-decoration:line-through; }
         .ca-mini{ border:1px solid var(--caLine); border-radius:var(--caRad); padding:7px 10px; font-size:14px; background:var(--caSurf); color:var(--caTxt); font-family:inherit; width:120px; }
         .ca-tone{ display:inline-flex; gap:6px; flex-wrap:wrap; }
-        .ca-tone button{ border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caRadFull); padding:7px 13px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-tone button{ border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caRadFull); padding:8px 12px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
         .ca-tone button.on{ border-color:var(--caAcc); color:var(--caAcc); background:var(--caAccMuted); }
         .ca-wrow{ display:flex; gap:6px; align-items:center; font-size:13px; color:var(--caTxt2); margin-bottom:5px; flex-wrap:wrap; }
         .ca-wrow .said{ background:var(--caAccMuted); color:var(--caTxt); border-radius:6px; padding:3px 8px; font-weight:700; }
@@ -221,7 +221,7 @@
         .ca-fresh input[type=range]{ width:100%; accent-color:var(--caAcc); }
         .ca-frl{ display:flex; justify-content:space-between; font-size:13px; color:var(--caTxt3); font-weight:600; margin-top:4px; }
         .ca-chat{ display:flex; flex-direction:column; gap:6px; margin:10px 0; }
-        .ca-bub{ max-width:88%; padding:9px 12px; border-radius:var(--caRad); font-size:14px; line-height:1.4; }
+        .ca-bub{ max-width:88%; padding:8px 12px; border-radius:var(--caRad); font-size:14px; line-height:1.4; }
         .ca-bub.me{ background:var(--caAcc); color:var(--caOnAcc); align-self:flex-end; }
         .ca-bub.bot{ background:var(--caMuted); color:var(--caTxt2); align-self:flex-start; }
         .ca-crow{ display:flex; gap:8px; }
@@ -239,7 +239,7 @@
         .ca-pvh{ display:flex; align-items:center; gap:6px; margin-bottom:6px; }
         .ca-pvt{ font-size:13px; font-weight:700; color:var(--caTxt); }
         .ca-pvs{ margin-left:auto; font-size:11px; color:var(--caTxt3); font-weight:700; }
-        .ca-pvi{ display:flex; gap:7px; align-items:center; padding:4px 0; }
+        .ca-pvi{ display:flex; gap:8px; align-items:center; padding:4px 0; }
         .ca-pvi .t{ flex:1; min-width:0; font-size:11.5px; color:var(--caTxt2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .ca-pvi .th{ width:22px; height:16px; border-radius:4px; background:var(--caMuted); flex:none; }
         .ca-tabedit{ margin-left:auto; border:0; background:transparent; color:var(--caTxt2); font-size:16px; cursor:pointer; padding:10px 0 12px; font-family:inherit; }
@@ -256,7 +256,21 @@
         .ca-pvw.isnew{ outline:2px solid var(--caAcc); }
         .ca-newbdg{ font-size:10px; font-weight:700; color:var(--caAcc); background:var(--caAccMuted); border-radius:4px; padding:2px 6px; }
         .ca-galpv{ background:var(--caCard); border:1px solid var(--caAcc); border-radius:var(--caRad); padding:14px; margin-bottom:16px; }
-        .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#28292C; color:#DFE2E5; padding:13px 20px; border-radius:var(--caRad); font-size:15px; font-weight:600; z-index:60; box-shadow:0 2px 16px rgba(0,0,0,.32); }
+        /* 상호작용 상태: 기본·호버·포커스·액티브·비활성 (포커스 링은 즉시 표시) */
+        .ca-root button, .ca-root input, .ca-root textarea, .ca-root a{ transition:background-color .12s ease, border-color .12s ease, color .12s ease; }
+        .ca-root button:focus-visible, .ca-root input:focus-visible, .ca-root textarea:focus-visible,
+        .ca-root a:focus-visible, .ca-galt:focus-visible, .ca-obt:focus-visible{ outline:2px solid var(--caAcc); outline-offset:2px; transition:none; }
+        .ca-btn:hover:not(:disabled){ filter:brightness(1.06); }
+        .ca-btn:active:not(:disabled){ filter:brightness(.94); }
+        .ca-ghost:hover, .ca-fb:hover, .ca-tone button:hover, .ca-ico:not(:disabled):hover,
+        .ca-galt:hover, .ca-obt:hover, .ca-rpill:hover{ background:var(--caMuted); }
+        .ca-ghost:active, .ca-fb:active, .ca-tone button:active, .ca-ico:not(:disabled):active,
+        .ca-galt:active, .ca-obt:active, .ca-rpill:active{ background:var(--caAccMuted); }
+        .ca-root button:disabled{ opacity:.4; cursor:default; }
+        .ca-cats button:hover{ color:var(--caTxt2); }
+        .ca-fab:hover{ filter:brightness(1.05); } .ca-fab:active{ filter:brightness(.95); }
+        @media (prefers-reduced-motion: reduce){ .ca-root *{ transition:none !important; animation:none !important; } }
+        .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#28292C; color:#DFE2E5; padding:12px 20px; border-radius:var(--caRad); font-size:15px; font-weight:600; z-index:60; box-shadow:0 2px 16px rgba(0,0,0,.32); }
       </style>
 
       <!-- 상단 바: PC/모바일 · 설계안 -->
@@ -273,13 +287,17 @@
             <button type="button" x-bind:class="caDevice==='mobile'?'sel':''" x-on:click="caDevice='mobile'">모바일</button>
             <button type="button" x-bind:class="caDevice==='pc'?'sel':''" x-on:click="caDevice='pc'">PC</button>
           </div>
+          <div class="ca-seg">
+            <button type="button" x-bind:class="caSkin==='light'?'sel':''" x-on:click="caSkin='light'; caSave()">라이트</button>
+            <button type="button" x-bind:class="caSkin==='dark'?'sel':''" x-on:click="caSkin='dark'; caSave()">다크</button>
+          </div>
           <span class="ca-note" x-text="caLoading ? '콘텐츠를 불러오는 중…' : caLoadMsg"></span>
           <button type="button" class="ca-ghost" style="margin-left:auto" x-on:click="caReset(); caEntered=false">처음 상태로</button>
         </div>
       </div>
 
       <!-- 시연 무대: 홈 화면(+플로팅) → 매니저 시트 -->
-      <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root ca-stage ca-stagewrap">
+      <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root ca-stage ca-stagewrap" x-bind:class="caSkin==='dark'?'dark':''">
         <!-- 기기 목업(노트북·폰) · 화면은 프레임 안에서만 스크롤 -->
         <div class="ca-dev" x-bind:class="caDevice">
           <div class="bezel">

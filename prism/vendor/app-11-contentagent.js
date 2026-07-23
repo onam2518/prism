@@ -113,10 +113,16 @@ window.PRISM_APP_PARTS.push(() => ({
       caChat: [],                          // 대화로 다듬기 기록 [{me,bot}]
       caChatText: '',
       caDevice: 'mobile',                  // 시연 화면: mobile | pc
+      caSkin: 'light',                     // 시연 무대 스킨: light | dark(다음 앱 두 모드)
       caEntered: false,                    // 홈 화면에서 플로팅 버튼으로 진입했는지
 
       caBoot() {                           // 최초 진입: 실제 콘텐츠 로드 + 저장분 복원(없으면 기본 위젯)
         this.caLoad();
+        try {                              // 스킨 기본값은 앱 테마를 따른다(저장분이 있으면 그것이 우선)
+          if (!localStorage.getItem('prism_ca')) {
+            this.caSkin = (document.documentElement.getAttribute('data-theme') === 'dark') ? 'dark' : 'light';
+          }
+        } catch (e) {}
         if (!this.dictData && this.loadDict) { try { this.loadDict(); } catch (e) {} }   // 카테고리 한글 원천
         if (this.caWidgets.length) return;
         try {
@@ -127,6 +133,7 @@ window.PRISM_APP_PARTS.push(() => ({
               if (typeof s.fresh === 'number') this.caFresh = s.fresh;
               if (s.seen) this.caSeen = s.seen;
               if (s.tabOrder) this.caTabOrder = s.tabOrder;
+              if (s.skin) this.caSkin = s.skin;
               if (s.widgets && s.widgets.length) { this.caWidgets = s.widgets; return; }
             }
           }
@@ -138,7 +145,7 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           localStorage.setItem('prism_ca', JSON.stringify({
             widgets: this.caWidgets, fresh: this.caFresh, seen: this.caSeen, onboarded: !this.caOnboard,
-            tabOrder: this.caTabOrder,
+            tabOrder: this.caTabOrder, skin: this.caSkin,
           }));
         } catch (e) {}
       },
@@ -535,15 +542,15 @@ window.PRISM_APP_PARTS.push(() => ({
       caTogglePin(w, id) {
         const p = w.pins || (w.pins = []);
         const i = p.indexOf(id);
-        if (i >= 0) { p.splice(i, 1); this.caToast('고정을 풀었어요'); }
-        else { p.push(id); this.caToast('이 소식을 고정했어요 · 항상 이 자리에 남습니다'); }
+        if (i >= 0) p.splice(i, 1);      // 고정 배지가 즉시 바뀌므로 토스트 없음
+        else p.push(id);
         this.caSave();
       },
       caDislike(w, id) {                   // 관심없음 = 이 위젯에서 숨기고 다음 소식으로 교체
         (w.hidden || (w.hidden = [])).push(id);
         this.caSave(); this.caToast('덜 보여드릴게요 · 다음 소식으로 바꿨어요');
       },
-      caSetSize(w, s) { w.size = s; this.caSave(); },
+      caSetSize(w, s) { w.size = s; this.caSave(); },      // 크기 변화는 화면에 바로 보이므로 토스트 없음
       caRemove(w) {
         const i = this.caWidgets.indexOf(w);
         if (i >= 0) { const n = w.name; this.caWidgets.splice(i, 1); this.caSave(); this.caToast('「' + n + '」 위젯을 지웠어요'); }
@@ -569,14 +576,13 @@ window.PRISM_APP_PARTS.push(() => ({
         if (from < 0 || to < 0 || from === to) return;
         this.caWidgets.splice(to, 0, this.caWidgets.splice(from, 1)[0]);   // 실시간 재배치(홈에서 바로 보임)
       },
-      caDragEnd() {
-        if (this.caDragId) { this.caSave(); this.caToast('위치를 옮겼어요'); }
+      caDragEnd() {                        // 이동 결과가 그대로 보이므로 토스트 없이 저장만
+        if (this.caDragId) this.caSave();
         this.caDragId = ''; this.caOverId = '';
       },
       caToggleArrange() {
         this.caArrange = !this.caArrange;
-        if (!this.caArrange) { this.caSave(); this.caToast('배치를 저장했어요'); }
-        else this.caToast('위젯을 끌어서 옮기고, 크기를 바꾸고, 지울 수 있어요');
+        if (!this.caArrange) this.caSave();
       },
       // ── 기존 위젯 수정(이름·조건을 매니저에서 다시 편집) ──
       caEditWidget(w) {
