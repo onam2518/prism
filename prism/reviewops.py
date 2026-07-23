@@ -17,6 +17,7 @@ import heapq
 import threading
 import time
 
+from . import entconf as EC
 from . import feedback_loop as FL
 from . import learnops as LO
 from . import prompts as PR
@@ -858,6 +859,8 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "grade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
                     "category": im.get("content_category", []) or [],
                     "summary": im.get("summary", ""), "entities": im.get("entities", []) or [],
+                    # 읽기 시점 확신도 병행 노출(entconf.py) · entities 키는 계약 유지(하위 호환)
+                    "entities_scored": EC.scored_entities(im, ref),
                     "intent": im.get("intent", []) or [],
                     "model": tr.get("model", "") or "",
                     "version": int(tr.get("version") or 1),
@@ -882,6 +885,9 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                            "grade": g.get("grade", ""), "reasons": g.get("reasons", []) or [],
                            "category": g.get("category", []) or [],
                            "summary": g.get("summary", ""), "entities": g.get("entities", []) or [],
+                           "entities_scored": EC.scored_entities(
+                               {"entities": g.get("entities", []) or [], "summary": g.get("summary", "")},
+                               {"title": g.get("title", ""), "body": g.get("body", "")}),
                            "intent": g.get("intent", []) or [],
                            "model": "", "version": None, "review": "yellow", "split": False,
                            "fb": {"verdict": "", "n": 0, "ts": 0},

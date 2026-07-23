@@ -4,7 +4,8 @@ window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
       openDetail(c) {
         this.finalCtx = null;                    // 최종검수 결정 바는 최종 검수 탭 진입(openFinalDetail)에서만
-        this.detailNav = null; this.detail = Object.assign({ entities: [], intent: [], category: [], reasons: [], images: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {};
+        this.detailNav = null; this.detail = Object.assign({ entities: [], entities_scored: [], intent: [], category: [], reasons: [], images: [], fb: {} }, c); if (!this.detail.fb) this.detail.fb = {};
+        this.entLowOpen = false;                 // 연관 낮음(확신도 0.5 이하) 접기는 콘텐츠별 초기화
         // 결과 목록 등 집계 경로의 fb 는 팀 집계뿐(mine 없음) → /raw 사본에 같은 콘텐츠가 있으면
         // 내 표가 담긴 fb 로 교체(상세의 '완료' 게이팅·프리필이 내 표 기준으로 일관 · 2026-07-10)
         if (this.detail.fb.mine === undefined) {
@@ -70,6 +71,20 @@ window.PRISM_APP_PARTS.push(() => ({
         const a = this.entAttrSummary(e);
         return '개체 사전 · ' + t + (a ? (' · ' + a) : '') + ' · 클릭해 상세·수정';
       },
+      // ── 엔티티 확신도(entconf.py · 읽기 시점 산출): conf > 0.5 기본 노출 · 미달은 접기로 확인 ──
+      // 오추출 검수(A-3)와 양립: 낮은 항목도 숨기지 않고 '연관 낮음 n개 보기'로 열람 가능
+      entLowOpen: false,
+      entScored() {
+        const d = this.detail || {};
+        if (Array.isArray(d.entities_scored) && d.entities_scored.length) return d.entities_scored;
+        return (d.entities || []).map((e) => ({ name: e, conf: null }));   // 구형 응답 폴백(확신도 미제공)
+      },
+      entsHigh() { return this.entScored().filter((s) => s.conf === null || s.conf > 0.5); },
+      entsLow() { return this.entScored().filter((s) => s.conf !== null && s.conf <= 0.5); },
+      entsShown() { return this.entLowOpen ? this.entsHigh().concat(this.entsLow()) : this.entsHigh(); },
+      entLowIs(s) { return s.conf !== null && s.conf <= 0.5; },
+      entConfLabel(s) { return s.conf === null ? '' : Number(s.conf).toFixed(1); },
+      entConfTip(s) { return s.conf === null ? '' : (' · 확신도 ' + this.entConfLabel(s) + (this.entLowIs(s) ? ' · 연관 낮음' : '')); },
       async openEntByName(name) {
         const e = this.entLookup[name];
         if (!e) { this._err('개체 사전에 등재되지 않은 엔티티입니다 · 사전·정책 > 엔티티에서 등재하세요'); return; }
