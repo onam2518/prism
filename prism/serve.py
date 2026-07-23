@@ -69,6 +69,8 @@ from . import deployops as DEP
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
 MF._SV = sys.modules[__name__]      # 파일 기반 메모리(실험실) 주입(동일)
+from . import caagent as CA           # 콘텐츠 에이전트(실험실): 자연어 → 위젯 조건
+CA._SV = sys.modules[__name__]      # 동일 주입
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
@@ -2257,6 +2259,17 @@ def _p_board(h, body):
         return None
     return board_action(data, team=h._req_team(), uid=h._bearer_uid() or "",
                         email=h._bearer_email())
+
+
+@_post_route("/ca-understand", gate="login")          # 콘텐츠 에이전트(실험실): 자연어 → 위젯 조건(LLM · 실패 시 클라이언트 규칙 폴백)
+def _p_ca_understand(h, body):
+    data = json.loads(body or b"{}")
+    text = (data.get("text") or "").strip()[:400]
+    dic = data.get("dict") or {}
+    if not isinstance(dic, dict):
+        dic = {}
+    out, via = CA.understand(text, dic, (data.get("model") or "").strip(), Handler.server_mock)
+    return {"ok": bool(out), "cond": out, "via": via}
 
 
 @_post_route("/topic-studio")                        # 토픽 스튜디오: 생성·삭제·튜닝(변경은 관리자) · 미리보기·제안(조회)
