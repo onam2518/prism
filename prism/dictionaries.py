@@ -281,7 +281,7 @@ CONTENT_CATEGORY_TIER2 = {
     "Health and Fitness": ["Healthy Living", "Exercise and Fitness"],
     "Home and Garden": ["Interior Decorating", "Gardening", "Home Improvement", "Shopping", "Lifestyle"],
     "Pets": ["Dogs", "Cats", "Birds", "Fish", "Other Pets"],
-    "Style and Fashion": ["Fashion Trends", "Personal Care", "Accessories"],
+    "Style and Fashion": ["Fashion", "Beauty", "Accessories"],
     "Automotive": ["Auto Type", "Auto Repair", "Auto Shows"],
     "Video Gaming": ["Video Games", "eSports"],
     "Science": ["Space and Astronomy", "Biology", "Physics", "Environment", "General Science"],
@@ -289,6 +289,13 @@ CONTENT_CATEGORY_TIER2 = {
     "Religion and Spirituality": ["Religion", "Spirituality"],
 }
 IAB_TIER2 = CONTENT_CATEGORY_TIER2   # 하위 호환 별칭
+
+# 개명된 Tier2 구표기 → 신표기(2026-07 스타일&패션 Tier2 개명 · 사용자 확정).
+# 기존 저장 데이터·모델 구출력이 구표기를 내도 정규화·표시 경로에서 신표기로 흡수한다.
+RENAMED_TIER2 = {
+    "Fashion Trends": "Fashion",     # 트렌드 한정 → 패션 일반으로 확장
+    "Personal Care": "Beauty",
+}
 
 # Tier1 국문 설명(원문 사전) · 프롬프트 주입·UI 참고
 IAB_TIER1_DESC = {
@@ -351,7 +358,7 @@ TIER2_KO = {
     "Interior Decorating": "인테리어", "Gardening": "가드닝·원예", "Home Improvement": "집수리·개선",
     "Shopping": "쇼핑", "Lifestyle": "라이프스타일",
     "Dogs": "강아지", "Cats": "고양이", "Birds": "조류", "Fish": "어류", "Other Pets": "기타 반려동물",
-    "Fashion Trends": "패션 트렌드", "Personal Care": "퍼스널 케어", "Accessories": "액세서리",
+    "Fashion": "패션", "Beauty": "뷰티", "Accessories": "액세서리",
     "Auto Type": "차종·신차", "Auto Repair": "정비·부품", "Auto Shows": "모터쇼",
     "Video Games": "비디오 게임", "eSports": "e스포츠",
     "Space and Astronomy": "우주·천문", "Biology": "생물", "Physics": "물리",
@@ -458,8 +465,8 @@ TIER2_DEFS = {
     "Fish": ("어류·수조", "초보 어항 세팅"),
     "Other Pets": ("기타 반려동물", "햄스터 케이지 추천"),
     # Style and Fashion
-    "Fashion Trends": ("패션 트렌드·코디", "가을 코디 트렌드"),
-    "Personal Care": ("뷰티·스킨케어·헤어", "수부지 스킨케어 루틴"),
+    "Fashion": ("패션 일반 · 스타일·코디·트렌드·브랜드", "가을 코디 추천"),
+    "Beauty": ("뷰티·스킨케어·헤어·메이크업", "수부지 스킨케어 루틴"),
     "Accessories": ("가방·시계·주얼리", "명품 가방 입문 추천"),
     # Automotive
     "Auto Type": ("차종·신차·브랜드 보도(안전 정책은 News and Politics)", "신형 그랜저 출시"),
@@ -501,11 +508,12 @@ GRADE_DEFS = [
 ]
 
 def category_ko(path: str) -> str:
-    """'Tier1 / Tier2' 경로(또는 단일 값)의 한글 표시명. 미등록 값은 원문 유지."""
+    """'Tier1 / Tier2' 경로(또는 단일 값)의 한글 표시명. 미등록 값은 원문 유지.
+    개명 구표기(RENAMED_TIER2)는 신표기 표시명으로 흡수(기존 저장 데이터 하위 호환)."""
     s = str(path or "").strip()
     if not s:
         return s
-    parts = [p.strip() for p in s.split("/")]
+    parts = [RENAMED_TIER2.get(p.strip(), p.strip()) for p in s.split("/")]
     if len(parts) == 1:
         return IAB_TIER1_KO.get(parts[0]) or TIER2_KO.get(parts[0]) or parts[0]
     t1 = IAB_TIER1_KO.get(parts[0], parts[0])
@@ -563,6 +571,13 @@ _T2_LOOKUP = {t2.lower(): (t1, t2)                       # tier2(소문자) → 
 # LLM 자유 표기 별칭 → 정식 Tier2 스냅 회복(2026-07-02 gold 표본 실측 손실 기준).
 # 사전 자체(1312 정의)는 불변 · 별칭만 정식 값으로 흡수.
 _T2_LOOKUP.setdefault("world news", ("News and Politics", "International News"))
+# 개명 하위 호환: 구표기(RENAMED_TIER2 키)도 별칭으로 흡수.
+# 경로형("Style and Fashion / Personal Care")·단독형("Personal Care") 모두
+# normalize_content_category 의 별칭 회복 분기를 타고 신표기 정식 경로로 스냅된다.
+for _old, _new in RENAMED_TIER2.items():
+    _hit = _T2_LOOKUP.get(_new.lower())
+    if _hit:
+        _T2_LOOKUP.setdefault(_old.lower(), _hit)
 
 
 def normalize_content_category(raw: str) -> str:
