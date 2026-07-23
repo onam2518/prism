@@ -8,7 +8,8 @@
 - 화면(와이어프레임) 아티팩트
   - 서비스 플로우: `https://claude.ai/code/artifact/8394cdfb-6293-4522-9a40-de60aa3b1116`
   - 내 뉴스 홈(설정 상세): `https://claude.ai/code/artifact/0a331579-e68f-40e1-95dd-0518b879337f`
-- 와이어 소스(저장소): `docs/content-service-wireframe.html` · `docs/content-config-studio-wireframe.html`
+  - 포털 홈 재정합: `https://claude.ai/code/artifact/9c976266-9149-4b76-be24-3a2fe327a22d`
+- 와이어 소스(저장소): `docs/content-service-wireframe.html` · `docs/content-config-studio-wireframe.html` · `docs/content-agent-portal-wireframe.html`
 - 어드민 도구가 아니라 **사용자향**이라, 관리자 UI 톤·용어와 분리해 설계한다.
 
 ---
@@ -35,6 +36,17 @@
 - **위젯 크기 = 얼마나 볼지**: 작게 / 보통 / 크게. 크게 놓을수록 위에 크게 여러 개. (기존 "강도"를 홈 위젯 크기 은유로 대체)
 - **새로운 소식 얼마나**: 익숙하게 ↔ 새롭게 손잡이 하나. 안 보던 소식을 얼마나 섞을지.
 - 품질 통과분만 노출하되 화면에는 품질 등급을 표기하지 않는다.
+
+## 2-A. 포털 홈 재정합 (실제 서비스 위에 얹기)
+
+이 기능은 백지에서 홈을 만드는 게 아니라, **실제 포털 홈(Daum 참조) 위에 얹히는 레이어**다.
+
+- **모듈 = 위젯**: 포털 홈의 콘텐츠 모듈(주요뉴스·이 시각 추천뉴스·실시간·우리지역 소식·라이브·쇼핑·분야 탭)이 곧 편집 가능한 위젯.
+- **얹히는 레이어**: 홈을 갈아엎지 않고 그 위에 ① 상주 에이전트 버튼 ② 편집 모드(크기·순서·삭제·추가) ③ 왜?+피드백만 얹는다.
+- **시스템 vs 위젯**: 검색·로그인·날씨 등 포털 기본은 편집 불가. 콘텐츠 모듈만 위젯으로 편집.
+- **왜/피드백 전면화**: "이 시각 추천뉴스"의 ⓘ가 이미 있던 씨앗. 왜 떴는지 + 좋아요/관심없음을 그 자리에서.
+- **손 + 말 둘 다**: 갤러리 시트로 고르거나 매니저에게 말하거나, 같은 위젯을 다룬다.
+- 실제 모듈 → 위젯 매핑: 이 시각 추천뉴스→나를 위한 · 실시간→지금 인기 · 뉴스(주요·언론사·심층)→주제·성격 · 우리지역→지역 · 라이브·쇼핑→그대로.
 
 ## 3. 사용성 흐름
 
@@ -122,4 +134,4 @@
 
 ## 11. 참고 문서
 
-- `ARCHITECTURE.md` · `docs/ARTIFACTS.md` · `docs/content-service-wireframe.html` · `docs/content-config-studio-wireframe.html`
+- `ARCHITECTURE.md` · `docs/ARTIFACTS.md` · `docs/content-service-wireframe.html` · `docs/content-config-studio-wireframe.html` · `docs/content-agent-portal-wireframe.html`
