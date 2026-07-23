@@ -4,10 +4,10 @@
 <style>
 /* ─────────────────────────────────────────────────────────────
    프리즘 콘텐츠 · 사용자향 서비스 · 와이어프레임(저채도 · 흐름 점검용)
-   구조: 뉴스 섹션(적용 대상) ⊃ 컴포넌트(자동=실시간 소비 반영 / 수동=고정·편집)
-   흐름: 온보딩(첫 섹션 만들기) → 대시보드(내 섹션들) → 조절(섹션·컴포넌트 정리)
+   구조: 뉴스 위젯(적용 대상) ⊃ 소식(자동=실시간 소비 반영 / 수동=고정·편집)
+   흐름: 온보딩(첫 위젯 만들기) → 대시보드(내 위젯들) → 홈 편집(위젯·소식 정리)
    특이점: 팔로우 인물·관심 주제 찾기 = 대화형(챗봇)
-   원칙: 화면 문구는 쉬운 사용자 말. 내부 용어 배제. 색은 섹션 재료 점만.
+   원칙: 화면 문구는 쉬운 사용자 말. 내부 용어 배제. 색은 위젯 종류 점만.
    ───────────────────────────────────────────────────────────── */
 :root {
   --paper:#eef0f3; --frame:#ffffff; --frame-2:#f4f6f8; --ink:#1b1f26; --ink-2:#59616e;
@@ -136,7 +136,7 @@ button{ font-family:inherit; cursor:pointer; }
 .sec-hd .cdot{ width:8px;height:8px;border-radius:3px;flex:none; }
 .sec-hd .more{ margin-left:auto; font-size:10px; color:var(--ink-3); font-weight:600; }
 
-/* 컴포넌트 상태 배지 */
+/* 소식 상태 배지 */
 .cbadge{ display:inline-flex; align-items:center; gap:3px; font:600 9px/1 var(--mono); padding:2px 6px; border-radius:4px; }
 .cbadge.auto{ color:var(--d-tone); border:1px solid var(--d-tone); background:var(--frame); }
 .cbadge.pin{ color:var(--ink-2); border:1px solid var(--line); background:var(--frame); }
@@ -155,7 +155,7 @@ button{ font-family:inherit; cursor:pointer; }
 .editrow .sw::after{ content:"";position:absolute;top:2px;right:2px;width:11px;height:11px;border-radius:50%;background:#fff; }
 .editrow.off .sw{ background:var(--line); } .editrow.off .sw::after{ right:auto; left:2px; }
 
-/* 컴포넌트 편집행 */
+/* 소식 편집행 */
 .comp-row{ display:flex; align-items:center; gap:6px; padding:7px 8px; border:1px solid var(--line-2); border-radius:6px; margin-bottom:5px; background:var(--frame); }
 .comp-row .cn{ flex:1; font-size:10px; font-weight:700; color:var(--ink-2); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .comp-row .x{ color:var(--ink-3); font-size:12px; font-weight:700; }
@@ -191,6 +191,20 @@ button{ font-family:inherit; cursor:pointer; }
 .note .nb .dot{ display:inline-block; vertical-align:middle; margin-right:3px; }
 .marker{ display:inline-flex; width:17px;height:17px;border-radius:50%; background:var(--note); color:#fff; font:700 10px/17px var(--mono); text-align:center; justify-content:center; vertical-align:middle; }
 
+/* 플로팅 에이전트 */
+.fab{ position:absolute; right:12px; bottom:66px; z-index:45; display:flex; align-items:center; gap:8px; background:var(--note); color:#fff; border-radius:999px; padding:9px 14px 9px 11px; box-shadow:0 6px 18px rgba(20,40,90,.32); font:700 11px/1 var(--sans); }
+.fab .av{ width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.32); flex:none; }
+.agent-panel{ position:absolute; left:10px; right:10px; bottom:60px; z-index:46; background:var(--frame); border:1.5px solid var(--note); border-radius:16px; box-shadow:0 12px 34px rgba(10,20,50,.28); padding:11px 12px 12px; }
+.agent-hd{ display:flex; align-items:center; gap:7px; margin-bottom:9px; }
+.agent-hd .av{ width:22px;height:22px;border-radius:50%;background:var(--note); flex:none; }
+.agent-hd .nm{ font-size:12px; font-weight:800; }
+.agent-hd .x{ margin-left:auto; color:var(--ink-3); font-size:13px; }
+.suggest{ border:1px solid var(--note); background:var(--note-bg); border-radius:10px; padding:9px 10px; margin-bottom:9px; }
+.suggest .sg-t{ font-size:11px; color:var(--ink); line-height:1.5; margin-bottom:8px; }
+.suggest .row .ph-btn{ padding:6px 11px; font-size:10.5px; }
+.agent-chip{ display:inline-flex; align-items:center; gap:5px; font:700 10px/1 var(--sans); color:var(--note); background:var(--note-bg); border:1px solid var(--note); border-radius:999px; padding:4px 9px 4px 5px; }
+.agent-chip .av{ width:14px;height:14px;border-radius:50%;background:var(--note); flex:none; }
+
 @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
 </style>
 
@@ -198,49 +212,92 @@ button{ font-family:inherit; cursor:pointer; }
   <header class="head">
     <div>
       <h1>프리즘 콘텐츠 · 서비스 플로우 와이어프레임</h1>
-      <p class="sub">내가 만든 <b>뉴스 섹션</b> 안에서 콘텐츠가 <b>실시간 소비에 따라 자동으로 바뀌거나</b>, 내가 <b>직접 고정·편집</b>하는 뉴스 대시보드. 흐름 점검용 저채도 와이어라 화면 문구는 사용자가 실제 보는 쉬운 말로 썼습니다.</p>
+      <p class="sub"><b>나만의 콘텐츠 매니징 에이전트.</b> 내가 만든 뉴스 위젯 안에서 콘텐츠가 실시간 소비에 따라 자동으로 바뀌거나, 내가 직접 고정·편집한다. 플로팅 에이전트가 <b>진입부터 관리까지</b> 맡는다. 흐름 점검용 저채도 와이어라 화면 문구는 사용자가 실제 보는 쉬운 말로 썼습니다.</p>
     </div>
-    <span class="stamp">Wireframe · v0.4</span>
+    <span class="stamp">Wireframe · v0.7</span>
   </header>
 
   <div class="teammemo">
-    <b>차별점</b> · 뉴스봇 같은 단순 콘텐츠 모음이 아니다. <b>콘텐츠뿐 아니라 컴포넌트(모듈) 구성까지 사용자가 조정·변경</b>한다. 메타로 구동되는 <b>모듈형 구조</b>가 핵심.<br>
-    <b>구조(팀 기준)</b> · <span class="k">뉴스 섹션</span>(적용 대상) 안에 <span class="k">컴포넌트</span>(콘텐츠 블록)가 담긴다. 컴포넌트는 두 가지 <b>자동</b>=요즘 소비에 맞춰 능동적으로 교체·정렬 / <b>고정</b>=내가 직접 편집.<br>
-    <b>대화형</b> · 팔로우할 인물이나 관심 주제를 찾는 과정은 칩 목록이 아니라 <b>챗봇처럼 대화로</b> 진행한다.
+    <b>위치</b> · 실험실 &gt; "콘텐츠 에이전트" 탭.<br>
+    <b>차별점</b> · 뉴스봇 같은 단순 콘텐츠 모음이 아니다. <b>콘텐츠뿐 아니라 위젯(홈 구성)까지 사용자가 조정</b>한다. 메타로 구동되는 <b>모듈형 구조</b>가 핵심.<br>
+    <b>구조</b> · 핸드폰 홈 위젯처럼 <span class="k">뉴스 위젯</span>을 얹는다. 위젯 안 <span class="k">소식</span>은 요즘 소비에 맞춰 알아서 채워지고, 마음에 드는 건 <b>고정</b>.<br>
+    <b>대화형</b> · 팔로우 인물·관심 주제 찾기는 칩 목록이 아니라 <b>챗봇처럼 대화로</b>.<br>
+    <b>내 콘텐츠 매니저</b> · 서비스의 <b>진입점이자 상주 도우미</b>. 플로팅 버튼에서 온보딩이 시작돼 대시보드로 이어지고, 완료 후에도 콘텐츠 위에 남아 말로 위젯을 바꾸고 먼저 제안한다.
   </div>
 
   <div class="legend">
-    <span class="lt">섹션 만드는 재료</span>
+    <span class="lt">위젯 종류</span>
     <span class="mk"><span class="dot field"></span>분야</span>
     <span class="mk"><span class="dot topic"></span>주제</span>
     <span class="mk"><span class="dot follow"></span>팔로우</span>
     <span class="mk"><span class="dot tone"></span>성격 (깊게·빠르게·가볍게)</span>
   </div>
   <div class="legend legend2">
-    <span class="lt">섹션 안 컴포넌트</span>
-    <span class="mk"><span class="cbadge auto">자동</span> 실시간 소비 따라 바뀜</span>
-    <span class="mk"><span class="cbadge pin">고정</span> 내가 편집·고정</span>
+    <span class="lt">위젯 안 소식</span>
+    <span class="mk"><span class="cbadge auto">자동</span> 알아서 새 소식으로 바뀜</span>
+    <span class="mk"><span class="cbadge pin">고정</span> 항상 이 자리</span>
     <span class="small" style="margin-left:auto"><span class="marker">n</span> 표시는 아래 설명과 연결</span>
   </div>
 
   <!-- ═══ 플로우 맵 ═══ -->
   <div class="flowmap">
+    <div class="fm-step"><div class="n">진입</div><h3>플로팅 버튼</h3>
+      <p>모든 시작점. 콘텐츠 위 에이전트 버튼을 누르면 시작된다.</p></div>
+    <div class="fm-arrow">→</div>
     <div class="fm-step"><div class="n">STEP 1</div><h3>온보딩</h3>
-      <p>몇 번의 선택과 대화로 첫 섹션들을 만들어 준다. 처음 1회.</p></div>
+      <p>버튼을 누르면 에이전트가 몇 가지를 물어 첫 위젯을 만든다. 처음 1회.</p></div>
     <div class="fm-arrow">→</div>
     <div class="fm-step"><div class="n">STEP 2</div><h3>대시보드</h3>
-      <p>내 섹션들이 모인 첫 화면. 섹션 안 컴포넌트가 소비에 맞춰 계속 바뀐다.</p></div>
+      <p>완료되면 내 위젯 대시보드로. 같은 에이전트가 계속 떠 있다.</p></div>
     <div class="fm-arrow">→</div>
-    <div class="fm-step"><div class="n">STEP 3</div><h3>조절 및 적용</h3>
-      <p>섹션을 만들고 정리하고, 섹션 안 컴포넌트를 고정·편집한다. 웹·앱.</p>
-      <div class="fm-loop">↺ <b>적용</b> 하면 대시보드로 돌아가 갱신</div></div>
+    <div class="fm-step"><div class="n">STEP 3</div><h3>홈 편집 및 적용</h3>
+      <p>에이전트로 빠르게, 또는 홈 편집 화면에서 정밀하게 구성을 바꾼다.</p>
+      <div class="fm-loop">↺ 언제든 <b>대시보드로 돌아가 갱신</b></div></div>
   </div>
+
+  <!-- ═══════════ 진입 · 플로팅 버튼 ═══════════ -->
+  <section class="stage">
+    <div class="stage-hd"><span class="sn">진입</span><h2>플로팅 버튼에서 시작</h2><span class="tag">첫 시작점 · 앱·웹 공통</span></div>
+    <p class="stage-desc">모든 시작은 <b>플로팅 콘텐츠 매니저 버튼</b>. 처음 온 사람은 버튼을 누르면 <b>매니저가 온보딩을 안내</b>하고, 끝나면 곧바로 <b>대시보드로 이어진다</b>. 같은 버튼이 이후 대시보드에 남아 관리를 맡는다(진입 = 관리, 하나의 표면).</p>
+    <div class="screens">
+      <!-- 앱 진입 -->
+      <div class="wf-app">
+        <div class="platlabel"><span class="b">APP</span> 첫 진입</div>
+        <div class="app-screen">
+          <div class="app-notch"></div><div class="app-status"><span>9:41</span><span class="r">▮▮▮</span></div>
+          <div class="pad-s" style="text-align:center;padding-top:56px">
+            <div class="ph-img" style="width:58px;height:58px;border-radius:16px;margin:0 auto 16px"></div>
+            <h3 style="font-size:18px">내 뉴스, 직접 관리해요</h3>
+            <p class="small" style="margin:8px auto 0;max-width:200px">관심사에 맞는 소식이 자동으로 채워지는 나만의 화면</p>
+          </div>
+          <div class="fab" style="left:12px;right:12px;bottom:26px;justify-content:center;padding:13px"><span class="av"></span>내 콘텐츠 매니저 시작 <span class="marker">0</span></div>
+        </div>
+      </div>
+      <!-- 웹 진입 -->
+      <div class="wf-web sm">
+        <div class="platlabel"><span class="b">WEB</span> 첫 진입</div>
+        <div class="web-screen" style="position:relative">
+          <div class="web-bar"><span class="dots3"><i></i><i></i><i></i></span><span class="web-url"></span></div>
+          <div class="pad" style="text-align:center;padding:46px 20px 64px">
+            <div class="ph-img" style="width:54px;height:54px;border-radius:14px;margin:0 auto 14px"></div>
+            <h3 style="font-size:20px">내 뉴스, 직접 관리해요</h3>
+            <p class="small" style="margin:8px 0 20px">관심사에 맞는 소식이 자동으로 채워지는 나만의 화면</p>
+            <span class="ph-btn pri">내 콘텐츠 매니저 시작</span>
+          </div>
+          <div class="fab" style="left:auto;right:16px;bottom:16px"><span class="av"></span>매니저</div>
+        </div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="pin">0</span><div class="nb"><h4>하나의 시작점</h4><p>복잡한 가입 미로 없이 버튼 하나로 시작. 이 버튼이 온보딩을 여는 문이자, 나중에 대시보드에 상주하는 매니저다.</p></div></div>
+    </div>
+  </section>
 
   <!-- ═══════════ STAGE 1 · 온보딩 ═══════════ -->
   <section class="stage">
-    <div class="stage-hd"><span class="sn">STAGE 1</span><h2>온보딩 · 첫 섹션 만들기</h2><span class="tag">앱 우선 · 웹 동일 흐름</span></div>
+    <div class="stage-hd"><span class="sn">STAGE 1</span><h2>온보딩 · 첫 위젯 만들기</h2><span class="tag">앱 우선 · 웹 동일 흐름</span></div>
     <p class="stage-desc">
-      처음 오면 <b>분야 고르기 → 보는 방식 → 대화로 관심사 찾기</b> 순으로 첫 섹션들을 만든다. 빈 화면을 주지 않는 것이 핵심.
+      버튼을 누르면 <b>콘텐츠 매니저가 안내</b>한다. <b>분야 고르기 → 보는 방식 → 대화로 관심사 찾기</b> 순으로 첫 위젯들을 만든다. 빈 화면을 주지 않는 것이 핵심.
       <span class="ref">넷플릭스 참조</span> 좋아하는 것을 여러 개 고르게 하고, 진행 점, 언제든 건너뛰기. 인물·주제는 <b>대화형</b>으로 찾는다.
     </p>
 
@@ -252,6 +309,7 @@ button{ font-family:inherit; cursor:pointer; }
           <div class="app-notch"></div><div class="app-status"><span>9:41</span><span class="r">▮▮▮</span></div>
           <div class="pad-s">
             <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
+            <div style="margin:2px 0 8px"><span class="agent-chip"><span class="av"></span>내 콘텐츠 매니저</span></div>
             <h3 style="font-size:15px">어떤 소식에 관심 있으세요? <span class="marker">1</span></h3>
             <p class="small" style="margin:4px 0 10px">3개 이상 골라주세요</p>
             <div class="tiles">
@@ -317,7 +375,7 @@ button{ font-family:inherit; cursor:pointer; }
             <div class="steps"><i></i><i></i><i></i><i class="on"></i></div>
             <div class="ph-img" style="width:70px;height:70px;border-radius:50%;margin:22px auto 14px"></div>
             <h3 style="font-size:16px">첫 화면을 준비했어요 <span class="marker">4</span></h3>
-            <p class="small" style="margin:8px auto 8px;max-width:210px">고른 관심으로 섹션 5개를 만들었어요. 언제든 바꿀 수 있어요.</p>
+            <p class="small" style="margin:8px auto 8px;max-width:210px">고른 관심으로 위젯 5개를 만들었어요. 언제든 바꿀 수 있어요.</p>
             <p class="live" style="justify-content:center;margin-bottom:18px">소식이 자동으로 채워져요</p>
             <span class="ph-btn pri full">내 뉴스 보기</span>
           </div>
@@ -346,17 +404,17 @@ button{ font-family:inherit; cursor:pointer; }
     </div>
 
     <div class="notes">
-      <div class="note"><span class="pin">1</span><div class="nb"><h4>고른 분야 = 첫 섹션</h4><p>여기서 고른 분야가 그대로 첫 섹션이 된다. 최소 3개를 받아 빈 화면을 막는다.</p></div></div>
-      <div class="note"><span class="pin">2</span><div class="nb"><h4>보는 방식으로 순서 맞춤</h4><p>짧게/깊게/가볍게 취향이 섹션 순서와 카드 크기를 정한다. 이후 소비 데이터로 자동 조정.</p></div></div>
-      <div class="note"><span class="pin">3</span><div class="nb"><h4>대화로 인물·주제 찾기</h4><p>칩을 훑게 하지 않고, 말한 내용에서 팔로우·주제 후보를 찾아 추가 제안. 추가하면 섹션이 된다. 건너뛰기 가능.</p></div></div>
-      <div class="note"><span class="pin">4</span><div class="nb"><h4>바로 채워진 화면</h4><p>완료 즉시 섹션이 채워진 대시보드로. 이탈을 막는 것이 온보딩의 목표.</p></div></div>
+      <div class="note"><span class="pin">1</span><div class="nb"><h4>고른 분야 = 첫 위젯</h4><p>여기서 고른 분야가 그대로 첫 위젯이 된다. 최소 3개를 받아 빈 화면을 막는다.</p></div></div>
+      <div class="note"><span class="pin">2</span><div class="nb"><h4>보는 방식으로 순서 맞춤</h4><p>짧게/깊게/가볍게 취향이 위젯 순서와 카드 크기를 정한다. 이후 소비 데이터로 자동 조정.</p></div></div>
+      <div class="note"><span class="pin">3</span><div class="nb"><h4>대화로 인물·주제 찾기</h4><p>칩을 훑게 하지 않고, 말한 내용에서 팔로우·주제 후보를 찾아 추가 제안. 추가하면 위젯이 된다. 건너뛰기 가능.</p></div></div>
+      <div class="note"><span class="pin">4</span><div class="nb"><h4>바로 채워진 화면</h4><p>완료 즉시 위젯이 채워진 대시보드로. 이탈을 막는 것이 온보딩의 목표.</p></div></div>
     </div>
   </section>
 
   <!-- ═══════════ STAGE 2 · 대시보드 ═══════════ -->
   <section class="stage">
-    <div class="stage-hd"><span class="sn">STAGE 2</span><h2>대시보드 · 내 섹션들</h2><span class="tag">웹 3분할 · 앱 카드 스택</span></div>
-    <p class="stage-desc">내가 만든 <b>섹션</b>들이 모인 첫 화면. 섹션 안 <b>컴포넌트(카드)</b>는 <b>요즘 내가 많이 본 것에 맞춰 자동으로 바뀌고</b>(자동), 마음에 드는 건 <b>고정</b>해 둘 수 있다. 섹션 이름은 사용자 말로: "지금 뜨는 소식", "손흥민 소식", "금리 이야기".</p>
+    <div class="stage-hd"><span class="sn">STAGE 2</span><h2>대시보드 · 내 위젯들</h2><span class="tag">웹 3분할 · 앱 카드 스택</span></div>
+    <p class="stage-desc">내가 만든 <b>위젯</b>들이 모인 첫 화면. 위젯 안 <b>소식(카드)</b>는 <b>요즘 내가 많이 본 것에 맞춰 자동으로 바뀌고</b>(자동), 마음에 드는 건 <b>고정</b>해 둘 수 있다. 위젯 이름은 사용자 말로: "지금 뜨는 소식", "손흥민 소식", "금리 이야기".</p>
 
     <div class="screens">
       <!-- 웹 대시보드 -->
@@ -367,7 +425,7 @@ button{ font-family:inherit; cursor:pointer; }
             <span style="margin-left:auto" class="ph-chip">보기 / 정리 <span class="marker">7</span></span></div>
           <div class="web3">
             <div class="col">
-              <div class="lab">내 섹션 <span class="marker">5</span></div>
+              <div class="lab">내 위젯 <span class="marker">5</span></div>
               <div style="display:flex;flex-direction:column;gap:7px">
                 <div class="row" style="gap:6px"><span class="dot" style="background:var(--ink-3)"></span><span class="small" style="color:var(--ink-2)">지금 뜨는 소식</span></div>
                 <div class="row" style="gap:6px"><span class="dot field"></span><span class="small" style="color:var(--ink-2)">경제</span></div>
@@ -375,7 +433,7 @@ button{ font-family:inherit; cursor:pointer; }
                 <div class="row" style="gap:6px"><span class="dot follow"></span><span class="small" style="color:var(--ink-2)">손흥민 소식</span></div>
                 <div class="row" style="gap:6px"><span class="dot tone"></span><span class="small" style="color:var(--ink-2)">IT 깊이 읽기</span></div>
               </div>
-              <div style="margin-top:14px"><span class="ph-btn full" style="font-size:11px">＋ 섹션 추가</span></div>
+              <div style="margin-top:14px"><span class="ph-btn full" style="font-size:11px">＋ 위젯 추가</span></div>
             </div>
             <div class="col mid">
               <div class="sec-hd"><span class="cdot topic"></span><span class="st">금리 이야기</span><span class="live" style="margin-left:auto">자동 업데이트 <span class="marker">6</span></span></div>
@@ -422,35 +480,120 @@ button{ font-family:inherit; cursor:pointer; }
     </div>
 
     <div class="notes">
-      <div class="note"><span class="pin">5</span><div class="nb"><h4>내 섹션 목록</h4><p>온보딩으로 만든 섹션들. 점 색은 무엇으로 만든 섹션인지(분야·주제·팔로우·성격) 살짝 구분.</p></div></div>
-      <div class="note"><span class="pin">6</span><div class="nb"><h4><span class="cbadge auto" style="font-size:8px">자동</span> 실시간 소비 반영</h4><p>섹션 안 컴포넌트는 요즘 소비 패턴에 맞춰 순서·구성이 능동적으로 바뀐다. 이게 능동형의 핵심.</p></div></div>
-      <div class="note"><span class="pin">7</span><div class="nb"><h4>보기 ↔ 정리</h4><p>웹은 상단 토글, 앱은 하단 "정리" 탭에서 STAGE 3(섹션·컴포넌트 편집)로 진입.</p></div></div>
+      <div class="note"><span class="pin">5</span><div class="nb"><h4>내 위젯 목록</h4><p>온보딩으로 만든 위젯들. 점 색은 무엇으로 만든 위젯인지(분야·주제·팔로우·성격) 살짝 구분.</p></div></div>
+      <div class="note"><span class="pin">6</span><div class="nb"><h4><span class="cbadge auto" style="font-size:8px">자동</span> 요즘 소비 반영</h4><p>위젯 안 소식은 요즘 본 것에 맞춰 순서·구성이 알아서 바뀐다. 마음에 드는 건 고정.</p></div></div>
+      <div class="note"><span class="pin">7</span><div class="nb"><h4>보기 ↔ 정리</h4><p>웹은 상단 토글, 앱은 하단 "정리" 탭에서 STAGE 3(위젯·소식 편집)로 진입.</p></div></div>
       <div class="note"><span class="pin">8</span><div class="nb"><h4>왜 보이는지 쉬운 한 줄</h4><p>"요즘 자주 봐서 올렸어요"처럼 사용자 말로. 내부 용어 없이 신뢰만 준다.</p></div></div>
     </div>
   </section>
 
-  <!-- ═══════════ STAGE 3 · 조절 및 적용 ═══════════ -->
+  <!-- ═══════════ 플로팅 에이전트 (대시보드 상주) ═══════════ -->
   <section class="stage">
-    <div class="stage-hd"><span class="sn">STAGE 3</span><h2>조절 및 적용 · 섹션과 컴포넌트</h2><span class="tag">2단 편집 · 대화형 추가</span></div>
-    <p class="stage-desc"><b>2단 편집이 핵심.</b> ① <b>섹션</b> 레벨은 순서·켜기·추가(적용 대상). ② 섹션을 열면 그 안 <b>컴포넌트</b>를 자동↔고정으로 바꾸거나 빼기. 새 팔로우·주제 <b>추가는 대화형(챗봇)</b>. 바꾸면 미리보기가 바로 반영되고 <b>적용</b>하면 대시보드로 돌아가 갱신.</p>
+    <div class="stage-hd"><span class="sn">AGENT</span><h2>내 콘텐츠 매니저 · 대시보드 상주</h2><span class="tag">진입 버튼과 동일 · 단계 아님</span></div>
+    <p class="stage-desc"><b>온보딩을 시작했던 그 버튼이 완료 후에도 남는다.</b> 대시보드 콘텐츠 위에 <b>항상 떠 있는 콘텐츠 매니저</b>. 모듈형 구조라 <b>말 한마디가 곧 구성 변경</b>이 된다("경제는 깊은 분석만", "손흥민 위로", "이거 고정"). 요즘 소비를 보고 <b>먼저 제안</b>도 한다. 역할은 <b>발견·빠른 변경·선제 제안</b>이고, 정밀 편집(순서 드래그·토글)은 홈 편집 화면(STAGE 3)이 맡는다. 별도 "위젯 추가" 화면은 이 에이전트로 흡수.</p>
 
     <div class="screens scroll">
-      <!-- 웹 조절: 2단 편집 -->
+      <!-- 앱 · 접힘 -->
+      <div class="wf-app">
+        <div class="platlabel"><span class="b">APP</span> 대시보드 + 에이전트(접힘)</div>
+        <div class="app-screen">
+          <div class="app-notch"></div><div class="app-status"><span>9:41</span><span class="r">▮▮▮</span></div>
+          <div class="pad-s">
+            <div class="sec-hd"><span class="cdot" style="background:var(--ink-3)"></span><span class="st">지금 뜨는 소식</span></div>
+            <div class="ph-img" style="height:82px"></div><div class="ph-line t w80"></div>
+            <div class="wcard"><div class="ph-img"></div><div class="cb"><div class="ph-line t w90"></div><div class="ph-line w50"></div></div></div>
+            <div class="wcard"><div class="ph-img"></div><div class="cb"><div class="ph-line t w80"></div><div class="ph-line w50"></div></div></div>
+          </div>
+          <div class="fab"><span class="av"></span>무엇을 바꿔줄까요? <span class="marker">13</span></div>
+          <div class="app-tabbar">
+            <div class="t on"><div class="ic"></div>홈</div><div class="t"><div class="ic"></div>탐색</div>
+            <div class="t"><div class="ic"></div>팔로우</div><div class="t"><div class="ic"></div>정리</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 앱 · 펼침 -->
+      <div class="wf-app">
+        <div class="platlabel"><span class="b">APP</span> 에이전트(펼침)</div>
+        <div class="app-screen sheet-wrap">
+          <div class="app-notch"></div><div class="app-status"><span>9:41</span><span class="r">▮▮▮</span></div>
+          <div class="pad-s" style="opacity:.35">
+            <div class="sec-hd"><span class="st">지금 뜨는 소식</span></div>
+            <div class="ph-img" style="height:56px"></div><div class="ph-line w80"></div>
+          </div>
+          <div class="sheet-dim"></div>
+          <div class="agent-panel">
+            <div class="agent-hd"><span class="av"></span><span class="nm">내 콘텐츠 매니저</span><span class="x">✕</span></div>
+            <div class="suggest">
+              <div class="sg-t">요즘 <b>반도체</b> 소식을 자주 보셨어요. <b>반도체</b> 위젯을 만들까요? <span class="marker">14</span></div>
+              <div class="row"><span class="ph-btn pri">만들기</span><span class="ph-btn">나중에</span></div>
+            </div>
+            <div class="chat">
+              <div class="bubble me">경제는 깊은 분석만 보여줘</div>
+              <div class="bubble bot">경제 위젯을 「깊이 읽기」 위주로 바꿨어요. <span class="marker">15</span></div>
+            </div>
+            <div class="row" style="margin-top:7px"><span class="ph-btn" style="font-size:10px">되돌리기</span></div>
+            <div class="chat-input"><span class="ph-line" style="height:11px"></span><span class="send"></span></div>
+          </div>
+          <div class="app-tabbar">
+            <div class="t on"><div class="ic"></div>홈</div><div class="t"><div class="ic"></div>탐색</div>
+            <div class="t"><div class="ic"></div>팔로우</div><div class="t"><div class="ic"></div>정리</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 웹 · 코너 위젯 -->
+      <div class="wf-web sm">
+        <div class="platlabel"><span class="b">WEB</span> 코너 위젯(펼침)</div>
+        <div class="web-screen" style="position:relative">
+          <div class="web-bar"><span class="dots3"><i></i><i></i><i></i></span><span class="web-url"></span></div>
+          <div class="pad" style="min-height:236px">
+            <div class="sec-hd"><span class="cdot" style="background:var(--ink-3)"></span><span class="st">지금 뜨는 소식</span></div>
+            <div class="ph-img" style="height:60px"></div><div class="ph-line t w70"></div>
+            <div class="sec-hd"><span class="cdot field"></span><span class="st">경제</span></div>
+            <div class="ph-line w80"></div><div class="ph-line w50"></div>
+          </div>
+          <div class="agent-panel" style="left:auto; right:12px; bottom:12px; width:236px">
+            <div class="agent-hd"><span class="av"></span><span class="nm">내 콘텐츠 매니저</span><span class="x">✕</span></div>
+            <div class="suggest">
+              <div class="sg-t">요즘 <b>반도체</b>를 자주 보셨어요. 위젯으로 만들까요?</div>
+              <div class="row"><span class="ph-btn pri">만들기</span><span class="ph-btn">나중에</span></div>
+            </div>
+            <div class="chat-input"><span class="ph-line" style="height:11px"></span><span class="send"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="pin">13</span><div class="nb"><h4>항상 떠 있는 도우미</h4><p>콘텐츠를 가리지 않게 접힌 버블로 상주. 앱은 하단 탭 위, 웹은 오른쪽 아래 코너.</p></div></div>
+      <div class="note"><span class="pin">14</span><div class="nb"><h4>선제 제안</h4><p>요즘 본 것을 보고 "이거 위젯 만들까요?"를 먼저 띄운다. 수락하면 바로 위젯 추가.</p></div></div>
+      <div class="note"><span class="pin">15</span><div class="nb"><h4>말 = 구성 변경</h4><p>모듈형이라 문장이 그대로 위젯·소식 조작으로 실행된다. 항상 <b>되돌리기</b> 제공. 정밀 작업은 홈 편집 화면.</p></div></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ STAGE 3 · 홈 편집 및 적용 ═══════════ -->
+  <section class="stage">
+    <div class="stage-hd"><span class="sn">STAGE 3</span><h2>홈 편집 및 적용 · 위젯과 소식</h2><span class="tag">2단 편집 · 대화형 추가</span></div>
+    <p class="stage-desc"><b>2단 편집이 핵심.</b> ① <b>위젯</b> 레벨은 순서·켜기·추가(적용 대상). ② 위젯을 열면 그 안 <b>소식</b>를 자동↔고정으로 바꾸거나 빼기. 새 팔로우·주제 <b>추가는 대화형(챗봇)</b>. 바꾸면 미리보기가 바로 반영되고 <b>적용</b>하면 대시보드로 돌아가 갱신.</p>
+
+    <div class="screens scroll">
+      <!-- 웹 홈 편집: 2단 편집 -->
       <div class="wf-web">
-        <div class="platlabel"><span class="b">WEB</span> 섹션 · 컴포넌트 정리</div>
+        <div class="platlabel"><span class="b">WEB</span> 위젯 · 소식 정리</div>
         <div class="web-screen">
           <div class="web-bar"><span class="dots3"><i></i><i></i><i></i></span><span class="web-url"></span>
             <span style="margin-left:auto" class="ph-chip" style="border-color:var(--note);color:var(--note)">정리 중 ●</span></div>
           <div class="web3">
             <div class="col">
-              <div class="lab">① 섹션 순서·켜기 <span class="marker">9</span></div>
+              <div class="lab">① 위젯 순서·켜기 <span class="marker">9</span></div>
               <div class="editrow"><span class="grip">⠿</span><span class="dot" style="background:var(--ink-3)"></span><span class="nm">지금 뜨는 소식</span><span class="sw"></span></div>
               <div class="editrow sel"><span class="grip">⠿</span><span class="dot follow"></span><span class="nm">손흥민 소식</span><span class="sw"></span></div>
               <div class="editrow off"><span class="grip">⠿</span><span class="dot tone"></span><span class="nm">가볍게 연예</span><span class="sw"></span></div>
-              <div style="margin-top:8px"><span class="ph-btn full" style="font-size:10px">＋ 섹션 추가 (대화형)</span></div>
+              <div style="margin-top:8px"><span class="ph-btn full" style="font-size:10px">＋ 위젯 추가 (대화형)</span></div>
             </div>
             <div class="col mid">
-              <div class="lab" style="color:var(--note)">② 「손흥민 소식」 안 컴포넌트 <span class="marker">10</span></div>
+              <div class="lab" style="color:var(--note)">② 「손흥민 소식」 안 소식 <span class="marker">10</span></div>
               <div class="comp-row"><span class="ph-img" style="width:24px;height:18px"></span><span class="cn">개막전 풀타임 소화</span><span class="seg2"><span class="on">자동</span><span>고정</span></span><span class="x">✕</span></div>
               <div class="comp-row"><span class="ph-img" style="width:24px;height:18px"></span><span class="cn">원정 일정 확정</span><span class="seg2"><span>자동</span><span class="on">고정</span></span><span class="x">✕</span></div>
               <div class="comp-row"><span class="ph-img" style="width:24px;height:18px"></span><span class="cn">인터뷰 모음</span><span class="seg2"><span class="on">자동</span><span>고정</span></span><span class="x">✕</span></div>
@@ -467,7 +610,7 @@ button{ font-family:inherit; cursor:pointer; }
         </div>
       </div>
 
-      <!-- 앱 조절 바텀시트 -->
+      <!-- 앱 홈 편집 바텀시트 -->
       <div class="wf-app">
         <div class="platlabel"><span class="b">APP</span> 정리 시트</div>
         <div class="app-screen sheet-wrap">
@@ -480,33 +623,33 @@ button{ font-family:inherit; cursor:pointer; }
           <div class="app-sheet">
             <div class="sheet-grip"></div>
             <div class="spread" style="margin-bottom:10px"><b style="font-size:14px">정리</b><span class="sp"></span><span class="ph-btn pri" style="padding:6px 12px;font-size:11px">완료 <span class="marker">12</span></span></div>
-            <div class="lab">① 섹션 순서·켜기 <span class="marker">9</span></div>
+            <div class="lab">① 위젯 순서·켜기 <span class="marker">9</span></div>
             <div class="editrow"><span class="grip">⠿</span><span class="dot" style="background:var(--ink-3)"></span><span class="nm">지금 뜨는 소식</span><span class="sw"></span></div>
             <div class="editrow sel"><span class="grip">⠿</span><span class="dot follow"></span><span class="nm">손흥민 소식 · 열림</span><span class="sw"></span></div>
-            <div class="lab" style="margin-top:6px;color:var(--note)">② 안 컴포넌트 <span class="marker">10</span></div>
+            <div class="lab" style="margin-top:6px;color:var(--note)">② 안 소식 <span class="marker">10</span></div>
             <div class="comp-row"><span class="cn">개막전 풀타임</span><span class="seg2"><span class="on">자동</span><span>고정</span></span><span class="x">✕</span></div>
             <div class="comp-row"><span class="cn">원정 일정</span><span class="seg2"><span>자동</span><span class="on">고정</span></span><span class="x">✕</span></div>
-            <div style="margin-top:8px"><span class="ph-btn full" style="font-size:10px">＋ 섹션 추가 (대화형) <span class="marker">11</span></span></div>
+            <div style="margin-top:8px"><span class="ph-btn full" style="font-size:10px">＋ 위젯 추가 (대화형) <span class="marker">11</span></span></div>
           </div>
         </div>
       </div>
 
       <!-- 앱 대화형 추가 -->
       <div class="wf-app">
-        <div class="platlabel"><span class="b">APP</span> 섹션 추가 (대화형)</div>
+        <div class="platlabel"><span class="b">APP</span> 위젯 추가 (대화형)</div>
         <div class="app-screen">
           <div class="app-notch"></div><div class="app-status"><span>9:41</span><span class="r">▮▮▮</span></div>
-          <div class="spread pad-s"><span class="small">← 뒤로</span><span class="sp"></span><b style="font-size:13px">섹션 추가</b><span class="sp"></span></div>
+          <div class="spread pad-s"><span class="small">← 뒤로</span><span class="sp"></span><b style="font-size:13px">위젯 추가</b><span class="sp"></span></div>
           <div class="pad-s" style="padding-top:4px">
             <div class="chat">
               <div class="bubble bot">어떤 소식을 더 챙겨드릴까요? 인물, 팀, 주제 무엇이든요.</div>
               <div class="bubble me">전기차 배터리 쪽 깊은 분석 기사</div>
               <div class="rescard">
-                <div class="rtitle">이렇게 섹션을 만들까요?</div>
+                <div class="rtitle">이렇게 위젯을 만들까요?</div>
                 <div class="rc"><span class="dot topic"></span><span class="rn">전기차 배터리</span><span class="small">주제</span><span class="add">＋</span></div>
                 <div class="rc"><span class="dot tone"></span><span class="rn">깊이 읽기</span><span class="small">성격</span><span class="add done">✓</span></div>
               </div>
-              <div class="bubble bot">「전기차 배터리 · 깊이 읽기」 섹션을 추가할게요.</div>
+              <div class="bubble bot">「전기차 배터리 · 깊이 읽기」 위젯을 추가할게요.</div>
             </div>
             <div class="chat-input"><span class="ph-line" style="height:11px"></span><span class="send"></span></div>
           </div>
@@ -515,10 +658,10 @@ button{ font-family:inherit; cursor:pointer; }
     </div>
 
     <div class="notes">
-      <div class="note"><span class="pin">9</span><div class="nb"><h4>① 섹션 레벨(적용 대상)</h4><p>드래그로 순서, 스위치로 켜고 끄기. 적용하는 단위는 이 섹션 구성이다.</p></div></div>
-      <div class="note"><span class="pin">10</span><div class="nb"><h4>② 컴포넌트 레벨</h4><p>섹션을 열면 안의 카드를 <span class="cbadge auto" style="font-size:8px">자동</span>↔<span class="cbadge pin" style="font-size:8px">고정</span> 전환하거나 빼기. 자동/수동이 한 섹션 안에 섞인다.</p></div></div>
-      <div class="note"><span class="pin">11</span><div class="nb"><h4>대화형 추가</h4><p>새 팔로우·주제·섹션은 챗봇으로. 말한 내용에서 재료를 찾아 "이렇게 만들까요?" 제안 후 생성.</p></div></div>
-      <div class="note"><span class="pin">12</span><div class="nb"><h4>적용 → 대시보드 갱신</h4><p>웹 [적용] · 앱 [완료]. 저장하면 STAGE 2로 돌아가 갱신된 섹션 노출.</p></div></div>
+      <div class="note"><span class="pin">9</span><div class="nb"><h4>① 위젯 레벨(적용 대상)</h4><p>드래그로 순서, 스위치로 켜고 끄기. 적용하는 단위는 이 위젯 구성이다.</p></div></div>
+      <div class="note"><span class="pin">10</span><div class="nb"><h4>② 소식 레벨</h4><p>위젯을 열면 안의 카드를 <span class="cbadge auto" style="font-size:8px">자동</span>↔<span class="cbadge pin" style="font-size:8px">고정</span> 전환하거나 빼기. 자동/수동이 한 위젯 안에 섞인다.</p></div></div>
+      <div class="note"><span class="pin">11</span><div class="nb"><h4>대화형 추가 = 내 콘텐츠 매니저</h4><p>새 팔로우·주제·위젯은 플로팅 매니저로 추가한다. 말한 내용에서 관심을 찾아 "이렇게 만들까요?" 제안 후 추가.</p></div></div>
+      <div class="note"><span class="pin">12</span><div class="nb"><h4>적용 → 대시보드 갱신</h4><p>웹 [적용] · 앱 [완료]. 저장하면 STAGE 2로 돌아가 갱신된 위젯 노출.</p></div></div>
     </div>
   </section>
 
