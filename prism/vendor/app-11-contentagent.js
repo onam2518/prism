@@ -439,6 +439,10 @@ window.PRISM_APP_PARTS.push(() => ({
           rows = this.caMatch(w.cond, false).filter((r) => hidden.indexOf(r.a.id) < 0);
         }
         rows.sort((x, y) => (pin.indexOf(y.a.id) - pin.indexOf(x.a.id)));   // 고정 먼저
+        if (w._pg && rows.length > cap) {                                    // 새로고침 필: 다음 묶음
+          const off = (w._pg * cap) % rows.length;
+          rows = rows.slice(off).concat(rows.slice(0, off));
+        }
         const keep = rows.slice(0, cap);
         // 새로운 소식 얼마나: 값이 클수록 조건 밖 소식을 한 칸 섞는다(익숙함 ↔ 새로움)
         if (this.caFresh >= 60 && keep.length === cap && w.src !== 'hot') {
@@ -513,6 +517,15 @@ window.PRISM_APP_PARTS.push(() => ({
         this.caEntered = true; this.caTab = 'make';
       },
       caCancelEdit() { this.caEditId = ''; this.caDraft = null; },
+      caShuffle(w) {                       // '새로운 ○○' · 다음 묶음으로 넘긴다(다음 앱 새로고침 필)
+        w._pg = ((w._pg || 0) + 1);
+        this.caToast('새로운 소식으로 바꿨어요');
+      },
+      caPage(w) {
+        const cap = w.size === 'lg' ? 5 : (w.size === 'md' ? 3 : 2);
+        const total = Math.max(1, Math.ceil((this.caPool || []).length / cap));
+        return (((w._pg || 0) % total) + 1) + ' / ' + total;
+      },
       caSizeLabel(s) { return s === 'lg' ? '크게' : (s === 'md' ? '보통' : '작게'); },
       // 위젯이 왜 이 소식을 보여주는지 한 줄(사용자 말)
       caWidgetWhy(w) {

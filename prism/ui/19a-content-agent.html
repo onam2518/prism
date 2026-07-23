@@ -6,193 +6,199 @@
            로직 vendor/app-11-contentagent.js · 자연어 이해는 /ca-understand(LLM · 규칙 폴백)
            설계안 docs/CONTENT_DASHBOARD_HANDOFF.md -->
       <style>
+        /* Astryx neutral 토큰(@astryxdesign/theme-neutral v0.1.8) 을 .ca- 스코프 변수로 이식.
+           런타임 npm 의존 없음(값만 차용) · 화면 목표는 다음 앱 다크 홈. */
         .ca-root{
-          --caBase:#f4f5f7; --caSurf:#ffffff; --caSurfOn:#f4f5f7; --caThumb:#f4f5f7;
-          --caTxt:#000000; --caTxt2:rgba(0,0,0,.88); --caTxt3:rgba(0,0,0,.72); --caTxtSub:rgba(0,0,0,.48);
-          --caDivItem:rgba(0,0,0,.04); --caDivSec:rgba(0,0,0,.08); --caCard:rgba(0,0,0,.08); --caInput:rgba(0,0,0,.1);
-          --caPrimary:#1e84ff; --caPrimarySub:rgba(30,132,255,.16); --caAccent:#ff4e33; --caAccentSub:rgba(255,78,51,.16);
-          --caSports:#5c77ff; --caEnt:#a05cff; --caCafe:#ff5c66; --caInterest:#ff9429; --caNews:#1e84ff;
-          --caShadowM:0 1px 10px 0 rgba(0,0,0,.08); --caShadowH:0 2px 16px 0 rgba(0,0,0,.16);
-          --caR4:4px; --caR8:8px; --caR12:12px; --caR16:16px; --caR24:24px; --caR100:100px;
+          --caBody:#F1F4F7; --caSurf:#FFFFFF; --caCard:#FFFFFF; --caMuted:#0536590C; --caPop:#FFFFFF;
+          --caTxt:#0A1317; --caTxt2:#4E606F; --caTxt3:#A4B0BC; --caAcc:#0064E0; --caAccMuted:#0082FB33;
+          --caOnAcc:#FFFFFF; --caErr:#E3193B; --caOk:#0D8626; --caLine:rgba(5,54,89,.1);
+          --caS1:4px; --caS2:8px; --caS3:12px; --caS4:16px; --caS5:20px; --caS6:24px;
+          --caRad:8px; --caRadLg:16px; --caRadFull:999px;
           font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
           color:var(--caTxt); -webkit-font-smoothing:antialiased;
         }
-        @media (prefers-color-scheme:dark){ .ca-root{
-          --caBase:#161718; --caSurf:#202122; --caSurfOn:#303233; --caThumb:#303233;
-          --caTxt:#ffffff; --caTxt2:rgba(255,255,255,.88); --caTxt3:rgba(255,255,255,.72); --caTxtSub:rgba(255,255,255,.48);
-          --caDivItem:rgba(255,255,255,.04); --caDivSec:rgba(255,255,255,.08); --caCard:rgba(255,255,255,.08); --caInput:rgba(255,255,255,.1);
-          --caShadowM:0 1px 10px 0 rgba(0,0,0,.16); --caShadowH:0 2px 16px 0 rgba(0,0,0,.32); } }
-        [data-theme="dark"] .ca-root{
-          --caBase:#161718; --caSurf:#202122; --caSurfOn:#303233; --caThumb:#303233;
-          --caTxt:#ffffff; --caTxt2:rgba(255,255,255,.88); --caTxt3:rgba(255,255,255,.72); --caTxtSub:rgba(255,255,255,.48);
-          --caDivItem:rgba(255,255,255,.04); --caDivSec:rgba(255,255,255,.08); --caCard:rgba(255,255,255,.08); --caInput:rgba(255,255,255,.1);
-          --caShadowM:0 1px 10px 0 rgba(0,0,0,.16); --caShadowH:0 2px 16px 0 rgba(0,0,0,.32); }
-        [data-theme="light"] .ca-root{
-          --caBase:#f4f5f7; --caSurf:#ffffff; --caSurfOn:#f4f5f7; --caThumb:#f4f5f7;
-          --caTxt:#000000; --caTxt2:rgba(0,0,0,.88); --caTxt3:rgba(0,0,0,.72); --caTxtSub:rgba(0,0,0,.48);
-          --caDivItem:rgba(0,0,0,.04); --caDivSec:rgba(0,0,0,.08); --caCard:rgba(0,0,0,.08); --caInput:rgba(0,0,0,.1);
-          --caShadowM:0 1px 10px 0 rgba(0,0,0,.08); --caShadowH:0 2px 16px 0 rgba(0,0,0,.16); }
+        /* 시연 무대는 다음 앱 다크 홈이 기준 — 무대 안은 항상 다크 토큰 */
+        .ca-stagewrap{
+          --caBody:#111112; --caSurf:#1F1F22; --caCard:#1F1F22; --caMuted:#1111127F; --caPop:#28292C;
+          --caTxt:#DFE2E5; --caTxt2:#AAAFB5; --caTxt3:#6F747C; --caAcc:#2694FE; --caAccMuted:#0082FB3F;
+          --caErr:#F5394F; --caLine:rgba(223,226,229,.2);
+        }
         .ca-root *{ box-sizing:border-box; }
 
-        /* 실험실 셸 */
-        .ca-hint{ background:var(--caPrimarySub); border-radius:var(--caR12); padding:10px 14px; font-size:14px; line-height:1.4; color:var(--caTxt2); margin-bottom:12px; }
+        /* 실험실 셸(앱 테마 따름) */
+        .ca-hint{ background:var(--caAccMuted); border-radius:var(--caRad); padding:10px 14px; font-size:14px; line-height:1.4; color:var(--caTxt2); margin-bottom:12px; }
         .ca-hint b{ color:var(--caTxt); font-weight:700; }
-        .ca-hint a{ color:var(--caPrimary); font-weight:700; text-decoration:none; }
+        .ca-hint a{ color:var(--caAcc); font-weight:700; text-decoration:none; }
         .ca-bar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
-        .ca-seg{ display:inline-flex; background:var(--caSurfOn); border-radius:var(--caR100); padding:4px; gap:2px; }
-        .ca-seg button{ border:0; background:transparent; color:var(--caTxt3); font-size:15px; font-weight:600; padding:8px 18px; border-radius:var(--caR100); cursor:pointer; font-family:inherit; }
-        .ca-seg button.sel{ background:var(--caPrimary); color:#fff; font-weight:700; }
-        .ca-ghost{ border:1px solid var(--caCard); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caR8); padding:8px 14px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; text-decoration:none; display:inline-block; }
-        .ca-note{ font-size:14px; color:var(--caTxtSub); }
+        .ca-seg{ display:inline-flex; background:var(--caMuted); border-radius:var(--caRadFull); padding:4px; gap:2px; }
+        .ca-seg button{ border:0; background:transparent; color:var(--caTxt2); font-size:15px; font-weight:600; padding:8px 18px; border-radius:var(--caRadFull); cursor:pointer; font-family:inherit; }
+        .ca-seg button.sel{ background:var(--caAcc); color:var(--caOnAcc); font-weight:700; }
+        .ca-ghost{ border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caRad); padding:8px 14px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-note{ font-size:14px; color:var(--caTxt3); }
 
-        /* 디바이스 프레임 */
+        /* ── 다음 앱 홈(다크) ── */
         .ca-stage{ display:flex; justify-content:center; }
-        .ca-view{ background:var(--caBase); border-radius:var(--caR24); box-shadow:var(--caShadowH); overflow:hidden; position:relative; width:420px; max-width:100%; }
-        .ca-view.pc{ width:100%; max-width:1000px; border-radius:var(--caR16); }
-        .ca-appbar{ display:flex; align-items:center; gap:10px; padding:14px 16px 10px; background:var(--caSurf); }
-        .ca-logo{ width:28px; height:28px; border-radius:var(--caR8); background:linear-gradient(135deg,var(--caPrimary),var(--caEnt)); flex:none; }
-        .ca-search{ flex:1; height:36px; border-radius:var(--caR100); background:var(--caSurfOn); display:flex; align-items:center; padding:0 14px; color:var(--caTxtSub); font-size:15px; }
-        .ca-appicon{ width:28px; height:28px; border-radius:var(--caR100); background:var(--caSurfOn); flex:none; }
-        .ca-tabs{ display:flex; gap:16px; padding:0 16px; background:var(--caSurf); border-bottom:1px solid var(--caDivSec); overflow-x:auto; }
-        .ca-tabs button{ border:0; background:transparent; font-family:inherit; font-size:15px; font-weight:700; color:var(--caTxtSub); padding:10px 0 9px; white-space:nowrap; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
-        .ca-tabs button.on{ color:var(--caTxt); border-bottom-color:var(--caPrimary); }
-        .ca-feed{ padding:12px; display:flex; flex-direction:column; gap:12px; max-height:540px; overflow-y:auto; }
-        .ca-view.pc .ca-feed{ display:grid; grid-template-columns:1fr 1fr; align-items:start; max-height:600px; }
-        .ca-view.pc .ca-w.wide{ grid-column:1 / -1; }
+        .ca-view{ background:var(--caBody); border-radius:var(--caRadLg); overflow:hidden; position:relative; width:430px; max-width:100%; padding-bottom:var(--caS3); }
+        .ca-view.pc{ width:100%; max-width:1080px; }
+        /* 검색 바(그라디언트 테두리) */
+        .ca-top{ padding:var(--caS4) var(--caS4) var(--caS3); }
+        .ca-view.pc .ca-top{ padding:var(--caS6) var(--caS6) var(--caS4); display:flex; justify-content:center; }
+        .ca-sbwrap{ padding:2px; border-radius:var(--caRadFull); background:linear-gradient(90deg,#FF5C66,#FFB300,#22C55E,#2694FE,#A05CFF); width:100%; }
+        .ca-view.pc .ca-sbwrap{ max-width:660px; }
+        .ca-sb{ display:flex; align-items:center; gap:10px; background:var(--caBody); border-radius:var(--caRadFull); padding:11px 16px; }
+        .ca-dlogo{ width:22px; height:22px; border-radius:6px; background:conic-gradient(from 200deg,#2694FE,#A05CFF,#FF5C66,#FFB300,#22C55E,#2694FE); flex:none; }
+        .ca-sb .ph{ flex:1; color:var(--caTxt3); font-size:15px; }
+        .ca-sb .ic{ width:18px; height:18px; border-radius:4px; background:var(--caTxt3); opacity:.55; }
+        /* 서비스 칩(PC) */
+        .ca-svc{ display:flex; gap:10px; padding:0 var(--caS6) var(--caS4); flex-wrap:wrap; justify-content:center; }
+        .ca-svc span{ display:inline-flex; align-items:center; gap:7px; background:var(--caSurf); border-radius:var(--caRadFull); padding:7px 14px 7px 8px; font-size:14px; font-weight:600; color:var(--caTxt); }
+        .ca-svc i{ width:20px; height:20px; border-radius:7px; display:block; }
+        /* 실시간 */
+        .ca-live{ display:flex; align-items:center; gap:8px; padding:0 var(--caS4) var(--caS3); font-size:14px; color:var(--caTxt2); }
+        .ca-live .bdg{ background:var(--caAccMuted); color:var(--caAcc); font-weight:700; font-size:12px; padding:4px 9px; border-radius:var(--caRadFull); }
+        .ca-live b{ color:var(--caTxt); font-weight:700; }
+        /* 모바일 카테고리 탭 */
+        .ca-cats{ display:flex; gap:18px; padding:0 var(--caS4) 0; border-bottom:1px solid var(--caLine); overflow-x:auto; }
+        .ca-cats::-webkit-scrollbar{ display:none; }
+        .ca-cats button{ border:0; background:transparent; font-family:inherit; font-size:16px; font-weight:700; color:var(--caTxt3); padding:10px 0 12px; white-space:nowrap; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
+        .ca-cats button.on{ color:var(--caTxt); border-bottom-color:var(--caTxt); }
+        /* 피드: 모바일 1열 · PC 2단(본문+사이드) */
+        .ca-feed{ padding:var(--caS3); display:grid; grid-template-columns:1fr; gap:var(--caS3); max-height:560px; overflow-y:auto; }
+        .ca-view.pc .ca-feed{ grid-template-columns:1.62fr 1fr; align-items:start; padding:0 var(--caS6) var(--caS6); max-height:640px; }
+        .ca-view.pc .ca-w{ grid-column:1; }                 /* 본문은 왼쪽 열 */
+        .ca-view.pc .ca-addw{ grid-column:1; }
+        .ca-side{ display:flex; flex-direction:column; gap:var(--caS3); }
+        .ca-view.pc .ca-side{ grid-column:2; grid-row:1 / span 99; }
+        .ca-view:not(.pc) .ca-side{ display:none; }
+        /* 하단 내비(모바일 전용) */
+        .ca-nav{ display:flex; background:var(--caSurf); border-top:1px solid var(--caLine); padding:10px 0 14px; }
+        .ca-nav div{ flex:1; text-align:center; font-size:12px; font-weight:700; color:var(--caTxt3); }
+        .ca-nav div.on{ color:var(--caAcc); }
+        .ca-nav i{ display:block; width:20px; height:20px; margin:0 auto 5px; border-radius:6px; background:currentColor; opacity:.85; }
+        .ca-view.pc .ca-nav{ display:none; }
 
-        /* 위젯 카드 */
-        .ca-w{ background:var(--caSurf); border-radius:var(--caR16); box-shadow:var(--caShadowM); overflow:hidden; }
-        .ca-wh{ display:flex; align-items:center; gap:8px; padding:14px 16px 10px; }
+        /* 카드 */
+        .ca-w{ background:var(--caCard); border-radius:var(--caRadLg); overflow:hidden; }
+        .ca-wh{ display:flex; align-items:center; gap:8px; padding:var(--caS4) var(--caS4) var(--caS3); }
         .ca-wt{ font-size:18px; font-weight:700; line-height:1.2; color:var(--caTxt); }
-        .ca-cat{ font-size:12px; font-weight:700; line-height:1.2; padding:4px 8px; border-radius:var(--caR4); white-space:nowrap; }
-        .ca-cat.news{ color:var(--caNews); background:rgba(30,132,255,.16); }
-        .ca-cat.sports{ color:var(--caSports); background:rgba(92,119,255,.16); }
-        .ca-cat.ent{ color:var(--caEnt); background:rgba(160,92,255,.16); }
-        .ca-cat.cafe{ color:var(--caCafe); background:rgba(255,92,102,.16); }
-        .ca-cat.shop{ color:var(--caAccent); background:var(--caAccentSub); }
-        .ca-cat.interest{ color:var(--caInterest); background:rgba(255,148,41,.16); }
-        .ca-auto{ margin-left:auto; font-size:12px; font-weight:700; color:var(--caTxtSub); }
-        .ca-item{ display:flex; gap:12px; padding:12px 16px; border-top:1px solid var(--caDivItem); align-items:flex-start; }
+        .ca-cat{ font-size:12px; font-weight:700; line-height:1.2; padding:4px 8px; border-radius:6px; white-space:nowrap; background:var(--caMuted); color:var(--caTxt2); }
+        .ca-cat.news{ color:#2694FE; background:rgba(38,148,254,.16); }
+        .ca-cat.sports{ color:#5C77FF; background:rgba(92,119,255,.16); }
+        .ca-cat.ent{ color:#A05CFF; background:rgba(160,92,255,.16); }
+        .ca-cat.cafe{ color:#FF5C66; background:rgba(255,92,102,.16); }
+        .ca-cat.shop{ color:#F5394F; background:rgba(245,57,79,.16); }
+        .ca-cat.interest{ color:#FF9429; background:rgba(255,148,41,.16); }
+        .ca-auto{ margin-left:auto; font-size:12px; font-weight:700; color:var(--caTxt3); }
+        .ca-info{ color:var(--caTxt3); font-size:13px; }
+        .ca-item{ display:flex; gap:var(--caS3); padding:var(--caS3) var(--caS4); align-items:flex-start; border-top:1px solid var(--caLine); }
         .ca-item:first-of-type{ border-top:0; }
-        .ca-ttl{ font-size:17px; font-weight:400; line-height:1.4; color:var(--caTxt2); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-        .ca-meta{ font-size:14px; line-height:1.32; color:var(--caTxtSub); margin-top:6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-        .ca-pin{ font-size:12px; font-weight:700; color:var(--caPrimary); }
-        .ca-th{ width:76px; height:76px; border-radius:var(--caR8); background:var(--caThumb); flex:none; border:1px solid var(--caDivItem); }
-        .ca-why{ margin:0 16px 12px; background:var(--caSurfOn); border-radius:var(--caR8); padding:10px 12px; font-size:14px; line-height:1.4; color:var(--caTxt3); }
-        .ca-why b{ color:var(--caPrimary); font-weight:700; }
+        .ca-ttl{ font-size:16px; font-weight:400; line-height:1.4; color:var(--caTxt); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        .ca-meta{ font-size:13px; line-height:1.32; color:var(--caTxt3); margin-top:6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+        .ca-pin{ font-size:12px; font-weight:700; color:var(--caAcc); }
+        .ca-th{ width:76px; height:58px; border-radius:var(--caRad); background:var(--caMuted); flex:none; }
+        .ca-refresh{ display:flex; align-items:center; justify-content:center; gap:8px; padding:var(--caS3) var(--caS4) var(--caS4); }
+        .ca-rpill{ display:inline-flex; align-items:center; gap:8px; border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRadFull); padding:9px 16px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-why{ margin:0 var(--caS4) var(--caS3); background:var(--caMuted); border-radius:var(--caRad); padding:10px 12px; font-size:13px; line-height:1.4; color:var(--caTxt2); }
+        .ca-why b{ color:var(--caAcc); font-weight:700; }
         .ca-fbs{ display:flex; gap:6px; margin-top:8px; }
-        .ca-fb{ border:1px solid var(--caCard); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caR100); padding:6px 12px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
-        .ca-fb.on{ border-color:var(--caPrimary); color:var(--caPrimary); }
-        .ca-empty{ padding:20px 16px; text-align:center; font-size:15px; color:var(--caTxtSub); }
-        .ca-addw{ border:1px dashed var(--caPrimary); border-radius:var(--caR16); background:transparent; color:var(--caPrimary); padding:16px; text-align:center; font-size:15px; font-weight:700; cursor:pointer; }
-        .ca-nav{ display:flex; background:var(--caSurf); border-top:1px solid var(--caDivSec); padding:8px 0 12px; }
-        .ca-nav div{ flex:1; text-align:center; font-size:12px; font-weight:700; color:var(--caTxtSub); }
-        .ca-nav div.on{ color:var(--caPrimary); }
-        .ca-nav i{ display:block; width:22px; height:22px; margin:0 auto 4px; border-radius:var(--caR8); background:currentColor; opacity:.85; }
-
-        /* 플로팅 진입 버튼 */
-        .ca-fab{ position:absolute; right:16px; bottom:74px; z-index:5; display:inline-flex; align-items:center; gap:8px; background:var(--caPrimary); color:#fff; border:0; border-radius:var(--caR100); padding:13px 18px 13px 14px; font-size:15px; font-weight:700; box-shadow:var(--caShadowH); cursor:pointer; font-family:inherit; }
-        .ca-fab .av{ width:20px; height:20px; border-radius:var(--caR100); background:rgba(255,255,255,.32); }
-        .ca-view.pc .ca-fab{ bottom:16px; }
-
-        /* 매니저 시트(진입 후) */
-        .ca-sheet{ position:absolute; inset:0; z-index:10; background:var(--caBase); display:flex; flex-direction:column; }
-        .ca-shd{ display:flex; align-items:center; gap:10px; padding:14px 16px; background:var(--caSurf); border-bottom:1px solid var(--caDivSec); }
+        .ca-fb{ border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRadFull); padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-fb.on{ border-color:var(--caAcc); color:var(--caAcc); }
+        .ca-empty{ padding:var(--caS5) var(--caS4); text-align:center; font-size:15px; color:var(--caTxt3); }
+        .ca-addw{ border:1px dashed var(--caAcc); border-radius:var(--caRadLg); background:transparent; color:var(--caAcc); padding:var(--caS4); text-align:center; font-size:15px; font-weight:700; cursor:pointer; }
+        /* 사이드(로그인·날씨·쇼핑 목업) */
+        .ca-sidecard{ background:var(--caCard); border-radius:var(--caRadLg); padding:var(--caS4); }
+        .ca-login{ background:#FEE500; color:#181600; border-radius:var(--caRad); padding:13px; text-align:center; font-size:15px; font-weight:700; }
+        .ca-sublinks{ display:flex; justify-content:center; gap:14px; margin-top:12px; font-size:13px; color:var(--caTxt2); }
+        .ca-wthr{ display:flex; align-items:center; gap:12px; }
+        .ca-wthr .t{ margin-left:auto; font-size:26px; font-weight:700; }
+        .ca-wthr .s{ font-size:13px; color:var(--caTxt3); }
+        .ca-shopgrid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px; }
+        .ca-shopgrid i{ display:block; aspect-ratio:1; border-radius:var(--caRad); background:var(--caMuted); }
+        /* 배치 모드 */
+        .ca-w.arr{ outline:1px dashed var(--caAcc); cursor:grab; }
+        .ca-w.drag{ opacity:.45; } .ca-w.over{ outline:2px solid var(--caAcc); }
+        @media (prefers-reduced-motion:no-preference){
+          .ca-w.arr{ animation:caWig 1.6s ease-in-out infinite; }
+          @keyframes caWig{ 0%,100%{ transform:rotate(-.25deg); } 50%{ transform:rotate(.25deg); } } }
+        .ca-wtools{ display:flex; align-items:center; gap:6px; padding:0 var(--caS4) var(--caS3); flex-wrap:wrap; }
+        .ca-esz{ display:inline-flex; border:1px solid var(--caLine); border-radius:var(--caRad); overflow:hidden; }
+        .ca-esz span{ font-size:13px; font-weight:600; padding:6px 10px; color:var(--caTxt2); cursor:pointer; }
+        .ca-esz span.on{ background:var(--caAcc); color:var(--caOnAcc); font-weight:700; }
+        .ca-wbtn{ border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRad); padding:6px 11px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-wbtn.danger{ color:var(--caErr); }
+        .ca-grip{ color:var(--caTxt3); font-size:15px; cursor:grab; }
+        .ca-arrbtn{ position:absolute; right:16px; bottom:78px; z-index:5; border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt); border-radius:var(--caRadFull); padding:11px 16px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+        .ca-fab{ position:absolute; right:16px; bottom:20px; z-index:5; display:inline-flex; align-items:center; gap:8px; background:var(--caAcc); color:var(--caOnAcc); border:0; border-radius:var(--caRadFull); padding:13px 18px 13px 14px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; box-shadow:0 2px 16px rgba(0,0,0,.32); }
+        .ca-fab .av{ width:20px; height:20px; border-radius:var(--caRadFull); background:rgba(255,255,255,.32); }
+        /* 매니저 시트 */
+        .ca-sheet{ position:absolute; inset:0; z-index:10; background:var(--caBody); display:flex; flex-direction:column; }
+        .ca-shd{ display:flex; align-items:center; gap:10px; padding:var(--caS4); background:var(--caSurf); border-bottom:1px solid var(--caLine); }
         .ca-shd b{ font-size:18px; font-weight:700; }
-        .ca-shd .x{ margin-left:auto; border:0; background:transparent; color:var(--caTxt3); font-size:18px; cursor:pointer; font-family:inherit; }
-        .ca-shb{ padding:14px 16px 18px; overflow-y:auto; flex:1; }
-        .ca-mtabs{ display:inline-flex; background:var(--caSurfOn); border-radius:var(--caR100); padding:4px; gap:2px; margin-bottom:14px; }
-        .ca-mtabs button{ border:0; background:transparent; color:var(--caTxt3); font-size:14px; font-weight:600; padding:7px 14px; border-radius:var(--caR100); cursor:pointer; font-family:inherit; }
-        .ca-mtabs button.sel{ background:var(--caPrimary); color:#fff; font-weight:700; }
-
-        /* 만들기 */
-        .ca-lab{ font-size:14px; font-weight:700; color:var(--caTxt3); margin:0 0 8px; }
-        .ca-in{ width:100%; border:1px solid var(--caInput); border-radius:var(--caR12); padding:12px 14px; font-size:17px; line-height:1.4; color:var(--caTxt); background:var(--caSurf); font-family:inherit; resize:vertical; min-height:60px; }
-        .ca-in:focus{ outline:none; border-color:var(--caPrimary); }
-        .ca-btn{ width:100%; background:var(--caPrimary); color:#fff; border:0; border-radius:var(--caR8); padding:13px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+        .ca-shd .x{ margin-left:auto; border:0; background:transparent; color:var(--caTxt2); font-size:15px; cursor:pointer; font-family:inherit; }
+        .ca-shb{ padding:var(--caS4); overflow-y:auto; flex:1; }
+        .ca-mtabs{ display:inline-flex; background:var(--caMuted); border-radius:var(--caRadFull); padding:4px; gap:2px; margin-bottom:14px; }
+        .ca-mtabs button{ border:0; background:transparent; color:var(--caTxt2); font-size:14px; font-weight:600; padding:7px 14px; border-radius:var(--caRadFull); cursor:pointer; font-family:inherit; }
+        .ca-mtabs button.sel{ background:var(--caAcc); color:var(--caOnAcc); font-weight:700; }
+        /* 온보딩 */
+        .ca-ob{ position:absolute; inset:0; z-index:20; background:var(--caBody); display:flex; flex-direction:column; padding:22px 20px 20px; }
+        .ca-obh{ font-size:22px; font-weight:700; line-height:1.2; margin-bottom:6px; }
+        .ca-obs{ font-size:15px; color:var(--caTxt3); margin-bottom:18px; }
+        .ca-obg{ display:grid; grid-template-columns:1fr 1fr; gap:10px; overflow-y:auto; }
+        .ca-obt{ border:1px solid var(--caLine); border-radius:var(--caRad); background:var(--caSurf); padding:16px 14px; font-size:16px; font-weight:700; color:var(--caTxt2); cursor:pointer; text-align:left; font-family:inherit; }
+        .ca-obt.on{ border-color:var(--caAcc); background:var(--caAccMuted); color:var(--caAcc); }
+        .ca-obf{ margin-top:auto; padding-top:16px; display:flex; gap:10px; align-items:center; }
+        .ca-obdots{ display:flex; gap:5px; justify-content:center; margin-bottom:14px; }
+        .ca-obdots i{ width:7px; height:7px; border-radius:var(--caRadFull); background:var(--caLine); }
+        .ca-obdots i.on{ width:18px; background:var(--caAcc); }
+        /* 갤러리·만들기·편집 */
+        .ca-gal{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .ca-galt{ border:1px solid var(--caLine); border-radius:var(--caRad); background:var(--caSurf); padding:12px; cursor:pointer; text-align:left; font-family:inherit; }
+        .ca-galt .n{ font-size:16px; font-weight:700; color:var(--caTxt); }
+        .ca-galt .d{ font-size:13px; color:var(--caTxt3); margin-top:3px; }
+        .ca-lab{ font-size:14px; font-weight:700; color:var(--caTxt2); margin:0 0 8px; }
+        .ca-in{ width:100%; border:1px solid var(--caLine); border-radius:var(--caRad); padding:12px 14px; font-size:16px; line-height:1.4; color:var(--caTxt); background:var(--caSurf); font-family:inherit; resize:vertical; min-height:60px; }
+        .ca-in:focus{ outline:none; border-color:var(--caAcc); }
+        .ca-btn{ width:100%; background:var(--caAcc); color:var(--caOnAcc); border:0; border-radius:var(--caRad); padding:13px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
         .ca-btn.sm{ width:auto; padding:10px 18px; }
         .ca-btn:disabled{ opacity:.5; cursor:default; }
         .ca-grp{ margin-bottom:12px; }
-        .ca-gl{ font-size:14px; font-weight:700; color:var(--caTxt3); margin-bottom:7px; }
+        .ca-gl{ font-size:14px; font-weight:700; color:var(--caTxt2); margin-bottom:7px; }
         .ca-chips{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-        .ca-ch{ display:inline-flex; align-items:center; gap:6px; border-radius:var(--caR100); padding:7px 10px 7px 13px; font-size:15px; font-weight:600; border:1px solid var(--caCard); background:var(--caSurf); color:var(--caTxt2); }
-        .ca-ch .x{ color:var(--caTxtSub); cursor:pointer; font-size:13px; }
-        .ca-ch.inc{ border-color:var(--caPrimary); color:var(--caPrimary); background:var(--caPrimarySub); }
-        .ca-ch.exc{ border-color:var(--caAccent); color:var(--caAccent); background:var(--caAccentSub); }
+        .ca-ch{ display:inline-flex; align-items:center; gap:6px; border-radius:var(--caRadFull); padding:7px 10px 7px 13px; font-size:14px; font-weight:600; border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt); }
+        .ca-ch .x{ color:var(--caTxt3); cursor:pointer; font-size:13px; }
+        .ca-ch.inc{ border-color:var(--caAcc); color:var(--caAcc); background:var(--caAccMuted); }
+        .ca-ch.exc{ border-color:var(--caErr); color:var(--caErr); }
         .ca-ch.exc .p{ text-decoration:line-through; }
-        .ca-mini{ border:1px solid var(--caInput); border-radius:var(--caR8); padding:7px 10px; font-size:15px; background:var(--caSurf); color:var(--caTxt); font-family:inherit; width:120px; }
+        .ca-mini{ border:1px solid var(--caLine); border-radius:var(--caRad); padding:7px 10px; font-size:14px; background:var(--caSurf); color:var(--caTxt); font-family:inherit; width:120px; }
         .ca-tone{ display:inline-flex; gap:6px; flex-wrap:wrap; }
-        .ca-tone button{ border:1px solid var(--caCard); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caR100); padding:7px 13px; font-size:15px; font-weight:600; cursor:pointer; font-family:inherit; }
-        .ca-tone button.on{ border-color:var(--caPrimary); color:var(--caPrimary); background:var(--caPrimarySub); }
-        .ca-wrow{ display:flex; gap:6px; align-items:center; font-size:14px; color:var(--caTxt3); margin-bottom:5px; flex-wrap:wrap; }
-        .ca-wrow .said{ background:var(--caPrimarySub); color:var(--caTxt); border-radius:var(--caR4); padding:3px 8px; font-weight:700; }
+        .ca-tone button{ border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caRadFull); padding:7px 13px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-tone button.on{ border-color:var(--caAcc); color:var(--caAcc); background:var(--caAccMuted); }
+        .ca-wrow{ display:flex; gap:6px; align-items:center; font-size:13px; color:var(--caTxt2); margin-bottom:5px; flex-wrap:wrap; }
+        .ca-wrow .said{ background:var(--caAccMuted); color:var(--caTxt); border-radius:6px; padding:3px 8px; font-weight:700; }
         .ca-two{ display:grid; grid-template-columns:1fr; gap:14px; }
         .ca-view.pc .ca-two{ grid-template-columns:1fr 1fr; }
-        .ca-panel{ background:var(--caSurf); border-radius:var(--caR16); box-shadow:var(--caShadowM); padding:14px; }
-        .ca-prow{ display:flex; gap:10px; padding:10px 0; border-top:1px solid var(--caDivItem); align-items:flex-start; }
+        .ca-panel{ background:var(--caCard); border-radius:var(--caRad); padding:14px; }
+        .ca-prow{ display:flex; gap:10px; padding:10px 0; border-top:1px solid var(--caLine); align-items:flex-start; }
         .ca-prow:first-of-type{ border-top:0; }
-        .ca-prow .pth{ width:56px; height:44px; border-radius:var(--caR8); background:var(--caThumb); flex:none; }
-        .ca-prow.out{ opacity:.44; }
-        .ca-prow.out .ca-ttl{ text-decoration:line-through; }
-        .ca-pwhy{ font-size:14px; font-weight:600; color:var(--caPrimary); margin-top:4px; }
-        .ca-prow.out .ca-pwhy{ color:var(--caAccent); }
-        .ca-via{ font-size:13px; font-weight:700; color:var(--caPrimary); margin-left:8px; }
-
-        /* 편집 */
-        .ca-erow{ display:flex; align-items:center; gap:10px; background:var(--caSurf); border-radius:var(--caR12); box-shadow:var(--caShadowM); padding:12px 14px; margin-bottom:10px; flex-wrap:wrap; }
-        .ca-en{ flex:1; min-width:120px; }
-        .ca-esz{ display:inline-flex; border:1px solid var(--caCard); border-radius:var(--caR8); overflow:hidden; }
-        .ca-esz span{ font-size:14px; font-weight:600; padding:7px 11px; color:var(--caTxt3); cursor:pointer; }
-        .ca-esz span.on{ background:var(--caPrimary); color:#fff; font-weight:700; }
-        .ca-ico{ border:1px solid var(--caCard); background:var(--caSurf); color:var(--caTxt3); border-radius:var(--caR8); width:32px; height:30px; font-size:14px; cursor:pointer; font-family:inherit; }
-        .ca-ico:disabled{ opacity:.3; cursor:default; }
-        /* 배치 모드: 핸드폰 홈처럼 흔들림 + 드래그 */
-        .ca-w.arr{ border:1px dashed var(--caPrimary); cursor:grab; }
-        .ca-w.arr:active{ cursor:grabbing; }
-        .ca-w.drag{ opacity:.45; }
-        .ca-w.over{ outline:2px solid var(--caPrimary); outline-offset:2px; }
-        @media (prefers-reduced-motion:no-preference){
-          .ca-w.arr{ animation:caWig 1.6s ease-in-out infinite; transform-origin:50% 50%; }
-          @keyframes caWig{ 0%,100%{ transform:rotate(-.28deg); } 50%{ transform:rotate(.28deg); } }
-        }
-        .ca-wtools{ display:flex; align-items:center; gap:6px; padding:0 16px 12px; flex-wrap:wrap; }
-        .ca-wtools .ca-esz{ display:inline-flex; border:1px solid var(--caCard); border-radius:var(--caR8); overflow:hidden; }
-        .ca-wtools .ca-esz span{ font-size:13px; font-weight:600; padding:6px 10px; color:var(--caTxt3); cursor:pointer; }
-        .ca-wtools .ca-esz span.on{ background:var(--caPrimary); color:#fff; font-weight:700; }
-        .ca-wbtn{ border:1px solid var(--caCard); background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caR8); padding:6px 11px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
-        .ca-wbtn.danger{ color:var(--caAccent); border-color:var(--caAccentSub); }
-        .ca-grip{ color:var(--caTxtSub); font-size:15px; cursor:grab; }
-        .ca-arrbtn{ position:absolute; right:16px; bottom:132px; z-index:5; border:0; background:var(--caSurf); color:var(--caTxt2); border-radius:var(--caR100); padding:11px 16px; font-size:14px; font-weight:700; box-shadow:var(--caShadowH); cursor:pointer; font-family:inherit; }
-        .ca-view.pc .ca-arrbtn{ bottom:74px; }
-        /* 온보딩 */
-        .ca-ob{ position:absolute; inset:0; z-index:20; background:var(--caSurf); display:flex; flex-direction:column; padding:22px 20px 20px; }
-        .ca-obh{ font-size:22px; font-weight:700; line-height:1.2; margin-bottom:6px; }
-        .ca-obs{ font-size:15px; color:var(--caTxtSub); margin-bottom:18px; }
-        .ca-obg{ display:grid; grid-template-columns:1fr 1fr; gap:10px; overflow-y:auto; }
-        .ca-obt{ border:1.5px solid var(--caCard); border-radius:var(--caR12); background:var(--caSurf); padding:16px 14px; font-size:16px; font-weight:700; color:var(--caTxt2); cursor:pointer; text-align:left; font-family:inherit; }
-        .ca-obt.on{ border-color:var(--caPrimary); background:var(--caPrimarySub); color:var(--caPrimary); }
-        .ca-obf{ margin-top:auto; padding-top:16px; display:flex; gap:10px; align-items:center; }
-        .ca-obdots{ display:flex; gap:5px; justify-content:center; margin-bottom:14px; }
-        .ca-obdots i{ width:7px; height:7px; border-radius:var(--caR100); background:var(--caCard); }
-        .ca-obdots i.on{ width:18px; background:var(--caPrimary); }
-        /* 갤러리 */
-        .ca-gal{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-        .ca-galt{ border:1px solid var(--caCard); border-radius:var(--caR12); background:var(--caSurf); padding:12px; cursor:pointer; text-align:left; font-family:inherit; }
-        .ca-galt:hover{ border-color:var(--caPrimary); }
-        .ca-galt .n{ font-size:16px; font-weight:700; color:var(--caTxt); }
-        .ca-galt .d{ font-size:13px; color:var(--caTxtSub); margin-top:3px; }
-        /* 다양성 슬라이더 */
-        .ca-fresh{ background:var(--caSurf); border-radius:var(--caR12); box-shadow:var(--caShadowM); padding:14px 16px; margin-bottom:12px; }
-        .ca-fresh input[type=range]{ width:100%; accent-color:var(--caPrimary); }
-        .ca-frl{ display:flex; justify-content:space-between; font-size:13px; color:var(--caTxtSub); font-weight:600; margin-top:4px; }
-        /* 대화 */
+        .ca-prow .pth{ width:56px; height:44px; border-radius:var(--caRad); background:var(--caMuted); flex:none; }
+        .ca-prow.out{ opacity:.44; } .ca-prow.out .ca-ttl{ text-decoration:line-through; }
+        .ca-pwhy{ font-size:13px; font-weight:600; color:var(--caAcc); margin-top:4px; }
+        .ca-prow.out .ca-pwhy{ color:var(--caErr); }
+        .ca-via{ font-size:13px; font-weight:700; color:var(--caAcc); margin-left:8px; }
+        .ca-fresh{ background:var(--caCard); border-radius:var(--caRad); padding:14px 16px; margin-bottom:12px; }
+        .ca-fresh input[type=range]{ width:100%; accent-color:var(--caAcc); }
+        .ca-frl{ display:flex; justify-content:space-between; font-size:13px; color:var(--caTxt3); font-weight:600; margin-top:4px; }
         .ca-chat{ display:flex; flex-direction:column; gap:6px; margin:10px 0; }
-        .ca-bub{ max-width:88%; padding:9px 12px; border-radius:var(--caR12); font-size:14px; line-height:1.4; }
-        .ca-bub.me{ background:var(--caPrimary); color:#fff; align-self:flex-end; }
-        .ca-bub.bot{ background:var(--caSurfOn); color:var(--caTxt2); align-self:flex-start; }
+        .ca-bub{ max-width:88%; padding:9px 12px; border-radius:var(--caRad); font-size:14px; line-height:1.4; }
+        .ca-bub.me{ background:var(--caAcc); color:var(--caOnAcc); align-self:flex-end; }
+        .ca-bub.bot{ background:var(--caMuted); color:var(--caTxt2); align-self:flex-start; }
         .ca-crow{ display:flex; gap:8px; }
-        .ca-crow input{ flex:1; border:1px solid var(--caInput); border-radius:var(--caR100); padding:10px 14px; font-size:15px; background:var(--caSurf); color:var(--caTxt); font-family:inherit; }
-        .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#303233; color:#fff; padding:13px 20px; border-radius:var(--caR12); font-size:15px; font-weight:600; z-index:60; box-shadow:var(--caShadowH); }
+        .ca-crow input{ flex:1; border:1px solid var(--caLine); border-radius:var(--caRadFull); padding:10px 14px; font-size:15px; background:var(--caSurf); color:var(--caTxt); font-family:inherit; }
+        .ca-erow{ display:flex; align-items:center; gap:10px; background:var(--caCard); border-radius:var(--caRad); padding:12px 14px; margin-bottom:10px; flex-wrap:wrap; }
+        .ca-en{ flex:1; min-width:120px; }
+        .ca-ico{ border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRad); width:32px; height:30px; font-size:14px; cursor:pointer; font-family:inherit; }
+        .ca-ico:disabled{ opacity:.3; cursor:default; }
+        .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#28292C; color:#DFE2E5; padding:13px 20px; border-radius:var(--caRad); font-size:15px; font-weight:600; z-index:60; box-shadow:0 2px 16px rgba(0,0,0,.32); }
       </style>
 
       <!-- 상단 바: PC/모바일 · 설계안 -->
@@ -213,7 +219,7 @@
       </div>
 
       <!-- 시연 무대: 홈 화면(+플로팅) → 매니저 시트 -->
-      <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root ca-stage">
+      <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root ca-stage ca-stagewrap">
         <div class="ca-view" x-bind:class="caDevice==='pc'?'pc':''">
           <!-- 온보딩 -->
           <div class="ca-ob" x-show="caOnboard" x-cloak>
@@ -243,12 +249,23 @@
           </div>
 
           <!-- 홈 -->
-          <div class="ca-appbar">
-            <span class="ca-logo"></span>
-            <span class="ca-search">뉴스·인물·주제 검색</span>
-            <span class="ca-appicon"></span>
+          <div class="ca-top">
+            <span class="ca-sbwrap"><span class="ca-sb"><span class="ca-dlogo"></span><span class="ph">검색어를 입력해 주세요</span><span class="ic"></span></span></span>
           </div>
-          <div class="ca-tabs">
+          <div class="ca-svc" x-show="caDevice==='pc'" x-cloak>
+            <span><i style="background:#F5B800"></i>지도</span>
+            <span><i style="background:#F5394F"></i>금융</span>
+            <span><i style="background:#2694FE"></i>메일</span>
+            <span><i style="background:#0D8626"></i>스포츠</span>
+            <span><i style="background:#5C77FF"></i>날씨</span>
+            <span><i style="background:#A05CFF"></i>게임</span>
+            <span><i style="background:#FF9429"></i>카페</span>
+          </div>
+          <div class="ca-live">
+            <span class="bdg">실시간</span><span class="ca-note" style="color:var(--caTxt3)">1</span>
+            <b x-text="(caPool[0] && caPool[0].t ? caPool[0].t.slice(0,14) : '지금 뜨는 소식')"></b>
+          </div>
+          <div class="ca-cats" x-show="caDevice!=='pc'" x-cloak>
             <button type="button" class="on">홈</button>
             <template x-for="w in caWidgets" x-bind:key="'tab'+w.id"><button type="button" x-text="w.name"></button></template>
           </div>
@@ -258,26 +275,12 @@
             </template>
             <template x-for="w in caWidgets" x-bind:key="w.id">
               <div class="ca-w"
-                   x-bind:class="(w.size==='lg'?'wide ':'') + (caArrange?'arr ':'') + (caDragId===w.id?'drag ':'') + (caOverId===w.id?'over':'')"
-                   x-bind:draggable="caArrange ? 'true' : 'false'"
-                   x-on:dragstart="caDragStart(w, $event)"
-                   x-on:dragover="caDragOver(w, $event)"
-                   x-on:drop.prevent="caDragEnd()"
-                   x-on:dragend="caDragEnd()">
+                   x-bind:class="w.size==='lg'?'wide':''">
                 <div class="ca-wh">
-                  <span class="ca-grip" x-show="caArrange" x-cloak>⠿</span>
                   <span class="ca-cat" x-bind:class="caWidgetCat(w)" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
                   <span class="ca-wt" x-text="w.name"></span>
                   <span class="ca-auto" x-text="caSizeLabel(w.size)"></span>
-                </div>
-                <div class="ca-wtools" x-show="caArrange" x-cloak>
-                  <span class="ca-esz">
-                    <span x-bind:class="w.size==='sm'?'on':''" x-on:click="caSetSize(w,'sm')">작게</span>
-                    <span x-bind:class="w.size==='md'?'on':''" x-on:click="caSetSize(w,'md')">보통</span>
-                    <span x-bind:class="w.size==='lg'?'on':''" x-on:click="caSetSize(w,'lg')">크게</span>
-                  </span>
-                  <button type="button" class="ca-wbtn" x-on:click="caEditWidget(w)">수정</button>
-                  <button type="button" class="ca-wbtn danger" x-on:click="caRemove(w)">삭제</button>
+                  <span class="ca-info" x-bind:title="caWidgetWhy(w)">ⓘ</span>
                 </div>
                 <template x-for="r in caWidgetRows(w)" x-bind:key="w.id + '-' + r.a.id">
                   <div>
@@ -301,15 +304,34 @@
                   </div>
                 </template>
                 <template x-if="!caWidgetRows(w).length"><div class="ca-empty">조건에 맞는 소식이 아직 없어요</div></template>
+                <div class="ca-refresh" x-show="caWidgetRows(w).length">
+                  <button type="button" class="ca-rpill" x-on:click="caShuffle(w)">↻ <span x-text="'새로운 ' + w.name"></span> <span style="color:var(--caTxt3)" x-text="caPage(w)"></span></button>
+                </div>
               </div>
             </template>
+            <!-- PC 사이드(포털 기본 영역 · 편집 대상 아님) -->
+            <div class="ca-side">
+              <div class="ca-sidecard">
+                <div class="ca-login">카카오계정으로 로그인</div>
+                <div class="ca-sublinks"><span>계정 찾기</span><span>|</span><span>회원가입</span></div>
+              </div>
+              <div class="ca-sidecard">
+                <div class="ca-wthr">
+                  <div><div style="font-size:16px;font-weight:700">백현동 흐림</div><div class="s">미세 좋음 · 초미세 좋음</div></div>
+                  <div class="t">30.3°</div>
+                </div>
+              </div>
+              <div class="ca-sidecard">
+                <div style="font-size:16px;font-weight:700">쇼핑</div>
+                <div class="ca-shopgrid"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+            </div>
           </div>
           <div class="ca-nav">
             <div class="on"><i></i>홈</div><div><i></i>탐색</div><div><i></i>구독</div><div><i></i>내정보</div>
           </div>
 
-          <!-- 배치 · 플로팅 진입 -->
-          <button type="button" class="ca-arrbtn" x-show="!caEntered" x-on:click="caToggleArrange()" x-text="caArrange ? '배치 완료' : '위젯 배치'"></button>
+          <!-- 플로팅 진입(배치는 매니저 · 홈 편집에서) -->
           <button type="button" class="ca-fab" x-show="!caEntered" x-on:click="caEntered=true; caTab='gallery'; caEditId=''; caDraft=null"><span class="av"></span>내 콘텐츠 매니저</button>
 
           <!-- 매니저 시트 -->
@@ -456,9 +478,16 @@
                   <input type="range" min="0" max="100" step="10" x-model.number="caFresh" x-on:change="caSave()">
                   <div class="ca-frl"><span>익숙하게</span><span x-text="caFresh >= 60 ? '새로운 소식도 섞어요' : '내가 고른 것 위주'"></span><span>새롭게</span></div>
                 </div>
-                <div class="ca-lab">위젯 크기·순서·삭제 · 바꾸면 홈에 바로 반영됩니다</div>
+                <div class="ca-lab">⠿ 끌어서 배치 · 크기·삭제 · 바꾸면 홈에 바로 반영됩니다</div>
                 <template x-for="(w, i) in caWidgets" x-bind:key="'e'+w.id">
-                  <div class="ca-erow">
+                  <div class="ca-erow"
+                       x-bind:class="(caDragId===w.id?'drag ':'') + (caOverId===w.id?'over':'')"
+                       draggable="true"
+                       x-on:dragstart="caArrange=true; caDragStart(w, $event)"
+                       x-on:dragover="caDragOver(w, $event)"
+                       x-on:drop.prevent="caDragEnd(); caArrange=false"
+                       x-on:dragend="caDragEnd(); caArrange=false">
+                    <span class="ca-grip">⠿</span>
                     <span class="ca-cat" x-bind:class="caWidgetCat(w)" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
                     <div class="ca-en">
                       <div class="ca-wt" x-text="w.name"></div>

@@ -34,3 +34,6 @@ build/
 *.dmg
 dict_overrides.json
 .claude/settings.local.json
+
+# Astryx(디자인 토큰 참조용) · 런타임 의존 아님
+node_modules/
