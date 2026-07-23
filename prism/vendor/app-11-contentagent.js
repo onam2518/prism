@@ -92,6 +92,9 @@ window.PRISM_APP_PARTS.push(() => ({
       caMsg: '',
       caNew: { ent: '', kind: '', excl: '' },   // 칩 직접 추가 입력
       caThinking: false, caVia: '',        // LLM 호출 상태·경로 표시
+      caArrange: false,                    // 홈 배치 모드(핸드폰 홈처럼 흔들림·드래그)
+      caDragId: '', caOverId: '',          // 드래그 중인 위젯 · 올라간 위젯
+      caEditId: '',                        // 수정 중인 기존 위젯 id('' = 새로 만들기)
       caDevice: 'mobile',                  // 시연 화면: mobile | pc
       caEntered: false,                    // 홈 화면에서 플로팅 버튼으로 진입했는지
 
@@ -279,6 +282,20 @@ window.PRISM_APP_PARTS.push(() => ({
       caCreate() {
         if (!this.caDraft) return;
         const d = this.caDraft;
+        if (this.caEditId) {                                  // 기존 위젯 수정 저장
+          const w = this.caWidgets.filter((x) => x.id === this.caEditId)[0];
+          if (w) {
+            w.name = (d.name || w.name).trim();
+            w.size = d.size || w.size;
+            w.cond = JSON.parse(JSON.stringify(d.cond));
+            w.hidden = [];                                    // 조건이 바뀌었으니 숨김은 초기화
+            this.caSave();
+            this.caToast('「' + w.name + '」 위젯을 수정했어요');
+          }
+          this.caEditId = ''; this.caDraft = null; this.caText = '';
+          this.caTab = 'home';
+          return;
+        }
         const w = { id: 'w' + Date.now(), name: (d.name || '내 소식').trim(), size: d.size || 'md',
                     cond: JSON.parse(JSON.stringify(d.cond)), pins: [], hidden: [] };
         this.caWidgets.push(w); this.caSave();
@@ -317,6 +334,41 @@ window.PRISM_APP_PARTS.push(() => ({
         this.caWidgets.splice(j, 0, this.caWidgets.splice(i, 1)[0]);
         this.caSave();
       },
+      // ── 홈 배치(드래그) · 핸드폰 홈 위젯 옮기듯 ──
+      caDragStart(w, ev) {
+        if (!this.caArrange) return;
+        this.caDragId = w.id;
+        try { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', w.id); } catch (e) {}
+      },
+      caDragOver(w, ev) {
+        if (!this.caArrange || !this.caDragId || this.caDragId === w.id) return;
+        ev.preventDefault();                                   // drop 허용
+        this.caOverId = w.id;
+        const from = this.caWidgets.findIndex((x) => x.id === this.caDragId);
+        const to = this.caWidgets.findIndex((x) => x.id === w.id);
+        if (from < 0 || to < 0 || from === to) return;
+        this.caWidgets.splice(to, 0, this.caWidgets.splice(from, 1)[0]);   // 실시간 재배치(홈에서 바로 보임)
+      },
+      caDragEnd() {
+        if (this.caDragId) { this.caSave(); this.caToast('위치를 옮겼어요'); }
+        this.caDragId = ''; this.caOverId = '';
+      },
+      caToggleArrange() {
+        this.caArrange = !this.caArrange;
+        if (!this.caArrange) { this.caSave(); this.caToast('배치를 저장했어요'); }
+        else this.caToast('위젯을 끌어서 옮기고, 크기를 바꾸고, 지울 수 있어요');
+      },
+      // ── 기존 위젯 수정(이름·조건을 매니저에서 다시 편집) ──
+      caEditWidget(w) {
+        this.caEditId = w.id;
+        this.caDraft = { name: w.name, size: w.size,
+                         cond: JSON.parse(JSON.stringify(w.cond)),
+                         why: [{ said: w.name, to: '지금 이 위젯의 조건' }] };
+        this.caText = '';
+        this.caVia = '';
+        this.caEntered = true; this.caTab = 'make';
+      },
+      caCancelEdit() { this.caEditId = ''; this.caDraft = null; },
       caSizeLabel(s) { return s === 'lg' ? '크게' : (s === 'md' ? '보통' : '작게'); },
       // 위젯이 왜 이 소식을 보여주는지 한 줄(사용자 말)
       caWidgetWhy(w) {
