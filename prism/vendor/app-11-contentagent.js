@@ -7,7 +7,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // ── 콘텐츠 원천: 실제 등록된 콘텐츠(/raw) · 추출 메타(카테고리·인텐트·엔티티) 그대로 사용 ──
       caPool: [],                          // [{id,t,src,ago,ents,topics,kinds,tone,field}] · caLoad 가 /raw 에서 채움
       caLoading: false, caLoadMsg: '',
-      caDict: { ents: [], topics: [], kinds: [], fields: [] },   // 실제 콘텐츠에서 수집한 사전(자연어 매칭용)
+      caDict: { ents: [], entsTop: [], topics: [], kinds: [], fields: [] },   // 사전(ents=자연어 매칭 전체 · entsTop=갤러리 후보)
       caTone: [
         { k: '깊게', words: ['깊이', '깊게', '심층', '분석', '자세', '기획'] },
         { k: '빠르게', words: ['빠르게', '속보', '짧게', '간단'] },
@@ -75,13 +75,14 @@ window.PRISM_APP_PARTS.push(() => ({
                         src: it.service || '', ago: '', summary: it.summary || '',
                         url: it.url || '', ents: ents.slice(0, 6), topics: cats,
                         kinds: intents, tone: this.caToneOf(intents), field: field });
-            ents.slice(0, 6).forEach((e) => { if (this._caGoodEnt(e)) eSet[e] = 1; });
+            ents.slice(0, 6).forEach((e) => { if (this._caGoodEnt(e)) eSet[e] = (eSet[e] || 0) + 1; });
             cats.forEach((c) => { tSet[c] = 1; fSet[c] = 1; });
             intents.forEach((k) => { kSet[k] = 1; });
           });
           this.caPool = pool;
-          this.caDict = { ents: Object.keys(eSet), topics: Object.keys(tSet),
-                          kinds: Object.keys(kSet), fields: Object.keys(fSet) };
+          // 자연어 매칭엔 전체 엔티티, 갤러리 추천엔 2건 이상 등장한 것만(1회성 추출 토막 노출 방지)
+          this.caDict = { ents: Object.keys(eSet), entsTop: Object.keys(eSet).filter((k) => eSet[k] >= 2),
+                          topics: Object.keys(tSet), kinds: Object.keys(kSet), fields: Object.keys(fSet) };
           this.caLoadMsg = pool.length ? ('등록된 콘텐츠 ' + pool.length + '건을 불러왔어요')
                                        : '등록된 콘텐츠가 없어요 · 콘텐츠 관리에서 추출을 먼저 실행하세요';
         } catch (e) {
@@ -106,6 +107,9 @@ window.PRISM_APP_PARTS.push(() => ({
       caFresh: 40,                         // 새로운 소식 얼마나(0 익숙하게 ↔ 100 새롭게)
       caSeen: {},                          // 소비 기록(열어본 소식) · '나를 위한 추천' 근거
       caGallery: false,                    // 위젯 갤러리 열림
+      caTabTopic: '',                      // 상단 탭 선택 주제('' = 홈)
+      caTabOrder: [],                      // 상단 탭(주제) 순서 · 사용자가 조정
+      caTabEdit: false,                    // 탭 순서 조정 모드(다음 앱 ⇄)
       caChat: [],                          // 대화로 다듬기 기록 [{me,bot}]
       caChatText: '',
       caDevice: 'mobile',                  // 시연 화면: mobile | pc
@@ -122,6 +126,7 @@ window.PRISM_APP_PARTS.push(() => ({
             if (s) {
               if (typeof s.fresh === 'number') this.caFresh = s.fresh;
               if (s.seen) this.caSeen = s.seen;
+              if (s.tabOrder) this.caTabOrder = s.tabOrder;
               if (s.widgets && s.widgets.length) { this.caWidgets = s.widgets; return; }
             }
           }
@@ -133,6 +138,7 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           localStorage.setItem('prism_ca', JSON.stringify({
             widgets: this.caWidgets, fresh: this.caFresh, seen: this.caSeen, onboarded: !this.caOnboard,
+            tabOrder: this.caTabOrder,
           }));
         } catch (e) {}
       },
@@ -270,7 +276,7 @@ window.PRISM_APP_PARTS.push(() => ({
       caExamples() {                       // 등록 콘텐츠에서 만든 예시 문장(한글 라벨 · 하드코딩 없음)
         const d = this.caDict || {}, out = [];
         if ((d.topics || []).length) out.push(this.caLabel('topic', d.topics[0]) + ' 소식 깊이 있게');
-        if ((d.ents || []).length) out.push(d.ents[0] + ' 소식만');
+        if ((d.entsTop || []).length) out.push(d.entsTop[0] + ' 소식만');
         if ((d.topics || []).length > 1) out.push(this.caLabel('topic', d.topics[1]) + ' 가볍게');
         return out.slice(0, 3);
       },
@@ -388,6 +394,29 @@ window.PRISM_APP_PARTS.push(() => ({
         this.caTab = 'home';
         this.caToast('「' + w.name + '」 위젯을 홈에 추가했어요');
       },
+      // ── 상단 탭: 주제(카테고리)만 · 순서만 조정 가능(다음 앱 규약) ──
+      caTabs() {
+        const all = (this.caDict.topics || []);
+        const ord = (this.caTabOrder || []).filter((t) => all.indexOf(t) >= 0);
+        return ord.concat(all.filter((t) => ord.indexOf(t) < 0));
+      },
+      caTabMove(t, dir) {
+        const list = this.caTabs();
+        const i = list.indexOf(t), j = i + dir;
+        if (i < 0 || j < 0 || j >= list.length) return;
+        list.splice(j, 0, list.splice(i, 1)[0]);
+        this.caTabOrder = list; this.caSave();
+      },
+      caTabPick(t) { this.caTabTopic = (this.caTabTopic === t) ? '' : t; },
+      // 선택한 주제 탭에 맞는 위젯만(홈이면 전체)
+      caVisibleWidgets() {
+        if (!this.caTabTopic) return this.caWidgets;
+        return this.caWidgets.filter((w) => {
+          if (w.src === 'reco' || w.src === 'hot') return true;          // 기본 제공은 항상
+          const c = w.cond || {};
+          return (c.topics || []).indexOf(this.caTabTopic) >= 0 || (c.fields || []).indexOf(this.caTabTopic) >= 0;
+        });
+      },
       // ── 위젯 갤러리: 실제 콘텐츠 메타로 만드는 위젯 종류 ──
       caGalleryGroups() {
         const d = this.caDict || {};
@@ -399,7 +428,7 @@ window.PRISM_APP_PARTS.push(() => ({
         (d.topics || []).slice(0, 4).forEach((t) => mine.push({
           key: 'topic:' + t, name: this.caLabel('topic', t), desc: '주제·분야',
           mk: () => ({ src: 'cond', cond: { topics: [t] } }) }));
-        (d.ents || []).slice(0, 3).forEach((e) => mine.push({
+        (d.entsTop || []).slice(0, 3).forEach((e) => mine.push({
           key: 'ent:' + e, name: e, desc: '인물·팀 팔로우',
           mk: () => ({ src: 'cond', cond: { ents: [e] } }) }));
         mine.push({ key: 'tone', name: '깊이 읽기', desc: '분석·해설 위주',
