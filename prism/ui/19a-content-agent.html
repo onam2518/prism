@@ -14,10 +14,11 @@
           --caOnAcc:#FFFFFF; --caErr:#E3193B; --caOk:#0D8626; --caLine:rgba(5,54,89,.1);
           --caS1:4px; --caS2:8px; --caS3:12px; --caS4:16px; --caS5:20px; --caS6:24px;
           --caRad:8px; --caRadLg:16px; --caRadFull:999px;
-          font-family:Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+          font-family:var(--ds-font, "Pretendard Variable", Pretendard, system-ui, -apple-system, sans-serif);
           color:var(--caTxt); -webkit-font-smoothing:antialiased;
         }
         /* 시연 무대 스킨: 라이트 기본 · .dark 일 때만 다크 토큰(다음 앱 두 모드 모두 지원) */
+        .ca-stagewrap{ font-family:"Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", sans-serif; }
         .ca-stagewrap.dark{
           --caBody:#111112; --caSurf:#1F1F22; --caCard:#1F1F22; --caMuted:#1111127F; --caPop:#28292C;
           --caTxt:#DFE2E5; --caTxt2:#AAAFB5; --caTxt3:#6F747C; --caAcc:#2694FE; --caAccMuted:#0082FB3F;
@@ -32,7 +33,7 @@
         .ca-pills button.sel{ background:var(--caAcc); border-color:var(--caAcc); color:var(--caOnAcc); }
         .ca-head{ background:var(--caSurf); border:1px solid var(--caLine); border-radius:var(--caRadLg); padding:16px 20px 16px; margin-bottom:16px; }
         .ca-headtop{ display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
-        .ca-headtop b{ font-size:20px; font-weight:700; }
+        .ca-headtop b{ font-size:20px; font-weight:700; font-family:var(--ds-font-display, inherit); }
         .ca-headstat{ margin-left:auto; font-size:14px; color:var(--caTxt3); }
         .ca-headctl{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
         .ca-hint{ background:transparent; border:1px solid var(--caLine); border-radius:var(--caRad); padding:14px 16px 14px 34px; margin:0;
