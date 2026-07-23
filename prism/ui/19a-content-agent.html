@@ -249,6 +249,12 @@
         .ca-ton{ flex:1; font-size:14px; font-weight:600; color:var(--caTxt); }
         .ca-div{ border:0; border-top:1px solid var(--caLine); margin:14px 0; }
         .ca-exs .ca-ghost{ font-size:13px; padding:7px 12px; }
+        .ca-placebar{ display:flex; align-items:center; gap:6px; padding:8px 0 12px; border-bottom:1px solid var(--caLine); margin-bottom:12px; }
+        .ca-plabel{ font-size:13px; font-weight:700; color:var(--caTxt2); margin-right:2px; }
+        .ca-pos{ font-size:13px; font-weight:700; color:var(--caAcc); min-width:56px; text-align:center; }
+        .ca-snap{ background:var(--caBody); border-radius:var(--caRad); padding:10px; max-height:330px; overflow-y:auto; }
+        .ca-pvw.isnew{ outline:2px solid var(--caAcc); }
+        .ca-newbdg{ font-size:10px; font-weight:700; color:var(--caAcc); background:var(--caAccMuted); border-radius:4px; padding:2px 6px; }
         .ca-galpv{ background:var(--caCard); border:1px solid var(--caAcc); border-radius:var(--caRad); padding:14px; margin-bottom:16px; }
         .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#28292C; color:#DFE2E5; padding:13px 20px; border-radius:var(--caRad); font-size:15px; font-weight:600; z-index:60; box-shadow:0 2px 16px rgba(0,0,0,.32); }
       </style>
@@ -443,27 +449,46 @@
               <div x-show="caTab==='gallery'" x-cloak>
                 <!-- 템플릿 미리보기 → 적용 확인 -->
                 <div class="ca-galpv" x-show="caGalPick" x-cloak>
-                  <div class="ca-lab" style="margin-bottom:8px">이렇게 들어갑니다 · 적용할까요?</div>
-                  <div class="ca-pvw">
-                    <div class="ca-pvh">
-                      <span class="ca-pvt" x-text="caGalPick ? caGalPick.name : ''"></span>
-                      <span class="ca-pvs" x-text="caGalPick ? caSizeLabel(caGalPick.size) : ''"></span>
-                    </div>
-                    <template x-for="r in caGalRows()" x-bind:key="'gp'+r.a.id">
-                      <div class="ca-pvi"><span class="t" x-text="r.a.t"></span><span class="th"></span></div>
+                  <div class="ca-lab" style="margin-bottom:4px">놓을 자리를 정하고 확인하세요</div>
+                  <div class="ca-note" style="margin-bottom:10px">적용하면 홈이 이렇게 됩니다 · 새 위젯은 파랗게 표시</div>
+
+                  <!-- 위치 · 크기 -->
+                  <div class="ca-placebar">
+                    <span class="ca-plabel">위치</span>
+                    <button type="button" class="ca-ico" x-bind:disabled="caGalPos===0" x-on:click="caGalMove(-1)">▲</button>
+                    <span class="ca-pos" x-text="caGalPosLabel()"></span>
+                    <button type="button" class="ca-ico" x-bind:disabled="caGalPos>=caWidgets.length" x-on:click="caGalMove(1)">▼</button>
+                    <span class="ca-esz" style="margin-left:auto">
+                      <span x-bind:class="caGalPick&&caGalPick.size==='sm'?'on':''" x-on:click="caGalPick.size='sm'">작게</span>
+                      <span x-bind:class="caGalPick&&caGalPick.size==='md'?'on':''" x-on:click="caGalPick.size='md'">보통</span>
+                      <span x-bind:class="caGalPick&&caGalPick.size==='lg'?'on':''" x-on:click="caGalPick.size='lg'">크게</span>
+                    </span>
+                  </div>
+
+                  <!-- 홈 스냅샷: 적용 후 실제 배치와 노출될 소식 -->
+                  <div class="ca-snap">
+                    <template x-for="w in caGalSnapshot()" x-bind:key="'snap'+w.id">
+                      <div class="ca-pvw" x-bind:class="w._new?'isnew':''">
+                        <div class="ca-pvh">
+                          <span class="ca-cat" x-bind:class="caWidgetCat(w)" style="font-size:10px;padding:2px 6px" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
+                          <span class="ca-pvt" x-text="w.name"></span>
+                          <span class="ca-newbdg" x-show="w._new" x-cloak>새 위젯</span>
+                          <span class="ca-pvs" x-text="caSizeLabel(w.size)"></span>
+                        </div>
+                        <template x-for="r in caWidgetRows(w)" x-bind:key="'snapi'+w.id+r.a.id">
+                          <div class="ca-pvi"><span class="t" x-text="r.a.t"></span><span class="th"></span></div>
+                        </template>
+                        <template x-if="!caWidgetRows(w).length"><div class="ca-pvi"><span class="t" style="color:var(--caTxt3)">지금은 채울 소식이 없어요</span></div></template>
+                      </div>
                     </template>
-                    <template x-if="!caGalRows().length"><div class="ca-pvi"><span class="t" style="color:var(--caTxt3)">지금은 채울 소식이 없어요</span></div></template>
                   </div>
-                  <div class="ca-tone" style="margin-top:10px">
-                    <button type="button" x-bind:class="caGalPick&&caGalPick.size==='sm'?'on':''" x-on:click="caGalPick.size='sm'">작게</button>
-                    <button type="button" x-bind:class="caGalPick&&caGalPick.size==='md'?'on':''" x-on:click="caGalPick.size='md'">보통</button>
-                    <button type="button" x-bind:class="caGalPick&&caGalPick.size==='lg'?'on':''" x-on:click="caGalPick.size='lg'">크게</button>
-                  </div>
+
                   <div style="display:flex; gap:8px; margin-top:12px">
                     <button type="button" class="ca-ghost" style="flex:1" x-on:click="caGalPick=null">취소</button>
-                    <button type="button" class="ca-btn" style="flex:2" x-on:click="caGalApply()">홈에 적용</button>
+                    <button type="button" class="ca-btn" style="flex:2" x-on:click="caGalApply()">이대로 홈에 적용</button>
                   </div>
                 </div>
+
                 <template x-for="grp in caGalleryGroups()" x-bind:key="grp.title">
                   <div style="margin-bottom:18px">
                     <div class="ca-lab" style="margin-bottom:4px" x-text="grp.title"></div>
