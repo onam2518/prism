@@ -140,6 +140,10 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
         exp["finalGrade"] = grade
         exp["content_category"] = D.normalize_category_list(exp.get("content_category") or [])
         exp["reasons"] = [str(x) for x in (exp.get("reasons") or []) if x]
+        ents = exp.get("entities") or []
+        ents = ents if isinstance(ents, (list, tuple)) else [ents]
+        exp["entities"] = list(dict.fromkeys(
+            s for s in (str(x).strip() for x in ents if x is not None) if s))
         valid.append({"content": content, "expected": exp})
     n = st.register_golden(team, valid, replace=not merge, source="manual")
     _SV._agg_bump()

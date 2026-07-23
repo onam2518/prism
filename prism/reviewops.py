@@ -642,6 +642,11 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     patch = dict(patch or {})
     grade = patch.pop("finalGrade", None)
     reasons = patch.pop("reasons", None)
+    if "entities" in patch:                        # 엔티티 교정: 문자열 목록으로 정규화(공백·빈 값·None 제거 · 중복 제거 · 순서 보존)
+        ents = patch.get("entities")
+        ents = ents if isinstance(ents, (list, tuple)) else ([ents] if ents else [])
+        patch["entities"] = list(dict.fromkeys(
+            s for s in (str(x).strip() for x in ents if x is not None) if s))
     before = None
     if patch and hasattr(st, "get_item_meta"):
         try:

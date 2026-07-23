@@ -145,9 +145,18 @@ window.PRISM_APP_PARTS.push(() => ({
         this.fa = { hash: r.hash, title: r.title || '(제목 없음)', row: r,
           summary: r.summary || '', cats: (r.category || []).join(', '),
           intent: (r.intent || []).join(', '), grade: r.grade === 'R' ? 'R' : 'G',
+          entities: (r.entities || []).slice(), entNew: '',
           note: (r.fb && r.fb.note) || '', elems: (r.fb && r.fb.elems) || [] };
         this.faOpen = true;
       },
+      // 정답 확정 · 엔티티 칩 편집: ×로 삭제 · 입력 후 쉼표/엔터로 추가(검수 상세 편집과 동일 규칙)
+      faEntCommit() {
+        const f = this.fa; if (!f) return;
+        const parts = String(f.entNew || '').split(',').map((s) => s.trim()).filter(Boolean);
+        parts.forEach((p) => { if (!f.entities.includes(p)) f.entities.push(p); });
+        f.entNew = '';
+      },
+      faEntInput(v) { if (!this.fa) return; this.fa.entNew = v; if (String(v).indexOf(',') >= 0) this.faEntCommit(); },
       async toggleOpsHold(r) {                  // 운영자 수동 노출제한 토글(라벨·학습과 분리)
         if (!r || !r.hash) return;
         const on = !r.ops_hold;
@@ -200,17 +209,20 @@ window.PRISM_APP_PARTS.push(() => ({
             const r0 = f.row; const patch = {};
             const cats = f.cats.split(',').map((s) => s.trim()).filter(Boolean);
             const intent = f.intent.split(',').map((s) => s.trim()).filter(Boolean);
+            this.faEntCommit();                        // 입력창에 남은 엔티티도 확정에 포함
+            const ents = (f.entities || []).slice();
             if (f.summary !== (r0.summary || '')) patch.summary = f.summary;
             if (cats.join('|') !== (r0.category || []).join('|')) patch.content_category = cats;
             if (intent.join('|') !== (r0.intent || []).join('|')) patch.intent = intent;
+            if (ents.join('|') !== (r0.entities || []).join('|')) patch.entities = ents;
             if (f.grade !== (r0.grade || '')) patch.finalGrade = f.grade;
             if (Object.keys(patch).length) {
               let pr = null;
               try { pr = await (await this._afetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: f.hash, patch: patch, reviewer: this.reviewer || '' }) })).json(); } catch (e) {}
               if (!(pr && pr.ok)) { this._err((pr && pr.error) || '교정 저장 실패 · 편입은 진행되지 않았어요'); return; }
-              r0.summary = f.summary; r0.category = cats; r0.intent = intent; r0.grade = f.grade;   // 목록 즉시 반영
+              r0.summary = f.summary; r0.category = cats; r0.intent = intent; r0.entities = ents; r0.grade = f.grade;   // 목록 즉시 반영
               if (this.detail && this.detail.hash === f.hash) {                                     // 열려 있는 상세도 동기화
-                this.detail.summary = f.summary; this.detail.category = cats; this.detail.intent = intent; this.detail.grade = f.grade;
+                this.detail.summary = f.summary; this.detail.category = cats; this.detail.intent = intent; this.detail.entities = ents; this.detail.grade = f.grade;
               }
               (pr.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
             }

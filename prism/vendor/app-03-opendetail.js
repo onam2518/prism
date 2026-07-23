@@ -27,6 +27,43 @@ window.PRISM_APP_PARTS.push(() => ({
           if (r && r.ok) this.entLookup = r.entities || {};
         } catch (e) {}
       },
+      // ── 엔티티 편집(검수 교정): 칩 ×로 삭제 + 텍스트 추가(쉼표/엔터 확정) · /patch-meta 저장.
+      // 표기·접기(컨피던스) 로직과 분리된 별도 블록 · 상세가 다른 콘텐츠로 바뀌면 entFixHash 불일치로 자동 숨김.
+      entFixOpen: false, entFixHash: '', entFixList: [], entFixNew: '', entFixBusy: false,
+      openEntFix() {
+        if (!this.detail) return;
+        this.entFixHash = this.detail.hash;
+        this.entFixList = (this.detail.entities || []).slice();
+        this.entFixNew = ''; this.entFixOpen = true;
+      },
+      entFixCommit() {                             // 입력값 확정: 쉼표 분리 · 공백 제거 · 중복 무시
+        const parts = String(this.entFixNew || '').split(',').map((s) => s.trim()).filter(Boolean);
+        parts.forEach((p) => { if (!this.entFixList.includes(p)) this.entFixList.push(p); });
+        this.entFixNew = '';
+      },
+      entFixInput(v) { this.entFixNew = v; if (String(v).indexOf(',') >= 0) this.entFixCommit(); },
+      async saveEntFix() {
+        if (!(this.detail && this.detail.hash === this.entFixHash) || this.entFixBusy) return;
+        this.entFixCommit();                       // 입력창에 남은 값도 확정에 포함
+        const ents = this.entFixList.slice();
+        if (ents.join('|') === (this.detail.entities || []).join('|')) { this.entFixOpen = false; return; }
+        this.entFixBusy = true;
+        try {
+          let r = null;
+          try { r = await (await this._afetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: this.detail.hash, patch: { entities: ents }, reviewer: this.reviewer || '' }) })).json(); } catch (e) {}
+          if (!(r && r.ok)) { this._err((r && r.error) || '엔티티 저장 실패'); return; }
+          this.detail.entities = ents;             // 상세·목록 사본 즉시 반영
+          [((this.rawData || {}).items), ((this.drillData || {}).items), ((this.finalQueue || {}).items), (this.detailNav ? this.detailNav.list : null)].forEach((list) => {
+            const t = (list || []).find((x) => x.hash === this.detail.hash);
+            if (t) { t.entities = ents; if (t.item_meta) t.item_meta.entities = ents; }
+          });
+          this.entFixOpen = false;
+          this.liveToast('엔티티 교정 저장 · 골든 확정 시 정답에 포함됩니다');
+          ((r.missions_completed) || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
+          this.loadEntLookup();                    // 사전 등재 배지 갱신
+          if (this.histOpen) this.loadHistory();   // 작업 이력에 교정 행 반영
+        } finally { this.entFixBusy = false; }
+      },
       entLkTip(name) {
         const e = this.entLookup[name];
         if (!e) return '개체 사전 미등재 · 클릭해 등재·확정할 수 있습니다(관리자)';
