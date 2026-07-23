@@ -9,6 +9,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-07-23 | [콘텐츠 에이전트 · 포털 홈 재정합 (와이어)](https://claude.ai/code/artifact/9c976266-9149-4b76-be24-3a2fe327a22d) |
 | 2026-07-23 | [프리즘 콘텐츠 · 내 뉴스 홈 (위젯 편집)](https://claude.ai/code/artifact/0a331579-e68f-40e1-95dd-0518b879337f) |
 | 2026-07-23 | [프리즘 콘텐츠 · 서비스 플로우 와이어프레임](https://claude.ai/code/artifact/8394cdfb-6293-4522-9a40-de60aa3b1116) |
 | 2026-07-22 | [프리즘 주간회의 · 2026.07.22](https://claude.ai/code/artifact/188e7ca9-1f0f-4de5-a963-797a83e227e6) |

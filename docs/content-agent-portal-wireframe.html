@@ -1,0 +1,334 @@
+<title>콘텐츠 에이전트 · 포털 홈 재정합 (와이어)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<style>
+/* ─────────────────────────────────────────────────────────────
+   콘텐츠 에이전트 · 실제 포털 홈(Daum) 재정합 와이어
+   전제: 포털 홈의 콘텐츠 모듈 = 위젯. 시스템 영역(검색·로그인·날씨)은 편집 불가.
+   얹는 것: ① 상주 에이전트 버튼 ② 편집 모드(크기·순서·삭제·추가) ③ 위젯 갤러리=실제 모듈 ④ 왜?+피드백
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --paper:#eef0f3; --frame:#fff; --frame-2:#f4f6f8; --ink:#1b1f26; --ink-2:#59616e;
+  --ink-3:#969da7; --line:#c9cfd8; --line-2:#dde1e8; --ph:#dfe3e9; --ph-2:#eceff3;
+  --note:#2f6bd8; --note-bg:#e6eefb; --hot:#d1622b; --hot-bg:#f8e6db; --sys:#8a93a3;
+  --d-field:#3a74d6; --d-tone:#159a83; --d-topic:#b47b1a; --d-follow:#bf4487;
+  --sans:"Pretendard",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace; --r:10px;
+}
+@media (prefers-color-scheme: dark){:root{
+  --paper:#0c0f14; --frame:#161b23; --frame-2:#1b212b; --ink:#eef1f6; --ink-2:#aab3c0;
+  --ink-3:#6a747f; --line:#333d4b; --line-2:#28303c; --ph:#2a323f; --ph-2:#20272f;
+  --note:#6c93f0; --note-bg:#1a2440; --hot:#e58a56; --hot-bg:#33210f; --sys:#5c6572;
+  --d-field:#6a92f2; --d-tone:#33b79e; --d-topic:#d19a3e; --d-follow:#dd6aa5; }}
+:root[data-theme="light"]{--paper:#eef0f3;--frame:#fff;--frame-2:#f4f6f8;--ink:#1b1f26;--ink-2:#59616e;--ink-3:#969da7;--line:#c9cfd8;--line-2:#dde1e8;--ph:#dfe3e9;--ph-2:#eceff3;--note:#2f6bd8;--note-bg:#e6eefb;--hot:#d1622b;--hot-bg:#f8e6db;--sys:#8a93a3;--d-field:#3a74d6;--d-tone:#159a83;--d-topic:#b47b1a;--d-follow:#bf4487;}
+:root[data-theme="dark"]{--paper:#0c0f14;--frame:#161b23;--frame-2:#1b212b;--ink:#eef1f6;--ink-2:#aab3c0;--ink-3:#6a747f;--line:#333d4b;--line-2:#28303c;--ph:#2a323f;--ph-2:#20272f;--note:#6c93f0;--note-bg:#1a2440;--hot:#e58a56;--hot-bg:#33210f;--sys:#5c6572;--d-field:#6a92f2;--d-tone:#33b79e;--d-topic:#d19a3e;--d-follow:#dd6aa5;}
+
+*{box-sizing:border-box;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased;}
+h1,h2,h3,h4{margin:0;letter-spacing:-.01em;text-wrap:balance;}
+:focus-visible{outline:2px solid var(--note);outline-offset:2px;}
+.page{max-width:1200px;margin:0 auto;padding:34px 22px 90px;}
+
+.head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:8px;}
+.head h1{font-size:22px;font-weight:800;}
+.head .sub{color:var(--ink-2);font-size:13.5px;margin-top:4px;max-width:760px;}
+.head .sub b{color:var(--ink);}
+.stamp{margin-left:auto;font:600 10.5px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);border:1px dashed var(--line);border-radius:999px;padding:7px 12px;white-space:nowrap;}
+
+/* 매핑 스트립 + 범례 */
+.strip{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--frame);border:1px solid var(--line-2);border-radius:var(--r);padding:11px 14px;margin:16px 0 10px;font-size:12px;}
+.strip .lt{font-weight:800;color:var(--ink-2);margin-right:2px;}
+.map{display:inline-flex;align-items:center;gap:5px;color:var(--ink-2);border:1px solid var(--line-2);border-radius:999px;padding:4px 9px;}
+.map b{color:var(--note);}
+.legend{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:9px 14px;background:var(--frame);border:1px solid var(--line-2);border-radius:var(--r);margin-bottom:26px;font-size:12px;}
+.legend .mk{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);font-weight:600;}
+.sw{width:12px;height:12px;border-radius:3px;flex:none;}
+.sw.wgt{border:1.5px dashed var(--note);} .sw.sys{background:repeating-linear-gradient(45deg,var(--ph) 0 3px,var(--frame-2) 3px 6px);border:1px solid var(--line);}
+
+.sec-title{font-size:16px;font-weight:800;margin:32px 0 6px;padding-bottom:9px;border-bottom:2px solid var(--line);}
+.sec-sub{font-size:12.5px;color:var(--ink-2);margin:0 0 16px;}
+.screens{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;}
+.platlabel{display:inline-flex;align-items:center;gap:6px;font:700 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;}
+.platlabel .b{border:1px solid var(--line);border-radius:4px;padding:2px 5px;}
+
+/* PC 포털 프레임 */
+.wf-web{width:720px;flex:none;max-width:100%;}
+.web-screen{background:var(--frame);border:1.5px solid var(--line);border-radius:var(--r);overflow:hidden;position:relative;}
+.web-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--frame-2);border-bottom:1px solid var(--line-2);}
+.dots3{display:flex;gap:5px;} .dots3 i{width:8px;height:8px;border-radius:50%;background:var(--line);display:block;}
+.web-url{flex:1;max-width:180px;height:15px;background:var(--ph);border-radius:5px;}
+.tabpill{margin-left:auto;font:600 11px/1 var(--sans);color:var(--note);border:1px solid var(--note);border-radius:999px;padding:5px 11px;}
+
+.portal-top{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--frame);}
+.plogo{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--d-field),var(--d-follow));flex:none;}
+.psearch{flex:1;max-width:460px;margin:0 auto;height:32px;border:1.5px solid var(--note);border-radius:999px;display:flex;align-items:center;padding:0 14px;color:var(--ink-3);font-size:12px;}
+.sys-tag{font:600 8.5px/1 var(--mono);color:var(--sys);border:1px solid var(--line);border-radius:4px;padding:2px 5px;}
+.pgrid{display:grid;grid-template-columns:1.7fr 1fr;gap:12px;padding:12px;background:var(--frame-2);}
+.pcol{display:flex;flex-direction:column;gap:11px;}
+
+/* 위젯(모듈) */
+.wgt{border:1px solid var(--line-2);border-radius:10px;background:var(--frame);padding:11px;position:relative;}
+.wgt.editing{border-style:dashed;border-color:var(--note);}
+.wgt.sys{background:repeating-linear-gradient(45deg,var(--frame) 0 8px,var(--frame-2) 8px 16px);}
+.wgt-hd{display:flex;align-items:center;gap:7px;margin-bottom:9px;}
+.wgt-hd .wn{font-size:12.5px;font-weight:800;}
+.wgt-hd .tabs{display:flex;gap:8px;margin-left:4px;}
+.wgt-hd .tabs span{font-size:10px;color:var(--ink-3);font-weight:700;}
+.wgt-hd .tabs span.on{color:var(--note);}
+.wgt-hd .info{color:var(--ink-3);font-size:11px;}
+.wgt .rm{position:absolute;top:-8px;left:-8px;width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--frame);font:700 12px/20px var(--sans);text-align:center;}
+.wgt .wsize{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-left:auto;flex:none;}
+.wgt .wsize span{font:700 9px/1 var(--sans);padding:4px 7px;color:var(--ink-3);}
+.wgt .wsize span.on{background:var(--note);color:#fff;}
+.wgt .drag{color:var(--ink-3);font-size:12px;}
+.sys-badge{margin-left:auto;font:600 8.5px/1 var(--mono);color:var(--sys);border:1px solid var(--line);border-radius:4px;padding:3px 6px;}
+
+.nrow{display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line-2);}
+.nrow:first-of-type{border-top:0;}
+.nrow .nt{flex:1;font-size:11px;color:var(--ink-2);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nrow .nsrc{font-size:9.5px;color:var(--ink-3);}
+.nrow .th{width:34px;height:24px;border-radius:4px;background:var(--ph);flex:none;position:relative;}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
+.chip{font:700 10px/1 var(--sans);color:var(--ink-3);border-bottom:2px solid transparent;padding-bottom:3px;}
+.chip.on{color:var(--ink);border-bottom-color:var(--note);}
+
+/* 왜/피드백 */
+.why-inline{background:var(--note-bg);border:1px solid var(--note);border-radius:7px;padding:7px 9px;margin-top:7px;font-size:10.5px;color:var(--ink-2);}
+.why-inline b{color:var(--note);}
+.fbs{display:inline-flex;gap:5px;margin-left:4px;}
+.fb{font:700 9px/1 var(--sans);border-radius:999px;padding:3px 8px;border:1px solid var(--line);color:var(--ink-3);background:var(--frame);}
+.fb.up{border-color:var(--note);color:var(--note);}
+
+/* 에이전트 버튼/패널 */
+.fab{position:absolute;right:14px;bottom:14px;z-index:20;display:flex;align-items:center;gap:8px;background:var(--note);color:#fff;border-radius:999px;padding:10px 15px 10px 12px;box-shadow:0 6px 18px rgba(20,40,90,.32);font:700 11.5px/1 var(--sans);}
+.fab .av{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.32);flex:none;}
+.agent-panel{position:absolute;right:14px;bottom:14px;z-index:21;width:250px;background:var(--frame);border:1.5px solid var(--note);border-radius:14px;box-shadow:0 14px 34px rgba(10,20,50,.3);padding:11px 12px 12px;}
+.agent-hd{display:flex;align-items:center;gap:7px;margin-bottom:9px;}
+.agent-hd .av{width:22px;height:22px;border-radius:50%;background:var(--note);flex:none;}
+.agent-hd .nm{font-size:12px;font-weight:800;} .agent-hd .x{margin-left:auto;color:var(--ink-3);}
+.bubble{max-width:90%;padding:7px 10px;border-radius:12px;font-size:11px;line-height:1.45;margin-bottom:6px;}
+.bubble.me{background:var(--note);color:#fff;margin-left:auto;border-bottom-right-radius:4px;}
+.bubble.bot{background:var(--frame-2);border:1px solid var(--line-2);border-bottom-left-radius:4px;}
+
+/* 위젯 갤러리 */
+.gallery{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.gal-tile{border:1px solid var(--line-2);border-radius:9px;padding:8px;background:var(--frame);}
+.gal-tile.on{border-color:var(--note);background:var(--note-bg);}
+.gt-prev{height:34px;border-radius:5px;background:var(--ph-2);border:1px solid var(--line-2);margin-bottom:6px;display:flex;align-items:flex-end;gap:2px;padding:4px;}
+.gt-prev .b{background:var(--ph);border-radius:2px;flex:1;height:55%;} .gt-prev .b:first-child{height:100%;}
+.gt-name{font-size:11px;font-weight:800;display:flex;align-items:center;gap:5px;}
+.gt-desc{font-size:9.5px;color:var(--ink-3);margin-top:2px;}
+.cdot{width:8px;height:8px;border-radius:3px;flex:none;}
+.cdot.field{background:var(--d-field)}.cdot.tone{background:var(--d-tone)}.cdot.topic{background:var(--d-topic)}.cdot.follow{background:var(--d-follow)}.cdot.hot{background:var(--hot)}
+
+/* 모바일 */
+.wf-app{width:290px;flex:none;}
+.app-screen{background:var(--frame);border:2px solid var(--line);border-radius:26px;overflow:hidden;position:relative;padding-top:6px;min-height:560px;}
+.app-notch{width:80px;height:18px;background:var(--line);border-radius:0 0 12px 12px;margin:0 auto 4px;}
+.m-top{display:flex;align-items:center;gap:8px;padding:6px 14px 10px;}
+.m-top .psearch{max-width:none;flex:1;height:30px;}
+.m-cats{display:flex;gap:11px;padding:2px 14px 9px;overflow:hidden;border-bottom:1px solid var(--line-2);}
+.m-cats span{font-size:11px;font-weight:700;color:var(--ink-3);white-space:nowrap;padding-bottom:5px;border-bottom:2px solid transparent;}
+.m-cats span.on{color:var(--ink);border-bottom-color:var(--note);}
+.m-body{padding:11px 14px;display:flex;flex-direction:column;gap:11px;}
+.ph-btn{display:inline-flex;align-items:center;justify-content:center;border:1.5px solid var(--line);border-radius:7px;padding:8px 12px;font-size:11px;font-weight:700;color:var(--ink-2);background:var(--frame);}
+.ph-btn.pri{background:var(--note);color:#fff;border-color:var(--note);}
+.ph-btn.full{display:flex;width:100%;}
+.sheet-grip{width:34px;height:4px;border-radius:999px;background:var(--line);margin:2px auto 10px;}
+.reg-chips{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;}
+.reg-chips span{font:700 10px/1 var(--sans);color:var(--ink-3);border:1px solid var(--line-2);border-radius:999px;padding:4px 9px;}
+.reg-chips span.on{background:var(--ink);color:var(--frame);border-color:var(--ink);}
+
+.notes{margin-top:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;}
+.note{display:flex;gap:10px;background:var(--frame);border:1px solid var(--line-2);border-left:3px solid var(--note);border-radius:8px;padding:11px 13px;}
+.note .pin{flex:none;width:20px;height:20px;border-radius:50%;background:var(--note);color:#fff;font:700 11px/20px var(--mono);text-align:center;}
+.note .nb h4{font-size:12.5px;font-weight:800;margin-bottom:3px;}
+.note .nb p{font-size:12px;color:var(--ink-2);margin:0;line-height:1.5;}
+.marker{display:inline-flex;width:17px;height:17px;border-radius:50%;background:var(--note);color:#fff;font:700 10px/17px var(--mono);text-align:center;justify-content:center;vertical-align:middle;}
+.small{font-size:11px;color:var(--ink-3);font-weight:600;}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;}}
+</style>
+
+<div class="page">
+  <header class="head">
+    <div>
+      <h1>콘텐츠 에이전트 · 포털 홈 재정합</h1>
+      <p class="sub">실제 포털 홈(Daum 참조)의 <b>콘텐츠 모듈이 곧 위젯</b>이다. 콘텐츠 에이전트는 이 홈 위에 얹혀 사용자가 위젯을 <b>고르고·크기·순서·삭제</b>하고, <b>왜 떴는지 + 피드백</b>까지 하게 만든다. 검색·로그인·날씨 같은 시스템 영역은 편집 대상이 아니다.</p>
+    </div>
+    <span class="stamp">재정합 · v0.1</span>
+  </header>
+
+  <div class="strip">
+    <span class="lt">실제 모듈 → 위젯</span>
+    <span class="map">이 시각 추천뉴스 → <b>나를 위한</b></span>
+    <span class="map">실시간 → <b>지금 인기</b></span>
+    <span class="map">뉴스(주요·언론사·심층) → <b>주제·성격</b></span>
+    <span class="map">우리지역 소식 → <b>지역</b></span>
+    <span class="map">라이브·쇼핑 → <b>라이브·쇼핑</b></span>
+  </div>
+  <div class="legend">
+    <span class="mk"><span class="sw wgt"></span>위젯 (편집 가능)</span>
+    <span class="mk"><span class="sw sys"></span>시스템 영역 (편집 불가)</span>
+    <span class="small" style="margin-left:auto"><span class="marker">n</span> 아래 설명과 연결</span>
+  </div>
+
+  <!-- ═══ PC 평상시 ═══ -->
+  <h2 class="sec-title">PC · 평상시 (에이전트 상주)</h2>
+  <p class="sec-sub">홈은 그대로 쓰되, 오른쪽 아래에 콘텐츠 에이전트가 상주하고 추천 모듈엔 "왜?"와 피드백이 붙는다.</p>
+  <div class="screens">
+    <div class="wf-web">
+      <div class="platlabel"><span class="b">PC</span> 포털 홈</div>
+      <div class="web-screen">
+        <div class="web-bar"><span class="dots3"><i></i><i></i><i></i></span><span class="web-url"></span><span class="tabpill">내 홈</span></div>
+        <div class="portal-top"><span class="plogo"></span><span class="psearch">검색 <span class="sys-tag" style="margin-left:auto">시스템</span></span></div>
+        <div class="pgrid">
+          <div class="pcol">
+            <div class="wgt"><div class="wgt-hd"><span class="cdot topic"></span><span class="wn">뉴스</span><span class="tabs"><span class="on">주요</span><span>추천</span><span>언론사</span><span>심층탐사</span></span></div>
+              <div class="nrow"><span class="th"></span><span class="nt">李대통령 "서울 15억 중과 땐 엄청난 조세저항"</span><span class="nsrc">한국경제</span></div>
+              <div class="nrow"><span class="th"></span><span class="nt">호남 반도체 클러스터, 전력은 대체불가</span><span class="nsrc">뉴시스</span></div>
+              <div class="nrow"><span class="nt">"60만전자 간다" 구글 AI 투자 최대 수혜</span><span class="nsrc">매일신문</span></div>
+            </div>
+            <div class="wgt"><div class="wgt-hd"><span class="cdot" style="background:var(--ink-3)"></span><span class="wn">라이브</span></div>
+              <div style="display:flex;gap:7px"><span class="th" style="flex:1;height:44px"></span><span class="th" style="flex:1;height:44px"></span><span class="th" style="flex:1;height:44px"></span></div>
+            </div>
+          </div>
+          <div class="pcol">
+            <div class="wgt sys"><div class="wgt-hd"><span class="wn">로그인 · 날씨</span><span class="sys-badge">시스템 <span class="marker">4</span></span></div><div class="nrow" style="border:0"><span class="nt">계정 로그인 · 백현동 28.8°</span></div></div>
+            <div class="wgt"><div class="wgt-hd"><span class="cdot follow"></span><span class="wn">이 시각 추천뉴스</span><span class="info">ⓘ</span></div>
+              <div class="nrow"><span class="nt">부산진해경제자유구역 기업 투자 러시</span></div>
+              <div class="why-inline"><b>왜 이 소식?</b> 요즘 '경제·투자'를 자주 봤어요<span class="fbs"><span class="fb up">좋아요</span><span class="fb">관심없음</span></span> <span class="marker">3</span></div>
+            </div>
+            <div class="wgt"><div class="wgt-hd"><span class="cdot hot"></span><span class="wn">쇼핑</span></div><div class="nrow" style="border:0"><span class="th"></span><span class="nt">여름 신상 · 최대 58% 할인</span></div></div>
+          </div>
+        </div>
+        <div class="fab"><span class="av"></span>내 콘텐츠 매니저 <span class="marker">1</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:250px;max-width:340px">
+      <div class="notes" style="margin-top:26px;grid-template-columns:1fr">
+        <div class="note"><span class="pin">1</span><div class="nb"><h4>상주 에이전트</h4><p>홈을 안 바꾸고도 오른쪽 아래에 늘 떠 있다. 누르면 위젯을 말로 바꾸거나 편집 모드로.</p></div></div>
+        <div class="note"><span class="pin">3</span><div class="nb"><h4>추천 모듈에 왜?+피드백</h4><p>"이 시각 추천뉴스"의 ⓘ를 전면화. 왜 떴는지 한 줄 + 좋아요/관심없음으로 바로 학습.</p></div></div>
+        <div class="note"><span class="pin">4</span><div class="nb"><h4>시스템은 편집 불가</h4><p>검색·로그인·날씨는 포털 기본이라 위젯 편집 대상에서 제외. 빗금으로 구분.</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ PC 편집 모드 ═══ -->
+  <h2 class="sec-title">PC · 편집 모드 + 위젯 갤러리</h2>
+  <p class="sec-sub">에이전트를 열면 위젯이 편집 상태(흔들림)로. 끌어서 순서, 크기 바꾸고, 지우고, 갤러리에서 실제 모듈을 골라 추가.</p>
+  <div class="screens">
+    <div class="wf-web">
+      <div class="platlabel"><span class="b">PC</span> 홈 편집 중</div>
+      <div class="web-screen">
+        <div class="web-bar"><span class="dots3"><i></i><i></i><i></i></span><span class="web-url"></span><span class="tabpill" style="border-color:var(--note)">편집 중 ●</span></div>
+        <div class="portal-top"><span class="plogo"></span><span class="psearch">검색<span class="sys-tag" style="margin-left:auto">시스템</span></span></div>
+        <div class="pgrid">
+          <div class="pcol">
+            <div class="wgt editing"><span class="rm">−</span><div class="wgt-hd"><span class="drag">⠿</span><span class="cdot topic"></span><span class="wn">뉴스</span><span class="wsize"><span>작게</span><span>보통</span><span class="on">크게</span></span></div>
+              <div class="nrow"><span class="th"></span><span class="nt">李대통령 "서울 15억 중과 땐…"</span></div>
+              <div class="nrow"><span class="nt">호남 반도체 클러스터, 전력은…</span></div>
+            </div>
+            <div class="wgt editing"><span class="rm">−</span><div class="wgt-hd"><span class="drag">⠿</span><span class="cdot follow"></span><span class="wn">이 시각 추천뉴스</span><span class="wsize"><span>작게</span><span class="on">보통</span><span>크게</span></span></div>
+              <div class="nrow" style="border:0"><span class="nt">부산진해경제자유구역 투자 러시</span></div>
+            </div>
+          </div>
+          <div class="pcol">
+            <div class="wgt" style="border:1.5px solid var(--note)">
+              <div class="wgt-hd"><span class="cdot" style="background:var(--note)"></span><span class="wn">＋ 위젯 추가</span> <span class="marker" style="margin-left:auto">2</span></div>
+              <div class="gallery">
+                <div class="gal-tile on"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot follow"></span>나를 위한</div></div>
+                <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot hot"></span>지금 인기</div></div>
+                <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot topic"></span>우리지역</div></div>
+                <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot field"></span>스포츠</div></div>
+                <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot field"></span>머니</div></div>
+                <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot tone"></span>심층탐사</div></div>
+              </div>
+              <div style="margin-top:9px"><span class="ph-btn pri full">이 위젯 추가 <span class="marker">5</span></span></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:9px;padding:0 12px 12px;background:var(--frame-2)"><span class="ph-btn">되돌리기</span><span class="ph-btn pri" style="margin-left:auto">저장</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:250px;max-width:340px">
+      <div class="notes" style="margin-top:26px;grid-template-columns:1fr">
+        <div class="note"><span class="pin">2</span><div class="nb"><h4>편집 = 홈 위젯 다루듯</h4><p>흔들리는 위젯을 끌어서 순서, 크기(작게·보통·크게), 지우기. 익숙한 홈 화면 편집 그대로.</p></div></div>
+        <div class="note"><span class="pin">5</span><div class="nb"><h4>갤러리 = 실제 모듈</h4><p>추상 "재료"가 아니라 이 홈의 실제 모듈(나를 위한·인기·우리지역·스포츠·머니·심층탐사…)을 골라 얹는다.</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 모바일 ═══ -->
+  <h2 class="sec-title">모바일 · 평상시 + 위젯 추가</h2>
+  <p class="sec-sub">카테고리 탭·모듈 스택은 그대로. 플로팅 에이전트가 떠 있고, 위젯 추가는 아래 시트로.</p>
+  <div class="screens">
+
+    <!-- 모바일 평상시 -->
+    <div class="wf-app">
+      <div class="platlabel"><span class="b">APP</span> 홈 (에이전트 상주)</div>
+      <div class="app-screen">
+        <div class="app-notch"></div>
+        <div class="m-top"><span class="plogo"></span><span class="psearch">검색</span></div>
+        <div class="m-cats"><span class="on">뉴스</span><span>라이브</span><span>연예</span><span>쇼핑</span><span>스포츠</span><span>머니</span></div>
+        <div class="m-body">
+          <div class="wgt"><div class="wgt-hd"><span class="cdot topic"></span><span class="wn">주요 뉴스</span></div>
+            <div class="nrow"><span class="nt">李대통령 "서울 15억 중과 땐…"</span></div>
+            <div class="nrow"><span class="nt">"도난 카드로 450만원 인출됐는데…"</span></div>
+          </div>
+          <div class="wgt"><div class="wgt-hd"><span class="cdot follow"></span><span class="wn">이 시각 추천뉴스</span><span class="info">ⓘ</span></div>
+            <div class="nrow" style="border:0"><span class="nt">부산진해경제자유구역 투자 러시</span></div>
+            <div class="why-inline"><b>왜 이 소식?</b> 요즘 '경제' 자주 봄 <span class="fbs"><span class="fb up">좋아요</span><span class="fb">관심없음</span></span></div>
+          </div>
+          <div class="wgt"><div class="wgt-hd"><span class="cdot topic"></span><span class="wn">우리지역 소식</span></div>
+            <div class="reg-chips"><span class="on">경기</span><span>강원</span><span>충청</span><span>경상</span></div>
+            <div class="nrow" style="border:0"><span class="nt">연극부터 국악까지…취향 따라 즐겨볼까</span></div>
+          </div>
+        </div>
+        <div class="fab"><span class="av"></span>매니저</div>
+      </div>
+    </div>
+
+    <!-- 모바일 위젯 추가 시트 -->
+    <div class="wf-app">
+      <div class="platlabel"><span class="b">APP</span> 위젯 추가 (아래 시트)</div>
+      <div class="app-screen">
+        <div class="app-notch"></div>
+        <div style="opacity:.4;padding:10px 14px"><div class="wgt"><div class="wgt-hd"><span class="cdot topic"></span><span class="wn">주요 뉴스</span></div><div class="nrow" style="border:0"><span class="nt">李대통령 "서울 15억…"</span></div></div></div>
+        <div style="position:absolute;inset:0;background:rgba(10,14,20,.35)"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;background:var(--frame);border-radius:18px 18px 0 0;border-top:2px solid var(--line);padding:10px 14px 16px;box-shadow:0 -8px 24px rgba(0,0,0,.15)">
+          <div class="sheet-grip"></div>
+          <div style="display:flex;align-items:center;margin-bottom:10px"><b style="font-size:13px">위젯 추가</b><span class="ph-btn pri" style="margin-left:auto;padding:6px 12px">닫기</span></div>
+          <div class="gallery">
+            <div class="gal-tile on"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot follow"></span>나를 위한</div><div class="gt-desc">자주 본 것</div></div>
+            <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot hot"></span>지금 인기</div><div class="gt-desc">다들 보는</div></div>
+            <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot topic"></span>우리지역</div><div class="gt-desc">경기·강원…</div></div>
+            <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot field"></span>스포츠</div><div class="gt-desc">분야</div></div>
+          </div>
+          <div style="margin-top:8px"><span class="ph-btn pri full">크기 고르고 홈에 추가 →</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:230px;max-width:320px">
+      <div class="platlabel">대화로도 추가 <span class="marker">6</span></div>
+      <div class="agent-panel" style="position:static;width:auto">
+        <div class="agent-hd"><span class="av"></span><span class="nm">내 콘텐츠 매니저</span></div>
+        <div class="bubble me">머니 뉴스 위젯 위로 올려줘</div>
+        <div class="bubble bot">머니 위젯을 맨 위로 옮기고 크게 키웠어요. 되돌릴까요?</div>
+      </div>
+      <p class="small" style="margin-top:10px;line-height:1.6">시트로 고르거나, 매니저에게 말로. 둘 다 같은 위젯을 다룬다. "우리지역을 경기로", "인기 위젯 빼줘"처럼.</p>
+    </div>
+  </div>
+
+  <!-- 주석 -->
+  <div class="notes">
+    <div class="note"><span class="pin">1</span><div class="nb"><h4>얹히는 레이어</h4><p>기존 포털 홈을 갈아엎지 않는다. 그 위에 에이전트 · 편집 · 왜/피드백만 얹는다.</p></div></div>
+    <div class="note"><span class="pin">2</span><div class="nb"><h4>모듈 = 위젯</h4><p>뉴스·추천·지역·라이브·쇼핑 모듈이 곧 편집 가능한 위젯. 크기·순서·삭제는 홈 위젯 다루듯.</p></div></div>
+    <div class="note"><span class="pin">3</span><div class="nb"><h4>왜?+피드백이 킥</h4><p>"이 시각 추천뉴스" ⓘ를 전면화. 왜 떴는지 + 좋아요/관심없음으로 그 자리에서 학습.</p></div></div>
+    <div class="note"><span class="pin">6</span><div class="nb"><h4>시트 = 대화, 한 대상</h4><p>갤러리 시트로 고르든 매니저에게 말하든 결과는 같다. 손과 말, 둘 다 열어둔다.</p></div></div>
+  </div>
+
+  <p class="small" style="text-align:center;margin-top:24px">포털 홈 재정합 와이어 · 실제 모듈을 위젯으로. 브랜딩·픽셀이 아니라 구조·위치 확인용.</p>
+</div>
