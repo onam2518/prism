@@ -118,6 +118,64 @@ class TestTier2DefsHelp(unittest.TestCase):
             self.assertIn(k, D.INTENT_VALUE_DEFS, k)
 
 
+class TestRenamedTier2(unittest.TestCase):
+    """스타일&패션 Tier2 개명 계약: 신표기 사전 등재 · 구표기 제거 · 구표기 하위 호환 흡수."""
+
+    def test_new_names_in_dictionary(self):
+        from prism import dictionaries as D
+        t2s = D.CONTENT_CATEGORY_TIER2["Style and Fashion"]
+        self.assertEqual(t2s, ["Fashion", "Beauty", "Accessories"])
+        self.assertEqual(D.TIER2_KO["Fashion"], "패션")
+        self.assertEqual(D.TIER2_KO["Beauty"], "뷰티")
+        self.assertEqual(D.TIER2_KO["Accessories"], "액세서리")
+        self.assertIn("Fashion", D.TIER2_DEFS)
+        self.assertIn("Beauty", D.TIER2_DEFS)
+
+    def test_old_names_absent(self):
+        from prism import dictionaries as D
+        for old in ("Fashion Trends", "Personal Care"):
+            self.assertNotIn(old, D.CONTENT_CATEGORY_TIER2["Style and Fashion"])
+            self.assertNotIn(old, D.TIER2_KO)
+            self.assertNotIn(old, D.TIER2_DEFS)
+        self.assertEqual(D.RENAMED_TIER2,
+                         {"Fashion Trends": "Fashion", "Personal Care": "Beauty"})
+
+    def test_normalize_absorbs_old_path_form(self):
+        from prism import dictionaries as D
+        self.assertEqual(D.normalize_content_category("Style and Fashion / Personal Care"),
+                         "Style and Fashion / Beauty")
+        self.assertEqual(D.normalize_content_category("Style and Fashion / Fashion Trends"),
+                         "Style and Fashion / Fashion")
+
+    def test_normalize_absorbs_old_bare_tier2(self):
+        from prism import dictionaries as D
+        self.assertEqual(D.normalize_content_category("Personal Care"),
+                         "Style and Fashion / Beauty")
+        self.assertEqual(D.normalize_content_category("Fashion Trends"),
+                         "Style and Fashion / Fashion")
+
+    def test_normalize_new_names_idempotent(self):
+        from prism import dictionaries as D
+        self.assertEqual(D.normalize_content_category("Style and Fashion / Beauty"),
+                         "Style and Fashion / Beauty")
+        self.assertEqual(D.normalize_content_category("Style and Fashion / Fashion"),
+                         "Style and Fashion / Fashion")
+        self.assertEqual(D.normalize_content_category("Style and Fashion / Accessories"),
+                         "Style and Fashion / Accessories")
+
+    def test_normalize_list_dedupes_old_and_new(self):
+        from prism import dictionaries as D
+        out = D.normalize_category_list(["Style and Fashion / Personal Care",
+                                         "Style and Fashion / Beauty"])
+        self.assertEqual(out, ["Style and Fashion / Beauty"])   # 구·신 혼재 → 신표기 1건
+
+    def test_category_ko_absorbs_old_names(self):
+        from prism import dictionaries as D
+        self.assertEqual(D.category_ko("Style and Fashion / Personal Care"), "패션·뷰티 / 뷰티")
+        self.assertEqual(D.category_ko("Style and Fashion / Fashion Trends"), "패션·뷰티 / 패션")
+        self.assertEqual(D.category_ko("Personal Care"), "뷰티")   # Tier2 단독 구표기
+
+
 class TestQualityKoNames(unittest.TestCase):
     def test_quality_names_cover_all_metas(self):
         """품질 병기(한글/영문) 전제: 모든 품질 메타 키에 한글 메타명 존재."""
