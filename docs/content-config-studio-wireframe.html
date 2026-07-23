@@ -1,0 +1,327 @@
+<title>프리즘 콘텐츠 · 내 뉴스 홈 (위젯 편집)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<style>
+/* ─────────────────────────────────────────────────────────────
+   내 뉴스 홈 · 위젯 편집 와이어
+   은유: 핸드폰 홈 화면 위젯을 다루듯 뉴스 위젯을 추가·이동·크기 조절
+   흐름: 위젯 추가 → 위젯 선택(갤러리) → 설정(크기·무엇을)
+   원칙: 화면 문구 전부 사용자 말. 공급자 용어(재료·배치·생성·강도·전역·컴포넌트) 배제.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --paper:#eef0f3; --frame:#fff; --frame-2:#f4f6f8; --ink:#1b1f26; --ink-2:#59616e;
+  --ink-3:#969da7; --line:#c9cfd8; --line-2:#dde1e8; --ph:#dfe3e9; --ph-2:#eceff3;
+  --note:#2f6bd8; --note-bg:#e6eefb; --hot:#d1622b; --hot-bg:#f8e6db;
+  --d-field:#3a74d6; --d-tone:#159a83; --d-topic:#b47b1a; --d-follow:#bf4487;
+  --sans:"Pretendard",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace; --r:10px;
+}
+@media (prefers-color-scheme: dark){:root{
+  --paper:#0c0f14; --frame:#161b23; --frame-2:#1b212b; --ink:#eef1f6; --ink-2:#aab3c0;
+  --ink-3:#6a747f; --line:#333d4b; --line-2:#28303c; --ph:#2a323f; --ph-2:#20272f;
+  --note:#6c93f0; --note-bg:#1a2440; --hot:#e58a56; --hot-bg:#33210f;
+  --d-field:#6a92f2; --d-tone:#33b79e; --d-topic:#d19a3e; --d-follow:#dd6aa5; }}
+:root[data-theme="light"]{--paper:#eef0f3;--frame:#fff;--frame-2:#f4f6f8;--ink:#1b1f26;--ink-2:#59616e;--ink-3:#969da7;--line:#c9cfd8;--line-2:#dde1e8;--ph:#dfe3e9;--ph-2:#eceff3;--note:#2f6bd8;--note-bg:#e6eefb;--hot:#d1622b;--hot-bg:#f8e6db;--d-field:#3a74d6;--d-tone:#159a83;--d-topic:#b47b1a;--d-follow:#bf4487;}
+:root[data-theme="dark"]{--paper:#0c0f14;--frame:#161b23;--frame-2:#1b212b;--ink:#eef1f6;--ink-2:#aab3c0;--ink-3:#6a747f;--line:#333d4b;--line-2:#28303c;--ph:#2a323f;--ph-2:#20272f;--note:#6c93f0;--note-bg:#1a2440;--hot:#e58a56;--hot-bg:#33210f;--d-field:#6a92f2;--d-tone:#33b79e;--d-topic:#d19a3e;--d-follow:#dd6aa5;}
+
+*{box-sizing:border-box;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased;}
+h1,h2,h3,h4{margin:0;letter-spacing:-.01em;text-wrap:balance;}
+:focus-visible{outline:2px solid var(--note);outline-offset:2px;}
+.page{max-width:1180px;margin:0 auto;padding:34px 22px 90px;}
+
+.head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:8px;}
+.head h1{font-size:22px;font-weight:800;}
+.head .sub{color:var(--ink-2);font-size:13.5px;margin-top:4px;max-width:740px;}
+.head .sub b{color:var(--ink);}
+.stamp{margin-left:auto;font:600 10.5px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);border:1px dashed var(--line);border-radius:999px;padding:7px 12px;white-space:nowrap;}
+.teammemo{font-size:12px;color:var(--ink-2);background:var(--frame);border:1px solid var(--line-2);border-left:3px solid var(--ink-3);border-radius:8px;padding:9px 13px;margin:14px 0 0;line-height:1.55;}
+.teammemo b{color:var(--ink);}
+
+.pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0 0;}
+.pillar{background:var(--frame);border:1px solid var(--line);border-radius:var(--r);padding:13px 15px;border-top:3px solid var(--note);}
+.pillar h3{font-size:14px;font-weight:800;margin-bottom:4px;}
+.pillar p{font-size:12px;color:var(--ink-2);margin:0;line-height:1.5;}
+.pillar .t{font:700 10px/1 var(--mono);color:var(--note);text-transform:uppercase;letter-spacing:.05em;}
+.kick{background:var(--note-bg);border:1px solid var(--note);border-radius:var(--r);padding:14px 16px;margin:16px 0 28px;}
+.kick .kt{font:800 11px/1 var(--mono);color:var(--note);text-transform:uppercase;letter-spacing:.06em;}
+.kick h3{font-size:15px;margin:6px 0 10px;}
+.kick .kloop{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.kick .kstep{background:var(--frame);border:1px solid var(--line-2);border-radius:8px;padding:7px 11px;font-size:12px;font-weight:700;color:var(--ink);}
+.kick .karrow{color:var(--note);font-weight:800;}
+
+.platlabel{display:inline-flex;align-items:center;gap:6px;font:700 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;}
+.platlabel .b{border:1px solid var(--line);border-radius:4px;padding:2px 5px;}
+.screens{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;}
+.sec-title{font-size:16px;font-weight:800;margin:34px 0 6px;padding-bottom:9px;border-bottom:2px solid var(--line);}
+.sec-sub{font-size:12.5px;color:var(--ink-2);margin:0 0 16px;}
+
+.wf-web{width:640px;flex:none;max-width:100%;}
+.web-screen{background:var(--frame);border:1.5px solid var(--line);border-radius:var(--r);overflow:hidden;}
+.web-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--frame-2);border-bottom:1px solid var(--line-2);}
+.dots3{display:flex;gap:5px;} .dots3 i{width:8px;height:8px;border-radius:50%;background:var(--line);display:block;}
+.web-url{flex:1;max-width:200px;height:16px;background:var(--ph);border-radius:5px;}
+.tabpill{margin-left:auto;font:600 11px/1 var(--sans);color:var(--note);border:1px solid var(--note);border-radius:999px;padding:5px 11px;}
+.wf-app{width:280px;flex:none;}
+.app-screen{background:var(--frame);border:2px solid var(--line);border-radius:26px;overflow:hidden;position:relative;padding-top:6px;}
+.app-notch{width:80px;height:18px;background:var(--line);border-radius:0 0 12px 12px;margin:0 auto 4px;}
+.app-status{display:flex;padding:2px 18px 6px;font:700 10px/1 var(--sans);color:var(--ink-3);}
+.app-status .r{margin-left:auto;letter-spacing:2px;}
+.m-hd{display:flex;align-items:center;padding:6px 16px 10px;}
+.m-hd b{font-size:14px;} .m-hd .done{margin-left:auto;background:var(--note);color:#fff;border-radius:999px;padding:6px 13px;font:700 11px/1 var(--sans);}
+.m-hd .back{font-size:12px;color:var(--ink-3);font-weight:700;}
+
+.ph-img{background:var(--ph);border-radius:5px;position:relative;}
+.ph-img::before,.ph-img::after{content:"";position:absolute;inset:0;background:linear-gradient(45deg,transparent 49%,var(--line) 49% 51%,transparent 51%);}
+.ph-img::after{background:linear-gradient(-45deg,transparent 49%,var(--line) 49% 51%,transparent 51%);}
+.ph-line{height:9px;background:var(--ph);border-radius:4px;margin:5px 0;}
+.ph-line.t{height:11px;background:var(--ink-3);opacity:.5;}
+.w90{width:90%}.w80{width:80%}.w70{width:70%}.w60{width:60%}.w50{width:50%}
+.small{font-size:11px;color:var(--ink-3);font-weight:600;}
+.lab{font:700 10px/1 var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin:0 0 9px;}
+.cdot{width:8px;height:8px;border-radius:3px;flex:none;}
+.cdot.field{background:var(--d-field)}.cdot.tone{background:var(--d-tone)}.cdot.topic{background:var(--d-topic)}.cdot.follow{background:var(--d-follow)}
+.ph-btn{display:inline-flex;align-items:center;justify-content:center;border:1.5px solid var(--line);border-radius:7px;padding:9px 13px;font-size:12px;font-weight:700;color:var(--ink-2);background:var(--frame);}
+.ph-btn.pri{background:var(--note);color:#fff;border-color:var(--note);}
+.ph-btn.full{display:flex;width:100%;}
+.pad-s{padding:0 16px 14px;}
+
+/* 위젯 갤러리 */
+.gallery{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.gal-tile{border:1px solid var(--line-2);border-radius:9px;padding:9px;background:var(--frame);}
+.gal-tile.on{border-color:var(--note);border-width:1.5px;background:var(--note-bg);}
+.gt-prev{height:42px;border-radius:6px;background:var(--ph-2);border:1px solid var(--line-2);margin-bottom:7px;display:flex;align-items:flex-end;gap:3px;padding:5px;}
+.gt-prev .b{background:var(--ph);border-radius:2px;flex:1;height:60%;}
+.gt-prev .b:first-child{height:100%;}
+.gt-name{font-size:11.5px;font-weight:800;display:flex;align-items:center;gap:5px;}
+.gt-desc{font-size:10px;color:var(--ink-3);margin-top:3px;line-height:1.4;}
+
+/* 위젯 크기 선택 */
+.sizepick{display:flex;gap:10px;}
+.sizeopt{flex:1;text-align:center;border:1.5px solid var(--line-2);border-radius:9px;padding:11px 6px;}
+.sizeopt.on{border-color:var(--note);background:var(--note-bg);}
+.sizeopt .sz{margin:0 auto 8px;border:1px solid var(--line);border-radius:5px;background:var(--ph-2);}
+.sizeopt.s1 .sz{width:26px;height:26px;} .sizeopt.s2 .sz{width:48px;height:28px;} .sizeopt.s3 .sz{width:48px;height:44px;}
+.sizeopt .sl{font-size:11px;font-weight:800;color:var(--ink-2);}
+.sizeopt.on .sl{color:var(--note);}
+.sizeopt .sh{font-size:9.5px;color:var(--ink-3);margin-top:2px;}
+
+/* 홈 위젯 보드 */
+.home-board{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.home-board.app-cols{grid-template-columns:1fr;}
+.wgt{border:1px solid var(--line-2);border-radius:11px;background:var(--frame);padding:11px;position:relative;}
+.wgt.span2{grid-column:1 / -1;}
+.wgt.editing{border-style:dashed;border-color:var(--note);}
+.wgt-hd{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+.wgt-hd .wn{font-size:12px;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wgt-hd .why{font:600 9px/1 var(--mono);color:var(--ink-3);}
+.wgt .rm{position:absolute;top:-8px;left:-8px;width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--frame);font:700 12px/20px var(--sans);text-align:center;}
+.wgt .wsize{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-left:auto;flex:none;}
+.wgt .wsize span{font:700 9px/1 var(--sans);padding:4px 7px;color:var(--ink-3);}
+.wgt .wsize span.on{background:var(--note);color:#fff;}
+.wgt .drag{color:var(--ink-3);font-size:12px;}
+.wgt .pinrow{display:flex;align-items:center;gap:5px;margin-top:6px;font-size:9.5px;color:var(--ink-3);}
+.badge.pin{font:600 9px/1 var(--mono);color:var(--note);border:1px solid var(--note);padding:2px 6px;border-radius:4px;}
+.wgt-add{border:1.5px dashed var(--note);border-radius:11px;background:var(--note-bg);color:var(--note);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;min-height:70px;}
+
+/* 왜/피드백 카드 */
+.src-card{border:1px solid var(--line-2);border-radius:8px;padding:9px 10px;background:var(--frame);}
+.sc-top{display:flex;align-items:center;gap:7px;}
+.sc-name{flex:1;font-size:12px;font-weight:700;color:var(--ink);}
+.sc-why{font-size:10.5px;color:var(--ink-3);margin-top:6px;} .sc-why b{color:var(--note);}
+.sc-fb{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+.fb{font:700 10px/1 var(--sans);border-radius:999px;padding:5px 10px;border:1px solid var(--line);color:var(--ink-2);background:var(--frame);}
+.fb.up{border-color:var(--note);color:var(--note);} .fb.ghost{color:var(--ink-3);}
+.rank{width:18px;height:18px;border-radius:5px;background:var(--hot-bg);color:var(--hot);font:800 10px/18px var(--mono);text-align:center;flex:none;}
+
+/* 새로운 소식 얼마나 */
+.rng-lab{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);font-weight:700;margin-bottom:6px;}
+.rng{height:6px;border-radius:3px;background:var(--ph);position:relative;}
+.rng i{position:absolute;top:50%;left:42%;transform:translate(-50%,-50%);width:15px;height:15px;border-radius:50%;background:var(--note);border:2px solid var(--frame);box-shadow:0 1px 3px rgba(0,0,0,.3);z-index:1;}
+.rng::before{content:"";position:absolute;left:0;top:0;bottom:0;width:42%;background:var(--note);opacity:.3;border-radius:3px;}
+.sum{background:var(--frame-2);border:1px solid var(--line-2);border-radius:8px;padding:11px;font-size:11.5px;color:var(--ink-2);line-height:1.55;}
+.sum b{color:var(--ink);}
+
+.notes{margin-top:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;}
+.note{display:flex;gap:10px;background:var(--frame);border:1px solid var(--line-2);border-left:3px solid var(--note);border-radius:8px;padding:11px 13px;}
+.note.q{border-left-color:var(--hot);}
+.note .pin{flex:none;width:20px;height:20px;border-radius:50%;background:var(--note);color:#fff;font:700 11px/20px var(--mono);text-align:center;}
+.note.q .pin{background:var(--hot);}
+.note .nb h4{font-size:12.5px;font-weight:800;margin-bottom:3px;}
+.note .nb p{font-size:12px;color:var(--ink-2);margin:0;line-height:1.5;}
+.marker{display:inline-flex;width:17px;height:17px;border-radius:50%;background:var(--note);color:#fff;font:700 10px/17px var(--mono);text-align:center;justify-content:center;vertical-align:middle;}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;}}
+</style>
+
+<div class="page">
+  <header class="head">
+    <div>
+      <h1>프리즘 콘텐츠 · 내 뉴스 홈 <span style="color:var(--ink-3);font-weight:700">(위젯 편집)</span></h1>
+      <p class="sub">핸드폰 홈 화면 위젯을 다루듯, <b>뉴스 위젯을 추가하고 옮기고 크기를 바꾼다.</b> 각 위젯은 조건에 맞는 소식으로 알아서 채워지고, 마음에 드는 소식은 고정. 왜 떴는지 설명하고 피드백으로 배운다.</p>
+    </div>
+    <span class="stamp">설정 상세 · v0.3</span>
+  </header>
+
+  <div class="teammemo"><b>용어·구조 점검</b> · 공급자 말(재료·배치·생성·강도·전역·컴포넌트)을 화면에서 뺐다. 단위는 <b>위젯</b>(핸드폰 홈 은유), 흐름은 <b>위젯 추가 → 위젯 선택 → 설정</b>, "강도"는 <b>위젯 크기(작게·보통·크게)</b>로 대체.</div>
+
+  <div class="pillars">
+    <div class="pillar"><div class="t">홈처럼</div><h3>위젯으로 꾸미기</h3><p>핸드폰 홈 위젯처럼 뉴스 위젯을 추가·이동·크기 조절. 익숙한 방식 그대로.</p></div>
+    <div class="pillar"><div class="t">골라 담기</div><h3>위젯 선택</h3><p><b>나를 위한 추천</b>·<b>지금 인기</b>·팔로우·주제 위젯 중 골라 홈에 추가.</p></div>
+    <div class="pillar"><div class="t">내가 정함</div><h3>위젯 크기</h3><p>작게·보통·크게로 얼마나 볼지 결정. 크게 놓을수록 위에 크게 여러 개.</p></div>
+  </div>
+
+  <div class="kick">
+    <div class="kt">이 서비스의 킥</div>
+    <h3>"왜?"를 설명하고, 피드백으로 배운다</h3>
+    <div class="kloop">
+      <span class="kstep">왜 추천했어? <span class="small" style="font-weight:600">위젯마다</span></span>
+      <span class="karrow">+</span>
+      <span class="kstep">왜 이 소식이야? <span class="small" style="font-weight:600">카드마다</span></span>
+      <span class="karrow">→</span>
+      <span class="kstep">맞아요 / 아니요 / 덜 보기</span>
+      <span class="karrow">→</span>
+      <span class="kstep">추천이 나를 더 잘 맞춤</span>
+      <span class="karrow" style="font-size:15px">↺</span>
+    </div>
+  </div>
+
+  <!-- ═══ 위젯 추가 흐름 ═══ -->
+  <h2 class="sec-title">위젯 추가 흐름</h2>
+  <p class="sec-sub">핸드폰 위젯 추가와 같은 순서: <b>① 위젯 추가 → ② 위젯 선택 → ③ 설정</b></p>
+  <div class="screens">
+
+    <!-- ① 위젯 추가 -->
+    <div class="wf-app">
+      <div class="platlabel"><span class="b">APP</span> ① 위젯 추가</div>
+      <div class="app-screen">
+        <div class="app-notch"></div><div class="app-status"><span>9:41</span><span class="r">▮▮▮</span></div>
+        <div class="m-hd"><b>내 뉴스 홈</b><span class="done">완료</span></div>
+        <div class="pad-s">
+          <div class="home-board app-cols">
+            <div class="wgt editing span2"><span class="rm">−</span><div class="wgt-hd"><span class="drag">⠿</span><span class="cdot" style="background:var(--ink-3)"></span><span class="wn">지금 뜨는 소식</span></div><div class="ph-img" style="height:40px"></div></div>
+            <div class="wgt editing"><span class="rm">−</span><div class="wgt-hd"><span class="drag">⠿</span><span class="cdot follow"></span><span class="wn">손흥민</span></div><div class="ph-line w80"></div></div>
+            <div class="wgt-add">＋ 위젯 추가 <span class="marker">1</span></div>
+          </div>
+          <p class="small" style="text-align:center;margin-top:12px">길게 눌러 흔들리면 옮기고 지우기 · 핸드폰 홈처럼</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② 위젯 선택 -->
+    <div class="wf-app">
+      <div class="platlabel"><span class="b">APP</span> ② 위젯 선택</div>
+      <div class="app-screen">
+        <div class="app-notch"></div><div class="app-status"><span>9:41</span><span class="r">▮▮▮</span></div>
+        <div class="m-hd"><span class="back">← 뒤로</span><b style="margin:0 auto">위젯 선택</b></div>
+        <div class="pad-s">
+          <div class="gallery">
+            <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot topic"></span>나를 위한 추천</div><div class="gt-desc">내가 자주 본 것 기반</div></div>
+            <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="rank" style="width:12px;height:12px;font-size:8px;line-height:12px">1</span>지금 많이 보는</div><div class="gt-desc">다들 보는 소식</div></div>
+            <div class="gal-tile on"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot follow"></span>팔로우</div><div class="gt-desc">인물·팀·회사</div></div>
+            <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot topic"></span>주제</div><div class="gt-desc">반도체·금리 등</div></div>
+            <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot field"></span>분야</div><div class="gt-desc">경제·스포츠 등</div></div>
+            <div class="gal-tile"><div class="gt-prev"><span class="b"></span><span class="b"></span></div><div class="gt-name"><span class="cdot tone"></span>깊이 읽기</div><div class="gt-desc">긴 글·분석 위주</div></div>
+          </div>
+          <div style="margin-top:12px"><span class="ph-btn pri full">이 위젯으로 <span class="marker">2</span></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ 설정 -->
+    <div class="wf-app">
+      <div class="platlabel"><span class="b">APP</span> ③ 설정</div>
+      <div class="app-screen">
+        <div class="app-notch"></div><div class="app-status"><span>9:41</span><span class="r">▮▮▮</span></div>
+        <div class="m-hd"><span class="back">← 뒤로</span><b style="margin:0 auto">위젯 설정</b></div>
+        <div class="pad-s">
+          <div class="lab">누구를 팔로우할까요</div>
+          <div class="src-card" style="margin-bottom:12px"><div class="sc-top"><span class="cdot follow"></span><span class="sc-name">손흥민</span><span class="small">대화로 찾기 →</span></div></div>
+          <div class="lab">위젯 크기 <span class="marker">3</span></div>
+          <div class="sizepick">
+            <div class="sizeopt s1"><div class="sz"></div><div class="sl">작게</div><div class="sh">1~2개</div></div>
+            <div class="sizeopt s2 on"><div class="sz"></div><div class="sl">보통</div><div class="sh">3개</div></div>
+            <div class="sizeopt s3"><div class="sz"></div><div class="sl">크게</div><div class="sh">크게·여러 개</div></div>
+          </div>
+          <p class="small" style="margin:10px 0 0">소식은 알아서 채워지고, 마음에 드는 건 나중에 고정할 수 있어요.</p>
+          <div style="margin-top:12px"><span class="ph-btn pri full">홈에 추가 <span class="marker">4</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 홈 편집 ═══ -->
+  <h2 class="sec-title">홈 편집 · 위젯 옮기고 크기 바꾸기</h2>
+  <p class="sec-sub">핸드폰 홈처럼 위젯을 끌어서 옮기고, 크기를 바꾸고, 지운다. 소식마다 왜 떴는지 + 피드백.</p>
+  <div class="screens">
+
+    <!-- 웹 홈 보드 -->
+    <div class="wf-web">
+      <div class="platlabel"><span class="b">WEB</span> 내 뉴스 홈 (편집 중)</div>
+      <div class="web-screen">
+        <div class="web-bar"><span class="dots3"><i></i><i></i><i></i></span><span class="web-url"></span><span class="tabpill">홈 편집 중 ●</span></div>
+        <div style="padding:14px;background:var(--frame-2)">
+          <div class="home-board">
+            <div class="wgt editing span2"><span class="rm">−</span>
+              <div class="wgt-hd"><span class="drag">⠿</span><span class="cdot" style="background:var(--ink-3)"></span><span class="wn">지금 뜨는 소식</span><span class="wsize"><span>작게</span><span>보통</span><span class="on">크게</span></span></div>
+              <div class="ph-img" style="height:56px"></div><div class="ph-line t w70"></div>
+            </div>
+            <div class="wgt editing"><span class="rm">−</span>
+              <div class="wgt-hd"><span class="drag">⠿</span><span class="cdot follow"></span><span class="wn">손흥민</span><span class="wsize"><span>작게</span><span class="on">보통</span><span>크게</span></span></div>
+              <div class="ph-line t w80"></div><div class="ph-line w50"></div>
+              <div class="pinrow"><span class="badge pin">📌 고정 1</span> 나머지는 알아서 <span class="marker">6</span></div>
+            </div>
+            <div class="wgt editing"><span class="rm">−</span>
+              <div class="wgt-hd"><span class="drag">⠿</span><span class="cdot topic"></span><span class="wn">반도체</span><span class="wsize"><span class="on">작게</span><span>보통</span><span>크게</span></span></div>
+              <div class="ph-line w80"></div>
+            </div>
+            <div class="wgt editing"><span class="rm">−</span>
+              <div class="wgt-hd"><span class="drag">⠿</span><span class="cdot field"></span><span class="wn">경제</span><span class="wsize"><span class="on">작게</span><span>보통</span><span>크게</span></span></div>
+              <div class="ph-line w70"></div>
+            </div>
+            <div class="wgt-add">＋ 위젯 추가</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><span class="ph-btn">되돌리기</span><span class="ph-btn pri" style="margin-left:auto">저장 <span class="marker">7</span></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 우: 새로운 소식 얼마나 + 왜 이 소식 -->
+    <div style="flex:1;min-width:280px;max-width:380px">
+      <div class="platlabel">새로운 소식 얼마나 <span class="marker">5</span></div>
+      <div class="sum" style="margin-bottom:8px">
+        <div class="rng-lab"><span>익숙하게</span><span>새롭게</span></div><div class="rng"><i></i></div>
+        <p class="small" style="margin:9px 0 0;line-height:1.5">안 보던 새 소식을 얼마나 섞을지 내가 고른다. 어려운 말 없이 이 손잡이 하나로.</p>
+      </div>
+
+      <div class="platlabel" style="margin-top:16px">소식마다 "왜 이 소식?" + 피드백 <span class="marker">8</span></div>
+      <div class="src-card">
+        <div class="sc-top"><span class="cdot follow"></span><span class="sc-name">손흥민 개막전 풀타임 소화</span></div>
+        <div class="sc-why"><b>왜 이 소식?</b> 팔로우한 손흥민 · 요즘 자주 보는 선수예요</div>
+        <div class="sc-fb"><span class="fb up">좋아요</span><span class="fb ghost">관심 없음</span><span class="fb ghost">이 주제 덜</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 주석 -->
+  <div class="notes">
+    <div class="note"><span class="pin">1</span><div class="nb"><h4>위젯 추가</h4><p>홈 편집 상태에서 빈 자리 ＋. 핸드폰 홈에 위젯 얹는 그 동작 그대로.</p></div></div>
+    <div class="note"><span class="pin">2</span><div class="nb"><h4>위젯 선택 (갤러리)</h4><p>나를 위한 추천·지금 인기·팔로우·주제·분야·깊이 읽기 중 고른다. 예전 "재료" 대신 위젯을 고르는 느낌.</p></div></div>
+    <div class="note"><span class="pin">3</span><div class="nb"><h4>위젯 크기</h4><p>작게·보통·크게. 핸드폰 위젯처럼 크기가 곧 얼마나·어디에 볼지. "강도"라는 말 없이.</p></div></div>
+    <div class="note"><span class="pin">4</span><div class="nb"><h4>홈에 추가</h4><p>설정 끝내면 홈에 얹힌다. 언제든 다시 옮기고 크기 바꾸고 지울 수 있다.</p></div></div>
+    <div class="note"><span class="pin">5</span><div class="nb"><h4>새로운 소식 얼마나</h4><p>익숙함↔새로움 손잡이 하나. 안 보던 소식을 얼마나 섞을지 사용자가.</p></div></div>
+    <div class="note"><span class="pin">6</span><div class="nb"><h4>알아서 채움 + 고정</h4><p>위젯 안 소식은 기본 알아서 새로 채워지고, 마음에 드는 건 고정. 별도 "자동/수동" 말은 안 쓴다.</p></div></div>
+    <div class="note"><span class="pin">7</span><div class="nb"><h4>저장 → 홈 갱신</h4><p>편집은 바로 미리보기, 저장하면 홈에 반영. 되돌리기 제공.</p></div></div>
+    <div class="note"><span class="pin">8</span><div class="nb"><h4>왜? + 피드백 (킥)</h4><p>위젯엔 "왜 추천", 소식엔 "왜 이 소식". 그 자리 피드백으로 다음을 고친다.</p></div></div>
+  </div>
+
+  <!-- 열린 결정 -->
+  <h2 class="sec-title">아직 정할 것</h2>
+  <div class="notes">
+    <div class="note q"><span class="pin">?</span><div class="nb"><h4>위젯 크기 단수</h4><p>작게·보통·크게 3단이 좋은지, 핸드폰처럼 정사각/가로/세로 등 모양까지 줄지.</p></div></div>
+    <div class="note q"><span class="pin">?</span><div class="nb"><h4>홈 배열 방식</h4><p>세로 한 줄인지, 웹은 두 칸 격자인지. 자유도와 단순함의 균형.</p></div></div>
+    <div class="note q"><span class="pin">?</span><div class="nb"><h4>"지금 많이 보는"의 범위</h4><p>전국인지, 나 같은 사람들인지. 얼마나 섞을지.</p></div></div>
+    <div class="note q"><span class="pin">?</span><div class="nb"><h4>위젯 종류 범위</h4><p>추천·인기·팔로우·주제·분야 외에 랭킹·타임라인 같은 특수 위젯도 둘지.</p></div></div>
+  </div>
+
+  <p class="small" style="text-align:center;margin-top:24px">설정 상세 와이어 · 위젯 은유 기준. 실제 규칙은 위 "아직 정할 것"을 확정하며 다듬는다.</p>
+</div>
