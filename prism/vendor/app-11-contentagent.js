@@ -38,6 +38,21 @@ window.PRISM_APP_PARTS.push(() => ({
         if (/Hobby|Interest|관심|Travel|Food|Style/i.test(s)) return 'interest';
         return 'news';
       },
+      // 위젯 사유 태그: 색 점 대신 '왜 이 위젯인지'를 말로 (강한 추천 · 적합 · 많이 다뤄짐 · 소식 적음)
+      caWidgetTag(w) {
+        const n = this.caWidgetRows(w).length;
+        const cap = w.size === 'lg' ? 5 : (w.size === 'md' ? 3 : 2);
+        if (w.src === 'reco') {
+          const p = this.caProfile();
+          if (p.reads >= 5 && p.topics.length && p.topics[0].n >= 3) return { k: 'strong', t: '강한 추천' };
+          if (p.reads) return { k: 'ok', t: '기록 반영 중' };
+          return { k: 'weak', t: '기록 쌓는 중' };
+        }
+        if (w.src === 'hot') return { k: 'buzz', t: '많이 다뤄짐' };
+        if (!n) return { k: 'weak', t: '소식 없음' };
+        if (n < cap) return { k: 'weak', t: '소식 적음' };
+        return { k: 'ok', t: '적합' };
+      },
       caWidgetCat(w) {
         const c = (w && w.cond) || {};
         return this.caCatKey((c.topics || [])[0] || (c.fields || [])[0] || '');
@@ -71,13 +86,29 @@ window.PRISM_APP_PARTS.push(() => ({
             const ents = (it.entities || []).map((e) => (typeof e === 'string' ? e : (e && (e.name || e.value)) || '')).filter(Boolean);
             const intents = (it.intent || []).map((x) => String(x)).filter(Boolean);
             const field = cats[0] || '';
+            const img = (it.images || []).filter(Boolean)[0] || '';
             pool.push({ id: it.hash || ('c' + idx), t: it.title || '(제목 없음)',
-                        src: it.service || '', ago: '', summary: it.summary || '',
+                        src: it.service || '', ago: '', summary: it.summary || '', img: img,
                         url: it.url || '', ents: ents.slice(0, 6), topics: cats,
                         kinds: intents, tone: this.caToneOf(intents), field: field });
             ents.slice(0, 6).forEach((e) => { if (this._caGoodEnt(e)) eSet[e] = (eSet[e] || 0) + 1; });
             cats.forEach((c) => { tSet[c] = 1; fSet[c] = 1; });
             intents.forEach((k) => { kSet[k] = 1; });
+          });
+          // 코퍼스 실집계: 주제·인물이 몇 건에서 다뤄졌는지 → '지금 많이 보는'의 실제 근거
+          const topicN = {}, entN = {};
+          pool.forEach((a) => {
+            (a.topics || []).forEach((t) => { topicN[t] = (topicN[t] || 0) + 1; });
+            (a.ents || []).forEach((e) => { entN[e] = (entN[e] || 0) + 1; });
+          });
+          pool.forEach((a) => {
+            let sc = 0, top = null;
+            (a.topics || []).forEach((t) => { if ((topicN[t] || 0) > sc) { sc = topicN[t]; top = t; } });
+            let esc = 0, etop = null;
+            (a.ents || []).forEach((e) => { if ((entN[e] || 0) > esc) { esc = entN[e]; etop = e; } });
+            a.buzz = sc + esc * 2;                       // 인물 집중도에 가중
+            a.buzzWhy = etop && esc >= 2 ? (etop + ' 관련 ' + esc + '건이 올라왔어요')
+                      : (top && sc >= 2 ? (this.caLabel('topic', top) + ' 소식이 ' + sc + '건 있어요') : '새로 올라온 소식');
           });
           this.caPool = pool;
           // 자연어 매칭엔 전체 엔티티, 갤러리 추천엔 2건 이상 등장한 것만(1회성 추출 토막 노출 방지)
@@ -454,7 +485,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const d = this.caDict || {};
         const basics = [                     // 기본 제공 — 시스템이 주는 모듈(조건 없음)
           { key: 'reco', name: '나를 위한 추천', desc: '내가 본 것에 맞춰 자동', mk: () => ({ src: 'reco', cond: {} }) },
-          { key: 'hot', name: '지금 많이 보는', desc: '전체에서 많이 보는 소식', mk: () => ({ src: 'hot', cond: {} }) },
+          { key: 'hot', name: '지금 많이 다뤄지는', desc: '등록된 소식에서 집계', mk: () => ({ src: 'hot', cond: {} }) },
         ];
         const mine = [];                     // 내가 만들기 — 관심(주제·인물)으로 조건 위젯
         (d.topics || []).slice(0, 4).forEach((t) => mine.push({
@@ -536,9 +567,10 @@ window.PRISM_APP_PARTS.push(() => ({
           rows = (this.caPool || []).filter((a) => hidden.indexOf(a.id) < 0)
             .map((a) => ({ a: a, ok: true, why: this.caRecoWhy(a) }))
             .sort((x, y) => this.caSeenScore(y.a) - this.caSeenScore(x.a));
-        } else if (w.src === 'hot') {      // 지금 많이 보는: 전체 인기(시연은 최신순 = 지금 뜨는)
+        } else if (w.src === 'hot') {      // 지금 많이 다뤄지는: 코퍼스 집계(주제·인물 등장 건수) 순
           rows = (this.caPool || []).filter((a) => hidden.indexOf(a.id) < 0)
-            .map((a, i) => ({ a: a, ok: true, why: '지금 많이 보는 소식 ' + (i + 1) + '위' }));
+            .slice().sort((x, y) => (y.buzz || 0) - (x.buzz || 0))
+            .map((a) => ({ a: a, ok: true, why: a.buzzWhy || '새로 올라온 소식' }));
         } else {
           rows = this.caMatch(w.cond, false).filter((r) => hidden.indexOf(r.a.id) < 0);
         }
@@ -655,7 +687,7 @@ window.PRISM_APP_PARTS.push(() => ({
           return '최근 ' + p.reads + '건을 읽었고' + (t ? (' ' + t) : '') + ' 봤어요' + (tone ? (' · ' + tone 
                  + ' 선호') : '') + ' · 그 기준으로 골랐어요';
         }
-        if (w.src === 'hot') return '지금 전체에서 많이 보는 순서예요 · 내 기록과 무관합니다';
+        if (w.src === 'hot') return '지금 많이 다뤄지는 순서예요 · 등록된 소식에서 집계했고 내 기록과 무관합니다';
         const c = w.cond || {};
         const t = [].concat(c.ents || [], this.caLabels('topic', c.topics), this.caLabels('field', c.fields));
         let s = t.length ? t.join('·') + ' 관심으로 모았어요' : '요즘 많이 보는 소식이에요';
