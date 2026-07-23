@@ -39,14 +39,34 @@
         .ca-note{ font-size:14px; color:var(--caTxt3); }
 
         /* ── 다음 앱 홈(다크) ── */
-        .ca-stage{ display:flex; justify-content:center; }
-        .ca-view{ background:var(--caBody); border-radius:var(--caRadLg); overflow:hidden; position:relative; width:430px; max-width:100%;
-          height:720px; display:flex; flex-direction:column; }
-        .ca-scroll{ flex:1; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:none; }
-        .ca-scroll::-webkit-scrollbar{ width:0; height:0; }
+        .ca-stage{ display:flex; justify-content:center; padding:8px 0 4px; }
+        /* ── 기기 목업 프레임(노트북·폰) · 화면은 프레임 안쪽에서만 스크롤 ── */
+        .ca-dev{ flex:none; }
+        /* 노트북 */
+        .ca-dev.pc{ width:100%; max-width:1060px; }
+        .ca-dev.pc .bezel{ background:#2b2d31; border:1px solid #3a3d42; border-radius:18px 18px 6px 6px; padding:16px 14px 18px; position:relative; box-shadow:0 18px 50px rgba(0,0,0,.28); }
+        .ca-dev.pc .cam{ position:absolute; top:7px; left:50%; transform:translateX(-50%); width:5px; height:5px; border-radius:50%; background:#4a4d52; }
+        .ca-dev.pc .screen{ aspect-ratio:16/10; border-radius:4px; overflow:hidden; background:var(--caBody); }
+        .ca-dev.pc .base{ height:13px; margin:0 -34px; background:linear-gradient(#c8ccd2,#9aa0a8); border-radius:0 0 12px 12px; position:relative; }
+        .ca-dev.pc .base::after{ content:""; position:absolute; top:0; left:50%; transform:translateX(-50%); width:132px; height:6px; background:#8b9099; border-radius:0 0 8px 8px; }
+        /* 폰 */
+        .ca-dev.mobile{ width:392px; max-width:100%; }
+        .ca-dev.mobile .bezel{ background:#0b0c0e; border:2px solid #1b1d20; border-radius:52px; padding:12px; position:relative; box-shadow:0 18px 50px rgba(0,0,0,.3); }
+        .ca-dev.mobile .screen{ height:760px; border-radius:42px; overflow:hidden; background:var(--caBody); position:relative; }
+        .ca-dev.mobile .notch{ position:absolute; top:0; left:50%; transform:translateX(-50%); width:150px; height:26px; background:#0b0c0e; border-radius:0 0 16px 16px; z-index:40; }
+        .ca-dev.mobile .btn-l{ position:absolute; left:-4px; top:132px; width:3px; height:56px; background:#1b1d20; border-radius:3px; }
+        .ca-dev.mobile .btn-l2{ position:absolute; left:-4px; top:200px; width:3px; height:56px; background:#1b1d20; border-radius:3px; }
+        .ca-dev.mobile .btn-r{ position:absolute; right:-4px; top:168px; width:3px; height:78px; background:#1b1d20; border-radius:3px; }
+        .ca-dev.mobile .home-ind{ position:absolute; bottom:7px; left:50%; transform:translateX(-50%); width:126px; height:5px; border-radius:99px; background:var(--caTxt3); opacity:.5; z-index:40; }
+        /* 상태바(폰) */
+        .ca-status{ display:flex; align-items:center; padding:10px 24px 2px; font-size:12px; font-weight:700; color:var(--caTxt); flex:none; }
+        .ca-status .r{ margin-left:auto; letter-spacing:2px; opacity:.75; }
+        .ca-view{ background:var(--caBody); overflow:hidden; position:relative; width:100%; height:100%;
+          display:flex; flex-direction:column; min-height:0; }
+        .ca-scroll{ flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
         .ca-view *{ scrollbar-width:none; }
         .ca-view *::-webkit-scrollbar{ width:0; height:0; display:none; }
-        .ca-view.pc{ width:100%; max-width:1080px; height:760px; }
+        
         /* 검색 바(그라디언트 테두리) */
         .ca-top{ padding:var(--caS4) var(--caS4) var(--caS3); flex:none; }
         .ca-view.pc .ca-top{ padding:var(--caS6) var(--caS6) var(--caS4); display:flex; justify-content:center; }
@@ -65,7 +85,7 @@
         .ca-live .bdg{ background:var(--caAccMuted); color:var(--caAcc); font-weight:700; font-size:12px; padding:4px 9px; border-radius:var(--caRadFull); }
         .ca-live b{ color:var(--caTxt); font-weight:700; }
         /* 모바일 카테고리 탭 */
-        .ca-cats{ display:flex; gap:16px; padding:0 var(--caS4); border-bottom:1px solid var(--caLine); overflow-x:auto; flex:none; }
+        .ca-cats{ display:flex; gap:16px; padding:0 var(--caS4); border-bottom:1px solid var(--caLine); overflow-x:auto; overflow-y:hidden; flex:none; max-width:100%; }
         .ca-cats::-webkit-scrollbar{ display:none; }
         .ca-cats button{ border:0; background:transparent; font-family:inherit; font-size:15px; font-weight:700; color:var(--caTxt3); padding:10px 0 12px; white-space:nowrap; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
         .ca-cats button.on{ color:var(--caTxt); border-bottom-color:var(--caTxt); }
@@ -227,6 +247,9 @@
         .ca-torow{ display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--caLine); }
         .ca-torow:first-of-type{ border-top:0; }
         .ca-ton{ flex:1; font-size:14px; font-weight:600; color:var(--caTxt); }
+        .ca-div{ border:0; border-top:1px solid var(--caLine); margin:14px 0; }
+        .ca-exs .ca-ghost{ font-size:13px; padding:7px 12px; }
+        .ca-galpv{ background:var(--caCard); border:1px solid var(--caAcc); border-radius:var(--caRad); padding:14px; margin-bottom:16px; }
         .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#28292C; color:#DFE2E5; padding:13px 20px; border-radius:var(--caRad); font-size:15px; font-weight:600; z-index:60; box-shadow:0 2px 16px rgba(0,0,0,.32); }
       </style>
 
@@ -251,7 +274,17 @@
 
       <!-- 시연 무대: 홈 화면(+플로팅) → 매니저 시트 -->
       <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root ca-stage ca-stagewrap">
-        <div class="ca-view" x-bind:class="caDevice==='pc'?'pc':''">
+        <!-- 기기 목업(노트북·폰) · 화면은 프레임 안에서만 스크롤 -->
+        <div class="ca-dev" x-bind:class="caDevice">
+          <div class="bezel">
+            <span class="cam" x-show="caDevice==='pc'"></span>
+            <span class="notch" x-show="caDevice==='mobile'" x-cloak></span>
+            <span class="btn-l" x-show="caDevice==='mobile'" x-cloak></span>
+            <span class="btn-l2" x-show="caDevice==='mobile'" x-cloak></span>
+            <span class="btn-r" x-show="caDevice==='mobile'" x-cloak></span>
+            <div class="screen">
+              <div class="ca-view" x-bind:class="caDevice==='pc'?'pc':''">
+                <div class="ca-status" x-show="caDevice==='mobile'" x-cloak><span>9:41</span><span class="r">▮▮▮</span></div>
           <!-- 온보딩 -->
           <div class="ca-ob" x-show="caOnboard" x-cloak>
             <div class="ca-obdots"><i x-bind:class="caObStep===1?'on':''"></i><i x-bind:class="caObStep===2?'on':''"></i></div>
@@ -315,6 +348,7 @@
             </template>
             <button type="button" class="ca-btn" style="margin-top:10px" x-on:click="caTabEdit=false">완료</button>
           </div>
+          <div class="ca-scroll">
           <div class="ca-feed">
             <template x-if="!caWidgets.length">
               <div class="ca-w"><div class="ca-empty">위젯이 없습니다 · 오른쪽 아래 <b>내 콘텐츠 매니저</b>에서 만들어 보세요</div></div>
@@ -373,6 +407,7 @@
               </div>
             </div>
           </div>
+          </div>
           <div class="ca-nav">
             <div class="on"><i></i>홈</div><div><i></i>탐색</div><div><i></i>구독</div><div><i></i>내정보</div>
           </div>
@@ -400,26 +435,49 @@
             <div class="ca-shb">
               <div class="ca-mtabs">
                 <button type="button" x-bind:class="caTab==='gallery'?'sel':''" x-on:click="caTab='gallery'">위젯 고르기</button>
-                <button type="button" x-bind:class="caTab==='make'?'sel':''" x-on:click="caTab='make'">말로 만들기</button>
+                <button type="button" x-bind:class="caTab==='make'?'sel':''" x-on:click="caTab='make'">위젯 생성하기</button>
                 <button type="button" x-bind:class="caTab==='edit'?'sel':''" x-on:click="caTab='edit'">홈 편집</button>
               </div>
 
               <!-- 위젯 고르기(갤러리) -->
               <div x-show="caTab==='gallery'" x-cloak>
+                <!-- 템플릿 미리보기 → 적용 확인 -->
+                <div class="ca-galpv" x-show="caGalPick" x-cloak>
+                  <div class="ca-lab" style="margin-bottom:8px">이렇게 들어갑니다 · 적용할까요?</div>
+                  <div class="ca-pvw">
+                    <div class="ca-pvh">
+                      <span class="ca-pvt" x-text="caGalPick ? caGalPick.name : ''"></span>
+                      <span class="ca-pvs" x-text="caGalPick ? caSizeLabel(caGalPick.size) : ''"></span>
+                    </div>
+                    <template x-for="r in caGalRows()" x-bind:key="'gp'+r.a.id">
+                      <div class="ca-pvi"><span class="t" x-text="r.a.t"></span><span class="th"></span></div>
+                    </template>
+                    <template x-if="!caGalRows().length"><div class="ca-pvi"><span class="t" style="color:var(--caTxt3)">지금은 채울 소식이 없어요</span></div></template>
+                  </div>
+                  <div class="ca-tone" style="margin-top:10px">
+                    <button type="button" x-bind:class="caGalPick&&caGalPick.size==='sm'?'on':''" x-on:click="caGalPick.size='sm'">작게</button>
+                    <button type="button" x-bind:class="caGalPick&&caGalPick.size==='md'?'on':''" x-on:click="caGalPick.size='md'">보통</button>
+                    <button type="button" x-bind:class="caGalPick&&caGalPick.size==='lg'?'on':''" x-on:click="caGalPick.size='lg'">크게</button>
+                  </div>
+                  <div style="display:flex; gap:8px; margin-top:12px">
+                    <button type="button" class="ca-ghost" style="flex:1" x-on:click="caGalPick=null">취소</button>
+                    <button type="button" class="ca-btn" style="flex:2" x-on:click="caGalApply()">홈에 적용</button>
+                  </div>
+                </div>
                 <template x-for="grp in caGalleryGroups()" x-bind:key="grp.title">
                   <div style="margin-bottom:18px">
                     <div class="ca-lab" style="margin-bottom:4px" x-text="grp.title"></div>
                     <div class="ca-note" style="margin-bottom:9px" x-text="grp.hint"></div>
                     <div class="ca-gal">
                       <template x-for="g in grp.items" x-bind:key="g.key">
-                        <button type="button" class="ca-galt" x-on:click="caAddFromGallery(g)">
+                        <button type="button" class="ca-galt" x-on:click="caGalPreview(g)">
                           <div class="n" x-text="g.name"></div><div class="d" x-text="g.desc"></div>
                         </button>
                       </template>
                     </div>
                   </div>
                 </template>
-                <button type="button" class="ca-btn" x-on:click="caTab='make'">원하는 걸 말로 만들기 →</button>
+                <button type="button" class="ca-btn" x-on:click="caTab='make'">위젯 생성하기 →</button>
               </div>
 
               <!-- 위젯 만들기 -->
@@ -430,13 +488,18 @@
                   <button type="button" class="ca-ghost" style="padding:5px 10px" x-on:click="caCancelEdit()">새로 만들기로</button>
                 </div>
                 <textarea class="ca-in" x-model="caText" placeholder="원하는 소식을 한 문장으로 · 예) 경제 소식 깊이 있게, 광고는 빼고"></textarea>
-                <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
-                  <button type="button" class="ca-btn sm" x-bind:disabled="caThinking" x-on:click="caUnderstand()" x-text="caThinking ? '이해하는 중…' : '이해하기'"></button>
-                  <template x-for="ex in caExamples()" x-bind:key="ex">
-                    <button type="button" class="ca-ghost" x-on:click="caText=ex; caUnderstand()" x-text="ex"></button>
-                  </template>
-                  <span class="ca-via" x-show="caVia" x-cloak x-text="caVia"></span>
+                <div class="ca-exs">
+                  <div class="ca-lab" style="margin:12px 0 8px">이렇게 말해보세요</div>
+                  <div class="ca-chips">
+                    <template x-for="ex in caExamples()" x-bind:key="ex">
+                      <button type="button" class="ca-ghost" x-on:click="caText=ex" x-text="ex"></button>
+                    </template>
+                  </div>
                 </div>
+                <hr class="ca-div">
+                <button type="button" class="ca-btn" x-bind:disabled="caThinking" x-on:click="caUnderstand()"
+                        x-text="caThinking ? '만드는 중…' : '위젯 생성하기'"></button>
+                <div class="ca-via" style="margin:8px 0 0" x-show="caVia" x-cloak x-text="caVia"></div>
 
                 <div class="ca-two" style="margin-top:14px" x-show="caDraft" x-cloak>
                   <div class="ca-panel">
@@ -592,6 +655,11 @@
               </div>
             </div>
           </div>
+              </div>
+            </div>
+            <span class="home-ind" x-show="caDevice==='mobile'" x-cloak></span>
+          </div>
+          <div class="base" x-show="caDevice==='pc'"></div>
         </div>
       </div>
 

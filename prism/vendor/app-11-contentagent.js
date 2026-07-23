@@ -438,6 +438,24 @@ window.PRISM_APP_PARTS.push(() => ({
           { title: '내 관심으로 만들기', hint: '고르면 그 조건으로 위젯이 생겨요', items: mine },
         ];
       },
+      caGalPick: null,                     // 갤러리에서 고른 템플릿(미리보기 대기)
+      caGalPreview(g) {                    // 누르면 고정 배치(템플릿)를 미리 보여준다
+        const base = g.mk();
+        this.caGalPick = { key: g.key, name: g.name, desc: g.desc, src: base.src,
+                           size: g.key === 'reco' ? 'lg' : 'md',
+                           cond: Object.assign({ ents: [], topics: [], fields: [], kinds: [], excl: [], tone: '' }, base.cond) };
+      },
+      caGalRows() {                        // 미리보기용 행(실제 콘텐츠로 채움)
+        const p = this.caGalPick; if (!p) return [];
+        return this.caWidgetRows({ id: '_pv', name: p.name, size: p.size, src: p.src, cond: p.cond, pins: [], hidden: [] });
+      },
+      caGalApply() {
+        const p = this.caGalPick; if (!p) return;
+        this.caWidgets.push({ id: 'w' + Date.now(), name: p.name, size: p.size, src: p.src,
+                              cond: JSON.parse(JSON.stringify(p.cond)), pins: [], hidden: [] });
+        this.caSave(); this.caGalPick = null; this.caEntered = false;
+        this.caToast('「' + p.name + '」 위젯을 홈에 추가했어요');
+      },
       caAddFromGallery(g) {
         const base = g.mk();
         const w = { id: 'w' + Date.now(), name: g.name, size: g.key === 'reco' ? 'lg' : 'md', src: base.src,
