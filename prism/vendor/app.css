@@ -407,6 +407,28 @@
   .histrow__note{margin-left:auto;flex:none;font-size:11px;color:var(--ds-primary);cursor:help;text-decoration:underline dotted}
   .dve__verdict{margin-top:auto;padding-top:var(--ds-space-4);border-top:1px solid var(--ds-divider-section)}
   @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}
+  /* ── 하이브리드 선택형 입력(최종 검수 수정 · 시안 3): 추천 칩(점선) + 검색 드롭다운 ── */
+  .hybreco{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:var(--ds-radius-full);
+    border:1px dashed var(--ds-border-input-hover);background:var(--ds-surface-white);color:var(--ds-body);
+    font-family:var(--ds-font);font-size:12px;font-weight:600;cursor:pointer;transition:border-color .12s,background .12s}
+  .hybreco:hover{border-color:var(--ds-primary);color:var(--ds-primary-deep);background:var(--ds-primary-tint)}
+  .hybreco__plus{font-weight:800;color:var(--ds-primary)}
+  .hybreco__why{font-size:10px;font-weight:500;color:var(--ds-muted)}
+  .hybwrap{position:relative;margin-top:6px}
+  .hybdd{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--ds-surface-white);
+    border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);box-shadow:var(--ds-shadow-elevated);
+    max-height:240px;overflow:auto}
+  .hybdd__group{position:sticky;top:0;background:var(--ds-surface-white);padding:7px 12px 3px;
+    font-size:10.5px;font-weight:700;letter-spacing:.05em;color:var(--ds-placeholder)}
+  .hybdd__item{display:flex;align-items:baseline;gap:8px;width:100%;text-align:left;border:0;background:none;
+    font-family:var(--ds-font);padding:7px 12px;cursor:pointer;font-size:13px;color:var(--ds-ink)}
+  .hybdd__item:hover{background:var(--ds-primary-tint)}
+  .hybdd__item b{font-weight:650;white-space:nowrap}
+  .hybdd__item--free{color:var(--ds-primary-deep);font-weight:650}
+  .hybdd__def{font-size:11px;color:var(--ds-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+  .hybdd__tag{font-size:10px;font-weight:700;color:var(--ds-primary-deep);background:var(--ds-tint-bg);border-radius:4px;padding:1px 5px;white-space:nowrap}
+  .hybdd__empty{padding:10px 12px;font-size:12px;color:var(--ds-muted)}
+  .ds-badge.is-free{outline:1.5px dashed currentColor;outline-offset:-1.5px}  /* 사전 밖 신규 값(자유 입력) 표시 */
   /* 읽기 전용 콘텐츠 비교 뷰: 정책 팔레트 매칭 목록에서 상세가 이미 열려 있으면 옆에 나란히(검수 없이 내용만) */
   .cmpview{background:var(--ds-layer-popup);border-radius:var(--ds-radius-xl);box-shadow:var(--ds-shadow-high);width:min(520px,42vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
   .cmpview__hd{display:flex;align-items:center;justify-content:space-between;padding:var(--ds-space-4) var(--ds-space-5);border-bottom:1px solid var(--ds-divider-section)}

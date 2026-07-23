@@ -524,12 +524,34 @@
             <button type="button" class="copybtn" x-show="!(entFixOpen && detail && entFixHash === detail.hash)" x-on:click="openEntFix()" data-tip="엔티티를 삭제·추가해 교정합니다 · 저장하면 골든 확정 시 정답으로 포함" data-tip-pos="top">엔티티 수정</button>
             <template x-if="entFixOpen && detail && entFixHash === detail.hash">
               <div>
-                <div class="dve__lbl">엔티티 수정 <span class="text-xs text-muted" style="font-weight:400">· 칩의 ×로 삭제 · 입력 후 쉼표 또는 엔터로 추가</span></div>
+                <!-- 하이브리드 선택형(시안 3 · app-10-hybridpick): 추천 칩 상시 + 검색 드롭다운 · 자유 입력(새 엔티티) 유지 -->
+                <div class="dve__lbl">엔티티 수정 <span class="text-xs text-muted" style="font-weight:400">· 칩 클릭 = 삭제 · 추천 탭 또는 검색으로 추가</span></div>
                 <div class="flex flex-wrap gap-1 items-center">
                   <template x-for="(e,i) in entFixList" x-bind:key="'ef'+i+e">
-                    <button type="button" class="ds-badge ds-badge--neutral" x-on:click="entFixList.splice(i,1)" x-bind:data-tip="'클릭해 삭제 · ' + e" data-tip-pos="top" x-bind:aria-label="'엔티티 삭제 · ' + e"><span x-text="e"></span>&nbsp;×</button>
+                    <button type="button" class="ds-badge ds-badge--entity" x-bind:class="hybFree('efent', e) ? 'is-free' : ''" x-on:click="hybRemove('efent', entFixList, e)" x-bind:data-tip="'클릭해 삭제 · ' + e" data-tip-pos="top" x-bind:aria-label="'엔티티 삭제 · ' + e"><span x-text="e + (hybFree('efent', e) ? ' · 신규' : '')"></span>&nbsp;×</button>
                   </template>
-                  <input type="text" class="field" style="height:30px;width:160px;font-size:12px" placeholder="엔티티 추가" x-bind:value="entFixNew" x-on:input="entFixInput($event.target.value)" x-on:keydown.enter.prevent="entFixCommit()">
+                  <span class="text-xs text-muted" x-show="!entFixList.length">값 없음</span>
+                </div>
+                <div class="flex flex-wrap gap-1 items-center" style="margin-top:6px" x-show="hybReco('entity', detail, entFixList).length">
+                  <span class="text-xs" style="color:var(--ds-placeholder)">추천</span>
+                  <template x-for="rc in hybReco('entity', detail, entFixList)" x-bind:key="'efr'+rc.v">
+                    <button type="button" class="hybreco" x-on:click="hybAdd('efent', entFixList, rc.v)" x-bind:data-tip="'탭해서 추가 · ' + rc.v" data-tip-pos="top"><span class="hybreco__plus">＋</span><span x-text="rc.v"></span><span class="hybreco__why" x-text="rc.why"></span></button>
+                  </template>
+                </div>
+                <div class="hybwrap" x-on:click.outside="hybSt('efent').open=false">
+                  <input type="text" class="field w-full" style="height:32px;font-size:12.5px" placeholder="엔티티 검색 · 사전에 없으면 Enter = 새 엔티티로 추가" x-bind:value="hybSt('efent').q" x-on:input="hybInput('efent', $event.target.value)" x-on:keydown.enter.prevent="hybEnter('efent', {kind:'entity', free:true}, detail, entFixList)" x-on:keydown.escape="hybEsc('efent', $event)">
+                  <div class="hybdd" x-show="hybSt('efent').open" x-cloak>
+                    <template x-for="g in hybDrop('efent', 'entity', detail, entFixList)" x-bind:key="'efg'+g.label">
+                      <div>
+                        <div class="hybdd__group" x-text="g.label"></div>
+                        <template x-for="it in g.items" x-bind:key="'efi'+it.v">
+                          <button type="button" class="hybdd__item" x-on:click="hybAdd('efent', entFixList, it.v)"><span class="hybdd__tag" x-show="it.tag" x-text="it.tag"></span><b x-text="it.v"></b></button>
+                        </template>
+                      </div>
+                    </template>
+                    <button type="button" class="hybdd__item hybdd__item--free" x-show="hybFreeAdd('efent', entFixList)" x-on:click="hybAdd('efent', entFixList, hybFreeAdd('efent', entFixList), true)">＋ "<span x-text="hybSt('efent').q.trim()"></span>" 새 엔티티로 추가<span class="hybdd__def">사전 미등재 · 자유 입력</span></button>
+                    <div class="hybdd__empty" x-show="!hybDrop('efent', 'entity', detail, entFixList).length && !hybFreeAdd('efent', entFixList)">일치하는 등재 개체가 없습니다 · Enter 로 새 엔티티로 추가할 수 있어요</div>
+                  </div>
                 </div>
                 <div style="display:flex;gap:var(--ds-space-2);margin-top:8px">
                   <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="entFixBusy" x-on:click="saveEntFix()" data-tip="수정한 엔티티 목록을 저장합니다" data-tip-pos="top" x-text="entFixBusy ? '저장 중…' : '엔티티 저장'"></button>

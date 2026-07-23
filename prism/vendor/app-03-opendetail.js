@@ -27,24 +27,20 @@ window.PRISM_APP_PARTS.push(() => ({
           if (r && r.ok) this.entLookup = r.entities || {};
         } catch (e) {}
       },
-      // ── 엔티티 편집(검수 교정): 칩 ×로 삭제 + 텍스트 추가(쉼표/엔터 확정) · /patch-meta 저장.
+      // ── 엔티티 편집(검수 교정): 하이브리드 선택형(app-10-hybridpick · 시안 3) · /patch-meta 저장.
+      // 칩 클릭 = 삭제 · 추천 칩 탭 또는 검색 드롭다운으로 추가 · "새 엔티티로 추가" 자유 입력 유지.
       // 표기·접기(컨피던스) 로직과 분리된 별도 블록 · 상세가 다른 콘텐츠로 바뀌면 entFixHash 불일치로 자동 숨김.
-      entFixOpen: false, entFixHash: '', entFixList: [], entFixNew: '', entFixBusy: false,
+      entFixOpen: false, entFixHash: '', entFixList: [], entFixBusy: false,
       openEntFix() {
         if (!this.detail) return;
         this.entFixHash = this.detail.hash;
         this.entFixList = (this.detail.entities || []).slice();
-        this.entFixNew = ''; this.entFixOpen = true;
+        this.hybInit(['efent']);                   // 픽커 상태(검색어·신규 표시) 초기화
+        this.hybEntLoad();                         // 추천·검색용 등재분 캐시 예열
+        this.entFixOpen = true;
       },
-      entFixCommit() {                             // 입력값 확정: 쉼표 분리 · 공백 제거 · 중복 무시
-        const parts = String(this.entFixNew || '').split(',').map((s) => s.trim()).filter(Boolean);
-        parts.forEach((p) => { if (!this.entFixList.includes(p)) this.entFixList.push(p); });
-        this.entFixNew = '';
-      },
-      entFixInput(v) { this.entFixNew = v; if (String(v).indexOf(',') >= 0) this.entFixCommit(); },
       async saveEntFix() {
         if (!(this.detail && this.detail.hash === this.entFixHash) || this.entFixBusy) return;
-        this.entFixCommit();                       // 입력창에 남은 값도 확정에 포함
         const ents = this.entFixList.slice();
         if (ents.join('|') === (this.detail.entities || []).join('|')) { this.entFixOpen = false; return; }
         this.entFixBusy = true;
