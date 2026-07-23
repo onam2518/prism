@@ -271,7 +271,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const d = this.caDict || {}, out = [];
         if ((d.topics || []).length) out.push(this.caLabel('topic', d.topics[0]) + ' 소식 깊이 있게');
         if ((d.ents || []).length) out.push(d.ents[0] + ' 소식만');
-        if ((d.kinds || []).length) out.push(this.caLabel('kind', d.kinds[0]) + '만 모아서');
+        if ((d.topics || []).length > 1) out.push(this.caLabel('topic', d.topics[1]) + ' 가볍게');
         return out.slice(0, 3);
       },
       // ── 대화로 다듬기: 지금 조건에 자연어 요청을 얹는다 ──
@@ -300,10 +300,11 @@ window.PRISM_APP_PARTS.push(() => ({
         if (this.caChat.length > 6) this.caChat.shift();
       },
       caSuggestName(c) {
+        // 이름은 사람이 부르는 대상(인물·주제·분야)에서만 짓는다.
+        // 인텐트(kinds)는 내부 분류값이라 "후기·리뷰·비평 모음" 같은 이름이 새어 나온다.
         const base = c.ents[0] ? this.caLabel('ent', c.ents[0])
                    : (c.topics[0] ? this.caLabel('topic', c.topics[0])
-                   : (c.fields[0] ? this.caLabel('field', c.fields[0])
-                   : (c.kinds[0] ? this.caLabel('kind', c.kinds[0]) : '')));
+                   : (c.fields[0] ? this.caLabel('field', c.fields[0]) : ''));
         if (!base) return c.tone === '깊게' ? '깊이 읽기' : (c.tone === '가볍게' ? '가볍게 보기' : '빠른 소식');
         if (c.tone === '깊게') return base + ' 깊이 읽기';
         return base + ' 소식';
@@ -388,21 +389,25 @@ window.PRISM_APP_PARTS.push(() => ({
         this.caToast('「' + w.name + '」 위젯을 홈에 추가했어요');
       },
       // ── 위젯 갤러리: 실제 콘텐츠 메타로 만드는 위젯 종류 ──
-      caGalleryItems() {
+      caGalleryGroups() {
         const d = this.caDict || {};
-        const out = [
-          { key: 'reco', name: '나를 위한 추천', desc: '내가 자주 본 것 기반', mk: () => ({ src: 'reco', cond: {} }) },
+        const basics = [                     // 기본 제공 — 시스템이 주는 모듈(조건 없음)
+          { key: 'reco', name: '나를 위한 추천', desc: '내가 본 것에 맞춰 자동', mk: () => ({ src: 'reco', cond: {} }) },
           { key: 'hot', name: '지금 많이 보는', desc: '전체에서 많이 보는 소식', mk: () => ({ src: 'hot', cond: {} }) },
         ];
-        (d.topics || []).slice(0, 4).forEach((t) => out.push({
+        const mine = [];                     // 내가 만들기 — 관심(주제·인물)으로 조건 위젯
+        (d.topics || []).slice(0, 4).forEach((t) => mine.push({
           key: 'topic:' + t, name: this.caLabel('topic', t), desc: '주제·분야',
           mk: () => ({ src: 'cond', cond: { topics: [t] } }) }));
-        (d.ents || []).slice(0, 2).forEach((e) => out.push({
+        (d.ents || []).slice(0, 3).forEach((e) => mine.push({
           key: 'ent:' + e, name: e, desc: '인물·팀 팔로우',
           mk: () => ({ src: 'cond', cond: { ents: [e] } }) }));
-        out.push({ key: 'tone', name: '깊이 읽기', desc: '분석·해설 위주',
-                   mk: () => ({ src: 'cond', cond: { tone: '깊게' } }) });
-        return out;
+        mine.push({ key: 'tone', name: '깊이 읽기', desc: '분석·해설 위주',
+                    mk: () => ({ src: 'cond', cond: { tone: '깊게' } }) });
+        return [
+          { title: '기본 제공', hint: '조건 없이 알아서 채워지는 모듈', items: basics },
+          { title: '내 관심으로 만들기', hint: '고르면 그 조건으로 위젯이 생겨요', items: mine },
+        ];
       },
       caAddFromGallery(g) {
         const base = g.mk();
