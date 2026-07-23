@@ -26,8 +26,18 @@
         .ca-root *{ box-sizing:border-box; }
 
         /* 실험실 셸(앱 테마 따름) */
-        .ca-hint{ background:var(--caAccMuted); border-radius:var(--caRad); padding:12px 16px 12px 30px; margin:0 0 12px; font-size:14px; line-height:1.5; color:var(--caTxt2); }
-        .ca-hint li{ margin:2px 0; }
+        .ca-pills{ display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+        .ca-pills button, .ca-pills .ca-pill{ border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt2);
+          border-radius:var(--caRadFull); padding:8px 16px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; text-decoration:none; }
+        .ca-pills button.sel{ background:var(--caAcc); border-color:var(--caAcc); color:var(--caOnAcc); }
+        .ca-head{ background:var(--caSurf); border:1px solid var(--caLine); border-radius:var(--caRadLg); padding:16px 20px 16px; margin-bottom:16px; }
+        .ca-headtop{ display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+        .ca-headtop b{ font-size:20px; font-weight:700; }
+        .ca-headstat{ margin-left:auto; font-size:14px; color:var(--caTxt3); }
+        .ca-headctl{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+        .ca-hint{ background:transparent; border:1px solid var(--caLine); border-radius:var(--caRad); padding:14px 16px 14px 34px; margin:0;
+          font-size:14px; line-height:1.5; color:var(--caTxt2); list-style:disc outside; }
+        .ca-hint li{ display:list-item; list-style:disc outside; margin:2px 0; }
         .ca-hint li::marker{ color:var(--caAcc); }
         .ca-hint b{ color:var(--caTxt); font-weight:700; }
         .ca-hint a{ color:var(--caAcc); font-weight:700; text-decoration:none; }
@@ -110,6 +120,9 @@
         .ca-w{ background:var(--caCard); border-radius:var(--caRadLg); overflow:hidden; }
         .ca-wh{ display:flex; align-items:center; gap:8px; padding:var(--caS4) var(--caS4) 10px; }
         .ca-wt{ font-size:18px; font-weight:700; line-height:1.2; color:var(--caTxt); }
+        .ca-kdot{ width:8px; height:8px; border-radius:3px; flex:none; background:var(--caTxt3); }
+        .ca-kdot.news{ background:#2694FE; } .ca-kdot.sports{ background:#5C77FF; } .ca-kdot.ent{ background:#A05CFF; }
+        .ca-kdot.cafe{ background:#FF5C66; } .ca-kdot.shop{ background:#F5394F; } .ca-kdot.interest{ background:#FF9429; }
         .ca-cat{ font-size:12px; font-weight:700; line-height:1.2; padding:4px 8px; border-radius:6px; white-space:nowrap; background:var(--caMuted); color:var(--caTxt2); }
         .ca-cat.news{ color:#2694FE; background:rgba(38,148,254,.16); }
         .ca-cat.sports{ color:#5C77FF; background:rgba(92,119,255,.16); }
@@ -270,29 +283,48 @@
         .ca-cats button:hover{ color:var(--caTxt2); }
         .ca-fab:hover{ filter:brightness(1.05); } .ca-fab:active{ filter:brightness(.95); }
         @media (prefers-reduced-motion: reduce){ .ca-root *{ transition:none !important; animation:none !important; } }
+        .ca-me{ background:var(--caCard); border-radius:var(--caRad); padding:14px 16px; margin-bottom:14px; }
+        .ca-mehd{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+        .ca-mehd b{ font-size:16px; font-weight:700; }
+        .ca-menote{ margin-left:auto; font-size:13px; color:var(--caTxt3); }
+        .ca-meline{ font-size:14px; line-height:1.5; color:var(--caTxt2); }
+        .ca-mechips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+        .ca-mechip{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--caLine); border-radius:var(--caRadFull); padding:5px 10px; font-size:13px; color:var(--caTxt2); }
+        .ca-mechip b{ color:var(--caAcc); font-weight:700; }
+        .ca-pvmv{ display:inline-flex; gap:4px; margin-left:6px; }
+        .ca-ico.sm{ width:24px; height:22px; font-size:11px; }
         .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#28292C; color:#DFE2E5; padding:12px 20px; border-radius:var(--caRad); font-size:15px; font-weight:600; z-index:60; box-shadow:0 2px 16px rgba(0,0,0,.32); }
       </style>
 
-      <!-- 상단 바: PC/모바일 · 설계안 -->
+      <!-- 상단: 알약 탭 → 헤더 카드(통계·처음부터) → 안내 박스 -->
       <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root" x-init="caBoot()">
-        <ul class="ca-hint">
-          <li>사용자향 <b>콘텐츠 에이전트</b> 시연입니다.</li>
-          <li><b>실제 등록된 콘텐츠</b>로 동작합니다.</li>
-          <li>자연어 이해는 <b>실제 모델</b>을 씁니다. 키가 없으면 기본 규칙으로 동작합니다.</li>
-          <li>홈 화면 오른쪽 아래 <b>플로팅 버튼</b>에서 시작하세요.</li>
-          <li><a href="https://claude.ai/code/artifact/627cc308-1a63-4137-86ce-cf96b267fd6e" target="_blank" rel="noopener">설계안 열기 ↗</a></li>
-        </ul>
-        <div class="ca-bar">
-          <div class="ca-seg">
-            <button type="button" x-bind:class="caDevice==='mobile'?'sel':''" x-on:click="caDevice='mobile'">모바일</button>
-            <button type="button" x-bind:class="caDevice==='pc'?'sel':''" x-on:click="caDevice='pc'">PC</button>
+        <div class="ca-pills">
+          <button type="button" class="sel">시연</button>
+          <a class="ca-pill" href="https://claude.ai/code/artifact/627cc308-1a63-4137-86ce-cf96b267fd6e" target="_blank" rel="noopener">기획안 ↗</a>
+        </div>
+
+        <div class="ca-head">
+          <div class="ca-headtop">
+            <b>콘텐츠 에이전트</b>
+            <span class="ca-headstat" x-text="(caLoading ? '콘텐츠 불러오는 중' : ('콘텐츠 ' + caPool.length + '건')) + ' · 위젯 ' + caWidgets.length + '개'"></span>
+            <button type="button" class="ca-ghost" x-on:click="caReset(); caEntered=false">처음부터</button>
           </div>
-          <div class="ca-seg">
-            <button type="button" x-bind:class="caSkin==='light'?'sel':''" x-on:click="caSkin='light'; caSave()">라이트</button>
-            <button type="button" x-bind:class="caSkin==='dark'?'sel':''" x-on:click="caSkin='dark'; caSave()">다크</button>
+          <ul class="ca-hint">
+            <li>사용자향 <b>콘텐츠 에이전트</b> 시연입니다.</li>
+            <li><b>실제 등록된 콘텐츠</b>로 동작합니다.</li>
+            <li>자연어 이해는 <b>실제 모델</b>을 씁니다. 키가 없으면 기본 규칙으로 동작합니다.</li>
+            <li>처음 오면 <b>온보딩</b>부터 시작하고, 이후에는 홈 오른쪽 아래 <b>플로팅 버튼</b>에서 위젯을 만듭니다.</li>
+          </ul>
+          <div class="ca-headctl">
+            <div class="ca-seg">
+              <button type="button" x-bind:class="caDevice==='mobile'?'sel':''" x-on:click="caDevice='mobile'">모바일</button>
+              <button type="button" x-bind:class="caDevice==='pc'?'sel':''" x-on:click="caDevice='pc'">PC</button>
+            </div>
+            <div class="ca-seg">
+              <button type="button" x-bind:class="caSkin==='light'?'sel':''" x-on:click="caSkin='light'; caSave()">라이트</button>
+              <button type="button" x-bind:class="caSkin==='dark'?'sel':''" x-on:click="caSkin='dark'; caSave()">다크</button>
+            </div>
           </div>
-          <span class="ca-note" x-text="caLoading ? '콘텐츠를 불러오는 중…' : caLoadMsg"></span>
-          <button type="button" class="ca-ghost" style="margin-left:auto" x-on:click="caReset(); caEntered=false">처음 상태로</button>
         </div>
       </div>
 
@@ -381,7 +413,6 @@
               <div class="ca-w"
                    x-bind:class="w.size==='lg'?'wide':''">
                 <div class="ca-wh">
-                  <span class="ca-cat" x-bind:class="caWidgetCat(w)" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
                   <span class="ca-wt" x-text="w.name"></span>
                   <span class="ca-auto" x-text="caSizeLabel(w.size)"></span>
                   <span class="ca-info" x-bind:title="caWidgetWhy(w)">ⓘ</span>
@@ -437,6 +468,7 @@
           </div>
 
           <!-- 플로팅 진입(배치는 매니저 · 홈 편집에서) -->
+          <div class="ca-fabtip" x-show="!caEntered && !caOnboard && caWidgets.length < 4" x-cloak>여기서 위젯을 만들어요</div>
           <button type="button" class="ca-fab" x-show="!caEntered" aria-label="내 콘텐츠 매니저"
                   x-on:click="caEntered=true; caTab='gallery'; caEditId=''; caDraft=null">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -457,9 +489,22 @@
               <button type="button" class="x" x-on:click="caEntered=false">✕ 홈으로</button>
             </div>
             <div class="ca-shb">
+              <!-- 내 취향: 내가 뭘 소비해왔는지 -->
+              <div class="ca-me">
+                <div class="ca-mehd"><b>내 취향</b><span class="ca-menote" x-text="'위젯 ' + caProfile().widgets + '개'"></span></div>
+                <div class="ca-meline" x-text="caProfileLine()"></div>
+                <div class="ca-mechips" x-show="caProfile().topics.length" x-cloak>
+                  <template x-for="t in caProfile().topics" x-bind:key="'me'+t.k">
+                    <span class="ca-mechip"><span x-text="caLabel('topic', t.k)"></span><b x-text="t.n + '회'"></b></span>
+                  </template>
+                  <span class="ca-mechip" x-show="caProfile().pins" x-cloak>고정 <b x-text="caProfile().pins"></b></span>
+                  <span class="ca-mechip" x-show="caProfile().muted" x-cloak>덜 보기 <b x-text="caProfile().muted"></b></span>
+                </div>
+              </div>
+
               <div class="ca-mtabs">
-                <button type="button" x-bind:class="caTab==='gallery'?'sel':''" x-on:click="caTab='gallery'">위젯 고르기</button>
-                <button type="button" x-bind:class="caTab==='make'?'sel':''" x-on:click="caTab='make'">위젯 생성하기</button>
+                <button type="button" x-bind:class="caTab==='gallery'?'sel':''" x-on:click="caTab='gallery'">추천 위젯</button>
+                <button type="button" x-bind:class="caTab==='make'?'sel':''" x-on:click="caTab='make'">직접 만들기</button>
                 <button type="button" x-bind:class="caTab==='edit'?'sel':''" x-on:click="caTab='edit'">홈 편집</button>
               </div>
 
@@ -488,9 +533,13 @@
                     <template x-for="w in caGalSnapshot()" x-bind:key="'snap'+w.id">
                       <div class="ca-pvw" x-bind:class="w._new?'isnew':''">
                         <div class="ca-pvh">
-                          <span class="ca-cat" x-bind:class="caWidgetCat(w)" style="font-size:10px;padding:2px 6px" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
+                          <span class="ca-kdot" x-bind:class="caWidgetCat(w)"></span>
                           <span class="ca-pvt" x-text="w.name"></span>
                           <span class="ca-newbdg" x-show="w._new" x-cloak>새 위젯</span>
+                          <span class="ca-pvmv" x-show="w._new" x-cloak>
+                            <button type="button" class="ca-ico sm" x-bind:disabled="caGalPos===0" x-on:click="caGalMove(-1)" aria-label="위로">▲</button>
+                            <button type="button" class="ca-ico sm" x-bind:disabled="caGalPos>=caWidgets.length" x-on:click="caGalMove(1)" aria-label="아래로">▼</button>
+                          </span>
                           <span class="ca-pvs" x-text="caSizeLabel(w.size)"></span>
                         </div>
                         <template x-for="r in caWidgetRows(w)" x-bind:key="'snapi'+w.id+r.a.id">
@@ -520,7 +569,7 @@
                     </div>
                   </div>
                 </template>
-                <button type="button" class="ca-btn" x-on:click="caTab='make'">위젯 생성하기 →</button>
+                <button type="button" class="ca-btn" x-on:click="caTab='make'">원하는 위젯 직접 만들기 →</button>
               </div>
 
               <!-- 위젯 만들기 -->
@@ -541,7 +590,7 @@
                 </div>
                 <hr class="ca-div">
                 <button type="button" class="ca-btn" x-bind:disabled="caThinking" x-on:click="caUnderstand()"
-                        x-text="caThinking ? '만드는 중…' : '위젯 생성하기'"></button>
+                        x-text="caThinking ? '만드는 중…' : '이 조건으로 위젯 만들기'"></button>
                 <div class="ca-via" style="margin:8px 0 0" x-show="caVia" x-cloak x-text="caVia"></div>
 
                 <div class="ca-two" style="margin-top:14px" x-show="caDraft" x-cloak>
@@ -659,7 +708,7 @@
                        x-on:drop.prevent="caDragEnd(); caArrange=false"
                        x-on:dragend="caDragEnd(); caArrange=false">
                     <span class="ca-grip">⠿</span>
-                    <span class="ca-cat" x-bind:class="caWidgetCat(w)" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
+                    <span class="ca-kdot" x-bind:class="caWidgetCat(w)"></span>
                     <div class="ca-en">
                       <div class="ca-wt" x-text="w.name"></div>
                       <div class="ca-meta"><span x-text="caWidgetWhy(w)"></span></div>
@@ -682,8 +731,12 @@
                   <template x-for="w in caWidgets" x-bind:key="'pv'+w.id">
                     <div class="ca-pvw" x-bind:class="caDragId===w.id?'sel':''">
                       <div class="ca-pvh">
-                        <span class="ca-cat" x-bind:class="caWidgetCat(w)" style="font-size:10px;padding:2px 6px" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
+                        <span class="ca-kdot" x-bind:class="caWidgetCat(w)"></span>
                         <span class="ca-pvt" x-text="w.name"></span>
+                        <span class="ca-pvmv">
+                          <button type="button" class="ca-ico sm" x-bind:disabled="caWidgets.indexOf(w)===0" x-on:click="caMoveById(w.id,-1)" aria-label="위로">▲</button>
+                          <button type="button" class="ca-ico sm" x-bind:disabled="caWidgets.indexOf(w)===caWidgets.length-1" x-on:click="caMoveById(w.id,1)" aria-label="아래로">▼</button>
+                        </span>
                         <span class="ca-pvs" x-text="caSizeLabel(w.size)"></span>
                       </div>
                       <template x-for="r in caWidgetRows(w)" x-bind:key="'pvi'+w.id+r.a.id">

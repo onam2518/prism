@@ -124,7 +124,7 @@ window.PRISM_APP_PARTS.push(() => ({
           }
         } catch (e) {}
         if (!this.dictData && this.loadDict) { try { this.loadDict(); } catch (e) {} }   // 카테고리 한글 원천
-        if (this.caWidgets.length) return;
+        if (this.caWidgets.length) { this.caOnboard = false; return; }
         try {
           const raw = localStorage.getItem('prism_ca');
           if (raw) {
@@ -134,11 +134,11 @@ window.PRISM_APP_PARTS.push(() => ({
               if (s.seen) this.caSeen = s.seen;
               if (s.tabOrder) this.caTabOrder = s.tabOrder;
               if (s.skin) this.caSkin = s.skin;
-              if (s.widgets && s.widgets.length) { this.caWidgets = s.widgets; return; }
+              if (s.widgets && s.widgets.length) { this.caWidgets = s.widgets; this.caOnboard = false; return; }
             }
           }
         } catch (e) {}
-        this.caOnboard = true;             // 저장분이 없으면 온보딩부터(빈 화면을 주지 않는다)
+        this.caOnboard = true;             // 처음 진입(위젯 없음)이면 언제나 온보딩부터 — 빈 화면을 주지 않는다
         this.caWidgets = [];               // 온보딩이 첫 위젯을 만든다
       },
       caSave() {
@@ -401,6 +401,31 @@ window.PRISM_APP_PARTS.push(() => ({
         this.caTab = 'home';
         this.caToast('「' + w.name + '」 위젯을 홈에 추가했어요');
       },
+      // ── 내 취향: 내가 뭘 소비해왔는지 사용자에게 보여주는 근거 ──
+      caProfile() {
+        const seen = this.caSeen || {};
+        const reads = Object.keys(seen).filter((k) => k.indexOf('t:') !== 0)
+                            .reduce((n, k) => n + (seen[k] || 0), 0);
+        const topics = Object.keys(seen).filter((k) => k.indexOf('t:') === 0)
+          .map((k) => ({ k: k.slice(2), n: seen[k] }))
+          .sort((a, b) => b.n - a.n).slice(0, 3);
+        const tones = { 깊게: 0, 빠르게: 0, 가볍게: 0 };
+        (this.caPool || []).forEach((a) => { if (seen[a.id] && a.tone) tones[a.tone] += seen[a.id]; });
+        let tone = '', best = 0;
+        Object.keys(tones).forEach((t) => { if (tones[t] > best) { best = tones[t]; tone = t; } });
+        const pins = (this.caWidgets || []).reduce((n, w) => n + ((w.pins || []).length), 0);
+        const muted = (this.caWidgets || []).reduce((n, w) => n + ((w.hidden || []).length), 0);
+        return { reads: reads, topics: topics, tone: tone, pins: pins, muted: muted,
+                 widgets: (this.caWidgets || []).length };
+      },
+      caProfileLine() {                    // 한 줄 요약(사용자 말)
+        const p = this.caProfile();
+        if (!p.reads) return '아직 읽은 소식이 없어요 · 읽을수록 추천이 나를 닮아갑니다';
+        const t = p.topics.length ? this.caLabel('topic', p.topics[0].k) : '';
+        const tone = p.tone === '깊게' ? '깊이 있는 글' : (p.tone === '가볍게' ? '가벼운 글' : (p.tone === '빠르게' ? '짧은 소식' : ''));
+        return '소식 ' + p.reads + '건을 읽었어요' + (t ? (' · ' + t + '를 가장 많이 봤어요') : '')
+               + (tone ? (' · ' + tone + '을 선호해요') : '');
+      },
       // ── 상단 탭: 주제(카테고리)만 · 순서만 조정 가능(다음 앱 규약) ──
       caTabs() {
         const all = (this.caDict.topics || []);
@@ -509,7 +534,7 @@ window.PRISM_APP_PARTS.push(() => ({
         let rows;
         if (w.src === 'reco') {            // 나를 위한 추천: 내가 자주 본 주제 우선
           rows = (this.caPool || []).filter((a) => hidden.indexOf(a.id) < 0)
-            .map((a) => ({ a: a, ok: true, why: this.caSeenScore(a) ? '자주 보는 주제예요' : '새로 살펴볼 만해요' }))
+            .map((a) => ({ a: a, ok: true, why: this.caRecoWhy(a) }))
             .sort((x, y) => this.caSeenScore(y.a) - this.caSeenScore(x.a));
         } else if (w.src === 'hot') {      // 지금 많이 보는: 전체 인기(시연은 최신순 = 지금 뜨는)
           rows = (this.caPool || []).filter((a) => hidden.indexOf(a.id) < 0)
@@ -533,6 +558,17 @@ window.PRISM_APP_PARTS.push(() => ({
         }
         return keep;
       },
+      caRecoWhy(a) {                       // 추천 근거는 짧고 구체적으로: 무엇을 몇 번 봤는지
+        const seen = this.caSeen || {};
+        if (seen[a.id]) return '이 소식을 ' + seen[a.id] + '번 열어봤어요';
+        let best = null;
+        (a.topics || []).forEach((t) => {
+          const n = seen['t:' + t] || 0;
+          if (n && (!best || n > best.n)) best = { t: t, n: n };
+        });
+        if (best) return this.caLabel('topic', best.t) + '를 ' + best.n + '번 봐서 골랐어요';
+        return '아직 읽은 기록이 없어 인기 소식으로 채웠어요';
+      },
       // 카드마다 "왜 이 소식?"(사용자 말)
       caRowWhy(w, r) {
         if (r && r.why) return r.why;
@@ -554,6 +590,10 @@ window.PRISM_APP_PARTS.push(() => ({
       caRemove(w) {
         const i = this.caWidgets.indexOf(w);
         if (i >= 0) { const n = w.name; this.caWidgets.splice(i, 1); this.caSave(); this.caToast('「' + n + '」 위젯을 지웠어요'); }
+      },
+      caMoveById(id, dir) {                // 미리보기에서 바로 순서 조정
+        const w = (this.caWidgets || []).filter((x) => x.id === id)[0];
+        if (w) this.caMove(w, dir);
       },
       caMove(w, dir) {
         const i = this.caWidgets.indexOf(w), j = i + dir;
@@ -607,6 +647,15 @@ window.PRISM_APP_PARTS.push(() => ({
       caSizeLabel(s) { return s === 'lg' ? '크게' : (s === 'md' ? '보통' : '작게'); },
       // 위젯이 왜 이 소식을 보여주는지 한 줄(사용자 말)
       caWidgetWhy(w) {
+        if (w.src === 'reco') {            // 나를 위한 추천 = 내 기록이 근거
+          const p = this.caProfile();
+          if (!p.reads) return '읽은 기록이 쌓이면 내 취향으로 채워집니다 · 지금은 인기 소식';
+          const t = p.topics.length ? this.caLabel('topic', p.topics[0].k) + '를 ' + p.topics[0].n + '번' : '';
+          const tone = p.tone === '깊게' ? '깊이 있는 글' : (p.tone === '가볍게' ? '가벼운 글' : (p.tone === '빠르게' ? '짧은 소식' : ''));
+          return '최근 ' + p.reads + '건을 읽었고' + (t ? (' ' + t) : '') + ' 봤어요' + (tone ? (' · ' + tone 
+                 + ' 선호') : '') + ' · 그 기준으로 골랐어요';
+        }
+        if (w.src === 'hot') return '지금 전체에서 많이 보는 순서예요 · 내 기록과 무관합니다';
         const c = w.cond || {};
         const t = [].concat(c.ents || [], this.caLabels('topic', c.topics), this.caLabels('field', c.fields));
         let s = t.length ? t.join('·') + ' 관심으로 모았어요' : '요즘 많이 보는 소식이에요';
