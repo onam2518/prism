@@ -68,6 +68,14 @@
                 <template x-if="fa && fa.row && intentMismatch(fa.intent, fa.row.service).length">
                   <span class="text-xs" style="color:var(--ds-error);display:block;margin-top:4px">⚠ 이 서비스(<span x-text="fa.row.service"></span>)의 분류값이 아닌 인텐트: <b x-text="intentMismatch(fa.intent, fa.row.service).join(', ')"></b> · 범용 또는 이 서비스 값인지 확인하세요</span>
                 </template></label>
+              <div><span class="text-xs text-muted">엔티티 · 칩의 ×로 삭제 · 입력 후 쉼표 또는 엔터로 추가</span>
+                <div class="flex flex-wrap gap-1 items-center" style="margin-top:4px">
+                  <template x-for="(e,i) in ((fa&&fa.entities)||[])" x-bind:key="'fae'+i+e">
+                    <button type="button" class="ds-badge ds-badge--neutral" x-on:click="fa.entities.splice(i,1)" x-bind:data-tip="'클릭해 삭제 · ' + e" data-tip-pos="top" x-bind:aria-label="'엔티티 삭제 · ' + e"><span x-text="e"></span>&nbsp;×</button>
+                  </template>
+                  <input type="text" class="field" style="height:30px;width:160px;font-size:12px" placeholder="엔티티 추가" x-bind:value="fa ? fa.entNew : ''" x-on:input="faEntInput($event.target.value)" x-on:keydown.enter.prevent="faEntCommit()">
+                </div>
+              </div>
               <div><span class="text-xs text-muted">등급</span><div class="flex gap-2" style="margin-top:4px">
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='G' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline'" x-on:click="fa.grade='G'">G · 정상</button>
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='R' ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="fa.grade='R'">R · 차단</button>
