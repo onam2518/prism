@@ -140,23 +140,18 @@ window.PRISM_APP_PARTS.push(() => ({
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
       },
       // 정답 확정(고쳐서 편입): 요약·분류·의도·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 골든 정답
+      // 분류·의도·엔티티는 하이브리드 선택형(app-10-hybridpick · 시안 3) · 값은 처음부터 배열로 유지(저장 계약 동일)
       faOpen: false, faBusy: false, fa: null,
       openFinalAnswer(r) {
         this.fa = { hash: r.hash, title: r.title || '(제목 없음)', row: r,
-          summary: r.summary || '', cats: (r.category || []).join(', '),
-          intent: (r.intent || []).join(', '), grade: r.grade === 'R' ? 'R' : 'G',
-          entities: (r.entities || []).slice(), entNew: '',
+          summary: r.summary || '', cats: (r.category || []).slice(),
+          intent: (r.intent || []).slice(), grade: r.grade === 'R' ? 'R' : 'G',
+          entities: (r.entities || []).slice(),
           note: (r.fb && r.fb.note) || '', elems: (r.fb && r.fb.elems) || [] };
+        this.hybInit(['facat', 'faint', 'faent']);   // 픽커 상태(검색어·신규 표시) 초기화
+        this.hybEntLoad();                           // 엔티티 추천·검색용 등재분 캐시 예열
         this.faOpen = true;
       },
-      // 정답 확정 · 엔티티 칩 편집: ×로 삭제 · 입력 후 쉼표/엔터로 추가(검수 상세 편집과 동일 규칙)
-      faEntCommit() {
-        const f = this.fa; if (!f) return;
-        const parts = String(f.entNew || '').split(',').map((s) => s.trim()).filter(Boolean);
-        parts.forEach((p) => { if (!f.entities.includes(p)) f.entities.push(p); });
-        f.entNew = '';
-      },
-      faEntInput(v) { if (!this.fa) return; this.fa.entNew = v; if (String(v).indexOf(',') >= 0) this.faEntCommit(); },
       async toggleOpsHold(r) {                  // 운영자 수동 노출제한 토글(라벨·학습과 분리)
         if (!r || !r.hash) return;
         const on = !r.ops_hold;
@@ -207,10 +202,9 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           if (!(f.hash || '').startsWith('goldf:')) {   // 골드 문항은 편집 대상이 아니라 판정만 기록됨
             const r0 = f.row; const patch = {};
-            const cats = f.cats.split(',').map((s) => s.trim()).filter(Boolean);
-            const intent = f.intent.split(',').map((s) => s.trim()).filter(Boolean);
-            this.faEntCommit();                        // 입력창에 남은 엔티티도 확정에 포함
-            const ents = (f.entities || []).slice();
+            const cats = (f.cats || []).map((s) => String(s).trim()).filter(Boolean);
+            const intent = (f.intent || []).map((s) => String(s).trim()).filter(Boolean);
+            const ents = (f.entities || []).map((s) => String(s).trim()).filter(Boolean);
             if (f.summary !== (r0.summary || '')) patch.summary = f.summary;
             if (cats.join('|') !== (r0.category || []).join('|')) patch.content_category = cats;
             if (intent.join('|') !== (r0.intent || []).join('|')) patch.intent = intent;
