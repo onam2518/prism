@@ -38,33 +38,38 @@
 
         /* ── 다음 앱 홈(다크) ── */
         .ca-stage{ display:flex; justify-content:center; }
-        .ca-view{ background:var(--caBody); border-radius:var(--caRadLg); overflow:hidden; position:relative; width:430px; max-width:100%; padding-bottom:var(--caS3); }
-        .ca-view.pc{ width:100%; max-width:1080px; }
+        .ca-view{ background:var(--caBody); border-radius:var(--caRadLg); overflow:hidden; position:relative; width:430px; max-width:100%;
+          height:720px; display:flex; flex-direction:column; }
+        .ca-scroll{ flex:1; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:none; }
+        .ca-scroll::-webkit-scrollbar{ width:0; height:0; }
+        .ca-view *{ scrollbar-width:none; }
+        .ca-view *::-webkit-scrollbar{ width:0; height:0; display:none; }
+        .ca-view.pc{ width:100%; max-width:1080px; height:760px; }
         /* 검색 바(그라디언트 테두리) */
-        .ca-top{ padding:var(--caS4) var(--caS4) var(--caS3); }
+        .ca-top{ padding:var(--caS4) var(--caS4) var(--caS3); flex:none; }
         .ca-view.pc .ca-top{ padding:var(--caS6) var(--caS6) var(--caS4); display:flex; justify-content:center; }
-        .ca-sbwrap{ padding:2px; border-radius:var(--caRadFull); background:linear-gradient(90deg,#FF5C66,#FFB300,#22C55E,#2694FE,#A05CFF); width:100%; }
+        .ca-sbwrap{ display:block; padding:1.5px; border-radius:var(--caRadFull); background:linear-gradient(90deg,#FF5C66,#FFB300,#22C55E,#2694FE,#A05CFF); width:100%; }
         .ca-view.pc .ca-sbwrap{ max-width:660px; }
-        .ca-sb{ display:flex; align-items:center; gap:10px; background:var(--caBody); border-radius:var(--caRadFull); padding:11px 16px; }
+        .ca-sb{ display:flex; align-items:center; gap:10px; height:46px; background:var(--caBody); border-radius:var(--caRadFull); padding:0 16px; }
         .ca-dlogo{ width:22px; height:22px; border-radius:6px; background:conic-gradient(from 200deg,#2694FE,#A05CFF,#FF5C66,#FFB300,#22C55E,#2694FE); flex:none; }
         .ca-sb .ph{ flex:1; color:var(--caTxt3); font-size:15px; }
         .ca-sb .ic{ width:18px; height:18px; border-radius:4px; background:var(--caTxt3); opacity:.55; }
         /* 서비스 칩(PC) */
-        .ca-svc{ display:flex; gap:10px; padding:0 var(--caS6) var(--caS4); flex-wrap:wrap; justify-content:center; }
+        .ca-svc{ display:flex; gap:10px; padding:0 var(--caS6) var(--caS4); flex-wrap:wrap; justify-content:center; flex:none; }
         .ca-svc span{ display:inline-flex; align-items:center; gap:7px; background:var(--caSurf); border-radius:var(--caRadFull); padding:7px 14px 7px 8px; font-size:14px; font-weight:600; color:var(--caTxt); }
         .ca-svc i{ width:20px; height:20px; border-radius:7px; display:block; }
         /* 실시간 */
-        .ca-live{ display:flex; align-items:center; gap:8px; padding:0 var(--caS4) var(--caS3); font-size:14px; color:var(--caTxt2); }
+        .ca-live{ display:flex; align-items:center; gap:8px; padding:0 var(--caS4) var(--caS3); font-size:14px; color:var(--caTxt2); flex:none; }
         .ca-live .bdg{ background:var(--caAccMuted); color:var(--caAcc); font-weight:700; font-size:12px; padding:4px 9px; border-radius:var(--caRadFull); }
         .ca-live b{ color:var(--caTxt); font-weight:700; }
         /* 모바일 카테고리 탭 */
-        .ca-cats{ display:flex; gap:18px; padding:0 var(--caS4) 0; border-bottom:1px solid var(--caLine); overflow-x:auto; }
+        .ca-cats{ display:flex; gap:16px; padding:0 var(--caS4); border-bottom:1px solid var(--caLine); overflow-x:auto; flex:none; }
         .ca-cats::-webkit-scrollbar{ display:none; }
-        .ca-cats button{ border:0; background:transparent; font-family:inherit; font-size:16px; font-weight:700; color:var(--caTxt3); padding:10px 0 12px; white-space:nowrap; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
+        .ca-cats button{ border:0; background:transparent; font-family:inherit; font-size:15px; font-weight:700; color:var(--caTxt3); padding:10px 0 12px; white-space:nowrap; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
         .ca-cats button.on{ color:var(--caTxt); border-bottom-color:var(--caTxt); }
         /* 피드: 모바일 1열 · PC 2단(본문+사이드) */
-        .ca-feed{ padding:var(--caS3); display:grid; grid-template-columns:1fr; gap:var(--caS3); max-height:560px; overflow-y:auto; }
-        .ca-view.pc .ca-feed{ grid-template-columns:1.62fr 1fr; align-items:start; padding:0 var(--caS6) var(--caS6); max-height:640px; }
+        .ca-feed{ padding:var(--caS3); display:grid; grid-template-columns:1fr; gap:var(--caS3); }
+        .ca-view.pc .ca-feed{ grid-template-columns:1.62fr 1fr; align-items:start; padding:0 var(--caS6) var(--caS6); }
         .ca-view.pc .ca-w{ grid-column:1; }                 /* 본문은 왼쪽 열 */
         .ca-view.pc .ca-addw{ grid-column:1; }
         .ca-side{ display:flex; flex-direction:column; gap:var(--caS3); }
@@ -76,10 +81,12 @@
         .ca-nav div.on{ color:var(--caAcc); }
         .ca-nav i{ display:block; width:20px; height:20px; margin:0 auto 5px; border-radius:6px; background:currentColor; opacity:.85; }
         .ca-view.pc .ca-nav{ display:none; }
+        .ca-view.pc .ca-fab{ bottom:20px; }
+        .ca-nav{ flex:none; }
 
         /* 카드 */
         .ca-w{ background:var(--caCard); border-radius:var(--caRadLg); overflow:hidden; }
-        .ca-wh{ display:flex; align-items:center; gap:8px; padding:var(--caS4) var(--caS4) var(--caS3); }
+        .ca-wh{ display:flex; align-items:center; gap:8px; padding:var(--caS4) var(--caS4) 10px; }
         .ca-wt{ font-size:18px; font-weight:700; line-height:1.2; color:var(--caTxt); }
         .ca-cat{ font-size:12px; font-weight:700; line-height:1.2; padding:4px 8px; border-radius:6px; white-space:nowrap; background:var(--caMuted); color:var(--caTxt2); }
         .ca-cat.news{ color:#2694FE; background:rgba(38,148,254,.16); }
@@ -90,18 +97,19 @@
         .ca-cat.interest{ color:#FF9429; background:rgba(255,148,41,.16); }
         .ca-auto{ margin-left:auto; font-size:12px; font-weight:700; color:var(--caTxt3); }
         .ca-info{ color:var(--caTxt3); font-size:13px; }
-        .ca-item{ display:flex; gap:var(--caS3); padding:var(--caS3) var(--caS4); align-items:flex-start; border-top:1px solid var(--caLine); }
+        .ca-item{ display:flex; gap:var(--caS3); padding:11px var(--caS4); align-items:flex-start; border-top:1px solid var(--caLine); }
         .ca-item:first-of-type{ border-top:0; }
         .ca-ttl{ font-size:16px; font-weight:400; line-height:1.4; color:var(--caTxt); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
         .ca-meta{ font-size:13px; line-height:1.32; color:var(--caTxt3); margin-top:6px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
         .ca-pin{ font-size:12px; font-weight:700; color:var(--caAcc); }
-        .ca-th{ width:76px; height:58px; border-radius:var(--caRad); background:var(--caMuted); flex:none; }
-        .ca-refresh{ display:flex; align-items:center; justify-content:center; gap:8px; padding:var(--caS3) var(--caS4) var(--caS4); }
+        .ca-th{ width:64px; height:48px; border-radius:var(--caRad); background:var(--caMuted); flex:none; }
+        .ca-refresh{ display:flex; align-items:center; justify-content:center; gap:8px; padding:10px var(--caS4) var(--caS4); }
         .ca-rpill{ display:inline-flex; align-items:center; gap:8px; border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRadFull); padding:9px 16px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
-        .ca-why{ margin:0 var(--caS4) var(--caS3); background:var(--caMuted); border-radius:var(--caRad); padding:10px 12px; font-size:13px; line-height:1.4; color:var(--caTxt2); }
+        .ca-why{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 var(--caS4) 10px; padding:0; background:transparent;
+          font-size:12px; line-height:1.35; color:var(--caTxt3); }
         .ca-why b{ color:var(--caAcc); font-weight:700; }
-        .ca-fbs{ display:flex; gap:6px; margin-top:8px; }
-        .ca-fb{ border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRadFull); padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+        .ca-fbs{ display:inline-flex; gap:5px; margin:0 0 0 auto; }
+        .ca-fb{ border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRadFull); padding:3px 9px; font-size:11.5px; font-weight:600; cursor:pointer; font-family:inherit; }
         .ca-fb.on{ border-color:var(--caAcc); color:var(--caAcc); }
         .ca-empty{ padding:var(--caS5) var(--caS4); text-align:center; font-size:15px; color:var(--caTxt3); }
         .ca-addw{ border:1px dashed var(--caAcc); border-radius:var(--caRadLg); background:transparent; color:var(--caAcc); padding:var(--caS4); text-align:center; font-size:15px; font-weight:700; cursor:pointer; }
@@ -128,7 +136,7 @@
         .ca-wbtn.danger{ color:var(--caErr); }
         .ca-grip{ color:var(--caTxt3); font-size:15px; cursor:grab; }
         .ca-arrbtn{ position:absolute; right:16px; bottom:78px; z-index:5; border:1px solid var(--caLine); background:var(--caSurf); color:var(--caTxt); border-radius:var(--caRadFull); padding:11px 16px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
-        .ca-fab{ position:absolute; right:16px; bottom:20px; z-index:5; display:inline-flex; align-items:center; gap:8px; background:var(--caAcc); color:var(--caOnAcc); border:0; border-radius:var(--caRadFull); padding:13px 18px 13px 14px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; box-shadow:0 2px 16px rgba(0,0,0,.32); }
+        .ca-fab{ position:absolute; right:16px; bottom:86px; z-index:5; display:inline-flex; align-items:center; gap:8px; background:var(--caAcc); color:var(--caOnAcc); border:0; border-radius:var(--caRadFull); padding:13px 18px 13px 14px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; box-shadow:0 2px 16px rgba(0,0,0,.32); }
         .ca-fab .av{ width:20px; height:20px; border-radius:var(--caRadFull); background:rgba(255,255,255,.32); }
         /* 매니저 시트 */
         .ca-sheet{ position:absolute; inset:0; z-index:10; background:var(--caBody); display:flex; flex-direction:column; }
@@ -198,6 +206,18 @@
         .ca-en{ flex:1; min-width:120px; }
         .ca-ico{ border:1px solid var(--caLine); background:transparent; color:var(--caTxt2); border-radius:var(--caRad); width:32px; height:30px; font-size:14px; cursor:pointer; font-family:inherit; }
         .ca-ico:disabled{ opacity:.3; cursor:default; }
+        /* 홈 편집 미리보기(축소 홈) */
+        .ca-editwrap{ display:grid; grid-template-columns:1fr; gap:16px; }
+        .ca-view.pc .ca-editwrap{ grid-template-columns:1.1fr .9fr; align-items:start; }
+        .ca-pv{ background:var(--caBody); border:1px solid var(--caLine); border-radius:var(--caRadLg); padding:10px; position:sticky; top:0; }
+        .ca-pvw{ background:var(--caCard); border-radius:var(--caRad); padding:10px 11px; margin-bottom:8px; }
+        .ca-pvw.sel{ outline:2px solid var(--caAcc); }
+        .ca-pvh{ display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+        .ca-pvt{ font-size:13px; font-weight:700; color:var(--caTxt); }
+        .ca-pvs{ margin-left:auto; font-size:11px; color:var(--caTxt3); font-weight:700; }
+        .ca-pvi{ display:flex; gap:7px; align-items:center; padding:4px 0; }
+        .ca-pvi .t{ flex:1; min-width:0; font-size:11.5px; color:var(--caTxt2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .ca-pvi .th{ width:22px; height:16px; border-radius:4px; background:var(--caMuted); flex:none; }
         .ca-toast{ position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#28292C; color:#DFE2E5; padding:13px 20px; border-radius:var(--caRad); font-size:15px; font-weight:600; z-index:60; box-shadow:0 2px 16px rgba(0,0,0,.32); }
       </style>
 
@@ -349,14 +369,20 @@
 
               <!-- 위젯 고르기(갤러리) -->
               <div x-show="caTab==='gallery'" x-cloak>
-                <div class="ca-lab">어떤 위젯을 홈에 놓을까요?</div>
-                <div class="ca-gal">
-                  <template x-for="g in caGalleryItems()" x-bind:key="g.key">
-                    <button type="button" class="ca-galt" x-on:click="caAddFromGallery(g)">
-                      <div class="n" x-text="g.name"></div><div class="d" x-text="g.desc"></div>
-                    </button>
-                  </template>
-                </div>
+                <template x-for="grp in caGalleryGroups()" x-bind:key="grp.title">
+                  <div style="margin-bottom:18px">
+                    <div class="ca-lab" style="margin-bottom:4px" x-text="grp.title"></div>
+                    <div class="ca-note" style="margin-bottom:9px" x-text="grp.hint"></div>
+                    <div class="ca-gal">
+                      <template x-for="g in grp.items" x-bind:key="g.key">
+                        <button type="button" class="ca-galt" x-on:click="caAddFromGallery(g)">
+                          <div class="n" x-text="g.name"></div><div class="d" x-text="g.desc"></div>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <button type="button" class="ca-btn" x-on:click="caTab='make'">원하는 걸 말로 만들기 →</button>
               </div>
 
               <!-- 위젯 만들기 -->
@@ -478,7 +504,9 @@
                   <input type="range" min="0" max="100" step="10" x-model.number="caFresh" x-on:change="caSave()">
                   <div class="ca-frl"><span>익숙하게</span><span x-text="caFresh >= 60 ? '새로운 소식도 섞어요' : '내가 고른 것 위주'"></span><span>새롭게</span></div>
                 </div>
-                <div class="ca-lab">⠿ 끌어서 배치 · 크기·삭제 · 바꾸면 홈에 바로 반영됩니다</div>
+                <div class="ca-lab">⠿ 끌어서 배치 · 크기·삭제 · 오른쪽 미리보기에 바로 반영됩니다</div>
+                <div class="ca-editwrap">
+                <div>
                 <template x-for="(w, i) in caWidgets" x-bind:key="'e'+w.id">
                   <div class="ca-erow"
                        x-bind:class="(caDragId===w.id?'drag ':'') + (caOverId===w.id?'over':'')"
@@ -503,7 +531,27 @@
                     <button type="button" class="ca-ico" x-on:click="caRemove(w)">✕</button>
                   </div>
                 </template>
-                <div class="ca-addw" x-on:click="caTab='make'">＋ 위젯 추가</div>
+                <div class="ca-addw" x-on:click="caTab='gallery'">＋ 위젯 추가</div>
+                </div>
+                <!-- 미리보기: 지금 순서·크기 그대로의 홈 -->
+                <div class="ca-pv">
+                  <div class="ca-lab" style="margin-bottom:8px">미리보기</div>
+                  <template x-for="w in caWidgets" x-bind:key="'pv'+w.id">
+                    <div class="ca-pvw" x-bind:class="caDragId===w.id?'sel':''">
+                      <div class="ca-pvh">
+                        <span class="ca-cat" x-bind:class="caWidgetCat(w)" style="font-size:10px;padding:2px 6px" x-text="caLabel('topic', (w.cond.topics||[])[0] || (w.cond.fields||[])[0] || '내 소식')"></span>
+                        <span class="ca-pvt" x-text="w.name"></span>
+                        <span class="ca-pvs" x-text="caSizeLabel(w.size)"></span>
+                      </div>
+                      <template x-for="r in caWidgetRows(w)" x-bind:key="'pvi'+w.id+r.a.id">
+                        <div class="ca-pvi"><span class="t" x-text="r.a.t"></span><span class="th"></span></div>
+                      </template>
+                      <template x-if="!caWidgetRows(w).length"><div class="ca-pvi"><span class="t" style="color:var(--caTxt3)">표시할 소식 없음</span></div></template>
+                    </div>
+                  </template>
+                  <template x-if="!caWidgets.length"><div class="ca-pvi"><span class="t" style="color:var(--caTxt3)">위젯이 없습니다</span></div></template>
+                </div>
+                </div>
               </div>
             </div>
           </div>
