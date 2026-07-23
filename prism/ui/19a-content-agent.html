@@ -179,6 +179,8 @@
         .ca-sheet{ position:absolute; inset:0; z-index:10; background:var(--caBody); display:flex; flex-direction:column; }
         .ca-shd{ display:flex; align-items:center; gap:10px; padding:var(--caS4); background:var(--caSurf); border-bottom:1px solid var(--caLine); }
         .ca-shd b{ font-size:18px; font-weight:700; }
+        .ca-shlogo{ display:inline-flex; align-items:center; }
+        .ca-shlogo svg{ width:26px; height:26px; display:block; }
         .ca-shd .x{ margin-left:auto; border:0; background:transparent; color:var(--caTxt2); font-size:15px; cursor:pointer; font-family:inherit; }
         .ca-shb{ padding:var(--caS4); overflow-y:auto; flex:1; }
         .ca-mtabs{ display:inline-flex; background:var(--caMuted); border-radius:var(--caRadFull); padding:4px; gap:2px; margin-bottom:14px; }
@@ -407,7 +409,7 @@
           <div class="ca-scroll">
           <div class="ca-feed">
             <template x-if="!caWidgets.length">
-              <div class="ca-w"><div class="ca-empty">위젯이 없습니다 · 오른쪽 아래 <b>내 콘텐츠 매니저</b>에서 만들어 보세요</div></div>
+              <div class="ca-w"><div class="ca-empty">위젯이 없습니다 · 오른쪽 아래 <b>파란 버튼</b>을 눌러 만들어 보세요</div></div>
             </template>
             <template x-for="w in caVisibleWidgets()" x-bind:key="w.id">
               <div class="ca-w"
@@ -485,7 +487,17 @@
           <!-- 매니저 시트 -->
           <div class="ca-sheet" x-show="caEntered" x-cloak>
             <div class="ca-shd">
-              <b>내 콘텐츠 매니저</b>
+              <span class="ca-shlogo" aria-label="내 콘텐츠 매니저">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="caShG" x1="2" y1="20" x2="22" y2="4" gradientUnits="userSpaceOnUse">
+                      <stop offset="0" stop-color="#3FC8F5"/><stop offset=".5" stop-color="#4A7DF0"/><stop offset="1" stop-color="#7B5BEA"/>
+                    </linearGradient>
+                  </defs>
+                  <path d="M12 1.6c.9 4.6 3.9 7.6 8.5 8.5-4.6.9-7.6 3.9-8.5 8.5-.9-4.6-3.9-7.6-8.5-8.5 4.6-.9 7.6-3.9 8.5-8.5Z"
+                        transform="translate(0 1.5)" fill="url(#caShG)"/>
+                </svg>
+              </span>
               <button type="button" class="x" x-on:click="caEntered=false">✕ 홈으로</button>
             </div>
             <div class="ca-shb">
