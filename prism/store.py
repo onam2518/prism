@@ -50,6 +50,38 @@ def level_of(points: int) -> int:
     return lvl
 
 
+# 최종판정(2층 최종검수) 1건당 점수 · 산식 최상위 가중(기본검수 10 · 교정 25 대비 4배/1.6배).
+# 근거: 판정 1건이 의견 갈림을 종결하고 정답(골든) 편입 여부를 결정 — 콘텐츠 1건에서 가장
+# 무거운 단일 행동. 종전에는 final_verdicts 원장에만 남아 점수 기여가 0이라 최종검수자의
+# 랭킹이 오르지 않았다(2026-07-23 수정). 원장에 과거 판정이 보존돼 있어 소급 반영된다.
+FINAL_VERDICT_POINTS = 40
+
+
+def final_verdict_counts(store, team=None) -> tuple:
+    """final_verdicts 원장 → (판정자별 누적, 이번주, 지난주) 카운트.
+    원장은 reports kind='final_verdicts' 의 {hash: {verdict, by, ts}} · 철회분은 원장에서 빠져 자동 제외.
+    SQLite·Supabase 양쪽 arena_stats 가 공유(산식 드리프트 방지)."""
+    try:
+        items = (store.get_report("final_verdicts", team=team) or {}).get("items") or {}
+    except Exception:
+        return {}, {}, {}
+    DAY = 86400.0
+    now = time.time()
+    week_ago, prev_ago = now - 7 * DAY, now - 14 * DAY
+    total, wk, pv = {}, {}, {}
+    for v in items.values():
+        rv = ((v or {}).get("by") or "").strip()
+        if not rv:
+            continue                                   # 판정자 미상 = 개인 점수 귀속 불가
+        total[rv] = total.get(rv, 0) + 1
+        t = float(v.get("ts") or 0)
+        if t >= week_ago:
+            wk[rv] = wk.get(rv, 0) + 1
+        elif t >= prev_ago:
+            pv[rv] = pv.get(rv, 0) + 1
+    return total, wk, pv
+
+
 class Store:
     def __init__(self, path: str):
         self.path = path
@@ -1437,7 +1469,8 @@ class Store:
 
     def arena_stats(self, target: float = 0.9, team=None) -> dict:
         """평가 아레나(게임화) 지표 · 품질 가중.
-        점수 = (검수 10 + 교정 25 + 구조화 교정 5 + 합의 일치 5 + 골드 응답 10) × 품질 배율 + 미션 보너스.
+        점수 = (검수 10 + 교정 25 + 구조화 교정 5 + 합의 일치 5 + 골드 응답 10
+                + 최종판정 40) × 품질 배율 + 미션 보너스.
         품질 배율 = 0.5 + 0.5 × 골드 정확도(응답 5건 이상일 때, 그 외 1.0). [Oleson 2011 · Snow 2008]"""
         c = self._conn()
         DAY = 86400.0
@@ -1526,7 +1559,8 @@ class Store:
         gold = self.gold_stats()
         patches = self.patch_counts()
         bonuses = self.event_bonus()
-        gcontrib = self.golden_contrib_counts()          # 골든 확정 기여(가시화·배지)
+        gcontrib = self.golden_contrib_counts()          # 골든 확정 기여(가시화·배지 · 점수는 이벤트 보너스로 지급)
+        fin_n, fin_wk, fin_pv = final_verdict_counts(self, team)   # 최종판정(2층) · 점수 산입
 
         # 담당 배정: 개인 진척 분모 = 내 담당 콘텐츠 수, 완료 = 내가 검수한 담당 콘텐츠 수
         # 삭제된 콘텐츠의 고아 배정은 제외(분모·'내 담당' 수 오염 방지)
@@ -1551,18 +1585,22 @@ class Store:
 
         leaderboard = []
         # 보너스(적립·초기화 오프셋)만 있는 검수자도 포함: 피드백 전체 삭제 후에도 보존 점수가 보이게
-        ids = set(board) | {k for k, b in bonuses.items() if k and (b or {}).get("total")}
+        # 최종판정만 한 검수자(기초 피드백 0)도 포함 — 없으면 리더보드에서 아예 빠진다
+        ids = set(board) | {k for k, b in bonuses.items() if k and (b or {}).get("total")} | set(fin_n)
         for rv in ids:
             v = board.get(rv) or {"reviews": 0, "corrections": 0,
                                   "wk_reviews": 0, "wk_corr": 0, "pv_reviews": 0, "pv_corr": 0}
             gs = gold.get(rv) or {"n": 0, "acc": 0.0}
             mult = _mult(rv)
             base = (v["reviews"] * 10 + v["corrections"] * 25 + patches.get(rv, 0) * 5
-                    + cons_match.get(rv, 0) * 5 + gs["n"] * 10)
+                    + cons_match.get(rv, 0) * 5 + gs["n"] * 10
+                    + fin_n.get(rv, 0) * FINAL_VERDICT_POINTS)
             # 초기화 오프셋(음수 이벤트)로 합이 음수가 될 수 있어 0 하한(레벨·리그 표시 정합)
             pts = max(0, round(base * mult) + (bonuses.get(rv) or {}).get("total", 0))
-            wk_base = v["wk_reviews"] * 10 + v["wk_corr"] * 25
-            pv_base = v["pv_reviews"] * 10 + v["pv_corr"] * 25
+            wk_base = (v["wk_reviews"] * 10 + v["wk_corr"] * 25
+                       + fin_wk.get(rv, 0) * FINAL_VERDICT_POINTS)
+            pv_base = (v["pv_reviews"] * 10 + v["pv_corr"] * 25
+                       + fin_pv.get(rv, 0) * FINAL_VERDICT_POINTS)
             leaderboard.append({"reviewer": rv, "reviewer_id": rv, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
                                 "level": level_of(pts), "streak": _streak(days_by.get(rv, set())),
@@ -1578,6 +1616,7 @@ class Store:
                                 "split_reviews": split_part.get(rv, 0),
                                 "patches": patches.get(rv, 0),
                                 "golden_contribs": gcontrib.get(rv, 0),
+                                "final_verdicts": fin_n.get(rv, 0),
                                 "agree_rate": (round(agree_hit.get(rv, 0) / agree_n[rv], 4)
                                                if agree_n.get(rv) else None)})
         leaderboard.sort(key=lambda x: -x["points"])

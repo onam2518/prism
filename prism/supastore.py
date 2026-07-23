@@ -24,7 +24,7 @@ import urllib.request
 # quote() 가 구분자를 인코딩하더라도, 형식 밖 입력을 애초에 거른다.
 _HASH_RE = re.compile(r"^[0-9a-f]{16}$")
 
-from .store import level_of, day_key, _tz_sec
+from .store import level_of, day_key, _tz_sec, FINAL_VERDICT_POINTS, final_verdict_counts
 
 _EVENT_ONCE_LOCK = threading.Lock()   # log_event_once 의 check-then-insert 직렬화(미션 보상 이중 지급 방지)
 
@@ -843,7 +843,8 @@ class SupabaseStore:
 
     def arena_stats(self, target: float = 0.9, team=None) -> dict:
         """팀 정확도 + 리더보드 · 품질 가중(SQLite 와 동일 산식).
-        점수 = (검수 10 + 교정 25 + 구조화 교정 5 + 합의 일치 5 + 골드 응답 10) × 품질 배율 + 미션 보너스."""
+        점수 = (검수 10 + 교정 25 + 구조화 교정 5 + 합의 일치 5 + 골드 응답 10
+                + 최종판정 40) × 품질 배율 + 미션 보너스."""
         names = self.reviewers_map(team)
         rows = self._all_feedback(team)
         # 팀을 떠난(옮긴) 검수자의 과거 기여도 이름으로 표시: 팀 밖 id 는 전역 조회로 보강
@@ -936,7 +937,8 @@ class SupabaseStore:
         gold = self.gold_stats(team)
         patches = self.patch_counts(team)
         bonuses = self.event_bonus(team)
-        gcontrib = self.golden_contrib_counts(team)
+        gcontrib = self.golden_contrib_counts(team)   # 점수는 이벤트 보너스로 지급(중복 산입 금지)
+        fin_n, fin_wk, fin_pv = final_verdict_counts(self, team)   # 최종판정(2층) · 점수 산입
 
         # 담당 배정: 개인 진척 분모 = 내 담당 콘텐츠 수, 완료 = 내가 검수한 담당 콘텐츠 수
         # 삭제된 콘텐츠의 고아 배정은 제외(분모·'내 담당' 수 오염 방지)
@@ -962,18 +964,22 @@ class SupabaseStore:
 
         leaderboard = []
         # 보너스(적립·초기화 오프셋)만 있는 검수자도 포함: 피드백 전체 삭제 후에도 보존 점수가 보이게
-        ids = set(board) | {k for k, b in bonuses.items() if k and (b or {}).get("total")}
+        # 최종판정만 한 검수자(기초 피드백 0)도 포함 — 없으면 리더보드에서 아예 빠진다
+        ids = set(board) | {k for k, b in bonuses.items() if k and (b or {}).get("total")} | set(fin_n)
         for rid in ids:
             v = board.get(rid) or {"reviews": 0, "corrections": 0,
                                    "wk_reviews": 0, "wk_corr": 0, "pv_reviews": 0, "pv_corr": 0}
             gs = gold.get(rid) or {"n": 0, "acc": 0.0}
             mult = _mult(rid)
             base = (v["reviews"] * 10 + v["corrections"] * 25 + patches.get(rid, 0) * 5
-                    + cons_match.get(rid, 0) * 5 + gs["n"] * 10)
+                    + cons_match.get(rid, 0) * 5 + gs["n"] * 10
+                    + fin_n.get(rid, 0) * FINAL_VERDICT_POINTS)
             # 초기화 오프셋(음수 이벤트)로 합이 음수가 될 수 있어 0 하한(레벨·리그 표시 정합)
             pts = max(0, round(base * mult) + (bonuses.get(rid) or {}).get("total", 0))
-            wk_base = v["wk_reviews"] * 10 + v["wk_corr"] * 25
-            pv_base = v["pv_reviews"] * 10 + v["pv_corr"] * 25
+            wk_base = (v["wk_reviews"] * 10 + v["wk_corr"] * 25
+                       + fin_wk.get(rid, 0) * FINAL_VERDICT_POINTS)
+            pv_base = (v["pv_reviews"] * 10 + v["pv_corr"] * 25
+                       + fin_pv.get(rid, 0) * FINAL_VERDICT_POINTS)
             meta = names.get(rid, {})
             leaderboard.append({"reviewer": meta.get("name", rid), "reviewer_id": rid, "reviews": v["reviews"],
                                 "corrections": v["corrections"], "points": pts,
@@ -990,6 +996,7 @@ class SupabaseStore:
                                 "split_reviews": split_part.get(rid, 0),
                                 "patches": patches.get(rid, 0),
                                 "golden_contribs": gcontrib.get(rid, 0),
+                                "final_verdicts": fin_n.get(rid, 0),
                                 "agree_rate": (round(agree_hit.get(rid, 0) / agree_n[rid], 4)
                                                if agree_n.get(rid) else None)})
         leaderboard.sort(key=lambda x: -x["points"])
