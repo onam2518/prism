@@ -280,3 +280,65 @@ class TestSupastoreSystemEventNull(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSupastorePatchLogUuid(unittest.TestCase):
+    """작업 이력(patch_log)의 reviewer_id 는 uuid 컬럼이다. '(재실행)'·'(익명)' 같은 라벨을
+    그대로 넣으면 PostgREST 400 → 호출부가 예외를 삼켜 행이 통째로 사라진다.
+    (2026-07-28 운영 로그: 재실행마다 400 · 이전 초안 이력 전량 유실 · prism_events 의
+    '(system)' 과 같은 부류의 사고.) 네트워크 없이 삽입 구성만 검증(__init__ 우회)."""
+
+    def _stub(self):
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore.__new__(SupabaseStore)
+        cap = {}
+        st._req = lambda method, table, **kw: cap.__setitem__("row", (kw.get("body") or [{}])[0])
+        st._get = lambda table, query="": (cap.__setitem__("get_q", query) or [])
+        return st, cap
+
+    def test_label_actor_is_stored_as_null_not_dropped(self):
+        st, cap = self._stub()
+        st.log_patch("h" * 16, "(재실행)", "rerun:solar->claude", {"model": "solar"}, {"model": "claude"})
+        self.assertIsNone(cap["row"]["reviewer_id"])             # uuid 위반 회피 → 행은 살아남는다
+        self.assertEqual(cap["row"]["element"], "rerun:solar->claude")   # element 는 손대지 않는다
+        self.assertEqual(cap["row"]["before"], {"model": "solar"})
+        st.log_patch("h" * 16, "(익명)", "category", {}, {})
+        self.assertIsNone(cap["row"]["reviewer_id"])
+
+    def test_real_uuid_is_preserved(self):
+        st, cap = self._stub()
+        uid = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+        st.log_patch("h" * 16, uid, "summary", {}, {})
+        self.assertEqual(cap["row"]["reviewer_id"], uid)
+
+    def test_element_prefix_stays_matchable(self):
+        """content_history 가 element.startswith('rerun:') 로 이전 초안을 찾는다.
+        라벨을 element 앞에 붙이는 식으로 고치면 그 이력이 화면에서 사라진다(회귀 방지)."""
+        st, cap = self._stub()
+        st.log_patch("h" * 16, "(재실행)", "rerun:a->b", {}, {})
+        self.assertTrue(cap["row"]["element"].startswith("rerun:"))
+
+    def test_read_path_restores_label(self):
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore.__new__(SupabaseStore)
+        st._get = lambda table, query="": [
+            {"content_hash": "a" * 16, "reviewer_id": None, "element": "rerun:a->b",
+             "before": {}, "after": {}, "created_at": "2026-07-28T01:00:00"},
+            {"content_hash": "b" * 16, "reviewer_id": None, "element": "category",
+             "before": {}, "after": {}, "created_at": "2026-07-28T01:00:00"},
+            {"content_hash": "c" * 16, "reviewer_id": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+             "element": "summary", "before": {}, "after": {}, "created_at": "2026-07-28T01:00:00"},
+        ]
+        rows = st.patch_rows()
+        self.assertEqual([r["reviewer"] for r in rows],
+                         ["(재실행)", "(익명)", "3f2504e0-4f89-11d3-9a0c-0305e82c3301"])
+
+    def test_non_human_rows_excluded_from_person_counts(self):
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore.__new__(SupabaseStore)
+        st._get = lambda table, query="": [{"reviewer_id": None}, {"reviewer_id": None},
+                                           {"reviewer_id": "u1"}]
+        self.assertEqual(st.patch_counts(), {"u1": 1})           # 재실행이 사람 점수로 잡히지 않는다
+        st2 = SupabaseStore.__new__(SupabaseStore)
+        st2._get = lambda table, query="": self.fail("uuid 아닌 값으로 조회하면 안 된다")
+        self.assertEqual(st2.patches_today("(익명)"), 0)

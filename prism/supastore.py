@@ -23,6 +23,23 @@ import urllib.request
 # content_hash = sha1[:16] = 16진수 16자. PostgREST in.()/eq. 필터에 넣기 전 형식 검증(심층방어):
 # quote() 가 구분자를 인코딩하더라도, 형식 밖 입력을 애초에 거른다.
 _HASH_RE = re.compile(r"^[0-9a-f]{16}$")
+# 검수자 식별자 = Supabase auth uuid. '(재실행)'·'(익명)' 같은 표시 라벨을 uuid 컬럼에 넣으면
+# PostgREST 가 400 을 돌려주고, 호출부가 예외를 삼켜 행이 통째로 사라진다(2026-07-28 운영 로그:
+# 재실행마다 400 · 작업 이력 전량 유실). prism_events 의 '(system)' 과 같은 부류의 사고다.
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def _uuid_or_none(v):
+    """uuid 컬럼에 넣어도 되는 값만 통과 · 사람이 아닌 행위자(라벨)는 NULL 로 떨어뜨린다."""
+    v = (v or "").strip()
+    return v if _UUID_RE.match(v) else None
+
+
+def _actor_label(element: str) -> str:
+    """reviewer_id 가 빈 행(사람이 아닌 행위자)의 표시 라벨 복원.
+    라벨을 저장할 칸이 따로 없어(스키마 변경 없이) element 로 되살린다 —
+    element 자체는 건드리지 않는다(content_history 가 'rerun:' 접두로 이전 초안을 찾는다)."""
+    return "(재실행)" if str(element or "").startswith("rerun:") else "(익명)"
 
 from .store import level_of, day_key, _tz_sec, FINAL_VERDICT_POINTS, final_verdict_counts
 
@@ -537,7 +554,10 @@ class SupabaseStore:
 
     # ── 교정 로그(append-only) · 골드 문항 · 이벤트 ──
     def log_patch(self, content_hash, reviewer, element, before, after, team=None):
-        row = {"content_hash": content_hash, "reviewer_id": reviewer or None,
+        """작업 이력 1건(append-only). 사람이 아닌 행위자는 reviewer_id 를 NULL 로 저장한다 —
+        '누가'보다 '무엇이 언제 어떻게 바뀌었는지'가 이 원장의 값이고, uuid 위반으로 행이
+        통째로 사라지는 쪽이 훨씬 큰 손실이다. 표시 라벨은 patch_rows 가 복원한다."""
+        row = {"content_hash": content_hash, "reviewer_id": _uuid_or_none(reviewer),
                "element": element or "", "before": before, "after": after}
         if team:
             row["team_id"] = team
@@ -547,7 +567,8 @@ class SupabaseStore:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("patch_log", "select=content_hash,reviewer_id,element,before,after,created_at"
                          f"{tq}&order=created_at.desc&limit={int(limit)}")
-        return [{"hash": r["content_hash"], "reviewer": r.get("reviewer_id") or "",
+        return [{"hash": r["content_hash"],
+                 "reviewer": r.get("reviewer_id") or _actor_label(r.get("element")),
                  "element": r.get("element") or "", "before": r.get("before") or {},
                  "after": r.get("after") or {}, "ts": _epoch(r.get("created_at"))} for r in rows]
 
@@ -558,6 +579,8 @@ class SupabaseStore:
         out = {}
         for r in self._get("patch_log", f"select=reviewer_id{tq}&limit=20000"):
             k = r.get("reviewer_id") or ""
+            if not k:
+                continue                             # 사람이 아닌 행위자(재실행 등)는 사람 집계에서 뺀다
             out[k] = out.get(k, 0) + 1
         return out
 
@@ -657,7 +680,10 @@ class SupabaseStore:
         return len(rows)
 
     def patches_today(self, reviewer, team=None) -> int:
-        """검수자의 오늘 구조화 교정 건수(분류 채우기 미션 판정용)."""
+        """검수자의 오늘 구조화 교정 건수(분류 채우기 미션 판정용).
+        사람이 아닌 행위자 행은 reviewer_id 가 NULL 이라 애초에 걸리지 않는다."""
+        if not _uuid_or_none(reviewer):
+            return 0
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("patch_log", "select=id"
                          f"&reviewer_id=eq.{urllib.parse.quote(reviewer or '')}"
