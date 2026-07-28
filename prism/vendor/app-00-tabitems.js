@@ -134,7 +134,9 @@ window.PRISM_APP_PARTS.push(() => ({
       rawData: null, rawSel: null,
       // 콘텐츠별 검수 담당 배정(관리자 전용): 편집 중 행·선택 담당자·최소 검수인원
       assignSel: null, assignPick: [], assignMin: 1, assignBusy: false,
-      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || 200) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail(); } } catch (e) {} },
+      // 인자 없는 호출(탭 진입·판정 후 갱신)의 기본 창은 최신 200건 · rawWide 가 켜지면 넓게 본다
+      // (검수 완료·전체 필터는 과거분을 봐야 하는데 200건 창에는 최근 콘텐츠만 들어온다)
+      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || (this.rawWide ? 2000 : 200)) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail(); } } catch (e) {} },
       // 딥링크 ?detail=<hash> 소진: 로드된 목록에서 찾아 상세 열기(없으면 1회 더 넓게 재조회 후 포기)
       _consumePendingDetail() {
         const h = this._pendingDetail;

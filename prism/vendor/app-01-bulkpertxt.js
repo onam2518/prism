@@ -31,6 +31,14 @@ window.PRISM_APP_PARTS.push(() => ({
       // rawRev 기본값 'todo': 내가 판정한 건은 기본으로 숨긴다(할 일 목록) ·
       // 다시 보려면 검수 필터에서 '전체'·'검수 완료'를 고른다.
       rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: 'todo',
+      // 넓은 창(2000건) 조회 여부 · 완료·전체를 한 번이라도 고르면 켜진 채 유지된다
+      rawWide: false,
+      // 검수 필터 변경: 'todo' 가 아니면 과거분까지 봐야 하므로 창을 넓혀 다시 부른다
+      // (최신 200건 창에는 새로 넣은 콘텐츠만 들어와 예전 검수 완료분이 빠졌다)
+      rawRevPick(v) {
+        this.rawRev = v;
+        if (v !== 'todo' && !this.rawWide) { this.rawWide = true; this.loadRaw(); }
+      },
       // 결과 비교: 요소 단위 모델별 현황 + 콘텐츠별 초안 diff(팝업)
       cmpDraftHash: '', draftsData: null, cmpL: 0, cmpR: 1,
       cmpModalOpen: false, cmpTitle: '', cmpAmiss: false, cmpBmiss: false,
