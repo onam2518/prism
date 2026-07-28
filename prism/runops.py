@@ -235,9 +235,14 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
     if scope != "pending" and _SV.quest_active():
         return {"error": "퀘스트 진행 중에는 전체 재실행이 차단됩니다(검수 중 초안 교체 방지) · "
                          "'미실행만'은 가능하며, 반영 후 실행하거나 검수 목표 카드에서 일시를 비워 목표를 해제하세요"}
+    # limit 은 '창'이 아니라 '한 번에 실행할 최대 건수'다. 예전엔 rows[-limit:] 로 먼저 잘라
+    # 그 안에서 미실행을 찾았는데, 결과 뷰가 최신순이라 잘린 창은 '가장 오래된 200건'이었다.
+    # 그래서 콘텐츠가 200건을 넘으면 방금 올린 미실행분이 창 밖으로 밀려 영영 실행되지 않았다
+    # (2026-07-28 운영: 600건 중 미실행 200건이 '미실행만 0건'으로 보이고 실행 불가).
+    # 먼저 대상을 고르고 그다음에 상한을 적용한다 · 최신순으로 채워 방금 올린 것부터 처리.
     rows = _SV.results_rows(team=team)
     targets, seen, row_by_hash = [], set(), {}
-    for r in rows[-int(limit):]:
+    for r in rows:
         if scope == "pending" and not _SV._is_pending_row(r):
             continue                                 # 이미 실행된 건 제외
         ch = _SV._row_key(r.get("content_ref") or {})
@@ -245,6 +250,8 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
             seen.add(ch)
             targets.append(ch)
             row_by_hash[ch] = r                      # 1회 로드분 재사용 · 건마다 전체 재조회(N×5000) 방지
+            if len(targets) >= int(limit):
+                break
     if not targets:
         return {"ok": True, "done": 0, "failed": 0, "model": model, "scope": scope,
                 "msg": "대상이 없습니다" + (" (미실행 콘텐츠 없음)" if scope == "pending" else "")}
