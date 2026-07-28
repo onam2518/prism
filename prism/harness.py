@@ -267,6 +267,18 @@ def _assemble(ctx: HCtx) -> dict:
         ctx.qm.review = "yellow"
         ctx.qm.review_reason = ctx.qm.review_reason or "법령 평가 호출 실패 · 판정 보류"
         ctx.fallbacks.append("legal_fail → 판정 보류(사람 검수)")
+    # 메타 생성 콜이 끝내 실패한 건도 깨끗한 자동 G 로 유통하지 않는다(법령 실패와 같은 fail-open 금지).
+    # 실패한 콜의 산출은 빈 값으로 남는데(예: entities=[]) 종전에는 review=auto 로 통과해,
+    # 빈 메타가 사람 눈을 한 번도 거치지 않고 정답 후보로 흘렀다
+    # (2026-07-28 실사례: item_entities 만 5회 실패 → entities=[] · 등급 G · review=auto).
+    # fail_kind 는 재시도를 모두 소진한 최종 실패에만 붙으므로, 재시도로 살아난 콜은 잡히지 않는다.
+    failed_tags = sorted({(getattr(r, "tag", "") or "(기타)") for r in ctx.results
+                          if getattr(r, "fail_kind", None)})
+    if failed_tags and ctx.qm and ctx.qm.finalGrade == "G" and ctx.qm.review != "yellow":
+        ctx.qm.review = "yellow"
+        ctx.qm.review_reason = (ctx.qm.review_reason
+                                or f"메타 생성 콜 실패({', '.join(failed_tags)}) · 판정 보류")
+        ctx.fallbacks.append("call_fail → 판정 보류(사람 검수)")
     # D3(a · 260715 회의): 우선순위 인텐트 > 품질 G/R > 광고성 사유. 광고성 계열(ad·spam) 단독 R 인데
     # 정당한 편집 인텐트(보도자료·공식발표)가 부여됐으면 Red 로 승격하지 않고 사람 검수로 보류.
     # 유해·법령 사유가 하나라도 있으면(_commerce_only_r=False) 적용하지 않아 모더레이션은 그대로.
