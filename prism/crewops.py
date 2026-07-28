@@ -48,6 +48,15 @@ DEFAULT_SETTINGS = {
     "gold_min_acc": 0.6,        # 골드 정확도 하한(표본 5건 이상일 때만 판정)
     "calib_target": 20,         # 온보딩 캘리브레이션 문항 수 · 통과 전에는 정식 배정 제외
     "default_hours": 2.0,       # 주간 약속 시간 미입력자의 잠정값(원장 입력 전 계획이 0 이 되는 것 방지)
+    # ── 과거 실측 vs 이번 주 신고: 무엇에 무게를 둘지 ──────────────────────────
+    # 실측 속도만으로 캐파를 잡으면 배정이 빠른 소수에게 쏠린다(운영 실측 2026-07-28:
+    # 신고 시간이 전원 기본값이라 캐파 차이가 전적으로 속도에서 나와 4.1배 · 상위 3명 40%).
+    # 속도를 팀 중앙값 쪽으로 당겨(shrink) 캐파가 '이번 주에 내겠다고 한 시간'에 더
+    # 비례하게 만든다. 1=실측 그대로 · 0=전원 팀 중앙값(순수 시간 비례).
+    "rate_shrink": 0.5,
+    # 이번 주 본인 확인을 안 한 사람의 신고 시간은 지난주 값이라 근거가 약하다 —
+    # 조금 보수적으로 잡되 0 으로 만들지는 않는다(일이 아예 안 가면 그것도 쏠림이다).
+    "unconfirmed_factor": 0.8,
     # ── 자동 운영(기본 꺼짐) · 사람이 켜야 돈다. 남의 일을 옮기는 동작이라 기본값은 수동 ──
     "auto_wave": 0,             # 1 = 주 사이클이 시작되면 아직 아무도 안 맡은 것을 여력만큼 자동 배분
     "auto_rebalance": 0,        # 1 = 기한 하루 전에 멈춰 있는 일을 여유 있는 사람에게 자동 이관
@@ -285,9 +294,23 @@ def capacity(team=None, fmap=None) -> dict:
 
 
 def _effective_rate(meas: dict, prof: dict, cfg: dict, team_rate: float) -> float:
-    """배정 계산에 쓰는 시간당 처리율. 과속은 캐파가 아니라 품질 경보라 상한을 씌운다."""
-    r = float(prof.get("rate_override") or 0) or float((meas or {}).get("rate_per_hour") or 0) or team_rate
-    return max(1.0, min(float(cfg["rate_cap_per_hour"]), r))
+    """배정 계산에 쓰는 시간당 처리율. 과속은 캐파가 아니라 품질 경보라 상한을 씌운다.
+
+    상한을 씌운 뒤 팀 중앙값 쪽으로 rate_shrink 만큼 당긴다. 과거 실측만으로 캐파를
+    잡으면 빠른 소수에게 배정이 쏠리는데, 정작 '이번 주에 얼마나 낼 수 있는지'는
+    본인이 주차마다 신고한다 — 그쪽에 무게를 옮기기 위한 장치다(수동 상한 rate_override
+    는 사람이 명시한 값이라 수축하지 않는다)."""
+    ovr = float(prof.get("rate_override") or 0)
+    if ovr:
+        return max(1.0, min(float(cfg["rate_cap_per_hour"]), ovr))
+    r = float((meas or {}).get("rate_per_hour") or 0) or team_rate
+    r = max(1.0, min(float(cfg["rate_cap_per_hour"]), r))
+    try:
+        k = min(1.0, max(0.0, float(cfg.get("rate_shrink", 1.0))))
+    except (TypeError, ValueError):
+        k = 1.0
+    base = max(1.0, float(team_rate or 0) or r)
+    return max(1.0, base + (r - base) * k)
 
 
 def _on_leave(prof: dict, now=None) -> bool:
@@ -366,6 +389,7 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
 
     meas = capacity(team, fmap=fmap)
     profs = profiles(team)
+    cur_week = _current_week()          # 이번 주 신고 확인 여부 판정용(주차 정의는 weekops 단일 원천)
     wv = wave(team)
     due_at = float(wv.get("due_at") or 0)
     # 팀 기준 처리율: 표본 부족자는 capacity 가 이미 팀 중앙값을 채워주므로 전원을 넣어도
@@ -418,7 +442,11 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
         m = meas.get(uid) or {}
         lo = load.get(uid) or [0, 0, 0.0]
         rate = _effective_rate(m, prof, cfg, team_rate)
-        weekly = round(rate * float(prof.get("hours_per_week") or 0) * float(cfg["buffer"]))
+        # 이번 주 본인 확인 여부 반영: 확인된 신고 시간은 그대로, 미확인은 지난주 값이라
+        # 조금 보수적으로 본다(0 으로 만들지는 않는다 — 일이 아예 안 가는 것도 쏠림이다).
+        fresh = int(prof.get("confirmed_week") or 0) == cur_week
+        conf_k = 1.0 if fresh else max(0.1, min(1.0, float(cfg.get("unconfirmed_factor", 1.0) or 1.0)))
+        weekly = round(rate * float(prof.get("hours_per_week") or 0) * float(cfg["buffer"]) * conf_k)
         g = gold.get(uid) or {}
         nb = n_by.get(uid, 0)
         good_ratio = round(good_by.get(uid, 0) / nb, 4) if nb else None
@@ -429,6 +457,7 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
             "on_leave": _on_leave(prof, now), "available": _available(prof, now),
             # rate_per_hour = 실제로 잰 속도 · effective_rate = 소화량 계산에 쓴 값(상한 적용 후).
             # 둘을 함께 주지 않으면 화면의 계산식이 결과와 안 맞아 보인다(225건/h 인데 결과는 상한 기준).
+            "confirmed_fresh": fresh, "conf_factor": round(conf_k, 2),
             "measured": {"rate_per_hour": m.get("rate_per_hour", 0.0), "median_sec": m.get("median_sec", 0.0),
                          "effective_rate": round(rate, 1), "capped": rate < float(m.get("rate_per_hour") or 0),
                          "estimated": not m.get("measured", False), "n_total": m.get("n_total", 0),

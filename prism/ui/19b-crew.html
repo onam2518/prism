@@ -250,7 +250,9 @@
                        x-text="'4주 ' + m.measured.n28 + '건 · 최근 7일 ' + m.measured.n7 + '건 · 활동일 ' + m.measured.active_days + '일'"></div></div>
                   <div class="drow"><div class="k">주간 처리 가능량</div><div class="v tnum">
                     <b x-text="m.weekly_capacity + '건'"></b>
-                    <span class="text-xs text-muted" x-text="' = 시간당 ' + (m.measured.effective_rate||0) + '건 × ' + m.profile.hours_per_week + '시간 × 버퍼 ' + (crewData&&crewData.settings?crewData.settings.buffer:0.8)"></span>
+                    <span class="text-xs text-muted" x-text="' = 시간당 ' + (m.measured.effective_rate||0) + '건 × ' + m.profile.hours_per_week + '시간 × 버퍼 ' + (crewData&&crewData.settings?crewData.settings.buffer:0.8) + (m.conf_factor < 1 ? (' × 미확인 ' + m.conf_factor) : '')"></span>
+                    <span class="ds-badge ds-badge--warning" x-show="!m.confirmed_fresh" style="margin-left:6px;cursor:help"
+                          data-tip="이번 주 일정을 아직 확인하지 않았습니다 · 지난주 신고 기준이라 처리 가능량을 보수적으로 잡습니다" data-tip-pos="left">이번 주 미확인</span>
                     <span class="ds-badge ds-badge--neutral" x-show="m.measured.capped" style="margin-left:6px" data-tip-pos="left"
                           x-bind:data-tip="'실측 속도는 시간당 ' + m.measured.rate_per_hour + '건이나, 과속 구간을 제외해 상한을 적용했습니다'">상한 적용</span></div></div>
                   <div class="drow"><div class="k">현재 배정</div><div class="v tnum"
@@ -277,7 +279,10 @@
       <!-- ── 배정 ───────────────────────────────────────────────── -->
       <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>자동 배정</b>
-          <span class="meta">검수자별 잔여 여력에 비례해 자동으로 나눕니다 · 휴가·교육 중·비활성·최종검수자는 제외</span></div>
+          <span class="meta">검수자별 잔여 여력에 비례해 자동으로 나눕니다 · 휴가·교육 중·비활성·최종검수자는 제외</span>
+          <span class="ds-badge ds-badge--neutral ml-auto" style="cursor:help"
+                x-bind:data-tip="'여력 = 이번 주 신고 시간 × 처리속도 × 버퍼 · 속도는 팀 중앙값 쪽으로 ' + Math.round((1-(crewCfg.rate_shrink ?? 0.5))*100) + '% 당겨 과거 실측 쏠림을 줄입니다'"
+                data-tip-pos="left">배분 기준</span></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2" style="align-items:flex-end">
               <div style="width:180px"><label class="lbl">대상 콘텐츠</label>
@@ -392,6 +397,17 @@
               <div style="width:140px"><label class="lbl">건당 검수 인원</label>
                 <input type="number" min="1" max="9" class="field tnum" x-bind:value="crewCfg.wave_min_reviewers"
                        x-on:change="crewSetting('wave_min_reviewers', $event.target.value)"></div>
+            </div>
+            <!-- 과거 실측 vs 이번 주 신고: 무엇에 무게를 둘지. 실측만 보면 빠른 소수에게 쏠린다. -->
+            <div class="flex flex-wrap gap-2" style="align-items:flex-end;margin-top:10px">
+              <div style="width:190px"><label class="lbl">과거 속도 반영도</label>
+                <input type="number" min="0" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.rate_shrink"
+                       x-on:change="crewSetting('rate_shrink', $event.target.value)"
+                       data-tip="1 = 실측 속도 그대로 · 0 = 전원 팀 중앙값(이번 주 신고 시간에만 비례) · 낮출수록 배정 쏠림이 줄어듭니다" data-tip-pos="top"></div>
+              <div style="width:190px"><label class="lbl">미확인자 반영도</label>
+                <input type="number" min="0.1" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.unconfirmed_factor"
+                       x-on:change="crewSetting('unconfirmed_factor', $event.target.value)"
+                       data-tip="이번 주 일정을 확인하지 않은 검수자의 처리 가능량에 곱하는 값 · 지난주 신고라 근거가 약해 보수적으로 잡습니다" data-tip-pos="top"></div>
             </div>
             <div class="flex flex-wrap gap-2" style="margin-top:10px">
               <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.match_strength == 1"
