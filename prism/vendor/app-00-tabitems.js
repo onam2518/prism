@@ -31,7 +31,6 @@ window.PRISM_APP_PARTS.push(() => ({
         arena: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0V4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M18 5h2.5a2 2 0 0 1 0 4H18M6 5H3.5a2 2 0 0 0 0 4H6" stroke="currentColor" stroke-width="1.6"/></svg>',
         system: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.5"/><path d="M19.4 13a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V13Z" stroke="currentColor" stroke-width="1.3"/></svg>',
         board: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.6-2.6A7.5 7.5 0 1 1 21 11.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 10h7M9 13h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-        crew: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="7" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M5 20a7 7 0 0 1 14 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M3 12h3M18 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
       },
       // 멤버 메뉴: 콘텐츠 검수(판정·교정 → 정답 축적) / 평가(일치율·모델 비교) / 게시판(제안·오류)
       mods: [
@@ -44,9 +43,9 @@ window.PRISM_APP_PARTS.push(() => ({
         { g: '관리자', gcond: 'admin', items: [
           { id: 'content', label: '콘텐츠 관리', ic: 'intake', cond: 'opsadmin' },
           { id: 'testset', label: '정답셋 관리', ic: 'eval', cond: 'opsadmin' },
-          { id: 'admin', label: '팀 관리', ic: 'admin', cond: 'admin' },
-          // 검수운영: 인력 캐파·스케줄·배정(HR) · 팀 관리(계정·권한)와 역할이 다르다
-          { id: 'crew', label: '검수운영', ic: 'crew', cond: 'opsadmin' },
+          // 운영 관리 = 팀 관리(계정·권한) + 검수운영 관리(사람의 여력·일정·일 나누기) 2탭.
+          // 검수운영 탭은 슈퍼관리자 이상(canMenu('crew') 로 게이트 · 서버도 같은 id 로 강제)
+          { id: 'admin', label: '운영 관리', ic: 'admin', cond: 'admin' },
           // 사전 · 정책: 인텐트/카테고리/엔티티(개체 고유키·타입·속성)/정책 4탭
           { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'opsadmin' },
           // 스튜디오 = 설계 도구 묶음: 프롬프트(계약·래퍼) + 토픽(클러스터링 설계 · 실험실에서 승격)
@@ -78,6 +77,7 @@ window.PRISM_APP_PARTS.push(() => ({
         }
         return this.navVisible(cond);                            // 매트릭스 없으면 기존 tier 폴백
       },
+      adminTab: 'team',                       // 운영 관리: team(팀 관리) | crew(검수운영 관리)
       contentTab: 'run',                      // 콘텐츠 관리 STEP 1 카드: 수동(run)/자동(auto)
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)

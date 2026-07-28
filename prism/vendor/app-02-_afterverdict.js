@@ -206,7 +206,7 @@ window.PRISM_APP_PARTS.push(() => ({
       get connCount() { return this.connList.filter((c) => c.on).length; },
       get modSub() {
         // 한 줄 소개(표준 · 시안 A): "이 화면에서 무엇을 합니다" 한 문장 · 쉬운 일상어 · 비유 금지
-        const m = { home: '내 검수 진척과 팀 현황을 한눈에 봅니다', auto: '콘텐츠를 자동으로 받아오는 수집 소스를 설정합니다', run: '이미지·텍스트·엑셀을 수동으로 추출합니다', queue: '진행 중인 작업의 진척과 완료 이력을 봅니다', dash: '추출 결과를 집계해 봅니다', review: '검수 대기 콘텐츠를 함께 판정합니다', arena: '내 검수 진척과 팀 현황을 한눈에 봅니다', admin: '팀 멤버와 초대 코드를 관리합니다', system: '데이터 관리와 API 키·모델을 설정합니다(운영 관리자)', quality: '품질·법령 판정 결과를 봅니다', user: '행동 로그로 소비 형태·강도·선호를 봅니다', eval: '콘텐츠별 평가 피드백과 처리 이력을 봅니다', dict: '추출이 참조하는 사전·정책과 프롬프트 엔진을 관리합니다', studio: '프롬프트와 토픽(묶음 기준)을 설계합니다', prompt: '프롬프트를 선언으로 만들고 테스트해 배포합니다', intake: '콘텐츠 필터·처리 정책과 출처 분류를 설정합니다', create: '모델 초안을 판정·교정하고 모델·버전으로 비교합니다', evaluate: '정답셋 기준으로 모델을 평가하고 불일치를 판정합니다', content: '콘텐츠를 모으고 모델을 실행해 초안을 만듭니다', testset: '정답셋을 관리하고 학습 반영을 실행합니다', lab: '아직 테스트하지 않는 탐구 요소를 보관합니다', board: '기능개선 제안과 오류 제보를 남깁니다(우리 팀에만 공개)', crew: '검수 인력의 여력과 일정을 보고 일감을 나눕니다' };
+        const m = { home: '내 검수 진척과 팀 현황을 한눈에 봅니다', auto: '콘텐츠를 자동으로 받아오는 수집 소스를 설정합니다', run: '이미지·텍스트·엑셀을 수동으로 추출합니다', queue: '진행 중인 작업의 진척과 완료 이력을 봅니다', dash: '추출 결과를 집계해 봅니다', review: '검수 대기 콘텐츠를 함께 판정합니다', arena: '내 검수 진척과 팀 현황을 한눈에 봅니다', admin: '팀 멤버와 검수 인력의 일정을 관리합니다', system: '데이터 관리와 API 키·모델을 설정합니다(운영 관리자)', quality: '품질·법령 판정 결과를 봅니다', user: '행동 로그로 소비 형태·강도·선호를 봅니다', eval: '콘텐츠별 평가 피드백과 처리 이력을 봅니다', dict: '추출이 참조하는 사전·정책과 프롬프트 엔진을 관리합니다', studio: '프롬프트와 토픽(묶음 기준)을 설계합니다', prompt: '프롬프트를 선언으로 만들고 테스트해 배포합니다', intake: '콘텐츠 필터·처리 정책과 출처 분류를 설정합니다', create: '모델 초안을 판정·교정하고 모델·버전으로 비교합니다', evaluate: '정답셋 기준으로 모델을 평가하고 불일치를 판정합니다', content: '콘텐츠를 모으고 모델을 실행해 초안을 만듭니다', testset: '정답셋을 관리하고 학습 반영을 실행합니다', lab: '아직 테스트하지 않는 탐구 요소를 보관합니다', board: '기능개선 제안과 오류 제보를 남깁니다(우리 팀에만 공개)' };
         return m[this.mod] || '';
       },
       selectMod(id) {
@@ -223,6 +223,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (id === 'prompt') { id = 'studio'; this.studioTab = 'prompt'; }   // 구 메뉴 · 위젯·URL 호환
         if (id === 'topic') { id = 'studio'; this.studioTab = 'topic'; }     // 실험실 시절 딥링크 호환
         if (id === 'entdict') { id = 'dict'; this.dictTab = 'entity'; }      // 별도 메뉴 시절 딥링크 호환
+        if (id === 'crew') { id = 'admin'; this.adminTab = 'crew'; }   // 검수운영은 운영 관리의 탭으로 통합(딥링크 호환)
         if (id === 'eval') id = 'evaluate';
         if (id === 'golden') id = 'testset';
         this.mod = id;
@@ -235,8 +236,10 @@ window.PRISM_APP_PARTS.push(() => ({
         else if (id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); this.loadEvalRuns(); this.loadPilot(); }
         else if (id === 'arena') this.loadArena();
         else if (id === 'board') this.loadBoard();
-        else if (id === 'admin' || id === 'system') this.loadAdmin();
-        else if (id === 'crew') { this.loadCrew(); this.loadRaw(1000); }   // 배정 탭 후보 풀은 표시 캡(200)보다 넉넉히
+        else if (id === 'admin' || id === 'system') {
+          this.loadAdmin();
+          if (id === 'admin' && this.adminTab === 'crew') { this.loadCrew(); this.loadRaw(1000); }   // 후보 풀은 표시 캡(200)보다 넉넉히
+        }
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
         else if (id === 'dict') {

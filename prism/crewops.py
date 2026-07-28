@@ -48,6 +48,18 @@ DEFAULT_SETTINGS = {
     "gold_min_acc": 0.6,        # 골드 정확도 하한(표본 5건 이상일 때만 판정)
     "calib_target": 20,         # 온보딩 캘리브레이션 문항 수 · 통과 전에는 정식 배정 제외
     "default_hours": 2.0,       # 주간 약속 시간 미입력자의 잠정값(원장 입력 전 계획이 0 이 되는 것 방지)
+    # ── 자동 운영(기본 꺼짐) · 사람이 켜야 돈다. 남의 일을 옮기는 동작이라 기본값은 수동 ──
+    "auto_wave": 0,             # 1 = 주 사이클이 시작되면 아직 아무도 안 맡은 것을 여력만큼 자동 배분
+    "auto_rebalance": 0,        # 1 = 기한 하루 전에 멈춰 있는 일을 여유 있는 사람에게 자동 이관
+    "wave_weekday": 0,          # 사이클 시작 요일(0=월)
+    "wave_hour": 10,            # 사이클 시작 시각(팀 타임존 · 기본 KST 10시)
+    "wave_days": 4,             # 기한 = 시작 + N일(기본 목요일 저녁)
+    "wave_batch": 300,          # 한 사이클에 자동으로 내보낼 최대 건수
+    "wave_min_reviewers": 2,    # 자동 배분 시 콘텐츠당 담당 수
+    "auto_escalate": 0,         # 1 = 의견이 갈린 건에 3번째 검수자를 자동으로 붙임
+    # 아래 둘은 '누가 무엇을 받을지'의 순서만 바꾼다(총량·공평은 그대로) → 기본 켬
+    "match_strength": 1,        # 그 분야를 잘 보는 사람에게 우선 배정
+    "lack_first": 1,            # 정답셋이 부족한 분류를 먼저 배정
 }
 
 # 실측 표본 하한: 이보다 적으면 처리율을 신뢰하지 않고 팀 중앙값을 쓴다(신규·복귀자 보호)
@@ -499,8 +511,13 @@ def _burndown(fmap, targets, asg, days: int = 21) -> list:
 
 
 # ── 계획: 캐파 비례 배정 ─────────────────────────────────────────────────────
+# 강점 보정 폭(건 단위): 잘 보는 분야라도 이만큼까지만 앞당긴다. 용량 공평이 먼저다.
+MATCH_ITEMS = 5.0
+
+
 def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
-                    apply: bool = False, by: str = "", due_at=None) -> dict:
+                    apply: bool = False, by: str = "", due_at=None,
+                    match=None, lack_first=None) -> dict:
     """캐파 비례 배정(균등 분배의 대체). 콘텐츠당 서로 다른 담당 N명.
 
     reviewops.distribute_assignments 는 '미완료 건수'만 보고 나눠서, 시간당 22건 하는
@@ -525,17 +542,36 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
     n_per = max(1, min(len(pool), int(min_reviewers or 1)))
     cap = {m["id"]: max(1, m["weekly_capacity"] or 1) for m in pool}
     used = {m["id"]: m["load"]["pending"] for m in pool}     # 시작 부하 = 이미 밀린 내 몫
-    # 힙 키 = 여력 소진율(=부하/캐파). 항상 가장 여유 있는 사람부터 채워 '캐파 비례'가 된다.
-    heap = [(used[m["id"]] / cap[m["id"]], i, m["id"]) for i, m in enumerate(pool)]
-    heapq.heapify(heap)
+    cfg = settings(team)
+    use_match = int(cfg["match_strength"]) if match is None else int(bool(match))
+    use_lack = int(cfg["lack_first"]) if lack_first is None else int(bool(lack_first))
+    if use_lack:
+        hs = prioritize(hs, team)                    # 정답셋이 부족한 분류를 먼저 내보낸다
+    strengths = category_reliability(team) if use_match else {}
+    cats = content_categories(team) if use_match else {}
+    ids = [m["id"] for m in pool]
+    idx = {m["id"]: i for i, m in enumerate(pool)}   # 동률 시 선택 순서 유지
+
+    def _score(rid, cs):
+        """작을수록 먼저 받는다. 기본은 여력 소진율(부하/캐파) — 용량 공평이 1순위.
+        그 분야를 잘 보는 사람은 최대 MATCH_ITEMS 건만큼 앞당겨진다(뒤집지는 못한다)."""
+        u = used[rid]
+        if strengths and cs:
+            vals = [v for v in (strengths.get(rid, {}).get(c) for c in cs) if v is not None]
+            if vals:
+                norm = max(0.0, (sum(vals) / len(vals) - 0.5) * 2)   # 합치율 0.5~1.0 → 0~1
+                u -= MATCH_ITEMS * norm
+        return u / cap[rid]
+
     groups, per = {}, {}
     for h in hs:
-        picked = [heapq.heappop(heap) for _ in range(n_per)]
-        groups.setdefault(tuple(p[2] for p in picked), []).append(h)
-        for _, i, rid in picked:
+        cs = cats.get(h) or []
+        order = sorted(ids, key=lambda r: (_score(r, cs), idx[r]))
+        picked = order[:n_per]
+        groups.setdefault(tuple(picked), []).append(h)
+        for rid in picked:
             used[rid] += 1
             per[rid] = per.get(rid, 0) + 1
-            heapq.heappush(heap, (used[rid] / cap[rid], i, rid))
     plan = {rid: {"n": n, "name": next(m["name"] for m in pool if m["id"] == rid),
                   "capacity": cap[rid], "pending_after": used[rid],
                   "over": used[rid] > cap[rid]} for rid, n in per.items()}
@@ -636,3 +672,252 @@ def _count(rows, key) -> dict:
     for r in rows:
         out[r[key]] = out.get(r[key], 0) + 1
     return out
+
+
+# ── 자동 운영(주 사이클) ─────────────────────────────────────────────────────
+# 사람이 매주 잊지 않고 눌러야 돌아가는 운영은 결국 안 돌아간다(그래서 900슬롯이 11일 묵었다).
+# 다만 남의 일을 옮기는 동작이라 기본은 꺼둔다 — 켠 팀에서만 사이클마다 1회씩 자동 실행된다.
+# 실행 경로: 검수운영 화면 진입 시 POST /crew-auto · 크론은 `python3 -m prism.crewbot --team <id>`.
+AUTO_KIND = "crew_auto"
+
+
+def auto_state(team=None) -> dict:
+    """자동 운영 상태 {wave_cycle, rebalance_cycle, last_run} · 사이클당 1회 보장용 회차 키."""
+    return dict((_SV._report_get(AUTO_KIND, team, {}) or {}).get("item") or {})
+
+
+def _last_open_ts(now: float, cfg: dict) -> float:
+    """지금 기준으로 가장 최근에 지난 '사이클 시작 시각'(epoch).
+    팀 타임존으로 요일·시각을 해석한다(day_key 와 같은 기준 · 기본 KST)."""
+    from .store import _tz_sec
+    tz = _tz_sec()
+    local = now + tz
+    day = int(local // 86400)
+    wd = (day + 3) % 7                              # epoch day 0 = 목요일 → 월=0 기준으로 환산
+    back = (wd - int(cfg["wave_weekday"])) % 7
+    open_local = (day - back) * 86400 + int(cfg["wave_hour"]) * 3600
+    if open_local > local:                          # 오늘이 그 요일인데 아직 시작 시각 전 → 지난 사이클
+        open_local -= 7 * 86400
+    return open_local - tz
+
+
+def _unassigned_targets(team=None, limit: int = 300) -> list:
+    """아직 아무도 안 맡은 검수 대상. 자동 배분의 재료."""
+    st = _SV.get_store()
+    if not st:
+        return []
+    try:
+        targets = st.review_targets(team) if hasattr(st, "review_targets") else set()
+        asg = set(st.assignees(team=team) or {})
+    except Exception:
+        return []
+    return sorted(targets - asg)[:max(1, int(limit))]
+
+
+def auto_tick(team=None, now=None, apply: bool = True) -> dict:
+    """자동 운영 1회 점검. 새 사이클이면 여력만큼 나눠 맡기고, 기한이 하루 안이면 멈춘 일을 넘긴다.
+
+    같은 사이클에 두 번 돌지 않도록 회차 키(사이클 시작일)를 남긴다 — 화면 진입마다 호출해도
+    안전하다. apply=False 면 무엇을 할지만 돌려주고 아무것도 바꾸지 않는다."""
+    cfg = settings(team)
+    now = time.time() if now is None else float(now)
+    state = auto_state(team)
+    open_ts = _last_open_ts(now, cfg)
+    cycle = day_key(open_ts)
+    out = {"ok": True, "applied": bool(apply), "cycle": cycle,
+           "auto_wave": bool(int(cfg["auto_wave"])), "auto_rebalance": bool(int(cfg["auto_rebalance"])),
+           "wave": None, "rebalance": None, "escalate": None}
+    changed = dict(state)
+
+    if int(cfg["auto_wave"]) and state.get("wave_cycle") != cycle:
+        hs = _unassigned_targets(team, int(cfg["wave_batch"]))
+        due = open_ts + float(cfg["wave_days"]) * 86400
+        if hs:
+            r = plan_distribute(hs, min_reviewers=int(cfg["wave_min_reviewers"]), team=team,
+                                apply=apply, by="자동 운영", due_at=(due if apply else None))
+            out["wave"] = {"ok": r.get("ok"), "n": r.get("n", 0), "plan": r.get("plan", {}),
+                           "due_at": due, "error": r.get("error", "")}
+            if apply and r.get("ok"):
+                changed["wave_cycle"] = cycle
+        else:
+            out["wave"] = {"ok": True, "n": 0, "plan": {}, "due_at": due,
+                           "error": "아직 아무도 안 맡은 콘텐츠가 없습니다"}
+            if apply:
+                changed["wave_cycle"] = cycle       # 내보낼 게 없어도 이번 사이클은 처리한 것으로 본다
+
+    if int(cfg["auto_rebalance"]) and state.get("rebalance_cycle") != cycle:
+        due = float(wave(team).get("due_at") or 0)
+        if due and now >= due - 86400:              # 기한 하루 전부터 · 지나서도 한 번은 잡는다
+            r = rebalance(team=team, apply=apply, by="자동 운영")
+            out["rebalance"] = {"ok": r.get("ok"), "n": r.get("n", 0),
+                                "to": r.get("to_counts", {}), "from": r.get("from_counts", {}),
+                                "error": r.get("error", "") or r.get("reason", "")}
+            if apply and r.get("ok"):
+                changed["rebalance_cycle"] = cycle
+
+    # 갈린 건은 사이클과 무관하게 계속 생기므로 회차 키로 묶지 않고 매번 점검한다.
+    if int(cfg["auto_escalate"]):
+        r = escalate_split(team=team, apply=apply, by="자동 운영")
+        if r.get("n"):
+            out["escalate"] = {"ok": r.get("ok"), "n": r["n"], "to": r.get("to_counts", {})}
+
+    if apply and changed != state:
+        changed["last_run"] = now
+        _SV._report_save(AUTO_KIND, {"item": changed}, team)
+    return out
+
+
+# ── 적응형 겹치기: 2명 먼저 · 갈리면 한 명 더 ────────────────────────────────
+# 전건 3인 검수는 비싸다. 실측 불일치율이 선착 2인 기준 25% 였으니, 2인으로 시작하고
+# 갈린 건에만 3번째를 붙이면 같은 신뢰도로 판정 수를 25% 안팎 줄일 수 있다.
+# (2,000건 정답셋 기준 6,000판정 → 4,500판정)
+def split_pending(team=None) -> list:
+    """3번째 눈이 필요한 콘텐츠: 배정된 담당이 전원 판정했는데 의견이 갈렸고,
+    아직 아무도 더 붙지 않은 것. 이미 골든으로 확정됐거나 리드가 최종판정한 건 제외."""
+    st = _SV.get_store()
+    if not st:
+        return []
+    try:
+        asg = st.assignees(team=team) or {}
+        fmap = st.feedback_map(team=team) or {}
+        golden = st.golden_hashes(team) or set()
+    except Exception:
+        return []
+    try:
+        finals = set(_SV.final_verdicts(team) or {})
+    except Exception:
+        finals = set()
+    out = []
+    for ch, a in asg.items():
+        rvs = list(a.get("reviewers") or [])
+        if len(rvs) != 2 or ch in golden or ch in finals:
+            continue                                  # 2인 배정 건만 · 이미 결론 난 건 제외
+        e = fmap.get(ch) or {}
+        by = {(v.get("reviewer_id") or v.get("reviewer") or ""): v.get("verdict")
+              for v in (e.get("verdicts") or []) if v.get("verdict") in ("good", "bad")}
+        if not all(r in by for r in rvs):
+            continue                                  # 아직 둘 다 보지 않았다
+        if len({by[r] for r in rvs}) < 2:
+            continue                                  # 합의됨 → 3번째가 필요 없다
+        out.append({"hash": ch, "reviewers": rvs, "verdicts": {r: by[r] for r in rvs}})
+    return out
+
+
+def escalate_split(team=None, apply: bool = False, by: str = "", limit: int = 200) -> dict:
+    """의견이 갈린 건에만 3번째 검수자를 붙인다(전건 3인 배정의 대체).
+    고르는 기준은 여력(부하/캐파) · 이미 그 건을 본 두 사람은 당연히 제외한다."""
+    st = _SV.get_store()
+    items = split_pending(team)[:max(1, int(limit))]
+    if not (st and items):
+        return {"ok": True, "n": 0, "moves": [], "applied": False,
+                "reason": "3번째 눈이 필요한 건이 없습니다"}
+    data = _crew_compute(team)
+    pool = [m for m in data["members"] if m["available"]]
+    if not pool:
+        return {"ok": False, "error": "지금 맡길 수 있는 사람이 없습니다", "n": 0, "moves": []}
+    cap = {m["id"]: max(1, m["weekly_capacity"] or 1) for m in pool}
+    used = {m["id"]: m["load"]["pending"] for m in pool}
+    name = {m["id"]: m["name"] for m in pool}
+    heap = [(used[m["id"]] / cap[m["id"]], i, m["id"]) for i, m in enumerate(pool)]
+    heapq.heapify(heap)
+    moves, changed = [], {}
+    for it in items:
+        cand, pick = [], None
+        while heap:
+            key = heapq.heappop(heap)
+            if key[2] in it["reviewers"]:
+                cand.append(key)                      # 이미 본 사람은 3번째가 될 수 없다
+                continue
+            pick = key
+            break
+        for c in cand:
+            heapq.heappush(heap, c)
+        if not pick:
+            continue
+        _, i, to = pick
+        used[to] += 1
+        heapq.heappush(heap, (used[to] / cap[to], i, to))
+        moves.append({"hash": it["hash"], "to": to, "to_name": name[to],
+                      "between": [ (data and next((m["name"] for m in data["members"] if m["id"] == r), r))
+                                   for r in it["reviewers"] ]})
+        changed[it["hash"]] = it["reviewers"] + [to]
+    out = {"ok": True, "n": len(moves), "moves": moves, "applied": False,
+           "to_counts": _count(moves, "to_name")}
+    if not (apply and moves):
+        return out
+    for ch, rvs in changed.items():
+        st.set_assignees(ch, rvs, min_reviewers=3, team=team)   # 통과 기준도 3인으로
+    _SV._log_assign(by or "(미상)", "갈린 건 한 명 더", len(moves),
+                    sorted({m["to_name"] for m in moves}), 3, team)
+    _SV._agg_bump()
+    out["applied"] = True
+    return out
+
+
+# ── 강점 매칭 · 부족 분류 우선 ───────────────────────────────────────────────
+def content_categories(team=None) -> dict:
+    """{hash: [Tier1 분류]} · 강점 매칭과 부족 분류 우선의 재료.
+    콘텐츠마다 get_item_meta 를 부르면 왕복이 폭발하므로 결과 뷰에서 한 번에 만든다."""
+    def _calc():
+        out = {}
+        for r in _SV.results_rows(team=team) or []:
+            ch = _row_key(r.get("content_ref") or {})
+            cats = [str(c).split("/")[0].strip()
+                    for c in ((r.get("item_meta") or {}).get("content_category") or []) if c]
+            if ch:
+                out[ch] = [c for c in cats if c and c != "Unclassified"]
+        return out
+    return _SV._agg_cached(("crewcats", team), _calc, ttl=60.0)
+
+
+def _row_key(ref: dict) -> str:
+    return _SV._row_key(ref)
+
+
+def category_reliability(team=None, min_n: int = 5) -> dict:
+    """{uid: {분류: 합치율}} · '이 사람이 이 분야에서 팀 결론과 얼마나 같게 보는가'.
+    골드 문항은 분야별로 표본이 안 나오므로 다수 의견과의 합치로 근사한다
+    (표본 min_n 미만인 조합은 담지 않는다 · 적은 표본으로 강점을 단정하지 않기 위해)."""
+    st = _SV.get_store()
+    if not st:
+        return {}
+    try:
+        fmap = st.feedback_map(team=team) or {}
+    except Exception:
+        return {}
+    cats = content_categories(team)
+    acc = {}                                          # uid → 분류 → [일치, 전체]
+    for ch, e in fmap.items():
+        vs = [(v.get("reviewer_id") or v.get("reviewer") or "", v.get("verdict"))
+              for v in (e.get("verdicts") or []) if v.get("verdict") in ("good", "bad")]
+        if len(vs) < 2:
+            continue                                  # 혼자 본 건은 합치를 잴 수 없다
+        g = sum(1 for _, v in vs if v == "good")
+        major = "good" if g * 2 > len(vs) else ("bad" if (len(vs) - g) * 2 > len(vs) else "")
+        if not major:
+            continue                                  # 동점이면 정답이 없다
+        for c in (cats.get(ch) or []):
+            for rid, v in vs:
+                d = acc.setdefault(rid, {}).setdefault(c, [0, 0])
+                d[1] += 1
+                if v == major:
+                    d[0] += 1
+    out = {}
+    for rid, per in acc.items():
+        row = {c: round(a / n, 4) for c, (a, n) in per.items() if n >= max(1, int(min_n))}
+        if row:
+            out[rid] = row
+    return out
+
+
+def prioritize(hashes, team=None) -> list:
+    """정답셋이 부족한 분류를 앞으로. 물량에 상한이 걸릴 때 더 값진 것이 먼저 나가게 한다.
+    같은 그룹 안에서는 원래 순서를 지킨다(안정 정렬)."""
+    try:
+        lack = _SV._lack_classes(team) or set()
+    except Exception:
+        lack = set()
+    if not lack:
+        return list(hashes or [])
+    cats = content_categories(team)
+    return sorted(hashes or [], key=lambda h: 0 if (set(cats.get(h) or []) & lack) else 1)

@@ -204,8 +204,9 @@ def is_admin_user(uid, team, email="") -> bool:
 # 생성자·운영관리자 = 항상 전체 · 시스템 설정 = 운영관리자 전용(고정) · 그 외 관리자 메뉴는 생성자가
 # 슈퍼관리자/관리자별로 표시 여부 지정. 미설정(또는 컬럼 미마이그레이션) 시 기본 = 현재 동작.
 CONFIGURABLE_MENUS = ("content", "testset", "admin", "dict", "studio", "lab", "crew")
-MENU_LABELS = {"content": "콘텐츠 관리", "testset": "정답셋 관리", "admin": "팀 관리",
-               "dict": "사전 · 정책", "studio": "스튜디오", "lab": "실험실", "crew": "검수운영"}
+MENU_LABELS = {"content": "콘텐츠 관리", "testset": "정답셋 관리", "admin": "운영 관리",
+               "dict": "사전 · 정책", "studio": "스튜디오", "lab": "실험실",
+               "crew": "운영 관리 · 검수운영 탭"}
 DEFAULT_MENU_PERMS = {                            # 기존 cond(opsadmin=슈퍼만 · admin=둘 다)와 동일
     "content": {"super": True, "admin": False},
     "testset": {"super": True, "admin": False},
@@ -213,7 +214,8 @@ DEFAULT_MENU_PERMS = {                            # 기존 cond(opsadmin=슈퍼�
     "dict":    {"super": True, "admin": False},
     "studio":  {"super": True, "admin": False},
     "lab":     {"super": True, "admin": False},
-    # 검수운영 = 인력 지표(처리율·정확도·정체)를 다루는 화면 · 팀 관리자에게도 기본 비공개
+    # 검수운영 탭 = 인력 지표(속도·정확도·멈춘 일)를 다루는 곳 · 팀 관리자에게도 기본 비공개.
+    # 메뉴가 아니라 '운영 관리' 안의 탭이지만 권한 id 는 그대로 써서 앞뒤 게이트를 하나로 둔다.
     "crew":    {"super": True, "admin": False},
 }
 

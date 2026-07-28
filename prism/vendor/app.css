@@ -1485,6 +1485,10 @@
      한 덩어리로 뭉개진다(정답셋 관리의 검수 활동 추이가 이 때문에 비어 보였다).
      display 만 클래스로 빼면 인라인 제거 후 이 규칙이 다시 먹는다. */
   .flexrow{display:flex}
+  .crewtoggle{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid var(--ds-hairline);
+    border-radius:var(--ds-radius-chip);font-size:12.5px;font-weight:600;color:var(--ds-ink);cursor:pointer;
+    background:var(--ds-surface-white)}
+  .crewtoggle input{accent-color:var(--ds-primary);width:15px;height:15px;cursor:pointer}
   .crewgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--ds-space-4)}
   @media (max-width:1080px){ .crewgrid{grid-template-columns:1fr} }
   /* ── 모델 선택 드롭다운(mpick) ─────────────────────────────────────────────

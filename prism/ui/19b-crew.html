@@ -3,8 +3,8 @@
            없어 일이 감으로 나갔다. 지표는 속도가 아니라 '약속 대비 어디쯤인가'로 보이고,
            이상 신호는 경고가 아니라 다시 나누기·도움 주기로 잇는다(백엔드 prism/crewops.py).
            문구는 기계적인 말 대신 일상어로 쓴다(사용자 요청 2026-07-28). -->
-      <div x-show="mod === 'crew'" x-cloak class="w-full" style="margin-bottom:10px">
-        <div class="evaltabs">
+      <div x-show="mod === 'admin' && adminTab === 'crew'" x-cloak class="w-full" style="margin-bottom:10px">
+        <div class="evaltabs evaltabs--sub">
           <button type="button" x-bind:class="crewTab==='dash'?'sel':''" x-on:click="crewTab='dash'; loadCrew()">한눈에 보기</button>
           <button type="button" x-bind:class="crewTab==='people'?'sel':''" x-on:click="crewTab='people'; loadCrew()">팀원과 일정</button>
           <button type="button" x-bind:class="crewTab==='assign'?'sel':''" x-on:click="crewTab='assign'; loadCrew(); loadRaw(1000)">일 나눠주기</button>
@@ -13,7 +13,7 @@
       </div>
 
       <!-- ── 한눈에 보기 ───────────────────────────────────────────────── -->
-      <div x-show="mod === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="crewstats">
             <div class="crewstat"><span class="crewstat__k">남은 검수</span>
@@ -117,7 +117,7 @@
       </div>
 
       <!-- ── 팀원과 일정 ───────────────────────────────────────────────── -->
-      <div x-show="mod === 'crew' && crewTab === 'people'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'people'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li>왼쪽은 <b>약속한 일정</b>(관리자가 적고 본인이 확인), 오른쪽은 <b>실제 기록</b>입니다.</li>
           <li>휴가·적응 중·쉬는 중으로 두면 일을 나눌 때 자동으로 빠집니다.</li>
@@ -212,7 +212,7 @@
       </div>
 
       <!-- ── 일 나눠주기 ───────────────────────────────────────────────── -->
-      <div x-show="mod === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>여력만큼 나눠 맡기기</b>
           <span class="meta">똑같이 N건씩이 아니라 각자 남은 여유만큼 나눕니다 · 휴가·적응 중·쉬는 중은 빠집니다</span></div>
           <div class="panel-bd">
@@ -273,6 +273,29 @@
           </div>
         </section>
 
+        <!-- 적응형 겹치기: 전건 3인 대신 2인으로 시작하고 갈린 건에만 한 명 더 -->
+        <section class="panel"><div class="panel-hd"><b>갈린 건에 한 명 더</b>
+          <span class="meta">두 사람 의견이 엇갈린 건에만 세 번째 눈을 붙입니다 · 전부 3명이 보는 것보다 훨씬 쌉니다</span>
+          <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
+                  x-bind:disabled="crewBusy" x-on:click="crewEscalate(false)">누가 볼지 보기</button></div>
+          <div class="panel-bd">
+            <div x-show="!crewEscRes" class="text-xs text-muted">두 사람이 다르게 본 건을 찾아 아직 그 건을 안 본 사람에게 넘깁니다</div>
+            <div x-show="crewEscRes">
+              <div class="text-ink" style="font-weight:650" x-text="crewEscRes ? (crewEscRes.n + '건에 한 명씩 더 붙일 수 있습니다') : ''"></div>
+              <div class="flex flex-wrap gap-2" style="margin-top:8px">
+                <template x-for="(n, nm) in (crewEscRes ? crewEscRes.to_counts : {})" x-bind:key="'e'+nm">
+                  <span class="ds-badge ds-badge--success" x-text="nm + ' +' + n"></span></template>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="crewEscRes && !crewEscRes.n"
+                   x-text="crewEscRes ? (crewEscRes.reason || crewEscRes.error || '지금은 갈린 건이 없습니다') : ''"></div>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" style="margin-top:10px"
+                      x-show="crewEscRes && crewEscRes.n && !crewEscRes.applied"
+                      x-bind:disabled="crewBusy" x-on:click="crewEscalate(true)">이대로 붙이기</button>
+              <div class="ds-badge ds-badge--success" style="margin-top:10px" x-show="crewEscRes && crewEscRes.applied">붙였습니다</div>
+            </div>
+          </div>
+        </section>
+
         <section class="panel"><div class="panel-hd"><b>멈춘 일 넘기기</b>
           <span class="meta" x-text="(crewData&&crewData.settings?crewData.settings.stale_days:3) + '일 넘게 그대로인 일과 자리 비운 사람 몫을 여유 있는 사람에게 넘깁니다'"></span>
           <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
@@ -294,6 +317,54 @@
                       x-bind:disabled="crewBusy" x-on:click="crewRebalance(true)">이대로 넘기기</button>
               <div class="ds-badge ds-badge--success" style="margin-top:10px" x-show="crewMoveRes && crewMoveRes.applied">넘겼습니다</div>
             </div>
+          </div>
+        </section>
+
+        <!-- 자동 운영: 매주 사람이 잊지 않고 눌러야 도는 운영은 결국 안 돈다.
+             다만 남의 일을 옮기는 동작이라 기본은 꺼둔다. -->
+        <section class="panel"><div class="panel-hd"><b>자동으로 맡기기</b>
+          <span class="meta">켜두면 매주 알아서 나누고, 기한이 다가오면 멈춘 일을 넘깁니다 · 기본은 꺼짐</span>
+          <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
+                  x-bind:disabled="crewBusy" x-on:click="crewAuto()">지금 점검</button></div>
+          <div class="panel-bd">
+            <div class="flex flex-wrap gap-2" style="align-items:flex-end">
+              <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_wave == 1"
+                     x-on:change="crewSetting('auto_wave', $event.target.checked ? 1 : 0)">
+                <span>사이클 시작에 알아서 나누기</span></label>
+              <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_rebalance == 1"
+                     x-on:change="crewSetting('auto_rebalance', $event.target.checked ? 1 : 0)">
+                <span>기한 하루 전 멈춘 일 넘기기</span></label>
+              <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_escalate == 1"
+                     x-on:change="crewSetting('auto_escalate', $event.target.checked ? 1 : 0)">
+                <span>갈린 건에 한 명 더 붙이기</span></label>
+            </div>
+            <div class="flex flex-wrap gap-2" style="align-items:flex-end;margin-top:10px">
+              <div style="width:150px"><label class="lbl">시작 요일</label>
+                <select class="field" x-bind:value="crewCfg.wave_weekday" x-on:change="crewSetting('wave_weekday', $event.target.value)">
+                  <template x-for="(d, i) in ['월','화','수','목','금','토','일']" x-bind:key="i">
+                    <option x-bind:value="i" x-text="d + '요일'"></option></template></select></div>
+              <div style="width:120px"><label class="lbl">시작 시각</label>
+                <input type="number" min="0" max="23" class="field tnum" x-bind:value="crewCfg.wave_hour"
+                       x-on:change="crewSetting('wave_hour', $event.target.value)"></div>
+              <div style="width:120px"><label class="lbl">기한까지(일)</label>
+                <input type="number" min="1" max="14" class="field tnum" x-bind:value="crewCfg.wave_days"
+                       x-on:change="crewSetting('wave_days', $event.target.value)"></div>
+              <div style="width:140px"><label class="lbl">한 번에 최대</label>
+                <input type="number" min="1" max="2000" class="field tnum" x-bind:value="crewCfg.wave_batch"
+                       x-on:change="crewSetting('wave_batch', $event.target.value)"></div>
+              <div style="width:140px"><label class="lbl">한 건에 몇 명</label>
+                <input type="number" min="1" max="9" class="field tnum" x-bind:value="crewCfg.wave_min_reviewers"
+                       x-on:change="crewSetting('wave_min_reviewers', $event.target.value)"></div>
+            </div>
+            <div class="flex flex-wrap gap-2" style="margin-top:10px">
+              <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.match_strength == 1"
+                     x-on:change="crewSetting('match_strength', $event.target.checked ? 1 : 0)">
+                <span>잘 보는 분야로 보내기</span></label>
+              <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.lack_first == 1"
+                     x-on:change="crewSetting('lack_first', $event.target.checked ? 1 : 0)">
+                <span>정답이 부족한 분류 먼저</span></label>
+            </div>
+            <div class="text-xs text-muted" style="margin-top:10px" x-show="crewAutoRes" x-text="crewAutoTxt"></div>
           </div>
         </section>
 

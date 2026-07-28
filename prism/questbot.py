@@ -184,6 +184,59 @@ def compute_progress(store, team=None, learn_next_at: str = "") -> dict:
             "names": name_of, "avg": avg, "members": members}
 
 
+_WAVE_KIND = "crew_wave"
+
+
+def wave_due(store, team=None) -> float:
+    """검수운영에서 정한 이번 사이클 기한(epoch). 없으면 0.
+    crewops 를 import 하지 않는 이유: 이 봇은 serve 컴포지션 없이 store 만으로 돈다."""
+    try:
+        rec = store.get_report(_WAVE_KIND, team=team) if hasattr(store, "get_report") else None
+    except Exception:                                    # noqa: BLE001
+        rec = None
+    item = (rec or {}).get("item") if isinstance(rec, dict) else None
+    try:
+        return float((item or {}).get("due_at") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def assignment_progress(store, team=None) -> dict:
+    """{uid: {assigned, done, pending}} · 배정 배타 운영에서 '내 몫'의 진척.
+    팀 평균이 아니라 이걸 기준으로 독려해야 한다 — 남보다 적게 했는지가 아니라
+    내가 맡기로 한 것을 끝냈는지가 각자에게 의미 있는 기준이다."""
+    try:
+        asg = store.assignees(team=team) if hasattr(store, "assignees") else {}
+        fm = store.feedback_map(team=team) if hasattr(store, "feedback_map") else {}
+    except Exception:                                    # noqa: BLE001
+        return {}
+    done_pairs = {(ch, (v.get("reviewer_id") or v.get("reviewer") or ""))
+                  for ch, e in (fm or {}).items() for v in (e.get("verdicts") or [])
+                  if v.get("verdict") in ("good", "bad")}
+    out = {}
+    for ch, a in (asg or {}).items():
+        for rv in (a.get("reviewers") or []):
+            d = out.setdefault(rv, {"assigned": 0, "done": 0, "pending": 0})
+            d["assigned"] += 1
+            if (ch, rv) in done_pairs:
+                d["done"] += 1
+            else:
+                d["pending"] += 1
+    return out
+
+
+def select_by_assignment(progress: dict, per_asg: dict, due_at: float) -> list:
+    """내 몫이 남은 사람만, 많이 남은 순. 배정이 없으면 빈 목록(팀 평균 기준으로 폴백)."""
+    out = []
+    for uid, d in (per_asg or {}).items():
+        if d["pending"] <= 0:
+            continue
+        out.append({"uid": uid, "name": progress["names"].get(uid, uid), "done": d["done"],
+                    "assigned": d["assigned"], "pending": d["pending"], "due_at": due_at})
+    out.sort(key=lambda r: (-r["pending"], r["name"]))
+    return out
+
+
 def select_laggards(progress: dict, ratio: float = 1.0) -> list:
     """진척도가 (팀 평균 × ratio) 미만인 검수자. done 오름차순(가장 뒤처진 순).
     ratio=1.0 → 평균 미만 전원. 평균이 0(아무도 시작 안 함)이면 대상 없음."""
@@ -216,6 +269,30 @@ def compose(name: str, done: int, avg: float, next_at: float) -> tuple:
         line = (f"지금까지 {done}건 검수하셨어요. 팀 평균은 {avg_i}건이라, "
                 f"{gap}건만 더 하면 평균을 따라잡아요.")
     tail = f"마감은 {dl} 이에요. 지금 이어서 검수해요." if dl else "틈날 때 이어서 검수해요."
+    text = f"{lead}\n{line}\n{tail}"
+    blocks = [
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*{lead}*\n{line}\n{tail}"}},
+        {"type": "actions", "elements": [
+            {"type": "button", "text": {"type": "plain_text", "text": "지금 검수하러 가기"},
+             "url": APP_URL, "style": "primary"}]},
+    ]
+    return text, blocks
+
+
+def compose_mine(name: str, done: int, assigned: int, pending: int, due_at: float) -> tuple:
+    """내 몫 기준 독려 메시지. 남과 비교하지 않는다(비교는 팀을 방어적으로 만든다)."""
+    dl = _fmt_deadline(due_at)
+    left_h = ""
+    if due_at:
+        hours = (due_at - time.time()) / 3600.0
+        left_h = ("오늘까지예요" if 0 < hours <= 24 else
+                  (f"{int(hours // 24)}일 남았어요" if hours > 24 else "기한이 지났어요"))
+    lead = f"{name} 님, 맡으신 검수가 {pending}건 남았어요. 🔭"
+    if done == 0:
+        line = f"이번에 {assigned}건을 맡으셨는데 아직 시작 전이에요. 한 건만 해도 팀 진척이 움직여요."
+    else:
+        line = f"{assigned}건 중 {done}건 끝내셨어요. {pending}건만 더 하면 완주예요."
+    tail = (f"기한은 {dl} · {left_h} 지금 이어서 볼까요?" if dl else "틈날 때 이어서 볼까요?")
     text = f"{lead}\n{line}\n{tail}"
     blocks = [
         {"type": "section", "text": {"type": "mrkdwn", "text": f"*{lead}*\n{line}\n{tail}"}},
@@ -261,15 +338,29 @@ def run(store, team=None, *, learn_next_at: str = "", dry_run: bool = False,
     store: dual-mode 스토어 인스턴스. learn_next_at: Config.learn_next_at('YYYY-MM-DDTHH:MM').
     """
     prog = compute_progress(store, team, learn_next_at)
-    if not prog["active"]:
-        log("퀘스트가 진행 중이 아니에요(검수 목표 일시 미설정 또는 이미 지남). 발송하지 않아요.")
-        return {"active": False, "targets": 0, "sent": 0, "skipped": 0, "results": []}
-
-    laggards = select_laggards(prog, ratio)
-    log(f"퀘스트 진행 중 · 팀 평균 {prog['avg']:.1f}건 · 로스터 {prog['members']}명 "
-        f"· 평균 미만 대상 {len(laggards)}명 (기준 ×{ratio}).")
+    # 기준 1순위 = '내가 맡은 몫과 내 기한'(검수운영). 배정이 없는 팀에서만 종전의
+    # 팀 평균 기준으로 폴백한다 — 남과 비교하는 독려는 팀을 방어적으로 만든다.
+    per_asg = assignment_progress(store, team)
+    due = wave_due(store, team)
+    mine = select_by_assignment(prog, per_asg, due)
+    mode = "mine" if mine else "avg"
+    if mode == "mine":
+        deadline = due or prog["next_at"]
+        laggards = mine
+        left = sum(m["pending"] for m in mine)
+        log(f"내 몫 기준 · 남은 검수 {left}건 · 대상 {len(mine)}명"
+            + (f" · 기한 {_fmt_deadline(deadline)}" if deadline else " · 기한 미설정"))
+    else:
+        if not prog["active"]:
+            log("퀘스트가 진행 중이 아니에요(검수 목표 일시 미설정 또는 이미 지남). 발송하지 않아요.")
+            return {"active": False, "targets": 0, "sent": 0, "skipped": 0, "results": []}
+        deadline = prog["next_at"]
+        laggards = select_laggards(prog, ratio)
+        log(f"퀘스트 진행 중 · 팀 평균 {prog['avg']:.1f}건 · 로스터 {prog['members']}명 "
+            f"· 평균 미만 대상 {len(laggards)}명 (기준 ×{ratio}).")
     if not laggards:
-        return {"active": True, "targets": 0, "sent": 0, "skipped": 0, "avg": prog["avg"], "results": []}
+        return {"active": True, "targets": 0, "sent": 0, "skipped": 0, "avg": prog["avg"],
+                "mode": mode, "results": []}
 
     emails = auth_emails()                               # uuid → email
     manual = _members_map()                              # uuid|이름|email → slack id (폴백)
@@ -288,7 +379,7 @@ def run(store, team=None, *, learn_next_at: str = "", dry_run: bool = False,
             return "", f"email?:{email}"
         return "", ("email?:" + email if email else "미해결")
 
-    state = _sent_state(store, team, prog["next_at"])
+    state = _sent_state(store, team, deadline)   # 재발송 방지 회차 = 이번 기한
     results = []
     sent = skipped = 0
     for lg in laggards:
@@ -299,7 +390,8 @@ def run(store, team=None, *, learn_next_at: str = "", dry_run: bool = False,
             skipped += 1
             continue
         sid, how = resolve_slack(uid, name)
-        text, blocks = compose(name, done, prog["avg"], prog["next_at"])
+        text, blocks = (compose_mine(name, done, lg["assigned"], lg["pending"], deadline)
+                        if mode == "mine" else compose(name, done, prog["avg"], deadline))
         if dry_run:
             results.append({"uid": uid, "name": name, "done": done,
                             "status": "dry", "slack": sid or how, "text": text})
@@ -323,7 +415,7 @@ def run(store, team=None, *, learn_next_at: str = "", dry_run: bool = False,
     if sent and not dry_run:
         _persist_sent(store, team, state)
     return {"active": True, "targets": len(laggards), "sent": sent, "skipped": skipped,
-            "avg": prog["avg"], "results": results}
+            "avg": prog["avg"], "mode": mode, "deadline": deadline, "results": results}
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────

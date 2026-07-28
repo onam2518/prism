@@ -160,6 +160,8 @@ crew_profiles = CRW.profiles
 set_crew_profile = CRW.set_profile
 crew_plan_distribute = CRW.plan_distribute
 crew_rebalance = CRW.rebalance
+crew_auto_tick = CRW.auto_tick
+crew_escalate = CRW.escalate_split
 dashboard_data = DS.dashboard_data
 _dashboard_compute = DS._dashboard_compute
 drill_contents = DS.drill_contents
@@ -2132,6 +2134,19 @@ def _p_crew_assign(h, body):
                                reviewers=[str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()],
                                team=h._req_team(), apply=bool(data.get("apply")),
                                by=actor, due_at=data.get("due_at"))
+
+
+@_post_route("/crew-escalate", gate="super")         # 검수운영: 의견 갈린 건에 3번째 검수자 붙이기
+def _p_crew_escalate(h, body):
+    data = json.loads(body or b"{}")
+    actor = h._bearer_email() or h._bearer_uid() or "(로컬)"
+    return CRW.escalate_split(team=h._req_team(), apply=bool(data.get("apply")), by=actor)
+
+
+@_post_route("/crew-auto", gate="super")             # 검수운영: 자동 운영 점검(사이클당 1회 · 멱등)
+def _p_crew_auto(h, body):
+    data = json.loads(body or b"{}")
+    return CRW.auto_tick(team=h._req_team(), apply=bool(data.get("apply")))
 
 
 @_post_route("/crew-rebalance", gate="super")        # 검수운영: 정체분 회수 → 여력 있는 인원에게 이관
