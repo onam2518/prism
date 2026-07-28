@@ -262,10 +262,7 @@
               <div class="dmodal__bd">
                 <div class="dmfld">
                   <label>적용 대상 모델</label>
-                  <select x-model="dmModel">
-                    <option value="common">공통 · 전 모델 (기본)</option>
-                    <template x-for="m in availableModels" x-bind:key="m"><option x-bind:value="m" x-text="m + ' 전용'"></option></template>
-                  </select>
+                  <x-modelpick key="dm" value="dmModel" set="dmModel=$v" options="availableModels" first-label="공통 · 전 모델 (기본)" first-value="common" suffix=" 전용" width="248px"></x-modelpick>
                   <div class="dmhint" x-text="dmModel==='common' ? '공통을 고르면 어떤 모델로 실행하든 이 지시가 적용됩니다.' : (dmModel + ' 전용으로 저장 → 그 모델로 실행할 때만 추가됩니다(다른 모델엔 영향 없음).')"></div>
                 </div>
                 <div class="dmfld">
@@ -468,10 +465,7 @@
           <div class="panel-bd">
             <div class="filterbar" style="margin:0 16px">
               <span class="selctl abslot"><span class="selctl__tag">모델</span>
-                <select class="field" x-model="rawModel">
-                  <option value="">전체</option>
-                  <template x-for="m in rawModels" x-bind:key="'rm'+m"><option x-bind:value="m" x-text="m"></option></template>
-                </select>
+                <x-modelpick key="rm" value="rawModel" set="rawModel=$v" options="rawModels" first-label="전체" first-value="" width="228px"></x-modelpick>
               </span>
             </div>
             <ul class="ds-bullets" style="margin:10px 16px 0">
