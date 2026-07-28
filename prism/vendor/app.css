@@ -9,14 +9,13 @@
   [data-theme]{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font-game)}
   /* 게임형 디스플레이 폰트(GmarketSans) 적용: 제목·큰 숫자·레벨·점수 + 사이드바·타이틀·탭 등 UI 크롬. 본문·표·입력은 Pretendard 유지 */
   .panel-hd>.ds-widget__title,.panel-hd b,.ds-widget__title,.homehead__title,.homehead__sub,
-  .arena-hero__big,.arena-hero__eyebrow,.ds-stat__value,.tile .n,.goldbig__v,.goldstat b,
+  .arena-hero__big,.arena-hero__eyebrow,.ds-stat__value,.tile .n,
   .lb-pts,.lb-name>span:first-child,.charcard__lvl,.charcard__title,.charcard__xptxt b,
-  .badgeburst__label,.badgeburst__ttl,.gbadge__exp,.badgeburst__exp,.side-profile__score,.side-profile__gain,.side-profile__name,
-  .topbar__wm,.ds-navitem,.ds-navgroup__label,.evaltabs button,.seg button,.verdictbtn,
+  .badgeburst__label,.badgeburst__ttl,.badgeburst__exp,.side-profile__score,.side-profile__gain,.side-profile__name,
+  .ds-navitem,.ds-navgroup__label,.evaltabs button,.seg button,.verdictbtn,
   .ds-btn,.copybtn,.srcfilter__chip,.ds-segmented__item,.ds-badge,
   .panel-hd .meta,.panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions,.ds-widget__kind,
   .tnum{font-family:var(--ds-font-display)}
-  .topbar__wm small{font-family:var(--ds-font)}   /* 영문 태그라인은 Pretendard 유지 */
   .codeblock textarea,.field,input,textarea,select{font-family:var(--ds-font)}   /* 입력·코드블록은 가독성 위해 Pretendard/모노 유지 */
   .codeblock textarea{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"D2Coding",monospace}
   .homehead__title{font-family:var(--ds-font-display)}   /* 폰트 그룹 규칙보다 뒤에 둬 재정의 방지 */
@@ -78,20 +77,9 @@
   .ds-guide__who{font-size:11px;font-weight:700;color:var(--ds-muted);margin-bottom:2px}
   .ds-guide__say{font-size:13px;font-weight:600;color:var(--ds-ink);margin-bottom:5px}
   .ds-guide .ds-bullets{margin:0}
-  /* 배치 결과 · 콘텐츠별 평가 피드백(학습 루프) */
-  .fbrow{display:grid;grid-template-columns:1fr auto;gap:9px 12px;align-items:start;padding:11px 13px;
-    border:1px solid var(--ds-hairline-soft);border-radius:var(--ds-radius-control);background:var(--ds-surface-white);margin-bottom:var(--ds-space-2)}
-  .fbrow__main{min-width:0}
-  .fbrow__title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ds-ink);flex-wrap:wrap}
   .ds-table tr.is-sel td{background:var(--ds-primary-tint)}
   /* 목록 키보드 포커스(J/K): 배경(is-sel)과 겹쳐도 구분되는 상·하 인셋 라인 */
   .ds-table tr.is-kfocus td{box-shadow:inset 0 1px 0 var(--ds-primary),inset 0 -1px 0 var(--ds-primary);background:var(--ds-primary-tint)}
-  .fbrow__titlelink{cursor:pointer;border-radius:4px;transition:color .12s,background .12s}
-  .fbrow__titlelink:hover{color:var(--ds-primary);text-decoration:underline;text-underline-offset:2px}
-  .fbrow__titlelink:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
-  .fbrow__svc{font-size:11px;font-weight:500;color:var(--ds-muted)}
-  .fbrow__sum{margin-top:6px;font-size:12px;color:var(--ds-body)}
-  .fbrow__act{display:flex;gap:6px;align-self:center}
 
   /* ── 게임형 검수 판정 버튼(신호등): 지겨운 검수 → 한 판 하듯. 선택 시 해당 신호등이 '켜짐'(글로우) ── */
   .verdictbtn{display:inline-flex;align-items:center;gap:var(--ds-space-2);height:36px;padding:0 16px;border-radius:var(--ds-radius-chip);
@@ -152,7 +140,6 @@
   .abvs{font-size:12px;font-weight:800;color:var(--ds-muted);letter-spacing:.04em}
   .keyline{display:flex;align-items:center;gap:10px;padding:9px 0;flex-wrap:wrap}
   .keyline + .keyline{border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06))}
-  .keyline__nm{min-width:120px;font-size:12.5px;font-weight:700;color:var(--ds-ink);display:inline-flex;align-items:center;gap:7px}
   .stepline{display:flex;align-items:center;gap:10px;margin:2px 2px 0;min-height:32px}
   .stepline__no,.stepcard__no{font-family:var(--ds-font-game);font-size:11px;font-weight:700;color:#fff;
     background:var(--ds-primary);border-radius:var(--ds-radius-chip);padding:4px 11px;letter-spacing:.03em;flex:none}
@@ -195,13 +182,6 @@
   .filterbar input.field{flex:1;min-width:180px}
   .ds-table td{vertical-align:middle}
   .ds-badge[data-tip]{cursor:help}   /* 정의 있는 배지 = help 커서 통일 */
-  .fbrow__note{grid-column:1/-1;display:flex;gap:var(--ds-space-2);align-items:center;flex-wrap:wrap;
-    padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
-  /* 프롬프트 스튜디오 · 단계별 모델 지정 */
-  .stage-model{display:flex;align-items:center;gap:9px;margin-bottom:10px}
-  .stage-model__lbl{flex:none;font-size:11px;font-weight:700;color:var(--ds-primary);background:var(--ds-primary-tint);
-    border-radius:6px;padding:4px 9px}
-  .stage-model .field{height:36px}
   /* 원천 프롬프트 = 코드블록 에디터(직접 수정). 모노스페이스 · 코드창 크롬(맥 신호등 도트) */
   .codeblock{position:relative;border:1px solid var(--ds-hairline);border-radius:10px;overflow:hidden;
     background:var(--ds-surface-on);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
@@ -249,26 +229,8 @@
     background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center}
 
-  /* ── DS 파일럿: ImageDropzone · Hero · Empty (라이트 토큰) ── */
+  /* ── DS 파일럿: Empty (라이트 토큰) ── */
   .ds-pilot{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font)}
-  .ds-dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--ds-space-2);
-    width:100%;min-height:104px;padding:18px;border:1.5px dashed var(--ds-hairline);border-radius:var(--ds-radius-lg);
-    background:var(--ds-surface);color:var(--ds-muted);cursor:pointer;font-family:var(--ds-font-body);
-    transition:border-color .15s,background .15s,color .15s}
-  .ds-dropzone:hover{border-color:var(--ds-primary);color:var(--ds-ink)}
-  .ds-dropzone.drag{border-color:var(--ds-primary);border-style:solid;background:var(--ds-primary-tint);color:var(--ds-ink)}
-  .ds-dropzone .dz-ic{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
-    background:var(--ds-primary-tint);color:var(--ds-primary)}
-  .ds-dropzone .dz-ic svg{width:18px;height:18px}
-  .ds-dropzone .dz-t{font-size:var(--ds-size-label);color:var(--ds-ink);font-weight:600}
-  .ds-dropzone .dz-d{font-size:var(--ds-size-caption);color:var(--ds-muted)}
-  .ds-attachments{display:flex;flex-wrap:wrap;gap:var(--ds-space-2);margin-top:10px}
-  .ds-hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--ds-space-1);
-    padding:48px 24px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-xl);font-family:var(--ds-font-body);
-    background:var(--ds-surface)}
-  .ds-hero__title{font-family:var(--ds-font-sans);font-size:var(--ds-size-heading);font-weight:600;color:var(--ds-ink);margin-top:var(--ds-space-3)}
-  .ds-hero__desc{font-size:var(--ds-size-body);color:var(--ds-muted);max-width:30rem;line-height:var(--ds-lh-normal)}
-  .ds-hero__chips{display:flex;flex-wrap:wrap;gap:var(--ds-space-2);justify-content:center;margin-top:var(--ds-space-4)}
   .ds-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;
     padding:44px 24px;border:1px dashed var(--ds-hairline);border-radius:var(--ds-radius-lg);
     background:var(--ds-surface);font-family:var(--ds-font-body)}
@@ -286,13 +248,6 @@
     border-radius:7px;background:var(--ds-primary-tint);color:var(--ds-primary);font-size:12px;font-weight:600}
   .dropzone .name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  /* 썸네일 */
-  .thumb{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;border:1px solid var(--ds-hairline);background:var(--ds-surface)}
-  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
-  .thumb-x{position:absolute;top:3px;right:3px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;
-    border-radius:5px;background:rgba(0,0,0,.66);color:#fff;opacity:0;transition:opacity .12s}
-  .thumb:hover .thumb-x{opacity:1}
-  .thumb-x svg{width:11px;height:11px}
 
   /* 토스트(다크 오버레이) */
   .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;
@@ -323,7 +278,7 @@
   .ds-badge--yellow{background:rgba(255,148,41,.16);color:#b8600a}
   /* ── 다크모드 대비 보정: 하드코딩 골드/화이트가 다크서 안 보이던 부분 ── */
   [data-theme='dark'] .ds-badge--yellow{background:rgba(255,158,64,.22);color:#ffc266}
-  [data-theme='dark'] .gbadge__exp,[data-theme='dark'] .badgeburst__exp{color:#ffc879;background:rgba(255,158,64,.20)}
+  [data-theme='dark'] .badgeburst__exp{color:#ffc879;background:rgba(255,158,64,.20)}
   [data-theme='dark'] .metarow__amb{color:#ff8a75}
   [data-theme='dark'] .ds-btn--secondary,[data-theme='dark'] .ds-btn--ghost,[data-theme='dark'] .ds-btn--outline{box-shadow:0 1px 2px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.04)}
   [data-theme='dark'] .copybtn,[data-theme='dark'] .ds-iconbtn--bordered{box-shadow:0 1px 2px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.04)}
@@ -357,8 +312,6 @@
   .panel-hd{display:flex;align-items:center;gap:var(--ds-space-3);padding:18px var(--ds-pad-panel-x,20px) 13px;border-bottom:1px solid var(--ds-hairline-soft)}
   .panel-bd{padding-top:var(--ds-space-4)}   /* 헤더 구분선 아래 본문 */
   .panel-hd>b{margin-right:auto}
-  .ds-progress--drill:hover .ds-progress__label{color:var(--ds-primary)}
-  .ds-progress--drill:hover .ds-progress__track{box-shadow:0 0 0 2px color-mix(in srgb,var(--ds-primary) 26%,transparent)}
   /* 콘텐츠 상세 스플릿뷰(공통 컴포넌트) */
   .detailview{background:var(--ds-layer-popup);border-radius:var(--ds-radius-xl);box-shadow:var(--ds-shadow-high);width:min(940px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
   .detailview__hd{display:flex;align-items:center;justify-content:space-between;padding:var(--ds-space-4) var(--ds-space-5);border-bottom:1px solid var(--ds-divider-section)}
@@ -369,11 +322,8 @@
   .dvc__service{font-size:12px;font-weight:700;color:var(--ds-primary)}
   .dvc__title{font-size:22px;font-weight:700;line-height:1.3;margin:6px 0 4px;color:var(--ds-ink)}
   .dvc__subtitle{font-size:15px;color:var(--ds-text-secondary);margin-bottom:6px}
-  .dvc__lead{margin:14px 0;padding:14px 16px;border-radius:var(--ds-radius-md);background:var(--ds-primary-tint);font-size:15px;line-height:1.6;color:var(--ds-text-secondary)}
-  .dvc__lead-lbl{display:block;font-size:11px;font-weight:700;color:var(--ds-primary);margin-bottom:var(--ds-space-1)}
   .dvc__bodytext{font-size:15px;line-height:1.7;color:var(--ds-text-secondary);white-space:pre-wrap;margin-top:var(--ds-space-3)}
   .dvc__note{font-size:12px;color:var(--ds-muted);margin-top:var(--ds-space-3)}
-  .dvc__src{margin-top:var(--ds-space-4);display:inline-flex}
   /* 저장된 이미지 스트립(검수 상세 · 추출 텍스트 탭 하단): 클릭 = 새 탭 원본 */
   .dvc__imgs{display:flex;flex-wrap:wrap;gap:8px}
   .dvc__imgs a{display:block;flex:none;border-radius:var(--ds-radius-md);overflow:hidden;border:1px solid var(--ds-divider-section)}
@@ -465,12 +415,6 @@
   details>summary::before{content:"›";display:inline-block;width:1em;margin-right:5px;transition:transform .15s;color:var(--ds-muted)}
   details[open]>summary::before{transform:rotate(90deg)}
 
-  /* 스켈레톤 */
-  .skel{position:relative;overflow:hidden;background:var(--ds-hairline-soft);border-radius:var(--ds-radius-sm)}
-  .skel::after{content:"";position:absolute;inset:0;
-    background:linear-gradient(90deg,transparent,rgba(0,0,0,.05),transparent);
-    transform:translateX(-100%);animation:shimmer 1.4s infinite}
-  @keyframes shimmer{100%{transform:translateX(100%)}}
 
   /* 세그먼트(입력 탭 · 추론강도) */
   .seg{display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--ds-surface);border:1px solid var(--ds-hairline)}
@@ -543,8 +487,6 @@
   [data-theme='dark'] .topbar__logo--light{display:none} [data-theme='dark'] .topbar__logo--dark{display:block}
   .topbar__brand .logo{width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex:none}
   .topbar__brand .logo img{width:100%;height:100%}
-  .topbar__wm{font-family:var(--ds-font-sans);font-weight:600;font-size:var(--ds-size-subtitle);color:var(--ds-ink);line-height:1.12}
-  .topbar__wm small{display:block;font-weight:400;font-size:11px;color:var(--ds-muted)}
   /* 타이틀 = 아래 위젯 아이콘 라인(콘텐츠 패딩선)에 정렬: 구분선(232) + 37 */
   .topbar__title{flex:1;min-width:0;padding-left:37px;display:flex;flex-direction:column;justify-content:center;gap:3px}
   .topbar__title .homehead__title{font-size:15px;line-height:1.15}
@@ -640,13 +582,6 @@
   .evaltabs button.sel::after{content:"";position:absolute;left:10px;right:10px;bottom:-1.5px;height:2.5px;
     background:var(--ds-primary);border-radius:3px 3px 0 0}
   .evaltabs--sub button{background:none;border-radius:8px 8px 0 0}
-  /* 스탯 클러스터 정렬 규칙(전 카드 공통): 숫자 line-height 1 + 라벨 동일 크기·간격 → 하단 기준선 정렬 */
-  .goldgrid{display:flex;align-items:flex-end;gap:28px;margin-top:var(--ds-space-4);flex-wrap:wrap}
-  .goldbig__v{font-size:42px;font-weight:800;color:var(--ds-primary);line-height:1}
-  .goldbig__l{font-size:11px;color:var(--ds-muted);margin-top:6px;line-height:1.4}
-  .goldstat{display:flex;flex-direction:column}
-  .goldstat b{font-size:20px;font-weight:800;color:var(--ds-ink);line-height:1}
-  .goldstat span{font-size:11px;color:var(--ds-muted);margin-top:6px;line-height:1.4}
   .metarow{display:flex;gap:10px;padding:11px 6px;border-bottom:1px solid var(--ds-hairline-soft)}
   .metarow__dir{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
   .metarow__dir li{position:relative;padding-left:14px;font-size:13px;color:var(--ds-ink);line-height:1.55}
@@ -698,8 +633,6 @@
   .arena-hero__eyebrow{font-size:12px;opacity:.82;font-weight:600;letter-spacing:.02em;margin-bottom:var(--ds-space-1)}
   .arena-hero__big{font-size:54px;font-weight:800;line-height:1;display:flex;align-items:baseline;gap:var(--ds-space-2);font-variant-numeric:tabular-nums}
   .arena-hero__pct{font-size:26px;font-weight:700;opacity:.85}
-  .arena-hero__delta{font-size:13px;font-weight:600;padding:3px 9px;border-radius:var(--ds-radius-chip);background:rgba(255,255,255,.16)}
-  .arena-hero__delta.up{color:#b8f5da} .arena-hero__delta.down{color:#ffd5d5}
   .arena-hero__target{font-size:13px;opacity:.9;white-space:nowrap;padding-top:6px}
   .arena-gauge{position:relative;height:14px;border-radius:var(--ds-radius-chip);background:rgba(255,255,255,.18);margin:16px 0 12px;overflow:hidden}
   .arena-gauge__fill{position:absolute;left:0;top:0;bottom:0;border-radius:var(--ds-radius-chip);
@@ -710,7 +643,6 @@
   .arena-hero .text-ink,.arena-hero__foot b,.arena-hero__eyebrow{color:#fff !important}
   .arena-quest{cursor:pointer;font-weight:600;background:rgba(255,255,255,.16);padding:5px 12px;border-radius:var(--ds-radius-chip)}
   .arena-quest:hover{background:rgba(255,255,255,.26)}
-  .arena-quest--done{cursor:default;background:rgba(255,255,255,.1)}
   .arena-cols{display:grid;grid-template-columns:1.3fr 1fr;gap:var(--ds-space-4)}
   @media (max-width:820px){.arena-cols{grid-template-columns:1fr}}
   /* 홈 아레나: 세로 스택(가로 full 사용) · 캐릭터 히어로 상단 */
@@ -819,8 +751,6 @@
   .gbadge.locked .gbadge__ic{font-size:15px;filter:none}
   .gbadge__label{font-size:11px;font-weight:700;color:var(--ds-ink);text-align:center;line-height:1.2}
   .gbadge.locked .gbadge__label{color:var(--ds-muted)}
-  .gbadge__exp{font-size:9.5px;font-weight:800;letter-spacing:.02em;color:#b8791f;background:rgba(255,148,41,.18);padding:1.5px 7px;border-radius:var(--ds-radius-chip)}
-  .gbadge.locked .gbadge__exp{color:var(--ds-muted);background:var(--ds-surface-table)}
   /* 배지 달성 축하 오버레이 */
   /* 검수 완료 +PT 리워드 토스트(위로 떠오르며 페이드) */
   /* 배지 전체 보기 모달 */
@@ -876,8 +806,6 @@
   @keyframes bb-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
   @keyframes bb-spark{0%{opacity:1;transform:rotate(calc(var(--i)*30deg)) translateX(30px) scale(1)}100%{opacity:0;transform:rotate(calc(var(--i)*30deg)) translateX(120px) scale(.3)}}
   @media (prefers-reduced-motion:reduce){.badgeburst__orb,.badgeburst__spark,.badgeburst__card{animation:none}}
-  .conn-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ds-ink);white-space:nowrap}
-  .conn-chip--off{color:var(--ds-muted)}
   /* 본문 영역: 문서 흐름(내부 스크롤 없음 · 페이지 전체가 스크롤) · flex:1 = 짧은 페이지에서 푸터를 바닥으로 */
   .appbody{flex:1;display:grid;grid-template-columns:232px minmax(0,1fr);gap:18px;
     padding:22px 22px 0;align-items:start}
@@ -903,30 +831,7 @@
   .ds-navitem__icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;color:var(--ds-muted)}
   .ds-navitem--active .ds-navitem__icon{color:var(--ds-primary)}
   .ds-navitem__icon svg{width:15px;height:15px}
-  .nav-kind{margin-left:auto;font-size:9px;font-weight:600;letter-spacing:.04em;color:var(--ds-placeholder);
-    border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-full);padding:1px 6px}
-  .ds-navitem--active .nav-kind{color:var(--ds-primary);border-color:rgba(30,132,255,.3)}
   .side-assistant{margin-top:var(--ds-space-3)}
-  /* 도우미 = 사이드바·타이틀과 같은 고정 계층색(웜 그레이지) 캔버스의 흰 위젯과 색으로 구분 */
-  .side-assistant__card{width:100%;display:flex;align-items:center;gap:11px;padding:var(--ds-space-3);border:1px solid var(--ds-fixed-bd);cursor:pointer;text-align:left;
-    border-radius:var(--ds-radius-xl);background:var(--ds-fixed-bg);color:var(--ds-ink);
-    box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 20px -10px rgba(0,0,0,.12),var(--ds-highlight);transition:transform var(--ds-motion-fast) var(--ds-ease-standard)}
-  .side-assistant__card:hover{transform:translateY(-2px)}
-  .side-assistant__char{width:54px;height:54px;flex:none}
-  .side-assistant__char img{width:100%;height:100%;object-fit:contain}
-  .side-assistant__txt{min-width:0;display:flex;flex-direction:column;gap:2px}
-  .side-assistant__t{display:flex;align-items:center;gap:7px;font-family:var(--ds-font-sans);font-size:var(--ds-size-label);font-weight:700;color:var(--ds-ink)}
-  .side-assistant__s{font-size:11px;color:var(--ds-muted)}
-  /* 야구카드형 프로필: 캐릭터를 라운드 타일에 얹고, 이름 옆 '에이전트' 태그 + 편집 */
-  .side-assistant__card--profile{position:relative;align-items:center}
-  .side-assistant__card--profile .side-assistant__char{width:52px;height:52px;border-radius:var(--ds-radius-control);background:var(--ds-primary-tint);
-    display:flex;align-items:center;justify-content:center;padding:3px;box-shadow:inset 0 0 0 1px var(--ds-hairline)}
-  .side-assistant__tag{font-size:10px;font-weight:700;color:var(--ds-primary);background:var(--ds-primary-tint);
-    padding:1px 6px;border-radius:var(--ds-radius-chip);letter-spacing:.01em}
-  .side-assistant__edit{position:absolute;top:9px;right:9px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
-    border-radius:7px;color:var(--ds-muted);opacity:0;transition:opacity var(--ds-motion-fast)}
-  .side-assistant__card--profile:hover .side-assistant__edit{opacity:1}
-  .side-assistant__edit:hover{background:var(--ds-hairline-soft);color:var(--ds-ink)}
   .side-assistant__spin{width:12px;height:12px;border:2px solid rgba(0,0,0,.14);border-top-color:var(--ds-primary);border-radius:50%;animation:ds-spin .7s linear infinite;flex:none}
   /* ── 게임형 프로필 카드(사이드 하단): 글로우 캐릭터 + 획득(+XP) 뱃지 + 점수. 지겨운 검수 → 성장 재미 ── */
   .side-profile{position:relative;width:100%;display:flex;flex-direction:column;align-items:center;gap:5px;
@@ -948,7 +853,6 @@
     background:rgba(24,186,69,.16);border:1px solid rgba(24,186,69,.42);padding:1px 8px;border-radius:var(--ds-radius-chip);
     box-shadow:0 2px 6px rgba(24,186,69,.32);animation:sp-float 3s ease-in-out infinite;z-index:4;pointer-events:none}
   .side-profile__name{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;font-size:13px;font-weight:800;color:var(--ds-ink);margin-top:5px}
-  .side-profile__tag{font-size:9.5px;font-weight:700;color:var(--ds-primary);background:var(--ds-primary-tint);padding:1px 6px;border-radius:var(--ds-radius-chip)}
   .side-profile__score{font-size:16px;font-weight:800;color:var(--ds-ink);letter-spacing:-.01em}
   .side-profile__score b{color:var(--ds-primary-deep)}
   .side-profile__sub{font-size:10.5px;color:var(--ds-muted)}
@@ -959,7 +863,6 @@
   @keyframes sp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
   @keyframes sp-pulse{0%,100%{opacity:.58;transform:translateX(-50%) scale(1)}50%{opacity:.9;transform:translateX(-50%) scale(1.09)}}
   @media (prefers-reduced-motion:reduce){.side-profile__avatar img,.side-profile__glow,.side-profile__gain{animation:none}}
-  .side-assistant__idle{width:8px;height:8px;border-radius:50%;background:var(--ds-primary);box-shadow:0 0 0 3px rgba(30,132,255,.16);flex:none}
 
   /* 상단 메뉴 위젯 */
   /* 고정 위젯(사이드바·타이틀바) = teal 틴트로 시스템 크롬임을 색으로 구분
@@ -974,9 +877,6 @@
     box-shadow:0 1px 2px rgba(0,0,0,.06),0 10px 24px -10px rgba(0,0,0,.14),var(--ds-highlight)}
   .homehead__title{font-family:var(--ds-font-display);font-size:var(--ds-size-label);font-weight:700;letter-spacing:-.01em;line-height:1.2;color:var(--ds-ink)}
   .homehead__sub{font-size:var(--ds-size-caption);color:var(--ds-muted);margin-top:3px}
-  .homehead__tools{display:flex;align-items:center;gap:6px;flex:none;position:relative}
-  .homehead__status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ds-muted);white-space:nowrap;
-    margin-right:10px;padding-right:14px;border-right:1px solid var(--ds-hairline)}
   .addmenu{position:absolute;top:44px;right:0;z-index:50;width:220px;background:var(--ds-surface-white);border:1px solid var(--ds-hairline);
     border-radius:var(--ds-radius-lg);box-shadow:var(--ds-shadow-elevated);padding:6px;display:none}
   .addmenu.open{display:block}
@@ -990,18 +890,12 @@
   .ds-widgetgrid{margin-top:0}
 
   /* 위젯 내부 */
-  .w-stat-v{font-family:var(--ds-font-sans);font-size:var(--ds-size-heading-lg);font-weight:600;letter-spacing:-.01em;color:var(--ds-ink)}
-  .w-stat-v.accent{color:var(--ds-primary)}
   .w-stat-l{font-size:var(--ds-size-caption);color:var(--ds-muted);margin-top:2px}
   .w-run{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:center;padding:7px 0}
   .w-run+.w-run{border-top:1px solid var(--ds-hairline-soft)}
   .w-run__av{width:30px;height:30px;border-radius:50%;background:var(--ds-primary-tint);display:flex;align-items:center;justify-content:center}
   .w-run__av img{width:78%;height:78%}
   .w-run__t{font-size:var(--ds-size-caption);color:var(--ds-ink);font-weight:500}
-  .w-ev{display:grid;grid-template-columns:46px 1fr;gap:var(--ds-space-2);padding:7px 0;font-size:var(--ds-size-caption)}
-  .w-ev+.w-ev{border-top:1px solid var(--ds-hairline-soft)}
-  .w-ev__t{color:var(--ds-placeholder);font-variant-numeric:tabular-nums}
-  .w-ev__b{color:var(--ds-ink)}
   .w-agent{display:flex;align-items:center;gap:9px;padding:7px 0}
   .w-agent+.w-agent{border-top:1px solid var(--ds-hairline-soft)}
   .w-agent__av{width:30px;height:30px;border-radius:50%;background:var(--ds-primary-tint);display:flex;align-items:center;justify-content:center;flex:none}
@@ -1027,7 +921,7 @@
   .drow .k{font-size:12px;font-weight:600;color:var(--ds-muted);padding-top:1px}
   .drow .v,.drow .v p{font-size:14px;color:var(--ds-ink);line-height:1.55}
   /* ⑤ 통계 수치: 동일 크기 */
-  .tile .n,.w-stat-v,.ds-stat__value{font-size:24px;font-weight:600;letter-spacing:-.01em;line-height:1.1}
+  .tile .n,.ds-stat__value{font-size:24px;font-weight:600;letter-spacing:-.01em;line-height:1.1}
   /* ⑥ 캡션·설명·힌트: 13px·muted 동일 */
   .ds-hint,.secdesc,.rc-d,.homehead__sub{font-size:13px;color:var(--ds-muted);line-height:1.5}
   /* ⑦ 위젯 간 세로 간격: 동일 리듬(타이트 금지) */
@@ -1079,10 +973,6 @@
 .polpal__bd{padding:10px var(--ds-pad-inset) var(--ds-pad-inset);display:flex;flex-direction:column;gap:8px;min-height:0}
 .polpal__ctx{display:flex;flex-wrap:wrap;gap:4px;padding-bottom:8px;border-bottom:1px dashed var(--ds-hairline)}
 .polpal__list{overflow:auto;max-height:66vh;display:flex;flex-direction:column;gap:6px}
-.polpal__item{padding:8px 10px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-control);background:var(--ds-surface-white)}
-.polpal__item b{font-size:12.5px;color:var(--ds-ink)}
-.polpal__item div{color:var(--ds-body);margin-top:3px;line-height:1.55;white-space:pre-line}
-.polpal__item.is-hl{border-color:var(--ds-primary);background:var(--ds-primary-tint)}
 
 /* 정책 도움말 · 표 구조(기준표): Tier1 그룹 + (Tier2|정의|예시) · 인텐트/품질/등급 공용 */
 .poltbl{width:100%;border-collapse:collapse;font-size:12px}
@@ -1123,7 +1013,7 @@
   filter:drop-shadow(0 3px 5px rgba(0,0,0,.14));animation:squestBob 3.2s ease-in-out infinite}
 @keyframes squestBob{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-5px) rotate(3deg)}}
 @media (prefers-reduced-motion:reduce){.squest__char{animation:none}}
-.squest__title,.squest__model{padding-right:70px}   /* 캐릭터와 텍스트 겹침 방지 */
+.squest__title{padding-right:70px}   /* 캐릭터와 텍스트 겹침 방지 */
 .squest__obj{padding-right:70px}
 .squest__hd{display:flex;align-items:center;justify-content:space-between}
 .squest__type{font:700 9.5px/1 var(--ds-font-game);letter-spacing:.06em;color:var(--ds-primary-deep);
@@ -1133,13 +1023,7 @@
 .squest__dday--done{color:var(--ds-success-deep)}
 .squest--done{cursor:default;background:var(--ds-primary-tint)}
 .squest__title{margin-top:8px;font:700 13px/1.3 var(--ds-font-game);color:var(--ds-ink)}
-.squest__model{margin-top:2px;font-size:10.5px;color:var(--ds-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .squest__obj{margin-top:3px;font-size:11px;color:var(--ds-muted)}
-.squest__bar{margin-top:8px;height:7px;border-radius:var(--ds-radius-chip);background:var(--ds-hairline);overflow:hidden}
-.squest__fill{height:100%;border-radius:var(--ds-radius-chip);background:linear-gradient(90deg,var(--ds-primary),#66a8ff);transition:width .5s}
-.squest__fill.is-done{background:linear-gradient(90deg,var(--ds-success),#7be3a3)}
-.squest__cnt{display:flex;justify-content:space-between;margin-top:4px;font:700 10.5px/1 var(--ds-font-game);color:var(--ds-body)}
-.squest__foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:10.5px;color:var(--ds-muted)}
 .squest__go{font:700 10.5px/1 var(--ds-font-game);color:var(--ds-primary)}
 /* ── 확정 시안(원정대): 캐릭터 씬 + 응원 문구 + 2×2 타일 + 보상 ── */
 .squest__party{position:relative;height:134px;border-radius:10px;overflow:hidden;margin-top:10px;
@@ -1196,7 +1080,6 @@
   background:var(--ds-surface);border:1px solid var(--ds-hairline-soft);border-radius:8px;padding:7px 10px}
 .tlegend b{font-weight:600;color:var(--ds-body)}
 .tlegend .sw{display:inline-block;width:9px;height:9px;border-radius:3px;vertical-align:-1px;margin-right:3px}
-.tlegend .sw--on{background:var(--ds-primary)}
 .tlegend .sw--off{background:var(--ds-surface);border:1px solid var(--ds-hairline)}
 .tauto{color:var(--ds-primary);font-size:10px;margin-right:2px}
 .tcond__g{margin-bottom:11px}
@@ -1204,7 +1087,6 @@
 .tcond__lbl{font-size:11px;color:var(--ds-muted);margin-bottom:5px}
 /* 생성 스텝: 미리보기 */
 .tpreview{background:var(--ds-canvas);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:12px 13px}
-.tpreview__big{font-size:24px;font-weight:700;line-height:1.1}
 
 /* ── 토픽 스튜디오: 필수/선택/제외 4상태 칩 · 묶음(핵심/관련) ── */
 .ds-badge.is-req{box-shadow:inset 0 0 0 1.5px var(--ds-primary);font-weight:700}
@@ -1225,10 +1107,6 @@
 .tbundle__l{flex:1;min-width:0;font-size:13px;color:var(--ds-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tbundle__n{flex:none;font-size:13px;font-weight:700;color:var(--ds-ink);font-variant-numeric:tabular-nums}
 /* 내 토픽 그룹 */
-.tgroup{background:var(--ds-canvas);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:12px 13px}
-.tgroup__hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.tgroup__hd b{font:600 14px var(--ds-font-display);color:var(--ds-ink)}
-.tgroup__must{font-size:11.5px;color:var(--ds-primary-deep);margin-top:4px}
 .tbchip{font-size:11.5px;border-radius:7px;padding:3px 9px;background:var(--ds-surface);
   border:1px solid var(--ds-hairline);color:var(--ds-body);display:inline-flex;align-items:center;gap:4px}
 .tbchip:hover{border-color:var(--ds-border-input-hover)}
@@ -1471,7 +1349,7 @@
   .demo-code .ln.is-new{color:#eaf1fb;font-weight:600}
   .demo-code .ln.is-hint{color:#5c6572}
 
-  /* ── 검수운영(HR) · 인력 캐파·신호등 (prism/ui/20b-crew.html) ───────────── */
+  /* ── 검수운영(HR) · 인력 캐파·신호등 (prism/ui/19b-crew.html) ───────────── */
   .crewstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--ds-space-3)}
   .crewstat{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--ds-hairline);
     border-radius:10px;background:var(--ds-surface-white)}

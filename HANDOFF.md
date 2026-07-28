@@ -197,8 +197,8 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
 
 ## 코드 구조 (핵심 파일)
-- `prism/serve.py`(~2,500줄) · HTTP 디스패치 + 콘텐츠 실행·검수 라우트(stdlib http.server). 컴포지션 루트(learnops/adminops 에 `_SV` 주입 + 하위호환 별칭).
-- `prism/page.py` · 앱 HTML 마크업(PAGE). `prism/vendor/app.js`·`app.css` · 앱 Alpine 스크립트·스타일(단일 원천, 데모는 make_demo 가 재인라인).
+- `prism/serve.py`(~2,900줄) · HTTP 디스패치 + 콘텐츠 실행·검수 라우트(stdlib http.server). 컴포지션 루트(learnops/adminops 에 `_SV` 주입 + 하위호환 별칭).
+- UI 는 2026-07-17 분할: 마크업 `prism/ui/NN-*.html` 24조각(`prism/page.py` 가 합성) · 앱 Alpine JS `prism/vendor/app-NN-*.js` 14조각(로더 `app.js`) + `app.css`. 도메인 지도는 `ARCHITECTURE.md` · 데모는 make_demo 가 재인라인.
 - `prism/learnops.py` · 학습·골든·평가 도메인(learning_batch·eval_golden·소요서·버전 스냅샷). `prism/adminops.py` · 인증 프록시·JWT 캐시·권한 2단계·팀 액션.
 - `prism/store.py`·`supastore.py` · dual-mode 저장소 + golden.
 - `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` · 추출 파이프라인. `abtest.py` · 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).
@@ -207,14 +207,14 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - `design-system/` · Anchor 디자인 시스템(`--ds-*` 토큰, GmarketSans/Pretendard 이중폰트).
 
 ## UI·디자인 메모
-- 홈 = **검수 아레나**(Flow·오늘의 미션·배지 12종·주간 리그·선수카드). 히어로 지표 = **검수 진척율**(개인·팀 평균).
+- 홈 = **검수 아레나**(Flow·오늘의 미션·배지 22종·주간 리그·선수카드). 히어로 지표 = **검수 진척율**(개인·팀 평균).
 - 폰트: display=**GmarketSans**(게임형) / body=**Pretendard**. 다크모드는 Tailwind 색을 `var(--ds-*)`로 토큰화.
 - 버튼: 맨 텍스트 금지(박스/아이콘). `.ds-btn--primary/--secondary/--ghost`는 앱단 정의(재벤더링 DS 는 `--solid.--c-*`만).
 - 검수 완료 표기 전역(목록·상세), 추가 수정 버튼·수정 일시 로그, 판정 색상(정확=초록/수정필요=빨강).
 - **정책 팔레트(2026-07-03)**: 우하단 `?` 런처 → 드래그 가능한 플로팅 도움말(인텐트/카테고리/품질 사유/등급 기준 + 검색). 검수 상세가 열려 있으면 그 항목의 값이 바로가기 칩으로 뜨고, 상세의 값 태그 클릭 = 해당 기준 딥링크. 원천은 /dict(intentDefs·categoryCriteria 신규 노출) 단일 · 위치/탭 localStorage.
 
 ## 규칙 / 주의
-- **제품 카피에 em-dash `-` 금지**(·/괄호/문장). 확인: `grep -c "-" prism/serve.py` == 0. 코드 식별자·커밋 메시지는 예외.
+- **제품 카피에 em-dash `—` 금지**(·/괄호/문장). 코드 식별자·커밋 메시지·주석·독스트링은 예외.
 - `x-show`(display:none)는 `.space-y-* > :not([hidden]) ~` 마진에 잡혀 팬텀 마진 유발 → 조건부 첫 자식은 `x-if`.
 - 커밋 trailer: `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - 릴리즈 노트·공개 레포에 내부(DNM/Confluence) 식별자·정책 노출 금지.

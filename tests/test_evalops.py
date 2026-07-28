@@ -2,7 +2,6 @@
 
 실행: python3 -m pytest tests/ -q  (stdlib unittest · 의존성 0)
 """
-import json
 import os
 import sys
 import time
@@ -281,10 +280,6 @@ class TestEvalRunCompare(unittest.TestCase):
         self.assertIn("완주한 런", r.get("error", ""))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestAutopilot(unittest.TestCase):
     """오토파일럿(자동 개선 루프): 목표 달성·정체 종료·골든 게이트·단일 실행·수동 중지."""
 
@@ -370,3 +365,7 @@ class TestAutopilot(unittest.TestCase):
         self.assertEqual(run["status"], "stopped")
         self.assertIn("수동 중지", run["stop_reason"])
         self.assertTrue(serve.autopilot_status(None)["ok"])
+
+
+if __name__ == "__main__":
+    unittest.main()

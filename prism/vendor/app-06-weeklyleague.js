@@ -104,24 +104,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return Math.max(0, Math.min(100, Math.round(((r.points || 0) - this.lvlFloor(L)) / this.lvlNeed(L) * 100)));
       },
       xpToNext(r) { if (!r) return 0; const L = r.level || 1; return L >= 50 ? 0 : Math.max(0, this.lvlFloor(L + 1) - (r.points || 0)); },
-      async queueFeedback(it, verdict) {
-        if (!this.ensureReviewer()) return;
-        it.note = it.note || '';
-        const wasReviewed = !!it.myVerdict;
-        const r = await this._postFb({ hash: it.hash, service: it.service, title: it.title, model: it.model || '', verdict: verdict, stage: 'review', note: it.note });
-        if (r && r.gold) {                              // 골드 문항: 응답 후 정오답 공개(즉시 학습 피드백)
-          it.reviewed = true; it.myVerdict = verdict; it.goldRevealed = true; it.goldCorrect = !!r.gold.correct;
-          if (r.gold.correct) this.celebratePoints(10, '골드 문항 정답');
-          else this.liveToast('골드 문항 · 정답과 달랐어요(품질 점수에 반영)');
-          return;
-        }
-        if (r && r.error) { this._err(r.error); return; }
-        if (!wasReviewed) this.celebratePoints((verdict === 'bad' && (it.note || '').trim()) ? 25 : 10, '검수 완료');
-        it.reviewed = true; it.myVerdict = verdict;
-        if (this.queueOnlyUnreviewed && !it.split) this.queueData.items = (this.queueData.items || []).filter((x) => x.hash !== it.hash);
-      },
       ensureReviewer() { if (!(this.reviewer || '').trim()) { this.reviewerEditing = true; return false; } return true; },
-      notifyViewing(it) { try { fetch('/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer: this.reviewer, hash: it.hash, action: 'viewing' }) }); } catch (e) {} },
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
       async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); this._ensureStudioModels(); } catch (e) {} this.modBusy = false; },

@@ -12,7 +12,6 @@ window.PRISM_APP_PARTS.push(() => ({
       badgeToast: null,   // 배지 달성 축하 오버레이
       ptToast: null,      // 검수 완료 시 점수 상승(+PT) 리워드 토스트
       errMsg: '',   // 전역 에러 토스트(조용한 실패 노출)
-      dashSub: 'batch',     // 콘텐츠 서브탭: batch(배치결과) | quality(품질·법령) | topic(토픽)
       // 메뉴별 의미에 맞는 아이콘(공유 grid/square 폐기) kind 칩은 미사용
       navIcons: {
         home: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 11 12 4l8 7M6 10v9h12v-9" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
@@ -93,7 +92,7 @@ window.PRISM_APP_PARTS.push(() => ({
       dashData: null, dictData: null, modBusy: false, dictGroup: '',
       // topicData 는 서버 '데이터 없음' 응답(serve.topics_data)과 같은 빈 계약으로 초기화 —
       // null 이면 로드 전 첫 렌더에서 토픽 패널의 topicData.* 표현식들이 콘솔 TypeError 를 던진다(표시 영향은 없던 잔재)
-      topicData: { n_contents: 0, single: [], composite: [], filter: [], custom: [], customDefs: [],
+      topicData: { n_contents: 0, single: [], composite: [], custom: [], customDefs: [],
                    settings: {}, exclusions: {}, catalog: { intents: [], cats: [], keywords: [], eattrs: [] }, summary: {} },
       topicView: 'all',                     // 토픽 현황 필터: all | manual(수동 생성) | auto(자동 생성)
       topicGenTab: 'manual',                // 토픽 생성하기 탭: manual(4단계 정의) | auto(자동 묶기 기준)
@@ -121,7 +120,6 @@ window.PRISM_APP_PARTS.push(() => ({
         { id: 'yonghee', label: '용희', role: '분석', img: '/vendor/yonghee-pitcher.svg' },
         { id: 'ddakji', label: '딱지', role: '판정', img: '/vendor/ddakji-manager.svg' },
       ],
-      queueData: { items: [], n: 0 }, queueOnlyUnreviewed: true,
       arenaData: null,
       adminData: null,        // 팀 관리(supabase)
       menuPermsEdit: {},      // 메뉴 권한 매트릭스 편집 상태(생성자) · adminData.menuPerms 로 초기화
@@ -336,5 +334,4 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this._err('일괄 배정 실패' + (done.length ? ' · 그룹' + done.join('·') + '은 반영됨' : '')); }
         this.assignBulkBusy = false;
       },
-      // 분배 결과 요약: {reviewer_id: n} → "이름 n건 · 이름 n건"
 }));

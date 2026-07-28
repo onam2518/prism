@@ -383,15 +383,6 @@ class Store:
                 out[h] = json.loads(payload)
         return out
 
-    def export_results(self, run_id: str | None = None) -> list:
-        c = self._conn()
-        q = "SELECT payload FROM results"
-        args = ()
-        if run_id:
-            q += " WHERE run_id=?"
-            args = (run_id,)
-        return [json.loads(r[0]) for r in c.execute(q, args)]
-
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
     def save_many(self, pairs, run_id: str, source: str = "", team=None, include_all: bool = False):
         """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
@@ -486,12 +477,6 @@ class Store:
     def count(self) -> int:
         c = self._conn()
         return int(c.execute("SELECT COUNT(*) FROM results").fetchone()[0])
-
-    def grade_stats(self) -> dict:
-        c = self._conn()
-        n = int(c.execute("SELECT COUNT(*) FROM results").fetchone()[0])
-        g = int(c.execute("SELECT COUNT(*) FROM results WHERE final_grade='G'").fetchone()[0])
-        return {"total": n, "g": g, "r": n - g, "gPct": round(g / n * 100) if n else 0}
 
     def clear(self):
         c = self._conn()
@@ -1309,12 +1294,6 @@ class Store:
                 "error": r[11] or "", "created_by": r[12] or "", "ts": r[13],
                 "heartbeat": r[14], "finished": r[15]}
 
-    def autopilot_get(self, run_id, team=None):
-        c = self._conn()
-        r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs WHERE id=?",
-                      (int(run_id),)).fetchone()
-        return self._pilot_row(r) if r else None
-
     def autopilot_latest(self, team=None):
         c = self._conn()
         r = c.execute(f"SELECT {self._PILOT_COLS} FROM autopilot_runs "
@@ -1798,7 +1777,6 @@ class Store:
     def register_golden(self, team, rows, replace=True, source="manual"):
         """골든셋 등록. replace=True 면 전체 교체, False 면 기존에 병합(upsert).
         rows: [{content, expected}]. content_hash 로 키."""
-        from .store import content_hash
         c = self._conn()
         if replace:
             c.execute("DELETE FROM golden")

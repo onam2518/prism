@@ -11,7 +11,7 @@
    │  fetch(JSON) / SSE(/events)
    ▼
 serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) + 컴포지션 루트
-   │         (전역 상태 _STORE/_agg/SSE · 설정/LLM 라우팅 · 각 도메인에 _SV 주입) ≈2.4k줄
+   │         (전역 상태 _STORE/_agg/SSE · 설정/LLM 라우팅 · 각 도메인에 _SV 주입) ≈2.9k줄
    ├─ *ops.py 도메인 모듈(serve 를 _SV 로 역참조 · 아래 표): learnops(학습) adminops(인증)
    │   reviewops(검수·배정·게임화) runops(실행 파이프라인) ingestops(인입·잡)
    │   topicops(토픽) dictops(사전) dashops(대시보드·롤업·리포트) mediaops umops boardops
@@ -67,7 +67,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 
 ## 상태·컴포지션 주의점
 
-- `serve._STORE` 전역 + `get_store()` 지연 초기화. **테스트 15개가 `serve._STORE = None`
+- `serve._STORE` 전역 + `get_store()` 지연 초기화. **테스트 30여 개가 `serve._STORE = None`
   으로 리셋한다** — 상태를 다른 모듈로 옮기면 이 계약이 조용히 깨진다.
 - `LO._SV = serve` / `AO._SV = serve` 역주입: learnops·adminops 가 serve 의 함수를
   런타임에 참조한다. 순환 import 를 피한 구조이므로 유지.
@@ -76,7 +76,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 
 ## UI 구조
 
-- 마크업: `prism/ui/NN-*.html` 화면 섹션 조각 23개를 `page.py` 가 파일명 순으로
+- 마크업: `prism/ui/NN-*.html` 화면 섹션 조각 24개를 `page.py` 가 파일명 순으로
   이어붙여 `PAGE` 합성. **화면 수정 = 해당 조각 파일만 편집** · 새 화면 모듈은 새 조각.
   **주의 ①**: `20-ingest-policy.html` 끝이 Alpine `x-data` 루트를 닫는다 — 새 화면 조각은
   파일명이 그보다 앞서야 한다(예: `19b-`). 뒤에 두면 스코프 밖이라 `x-show` 가 평가되지
@@ -85,7 +85,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   검수운영 마크업은 `19b-crew.html`, 탭 게이트는 권한 id `crew`(앞뒤 동일).
   **주의 ③**: `x-show` 와 같은 요소에 인라인 `display:flex` 를 주지 않는다. Alpine 이 보일 때
   display 속성을 지워 flex 가 날아간다(자식이 세로로 쌓여 그래프가 뭉갬) — `.flexrow` 클래스 사용.
-- 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 9개 + 로더 `vendor/app.js` 가
+- 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 14개 + 로더 `vendor/app.js` 가
   디스크립터 병합(게터 보존 · 조각 간 `this` 공유). 조각 → 로더 로드 순서는
   `ui/00-head.html` 의 script 태그가 원천. `vendor/mobile.js` = /m 전용(단일 파일).
 - 캐시버스터: 부팅 ID(`_BOOT_ID`)를 `?v=` 로 주입(serve 하단 `_PAGE_V` 재작성).

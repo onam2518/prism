@@ -57,11 +57,6 @@
       grid.querySelectorAll('.ds-widget').forEach(function (w) { w.setAttribute('draggable', on ? 'true' : 'false'); });
       if (!on) deselect();
     }).observe(grid, { attributes: true, attributeFilter: ['class'] });
-    // 카드 3D 틸트 + 포일
-    document.querySelectorAll('.ds-personacard').forEach(function (card) {
-      card.addEventListener('pointermove', function (e) { var r = card.getBoundingClientRect(), px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height; card.style.setProperty('--ry', ((px - .5) * 16) + 'deg'); card.style.setProperty('--rx', ((.5 - py) * 16) + 'deg'); card.style.setProperty('--mx', (px * 100) + '%'); card.style.setProperty('--my', (py * 100) + '%'); });
-      card.addEventListener('pointerleave', function () { card.style.setProperty('--ry', '0deg'); card.style.setProperty('--rx', '0deg'); card.style.setProperty('--mx', '50%'); card.style.setProperty('--my', '30%'); });
-    });
     // 홈 위젯: 왼쪽 아이콘 제거(타이틀 왼쪽선 = 본문 정렬) + 캐릭터를 헤드 오른쪽으로
     grid.querySelectorAll('.ds-widget__head').forEach(function (head) {
       var t = head.querySelector('.ds-widget__title'); if (!t) return;

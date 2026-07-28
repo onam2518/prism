@@ -191,7 +191,7 @@ class TestPlanDistribute(CrewBase):
         serve = self._serve()
         self._team(serve, n_content=0)
         for i in range(400):
-            self._content(st := serve._STORE, self._h(i))
+            self._content(serve._STORE, self._h(i))
         r = serve.CRW.plan_distribute([self._h(i) for i in range(400)], min_reviewers=1)
         self.assertTrue(r["over"])
 
@@ -398,10 +398,6 @@ class TestSettings(CrewBase):
         self.assertEqual(serve.CRW.settings(None)["stale_days"], 7)   # 파싱 실패 시 종전 값 유지
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestAutoOps(CrewBase):
     """자동 운영: 사람이 매주 잊지 않고 눌러야 도는 운영은 결국 안 돈다.
     다만 남의 일을 옮기는 동작이라 기본은 꺼둔다 · 사이클당 1회만 실행돼야 한다."""
@@ -549,7 +545,7 @@ class TestAdaptiveOverlap(CrewBase):
         self.assertEqual(r["n"], 1)
         self.assertFalse(r["applied"])
         self.assertEqual(st.assignees(None)[self._h(0)]["reviewers"], ["a", "b"])   # 계획만
-        r2 = serve.CRW.escalate_split(None, apply=True, by="admin@x")
+        serve.CRW.escalate_split(None, apply=True, by="admin@x")
         cur = st.assignees(None)[self._h(0)]
         self.assertEqual(sorted(cur["reviewers"]), ["a", "b", "c"])                 # 안 본 사람이 붙는다
         self.assertEqual(cur["min"], 3)                                             # 통과 기준도 3인
@@ -635,3 +631,7 @@ class TestStrengthMatching(CrewBase):
         finally:
             serve._lack_classes = orig
             serve._agg_bump()
+
+
+if __name__ == "__main__":
+    unittest.main()

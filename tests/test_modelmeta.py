@@ -4,7 +4,6 @@
 등급은 실제 누적 비용 원장(cost_rollup)에서 계산하되, 과금 0 인 묶음(라우터 402 로 전건
 실패한 배치)은 평균을 왜곡하므로 제외한다.
 """
-import json
 import os
 import re
 import sys

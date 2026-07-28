@@ -58,7 +58,7 @@ public.prism_events(id, team_id, reviewer_id, kind, day, bonus, meta,
 ```
 신규 3 테이블은 RLS enable + 정책 없음 = service_role(서버) 전용.
 
-**콘텐츠별 검수 담당 배정(`prism_assignments`, 2026-07-14 · 미적용 · 아래 SQL 을 Supabase SQL Editor 에서 실행 필요)**:
+**콘텐츠별 검수 담당 배정(`prism_assignments`, 2026-07-14 · 적용됨 · 운영 DB 존재 확인 2026-07-28)**:
 ```sql
 create table if not exists public.prism_assignments (
   content_hash  text not null,

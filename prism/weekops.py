@@ -24,7 +24,6 @@ _SV = None                      # serve 모듈 객체(컴포지션 루트) · se
 
 WEEKLY_KIND = "crew_weekly"     # {weeks: {"1": {...스냅샷...}}}
 WEEK1_MONDAY = "2026-07-20"     # 1주차 시작(월) · 운영 시작 시점 기준 고정 앵커
-_DAY = 86400
 
 
 def _to_ord(day: str) -> int:

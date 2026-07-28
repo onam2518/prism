@@ -511,7 +511,7 @@ def build_mock(results_path: str, n_users: int = 200) -> dict:
         users.append({
             "user_id": f"mock-user-{u+1:03d}", "persona": persona["name"],
             "persona_id": persona["id"], "persona_full": persona["full"],
-            "topic": topic, "form": _user_form(persona, u),
+            "topic": topic, "form": _user_form(persona),
             "intensity": prof["intensity"], "behavior_log": logs,
             "interest_entity_categories": prof["ent"], "interest_intent_categories": prof["int"],
             "affinity_entities": prof["ents"], "engagement": prof["eng"],
@@ -613,7 +613,7 @@ def _last_level(s):
     return "중"
 
 
-def _user_form(persona, u):
+def _user_form(persona):
     f = dict(persona["form"])
     return f
 

@@ -87,5 +87,5 @@
 - **첫 실행 검증**: 생성 후 `RemoteTrigger action:"run"` 1회로 gh·push·Supabase MCP 접근을 확인.
 
 ## 참고 코드 위치
-- 게시판: `prism/supastore.py` `board_list/board_get/board_set_status`(1319~) · `prism/serve.py` `board_action`(2932) · 프론트 `mods` 게시판 항목(`vendor/app.js`)
+- 게시판: `prism/supastore.py` `board_list/board_get/board_set_status`(1505~) · `prism/boardops.py` `board_action`(serve.py 는 재수출) · 프론트 `mods` 게시판 항목(`vendor/app-00-tabitems.js`)
 - 스케줄러 관례: `prism/learnops.py` `start_learning_scheduler`·`handoff_bundle` · `prism/serve.py` `start_topic_scheduler`

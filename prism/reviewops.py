@@ -558,14 +558,6 @@ def _reap_async(content_hash: str, reviewer: str, fb: dict):
         print(f"  [warn] 피드백 후처리 실패(hash={content_hash[:12]}): {e}")
 
 
-def reap_for(data: dict) -> dict:
-    """콘텐츠의 검수자별 REAP 산출(UI 표시)."""
-    st = _SV.get_store()
-    if not st:
-        return {"ok": False, "items": []}
-    return {"ok": True, "items": st.get_reap((data.get("hash") or "").strip())}
-
-
 # ── Supabase Auth(ID/PW) · 서버 프록시 + JWT 검증(supabase 모드) ──
 def register_reviewer(data: dict) -> dict:
     """검수자 등록: (인증 uid 또는 이름) + 표시명 + 캐릭터 (+ supabase 면 팀 생성/가입)."""

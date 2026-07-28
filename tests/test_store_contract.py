@@ -278,10 +278,6 @@ class TestSupastoreSystemEventNull(unittest.TestCase):
         self.assertEqual(cap["row"].get("reviewer_id"), "uuid-123")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestSupastorePatchLogUuid(unittest.TestCase):
     """작업 이력(patch_log)의 reviewer_id 는 uuid 컬럼이다. '(재실행)'·'(익명)' 같은 라벨을
     그대로 넣으면 PostgREST 400 → 호출부가 예외를 삼켜 행이 통째로 사라진다.
@@ -342,3 +338,7 @@ class TestSupastorePatchLogUuid(unittest.TestCase):
         st2 = SupabaseStore.__new__(SupabaseStore)
         st2._get = lambda table, query="": self.fail("uuid 아닌 값으로 조회하면 안 된다")
         self.assertEqual(st2.patches_today("(익명)"), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

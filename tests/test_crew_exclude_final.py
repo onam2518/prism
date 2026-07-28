@@ -5,7 +5,6 @@
 수동(직접 지정) 어느 경로에서도 후보에 들어가면 안 된다.
 """
 import os
-import re
 import sys
 import unittest
 

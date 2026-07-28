@@ -70,16 +70,14 @@ window.PRISM_APP_PARTS.push(() => ({
       metaResults: null, metaBusy: false,
       verRows: [], verSel: null, verSnap: null, verBusy: false,   // 버전별 지시 히스토리(표)
       dmOpen: false, dmVer: null, dmModel: 'common', dmSnap: null, dmStages: {}, dmBusy: false, dmMsg: '',   // 모델 적용 팝업
-      liveMsg: '', liveSeen: {}, _es: null,
+      liveMsg: '', _es: null,
       loading: false,
       status: '',
       result: null,
       batchResult: null,
       groups: ['뉴스', '연예', '스포츠', '콘텐츠', '커뮤니티', '블로그', '음악', '동영상'],
       group: '뉴스',
-      imgTitle: '', imgCaption: '',
       txtTitle: '', txtBody: '', txtUrl: '',
-      imgFiles: [], imgThumbs: [], imgDrag: false,
       excelFile: null, xlsDrag: false,
       copyMsg: '',
 
@@ -98,16 +96,14 @@ window.PRISM_APP_PARTS.push(() => ({
         return set.length ? '등록됨: ' + set.map((k) => nm[k]).join(' · ') : '';
       },
       models: [], modelsMsg: '',
-      reasoning: 'default', systemPrompt: '', legalEnabled: false,
+      reasoning: 'default', legalEnabled: false,
       availableModels: [],
       visionCandidates: [],                   // 이미지 탭 시각 슬롯 선택지(/config visionCandidates)
       reasoningOpts: [{ id: 'low', label: 'Low' }, { id: 'default', label: 'Medium' }, { id: 'high', label: 'High' }],
 
       // 모델 슬롯 + 스텝식 설정
       textProvider: 'solar', textModel: '',
-      visionProvider: 'upstage_ie', visionModel: '',
       slotMsg: '',
-      keyServices: ['bizrouter', 'timely', 'solar'],  // 라우터 카드 먼저, 직접(Solar) 뒤
       keyShow: { solar: false, bizrouter: false, timely: false },
       keyInputs: { solar: '', bizrouter: '', timely: '' },
       keyMsgs: { solar: '', bizrouter: '', timely: '' },
@@ -116,7 +112,6 @@ window.PRISM_APP_PARTS.push(() => ({
         bizrouter: { label: 'BizRouter 키', ph: 'sk-br-v1-…', has: 'hasBizKey', persisted: 'bizPersisted' },
         timely:    { label: 'Timely 키', ph: 'timely API key', has: 'hasTimelyKey', persisted: 'timelyPersisted' },
       },
-      providerLabels: { solar: 'Solar', upstage_ie: 'Upstage', bizrouter: 'BizRouter', timely: 'Timely' },
       modelCatalog: {
         bizrouter: {
           text: ['openai/gpt-5.4', 'openai/gpt-5.4-mini', 'anthropic/claude-sonnet-4.6',

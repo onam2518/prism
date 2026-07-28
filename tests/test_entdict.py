@@ -175,7 +175,6 @@ class TestEnrich(EntdictBase):
     def test_active_not_demoted_on_miss(self):
         """수동 확정(active) 개체는 재보강 미스에도 미등재로 강등하지 않는다."""
         eid = self._register("미등재개체")
-        e = self.store.ent_get(eid)
         self.store.ent_update(eid, {"type": "TM", "status": "active",
                                     "attr_meta": {"type": {"source": "manual", "status": "confirmed"}}})
         ED.enrich_entity(self.store, eid)                  # 두 소스 미스
@@ -253,7 +252,6 @@ class TestNamuFallback(EntdictBase):
 
     def test_namu_confirmed_not_overwritten(self):
         eid = self._register("미등재개체")
-        e = self.store.ent_get(eid)
         self.store.ent_update(eid, {"attrs": {"gender": "남성"},
                                     "attr_meta": {"gender": {"source": "manual", "status": "confirmed"}}})
         ED._http_text = lambda url: _NAMU_HTML

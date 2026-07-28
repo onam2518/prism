@@ -120,10 +120,6 @@ class TestMemfs(unittest.TestCase):
         self.assertIn("지원하지 않는", MF.memory_ops({"op": "hack"}, team="t1")["error"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestDemoSession(unittest.TestCase):
     """소비 시연 세션(STEP 1~4): 이벤트 수집 → 실시간 측정 → 결론(실로직 재사용) → 리셋."""
 
@@ -314,3 +310,7 @@ class TestDemoSession(unittest.TestCase):
         self.assertTrue(any("댓글" in a for a in acts))
         self.assertTrue(any("[stated]" in x["measure"] for x in c["chain"]))
         self.assertTrue(any(b[0] == "호응" and "가중 +2.5" in b[1] for b in c["basis"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

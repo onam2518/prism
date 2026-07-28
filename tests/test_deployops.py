@@ -92,10 +92,6 @@ class TestDeployops(unittest.TestCase):
         self.assertIn("prefix", items[0]["keys"][0])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestPromptLibrary(unittest.TestCase):
     """프롬프트 라이브러리: 저장·핀 우선 정렬·삭제(스토어 계약)."""
 
@@ -118,3 +114,7 @@ class TestPromptLibrary(unittest.TestCase):
         self.assertTrue(st.lib_remove(b))
         self.assertEqual(len(st.lib_list(None)), 1)
         self.assertFalse(st.lib_remove(999))
+
+
+if __name__ == "__main__":
+    unittest.main()

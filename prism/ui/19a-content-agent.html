@@ -11,7 +11,7 @@
         .ca-root{
           --caBody:#F1F4F7; --caSurf:#FFFFFF; --caCard:#FFFFFF; --caMuted:#0536590C; --caPop:#FFFFFF;
           --caTxt:#0A1317; --caTxt2:#4E606F; --caTxt3:#A4B0BC; --caAcc:#0064E0; --caAccMuted:#0082FB33;
-          --caOnAcc:#FFFFFF; --caErr:#E3193B; --caOk:#0D8626; --caLine:rgba(5,54,89,.1);
+          --caOnAcc:#FFFFFF; --caErr:#E3193B; --caLine:rgba(5,54,89,.1);
           --caS1:4px; --caS2:8px; --caS3:12px; --caS4:16px; --caS5:20px; --caS6:24px;
           --caRad:8px; --caRadLg:16px; --caRadFull:999px;
           font-family:var(--ds-font, "Pretendard Variable", Pretendard, system-ui, -apple-system, sans-serif);
@@ -181,6 +181,10 @@
           width:56px; height:56px; padding:0; background:var(--caSurf); border:1px solid var(--caLine); border-radius:var(--caRadFull);
           cursor:pointer; box-shadow:0 2px 16px rgba(0,0,0,.32); }
         .ca-fab svg{ width:30px; height:30px; display:block; }
+        .ca-fabtip{ position:absolute; right:16px; bottom:150px; z-index:5; background:var(--caPop); color:var(--caTxt);
+          border:1px solid var(--caLine); border-radius:var(--caRad); padding:8px 12px; font-size:13px; font-weight:600;
+          box-shadow:0 2px 16px rgba(0,0,0,.2); }
+        .ca-view.pc .ca-fabtip{ bottom:84px; }
         /* 매니저 시트 */
         .ca-sheet{ position:absolute; inset:0; z-index:10; background:var(--caBody); display:flex; flex-direction:column; }
         .ca-shd{ display:flex; align-items:center; gap:10px; padding:var(--caS4); background:var(--caSurf); border-bottom:1px solid var(--caLine); }
@@ -687,7 +691,7 @@
                       </div>
                     </template>
                     <template x-if="!caPreview().length"><div class="ca-empty">조건에 맞는 소식이 없어요 · 조건을 줄여보세요</div></template>
-                    <div style="margin-top:14px;border-top:1px solid var(--caDivSec);padding-top:14px">
+                    <div style="margin-top:14px;border-top:1px solid var(--caLine);padding-top:14px">
                       <div class="ca-lab">위젯 이름</div>
                       <input class="ca-mini" style="width:100%" x-model="caDraft.name" x-show="caDraft" x-cloak>
                       <div class="ca-lab" style="margin-top:12px">크기</div>

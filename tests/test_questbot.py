@@ -162,10 +162,6 @@ class TestRun(unittest.TestCase):
         self.assertTrue(all(x["status"].startswith("skip:") for x in r["results"]))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class AsgStore(FakeStore):
     """배정(assignees)과 검수운영 기한(crew_wave)을 함께 가진 스토어."""
 
@@ -230,3 +226,7 @@ class TestAssignmentMode(unittest.TestCase):
         self.assertEqual(r["mode"], "mine")
         self.assertEqual(r["targets"], 1)
         self.assertTrue(r["deadline"] > time.time())
+
+
+if __name__ == "__main__":
+    unittest.main()

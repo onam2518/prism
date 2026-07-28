@@ -61,10 +61,6 @@ class TestVerify(unittest.TestCase):
         self.assertEqual(im.content_category, ["News and Politics / Society"])  # 화이트리스트+중복제거
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestCategoryKoDisplay(unittest.TestCase):
     """한글 표시명(UI 전용) 계약: 전 분류 커버 · 병기 형식 · 데이터 계층 불변."""
 
@@ -183,3 +179,7 @@ class TestQualityKoNames(unittest.TestCase):
         for k in D.QUALITY_METAS:
             self.assertIn(k, D.QUALITY_META_NAMES, k)
             self.assertTrue(D.QUALITY_META_NAMES[k].strip(), k)
+
+
+if __name__ == "__main__":
+    unittest.main()

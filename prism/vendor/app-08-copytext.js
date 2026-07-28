@@ -52,7 +52,6 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.backend === 'supabase' && this.authToken) this.ensureAdmin();  // 관리자 여부 → nav 게이팅(재시도 포함)
           if (!this.cfgModel) this.cfgModel = this.cfg.model;
           if (this.cfg.reasoning) this.reasoning = this.cfg.reasoning;
-          if (typeof this.cfg.systemPrompt === 'string') this.systemPrompt = this.cfg.systemPrompt;
           if (Array.isArray(this.cfg.availableModels)) this.availableModels = this.cfg.availableModels;
           if (Array.isArray(this.cfg.visionCandidates)) this.visionCandidates = this.cfg.visionCandidates;
           if (this.cfg.goldenMinGood) this.goldenMinGood = this.cfg.goldenMinGood;
@@ -65,8 +64,6 @@ window.PRISM_APP_PARTS.push(() => ({
           if (!this._keyTargetInit) { this._keyTargetInit = true; this.keyTarget = ['bizrouter', 'timely', 'solar'].find((s) => this.keyState(s)) || 'bizrouter'; }
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
-          if (this.cfg.visionProvider) this.visionProvider = this.cfg.visionProvider;
-          if (typeof this.cfg.visionModel === 'string' && this.cfg.visionModel) this.visionModel = this.cfg.visionModel;
           if (typeof this.cfg.legalEnabled === 'boolean') this.legalEnabled = this.cfg.legalEnabled;
         } catch (e) { /* noop */ }
       },
@@ -304,15 +301,9 @@ window.PRISM_APP_PARTS.push(() => ({
         this.loading = true; this.status = ''; this.result = null; this.batchResult = null;
         const fd = new FormData();
         fd.append('purpose', this.addPurpose || 'review');   // 추가 용도(STEP 1 선택)
-        if (this.activeTabId !== 'image') fd.append('add_only', '1');   // 추가=저장만 · 실행은 STEP 2(이미지는 즉시)
+        fd.append('add_only', '1');   // 추가=저장만 · 실행은 STEP 2
         let endpoint = '/run';
-        if (this.activeTabId === 'image') {
-          if (!this.imgFiles.length) { this.status = '이미지를 선택하세요'; this.loading = false; return; }
-          this.imgFiles.forEach((f, i) => fd.append('image' + i, f));
-          fd.append('displayServiceName', this.group);
-          fd.append('title', this.imgTitle);
-          fd.append('caption', this.imgCaption);
-        } else if (this.activeTabId === 'excel') {
+        if (this.activeTabId === 'excel') {
           if (!this.excelFile) { this.status = '엑셀/CSV 파일을 선택하세요'; this.loading = false; return; }
           fd.append('file', this.excelFile); endpoint = '/run-batch';
         } else {

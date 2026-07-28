@@ -1465,12 +1465,6 @@ class SupabaseStore:
                     pass
         return len(self._get("contents", "select=hash"))   # 폴백(구 PostgREST 등)
 
-    def grade_stats(self) -> dict:
-        rows = self._get("contents", "select=final_grade")
-        n = len(rows)
-        g = sum(1 for r in rows if r.get("final_grade") == "G")
-        return {"total": n, "g": g, "r": n - g, "gPct": round(g / n * 100) if n else 0}
-
     def recent_meta(self, limit: int = 200, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("contents", "select=hash,service,title,final_grade,item_meta,quality_meta,source,model,version,purpose"
@@ -1693,10 +1687,6 @@ class SupabaseStore:
                 "error": r.get("error") or "", "created_by": r.get("created_by") or "",
                 "ts": _epoch(r.get("created_at")), "heartbeat": _epoch(r.get("heartbeat_at")),
                 "finished": _epoch(r.get("finished_at"))}
-
-    def autopilot_get(self, run_id, team=None):
-        rows = self._get("autopilot_runs", f"select=*&id=eq.{int(run_id)}")
-        return self._pilot_row(rows[0]) if rows else None
 
     def autopilot_latest(self, team=None):
         rows = self._get("autopilot_runs",

@@ -23,8 +23,8 @@ _SV = None                      # serve 모듈 객체(컴포지션 루트) · se
 
 
 def _studio_config() -> dict:
-    """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \uc124\uc815(\uc0ac\uc6a9\uc790 \uc815\uc758 \uc870\uac74\ud615 \ud1a0\ud53d + \ud074\ub7ec\uc2a4\ud130\ub9c1 \ud29c\ub2dd) \ub85c\ub4dc.
-    \ud1a0\ud53d\uc740 \uc804\uc5ed(\ubb34\ud300 results_rows) \ubdf0\ub77c \uc124\uc815\ub3c4 \uc804\uc5ed(team="")\uc5d0 \uc601\uc18d\ud55c\ub2e4."""
+    """토픽 스튜디오 설정(사용자 정의 조건형 토픽 + 클러스터링 튜닝) 로드.
+    토픽은 전역(무팀 results_rows) 뷰라 설정도 전역(team="")에 영속한다."""
     st = _SV.get_store()
     cfg = (st.get_report("topic_studio") if st else None) or {}
     custom = cfg.get("custom") if isinstance(cfg.get("custom"), list) else []
@@ -42,17 +42,17 @@ def _save_studio_config(cfg: dict):
 
 
 def topics_data() -> dict:
-    """\ud1a0\ud53d \ubaa8\ub4c8 \ub370\uc774\ud130(30s \uce90\uc2dc). \ub4dc\ub9b4\ub2e4\uc6b4 \ud074\ub9ad\ub9c8\ub2e4 \uc804\uccb4 \uc7ac\ud074\ub7ec\uc2a4\ud130\ub9c1\ud558\ub358 \ube44\uc6a9 \uc81c\uac70 \u2014
-    \uc4f0\uae30(\ucd94\ucd9c\u00b7\uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd)\ub294 _agg_bump \ub85c \uc989\uc2dc \ubb34\ud6a8\ud654\ub41c\ub2e4."""
+    """토픽 모듈 데이터(30s 캐시). 드릴다운 클릭마다 전체 재클러스터링하던 비용 제거 —
+    쓰기(추출·스튜디오 변경)는 _agg_bump 로 즉시 무효화된다."""
     return _SV._agg_cached(("topics",), _topics_compute)
 
 
 def _topics_compute() -> dict:
-    """\ud1a0\ud53d \ubaa8\ub4c8: \uc801\uc7ac\ub41c \uacb0\uacfc\uc5d0\uc11c \uc5d4\ud2f0\ud2f0\ud615\u00b7\uc0ac\uac74\ud615\u00b7\uc870\uac74\ud615 \ud1a0\ud53d + \uc0ac\uc6a9\uc790 \uc815\uc758 \ud1a0\ud53d \ube4c\ub4dc."""
+    """토픽 모듈: 적재된 결과에서 엔티티형·사건형·조건형 토픽 + 사용자 정의 토픽 빌드."""
     rows = _SV.results_rows()
     cfg = _studio_config()
     if not rows:
-        return {"n_contents": 0, "single": [], "composite": [], "filter": [], "custom": [],
+        return {"n_contents": 0, "single": [], "composite": [], "custom": [],
                 "customDefs": cfg["custom"], "settings": cfg["settings"], "exclusions": cfg["exclusions"],
                 "catalog": {"intents": [], "cats": [], "keywords": [], "eattrs": []}, "summary": {}}
     from . import topic as TP
@@ -74,7 +74,7 @@ def _topics_compute() -> dict:
             return out
         except Exception as e:
             return {"error": str(e)[:200], "n_contents": len(rows),
-                    "single": [], "composite": [], "filter": [], "custom": [],
+                    "single": [], "composite": [], "custom": [],
                     "customDefs": cfg["custom"], "settings": cfg["settings"],
                     "exclusions": cfg["exclusions"], "summary": {}}
 
@@ -155,7 +155,7 @@ def _ent_index() -> dict:
 
 
 def _sanitize_def(d: dict, existing_ids=None) -> dict:
-    """\uc0ac\uc6a9\uc790 \uc815\uc758 \uc815\uaddc\ud654\u00b7\uac80\uc99d. id \uc5c6\uc73c\uba74 \uc0dd\uc131(\uc911\ubcf5 \ud68c\ud53c)."""
+    """사용자 정의 정규화·검증. id 없으면 생성(중복 회피)."""
     from . import topic as TP
     name = (d.get("name") or "").strip()[:60]
     prompt = (d.get("prompt") or "").strip()[:280]
@@ -192,14 +192,14 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
         ids = set(existing_ids or [])
         while cid in ids:
             cid = base + "-" + str(n); n += 1
-    return {"id": cid, "name": name or "(\ubb34\uc81c \ud1a0\ud53d)", "prompt": prompt,
+    return {"id": cid, "name": name or "(무제 토픽)", "prompt": prompt,
             "cats": cats, "intents": intents, "keywords": keywords, "eattrs": eattrs,
             "req": req, "neg": neg}
 
 
 def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
-    """\uc790\uc5f0\uc5b4 \uc124\uba85 \u2192 \ud1a0\ud53d \ucc28\uc6d0(\uce74\ud14c\uace0\ub9ac\u00b7\uc778\ud150\ud2b8\u00b7\ud0a4\uc6cc\ub4dc)\uc744 \uc120\ud0dd \ubaa8\ub378\ub85c \ub9e4\ud551.
-    \ud5c8\uc6a9 \ubaa9\ub85d(\ud604\uc7ac \ub370\uc774\ud130\uc758 \uc2e4\uc7ac \uac12)\uc73c\ub85c\ub9cc \uc81c\uc57d \u00b7 \uc2e4\ud328 \uc2dc (None, \uc0ac\uc720) \ubc18\ud658(\ud638\ucd9c\ubd80\uc5d0\uc11c \ud734\ub9ac\uc2a4\ud2f1 \ud3f4\ubc31)."""
+    """자연어 설명 → 토픽 차원(카테고리·인텐트·키워드)을 선택 모델로 매핑.
+    허용 목록(현재 데이터의 실재 값)으로만 제약 · 실패 시 (None, 사유) 반환(호출부에서 휴리스틱 폴백)."""
     from . import topic as TP, meta_prompts as MP
     tax = TP.meta_taxonomy()                       # 시스템 전체 아이템메타 분류(데이터 유무 무관)
     cat = TP.studio_catalog(rows, svc)             # 현재 데이터에 실재하는 값(우선)
@@ -212,7 +212,7 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     # 개체 속성 후보(엔티티 사전 실재값): '여성 스포츠인'류 설명 → eattrs 조건 자동생성
     ecat = TP.eattr_catalog(_ent_index())
     e_allow = [c["k"] for c in ecat]
-    e_prompt = [f'{c["k"]} ({c["label"]} \u00b7 {c["v"]}\uac74)' for c in ecat[:60]]
+    e_prompt = [f'{c["k"]} ({c["label"]} · {c["v"]}건)' for c in ecat[:60]]
     # 모델 계열 쿡북 래퍼로 조립(필수/선택 설계자 역할) · 스튜디오 오버라이드 상속
     sysp = MP.topic_suggest_system(model, cats_ko, allow_int, data_cats, data_int, eattrs=e_prompt)
     userp = MP.topic_suggest_user(text)
@@ -260,7 +260,7 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
 
 
 def _def_signature(d: dict) -> str:
-    """\ud1a0\ud53d \uc815\uc758 \u2192 \ube44\uad50\uc6a9 \uc11c\uba85 \ud14d\uc2a4\ud2b8(\uc774\ub984\u00b7\uc124\uba85\u00b7\uc870\uac74\uac12 \uc804\ubd80)."""
+    """토픽 정의 → 비교용 서명 텍스트(이름·설명·조건값 전부)."""
     parts = [d.get("name") or "", d.get("prompt") or ""]
     for k in ("cats", "intents", "keywords"):
         parts.extend(d.get(k) or [])
@@ -273,9 +273,9 @@ def _sig_tokens(s: str) -> set:
 
 
 def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list:
-    """\uc800\uc7a5\ud558\ub824\ub294 \uc815\uc758\uc640 \ube44\uc2b7\ud55c \uae30\uc874 \uc0ac\uc6a9\uc790 \ud1a0\ud53d(\uc911\ubcf5 \uacbd\uace0 \ud6c4\ubcf4 \u00b7 \uc0c1\uc704 3).
-    \uc784\ubca0\ub529(\ud0a4 \uc788\uc73c\uba74 \u00b7 embed.py \uce90\uc2dc \uc7ac\uc0ac\uc6a9) \uc6b0\uc120, \ubb34\ud0a4\uba74 \ud1a0\ud070 \uc790\uce74\ub4dc(\uc784\uacc4 0.5) \ud3f4\ubc31.
-    \uc2e4\ud328\ub294 \uc870\uc6a9\ud788 \ube48 \ubaa9\ub85d \u2014 \uc800\uc7a5\uc744 \ub9c9\uc9c0 \uc54a\ub294\ub2e4(\uacbd\uace0 \uc804\uc6a9)."""
+    """저장하려는 정의와 비슷한 기존 사용자 토픽(중복 경고 후보 · 상위 3).
+    임베딩(키 있으면 · embed.py 캐시 재사용) 우선, 무키면 토큰 자카드(임계 0.5) 폴백.
+    실패는 조용히 빈 목록 — 저장을 막지 않는다(경고 전용)."""
     sig = _def_signature(new_def)
     others = [c for c in (custom or []) if c.get("id") != new_def.get("id")]
     if not sig or not others:
@@ -311,7 +311,7 @@ def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list
 
 
 def topic_studio_action(data: dict, mock: bool = False) -> dict:
-    """\ud1a0\ud53d \uc2a4\ud29c\ub514\uc624 \ubcc0\uacbd/\uc870\ud68c: save\u00b7delete\u00b7settings\u00b7preview\u00b7suggest."""
+    """토픽 스튜디오 변경/조회: save·delete·settings·preview·suggest."""
     from . import topic as TP
     action = (data.get("action") or "").strip()
     if action not in ("preview", "suggest"):
@@ -402,7 +402,7 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
             exclusions.pop(tid, None)
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
     else:
-        return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791"}
+        return {"ok": False, "error": "알 수 없는 동작"}
     return _SV.topics_data()
 
 
@@ -442,9 +442,9 @@ def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     rows = _SV.results_rows()
     if not rows or not cluster_id:
         return {"ok": True, "kind": "topic", "value": cluster_id or "", "items": [], "n": 0}
-    td = _SV.topics_data()                        # single/composite/filter(각 content_ids) · custom(그룹→bundles)
+    td = _SV.topics_data()                        # single/composite(각 content_ids) · custom(그룹→bundles)
     cluster, topic_id = None, cluster_id      # topic_id = 제외(큐레이션) 키 · 사용자 토픽은 그룹 id
-    for grp in ("single", "composite", "filter"):
+    for grp in ("single", "composite"):
         for c in td.get(grp, []):
             if c.get("cluster_id") == cluster_id:
                 cluster = c

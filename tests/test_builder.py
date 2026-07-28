@@ -59,10 +59,6 @@ class TestBuilderCompile(unittest.TestCase):
         self.assertIn("비었습니다", r.get("error", ""))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestBuilderTest(unittest.TestCase):
     """빌더 ④ 테스트 실행: 프롬프트·입력 게이트 · 텍스트 완성 스텁 · mock 경로."""
 
@@ -114,3 +110,7 @@ class TestBuilderTest(unittest.TestCase):
         r = serve.builder_test("당신은 분류기다", "본문 샘플")
         self.assertTrue(r.get("ok"), r)
         self.assertTrue(r["output"])                     # mock 도 텍스트 산출
+
+
+if __name__ == "__main__":
+    unittest.main()
