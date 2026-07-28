@@ -22,19 +22,29 @@ window.PRISM_APP_PARTS.push(() => ({
       // 배정 배타 노출: 타인 배정분은 목록에서 숨김(미배정은 전원 노출).
       // 생성자·슈퍼관리자(opsAdmin)는 배정 무관 전체 '열람' → 숨김만 예외(판정은 위 규칙 그대로).
       assignedToOther(r) { return this.opsAdmin ? false : this.assignBlocked(r); },
-      get rawFiltered() {
-        const out = (((this.rawData||{}).items)||[]).filter((r) => {
+      // 검수 상태를 뺀 나머지 필터(검색·등급·모델·서비스·배정) 통과분 — 목록과 '숨김 N건' 힌트의 공통 모집단
+      get rawScoped() {
+        return (((this.rawData||{}).items)||[]).filter((r) => {
           if (this.assignedToOther(r)) return false;   // 내 배정분 + 미배정분만(타인 배정분 숨김)
           if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
           if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
+          return true;
+        });
+      },
+      get rawFiltered() {
+        const out = this.rawScoped.filter((r) => {
           if (this.rawRev === 'todo' && this.myVerdict(r.fb)) return false;
           if (this.rawRev === 'done' && !this.myVerdict(r.fb)) return false;
           return true;
         });
         // 안정 정렬: 부족 분류를 앞으로 올리되 그룹 안에서는 기존(최근순) 유지
         return this.rawGapFirst ? out.slice().sort((a, b) => (b.class_gap ? 1 : 0) - (a.class_gap ? 1 : 0)) : out;
+      },
+      // 기본값(미검수)이 감춘 '내가 판정 완료한' 건수 · 0 이면 힌트를 띄우지 않는다
+      get rawDoneHidden() {
+        return this.rawRev === 'todo' ? this.rawScoped.filter((r) => this.myVerdict(r.fb)).length : 0;
       },
 
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
