@@ -57,6 +57,14 @@ DEFAULT_SETTINGS = {
     # 이번 주 본인 확인을 안 한 사람의 신고 시간은 지난주 값이라 근거가 약하다 —
     # 조금 보수적으로 잡되 0 으로 만들지는 않는다(일이 아예 안 가면 그것도 쏠림이다).
     "unconfirmed_factor": 0.8,
+    # ── 배정 하한·상한: 밀린 사람에게 더 얹지 않되, 놀리지도 않는다 ─────────────
+    # 하한 — 아무도 캐파의 이만큼을 채우기 전에는 다음 사람으로 넘어가지 않는다.
+    # 소수에게 몰아주고 나머지를 0건으로 두는 것도 쏠림이다(사용자 결정 2026-07-28).
+    "min_fill_ratio": 0.5,
+    # 상한 — 잔여가 이미 캐파의 이 배를 넘긴 사람은 새 배정을 뒤로 미룬다. 성과 판단이
+    # 아니라 용량 판단이다(더 줘도 그 주에 못 하고 그 콘텐츠까지 같이 정체된다).
+    # 다만 팀 전체가 초과면 배정 자체가 멈추므로, 다른 후보가 없을 때는 받는다.
+    "cap_limit": 1.0,
     # ── 자동 운영(기본 꺼짐) · 사람이 켜야 돈다. 남의 일을 옮기는 동작이라 기본값은 수동 ──
     "auto_wave": 0,             # 1 = 주 사이클이 시작되면 아직 아무도 안 맡은 것을 여력만큼 자동 배분
     "auto_rebalance": 0,        # 1 = 기한 하루 전에 멈춰 있는 일을 여유 있는 사람에게 자동 이관
@@ -646,6 +654,14 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
     cap = {m["id"]: max(1, m["weekly_capacity"] or 1) for m in pool}
     used = {m["id"]: m["load"]["pending"] for m in pool}     # 시작 부하 = 이미 밀린 내 몫
     cfg = settings(team)
+    try:
+        fill_ratio = min(1.0, max(0.0, float(cfg.get("min_fill_ratio", 0.0) or 0.0)))
+    except (TypeError, ValueError):
+        fill_ratio = 0.0
+    try:
+        cap_limit = max(0.1, float(cfg.get("cap_limit", 1.0) or 1.0))
+    except (TypeError, ValueError):
+        cap_limit = 1.0
     use_match = int(cfg["match_strength"]) if match is None else int(bool(match))
     use_lack = int(cfg["lack_first"]) if lack_first is None else int(bool(lack_first))
     if use_lack:
@@ -655,16 +671,31 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
     ids = [m["id"] for m in pool]
     idx = {m["id"]: i for i, m in enumerate(pool)}   # 동률 시 선택 순서 유지
 
+    floors = {m["id"]: round(cap[m["id"]] * fill_ratio) for m in pool}   # 보장 하한(캐파의 절반)
+
     def _score(rid, cs):
-        """작을수록 먼저 받는다. 기본은 여력 소진율(부하/캐파) — 용량 공평이 1순위.
-        그 분야를 잘 보는 사람은 최대 MATCH_ITEMS 건만큼 앞당겨진다(뒤집지는 못한다)."""
+        """작을수록 먼저 받는다. 세 구간으로 나눠 '하한 → 정상 → 초과' 순으로 채운다.
+
+        · 보장(-2~): 아직 캐파의 min_fill_ratio 를 못 채운 사람. 전원이 하한을 넘기
+          전에는 아무도 그 위로 못 간다 — 소수에게 몰아주고 나머지를 0건으로 두는 것도 쏠림.
+        · 정상(0~): 여력 소진율(부하/캐파) 순.
+        · 초과(100~): 잔여가 이미 캐파의 cap_limit 배를 넘은 사람. 더 줘도 그 주에 못 하고
+          그 콘텐츠까지 같이 정체된다 — 다른 후보가 없을 때만 받는다(배정이 멈추지 않게).
+
+        분야 강점은 구간 안에서 순서만 바꾼다(구간을 뒤집지는 못한다)."""
         u = used[rid]
+        adj = u
         if strengths and cs:
             vals = [v for v in (strengths.get(rid, {}).get(c) for c in cs) if v is not None]
             if vals:
                 norm = max(0.0, (sum(vals) / len(vals) - 0.5) * 2)   # 합치율 0.5~1.0 → 0~1
-                u -= MATCH_ITEMS * norm
-        return u / cap[rid]
+                adj -= MATCH_ITEMS * norm
+        fl = floors.get(rid, 0)
+        if fl > 0 and u < fl:
+            return -2.0 + adj / fl
+        if u < cap[rid] * cap_limit:
+            return adj / cap[rid]
+        return 100.0 + adj / cap[rid]
 
     groups, per = {}, {}
     for h in hs:
@@ -677,9 +708,14 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
             per[rid] = per.get(rid, 0) + 1
     plan = {rid: {"n": n, "name": next(m["name"] for m in pool if m["id"] == rid),
                   "capacity": cap[rid], "pending_after": used[rid],
+                  "floor": floors.get(rid, 0),
                   "over": used[rid] > cap[rid]} for rid, n in per.items()}
+    # 이번 배정에서 한 건도 못 받은 사람 = 잔여가 이미 캐파를 넘겨 뒤로 밀린 사람
+    held = [{"name": m["name"], "pending": used[m["id"]], "capacity": cap[m["id"]]}
+            for m in pool if m["id"] not in per and used[m["id"]] >= cap[m["id"]] * cap_limit]
     out = {"ok": True, "plan": plan, "n": len(hs), "min_reviewers": n_per,
-           "blocked": blocked, "applied": False,
+           "blocked": blocked, "applied": False, "held": held,
+           "fill_ratio": fill_ratio,
            "over": [p["name"] for p in plan.values() if p["over"]]}
     if not apply:
         return out
