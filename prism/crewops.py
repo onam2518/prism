@@ -70,7 +70,7 @@ DEFAULT_SETTINGS = {
     "auto_rebalance": 0,        # 1 = 기한 하루 전에 멈춰 있는 일을 여유 있는 사람에게 자동 이관
     "wave_weekday": 0,          # 사이클 시작 요일(0=월)
     "wave_hour": 10,            # 사이클 시작 시각(팀 타임존 · 기본 KST 10시)
-    "wave_days": 4,             # 기한 = 시작 + N일(기본 목요일 저녁)
+    "wave_days": 4,             # 기한 = 시작 + N일(기본 금요일 오전 10시)
     "wave_batch": 300,          # 한 사이클에 자동으로 내보낼 최대 건수
     "wave_min_reviewers": 2,    # 자동 배분 시 콘텐츠당 담당 수
     "auto_escalate": 0,         # 1 = 의견이 갈린 건에 3번째 검수자를 자동으로 붙임
@@ -978,7 +978,7 @@ def escalate_split(team=None, apply: bool = False, by: str = "", limit: int = 20
         used[to] += 1
         heapq.heappush(heap, (used[to] / cap[to], i, to))
         moves.append({"hash": it["hash"], "to": to, "to_name": name[to],
-                      "between": [ (data and next((m["name"] for m in data["members"] if m["id"] == r), r))
+                      "between": [ next((m["name"] for m in data["members"] if m["id"] == r), r)
                                    for r in it["reviewers"] ]})
         changed[it["hash"]] = it["reviewers"] + [to]
     out = {"ok": True, "n": len(moves), "moves": moves, "applied": False,

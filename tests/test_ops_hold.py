@@ -30,7 +30,6 @@ class TestOpsHold(unittest.TestCase):
 
     def _row(self, st, ch):
         for r in st.recent():
-            qm = r.get("quality_meta") or {}
             cr = r.get("content_ref") or {}
             if cr.get("body_hash") == ch or (r.get("content_ref") or {}).get("title"):
                 return r

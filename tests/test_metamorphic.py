@@ -156,10 +156,6 @@ class TestPromptComposition(unittest.TestCase):
             self.assertNotIn("경기 프리뷰", s4, model)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestMockSchemaContract(unittest.TestCase):
     def test_mock_matches_call_schemas(self):
         """mock 생성기의 태그별 응답 키가 실프롬프트 출력 스키마의 필수 키를 포함해야 한다
@@ -211,3 +207,7 @@ class TestStageParallelParity(unittest.TestCase):
         self.assertIn("item_summary", bc)
         self.assertGreaterEqual(bc["item_summary"]["n"], 1)
         self.assertGreaterEqual(bc["quality"]["in"], 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

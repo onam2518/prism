@@ -3,7 +3,7 @@
 실험실에 추가할 **콘텐츠 에이전트**(사용자향)의 서비스 구성 인수인계.
 다른 세션/사람이 이어서 작업할 수 있도록 정의·흐름·구조·용어·열린 결정을 정리한다.
 
-- 상태: 서비스 구성 + 플로우 **와이어프레임 단계**. 시각 디자인·실장 전.
+- 상태: 실험실 탭 **실장됨**(사용자향 시연 프로토타입 · `prism/ui/19a-content-agent.html` · `vendor/app-11-contentagent.js`).
 - 위치: **실험실 > "콘텐츠 에이전트" 탭** (초기 검토했던 스튜디오 편입에서 변경).
 - 화면(와이어프레임) 아티팩트
   - 서비스 플로우: `https://claude.ai/code/artifact/8394cdfb-6293-4522-9a40-de60aa3b1116`
@@ -130,7 +130,7 @@
 
 1. 위 "열린 것" 확정(특히 위젯 크기 단수·홈 배열·소비 신호 규칙).
 2. 고화질 프로토타입.
-3. 실험실 `콘텐츠 에이전트` 탭 실장 (`prism/vendor/app-00-tabitems.js`의 `labTab`, `prism/ui/` 조각).
+3. (완료) 실험실 `콘텐츠 에이전트` 탭 실장 (`prism/ui/19a-content-agent.html` · `vendor/app-11-contentagent.js` · `app-00-tabitems.js` `labTab` 'ca').
 
 ## 11. 참고 문서
 

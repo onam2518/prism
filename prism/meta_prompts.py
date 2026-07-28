@@ -16,7 +16,6 @@ from __future__ import annotations
 from . import dictionaries as D
 
 CALLS = ("summary", "entities", "intent", "category")
-CALL_LABELS = {"summary": "① 리드문", "entities": "② 엔티티", "intent": "③ 인텐트", "category": "④ 콘텐츠 카테고리"}
 
 # ── 코어 규칙(계약 원문 · 갱신은 기준 문서 동기화로만) ──
 CALL_RULES = {

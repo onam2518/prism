@@ -217,12 +217,10 @@ DEMO_DASH = {
     ],
 }
 DEMO_TOPICS = {
-    "n_contents": 12, "summary": {"single": 2, "composite": 1, "filter": 8},
+    "n_contents": 12, "summary": {"single": 2, "composite": 1},
     "single": [{"cluster_id": "S-samsung", "entities": ["삼성전자", "노동조합"], "n_contents": 3},
                {"cluster_id": "S-rate", "entities": ["한국은행", "금리"], "n_contents": 2}],
     "composite": [{"cluster_id": "C-labor", "rep_entities": ["삼성전자", "중앙노동위"], "n_contents": 4}],
-    "filter": [{"cluster_id": "F-fin", "name": "재테크 × 심층 분석", "active": True, "n_contents": 3},
-               {"cluster_id": "F-ent", "name": "연예 × 화제성", "active": False}],
 }
 DEMO_USER = {
     "source": "실 행동 로그 → 소비 형태·강도 (데모)", "n_contents": 12,
@@ -244,7 +242,6 @@ DEMO_USER = {
 }
 
 # CDN 매핑(자체완결 온라인 데모)
-CDN_TAILWIND = "https://cdn.tailwindcss.com/3.4.16"
 CDN_ALPINE = "https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"
 CDN_PRETENDARD = ("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/"
                   "dist/web/static/pretendard.min.css")
@@ -320,7 +317,6 @@ STUB = """<script>
       if (u.indexOf('/drafts') > -1) return Promise.resolve(J(EX.drafts));
       if (u.indexOf('/model-stats') > -1) return Promise.resolve(J(EX.mstats));
       if (u.indexOf('/patch-meta') > -1 || u.indexOf('/feedback') > -1) return Promise.resolve(J({ ok: true, feedback: { total: 62, good: 48, bad: 14, learned: 9, contents: 12, reviewers: 3, split: 3 } }));
-      if (u.indexOf('/reap') > -1) return Promise.resolve(J({ ok: true, items: [] }));
       if (u.indexOf('/queue') > -1) return Promise.resolve(J(EX.rqueue));
       if (u.indexOf('/ingest') > -1) return Promise.resolve(J(EX.ingest));
       return real ? real(url, opt) : Promise.resolve(J({}));
@@ -351,8 +347,6 @@ def build() -> str:
                         f'<link href="{CDN_PRETENDARD}" rel="stylesheet">')
     # 게임형 디스플레이 폰트(GmarketSans) → CDN @font-face 인라인(데모 자체완결)
     html = html.replace('<link href="/vendor/gmarket.css" rel="stylesheet">', GMARKET_CDN_CSS)
-    html = html.replace('<script src="/vendor/tailwind.js"></script>',
-                        f'<script src="{CDN_TAILWIND}"></script>')
     html = html.replace('<script defer src="/vendor/alpine.js"></script>',
                         STUB + f'<script defer src="{CDN_ALPINE}"></script>')
     # 디자인 시스템 CSS 인라인(정적 데모 자체완결 · file:// 에서도 라이트 위젯홈 렌더)
@@ -384,8 +378,6 @@ def build() -> str:
     html = html.replace('/vendor/', 'demo-assets/')
     # Pretendard 폰트 패밀리는 'Pretendard Variable' 가변 → 정적 CDN 은 'Pretendard'
     html = html.replace('"Pretendard Variable",Pretendard,', '"Pretendard",')
-    html = html.replace("'\\\"Pretendard Variable\\\"', 'Pretendard',",
-                        "'Pretendard',")
     # 샘플 결과 주입(결과 화면까지 보여줌)
     html = html.replace('result: null,', 'result: (window.__DEMO_RESULT__ || null),')
     # 데모 배너

@@ -233,12 +233,12 @@ def activity_daily_data(team=None, days: int = 30) -> dict:
 
 # ── 대시보드 집계·리포트 ──────────────────────────────────────────────
 def dashboard_data(team=None) -> dict:
-    """\ub300\uc2dc\ubcf4\ub4dc \ubaa8\ub4c8 \uc9d1\uacc4. team \ubcc4 \uc2a4\ucf54\ud551 \u00b7 \uc9e7\uc740 TTL \uce90\uc2dc(\ubc18\ubcf5 \ub85c\ub4dc \uc2dc 5000\ud589 \uc7ac\uc2a4\uce94 \ubc29\uc9c0)."""
+    """대시보드 모듈 집계. team 별 스코핑 · 짧은 TTL 캐시(반복 로드 시 5000행 재스캔 방지)."""
     return _SV._agg_cached(("dash", team), lambda: _dashboard_compute(team))
 
 
 def _dashboard_compute(team=None) -> dict:
-    """\uc801\uc7ac \uacb0\uacfc \uc9d1\uacc4(\uc720\ud1b5 G/R \u00b7 \uc778\ud150\ud2b8 \u00b7 \uce74\ud14c\uace0\ub9ac \u00b7 \ud488\uc9c8 \uc0ac\uc720) + \ucf58\ud150\uce20\ubcc4 \ud53c\ub4dc\ubc31."""
+    """적재 결과 집계(유통 G/R · 인텐트 · 카테고리 · 품질 사유) + 콘텐츠별 피드백."""
     rows = _SV.results_rows(team=team)
     n = len(rows)
     g = sum(1 for r in rows if (r.get("quality_meta") or {}).get("finalGrade") == "G")

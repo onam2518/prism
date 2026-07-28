@@ -139,7 +139,6 @@ mission_progress = RV.mission_progress
 _check_missions = RV._check_missions
 reviewer_weights = RV.reviewer_weights
 _reap_async = RV._reap_async
-reap_for = RV.reap_for
 register_reviewer = RV.register_reviewer
 save_badges = RV.save_badges
 patch_content_meta = RV.patch_content_meta
@@ -410,7 +409,8 @@ def routes_overview(team=None) -> dict:
         if t not in listed:
             items.append({"stage": "", "model": "", "text": t, "disabled": True})
     return {"ok": True, "items": items, "disabled_n": len(dis)}
-# ── 리드 최종판정(타이브레이크) ──────────────────────────────────────────────
+
+
 def quest_active() -> bool:
     """검수 목표(퀘스트) 진행 중 여부: 반영 일시가 미래로 설정돼 있으면 참.
     진행 중에는 검수 대상 초안 교체(재실행)를 물리적으로 차단한다(합의 오염 방지)."""
@@ -450,7 +450,6 @@ def _safe_url(u: str) -> str:
 _MENU_POST_ROUTES = (
     ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
     ("/builder", "studio"), ("/deployment", "studio"),
-    ("/prompt-library", "studio"),
     ("/media-extract", "lab"), ("/usermeta", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
@@ -1449,11 +1448,6 @@ def _g_events(h, q):
     h._serve_sse(team)
 
 
-@_get_route("/reap")
-def _g_reap(h, q):
-    return reap_for({"hash": q.get("hash", [""])[0]})
-
-
 @_get_route("/ingest-status")
 def _g_ingest_status(h, q):
     return ingest_status()
@@ -1950,11 +1944,6 @@ def _p_compare_models(h, body):
     data = json.loads(body or b"{}")
     return compare_models_on_golden(data.get("models"), h._req_team(),
                                     scope=(data.get("scope") or "all").strip())
-
-
-@_post_route("/learn-report", gate="team")           # 최근 일배치 결과 수신 · team=None 전 팀 노출 차단
-def _p_learn_report(h, body):
-    return {"ok": True, "report": _report_get("learn_report", h._req_team(), LO._LAST_LEARN_REPORT)}
 
 
 @_post_route("/patch-meta")                          # 검수자 구조화 교정(빈 카테고리 채우기 등)
@@ -2645,7 +2634,6 @@ class Handler(BaseHTTPRequestHandler):
             return True
         p = self.path.split("?", 1)[0].rstrip("/")
         if p == "/events":
-            from urllib.parse import urlparse, parse_qs
             q = parse_qs(urlparse(self.path).query)
             uid = validate_jwt((q.get("token") or [""])[0])
             return bool(uid) and self._team_ok(uid, p)

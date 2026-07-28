@@ -518,10 +518,6 @@ class TestBatchRegressions(unittest.TestCase):
         self.assertEqual(rep["grade_accuracy"], 0.90)                        # 유지 프롬프트 기준 보고
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class TestQASeed(unittest.TestCase):
     """QA 목업 시드: 10건·용도·골든·멱등(격리 DB·config)."""
     def test_seed_counts_and_idempotency(self):

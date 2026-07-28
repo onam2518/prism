@@ -122,7 +122,6 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
                               "last_ok": True, "trigger": "manual", "hashes": [_chash(c) for c in rows]}
     if (purpose or "") == "eval":
         try:
-            from .store import content_hash as _chash
             stp = _SV.get_store()
             if stp and hasattr(stp, "set_purpose"):
                 stp.set_purpose([_chash(c) for c in rows], "eval", team=team)
@@ -356,7 +355,6 @@ def build_template_csv() -> bytes:
     return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
-# ── 어드민 모듈 데이터(실데이터 연결) ─────────────────────────────────────────
 def build_template_xlsx() -> bytes:
     """엑셀 일괄 입력용 .xlsx 템플릿(의존성 0: zipfile+xml, inline string).
     헤더·예시는 CSV 템플릿과 동일 · ingest._read_xlsx 와 왕복 호환."""

@@ -13,7 +13,6 @@ from . import theme as TH
 CO_MIN = 2            # 사건 클러스터로 묶는 공통 엔티티 최소 개수(공출현 강도).
 # 주의: 추출 엔티티가 콘텐츠당 ~2개로 희소 → 3이면 공통 3개 쌍이 구조적으로 거의 없어
 # 사건형이 0건으로 비어버림. 2 = 두 named 대상의 공출현(같은 사건 신호)으로 실효 하한.
-DUP_HINT = 0.90       # 중복 기사 힌트(인텐트 유사 근사; 임베딩은 선택적 보조)
 
 # 사건형 앵글: 같은 사건의 '관점'을 인텐트에서 정규화(속보/분석/반응/화제)
 ANGLE_MAP = {
@@ -187,8 +186,8 @@ def _slug(s: str) -> str:
 
 
 # ── 토픽 스튜디오: 사용자가 자연어+구조 필터로 직접 만드는 조건 기반 토픽 ──
-# 매칭 의미는 디멘션 내 OR · 디멘션 간 AND 를 쓰되,
-# 정의를 운영자가 UI 에서 만들고 저장한다. 차원 = 콘텐츠 카테고리(Tier1) × 인텐트 × 엔티티 키워드.
+# 매칭 의미: 필수 조건은 전부 AND, 선택 조건은 값마다 관련 묶음으로 분해(_def_bundles) ·
+# 정의를 운영자가 UI 에서 만들고 저장한다. 차원 = 카테고리(Tier1) × 인텐트 × 키워드 × 개체 속성(eattrs).
 
 def _content_dims(rows, service_names, ent_index=None):
     """콘텐츠별 매칭 차원 사전계산: (Tier1 카테고리셋, 인텐트셋, 엔티티리스트, 자격, 개체속성리스트).
@@ -605,9 +604,6 @@ def render_html(results_path: str, notice: str = "") -> str:
     def esc(x):
         return _h.escape(str(x))
 
-    def chip(t, c="var(--mut)"):
-        return f'<span class="k" style="color:{c}">{esc(t)}</span>'
-
     # 엔티티형: 순위 + 엔티티 막대
     single_rows = "".join(
         f'<div class="bar"><span class="rk">{i + 1:02d}</span><span class="lab">{esc(p["name"])}</span>'
@@ -687,24 +683,15 @@ transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s}
 text-transform:uppercase;letter-spacing:.06em}
 h2{font-family:var(--disp);font-size:16px;color:var(--fg);letter-spacing:-.012em;margin:40px 0 4px;font-weight:600;
 display:flex;align-items:center;gap:9px}
-.h2d{color:var(--mut);font-size:12.5px;margin:0 0 15px;max-width:760px;line-height:1.5}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
 .pool{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--sh);
 transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s,box-shadow .22s}
 .pool:hover{transform:translateY(-2px);box-shadow:var(--sh-hi)}
-.pool.off{opacity:.5}.pool.off:hover{transform:none}
 .ph{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
 .ph b{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:-.012em}
 .lc{font-size:11px;color:var(--mut);white-space:nowrap}
-.prompt{color:var(--fg2);font-size:13px;font-style:italic;margin-bottom:10px}
 .pe{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
 .ent{font-size:12px;background:rgba(255,148,41,.16);color:var(--ent);border-radius:6px;padding:2px 8px}
-.dims{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
-.dim{font-size:11px;border-radius:6px;padding:2px 8px}
-.dim.ent{background:rgba(160,92,255,.16);color:var(--cat)}
-.dim.int{background:rgba(92,119,255,.16);color:var(--int)}
-.dim.neg{background:rgba(255,92,102,.14);color:#ff5c66}
-.pm{font-size:12px;color:var(--mut);margin-bottom:6px}
 .rep{font-size:12px;color:var(--fg2);border-top:1px dashed var(--line);padding-top:7px}
 .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px}
 .bar .lab{width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -712,7 +699,6 @@ transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s,box-shadow
 .bar .track{flex:1;background:var(--ds-surface-on);border-radius:999px;height:8px;overflow:hidden}
 .bar .fill{display:block;height:100%;border-radius:999px}
 .bar .n{width:34px;text-align:right;color:var(--mut);font-variant-numeric:tabular-nums}
-.note{color:var(--mut);font-size:12px;margin-top:8px}
 .single-wrap{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--sh)}
 .bar:hover .lab{color:var(--ds-ink)}.bar{transition:none}.bar .fill{transition:width .5s cubic-bezier(.32,.72,0,1)}
 /* ── component kit: 구조 확대(타입 액센트·중첩 하이라이트·상태 배지·스탯 타일) ── */
@@ -720,24 +706,18 @@ transition:transform .22s cubic-bezier(.32,.72,0,1),border-color .22s,box-shadow
 box-shadow:var(--sh),inset 0 1px 0 rgba(255,255,255,.03)}
 .kpi span{order:-1;margin:0}.kpi b{margin:0}
 .pool{box-shadow:var(--sh),inset 0 1px 0 rgba(255,255,255,.028)}
-.comp,.filt{border-color:var(--line)}
+.comp{border-color:var(--line)}
 .ph{align-items:center}
 .phr{display:flex;align-items:center;gap:6px}
 .lc{font-family:var(--disp);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;
 color:var(--mut);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:6px;padding:2px 7px;white-space:nowrap}
-.st{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;border-radius:6px;padding:2px 8px;
-background:rgba(70,189,169,.13);color:var(--int);white-space:nowrap}
-.st i{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
-.st.no{background:rgba(139,144,155,.12);color:var(--mut)}.st.no i{box-shadow:none}
 .mt{display:flex;gap:8px;margin-bottom:10px}
 .tile{flex:1;background:#0b0d11;border:1px solid var(--line);border-radius:10px;padding:9px 11px}
 .tile b{font-family:var(--disp);font-size:18px;font-weight:600;display:block;line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .tile span{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
-.fmatch{font-size:12.5px;color:var(--mut);margin-bottom:10px;display:flex;align-items:baseline;gap:7px}
-.fmatch .big{font-family:var(--disp);font-size:23px;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums;letter-spacing:-.015em}
 .angles{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:11px}
 .ang{font-size:11px;color:var(--fg2);background:var(--ds-state-hover);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
-.ent,.dim{border:1px solid transparent}
+.ent{border:1px solid transparent}
 .bar .rk{font-family:var(--disp);font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums;width:24px;text-align:right;opacity:.65}
 .cnt{font-family:var(--disp);font-size:11px;font-weight:600;color:var(--fg2);background:var(--s2);border:1px solid var(--line);
 border-radius:6px;padding:1px 8px;vertical-align:middle;margin-left:4px;letter-spacing:0;text-transform:none}
@@ -873,7 +853,3 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
                 sum(p["dup_rate"] for p in composite) / len(composite), 2) if composite else 0,
         },
     }
-
-
-# 하위 호환 별칭 (구 명칭)
-build_metapools = build_topics

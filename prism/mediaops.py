@@ -13,41 +13,41 @@ _SV = None                      # serve 모듈 객체(컴포지션 루트) · se
 
 
 def media_action(data: dict) -> dict:
-    """\ubbf8\ub514\uc5b4 \uba54\ud0c0 \ud30c\uc774\ud504\ub77c\uc778(\ud3ec\ud1a0\u00b7\uc601\uc0c1 \ud14d\uc2a4\ud2b8\ud654) \uc561\uc158 \ub514\uc2a4\ud328\uce58.
+    """미디어 메타 파이프라인(포토·영상 텍스트화) 액션 디스패치.
 
-    \uc99d\ubd84 1: T1 \uc790\ub9c9 \ud30c\uc2f1(\ub8f0\u00b7\ubaa8\ub378 0\uac74)\ub9cc \uc2e4\ub3d9\uc791. T2 \uc624\ub514\uc624 \uc804\uc0ac\u00b7T3 \ube44\uc8fc\uc5bc \ubb18\uc0ac\ub294
-    \ub77c\uc6b0\ud130/\ubbf8\ub514\uc5b4 \ubd84\ud574 \uacb0\uc815 \ud6c4 \ubcc4\ub3c4 \uc99d\ubd84\uc5d0\uc11c \ubd99\uc778\ub2e4(mediaext \ubaa8\ub4c8\uc5d0 \ud2b8\ub799\uc740 \uc774\ubbf8 \uc874\uc7ac)."""
+    증분 1: T1 자막 파싱(룰·모델 0건)만 실동작. T2 오디오 전사·T3 비주얼 묘사는
+    라우터/미디어 분해 결정 후 별도 증분에서 붙인다(mediaext 모듈에 트랙은 이미 존재)."""
     from . import mediaext as MX
     action = (data.get("action") or "subtitles").strip()
     if action == "subtitles":
         raw = data.get("raw") or ""
         fmt = (data.get("fmt") or "").strip()
         if not raw.strip():
-            return {"ok": False, "error": "\uc790\ub9c9 \uc6d0\ubb38\uc744 \uc785\ub825\ud558\uc138\uc694"}
+            return {"ok": False, "error": "자막 원문을 입력하세요"}
         return {"ok": True, **MX.parse_subtitles(raw, fmt)}
     if action == "s5ab":                              # S5 메타추출 모델 A/B(미저장)
         text = (data.get("text") or "").strip()
         models = data.get("models") or []
         if not text:
-            return {"ok": False, "error": "\ud1b5\ud569 \uc6d0\uace0(\ud14d\uc2a4\ud2b8)\ub97c \uc785\ub825\ud558\uc138\uc694"}
+            return {"ok": False, "error": "통합 원고(텍스트)를 입력하세요"}
         if not models:
-            return {"ok": False, "error": "\ud6c4\ubcf4 \ubaa8\ub378\uc744 1\uac1c \uc774\uc0c1 \uc120\ud0dd\ud558\uc138\uc694"}
+            return {"ok": False, "error": "후보 모델을 1개 이상 선택하세요"}
         return media_s5ab(text, models, caption=data.get("caption") or "")
-    return {"ok": False, "error": "\uc54c \uc218 \uc5c6\ub294 \ub3d9\uc791(\uc790\ub9c9 \ud30c\uc2f1\uc740 media_action, \uc601\uc0c1\uc740 media_native)"}
+    return {"ok": False, "error": "알 수 없는 동작(자막 파싱은 media_action, 영상은 media_native)"}
 
 
 def media_s5ab(text: str, models: list, *, caption: str = "") -> dict:
-    """S5 \uba54\ud0c0\ucd94\ucd9c \ubaa8\ub378 A/B(\uc2e4\ud5d8\uc2e4 \u00b7 \ubbf8\uc800\uc7a5). \uac19\uc740 \ud1b5\ud569 \uc6d0\uace0\ub97c \ud6c4\ubcf4 \ubaa8\ub378\ub4e4\uc5d0 \ud0dc\uc6cc
-    \uc544\uc774\ud15c \uba54\ud0c0(\ub9ac\ub4dc\ubb38\u00b7\uc778\ud150\ud2b8\u00b7\uc5d4\ud2f0\ud2f0\u00b7IAB)\ub97c \ub098\ub780\ud788 \ube44\uad50 \u2192 '\uc120\uc815 \ub300\uae30 \uc2ac\ub86f'\uc758 \ubaa8\ub378
-    \uad50\uccb4 \uc790\uc720\ub97c \uc2e4\uce21\uc73c\ub85c \uc99d\uba85. \ubaa8\ub378 \ub77c\uc6b0\ud305\uc740 llm_for_model \uc7ac\uc0ac\uc6a9(solar \uc9c1\uc811\u00b7\ub77c\uc6b0\ud130).
+    """S5 메타추출 모델 A/B(실험실 · 미저장). 같은 통합 원고를 후보 모델들에 태워
+    아이템 메타(리드문·인텐트·엔티티·IAB)를 나란히 비교 → '선정 대기 슬롯'의 모델
+    교체 자유를 실측으로 증명. 모델 라우팅은 llm_for_model 재사용(solar 직접·라우터).
 
-    \ubb34\ud0a4(\ub610\ub294 \uc11c\ubc84 mock) \uc2dc route=mock \ub85c \ub3d9\uc77c \uc0b0\ucd9c \u2014 \uc2e4\ud0a4 \uc5f0\uacb0 \uc2dc \ubaa8\ub378\ubcc4\ub85c \uac08\ub9b0\ub2e4.
+    무키(또는 서버 mock) 시 route=mock 로 동일 산출 — 실키 연결 시 모델별로 갈린다.
     """
     body = (caption.strip() + "\n" + text).strip() if caption.strip() else text
     results = []
     for m in list(dict.fromkeys(str(x) for x in models))[:6]:   # 중복 제거 · 상한 6
         try:
-            res = _SV.run_pipeline({"displayServiceName": "\uc601\uc0c1", "title": "", "subtitle": "", "body": body},
+            res = _SV.run_pipeline({"displayServiceName": "영상", "title": "", "subtitle": "", "body": body},
                                mock=_SV.Handler.server_mock, model=m, persist=False)
         except Exception as e:
             results.append({"model": m, "error": str(e)[:120]})
@@ -69,10 +69,10 @@ def media_s5ab(text: str, models: list, *, caption: str = "") -> dict:
 
 def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
                  description: str = "", model: str = "", subtitles: str = "") -> dict:
-    """T4 \ub124\uc774\ud2f0\ube0c \ube44\ub514\uc624 \uc2e4\ud5d8(\uc2e4\ud5d8\uc2e4 \u00b7 \ubbf8\uc800\uc7a5). \uc601\uc0c1 \ud1b5\uc9dc \u2192 \ub77c\uc6b0\ud130 \uc704\uc784 \ud2b8\ub799 \u2192
-    S4 \ubcd1\ud569 \u2192 \ud569\uc131 Content \u2192 \uae30\uc874 \ucd94\ucd9c(S5) \u2192 ItemMeta. results \uc5d0 \uc800\uc7a5\ud558\uc9c0 \uc54a\ub294\ub2e4.
+    """T4 네이티브 비디오 실험(실험실 · 미저장). 영상 통짜 → 라우터 위임 트랙 →
+    S4 병합 → 합성 Content → 기존 추출(S5) → ItemMeta. results 에 저장하지 않는다.
 
-    \ube44\uc804 \uc2ac\ub86f\uc774 \ub77c\uc6b0\ud130\uba74 \uadf8 \uc11c\ube44\uc2a4/\ubaa8\ub378\ub85c \ub124\uc774\ud2f0\ube0c \ud638\ucd9c, \uc544\ub2c8\uba74(\ub610\ub294 \uc11c\ubc84 mock) mock \ud3f4\ubc31.
+    비전 슬롯이 라우터면 그 서비스/모델로 네이티브 호출, 아니면(또는 서버 mock) mock 폴백.
     """
     from . import mediaext as MX
     cfg = Config.load()

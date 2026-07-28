@@ -299,7 +299,6 @@ window.PRISM_APP_PARTS.push(() => ({
         return (d.getMonth() + 1) + '.' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
       },
       // ── 배치 결과: 콘텐츠별 평가 피드백 → 학습 루프 ──
-      fbNoteOpen: {},
       // 내 표 변경(cur→v)을 팀 카운트에 즉시 반영: 다음 /raw 응답 전에도 '팀 의견 · 정확 x개' 표기 정합.
       // verdict 는 서버 합의 규칙과 동일하게 재계산(다수결 · 동수 = 의견 갈림).
       _fbRecount(fb, cur, v) {
@@ -339,7 +338,6 @@ window.PRISM_APP_PARTS.push(() => ({
         const v = (cur === verdict) ? '' : verdict;        // 같은 버튼 재클릭 = 취소
         c.fb = this._fbRecount(Object.assign({}, c.fb, { mine: v, ts: (v ? Date.now() / 1000 : 0) }), cur, v);   // 수정 일시 기록
         this._syncFbByHash(c.hash, c.fb);
-        if (v === 'bad') this.fbNoteOpen[c.hash] = true;
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: v, stage: (c.fb.stage || 'analyze'), note: (c.fb.note || '') });
         if (cur === '' && v !== '') this.celebratePoints(10, '검수 완료');   // 새 검수 = +10 PT
       },
@@ -361,7 +359,6 @@ window.PRISM_APP_PARTS.push(() => ({
         // 서버에는 '내 표'를 보낸다 · fb.verdict 는 팀 합의라 'split' 등 표가 아닌 값이 저장될 수 있다
         const myV = (c.fb.mine !== undefined ? (c.fb.mine || '') : '') || 'bad';
         await this._postFb({ hash: c.hash, service: c.service, title: c.title, model: c.model || '', verdict: myV, stage: stage, elements: els, note: tagged });
-        this.fbNoteOpen[c.hash] = false;
         if (!hadNote && (c.fb.note || '').trim()) { c.fb._noteRewarded = true; this.celebratePoints(25, '교정 반영'); }  // 교정 = +25 PT(서버 산정과 일치)
       },
       async _postFb(payload) {

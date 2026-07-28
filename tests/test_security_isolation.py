@@ -2,7 +2,7 @@
 
 - _gate_get / _team_ok: supabase 모드에서 팀 미소속 인증계정의 데이터 GET 을 fail-closed
   (운영 관리자·전역 참조 라우트만 예외). 팀=None 폴백으로 전 팀 데이터를 열람하던 경로 차단.
-- _require_team: 데이터 POST(/usermeta·/learn-report)도 팀 소속 요구.
+- _require_team: 데이터 POST(/usermeta)도 팀 소속 요구.
 - build_results_csv / build_report_html: team 스코프를 저장소 조회에 전달(전 팀 CSV/리포트 유출 방지).
 
 실행: python3 -m pytest tests/test_security_isolation.py -q

@@ -111,10 +111,6 @@ class TestLevelCurve(unittest.TestCase):
         self.assertTrue(9000 <= journey <= 11000, journey)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestReviewerWeightBlend(unittest.TestCase):
     def test_gold_and_ds_blend(self):
         """가중치 = 골드 정확도·DS 추정 정확도 블렌드 · 표본(5건) 미달 축은 제외."""
@@ -138,3 +134,7 @@ class TestReviewerWeightBlend(unittest.TestCase):
         self.assertGreater(w["A"], 0.5 + 0.5 * 0.5 - 1e-9)      # DS(고정확 추정) 블렌드로 골드 단독(0.75)보다 상승
         self.assertIn("B", w)                                    # 골드 없어도 DS 축만으로 산출
         self.assertGreaterEqual(w["B"], 0.5)
+
+
+if __name__ == "__main__":
+    unittest.main()

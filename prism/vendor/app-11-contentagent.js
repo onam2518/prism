@@ -28,16 +28,6 @@ window.PRISM_APP_PARTS.push(() => ({
         if (kind === 'kind') return this.caIntentKo[v] || v;
         return v;
       },
-      // Anchor 카테고리 컬러(도메인 식별색) · semantic Background/Text.Category.*
-      caCatKey(v) {
-        const s = String(v || '');
-        if (/Sport|스포츠/i.test(s)) return 'sports';
-        if (/Entertain|연예|Music|Movie/i.test(s)) return 'ent';
-        if (/Shopping|쇼핑|Business|Finance|경제/i.test(s)) return 'shop';
-        if (/Cafe|카페|Community|커뮤니티/i.test(s)) return 'cafe';
-        if (/Hobby|Interest|관심|Travel|Food|Style/i.test(s)) return 'interest';
-        return 'news';
-      },
       // 위젯 사유 태그: 색 점 대신 '왜 이 위젯인지'를 말로 (강한 추천 · 적합 · 많이 다뤄짐 · 소식 적음)
       caWidgetTag(w) {
         const n = this.caWidgetRows(w).length;
@@ -52,10 +42,6 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!n) return { k: 'weak', t: '소식 없음' };
         if (n < cap) return { k: 'weak', t: '소식 적음' };
         return { k: 'ok', t: '적합' };
-      },
-      caWidgetCat(w) {
-        const c = (w && w.cond) || {};
-        return this.caCatKey((c.topics || [])[0] || (c.fields || [])[0] || '');
       },
       caLabels(kind, arr) { return (arr || []).map((v) => this.caLabel(kind, v)); },
       // 인텐트(추출 메타) → 읽는 방식(사용자 말) 대응

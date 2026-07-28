@@ -171,7 +171,6 @@ class TestPromptSeedMigration(unittest.TestCase):
         self.assertEqual(data["seed_stamp"], P._seed_stamp())          # 지문 기록됨
 
     def test_up_to_date_file_not_rewritten(self):
-        import json as J
         P = self.P
         P.get("v31")                                                   # 시드 생성(지문 최신)
         before = open(P.QUALITY_PATH, encoding="utf-8").read()

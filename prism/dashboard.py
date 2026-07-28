@@ -47,12 +47,6 @@ def tier1_remap(cat: str) -> str:
     return c if c and c != "Unclassified" else "Unclassified"
 
 
-# DEMO 산출물 상단 안내 배너(합성 데이터 경고). 실제 리포트에는 미표시.
-DEMO_NOTICE = ('<div style="background:rgba(255,148,41,.12);border-bottom:1px solid rgba(255,148,41,.35);'
-               'color:var(--ds-warning,#ff9429);padding:9px 24px;font-size:12.5px">'
-               '<b>DEMO</b> (합성 예시 데이터 · 실제 추출 결과 아님)</div>')
-
-
 def render(results_path: str, title: str = "아이템 메타 현황", notice: str = "") -> tuple[str, dict]:
     """콘텐츠 대시보드 HTML 문자열 + info 반환(통합 빌더가 재사용)."""
     rows = _read_jsonl(results_path)
@@ -141,7 +135,6 @@ _INTEGRATED = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title>
 <link rel="icon" type="image/svg+xml" href="__FAVICON__">
 <style>
-:root{--bg:var(--ds-canvas,#f4f5f7);--mut:var(--ds-muted,rgba(0,0,0,.48));--fg:var(--ds-ink,#000);--ac:var(--ds-primary,#1e84ff);--line:var(--ds-hairline,rgba(0,0,0,.08));--s2:var(--ds-surface-on,#f4f5f7)}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--ds-canvas);color:var(--ds-ink);
 font:14px var(--ds-font-body);-webkit-font-smoothing:antialiased}
 .tabbar{display:flex;align-items:center;gap:6px;height:62px;padding:0 20px;
@@ -462,11 +455,11 @@ _HTML = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <title>아이템 메타 현황</title>
 <style>
 /* 디자인 토큰 별칭 → --ds-* (theme.inject 가 --ds-* 정의·모드전환 제공) */
-:root{--bg:var(--ds-canvas,#f4f5f7);--surface:var(--ds-surface,#fff);--s2:var(--ds-surface-on,#f4f5f7);--s3:var(--ds-surface-on,#f4f5f7);--ink:var(--ds-ink,#000);--ink2:var(--ds-body,rgba(0,0,0,.88));--mut:var(--ds-muted,rgba(0,0,0,.48));--faint:var(--ds-placeholder,rgba(0,0,0,.32));
---line:var(--ds-hairline,rgba(0,0,0,.08));--line2:var(--ds-divider-inline,rgba(0,0,0,.16));--pri:var(--ds-primary,#1e84ff);--pri2:var(--ds-primary,#1e84ff);--prihov:var(--ds-primary-hover,#0066db);
---sky:var(--ds-cat-news,#1e84ff);--purple:var(--ds-cat-community,#5e47eb);--pink:var(--ds-cat-cafe,#ff5c66);--orange:var(--ds-warning,#ff9429);--teal:var(--ds-cat-sports,#5c77ff);--green:var(--ds-success,#18ba45);
---ac:var(--ds-primary,#1e84ff);--fg:var(--ds-ink,#000);--fg2:var(--ds-body,rgba(0,0,0,.88));--card:var(--ds-surface,#fff);
---g:var(--ds-success,#18ba45);--r:var(--ds-error,#ff4e33);--ent:var(--ds-warning,#ff9429);--cat:var(--ds-cat-entertainment,#a05cff);--int:var(--ds-cat-sports,#5c77ff);
+:root{--bg:var(--ds-canvas,#f4f5f7);--surface:var(--ds-surface,#fff);--ink:var(--ds-ink,#000);--ink2:var(--ds-body,rgba(0,0,0,.88));--mut:var(--ds-muted,rgba(0,0,0,.48));--faint:var(--ds-placeholder,rgba(0,0,0,.32));
+--line:var(--ds-hairline,rgba(0,0,0,.08));--pri:var(--ds-primary,#1e84ff);
+--purple:var(--ds-cat-community,#5e47eb);--orange:var(--ds-warning,#ff9429);--teal:var(--ds-cat-sports,#5c77ff);--green:var(--ds-success,#18ba45);
+--ac:var(--ds-primary,#1e84ff);
+--r:var(--ds-error,#ff4e33);--ent:var(--ds-warning,#ff9429);--cat:var(--ds-cat-entertainment,#a05cff);--int:var(--ds-cat-sports,#5c77ff);
 --sh:var(--ds-shadow-medium,0 1px 10px 0 rgba(0,0,0,.08));--radius:var(--ds-radius-lg,16px);--font:var(--ds-font-body,'Pretendard Variable',-apple-system,sans-serif)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font);

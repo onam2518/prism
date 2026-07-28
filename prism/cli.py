@@ -109,7 +109,6 @@ def cmd_extract(a):
 
 def _load_batch(path, map_str=None):
     """배치 입력 적재: jsonl 은 그대로, xlsx/csv 는 ingest 로 매핑. 판정 불가면 즉시 중단."""
-    import os
     from . import ingest as ING
     ext = os.path.splitext(path)[1].lower()
     if ext in (".jsonl", ".ndjson"):
@@ -427,7 +426,6 @@ def cmd_report(a):
 
 # usermeta (목업)
 def cmd_usermeta(a):
-    print("\033[33m" + UM.WARNING + "\033[0m\n")  # 노란 경고
     if a.out:
         info = UM.build_html(a.results, a.out, n_users=a.users, logs_path=getattr(a,'logs',None), demo=getattr(a,'demo',False))
         print(f"✓ 사용자 메타 목업 → {a.out}  (합성 사용자 {info['users']}명)")
@@ -483,7 +481,7 @@ def cmd_doctor(a):
             check("모델 목록 조회", False, str(e)[:60])
         # 임베딩 연결
         try:
-            emb = EmbeddingClient(config=cfg) if False else EmbeddingClient(mock=False, cache_path=None)
+            emb = EmbeddingClient(mock=False, cache_path=None)
             emb.api_key = cfg.api_key
             v = emb.embed("점검", is_query=True)
             check("임베딩 엔드포인트", len(v) > 0, f"dim {len(v)}")
@@ -721,7 +719,6 @@ def main(argv=None):
     prp.add_argument("--title", default=None)
     prp.add_argument("--users", type=int, default=200)
     prp.add_argument("--profile", default=None, help="회사별 설정 JSON(브랜딩·사전 override)")
-    prp.add_argument("--input", default=None)
     prp.add_argument("--resume", action="store_true")
     prp.add_argument("--concurrency", type=int, default=None)
     prp.add_argument("--map", help="엑셀/CSV 컬럼 매핑 강제")

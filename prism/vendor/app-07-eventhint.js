@@ -499,34 +499,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.textProvider = p; if (p === 'solar') this.cfgModel = m; else this.textModel = m;
         this.saveTextSlot();
       },
-      optVal(provider, model) { return provider + '|' + model; },
-      // ── 이미지 입력: 선택·드롭·붙여넣기·썸네일 ──
-      get fileLabel() { return this.imgFiles.length ? (this.imgFiles.length + '개 선택됨') : '선택된 파일 없음'; },
       get excelLabel() { return this.excelFile ? this.excelFile.name : '선택된 파일 없음'; },
-      addImages(list) {
-        const imgs = Array.from(list || []).filter((f) => f.type.startsWith('image/'));
-        if (!imgs.length) return;
-        this.imgFiles = this.imgFiles.concat(imgs);
-        this._rebuildThumbs();
-        this.status = '';
-      },
-      _rebuildThumbs() {
-        this.imgThumbs.forEach((u) => URL.revokeObjectURL(u));
-        this.imgThumbs = this.imgFiles.map((f) => URL.createObjectURL(f));
-      },
-      onFiles(e) { this.addImages(e.target.files); e.target.value = ''; },
-      onDropImages(e) { this.imgDrag = false; this.addImages(e.dataTransfer.files); },
-      onPasteImages(e) {
-        const items = (e.clipboardData && e.clipboardData.items) || [];
-        const fs = [];
-        for (const it of items) { if (it.kind === 'file') { const f = it.getAsFile(); if (f) fs.push(f); } }
-        if (fs.length) { e.preventDefault(); this.addImages(fs); }
-      },
-      removeImage(i) {
-        URL.revokeObjectURL(this.imgThumbs[i]);
-        this.imgFiles.splice(i, 1); this.imgThumbs.splice(i, 1);
-      },
-      clearImages() { this.imgThumbs.forEach((u) => URL.revokeObjectURL(u)); this.imgFiles = []; this.imgThumbs = []; },
       onExcel(e) { this.excelFile = e.target.files[0] || null; e.target.value = ''; this.status = ''; },
       onDropExcel(e) { this.xlsDrag = false; const f = e.dataTransfer.files[0]; if (f) this.excelFile = f; },
 

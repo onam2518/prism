@@ -83,7 +83,6 @@ LEGAL_HARM_TYPES = {
 }
 
 # 스코어 = A(구성요건 0~40) + B(제재 0~30) + C(맥락 0~30)
-LEGAL_SCORE_BOUNDS = {"a": (0, 40), "b": (0, 30), "c": (0, 30)}
 
 # 등급 임계: GREEN 0~19 / YELLOW 20~69 / RED 70~100
 def legal_grade(total: int) -> str:
@@ -288,7 +287,6 @@ CONTENT_CATEGORY_TIER2 = {
     "Careers": ["Job Search", "Career Advice"],
     "Religion and Spirituality": ["Religion", "Spirituality"],
 }
-IAB_TIER2 = CONTENT_CATEGORY_TIER2   # 하위 호환 별칭
 
 # 개명된 Tier2 구표기 → 신표기(2026-07 스타일&패션 Tier2 개명 · 사용자 확정).
 # 기존 저장 데이터·모델 구출력이 구표기를 내도 정규화·표시 경로에서 신표기로 흡수한다.

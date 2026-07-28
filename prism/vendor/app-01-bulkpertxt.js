@@ -2,6 +2,7 @@
    로더(app.js)가 파일명 순으로 디스크립터 병합(게터 보존) · 조각 간 this 공유. */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
+      // 분배 결과 요약: {reviewer_id: n} → "이름 n건 · 이름 n건"
       bulkPerTxt(per) {
         return Object.entries(per || {}).map(([id, n]) => ((this.assignMembers.find((m) => m.id === id) || {}).name || id) + ' ' + n + '건').join(' · ');
       },

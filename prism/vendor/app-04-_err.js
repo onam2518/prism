@@ -134,12 +134,9 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.mod === 'testset') { this.loadGoldenStatus(); this.loadGoldenList(); }
         } else if (d.type === 'reviewer') {
           if (this.mod === 'arena' || this.mod === 'home') this.loadArena();             // 다른 사람 캐릭터 변경 반영
-        } else if (d.type === 'presence' && d.reviewer && d.reviewer !== this.reviewer) {
-          if (d.action === 'viewing') this.liveSeen[d.hash] = d.reviewer; else delete this.liveSeen[d.hash];
         }
       },
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
-      async loadQueue() { this.modBusy = true; try { const p = new URLSearchParams(); if (!this.queueOnlyUnreviewed) p.set('all', '1'); if (this.reviewer) p.set('reviewer', this.reviewer); this.queueData = await (await fetch('/queue?' + p.toString(), { headers: this._authHeaders() })).json(); } catch (e) {} this.modBusy = false; },
       async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; const r = await this._afetch('/arena' + p); const d = await r.json(); if (r.ok && d) { this.arenaData = d; this.maybeQuestReminder(); } } catch (e) {} this.checkBadges(); },
       async loadAdmin() { try { this.adminData = await (await this._afetch('/admin', { headers: this._authHeaders() })).json(); this._initMenuPerms(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
       _initMenuPerms() {                     // 유효 매트릭스 → 편집 상태(각 메뉴 {super,admin} 보장)

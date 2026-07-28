@@ -8,9 +8,7 @@
 from __future__ import annotations
 from . import dictionaries as D
 
-QMETA_VERSION = "qmeta@v31"
 IMETA_VERSION = "imeta@v15"  # v15: 스타일&패션 Tier2 개명 · Personal Care→Beauty · Fashion Trends→Fashion(주간회의 후속) · v14: 후기·리뷰·비평/리뷰·분석 경계(주간회의 260722) · v13: 인텐트 출처 무관 원칙 + 실용 정보·팬덤 경계(게시판 #7) · v12: 인텐트 수량 상한 제거 · v11=게시판 피드백 · v10=260715 회의 개편
-LEGAL_VERSION = "legal@v3"
 
 _JSON_GUARD = (
     "\n\n[출력 규칙] 반드시 유효한 JSON 객체 하나만 출력한다. "

@@ -956,9 +956,8 @@ def handoff_bundle(team=None):
 
 _learn_sched_started = False
 
-def next_batch_time(next_at, now=None) -> float:
-    """검수 목표(퀘스트) 일시('YYYY-MM-DDTHH:MM' 로컬) → epoch. 미지정·형식 오류는 0.
-    now 는 시그니처 호환용(파싱에 미사용)."""
+def next_batch_time(next_at) -> float:
+    """검수 목표(퀘스트) 일시('YYYY-MM-DDTHH:MM' 로컬) → epoch. 미지정·형식 오류는 0."""
     if not next_at:
         return 0.0
     try:
@@ -1000,10 +999,10 @@ def _run_due_batch(cfg, now=None) -> bool:
     return True
 
 
-def start_learning_scheduler(hour: int = 4):
+def start_learning_scheduler():
     """검수 목표(퀘스트) 스케줄러: 관리자가 지정한 일시(Config.learn_next_at)에 학습 반영을
     1회 실행하고 목표를 소진(비움)한다. 다음 목표는 관리자가 '퀘스트 생성'으로 다시 지정.
-    10분 단위 재평가라 재시작 불필요 · 서버당 1회. hour 인자는 하위호환용(미사용)."""
+    10분 단위 재평가라 재시작 불필요 · 서버당 1회."""
     global _learn_sched_started
     if _learn_sched_started:
         return

@@ -39,7 +39,6 @@
         </section>
         <section class="panel" data-fn><div class="panel-hd"><b>API 키</b><span class="meta">추출 호출 키 · 팀원은 입력 없이 사용</span></div>
           <div class="panel-bd">
-        <!-- 운영(공유 서버): 키는 서버에서 관리 → 팀원은 입력 불필요 -->
         <!-- 팀원(비관리자): 키는 서버(관리자) 관리 · 입력 불필요. 관리자는 아래 입력으로 설정 -->
         <div x-show="cfg.keyManagedByServer && !(adminData && adminData.isAdmin)" class="keymanaged">
           <b class="text-ink">🔒 API 키는 서버에서 관리됩니다</b>
