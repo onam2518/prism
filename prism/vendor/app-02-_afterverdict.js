@@ -49,7 +49,10 @@ window.PRISM_APP_PARTS.push(() => ({
 
       // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
       bulkModel: '', bulkBusy: false, bulkMsg: '', bulkScope: 'pending',
-      get pendingCount() { return (((this.dashData && this.dashData.contents) || []).filter((c) => !c.model)).length; },
+      // 전체 기준 건수는 서버가 준다(dashData.contents 는 표시용 최신 200건이라 세면 안 된다 ·
+      // 창 기준으로 세던 때 미실행 200건이 창 밖이라 '0건'으로 보이고 실행이 막혔다)
+      get pendingCount() { return (this.dashData && this.dashData.pending_n) || 0; },
+      get contentsCount() { return (this.dashData && this.dashData.contents_n) || 0; },
       get questActive() { const d = this.arenaData; return !!(d && d.next_batch_at && d.next_batch_at * 1000 > Date.now()); },
       async runBulk() {
         if (this.bulkScope === 'all' && this.questActive) { this.bulkMsg = '퀘스트 진행 중 · 전체 재실행은 반영 후 가능합니다'; return; }

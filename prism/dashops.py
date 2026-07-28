@@ -272,11 +272,15 @@ def _dashboard_compute(team=None) -> dict:
     except Exception:
         pass
 
+    # contents 는 표시용 최신 200건(recent_meta 상한)이라 건수를 세면 안 된다.
+    # 실행 버튼의 '미실행만 N건'·'전체 재실행 N건'은 팀 전체 기준이어야 한다 —
+    # 창 기준으로 세던 때는 미실행 200건이 창 밖이라 '0건'으로 보였다(2026-07-28).
     return {
         "n": n, "g": g, "r": n - g, "gPct": round(g / n * 100) if n else 0,
         "entities": ent_total, "avgLead": round(lead_sum / lead_n) if lead_n else 0,
         "intents": topk(intent_c), "categories": topk(cat_c), "qualityReasons": topk(reason_c),
         "contents": contents, "feedback": fb_stats,
+        "contents_n": len(rows), "pending_n": sum(1 for r in rows if _SV._is_pending_row(r)),
     }
 
 
