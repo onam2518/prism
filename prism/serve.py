@@ -67,6 +67,7 @@ from . import boardops as BD
 from . import evalops as EVO
 from . import deployops as DEP
 from . import crewops as CRW           # 검수 인력 운영(HR) · '검수운영' 메뉴
+from . import weekops as WKO           # 주간 운영 기록(주 마감 스냅샷 적립·조회)
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
@@ -78,6 +79,7 @@ BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
 DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Atelier deployments 이식)
 CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
+WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
 
 _run_id = RN._run_id
 _build_id = RN._build_id
@@ -155,6 +157,8 @@ review_queue = RV.review_queue
 _inject_gold = RV._inject_gold
 # 검수 인력 운영(HR) 재수출 · 테스트·핸들러 호환
 crew_data = CRW.crew_data
+weekly_records = WKO.weekly_records
+capture_week = WKO.capture
 crew_capacity = CRW.capacity
 crew_profiles = CRW.profiles
 set_crew_profile = CRW.set_profile
@@ -1548,7 +1552,26 @@ def _g_crew(h, q):
             h._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
             return None
         return CRW.crew_data(team, scope_uid=uid)
-    return CRW.crew_data(team)
+    data = CRW.crew_data(team)
+    try:                                             # 마감된 주 게으른 적립(스케줄러 불필요)
+        WKO.capture(team, crew=data)
+    except Exception:
+        pass
+    return data
+
+
+@_get_route("/crew-weekly")                          # 주간 운영 기록(슈퍼관리자 이상)
+def _g_crew_weekly(h, q):
+    team = h._req_team()
+    if _supa() and not is_super_admin_user(h._bearer_uid(), team, h._bearer_email()):
+        h._send(403, json.dumps({"error": "슈퍼관리자 이상만 볼 수 있습니다"}, ensure_ascii=False), _JSON)
+        return None
+    data = CRW.crew_data(team)
+    try:
+        WKO.capture(team, crew=data)
+    except Exception:
+        pass
+    return WKO.weekly_records(team, weeks=int(q.get("weeks", ["8"])[0] or 8), crew=data)
 
 
 @_get_route("/routes-raw", admin=True)               # 학습 지시 원본 목록 + 끔 상태(관리자)

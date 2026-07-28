@@ -3,72 +3,77 @@
            없어 일이 감으로 나갔다. 지표는 속도가 아니라 '약속 대비 어디쯤인가'로 보이고,
            이상 신호는 경고가 아니라 다시 나누기·도움 주기로 잇는다(백엔드 prism/crewops.py).
            문구는 기계적인 말 대신 일상어로 쓴다(사용자 요청 2026-07-28). -->
-      <div x-show="mod === 'admin' && adminTab === 'crew'" x-cloak class="w-full" style="margin-bottom:10px">
+      <!-- 하위 탭은 상위 탭(운영 관리) 바로 아래 붙어야 한 묶음으로 읽힌다.
+           .canvas 는 flex gap 20px 이라 그대로 두면 상·하위 탭이 따로 노는 두 줄로 보인다. -->
+      <div x-show="mod === 'admin' && adminTab === 'crew'" x-cloak class="w-full subtabrow">
         <div class="evaltabs evaltabs--sub">
-          <button type="button" x-bind:class="crewTab==='dash'?'sel':''" x-on:click="crewTab='dash'; loadCrew()">한눈에 보기</button>
-          <button type="button" x-bind:class="crewTab==='people'?'sel':''" x-on:click="crewTab='people'; loadCrew()">팀원과 일정</button>
-          <button type="button" x-bind:class="crewTab==='assign'?'sel':''" x-on:click="crewTab='assign'; loadCrew(); loadRaw(1000)">일 나눠주기</button>
+          <button type="button" x-bind:class="crewTab==='dash'?'sel':''" x-on:click="crewTab='dash'; loadCrew()">현황</button>
+          <button type="button" x-bind:class="crewTab==='people'?'sel':''" x-on:click="crewTab='people'; loadCrew()">검수자 · 가용 일정</button>
+          <button type="button" x-bind:class="crewTab==='assign'?'sel':''" x-on:click="crewTab='assign'; loadCrew(); loadRaw(1000)">배정</button>
           <span class="ml-auto text-xs text-muted" x-show="crewBusy">불러오는 중…</span>
         </div>
       </div>
 
-      <!-- ── 한눈에 보기 ───────────────────────────────────────────────── -->
+      <!-- ── 현황 ───────────────────────────────────────────────── -->
       <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="crewstats">
-            <div class="crewstat"><span class="crewstat__k">남은 검수</span>
+            <div class="crewstat"><span class="crewstat__k">미검수 잔여</span>
               <b class="crewstat__v tnum" x-text="crewSum.pending || 0"></b>
               <span class="crewstat__s" x-text="crewHours(crewSum.hours_left)"></span></div>
-            <div class="crewstat"><span class="crewstat__k">이번 주 소화량</span>
+            <div class="crewstat"><span class="crewstat__k">주간 처리 가능량</span>
               <b class="crewstat__v tnum" x-text="crewSum.weekly_capacity || 0"></b>
-              <span class="crewstat__s" x-text="(crewSum.active_members || 0) + '명이 함께 · 건/주'"></span></div>
-            <div class="crewstat"><span class="crewstat__k">이대로 가면</span>
-              <b class="crewstat__v" x-text="crewSum.eta ? (crewSum.eta.slice(5).replace('-','/') + ' 끝') : (crewSum.pending ? '알 수 없음' : '다 끝냄')"></b>
-              <span class="crewstat__s" x-text="crewSum.due_at ? ('언제까지 ' + crewDate(crewSum.due_at)) : '기한 안 정함'"></span></div>
-            <div class="crewstat"><span class="crewstat__k">멈춰 있는 일</span>
+              <span class="crewstat__s" x-text="(crewSum.active_members || 0) + '명 기준 · 건/주'"></span></div>
+            <div class="crewstat"><span class="crewstat__k">완료 예상일</span>
+              <b class="crewstat__v" x-text="crewSum.eta ? (crewSum.eta.slice(5).replace('-','/') + ') : (crewSum.pending ? '산출 불가' : '완료')"></b>
+              <span class="crewstat__s" x-text="crewSum.due_at ? ('기한 ' + crewDate(crewSum.due_at)) : '기한 미설정'"></span></div>
+            <div class="crewstat"><span class="crewstat__k">정체 배정</span>
               <b class="crewstat__v tnum" x-bind:style="crewSum.stale_total ? 'color:var(--ds-danger)' : ''" x-text="crewSum.stale_total || 0"></b>
-              <span class="crewstat__s" x-text="(crewData && crewData.settings ? crewData.settings.stale_days : 3) + '일 넘게 그대로'"></span></div>
-            <div class="crewstat"><span class="crewstat__k">의견 갈린 건</span>
+              <span class="crewstat__s" x-text="(crewData && crewData.settings ? crewData.settings.stale_days : 3) + '일 이상 미진행'"></span></div>
+            <div class="crewstat"><span class="crewstat__k">판정 불일치</span>
               <b class="crewstat__v tnum" x-text="crewSum.final_pending || 0"></b>
-              <span class="crewstat__s">최종검수자가 봐야 함</span></div>
-            <div class="crewstat"><span class="crewstat__k">쌓인 정답</span>
+              <span class="crewstat__s">최종검수자 판정 대기</span></div>
+            <div class="crewstat"><span class="crewstat__k">정답셋 확정</span>
               <b class="crewstat__v tnum" x-text="crewSum.golden_n || 0"></b>
-              <span class="crewstat__s" x-text="'검수할 것 ' + (crewSum.targets_n || 0) + '건 중'"></span></div>
+              <span class="crewstat__s" x-text="'검수 대상 ' + (crewSum.targets_n || 0) + '건 중'"></span></div>
           </div>
         </div></div>
 
         <!-- 멈춘 일·여유 인원은 '알림'이 아니라 '지금 누를 수 있는 버튼'이어야 한다 -->
         <div class="panel" x-show="crewSum.stale_total" style="border-color:var(--ds-danger)">
-          <div class="panel-hd"><b>오래 멈춰 있는 일</b><span class="meta">기다린다고 풀리지 않습니다 · 여유 있는 사람에게 넘기세요</span>
+          <div class="panel-hd"><b>정체 배정</b><span class="meta">방치해도 해소되지 않습니다 · 여력 있는 검수자에게 재배정하세요</span>
             <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px"
-                    x-bind:disabled="crewBusy" x-on:click="crewRebalance(false)">넘길 계획 보기</button></div>
+                    x-bind:disabled="crewBusy" x-on:click="crewRebalance(false)">재배정 계획 보기</button></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2">
               <template x-for="s in (crewSum.stale || [])" x-bind:key="s.id">
-                <span class="ds-badge ds-badge--error" x-text="s.name + ' ' + s.pending + '건 · ' + s.days + '일째'"></span>
+                <span class="ds-badge ds-badge--error" x-text="s.name + ' ' + s.pending + '건 · ' + s.days + '일 경과'"></span>
               </template>
             </div>
             <div class="text-xs text-muted" style="margin-top:8px" x-show="crewSum.idle_spare"
-                 x-text="'여유 있는 사람: ' + (crewSum.idle || []).map(i => i.name + ' ' + i.spare + '건').join(' · ')"></div>
+                 x-text="'여력 있는 검수자: ' + (crewSum.idle || []).map(i => i.name + ' ' + i.spare + '건').join(' · ')"></div>
           </div>
         </div>
         <div class="panel" x-show="!crewSum.stale_total && crewSum.idle_spare">
           <div class="panel-bd flex items-center gap-3">
-            <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>여유 있는 사람</span>
-            <span class="text-xs text-body" x-text="(crewSum.idle || []).map(i => i.name + ' ' + i.spare + '건').join(' · ') + ' 만큼 더 받을 수 있습니다'"></span>
+            <span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>여력 있는 검수자</span>
+            <span class="text-xs text-body" x-text="(crewSum.idle || []).map(i => i.name + ' ' + i.spare + '건').join(' · ') + ' 추가 배정 가능'"></span>
           </div>
         </div>
 
-        <section class="panel"><div class="panel-hd"><b>남은 일이 줄어드는 모습</b>
-          <span class="meta">진한 막대는 그날 끝낸 양 · 옅은 기둥은 그때 남아 있던 양 · 최근 21일</span>
-          <span class="ds-badge ds-badge--neutral tnum ml-auto" x-show="crewBurn.length" x-text="'남은 ' + (crewSum.pending || 0) + '건'"></span></div>
+        <section class="panel"><div class="panel-hd"><b>잔여 추이</b>
+          <span class="meta">진한 막대 = 당일 완료량 · 옅은 기둥 = 당일 잔여량 · 최근 21일</span>
+          <span class="ds-badge ds-badge--neutral tnum ml-auto" x-show="crewBurn.length" x-text="'잔여 ' + (crewSum.pending || 0) + '건'"></span></div>
           <div class="panel-bd">
             <!-- 두 계열이 같은 축을 쓰도록 겹쳐 그린다. 세로로 쌓으면 합이 100%를 넘어 막대가 밀려난다.
                  정적 style 과 x-bind:style 을 한 요소에 섞지 않는다(섞으면 정적 쪽이 덮인다). -->
             <div class="flexrow" style="align-items:flex-end;gap:3px;height:110px" x-show="crewBurn.length">
               <template x-for="d in crewBurn" x-bind:key="d.day">
                 <div style="flex:1;position:relative;height:100%;cursor:help"
-                     x-bind:data-tip="d.day + ' · 끝낸 ' + d.done + '건 · 남은 ' + d.left + '건' + (d.activity !== d.done ? (' · 그날 전체 검수 ' + d.activity + '건') : '')" data-tip-pos="top">
+                     x-bind:class="crewIsWeekStart(d.day) ? 'burnweek' : ''"
+                     x-bind:data-tip="d.day + ' · 완료 ' + d.done + '건 · 잔여 ' + d.left + '건' + (d.activity !== d.done ? (' · 당일 전체 검수 ' + d.activity + '건') : '')" data-tip-pos="top">
+                  <!-- 주 시작(월요일)에 구분선 + 주차 라벨: 주 단위 흐름을 눈으로 끊어 읽게 -->
+                  <span class="burnweek__lbl" x-show="crewIsWeekStart(d.day)" x-text="crewWeekLabelOf(d.day)"></span>
                   <div x-bind:style="'position:absolute;left:0;right:0;bottom:0;border-radius:3px 3px 0 0;background:var(--ds-hairline);height:' + Math.max(1, Math.round((d.left / crewBurnMax) * 100)) + '%'"></div>
                   <div x-bind:style="'position:absolute;left:24%;right:24%;bottom:0;border-radius:3px 3px 0 0;background:var(--ds-primary);height:' + (d.done ? Math.max(4, Math.round((d.done / crewBurnMax) * 100)) : 0) + '%'"></div>
                 </div>
@@ -78,16 +83,60 @@
               <span class="text-xs text-muted tnum" x-text="crewBurn.length ? crewBurn[0].day.slice(5).replace('-','/') : ''"></span>
               <span class="text-xs text-muted tnum" x-text="crewBurn.length ? crewBurn[crewBurn.length-1].day.slice(5).replace('-','/') : ''"></span>
             </div>
-            <div class="text-xs text-muted" x-show="!crewBurn.length">검수가 쌓이면 여기에 추이가 보입니다</div>
+            <div class="text-xs text-muted" x-show="!crewBurn.length">검수 기록이 쌓이면 추이가 표시됩니다</div>
           </div>
         </section>
 
-        <section class="panel"><div class="panel-hd"><b>팀원별 상황</b>
-          <span class="meta">본인이 약속한 시간과 기한을 기준으로 봅니다 · 빠르기 순위가 아닙니다</span></div>
+        <!-- 주간 기록: 현황판은 '지금'만 보여줘 주가 지나면 그 주가 어땠는지가 안 남는다.
+             마감된 주는 스냅샷으로 고정(weekops.capture) · 스냅샷 이전 주는 역산 + 추정 표시. -->
+        <section class="panel"><div class="panel-hd"><b>주간 기록</b>
+          <span class="meta" x-text="'월~일 기준 · 1주차 = ' + ((crewWeekly && crewWeekly.week1) ? crewWeekly.week1.slice(5).replace('-','/') : '07/20') + ' 시작'"></span>
+          <span class="ds-badge ds-badge--neutral ml-auto" x-show="crewWeekly" x-text="'이번 ' + (crewWeekly ? crewWeekly.current : '') + '주차'"></span></div>
           <div class="overflow-auto"><table class="ds-table"><thead><tr>
-            <th style="width:44px"></th><th>팀원</th><th style="width:120px">지금</th>
-            <th style="width:150px">얼마나 했나</th><th style="width:80px">남은 일</th>
-            <th style="width:90px">멈춘 지</th><th style="width:120px">더 받을 수 있는 양</th><th>상황</th></tr></thead><tbody>
+            <th style="width:110px">주차</th><th style="width:120px">기간</th>
+            <th style="width:110px">검수량</th><th style="width:110px">교정</th>
+            <th style="width:120px">배정분 완료</th><th style="width:110px">마감 잔여</th>
+            <th style="width:100px">정체</th><th>비고</th></tr></thead><tbody>
+            <template x-for="w in crewWeeks" x-bind:key="'wk'+w.week">
+              <tr>
+                <td class="text-ink" style="font-weight:600"><span x-text="w.label"></span>
+                  <span class="ds-badge ds-badge--intent" x-show="w.running" style="margin-left:5px">진행 중</span></td>
+                <td class="tnum text-xs text-muted" x-text="crewWeekRange(w)"></td>
+                <!-- 원장이 그 주의 일부만 덮으면 숫자를 주 전체로 읽지 않도록 덮은 일수를 붙인다
+                     (실측: 1주차 원장 3일치 214건 vs 역산 591건 — 어느 쪽인지 안 밝히면 오해가 된다) -->
+                <td class="tnum"><span x-text="crewNum(w.reviews)"></span>
+                  <span class="text-xs text-muted" x-show="!w.running && w.ledger_days > 0 && w.ledger_days < 7"
+                        style="cursor:help" x-bind:data-tip="'활동 원장이 이 주의 ' + w.ledger_days + '일치만 덮습니다 · 나머지 날은 기록 이전이라 빠져 있습니다'"
+                        data-tip-pos="top" x-text="'(' + w.ledger_days + '일분)'"></span></td>
+                <td class="tnum" x-text="crewNum(w.corrections)"></td>
+                <td class="tnum" x-text="crewNum(w.done_assigned)"></td>
+                <td class="tnum" x-text="crewNum(w.pending_end)"></td>
+                <td class="tnum" x-text="crewNum(w.stale_total)"></td>
+                <td>
+                  <span class="ds-badge ds-badge--warning" x-show="w.estimated" style="cursor:help"
+                        data-tip="이 주는 마감 스냅샷이 없어 현재 데이터로 역산한 값입니다 · 재검수가 있으면 실제보다 작게 잡힙니다" data-tip-pos="left">추정</span>
+                  <span class="text-xs text-muted" x-show="!w.estimated && !w.running && w.captured_at"
+                        x-text="'기록 ' + crewDate(w.captured_at)"></span>
+                  <span class="text-xs text-muted" x-show="w.ledger_days === 0 && !w.running">활동 원장 없음</span>
+                </td>
+              </tr>
+            </template>
+          </tbody></table></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets">
+              <li><b>검수량 · 교정</b>은 활동 원장(판정 시점에 하루 단위로 쌓는 기록)이라 나중에 재검수해도 줄지 않습니다.</li>
+              <li><b>배정분 완료 · 마감 잔여</b>는 마감 시점 스냅샷입니다 · 스냅샷 이전 주는 <b>추정</b>으로 표시합니다.</li>
+              <li>마감된 주는 이 화면을 열 때 한 번 고정되고, 이후에는 다시 계산하지 않습니다.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="panel"><div class="panel-hd"><b>검수자별 현황</b>
+          <span class="meta">본인이 신고한 가용 시간과 기한 기준입니다 · 속도 순위가 아닙니다</span></div>
+          <div class="overflow-auto"><table class="ds-table"><thead><tr>
+            <th style="width:44px"></th><th>검수자</th><th style="width:120px">상태</th>
+            <th style="width:150px">진행률</th><th style="width:80px">잔여</th>
+            <th style="width:90px">정체</th><th style="width:120px">추가 가능량</th><th>신호 · 점검</th></tr></thead><tbody>
             <template x-for="m in crewMembers" x-bind:key="m.id">
               <tr>
                 <td><span class="wz-char wz-char--sm"><img x-bind:src="'/vendor/' + crewAvatar(m.avatar)" alt=""></span></td>
@@ -98,7 +147,7 @@
                   <div class="flex items-center gap-2" x-show="m.load.assigned">
                     <span class="abbar__track"><span class="abbar__fill" x-bind:style="'width:' + Math.max(Math.round((m.load.progress||0)*100), 2) + '%'"></span></span>
                     <span class="text-xs tnum text-muted" x-text="m.load.done + '/' + m.load.assigned"></span></div>
-                  <span class="text-xs text-muted" x-show="!m.load.assigned">맡은 일 없음</span></td>
+                  <span class="text-xs text-muted" x-show="!m.load.assigned">배정 없음</span></td>
                 <td class="tnum" x-text="m.load.pending || '·'"></td>
                 <td class="tnum" x-bind:style="m.load.stale_days >= 3 ? 'color:var(--ds-danger)' : ''"
                     x-text="m.load.stale_days ? (m.load.stale_days + '일') : '·'"></td>
@@ -112,16 +161,16 @@
               </tr>
             </template>
           </tbody></table></div>
-          <div class="panel-bd text-xs text-muted" x-show="!crewMembers.length">팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
+          <div class="panel-bd text-xs text-muted" x-show="!crewMembers.length">검수자가 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
         </section>
       </div>
 
-      <!-- ── 팀원과 일정 ───────────────────────────────────────────────── -->
+      <!-- ── 검수자 · 가용 일정 ───────────────────────────────────────────────── -->
       <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'people'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
-          <li>왼쪽은 <b>약속한 일정</b>(관리자가 적고 본인이 확인), 오른쪽은 <b>실제 기록</b>입니다.</li>
-          <li>휴가·적응 중·쉬는 중으로 두면 일을 나눌 때 자동으로 빠집니다.</li>
-          <li>검수 속도는 판정과 판정 사이 시간으로 잽니다. 시간당 <b x-text="(crewData&&crewData.settings?crewData.settings.rate_cap_per_hour:90)"></b>건보다 빠른 구간은 소화량으로 치지 않습니다(본문을 읽기 어려운 속도라서요).</li>
+          <li>왼쪽은 <b>신고 일정</b>(관리자 입력 · 본인 확인), 오른쪽은 <b>실측 기록</b>입니다.</li>
+          <li>상태가 휴가·교육 중·비활성이면 배정 대상에서 자동 제외됩니다.</li>
+          <li>검수 속도는 판정 간 간격으로 측정합니다. 시간당 <b x-text="(crewData&&crewData.settings?crewData.settings.rate_cap_per_hour:90)"></b>건을 넘는 구간은 처리량 산정에서 제외합니다(본문 통독이 불가능한 속도).</li>
         </ul>
         <template x-for="m in crewMembers" x-bind:key="m.id">
           <section class="panel">
@@ -130,32 +179,32 @@
               <b x-text="m.name"></b>
               <span class="ds-badge" x-bind:class="crewStatusCls(m)" x-text="crewStatusTxt(m)"></span>
               <span class="ds-badge ds-badge--intent" x-show="m.is_final">최종검수자</span>
-              <span class="meta" x-show="m.profile.confirmed">본인이 확인함</span>
-              <span class="meta" x-show="!m.profile.confirmed">아직 확인 전</span>
+              <span class="meta" x-show="m.profile.confirmed">본인 확인 완료</span>
+              <span class="meta" x-show="!m.profile.confirmed">본인 확인 전</span>
               <span class="crewsig ml-auto" x-bind:class="'crewsig--' + m.signal" x-text="crewSigTxt(m.signal)"></span>
             </div>
             <div class="panel-bd">
               <div class="crewgrid">
                 <!-- 약속한 일정(사람이 입력) -->
                 <div>
-                  <div class="text-xs" style="font-weight:700;margin-bottom:8px">약속한 일정</div>
+                  <div class="text-xs" style="font-weight:700;margin-bottom:8px">신고 일정</div>
                   <div class="flex flex-wrap gap-2" style="align-items:flex-end">
-                    <div style="width:132px"><label class="lbl">일주일에 낼 시간</label>
+                    <div style="width:132px"><label class="lbl">주간 가용 시간</label>
                       <input type="number" min="0" max="40" step="0.5" class="field tnum"
                              x-bind:value="m.profile.hours_per_week"
                              x-on:change="crewSave(m, { hours_per_week: $event.target.value })"></div>
-                    <div style="width:132px"><label class="lbl">지금 상태</label>
+                    <div style="width:132px"><label class="lbl">상태</label>
                       <select class="field" x-bind:value="m.profile.status" x-on:change="crewSave(m, { status: $event.target.value })">
-                        <option value="active">참여 중</option><option value="onboarding">적응 중</option>
-                        <option value="leave">휴가</option><option value="inactive">쉬는 중</option></select></div>
-                    <div style="width:150px"><label class="lbl">자리 비우는 날</label>
+                        <option value="active">활동 중</option><option value="onboarding">교육 중</option>
+                        <option value="leave">휴가</option><option value="inactive">비활성</option></select></div>
+                    <div style="width:150px"><label class="lbl">부재 시작</label>
                       <input type="date" class="field" x-bind:value="m.profile.leave_from"
                              x-on:change="crewSave(m, { leave_from: $event.target.value })"></div>
-                    <div style="width:150px"><label class="lbl">돌아오는 날</label>
+                    <div style="width:150px"><label class="lbl">부재 종료</label>
                       <input type="date" class="field" x-bind:value="m.profile.leave_to"
                              x-on:change="crewSave(m, { leave_to: $event.target.value })"></div>
                   </div>
-                  <div style="margin-top:10px"><label class="lbl">일하는 요일</label>
+                  <div style="margin-top:10px"><label class="lbl">근무 요일</label>
                     <div class="flex flex-wrap gap-1">
                       <template x-for="(d, i) in ['월','화','수','목','금','토','일']" x-bind:key="i">
                         <button type="button" class="srcfilter__chip"
@@ -163,41 +212,41 @@
                                 x-on:click="crewSave(m, { workdays: crewToggleDay(m, i) })" x-text="d"></button>
                       </template>
                     </div></div>
-                  <div style="margin-top:10px"><label class="lbl">메모 (안 써도 됩니다)</label>
-                    <input class="field" maxlength="200" placeholder="예) 오전만 가능 · 스포츠 쪽을 잘 봄"
+                  <div style="margin-top:10px"><label class="lbl">메모 (선택)</label>
+                    <input class="field" maxlength="200" placeholder="예) 오전만 가능 · 스포츠 분야 강점"
                            x-bind:value="m.profile.note" x-on:change="crewSave(m, { note: $event.target.value })"></div>
                   <div class="flex items-center gap-2" style="margin-top:10px">
                     <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm"
                             x-on:click="crewSave(m, { confirmed: !m.profile.confirmed })"
-                            x-text="m.profile.confirmed ? '확인 표시 지우기' : '본인이 확인함으로 표시'"
-                            data-tip="본인이 이 일정에 동의했는지 표시합니다 · 말 없이 일이 넘어가는 것을 막는 표식" data-tip-pos="top"></button>
+                            x-text="m.profile.confirmed ? '본인 확인 해제' : '본인 확인 처리'"
+                            data-tip="본인이 이 일정에 동의했는지 표시합니다 · 합의 없는 배정을 막는 표식" data-tip-pos="top"></button>
                     <span class="text-xs text-muted" x-show="m.profile.updated_by"
-                          x-text="'마지막으로 고친 사람 ' + m.profile.updated_by"></span>
+                          x-text="'최종 수정자 ' + m.profile.updated_by"></span>
                   </div>
                 </div>
                 <!-- 실제 기록(자동 집계) -->
                 <div>
-                  <div class="text-xs" style="font-weight:700;margin-bottom:8px">실제 기록 · 최근 4주</div>
+                  <div class="text-xs" style="font-weight:700;margin-bottom:8px">실측 기록 · 최근 4주</div>
                   <div class="drow"><div class="k">검수 속도</div><div class="v tnum">
-                    <b x-text="m.measured.rate_per_hour ? ('시간당 ' + m.measured.rate_per_hour + '건') : '기록 없음'"></b>
-                    <span class="text-xs text-muted" x-show="m.measured.median_sec" x-text="' · 한 건에 ' + m.measured.median_sec + '초'"></span>
+                    <b x-text="m.measured.rate_per_hour ? ('시간당 ' + m.measured.rate_per_hour + '건') : '측정 기록 없음'"></b>
+                    <span class="text-xs text-muted" x-show="m.measured.median_sec" x-text="' · 건당 ' + m.measured.median_sec + '초'"></span>
                     <span class="ds-badge ds-badge--neutral" x-show="m.measured.estimated" style="margin-left:6px"
-                          data-tip="이 사람의 기록이 적어 팀 가운뎃값을 대신 썼습니다" data-tip-pos="left">어림값</span></div></div>
-                  <div class="drow"><div class="k">검수한 양</div><div class="v tnum"
-                       x-text="'4주 ' + m.measured.n28 + '건 · 최근 7일 ' + m.measured.n7 + '건 · 일한 날 ' + m.measured.active_days + '일'"></div></div>
-                  <div class="drow"><div class="k">일주일 소화량</div><div class="v tnum">
+                          data-tip="본인 기록이 부족해 팀 중앙값을 대입했습니다" data-tip-pos="left">추정값</span></div></div>
+                  <div class="drow"><div class="k">검수량</div><div class="v tnum"
+                       x-text="'4주 ' + m.measured.n28 + '건 · 최근 7일 ' + m.measured.n7 + '건 · 활동일 ' + m.measured.active_days + '일'"></div></div>
+                  <div class="drow"><div class="k">주간 처리 가능량</div><div class="v tnum">
                     <b x-text="m.weekly_capacity + '건'"></b>
-                    <span class="text-xs text-muted" x-text="' = 시간당 ' + (m.measured.effective_rate||0) + '건 × ' + m.profile.hours_per_week + '시간 × 여유 ' + (crewData&&crewData.settings?crewData.settings.buffer:0.8)"></span>
+                    <span class="text-xs text-muted" x-text="' = 시간당 ' + (m.measured.effective_rate||0) + '건 × ' + m.profile.hours_per_week + '시간 × 버퍼 ' + (crewData&&crewData.settings?crewData.settings.buffer:0.8)"></span>
                     <span class="ds-badge ds-badge--neutral" x-show="m.measured.capped" style="margin-left:6px" data-tip-pos="left"
-                          x-bind:data-tip="'실제로 잰 속도는 시간당 ' + m.measured.rate_per_hour + '건이지만, 너무 빠른 구간은 소화량으로 치지 않아 상한을 적용했습니다'">상한 적용</span></div></div>
-                  <div class="drow"><div class="k">지금 맡은 일</div><div class="v tnum"
-                       x-text="'맡은 ' + m.load.assigned + '건 · 남은 ' + m.load.pending + '건' + (m.load.pending ? (' · ' + crewHours(m.hours_left) + ' 걸릴 일')  : '')"></div></div>
+                          x-bind:data-tip="'실측 속도는 시간당 ' + m.measured.rate_per_hour + '건이나, 과속 구간을 제외해 상한을 적용했습니다'">상한 적용</span></div></div>
+                  <div class="drow"><div class="k">현재 배정</div><div class="v tnum"
+                       x-text="'배정 ' + m.load.assigned + '건 · 잔여 ' + m.load.pending + '건' + (m.load.pending ? (' · 예상 ' + crewHours(m.hours_left))  : '')"></div></div>
                   <div class="drow"><div class="k">정확도</div><div class="v tnum">
-                    <span x-text="m.quality.gold_n ? ('정답 문항 ' + m.quality.gold_n + '개 중 ' + Math.round(m.quality.gold_acc*100) + '% 맞힘') : '정답 문항 기록 없음'"></span>
+                    <span x-text="m.quality.gold_n ? ('골드 문항 ' + m.quality.gold_n + '개 중 ' + Math.round(m.quality.gold_acc*100) + '% 정답') : '골드 문항 기록 없음'"></span>
                     <span class="text-xs text-muted" x-show="m.quality.good_ratio !== null"
                           x-text="' · 정확 판정 비율 ' + Math.round(m.quality.good_ratio*100) + '% (' + m.quality.n_judged + '건)'"></span>
-                    <span class="text-xs text-muted" x-show="m.quality.weight" x-text="' · 의견 반영 비중 ' + m.quality.weight"></span></div></div>
-                  <div class="drow" x-show="m.flags.length"><div class="k">챙겨볼 점</div><div class="v">
+                    <span class="text-xs text-muted" x-show="m.quality.weight" x-text="' · 합의 가중치 ' + m.quality.weight"></span></div></div>
+                  <div class="drow" x-show="m.flags.length"><div class="k">점검 항목</div><div class="v">
                     <div class="flex flex-wrap gap-1">
                       <template x-for="f in m.flags" x-bind:key="f.id">
                         <span class="ds-badge ds-badge--warning" x-text="f.label + ' · ' + f.hint"></span>
@@ -208,53 +257,53 @@
             </div>
           </section>
         </template>
-        <div class="panel" x-show="!crewMembers.length"><div class="panel-bd text-xs text-muted">팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div></div>
+        <div class="panel" x-show="!crewMembers.length"><div class="panel-bd text-xs text-muted">검수자가 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div></div>
       </div>
 
-      <!-- ── 일 나눠주기 ───────────────────────────────────────────────── -->
+      <!-- ── 배정 ───────────────────────────────────────────────── -->
       <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
-        <section class="panel"><div class="panel-hd"><b>여력만큼 나눠 맡기기</b>
-          <span class="meta">똑같이 N건씩이 아니라 각자 남은 여유만큼 나눕니다 · 휴가·적응 중·쉬는 중은 빠집니다</span></div>
+        <section class="panel"><div class="panel-hd"><b>여력 비례 배정</b>
+          <span class="meta">균등 분할이 아니라 검수자별 잔여 여력에 비례해 배정합니다 · 휴가·교육 중·비활성은 제외</span></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2" style="align-items:flex-end">
-              <div style="width:180px"><label class="lbl">어떤 콘텐츠를</label>
+              <div style="width:180px"><label class="lbl">대상 콘텐츠</label>
                 <select class="field" x-model="crewAsgScope">
-                  <option value="unassigned">아직 아무도 안 맡은 것</option>
-                  <option value="all">검수할 것 전체</option></select></div>
-              <div style="width:120px"><label class="lbl">최대 몇 건</label>
+                  <option value="unassigned">미배정만</option>
+                  <option value="all">검수 대상 전체</option></select></div>
+              <div style="width:120px"><label class="lbl">최대 건수</label>
                 <input type="number" min="1" max="2000" class="field tnum" x-model.number="crewAsgLimit"></div>
-              <div style="width:140px"><label class="lbl">한 건에 몇 명</label>
+              <div style="width:140px"><label class="lbl">건당 검수 인원</label>
                 <input type="number" min="1" max="9" class="field tnum" x-model.number="crewAsgMin"></div>
-              <div style="width:200px"><label class="lbl">언제까지 (안 정해도 됩니다)</label>
+              <div style="width:200px"><label class="lbl">기한 (선택)</label>
                 <input type="datetime-local" class="field" x-model="crewDue"></div>
               <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-md"
-                      x-bind:disabled="crewBusy" x-on:click="crewPlan(false)">누구에게 갈지 보기</button>
+                      x-bind:disabled="crewBusy" x-on:click="crewPlan(false)">배정 계획 보기</button>
             </div>
             <div class="text-xs text-muted" style="margin-top:8px"
-                 x-text="'고른 콘텐츠 ' + crewAsgPool.length + '건 · 검수할 것 모두 ' + (crewSum.targets_n || 0) + '건'"></div>
+                 x-text="'대상 ' + crewAsgPool.length + '건 · 검수 대상 전체 ' + (crewSum.targets_n || 0) + '건'"></div>
 
             <div x-show="crewPlanRes" style="margin-top:12px">
               <div class="overflow-auto"><table class="ds-table"><thead><tr>
-                <th>맡을 사람</th><th style="width:120px">이번에 맡을 양</th><th style="width:150px">맡고 나면 남는 일</th>
-                <th style="width:130px">일주일 소화량</th><th style="width:100px"></th></tr></thead><tbody>
+                <th>검수자</th><th style="width:120px">배정량</th><th style="width:150px">배정 후 잔여</th>
+                <th style="width:130px">주간 처리 가능량</th><th style="width:100px"></th></tr></thead><tbody>
                 <template x-for="(p, rid) in (crewPlanRes ? crewPlanRes.plan : {})" x-bind:key="rid">
                   <tr>
                     <td class="text-ink" x-text="p.name"></td>
                     <td class="tnum" x-text="p.n + '건'"></td>
                     <td class="tnum" x-text="p.pending_after + '건'"></td>
                     <td class="tnum" x-text="p.capacity + '건'"></td>
-                    <td><span class="ds-badge ds-badge--warning" x-show="p.over">벅참</span></td>
+                    <td><span class="ds-badge ds-badge--warning" x-show="p.over">여력 초과</span></td>
                   </tr>
                 </template>
               </tbody></table></div>
               <div class="ds-badge ds-badge--warning" style="margin-top:8px" x-show="crewPlanRes && crewPlanRes.over && crewPlanRes.over.length"
-                   x-text="'⚠ ' + (crewPlanRes ? crewPlanRes.over.join(', ') : '') + ' 은(는) 일주일에 소화할 양을 넘습니다 · 기한을 늦추거나 물량을 줄이세요'"></div>
+                   x-text="'⚠ ' + (crewPlanRes ? crewPlanRes.over.join(', ') : '') +  은(는) 주간 처리 가능량을 초과합니다 · 기한을 늦추거나 배정량을 줄이세요'"></div>
               <div class="ds-badge ds-badge--neutral" style="margin-top:8px" x-show="crewPlanRes && crewPlanRes.blocked && crewPlanRes.blocked.length"
-                   x-text="'이번엔 빠짐: ' + (crewPlanRes ? crewPlanRes.blocked.join(', ') : '') + ' (휴가·적응 중·쉬는 중)'"></div>
+                   x-text="'제외: ' + (crewPlanRes ? crewPlanRes.blocked.join(', ') : '') + ' (휴가·교육 중·비활성)'"></div>
               <div class="flex items-center gap-2" style="margin-top:10px">
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="crewBusy"
-                        x-on:click="crewPlan(true)" x-text="'이대로 맡기기 · ' + (crewPlanRes ? crewPlanRes.n : 0) + '건'"></button>
-                <span class="text-xs text-muted">맡기면 그 사람 검수 목록에만 보입니다</span>
+                        x-on:click="crewPlan(true)" x-text="'배정 실행 · ' + (crewPlanRes ? crewPlanRes.n : 0) + '건'"></button>
+                <span class="text-xs text-muted">배정하면 해당 검수자의 검수 목록에만 노출됩니다</span>
               </div>
             </div>
             <div class="text-xs text-muted" style="margin-top:8px" x-show="crewMsg" x-text="crewMsg"></div>
@@ -263,47 +312,47 @@
 
         <!-- 직접 고르기: 여력 계산에 맡기지 않고 사람이 콘텐츠·담당자를 짚어서 정하는 길
              (정답셋 관리 목록에 있던 '일괄 배정'을 여기로 옮겨 왔다 · 2026-07-28) -->
-        <section class="panel"><div class="panel-hd"><b>직접 골라서 맡기기</b>
-          <span class="meta">콘텐츠를 하나하나 고르거나, 그룹으로 나눠 사람을 지정합니다</span>
+        <section class="panel"><div class="panel-hd"><b>직접 지정 배정</b>
+          <span class="meta">콘텐츠를 개별 선택하거나 그룹으로 나눠 검수자를 지정합니다</span>
           <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
-                  x-on:click="openBulk()">고르러 가기</button></div>
+                  x-on:click="openBulk()">대상 선택</button></div>
           <div class="panel-bd text-xs text-muted">
-            여력을 따지지 않고 내가 정한 대로 맡깁니다. 특정 분야를 잘 보는 사람에게 몰아주거나,
-            같은 묶음을 여러 명이 함께 보게 할 때 씁니다.
+            여력 계산을 거치지 않고 지정한 대로 배정합니다. 특정 분야 강점 검수자에게 몰아주거나,
+            같은 묶음을 여러 명이 함께 볼 때 씁니다.
           </div>
         </section>
 
         <!-- 적응형 겹치기: 전건 3인 대신 2인으로 시작하고 갈린 건에만 한 명 더 -->
-        <section class="panel"><div class="panel-hd"><b>갈린 건에 한 명 더</b>
-          <span class="meta">두 사람 의견이 엇갈린 건에만 세 번째 눈을 붙입니다 · 전부 3명이 보는 것보다 훨씬 쌉니다</span>
+        <section class="panel"><div class="panel-hd"><b>불일치 건 추가 배정</b>
+          <span class="meta">판정이 엇갈린 건에만 세 번째 검수자를 추가합니다 · 전건 3인 배정보다 비용이 크게 낮습니다</span>
           <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
-                  x-bind:disabled="crewBusy" x-on:click="crewEscalate(false)">누가 볼지 보기</button></div>
+                  x-bind:disabled="crewBusy" x-on:click="crewEscalate(false)">추가 배정 계획 보기</button></div>
           <div class="panel-bd">
-            <div x-show="!crewEscRes" class="text-xs text-muted">두 사람이 다르게 본 건을 찾아 아직 그 건을 안 본 사람에게 넘깁니다</div>
+            <div x-show="!crewEscRes" class="text-xs text-muted">판정이 엇갈린 건을 찾아 해당 건을 아직 보지 않은 검수자에게 배정합니다</div>
             <div x-show="crewEscRes">
-              <div class="text-ink" style="font-weight:650" x-text="crewEscRes ? (crewEscRes.n + '건에 한 명씩 더 붙일 수 있습니다') : ''"></div>
+              <div class="text-ink" style="font-weight:650" x-text="crewEscRes ? (crewEscRes.n + '건에 추가 배정 가능') : ''"></div>
               <div class="flex flex-wrap gap-2" style="margin-top:8px">
                 <template x-for="(n, nm) in (crewEscRes ? crewEscRes.to_counts : {})" x-bind:key="'e'+nm">
                   <span class="ds-badge ds-badge--success" x-text="nm + ' +' + n"></span></template>
               </div>
               <div class="text-xs text-muted" style="margin-top:8px" x-show="crewEscRes && !crewEscRes.n"
-                   x-text="crewEscRes ? (crewEscRes.reason || crewEscRes.error || '지금은 갈린 건이 없습니다') : ''"></div>
+                   x-text="crewEscRes ? (crewEscRes.reason || crewEscRes.error || '현재 판정 불일치 건이 없습니다') : ''"></div>
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" style="margin-top:10px"
                       x-show="crewEscRes && crewEscRes.n && !crewEscRes.applied"
-                      x-bind:disabled="crewBusy" x-on:click="crewEscalate(true)">이대로 붙이기</button>
-              <div class="ds-badge ds-badge--success" style="margin-top:10px" x-show="crewEscRes && crewEscRes.applied">붙였습니다</div>
+                      x-bind:disabled="crewBusy" x-on:click="crewEscalate(true)">추가 배정 실행</button>
+              <div class="ds-badge ds-badge--success" style="margin-top:10px" x-show="crewEscRes && crewEscRes.applied">추가 배정 완료</div>
             </div>
           </div>
         </section>
 
-        <section class="panel"><div class="panel-hd"><b>멈춘 일 넘기기</b>
-          <span class="meta" x-text="(crewData&&crewData.settings?crewData.settings.stale_days:3) + '일 넘게 그대로인 일과 자리 비운 사람 몫을 여유 있는 사람에게 넘깁니다'"></span>
+        <section class="panel"><div class="panel-hd"><b>정체 · 부재분 재배정</b>
+          <span class="meta" x-text="(crewData&&crewData.settings?crewData.settings.stale_days:3) + '일 이상 미진행 배정과 부재자 배정분을 여력 있는 검수자에게 재배정합니다'"></span>
           <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
-                  x-bind:disabled="crewBusy" x-on:click="crewRebalance(false)">넘길 계획 보기</button></div>
+                  x-bind:disabled="crewBusy" x-on:click="crewRebalance(false)">재배정 계획 보기</button></div>
           <div class="panel-bd">
-            <div x-show="!crewMoveRes" class="text-xs text-muted">계획을 먼저 보고 실행합니다 · 넘긴 내역은 아래 기록에 남습니다</div>
+            <div x-show="!crewMoveRes" class="text-xs text-muted">계획을 확인한 뒤 실행합니다 · 실행 내역은 아래 배정 이력에 남습니다</div>
             <div x-show="crewMoveRes">
-              <div class="text-ink" style="font-weight:650" x-text="crewMoveRes ? (crewMoveRes.n + '건을 넘길 수 있습니다') : ''"></div>
+              <div class="text-ink" style="font-weight:650" x-text="crewMoveRes ? (crewMoveRes.n + '건 재배정 가능') : ''"></div>
               <div class="flex flex-wrap gap-2" style="margin-top:8px">
                 <template x-for="(n, nm) in (crewMoveRes ? crewMoveRes.from_counts : {})" x-bind:key="'f'+nm">
                   <span class="ds-badge ds-badge--error" x-text="nm + ' -' + n"></span></template>
@@ -311,67 +360,67 @@
                   <span class="ds-badge ds-badge--success" x-text="nm + ' +' + n"></span></template>
               </div>
               <div class="text-xs text-muted" style="margin-top:8px" x-show="crewMoveRes && !crewMoveRes.n"
-                   x-text="crewMoveRes ? (crewMoveRes.reason || crewMoveRes.error || '지금은 넘길 일이 없습니다') : ''"></div>
+                   x-text="crewMoveRes ? (crewMoveRes.reason || crewMoveRes.error || '현재 재배정할 건이 없습니다') : ''"></div>
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" style="margin-top:10px"
                       x-show="crewMoveRes && crewMoveRes.n && !crewMoveRes.applied"
-                      x-bind:disabled="crewBusy" x-on:click="crewRebalance(true)">이대로 넘기기</button>
-              <div class="ds-badge ds-badge--success" style="margin-top:10px" x-show="crewMoveRes && crewMoveRes.applied">넘겼습니다</div>
+                      x-bind:disabled="crewBusy" x-on:click="crewRebalance(true)">재배정 실행</button>
+              <div class="ds-badge ds-badge--success" style="margin-top:10px" x-show="crewMoveRes && crewMoveRes.applied">재배정 완료</div>
             </div>
           </div>
         </section>
 
         <!-- 자동 운영: 매주 사람이 잊지 않고 눌러야 도는 운영은 결국 안 돈다.
              다만 남의 일을 옮기는 동작이라 기본은 꺼둔다. -->
-        <section class="panel"><div class="panel-hd"><b>자동으로 맡기기</b>
-          <span class="meta">켜두면 매주 알아서 나누고, 기한이 다가오면 멈춘 일을 넘깁니다 · 기본은 꺼짐</span>
+        <section class="panel"><div class="panel-hd"><b>자동 운영</b>
+          <span class="meta">주기마다 자동 배정하고, 기한이 임박하면 정체분을 재배정합니다 · 기본 꺼짐</span>
           <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
-                  x-bind:disabled="crewBusy" x-on:click="crewAuto()">지금 점검</button></div>
+                  x-bind:disabled="crewBusy" x-on:click="crewAuto()">지금 실행</button></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2" style="align-items:flex-end">
               <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_wave == 1"
                      x-on:change="crewSetting('auto_wave', $event.target.checked ? 1 : 0)">
-                <span>사이클 시작에 알아서 나누기</span></label>
+                <span>주기 시작 시 자동 배정</span></label>
               <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_rebalance == 1"
                      x-on:change="crewSetting('auto_rebalance', $event.target.checked ? 1 : 0)">
-                <span>기한 하루 전 멈춘 일 넘기기</span></label>
+                <span>기한 1일 전 정체분 재배정</span></label>
               <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_escalate == 1"
                      x-on:change="crewSetting('auto_escalate', $event.target.checked ? 1 : 0)">
-                <span>갈린 건에 한 명 더 붙이기</span></label>
+                <span>불일치 건 추가 배정</span></label>
             </div>
             <div class="flex flex-wrap gap-2" style="align-items:flex-end;margin-top:10px">
-              <div style="width:150px"><label class="lbl">시작 요일</label>
+              <div style="width:150px"><label class="lbl">주기 시작 요일</label>
                 <select class="field" x-bind:value="crewCfg.wave_weekday" x-on:change="crewSetting('wave_weekday', $event.target.value)">
                   <template x-for="(d, i) in ['월','화','수','목','금','토','일']" x-bind:key="i">
                     <option x-bind:value="i" x-text="d + '요일'"></option></template></select></div>
-              <div style="width:120px"><label class="lbl">시작 시각</label>
+              <div style="width:120px"><label class="lbl">주기 시작 시각</label>
                 <input type="number" min="0" max="23" class="field tnum" x-bind:value="crewCfg.wave_hour"
                        x-on:change="crewSetting('wave_hour', $event.target.value)"></div>
-              <div style="width:120px"><label class="lbl">기한까지(일)</label>
+              <div style="width:120px"><label class="lbl">기한 (일)</label>
                 <input type="number" min="1" max="14" class="field tnum" x-bind:value="crewCfg.wave_days"
                        x-on:change="crewSetting('wave_days', $event.target.value)"></div>
-              <div style="width:140px"><label class="lbl">한 번에 최대</label>
+              <div style="width:140px"><label class="lbl">회당 최대 건수</label>
                 <input type="number" min="1" max="2000" class="field tnum" x-bind:value="crewCfg.wave_batch"
                        x-on:change="crewSetting('wave_batch', $event.target.value)"></div>
-              <div style="width:140px"><label class="lbl">한 건에 몇 명</label>
+              <div style="width:140px"><label class="lbl">건당 검수 인원</label>
                 <input type="number" min="1" max="9" class="field tnum" x-bind:value="crewCfg.wave_min_reviewers"
                        x-on:change="crewSetting('wave_min_reviewers', $event.target.value)"></div>
             </div>
             <div class="flex flex-wrap gap-2" style="margin-top:10px">
               <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.match_strength == 1"
                      x-on:change="crewSetting('match_strength', $event.target.checked ? 1 : 0)">
-                <span>잘 보는 분야로 보내기</span></label>
+                <span>분야별 강점 매칭</span></label>
               <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.lack_first == 1"
                      x-on:change="crewSetting('lack_first', $event.target.checked ? 1 : 0)">
-                <span>정답이 부족한 분류 먼저</span></label>
+                <span>정답셋 부족 분류 우선</span></label>
             </div>
             <div class="text-xs text-muted" style="margin-top:10px" x-show="crewAutoRes" x-text="crewAutoTxt"></div>
           </div>
         </section>
 
-        <section class="panel"><div class="panel-hd"><b>누가 언제 나눠줬는지</b><span class="meta">최근 기록부터</span></div>
+        <section class="panel"><div class="panel-hd"><b>배정 이력</b><span class="meta">최근순</span></div>
           <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr>
-            <th style="width:150px">언제</th><th style="width:180px">누가</th><th style="width:140px">어떻게</th>
-            <th style="width:80px">몇 건</th><th>받은 사람</th></tr></thead><tbody>
+            <th style="width:150px">일시</th><th style="width:180px">실행자</th><th style="width:140px">방식</th>
+            <th style="width:80px">건수</th><th>배정 대상</th></tr></thead><tbody>
             <template x-for="(a, i) in (assignLog || [])" x-bind:key="i">
               <tr>
                 <td class="tnum text-xs" x-text="crewDate(a.ts)"></td>
@@ -382,21 +431,21 @@
               </tr>
             </template>
           </tbody></table></div>
-          <div class="panel-bd text-xs text-muted" x-show="!(assignLog && assignLog.length)">아직 나눠준 기록이 없습니다</div>
+          <div class="panel-bd text-xs text-muted" x-show="!(assignLog && assignLog.length)">배정 이력이 없습니다</div>
         </section>
       </div>
   <!-- 검수자 일괄 배정(슈퍼관리자 이상): ① 콘텐츠 선택 → ② 담당자 지정 → ③ 확인 · 배정 -->
   <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && (bulkOpen=false)" style="z-index:78">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">
       <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px;font-family:var(--ds-font-display)">검수자 일괄 배정
-        <span class="text-xs text-muted" style="font-family:var(--ds-font-body);font-weight:400">여러 콘텐츠에 한 번에 지정합니다 · 슈퍼관리자 이상만 가능합니다</span></h2>
+        <span class="text-xs text-muted" style="font-family:var(--ds-font-body);font-weight:400">여러 콘텐츠에 한 번에 지정합니다 · 슈퍼관리자 이상</span></h2>
       <div class="ds-dialog__body" style="overflow:auto;padding:4px 0 2px">
 
         <!-- ① 콘텐츠 선택 -->
         <div class="stepcard">
           <div class="stepcard__hd">
             <span class="stepcard__no">STEP 1</span>
-            <span class="stepcard__ttl">콘텐츠 선택<span class="stepcard__sub">배정할 대상을 고르세요</span></span>
+            <span class="stepcard__ttl">콘텐츠 선택<span class="stepcard__sub">배정 대상을 선택합니다</span></span>
             <span class="ds-badge ds-badge--status stepcard__badge tnum" x-text="bulkGrps > 1 ? ('선택 ' + bulkGrpCounts.join('·') + ' / ' + bulkFiltered.length + '건') : ('선택 ' + bulkSelHashes.length + ' / ' + bulkFiltered.length + '건')"></span>
           </div>
           <div class="filterbar" style="margin-bottom:12px">
@@ -411,10 +460,10 @@
             <b class="text-xs" style="color:var(--ds-primary)">⚄ 무작위 자동 선택</b>
             <input type="number" class="field" style="width:78px" min="1" x-model.number="bulkRandN">
             <span class="text-xs text-muted">건 ×</span>
-            <input type="number" class="field" style="width:64px" min="1" max="8" x-model.number="bulkGrpN" x-on:input="bulkGrpChanged()" data-tip="2 이상이면 그룹마다 담당자를 따로 지정할 수 있어요" data-tip-pos="top">
+            <input type="number" class="field" style="width:64px" min="1" max="8" x-model.number="bulkGrpN" x-on:input="bulkGrpChanged()" data-tip="2 이상이면 그룹별로 담당자를 따로 지정합니다" data-tip-pos="top">
             <span class="text-xs text-muted">그룹</span>
             <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="bulkRandom()">랜덤 선택</button>
-            <span class="text-xs text-muted" x-text="bulkGrps > 1 ? '그룹마다 ' + bulkRandN + '건씩 서로 겹치지 않게 추출 · 행 클릭 = 그룹 순환' : '필터 결과 중 무작위로 · 다시 누르면 재추출'"></span>
+            <span class="text-xs text-muted" x-text="bulkGrps > 1 ? '그룹당 ' + bulkRandN + '건씩 중복 없이 추출 · 행 클릭 = 그룹 순환' : '필터 결과 중 무작위로 · 다시 누르면 재추출'"></span>
             <span class="ds-badge ds-badge--warning" x-show="bulkRandMsg" x-text="bulkRandMsg"></span>
           </div>
           <div class="overflow-auto" style="max-height:252px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md)">
@@ -458,7 +507,7 @@
           <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) · 그룹 모드에선 그룹별 지정으로 대체 -->
           <div x-show="bulkGrps <= 1" style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
             <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
-            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 사람들에게 콘텐츠를 나눠 배정합니다 · 밀린 배정이 적은 사람부터 채워요" data-tip-pos="top">균등 분배</button>
+            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 검수자에게 콘텐츠를 분할 배정합니다 · 잔여 배정이 적은 검수자부터 채웁니다" data-tip-pos="top">균등 분배</button>
           </div>
           <div x-show="bulkGrps <= 1" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
             <template x-for="m in assignMembers" x-bind:key="'bpk'+m.id">

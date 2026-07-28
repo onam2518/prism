@@ -627,6 +627,12 @@
   /* 탭 = 아래 내용과 연결된 언더라인 방식(플로팅 필름 → 콘텐츠에 붙는 탭). 활성 탭 하단 프라이머리 인디케이터. */
   .evaltabs{display:flex;gap:2px;background:transparent;padding:0 2px;border-bottom:1.5px solid var(--ds-hairline);border-radius:0;max-width:none}
   .evaltabs--sub{background:transparent;padding:0 2px}
+  /* 하위 탭 줄: 상위 탭 바로 아래 붙인다(.canvas flex gap 20px 을 당겨 12px 로) */
+  .subtabrow{margin-top:-8px;margin-bottom:2px}
+  /* 번다운 주 구분: 월요일 칸 왼쪽에 얇은 선 + 주차 라벨(주 단위로 끊어 읽기) */
+  .burnweek{box-shadow:inset 1px 0 0 var(--ds-hairline)}
+  .burnweek__lbl{position:absolute;top:-14px;left:2px;font-size:9.5px;font-weight:700;
+    color:var(--ds-muted);white-space:nowrap;pointer-events:none}
   .evaltabs button{flex:0 0 auto;height:40px;padding:0 18px;border:0;background:none;border-radius:8px 8px 0 0;
     font-size:13.5px;font-weight:700;color:var(--ds-muted);cursor:pointer;position:relative;transition:color .15s,background .15s}
   .evaltabs button:hover:not(.sel){color:var(--ds-ink);background:var(--ds-hairline-soft)}

@@ -22,10 +22,10 @@ window.PRISM_APP_PARTS.push(() => ({
         const r = this.crewAutoRes;
         if (!r) return '';
         const bits = [];
-        if (r.wave) bits.push(r.wave.n ? ('나눠 맡김 ' + r.wave.n + '건') : ('나눌 것 없음' + (r.wave.error ? (' · ' + r.wave.error) : '')));
-        if (r.rebalance) bits.push('넘김 ' + r.rebalance.n + '건');
-        if (r.escalate) bits.push('한 명 더 ' + r.escalate.n + '건');
-        return bits.length ? ('이번 사이클(' + r.cycle + ') · ' + bits.join(' · ')) : ('이번 사이클(' + r.cycle + ')에 할 일이 없습니다');
+        if (r.wave) bits.push(r.wave.n ? ('자동 배정 ' + r.wave.n + '건') : ('배정 대상 없음' + (r.wave.error ? (' · ' + r.wave.error) : '')));
+        if (r.rebalance) bits.push('재배정 ' + r.rebalance.n + '건');
+        if (r.escalate) bits.push('추가 배정 ' + r.escalate.n + '건');
+        return bits.length ? ('이번 주기(' + r.cycle + ') · ' + bits.join(' · ')) : ('이번 주기(' + r.cycle + ') 실행 대상 없음');
       },
 
       get crewAsgPool() {
@@ -49,6 +49,7 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this._err('검수운영 정보를 불러오지 못했습니다'); }
         finally { this.crewBusy = false; }
         this.loadAssignLog();
+        this.loadCrewWeekly();
       },
 
       async crewSave(m, patch) {
@@ -57,7 +58,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.crewBusy = true;
         try {
           const r = await this._crewPost('/crew-profile', { uid: m.id, patch });
-          if (r && r.ok) { m.profile = r.profile; this.liveToast(m.name + ' 일정 저장했습니다'); await this.loadCrew(); }
+          if (r && r.ok) { m.profile = r.profile; this.liveToast(m.name + ' 일정 저장 완료'); await this.loadCrew(); }
           else this._err((r && r.error) || '저장하지 못했습니다');
         } catch (e) { this._err('저장하지 못했습니다'); }
         finally { this.crewBusy = false; }
@@ -72,7 +73,7 @@ window.PRISM_APP_PARTS.push(() => ({
 
       async crewPlan(apply) {
         const hashes = this.crewAsgPool.map((r) => r.hash);
-        if (!hashes.length) { this.crewMsg = '나눠줄 콘텐츠가 없습니다'; return; }
+        if (!hashes.length) { this.crewMsg = '배정할 콘텐츠가 없습니다'; return; }
         this.crewBusy = true; this.crewMsg = '';
         try {
           const body = { hashes, min_reviewers: this.crewAsgMin, apply: !!apply };
@@ -81,13 +82,13 @@ window.PRISM_APP_PARTS.push(() => ({
           if (r && r.ok) {
             this.crewPlanRes = r;
             if (apply) {
-              this.crewMsg = r.n + '건을 나눠 맡겼습니다';
-              this.liveToast('여력만큼 나눠 맡겼습니다 · ' + r.n + '건');
+              this.crewMsg = r.n + '건 배정 완료';
+              this.liveToast('여력 비례 배정 완료 · ' + r.n + '건');
               this.crewPlanRes = null;
               await this.loadCrew(); await this.loadRaw();
             }
-          } else { this.crewPlanRes = null; this.crewMsg = (r && r.error) || '누구에게 갈지 계산하지 못했습니다'; }
-        } catch (e) { this.crewMsg = '누구에게 갈지 계산하지 못했습니다'; }
+          } else { this.crewPlanRes = null; this.crewMsg = (r && r.error) || '배정 계획을 계산하지 못했습니다'; }
+        } catch (e) { this.crewMsg = '배정 계획을 계산하지 못했습니다'; }
         finally { this.crewBusy = false; }
       },
 
@@ -97,12 +98,12 @@ window.PRISM_APP_PARTS.push(() => ({
           const r = await this._crewPost('/crew-rebalance', { apply: !!apply });
           this.crewMoveRes = r || null;
           if (apply && r && r.ok) {
-            this.liveToast('넘겼습니다 · ' + r.n + '건');
+            this.liveToast('재배정 완료 · ' + r.n + '건');
             await this.loadCrew(); await this.loadRaw();
             this.crewMoveRes = Object.assign({}, r, { applied: true });
           }
           if (this.crewTab !== 'assign') this.crewTab = 'assign';   // 한눈에 보기에서 눌러도 계획이 보이는 곳으로
-        } catch (e) { this._err('넘길 계획을 세우지 못했습니다'); }
+        } catch (e) { this._err('재배정 계획을 세우지 못했습니다'); }
         finally { this.crewBusy = false; }
       },
 
@@ -112,11 +113,11 @@ window.PRISM_APP_PARTS.push(() => ({
           const r = await this._crewPost('/crew-escalate', { apply: !!apply });
           this.crewEscRes = r || null;
           if (apply && r && r.ok) {
-            this.liveToast('세 번째 검수자를 붙였습니다 · ' + r.n + '건');
+            this.liveToast('추가 배정 완료 · ' + r.n + '건');
             await this.loadCrew(); await this.loadRaw(1000);
             this.crewEscRes = Object.assign({}, r, { applied: true });
           }
-        } catch (e) { this._err('갈린 건을 찾지 못했습니다'); }
+        } catch (e) { this._err('불일치 건을 찾지 못했습니다'); }
         finally { this.crewBusy = false; }
       },
 
@@ -126,7 +127,7 @@ window.PRISM_APP_PARTS.push(() => ({
           const r = await this._crewPost('/crew-auto', { apply: true });
           this.crewAutoRes = r || null;
           await this.loadCrew();
-        } catch (e) { this._err('자동 점검에 실패했습니다'); }
+        } catch (e) { this._err('자동 운영 실행에 실패했습니다'); }
         finally { this.crewBusy = false; }
       },
 
@@ -148,12 +149,12 @@ window.PRISM_APP_PARTS.push(() => ({
         return M[a] || M.boksil;
       },
       crewSigTxt(s) {
-        return ({ green: '순조로움', yellow: '늦어질 수 있음', red: '오래 멈춤', idle: '여유 있음',
-                  done: '다 끝냄', leave: '자리 비움', off: '쉬는 중' })[s] || s;
+        return ({ green: '정상', yellow: '지연 우려', red: '정체', idle: '여력 있음',
+                  done: '완료', leave: '부재', off: '비활성' })[s] || s;
       },
       crewStatusTxt(m) {
-        if (m.on_leave) return '자리 비움';
-        return ({ active: '참여 중', onboarding: '적응 중', leave: '휴가', inactive: '쉬는 중' })[m.profile.status] || '참여 중';
+        if (m.on_leave) return '부재';
+        return ({ active: '활동 중', onboarding: '교육 중', leave: '휴가', inactive: '비활성' })[m.profile.status] || '참여 중';
       },
       crewStatusCls(m) {
         if (m.on_leave || m.profile.status === 'leave') return 'ds-badge--warning';
@@ -161,10 +162,34 @@ window.PRISM_APP_PARTS.push(() => ({
         if (m.profile.status === 'inactive') return 'ds-badge--neutral';
         return 'ds-badge--success';
       },
+      // ── 주간 운영 기록(weekops) ─────────────────────────────────────────
+      crewWeekly: null,
+      get crewWeeks() { return (this.crewWeekly && this.crewWeekly.weeks) || []; },
+      async loadCrewWeekly() {
+        try {
+          const r = await (await this._afetch('/crew-weekly?weeks=8')).json();
+          if (r && r.ok) this.crewWeekly = r;
+        } catch (e) { /* 기록은 부가 정보라 실패해도 현황은 그대로 */ }
+      },
+      crewWeekRange(w) { return (w.start || '').slice(5).replace('-', '/') + '~' + (w.end || '').slice(5).replace('-', '/'); },
+      crewNum(v) { return (v === null || v === undefined) ? '·' : v; },
+      // 번다운 막대 위 주 구분: 그 날이 월요일(주 시작)이면 왼쪽에 선을 세운다
+      crewIsWeekStart(day) {
+        const w = this.crewWeekly;
+        if (!w || !w.weeks) return false;
+        return w.weeks.some((x) => x.start === day);
+      },
+      crewWeekLabelOf(day) {
+        const w = this.crewWeekly;
+        if (!w || !w.weeks) return '';
+        const hit = w.weeks.find((x) => x.start === day);
+        return hit ? hit.label : '';
+      },
+
       crewHours(h) {
         const v = Number(h || 0);
-        if (!v) return '남은 일 없음';
-        return v < 1 ? ('약 ' + Math.max(1, Math.round(v * 60)) + '분치') : ('약 ' + v.toFixed(1) + '시간치');
+        if (!v) return '잔여 없음';
+        return v < 1 ? ('예상 ' + Math.max(1, Math.round(v * 60)) + '분') : ('예상 ' + v.toFixed(1) + '시간');
       },
       crewDate(ts) {
         if (!ts) return '';
