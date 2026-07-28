@@ -25,7 +25,7 @@
               <b class="crewstat__v tnum" x-text="crewSum.weekly_capacity || 0"></b>
               <span class="crewstat__s" x-text="(crewSum.active_members || 0) + '명 기준 · 건/주'"></span></div>
             <div class="crewstat"><span class="crewstat__k">완료 예상일</span>
-              <b class="crewstat__v" x-text="crewSum.eta ? (crewSum.eta.slice(5).replace('-','/') + ') : (crewSum.pending ? '산출 불가' : '완료')"></b>
+              <b class="crewstat__v" x-text="crewSum.eta ? crewSum.eta.slice(5).replace('-','/') : (crewSum.pending ? '산출 불가' : '완료')"></b>
               <span class="crewstat__s" x-text="crewSum.due_at ? ('기한 ' + crewDate(crewSum.due_at)) : '기한 미설정'"></span></div>
             <div class="crewstat"><span class="crewstat__k">정체 배정</span>
               <b class="crewstat__v tnum" x-bind:style="crewSum.stale_total ? 'color:var(--ds-danger)' : ''" x-text="crewSum.stale_total || 0"></b>
@@ -297,7 +297,7 @@
                 </template>
               </tbody></table></div>
               <div class="ds-badge ds-badge--warning" style="margin-top:8px" x-show="crewPlanRes && crewPlanRes.over && crewPlanRes.over.length"
-                   x-text="'⚠ ' + (crewPlanRes ? crewPlanRes.over.join(', ') : '') +  은(는) 주간 처리 가능량을 초과합니다 · 기한을 늦추거나 배정량을 줄이세요'"></div>
+                   x-text="'⚠ ' + (crewPlanRes ? crewPlanRes.over.join(', ') : '') + ' 은(는) 주간 처리 가능량을 초과합니다 · 기한을 늦추거나 배정량을 줄이세요'"></div>
               <div class="ds-badge ds-badge--neutral" style="margin-top:8px" x-show="crewPlanRes && crewPlanRes.blocked && crewPlanRes.blocked.length"
                    x-text="'제외: ' + (crewPlanRes ? crewPlanRes.blocked.join(', ') : '') + ' (휴가·교육 중·비활성)'"></div>
               <div class="flex items-center gap-2" style="margin-top:10px">
@@ -319,29 +319,6 @@
           <div class="panel-bd text-xs text-muted">
             여력 계산을 거치지 않고 지정한 대로 배정합니다. 특정 분야 강점 검수자에게 몰아주거나,
             같은 묶음을 여러 명이 함께 볼 때 씁니다.
-          </div>
-        </section>
-
-        <!-- 적응형 겹치기: 전건 3인 대신 2인으로 시작하고 갈린 건에만 한 명 더 -->
-        <section class="panel"><div class="panel-hd"><b>불일치 건 추가 배정</b>
-          <span class="meta">판정이 엇갈린 건에만 세 번째 검수자를 추가합니다 · 전건 3인 배정보다 비용이 크게 낮습니다</span>
-          <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
-                  x-bind:disabled="crewBusy" x-on:click="crewEscalate(false)">추가 배정 계획 보기</button></div>
-          <div class="panel-bd">
-            <div x-show="!crewEscRes" class="text-xs text-muted">판정이 엇갈린 건을 찾아 해당 건을 아직 보지 않은 검수자에게 배정합니다</div>
-            <div x-show="crewEscRes">
-              <div class="text-ink" style="font-weight:650" x-text="crewEscRes ? (crewEscRes.n + '건에 추가 배정 가능') : ''"></div>
-              <div class="flex flex-wrap gap-2" style="margin-top:8px">
-                <template x-for="(n, nm) in (crewEscRes ? crewEscRes.to_counts : {})" x-bind:key="'e'+nm">
-                  <span class="ds-badge ds-badge--success" x-text="nm + ' +' + n"></span></template>
-              </div>
-              <div class="text-xs text-muted" style="margin-top:8px" x-show="crewEscRes && !crewEscRes.n"
-                   x-text="crewEscRes ? (crewEscRes.reason || crewEscRes.error || '현재 판정 불일치 건이 없습니다') : ''"></div>
-              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" style="margin-top:10px"
-                      x-show="crewEscRes && crewEscRes.n && !crewEscRes.applied"
-                      x-bind:disabled="crewBusy" x-on:click="crewEscalate(true)">추가 배정 실행</button>
-              <div class="ds-badge ds-badge--success" style="margin-top:10px" x-show="crewEscRes && crewEscRes.applied">추가 배정 완료</div>
-            </div>
           </div>
         </section>
 
@@ -383,9 +360,6 @@
               <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_rebalance == 1"
                      x-on:change="crewSetting('auto_rebalance', $event.target.checked ? 1 : 0)">
                 <span>기한 1일 전 정체분 재배정</span></label>
-              <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_escalate == 1"
-                     x-on:change="crewSetting('auto_escalate', $event.target.checked ? 1 : 0)">
-                <span>불일치 건 추가 배정</span></label>
             </div>
             <div class="flex flex-wrap gap-2" style="align-items:flex-end;margin-top:10px">
               <div style="width:150px"><label class="lbl">주기 시작 요일</label>
@@ -434,6 +408,43 @@
           <div class="panel-bd text-xs text-muted" x-show="!(assignLog && assignLog.length)">배정 이력이 없습니다</div>
         </section>
       </div>
+  <!-- 주간 본인 확인(전 검수자 · 주차가 넘어간 뒤 첫 로그인에 1회) ─────────────────
+       주간 가용 시간은 '그 주의 약속'이라 지난주 확인은 이번 주 근거가 못 된다.
+       닫기·ESC·바깥 클릭을 막아 확인해야 화면이 이어진다(사용자 결정 2026-07-28).
+       검수운영 탭은 슈퍼관리자 전용이라 본인이 확인할 자리가 없던 문제도 이걸로 해소. -->
+  <div class="ds-dialog-backdrop" x-show="wkConfirmOpen" x-cloak style="z-index:82">
+    <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="이번 주 일정 확인" style="max-width:460px">
+      <h2 class="ds-dialog__title" style="font-family:var(--ds-font-display)">
+        <span x-text="wkConfirmWeek + '주차 일정 확인'"></span></h2>
+      <div class="ds-dialog__body">
+        <ul class="ds-bullets" style="margin-bottom:14px">
+          <li>이번 주에 검수에 낼 수 있는 시간을 확인해 주세요 · 배정량이 이 값에 맞춰집니다.</li>
+          <li>휴가·교육 중·비활성으로 두면 이번 주 배정에서 빠집니다.</li>
+        </ul>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+          <div style="width:150px"><label class="lbl">주간 가용 시간</label>
+            <input type="number" min="0" max="40" step="0.5" class="field tnum" x-model.number="wkForm.hours_per_week"></div>
+          <div style="width:150px"><label class="lbl">상태</label>
+            <select class="field" x-model="wkForm.status">
+              <option value="active">활동 중</option><option value="onboarding">교육 중</option>
+              <option value="leave">휴가</option><option value="inactive">비활성</option></select></div>
+        </div>
+        <div style="margin-top:12px"><label class="lbl">근무 요일</label>
+          <div class="flex flex-wrap gap-1">
+            <template x-for="(d, i) in ['월','화','수','목','금','토','일']" x-bind:key="'wk'+i">
+              <button type="button" class="srcfilter__chip"
+                      x-bind:class="wkForm.workdays.includes(i) ? 'sel' : ''"
+                      x-on:click="wkToggleDay(i)" x-text="d"></button>
+            </template>
+          </div></div>
+        <div class="ds-badge ds-badge--error" style="margin-top:12px" x-show="wkConfirmErr" x-text="wkConfirmErr"></div>
+      </div>
+      <div class="ds-dialog__foot" style="display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="wkConfirmBusy"
+                x-on:click="submitWeekConfirm()" x-text="wkConfirmBusy ? '저장 중…' : '확인하고 시작하기'"></button>
+      </div>
+    </div>
+  </div>
   <!-- 검수자 일괄 배정(슈퍼관리자 이상): ① 콘텐츠 선택 → ② 담당자 지정 → ③ 확인 · 배정 -->
   <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && (bulkOpen=false)" style="z-index:78">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">

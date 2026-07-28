@@ -166,6 +166,8 @@ crew_plan_distribute = CRW.plan_distribute
 crew_rebalance = CRW.rebalance
 crew_auto_tick = CRW.auto_tick
 crew_escalate = CRW.escalate_split
+crew_needs_confirm = CRW.needs_confirm
+crew_confirm_week = CRW.confirm_week
 dashboard_data = DS.dashboard_data
 _dashboard_compute = DS._dashboard_compute
 drill_contents = DS.drill_contents
@@ -1560,6 +1562,16 @@ def _g_crew(h, q):
     return data
 
 
+@_get_route("/crew-confirm")                         # 이번 주 본인 확인 필요 여부(로그인 사용자 본인)
+def _g_crew_confirm(h, q):
+    """검수자 본인이 이번 주 일정을 확인했는지. 주가 바뀌면 다시 필요하다.
+    관리자 전용인 /crew-profile 과 달리 **본인만** 자기 것을 조회·확정한다."""
+    uid = h._bearer_uid() or q.get("reviewer", [""])[0]
+    if not uid:
+        return {"ok": True, "needed": False, "week": 0}
+    return CRW.needs_confirm(uid, h._req_team())
+
+
 @_get_route("/crew-weekly")                          # 주간 운영 기록(슈퍼관리자 이상)
 def _g_crew_weekly(h, q):
     team = h._req_team()
@@ -2124,6 +2136,17 @@ def _p_content_remove(h, body):
               and st.remove_content((data.get("hash") or "").strip(), team=h._req_team()))
     _agg_bump()
     return {"ok": ok}
+
+
+@_post_route("/crew-confirm", gate="login")          # 이번 주 본인 확인 저장(본인 것만)
+def _p_crew_confirm(h, body):
+    data = json.loads(body or b"{}")
+    uid = h._bearer_uid() or (data.get("reviewer") or "").strip()
+    if not uid:
+        h._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+        return None
+    # uid 는 토큰에서만 온다 — 본문의 uid 를 믿으면 남의 확인을 대신 눌러줄 수 있다
+    return CRW.confirm_week(uid, data.get("patch") or {}, team=h._req_team())
 
 
 @_post_route("/crew-profile", gate="super")          # 검수운영: 인력 원장(가용 시간·근무 요일·부재·상태)
