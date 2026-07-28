@@ -1,7 +1,9 @@
 """OpenAI 호환 chat completions 호출 래퍼."""
 from __future__ import annotations
+import http.client
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -30,6 +32,7 @@ class LLMResult:
         self.price_in = price_in
         self.price_out = price_out
         self.fail_kind = fail_kind     # None | content_filter | too_long | auth | ...
+        self.fail_detail = ""          # 실패 원문(예외 메시지·HTTP 본문 앞부분) · 운영 진단용
 
     @property
     def cost_usd(self) -> float:
@@ -147,22 +150,23 @@ class LLMClient:
                 kind = classify_http_error(e.code, detail)
                 return self._fail(kind, f"HTTP{e.code}: {detail}", retries, tag=tag)
             except Exception as e:
-                # 네트워크/타임아웃: 백오프 재시도
+                # 네트워크/타임아웃/응답 형식: 백오프 재시도 후 종류를 나눠 기록
                 last_err = e
                 if attempt < rp.max_retries:
                     retries += 1
                     time.sleep(backoff_delay(attempt, rp.base_delay, rp.max_delay, rp.jitter))
                     continue
-                return self._fail("network", str(e), retries, tag=tag)
+                return self._fail(classify_exc(e), f"{type(e).__name__}: {e}", retries, tag=tag)
         return self._fail("unknown", str(last_err), retries, tag=tag)
 
     def _fail(self, kind, detail, retries, tag=""):
         with self._lock:
             self.fail_counts[kind] = self.fail_counts.get(kind, 0) + 1
-        return ({"_fail": detail, "_fail_kind": kind},
-                LLMResult("", 0, 0, 0, retries,
-                          price_in=self.cfg.prices.chat_in,
-                          price_out=self.cfg.prices.chat_out, fail_kind=kind, tag=tag))
+        res = LLMResult("", 0, 0, 0, retries,
+                        price_in=self.cfg.prices.chat_in,
+                        price_out=self.cfg.prices.chat_out, fail_kind=kind, tag=tag)
+        res.fail_detail = str(detail or "")[:300]      # 원인 원문 보존(하네스 → 실패 원장 → 화면)
+        return ({"_fail": detail, "_fail_kind": kind}, res)
 
     # 내부
     def _call(self, system: str, user: str, json_mode: bool = True) -> LLMResult:
@@ -198,11 +202,22 @@ class LLMClient:
 
         t0 = time.time()
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8", "replace")
         latency = int((time.time() - t0) * 1000)
+        # 200 인데 봉투가 계약과 다른 경우(프록시 HTML·잘린 본문·choices 누락)를 연결 실패로
+        # 오분류하지 않는다 — 여기서 안 잡으면 JSONDecodeError·KeyError 가 network 으로 샌다.
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ResponseError(f"비 JSON 응답({e}): {raw[:120]!r}")
+        if not isinstance(payload, dict):
+            raise ResponseError(f"응답이 객체가 아님({type(payload).__name__})")
 
         choices = payload.get("choices") or []
-        text = (choices[0]["message"]["content"] if choices else "") or ""
+        try:
+            text = (choices[0]["message"]["content"] if choices else "") or ""
+        except (KeyError, IndexError, TypeError) as e:
+            raise ResponseError(f"choices 형식 불일치({e}): {raw[:120]!r}")
         usage = payload.get("usage", {})
         in_tok = usage.get("prompt_tokens", _approx_tokens(system + user))
         out_tok = usage.get("completion_tokens", _approx_tokens(text))
@@ -229,6 +244,29 @@ class ParseError(Exception):
 
 class EmptyError(Exception):
     pass
+
+
+class ResponseError(Exception):
+    """HTTP 200 인데 응답 봉투가 우리 계약과 다름(비 JSON · choices 누락 등).
+    연결 문제가 아니므로 network 으로 뭉뚱그리지 않는다."""
+
+
+def classify_exc(e: Exception) -> str:
+    """비-HTTP 예외 세분화. 종전에는 전부 'network(연결 실패)' 한 바구니라
+    운영에서 '연결 실패' 배지만 보고는 타임아웃인지 응답 형식 문제인지 알 수 없었다
+    (2026-07-28 item_entities 실패 진단 불가). 재시도 정책은 그대로 두고 이름만 나눈다."""
+    if isinstance(e, ResponseError):
+        return "bad_response"
+    if isinstance(e, (TimeoutError, socket.timeout)):          # 3.8 은 socket.timeout != TimeoutError
+        return "timeout"
+    if isinstance(e, urllib.error.URLError):
+        reason = getattr(e, "reason", None)
+        if isinstance(reason, (TimeoutError, socket.timeout)):  # 연결 단계 타임아웃은 URLError 로 감싸여 온다
+            return "timeout"
+        return "network"
+    if isinstance(e, (ConnectionError, http.client.HTTPException, OSError)):
+        return "network"
+    return "unknown"
 
 
 def _parse_json(text: str) -> dict:

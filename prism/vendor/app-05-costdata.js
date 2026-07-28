@@ -13,7 +13,13 @@ window.PRISM_APP_PARTS.push(() => ({
       async loadFails() {
         try { const r = await (await this._afetch('/fail-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.failData = r; } catch (e) {}
       },
-      failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 실패', auth: '인증 오류', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
+      failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 끊김', timeout: '응답 시간 초과', bad_response: '응답 형식 오류', auth: '인증 오류', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
+      // 실패 배지 툴팁: 예외 원문(details · 콜별 1줄)을 그대로 보여 준다. 원문이 없는
+      // 과거 기록은 원인 키만 뜬다(2026-07-28 이전 적재분에는 details 가 없다).
+      failTip(f, k) {
+        const d = ((f || {}).details || []).join('\n');
+        return d ? (k + '\n' + d) : k;
+      },
       // 실패 콘텐츠 개별 재실행: STEP 2 사용 모델로 이 건만 재생성 · 무실패 성공이면 서버가 recent 에서 제거
       async rerunFail(f) {
         await this.rerunOne({ hash: f.hash, title: f.title });

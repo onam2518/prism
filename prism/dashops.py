@@ -106,10 +106,14 @@ def _log_fail_rollup(trace: dict, service: str = "", team=None,
             if ch:                                   # 개별 재실행 대상 식별용(콘텐츠 단위)
                 kinds = sorted({str((f or {}).get("kind") or "unknown") for f in fails})
                 calls = sorted({str((f or {}).get("tag") or "") for f in fails} - {""})
+                # 예외 원문: 종류 배지만으로는 원인을 못 좁힌다(타임아웃 vs 응답 형식 vs 연결).
+                # 콜당 1줄 · 총 3줄로 제한해 원장이 비대해지지 않게 한다.
+                details = [f"{(f or {}).get('tag') or '?'}: {str((f or {}).get('detail') or '')[:160]}"
+                           for f in fails if (f or {}).get("detail")][:3]
                 rec = [e for e in (rep.get("recent") or []) if (e or {}).get("hash") != ch]
                 rec.insert(0, {"hash": ch, "title": (title or "").strip(),
                                "service": svc, "model": model, "kinds": kinds,
-                               "calls": calls, "day": day})
+                               "calls": calls, "details": details, "day": day})
                 rep["recent"] = rec[:_RECENT_FAIL_CAP]
             _SV._report_save("fail_rollup", rep, team)
         first = (fails[0] or {}) if fails else {}
