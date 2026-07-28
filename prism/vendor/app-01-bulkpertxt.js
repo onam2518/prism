@@ -28,7 +28,9 @@ window.PRISM_APP_PARTS.push(() => ({
         if (this.detailNav) (this.detailNav.list || []).forEach(upd);
       },
       // 검수 대상 콘텐츠: 상단 모델→버전 구분 + 필터
-      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: '',
+      // rawRev 기본값 'todo': 내가 판정한 건은 기본으로 숨긴다(할 일 목록) ·
+      // 다시 보려면 검수 필터에서 '전체'·'검수 완료'를 고른다.
+      rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: 'todo',
       // 결과 비교: 요소 단위 모델별 현황 + 콘텐츠별 초안 diff(팝업)
       cmpDraftHash: '', draftsData: null, cmpL: 0, cmpR: 1,
       cmpModalOpen: false, cmpTitle: '', cmpAmiss: false, cmpBmiss: false,
@@ -343,7 +345,8 @@ window.PRISM_APP_PARTS.push(() => ({
         const nav = this.detailNav;
         for (let i = nav.idx + 1; i < nav.list.length; i++) {
           const r = nav.list[i];
-          if (!this.myVerdict(r.fb) && !r._doneLocal) {
+          // 타인 배정분(관리자 목록에만 보임)은 판정할 수 없으니 자동 이동에서 건너뛴다
+          if (!this.myVerdict(r.fb) && !r._doneLocal && !this.assignBlocked(r)) {
             this.openDetail(this._rawToDetail(r));
             nav.idx = i;
             this.detailNav = nav;

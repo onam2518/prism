@@ -492,6 +492,38 @@ class TestExclusiveVerdictUI(unittest.TestCase):
         # 타인 배정분 자리에는 잠금 표시(열람은 가능)
         self.assertIn("!myVerdict(r.fb) && assignBlocked(r)", page.PAGE)
 
+    def test_auto_next_skips_blocked_rows(self):
+        body = self._fn_body(self._src("prism/vendor/app-01-bulkpertxt.js"), "detailNextTodo")
+        self.assertIn("!this.assignBlocked(r)", body)   # 자동 이동이 잠긴 행에 멈추지 않게
+
+
+class TestRawListHidesDone(unittest.TestCase):
+    """검수 대상 목록 기본값: 내가 판정한 건은 감춘다(할 일 목록) ·
+    '검수 전체'·'검수 완료' 필터를 고르면 다시 보인다."""
+
+    def _src(self, rel):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, rel), encoding="utf-8") as f:
+            return f.read()
+
+    def test_default_filter_is_todo(self):
+        self.assertIn("rawRev: 'todo'", self._src("prism/vendor/app-01-bulkpertxt.js"))
+
+    def test_done_filter_options_still_available(self):
+        from prism import page
+        # 기본(미검수)이 첫 항목 · 전체·완료 선택지는 남아 있어야 다시 볼 수 있다
+        self.assertIn('<option value="todo">미검수</option>', page.PAGE)
+        self.assertIn('<option value="">검수 전체</option>', page.PAGE)
+        self.assertIn('<option value="done">검수 완료</option>', page.PAGE)
+
+    def test_hidden_count_hint_present(self):
+        from prism import page
+        self.assertIn("rawDoneHidden", page.PAGE)          # 감춘 건수 힌트(사라진 게 아님을 알림)
+        self.assertIn("rawRev=''", page.PAGE)               # 한 번에 펼치기
+        src = self._src("prism/vendor/app-02-_afterverdict.js")
+        self.assertIn("get rawDoneHidden()", src)
+        self.assertIn("get rawScoped()", src)               # 힌트와 목록이 같은 모집단을 쓴다
+
 
 if __name__ == "__main__":
     unittest.main()

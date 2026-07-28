@@ -497,9 +497,12 @@
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
               <select class="field" style="width:auto" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
               <select class="field" style="width:auto" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
-              <select class="field" style="width:auto" x-model="rawRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
+              <!-- 기본 '미검수': 내가 판정한 건은 감춘다(할 일 목록) · 완료분은 아래 힌트나 이 필터로 다시 본다 -->
+              <select class="field" style="width:auto" x-model="rawRev"><option value="todo">미검수</option><option value="">검수 전체</option><option value="done">검수 완료</option></select>
               <button type="button" class="srcfilter__chip" x-bind:class="rawGapFirst ? 'sel' : ''" x-on:click="rawGapFirst = !rawGapFirst" data-tip="정답셋이 부족한 분류의 콘텐츠를 앞으로 올립니다 · 이 분류의 검수가 정답셋 채우기에 더 기여해요" data-tip-pos="top">분류 부족 우선</button>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
+              <!-- 기본 숨김을 눈에 보이게: 완료분이 사라진 게 아니라 감춰졌다는 신호 + 한 번에 펼치기 -->
+              <button type="button" class="copybtn" x-show="rawDoneHidden" x-cloak x-on:click="rawRev=''" data-tip="내가 판정한 건은 기본으로 감춥니다 · 누르면 전체를 봅니다" data-tip-pos="top" x-text="'검수 완료 ' + rawDoneHidden + '건 숨김 · 보기'"></button>
               <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="rawGapFirst ? '부족 분류 먼저 · 그 안에서는 최근 실행순' : '정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다'" data-tip-pos="top" x-text="rawGapFirst ? '부족 분류 우선' : '최근순'"></span>
             </div>
             <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th><th style="width:150px" x-show="assignAdmin" data-tip="검수 담당자 배정 · 배정 시 담당자에게만 노출됩니다" data-tip-pos="top">담당</th></tr></thead><tbody>
