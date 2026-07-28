@@ -41,6 +41,9 @@
 - HTTP 디스패치 `serve.py` · 학습·골든·소요서·핸드오프 번들 `learnops.py` ·
   UI 마크업 `prism/ui/NN-*.html`(합성: `page.py`) · 앱 JS `vendor/app-NN-*.js`(로더:
   `vendor/app.js`) · 저장 계층 `store.py`(SQLite) / `supastore.py`(팀)
+- 모델 선택은 `<x-modelpick …>` 한 줄로 쓴다(`page.py` 합성 중 드롭다운 마크업으로 펼침 ·
+  데이터는 `vendor/app-13-modelpick.js` · 이름·비용 등급 원천은 `prism/modelmeta.py`).
+  네이티브 `<select>` 로 모델 목록을 새로 만들지 말 것.
 - 새 GET 라우트는 `serve.py` 의 `@_get_route` 테이블에 등록(최장 접두 우선 · 순서 무관).
   POST 도 동일하게 `@_post_route` 테이블(게이트 옵션 admin·super·login·team 지원).
 - 새 도메인 기능은 serve.py 에 쌓지 말고 별도 모듈로 시작(`usermeta.py`·`entdict.py` 패턴).
