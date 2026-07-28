@@ -10,16 +10,18 @@ window.PRISM_APP_PARTS.push(() => ({
       get rawModels() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.model).filter(Boolean))]; },
       get rawSvcs() { return [...new Set(((this.rawData||{}).items||[]).map((r) => r.service).filter(Boolean))]; },
       rawGapFirst: false,                        // 부족 분류 우선 보기(능동학습: 라벨 예산을 부족 클래스로)
-      // 배정 배타 노출: 지정 검수자가 있는데 내가 아니면 목록에서 숨김(미배정은 전원 노출).
-      // my_id 우선(닉네임 변경에 안전) · 로컬(sqlite)은 이름 폴백 · detailAssignBlocked 과 동일 규약.
-      // 생성자·슈퍼관리자(opsAdmin)는 배정 무관 전체 열람 → 배타 숨김 예외.
-      assignedToOther(r) {
-        if (this.opsAdmin) return false;
+      // 배정 배타 판정: 지정 검수자가 있는데 내가 아니면 판정 불가 — 생성자·관리자도 예외 없다
+      // (서버 reviewops 게이트와 같은 규약 · 직접 검수하려면 배정을 수정). 미배정은 전원 가능.
+      // my_id 우선(닉네임 변경에 안전) · 로컬(sqlite)은 이름 폴백.
+      assignBlocked(r) {
         const a = (r && r.assignees) || [];
         if (!a.length) return false;
         const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || '';
         return a.indexOf(me) < 0;
       },
+      // 배정 배타 노출: 타인 배정분은 목록에서 숨김(미배정은 전원 노출).
+      // 생성자·슈퍼관리자(opsAdmin)는 배정 무관 전체 '열람' → 숨김만 예외(판정은 위 규칙 그대로).
+      assignedToOther(r) { return this.opsAdmin ? false : this.assignBlocked(r); },
       get rawFiltered() {
         const out = (((this.rawData||{}).items)||[]).filter((r) => {
           if (this.assignedToOther(r)) return false;   // 내 배정분 + 미배정분만(타인 배정분 숨김)

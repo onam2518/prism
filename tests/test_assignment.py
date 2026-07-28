@@ -442,5 +442,56 @@ class TestExclusiveVerdict(AssignmentBase):
         self.assertEqual(st.feedback_map().get("h1"), None)
 
 
+class TestExclusiveVerdictUI(unittest.TestCase):
+    """화면 규칙이 서버 게이트(TestExclusiveVerdict)와 어긋나지 않는지.
+
+    2026-07-22 에 생성자·슈퍼관리자(opsAdmin)를 '열람' 예외로 풀면서 판정 잠금까지 같이 풀려,
+    관리자에게는 검수하기 버튼·판정 버튼이 열려 있는데 서버가 거절하는 막다른 길이 됐다.
+    열람 예외(assignedToOther)와 판정 규칙(assignBlocked)은 분리돼 있어야 한다."""
+
+    def _src(self, rel):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, rel), encoding="utf-8") as f:
+            return f.read()
+
+    def _fn_body(self, src, name):
+        """`name(...) {` 부터 중괄호 균형이 맞는 지점까지(함수 본문)."""
+        i = src.index(name + "(")
+        i = src.index("{", i)
+        depth, j = 0, i
+        while j < len(src):
+            if src[j] == "{":
+                depth += 1
+            elif src[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    return src[i:j + 1]
+            j += 1
+        raise AssertionError(name + " 본문을 찾지 못했습니다")
+
+    def test_assign_blocked_has_no_admin_bypass(self):
+        body = self._fn_body(self._src("prism/vendor/app-02-_afterverdict.js"), "assignBlocked")
+        self.assertNotIn("opsAdmin", body)            # 판정 규칙에는 관리자 예외가 없어야 한다
+        self.assertIn("assignees", body)
+
+    def test_view_exception_is_admin_only_and_separate(self):
+        src = self._src("prism/vendor/app-02-_afterverdict.js")
+        body = self._fn_body(src, "assignedToOther")
+        self.assertIn("opsAdmin", body)               # 열람은 관리자 예외 유지(전체 노출)
+        self.assertIn("assignBlocked", body)          # 그 외 판단은 공용 규칙에 위임
+
+    def test_detail_verdict_lock_uses_shared_rule(self):
+        body = self._fn_body(self._src("prism/vendor/app-01-bulkpertxt.js"), "detailAssignBlocked")
+        self.assertNotIn("opsAdmin", body)
+        self.assertIn("assignBlocked", body)
+
+    def test_review_button_hidden_for_others_assignment(self):
+        from prism import page
+        # 검수하기 버튼: 내 판정 없음 + 내가 판정 가능한 건에만 노출
+        self.assertIn("!myVerdict(r.fb) && !assignBlocked(r)", page.PAGE)
+        # 타인 배정분 자리에는 잠금 표시(열람은 가능)
+        self.assertIn("!myVerdict(r.fb) && assignBlocked(r)", page.PAGE)
+
+
 if __name__ == "__main__":
     unittest.main()
