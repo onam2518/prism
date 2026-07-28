@@ -2179,6 +2179,21 @@ def _p_crew_rebalance(h, body):
     return CRW.rebalance(team=h._req_team(), apply=bool(data.get("apply")), by=actor)
 
 
+def _drop_finals(reviewers, team=None):
+    """배정 대상에서 최종검수자를 걸러낸다(수동 경로 · 자동은 crewops._assignable).
+
+    최종검수자는 기초 판정이 갈렸을 때 확정하는 2층 역할이라 같은 콘텐츠의 기초 검수를
+    맡으면 자기 판정을 자기가 확정하게 된다(사용자 결정 2026-07-28). 화면은 후보에서
+    빼지만 API 직접 호출도 있으므로 서버가 최종 방어선이다.
+    반환 (걸러진 목록, 제외된 id 목록)."""
+    try:
+        finals = set(reviewer_roles(team) or {})
+    except Exception:
+        return list(reviewers), []
+    keep = [r for r in reviewers if r not in finals]
+    return keep, [r for r in reviewers if r in finals]
+
+
 @_post_route("/content-assign-bulk", gate="super")   # 여러 콘텐츠 일괄 배정(덮어쓰기)
 def _p_content_assign_bulk(h, body):
     data = json.loads(body or b"{}")
@@ -2187,11 +2202,16 @@ def _p_content_assign_bulk(h, body):
     hashes = [str(x).strip() for x in (data.get("hashes") or [])
               if str(x).strip() and not str(x).strip().startswith("gold:")]
     reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
+    reviewers, dropped = _drop_finals(reviewers, h._req_team())
     try:
         minr = int(data.get("min_reviewers") or 1)
     except (TypeError, ValueError):
         minr = 1
     st = get_store()
+    if dropped and not reviewers:
+        h._send(400, json.dumps({"error": "최종검수자는 기초 검수 배정 대상이 아닙니다"},
+                                ensure_ascii=False), _JSON)
+        return None
     if not (hashes and st and hasattr(st, "set_assignees_bulk")):
         h._send(400, json.dumps({"error": "대상 없음 또는 미지원 백엔드"}, ensure_ascii=False), _JSON)
         return None
@@ -2220,6 +2240,11 @@ def _p_content_assign(h, body):
     data = json.loads(body or b"{}")
     ch = (data.get("hash") or "").strip()
     reviewers = [str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()]
+    reviewers, dropped = _drop_finals(reviewers, h._req_team())
+    if dropped and not reviewers:
+        h._send(400, json.dumps({"error": "최종검수자는 기초 검수 배정 대상이 아닙니다"},
+                                ensure_ascii=False), _JSON)
+        return None
     try:
         minr = int(data.get("min_reviewers") or 1)
     except (TypeError, ValueError):
