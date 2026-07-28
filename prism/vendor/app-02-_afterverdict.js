@@ -132,7 +132,8 @@ window.PRISM_APP_PARTS.push(() => ({
       init() {
         this.loadReviewer();                           // 검수자·토큰(localStorage) · refreshConfig 의 관리자 로드보다 먼저
         if (this.authToken) {                          // 관리자 판정을 /config 성공에 묶지 않는다(새로고침 경합 방지)
-          const kick = () => { this.ensureAdmin(); this.syncProfile(); };   // 프로필 = 서버 기준(닉네임 변경 기기 간 반영)
+          // 주간 본인 확인: 주차가 넘어간 뒤 첫 로그인에서 한 번 받는다(확인 전 진행 차단)
+          const kick = () => { this.ensureAdmin(); this.syncProfile(); this.checkWeekConfirm(); };   // 프로필 = 서버 기준(닉네임 변경 기기 간 반영)
           this.rtoken ? this.authRefresh().then(kick, kick) : kick();   // 부팅 선갱신: 만료 토큰 새로고침 케이스
         }
         setInterval(() => { if (this.rtoken && this.authToken) this.authRefresh(); }, 45 * 60 * 1000);   // 1h 만료 전 주기 연장

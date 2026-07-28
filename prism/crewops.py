@@ -101,7 +101,44 @@ def profiles(team=None) -> dict:
 def _blank_profile(cfg: dict) -> dict:
     return {"hours_per_week": float(cfg["default_hours"]), "workdays": [0, 1, 2, 3, 4],
             "status": "active", "leave_from": "", "leave_to": "", "note": "",
-            "rate_override": 0, "confirmed": False}
+            "rate_override": 0, "confirmed": False, "confirmed_week": 0}
+
+
+def _current_week() -> int:
+    """현재 주차(weekops 원천). 주차 정의가 두 벌이 되면 확인 만료 시점이 어긋난다."""
+    try:
+        from .weekops import current_week
+        return int(current_week())
+    except Exception:
+        return 0
+
+
+def needs_confirm(uid: str, team=None) -> dict:
+    """이번 주 본인 확인이 필요한지. 검수자는 주가 바뀌면 다시 확인해야 한다.
+
+    이번 주차 확인이 없으면 needed=True 와 함께 현재 프로필을 돌려준다(팝업이 그대로 채운다).
+    프로필이 아예 없는 신규 검수자도 needed=True — 첫 확인으로 기본값을 본인이 승인한다."""
+    uid = (uid or "").strip()
+    cur = _current_week()
+    if not uid or cur <= 0:
+        return {"ok": True, "needed": False, "week": cur}
+    prof = dict((profiles(team) or {}).get(uid) or _blank_profile(settings(team)))
+    needed = int(prof.get("confirmed_week") or 0) != cur
+    return {"ok": True, "needed": needed, "week": cur, "profile": prof}
+
+
+def confirm_week(uid: str, patch=None, team=None) -> dict:
+    """본인 확인(+ 그 자리에서 고친 이번 주 일정). 본인만 호출한다(라우트가 uid 를 강제)."""
+    uid = (uid or "").strip()
+    if not uid:
+        return {"ok": False, "error": "로그인이 필요합니다"}
+    body = dict(patch or {})
+    body.pop("confirmed_week", None)                # 확인 주차는 서버가 정한다(위조 방지)
+    body["confirmed"] = True
+    r = set_profile(uid, body, team=team, by=uid)
+    if r.get("ok"):
+        r["week"] = _current_week()
+    return r
 
 
 def set_profile(uid: str, patch: dict, team=None, by: str = "") -> dict:
@@ -143,7 +180,15 @@ def set_profile(uid: str, patch: dict, team=None, by: str = "") -> dict:
         except (TypeError, ValueError):
             p["rate_override"] = 0
     if "confirmed" in patch:
+        # 확인은 '주차 단위'로 유효하다. 주간 가용 시간은 그 주의 약속이라, 주가 바뀌면
+        # 지난주 확인은 이번 주 근거가 못 된다(사용자 결정 2026-07-28).
         p["confirmed"] = bool(patch.get("confirmed"))
+        p["confirmed_week"] = int(_current_week()) if p["confirmed"] else 0
+    if "confirmed_week" in patch:                   # 테스트·복구용 직접 지정
+        try:
+            p["confirmed_week"] = max(0, int(patch.get("confirmed_week") or 0))
+        except (TypeError, ValueError):
+            p["confirmed_week"] = 0
     p["updated_at"] = time.time()
     p["updated_by"] = (by or "")[:80]
     items[uid] = p

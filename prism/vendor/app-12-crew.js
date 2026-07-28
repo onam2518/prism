@@ -162,6 +162,51 @@ window.PRISM_APP_PARTS.push(() => ({
         if (m.profile.status === 'inactive') return 'ds-badge--neutral';
         return 'ds-badge--success';
       },
+      /* ── 주간 본인 확인 팝업 ─────────────────────────────────────────────
+         주간 가용 시간은 '그 주의 약속'이라 주가 바뀌면 지난주 확인이 근거가 못 된다.
+         주차가 넘어간 뒤 첫 로그인에서 한 번 받고, 확인 전에는 화면을 진행시키지 않는다
+         (사용자 결정 2026-07-28). 검수운영 탭은 슈퍼관리자 전용이라 본인이 확인할
+         자리가 아예 없었던 문제도 이걸로 해소된다. */
+      wkConfirmOpen: false, wkConfirmWeek: 0, wkConfirmBusy: false, wkConfirmErr: '',
+      wkForm: { hours_per_week: 0, workdays: [], status: 'active' },
+
+      async checkWeekConfirm() {
+        if (!this.reviewer && !this.authToken) return;      // 로그인 전에는 묻지 않는다
+        try {
+          // 운영(supabase)은 토큰 uid 를 쓰고, 로컬 단독은 토큰이 없어 reviewer 로 식별한다
+          const q = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : '';
+          const r = await (await this._afetch('/crew-confirm' + q, { headers: this._authHeaders() })).json();
+          if (!(r && r.ok && r.needed)) return;
+          const p = r.profile || {};
+          this.wkForm = { hours_per_week: Number(p.hours_per_week || 0),
+                          workdays: (p.workdays || []).slice(),
+                          status: p.status || 'active' };
+          this.wkConfirmWeek = r.week || 0;
+          this.wkConfirmOpen = true;
+        } catch (e) { /* 확인 절차가 앱을 막지는 않는다 */ }
+      },
+      wkToggleDay(i) {
+        const d = this.wkForm.workdays.slice();
+        const at = d.indexOf(i);
+        if (at >= 0) d.splice(at, 1); else d.push(i);
+        this.wkForm.workdays = d.sort((a, b) => a - b);
+      },
+      async submitWeekConfirm() {
+        this.wkConfirmBusy = true; this.wkConfirmErr = '';
+        try {
+          const r = await this._crewPost('/crew-confirm', { reviewer: this.reviewer, patch: {
+            hours_per_week: this.wkForm.hours_per_week,
+            workdays: this.wkForm.workdays,
+            status: this.wkForm.status } });
+          if (r && r.ok) {
+            this.wkConfirmOpen = false;
+            this.liveToast(this.wkConfirmWeek + '주차 일정 확인 완료');
+            if (this.crewData) this.loadCrew();
+          } else { this.wkConfirmErr = (r && r.error) || '저장하지 못했습니다'; }
+        } catch (e) { this.wkConfirmErr = '저장하지 못했습니다'; }
+        finally { this.wkConfirmBusy = false; }
+      },
+
       // ── 주간 운영 기록(weekops) ─────────────────────────────────────────
       crewWeekly: null,
       get crewWeeks() { return (this.crewWeekly && this.crewWeekly.weeks) || []; },
