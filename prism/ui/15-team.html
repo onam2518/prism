@@ -1,7 +1,7 @@
       <!-- ═══ 모듈: 운영 관리 ═══ -->
       <!-- 팀 관리(계정·권한)와 검수운영(사람의 여력·일정·일 나누기)은 성격이 달라 탭으로 나눈다.
            검수운영 탭은 슈퍼관리자 이상만(메뉴 권한 매트릭스의 crew 항목을 그대로 쓴다). -->
-      <div x-show="mod === 'admin'" x-cloak class="w-full" style="margin-bottom:10px">
+      <div x-show="mod === 'admin'" x-cloak class="w-full" style="margin-bottom:0">
         <div class="evaltabs">
           <button type="button" x-bind:class="adminTab==='team'?'sel':''" x-on:click="adminTab='team'; loadAdmin()">팀 관리</button>
           <button type="button" x-show="canMenu('crew', 'opsadmin')" x-bind:class="adminTab==='crew'?'sel':''"

@@ -785,4 +785,6 @@
         </div>
       </div>
 
-      <div class="ca-root"><div class="ca-toast" x-show="caMsg" x-cloak x-text="caMsg"></div></div>
+      <!-- 토스트는 position:fixed 라 자리를 차지할 이유가 없는데, 래퍼가 .canvas 의 flex 아이템으로
+           남아 화면마다 gap 한 칸(20px)을 더 벌리고 있었다 → display:contents 로 레이아웃에서 뺀다. -->
+      <div class="ca-root" style="display:contents"><div class="ca-toast" x-show="caMsg" x-cloak x-text="caMsg"></div></div>

@@ -416,19 +416,19 @@ def _coach_flags(card: dict, cfg: dict, team_good: float) -> list:
     out = []
     ms = card["measured"]
     if ms["n_total"] >= 20 and 0 < ms["median_sec"] < float(cfg["speed_floor_sec"]):
-        out.append({"id": "speed", "label": "너무 빠름",
-                    "hint": f"한 건에 {ms['median_sec']:.0f}초 · 본문을 읽기 어려운 속도예요"})
+        out.append({"id": "speed", "label": "속도 이상",
+                    "hint": f"건당 {ms['median_sec']:.0f}초 · 본문 통독이 어려운 속도"})
     q = card["quality"]
     if q["gold_n"] >= 5 and q["gold_acc"] < float(cfg["gold_min_acc"]):
-        out.append({"id": "gold", "label": "정답 문항 많이 틀림",
-                    "hint": f"정답이 정해진 문항을 {q['gold_acc']:.0%}만 맞혔어요"})
+        out.append({"id": "gold", "label": "골드 정답률 낮음",
+                    "hint": f"골드 문항 정답률 {q['gold_acc']:.0%}"})
     if (q["good_ratio"] is not None and q["n_judged"] >= _MIN_JUDGE_SAMPLE
             and abs(q["good_ratio"] - team_good) >= 0.25):
-        out.append({"id": "drift", "label": "판단 기준이 팀과 다름",
+        out.append({"id": "drift", "label": "팀 기준과 편차",
                     "hint": f"정확 판정 {q['good_ratio']:.0%} · 팀은 {team_good:.0%}"})
     if card["profile"].get("status") == "onboarding" and q["gold_n"] < int(cfg["calib_target"]):
-        out.append({"id": "calib", "label": "기준 맞추는 중",
-                    "hint": f"연습 문항 {q['gold_n']}개 / {int(cfg['calib_target'])}개"})
+        out.append({"id": "calib", "label": "기준 보정 중",
+                    "hint": f"골드 문항 {q['gold_n']}개 / 기준 {int(cfg['calib_target'])}개"})
     return out
 
 
