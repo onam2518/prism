@@ -124,7 +124,13 @@ def needs_confirm(uid: str, team=None) -> dict:
         return {"ok": True, "needed": False, "week": cur}
     prof = dict((profiles(team) or {}).get(uid) or _blank_profile(settings(team)))
     needed = int(prof.get("confirmed_week") or 0) != cur
-    return {"ok": True, "needed": needed, "week": cur, "profile": prof}
+    out = {"ok": True, "needed": needed, "week": cur, "profile": prof}
+    try:                                            # 팝업이 '언제부터 언제까지'를 밝힐 수 있게
+        from .weekops import week_range
+        out["start"], out["end"] = week_range(cur)
+    except Exception:
+        pass
+    return out
 
 
 def confirm_week(uid: str, patch=None, team=None) -> dict:

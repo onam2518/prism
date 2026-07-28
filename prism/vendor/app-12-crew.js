@@ -167,7 +167,7 @@ window.PRISM_APP_PARTS.push(() => ({
          주차가 넘어간 뒤 첫 로그인에서 한 번 받고, 확인 전에는 화면을 진행시키지 않는다
          (사용자 결정 2026-07-28). 검수운영 탭은 슈퍼관리자 전용이라 본인이 확인할
          자리가 아예 없었던 문제도 이걸로 해소된다. */
-      wkConfirmOpen: false, wkConfirmWeek: 0, wkConfirmBusy: false, wkConfirmErr: '',
+      wkConfirmOpen: false, wkConfirmWeek: 0, wkConfirmRange: '', wkConfirmBusy: false, wkConfirmErr: '',
       wkForm: { hours_per_week: 0, workdays: [], status: 'active' },
 
       async checkWeekConfirm() {
@@ -182,6 +182,8 @@ window.PRISM_APP_PARTS.push(() => ({
                           workdays: (p.workdays || []).slice(),
                           status: p.status || 'active' };
           this.wkConfirmWeek = r.week || 0;
+          this.wkConfirmRange = (r.start && r.end)
+            ? (r.start.slice(5).replace('-', '/') + '~' + r.end.slice(5).replace('-', '/')) : '';
           this.wkConfirmOpen = true;
         } catch (e) { /* 확인 절차가 앱을 막지는 않는다 */ }
       },
