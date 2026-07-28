@@ -32,6 +32,10 @@
           </div>
         </section>
       </div>
+      <!-- ⚠ x-bind:disabled 에 객체 인덱스(rerunBusy[hash])를 그대로 쓰면 안 된다.
+           Alpine 3.14 는 '없는 키' 접근 결과를 falsy 로 안 보고 disabled 를 걸어버려서,
+           한 번도 누르지 않은 버튼이 처음부터 잠긴다(2026-07-28 · 재실행 버튼 전건 비활성).
+           !! 로 불린 변환해서 넘긴다. -->
       <!-- 메타 생성 실패 콘텐츠: 단일 목록표(종류·콜 = 열) · 건별 재실행 · 빈 목록도 상시 노출
            30일 집계(top·by_*)는 /fail-rollup 응답에 유지(화면 미노출 · 필요 시 재노출) -->
       <div x-show="mod === 'content' && failData" x-cloak class="w-full" style="margin-top:14px">
@@ -48,7 +52,7 @@
                   <td><template x-for="k in (f.kinds||[])" x-bind:key="'frk'+f.hash+k"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="k" data-tip-pos="top" x-text="failKindKr(k)"></span></template></td>
                   <td><template x-for="c in (f.calls||[])" x-bind:key="'frc'+f.hash+c"><span class="ds-badge ds-badge--neutral" style="margin:1px" x-text="c"></span></template><span class="text-muted" x-show="!(f.calls||[]).length">·</span></td>
                   <td class="tnum text-muted" x-text="(f.day||'').slice(5).replace('-','/')"></td>
-                  <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="rerunBusy[f.hash]" x-on:click="rerunFail(f)" x-text="rerunBusy[f.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 건당 비용 발생" data-tip-pos="left"></button></td>
+                  <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="!!rerunBusy[f.hash]" x-on:click="rerunFail(f)" x-text="rerunBusy[f.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 건당 비용 발생" data-tip-pos="left"></button></td>
                 </tr>
               </template>
             </tbody></table></div>
@@ -72,7 +76,7 @@
                 <td><span class="ds-badge" x-bind:class="c.purpose === 'eval' ? 'ds-badge--warning' : 'ds-badge--neutral'" x-text="c.purpose === 'eval' ? '평가용' : '검수용'"></span></td>
                 <td><div class="flex items-center gap-1.5">
                   <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-on:click="togglePurpose(c)" x-text="c.purpose === 'eval' ? '검수용 전환' : '평가용 전환'"></button>
-                  <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="rerunBusy[c.hash]" x-on:click="rerunOne(c)" x-text="rerunBusy[c.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 이전 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="left"></button>
+                  <button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="!!rerunBusy[c.hash]" x-on:click="rerunOne(c)" x-text="rerunBusy[c.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 이전 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="left"></button>
                   <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger" style="height:26px;padding:0 10px;font-size:11px" x-on:click="removeContent(c)" x-text="delArm === c.hash ? '삭제 확인' : '삭제'" data-tip="검수 목록·결과 비교(초안)·피드백까지 함께 삭제됩니다" data-tip-pos="left"></button>
                 </div></td>
               </tr>
