@@ -400,8 +400,15 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
                 age = (now - asg_ts.get((ch, rv), 0)) / 86400 if asg_ts.get((ch, rv)) else 0.0
                 c[2] = max(c[2], age)
 
-    ids = sorted(set(rvs) | set(meas) | set(profs) | set(load),
+    # 명단의 기준은 **현재 팀원(rvs)** 이다. 판정 이력·프로필·배정만 남은 id 는 팀에서
+    # 빠진 사람이라, 명단에 남으면 배정 후보·팀 캐파·평균에 계속 섞인다
+    # (2026-07-28 신고: 팀에서 제거한 '테스트'가 운영 관리에 계속 노출 — 프로필만 남아 있었다).
+    # rvs 조회가 실패해 비면 화면이 통째로 비므로, 그때만 이력 합집합으로 폴백한다.
+    seen = set(rvs) | set(meas) | set(profs) | set(load)
+    ids = sorted((seen & set(rvs)) if rvs else seen,
                  key=lambda i: -(meas.get(i, {}).get("n28", 0)))
+    # 팀에서 빠졌는데 배정이 남아 있으면 그 콘텐츠는 아무도 못 본다 — 조용히 사라지지 않게 남긴다
+    orphan = sorted({rv for rv in load if rv not in ids and (load.get(rv) or [0, 0, 0.0])[1] > 0}) if rvs else []
     members = []
     for uid in ids:
         if scope_uid and uid != scope_uid:
@@ -445,7 +452,10 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
            "scope": "me" if scope_uid else "team", "server_now": now}
     if scope_uid:
         return out
-    out["summary"] = _summary(members, fmap, targets, golden, cfg, due_at, now, team_rate)
+    orphan_info = [{"id": rv, "name": (rvs.get(rv) or {}).get("name") or rv[:8],
+                    "pending": (load.get(rv) or [0, 0, 0.0])[1]} for rv in orphan]
+    out["summary"] = _summary(members, fmap, targets, golden, cfg, due_at, now, team_rate,
+                              orphan_info=orphan_info)
     out["burndown"] = _burndown(fmap, targets, asg, days=21)
     return out
 
@@ -502,8 +512,11 @@ def _signal(card: dict, cfg: dict, due_at: float, now: float) -> str:
     return "green"
 
 
-def _summary(members, fmap, targets, golden, cfg, due_at, now, team_rate) -> dict:
-    """현황판 요약: 남은 일의 크기 · 팀 캐파 · 예상 완료일 · 유휴 · 정체 · 2층 대기."""
+def _summary(members, fmap, targets, golden, cfg, due_at, now, team_rate, orphan_info=None) -> dict:
+    """현황판 요약: 남은 일의 크기 · 팀 캐파 · 예상 완료일 · 유휴 · 정체 · 2층 대기.
+
+    orphan_info = 팀에서 빠졌는데 미완료 배정이 남은 사람들(그 콘텐츠는 아무도 못 본다)."""
+    orphan_info = list(orphan_info or [])
     pending = sum(m["load"]["pending"] for m in members)
     hours_left = round(sum(m["hours_left"] for m in members), 1)
     weekly = sum(m["weekly_capacity"] for m in members if m["available"])
@@ -520,6 +533,7 @@ def _summary(members, fmap, targets, golden, cfg, due_at, now, team_rate) -> dic
     if pending and weekly > 0:
         eta = day_key(now + (pending / weekly) * 7 * 86400)
     return {"pending": pending, "hours_left": hours_left, "weekly_capacity": weekly,
+            "orphan": orphan_info,
             "eta": eta, "idle": idle, "idle_spare": sum(i["spare"] for i in idle),
             "stale": stale[:10], "stale_total": sum(s["pending"] for s in stale),
             "final_pending": split, "golden_n": len(golden), "targets_n": len(targets),

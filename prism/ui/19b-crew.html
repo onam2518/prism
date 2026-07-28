@@ -39,6 +39,20 @@
           </div>
         </div></div>
 
+        <!-- 팀에서 빠졌는데 배정이 남은 사람: 그 콘텐츠는 아무도 못 본다(명단에서 빠지면서
+             조용히 사라지던 것을 드러낸다 · 재배정으로 회수한다). -->
+        <div class="panel" x-show="(crewSum.orphan || []).length" x-cloak style="border-color:var(--ds-danger)">
+          <div class="panel-hd"><b>팀에서 빠진 검수자의 배정</b>
+            <span class="meta">이 콘텐츠는 지금 아무도 볼 수 없습니다 · 재배정으로 회수하세요</span>
+            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px"
+                    x-bind:disabled="crewBusy" x-on:click="crewRebalance(false)">재배정 계획 보기</button></div>
+          <div class="panel-bd flex flex-wrap gap-2">
+            <template x-for="o in (crewSum.orphan || [])" x-bind:key="'orp'+o.id">
+              <span class="ds-badge ds-badge--error" x-text="o.name + ' ' + o.pending + '건'"></span>
+            </template>
+          </div>
+        </div>
+
         <!-- 멈춘 일·여유 인원은 '알림'이 아니라 '지금 누를 수 있는 버튼'이어야 한다 -->
         <div class="panel" x-show="crewSum.stale_total" style="border-color:var(--ds-danger)">
           <div class="panel-hd"><b>정체 배정</b><span class="meta">방치해도 해소되지 않습니다 · 여력 있는 검수자에게 재배정하세요</span>
