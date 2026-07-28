@@ -862,6 +862,13 @@ class Store:
                 out[ch]["min"] = max(1, min(len(out[ch]["reviewers"]), int(n or 1)))
         return out
 
+    def assignment_times(self, team=None) -> dict:
+        """(content_hash, reviewer) → 배정 시각(epoch) · 검수운영의 정체 일수 산정용.
+        '언제 배정됐는지'가 있어야 '며칠째 손 안 댔는지'를 말할 수 있다(crewops)."""
+        c = self._conn()
+        return {(ch, rv): float(ts or 0) for ch, rv, ts in c.execute(
+            "SELECT content_hash,reviewer,ts FROM assignments WHERE team=?", (team or "",))}
+
     def assignment_load(self, team=None) -> dict:
         """검수자별 미완료 배정 부하 {reviewer: n} · 균등 분배 배정의 가중 원천.
         부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(완료분은 부하 아님)."""
