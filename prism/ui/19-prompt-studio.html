@@ -35,7 +35,7 @@
           <div class="panel-bd">
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
               <span class="selctl" data-tip="스펙을 읽고 프롬프트를 설계하는 메타 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">메타 컴파일러</span>
-                <select class="field" x-model="bSpec.meta_model"><option value="">현재 설정 모델</option><template x-for="m in availableModels" x-bind:key="'bm'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                <x-modelpick key="bm" value="bSpec.meta_model" set="bSpec.meta_model=$v" options="availableModels" first-label="현재 설정 모델" first-value="" width="212px"></x-modelpick></span>
               <span class="selctl__lbl">대상 계열</span>
               <template x-for="f in bFamilies" x-bind:key="'bf'+f.id">
                 <button type="button" class="srcfilter__chip" x-bind:class="bSpec.families.includes(f.id)?'sel':''" x-on:click="toggleBFamily(f.id)" x-text="f.label"></button>
@@ -59,7 +59,7 @@
                     <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
                       <textarea class="field" style="flex:1;min-width:240px;min-height:56px" x-model="bTestInput" placeholder="샘플 입력(콘텐츠 본문 등)을 붙여넣으세요"></textarea>
                       <span class="selctl" data-tip="컴파일된 프롬프트를 실제로 실행해 볼 모델" data-tip-pos="top"><span class="selctl__lbl">테스트 모델</span>
-                        <select class="field" x-model="bTestModel"><option value="">현재 설정 모델</option><template x-for="m in availableModels" x-bind:key="'bt'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                        <x-modelpick key="bt" value="bTestModel" set="bTestModel=$v" options="availableModels" first-label="현재 설정 모델" first-value="" width="212px"></x-modelpick></span>
                       <button type="button" class="ds-btn ds-btn--secondary" x-bind:disabled="bTestBusy" x-on:click="testBuilder(fam)" x-text="bTestBusy ? '실행 중…' : '실행'"></button>
                     </div>
                     <template x-if="bTestOut && bTestOut.fam === fam">

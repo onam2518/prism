@@ -156,7 +156,7 @@
             <div class="panel-bd">
               <div class="filterbar" style="margin:0 0 10px">
                 <span class="selctl"><span class="selctl__lbl">모델</span>
-                  <select class="field" x-model="pvModel" x-on:change="loadPreview()"><template x-for="m in availableModels" x-bind:key="'pv'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                  <x-modelpick key="pv" value="pvModel" set="pvModel=$v; loadPreview()" options="availableModels" width="212px"></x-modelpick></span>
                 <span class="selctl"><span class="selctl__lbl">호출</span>
                   <select class="field" x-model="pvCall" x-on:change="loadPreview()">
                     <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'pc'+cl"><option x-bind:value="cl" x-text="callLabel(cl)"></option></template>

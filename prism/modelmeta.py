@@ -1,0 +1,166 @@
+"""모델 표시 정보: 원본 id → 읽기 좋은 이름 · 제공자 계열 · 비용 등급.
+
+모델 선택 드롭다운이 `claude-opus-4-8` 같은 원본 id 대신 `Claude Opus 4.8` 로 보이게 하고,
+제공자 아이콘과 비용 등급 배지를 붙이기 위한 원천. serve 가 /config(관리자)에 실어 보낸다.
+
+등급은 **실제 누적 비용 원장(cost_rollup)** 에서 계산한다(사용자 결정 2026-07-28) —
+고정 가격표를 코드에 박으면 제공자 단가 변경 때 조용히 틀려지지만, 우리 원장은 우리가 실제로
+쓴 값이라 늘 현행이다. 대신 한 번도 안 돌린 모델은 등급이 비어 있다(표본 없음 = 무표기).
+"""
+import re
+
+_ALPHA_NUM = re.compile(r"^([A-Za-z]+)(\d+(?:\.\d+)?)$")
+
+
+def _is_num(s: str) -> bool:
+    return bool(s) and s.replace(".", "", 1).isdigit()
+
+# 건당 평균 비용(USD) 경계. 우리 원장 기준 Opus 계열이 $0.0065~0.0069/건 ·
+# Solar Pro 3 이 $0.0044/건 이라 그 사이를 갈랐다. 표본이 적으면 등급을 붙이지 않는다.
+TIER_HIGH_USD = 0.005
+TIER_LOW_USD = 0.001
+TIER_MIN_SAMPLES = 20
+
+# 제공자 계열(아이콘·그룹 표시용). 접두 매칭 · 가장 긴 접두가 이긴다.
+_FAMILY_PREFIX = {
+    "claude": "anthropic", "gpt": "openai", "o1": "openai", "o3": "openai", "o4": "openai",
+    "gemini": "google", "deepseek": "deepseek", "solar": "upstage",
+    "mistral": "mistral", "magistral": "mistral", "devstral": "mistral", "codestral": "mistral",
+    "grok": "xai", "llama": "meta", "qwen": "alibaba",
+}
+
+FAMILY_LABEL = {
+    "anthropic": "Anthropic", "openai": "OpenAI", "google": "Google", "deepseek": "DeepSeek",
+    "upstage": "Upstage", "mistral": "Mistral", "xai": "Grok", "meta": "Meta",
+    "alibaba": "Qwen", "": "기타",
+}
+
+# 이름 다듬기: 원본 id 를 그대로 못 쓰는 조각들(대소문자·표기). 그 외는 규칙으로 만든다.
+_WORD = {
+    "gpt": "GPT", "o1": "o1", "o3": "o3", "o4": "o4",
+    "claude": "Claude", "opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku", "fable": "Fable",
+    "gemini": "Gemini", "flash": "Flash", "pro": "Pro", "mini": "mini", "preview": "preview",
+    "deepseek": "DeepSeek", "chat": "Chat", "solar": "Solar", "grok": "Grok",
+    "mistral": "Mistral", "magistral": "Magistral", "devstral": "Devstral", "codestral": "Codestral",
+    "llama": "Llama", "qwen": "Qwen", "ie": "IE", "reasoning": "Reasoning", "fast": "Fast", "non": "Non",
+}
+
+
+def family(model_id: str) -> str:
+    """모델 id → 제공자 계열 키. 라우터 접두(anthropic/…)가 붙어 있으면 그쪽을 우선."""
+    mid = (model_id or "").strip().lower()
+    if not mid:
+        return ""
+    if "/" in mid:                                   # bizrouter 형식(provider/model)
+        head = mid.split("/", 1)[0]
+        if head in FAMILY_LABEL:
+            return head
+        mid = mid.split("/", 1)[1]
+    best, out = "", ""
+    for pre, fam in _FAMILY_PREFIX.items():
+        if mid.startswith(pre) and len(pre) > len(best):
+            best, out = pre, fam
+    return out
+
+
+def label(model_id: str) -> str:
+    """모델 id → 사람이 읽는 이름. `claude-opus-4-8` → `Claude Opus 4.8`.
+
+    버전 조각(숫자와 -)은 점으로 잇는다: 4-8 → 4.8 · 4-5 → 4.5.
+    날짜형 꼬리(260323 처럼 6자리)는 이름에서 떼지 않고 그대로 둔다(같은 계열 구분에 필요).
+    """
+    mid = (model_id or "").strip()
+    if not mid:
+        return ""
+    mid = mid.split("/")[-1]                          # 라우터 접두 제거(표시용)
+    parts = []
+    for p in mid.replace("_", "-").split("-"):
+        if not p:
+            continue
+        m = _ALPHA_NUM.match(p)                       # pro2 → pro + 2 (붙어 있는 이름·버전 분리)
+        if m and m.group(1).lower() in _WORD:
+            parts.extend([m.group(1), m.group(2)])
+        else:
+            parts.append(p)
+    out, i = [], 0
+    while i < len(parts):
+        p = parts[i]
+        if _is_num(p):                                # 연속 숫자 조각은 버전으로 묶어 점 연결
+            ver = [p]
+            while i + 1 < len(parts) and parts[i + 1].isdigit() and len(parts[i + 1]) <= 2:
+                ver.append(parts[i + 1]); i += 1
+            out.append(".".join(ver))
+        else:
+            key = p.lower()
+            out.append(_WORD.get(key, p if p[:1].isupper() else p.capitalize()))
+        i += 1
+    # GPT·o 시리즈는 브랜드 표기가 하이픈(GPT-5.4) — 이름과 버전을 붙여 쓴다
+    for i in range(len(out) - 1):
+        if out[i] in ("GPT", "o1", "o3", "o4") and _is_num(out[i + 1]):
+            out[i] = out[i] + "-" + out[i + 1]
+            out.pop(i + 1)
+            break
+    return " ".join(out)
+
+
+def tiers_from_cost(cost_report: dict) -> dict:
+    """비용 원장 → {model: {tier, avg_usd, n}}. tier ∈ 'high'|'low'|'' (표본 부족은 '').
+
+    cost_rollup 구조: days[YYYY-MM-DD].models[model] = {"n": 실행건수, "cost": USD}.
+    건당 평균 = Σcost / Σn. 실행이 적은 모델은 평균이 튀므로 등급을 비운다.
+
+    **비용 0 인 묶음은 통째로 뺀다**: 라우터가 402(잔액 부족)로 전건 거절하면 실행 건수만
+    쌓이고 과금은 0 이라, 그대로 평균에 넣으면 비싼 모델이 싸 보인다(2026-07-28 실제 사고 —
+    Opus 실제 $0.0067/건이 실패 600건 때문에 $0.0034/건으로 계산됨).
+    """
+    agg = {}
+    for _day, v in ((cost_report or {}).get("days") or {}).items():
+        for m, mv in ((v or {}).get("models") or {}).items():
+            m = (m or "").strip()
+            cost = float((mv or {}).get("cost") or 0.0)
+            if not m or cost <= 0:                    # 과금 0 = 실제로 돌지 않은 실행(실패분)
+                continue
+            cur = agg.setdefault(m, {"n": 0, "cost": 0.0})
+            cur["n"] += int((mv or {}).get("n") or 0)
+            cur["cost"] += cost
+    out = {}
+    for m, v in agg.items():
+        n = int(v["n"])
+        avg = (v["cost"] / n) if n else 0.0
+        tier = ""
+        if n >= TIER_MIN_SAMPLES and avg > 0:         # 표본이 쌓인 모델만 등급을 붙인다
+            tier = "high" if avg >= TIER_HIGH_USD else ("low" if avg <= TIER_LOW_USD else "")
+        out[m] = {"tier": tier, "avg_usd": round(avg, 6), "n": n}
+    return out
+
+
+TIER_LABEL = {"high": "고비용", "low": "저비용"}
+
+# 라우터가 제공하는 모델 목록(표시 전용). 한 번도 안 돌린 모델은 비용 원장에 없어서
+# 이름·아이콘을 만들 근거가 없다 — 이 목록이 있어야 처음 고를 때부터 제대로 보인다.
+# 실제 호출 대상 목록은 화면(vendor/app-02 modelCatalog)이 원천이고 여기는 그 사본이다.
+# 두 목록이 어긋나면 원본 id 가 그대로 노출되므로 테스트(test_modelmeta)가 일치를 지킨다.
+KNOWN_ROUTER_MODELS = [
+    # timely(bare id)
+    "gpt-5.4", "gpt-5.4-mini", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
+    "gemini-3.5-flash", "gemini-3.1-pro-preview", "deepseek-v4-pro", "deepseek-chat",
+    # bizrouter(provider/model)
+    "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5-mini", "anthropic/claude-sonnet-4.6",
+    "anthropic/claude-opus-4.6", "google/gemini-2.5-pro", "google/gemini-2.5-flash",
+    "deepseek/deepseek-v3.2",
+]
+
+
+def model_meta(cost_report: dict, models=None) -> dict:
+    """드롭다운이 쓰는 표시 정보 묶음. models 를 주면 그 목록도 빠짐없이 채운다
+    (한 번도 안 돌려 원장에 없는 모델도 이름·계열은 필요하다)."""
+    tiers = tiers_from_cost(cost_report)
+    ids = set(tiers) | {str(m).strip() for m in (models or []) if str(m).strip()}
+    out = {}
+    for mid in ids:
+        t = tiers.get(mid) or {"tier": "", "avg_usd": 0.0, "n": 0}
+        out[mid] = {"label": label(mid), "family": family(mid),
+                    "familyLabel": FAMILY_LABEL.get(family(mid), "기타"),
+                    "tier": t["tier"], "tierLabel": TIER_LABEL.get(t["tier"], ""),
+                    "avgUsd": t["avg_usd"], "runs": t["n"]}
+    return out

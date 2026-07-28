@@ -27,6 +27,7 @@ _BOOT_ID = "%d-%d" % (int(time.time()), os.getpid())
 
 from . import entconf as EC
 from . import imagext as IMG
+from . import modelmeta as MM         # 모델 표시 정보(이름·제공자·비용 등급) · 선택 드롭다운 원천
 from . import pipeline as _PIPE_MOD
 PIPE = _PIPE_MOD    # 테스트가 serve.PIPE.extract 를 패치 · 별칭 유지(runops 와 같은 모듈 객체)
 from . import prompts as PR
@@ -854,10 +855,42 @@ def _unmask_ingest_sources(new, old):
     return out
 
 
+_MMETA_CACHE = {}                      # team -> (meta, expiry) · /config 는 자주 불리고 등급은 천천히 변한다
+_MMETA_TTL = 300
+
+
+def _model_meta(cfg, team=None) -> dict:
+    """모델 선택 드롭다운 표시 정보(이름·제공자·비용 등급). 비용 원장이 원천이라
+    조회 실패는 표시 문제일 뿐이므로 조용히 빈 값으로 떨어뜨린다(설정 화면은 계속 뜬다).
+
+    비용 원장 조회는 supabase 왕복 1회라 /config 마다 하면 낭비 — 팀별 5분 캐시.
+    등급은 누적 평균이라 몇 분 늦게 반영돼도 문제가 없다."""
+    now = time.time()
+    hit = _MMETA_CACHE.get(team)
+    if hit and hit[1] > now:
+        return hit[0]
+    try:
+        cost = _report_get("cost_rollup", team, {}) or {}
+    except Exception:
+        cost = {}
+    try:
+        pool = list(_candidate_models(cfg, team)) + list(MM.KNOWN_ROUTER_MODELS or [])
+        meta = MM.model_meta(cost, pool)                  # 안 돌린 라우터 모델도 이름은 필요
+    except Exception:
+        return {}
+    if len(_MMETA_CACHE) > 64:                            # 만료 항목 정리(장기 가동 시 성장 억제)
+        for k, v in list(_MMETA_CACHE.items()):
+            if v[1] <= now:
+                _MMETA_CACHE.pop(k, None)
+    _MMETA_CACHE[team] = (meta, now + _MMETA_TTL)
+    return meta
+
+
 def config_status(team=None) -> dict:
     cfg = Config.load()
     base = (cfg.chat_url or "").rsplit("/chat/completions", 1)[0]
     return {
+        "modelMeta": _model_meta(cfg, team),
         "hasKey": bool(IMG._api_key()),
         "persisted": os.path.exists(_KEY_PATH),
         "bootId": _BOOT_ID,

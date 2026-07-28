@@ -17,8 +17,8 @@
           <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
             <div class="panel-bd">
               <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-                <span class="selctl" data-tip="정답셋과 비교할 대상 모델 · 비워두면 현재 설정 모델" data-tip-pos="bottom"><span class="selctl__lbl">기준 모델</span>
-                  <select class="field" x-model="evalModel"><option value="">현재 설정 모델</option><template x-for="m in availableModels" x-bind:key="'ev'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                <span class="selctl"><span class="selctl__lbl">기준 모델</span>
+                  <x-modelpick key="ev" value="evalModel" set="evalModel=$v" options="availableModels" first-label="현재 설정 모델" first-value="" width="212px" tip="정답셋과 비교할 대상 모델 · 비워두면 현재 설정 모델"></x-modelpick></span>
                 <span class="selctl" data-tip="프롬프트 버전 = 학습 반영 회차 + 1 · 평가는 항상 현재 버전으로 실행됩니다" data-tip-pos="bottom"><span class="selctl__lbl">프롬프트 버전</span>
                   <b class="tnum" style="padding:0 8px;font-size:13px;height:30px;display:inline-flex;align-items:center" x-text="verTxt"></b></span>
                 <span style="display:flex;gap:6px;align-items:center;margin-left:6px"><span class="selctl__lbl">대상 콘텐츠</span>
@@ -201,10 +201,10 @@
             <div class="panel-bd">
               <div class="filterbar" style="margin:0 0 12px">
                 <span class="selctl selctl--a abslot"><span class="selctl__tag">A</span><span class="selctl__lbl">모델</span>
-                  <select class="field" x-model="cmpA"><option value="">선택…</option><template x-for="m in availableModels" x-bind:key="'ca'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                  <x-modelpick key="ca" value="cmpA" set="cmpA=$v" options="availableModels" first-label="선택…" first-value="" width="200px"></x-modelpick></span>
                 <span class="abvs">VS</span>
                 <span class="selctl selctl--b abslot"><span class="selctl__tag">B</span><span class="selctl__lbl">모델</span>
-                  <select class="field" x-model="cmpB"><option value="">선택…</option><template x-for="m in availableModels" x-bind:key="'cb'+m"><option x-bind:value="m" x-text="m"></option></template></select></span>
+                  <x-modelpick key="cb" value="cmpB" set="cmpB=$v" options="availableModels" first-label="선택…" first-value="" width="200px"></x-modelpick></span>
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || !cmpA || !cmpB || cmpA===cmpB" x-on:click="runCompare()" x-text="cmpBusy ? '비교 중… (모델별 전건 추출)' : '비교 실행'"></button>
                 <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
               </div>
