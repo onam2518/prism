@@ -49,6 +49,7 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this._err('검수운영 정보를 불러오지 못했습니다'); }
         finally { this.crewBusy = false; }
         this.loadAssignLog();
+        this.loadCrewWeekly();
       },
 
       async crewSave(m, patch) {
@@ -161,6 +162,30 @@ window.PRISM_APP_PARTS.push(() => ({
         if (m.profile.status === 'inactive') return 'ds-badge--neutral';
         return 'ds-badge--success';
       },
+      // ── 주간 운영 기록(weekops) ─────────────────────────────────────────
+      crewWeekly: null,
+      get crewWeeks() { return (this.crewWeekly && this.crewWeekly.weeks) || []; },
+      async loadCrewWeekly() {
+        try {
+          const r = await (await this._afetch('/crew-weekly?weeks=8')).json();
+          if (r && r.ok) this.crewWeekly = r;
+        } catch (e) { /* 기록은 부가 정보라 실패해도 현황은 그대로 */ }
+      },
+      crewWeekRange(w) { return (w.start || '').slice(5).replace('-', '/') + '~' + (w.end || '').slice(5).replace('-', '/'); },
+      crewNum(v) { return (v === null || v === undefined) ? '·' : v; },
+      // 번다운 막대 위 주 구분: 그 날이 월요일(주 시작)이면 왼쪽에 선을 세운다
+      crewIsWeekStart(day) {
+        const w = this.crewWeekly;
+        if (!w || !w.weeks) return false;
+        return w.weeks.some((x) => x.start === day);
+      },
+      crewWeekLabelOf(day) {
+        const w = this.crewWeekly;
+        if (!w || !w.weeks) return '';
+        const hit = w.weeks.find((x) => x.start === day);
+        return hit ? hit.label : '';
+      },
+
       crewHours(h) {
         const v = Number(h || 0);
         if (!v) return '잔여 없음';

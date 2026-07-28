@@ -70,7 +70,10 @@
             <div class="flexrow" style="align-items:flex-end;gap:3px;height:110px" x-show="crewBurn.length">
               <template x-for="d in crewBurn" x-bind:key="d.day">
                 <div style="flex:1;position:relative;height:100%;cursor:help"
+                     x-bind:class="crewIsWeekStart(d.day) ? 'burnweek' : ''"
                      x-bind:data-tip="d.day + ' · 완료 ' + d.done + '건 · 잔여 ' + d.left + '건' + (d.activity !== d.done ? (' · 당일 전체 검수 ' + d.activity + '건') : '')" data-tip-pos="top">
+                  <!-- 주 시작(월요일)에 구분선 + 주차 라벨: 주 단위 흐름을 눈으로 끊어 읽게 -->
+                  <span class="burnweek__lbl" x-show="crewIsWeekStart(d.day)" x-text="crewWeekLabelOf(d.day)"></span>
                   <div x-bind:style="'position:absolute;left:0;right:0;bottom:0;border-radius:3px 3px 0 0;background:var(--ds-hairline);height:' + Math.max(1, Math.round((d.left / crewBurnMax) * 100)) + '%'"></div>
                   <div x-bind:style="'position:absolute;left:24%;right:24%;bottom:0;border-radius:3px 3px 0 0;background:var(--ds-primary);height:' + (d.done ? Math.max(4, Math.round((d.done / crewBurnMax) * 100)) : 0) + '%'"></div>
                 </div>
@@ -81,6 +84,50 @@
               <span class="text-xs text-muted tnum" x-text="crewBurn.length ? crewBurn[crewBurn.length-1].day.slice(5).replace('-','/') : ''"></span>
             </div>
             <div class="text-xs text-muted" x-show="!crewBurn.length">검수 기록이 쌓이면 추이가 표시됩니다</div>
+          </div>
+        </section>
+
+        <!-- 주간 기록: 현황판은 '지금'만 보여줘 주가 지나면 그 주가 어땠는지가 안 남는다.
+             마감된 주는 스냅샷으로 고정(weekops.capture) · 스냅샷 이전 주는 역산 + 추정 표시. -->
+        <section class="panel"><div class="panel-hd"><b>주간 기록</b>
+          <span class="meta" x-text="'월~일 기준 · 1주차 = ' + ((crewWeekly && crewWeekly.week1) ? crewWeekly.week1.slice(5).replace('-','/') : '07/20') + ' 시작'"></span>
+          <span class="ds-badge ds-badge--neutral ml-auto" x-show="crewWeekly" x-text="'이번 ' + (crewWeekly ? crewWeekly.current : '') + '주차'"></span></div>
+          <div class="overflow-auto"><table class="ds-table"><thead><tr>
+            <th style="width:110px">주차</th><th style="width:120px">기간</th>
+            <th style="width:110px">검수량</th><th style="width:110px">교정</th>
+            <th style="width:120px">배정분 완료</th><th style="width:110px">마감 잔여</th>
+            <th style="width:100px">정체</th><th>비고</th></tr></thead><tbody>
+            <template x-for="w in crewWeeks" x-bind:key="'wk'+w.week">
+              <tr>
+                <td class="text-ink" style="font-weight:600"><span x-text="w.label"></span>
+                  <span class="ds-badge ds-badge--intent" x-show="w.running" style="margin-left:5px">진행 중</span></td>
+                <td class="tnum text-xs text-muted" x-text="crewWeekRange(w)"></td>
+                <!-- 원장이 그 주의 일부만 덮으면 숫자를 주 전체로 읽지 않도록 덮은 일수를 붙인다
+                     (실측: 1주차 원장 3일치 214건 vs 역산 591건 — 어느 쪽인지 안 밝히면 오해가 된다) -->
+                <td class="tnum"><span x-text="crewNum(w.reviews)"></span>
+                  <span class="text-xs text-muted" x-show="!w.running && w.ledger_days > 0 && w.ledger_days < 7"
+                        style="cursor:help" x-bind:data-tip="'활동 원장이 이 주의 ' + w.ledger_days + '일치만 덮습니다 · 나머지 날은 기록 이전이라 빠져 있습니다'"
+                        data-tip-pos="top" x-text="'(' + w.ledger_days + '일분)'"></span></td>
+                <td class="tnum" x-text="crewNum(w.corrections)"></td>
+                <td class="tnum" x-text="crewNum(w.done_assigned)"></td>
+                <td class="tnum" x-text="crewNum(w.pending_end)"></td>
+                <td class="tnum" x-text="crewNum(w.stale_total)"></td>
+                <td>
+                  <span class="ds-badge ds-badge--warning" x-show="w.estimated" style="cursor:help"
+                        data-tip="이 주는 마감 스냅샷이 없어 현재 데이터로 역산한 값입니다 · 재검수가 있으면 실제보다 작게 잡힙니다" data-tip-pos="left">추정</span>
+                  <span class="text-xs text-muted" x-show="!w.estimated && !w.running && w.captured_at"
+                        x-text="'기록 ' + crewDate(w.captured_at)"></span>
+                  <span class="text-xs text-muted" x-show="w.ledger_days === 0 && !w.running">활동 원장 없음</span>
+                </td>
+              </tr>
+            </template>
+          </tbody></table></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets">
+              <li><b>검수량 · 교정</b>은 활동 원장(판정 시점에 하루 단위로 쌓는 기록)이라 나중에 재검수해도 줄지 않습니다.</li>
+              <li><b>배정분 완료 · 마감 잔여</b>는 마감 시점 스냅샷입니다 · 스냅샷 이전 주는 <b>추정</b>으로 표시합니다.</li>
+              <li>마감된 주는 이 화면을 열 때 한 번 고정되고, 이후에는 다시 계산하지 않습니다.</li>
+            </ul>
           </div>
         </section>
 
