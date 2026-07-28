@@ -1464,3 +1464,26 @@
   .demo-code .ln{white-space:pre-wrap;word-break:break-all}
   .demo-code .ln.is-new{color:#eaf1fb;font-weight:600}
   .demo-code .ln.is-hint{color:#5c6572}
+
+  /* ── 검수운영(HR) · 인력 캐파·신호등 (prism/ui/20b-crew.html) ───────────── */
+  .crewstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--ds-space-3)}
+  .crewstat{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--ds-hairline);
+    border-radius:10px;background:var(--ds-surface-white)}
+  .crewstat__k{font-size:11.5px;font-weight:600;color:var(--ds-muted)}
+  .crewstat__v{font-size:22px;font-weight:700;line-height:1.2;color:var(--ds-ink)}
+  .crewstat__s{font-size:11px;color:var(--ds-muted)}
+  /* 신호등: 색만으로 판단하지 않도록 라벨을 함께 쓴다(색각 접근성) */
+  .crewsig{display:inline-block;padding:2px 9px;border-radius:var(--ds-radius-chip);font-size:11.5px;font-weight:700}
+  .crewsig--green{background:rgba(34,160,90,.12);color:#1c8250}
+  .crewsig--yellow{background:rgba(224,158,0,.14);color:#9a6b00}
+  .crewsig--red{background:rgba(214,58,58,.12);color:#c0392b}
+  .crewsig--idle{background:rgba(60,120,220,.12);color:#2c62b8}
+  .crewsig--done{background:var(--ds-hairline-soft,rgba(0,0,0,.06));color:var(--ds-muted)}
+  .crewsig--leave,.crewsig--off{background:var(--ds-hairline-soft,rgba(0,0,0,.06));color:var(--ds-muted)}
+  /* x-show 와 같은 요소에 인라인 display:flex 를 주면 안 된다. Alpine 은 보일 때
+     display 속성을 통째로 지우므로 flex 가 날아가고, 자식이 세로로 쌓여 그래프가
+     한 덩어리로 뭉개진다(정답셋 관리의 검수 활동 추이가 이 때문에 비어 보였다).
+     display 만 클래스로 빼면 인라인 제거 후 이 규칙이 다시 먹는다. */
+  .flexrow{display:flex}
+  .crewgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--ds-space-4)}
+  @media (max-width:1080px){ .crewgrid{grid-template-columns:1fr} }

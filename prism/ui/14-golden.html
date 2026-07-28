@@ -78,14 +78,14 @@
             <span class="ds-badge ds-badge--neutral tnum ml-auto" x-show="activityData" x-text="'7일 ' + actSum('reviews',7) + '건 · 30일 ' + actSum('reviews',30) + '건'"></span>
           </div>
             <div class="panel-bd">
-              <div style="display:flex;align-items:flex-end;gap:2px;height:96px" x-show="activityData && activityData.length">
+              <div class="flexrow" style="align-items:flex-end;gap:2px;height:96px" x-show="activityData && activityData.length">
                 <template x-for="d in (activityData||[])" x-bind:key="d.day">
                   <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:help" x-bind:data-tip="actTip(d)" data-tip-pos="top">
                     <div x-bind:style="'height:' + Math.max(d.reviews ? 6 : 2, Math.round(d.reviews / actMax * 100)) + '%;background:' + (d.reviews ? 'var(--ds-primary)' : 'var(--ds-hairline)') + ';border-radius:3px 3px 0 0'"></div>
                   </div>
                 </template>
               </div>
-              <div style="display:flex;justify-content:space-between;margin-top:6px" x-show="activityData && activityData.length">
+              <div class="flexrow" style="justify-content:space-between;margin-top:6px" x-show="activityData && activityData.length">
                 <span class="text-xs text-muted tnum" x-text="activityData ? activityData[0].day.slice(5).replace('-','/') : ''"></span>
                 <span class="text-xs text-muted tnum" x-text="activityData ? activityData[activityData.length-1].day.slice(5).replace('-','/') : ''"></span>
               </div>
@@ -486,7 +486,8 @@
             <span class="copybtn" style="cursor:help" data-tip="목록: J/K 행 이동 · Enter 상세 열기 · 상세: A=정확 S=수정 ←→=이동(자동 다음) · JSON 원문은 행 우측 { }" data-tip-pos="bottom">⌨ 단축키</span>
             <button type="button" class="copybtn" x-on:click="exportDash()" data-tip="전체 결과 CSV 다운로드" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>CSV</button>
             <button type="button" class="copybtn" x-on:click="openReport()" data-tip="브라우저용 HTML 리포트 열기" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>리포트</button>
-            <button type="button" class="copybtn" x-show="opsAdmin" x-on:click="openBulk()" data-tip="여러 콘텐츠에 검수 담당자를 한 번에 배정" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6M15 11a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M17 14a4 4 0 0 1 4 4v2"/></svg>일괄 배정</button>
+<!-- 여럿에게 한 번에 나눠 맡기는 일은 '검수운영' 메뉴로 옮겼다(2026-07-28) — 목록은 콘텐츠를
+                 보는 곳이고, 누구에게 맡길지는 사람의 여력·일정을 함께 봐야 정할 수 있기 때문. -->
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadRaw()" data-tip="새로고침" data-tip-pos="bottom" aria-label="원본 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </span>
         </div>
