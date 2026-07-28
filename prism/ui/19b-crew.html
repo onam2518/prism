@@ -304,19 +304,25 @@
             <div x-show="crewPlanRes" style="margin-top:12px">
               <div class="overflow-auto"><table class="ds-table"><thead><tr>
                 <th>검수자</th><th style="width:120px">배정량</th><th style="width:150px">배정 후 잔여</th>
-                <th style="width:130px">주간 처리 가능량</th><th style="width:100px"></th></tr></thead><tbody>
+                <th style="width:130px">주간 처리 가능량</th><th style="width:90px">보장 하한</th>
+                <th style="width:100px"></th></tr></thead><tbody>
                 <template x-for="(p, rid) in (crewPlanRes ? crewPlanRes.plan : {})" x-bind:key="rid">
                   <tr>
                     <td class="text-ink" x-text="p.name"></td>
                     <td class="tnum" x-text="p.n + '건'"></td>
                     <td class="tnum" x-text="p.pending_after + '건'"></td>
                     <td class="tnum" x-text="p.capacity + '건'"></td>
+                    <td class="tnum text-muted" x-text="p.floor ? (p.floor + '건') : '·'"></td>
                     <td><span class="ds-badge ds-badge--warning" x-show="p.over">여력 초과</span></td>
                   </tr>
                 </template>
               </tbody></table></div>
               <div class="ds-badge ds-badge--warning" style="margin-top:8px" x-show="crewPlanRes && crewPlanRes.over && crewPlanRes.over.length"
                    x-text="'⚠ ' + (crewPlanRes ? crewPlanRes.over.join(', ') : '') + ' 은(는) 주간 처리 가능량을 초과합니다 · 기한을 늦추거나 배정량을 줄이세요'"></div>
+              <!-- 잔여가 이미 캐파를 넘겨 이번엔 새 배정을 받지 않는 사람 · 성과 판단이 아니라 용량 판단 -->
+              <div class="ds-badge ds-badge--neutral" style="margin-top:8px;cursor:help" x-show="crewPlanRes && (crewPlanRes.held || []).length"
+                   data-tip="잔여가 이미 주간 처리 가능량을 넘겨 이번 배정에서 제외했습니다 · 기존 배정은 그대로이며, 필요하면 재배정으로 회수하세요" data-tip-pos="top"
+                   x-text="'이번엔 새 배정 없음(잔여가 처리 가능량 초과): ' + (crewPlanRes ? (crewPlanRes.held || []).map(h => h.name + ' ' + h.pending + '/' + h.capacity).join(', ') : '')"></div>
               <div class="ds-badge ds-badge--neutral" style="margin-top:8px" x-show="crewPlanRes && crewPlanRes.blocked && crewPlanRes.blocked.length"
                    x-text="'제외: ' + (crewPlanRes ? crewPlanRes.blocked.join(', ') : '') + ' (휴가·교육 중·비활성)'"></div>
               <div class="flex items-center gap-2" style="margin-top:10px">
@@ -404,6 +410,14 @@
                 <input type="number" min="0" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.rate_shrink"
                        x-on:change="crewSetting('rate_shrink', $event.target.value)"
                        data-tip="1 = 실측 속도 그대로 · 0 = 전원 팀 중앙값(이번 주 신고 시간에만 비례) · 낮출수록 배정 쏠림이 줄어듭니다" data-tip-pos="top"></div>
+              <div style="width:190px"><label class="lbl">보장 하한(캐파 대비)</label>
+                <input type="number" min="0" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.min_fill_ratio"
+                       x-on:change="crewSetting('min_fill_ratio', $event.target.value)"
+                       data-tip="아무도 처리 가능량의 이만큼을 채우기 전에는 다음 사람으로 넘어가지 않습니다 · 소수에게 몰아주고 나머지를 0건으로 두는 것도 쏠림입니다" data-tip-pos="top"></div>
+              <div style="width:190px"><label class="lbl">새 배정 상한(캐파 배수)</label>
+                <input type="number" min="0.5" max="5" step="0.1" class="field tnum" x-bind:value="crewCfg.cap_limit"
+                       x-on:change="crewSetting('cap_limit', $event.target.value)"
+                       data-tip="잔여가 처리 가능량의 이 배를 넘긴 검수자는 새 배정을 뒤로 미룹니다 · 다른 후보가 없으면 받습니다(배정이 멈추지 않게)" data-tip-pos="top"></div>
               <div style="width:190px"><label class="lbl">미확인자 반영도</label>
                 <input type="number" min="0.1" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.unconfirmed_factor"
                        x-on:change="crewSetting('unconfirmed_factor', $event.target.value)"
