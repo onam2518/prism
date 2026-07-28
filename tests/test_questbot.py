@@ -194,8 +194,9 @@ class TestAssignmentMode(unittest.TestCase):
 
     def test_targets_are_people_with_work_left_not_below_average(self):
         """많이 맡아 많이 한 사람도 남았으면 대상 · 적게 했어도 다 끝냈으면 제외."""
-        st = AsgStore({"a": "A", "b": "B"}, {"a": 5, "b": 0},
-                      asg={f"a:{i}": ["a"] for i in range(5)} | {"x9": ["a"], "b:only": ["b"]})
+        asg = {"a:%d" % i: ["a"] for i in range(5)}      # dict | dict 는 3.9+ · 저장소는 3.8 지원
+        asg.update({"x9": ["a"], "b:only": ["b"]})
+        st = AsgStore({"a": "A", "b": "B"}, {"a": 5, "b": 0}, asg=asg)
         prog = QB.compute_progress(st, None, _future())
         mine = QB.select_by_assignment(prog, QB.assignment_progress(st), 0)
         names = [m["name"] for m in mine]
