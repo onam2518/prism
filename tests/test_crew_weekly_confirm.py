@@ -110,7 +110,7 @@ class RouteTest(unittest.TestCase):
 class MarkupTest(unittest.TestCase):
     def test_modal_present_and_not_dismissable(self):
         from prism import page
-        self.assertIn("주차 일정 확인", page.PAGE)
+        self.assertIn("검수자 일정 확인", page.PAGE)
         i = page.PAGE.index("wkConfirmOpen")
         nxt = page.PAGE.index("ds-dialog-backdrop", i)      # 이 모달 블록만(다음 모달 침범 방지)
         block = page.PAGE[i:nxt]
@@ -119,6 +119,28 @@ class MarkupTest(unittest.TestCase):
         self.assertNotIn("mousedown.self", block)
         self.assertNotIn("keydown.escape", block)
 
+    def test_hours_are_labelled_as_a_weekly_total(self):
+        """'주간 가용 시간'이 하루치로 읽히면 캐파가 7배로 잡힌다 — 합계임을 밝힌다."""
+        from prism import page
+        self.assertIn("주간 가용 시간 (합계)", page.PAGE)
+        self.assertIn("이번 주 전체 합계", page.PAGE)
+
+
+class MenuGateTest(unittest.TestCase):
+    """/crew-confirm 은 전 검수자용인데 접두가 /crew 라 검수운영(슈퍼관리자) 메뉴 권한에
+    걸려 일반 검수자가 확인 자체를 못 했다(2026-07-28 실사용 신고)."""
+
+    def test_confirm_is_exempt_from_menu_gate(self):
+        from prism import serve
+        self.assertIsNone(serve._menu_for_path("/crew-confirm"))
+
+    def test_other_crew_routes_still_gated(self):
+        from prism import serve
+        for p in ("/crew-assign", "/crew-profile", "/crew-rebalance", "/crew-wave"):
+            self.assertEqual(serve._menu_for_path(p), "crew", p)
+
+
+class RemovedAndSafetyTest(unittest.TestCase):
     def test_escalate_panel_removed(self):
         from prism import page
         self.assertNotIn("불일치 건 추가 배정", page.PAGE)

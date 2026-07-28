@@ -414,16 +414,21 @@
        검수운영 탭은 슈퍼관리자 전용이라 본인이 확인할 자리가 없던 문제도 이걸로 해소. -->
   <div class="ds-dialog-backdrop" x-show="wkConfirmOpen" x-cloak style="z-index:82">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="이번 주 일정 확인" style="max-width:460px">
-      <h2 class="ds-dialog__title" style="font-family:var(--ds-font-display)">
-        <span x-text="wkConfirmWeek + '주차 일정 확인'"></span></h2>
+      <h2 class="ds-dialog__title" style="font-family:var(--ds-font-display);display:flex;align-items:baseline;gap:9px">
+        검수자 일정 확인
+        <span class="text-xs text-muted tnum" style="font-family:var(--ds-font-body);font-weight:400"
+              x-text="wkConfirmWeek + '주차' + (wkConfirmRange ? (' · ' + wkConfirmRange) : '')"></span></h2>
       <div class="ds-dialog__body">
         <ul class="ds-bullets" style="margin-bottom:14px">
-          <li>이번 주에 검수에 낼 수 있는 시간을 확인해 주세요 · 배정량이 이 값에 맞춰집니다.</li>
+          <li>이번 주에 검수에 낼 수 있는 시간을 확인해 주세요.</li>
+          <li>배정량이 이 값에 맞춰집니다.</li>
+          <li><b>주간 가용 시간은 이번 주 전체 합계</b>입니다 · 하루 기준이 아닙니다.</li>
           <li>휴가·교육 중·비활성으로 두면 이번 주 배정에서 빠집니다.</li>
         </ul>
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
-          <div style="width:150px"><label class="lbl">주간 가용 시간</label>
-            <input type="number" min="0" max="40" step="0.5" class="field tnum" x-model.number="wkForm.hours_per_week"></div>
+          <div style="width:170px"><label class="lbl">주간 가용 시간 (합계)</label>
+            <input type="number" min="0" max="40" step="0.5" class="field tnum" x-model.number="wkForm.hours_per_week"
+                   data-tip="이번 주 전체에 검수로 낼 수 있는 시간의 합 · 하루 기준이 아닙니다" data-tip-pos="top"></div>
           <div style="width:150px"><label class="lbl">상태</label>
             <select class="field" x-model="wkForm.status">
               <option value="active">활동 중</option><option value="onboarding">교육 중</option>

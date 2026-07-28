@@ -459,9 +459,18 @@ _MENU_POST_ROUTES = (
 )
 
 
+# 접두 매칭의 예외: 메뉴 권한과 무관한 '본인 것' 액션. /crew-confirm 은 전 검수자가
+# 자기 일정을 확인하는 경로인데 접두가 /crew 라 검수운영(슈퍼관리자 전용) 메뉴 권한에
+# 걸려 일반 검수자가 확인 자체를 못 했다(2026-07-28 실사용 신고).
+_MENU_POST_EXEMPT = ("/crew-confirm",)
+
+
 def _menu_for_path(path: str):
     """POST 경로 → 관리자 메뉴 id(없으면 None). 메뉴별 권한 백엔드 강제용."""
     p = (path or "").split("?", 1)[0]
+    for prefix in _MENU_POST_EXEMPT:                 # 예외를 먼저 본다(접두가 더 길다)
+        if p == prefix or p.startswith(prefix):
+            return None
     for prefix, menu in _MENU_POST_ROUTES:
         if p == prefix or p.startswith(prefix):
             return menu
