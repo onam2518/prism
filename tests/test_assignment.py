@@ -519,7 +519,7 @@ class TestRawListHidesDone(unittest.TestCase):
     def test_hidden_count_hint_present(self):
         from prism import page
         self.assertIn("rawDoneHidden", page.PAGE)          # 감춘 건수 힌트(사라진 게 아님을 알림)
-        self.assertIn("rawRev=''", page.PAGE)               # 한 번에 펼치기
+        self.assertIn("rawRevPick('')", page.PAGE)          # 한 번에 펼치기(창을 넓혀 재조회)
         src = self._src("prism/vendor/app-02-_afterverdict.js")
         self.assertIn("get rawDoneHidden()", src)
         self.assertIn("get rawScoped()", src)               # 힌트와 목록이 같은 모집단을 쓴다

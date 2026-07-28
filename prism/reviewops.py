@@ -839,7 +839,13 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
     except Exception:
         finals = {}
     out = []
-    for r in reversed(rows[-int(limit):]):         # 최근순
+    cap = max(0, int(limit))
+    # 상한(limit)은 제외 규칙을 적용한 '뒤'에 센다. 먼저 자르면 미실행(STEP 1 추가만)·평가용
+    # 홀드아웃이 최신 창의 자리를 차지한 채 걸러져, 콘텐츠를 추가할수록 검수 대상(특히 예전
+    # 검수 완료분)이 목록에서 사라졌다 — 추가만 한 콘텐츠가 limit 을 넘으면 표가 통째로 비었다.
+    for r in reversed(rows):                       # 최근순
+        if len(out) >= cap:
+            break
         ref = r.get("content_ref") or {}
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
