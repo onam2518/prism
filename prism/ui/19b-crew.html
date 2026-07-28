@@ -262,8 +262,8 @@
 
       <!-- ── 배정 ───────────────────────────────────────────────── -->
       <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
-        <section class="panel"><div class="panel-hd"><b>여력 비례 배정</b>
-          <span class="meta">균등 분할이 아니라 검수자별 잔여 여력에 비례해 배정합니다 · 휴가·교육 중·비활성은 제외</span></div>
+        <section class="panel"><div class="panel-hd"><b>자동 배정</b>
+          <span class="meta">검수자별 잔여 여력에 비례해 자동으로 나눕니다 · 휴가·교육 중·비활성·최종검수자는 제외</span></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2" style="align-items:flex-end">
               <div style="width:180px"><label class="lbl">대상 콘텐츠</label>
@@ -312,8 +312,8 @@
 
         <!-- 직접 고르기: 여력 계산에 맡기지 않고 사람이 콘텐츠·담당자를 짚어서 정하는 길
              (정답셋 관리 목록에 있던 '일괄 배정'을 여기로 옮겨 왔다 · 2026-07-28) -->
-        <section class="panel"><div class="panel-hd"><b>직접 지정 배정</b>
-          <span class="meta">콘텐츠를 개별 선택하거나 그룹으로 나눠 검수자를 지정합니다</span>
+        <section class="panel"><div class="panel-hd"><b>수동 배정</b>
+          <span class="meta">콘텐츠와 검수자를 직접 골라 배정합니다 · 최종검수자는 후보에서 제외됩니다</span>
           <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
                   x-on:click="openBulk()">대상 선택</button></div>
           <div class="panel-bd text-xs text-muted">
@@ -427,7 +427,7 @@
                 <td class="text-xs" x-text="a.by"></td>
                 <td><span class="ds-badge ds-badge--neutral" x-text="a.mode"></span></td>
                 <td class="tnum" x-text="a.n"></td>
-                <td class="text-xs text-muted" x-text="(a.reviewers || []).join(', ')"></td>
+                <td class="text-xs text-muted" x-text="bulkNames(a.reviewers) || '·'"></td>
               </tr>
             </template>
           </tbody></table></div>
@@ -503,14 +503,14 @@
             <span class="stepcard__ttl">담당자 지정<span class="stepcard__sub">선택한 콘텐츠를 검수할 팀원</span></span>
             <span class="ds-badge ds-badge--status stepcard__badge" x-show="bulkPick.length" x-text="bulkPick.length + '명 선택'"></span>
           </div>
-          <div x-show="!assignMembers.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 팀원이 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
+          <div x-show="!assignCandidates.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 검수자가 없습니다(최종검수자 제외) · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
           <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) · 그룹 모드에선 그룹별 지정으로 대체 -->
           <div x-show="bulkGrps <= 1" style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
             <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
             <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 검수자에게 콘텐츠를 분할 배정합니다 · 잔여 배정이 적은 검수자부터 채웁니다" data-tip-pos="top">균등 분배</button>
           </div>
           <div x-show="bulkGrps <= 1" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
-            <template x-for="m in assignMembers" x-bind:key="'bpk'+m.id">
+            <template x-for="m in assignCandidates" x-bind:key="'bpk'+m.id">
               <label class="pickchip" x-bind:class="bulkPick.includes(m.id) ? 'on' : ''">
                 <input type="checkbox" x-bind:checked="bulkPick.includes(m.id)" x-on:change="bulkPickToggle(m.id)"><span x-text="m.name"></span>
               </label>
@@ -523,7 +523,7 @@
               <div x-bind:style="g > 1 ? 'border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));padding-top:20px' : ''">
                 <span class="ds-badge ds-badge--status tnum" style="display:inline-flex;margin-bottom:9px" x-text="'그룹' + g + ' · ' + (bulkGrpCounts[g-1] || 0) + '건'"></span>
                 <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
-                  <template x-for="m in assignMembers" x-bind:key="'bpk'+g+'-'+m.id">
+                  <template x-for="m in assignCandidates" x-bind:key="'bpk'+g+'-'+m.id">
                     <label class="pickchip" x-bind:class="bulkPickAt(g).includes(m.id) ? 'on' : ''">
                       <input type="checkbox" x-bind:checked="bulkPickAt(g).includes(m.id)" x-on:change="bulkPickGToggle(g, m.id)"><span x-text="m.name"></span>
                     </label>

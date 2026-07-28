@@ -515,6 +515,15 @@ def _burndown(fmap, targets, asg, days: int = 21) -> list:
 MATCH_ITEMS = 5.0
 
 
+def _assignable(members) -> list:
+    """기초 검수 배정 대상. **최종검수자는 제외한다**(사용자 결정 2026-07-28).
+
+    최종검수자는 기초 판정이 갈렸을 때 확정하는 2층 역할이라, 같은 콘텐츠의 기초 검수를
+    맡으면 자기 판정을 자기가 확정하게 된다. 자동(여력 비례·재배정·불일치 추가)과 수동
+    (직접 지정) 어느 쪽에서도 후보에 넣지 않는다."""
+    return [m for m in members if not m.get("is_final")]
+
+
 def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
                     apply: bool = False, by: str = "", due_at=None,
                     match=None, lack_first=None) -> dict:
@@ -527,9 +536,9 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
     st = _SV.get_store()
     hs = [h for h in dict.fromkeys(hashes or []) if h]
     if not (st and hs):
-        return {"ok": False, "error": "나눠줄 콘텐츠가 없습니다", "plan": {}, "n": 0}
+        return {"ok": False, "error": "배정할 콘텐츠가 없습니다", "plan": {}, "n": 0}
     data = _crew_compute(team)                      # 캐시 우회: 방금 바뀐 부하를 반영해야 한다
-    pool = [m for m in data["members"] if m["available"]]
+    pool = _assignable([m for m in data["members"] if m["available"]])
     if reviewers:
         want = set(reviewers)
         pool = [m for m in pool if m["id"] in want]
@@ -537,7 +546,7 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
     else:
         blocked = []
     if not pool:
-        return {"ok": False, "error": "지금 맡길 수 있는 사람이 없습니다 (휴가·적응 중·쉬는 중은 빠집니다)",
+        return {"ok": False, "error": "배정할 수 있는 검수자가 없습니다(휴가·교육 중·비활성·최종검수자 제외)",
                 "plan": {}, "n": 0, "blocked": blocked}
     n_per = max(1, min(len(pool), int(min_reviewers or 1)))
     cap = {m["id"]: max(1, m["weekly_capacity"] or 1) for m in pool}
@@ -609,10 +618,11 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
                                               or (m["load"]["progress"] == 0.0 and not m["available"])
                                               or not m["available"])}
     if not stale_ids:
-        return {"ok": True, "moves": [], "n": 0, "reason": "지금은 넘길 만큼 멈춰 있는 일이 없습니다"}
-    takers = [m for m in data["members"] if m["available"] and m["id"] not in stale_ids and m["spare"] > 0]
+        return {"ok": True, "moves": [], "n": 0, "reason": "현재 재배정할 정체 배정이 없습니다"}
+    takers = _assignable([m for m in data["members"]
+                          if m["available"] and m["id"] not in stale_ids and m["spare"] > 0])
     if not takers:
-        return {"ok": False, "error": "받아줄 여유가 있는 사람이 없습니다", "moves": [], "n": 0}
+        return {"ok": False, "error": "받을 여력이 있는 검수자가 없습니다(최종검수자 제외)", "moves": [], "n": 0}
     try:
         asg = st.assignees(team=team) or {}
         fmap = st.feedback_map(team=team) or {}
@@ -810,11 +820,11 @@ def escalate_split(team=None, apply: bool = False, by: str = "", limit: int = 20
     items = split_pending(team)[:max(1, int(limit))]
     if not (st and items):
         return {"ok": True, "n": 0, "moves": [], "applied": False,
-                "reason": "3번째 눈이 필요한 건이 없습니다"}
+                "reason": "추가 배정이 필요한 불일치 건이 없습니다"}
     data = _crew_compute(team)
-    pool = [m for m in data["members"] if m["available"]]
+    pool = _assignable([m for m in data["members"] if m["available"]])
     if not pool:
-        return {"ok": False, "error": "지금 맡길 수 있는 사람이 없습니다", "n": 0, "moves": []}
+        return {"ok": False, "error": "배정할 수 있는 검수자가 없습니다(최종검수자 제외)", "n": 0, "moves": []}
     cap = {m["id"]: max(1, m["weekly_capacity"] or 1) for m in pool}
     used = {m["id"]: m["load"]["pending"] for m in pool}
     name = {m["id"]: m["name"] for m in pool}

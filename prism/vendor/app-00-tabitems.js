@@ -148,6 +148,20 @@ window.PRISM_APP_PARTS.push(() => ({
       // 배정 UI 게이트: 로컬(단독)은 항상, 운영(supabase)은 팀 관리자만 · team_members 원천 = adminData.members
       get assignAdmin() { return this.backend !== 'supabase' || !!(this.adminData && this.adminData.isAdmin); },
       get assignMembers() { return (this.adminData && this.adminData.members) || []; },
+      // 배정 후보에서 최종검수자는 뺀다(수동·자동 동일 · 서버 crewops._assignable 과 같은 규약).
+      // 최종검수자는 기초 판정이 갈렸을 때 확정하는 2층 역할이라, 같은 콘텐츠의 기초 검수를
+      // 맡으면 자기 판정을 자기가 확정하게 된다. 이름 해석은 전체 목록(assignMembers)을 쓴다.
+      // 최종검수자 id: 아레나(역할 원장)와 검수운영(카드) 중 로드된 쪽을 합집합으로 쓴다.
+      // 어느 화면으로 들어왔는지에 따라 한쪽만 로드돼 있어 한 소스만 보면 제외가 새어 나간다.
+      get finalIds() {
+        const a = this.finalReviewers || [];
+        const b = (this.crewMembers || []).filter((m) => m.is_final).map((m) => m.id);
+        return [...new Set([...a, ...b])];
+      },
+      get assignCandidates() {
+        const fin = this.finalIds;
+        return this.assignMembers.filter((m) => !fin.includes(m.id));
+      },
       assigneeNames(r) {
         const ids = (r && r.assignees) || []; const mem = this.assignMembers;
         return ids.map((id) => { const m = mem.find((x) => x.id === id); return (m && m.name) || id; });
@@ -237,7 +251,9 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 그룹 수 변경: 기존 선택의 그룹 번호가 무의미해지므로 선택·담당자 초기화(단일↔그룹 전환 포함)
       bulkGrpChanged() { this.bulkChecked = {}; this.bulkPickG = []; if (this.bulkGrps > 1) this.bulkMode = 'same'; },
-      bulkNames(ids) { return (ids || []).map((id) => ((this.assignMembers.find((m) => m.id === id) || {}).name || id)).join(', '); },
+      // 이름 해석은 전체 목록 기준(최종검수자·탈퇴자도 이름으로 보여야 한다) ·
+      // 못 찾으면 uuid 를 통째로 노출하지 않고 앞 6자만(배정 이력 가독성)
+      bulkNames(ids) { return (ids || []).map((id) => ((this.assignMembers.find((m) => m.id === id) || {}).name || String(id).slice(0, 6))).join(', '); },
       // 체크 맵은 새 객체로 재할당(Alpine 반응성: 신규 키 추가도 안전하게 감지)
       bulkToggle(h) {
         if (this.bulkGrps > 1) {   // 그룹 모드: 클릭마다 미선택 → 그룹1 → 그룹2 → … → 해제 순환
