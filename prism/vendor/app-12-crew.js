@@ -7,7 +7,7 @@ window.PRISM_APP_PARTS.push(() => ({
 
       crewTab: 'dash',                    // dash(한눈에 보기) | people(팀원과 일정) | assign(일 나눠주기)
       crewData: null, crewBusy: false, crewMsg: '',
-      crewPlanRes: null, crewMoveRes: null,
+      crewPlanRes: null, crewMoveRes: null, crewEscRes: null, crewAutoRes: null,
       crewAsgScope: 'unassigned', crewAsgLimit: 200, crewAsgMin: 2, crewDue: '',
 
       get crewMembers() { return (this.crewData && this.crewData.members) || []; },
@@ -17,6 +17,17 @@ window.PRISM_APP_PARTS.push(() => ({
       get crewBurnMax() { return Math.max(1, ...this.crewBurn.map((d) => Math.max(d.left || 0, d.done || 0))); },
 
       // 나눠줄 후보: 검수 대상 목록(loadRaw 가 채운 rawData.items)에서 고른다 · 정답 문항(가상 행)은 제외
+      get crewCfg() { return (this.crewData && this.crewData.settings) || {}; },
+      get crewAutoTxt() {
+        const r = this.crewAutoRes;
+        if (!r) return '';
+        const bits = [];
+        if (r.wave) bits.push(r.wave.n ? ('나눠 맡김 ' + r.wave.n + '건') : ('나눌 것 없음' + (r.wave.error ? (' · ' + r.wave.error) : '')));
+        if (r.rebalance) bits.push('넘김 ' + r.rebalance.n + '건');
+        if (r.escalate) bits.push('한 명 더 ' + r.escalate.n + '건');
+        return bits.length ? ('이번 사이클(' + r.cycle + ') · ' + bits.join(' · ')) : ('이번 사이클(' + r.cycle + ')에 할 일이 없습니다');
+      },
+
       get crewAsgPool() {
         const rows = ((this.rawData || {}).items || []).filter((r) => !this.isGoldRow(r));
         const pool = this.crewAsgScope === 'unassigned'
@@ -92,6 +103,41 @@ window.PRISM_APP_PARTS.push(() => ({
           }
           if (this.crewTab !== 'assign') this.crewTab = 'assign';   // 한눈에 보기에서 눌러도 계획이 보이는 곳으로
         } catch (e) { this._err('넘길 계획을 세우지 못했습니다'); }
+        finally { this.crewBusy = false; }
+      },
+
+      async crewEscalate(apply) {
+        this.crewBusy = true;
+        try {
+          const r = await this._crewPost('/crew-escalate', { apply: !!apply });
+          this.crewEscRes = r || null;
+          if (apply && r && r.ok) {
+            this.liveToast('세 번째 검수자를 붙였습니다 · ' + r.n + '건');
+            await this.loadCrew(); await this.loadRaw(1000);
+            this.crewEscRes = Object.assign({}, r, { applied: true });
+          }
+        } catch (e) { this._err('갈린 건을 찾지 못했습니다'); }
+        finally { this.crewBusy = false; }
+      },
+
+      async crewAuto() {
+        this.crewBusy = true;
+        try {
+          const r = await this._crewPost('/crew-auto', { apply: true });
+          this.crewAutoRes = r || null;
+          await this.loadCrew();
+        } catch (e) { this._err('자동 점검에 실패했습니다'); }
+        finally { this.crewBusy = false; }
+      },
+
+      async crewSetting(key, val) {
+        this.crewBusy = true;
+        try {
+          const patch = {}; patch[key] = val;
+          const r = await this._crewPost('/crew-profile', { settings: patch });
+          if (r && r.ok && this.crewData) this.crewData.settings = r.settings;
+          else if (!(r && r.ok)) this._err((r && r.error) || '설정을 저장하지 못했습니다');
+        } catch (e) { this._err('설정을 저장하지 못했습니다'); }
         finally { this.crewBusy = false; }
       },
 

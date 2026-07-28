@@ -164,3 +164,68 @@ class TestRun(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AsgStore(FakeStore):
+    """배정(assignees)과 검수운영 기한(crew_wave)을 함께 가진 스토어."""
+
+    def __init__(self, names, per_done, asg=None, due_at=0.0):
+        super().__init__(names, per_done)
+        self._asg = asg or {}
+        if due_at:
+            self._reports[("crew_wave", None)] = {"item": {"due_at": due_at}}
+
+    def assignees(self, team=None):
+        return {ch: {"reviewers": list(rv), "min": 1} for ch, rv in self._asg.items()}
+
+
+class TestAssignmentMode(unittest.TestCase):
+    """독려 기준을 '팀 평균 미만'에서 '내가 맡은 몫과 내 기한'으로 전환.
+    남과 비교하는 독려는 팀을 방어적으로 만들고, 많이 맡은 사람이 억울해진다."""
+
+    def test_wave_due_and_assignment_progress(self):
+        due = time.time() + 7200
+        st = AsgStore({"a": "A", "b": "B"}, {"a": 2, "b": 0},
+                      asg={"a:0": ["a"], "a:1": ["a"], "x1": ["a"], "x2": ["b"]}, due_at=due)
+        self.assertAlmostEqual(QB.wave_due(st), due, places=3)
+        p = QB.assignment_progress(st)
+        self.assertEqual(p["a"], {"assigned": 3, "done": 2, "pending": 1})   # a:0·a:1 은 판정함
+        self.assertEqual(p["b"], {"assigned": 1, "done": 0, "pending": 1})
+
+    def test_targets_are_people_with_work_left_not_below_average(self):
+        """많이 맡아 많이 한 사람도 남았으면 대상 · 적게 했어도 다 끝냈으면 제외."""
+        st = AsgStore({"a": "A", "b": "B"}, {"a": 5, "b": 0},
+                      asg={f"a:{i}": ["a"] for i in range(5)} | {"x9": ["a"], "b:only": ["b"]})
+        prog = QB.compute_progress(st, None, _future())
+        mine = QB.select_by_assignment(prog, QB.assignment_progress(st), 0)
+        names = [m["name"] for m in mine]
+        self.assertIn("A", names)                      # 5건 했지만 1건 남음 → 대상
+        self.assertIn("B", names)                      # 0건 · 1건 남음 → 대상
+        # 다 끝낸 사람은 빠진다
+        st2 = AsgStore({"a": "A"}, {"a": 1}, asg={"a:0": ["a"]})
+        self.assertEqual(QB.select_by_assignment(QB.compute_progress(st2, None, _future()),
+                                                 QB.assignment_progress(st2), 0), [])
+
+    def test_message_talks_about_my_share_only(self):
+        text, blocks = QB.compose_mine("해씨", 4, 10, 6, time.time() + 3600)
+        self.assertIn("6건 남았어요", text)
+        self.assertIn("10건 중 4건", text)
+        self.assertIn("오늘까지", text)
+        self.assertNotIn("평균", text)                 # 남과 비교하지 않는다
+        self.assertTrue(blocks[0]["text"]["text"])
+        zero, _ = QB.compose_mine("에디", 0, 8, 8, 0)
+        self.assertIn("아직 시작 전", zero)
+        self.assertIn("틈날 때", zero)                 # 기한 없으면 재촉하지 않는다
+
+    def test_falls_back_to_team_average_without_assignments(self):
+        st = FakeStore({"a": "A", "b": "B"}, {"a": 6, "b": 0})
+        r = QB.run(st, team=None, learn_next_at=_future(), token="", dry_run=True, log=lambda *a: None)
+        self.assertEqual(r["mode"], "avg")
+
+    def test_assignment_mode_runs_even_when_quest_deadline_passed(self):
+        """맡은 일이 남아 있으면 퀘스트 일시가 지났어도 독려한다(기한 원천이 다르다)."""
+        st = AsgStore({"a": "A"}, {"a": 0}, asg={"x1": ["a"]}, due_at=time.time() + 3600)
+        r = QB.run(st, team=None, learn_next_at=_past(), token="", dry_run=True, log=lambda *a: None)
+        self.assertEqual(r["mode"], "mine")
+        self.assertEqual(r["targets"], 1)
+        self.assertTrue(r["deadline"] > time.time())

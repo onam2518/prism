@@ -38,7 +38,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 검수(1층) → **reviewops.py** | `apply_feedback` `review_queue` `raw_rows` `patch_content_meta` `content_history` `drafts_for` | /feedback /queue /raw /history /drafts /source-status |
 | 검수(2층·최종) → **reviewops.py** | `final_review_queue` `set_final_verdict` `reviewer_roles` `_inject_gold_final` | /final-queue /final-verdict /reviewer-role |
 | 배정 → **reviewops.py** | `distribute_assignments` `assign_log_data` | /content-assign* /assign-log |
-| 검수 인력 운영(HR) → **crewops.py** | `capacity` `profiles`/`set_profile` `crew_data` `plan_distribute` `rebalance` `set_wave` | /crew /crew-profile /crew-assign /crew-rebalance /crew-wave |
+| 검수 인력 운영(HR) → **crewops.py** | `capacity` `profiles`/`set_profile` `crew_data` `plan_distribute` `rebalance` `escalate_split` `category_reliability` `auto_tick` | /crew /crew-profile /crew-assign /crew-rebalance /crew-wave /crew-escalate /crew-auto |
 | 게임화 → **reviewops.py** | `arena_data` `mission_progress` `save_badges` `reviewer_weights` | /arena /badges |
 | 학습 연동 | `learn-*` 핸들러(실체는 learnops) `apply_gold_answer` `disabled_directives` | /learn-* /golden* /apply-directive |
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
@@ -80,7 +80,9 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   **주의 ①**: `20-ingest-policy.html` 끝이 Alpine `x-data` 루트를 닫는다 — 새 화면 조각은
   파일명이 그보다 앞서야 한다(예: `19b-`). 뒤에 두면 스코프 밖이라 `x-show` 가 평가되지
   않아 마크업은 있는데 화면이 빈 채로 보인다.
-  **주의 ②**: `x-show` 와 같은 요소에 인라인 `display:flex` 를 주지 않는다. Alpine 이 보일 때
+  **주의 ②**: 관리자 메뉴 `admin`(운영 관리)은 `adminTab` 으로 팀 관리/검수운영 2탭을 담는다 —
+  검수운영 마크업은 `19b-crew.html`, 탭 게이트는 권한 id `crew`(앞뒤 동일).
+  **주의 ③**: `x-show` 와 같은 요소에 인라인 `display:flex` 를 주지 않는다. Alpine 이 보일 때
   display 속성을 지워 flex 가 날아간다(자식이 세로로 쌓여 그래프가 뭉갬) — `.flexrow` 클래스 사용.
 - 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 9개 + 로더 `vendor/app.js` 가
   디스크립터 병합(게터 보존 · 조각 간 `this` 공유). 조각 → 로더 로드 순서는

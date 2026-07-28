@@ -36,6 +36,20 @@ class CrewBase(unittest.TestCase):
     def _h(self, i):
         return "%016x" % i
 
+    def _content_cat(self, st, i, cat, ts=None):
+        """분류를 단 콘텐츠 1건. 저장 해시를 본문에서 파생시킨다(운영 저장 경로와 동일) —
+        결과 뷰가 content_ref 로 키를 다시 만들기 때문에 합성 해시로는 조인이 안 된다."""
+        from prism.store import content_hash
+        ref = {"displayServiceName": "s", "title": "c%04d" % i, "subtitle": "", "body": "b%04d" % i}
+        h = content_hash(ref)
+        payload = {"quality_meta": {"review": "yellow", "confidence": 0.5, "finalGrade": "G"},
+                   "content_ref": ref, "item_meta": {"content_category": [cat]}}
+        c = st._conn()
+        c.execute("INSERT OR REPLACE INTO results(content_hash,service,title,final_grade,payload,created_at) "
+                  "VALUES(?,?,?,?,?,?)", (h, "s", ref["title"], "G", json.dumps(payload), ts or time.time()))
+        c.commit()
+        return h
+
 
 class TestCapacity(CrewBase):
     def test_rate_from_median_gap(self):
@@ -330,12 +344,15 @@ class TestReviewersMapContract(CrewBase):
 
 
 class TestMenuGate(CrewBase):
-    def test_crew_menu_registered_super_only(self):
-        """검수운영은 인력 지표를 다루므로 팀 관리자에게도 기본 비공개."""
+    def test_crew_tab_registered_super_only(self):
+        """검수운영은 인력 지표를 다루므로 팀 관리자에게도 기본 비공개.
+        '운영 관리' 메뉴 안의 탭이지만 권한 id 는 crew 를 그대로 써서 앞뒤 게이트를 하나로 둔다."""
         from prism import adminops as AO
         self.assertIn("crew", AO.CONFIGURABLE_MENUS)
         self.assertEqual(AO.DEFAULT_MENU_PERMS["crew"], {"super": True, "admin": False})
-        self.assertEqual(AO.MENU_LABELS["crew"], "검수운영")
+        self.assertIn("검수운영", AO.MENU_LABELS["crew"])
+        # 팀 관리는 종전대로 팀 관리자도 볼 수 있다(계정·권한은 그들의 일)
+        self.assertEqual(AO.DEFAULT_MENU_PERMS["admin"], {"super": True, "admin": True})
 
     def test_post_routes_are_super_gated(self):
         from prism import serve
@@ -383,3 +400,238 @@ class TestSettings(CrewBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAutoOps(CrewBase):
+    """자동 운영: 사람이 매주 잊지 않고 눌러야 도는 운영은 결국 안 돈다.
+    다만 남의 일을 옮기는 동작이라 기본은 꺼둔다 · 사이클당 1회만 실행돼야 한다."""
+
+    def _cycle_now(self):
+        """이번 사이클(월 10시 KST) 시작 직후 시각. 요일에 의존하지 않는 고정점."""
+        from prism.crewops import _last_open_ts, settings
+        cfg = dict(settings(None))
+        return _last_open_ts(time.time(), cfg) + 3600
+
+    def test_last_open_is_recent_configured_weekday_hour(self):
+        from prism.crewops import _last_open_ts
+        from prism.store import day_key, _tz_sec
+        cfg = {"wave_weekday": 0, "wave_hour": 10}
+        now = time.time()
+        ts = _last_open_ts(now, cfg)
+        self.assertLessEqual(ts, now)
+        self.assertGreater(ts, now - 7 * 86400 - 1)              # 최대 한 주 전
+        local = ts + _tz_sec()
+        self.assertEqual(int(local % 86400) // 3600, 10)         # 팀 타임존 10시
+        self.assertEqual((int(local // 86400) + 3) % 7, 0)       # 월요일
+        # 시작 시각 1초 전이면 지난 주 사이클을 가리킨다(같은 요일이라도 앞당겨 잡지 않음)
+        self.assertEqual(_last_open_ts(ts - 1, cfg), ts - 7 * 86400)
+        self.assertNotEqual(day_key(ts), day_key(ts - 7 * 86400))
+
+    def _fixture(self, serve, n=8):
+        st = serve._STORE
+        base = time.time() - 86400 * 2
+        for i in range(n):
+            self._content(st, self._h(i))
+        for k, rid in enumerate(("a", "b")):
+            st.set_reviewer(rid, rid, "boksil")
+            serve.CRW.set_profile(rid, {"hours_per_week": 2})
+            for j in range(10):                    # 실측 표본
+                h = self._h(500 + k * 100 + j)
+                self._content(st, h)
+                st.save_feedback(h, "s", "t", "good", "analyze", "", base + k * 40000 + j * 60, reviewer=rid)
+        return st
+
+    def test_off_by_default(self):
+        serve = self._serve()
+        self._fixture(serve)
+        r = serve.CRW.auto_tick(None)
+        self.assertFalse(r["auto_wave"])
+        self.assertFalse(r["auto_rebalance"])
+        self.assertIsNone(r["wave"])
+        self.assertEqual(serve._STORE.assignees(None), {})       # 켜지 않으면 아무것도 안 옮긴다
+
+    def test_wave_runs_once_per_cycle(self):
+        serve = self._serve()
+        st = self._fixture(serve)
+        serve.CRW.set_settings({"auto_wave": 1, "wave_min_reviewers": 1})
+        now = self._cycle_now()
+        r1 = serve.CRW.auto_tick(None, now=now)
+        self.assertTrue(r1["wave"]["ok"])
+        # 대상 = 아직 아무도 안 맡은 검수 대상 전부(28건). 한 사람이 이미 판정했더라도
+        # 담당이 지정되지 않았으면 커버리지가 비어 있는 것이라 배분 대상이 맞다.
+        self.assertEqual(r1["wave"]["n"], 28)
+        self.assertEqual(len(st.assignees(None)), 28)
+        self.assertEqual(serve.CRW.wave(None)["due_at"], r1["wave"]["due_at"])
+        # 같은 사이클에 다시 호출해도 두 번 나가지 않는다(화면 진입마다 불러도 안전)
+        for i in range(8, 12):
+            self._content(st, self._h(i))
+        r2 = serve.CRW.auto_tick(None, now=now + 3600)
+        self.assertIsNone(r2["wave"])
+        self.assertEqual(len(st.assignees(None)), 28)
+        # 다음 사이클이 오면 그 사이 늘어난 것만 새로 나간다
+        r3 = serve.CRW.auto_tick(None, now=now + 7 * 86400)
+        self.assertEqual(r3["wave"]["n"], 4)
+        self.assertEqual(len(st.assignees(None)), 32)
+
+    def test_dry_run_changes_nothing(self):
+        serve = self._serve()
+        st = self._fixture(serve)
+        serve.CRW.set_settings({"auto_wave": 1})
+        r = serve.CRW.auto_tick(None, now=self._cycle_now(), apply=False)
+        self.assertEqual(r["wave"]["n"], 28)                     # 계획은 나오고
+        self.assertEqual(st.assignees(None), {})                 # 실제로는 안 옮긴다
+        self.assertEqual(serve.CRW.auto_state(None), {})         # 회차 키도 안 남긴다
+
+    def test_rebalance_only_near_deadline(self):
+        serve = self._serve()
+        st = self._fixture(serve)
+        st.set_assignees_bulk([self._h(i) for i in range(8)], ["a"], min_reviewers=1)
+        c = st._conn()
+        c.execute("UPDATE assignments SET ts=?", (time.time() - 86400 * 9,))
+        c.commit()
+        serve.CRW.set_settings({"auto_rebalance": 1})
+        now = time.time()
+        serve.CRW.set_wave(now + 5 * 86400)                      # 기한이 멀면 손대지 않는다
+        self.assertIsNone(serve.CRW.auto_tick(None, now=now)["rebalance"])
+        self.assertEqual(st.assignees(None)[self._h(0)]["reviewers"], ["a"])
+        serve.CRW.set_wave(now + 3600)                           # 기한 하루 안 → 이관
+        r = serve.CRW.auto_tick(None, now=now)
+        self.assertTrue(r["rebalance"]["n"] > 0)
+        self.assertEqual(r["rebalance"]["to"], {"b": r["rebalance"]["n"]})
+        self.assertEqual(serve.assign_log_data(None)["items"][0]["by"], "자동 운영")
+
+    def test_wave_marks_cycle_even_with_nothing_to_send(self):
+        """내보낼 게 없어도 이번 사이클은 처리한 것으로 본다(매번 빈 계산 반복 방지)."""
+        serve = self._serve()
+        st = self._fixture(serve, n=4)
+        st.set_assignees_bulk(sorted(st.review_targets(None)), ["a"], min_reviewers=1)   # 남는 게 없게
+        serve.CRW.set_settings({"auto_wave": 1})
+        now = self._cycle_now()
+        r = serve.CRW.auto_tick(None, now=now)
+        self.assertEqual(r["wave"]["n"], 0)
+        self.assertTrue(serve.CRW.auto_state(None)["wave_cycle"])
+        self.assertIsNone(serve.CRW.auto_tick(None, now=now + 60)["wave"])
+
+
+class TestAdaptiveOverlap(CrewBase):
+    """전건 3인 검수 대신 2인으로 시작하고 갈린 건에만 3번째를 붙인다.
+    실측 불일치율(선착 2인 기준 25%)에서 판정 수를 25% 안팎 줄이는 레버."""
+
+    def _pair(self, serve, n=6):
+        st = serve._STORE
+        for i in range(n):
+            self._content(st, self._h(i))
+        for rid in ("a", "b", "c"):
+            st.set_reviewer(rid, rid, "boksil")
+            serve.CRW.set_profile(rid, {"hours_per_week": 2})
+        st.set_assignees_bulk([self._h(i) for i in range(n)], ["a", "b"], min_reviewers=2)
+        return st
+
+    def test_only_disagreements_need_a_third(self):
+        serve = self._serve()
+        st = self._pair(serve)
+        now = time.time()
+        # 0·1 갈림 · 2 합의 · 3 은 한 명만 봄 · 4·5 는 아무도 안 봄
+        for h, (va, vb) in {0: ("good", "bad"), 1: ("bad", "good"), 2: ("good", "good")}.items():
+            st.save_feedback(self._h(h), "s", "t", va, "analyze", "", now, reviewer="a")
+            st.save_feedback(self._h(h), "s", "t", vb, "analyze", "", now, reviewer="b")
+        st.save_feedback(self._h(3), "s", "t", "good", "analyze", "", now, reviewer="a")
+        pend = {p["hash"] for p in serve.CRW.split_pending(None)}
+        self.assertEqual(pend, {self._h(0), self._h(1)})
+
+    def test_escalate_adds_a_third_who_has_not_seen_it(self):
+        serve = self._serve()
+        st = self._pair(serve)
+        now = time.time()
+        st.save_feedback(self._h(0), "s", "t", "good", "analyze", "", now, reviewer="a")
+        st.save_feedback(self._h(0), "s", "t", "bad", "analyze", "", now, reviewer="b")
+        r = serve.CRW.escalate_split(None)
+        self.assertEqual(r["n"], 1)
+        self.assertFalse(r["applied"])
+        self.assertEqual(st.assignees(None)[self._h(0)]["reviewers"], ["a", "b"])   # 계획만
+        r2 = serve.CRW.escalate_split(None, apply=True, by="admin@x")
+        cur = st.assignees(None)[self._h(0)]
+        self.assertEqual(sorted(cur["reviewers"]), ["a", "b", "c"])                 # 안 본 사람이 붙는다
+        self.assertEqual(cur["min"], 3)                                             # 통과 기준도 3인
+        self.assertEqual(serve.assign_log_data(None)["items"][0]["mode"], "갈린 건 한 명 더")
+        # 두 번째 호출은 대상이 없다(이미 3인 배정 → split_pending 에서 빠짐)
+        self.assertEqual(serve.CRW.escalate_split(None)["n"], 0)
+
+    def test_settled_content_is_left_alone(self):
+        """골든으로 확정됐거나 리드가 최종판정한 건은 3번째를 붙이지 않는다."""
+        serve = self._serve()
+        st = self._pair(serve)
+        now = time.time()
+        for i in (0, 1):
+            st.save_feedback(self._h(i), "s", "t", "good", "analyze", "", now, reviewer="a")
+            st.save_feedback(self._h(i), "s", "t", "bad", "analyze", "", now, reviewer="b")
+        serve.set_final_verdict(self._h(0), "good", by="lead", team=None)
+        pend = {p["hash"] for p in serve.CRW.split_pending(None)}
+        self.assertEqual(pend, {self._h(1)})
+
+    def test_auto_escalate_runs_every_tick_when_on(self):
+        serve = self._serve()
+        st = self._pair(serve)
+        now = time.time()
+        st.save_feedback(self._h(0), "s", "t", "good", "analyze", "", now, reviewer="a")
+        st.save_feedback(self._h(0), "s", "t", "bad", "analyze", "", now, reviewer="b")
+        self.assertIsNone(serve.CRW.auto_tick(None)["escalate"])       # 기본 꺼짐
+        serve.CRW.set_settings({"auto_escalate": 1})
+        r = serve.CRW.auto_tick(None)
+        self.assertEqual(r["escalate"]["n"], 1)
+
+
+class TestStrengthMatching(CrewBase):
+    def _cat_setup(self, serve):
+        """두 사람 · 두 분류. a 는 Sports 에서, b 는 Books 에서 팀 결론과 잘 맞는다."""
+        st = serve._STORE
+        for rid in ("a", "b"):
+            st.set_reviewer(rid, rid, "boksil")
+            serve.CRW.set_profile(rid, {"hours_per_week": 2})
+        now = time.time() - 86400
+
+        def hist(i, cat, va, vb, vc):
+            h = self._content_cat(st, 2000 + i, cat, ts=now)
+            for rid, v in (("a", va), ("b", vb), ("c", vc)):
+                st.save_feedback(h, "s", "t", v, "analyze", "", now + i, reviewer=rid)
+        # Sports 6건: 다수(=c 와 a) good · b 는 계속 어긋남 / Books 6건: 반대
+        for i in range(6):
+            hist(i, "Sports", "good", "bad", "good")
+        for i in range(6, 12):
+            hist(i, "Books", "bad", "good", "good")
+        return st
+
+    def test_reliability_is_per_category(self):
+        serve = self._serve()
+        self._cat_setup(serve)
+        rel = serve.CRW.category_reliability(None)
+        self.assertEqual(rel["a"]["Sports"], 1.0)
+        self.assertEqual(rel["a"]["Books"], 0.0)
+        self.assertEqual(rel["b"]["Sports"], 0.0)
+        self.assertEqual(rel["b"]["Books"], 1.0)
+        # 표본이 적은 조합은 담지 않는다(적은 표본으로 강점을 단정하지 않는다)
+        self.assertEqual(serve.CRW.category_reliability(None, min_n=99), {})
+
+    def test_strong_reviewer_gets_that_category(self):
+        serve = self._serve()
+        st = self._cat_setup(serve)
+        sports = [self._content_cat(st, 3000 + i, "Sports") for i in range(6)]
+        on = serve.CRW.plan_distribute(sports, min_reviewers=1, reviewers=["a", "b"], match=True)
+        off = serve.CRW.plan_distribute(sports, min_reviewers=1, reviewers=["a", "b"], match=False)
+        self.assertGreater(on["plan"]["a"]["n"], off["plan"]["a"]["n"])   # 강점 쪽으로 기운다
+        self.assertEqual(sum(p["n"] for p in on["plan"].values()), 6)     # 총량은 그대로
+
+    def test_lack_classes_go_first(self):
+        """정답셋이 부족한 분류를 앞으로 · 상한이 걸릴 때 더 값진 것이 먼저 나간다."""
+        serve = self._serve()
+        st = serve._STORE
+        rows = [self._content_cat(st, 4000 + i, cat)
+                for i, cat in enumerate(("Sports", "Books", "Sports"))]
+        orig = serve._lack_classes
+        serve._lack_classes = lambda team=None: {"Books"}
+        try:
+            serve._agg_bump()
+            self.assertEqual(serve.CRW.prioritize(rows, None)[0], rows[1])   # Books 가 맨 앞
+        finally:
+            serve._lack_classes = orig
+            serve._agg_bump()
