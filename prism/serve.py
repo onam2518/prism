@@ -65,6 +65,7 @@ from . import ingestops as IG
 from . import boardops as BD
 from . import evalops as EVO
 from . import deployops as DEP
+from . import crewops as CRW           # 검수 인력 운영(HR) · '검수운영' 메뉴
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
@@ -75,6 +76,7 @@ IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
 DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Atelier deployments 이식)
+CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
 
 _run_id = RN._run_id
 _build_id = RN._build_id
@@ -150,6 +152,13 @@ content_history = RV.content_history
 drafts_for = RV.drafts_for
 review_queue = RV.review_queue
 _inject_gold = RV._inject_gold
+# 검수 인력 운영(HR) 재수출 · 테스트·핸들러 호환
+crew_data = CRW.crew_data
+crew_capacity = CRW.capacity
+crew_profiles = CRW.profiles
+set_crew_profile = CRW.set_profile
+crew_plan_distribute = CRW.plan_distribute
+crew_rebalance = CRW.rebalance
 dashboard_data = DS.dashboard_data
 _dashboard_compute = DS._dashboard_compute
 drill_contents = DS.drill_contents
@@ -437,6 +446,7 @@ _MENU_POST_ROUTES = (
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
     ("/ingest-run", "content"), ("/rerun", "content"), ("/run", "content"), ("/store", "content"),
+    ("/crew", "crew"),
 )
 
 
@@ -1492,6 +1502,20 @@ def _g_assign_log(h, q):
     return assign_log_data(h._req_team())
 
 
+@_get_route("/crew")                                 # 검수운영: 인력 현황·캐파·정체(슈퍼관리자 이상)
+def _g_crew(h, q):
+    """전체 열람은 슈퍼관리자 이상. 그 외 로그인 사용자는 자기 카드만 받는다
+    (개인 지표 노출 범위 결정 2026-07-28: 관리자 전체 · 본인은 자기 것)."""
+    team = h._req_team()
+    if _supa() and not is_super_admin_user(h._bearer_uid(), team, h._bearer_email()):
+        uid = h._bearer_uid()
+        if not uid:
+            h._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+            return None
+        return CRW.crew_data(team, scope_uid=uid)
+    return CRW.crew_data(team)
+
+
 @_get_route("/routes-raw", admin=True)               # 학습 지시 원본 목록 + 끔 상태(관리자)
 def _g_routes_raw(h, q):
     return routes_overview(h._req_team())
@@ -2042,6 +2066,46 @@ def _p_content_remove(h, body):
               and st.remove_content((data.get("hash") or "").strip(), team=h._req_team()))
     _agg_bump()
     return {"ok": ok}
+
+
+@_post_route("/crew-profile", gate="super")          # 검수운영: 인력 원장(가용 시간·근무 요일·부재·상태)
+def _p_crew_profile(h, body):
+    data = json.loads(body or b"{}")
+    actor = h._bearer_email() or h._bearer_uid() or "(로컬)"
+    if isinstance(data.get("settings"), dict):       # 운영 파라미터(여유율·정체 기준 등)
+        return {"ok": True, "settings": CRW.set_settings(data["settings"], h._req_team())}
+    return CRW.set_profile((data.get("uid") or "").strip(), data.get("patch") or {},
+                           team=h._req_team(), by=actor)
+
+
+@_post_route("/crew-wave", gate="super")             # 검수운영: 웨이브(주 사이클) 마감 설정·해제
+def _p_crew_wave(h, body):
+    data = json.loads(body or b"{}")
+    actor = h._bearer_email() or h._bearer_uid() or "(로컬)"
+    return CRW.set_wave(data.get("due_at"), by=actor, plan=data.get("plan"), team=h._req_team())
+
+
+@_post_route("/crew-assign", gate="super")           # 검수운영: 캐파 비례 배정(미리보기 → 실행)
+def _p_crew_assign(h, body):
+    data = json.loads(body or b"{}")
+    hashes = [str(x).strip() for x in (data.get("hashes") or [])
+              if str(x).strip() and not str(x).strip().startswith("gold:")]   # 골드 가상 행 제외(배정 라우트 공통 정책)
+    try:
+        minr = int(data.get("min_reviewers") or 1)
+    except (TypeError, ValueError):
+        minr = 1
+    actor = h._bearer_email() or h._bearer_uid() or "(로컬)"
+    return CRW.plan_distribute(hashes, min_reviewers=minr,
+                               reviewers=[str(r).strip() for r in (data.get("reviewers") or []) if str(r).strip()],
+                               team=h._req_team(), apply=bool(data.get("apply")),
+                               by=actor, due_at=data.get("due_at"))
+
+
+@_post_route("/crew-rebalance", gate="super")        # 검수운영: 정체분 회수 → 여력 있는 인원에게 이관
+def _p_crew_rebalance(h, body):
+    data = json.loads(body or b"{}")
+    actor = h._bearer_email() or h._bearer_uid() or "(로컬)"
+    return CRW.rebalance(team=h._req_team(), apply=bool(data.get("apply")), by=actor)
 
 
 @_post_route("/content-assign-bulk", gate="super")   # 여러 콘텐츠 일괄 배정(덮어쓰기)

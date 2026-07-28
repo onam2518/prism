@@ -275,6 +275,14 @@ class SupabaseStore:
             d["min"] = max(1, min(len(d["reviewers"]), d["min"]))
         return out
 
+    def assignment_times(self, team=None) -> dict:
+        """(content_hash, reviewer_id) → 배정 시각(epoch) · 검수운영의 정체 일수 산정용(sqlite 와 동일 계약)."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        out = {}
+        for r in self._get("assignments", "select=content_hash,reviewer_id,ts" + tq + "&limit=20000"):
+            out[(r.get("content_hash"), r.get("reviewer_id"))] = _epoch(r.get("ts"))
+        return out
+
     def assignment_load(self, team=None) -> dict:
         """검수자별 미완료 배정 부하 {reviewer_id: n} · 균등 분배 배정의 가중 원천.
         부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(sqlite 와 동일 계약)."""

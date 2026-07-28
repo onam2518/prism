@@ -15,6 +15,7 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    ├─ *ops.py 도메인 모듈(serve 를 _SV 로 역참조 · 아래 표): learnops(학습) adminops(인증)
    │   reviewops(검수·배정·게임화) runops(실행 파이프라인) ingestops(인입·잡)
    │   topicops(토픽) dictops(사전) dashops(대시보드·롤업·리포트) mediaops umops boardops
+   │   crewops(검수 인력 운영·캐파·스케줄)
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
    ├─ topic.py / entdict.py / dictionaries.py / usermeta.py / mediaext.py / imagext.py
    │              도메인 모듈(비교적 잘 분리된 편 · 새 기능은 이 패턴을 따를 것)
@@ -37,6 +38,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 검수(1층) → **reviewops.py** | `apply_feedback` `review_queue` `raw_rows` `patch_content_meta` `content_history` `drafts_for` | /feedback /queue /raw /history /drafts /source-status |
 | 검수(2층·최종) → **reviewops.py** | `final_review_queue` `set_final_verdict` `reviewer_roles` `_inject_gold_final` | /final-queue /final-verdict /reviewer-role |
 | 배정 → **reviewops.py** | `distribute_assignments` `assign_log_data` | /content-assign* /assign-log |
+| 검수 인력 운영(HR) → **crewops.py** | `capacity` `profiles`/`set_profile` `crew_data` `plan_distribute` `rebalance` `set_wave` | /crew /crew-profile /crew-assign /crew-rebalance /crew-wave |
 | 게임화 → **reviewops.py** | `arena_data` `mission_progress` `save_badges` `reviewer_weights` | /arena /badges |
 | 학습 연동 | `learn-*` 핸들러(실체는 learnops) `apply_gold_answer` `disabled_directives` | /learn-* /golden* /apply-directive |
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
@@ -73,8 +75,13 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 
 ## UI 구조
 
-- 마크업: `prism/ui/NN-*.html` 화면 섹션 조각 22개를 `page.py` 가 파일명 순으로
+- 마크업: `prism/ui/NN-*.html` 화면 섹션 조각 23개를 `page.py` 가 파일명 순으로
   이어붙여 `PAGE` 합성. **화면 수정 = 해당 조각 파일만 편집** · 새 화면 모듈은 새 조각.
+  **주의 ①**: `20-ingest-policy.html` 끝이 Alpine `x-data` 루트를 닫는다 — 새 화면 조각은
+  파일명이 그보다 앞서야 한다(예: `19b-`). 뒤에 두면 스코프 밖이라 `x-show` 가 평가되지
+  않아 마크업은 있는데 화면이 빈 채로 보인다.
+  **주의 ②**: `x-show` 와 같은 요소에 인라인 `display:flex` 를 주지 않는다. Alpine 이 보일 때
+  display 속성을 지워 flex 가 날아간다(자식이 세로로 쌓여 그래프가 뭉갬) — `.flexrow` 클래스 사용.
 - 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 9개 + 로더 `vendor/app.js` 가
   디스크립터 병합(게터 보존 · 조각 간 `this` 공유). 조각 → 로더 로드 순서는
   `ui/00-head.html` 의 script 태그가 원천. `vendor/mobile.js` = /m 전용(단일 파일).
