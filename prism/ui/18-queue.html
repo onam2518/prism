@@ -49,7 +49,8 @@
                   <td class="text-ink" x-text="f.title || '(제목 없음)'"></td>
                   <td class="text-muted" x-text="f.service || '·'"></td>
                   <td class="text-muted" x-text="f.model || '·'"></td>
-                  <td><template x-for="k in (f.kinds||[])" x-bind:key="'frk'+f.hash+k"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="k" data-tip-pos="top" x-text="failKindKr(k)"></span></template></td>
+                  <!-- 툴팁 = 예외 원문(details) · 종류 배지만으로는 타임아웃인지 응답 형식 문제인지 못 가린다 -->
+                  <td><template x-for="k in (f.kinds||[])" x-bind:key="'frk'+f.hash+k"><span class="ds-badge ds-badge--reason" style="cursor:help;margin:1px" x-bind:data-tip="failTip(f, k)" data-tip-pos="top" x-text="failKindKr(k)"></span></template></td>
                   <td><template x-for="c in (f.calls||[])" x-bind:key="'frc'+f.hash+c"><span class="ds-badge ds-badge--neutral" style="margin:1px" x-text="c"></span></template><span class="text-muted" x-show="!(f.calls||[]).length">·</span></td>
                   <td class="tnum text-muted" x-text="(f.day||'').slice(5).replace('-','/')"></td>
                   <td><button type="button" class="ds-btn ds-btn--outline" style="height:26px;padding:0 10px;font-size:11px" x-bind:disabled="!!rerunBusy[f.hash]" x-on:click="rerunFail(f)" x-text="rerunBusy[f.hash] ? '재실행 중…' : '재실행'" data-tip="STEP 2의 사용 모델로 이 콘텐츠만 초안 재생성 · 건당 비용 발생" data-tip-pos="left"></button></td>
