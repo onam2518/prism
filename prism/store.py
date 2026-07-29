@@ -17,6 +17,26 @@ def content_hash(content: dict) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
 
 
+IDENTITY_FIELDS = ("displayServiceName", "title", "subtitle", "body")   # content_hash 입력 = 콘텐츠 정체성
+
+
+def _payload_with_identity(content: dict, out: dict) -> dict:
+    """적재 payload 의 content_ref 에 '해시를 만든 원본' 식별 4필드를 되박는다.
+
+    파이프라인 출력의 content_ref 는 정규화본(끝 공백 제거 등)이라 그대로 저장하면,
+    재실행이 그 ref 로 입력을 재구성할 때 원본과 다른 키가 나와 같은 행을 갱신하지 않고
+    새 행을 만들었다(2026-07-29 로컬 실측: 4건 재실행 → 6건). supabase 는 원본 본문을
+    컬럼에 담아 되돌려주므로 같은 문제가 없다 — sqlite 를 같은 계약으로 맞춘다.
+    payload 는 복사본을 만들어 바꾼다(호출자의 out 객체를 건드리지 않는다)."""
+    ref = dict(out.get("content_ref") or {})
+    for k in IDENTITY_FIELDS:
+        if k in content:
+            ref[k] = content.get(k) or ""
+    o = dict(out)
+    o["content_ref"] = ref
+    return o
+
+
 def _tz_sec() -> int:
     """일 경계 타임존 오프셋(초). PRISM_TZ_MIN(분) · 기본 540 = KST(UTC+9).
     운영 서버(fly · UTC)가 서버 로컬 날짜로 버킷팅하면 검수팀(KST)의 자정~09시
@@ -363,7 +383,7 @@ class Store:
           (ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
            qm.get("finalGrade", ""), json.dumps(qm.get("reasons", []), ensure_ascii=False),
            json.dumps(out.get("item_meta"), ensure_ascii=False),
-           json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
+           json.dumps(_payload_with_identity(content, out), ensure_ascii=False), tr.get("cost_usd", 0.0),
            fail_kind, time.time()))
         c.commit()
 
@@ -401,7 +421,7 @@ class Store:
             rows.append((ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
                          qm.get("finalGrade", ""), json.dumps(qm.get("reasons", []), ensure_ascii=False),
                          json.dumps(out.get("item_meta"), ensure_ascii=False),
-                         json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
+                         json.dumps(_payload_with_identity(content, out), ensure_ascii=False), tr.get("cost_usd", 0.0),
                          fail_kind, time.time(), source))
         if not rows:
             return 0
@@ -452,7 +472,7 @@ class Store:
             rows.append((ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
                          new_gr, json.dumps(qm.get("reasons", []), ensure_ascii=False),
                          json.dumps(out.get("item_meta"), ensure_ascii=False),
-                         json.dumps(out, ensure_ascii=False), tr.get("cost_usd", 0.0),
+                         json.dumps(_payload_with_identity(content, out), ensure_ascii=False), tr.get("cost_usd", 0.0),
                          fail_kind, time.time(), source))
         if rows:
             c.executemany("""INSERT INTO results
