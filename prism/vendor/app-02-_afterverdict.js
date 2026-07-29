@@ -134,11 +134,17 @@ window.PRISM_APP_PARTS.push(() => ({
           vision: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai/gpt-5.4',
             'openai/gpt-5-mini', 'anthropic/claude-sonnet-4.6', 'anthropic/claude-opus-4.6'],
         },
+        // 2026-07-29 라우터 이전(api.timelyrouter.ai) 시 GET /v1/models 실목록으로 맞춤.
+        // deepseek-chat 은 목록에서 빠져 제거 · Solar 는 라우터 경유로도 쓸 수 있어 합류.
         timely: {
-          text: ['gpt-5.4', 'gpt-5.4-mini', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5',
-            'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'deepseek-v4-pro', 'deepseek-chat'],
-          vision: ['gpt-5.4', 'gpt-5.4-mini', 'claude-opus-4-8', 'claude-sonnet-4-6',
-            'gemini-3.5-flash', 'gemini-3.1-pro-preview'],
+          text: ['claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5',
+            'claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-fable-5',
+            'gpt-5.6-sol', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano',
+            'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite',
+            'solar-pro3', 'solar-open2', 'solar-pro2',
+            'deepseek-v4-pro', 'kimi-k3', 'glm-5.2', 'qwen3-235b-a22b'],
+          vision: ['claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-sonnet-4-6',
+            'gpt-5.4', 'gpt-5.4-mini', 'gemini-3.5-flash', 'gemini-3.1-pro-preview'],
         },
       },
 
