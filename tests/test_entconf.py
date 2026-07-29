@@ -121,3 +121,37 @@ class TestExposure(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NonTitleCeilingTest(unittest.TestCase):
+    """제목 밖 엔티티가 구조적으로 막혀 있던 결함(2026-07-29 실데이터 진단).
+
+    예전 가중치는 제목을 뺀 합이 0.45 라, 리드문·첫문단·본문 반복이 전부 걸려도
+    기본 노출선(0.5)을 넘을 수 없었다. 운영 표본 1,990개에서 제목 밖 1,889개가
+    한 개도 통과하지 못했다 — 확신도가 사실상 '제목에 있나?'의 다른 표현이었다.
+    """
+
+    def test_non_title_can_now_pass(self):
+        from prism import entconf as EC
+        body = ("나루호 발사가 성공했다. " * 2) + ("다른 문장. " * 20) + ("나루호 후속. " * 3)
+        ref = {"title": "우주 개발 소식", "body": body}          # 제목에 없음
+        im = {"summary": "나루호 발사 성공", "entities": ["나루호"]}
+        self.assertGreaterEqual(EC.entity_confidence("나루호", ref, im), 0.5)
+
+    def test_summary_only_still_folds(self):
+        """리드문에만 스치고 원문 근거가 없으면 여전히 접힌다(오추출 방어)."""
+        from prism import entconf as EC
+        ref = {"title": "우주 개발 소식", "body": "본문에는 없는 이름입니다. " * 30}
+        im = {"summary": "무관한이름 언급", "entities": ["무관한이름"]}
+        self.assertLess(EC.entity_confidence("무관한이름", ref, im), 0.5)
+
+    def test_title_alone_is_on_the_line(self):
+        from prism import entconf as EC
+        ref = {"title": "삼성전자 신제품", "body": "관련 없는 본문. " * 30}
+        im = {"summary": "", "entities": ["삼성전자"]}
+        self.assertAlmostEqual(EC.entity_confidence("삼성전자", ref, im), 0.5, places=3)
+
+    def test_non_title_ceiling_is_above_threshold(self):
+        """가중치 합이 다시 0.5 아래로 내려가면 같은 결함이 재발한다."""
+        from prism import entconf as EC
+        self.assertGreater(EC.W_SUMMARY + EC.W_FIRST + EC.W_FREQ, 0.5)
