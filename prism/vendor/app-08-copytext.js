@@ -198,7 +198,7 @@ window.PRISM_APP_PARTS.push(() => ({
             this.liveToast('선택 ' + (r.done || 0) + '건 재실행 완료'
               + (r.failed ? (' · 실패 ' + r.failed) : '')
               + (r.over_cap ? (' · 상한 초과 ' + r.over_cap + '건 제외') : ''));
-            this.clearPick(); this.loadDash(); this.loadRaw && this.loadRaw();
+            this.clearPick(); this.loadDash(); this.loadRaw && this.loadRaw(); this.fetchIngestStatus();
           } else if (r && !force && /퀘스트/.test(r.error || '')) retryConfirm = true;
           else this._err((r && r.error) || '재실행 실패');
         } catch (e) { this._err('재실행 실패'); }
@@ -218,7 +218,7 @@ window.PRISM_APP_PARTS.push(() => ({
         let retryConfirm = false;
         try {
           const r = await (await this._afetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, model: this.bulkModel || '', force: !!force }) })).json();
-          if (r && !r.error) { this.liveToast((c.title || '콘텐츠') + ' · 재실행 완료'); this.loadDash(); this.loadRaw && this.loadRaw(); }
+          if (r && !r.error) { this.liveToast((c.title || '콘텐츠') + ' · 재실행 완료'); this.loadDash(); this.loadRaw && this.loadRaw(); this.fetchIngestStatus(); }
           else if (r && !force && /퀘스트/.test(r.error || '')) retryConfirm = true;
           else this._err((r && r.error) || '재실행 실패');
         } catch (e) { this._err('재실행 실패'); }

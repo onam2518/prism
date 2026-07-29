@@ -73,12 +73,18 @@ window.PRISM_APP_PARTS.push(() => ({
         this.failBusy = true;
         let retryConfirm = false;
         try {
+          const before = this.failAll.length;
           const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel || '', hashes: hs, force: !!force }) })).json();
           if (r && !r.error) {
-            this.liveToast('선택 ' + (r.done || 0) + '건 재실행 완료'
-              + (r.failed ? (' · 실패 ' + r.failed) : '')
+            this.clearFailPick(); this.loadDash(); this.fetchIngestStatus();
+            await this.loadFails();
+            // '재실행 완료' 만 띄우면 목록이 그대로일 때 왜 안 줄었는지 알 수 없다.
+            // 실제로 몇 건이 목록에서 빠졌는지(=해소) 세어 알린다.
+            const cleared = Math.max(0, before - this.failAll.length);
+            this.liveToast('재실행 ' + (r.done || 0) + '건 · 해소 ' + cleared + '건'
+              + (this.failAll.length ? (' · 남음 ' + this.failAll.length + '건') : '')
+              + (cleared === 0 && this.failBillingN ? ' (잔액 부족 · 충전 전에는 해소되지 않습니다)' : '')
               + (r.over_cap ? (' · 상한 초과 ' + r.over_cap + '건 제외') : ''));
-            this.clearFailPick(); this.loadFails(); this.loadDash();
           } else if (r && !force && /퀘스트/.test(r.error || '')) retryConfirm = true;
           else this._err((r && r.error) || '재실행 실패');
         } catch (e) { this._err('재실행 실패'); }
