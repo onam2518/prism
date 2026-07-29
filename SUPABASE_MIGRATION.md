@@ -329,3 +329,15 @@ supabase 모드: `store_save` 에서 **`review=='yellow'` 또는 명시 sample �
 
 **운영 전환**: 서버 env `SUPABASE_URL`·`SUPABASE_SERVICE_KEY`·`PRISM_BACKEND=supabase` 설정 시
 Supabase 모드(상시 클라우드·ID/PW·팀 공유), 미설정 시 로컬 SQLite(오프라인). 코드 변경 없이 전환.
+
+## 집계 RPC (2026-07-29 · 성능 백로그 P3-1 1단계 · 적용됨)
+
+핫패스 통계 3종을 서버측 집계 함수로 이관해 행 전송을 없앴다(파이썬 집계와 수치 동일 ·
+운영 전 팀 파리티 검증 완료). 함수 미존재 환경(새 인스턴스·복제 DB)에서는 supastore 가
+자동으로 행 다운로드 방식으로 폴백하므로 적용 순서와 무관하게 안전하다.
+
+- `prism_agg_feedback_stats(p_team)` · `prism_agg_gold_stats(p_team)` ·
+  `prism_agg_assignment_load(p_team)` — jsonb 반환 · `service_role` 전용(EXECUTE 회수:
+  public/anon/authenticated).
+- 원본 SQL 은 Supabase 마이그레이션 `prism_agg_rpc_hotpath_stats` 로 기록돼 있다
+  (대시보드 → Database → Migrations). 수정 시 supastore 폴백 계산과 반드시 함께 바꿀 것.
