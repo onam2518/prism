@@ -11,22 +11,39 @@ window.PRISM_APP_PARTS.push(() => ({
       hybFree(id, v) { return this.hybSt(id).free.includes(v); },
       hybDisp(kind, v) { return kind === 'category' ? this.catKo(v) : v; },   // 칩·드롭다운 표시(카테고리만 한글) · 값은 영문 경로 유지
       hybAdd(id, sel, v, free) {
+        // 어떤 경로로 끝나든 입력창·드롭다운은 먼저 닫는다. 예전엔 '이미 선택된 값'·'대상 배열
+        // 없음'에서 그냥 return 해 검색어가 남았고, 그 조건이 유지되는 한 '새 엔티티로 추가'
+        // 안내가 계속 떠 있었다(2026-07-29 문의: 안내창이 한번 뜨면 없어지지 않음).
+        const st = this.hybSt(id);
         v = String(v || '').trim();
+        st.q = ''; st.open = false;
         if (!v || !sel || sel.includes(v)) return;
         sel.push(v);
-        const st = this.hybSt(id);
         if (free && !st.free.includes(v)) st.free.push(v);
-        st.q = ''; st.open = false;
       },
       hybRemove(id, sel, v) {
         const i = sel.indexOf(v); if (i >= 0) sel.splice(i, 1);
         const st = this.hybSt(id); const j = st.free.indexOf(v); if (j >= 0) st.free.splice(j, 1);
       },
       hybInput(id, v) { const st = this.hybSt(id); st.q = v; st.open = !!String(v).trim(); },
-      hybEnter(id, fld, ctx, sel) {                // Enter = 첫 후보 · 매칭 없고 자유 입력 허용(엔티티)이면 신규 추가
+      // Enter 우선순위: ① 입력값과 정확히 같은 등재 값 → ② 자유 입력 필드면 '입력한 그대로'
+      // → ③ 사전 한정 필드에서만 첫 후보.
+      // 검색은 부분 일치라, 예전처럼 무조건 첫 후보를 넣으면 '회사' 를 치고 Enter 했을 때
+      // 사전의 '지주회사' 가 대신 들어갔다 — 사용자가 입력하지 않은 값이 추가되는 셈
+      // (2026-07-29 문의). 엔티티는 사용자가 친 말이 정답이므로 그것을 우선한다.
+      hybEnter(id, fld, ctx, sel) {
+        const q = (this.hybSt(id).q || '').trim();
+        if (!q) return;
+        const lc = q.toLowerCase();
         const m = this._hybMatches(id, fld.kind, ctx, sel);
-        if (m.length) this.hybAdd(id, sel, m[0].v);
-        else if (fld.free && this.hybFreeAdd(id, sel)) this.hybAdd(id, sel, this.hybFreeAdd(id, sel), true);
+        const exact = m.find((x) => String(x.v || '').toLowerCase() === lc
+                                 || String(x.ko || '').toLowerCase() === lc);
+        if (exact) { this.hybAdd(id, sel, exact.v); return; }
+        if (fld.free) {
+          const free = this.hybFreeAdd(id, sel);
+          if (free) { this.hybAdd(id, sel, free, true); return; }
+        }
+        if (m.length) this.hybAdd(id, sel, m[0].v);          // 사전 한정(분류·의도)만 첫 후보
       },
       hybEsc(id, ev) {                             // Esc = 드롭다운만 닫기(닫혀 있으면 팝업 Esc 로 전파)
         const st = this.hybSt(id);
