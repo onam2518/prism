@@ -203,7 +203,8 @@ def _inject_gold_final(items: list, reviewer: str, team=None) -> list:
     if not (reviewer and st and hasattr(st, "get_golden") and hasattr(st, "gold_answered")):
         return items
     try:
-        golden = st.get_golden(team)
+        golden = (_SV._agg_cached_store(("golden", team), st, lambda: st.get_golden(team))
+                  if getattr(st, "REMOTE", False) else st.get_golden(team))   # 기초 큐와 캐시 공유
         answered = st.gold_answered(reviewer, team=team)
     except Exception:
         return items
@@ -1057,7 +1058,11 @@ def _inject_gold(items: list, reviewer: str, team=None) -> list:
     if not (reviewer and st and hasattr(st, "get_golden") and hasattr(st, "gold_answered")):
         return items
     try:
-        golden = st.get_golden(team)
+        # 골든 전량(원문 포함)은 원격 스토어만 30s 캐시 — /queue·/raw 로드마다 재조회 방지.
+        # 골든 쓰기 경로(등록·삭제·학습 배치)는 전부 _agg_bump 호출 · 문항 선택은
+        # (검수자,일자) 시드 결정적이라 캐시로 출제가 달라지지 않는다.
+        golden = (_SV._agg_cached_store(("golden", team), st, lambda: st.get_golden(team))
+                  if getattr(st, "REMOTE", False) else st.get_golden(team))
         answered = st.gold_answered(reviewer, team=team)
     except Exception:
         return items
