@@ -58,7 +58,8 @@ class TestBulkRerun(FailListSrc):
     def test_refreshes_fail_list_after_run(self):
         """성공분은 서버가 목록에서 지운다 — 화면도 다시 읽어야 반영된다."""
         src = self._src()
-        self.assertIn("this.clearFailPick(); this.loadFails(); this.loadDash();", src)
+        self.assertIn("this.clearFailPick(); this.loadDash();", src)
+        self.assertIn("await this.loadFails();", src)      # 해소 건수를 세려면 갱신을 기다린다
 
     def test_quest_retry_path(self):
         src = self._src()
@@ -119,6 +120,40 @@ class TestBillingKind(unittest.TestCase):
         from prism import page
         self.assertIn("충전 필요", page.PAGE)
         self.assertIn('x-show="failBillingN"', page.PAGE)
+
+
+class TestQueueRefreshAndHonestToast(unittest.TestCase):
+    """재실행 후 화면이 서버 상태를 따라가야 한다.
+
+    - 실행 큐: 잡은 서버에 등록되는데 화면이 다시 읽지 않아 '큐에 안 올라간다'로 보였다
+    - 토스트: '재실행 완료' 만 띄우면 목록이 그대로일 때 왜 안 줄었는지 알 수 없다
+      → 실제 해소 건수를 세고, 0건이면서 잔액 부족이면 그 사실을 덧붙인다(2026-07-29)
+    """
+
+    def _src(self, rel):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, rel), encoding="utf-8") as f:
+            return f.read()
+
+    def test_all_rerun_paths_refresh_queue(self):
+        c8 = self._src("prism/vendor/app-08-copytext.js")
+        c5 = self._src("prism/vendor/app-05-costdata.js")
+        # 세 갈래 모두: 개별 재실행 · 콘텐츠 표 선택 재실행 · 실패 목록 선택 재실행
+        self.assertIn("this.clearPick(); this.loadDash(); this.loadRaw && this.loadRaw(); this.fetchIngestStatus();", c8)
+        self.assertIn("· 재실행 완료'); this.loadDash(); this.loadRaw && this.loadRaw(); this.fetchIngestStatus();", c8)
+        self.assertIn("this.clearFailPick(); this.loadDash(); this.fetchIngestStatus();", c5)
+
+    def test_toast_counts_cleared_not_just_executed(self):
+        src = self._src("prism/vendor/app-05-costdata.js")
+        self.assertIn("const before = this.failAll.length;", src)
+        self.assertIn("await this.loadFails();", src)
+        self.assertIn("const cleared = Math.max(0, before - this.failAll.length);", src)
+        self.assertIn("'재실행 ' + (r.done || 0) + '건 · 해소 ' + cleared + '건'", src)
+
+    def test_toast_explains_zero_clear_on_billing(self):
+        src = self._src("prism/vendor/app-05-costdata.js")
+        self.assertIn("cleared === 0 && this.failBillingN", src)
+        self.assertIn("충전 전에는 해소되지 않습니다", src)
 
 
 if __name__ == "__main__":
