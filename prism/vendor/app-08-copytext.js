@@ -151,11 +151,62 @@ window.PRISM_APP_PARTS.push(() => ({
         this.jobFilter = { name: j.name, kind: j.kind || '', hashes: j.hashes };
         this.$nextTick(() => { const el = document.getElementById('added-contents'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
       },
+      // 모델 필터: 빈 값=전체 · PENDING 상수=아직 초안이 없는(미실행) 건만
+      contentModel: '',
+      PENDING_MODEL: '(미실행)',
+      get contentModels() {
+        const ms = new Set();
+        ((this.dashData && this.dashData.contents) || []).forEach((c) => { if (c.model) ms.add(c.model); });
+        return [...ms].sort();
+      },
       get contentRows() {
-        const all = (this.dashData && this.dashData.contents) || [];
-        if (!this.jobFilter) return all;
-        const set = new Set(this.jobFilter.hashes);
-        return all.filter((c) => set.has(c.hash));
+        let all = (this.dashData && this.dashData.contents) || [];
+        if (this.jobFilter) {
+          const set = new Set(this.jobFilter.hashes);
+          all = all.filter((c) => set.has(c.hash));
+        }
+        if (this.contentModel === this.PENDING_MODEL) return all.filter((c) => !c.model);
+        if (this.contentModel) return all.filter((c) => (c.model || '') === this.contentModel);
+        return all;
+      },
+      // 다중 선택 재실행: 체크한 건만 /rerun-all 에 hashes 로 넘긴다(서버가 scope=selected 로 승격).
+      // 선택은 '지금 보이는 행'만 대상 — 필터를 바꾸면 비운다(안 보이는 건이 딸려 실행되는 사고 방지).
+      pickSel: {}, pickBusy: false,
+      get pickedHashes() { return Object.keys(this.pickSel).filter((h) => this.pickSel[h]); },
+      get pickAllOn() {
+        const rs = this.contentRows;
+        return rs.length > 0 && rs.every((c) => this.pickSel[c.hash]);
+      },
+      togglePick(h) { this.pickSel = Object.assign({}, this.pickSel, { [h]: !this.pickSel[h] }); },
+      togglePickAll() {
+        const on = !this.pickAllOn, next = Object.assign({}, this.pickSel);
+        this.contentRows.forEach((c) => { next[c.hash] = on; });
+        this.pickSel = next;
+      },
+      clearPick() { this.pickSel = {}; },
+      pickModel(v) { this.contentModel = v; this.clearPick(); },
+      async rerunPicked(force) {
+        const hs = this.pickedHashes;
+        if (!hs.length || this.pickBusy) return;
+        const mname = this.bulkModel || '기본 실행 모델';
+        if (!force && !(await this.dsConfirm(hs.length + '건을 ' + mname + ' 로 재실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?', { ok: '재실행' }))) return;
+        this.pickBusy = true;
+        let retryConfirm = false;
+        try {
+          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel || '', hashes: hs, force: !!force }) })).json();
+          if (r && !r.error) {
+            this.liveToast('선택 ' + (r.done || 0) + '건 재실행 완료'
+              + (r.failed ? (' · 실패 ' + r.failed) : '')
+              + (r.over_cap ? (' · 상한 초과 ' + r.over_cap + '건 제외') : ''));
+            this.clearPick(); this.loadDash(); this.loadRaw && this.loadRaw();
+          } else if (r && !force && /퀘스트/.test(r.error || '')) retryConfirm = true;
+          else this._err((r && r.error) || '재실행 실패');
+        } catch (e) { this._err('재실행 실패'); }
+        this.pickBusy = false;
+        if (retryConfirm) {
+          const ok = await this.dsConfirm('퀘스트(검수 목표) 진행 중입니다. 초안을 새로 만들면 기존 검수 의견과 어긋날 수 있습니다. 선택한 ' + hs.length + '건을 재실행할까요?', { title: '퀘스트 중 재실행', ok: '재실행', danger: true });
+          if (ok) await this.rerunPicked(true);
+        }
       },
       fmtEta(s) { s = Math.max(0, Math.round(s || 0)); return s >= 60 ? (Math.floor(s / 60) + '분 ' + (s % 60) + '초') : (s + '초'); },
       // 개별 콘텐츠 재실행: STEP 2 사용 모델(bulkModel)로 이 건만 초안 재생성(/rerun · 이력 보존)

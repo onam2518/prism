@@ -2417,12 +2417,17 @@ def _p_purpose(h, body):
     return {"ok": bool(n), "n": n}
 
 
-@_post_route("/rerun-all", gate="admin")             # 전체 콘텐츠 일괄 실행
+@_post_route("/rerun-all", gate="admin")             # 전체·미실행·선택 콘텐츠 일괄 실행
 def _p_rerun_all(h, body):
+    # hashes 지정 = 콘텐츠 관리 표에서 다중 선택한 건만 실행(scope 는 서버가 selected 로 승격).
+    # force: 퀘스트 진행 중 확인 모달을 거친 강행 — 개별 재실행(/rerun)과 같은 규약.
     data = json.loads(body or b"{}")
     scope = (data.get("scope") or "all").strip()
+    raw = data.get("hashes")
+    hashes = [str(x).strip() for x in raw[:RN.SELECTED_MAX] if str(x).strip()] if isinstance(raw, list) else []
     return rerun_all((data.get("model") or "").strip(), h._req_team(),
-                     scope=(scope if scope in ("all", "pending") else "all"))
+                     scope=(scope if scope in ("all", "pending") else "all"),
+                     hashes=hashes, force_quest=bool(data.get("force")))
 
 
 @_post_route("/rerun", gate="admin")                 # 같은 콘텐츠를 다른 모델로 재실행

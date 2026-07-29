@@ -467,10 +467,23 @@ class Store:
 
     def recent(self, limit: int = 5000, team=None) -> list:
         """최근 적재 결과(payload)를 시간순(오래된→최신)으로. content_id = 리스트 인덱스.
-        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
+        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용).
+
+        content_ref.body_hash 에는 저장 키(content_hash 컬럼 · 16자)를 실어 내린다 —
+        supastore.recent 와 같은 계약이다(_row_key 가 16자면 그대로 쓴다). 종전에는 payload
+        안의 12자 본문 해시가 그대로 나와 _row_key 가 매번 재계산했는데, 실행 결과의
+        content_ref 는 정규화된 본문이라(끝 공백 제거 등) 원본으로 만든 저장 키와 어긋났다.
+        그 결과 화면이 보여 주는 해시로는 재실행 대상을 못 찾고, 재실행이 같은 행을 갱신하는
+        대신 새 행을 만들었다(2026-07-29 로컬 재현 · 운영 supabase 는 해당 없음)."""
         c = self._conn()
-        rows = [json.loads(r[0]) for r in c.execute(
-            "SELECT payload FROM results ORDER BY created_at DESC LIMIT ?", (int(limit),))]
+        rows = []
+        for ch, payload in c.execute(
+                "SELECT content_hash,payload FROM results ORDER BY created_at DESC LIMIT ?",
+                (int(limit),)):
+            r = json.loads(payload)
+            if isinstance(r, dict) and isinstance(r.get("content_ref"), dict) and ch:
+                r["content_ref"]["body_hash"] = ch
+            rows.append(r)
         rows.reverse()
         return rows
 
