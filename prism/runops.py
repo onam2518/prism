@@ -227,24 +227,42 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
     }
 
 
-def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> dict:
+SELECTED_MAX = 500              # 선택 실행 1회 상한(요청 본문·실행 시간 폭주 방지)
+
+
+def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
+              hashes=None, force_quest: bool = False) -> dict:
     """모아진 콘텐츠를 지정 모델로 일괄 실행(수동 · 관리자). 건당 비용 발생.
-    scope: pending=미실행(STEP 1 추가 대기)만 · all=전체 재실행.
-    퀘스트 진행 중에는 전체 재실행 차단(검수 중 초안이 바뀌면 판정·합의가 오염된다)."""
-    if scope != "pending" and _SV.quest_active():
+    scope: pending=미실행(STEP 1 추가 대기)만 · all=전체 재실행 ·
+           selected=hashes 로 지정한 건만(콘텐츠 관리 표에서 다중 선택).
+    퀘스트 진행 중에는 전체 재실행 차단(검수 중 초안이 바뀌면 판정·합의가 오염된다).
+    선택 실행은 개별 재실행과 같은 규약 — 확인 모달을 거친 force_quest 로만 강행한다."""
+    picked = [h for h in dict.fromkeys(hashes or []) if h]
+    if picked:
+        scope = "selected"
+        limit = min(len(picked), SELECTED_MAX)   # 선택분은 '선택한 만큼' 실행(창 상한과 무관)
+    if scope == "all" and _SV.quest_active():
         return {"error": "퀘스트 진행 중에는 전체 재실행이 차단됩니다(검수 중 초안 교체 방지) · "
                          "'미실행만'은 가능하며, 반영 후 실행하거나 검수 목표 카드에서 일시를 비워 목표를 해제하세요"}
+    if scope == "selected" and not picked:
+        return {"error": "선택된 콘텐츠가 없습니다"}
+    if scope == "selected" and _SV.quest_active() and not force_quest:
+        return {"error": "퀘스트 진행 중에는 검수 중 콘텐츠의 초안 재실행이 차단됩니다 · "
+                         "반영 후 실행하거나 검수 목표 카드에서 목표를 해제하세요"}
     # limit 은 '창'이 아니라 '한 번에 실행할 최대 건수'다. 예전엔 rows[-limit:] 로 먼저 잘라
     # 그 안에서 미실행을 찾았는데, 결과 뷰가 최신순이라 잘린 창은 '가장 오래된 200건'이었다.
     # 그래서 콘텐츠가 200건을 넘으면 방금 올린 미실행분이 창 밖으로 밀려 영영 실행되지 않았다
     # (2026-07-28 운영: 600건 중 미실행 200건이 '미실행만 0건'으로 보이고 실행 불가).
     # 먼저 대상을 고르고 그다음에 상한을 적용한다 · 최신순으로 채워 방금 올린 것부터 처리.
     rows = _SV.results_rows(team=team)
+    want = set(picked)
     targets, seen, row_by_hash = [], set(), {}
     for r in rows:
         if scope == "pending" and not _SV._is_pending_row(r):
             continue                                 # 이미 실행된 건 제외
         ch = _SV._row_key(r.get("content_ref") or {})
+        if scope == "selected" and ch not in want:
+            continue                                 # 표에서 고른 것만
         if ch and ch not in seen:
             seen.add(ch)
             targets.append(ch)
@@ -253,17 +271,24 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
                 break
     if not targets:
         return {"ok": True, "done": 0, "failed": 0, "model": model, "scope": scope,
-                "msg": "대상이 없습니다" + (" (미실행 콘텐츠 없음)" if scope == "pending" else "")}
+                "msg": "대상이 없습니다"
+                       + (" (미실행 콘텐츠 없음)" if scope == "pending" else "")
+                       + (" (선택한 콘텐츠를 찾지 못했습니다 · 삭제되었을 수 있음)"
+                          if scope == "selected" else "")}
+    # 선택분이 상한을 넘으면 조용히 자르지 않고 응답에 남긴다(잘린 줄 모르고 '다 돌았다'고 읽는 것 방지)
+    over_cap = max(0, len(picked) - len(targets)) if scope == "selected" else 0
     done = failed = 0
     spent = 0.0
     budget = float(getattr(Config.load(), "batch_budget_usd", 0.0) or 0.0)   # 0 = 무제한
     budget_stop = False
     jid = "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
-    _SV._job_begin(jid, model or "기본 모델", "일괄 실행", len(targets))
+    _SV._job_begin(jid, model or "기본 모델",
+                   "선택 실행" if scope == "selected" else "일괄 실행", len(targets))
     _SV._INGEST_STATE[jid]["hashes"] = list(targets)     # 작업 클릭 -> 결과 콘텐츠 보기
     try:
         for ch in targets:
-            res = _SV.rerun_content(ch, model, team=team, row=row_by_hash.get(ch))
+            res = _SV.rerun_content(ch, model, team=team, row=row_by_hash.get(ch),
+                                    force_quest=force_quest)
             if res.get("error"):
                 failed += 1
                 _SV._INGEST_STATE[jid]["failed"] = failed
@@ -281,9 +306,11 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all") -> di
         _SV._job_end(jid, False, f"예산 상한 ${budget:g} 도달 · {done}건 실행(${spent:.4f}) 후 중단"
                              + (f" · 실패 {failed}" if failed else ""))
     else:
-        _SV._job_end(jid, failed == 0, f"{done}건 실행" + (f" · 실패 {failed}" if failed else " 완료"))
-    return {"ok": True, "done": done, "failed": failed, "model": model,
+        _SV._job_end(jid, failed == 0, f"{done}건 실행" + (f" · 실패 {failed}" if failed else " 완료")
+                                       + (f" · 상한 초과 {over_cap}건 제외" if over_cap else ""))
+    return {"ok": True, "done": done, "failed": failed, "model": model, "scope": scope,
             "spent_usd": round(spent, 6), "budget_stop": budget_stop,
+            "over_cap": over_cap,
             "skipped": (len(targets) - done - failed) if budget_stop else 0}
 
 

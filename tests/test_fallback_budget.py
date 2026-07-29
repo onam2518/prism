@@ -110,7 +110,7 @@ class TestBatchBudget(unittest.TestCase):
         serve = self._serve_with_rows(5)
         self._isolate_cfg({"batch_budget_usd": 0.12})
         orig = serve.rerun_content
-        serve.rerun_content = lambda ch, model, team=None, row=None: {
+        serve.rerun_content = lambda ch, model, team=None, row=None, force_quest=False: {
             "output": {"trace": {"cost_usd": 0.05}}}
         self.addCleanup(lambda: setattr(serve, "rerun_content", orig))
         r = serve.rerun_all("m2", scope="all")
@@ -123,7 +123,7 @@ class TestBatchBudget(unittest.TestCase):
         serve = self._serve_with_rows(4)
         self._isolate_cfg({})                                # 0 = 무제한
         orig = serve.rerun_content
-        serve.rerun_content = lambda ch, model, team=None, row=None: {
+        serve.rerun_content = lambda ch, model, team=None, row=None, force_quest=False: {
             "output": {"trace": {"cost_usd": 0.05}}}
         self.addCleanup(lambda: setattr(serve, "rerun_content", orig))
         r = serve.rerun_all("m2", scope="all")

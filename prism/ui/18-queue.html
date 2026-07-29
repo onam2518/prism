@@ -63,9 +63,22 @@
           <button type="button" class="srcfilter__chip sel" x-show="jobFilter" x-cloak x-on:click="jobFilter = null" x-text="jobFilter ? (jobFilter.name + ' 결과 ' + contentRows.length + '건 · 전체 보기 ×') : ''"></button>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
-          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:240px"></th></tr></thead><tbody>
+          <!-- 모델 필터 + 다중 선택 재실행: 특정 모델로 뽑힌 초안만 골라 한 번에 다시 돌린다 -->
+          <div class="filterbar">
+            <select class="field" style="width:auto" x-model="contentModel" x-on:change="pickModel($event.target.value)">
+              <option value="">모델 전체</option>
+              <option value="(미실행)">미실행(초안 없음)</option>
+              <template x-for="m in contentModels" x-bind:key="'cm'+m"><option x-bind:value="m" x-text="m"></option></template>
+            </select>
+            <button type="button" class="ds-btn ds-btn--outline" style="height:28px;padding:0 12px;font-size:12px" x-bind:disabled="!pickedHashes.length || pickBusy" x-on:click="rerunPicked()" x-text="pickBusy ? '재실행 중…' : ('선택 재실행' + (pickedHashes.length ? (' ' + pickedHashes.length + '건') : ''))" data-tip="체크한 콘텐츠를 STEP 2의 사용 모델로 다시 실행합니다 · 기존 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="top"></button>
+            <button type="button" class="copybtn" x-show="pickedHashes.length" x-cloak x-on:click="clearPick()">선택 해제</button>
+            <span class="text-xs text-muted tnum" x-text="contentRows.length + ' / ' + (((dashData||{}).contents||[]).length) + '건'"></span>
+            <span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="이 표는 최신 200건만 보여 줍니다 · 그보다 오래된 콘텐츠는 필터·선택 대상에 들어오지 않습니다" data-tip-pos="top">최신 200건</span>
+          </div>
+          <div class="overflow-auto" style="max-height:320px"><table class="ds-table"><thead><tr><th style="width:34px"><input type="checkbox" x-bind:checked="pickAllOn" x-on:change="togglePickAll()" data-tip="보이는 행 전체 선택" data-tip-pos="right" aria-label="보이는 행 전체 선택"></th><th>콘텐츠</th><th style="width:110px">서비스</th><th style="width:170px">모델</th><th style="width:70px">버전</th><th style="width:90px">용도</th><th style="width:240px"></th></tr></thead><tbody>
             <template x-for="c in contentRows" x-bind:key="'pp'+c.hash">
               <tr>
+                <td><input type="checkbox" x-bind:checked="!!pickSel[c.hash]" x-on:change="togglePick(c.hash)" x-bind:aria-label="(c.title || '콘텐츠') + ' 선택'"></td>
                 <td class="text-ink"><span x-text="c.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--warning" x-show="srcGone(c)" style="cursor:help" data-tip="원문이 삭제·비공개로 확인 불가 표시된 콘텐츠(검수 상세의 원문 페이지 탭에서 신고·해제)" data-tip-pos="top">원문 소실</span></td>
                 <td class="text-muted" x-text="c.service || '·'"></td>
                 <td class="text-muted" x-text="c.model || '·'"></td>
@@ -79,7 +92,7 @@
               </tr>
             </template>
           </tbody></table></div>
-          <div x-show="!contentRows.length" class="text-xs text-muted" style="margin:0 16px 14px" x-text="jobFilter ? '이 작업의 콘텐츠가 목록에 없습니다(삭제되었을 수 있음)' : '아직 추가된 콘텐츠가 없습니다 · 위에서 수동·자동으로 추가하세요'"></div>
+          <div x-show="!contentRows.length" class="text-xs text-muted" style="margin:0 16px 14px" x-text="jobFilter ? '이 작업의 콘텐츠가 목록에 없습니다(삭제되었을 수 있음)' : (contentModel ? ('이 모델로 실행된 콘텐츠가 최신 200건 안에 없습니다 · ' + contentModel) : '아직 추가된 콘텐츠가 없습니다 · 위에서 수동·자동으로 추가하세요')"></div>
         </section>
       </div>
 
