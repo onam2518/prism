@@ -237,7 +237,12 @@ window.PRISM_APP_PARTS.push(() => ({
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') {
           this.loadAdmin();
-          if (id === 'admin' && this.adminTab === 'crew') { this.loadCrew(); this.loadRaw(1000); }   // 후보 풀은 표시 캡(200)보다 넉넉히
+          // 볼 수 없는 탭이 선택돼 있으면 빈 화면이 된다 · 접근 가능한 탭으로 옮긴다
+          if (id === 'admin') {
+            if (this.adminTab === 'team' && !this.canTeamTab && this.canCrewTab) this.adminTab = 'crew';
+            else if (this.adminTab === 'crew' && !this.canCrewTab && this.canTeamTab) this.adminTab = 'team';
+            if (this.adminTab === 'crew') { this.loadCrew(); this.loadRaw(1000); }   // 후보 풀은 표시 캡(200)보다 넉넉히
+          }
         }
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
         else if (id === 'lab') { this.loadDash(); this.loadUser(); }
