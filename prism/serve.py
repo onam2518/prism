@@ -28,6 +28,7 @@ _BOOT_ID = "%d-%d" % (int(time.time()), os.getpid())
 
 from . import entconf as EC
 from . import imagext as IMG
+from . import entlabel as ELB          # 엔티티 관련성 라벨(확신도 최적화 정답 수집)
 from . import modelmeta as MM         # 모델 표시 정보(이름·제공자·비용 등급) · 선택 드롭다운 원천
 from . import pipeline as _PIPE_MOD
 PIPE = _PIPE_MOD    # 테스트가 serve.PIPE.extract 를 패치 · 별칭 유지(runops 와 같은 모듈 객체)
@@ -80,6 +81,7 @@ BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
 DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Atelier deployments 이식)
 CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
+ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
 WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
 
 _run_id = RN._run_id
@@ -1605,6 +1607,17 @@ def _g_crew_confirm(h, q):
     return CRW.needs_confirm(uid, h._req_team())
 
 
+@_get_route("/entity-labels")                        # 엔티티 관련성 라벨(내 표 + 집계)
+def _g_entity_labels(h, q):
+    """상세 화면이 콘텐츠 단위로 읽는다(hash 지정). hash 없으면 수집 현황 요약(관리자용).
+    전체 검수자가 남길 수 있다 — 경계선 표본은 많이 모을수록 값어치가 크다."""
+    ch = (q.get("hash", [""])[0] or "").strip()
+    uid = h._bearer_uid() or q.get("reviewer", [""])[0]
+    if not ch:
+        return ELB.summary(h._req_team())
+    return ELB.for_content(ch, uid, h._req_team())
+
+
 @_get_route("/crew-weekly")                          # 주간 운영 기록(슈퍼관리자 이상)
 def _g_crew_weekly(h, q):
     team = h._req_team()
@@ -2164,6 +2177,17 @@ def _p_content_remove(h, body):
               and st.remove_content((data.get("hash") or "").strip(), team=h._req_team()))
     _agg_bump()
     return {"ok": ok}
+
+
+@_post_route("/entity-label", gate="login")           # 엔티티 관련성 라벨 남기기(전 검수자)
+def _p_entity_label(h, body):
+    data = json.loads(body or b"{}")
+    uid = h._bearer_uid() or (data.get("reviewer") or "").strip()
+    if not uid:
+        h._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
+        return None
+    return ELB.put((data.get("hash") or ""), (data.get("entity") or ""),
+                   (data.get("label") or ""), uid, team=h._req_team())
 
 
 @_post_route("/crew-confirm", gate="login")          # 이번 주 본인 확인 저장(본인 것만)

@@ -15,6 +15,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.editVerdict = false; this.pendingBad = false; this.detailBack = this.drillOpen; this.detailOpen = true; this.drillOpen = false; this.histItems = []; if (this.histOpen) this.loadHistory();
         this.srcCheckMsg = ''; this.srcCheckBusy = false;   // 원문 상태 확인 결과는 콘텐츠별(이전 항목 잔상 제거)
         this.loadEntLookup();                    // 엔티티 → 개체 사전 정보(타입·속성) 표시
+        this.loadEntLabels();                    // 엔티티 관련성 라벨(내 표·집계)
       },
       // ── 검수 상세 × 엔티티 사전: 뱃지에 타입·속성 표시 · 클릭 = 상세 팝업(수정·보강 가능) ──
       entLookup: {},
@@ -81,6 +82,47 @@ window.PRISM_APP_PARTS.push(() => ({
       entLowIs(s) { return s.conf !== null && s.conf <= 0.5; },
       entConfLabel(s) { return s.conf === null ? '' : Number(s.conf).toFixed(1); },
       entConfTip(s) { return s.conf === null ? '' : (' · 확신도 ' + this.entConfLabel(s) + (this.entLowIs(s) ? ' · 연관 낮음' : '')); },
+
+      /* ── 엔티티 관련성 라벨(entlabel.py) ─────────────────────────────────
+         확신도 가중치는 어떤 조합을 써도 AUC 0.61 로 평평했다 — 정답이 없어서다.
+         '연관 낮음'에 접혀 있는 게 정확히 경계선 표본이라, 여기서 답을 받으면
+         판별력을 실제로 올릴 수 있다(불확실 구간 우선 라벨링).
+         엔티티 삭제와 달리 **콘텐츠를 바꾸지 않는다** — 그래서 부담 없이 누른다. */
+      entLabels: {}, entLabelBusy: '',
+      async loadEntLabels() {
+        const d = this.detail;
+        if (!d || !d.hash) { this.entLabels = {}; return; }
+        try {
+          const q = this.reviewer ? ('&reviewer=' + encodeURIComponent(this.reviewer)) : '';
+          const r = await (await this._afetch('/entity-labels?hash=' + encodeURIComponent(d.hash) + q,
+                                              { headers: this._authHeaders() })).json();
+          this.entLabels = (r && r.ok && r.labels) || {};
+        } catch (e) { this.entLabels = {}; }
+      },
+      entLabelOf(name) { return (this.entLabels[name] || {}).mine || ''; },
+      entLabelCount(name) {
+        const v = this.entLabels[name];
+        if (!v || !v.n) return '';
+        return v.yes + '/' + v.n;                    // 관련있음 표 / 전체 표
+      },
+      async setEntLabel(name, label) {
+        const d = this.detail;
+        if (!d || !d.hash) return;
+        const cur = this.entLabelOf(name);
+        const next = (cur === label) ? '' : label;    // 같은 버튼 다시 누르면 취소
+        this.entLabelBusy = name;
+        try {
+          const r = await (await this._afetch('/entity-label', {
+            method: 'POST', headers: this._authHeaders(),
+            body: JSON.stringify({ hash: d.hash, entity: name, label: next, reviewer: this.reviewer }),
+          })).json();
+          if (r && r.ok) {
+            this.entLabels = Object.assign({}, this.entLabels,
+              { [name]: { mine: r.mine, yes: r.counts.yes, no: r.counts.no, n: r.counts.n } });
+          } else { this._err((r && r.error) || '라벨을 저장하지 못했습니다'); }
+        } catch (e) { this._err('라벨을 저장하지 못했습니다'); }
+        finally { this.entLabelBusy = ''; }
+      },
       async openEntByName(name) {
         const e = this.entLookup[name];
         if (!e) { this._err('개체 사전에 등재되지 않은 엔티티입니다 · 사전·정책 > 엔티티에서 등재하세요'); return; }
