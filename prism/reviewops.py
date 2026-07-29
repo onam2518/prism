@@ -124,7 +124,7 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         fmap = st.feedback_map(team=team)
     except Exception:
         fmap = {}
-    weights = reviewer_weights(team)
+    weights = reviewer_weights(team, fmap=fmap)   # feedback 전량 재조회 방지(위 fmap 공유)
     min_good = max(1, int(getattr(Config.load(), "golden_min_good", 1) or 1))
     finals = final_verdicts(team)
     try:
@@ -165,7 +165,7 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         out.append(d)
         if len(out) >= 200:
             break
-    out = _SV._attach_fb(out, team, reviewer)
+    out = _SV._attach_fb(out, team, reviewer, fmap=fmap)
     if reviewer and out and bool(getattr(Config.load(), "final_gold_check", True)):
         out = _inject_gold_final(out, reviewer, team)   # 골드 캘리브레이션(블라인드 · 응답은 gold_checks 로)
     return {"ok": True, "items": out, "n": len(out), "stats": _final_stats(finals)}
@@ -505,19 +505,22 @@ def _check_missions(reviewer, team=None) -> list:
     return fresh
 
 
-def reviewer_weights(team=None) -> dict:
+def reviewer_weights(team=None, fmap=None, gold=None) -> dict:
     """검수자 신뢰도 가중치(골든 합의용) = 골드 문항 정확도와 Dawid-Skene EM 추정 정확도의 블렌드.
     w = 0.5 + 0.5*acc, acc = 두 추정의 평균(한쪽만 충분하면 그쪽만 · 각 표본 5건 이상).
-    표본 없는 검수자는 미포함 → 1.0 취급(기존 다수결과 동일). [Dawid-Skene 1979 · Snow 2008]"""
+    표본 없는 검수자는 미포함 → 1.0 취급(기존 다수결과 동일). [Dawid-Skene 1979 · Snow 2008]
+    호출측이 이미 조회한 fmap·gold 를 주면 재조회를 생략한다(capacity(fmap=) 관례)."""
     st = _SV.get_store()
-    gold, ds = {}, {}
-    try:
-        gold = st.gold_stats(team) if (st and hasattr(st, "gold_stats")) else {}
-    except Exception:
-        gold = {}
+    ds = {}
+    if gold is None:
+        try:
+            gold = st.gold_stats(team) if (st and hasattr(st, "gold_stats")) else {}
+        except Exception:
+            gold = {}
     try:                                          # DS EM: 다중 라벨 유닛에서 검수자 오류율 추정
         from . import quality as Q
-        fmap = st.feedback_map(team=team) if st else {}
+        if fmap is None:
+            fmap = st.feedback_map(team=team) if st else {}
         ds = (Q.dawid_skene_binary(Q.feedback_labels(fmap)) or {}).get("reviewers") or {}
     except Exception:
         ds = {}

@@ -204,17 +204,18 @@ class SupabaseStore:
             q += f"&team_id=eq.{urllib.parse.quote(team)}"
         return {r["hash"] for r in self._get("contents", q) if (r.get("model") or "")}
 
-    def review_targets(self, team=None) -> set:
+    def review_targets(self, team=None, assigned=None) -> set:
         """진척율·퀘스트의 모집단 = 현재 YELLOW ∪ (배정된 살아있는 콘텐츠).
         일괄 배정 운영은 자동통과(auto) 콘텐츠도 배정해 검수시키므로 배정분이 곧 팀의
-        검수 목표다. 삭제된 콘텐츠의 고아 배정은 제외(분모 오염 방지)."""
+        검수 목표다. 삭제된 콘텐츠의 고아 배정은 제외(분모 오염 방지).
+        assigned 를 주면(이미 조회한 배정 해시 집합) assignments 재조회를 생략한다."""
         q = "select=hash,model,review"
         if team:
             q += f"&team_id=eq.{urllib.parse.quote(team)}"
         rows = [r for r in self._get("contents", q) if (r.get("model") or "")]
         live = {r["hash"] for r in rows}
         yellow = {r["hash"] for r in rows if (r.get("review") or "") == "yellow"}
-        assigned = set(self.assignees(team) or {})
+        assigned = set(assigned) if assigned is not None else set(self.assignees(team) or {})
         return yellow | (assigned & live)
 
     def target_models(self, team=None) -> list:
@@ -299,6 +300,21 @@ class SupabaseStore:
         for r in self._get("assignments", "select=content_hash,reviewer_id,ts" + tq + "&limit=20000"):
             out[(r.get("content_hash"), r.get("reviewer_id"))] = _epoch(r.get("ts"))
         return out
+
+    def assignments_snapshot(self, team=None):
+        """(assignees, assignment_times) 를 assignments 1회 조회로 함께 산출(sqlite 와 동일 계약).
+        검수운영 재계산이 같은 테이블을 두 번 내려받던 왕복을 줄인다."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        asg, times = {}, {}
+        for r in self._get("assignments",
+                           "select=content_hash,reviewer_id,min_reviewers,ts" + tq + "&order=ts"):
+            d = asg.setdefault(r["content_hash"], {"reviewers": [], "min": 1})
+            d["reviewers"].append(r["reviewer_id"])
+            d["min"] = max(1, int(r.get("min_reviewers") or 1))
+            times[(r.get("content_hash"), r.get("reviewer_id"))] = _epoch(r.get("ts"))
+        for d in asg.values():
+            d["min"] = max(1, min(len(d["reviewers"]), d["min"]))
+        return asg, times
 
     def assignment_load(self, team=None) -> dict:
         """검수자별 미완료 배정 부하 {reviewer_id: n} · 균등 분배 배정의 가중 원천.
@@ -759,10 +775,16 @@ class SupabaseStore:
             q += f"&team_id=eq.{urllib.parse.quote(team)}"
         return self._get("feedback", q + "&limit=50000")   # 무제한 fetch 방지(명시 상한 · 다른 대량 쿼리와 동일 관례)
 
-    def feedback_map(self, team=None) -> dict:
+    def feedback_rows(self, team=None) -> list:
+        """feedback 원본 행(공유용). 같은 화면 계산이 feedback_map·feedback_stats 를 연달아
+        부를 때 rows 인자로 되넘겨 전량 fetch 를 1회로 줄인다(수치 정의 불변)."""
+        return self._all_feedback(team)
+
+    def feedback_map(self, team=None, rows=None) -> dict:
         """content_hash → 합의 집계(SQLite 와 동일 shape). reviewer 라벨은 표시명."""
         names = self.reviewers_map(team)
-        rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "")
+        rows = sorted(self._all_feedback(team) if rows is None else rows,
+                      key=lambda r: r.get("ts") or "")
         out = {}
         for r in rows:
             v = r.get("verdict")
@@ -788,8 +810,8 @@ class SupabaseStore:
             e["stage"], e["note"] = last["stage"], last["note"]
         return out
 
-    def feedback_stats(self, team=None) -> dict:
-        rows = self._all_feedback(team)
+    def feedback_stats(self, team=None, rows=None) -> dict:
+        rows = self._all_feedback(team) if rows is None else rows
         good = sum(1 for r in rows if r.get("verdict") == "good")
         bad = sum(1 for r in rows if r.get("verdict") == "bad")
         learned = sum(1 for r in rows if r.get("verdict") == "bad" and (r.get("reap_plan") or r.get("note")))

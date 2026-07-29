@@ -546,16 +546,18 @@ def _fb_public(fb: dict, reviewer: str = "") -> dict:
     return out
 
 
-def _attach_fb(items, team=None, reviewer: str = ""):
+def _attach_fb(items, team=None, reviewer: str = "", fmap=None):
     """상세행 리스트에 검수 피드백 상태(fb: verdict·ts) 부착 → 콘텐츠 목록 어디서나 '검수 완료' 표기.
-    reviewer 를 주면 '완료' 판정이 내 표(mine) 기준으로 동작한다(드릴 경로 정합 · 2026-07-10)."""
+    reviewer 를 주면 '완료' 판정이 내 표(mine) 기준으로 동작한다(드릴 경로 정합 · 2026-07-10).
+    fmap 을 주면(호출측이 이미 조회) feedback 전량 재조회를 생략한다."""
     st = get_store()
     if not (st and hasattr(st, "feedback_map")):
         return items
-    try:
-        fmap = st.feedback_map(team=team)
-    except Exception:
-        return items
+    if fmap is None:
+        try:
+            fmap = st.feedback_map(team=team)
+        except Exception:
+            return items
     for it in items:
         it["fb"] = _fb_public(fmap.get(it.get("hash"), {}) or {}, reviewer)
     return items

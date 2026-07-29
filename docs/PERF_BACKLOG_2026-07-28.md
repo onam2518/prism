@@ -35,16 +35,16 @@
   - 계획: get_golden 결과를 `_agg_cached(("golden", team))` 캐시. 골든 쓰기 경로
     (upsert/register/remove_golden) 뒤 _agg_bump 확인·보강. 골드 문항 선택은
     (검수자,일자) 시드 결정적이라 캐시로 결과가 달라지지 않음.
-- [ ] **P1-4 final-queue 의 feedback 3중 fetch 제거** · `reviewops.py:114~168`
+- [x] **P1-4 final-queue 의 feedback 3중 fetch 제거** · `reviewops.py:114~168` · 완료 2026-07-29
   - 증상: /final-queue 1건이 feedback_map → reviewer_weights 내부 → _attach_fb 내부로
     같은 feedback 전량을 3회 왕복.
   - 계획: fmap 을 1회 조회해 `reviewer_weights(team, fmap=)`·`_attach_fb(..., fmap=)` 로
     전달(crewops.capacity(team, fmap=) 과 동일한 기존 관례). 기본값 유지라 하위 호환.
-- [ ] **P1-5 dashboard 의 feedback 2중 fetch 제거** · `dashops.py:272~275`
+- [x] **P1-5 dashboard 의 feedback 2중 fetch 제거** · `dashops.py:272~275` · 완료 2026-07-29
   - 증상: 재계산 1회가 feedback_map 과 feedback_stats(_all_feedback)로 같은 테이블 전량 2회.
   - 계획: feedback_stats 를 fmap 원본 행에서 파생하는 순수 함수로 바꾸거나 rows 선택 인자
     추가. 통계 정의(good/bad/learned/split)는 동일 원본에서 재현 가능해 수치 불변.
-- [ ] **P1-6 crew 재계산의 테이블 중복 fetch 축소** · `crewops.py:359~422`
+- [x] **P1-6 crew 재계산의 테이블 중복 fetch 축소** · `crewops.py:359~422` · 완료 2026-07-29
   - 증상: _crew_compute 1회에 assignments 3회 · feedback 2회 · gold_checks 2회 ·
     reviewers 2회, 합계 약 15왕복.
   - 계획: reviewer_weights 에 fmap/gold 인자 전달, review_targets 스냅샷 재사용,

@@ -854,6 +854,11 @@ class Store:
         return {(ch, rv): float(ts or 0) for ch, rv, ts in c.execute(
             "SELECT content_hash,reviewer,ts FROM assignments WHERE team=?", (team or "",))}
 
+    def assignments_snapshot(self, team=None):
+        """(assignees, assignment_times) 동시 산출 · supastore 와 동일 계약.
+        sqlite 는 로컬 조회라 비용 차이가 없고, 검수운영(crewops)이 백엔드 무관하게 쓴다."""
+        return self.assignees(team), self.assignment_times(team)
+
     def assignment_load(self, team=None) -> dict:
         """검수자별 미완료 배정 부하 {reviewer: n} · 균등 분배 배정의 가중 원천.
         부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(완료분은 부하 아님)."""
@@ -1426,14 +1431,16 @@ class Store:
         """검수 대상(YELLOW) 총량. json_extract 미지원 빌드는 전체 수로 폴백."""
         return len(self.yellow_hashes())
 
-    def review_targets(self, team=None) -> set:
+    def review_targets(self, team=None, assigned=None) -> set:
         """진척율·퀘스트의 모집단 = 현재 YELLOW ∪ (배정된 살아있는 콘텐츠).
         일괄 배정 운영은 자동통과(auto) 콘텐츠도 배정해 검수시키므로 배정분이 곧 팀의
-        검수 목표다. 삭제된 콘텐츠의 고아 배정은 제외(분모 오염 방지)."""
+        검수 목표다. 삭제된 콘텐츠의 고아 배정은 제외(분모 오염 방지).
+        assigned 를 주면(이미 조회한 배정 해시 집합) assignments 재조회를 생략한다."""
         c = self._conn()
         live = {r[0] for r in c.execute("SELECT content_hash FROM results")}
-        assigned = set(self.assignees(team) or {})
-        return self.yellow_hashes() | (assigned & live)
+        if assigned is None:
+            assigned = set(self.assignees(team) or {})
+        return self.yellow_hashes() | (set(assigned) & live)
 
     def target_models(self, team=None) -> list:
         """검수 대상(YELLOW) 초안을 생성한 모델 목록(중복 제거 · 퀘스트 카드 provenance)."""
