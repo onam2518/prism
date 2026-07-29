@@ -25,53 +25,6 @@
       }
     }
   }
-  (function () {
-    var grid = document.getElementById('grid'); if (!grid) return;
-    var ORDER = ['', 'ds-widget--md', 'ds-widget--lg', 'ds-widget--tall', 'ds-widget--wide', 'ds-widget--xl'];
-    function editing() { return grid.classList.contains('ds-widgetgrid--edit'); }
-    // 선택 + 8핸들(우하단 리사이즈)
-    var SELH = '<div class="ds-widget__sel" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>';
-    var selected = null;
-    function deselect() { if (selected) { selected.classList.remove('ds-widget--selected'); var s = selected.querySelector('.ds-widget__sel'); if (s) s.remove(); selected = null; } }
-    function select(w) { deselect(); w.classList.add('ds-widget--selected'); w.insertAdjacentHTML('beforeend', SELH); selected = w; }
-    function cycleSize(w) {
-      var cur = 0; ORDER.forEach(function (c, i) { if (c && w.classList.contains(c)) cur = i; });
-      ORDER.forEach(function (c) { if (c) w.classList.remove(c); });
-      var nx = ORDER[(cur + 1) % ORDER.length]; if (nx) w.classList.add(nx);
-    }
-    grid.addEventListener('click', function (e) {
-      if (!editing()) return;
-      if (e.target.closest('.ds-widget__remove')) return;   // 제거는 Alpine removeWidget 가 처리
-      var rs = e.target.closest('.ds-widget__sel i:nth-child(5)');
-      if (rs && selected) { cycleSize(selected); return; }
-      var w = e.target.closest('.ds-widget');
-      if (w) { if (w !== selected) select(w); } else deselect();
-    });
-    // 드래그 재배치
-    var dragEl = null;
-    grid.addEventListener('dragstart', function (e) { if (!editing()) return; dragEl = e.target.closest('.ds-widget'); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; });
-    grid.addEventListener('dragover', function (e) { if (!editing() || !dragEl) return; e.preventDefault(); var t = e.target.closest('.ds-widget'); if (t && t !== dragEl) { var r = t.getBoundingClientRect(); var after = (e.clientY - r.top) / r.height > 0.5; grid.insertBefore(dragEl, after ? t.nextSibling : t); } });
-    grid.addEventListener('drop', function (e) { e.preventDefault(); dragEl = null; });
-    new MutationObserver(function () {
-      var on = editing();
-      grid.querySelectorAll('.ds-widget').forEach(function (w) { w.setAttribute('draggable', on ? 'true' : 'false'); });
-      if (!on) deselect();
-    }).observe(grid, { attributes: true, attributeFilter: ['class'] });
-    // 홈 위젯: 왼쪽 아이콘 제거(타이틀 왼쪽선 = 본문 정렬) + 캐릭터를 헤드 오른쪽으로
-    grid.querySelectorAll('.ds-widget__head').forEach(function (head) {
-      var t = head.querySelector('.ds-widget__title'); if (!t) return;
-      var chip = t.querySelector('.ds-widget__icon-chip');
-      var w = head.closest('.ds-widget'); var wid = w ? (w.getAttribute('data-wid') || '') : '';
-      if (chip) chip.remove();
-      var actions = head.querySelector('.ds-widget__actions');
-      if (!actions) { actions = document.createElement('div'); actions.className = 'ds-widget__actions'; head.appendChild(actions); }
-      var ek = actions.querySelector('.ds-widget__kind');            // 기존 인라인 칩 → 통일 클러스터로 교체
-      var isFn = ek ? ek.classList.contains('ds-widget__kind--fn') : false;
-      if (ek) ek.remove();
-      insertHdDivider(actions);                                       // 정보|컨트롤 구분선
-      actions.appendChild(prismCardType(isFn));                       // 캐릭터+칩 고정(우측 끝)
-    });
-  })();
 
   // ── 출력 패널(.panel) → 카탈로그 위젯 헤드로 변환(아이콘칩 + 타이틀 + 정보 칩) ──
   // 정적 패널은 즉시, Alpine x-for 로 생성되는 동적 패널은 MutationObserver 로 덮는다

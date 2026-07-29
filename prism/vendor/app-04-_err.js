@@ -348,6 +348,13 @@ window.PRISM_APP_PARTS.push(() => ({
           else this._err((r && r.error) || '루브릭 채점 시작 실패');
         } catch (e) { this._err('루브릭 채점 시작 실패'); }
       },
+      async cancelRubric() {                   // 채점 중단(이미 채점된 건은 유지 · 백엔드 배치 사이 확인)
+        if (!this.evalRunId) return;
+        try {
+          const r = await (await this._afetch('/eval-rubric-cancel', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: this.evalRunId }) })).json();
+          if (!(r && r.ok)) this._err((r && r.error) || '중단 요청 실패');
+        } catch (e) { this._err('중단 요청 실패'); }
+      },
       // 모델별 정합성 비교(골든셋 평가 탭) · 이항 95% CI 표기
       cmpA: '', cmpB: '', cmpBusy: false, cmpResult: null,
       get cmpCols() {

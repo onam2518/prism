@@ -415,7 +415,10 @@ def report_stub_coverage(html: str):
     """서버 라우트 대비 데모 스텁 커버리지 경고(누락 라우트 = 데모에서 실호출·무동작 위험)."""
     import re as _re
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prism", "serve.py"), encoding="utf-8").read()
-    routes = set(_re.findall(r'self\.path(?:\.startswith\(|\s*==\s*)"(/[a-zA-Z0-9\-_]+)"', src))
+    # 라우트 원천 = 선언 테이블(@_get_route · 2026-07 라우트 테이블 전환 반영).
+    # 구 정규식(self.path 비교)은 전환 후 0건 매칭이라 검사가 헛돌았다(2026-07-28 스윕 발견).
+    # POST(액션)는 정적 데모에서 실행 대상이 아니라 제외 — 화면을 채우는 GET 만 본다.
+    routes = set(_re.findall(r'@_get_route\("(/[a-zA-Z0-9\-_]+)"', src))
     stubs = set(_re.findall(r"u\.indexOf\('(/[a-zA-Z0-9\-_]+)'\)", html))
     missing = sorted(r for r in routes if not any(r.startswith(st) or st.startswith(r) for st in stubs))
     allow = {"/events", "/presence", "/report", "/store", "/prompt-defaults", "/meta-compile"}   # 데모 비노출 허용 목록

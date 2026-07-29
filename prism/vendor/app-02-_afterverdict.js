@@ -156,7 +156,6 @@ window.PRISM_APP_PARTS.push(() => ({
         window.addEventListener('focus', () => {
           if (this.backend === 'supabase' && this.authToken && !this.adminData) this.ensureAdmin();
         });
-        this.loadHome();                               // 배치된 홈 위젯(localStorage)
         this.loadDash();                               // 홈 위젯 데이터(/dashboard)
         this.loadArena();                              // 홈 = 아레나
         this.polRestore();                             // 정책 팔레트 위치·탭 복원
@@ -224,7 +223,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return m[this.mod] || '';
       },
       selectMod(id) {
-        this.status = ''; this.addMenuOpen = false;
+        this.status = '';
         // 구 메뉴 id 호환 매핑(위젯·URL): 인입류 → 콘텐츠 관리 · 검수류 → 콘텐츠 검수 · 분석/현황 → 정답셋 관리
         // 주의: 별칭 치환을 끝낸 뒤 mod 를 확정한다(치환 전 대입 시 매칭 섹션이 없어 빈 화면).
         if (id === 'intake') id = 'dict';
@@ -279,24 +278,6 @@ window.PRISM_APP_PARTS.push(() => ({
         this.theme = this.theme === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', this.theme);
       },
-      // ── 홈 위젯 구성(실동작 위젯만) + 직접 배치 + localStorage 영속 ──
-      placed: null,                              // 배치된 위젯 id 목록(첫 방문 = 빈 배열)
-      homeCatalog: [
-        { id: 'launch-run', label: '새 추출 런처' },
-        { id: 'launch-batch', label: '배치 결과 런처' },
-        { id: 'launch-dict', label: '사전·정책 런처' },
-        { id: 'metrics', label: '핵심 지표' },
-        { id: 'quality', label: '품질 점수' },
-        { id: 'intents', label: '인텐트 분포' },
-        { id: 'categories', label: '카테고리 분포' },
-        { id: 'process', label: '처리 프로세스' },
-      ],
-      loadHome() { try { const s = localStorage.getItem('prism_home'); this.placed = s ? JSON.parse(s) : []; } catch (e) { this.placed = []; } },
-      saveHome() { try { localStorage.setItem('prism_home', JSON.stringify(this.placed || [])); } catch (e) {} },
-      hasWidget(id) { return !!(this.placed && this.placed.includes(id)); },
-      addWidget(id) { this.addMenuOpen = false; if (!this.placed) this.placed = []; if (!this.placed.includes(id)) { this.placed.push(id); this.saveHome(); } },
-      removeWidget(id) { this.placed = (this.placed || []).filter((x) => x !== id); this.saveHome(); },
-      useRecommended() { this.placed = ['launch-run', 'launch-dict', 'metrics', 'quality', 'intents']; this.saveHome(); },
       // 데이터 GET 은 운영(supabase)에서 로그인 필수(서버 게이트 · 2026-07-10) → 인증 헤더 동봉.
       // 로그인 전 401 은 JSON 으로 조용히 떨어지고, 로그인·가입 완료 시 재로드한다.
       loadVocab() { fetch('/vocab', { headers: this._authHeaders() }).then(r => r.json()).then(j => { if (j.groups && j.groups.length) this.groups = j.groups; }).catch(() => {}); },

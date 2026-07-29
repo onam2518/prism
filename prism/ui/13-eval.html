@@ -68,7 +68,9 @@
                         <div class="text-xs text-muted" style="margin-top:6px" x-text="'채점 ' + goldenResult.rubric.n + '건 · 가장 낮은 축부터 프롬프트를 손보세요'"></div>
                       </div>
                     </template>
-                    <div x-show="goldenResult.rubric_status==='running'" class="text-xs text-muted">채점 중… <span class="tnum" x-text="(goldenResult.rubric_cursor||0)+'/'+(goldenResult.evaluated||0)"></span></div>
+                    <div x-show="goldenResult.rubric_status==='running'" class="text-xs text-muted">채점 중… <span class="tnum" x-text="(goldenResult.rubric_cursor||0)+'/'+(goldenResult.evaluated||0)"></span>
+                      <button type="button" class="copybtn" style="margin-left:8px" data-tip="채점을 멈춥니다 · 이미 채점된 건은 유지됩니다" data-tip-pos="top" x-on:click="cancelRubric()">중단</button>
+                    </div>
                     <span class="text-xs text-muted" x-show="goldenResult.rubric_status==='failed'">채점 실패 · 모델 설정 확인 후 다시 실행하세요</span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-top:6px" x-show="goldenResult.status==='done' && goldenResult.rubric_status!=='running' && goldenResult.rubric_status!=='done'" data-tip="건별 산출을 LLM 심사관이 4축(1~5점)으로 채점합니다 · 실모델 호출 비용" data-tip-pos="top" x-on:click="startRubric()">루브릭 채점 실행</button>
                   </div>
