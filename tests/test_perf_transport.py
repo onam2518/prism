@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -69,9 +70,36 @@ class TestTransport(unittest.TestCase):
         self.assertIn("max-age=2592000", h3.get("Cache-Control", ""))  # 폰트 30일
         self.assertIsNone(h3.get("Content-Encoding"))               # 폰트는 재압축 안 함
 
-    def test_html_stays_no_store(self):
+    def test_html_revalidation_contract(self):
+        """페이지는 no-cache(항상 재검증 = 버전 감지 유지) + ETag(부팅ID) 304 로 재전송 생략."""
         _, h, _ = self._get("/")
-        self.assertIn("no-store", h.get("Cache-Control", ""))       # 페이지 자체는 항상 재요청(버전 감지)
+        self.assertIn("no-cache", h.get("Cache-Control", ""))
+        etag = h.get("ETag", "")
+        self.assertTrue(etag)
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/",
+                                     headers={"If-None-Match": etag})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                self.fail(f"304 여야 하는데 {r.status}")
+        except urllib.error.HTTPError as e:                         # urllib 은 304 를 예외로 준다
+            self.assertEqual(e.code, 304)
+            self.assertEqual(e.headers.get("ETag"), etag)
+        req2 = urllib.request.Request(f"http://127.0.0.1:{self.port}/",
+                                      headers={"If-None-Match": '"other-boot"'})
+        with urllib.request.urlopen(req2, timeout=20) as r:         # 배포(부팅ID 변경) = 전체 재전송
+            self.assertEqual(r.status, 200)
+
+    def test_vendor_prezip_cache(self):
+        """벤더 자산은 (경로, mtime) 인메모리 사전압축 재사용 · gzip 왕복 무손실."""
+        _, h, b1 = self._get("/vendor/app.css?v=x")
+        self.assertEqual(h.get("Content-Encoding"), "gzip")
+        _, _, b2 = self._get("/vendor/app.css?v=x")
+        self.assertEqual(b1, b2)          # gzip 헤더에 시각이 들어가므로 동일 바이트 = 캐시 재사용 증명
+        self.assertTrue(any(k.endswith("app.css") for k in self.serve.Handler._VENDOR_CACHE))
+        src = open(os.path.join(os.path.dirname(self.serve.__file__), "vendor", "app.css"), "rb").read()
+        self.assertEqual(gzip.decompress(b1), src)
+        _, h3, b3 = self._get("/vendor/app.js?v=x")
+        self.assertIsNone(h3.get("Content-Encoding"))   # 1KB 미만(로더)은 압축 문턱 미달 = 원문
 
     def test_team_of_cache(self):
         SV = self.serve
