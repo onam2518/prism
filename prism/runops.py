@@ -288,7 +288,7 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
     try:
         for ch in targets:
             res = _SV.rerun_content(ch, model, team=team, row=row_by_hash.get(ch),
-                                    force_quest=force_quest)
+                                    force_quest=force_quest, register_job=False)
             if res.get("error"):
                 failed += 1
                 _SV._INGEST_STATE[jid]["failed"] = failed
@@ -314,10 +314,13 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
             "skipped": (len(targets) - done - failed) if budget_stop else 0}
 
 
-def rerun_content(content_hash: str, model: str, team=None, row=None, force_quest: bool = False) -> dict:
+def rerun_content(content_hash: str, model: str, team=None, row=None, force_quest: bool = False,
+                  register_job: bool = True) -> dict:
     """같은 콘텐츠를 지정 모델로 재실행(초안 재생성 · 관리자). 기존 초안은 덮어쓰되
     이전 초안을 patch_log 에 남겨(rerun:구모델) 이력·비교 근거를 보존한다.
-    row: 일괄 실행(rerun_all)이 미리 로드한 행 주입 — 건마다 전체 테이블 재조회 방지."""
+    row: 일괄 실행(rerun_all)이 미리 로드한 행 주입 — 건마다 전체 테이블 재조회 방지.
+    register_job: 실행 큐에 이 건을 등록(기본). 일괄·선택 실행은 배치 잡을 이미 열었으므로
+    False 로 불러 건마다 잡이 쌓이지 않게 한다."""
     st = _SV.get_store()
     ch = (content_hash or "").strip()
     if not (st and ch):
@@ -337,8 +340,18 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
         return {"error": "퀘스트 진행 중에는 검수 중 콘텐츠의 초안 재실행이 차단됩니다 · "
                          "반영 후 실행하거나 검수 목표 카드에서 목표를 해제하세요"}
     old_model = (row.get("trace") or {}).get("model", "") or ""
+    # 개별 재실행도 실행 큐에 남긴다 — 일괄·선택 실행만 보이고 건별 실행은 흔적이 없어
+    # '눌렀는데 돌긴 한 건가'를 확인할 방법이 없었다. 게이트를 통과한 뒤에만 등록해
+    # 차단된 시도로 큐가 지저분해지지 않게 한다.
+    jid = ""
+    if register_job:
+        jid = "rerun1:" + time.strftime("%H%M%S") + ":" + ch[:6]
+        _SV._job_begin(jid, (ref.get("title") or "콘텐츠")[:40], "개별 재실행", 1)
+        _SV._INGEST_STATE[jid]["hashes"] = [ch]      # 작업 클릭 -> 이 콘텐츠 보기
     result = run_pipeline(fields, mock=_SV.Handler.server_mock, team=team, model=model)
     if result.get("error"):
+        if jid:
+            _SV._job_end(jid, False, "실패 · " + str(result.get("error"))[:80])
         return result
     try:                                       # 산출이 동일해도(비-YELLOW 포함) 모델·버전 표기가 갱신되도록 무조건 upsert
         st.save_many([(fields, result.get("output") or {})], "rerun", source="재실행",
@@ -356,6 +369,10 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
         except Exception:
             pass
     _SV._agg_bump()
+    if jid:
+        cost = float(((result.get("output") or {}).get("trace") or {}).get("cost_usd") or 0.0)
+        _SV._INGEST_STATE[jid]["done"] = 1
+        _SV._job_end(jid, True, "1건 실행 완료" + (f" · ${cost:.4f}" if cost else ""))
     return result
 
 
