@@ -268,11 +268,17 @@ def _dashboard_compute(team=None) -> dict:
     try:
         st = _SV.get_store()
         if st:
-            fmap = st.feedback_map(team=team)
+            # supabase: 원본 행 1회 조회를 map·stats 가 공유(전량 fetch 2회 → 1회 · 수치 정의 불변)
+            fb_rows = st.feedback_rows(team=team) if hasattr(st, "feedback_rows") else None
+            if fb_rows is not None:
+                fmap = st.feedback_map(team=team, rows=fb_rows)
+                fb_stats = st.feedback_stats(team=team, rows=fb_rows)
+            else:
+                fmap = st.feedback_map(team=team)
+                fb_stats = st.feedback_stats(team=team)
             for row in st.recent_meta(team=team):
                 row["fb"] = _SV._fb_public(fmap.get(row["hash"], {}))
                 contents.append(row)
-            fb_stats = st.feedback_stats(team=team)
     except Exception:
         pass
 

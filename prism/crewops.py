@@ -370,12 +370,16 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
         fmap = st.feedback_map(team=team) or {}
     except Exception:
         fmap = {}
-    try:
-        asg = st.assignees(team=team) or {}
+    try:                                            # 배정 현황 + 배정 시각을 1회 조회로(왕복 축소)
+        if hasattr(st, "assignments_snapshot"):
+            asg, asg_ts = st.assignments_snapshot(team)
+        else:
+            asg, asg_ts = (st.assignees(team=team) or {}), _assign_ts(team)
     except Exception:
-        asg = {}
-    try:
-        targets = st.review_targets(team) if hasattr(st, "review_targets") else set()
+        asg, asg_ts = {}, {}
+    try:                                            # 배정 해시를 넘겨 assignments 재조회 생략
+        targets = (st.review_targets(team, assigned=set(asg))
+                   if hasattr(st, "review_targets") else set())
     except Exception:
         targets = set()
     try:
@@ -386,8 +390,8 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
         gold = st.gold_stats(team) if hasattr(st, "gold_stats") else {}
     except Exception:
         gold = {}
-    try:
-        weights = _SV.reviewer_weights(team) or {}
+    try:                                            # fmap·gold 를 넘겨 같은 테이블 재조회 생략
+        weights = _SV.reviewer_weights(team, fmap=fmap, gold=gold) or {}
     except Exception:
         weights = {}
     try:
@@ -419,7 +423,6 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
     ratios = [good_by.get(r, 0) / n for r, n in n_by.items() if n >= _MIN_JUDGE_SAMPLE]
     team_good = statistics.median(ratios) if ratios else 0.5
 
-    asg_ts = _assign_ts(team)
     load = {}                                       # uid → [배정, 미완료, 최고 정체일]
     for ch, a in asg.items():
         if targets and ch not in targets:
