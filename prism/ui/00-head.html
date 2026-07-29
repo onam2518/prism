@@ -284,7 +284,7 @@
         <nav class="ds-navgroup" x-show="navVisible(grp.gcond)">
           <div class="ds-navgroup__label" x-text="grp.g"></div>
           <template x-for="it in grp.items" x-bind:key="it.id">
-            <button type="button" class="ds-navitem" x-show="canMenu(it.id, it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
+            <button type="button" class="ds-navitem" x-show="it.id === 'admin' ? opsMenuVisible : canMenu(it.id, it.cond)" x-bind:class="mod === it.id ? 'ds-navitem--active' : ''" x-on:click="selectMod(it.id)">
               <span class="ds-navitem__icon" x-html="navIcons[it.ic]"></span>
               <span x-text="it.label"></span>
             </button>

@@ -43,7 +43,9 @@ window.PRISM_APP_PARTS.push(() => ({
           { id: 'content', label: '콘텐츠 관리', ic: 'intake', cond: 'opsadmin' },
           { id: 'testset', label: '정답셋 관리', ic: 'eval', cond: 'opsadmin' },
           // 운영 관리 = 팀 관리(계정·권한) + 검수운영 관리(사람의 여력·일정·일 나누기) 2탭.
-          // 검수운영 탭은 슈퍼관리자 이상(canMenu('crew') 로 게이트 · 서버도 같은 id 로 강제)
+          // 메뉴 노출은 opsMenuVisible(둘 중 하나라도 접근 가능) · 각 탭은 자기 권한으로 게이트.
+          // 한 메뉴가 두 기능을 담으므로 상위를 admin 권한 하나로 잠그면 안 된다 —
+          // 실제로 '팀 관리'를 끈 설정이 남아 있어 검수운영까지 통째로 숨었다(2026-07-29).
           { id: 'admin', label: '운영 관리', ic: 'admin', cond: 'admin' },
           // 사전 · 정책: 인텐트/카테고리/엔티티(개체 고유키·타입·속성)/정책 4탭
           { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'opsadmin' },
@@ -64,6 +66,10 @@ window.PRISM_APP_PARTS.push(() => ({
         if (c === 'sysadmin') return this.backend !== 'supabase' || (this.adminData && this.adminData.isSysAdmin);
         return this.backend === c;
       },
+      // 운영 관리 메뉴: 팀 관리 탭 또는 검수운영 탭 중 하나라도 볼 수 있으면 노출
+      get canTeamTab() { return this.canMenu('admin', 'admin'); },
+      get canCrewTab() { return this.canMenu('crew', 'opsadmin'); },
+      get opsMenuVisible() { return this.canTeamTab || this.canCrewTab; },
       canMenu(id, cond) {                    // 메뉴별 권한(생성자 설정 매트릭스) 기반 가시성 · 서버 강제와 동일 판정
         if (this.backend !== 'supabase') return true;            // 로컬 단독 = 전체
         const ad = this.adminData || {};

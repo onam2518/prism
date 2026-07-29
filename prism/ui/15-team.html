@@ -1,14 +1,15 @@
       <!-- ═══ 모듈: 운영 관리 ═══ -->
       <!-- 팀 관리(계정·권한)와 검수운영(사람의 여력·일정·일 나누기)은 성격이 달라 탭으로 나눈다.
-           검수운영 탭은 슈퍼관리자 이상만(메뉴 권한 매트릭스의 crew 항목을 그대로 쓴다). -->
+           탭마다 자기 권한으로 게이트한다(팀 관리=admin · 검수운영=crew). 상위 메뉴를 권한 하나로
+           잠그면, 한쪽을 끈 설정이 다른 쪽까지 숨긴다(2026-07-29 실제 사고). -->
       <div x-show="mod === 'admin'" x-cloak class="w-full" style="margin-bottom:0">
         <div class="evaltabs">
-          <button type="button" x-bind:class="adminTab==='team'?'sel':''" x-on:click="adminTab='team'; loadAdmin()">팀 관리</button>
-          <button type="button" x-show="canMenu('crew', 'opsadmin')" x-bind:class="adminTab==='crew'?'sel':''"
+          <button type="button" x-show="canTeamTab" x-bind:class="adminTab==='team'?'sel':''" x-on:click="adminTab='team'; loadAdmin()">팀 관리</button>
+          <button type="button" x-show="canCrewTab" x-bind:class="adminTab==='crew'?'sel':''"
                   x-on:click="adminTab='crew'; loadCrew(); loadRaw(1000)">검수운영 관리</button>
         </div>
       </div>
-      <div x-show="mod === 'admin' && adminTab === 'team'" x-cloak class="w-full space-y-4">
+      <div x-show="mod === 'admin' && adminTab === 'team' && canTeamTab" x-cloak class="w-full space-y-4">
         <section class="panel" x-show="backend !== 'supabase'"><div class="panel-hd"><b>팀 관리</b><span class="meta">로컬 단독 실행</span></div>
           <div class="panel-bd"><ul class="ds-bullets">
             <li>팀 기능(팀 생성 · 초대 코드 · 멤버 관리)은 <b>팀 모드(공유 서버)</b>에서 동작합니다.</li>
