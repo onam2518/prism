@@ -854,15 +854,16 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
         fb = fmap.get(ch) or {}
         # 내 판정(mine)·내 교정(note·elems) 계산은 _fb_public 단일 원천(드릴 목록과 동일 규약).
         # (합의가 동점 split 인데 배지가 '수정 필요'로 뭉뚱그려져 "정확으로 바꿨는데 수정필요로 조회" 혼란 방지)
+        # 슬림 응답: 표가 실제 쓰는 필드만 싣는다. 본문(body)·메타 원본(item_meta·quality_meta)·
+        # 확신도 스코어(entities_scored · 행당 재계산)는 상세 진입 시 /raw-detail 단건으로 —
+        # 기본 2000행이면 목록 페이로드가 gzip 전 수 MB → 수백 KB 로 줄어든다.
         out.append({"hash": ch,
                     "service": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
-                    "body": ref.get("body", ""), "url": ref.get("source_url", ""),
+                    "url": ref.get("source_url", ""),
                     "images": ref.get("image_urls", []) or [],
                     "grade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
                     "category": im.get("content_category", []) or [],
                     "summary": im.get("summary", ""), "entities": im.get("entities", []) or [],
-                    # 읽기 시점 확신도 병행 노출(entconf.py) · entities 키는 계약 유지(하위 호환)
-                    "entities_scored": EC.scored_entities(im, ref),
                     "intent": im.get("intent", []) or [],
                     "model": tr.get("model", "") or "",
                     "version": int(tr.get("version") or 1),
@@ -875,8 +876,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "assignees": (asg.get(ch) or {}).get("reviewers", []),
                     "min_reviewers": (asg.get(ch) or {}).get("min", 0),
                     "ops_hold": bool(qm.get("ops_hold")),   # 운영자 수동 노출제한(라벨 아님 · 학습 미포함)
-                    "source_status": ref.get("source_status") or {},   # 원문 소실 신고 플래그(게시판 #10)
-                    "item_meta": im, "quality_meta": qm})
+                    "source_status": ref.get("source_status") or {}})   # 원문 소실 신고 플래그(게시판 #10)
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트.
     # 검수할 실제 콘텐츠가 있을 때만 섞는다 — 콘텐츠 전체 삭제 후 골드만 홀로 남는 오인 방지.
     if reviewer and out:
@@ -897,6 +897,25 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                                          "intent": g.get("intent", []), "content_category": g.get("category", [])},
                            "quality_meta": {"finalGrade": g.get("grade", ""), "reasons": g.get("reasons", [])}})
     return {"ok": True, "items": out, "n": len(out)}
+
+
+def raw_detail(content_hash: str, team=None) -> dict:
+    """검수 표 상세(해시 단건): 슬림 목록에서 뺀 본문·메타 원본·확신도 스코어를 채운다.
+    판정 상태(fb)·배정은 목록 행이 이미 들고 있으므로 다시 싣지 않는다(feedback 전량 재조회 방지).
+    골드 문항(gold:*)은 목록에 원문이 동봉되므로 이 라우트를 타지 않는다."""
+    ch = (content_hash or "").strip()
+    if not ch:
+        return {"ok": False, "error": "hash 누락"}
+    for r in reversed(_SV.results_rows(team=team)):    # 최근순 · 재실행분은 최신 행 우선
+        ref = r.get("content_ref") or {}
+        if _row_key(ref) != ch:
+            continue
+        im = r.get("item_meta") or {}
+        return {"ok": True, "item": {
+            "hash": ch, "body": ref.get("body", ""),
+            "entities_scored": EC.scored_entities(im, ref),   # 확신도(entconf) · 상세에서만 계산
+            "item_meta": im, "quality_meta": r.get("quality_meta") or {}}}
+    return {"ok": False, "error": "콘텐츠를 찾을 수 없습니다"}
 
 
 def model_stats(team=None) -> dict:

@@ -50,10 +50,10 @@ class TestEntityPatchRoundtrip(EntityEditBase):
         r = serve.patch_content_meta(ch, {"entities": ["손흥민", "토트넘"]}, reviewer="복실")
         self.assertTrue(r["ok"])
         self.assertEqual(st.get_item_meta(ch).get("entities"), ["손흥민", "토트넘"])
-        # 목록 응답(raw_rows)에도 즉시 반영 · 검수 UI 재조회 경로
+        # 목록 응답(raw_rows · 슬림)에도 즉시 반영 · 메타 원본은 상세(raw_detail)가 노출
         row = next(x for x in serve.raw_rows(limit=50)["items"] if x["hash"] == ch)
         self.assertEqual(row["entities"], ["손흥민", "토트넘"])
-        self.assertEqual(row["item_meta"].get("entities"), ["손흥민", "토트넘"])
+        self.assertEqual(serve.raw_detail(ch)["item"]["item_meta"].get("entities"), ["손흥민", "토트넘"])
         self.assertGreaterEqual(st.patches_today("복실"), 1)      # 교정 이력(감사·미션 fill1) 기록
 
     def test_patch_normalizes_input(self):

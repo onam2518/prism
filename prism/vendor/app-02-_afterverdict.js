@@ -46,6 +46,17 @@ window.PRISM_APP_PARTS.push(() => ({
       // 렌더 전용 절단본: 2000행 전부를 DOM 에 그리지 않는다(보이는 건 스크롤 박스 10여 행).
       // 건수 표시·일괄 작업·상세 이전/다음은 rawFiltered(전체)를 그대로 쓴다.
       get rawShownList() { return this.rawFiltered.slice(0, this.rawShown); },
+      async rawSelToggle(r) {                      // JSON 원문 보기: 슬림 목록엔 메타 원본이 없어 단건 조회로 채운다
+        if (this.rawSel && this.rawSel.hash === r.hash) { this.rawSel = null; return; }
+        let d = r;
+        if (!r.item_meta) {
+          try {
+            const j = await (await this._afetch('/raw-detail?hash=' + encodeURIComponent(r.hash))).json();
+            if (j && j.ok && j.item) d = Object.assign({}, r, j.item);
+          } catch (e) {}
+        }
+        this.rawSel = d;
+      },
       // 기본값(미검수)이 감춘 '내가 판정 완료한' 건수 · 0 이면 힌트를 띄우지 않는다
       get rawDoneHidden() {
         return this.rawRev === 'todo' ? this.rawScoped.filter((r) => this.myVerdict(r.fb)).length : 0;
