@@ -2629,6 +2629,44 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 
+    _VENDOR_CACHE = {}   # path → (mtime, raw, gz) · 파일 ~20개·수 MB → 메모리 부담 없음
+
+    def _send_prezipped(self, code, raw, gz, ctype, cache="", etag=""):
+        """사전 압축 자산 전송(_send 와 동일한 헤더 규약).
+        불변 자산(벤더·부팅당 정적 HTML)이 요청마다 gzip 레벨6 재압축을 하지 않게 한다."""
+        data, enc = raw, ""
+        if gz is not None and "gzip" in (self.headers.get("Accept-Encoding") or ""):
+            data, enc = gz, "gzip"
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self._security_headers()
+        if enc:
+            self.send_header("Content-Encoding", enc)
+        self.send_header("Vary", "Accept-Encoding")
+        self.send_header("Content-Length", str(len(data)))
+        if cache:
+            self.send_header("Cache-Control", cache)
+        if etag:
+            self.send_header("ETag", etag)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_page(self, mobile=False):
+        """SPA HTML: 부팅당 1회 사전압축 + ETag(부팅ID) 재검증.
+        no-cache = 매 로드 재검증이라 '옛 페이지 잔존 방지'(구 no-store 의 목적)는 유지하면서,
+        같은 부팅이면 304 로 전량 재전송을 생략하고 배포(새 부팅ID)면 ETag 불일치로 전체 갱신."""
+        etag = '"' + _BOOT_ID + '"'
+        if (self.headers.get("If-None-Match") or "").strip() == etag:
+            self.send_response(304)                  # 304 는 본문 없음(RFC) · Content-Length 생략
+            self._security_headers()
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
+        raw, gz = _page_payload(mobile)
+        self._send_prezipped(200, raw, gz, "text/html; charset=utf-8",
+                             cache="no-cache", etag=etag)
+
     def _send(self, code, body, ctype="text/html; charset=utf-8", cache=""):
         data = body.encode("utf-8") if isinstance(body, str) else body
         self.send_response(code)
@@ -2693,9 +2731,9 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/favicon.ico":                    # 브라우저 기본 요청: SPA 폴스루(323KB HTML) 방지
             self._send_vendor("prism-favicon.svg")
         elif p.rstrip("/") == "/m":                  # 모바일 검수 전용(검수만 덜어낸 카드 UI)
-            self._send(200, _mpage_versioned())
+            self._send_page(mobile=True)
         elif p.rstrip("/") in ("", "/"):
-            self._send(200, _page_versioned())
+            self._send_page()
         else:                                        # 미등록 경로 404: API 오타가 SPA HTML 200 으로 가려지지 않게
             self._send(404, json.dumps({"error": "not found", "path": p[:80]},
                                        ensure_ascii=False), _JSON)
@@ -2832,8 +2870,21 @@ class Handler(BaseHTTPRequestHandler):
             cache = "public, max-age=31536000, immutable"
         else:
             cache = "public, max-age=3600"
-        with open(path, "rb") as f:
-            self._send(200, f.read(), self._VENDOR_CT[ext], cache=cache)
+        ctype = self._VENDOR_CT[ext]
+        try:                                         # (경로, mtime) 캐시: 배포 직후 접속자 수만큼
+            mtime = os.path.getmtime(path)           # 반복되던 read+gzip 을 부팅당 1회로
+        except OSError:
+            self._send(404, "not found")
+            return
+        hit = self._VENDOR_CACHE.get(path)
+        if not hit or hit[0] != mtime:
+            with open(path, "rb") as f:
+                raw = f.read()
+            gz = (gzip.compress(raw, 6)
+                  if len(raw) > 1024 and any(t in ctype for t in self._GZIP_CT) else None)
+            hit = (mtime, raw, gz)
+            self._VENDOR_CACHE[path] = hit
+        self._send_prezipped(200, hit[1], hit[2], ctype, cache=cache)
 
     def do_POST(self):
         # 본문 크기 상한: 인증·라우팅보다 먼저 실행되는 read 가 무제한이면 프리-어스 메모리 DoS
@@ -2904,6 +2955,20 @@ def _mpage_versioned() -> str:
         from .page_mobile import MOBILE_PAGE
         _MPAGE_V = re.sub(r"(/vendor/[\w.\-]+\.(?:js|css))", lambda m: m.group(1) + "?v=" + _BOOT_ID, MOBILE_PAGE)
     return _MPAGE_V
+
+
+_PAGE_BYTES = {}
+
+
+def _page_payload(mobile=False):
+    """(raw, gzip) 페이지 바이트 · 부팅당 1회 생성(617KB HTML 의 요청당 재압축 7ms 제거)."""
+    key = "m" if mobile else "d"
+    hit = _PAGE_BYTES.get(key)
+    if not hit:
+        raw = (_mpage_versioned() if mobile else _page_versioned()).encode("utf-8")
+        hit = (raw, gzip.compress(raw, 6))
+        _PAGE_BYTES[key] = hit
+    return hit
 
 
 

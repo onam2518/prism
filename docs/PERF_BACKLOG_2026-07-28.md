@@ -49,7 +49,7 @@
     reviewers 2회, 합계 약 15왕복.
   - 계획: reviewer_weights 에 fmap/gold 인자 전달, review_targets 스냅샷 재사용,
     supastore.assignees 가 assigned_at 도 반환하게 확장해 _assign_ts 왕복 통합. 15회 → 8회 이하.
-- [ ] **P1-7 벤더 정적 파일 인메모리 gzip 캐시** · `serve.py:2823~2824`
+- [x] **P1-7 벤더 정적 파일 인메모리 gzip 캐시** · `serve.py:2823~2824` · 완료 2026-07-29
   - 증상: 요청마다 open+read+gzip level6 재압축. 배포 직후엔 전 접속자가 약 450KB 를
     새로 받아 동일 압축이 반복됨.
   - 계획: (경로, mtime) 키 인메모리 캐시로 원본·gzip 바이트를 1회 생성 후 재사용.
@@ -69,7 +69,7 @@
     보이는 건 스크롤 박스 10여 행뿐. getter 다중 참조로 필터·정렬도 반복 평가.
   - 계획: `rawFiltered.slice(0, rawShown)`(초기 200 · 더 보기 증분) + 계산 결과를 지역
     변수에 담아 getter 재평가 제거. 크루 탭 표시 캡 200 과 동일 규약.
-- [ ] **P2-3 SPA HTML 사전압축 + ETag 304** · `serve.py:2624~2635, 2876`
+- [x] **P2-3 SPA HTML 사전압축 + ETag 304** · `serve.py:2624~2635, 2876` · 완료 2026-07-29
   - 증상: 부팅당 정적인 617KB HTML 을 매 요청 gzip 재압축(실측 7ms) · no-store 라
     재방문에도 135KB 전량 재전송.
   - 계획: 부팅 시 1회 압축해 캐시, Cache-Control 을 no-cache 로 바꾸고
