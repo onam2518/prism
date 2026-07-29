@@ -13,6 +13,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import weakref
 
 from . import pipeline as PIPE
 from .config import Config
@@ -169,15 +170,75 @@ def admin_emails() -> set:
             raw = ""
     return {e.strip().lower() for e in raw.replace("\n", ",").split(",") if e.strip()}
 
+# ── 권한 판정 캐시(요청당 supabase 왕복 축소) ──────────────────────────────
+# 위임 관리자의 메뉴 대상 요청 1건이 팀 역할·팀 메타 조회로 supabase 왕복을
+# 최대 10회 하던 것을 60s TTL 로 줄인다. 스토어 객체별(WeakKey) 격리라 테스트의
+# 스토어 교체·serve._STORE 리셋에 안전하고, 권한을 바꾸는 쓰기 경로는
+# authz_cache_clear(team) 로 즉시 무효화한다(반영 지연은 다른 서버 인스턴스를
+# 경유한 변경만 최대 60s · team_of 캐시와 동일 정합 수준).
+_AUTHZ_TTL = 60
+_AUTHZ_CACHE = weakref.WeakKeyDictionary()        # store → {key: (value, expiry)} · key 끝 원소 = team
+_AUTHZ_LOCK = threading.Lock()
+
+
+def _authz_cached(st, key, fill):
+    now = time.time()
+    with _AUTHZ_LOCK:
+        box = _AUTHZ_CACHE.get(st)
+        if box is None:
+            box = {}
+            _AUTHZ_CACHE[st] = box
+        hit = box.get(key)
+        if hit and hit[1] > now:
+            return hit[0]
+    val = fill()                                  # 원격 조회는 락 밖(왕복 동안 타 요청 차단 방지)
+    with _AUTHZ_LOCK:
+        if len(box) > 512:                        # 만료 항목 정리(장기 가동 시 무한 성장 방지)
+            for k, v in list(box.items()):
+                if v[1] <= now:
+                    box.pop(k, None)
+        box[key] = (val, now + _AUTHZ_TTL)
+    return val
+
+
+def authz_cache_clear(team=None):
+    """권한 캐시 무효화 · team 지정 시 그 팀 키만. 권한 위임/회수·메뉴 설정·멤버 제거 직후 호출."""
+    with _AUTHZ_LOCK:
+        for box in list(_AUTHZ_CACHE.values()):
+            if team is None:
+                box.clear()
+            else:
+                for k in [k for k in box if k[-1] == team]:
+                    box.pop(k, None)
+
+
+def _role_flags(uid, team):
+    """(팀 관리자, 슈퍼관리자) 위임 판정 쌍 · 60s 캐시."""
+    st = _SV.get_store()
+    if not (st and team and hasattr(st, "is_team_admin")):
+        return (False, False)
+    return _authz_cached(st, ("role", uid, team),
+                         lambda: (bool(st.is_team_admin(uid, team)),
+                                  bool(hasattr(st, "is_team_super") and st.is_team_super(uid, team))))
+
+
+def _team_meta(team):
+    """(team_info, menu_perms) 쌍 · 60s 캐시. menu_perms 미지원 스토어는 {}."""
+    st = _SV.get_store()
+    if not (st and team and hasattr(st, "team_info")):
+        return (None, {})
+    return _authz_cached(st, ("meta", team),
+                         lambda: (st.team_info(team),
+                                  (st.menu_perms(team) if hasattr(st, "menu_perms") else {}) or {}))
+
+
 def _team_admin(uid, team) -> bool:
     """팀 관리자(생성자 OR is_admin 위임) 판정."""
-    st = _SV.get_store()
-    return bool(st and team and hasattr(st, "is_team_admin") and st.is_team_admin(uid, team))
+    return _role_flags(uid, team)[0]
 
 def _team_super(uid, team) -> bool:
     """슈퍼관리자(생성자 OR super_admin 위임) 판정."""
-    st = _SV.get_store()
-    return bool(st and team and hasattr(st, "is_team_super") and st.is_team_super(uid, team))
+    return _role_flags(uid, team)[1]
 
 def is_sys_admin_user(uid, team, email="") -> bool:
     """운영(시스템) 관리자 = 허용목록(~/.prism_admin_emails) 이메일. 팀 소속과 무관.
@@ -231,8 +292,7 @@ def _team_role(uid, team) -> str:
 
 def effective_menu_perms(team) -> dict:
     """기본 매트릭스 위에 생성자 설정을 덮은 유효 매트릭스(UI·프론트 게이팅 원천)."""
-    st = _SV.get_store()
-    stored = (st.menu_perms(team) if (st and hasattr(st, "menu_perms")) else {}) or {}
+    stored = _team_meta(team)[1]
     out = {}
     for mid in CONFIGURABLE_MENUS:
         base = dict(DEFAULT_MENU_PERMS.get(mid, {}))
@@ -248,8 +308,7 @@ def menu_allowed(uid, team, email, menu_id) -> bool:
         return True                                   # 로컬 단독 = 전체 접근
     if is_sys_admin_user(uid, team, email):
         return True                                   # 운영 관리자 = 전체
-    st = _SV.get_store()
-    t = st.team_info(team) if (st and team and hasattr(st, "team_info")) else None
+    t = _team_meta(team)[0]
     if t and uid and uid == t.get("created_by"):
         return True                                   # 생성자 = 전체
     if menu_id == "system":
@@ -373,8 +432,10 @@ def admin_action(uid, team, data, email="") -> dict:
         if not hasattr(st, "delete_team"):
             return {"ok": False, "error": "이 백엔드는 팀 삭제를 지원하지 않습니다"}
         st.delete_team(team)
+        authz_cache_clear(team)
     elif act == "remove_member" and data.get("member"):
         st.remove_member(team, data["member"])
+        authz_cache_clear(team)
     elif act in ("set_admin", "unset_admin", "set_super", "unset_super") and data.get("member"):
         t = st.team_info(team) if hasattr(st, "team_info") else None
         # 권한 지정은 오직 팀 생성자만 · 부여받은 관리자(슈퍼관리자 포함)와 운영 관리자도 불가
@@ -386,6 +447,7 @@ def admin_action(uid, team, data, email="") -> dict:
         if not hasattr(st, fn):
             return {"ok": False, "error": "이 백엔드는 위임을 지원하지 않습니다"}
         getattr(st, fn)(team, data["member"], act in ("set_admin", "set_super"))
+        authz_cache_clear(team)                        # 위임/회수 즉시 반영(캐시 지연 없음)
     elif act == "reset_password" and data.get("member"):
         # 비밀번호 재설정: 팀 생성자만 · 대상 멤버에 임시 비밀번호를 발급(Supabase auth admin).
         # 원문 조회는 불가(해시 저장)이므로 새 임시 비번을 만들어 생성자에게 1회 반환한다.
@@ -422,6 +484,7 @@ def admin_action(uid, team, data, email="") -> dict:
                        "admin": bool((incoming.get(mid) or {}).get("admin"))}
                  for mid in CONFIGURABLE_MENUS if mid in incoming}
         st.set_menu_perms(team, clean)
+        authz_cache_clear(team)                        # 응답의 유효 매트릭스가 방금 저장분을 반영하도록
         return {"ok": True, "menuPerms": effective_menu_perms(team)}
     elif act == "ingest":                          # 크롤러 수량 인입 → 검토 큐
         return admin_ingest(uid, team, data.get("endpoint"), data.get("n"), email)
