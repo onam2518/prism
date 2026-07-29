@@ -39,9 +39,26 @@
           <span class="ds-badge ds-badge--error tnum ml-auto" x-show="((failData&&failData.recent)||[]).length" x-text="((failData&&failData.recent)||[]).length + '건'"></span>
         </div>
           <div class="panel-bd">
-            <div class="overflow-auto" style="max-height:280px" x-show="((failData&&failData.recent)||[]).length"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:160px">모델</th><th style="width:150px">실패 종류</th><th style="width:130px">콜</th><th style="width:60px">일자</th><th style="width:96px"></th></tr></thead><tbody>
-              <template x-for="f in ((failData&&failData.recent)||[])" x-bind:key="'fr'+f.hash">
+            <!-- 원인별로 갈라 보고 한 번에 다시 돌린다 · 실패가 한 종류로 몰릴 때(예: 잔액 부족 402 전건) 유용 -->
+            <div class="filterbar" x-show="failAll.length" x-cloak>
+              <select class="field" style="width:auto" x-model="failKind" x-on:change="pickFailKind($event.target.value)">
+                <option value="">실패 종류 전체</option>
+                <template x-for="k in failKindOpts" x-bind:key="'fko'+k"><option x-bind:value="k" x-text="failKindKr(k)"></option></template>
+              </select>
+              <select class="field" style="width:auto" x-show="failModelOpts.length > 1" x-model="failModel" x-on:change="pickFailModel($event.target.value)">
+                <option value="">모델 전체</option>
+                <template x-for="m in failModelOpts" x-bind:key="'fmo'+m"><option x-bind:value="m" x-text="m"></option></template>
+              </select>
+              <button type="button" class="ds-btn ds-btn--outline" style="height:28px;padding:0 12px;font-size:12px" x-bind:disabled="!failPicked.length || failBusy" x-on:click="rerunFailPicked()" x-text="failBusy ? '재실행 중…' : ('선택 재실행' + (failPicked.length ? (' ' + failPicked.length + '건') : ''))" data-tip="체크한 콘텐츠를 STEP 2의 사용 모델로 다시 실행합니다 · 성공하면 목록에서 사라집니다 · 건당 비용 발생" data-tip-pos="top"></button>
+              <button type="button" class="copybtn" x-show="failPicked.length" x-cloak x-on:click="clearFailPick()">선택 해제</button>
+              <span class="text-xs text-muted tnum" x-text="failRows.length + ' / ' + failAll.length + '건'"></span>
+              <!-- 잔액 부족은 재실행으로 못 푼다 · '눌러도 안 사라진다'는 오해를 먼저 끊는다 -->
+              <span class="ds-badge ds-badge--error" style="cursor:help" x-show="failBillingN" x-cloak data-tip="API 크레딧이 소진돼 실패한 건입니다 · 충전하기 전에는 재실행해도 같은 오류로 다시 등재됩니다" data-tip-pos="top" x-text="'잔액 부족 ' + failBillingN + '건 · 충전 필요'"></span>
+            </div>
+            <div class="overflow-auto" style="max-height:280px" x-show="failRows.length"><table class="ds-table"><thead><tr><th style="width:34px"><input type="checkbox" x-bind:checked="failAllOn" x-on:change="toggleFailPickAll()" data-tip="보이는 행 전체 선택" data-tip-pos="right" aria-label="보이는 행 전체 선택"></th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:160px">모델</th><th style="width:150px">실패 종류</th><th style="width:130px">콜</th><th style="width:60px">일자</th><th style="width:96px"></th></tr></thead><tbody>
+              <template x-for="f in failRows" x-bind:key="'fr'+f.hash">
                 <tr>
+                  <td><input type="checkbox" x-bind:checked="!!failSel[f.hash]" x-on:change="toggleFailPick(f.hash)" x-bind:aria-label="(f.title || '콘텐츠') + ' 선택'"></td>
                   <td class="text-ink" x-text="f.title || '(제목 없음)'"></td>
                   <td class="text-muted" x-text="f.service || '·'"></td>
                   <td class="text-muted" x-text="f.model || '·'"></td>
@@ -53,7 +70,7 @@
                 </tr>
               </template>
             </tbody></table></div>
-            <div class="text-xs text-muted" x-show="!((failData&&failData.recent)||[]).length">최근 30일 메타 생성에 실패한 콘텐츠가 없습니다 · 실패가 생기면 여기에 등재되고, 재실행이 성공하면 자동으로 사라집니다</div>
+            <div class="text-xs text-muted" x-show="!failRows.length" x-text="failAll.length ? '이 조건에 맞는 실패 콘텐츠가 없습니다 · 필터를 바꿔 보세요' : '최근 30일 메타 생성에 실패한 콘텐츠가 없습니다 · 실패가 생기면 여기에 등재되고, 재실행이 성공하면 자동으로 사라집니다'"></div>
           </div>
         </section>
       </div>

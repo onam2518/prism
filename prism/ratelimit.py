@@ -66,4 +66,6 @@ def classify_http_error(code: int, body: str) -> str:
         return "not_found"
     if code == 422:
         return "unprocessable"
+    if code == 402:
+        return "billing"                # 잔액·크레딧 소진(충전 전에는 재실행해도 계속 실패)
     return f"http_{code}"
