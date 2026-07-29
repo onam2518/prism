@@ -42,6 +42,10 @@ window.PRISM_APP_PARTS.push(() => ({
         // 안정 정렬: 부족 분류를 앞으로 올리되 그룹 안에서는 기존(최근순) 유지
         return this.rawGapFirst ? out.slice().sort((a, b) => (b.class_gap ? 1 : 0) - (a.class_gap ? 1 : 0)) : out;
       },
+      rawShown: 200,                             // 검수 표 표시 캡(더 보기 증분) · 크루 탭 캡 200 과 동일 규약
+      // 렌더 전용 절단본: 2000행 전부를 DOM 에 그리지 않는다(보이는 건 스크롤 박스 10여 행).
+      // 건수 표시·일괄 작업·상세 이전/다음은 rawFiltered(전체)를 그대로 쓴다.
+      get rawShownList() { return this.rawFiltered.slice(0, this.rawShown); },
       // 기본값(미검수)이 감춘 '내가 판정 완료한' 건수 · 0 이면 힌트를 띄우지 않는다
       get rawDoneHidden() {
         return this.rawRev === 'todo' ? this.rawScoped.filter((r) => this.myVerdict(r.fb)).length : 0;
@@ -177,7 +181,7 @@ window.PRISM_APP_PARTS.push(() => ({
           const t = e.target;
           if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
           if (e.metaKey || e.ctrlKey || e.altKey) return;
-          const list = this.rawFiltered;
+          const list = this.rawShownList;        // 키보드 이동은 실제 렌더된 행(표시 캡) 안에서만
           if (!list.length) return;
           if (e.code === 'KeyJ') { e.preventDefault(); this.rawFocusIdx = Math.min(list.length - 1, this.rawFocusIdx + 1); this._rawFocusScroll(); }
           else if (e.code === 'KeyK') { e.preventDefault(); this.rawFocusIdx = Math.max(0, (this.rawFocusIdx < 0 ? 1 : this.rawFocusIdx) - 1); this._rawFocusScroll(); }
