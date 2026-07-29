@@ -14,7 +14,7 @@
 
 ## P1 · 국소 수정(저위험 · 효과 즉시)
 
-- [ ] **P1-1 관리자 게이트 supabase 왕복 캐시** · `adminops.py:244`, `serve.py:2845`
+- [x] **P1-1 관리자 게이트 supabase 왕복 캐시** · `adminops.py:244`, `serve.py:2845` · 완료 2026-07-29
   - 증상: 위임 관리자의 메뉴 대상 POST 1건마다 menu_allowed(6왕복) + 라우트 gate(4왕복)로
     supabase 왕복 최대 10회. GET 쪽(/queue, /final-queue)도 로드마다 2~4회.
     team_info·is_team_admin·is_team_super·menu_perms 전부 무캐시.
