@@ -501,7 +501,7 @@
               <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="rawGapFirst ? '부족 분류 먼저 · 그 안에서는 최근 실행순' : '정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다'" data-tip-pos="top" x-text="rawGapFirst ? '부족 분류 우선' : '최근순'"></span>
             </div>
             <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th><th style="width:150px" x-show="assignAdmin" data-tip="검수 담당자 배정 · 배정 시 담당자에게만 노출됩니다" data-tip-pos="top">담당</th></tr></thead><tbody>
-              <template x-for="(r, ri) in rawFiltered" x-bind:key="r.hash">
+              <template x-for="(r, ri) in rawShownList" x-bind:key="r.hash">
                 <tr style="cursor:pointer" role="button" tabindex="0" x-bind:data-rawrow="ri" x-bind:class="(rawSel && rawSel.hash === r.hash ? 'is-sel ' : '') + (rawFocusIdx === ri ? 'is-kfocus' : '')" x-on:click="openRawDetail(r)" x-on:keydown.enter="openRawDetail(r)">
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
                   <td class="text-ink"><span x-text="r.title || '(제목 없음)'"></span>
@@ -531,6 +531,8 @@
                 </tr>
               </template>
             </tbody></table>
+            <!-- 표시 캡(200건 증분): 전체는 위 건수·필터에 그대로 남고 렌더만 나눠 그린다 -->
+            <button type="button" class="copybtn" style="width:100%;margin-top:6px" x-show="rawFiltered.length > rawShown" x-cloak x-on:click="rawShown += 200" x-text="'더 보기 · 남은 ' + (rawFiltered.length - rawShown) + '건'"></button>
             <div x-show="modBusy && !(rawData && rawData.items && rawData.items.length)" class="text-xs text-muted" style="padding:10px">목록을 불러오는 중…</div>
             <div x-show="!modBusy && !(rawData && rawData.items && rawData.items.length)" class="text-xs text-muted" style="padding:10px">데이터가 없습니다 · <b class="text-ink">콘텐츠 관리</b>에서 콘텐츠를 추가하세요</div>
             </div>

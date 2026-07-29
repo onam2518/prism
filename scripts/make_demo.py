@@ -368,9 +368,9 @@ def build() -> str:
     # 앱 조각(app-NN-*.js) + 로더(app.js) 전부 인라인(조각 추가 시 자동 포착 · 로드 순서 = 파일명 순)
     for part in sorted(p for p in os.listdir(os.path.join(ROOT, "prism", "vendor"))
                        if re.match(r"app-\d\d-.*\.js$", p)):
-        html = html.replace(f'<script src="/vendor/{part}"></script>',
+        html = html.replace(f'<script defer src="/vendor/{part}"></script>',
                             f'<script>{_read_app_js(part)}</script>')
-    html = html.replace('<script src="/vendor/app.js"></script>', f'<script>{_read_app_js("app.js")}</script>')
+    html = html.replace('<script defer src="/vendor/app.js"></script>', f'<script>{_read_app_js("app.js")}</script>')
     # 벤더 에셋(캐릭터·로고 SVG) → docs/demo-assets/ (Pages 루트 내부, main() 에서 복사)
     #   ../prism/vendor 는 Pages(docs=루트)에서 사이트 밖으로 나가 404 → 루트 내부 상대경로로.
     # src="/vendor/ 뿐 아니라 charOptions 의 JS 경로('/vendor/…')까지 포함해 전역 치환

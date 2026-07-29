@@ -64,7 +64,7 @@
   - 계획: 표에 실제 쓰는 필드만 내려주는 슬림 프로젝션을 기본으로 하고, 상세는
     해시 단건 라우트로 분리. 목록 페이로드 약 10~20배 축소. 프런트(app-00·02·04 조각)
     동시 수정 필요라 범위가 큼.
-- [ ] **P2-2 검수 표 x-for 표시 캡** · `prism/ui/14-golden.html:504`, `app-02-_afterverdict.js:36`
+- [x] **P2-2 검수 표 x-for 표시 캡** · `prism/ui/14-golden.html:504`, `app-02-_afterverdict.js:36` · 완료 2026-07-29(캡 200·더 보기 증분 · getter 메모화는 미적용: 캡으로 DOM 비용이 제거돼 효과 대비 리스크가 큼)
   - 증상: rawFiltered 2000~3000행을 캡 없이 전부 DOM 렌더(행마다 중첩 x-for 2개).
     보이는 건 스크롤 박스 10여 행뿐. getter 다중 참조로 필터·정렬도 반복 평가.
   - 계획: `rawFiltered.slice(0, rawShown)`(초기 200 · 더 보기 증분) + 계산 결과를 지역
@@ -75,7 +75,7 @@
   - 계획: 부팅 시 1회 압축해 캐시, Cache-Control 을 no-cache 로 바꾸고
     ETag=_BOOT_ID + If-None-Match 304 추가. 항상 재검증하므로 옛 페이지 캐시 방지
     목적(WKWebView)은 유지됨. /m 동일 적용.
-- [ ] **P2-4 head 앱 스크립트 defer** · `prism/ui/00-head.html:45~59`
+- [x] **P2-4 head 앱 스크립트 defer** · `prism/ui/00-head.html:45~59` · 완료 2026-07-29(make_demo 치환 패턴 동반 갱신)
   - 증상: app 조각 15개 약 450KB 가 head 동기 로드로 본문 파싱·첫 페인트를 차단.
     조각은 PRISM_APP_PARTS 팩토리 등록만 하고 소비는 alpine:init 시점이라 동기 불필요.
   - 계획: 조각·로더 script 태그에 defer(문서 순서 실행 보장으로 조각→로더→alpine 순서
