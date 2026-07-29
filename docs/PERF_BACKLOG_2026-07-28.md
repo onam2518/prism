@@ -83,7 +83,7 @@
 
 ## P3 · 장기 구조 과제
 
-- [ ] **P3-1 feedback·assignments 전량 스캔 상수화** · `supastore.py:756, 281, 295`
+- [x] **P3-1 feedback·assignments 전량 스캔 상수화(1단계)** · `supastore.py:756, 281, 295` · 2026-07-29: feedback_stats·gold_stats·assignment_load 를 집계 RPC 로 이관(운영 적용·파리티 검증·폴백 유지). 2단계(feedback_map since_ts·hash 필터)는 후속 과제로 남음
   - 증상: _all_feedback(limit 50000)·assignees·assignment_times 가 팀 필터 외 조건 없이
     전 행을 받아 파이썬 집계. 거의 모든 핫패스가 이 위에 있고 행 수 증가에 선형으로 느려짐.
   - 계획: 1단계 feedback_stats·gold_stats·assignment_load 를 PostgREST 집계/뷰/RPC 로

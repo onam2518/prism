@@ -121,6 +121,26 @@ class SupabaseStore:
         "deployments": "id", "deployment_keys": "id", "prompt_library": "id",
     }
 
+    _RPC_MISSING = set()   # 마이그레이션 전 미존재 집계 함수 · 프로세스당 1회만 시도(왕복 낭비 방지)
+
+    def _rpc_or_none(self, fn: str, args: dict):
+        """PostgREST RPC(POST /rpc/<fn>) 서버측 집계 호출. 함수 미존재·오류면 None →
+        호출측이 행 다운로드 방식으로 폴백한다(마이그레이션 순서와 무관하게 안전)."""
+        if fn in self._RPC_MISSING:
+            return None
+        headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
+                   "Accept": "application/json", "Content-Type": "application/json"}
+        data = json.dumps(args or {}, ensure_ascii=False).encode("utf-8")
+        try:
+            status, raw, _ = self._http("POST", f"/rest/v1/rpc/{fn}", data, headers)
+            if status >= 400:
+                raise RuntimeError(f"HTTP{status}")
+            return json.loads(raw) if raw.strip() else None
+        except Exception as e:
+            self._RPC_MISSING.add(fn)
+            print(f"  [supabase] rpc {fn} 미가용({e}) → 행 다운로드 폴백 · SUPABASE_MIGRATION.md 확인")
+            return None
+
     def _get(self, table, query=""):
         """GET 조회 · 서버 행 상한을 넘어도 끝까지 수집.
         PostgREST 는 요청 limit 과 무관하게 서버 max-rows(기본 1000)로 응답을 클램프한다
@@ -321,6 +341,9 @@ class SupabaseStore:
     def assignment_load(self, team=None) -> dict:
         """검수자별 미완료 배정 부하 {reviewer_id: n} · 균등 분배 배정의 가중 원천.
         부하 = 배정됐지만 그 검수자가 아직 판정하지 않은 콘텐츠 수(sqlite 와 동일 계약)."""
+        agg = self._rpc_or_none("prism_agg_assignment_load", {"p_team": team})
+        if agg is not None:                           # 서버측 조인(feedback+contents+assignments 3중 전송 제거)
+            return agg
         done = {(r.get("content_hash"), r.get("reviewer_id"))
                 for r in self._all_feedback(team) if r.get("verdict") in ("good", "bad")}
         q = "select=hash" + (f"&team_id=eq.{urllib.parse.quote(team)}" if team else "")
@@ -617,6 +640,9 @@ class SupabaseStore:
                          f"{tq}{extra}&limit=20000")
 
     def gold_stats(self, team=None) -> dict:
+        agg = self._rpc_or_none("prism_agg_gold_stats", {"p_team": team})
+        if agg is not None:                           # 서버측 집계(gold_checks 최대 2만 행 전송 제거)
+            return agg
         out = {}
         for r in self._gold_rows(team):
             e = out.setdefault(r.get("reviewer_id") or "", {"n": 0, "correct": 0})
@@ -813,7 +839,11 @@ class SupabaseStore:
         return out
 
     def feedback_stats(self, team=None, rows=None) -> dict:
-        rows = self._all_feedback(team) if rows is None else rows
+        if rows is None:                              # 행이 이미 손에 없을 때만 서버측 집계(행 전송 0)
+            agg = self._rpc_or_none("prism_agg_feedback_stats", {"p_team": team})
+            if agg is not None:
+                return agg
+            rows = self._all_feedback(team)
         good = sum(1 for r in rows if r.get("verdict") == "good")
         bad = sum(1 for r in rows if r.get("verdict") == "bad")
         learned = sum(1 for r in rows if r.get("verdict") == "bad" and (r.get("reap_plan") or r.get("note")))
