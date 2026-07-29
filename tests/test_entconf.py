@@ -81,8 +81,8 @@ class TestExposure(unittest.TestCase):
         self.assertGreater(confs["엔비디아"], 0.5)
         self.assertLess(confs["박민우"], 0.5)
 
-    def test_raw_rows_parallel_key(self):
-        """raw_rows: 검수 대상 표에도 동일 형태로 병행 노출."""
+    def test_raw_rows_slim_and_detail(self):
+        """raw_rows(슬림): entities 키 유지 · 무거운 필드 제외. 확신도는 raw_detail(단건)이 노출."""
         import prism.serve as SV
         row = self._row()
 
@@ -105,11 +105,18 @@ class TestExposure(unittest.TestCase):
         self.assertTrue(r["ok"])
         item = r["items"][0]
         self.assertEqual(item["entities"], IM["entities"])         # 기존 키 불변
-        scored = item["entities_scored"]
+        for heavy in ("body", "item_meta", "quality_meta", "entities_scored"):
+            self.assertNotIn(heavy, item)                          # 목록은 슬림(상세는 단건 라우트)
+        d = SV.raw_detail(item["hash"])
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["item"]["body"], REF["body"])           # 상세 = 본문·메타 원본 복원
+        self.assertEqual(d["item"]["item_meta"], IM)
+        scored = d["item"]["entities_scored"]
         self.assertEqual([s["name"] for s in scored], IM["entities"])
         confs = {s["name"]: s["conf"] for s in scored}
         self.assertGreater(confs["엔비디아"], 0.5)
         self.assertLess(confs["박민우"], 0.5)
+        self.assertFalse(SV.raw_detail("없는해시")["ok"])
 
 
 if __name__ == "__main__":

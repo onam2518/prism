@@ -149,6 +149,7 @@ _arena_compute = RV._arena_compute
 _row_key = RV._row_key
 _lack_classes = RV._lack_classes
 raw_rows = RV.raw_rows
+raw_detail = RV.raw_detail
 model_stats = RV.model_stats
 _hist_epoch = RV._hist_epoch
 content_history = RV.content_history
@@ -1439,10 +1440,15 @@ def _g_queue(h, q):
                          "see_all": see_all})
 
 
-@_get_route("/raw")                                  # 검수 대상 콘텐츠(모델·버전 필터 표)
+@_get_route("/raw")                                  # 검수 대상 콘텐츠(모델·버전 필터 표 · 슬림 응답)
 def _g_raw(h, q):
     return raw_rows(int(q.get("limit", ["100"])[0]), h._req_team(),
                     reviewer=(h._bearer_uid() or q.get("reviewer", [""])[0]))
+
+
+@_get_route("/raw-detail")                           # 검수 표 상세(해시 단건 · 본문·메타 원본·확신도)
+def _g_raw_detail(h, q):
+    return raw_detail((q.get("hash", [""])[0] or "").strip(), h._req_team())
 
 
 @_get_route("/model-stats")                          # 결과 비교: 요소 단위 모델별 현황

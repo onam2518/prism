@@ -102,9 +102,22 @@ window.PRISM_APP_PARTS.push(() => ({
       // 배정 배타 검수(UI): 지정 검수자가 있는데 내가 아니면 판정 버튼 비활성(서버 게이트는 백스톱).
       // 생성자·관리자도 예외 없음 — 열람만 열려 있고 판정은 배정을 고쳐야 한다(assignBlocked 공용 규약).
       detailAssignBlocked() { return this.assignBlocked(this.detail); },
-      openRawDetail(r) {                                 // 목록 컨텍스트 보존 -> 상세에서 이전/다음·자동 이동
+      // 목록은 슬림(본문·메타 원본 없음) → 상세 진입 시 해시 단건(/raw-detail)으로 채운다.
+      // body 가 이미 있는 행(골드 문항·최종큐·드릴 목록)은 그대로 써서 추가 왕복이 없다.
+      async openRawFull(r) {
+        let d = r;
+        if (r && r.hash && !r.body) {
+          try {
+            const j = await (await this._afetch('/raw-detail?hash=' + encodeURIComponent(r.hash))).json();
+            if (j && j.ok && j.item) d = Object.assign({}, r, j.item);
+          } catch (e) {}
+        }
+        this.openDetail(this._rawToDetail(d));
+        return d;
+      },
+      async openRawDetail(r) {                           // 목록 컨텍스트 보존 -> 상세에서 이전/다음·자동 이동
         const list = this.rawFiltered.slice();
-        this.openDetail(this._rawToDetail(r));
+        await this.openRawFull(r);
         this.detailNav = { list: list, idx: Math.max(0, list.findIndex((x) => x.hash === r.hash)) };
       },
       detailNav: null,
@@ -338,25 +351,25 @@ window.PRISM_APP_PARTS.push(() => ({
           if (d.error) { this.boardMsg = '오류: ' + d.error; } else this.boardData = d;
         } catch (e) {}
       },
-      detailGo(step) {                                   // 상세에서 목록 순서로 이전/다음 이동
+      async detailGo(step) {                             // 상세에서 목록 순서로 이전/다음 이동
         if (!this.detailNav) return;
         const i = this.detailNav.idx + step;
         if (i < 0 || i >= this.detailNav.list.length) return;
         const nav = this.detailNav;
         const wasFinal = !!this.finalCtx;                // 최종검수 흐름이면 다음 항목도 결정 바 유지
-        this.openDetail(this._rawToDetail(nav.list[i]));
+        await this.openRawFull(nav.list[i]);
         if (wasFinal) this.finalCtx = nav.list[i];
         nav.idx = i;
         this.detailNav = nav;
       },
-      detailNextTodo() {                                 // 다음 미검수 항목으로 · 없으면 완료 안내 후 닫기
+      async detailNextTodo() {                           // 다음 미검수 항목으로 · 없으면 완료 안내 후 닫기
         if (!this.detailNav) return;
         const nav = this.detailNav;
         for (let i = nav.idx + 1; i < nav.list.length; i++) {
           const r = nav.list[i];
           // 타인 배정분(관리자 목록에만 보임)은 판정할 수 없으니 자동 이동에서 건너뛴다
           if (!this.myVerdict(r.fb) && !r._doneLocal && !this.assignBlocked(r)) {
-            this.openDetail(this._rawToDetail(r));
+            await this.openRawFull(r);
             nav.idx = i;
             this.detailNav = nav;
             return;

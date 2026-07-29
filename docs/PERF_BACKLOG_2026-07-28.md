@@ -57,7 +57,7 @@
 
 ## P2 · 구조 변경(효과 큼 · 신중히)
 
-- [ ] **P2-1 /raw 목록 응답 슬림화** · `reviewops.py:822~887`
+- [x] **P2-1 /raw 목록 응답 슬림화** · `reviewops.py:822~887` · 완료 2026-07-29(/raw-detail 단건 라우트 신설)
   - 증상: 목록 행마다 body 전문 + item_meta/quality_meta 원본 + 평탄화 중복 사본 +
     entities_scored(행당 재계산)를 실어 기본 2000건(딥링크 3000건) 전송. gzip 전 4~10MB.
     다인 검수 중 SSE feedback 이벤트마다 4초 스로틀로 전체 재조회(loadRawThrottled).
