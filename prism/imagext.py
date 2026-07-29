@@ -78,7 +78,12 @@ def _api_key() -> str:
 ROUTERS = {
     "bizrouter": {"label": "BizRouter", "base": "https://bizrouter.ai/api/v1",
                   "key_env": "PRISM_BIZROUTER_KEY", "key_alt": "PRISM_ROUTER_KEY"},
-    "timely":    {"label": "Timely",    "base": "https://router.stg.timelyai.io/v1",
+    # Timely 는 2026-07 에 스테이징(router.stg.timelyai.io) → 운영(api.timelyrouter.ai)으로
+    # 옮겨졌다. 모델 public id 형식(bare)·요청 규격은 그대로라 주소와 키만 바뀐다.
+    # base_env 로 덮어쓸 수 있게 둔 이유: 라우터 주소가 또 바뀌거나 되돌려야 할 때
+    # 배포 없이 시크릿만으로 전환하기 위해서다(키 교체와 주소 전환 시점이 어긋날 수 있다).
+    "timely":    {"label": "Timely",    "base": "https://api.timelyrouter.ai/v1",
+                  "base_env": "PRISM_TIMELY_BASE",
                   "key_env": "PRISM_TIMELY_KEY", "key_alt": ""},
 }
 
@@ -97,9 +102,21 @@ def router_key(service: str) -> str:
     return k
 
 
-def router_chat_url(service: str) -> str:
+def router_base(service: str) -> str:
+    """라우터 base URL. base_env 환경변수가 있으면 그 값이 이긴다(배포 없이 전환)."""
     info = ROUTERS.get(service) or ROUTERS["bizrouter"]
-    return info["base"].rstrip("/") + "/chat/completions"
+    env = (info.get("base_env") or "")
+    override = os.environ.get(env, "").strip() if env else ""
+    return (override or info["base"]).rstrip("/")
+
+
+def router_chat_url(service: str) -> str:
+    return router_base(service) + "/chat/completions"
+
+
+def router_models_url(service: str) -> str:
+    """모델 목록(OpenAI 호환 GET /models). 라우터가 실제로 주는 목록의 원천."""
+    return router_base(service) + "/models"
 
 
 # 라우터 멀티모달 프롬프트: 스키마와 동일한 JSON 객체 하나만 출력하도록 강제(response_format

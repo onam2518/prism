@@ -27,12 +27,13 @@ _FAMILY_PREFIX = {
     "gemini": "google", "deepseek": "deepseek", "solar": "upstage",
     "mistral": "mistral", "magistral": "mistral", "devstral": "mistral", "codestral": "mistral",
     "grok": "xai", "llama": "meta", "qwen": "alibaba",
+    "kimi": "moonshot", "glm": "zhipu", "laguna": "laguna",
 }
 
 FAMILY_LABEL = {
     "anthropic": "Anthropic", "openai": "OpenAI", "google": "Google", "deepseek": "DeepSeek",
     "upstage": "Upstage", "mistral": "Mistral", "xai": "Grok", "meta": "Meta",
-    "alibaba": "Qwen", "": "기타",
+    "alibaba": "Qwen", "moonshot": "Kimi", "zhipu": "GLM", "laguna": "Laguna", "": "기타",
 }
 
 # 이름 다듬기: 원본 id 를 그대로 못 쓰는 조각들(대소문자·표기). 그 외는 규칙으로 만든다.
@@ -43,6 +44,8 @@ _WORD = {
     "deepseek": "DeepSeek", "chat": "Chat", "solar": "Solar", "grok": "Grok",
     "mistral": "Mistral", "magistral": "Magistral", "devstral": "Devstral", "codestral": "Codestral",
     "llama": "Llama", "qwen": "Qwen", "ie": "IE", "reasoning": "Reasoning", "fast": "Fast", "non": "Non",
+    "open": "Open", "mini": "mini", "nano": "nano", "lite": "Lite", "sol": "Sol", "terra": "Terra",
+    "luna": "Luna", "kimi": "Kimi", "glm": "GLM", "laguna": "Laguna", "k3": "K3",
 }
 
 
@@ -141,9 +144,14 @@ TIER_LABEL = {"high": "고비용", "low": "저비용"}
 # 실제 호출 대상 목록은 화면(vendor/app-02 modelCatalog)이 원천이고 여기는 그 사본이다.
 # 두 목록이 어긋나면 원본 id 가 그대로 노출되므로 테스트(test_modelmeta)가 일치를 지킨다.
 KNOWN_ROUTER_MODELS = [
-    # timely(bare id)
-    "gpt-5.4", "gpt-5.4-mini", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
-    "gemini-3.5-flash", "gemini-3.1-pro-preview", "deepseek-v4-pro", "deepseek-chat",
+    # timely(bare id) · 2026-07-29 api.timelyrouter.ai GET /v1/models 실목록 기준
+    "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+    "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-fable-5",
+    "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+    "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
+    "gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite",
+    "solar-pro3", "solar-open2", "solar-pro2", "solar-mini",
+    "deepseek-v4-pro", "kimi-k3", "laguna-s-2.1", "glm-5.2", "qwen3-235b-a22b",
     # bizrouter(provider/model)
     "openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5-mini", "anthropic/claude-sonnet-4.6",
     "anthropic/claude-opus-4.6", "google/gemini-2.5-pro", "google/gemini-2.5-flash",
