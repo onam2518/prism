@@ -83,7 +83,7 @@ class TestRerunAllTargets(PendingWindowBase):
         called = []
         orig = serve.RN._SV.rerun_content
 
-        def fake(ch, model, team=None, row=None, force_quest=False):
+        def fake(ch, model, team=None, row=None, **kw):
             called.append(ch)
             return {"output": {"trace": {"cost_usd": 0.0}}}
         serve.rerun_content = fake
@@ -99,7 +99,7 @@ class TestRerunAllTargets(PendingWindowBase):
         pend = set(self._fixture(serve))
         called = []
         orig = serve.rerun_content
-        serve.rerun_content = lambda ch, model, team=None, row=None, force_quest=False: (
+        serve.rerun_content = lambda ch, model, team=None, row=None, **kw: (
             called.append(ch) or {"output": {"trace": {"cost_usd": 0.0}}})
         self.addCleanup(lambda: setattr(serve, "rerun_content", orig))
         r = serve.rerun_all("m1", None, limit=20, scope="pending")

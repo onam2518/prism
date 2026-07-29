@@ -42,7 +42,7 @@ class SelectedRerunBase(unittest.TestCase):
         called = []
         orig = serve.rerun_content
 
-        def fake(ch, model, team=None, row=None, force_quest=False):
+        def fake(ch, model, team=None, row=None, force_quest=False, **kw):
             called.append((ch, force_quest))
             return {"output": {"trace": {"cost_usd": 0.0}}}
         serve.rerun_content = fake
