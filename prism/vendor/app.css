@@ -877,17 +877,9 @@
     box-shadow:0 1px 2px rgba(0,0,0,.06),0 10px 24px -10px rgba(0,0,0,.14),var(--ds-highlight)}
   .homehead__title{font-family:var(--ds-font-display);font-size:var(--ds-size-label);font-weight:700;letter-spacing:-.01em;line-height:1.2;color:var(--ds-ink)}
   .homehead__sub{font-size:var(--ds-size-caption);color:var(--ds-muted);margin-top:3px}
-  .addmenu{position:absolute;top:44px;right:0;z-index:50;width:220px;background:var(--ds-surface-white);border:1px solid var(--ds-hairline);
-    border-radius:var(--ds-radius-lg);box-shadow:var(--ds-shadow-elevated);padding:6px;display:none}
-  .addmenu.open{display:block}
-  .addmenu button{display:flex;width:100%;align-items:center;gap:var(--ds-space-2);border:0;background:transparent;border-radius:var(--ds-radius-md);
-    padding:8px 10px;font-family:var(--ds-font-sans);font-size:var(--ds-size-label);color:var(--ds-ink);cursor:pointer;text-align:left}
-  .addmenu button:hover{background:var(--ds-hairline-soft)}
 
   /* 콘텐츠 영역(모듈/홈 그리드 공용) · 타이틀바와 충분히 띄움 */
   .canvas{margin-top:0;min-width:0;margin-left:0;padding-left:0;display:flex;flex-direction:column;gap:var(--ds-space-5)}
-  .canvas>.ds-widgetgrid{order:0}   /* 홈: 아레나(order:-1) 아래에 위젯 그리드 */
-  .ds-widgetgrid{margin-top:0}
 
   /* 위젯 내부 */
   .w-stat-l{font-size:var(--ds-size-caption);color:var(--ds-muted);margin-top:2px}
@@ -896,13 +888,6 @@
   .w-run__av{width:30px;height:30px;border-radius:50%;background:var(--ds-primary-tint);display:flex;align-items:center;justify-content:center}
   .w-run__av img{width:78%;height:78%}
   .w-run__t{font-size:var(--ds-size-caption);color:var(--ds-ink);font-weight:500}
-  .w-agent{display:flex;align-items:center;gap:9px;padding:7px 0}
-  .w-agent+.w-agent{border-top:1px solid var(--ds-hairline-soft)}
-  .w-agent__av{width:30px;height:30px;border-radius:50%;background:var(--ds-primary-tint);display:flex;align-items:center;justify-content:center;flex:none}
-  .w-agent__av img{width:78%;height:78%}
-  .w-agent__n{font-family:var(--ds-font-sans);font-size:var(--ds-size-caption);font-weight:500;color:var(--ds-ink)}
-  .w-agent__r{font-size:10px;color:var(--ds-muted)}
-  .w-agent__s{margin-left:auto}
   .center{height:100%;display:flex;align-items:center;justify-content:center}
 
   @media (max-width:900px){.appbody{grid-template-columns:1fr}.leftcol{display:none}.home{grid-column:1}.topbar__brand{width:auto}}
@@ -926,7 +911,6 @@
   .ds-hint,.secdesc,.rc-d,.homehead__sub{font-size:13px;color:var(--ds-muted);line-height:1.5}
   /* ⑦ 위젯 간 세로 간격: 동일 리듬(타이트 금지) */
   .canvas .space-y-4>:not([hidden])~:not([hidden]){margin-top:28px}
-  .ds-widgetgrid{gap:var(--ds-space-5)}
   /* ⑧ 위젯 헤드 캐릭터 아바타(귀엽게) · 라운드, 투명배경 캐릭터 */
   .wz-char{width:30px;height:30px;border-radius:50%;background:var(--ds-hairline-soft);overflow:hidden;display:inline-flex;align-items:center;justify-content:center;flex:none}
   .wz-char img{width:88%;height:88%;object-fit:contain}

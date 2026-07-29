@@ -91,18 +91,23 @@
   - 유의: supabase 스키마 변경(마이그레이션) 필요 · sqlite Store 와 계약 이원화 관리 필요.
     착수 전 사용자와 범위 협의할 것.
 
-## 정리 보류 건(2026-07-28 스윕에서 의도적으로 남김)
+## 정리 보류 건 · 처리 결과(2026-07-29 사용자 승인 "전부 진행"으로 종결)
 
-제품 판단이 필요해 자동 적용에서 제외한 것들. 지우려면 사용자 결정이 먼저다.
+- [x] **/eval-rubric-cancel 라우트**: 제거 대신 완성 — 채점 진행 표시 옆에 중단 버튼을
+  붙여 백엔드 중단 메커니즘(_RUBRIC_CANCEL)을 소생시켰다(13-eval.html · app-04 cancelRubric).
+- [x] **홈 위젯 캔버스 · addmenu 드롭다운 · #grid 편집 IIFE**: 위젯 대시보드 잔재 일괄 제거
+  (01-home.html 삭제 · 00-head/21-tail 블록 · app-00/02 상태·함수 · app.css 캔버스 전용 블록).
+  홈 화면은 원래 17-arena(아레나·미션)가 렌더하고 있어 사용자 표시 변화 없음.
+- [x] **make_demo report_stub_coverage 수리**: 라우트 원천을 현행 선언 테이블(@_get_route)로
+  교정 · POST(액션)는 정적 데모 대상이 아니라 제외. 검사가 되살아나 GET 스텁 미커버 21종을
+  보고한다(해당 데모 탭은 빈 상태로 표시됨) — 스텁 채우기는 아래 후속 과제.
+- [유지] **mediaext T2·T3 트랙**(transcribe/visual): 실험실 미디어(이미지·영상 2탭) 로드맵이
+  진행 중이라 삭제하지 않고 유지하기로 결정(2026-07-29).
 
-- **/eval-rubric-cancel 라우트**(`serve.py`, `evalops.py:453`): 호출 UI 가 없지만 루브릭
-  채점 중단 메커니즘(_RUBRIC_CANCEL·cancelled 분기)의 일부. 중단 버튼을 붙이든 메커니즘째
-  걷어내든 한쪽으로 정리 필요.
-- **mediaext T2·T3 트랙**(transcribe/visual): 운영 미사용이지만 설정으로 활성화 가능한
-  기능 트랙. 폐기 여부는 미디어 로드맵 결정 사항.
-- **홈 위젯 캔버스**(`ui/01-home.html` x-show="false") · **상단바 위젯 추가 드롭다운**
-  (`ui/00-head.html` addmenu) · **#grid 위젯 편집 IIFE**(`ui/21-tail.html`): 위젯 대시보드
-  기능 일괄 잔재. 복원 계획이 없으면 세 건을 한 PR 로 함께 제거하는 것이 맞다.
-- **make_demo report_stub_coverage regex 무력화**(`scripts/make_demo.py:426`): 라우트 추출
-  정규식이 0건 매칭이라 검사가 헛돎. 삭제가 아니라 수리(현행 라우트 테이블 형식 반영)가
-  필요한 건이라 별도 과제로 남김.
+## 후속 과제(신규)
+
+- [ ] **데모 GET 스텁 21종 보강**: make_demo 검사가 보고하는 미커버 라우트(/crew /board
+  /entdict /final-queue /cost-rollup 등)에 예시 스텁을 채우면 데모에서 해당 탭도 산다.
+  급하지 않음 · 데모 품질 과제.
+- [ ] **P3-1 2단계**: feedback_map 호출부에 since_ts·hash 목록 필터 인자를 추가해 화면별
+  필요분만 조회(1단계 집계 RPC 는 2026-07-29 완료).
