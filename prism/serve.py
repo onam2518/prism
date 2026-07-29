@@ -19,6 +19,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import weakref
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -286,10 +287,18 @@ def get_store():
 def results_rows(limit: int = 5000, team=None) -> list:
     """집계용 결과 행 · 영속 저장소 우선(누적) · 메모리(_LAST_RESULTS) 폴백은 저장소 부재·오류 시만.
     저장소의 빈 결과는 그대로 신뢰한다 — 전체 삭제 직후 메모리 잔상이 폴백으로 되살아나
-    화면에 유령 콘텐츠가 남는 문제 방지."""
+    화면에 유령 콘텐츠가 남는 문제 방지.
+    원격 스토어(supabase)만 30s 캐시: /raw·/final-queue·/model-stats·/drill 이 요청마다
+    팀 콘텐츠 전량(최대 5왕복·수 MB)을 재조회하지 않게. HTTP 쓰기 경로는 전부 _agg_bump 를
+    호출하므로 스테일 없음. sqlite(로컬·테스트)는 무캐시 유지 — 테스트가 스토어에 직접 쓰고
+    바로 읽는 계약(몽키패치 관례)과 충돌하지 않고, 로컬 조회는 원래 저렴하다.
+    호출측 정렬·절단이 캐시를 오염시키지 않게 리스트는 복사해 반환."""
     st = get_store()
     if st:
         try:
+            if getattr(st, "REMOTE", False):
+                return list(_agg_cached_store(("rows", team, limit), st,
+                                              lambda: st.recent(limit, team=team)))
             return st.recent(limit, team=team)
         except Exception:
             pass
@@ -317,6 +326,19 @@ def _agg_cached(key, fn, ttl: float = _AGG_TTL):
         return hit[2]
     val = fn()
     _AGG_CACHE[key] = (now + ttl, _AGG_VERSION, val)
+    return val
+
+
+def _agg_cached_store(key, st, fn, ttl: float = _AGG_TTL):
+    """_agg_cached + 스토어 동일성 검증(약참조). 원본 행처럼 '어느 스토어에서 읽었는지'가
+    정합의 전제인 캐시에 쓴다 — 테스트의 _STORE 교체·백엔드 전환 시 즉시 미스가 되어
+    이전 스토어의 행이 유령처럼 남지 않는다."""
+    now = time.time()
+    hit = _AGG_CACHE.get(key)
+    if hit and hit[0] > now and hit[1] == _AGG_VERSION and len(hit) == 4 and hit[3]() is st:
+        return hit[2]
+    val = fn()
+    _AGG_CACHE[key] = (now + ttl, _AGG_VERSION, val, weakref.ref(st))
     return val
 
 

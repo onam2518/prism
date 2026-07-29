@@ -24,12 +24,12 @@
     _admin_gate/_super_gate 가 캐시 공유 시 요청당 10회 → 0~2회.
   - 유의: 권한 회수 반영이 최대 60s 지연됨(기존 team_of 캐시와 동일 수준).
     2026-07-22 스윕에서 보류됐던 과제. 캐시 TTL 정책은 적용 전 사용자에게 한 번 확인할 것.
-- [ ] **P1-2 results_rows 캐시** · `serve.py:287`
+- [x] **P1-2 results_rows 캐시** · `serve.py:287` · 완료 2026-07-29(원격 스토어 한정)
   - 증상: st.recent(5000)(전 컬럼·최대 5왕복·수 MB)를 /raw·/model-stats·/final-queue·/drill
     요청마다 재조회. dashboard 만 30s 캐시가 있음.
   - 계획: results_rows 자체를 `_agg_cached(("rows", team, limit))` 로 감싼다. 쓰기 경로는
     이미 전부 _agg_bump 호출이라 스테일 없음. 한 함수 수정으로 끝.
-- [ ] **P1-3 골든셋 전량 fetch 캐시** · `reviewops.py:1057~1065`
+- [x] **P1-3 골든셋 전량 fetch 캐시** · `reviewops.py:1057~1065` · 완료 2026-07-29(원격 스토어 한정)
   - 증상: /queue·/raw 로드마다 get_golden(팀 골든 전량 · content/expected 원문 포함)을
     재조회. 검수자들이 수시로 여는 화면이라 절대 빈도 높음.
   - 계획: get_golden 결과를 `_agg_cached(("golden", team))` 캐시. 골든 쓰기 경로

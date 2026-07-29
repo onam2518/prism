@@ -53,6 +53,8 @@ def configured() -> bool:
 class SupabaseStore:
     """PostgREST 기반. RLS 는 service_role 로 우회(신원은 serve 의 JWT 검증으로 강제)."""
 
+    REMOTE = True        # 조회 = 네트워크 왕복 → serve 가 원본 행 캐시(results_rows·골든)를 켠다
+
     def __init__(self):
         self.url = os.environ["SUPABASE_URL"].rstrip("/")
         self.key = os.environ["SUPABASE_SERVICE_KEY"]
