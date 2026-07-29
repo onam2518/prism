@@ -13,7 +13,10 @@ window.PRISM_APP_PARTS.push(() => ({
       async loadFails() {
         try { const r = await (await this._afetch('/fail-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.failData = r; } catch (e) {}
       },
-      failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 끊김', timeout: '응답 시간 초과', bad_response: '응답 형식 오류', auth: '인증 오류', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
+      // http_402 는 2026-07-29 이전 적재분의 옛 키 · billing 과 같은 뜻이라 라벨을 함께 둔다
+      failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 끊김', timeout: '응답 시간 초과', bad_response: '응답 형식 오류', auth: '인증 오류', billing: '잔액 부족', http_402: '잔액 부족', forbidden: '권한 거부', not_found: '경로 없음', too_long: '입력 초과', bad_request: '잘못된 요청', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
+      // 충전 전에는 재실행해도 같은 오류가 나므로 목록에서 사라지지 않는다 — 그 사실을 알린다
+      get failBillingN() { return this.failAll.filter((f) => (f.kinds || []).some((k) => k === 'billing' || k === 'http_402')).length; },
       // 실패 배지 툴팁: 예외 원문(details · 콜별 1줄)을 그대로 보여 준다. 원문이 없는
       // 과거 기록은 원인 키만 뜬다(2026-07-28 이전 적재분에는 details 가 없다).
       failTip(f, k) {
@@ -24,6 +27,66 @@ window.PRISM_APP_PARTS.push(() => ({
       async rerunFail(f) {
         await this.rerunOne({ hash: f.hash, title: f.title });
         this.loadFails();
+      },
+      // ── 실패 목록 필터 + 다중 선택 재실행 ('추가된 콘텐츠' 표와 같은 규약) ──
+      // 실패가 한 종류로 몰릴 때(예: 잔액 부족 402 전건) 원인별로 갈라 보고 한 번에 다시 돌린다.
+      failKind: '', failModel: '',
+      get failAll() { return ((this.failData || {}).recent) || []; },
+      get failKindOpts() {
+        const s = new Set();
+        this.failAll.forEach((f) => (f.kinds || []).forEach((k) => s.add(k)));
+        return [...s].sort();
+      },
+      get failModelOpts() {
+        const s = new Set();
+        this.failAll.forEach((f) => { if (f.model) s.add(f.model); });
+        return [...s].sort();
+      },
+      get failRows() {
+        return this.failAll.filter((f) => {
+          if (this.failKind && !(f.kinds || []).includes(this.failKind)) return false;
+          if (this.failModel && (f.model || '') !== this.failModel) return false;
+          return true;
+        });
+      },
+      failSel: {}, failBusy: false,
+      get failPicked() { return Object.keys(this.failSel).filter((h) => this.failSel[h]); },
+      get failAllOn() {
+        const rs = this.failRows;
+        return rs.length > 0 && rs.every((f) => this.failSel[f.hash]);
+      },
+      toggleFailPick(h) { this.failSel = Object.assign({}, this.failSel, { [h]: !this.failSel[h] }); },
+      toggleFailPickAll() {
+        const on = !this.failAllOn, next = Object.assign({}, this.failSel);
+        this.failRows.forEach((f) => { next[f.hash] = on; });
+        this.failSel = next;
+      },
+      clearFailPick() { this.failSel = {}; },
+      // 필터를 바꾸면 선택을 비운다 — 안 보이는 건이 딸려 실행되는 사고 방지(콘텐츠 표와 동일)
+      pickFailKind(v) { this.failKind = v; this.clearFailPick(); },
+      pickFailModel(v) { this.failModel = v; this.clearFailPick(); },
+      async rerunFailPicked(force) {
+        const hs = this.failPicked;
+        if (!hs.length || this.failBusy) return;
+        const mname = this.bulkModel || '기본 실행 모델';
+        if (!force && !(await this.dsConfirm('실패한 ' + hs.length + '건을 ' + mname + ' 로 다시 실행합니다(건당 비용 발생) · 진행할까요?', { ok: '재실행' }))) return;
+        this.failBusy = true;
+        let retryConfirm = false;
+        try {
+          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel || '', hashes: hs, force: !!force }) })).json();
+          if (r && !r.error) {
+            this.liveToast('선택 ' + (r.done || 0) + '건 재실행 완료'
+              + (r.failed ? (' · 실패 ' + r.failed) : '')
+              + (r.over_cap ? (' · 상한 초과 ' + r.over_cap + '건 제외') : ''));
+            this.clearFailPick(); this.loadFails(); this.loadDash();
+          } else if (r && !force && /퀘스트/.test(r.error || '')) retryConfirm = true;
+          else this._err((r && r.error) || '재실행 실패');
+        } catch (e) { this._err('재실행 실패'); }
+        this.failBusy = false;
+        if (retryConfirm) {
+          const ok = await this.dsConfirm('퀘스트(검수 목표) 진행 중입니다. 초안을 새로 만들면 기존 검수 의견과 어긋날 수 있습니다. 선택한 ' + hs.length + '건을 재실행할까요?', { title: '퀘스트 중 재실행', ok: '재실행', danger: true });
+          if (ok) await this.rerunFailPicked(true);
+        }
       },
       // 학습 지시 원본 관리(개별 끄기 · 관리자): 끈 지시는 다음 학습 반영부터 제외
       routesOpen: false, routesRaw: null,
