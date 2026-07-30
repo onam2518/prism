@@ -13,10 +13,13 @@ window.PRISM_APP_PARTS.push(() => ({
       async loadFails() {
         try { const r = await (await this._afetch('/fail-rollup?days=30', { headers: this._authHeaders() })).json(); if (r && r.ok) this.failData = r; } catch (e) {}
       },
-      // http_402 는 2026-07-29 이전 적재분의 옛 키 · billing 과 같은 뜻이라 라벨을 함께 둔다
-      failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 끊김', timeout: '응답 시간 초과', bad_response: '응답 형식 오류', auth: '인증 오류', billing: '잔액 부족', http_402: '잔액 부족', forbidden: '권한 거부', not_found: '경로 없음', too_long: '입력 초과', bad_request: '잘못된 요청', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
-      // 충전 전에는 재실행해도 같은 오류가 나므로 목록에서 사라지지 않는다 — 그 사실을 알린다
-      get failBillingN() { return this.failAll.filter((f) => (f.kinds || []).some((k) => k === 'billing' || k === 'http_402')).length; },
+      // 402 는 두 가지이고 대응이 다르다: billing=크레딧 충전 · quota=프로젝트 한도 상향.
+      // http_402 는 2026-07-29 이전 적재분의 옛 키(구분 없이 뭉쳐 있어 '잔액/한도'로 표기).
+      failKindKr(k) { return ({ parse_empty: '빈 응답(파싱 실패)', api: 'API 오류', network: '연결 끊김', timeout: '응답 시간 초과', bad_response: '응답 형식 오류', auth: '인증 오류', billing: '크레딧 부족', quota: '프로젝트 지출 한도', http_402: '잔액/한도(구분 전)', forbidden: '권한 거부', not_found: '경로 없음', too_long: '입력 초과', bad_request: '잘못된 요청', content_filter: '콘텐츠 필터', rate: '요청 제한', unknown: '기타' })[k] || k; },
+      // 402 계열은 조치(충전·한도 상향) 전에는 재실행해도 같은 오류가 난다 — 그 사실을 알린다
+      _failHas(f, keys) { return ((f || {}).kinds || []).some((k) => keys.includes(k)); },
+      get failBillingN() { return this.failAll.filter((f) => this._failHas(f, ['billing', 'http_402'])).length; },
+      get failQuotaN() { return this.failAll.filter((f) => this._failHas(f, ['quota'])).length; },
       // 실패 배지 툴팁: 예외 원문(details · 콜별 1줄)을 그대로 보여 준다. 원문이 없는
       // 과거 기록은 원인 키만 뜬다(2026-07-28 이전 적재분에는 details 가 없다).
       failTip(f, k) {

@@ -67,5 +67,12 @@ def classify_http_error(code: int, body: str) -> str:
     if code == 422:
         return "unprocessable"
     if code == 402:
+        # 402 는 두 가지이고 **대응이 완전히 다르다**(타임리 라우터 문서 · 2026-07-30):
+        #   insufficient_balance   = 스페이스 크레딧 부족  → 충전해야 한다
+        #   project_limit_exceeded = 프로젝트 지출 한도 도달 → 한도를 올려야 한다
+        # 종전엔 둘 다 'billing' 으로 뭉쳐서, 원장만 보고는 무엇을 해야 하는지 알 수 없었다
+        # (실측: 7/29 에 402 832건이 났는데 충전인지 한도인지 사후 판별이 불가능했다).
+        if any(k in b for k in ("project_limit", "limit_exceeded", "spend", "quota")):
+            return "quota"              # 프로젝트 지출 한도(한도 상향 · 재실행해도 계속 실패)
         return "billing"                # 잔액·크레딧 소진(충전 전에는 재실행해도 계속 실패)
     return f"http_{code}"
