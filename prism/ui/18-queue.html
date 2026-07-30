@@ -53,7 +53,9 @@
               <button type="button" class="copybtn" x-show="failPicked.length" x-cloak x-on:click="clearFailPick()">선택 해제</button>
               <span class="text-xs text-muted tnum" x-text="failRows.length + ' / ' + failAll.length + '건'"></span>
               <!-- 잔액 부족은 재실행으로 못 푼다 · '눌러도 안 사라진다'는 오해를 먼저 끊는다 -->
-              <span class="ds-badge ds-badge--error" style="cursor:help" x-show="failBillingN" x-cloak data-tip="API 크레딧이 소진돼 실패한 건입니다 · 충전하기 전에는 재실행해도 같은 오류로 다시 등재됩니다" data-tip-pos="top" x-text="'잔액 부족 ' + failBillingN + '건 · 충전 필요'"></span>
+              <span class="ds-badge ds-badge--error" style="cursor:help" x-show="failBillingN" x-cloak data-tip="API 크레딧이 소진돼 실패한 건입니다 · 충전하기 전에는 재실행해도 같은 오류로 다시 등재됩니다" data-tip-pos="top" x-text="'크레딧 부족 ' + failBillingN + '건 · 충전 필요'"></span>
+              <!-- 402 의 다른 갈래: 크레딧은 남아 있는데 프로젝트 지출 한도에 걸린 경우 · 조치가 다르다 -->
+              <span class="ds-badge ds-badge--error" style="cursor:help" x-show="failQuotaN" x-cloak data-tip="크레딧이 아니라 이 키가 속한 프로젝트의 지출 한도에 걸린 건입니다 · 라우터 콘솔에서 한도를 올려야 재실행이 통과합니다" data-tip-pos="top" x-text="'지출 한도 초과 ' + failQuotaN + '건 · 한도 상향 필요'"></span>
             </div>
             <div class="overflow-auto" style="max-height:280px" x-show="failRows.length"><table class="ds-table"><thead><tr><th style="width:34px"><input type="checkbox" x-bind:checked="failAllOn" x-on:change="toggleFailPickAll()" data-tip="보이는 행 전체 선택" data-tip-pos="right" aria-label="보이는 행 전체 선택"></th><th>콘텐츠</th><th style="width:100px">서비스</th><th style="width:160px">모델</th><th style="width:150px">실패 종류</th><th style="width:130px">콜</th><th style="width:60px">일자</th><th style="width:96px"></th></tr></thead><tbody>
               <template x-for="f in failRows" x-bind:key="'fr'+f.hash">

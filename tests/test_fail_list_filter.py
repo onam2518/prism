@@ -112,8 +112,10 @@ class TestBillingKind(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(root, "prism/vendor/app-05-costdata.js"), encoding="utf-8") as f:
             src = f.read()
-        self.assertIn("billing: '잔액 부족'", src)
-        self.assertIn("http_402: '잔액 부족'", src)      # 이전 적재분의 옛 키도 읽힌다
+        # 2026-07-30: 402 를 billing(크레딧)·quota(프로젝트 한도)로 분리 — 조치가 다르다
+        self.assertIn("billing: '크레딧 부족'", src)
+        self.assertIn("quota: '프로젝트 지출 한도'", src)
+        self.assertIn("http_402:", src)                  # 이전 적재분의 옛 키도 읽힌다
         self.assertIn("get failBillingN()", src)
 
     def test_banner_present(self):
