@@ -9,6 +9,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-07-30 | [모델 적합도와 예상 비용](https://claude.ai/code/artifact/13688166-0922-45f0-8964-4e9a4cc71bac) |
 | 2026-07-29 | [프리즘 주간회의 · 07.29](https://claude.ai/code/artifact/f11f0d9d-bbd6-4977-aa43-fc84c0d4099b) |
 | 2026-07-23 | [콘텐츠 에이전트 · 포털 홈 재정합 (와이어)](https://claude.ai/code/artifact/9c976266-9149-4b76-be24-3a2fe327a22d) |
 | 2026-07-23 | [프리즘 콘텐츠 · 내 뉴스 홈 (위젯 편집)](https://claude.ai/code/artifact/0a331579-e68f-40e1-95dd-0518b879337f) |
