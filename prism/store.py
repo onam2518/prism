@@ -19,6 +19,15 @@ def content_hash(content: dict) -> str:
 
 IDENTITY_FIELDS = ("displayServiceName", "title", "subtitle", "body")   # content_hash 입력 = 콘텐츠 정체성
 
+# 인입 경로 라벨(results.source) 은 '최초 1회'만 기록한다.
+# 종전 upsert 는 source=excluded.source 로 매번 덮어썼고, 재실행이 한 번이라도 지나간 행은
+# 최초 출처(단건·엑셀·배치·자동 인입)가 사라졌다(2026-08-03 운영 실측: prism_contents
+# 400건 전부 '재실행'). 인입 채널별 품질·비용 분석과 이미지 경로 유입 여부 확인이 불가능해진다.
+# 기존 값이 비었거나(NULL·'') 없을 때만 새 값을 채운다 → 구 데이터·CLI 경로(save_result)는
+# 다음 저장에서 자연 백필된다. 최신 실행 정보는 run_id·model·version·patch_log 가 계속 담는다.
+_SRC_KEEP_FIRST = ("source=CASE WHEN COALESCE(results.source,'')='' "
+                   "THEN excluded.source ELSE results.source END")
+
 
 def _payload_with_identity(content: dict, out: dict) -> dict:
     """적재 payload 의 content_ref 에 '해시를 만든 원본' 식별 4필드를 되박는다.
@@ -361,6 +370,8 @@ class Store:
         return True
 
     def save_result(self, content: dict, out: dict, run_id: str):
+        # CLI 단건 경로. source 컬럼은 아예 쓰지 않는다(인입 채널 개념이 없는 경로) →
+        # 기존 행의 인입 경로 라벨을 건드리지 않고, 신규 행은 다음 저장에서 백필된다.
         ch = content_hash(content)
         qm = out.get("quality_meta", {})
         tr = out.get("trace", {})
@@ -406,7 +417,7 @@ class Store:
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
     def save_many(self, pairs, run_id: str, source: str = "", team=None, include_all: bool = False):
         """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
-        source: 출처(자동 인입·단건·배치 등) · 결과 화면 필터용.
+        source: 최초 인입 경로(단건·엑셀·배치·자동 인입 등) · 기존 행에는 덮어쓰지 않는다(_SRC_KEEP_FIRST).
         include_all 은 supabase 와의 시그니처 계약용(sqlite 는 원래 전량 저장)."""
         rows = []
         for content, out in pairs:
@@ -432,7 +443,7 @@ class Store:
           ON CONFLICT(content_hash) DO UPDATE SET
             run_id=excluded.run_id, final_grade=excluded.final_grade, reasons=excluded.reasons,
             item_meta=excluded.item_meta, payload=excluded.payload, cost_usd=excluded.cost_usd,
-            fail_kind=excluded.fail_kind, created_at=excluded.created_at, source=excluded.source""", rows)
+            fail_kind=excluded.fail_kind, created_at=excluded.created_at, """ + _SRC_KEEP_FIRST, rows)
         c.commit()
         return len(rows)
 
@@ -441,6 +452,7 @@ class Store:
         · 신규 → insert  · 기존인데 메타(등급·item_meta·reasons) 변경 → update
         · 동일 콘텐츠 + 결과 무변경 → 적재 제외(skip, DB 미기록).
         (trace·cost 같은 실행 부산물은 비교에서 제외 · 매 실행 달라지므로)
+        source 는 최초 인입 경로 전용 — 기존 행이 이미 값을 갖고 있으면 유지한다(_SRC_KEEP_FIRST).
         반환: {inserted, updated, skipped}"""
         c = self._conn()
         ins = upd = skip = 0
@@ -481,7 +493,7 @@ class Store:
               ON CONFLICT(content_hash) DO UPDATE SET
                 run_id=excluded.run_id, final_grade=excluded.final_grade, reasons=excluded.reasons,
                 item_meta=excluded.item_meta, payload=excluded.payload, cost_usd=excluded.cost_usd,
-                fail_kind=excluded.fail_kind, created_at=excluded.created_at, source=excluded.source""", rows)
+                fail_kind=excluded.fail_kind, created_at=excluded.created_at, """ + _SRC_KEEP_FIRST, rows)
             c.commit()
         return {"inserted": ins, "updated": upd, "skipped": skip}
 

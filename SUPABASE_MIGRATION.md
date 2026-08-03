@@ -341,3 +341,38 @@ Supabase 모드(상시 클라우드·ID/PW·팀 공유), 미설정 시 로컬 SQ
   public/anon/authenticated).
 - 원본 SQL 은 Supabase 마이그레이션 `prism_agg_rpc_hotpath_stats` 로 기록돼 있다
   (대시보드 → Database → Migrations). 수정 시 supastore 폴백 계산과 반드시 함께 바꿀 것.
+
+## `prism_contents.source` = 최초 인입 경로 (2026-08-03 · DDL 불필요)
+
+`source` 는 **콘텐츠가 처음 들어온 경로**(`단건`·`엑셀`·`배치`·`자동 인입`·`qa`)를 뜻한다.
+종전 upsert 는 매 실행마다 `source` 를 덮어써서, 재실행이 한 번이라도 지나간 행은 최초 출처가
+사라졌다(**운영 실측 2026-08-03: `prism_contents` 400건 전부 `재실행`**). 인입 채널별 품질·비용
+분석과 "이미지 업로드 경로로 들어온 건이 있었는지"를 확인할 방법이 없어진다.
+
+- **적용 방식**: 앱 계층에서 보존한다. `supastore.sync_contents` 가 쓰기 직전에
+  `select=hash,source&hash=in.(…)` 로 기존 라벨을 읽어, 값이 있으면 그 값을 그대로 되돌려 보낸다
+  (PostgREST 의 `resolution=merge-duplicates` 는 보낸 컬럼을 무조건 덮어써서
+  `ON CONFLICT … COALESCE` 같은 조건부 갱신을 표현할 수 없다). sqlite 는 같은 의미를
+  `ON CONFLICT … source=CASE WHEN COALESCE(results.source,'')='' THEN excluded.source ELSE results.source END` 로 처리한다.
+- **DDL 변경 없음** → 마이그레이션 적용 순서와 무관하게 안전하다(코드만 배포하면 된다).
+- **기존 데이터**: 이미 `재실행` 으로 덮인 행은 **복구 불가**(원본 라벨이 어디에도 남아 있지 않다).
+  빈 값(`''`·NULL)인 행만 다음 저장에서 자연 백필된다.
+- **최종 실행 경로**는 `model`·`version` 컬럼과 `prism_patch_log`(element `rerun:구모델->신모델`)로
+  계속 추적된다 — `source` 는 이 용도로 쓰지 않는다.
+
+**선택(미적용) · DB 측 방어선**: 서버 밖 경로(수동 SQL·다른 클라이언트)까지 막고 싶으면
+아래 트리거를 넣을 수 있다. 앱 보존과 의미가 같고, 읽고-쓰는 사이의 경합도 함께 없앤다.
+현재는 쓰기 주체가 Prism 서버 하나뿐이라 적용하지 않았다.
+```sql
+create or replace function public.prism_keep_first_source() returns trigger as $$
+begin
+  if coalesce(old.source, '') <> '' then
+    new.source := old.source;      -- 최초 인입 경로 고정(재실행 upsert 가 덮지 못함)
+  end if;
+  return new;
+end $$ language plpgsql;
+
+create trigger prism_contents_keep_first_source
+  before update on public.prism_contents
+  for each row execute function public.prism_keep_first_source();
+```

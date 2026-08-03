@@ -1105,10 +1105,30 @@ class SupabaseStore:
                 "total_targets": total_targets, "team_progress": team_progress}
 
     # ── 검토 콘텐츠 동기화 + 큐 + retention ────────────────────────────────
+    def _kept_sources(self, hashes) -> dict:
+        """이미 저장된 hash → source(최초 인입 경로). 값이 있는 행만 담는다.
+
+        PostgREST upsert(merge-duplicates)는 보낸 컬럼을 무조건 덮어써서
+        `ON CONFLICT … COALESCE` 같은 조건부 갱신을 표현할 방법이 없다. 그래서 쓰기 직전에
+        기존 라벨을 읽어 그대로 되돌려 보낸다(sqlite _SRC_KEEP_FIRST 와 같은 의미).
+        조회 키는 hash 뿐 — upsert 충돌 키(PK)와 같아야 team 이 달라도 남의 라벨을 덮지 않는다."""
+        hs = sorted({h for h in (hashes or []) if _HASH_RE.match(h or "")})
+        out = {}
+        for i in range(0, len(hs), 100):              # in.() URL 길이 한계 대비 청크(retention 과 같은 규칙)
+            ids = ",".join(urllib.parse.quote(h) for h in hs[i:i + 100])
+            for r in self._get("contents", f"select=hash,source&hash=in.({ids})"):
+                if (r.get("source") or "").strip():
+                    out[r.get("hash")] = r["source"]
+        return out
+
     def sync_contents(self, pairs, source: str = "단건", team=None, include_all: bool = False):
         """검토 대상(review=='yellow')만 prism.contents 로 upsert(파이어호스 제외).
         include_all=True 는 재실행처럼 기존 행 갱신이 목적일 때: 비-YELLOW 결과도
-        upsert 해 모델·버전·review 상태가 최신 실행을 따라가게 한다."""
+        upsert 해 모델·버전·review 상태가 최신 실행을 따라가게 한다.
+
+        source(인입 경로)는 최초 1회만 기록한다 — 기존 행에 값이 있으면 그 값을 유지한다.
+        종전엔 재실행 upsert 가 매번 덮어써 운영 400건이 전부 '재실행'이 됐고 인입 채널
+        추적이 불가능해졌다(2026-08-03 실측). 쓰기 전 라벨 조회 GET 1회(청크당)를 더한다."""
         from .store import content_hash
         rows = []
         for content, out in pairs:
@@ -1134,6 +1154,14 @@ class SupabaseStore:
         for row in rows:
             uniq[(row["hash"], row.get("team_id") or "")] = row
         rows = list(uniq.values())
+        if rows:
+            try:
+                kept = self._kept_sources([r["hash"] for r in rows])
+            except Exception:
+                kept = {}                             # 라벨 조회 실패가 적재 자체를 막지 않는다(최선 노력 보존)
+            for row in rows:
+                if kept.get(row["hash"]):
+                    row["source"] = kept[row["hash"]]  # 최초 인입 경로 유지(재실행이 덮어쓰지 않음)
         self._upsert("contents", rows)
         return len(rows)
 

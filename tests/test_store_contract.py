@@ -83,6 +83,39 @@ class StoreContractMixin:
         self.assertIn(h, {r["hash"] for r in st.recent_meta(200, team=team)},
                       "비-YELLOW 인입 콘텐츠가 저장 목록에 없다")
 
+    def test_first_source_survives_rerun(self):
+        """인입 경로 라벨 계약: source 는 최초 인입 1회만 기록한다.
+        재실행 upsert 가 덮어쓰면 인입 채널 추적이 불가능해진다
+        (2026-08-03 운영 실측: prism_contents 400건 전부 '재실행'으로 덮임 · 복구 불가)."""
+        from prism.store import content_hash
+        st, team = self.st, self.team
+        content = {"displayServiceName": "뉴스", "title": "계약-출처보존", "subtitle": "", "body": "본문"}
+        out = {"quality_meta": {"finalGrade": "G", "review": "yellow"}, "item_meta": {"summary": "s1"},
+               "trace": {"model": "contract-src1", "version": 1}}
+        st.save_dedup([(content, out)], "run-src", source="엑셀", team=team)      # 최초 인입
+        out2 = {"quality_meta": {"finalGrade": "R", "review": "yellow"}, "item_meta": {"summary": "s2"},
+                "trace": {"model": "contract-src2", "version": 2}}
+        st.save_many([(content, out2)], "rerun", source="재실행", team=team, include_all=True)
+        h = content_hash(content)
+        row = next(r for r in st.recent_meta(200, team=team) if r["hash"] == h)
+        self.assertEqual(row["source"], "엑셀", "재실행이 최초 인입 경로를 덮어썼다")
+        self.assertEqual(row["model"], "contract-src2", "나머지 필드는 최신 실행을 따라가야 한다")
+
+    def test_blank_source_is_backfilled(self):
+        """라벨이 비어 있던 행(구 데이터·CLI 경로)은 다음 저장에서 채워진다 —
+        '최초 값 보존'이 빈 값을 영구 고착시키면 안 된다."""
+        from prism.store import content_hash
+        st, team = self.st, self.team
+        content = {"displayServiceName": "뉴스", "title": "계약-출처백필", "subtitle": "", "body": "본문"}
+        out = {"quality_meta": {"finalGrade": "G", "review": "yellow"}, "item_meta": {"summary": "s"},
+               "trace": {"model": "contract-src3", "version": 1}}
+        st.save_dedup([(content, out)], "run-blank", source="", team=team)
+        out2 = dict(out, item_meta={"summary": "s2"})
+        st.save_dedup([(content, out2)], "run-blank2", source="자동 인입", team=team)
+        h = content_hash(content)
+        row = next(r for r in st.recent_meta(200, team=team) if r["hash"] == h)
+        self.assertEqual(row["source"], "자동 인입")
+
     def test_save_dedup_duplicate_rows_in_one_batch(self):
         """한 배치에 동일 hash 행이 중복돼도 저장이 성공한다(1건으로 병합).
         supabase 는 중복이 섞이면 upsert 전체가 Postgres 21000 으로 죽던 결함의 회귀 방지."""
@@ -338,6 +371,55 @@ class TestSupastorePatchLogUuid(unittest.TestCase):
         st2 = SupabaseStore.__new__(SupabaseStore)
         st2._get = lambda table, query="": self.fail("uuid 아닌 값으로 조회하면 안 된다")
         self.assertEqual(st2.patches_today("(익명)"), 0)
+
+
+class TestSupastoreFirstSourceKept(unittest.TestCase):
+    """supabase 인입 경로 라벨: PostgREST upsert 는 보낸 컬럼을 무조건 덮어쓰므로,
+    sync_contents 가 쓰기 직전에 기존 source 를 읽어 되돌려 보내야 한다.
+    (운영 prism_contents 400건이 전부 '재실행'으로 덮인 사고의 회귀 방지 ·
+    네트워크 없이 조회 쿼리/전송 행 구성만 검증한다 · __init__ 우회.)"""
+
+    CONTENT = {"displayServiceName": "뉴스", "title": "출처보존", "subtitle": "", "body": "본문"}
+    OUT = {"quality_meta": {"finalGrade": "G", "review": "yellow"}, "item_meta": {},
+           "trace": {"model": "m2", "version": 2}}
+
+    def _stub(self, existing):
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore.__new__(SupabaseStore)
+        cap = {}
+        st._get = lambda table, query="": (cap.__setitem__("get_q", query) or existing)
+        st._req = lambda method, table, **kw: cap.__setitem__("rows", kw.get("body") or [])
+        return st, cap
+
+    def _hash(self):
+        from prism.store import content_hash
+        return content_hash(self.CONTENT)
+
+    def test_existing_label_is_sent_back(self):
+        st, cap = self._stub([{"hash": self._hash(), "source": "엑셀"}])
+        st.sync_contents([(self.CONTENT, self.OUT)], source="재실행", include_all=True)
+        self.assertEqual(cap["rows"][0]["source"], "엑셀")
+        self.assertEqual(cap["rows"][0]["model"], "m2")          # 실행 정보는 최신으로 갱신
+        self.assertIn("select=hash,source", cap["get_q"])        # 라벨만 조회(본문 미다운로드)
+        self.assertIn(f"hash=in.({self._hash()})", cap["get_q"])
+        self.assertNotIn("team_id", cap["get_q"])                # 충돌 키(PK)와 같은 스코프로 조회
+
+    def test_new_row_keeps_incoming_label(self):
+        st, cap = self._stub([])
+        st.sync_contents([(self.CONTENT, self.OUT)], source="자동 인입", include_all=True)
+        self.assertEqual(cap["rows"][0]["source"], "자동 인입")
+
+    def test_blank_existing_label_is_backfilled(self):
+        st, cap = self._stub([{"hash": self._hash(), "source": ""}])
+        st.sync_contents([(self.CONTENT, self.OUT)], source="단건", include_all=True)
+        self.assertEqual(cap["rows"][0]["source"], "단건")
+
+    def test_lookup_failure_does_not_block_save(self):
+        """라벨 조회가 실패해도 적재는 계속된다(보존은 최선 노력)."""
+        st, cap = self._stub([])
+        st._get = lambda table, query="": (_ for _ in ()).throw(RuntimeError("supabase GET 실패"))
+        st.sync_contents([(self.CONTENT, self.OUT)], source="재실행", include_all=True)
+        self.assertEqual(cap["rows"][0]["source"], "재실행")
 
 
 if __name__ == "__main__":
