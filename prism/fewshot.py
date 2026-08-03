@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from . import model_guides as MG
+from .schema import normalize_rich_text
 
 
 class FewShotPool:
@@ -62,7 +63,9 @@ class FewShotPool:
         for i, r in enumerate(examples, 1):
             c = r["content"]
             exp = r["expected"]
-            body = (c.get("body", "") or "")[:body_chars]
+            # 골든셋 본문은 원본(마크업 포함) 그대로 저장돼 있다 → 자르기 전에 정제한다.
+            # 안 그러면 앞 180자가 통째로 `<div style=…>` 이라 예시가 아무 신호도 못 준다.
+            body = normalize_rich_text(c.get("body", ""))[:body_chars]
             ans = {"finalGrade": exp.get("finalGrade", "G"),
                    "reasons": exp.get("reasons", [])}
             lines.append(
