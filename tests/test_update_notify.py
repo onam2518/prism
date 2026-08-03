@@ -17,9 +17,9 @@ class TestUpdateNotify(unittest.TestCase):
         import prism.serve as SV
         self.assertTrue(SV._BOOT_ID)
         page = SV._page_versioned()
-        self.assertIn("/vendor/app.js?v=" + SV._BOOT_ID, page)
-        self.assertIn("/vendor/app.css?v=" + SV._BOOT_ID, page)
-        self.assertNotIn('src="/vendor/app.js"', page)              # 버전 없는 링크 잔존 금지
+        self.assertIn("/vendor/app-bundle.js?v=" + SV._BOOT_ID, page)
+        self.assertIn("/vendor/app-bundle.css?v=" + SV._BOOT_ID, page)
+        self.assertNotIn('src="/vendor/app-bundle.js"', page)       # 버전 없는 링크 잔존 금지
         self.assertIn("updateAvail", page)                          # 새 버전 배너 마크업
 
 

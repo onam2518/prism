@@ -422,7 +422,22 @@ window.PRISM_APP_PARTS.push(() => ({
       // 인증 공통 fetch(쓰기 라우트 통일 · 회의 소요 F): 401(토큰 만료)이면 1회 자동 갱신 후
       // 재시도하고, 그래도 만료면 안내 + 로그인 모달. 기존에는 경로마다 제각각이라
       // 만료 시 판정·교정이 조용히 유실됐다. Authorization 은 호출 시점의 최신 토큰으로 덮는다.
+      // 동시 중복 GET 합치기(2026-08-03): 전 화면 마크업이 한 번에 올라오면서 같은 GET 이
+      // 여러 곳에서 동시에 나갔다(부팅 시 /auth 4회 · /learn-report 4회 · /dict 3회 · /dashboard 2회).
+      // 캐시가 아니라 '진행 중인 같은 요청 나눠 쓰기'다 — 끝난 요청은 다음에 새로 나간다.
+      // 응답은 clone 으로 나눠 준다(본문 스트림은 한 번만 읽을 수 있다).
+      // 쓰기(POST 등)는 합치지 않는다 — 두 번 눌렀으면 두 번 보내는 게 맞다.
+      _inflight: {},
       async _afetch(url, opts) {
+        if ((((opts || {}).method) || 'GET').toUpperCase() !== 'GET') return this._afetchOnce(url, opts);
+        const cur = this._inflight[url];
+        if (cur) return (await cur).clone();
+        const p = this._afetchOnce(url, opts);
+        this._inflight[url] = p;
+        try { return (await p).clone(); }
+        finally { delete this._inflight[url]; }
+      },
+      async _afetchOnce(url, opts) {
         opts = opts || {};
         const call = () => {
           const h = Object.assign({}, opts.headers || {});

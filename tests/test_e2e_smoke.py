@@ -9,7 +9,6 @@ HTTP 계약을 전 구간 검증한다. 화면(JS)은 별도 수동 확인 · �
 """
 import json
 import os
-import re
 import socket
 import subprocess
 import sys
@@ -81,14 +80,16 @@ class TestE2ESmoke(unittest.TestCase):
         base = self.base
         # ① 페이지·번들 서빙(배포 산출물 자체가 깨지면 여기서 잡힌다)
         page = _req(base, "/")
-        self.assertIn("/vendor/app.js", page)
-        # 앱 JS = 조각(app-NN-*.js) + 로더(app.js) 합성(앱 분할 6차) · 페이지가 참조하는
-        # 조각 전부를 실제로 서빙받아 합쳐서 번들 무결성을 본다(조각 누락 = 여기서 잡힘)
-        parts = re.findall(r'/vendor/(app-\d\d-[\w.\-]+\.js)', page)
-        self.assertGreaterEqual(len(parts), 1, "앱 조각 script 태그가 페이지에 없음")
-        bundle = "".join(_req(base, f"/vendor/{p}?v=x") for p in parts) + _req(base, "/vendor/app.js?v=x")
-        self.assertIn("setFeedback", bundle)
-        self.assertIn("PRISM_APP_PARTS", bundle)
+        self.assertIn("/vendor/app-bundle.js", page)
+        # 앱 JS = 조각(app-NN-*.js) + 로더(app.js)를 서버가 이어붙인 단일 번들(2026-08-03 · assets.py).
+        # 실제로 받아 와 조각 내용이 다 들어갔는지 본다(조각 누락 = 여기서 잡힘)
+        bundle = _req(base, "/vendor/app-bundle.js?v=x")
+        self.assertIn("setFeedback", bundle)                       # 조각(app-NN)
+        self.assertIn("PRISM_APP_PARTS", bundle)                   # 로더(app.js)
+        css = _req(base, "/vendor/app-bundle.css?v=x")
+        self.assertIn(".panel", css)                               # app.css
+        self.assertIn("--ds-primary", css)                         # ds-theme.css
+        self.assertIn("@font-face", css)                           # pretendard/gmarket
 
         # ①-b 모바일 검수 페이지(/m): 전용 셸 + 벤더 버스터 · 기존 /m* 프리픽스 라우트 비잠식
         m = _req(base, "/m")
