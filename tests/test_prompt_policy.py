@@ -128,6 +128,92 @@ class TestPromptPolicy(unittest.TestCase):
         self.assertNotIn("graphic > sexual", sysmsg)          # 구 고정 체인 재유입 방지
 
 
+# ── 2026-08-03 운영파트 합의: '포토·영상 중심' 판정 기준 전면 개정(imeta@v16) ──
+# 가정: 이번 합의가 260715 회의 결정('캡션이 본문과 직접 연관될 때만')을 대체한다(양방향 충돌).
+class TestPhotoIntentCriteria(unittest.TestCase):
+    def test_old_caption_rule_removed(self):
+        from prism import meta_prompts as MP
+        from prism import dictionaries as D
+        blob = MP.CALL_RULES["intent"] + D.INTENT_VALUE_DEFS["포토·영상 중심"]
+        self.assertNotIn("캡션이 본문과 직접 연관될 때만", blob)     # 구 기준 재유입 방지
+        self.assertNotIn("이미지·영상이 많더라도", blob)             # 정량 프레이밍 제거
+        self.assertNotIn("이미지가 다수여도", blob)
+
+    def test_new_criteria_in_rules(self):
+        from prism import meta_prompts as MP
+        r = MP.CALL_RULES["intent"]
+        self.assertIn("직접 촬영", r)                                # 컨셉: 직접 촬영한 현장 사진
+        self.assertIn("이미지 구좌", r)                              # 목적: 편성 선별
+        self.assertIn("한 장뿐이어도", r)                            # 1장이어도 부여 가능
+        self.assertIn("정량 임계로 판정하지 않는다", r)              # 정량 기준 금지(합의 조건)
+
+    def test_negative_cases_enumerated(self):
+        """X사례군 6종이 미부여 규칙으로 명문화됐는가."""
+        from prism import meta_prompts as MP
+        r = MP.CALL_RULES["intent"]
+        for token in ("프로필 사진", "사진이 내용의 주가 아닌 것", "직접 촬영이 아닌",
+                      "생성형 AI 이미지만", "품질이 낮거나", "단순 보도"):
+            self.assertIn(token, r, token)
+
+    def test_boundary_rules_present(self):
+        """경계 규칙 신설: 현장취재·르포 / 그래픽·인포그래픽 / 카드뉴스·인포그래픽 / 인터뷰."""
+        from prism import meta_prompts as MP
+        r = MP.CALL_RULES["intent"]
+        self.assertIn("포토·영상 중심의 경계", r)
+        for v in ("현장취재·르포", "그래픽·인포그래픽", "카드뉴스·인포그래픽", "인터뷰"):
+            self.assertIn(v, r, v)
+        self.assertIn("자동 병기 금지", r)                           # 변별력 0 방지(운영파트 조건)
+
+    def test_no_photo_count_range_notation(self):
+        """정량 장수 표기 금지(기존 수량 상한 가드와 같은 계약)."""
+        from prism import meta_prompts as MP
+        r = MP.CALL_RULES["intent"]
+        for bad in ("1~3", "0~2", "3~5장", "장 이상"):
+            self.assertNotIn(bad, r, bad)
+
+    def test_form_universal_defs_injected(self):
+        """범용②도 정의문 병기 → INTENT_VALUE_DEFS 수정만으로 프롬프트가 따라온다."""
+        from prism import meta_prompts as MP
+        from prism import dictionaries as D
+        txt = MP.intent_dictionary_text("뉴스")
+        self.assertIn(D.INTENT_VALUE_DEFS["포토·영상 중심"], txt)
+        self.assertIn(D.INTENT_VALUE_DEFS["현장취재·르포"], txt)
+        self.assertNotIn(" / ".join(D.INTENT_FORM_UNIVERSAL), txt)   # 구 '이름만 나열' 형태 제거
+
+    def test_intent_user_message_signals(self):
+        """③ 인텐트 콜 입력 확장: title·본문 글자수·이미지 수·본문 도입부."""
+        from prism import meta_prompts as MP
+        from prism.schema import Content
+        c = Content(displayServiceName="뉴스", title="[오늘의 1면 사진] 폭염", body="가" * 1200,
+                    image_urls=["https://x/1.jpg", "https://x/2.jpg"])
+        u = MP.call_user("intent", c, {"summary": "리드문"})
+        self.assertIn("[오늘의 1면 사진]", u)                        # 제목 표지가 판정 단서
+        self.assertIn("본문 글자수: 1200", u)
+        self.assertIn("이미지 수: 2", u)
+        self.assertIn("본문 도입부:", u)
+        self.assertLess(len(u), 1200)                                # 본문 전문 주입 아님(토큰 억제)
+
+    def test_image_count_unknown_is_not_zero(self):
+        """image_urls 미제공(운영 인입 현황) → '0장'으로 단정하지 않는다."""
+        from prism import meta_prompts as MP
+        from prism.schema import Content
+        for c in (Content(displayServiceName="뉴스", title="t", body="b"),
+                  Content(displayServiceName="뉴스", title="t", body="b", image_urls=[])):
+            u = MP.call_user("intent", c, {"summary": "s"})
+            self.assertIn("이미지 수: 정보 없음", u)
+            self.assertNotIn("이미지 수: 0", u)
+
+    def test_intent_example_shows_boundary(self):
+        from prism import dictionaries as D
+        ex = D.INTENT_EXAMPLES["포토·영상 중심"]
+        self.assertIn("O)", ex)
+        self.assertIn("X)", ex)
+
+    def test_imeta_version_bumped(self):
+        from prism import prompts as P
+        self.assertTrue(P.IMETA_VERSION.startswith("imeta@v16"), P.IMETA_VERSION)
+
+
 # ── 2026-07-10 보완: 시드 지문 불일치 시 내장 버전 자동 재시드 ──
 class TestPromptSeedMigration(unittest.TestCase):
     def setUp(self):
