@@ -671,22 +671,119 @@ _PROFILE_KEYMAP = {
 }
 _BASE_SNAPSHOT = None                   # dict | None · 최초 override 직전의 원본 사전(초기화 즉시 복원용) · 3.8 호환 무주석
 
+# 오버라이드 파일의 예약 키. 사용자가 **의도적으로 뺀** 값(툼스톤)을 대상별로 기록한다.
+# 이 기록이 있어야 (a)사용자 삭제 와 (b)나중에 코드에 추가된 값 을 구분할 수 있다.
+# 값이 REMOVE_ALL("*") 이면 그 대상은 병합 없이 완전 교체(회사 프로파일이 체계를 통째로 갈아끼울 때).
+REMOVED_KEY = "_removed"
+REMOVE_ALL = "*"
 
-def apply_profile(prof: dict):
+
+def _base_of(gk: str):
+    """코드 기본값(override 이전). 첫 override 직전 스냅샷이 있으면 그것, 없으면 현재 전역값."""
+    if isinstance(_BASE_SNAPSHOT, dict) and gk in _BASE_SNAPSHOT:
+        return _BASE_SNAPSHOT[gk]
+    return globals().get(gk)
+
+
+def _sub_tomb(tomb, key):
+    """중첩 구조(dict 안의 리스트)용 툼스톤 하위 선택. '*' 는 하위까지 전파."""
+    if tomb == REMOVE_ALL:
+        return REMOVE_ALL
+    if isinstance(tomb, dict):
+        return tomb.get(key)
+    return None
+
+
+def _merge_override(base, ov, tomb, path: str, report: dict):
+    """리스트 오버라이드 = 덮어쓰기가 아니라 **병합**.
+    · 결과 순서 = 오버라이드 순서(사용자 정렬 의도 우선) + 코드 기본값에만 있는 원소를 코드 순서대로 뒤에 덧붙임.
+    · 툼스톤(사용자가 뺀 값)에 있으면 덧붙이지 않는다 → 삭제는 그대로 유지.
+    dict 는 기존 의미론 유지(오버라이드에 있는 키만 반영 · 키 삭제 없음) + 하위 리스트에 같은 규칙 재귀 적용."""
+    if isinstance(base, list) and isinstance(ov, list):
+        merged = []
+        for v in ov:                                   # 오버라이드 순서 유지 · 중복 제거
+            if v not in merged:
+                merged.append(v)
+        if tomb == REMOVE_ALL:
+            gone = [v for v in base if v not in merged]
+            if gone:
+                report.setdefault("dropped", {})[path] = gone
+            return merged
+        drop = list(tomb or ())
+        restored = [v for v in base if v not in merged and v not in drop]
+        dropped = [v for v in base if v not in merged and v in drop]
+        if restored:
+            report.setdefault("restored", {})[path] = restored
+        if dropped:
+            report.setdefault("dropped", {})[path] = dropped
+        return merged + restored
+    if isinstance(base, dict) and isinstance(ov, dict):
+        return {k: _merge_override(base.get(k), v, _sub_tomb(tomb, k), f"{path}.{k}", report)
+                for k, v in ov.items()}
+    return ov
+
+
+def _removals_of(base, ov):
+    """base 대비 ov 에서 빠진 리스트 원소를 구조 그대로 미러링해 반환(없으면 None)."""
+    if isinstance(base, list) and isinstance(ov, list):
+        gone = [v for v in base if v not in ov]
+        return gone or None
+    if isinstance(base, dict) and isinstance(ov, dict):
+        out = {}
+        for k, v in ov.items():
+            r = _removals_of(base.get(k), v)
+            if r:
+                out[k] = r
+        return out or None
+    return None
+
+
+def stamp_removals(ov: dict, pk: str) -> dict:
+    """편집 저장 **직전** 호출: 이번 오버라이드가 코드 기본값에서 뺀 값을 툼스톤으로 남긴다.
+    이 기록이 없으면 뒤에 코드에 추가된 값과 사용자 삭제를 구분할 수 없다. ov 를 제자리 수정."""
+    gk = _PROFILE_KEYMAP.get(pk)
+    if not gk or pk not in ov:
+        return ov
+    tomb = _removals_of(_base_of(gk), ov[pk])
+    slot = ov.get(REMOVED_KEY)
+    slot = dict(slot) if isinstance(slot, dict) else {}
+    if tomb:
+        slot[pk] = tomb
+    else:
+        slot.pop(pk, None)                   # 되살렸으면 삭제 기록도 걷어낸다
+    if slot:
+        ov[REMOVED_KEY] = slot
+    else:
+        ov.pop(REMOVED_KEY, None)
+    return ov
+
+
+def apply_profile(prof: dict) -> dict:
     """회사별/운영자 프로파일로 사전을 비파괴 override. 코어 파이프라인은 그대로, 사전만 교체.
-    어드민 편집(사용자 직접 수정)에서도 동일 경로 사용."""
+    어드민 편집(사용자 직접 수정)에서도 동일 경로 사용.
+
+    리스트는 병합(_merge_override) — 저장 시점 스냅샷이 이후 코드에 추가된 사전 값을 영구히
+    지우던 결함을 막는다. 사용자가 의도적으로 뺀 값은 prof[REMOVED_KEY] 툼스톤으로 유지된다.
+    반환: {"restored": {경로: [값]}, "dropped": {경로: [값]}} — 기동 로그 경고용 리포트."""
     import copy
     global _BASE_SNAPSHOT
     g = globals()
     if _BASE_SNAPSHOT is None:           # 첫 override 전에 원본 보존 → restore_base 로 재시작 없이 복원
         _BASE_SNAPSHOT = {gk: copy.deepcopy(g.get(gk)) for gk in _PROFILE_KEYMAP.values()}
+    tombs = prof.get(REMOVED_KEY)
+    if not isinstance(tombs, dict):
+        tombs = {}
+    report = {"restored": {}, "dropped": {}}
     for pk, gk in _PROFILE_KEYMAP.items():
-        if pk in prof:
-            cur = g.get(gk)
-            if isinstance(cur, dict) and isinstance(prof[pk], dict):
-                cur.update(prof[pk])
-            else:
-                g[gk] = prof[pk]
+        if pk not in prof:
+            continue
+        merged = _merge_override(_base_of(gk), prof[pk], tombs.get(pk), pk, report)
+        cur = g.get(gk)
+        if isinstance(cur, dict) and isinstance(merged, dict):
+            cur.update(merged)
+        else:
+            g[gk] = merged
+    return report
 
 
 def restore_base():
