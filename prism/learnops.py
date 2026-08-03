@@ -905,8 +905,16 @@ def handoff_bundle(team=None):
         "iab_tier1": list(D.IAB_TIER1),
         "tier2": {k: list(v) for k, v in (getattr(D, "CONTENT_CATEGORY_TIER2", {}) or {}).items()},
         "intent_universal": list(getattr(D, "INTENT_CATEGORIES_UNIVERSAL", []) or []),
+        # 범용②(형식·전달 8종)는 서비스와 무관하게 항상 프롬프트에 주입된다
+        # (meta_prompts.intent_dictionary_text) → 빠지면 '포토·영상 중심' 등이 라벨 공간에서
+        # 통째로 사라져 학습 재현이 안 된다.
+        "intent_form_universal": list(getattr(D, "INTENT_FORM_UNIVERSAL", []) or []),
         "intent_by_service": {k: list(v) for k, v in
                               (getattr(D, "INTENT_CATEGORIES_BY_SERVICE", {}) or {}).items()},
+        # 값 정의문도 재현 조건: 서비스 분기 값은 설명이 프롬프트에 함께 들어가고(동 함수),
+        # 범용①·②는 검수 화면 정의(/dict intentDefs)와 같은 병합본이 라벨 판단 근거였다.
+        "intent_defs": {**(getattr(D, "INTENT_UNIVERSAL_DEFS", {}) or {}),
+                        **(getattr(D, "INTENT_VALUE_DEFS", {}) or {})},
     }, ensure_ascii=False, indent=2)
     snap = _SV._report_get("prompt_snapshot_latest", team)
     if snap:
