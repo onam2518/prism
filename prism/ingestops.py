@@ -278,11 +278,16 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
             stats = st.save_dedup(pairs, "ingest-" + time.strftime("%Y%m%d-%H%M%S"), source="자동 인입")
             _SV._save_drafts(st, pairs)
             _SV._entdict_after_save(st, pairs)
-        msg = f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
+        # 이미지 URL 적재율을 같이 남긴다(게시판 #9) — 상류가 이미지를 안 보내는지,
+        # 우리 매핑이 컬럼을 못 잡는지 실행 큐에서 바로 구분된다(조용한 0건 재발 방지).
+        from .runops import _img_note, img_coverage
+        msg = (f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
+               + _img_note(contents))
         _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=True, last_msg=msg)
         _jobs_persist()
         return {"ok": True, "fetched": len(rows), "extracted": len(pairs),
-                "mapping": m, "mock": llm.mock, **stats}
+                "mapping": m, "mock": llm.mock,
+                "with_images": img_coverage(contents)["with_images"], **stats}
     except Exception as e:
         _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=str(e)[:160])
         _jobs_persist()
