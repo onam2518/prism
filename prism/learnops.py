@@ -120,14 +120,45 @@ def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
     m["basis"] = {"model": used_model, "version": seq + 1, "scope": scope}
     return m
 
+def _clean_intent(vals, display_name: str) -> tuple:
+    """골든 기대 인텐트를 사전(D.intent_categories_for) 화이트리스트로 정제.
+    반환 (통과값 리스트, 드롭된 원값 리스트). 표기 흔들림('속보 · 단신')은 agents 의
+    _canon 과 같은 규칙으로 흡수하고, 사전에 없는 값만 떨군다(오타 조용한 유입 차단)."""
+    import re as _re
+    from . import dictionaries as D
+
+    def canon(x):
+        return _re.sub(r"\s*·\s*", "·", str(x).strip())
+    if isinstance(vals, str):
+        vals = [vals]
+    elif isinstance(vals, dict):
+        vals = list(vals.values())
+    elif not isinstance(vals, (list, tuple)):
+        vals = [] if vals is None else [vals]
+    cmap = {canon(v): v for v in D.intent_categories_for(display_name or "")}
+    ok, bad = [], []
+    for x in vals:
+        raw = str(x).strip() if x is not None else ""
+        if not raw:
+            continue
+        hit = cmap.get(canon(raw))
+        if hit is None:
+            bad.append(raw)
+        elif hit not in ok:                      # 중복 제거 · 순서(대표 첫 번째) 보존
+            ok.append(hit)
+    return ok, bad
+
+
 def register_golden(uid, team, rows, email="", merge=False) -> dict:
     """관리자가 팀 골든셋 등록. merge=True 면 기존에 병합(upsert), False 면 전체 교체.
-    등록 전 검증·정규화: finalGrade G|R 강제, content_category 사전 스냅, title 필수."""
+    등록 전 검증·정규화: finalGrade G|R 강제, content_category 사전 스냅, title 필수,
+    intent 사전 화이트리스트 정제(사전 밖 값은 드롭 + 경고 · 행 자체는 살린다)."""
     from . import dictionaries as D
     st = _SV.get_store()
     if _SV._supa() and not _SV.is_admin_user(uid, team, email):   # 로컬(sqlite)은 개방(타 관리자 라우트와 동일 게이트)
         return {"ok": False, "error": "관리자 전용입니다"}
     valid, skipped = [], 0
+    intent_dropped, intent_samples = 0, []
     for r in rows:
         if not (isinstance(r, dict) and isinstance(r.get("content"), dict) and isinstance(r.get("expected"), dict)):
             skipped += 1
@@ -144,10 +175,23 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
         ents = ents if isinstance(ents, (list, tuple)) else [ents]
         exp["entities"] = list(dict.fromkeys(
             s for s in (str(x).strip() for x in ents if x is not None) if s))
+        if "intent" in exp:                       # 키가 없으면 그대로 없음(측정 표본 제외 유지)
+            kept, bad = _clean_intent(exp.get("intent"),
+                                      content.get("displayServiceName", ""))
+            exp["intent"] = kept
+            if bad:
+                intent_dropped += len(bad)
+                intent_samples.extend(bad)
         valid.append({"content": content, "expected": exp})
     n = st.register_golden(team, valid, replace=not merge, source="manual")
     _SV._agg_bump()
-    return {"ok": True, "count": n, "skipped": skipped, "merged": bool(merge)}
+    out = {"ok": True, "count": n, "skipped": skipped, "merged": bool(merge)}
+    if intent_dropped:                            # 오타 조용한 유입 방지: 등록 응답에 경고 노출
+        seen = list(dict.fromkeys(intent_samples))[:10]
+        out["intent_dropped"] = intent_dropped
+        out["intent_dropped_values"] = seen
+        out["warning"] = f"사전에 없는 인텐트 {intent_dropped}건 제외: " + " · ".join(seen)
+    return out
 
 def golden_list(team=None) -> dict:
     """관리자 골든 브라우저: 목록 + 출처 집계 + 라벨 오류 의심(최근 평가 불일치) 표시."""
@@ -360,11 +404,26 @@ def snapshot_prompts(team=None) -> dict:
     _SV._report_save("prompt_snapshot_latest", payload, team)
     return {"version": ver, "calls": list(calls.keys())}
 
-def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5) -> list:
+MIN_INTENT_N = 20                                # 인텐트 스칼라 가드 최소 측정 표본
+INTENT_JACCARD_DROP = 0.05                       # 인텐트 자카드 허용 악화 폭(초과 시 회귀)
+
+
+def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
+                       min_intent_n: int = MIN_INTENT_N) -> list:
     """개선 후 평가가 전보다 나빠진 지점 목록(원복 사유 문구 · 없으면 빈 목록).
     ① 정합성 2%p 초과 악화 ② 유해 미탐률(harm_miss_rate) 악화
-    ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제).
-    cli tune RegressionGuard 를 서버 자동 배치로 이식(단일 스칼라 가드의 사각 해소)."""
+    ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제)
+    ④ 인텐트 자카드 5%p 초과 악화(측정 표본 min_intent_n 이상일 때만)
+    ⑤ 인텐트 값별 F1 10%p 초과 하락(support min_bucket_n 이상 · ③과 동일 규칙).
+    cli tune RegressionGuard 를 서버 자동 배치로 이식(단일 스칼라 가드의 사각 해소).
+
+    ④ 임계 근거: 인텐트 측정 표본은 골든 전체가 아니라 '기대 인텐트가 달린 행'뿐이라
+    등급(①·전건 분모)보다 작다. 표본 n 에서 한 건이 완전히 뒤집히면 평균 자카드는
+    1/n 만큼 움직이므로, n≥20 · 임계 5%p 조합이면 단일 건의 최대 변동(5%p)이 단독으로는
+    가드를 넘기지 못한다 — 소표본 노이즈로 인한 오탐 원복을 막는 최소 조합.
+    ⑤ 는 값별(다중 라벨) 지표라 기존 버킷 가드 ③ 과 같은 임계·같은 최소 표본을 쓴다
+    (운영자가 기억할 임계를 늘리지 않는다). intent_exact 는 다중 라벨 전부일치라
+    한 값만 어긋나도 0/1 로 튀는 고분산 지표이므로 리포트만 하고 가드로는 쓰지 않는다."""
     out = []
     try:
         d = round((post.get("grade_accuracy") or 0.0) - (pre.get("grade_accuracy") or 0.0), 4)
@@ -384,6 +443,25 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5) -> list:
         ca = float((post_b.get(b) or {}).get("grade_acc", ba))
         if ca < ba - 0.10:
             out.append(f"버킷 {b} {ba:.0%}→{ca:.0%} 회귀")
+    # ④·⑤ 인텐트 · 구 리포트(키 없음)는 표본 0 으로 읽혀 자동 skip(하위호환)
+    pre_in = int(pre.get("intent_n") or 0)
+    post_in = int(post.get("intent_n") or 0)
+    if pre_in >= min_intent_n and post_in >= min_intent_n:
+        try:
+            dj = round(float(post.get("intent_jaccard") or 0.0)
+                       - float(pre.get("intent_jaccard") or 0.0), 4)
+        except (TypeError, ValueError):
+            dj = 0.0
+        if dj < -INTENT_JACCARD_DROP:
+            out.append(f"인텐트 일치 {dj:+.1%} 악화(n={post_in})")
+        post_i = post.get("by_intent_value") or {}
+        for v, pv in (pre.get("by_intent_value") or {}).items():
+            if int((pv or {}).get("n") or 0) < min_bucket_n:
+                continue
+            bf = float((pv or {}).get("f1") or 0.0)
+            cf = float((post_i.get(v) or {}).get("f1", bf))
+            if cf < bf - 0.10:
+                out.append(f"인텐트 {v} F1 {bf:.0%}→{cf:.0%} 회귀")
     return out
 
 
