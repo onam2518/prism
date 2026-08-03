@@ -22,16 +22,37 @@ window.PRISM_APP_PARTS.push(() => ({
       // 배정 배타 노출: 타인 배정분은 목록에서 숨김(미배정은 전원 노출).
       // 생성자·슈퍼관리자(opsAdmin)는 배정 무관 전체 '열람' → 숨김만 예외(판정은 위 규칙 그대로).
       assignedToOther(r) { return this.opsAdmin ? false : this.assignBlocked(r); },
+      // 나에게 지정된 건: 배정자 목록에 내가 있다 — assignBlocked 와 같은 기준(my_id 우선 · 이름 폴백).
+      // 미배정분은 '전원 가능'이지 '내 것'이 아니므로 제외한다.
+      assignedToMe(r) {
+        const a = (r && r.assignees) || [];
+        if (!a.length) return false;
+        const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || '';
+        return !!me && a.indexOf(me) >= 0;
+      },
       // 검수 상태를 뺀 나머지 필터(검색·등급·모델·서비스·배정) 통과분 — 목록과 '숨김 N건' 힌트의 공통 모집단
       get rawScoped() {
         return (((this.rawData||{}).items)||[]).filter((r) => {
           if (this.assignedToOther(r)) return false;   // 내 배정분 + 미배정분만(타인 배정분 숨김)
+          if (this.rawMineOnly && !this.assignedToMe(r)) return false;   // 내 배정분만(미배정분 제외)
           if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
           if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
           return true;
         });
+      },
+      // 상단 '필터' 버튼 배지: 기본값에서 벗어난 조건 개수(검색어는 밖에 남아 있으니 세지 않는다).
+      // 0 이면 배지를 숨겨 '필터 없음'을 조용히 알린다.
+      get rawFilterN() {
+        return (this.rawGrade ? 1 : 0) + (this.rawSvc ? 1 : 0) + (this.rawRev !== 'todo' ? 1 : 0)
+             + (this.rawMineOnly ? 1 : 0) + (this.rawGapFirst ? 1 : 0);
+      },
+      // 초기화: 검색어(밖)는 그대로 두고 팝오버 안 조건만 기본값으로. 검수 상태는 rawRevPick 경유
+      // (창 넓힘 상태를 건드리지 않고 'todo' 로 돌린다).
+      rawFilterReset() {
+        this.rawGrade = ''; this.rawSvc = ''; this.rawMineOnly = false; this.rawGapFirst = false;
+        if (this.rawRev !== 'todo') this.rawRevPick('todo');
       },
       get rawFiltered() {
         const out = this.rawScoped.filter((r) => {

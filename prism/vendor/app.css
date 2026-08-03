@@ -1380,6 +1380,48 @@
   .crewtoggle input{accent-color:var(--ds-primary);width:15px;height:15px;cursor:pointer}
   .crewgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--ds-space-4)}
   @media (max-width:1080px){ .crewgrid{grid-template-columns:1fr} }
+  /* ── 필터 팝오버(fpop) ────────────────────────────────────────────────────
+     목록 상단은 검색만 두고 나머지 조건은 이 버튼 하나로 모은다(검수 대상 콘텐츠 · 2026-08-03).
+     위치 계산은 mpick 과 같은 mpMenuBox(fixed) — 패널 overflow:hidden 에 잘리지 않게. */
+  .fpop{position:relative;display:inline-flex}
+  .fpop__btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 13px;cursor:pointer;
+    font-size:13px;font-weight:600;color:var(--ds-body);background:var(--ds-surface-white);
+    border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-control)}
+  .fpop__btn:hover{border-color:var(--ds-primary);color:var(--ds-ink)}
+  .fpop__btn:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
+  .fpop__btn.is-open{border-color:var(--ds-primary)}
+  .fpop__btn.is-on{border-color:var(--ds-primary);color:var(--ds-primary)}
+  .fpop__n{min-width:18px;height:18px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;color:var(--ds-on-primary);background:var(--ds-primary);border-radius:9px}
+  .fpop__panel{position:fixed;z-index:120;overflow:auto;width:298px;padding:12px;
+    display:flex;flex-direction:column;gap:9px;
+    border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-control);
+    background:var(--ds-surface-white);box-shadow:0 12px 32px rgba(16,24,40,.14)}
+  .fpop__row{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;gap:9px}
+  .fpop__lbl{font-size:12px;font-weight:600;color:var(--ds-muted)}
+  .fpop__row .field{width:100%;height:32px}
+  .fpop__sep{height:1px;background:var(--ds-hairline-soft);margin:1px 0}
+  /* 체크형 토글: 라벨 + 한 줄 설명 · 칩(다중 토글)과 구분되는 '옵션 켜기' 컨트롤 */
+  .fpop__chk{display:flex;align-items:flex-start;gap:9px;width:100%;padding:8px 9px;text-align:left;cursor:pointer;
+    font-size:12.5px;color:var(--ds-body);background:transparent;
+    border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-control)}
+  .fpop__chk:hover{border-color:var(--ds-primary)}
+  .fpop__chk:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
+  .fpop__chk.is-on{border-color:var(--ds-primary);background:rgba(30,132,255,.07)}
+  .fpop__chk b{font-weight:700;color:var(--ds-ink)}
+  .fpop__box{flex:none;width:15px;height:15px;margin-top:1px;border:1.5px solid var(--ds-hairline);
+    border-radius:5px;background:var(--ds-surface-white)}
+  .fpop__chk.is-on .fpop__box{border-color:var(--ds-primary);background:var(--ds-primary);
+    background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.4l3 3 6-6.4' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-size:13px 13px;background-position:center;background-repeat:no-repeat}
+  .fpop__sub{display:block;margin-top:2px;font-size:11.5px;line-height:1.45;color:var(--ds-muted)}
+  .fpop__hint{width:100%;padding:7px 9px;text-align:left;cursor:pointer;font-size:11.5px;line-height:1.45;
+    color:var(--ds-primary);background:rgba(30,132,255,.07);border:0;border-radius:var(--ds-radius-control)}
+  .fpop__hint:hover{background:rgba(30,132,255,.13)}
+  .fpop__ft{display:flex;align-items:center;gap:7px;padding-top:9px;border-top:1px solid var(--ds-hairline-soft)}
+  .fpop__ft .copybtn{margin-left:auto}
+  .fpop__ft .copybtn:disabled{opacity:.42;cursor:default;color:var(--ds-muted);
+    border-color:var(--ds-hairline);background:var(--ds-surface-white)}
   /* ── 모델 선택 드롭다운(mpick) ─────────────────────────────────────────────
      원본 id(claude-opus-4-8) 대신 읽는 이름 + 제공자 배지 + 비용 등급으로 고른다.
      마크업은 page.py 의 <x-modelpick> 펼치기가 만들고 데이터는 app-13-modelpick.js. */

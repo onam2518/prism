@@ -525,5 +525,55 @@ class TestRawListHidesDone(unittest.TestCase):
         self.assertIn("get rawScoped()", src)               # 힌트와 목록이 같은 모집단을 쓴다
 
 
+class TestRawFilterPopover(unittest.TestCase):
+    """검수 대상 목록 상단: 검색만 밖에 남기고 나머지 조건은 '필터' 버튼 하나로 통합(2026-08-03).
+    통합해도 조건 자체는 하나도 사라지지 않아야 하고, 활성 개수·초기화로 상태를 되돌릴 수 있어야 한다."""
+
+    def _src(self, rel):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, rel), encoding="utf-8") as f:
+            return f.read()
+
+    def test_search_stays_outside_and_others_move_into_popover(self):
+        from prism import page
+        self.assertIn('placeholder="제목·카테고리·사유 검색"', page.PAGE)   # 검색은 밖에 유지
+        self.assertIn('class="fpop__panel"', page.PAGE)                     # 나머지는 팝오버 안
+        # 통합 전 상단에 늘어서 있던 조건들이 팝오버 안에 그대로 살아 있다
+        for frag in ('id="fp-grade"', 'id="fp-svc"', 'id="fp-rev"', "rawGapFirst = !rawGapFirst"):
+            self.assertIn(frag, page.PAGE)
+
+    def test_mine_only_filter_available(self):
+        from prism import page
+        self.assertIn("나에게 지정된 콘텐츠만", page.PAGE)
+        self.assertIn("rawMineOnly = !rawMineOnly", page.PAGE)
+        src = self._src("prism/vendor/app-02-_afterverdict.js")
+        self.assertIn("assignedToMe(r)", src)
+        # 배정 판정은 assignBlocked 와 같은 기준(my_id 우선 · 이름 폴백)
+        self.assertIn("(this.arenaData && this.arenaData.my_id) || this.reviewer", src)
+        # 목록 모집단에서 걸러야 '숨김 N건' 힌트와 건수가 함께 맞는다
+        self.assertIn("this.rawMineOnly && !this.assignedToMe(r)", src)
+        self.assertIn("rawMineOnly: false", self._src("prism/vendor/app-01-bulkpertxt.js"))
+
+    def test_active_count_and_reset(self):
+        from prism import page
+        self.assertIn("rawFilterN", page.PAGE)              # 버튼 배지(기본값에서 벗어난 조건 수)
+        self.assertIn("rawFilterReset()", page.PAGE)
+        src = self._src("prism/vendor/app-02-_afterverdict.js")
+        self.assertIn("get rawFilterN()", src)
+        # 초기화는 검색어(밖)를 건드리지 않는다 — 팝오버 안 조건만 되돌린다
+        body = src.split("rawFilterReset() {", 1)[1].split("},", 1)[0]
+        self.assertNotIn("rawQ", body)
+        for prop in ("rawGrade", "rawSvc", "rawMineOnly", "rawGapFirst"):
+            self.assertIn(prop, body)
+        self.assertIn("rawRevPick('todo')", body)           # 검수 상태는 창 넓힘 규약을 지나 되돌린다
+
+    def test_popover_uses_fixed_positioning(self):
+        # 패널이 overflow:hidden 이라 absolute 로 띄우면 잘린다 · 모델 선택과 같은 mpMenuBox 규약
+        from prism import page
+        self.assertIn("fpBox=mpMenuBox($el)", page.PAGE)
+        css = self._src("prism/vendor/app.css")
+        self.assertIn(".fpop__panel{position:fixed", css)
+
+
 if __name__ == "__main__":
     unittest.main()
