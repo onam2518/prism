@@ -1,8 +1,11 @@
       <!-- ═══ 모듈: 실행 큐 (단일 위젯) · 실제 실행 상태 ═══ -->
-      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin:18px 0 12px">
+      <template x-if="mod === 'content'">
+        <div class="w-full" style="margin:18px 0 12px">
         <div class="stepline"><span class="stepline__no">STEP 3</span><b>실행 큐 · 이력</b><span class="meta">진행 중 작업의 진척도와 완료 이력 · 완료 작업을 누르면 해당 콘텐츠를 봅니다</span></div>
       </div>
-      <div x-show="mod === 'content'" x-cloak class="w-full">
+      </template>
+      <template x-if="mod === 'content'">
+        <div class="w-full">
         <section class="panel"><div class="panel-hd"><b>실행 큐 · 이력</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>
           <!-- 자동/수동 구분 필터 -->
           <span class="ml-auto" style="display:flex;gap:6px">
@@ -28,13 +31,15 @@
           </div>
         </section>
       </div>
+      </template>
       <!-- ⚠ x-bind:disabled 에 객체 인덱스(rerunBusy[hash])를 그대로 쓰면 안 된다.
            Alpine 3.14 는 '없는 키' 접근 결과를 falsy 로 안 보고 disabled 를 걸어버려서,
            한 번도 누르지 않은 버튼이 처음부터 잠긴다(2026-07-28 · 재실행 버튼 전건 비활성).
            !! 로 불린 변환해서 넘긴다. -->
       <!-- 메타 생성 실패 콘텐츠: 단일 목록표(종류·콜 = 열) · 건별 재실행 · 빈 목록도 상시 노출
            30일 집계(top·by_*)는 /fail-rollup 응답에 유지(화면 미노출 · 필요 시 재노출) -->
-      <div x-show="mod === 'content' && failData" x-cloak class="w-full" style="margin-top:14px">
+      <template x-if="mod === 'content'">
+        <div x-show="failData" x-cloak class="w-full" style="margin-top:14px">
         <section class="panel" data-fn x-init="loadFails()"><div class="panel-hd"><b>메타 생성 실패 콘텐츠</b><span class="meta">최근 30일 · 모델 실행이 실패한 콘텐츠 목록 · 재실행이 성공하면 자동으로 사라집니다</span>
           <span class="ds-badge ds-badge--error tnum ml-auto" x-show="((failData&&failData.recent)||[]).length" x-text="((failData&&failData.recent)||[]).length + '건'"></span>
         </div>
@@ -76,8 +81,10 @@
           </div>
         </section>
       </div>
+      </template>
       <!-- 추가된 콘텐츠 · 용도: 실행 큐 아래(맥락: 추가 → 실행 → 큐 → 결과 용도 관리) -->
-      <div x-show="mod === 'content'" x-cloak class="w-full space-y-4" style="margin-top:14px">
+      <template x-if="mod === 'content'">
+        <div class="w-full space-y-4" style="margin-top:14px">
         <section class="panel" data-fn id="added-contents"><div class="panel-hd"><b>추가된 콘텐츠 · 용도</b><span class="meta">평가용은 검수 목록에서 제외되어 평가 전용으로 보존됩니다</span>
           <button type="button" class="srcfilter__chip sel" x-show="jobFilter" x-cloak x-on:click="jobFilter = null" x-text="jobFilter ? (jobFilter.name + ' 결과 ' + contentRows.length + '건 · 전체 보기 ×') : ''"></button>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -114,4 +121,5 @@
           <div x-show="!contentRows.length" class="text-xs text-muted" style="margin:0 16px 14px" x-text="jobFilter ? '이 작업의 콘텐츠가 목록에 없습니다(삭제되었을 수 있음)' : (contentModel ? ('이 모델로 실행된 콘텐츠가 최신 200건 안에 없습니다 · ' + contentModel) : '아직 추가된 콘텐츠가 없습니다 · 위에서 수동·자동으로 추가하세요')"></div>
         </section>
       </div>
+      </template>
 

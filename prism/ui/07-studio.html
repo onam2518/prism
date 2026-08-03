@@ -1,12 +1,15 @@
       <!-- ═══ 모듈: 토픽 스튜디오 (클러스터링 체계를 자연어로 설계·실험) ═══ -->
       <!-- ═══ 모듈: 스튜디오 · 설계 도구 묶음(프롬프트 + 토픽 · 실험실에서 승격) ═══ -->
-      <div x-show="mod === 'studio'" x-cloak class="w-full" style="margin-bottom:10px">
+      <template x-if="mod === 'studio'">
+        <div class="w-full" style="margin-bottom:10px">
         <div class="evaltabs">
           <button type="button" x-bind:class="studioTab==='prompt'?'sel':''" x-on:click="studioTab='prompt'">프롬프트</button>
           <button type="button" x-bind:class="studioTab==='topic'?'sel':''" x-on:click="studioTab='topic'; loadTopics()">토픽</button>
         </div>
       </div>
-      <div x-show="mod === 'studio' && studioTab === 'topic'" x-cloak class="w-full space-y-4">
+      </template>
+      <template x-if="mod === 'studio'">
+        <div x-show="studioTab === 'topic'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li><b>토픽 스튜디오</b>는 클러스터링 체계(어떤 콘텐츠를 어떻게 묶을지)를 <b>자연어</b>로 정의하고 즉시 실험하는 공간입니다.</li>
           <li>원하는 묶음을 문장으로 설명하면 조건값이 자동으로 채워집니다 · 채워진 조건값은 직접 켜고 끌 수 있습니다.</li>
@@ -256,4 +259,5 @@
           </div>
         </div>
       </div>
+      </template>
 

@@ -1,5 +1,6 @@
       <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
-      <div x-show="mod === 'evaluate'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'evaluate'">
+        <div class="w-full space-y-4">
           <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 용희(학습·평가) -->
           <div class="ds-guide">
             <span class="ds-guide__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span>
@@ -238,4 +239,5 @@
             </div>
           </section>
         </div>
+      </template>
 

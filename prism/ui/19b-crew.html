@@ -5,7 +5,8 @@
            문구는 기계적인 말 대신 일상어로 쓴다(사용자 요청 2026-07-28). -->
       <!-- 하위 탭은 상위 탭(운영 관리) 바로 아래 붙어야 한 묶음으로 읽힌다.
            .canvas 는 flex gap 20px 이라 그대로 두면 상·하위 탭이 따로 노는 두 줄로 보인다. -->
-      <div x-show="mod === 'admin' && adminTab === 'crew'" x-cloak class="w-full subtabrow">
+      <template x-if="mod === 'admin'">
+        <div x-show="adminTab === 'crew'" x-cloak class="w-full subtabrow">
         <div class="evaltabs evaltabs--sub">
           <button type="button" x-bind:class="crewTab==='dash'?'sel':''" x-on:click="crewTab='dash'; loadCrew()">현황</button>
           <button type="button" x-bind:class="crewTab==='people'?'sel':''" x-on:click="crewTab='people'; loadCrew()">검수자 · 가용 일정</button>
@@ -13,9 +14,11 @@
           <span class="ml-auto text-xs text-muted" x-show="crewBusy">불러오는 중…</span>
         </div>
       </div>
+      </template>
 
       <!-- ── 현황 ───────────────────────────────────────────────── -->
-      <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'admin'">
+        <div x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <div class="crewstats">
             <div class="crewstat"><span class="crewstat__k">미검수 잔여</span>
@@ -178,9 +181,11 @@
           <div class="panel-bd text-xs text-muted" x-show="!crewMembers.length">검수자가 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
         </section>
       </div>
+      </template>
 
       <!-- ── 검수자 · 가용 일정 ───────────────────────────────────────────────── -->
-      <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'people'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'admin'">
+        <div x-show="adminTab === 'crew' && crewTab === 'people'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li>왼쪽은 <b>신고 일정</b>(관리자 입력 · 본인 확인), 오른쪽은 <b>실측 기록</b>입니다.</li>
           <li>상태가 휴가·교육 중·비활성이면 배정 대상에서 자동 제외됩니다.</li>
@@ -275,9 +280,11 @@
         </template>
         <div class="panel" x-show="!crewMembers.length"><div class="panel-bd text-xs text-muted">검수자가 없습니다 · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div></div>
       </div>
+      </template>
 
       <!-- ── 배정 ───────────────────────────────────────────────── -->
-      <div x-show="mod === 'admin' && adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'admin'">
+        <div x-show="adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>자동 배정</b>
           <span class="meta">검수자별 잔여 여력에 비례해 자동으로 나눕니다 · 휴가·교육 중·비활성·최종검수자는 제외</span>
           <span class="ds-badge ds-badge--neutral ml-auto" style="cursor:help"
@@ -452,6 +459,7 @@
           <div class="panel-bd text-xs text-muted" x-show="!(assignLog && assignLog.length)">배정 이력이 없습니다</div>
         </section>
       </div>
+      </template>
   <!-- 주간 본인 확인(전 검수자 · 주차가 넘어간 뒤 첫 로그인에 1회) ─────────────────
        주간 가용 시간은 '그 주의 약속'이라 지난주 확인은 이번 주 근거가 못 된다.
        닫기·ESC·바깥 클릭을 막아 확인해야 화면이 이어진다(사용자 결정 2026-07-28).

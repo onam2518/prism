@@ -1,6 +1,7 @@
       <!-- ═══ 모듈: 인입 정책 (전용 도구) ═══ -->
       <!-- 수집(인입) 정책: 정책 표 성격 → 사전·정책 메뉴에 통합 렌더 -->
-      <div x-show="mod === 'dict' && dictTab === 'policy'" x-cloak class="w-full space-y-4" style="margin-top:16px">
+      <template x-if="mod === 'dict'">
+        <div x-show="dictTab === 'policy'" x-cloak class="w-full space-y-4" style="margin-top:16px">
         <div class="ds-widget ds-widget--info" style="--w-accent:var(--ds-primary)">
           <div class="ds-widget__head"><div class="ds-widget__title"><span class="ds-widget__icon-chip"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>ITEM TYPE 처리 정책</span></div><div class="ds-widget__actions"><span class="ds-badge ds-badge--neutral">131</span><span class="text-xs text-muted">직접 수정 가능</span><span class="ds-widget__kind ds-widget__kind--info">정보</span></div></div>
           <div class="ds-widget__body">
@@ -29,6 +30,7 @@
           </div>
         </div>
       </div>
+      </template>
 
     </div>
   </div>

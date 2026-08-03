@@ -311,7 +311,8 @@
       </style>
 
       <!-- 상단: 알약 탭 → 헤더 카드(통계·처음부터) → 안내 박스 -->
-      <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root" x-init="caBoot()">
+      <template x-if="mod === 'lab'">
+        <div x-show="labTab === 'ca'" x-cloak class="w-full ca-root" x-init="caBoot()">
         <div class="ca-pills">
           <button type="button" class="sel">시연</button>
           <a class="ca-pill" href="https://claude.ai/code/artifact/627cc308-1a63-4137-86ce-cf96b267fd6e" target="_blank" rel="noopener">기획안 ↗</a>
@@ -341,9 +342,11 @@
           </div>
         </div>
       </div>
+      </template>
 
       <!-- 시연 무대: 홈 화면(+플로팅) → 매니저 시트 -->
-      <div x-show="mod === 'lab' && labTab === 'ca'" x-cloak class="w-full ca-root ca-stage ca-stagewrap" x-bind:class="caSkin==='dark'?'dark':''">
+      <template x-if="mod === 'lab'">
+        <div x-show="labTab === 'ca'" x-cloak class="w-full ca-root ca-stage ca-stagewrap" x-bind:class="caSkin==='dark'?'dark':''">
         <!-- 기기 목업(노트북·폰) · 화면은 프레임 안에서만 스크롤 -->
         <div class="ca-dev" x-bind:class="caDevice">
           <div class="bezel">
@@ -788,6 +791,7 @@
           <div class="base" x-show="caDevice==='pc'"></div>
         </div>
       </div>
+      </template>
 
       <!-- 토스트는 position:fixed 라 자리를 차지할 이유가 없는데, 래퍼가 .canvas 의 flex 아이템으로
            남아 화면마다 gap 한 칸(20px)을 더 벌리고 있었다 → display:contents 로 레이아웃에서 뺀다. -->

@@ -1,6 +1,7 @@
       <!-- ═══ 모듈: 품질 메타 ═══ -->
       <!-- ═══ 모듈: 실험실(관리자) · 지금 테스트하지 않는 탐구 요소 ═══ -->
-      <div x-show="mod === 'lab'" x-cloak class="w-full" style="margin-bottom:10px">
+      <template x-if="mod === 'lab'">
+        <div class="w-full" style="margin-bottom:10px">
         <div class="evaltabs">
           <button type="button" x-bind:class="labTab==='legal'?'sel':''" x-on:click="labTab='legal'">법령</button>
           <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
@@ -9,7 +10,9 @@
         </div>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
       </div>
-      <div x-show="mod === 'lab' && labTab === 'legal'" x-cloak class="w-full space-y-4">
+      </template>
+      <template x-if="mod === 'lab'">
+        <div x-show="labTab === 'legal'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
           <ul class="ds-bullets"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출).</li></ul>
           <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
@@ -36,4 +39,5 @@
           </div></div>
         </div>
       </div>
+      </template>
 

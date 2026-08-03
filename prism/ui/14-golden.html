@@ -1,11 +1,14 @@
       <!-- ═══ 모듈: 정답셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
-      <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
+      <template x-if="mod === 'testset'">
+        <div class="w-full" style="margin-bottom:10px"><div class="evaltabs">
         <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport(); loadActivity()">현황 · 학습 반영</button>
         <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
         <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
       </div></div>
+      </template>
       <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 용희(학습·평가) -->
-      <div x-show="mod === 'testset'" x-cloak class="w-full" style="margin-bottom:12px">
+      <template x-if="mod === 'testset'">
+        <div class="w-full" style="margin-bottom:12px">
         <div class="ds-guide">
           <span class="ds-guide__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span>
           <div class="ds-guide__bubble">
@@ -19,8 +22,10 @@
           </div>
         </div>
       </div>
+      </template>
       <!-- 정답셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
-      <div x-show="mod === 'testset' && testTab === 'status'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'testset'">
+        <div x-show="testTab === 'status'" x-cloak class="w-full space-y-4">
           <!-- 학습 반영 이력(실데이터 · verRows): 반영일 · 버전 · 반영 정답 · 일치율 -->
           <section class="panel" data-fn><div class="panel-hd"><b>학습 반영 이력</b><span class="meta">반영마다 프롬프트가 보정되고 버전이 오릅니다</span></div>
             <div class="panel-bd">
@@ -281,10 +286,12 @@
               </div>
             </div>
           </div>
-      </div><!-- /정답셋 관리 · 현황 -->
+      </div>
+      </template><!-- /정답셋 관리 · 현황 -->
 
 
-      <div x-show="mod === 'testset' && testTab === 'golden'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'testset'">
+        <div x-show="testTab === 'golden'" x-cloak class="w-full space-y-4">
         <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋 목록</b>
           <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수로 확정 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 직접 등록 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
           <span class="ml-auto" style="display:flex;gap:6px">
@@ -312,9 +319,11 @@
             </template>
           </div>
         </section>
-      </div><!-- /정답셋 목록 -->
+      </div>
+      </template><!-- /정답셋 목록 -->
       <!-- 학습 데이터: 항목별 카드(요약 | 내보내기 | 소요 산정 | 커버리지·신뢰도 | 오류 후보) · 용어는 호버 정의 -->
-      <div x-show="mod === 'testset' && testTab === 'data'" x-cloak class="w-full">
+      <template x-if="mod === 'testset'">
+        <div x-show="testTab === 'data'" x-cloak class="w-full">
         <div x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()" class="space-y-4">
         <section class="panel" data-fn>
             <div class="panel-hd"><b>학습 데이터 현황</b><span class="meta">특화 LLM 학습데이터 요약 · 용어는 항목에 마우스를 올리면 설명됩니다</span>
@@ -443,10 +452,12 @@
         </section>
         </template>
         </div>
-      </div><!-- /학습 데이터 -->
+      </div>
+      </template><!-- /학습 데이터 -->
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
-      <div x-show="mod === 'create' && createTab === 'raw'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'create'">
+        <div x-show="createTab === 'raw'" x-cloak class="w-full space-y-4">
         <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 복실(검수) -->
         <div class="ds-guide">
           <span class="ds-guide__av"><img src="/vendor/boksil-catcher.svg" alt=""></span>
@@ -606,5 +617,6 @@
             </div>
           </div>
         </section>
-      </div><!-- /콘텐츠 검수 · 원본 목록 -->
+      </div>
+      </template><!-- /콘텐츠 검수 · 원본 목록 -->
 

@@ -1,12 +1,15 @@
       <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대상 콘텐츠(기본) | 결과 비교 ═══ -->
-      <div x-show="mod === 'create'" x-cloak class="w-full" style="margin-bottom:10px"><div class="evaltabs">
+      <template x-if="mod === 'create'">
+        <div class="w-full" style="margin-bottom:10px"><div class="evaltabs">
         <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
         <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadModelStats(); loadRaw()">결과 비교</button>
         <button type="button" x-show="isFinalReviewer || opsAdmin" x-bind:class="createTab==='final'?'sel':''" x-on:click="createTab='final'; loadFinalQueue()">최종 검수 <span class="tnum" x-show="finalQueue && finalQueue.n" x-text="'(' + (finalQueue ? finalQueue.n : 0) + ')'"></span></button>
       </div></div>
+      </template>
 
       <!-- 최종 검수(2층): 기초 검수를 거쳤지만 골든으로 확정되지 못한 미확정분 · 편입/제외 결정 -->
-      <div x-show="mod === 'create' && createTab === 'final'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'create'">
+        <div x-show="createTab === 'final'" x-cloak class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>최종 검수</b><span class="meta tnum" x-text="finalQueue ? (finalQueue.n + '건 대기') : ''"></span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadFinalQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="최종 검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           <div class="panel-bd">
@@ -116,8 +119,10 @@
           </div>
         </div>
       </div>
+      </template>
 
-      <div x-show="mod === 'create' && createTab === 'edit'" x-cloak class="w-full">
+      <template x-if="mod === 'create'">
+        <div x-show="createTab === 'edit'" x-cloak class="w-full">
         <div class="space-y-4">
           <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 복실(검수) -->
           <div class="ds-guide">
@@ -193,6 +198,7 @@
           </section>
         </div>
       </div>
+      </template>
 
       <!-- 콘텐츠별 초안 비교 팝업 -->
       <div class="ds-dialog-backdrop" x-show="cmpModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="cmpModalOpen=false" style="z-index:74">

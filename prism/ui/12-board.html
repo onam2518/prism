@@ -1,5 +1,6 @@
       <!-- ═══ 모듈: 게시판 · 기능개선 제안 + 오류 제보(팀 스코프) ═══ -->
-      <div x-show="mod === 'board'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'board'">
+        <div class="w-full space-y-4">
         <div class="panel"><div class="panel-hd"><b>새 글 등록</b><span class="meta">기능개선 제안 · 오류 제보 · 우리 팀에만 공개</span></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2">
@@ -74,4 +75,5 @@
           </div>
         </div>
       </div>
+      </template>
 
