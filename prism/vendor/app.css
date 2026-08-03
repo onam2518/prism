@@ -303,6 +303,16 @@
   .panel,.ds-widget{border-color:var(--ds-hairline)}
   .panel{box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 20px -10px rgba(0,0,0,.10),0 26px 50px -26px rgba(0,0,0,.15),var(--ds-highlight)}
   .panel:hover{box-shadow:0 2px 4px rgba(0,0,0,.05),0 14px 30px -12px rgba(0,0,0,.15),0 36px 64px -28px rgba(0,0,0,.22),var(--ds-highlight);transform:translateY(-3px)}
+  /* 호버 리프트 vs position:fixed 드롭다운(2026-08-03).
+     transform 이 걸린 조상은 fixed 자식의 기준(포함 블록)이 된다 — 뷰포트가 아니라 그 패널이다.
+     그래서 mpMenuBox 가 잰 화면 좌표를 그대로 쓰면 패널 왼쪽 위를 원점으로 다시 더해져 화면 밖으로 나간다.
+     버튼을 누르는 순간은 반드시 그 패널 위에 커서가 있으므로 필터·모델 드롭다운이 항상 이 경우에 걸렸다
+     (증상: 눌러도 안 보이다가, 커서를 패널 밖으로 빼면 제자리로 튀어나오고 곧 바깥 클릭으로 닫힘).
+     열린 드롭다운을 품고 있는 동안에는 리프트를 멈춰 기준을 뷰포트로 되돌린다.
+     ※ position:fixed 로 띄우는 팝오버를 새로 만들면 여기에 '열림 상태' 선택자를 추가할 것
+       (tests/test_popover_anchor.py 가 강제한다). */
+  .panel:hover:has(.fpop__btn.is-open),
+  .panel:hover:has(.mpick__btn[aria-expanded="true"]){transform:none}
   .ds-widget{box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 20px -10px rgba(0,0,0,.10),0 24px 46px -26px rgba(0,0,0,.14),var(--ds-highlight)}
   .ds-stat{background:linear-gradient(180deg,var(--ds-surface-white),var(--ds-surface));
     box-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 1px 2px rgba(0,0,0,.04),0 6px 16px -12px rgba(0,0,0,.16);
