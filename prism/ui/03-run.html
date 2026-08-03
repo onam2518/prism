@@ -1,5 +1,6 @@
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
-      <div x-show="mod === 'content' && contentTab === 'run'" class="w-full space-y-4">
+      <template x-if="mod === 'content'">
+        <div x-show="contentTab === 'run'" class="w-full space-y-4">
 
         <!-- 콘텐츠 추가 = 저장만(미실행 대기) · 초안 생성은 STEP 2 모델 실행이 담당 -->
         <section class="panel" data-fn>
@@ -127,4 +128,5 @@
           </div></div>
         </div>
       </div>
+      </template>
 

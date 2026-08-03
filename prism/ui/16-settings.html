@@ -1,5 +1,6 @@
       <!-- ═══ 모듈: 시스템 설정(운영 관리자) · 데이터 관리(상단) + API 키·모델(하단) ═══ -->
-      <div x-show="mod === 'system'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'system'">
+        <div class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>데이터 관리</b><span class="meta">삭제는 되돌릴 수 없습니다 · 우리 팀 데이터만 영향</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:12px"><li>삭제는 <b>되돌릴 수 없습니다</b> · 우리 팀 데이터만 영향합니다.</li><li>평가 피드백을 삭제해도 <b>게임 점수·레벨은 자동 보존</b>됩니다(적립 전환) · 점수를 비우려면 <b>게임 점수 초기화</b>를 쓰세요.</li><li>로컬 적재 데이터 초기화는 <b>이 기기</b>의 SQLite 에만 영향합니다.</li></ul>
@@ -94,4 +95,5 @@
         </section>
 
       </div>
+      </template>
 

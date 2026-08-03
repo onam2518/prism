@@ -1,5 +1,6 @@
       <!-- ═══ 모듈: 미디어 (이미지·영상 → 메타 추출) ═══ -->
-      <div x-show="mod === 'lab' && labTab === 'media'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'lab'">
+        <div x-show="labTab === 'media'" x-cloak class="w-full space-y-4">
         <!-- 하위 탭: 입력 양식별(이미지 · 영상) · 해당 양식만 노출 -->
         <div class="evaltabs">
           <button type="button" x-bind:class="mediaTab==='image'?'sel':''" x-on:click="mediaTab='image'">이미지</button>
@@ -130,3 +131,4 @@
           </div>
         </div>
       </div>
+      </template>

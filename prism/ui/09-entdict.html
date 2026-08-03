@@ -1,5 +1,6 @@
       <!-- ═══ 모듈: 엔티티 사전 · 개체 고유키·타입(NER 6종)·속성 관리 (사전·정책 · 엔티티 탭) ═══ -->
-      <div x-show="mod === 'dict' && dictTab === 'entity'" x-cloak class="w-full space-y-4">
+      <template x-if="mod === 'dict'">
+        <div x-show="dictTab === 'entity'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3 flex-wrap">
           <ul class="ds-bullets">
             <li>콘텐츠 적재 시 엔티티가 <b>개체 사전에 자동 등재</b>됩니다 · 개체당 고유키 1개, 타입·속성은 등록 시 1회 부여(재판정 없음).</li>
@@ -66,4 +67,5 @@
           </div>
         </div>
       </div>
+      </template>
 

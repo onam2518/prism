@@ -1,8 +1,11 @@
       <!-- ═══ 모듈: 콘텐츠 관리 · STEP 2 모델 실행(처리 대기) ═══ -->
-      <div x-show="mod === 'content'" x-cloak class="w-full" style="margin:18px 0 12px">
+      <template x-if="mod === 'content'">
+        <div class="w-full" style="margin:18px 0 12px">
         <div class="stepline"><span class="stepline__no">STEP 2</span><b>모델 실행</b><span class="meta">모은 콘텐츠에 모델을 실행해 초안을 만듭니다</span></div>
       </div>
-      <div x-show="mod === 'content'" x-cloak class="w-full space-y-4">
+      </template>
+      <template x-if="mod === 'content'">
+        <div class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>추가된 콘텐츠(자동·수동 불문)에 <b>모델을 실행</b>해 검수용 초안을 만듭니다(수동 실행).</li>
           <li>실행 결과는 버전 <b class="text-ink tnum" x-text="verTxt"></b> 로 기록됩니다(버전 = 학습 반영 회차 + 1).</li>
@@ -49,3 +52,4 @@
 
 
       </div>
+      </template>

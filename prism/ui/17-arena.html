@@ -1,5 +1,6 @@
       <!-- ═══ 모듈: 평가 아레나 (게임화) · 팀 정확도 협동 스코어 + 리더보드 ═══ -->
-      <div x-show="mod === 'home' || mod === 'arena'" x-cloak class="w-full space-y-4" style="order:-1">
+      <template x-if="mod === 'home' || mod === 'arena'">
+        <div class="w-full space-y-4" style="order:-1">
         <!-- 시작하기(빈 홈 온보딩): 권한별 3분할 카드 · 구성은 팀 가이드(사용자/관리자) STEP 순서 기준 -->
         <section class="panel" x-show="starterVisible" x-cloak>
           <div class="panel-hd"><b>시작하기</b>
@@ -198,4 +199,5 @@
           </section>
         </div>
       </div>
+      </template>
 
