@@ -487,17 +487,57 @@
         </div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px" x-show="rawModel" x-cloak><li>현재 <b class="text-ink" x-text="rawModel"></b> 초안만 표시 중입니다.</li></ul>
-            <!-- 필터: 검색 + 등급/서비스/검수 상태 -->
+            <!-- 필터: 검색 + '필터' 버튼 하나(2026-08-03 통합).
+                 이전엔 등급·서비스·검수 상태·분류 부족 우선이 상단에 늘어서 폭이 좁아지면 줄이 접히고
+                 검색창이 뭉개졌다. 자주 쓰는 검색만 남기고 나머지 조건은 팝오버 한 곳으로 모은다.
+                 패널이 overflow:hidden 이라 absolute 로 띄우면 잘린다 → mpMenuBox 로 position:fixed(모델 선택과 같은 규약). -->
             <div class="filterbar">
               <input class="field" placeholder="제목·카테고리·사유 검색" x-model="rawQ">
-              <select class="field" style="width:auto" x-model="rawGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
-              <select class="field" style="width:auto" x-model="rawSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
-              <!-- 기본 '미검수': 내가 판정한 건은 감춘다(할 일 목록) · 완료분은 아래 힌트나 이 필터로 다시 본다 -->
-              <select class="field" style="width:auto" x-model="rawRev" x-on:change="rawRevPick($event.target.value)"><option value="todo">미검수</option><option value="">검수 전체</option><option value="done">검수 완료</option></select>
-              <button type="button" class="srcfilter__chip" x-bind:class="rawGapFirst ? 'sel' : ''" x-on:click="rawGapFirst = !rawGapFirst" data-tip="정답셋이 부족한 분류의 콘텐츠를 앞으로 올립니다 · 이 분류의 검수가 정답셋 채우기에 더 기여해요" data-tip-pos="top">분류 부족 우선</button>
+              <div class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false"
+                   x-on:click.outside="fpOpen=false" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
+                <button type="button" class="fpop__btn" x-bind:class="(fpOpen ? 'is-open' : '') + (rawFilterN ? ' is-on' : '')"
+                        x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el)"
+                        x-bind:aria-expanded="fpOpen ? 'true' : 'false'" aria-haspopup="dialog"
+                        data-tip="등급·서비스·검수 상태·배정 조건을 한곳에서 지정합니다" data-tip-pos="top">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <span>필터</span>
+                  <span class="fpop__n tnum" x-show="rawFilterN" x-cloak x-text="rawFilterN"></span>
+                </button>
+                <div class="fpop__panel" x-show="fpOpen" x-cloak x-bind:style="fpBox" x-on:click.stop role="dialog" aria-label="검수 대상 필터">
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="fp-grade">등급</label>
+                    <select id="fp-grade" class="field" x-model="rawGrade"><option value="">전체</option><option value="G">G</option><option value="R">R</option></select>
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="fp-svc">서비스</label>
+                    <select id="fp-svc" class="field" x-model="rawSvc"><option value="">전체</option><template x-for="sv in rawSvcs" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+                  </div>
+                  <!-- 기본 '미검수': 내가 판정한 건은 감춘다(할 일 목록) · 완료분은 아래 힌트나 이 필터로 다시 본다 -->
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="fp-rev">검수 상태</label>
+                    <select id="fp-rev" class="field" x-model="rawRev" x-on:change="rawRevPick($event.target.value)"><option value="todo">미검수</option><option value="">검수 전체</option><option value="done">검수 완료</option></select>
+                  </div>
+                  <!-- 기본 숨김을 눈에 보이게: 완료분이 사라진 게 아니라 감춰졌다는 신호 + 한 번에 펼치기 -->
+                  <button type="button" class="fpop__hint" x-show="rawDoneHidden" x-cloak x-on:click="rawRevPick('')"
+                          x-text="'내가 판정한 ' + rawDoneHidden + '건이 감춰져 있습니다 · 전체 보기'"></button>
+                  <div class="fpop__sep"></div>
+                  <!-- 내 배정분만: 여럿이 나눠 맡은 날 '내가 맡은 것'만 추려 보는 용도(미배정분은 빠진다) -->
+                  <button type="button" class="fpop__chk" x-bind:class="rawMineOnly ? 'is-on' : ''" x-on:click="rawMineOnly = !rawMineOnly" x-bind:aria-pressed="rawMineOnly ? 'true' : 'false'">
+                    <span class="fpop__box" aria-hidden="true"></span>
+                    <span><b>나에게 지정된 콘텐츠만</b><span class="fpop__sub">배정된 검수자가 나인 건만 봅니다 · 미배정분은 빠집니다</span></span>
+                  </button>
+                  <button type="button" class="fpop__chk" x-bind:class="rawGapFirst ? 'is-on' : ''" x-on:click="rawGapFirst = !rawGapFirst" x-bind:aria-pressed="rawGapFirst ? 'true' : 'false'">
+                    <span class="fpop__box" aria-hidden="true"></span>
+                    <span><b>분류 부족 우선</b><span class="fpop__sub">정답셋이 부족한 분류를 앞으로 올립니다 · 검수 기여도가 더 큽니다</span></span>
+                  </button>
+                  <div class="fpop__ft">
+                    <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
+                    <button type="button" class="copybtn" x-bind:disabled="!rawFilterN" x-on:click="rawFilterReset()">필터 초기화</button>
+                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="fpOpen=false">닫기</button>
+                  </div>
+                </div>
+              </div>
               <span class="text-xs text-muted tnum" x-text="rawFiltered.length + ' / ' + ((rawData&&rawData.n)||0) + '건'"></span>
-              <!-- 기본 숨김을 눈에 보이게: 완료분이 사라진 게 아니라 감춰졌다는 신호 + 한 번에 펼치기 -->
-              <button type="button" class="copybtn" x-show="rawDoneHidden" x-cloak x-on:click="rawRevPick('')" data-tip="내가 판정한 건은 기본으로 감춥니다 · 누르면 전체를 봅니다" data-tip-pos="top" x-text="'검수 완료 ' + rawDoneHidden + '건 숨김 · 보기'"></button>
               <span class="ds-badge ds-badge--neutral" style="cursor:help" x-bind:data-tip="rawGapFirst ? '부족 분류 먼저 · 그 안에서는 최근 실행순' : '정렬 기준 · 최근 실행순. 의견 갈림(불일치)·YELLOW 는 행 배지로 표시됩니다'" data-tip-pos="top" x-text="rawGapFirst ? '부족 분류 우선' : '최근순'"></span>
             </div>
             <div class="overflow-auto" style="max-height:420px"><table class="ds-table"><thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:100px">서비스</th><th>카테고리</th><th>사유</th><th style="width:130px">검수</th><th style="width:150px" x-show="assignAdmin" data-tip="검수 담당자 배정 · 배정 시 담당자에게만 노출됩니다" data-tip-pos="top">담당</th></tr></thead><tbody>
