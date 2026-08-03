@@ -88,7 +88,7 @@
         </div>
         <div x-show="entEdit && entEdit.type" x-cloak>
           <label class="lbl">속성 (저장 시 수동 확정 · 위키데이터 재보강이 덮어쓰지 않음)</label>
-          <div class="space-y-2">
+          <div class="stack-2">
             <template x-for="f in entAttrFields()" x-bind:key="'ef'+f[0]">
               <div class="flex items-center gap-2">
                 <span class="text-xs text-muted" style="width:110px;flex:none" x-text="f[1]"></span>
@@ -385,18 +385,24 @@
           <div class="dve__sec" x-show="entLowOpen && entsLow().length" x-cloak>
             <div class="dve__lbl">이 엔티티가 콘텐츠와 관련 있나요?
               <span class="text-xs text-muted" style="font-weight:400">· 답만 남고 콘텐츠는 바뀌지 않습니다 · 모인 답으로 확신도 기준을 다시 맞춥니다</span></div>
-            <div class="flex flex-col gap-1">
+            <!-- 시안 A(2026-08-03): 행 하나 = 엔티티 하나 · 컬럼 폭을 고정해 이름 길이와 무관하게
+                 버튼이 같은 자리에 선다. 이전엔 tw 유틸리티 flex/flex-col 로 세로 스택을 의도했는데
+                 사전 빌드된 tw.css 에 .flex-col 이 없어(빌드가 마크업보다 뒤처짐) 행들이 가로로 서고
+                 이름 길이마다 제각각 접혀 버튼·집계가 어긋났다. 유틸리티 의존을 끊고 전용 클래스로 둔다. -->
+            <div class="entlab">
               <template x-for="se in entsLow()" x-bind:key="'el'+se.name">
-                <div class="flex items-center gap-2" style="flex-wrap:wrap">
-                  <span class="ds-badge ds-badge--neutral" style="opacity:.75" x-text="se.name"></span>
+                <div class="entlab__row">
+                  <span class="entlab__nm"><span class="ds-badge ds-badge--neutral" style="opacity:.75" x-bind:title="se.name" x-text="se.name"></span></span>
                   <span class="text-xs text-muted tnum" x-text="entConfLabel(se)"></span>
-                  <button type="button" class="srcfilter__chip" x-bind:class="entLabelOf(se.name)==='y' ? 'sel' : ''"
-                          x-bind:disabled="entLabelBusy === se.name"
-                          x-on:click="setEntLabel(se.name, 'y')">관련 있음</button>
-                  <button type="button" class="srcfilter__chip" x-bind:class="entLabelOf(se.name)==='n' ? 'sel' : ''"
-                          x-bind:disabled="entLabelBusy === se.name"
-                          x-on:click="setEntLabel(se.name, 'n')">관련 없음</button>
-                  <span class="text-xs text-muted tnum" x-show="entLabelCount(se.name)" style="cursor:help"
+                  <span class="entlab__yn">
+                    <button type="button" class="srcfilter__chip" x-bind:class="entLabelOf(se.name)==='y' ? 'sel' : ''"
+                            x-bind:disabled="entLabelBusy === se.name"
+                            x-on:click="setEntLabel(se.name, 'y')">관련 있음</button>
+                    <button type="button" class="srcfilter__chip" x-bind:class="entLabelOf(se.name)==='n' ? 'sel' : ''"
+                            x-bind:disabled="entLabelBusy === se.name"
+                            x-on:click="setEntLabel(se.name, 'n')">관련 없음</button>
+                  </span>
+                  <span class="text-xs text-muted tnum entlab__ct" x-show="entLabelCount(se.name)" style="cursor:help"
                         data-tip="관련 있음 표 / 전체 표 · 여러 검수자의 답이 모이면 합의된 것만 정답으로 씁니다" data-tip-pos="top"
                         x-text="entLabelCount(se.name)"></span>
                 </div>
