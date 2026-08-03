@@ -19,6 +19,7 @@ import time
 from . import imagext as IMG
 from . import pipeline as PIPE
 from .config import Config
+from .schema import normalize_image_urls
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
 
@@ -40,6 +41,22 @@ def _build_id() -> str:
         return "dev " + time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(__file__)))
     except Exception:
         return "dev"
+
+
+def img_coverage(contents) -> dict:
+    """인입 묶음의 참조 이미지 URL 적재율(게시판 #9 · 조용한 유실 관측).
+
+    운영 400건이 전부 image_urls 빈 목록이었는데도 아무 신호가 없었다(재실행 경로가
+    []로 덮어쓰는 결함 · 2026-08-03). 인입 건수 옆에 '이미지 N/M건'을 같이 남겨
+    0건이면 실행 큐에서 바로 보이게 한다. 반환 {n, with_images}."""
+    rows = contents or []
+    return {"n": len(rows), "with_images": sum(1 for c in rows if (c or {}).get("image_urls"))}
+
+
+def _img_note(contents) -> str:
+    """실행 큐 메시지 꼬리표. 건수가 0이면 붙이지 않는다."""
+    s = img_coverage(contents)
+    return f" · 이미지 {s['with_images']}/{s['n']}건" if s["n"] else ""
 
 
 def _save_drafts(st, pairs, team=None):
@@ -105,10 +122,15 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
     for c in rows:
         uniq[_chash(c)] = c
     dropped = len(rows) - len(uniq)
-    rows = list(uniq.values())
+    # 참조 이미지 URL 정규화(http(s)·중복 제거·상한)를 인입 경로 공통으로. 원본 dict 는 건드리지 않는다.
+    rows = [dict(c, image_urls=normalize_image_urls(c.get("image_urls") or c.get("images")))
+            for c in uniq.values()]
     pairs = [(c, {"content_ref": {"displayServiceName": c.get("displayServiceName", ""),
                                   "title": c.get("title", ""), "subtitle": c.get("subtitle", ""),
                                   "source_url": _SV._safe_url(c.get("source_url", "") or c.get("url", "")),
+                                  # 참조 이미지 URL(게시판 #9) · sqlite 는 payload.content_ref 가 유일한
+                                  # 보존처라 여기서 빠지면 STEP 1 추가분의 이미지가 사라진다
+                                  "image_urls": list(c.get("image_urls") or []),
                                   "body": c.get("body", ""), "body_hash": _chash(c)},
                   "quality_meta": {}, "item_meta": {}, "trace": {}}) for c in rows]
     saved = store_save(pairs, source=source, team=team)
@@ -118,7 +140,8 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
     with _SV._INGEST_LOCK:                                   # 키 삽입은 상태 순회와 레이스 · 락 필수
         _SV._INGEST_STATE[jid] = {"name": source, "endpoint": "", "kind": "콘텐츠 추가", "started": time.time(),
                               "running": False, "total": len(rows), "done": len(rows), "failed": 0,
-                              "last_run": time.time(), "last_msg": f"{len(rows)}건 추가 · 미실행 대기(STEP 2에서 실행)",
+                              "last_run": time.time(),
+                              "last_msg": f"{len(rows)}건 추가 · 미실행 대기(STEP 2에서 실행)" + _img_note(rows),
                               "last_ok": True, "trigger": "manual", "hashes": [_chash(c) for c in rows]}
     if (purpose or "") == "eval":
         try:
@@ -128,6 +151,7 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
         except Exception:
             pass
     return {"ok": True, "added": len(rows), "pending": True,
+            "with_images": img_coverage(rows)["with_images"],   # 이미지 유실 관측(게시판 #9)
             **({"duplicates": dropped} if dropped else {})}
 
 
@@ -142,6 +166,10 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
         llm = _SV.make_text_llm(cfg, mock)       # 텍스트 슬롯(solar|router). 무키면 내부서 mock
 
     # 업로드 순서(image0, image1, …) = 가중치 순서. 첫 장이 대표.
+    # 참조 이미지 URL(게시판 #9 · 추출 입력 아님 · 해시 불포함). 업로드 파일(image0…)과 달리
+    # 문자열/목록이며, 여기서 content 에 실어 주지 않으면 저장 계층(supastore.sync_contents 는
+    # out.content_ref 가 아니라 content 를 읽는다)이 image_urls 를 [] 로 덮어써 수집 이미지가 사라진다.
+    ref_images = normalize_image_urls(fields.get("image_urls") or fields.get("images"))
     imgs = [(k, v) for k, v in fields.items()
             if isinstance(v, dict) and v.get("bytes") and k.startswith("image")]
     imgs.sort(key=lambda kv: int(re.sub(r"\D", "", kv[0]) or 0))
@@ -166,6 +194,8 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
         _su = fields.get("source_url", "") or fields.get("url", "")
         if _su:                                   # 원문 링크(참조 · 정체성 해시 불변)
             content["source_url"] = _su
+        if ref_images:
+            content["image_urls"] = ref_images
     else:
         content = {
             "displayServiceName": fields.get("displayServiceName", ""),
@@ -174,6 +204,7 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
             "body": fields.get("body", ""),
             # 참조용 원문 링크 · 해시(서비스+제목+부제+본문) 불포함이라 정체성 무변
             "source_url": fields.get("source_url", "") or fields.get("url", ""),
+            "image_urls": ref_images,             # 참조용 이미지 URL · 위와 같은 참조 패턴
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
@@ -335,7 +366,11 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
     ref = row.get("content_ref") or {}
     fields = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
               "subtitle": ref.get("subtitle", ""), "body": ref.get("body", ""),
-              "source_url": ref.get("source_url", "")}   # 재실행 upsert 가 원문 링크를 지우지 않게 보존
+              "source_url": ref.get("source_url", ""),   # 재실행 upsert 가 원문 링크를 지우지 않게 보존
+              # 이미지 URL도 동일하게 되실어야 한다(게시판 #9). 빠뜨리면 STEP 2 모델 실행(=일괄
+              # 재실행)이 STEP 1 에서 들어온 수집 이미지를 매번 [] 로 덮어썼다 —
+              # 운영 400건이 전부 source='재실행' · image_urls 빈 목록이던 원인(2026-08-03).
+              "image_urls": list(ref.get("image_urls") or [])}
     if _SV.quest_active() and not _SV._is_pending_row(row) and not force_quest:
         return {"error": "퀘스트 진행 중에는 검수 중 콘텐츠의 초안 재실행이 차단됩니다 · "
                          "반영 후 실행하거나 검수 목표 카드에서 목표를 해제하세요"}
@@ -493,7 +528,7 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
             _SV._job_end(jid, False, f"{len(results)}건 추출 후 중단 · {str(e)[:80]}")
             raise
         store_save(pairs, source="배치", team=team)  # 영속 저장(단일 트랜잭션 배치)
-        _SV._job_end(jid, True, f"{len(results)}건 추출 · 저장 완료")
+        _SV._job_end(jid, True, f"{len(results)}건 추출 · 저장 완료" + _img_note(contents))
         if (purpose or "") == "eval":               # 평가용 지정: 검수 대상에서 제외(홀드아웃)
             try:
                 from .store import content_hash as _chash
@@ -503,7 +538,8 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
             except Exception:
                 pass
         return {"source": "excel", "mock": llm.mock, "count": len(results),
-                "mapping": a["mapping"], "items": items}
+                "mapping": a["mapping"], "items": items,
+                "with_images": img_coverage(contents)["with_images"]}   # 이미지 유실 관측(게시판 #9)
     finally:
         try:
             os.remove(tmp)

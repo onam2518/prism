@@ -5,6 +5,7 @@
 
 실행: python3 -m pytest tests/ -q  (stdlib unittest · 의존성 0)
 """
+import json
 import os
 import sys
 import tempfile
@@ -117,17 +118,206 @@ class TestReviewDetailImages(unittest.TestCase):
 
 
 class TestSupastoreSync(unittest.TestCase):
-    def test_sync_contents_row_includes_image_urls(self):
+    def _fake_store(self, captured):
         from prism.supastore import SupabaseStore
-        captured = {}
         st = SupabaseStore.__new__(SupabaseStore)         # 네트워크 없이 행 구성만 검증
         st._upsert = lambda table, rows: captured.update(table=table, rows=rows)
+        return st
+
+    def test_sync_contents_row_includes_image_urls(self):
+        captured = {}
+        st = self._fake_store(captured)
         content = {"displayServiceName": "카페", "title": "t", "subtitle": "", "body": "b",
                    "image_urls": ["https://x.com/1.jpg"]}
         out = {"quality_meta": {"finalGrade": "G", "review": "yellow"}, "item_meta": {}, "trace": {}}
         n = st.sync_contents([(content, out)])
         self.assertEqual(n, 1)
         self.assertEqual(captured["rows"][0]["image_urls"], ["https://x.com/1.jpg"])
+
+    def test_upsert_row_always_writes_image_urls_column(self):
+        """계약 고정: 행은 out.content_ref 가 아니라 content 를 읽고, image_urls 를 항상 싣는다.
+        = 이미지 없는 content 로 upsert 하면 기존 값이 [] 로 덮인다. 그래서 재실행처럼
+        content 를 재구성하는 호출자는 반드시 image_urls 를 되실어야 한다(2026-08-03 유실 원인)."""
+        captured = {}
+        st = self._fake_store(captured)
+        content = {"displayServiceName": "카페", "title": "t", "subtitle": "", "body": "b"}
+        out = {"content_ref": {"image_urls": ["https://x.com/keep.jpg"]},   # ref 는 읽지 않는다
+               "quality_meta": {"finalGrade": "G"}, "item_meta": {}, "trace": {}}
+        st.sync_contents([(content, out)], include_all=True)
+        row = captured["rows"][0]
+        self.assertIn("image_urls", row)                  # 컬럼이 payload 에 늘 있으니 덮어쓰기다
+        self.assertEqual(row["image_urls"], [])
+
+
+class TestRunPipelineCarriesImages(unittest.TestCase):
+    """단건 실행(/run)이 참조 이미지 URL 을 content 에 싣는다.
+    종전에는 텍스트 분기가 4필드+source_url 만 재구성해 이미지가 저장 계층에 닿지 못했다."""
+
+    def test_text_branch_keeps_and_sanitizes(self):
+        from prism import serve
+        res = serve.run_pipeline({"displayServiceName": "카페", "title": "제목", "body": "본문",
+                                  "image_urls": "https://x.com/1.jpg, javascript:alert(1)"},
+                                 mock=True, persist=False)
+        self.assertEqual(res["content"]["image_urls"], ["https://x.com/1.jpg"])
+
+    def test_text_branch_defaults_to_empty_list(self):
+        from prism import serve
+        res = serve.run_pipeline({"displayServiceName": "카페", "title": "제목", "body": "본문"},
+                                 mock=True, persist=False)
+        self.assertEqual(res["content"]["image_urls"], [])
+
+    def test_images_alias_accepted(self):
+        from prism import serve
+        res = serve.run_pipeline({"displayServiceName": "카페", "title": "제목", "body": "본문",
+                                  "images": ["https://x.com/a.jpg"]}, mock=True, persist=False)
+        self.assertEqual(res["content"]["image_urls"], ["https://x.com/a.jpg"])
+
+
+class ImagePathBase(unittest.TestCase):
+    IMGS = ["https://x.com/1.jpg", "https://x.com/2.jpg"]
+    CONTENT = {"displayServiceName": "카페", "title": "사진 있는 글", "subtitle": "",
+               "body": "본문", "source_url": "https://cafe.daum.net/x/1", "image_urls": IMGS}
+
+    def _serve(self):
+        from prism import serve
+        from prism.store import Store
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve._INGEST_STATE.clear()
+        orig_mock = serve.Handler.server_mock
+        serve.Handler.server_mock = True                  # 외부 호출 0(결정론 mock)
+        self.addCleanup(serve._INGEST_STATE.clear)
+        self.addCleanup(lambda: setattr(serve.Handler, "server_mock", orig_mock))
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        self.addCleanup(serve._agg_bump)
+        return serve
+
+    def _images_of(self, serve, title):
+        for r in serve.results_rows():
+            if (r.get("content_ref") or {}).get("title") == title:
+                return (r["content_ref"] or {}).get("image_urls")
+        return None
+
+
+class TestStepOneAddKeepsImages(ImagePathBase):
+    def test_add_contents_content_ref_carries_images(self):
+        serve = self._serve()
+        r = serve.add_contents([dict(self.CONTENT)], source="배치")
+        self.assertTrue(r.get("ok"))
+        self.assertEqual(self._images_of(serve, self.CONTENT["title"]), self.IMGS)
+
+    def test_add_contents_normalizes_and_counts(self):
+        serve = self._serve()
+        r = serve.add_contents([dict(self.CONTENT, image_urls="https://x.com/1.jpg,ftp://x/2.jpg"),
+                                dict(self.CONTENT, title="사진 없는 글", image_urls=[])],
+                               source="배치")
+        self.assertEqual(self._images_of(serve, self.CONTENT["title"]), ["https://x.com/1.jpg"])
+        self.assertEqual(self._images_of(serve, "사진 없는 글"), [])
+        self.assertEqual(r["with_images"], 1)             # 적재율 관측(조용한 0건 재발 방지)
+
+    def test_add_does_not_mutate_caller_dict(self):
+        serve = self._serve()
+        src = dict(self.CONTENT, image_urls="https://x.com/1.jpg")
+        serve.add_contents([src], source="배치")
+        self.assertEqual(src["image_urls"], "https://x.com/1.jpg")
+
+    def test_job_message_reports_image_coverage(self):
+        serve = self._serve()
+        serve.add_contents([dict(self.CONTENT)], source="배치")
+        msgs = [j["last_msg"] for j in serve.ingest_status()["jobs"] if j["kind"] == "콘텐츠 추가"]
+        self.assertTrue(any("이미지 1/1건" in m for m in msgs), msgs)
+
+
+class TestRerunKeepsImages(ImagePathBase):
+    """운영 유실의 재현·회귀: STEP 1 추가(이미지 있음) → STEP 2 모델 실행(=일괄 재실행).
+    재실행이 ref 의 image_urls 를 되싣지 않아 저장 계층이 매번 [] 로 덮어썼고,
+    운영 400건이 전부 source='재실행' 이라 한 건도 이미지가 남지 않았다(2026-08-03)."""
+
+    def test_batch_run_after_add_keeps_images(self):
+        serve = self._serve()
+        serve.add_contents([dict(self.CONTENT)], source="배치")
+        self.assertEqual(self._images_of(serve, self.CONTENT["title"]), self.IMGS)   # STEP 1
+        r = serve.rerun_all("", None, scope="pending")                               # STEP 2
+        self.assertEqual(r.get("done"), 1, r)
+        self.assertEqual(self._images_of(serve, self.CONTENT["title"]), self.IMGS)   # 실행 후에도
+
+    def test_rerun_hands_images_to_pipeline(self):
+        """재실행이 파이프라인에 넘기는 입력에 이미지가 실린다 — supabase 는 이 content 를
+        그대로 행으로 쓰므로(위 계약 테스트) 여기서 빠지면 곧바로 덮어쓰기가 된다."""
+        import prism.runops as RN
+        serve = self._serve()
+        serve.add_contents([dict(self.CONTENT)], source="배치")
+        ch = None
+        for r in serve.results_rows():
+            if (r.get("content_ref") or {}).get("title") == self.CONTENT["title"]:
+                ch = serve._row_key(r["content_ref"])
+        captured = {}
+        orig = RN.run_pipeline
+        RN.run_pipeline = lambda fields, **k: (captured.update(fields=fields), {
+            "output": {"content_ref": {}, "quality_meta": {"finalGrade": "G"},
+                       "item_meta": {"summary": "s"}, "trace": {"model": "m1"}}})[1]
+        self.addCleanup(lambda: setattr(RN, "run_pipeline", orig))
+        serve.rerun_content(ch, "m1")
+        self.assertEqual(captured["fields"]["image_urls"], self.IMGS)
+
+
+class TestBatchUploadKeepsImages(ImagePathBase):
+    def _csv(self):
+        return ("콘텐츠 그룹,제목,본문,이미지 URL\n"
+                "카페,사진 있는 글,본문,\"https://x.com/1.jpg,https://x.com/2.jpg\"\n"
+                "카페,사진 없는 글,본문2,\n").encode("utf-8")
+
+    def test_add_only_upload_keeps_images(self):
+        serve = self._serve()
+        r = serve.run_batch(self._csv(), "u.csv", add_only=True)
+        self.assertEqual(r.get("mapping", {}).get("image_urls"), "이미지 URL")
+        self.assertEqual(self._images_of(serve, "사진 있는 글"), self.IMGS)
+        self.assertEqual(self._images_of(serve, "사진 없는 글"), [])
+        self.assertEqual(r["with_images"], 1)
+
+    def test_extract_upload_keeps_images(self):
+        serve = self._serve()
+        r = serve.run_batch(self._csv(), "u.csv")
+        self.assertEqual(r["with_images"], 1)
+        self.assertEqual(self._images_of(serve, "사진 있는 글"), self.IMGS)
+
+
+class TestSingleAddRouteKeepsImages(unittest.TestCase):
+    """/run?add_only=1 의 필드 화이트리스트에 image_urls 가 없어 단건 추가는 항상 유실됐다."""
+
+    def test_route_passes_image_urls_through(self):
+        import prism.serve as SV
+        captured = {}
+        orig = SV.add_contents
+        SV.add_contents = lambda contents, **k: (captured.update(contents=contents), {"ok": True})[1]
+        self.addCleanup(lambda: setattr(SV, "add_contents", orig))
+
+        class FakeH:
+            path = "/run"
+            headers = {"Content-Type": "application/json"}
+            server_mock = True
+
+            def _req_team(self):
+                return None
+
+            def _bearer_uid(self):
+                return ""
+
+            def _bearer_email(self):
+                return ""
+
+        body = json.dumps({"add_only": "1", "displayServiceName": "카페", "title": "t",
+                           "body": "b", "image_urls": ["https://x.com/1.jpg"]}).encode("utf-8")
+        SV._POST_ROUTES["/run"][0](FakeH(), body)
+        self.assertEqual(captured["contents"][0]["image_urls"], ["https://x.com/1.jpg"])
+
+
+class TestImageCoverageStat(unittest.TestCase):
+    def test_counts_rows_with_images(self):
+        from prism.runops import _img_note, img_coverage
+        rows = [{"image_urls": ["https://x/1.jpg"]}, {"image_urls": []}, {}]
+        self.assertEqual(img_coverage(rows), {"n": 3, "with_images": 1})
+        self.assertEqual(_img_note(rows), " · 이미지 1/3건")
+        self.assertEqual(_img_note([]), "")                # 빈 인입에는 꼬리표 없음
 
 
 if __name__ == "__main__":

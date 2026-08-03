@@ -2623,6 +2623,9 @@ def _p_run(h, body):
                 "title": fields.get("title", ""), "subtitle": fields.get("subtitle", ""),
                 "body": fields.get("body", ""),
                 "source_url": fields.get("source_url", ""),
+                # 참조 이미지 URL(게시판 #9) · 화이트리스트에서 빠져 있어 단건 추가는 항상 유실됐다.
+                # 정규화(http(s)·중복·상한)는 add_contents 가 담당.
+                "image_urls": fields.get("image_urls") or fields.get("images") or [],
             }], purpose=str(fields.get("purpose") or ""), team=h._req_team())
         else:
             result = run_pipeline(fields, mock=h.server_mock, team=h._req_team())
