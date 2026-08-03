@@ -9,6 +9,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-08-03 | [검수 화면 UI 시안 · 라벨 정렬과 필터 통합](https://claude.ai/code/artifact/9d6d39f7-53ef-423e-b6bd-74f9e0c552bc) |
 | 2026-07-30 | [모델 적합도와 예상 비용](https://claude.ai/code/artifact/13688166-0922-45f0-8964-4e9a4cc71bac) |
 | 2026-07-29 | [프리즘 주간회의 · 07.29](https://claude.ai/code/artifact/f11f0d9d-bbd6-4977-aa43-fc84c0d4099b) |
 | 2026-07-23 | [콘텐츠 에이전트 · 포털 홈 재정합 (와이어)](https://claude.ai/code/artifact/9c976266-9149-4b76-be24-3a2fe327a22d) |
