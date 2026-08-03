@@ -233,20 +233,39 @@ def _read_overrides() -> dict:
         if os.path.exists(_SV._DICT_OVERRIDES_PATH):
             with open(_SV._DICT_OVERRIDES_PATH, encoding="utf-8") as f:
                 return json.load(f)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  ⚠️ 사전 오버라이드 파일 읽기 실패 · 무시하고 코드 기본 사전 사용"
+              f"({_SV._DICT_OVERRIDES_PATH}): {type(e).__name__}: {e}")
     return {}
 
 
+def _fmt_vals(vals) -> str:
+    v = [str(x) for x in vals]
+    return ", ".join(v[:12]) + (f" 외 {len(v) - 12}종" if len(v) > 12 else "")
+
+
 def load_dict_overrides():
-    """저장된 사전 편집(overrides)을 dictionaries 에 적용(서버 시작 시)."""
+    """저장된 사전 편집(overrides)을 dictionaries 에 적용(서버 시작 시).
+    적용 결과를 기동 로그로 보고한다 — 코드 기본값이 오버라이드 때문에 조용히 사라지지 않도록
+    (복원분·제외분 모두 경고, 예외도 삼키지 않고 로그)."""
     from . import dictionaries as D
     ov = _read_overrides()
-    if ov:
-        try:
-            D.apply_profile(ov)
-        except Exception:
-            pass
+    if not ov:
+        return
+    try:
+        rep = D.apply_profile(ov) or {}
+    except Exception as e:
+        print(f"  ⚠️ 사전 오버라이드 적용 실패 · 코드 기본 사전으로 계속: {type(e).__name__}: {e}")
+        return
+    restored = rep.get("restored") or {}
+    for path, vals in sorted(restored.items()):
+        print(f"  ⚠️ 사전 오버라이드에 코드 기본값 {len(vals)}종 누락 → 복원: {path} · {_fmt_vals(vals)}")
+    for path, vals in sorted((rep.get("dropped") or {}).items()):
+        print(f"  ⚠️ 사전 오버라이드가 코드 기본값 {len(vals)}종 제외(사용자 삭제 기록): "
+              f"{path} · {_fmt_vals(vals)}")
+    if restored and D.REMOVED_KEY not in ov:
+        print("  · 삭제 기록이 없는 구형 오버라이드입니다 — 사전 편집 화면에서 한 번 저장하면 "
+              "삭제 의도가 기록되고 이후 코드 신규 값과 구분됩니다")
 
 
 def edit_dict(data: dict) -> dict:
@@ -272,6 +291,12 @@ def edit_dict(data: dict) -> dict:
         ov[target][key] = val
     else:
         ov[target] = val
+    try:
+        # 코드 기본값에서 뺀 값 = 의도적 삭제로 기록(뒤에 코드에 추가될 값과 구분 · 병합 의미론의 전제)
+        D.stamp_removals(ov, target)
+    except Exception as e:
+        print(f"  ⚠️ 사전 삭제 기록 실패(다음 기동에서 코드 기본값이 복원될 수 있음): "
+              f"{type(e).__name__}: {e}")
     try:
         os.makedirs(os.path.dirname(_SV._DICT_OVERRIDES_PATH) or ".", exist_ok=True)
         with open(_SV._DICT_OVERRIDES_PATH, "w", encoding="utf-8") as f:
