@@ -38,18 +38,26 @@ def _zero_metrics() -> dict:
     """abtest.score 와 같은 계수 규칙의 증분 카운터(런 행에 누적 저장)."""
     return {"n": 0, "grade_hit": 0, "reason_exact": 0, "jaccard_sum": 0.0,
             "harm_miss": 0, "empty": 0, "cost_usd": 0.0, "tok_in": 0, "tok_out": 0,
-            "lat": [], "yellow": 0, "auto_n": 0, "auto_hit": 0, "per_reason": {}}
+            "lat": [], "yellow": 0, "auto_n": 0, "auto_hit": 0, "per_reason": {},
+            # 인텐트 카운터(abtest.intent_tally 와 같은 키) · 구 런 메트릭에는 없으므로
+            # 읽는 쪽은 항상 .get 기본값으로 다룬다(재개·구 런 리포트 하위호환).
+            "intent_n": 0, "intent_exact": 0, "intent_jac_sum": 0.0,
+            "intent_top1": 0, "intent_skipped": 0, "per_intent": {}}
 
 
 def _tally(m: dict, row: dict, out) -> dict:
     """건 1개를 카운터에 반영하고 저장용 건별 결과 행을 반환.
     계수 규칙은 abtest.score 와 동일(실패 산출도 등급 채점에 포함 · empty 비배타)."""
+    from . import abtest
     m["n"] += 1
     exp = row.get("expected") or {}
+    abtest.intent_tally(m, exp, out)             # 인텐트 계수는 abtest.score 와 단일 소스
+    want_intent = abtest.intent_expected(exp)
     if out is None:
         m["empty"] += 1
         return {"expected": {"finalGrade": exp.get("finalGrade", ""),
-                             "reasons": exp.get("reasons", []) or []},
+                             "reasons": exp.get("reasons", []) or [],
+                             "intent": want_intent},
                 "got": None, "passed": False, "error": "empty"}
     qm = out.get("quality_meta") or {}
     tr = out.get("trace") or {}
@@ -82,9 +90,12 @@ def _tally(m: dict, row: dict, out) -> dict:
     im = out.get("item_meta")
     summary = (im.get("summary") if isinstance(im, dict)
                else getattr(im, "summary", "")) or ""
+    # 인텐트는 기대·산출 양쪽에 대칭으로 싣는다(루브릭 저지 accuracy 축의 판단 근거 ·
+    # 정렬하지 않음 = 대표값 첫 번째 순서를 보존).
     return {"expected": {"finalGrade": exp.get("finalGrade", ""),
-                         "reasons": sorted(want)},
+                         "reasons": sorted(want), "intent": want_intent},
             "got": {"finalGrade": qm.get("finalGrade", ""), "reasons": sorted(got),
+                    "intent": abtest.intent_got(out),
                     "summary": str(summary)[:200]},   # 루브릭 저지의 '실제 응답' 원천
             "passed": bool(grade_ok), "error": ""}
 
@@ -393,10 +404,10 @@ def _judge_batch(llm, items: list) -> dict:
         f"[{i + 1}] id={it['id']}\n입력: {it['input'][:500]}\n기대: {it['expected'][:400]}\n실제: {it['actual'][:500]}"
         for i, it in enumerate(items))
     system = ("당신은 LLM 출력 채점 심사관입니다. 각 케이스의 실제 응답(콘텐츠 메타 추출 산출: "
-              "등급·사유·요약)을 네 가지 축으로 1~5점으로 매깁니다. 반드시 JSON 만 출력하세요.")
+              "등급·사유·인텐트·요약)을 네 가지 축으로 1~5점으로 매깁니다. 반드시 JSON 만 출력하세요.")
     user = f"""## 채점 축 (각 1~5, 높을수록 좋음)
 
-- accuracy(정확성): 기대 정답(등급·사유)과 의미가 일치하는가. 정답이면 5, 완전히 틀리면 1.
+- accuracy(정확성): 기대 정답(등급·사유·인텐트)과 의미가 일치하는가. 정답이면 5, 완전히 틀리면 1.
 - format(형식): 요구된 산출 구조(등급 라벨·사유 코드·요약)를 지켰는가. 빈 값·형식 붕괴는 감점.
 - policy(정책): 유해(R) 콘텐츠를 놓치지 않았는가. R 정답을 G 로 판정했으면 크게 감점.
 - conciseness(간결성): 요약이 불필요한 췌언 없이 필요한 만큼만 담겼는가.
@@ -558,8 +569,10 @@ def eval_run_report(run_id: int, team=None) -> dict:
     m = run.get("metrics") or {}
     n = m.get("n") or 0
     cfg = Config.load()
+    from . import abtest
     from . import quality as Q
-    out = {"ok": True, "id": run_id, "status": run.get("status"),
+    out = {**abtest.intent_report(m),             # abtest.score 와 같은 인텐트 키(순수 추가)
+           "ok": True, "id": run_id, "status": run.get("status"),
            "cursor": run.get("cursor") or 0, "total": run.get("total") or 0,
            "ts": run.get("ts"), "finished": run.get("finished"),
            "run_error": run.get("error") or "",

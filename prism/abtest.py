@@ -49,6 +49,98 @@ def _percentile(vals: list, p: float):
     return round(float(s[i]), 1)
 
 
+# ── 인텐트 정확도 지표 ──────────────────────────────────────────────────────
+# 채점 단일 소스: abtest.score(일괄) 와 evalops._tally(증분) 가 이 세 함수를 공유한다.
+# 두 경로가 같은 카운터 키(intent_n·intent_exact·intent_jac_sum·intent_top1·
+# intent_skipped·per_intent)를 쌓고 같은 intent_report() 로 비율을 낸다.
+#
+# 설계 결정
+# ① 순서: 헤드라인 지표(exact·jaccard·값별 P/R/F1)는 **집합 의미(순서 무시)**.
+#    인텐트 순서는 산출 경로에 따라 의미가 달라 순서 일치를 지표로 쓰면 경로 교체만으로
+#    지표가 흔들린다 — LLM 경로(agents._match_intents)는 모델 응답 순서를 보존하지만
+#    임베딩 경로(classify.intent_category_classify)는 코사인 랭킹 순으로 재배열하고
+#    classify.merge_perspective 는 관점 축을 뒤에 덧붙인다.
+#    다만 대표값(첫 번째)은 소비처가 실제로 쓰므로 `intent_top1` 로 분리 측정한다(가드 대상 아님).
+# ② 표본: 기대값에 인텐트 라벨이 **1개 이상** 있는 행만 분모. 라벨이 없는 행(키 자체가
+#    없거나 빈 목록)은 제외하고 그 수를 `intent_skipped` 로 노출한다.
+#    빈 목록을 제외하는 이유: build_golden_from_reviews 가 모든 검수 유래 골든에 intent
+#    키를 무조건 써넣어 '키 유무'로는 라벨 유무를 못 가리고, R 등급 행은 harness 가
+#    item_meta 를 통째로 억제해 기대·산출이 모두 공집합으로 고정 = 자동 만점 행이 되어
+#    지표를 희석하고 회귀 가드의 민감도를 떨어뜨린다.
+
+
+def intent_expected(exp: dict) -> list:
+    """골든 기대값에서 인텐트 라벨 목록(순서 보존·중복 제거). 라벨이 없으면 빈 목록.
+    문자열 단건·비목록 등 과거 골든 행의 느슨한 형태도 흡수(하위호환)."""
+    v = (exp or {}).get("intent")
+    if isinstance(v, str):
+        v = [v]
+    elif isinstance(v, dict):                    # 구 형식(키별) 방어: 값만 추림
+        v = list(v.values())
+    elif not isinstance(v, (list, tuple)):
+        v = []
+    return list(dict.fromkeys(s for s in (str(x).strip() for x in v if x is not None) if s))
+
+
+def intent_got(out) -> list:
+    """산출(Output.to_dict)에서 인텐트 목록. item_meta 부재(R 억제·실패·빈 산출)면 빈 목록."""
+    if not isinstance(out, dict):
+        return []
+    im = out.get("item_meta")
+    v = im.get("intent") if isinstance(im, dict) else getattr(im, "intent", None)
+    if isinstance(v, str):
+        v = [v]
+    elif not isinstance(v, (list, tuple)):
+        v = []
+    return list(dict.fromkeys(s for s in (str(x).strip() for x in v if x is not None) if s))
+
+
+def intent_tally(acc: dict, exp: dict, out) -> None:
+    """건 1개를 인텐트 카운터에 반영(제자리 갱신). 기대 라벨이 없으면 분모 제외 후 계수만.
+    산출이 None(실패·빈 산출)인 건도 '빈 집합 산출'로 채점한다 — 등급 채점이 실패 행을
+    오답으로 계수하는 규칙(score/_tally 주석)과 같은 취급."""
+    want = intent_expected(exp)
+    if not want:
+        acc["intent_skipped"] = acc.get("intent_skipped", 0) + 1
+        return
+    got = intent_got(out)
+    sw, sg = set(want), set(got)
+    acc["intent_n"] = acc.get("intent_n", 0) + 1
+    acc["intent_exact"] = acc.get("intent_exact", 0) + int(sw == sg)
+    u = sw | sg
+    acc["intent_jac_sum"] = acc.get("intent_jac_sum", 0.0) + ((len(sw & sg) / len(u)) if u else 1.0)
+    acc["intent_top1"] = acc.get("intent_top1", 0) + int(bool(got) and got[0] == want[0])
+    per = acc.setdefault("per_intent", {})
+    for v in sw | sg:
+        d = per.setdefault(v, {"n": 0, "tp": 0, "fp": 0, "fn": 0})
+        if v in sw:
+            d["n"] += 1                          # support = 기대 등장 횟수
+            d["tp" if v in sg else "fn"] += 1
+        else:
+            d["fp"] += 1
+
+
+def intent_report(acc: dict) -> dict:
+    """인텐트 카운터 → 리포트 키. 표본 0이면 비율은 0(없음)으로 두고 표본 수로 판단하게 한다."""
+    n = int(acc.get("intent_n") or 0)
+    by = {}
+    for v, d in sorted((acc.get("per_intent") or {}).items()):
+        tp, fp, fn = int(d.get("tp") or 0), int(d.get("fp") or 0), int(d.get("fn") or 0)
+        p = tp / (tp + fp) if (tp + fp) else 0.0
+        r = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = (2 * p * r / (p + r)) if (p + r) else 0.0
+        by[v] = {"n": int(d.get("n") or 0), "tp": tp, "fp": fp, "fn": fn,
+                 "precision": round(p, 3), "recall": round(r, 3), "f1": round(f1, 3)}
+    return {
+        "intent_n": n,                                   # 측정 표본(기대 인텐트가 있는 행)
+        "intent_skipped": int(acc.get("intent_skipped") or 0),   # 기대 인텐트 없어 제외한 행
+        "intent_exact": round(acc.get("intent_exact", 0) / n, 4) if n else 0,
+        "intent_jaccard": round(acc.get("intent_jac_sum", 0.0) / n, 4) if n else 0,
+        "intent_top1": round(acc.get("intent_top1", 0) / n, 4) if n else 0,
+        "by_intent_value": by,
+    }
+
+
 def score(rows: list, outs: list) -> dict:
     """골든셋 정답(rows[i].expected)과 산출(outs[i])을 비교해 지표 산출.
     cli.cmd_eval 과 동일 지표 · 채점 로직 단일 소스."""
@@ -59,11 +151,13 @@ def score(rows: list, outs: list) -> dict:
     per_reason = {}
     yellow_n = auto_n = auto_hit = 0
     lat = []                                     # 건별 총 지연(ms) · p50/p95 산출용
+    iacc: dict = {"per_intent": {}}              # 인텐트 카운터(intent_tally 단일 소스)
     for row, out in zip(rows, outs):
+        exp = row.get("expected", {}) or {}
+        intent_tally(iacc, exp, out)             # 실패(None) 산출도 '빈 집합'으로 채점
         if out is None:
             empties += 1
             continue
-        exp = row.get("expected", {})
         qm = out["quality_meta"]
         tr = out.get("trace", {})
         cost += tr.get("cost_usd", 0.0)
@@ -97,6 +191,7 @@ def score(rows: list, outs: list) -> dict:
     by_reason = {k: {"n": v["n"], "grade_acc": round(v["grade_ok"] / v["n"], 3)}
                  for k, v in sorted(per_reason.items())}
     return {
+        **intent_report(iacc),                   # 순수 추가: 기존 키 의미·이름·값 불변
         "n": n,
         "grade_accuracy": round(grade_hit / n, 4) if n else 0,
         "reason_exact_match": round(reason_exact / n, 4) if n else 0,
@@ -148,6 +243,7 @@ def evaluate(rows: list, methodology: H.Methodology, llm, **kw) -> dict:
 
 # 비교에 노출하는 핵심 지표(높을수록 좋음 / 낮을수록 좋음 구분은 _BETTER_LOWER)
 _AB_KEYS = ["grade_accuracy", "auto_grade_accuracy", "reason_jaccard",
+            "intent_exact", "intent_jaccard",
             "harm_miss_rate", "empty_rate", "yellow_rate", "cost_usd",
             "latency_p50_ms", "latency_p95_ms"]
 _BETTER_LOWER = {"harm_miss_rate", "empty_rate", "cost_usd", "latency_p50_ms", "latency_p95_ms"}
