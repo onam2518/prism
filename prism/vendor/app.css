@@ -343,6 +343,27 @@
   .chk-inline{display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
   .chk-inline>input[type=checkbox]{margin:0;flex:none}
   .dve__lead{font-size:13px;line-height:1.65;padding:10px 12px;border-radius:10px;background:var(--ds-primary-tint);color:var(--ds-text-secondary)}
+  /* ── 엔티티 관련성 라벨(entlabel · 시안 A) ───────────────────────────────
+     행 하나 = 엔티티 하나. 컬럼 폭을 고정해 이름 길이가 달라도 버튼이 같은 x 좌표에 선다.
+     tw 유틸리티(.flex-col)에 기대면 사전 빌드본에 그 클래스가 없을 때 통째로 무너지므로
+     이 블록은 유틸리티에 의존하지 않는다(파손 이력: tw.css 가 마크업보다 뒤처져 .flex-col 부재).
+     반응 기준은 창이 아니라 패널 폭 — 상세뷰가 좌우 분할돼도 어긋나지 않는다. */
+  .entlab{display:flex;flex-direction:column;gap:5px;container-type:inline-size}
+  .entlab__row{display:grid;grid-template-columns:minmax(0,1fr) 30px auto 34px;
+    align-items:center;gap:8px}
+  .entlab__nm{min-width:0;overflow:hidden}
+  .entlab__nm .ds-badge{display:block;width:fit-content;max-width:100%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .entlab__yn{display:flex;gap:6px}
+  .entlab__ct{text-align:right}
+  /* 세로 스택 간격: tw 의 space-y-1/space-y-2 는 사전 빌드본에 없어 무동작이었다(간격 0).
+     같은 부재 사고를 반복하지 않도록 전용 클래스로 대체한다(space-y-2.5/3 은 빌드본에 있어 유지). */
+  .stack-1{display:flex;flex-direction:column;gap:4px}
+  .stack-2{display:flex;flex-direction:column;gap:8px}
+  @container (max-width:330px){
+    .entlab__row{grid-template-columns:minmax(0,1fr) 30px;row-gap:5px}
+    .entlab__yn{grid-column:1/-1}
+  }
   /* 내 판정 vs 팀 판정 분리 표기(팀 표 2개 이상일 때) */
   .dve__mine{display:flex;align-items:center;gap:8px;margin-top:8px}
   .dve__mine-lbl{font-size:11px;font-weight:700;color:var(--ds-muted)}
