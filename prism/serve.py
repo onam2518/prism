@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlparse
 # 서버 부팅 ID: 배포(프로세스 교체) 감지 + 벤더 자산 캐시버스터의 단일 원천
 _BOOT_ID = "%d-%d" % (int(time.time()), os.getpid())
 
+from . import assets                   # 벤더 조각 → 단일 번들(app-bundle.js/css) 합성
 from . import entconf as EC
 from . import imagext as IMG
 from . import entlabel as ELB          # 엔티티 관련성 라벨(확신도 최적화 정답 수집)
@@ -2897,7 +2898,10 @@ class Handler(BaseHTTPRequestHandler):
         safe = os.path.basename(name)
         ext = os.path.splitext(safe)[1].lower()
         path = os.path.join(os.path.dirname(__file__), "vendor", safe)
-        if ext not in self._VENDOR_CT or not os.path.isfile(path):
+        # 번들(app-bundle.js/css)은 디스크에 없다 — 조각을 이어붙여 만든다(assets.py).
+        # path 는 캐시 사전의 키로만 쓰인다.
+        bundle = assets.parts(safe)
+        if ext not in self._VENDOR_CT or (bundle is None and not os.path.isfile(path)):
             self._send(404, "not found")
             return
         # 캐시 정책: 페이지가 ?v=부팅ID 버스터를 달아 주므로 버스터 有 = 불변 1년.
@@ -2910,14 +2914,18 @@ class Handler(BaseHTTPRequestHandler):
             cache = "public, max-age=3600"
         ctype = self._VENDOR_CT[ext]
         try:                                         # (경로, mtime) 캐시: 배포 직후 접속자 수만큼
-            mtime = os.path.getmtime(path)           # 반복되던 read+gzip 을 부팅당 1회로
+            mtime = (assets.mtime(safe) if bundle    # 반복되던 read+gzip 을 부팅당 1회로
+                     else os.path.getmtime(path))    # 번들은 조각 중 최신 mtime 이 키
         except OSError:
             self._send(404, "not found")
             return
         hit = self._VENDOR_CACHE.get(path)
         if not hit or hit[0] != mtime:
-            with open(path, "rb") as f:
-                raw = f.read()
+            if bundle:
+                raw = assets.build(safe)
+            else:
+                with open(path, "rb") as f:
+                    raw = f.read()
             gz = (gzip.compress(raw, 6)
                   if len(raw) > 1024 and any(t in ctype for t in self._GZIP_CT) else None)
             hit = (mtime, raw, gz)
