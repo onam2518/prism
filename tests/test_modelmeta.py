@@ -115,7 +115,7 @@ class TestModelPickMarkup(unittest.TestCase):
     def test_all_placeholders_expanded(self):
         from prism import page
         self.assertNotIn("<x-modelpick", page.PAGE)                  # 미펼침 태그가 남으면 안 된다
-        self.assertEqual(page.PAGE.count('class="mpick"'), 9)        # 모델 고르는 곳 9군데
+        self.assertEqual(page.PAGE.count('class="mpick"'), 10)       # 모델 고르는 곳 10군데(토픽 스튜디오 합류)
 
     def test_expansion_wires_value_and_setter(self):
         from prism import page

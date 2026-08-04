@@ -128,7 +128,6 @@ window.PRISM_APP_PARTS.push(() => ({
       caWidgets: [],                       // [{id,name,size,cond:{ents,topics,kinds,excl,tone},pins:[],hidden:[]}]
       caText: '',                          // 사용자가 직접 입력 · 아래 예시 버튼은 등록 콘텐츠에서 자동 생성
       caDraft: null,                       // 이해한 조건(초안) · {name,size,cond,why:[]}
-      caEditing: false,                    // 홈 편집 모드
       caMsg: '',
       caNew: { ent: '', kind: '', excl: '' },   // 칩 직접 추가 입력
       caThinking: false, caVia: '',        // LLM 호출 상태·경로 표시

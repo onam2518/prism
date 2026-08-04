@@ -48,7 +48,8 @@
 </head>
 <body class="antialiased">
 <div class="ds-grain" aria-hidden="true"></div>
-<div x-data="prismApp()" class="appshell" data-theme="light">
+<!-- x-effect: 검수 목록 필터 체인을 입력(rawData·검색·필터·판정) 변화 때 1회만 재계산(app-02 _rawRecalc) -->
+<div x-data="prismApp()" x-effect="_rawRecalc()" class="appshell" data-theme="light">
 
   <!-- ━━━━━ 상단 바: 로고 | 타이틀(고정) | 도구 ━━━━━ -->
   <header class="topbar">
@@ -85,12 +86,14 @@
     <span class="err-toast__ic">⚠</span><span x-text="errMsg"></span>
   </div>
 
-  <!-- 검수 완료 점수 상승(+PT) 리워드 토스트 · key 로 연속 검수 시 애니메이션 재시작 -->
-  <template x-if="ptToast">
-    <div class="pttoast" x-bind:key="ptToast.id">
+  <!-- 검수 완료 점수 상승(+PT) 리워드 토스트. Alpine 의 key 는 x-for 루프 diff 전용이라
+       x-if 단독 요소에 걸면 무동작 — 단건을 x-for 로 감싸 id 가 바뀔 때 요소를 재생성해야
+       CSS 애니메이션(pt-rise · forwards)이 연속 검수에서도 재시작된다 -->
+  <template x-for="t in (ptToast ? [ptToast] : [])" x-bind:key="t.id">
+    <div class="pttoast">
       <span class="pttoast__spark">✨</span>
-      <span class="pttoast__pt" x-text="'+' + ptToast.pts + ' PT'"></span>
-      <span class="pttoast__lbl" x-show="ptToast.label" x-text="ptToast.label"></span>
+      <span class="pttoast__pt" x-text="'+' + t.pts + ' PT'"></span>
+      <span class="pttoast__lbl" x-show="t.label" x-text="t.label"></span>
     </div>
   </template>
 

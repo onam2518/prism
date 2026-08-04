@@ -30,7 +30,11 @@
   // 정적 패널은 즉시, Alpine x-for 로 생성되는 동적 패널은 MutationObserver 로 덮는다
   (function () {
     function decorate(root) {
-      (root || document).querySelectorAll('.panel-hd:not([data-wz])').forEach(function (h) {
+      var scope = root || document;
+      var heads = Array.prototype.slice.call(scope.querySelectorAll('.panel-hd:not([data-wz])'));
+      // querySelectorAll 은 루트 자신을 안 본다 — 추가된 노드가 곧 panel-hd 인 경우 포함
+      if (scope !== document && scope.matches && scope.matches('.panel-hd:not([data-wz])')) heads.unshift(scope);
+      heads.forEach(function (h) {
         h.setAttribute('data-wz', '1');
         var b = h.querySelector('b');
         // 타이틀 = b 의 내용 이동(텍스트 복사 아님) · STEP 배지 등 제목 안 마크업 보존 · 캐릭터는 헤드 오른쪽으로
@@ -51,10 +55,24 @@
     }
     decorate(document);
     var host = document.querySelector('.home') || document.body;
-    var pending = false;
-    new MutationObserver(function () {
-      if (pending) return; pending = true;
-      requestAnimationFrame(function () { pending = false; decorate(document); });
+    // 변이 배치마다 문서 전체를 재스캔하면(첫 로드 DOM ~2.2만 노드) 폴링·목록 재렌더 중
+    // 새 panel-hd 가 하나도 없어도 주기적으로 전체 스캔이 돈다(2026-08-04 감사) —
+    // 추가된 요소 서브트리만 모아 rAF 1회에 그 범위만 꾸민다. 추가 없음(속성·텍스트·삭제만)이면 스킵.
+    var queued = [];
+    var scheduled = false;
+    new MutationObserver(function (muts) {
+      for (var i = 0; i < muts.length; i++) {
+        var an = muts[i].addedNodes;
+        for (var j = 0; j < an.length; j++) if (an[j].nodeType === 1) queued.push(an[j]);
+      }
+      if (!queued.length || scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(function () {
+        scheduled = false;
+        var roots = queued; queued = [];
+        // 이미 데코된 헤드는 data-wz 로 걸러진다 — 겹치는 서브트리를 두 번 방문해도 안전
+        for (var k = 0; k < roots.length; k++) if (roots[k].isConnected) decorate(roots[k]);
+      });
     }).observe(host, { childList: true, subtree: true });
   })();
 </script>

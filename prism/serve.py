@@ -786,6 +786,21 @@ _RL_HITS = {}
 _RL_LOCK = threading.Lock()
 
 
+def _client_ip(h) -> str:
+    """레이트리밋 키용 클라이언트 IP. Fly 프록시 뒤(FLY_APP_NAME 환경 신호)에서는 client_address 가
+    소수의 프록시 주소라 per-IP 제한이 사실상 전역 공유 버킷이 된다(다른 사용자의 요청으로 함께
+    429 · 분당 상한 소진 시 전 사용자 차단) — 프록시가 채워주는 Fly-Client-IP, 없으면
+    X-Forwarded-For 첫 항목을 사용. 프록시 뒤가 아니면 두 헤더는 클라이언트가 위조할 수 있어
+    기존 client_address 를 유지한다."""
+    if os.environ.get("FLY_APP_NAME"):
+        ip = (h.headers.get("Fly-Client-IP") or "").strip()
+        if not ip:
+            ip = (h.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        if ip:
+            return ip
+    return h.client_address[0] if h.client_address else "?"
+
+
 def rate_limited(key: str, min_interval: float = 0.8, per_min: int = 40) -> bool:
     """key(검수자/IP)별 최소 간격·분당 상한. 초과 시 True(=429)."""
     now = time.time()
@@ -1341,13 +1356,17 @@ def _g_export_csv(h, q):
 
 @_get_route("/config")
 def _g_config(h, q):
-    cs = config_status(h._req_team())
     # 운영(supabase) 무인증: 프롬프트 계약·모델 슬롯·팀 가이드 URL 은 로그인 후에만.
-    # 로그인 화면·배포 검증(curl /config: backend·configured)이 쓰는 최소 필드만 공개.
+    # 로그인 화면·배포 검증(curl /config: backend·configured)·15초 헬스체크가 쓰는 최소 필드만
+    # 공개 — config_status 전체 계산(모델 목록·저장 건수·팀 링크 = 원격 왕복 약 3회)을 생략하고
+    # 로컬 값만으로 즉시 응답한다(헬스체크가 supabase 지연에 물려 timeout 나는 경로 차단).
     if _supa() and not h._bearer_uid():
-        cs = {k: cs[k] for k in ("bootId", "build", "configured", "forcedMock", "ingesting",
-                                 "backend", "authRequired", "keyManagedByServer") if k in cs}
-    return cs
+        return {"bootId": _BOOT_ID, "build": _build_id(),
+                "configured": Config.load().is_configured(),
+                "forcedMock": Handler.server_mock,
+                "ingesting": bool(ingest_status().get("running") or _ENRICH_STATE.get("running")),
+                "backend": "supabase", "authRequired": True, "keyManagedByServer": True}
+    return config_status(h._req_team())
 
 
 @_get_route("/models")
@@ -1868,8 +1887,7 @@ def _p_store(h, body):
 @_post_route("/auth")                                # 로그인/가입 프록시(supabase)
 def _p_auth(h, body):
     # 무차별 대입·가입 남용 억제: IP당 최소간격 1s · 분당 12회(초과 시 429)
-    if rate_limited("auth:" + (h.client_address[0] if h.client_address else "?"),
-                    min_interval=1.0, per_min=12):
+    if rate_limited("auth:" + _client_ip(h), min_interval=1.0, per_min=12):
         h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
                                 ensure_ascii=False), _JSON)
         return None
@@ -1889,7 +1907,7 @@ def _p_feedback(h, body):
     elif not h._inject_reviewer(data):
         h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
         return None
-    rl_key = (data.get("reviewer") or "").strip() or h.client_address[0]
+    rl_key = (data.get("reviewer") or "").strip() or _client_ip(h)
     if not data.get("clear") and rate_limited(rl_key):
         h._send(429, json.dumps({"error": "잠시 후 다시 시도하세요(검수 속도 제한)"},
                                 ensure_ascii=False), _JSON)
@@ -1926,8 +1944,7 @@ def _p_source_status(h, body):
 @_post_route("/check-source", gate="login")          # 온디맨드 원문 상태 확인(게시판 #10 · B안 축소형) · 판정만, 확정은 검수자 버튼
 def _p_check_source(h, body):
     # 외부 GET 을 유발하는 라우트라 남용 억제: IP당 최소간격 1s · 분당 12회(초과 429)
-    if rate_limited("chksrc:" + (h.client_address[0] if h.client_address else "?"),
-                    min_interval=1.0, per_min=12):
+    if rate_limited("chksrc:" + _client_ip(h), min_interval=1.0, per_min=12):
         h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
                                 ensure_ascii=False), _JSON)
         return None
@@ -1944,12 +1961,15 @@ def _p_badges(h, body):
 
 @_post_route("/reviewer")                            # 검수자 등록·가입 (최장 접두 매칭이 /reviewer-role 분리)
 def _p_reviewer(h, body):
-    _TEAM_CACHE.pop(h._bearer_uid() or "", None)     # 가입·팀 변경 즉시 반영
     data = json.loads(body or b"{}")
     if not h._inject_reviewer(data):
         h._send(401, json.dumps({"error": "인증 필요"}, ensure_ascii=False), _JSON)
         return None
-    return register_reviewer(data)
+    out = register_reviewer(data)
+    # 가입·팀 변경 즉시 반영: 캐시 무효화는 팀 쓰기 '완료 후'에 해야 한다 — 등록 전에 pop 하면
+    # 병렬 GET 의 team_of 가 쓰기 완료 전 옛 팀을 60s TTL 로 재캐시하는 경합이 생긴다.
+    _TEAM_CACHE.pop(h._bearer_uid() or "", None)
+    return out
 
 
 @_post_route("/admin")                               # 권한 판단은 admin_action 내부(uid 기반)
@@ -2434,17 +2454,19 @@ def _p_backfill_urls(h, body):
     return backfill_urls(f["bytes"], f.get("filename", "map.csv"), team=h._req_team())
 
 
-@_post_route("/presence")                            # 팀 SSE 방송 트리거 · 미인증 직접 호출 차단
+@_post_route("/presence", gate="team")               # 팀 SSE 방송 트리거 · 미인증·무팀 직접 호출 차단
 def _p_presence(h, body):
-    if _supa() and not h._bearer_uid():
-        h._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
-        return None
     p = json.loads(body or b"{}")
     # 검수자 귀속은 서버 uid 로 강제(프레즌스 사칭 방지) · 같은 팀에만 방송
     rv = h._bearer_uid() if _supa() else (p.get("reviewer") or "").strip()
+    team = h._req_team()
+    if _supa() and team is None:
+        # 운영에서 team=None 방송은 broadcast 필터를 통과해 전 팀 스트림에 전파된다
+        # (무팀 인증 계정의 교차팀 이벤트 주입) — 팀 스코프 없으면 방송하지 않는다.
+        return {"ok": False}
     broadcast({"type": "presence", "reviewer": rv,
                "hash": p.get("hash") or "", "action": p.get("action") or "viewing"},
-              team=h._req_team())
+              team=team)
     return {"ok": True}
 
 
@@ -2775,11 +2797,14 @@ class Handler(BaseHTTPRequestHandler):
         for prefix in _GET_ORDER:                    # 라우트 테이블(최장 접두 우선) · 등록은 _get_route
             if p.startswith(prefix):
                 fn, admin = _GET_ROUTES[prefix]
-                if admin and not self._admin_gate():
-                    return
-                out = fn(self, q)
-                if out is not None:                  # dict 반환 = 200 JSON · None = 핸들러가 직접 응답
-                    self._send(200, json.dumps(out, ensure_ascii=False), _JSON)
+                try:                                 # do_POST 와 동일: 핸들러 예외(잘못된 쿼리값·스토어
+                    if admin and not self._admin_gate():   # 일시 오류)가 무응답 연결 종료로 새지 않게 500 JSON
+                        return
+                    out = fn(self, q)
+                    if out is not None:              # dict 반환 = 200 JSON · None = 핸들러가 직접 응답
+                        self._send(200, json.dumps(out, ensure_ascii=False), _JSON)
+                except Exception as e:
+                    self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
                 return
         if p.startswith("/vendor/"):
             self._send_vendor(p.rsplit("/", 1)[-1])

@@ -304,8 +304,11 @@ class SupabaseStore:
     def assignees(self, team=None) -> dict:
         """콘텐츠별 배정 현황 {hash: {"reviewers":[...], "min":N}} · 배정 콘텐츠만 포함."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        # ts 는 벌크 배정(트랜잭션 now())에서 동률 → PK 타이브레이크로 offset 페이징 안정화
+        # (contents_by_hash 와 같은 수법 · 없으면 1000행 초과 시 페이지 경계 중복/누락)
         rows = self._get("assignments",
-                         "select=content_hash,reviewer_id,min_reviewers" + tq + "&order=ts")
+                         "select=content_hash,reviewer_id,min_reviewers" + tq
+                         + "&order=ts,content_hash,reviewer_id")
         out = {}
         for r in rows:
             d = out.setdefault(r["content_hash"], {"reviewers": [], "min": 1})
@@ -328,8 +331,9 @@ class SupabaseStore:
         검수운영 재계산이 같은 테이블을 두 번 내려받던 왕복을 줄인다."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         asg, times = {}, {}
-        for r in self._get("assignments",
-                           "select=content_hash,reviewer_id,min_reviewers,ts" + tq + "&order=ts"):
+        for r in self._get("assignments",                # ts 동률 대비 PK 타이브레이크(assignees 와 동일)
+                           "select=content_hash,reviewer_id,min_reviewers,ts" + tq
+                           + "&order=ts,content_hash,reviewer_id"):
             d = asg.setdefault(r["content_hash"], {"reviewers": [], "min": 1})
             d["reviewers"].append(r["reviewer_id"])
             d["min"] = max(1, int(r.get("min_reviewers") or 1))
@@ -610,7 +614,7 @@ class SupabaseStore:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         hq = f"&content_hash=eq.{urllib.parse.quote(content_hash)}" if content_hash else ""
         rows = self._get("patch_log", "select=content_hash,reviewer_id,element,before,after,created_at"
-                         f"{tq}{hq}&order=created_at.desc&limit={int(limit)}")
+                         f"{tq}{hq}&order=created_at.desc,id&limit={int(limit)}")   # created_at 동률 대비 PK 타이브레이크(페이징 안정)
         return [{"hash": r["content_hash"],
                  "reviewer": r.get("reviewer_id") or _actor_label(r.get("element")),
                  "element": r.get("element") or "", "before": r.get("before") or {},
@@ -1109,19 +1113,24 @@ class SupabaseStore:
 
     # ── 검토 콘텐츠 동기화 + 큐 + retention ────────────────────────────────
     def _kept_sources(self, hashes) -> dict:
-        """이미 저장된 hash → source(최초 인입 경로). 값이 있는 행만 담는다.
+        """이미 저장된 hash → {"source": 최초 인입 경로, "flags": 운영 플래그}. 승계할 값이 있는 행만.
 
         PostgREST upsert(merge-duplicates)는 보낸 컬럼을 무조건 덮어써서
         `ON CONFLICT … COALESCE` 같은 조건부 갱신을 표현할 방법이 없다. 그래서 쓰기 직전에
-        기존 라벨을 읽어 그대로 되돌려 보낸다(sqlite _SRC_KEEP_FIRST 와 같은 의미).
+        기존 값을 읽어 그대로 되돌려 보낸다(sqlite _SRC_KEEP_FIRST 와 같은 의미).
+        flags = quality_meta 의 ops_hold(노출제한)·source_status(원문 소실 신고) — 재실행 upsert 가
+        quality_meta 를 통째로 교체하며 운영자 플래그를 조용히 풀던 결함의 방벽(2026-08-04).
         조회 키는 hash 뿐 — upsert 충돌 키(PK)와 같아야 team 이 달라도 남의 라벨을 덮지 않는다."""
         hs = sorted({h for h in (hashes or []) if _HASH_RE.match(h or "")})
         out = {}
         for i in range(0, len(hs), 100):              # in.() URL 길이 한계 대비 청크(retention 과 같은 규칙)
             ids = ",".join(urllib.parse.quote(h) for h in hs[i:i + 100])
-            for r in self._get("contents", f"select=hash,source&hash=in.({ids})"):
-                if (r.get("source") or "").strip():
-                    out[r.get("hash")] = r["source"]
+            for r in self._get("contents", f"select=hash,source,quality_meta&hash=in.({ids})"):
+                qm = r.get("quality_meta") or {}
+                flags = {k: qm[k] for k in ("ops_hold", "source_status") if k in qm}
+                src = (r.get("source") or "").strip()
+                if src or flags:
+                    out[r.get("hash")] = {"source": src, "flags": flags}
         return out
 
     def sync_contents(self, pairs, source: str = "단건", team=None, include_all: bool = False):
@@ -1163,8 +1172,16 @@ class SupabaseStore:
             except Exception:
                 kept = {}                             # 라벨 조회 실패가 적재 자체를 막지 않는다(최선 노력 보존)
             for row in rows:
-                if kept.get(row["hash"]):
-                    row["source"] = kept[row["hash"]]  # 최초 인입 경로 유지(재실행이 덮어쓰지 않음)
+                prev = kept.get(row["hash"]) or {}
+                if prev.get("source"):
+                    row["source"] = prev["source"]     # 최초 인입 경로 유지(재실행이 덮어쓰지 않음)
+                flags = prev.get("flags") or {}
+                if flags:                              # 운영 플래그(ops_hold·source_status) 승계 ·
+                    qm2 = dict(row["quality_meta"] or {})   # 호출자의 quality_meta 를 변형하지 않게 복사
+                    for k, v in flags.items():
+                        if k not in qm2:               # 파이프라인 신규 산출엔 이 키가 없다(운영자 전용 키)
+                            qm2[k] = v
+                    row["quality_meta"] = qm2
         self._upsert("contents", rows)
         return len(rows)
 
@@ -1176,7 +1193,14 @@ class SupabaseStore:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("contents", "select=hash,service,title,body,source_url,final_grade,item_meta,quality_meta,review,model,created_at"
                          f"&review=eq.yellow{tq}&order=created_at.desc&limit={int(limit) * 4}")
-        fb = self._get("feedback", "select=content_hash,verdict,reviewer_id" + tq)
+        # 판정은 화면에 뜰 후보 행의 것만 필요 — feedback 전량(무제한 페이징) 대신 후보 해시로
+        # in.() 청크 조회(split_reviewed_today 와 같은 수법 · 1만 행 테이블 10왕복 → 청크 수 왕복).
+        fb = []
+        hs = sorted({r.get("hash") or "" for r in rows if r.get("hash")})
+        for i in range(0, len(hs), 100):              # in.() URL 길이 한계 대비 청크 분할
+            ids = ",".join(urllib.parse.quote(h) for h in hs[i:i + 100])
+            fb.extend(self._get("feedback",
+                                f"select=content_hash,verdict,reviewer_id&content_hash=in.({ids})" + tq))
         reviewed = {r["content_hash"] for r in fb}
         mine = {r["content_hash"] for r in fb if reviewer and r.get("reviewer_id") == reviewer}
         asg = self.assignees(team)                    # {hash: {"reviewers", "min"}} · 배정 콘텐츠만
@@ -1624,7 +1648,7 @@ class SupabaseStore:
         """콘텐츠별 최신 초안 생성 시각(epoch) · '현재 초안 이후 검수' 유효성 판정 원천.
         PostgREST 기본 상한(1000행)을 넘는 이력은 최신순 상위만 반영(콘텐츠당 초안 수가 적어 실질 무영향)."""
         q = (f"select=content_hash,created_at&team_key=eq.{urllib.parse.quote(team or '')}"
-             "&order=created_at.desc")
+             "&order=created_at.desc,content_hash,model,version")   # 동률(벌크 저장) 대비 PK 타이브레이크
         out = {}
         for r in self._get("drafts", q):
             ch = r.get("content_hash") or ""
@@ -1683,7 +1707,8 @@ class SupabaseStore:
             body["finished_at"] = _iso(fields["finished"])
         if not body:
             return
-        self._req("PATCH", "eval_runs", query=f"id=eq.{int(run_id)}",
+        # (id, team) 복합 필터: run_id 는 클라이언트 입력 · 타 팀 평가런 취소/조작 차단
+        self._req("PATCH", "eval_runs", query=f"id=eq.{int(run_id)}&{self._team_q(team)}",
                   body=body, prefer="return=minimal")
 
     def _eval_run_row(self, r) -> dict:
@@ -1697,7 +1722,8 @@ class SupabaseStore:
                 "rubric_cursor": int(r.get("rubric_cursor") or 0), "rubric": r.get("rubric")}
 
     def eval_run_get(self, run_id, team=None):
-        rows = self._get("eval_runs", f"select=*&id=eq.{int(run_id)}")
+        # (id, team) 복합 필터: 타 팀 평가런 열람 차단(evalops 의 모든 흐름이 이 게이트를 먼저 통과)
+        rows = self._get("eval_runs", f"select=*&id=eq.{int(run_id)}&{self._team_q(team)}")
         return self._eval_run_row(rows[0]) if rows else None
 
     def eval_runs_list(self, team=None, limit=20) -> list:
@@ -1716,6 +1742,10 @@ class SupabaseStore:
         self._upsert("eval_results", payload)
 
     def eval_results_list(self, run_id, team=None, only_fail=False, limit=2000) -> list:
+        # eval_results 엔 team_id 컬럼이 없다 → 런 소유 확인(eval_runs id+team)으로 팀 스코프 강제.
+        # run_id 는 클라이언트 입력이라 이 게이트가 없으면 타 팀 평가 결과가 통째로 열린다.
+        if not self.eval_run_get(run_id, team):
+            return []
         q = (f"select=content_hash,title,expected,got,passed,error,rubric&run_id=eq.{int(run_id)}"
              + ("&passed=is.false" if only_fail else "") + f"&limit={int(limit)}")
         return [{"hash": r.get("content_hash") or "", "title": r.get("title") or "",
@@ -1726,6 +1756,8 @@ class SupabaseStore:
 
     def eval_results_missing_rubric(self, run_id, team=None, limit=2000) -> list:
         """루브릭 미채점 건(hash·expected·got) · 재실행 시 남은 건만 채점하는 원천."""
+        if not self.eval_run_get(run_id, team):       # 런 소유 확인(eval_results_list 와 동일 게이트)
+            return []
         q = (f"select=content_hash,expected,got&run_id=eq.{int(run_id)}"
              f"&rubric=is.null&limit={int(limit)}")
         return [{"hash": r.get("content_hash") or "", "expected": r.get("expected"),
@@ -1760,7 +1792,8 @@ class SupabaseStore:
                 body[k + "_at"] = _iso(fields[k])
         if not body:
             return
-        self._req("PATCH", "autopilot_runs", query=f"id=eq.{int(run_id)}",
+        # (id, team) 복합 필터: 타 팀 오토파일럿 런 조작 차단(eval_run_update 와 동일 원칙)
+        self._req("PATCH", "autopilot_runs", query=f"id=eq.{int(run_id)}&{self._team_q(team)}",
                   body=body, prefer="return=minimal")
 
     def _pilot_row(self, r) -> dict:
@@ -1799,12 +1832,13 @@ class SupabaseStore:
                 for r in rows]
 
     def lib_remove(self, lib_id, team=None) -> bool:
-        self._req("DELETE", "prompt_library", query=f"id=eq.{int(lib_id)}",
+        # (id, team) 복합 필터: 타 팀 라이브러리 항목 삭제 차단(deploy_get 과 동일 원칙)
+        self._req("DELETE", "prompt_library", query=f"id=eq.{int(lib_id)}&{self._team_q(team)}",
                   prefer="return=minimal")
         return True
 
     def lib_pin(self, lib_id, pinned, team=None) -> bool:
-        self._req("PATCH", "prompt_library", query=f"id=eq.{int(lib_id)}",
+        self._req("PATCH", "prompt_library", query=f"id=eq.{int(lib_id)}&{self._team_q(team)}",
                   body={"pinned": bool(pinned)}, prefer="return=minimal")
         return True
 
@@ -1819,7 +1853,9 @@ class SupabaseStore:
     def deploy_save(self, team, dep_id=None, slug="", name="", version=0,
                     active=True, created_by="") -> int:
         if dep_id:
-            self._req("PATCH", "deployments", query=f"id=eq.{int(dep_id)}",
+            # id 는 클라이언트 입력 · (id, team) 복합 필터로 타 팀 배포 조작 차단
+            # (RLS 는 service_role 로 우회되므로 스토어 필터가 유일한 방벽)
+            self._req("PATCH", "deployments", query=f"id=eq.{int(dep_id)}&{self._team_q(team)}",
                       body={"slug": slug, "name": name, "version": int(version),
                             "active": bool(active), "updated_at": _iso(time.time())},
                       prefer="return=minimal")
@@ -1832,7 +1868,8 @@ class SupabaseStore:
         return int(rows[0]["id"]) if rows else 0
 
     def deploy_get(self, dep_id, team=None):
-        rows = self._get("deployments", f"select=*&id=eq.{int(dep_id)}")
+        # (id, team) 복합 필터: A 팀 관리자가 B 팀 배포 id 로 키 발급/열람하는 교차 팀 접근 차단
+        rows = self._get("deployments", f"select=*&id=eq.{int(dep_id)}&{self._team_q(team)}")
         return self._deploy_row(rows[0]) if rows else None
 
     def deploy_by_slug(self, slug):
@@ -1844,8 +1881,8 @@ class SupabaseStore:
         return [self._deploy_row(r) for r in rows]
 
     def deploy_remove(self, dep_id, team=None) -> bool:
-        self._req("DELETE", "deployments", query=f"id=eq.{int(dep_id)}",
-                  prefer="return=minimal")                # 키는 FK on delete cascade
+        self._req("DELETE", "deployments", query=f"id=eq.{int(dep_id)}&{self._team_q(team)}",
+                  prefer="return=minimal")                # 키는 FK on delete cascade · 팀 복합 필터
         return True
 
     def deploy_key_add(self, dep_id, key_hash, key_prefix) -> int:
@@ -1898,7 +1935,7 @@ class SupabaseStore:
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,image_urls,item_meta,quality_meta,model,version"
-                         f"{tq}&order=created_at.desc&limit={int(limit)}")
+                         f"{tq}&order=created_at.desc,hash&limit={int(limit)}")   # 벌크 인입 동률 대비 PK 타이브레이크(contents_by_hash 와 동일)
         # subtitle 보존: 재구성 콘텐츠의 해시가 저장 해시와 일치해야 재실행 upsert·골든 매칭이
         # 같은 행을 가리킨다(과거엔 subtitle 소실로 부제 있는 콘텐츠가 유령 행을 만들었음).
         out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},

@@ -8,6 +8,8 @@
 · 리스트 오버라이드는 병합 — 코드 기본값에만 있는 원소는 되살린다(순서: 오버라이드 뒤에 코드 순서로).
 · 단, 툼스톤(_removed)에 기록된 '사용자가 의도적으로 뺀 값'은 되살리지 않는다.
 · dict 오버라이드의 기존 의미론(있는 키만 갱신 · 키 삭제 없음)은 유지한다.
+· 단건 키 편집(stamp_removals key=)은 **그 키만** 툼스톤 계산 — 파일에 남은 형제 키의
+  구(stale) 스냅샷이 코드 신규 값을 '사용자 삭제'로 오기록하지 않는다(2026-08 감사).
 """
 import copy
 import json
@@ -258,6 +260,204 @@ class TestEditRoundTrip(_DictStateCase):
         base = list(D.INTENT_CATEGORIES_UNIVERSAL)
         self.S.load_dict_overrides()                     # 예외 전파 없이 기본 사전 유지
         self.assertEqual(D.INTENT_CATEGORIES_UNIVERSAL, base)
+
+
+class TestSiblingKeyEditNoFalseTombstone(_DictStateCase):
+    """단건 키 편집(형제 키 시나리오) 회귀: 2026-08 감사 idx0.
+
+    dict 타깃을 한 번 편집하면 전체 복사본이 파일에 시딩된다. 이후 코드에 값이 추가되고
+    아무 키나 재편집하면, 구현이 target 전체를 코드 기본값과 비교할 경우 형제 키의
+    stale 스냅샷이 '사용자 삭제'(툼스톤)로 오기록되어 코드 신규 값이 영구 소실된다.
+    수정 계약: stamp_removals(key=) 는 편집된 키만 비교하고 형제 키 툼스톤은 유지한다."""
+
+    DICT_TARGETS = ["intent_by_service", "tier2", "quality_metas",
+                    "domain_groups", "category_iab_map", "intake_policy"]
+
+    @staticmethod
+    def _stale_snapshot(base):
+        """시딩 시점 스냅샷 흉내: 리스트 값을 가진 첫 키에서 마지막 원소를 뺀다
+        (= 그 원소가 시딩 **이후** 코드에 추가됐다고 가정). 반환 (stale, victim_key, new_val)."""
+        stale = copy.deepcopy(base)
+        for k, v in stale.items():
+            if isinstance(v, list) and len(v) >= 2:
+                return stale, k, v.pop()
+        return stale, None, None                       # 리스트 값이 없는 타깃(str·dict 값)
+
+    @staticmethod
+    def _edited_value(v):
+        """값을 지우지 않는 편집(추가·수정만) — 툼스톤이 생길 이유가 없는 편집."""
+        if isinstance(v, list):
+            return list(v) + ["형제키 시나리오 신설값"]
+        if isinstance(v, dict):
+            d = dict(v)
+            d["memo"] = "수정"
+            return d
+        return "수정된 값"
+
+    def _fresh(self):
+        _restore_globals(self._snap)
+        D._BASE_SNAPSHOT = None
+
+    def test_keyed_edit_never_tombstones_stale_siblings_all_dict_targets(self):
+        """dict 타깃 전체: 형제 키가 stale 이어도 단건 편집이 툼스톤을 만들지 않고
+        병합 후 코드 신규 값이 생존한다."""
+        for pk in self.DICT_TARGETS:
+            with self.subTest(target=pk):
+                self._fresh()
+                gk = D._PROFILE_KEYMAP[pk]
+                base = copy.deepcopy(getattr(D, gk))
+                stale, victim, new_val = self._stale_snapshot(base)
+                k_edit = next(k for k in stale if k != victim)
+                ov = {pk: stale}
+                ov[pk][k_edit] = self._edited_value(base[k_edit])
+                D.stamp_removals(ov, pk, key=k_edit)
+
+                tomb = (ov.get(D.REMOVED_KEY) or {}).get(pk) or {}
+                if victim is not None:
+                    self.assertNotIn(victim, tomb,
+                                     f"{pk}: 형제 키 stale 스냅샷이 사용자 삭제로 오기록")
+                self.assertFalse(tomb, f"{pk}: 값을 지우지 않은 편집에 툼스톤이 생겼다")
+
+                D.apply_profile(ov)
+                if victim is not None:
+                    self.assertIn(new_val, getattr(D, gk)[victim],
+                                  f"{pk}: 코드 신규 값이 편집 저장으로 소실")
+
+    def test_keyed_deletion_tombstones_only_edited_key(self):
+        """진짜 삭제는 여전히 기록된다 — 단, 편집한 키에만."""
+        self._fresh()
+        base = copy.deepcopy(D.INTENT_CATEGORIES_BY_SERVICE)
+        stale, victim, new_val = self._stale_snapshot(base)
+        k_edit = next(k for k in stale if k != victim and len(stale[k]) >= 2)
+        removed = stale[k_edit][-1]
+        ov = {"intent_by_service": stale}
+        ov["intent_by_service"][k_edit] = [v for v in base[k_edit] if v != removed]
+        D.stamp_removals(ov, "intent_by_service", key=k_edit)
+
+        tomb = ov[D.REMOVED_KEY]["intent_by_service"]
+        self.assertEqual(tomb, {k_edit: [removed]})    # victim(형제 키) 미포함
+
+        D.apply_profile(ov)
+        self.assertNotIn(removed, D.INTENT_CATEGORIES_BY_SERVICE[k_edit])   # 삭제 유지
+        self.assertIn(new_val, D.INTENT_CATEGORIES_BY_SERVICE[victim])      # 신규 값 생존
+
+    def test_sibling_tombstone_preserved_on_keyed_edit(self):
+        """과거 다른 키를 편집하며 남긴 툼스톤은 이번 편집이 걷어내지 않는다."""
+        self._fresh()
+        base = copy.deepcopy(D.INTENT_CATEGORIES_BY_SERVICE)
+        keys = [k for k in base if len(base[k]) >= 2]
+        k_prev, k_edit = keys[0], keys[1]
+        gone = base[k_prev][-1]
+        ov = {"intent_by_service": copy.deepcopy(base),
+              D.REMOVED_KEY: {"intent_by_service": {k_prev: [gone]}}}
+        ov["intent_by_service"][k_prev] = [v for v in base[k_prev] if v != gone]
+        ov["intent_by_service"][k_edit] = list(base[k_edit]) + ["신설"]
+        D.stamp_removals(ov, "intent_by_service", key=k_edit)
+
+        self.assertEqual(ov[D.REMOVED_KEY]["intent_by_service"].get(k_prev), [gone])
+        D.apply_profile(ov)
+        self.assertNotIn(gone, D.INTENT_CATEGORIES_BY_SERVICE[k_prev])
+
+    def test_keyed_readd_clears_only_that_key_tombstone(self):
+        """편집한 키의 값을 되살리면 그 키의 툼스톤만 걷어낸다."""
+        self._fresh()
+        base = copy.deepcopy(D.INTENT_CATEGORIES_BY_SERVICE)
+        keys = [k for k in base if len(base[k]) >= 2]
+        k_prev, k_edit = keys[0], keys[1]
+        ov = {"intent_by_service": copy.deepcopy(base),
+              D.REMOVED_KEY: {"intent_by_service": {k_prev: [base[k_prev][-1]],
+                                                    k_edit: [base[k_edit][-1]]}}}
+        ov["intent_by_service"][k_edit] = list(base[k_edit])       # 전부 되살림
+        D.stamp_removals(ov, "intent_by_service", key=k_edit)
+        tomb = ov[D.REMOVED_KEY]["intent_by_service"]
+        self.assertNotIn(k_edit, tomb)
+        self.assertIn(k_prev, tomb)
+
+    def test_remove_all_untouched_by_keyed_edit(self):
+        """완전 교체(*) 프로파일은 단건 키 편집이 툼스톤을 건드리지 않는다."""
+        self._fresh()
+        ov = {"intent_by_service": {"뉴스": ["전용 A"]},
+              D.REMOVED_KEY: {"intent_by_service": D.REMOVE_ALL}}
+        D.stamp_removals(ov, "intent_by_service", key="뉴스")
+        self.assertEqual(ov[D.REMOVED_KEY]["intent_by_service"], D.REMOVE_ALL)
+
+    def test_whole_value_edit_still_full_stamps_dict_target(self):
+        """key 없는 전체 값 저장은 기존대로 target 전체를 비교한다(사용자가 전체를 제출)."""
+        self._fresh()
+        base = copy.deepcopy(D.INTENT_CATEGORIES_BY_SERVICE)
+        keys = [k for k in base if len(base[k]) >= 2]
+        k1 = keys[0]
+        whole = copy.deepcopy(base)
+        gone = whole[k1].pop()
+        ov = D.stamp_removals({"intent_by_service": whole}, "intent_by_service")
+        self.assertEqual(ov[D.REMOVED_KEY]["intent_by_service"], {k1: [gone]})
+
+
+class TestSiblingKeyEditRoundTrip(_DictStateCase):
+    """감사 idx0 원 시나리오 재현(파일 왕복): stale 뉴스 리스트 파일 → 기동 병합 복원 →
+    스포츠 키 단건 편집 저장 → 뉴스 신규 값이 삭제로 기록되지 않고 재기동 후에도 생존."""
+
+    BASE = {"뉴스": ["속보", "심층", "트렌드·시장 분석"],       # 마지막 값 = 코드 신규 추가분
+            "스포츠": ["경기 결과", "구단 소식"]}
+
+    def setUp(self):
+        super().setUp()
+        import prism.serve as S
+        self.S = S
+        self._orig_path = S._DICT_OVERRIDES_PATH
+        S._DICT_OVERRIDES_PATH = os.path.join(tempfile.mkdtemp(), "ov.json")
+        self.addCleanup(lambda: setattr(S, "_DICT_OVERRIDES_PATH", self._orig_path))
+        self._set_code_base()
+
+    def _set_code_base(self):
+        """합성 코드 기본값 설치(참조 유지 · in-place). 재기동 흉내에도 재사용."""
+        D.INTENT_CATEGORIES_BY_SERVICE.clear()
+        D.INTENT_CATEGORIES_BY_SERVICE.update(copy.deepcopy(self.BASE))
+        D._BASE_SNAPSHOT = None
+
+    def test_audit_scenario_sports_edit_keeps_news_new_value(self):
+        # 시딩 시점(신규 값 추가 전) 스냅샷이 파일에 남아 있다
+        stale = {"intent_by_service": {"뉴스": ["속보", "심층"],
+                                       "스포츠": ["경기 결과", "구단 소식"]}}
+        with open(self.S._DICT_OVERRIDES_PATH, "w", encoding="utf-8") as f:
+            json.dump(stale, f, ensure_ascii=False)
+
+        self.S.load_dict_overrides()                   # 기동 병합: 신규 값 복원(정상)
+        self.assertIn("트렌드·시장 분석", D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
+
+        # 관리자가 '스포츠' 키 하나만 편집·저장(UI 는 target+key+value 단건 전송)
+        r = self.S.edit_dict({"target": "intent_by_service", "key": "스포츠",
+                              "value": ["경기 결과", "구단 소식", "이적 시장"]})
+        self.assertTrue(r.get("saved"))
+
+        with open(self.S._DICT_OVERRIDES_PATH, encoding="utf-8") as f:
+            saved = json.load(f)
+        tomb = (saved.get(D.REMOVED_KEY) or {}).get("intent_by_service") or {}
+        self.assertNotIn("뉴스", tomb, "형제 키(뉴스)의 코드 신규 값이 사용자 삭제로 오기록")
+        self.assertEqual(saved["intent_by_service"]["스포츠"],
+                         ["경기 결과", "구단 소식", "이적 시장"])
+
+        # 저장 직후에도, 재기동 후에도 뉴스 신규 값 생존
+        self.assertIn("트렌드·시장 분석", D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
+        self._set_code_base()                          # 재기동 흉내
+        self.S.load_dict_overrides()
+        self.assertIn("트렌드·시장 분석", D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
+        self.assertEqual(D.INTENT_CATEGORIES_BY_SERVICE["스포츠"],
+                         ["경기 결과", "구단 소식", "이적 시장"])
+
+    def test_keyed_edit_deletion_survives_restart(self):
+        """단건 편집으로 뺀 값은 툼스톤으로 기록되어 재기동에도 되살아나지 않는다."""
+        r = self.S.edit_dict({"target": "intent_by_service", "key": "스포츠",
+                              "value": ["경기 결과"]})       # '구단 소식' 삭제
+        self.assertTrue(r.get("saved"))
+        with open(self.S._DICT_OVERRIDES_PATH, encoding="utf-8") as f:
+            saved = json.load(f)
+        self.assertEqual(saved[D.REMOVED_KEY]["intent_by_service"], {"스포츠": ["구단 소식"]})
+
+        self._set_code_base()                          # 재기동 흉내
+        self.S.load_dict_overrides()
+        self.assertNotIn("구단 소식", D.INTENT_CATEGORIES_BY_SERVICE["스포츠"])
+        self.assertIn("트렌드·시장 분석", D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
 
 
 if __name__ == "__main__":
