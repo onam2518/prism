@@ -293,7 +293,9 @@ def edit_dict(data: dict) -> dict:
         ov[target] = val
     try:
         # 코드 기본값에서 뺀 값 = 의도적 삭제로 기록(뒤에 코드에 추가될 값과 구분 · 병합 의미론의 전제)
-        D.stamp_removals(ov, target)
+        # 단건 키 편집은 key 를 넘겨 그 키만 비교 — 파일의 형제 키 stale 스냅샷이
+        # 코드 신규 값을 '사용자 삭제'로 오기록하지 않도록(2026-08 감사)
+        D.stamp_removals(ov, target, key=key)
     except Exception as e:
         print(f"  ⚠️ 사전 삭제 기록 실패(다음 기동에서 코드 기본값이 복원될 수 있음): "
               f"{type(e).__name__}: {e}")

@@ -749,15 +749,33 @@ def _removals_of(base, ov):
     return None
 
 
-def stamp_removals(ov: dict, pk: str) -> dict:
+def stamp_removals(ov: dict, pk: str, key=None) -> dict:
     """편집 저장 **직전** 호출: 이번 오버라이드가 코드 기본값에서 뺀 값을 툼스톤으로 남긴다.
-    이 기록이 없으면 뒤에 코드에 추가된 값과 사용자 삭제를 구분할 수 없다. ov 를 제자리 수정."""
+    이 기록이 없으면 뒤에 코드에 추가된 값과 사용자 삭제를 구분할 수 없다. ov 를 제자리 수정.
+
+    key 가 주어진 단건 키 편집(dict 대상)은 **그 키만** 비교한다. 파일에 남은 형제 키의
+    구(stale) 스냅샷을 코드 기본값과 통째로 비교하면, 시딩 이후 코드에 추가된 값이
+    '사용자 삭제'로 오기록되어 다음 병합에서 영구 소실되기 때문(2026-08 감사).
+    형제 키의 기존 툼스톤(과거 그 키를 편집하며 남긴 삭제 기록)은 그대로 유지한다."""
     gk = _PROFILE_KEYMAP.get(pk)
     if not gk or pk not in ov:
         return ov
-    tomb = _removals_of(_base_of(gk), ov[pk])
+    base = _base_of(gk)
     slot = ov.get(REMOVED_KEY)
     slot = dict(slot) if isinstance(slot, dict) else {}
+    prev = slot.get(pk)
+    if key is not None and isinstance(ov[pk], dict) and isinstance(base, dict):
+        if prev == REMOVE_ALL:
+            return ov                        # 완전 교체(*) 지정은 단건 키 편집이 건드리지 않는다
+        tomb = dict(prev) if isinstance(prev, dict) else {}
+        sub = _removals_of(base.get(key), ov[pk].get(key))
+        if sub:
+            tomb[key] = sub
+        else:
+            tomb.pop(key, None)              # 그 키의 값을 되살렸으면 키 단위 기록도 걷어낸다
+        tomb = tomb or None
+    else:
+        tomb = _removals_of(base, ov[pk])
     if tomb:
         slot[pk] = tomb
     else:
