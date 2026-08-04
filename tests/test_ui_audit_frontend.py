@@ -187,3 +187,52 @@ class TestPanelObserverScoped(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCrewDdayCalendar(unittest.TestCase):
+    """D-day 는 달력 날짜 기준(자정 경계). 경과 시간/24h 로 세면 21시간 남은
+    '내일 오전 마감'이 '오늘 마감'으로 표시된다(2026-08-04 운영 신고)."""
+
+    def test_dday_uses_calendar_days(self):
+        if not shutil.which("node"):
+            self.skipTest("node 미설치")
+        script = r"""
+const fs = require('fs');
+globalThis.window = {};
+eval(fs.readFileSync(process.argv[2], 'utf8'));   // app-12 (crewDdayTxt)
+const RealDate = Date;
+const FIXED = new RealDate(2026, 7, 4, 14, 50, 0);          // 2026-08-04 14:50 로컬
+globalThis.Date = class extends RealDate {
+  constructor(...a) { super(...(a.length ? a : [FIXED.getTime()])); }
+  static now() { return FIXED.getTime(); }
+};
+const app = {};
+for (const make of window.PRISM_APP_PARTS) {
+  Object.defineProperties(app, Object.getOwnPropertyDescriptors(make()));
+}
+const at = (...a) => new Date(...a).getTime() / 1000;
+const txt = (due) => { app.crewData = { summary: { due_at: due } }; return app.crewDdayTxt; };
+console.log(JSON.stringify({
+  tomorrow_morning: txt(at(2026, 7, 5, 11, 59)),   // 21시간 뒤 · 내일 → D-1
+  tonight: txt(at(2026, 7, 4, 23, 0)),             // 오늘 밤 → 오늘 마감
+  passed: txt(at(2026, 7, 4, 10, 0)),              // 지남
+  three_days: txt(at(2026, 7, 7, 9, 0)),           // → D-3
+  none: txt(0),
+}));
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+            f.write(script)
+            path = f.name
+        try:
+            r = subprocess.run(
+                ["node", path, os.path.join(ROOT, "prism/vendor/app-12-crew.js")],
+                capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr[:400])
+            out = json.loads(r.stdout)
+        finally:
+            os.unlink(path)
+        self.assertEqual(out["tomorrow_morning"], " · D-1")
+        self.assertEqual(out["tonight"], " · 오늘 마감")
+        self.assertEqual(out["passed"], " · 기한 지남")
+        self.assertEqual(out["three_days"], " · D-3")
+        self.assertEqual(out["none"], "")
