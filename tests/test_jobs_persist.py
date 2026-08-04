@@ -43,6 +43,54 @@ class TestJobsPersist(unittest.TestCase):
             SV._jobs_restore()                                  # 재호출 멱등(기존 항목 보존)
             self.assertEqual(len(SV._INGEST_STATE), 2)
 
+    def test_memory_registry_prunes_completed_jobs(self):
+        """메모리 잡 레지스트리 상한(감사 2026-08-04): 완료 잡은 최근 _JOBS_KEEP 건만.
+
+        개별 재실행이 클릭마다 새 키(rerun1:…)를 만들어 _INGEST_STATE 가 무한 성장했고,
+        실행 큐 폴링(ingest_status)이 부팅 이후 전체 잡을 매번 복사·반환했다.
+        실행 중 잡은 아무리 오래돼도 제거하지 않는다."""
+        import prism.ingestops as IG
+        import prism.serve as SV
+        from prism.store import Store
+        with tempfile.TemporaryDirectory() as d:
+            st = Store(os.path.join(d, "t.db"))
+            orig_store = SV.get_store
+            orig_state = dict(SV._INGEST_STATE)
+            SV.get_store = lambda: st
+            SV._INGEST_STATE.clear()
+            self.addCleanup(lambda: (setattr(SV, "get_store", orig_store),
+                                     SV._INGEST_STATE.clear(),
+                                     SV._INGEST_STATE.update(orig_state)))
+            SV._INGEST_STATE["run-live"] = {"name": "n", "running": True, "started": 0.5}
+            for i in range(IG._JOBS_KEEP + 30):
+                SV._INGEST_STATE["rerun1:%04d" % i] = {"name": "n", "running": False,
+                                                       "started": float(i + 1),
+                                                       "last_run": float(i + 1)}
+            SV._jobs_persist()                              # 상태 전이 시점마다 정리
+            done = [k for k, v in SV._INGEST_STATE.items() if not v.get("running")]
+            self.assertEqual(len(done), IG._JOBS_KEEP)      # 완료 잡 상한 유지
+            self.assertIn("run-live", SV._INGEST_STATE)     # 가장 오래됐어도 실행 중은 보존
+            self.assertNotIn("rerun1:0000", SV._INGEST_STATE)   # 오래된 완료부터 제거
+            self.assertIn("rerun1:%04d" % (IG._JOBS_KEEP + 29), SV._INGEST_STATE)
+            self.assertEqual(len(SV.ingest_status()["jobs"]),   # 폴링 페이로드도 유한
+                             IG._JOBS_KEEP + 1)
+
+    def test_prune_runs_even_without_store(self):
+        """스냅샷 저장이 불가한 환경(스토어 부재)에서도 메모리 정리는 동작한다."""
+        import prism.ingestops as IG
+        import prism.serve as SV
+        orig_store = SV.get_store
+        orig_state = dict(SV._INGEST_STATE)
+        SV.get_store = lambda: None
+        SV._INGEST_STATE.clear()
+        self.addCleanup(lambda: (setattr(SV, "get_store", orig_store),
+                                 SV._INGEST_STATE.clear(),
+                                 SV._INGEST_STATE.update(orig_state)))
+        for i in range(IG._JOBS_KEEP + 5):
+            SV._INGEST_STATE["add:%04d" % i] = {"name": "n", "running": False, "started": float(i)}
+        SV._jobs_persist()
+        self.assertEqual(len(SV._INGEST_STATE), IG._JOBS_KEEP)
+
     def test_persist_caps_history(self):
         import prism.serve as SV
         from prism.store import Store

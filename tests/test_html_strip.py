@@ -70,6 +70,29 @@ class TestStripsMarkup(unittest.TestCase):
         got = strip_html("<o:p></o:p>워드에서 붙여넣은 문단<v:shape id='x' />")
         self.assertEqual(got.strip(), "워드에서 붙여넣은 문단")
 
+    def test_dangling_tail_only_is_cleaned(self):
+        """크롤 절단: 온전한 태그 없이 '속성 있는 잘린 꼬리 태그'만 있어도 정제한다.
+
+        종전엔 _looks_like_html=False 라 평문 경로로 빠져 _DANGLING 이 도달 불가 코드였다
+        (감사 2026-08-04) — 마크업 조각이 LLM 입력·리드문 추출에 그대로 남았다."""
+        got = strip_html('수도권 폭우 현장 <div class="article_view" data-translation')
+        self.assertEqual(got.strip(), "수도권 폭우 현장")
+        self.assertEqual(strip_html('본문 내용 <div class="trunc').strip(), "본문 내용")
+
+    def test_dangling_tail_after_complete_tag(self):
+        """앞에 온전한 태그가 있는 경우와 없는 경우의 비일관 해소 — 같은 꼬리는 같은 결과.
+        닫힌 따옴표 속성 뒤가 잘린 꼬리(`class="x" data-y`)도 제거된다."""
+        got = strip_html('<p>앞문단</p> 본문 끝 <div class="article_view" data-translation')
+        self.assertIn("본문 끝", got)
+        self.assertNotIn("article_view", got)
+
+    def test_entity_with_dangling_tail(self):
+        """엔티티 동반 경로에서도 꼬리가 남지 않는다."""
+        got = strip_html('폭우&nbsp;속보 <div class="article_view')
+        self.assertIn("폭우", got)
+        self.assertNotIn("article_view", got)
+        self.assertNotIn("&nbsp;", got)
+
     def test_entities_are_unescaped(self):
         self.assertEqual(strip_html("A&nbsp;B &amp; C &lt;3 &#66;&#x43;").replace("\xa0", " "),
                          "A B & C <3 BC")
@@ -108,7 +131,7 @@ class TestPlainTextIsUntouched(unittest.TestCase):
         "HTML 에서 <p> 는 문단, <br> 은 줄바꿈을 뜻한다.",      # HTML 설명 평문(홑태그 2개)
         "수식: if (x < y) { return y > x; }",                   # 코드 예시
         "부등호 하나만: <",
-        "본문 내용 <div class=\"trunc",                          # 미완성 꼬리(온전한 태그 없음)
+        "a<b",                                                   # 이름뿐인 꼬리 = 평문 부등호
         "AT&T 와 R&D 는 그대로 둔다.",                           # 반쪽 엔티티 오작동 방지
         "",
     ]

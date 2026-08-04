@@ -79,9 +79,17 @@ _DECL = re.compile(r"<![a-zA-Z][^<>]*>")                      # <!doctype html> 
 _BLOCK_TAG = re.compile(r"<\s*/?\s*(?:" + _BLOCK_NAMES + r")\b" + _ATTRS + r">", re.I)
 _ANY_TAG = re.compile(r"<\s*/?\s*" + _ANY_NAME + r"\b" + _ATTRS + r">", re.I)
 # 잘린 꼬리 태그(`… <div class="`). 여기서도 속성 문법을 지켜야 평문 꼬리를 안 먹는다.
-_HALF_ATTR = r"""[a-zA-Z_:][-\w:.]*(?:\s*=\s*(?:"[^"]*|'[^']*|[^\s"'<>=`]*))?"""
+# 값의 닫는 따옴표는 선택(`"?`) — `class="article_view" data-x` 처럼 온전한 속성 '뒤'가
+# 잘린 꼬리도 잡는다(닫는 따옴표를 소비하지 못하면 첫 속성에서 매칭이 끊긴다).
+_HALF_ATTR = r"""[a-zA-Z_:][-\w:.]*(?:\s*=\s*(?:"[^"]*"?|'[^']*'?|[^\s"'<>=`]*))?"""
 _DANGLING = re.compile(r"<\s*/?\s*" + _ANY_NAME + r"(?:\s+(?:" + _HALF_ATTR + r"|/))*/?\s*\Z",
                        re.I)
+# 마크업 '판정'용 꼬리: 속성부가 하나라도 붙은 꼬리(`<div class="…`)만 인정한다.
+# 이름뿐인 꼬리(`a<b`)는 평문 부등호와 구분이 안 되므로 단독으로는 판정하지 않는다.
+# 종전엔 온전한 태그가 하나도 없으면 strip_html 이 평문 경로로 빠져 _DANGLING 이
+# 도달 불가였다 — 크롤 절단으로 꼬리 태그만 남은 본문이 무정제 통과(감사 2026-08-04).
+_DANGLING_EVIDENCE = re.compile(
+    r"<\s*/?\s*" + _ANY_NAME + r"(?:\s+(?:" + _HALF_ATTR + r"|/))+\s*\Z", re.I)
 _BARE_TAG_TOLERANCE = 3        # 홑태그만 이 개수 미만이면 평문으로 본다
 
 
@@ -112,6 +120,8 @@ def strip_html(s) -> str:
     if not s:
         return s
     has_tag = _looks_like_html(s)
+    if not has_tag and _DANGLING_EVIDENCE.search(s):
+        has_tag = True                            # 크롤 절단: 속성 있는 미완 꼬리 태그도 마크업
     if not (has_tag or _ENTITY.search(s)):
         return s                                  # 평문 → 무손상 통과
     if has_tag:
