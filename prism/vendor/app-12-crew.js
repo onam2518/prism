@@ -48,10 +48,14 @@ window.PRISM_APP_PARTS.push(() => ({
       get crewDdayTxt() {
         const due = this.crewSum.due_at;
         if (!due) return '';
-        const left = due - Date.now() / 1000;
-        if (left < 0) return ' · 기한 지남';
-        const d = Math.floor(left / 86400);
-        return d > 0 ? (' · D-' + d) : ' · 오늘 마감';
+        const now = new Date();
+        if (due * 1000 < now.getTime()) return ' · 기한 지남';
+        // 달력 날짜 차이(자정 경계)로 센다 — 경과 시간/24h 로 세면 21시간 남은
+        // '내일 오전 마감'이 '오늘 마감'으로 표시된다(2026-08-04 신고)
+        const d = new Date(due * 1000);
+        const mid = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+        const days = Math.round((mid(d) - mid(now)) / 86400000);
+        return days > 0 ? (' · D-' + days) : ' · 오늘 마감';
       },
       get crewBurn() { return (this.crewData && this.crewData.burndown) || []; },
       // 그래프 세로 기준 = 남은 양과 끝낸 양 중 큰 값(둘이 같은 축을 쓰도록) · 0 나눗셈 방지로 하한 1
