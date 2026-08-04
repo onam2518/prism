@@ -26,17 +26,17 @@ class TwoTierBase(unittest.TestCase):
         self.addCleanup(lambda: setattr(serve, "_STORE", None))
         return serve, st
 
-    def _put_reviewed(self, st, title, verdicts, cats=("Sports",)):
+    def _put_reviewed(self, st, title, verdicts, cats=("Sports",), grade="G"):
         from prism.store import content_hash
         content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문 " + title}
         ch = content_hash(content)
         im = {"summary": title, "entities": [], "intent": [], "content_category": list(cats)}
-        payload = {"quality_meta": {"review": "yellow", "finalGrade": "G", "reasons": []},
+        payload = {"quality_meta": {"review": "yellow", "finalGrade": grade, "reasons": []},
                    "item_meta": im, "content_ref": dict(content)}
         c = st._conn()
         c.execute("INSERT OR REPLACE INTO results(content_hash,service,title,final_grade,reasons,item_meta,payload,created_at) "
                   "VALUES(?,?,?,?,?,?,?,?)",
-                  (ch, "뉴스", title, "G", "[]", _j.dumps(im), _j.dumps(payload), _t.time()))
+                  (ch, "뉴스", title, grade, "[]", _j.dumps(im), _j.dumps(payload), _t.time()))
         c.commit()
         for rv, v in verdicts:
             st.save_feedback(ch, "뉴스", title, v, "review", "", _t.time(), reviewer=rv)
@@ -93,6 +93,24 @@ class TestFinalQueue(TwoTierBase):
         q3 = serve.final_review_queue(None)
         self.assertNotIn("의견 갈림 건", [i["title"] for i in q3["items"]])   # 확정분은 큐에서 사라짐
         self.assertIn(ch_nocat, [i["hash"] for i in q3["items"]])           # 분류 공백은 잔류
+
+    def test_no_grade_agreement_stays_in_queue(self):
+        """정확 합의 + 분류 있음이라도 등급(G/R)이 비면 승격 게이트(build_golden_from_reviews
+        의 no_grade)에 막힌다 — 큐가 '승격 예정'으로 오인해 건너뛰면 골든도 큐도 아닌 채
+        영구 미확정으로 남는다(감사 2026-08-04)."""
+        serve, st = self._with_store()
+        ch = self._put_reviewed(st, "등급 없는 합의", [("A", "good"), ("B", "good")], grade="")
+        q = serve.final_review_queue(None)
+        got = {i["title"]: i["final_reason"] for i in q["items"]}
+        self.assertEqual(got.get("등급 없는 합의"), "등급 없음")
+        # 승격 게이트와 정합: 학습 반영을 돌려도 이 건은 골든이 되지 않는다(need_grade)
+        r = serve.build_golden_from_reviews(None)
+        self.assertNotIn(ch, st.golden_hashes())
+        self.assertEqual(r.get("need_grade"), 1)
+        # 등급을 채우면(합의+분류+등급) 정상 확정 경로 → 큐에서 빠진다
+        serve.patch_content_meta(ch, {"finalGrade": "G"}, team=None, reviewer="리드")
+        q2 = serve.final_review_queue(None)
+        self.assertNotIn(ch, [i["hash"] for i in q2["items"]])
 
 
 class TestRerunUnconfirmed(TwoTierBase, CfgMixin):

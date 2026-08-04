@@ -356,7 +356,10 @@ def crew_data(team=None, scope_uid: str = "") -> dict:
                            lambda: _crew_compute(team, scope_uid), ttl=20.0)
 
 
-def _crew_compute(team=None, scope_uid: str = "") -> dict:
+def _crew_compute(team=None, scope_uid: str = "", raw_out=None) -> dict:
+    """raw_out(dict)을 주면 내부에서 조회한 원천 테이블(asg·fmap·targets·golden)을 담아
+    돌려준다 — rebalance·escalate_split·plan_distribute 가 직후에 같은 테이블을 전량
+    재조회하지 않게(왕복 공유). 조회에 실패한 키는 담지 않는다(호출측이 폴백 판단)."""
     st = _SV.get_store()
     if not st:
         return {"ok": False, "members": [], "summary": {}, "error": "store unavailable"}
@@ -368,6 +371,8 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
         rvs = {}
     try:
         fmap = st.feedback_map(team=team) or {}
+        if raw_out is not None:
+            raw_out["fmap"] = fmap
     except Exception:
         fmap = {}
     try:                                            # 배정 현황 + 배정 시각을 1회 조회로(왕복 축소)
@@ -375,15 +380,21 @@ def _crew_compute(team=None, scope_uid: str = "") -> dict:
             asg, asg_ts = st.assignments_snapshot(team)
         else:
             asg, asg_ts = (st.assignees(team=team) or {}), _assign_ts(team)
+        if raw_out is not None:
+            raw_out["asg"] = asg
     except Exception:
         asg, asg_ts = {}, {}
     try:                                            # 배정 해시를 넘겨 assignments 재조회 생략
         targets = (st.review_targets(team, assigned=set(asg))
                    if hasattr(st, "review_targets") else set())
+        if raw_out is not None:
+            raw_out["targets"] = targets
     except Exception:
         targets = set()
     try:
         golden = st.golden_hashes(team) or set()
+        if raw_out is not None:
+            raw_out["golden"] = golden
     except Exception:
         golden = set()
     try:
@@ -642,7 +653,8 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
     hs = [h for h in dict.fromkeys(hashes or []) if h]
     if not (st and hs):
         return {"ok": False, "error": "배정할 콘텐츠가 없습니다", "plan": {}, "n": 0}
-    data = _crew_compute(team)                      # 캐시 우회: 방금 바뀐 부하를 반영해야 한다
+    raw = {}
+    data = _crew_compute(team, raw_out=raw)         # 캐시 우회: 방금 바뀐 부하를 반영해야 한다
     pool = _assignable([m for m in data["members"] if m["available"]])
     if reviewers:
         want = set(reviewers)
@@ -669,7 +681,7 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
     use_lack = int(cfg["lack_first"]) if lack_first is None else int(bool(lack_first))
     if use_lack:
         hs = prioritize(hs, team)                    # 정답셋이 부족한 분류를 먼저 내보낸다
-    strengths = category_reliability(team) if use_match else {}
+    strengths = category_reliability(team, fmap=raw.get("fmap")) if use_match else {}   # fmap 재사용
     cats = content_categories(team) if use_match else {}
     ids = [m["id"] for m in pool]
     idx = {m["id"]: i for i, m in enumerate(pool)}   # 동률 시 선택 순서 유지
@@ -744,7 +756,8 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
     if not st:
         return {"ok": False, "error": "store unavailable", "moves": [], "n": 0}
     cfg = settings(team)
-    data = _crew_compute(team)
+    raw = {}
+    data = _crew_compute(team, raw_out=raw)         # 원천 테이블 공유(직후 전량 재조회 방지)
     by_id = {m["id"]: m for m in data["members"]}
     stale_ids = {m["id"] for m in data["members"]
                  if m["load"]["pending"] and (m["load"]["stale_days"] >= float(cfg["stale_days"])
@@ -756,12 +769,15 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
                           if m["available"] and m["id"] not in stale_ids and m["spare"] > 0])
     if not takers:
         return {"ok": False, "error": "받을 여력이 있는 검수자가 없습니다(최종검수자 제외)", "moves": [], "n": 0}
-    try:
-        asg = st.assignees(team=team) or {}
-        fmap = st.feedback_map(team=team) or {}
-        targets = st.review_targets(team) if hasattr(st, "review_targets") else set()
-    except Exception:
-        return {"ok": False, "error": "누가 무엇을 맡았는지 불러오지 못했습니다", "moves": [], "n": 0}
+    if all(k in raw for k in ("asg", "fmap", "targets")):   # _crew_compute 조회분 재사용
+        asg, fmap, targets = raw["asg"], raw["fmap"], raw["targets"]
+    else:                                           # 일부 조회 실패 시에만 직접 재시도(기존 오류 계약 유지)
+        try:
+            asg = st.assignees(team=team) or {}
+            fmap = st.feedback_map(team=team) or {}
+            targets = st.review_targets(team) if hasattr(st, "review_targets") else set()
+        except Exception:
+            return {"ok": False, "error": "누가 무엇을 맡았는지 불러오지 못했습니다", "moves": [], "n": 0}
     done_pairs = {(ch, (v.get("reviewer_id") or v.get("reviewer") or ""))
                   for ch, e in fmap.items() for v in (e.get("verdicts") or [])
                   if v.get("verdict") in ("good", "bad")}
@@ -914,16 +930,20 @@ def auto_tick(team=None, now=None, apply: bool = True) -> dict:
 # 전건 3인 검수는 비싸다. 실측 불일치율이 선착 2인 기준 25% 였으니, 2인으로 시작하고
 # 갈린 건에만 3번째를 붙이면 같은 신뢰도로 판정 수를 25% 안팎 줄일 수 있다.
 # (2,000건 정답셋 기준 6,000판정 → 4,500판정)
-def split_pending(team=None) -> list:
+def split_pending(team=None, asg=None, fmap=None, golden=None) -> list:
     """3번째 눈이 필요한 콘텐츠: 배정된 담당이 전원 판정했는데 의견이 갈렸고,
-    아직 아무도 더 붙지 않은 것. 이미 골든으로 확정됐거나 리드가 최종판정한 건 제외."""
+    아직 아무도 더 붙지 않은 것. 이미 골든으로 확정됐거나 리드가 최종판정한 건 제외.
+    asg·fmap·golden 을 주면(호출측이 이미 조회) 같은 테이블 전량 재조회를 생략한다."""
     st = _SV.get_store()
     if not st:
         return []
     try:
-        asg = st.assignees(team=team) or {}
-        fmap = st.feedback_map(team=team) or {}
-        golden = st.golden_hashes(team) or set()
+        if asg is None:
+            asg = st.assignees(team=team) or {}
+        if fmap is None:
+            fmap = st.feedback_map(team=team) or {}
+        if golden is None:
+            golden = st.golden_hashes(team) or set()
     except Exception:
         return []
     try:
@@ -948,13 +968,20 @@ def split_pending(team=None) -> list:
 
 def escalate_split(team=None, apply: bool = False, by: str = "", limit: int = 200) -> dict:
     """의견이 갈린 건에만 3번째 검수자를 붙인다(전건 3인 배정의 대체).
-    고르는 기준은 여력(부하/캐파) · 이미 그 건을 본 두 사람은 당연히 제외한다."""
+    고르는 기준은 여력(부하/캐파) · 이미 그 건을 본 두 사람은 당연히 제외한다.
+    _crew_compute 를 먼저 돌려 그 원천 테이블(asg·fmap·golden)을 split_pending 과
+    공유한다 — 같은 호출 안에서 feedback·assignments 전량이 두 번 내려오지 않게."""
     st = _SV.get_store()
-    items = split_pending(team)[:max(1, int(limit))]
-    if not (st and items):
+    if not st:
         return {"ok": True, "n": 0, "moves": [], "applied": False,
                 "reason": "추가 배정이 필요한 불일치 건이 없습니다"}
-    data = _crew_compute(team)
+    raw = {}
+    data = _crew_compute(team, raw_out=raw)
+    items = split_pending(team, asg=raw.get("asg"), fmap=raw.get("fmap"),
+                          golden=raw.get("golden"))[:max(1, int(limit))]
+    if not items:
+        return {"ok": True, "n": 0, "moves": [], "applied": False,
+                "reason": "추가 배정이 필요한 불일치 건이 없습니다"}
     pool = _assignable([m for m in data["members"] if m["available"]])
     if not pool:
         return {"ok": False, "error": "배정할 수 있는 검수자가 없습니다(최종검수자 제외)", "n": 0, "moves": []}
@@ -1017,40 +1044,47 @@ def _row_key(ref: dict) -> str:
     return _SV._row_key(ref)
 
 
-def category_reliability(team=None, min_n: int = 5) -> dict:
+def category_reliability(team=None, min_n: int = 5, fmap=None) -> dict:
     """{uid: {분류: 합치율}} · '이 사람이 이 분야에서 팀 결론과 얼마나 같게 보는가'.
     골드 문항은 분야별로 표본이 안 나오므로 다수 의견과의 합치로 근사한다
-    (표본 min_n 미만인 조합은 담지 않는다 · 적은 표본으로 강점을 단정하지 않기 위해)."""
-    st = _SV.get_store()
-    if not st:
-        return {}
-    try:
-        fmap = st.feedback_map(team=team) or {}
-    except Exception:
-        return {}
-    cats = content_categories(team)
-    acc = {}                                          # uid → 분류 → [일치, 전체]
-    for ch, e in fmap.items():
-        vs = [(v.get("reviewer_id") or v.get("reviewer") or "", v.get("verdict"))
-              for v in (e.get("verdicts") or []) if v.get("verdict") in ("good", "bad")]
-        if len(vs) < 2:
-            continue                                  # 혼자 본 건은 합치를 잴 수 없다
-        g = sum(1 for _, v in vs if v == "good")
-        major = "good" if g * 2 > len(vs) else ("bad" if (len(vs) - g) * 2 > len(vs) else "")
-        if not major:
-            continue                                  # 동점이면 정답이 없다
-        for c in (cats.get(ch) or []):
-            for rid, v in vs:
-                d = acc.setdefault(rid, {}).setdefault(c, [0, 0])
-                d[1] += 1
-                if v == major:
-                    d[0] += 1
-    out = {}
-    for rid, per in acc.items():
-        row = {c: round(a / n, 4) for c, (a, n) in per.items() if n >= max(1, int(min_n))}
-        if row:
-            out[rid] = row
-    return out
+    (표본 min_n 미만인 조합은 담지 않는다 · 적은 표본으로 강점을 단정하지 않기 위해).
+    fmap 을 주면(호출측이 이미 조회) feedback 전량 재조회를 생략한다(capacity(fmap=) 관례).
+    결과는 _agg_cached 로 감싼다(content_categories 관례) — 배정 미리보기→실행이 연달아
+    O(fmap×verdicts) 합치율 계산을 반복하지 않게. 피드백 쓰기 경로는 전부 _agg_bump 호출."""
+    def _calc():
+        st = _SV.get_store()
+        if not st:
+            return {}
+        fm = fmap
+        if fm is None:
+            try:
+                fm = st.feedback_map(team=team) or {}
+            except Exception:
+                return {}
+        cats = content_categories(team)
+        acc = {}                                      # uid → 분류 → [일치, 전체]
+        for ch, e in fm.items():
+            vs = [(v.get("reviewer_id") or v.get("reviewer") or "", v.get("verdict"))
+                  for v in (e.get("verdicts") or []) if v.get("verdict") in ("good", "bad")]
+            if len(vs) < 2:
+                continue                              # 혼자 본 건은 합치를 잴 수 없다
+            g = sum(1 for _, v in vs if v == "good")
+            major = "good" if g * 2 > len(vs) else ("bad" if (len(vs) - g) * 2 > len(vs) else "")
+            if not major:
+                continue                              # 동점이면 정답이 없다
+            for c in (cats.get(ch) or []):
+                for rid, v in vs:
+                    d = acc.setdefault(rid, {}).setdefault(c, [0, 0])
+                    d[1] += 1
+                    if v == major:
+                        d[0] += 1
+        out = {}
+        for rid, per in acc.items():
+            row = {c: round(a / n, 4) for c, (a, n) in per.items() if n >= max(1, int(min_n))}
+            if row:
+                out[rid] = row
+        return out
+    return _SV._agg_cached(("crewrel", team, int(min_n)), _calc)
 
 
 def prioritize(hashes, team=None) -> list:

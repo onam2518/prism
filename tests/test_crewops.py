@@ -259,6 +259,21 @@ class TestRebalance(CrewBase):
         for h, a in st.assignees(None).items():
             self.assertEqual(len(a["reviewers"]), len(set(a["reviewers"])))
 
+    def test_reuses_crew_compute_tables(self):
+        """[감사 #15] rebalance 는 _crew_compute 조회분(asg·fmap·targets)을 재사용한다 —
+        같은 호출 안에서 feedback·assignments 전량이 두 번 내려오면 안 된다(결과는 불변)."""
+        serve = self._serve()
+        st = self._stalled(serve)
+        calls = {"fmap": 0}
+        orig = st.feedback_map
+        def counting(team=None):
+            calls["fmap"] += 1
+            return orig(team=team)
+        st.feedback_map = counting
+        r = serve.CRW.rebalance(None)
+        self.assertEqual(r["n"], 8)                             # 동작 불변(위 테스트와 동일 결과)
+        self.assertEqual(calls["fmap"], 1)                      # 전량 조회는 1회뿐
+
 
 class TestCrewData(CrewBase):
     def test_signals_and_summary(self):
@@ -576,6 +591,24 @@ class TestAdaptiveOverlap(CrewBase):
         r = serve.CRW.auto_tick(None)
         self.assertEqual(r["escalate"]["n"], 1)
 
+    def test_escalate_reuses_crew_compute_tables(self):
+        """[감사 #15] escalate_split 은 _crew_compute 조회분을 split_pending 과 공유한다 —
+        feedback·assignments 전량이 한 호출에 두 번 내려오면 안 된다(결과는 불변)."""
+        serve = self._serve()
+        st = self._pair(serve)
+        now = time.time()
+        st.save_feedback(self._h(0), "s", "t", "good", "analyze", "", now, reviewer="a")
+        st.save_feedback(self._h(0), "s", "t", "bad", "analyze", "", now, reviewer="b")
+        calls = {"fmap": 0}
+        orig = st.feedback_map
+        def counting(team=None):
+            calls["fmap"] += 1
+            return orig(team=team)
+        st.feedback_map = counting
+        r = serve.CRW.escalate_split(None)
+        self.assertEqual(r["n"], 1)                             # 동작 불변
+        self.assertEqual(calls["fmap"], 1)                      # 전량 조회는 1회뿐
+
 
 class TestStrengthMatching(CrewBase):
     def _cat_setup(self, serve):
@@ -616,6 +649,23 @@ class TestStrengthMatching(CrewBase):
         off = serve.CRW.plan_distribute(sports, min_reviewers=1, reviewers=["a", "b"], match=False)
         self.assertGreater(on["plan"]["a"]["n"], off["plan"]["a"]["n"])   # 강점 쪽으로 기운다
         self.assertEqual(sum(p["n"] for p in on["plan"].values()), 6)     # 총량은 그대로
+
+    def test_match_reuses_fmap_from_crew_compute(self):
+        """[감사 #27] plan_distribute(match) 의 category_reliability 는 _crew_compute 가
+        받은 fmap 을 재사용한다 — 배정 1회에 feedback 전량 조회가 2번이면 안 된다."""
+        serve = self._serve()
+        st = self._cat_setup(serve)
+        sports = [self._content_cat(st, 5000 + i, "Sports") for i in range(4)]
+        calls = {"fmap": 0}
+        orig = st.feedback_map
+        def counting(team=None):
+            calls["fmap"] += 1
+            return orig(team=team)
+        st.feedback_map = counting
+        r = serve.CRW.plan_distribute(sports, min_reviewers=1, reviewers=["a", "b"], match=True)
+        self.assertTrue(r["ok"])
+        self.assertEqual(sum(p["n"] for p in r["plan"].values()), 4)      # 동작 불변
+        self.assertEqual(calls["fmap"], 1)                                # 전량 조회는 1회뿐
 
     def test_lack_classes_go_first(self):
         """정답셋이 부족한 분류를 앞으로 · 상한이 걸릴 때 더 값진 것이 먼저 나간다."""

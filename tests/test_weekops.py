@@ -104,6 +104,25 @@ class CaptureTest(_Base):
         self.assertEqual(W.capture(None, crew=self.crew, now=early), 0)
         self.assertNotIn(W.WEEKLY_KIND, self.sv.reports)
 
+    def test_older_weeks_freeze_as_estimates_not_confirmed(self):
+        """1주 이상 화면을 안 연 팀: 확정(_snap)은 직전 마감 주(cur-1)만 —
+        '오늘의 상태 지표'가 오래된 과거 주 전부에 estimated=False 확정값으로
+        영구 고정되는 오염 방지(감사 2026-08-04). 오래된 주는 역산값으로만 고정한다."""
+        later = self.now + 14 * 86400                           # 2026-08-11(화) = 4주차
+        self.assertEqual(W.current_week(later), 4)
+        self.assertEqual(W.capture(None, crew=self.crew, now=later), 3)
+        saved = self.sv.reports[W.WEEKLY_KIND]["weeks"]
+        self.assertFalse(saved["3"]["estimated"])               # 직전 마감 주만 확정
+        self.assertEqual(saved["3"]["stale_total"], 7)          # 적립 시점 상태값
+        for n in ("1", "2"):
+            self.assertTrue(saved[n]["estimated"])              # 오래된 주 = 역산 고정
+            self.assertIsNone(saved[n]["stale_total"])          # 미래 시점 상태값을 붙이지 않는다
+            self.assertTrue(saved[n]["captured_at"])            # 적립 시점은 남긴다(감사 추적)
+        # 조회도 추정 표기를 유지한다(estimated 배지 원천)
+        r = W.weekly_records(None, weeks=8, crew=self.crew, now=later)
+        w1 = next(w for w in r["weeks"] if w["week"] == 1)
+        self.assertTrue(w1["estimated"])
+
 
 class RecordsTest(_Base):
     def test_unsnapshotted_past_week_is_marked_estimated(self):

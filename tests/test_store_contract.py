@@ -372,6 +372,31 @@ class TestSupastorePatchLogUuid(unittest.TestCase):
         st2._get = lambda table, query="": self.fail("uuid 아닌 값으로 조회하면 안 된다")
         self.assertEqual(st2.patches_today("(익명)"), 0)
 
+    def test_hash_filter_pushed_to_server(self):
+        """[감사 #7] /history·초안 폴백 단건 조회: content_hash= 는 서버측 eq 필터로 나가야
+        patch_log 전량(before/after JSON 블롭 · 수 MB · 5왕복)을 내려받지 않는다."""
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore.__new__(SupabaseStore)
+        cap = {}
+        st._get = lambda table, query="": (cap.__setitem__("q", query) or [])
+        st.patch_rows(content_hash="a" * 16)
+        self.assertIn("content_hash=eq." + "a" * 16, cap["q"])
+        st.patch_rows()                                          # 미지정이면 필터 없음(전량 계약 유지)
+        self.assertNotIn("content_hash=eq.", cap["q"])
+
+    def test_sqlite_hash_filter_matches_contract(self):
+        """sqlite 구현도 같은 계약: content_hash= 를 주면 그 콘텐츠의 행만 최신순으로."""
+        import tempfile as _tf
+        from prism.store import Store
+        st = Store(os.path.join(_tf.mkdtemp(), "patch.db"))
+        st.log_patch("a" * 16, "복실", "summary", {}, {})
+        st.log_patch("b" * 16, "딱지", "category", {}, {})
+        st.log_patch("a" * 16, "복실", "rerun:x->y", {}, {})
+        rows = st.patch_rows(content_hash="a" * 16)
+        self.assertEqual([r["hash"] for r in rows], ["a" * 16, "a" * 16])
+        self.assertEqual(rows[0]["element"], "rerun:x->y")       # 최신순 유지
+        self.assertEqual(len(st.patch_rows()), 3)                # 미지정 = 전량(기존 계약)
+
 
 class TestSupastoreFirstSourceKept(unittest.TestCase):
     """supabase 인입 경로 라벨: PostgREST upsert 는 보낸 컬럼을 무조건 덮어쓰므로,

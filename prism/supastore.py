@@ -604,10 +604,13 @@ class SupabaseStore:
             row["team_id"] = team
         self._req("POST", "patch_log", body=[row], prefer="return=minimal")
 
-    def patch_rows(self, limit: int = 5000, team=None) -> list:
+    def patch_rows(self, limit: int = 5000, team=None, content_hash=None) -> list:
+        """content_hash 를 주면 서버측 eq 필터로 그 콘텐츠의 행만 — 단건 이력(/history·초안 폴백)이
+        before/after JSON 블롭 포함 전량(수 MB · 1000행 페이지 5왕복)을 내려받지 않게 한다."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        hq = f"&content_hash=eq.{urllib.parse.quote(content_hash)}" if content_hash else ""
         rows = self._get("patch_log", "select=content_hash,reviewer_id,element,before,after,created_at"
-                         f"{tq}&order=created_at.desc&limit={int(limit)}")
+                         f"{tq}{hq}&order=created_at.desc&limit={int(limit)}")
         return [{"hash": r["content_hash"],
                  "reviewer": r.get("reviewer_id") or _actor_label(r.get("element")),
                  "element": r.get("element") or "", "before": r.get("before") or {},
