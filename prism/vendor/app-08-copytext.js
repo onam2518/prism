@@ -188,12 +188,12 @@ window.PRISM_APP_PARTS.push(() => ({
       async rerunPicked(force) {
         const hs = this.pickedHashes;
         if (!hs.length || this.pickBusy) return;
-        const mname = this.bulkModel || '기본 실행 모델';
+        const mname = '기본 실행 모델';                 // 모델 비움('') = 서버 기본 실행 모델
         if (!force && !(await this.dsConfirm(hs.length + '건을 ' + mname + ' 로 재실행합니다(건당 비용 발생 · 기존 초안은 이력 보존) · 진행할까요?', { ok: '재실행' }))) return;
         this.pickBusy = true;
         let retryConfirm = false;
         try {
-          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel || '', hashes: hs, force: !!force }) })).json();
+          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: '', hashes: hs, force: !!force }) })).json();
           if (r && !r.error) {
             this.liveToast('선택 ' + (r.done || 0) + '건 재실행 완료'
               + (r.failed ? (' · 실패 ' + r.failed) : '')
@@ -209,7 +209,7 @@ window.PRISM_APP_PARTS.push(() => ({
         }
       },
       fmtEta(s) { s = Math.max(0, Math.round(s || 0)); return s >= 60 ? (Math.floor(s / 60) + '분 ' + (s % 60) + '초') : (s + '초'); },
-      // 개별 콘텐츠 재실행: STEP 2 사용 모델(bulkModel)로 이 건만 초안 재생성(/rerun · 이력 보존)
+      // 개별 콘텐츠 재실행: 서버 기본 실행 모델로 이 건만 초안 재생성(/rerun · 이력 보존)
       // 퀘스트 진행 중 서버 차단에 걸리면 확인 모달을 거쳐 이 한 건만 강행(force) — 기본 보호는 유지
       rerunBusy: {},
       async rerunOne(c, force) {
@@ -217,7 +217,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.rerunBusy = { ...this.rerunBusy, [c.hash]: true };
         let retryConfirm = false;
         try {
-          const r = await (await this._afetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, model: this.bulkModel || '', force: !!force }) })).json();
+          const r = await (await this._afetch('/rerun', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: c.hash, model: '', force: !!force }) })).json();   // 모델 비움 = 서버 기본 실행 모델
           if (r && !r.error) { this.liveToast((c.title || '콘텐츠') + ' · 재실행 완료'); this.loadDash(); this.loadRaw && this.loadRaw(); this.fetchIngestStatus(); }
           else if (r && !force && /퀘스트/.test(r.error || '')) retryConfirm = true;
           else this._err((r && r.error) || '재실행 실패');
@@ -320,11 +320,6 @@ window.PRISM_APP_PARTS.push(() => ({
         this._dl('prism_eval.csv', rows);
       },
       selectTab(id) { this.activeTabId = id; this.status = ''; },
-
-      // DNM 메타 체계(13. 프로젝트 기획 / 1312. 아이템 메타) 기준 item_meta 필드:
-      //   summary(리드문) · entities(엔티티) · intent(인텐트) · content_category(콘텐츠 카테고리)
-      get im() { return (this.result && this.result.output.item_meta) || {}; },
-      get q() { return (this.result && this.result.output.quality_meta) || {}; },
 
       // 엑셀 배치 인포그래픽: 총건·등급분포·인텐트 상위·평균 리드문 길이
       get batchStats() {

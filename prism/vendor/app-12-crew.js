@@ -7,7 +7,7 @@ window.PRISM_APP_PARTS.push(() => ({
 
       crewTab: 'dash',                    // dash(한눈에 보기) | people(팀원과 일정) | assign(일 나눠주기)
       crewData: null, crewBusy: false, crewMsg: '',
-      crewPlanRes: null, crewMoveRes: null, crewEscRes: null, crewAutoRes: null,
+      crewPlanRes: null, crewMoveRes: null, crewAutoRes: null,
       crewAsgScope: 'unassigned', crewAsgLimit: 200, crewAsgMin: 2, crewDue: '',
 
       get crewMembers() { return (this.crewData && this.crewData.members) || []; },
@@ -104,20 +104,6 @@ window.PRISM_APP_PARTS.push(() => ({
           }
           if (this.crewTab !== 'assign') this.crewTab = 'assign';   // 한눈에 보기에서 눌러도 계획이 보이는 곳으로
         } catch (e) { this._err('재배정 계획을 세우지 못했습니다'); }
-        finally { this.crewBusy = false; }
-      },
-
-      async crewEscalate(apply) {
-        this.crewBusy = true;
-        try {
-          const r = await this._crewPost('/crew-escalate', { apply: !!apply });
-          this.crewEscRes = r || null;
-          if (apply && r && r.ok) {
-            this.liveToast('추가 배정 완료 · ' + r.n + '건');
-            await this.loadCrew(); await this.loadRaw(1000);
-            this.crewEscRes = Object.assign({}, r, { applied: true });
-          }
-        } catch (e) { this._err('불일치 건을 찾지 못했습니다'); }
         finally { this.crewBusy = false; }
       },
 
