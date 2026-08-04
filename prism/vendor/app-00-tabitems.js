@@ -106,7 +106,6 @@ window.PRISM_APP_PARTS.push(() => ({
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], eattrs: [], kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } },
       studioPreview: { bundles: [], n_total: 0, must_n: 0, opt_n: 0 },
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
-      modelsBusy: false, modelsMsgStudio: '',   // 토픽 스튜디오: 모델 목록 새로고침(라우터 포함) 상태
       // 미디어(이미지·영상 → 메타 추출)
       mediaTab: 'image',                      // 미디어 하위 탭: image(이미지) | video(영상)
       mediaVid: { file: null, caption: '', subs: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
@@ -119,7 +118,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // Supabase 인증(ID/PW) · backend==='supabase' 일 때
       backend: 'supabase', authToken: '', authEmail: '', authPw: '', authPw2: '', authMode: 'login', authMsg: '', noTeam: false,
       // 팀(멀티테넌시): 생성/가입 + 내 초대코드
-      teamMode: 'join', teamName: '', inviteCode: '', myInvite: '', newTeamName: '', teamMsg: '',
+      inviteCode: '', myInvite: '', newTeamName: '', teamMsg: '',
       charOptions: [
         { id: 'boksil', label: '복실', role: '검수', img: '/vendor/boksil-catcher.svg' },
         { id: 'daesik', label: '대식', role: '추출', img: '/vendor/daesik-batter.svg' },

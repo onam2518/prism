@@ -74,16 +74,10 @@
                       <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="studioSuggest()" x-bind:disabled="studioSuggesting || !studio.prompt.trim()" data-tip="설명을 읽고 아래 조건값을 자동으로 만듭니다" data-tip-pos="top" x-text="studioSuggesting ? '생성 중…' : '✨ 조건값 자동생성'"></button>
                       <span class="tmodel">
                         <span class="tmodel__lbl">모델</span>
-                        <select class="field tmodel__sel" x-model="studioModel" data-tip="조건값 생성에 쓸 모델 · 직접(Solar)·라우터 선택 가능" data-tip-pos="top">
-                          <option value="">기본 실행 모델</option>
-                          <template x-for="m in studioModelList" x-bind:key="m.key"><option x-bind:value="m.value" x-bind:disabled="m.header" x-text="m.text"></option></template>
-                        </select>
-                        <button type="button" class="ds-iconbtn ds-iconbtn--bordered ds-iconbtn--sm tmodel__rf" x-bind:class="modelsBusy?'is-spin':''" x-on:click="refreshStudioModels()" x-bind:disabled="modelsBusy" data-tip="모델 목록 새로고침 (라우터 포함)" data-tip-pos="top" aria-label="모델 목록 새로고침">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
-                        </button>
+                        <x-modelpick key="st" value="studioModel" set="studioModel=$v" groups="textGroups" first-label="기본 실행 모델" first-value="" width="212px" tip="조건값 생성에 쓸 모델 · 직접(Solar)·라우터 선택 가능 · 미연결 제공자 모델은 키 등록 후 선택" tip-pos="top"></x-modelpick>
                       </span>
                     </div>
-                    <div class="text-xs" style="color:var(--ds-muted);margin-top:7px" aria-live="polite" x-text="studioMsg || modelsMsgStudio"></div>
+                    <div class="text-xs" style="color:var(--ds-muted);margin-top:7px" aria-live="polite" x-text="studioMsg"></div>
                   </div>
                 </div>
 

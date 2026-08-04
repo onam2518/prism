@@ -230,31 +230,13 @@ window.PRISM_APP_PARTS.push(() => ({
         this.liveToast('사건 묶음을 폼에 채웠어요 · 조건을 다듬고 저장하세요');
       },
       topKw() { const sel = this.studio.keywords, ng = this.studio.neg.keywords || []; const all = (this.topicData && this.topicData.catalog && this.topicData.catalog.keywords) || []; return all.filter(k => !sel.includes(k.k) && !ng.includes(k.k)).slice(0, 12); },
-      // 스텝 진행 상태 · 필터 요약 · 자동선택 표시 · 모델 목록(라우터 포함)
+      // 스텝 진행 상태 · 필터 요약 · 자동선택 표시
       tStepDone() { const s = this.studio; return (s.name.trim() ? 1 : 0) + (s.prompt.trim() ? 1 : 0) + ((s.cats.length || s.intents.length || s.keywords.length) ? 1 : 0); },
       tActive() { const s = this.studio; if (!s.name.trim()) return 1; if (!s.prompt.trim()) return 2; if (!(s.cats.length || s.intents.length || s.keywords.length)) return 3; return 4; },
       isAuto(field, val) { return (this.studio.auto[field] || []).includes(val) && this.studio[field].includes(val); },
       // 조건 칩: 데이터 present + 선택됐지만 데이터엔 아직 없는 값(자동생성이 고른 전체 분류)까지 표시
       studioCatChips() { const a = (this.topicData && this.topicData.catalog && this.topicData.catalog.cats) || []; const have = new Set(a.map(c => c.k)); return a.concat(this.studio.cats.filter(c => !have.has(c)).map(c => ({ k: c, v: 0 }))); },
       studioIntentChips() { const a = (this.topicData && this.topicData.catalog && this.topicData.catalog.intents) || []; const have = new Set(a.map(c => c.k)); return a.concat(this.studio.intents.filter(c => !have.has(c)).map(c => ({ k: c, v: 0 }))); },
-      get studioModelList() {          // 직접(Solar) + 라우터(Timely·BizRouter) optgroup 헤더 + 모델
-        let groups = [];
-        try { groups = this.textGroups || []; } catch (e) { groups = []; }
-        const out = [];
-        groups.forEach(g => {
-          const items = (g.items || []).map(it => it.model).filter(Boolean);
-          if (!items.length) return;
-          out.push({ header: true, value: '', text: '── ' + g.label + (g.on ? '' : ' (키 없음)') + ' ──', key: 'h' + g.label });
-          items.forEach(m => out.push({ header: false, value: m, text: m, key: g.label + '|' + m }));
-        });
-        return out;
-      },
-      async refreshStudioModels() {
-        this.modelsBusy = true; this.modelsMsgStudio = '모델 목록 새로고침 중…';
-        try { await this.loadModels(); this.modelsMsgStudio = '모델 목록을 새로고침했습니다 (직접 · 라우터)'; }
-        catch (e) { this.modelsMsgStudio = '새로고침 실패'; }
-        this.modelsBusy = false;
-      },
       schedulePreview() { if (this._studioT) clearTimeout(this._studioT); this._studioT = setTimeout(() => this.studioPreviewNow(), 260); },
       async studioPreviewNow() {
         if (!this.topicData || !this.topicData.n_contents) return;
@@ -265,8 +247,10 @@ window.PRISM_APP_PARTS.push(() => ({
         const text = (this.studio.prompt || this.studio.name || '').trim();
         if (!text) { this.studioMsg = '먼저 자연어로 설명을 적어 주세요'; return; }
         this.studioSuggesting = true; this.studioMsg = '조건값을 채우는 중…';
+        // x-modelpick 값은 provider|model 형식('' = 기본 실행 모델) · 서버(llm_for_model)는 model id 만 받는다
+        const mid = String(this.studioModel || '').split('|').pop();
         try {
-          const r = await this._studioPost({ action: 'suggest', text, model: this.studioModel });
+          const r = await this._studioPost({ action: 'suggest', text, model: mid });
           const s = (r && r.suggest) || {};
           (s.cats || []).forEach(c => { if (!this.studio.cats.includes(c)) this.studio.cats.push(c); });
           (s.intents || []).forEach(c => { if (!this.studio.intents.includes(c)) this.studio.intents.push(c); });
@@ -287,12 +271,12 @@ window.PRISM_APP_PARTS.push(() => ({
           this.studio.auto = { cats: (s.cats || []).slice(), intents: (s.intents || []).slice(), keywords: (s.keywords || []).slice() };
           const n = (s.cats || []).length + (s.intents || []).length + (s.keywords || []).length + (s.eattrs || []).length + negN;
           const viaLlm = r && r.via === 'llm';
-          const src = viaLlm ? ('모델(' + (this.studioModel || '기본') + ')') : '규칙';
+          const src = viaLlm ? ('모델(' + (mid || '기본') + ')') : '규칙';
           // 모델을 골랐는데 규칙으로 떨어졌으면 이유를 밝힌다(모델이 빈 응답·키 없음 등 · 조용한 폴백 방지)
           let why = '';
-          if (!viaLlm && this.studioModel) {
+          if (!viaLlm && mid) {
             const rt = (r && r.route) || '';
-            why = rt === 'mock' ? ' · 모의 모드라 실제 모델 대신 규칙' : /키|key/i.test(rt) ? ' · 모델 키가 없어 규칙' : (' · ' + (this.studioModel) + ' 응답이 비어 규칙으로 대체');
+            why = rt === 'mock' ? ' · 모의 모드라 실제 모델 대신 규칙' : /키|key/i.test(rt) ? ' · 모델 키가 없어 규칙' : (' · ' + mid + ' 응답이 비어 규칙으로 대체');
           }
           this.studioMsg = n ? (src + '이 조건값 ' + n + '개를 채웠습니다' + why + ' · 켜고 끄며 조정하세요')
             : (src + '이 일치하는 조건값을 찾지 못했습니다' + why + ' · 직접 선택하세요');

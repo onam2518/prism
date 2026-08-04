@@ -71,13 +71,13 @@ window.PRISM_APP_PARTS.push(() => ({
       async rerunFailPicked(force) {
         const hs = this.failPicked;
         if (!hs.length || this.failBusy) return;
-        const mname = this.bulkModel || '기본 실행 모델';
+        const mname = '기본 실행 모델';                 // 모델 비움('') = 서버 기본 실행 모델
         if (!force && !(await this.dsConfirm('실패한 ' + hs.length + '건을 ' + mname + ' 로 다시 실행합니다(건당 비용 발생) · 진행할까요?', { ok: '재실행' }))) return;
         this.failBusy = true;
         let retryConfirm = false;
         try {
           const before = this.failAll.length;
-          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.bulkModel || '', hashes: hs, force: !!force }) })).json();
+          const r = await (await this._afetch('/rerun-all', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: '', hashes: hs, force: !!force }) })).json();
           if (r && !r.error) {
             this.clearFailPick(); this.loadDash(); this.fetchIngestStatus();
             await this.loadFails();

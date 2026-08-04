@@ -30,17 +30,36 @@ window.PRISM_APP_PARTS.push(() => ({
         const me = (this.arenaData && this.arenaData.my_id) || this.reviewer || '';
         return !!me && a.indexOf(me) >= 0;
       },
-      // 검수 상태를 뺀 나머지 필터(검색·등급·모델·서비스·배정) 통과분 — 목록과 '숨김 N건' 힌트의 공통 모집단
-      get rawScoped() {
-        return (((this.rawData||{}).items)||[]).filter((r) => {
+      // 검수 목록 필터 체인 결과(2026-08-04 감사): getter 로 두면 바인딩(독립 반응 효과)마다
+      // 전량 재계산돼 넓은 창(2000행)에서 키입력 1회당 ~8회 풀 스캔이 났다.
+      // 루트 x-effect(_rawRecalc · 00-head.html)가 입력(rawData·검색·필터·판정) 변화 때
+      // 한 번만 계산해 아래 일반 상태에 채우고, 바인딩들은 결과 배열만 구독한다.
+      rawScoped: [],        // 검수 상태를 뺀 나머지 필터(검색·등급·모델·서비스·배정) 통과분 — 목록과 '숨김 N건' 힌트의 공통 모집단
+      rawFiltered: [],      // rawScoped 에 검수 상태(rawRev)·부족 분류 우선(rawGapFirst)까지 적용한 최종 목록
+      rawDoneHidden: 0,     // 기본값(미검수)이 감춘 '내가 판정 완료한' 건수 · 0 이면 힌트를 띄우지 않는다
+      _rawRecalc() {
+        const q = (this.rawQ || '').toLowerCase();
+        const scoped = (((this.rawData||{}).items)||[]).filter((r) => {
           if (this.assignedToOther(r)) return false;   // 내 배정분 + 미배정분만(타인 배정분 숨김)
           if (this.rawMineOnly && !this.assignedToMe(r)) return false;   // 내 배정분만(미배정분 제외)
-          if (this.rawQ && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(this.rawQ.toLowerCase())) return false;
+          if (q && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(q)) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
           if (this.rawSvc && (r.service||'') !== this.rawSvc) return false;
           return true;
         });
+        let done = 0;                                  // 내 판정 완료분(rawRev 와 무관하게 세고 표시만 조건부)
+        const out = scoped.filter((r) => {
+          const v = this.myVerdict(r.fb);
+          if (v) done += 1;
+          if (this.rawRev === 'todo' && v) return false;
+          if (this.rawRev === 'done' && !v) return false;
+          return true;
+        });
+        this.rawScoped = scoped;
+        // 안정 정렬: 부족 분류를 앞으로 올리되 그룹 안에서는 기존(최근순) 유지
+        this.rawFiltered = this.rawGapFirst ? out.slice().sort((a, b) => (b.class_gap ? 1 : 0) - (a.class_gap ? 1 : 0)) : out;
+        this.rawDoneHidden = this.rawRev === 'todo' ? done : 0;
       },
       // 상단 '필터' 버튼 배지: 기본값에서 벗어난 조건 개수(검색어는 밖에 남아 있으니 세지 않는다).
       // 0 이면 배지를 숨겨 '필터 없음'을 조용히 알린다.
@@ -53,15 +72,6 @@ window.PRISM_APP_PARTS.push(() => ({
       rawFilterReset() {
         this.rawGrade = ''; this.rawSvc = ''; this.rawMineOnly = false; this.rawGapFirst = false;
         if (this.rawRev !== 'todo') this.rawRevPick('todo');
-      },
-      get rawFiltered() {
-        const out = this.rawScoped.filter((r) => {
-          if (this.rawRev === 'todo' && this.myVerdict(r.fb)) return false;
-          if (this.rawRev === 'done' && !this.myVerdict(r.fb)) return false;
-          return true;
-        });
-        // 안정 정렬: 부족 분류를 앞으로 올리되 그룹 안에서는 기존(최근순) 유지
-        return this.rawGapFirst ? out.slice().sort((a, b) => (b.class_gap ? 1 : 0) - (a.class_gap ? 1 : 0)) : out;
       },
       rawShown: 200,                             // 검수 표 표시 캡(더 보기 증분) · 크루 탭 캡 200 과 동일 규약
       // 렌더 전용 절단본: 2000행 전부를 DOM 에 그리지 않는다(보이는 건 스크롤 박스 10여 행).
@@ -78,13 +88,9 @@ window.PRISM_APP_PARTS.push(() => ({
         }
         this.rawSel = d;
       },
-      // 기본값(미검수)이 감춘 '내가 판정 완료한' 건수 · 0 이면 힌트를 띄우지 않는다
-      get rawDoneHidden() {
-        return this.rawRev === 'todo' ? this.rawScoped.filter((r) => this.myVerdict(r.fb)).length : 0;
-      },
-
-      // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성)
-      bulkModel: '', bulkBusy: false, bulkMsg: '', bulkScope: 'pending',
+      // 관리자: 같은 콘텐츠를 다른 모델로 재실행(초안 재생성) · 모델은 항상 서버 기본 실행 모델
+      // (모델 피커 UI 는 2026-07-06 커밋 22ed957 로 제거 — 구 bulkModel 상태도 함께 정리)
+      bulkBusy: false, bulkMsg: '', bulkScope: 'pending',
       // 전체 기준 건수는 서버가 준다(dashData.contents 는 표시용 최신 200건이라 세면 안 된다 ·
       // 창 기준으로 세던 때 미실행 200건이 창 밖이라 '0건'으로 보이고 실행이 막혔다)
       get pendingCount() { return (this.dashData && this.dashData.pending_n) || 0; },
@@ -321,11 +327,6 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       async loadDash() { this.modBusy = true; try { const r = await this._afetch('/dashboard'); const d = await r.json(); if (r.ok && d && !d.error) this.dashData = d; } catch (e) {} this.modBusy = false; },
       // _afetch 사용: 토큰 만료 시 자동 갱신·재로그인 안내(만료를 '불러오기 실패'로 오인하던 문제) · 성공 응답만 반영
-      async drill(kind, value) {
-        this.drillOpen = true; this.drillBusy = true; this.drillData = { kind: kind, value: value, items: [] };
-        try { this.drillData = await (await fetch('/drill?kind=' + kind + '&value=' + encodeURIComponent(value) + (this.reviewer ? '&reviewer=' + encodeURIComponent(this.reviewer) : ''), { headers: this._authHeaders() })).json(); } catch (e) { this._err('콘텐츠 목록 불러오기 실패'); }
-        this.drillBusy = false;
-      },
       async topicDrill(t) {                              // 토픽 → 묶인 콘텐츠(배치 결과 드릴다운과 동일 모달)
         if (!t || !t.cluster_id) return;
         this.drillOpen = true; this.drillBusy = true;

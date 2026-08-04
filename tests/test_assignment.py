@@ -520,9 +520,13 @@ class TestRawListHidesDone(unittest.TestCase):
         from prism import page
         self.assertIn("rawDoneHidden", page.PAGE)          # 감춘 건수 힌트(사라진 게 아님을 알림)
         self.assertIn("rawRevPick('')", page.PAGE)          # 한 번에 펼치기(창을 넓혀 재조회)
+        # 2026-08-04 감사: getter 재계산 → x-effect 1회 계산(_rawRecalc)으로 바뀜.
+        # 힌트(rawDoneHidden)와 목록(rawFiltered)은 여전히 같은 모집단(scoped)에서 나와야 한다.
         src = self._src("prism/vendor/app-02-_afterverdict.js")
-        self.assertIn("get rawDoneHidden()", src)
-        self.assertIn("get rawScoped()", src)               # 힌트와 목록이 같은 모집단을 쓴다
+        body = src[src.index("_rawRecalc()"):]
+        body = body[:body.index("\n      },")]
+        self.assertIn("this.rawScoped = scoped", body)
+        self.assertIn("this.rawDoneHidden = this.rawRev === 'todo' ? done : 0", body)
 
 
 class TestRawFilterPopover(unittest.TestCase):
