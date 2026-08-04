@@ -478,7 +478,20 @@
           </div>
         </section>
 
-        <section class="panel"><div class="panel-hd"><b>배정 이력</b><span class="meta">최근순</span></div>
+        <section class="panel"><div class="panel-hd"><b>배정 이력</b><span class="meta">최근순</span>
+          <!-- 현재 묶음의 기한 조정을 이력 자리에서도 · 지난 이력 행의 기한은 소급 대상이 아니다
+               (웨이브는 현재 1건만 저장 · 신호등·완주 보너스도 현재 기한만 본다) -->
+          <span class="flex items-center gap-1 ml-auto" x-show="crewSum.due_at" x-cloak>
+            <span class="meta" x-text="'현재 기한 ' + crewDate(crewSum.due_at) + crewDdayTxt"></span>
+            <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!crewDueEdit"
+                    x-on:click="crewDueEditOpen()">기한 조정</button>
+            <input type="datetime-local" class="field" style="height:30px;width:190px"
+                   x-show="crewDueEdit" x-model="crewDueNew">
+            <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="crewDueEdit"
+                    x-bind:disabled="crewBusy || !crewDueNew" x-on:click="crewAdjustDue()">저장</button>
+            <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="crewDueEdit"
+                    x-on:click="crewDueEdit = false">취소</button>
+          </span></div>
           <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr>
             <th style="width:150px">일시</th><th style="width:180px">실행자</th><th style="width:140px">방식</th>
             <th style="width:80px">건수</th><th>배정 대상</th></tr></thead><tbody>
