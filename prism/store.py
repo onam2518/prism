@@ -661,12 +661,15 @@ class Store:
                    json.dumps(before, ensure_ascii=False), json.dumps(after, ensure_ascii=False), time.time()))
         c.commit()
 
-    def patch_rows(self, limit: int = 5000, team=None) -> list:
+    def patch_rows(self, limit: int = 5000, team=None, content_hash=None) -> list:
+        """content_hash 를 주면 그 콘텐츠의 행만(단건 이력 조회가 전량을 받지 않게 · supastore 와 동일 계약)."""
         c = self._conn()
         out = []
+        cond = " WHERE content_hash=?" if content_hash else ""
+        args = ([content_hash] if content_hash else []) + [int(limit)]
         for ch, rv, el, bf, af, ts in c.execute(
-                "SELECT content_hash,reviewer,element,before,after,ts FROM patch_log ORDER BY ts DESC LIMIT ?",
-                (int(limit),)):
+                "SELECT content_hash,reviewer,element,before,after,ts FROM patch_log"
+                + cond + " ORDER BY ts DESC LIMIT ?", args):
             try:
                 out.append({"hash": ch, "reviewer": rv, "element": el or "",
                             "before": json.loads(bf or "{}"), "after": json.loads(af or "{}"), "ts": ts})

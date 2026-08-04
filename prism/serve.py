@@ -356,6 +356,21 @@ def _batch_seq_cached(team) -> int:
     return _agg_cached(("batchseq", team), _get)
 
 
+def feedback_map_cached(team=None) -> dict:
+    """검수 피드백 전량 map · 원격 스토어(supabase)만 30s 캐시(원본 행 results_rows 와 대칭).
+    /raw·/final-queue·드릴·토픽 드릴이 요청마다 feedback 테이블 전량(1000행 페이지 반복 +
+    reviewers_map 왕복)을 재조회하지 않게 한다. 피드백을 바꾸는 쓰기 경로(판정 저장·실행취소·
+    전체 삭제·골드 응답·교정·관리자 삭제)는 전부 _agg_bump 를 호출하므로 스테일 없음.
+    sqlite(로컬·테스트)는 무캐시 — 스토어에 직접 쓰고 바로 읽는 테스트 계약 유지.
+    반환 dict 는 캐시 공유본이므로 수정 금지(읽기 전용)."""
+    st = get_store()
+    if not (st and hasattr(st, "feedback_map")):
+        return {}
+    if getattr(st, "REMOTE", False):
+        return _agg_cached_store(("fmap", team), st, lambda: st.feedback_map(team=team))
+    return st.feedback_map(team=team)
+
+
 # ── multipart/form-data 파서 (cgi 제거된 3.13+ 대응, stdlib만) ───────────────
 def _parse_multipart(body: bytes, boundary: str) -> dict:
     """{name: value(str) | {"filename","mime","bytes"}} 형태로 반환."""
@@ -575,13 +590,14 @@ def _fb_public(fb: dict, reviewer: str = "") -> dict:
 def _attach_fb(items, team=None, reviewer: str = "", fmap=None):
     """상세행 리스트에 검수 피드백 상태(fb: verdict·ts) 부착 → 콘텐츠 목록 어디서나 '검수 완료' 표기.
     reviewer 를 주면 '완료' 판정이 내 표(mine) 기준으로 동작한다(드릴 경로 정합 · 2026-07-10).
-    fmap 을 주면(호출측이 이미 조회) feedback 전량 재조회를 생략한다."""
+    fmap 을 주면(호출측이 이미 조회) feedback 전량 재조회를 생략한다.
+    미지정 시 feedback_map_cached(원격 30s 캐시) — 드릴·토픽 드릴이 요청마다 전량 재조회하지 않게."""
     st = get_store()
     if not (st and hasattr(st, "feedback_map")):
         return items
     if fmap is None:
         try:
-            fmap = st.feedback_map(team=team)
+            fmap = feedback_map_cached(team)
         except Exception:
             return items
     for it in items:

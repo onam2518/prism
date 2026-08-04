@@ -21,6 +21,7 @@ class _CountingStore:
     def __init__(self):
         self.recent_calls = 0
         self.get_golden_calls = 0
+        self.feedback_calls = 0
         self.rows = [{"content_ref": {"title": "t1"}}, {"content_ref": {"title": "t2"}}]
 
     def recent(self, limit, team=None):
@@ -34,6 +35,10 @@ class _CountingStore:
 
     def gold_answered(self, reviewer, team=None):
         return set()
+
+    def feedback_map(self, team=None):
+        self.feedback_calls += 1
+        return {"h1": {"good": 1, "bad": 0, "verdicts": []}}
 
 
 class TestRowsCache(unittest.TestCase):
@@ -69,6 +74,31 @@ class TestRowsCache(unittest.TestCase):
         RV._inject_gold([{"hash": "x"} for _ in range(20)], "rv1", "t")
         RV._inject_gold([{"hash": "x"} for _ in range(20)], "rv2", "t")
         self.assertEqual(self.st.get_golden_calls, 1)  # 검수자가 달라도 골든 전량 조회는 1회
+
+    def test_feedback_map_cached_ttl_and_bump(self):
+        """[감사 #6] feedback 전량도 rows 캐시와 대칭: 원격 스토어는 30s 재사용,
+        판정 저장 경로가 부르는 _agg_bump 로 즉시 무효화된다."""
+        serve.feedback_map_cached("t")
+        serve.feedback_map_cached("t")
+        self.assertEqual(self.st.feedback_calls, 1)    # TTL 내 재사용
+        serve._agg_bump()                              # 쓰기 경로(apply_feedback 등)의 무효화
+        serve.feedback_map_cached("t")
+        self.assertEqual(self.st.feedback_calls, 2)
+
+    def test_feedback_map_not_cached_for_local_store(self):
+        """sqlite(REMOTE 아님)는 무캐시 — 스토어에 직접 쓰고 바로 읽는 테스트 계약 유지."""
+        class _Local:
+            def __init__(self):
+                self.calls = 0
+
+            def feedback_map(self, team=None):
+                self.calls += 1
+                return {}
+        lo = _Local()
+        serve._STORE = lo
+        serve.feedback_map_cached("t")
+        serve.feedback_map_cached("t")
+        self.assertEqual(lo.calls, 2)
 
 
 if __name__ == "__main__":

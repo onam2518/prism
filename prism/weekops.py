@@ -125,6 +125,12 @@ def capture(team=None, crew=None, now=None) -> int:
     별도 스케줄러가 필요 없다(활동 원장과 같은 방식). 이미 있는 주는 덮지 않는다 —
     나중에 다시 계산하면 재검수 때문에 값이 줄어들기 때문이다.
 
+    확정(_snap · estimated=False)은 **직전 마감 주(cur-1)만** 한다. 상태 지표(잔여·정체·
+    캐파·멤버 done/pending)는 '지금'의 crew 요약값이라, 더 오래된 주에 붙이면 미래 시점
+    상태가 확정값으로 영구 고정된다(화면을 오래 안 연 팀에서 실제 발생). 그보다 오래된
+    미적립 주는 역산(_derive)을 estimated=True 그대로 적립해 값만 고정한다 — 재검수
+    upsert 로 역산값이 계속 줄어드는 드리프트는 막되, 추정임은 화면에 남긴다.
+
     반환: 이번에 새로 적립한 주 수."""
     now = time.time() if now is None else now
     cur = current_week(now)
@@ -142,7 +148,12 @@ def capture(team=None, crew=None, now=None) -> int:
             return 0
     act = _activity_days(team)
     for n in todo:
-        weeks[str(n)] = _snap(n, crew, act, now)
+        if n == cur - 1:                             # 직전 마감 주만 '지금' 상태로 확정
+            weeks[str(n)] = _snap(n, crew, act, now)
+        else:                                        # 오래된 주: 역산 추정치로만 고정(estimated 유지)
+            row = _derive(n, crew, act)
+            row["captured_at"] = now
+            weeks[str(n)] = row
     try:
         _SV._report_save(WEEKLY_KIND, rep, team)
     except Exception:

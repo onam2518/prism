@@ -113,15 +113,15 @@ def is_final_reviewer(uid, team=None) -> bool:
 
 def final_review_queue(team=None, reviewer: str = "") -> dict:
     """최종검수 큐: 기초 검수를 거쳤지만 골든으로 확정되지 못한 미확정분만.
-    대상 = ① 의견 갈림(split · 가중 다수결 미결) ② 정확 합의인데 분류 공백.
-    기초 합의 기준은 build_golden_from_reviews 와 동일 · 판정은 final_verdicts(편입/제외)로."""
-    from .store import content_hash
+    대상 = ① 의견 갈림(split · 가중 다수결 미결) ② 정확 합의인데 분류 공백 ③ 정확 합의인데
+    등급(G/R) 공백. 기초 합의·승격 기준은 build_golden_from_reviews 와 동일 ·
+    판정은 final_verdicts(편입/제외)로."""
     st = _SV.get_store()
     if not st:
         return {"ok": False, "items": [], "n": 0}
     rows = _SV.results_rows(team=team)
     try:
-        fmap = st.feedback_map(team=team)
+        fmap = _SV.feedback_map_cached(team)       # 원격 30s 캐시(요청마다 전량 재조회 방지)
     except Exception:
         fmap = {}
     weights = reviewer_weights(team, fmap=fmap)   # feedback 전량 재조회 방지(위 fmap 공유)
@@ -134,9 +134,7 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
     out = []
     for r in reversed(rows):                       # 최근순
         ref = r.get("content_ref") or {}
-        content = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
-                   "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
-        ch = content_hash(content)
+        ch = _row_key(ref)                         # 스토어 키 지름길(본문 SHA 재계산 생략 · 내용 동일)
         fb = fmap.get(ch)
         if not fb or ch in golden:                 # 기초 검수 없음 · 이미 골든 확정 → 대상 아님
             continue
@@ -147,9 +145,15 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         im = r.get("item_meta") or {}
         cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
         agreed = fb.get("good", 0) >= min_good and gw > bw
-        if agreed and cats:                        # 정상 확정 경로(다음 학습 반영 때 승격) → 대상 아님
+        # 승격 게이트(build_golden_from_reviews)와 동일 판정: 등급(G/R)과 분류가 모두 있어야
+        # '다음 학습 반영 때 승격'이 성립한다. 등급 공백(judge 실패·보류)을 승격 예정으로
+        # 오인해 건너뛰면 골든도 큐도 아닌 채 영구 미확정으로 남는다.
+        grade_ok = (r.get("quality_meta") or {}).get("finalGrade", "") in ("G", "R")
+        if agreed and cats and grade_ok:           # 정상 확정 경로(다음 학습 반영 때 승격) → 대상 아님
             continue
-        if agreed and not cats:
+        if agreed and not grade_ok:                # 승격 게이트의 no_grade 분기와 동일 사유
+            reason = "등급 없음"
+        elif agreed:                               # 분류 공백(등급은 있음)
             reason = "분류 없음"
         elif fb.get("good") and fb.get("bad"):     # 의견 갈림(가중 미결 포함)
             reason = "의견 갈림"
@@ -819,7 +823,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
     st = _SV.get_store()
     lack = _lack_classes(team)                     # 부족 분류(정답셋 커버리지) 배지 원천
     try:
-        fmap = st.feedback_map(team=team) if st else {}
+        fmap = _SV.feedback_map_cached(team)       # 원격 30s 캐시(화면 전환·판정마다 전량 재조회 방지)
     except Exception:
         fmap = {}
     try:                                           # 평가용 홀드아웃은 검수 대상에서 제외(학습 오염 방지)
@@ -989,7 +993,9 @@ def content_history(content_hash: str, team=None) -> dict:
     except Exception:
         pass
     try:
-        for pr in (st.patch_rows(team=team) if hasattr(st, "patch_rows") else []):
+        # 서버측 hash 필터: 단건 이력에 patch_log 전량(before/after JSON 블롭 포함 수 MB ·
+        # 5000행 페이지 왕복)을 내려받지 않는다. hash 재확인은 필터 미지원 스토어 방어.
+        for pr in (st.patch_rows(team=team, content_hash=ch) if hasattr(st, "patch_rows") else []):
             if pr.get("hash") != ch:
                 continue
             el = pr.get("element") or ""
@@ -1042,7 +1048,7 @@ def drafts_for(content_hash: str, team=None) -> dict:
         except Exception:
             pass
     if not had_history and st and hasattr(st, "patch_rows"):
-        for p in st.patch_rows(limit=5000, team=team):
+        for p in st.patch_rows(limit=5000, team=team, content_hash=ch):   # 서버측 hash 필터(블롭 전량 다운로드 방지)
             if p.get("hash") != ch or not str(p.get("element", "")).startswith("rerun:"):
                 continue
             bf = p.get("before") or {}

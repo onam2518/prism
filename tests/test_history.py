@@ -20,7 +20,8 @@ class TestContentHistory(unittest.TestCase):
                     # supabase 형 ISO 문자열 ts 도 흡수돼야 한다
                     {"reviewer": "댕댕", "verdict": "good", "note": "", "ts": "2026-07-08T00:00:00+00:00"},
                 ]}}
-            def patch_rows(self, limit=5000, team=None):
+            def patch_rows(self, limit=5000, team=None, content_hash=None):
+                # 필터를 무시하고 전량을 돌려줘 클라이언트측 hash 재확인(방어선)도 함께 검증한다
                 return [
                     {"hash": "h1", "reviewer": "복실", "element": "summary", "ts": 150.0},
                     {"hash": "h1", "reviewer": "", "element": "rerun:solar->gpt-5.4", "ts": 200.0},
