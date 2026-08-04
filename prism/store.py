@@ -29,6 +29,27 @@ _SRC_KEEP_FIRST = ("source=CASE WHEN COALESCE(results.source,'')='' "
                    "THEN excluded.source ELSE results.source END")
 
 
+def _keep_ops_flags(payload: dict, flags: dict) -> dict:
+    """재실행 upsert 가 payload 를 통째로 교체할 때 운영자 플래그를 새 payload 에 승계한다.
+    flags = {"ops_hold": bool, "source_status": dict}(기존 행에서 추출 · _kept_flags).
+    파이프라인 신규 산출엔 이 키가 없으므로(운영자 전용 키) 없을 때만 채운다 —
+    노출제한(ops_hold)·원문 소실 신고(source_status)가 일괄 재실행으로 조용히 풀리던 결함 방벽."""
+    if not flags:
+        return payload
+    p = dict(payload)
+    if "ops_hold" in flags:
+        qm = dict(p.get("quality_meta") or {})
+        if "ops_hold" not in qm:
+            qm["ops_hold"] = flags["ops_hold"]
+        p["quality_meta"] = qm
+    if "source_status" in flags:
+        ref = dict(p.get("content_ref") or {})
+        if "source_status" not in ref:
+            ref["source_status"] = flags["source_status"]
+        p["content_ref"] = ref
+    return p
+
+
 def _payload_with_identity(content: dict, out: dict) -> dict:
     """적재 payload 의 content_ref 에 '해시를 만든 원본' 식별 4필드를 되박는다.
 
@@ -253,6 +274,9 @@ class Store:
         CREATE INDEX IF NOT EXISTS ix_ealias_ent ON entity_aliases(entity_id);
         CREATE INDEX IF NOT EXISTS ix_assign_team ON assignments(team, reviewer);
         CREATE INDEX IF NOT EXISTS ix_results_run ON results(run_id);
+        -- recent/recent_meta/review_queue/contents_by_hash 가 전부 ORDER BY created_at DESC LIMIT ·
+        -- 인덱스 없인 호출마다 풀스캔+임시 정렬(payload 대형 TEXT 포함). 기존 DB 도 자연 적용.
+        CREATE INDEX IF NOT EXISTS ix_results_created ON results(created_at);
         CREATE INDEX IF NOT EXISTS ix_gold_reviewer ON gold_checks(reviewer);
         CREATE INDEX IF NOT EXISTS ix_events_reviewer ON events(reviewer, kind, day);
         """)
@@ -414,11 +438,40 @@ class Store:
                 out[h] = json.loads(payload)
         return out
 
+    def _kept_flags(self, c, hashes) -> dict:
+        """이미 저장된 hash → 운영자 플래그(payload.quality_meta.ops_hold ·
+        payload.content_ref.source_status). upsert 가 payload=excluded.payload 로 전체
+        교체하므로 쓰기 직전에 읽어 새 payload 에 되섞는다(supabase _kept_sources 와 동일 의미)."""
+        out = {}
+        hl = [h for h in dict.fromkeys(hashes or []) if h]
+        for k in range(0, len(hl), 500):
+            chunk = hl[k:k + 500]
+            ph = ",".join("?" * len(chunk))
+            for h, payload in c.execute(
+                    f"SELECT content_hash,payload FROM results WHERE content_hash IN ({ph})", chunk):
+                try:
+                    pl = json.loads(payload) if payload else {}
+                except (TypeError, ValueError):
+                    continue
+                qm = pl.get("quality_meta") or {}
+                ref = pl.get("content_ref") or {}
+                flags = {}
+                if "ops_hold" in qm:
+                    flags["ops_hold"] = qm["ops_hold"]
+                if "source_status" in ref:
+                    flags["source_status"] = ref["source_status"]
+                if flags:
+                    out[h] = flags
+        return out
+
     # ── 배치 저장(단일 트랜잭션) + UI 조회/집계 ──
     def save_many(self, pairs, run_id: str, source: str = "", team=None, include_all: bool = False):
         """pairs: [(content, out), …] 를 단일 트랜잭션으로 upsert(멱등). 반환: 건수.
         source: 최초 인입 경로(단건·엑셀·배치·자동 인입 등) · 기존 행에는 덮어쓰지 않는다(_SRC_KEEP_FIRST).
+        운영자 플래그(ops_hold·source_status)는 기존 payload 에서 승계한다(_kept_flags).
         include_all 은 supabase 와의 시그니처 계약용(sqlite 는 원래 전량 저장)."""
+        c = self._conn()
+        kept = self._kept_flags(c, [content_hash(content) for content, _ in pairs])
         rows = []
         for content, out in pairs:
             ch = content_hash(content)
@@ -429,14 +482,14 @@ class Store:
                 s = str(f)
                 if "HTTP" in s or "_fail" in s or "예외" in s:
                     fail_kind = "api"; break
+            payload = _keep_ops_flags(_payload_with_identity(content, out), kept.get(ch))
             rows.append((ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
                          qm.get("finalGrade", ""), json.dumps(qm.get("reasons", []), ensure_ascii=False),
                          json.dumps(out.get("item_meta"), ensure_ascii=False),
-                         json.dumps(_payload_with_identity(content, out), ensure_ascii=False), tr.get("cost_usd", 0.0),
+                         json.dumps(payload, ensure_ascii=False), tr.get("cost_usd", 0.0),
                          fail_kind, time.time(), source))
         if not rows:
             return 0
-        c = self._conn()
         c.executemany("""INSERT INTO results
           (content_hash,run_id,service,title,final_grade,reasons,item_meta,payload,cost_usd,fail_kind,created_at,source)
           VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
@@ -453,6 +506,7 @@ class Store:
         · 동일 콘텐츠 + 결과 무변경 → 적재 제외(skip, DB 미기록).
         (trace·cost 같은 실행 부산물은 비교에서 제외 · 매 실행 달라지므로)
         source 는 최초 인입 경로 전용 — 기존 행이 이미 값을 갖고 있으면 유지한다(_SRC_KEEP_FIRST).
+        운영자 플래그(ops_hold·source_status)는 기존 payload 에서 승계한다(save_many 와 동일).
         반환: {inserted, updated, skipped}"""
         c = self._conn()
         ins = upd = skip = 0
@@ -464,7 +518,8 @@ class Store:
             new_im = json.dumps(out.get("item_meta"), ensure_ascii=False, sort_keys=True)
             new_gr = qm.get("finalGrade", "")
             new_rs = json.dumps(qm.get("reasons", []), ensure_ascii=False, sort_keys=True)
-            cur = c.execute("SELECT item_meta, final_grade, reasons FROM results WHERE content_hash=?", (ch,)).fetchone()
+            cur = c.execute("SELECT item_meta, final_grade, reasons, payload FROM results WHERE content_hash=?", (ch,)).fetchone()
+            flags = {}
             if cur is not None:
                 try: old_im = json.dumps(json.loads(cur[0]), ensure_ascii=False, sort_keys=True)
                 except Exception: old_im = cur[0] or ""
@@ -474,6 +529,16 @@ class Store:
                     skip += 1
                     continue                      # 동일 콘텐츠·결과 → 적재 제외
                 upd += 1
+                try:                              # 기존 payload 의 운영 플래그 승계 준비
+                    pl = json.loads(cur[3]) if cur[3] else {}
+                    pqm = pl.get("quality_meta") or {}
+                    pref = pl.get("content_ref") or {}
+                    if "ops_hold" in pqm:
+                        flags["ops_hold"] = pqm["ops_hold"]
+                    if "source_status" in pref:
+                        flags["source_status"] = pref["source_status"]
+                except (TypeError, ValueError):
+                    pass
             else:
                 ins += 1
             fail_kind = ""
@@ -481,10 +546,11 @@ class Store:
                 s = str(f)
                 if "HTTP" in s or "_fail" in s or "예외" in s:
                     fail_kind = "api"; break
+            payload = _keep_ops_flags(_payload_with_identity(content, out), flags)
             rows.append((ch, run_id, content.get("displayServiceName", ""), content.get("title", ""),
                          new_gr, json.dumps(qm.get("reasons", []), ensure_ascii=False),
                          json.dumps(out.get("item_meta"), ensure_ascii=False),
-                         json.dumps(_payload_with_identity(content, out), ensure_ascii=False), tr.get("cost_usd", 0.0),
+                         json.dumps(payload, ensure_ascii=False), tr.get("cost_usd", 0.0),
                          fail_kind, time.time(), source))
         if rows:
             c.executemany("""INSERT INTO results
@@ -1696,10 +1762,13 @@ class Store:
         for ch, svc, ti, grade, payload, ts in c.execute(
                 "SELECT content_hash,service,title,final_grade,payload,created_at "
                 "FROM results ORDER BY created_at DESC LIMIT ?", (max(limit * 6, 200),)):
-            try:
-                qm = (json.loads(payload) if payload else {}).get("quality_meta") or {}
+            try:                                      # payload 는 1회만 파싱(qm·trace 함께 추출)
+                pl = json.loads(payload) if payload else {}
             except Exception:
-                qm = {}
+                pl = {}
+            if not isinstance(pl, dict):
+                pl = {}
+            qm = pl.get("quality_meta") or {}
             if (qm.get("review") or "") != "yellow":
                 continue
             is_reviewed = ch in reviewed
@@ -1713,10 +1782,7 @@ class Store:
             elif only_unreviewed and is_reviewed and not is_split:
                 continue                              # 미배정 오픈 큐 · 생성자 전체 열람도 검수완료분은 동일 규칙
             conf = qm.get("confidence")
-            try:
-                model = ((json.loads(payload) if payload else {}).get("trace") or {}).get("model", "") or ""
-            except Exception:
-                model = ""
+            model = (pl.get("trace") or {}).get("model", "") or ""
             out.append({"hash": ch, "service": svc or "", "title": ti or "",
                         "grade": grade or "", "review_reason": qm.get("review_reason", ""),
                         "reviewed": is_reviewed, "split": is_split, "model": model,
