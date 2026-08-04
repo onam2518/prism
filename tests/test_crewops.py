@@ -399,6 +399,79 @@ class TestWave(CrewBase):
         d = serve.CRW.crew_data(None)
         self.assertEqual(d["members"][0]["signal"], "red")
 
+    def test_same_due_merges_plan_new_due_opens_new_wave(self):
+        """같은 기한 재배정 = 같은 웨이브(계획 합산 · opened_at 유지), 기한 변경 = 새 사이클.
+        opened_at 이 '이번 배정' 현황의 경계라서 여기가 안 갈리면 옛 배정이 계속 섞인다."""
+        serve = self._serve()
+        due1 = time.time() + 86400 * 2
+        serve.CRW.set_wave(due1, plan={"u1": 5})
+        opened1 = serve.CRW.wave(None)["opened_at"]
+        serve.CRW.set_wave(due1, plan={"u1": 3, "u2": 2})
+        w = serve.CRW.wave(None)
+        self.assertEqual(w["opened_at"], opened1)               # 같은 웨이브 유지
+        self.assertEqual(w["plan"], {"u1": 8, "u2": 2})         # 추가 배정은 합산
+        serve.CRW.set_wave(due1 + 86400, plan={"u2": 1})
+        w2 = serve.CRW.wave(None)
+        self.assertGreater(w2["opened_at"], opened1)            # 새 사이클
+        self.assertEqual(w2["plan"], {"u2": 1})                 # 계획도 새로 시작
+
+    def _wave_fixture(self, serve, due_offset=86400 * 2):
+        """옛 배정 2건(웨이브 전) + 새 배정 2건(웨이브 후 · 1건 완료) 상태를 만든다."""
+        st = serve._STORE
+        for i in range(4):
+            self._content(st, self._h(i))
+        st.set_reviewer("r", "r", "boksil")
+        st.set_assignees_bulk([self._h(0), self._h(1)], ["r"], min_reviewers=1)
+        c = st._conn()                              # 옛 배정: 웨이브 시작보다 하루 전
+        c.execute("UPDATE assignments SET ts=?", (time.time() - 86400,))
+        c.commit()
+        serve.CRW.set_wave(time.time() + due_offset, plan={"r": 2})
+        st.set_assignees_bulk([self._h(2), self._h(3)], ["r"], min_reviewers=1)
+        st.save_feedback(self._h(2), "s", "t", "good", "analyze", "", time.time(), reviewer="r")
+        return st
+
+    def test_wave_scope_counts_only_assignments_since_open(self):
+        serve = self._serve()
+        self._wave_fixture(serve)
+        d = serve.CRW.crew_data(None)
+        m = next(x for x in d["members"] if x["name"] == "r")
+        self.assertEqual(m["load"]["assigned"], 4)              # 누적은 그대로
+        self.assertEqual(m["load"]["wave"],                     # 이번 배정 = 웨이브 이후 2건
+                         {"assigned": 2, "pending": 1, "done": 1, "progress": 0.5})
+        self.assertEqual(d["summary"]["wave"]["assigned"], 2)
+        self.assertEqual(d["summary"]["wave"]["pending"], 1)
+        serve.CRW.set_wave("")                                  # 기한 해제 = 웨이브 스코프 없음
+        serve._agg_bump()
+        d2 = serve.CRW.crew_data(None)
+        m2 = next(x for x in d2["members"] if x["name"] == "r")
+        self.assertIsNone(m2["load"]["wave"])
+        self.assertIsNone(d2["summary"]["wave"])
+
+    def test_wave_progress_drives_due_signal(self):
+        """이번 몫을 다 끝냈으면 옛 배정이 남아 있어도 마감 임박 경고를 받지 않는다
+        (기한 대비 진행은 웨이브 진행률 기준 · 누적 진행률은 옛 배정에 희석된다)."""
+        serve = self._serve()
+        st = self._wave_fixture(serve, due_offset=3600)         # 기한 1시간 전(24h 이내)
+        st.save_feedback(self._h(3), "s", "t", "good", "analyze", "", time.time(), reviewer="r")
+        serve._agg_bump()
+        d = serve.CRW.crew_data(None)
+        m = next(x for x in d["members"] if x["name"] == "r")
+        self.assertEqual(m["load"]["wave"]["progress"], 1.0)    # 이번 배정 완주
+        self.assertEqual(m["load"]["pending"], 2)               # 옛 배정은 남아 있음(진행률 0.5)
+        self.assertEqual(m["signal"], "green")                  # 마감 임박 경고 없음
+
+    def test_wave_scope_degrades_to_all_without_times(self):
+        """배정 시각을 못 주는 스토어면 웨이브 스코프가 전량 포함으로 완만히 퇴화한다
+        (빈 화면보다 누적이 낫다)."""
+        serve = self._serve()
+        st = self._wave_fixture(serve)
+        orig = st.assignments_snapshot
+        st.assignments_snapshot = lambda team=None: (orig(team)[0], {})
+        serve._agg_bump()
+        d = serve.CRW.crew_data(None)
+        m = next(x for x in d["members"] if x["name"] == "r")
+        self.assertEqual(m["load"]["wave"]["assigned"], m["load"]["assigned"])
+
 
 class TestSettings(CrewBase):
     def test_defaults_and_override(self):

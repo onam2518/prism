@@ -20,16 +20,34 @@
       <template x-if="mod === 'admin'">
         <div x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
+          <!-- 기한을 걸고 배정하면 기본은 '이번 배정'만 본다 · 과거 누적은 토글로 -->
+          <div class="flex items-center gap-1" style="margin-bottom:10px" x-show="crewWaveOn" x-cloak>
+            <button type="button" class="ds-btn ds-btn--s-sm"
+                    x-bind:class="crewScope === 'wave' ? 'ds-btn--primary' : 'ds-btn--ghost'"
+                    x-on:click="crewScope = 'wave'">이번 배정</button>
+            <button type="button" class="ds-btn ds-btn--s-sm"
+                    x-bind:class="crewScope === 'all' ? 'ds-btn--primary' : 'ds-btn--ghost'"
+                    x-on:click="crewScope = 'all'">전체 누적</button>
+            <span class="meta ml-auto" x-show="crewScopeEff === 'wave'"
+                  x-text="'이번 배정 ' + (crewWave ? crewWave.assigned : 0) + '건 · 기한 ' + crewDate(crewSum.due_at) + crewDdayTxt"></span>
+          </div>
           <div class="crewstats">
-            <div class="crewstat"><span class="crewstat__k">미검수 잔여</span>
-              <b class="crewstat__v tnum" x-text="crewSum.pending || 0"></b>
-              <span class="crewstat__s" x-text="crewHours(crewSum.hours_left)"></span></div>
+            <template x-if="crewScopeEff === 'wave'">
+              <div class="crewstat"><span class="crewstat__k">이번 배정 진행</span>
+                <b class="crewstat__v tnum" x-text="(crewWave.done || 0) + '/' + (crewWave.assigned || 0)"></b>
+                <span class="crewstat__s" x-text="'잔여 ' + (crewWave.pending || 0) + '건 · 누적 잔여 ' + (crewSum.pending || 0) + '건'"></span></div>
+            </template>
+            <template x-if="crewScopeEff !== 'wave'">
+              <div class="crewstat"><span class="crewstat__k">미검수 잔여</span>
+                <b class="crewstat__v tnum" x-text="crewSum.pending || 0"></b>
+                <span class="crewstat__s" x-text="crewHours(crewSum.hours_left)"></span></div>
+            </template>
             <div class="crewstat"><span class="crewstat__k">주간 처리 가능량</span>
               <b class="crewstat__v tnum" x-text="crewSum.weekly_capacity || 0"></b>
               <span class="crewstat__s" x-text="(crewSum.active_members || 0) + '명 기준 · 건/주'"></span></div>
             <div class="crewstat"><span class="crewstat__k">완료 예상일</span>
               <b class="crewstat__v" x-text="crewSum.eta ? crewSum.eta.slice(5).replace('-','/') : (crewSum.pending ? '산출 불가' : '완료')"></b>
-              <span class="crewstat__s" x-text="crewSum.due_at ? ('기한 ' + crewDate(crewSum.due_at)) : '기한 미설정'"></span></div>
+              <span class="crewstat__s" x-text="crewSum.due_at ? ('기한 ' + crewDate(crewSum.due_at) + crewDdayTxt) : '기한 미설정'"></span></div>
             <div class="crewstat"><span class="crewstat__k">정체 배정</span>
               <b class="crewstat__v tnum" x-bind:style="crewSum.stale_total ? 'color:var(--ds-danger)' : ''" x-text="crewSum.stale_total || 0"></b>
               <span class="crewstat__s" x-text="(crewData && crewData.settings ? crewData.settings.stale_days : 3) + '일 이상 미진행'"></span></div>
@@ -161,11 +179,12 @@
                   <div class="text-xs text-muted" x-show="m.is_final">최종검수자</div></td>
                 <td><span class="ds-badge" x-bind:class="crewStatusCls(m)" x-text="crewStatusTxt(m)"></span></td>
                 <td>
-                  <div class="flex items-center gap-2" x-show="m.load.assigned">
-                    <span class="abbar__track"><span class="abbar__fill" x-bind:style="'width:' + Math.max(Math.round((m.load.progress||0)*100), 2) + '%'"></span></span>
-                    <span class="text-xs tnum text-muted" x-text="m.load.done + '/' + m.load.assigned"></span></div>
-                  <span class="text-xs text-muted" x-show="!m.load.assigned">배정 없음</span></td>
-                <td class="tnum" x-text="m.load.pending || '·'"></td>
+                  <div class="flex items-center gap-2" x-show="crewLoadOf(m).assigned">
+                    <span class="abbar__track"><span class="abbar__fill" x-bind:style="'width:' + Math.max(Math.round((crewLoadOf(m).progress||0)*100), 2) + '%'"></span></span>
+                    <span class="text-xs tnum text-muted" x-text="crewLoadOf(m).done + '/' + crewLoadOf(m).assigned"></span></div>
+                  <span class="text-xs text-muted" x-show="!crewLoadOf(m).assigned"
+                        x-text="crewScopeEff === 'wave' ? '이번 배정 없음' : '배정 없음'"></span></td>
+                <td class="tnum" x-text="crewLoadOf(m).pending || '·'"></td>
                 <td class="tnum" x-bind:style="m.load.stale_days >= 3 ? 'color:var(--ds-danger)' : ''"
                     x-text="m.load.stale_days ? (m.load.stale_days + '일') : '·'"></td>
                 <td class="tnum" x-text="m.available ? (m.spare + '건') : '·'"></td>
@@ -307,6 +326,10 @@
             </div>
             <div class="text-xs text-muted" style="margin-top:8px"
                  x-text="'대상 ' + crewAsgPool.length + '건 · 검수 대상 전체 ' + (crewSum.targets_n || 0) + '건'"></div>
+            <div class="text-xs text-muted" style="margin-top:4px">
+              기한은 검수를 막지 않습니다 · 현황이 '이번 배정' 기준으로 바뀌고, 신호등(마감 임박·늦음)과
+              기한 내 완주 보너스 100PT, 자동 운영을 켠 경우의 마감 전 재배정이 이 기한을 기준으로 돕니다.
+              같은 기한으로 다시 배정하면 같은 배정 묶음에 더해집니다.</div>
 
             <div x-show="crewPlanRes" style="margin-top:12px">
               <div class="overflow-auto"><table class="ds-table"><thead><tr>
