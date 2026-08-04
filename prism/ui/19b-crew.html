@@ -478,7 +478,8 @@
           </div>
         </section>
 
-        <section class="panel"><div class="panel-hd"><b>배정 이력</b><span class="meta">최근순</span>
+        <section class="panel"><div class="panel-hd"><b>배정 이력</b>
+          <span class="meta" x-text="crewSum.due_at ? '최근순 · 기한 조정은 현재 묶음에만 적용됩니다' : '최근순'"></span>
           <!-- 현재 묶음의 기한 조정을 이력 자리에서도 · 지난 이력 행의 기한은 소급 대상이 아니다
                (웨이브는 현재 1건만 저장 · 신호등·완주 보너스도 현재 기한만 본다) -->
           <span class="flex items-center gap-1 ml-auto" x-show="crewSum.due_at" x-cloak>
@@ -496,8 +497,12 @@
             <th style="width:150px">일시</th><th style="width:180px">실행자</th><th style="width:140px">방식</th>
             <th style="width:80px">건수</th><th>배정 대상</th></tr></thead><tbody>
             <template x-for="(a, i) in (assignLog || [])" x-bind:key="i">
-              <tr>
-                <td class="tnum text-xs" x-text="crewDate(a.ts)"></td>
+              <!-- 현재 묶음(웨이브 시작 이후) 행만 또렷하게 · 과거 기록은 흐리게 — 기한 조정이
+                   왜 최신 묶음에만 적용되는지 표가 스스로 설명하게 -->
+              <tr x-bind:style="crewSum.due_at && !crewLogInWave(a) ? 'opacity:.55' : ''">
+                <td class="tnum text-xs"><span x-text="crewDate(a.ts)"></span>
+                  <span class="ds-badge ds-badge--success" x-show="crewLogInWave(a)"
+                        style="margin-left:6px">현재 묶음</span></td>
                 <td class="text-xs" x-text="a.by"></td>
                 <td><span class="ds-badge ds-badge--neutral" x-text="a.mode"></span></td>
                 <td class="tnum" x-text="a.n"></td>

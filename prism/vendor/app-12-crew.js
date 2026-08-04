@@ -40,6 +40,11 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this._err('기한을 조정하지 못했습니다'); }
         finally { this.crewBusy = false; }
       },
+      crewLogInWave(a) {
+        // 이력 행이 현재 배정 묶음(웨이브 시작 이후)인지 · 기한 조정이 닿는 범위 표시용
+        const w = this.crewData && this.crewData.wave;
+        return !!(w && w.due_at && w.opened_at && a.ts >= w.opened_at - 1);
+      },
       get crewDdayTxt() {
         const due = this.crewSum.due_at;
         if (!due) return '';
