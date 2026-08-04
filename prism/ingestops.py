@@ -266,9 +266,15 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         cfg = Config.load()
         llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
         pairs = []
+        from .runops import _log_run_ledgers
+        from .store import content_hash as _chash
         for c in contents:
             try:
-                pairs.append((c, PIPE.extract(c, llm, legal=cfg.legal_enabled)))
+                out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+                pairs.append((c, out))
+                # 비용·실패 원장: 자동 인입도 run_pipeline 을 안 타므로 여기서 직접 기록 —
+                # 종전엔 크레딧이 마른 상태로 매 폴링 402 가 반복돼도 원장·트리아지 신호가 0 이었다.
+                _log_run_ledgers(c, out, mock=llm.mock, content_hash=_chash(c))
             except Exception:
                 pass
             _INGEST_STATE[sid]["done"] += 1
@@ -317,9 +323,28 @@ def _job_end(jid: str, ok: bool, msg: str):
     _jobs_persist()
 
 
+_JOBS_KEEP = 100                # 완료 잡 메모리 보존 상한(레지스트리 무한 성장 방지 · 영속은 20건)
+
+
+def _jobs_prune_locked():
+    """완료(running=False) 잡을 최근 _JOBS_KEEP 건만 남긴다(_INGEST_LOCK 하에서 호출).
+    개별 재실행(rerun1:*)·콘텐츠 추가(add:*)가 클릭마다 새 키로 영구 누적돼 장기 가동 시
+    상태 폴링(1.5s 간격) 페이로드와 스냅샷 정렬 비용이 잡 수에 비례해 계속 커지던 것을
+    막는다. 실행 중 잡은 건드리지 않는다. dict 는 재바인딩 금지(serve 와 객체 공유 계약)."""
+    done = [(k, v) for k, v in _INGEST_STATE.items() if not (v or {}).get("running")]
+    excess = len(done) - _JOBS_KEEP
+    if excess <= 0:
+        return
+    done.sort(key=lambda kv: (kv[1] or {}).get("started") or (kv[1] or {}).get("last_run") or 0)
+    for k, _ in done[:excess]:
+        _INGEST_STATE.pop(k, None)
+
+
 def _jobs_persist():
     """실행 큐 스냅샷 영속(reports 패턴 · 전역 kind='jobs'): 배포·재시작에도 이력 유지.
     시작·종료 등 상태 전이 때만 기록(건별 진행률은 기록하지 않아 저장소 부담 없음) · 최근 20건."""
+    with _INGEST_LOCK:                            # 상태 전이 시점마다 완료 잡 상한 유지(메모리)
+        _jobs_prune_locked()
     st = _SV.get_store()
     if not (st and hasattr(st, "save_report")):
         return

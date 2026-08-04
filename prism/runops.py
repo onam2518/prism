@@ -155,8 +155,38 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
             **({"duplicates": dropped} if dropped else {})}
 
 
+# 비재시도성 콜 실패(ratelimit.classify_http_error 분류): 크레딧 소진(billing)·프로젝트
+# 지출 한도(quota)·인증(auth)은 재시도·재실행해도 계속 실패한다(실측: 2026-07-29 402 832건).
+# 폴백 모델도 같은 키·같은 402 로 죽으므로, 감지 즉시 멈추는 게 비용·시간 모두 이득.
+_NONRETRY_KINDS = ("billing", "quota", "auth")
+_NONRETRY_LABEL = {"billing": "크레딧 부족", "quota": "프로젝트 지출 한도",
+                   "auth": "인증 오류"}          # 실패 원장 화면(failKindKr)과 같은 표기
+
+
+def _nonretry_kinds(out: dict) -> list:
+    """산출 trace.fails 중 비재시도성 실패 종류만 추린다(중복 제거·정렬). 없으면 빈 목록."""
+    fails = ((out or {}).get("trace") or {}).get("fails") or []
+    return sorted({str((f or {}).get("kind") or "") for f in fails
+                   if str((f or {}).get("kind") or "") in _NONRETRY_KINDS})
+
+
+def _log_run_ledgers(content: dict, out: dict, *, mock: bool, team=None, content_hash: str = ""):
+    """실호출 1건을 비용·실패 원장에 기록(mock 무기록). run_pipeline 뿐 아니라 엑셀 일괄
+    추출(run_batch)·자동 인입(ingestops.ingest_run_source)도 이 훅을 타야 일별 비용 롤업·
+    실패 트리아지(AL.on_cost/on_fail 임계 알림 포함)가 실키 지출을 빠짐없이 본다 —
+    종전엔 두 경로가 PIPE.extract 를 직접 불러 402 폭주도 원장에 한 건도 안 남았다."""
+    if mock:
+        return
+    trace = (out or {}).get("trace") or {}
+    _SV._log_cost_rollup(trace, team=team)       # 비용 원장: 일별×모델×콜 누적(실호출만)
+    # 실패 원장: content_hash 가 있으면 '최근 실패 콘텐츠' 목록도 관리(실패 등재·성공 해소)
+    _SV._log_fail_rollup(trace, service=(content or {}).get("displayServiceName", ""),
+                         team=team, content_hash=content_hash,
+                         title=(content or {}).get("title", ""))
+
+
 def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persist: bool = True,
-                 vision=None) -> dict:
+                 vision=None, batch_seq=None) -> dict:
     cfg = Config.load()
     if (model or "").strip():                # 모델 지정 재실행: 제공자·키를 모델에 맞게 라우팅
         llm, _route = _SV.llm_for_model(model.strip(), mock)
@@ -208,8 +238,10 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
-    # 폴백 체인: 실호출인데 산출이 전량 빈값이면 예비 모델로 1회씩 재시도(최대 3 · 성공 시 채택)
-    if not llm.mock and _SV._pipeline_empty(out):
+    # 폴백 체인: 실호출인데 산출이 전량 빈값이면 예비 모델로 1회씩 재시도(최대 3 · 성공 시 채택).
+    # 단 비재시도성 실패(크레딧 소진·지출 한도·인증)면 예비 모델도 같은 402/401 로 죽는다 —
+    # 무의미한 호출 증폭(건당 최대 3배)을 막기 위해 폴백을 생략한다.
+    if not llm.mock and _SV._pipeline_empty(out) and not _nonretry_kinds(out):
         primary = ((getattr(llm, "model", "") or "").strip()
                    or (model or "").strip() or (cfg.model or ""))
         for fm in [str(m).strip() for m in (getattr(cfg, "fallback_models", None) or [])][:3]:
@@ -224,18 +256,18 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
                 out = retry
                 break
     try:                                         # 초안 버전 = 학습 반영 회차 + 1
-        (out.setdefault("trace", {}))["version"] = _SV._batch_seq_cached(team) + 1
+        # batch_seq: 일괄 실행(rerun_all)이 시작 시 1회 조회해 건별로 주입 — 건마다
+        # store_save 의 _agg_bump 가 캐시를 무효화해 매건 events 재조회하던 것을 방지.
+        seq = int(batch_seq) if batch_seq is not None else _SV._batch_seq_cached(team)
+        (out.setdefault("trace", {}))["version"] = seq + 1
     except Exception:
         pass
-    if not llm.mock:                             # 비용 원장: 실호출만 일별×모델×콜 누적(실험 포함)
-        _SV._log_cost_rollup(out.get("trace") or {}, team=team)
-    if not llm.mock:                             # 실패 원장: 실호출의 콜 실패만 누적(트리아지 원천)
-        # 콘텐츠 식별은 영속 실행만 전달: 실패 → 최근 실패 목록 등재(개별 재실행 대상) ·
-        # 무실패 성공 → 목록에서 해소. 실험(persist=False)은 저장이 없어 재실행 불가라 제외.
-        from .store import content_hash as _chash
-        _SV._log_fail_rollup(out.get("trace") or {}, service=content.get("displayServiceName", ""),
-                             team=team, content_hash=(_chash(content) if persist else ""),
-                             title=content.get("title", ""))
+    # 비용·실패 원장(실호출만 · 실험 포함). 실패 원장의 콘텐츠 식별은 영속 실행만 전달:
+    # 실패 → 최근 실패 목록 등재(개별 재실행 대상) · 무실패 성공 → 목록에서 해소.
+    # 실험(persist=False)은 저장이 없어 재실행 불가라 식별 제외.
+    from .store import content_hash as _chash
+    _log_run_ledgers(content, out, mock=llm.mock, team=team,
+                     content_hash=(_chash(content) if persist else ""))
     if not persist:                              # 실험(미저장): 추출만 하고 results·초안·홀드아웃 미기록
         return {"source": source, "mock": llm.mock, "content": content,
                 "signals": signals, "output": out, "vision_used": vision_used}
@@ -312,6 +344,14 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
     spent = 0.0
     budget = float(getattr(Config.load(), "batch_budget_usd", 0.0) or 0.0)   # 0 = 무제한
     budget_stop = False
+    halt_kinds = []                 # 비재시도성 실패(크레딧·한도·인증) 감지 시 조기 중단 사유
+    try:
+        # 학습 반영 회차는 배치 시작 시 1회만 조회해 건별로 전달 — 건마다 store_save 의
+        # _agg_bump 가 전역 캐시를 무효화해 _batch_seq_cached 가 매건 미스나면서
+        # events 를 재조회(supabase 는 건당 GET 1만 행)하던 것을 막는다.
+        batch_seq = _SV._batch_seq_cached(team)
+    except Exception:
+        batch_seq = None                             # 조회 실패 시 건별 폴백(종전 동작)
     jid = "rerun:" + time.strftime("%H%M%S")         # 실행 큐 등록(진행률·ETA)
     _SV._job_begin(jid, model or "기본 모델",
                    "선택 실행" if scope == "selected" else "일괄 실행", len(targets))
@@ -319,21 +359,34 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
     try:
         for ch in targets:
             res = _SV.rerun_content(ch, model, team=team, row=row_by_hash.get(ch),
-                                    force_quest=force_quest, register_job=False)
-            if res.get("error"):
+                                    force_quest=force_quest, register_job=False,
+                                    batch_seq=batch_seq)
+            # 크레딧 소진·지출 한도·인증 실패는 재실행해도 계속 실패한다 — 이 건은 실패로
+            # 집계하고 남은 대상은 즉시 중단한다(수천 회 무의미한 402 호출 방지).
+            halt_kinds = [] if res.get("error") else _nonretry_kinds(res.get("output") or {})
+            if res.get("error") or halt_kinds:
                 failed += 1
                 _SV._INGEST_STATE[jid]["failed"] = failed
             else:
                 done += 1
                 spent += float((((res.get("output") or {}).get("trace") or {}).get("cost_usd")) or 0.0)
             _SV._INGEST_STATE[jid]["done"] += 1
+            if halt_kinds:
+                break
             if budget > 0 and spent >= budget:       # 예산 상한: 도달 시 남은 대상 중단(비용 통제)
                 budget_stop = True
                 break
     except Exception as e:
         _SV._job_end(jid, False, f"{done}건 실행 후 중단 · {str(e)[:80]}")
         raise
-    if budget_stop:
+    halt_msg = ""
+    if halt_kinds:
+        labels = "·".join(_NONRETRY_LABEL.get(k, k) for k in halt_kinds)
+        left = len(targets) - done - failed
+        halt_msg = (f"{labels} 감지 · 재실행해도 계속 실패해 {done}건 실행 후 중단"
+                    + (f" · 남은 {left}건 미실행" if left else "") + " · 조치 후 다시 실행하세요")
+        _SV._job_end(jid, False, halt_msg)
+    elif budget_stop:
         _SV._job_end(jid, False, f"예산 상한 ${budget:g} 도달 · {done}건 실행(${spent:.4f}) 후 중단"
                              + (f" · 실패 {failed}" if failed else ""))
     else:
@@ -341,17 +394,20 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
                                        + (f" · 상한 초과 {over_cap}건 제외" if over_cap else ""))
     return {"ok": True, "done": done, "failed": failed, "model": model, "scope": scope,
             "spent_usd": round(spent, 6), "budget_stop": budget_stop,
+            "halt_kinds": halt_kinds,
+            **({"msg": halt_msg} if halt_msg else {}),
             "over_cap": over_cap,
-            "skipped": (len(targets) - done - failed) if budget_stop else 0}
+            "skipped": (len(targets) - done - failed) if (budget_stop or halt_kinds) else 0}
 
 
 def rerun_content(content_hash: str, model: str, team=None, row=None, force_quest: bool = False,
-                  register_job: bool = True) -> dict:
+                  register_job: bool = True, batch_seq=None) -> dict:
     """같은 콘텐츠를 지정 모델로 재실행(초안 재생성 · 관리자). 기존 초안은 덮어쓰되
     이전 초안을 patch_log 에 남겨(rerun:구모델) 이력·비교 근거를 보존한다.
     row: 일괄 실행(rerun_all)이 미리 로드한 행 주입 — 건마다 전체 테이블 재조회 방지.
     register_job: 실행 큐에 이 건을 등록(기본). 일괄·선택 실행은 배치 잡을 이미 열었으므로
-    False 로 불러 건마다 잡이 쌓이지 않게 한다."""
+    False 로 불러 건마다 잡이 쌓이지 않게 한다.
+    batch_seq: 일괄 실행이 시작 시 1회 조회한 학습 반영 회차 주입 — 건마다 재조회 방지."""
     st = _SV.get_store()
     ch = (content_hash or "").strip()
     if not (st and ch):
@@ -383,7 +439,8 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
         jid = "rerun1:" + time.strftime("%H%M%S") + ":" + ch[:6]
         _SV._job_begin(jid, (ref.get("title") or "콘텐츠")[:40], "개별 재실행", 1)
         _SV._INGEST_STATE[jid]["hashes"] = [ch]      # 작업 클릭 -> 이 콘텐츠 보기
-    result = run_pipeline(fields, mock=_SV.Handler.server_mock, team=team, model=model)
+    result = run_pipeline(fields, mock=_SV.Handler.server_mock, team=team, model=model,
+                          batch_seq=batch_seq)
     if result.get("error"):
         if jid:
             _SV._job_end(jid, False, "실패 · " + str(result.get("error"))[:80])
@@ -515,6 +572,9 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         try:
             for c in contents:
                 out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+                # 비용·실패 원장: 이 경로는 run_pipeline 을 안 타므로 여기서 직접 기록 —
+                # 종전엔 엑셀 일괄 추출의 실키 지출·402 실패가 원장에 한 건도 안 남았다.
+                _log_run_ledgers(c, out, mock=llm.mock, team=team, content_hash=_bch(c))
                 results.append(out)
                 pairs.append((c, out))
                 im = out.get("item_meta") or {}
