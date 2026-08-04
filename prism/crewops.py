@@ -243,8 +243,15 @@ def set_wave(due_at, by: str = "", plan=None, team=None) -> dict:
         _SV._report_save(WAVE_KIND, {"item": {}}, team)
         _SV._agg_bump()
         return {"ok": True, "wave": {}}
-    item = {"due_at": due, "opened_at": (wave(team).get("opened_at") or time.time()),
-            "by": (by or "")[:80], "plan": dict(plan or {})}
+    # 같은 기한으로 다시 배정하면 같은 웨이브(추가 배정 · 계획 합산), 기한이 바뀌면 새 사이클.
+    # opened_at 이 '이번 배정' 현황의 스코프 경계라서, 여기가 안 갈리면 옛 배정이 계속 섞인다.
+    cur = wave(team)
+    same = abs(float(cur.get("due_at") or 0) - due) < 1.0
+    merged = dict(cur.get("plan") or {}) if same else {}
+    for rid, n in (plan or {}).items():
+        merged[rid] = merged.get(rid, 0) + n
+    item = {"due_at": due, "opened_at": ((cur.get("opened_at") if same else 0) or time.time()),
+            "by": (by or "")[:80], "plan": merged}
     _SV._report_save(WAVE_KIND, {"item": item}, team)
     _SV._agg_bump()
     return {"ok": True, "wave": item}
@@ -434,16 +441,27 @@ def _crew_compute(team=None, scope_uid: str = "", raw_out=None) -> dict:
     ratios = [good_by.get(r, 0) / n for r, n in n_by.items() if n >= _MIN_JUDGE_SAMPLE]
     team_good = statistics.median(ratios) if ratios else 0.5
 
-    load = {}                                       # uid → [배정, 미완료, 최고 정체일]
+    opened_at = float(wv.get("opened_at") or 0)
+    wave_on = due_at > 0 and opened_at > 0
+    load = {}                                       # uid → [배정, 미완료, 최고 정체일, 웨이브 배정, 웨이브 미완료]
     for ch, a in asg.items():
         if targets and ch not in targets:
             continue                                # 삭제·확정된 콘텐츠의 고아 배정은 부하가 아니다
         for rv in (a.get("reviewers") or []):
-            c = load.setdefault(rv, [0, 0, 0.0])
+            c = load.setdefault(rv, [0, 0, 0.0, 0, 0])
             c[0] += 1
+            ts = asg_ts.get((ch, rv), 0)
+            # '이번 배정' 스코프 = 웨이브 시작 이후 배정된 슬롯. 배정 시각을 아예 못 주는
+            # 스토어(asg_ts 전체가 빈 dict)면 전량 포함으로 완만히 퇴화하고, 일부 슬롯만
+            # 시각이 없으면 시각 추적 이전의 옛 배정이라 웨이브 밖으로 본다.
+            in_wave = wave_on and (ts >= opened_at - 1 if ts else not asg_ts)
+            if in_wave:
+                c[3] += 1
             if (ch, rv) not in done_pairs:
                 c[1] += 1
-                age = (now - asg_ts.get((ch, rv), 0)) / 86400 if asg_ts.get((ch, rv)) else 0.0
+                if in_wave:
+                    c[4] += 1
+                age = (now - ts) / 86400 if ts else 0.0
                 c[2] = max(c[2], age)
 
     # 명단의 기준은 **현재 팀원(rvs)** 이다. 판정 이력·프로필·배정만 남은 id 는 팀에서
@@ -462,7 +480,7 @@ def _crew_compute(team=None, scope_uid: str = "", raw_out=None) -> dict:
         prof = dict(_blank_profile(cfg))
         prof.update(profs.get(uid) or {})
         m = meas.get(uid) or {}
-        lo = load.get(uid) or [0, 0, 0.0]
+        lo = load.get(uid) or [0, 0, 0.0, 0, 0]
         rate = _effective_rate(m, prof, cfg, team_rate)
         # 이번 주 본인 확인 여부 반영: 확인된 신고 시간은 그대로, 미확인은 지난주 값이라
         # 조금 보수적으로 본다(0 으로 만들지는 않는다 — 일이 아예 안 가는 것도 쏠림이다).
@@ -488,7 +506,11 @@ def _crew_compute(team=None, scope_uid: str = "", raw_out=None) -> dict:
                          "last_ts": m.get("last_ts", 0)},
             "load": {"assigned": lo[0], "pending": lo[1], "done": lo[0] - lo[1],
                      "stale_days": round(lo[2], 1),
-                     "progress": round((lo[0] - lo[1]) / lo[0], 4) if lo[0] else None},
+                     "progress": round((lo[0] - lo[1]) / lo[0], 4) if lo[0] else None,
+                     # '이번 배정'(웨이브 시작 이후 배정분) · 기한 미설정이면 None
+                     "wave": ({"assigned": lo[3], "pending": lo[4], "done": lo[3] - lo[4],
+                               "progress": round((lo[3] - lo[4]) / lo[3], 4) if lo[3] else None}
+                              if wave_on else None)},
             "quality": {"gold_n": g.get("n", 0), "gold_acc": g.get("acc", 0.0),
                         "weight": weights.get(uid), "good_ratio": good_ratio, "n_judged": nb},
             "weekly_capacity": weekly,
@@ -554,7 +576,11 @@ def _signal(card: dict, cfg: dict, due_at: float, now: float) -> str:
     pending, assigned = card["load"]["pending"], card["load"]["assigned"]
     if not pending:
         return "done" if assigned else "idle"
-    prog = card["load"]["progress"] or 0.0
+    # 기한 대비 진행은 '이번 배정' 기준이 정확하다 — 누적 진행률은 옛 배정에 희석돼
+    # 이번 몫을 다 끝낸 사람이 마감 임박 경고를 받는다. 정체(stale)는 누적 그대로.
+    wvl = card["load"].get("wave")
+    prog = ((wvl["progress"] if wvl and wvl["assigned"] else card["load"]["progress"])
+            or 0.0)
     stale = card["load"]["stale_days"]
     if (due_at and now > due_at) or (stale >= float(cfg["stale_days"]) * 2 and prog < 0.2):
         return "red"
@@ -583,8 +609,16 @@ def _summary(members, fmap, targets, golden, cfg, due_at, now, team_rate, orphan
     eta = ""                                        # 주간 캐파 기준 역산 · 캐파 0 이면 산출 불가
     if pending and weekly > 0:
         eta = day_key(now + (pending / weekly) * 7 * 86400)
+    wave_sum = None                                 # '이번 배정' 집계 · 기한 미설정이면 None
+    wv_loads = [m["load"].get("wave") for m in members]
+    if any(w is not None for w in wv_loads):
+        wa = sum(w["assigned"] for w in wv_loads if w)
+        wp = sum(w["pending"] for w in wv_loads if w)
+        wave_sum = {"assigned": wa, "pending": wp, "done": wa - wp,
+                    "progress": round((wa - wp) / wa, 4) if wa else None,
+                    "due_at": due_at}
     return {"pending": pending, "hours_left": hours_left, "weekly_capacity": weekly,
-            "orphan": orphan_info,
+            "orphan": orphan_info, "wave": wave_sum,
             "eta": eta, "idle": idle, "idle_spare": sum(i["spare"] for i in idle),
             "stale": stale[:10], "stale_total": sum(s["pending"] for s in stale),
             "final_pending": split, "golden_n": len(golden), "targets_n": len(targets),
