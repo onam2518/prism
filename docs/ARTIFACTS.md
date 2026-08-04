@@ -9,6 +9,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-08-04 | [검수운영 '이번 배정' 현황 · 화면 캡처](https://claude.ai/code/artifact/75d2f4d2-2f52-42b1-85f4-267e58c3f3aa) |
 | 2026-08-03 | [포토·영상 중심 · 구조적 제약](https://claude.ai/code/artifact/4b615df7-4809-43fa-9065-39b592b7649d) |
 | 2026-08-03 | [검수 화면 UI 시안 · 라벨 정렬과 필터 통합](https://claude.ai/code/artifact/9d6d39f7-53ef-423e-b6bd-74f9e0c552bc) |
 | 2026-07-30 | [모델 적합도와 예상 비용](https://claude.ai/code/artifact/13688166-0922-45f0-8964-4e9a4cc71bac) |
