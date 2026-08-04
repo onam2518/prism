@@ -30,6 +30,19 @@
                     x-on:click="crewScope = 'all'">전체 누적</button>
             <span class="meta ml-auto" x-show="crewScopeEff === 'wave'"
                   x-text="'이번 배정 ' + (crewWave ? crewWave.assigned : 0) + '건 · 기한 ' + crewDate(crewSum.due_at) + crewDdayTxt"></span>
+            <!-- 기한 연장·단축: 배정을 다시 하지 않고 지금 묶음의 기한만 바꾼다(조정 내역은 배정 이력에) -->
+            <template x-if="crewScopeEff === 'wave'">
+              <span class="flex items-center gap-1">
+                <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!crewDueEdit"
+                        x-on:click="crewDueEditOpen()">기한 조정</button>
+                <input type="datetime-local" class="field" style="height:30px;width:190px"
+                       x-show="crewDueEdit" x-model="crewDueNew">
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="crewDueEdit"
+                        x-bind:disabled="crewBusy || !crewDueNew" x-on:click="crewAdjustDue()">저장</button>
+                <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="crewDueEdit"
+                        x-on:click="crewDueEdit = false">취소</button>
+              </span>
+            </template>
           </div>
           <div class="crewstats">
             <template x-if="crewScopeEff === 'wave'">

@@ -11,6 +11,7 @@ window.PRISM_APP_PARTS.push(() => ({
       crewAsgScope: 'unassigned', crewAsgLimit: 200, crewAsgMin: 2, crewDue: '',
 
       crewScope: 'wave',                  // 현황 범위: wave(이번 배정) | all(전체 누적)
+      crewDueEdit: false, crewDueNew: '', // 기한 조정 인라인 편집기
       get crewMembers() { return (this.crewData && this.crewData.members) || []; },
       get crewSum() { return (this.crewData && this.crewData.summary) || {}; },
       get crewWave() { return this.crewSum.wave || null; },
@@ -20,6 +21,24 @@ window.PRISM_APP_PARTS.push(() => ({
       crewLoadOf(m) {
         const w = m.load && m.load.wave;
         return (this.crewScopeEff === 'wave' && w) ? w : m.load;
+      },
+      crewDueEditOpen() {
+        // 현재 기한을 datetime-local 형식으로 미리 채운다 · 없으면 이틀 뒤
+        const due = this.crewSum.due_at || (Date.now() / 1000 + 86400 * 2);
+        const d = new Date(due * 1000);
+        const p = (n) => String(n).padStart(2, '0');
+        this.crewDueNew = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+          + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+        this.crewDueEdit = true;
+      },
+      async crewAdjustDue() {
+        this.crewBusy = true;
+        try {
+          const r = await this._crewPost('/crew-due', { due_at: Date.parse(this.crewDueNew) / 1000 });
+          if (r && r.ok) { this.crewDueEdit = false; await this.loadCrew(); }
+          else this._err((r && r.error) || '기한을 조정하지 못했습니다');
+        } catch (e) { this._err('기한을 조정하지 못했습니다'); }
+        finally { this.crewBusy = false; }
       },
       get crewDdayTxt() {
         const due = this.crewSum.due_at;

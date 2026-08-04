@@ -257,6 +257,33 @@ def set_wave(due_at, by: str = "", plan=None, team=None) -> dict:
     return {"ok": True, "wave": item}
 
 
+def adjust_due(due_at, by: str = "", team=None) -> dict:
+    """진행 중인 웨이브의 기한만 조정(연장·단축). opened_at·plan 은 유지한다 —
+    set_wave 는 기한이 바뀌면 새 사이클로 여니, '같은 배정 묶음인데 기한을 늘리고
+    싶다'는 운영 요구는 이 경로로 온다. 조정 내역은 배정 이력에 남긴다."""
+    cur = wave(team)
+    if not cur.get("due_at"):
+        return {"ok": False, "error": "진행 중인 배정 묶음이 없습니다 · 배정할 때 기한을 함께 걸어주세요"}
+    try:
+        due = float(due_at or 0)
+    except (TypeError, ValueError):
+        due = 0.0
+    if due <= 0:
+        return {"ok": False, "error": "기한을 읽을 수 없습니다"}
+    old = float(cur["due_at"])
+    item = dict(cur)
+    item["due_at"] = due
+    item["by"] = (by or "")[:80]
+    _SV._report_save(WAVE_KIND, {"item": item}, team)
+    _SV._agg_bump()
+
+    def _fmt(t):
+        return time.strftime("%m/%d %H:%M", time.localtime(t))
+
+    _SV._log_assign(by or "(미상)", "기한 조정 " + _fmt(old) + " → " + _fmt(due), 0, [], 0, team)
+    return {"ok": True, "wave": item}
+
+
 # ── 캐파 실측 ────────────────────────────────────────────────────────────────
 def _epoch(ts) -> float:
     """feedback ts → epoch(sqlite=float · supabase=UTC 문자열). reviewops._fb_epoch 와 동일 해석."""
