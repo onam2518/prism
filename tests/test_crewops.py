@@ -371,7 +371,7 @@ class TestMenuGate(CrewBase):
 
     def test_post_routes_are_super_gated(self):
         from prism import serve
-        for p in ("/crew-profile", "/crew-wave", "/crew-assign", "/crew-rebalance"):
+        for p in ("/crew-profile", "/crew-wave", "/crew-due", "/crew-assign", "/crew-rebalance"):
             self.assertEqual(serve._POST_ROUTES[p][1], "super", p)
         self.assertEqual(serve._menu_for_path("/crew-assign"), "crew")
 
@@ -414,6 +414,30 @@ class TestWave(CrewBase):
         w2 = serve.CRW.wave(None)
         self.assertGreater(w2["opened_at"], opened1)            # 새 사이클
         self.assertEqual(w2["plan"], {"u2": 1})                 # 계획도 새로 시작
+
+    def test_adjust_due_keeps_wave_and_logs(self):
+        """기한 조정은 같은 웨이브를 유지한 채 기한만 바꾼다(연장·단축) —
+        set_wave 의 '기한 변경 = 새 사이클'과 구분되는 운영 경로. 조정 내역은 배정 이력에."""
+        serve = self._serve()
+        due1 = time.time() + 86400 * 2
+        serve.CRW.set_wave(due1, by="admin", plan={"u1": 5})
+        opened = serve.CRW.wave(None)["opened_at"]
+        r = serve.CRW.adjust_due(due1 + 86400, by="admin@x")
+        self.assertTrue(r["ok"])
+        w = serve.CRW.wave(None)
+        self.assertEqual(w["due_at"], due1 + 86400)
+        self.assertEqual(w["opened_at"], opened)                # 같은 웨이브 유지
+        self.assertEqual(w["plan"], {"u1": 5})                  # 계획 유지
+        log = (serve._report_get("assign_log", None, {}) or {}).get("items")[-1]
+        self.assertIn("기한 조정", log["mode"])
+        self.assertEqual(log["by"], "admin@x")
+
+    def test_adjust_due_requires_wave_and_valid_due(self):
+        serve = self._serve()
+        self.assertFalse(serve.CRW.adjust_due(time.time() + 86400)["ok"])   # 웨이브 없음
+        serve.CRW.set_wave(time.time() + 86400)
+        self.assertFalse(serve.CRW.adjust_due("숫자아님")["ok"])
+        self.assertFalse(serve.CRW.adjust_due(0)["ok"])
 
     def _wave_fixture(self, serve, due_offset=86400 * 2):
         """옛 배정 2건(웨이브 전) + 새 배정 2건(웨이브 후 · 1건 완료) 상태를 만든다."""

@@ -2255,6 +2255,13 @@ def _p_crew_wave(h, body):
     return CRW.set_wave(data.get("due_at"), by=actor, plan=data.get("plan"), team=h._req_team())
 
 
+@_post_route("/crew-due", gate="super")              # 검수운영: 진행 중 웨이브의 기한만 조정(연장·단축)
+def _p_crew_due(h, body):
+    data = json.loads(body or b"{}")
+    actor = h._bearer_email() or h._bearer_uid() or "(로컬)"
+    return CRW.adjust_due(data.get("due_at"), by=actor, team=h._req_team())
+
+
 @_post_route("/crew-assign", gate="super")           # 검수운영: 캐파 비례 배정(미리보기 → 실행)
 def _p_crew_assign(h, body):
     data = json.loads(body or b"{}")
