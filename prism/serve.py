@@ -65,6 +65,7 @@ DS._SV = sys.modules[__name__]      # 대시보드·롤업 주입(동일)
 from . import runops as RN
 from . import umops as UMO
 from . import memfs as MF
+from . import pastcheck as PCK          # PAST 로그 검증 도구(실험실 · 사용자 › 로그뷰어)
 from . import ingestops as IG
 from . import boardops as BD
 from . import evalops as EVO
@@ -1850,6 +1851,11 @@ def _g_usermeta_demo(h, q):
     return MF.demo_data(team=h._req_team())
 
 
+@_get_route("/usermeta-logviewer")                   # PAST 로그 검증(실험실): 시연 세션 판정 스트림·체크리스트
+def _g_usermeta_logviewer(h, q):
+    return PCK.logviewer_data(team=h._req_team())
+
+
 @_get_route("/spectrum-gw")                          # 스펙트럼 관문 안내(공개 · 붙는 방법 한 줄)
 def _g_spectrum_gw(h, q):
     return SPO.gateway_info()
@@ -2689,6 +2695,11 @@ def _p_usermeta_memory(h, body):
 @_post_route("/usermeta-demo", gate="team")          # 소비 시연 조작: event(행동 수집)·finish(결론)·reset
 def _p_usermeta_demo(h, body):
     return MF.demo_ops(json.loads(body or b"{}"), team=h._req_team())
+
+
+@_post_route("/usermeta-logviewer", gate="team")     # PAST 로그 검증 조작: inject(위반 예시 주입)·clear
+def _p_usermeta_logviewer(h, body):
+    return PCK.logviewer_ops(json.loads(body or b"{}"), team=h._req_team())
 
 
 @_post_route("/usermeta", gate="team")               # 행동 로그 업로드/현황 · 팀 미소속 전 팀 열람 차단

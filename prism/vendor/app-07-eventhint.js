@@ -267,7 +267,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // ── 실험실 · 사용자: 소비 시연(STEP 1 소비·수집 → 2 측정·로직 → 3 결론 → 4 활용) ──
       // 좌측 피드(Anchor DS)에서의 실제 행동을 이벤트로 서버에 보내고, 우측 3단(실시간·누적·로직)을
       // 응답으로 갱신. 체류는 실측 초 × 10 배속(가상 체류)으로 보내 실로직 임계값(30·45초)을 체감시킨다.
-      labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연·생성) | policy(정책)
+      labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연) | gen(생성 과정) | policy(정책) | viewer(로그뷰어)
       demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
       demoQ: '', demoQFilter: '',
       demoVariant: 'b', demoBoardSel: '', demoCardSel: 'main',          // 시안 선택(a 피드형·b 블록형·c 보드형·d 대화형) · 이벤트 계약은 동일
