@@ -4,6 +4,71 @@
            거기서 접속 키 발급과 도구 연결까지 이어진다. 관문 체험 · 사용 기록 · 접속 키 관리는
            위쪽 작은 버튼으로 옮긴 보조 화면이다.
            파일명이 20-ingest-policy.html 보다 앞이어야 x-data 스코프 안에 든다(ARCHITECTURE 주의 ①). -->
+      <style>
+        /* 카탈로그 카드 전용 스타일(19a-content-agent.html 과 같은 조각 내 style 관례).
+           클래스는 전부 sp- 접두사로 스코프 · 색은 ds-theme 토큰만 쓴다(라이트·다크 자동 전환).
+           위계: 위 = 모노그램 + 이름 + 상태 점 · 가운데 = 요약 두 줄 고정 · 아래 = 정렬 맞춘 풋터 한 줄. */
+        .sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(292px,1fr));gap:var(--ds-space-4)}
+        .sp-grid--sm{grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:var(--ds-space-3)}
+
+        .sp-card{position:relative;display:flex;flex-direction:column;gap:11px;height:100%;
+          padding:17px 18px 14px;border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
+          background:var(--ds-surface);text-align:left;cursor:pointer;overflow:hidden;
+          font-family:inherit;font-size:inherit;color:inherit;
+          box-shadow:0 1px 2px rgba(0,0,0,.04);
+          transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,opacity .16s ease}
+        /* 열려 있는 커넥터 표시: 카드 위쪽에 얇은 그라데이션 선 한 줄 */
+        .sp-card::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;opacity:0;
+          background:linear-gradient(90deg,var(--ds-primary),transparent 72%);transition:opacity .16s ease}
+        .sp-card.is-live::before{opacity:1}
+        .sp-card.is-soon{opacity:.74}
+        .sp-card:hover{transform:translateY(-2px);border-color:var(--ds-primary);
+          box-shadow:0 2px 5px rgba(0,0,0,.05),0 14px 30px -16px rgba(0,0,0,.30)}
+        .sp-card.is-soon:hover{opacity:.92}
+        .sp-card:focus-visible{outline:none;border-color:var(--ds-primary);
+          box-shadow:0 0 0 3px var(--ds-primary-tint)}
+        /* 다크에서는 옅은 그림자가 안 보여 더 깊게 준다(흰 번짐 방지) */
+        [data-theme='dark'] .sp-card{box-shadow:0 1px 2px rgba(0,0,0,.28)}
+        [data-theme='dark'] .sp-card:hover{box-shadow:0 2px 6px rgba(0,0,0,.4),0 16px 34px -18px rgba(0,0,0,.7)}
+        @media (prefers-reduced-motion:reduce){.sp-card{transition:none}.sp-card:hover{transform:none}}
+
+        .sp-card__hd{display:flex;align-items:center;gap:11px;min-width:0}
+        .sp-mono{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
+          font-size:16px;font-weight:700;line-height:1;letter-spacing:-.02em}
+        .sp-mono--a{background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
+        .sp-mono--b{background:var(--ds-cat-entertainment-subtle);color:var(--ds-cat-entertainment-text)}
+        .sp-mono--c{background:rgba(24,186,69,.14);color:var(--ds-success-deep)}
+        .sp-mono--d{background:var(--ds-cat-interest-subtle);color:var(--ds-cat-interest-text)}
+        .sp-hdtx{min-width:0;display:flex;flex-direction:column;gap:3px}
+        .sp-name{font-size:15px;font-weight:600;color:var(--ds-ink);letter-spacing:-.01em;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .sp-state{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ds-muted);line-height:1}
+        .sp-state i{width:7px;height:7px;border-radius:50%;flex:none;background:var(--ds-placeholder)}
+        .sp-state--on i{background:var(--ds-success);box-shadow:0 0 0 3px rgba(24,186,69,.18)}
+
+        .sp-sum{font-size:13px;line-height:1.62;color:var(--ds-muted);
+          display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+          min-height:calc(13px * 1.62 * 2)}
+
+        /* 창고 태그는 풋터가 아니라 요약 아래 제 줄에 둔다 · 풋터에 같이 넣으면 담당팀이 잘린다 */
+        .sp-chips{display:flex;flex-wrap:wrap;gap:6px}
+        .sp-tag{display:inline-flex;align-items:center;border-radius:6px;padding:2px 7px;
+          font-size:11px;font-weight:600;white-space:nowrap;
+          background:var(--ds-tint-bg);color:var(--ds-tint-fg)}
+
+        .sp-ft{margin-top:auto;padding-top:11px;border-top:1px solid var(--ds-hairline-soft);
+          display:flex;align-items:baseline;gap:8px;row-gap:5px;flex-wrap:wrap;min-width:0;
+          font-size:12px;color:var(--ds-muted);font-variant-numeric:tabular-nums}
+        .sp-ft__n{flex:none;white-space:nowrap}
+        .sp-ft__r{margin-left:auto;display:inline-flex;align-items:baseline;gap:6px;min-width:0}
+        .sp-ft__team{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .sp-ft__v{flex:none;opacity:.68}
+
+        /* 상세 헤더도 같은 결: 모노그램 + 이름 + 상태 한 줄 · 배지는 하나만 */
+        .sp-dhd{min-width:0;display:flex;flex-direction:column;gap:4px;margin-right:auto}
+        .sp-dhd .sp-name{font-size:17px;font-weight:700;letter-spacing:-.02em}
+        .sp-dmono{width:42px;height:42px;border-radius:13px;font-size:18px}
+      </style>
       <template x-if="mod === 'lab'">
         <div x-show="labTab === 'spectrum'" x-cloak class="w-full space-y-4">
 
@@ -46,28 +111,28 @@
 
               <div x-show="spCatalogShown.length" style="margin-top:14px">
                 <!-- 카드 격자: x-show 는 위 래퍼가 맡는다(격자 요소에 직접 걸면 display 가 지워진다) -->
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:12px">
+                <div class="sp-grid">
                   <template x-for="c in spCatalogShown" x-bind:key="'spc'+c.id">
-                    <div class="tbox" style="cursor:pointer" x-on:click="spOpen(c)">
-                      <div class="flex items-center gap-1.5 flex-wrap">
-                        <b class="text-ink text-sm" x-text="c.name || c.id"></b>
-                        <span class="ds-badge" x-bind:class="c.status==='live' ? 'ds-badge--success' : 'ds-badge--neutral'"><span class="ds-badge__dot"></span><span x-text="c.status==='live' ? '바로 쓸 수 있음' : '준비중'"></span></span>
-                        <span class="meta tnum ml-auto" x-show="c.version" x-text="'v' + (c.version || '')"></span>
-                      </div>
-                      <div class="text-xs text-muted" style="margin-top:5px;line-height:1.55" x-text="spDesc(c)"></div>
-                      <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
-                        <span x-show="spWhTag(c)" class="ds-badge ds-badge--intent" x-text="spWhTag(c)"></span>
-                        <span x-show="(c.tools || []).length" class="ds-badge ds-badge--category tnum" x-text="'기능 ' + (c.tools || []).length + '개'"></span>
-                      </div>
-                      <div class="text-xs text-muted" style="margin-top:8px" x-show="(c.useCases || []).length">
-                        <template x-for="(u, ui) in (c.useCases || []).slice(0, 2)" x-bind:key="'spuc'+c.id+ui">
-                          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="'· ' + u"></div>
-                        </template>
-                      </div>
-                      <div class="text-xs text-muted" style="margin-top:8px;border-top:1px solid var(--ds-hairline-soft);padding-top:7px">
-                        <span x-text="spTeam(c)"></span><span x-show="c.dataBasis" x-text="' · ' + (c.dataBasis || '')"></span>
-                      </div>
-                    </div>
+                    <button type="button" class="sp-card" x-bind:class="c.status==='live' ? 'is-live' : 'is-soon'" x-on:click="spOpen(c)">
+                      <span class="sp-card__hd">
+                        <span class="sp-mono" x-bind:class="spMonoCls(c)" x-text="spMono(c)"></span>
+                        <span class="sp-hdtx">
+                          <span class="sp-name" x-text="c.name || c.id"></span>
+                          <span class="sp-state" x-bind:class="c.status==='live' ? 'sp-state--on' : ''"><i></i><span x-text="c.status==='live' ? '바로 쓸 수 있음' : '준비중'"></span></span>
+                        </span>
+                      </span>
+                      <span class="sp-sum" x-text="spDesc(c)"></span>
+                      <span class="sp-chips" x-show="spWhTag(c)">
+                        <span class="sp-tag" x-text="spWhTag(c)"></span>
+                      </span>
+                      <span class="sp-ft">
+                        <span class="sp-ft__n" x-show="(c.tools || []).length" x-text="'기능 ' + (c.tools || []).length + '개'"></span>
+                        <span class="sp-ft__r">
+                          <span class="sp-ft__team" x-text="spTeamShort(c)"></span>
+                          <span class="sp-ft__v" x-show="c.version" x-text="'v' + (c.version || '')"></span>
+                        </span>
+                      </span>
+                    </button>
                   </template>
                 </div>
               </div>
@@ -86,10 +151,13 @@
               <span class="text-xs text-muted" x-text="spSel.name || spSel.id"></span>
             </div>
 
-            <div class="panel"><div class="panel-hd"><b x-text="spSel.name || spSel.id"></b>
-                <span class="ds-badge" x-bind:class="spSel.status==='live' ? 'ds-badge--success' : 'ds-badge--neutral'"><span class="ds-badge__dot"></span><span x-text="spSel.status==='live' ? '바로 쓸 수 있음' : '준비중'"></span></span>
-                <span class="ds-badge ds-badge--intent">MCP Registry 표준 호환</span>
-                <span class="meta tnum ml-auto" x-text="spTeam(spSel) + (spSel.version ? (' · v' + spSel.version) : '')"></span></div>
+            <div class="panel"><div class="panel-hd">
+                <span class="sp-mono sp-dmono" x-bind:class="spMonoCls(spSel)" x-text="spMono(spSel)"></span>
+                <span class="sp-dhd">
+                  <span class="sp-name" x-text="spSel.name || spSel.id"></span>
+                  <span class="sp-state" x-bind:class="spSel.status==='live' ? 'sp-state--on' : ''"><i></i><span x-text="(spSel.status==='live' ? '바로 쓸 수 있음' : '준비중') + ' · ' + spTeam(spSel) + (spSel.version ? (' · v' + spSel.version) : '')"></span></span>
+                </span>
+                <span class="ds-badge ds-badge--intent">MCP Registry 표준 호환</span></div>
               <div class="panel-bd">
                 <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-bottom:12px" x-show="spSel.status!=='live'">
                   <li>아직 준비 중인 창구입니다 · <b>협의 후 공개 예정</b>이라 지금은 소개만 보여줍니다.</li>
@@ -192,7 +260,7 @@
                   <span x-show="spNewKey">아래 설정에는 방금 발급한 키가 들어가 있어 그대로 복사하면 됩니다.</span>
                   <span x-show="!spNewKey"><b>&lt;접속 키&gt;</b> 자리에는 위에서 발급한 키를 넣으세요.</span>
                 </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+                <div class="sp-grid sp-grid--sm">
                   <template x-for="g in spGuides" x-bind:key="'spg'+g.id">
                     <div class="tbox">
                       <div class="flex items-center gap-1.5">

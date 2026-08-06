@@ -225,6 +225,24 @@ window.PRISM_APP_PARTS.push(() => ({
       // 커넥터·기능의 이름표는 서버가 주는 대로 받는다(desc/summary · team/owner 둘 다 허용).
       spDesc(c) { return (c && (c.desc || c.summary)) || ''; },
       spTeam(c) { return (c && (c.team || c.owner)) || '미정'; },
+      // 카드 풋터는 한 줄이라 담당팀은 뒤쪽 조직만 쓴다(예: '플랫폼기획 · 데이터허브 크루' → '데이터허브 크루').
+      // 전체 이름은 상세에서 그대로 보여준다.
+      spTeamShort(c) {
+        const t = this.spTeam(c);
+        const parts = t.split('·').map((x) => x.trim()).filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : t;
+      },
+      // 카드 왼쪽 모노그램: 이름 첫 글자 · 색은 id 로 정해 커넥터마다 늘 같은 색이 나오게 한다
+      spMono(c) {
+        const n = String((c && (c.name || c.id)) || '').trim();
+        return n ? n.charAt(0) : '·';
+      },
+      spMonoCls(c) {
+        const s = String((c && (c.id || c.name)) || '');
+        let h = 0;
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 997;
+        return 'sp-mono--' + ['a', 'b', 'c', 'd'][h % 4];
+      },
       // 파라미터 표기: params 배열이 오면 그대로, MCP 표준 inputSchema 가 오면 같은 모양으로 펴서 쓴다.
       spToolParams(t) {
         if (!t) return [];
