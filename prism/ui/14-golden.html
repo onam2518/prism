@@ -58,6 +58,19 @@
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.new)||0"></div><div class="t">신규 승격</div></div>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.need_category)||0"></div><div class="t">분류 필요</div></div>
                   </div>
+                  <!-- 반영 대기·정체 경고: 학습 반영이 멈추면 검수가 쌓여도 정답이 늘지 않는데
+                       그 사실이 어디에도 안 보였다(운영 2026-08-06: 검수 488 vs 정답 122 · 15일 무실행) -->
+                  <div class="text-xs" style="margin-bottom:10px" x-show="goldenStatus.pending && goldenStatus.pending.promote" x-cloak>
+                    <span class="ds-badge ds-badge--warning tnum" x-text="'승격 대기 ' + goldenStatus.pending.promote + '건'"></span>
+                    <span class="text-muted"> 정확 합의·등급·분류까지 끝나 학습 반영만 남았습니다</span>
+                    <span class="text-muted" x-show="goldenStatus.stale_days >= 1" x-cloak x-text="' · 마지막 반영 ' + goldenStatus.stale_days + '일 전'"></span>
+                    <span class="text-muted"> · 아래 검수 목표 카드의 <b class="text-ink">즉시 반영</b>으로 바로 확정됩니다</span>
+                  </div>
+                  <div class="text-xs text-muted" style="margin-bottom:10px" x-show="goldenStatus.pending && goldenStatus.pending.split" x-cloak>
+                    의견 갈림 <b class="text-ink tnum" x-text="goldenStatus.pending.split"></b>건은 반영을 돌려도 승격되지 않습니다 ·
+                    <b class="text-ink">콘텐츠 검수 → 최종 검수</b>에서 편입·제외를 확정해 주세요
+                    <button type="button" class="copybtn" x-on:click="selectMod('create')">콘텐츠 검수 열기 →</button>
+                  </div>
                   <!-- 반영 전 안내: 검수는 쌓였는데 정답이 0이면 "표시가 안 된다"로 오해 · 골든은 학습 반영 시 확정 -->
                   <div class="text-xs text-muted" style="margin-bottom:10px" x-show="!goldenStatus.total && goldenStatus.reviewed && goldenStatus.reviewed.contents">
                     검수 <b class="text-ink tnum" x-text="goldenStatus.reviewed.contents"></b>건이 쌓였고 아직 학습 반영 전입니다 · 정답 확정은 학습 반영 때 이뤄집니다(검수 목표 카드의 즉시 반영 또는 목표 일시 도달 시)
