@@ -31,16 +31,11 @@ window.PRISM_APP_PARTS.push(() => ({
       // 검수 대상 콘텐츠: 상단 모델→버전 구분 + 필터
       // rawRev 기본값 'todo': 내가 판정한 건은 기본으로 숨긴다(할 일 목록) ·
       // 다시 보려면 검수 필터에서 '전체'·'검수 완료'를 고른다.
-      // rawMineOnly: 배정된 검수자가 나인 건만(미배정분 제외) · 상단 '필터' 팝오버에서 켠다
+      // rawMineOnly: 배정된 검수자가 나인 건만(미배정분 제외) · rawUnassignedOnly: 미배정 건만
+      // (배정 전 물량 확인용) — 상단 '필터' 팝오버에서 켠다 · 둘은 상호 배타(동시에 켜지 않는다)
       rawQ: '', rawGrade: '', rawModel: '', rawSvc: '', rawRev: 'todo', rawMineOnly: false,
-      // 넓은 창(2000건) 조회 여부 · 완료·전체를 한 번이라도 고르면 켜진 채 유지된다
-      rawWide: false,
-      // 검수 필터 변경: 'todo' 가 아니면 과거분까지 봐야 하므로 창을 넓혀 다시 부른다
-      // (최신 200건 창에는 새로 넣은 콘텐츠만 들어와 예전 검수 완료분이 빠졌다)
-      rawRevPick(v) {
-        this.rawRev = v;
-        if (v !== 'todo' && !this.rawWide) { this.rawWide = true; this.loadRaw(); }
-      },
+      rawUnassignedOnly: false,
+      rawRevPick(v) { this.rawRev = v; },
       // 결과 비교: 요소 단위 모델별 현황 + 콘텐츠별 초안 diff(팝업)
       cmpDraftHash: '', draftsData: null, cmpL: 0, cmpR: 1,
       cmpModalOpen: false, cmpTitle: '', cmpAmiss: false, cmpBmiss: false,

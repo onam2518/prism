@@ -73,22 +73,38 @@ class TestRawRowsWindow(unittest.TestCase):
 
 
 class TestRawWideReload(unittest.TestCase):
-    """검수 완료·전체 필터는 과거분을 봐야 한다 → 창을 넓혀(2000) 재조회."""
+    """목록 기본 창 = 2000(전체). 종전 '최신 200건' 창은 방금 올린 것만 보이는 착시를 만들었다
+    (2026-08-06 운영: 400건 넣고 목록·배정 풀에 200건만 · rawWide 넓힘 플래그는 제거)."""
 
     def _src(self, rel):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(root, rel), encoding="utf-8") as f:
             return f.read()
 
-    def test_load_raw_honors_wide_flag(self):
+    def test_load_raw_default_is_wide(self):
         src = self._src("prism/vendor/app-00-tabitems.js")
-        self.assertIn("this.rawWide ? 2000 : 200", src)
+        self.assertIn("String(limit || 2000)", src)
+        self.assertNotIn("rawWide", src)                           # 좁은 창 분기 잔재 금지
 
-    def test_filter_pick_widens_once(self):
+    def test_filter_pick_no_longer_widens(self):
         src = self._src("prism/vendor/app-01-bulkpertxt.js")
-        self.assertIn("rawWide: false", src)
         self.assertIn("rawRevPick(v)", src)
-        self.assertIn("if (v !== 'todo' && !this.rawWide)", src)   # 'todo' 로 되돌려도 다시 좁히지 않는다
+        self.assertNotIn("rawWide", src)
+
+    def test_narrow_pool_calls_removed(self):
+        """배정 후보 풀(크루 탭·배정 모달·팀 탭)이 좁은 창(1000)을 따로 쓰지 않는다."""
+        for rel in ("prism/vendor/app-00-tabitems.js", "prism/vendor/app-02-_afterverdict.js",
+                    "prism/ui/15-team.html", "prism/ui/19b-crew.html"):
+            self.assertNotIn("loadRaw(1000)", self._src(rel), rel)
+
+    def test_unassigned_filter_wired(self):
+        """검수 필터 '미배정 콘텐츠만'(2026-08-06 요청): 상태 선언 · 체인 조건 · 마크업 3점 배선."""
+        self.assertIn("rawUnassignedOnly: false", self._src("prism/vendor/app-01-bulkpertxt.js"))
+        chain = self._src("prism/vendor/app-02-_afterverdict.js")
+        self.assertIn("this.rawUnassignedOnly && (this.isGoldRow(r)", chain)
+        from prism import page
+        self.assertIn("미배정 콘텐츠만", page.PAGE)
+        self.assertIn("if (rawUnassignedOnly) rawMineOnly = false", page.PAGE)   # 상호 배타
 
     def test_ui_wires_filter_and_hint_to_pick(self):
         from prism import page

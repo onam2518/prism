@@ -137,9 +137,9 @@ window.PRISM_APP_PARTS.push(() => ({
       rawData: null, rawSel: null,
       // 콘텐츠별 검수 담당 배정(관리자 전용): 편집 중 행·선택 담당자·최소 검수인원
       assignSel: null, assignPick: [], assignMin: 1, assignBusy: false,
-      // 인자 없는 호출(탭 진입·판정 후 갱신)의 기본 창은 최신 200건 · rawWide 가 켜지면 넓게 본다
-      // (검수 완료·전체 필터는 과거분을 봐야 하는데 200건 창에는 최근 콘텐츠만 들어온다)
-      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || (this.rawWide ? 2000 : 200)) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail(); } } catch (e) {} },
+      // 기본 창 2000건(서버 슬림 목록 · DOM 은 rawShownList 200 캡이 지킨다). 종전 '최신 200건'
+      // 창은 방금 올린 것만 보이는 착시를 만들었다(400건 넣고 목록·배정 풀에 200건만 · 2026-08-06 운영).
+      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || 2000) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail(); } } catch (e) {} },
       // 딥링크 ?detail=<hash> 소진: 로드된 목록에서 찾아 상세 열기(없으면 1회 더 넓게 재조회 후 포기)
       _consumePendingDetail() {
         const h = this._pendingDetail;
@@ -203,8 +203,8 @@ window.PRISM_APP_PARTS.push(() => ({
       bulkGrpN: 1, bulkPickG: [],   // 그룹 선택: 그룹 수 · 그룹별 담당자(bulkChecked 값 = 그룹 번호 1..G)
       // 노출 게이트: 로컬은 항상, 운영은 슈퍼관리자·운영관리자(opsadmin)만
       get opsAdmin() { return this.backend !== 'supabase' || !!(this.adminData && (this.adminData.isSysAdmin || this.adminData.isSuperAdmin)); },
-      // 배정 모달 풀은 넉넉히(1000): 표시용 200 캡을 그대로 쓰면 그 너머 콘텐츠가 배정에서 조용히 빠진다
-      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkGrpN = 1; this.bulkPickG = []; this.bulkRandMsg = ''; this.bulkOpen = true; this.loadRaw(1000); this.loadAssignLog(); },
+      // 배정 모달 풀도 기본 창(2000) 전체: 좁은 창을 쓰면 그 너머 콘텐츠가 배정에서 조용히 빠진다
+      openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkGrpN = 1; this.bulkPickG = []; this.bulkRandMsg = ''; this.bulkOpen = true; this.loadRaw(); this.loadAssignLog(); },
       // 배정 감사 이력: 누가·언제·어떤 방식으로 몇 건을 배정/해제했는지(모달 하단 표시)
       assignLog: null,
       async loadAssignLog() { try { const r = await (await this._afetch('/assign-log', { headers: this._authHeaders() })).json(); if (r && r.ok) this.assignLog = r.items; } catch (e) {} },

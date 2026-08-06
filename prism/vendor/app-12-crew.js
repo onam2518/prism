@@ -8,7 +8,9 @@ window.PRISM_APP_PARTS.push(() => ({
       crewTab: 'dash',                    // dash(한눈에 보기) | people(팀원과 일정) | assign(일 나눠주기)
       crewData: null, crewBusy: false, crewMsg: '',
       crewPlanRes: null, crewMoveRes: null, crewAutoRes: null,
-      crewAsgScope: 'unassigned', crewAsgLimit: 200, crewAsgMin: 2, crewDue: '',
+      // crewAsgLimit 기본 2000(= 목록 창 전체): 종전 200 은 '400건 넣었는데 대상 200건'
+      // 혼선을 만들었다(2026-08-06 운영) · 나눠 뿌리고 싶을 때만 낮춰 쓴다
+      crewAsgScope: 'unassigned', crewAsgLimit: 2000, crewAsgMin: 2, crewDue: '',
 
       crewScope: 'wave',                  // 현황 범위: wave(이번 배정) | all(전체 누적)
       crewDueEdit: false, crewDueNew: '', // 기한 조정 인라인 편집기

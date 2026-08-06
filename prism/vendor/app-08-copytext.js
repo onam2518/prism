@@ -362,7 +362,13 @@ window.PRISM_APP_PARTS.push(() => ({
           if (endpoint === '/run-batch') this.pollIngestStatus();   // 실행 큐 진척도 실시간
           const j = await (await this._afetch(endpoint, { method: 'POST', headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {}, body: fd })).json();
           if (j.error) { this.status = '오류: ' + j.error; }
-          else if (j.pending) { this.status = '✓ ' + (j.added || 0) + '건 추가됨 · STEP 2 모델 실행에서 초안을 생성하세요'; this.loadDash(); }
+          else if (j.pending) {
+            // 신규/기존 구분 표기: 누적 파일 재업로드 시 '전부 추가된 것처럼' 보이던 혼선 방지(2026-08-05)
+            const ex = j.existing ? ' · 기존 ' + j.existing + '건 유지(재실행 안 함)' : '';
+            this.status = j.added ? ('✓ 신규 ' + j.added + '건 추가' + ex + ' · STEP 2 모델 실행에서 초안을 생성하세요')
+                                  : ('✓ 신규 없음' + ex + ' · 모두 이미 등록된 콘텐츠입니다');
+            this.loadDash();
+          }
           else if (j.source === 'excel') { this.batchResult = j; }
           else { this.result = j; }
         } catch (e) { this.status = '오류: ' + e; }

@@ -7,7 +7,7 @@
         <div class="evaltabs">
           <button type="button" x-show="canTeamTab" x-bind:class="adminTab==='team'?'sel':''" x-on:click="adminTab='team'; loadAdmin()">팀 관리</button>
           <button type="button" x-show="canCrewTab" x-bind:class="adminTab==='crew'?'sel':''"
-                  x-on:click="adminTab='crew'; loadCrew(); loadRaw(1000)">검수운영 관리</button>
+                  x-on:click="adminTab='crew'; loadCrew(); loadRaw()">검수운영 관리</button>
         </div>
       </div>
       </template>
