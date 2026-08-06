@@ -605,12 +605,54 @@ def _attach_fb(items, team=None, reviewer: str = "", fmap=None):
     return items
 
 
-_KEY_PATH = os.path.expanduser("~/.prism_key")              # Upstage Solar
+def _key_dir():
+    """키 파일 저장 디렉토리. 운영 컨테이너는 PRISM_CONFIG(/data/config.json)가 가리키는
+    볼륨 디렉토리에 저장해야 재배포에도 남는다 — 홈(~)은 루트FS 라 머신 재생성마다 초기화되어
+    '키 저장했는데 다음 접속에 없음' 사고의 원인이었다. PRISM_CONFIG 미설정(로컬)은 기존대로 홈."""
+    cfg = os.environ.get("PRISM_CONFIG")
+    if cfg:
+        d = os.path.dirname(cfg)
+        if d and os.path.isdir(d):
+            return d
+    return os.path.expanduser("~")
+
+
+_KEY_PATH = os.path.join(_key_dir(), ".prism_key")          # Upstage Solar
 # 라우터별 키 저장 경로(BizRouter · Timely). env 는 imagext.ROUTERS[*]['key_env'].
 _ROUTER_KEY_PATHS = {
-    "bizrouter": os.path.expanduser("~/.prism_bizrouter_key"),
-    "timely": os.path.expanduser("~/.prism_timely_key"),
+    "bizrouter": os.path.join(_key_dir(), ".prism_bizrouter_key"),
+    "timely": os.path.join(_key_dir(), ".prism_timely_key"),
 }
+
+
+def _legacy_key_path(path):
+    """볼륨 경로 도입 전 저장 위치(홈 고정). 이전 저장분 읽기·삭제 호환용."""
+    return os.path.expanduser("~/" + os.path.basename(path))
+
+
+def _read_key_file(path):
+    """저장된 키 읽기: 현행 경로 → 과거(홈) 경로 순. 없으면 빈 문자열."""
+    for p in dict.fromkeys((path, _legacy_key_path(path))):
+        if os.path.exists(p):
+            try:
+                k = open(p, encoding="utf-8").read().strip()
+                if k:
+                    return k
+            except Exception:
+                pass
+    return ""
+
+
+def _key_persisted(path):
+    return os.path.exists(path) or os.path.exists(_legacy_key_path(path))
+
+
+def _remove_key_file(path):
+    for p in dict.fromkeys((path, _legacy_key_path(path))):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
 
 
 def _write_private(path, text):
@@ -624,24 +666,18 @@ def _write_private(path, text):
 
 def load_persisted_key():
     """저장된 키가 있고 환경변수가 비어 있으면 프로세스 환경에 주입(서버 시작 시)."""
-    if not IMG._api_key() and os.path.exists(_KEY_PATH):
-        try:
-            k = open(_KEY_PATH, encoding="utf-8").read().strip()
-            if k:
-                os.environ["UPSTAGE_API_KEY"] = k
-        except Exception:
-            pass
+    if not IMG._api_key():
+        k = _read_key_file(_KEY_PATH)
+        if k:
+            os.environ["UPSTAGE_API_KEY"] = k
     if IMG._api_key():
         _seed_solar_defaults()                        # 키 보유 + 엔드포인트·모델 미설정 자기 치유
     for service, path in _ROUTER_KEY_PATHS.items():
         env = IMG.ROUTERS[service]["key_env"]
-        if not IMG.router_key(service) and os.path.exists(path):
-            try:
-                k = open(path, encoding="utf-8").read().strip()
-                if k:
-                    os.environ[env] = k
-            except Exception:
-                pass
+        if not IMG.router_key(service):
+            k = _read_key_file(path)
+            if k:
+                os.environ[env] = k
 
 
 def make_text_llm(cfg: Config, mock: bool) -> LLMClient:
@@ -977,7 +1013,7 @@ def config_status(team=None) -> dict:
     return {
         "modelMeta": _model_meta(cfg, team),
         "hasKey": bool(IMG._api_key()),
-        "persisted": os.path.exists(_KEY_PATH),
+        "persisted": _key_persisted(_KEY_PATH),
         "bootId": _BOOT_ID,
         "model": cfg.model or "",
         "baseUrl": base,
@@ -1016,9 +1052,9 @@ def config_status(team=None) -> dict:
         "ingesting": bool(ingest_status().get("running") or _ENRICH_STATE.get("running")),
         # 모델 슬롯
         "hasBizKey": bool(IMG.router_key("bizrouter")),
-        "bizPersisted": os.path.exists(_ROUTER_KEY_PATHS["bizrouter"]),
+        "bizPersisted": _key_persisted(_ROUTER_KEY_PATHS["bizrouter"]),
         "hasTimelyKey": bool(IMG.router_key("timely")),
-        "timelyPersisted": os.path.exists(_ROUTER_KEY_PATHS["timely"]),
+        "timelyPersisted": _key_persisted(_ROUTER_KEY_PATHS["timely"]),
         "textProvider": cfg.text_provider or "solar",
         "textModel": cfg.text_model or "",
         "visionProvider": cfg.vision_provider or "upstage_ie",
@@ -1028,7 +1064,7 @@ def config_status(team=None) -> dict:
 
 
 def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
-    """키/모델/엔드포인트/추론강도/추가지시 적용. 키만 프로세스 환경(+옵션 ~/.prism_key).
+    """키/모델/엔드포인트/추론강도/추가지시 적용. 키만 프로세스 환경(+옵션 _KEY_PATH 파일 · 볼륨 우선).
     운영(supabase): 키 변경은 운영 관리자(allow_key=True, /config 게이트에서 판정)만 허용.
     비관리자·미인증 요청의 키 필드는 무시(서버 키 보호)."""
     if backend_mode()[0] == "supabase" and not allow_key:
@@ -1045,10 +1081,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 pass
     elif data.get("forget"):                      # 저장된 키 삭제
         os.environ.pop("UPSTAGE_API_KEY", None)
-        try:
-            os.remove(_KEY_PATH)
-        except OSError:
-            pass
+        _remove_key_file(_KEY_PATH)
     # 라우터 키(BizRouter · Timely, 서비스별 별도 저장)
     for service, path in _ROUTER_KEY_PATHS.items():
         env = IMG.ROUTERS[service]["key_env"]
@@ -1062,10 +1095,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                     pass
         elif data.get("forget_" + service):
             os.environ.pop(env, None)
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+            _remove_key_file(path)
     model = (data.get("model") or "").strip()
     base = (data.get("base_url") or "").strip()
     reasoning = (data.get("reasoning") or "").strip()
@@ -1840,7 +1870,7 @@ def _post_route(prefix: str, gate: str = ""):
 @_post_route("/config", gate="admin")                # 운영: 팀 공유 설정 변경은 관리자만
 def _p_config(h, body):
     uid, team, email = h._bearer_uid(), h._req_team(), h._bearer_email()
-    # API 키 등록·삭제는 운영 관리자만(관리자 로컬 앱 = 서버 · ~/.prism_key 저장)
+    # API 키 등록·삭제는 운영 관리자만(관리자 로컬 앱 = 서버 · _KEY_PATH 파일 저장)
     allow_key = (not _supa()) or is_sys_admin_user(uid, team, email)
     data = json.loads(body or b"{}")
     if isinstance(data.get("team_links"), dict):
@@ -3074,7 +3104,7 @@ def main():
     a = ap.parse_args()
 
     Handler.server_mock = a.mock
-    load_persisted_key()                              # ~/.prism_key 있으면 주입
+    load_persisted_key()                              # 저장된 키 파일 있으면 주입
     load_dict_overrides()                             # 사전 편집(overrides) 적용
     sync_prompt()                                     # config 의 추가 지시 반영
     # 백엔드 결정 · 운영은 Supabase 전용(조용한 로컬 폴백 금지, 미가용이면 시작 실패)
