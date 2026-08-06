@@ -19,6 +19,7 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
    ├─ topic.py / entdict.py / dictionaries.py / usermeta.py / mediaext.py / imagext.py
    │  modelmeta.py(모델 표시 정보 · 이름/제공자/비용 등급 · 선택 드롭다운 원천)
+   │  spectrumops.py(스펙트럼 · 사내 MCP 허브 프로토타입 · _SV 없이 독립 · 저장은 JSON 사이드카)
    │              도메인 모듈(비교적 잘 분리된 편 · 새 기능은 이 패턴을 따를 것)
    └─ store.py(SQLite 로컬) / supastore.py(Supabase 팀 운영)   저장 계층(동일 계약)
 ```
@@ -49,6 +50,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` `check_source_url` | /ingest-* /backfill-urls /check-source |
 | 대시보드·롤업 → **dashops.py** | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` `activity_daily_data` | /dashboard /drill /cost-rollup /fail-rollup /activity-daily |
 | 게시판 → **boardops.py** | `board_data` `board_action` | /board |
+| 스펙트럼(실험실) → **spectrumops.py** | `spectrum_data` `spectrum_action` `gateway_request` `call`(관문 코어) | /spectrum /spectrum-gw(공개 · MCP+REST) |
 | HTTP 계층 | `Handler`(게이트 `_gate_get` `_admin_gate` `_require_*` · 응답 `_send` `_send_file`) | 전 라우트 |
 
 ### 라우트 추가 방법
