@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import json
-import re
 import os
 import time as _time0
 
@@ -23,6 +22,7 @@ def _dt_learn_next():
 
 
 from prism.serve import PAGE, dict_data as _dict_data
+from prism import assets as _assets
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -342,20 +342,20 @@ BANNER = ('<div style="position:fixed;left:18px;bottom:16px;z-index:70;padding:6
 
 def build() -> str:
     html = PAGE
-    # 폰트·벤더 → CDN
-    html = html.replace('<link href="/vendor/pretendard.css" rel="stylesheet">',
-                        f'<link href="{CDN_PRETENDARD}" rel="stylesheet">')
-    # 게임형 디스플레이 폰트(GmarketSans) → CDN @font-face 인라인(데모 자체완결)
-    html = html.replace('<link href="/vendor/gmarket.css" rel="stylesheet">', GMARKET_CDN_CSS)
     html = html.replace('<script defer src="/vendor/alpine.js"></script>',
                         STUB + f'<script defer src="{CDN_ALPINE}"></script>')
-    # 디자인 시스템 CSS 인라인(정적 데모 자체완결 · file:// 에서도 라이트 위젯홈 렌더)
-    theme_css = open(os.path.join(ROOT, "prism", "vendor", "ds-theme.css"), encoding="utf-8").read()
-    comp_css = open(os.path.join(ROOT, "prism", "vendor", "ds-components.css"), encoding="utf-8").read()
-    html = html.replace('<link href="/vendor/ds-theme.css" rel="stylesheet">', f'<style>{theme_css}</style>')
-    html = html.replace('<link href="/vendor/ds-components.css" rel="stylesheet">', f'<style>{comp_css}</style>')
-    # 앱 CSS·JS(분리 파일) 인라인 · 이후의 /vendor/·폰트·result 치환이 앱 코드에도 닿도록 여기서 병합
-    app_css = open(os.path.join(ROOT, "prism", "vendor", "app.css"), encoding="utf-8").read()
+    # CSS: 앱은 단일 번들(/vendor/app-bundle.css · assets.py 2026-08-03)을 참조하므로
+    # 번들 링크 하나를 통째로 치환한다 · 폰트 2종은 CDN, 나머지는 번들과 같은 순서로 인라인
+    css_out = []
+    for fn in _assets.parts(_assets.CSS_BUNDLE):
+        if fn == "pretendard.css":
+            css_out.append(f'<link href="{CDN_PRETENDARD}" rel="stylesheet">')
+        elif fn == "gmarket.css":
+            css_out.append(GMARKET_CDN_CSS)
+        else:
+            body = open(os.path.join(ROOT, "prism", "vendor", fn), encoding="utf-8").read()
+            css_out.append(f'<style>{body}</style>')
+    html = html.replace('<link href="/vendor/app-bundle.css" rel="stylesheet">', "\n".join(css_out))
 
     def _read_app_js(name):
         js = open(os.path.join(ROOT, "prism", "vendor", name), encoding="utf-8").read()
@@ -364,13 +364,11 @@ def build() -> str:
         return "\n".join(l for l in js.splitlines()
                          if not (l.lstrip().startswith("//") and any(m in l for m in _internal)))
 
-    html = html.replace('<link href="/vendor/app.css" rel="stylesheet">', f'<style>{app_css}</style>')
-    # 앱 조각(app-NN-*.js) + 로더(app.js) 전부 인라인(조각 추가 시 자동 포착 · 로드 순서 = 파일명 순)
-    for part in sorted(p for p in os.listdir(os.path.join(ROOT, "prism", "vendor"))
-                       if re.match(r"app-\d\d-.*\.js$", p)):
-        html = html.replace(f'<script defer src="/vendor/{part}"></script>',
-                            f'<script>{_read_app_js(part)}</script>')
-    html = html.replace('<script defer src="/vendor/app.js"></script>', f'<script>{_read_app_js("app.js")}</script>')
+    # JS: 단일 번들(/vendor/app-bundle.js) 태그를 조각 인라인으로 치환 · 순서는 번들 계약
+    # 그대로(app-NN 파일명 순 → 로더 app.js) · 조각 추가 시 assets.parts 가 자동 포착
+    html = html.replace('<script defer src="/vendor/app-bundle.js"></script>',
+                        "".join(f'<script>{_read_app_js(p)}</script>'
+                                for p in _assets.parts(_assets.JS_BUNDLE)))
     # 벤더 에셋(캐릭터·로고 SVG) → docs/demo-assets/ (Pages 루트 내부, main() 에서 복사)
     #   ../prism/vendor 는 Pages(docs=루트)에서 사이트 밖으로 나가 404 → 루트 내부 상대경로로.
     # src="/vendor/ 뿐 아니라 charOptions 의 JS 경로('/vendor/…')까지 포함해 전역 치환
@@ -403,6 +401,9 @@ def _copy_demo_assets():
 def main():
     out = os.path.join(ROOT, "docs", "demo.html")
     html = build()
+    # 치환 가드: 번들 참조가 남으면 정적 데모가 JS·CSS 없이 깨진다(2026-08-06 번들 전환 사고 재발 방지)
+    if "app-bundle" in html:
+        raise SystemExit("[error] app-bundle 참조가 치환되지 않았습니다 · serve 의 자산 태그와 build() 치환 패턴을 맞추세요")
     report_stub_coverage(html)
     with open(out, "w", encoding="utf-8") as f:
         f.write(html)
