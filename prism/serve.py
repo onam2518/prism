@@ -85,6 +85,9 @@ CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
 ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
 WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
 
+# 스펙트럼(실험실 · 사내 MCP 허브): serve 상태를 쓰지 않는 자립 모듈이라 _SV 주입이 없다.
+from . import spectrumops as SPO
+
 _run_id = RN._run_id
 _build_id = RN._build_id
 _save_drafts = RN._save_drafts
@@ -492,7 +495,7 @@ def _safe_url(u: str) -> str:
 _MENU_POST_ROUTES = (
     ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
     ("/builder", "studio"), ("/deployment", "studio"),
-    ("/media-extract", "lab"), ("/usermeta", "lab"),
+    ("/media-extract", "lab"), ("/usermeta", "lab"), ("/spectrum", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
     ("/ingest-run", "content"), ("/rerun", "content"), ("/run", "content"), ("/store", "content"),
@@ -503,7 +506,9 @@ _MENU_POST_ROUTES = (
 # 접두 매칭의 예외: 메뉴 권한과 무관한 '본인 것' 액션. /crew-confirm 은 전 검수자가
 # 자기 일정을 확인하는 경로인데 접두가 /crew 라 검수운영(슈퍼관리자 전용) 메뉴 권한에
 # 걸려 일반 검수자가 확인 자체를 못 했다(2026-07-28 실사용 신고).
-_MENU_POST_EXEMPT = ("/crew-confirm",)
+# /spectrum-gw 는 접두가 /spectrum 이라 실험실 메뉴 권한에 걸린다. 관문은 로그인이 아니라
+# 접속 키로만 판단하는 공개 경로이므로(외부 MCP 클라이언트가 부른다) 반드시 예외로 둔다.
+_MENU_POST_EXEMPT = ("/crew-confirm", "/spectrum-gw")
 
 
 def _menu_for_path(path: str):
@@ -1343,7 +1348,8 @@ _FETCH_MAX = 16 * 1024 * 1024           # 인입 아웃바운드 응답 크기 �
 
 _PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/template.csv",
                "/usermeta-template.csv", "/usermeta-profile-template.csv",
-               "/api/v1/prompt"}   # 배포 프롬프트 서빙(자체 Bearer 키 검증 · deployops)
+               "/api/v1/prompt",   # 배포 프롬프트 서빙(자체 Bearer 키 검증 · deployops)
+               "/spectrum-gw"}     # 스펙트럼 관문 안내(무인증 · 실제 호출은 접속 키 검증)
 
 # 팀 없이도 접근 가능한 인증 GET(전역 참조·관리자 판정 · 팀 콘텐츠 데이터 아님).
 # 그 외 데이터 GET 은 supabase 모드에서 팀 소속을 요구(team=None 전 팀 폴백 격리 붕괴 차단).
@@ -1842,6 +1848,16 @@ def _g_usermeta_memory(h, q):
 @_get_route("/usermeta-demo")                        # 소비 시연(실험실 STEP 1~4): 피드·세션·실시간 측정·결론
 def _g_usermeta_demo(h, q):
     return MF.demo_data(team=h._req_team())
+
+
+@_get_route("/spectrum-gw")                          # 스펙트럼 관문 안내(공개 · 붙는 방법 한 줄)
+def _g_spectrum_gw(h, q):
+    return SPO.gateway_info()
+
+
+@_get_route("/spectrum")                             # 스펙트럼(실험실): 카탈로그·내 키·사용 기록·지표
+def _g_spectrum(h, q):
+    return SPO.spectrum_data(h._bearer_email() or h._bearer_uid() or "local")
 
 
 @_get_route("/board")                                # 게시판: 기능개선·오류 제보(팀 스코프)
@@ -2685,6 +2701,22 @@ def _p_usermeta(h, body):
     logs = f["bytes"] if isinstance(f, dict) and f.get("bytes") else None
     name = f.get("filename", "logs.csv") if isinstance(f, dict) else ""
     return usermeta_data(logs, name, team=h._req_team())
+
+
+@_post_route("/spectrum-gw")                         # 스펙트럼 관문(공개): 로그인 대신 접속 키로만 판단
+def _p_spectrum_gw(h, body):                         # MCP(JSON-RPC) · 단순 REST 두 갈래를 모듈이 구분
+    status, out = SPO.gateway_request(h.headers.get("Authorization") or "", body)
+    if out is None:                                  # MCP 알림(notifications/*) = 본문 없는 202
+        h._send(202, b"", _JSON)
+    else:
+        h._send(status, json.dumps(out, ensure_ascii=False), _JSON)
+    return None
+
+
+@_post_route("/spectrum", gate="team")               # 스펙트럼(실험실): 키 발급·폐기 · 관문 체험 · 시연 초기화
+def _p_spectrum(h, body):
+    return SPO.spectrum_action(json.loads(body or b"{}"),
+                               h._bearer_email() or h._bearer_uid() or "local")
 
 
 @_post_route("/run")                                 # 추출 실행(단건 /run · 배치 /run-batch) = 콘텐츠 인입
