@@ -240,6 +240,56 @@ DEMO_USER = {
     ],
     "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)",
 }
+# 로그뷰어(PAST 로그 검증 도구 · pastcheck) 시연 응답: 판정 스트림 5건(합격 4 · 경고 1) + 체크리스트 5/6
+DEMO_LV = {
+    "session": {"uuid": "8I1wbjLiF32B_190605124927342", "suid": "w-Fz1UJbOTjgN3_260805931784866",
+                "service_id": "prism_lab", "deployment": "sandbox", "sdk_type": "WEB", "islogin": False},
+    "n": 5, "bad_on": True,
+    "logs": [
+        {"t": "13:05:04", "label": "노출", "title": "[ViewImp] 마이콘텐츠_피드_노출", "verdict": "pass",
+         "violations": [], "feedback": False, "injected": False,
+         "fields": [["log_unique_id", "0198f2a1-0000-7abc-8def-000000000000", "필수"],
+                    ["access_timestamp", "1786343104000", "필수"], ["service_id", "prism_lab", "필수"],
+                    ["deployment", "sandbox", "필수"], ["sdk_type", "WEB", "필수"],
+                    ["uuid", "8I1wbjLiF32B_190605124927342", "필수"],
+                    ["suid", "w-Fz1UJbOTjgN3_260805931784866", "필수"], ["islogin", "false", "필수"],
+                    ["action_type", "ViewImp", "필수"], ["action_name", "마이콘텐츠_피드_노출", "필수"],
+                    ["page", "my_contents", "필수"], ["viewimp_contents[].id", "0", "조건부"],
+                    ["viewimp_contents[].type", "content", "조건부"]]},
+        {"t": "13:05:11", "label": "클릭", "title": "[Event] ClickContent · 마이콘텐츠_카드_클릭", "verdict": "pass",
+         "violations": [], "feedback": False, "injected": False,
+         "fields": [["action_type", "Event", "필수"], ["action_kind", "ClickContent", "선택"],
+                    ["action_name", "마이콘텐츠_카드_클릭", "필수"], ["page", "my_contents", "필수"],
+                    ["content.id", "0", "조건부"], ["content.type", "content", "조건부"],
+                    ["click.layer1", "main_feed", "권장"]]},
+        {"t": "13:06:03", "label": "끝까지 읽음", "title": "[Usage] UsagePage · 기사상세_나가기_완료", "verdict": "pass",
+         "violations": [], "feedback": False, "injected": False,
+         "fields": [["action_type", "Usage", "필수"], ["action_kind", "UsagePage", "선택"],
+                    ["action_name", "기사상세_나가기_완료", "필수"], ["page", "article_detail", "필수"],
+                    ["usage.duration", "52000", "조건부"], ["usage.scroll_percent", "95", "선택"]]},
+        {"t": "13:06:10", "label": "반응", "title": "[Event] Like · 기사상세_감정반응_클릭", "verdict": "pass",
+         "violations": [], "feedback": True, "injected": False,
+         "fields": [["action_type", "Event", "필수"], ["action_kind", "Like", "선택"],
+                    ["action_name", "기사상세_감정반응_클릭", "필수"], ["content.id", "0", "조건부"],
+                    ["custom_props.emotion", "좋아요", "선택(등록 키)"]]},
+        {"t": "13:06:24", "label": "주입 예시 · 무맥락 이름", "title": "[Event] ClickContent · item", "verdict": "warn",
+         "violations": [["warn", "명명 규칙 위반: 화면_액션 형식이 아니거나 무맥락 이름(item)"],
+                        ["info", "권장 필드 미수집: click.layer1 (영역별 클릭률 집계 조건)"]],
+         "feedback": False, "injected": True,
+         "fields": [["action_type", "Event", "필수"], ["action_kind", "ClickContent", "선택"],
+                    ["action_name", "item", "필수"], ["page", "home_tab", "필수"],
+                    ["content.id", "0", "조건부"], ["content.type", "content", "조건부"]]},
+    ],
+    "behavior": {"ops": 4, "logs": 4, "dup": 0},
+    "checklist": {"items": [
+        {"key": "impression", "label": "피드 노출", "map": "ViewImp", "n": 1, "ok": True},
+        {"key": "search", "label": "콘텐츠 찾기(검색)", "map": "Event · Search", "n": 0, "ok": False},
+        {"key": "click", "label": "카드 탭(클릭)", "map": "Event · ClickContent", "n": 1, "ok": True},
+        {"key": "usage", "label": "읽기 종료(사용성)", "map": "Usage · UsagePage", "n": 1, "ok": True},
+        {"key": "react", "label": "감정 반응(피드백)", "map": "Event · Like / Dislike", "n": 1, "ok": True},
+        {"key": "comment", "label": "댓글 등록", "map": "Event · 행동 이름 규칙", "n": 1, "ok": True}],
+        "pass_rate": 83, "missing": ["콘텐츠 찾기(검색)"]},
+}
 
 # CDN 매핑(자체완결 온라인 데모)
 CDN_ALPINE = "https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"
@@ -288,6 +338,7 @@ STUB = """<script>
       if (u.indexOf('/ping') > -1) return Promise.resolve(J({ ok: true, detail: 'solar-pro3-260323 응답 정상' }));
       if (u.indexOf('/dashboard') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/topics') > -1) return Promise.resolve(J(%s));
+      if (u.indexOf('/usermeta-logviewer') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/usermeta') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/dict') > -1) return Promise.resolve(J(%s));
       if (u.indexOf('/rerun') > -1 || u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
@@ -332,6 +383,7 @@ STUB = """<script>
        json.dumps(_MP.call_system("solar-pro3-260323", "summary"), ensure_ascii=False),
        json.dumps(DEMO_DASH, ensure_ascii=False),
        json.dumps(DEMO_TOPICS, ensure_ascii=False),
+       json.dumps(DEMO_LV, ensure_ascii=False),
        json.dumps(DEMO_USER, ensure_ascii=False),
        json.dumps(_dict_data(), ensure_ascii=False))
 

@@ -1,10 +1,11 @@
-      <!-- ═══ 모듈: 사용자 메타(실험실) · 서브탭 3개 = 시연 | 생성 과정 | 정책 (분리형 모듈 · 독립 관리) ═══ -->
+      <!-- ═══ 모듈: 사용자 메타(실험실) · 서브탭 4개 = 시연 | 생성 과정 | 정책 | 로그뷰어 (분리형 모듈 · 독립 관리) ═══ -->
       <template x-if="mod === 'lab'">
         <div x-show="labTab === 'user'" x-cloak class="w-full space-y-4">
         <div class="flex items-center gap-2">
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='run' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='run'">시연</button>
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='gen' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='gen'">생성 과정</button>
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='policy' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='policy'">정책</button>
+          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='viewer' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='viewer'; loadLogViewer()">로그뷰어</button>
           <a class="ds-btn ds-btn--secondary ds-btn--s-sm" href="https://claude.ai/code/artifact/762ef566-1220-4f06-a07f-6c2012da44db" target="_blank" rel="noopener" data-tip="MY 콘텐츠 탭 기획안 · 새 창" data-tip-pos="top">기획안 ↗</a>
         </div>
 
@@ -578,6 +579,79 @@
                 </tbody></table></div>
                 <div class="text-xs text-muted" style="margin-top:6px">페르소나는 배타 분류가 아니라 <b>중복 매칭</b>을 허용합니다 · 여러 기준에 걸치면 1순위 · 2순위를 병행 표기하고, 경계가 좁으면 신뢰도를 낮춰 표시합니다.</div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ 로그뷰어: PAST 로그 검증 도구(기획 13) · 뷰어가 아니라 "맞게 심어졌는지" 판정 ═══ -->
+        <div x-show="labUserView==='viewer'" x-cloak class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>검증 세션</b><span class="meta">시연 세션 = 기기 식별자(uuid) 분리 1인 세션</span>
+              <span class="ml-auto flex items-center gap-2"><span class="text-xs" style="color:var(--ds-primary)" x-show="lvMsg" x-text="lvMsg"></span>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="lvBusy" x-on:click="lvOps(lv && lv.bad_on ? 'clear' : 'inject')" x-text="lv && lv.bad_on ? '위반 예시 제거' : '위반 예시 주입'"></button>
+              <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadLogViewer()" data-tip="새로고침" data-tip-pos="bottom" aria-label="로그뷰어 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
+                <li>이 화면은 로그가 <b>보이는지</b>가 아니라 <b>맞게 심어졌는지</b>를 판정하는 <b>PAST 로그 검증 도구</b> 시연입니다 · 기대 로그와의 대조로 누락 · 중복까지 잡는 것이 뷰어와의 차이.</li>
+                <li>검증 세션은 기기 식별자(uuid) 기준 본인 로그만 분리합니다 · 시연이 그 자체로 1인 세션이라 [시연] 탭에서 행동하면 여기 판정 스트림에 그대로 쌓입니다(새로고침으로 반영).</li>
+                <li>판정 규칙의 정본은 12. 수집 데이터 정의(스키마) · 11. 정책 및 운영(정책)입니다 · [위반 예시 주입]을 누르면 실측에서 발견된 대표 위반(무효값 · 무맥락 이름 · 광고 혼입 · 중복 전송 · 필수 누락)의 판정을 볼 수 있습니다.</li>
+              </ul>
+              <div class="overflow-auto"><table class="ds-table"><thead><tr><th>기기(uuid)</th><th>세션(suid)</th><th style="width:100px">service_id</th><th style="width:100px">deployment</th><th style="width:80px">sdk_type</th></tr></thead><tbody>
+                <tr class="tnum"><td><code class="text-violet" x-text="lv ? lv.session.uuid : '·'"></code></td><td><code class="text-violet" x-text="lv ? lv.session.suid : '·'"></code></td><td x-text="lv ? lv.session.service_id : '·'"></td><td x-text="lv ? lv.session.deployment : '·'"></td><td x-text="lv ? lv.session.sdk_type : '·'"></td></tr>
+              </tbody></table></div>
+            </div>
+          </div>
+
+          <div class="panel"><div class="panel-hd"><b>실시간 판정 스트림</b><span class="meta">판정 ① 로그 단위(형식) · 행을 누르면 필드 단위 상세</span>
+              <span class="meta tnum ml-auto" x-text="lv ? ('로그 ' + lv.n + '건') : ''"></span></div>
+            <div class="panel-bd">
+              <div class="overflow-auto" style="max-height:380px"><table class="ds-table"><thead><tr><th style="width:80px">시각</th><th>로그</th><th style="width:70px">판정</th><th>사유</th></tr></thead><tbody>
+                <template x-for="(l, li) in ((lv && lv.logs) || [])" x-bind:key="'lvl'+li">
+                  <tr style="cursor:pointer" x-bind:style="lvSel===li ? 'background:var(--ds-surface)' : ''" x-on:click="lvSel = lvSel===li ? -1 : li">
+                    <td class="tnum" x-text="l.t"></td>
+                    <td><code class="text-violet" x-text="l.title"></code>
+                      <span x-show="l.feedback" class="ds-badge ds-badge--entity" style="margin-left:4px;cursor:help" data-tip="피드백 계열 · 유실 금지 등급(브로커 확인 후 응답 · 실패 시 재전송)" data-tip-pos="top">피드백</span>
+                      <span x-show="l.injected" class="ds-badge ds-badge--neutral" style="margin-left:4px" x-text="l.label"></span></td>
+                    <td><span class="ds-badge" x-bind:class="lvBadge(l.verdict)" x-text="lvLabel(l.verdict)"></span></td>
+                    <td class="text-xs"><template x-for="(v, vi) in l.violations" x-bind:key="'lvv'+li+'_'+vi"><div x-text="v[1]"></div></template><span x-show="!l.violations.length" class="text-muted">·</span></td>
+                  </tr>
+                </template>
+              </tbody></table></div>
+              <div class="text-xs text-muted" x-show="lv && !lv.logs.length">아직 로그가 없습니다 · [시연] 탭에서 콘텐츠를 소비하면 판정 대상이 쌓입니다.</div>
+              <!-- 로그 상세 보기: 필드 단위 수집값 · 수집 등급(12. 수집 데이터 정의 기준) -->
+              <div x-show="lvSel >= 0" x-cloak style="margin-top:10px">
+                <div class="flex items-center gap-2" style="margin-bottom:6px"><b class="text-ink text-sm" x-text="lvLog(lvSel) ? lvLog(lvSel).title : ''"></b>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="lvSel=-1">닫기</button></div>
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:220px">필드</th><th>값</th><th style="width:100px">수집 등급</th></tr></thead><tbody>
+                  <template x-for="(f, fi) in ((lvLog(lvSel) && lvLog(lvSel).fields) || [])" x-bind:key="'lvf'+fi">
+                    <tr><td><code class="text-violet" x-text="f[0]"></code></td><td class="tnum" style="word-break:break-all" x-text="f[1]"></td><td x-text="f[2]"></td></tr>
+                  </template>
+                </tbody></table></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel"><div class="panel-hd"><b>기대 로그 체크리스트</b><span class="meta">판정 ② 행동 단위 · ③ 시나리오 단위(커버리지)</span></div>
+            <div class="panel-bd">
+              <div class="drow"><div class="k">행동 단위(②)</div><div class="v text-sm text-body tnum" x-text="lv ? ('1회 조작 = 로그 1건 원칙 · 시연 조작 ' + lv.behavior.ops + '건 → 로그 ' + lv.behavior.logs + '건 · 동일 log_unique_id 중복 ' + lv.behavior.dup + '건') : ''"></div></div>
+              <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:180px">기대 로그(이벤트 계약 6종)</th><th style="width:200px">PAST 매핑</th><th style="width:64px">발생</th><th style="width:70px">상태</th></tr></thead><tbody>
+                <template x-for="it in ((lv && lv.checklist.items) || [])" x-bind:key="'lvc'+it.key">
+                  <tr><td x-text="it.label"></td><td><code class="text-violet" x-text="it.map"></code></td><td class="tnum" x-text="it.n + '건'"></td>
+                    <td><span class="ds-badge" x-bind:class="it.ok ? 'ds-badge--success' : 'ds-badge--warning'" x-text="it.ok ? '발생' : '누락'"></span></td></tr>
+                </template>
+              </tbody></table></div>
+              <div class="text-sm text-body tnum" style="margin-top:8px" x-text="lv ? ('시나리오 합격률 ' + lv.checklist.pass_rate + '% (발생 항목 ÷ 기대 6항목)' + (lv.checklist.missing.length ? ' · 미달: ' + lv.checklist.missing.join(' · ') : ' · 전 항목 발생')) : ''"></div>
+              <div style="margin-top:12px"><div class="selctl__lbl" style="margin-bottom:6px">판정 기준 범례</div>
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:70px">판정</th><th>대상</th></tr></thead><tbody>
+                  <tr><td><span class="ds-badge ds-badge--error">불합격</span></td><td>필수 11필드 누락 · 무효값 전송 · 행동 유형(4종) · 표준 분류(16종) 정의 외 값 → 수집 거부(격리) 대상</td></tr>
+                  <tr><td><span class="ds-badge ds-badge--warning">경고</span></td><td>명명 규칙 위반(화면_액션 미준수 · 무맥락 이름) · 광고 계측 혼입 · 중복 전송 · 커스텀 속성 미등록 키 → 수집되나 시정 필요</td></tr>
+                  <tr><td><span class="ds-badge ds-badge--neutral">정보</span></td><td>권장 필드 미수집 → 품질 향상 권고</td></tr>
+                </tbody></table></div>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:10px">원문:
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/444498040" target="_blank" rel="noopener" class="text-violet">13. 로그 검증 도구</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/434176333" target="_blank" rel="noopener" class="text-violet">11. 정책 및 운영</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/434307387" target="_blank" rel="noopener" class="text-violet">12. 수집 데이터 정의</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/433947067" target="_blank" rel="noopener" class="text-violet">실측 로그 관찰</a></div>
             </div>
           </div>
         </div>

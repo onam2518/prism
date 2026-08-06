@@ -3407,7 +3407,7 @@ window.PRISM_APP_PARTS.push(() => ({
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 정답셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
-      labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | user(사용자) | media(미디어) | ca(콘텐츠 에이전트)
+      labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | user(사용자) | media(미디어) | ca(콘텐츠 에이전트) | spectrum(스펙트럼·사내 MCP 허브)
       caTab: 'home',                          // 실험실·콘텐츠 에이전트(사용자향 미리보기): home | make | edit
       studioTab: 'prompt',                    // 스튜디오: prompt(빌더+배포+라이브러리) | topic(토픽 설계)
       dictTab: 'intent',                      // 사전·정책: intent | category | entity | policy | prompt(단계 지시) | engine(계약·래퍼·미리보기)
@@ -4306,6 +4306,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') { id = 'lab'; this.labTab = 'legal'; }
         if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
+        if (id === 'spectrum') { id = 'lab'; this.labTab = 'spectrum'; this.spLoad(); }   // 사내 MCP 허브(실험실 탭) 딥링크
         if (id === 'prompt') { id = 'studio'; this.studioTab = 'prompt'; }   // 구 메뉴 · 위젯·URL 호환
         if (id === 'topic') { id = 'studio'; this.studioTab = 'topic'; }     // 실험실 시절 딥링크 호환
         if (id === 'entdict') { id = 'dict'; this.dictTab = 'entity'; }      // 별도 메뉴 시절 딥링크 호환
@@ -6258,7 +6259,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // ── 실험실 · 사용자: 소비 시연(STEP 1 소비·수집 → 2 측정·로직 → 3 결론 → 4 활용) ──
       // 좌측 피드(Anchor DS)에서의 실제 행동을 이벤트로 서버에 보내고, 우측 3단(실시간·누적·로직)을
       // 응답으로 갱신. 체류는 실측 초 × 10 배속(가상 체류)으로 보내 실로직 임계값(30·45초)을 체감시킨다.
-      labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연·생성) | policy(정책)
+      labUserView: 'run',                           // 사용자 탭 서브뷰: run(시연) | gen(생성 과정) | policy(정책) | viewer(로그뷰어)
       demoData: null, demoReading: null, demoTick: 0, _demoTimer: null,
       demoQ: '', demoQFilter: '',
       demoVariant: 'b', demoBoardSel: '', demoCardSel: 'main',          // 시안 선택(a 피드형·b 블록형·c 보드형·d 대화형) · 이벤트 계약은 동일
@@ -8282,6 +8283,334 @@ window.PRISM_APP_PARTS.push(() => ({
         }
         return box;
       },
+}));</script><script>/* Prism 앱 조각 14 · prismApp 프로퍼티 그룹. 스펙트럼(실험실): 사내 MCP 허브 프로토타입.
+   기획 문서 "13. Spectrum" 기반 · 화면 prism/ui/19c-spectrum.html · 백엔드 GET/POST /spectrum.
+
+   화면 구성(시안 B · 카탈로그 허브형): 첫 화면은 커넥터 카드 목록이고, 카드를 누르면 상세로
+   들어가 거기서 바로 접속 키를 받고 쓰는 도구에 붙이는 데까지 이어진다. 찾기 → 보기 → 연결이
+   한 줄기다. 관문 체험 · 사용 기록 · 접속 키 관리는 위쪽 작은 버튼으로 옮겨 둔 보조 화면이다.
+
+   프로토타입이라 오가는 데이터는 모의값이지만, 관문 자체는 실제로 붙는 MCP 최소 구현이다.
+   로더(app.js)가 파일명 순으로 디스크립터 병합(게터 보존) · 조각 간 this 공유. */
+window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
+window.PRISM_APP_PARTS.push(() => ({
+
+      sp: null,                     // GET /spectrum 응답 {catalog, keys, usage, metrics}
+      spTab: 'catalog',             // catalog(카탈로그·기본) | try(관문 체험) | usage(사용 기록) | keys(접속 키 관리)
+      spSel: null,                  // 상세로 들어간 커넥터(있으면 목록 대신 상세를 보여준다)
+      spNewKey: null,               // 방금 발급된 키(전체 값은 이 응답에만 있다 · 다시 못 본다)
+      spBusy: false, spMsg: '',
+      spQ: '', spFilter: 'all',     // 카탈로그 찾기: 검색어 · 상태 좁히기(all | live | preparing)
+      spKeyForm: { label: '', ttlDays: '90' },
+      // params 는 기능별 입력칸을 한 곳에 모아 둔다(키가 겹치지 않는다) · 기능을 바꿔도 입력값이 날아가지 않고,
+      // 보낼 때 spParamsOut() 이 지금 고른 기능의 칸만 골라 담는다.
+      spTry: { keyId: '', tool: 'query_logs', out: null, busy: false,
+               params: { action: 'click', limit: '20', as_of: '', metric: 'dau', days: '7' } },
+
+      // 관문에 붙은 기능(tool) 목록 · 파라미터는 기본값을 채워 두고 바로 실행해 볼 수 있게 한다.
+      // query_search_terms 는 일부러 막아 둔 기능이라 거절(403)이 정상 결과다(권한 정책 시연).
+      spToolDefs: [
+        { id: 'query_logs', label: 'query_logs · 행동 로그 조회', restricted: false,
+          fields: [{ k: 'action', label: '행동', def: 'click', ph: '예) click' },
+                   { k: 'limit', label: '가져올 개수', def: '20', num: true },
+                   // 벨루가 골드는 Iceberg 라 과거 시점 그대로 다시 읽을 수 있다(타임 트래블)
+                   { k: 'as_of', label: '기준 날짜(비우면 지금)', def: '', ph: '예) 2026-08-03' }] },
+        { id: 'list_tables', label: 'list_tables · 볼 수 있는 표 목록', restricted: false, fields: [] },
+        { id: 'agg_metrics', label: 'agg_metrics · 지표 집계', restricted: false,
+          fields: [{ k: 'metric', label: '지표', def: 'dau', ph: '예) dau' },
+                   { k: 'days', label: '기간(일)', def: '7', num: true }] },
+        { id: 'query_search_terms', label: 'query_search_terms · 검색어 조회(권한 제한)', restricted: true, fields: [] },
+      ],
+
+      // ── 방어적 접근자: 서버 응답이 비어도 화면이 깨지지 않게 ──────────────
+      get spCatalog() { return (this.sp && this.sp.catalog) || []; },
+      get spKeys() { return (this.sp && this.sp.keys) || []; },
+      get spUsage() { return (this.sp && this.sp.usage) || []; },
+      get spMetrics() { return (this.sp && this.sp.metrics) || {}; },
+      // 관문 체험에서 고를 수 있는 키 = 폐기하지 않았고 아직 기한이 남은 것
+      get spLiveKeys() { return this.spKeys.filter((k) => !k.revoked && (this.spDday(k.expiresAt) === null || this.spDday(k.expiresAt) >= 0)); },
+      get spOrigin() { try { return location.origin; } catch (e) { return ''; } },
+      get spGwUrl() { return this.spOrigin + '/spectrum-gw'; },
+
+      // ── 카탈로그 찾기 ──────────────────────────────────────────────────
+      get spCounts() {
+        const cs = this.spCatalog;
+        return { all: cs.length,
+                 live: cs.filter((c) => c.status === 'live').length,
+                 preparing: cs.filter((c) => c.status !== 'live').length };
+      },
+      get spCatalogShown() {
+        const q = (this.spQ || '').trim().toLowerCase();
+        return this.spCatalog.filter((c) => {
+          if (this.spFilter === 'live' && c.status !== 'live') return false;
+          if (this.spFilter === 'preparing' && c.status === 'live') return false;
+          if (!q) return true;
+          const hay = [c.name, this.spDesc(c), this.spTeam(c), c.dataBasis, this.spWhTag(c),
+                       (c.useCases || []).join(' '),
+                       (c.tools || []).map((t) => (t.name || '') + ' ' + this.spDesc(t)).join(' ')].join(' ').toLowerCase();
+          return hay.indexOf(q) >= 0;
+        });
+      },
+
+      // ── 조회 · 변경 ────────────────────────────────────────────────────
+      async spLoad() {
+        this.spBusy = true;
+        try {
+          const r = await this._afetch('/spectrum', { headers: this._authHeaders() });
+          const d = await r.json();
+          if (r.ok && d && !d.error) {
+            this.sp = d;
+            // 열어 둔 상세는 갱신 뒤에도 같은 커넥터로 다시 물린다(사라지면 화면이 목록으로 튄다)
+            if (this.spSel) this.spSel = this.spCatalog.find((c) => c.id === this.spSel.id) || null;
+            if (!this.spTry.keyId) { const k = this.spLiveKeys[0]; if (k) this.spTry.keyId = k.id; }
+          } else this._err((d && d.error) || '스펙트럼 정보를 불러오지 못했습니다');
+        } catch (e) { this._err('스펙트럼 정보를 불러오지 못했습니다'); }
+        finally { this.spBusy = false; }
+      },
+
+      async _spPost(body) {
+        return await (await this._afetch('/spectrum', { method: 'POST', headers: this._authHeaders(),
+                                                        body: JSON.stringify(body) })).json();
+      },
+
+      async spIssueKey() {
+        if (this.spBusy) return;
+        this.spBusy = true; this.spMsg = '';
+        const ttl = parseInt(this.spKeyForm.ttlDays, 10);
+        try {
+          const r = await this._spPost({ action: 'issue_key', label: (this.spKeyForm.label || '').trim(),
+                                         ttlDays: (isFinite(ttl) && ttl > 0) ? ttl : 90 });
+          if (r && r.ok) {
+            this.spNewKey = r;                        // 전체 키는 이 응답에만 있다
+            this.spKeyForm.label = '';
+            if (r.id) this.spTry.keyId = r.id;        // 방금 만든 키로 관문 체험 바로 가능
+            await this.spLoad();
+          } else this.spMsg = (r && r.error) || '접속 키를 발급하지 못했습니다';
+        } catch (e) { this.spMsg = '접속 키를 발급하지 못했습니다'; }
+        finally { this.spBusy = false; }
+      },
+
+      async spRevokeKey(id) {
+        if (!id || this.spBusy) return;
+        if (!(await this.dsConfirm('이 접속 키를 폐기할까요? 이 키로 붙여 둔 AI 도구는 바로 연결이 끊깁니다.',
+                                   { ok: '폐기', danger: true }))) return;
+        this.spBusy = true;
+        try {
+          const r = await this._spPost({ action: 'revoke_key', id: id });
+          if (r && r.ok) { if (this.spNewKey && this.spNewKey.id === id) this.spNewKey = null; }
+          else this._err((r && r.error) || '접속 키를 폐기하지 못했습니다');
+        } catch (e) { this._err('접속 키를 폐기하지 못했습니다'); }
+        finally { this.spBusy = false; }
+        await this.spLoad();
+      },
+
+      async spGwTry() {
+        if (this.spTry.busy) return;
+        this.spTry.busy = true; this.spTry.out = null;
+        try {
+          const r = await this._spPost({ action: 'gw_try', keyId: this.spTry.keyId,
+                                         tool: this.spTry.tool, params: this.spParamsOut() });
+          // 거절 · 인증 실패도 '결과'다(status 로 온다) · status 가 없는 응답만 오류로 알린다
+          if (r && r.status == null && r.error) this._err(r.error);
+          else this.spTry.out = r || null;
+        } catch (e) { this._err('관문을 호출하지 못했습니다'); }
+        finally { this.spTry.busy = false; }
+        await this.spLoad();                          // 호출 기록 · 지표 즉시 반영
+      },
+
+      async spReset() {
+        if (this.spBusy) return;
+        this.spBusy = true;
+        try {
+          const r = await this._spPost({ action: 'reset_demo' });
+          if (r && r.ok) { this.spTry.out = null; }
+          else this._err((r && r.error) || '기록을 초기화하지 못했습니다');
+        } catch (e) { this._err('기록을 초기화하지 못했습니다'); }
+        finally { this.spBusy = false; }
+        await this.spLoad();
+      },
+
+      // ── 이동 · 폼 보조 ─────────────────────────────────────────────────
+      spOpen(c) { this.spSel = c; this.spTab = 'catalog'; this.spScrollTop(); },
+      spBackToList() { this.spSel = null; this.spScrollTop(); },
+      spGo(tab) { this.spTab = tab; if (tab !== 'catalog') this.spSel = null; this.spScrollTop(); },
+      spScrollTop() { try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {} },
+      // 상세에서 관문 체험으로 갈 때, 그 커넥터의 첫 기능을 미리 골라 둔다
+      spTryTool(name) {
+        if (name && this.spToolDefs.some((t) => t.id === name)) this.spTry.tool = name;
+        this.spTry.out = null; this.spGo('try');
+      },
+      spToolDef(id) { return this.spToolDefs.find((t) => t.id === id) || { id: id, fields: [] }; },
+      spParamsOut() {
+        const out = {};
+        (this.spToolDef(this.spTry.tool).fields || []).forEach((f) => {
+          const v = this.spTry.params[f.k];
+          if (v === '' || v == null) return;
+          out[f.k] = f.num ? Number(v) : v;
+        });
+        return out;
+      },
+
+      // ── 표시 헬퍼 ──────────────────────────────────────────────────────
+      // 시각 값은 epoch 초로 오지만, 문자열로 오는 경우도 그대로 보여준다(숫자만 변환).
+      _spNum(v) { const s = String(v == null ? '' : v).trim(); return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null; },
+      spWhen(v) {                                     // 날짜 + 시각 'M.D HH:mm'(fmtTs 재사용)
+        const s = String(v == null ? '' : v).trim();
+        if (!s) return '·';
+        const n = this._spNum(s);
+        return n === null ? s : this.fmtTs(n);
+      },
+      spDate(v) {                                     // 날짜만 'YYYY-MM-DD'
+        const s = String(v == null ? '' : v).trim();
+        if (!s) return '·';
+        const n = this._spNum(s);
+        if (n === null) return s;
+        if (!n) return '·';                           // 0 = 값 없음(1970년으로 보이는 것 방지)
+        const d = new Date(n > 1e12 ? n : n * 1000);
+        const p = (x) => String(x).padStart(2, '0');
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+      },
+      spDday(exp) {                                   // 남은 날 수(달력 날짜 기준) · 만료 정보가 없으면 null
+        const n = this._spNum(exp);
+        if (n === null || !n) return null;            // 0 · 빈 값 = 기한 없음(만료로 오판하지 않는다)
+        const mid = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+        return Math.round((mid(new Date(n > 1e12 ? n : n * 1000)) - mid(new Date())) / 86400000);
+      },
+      spExpTxt(k) {
+        const d = this.spDday(k && k.expiresAt);
+        if (d === null) return '기한 없음';
+        return d < 0 ? '만료됨' : (d === 0 ? '오늘 만료' : 'D-' + d);
+      },
+      spExpCls(k) {
+        const d = this.spDday(k && k.expiresAt);
+        if (d === null) return 'ds-badge--neutral';
+        if (d < 0) return 'ds-badge--error';
+        return d <= 7 ? 'ds-badge--warning' : 'ds-badge--neutral';
+      },
+      spStatusCls(s) {
+        const n = Number(s || 0);
+        return n === 200 ? 'ds-badge--success' : (n === 403 ? 'ds-badge--warning' : (n === 401 ? 'ds-badge--error' : 'ds-badge--neutral'));
+      },
+      spStatusTxt(s) {
+        const n = Number(s || 0);
+        return ({ 200: '성공 · 200', 401: '인증 실패 · 401', 403: '거절 · 403' })[n] || ('응답 ' + (s == null ? '?' : s));
+      },
+      spJson(v) { try { const s = JSON.stringify(v, null, 2); return s === undefined ? '' : s; } catch (e) { return String(v); } },
+      // 비율은 0~1(소수)로도, 0~100(퍼센트)으로도 올 수 있어 둘 다 받는다(1 이하면 소수로 본다).
+      spPct(v) {
+        const n = Number(v);
+        if (!isFinite(n)) return '·';
+        return (n <= 1 ? Math.round(n * 1000) / 10 : Math.round(n * 10) / 10) + '%';
+      },
+      spNum(v) { const n = Number(v); return isFinite(n) ? n : '·'; },
+      spParamTxt(p) {
+        if (!p) return '';
+        return (p.name || '') + (p.type ? (' · ' + p.type) : '') + (p.required ? ' · 필수' : '');
+      },
+      // 커넥터·기능의 이름표는 서버가 주는 대로 받는다(desc/summary · team/owner 둘 다 허용).
+      spDesc(c) { return (c && (c.desc || c.summary)) || ''; },
+      spTeam(c) { return (c && (c.team || c.owner)) || '미정'; },
+      // 파라미터 표기: params 배열이 오면 그대로, MCP 표준 inputSchema 가 오면 같은 모양으로 펴서 쓴다.
+      spToolParams(t) {
+        if (!t) return [];
+        if (Array.isArray(t.params)) return t.params;
+        const sc = t.inputSchema || {};
+        const props = sc.properties || {};
+        const req = sc.required || [];
+        return Object.keys(props).map((k) => {
+          const p = props[k] || {};
+          const enums = Array.isArray(p.enum) && p.enum.length ? (' · 고를 수 있는 값: ' + p.enum.join(' · ')) : '';
+          return { name: k, type: p.type || '', desc: (p.description || p.desc || '') + enums,
+                   required: req.indexOf(k) >= 0 };
+        });
+      },
+      spHasJson(v) { return !!v && typeof v === 'object' && Object.keys(v).length > 0; },
+      // ── 데이터 창고(벨루가 골드 레이어) 표기 ────────────────────────────
+      spWh(c) { const w = c && c.warehouse; return this.spHasJson(w) ? w : null; },
+      spWhTag(c) {                                    // 카드에 붙는 짧은 표기 · 예) '벨루가 골드 · Iceberg'
+        const w = this.spWh(c);
+        if (!w) return '';
+        const nm = ({ beluga: '벨루가' })[w.name] || w.name || '';
+        const ly = ({ gold: '골드', silver: '실버', bronze: '브론즈' })[w.layer] || w.layer || '';
+        const fmt = w.format ? (String(w.format).charAt(0).toUpperCase() + String(w.format).slice(1)) : '';
+        return [[nm, ly].filter(Boolean).join(' '), fmt].filter(Boolean).join(' · ');
+      },
+      // 결과 안에 표 모양(객체가 줄줄이 들어간 배열)이 있으면 JSON 옆에 간단 표로도 보여준다.
+      // 기능마다 담는 이름이 달라(rows · series · tables …) 이름을 정해 두지 않고 먼저 나오는 것을 쓴다.
+      spResultRows() {
+        const r = this.spTry.out && this.spTry.out.result;
+        if (!r || typeof r !== 'object') return [];
+        const pick = (v) => (Array.isArray(v) && v.some((x) => x && typeof x === 'object' && !Array.isArray(x))) ? v : null;
+        let rows = pick(r) || pick(r.rows);
+        if (!rows) { for (const k of Object.keys(r)) { const v = pick(r[k]); if (v) { rows = v; break; } } }
+        return (rows || []).filter((x) => x && typeof x === 'object' && !Array.isArray(x)).slice(0, 50);
+      },
+      spResultCols() {
+        const cols = [];
+        this.spResultRows().forEach((r) => Object.keys(r).forEach((k) => { if (cols.indexOf(k) < 0) cols.push(k); }));
+        return cols.slice(0, 6);
+      },
+      spCell(row, k) {
+        const v = row ? row[k] : null;
+        if (v == null) return '·';
+        return (typeof v === 'object') ? this.spJson(v) : String(v);
+      },
+      // 응답에 스냅샷 정보가 실려 오면(Iceberg 표) 어느 시점의 표를 읽었는지 한 줄로 알린다
+      spSnap() {
+        const r = this.spTry.out && this.spTry.out.result;
+        return (r && typeof r === 'object' && this.spHasJson(r.snapshot)) ? r.snapshot : null;
+      },
+      // 연결 스니펫에 넣을 키: 방금 발급한 키가 있으면 실제 값, 없으면 자리 표시
+      get spSnipKey() { return (this.spNewKey && this.spNewKey.key) || '<접속 키>'; },
+      // 도구별 연결 방법 · 발급 직후에는 진짜 키가 들어간 채로 복사된다
+      get spGuides() {
+        const u = this.spGwUrl, key = this.spSnipKey;
+        const hdr = { Authorization: 'Bearer ' + key };
+        return [
+          { id: 'cc', name: 'Claude Code', desc: '터미널에서 아래 한 줄이면 붙습니다',
+            code: 'claude mcp add --transport http spectrum ' + u + ' --header "Authorization: Bearer ' + key + '"' },
+          { id: 'cd', name: 'Claude Desktop', desc: '설정 파일(claude_desktop_config.json)에 아래를 넣습니다',
+            code: this.spJson({ mcpServers: { spectrum: { type: 'http', url: u, headers: hdr } } }) },
+          { id: 'cursor', name: 'Cursor', desc: '작업 폴더의 .cursor/mcp.json 에 아래를 넣습니다',
+            code: this.spJson({ mcpServers: { spectrum: { url: u, headers: hdr } } }) },
+          { id: 'gpt', name: 'ChatGPT', desc: '설정 · 커넥터에서 원격 MCP 서버를 새로 추가하고 아래 주소와 키를 넣습니다',
+            code: '주소(URL): ' + u + '\n인증 헤더: Authorization: Bearer ' + key },
+        ];
+      },
+}));</script><script>/* Prism 앱 조각 15 · prismApp 프로퍼티 그룹. 로그뷰어(실험실 · 사용자 서브탭):
+   PAST 로그 검증 도구 시연. 기획 "13. 로그 검증 도구" 기반 · 백엔드 GET/POST /usermeta-logviewer.
+
+   뷰어가 아니라 검증 도구: 시연 세션(= 검증 세션 · uuid 분리)의 발생 로그를 봉투로 합성해
+   ① 로그 단위 형식 판정 ② 중복 검사 ③ 기대 로그 체크리스트 대조를 서버가 계산해 내려주고,
+   화면은 판정 결과(합격·불합격·경고·정보)와 근거만 보여준다. 판정 로직은 전부 서버(pastcheck.py).
+   로더(app.js)가 파일명 순으로 디스크립터 병합(게터 보존) · 조각 간 this 공유. */
+window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
+window.PRISM_APP_PARTS.push(() => ({
+
+      lv: null,                     // GET /usermeta-logviewer 응답 {session, logs, behavior, checklist, bad_on}
+      lvSel: -1,                    // 상세 열람 중인 로그 인덱스(-1 = 닫힘)
+      lvBusy: false, lvMsg: '',
+
+      async loadLogViewer() {
+        try {
+          const d = await (await this._afetch('/usermeta-logviewer', { headers: this._authHeaders() })).json();
+          if (d && !d.error) { this.lv = d; if (this.lvSel >= (d.logs || []).length) this.lvSel = -1; }
+        } catch (e) {}
+      },
+      async lvOps(op) {             // inject(위반 예시 주입) · clear(주입 제거)
+        this.lvBusy = true; this.lvMsg = '';
+        try {
+          const d = await (await this._afetch('/usermeta-logviewer', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ op }) })).json();
+          if (!d || d.error) { this.lvMsg = '오류: ' + (d ? d.error : '응답 없음'); return; }
+          this.lv = d; this.lvSel = -1;
+        } catch (e) { this.lvMsg = '오류: ' + e; } finally { this.lvBusy = false; }
+      },
+      lvBadge(v) {                  // 판정 → 배지 클래스(합격·경고·불합격·정보)
+        return v === 'fail' ? 'ds-badge--error' : v === 'warn' ? 'ds-badge--warning'
+             : v === 'pass' ? 'ds-badge--success' : 'ds-badge--neutral';
+      },
+      lvLabel(v) { return v === 'fail' ? '불합격' : v === 'warn' ? '경고' : v === 'pass' ? '합격' : '정보'; },
+      lvLog(i) { return (this.lv && this.lv.logs && this.lv.logs[i]) || null; },
 }));</script><script>/* Prism 앱 스크립트(Alpine) 로더 · 조각(app-NN-*.js)들이 window.PRISM_APP_PARTS 에
    등록한 프로퍼티 그룹을 디스크립터 병합(게터 보존)해 단일 prismApp 데이터로 합성한다.
    조각은 이 파일보다 먼저 로드돼야 한다(00-head.html 의 script 순서가 원천). */
@@ -8303,7 +8632,7 @@ window.PRISM_APP_PARTS.push(() => ({
   window.__DEMO_RESULT__ = {"source": "image", "mock": false, "content": {"displayServiceName": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "subtitle": "", "body": "기자회견장에서 노조 집행부가 발언하는 장면. 중앙노동위원회 조정에서 합의 불성립."}, "signals": [{"vision": "이미지는 실내 기자회견장을 담고 있다. 노동조합 집행부로 보이는 인물들이 단상에 앉아 발언하고 있으며, 배경 현수막에 협상 관련 문구가 보인다. 전체적으로 노사 협상 결렬을 알리는 공식 발표 현장의 분위기다. [엔티티] 삼성전자, 전국삼성전자노동조합, 중앙노동위원회 [장면] 노사 협상 결렬 기자회견", "ocr": "중앙노동위원회 조정 불성립 · 임금 인상 협상 결렬", "latency_ms": 2840}], "output": {"item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사실 전달", "분석·해설"], "content_category": ["Business / Industries", "Law, Govt & Politics"]}, "quality_meta": {"finalGrade": "G"}, "routing": {"content_track": "text"}}};
   (function () {
     const J = (o) => ({ ok: true, json: () => Promise.resolve(o), text: () => Promise.resolve('') });
-    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true, "learnNextAt": "2026-08-08T15:14", "availableModels": ["solar-pro3-260323", "gpt-5.4-mini", "gpt-5.4", "claude-sonnet-4.6", "gemini-2.5-pro"], "metaFourCalls": true, "metaCallModels": {"category": "gpt-5.4"}, "familyWrappers": {}, "familyWrapperDefaults": {"gpt": "{ROLE}\n\n<output_contract>\n출력은 JSON 한 줄만. 다른 텍스트·설명·코드펜스 금지.\n스키마: {SCHEMA}\n사전이 주어진 경우 목록 외 값을 출력하지 않는다. 배열은 대표 값을 첫 번째에 둔다.\n</output_contract>\n\n<rules>\n{RULES}\n</rules>\n\n<examples>\n{EXAMPLES}\n</examples>\n\n<success_criteria>\n{SELF_CHECK}\n</success_criteria>{LEARNED}", "gemini": "{ROLE} 항상 JSON 한 줄만 출력한다. 출력 스키마: {SCHEMA}\n\n<rules>\n{RULES}\n</rules>\n\n<examples>\n{EXAMPLES}\n</examples>\n\n입력에 근거하여 추출하라. 사전이 주어진 경우 목록 외 값은 사용하지 않는다.\n배열은 대표 값을 첫 번째에 둔다. JSON 외 텍스트 금지.{LEARNED}", "claude": "{ROLE}\n\n<background>\n리드문은 이후 분류 판단의 기반 재료이고, 엔티티는 개체 사전 적재와 토픽 클러스터링의 입력 신호다.\n인텐트·카테고리는 사전 외 값이 생성되면 다운스트림 매칭이 전부 실패하므로 목록 내 선택이 유일한 규칙이며,\n개별 엔티티의 고유 도메인보다 콘텐츠 맥락이 우선한다.\n</background>\n\n<rules>\n{RULES}\n</rules>\n\n<examples>\n{EXAMPLES}\n</examples>\n\n<output>\nJSON 한 줄만 출력한다: {SCHEMA}\n배열은 대표 값을 첫 번째에 둔다. 위 규칙은 매 콘텐츠에 동일하게 적용한다.\n</output>{LEARNED}", "solar": "# 역할\n{ROLE}\n\n# CRITICAL · 출력 규칙\n출력은 반드시 JSON 한 줄. 다른 텍스트·설명·코드펜스 절대 금지.\n스키마: {SCHEMA}\nMUST: 사전이 주어진 경우 정의된 값만 사용한다. 목록 외 값 생성 금지.\n\n# 규칙\n{RULES}\n\n# 예시\n{EXAMPLES}\n\n# 자가 검증 (출력 전 확인, 과정은 출력하지 않는다)\n{SELF_CHECK}{LEARNED}", "default": "{ROLE}\n\n<output_contract>\n출력은 JSON 한 줄만. 다른 텍스트·설명·코드펜스 금지.\n스키마: {SCHEMA}\n사전이 주어진 경우 목록 외 값을 출력하지 않는다. 배열은 대표 값을 첫 번째에 둔다.\n</output_contract>\n\n<rules>\n{RULES}\n</rules>\n\n<examples>\n{EXAMPLES}\n</examples>\n\n<success_criteria>\n{SELF_CHECK}\n</success_criteria>{LEARNED}"}, "metaCalls": ["summary", "entities", "intent", "category"], "metaContract": {"rules": {"summary": "# 리드문 정의\n- 콘텐츠의 소비 맥락(왜·어떻게 소비되는가)을 콘텐츠 내용으로 구체화하여 생성한 핵심 문장 1개.\n- 사용자 관점의 소비 목적과 CP 관점의 노출·전환 의도를 함께 반영.\n- 본문 문장의 인용·발췌가 아니라 생성문. 이후 인텐트·콘텐츠 카테고리 판단의 기반 재료.\n\n# 규칙\n- 정확히 1문장, 평서형 종결.\n- 핵심 고유명사·사실을 포함하되 과장·추측·평가 금지.\n- body가 비어있으면 title만으로 생성. title·body 모두 비어 의미 생성이 불가능하면\n  빈 문자열(\"\")을 출력한다(하위 호출 생략 신호).", "entities": "# 엔티티 정의\n- 콘텐츠 내 대표적·반복적으로 사용된 명사. 단일 명사가 원칙이며,\n  고유명사(인명·지명·조직명·작품명 등)는 단일 단위로 취급. 구문구·수식 명사구 금지.\n- 복합 명사(둘 이상의 명사가 결합해 하나의 개념을 이루는 말 · 예: 전기차 보조금,\n  국민연금 개혁, 반도체 클러스터)는 분해하지 말고 원형 그대로 하나의 엔티티로 취급한다.\n\n# 정제 규칙 (순서대로 적용)\n1. 행위어·상태어 제거 (예: 협상, 결렬, 발표, 논의).\n2. 단독 식별력이 약한 일반어 제거 (예: 노사, 사후조정, 회의).\n3. \"인용 출처 vs 핵심 주체\" 구분: 데이터·발언을 인용한 기관·기업은 제외.\n   단, 기사의 행위 주체이거나 사건의 당사자이면 포함.\n   판단 기준: \"이 콘텐츠가 X에 관한 것인가, X를 인용한 것인가?\"\n4. 남은 후보 중 대표성 없는 것을 제거하고 핵심 엔티티만 남긴다.\n   개수 상한은 없다(콘텐츠가 요구하는 만큼) · 대표성 높은 순으로 정렬한다.\n- 동명이인은 고려하지 않는다. 표기 정규화·개체 연결은 적재 단계 소관.", "intent": "# 절차\n1. displayServiceName으로 서비스 카테고리를 분기한다(사전 정의 10개 정의값 · 아래 목록에 분기 반영됨).\n   미정의 값이면 PGC 그룹으로 처리하고 범용 분류값만 부여한다(서비스 분류값 미부여).\n2. 리드문이 나타내는 소비 맥락을 분류값에 매핑한다.\n\n# 부여 원칙\n- 범용 분류값(소비 방식 ①·형식 ②)과 서비스 카테고리 분류값을 동시 매핑한다.\n  개수 상한은 없다(근거가 명확한 만큼 · 핵심만) · 대표성 높은 순으로 정렬한다(대표 첫 번째).\n  범용만 또는 서비스 분류값만 부여도 허용. ①과 ②는 교차 부여 가능.\n- 아래 목록에 정의된 분류값 중에서만 선택한다. 자유 생성·임의 변형 금지.\n- 근거가 명확하지 않으면 부여하지 않는다(과잉 매핑 방지). 동일 패턴은 동일 판정.\n- 서비스 카테고리 경계 콘텐츠는 양쪽 분류값 동시 부여 가능.\n- 포토·영상 중심(2026-08-03 운영파트 합의 · 260715 '캡션-본문 연관' 규칙을 대체):\n  이 분류값의 목적은 이미지 구좌(편성)에 넣을 콘텐츠를 골라내는 것이다. 다른 분류값으로도 쉽게\n  갈리는 판정은 효용이 없으므로 사진 장수·본문 분량 같은 정량 임계로 판정하지 않는다.\n  · 부여: 기자·필자가 직접 촬영한 것으로 읽히는 현장 사진이 콘텐츠의 핵심 전달 수단인 것.\n    사진이 한 장뿐이어도 그 사진 자체가 콘텐츠의 목적이면 부여한다(예: '오늘의 1면 사진'·\n    '고양이 눈' 류 사진 코너). 본문이 길든 짧든, 중간에 그래픽·도표가 섞여 있든 현장·심층 취재\n    성격이고 사진이 축이면 부여한다. 화보형·직접 촬영 사진이 여러 장인 인터뷰도 포함한다.\n  · 미부여(아래 여섯 유형은 부여하지 않는다):\n    (1) 글쓴이 프로필 사진이 대표 이미지인 칼럼·시론\n    (2) 이미지가 있어도 사진이 내용의 주가 아닌 것(해설·팩트체크 등 텍스트 논지가 중심)\n    (3) 직접 촬영이 아닌 사진(제공·자료·외부 출처)으로만 이루어진 인터뷰\n    (4) 생성형 AI 이미지만 있는 것\n    (5) 사진 품질이 낮거나 사진이 콘텐츠에서 중요하지 않은 것\n    (6) 현장성 없는 단순 보도\n  · 판정 근거는 입력에서 실제로 읽어낼 수 있는 것에 한정한다: 제목의 사진 코너 표지\n    ('[현장]'·'[포착]'·'사진'·'화보' 류), 리드문·본문의 현장 방문·직접 취재·촬영 정황 서술.\n    직접 촬영 여부·사진 품질·생성형 AI 여부를 입력에서 확인할 수 없으면 추측하지 말고\n    부여하지 않는다(위 '근거가 명확하지 않으면 부여하지 않는다' 원칙 적용).\n  · 함께 주어지는 본문 글자수·이미지 수는 참고 신호일 뿐 임계가 아니다. 이미지 수가\n    '정보 없음'이면 이미지가 없다는 뜻이 아니므로, 그것만을 이유로 미부여하지 않는다.\n- 포토·영상 중심의 경계(무분별 병기 금지 · 변별력 확보):\n  · '현장취재·르포'는 취재 방식(현장 방문), '포토·영상 중심'은 전달 수단(사진)이다.\n    현장 취재라도 텍스트 서술이 전달의 중심이면 '현장취재·르포'만 부여한다.\n    현장에서 직접 찍은 사진이 전달의 축일 때만 두 값을 함께 부여한다(자동 병기 금지).\n  · '그래픽·인포그래픽'·(콘텐츠뷰)'카드뉴스·인포그래픽'과는 배타로 본다. 제작 도표·그래픽이\n    핵심 전달 수단이면 그쪽만, 촬영 사진이 핵심이고 그래픽이 보조면 '포토·영상 중심'만 부여한다.\n  · '인터뷰'와는 병기 가능하되, 직접 촬영으로 읽히는 사진이 함께 전달의 축일 때만 병기한다.\n    제공 사진·자료 사진만 붙은 인터뷰는 '인터뷰'만 부여한다.\n- 보도자료·공식발표: 공식 채널의 발표·보도자료는 광고성으로 엄격히 보지 말고 '보도자료·공식발표'를\n  우선 부여한다(260715 회의 · 광고성 판정은 검수 단계 소관).\n- 칼럼은 사설을 포함한다(사설·칼럼 통합 운영 · 260715 회의). 화자 관점이 강한 해설·주장은 '칼럼'으로 부여.\n- 사설/칼럼은 서비스와 무관하게 범용 '의견·논쟁'(관점이 뚜렷하면 '반박·비판' 또는 '옹호·지지')을 우선 부여하고,\n  콘텐츠뷰면 서비스값 '칼럼'을 함께 부여한다(서비스별 라벨 불일치 방지 · 공통축 우선).\n- 재미·유머 중심 콘텐츠는 범용 '오락·유머'로 부여한다(정형정보로 매핑하지 않는다). 날씨·운세 등 주기적·전달목적물만 '정형정보'.\n- 인텐트는 출처(공식 언론사·개인 블로그·카페)와 무관하게 내용 성격으로만 부여한다(게시판 #7).\n  출처가 UGC 라는 이유로 '팬덤·화제성'을 부여하지 않는다. 팬 반응·화제가 글의 중심일 때만 부여.\n- '실용 정보'는 독자가 따라 할 수 있는 방법·팁·가이드에 한정한다. 이적 소식·경기 일정 등\n  관심사 소비형 정보는 소식 전달·추적이면 '속보·사건 추적', 배경·데이터 해설이면 '심층 분석'.\n- 범용 '후기·리뷰·비평'(직접 체험 기반 평가)과 티스토리 '리뷰·분석'(직접 체험 없는 정보·스펙·시장\n  분석)의 구분은 아래 사전의 각 분류값 정의문을 따른다(주간회의 260722 · 정의문에 병기됨).\n  같은 근거로 두 값을 중복 부여하지 않는다. 둘 다 명확한 근거가 있을 때만 병기.", "category": "# 부여 원칙\n- 콘텐츠에 실재하는 도메인을 N개(1개 이상) 부여한다.\n  본문 핵심 도메인을 대표로 첫 번째에 배치하고, 부가 도메인을 뒤에 나열한다.\n- 대표 도메인 1개는 항상 부여하되, 부가(2번째 이후) 도메인은 확신도 50% 이상일 때만 추가한다\n  (복수 카테고리 매핑의 정량 기준 · 260715 회의 확정). 확신이 서지 않으면 대표 1개만 부여한다.\n- 아래 사전에 정의된 항목(21개 Tier 1 + Custom Tier 2) 중에서만 선택한다.\n  Tier 1 / Tier 2 까지만 표기. 자유 생성·Tier 3 표기 금지.\n- 우선순위: 콘텐츠 맥락 > 개별 엔티티 고유 도메인.\n  리드문·인텐트·엔티티와 본문 핵심을 종합해 콘텐츠 전체의 도메인을 결정한다.\n- 근거가 약한 도메인은 부여하지 않는다(과잉 매핑 방지).\n  사전에 없는 도메인이면 미분류로 두고 운영자 검토를 기다린다."}, "examples": "[예시 1] 입력: displayServiceName=\"스포츠\" · title=\"'나는 유로파의 제왕이 아니다'… 'UEL 통산 4회 우승' 에메리 감독의 겸손, '빌라와 함께 우승한다'\"\n출력: {\"summary\": \"아스톤 빌라의 우나이 에메리 감독이 UEFA 유로파리그 결승전을 앞두고 과거 통산 4회 우승의 '유로파리그 왕' 별명을 부인하며, 빌라와 함께 프라이부르크를 꺾고 30년 만의 메이저 트로피를 차지하겠다는 각오를 기자회견을 통해 밝힌 내용을 전한다.\", \"entities\": [\"우나이 에메리\", \"아스톤 빌라\", \"유로파리그\"], \"intent\": [\"인터뷰\", \"경기 프리뷰\"], \"content_category\": [\"Sports / Soccer (International)\"]}\n(감독 인터뷰는 범용② '인터뷰' · 해외 감독·대회 → Soccer (International))\n\n[예시 2] 입력: displayServiceName=\"뉴스\" · title=\"삼성전자 노사 협상 끝내 결렬, 노조 21일부터 총파업\" · body=\"중앙노동위원회 2차 사후조정 최종회의에서 노사가 합의에 이르지 못하고 협상이 결렬됐다. 노동조합은 다음 날인 21일부터 총파업에 돌입하기로 결정했다.\"\n출력: {\"summary\": \"삼성전자 노사가 중앙노동위원회 2차 사후조정 최종회의에서 끝내 합의에 이르지 못하고 협상이 결렬됨에 따라, 노동조합이 다음 날인 21일부터 총파업에 돌입하기로 결정한 사실을 속보로 전한다.\", \"entities\": [\"삼성전자\", \"총파업\", \"중앙노동위원회\"], \"intent\": [\"속보·단신\", \"노동·사회 이슈\"], \"content_category\": [\"Business and Finance / Industries\", \"News and Politics / Society\"]}\n(엔티티 후보 8개 중 정제(협상·결렬=행위어, 노사·사후조정=일반어) · 기업 엔티티의 노사 맥락 → Industries 대표)\n\n[예시 3] 입력: displayServiceName=\"뉴스\" · title=\"고령운전자 급가속 사고 막는다…페달 오조작 방지장치 2차 보급 본격화\"\n출력: {\"summary\": \"경찰청·손해보험협회·한국교통안전공단이 고령운전자 페달 오조작 사고 예방을 위해 전국 7개 광역시 759명을 대상으로 방지장치 설치를 완료하고, 오는 6월부터 주행 데이터 기반 효과 검증에 돌입하는 2차 보급사업의 추진 현황과 정책 배경을 전한다.\", \"entities\": [\"페달 오조작 방지장치\", \"고령운전자\", \"손해보험협회\"], \"intent\": [\"정책·행정\", \"노동·사회 이슈\"], \"content_category\": [\"News and Politics / Politics\", \"News and Politics / Society\"]}\n(자동차 안전 '정책·보급사업' → Politics 대표(Automotive 아님) · 고령운전자=인구 그룹 → Society 부가)\n\n[예시 4] 입력: displayServiceName=\"뉴스\" · title=\"Z세대 '집보다 새 차가 더 현실적'…자동차 관심 없다는 통념 깨져\"\n출력: {\"summary\": \"마쓰다 설문조사 결과를 바탕으로 Z세대가 주택 구매보다 신차 구매를 우선시하며, 첨단 안전 사양·직관적 기술·프리미엄 오디오 시스템을 핵심 평가 기준으로 삼아 차량을 디지털 라이프스타일이 결합된 공간으로 인식하는 세대별 소비 트렌드를 분석한다.\", \"entities\": [\"Z세대\", \"마쓰다\", \"신차\"], \"intent\": [\"심층 분석\", \"트렌드·시장 분석\"], \"content_category\": [\"Automotive / Auto Type\"]}\n(설문 인용 기관(마쓰다)이지만 조사 주체·소재로 본문 핵심 → 포함 · 차종·신차 맥락 대표 → Auto Type)\n\n[예시 5] 입력: displayServiceName=\"뉴스\" · title=\"성폭행 의혹 제기 美 의원, 캘리포니아 주지사 출마 포기(종합)\"\n출력: {\"summary\": \"성폭행 의혹이 제기된 미국 민주당 하원의원 에릭 스월웰이 캘리포니아 주지사 선거 출마를 포기한 사실과 당내 파장을 전한다.\", \"entities\": [\"에릭 스월웰\", \"캘리포니아\", \"민주당\"], \"intent\": [\"속보·사건 추적\", \"사건 경과 보도\"], \"content_category\": [\"News and Politics / Politics\", \"News and Politics / Crime\"]}\n(모호 엔티티(의혹·선거)는 본문 맥락으로 분기 · 주지사 선거 대표 → Politics, 성폭행 의혹 → Crime 부가)"}}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "isSysAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": true}, {"id": "m2", "name": "검수자 A", "char": "yonghee", "avatar": "yonghee", "is_admin": true}, {"id": "m3", "name": "검수자 B", "char": "ddakji", "avatar": "ddakji", "is_admin": false}], "goldenCount": 24}, ARENA = {"next_version": 3, "next_model": "solar-pro3-260323", "next_batch_at": 1786169645.596552, "last_version": 2, "last_batch_at": 1782950000, "accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18, "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.5, "leaderboard": [{"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 4, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78, "gold_n": 12, "gold_acc": 0.92, "quality_mult": 0.96, "consensus_matches": 34, "split_reviews": 6, "patches": 5, "golden_contribs": 11, "agree_rate": 0.94}, {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 3, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51, "gold_n": 8, "gold_acc": 0.88, "quality_mult": 0.94, "consensus_matches": 22, "split_reviews": 4, "patches": 3, "golden_contribs": 7, "agree_rate": 0.9}, {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21, "gold_n": 3, "gold_acc": 0.67, "quality_mult": 1.0, "consensus_matches": 8, "split_reviews": 1, "patches": 1, "golden_contribs": 2, "agree_rate": 0.78}], "missions": [{"id": "daily5", "label": "오늘의 검수", "total": 5, "bonus": 20, "done": 3, "completed": false}, {"id": "gold1", "label": "골드 정답", "total": 1, "bonus": 15, "done": 1, "completed": true}, {"id": "split1", "label": "불일치 재검토", "total": 1, "bonus": 15, "done": 0, "completed": false}, {"id": "fill1", "label": "분류 채우기", "total": 1, "bonus": 10, "done": 0, "completed": false}]}, EX = {"gstat": {"ok": true, "total": 24, "source_counts": {"review": 18, "manual": 6}, "last_batch": {"confirmed": 18, "new": 3, "demoted": 1, "need_category": 2, "disagree": 3, "min_good": 1}, "need_list": [{"hash": "n1", "title": "집에서 만드는 김치볶음밥 레시피", "service": "블로그"}, {"hash": "n2", "title": "주말 캠핑장 예약 꿀팁", "service": "커뮤니티"}], "ts": 1782950000}, "glist": {"ok": true, "total": 24, "source_counts": {"review": 18, "manual": 6}, "items": [{"hash": "g1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "category": ["News and Politics / Society"], "source": "review", "flagged": false, "model": "solar-pro3-260323", "version": 2}, {"hash": "g2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "category": ["Business and Finance / Economy"], "source": "review", "flagged": false, "model": "solar-pro3-260323", "version": 2}, {"hash": "g3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "category": ["Entertainment"], "source": "manual", "flagged": true, "model": "", "version": null}, {"hash": "g4", "title": "손흥민 시즌 15호골", "service": "스포츠", "grade": "G", "category": ["Sports / Soccer (International)"], "source": "review", "flagged": false, "model": "gpt-5.4-mini", "version": 1, "fix_needed": true}]}, "next_batch_at": 1786169645.596558, "lreport": {"ok": true, "ts": 1782950000, "grade_accuracy": 0.87, "golden": {"ok": true, "confirmed": 18, "new": 3, "demoted": 1, "total": 24, "need_category": 2, "disagree": 3, "min_good": 1}, "eval": {"ok": true, "n": 24, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}}, "improve": {"results": {"analyze": {"directive": "콘텐츠 카테고리는 인물보다 본문 주제 기준으로 부여하라. 연예 인물의 스포츠 활동은 Sports 로 분류.", "ambiguities": ["연예·스포츠 겹침 처리 기준"]}, "judge": {"directive": "구매 링크·쿠폰 문구가 본문에 있으면 ad 사유를 우선 검토하라.", "ambiguities": []}}}}, "ldata": {"ok": true, "golden_n": 24, "grade_dist": {"G": 19, "R": 5}, "coverage": [{"cls": "News and Politics", "have": 9, "lack": 0}, {"cls": "Business and Finance", "have": 6, "lack": 2}, {"cls": "Sports", "have": 4, "lack": 4}, {"cls": "Entertainment", "have": 3, "lack": 5}, {"cls": "Food and Drink", "have": 1, "lack": 7}, {"cls": "Travel", "have": 1, "lack": 7}, {"cls": "Technology and Computing", "have": 0, "lack": 8}, {"cls": "Medical Health", "have": 0, "lack": 8}], "covered": 1, "class_total": 21, "per_class_target": 8, "alpha": 0.72, "agreement": 0.88, "multi_units": 14, "reviewers": [{"reviewer": "데모 관리자", "n": 62, "agree_rate": 0.94, "gold_n": 12, "gold_acc": 0.92, "ds_error": 0.06}, {"reviewer": "검수자 A", "n": 41, "agree_rate": 0.9, "gold_n": 8, "gold_acc": 0.88, "ds_error": 0.09}, {"reviewer": "검수자 B", "n": 17, "agree_rate": 0.78, "gold_n": 3, "gold_acc": 0.67, "ds_error": 0.21}], "acc_ci": {"acc": 0.87, "n": 24, "lo": 0.7365, "hi": 1.0}, "label_flags": [{"hash": "g3", "title": "낚시성 제목 사례", "expected": "R", "got": "G"}], "split": [{"hash": "s1", "n": 3, "good": 1, "bad": 2}], "split_n": 3, "extractable": {"sft": 24, "dpo": 11, "rationale": 9}, "requirements": [{"kind": "분류 부트스트랩(클래스당 8)", "target": 168, "have": 24, "lack": 121, "basis": "SetFit · Tunstall et al. 2022 · arXiv:2209.11055"}, {"kind": "SFT 정렬(고품질)", "target": 1000, "have": 24, "lack": 976, "basis": "LIMA · Zhou et al. 2023 · arXiv:2305.11206"}, {"kind": "운영급 분류 LLM", "target": 13500, "have": 24, "lack": 13476, "basis": "Llama Guard · Inan et al. 2023 · arXiv:2312.06674"}, {"kind": "선호쌍(DPO · 참고 상한)", "target": 33000, "have": 11, "lack": 32989, "basis": "DPO · Rafailov et al. 2023 + InstructGPT RM 33k · Ouyang et al. 2022"}, {"kind": "평가셋(큐레이션)", "target": 100, "have": 24, "lack": 76, "basis": "tinyBenchmarks · Maia Polo et al. 2024 + Miller 2024(CI 병기)"}]}, "cmp": {"ok": true, "golden_n": 24, "best": "solar-pro3-260323", "models": [{"model": "solar-pro3-260323", "route": "solar", "real": true, "n": 24, "grade_accuracy": 0.87, "reason_jaccard": 0.81, "reason_exact_match": 0.71, "empty_rate": 0.0, "cost_usd": 0.0102, "tokens": {"in": 48210, "out": 6120}}, {"model": "gpt-5.4-mini", "route": "timely", "real": true, "n": 24, "grade_accuracy": 0.83, "reason_jaccard": 0.77, "reason_exact_match": 0.63, "empty_rate": 0.0, "cost_usd": 0.0089, "tokens": {"in": 47100, "out": 5480}}, {"model": "claude-haiku-4-5", "route": "timely", "real": true, "n": 24, "grade_accuracy": 0.79, "reason_jaccard": 0.74, "reason_exact_match": 0.58, "empty_rate": 0.04, "cost_usd": 0.0075, "tokens": {"in": 46800, "out": 5010}}], "skipped": [{"model": "gemini-2.5-pro", "reason": "라우터 키 없음(BizRouter·Timely)"}]}, "evalg": {"basis": {"model": "solar-pro3-260323", "version": 3, "scope": "all"}, "min_good": 1, "detail": [{"hash": "g3", "title": "낚시성 제목 사례", "expected": "R", "got": "G", "judge": {"adopt": 0, "reject": 2, "reviewers": {}}}, {"hash": "g4", "title": "손흥민 시즌 15호골", "expected": "G", "got": "R", "judge": {"adopt": 2, "reject": 0, "reviewers": {}}}], "ok": true, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}, "reason_jaccard": 0.81, "harm_miss_rate": 0.04, "empty_rate": 0.0, "evaluated": 24, "by_reason_bucket": {"normal": {"n": 15, "grade_acc": 0.93}, "clickbait": {"n": 5, "grade_acc": 0.8}, "ad": {"n": 4, "grade_acc": 0.75}}}, "raw": {"ok": true, "n": 3, "items": [{"hash": "d1", "service": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "grade": "G", "reasons": [], "category": ["News and Politics / Society"], "model": "solar-pro3-260323", "version": 2, "review": "", "split": false, "fb": {"verdict": "good", "n": 2, "ts": 1782800000}, "body": "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다.", "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]}, "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.91}}, {"hash": "d2", "service": "뉴스", "title": "한국은행 기준금리 동결 결정", "grade": "G", "reasons": [], "category": ["Business and Finance / Economy"], "model": "solar-pro3-260323", "version": 2, "review": "", "split": false, "fb": {"verdict": "", "n": 0, "ts": 0}, "body": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다.", "item_meta": {"summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다", "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"], "content_category": ["Business and Finance / Economy"]}, "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.88}}, {"hash": "d3", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "reasons": ["clickbait"], "category": [], "model": "gpt-5.4-mini", "version": 1, "review": "yellow", "split": true, "fb": {"verdict": "", "n": 2, "ts": 0}, "body": "본문과 무관한 자극적 제목으로 클릭을 유도한 사례.", "item_meta": {"summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"], "content_category": []}, "quality_meta": {"finalGrade": "R", "reasons": ["clickbait"], "review": "yellow", "confidence": 0.52, "review_reason": "제목·본문 불일치 확신 낮음"}}]}, "rqueue": {"ok": true, "n": 3, "items": [{"hash": "q1", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "review_reason": "제목·본문 불일치 확신 낮음", "reviewed": false, "split": false, "confidence": 0.52, "model": "solar-pro3-260323"}, {"hash": "q2", "service": "뉴스", "title": "연예인 A·B 열애설 보도", "grade": "G", "review_reason": "사생활 보도 경계 사례", "reviewed": true, "split": true, "confidence": 0.66, "model": "solar-pro3-260323"}, {"hash": "gold:ok:demo1", "service": "뉴스", "title": "국회 예산안 표결 처리", "grade": "G", "review_reason": "", "reviewed": false, "split": false, "confidence": null, "model": "solar-pro3-260323"}]}, "mstats": {"ok": true, "models": [{"model": "solar-pro3-260323", "version": 2, "key": "solar-pro3-260323 · v2", "n": 6, "gPct": 92, "avgLead": 40, "intents": ["사건 경과 보도 (4)", "분석·해설 (2)"], "categories": ["News and Politics (4)"], "reasons": []}, {"model": "solar-pro3-260323", "version": 1, "key": "solar-pro3-260323 · v1", "n": 3, "gPct": 78, "avgLead": 36, "intents": ["사건 경과 보도 (1)", "분석·해설 (2)"], "categories": ["Business and Finance (3)"], "reasons": ["clickbait (1)"]}, {"model": "gpt-5.4-mini", "version": 1, "key": "gpt-5.4-mini · v1", "n": 3, "gPct": 67, "avgLead": 34, "intents": ["흥미·화제 (2)"], "categories": ["Entertainment (2)"], "reasons": ["clickbait (1)"]}]}, "drafts": {"ok": true, "n": 2, "items": [{"label": "solar-pro3-260323 · v2 (현재)", "model": "solar-pro3-260323", "version": 2, "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]}, "quality_meta": {"finalGrade": "G", "reasons": []}}, {"label": "gpt-5.4-mini · 이전(rerun)", "model": "gpt-5.4-mini", "version": null, "item_meta": {"summary": "삼성 노사가 임금 협상에서 결렬됐다", "entities": ["삼성전자"], "intent": ["속보·사건 추적"], "content_category": ["Business and Finance / Business"]}, "quality_meta": {"finalGrade": "G", "reasons": []}}]}, "ingest": {"running": true, "scheduler": true, "jobs": [{"id": "src1", "name": "뉴스 수집 API", "running": true, "trigger": "auto", "total": 40, "done": 25, "last_msg": "25/40 처리 중", "endpoint": "https://crawler.example/items"}, {"id": "job2", "name": "엑셀 일괄 추출", "running": true, "trigger": "manual", "total": 12, "done": 7, "last_msg": "7/12 처리 중", "endpoint": ""}]}};
+    const CFG = {"hasKey": true, "persisted": true, "model": "solar-pro3-260323", "baseUrl": "https://api.upstage.ai/v1/solar", "reasoning": "default", "systemPrompt": "", "configured": true, "forcedMock": false, "hasBizKey": false, "bizPersisted": false, "hasTimelyKey": false, "timelyPersisted": false, "textProvider": "solar", "textModel": "", "visionProvider": "upstage_ie", "visionModel": "", "backend": "supabase", "authRequired": false, "keyManagedByServer": true, "learnNextAt": "2026-08-08T15:31", "availableModels": ["solar-pro3-260323", "gpt-5.4-mini", "gpt-5.4", "claude-sonnet-4.6", "gemini-2.5-pro"], "metaFourCalls": true, "metaCallModels": {"category": "gpt-5.4"}, "familyWrappers": {}, "familyWrapperDefaults": {"gpt": "{ROLE}\n\n<output_contract>\n출력은 JSON 한 줄만. 다른 텍스트·설명·코드펜스 금지.\n스키마: {SCHEMA}\n사전이 주어진 경우 목록 외 값을 출력하지 않는다. 배열은 대표 값을 첫 번째에 둔다.\n</output_contract>\n\n<rules>\n{RULES}\n</rules>\n\n<examples>\n{EXAMPLES}\n</examples>\n\n<success_criteria>\n{SELF_CHECK}\n</success_criteria>{LEARNED}", "gemini": "{ROLE} 항상 JSON 한 줄만 출력한다. 출력 스키마: {SCHEMA}\n\n<rules>\n{RULES}\n</rules>\n\n<examples>\n{EXAMPLES}\n</examples>\n\n입력에 근거하여 추출하라. 사전이 주어진 경우 목록 외 값은 사용하지 않는다.\n배열은 대표 값을 첫 번째에 둔다. JSON 외 텍스트 금지.{LEARNED}", "claude": "{ROLE}\n\n<background>\n리드문은 이후 분류 판단의 기반 재료이고, 엔티티는 개체 사전 적재와 토픽 클러스터링의 입력 신호다.\n인텐트·카테고리는 사전 외 값이 생성되면 다운스트림 매칭이 전부 실패하므로 목록 내 선택이 유일한 규칙이며,\n개별 엔티티의 고유 도메인보다 콘텐츠 맥락이 우선한다.\n</background>\n\n<rules>\n{RULES}\n</rules>\n\n<examples>\n{EXAMPLES}\n</examples>\n\n<output>\nJSON 한 줄만 출력한다: {SCHEMA}\n배열은 대표 값을 첫 번째에 둔다. 위 규칙은 매 콘텐츠에 동일하게 적용한다.\n</output>{LEARNED}", "solar": "# 역할\n{ROLE}\n\n# CRITICAL · 출력 규칙\n출력은 반드시 JSON 한 줄. 다른 텍스트·설명·코드펜스 절대 금지.\n스키마: {SCHEMA}\nMUST: 사전이 주어진 경우 정의된 값만 사용한다. 목록 외 값 생성 금지.\n\n# 규칙\n{RULES}\n\n# 예시\n{EXAMPLES}\n\n# 자가 검증 (출력 전 확인, 과정은 출력하지 않는다)\n{SELF_CHECK}{LEARNED}", "default": "{ROLE}\n\n<output_contract>\n출력은 JSON 한 줄만. 다른 텍스트·설명·코드펜스 금지.\n스키마: {SCHEMA}\n사전이 주어진 경우 목록 외 값을 출력하지 않는다. 배열은 대표 값을 첫 번째에 둔다.\n</output_contract>\n\n<rules>\n{RULES}\n</rules>\n\n<examples>\n{EXAMPLES}\n</examples>\n\n<success_criteria>\n{SELF_CHECK}\n</success_criteria>{LEARNED}"}, "metaCalls": ["summary", "entities", "intent", "category"], "metaContract": {"rules": {"summary": "# 리드문 정의\n- 콘텐츠의 소비 맥락(왜·어떻게 소비되는가)을 콘텐츠 내용으로 구체화하여 생성한 핵심 문장 1개.\n- 사용자 관점의 소비 목적과 CP 관점의 노출·전환 의도를 함께 반영.\n- 본문 문장의 인용·발췌가 아니라 생성문. 이후 인텐트·콘텐츠 카테고리 판단의 기반 재료.\n\n# 규칙\n- 정확히 1문장, 평서형 종결.\n- 핵심 고유명사·사실을 포함하되 과장·추측·평가 금지.\n- body가 비어있으면 title만으로 생성. title·body 모두 비어 의미 생성이 불가능하면\n  빈 문자열(\"\")을 출력한다(하위 호출 생략 신호).", "entities": "# 엔티티 정의\n- 콘텐츠 내 대표적·반복적으로 사용된 명사. 단일 명사가 원칙이며,\n  고유명사(인명·지명·조직명·작품명 등)는 단일 단위로 취급. 구문구·수식 명사구 금지.\n- 복합 명사(둘 이상의 명사가 결합해 하나의 개념을 이루는 말 · 예: 전기차 보조금,\n  국민연금 개혁, 반도체 클러스터)는 분해하지 말고 원형 그대로 하나의 엔티티로 취급한다.\n\n# 정제 규칙 (순서대로 적용)\n1. 행위어·상태어 제거 (예: 협상, 결렬, 발표, 논의).\n2. 단독 식별력이 약한 일반어 제거 (예: 노사, 사후조정, 회의).\n3. \"인용 출처 vs 핵심 주체\" 구분: 데이터·발언을 인용한 기관·기업은 제외.\n   단, 기사의 행위 주체이거나 사건의 당사자이면 포함.\n   판단 기준: \"이 콘텐츠가 X에 관한 것인가, X를 인용한 것인가?\"\n4. 남은 후보 중 대표성 없는 것을 제거하고 핵심 엔티티만 남긴다.\n   개수 상한은 없다(콘텐츠가 요구하는 만큼) · 대표성 높은 순으로 정렬한다.\n- 동명이인은 고려하지 않는다. 표기 정규화·개체 연결은 적재 단계 소관.", "intent": "# 절차\n1. displayServiceName으로 서비스 카테고리를 분기한다(사전 정의 10개 정의값 · 아래 목록에 분기 반영됨).\n   미정의 값이면 PGC 그룹으로 처리하고 범용 분류값만 부여한다(서비스 분류값 미부여).\n2. 리드문이 나타내는 소비 맥락을 분류값에 매핑한다.\n\n# 부여 원칙\n- 범용 분류값(소비 방식 ①·형식 ②)과 서비스 카테고리 분류값을 동시 매핑한다.\n  개수 상한은 없다(근거가 명확한 만큼 · 핵심만) · 대표성 높은 순으로 정렬한다(대표 첫 번째).\n  범용만 또는 서비스 분류값만 부여도 허용. ①과 ②는 교차 부여 가능.\n- 아래 목록에 정의된 분류값 중에서만 선택한다. 자유 생성·임의 변형 금지.\n- 근거가 명확하지 않으면 부여하지 않는다(과잉 매핑 방지). 동일 패턴은 동일 판정.\n- 서비스 카테고리 경계 콘텐츠는 양쪽 분류값 동시 부여 가능.\n- 포토·영상 중심(2026-08-03 운영파트 합의 · 260715 '캡션-본문 연관' 규칙을 대체):\n  이 분류값의 목적은 이미지 구좌(편성)에 넣을 콘텐츠를 골라내는 것이다. 다른 분류값으로도 쉽게\n  갈리는 판정은 효용이 없으므로 사진 장수·본문 분량 같은 정량 임계로 판정하지 않는다.\n  · 부여: 기자·필자가 직접 촬영한 것으로 읽히는 현장 사진이 콘텐츠의 핵심 전달 수단인 것.\n    사진이 한 장뿐이어도 그 사진 자체가 콘텐츠의 목적이면 부여한다(예: '오늘의 1면 사진'·\n    '고양이 눈' 류 사진 코너). 본문이 길든 짧든, 중간에 그래픽·도표가 섞여 있든 현장·심층 취재\n    성격이고 사진이 축이면 부여한다. 화보형·직접 촬영 사진이 여러 장인 인터뷰도 포함한다.\n  · 미부여(아래 여섯 유형은 부여하지 않는다):\n    (1) 글쓴이 프로필 사진이 대표 이미지인 칼럼·시론\n    (2) 이미지가 있어도 사진이 내용의 주가 아닌 것(해설·팩트체크 등 텍스트 논지가 중심)\n    (3) 직접 촬영이 아닌 사진(제공·자료·외부 출처)으로만 이루어진 인터뷰\n    (4) 생성형 AI 이미지만 있는 것\n    (5) 사진 품질이 낮거나 사진이 콘텐츠에서 중요하지 않은 것\n    (6) 현장성 없는 단순 보도\n  · 판정 근거는 입력에서 실제로 읽어낼 수 있는 것에 한정한다: 제목의 사진 코너 표지\n    ('[현장]'·'[포착]'·'사진'·'화보' 류), 리드문·본문의 현장 방문·직접 취재·촬영 정황 서술.\n    직접 촬영 여부·사진 품질·생성형 AI 여부를 입력에서 확인할 수 없으면 추측하지 말고\n    부여하지 않는다(위 '근거가 명확하지 않으면 부여하지 않는다' 원칙 적용).\n  · 함께 주어지는 본문 글자수·이미지 수는 참고 신호일 뿐 임계가 아니다. 이미지 수가\n    '정보 없음'이면 이미지가 없다는 뜻이 아니므로, 그것만을 이유로 미부여하지 않는다.\n- 포토·영상 중심의 경계(무분별 병기 금지 · 변별력 확보):\n  · '현장취재·르포'는 취재 방식(현장 방문), '포토·영상 중심'은 전달 수단(사진)이다.\n    현장 취재라도 텍스트 서술이 전달의 중심이면 '현장취재·르포'만 부여한다.\n    현장에서 직접 찍은 사진이 전달의 축일 때만 두 값을 함께 부여한다(자동 병기 금지).\n  · '그래픽·인포그래픽'·(콘텐츠뷰)'카드뉴스·인포그래픽'과는 배타로 본다. 제작 도표·그래픽이\n    핵심 전달 수단이면 그쪽만, 촬영 사진이 핵심이고 그래픽이 보조면 '포토·영상 중심'만 부여한다.\n  · '인터뷰'와는 병기 가능하되, 직접 촬영으로 읽히는 사진이 함께 전달의 축일 때만 병기한다.\n    제공 사진·자료 사진만 붙은 인터뷰는 '인터뷰'만 부여한다.\n- 보도자료·공식발표: 공식 채널의 발표·보도자료는 광고성으로 엄격히 보지 말고 '보도자료·공식발표'를\n  우선 부여한다(260715 회의 · 광고성 판정은 검수 단계 소관).\n- 칼럼은 사설을 포함한다(사설·칼럼 통합 운영 · 260715 회의). 화자 관점이 강한 해설·주장은 '칼럼'으로 부여.\n- 사설/칼럼은 서비스와 무관하게 범용 '의견·논쟁'(관점이 뚜렷하면 '반박·비판' 또는 '옹호·지지')을 우선 부여하고,\n  콘텐츠뷰면 서비스값 '칼럼'을 함께 부여한다(서비스별 라벨 불일치 방지 · 공통축 우선).\n- 재미·유머 중심 콘텐츠는 범용 '오락·유머'로 부여한다(정형정보로 매핑하지 않는다). 날씨·운세 등 주기적·전달목적물만 '정형정보'.\n- 인텐트는 출처(공식 언론사·개인 블로그·카페)와 무관하게 내용 성격으로만 부여한다(게시판 #7).\n  출처가 UGC 라는 이유로 '팬덤·화제성'을 부여하지 않는다. 팬 반응·화제가 글의 중심일 때만 부여.\n- '실용 정보'는 독자가 따라 할 수 있는 방법·팁·가이드에 한정한다. 이적 소식·경기 일정 등\n  관심사 소비형 정보는 소식 전달·추적이면 '속보·사건 추적', 배경·데이터 해설이면 '심층 분석'.\n- 범용 '후기·리뷰·비평'(직접 체험 기반 평가)과 티스토리 '리뷰·분석'(직접 체험 없는 정보·스펙·시장\n  분석)의 구분은 아래 사전의 각 분류값 정의문을 따른다(주간회의 260722 · 정의문에 병기됨).\n  같은 근거로 두 값을 중복 부여하지 않는다. 둘 다 명확한 근거가 있을 때만 병기.", "category": "# 부여 원칙\n- 콘텐츠에 실재하는 도메인을 N개(1개 이상) 부여한다.\n  본문 핵심 도메인을 대표로 첫 번째에 배치하고, 부가 도메인을 뒤에 나열한다.\n- 대표 도메인 1개는 항상 부여하되, 부가(2번째 이후) 도메인은 확신도 50% 이상일 때만 추가한다\n  (복수 카테고리 매핑의 정량 기준 · 260715 회의 확정). 확신이 서지 않으면 대표 1개만 부여한다.\n- 아래 사전에 정의된 항목(21개 Tier 1 + Custom Tier 2) 중에서만 선택한다.\n  Tier 1 / Tier 2 까지만 표기. 자유 생성·Tier 3 표기 금지.\n- 우선순위: 콘텐츠 맥락 > 개별 엔티티 고유 도메인.\n  리드문·인텐트·엔티티와 본문 핵심을 종합해 콘텐츠 전체의 도메인을 결정한다.\n- 근거가 약한 도메인은 부여하지 않는다(과잉 매핑 방지).\n  사전에 없는 도메인이면 미분류로 두고 운영자 검토를 기다린다."}, "examples": "[예시 1] 입력: displayServiceName=\"스포츠\" · title=\"'나는 유로파의 제왕이 아니다'… 'UEL 통산 4회 우승' 에메리 감독의 겸손, '빌라와 함께 우승한다'\"\n출력: {\"summary\": \"아스톤 빌라의 우나이 에메리 감독이 UEFA 유로파리그 결승전을 앞두고 과거 통산 4회 우승의 '유로파리그 왕' 별명을 부인하며, 빌라와 함께 프라이부르크를 꺾고 30년 만의 메이저 트로피를 차지하겠다는 각오를 기자회견을 통해 밝힌 내용을 전한다.\", \"entities\": [\"우나이 에메리\", \"아스톤 빌라\", \"유로파리그\"], \"intent\": [\"인터뷰\", \"경기 프리뷰\"], \"content_category\": [\"Sports / Soccer (International)\"]}\n(감독 인터뷰는 범용② '인터뷰' · 해외 감독·대회 → Soccer (International))\n\n[예시 2] 입력: displayServiceName=\"뉴스\" · title=\"삼성전자 노사 협상 끝내 결렬, 노조 21일부터 총파업\" · body=\"중앙노동위원회 2차 사후조정 최종회의에서 노사가 합의에 이르지 못하고 협상이 결렬됐다. 노동조합은 다음 날인 21일부터 총파업에 돌입하기로 결정했다.\"\n출력: {\"summary\": \"삼성전자 노사가 중앙노동위원회 2차 사후조정 최종회의에서 끝내 합의에 이르지 못하고 협상이 결렬됨에 따라, 노동조합이 다음 날인 21일부터 총파업에 돌입하기로 결정한 사실을 속보로 전한다.\", \"entities\": [\"삼성전자\", \"총파업\", \"중앙노동위원회\"], \"intent\": [\"속보·단신\", \"노동·사회 이슈\"], \"content_category\": [\"Business and Finance / Industries\", \"News and Politics / Society\"]}\n(엔티티 후보 8개 중 정제(협상·결렬=행위어, 노사·사후조정=일반어) · 기업 엔티티의 노사 맥락 → Industries 대표)\n\n[예시 3] 입력: displayServiceName=\"뉴스\" · title=\"고령운전자 급가속 사고 막는다…페달 오조작 방지장치 2차 보급 본격화\"\n출력: {\"summary\": \"경찰청·손해보험협회·한국교통안전공단이 고령운전자 페달 오조작 사고 예방을 위해 전국 7개 광역시 759명을 대상으로 방지장치 설치를 완료하고, 오는 6월부터 주행 데이터 기반 효과 검증에 돌입하는 2차 보급사업의 추진 현황과 정책 배경을 전한다.\", \"entities\": [\"페달 오조작 방지장치\", \"고령운전자\", \"손해보험협회\"], \"intent\": [\"정책·행정\", \"노동·사회 이슈\"], \"content_category\": [\"News and Politics / Politics\", \"News and Politics / Society\"]}\n(자동차 안전 '정책·보급사업' → Politics 대표(Automotive 아님) · 고령운전자=인구 그룹 → Society 부가)\n\n[예시 4] 입력: displayServiceName=\"뉴스\" · title=\"Z세대 '집보다 새 차가 더 현실적'…자동차 관심 없다는 통념 깨져\"\n출력: {\"summary\": \"마쓰다 설문조사 결과를 바탕으로 Z세대가 주택 구매보다 신차 구매를 우선시하며, 첨단 안전 사양·직관적 기술·프리미엄 오디오 시스템을 핵심 평가 기준으로 삼아 차량을 디지털 라이프스타일이 결합된 공간으로 인식하는 세대별 소비 트렌드를 분석한다.\", \"entities\": [\"Z세대\", \"마쓰다\", \"신차\"], \"intent\": [\"심층 분석\", \"트렌드·시장 분석\"], \"content_category\": [\"Automotive / Auto Type\"]}\n(설문 인용 기관(마쓰다)이지만 조사 주체·소재로 본문 핵심 → 포함 · 차종·신차 맥락 대표 → Auto Type)\n\n[예시 5] 입력: displayServiceName=\"뉴스\" · title=\"성폭행 의혹 제기 美 의원, 캘리포니아 주지사 출마 포기(종합)\"\n출력: {\"summary\": \"성폭행 의혹이 제기된 미국 민주당 하원의원 에릭 스월웰이 캘리포니아 주지사 선거 출마를 포기한 사실과 당내 파장을 전한다.\", \"entities\": [\"에릭 스월웰\", \"캘리포니아\", \"민주당\"], \"intent\": [\"속보·사건 추적\", \"사건 경과 보도\"], \"content_category\": [\"News and Politics / Politics\", \"News and Politics / Crime\"]}\n(모호 엔티티(의혹·선거)는 본문 맥락으로 분기 · 주지사 선거 대표 → Politics, 성폭행 의혹 → Crime 부가)"}}, VOCAB = {"groups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"]}, ADMIN = {"ok": true, "isAdmin": true, "isSysAdmin": true, "team": {"name": "데모팀", "invite_code": "DEMO-1234", "created_by": "demo-admin"}, "members": [{"id": "demo-admin", "name": "데모 관리자", "char": "boksil", "avatar": "boksil", "is_admin": true}, {"id": "m2", "name": "검수자 A", "char": "yonghee", "avatar": "yonghee", "is_admin": true}, {"id": "m3", "name": "검수자 B", "char": "ddakji", "avatar": "ddakji", "is_admin": false}], "goldenCount": 24}, ARENA = {"next_version": 3, "next_model": "solar-pro3-260323", "next_batch_at": 1786170685.648073, "last_version": 2, "last_batch_at": 1782950000, "accuracy": 0.91, "good": 10, "bad": 2, "reviews": 62, "week_reviews": 18, "accuracy_delta": 0.04, "target": 0.9, "queue": 3, "total_targets": 80, "team_progress": 0.5, "leaderboard": [{"reviewer": "데모 관리자", "name": "데모 관리자", "char": "boksil", "level": 4, "points": 640, "reviews": 62, "corrections": 9, "streak": 7, "week_points": 180, "last_week_points": 120, "progress": 0.78, "gold_n": 12, "gold_acc": 0.92, "quality_mult": 0.96, "consensus_matches": 34, "split_reviews": 6, "patches": 5, "golden_contribs": 11, "agree_rate": 0.94}, {"reviewer": "검수자 A", "name": "검수자 A", "char": "yonghee", "level": 3, "points": 420, "reviews": 41, "corrections": 5, "streak": 3, "week_points": 150, "last_week_points": 160, "progress": 0.51, "gold_n": 8, "gold_acc": 0.88, "quality_mult": 0.94, "consensus_matches": 22, "split_reviews": 4, "patches": 3, "golden_contribs": 7, "agree_rate": 0.9}, {"reviewer": "검수자 B", "name": "검수자 B", "char": "ddakji", "level": 2, "points": 180, "reviews": 17, "corrections": 1, "streak": 1, "week_points": 40, "last_week_points": 90, "progress": 0.21, "gold_n": 3, "gold_acc": 0.67, "quality_mult": 1.0, "consensus_matches": 8, "split_reviews": 1, "patches": 1, "golden_contribs": 2, "agree_rate": 0.78}], "missions": [{"id": "daily5", "label": "오늘의 검수", "total": 5, "bonus": 20, "done": 3, "completed": false}, {"id": "gold1", "label": "골드 정답", "total": 1, "bonus": 15, "done": 1, "completed": true}, {"id": "split1", "label": "불일치 재검토", "total": 1, "bonus": 15, "done": 0, "completed": false}, {"id": "fill1", "label": "분류 채우기", "total": 1, "bonus": 10, "done": 0, "completed": false}]}, EX = {"gstat": {"ok": true, "total": 24, "source_counts": {"review": 18, "manual": 6}, "last_batch": {"confirmed": 18, "new": 3, "demoted": 1, "need_category": 2, "disagree": 3, "min_good": 1}, "need_list": [{"hash": "n1", "title": "집에서 만드는 김치볶음밥 레시피", "service": "블로그"}, {"hash": "n2", "title": "주말 캠핑장 예약 꿀팁", "service": "커뮤니티"}], "ts": 1782950000}, "glist": {"ok": true, "total": 24, "source_counts": {"review": 18, "manual": 6}, "items": [{"hash": "g1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "category": ["News and Politics / Society"], "source": "review", "flagged": false, "model": "solar-pro3-260323", "version": 2}, {"hash": "g2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "category": ["Business and Finance / Economy"], "source": "review", "flagged": false, "model": "solar-pro3-260323", "version": 2}, {"hash": "g3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "category": ["Entertainment"], "source": "manual", "flagged": true, "model": "", "version": null}, {"hash": "g4", "title": "손흥민 시즌 15호골", "service": "스포츠", "grade": "G", "category": ["Sports / Soccer (International)"], "source": "review", "flagged": false, "model": "gpt-5.4-mini", "version": 1, "fix_needed": true}]}, "next_batch_at": 1786170685.648078, "lreport": {"ok": true, "ts": 1782950000, "grade_accuracy": 0.87, "golden": {"ok": true, "confirmed": 18, "new": 3, "demoted": 1, "total": 24, "need_category": 2, "disagree": 3, "min_good": 1}, "eval": {"ok": true, "n": 24, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}}, "improve": {"results": {"analyze": {"directive": "콘텐츠 카테고리는 인물보다 본문 주제 기준으로 부여하라. 연예 인물의 스포츠 활동은 Sports 로 분류.", "ambiguities": ["연예·스포츠 겹침 처리 기준"]}, "judge": {"directive": "구매 링크·쿠폰 문구가 본문에 있으면 ad 사유를 우선 검토하라.", "ambiguities": []}}}}, "ldata": {"ok": true, "golden_n": 24, "grade_dist": {"G": 19, "R": 5}, "coverage": [{"cls": "News and Politics", "have": 9, "lack": 0}, {"cls": "Business and Finance", "have": 6, "lack": 2}, {"cls": "Sports", "have": 4, "lack": 4}, {"cls": "Entertainment", "have": 3, "lack": 5}, {"cls": "Food and Drink", "have": 1, "lack": 7}, {"cls": "Travel", "have": 1, "lack": 7}, {"cls": "Technology and Computing", "have": 0, "lack": 8}, {"cls": "Medical Health", "have": 0, "lack": 8}], "covered": 1, "class_total": 21, "per_class_target": 8, "alpha": 0.72, "agreement": 0.88, "multi_units": 14, "reviewers": [{"reviewer": "데모 관리자", "n": 62, "agree_rate": 0.94, "gold_n": 12, "gold_acc": 0.92, "ds_error": 0.06}, {"reviewer": "검수자 A", "n": 41, "agree_rate": 0.9, "gold_n": 8, "gold_acc": 0.88, "ds_error": 0.09}, {"reviewer": "검수자 B", "n": 17, "agree_rate": 0.78, "gold_n": 3, "gold_acc": 0.67, "ds_error": 0.21}], "acc_ci": {"acc": 0.87, "n": 24, "lo": 0.7365, "hi": 1.0}, "label_flags": [{"hash": "g3", "title": "낚시성 제목 사례", "expected": "R", "got": "G"}], "split": [{"hash": "s1", "n": 3, "good": 1, "bad": 2}], "split_n": 3, "extractable": {"sft": 24, "dpo": 11, "rationale": 9}, "requirements": [{"kind": "분류 부트스트랩(클래스당 8)", "target": 168, "have": 24, "lack": 121, "basis": "SetFit · Tunstall et al. 2022 · arXiv:2209.11055"}, {"kind": "SFT 정렬(고품질)", "target": 1000, "have": 24, "lack": 976, "basis": "LIMA · Zhou et al. 2023 · arXiv:2305.11206"}, {"kind": "운영급 분류 LLM", "target": 13500, "have": 24, "lack": 13476, "basis": "Llama Guard · Inan et al. 2023 · arXiv:2312.06674"}, {"kind": "선호쌍(DPO · 참고 상한)", "target": 33000, "have": 11, "lack": 32989, "basis": "DPO · Rafailov et al. 2023 + InstructGPT RM 33k · Ouyang et al. 2022"}, {"kind": "평가셋(큐레이션)", "target": 100, "have": 24, "lack": 76, "basis": "tinyBenchmarks · Maia Polo et al. 2024 + Miller 2024(CI 병기)"}]}, "cmp": {"ok": true, "golden_n": 24, "best": "solar-pro3-260323", "models": [{"model": "solar-pro3-260323", "route": "solar", "real": true, "n": 24, "grade_accuracy": 0.87, "reason_jaccard": 0.81, "reason_exact_match": 0.71, "empty_rate": 0.0, "cost_usd": 0.0102, "tokens": {"in": 48210, "out": 6120}}, {"model": "gpt-5.4-mini", "route": "timely", "real": true, "n": 24, "grade_accuracy": 0.83, "reason_jaccard": 0.77, "reason_exact_match": 0.63, "empty_rate": 0.0, "cost_usd": 0.0089, "tokens": {"in": 47100, "out": 5480}}, {"model": "claude-haiku-4-5", "route": "timely", "real": true, "n": 24, "grade_accuracy": 0.79, "reason_jaccard": 0.74, "reason_exact_match": 0.58, "empty_rate": 0.04, "cost_usd": 0.0075, "tokens": {"in": 46800, "out": 5010}}], "skipped": [{"model": "gemini-2.5-pro", "reason": "라우터 키 없음(BizRouter·Timely)"}]}, "evalg": {"basis": {"model": "solar-pro3-260323", "version": 3, "scope": "all"}, "min_good": 1, "detail": [{"hash": "g3", "title": "낚시성 제목 사례", "expected": "R", "got": "G", "judge": {"adopt": 0, "reject": 2, "reviewers": {}}}, {"hash": "g4", "title": "손흥민 시즌 15호골", "expected": "G", "got": "R", "judge": {"adopt": 2, "reject": 0, "reviewers": {}}}], "ok": true, "grade_accuracy": 0.87, "grade_ci": {"lo": 0.7365, "hi": 1.0, "n": 24}, "reason_jaccard": 0.81, "harm_miss_rate": 0.04, "empty_rate": 0.0, "evaluated": 24, "by_reason_bucket": {"normal": {"n": 15, "grade_acc": 0.93}, "clickbait": {"n": 5, "grade_acc": 0.8}, "ad": {"n": 4, "grade_acc": 0.75}}}, "raw": {"ok": true, "n": 3, "items": [{"hash": "d1", "service": "뉴스", "title": "삼성전자 노조 임금 협상 결렬", "grade": "G", "reasons": [], "category": ["News and Politics / Society"], "model": "solar-pro3-260323", "version": 2, "review": "", "split": false, "fb": {"verdict": "good", "n": 2, "ts": 1782800000}, "body": "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다.", "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합", "중앙노동위원회"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]}, "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.91}}, {"hash": "d2", "service": "뉴스", "title": "한국은행 기준금리 동결 결정", "grade": "G", "reasons": [], "category": ["Business and Finance / Economy"], "model": "solar-pro3-260323", "version": 2, "review": "", "split": false, "fb": {"verdict": "", "n": 0, "ts": 0}, "body": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다.", "item_meta": {"summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다", "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"], "content_category": ["Business and Finance / Economy"]}, "quality_meta": {"finalGrade": "G", "reasons": [], "review": "", "confidence": 0.88}}, {"hash": "d3", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "reasons": ["clickbait"], "category": [], "model": "gpt-5.4-mini", "version": 1, "review": "yellow", "split": true, "fb": {"verdict": "", "n": 2, "ts": 0}, "body": "본문과 무관한 자극적 제목으로 클릭을 유도한 사례.", "item_meta": {"summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"], "content_category": []}, "quality_meta": {"finalGrade": "R", "reasons": ["clickbait"], "review": "yellow", "confidence": 0.52, "review_reason": "제목·본문 불일치 확신 낮음"}}]}, "rqueue": {"ok": true, "n": 3, "items": [{"hash": "q1", "service": "커뮤니티", "title": "낚시성 제목 사례", "grade": "R", "review_reason": "제목·본문 불일치 확신 낮음", "reviewed": false, "split": false, "confidence": 0.52, "model": "solar-pro3-260323"}, {"hash": "q2", "service": "뉴스", "title": "연예인 A·B 열애설 보도", "grade": "G", "review_reason": "사생활 보도 경계 사례", "reviewed": true, "split": true, "confidence": 0.66, "model": "solar-pro3-260323"}, {"hash": "gold:ok:demo1", "service": "뉴스", "title": "국회 예산안 표결 처리", "grade": "G", "review_reason": "", "reviewed": false, "split": false, "confidence": null, "model": "solar-pro3-260323"}]}, "mstats": {"ok": true, "models": [{"model": "solar-pro3-260323", "version": 2, "key": "solar-pro3-260323 · v2", "n": 6, "gPct": 92, "avgLead": 40, "intents": ["사건 경과 보도 (4)", "분석·해설 (2)"], "categories": ["News and Politics (4)"], "reasons": []}, {"model": "solar-pro3-260323", "version": 1, "key": "solar-pro3-260323 · v1", "n": 3, "gPct": 78, "avgLead": 36, "intents": ["사건 경과 보도 (1)", "분석·해설 (2)"], "categories": ["Business and Finance (3)"], "reasons": ["clickbait (1)"]}, {"model": "gpt-5.4-mini", "version": 1, "key": "gpt-5.4-mini · v1", "n": 3, "gPct": 67, "avgLead": 34, "intents": ["흥미·화제 (2)"], "categories": ["Entertainment (2)"], "reasons": ["clickbait (1)"]}]}, "drafts": {"ok": true, "n": 2, "items": [{"label": "solar-pro3-260323 · v2 (현재)", "model": "solar-pro3-260323", "version": 2, "item_meta": {"summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합"], "intent": ["사건 경과 보도"], "content_category": ["News and Politics / Society"]}, "quality_meta": {"finalGrade": "G", "reasons": []}}, {"label": "gpt-5.4-mini · 이전(rerun)", "model": "gpt-5.4-mini", "version": null, "item_meta": {"summary": "삼성 노사가 임금 협상에서 결렬됐다", "entities": ["삼성전자"], "intent": ["속보·사건 추적"], "content_category": ["Business and Finance / Business"]}, "quality_meta": {"finalGrade": "G", "reasons": []}}]}, "ingest": {"running": true, "scheduler": true, "jobs": [{"id": "src1", "name": "뉴스 수집 API", "running": true, "trigger": "auto", "total": 40, "done": 25, "last_msg": "25/40 처리 중", "endpoint": "https://crawler.example/items"}, {"id": "job2", "name": "엑셀 일괄 추출", "running": true, "trigger": "manual", "total": 12, "done": 7, "last_msg": "7/12 처리 중", "endpoint": ""}]}};
     const PV_SAMPLE = "# 역할\n너는 콘텐츠의 '리드문'을 생성하는 추출기다.\n\n# CRITICAL · 출력 규칙\n출력은 반드시 JSON 한 줄. 다른 텍스트·설명·코드펜스 절대 금지.\n스키마: {\"summary\": string}  (생성 불가 시 빈 문자열)\nMUST: 사전이 주어진 경우 정의된 값만 사용한다. 목록 외 값 생성 금지.\n\n# 규칙\n# 리드문 정의\n- 콘텐츠의 소비 맥락(왜·어떻게 소비되는가)을 콘텐츠 내용으로 구체화하여 생성한 핵심 문장 1개.\n- 사용자 관점의 소비 목적과 CP 관점의 노출·전환 의도를 함께 반영.\n- 본문 문장의 인용·발췌가 아니라 생성문. 이후 인텐트·콘텐츠 카테고리 판단의 기반 재료.\n\n# 규칙\n- 정확히 1문장, 평서형 종결.\n- 핵심 고유명사·사실을 포함하되 과장·추측·평가 금지.\n- body가 비어있으면 title만으로 생성. title·body 모두 비어 의미 생성이 불가능하면\n  빈 문자열(\"\")을 출력한다(하위 호출 생략 신호).\n\n# 예시\n[예시 1] 입력: displayServiceName=\"스포츠\" · title=\"'나는 유로파의 제왕이 아니다'… 'UEL 통산 4회 우승' 에메리 감독의 겸손, '빌라와 함께 우승한다'\"\n출력: {\"summary\": \"아스톤 빌라의 우나이 에메리 감독이 UEFA 유로파리그 결승전을 앞두고 과거 통산 4회 우승의 '유로파리그 왕' 별명을 부인하며, 빌라와 함께 프라이부르크를 꺾고 30년 만의 메이저 트로피를 차지하겠다는 각오를 기자회견을 통해 밝힌 내용을 전한다.\"}\n(감독 인터뷰는 범용② '인터뷰' · 해외 감독·대회 → Soccer (International))\n\n[예시 2] 입력: displayServiceName=\"뉴스\" · title=\"삼성전자 노사 협상 끝내 결렬, 노조 21일부터 총파업\" · body=\"중앙노동위원회 2차 사후조정 최종회의에서 노사가 합의에 이르지 못하고 협상이 결렬됐다. 노동조합은 다음 날인 21일부터 총파업에 돌입하기로 결정했다.\"\n출력: {\"summary\": \"삼성전자 노사가 중앙노동위원회 2차 사후조정 최종회의에서 끝내 합의에 이르지 못하고 협상이 결렬됨에 따라, 노동조합이 다음 날인 21일부터 총파업에 돌입하기로 결정한 사실을 속보로 전한다.\"}\n(엔티티 후보 8개 중 정제(협상·결렬=행위어, 노사·사후조정=일반어) · 기업 엔티티의 노사 맥락 → Industries 대표)\n\n[예시 3] 입력: displayServiceName=\"뉴스\" · title=\"고령운전자 급가속 사고 막는다…페달 오조작 방지장치 2차 보급 본격화\"\n출력: {\"summary\": \"경찰청·손해보험협회·한국교통안전공단이 고령운전자 페달 오조작 사고 예방을 위해 전국 7개 광역시 759명을 대상으로 방지장치 설치를 완료하고, 오는 6월부터 주행 데이터 기반 효과 검증에 돌입하는 2차 보급사업의 추진 현황과 정책 배경을 전한다.\"}\n(자동차 안전 '정책·보급사업' → Politics 대표(Automotive 아님) · 고령운전자=인구 그룹 → Society 부가)\n\n[예시 4] 입력: displayServiceName=\"뉴스\" · title=\"Z세대 '집보다 새 차가 더 현실적'…자동차 관심 없다는 통념 깨져\"\n출력: {\"summary\": \"마쓰다 설문조사 결과를 바탕으로 Z세대가 주택 구매보다 신차 구매를 우선시하며, 첨단 안전 사양·직관적 기술·프리미엄 오디오 시스템을 핵심 평가 기준으로 삼아 차량을 디지털 라이프스타일이 결합된 공간으로 인식하는 세대별 소비 트렌드를 분석한다.\"}\n(설문 인용 기관(마쓰다)이지만 조사 주체·소재로 본문 핵심 → 포함 · 차종·신차 맥락 대표 → Auto Type)\n\n[예시 5] 입력: displayServiceName=\"뉴스\" · title=\"성폭행 의혹 제기 美 의원, 캘리포니아 주지사 출마 포기(종합)\"\n출력: {\"summary\": \"성폭행 의혹이 제기된 미국 민주당 하원의원 에릭 스월웰이 캘리포니아 주지사 선거 출마를 포기한 사실과 당내 파장을 전한다.\"}\n(모호 엔티티(의혹·선거)는 본문 맥락으로 분기 · 주지사 선거 대표 → Politics, 성폭행 의혹 → Crime 부가)\n\n# 자가 검증 (출력 전 확인, 과정은 출력하지 않는다)\n1. 정확히 1문장, 평서형 종결인가\n2. 과장·추측·평가가 없는가\n3. CRITICAL: 출력이 JSON 한 줄뿐인가";
     const real = window.fetch ? window.fetch.bind(window) : null;
     window.fetch = function (url, opt) {
@@ -8328,6 +8657,7 @@ window.PRISM_APP_PARTS.push(() => ({
       if (u.indexOf('/ping') > -1) return Promise.resolve(J({ ok: true, detail: 'solar-pro3-260323 응답 정상' }));
       if (u.indexOf('/dashboard') > -1) return Promise.resolve(J({"n": 12, "g": 10, "r": 2, "gPct": 83, "entities": 31, "avgLead": 38, "intents": [{"k": "사건 경과 보도", "v": 7, "pct": 58}, {"k": "분석·해설", "v": 5, "pct": 42}, {"k": "인물 동향", "v": 3, "pct": 25}, {"k": "흥미·화제", "v": 2, "pct": 17}], "categories": [{"k": "News and Politics", "v": 6, "pct": 50}, {"k": "Sports", "v": 4, "pct": 33}, {"k": "Business and Finance", "v": 3, "pct": 25}], "qualityReasons": [{"k": "clickbait", "v": 2, "pct": 17}], "feedback": {"total": 62, "good": 48, "bad": 14, "learned": 9, "contents": 12, "reviewers": 3, "split": 3}, "contents": [{"hash": "d1", "title": "삼성전자 노조 임금 협상 결렬", "service": "뉴스", "grade": "G", "source": "자동 인입", "summary": "삼성전자가 중앙노동위 조정에서 노조와 합의에 이르지 못했다", "entities": ["삼성전자", "전국삼성전자노동조합"], "intent": ["사건 경과 보도"], "category": ["News and Politics / Society"], "reasons": [], "model": "solar-pro3-260323", "version": 2, "purpose": "review", "fb": {"verdict": "good", "ts": 1782800000}}, {"hash": "d2", "title": "한국은행 기준금리 동결 결정", "service": "뉴스", "grade": "G", "source": "배치", "summary": "한국은행이 기준금리를 현 수준에서 동결하기로 결정했다", "entities": ["한국은행", "금리"], "intent": ["사건 경과 보도"], "category": ["Business and Finance / Economy"], "reasons": [], "model": "solar-pro3-260323", "version": 2, "purpose": "eval", "fb": {}}, {"hash": "d3", "title": "낚시성 제목 사례", "service": "커뮤니티", "grade": "R", "source": "단건", "summary": "제목과 본문 괴리로 클릭을 유도한 사례", "entities": [], "intent": ["흥미·화제"], "category": [], "reasons": ["clickbait"], "model": "gpt-5.4-mini", "version": 1, "purpose": "review", "fb": {"verdict": "bad", "ts": 1782800000}}]}));
       if (u.indexOf('/topics') > -1) return Promise.resolve(J({"n_contents": 12, "summary": {"single": 2, "composite": 1}, "single": [{"cluster_id": "S-samsung", "entities": ["삼성전자", "노동조합"], "n_contents": 3}, {"cluster_id": "S-rate", "entities": ["한국은행", "금리"], "n_contents": 2}], "composite": [{"cluster_id": "C-labor", "rep_entities": ["삼성전자", "중앙노동위"], "n_contents": 4}]}));
+      if (u.indexOf('/usermeta-logviewer') > -1) return Promise.resolve(J({"session": {"uuid": "8I1wbjLiF32B_190605124927342", "suid": "w-Fz1UJbOTjgN3_260805931784866", "service_id": "prism_lab", "deployment": "sandbox", "sdk_type": "WEB", "islogin": false}, "n": 5, "bad_on": true, "logs": [{"t": "13:05:04", "label": "노출", "title": "[ViewImp] 마이콘텐츠_피드_노출", "verdict": "pass", "violations": [], "feedback": false, "injected": false, "fields": [["log_unique_id", "0198f2a1-0000-7abc-8def-000000000000", "필수"], ["access_timestamp", "1786343104000", "필수"], ["service_id", "prism_lab", "필수"], ["deployment", "sandbox", "필수"], ["sdk_type", "WEB", "필수"], ["uuid", "8I1wbjLiF32B_190605124927342", "필수"], ["suid", "w-Fz1UJbOTjgN3_260805931784866", "필수"], ["islogin", "false", "필수"], ["action_type", "ViewImp", "필수"], ["action_name", "마이콘텐츠_피드_노출", "필수"], ["page", "my_contents", "필수"], ["viewimp_contents[].id", "0", "조건부"], ["viewimp_contents[].type", "content", "조건부"]]}, {"t": "13:05:11", "label": "클릭", "title": "[Event] ClickContent · 마이콘텐츠_카드_클릭", "verdict": "pass", "violations": [], "feedback": false, "injected": false, "fields": [["action_type", "Event", "필수"], ["action_kind", "ClickContent", "선택"], ["action_name", "마이콘텐츠_카드_클릭", "필수"], ["page", "my_contents", "필수"], ["content.id", "0", "조건부"], ["content.type", "content", "조건부"], ["click.layer1", "main_feed", "권장"]]}, {"t": "13:06:03", "label": "끝까지 읽음", "title": "[Usage] UsagePage · 기사상세_나가기_완료", "verdict": "pass", "violations": [], "feedback": false, "injected": false, "fields": [["action_type", "Usage", "필수"], ["action_kind", "UsagePage", "선택"], ["action_name", "기사상세_나가기_완료", "필수"], ["page", "article_detail", "필수"], ["usage.duration", "52000", "조건부"], ["usage.scroll_percent", "95", "선택"]]}, {"t": "13:06:10", "label": "반응", "title": "[Event] Like · 기사상세_감정반응_클릭", "verdict": "pass", "violations": [], "feedback": true, "injected": false, "fields": [["action_type", "Event", "필수"], ["action_kind", "Like", "선택"], ["action_name", "기사상세_감정반응_클릭", "필수"], ["content.id", "0", "조건부"], ["custom_props.emotion", "좋아요", "선택(등록 키)"]]}, {"t": "13:06:24", "label": "주입 예시 · 무맥락 이름", "title": "[Event] ClickContent · item", "verdict": "warn", "violations": [["warn", "명명 규칙 위반: 화면_액션 형식이 아니거나 무맥락 이름(item)"], ["info", "권장 필드 미수집: click.layer1 (영역별 클릭률 집계 조건)"]], "feedback": false, "injected": true, "fields": [["action_type", "Event", "필수"], ["action_kind", "ClickContent", "선택"], ["action_name", "item", "필수"], ["page", "home_tab", "필수"], ["content.id", "0", "조건부"], ["content.type", "content", "조건부"]]}], "behavior": {"ops": 4, "logs": 4, "dup": 0}, "checklist": {"items": [{"key": "impression", "label": "피드 노출", "map": "ViewImp", "n": 1, "ok": true}, {"key": "search", "label": "콘텐츠 찾기(검색)", "map": "Event · Search", "n": 0, "ok": false}, {"key": "click", "label": "카드 탭(클릭)", "map": "Event · ClickContent", "n": 1, "ok": true}, {"key": "usage", "label": "읽기 종료(사용성)", "map": "Usage · UsagePage", "n": 1, "ok": true}, {"key": "react", "label": "감정 반응(피드백)", "map": "Event · Like / Dislike", "n": 1, "ok": true}, {"key": "comment", "label": "댓글 등록", "map": "Event · 행동 이름 규칙", "n": 1, "ok": true}], "pass_rate": 83, "missing": ["콘텐츠 찾기(검색)"]}}));
       if (u.indexOf('/usermeta') > -1) return Promise.resolve(J({"source": "실 행동 로그 → 소비 형태·강도 (데모)", "n_contents": 12, "users": [{"user_id": "u1", "persona": "정독러", "form": {"세션 길이": "장", "체류·완주": "고", "전환·이동": "느림", "깊이": "몰입", "시간대": "평일 야간"}, "intensity": {"심층 분석": "고", "정책·사업 소개": "고", "속보·단신": "저"}, "affinity_entities": [["삼성전자", 4], ["금리", 3], ["재건축", 2]], "engagement": {"views": 18, "clicks": 14, "click_rate": 0.78, "avg_dwell_sec": 52.4}}, {"user_id": "u2", "persona": "스낵러", "form": {"세션 길이": "단", "체류·완주": "저", "전환·이동": "빠름", "깊이": "훑기", "시간대": "출퇴근"}, "intensity": {"흥미·화제": "중", "속보·단신": "저"}, "affinity_entities": [["손흥민", 2]], "engagement": {"views": 22, "clicks": 5, "click_rate": 0.23, "avg_dwell_sec": 9.1}}], "personas_def": [{"id": 1, "name": "정독러", "full": "깊이 정독러", "desc": "한 주제를 파고들어 정독·저장", "form": {"깊이": "몰입", "체류·완주": "고"}}, {"id": 2, "name": "스낵러", "full": "가벼운 스낵러", "desc": "짧은 세션·빠른 전환", "form": {"깊이": "훑기", "체류·완주": "저"}}], "formula": "소비 강도 = 맥락(인텐트)별 Σ(체류/30 × 클릭가중)의 상대 등급(저/중/고)"}));
       if (u.indexOf('/dict') > -1) return Promise.resolve(J({"serviceGroups": ["뉴스", "연예", "스포츠", "콘텐츠", "커뮤니티", "블로그", "음악", "동영상"], "intentUniversal": ["속보·사건 추적", "심층 분석", "팬덤·화제성", "실용 정보", "감성·공감", "오락·유머", "의견·논쟁", "학술·전문", "옹호·지지", "반박·비판"], "intentForm": ["인터뷰", "현장취재·르포", "그래픽·인포그래픽", "포토·영상 중심", "보도자료·공식발표", "후기·리뷰·비평", "해설·팩트체크", "정형정보"], "intentByService": {"뉴스": ["속보·단신", "사건 경과 보도", "정책·행정", "노동·사회 이슈", "인물·사연", "국제·외교 보도", "트렌드·시장 분석"], "연예": ["열애·결혼·이혼", "컴백·신작 발매", "예고", "논란·해명", "방송 출연", "SNS·인플루언서", "캐스팅·공식소식", "이슈 편승(재조명)", "연재"], "스포츠": ["경기 프리뷰", "경기 라인업·중계", "경기 결과·리뷰", "이적·계약 보도", "선수 분석 기사", "전술·데이터 분석", "부상·복귀 근황", "팬·응원 문화"], "콘텐츠뷰": ["카드뉴스·인포그래픽", "큐레이션·모음", "랭킹·리스트", "요약·브리핑", "비교·분석", "반응·리액션", "생활·실용정보", "트렌드", "뉴스·소식", "칼럼"], "음악": ["신곡·앨범 발매", "차트·랭킹", "아티스트 소식", "라이브·공연", "음악 큐레이션", "음원 리뷰·분석"], "커뮤니티": ["질문·답변", "정보 공유", "의견·토론", "일상·잡담", "창작·작품 공유", "뉴스·소식"], "티스토리": ["에세이·산문", "가이드·튜토리얼", "기술·개발", "리뷰·분석", "일상·여행", "창작·연재"], "TV": ["클립·하이라이트", "풀영상·본방", "예고편·티저", "인터뷰·비하인드", "라이브 중계", "교양·다큐"]}, "serviceKeyMap": {"뉴스": "뉴스", "연예": "연예", "스포츠": "스포츠", "콘텐츠뷰 (일반)": "콘텐츠뷰", "콘텐츠뷰(일반)": "콘텐츠뷰", "멜론": "음악", "다음카페": "커뮤니티", "콘텐츠뷰 (커뮤니티)": "커뮤니티", "콘텐츠뷰(커뮤니티)": "커뮤니티", "티스토리": "티스토리", "VOD": "TV", "루프": "TV", "카카오TV": "TV", "카카오비디오": "TV", "콘텐츠": "콘텐츠뷰", "블로그": "티스토리", "동영상": "TV", "음악": "음악", "커뮤니티": "커뮤니티"}, "iabTier1": ["News and Politics", "Entertainment", "Business and Finance", "Sports", "Food and Drink", "Travel", "Family and Relationships", "Education", "Technology and Computing", "Books and Literature", "Medical Health", "Hobbies and Interests", "Health and Fitness", "Home and Garden", "Pets", "Style and Fashion", "Automotive", "Video Gaming", "Science", "Careers", "Religion and Spirituality"], "tier2": {"News and Politics": ["Politics", "Society", "Local News", "Crime", "Disasters", "Law", "International News", "Weather"], "Entertainment": ["Celebrity News", "Celebrity News (Foreign)", "Drama TV", "TV Shows", "Movies", "Music", "Visual Art", "Performing Arts", "Humor"], "Business and Finance": ["Economy", "Industries", "Business", "Investing", "Banking", "Insurance", "Real Estate Policy", "Real Estate Listings"], "Sports": ["Soccer (Domestic)", "Soccer (International)", "Baseball (Domestic)", "Baseball (International)", "Basketball", "Volleyball", "Golf", "Martial Arts", "Other Sports"], "Food and Drink": ["Cooking", "Food", "Beverages", "Dining Out"], "Travel": ["Domestic Travel", "International Travel", "Hotels", "Air Travel", "Travel Preparation"], "Family and Relationships": ["Parenting", "Family", "Dating", "Weddings"], "Education": ["Primary Education", "Secondary Education", "Higher Education", "Language Learning", "Adult Education"], "Technology and Computing": ["Computing", "Internet", "Information Security", "Consumer Electronics"], "Books and Literature": ["Fiction", "Non-Fiction", "Biographies", "Essays"], "Medical Health": ["Diseases and Conditions", "Wellness"], "Hobbies and Interests": ["Arts and Crafts", "Collecting", "Outdoors", "Military"], "Health and Fitness": ["Healthy Living", "Exercise and Fitness"], "Home and Garden": ["Interior Decorating", "Gardening", "Home Improvement", "Shopping", "Lifestyle"], "Pets": ["Dogs", "Cats", "Birds", "Fish", "Other Pets"], "Style and Fashion": ["Fashion", "Beauty", "Accessories"], "Automotive": ["Auto Type", "Auto Repair", "Auto Shows"], "Video Gaming": ["Video Games", "eSports"], "Science": ["Space and Astronomy", "Biology", "Physics", "Environment", "General Science"], "Careers": ["Job Search", "Career Advice"], "Religion and Spirituality": ["Religion", "Spirituality"]}, "tier1Ko": {"News and Politics": "뉴스·정치", "Entertainment": "엔터테인먼트", "Business and Finance": "비즈니스·금융", "Sports": "스포츠", "Food and Drink": "음식·요리", "Travel": "여행", "Family and Relationships": "가족·관계", "Education": "교육", "Technology and Computing": "테크·컴퓨팅", "Books and Literature": "도서·문학", "Medical Health": "의료·질병", "Hobbies and Interests": "취미·관심사", "Health and Fitness": "건강·운동", "Home and Garden": "홈·리빙", "Pets": "반려동물", "Style and Fashion": "패션·뷰티", "Automotive": "자동차", "Video Gaming": "게임", "Science": "과학", "Careers": "커리어·채용", "Religion and Spirituality": "종교·운세"}, "tier2Ko": {"Politics": "정치", "Society": "사회", "Local News": "지역 뉴스", "Crime": "사건·사고", "Disasters": "재해·재난", "Law": "법률", "International News": "국제 뉴스", "Weather": "날씨", "Celebrity News": "연예(국내)", "Celebrity News (Foreign)": "연예(해외)", "Drama TV": "드라마", "TV Shows": "TV·예능", "Movies": "영화", "Music": "음악", "Visual Art": "미술·시각예술", "Performing Arts": "공연예술", "Humor": "유머", "Economy": "경제", "Industries": "산업", "Business": "기업·비즈니스", "Investing": "투자", "Banking": "은행·금융", "Insurance": "보험", "Real Estate Policy": "부동산 정책", "Real Estate Listings": "부동산 매물", "Soccer (Domestic)": "축구(국내)", "Soccer (International)": "축구(해외)", "Baseball (Domestic)": "야구(국내)", "Baseball (International)": "야구(해외)", "Basketball": "농구", "Volleyball": "배구", "Golf": "골프", "Martial Arts": "격투기·무술", "Other Sports": "기타 스포츠", "Cooking": "요리·레시피", "Food": "음식", "Beverages": "음료", "Dining Out": "외식·맛집", "Domestic Travel": "국내 여행", "International Travel": "해외 여행", "Hotels": "호텔·숙박", "Air Travel": "항공", "Travel Preparation": "여행 준비", "Parenting": "육아", "Family": "가족", "Dating": "연애", "Weddings": "결혼·웨딩", "Primary Education": "초등 교육", "Secondary Education": "중등 교육", "Higher Education": "고등교육(대학)", "Language Learning": "어학", "Adult Education": "성인 교육", "Computing": "컴퓨팅·AI", "Internet": "인터넷", "Information Security": "정보보안", "Consumer Electronics": "전자제품", "Fiction": "소설", "Non-Fiction": "논픽션", "Biographies": "전기·평전", "Essays": "에세이·일상글", "Diseases and Conditions": "질병·질환", "Wellness": "웰니스", "Arts and Crafts": "공예", "Collecting": "수집", "Outdoors": "아웃도어", "Military": "밀리터리", "Healthy Living": "건강 생활", "Exercise and Fitness": "운동·피트니스", "Interior Decorating": "인테리어", "Gardening": "가드닝·원예", "Home Improvement": "집수리·개선", "Shopping": "쇼핑", "Lifestyle": "라이프스타일", "Dogs": "강아지", "Cats": "고양이", "Birds": "조류", "Fish": "어류", "Other Pets": "기타 반려동물", "Fashion": "패션", "Beauty": "뷰티", "Accessories": "액세서리", "Auto Type": "차종·신차", "Auto Repair": "정비·부품", "Auto Shows": "모터쇼", "Video Games": "비디오 게임", "eSports": "e스포츠", "Space and Astronomy": "우주·천문", "Biology": "생물", "Physics": "물리", "Environment": "환경", "General Science": "과학 일반", "Job Search": "구직·채용", "Career Advice": "커리어 조언", "Religion": "종교", "Spirituality": "운세·영성"}, "tier2Defs": {"Politics": {"def": "정책·법안·정치인 발언·정부기관·정책 사업 중심 보도(교육 정책 포함)", "ex": "연금개혁안 국회 통과"}, "Society": {"def": "정책 외 사회 현상·통계·세대/인구 그룹·전국 단위 사회 이슈·일반명사 노동 이슈", "ex": "청년 1인가구 급증"}, "Local News": {"def": "지역 단위 행정·이슈(전국 단위 사회 이슈는 Society 우선)", "ex": "부산 지하철 요금 인상"}, "Crime": {"def": "범죄 사건·수사·검거 보도(모호 엔티티는 본문이 범죄 맥락일 때)", "ex": "전세사기 일당 검거"}, "Disasters": {"def": "자연재해의 피해 보도(기상 현상·예보는 Weather)", "ex": "집중호우 침수 피해 속출"}, "Law": {"def": "판결·소송·법령 해석 중심", "ex": "대법원, 통상임금 판결"}, "International News": {"def": "해외 사안 우선 분류(국내 사안은 도메인별 Tier2)", "ex": "미 대선 첫 TV 토론"}, "Weather": {"def": "기상 현상·예보(재해 피해 보도는 Disasters)", "ex": "주말 전국 한파 예보"}, "Celebrity News": {"def": "한국 연예인 인물 중심 소식", "ex": "배우 결혼 발표"}, "Celebrity News (Foreign)": {"def": "해외 연예인 인물 중심 소식", "ex": "할리우드 배우 내한"}, "Drama TV": {"def": "드라마 작품·회차 중심(인물 중심이면 연예 계열)", "ex": "주말극 시청률 경신"}, "TV Shows": {"def": "예능·교양 등 TV 프로그램 중심", "ex": "예능 새 멤버 합류"}, "Movies": {"def": "영화 작품·개봉·박스오피스 중심", "ex": "추석 개봉작 예매율 1위"}, "Music": {"def": "대중음악·가수·음원(작품·활동 중심)", "ex": "신곡 차트 역주행"}, "Visual Art": {"def": "미술·전시·시각예술", "ex": "국립현대미술관 특별전"}, "Performing Arts": {"def": "연극·뮤지컬·무용 등 공연예술", "ex": "뮤지컬 내한 공연 개막"}, "Humor": {"def": "유머·개그 콘텐츠", "ex": "웃긴 반려견 순간 모음"}, "Economy": {"def": "거시 경제 지표·물가·고용 동향(거시지표 중심 노동 이슈 포함)", "ex": "소비자물가 3% 상승"}, "Industries": {"def": "제조·에너지·유통 등 산업 동향 · 기업의 산업 맥락 보도(반도체 투자·노사 포함)", "ex": "삼성전자 반도체 투자 확대"}, "Business": {"def": "테크·플랫폼 기업 동향·경영 일반", "ex": "카카오, 신사업 조직 개편"}, "Investing": {"def": "주식·가상자산 등 투자 정보", "ex": "코스피 사상 최고치"}, "Banking": {"def": "은행·대출·금융 서비스", "ex": "주담대 금리 인하"}, "Insurance": {"def": "보험 상품·제도", "ex": "실손보험 개편안"}, "Real Estate Policy": {"def": "부동산 정책·규제·세제", "ex": "종부세 개편 발표"}, "Real Estate Listings": {"def": "분양·시세·매물 정보", "ex": "재건축 분양가 공개"}, "Soccer (Domestic)": {"def": "K리그 등 국내 축구(선수·팀·리그·감독·대회)", "ex": "울산, K리그 선두 탈환"}, "Soccer (International)": {"def": "해외 리그·클럽·대회(EPL·UCL 등)", "ex": "손흥민 시즌 10호골"}, "Baseball (Domestic)": {"def": "KBO 등 국내 야구", "ex": "LG, 한국시리즈 진출"}, "Baseball (International)": {"def": "MLB 등 해외 야구", "ex": "오타니 50홈런 달성"}, "Basketball": {"def": "농구(국내·해외 통합)", "ex": "KBL 챔피언결정전"}, "Volleyball": {"def": "배구(국내·해외 통합)", "ex": "V리그 올스타전"}, "Golf": {"def": "골프 대회·선수", "ex": "KPGA 투어 우승"}, "Martial Arts": {"def": "격투기·무술(UFC·복싱 등)", "ex": "UFC 타이틀전 결과"}, "Other Sports": {"def": "그 외 종목 통합(e스포츠 제외 · Video Gaming/eSports)", "ex": "쇼트트랙 월드컵 금메달"}, "Cooking": {"def": "가정 요리·레시피", "ex": "김치찌개 황금 레시피"}, "Food": {"def": "식재료·음식 일반 정보", "ex": "제철 과일 고르는 법"}, "Beverages": {"def": "음료 제품·트렌드(제품 중심)", "ex": "편의점 신상 하이볼"}, "Dining Out": {"def": "외식·맛집(브랜드 단위 포함)", "ex": "성수동 맛집 추천"}, "Domestic Travel": {"def": "국내 여행지·코스(단기 여행 · 이민·장기체류는 Lifestyle)", "ex": "가을 단풍 명소 5곳"}, "International Travel": {"def": "해외 여행지·코스", "ex": "오사카 3박4일 코스"}, "Hotels": {"def": "호텔·숙박", "ex": "제주 호캉스 추천"}, "Air Travel": {"def": "항공권·공항·항공사", "ex": "특가 항공권 오픈"}, "Travel Preparation": {"def": "여행 준비·팁(환전·짐싸기 등)", "ex": "해외여행 준비물 체크리스트"}, "Parenting": {"def": "육아·양육", "ex": "신생아 수면 교육 팁"}, "Family": {"def": "가족 관계·일상", "ex": "명절 가족 갈등 대처법"}, "Dating": {"def": "연애·소개팅", "ex": "소개팅 첫 만남 대화법"}, "Weddings": {"def": "결혼 준비·웨딩", "ex": "스몰웨딩 비용 정리"}, "Primary Education": {"def": "초등 교육·입학", "ex": "초등 입학 준비물"}, "Secondary Education": {"def": "중·고등 교육·입시", "ex": "수능 국어 출제 경향"}, "Higher Education": {"def": "대학·대학원 등 고등교육", "ex": "대학 등록금 동결 논의"}, "Language Learning": {"def": "어학·외국어 학습", "ex": "토익 900점 공부법"}, "Adult Education": {"def": "성인 교육·자격증·평생학습", "ex": "직장인 자격증 추천"}, "Computing": {"def": "컴퓨팅·소프트웨어·AI(AI 는 별도 Tier2 없이 여기로)", "ex": "생성형 AI 신모델 공개"}, "Internet": {"def": "인터넷 서비스·플랫폼 이용", "ex": "유튜브 알고리즘 변화"}, "Information Security": {"def": "보안·해킹·개인정보", "ex": "대규모 개인정보 유출"}, "Consumer Electronics": {"def": "전자제품·신제품(갤럭시 신제품 보도 등)", "ex": "갤럭시 신모델 공개"}, "Fiction": {"def": "소설 작품·서평", "ex": "올해의 소설 베스트"}, "Non-Fiction": {"def": "인문·교양 논픽션", "ex": "경제 교양서 추천"}, "Biographies": {"def": "전기·평전·회고록", "ex": "스티브 잡스 전기"}, "Essays": {"def": "에세이 · 커뮤니티/블로그 일반 일상 글(UGC 1차 분류)", "ex": "퇴사 후 1년, 나의 기록"}, "Diseases and Conditions": {"def": "질병·증상·치료 등 의학 정보", "ex": "당뇨 초기 증상"}, "Wellness": {"def": "의학적 웰니스·정신건강 관리", "ex": "수면의 질 높이는 법"}, "Arts and Crafts": {"def": "공예·그림·DIY 취미", "ex": "초보 뜨개질 가이드"}, "Collecting": {"def": "수집 취미(피규어·카드 등)", "ex": "포켓몬 카드 시세"}, "Outdoors": {"def": "등산·캠핑·낚시 등 아웃도어", "ex": "가을 백패킹 명소"}, "Military": {"def": "밀리터리 취향 콘텐츠(국방·안보 시사는 News and Politics)", "ex": "K2 전차 성능 정리"}, "Healthy Living": {"def": "일상 건강 관리·식단", "ex": "아침 공복 루틴"}, "Exercise and Fitness": {"def": "운동·트레이닝", "ex": "홈트 전신 루틴 4주"}, "Interior Decorating": {"def": "인테리어·공간 꾸미기", "ex": "10평 원룸 인테리어"}, "Gardening": {"def": "가드닝·식물 키우기", "ex": "몬스테라 키우기"}, "Home Improvement": {"def": "집수리·리모델링", "ex": "셀프 도배 가이드"}, "Shopping": {"def": "소비자 관점 쇼핑 정보(유통 산업 분석은 Business and Finance)", "ex": "블랙프라이데이 할인 총정리"}, "Lifestyle": {"def": "귀촌·전원·이민·살림·생활정보", "ex": "제주 이주 1년 후기"}, "Dogs": {"def": "강아지", "ex": "강아지 분리불안 훈련"}, "Cats": {"def": "고양이", "ex": "고양이 사료 고르기"}, "Birds": {"def": "조류 반려동물", "ex": "앵무새 키우기 입문"}, "Fish": {"def": "어류·수조", "ex": "초보 어항 세팅"}, "Other Pets": {"def": "기타 반려동물", "ex": "햄스터 케이지 추천"}, "Fashion": {"def": "패션 일반 · 스타일·코디·트렌드·브랜드", "ex": "가을 코디 추천"}, "Beauty": {"def": "뷰티·스킨케어·헤어·메이크업", "ex": "수부지 스킨케어 루틴"}, "Accessories": {"def": "가방·시계·주얼리", "ex": "명품 가방 입문 추천"}, "Auto Type": {"def": "차종·신차·브랜드 보도(안전 정책은 News and Politics)", "ex": "신형 그랜저 출시"}, "Auto Repair": {"def": "정비·부품·차량 관리", "ex": "엔진오일 교체 주기"}, "Auto Shows": {"def": "모터쇼·전시", "ex": "서울모빌리티쇼 개막"}, "Video Games": {"def": "게임 작품·플레이 콘텐츠", "ex": "신작 RPG 출시 리뷰"}, "eSports": {"def": "프로 대회·선수·팀", "ex": "롤드컵 결승 프리뷰"}, "Space and Astronomy": {"def": "우주·천문", "ex": "누리호 4차 발사"}, "Biology": {"def": "생물·생명과학", "ex": "심해 신종 생물 발견"}, "Physics": {"def": "물리학", "ex": "양자컴퓨터 연산 신기록"}, "Environment": {"def": "환경·기후", "ex": "북극 해빙 최소치"}, "General Science": {"def": "과학 일반·연구 동향", "ex": "노벨상 수상자 발표"}, "Job Search": {"def": "구직·채용 공고·면접", "ex": "하반기 공채 일정"}, "Career Advice": {"def": "커리어 조언·이직·직장생활", "ex": "이직 연봉 협상 팁"}, "Religion": {"def": "제도 종교·교리·종교계 뉴스(사회 이슈는 News and Politics 우선)", "ex": "부활절 미사 봉헌"}, "Spirituality": {"def": "운세·점술·타로·영성", "ex": "이번 주 별자리 운세"}}, "intentExamples": {"속보·단신": "지하철역 인근 화재 발생", "옹호·지지": "이 정책이 꼭 필요한 이유", "반박·비판": "이 정책이 실패할 수밖에 없는 이유", "정책·행정": "청년 월세 지원 신청 방법", "경기 결과·리뷰": "두산, 9회말 끝내기 승리", "이적·계약 보도": "FA 최대어 계약 임박", "열애·결혼·이혼": "배우 커플 결혼 발표", "컴백·신작 발매": "새 미니앨범 발매", "후기·리뷰·비평": "무선청소기 한 달 사용기", "랭킹·리스트": "올여름 휴가지 TOP 10", "카드뉴스·인포그래픽": "한 장으로 보는 청약 개편", "요약·브리핑": "오늘 아침 뉴스 5줄 요약", "생활·실용정보": "전기요금 아끼는 법", "질문·답변": "전세 계약 시 주의점 질문", "포토·영상 중심": "O) [오늘의 1면 사진] 폭염 속 도심 분수대 — 사진 한 장이 콘텐츠의 목적 / X) 필자 프로필 사진이 썸네일인 시론, 자료 이미지가 여럿인 팩트체크"}, "gradeDefs": [{"k": "G", "t": "G · 유통 가능", "d": "품질 사유가 임계 미만. 서비스 노출 가능 판정."}, {"k": "R", "t": "R · 유통 제외", "d": "임계를 넘는 품질 사유가 1개 이상 확정. 사유 태그가 함께 표시됩니다."}, {"k": "YELLOW", "t": "YELLOW · 판정 애매(등급 아님)", "d": "모델 확신이 낮거나 경계 사례. 사람 검수 대상으로 회수되어 검수 큐에 들어옵니다."}], "iabMap": {"Entertainment / Celebrity News (Foreign)": "Pop Culture / Celebrity News", "Entertainment / Drama TV": "Television / Drama TV", "Entertainment / TV Shows": "Television / TV Shows", "Entertainment / Movies": "Movies", "Entertainment / Music": "Music and Audio", "Entertainment / Visual Art": "Fine Art", "Entertainment / Performing Arts": "Fine Art", "Business and Finance / Investing": "Personal Finance", "Business and Finance / Banking": "Personal Finance", "Business and Finance / Insurance": "Personal Finance", "Business and Finance / Real Estate Policy": "Real Estate / Residential Real Estate", "Business and Finance / Real Estate Listings": "Real Estate / Residential Real Estate", "News and Politics / Weather": "Weather", "Home and Garden / Shopping": "Shopping", "Sports / Soccer (Domestic)": "Sports / Soccer", "Sports / Soccer (International)": "Sports / Soccer", "Sports / Baseball (Domestic)": "Sports / Baseball", "Sports / Baseball (International)": "Sports / Baseball", "Sports / Other Sports": "Sports / Olympic Sports", "Video Gaming / eSports": "Video Gaming / eSports"}, "domainGroups": {"시사": ["News and Politics"], "경제·산업": ["Business and Finance"], "엔터": ["Entertainment"], "스포츠": ["Sports"], "테크·모빌리티": ["Technology and Computing", "Automotive", "Video Gaming"], "라이프": ["Food and Drink", "Travel", "Family and Relationships", "Home and Garden", "Pets", "Style and Fashion", "Health and Fitness", "Hobbies and Interests", "Religion and Spirituality", "Medical Health", "Careers"], "지식·교양": ["Education", "Books and Literature", "Science"]}, "intentDefs": {"속보·사건 추적": "새로 발생한 사건·이슈를 빠르게 전하고 후속 경과를 추적", "심층 분석": "배경·맥락·데이터로 사안을 깊이 해설", "팬덤·화제성": "인물·작품에 대한 팬 반응·화제가 중심일 때만(출처가 UGC 라는 이유만으로 부여하지 않음)", "실용 정보": "독자가 따라 할 수 있는 방법·팁·가이드 한정(이적 소식·경기 일정 등 관심사 소비형 정보 제외)", "감성·공감": "감정·경험을 나누며 공감을 유도", "오락·유머": "재미·유머 중심의 가벼운 콘텐츠", "의견·논쟁": "찬반이 병렬로 오가는 주장·토론 콘텐츠(한쪽 논조가 뚜렷하면 옹호·지지/반박·비판)", "학술·전문": "전문 지식·연구·기술을 다룸", "옹호·지지": "특정 사안·인물·정책을 지지하는 한쪽 논조로 주장을 펴는 콘텐츠 · 명시적 비판 대상 없이 지지·홍보 논조가 중심일 때(찬반 병렬이면 의견·논쟁)", "반박·비판": "특정 사안·인물·정책·주장에 반대·비판하는 한쪽 논조의 콘텐츠 · 기존 정책·주장에 반대하는 것이 논지의 중심이면 대안을 함께 지지하더라도 이 값을 부여(찬반 병렬이면 의견·논쟁)", "속보·단신": "사건 발생 직후 팩트 위주 전달", "사건 경과 보도": "진행 중인 사건의 후속·경과 전달", "정책·행정": "정책·사업 소개 + 법안 통과 + 행정 발표 통합", "노동·사회 이슈": "노사·파업·고용 + 교통·산업·재난·생활 안전 통합", "인물·사연": "일반인·시민의 삶·사연, 인물 조명", "국제·외교 보도": "해외 사건·외교·국제 관계 전달", "트렌드·시장 분석": "세대·소비·라이프스타일·시장(산업·수요) 변화의 분석이 중심인 콘텐츠 · 여론조사·설문은 주제가 소비·시장·라이프스타일일 때만 부여(정책·정치 사안의 찬반 조사는 정책·행정 등 해당 주제 값)", "열애·결혼·이혼": "연예인 교제·결혼·파경 관련 소식", "컴백·신작 발매": "앨범·영화·드라마·예능 신규 출시", "예고": "방송·유튜브·공연 신작/차회 예고", "논란·해명": "연예인 관련 의혹·논란과 대응", "방송 출연": "예능·토크쇼·리얼리티 출연 관련", "SNS·인플루언서": "스타 SNS·라이브 소통, 인플루언서 동향", "캐스팅·공식소식": "캐스팅·발탁 등 공식 소식", "이슈 편승(재조명)": "과거 영상·이력 재조명 등 이슈 편승", "연재": "연재·기획 시리즈", "경기 프리뷰": "경기 앞두고 전망·관전 포인트", "경기 라인업·중계": "라인업 공개 및 실시간 진행 상보", "경기 결과·리뷰": "경기 스코어·하이라이트·경기 분석", "이적·계약 보도": "선수 이적·FA·트레이드·재계약 관련", "선수 분석 기사": "선수 개인의 폼·기록·경기력 분석", "전술·데이터 분석": "전술 해설·통계 기반 경기 분석", "부상·복귀 근황": "선수 부상 상태·재활·복귀 정보", "팬·응원 문화": "팬 반응·응원 문화·원정 관전", "카드뉴스·인포그래픽": "시각 중심 정보 전달 콘텐츠", "큐레이션·모음": "여러 소스를 엮은 주제별 모음", "랭킹·리스트": "순위형·나열형 콘텐츠", "요약·브리핑": "긴 기사·보고서의 핵심 요약", "비교·분석": "제품·정책·인물 등 비교형 콘텐츠", "반응·리액션": "특정 이슈에 대한 반응 모음", "생활·실용정보": "일상 활용 정보·팁", "트렌드": "인물·이슈·스타일 트렌드 소개", "뉴스·소식": "신제품·동향·공식 발표 등 소식 전달", "칼럼": "화자 관점이 강한 해설·주장(사설 포함 · 사설·칼럼 통합 운영)", "신곡·앨범 발매": "신곡·앨범·EP 발매 및 발매 예고", "차트·랭킹": "차트 진입·상위·역주행 등 순위 변동", "아티스트 소식": "아티스트 활동·근황·인터뷰", "라이브·공연": "콘서트·페스티벌·라이브 출연", "음악 큐레이션": "플레이리스트·테마곡 모음·시대별 추천", "음원 리뷰·분석": "음원·앨범에 대한 비평·해설·트랙 분석", "질문·답변": "특정 주제에 대한 질의와 답변", "정보 공유": "유용한 정보·팁·노하우 공유", "의견·토론": "특정 이슈에 대한 의견 개진과 토론", "일상·잡담": "일상 공유, 가벼운 대화", "창작·작품 공유": "팬픽·그림·사진 등 창작물 공유", "에세이·산문": "개인 경험·감상 기반 글", "가이드·튜토리얼": "단계별 안내·설명 콘텐츠", "기술·개발": "프로그래밍·IT·기술 관련 글", "리뷰·분석": "직접 체험 없이 제품·서비스·콘텐츠를 정보·스펙·시장 관점에서 분석(직접 체험 기반 평가는 범용 '후기·리뷰·비평' · 같은 근거로 두 값을 중복 부여하지 않음)", "일상·여행": "일상 기록·여행기·맛집 탐방", "창작·연재": "소설·시·연재물·번역 등 창작 콘텐츠", "클립·하이라이트": "방송·경기의 핵심 장면 발췌", "풀영상·본방": "방송 전체 또는 긴 분량 영상", "예고편·티저": "신작·차회 예고 영상", "인터뷰·비하인드": "출연자·제작진 인터뷰, 비하인드", "라이브 중계": "실시간 방송·중계", "교양·다큐": "교육·교양·다큐멘터리 영상", "인터뷰": "인물의 발언·문답 중심(감독·선수·연예인·일반인 통합)", "현장취재·르포": "현장 방문·취재 기반 보도", "그래픽·인포그래픽": "도표·그래픽이 핵심 전달 수단", "포토·영상 중심": "직접 촬영한 것으로 읽히는 현장 사진이 콘텐츠의 핵심 전달 수단인 것 · 이미지 구좌(편성)에 넣을 콘텐츠 선별이 목적이라 사진 장수·본문 분량 같은 정량 기준으로 판정하지 않으며 사진이 한 장이어도 그 사진이 콘텐츠의 목적이면 부여(현장취재·화보·직접 촬영 인터뷰 포함 · 중간에 그래픽이 섞여도 현장·심층 취재면 부여) · 미부여: 글쓴이 프로필 사진이 대표 이미지인 칼럼·시론, 사진이 내용의 주가 아닌 것(해설·팩트체크), 직접 촬영이 아닌 사진만의 인터뷰, 생성형 AI 이미지만 있는 것, 사진 품질이 낮거나 중요하지 않은 것, 현장성 없는 단순 보도", "보도자료·공식발표": "공식 채널 발 발표·공고·캐스팅·스폰서·프로모션(광고성보다 우선 부여)", "후기·리뷰·비평": "글쓴이가 직접 사용·관람·체험한 것에 기반한 평가(시승기·공연 리뷰·방송 리뷰·사용 후기 · 체험 없는 정보·스펙 분석은 티스토리 '리뷰·분석' · 같은 근거로 두 값을 중복 부여하지 않음)", "해설·팩트체크": "쟁점 검증·배경 해설", "정형정보": "일정·부고·인사·시황·날씨·운세·기록 등 주기적·전달목적 정형 기사(재미 중심 유머는 '오락·유머')"}, "fixElements": [{"id": "summary", "label": "리드문", "stage": "analyze"}, {"id": "entities", "label": "엔티티", "stage": "analyze"}, {"id": "intent", "label": "인텐트", "stage": "analyze"}, {"id": "category", "label": "카테고리", "stage": "analyze"}, {"id": "grade", "label": "등급·유통", "stage": "judge"}, {"id": "quality", "label": "품질 사유", "stage": "review"}], "categoryCriteria": {"News and Politics": "정책·법안·정치인 발언·정부기관·정책 사업명은 Politics, 정책 외 사회 현상·통계·일반 사회 기사는 Society. 노동·파업·노사 갈등은 Society(거시지표 중심 경제는 Business and Finance / Economy). 단, 기업 엔티티가 노사·파업 맥락으로 등장하면 Business and Finance / Industries 우선 · Society 는 총파업·고령운전자 등 일반명사에 적용. 세대·인구 그룹은 Society. 지역 단위 행정·이슈는 Local News, 전국 단위 사회 이슈는 Society 우선. 교육 정책은 Politics, 학습·교육 콘텐츠는 Education, 사회 현상으로서 교육 이슈는 Society. 자연재해 피해 보도는 Disasters, 기상 현상·예보는 Weather. 국내 사안은 도메인별 Tier 2, 해외 사안은 International News 우선. 모호 엔티티(의혹·선거 등)는 본문 맥락으로 분기(성폭행 맥락 → Crime, 정치 맥락 → Politics).", "Entertainment": "인물 중심은 Celebrity News 계열, 작품·프로그램 중심은 Drama TV / TV Shows / Movies / Music. 국적 분기: 한국 인물 → Celebrity News, 해외 인물 → Celebrity News (Foreign). 프로그램 단위 세부 분류는 카테고리가 아닌 엔티티(프로그램명) 단위로 처리.", "Business and Finance": "기업 엔티티는 주력 산업 기준: 테크·플랫폼 → Business, 제조·에너지 → Industries, 금융 → Banking. 삼성전자 분기: 반도체 투자·실적·노사 보도 → Industries, 갤럭시 신제품 보도 → Technology and Computing / Consumer Electronics. 유통 산업 분석·이커머스 기업 동향은 Industries, 소비자 관점 쇼핑 정보는 Home and Garden / Shopping. 부동산은 정책(규제·세제) vs 매물(분양·시세) 분기.", "Sports": "선수·팀·리그·감독·대회 모두 해당 종목 Tier 2로 직접 매핑. 축구·야구만 국내·해외 분기, 그 외 통합. 해외 리그·클럽·대회(EPL·UEL·UCL 등)는 Soccer (International). e스포츠는 제외 · Video Gaming / eSports 로 단일화.", "Food and Drink": "가정 요리(레시피) → Cooking, 외식·맛집 → Dining Out. 브랜드 단위면 Dining Out, 음료 제품 중심이면 Beverages.", "Travel": "단기 여행 콘텐츠는 Travel, 이민·장기체류·외국생활은 Home and Garden / Lifestyle 로 분류.", "Technology and Computing": "AI 는 Computing 산하(별도 Tier 2 없음). 통신사·반도체 부품 기업이 산업 분석 맥락이면 Business and Finance / Industries 우선.", "Books and Literature": "커뮤니티·블로그의 일반 일상 글(UGC)은 Essays 로 1차 분류.", "Medical Health": "선수 부상 보도는 경기 맥락이면 Sports, 의학 정보 중심이면 Diseases and Conditions. 의학·보건·질병 콘텐츠는 Medical Health, 건강관리·운동·식단 등 일상 건강은 Health and Fitness.", "Hobbies and Interests": "군대·군인·무기 등 밀리터리 취향 콘텐츠는 Military, 국방·전쟁·안보 시사 기사는 News and Politics.", "Health and Fitness": "건강관리·다이어트·운동은 Health and Fitness, 질병·의료·보건·의학계 소식은 Medical Health.", "Home and Garden": "Shopping 은 소비자 관점 쇼핑 정보에 한정(유통 산업 분석은 Business and Finance / Industries). 귀촌·전원생활·외국생활·이민·살림·생활정보는 Lifestyle, 순수 인테리어·공간 꾸미기는 Interior Decorating.", "Automotive": "자동차 브랜드·차종·신차 보도는 Auto Type 통합. 정비·부품은 Auto Repair. 자동차 안전 정책·정부 보급사업은 News and Politics / Politics, 운전자 인구 그룹·사회 이슈는 News and Politics / Society.", "Video Gaming": "게임 작품·플레이 콘텐츠는 Video Games, 프로 대회·선수·팀은 eSports.", "Religion and Spirituality": "운세·점술은 Spirituality, 제도 종교·교리·묵상·종교계 뉴스는 Religion. 종교 관련 사회 이슈는 News and Politics 우선."}, "qualityMetas": {"ad": "광고성: 제품·서비스 홍보 + 명시적 구매·가입 유도가 본문 핵심(3축 AND · 수익 귀속·명시 CTA·B2C 대상 모두 충족 시에만) · 공식 채널의 보도자료·발표는 광고성으로 판정하지 않는다(260715 회의 · 보도자료·공식발표 인텐트 우선)", "sexual": "선정적 텍스트: 성적 표현이 과도해 정보 전달보다 자극이 목적(단어 경계·콜로케이션, 강한 신호+정량 기준)", "profanity": "저속 텍스트: 욕설·비속어를 과도 사용해 불쾌감 유발(단어 경계, 마스킹 포함)", "gambling": "사행성: 로또·토토·카지노 등 조장·당첨 기대감 자극(시점성+권유·예측 톤 결합)", "clickbait": "낚시성: 제목-본문 괴리·정보 은닉으로 호기심 자극 클릭 유도(제목↔본문 정합성 · 동명이인·유명인 이름으로 다른 인물을 오인케 하는 제목 포함)", "format": "형식 불만족: 극단적으로 짧거나 구조 불완전해 피드 UX 저해(UGC 한정)", "shallow": "낮은 정보가치: 본문 무관 인물·발언을 끌어와 포장, 화제성·검색 노출 노림(동명이인·유명인 이름 어뷰징으로 검색 노출 노린 콘텐츠 포함)", "spam": "저품질 생산자: AI 양산·템플릿화 등 비정상 생산 패턴(문체 부자연·사실 불일치)", "graphic": "사건·재난·범죄 과잉묘사: 수법·피해를 구체·지속 묘사(묘사 신호 2개 이상 시 R)", "political": "정치·이념 거론: 한국 특정 정당·정치인·진영을 비방·낙인·선동(UGC 한정)", "hate": "차별·혐오: 인종·성별·지역·연령·세대·국적·계층 비하·혐오 표현(UGC 한정)"}, "qualityNames": {"ad": "광고성", "sexual": "선정적 텍스트", "profanity": "저속 텍스트", "gambling": "사행성", "clickbait": "낚시성", "format": "형식 불만족", "shallow": "낮은 정보가치", "spam": "저품질 생산자", "graphic": "사건·재난·범죄 과잉묘사", "political": "정치·이념 거론", "hate": "차별·혐오"}, "qualityApplies": {"ad": "both", "sexual": "both", "profanity": "both", "gambling": "both", "clickbait": "both", "format": "ugc", "shallow": "both", "spam": "both", "graphic": "both", "political": "ugc", "hate": "ugc"}, "legalTypes": {"defamation": {"label": "명예훼손", "article": "형법 §307"}, "insult": {"label": "모욕", "article": "형법 §311"}, "obscenity": {"label": "음란물", "article": "정보통신망법 §44-7"}, "sexual_violence": {"label": "성폭력(촬영물 등)", "article": "성폭력처벌법 §14"}, "privacy_violation": {"label": "사생활 침해", "article": "개인정보보호법"}, "stalking": {"label": "스토킹", "article": "스토킹처벌법"}, "hate_speech": {"label": "혐오표현", "article": "포괄 규정(개별 조문 없음)"}, "copyright": {"label": "저작권 침해", "article": "저작권법"}, "fraud": {"label": "사기", "article": "형법 §347"}, "election_interference": {"label": "선거 개입", "article": "공직선거법"}, "ad_fraud": {"label": "허위·과장 광고", "article": "표시광고법"}, "gambling": {"label": "도박 개장/유도", "article": "형법 §247"}, "drug_weapon": {"label": "마약·무기 거래", "article": "마약류관리법 등"}}, "intakePolicy": {"텍스트형": {"filter": "O", "method": "정상 분류(품질 메타 부여)", "status": "구현"}, "이미지형": {"filter": "△", "method": "GREEN 일괄 + 캡션 텍스트(시각 이해)", "status": "PoC"}, "영상형": {"filter": "X", "method": "GREEN 일괄(Argos 별도)", "status": "계획"}, "SNS형": {"filter": "X", "method": "서비스 자체 필터 후 인입", "status": "계획"}, "묶음형 · 데이터형": {"filter": "X", "method": "GREEN 일괄(고도화 과제)", "status": "계획"}}}));
       if (u.indexOf('/rerun') > -1 || u.indexOf('/run') > -1) return Promise.resolve(J(window.__DEMO_RESULT__));
@@ -9208,6 +9538,7 @@ window.PRISM_APP_PARTS.push(() => ({
           <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
           <button type="button" x-bind:class="labTab==='media'?'sel':''" x-on:click="labTab='media'">미디어</button>
           <button type="button" x-bind:class="labTab==='ca'?'sel':''" x-on:click="labTab='ca'">콘텐츠 에이전트</button>
+          <button type="button" x-bind:class="labTab==='spectrum'?'sel':''" x-on:click="labTab='spectrum'; spLoad()">스펙트럼</button>
         </div>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
       </div>
@@ -9753,13 +10084,14 @@ window.PRISM_APP_PARTS.push(() => ({
       </div>
       </template>
 
-      <!-- ═══ 모듈: 사용자 메타(실험실) · 서브탭 3개 = 시연 | 생성 과정 | 정책 (분리형 모듈 · 독립 관리) ═══ -->
+      <!-- ═══ 모듈: 사용자 메타(실험실) · 서브탭 4개 = 시연 | 생성 과정 | 정책 | 로그뷰어 (분리형 모듈 · 독립 관리) ═══ -->
       <template x-if="mod === 'lab'">
         <div x-show="labTab === 'user'" x-cloak class="w-full space-y-4">
         <div class="flex items-center gap-2">
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='run' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='run'">시연</button>
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='gen' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='gen'">생성 과정</button>
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='policy' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='policy'">정책</button>
+          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='viewer' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='viewer'; loadLogViewer()">로그뷰어</button>
           <a class="ds-btn ds-btn--secondary ds-btn--s-sm" href="https://claude.ai/code/artifact/762ef566-1220-4f06-a07f-6c2012da44db" target="_blank" rel="noopener" data-tip="MY 콘텐츠 탭 기획안 · 새 창" data-tip-pos="top">기획안 ↗</a>
         </div>
 
@@ -10333,6 +10665,79 @@ window.PRISM_APP_PARTS.push(() => ({
                 </tbody></table></div>
                 <div class="text-xs text-muted" style="margin-top:6px">페르소나는 배타 분류가 아니라 <b>중복 매칭</b>을 허용합니다 · 여러 기준에 걸치면 1순위 · 2순위를 병행 표기하고, 경계가 좁으면 신뢰도를 낮춰 표시합니다.</div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ 로그뷰어: PAST 로그 검증 도구(기획 13) · 뷰어가 아니라 "맞게 심어졌는지" 판정 ═══ -->
+        <div x-show="labUserView==='viewer'" x-cloak class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>검증 세션</b><span class="meta">시연 세션 = 기기 식별자(uuid) 분리 1인 세션</span>
+              <span class="ml-auto flex items-center gap-2"><span class="text-xs" style="color:var(--ds-primary)" x-show="lvMsg" x-text="lvMsg"></span>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="lvBusy" x-on:click="lvOps(lv && lv.bad_on ? 'clear' : 'inject')" x-text="lv && lv.bad_on ? '위반 예시 제거' : '위반 예시 주입'"></button>
+              <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadLogViewer()" data-tip="새로고침" data-tip-pos="bottom" aria-label="로그뷰어 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
+                <li>이 화면은 로그가 <b>보이는지</b>가 아니라 <b>맞게 심어졌는지</b>를 판정하는 <b>PAST 로그 검증 도구</b> 시연입니다 · 기대 로그와의 대조로 누락 · 중복까지 잡는 것이 뷰어와의 차이.</li>
+                <li>검증 세션은 기기 식별자(uuid) 기준 본인 로그만 분리합니다 · 시연이 그 자체로 1인 세션이라 [시연] 탭에서 행동하면 여기 판정 스트림에 그대로 쌓입니다(새로고침으로 반영).</li>
+                <li>판정 규칙의 정본은 12. 수집 데이터 정의(스키마) · 11. 정책 및 운영(정책)입니다 · [위반 예시 주입]을 누르면 실측에서 발견된 대표 위반(무효값 · 무맥락 이름 · 광고 혼입 · 중복 전송 · 필수 누락)의 판정을 볼 수 있습니다.</li>
+              </ul>
+              <div class="overflow-auto"><table class="ds-table"><thead><tr><th>기기(uuid)</th><th>세션(suid)</th><th style="width:100px">service_id</th><th style="width:100px">deployment</th><th style="width:80px">sdk_type</th></tr></thead><tbody>
+                <tr class="tnum"><td><code class="text-violet" x-text="lv ? lv.session.uuid : '·'"></code></td><td><code class="text-violet" x-text="lv ? lv.session.suid : '·'"></code></td><td x-text="lv ? lv.session.service_id : '·'"></td><td x-text="lv ? lv.session.deployment : '·'"></td><td x-text="lv ? lv.session.sdk_type : '·'"></td></tr>
+              </tbody></table></div>
+            </div>
+          </div>
+
+          <div class="panel"><div class="panel-hd"><b>실시간 판정 스트림</b><span class="meta">판정 ① 로그 단위(형식) · 행을 누르면 필드 단위 상세</span>
+              <span class="meta tnum ml-auto" x-text="lv ? ('로그 ' + lv.n + '건') : ''"></span></div>
+            <div class="panel-bd">
+              <div class="overflow-auto" style="max-height:380px"><table class="ds-table"><thead><tr><th style="width:80px">시각</th><th>로그</th><th style="width:70px">판정</th><th>사유</th></tr></thead><tbody>
+                <template x-for="(l, li) in ((lv && lv.logs) || [])" x-bind:key="'lvl'+li">
+                  <tr style="cursor:pointer" x-bind:style="lvSel===li ? 'background:var(--ds-surface)' : ''" x-on:click="lvSel = lvSel===li ? -1 : li">
+                    <td class="tnum" x-text="l.t"></td>
+                    <td><code class="text-violet" x-text="l.title"></code>
+                      <span x-show="l.feedback" class="ds-badge ds-badge--entity" style="margin-left:4px;cursor:help" data-tip="피드백 계열 · 유실 금지 등급(브로커 확인 후 응답 · 실패 시 재전송)" data-tip-pos="top">피드백</span>
+                      <span x-show="l.injected" class="ds-badge ds-badge--neutral" style="margin-left:4px" x-text="l.label"></span></td>
+                    <td><span class="ds-badge" x-bind:class="lvBadge(l.verdict)" x-text="lvLabel(l.verdict)"></span></td>
+                    <td class="text-xs"><template x-for="(v, vi) in l.violations" x-bind:key="'lvv'+li+'_'+vi"><div x-text="v[1]"></div></template><span x-show="!l.violations.length" class="text-muted">·</span></td>
+                  </tr>
+                </template>
+              </tbody></table></div>
+              <div class="text-xs text-muted" x-show="lv && !lv.logs.length">아직 로그가 없습니다 · [시연] 탭에서 콘텐츠를 소비하면 판정 대상이 쌓입니다.</div>
+              <!-- 로그 상세 보기: 필드 단위 수집값 · 수집 등급(12. 수집 데이터 정의 기준) -->
+              <div x-show="lvSel >= 0" x-cloak style="margin-top:10px">
+                <div class="flex items-center gap-2" style="margin-bottom:6px"><b class="text-ink text-sm" x-text="lvLog(lvSel) ? lvLog(lvSel).title : ''"></b>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="lvSel=-1">닫기</button></div>
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:220px">필드</th><th>값</th><th style="width:100px">수집 등급</th></tr></thead><tbody>
+                  <template x-for="(f, fi) in ((lvLog(lvSel) && lvLog(lvSel).fields) || [])" x-bind:key="'lvf'+fi">
+                    <tr><td><code class="text-violet" x-text="f[0]"></code></td><td class="tnum" style="word-break:break-all" x-text="f[1]"></td><td x-text="f[2]"></td></tr>
+                  </template>
+                </tbody></table></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel"><div class="panel-hd"><b>기대 로그 체크리스트</b><span class="meta">판정 ② 행동 단위 · ③ 시나리오 단위(커버리지)</span></div>
+            <div class="panel-bd">
+              <div class="drow"><div class="k">행동 단위(②)</div><div class="v text-sm text-body tnum" x-text="lv ? ('1회 조작 = 로그 1건 원칙 · 시연 조작 ' + lv.behavior.ops + '건 → 로그 ' + lv.behavior.logs + '건 · 동일 log_unique_id 중복 ' + lv.behavior.dup + '건') : ''"></div></div>
+              <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:180px">기대 로그(이벤트 계약 6종)</th><th style="width:200px">PAST 매핑</th><th style="width:64px">발생</th><th style="width:70px">상태</th></tr></thead><tbody>
+                <template x-for="it in ((lv && lv.checklist.items) || [])" x-bind:key="'lvc'+it.key">
+                  <tr><td x-text="it.label"></td><td><code class="text-violet" x-text="it.map"></code></td><td class="tnum" x-text="it.n + '건'"></td>
+                    <td><span class="ds-badge" x-bind:class="it.ok ? 'ds-badge--success' : 'ds-badge--warning'" x-text="it.ok ? '발생' : '누락'"></span></td></tr>
+                </template>
+              </tbody></table></div>
+              <div class="text-sm text-body tnum" style="margin-top:8px" x-text="lv ? ('시나리오 합격률 ' + lv.checklist.pass_rate + '% (발생 항목 ÷ 기대 6항목)' + (lv.checklist.missing.length ? ' · 미달: ' + lv.checklist.missing.join(' · ') : ' · 전 항목 발생')) : ''"></div>
+              <div style="margin-top:12px"><div class="selctl__lbl" style="margin-bottom:6px">판정 기준 범례</div>
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:70px">판정</th><th>대상</th></tr></thead><tbody>
+                  <tr><td><span class="ds-badge ds-badge--error">불합격</span></td><td>필수 11필드 누락 · 무효값 전송 · 행동 유형(4종) · 표준 분류(16종) 정의 외 값 → 수집 거부(격리) 대상</td></tr>
+                  <tr><td><span class="ds-badge ds-badge--warning">경고</span></td><td>명명 규칙 위반(화면_액션 미준수 · 무맥락 이름) · 광고 계측 혼입 · 중복 전송 · 커스텀 속성 미등록 키 → 수집되나 시정 필요</td></tr>
+                  <tr><td><span class="ds-badge ds-badge--neutral">정보</span></td><td>권장 필드 미수집 → 품질 향상 권고</td></tr>
+                </tbody></table></div>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:10px">원문:
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/444498040" target="_blank" rel="noopener" class="text-violet">13. 로그 검증 도구</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/434176333" target="_blank" rel="noopener" class="text-violet">11. 정책 및 운영</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/434307387" target="_blank" rel="noopener" class="text-violet">12. 수집 데이터 정의</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/433947067" target="_blank" rel="noopener" class="text-violet">실측 로그 관찰</a></div>
             </div>
           </div>
         </div>
@@ -13684,6 +14089,379 @@ window.PRISM_APP_PARTS.push(() => ({
       </div>
     </div>
   </div>
+      <!-- ═══ 모듈: 스펙트럼(실험실) · 사내 MCP 허브 프로토타입 ═══
+           기획 문서 "13. Spectrum" 기반 · 동작·상태는 vendor/app-14-spectrum.js · 백엔드 GET/POST /spectrum.
+           구성(시안 B · 카탈로그 허브형): 첫 화면은 커넥터 카드 목록 · 카드를 누르면 상세로 들어가
+           거기서 접속 키 발급과 도구 연결까지 이어진다. 관문 체험 · 사용 기록 · 접속 키 관리는
+           위쪽 작은 버튼으로 옮긴 보조 화면이다.
+           파일명이 20-ingest-policy.html 보다 앞이어야 x-data 스코프 안에 든다(ARCHITECTURE 주의 ①). -->
+      <template x-if="mod === 'lab'">
+        <div x-show="labTab === 'spectrum'" x-cloak class="w-full space-y-4">
+
+        <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+          <li><b>스펙트럼</b>은 우리 데이터와 AI 도구를 이어 주는 사내 연결 통로(MCP 허브) 시험판입니다 · 쓰고 싶은 데이터 창구를 골라 그 자리에서 바로 연결합니다.</li>
+          <li>지금 오가는 값은 모의 데이터지만, 연결 자체는 실제로 됩니다 · 붙고 나면 쓰던 AI 도구의 기능 목록에 그대로 나타납니다.</li>
+        </ul>
+
+        <!-- 요약 한 줄 + 보조 화면 이동(카탈로그가 주인공이라 탭 대신 작은 버튼으로 둔다) -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs text-muted tnum">
+            <span x-text="'커넥터 ' + spCounts.all + '개 · 바로 쓸 수 있음 ' + spCounts.live + '개'"></span>
+            <span x-show="spMetrics.weekCalls != null" x-text="' · 이번 주 조회 ' + spNum(spMetrics.weekCalls || 0) + '회'"></span>
+            <span x-show="spMetrics.weekUsers != null" x-text="' · 쓴 사람 ' + spNum(spMetrics.weekUsers || 0) + '명'"></span>
+            <span x-show="spMetrics.activeKeys != null" x-text="' · 살아 있는 키 ' + spNum(spMetrics.activeKeys || 0) + '개'"></span>
+            <span x-show="spMetrics.failRate != null" x-text="' · 실패율 ' + spPct(spMetrics.failRate || 0)"></span>
+          </span>
+          <span class="ml-auto flex items-center gap-1.5">
+            <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="spTab==='catalog' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="spGo('catalog')">카탈로그</button>
+            <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="spTab==='try' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="spGo('try')">관문 체험</button>
+            <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="spTab==='usage' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="spGo('usage')">사용 기록</button>
+            <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="spTab==='keys' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="spGo('keys')">접속 키</button>
+          </span>
+        </div>
+
+        <!-- ─────────────── 카탈로그 · 커넥터 고르기 ─────────────── -->
+        <div x-show="spTab==='catalog' && !spSel" x-cloak class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>어떤 데이터를 붙일까요</b>
+              <span class="meta">쓰고 싶은 창구를 고르면 연결 방법까지 이어집니다</span></div>
+            <div class="panel-bd">
+              <div class="flex flex-wrap gap-2" style="align-items:flex-end">
+                <div style="flex:1;min-width:240px"><label class="lbl">찾기</label>
+                  <input x-model="spQ" class="field" placeholder="예) 클릭 · 체류시간 · 카테고리 · 벨루가"></div>
+                <div class="flex flex-wrap gap-1.5" style="padding-bottom:5px">
+                  <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="spFilter==='all' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="spFilter='all'" x-text="'전체 ' + spCounts.all"></button>
+                  <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="spFilter==='live' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="spFilter='live'" x-text="'바로 쓸 수 있음 ' + spCounts.live"></button>
+                  <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="spFilter==='preparing' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="spFilter='preparing'" x-text="'준비중 ' + spCounts.preparing"></button>
+                </div>
+              </div>
+
+              <div x-show="spCatalogShown.length" style="margin-top:14px">
+                <!-- 카드 격자: x-show 는 위 래퍼가 맡는다(격자 요소에 직접 걸면 display 가 지워진다) -->
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:12px">
+                  <template x-for="c in spCatalogShown" x-bind:key="'spc'+c.id">
+                    <div class="tbox" style="cursor:pointer" x-on:click="spOpen(c)">
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        <b class="text-ink text-sm" x-text="c.name || c.id"></b>
+                        <span class="ds-badge" x-bind:class="c.status==='live' ? 'ds-badge--success' : 'ds-badge--neutral'"><span class="ds-badge__dot"></span><span x-text="c.status==='live' ? '바로 쓸 수 있음' : '준비중'"></span></span>
+                        <span class="meta tnum ml-auto" x-show="c.version" x-text="'v' + (c.version || '')"></span>
+                      </div>
+                      <div class="text-xs text-muted" style="margin-top:5px;line-height:1.55" x-text="spDesc(c)"></div>
+                      <div class="flex flex-wrap gap-1.5" style="margin-top:8px">
+                        <span x-show="spWhTag(c)" class="ds-badge ds-badge--intent" x-text="spWhTag(c)"></span>
+                        <span x-show="(c.tools || []).length" class="ds-badge ds-badge--category tnum" x-text="'기능 ' + (c.tools || []).length + '개'"></span>
+                      </div>
+                      <div class="text-xs text-muted" style="margin-top:8px" x-show="(c.useCases || []).length">
+                        <template x-for="(u, ui) in (c.useCases || []).slice(0, 2)" x-bind:key="'spuc'+c.id+ui">
+                          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="'· ' + u"></div>
+                        </template>
+                      </div>
+                      <div class="text-xs text-muted" style="margin-top:8px;border-top:1px solid var(--ds-hairline-soft);padding-top:7px">
+                        <span x-text="spTeam(c)"></span><span x-show="c.dataBasis" x-text="' · ' + (c.dataBasis || '')"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              <div class="empty" x-show="!spCatalogShown.length" style="margin-top:14px">
+                <span x-show="spCatalog.length">찾는 커넥터가 없습니다 · 검색어나 좁히기를 바꿔 보세요</span>
+                <span x-show="!spCatalog.length">아직 등록된 커넥터가 없습니다 · 잠시 뒤 다시 열어보세요</span>
+              </div>
+            </div></div>
+        </div>
+
+        <!-- ─────────────── 커넥터 상세 · 보고 바로 연결하기 ─────────────── -->
+        <template x-if="spTab==='catalog' && spSel">
+          <div class="space-y-4">
+            <div class="flex items-center gap-2">
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="spBackToList()">← 커넥터 목록</button>
+              <span class="text-xs text-muted" x-text="spSel.name || spSel.id"></span>
+            </div>
+
+            <div class="panel"><div class="panel-hd"><b x-text="spSel.name || spSel.id"></b>
+                <span class="ds-badge" x-bind:class="spSel.status==='live' ? 'ds-badge--success' : 'ds-badge--neutral'"><span class="ds-badge__dot"></span><span x-text="spSel.status==='live' ? '바로 쓸 수 있음' : '준비중'"></span></span>
+                <span class="ds-badge ds-badge--intent">MCP Registry 표준 호환</span>
+                <span class="meta tnum ml-auto" x-text="spTeam(spSel) + (spSel.version ? (' · v' + spSel.version) : '')"></span></div>
+              <div class="panel-bd">
+                <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-bottom:12px" x-show="spSel.status!=='live'">
+                  <li>아직 준비 중인 창구입니다 · <b>협의 후 공개 예정</b>이라 지금은 소개만 보여줍니다.</li>
+                  <li x-show="spSel.note" x-text="spSel.note"></li>
+                </ul>
+                <div class="text-sm text-body" style="padding:0 18px 4px" x-text="spDesc(spSel)"></div>
+                <div style="margin-top:10px">
+                  <div class="drow"><div class="k">담당팀</div><div class="v text-sm text-body" x-text="spTeam(spSel)"></div></div>
+                  <div class="drow"><div class="k">데이터 기준</div><div class="v text-sm text-body" x-text="spSel.dataBasis || '·'"></div></div>
+                  <div class="drow"><div class="k">연결 방식</div><div class="v text-sm text-body" x-text="(spSel.transport || 'http') + (spSel.endpoint ? (' · ' + spSel.endpoint) : '')"></div></div>
+                  <template x-if="spWh(spSel)">
+                    <div class="drow"><div class="k">데이터 창고</div><div class="v">
+                      <div class="flex flex-wrap gap-1.5">
+                        <span class="ds-badge ds-badge--intent" x-text="spWhTag(spSel)"></span>
+                        <span x-show="spWh(spSel).storage" class="ds-badge ds-badge--neutral" x-text="'저장소 ' + spWh(spSel).storage"></span>
+                        <span x-show="spWh(spSel).timeTravel" class="ds-badge ds-badge--category">과거 시점 조회 가능</span>
+                      </div>
+                      <div class="text-xs text-muted" style="margin-top:6px;line-height:1.6" x-show="spWh(spSel).desc" x-text="spWh(spSel).desc"></div>
+                    </div></div>
+                  </template>
+                </div>
+              </div></div>
+
+            <div class="panel" x-show="(spSel.tools || []).length" x-cloak>
+              <div class="panel-hd"><b>이 커넥터가 열어 주는 기능</b><span class="meta">AI 도구가 이 이름으로 물어봅니다</span></div>
+              <div class="overflow-auto"><table class="ds-table"><thead><tr>
+                  <th style="width:186px">기능</th><th>설명</th><th style="width:240px">파라미터</th><th style="width:120px"></th></tr></thead><tbody>
+                <template x-for="t in (spSel.tools || [])" x-bind:key="'spt'+(t.name || '')">
+                  <tr>
+                    <td><code class="text-violet" style="font-size:12px" x-text="t.name || ''"></code>
+                      <div class="text-xs text-muted" x-show="t.title" x-text="t.title"></div></td>
+                    <td class="text-body" x-text="spDesc(t)"></td>
+                    <td><div class="flex flex-wrap gap-1.5">
+                        <template x-for="p in spToolParams(t)" x-bind:key="'spp'+(t.name||'')+(p.name||'')">
+                          <span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="p.desc || ''" data-tip-pos="top" x-text="spParamTxt(p)"></span>
+                        </template>
+                        <span x-show="!spToolParams(t).length" class="text-xs text-muted">없음</span>
+                      </div></td>
+                    <td>
+                      <span x-show="t.restricted" class="ds-badge ds-badge--warning"><span class="ds-badge__dot"></span>권한 제한</span>
+                      <button type="button" x-show="!t.restricted && spSel.status==='live'" class="copybtn" x-on:click="spTryTool(t.name)">눌러보기</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody></table></div>
+            </div>
+
+            <div class="panel" x-show="(spSel.useCases || []).length" x-cloak>
+              <div class="panel-hd"><b>이렇게 씁니다</b></div>
+              <div class="panel-bd">
+                <ul class="ds-bullets">
+                  <template x-for="(u, ui) in (spSel.useCases || [])" x-bind:key="'spu'+ui">
+                    <li x-text="u"></li>
+                  </template>
+                </ul>
+                <details style="margin-top:12px" x-show="spHasJson(spSel.serverJson)">
+                  <summary class="text-xs text-muted" style="cursor:pointer">server.json 미리보기 (MCP Registry 등록 형식)</summary>
+                  <pre class="tbox" style="white-space:pre-wrap;font-size:12px;margin:6px 0 0;max-height:320px;overflow:auto" x-text="spJson(spSel.serverJson || {})"></pre>
+                </details>
+              </div>
+            </div>
+
+            <!-- 허브형의 핵심: 찾았으면 여기서 바로 붙인다 -->
+            <div class="panel" x-show="spSel.status==='live'" x-cloak>
+              <div class="panel-hd"><b>이 커넥터에 연결하기</b><span class="meta">키를 받아 쓰는 도구에 넣으면 끝입니다</span></div>
+              <div class="panel-bd">
+                <div class="flex items-center gap-2" style="margin-bottom:8px"><b class="text-ink" style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">1</span>접속 키 받기</b></div>
+                <div class="text-xs text-muted" style="margin-bottom:8px">키는 AI 도구가 관문에 들어올 때 쓰는 열쇠입니다 · 발급 직후 한 번만 전체 값이 보입니다.</div>
+                <div class="flex flex-wrap gap-2" style="align-items:flex-end">
+                  <div style="flex:1;min-width:200px"><label class="lbl">라벨 (선택)</label>
+                    <input x-model="spKeyForm.label" class="field" maxlength="40" placeholder="예) 내 노트북 Claude Code" x-on:keydown.enter="spIssueKey()"></div>
+                  <div style="min-width:140px"><label class="lbl">유효기간</label>
+                    <select x-model="spKeyForm.ttlDays" class="field">
+                      <option value="30">30일</option><option value="90">90일</option>
+                      <option value="180">180일</option><option value="365">365일</option></select></div>
+                  <div><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="spBusy" x-on:click="spIssueKey()" x-text="spBusy ? '발급 중…' : '키 발급'"></button></div>
+                </div>
+                <div class="text-xs" style="color:var(--ds-error);margin-top:4px" x-show="spMsg" x-text="spMsg"></div>
+
+                <div class="tbox" x-show="spNewKey" x-cloak style="margin-top:10px;border-color:var(--ds-primary)">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <b class="text-ink text-sm">새 접속 키</b>
+                    <span class="ds-badge ds-badge--warning"><span class="ds-badge__dot"></span>지금만 보입니다</span>
+                    <span class="text-xs text-muted tnum ml-auto" x-show="spNewKey && spNewKey.expiresAt" x-text="spNewKey ? ('만료 ' + spDate(spNewKey.expiresAt)) : ''"></span>
+                  </div>
+                  <pre style="white-space:pre-wrap;font-size:13px;margin:8px 0 0" x-text="spNewKey ? (spNewKey.key || '') : ''"></pre>
+                  <div class="flex items-center gap-2" style="margin-top:8px">
+                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="copyText(spNewKey && spNewKey.key, '접속 키')">키 복사</button>
+                    <span class="text-xs text-muted">창을 닫으면 다시 볼 수 없습니다 · 아래 설정에는 이 키가 이미 들어가 있습니다.</span>
+                    <span class="text-xs" style="color:var(--ds-primary)" x-text="copyMsg"></span>
+                  </div>
+                </div>
+                <div class="text-xs text-muted" style="margin-top:8px" x-show="!spNewKey && spLiveKeys.length">
+                  이미 받아 둔 키가 <span class="tnum" x-text="spLiveKeys.length"></span>개 있습니다 · 값을 잊었다면 새로 발급하세요(전체 값은 발급 때만 보입니다).
+                </div>
+
+                <div class="flex items-center gap-2" style="border-top:1px solid var(--ds-hairline);margin-top:16px;padding-top:13px;margin-bottom:8px"><b class="text-ink" style="display:inline-flex;align-items:center;gap:8px"><span class="stepline__no">2</span>쓰는 도구에 붙이기</b></div>
+                <div class="text-xs text-muted" style="margin-bottom:10px">
+                  붙는 주소는 <code class="text-violet" x-text="spGwUrl"></code> 하나입니다 ·
+                  <span x-show="spNewKey">아래 설정에는 방금 발급한 키가 들어가 있어 그대로 복사하면 됩니다.</span>
+                  <span x-show="!spNewKey"><b>&lt;접속 키&gt;</b> 자리에는 위에서 발급한 키를 넣으세요.</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+                  <template x-for="g in spGuides" x-bind:key="'spg'+g.id">
+                    <div class="tbox">
+                      <div class="flex items-center gap-1.5">
+                        <b class="text-ink text-sm" x-text="g.name"></b>
+                        <button type="button" class="copybtn ml-auto" x-on:click="copyText(g.code, g.name + ' 설정')">복사</button>
+                      </div>
+                      <div class="text-xs text-muted" style="margin-top:2px" x-text="g.desc"></div>
+                      <pre style="white-space:pre-wrap;font-size:11.5px;margin:8px 0 0;max-height:190px;overflow:auto" x-text="g.code"></pre>
+                    </div>
+                  </template>
+                </div>
+                <div class="text-xs text-muted" style="margin-top:10px">붙이고 나면 그 도구의 기능 목록에 위 기능들이 그대로 보입니다 · 먼저 눌러보고 싶으면 <b>관문 체험</b>에서 확인하세요.</div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ─────────────── 보조 · 관문 체험 ─────────────── -->
+        <div x-show="spTab==='try'" x-cloak class="space-y-4">
+          <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+            <li>도구 없이 화면에서 <b>같은 관문</b>을 눌러 봅니다 · 아래 결과가 AI 도구가 받는 응답과 같습니다.</li>
+            <li>붙는 주소는 <code class="text-violet" x-text="spGwUrl"></code> 하나입니다.</li>
+          </ul>
+
+          <div class="panel"><div class="panel-hd"><b>관문 호출해 보기</b><span class="meta">키를 고르고 기능을 골라 실행합니다</span>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="copyText(spGwUrl, '관문 주소')">관문 주소 복사</button></div>
+            <div class="panel-bd">
+              <div class="flex flex-wrap gap-2" style="align-items:flex-end">
+                <div style="min-width:230px"><label class="lbl">접속 키</label>
+                  <select x-model="spTry.keyId" class="field">
+                    <option value="">키를 고르세요</option>
+                    <template x-for="k in spLiveKeys" x-bind:key="'spsk'+k.id">
+                      <option x-bind:value="k.id" x-text="(k.masked || k.id) + (k.label ? (' · ' + k.label) : '')"></option>
+                    </template>
+                  </select></div>
+                <div style="min-width:280px"><label class="lbl">기능 (tool)</label>
+                  <select class="field" x-model="spTry.tool" x-on:change="spTry.out=null">
+                    <template x-for="t in spToolDefs" x-bind:key="'spst'+t.id">
+                      <option x-bind:value="t.id" x-text="t.label"></option>
+                    </template>
+                  </select></div>
+                <template x-for="f in (spToolDef(spTry.tool).fields || [])" x-bind:key="'spf'+spTry.tool+f.k">
+                  <div style="min-width:150px"><label class="lbl" x-text="f.label + ' · ' + f.k"></label>
+                    <input class="field" x-model="spTry.params[f.k]" x-bind:placeholder="f.ph || ''" x-on:keydown.enter="spGwTry()"></div>
+                </template>
+                <div><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="spTry.busy || !spTry.keyId" x-on:click="spGwTry()" x-text="spTry.busy ? '호출 중…' : '실행'"></button></div>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="!spLiveKeys.length">쓸 수 있는 키가 없습니다 · 커넥터 상세나 <b>접속 키</b> 화면에서 먼저 하나 발급하세요.</div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="spToolDef(spTry.tool).restricted">이 기능은 권한이 막혀 있습니다 · 거절(403)이 나오는 것이 정상이며, 그게 이 화면에서 보여 주려는 정책입니다.</div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="spTry.tool==='query_logs'"><b>기준 날짜</b>를 넣으면 그날 시점의 표를 그대로 다시 읽습니다 · 비우면 지금 시점입니다.</div>
+            </div></div>
+
+          <div class="panel" x-show="spTry.out" x-cloak><div class="panel-hd"><b>호출 결과</b>
+              <span class="ds-badge" x-bind:class="spStatusCls(spTry.out && spTry.out.status)"><span class="ds-badge__dot"></span><span x-text="spStatusTxt(spTry.out && spTry.out.status)"></span></span>
+              <span class="meta tnum" x-text="(spTry.out && spTry.out.ms != null) ? ('소요 ' + spTry.out.ms + 'ms') : ''"></span>
+              <span class="meta ml-auto" x-text="spTry.tool"></span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-bottom:12px" x-show="spTry.out && spTry.out.permitted === false">
+                <li><b>이 요청은 거절됐습니다</b> · 사유: <b x-text="(spTry.out && (spTry.out.detail || spTry.out.error)) || '권한 없음'"></b></li>
+                <li>키가 있어도 기능마다 열람 범위가 따로 정해집니다 · 필요한 범위는 담당팀과 협의해 넓힙니다.</li>
+              </ul>
+              <div class="flex items-center gap-1.5 flex-wrap" style="margin-bottom:10px" x-show="spSnap()">
+                <span class="ds-badge" x-bind:class="(spSnap() && spSnap().timeTravel) ? 'ds-badge--category' : 'ds-badge--neutral'" x-text="(spSnap() && spSnap().timeTravel) ? '과거 시점 조회' : '지금 시점'"></span>
+                <span class="text-xs text-muted tnum" x-text="spSnap() ? ('스냅샷 ' + (spSnap().id || '') + (spSnap().asOf ? (' · 기준 ' + spSnap().asOf) : '')) : ''"></span>
+                <span class="text-xs text-muted" x-show="spSnap() && spSnap().desc" x-text="spSnap() ? ('· ' + spSnap().desc) : ''"></span>
+              </div>
+              <div x-show="spResultRows().length" style="margin-bottom:12px">
+                <div class="text-xs text-muted" style="margin:0 0 4px">받은 데이터 (앞 <span class="tnum" x-text="spResultRows().length"></span>줄)</div>
+                <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr>
+                    <template x-for="c in spResultCols()" x-bind:key="'sprc'+c"><th x-text="c"></th></template>
+                  </tr></thead><tbody>
+                  <template x-for="(row, ri) in spResultRows()" x-bind:key="'sprr'+ri">
+                    <tr><template x-for="c in spResultCols()" x-bind:key="'sprd'+ri+c">
+                      <td class="text-body" x-text="spCell(row, c)"></td>
+                    </template></tr>
+                  </template>
+                </tbody></table></div>
+              </div>
+              <div class="text-xs text-muted" style="margin:0 0 4px">응답 원문 (JSON)</div>
+              <pre class="tbox" style="white-space:pre-wrap;font-size:12px;margin:0;max-height:360px;overflow:auto" x-text="spJson(spTry.out && (spTry.out.result != null ? spTry.out.result : (spTry.out.error != null ? { error: spTry.out.error, detail: spTry.out.detail || '' } : spTry.out)))"></pre>
+            </div></div>
+        </div>
+
+        <!-- ─────────────── 보조 · 사용 기록 ─────────────── -->
+        <div x-show="spTab==='usage'" x-cloak class="space-y-4">
+          <div class="panel"><div class="panel-hd"><b>이번 주 사용 현황</b>
+              <span class="meta tnum" x-show="spMetrics.avgMs != null" x-text="'평균 응답 ' + spNum(spMetrics.avgMs) + 'ms'"></span></div>
+            <div class="panel-bd">
+              <div class="ds-stat-grid tnum" style="padding:0 18px">
+                <div class="ds-stat"><div class="ds-stat__value ds-stat__value--accent" x-text="spNum(spMetrics.weekCalls || 0)"></div><div class="ds-stat__label">주간 조회 수</div></div>
+                <div class="ds-stat"><div class="ds-stat__value" x-text="spNum(spMetrics.weekUsers || 0)"></div><div class="ds-stat__label">주간 사용자</div></div>
+                <div class="ds-stat"><div class="ds-stat__value" x-text="spNum(spMetrics.activeKeys || 0)"></div><div class="ds-stat__label">활성 키</div></div>
+                <div class="ds-stat"><div class="ds-stat__value" x-text="spPct(spMetrics.failRate || 0)"></div><div class="ds-stat__label">실패율</div></div>
+              </div>
+            </div></div>
+
+          <div class="panel"><div class="panel-hd"><b>호출 기록</b><span class="meta tnum" x-text="spUsage.length ? (spUsage.length + '건 · 최신순') : ''"></span>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-bind:disabled="spBusy" x-on:click="spReset()" data-tip="시험판 시연용 · 바로 지웁니다" data-tip-pos="bottom">기록 초기화</button></div>
+            <div class="overflow-auto" style="max-height:460px"><table class="ds-table"><thead><tr>
+                <th style="width:110px">시각</th><th style="width:130px">사용자</th><th style="width:150px">커넥터</th>
+                <th style="width:180px">기능</th><th>결과</th><th style="width:80px">소요</th></tr></thead><tbody>
+              <template x-for="(u, ui) in spUsage" x-bind:key="'spuse'+ui">
+                <tr>
+                  <td class="text-xs text-muted tnum" x-text="spWhen(u.ts)"></td>
+                  <td class="text-body" x-text="u.user || '·'"></td>
+                  <td class="text-body" x-text="u.connector || '·'"></td>
+                  <td><code class="text-violet" style="font-size:12px" x-text="u.tool || ''"></code></td>
+                  <td><span class="ds-badge" x-bind:class="u.ok ? 'ds-badge--success' : 'ds-badge--error'"><span class="ds-badge__dot"></span><span x-text="u.ok ? '성공' : '실패'"></span></span>
+                    <span class="text-xs text-muted" style="margin-left:6px" x-show="u.note" x-text="u.note"></span></td>
+                  <td class="text-xs text-muted tnum" x-text="u.ms != null ? (u.ms + 'ms') : '·'"></td>
+                </tr>
+              </template>
+              <template x-if="!spUsage.length"><tr><td colspan="6" class="text-muted">아직 호출 기록이 없습니다 · <b>관문 체험</b>에서 한 번 실행해 보세요</td></tr></template>
+            </tbody></table></div>
+          </div>
+        </div>
+
+        <!-- ─────────────── 보조 · 접속 키 관리 ─────────────── -->
+        <div x-show="spTab==='keys'" x-cloak class="space-y-4">
+          <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+            <li>키 발급은 <b>커넥터 상세</b>의 연결 단계에서도 할 수 있습니다 · 여기서는 이미 받아 둔 키를 확인하고 폐기합니다.</li>
+            <li>키는 비밀번호와 같습니다 · 메신저나 문서에 그대로 붙여 두지 마세요.</li>
+          </ul>
+
+          <div class="panel" x-show="spNewKey" x-cloak style="border-color:var(--ds-primary)">
+            <div class="panel-hd"><b>새 접속 키가 만들어졌습니다</b>
+              <span class="ds-badge ds-badge--warning"><span class="ds-badge__dot"></span>이 키는 지금만 표시됩니다</span>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="spNewKey=null">닫기</button></div>
+            <div class="panel-bd">
+              <pre class="tbox" style="white-space:pre-wrap;font-size:13px;margin:0" x-text="spNewKey ? (spNewKey.key || '') : ''"></pre>
+              <div class="flex items-center gap-2" style="margin-top:10px">
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="copyText(spNewKey && spNewKey.key, '접속 키')">키 복사</button>
+                <span class="text-xs text-muted tnum" x-show="spNewKey && spNewKey.expiresAt" x-text="spNewKey ? ('만료일 ' + spDate(spNewKey.expiresAt)) : ''"></span>
+                <span class="text-xs" style="color:var(--ds-primary)" x-text="copyMsg"></span>
+              </div>
+            </div></div>
+
+          <div class="panel"><div class="panel-hd"><b>내 접속 키</b>
+              <span class="meta">AI 도구가 관문에 들어올 때 쓰는 열쇠입니다</span>
+              <span class="meta tnum ml-auto" x-text="spKeys.length ? (spKeys.length + '개') : ''"></span></div>
+            <div class="overflow-auto"><table class="ds-table"><thead><tr>
+                <th style="width:190px">키</th><th style="width:140px">라벨</th><th style="width:110px">발급일</th>
+                <th style="width:170px">만료</th><th style="width:120px">마지막 사용</th><th style="width:92px">상태</th><th style="width:80px"></th></tr></thead><tbody>
+              <template x-for="k in spKeys" x-bind:key="'spk'+k.id">
+                <tr>
+                  <td><code class="text-violet" style="font-size:12px" x-text="k.masked || ''"></code></td>
+                  <td class="text-body" x-text="k.label || '·'"></td>
+                  <td class="text-xs text-muted tnum" x-text="spDate(k.issuedAt || k.createdAt)"></td>
+                  <td><span class="text-xs text-muted tnum" x-text="spDate(k.expiresAt)"></span>
+                    <span class="ds-badge" x-bind:class="spExpCls(k)" style="margin-left:6px" x-text="spExpTxt(k)"></span></td>
+                  <td class="text-xs text-muted tnum" x-text="k.lastUsedAt ? spWhen(k.lastUsedAt) : '쓴 적 없음'"></td>
+                  <td><span class="ds-badge" x-bind:class="k.revoked ? 'ds-badge--neutral' : 'ds-badge--success'"><span class="ds-badge__dot"></span><span x-text="k.revoked ? '폐기됨' : '활성'"></span></span></td>
+                  <td><button type="button" class="copybtn" x-show="!k.revoked" x-bind:disabled="spBusy" x-on:click="spRevokeKey(k.id)">폐기</button></td>
+                </tr>
+              </template>
+              <template x-if="!spKeys.length"><tr><td colspan="7" class="text-muted">아직 발급한 키가 없습니다 · 아래에서 하나 만들어 보세요</td></tr></template>
+            </tbody></table></div>
+          </div>
+
+          <div class="panel"><div class="panel-hd"><b>접속 키 발급</b><span class="meta">라벨은 나중에 어디에 쓴 키인지 알아보기 위한 메모입니다</span></div>
+            <div class="panel-bd">
+              <div class="flex flex-wrap gap-2" style="align-items:flex-end">
+                <div style="flex:1;min-width:220px"><label class="lbl">라벨 (선택)</label>
+                  <input x-model="spKeyForm.label" class="field" maxlength="40" placeholder="예) 내 노트북 Claude Code" x-on:keydown.enter="spIssueKey()"></div>
+                <div style="min-width:150px"><label class="lbl">유효기간</label>
+                  <select x-model="spKeyForm.ttlDays" class="field">
+                    <option value="30">30일</option><option value="90">90일</option>
+                    <option value="180">180일</option><option value="365">365일</option></select></div>
+                <div><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="spBusy" x-on:click="spIssueKey()" x-text="spBusy ? '발급 중…' : '키 발급'"></button></div>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:8px">발급 즉시 전체 키가 한 번만 화면에 뜹니다 · 그 뒤에는 앞뒤 몇 자만 보입니다.</div>
+              <div class="text-xs" style="color:var(--ds-error);margin-top:4px" x-show="spMsg" x-text="spMsg"></div>
+            </div></div>
+        </div>
+
+      </div>
+      </template>
+
       <!-- ═══ 모듈: 인입 정책 (전용 도구) ═══ -->
       <!-- 수집(인입) 정책: 정책 표 성격 → 사전·정책 메뉴에 통합 렌더 -->
       <template x-if="mod === 'dict'">
