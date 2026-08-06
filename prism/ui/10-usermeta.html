@@ -218,7 +218,7 @@
                 </div>
                 <div style="border-left:1px solid var(--ds-hairline);padding-left:20px">
                   <!-- 노출 기준 설명은 좌측 폰 아래가 아니라 우측 컬럼 위에 두면 폰 높이에 영향이 없다 -->
-                  <div class="flex items-center" style="margin:10px 0 12px;min-height:32px"><span class="selctl__lbl">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 TIARA 이벤트로 쌓입니다</span></span></div>
+                  <div class="flex items-center" style="margin:10px 0 12px;min-height:32px"><span class="selctl__lbl">실시간 로그 누적 <span class="text-muted" style="font-weight:400">· 행동 즉시 PAST 로그로 쌓입니다</span></span></div>
                   <div class="demo-code-win">
                     <div class="demo-code-bar"><i></i><i></i><i></i><span>행동 로그</span></div>
                     <div class="demo-code" style="max-height:560px;min-height:220px" x-ref="demolog">
@@ -275,7 +275,7 @@
               </div>
               <div class="drow"><div class="k">가중치 공식</div><div class="v text-sm text-body" x-text="demoData ? demoData.formula : ''"></div></div>
               <div class="drow"><div class="k">깊이 판정</div><div class="v text-sm text-body">평균 체류 45초 이상 + 스크롤 60% 이상 = 몰입 · 15초 미만 = 훑기 · 그 사이 = 혼합</div></div>
-              <div class="drow"><div class="k">운영 동일 적용</div><div class="v text-sm text-body">운영에서는 실제 서비스의 행동 로그(TIARA형 · <code class="text-violet">content_id</code> = 추출 순서 0부터)가 같은 파이프라인으로 들어옵니다 · 시연과 동일 계산.</div></div>
+              <div class="drow"><div class="k">운영 동일 적용</div><div class="v text-sm text-body">운영에서는 실제 서비스의 행동 로그(PAST형 · <code class="text-violet">content.id</code> = 추출 순서 0부터)가 같은 파이프라인으로 들어옵니다 · 시연과 동일 계산.</div></div>
             </div>
           </div>
 
@@ -496,38 +496,52 @@
           </div>
         </div>
 
-        <!-- ═══ 정책: 이 화면이 실제로 남기는 로그 체계(TIARA)와 측정 · 판정 · 기록 정책 ═══ -->
+        <!-- ═══ 정책: 이 화면이 실제로 남기는 로그 체계(PAST)와 측정 · 판정 · 기록 정책 ═══ -->
         <div x-show="labUserView==='policy'" x-cloak class="space-y-4">
-          <div class="panel"><div class="panel-hd"><b>로그 체계</b><span class="meta">TIARA · 전사 통합 사용자 행동로그</span></div>
+          <div class="panel"><div class="panel-hd"><b>로그 체계</b><span class="meta">PAST · 다음 전용 경량 사용자 행동 로그</span></div>
             <div class="panel-bd">
               <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
-                <li>시연 · 운영의 행동 수집은 <b>TIARA</b>(전사 통합 사용자 행동로그 수집 플랫폼 · 기존 Tiara · Kinsight · S2Events 통합) 체계를 따릅니다.</li>
-                <li>아래 표는 이 화면이 <b>실제로 남기는 로그</b>와 TIARA 표준(ActionType · ActionKind)의 매핑입니다 · 추후 실사용자 로그도 같은 체계로 들어옵니다.</li>
-                <li>자세한 정의는 <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/286294107" target="_blank" rel="noopener" class="text-violet" style="text-decoration:underline">TIARA 스펙 시트</a>에서 확인하세요.</li>
+                <li>시연 · 운영의 행동 수집은 <b>PAST</b>(다음 전용 경량 로그 수집 체계 · TIARA 계약 만료 대비 신규 전환 · 총 60필드 12그룹으로 약 78% 축소) 체계를 따릅니다 · 12월 홈탭 · MY 콘텐츠 탭 우선 적용 뒤 점진 확장, TIARA 병행 후 완전 전환.</li>
+                <li>아래 표는 이 화면이 <b>실제로 남기는 로그</b>와 PAST 표준(행동 유형 4종 · 표준 행동 분류 16종)의 매핑입니다 · 추후 실사용자 로그도 같은 체계로 들어옵니다.</li>
+                <li>자세한 정의는 <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/335381293" target="_blank" rel="noopener" class="text-violet" style="text-decoration:underline">1. PAST 기획 문서</a>에서 확인하세요.</li>
               </ul>
-              <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:170px">ActionType</th><th>정의</th><th style="width:220px">이 화면에서</th></tr></thead><tbody>
-                <tr><td><code class="text-violet">ViewableImpression</code></td><td>화면에 <b>실제로 보인</b> 콘텐츠의 노출 기록(예: 영역 50% 이상) · 측정값 "노출수" → CTR 분모</td><td>시연 단순화: 피드 진입 시 카탈로그 일괄 기록(중복 무시) · 실서비스는 실노출만 집계</td></tr>
-                <tr><td><code class="text-violet">Event</code></td><td>클릭 등 사용자가 직접 취한 행동 · 측정값 "이벤트수"</td><td>카드 탭 · 검색 · 감정 반응 · 댓글</td></tr>
-                <tr><td><code class="text-violet">Pageview</code></td><td>사용자가 하나의 화면을 볼 때(필수 타입) · 측정값 "페이지뷰"</td><td>읽기 화면 · 검색 결과 화면 진입</td></tr>
-                <tr><td><code class="text-violet">Usage</code></td><td>페이지 단위 <b>체류시간 · 스크롤 비율</b> · ms 기록 → 초 변환 · <b>최대 600초(10분)</b> 초과분은 최대값 저장</td><td>읽기 종료 시 체류 · 스크롤 기록(600초 클램프 동일 적용)</td></tr>
+              <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:170px">행동 유형(action_type)</th><th>정의 · 수집 시점</th><th style="width:220px">이 화면에서</th></tr></thead><tbody>
+                <tr><td><code class="text-violet">Pageview</code></td><td>사용자가 하나의 화면을 볼 때 · 화면 진입 시 1회(팝업 · 오버레이 제외 · 한 화면 = 조회 1건)</td><td>읽기 화면 · 검색 결과 화면 진입</td></tr>
+                <tr><td><code class="text-violet">Event</code></td><td>클릭 · 피드백 등 사용자가 직접 취한 행동 · 발생 시점 기록</td><td>카드 탭 · 검색 · 감정 반응 · 댓글</td></tr>
+                <tr><td><code class="text-violet">ViewImp</code></td><td>화면에 <b>실제로 보인</b> 콘텐츠의 노출(예: 영역 50% 이상) · 개별 전송 금지, <code class="text-violet">viewimp_contents[]</code> 로 30개 미만 묶음 전송 → CTR 분모</td><td>시연 단순화: 피드 진입 시 카탈로그 일괄 기록(중복 무시) · 실서비스는 실노출만 집계</td></tr>
+                <tr><td><code class="text-violet">Usage</code></td><td>페이지 이탈 시 1회 · <b>체류시간 + 스크롤 도달 비율</b> 동시 전송 · 상한은 개발 검토 항목 ②(10분 vs 3시간) 확정 전 <b>10분 클램프</b> 유지</td><td>읽기 종료 시 체류 · 스크롤 기록(10분 클램프 동일 적용)</td></tr>
               </tbody></table></div>
-              <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:190px">시연 행동</th><th style="width:230px">TIARA 매핑</th><th>수집 값</th></tr></thead><tbody>
-                <tr><td>피드 진입(노출)</td><td>ViewableImpression</td><td><code class="text-violet">content_id</code> 목록 · 클릭률 · 소비율의 분모로만 사용</td></tr>
-                <tr><td>콘텐츠 찾기(프롬프트 검색)</td><td>Event · <code class="text-violet">Search</code> + 결과 화면 Pageview · <code class="text-violet">ViewSearchResults</code></td><td>검색어는 부가 정보로 수집 · 직접 선언이라 메모리 <code class="text-violet">[stated]</code> 기록</td></tr>
-                <tr><td>카드 탭</td><td>Event · <code class="text-violet">ClickContent</code> (+ 읽기 화면 Pageview · <code class="text-violet">ViewContent</code>)</td><td>클릭 콘텐츠 · 이후 해당 콘텐츠 가중 ×2.0</td></tr>
-                <tr><td>나가기(읽기 종료)</td><td>Usage · <code class="text-violet">UsagePage</code></td><td><code class="text-violet">dwell_sec</code>(체류) · <code class="text-violet">scroll_pct</code>(스크롤) · 체류 30초 이상=정독, 미만=훑기 자동 판정</td></tr>
-                <tr><td>감정 반응(추천 · 좋아요 · 감동 · 화나요 · 슬퍼요)</td><td>Event · <code class="text-violet">Like</code></td><td>감정 상세는 Custom Properties 에 기록(스펙 권고) · 메모리 [observed]</td></tr>
-                <tr><td>댓글 등록</td><td>Event · <code class="text-violet">WriteComment</code></td><td>댓글 본문은 <b>직접 발화</b> → 메모리에 <code class="text-violet">[stated]</code> 로 기록</td></tr>
+              <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:190px">시연 행동</th><th style="width:230px">PAST 매핑</th><th>수집 값</th></tr></thead><tbody>
+                <tr><td>피드 진입(노출)</td><td>ViewImp</td><td><code class="text-violet">viewimp_contents[].id · type</code>(노출 로그 필수) · 클릭률 · 소비율의 분모로만 사용</td></tr>
+                <tr><td>콘텐츠 찾기(프롬프트 검색)</td><td>Event · <code class="text-violet">Search</code> + 결과 화면 Pageview · <code class="text-violet">ViewSearchResults</code></td><td>검색어(<code class="text-violet">search.search_term</code>)는 개인정보 취급 → <b>분리 저장 · 별도 권한</b> · 직접 선언이라 메모리 <code class="text-violet">[stated]</code> 병행 기록</td></tr>
+                <tr><td>카드 탭</td><td>Event · <code class="text-violet">ClickContent</code> (+ 읽기 화면 Pageview · <code class="text-violet">ViewContent</code>)</td><td><code class="text-violet">content.id · type</code> 동반 필수 · 이후 해당 콘텐츠 가중 ×2.0 · 부가 정보는 로그가 아닌 아이템 메타 조인</td></tr>
+                <tr><td>나가기(읽기 종료)</td><td>Usage · <code class="text-violet">UsagePage</code></td><td><code class="text-violet">usage.duration</code>(체류) · <code class="text-violet">usage.scroll_percent</code>(스크롤) · 체류 30초 이상=정독, 미만=훑기 자동 판정</td></tr>
+                <tr><td>감정 반응(추천 · 좋아요 · 감동 · 화나요 · 슬퍼요)</td><td>Event · 긍정=<code class="text-violet">Like</code> · 부정=<code class="text-violet">Dislike</code> (피드백 계열 · <b>유실 금지</b> 등급)</td><td>감정 상세는 <code class="text-violet">custom_props</code> 에 기록 · 쌍따봉(DoubleLike) · 찜(AddToWishList)은 시연 화면에 해당 UI 없어 미사용 · 메모리 [observed]</td></tr>
+                <tr><td>댓글 등록</td><td>Event · 표준 분류 없음 → 행동 이름 <code class="text-violet">기사상세_댓글등록_완료</code>(화면_액션 규칙)</td><td>본문은 로그에 수집하지 않음(사용자 입력 텍스트 금지 · 검색어만 예외) · <b>직접 발화</b>라 메모리 <code class="text-violet">[stated]</code> 로만 기록</td></tr>
               </tbody></table></div>
-              <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:170px">수집 필드</th><th>정의</th></tr></thead><tbody>
-                <tr><td><code class="text-violet">user_id</code></td><td>사용자 구분 키 · 실명 · 연락처 등 식별 정보는 어떤 경로로도 수집하지 않음</td></tr>
-                <tr><td><code class="text-violet">content_id</code></td><td>추출 순서(0부터) · 조인 우선순위는 인덱스 → 외부 id → 제목</td></tr>
-                <tr><td><code class="text-violet">event</code></td><td>impression · search · click · read · skim · react · comment (TIARA ActionType 매핑은 위 표)</td></tr>
-                <tr><td><code class="text-violet">dwell_sec</code> · <code class="text-violet">scroll_pct</code></td><td>체류 초(최대 600) · 스크롤 %(0~100)</td></tr>
-                <tr><td><code class="text-violet">ts</code></td><td>이벤트 시각 · 시간대 신호(버스트 · 주야 이중 · 드리프트) 산출에 사용</td></tr>
+              <div style="margin-top:12px"><div class="selctl__lbl" style="margin-bottom:6px">전 로그 필수 11필드 · 누락 시 정상 적재 거부(격리 보관)</div>
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:110px">그룹</th><th>필드</th></tr></thead><tbody>
+                  <tr><td>공통</td><td><code class="text-violet">log_unique_id</code>(중복 제거 키 · UUID v7) · <code class="text-violet">access_timestamp</code>(Unix ms) · <code class="text-violet">service_id</code>(등록제 화이트리스트) · <code class="text-violet">deployment</code>(production / sandbox) · <code class="text-violet">sdk_type</code>(WEB / AA / IA / SERVER)</td></tr>
+                  <tr><td>식별(3키)</td><td><code class="text-violet">uuid</code>(기기) · <code class="text-violet">suid</code>(세션 · 서버 발급) · <code class="text-violet">islogin</code> · 로그인 시 <code class="text-violet">user_id + user_id_type</code> 조건부 추가</td></tr>
+                  <tr><td>행동</td><td><code class="text-violet">action_type</code>(4종) · <code class="text-violet">action_name</code>(화면_액션 규칙 · 접미 _클릭 / _완료 / _페이지뷰)</td></tr>
+                  <tr><td>화면</td><td><code class="text-violet">page</code>(서비스 내 유일 · 영숫자와 _ 만)</td></tr>
+                </tbody></table></div>
+              </div>
+              <div class="overflow-auto" style="margin-top:12px"><table class="ds-table"><thead><tr><th style="width:170px">수집 필드(시연 · 업로드 계약)</th><th style="width:210px">PAST 대응</th><th>정의</th></tr></thead><tbody>
+                <tr><td><code class="text-violet">user_id</code></td><td><code class="text-violet">user.uuid</code>(3키 중 시연 단순화 1키)</td><td>사용자 구분 키 · 실명 · 연락처 등 식별 정보는 어떤 경로로도 수집하지 않음</td></tr>
+                <tr><td><code class="text-violet">content_id</code></td><td><code class="text-violet">content.id</code></td><td>추출 순서(0부터) · 조인 우선순위는 인덱스 → 외부 id → 제목</td></tr>
+                <tr><td><code class="text-violet">event</code></td><td><code class="text-violet">action_type + action_kind</code></td><td>impression · search · click · read · skim · react · comment (PAST 매핑은 위 표)</td></tr>
+                <tr><td><code class="text-violet">dwell_sec</code> · <code class="text-violet">scroll_pct</code></td><td><code class="text-violet">usage.duration</code> · <code class="text-violet">usage.scroll_percent</code></td><td>체류 초(10분 클램프) · 스크롤 %(0~100)</td></tr>
+                <tr><td><code class="text-violet">ts</code></td><td><code class="text-violet">access_timestamp</code></td><td>이벤트 시각 · 시간대 신호(버스트 · 주야 이중 · 드리프트) 산출에 사용</td></tr>
               </tbody></table></div>
+              <div style="margin-top:12px"><div class="selctl__lbl" style="margin-bottom:6px">저장 · 품질 규칙 (개발 스펙)</div>
+                <div class="drow"><div class="k">저장 분리</div><div class="v text-sm text-body">일반 로그(<code class="text-violet">events_raw</code> · 유실 허용 · 즉시 응답) · 피드백(<code class="text-violet">feedback</code> · Like 계열 · 브로커 확인 후 응답, 실패 시 재전송 요구) · 검색어(<code class="text-violet">search_terms</code> · 개인정보 · 별도 권한) · 위반 격리(<code class="text-violet">dlq</code> · 원본 보관, 피드백은 폐기 금지) 4테이블</div></div>
+                <div class="drow"><div class="k">위반 처리</div><div class="v text-sm text-body">필수 필드 위반은 건 단위 격리(배치 전체 거부 없음) · 선택 필드 위반은 그 필드만 버리고 로그는 정상 적재</div></div>
+                <div class="drow"><div class="k">중복 제거</div><div class="v text-sm text-body">재전송 시 같은 <code class="text-violet">log_unique_id</code> 유지 → 번호로 중복 판별(같은 밀리초의 진짜 노출 여러 건과 구분)</div></div>
+                <div class="drow"><div class="k">값 규칙</div><div class="v text-sm text-body">참/거짓은 true/false 통일 · 무효값("" · null · - · unknown)은 필드 자체를 생략 · 파생값(날짜 분해 · UA 파싱)은 수집하지 않고 처리단 계산</div></div>
+              </div>
               <div style="margin-top:12px"><div class="selctl__lbl" style="margin-bottom:6px">프롬프트 별도 수집체계</div>
-                <div class="text-xs text-muted" style="margin-bottom:6px">콘텐츠 찾기 프롬프트는 TIARA Search 이벤트(행동)와 <b>별개로</b> 원문과 응답 결과를 상세 보존합니다 · 프롬프트에 우리 콘텐츠가 응답했는지(커버리지)가 핵심 지표입니다.</div>
+                <div class="text-xs text-muted" style="margin-bottom:6px">콘텐츠 찾기 프롬프트는 PAST 검색 로그(Event · Search)와 <b>별개로</b> 원문과 응답 결과를 상세 보존합니다 · 검색어 분리 저장 원칙과 같은 취급(개인정보 · 별도 권한) · 프롬프트에 우리 콘텐츠가 응답했는지(커버리지)가 핵심 지표입니다.</div>
                 <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">필드</th><th>정의</th></tr></thead><tbody>
                   <tr><td><code class="text-violet">q</code> · <code class="text-violet">t</code></td><td>프롬프트 원문 · 시각 (직접 발화라 메모리 [stated] 병행 기록)</td></tr>
                   <tr><td><code class="text-violet">results_n</code> · <code class="text-violet">cats</code></td><td>응답한 콘텐츠 수 · 매칭된 주제 목록</td></tr>
@@ -536,11 +550,15 @@
                 </tbody></table></div>
                 <div class="text-xs text-muted" style="margin-top:6px">집계 지표: 응답률(커버리지) · 소비 전환율 · 공급 갭 목록 · 자주 쓴 표현 · [시연] 탭의 프롬프트 분석 패널에서 확인.</div>
               </div>
-              <div class="text-xs text-muted" style="margin-top:10px">원문:
-                <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/286196173" target="_blank" rel="noopener" class="text-violet">로그 데이터 스키마 상세</a> ·
-                <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/285868533" target="_blank" rel="noopener" class="text-violet">ActionType</a> ·
-                <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/286458229" target="_blank" rel="noopener" class="text-violet">ActionKind</a> ·
-                <a href="https://axzcorp.atlassian.net/wiki/spaces/pplan/pages/285901486" target="_blank" rel="noopener" class="text-violet">로그뷰어 사용하기</a></div>
+              <div class="text-xs text-muted" style="margin-top:10px">원문 · 기획:
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/335381293" target="_blank" rel="noopener" class="text-violet">1. PAST 개요</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/434176333" target="_blank" rel="noopener" class="text-violet">11. 정책 및 운영</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/434307387" target="_blank" rel="noopener" class="text-violet">12. 수집 데이터 정의</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/433947067" target="_blank" rel="noopener" class="text-violet">13. 실측 로그 관찰</a> · 개발:
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/~712020cd2bd01af1a0494f8eda1fe935c0d5b9/pages/442302648" target="_blank" rel="noopener" class="text-violet">수집 테이블 구조</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/~712020cd2bd01af1a0494f8eda1fe935c0d5b9/pages/441811350" target="_blank" rel="noopener" class="text-violet">수집 API 스펙</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/~712020cd2bd01af1a0494f8eda1fe935c0d5b9/pages/441483702" target="_blank" rel="noopener" class="text-violet">식별자 · SDK 설계</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/~712020cd2bd01af1a0494f8eda1fe935c0d5b9/pages/441942349" target="_blank" rel="noopener" class="text-violet">log_unique_id</a></div>
             </div>
           </div>
 
@@ -551,7 +569,7 @@
               <div class="drow"><div class="k">깊이 판정</div><div class="v text-sm text-body">평균 체류 45초 이상 + 스크롤 60% 이상 = <b>몰입</b> · 15초 미만 = <b>훑기</b> · 그 사이 = 혼합</div></div>
               <div class="drow"><div class="k">판정 순서</div><div class="v text-sm text-body">명시 신호(버스트 · 주야 이중 · 드리프트 · 주말 편중 · 출퇴근 훑기 · 엔티티 집중) 우선 → 없으면 깊이 · 강도 · 폭 근접 매칭 · 소비 5건 미만은 <b>잠정</b> 배정 후 로그가 쌓이면 자동 재판정</div></div>
               <div class="drow"><div class="k">메모리 기록</div><div class="v text-sm text-body">소비 관찰은 <code class="text-violet">[observed]</code> · 검색어와 댓글 등 직접 말한 것은 <code class="text-violet">[stated]</code> 로 구분 기록 · 파일당 4,000바이트 · 64개 제한 · 삭제는 명시 요청이 있을 때만</div></div>
-              <div class="drow"><div class="k">개인정보</div><div class="v text-sm text-body">건강 · 정치 성향 · 가족 실명 · 주소 · 금융 등 민감 정보는 기록하지 않음 · TIARA Location(위치 수집) 타입은 사용하지 않음</div></div>
+              <div class="drow"><div class="k">개인정보</div><div class="v text-sm text-body">건강 · 정치 성향 · 가족 실명 · 주소 · 금융 등 민감 정보는 기록하지 않음 · 위치정보는 PAST 수집 대상에서 제외(별도 파이프라인 격리) · 사용자 입력 텍스트는 수집하지 않음(검색어만 분리 저장 예외)</div></div>
               <div style="margin-top:10px"><div class="selctl__lbl" style="margin-bottom:6px">판정 기준 · 기본 페르소나 8종</div>
                 <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:190px">페르소나</th><th>특징</th></tr></thead><tbody>
                   <template x-for="pd in ((demoData && demoData.personas) || [])" x-bind:key="'ppd'+pd.name">

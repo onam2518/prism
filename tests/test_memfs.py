@@ -165,8 +165,8 @@ class TestDemoSession(unittest.TestCase):
         self.assertIn("클릭가중 2.0", d["logic"])
         self.assertEqual(d["wrote"]["path"], "topics/business-and-finance.md")
         self.assertTrue(d["live"]["cats"][0]["name"].startswith("Business"))
-        self.assertIn("[Usage] UsagePage", d["stream"][-1])   # 콘솔형 로그 라인
-        self.assertIn("dwell=50s", d["stream"][-1])
+        self.assertIn("[Usage] UsagePage", d["stream"][-1])   # 콘솔형 로그 라인(PAST 필드명)
+        self.assertIn("usage.duration=50s", d["stream"][-1])
         self.assertIn("conclusion", d)                   # 소비 즉시 실시간 결론
 
     def test_click_only_not_consumed(self):
@@ -230,7 +230,7 @@ class TestDemoSession(unittest.TestCase):
         d = MF.demo_ops({"op": "event", "event": "search", "query": "반도체 심층 몰아보기"}, team="t1")
         self.assertIn("Search", d["logic"])
         self.assertIn("ViewSearchResults", d["logic"])
-        self.assertIn('[Event] Search query=', d["stream"][-1])
+        self.assertIn('[Event] Search search.search_term=', d["stream"][-1])
         body = MF.memory_data(team="t1")["files"][0]["content"]
         self.assertIn("[stated]", body)
         self.assertIn("반도체 심층 몰아보기", body)
@@ -253,8 +253,8 @@ class TestDemoSession(unittest.TestCase):
     def test_react_records_observed_and_custom_props_logic(self):
         MF.demo_ops({"op": "event", "event": "click", "idx": 0}, team="t1")
         d = MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "화나요"}, team="t1")
-        self.assertIn("Custom Properties", d["logic"])
-        self.assertIn("[Event] Like emotion='화나요'", d["stream"][-1])
+        self.assertIn("custom_props", d["logic"])
+        self.assertIn("[Event] Dislike content.id=0 custom_props.emotion='화나요'", d["stream"][-1])
         body = MF.memory_data(team="t1")["files"][0]["content"]
         self.assertIn("[observed]", body)
         self.assertIn("반응 '화나요'", body)
@@ -262,7 +262,8 @@ class TestDemoSession(unittest.TestCase):
 
     def test_comment_recorded_as_stated(self):
         d = MF.demo_ops({"op": "event", "event": "comment", "idx": 0, "text": "반도체는 지금이 저점 같다"}, team="t1")
-        self.assertIn("WriteComment", d["logic"])
+        self.assertIn("기사상세_댓글등록_완료", d["logic"])   # PAST 표준 분류 없음 → 행동 이름 구분
+        self.assertNotIn("반도체는 지금이 저점 같다", d["stream"][-1])   # 본문은 로그 미수집(입력 텍스트 금지)
         body = MF.memory_data(team="t1")["files"][0]["content"]
         self.assertIn('- [stated]', body)
         self.assertIn("반도체는 지금이 저점 같다", body)
@@ -285,6 +286,7 @@ class TestDemoSession(unittest.TestCase):
         self.assertEqual(d2["live"]["resp"]["emos"]["화나요"], 1)
         # 같은 콘텐츠에 감정을 바꿔 누르면 교체(중복 가중 없음)
         d3 = MF.demo_ops({"op": "event", "event": "react", "idx": 0, "emotion": "좋아요"}, team="t1")
+        self.assertIn("[Event] Like", d3["stream"][-1])            # 긍정 감정 → 피드백 Like
         self.assertEqual(d3["live"]["resp"]["reacts"], 2)          # idx1 + idx0 각 1건
         self.assertEqual(d3["live"]["resp"]["emos"].get("화나요"), None)
         self.assertEqual(d3["live"]["resp"]["emos"]["좋아요"], 2)
