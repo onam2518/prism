@@ -428,7 +428,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const act = dwell >= 30 ? 'read' : 'skim';
         await this.demoPost({ op: 'event', event: act, idx, dwell_sec: dwell, scroll_pct: act === 'read' ? 95 : 20 });
       },
-      async demoReact(emo) {                        // 감정 반응 → Event(Like) · 다시 누르면 감정 변경(서버가 최신 1건만 집계)
+      async demoReact(emo) {                        // 감정 반응 → 피드백 Event(긍정 Like · 부정 Dislike) · 다시 누르면 감정 변경(서버가 최신 1건만 집계)
         if (!this.demoReading || this.demoReading.reacted === emo) return;
         const d = await this.demoPost({ op: 'event', event: 'react', idx: this.demoReading.idx, emotion: emo });
         if (d && this.demoReading) this.demoReading.reacted = emo;
@@ -436,7 +436,7 @@ window.PRISM_APP_PARTS.push(() => ({
       demoCmt: '', demoFileSel: '',
       demoShowFile(f) { this.demoFileSel = this.demoFileSel === f ? '' : f; if (this.demoFileSel && !this.memFile(f.replace(/^\//, ''))) this.loadMem(); },
       demoFileBody() { const f = this.memFile((this.demoFileSel || '').replace(/^\//, '')); return f ? f.content : '불러오는 중 · 잠시 후 다시 눌러주세요'; },
-      async demoComment() {                         // 댓글 → Event(WriteComment) + 메모리 [stated]
+      async demoComment() {                         // 댓글 → Event(표준 분류 없음 · 행동 이름 구분) · 본문은 로그 미수집 → 메모리 [stated]
         const t = (this.demoCmt || '').trim();
         if (!t || !this.demoReading) return;
         const d = await this.demoPost({ op: 'event', event: 'comment', idx: this.demoReading.idx, text: t });

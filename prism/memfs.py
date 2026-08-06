@@ -232,7 +232,7 @@ def memory_ops(body: dict, team=None) -> dict:
 
 DEMO_KIND = "usermeta_demo"
 DEMO_EVENTS_MAX = 400
-# 프롬프트 별도 수집체계: TIARA Search 이벤트(행동)와 별개로 프롬프트 원문·응답 결과를
+# 프롬프트 별도 수집체계: PAST 검색 로그(Event·Search)와 별개로 프롬프트 원문·응답 결과를
 # 상세 보존한다 · usermeta_prompts = {"items": [{q, t, results_n, cats, zero, clicked}]}
 # 활용: 커버리지(응답률) · 공급 갭(무결과 프롬프트 = 수요는 있는데 콘텐츠가 없는 주제) ·
 # 프롬프트 → 소비 전환율. 참고 발상: 프롬프트 트래킹(응답에 등장했는가가 곧 가시성).
@@ -283,12 +283,16 @@ _INT_KO_LEGACY = {"기획·심층": "깊이 있는 분석만", "분석·해설":
                   "인물 동정": "인물 소식만", "유머": "웃음 충전 콘텐츠",
                   "라이프스타일": "일상 꿀팁 모음", "의견·논평": "여러 시각의 논평"}
 INT_KO = dict(_INT_KO_LEGACY, **_INT_KO_CURRENT)
-# TIARA(전사 통합 행동로그) 체계 매핑 · pplan/286294107 스펙 시트 기준.
-# 노출=ViewableImpression(실제 보인 콘텐츠만) · 클릭=Event(ClickContent · 읽기 화면은 Pageview
-# ViewContent 병행) · 읽기 종료=Usage(UsagePage · 체류·스크롤) · 저장=Event(표준 Kind 없음 →
-# 액션명 구분 권고). Usage 체류 최대 600초(10분) 초과분은 스펙대로 최대값으로 잘라 저장.
-TIARA_TAG = {"impression": "ViewImp", "click": "Event", "read": "Usage",
-             "skim": "Usage", "react": "Event", "comment": "Event", "search": "Event"}
+# PAST(다음 전용 경량 로그 수집 체계) 매핑 · daumcorp pplan/335381293(1. PAST) 기준.
+# 행동 유형 4종: 화면 조회 Pageview · 상호작용 Event · 노출 ViewImp · 사용성 Usage.
+# 노출=ViewImp(viewimp_contents[] 묶음 · id·type 필수) · 클릭=Event(ClickContent · 읽기 화면은
+# Pageview ViewContent 병행) · 읽기 종료=Usage(UsagePage · duration+scroll_percent 동시 전송) ·
+# 감정 반응=피드백 계열(긍정 Like · 부정 Dislike · 유실 금지 등급 · 상세는 custom_props) ·
+# 댓글=표준 분류 없음 → 행동 이름(화면_액션 규칙) 구분 · 본문은 로그 미수집(입력 텍스트
+# 수집 금지 · 검색어만 분리 저장 예외).
+PAST_TAG = {"impression": "ViewImp", "click": "Event", "read": "Usage",
+            "skim": "Usage", "react": "Event", "comment": "Event", "search": "Event"}
+# 체류 상한: PAST 는 개발 검토 항목 ②(10분 vs 3시간) 확정 전 → 시연은 10분 클램프 유지
 USAGE_MAX_SEC = 600
 
 
@@ -444,25 +448,26 @@ def _live_measures(events, catalog) -> dict:
 
 
 def _ev_line(e) -> str:
-    """콘솔형 로그 한 줄 · TIARA ActionType/ActionKind 를 코드처럼 그대로 노출."""
+    """콘솔형 로그 한 줄 · PAST 행동 유형(action_type)·표준 분류(action_kind)·필드명 그대로 노출."""
     t = e.get("t", "")
     ev = e.get("event")
     idx = e.get("idx")
     title = (e.get("title") or "")[:22]
     if ev == "impression":
-        return t + ' [ViewImp] content_id=' + str(idx) + ' "' + title + '"'
+        return t + ' [ViewImp] viewimp_contents[].id=' + str(idx) + ' "' + title + '"'
     if ev == "click":
-        return t + ' [Event] ClickContent content_id=' + str(idx) + ' "' + title + '"'
+        return t + ' [Event] ClickContent content.id=' + str(idx) + ' "' + title + '"'
     if ev in ("read", "skim"):
-        return (t + " [Usage] UsagePage content_id=" + str(idx) + " dwell=" + str(e.get("dwell") or 0)
-                + "s scroll=" + str(e.get("scroll") or 0) + '% "' + title + '"')
+        return (t + " [Usage] UsagePage usage.duration=" + str(e.get("dwell") or 0)
+                + "s scroll_percent=" + str(e.get("scroll") or 0) + ' content.id=' + str(idx) + ' "' + title + '"')
     if ev == "react":
-        return t + " [Event] Like emotion='" + (e.get("emo") or "") + "' content_id=" + str(idx)
+        kind = "Like" if (e.get("emo") or "") in EMO_POS else "Dislike"
+        return t + " [Event] " + kind + " content.id=" + str(idx) + " custom_props.emotion='" + (e.get("emo") or "") + "'"
     if ev == "comment":
-        return t + ' [Event] WriteComment content_id=' + str(idx) + ' text="' + (e.get("text") or "") + '"'
+        return t + ' [Event] 기사상세_댓글등록_완료 content.id=' + str(idx) + " (본문은 로그 미수집 → 메모리 [stated])"
     if ev == "search":
-        return t + ' [Event] Search query="' + title + '"'
-    return t + " [" + TIARA_TAG.get(ev, "-") + "] " + str(ev)
+        return t + ' [Event] Search search.search_term="' + title + '" → 분리 저장(개인정보)'
+    return t + " [" + PAST_TAG.get(ev, "-") + "] " + str(ev)
 
 
 def _suggests(catalog) -> list:
@@ -558,7 +563,7 @@ def _conclusion(events, catalog, team=None) -> dict:
                           "measure": "이 콘텐츠 이후 가중 ×2.0", "file": "측정만"})
         elif e.get("event") == "react":
             chain.append({"t": e.get("t", ""), "act": "반응 '" + (e.get("emo") or "") + "' · \"" + (e.get("title") or "") + '"',
-                          "measure": "호응 가중 +" + str(REACT_W) + " · 감정은 Custom Properties",
+                          "measure": "호응 가중 +" + str(REACT_W) + " · 감정은 custom_props",
                           "file": ("/" + e["path"]) if e.get("path") else "측정만"})
         elif e.get("event") == "search":
             chain.append({"t": e.get("t", ""), "act": "검색 · '" + (e.get("title") or "") + "'",
@@ -663,7 +668,8 @@ def demo_ops(body: dict, team=None) -> dict:
             events.append({"idx": -1, "event": "search", "dwell": 0, "scroll": 0,
                            "t": _now_t(), "title": q, "path": wrote["path"]})
             sess["last_logic"] = ("검색 '" + q + "' · Event(Search) + 결과 " + str(len(matches))
-                                  + "건(ViewSearchResults) · 프롬프트 원문은 별도 수집체계에 보존"
+                                  + "건(ViewSearchResults) · 검색어는 개인정보로 분리 저장(search_terms)"
+                                  + " · 프롬프트 원문은 별도 수집체계에 보존"
                                   + ("" if matches else " · 무결과 = 공급 갭 신호")
                                   + " · 직접 선언이라 /" + wrote["path"] + " 에 [stated] 기록")
         elif ev in ("click", "read", "skim", "react", "comment"):
@@ -674,7 +680,7 @@ def demo_ops(body: dict, team=None) -> dict:
             c = byidx.get(idx)
             if not c:
                 return {"error": "콘텐츠를 찾을 수 없습니다 · 새로고침 후 다시 시도하세요"}
-            dwell = max(0, min(USAGE_MAX_SEC, int(body.get("dwell_sec") or 0)))   # TIARA Usage 최대 10분
+            dwell = max(0, min(USAGE_MAX_SEC, int(body.get("dwell_sec") or 0)))   # PAST 상한 확정 전 10분 클램프
             scroll = max(0, min(100, int(body.get("scroll_pct") or 0)))
             rec = {"idx": idx, "event": ev, "dwell": dwell, "scroll": scroll, "t": _now_t(),
                    "title": c["title"][:40], "cat": c["cat"], "intent": c["intent"], "path": ""}
@@ -686,7 +692,7 @@ def demo_ops(body: dict, team=None) -> dict:
             if ev == "click":
                 sess["last_logic"] = ('클릭 "' + c["title"][:24] + '" → Event(ClickContent) + 읽기 화면 '
                                       "Pageview(ViewContent) · 이 콘텐츠의 소비 가중 ×2.0")
-            elif ev == "react":                      # 감정 반응 → Event(Like) · 감정 상세는 Custom Properties
+            elif ev == "react":                      # 감정 반응 → 피드백 Event(Like·Dislike) · 상세는 custom_props
                 emo = body.get("emotion") or ""
                 if emo not in EMOTIONS:
                     return {"error": "지원하지 않는 반응입니다"}
@@ -701,10 +707,11 @@ def demo_ops(body: dict, team=None) -> dict:
                 _persist(team, files)
                 rec["emo"] = emo
                 rec["path"] = wrote["path"]
-                sess["last_logic"] = ("반응 '" + emo + "' → Event(Like) · 호응 가중 +" + str(REACT_W)
-                                      + " 을 " + (_cat_ko(c["cat"]) or c["cat"]) + " 선호에 합산 · 감정은 Custom Properties 기록 · /"
+                sess["last_logic"] = ("반응 '" + emo + "' → Event(" + ("Like" if emo in EMO_POS else "Dislike")
+                                      + " · 피드백=유실 금지) · 호응 가중 +" + str(REACT_W)
+                                      + " 을 " + (_cat_ko(c["cat"]) or c["cat"]) + " 선호에 합산 · 감정 상세는 custom_props 기록 · /"
                                       + wrote["path"] + " 에 [observed]")
-            elif ev == "comment":                    # 댓글 = 직접 발화 → Event(WriteComment) + [stated] 기록
+            elif ev == "comment":                    # 댓글 = 직접 발화 → Event(표준 분류 없음 · 행동 이름 구분) · 본문은 로그 미수집 → [stated]
                 text = (body.get("text") or "").strip()[:200]
                 if not text:
                     return {"error": "댓글 내용을 입력하세요"}
@@ -716,9 +723,9 @@ def demo_ops(body: dict, team=None) -> dict:
                 _persist(team, files)
                 rec["text"] = text[:40]
                 rec["path"] = wrote["path"]
-                sess["last_logic"] = ("댓글 → Event(WriteComment) · 호응 가중 +" + str(COMMENT_W)
-                                      + " 을 " + (_cat_ko(c["cat"]) or c["cat"]) + " 선호에 합산 · 직접 말한 의견이라 /"
-                                      + wrote["path"] + " 에 [stated] 로 기록(관찰과 구분)")
+                sess["last_logic"] = ("댓글 → Event(기사상세_댓글등록_완료 · 표준 분류 없음) · 호응 가중 +" + str(COMMENT_W)
+                                      + " 을 " + (_cat_ko(c["cat"]) or c["cat"]) + " 선호에 합산 · 본문은 로그에 수집하지 않고"
+                                      + " 직접 말한 의견이라 /" + wrote["path"] + " 에 [stated] 로 기록(관찰과 구분)")
             else:
                 files = _files(team)
                 wrote, err = _observe(files, c["title"] or "(제목 없음)", c["cat"], c["intent"],
