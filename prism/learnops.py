@@ -320,6 +320,70 @@ def build_golden_from_reviews(team=None) -> dict:
             "total": total, "need_category": no_cat, "need_grade": no_grade,
             "need_list": need_list[:50], "disagree": disagree, "min_good": min_good}
 
+def promotion_pending(team=None) -> dict:
+    """반영 대기 집계(읽기 전용 · 쓰기 없음): 다음 학습 반영 때 승격될 수와 승격을 막는
+    사유 분해. 분류 규칙은 build_golden_from_reviews(승격)·reviewops.final_review_queue(큐)와
+    동일해야 한다 — 셋이 갈라지면 '골든도 큐도 아닌' 영구 미확정이 생긴다(테스트로 정합 고정).
+    배경(운영 2026-08-06): 검수 488건 vs 정답 122건. 학습 반영이 7/22 이후 멈췄는데 그
+    사실이 어디에도 안 보여 '검수가 반영이 안 된다'로 읽혔다. 반환:
+    {promote(승격 대기 · 골든 제외), split(의견 갈림 → 최종검수), no_grade, no_cat,
+     base_fix(수정필요 일방 합의 → 기초 검수 교정 몫)}"""
+    from .store import content_hash
+    st = _SV.get_store()
+    if not (st and hasattr(st, "feedback_map")):
+        return {}
+    rows = _SV.results_rows(team=team)
+    try:
+        fmap = _SV.feedback_map_cached(team)          # 현황 조회 전용 · 원격 30s 캐시
+    except Exception:
+        fmap = {}
+    weights = _SV.reviewer_weights(team, fmap=fmap)
+    min_good = max(1, int(getattr(Config.load(), "golden_min_good", 1) or 1))
+    try:
+        finals = _SV.final_verdicts(team)
+    except Exception:
+        finals = {}
+    try:
+        golden = st.golden_hashes(team)
+    except Exception:
+        golden = set()
+    out = {"promote": 0, "split": 0, "no_grade": 0, "no_cat": 0, "base_fix": 0}
+    seen = set()
+    for r in rows:
+        ref = r.get("content_ref") or {}
+        content = {"displayServiceName": ref.get("displayServiceName", ""), "title": ref.get("title", ""),
+                   "subtitle": ref.get("subtitle", ""), "body": ref.get("body", "")}
+        ch = content_hash(content)
+        if ch in seen:
+            continue
+        seen.add(ch)
+        fb = fmap.get(ch)
+        if not fb or ch in golden:                    # 기초 검수 없음 · 이미 골든 → 대기 아님
+            continue
+        fv = (finals.get(ch) or {}).get("verdict")
+        if fv == "bad":                               # 리드가 '제외' 확정 → 대기 아님(결정 완료)
+            continue
+        gw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
+                 for v in fb.get("verdicts", []) if v.get("verdict") == "good")
+        bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
+                 for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
+        agreed = fv == "good" or (fb.get("good", 0) >= min_good and gw > bw)
+        grade_ok = (r.get("quality_meta") or {}).get("finalGrade", "") in ("G", "R")
+        cats = [c for c in ((r.get("item_meta") or {}).get("content_category") or [])
+                if c and c != "Unclassified"]
+        if agreed and grade_ok and cats:
+            out["promote"] += 1
+        elif agreed and not grade_ok:
+            out["no_grade"] += 1
+        elif agreed:
+            out["no_cat"] += 1
+        elif fb.get("good") and fb.get("bad"):
+            out["split"] += 1
+        else:
+            out["base_fix"] += 1
+    return out
+
+
 _LAST_LEARN_REPORT = {}                               # 최근 일배치 결과(수신·표시용)
 
 def cheapest_passing_model(models: list, gate: float) -> str:

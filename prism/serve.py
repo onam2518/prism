@@ -211,6 +211,7 @@ eval_golden = LO.eval_golden
 register_golden = LO.register_golden
 golden_list = LO.golden_list
 build_golden_from_reviews = LO.build_golden_from_reviews
+promotion_pending = LO.promotion_pending
 compare_models_on_golden = LO.compare_models_on_golden
 eval_run_start = EVO.eval_run_start
 eval_run_resume = EVO.eval_run_resume
@@ -1782,6 +1783,17 @@ def _g_golden_status(h, q):
                 good_n += 1
     except Exception:
         pass
+    # 반영 대기 분해 + 반영 정체 일수: 학습 반영이 멈춰도 어디에도 안 보이던 공백을 메운다
+    # (운영 2026-08-06: 검수 488 vs 정답 122 · 마지막 반영 7/22 이후 15일 무실행 혼선)
+    try:
+        pending = LO.promotion_pending(h._req_team())
+    except Exception:
+        pending = {}
+    _ts = _rep.get("ts")
+    try:
+        stale_days = max(0, int((time.time() - float(_ts)) // 86400)) if _ts else None
+    except (TypeError, ValueError):
+        stale_days = None
     return {
         "ok": True,
         "batch_seq": (st.batch_seq(h._req_team()) if (st and hasattr(st, "batch_seq")) else 0),
@@ -1789,10 +1801,12 @@ def _g_golden_status(h, q):
         "source_counts": (st.golden_source_counts(h._req_team())
                           if (st and hasattr(st, "golden_source_counts")) else {}),
         "reviewed": {"contents": reviewed_n, "good": good_n},
+        "pending": pending,
+        "stale_days": stale_days,
         "last_batch": {k: g.get(k) for k in ("confirmed", "new", "demoted", "need_category",
                                              "disagree", "min_good")},
         "need_list": g.get("need_list") or [],
-        "ts": _rep.get("ts")}
+        "ts": _ts}
 
 
 @_get_route("/prompt-defaults")
