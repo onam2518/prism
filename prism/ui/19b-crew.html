@@ -10,7 +10,7 @@
         <div class="evaltabs evaltabs--sub">
           <button type="button" x-bind:class="crewTab==='dash'?'sel':''" x-on:click="crewTab='dash'; loadCrew()">현황</button>
           <button type="button" x-bind:class="crewTab==='people'?'sel':''" x-on:click="crewTab='people'; loadCrew()">검수자 · 가용 일정</button>
-          <button type="button" x-bind:class="crewTab==='assign'?'sel':''" x-on:click="crewTab='assign'; loadCrew(); loadRaw(1000)">배정</button>
+          <button type="button" x-bind:class="crewTab==='assign'?'sel':''" x-on:click="crewTab='assign'; loadCrew(); loadRaw()">배정</button>
           <span class="ml-auto text-xs text-muted" x-show="crewBusy">불러오는 중…</span>
         </div>
       </div>

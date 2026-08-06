@@ -112,7 +112,11 @@ def store_save(pairs, source: str = "단건", team=None):
 
 def add_contents(contents: list, purpose: str = "", team=None, source: str = "단건") -> dict:
     """STEP 1 콘텐츠 추가: 저장만 하고 모델은 돌리지 않는다(미실행 대기).
-    실행은 STEP 2 모델 실행(일괄 실행 큐 · scope=pending)이 담당 · 실행 시 같은 hash 로 upsert."""
+    실행은 STEP 2 모델 실행(일괄 실행 큐 · scope=pending)이 담당.
+    이미 저장된 콘텐츠(동일 hash)는 건드리지 않고 '기존'으로만 집계한다 — 누적 마스터
+    파일을 통째로 재업로드하는 운영을 지원(신규만 추가 · 기존은 재실행 대상이 안 된다).
+    (종전엔 재추가가 빈 메타로 upsert 되어 기존 실행 결과가 미실행으로 되돌아갔고,
+    STEP 2가 그걸 다시 실행해 이중 과금됐다 · 운영 2026-08-05 중복 배치 200건.)"""
     rows = [c for c in contents
             if (c.get("title") or "").strip() or (c.get("body") or "").strip()]
     if not rows:
@@ -122,9 +126,17 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
     for c in rows:
         uniq[_chash(c)] = c
     dropped = len(rows) - len(uniq)
+    known = {}
+    st0 = _SV.get_store()
+    if st0 is not None and hasattr(st0, "existing_hashes"):
+        try:
+            known = st0.existing_hashes(list(uniq.keys()), team=team) or {}
+        except Exception:
+            known = {}    # 조회 실패 → 전량 신규 취급(upsert 멱등 · 빈 결과는 save_dedup 가드가 보호)
+    existing = sum(1 for h in uniq if h in known)
     # 참조 이미지 URL 정규화(http(s)·중복 제거·상한)를 인입 경로 공통으로. 원본 dict 는 건드리지 않는다.
     rows = [dict(c, image_urls=normalize_image_urls(c.get("image_urls") or c.get("images")))
-            for c in uniq.values()]
+            for h, c in uniq.items() if h not in known]
     pairs = [(c, {"content_ref": {"displayServiceName": c.get("displayServiceName", ""),
                                   "title": c.get("title", ""), "subtitle": c.get("subtitle", ""),
                                   "source_url": _SV._safe_url(c.get("source_url", "") or c.get("url", "")),
@@ -133,24 +145,28 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
                                   "image_urls": list(c.get("image_urls") or []),
                                   "body": c.get("body", ""), "body_hash": _chash(c)},
                   "quality_meta": {}, "item_meta": {}, "trace": {}}) for c in rows]
-    saved = store_save(pairs, source=source, team=team)
+    saved = store_save(pairs, source=source, team=team) if rows else None
     if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '추가됨'으로 속이지 않는다
         return {"error": "저장 실패 · 다시 시도하세요 (" + saved["error"][:120] + ")"}
+    msg = f"신규 {len(rows)}건 추가"
+    if existing:
+        msg += f" · 기존 {existing}건 유지(재실행 안 함)"
+    msg += (" · 미실행 대기(STEP 2에서 실행)" if rows else " · 모두 이미 등록된 콘텐츠") + _img_note(rows)
     jid = "add:" + time.strftime("%H%M%S")               # 실행 이력에 추가 기록(클릭 -> 해당 콘텐츠)
     with _SV._INGEST_LOCK:                                   # 키 삽입은 상태 순회와 레이스 · 락 필수
         _SV._INGEST_STATE[jid] = {"name": source, "endpoint": "", "kind": "콘텐츠 추가", "started": time.time(),
-                              "running": False, "total": len(rows), "done": len(rows), "failed": 0,
+                              "running": False, "total": len(uniq), "done": len(uniq), "failed": 0,
                               "last_run": time.time(),
-                              "last_msg": f"{len(rows)}건 추가 · 미실행 대기(STEP 2에서 실행)" + _img_note(rows),
-                              "last_ok": True, "trigger": "manual", "hashes": [_chash(c) for c in rows]}
-    if (purpose or "") == "eval":
+                              "last_msg": msg,
+                              "last_ok": True, "trigger": "manual", "hashes": list(uniq.keys())}
+    if (purpose or "") == "eval" and rows:               # 용도 지정은 신규만(기존 행 용도 불변)
         try:
             stp = _SV.get_store()
             if stp and hasattr(stp, "set_purpose"):
                 stp.set_purpose([_chash(c) for c in rows], "eval", team=team)
         except Exception:
             pass
-    return {"ok": True, "added": len(rows), "pending": True,
+    return {"ok": True, "added": len(rows), "existing": existing, "pending": True,
             "with_images": img_coverage(rows)["with_images"],   # 이미지 유실 관측(게시판 #9)
             **({"duplicates": dropped} if dropped else {})}
 
@@ -291,6 +307,11 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
 
 
 SELECTED_MAX = 500              # 선택 실행 1회 상한(요청 본문·실행 시간 폭주 방지)
+PENDING_MAX = 2000              # '미실행만' 1회 상한 — 인입 경로(엑셀 N개·수동) 무관 합산 실행.
+                                # 미실행은 전부 운영자가 명시적으로 추가한 것이라 전량 실행이 의도다
+                                # (전체 재실행 all 은 200 유지 · 실수로 전량 재과금 방지)
+BATCH_ADD_MAX = 2000            # 엑셀 추가(STEP 1) 1회 상한 — 누적 마스터 파일 재업로드 수용
+                                # (종전 200 은 '추출 실행' 비용 가드가 추가 경로까지 묶은 것)
 
 
 def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
@@ -560,14 +581,28 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         a = ING.assess(tmp)
         if not a["ok"]:
             return {"error": a["reason"], "headers": a.get("headers", [])}
-        contents = ING.to_contents(tmp)[:200]
+        contents = ING.to_contents(tmp)
+        truncated = max(0, len(contents) - BATCH_ADD_MAX)
+        contents = contents[:BATCH_ADD_MAX]
         if add_only:                                 # STEP 1 = 추가만(모델 미실행 · 즉시 완료)
             r = add_contents(contents, purpose=purpose, team=team, source="배치")
-            return {**r, "source": "excel", "count": r.get("added", 0), "mapping": a["mapping"]}
+            return {**r, "source": "excel", "count": r.get("added", 0), "mapping": a["mapping"],
+                    **({"truncated": truncated} if truncated else {})}
+        from .store import content_hash as _bch
+        # 추출 실행도 누적 파일 재업로드에 안전하게: 이미 실행 완료된 기존 행은 건너뛴다
+        # (신규 + 기존-미실행만 실행 · 재업로드가 곧 재과금이 되지 않게). 실행 상한은 종전 200 유지.
+        known = {}
+        st0 = _SV.get_store()
+        if st0 is not None and hasattr(st0, "existing_hashes"):
+            try:
+                known = st0.existing_hashes([_bch(c) for c in contents], team=team) or {}
+            except Exception:
+                known = {}
+        skipped_done = sum(1 for c in contents if known.get(_bch(c)))
+        contents = [c for c in contents if not known.get(_bch(c))][:200]
         results, items, pairs = [], [], []
         jid = "batch:" + time.strftime("%H%M%S")     # 실행 큐 등록(진행률·ETA)
         _SV._job_begin(jid, (filename or "엑셀"), "엑셀 일괄 추출", len(contents))
-        from .store import content_hash as _bch
         _SV._INGEST_STATE[jid]["hashes"] = [_bch(c) for c in contents]
         try:
             for c in contents:
@@ -587,8 +622,10 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         except Exception as e:
             _SV._job_end(jid, False, f"{len(results)}건 추출 후 중단 · {str(e)[:80]}")
             raise
-        store_save(pairs, source="배치", team=team)  # 영속 저장(단일 트랜잭션 배치)
-        _SV._job_end(jid, True, f"{len(results)}건 추출 · 저장 완료" + _img_note(contents))
+        if pairs:
+            store_save(pairs, source="배치", team=team)  # 영속 저장(단일 트랜잭션 배치)
+        skip_note = f" · 기존 실행완료 {skipped_done}건 건너뜀" if skipped_done else ""
+        _SV._job_end(jid, True, f"{len(results)}건 추출 · 저장 완료" + skip_note + _img_note(contents))
         if (purpose or "") == "eval":               # 평가용 지정: 검수 대상에서 제외(홀드아웃)
             try:
                 from .store import content_hash as _chash
@@ -599,6 +636,7 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
                 pass
         return {"source": "excel", "mock": llm.mock, "count": len(results),
                 "mapping": a["mapping"], "items": items,
+                **({"skipped_done": skipped_done} if skipped_done else {}),
                 "with_images": img_coverage(contents)["with_images"]}   # 이미지 유실 관측(게시판 #9)
     finally:
         try:

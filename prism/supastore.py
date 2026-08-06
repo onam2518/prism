@@ -218,6 +218,21 @@ class SupabaseStore:
             out[r["id"]] = {"name": r.get("name") or r["id"], "avatar": r.get("avatar") or "boksil"}
         return out
 
+    def existing_hashes(self, hashes, team=None) -> dict:
+        """저장된 해시 → 실행 여부(bool). STEP 1 추가의 신규/기존 구분과 엑셀 일괄 추출의
+        기존 실행분 스킵이 쓴다. 실행 여부는 model·final_grade 컬럼으로 판정(미실행 추가
+        행은 둘 다 빈 값 · sqlite existing_hashes 와 동일 계약)."""
+        out = {}
+        hs = [h for h in dict.fromkeys(hashes or []) if h]
+        for i in range(0, len(hs), 100):                 # URL 길이 상한 대비 청크
+            chunk = hs[i:i + 100]
+            q = "select=hash,model,final_grade&hash=in.(" + ",".join(chunk) + ")"
+            if team:
+                q += f"&team_id=eq.{urllib.parse.quote(str(team))}"
+            for r in self._get("contents", q):
+                out[r["hash"]] = bool((r.get("model") or "") or (r.get("final_grade") or ""))
+        return out
+
     def yellow_hashes(self, team=None) -> set:
         """검수 대상(YELLOW·실행됨) 해시 집합 · 진척율/퀘스트 분자·분모가 공유하는 모집단.
         미실행(추가만) 콘텐츠는 arena_stats 분모와 동일하게 제외."""

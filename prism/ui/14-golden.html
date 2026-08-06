@@ -533,9 +533,14 @@
                           x-text="'내가 판정한 ' + rawDoneHidden + '건이 감춰져 있습니다 · 전체 보기'"></button>
                   <div class="fpop__sep"></div>
                   <!-- 내 배정분만: 여럿이 나눠 맡은 날 '내가 맡은 것'만 추려 보는 용도(미배정분은 빠진다) -->
-                  <button type="button" class="fpop__chk" x-bind:class="rawMineOnly ? 'is-on' : ''" x-on:click="rawMineOnly = !rawMineOnly" x-bind:aria-pressed="rawMineOnly ? 'true' : 'false'">
+                  <button type="button" class="fpop__chk" x-bind:class="rawMineOnly ? 'is-on' : ''" x-on:click="rawMineOnly = !rawMineOnly; if (rawMineOnly) rawUnassignedOnly = false" x-bind:aria-pressed="rawMineOnly ? 'true' : 'false'">
                     <span class="fpop__box" aria-hidden="true"></span>
                     <span><b>나에게 지정된 콘텐츠만</b><span class="fpop__sub">배정된 검수자가 나인 건만 봅니다 · 미배정분은 빠집니다</span></span>
+                  </button>
+                  <!-- 미배정만: 담당 지정 전 물량 확인용(2026-08-06 요청) · '내 배정분만'과 상호 배타 -->
+                  <button type="button" class="fpop__chk" x-bind:class="rawUnassignedOnly ? 'is-on' : ''" x-on:click="rawUnassignedOnly = !rawUnassignedOnly; if (rawUnassignedOnly) rawMineOnly = false" x-bind:aria-pressed="rawUnassignedOnly ? 'true' : 'false'">
+                    <span class="fpop__box" aria-hidden="true"></span>
+                    <span><b>미배정 콘텐츠만</b><span class="fpop__sub">담당이 지정되지 않은 건만 봅니다 · 배정 전 물량 확인용</span></span>
                   </button>
                   <button type="button" class="fpop__chk" x-bind:class="rawGapFirst ? 'is-on' : ''" x-on:click="rawGapFirst = !rawGapFirst" x-bind:aria-pressed="rawGapFirst ? 'true' : 'false'">
                     <span class="fpop__box" aria-hidden="true"></span>

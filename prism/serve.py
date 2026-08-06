@@ -2523,10 +2523,14 @@ def _p_rerun_all(h, body):
     # force: 퀘스트 진행 중 확인 모달을 거친 강행 — 개별 재실행(/rerun)과 같은 규약.
     data = json.loads(body or b"{}")
     scope = (data.get("scope") or "all").strip()
+    scope = scope if scope in ("all", "pending") else "all"
     raw = data.get("hashes")
     hashes = [str(x).strip() for x in raw[:RN.SELECTED_MAX] if str(x).strip()] if isinstance(raw, list) else []
-    return rerun_all((data.get("model") or "").strip(), h._req_team(),
-                     scope=(scope if scope in ("all", "pending") else "all"),
+    # 미실행만은 인입 경로(엑셀 여러 개·수동 단건) 무관 전량 합산 실행(PENDING_MAX) —
+    # 회당 200 이면 엑셀 2개(400건)를 올려도 한 번에 못 돌아 '파일 단위'처럼 보였다.
+    # 전체 재실행(all)은 이미 실행된 건 전량 재과금이라 200 가드 유지.
+    return rerun_all((data.get("model") or "").strip(), h._req_team(), scope=scope,
+                     limit=(RN.PENDING_MAX if scope == "pending" else 200),
                      hashes=hashes, force_quest=bool(data.get("force")))
 
 

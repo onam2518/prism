@@ -528,6 +528,12 @@ class Store:
                 if old_im == new_im and (cur[1] or "") == new_gr and old_rs == new_rs:
                     skip += 1
                     continue                      # 동일 콘텐츠·결과 → 적재 제외
+                if not (out.get("item_meta") or new_gr or (tr.get("model") or "")):
+                    # 빈 결과(STEP 1 재추가)가 기존 실행 결과를 지우지 않게 — 같은 콘텐츠를
+                    # 다시 올리면 미실행으로 되돌아가 STEP 2 재실행·이중 과금으로 이어졌다
+                    # (운영 2026-08-05: 중복 배치 200건 전량 재실행).
+                    skip += 1
+                    continue
                 upd += 1
                 try:                              # 기존 payload 의 운영 플래그 승계 준비
                     pl = json.loads(cur[3]) if cur[3] else {}
@@ -1530,6 +1536,32 @@ class Store:
         c = self._conn()
         c.execute("UPDATE deployment_keys SET last_used=? WHERE id=?", (time.time(), int(key_id)))
         c.commit()
+
+    def existing_hashes(self, hashes, team=None) -> dict:
+        """저장된 해시 → 실행 여부(bool). STEP 1 추가의 신규/기존 구분과 엑셀 일괄 추출의
+        기존 실행분 스킵이 쓴다. 실행 여부 판정은 serve._is_pending_row 와 동일 신호
+        (등급·item_meta·trace.model 중 하나라도 있으면 실행됨). team 은 원격 스토어와의
+        시그니처 정합용(로컬 단일 팀이라 무시)."""
+        out = {}
+        c = self._conn()
+        hs = [h for h in dict.fromkeys(hashes or []) if h]
+        for i in range(0, len(hs), 500):                 # IN 절 변수 상한 대비 청크
+            chunk = hs[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            try:
+                rows = c.execute(
+                    "SELECT content_hash, final_grade, item_meta,"
+                    " COALESCE(json_extract(payload,'$.trace.model'),'')"
+                    f" FROM results WHERE content_hash IN ({marks})", chunk)
+                for ch, fg, im, model in rows:
+                    out[ch] = bool((fg or "") or (im or "") not in ("", "{}", "null") or (model or ""))
+            except Exception:                            # json_extract 미지원 빌드 폴백
+                rows = c.execute(
+                    "SELECT content_hash, final_grade, item_meta"
+                    f" FROM results WHERE content_hash IN ({marks})", chunk)
+                for ch, fg, im in rows:
+                    out[ch] = bool((fg or "") or (im or "") not in ("", "{}", "null"))
+        return out
 
     def yellow_hashes(self, team=None) -> set:
         """검수 대상(YELLOW) 해시 집합 · 진척율/퀘스트의 분자·분모가 공유하는 모집단.

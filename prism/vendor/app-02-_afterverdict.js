@@ -42,6 +42,8 @@ window.PRISM_APP_PARTS.push(() => ({
         const scoped = (((this.rawData||{}).items)||[]).filter((r) => {
           if (this.assignedToOther(r)) return false;   // 내 배정분 + 미배정분만(타인 배정분 숨김)
           if (this.rawMineOnly && !this.assignedToMe(r)) return false;   // 내 배정분만(미배정분 제외)
+          // 미배정만(배정 전 물량 확인) · 골드 문항(가상 행)은 배정 개념이 없어 함께 제외
+          if (this.rawUnassignedOnly && (this.isGoldRow(r) || ((r.assignees || []).length))) return false;
           if (q && !((r.title||'') + (r.category||[]).join(' ') + (r.reasons||[]).join(' ')).toLowerCase().includes(q)) return false;
           if (this.rawGrade && (r.grade||'') !== this.rawGrade) return false;
           if (this.rawModel && (r.model||'') !== this.rawModel) return false;
@@ -65,12 +67,13 @@ window.PRISM_APP_PARTS.push(() => ({
       // 0 이면 배지를 숨겨 '필터 없음'을 조용히 알린다.
       get rawFilterN() {
         return (this.rawGrade ? 1 : 0) + (this.rawSvc ? 1 : 0) + (this.rawRev !== 'todo' ? 1 : 0)
-             + (this.rawMineOnly ? 1 : 0) + (this.rawGapFirst ? 1 : 0);
+             + (this.rawMineOnly ? 1 : 0) + (this.rawUnassignedOnly ? 1 : 0) + (this.rawGapFirst ? 1 : 0);
       },
       // 초기화: 검색어(밖)는 그대로 두고 팝오버 안 조건만 기본값으로. 검수 상태는 rawRevPick 경유
       // (창 넓힘 상태를 건드리지 않고 'todo' 로 돌린다).
       rawFilterReset() {
-        this.rawGrade = ''; this.rawSvc = ''; this.rawMineOnly = false; this.rawGapFirst = false;
+        this.rawGrade = ''; this.rawSvc = ''; this.rawMineOnly = false; this.rawUnassignedOnly = false;
+        this.rawGapFirst = false;
         if (this.rawRev !== 'todo') this.rawRevPick('todo');
       },
       rawShown: 200,                             // 검수 표 표시 캡(더 보기 증분) · 크루 탭 캡 200 과 동일 규약
@@ -288,7 +291,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (id === 'admin') {
             if (this.adminTab === 'team' && !this.canTeamTab && this.canCrewTab) this.adminTab = 'crew';
             else if (this.adminTab === 'crew' && !this.canCrewTab && this.canTeamTab) this.adminTab = 'team';
-            if (this.adminTab === 'crew') { this.loadCrew(); this.loadRaw(1000); }   // 후보 풀은 표시 캡(200)보다 넉넉히
+            if (this.adminTab === 'crew') { this.loadCrew(); this.loadRaw(); }   // 후보 풀 = 기본 창(2000) 전체
           }
         }
         else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
