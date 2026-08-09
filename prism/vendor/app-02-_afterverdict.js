@@ -202,6 +202,14 @@ window.PRISM_APP_PARTS.push(() => ({
           if (dh) { this._pendingDetail = dh; this._pendingRetry = false; this.selectMod('create'); this.loadRaw(2000); }
           else if (m) this.selectMod(m);
           if (q.has('settings')) this.selectMod('system');
+          // 서브뷰 딥링크(?view=): 메뉴 단위까지만 있어 위키·문서에서 특정 화면을 걸 수 없었다.
+          // 사용자 탭 서브뷰(시연·생성 과정·정책·로그뷰어)를 주소로 지정한다.
+          const vw = q.get('view');
+          if (vw && this.mod === 'lab' && ['run', 'gen', 'policy', 'viewer'].indexOf(vw) >= 0) {
+            this.labTab = 'user';                      // 이 서브뷰들은 사용자 탭에만 있다
+            this.labUserView = vw;
+            if (vw === 'viewer') this.loadLogViewer();
+          }
         } catch (e) {}
         this.loadVocab();
         this.loadDict();                               // 검수 요소·인텐트 정의 등 UI 사전 선로드(/dict 단일 원천)

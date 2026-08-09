@@ -2702,6 +2702,11 @@ def _p_usermeta_logviewer(h, body):
     return PCK.logviewer_ops(json.loads(body or b"{}"), team=h._req_team())
 
 
+@_post_route("/usermeta-logcheck", gate="team")      # 판정 규칙 시뮬레이터: 붙여넣은 표본만 판정(저장 없음)
+def _p_usermeta_logcheck(h, body):
+    return PCK.simulate(json.loads(body or b"{}"))
+
+
 @_post_route("/usermeta", gate="team")               # 행동 로그 업로드/현황 · 팀 미소속 전 팀 열람 차단
 def _p_usermeta(h, body):
     ctype = h.headers.get("Content-Type", "")

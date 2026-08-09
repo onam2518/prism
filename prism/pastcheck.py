@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import re
 
 from . import memfs as MF
@@ -50,14 +51,31 @@ GRADE = dict({k: "필수" for k in REQUIRED},
                 "custom_props.emotion": "선택(등록 키)"})
 
 # 시나리오 체크리스트(③): 시연 화면의 기대 로그 = 이벤트 계약 6종
+# (키, 라벨, PAST 매핑, 기대 표기, 1회성) · 1회성 = 기대 정확히 1건 → 2건 이상이면 중복 판정(R4)
 CONTRACT = (
-    ("impression", "피드 노출", "ViewImp"),
-    ("search", "콘텐츠 찾기(검색)", "Event · Search"),
-    ("click", "카드 탭(클릭)", "Event · ClickContent"),
-    ("usage", "읽기 종료(사용성)", "Usage · UsagePage"),
-    ("react", "감정 반응(피드백)", "Event · Like / Dislike"),
-    ("comment", "댓글 등록", "Event · 행동 이름 규칙"),
+    ("impression", "피드 노출", "ViewImp", "1건 이상", False),
+    ("search", "콘텐츠 찾기(검색)", "Event · Search", "1건 이상", False),
+    ("click", "카드 탭(클릭)", "Event · ClickContent", "1건 이상", False),
+    ("usage", "읽기 종료(사용성)", "Usage · UsagePage", "1건 이상", False),
+    ("react", "감정 반응(피드백)", "Event · Like / Dislike", "1건 이상", False),
+    ("comment", "댓글 등록", "Event · 행동 이름 규칙", "1건 이상", False),
 )
+# 주입 예시를 켰을 때만 대조하는 1회성 기대. 실측 관찰의 "앱 실행 로그 동일 시각 2회"가
+# 기획 R4 의 중복 판정 사례라 체크리스트에서 누락(0건)과 중복(2건 이상)의 차이를 보여 준다.
+CONTRACT_INJECTED = (("AppLaunch", "앱 실행", "Event · AppLaunch", "정확히 1건", True),)
+
+# 판정 근거 규칙 항목(R2 수용 기준: 판정 근거가 되는 규칙 항목을 로그별로 확인).
+# 이름은 정본 문서(11. 정책 및 운영 · 12. 수집 데이터 정의)의 규칙 단위를 그대로 쓴다.
+RULE_REQUIRED = "필수 11필드"
+RULE_INVALID = "무효값 금지"
+RULE_TYPE4 = "행동 유형 4종"
+RULE_KIND16 = "표준 분류 16종"
+RULE_NAME = "명명 규칙(화면_액션)"
+RULE_ADS = "광고 로그 분리"
+RULE_DUP = "중복 전송 금지"
+RULE_CPROP = "커스텀 속성 사전 등록"
+RULE_RECOMMEND = "권장 필드"
+RULE_BYPASS = "바이패스 전달(형식만)"
 
 
 def _luid(i: int) -> str:
@@ -138,43 +156,63 @@ def _bad_examples(t: str) -> list:
 
 
 def _judge(env: dict, seen_luids: set) -> list:
-    """판정 ① 로그 단위(형식) + 중복(②의 로그 표면) · [level, msg] 목록."""
+    """판정 ① 로그 단위(형식) + 중복(②의 로그 표면).
+
+    반환은 [level, msg, field, rule] 목록. field·rule 은 기획 131 R2 수용 기준
+    ("불합격 사유에 위반 필드명이 포함될 것" · "판정 근거가 되는 규칙 항목을 로그별로 확인")
+    을 위해 붙인다. 뒤에 덧붙이므로 [level, msg] 만 읽는 기존 소비자와 호환된다."""
     v = []
     for k in REQUIRED:
         val = env.get(k, None)
         if val is None:
-            v.append(["fail", "필수 필드 누락: " + k])
+            v.append(["fail", "필수 필드 누락: " + k, k, RULE_REQUIRED])
         elif isinstance(val, str) and val.strip().lower() in INVALID:
-            v.append(["fail", "무효값 전송: " + k + " (무효값은 필드 자체를 생략)"])
+            v.append(["fail", "무효값 전송: " + k + " (무효값은 필드 자체를 생략)", k, RULE_INVALID])
     at = env.get("action_type")
     if at is not None and at not in TYPES4:
-        v.append(["fail", "행동 유형 정의 외 값: " + str(at)])
+        v.append(["fail", "행동 유형 정의 외 값: " + str(at), "action_type", RULE_TYPE4])
     kind = env.get("action_kind", None)
     if kind is not None:
         if isinstance(kind, str) and kind.strip().lower() in INVALID:
-            v.append(["fail", "무효값 전송: action_kind (무효값은 필드 자체를 생략)"])
+            v.append(["fail", "무효값 전송: action_kind (무효값은 필드 자체를 생략)",
+                      "action_kind", RULE_INVALID])
         elif kind not in KINDS16:
-            v.append(["fail", "표준 분류 정의 외 값: " + str(kind)])
+            v.append(["fail", "표준 분류 정의 외 값: " + str(kind), "action_kind", RULE_KIND16])
     name = env.get("action_name") or ""
     if name.startswith("axzad_"):
-        v.append(["warn", "광고 계측 이벤트 혼입 · 행동 로그 순수성 위반(광고에 표준 분류 오용)"])
+        v.append(["warn", "광고 계측 이벤트 혼입 · 행동 로그 순수성 위반(광고에 표준 분류 오용)",
+                  "action_name", RULE_ADS])
     elif name and not _NAME_RE.match(name):
-        v.append(["warn", "명명 규칙 위반: 화면_액션 형식이 아니거나 무맥락 이름(" + name + ")"])
+        v.append(["warn", "명명 규칙 위반: 화면_액션 형식이 아니거나 무맥락 이름(" + name + ")",
+                  "action_name", RULE_NAME])
     luid = env.get("log_unique_id")
     if luid and luid in seen_luids:
-        v.append(["warn", "동일 log_unique_id 중복 전송(집계 시 중복 제거 대상)"])
+        v.append(["warn", "동일 log_unique_id 중복 전송(집계 시 중복 제거 대상)",
+                  "log_unique_id", RULE_DUP])
     for k in env:
         if k.startswith("custom_props."):
             ck = k.split(".", 1)[1]
-            if not ck.startswith("tesla_") and ck not in CPROP_KEYS:
-                v.append(["warn", "커스텀 속성 미등록 키: " + ck + " (사전 등록제 · tesla_* 만 예외)"])
+            if ck.startswith("tesla_"):
+                # 바이패스: PAST 는 값을 검증하지 않고 전달만 한다 → 존재만 확인(R7)
+                v.append(["info", "바이패스 전달 확인: " + ck + " (값은 판정 대상 아님)", k, RULE_BYPASS])
+            elif ck not in CPROP_KEYS:
+                v.append(["warn", "커스텀 속성 미등록 키: " + ck + " (사전 등록제 · tesla_* 만 예외)",
+                          k, RULE_CPROP])
+    # 노출 추가 정보 등 JSON 문자열 필드는 형식만 판정한다(R7 · 값의 의미는 판정 안 함)
+    for k, val in env.items():
+        if isinstance(val, str) and val[:1] in ("{", "["):
+            try:
+                json.loads(val)
+            except ValueError:
+                v.append(["fail", "JSON 문자열 형식 위반: " + k, k, RULE_BYPASS])
     if env.get("action_kind") == "ClickContent" and "click.layer1" not in env:
-        v.append(["info", "권장 필드 미수집: click.layer1 (영역별 클릭률 집계 조건)"])
+        v.append(["info", "권장 필드 미수집: click.layer1 (영역별 클릭률 집계 조건)",
+                  "click.layer1", RULE_RECOMMEND])
     return v
 
 
 def _verdict(violations: list) -> str:
-    levels = {lv for lv, _ in violations}
+    levels = {v[0] for v in violations}
     for lv in ("fail", "warn", "info"):
         if lv in levels:
             return lv
@@ -197,7 +235,7 @@ def logviewer_data(team=None) -> dict:
         env = r["env"]
         vio = _judge(env, seen)
         seen.add(env.get("log_unique_id"))
-        dup += 1 if any("중복" in m for _, m in vio) else 0
+        dup += 1 if any(v[3] == RULE_DUP for v in vio) else 0
         kind = env.get("action_kind")
         logs.append({"t": _dt.datetime.fromtimestamp(env["access_timestamp"] / 1000).strftime("%H:%M:%S"),
                      "label": r.get("label", ""),
@@ -212,16 +250,161 @@ def logviewer_data(team=None) -> dict:
     for e in events:
         ev = e.get("event")
         counts["usage" if ev in ("read", "skim") else ev] = counts.get("usage" if ev in ("read", "skim") else ev, 0) + 1
-    items = [{"key": k, "label": lb, "map": mp, "n": counts.get(k, 0), "ok": counts.get(k, 0) > 0}
-             for k, lb, mp in CONTRACT]
-    hit = sum(1 for it in items if it["ok"])
+    spec = list(CONTRACT)
+    if bad_on:                                       # 1회성 기대는 주입 예시가 있을 때만 대조
+        spec += list(CONTRACT_INJECTED)
+        for r in records:
+            if r.get("injected") and r["env"].get("action_kind") == "AppLaunch":
+                counts["AppLaunch"] = counts.get("AppLaunch", 0) + 1
+    items = [_checklist_item(k, lb, mp, exp, once, counts.get(k, 0))
+             for k, lb, mp, exp, once in spec]
+    hit = sum(1 for it in items if it["state"] == "pass")
     return {"session": {"uuid": DEVICE_UUID, "suid": SESSION_SUID, "service_id": SERVICE_ID,
                         "deployment": "sandbox", "sdk_type": "WEB", "islogin": False},
             "logs": logs, "n": len(logs),
             "behavior": {"ops": len(events), "logs": len(events), "dup": dup},
-            "checklist": {"items": items, "pass_rate": round(hit / len(CONTRACT) * 100),
-                          "missing": [it["label"] for it in items if not it["ok"]]},
+            "checklist": {"items": items, "pass_rate": round(hit / len(items) * 100) if items else 0,
+                          "done": sum(1 for it in items if it["n"]), "total": len(items),
+                          "missing": [it["label"] for it in items if it["state"] == "miss"],
+                          "dups": [it["label"] for it in items if it["state"] == "dup"]},
+            "bypass": _bypass_summary(records),
             "bad_on": bad_on}
+
+
+def _checklist_item(key, label, mapping, expect, once, n) -> dict:
+    """행동 단위 판정(R4): 기대 있음·발생 0건 = 누락 / 1회성 기대·2건 이상 = 중복."""
+    state = "miss" if n == 0 else ("dup" if (once and n > 1) else "pass")
+    return {"key": key, "label": label, "map": mapping, "expect": expect,
+            "n": n, "state": state, "ok": state == "pass"}
+
+
+def _bypass_summary(records: list) -> dict:
+    """피드백 바이패스 확인(R7): 값의 의미는 판정하지 않고 존재·형식·연결만 본다.
+
+    노출-클릭 연결 키는 로그 하나로는 볼 수 없어(교차 검사) 여기서 집계한다 —
+    클릭한 content.id 가 앞선 노출 집합에 있어야 노출·클릭이 이어진다."""
+    imp, hit, miss, tesla, badjson = set(), 0, [], 0, 0
+    for r in records:
+        env = r["env"]
+        for k, val in env.items():
+            if k.startswith("custom_props.tesla_"):
+                tesla += 1
+            if isinstance(val, str) and val[:1] in ("{", "["):
+                try:
+                    json.loads(val)
+                except ValueError:
+                    badjson += 1
+        iid = env.get("viewimp_contents[].id")
+        if iid is not None:
+            imp.add(str(iid))
+        if env.get("action_kind") == "ClickContent" and "content.id" in env:
+            cid = str(env["content.id"])
+            if cid in imp:
+                hit += 1
+            else:
+                miss.append(cid)
+    return {"tesla": tesla, "bad_json": badjson, "link_ok": hit, "link_miss": miss[:8],
+            "imp_ids": len(imp)}
+
+
+# ── 판정 규칙 시뮬레이터(기획 131 · Prism 조건부 활용안) ────────────────────
+# 131 배치 검토 결론은 "3안 독립 신설"이고 Prism 실험실 배치는 부적합(실 로그를 외부
+# 인프라로 반출 불가)이다. 그 문서가 Prism 에 남긴 유일한 조기 시범 범위가
+# "실 로그 없이 가능한 판정 규칙 시뮬레이터(샘플 로그 붙여넣기 검사)"라 그것만 만든다.
+# 붙여넣은 표본만 판정하고 저장하지 않는다.
+SIM_MAX = 200_000                 # 입력 상한(바이트) · 그 이상은 표본이 아니라 덤프다
+SIM_LOGS_MAX = 200                # 판정 표시 상한
+# 실 PAST 로그는 그룹 표기(common.page · action.type)로 오는데 판정 키는 평탄 표기다.
+# 붙여넣기 편의를 위해 그룹 접두를 벗기고 action.* 만 별칭으로 맞춘다.
+SIM_ALIAS = {"action.type": "action_type", "action.name": "action_name",
+             "action.kind": "action_kind", "action.action_type": "action_type",
+             "action.action_name": "action_name", "action.action_kind": "action_kind"}
+
+
+def _flatten(obj, prefix="") -> dict:
+    """중첩 dict → 점 표기 평탄화. 리스트·스칼라는 값 그대로 둔다(형식 판정 대상)."""
+    out = {}
+    for k, v in (obj or {}).items():
+        key = prefix + str(k)
+        if isinstance(v, dict):
+            out.update(_flatten(v, key + "."))
+        else:
+            out[key] = v
+    return out
+
+
+def _normalize(env: dict) -> dict:
+    """그룹 표기를 판정 키로 정렬(common. 접두 제거 · action.* 별칭)."""
+    out = {}
+    for k, v in env.items():
+        if k in SIM_ALIAS:
+            k = SIM_ALIAS[k]
+        elif k.startswith("common."):
+            k = k[len("common."):]
+        out[k] = v
+    return out
+
+
+def _parse_logs(text: str):
+    """JSON 배열 · 단건 객체 · JSONL(줄당 1건) 모두 받는다. (봉투 목록, 파싱 오류)."""
+    text = (text or "").strip()
+    if not text:
+        return [], []
+    try:                                             # ① 배열 또는 단건
+        doc = json.loads(text)
+        rows = doc if isinstance(doc, list) else [doc]
+        envs, errs = [], []
+        for i, r in enumerate(rows):
+            if isinstance(r, dict):
+                envs.append(_normalize(_flatten(r)))
+            else:
+                errs.append("%d번째 항목이 객체가 아닙니다" % (i + 1))
+        return envs, errs
+    except ValueError:
+        pass
+    envs, errs = [], []                              # ② JSONL
+    for ln, line in enumerate(text.splitlines(), 1):
+        line = line.strip().rstrip(",")
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+        except ValueError as e:
+            errs.append("%d행 파싱 실패: %s" % (ln, str(e)[:60]))
+            continue
+        if isinstance(r, dict):
+            envs.append(_normalize(_flatten(r)))
+        else:
+            errs.append("%d행이 객체가 아닙니다" % ln)
+    return envs, errs
+
+
+def simulate(body: dict) -> dict:
+    """붙여넣은 샘플 로그를 같은 규칙으로 판정한다(저장 없음 · 세션과 무관)."""
+    text = (body or {}).get("text") or ""
+    if not text.strip():
+        return {"error": "판정할 로그를 붙여넣어 주세요"}
+    if len(text) > SIM_MAX:
+        return {"error": "입력이 너무 큽니다 · %dKB 이하 표본만 판정합니다" % (SIM_MAX // 1024)}
+    envs, errs = _parse_logs(text)
+    if not envs:
+        return {"error": "판정할 로그를 찾지 못했습니다 · " + (errs[0] if errs else "JSON 객체 또는 배열")}
+    seen, logs = set(), []
+    for env in envs[:SIM_LOGS_MAX]:
+        vio = _judge(env, seen)
+        seen.add(env.get("log_unique_id"))
+        kind = env.get("action_kind")
+        logs.append({"t": "·", "label": "붙여넣기 표본",
+                     "title": "[" + str(env.get("action_type")) + "] "
+                              + (str(kind) + " · " if kind is not None else "") + str(env.get("action_name")),
+                     "verdict": _verdict(vio), "violations": vio,
+                     "feedback": kind in FEEDBACK_KINDS, "injected": False,
+                     "fields": [[k, ("true" if v is True else "false" if v is False else str(v)),
+                                 GRADE.get(k, "선택")] for k, v in env.items()]})
+    tally = {lv: sum(1 for l in logs if l["verdict"] == lv) for lv in ("pass", "info", "warn", "fail")}
+    return {"logs": logs, "n": len(logs), "parsed": len(envs), "errors": errs[:8],
+            "truncated": max(0, len(envs) - SIM_LOGS_MAX), "tally": tally,
+            "bypass": _bypass_summary([{"env": e} for e in envs])}
 
 
 def logviewer_ops(body: dict, team=None) -> dict:

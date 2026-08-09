@@ -585,6 +585,75 @@
 
         <!-- ═══ 로그뷰어: PAST 로그 검증 도구(기획 13) · 뷰어가 아니라 "맞게 심어졌는지" 판정 ═══ -->
         <div x-show="labUserView==='viewer'" x-cloak class="space-y-4">
+          <!-- 이 화면의 지위(기획 131 배치 검토): 결론은 3안 독립 신설이고 Prism 배치는 부적합
+               (실 로그를 외부 인프라로 반출 불가 · 합성 데이터 원칙과 충돌). 그 문서가 Prism 에
+               남긴 조기 시범 범위가 "판정 규칙 시뮬레이터"라 화면이 스스로를 본 도구로 오인하지
+               않게 범위를 먼저 못 박는다. -->
+          <div class="panel"><div class="panel-hd"><b>이 화면의 범위</b><span class="meta">기획 131 배치 검토 결론 반영</span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets hintbox" style="padding:14px 16px">
+                <li>본 검증 도구의 배치 결론은 <b>독립 신설</b>입니다 · 실 로그에 기기·사용자 식별자가 있어 사내 인프라에서만 취급하고, 판정은 수집 서버 거부 로직과 일치해야 합니다.</li>
+                <li>따라서 이 화면은 도구 본체가 아니라 <b>판정 규칙 시뮬레이터</b>(실 로그 없이 규칙만 검증)와 <b>시연 세션 기반 판정 시범</b>까지입니다 · 여기 데이터는 전부 합성입니다.</li>
+                <li>대상 주소·기기 연결(QR)·증적 리포트·회귀 검증·위반율 지표는 <b>독립 신설 범위</b>로 여기서 다루지 않습니다.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- 판정 규칙 시뮬레이터: 기획 131 이 Prism 에 조기 시범 배치로 권고한 유일한 범위.
+               붙여넣은 표본만 판정하고 저장하지 않는다(POST /usermeta-logcheck). -->
+          <div class="panel" data-fn><div class="panel-hd"><b>판정 규칙 시뮬레이터</b><span class="meta">샘플 로그 붙여넣기 검사 · 저장하지 않습니다</span>
+              <span class="ml-auto flex items-center gap-2"><span class="text-xs" x-show="lvSimMsg" x-bind:style="lvSim ? 'color:var(--ds-muted)' : 'color:var(--ds-error)'" x-text="lvSimMsg"></span>
+              <button type="button" class="copybtn" x-on:click="lvSimSample()" data-tip="정상 1건 + 위반 2건 예시를 채웁니다" data-tip-pos="bottom">예시 채우기</button>
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="lvSimText" x-cloak x-on:click="lvSimClear()">비우기</button>
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="lvSimBusy || !lvSimText.trim()" x-on:click="lvSimRun()" x-text="lvSimBusy ? '판정 중…' : '판정'"></button></span></div>
+            <div class="panel-bd">
+              <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
+                <li>실 로그를 반출하지 않고 <b>규칙만</b> 확인하는 용도입니다 · 붙여넣은 표본은 판정 후 버려집니다(서버 저장 없음).</li>
+                <li>JSON 배열 · 단건 객체 · 줄당 1건(JSONL) 모두 받습니다 · 그룹 표기(<code class="text-violet">common.page</code> · <code class="text-violet">action.type</code>)는 판정 키로 자동 정렬합니다.</li>
+                <li>판정 규칙은 스트림과 같은 원천입니다 · 정본은 11. 정책 및 운영 · 12. 수집 데이터 정의이고 도구 안에 사본을 두지 않습니다.</li>
+              </ul>
+              <textarea class="field w-full" style="min-height:150px;font-family:var(--ds-font-mono,ui-monospace),monospace;font-size:12px" placeholder='PAST 로그를 붙여넣으세요 · 예: [{"log_unique_id":"a1","common":{"page":"home_tab"},"action":{"type":"Event","name":"홈탭_기사_클릭","kind":"ClickContent"}}]' x-model="lvSimText"></textarea>
+              <template x-if="lvSim">
+                <div style="margin-top:12px">
+                  <div class="flex flex-wrap items-center gap-2" style="margin-bottom:8px">
+                    <span class="text-sm text-body tnum" x-text="'판정 ' + lvSim.n + '건'"></span>
+                    <template x-for="v in ['fail','warn','info','pass']" x-bind:key="'lvst'+v">
+                      <span class="ds-badge" x-bind:class="lvBadge(v)" x-show="lvSim.tally[v]"><span x-text="lvLabel(v)"></span><span class="tnum" style="margin-left:4px" x-text="lvSim.tally[v]"></span></span>
+                    </template>
+                    <span class="text-xs text-muted" x-show="lvSim.truncated" x-cloak x-text="'표시 상한 초과 ' + lvSim.truncated + '건 생략'"></span>
+                  </div>
+                  <div class="overflow-auto" style="max-height:340px"><table class="ds-table"><thead><tr><th>로그</th><th style="width:70px">판정</th><th>사유 · 위반 필드 · 규칙</th></tr></thead><tbody>
+                    <template x-for="(l, li) in lvSim.logs" x-bind:key="'lvsl'+li">
+                      <tr style="cursor:pointer" x-bind:style="lvSimSel===li ? 'background:var(--ds-surface)' : ''" x-on:click="lvSimSel = lvSimSel===li ? -1 : li">
+                        <td><code class="text-violet" x-text="l.title"></code></td>
+                        <td><span class="ds-badge" x-bind:class="lvBadge(l.verdict)" x-text="lvLabel(l.verdict)"></span></td>
+                        <td class="text-xs"><template x-for="(v, vi) in l.violations" x-bind:key="'lvsv'+li+'_'+vi">
+                            <div><span x-text="v[1]"></span>
+                              <code class="text-violet" x-show="v[2]" style="margin-left:4px" x-text="v[2]"></code>
+                              <span class="ds-badge ds-badge--neutral" x-show="v[3]" style="margin-left:4px" x-text="v[3]"></span></div>
+                          </template><span x-show="!l.violations.length" class="text-muted">· 규칙 위반 없음</span></td>
+                      </tr>
+                    </template>
+                  </tbody></table></div>
+                  <div x-show="lvSimSel >= 0" x-cloak style="margin-top:10px">
+                    <div class="flex items-center gap-2" style="margin-bottom:6px"><b class="text-ink text-sm" x-text="lvSimLog(lvSimSel) ? lvSimLog(lvSimSel).title : ''"></b>
+                      <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="lvSimSel=-1">닫기</button></div>
+                    <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:220px">필드</th><th>값</th><th style="width:100px">수집 등급</th></tr></thead><tbody>
+                      <template x-for="(f, fi) in ((lvSimLog(lvSimSel) && lvSimLog(lvSimSel).fields) || [])" x-bind:key="'lvsf'+fi">
+                        <tr><td><code class="text-violet" x-text="f[0]"></code></td><td class="tnum" style="word-break:break-all" x-text="f[1]"></td>
+                          <td><span class="ds-badge" x-bind:class="f[2]==='필수' ? 'ds-badge--reason' : 'ds-badge--neutral'" x-text="f[2]"></span></td></tr>
+                      </template>
+                    </tbody></table></div>
+                  </div>
+                  <div x-show="lvSim.errors.length" x-cloak style="margin-top:10px">
+                    <div class="selctl__lbl" style="margin-bottom:6px">파싱 건너뜀</div>
+                    <ul class="ds-bullets"><template x-for="(e, ei) in lvSim.errors" x-bind:key="'lvse'+ei"><li x-text="e"></li></template></ul>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <div class="panel"><div class="panel-hd"><b>검증 세션</b><span class="meta">시연 세션 = 기기 식별자(uuid) 분리 1인 세션</span>
               <span class="ml-auto flex items-center gap-2"><span class="text-xs" style="color:var(--ds-primary)" x-show="lvMsg" x-text="lvMsg"></span>
               <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="lvBusy" x-on:click="lvOps(lv && lv.bad_on ? 'clear' : 'inject')" x-text="lv && lv.bad_on ? '위반 예시 제거' : '위반 예시 주입'"></button>
@@ -602,30 +671,56 @@
           </div>
 
           <div class="panel"><div class="panel-hd"><b>실시간 판정 스트림</b><span class="meta">판정 ① 로그 단위(형식) · 행을 누르면 필드 단위 상세</span>
-              <span class="meta tnum ml-auto" x-text="lv ? ('로그 ' + lv.n + '건') : ''"></span></div>
+              <span class="meta tnum ml-auto" x-text="lv ? ('로그 ' + lv.n + '건' + (lvShown().length !== lv.n ? ' · 표시 ' + lvShown().length + '건' : '')) : ''"></span></div>
             <div class="panel-bd">
-              <div class="overflow-auto" style="max-height:380px"><table class="ds-table"><thead><tr><th style="width:80px">시각</th><th>로그</th><th style="width:70px">판정</th><th>사유</th></tr></thead><tbody>
-                <template x-for="(l, li) in ((lv && lv.logs) || [])" x-bind:key="'lvl'+li">
-                  <tr style="cursor:pointer" x-bind:style="lvSel===li ? 'background:var(--ds-surface)' : ''" x-on:click="lvSel = lvSel===li ? -1 : li">
-                    <td class="tnum" x-text="l.t"></td>
-                    <td><code class="text-violet" x-text="l.title"></code>
-                      <span x-show="l.feedback" class="ds-badge ds-badge--entity" style="margin-left:4px;cursor:help" data-tip="피드백 계열 · 유실 금지 등급(브로커 확인 후 응답 · 실패 시 재전송)" data-tip-pos="top">피드백</span>
-                      <span x-show="l.injected" class="ds-badge ds-badge--neutral" style="margin-left:4px" x-text="l.label"></span></td>
-                    <td><span class="ds-badge" x-bind:class="lvBadge(l.verdict)" x-text="lvLabel(l.verdict)"></span></td>
-                    <td class="text-xs"><template x-for="(v, vi) in l.violations" x-bind:key="'lvv'+li+'_'+vi"><div x-text="v[1]"></div></template><span x-show="!l.violations.length" class="text-muted">·</span></td>
+              <!-- 필터·검색(R8): 현행 2축(행동 유형·서비스)에서 판정 결과 축과 필드값 검색을 더한다.
+                   R8 수용 기준 = 판정 결과 기준 필터로 불합격 항목만 즉시 확인. -->
+              <div class="filterbar" style="margin:0 0 10px">
+                <input class="field" placeholder="필드명·값·사유 검색" x-model="lvQ">
+                <select class="field" style="width:auto" x-model="lvType"><option value="">행동 유형 전체</option><template x-for="t in lvTypes()" x-bind:key="'lvt'+t"><option x-bind:value="t" x-text="t"></option></template></select>
+                <template x-for="f in [['','전체'],['fail','불합격'],['warn','경고'],['info','정보'],['pass','합격']]" x-bind:key="'lvf'+f[0]">
+                  <button type="button" class="srcfilter__chip" x-bind:class="lvFilter===f[0] ? 'sel' : ''" x-on:click="lvFilter=f[0]; lvSel=-1"><span x-text="f[1]"></span><span x-show="f[0]" class="tnum" x-text="lvTally(f[0])"></span></button>
+                </template>
+              </div>
+              <div class="overflow-auto" style="max-height:380px"><table class="ds-table"><thead><tr><th style="width:80px">시각</th><th>로그</th><th style="width:70px">판정</th><th>사유 · 위반 필드 · 규칙</th></tr></thead><tbody>
+                <template x-for="s in lvShown()" x-bind:key="'lvl'+s.i">
+                  <tr style="cursor:pointer" x-bind:style="lvSel===s.i ? 'background:var(--ds-surface)' : ''" x-on:click="lvSel = lvSel===s.i ? -1 : s.i">
+                    <td class="tnum" x-text="s.l.t"></td>
+                    <td><code class="text-violet" x-text="s.l.title"></code>
+                      <span x-show="s.l.feedback" class="ds-badge ds-badge--entity" style="margin-left:4px;cursor:help" data-tip="피드백 계열 · 유실 금지 등급(브로커 확인 후 응답 · 실패 시 재전송)" data-tip-pos="top">피드백</span>
+                      <span x-show="s.l.injected" class="ds-badge ds-badge--neutral" style="margin-left:4px" x-text="s.l.label"></span></td>
+                    <td><span class="ds-badge" x-bind:class="lvBadge(s.l.verdict)" x-text="lvLabel(s.l.verdict)"></span></td>
+                    <!-- R2 수용 기준: 불합격 사유에 위반 필드명 · 판정 근거 규칙 항목을 로그별로 확인 -->
+                    <td class="text-xs"><template x-for="(v, vi) in s.l.violations" x-bind:key="'lvv'+s.i+'_'+vi">
+                        <div><span x-text="v[1]"></span>
+                          <code class="text-violet" x-show="v[2]" style="margin-left:4px" x-text="v[2]"></code>
+                          <span class="ds-badge ds-badge--neutral" x-show="v[3]" style="margin-left:4px" x-text="v[3]"></span></div>
+                      </template><span x-show="!s.l.violations.length" class="text-muted">· 규칙 위반 없음</span></td>
                   </tr>
                 </template>
               </tbody></table></div>
               <div class="text-xs text-muted" x-show="lv && !lv.logs.length">아직 로그가 없습니다 · [시연] 탭에서 콘텐츠를 소비하면 판정 대상이 쌓입니다.</div>
-              <!-- 로그 상세 보기: 필드 단위 수집값 · 수집 등급(12. 수집 데이터 정의 기준) -->
+              <div class="text-xs text-muted" x-show="lv && lv.logs.length && !lvShown().length">이 조건에 맞는 로그가 없습니다 · 필터를 바꿔 보세요.</div>
+              <!-- 로그 상세 보기(R3 승계): 필드 단위 수집값 · 수집 등급(12. 수집 데이터 정의 기준) -->
               <div x-show="lvSel >= 0" x-cloak style="margin-top:10px">
                 <div class="flex items-center gap-2" style="margin-bottom:6px"><b class="text-ink text-sm" x-text="lvLog(lvSel) ? lvLog(lvSel).title : ''"></b>
+                  <template x-for="r in lvRules(lvLog(lvSel))" x-bind:key="'lvr'+r"><span class="ds-badge ds-badge--reason" x-text="r"></span></template>
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm ml-auto" x-on:click="lvSel=-1">닫기</button></div>
                 <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:220px">필드</th><th>값</th><th style="width:100px">수집 등급</th></tr></thead><tbody>
                   <template x-for="(f, fi) in ((lvLog(lvSel) && lvLog(lvSel).fields) || [])" x-bind:key="'lvf'+fi">
-                    <tr><td><code class="text-violet" x-text="f[0]"></code></td><td class="tnum" style="word-break:break-all" x-text="f[1]"></td><td x-text="f[2]"></td></tr>
+                    <tr><td><code class="text-violet" x-text="f[0]"></code></td><td class="tnum" style="word-break:break-all" x-text="f[1]"></td>
+                      <td><span class="ds-badge" x-bind:class="f[2]==='필수' ? 'ds-badge--reason' : 'ds-badge--neutral'" x-text="f[2]"></span></td></tr>
                   </template>
                 </tbody></table></div>
+                <!-- 필수 누락은 값 자체가 없어 위 표에 행이 생기지 않는다 → 따로 세운다(R3 수용 기준) -->
+                <div x-show="lvLog(lvSel) && lvLog(lvSel).violations.some(v => v[3]==='필수 11필드')" style="margin-top:8px">
+                  <div class="selctl__lbl" style="margin-bottom:6px">필수 누락 필드</div>
+                  <div class="flex flex-wrap gap-1">
+                    <template x-for="v in (lvLog(lvSel) ? lvLog(lvSel).violations.filter(v => v[3]==='필수 11필드') : [])" x-bind:key="'lvm'+v[2]">
+                      <span class="ds-badge ds-badge--error"><code x-text="v[2]"></code></span>
+                    </template>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -633,13 +728,35 @@
           <div class="panel"><div class="panel-hd"><b>기대 로그 체크리스트</b><span class="meta">판정 ② 행동 단위 · ③ 시나리오 단위(커버리지)</span></div>
             <div class="panel-bd">
               <div class="drow"><div class="k">행동 단위(②)</div><div class="v text-sm text-body tnum" x-text="lv ? ('1회 조작 = 로그 1건 원칙 · 시연 조작 ' + lv.behavior.ops + '건 → 로그 ' + lv.behavior.logs + '건 · 동일 log_unique_id 중복 ' + lv.behavior.dup + '건') : ''"></div></div>
-              <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:180px">기대 로그(이벤트 계약 6종)</th><th style="width:200px">PAST 매핑</th><th style="width:64px">발생</th><th style="width:70px">상태</th></tr></thead><tbody>
-                <template x-for="it in ((lv && lv.checklist.items) || [])" x-bind:key="'lvc'+it.key">
-                  <tr><td x-text="it.label"></td><td><code class="text-violet" x-text="it.map"></code></td><td class="tnum" x-text="it.n + '건'"></td>
-                    <td><span class="ds-badge" x-bind:class="it.ok ? 'ds-badge--success' : 'ds-badge--warning'" x-text="it.ok ? '발생' : '누락'"></span></td></tr>
+              <!-- R4 수용 기준: 기대 있음·발생 0건 = 누락 / 기대 정확히 1건·발생 2건 이상 = 중복 -->
+              <div class="flex items-center gap-2" style="margin-top:10px">
+                <span class="text-sm text-body tnum" x-text="lv ? ('진행 ' + lv.checklist.done + '/' + lv.checklist.total + ' · 합격률 ' + lv.checklist.pass_rate + '%') : ''"></span>
+                <button type="button" class="srcfilter__chip ml-auto" x-bind:class="lvOnlyMiss ? 'sel' : ''" x-on:click="lvOnlyMiss = !lvOnlyMiss" data-tip="누락·중복 항목만 추려 봅니다" data-tip-pos="top">미달만 보기</button>
+              </div>
+              <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:170px">기대 로그</th><th style="width:190px">PAST 매핑</th><th style="width:90px">기대</th><th style="width:64px">발생</th><th style="width:70px">판정</th></tr></thead><tbody>
+                <template x-for="it in lvChecklist()" x-bind:key="'lvc'+it.key">
+                  <tr><td x-text="it.label"></td><td><code class="text-violet" x-text="it.map"></code></td>
+                    <td class="text-xs text-muted" x-text="it.expect"></td><td class="tnum" x-text="it.n + '건'"></td>
+                    <td><span class="ds-badge" x-bind:class="lvStateBadge(it.state)" x-text="lvStateLabel(it.state)"></span></td></tr>
                 </template>
               </tbody></table></div>
-              <div class="text-sm text-body tnum" style="margin-top:8px" x-text="lv ? ('시나리오 합격률 ' + lv.checklist.pass_rate + '% (발생 항목 ÷ 기대 6항목)' + (lv.checklist.missing.length ? ' · 미달: ' + lv.checklist.missing.join(' · ') : ' · 전 항목 발생')) : ''"></div>
+              <div class="text-xs text-muted" x-show="lvOnlyMiss && !lvChecklist().length" style="margin-top:8px">미달 항목이 없습니다 · 전 항목 기대대로 발생했습니다.</div>
+              <div class="text-sm text-body tnum" style="margin-top:8px" x-text="lv ? ((lv.checklist.missing.length ? '누락: ' + lv.checklist.missing.join(' · ') : '누락 없음') + (lv.checklist.dups.length ? ' · 중복: ' + lv.checklist.dups.join(' · ') : '')) : ''"></div>
+              <!-- 피드백 바이패스 확인(R7): 값의 의미는 판정하지 않고 존재·형식·연결만 본다 -->
+              <div style="margin-top:14px" x-show="lv" x-cloak>
+                <div class="selctl__lbl" style="margin-bottom:6px">피드백 바이패스 확인 · 존재와 형식만 판정</div>
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:230px">확인 항목</th><th style="width:110px">결과</th><th>비고</th></tr></thead><tbody>
+                  <tr><td>커스텀 속성 <code class="text-violet">tesla_</code> 접두 전달</td>
+                    <td class="tnum" x-text="lv ? (lv.bypass.tesla + '건') : ''"></td>
+                    <td class="text-xs text-muted">PAST 는 값을 검증하지 않고 전달만 함 · 존재만 확인</td></tr>
+                  <tr><td>노출 추가 정보 JSON 문자열 형식</td>
+                    <td><span class="ds-badge" x-bind:class="lv && lv.bypass.bad_json ? 'ds-badge--error' : 'ds-badge--success'" x-text="lv ? (lv.bypass.bad_json ? '위반 ' + lv.bypass.bad_json + '건' : '준수') : ''"></span></td>
+                    <td class="text-xs text-muted">파싱 불가 문자열은 불합격 · 값의 의미는 판정 대상 아님</td></tr>
+                  <tr><td>노출 · 클릭 연결 키 일치</td>
+                    <td><span class="ds-badge" x-bind:class="lv && lv.bypass.link_miss.length ? 'ds-badge--warning' : 'ds-badge--success'" x-text="lv ? (lv.bypass.link_miss.length ? '불일치 ' + lv.bypass.link_miss.length + '건' : '일치 ' + lv.bypass.link_ok + '건') : ''"></span></td>
+                    <td class="text-xs text-muted">클릭한 <code class="text-violet">content.id</code> 가 앞선 노출 집합에 있어야 이어짐 · 노출 <span class="tnum" x-text="lv ? lv.bypass.imp_ids : ''"></span>종</td></tr>
+                </tbody></table></div>
+              </div>
               <div style="margin-top:12px"><div class="selctl__lbl" style="margin-bottom:6px">판정 기준 범례</div>
                 <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:70px">판정</th><th>대상</th></tr></thead><tbody>
                   <tr><td><span class="ds-badge ds-badge--error">불합격</span></td><td>필수 11필드 누락 · 무효값 전송 · 행동 유형(4종) · 표준 분류(16종) 정의 외 값 → 수집 거부(격리) 대상</td></tr>
@@ -649,9 +766,50 @@
               </div>
               <div class="text-xs text-muted" style="margin-top:10px">원문:
                 <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/444498040" target="_blank" rel="noopener" class="text-violet">13. 로그 검증 도구</a> ·
+                <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/443646328" target="_blank" rel="noopener" class="text-violet">131. 요구사항 및 화면 설계</a> ·
                 <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/434176333" target="_blank" rel="noopener" class="text-violet">11. 정책 및 운영</a> ·
                 <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/434307387" target="_blank" rel="noopener" class="text-violet">12. 수집 데이터 정의</a> ·
                 <a href="https://daumcorp.atlassian.net/wiki/spaces/pplan/pages/433947067" target="_blank" rel="noopener" class="text-violet">실측 로그 관찰</a></div>
+            </div>
+          </div>
+
+          <!-- 요구사항 대응(기획 131 R1~R10): 어디까지 시범 구현이고 어디부터 독립 신설 범위인지
+               화면 안에서 바로 대조할 수 있게 둔다. 문서와 도구의 불일치는 결함으로 취급한다는
+               비기능 요구를 지키려면 이 표가 화면에 있어야 한다. -->
+          <div class="panel"><div class="panel-hd"><b>요구사항 대응</b><span class="meta">131. 요구사항 및 화면 설계 · R1~R10</span></div>
+            <div class="panel-bd">
+              <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:44px">R</th><th style="width:170px">요구사항</th><th style="width:110px">우선순위 · 구분</th><th style="width:100px">이 화면</th><th>비고</th></tr></thead><tbody>
+                <tr><td class="tnum">R1</td><td>검증 세션</td><td class="text-xs">필수 · 개선</td>
+                  <td><span class="ds-badge ds-badge--neutral">범위 밖</span></td>
+                  <td class="text-xs text-muted">대상 주소·환경·기기 연결(QR)은 실 로그 수신이 전제 · 시연 세션으로 대체 시범</td></tr>
+                <tr><td class="tnum">R2</td><td>실시간 판정 스트림</td><td class="text-xs">필수 · 신설</td>
+                  <td><span class="ds-badge ds-badge--success">시범</span></td>
+                  <td class="text-xs text-muted">판정 결과 필터 · 위반 필드명 · 판정 근거 규칙 병기 · 조회 제어(시작·일시정지)는 실 수신 전제로 범위 밖</td></tr>
+                <tr><td class="tnum">R3</td><td>로그 상세 보기</td><td class="text-xs">필수 · 승계</td>
+                  <td><span class="ds-badge ds-badge--success">시범</span></td>
+                  <td class="text-xs text-muted">필드·값·수집 등급 · 필수 누락 별도 표기 · 스키마 정의는 12번 문서 원천</td></tr>
+                <tr><td class="tnum">R4</td><td>기대 로그 체크리스트</td><td class="text-xs">필수 · 신설</td>
+                  <td><span class="ds-badge ds-badge--success">시범</span></td>
+                  <td class="text-xs text-muted">기대 건수 대조 · 누락(0건)과 중복(1회성 기대 2건 이상) 구분 · 화면별 사전 등록·버전 관리는 범위 밖</td></tr>
+                <tr><td class="tnum">R5</td><td>증적 리포트</td><td class="text-xs">권장 · 신설</td>
+                  <td><span class="ds-badge ds-badge--neutral">범위 밖</span></td>
+                  <td class="text-xs text-muted">링크 공유·보존은 실 세션 기준 · 독립 신설 범위</td></tr>
+                <tr><td class="tnum">R6</td><td>배치 전송 지연 대응</td><td class="text-xs">권장 · 신설</td>
+                  <td><span class="ds-badge ds-badge--neutral">범위 밖</span></td>
+                  <td class="text-xs text-muted">앱 배치 전송 관측이 전제 · 합성 세션에는 지연 개념이 없음</td></tr>
+                <tr><td class="tnum">R7</td><td>피드백 바이패스 확인</td><td class="text-xs">권장 · 신설</td>
+                  <td><span class="ds-badge ds-badge--success">시범</span></td>
+                  <td class="text-xs text-muted">tesla_ 접두 전달 · JSON 문자열 형식 · 노출·클릭 연결 키 · 값의 의미는 판정하지 않음</td></tr>
+                <tr><td class="tnum">R8</td><td>필터</td><td class="text-xs">권장 · 개선</td>
+                  <td><span class="ds-badge ds-badge--success">시범</span></td>
+                  <td class="text-xs text-muted">행동 유형 · 판정 결과 · 필드값 검색 · 서비스·화면 이름 축은 단일 서비스라 미적용</td></tr>
+                <tr><td class="tnum">R9</td><td>위반율 지표</td><td class="text-xs">후순위 · 신설</td>
+                  <td><span class="ds-badge ds-badge--neutral">범위 밖</span></td>
+                  <td class="text-xs text-muted">운영 로그 표본이 전제 · 독립 신설 범위</td></tr>
+                <tr><td class="tnum">R10</td><td>회귀 검증</td><td class="text-xs">후순위 · 신설</td>
+                  <td><span class="ds-badge ds-badge--neutral">범위 밖</span></td>
+                  <td class="text-xs text-muted">과거 세션 보관·일괄 재실행이 전제 · 독립 신설 범위</td></tr>
+              </tbody></table></div>
             </div>
           </div>
         </div>
