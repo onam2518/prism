@@ -21,8 +21,14 @@ _SV = None                      # serve 모듈 객체(컴포지션 루트) · se
 _COST_LOCK = threading.Lock()
 
 
+# 롤업 신규 키(2026-08-09 · 프롬프트 캐시 관측). 기존 키(cost·n·in·out)는 그대로 두고 추가만 한다.
+# 구 리포트에는 이 키들이 아예 없으므로 읽을 때도 쓸 때도 `get(...) or 0` 로 시작해야 한다
+# (기존 원장을 마이그레이션하지 않고 그대로 이어 쓴다 = 그날부터 쌓이고 과거는 0).
+_CALL_EXTRA = ("ms", "cache_read", "cache_write", "retries")
+
+
 def _log_cost_rollup(trace: dict, team=None):
-    """실행 1건의 비용·토큰을 일별 롤업 리포트에 누적. 실패는 실행을 막지 않는다."""
+    """실행 1건의 비용·토큰·지연·캐시를 일별 롤업 리포트에 누적. 실패는 실행을 막지 않는다."""
     try:
         trace = trace or {}
         cost = float(trace.get("cost_usd") or 0.0)
@@ -31,6 +37,7 @@ def _log_cost_rollup(trace: dict, team=None):
             return
         day = day_key()
         tokens = trace.get("tokens") or {}
+        lat = trace.get("latency_ms") or {}
         model = (trace.get("model") or "").strip() or "(미기록)"
         with _COST_LOCK:
             rep = _SV._report_get("cost_rollup", team, {}) or {}
@@ -41,15 +48,22 @@ def _log_cost_rollup(trace: dict, team=None):
             d["n"] += 1
             d["in"] += int(tokens.get("in") or 0)
             d["out"] += int(tokens.get("out") or 0)
+            # 캐시 토큰·실소요(wall) — 종전에는 트레이스에만 있다 실행이 끝나면 사라졌다.
+            d["cache_read"] = int(d.get("cache_read") or 0) + int(tokens.get("cache_read") or 0)
+            d["cache_write"] = int(d.get("cache_write") or 0) + int(tokens.get("cache_write") or 0)
+            d["wall_ms"] = int(d.get("wall_ms") or 0) + int(lat.get("wall") or 0)
             m = d["models"].setdefault(model, {"cost": 0.0, "n": 0})
             m["cost"] = round(m["cost"] + cost, 6)
             m["n"] += 1
             for tag, b in by_call.items():
+                b = b or {}
                 cle = d["calls"].setdefault(str(tag), {"cost": 0.0, "n": 0, "in": 0, "out": 0})
-                cle["cost"] = round(cle["cost"] + float((b or {}).get("cost") or 0.0), 6)
-                cle["n"] += int((b or {}).get("n") or 0)
-                cle["in"] += int((b or {}).get("in") or 0)
-                cle["out"] += int((b or {}).get("out") or 0)
+                cle["cost"] = round(cle["cost"] + float(b.get("cost") or 0.0), 6)
+                cle["n"] += int(b.get("n") or 0)
+                cle["in"] += int(b.get("in") or 0)
+                cle["out"] += int(b.get("out") or 0)
+                for k in _CALL_EXTRA:          # 신규 키: 구 항목엔 없으니 get 으로 시작
+                    cle[k] = int(cle.get(k) or 0) + int(b.get(k) or 0)
             if len(days) > 90:                       # 90일 초과분 정리(리포트 무한 성장 방지)
                 for k in sorted(days)[:-90]:
                     days.pop(k, None)
@@ -130,7 +144,9 @@ def cost_rollup_data(team=None, days: int = 30) -> dict:
     stored = rep.get("days") or {}
     now = _t.time()
     by_day, by_model, by_call = [], {}, {}
-    total = {"cost": 0.0, "n": 0, "in": 0, "out": 0}
+    # cache_read/cache_write/wall_ms 는 2026-08-09 이후 적재분에만 있다(그 전 날짜는 0).
+    total = {"cost": 0.0, "n": 0, "in": 0, "out": 0,
+             "cache_read": 0, "cache_write": 0, "wall_ms": 0}
     for i in range(days - 1, -1, -1):
         k = day_key(now - i * 86400)
         d = stored.get(k) or {}
@@ -140,16 +156,21 @@ def cost_rollup_data(team=None, days: int = 30) -> dict:
         total["n"] += int(d.get("n") or 0)
         total["in"] += int(d.get("in") or 0)
         total["out"] += int(d.get("out") or 0)
+        for kk in ("cache_read", "cache_write", "wall_ms"):
+            total[kk] += int(d.get(kk) or 0)
         for mk, mv in (d.get("models") or {}).items():
             e = by_model.setdefault(mk, {"model": mk, "cost": 0.0, "n": 0})
             e["cost"] = round(e["cost"] + float(mv.get("cost") or 0.0), 6)
             e["n"] += int(mv.get("n") or 0)
         for ck, cv in (d.get("calls") or {}).items():
-            e = by_call.setdefault(ck, {"call": ck, "cost": 0.0, "n": 0, "in": 0, "out": 0})
+            e = by_call.setdefault(ck, {"call": ck, "cost": 0.0, "n": 0, "in": 0, "out": 0,
+                                        "ms": 0, "cache_read": 0, "cache_write": 0, "retries": 0})
             e["cost"] = round(e["cost"] + float(cv.get("cost") or 0.0), 6)
             e["n"] += int(cv.get("n") or 0)
             e["in"] += int(cv.get("in") or 0)
             e["out"] += int(cv.get("out") or 0)
+            for kk in _CALL_EXTRA:             # 구 리포트엔 없는 키 → 0 으로 채워 응답 모양을 고정
+                e[kk] += int(cv.get(kk) or 0)
     return {"ok": True, "window_days": days, "total": total, "by_day": by_day,
             "by_model": sorted(by_model.values(), key=lambda x: -x["cost"]),
             "by_call": sorted(by_call.values(), key=lambda x: -x["cost"])}

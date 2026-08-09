@@ -242,6 +242,7 @@
           <!-- 모델 실행 비용: 일별×모델×콜 원장(실행 시점 누적 · 관리자) -->
           <section class="panel" data-fn x-init="loadCost()"><div class="panel-hd"><b>모델 실행 비용</b><span class="meta">최근 30일 · 실행할 때마다 쌓이는 원장(실호출만) · 어느 모델·콜이 비용을 쓰는지</span>
             <span class="ds-badge ds-badge--neutral tnum ml-auto" x-show="costData" x-text="usdTxt((costData && costData.total.cost) || 0) + ' · ' + ((costData && costData.total.n) || 0) + '건'"></span>
+            <span class="ds-badge ds-badge--intent tnum" style="cursor:help" x-show="cacheHitPct !== null" data-tip="프롬프트 캐시 적중률 = 캐시로 읽은 입력 토큰 ÷ 전체 입력 토큰 · 0%면 캐시가 붙지 않은 상태예요" data-tip-pos="top" x-text="'캐시 ' + cacheHitPct + '%'"></span>
           </div>
             <div class="panel-bd">
               <template x-if="costData && costData.total && costData.total.n">
@@ -261,9 +262,10 @@
                         </template>
                       </tbody></table></div>
                     <div><div class="subhd" style="margin:0 0 6px">콜별 <span class="meta">리드문·엔티티·인텐트·카테고리·품질</span></div>
-                      <table class="ds-table"><thead><tr><th>콜</th><th style="width:90px">비용</th><th style="width:110px">토큰(입·출)</th></tr></thead><tbody>
+                      <table class="ds-table"><thead><tr><th>콜</th><th style="width:90px">비용</th><th style="width:110px">토큰(입·출)</th><th style="width:110px">캐시 · 평균지연</th></tr></thead><tbody>
                         <template x-for="c in (costData.by_call||[]).slice(0,8)" x-bind:key="'cc'+c.call">
-                          <tr><td class="text-ink" x-text="c.call"></td><td class="tnum" x-text="usdTxt(c.cost)"></td><td class="tnum" x-text="c['in'] + ' · ' + c.out"></td></tr>
+                          <tr><td class="text-ink" x-text="c.call"></td><td class="tnum" x-text="usdTxt(c.cost)"></td><td class="tnum" x-text="c['in'] + ' · ' + c.out"></td>
+                            <td class="tnum" style="cursor:help" x-bind:data-tip="'캐시로 읽은 입력 토큰 ' + (c.cache_read||0) + ' · 캐시 기록 ' + (c.cache_write||0) + ' · 재시도 ' + (c.retries||0) + '회'" data-tip-pos="left" x-text="(c.cache_read||0) + ' · ' + msTxt(c)"></td></tr>
                         </template>
                       </tbody></table></div>
                   </div>

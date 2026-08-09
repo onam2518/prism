@@ -265,10 +265,11 @@ class Trace:
     model: str = ""                        # 초안을 생성한 모델(검수·피드백 귀속용)
     agent_verdicts: list = field(default_factory=list)
     fallbacks: list = field(default_factory=list)
-    latency_ms: dict = field(default_factory=dict)
+    latency_ms: dict = field(default_factory=dict)   # {total: 콜 지연 합(계약) · wall: 실제 소요}
     cost_usd: float = 0.0
-    tokens: dict = field(default_factory=dict)
-    by_call: dict = field(default_factory=dict)   # 호출 태그별 {n·cost·in·out·ms} · 콜별 모델 구성 근거
+    tokens: dict = field(default_factory=dict)       # {in·out·cache_read·cache_write}
+    # 호출 태그별 {n·cost·in·out·ms·cache_read·cache_write·retries} · 콜별 모델 구성 근거
+    by_call: dict = field(default_factory=dict)
     fails: list = field(default_factory=list)     # 콜 실패 표면화 [{tag,kind}] · 빈 산출 원인 진단(모델 A/B 등)
 
 
