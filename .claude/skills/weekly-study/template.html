@@ -1,0 +1,498 @@
+<meta charset="utf-8">
+<title>__TITLE__ · __SUBTITLE__</title>
+<style>
+__FONTS__
+
+  :root {
+    color-scheme: light;
+    --paper: #FFFDF7;
+    --card: #FFFFFF;
+    --ink: #17181C;
+    --ink2: #4E5560;
+    --muted: #8A8F98;
+    --line: #E8E4DA;
+    --outline: #17181C;
+    --red: #FF5F5B;    --red-soft: #FFECEA;
+    --blue: #2E6BFF;   --blue-soft: #E9EFFF;
+    --green: #0AA05F;  --green-soft: #E3F4EB;
+    --yellow: #F5B800; --yellow-soft: #FFF3D1;
+    --orange: #D4721C;
+    --hl: #FFE27A;
+    --g: #177A45;  --g-bg: #E6F3EC;
+    --y: #A96A00;  --y-bg: #F8EFDC;
+    --r: #C03538;  --r-bg: #F9E9EA;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    font-size: clamp(14px, 1.35vw, 16.5px);
+    line-height: 1.68; word-break: keep-all; overflow: hidden;
+  }
+  .disp { font-family: "Gmarket Sans", Pretendard, sans-serif; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- deck chrome ---------- */
+  #progress { position: fixed; top: 0; left: 0; height: 5px; background: var(--blue); border-right: 2px solid var(--outline); width: 0; z-index: 30; transition: width .25s ease; }
+  #hud {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; font-size: 12px; color: var(--muted); pointer-events: none;
+  }
+  #hud .title { font-family: "Gmarket Sans", Pretendard, sans-serif; font-weight: 700; font-size: 11px; letter-spacing: .04em; color: var(--ink2); }
+  #hud .ctrl { display: flex; align-items: center; gap: 10px; pointer-events: auto; }
+  #hud button {
+    background: var(--card); border: 2px solid var(--outline); color: var(--ink);
+    border-radius: 10px; width: 38px; height: 32px; font-size: 14px; cursor: pointer;
+    box-shadow: 2px 2px 0 var(--outline);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #hud button:active { transform: translate(2px, 2px); box-shadow: none; }
+  #hud button:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  #counter { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink2); min-width: 58px; text-align: center; }
+
+  /* ---------- slides ---------- */
+  .slide { display: none; position: fixed; inset: 0; overflow-y: auto; padding: clamp(26px, 5.5vh, 56px) clamp(22px, 6vw, 88px) 72px; }
+  .slide.active { display: flex; flex-direction: column; justify-content: center; }
+  .slide.active > .inner { width: 100%; max-width: 1060px; margin: 0 auto; }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.active > .inner { animation: rise .28s ease; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  }
+
+  /* part tag */
+  .tag {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: "Gmarket Sans", Pretendard, sans-serif; font-weight: 700; font-size: 12px;
+    border: 2px solid var(--outline); border-radius: 999px; padding: 5px 14px;
+    background: var(--card); box-shadow: 2px 2px 0 var(--outline); margin-bottom: 18px;
+  }
+  .tag .dotc { width: 10px; height: 10px; border-radius: 999px; border: 2px solid var(--outline); display: inline-block; }
+  .tag.p1 .dotc { background: var(--red); }
+  .tag.p2 .dotc { background: var(--blue); }
+  .tag.p3 .dotc { background: var(--green); }
+  .tag.p4 .dotc { background: var(--yellow); }
+
+  h1 { font-family: "Gmarket Sans", Pretendard, sans-serif; margin: 0 0 18px; font-size: clamp(30px, 4.4vw, 50px); font-weight: 700; letter-spacing: -.01em; line-height: 1.3; text-wrap: balance; }
+  h2 { font-family: "Gmarket Sans", Pretendard, sans-serif; margin: 0 0 12px; font-size: clamp(21px, 2.8vw, 32px); font-weight: 700; letter-spacing: -.005em; line-height: 1.38; text-wrap: balance; }
+  .hl { background: linear-gradient(transparent 58%, var(--hl) 58%); padding: 0 2px; }
+  .sum { color: var(--ink2); margin: 0 0 22px; max-width: 860px; font-size: 1.02em; }
+  p { margin: 0 0 12px; }
+
+  /* ---------- icons ---------- */
+  .ibadge { width: 38px; height: 38px; border-radius: 12px; border: 2px solid var(--outline); display: inline-flex; align-items: center; justify-content: center; flex: none; box-shadow: 2px 2px 0 rgba(23,24,28,.14); }
+  .ibadge svg { width: 20px; height: 20px; }
+  .ibadge.r { background: var(--red-soft); color: var(--r); }
+  .ibadge.b { background: var(--blue-soft); color: var(--blue); }
+  .ibadge.g { background: var(--green-soft); color: var(--g); }
+  .ibadge.y { background: var(--yellow-soft); color: var(--y); }
+  .chead { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+  .chead .kicker { margin: 0; }
+  .ico { width: 16px; height: 16px; flex: none; vertical-align: -3px; color: var(--muted); margin-right: 7px; }
+  .ico.ok { color: var(--g); }
+  .ico.no { color: var(--r); }
+
+  /* ---------- cards ---------- */
+  .grid { display: grid; gap: 14px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .grid.n4 { grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid.n4 .card { padding: 20px 24px; }
+  .card { background: var(--card); border: 2px solid var(--outline); border-radius: 16px; padding: 18px 20px; box-shadow: 4px 4px 0 rgba(23, 24, 28, .16); }
+  .card h4 { margin: 0 0 6px; font-size: 1.02em; font-weight: 800; }
+  .card p, .card ul { font-size: .92em; color: var(--ink2); margin-bottom: 0; }
+  .card ul { padding-left: 17px; }
+  .card ul li { margin-bottom: 5px; }
+  .kicker { font-family: "Gmarket Sans", Pretendard, sans-serif; font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+  .card.t-red { border-top: 6px solid var(--red); }
+  .card.t-blue { border-top: 6px solid var(--blue); }
+  .card.t-green { border-top: 6px solid var(--green); }
+  .card.t-yellow { border-top: 6px solid var(--yellow); }
+
+  /* speech bubble */
+  .say { display: flex; align-items: flex-end; gap: 14px; margin-top: 18px; }
+  .say img { width: clamp(64px, 7vw, 92px); height: auto; flex: none; }
+  .say .bubble {
+    position: relative; background: var(--card); border: 2px solid var(--outline);
+    border-radius: 16px; padding: 13px 18px; font-size: .95em; font-weight: 700;
+    box-shadow: 3px 3px 0 rgba(23, 24, 28, .16); margin-bottom: 10px;
+  }
+  .say .bubble::before {
+    content: ""; position: absolute; left: -9px; bottom: 14px; width: 14px; height: 14px;
+    background: var(--card); border-left: 2px solid var(--outline); border-bottom: 2px solid var(--outline);
+    transform: rotate(45deg);
+  }
+  .say .bubble .who { display: block; font-family: "Gmarket Sans", Pretendard, sans-serif; font-size: 10.5px; color: var(--muted); font-weight: 700; letter-spacing: .08em; margin-bottom: 3px; }
+  .say.br .bubble, .say.br .bubble::before { background: var(--red-soft); }
+  .say.bb .bubble, .say.bb .bubble::before { background: var(--blue-soft); }
+  .say.bg .bubble, .say.bg .bubble::before { background: var(--green-soft); }
+
+  /* chips */
+  .chip { display: inline-block; padding: 2px 11px; border-radius: 999px; font-size: .8em; font-weight: 800; line-height: 1.7; white-space: nowrap; border: 1.5px solid transparent; }
+  .chip.a { background: var(--blue-soft); color: var(--blue); border-color: var(--blue); }
+  .chip.n { background: var(--paper); color: var(--ink2); border-color: var(--ink2); }
+  .chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 14px; }
+
+  /* tables */
+  .tblwrap { overflow-x: auto; border: 2px solid var(--outline); border-radius: 14px; background: var(--card); margin: 12px 0 0; box-shadow: 4px 4px 0 rgba(23, 24, 28, .16); }
+  table { border-collapse: collapse; width: 100%; font-size: .86em; min-width: 560px; }
+  th { font-family: "Gmarket Sans", Pretendard, sans-serif; text-align: left; font-size: .76em; font-weight: 700; letter-spacing: .06em; color: var(--ink); padding: 10px 14px; border-bottom: 2px solid var(--outline); background: var(--yellow-soft); white-space: nowrap; }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink2); }
+  td.strong { color: var(--ink); font-weight: 800; }
+  td.nw { white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .tnote { font-size: .82em; color: var(--muted); margin: 10px 2px 0; }
+  ul.tlist { list-style: none; margin: 18px 0 0; padding: 15px 22px 16px; display: grid; gap: 6px; font-size: .82em; color: var(--ink2);
+    background: var(--card); border: 1.5px solid var(--line); border-top: 3px solid var(--outline); border-radius: 5px 5px 14px 14px; }
+  ul.tlist.has-terms { border-radius: 5px 5px 0 0; border-bottom: none; padding-bottom: 12px; }
+  ul.tlist > li { position: relative; padding-left: 17px; }
+  ul.tlist > li::before { content: ""; position: absolute; left: 0; top: .58em; width: 7px; height: 7px; border-radius: 999px; background: var(--ink); }
+  ul.tlist > li.lead { font-weight: 800; color: var(--ink); font-size: 1.08em; }
+  ul.tlist > li.sub { padding-left: 36px; color: var(--ink2); }
+  ul.tlist > li.sub::before { left: 19px; top: .62em; width: 6px; height: 6px; background: none; border: 1.6px solid var(--ink2); }
+  .terms { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 0; padding: 11px 22px 13px;
+    background: var(--card); border: 1.5px solid var(--line); border-top: 1.5px dashed #D9D2C4; border-radius: 0 0 14px 14px; }
+  .terms .tlbl { font-family: "Gmarket Sans", Pretendard, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--muted); margin-right: 2px; }
+  .tm { font-size: .74em; color: var(--ink2); background: var(--paper); border: 1.5px solid var(--line); border-radius: 9px; padding: 3px 11px; line-height: 1.7; white-space: nowrap; }
+  .tm b { color: var(--ink); font-weight: 800; }
+  .tm i { font-style: normal; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; color: var(--blue); margin: 0 5px; }
+  table.dense { font-size: .8em; }
+  table.dense td { padding: 7px 12px; }
+  table.dense th { padding: 8px 12px; }
+  td.apicol { background: #FDF6F5; }
+  td.mcpcol { background: #F5F8FF; color: var(--ink); }
+
+  /* checklist */
+  ol.check { counter-reset: c; list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+  ol.check li { counter-increment: c; position: relative; background: var(--card); border: 2px solid var(--outline); border-radius: 14px; padding: 13px 18px 13px 56px; box-shadow: 3px 3px 0 rgba(23,24,28,.16); }
+  ol.check li::before {
+    content: counter(c); font-family: "Gmarket Sans", Pretendard, sans-serif;
+    position: absolute; left: 15px; top: 12px;
+    width: 27px; height: 27px; border-radius: 999px; background: var(--hl); border: 2px solid var(--outline); color: var(--ink);
+    font-size: .82em; font-weight: 700; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums;
+  }
+  ol.check .t { font-weight: 800; font-size: .95em; }
+  ol.check .d { font-size: .82em; color: var(--ink2); margin-top: 2px; }
+
+  /* agenda */
+  ol.agenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-width: 780px; }
+  ol.agenda li { display: flex; align-items: center; gap: 14px; background: var(--card); border: 2px solid var(--outline); border-radius: 14px; padding: 12px 20px; box-shadow: 3px 3px 0 rgba(23,24,28,.16); font-weight: 800; }
+  ol.agenda .n { font-family: "Gmarket Sans", Pretendard, sans-serif; color: var(--blue); font-weight: 700; font-variant-numeric: tabular-nums; }
+  ol.agenda .s { font-weight: 500; color: var(--muted); font-size: .84em; margin-left: auto; text-align: right; }
+  ol.agenda .ibadge { width: 32px; height: 32px; border-radius: 10px; box-shadow: none; }
+  ol.agenda .ibadge svg { width: 17px; height: 17px; }
+
+  /* divider slides */
+  .divider .inner { display: flex; align-items: center; gap: clamp(24px, 5vw, 64px); }
+  .divider .txt { flex: 1; }
+  .divider .partno { font-family: "Gmarket Sans", Pretendard, sans-serif; font-size: clamp(60px, 10vw, 120px); font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+  .divider h2 { font-size: clamp(26px, 3.6vw, 42px); margin-top: 10px; }
+  .divider .d { color: var(--ink2); font-size: 1.05em; max-width: 480px; }
+  .divider img.chr { width: clamp(150px, 22vw, 250px); height: auto; flex: none; }
+  .divider.dv-red .partno { color: var(--red); }
+  .divider.dv-blue .partno { color: var(--blue); }
+  .divider.dv-green .partno { color: var(--green); }
+  .divider.dv-yellow .partno { color: var(--orange); }
+  @media (max-width: 700px) { .divider .inner { flex-direction: column-reverse; align-items: flex-start; } .divider img.chr { width: 140px; } }
+
+  /* title slide */
+  .titleslide .inner { display: flex; align-items: center; gap: clamp(20px, 4vw, 56px); }
+  .titleslide .txt { flex: 1.4; }
+  .titleslide .team { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: end; }
+  .titleslide .team img { width: 100%; max-width: 160px; height: auto; }
+  @media (max-width: 760px) { .titleslide .inner { flex-direction: column; } .titleslide .team { width: 100%; max-width: 340px; } }
+
+  /* figures */
+  figure.fig { margin: 8px 0 0; }
+  figure.fig .box { border: 2px solid var(--outline); border-radius: 16px; background: var(--card); box-shadow: 4px 4px 0 rgba(23,24,28,.16); padding: 10px 14px; overflow-x: auto; }
+  figure.fig svg { display: block; width: 100%; max-width: 1010px; height: auto; margin: 0 auto; }
+  figure.fig .box.illu { background: #FAF2EA; }
+  .il { fill: none; stroke: #17181C; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .il.thin { stroke-width: 1.5; }
+  .il.fill { fill: #17181C; stroke: none; }
+  .il.paper { fill: #FAF2EA; }
+  .il.white { fill: #FFFFFF; }
+  .svgt { font-family: Pretendard, "Apple SD Gothic Neo", sans-serif; fill: var(--ink); }
+  .svgt.b { font-weight: 800; }
+  .svgt.m { fill: var(--ink2); }
+  .svgt.q { fill: var(--muted); }
+  .svgt.w { fill: #FFFFFF; font-weight: 800; }
+  use.u  { color: var(--ink2); }
+  use.ub { color: var(--blue); }
+  use.uy { color: var(--y); }
+  use.ug { color: var(--g); }
+  use.ur { color: var(--r); }
+
+  /* closing rows */
+  .decide { display: grid; gap: 12px; margin-top: 14px; }
+  .decide .row { display: grid; grid-template-columns: 230px 1fr 1.05fr; border: 2px solid var(--outline); border-radius: 14px; background: var(--card); box-shadow: 3px 3px 0 rgba(23,24,28,.16); overflow: hidden; }
+  .decide .a { background: var(--hl); padding: 14px 16px; font-weight: 800; border-right: 2px solid var(--outline); font-size: .95em; display: flex; align-items: center; gap: 10px; }
+  .decide .a .ibadge { width: 32px; height: 32px; border-radius: 10px; background: var(--card); color: var(--ink); box-shadow: none; }
+  .decide .a .ibadge svg { width: 17px; height: 17px; }
+  .decide .b, .decide .c { padding: 14px 16px; font-size: .85em; color: var(--ink2); }
+  .decide .c { border-left: 1px solid var(--line); }
+  .decide .lbl { font-family: "Gmarket Sans", Pretendard, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--muted); display: block; margin-bottom: 3px; }
+  .teamstrip { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  .teamstrip img { width: clamp(50px, 5.5vw, 76px); height: auto; }
+
+  /* appendix */
+  table.src { font-size: .76em; }
+  table.src td { padding: 6px 12px; }
+  table.src th { padding: 7px 12px; }
+  table.src td.ref { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; color: var(--muted); word-break: break-all; }
+  table.src td.yr { color: var(--ink); font-weight: 800; white-space: nowrap; }
+  .statrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 14px 0 0; }
+  .stat { background: var(--card); border: 2px solid var(--outline); border-radius: 14px; padding: 14px 16px; box-shadow: 4px 4px 0 rgba(23,24,28,.16); }
+  .stat .v { font-family: "Gmarket Sans", Pretendard, sans-serif; font-size: clamp(22px, 2.4vw, 30px); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .stat .k { font-size: .88em; color: var(--ink); font-weight: 800; margin-top: 3px; }
+  .stat .d { font-size: .76em; color: var(--muted); margin-top: 3px; }
+  .stat.sr .v { color: var(--r); }
+  .stat.sb .v { color: var(--blue); }
+  .stat.sg .v { color: var(--g); }
+
+  a { color: var(--blue); }
+  a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div id="progress"></div>
+
+<!-- ══════════ 아이콘 스프라이트 ══════════ -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-window" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="4.5" width="18.8" height="15" rx="2.6"/><path d="M2.6 9.4h18.8"/><circle cx="5.9" cy="7" r=".9" fill="currentColor" stroke="none"/><circle cx="8.7" cy="7" r=".9" fill="currentColor" stroke="none"/><circle cx="11.5" cy="7" r=".9" fill="currentColor" stroke="none"/></g></symbol>
+  <symbol id="ic-chat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10.6h-8.6L6.8 20v-3.9H4z"/><path d="M8 9.4h8M8 12.5h5"/></g></symbol>
+  <symbol id="ic-db" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7.4" ry="3"/><path d="M4.6 6v12c0 1.66 3.31 3 7.4 3s7.4-1.34 7.4-3V6"/><path d="M4.6 12c0 1.66 3.31 3 7.4 3s7.4-1.34 7.4-3"/></g></symbol>
+  <symbol id="ic-doc" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 3h7.2l4.4 4.6V21H6.2z"/><path d="M13.4 3v4.6h4.4"/><path d="M9.2 12.6h5.6M9.2 16.2h5.6"/></g></symbol>
+  <symbol id="ic-hash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 3.8L7.6 20.2M17 3.8l-2 16.4M4 9.2h16.2M3.2 14.8h16.2"/></g></symbol>
+  <symbol id="ic-cal" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="5" width="17.2" height="16" rx="2.6"/><path d="M3.4 10h17.2M8.2 2.8v4.2M15.8 2.8v4.2"/><circle cx="8.6" cy="14.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="13" cy="14.4" r="1.1" fill="currentColor" stroke="none"/></g></symbol>
+  <symbol id="ic-server" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.6" width="18" height="7" rx="2.2"/><rect x="3" y="13.4" width="18" height="7" rx="2.2"/><circle cx="7" cy="7.1" r="1.1" fill="currentColor" stroke="none"/><circle cx="7" cy="16.9" r="1.1" fill="currentColor" stroke="none"/><path d="M11.4 7.1h6M11.4 16.9h6"/></g></symbol>
+  <symbol id="ic-folder" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 7.2a2.2 2.2 0 0 1 2.2-2.2h3.7l2.2 2.7h7.3a2.2 2.2 0 0 1 2.2 2.2v7.9a2.2 2.2 0 0 1-2.2 2.2H5.4a2.2 2.2 0 0 1-2.2-2.2z"/></g></symbol>
+  <symbol id="ic-cloud" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 18.8h9.9a4.2 4.2 0 0 0 .6-8.35A5.7 5.7 0 0 0 6.6 9.9a4.1 4.1 0 0 0 .6 8.9z"/></g></symbol>
+  <symbol id="ic-plug" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="8.4" width="18.8" height="7.2" rx="3.6"/><path d="M6.6 12h10.8"/></g></symbol>
+  <symbol id="ic-person" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.8 20.4a7.2 7.2 0 0 1 14.4 0"/></g></symbol>
+  <symbol id="ic-list" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.4 6.6h11M9.4 12h11M9.4 17.4h11"/><circle cx="5" cy="6.6" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="17.4" r="1.4" fill="currentColor" stroke="none"/></g></symbol>
+  <symbol id="ic-cursor" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.4 4.2l12.2 6.6-5.1 1.6-1.8 5.1z"/></g></symbol>
+  <symbol id="ic-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l7.2 2.9v6.1c0 4.5-3.1 8.2-7.2 9.4-4.1-1.2-7.2-4.9-7.2-9.4V5.7z"/><path d="M8.8 11.8l2.3 2.3 4.3-4.6"/></g></symbol>
+  <symbol id="ic-play" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M10.2 8.2l6.2 3.8-6.2 3.8z"/></g></symbol>
+  <symbol id="ic-spark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.2l1.8 4.9 4.9 1.8-4.9 1.8L10 16.6l-1.8-4.9L3.3 9.9l4.9-1.8z"/><path d="M17.6 14.4l.9 2.5 2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9z"/></g></symbol>
+  <symbol id="ic-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.8" cy="10.8" r="6.4"/><path d="M15.6 15.6l4.6 4.6"/></g></symbol>
+  <symbol id="ic-book" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.6A2.6 2.6 0 0 1 6.6 3H20v15.4H6.6A2.6 2.6 0 0 0 4 21z"/><path d="M8 7.6h8M8 11.2h5.4"/></g></symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M12 8.2v7.6M8.2 12h7.6"/></g></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M8.2 12.3l2.7 2.7 5-5.5"/></g></symbol>
+  <symbol id="ic-x" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6"/></g></symbol>
+  <symbol id="ic-link" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.4 13.6a4.2 4.2 0 0 0 6 0l2.6-2.6a4.2 4.2 0 1 0-6-6l-1.4 1.4"/><path d="M13.6 10.4a4.2 4.2 0 0 0-6 0L5 13a4.2 4.2 0 1 0 6 6l1.4-1.4"/></g></symbol>
+  <symbol id="ic-arrows" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 8.8h15.8M16 5.4l3.4 3.4L16 12.2"/><path d="M20.4 15.2H4.6M8 11.8l-3.4 3.4L8 18.6"/></g></symbol>
+  <symbol id="ic-code" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.8 7.6L4.4 12l4.4 4.4M15.2 7.6L19.6 12l-4.4 4.4"/></g></symbol>
+  <symbol id="ic-shapes" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="3.4" width="8.4" height="8.4" rx="1.8"/><circle cx="16.2" cy="16.2" r="4.6"/></g></symbol>
+  <symbol id="ic-bolt" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 2.6L5.8 13.6h5.2L10.6 21.4l7.6-11h-5.2z"/></g></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.4" y="10.4" width="15.2" height="10.2" rx="2.6"/><path d="M8 10.4V7.8a4 4 0 0 1 8 0v2.6"/></g></symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.2V12l3.4 2"/></g></symbol>
+  <symbol id="ic-hand" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.4 11V4.9a1.7 1.7 0 0 1 3.4 0V11m0-1.2a1.7 1.7 0 0 1 3.4 0V11m0-.6a1.7 1.7 0 0 1 3.4 0v4.3c0 3.4-2.4 6.3-5.9 6.3-3.1 0-4.7-1.6-6.3-4.3L5 14.4a1.7 1.7 0 0 1 2.7-2z"/></g></symbol>
+</svg>
+
+<!-- ══════════ 1. 표지 ══════════ -->
+<section class="slide titleslide">
+  <div class="inner">
+    <div class="txt">
+      <span class="tag"><span class="dotc" style="background: var(--blue);"></span>__SUBTITLE__</span>
+      <h1>__TITLE__</h1>
+      <p class="sum">__ONE_PARAGRAPH__</p>
+      <p class="tnote">좌우 방향키, 스페이스 바, 오른쪽 아래 버튼으로 넘길 수 있습니다.</p>
+    </div>
+    <div class="team" aria-hidden="true">
+      <img src="__CHR_DDAKJI__" alt=""><img src="__CHR_DAESIK__" alt="">
+      <img src="__CHR_BOKSIL__" alt=""><img src="__CHR_YONGHEE__" alt="">
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 2. 목차 ══════════ -->
+<section class="slide">
+  <div class="inner">
+    <span class="tag"><span class="dotc" style="background: var(--ink);"></span>오늘의 순서</span>
+    <h2>오늘은 <span class="hl">네 가지</span>를 봅니다.</h2>
+    <ol class="agenda">
+      <li><span class="ibadge r"><svg><use href="#ic-link"></use></svg></span><span class="n">01</span>__꼭지1__<span class="s">__한 줄__</span></li>
+      <li><span class="ibadge b"><svg><use href="#ic-server"></use></svg></span><span class="n">02</span>__꼭지2__<span class="s">__한 줄__</span></li>
+      <li><span class="ibadge y"><svg><use href="#ic-clock"></use></svg></span><span class="n">03</span>__꼭지3__<span class="s">__한 줄__</span></li>
+      <li><span class="ibadge g"><svg><use href="#ic-play"></use></svg></span><span class="n">04</span>__꼭지4__<span class="s">__한 줄__</span></li>
+    </ol>
+    <ul class="tlist"><li class="lead">__리드 한 줄__</li><li class="sub">__보조 한 줄__</li></ul>
+  </div>
+</section>
+
+<!-- ══════════ PART 디바이더 ══════════ -->
+<section class="slide divider dv-red">
+  <div class="inner">
+    <div class="txt">
+      <div class="partno num">PART 1</div>
+      <h2>__부 제목__</h2>
+      <p class="d">__두세 문장__</p>
+    </div>
+    <img class="chr" src="__CHR_DDAKJI__" alt="">
+  </div>
+</section>
+
+<!-- ══════════ 카드형 (2~4장) ══════════ -->
+<section class="slide">
+  <div class="inner">
+    <span class="tag p1"><span class="dotc"></span>1-1 · __꼭지명__</span>
+    <h2>__문장형 헤드라인__ <span class="hl">__강조__</span>__입니다.__</h2>
+    <div class="grid g3">
+      <div class="card t-red">
+        <div class="chead"><span class="ibadge r"><svg><use href="#ic-spark"></use></svg></span><div class="kicker">LABEL</div></div>
+        <h4>__카드 제목입니다.__</h4>
+        <p>__두세 문장. 수치·고유명사·실제 이름을 넣는다.__</p>
+      </div>
+      <div class="card t-blue">
+        <div class="chead"><span class="ibadge b"><svg><use href="#ic-link"></use></svg></span><div class="kicker">LABEL</div></div>
+        <h4>__카드 제목입니다.__</h4>
+        <p>__…__</p>
+      </div>
+      <div class="card t-yellow">
+        <div class="chead"><span class="ibadge y"><svg><use href="#ic-clock"></use></svg></span><div class="kicker">LABEL</div></div>
+        <h4>__카드 제목입니다.__</h4>
+        <p>__…__</p>
+      </div>
+    </div>
+    <ul class="tlist has-terms"><li class="lead">__결론 한 줄__</li><li class="sub">__근거 한 줄__</li></ul>
+    <div class="terms"><span class="tlbl">용어</span><span class="tm"><b>__우리말__</b><i>__original__</i>__한 줄 뜻__</span></div>
+  </div>
+</section>
+
+<!-- ══════════ 그림·구조도형 ══════════ -->
+<section class="slide">
+  <div class="inner">
+    <span class="tag p2"><span class="dotc"></span>2-1 · 구조도 ① · __이름__</span>
+    <h2>__헤드라인__</h2>
+    <figure class="fig">
+      <div class="box">
+        <svg viewBox="0 0 1010 400" role="img" aria-label="__그림이 말하는 바를 한 문장으로__">
+          <!-- 도형은 여기. 일러스트는 class="il" · 다이어그램은 fill/stroke 직접 지정 -->
+        </svg>
+      </div>
+    </figure>
+    <ul class="tlist"><li class="lead">__그림 캡션이 곧 리드 불릿__</li><li class="sub">__상세__</li></ul>
+  </div>
+</section>
+
+<!-- ══════════ 표형 ══════════ -->
+<section class="slide">
+  <div class="inner">
+    <span class="tag p3"><span class="dotc"></span>3-1 · __꼭지명__</span>
+    <h2>__헤드라인__</h2>
+    <div class="tblwrap">
+      <table class="dense">
+        <thead><tr><th style="width:180px">__열1__</th><th style="width:330px">__열2__</th><th>__열3__</th></tr></thead>
+        <tbody>
+          <tr><td class="strong nw"><svg class="ico"><use href="#ic-link"></use></svg>__행__</td><td class="apicol">__…__</td><td class="mcpcol">__…__</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="tlist"><li class="lead">__…__</li><li class="sub">__…__</li></ul>
+  </div>
+</section>
+
+<!-- ══════════ 숫자 타일형 ══════════ -->
+<section class="slide">
+  <div class="inner">
+    <span class="tag p4"><span class="dotc"></span>__꼭지명__</span>
+    <h2>__헤드라인__</h2>
+    <div class="statrow">
+      <div class="stat sb"><div class="v num">__값__</div><div class="k">__무엇__</div><div class="d">__기준·출처·시점__</div></div>
+    </div>
+    <div class="say bg">
+      <img src="__CHR_YONGHEE__" alt="">
+      <div class="bubble"><span class="who">용희 · 투수</span>__한 문장 코멘트__</div>
+    </div>
+    <ul class="tlist"><li class="lead">__…__</li><li class="sub">__…__</li></ul>
+  </div>
+</section>
+
+<!-- ══════════ 마무리 ══════════ -->
+<section class="slide">
+  <div class="inner">
+    <span class="tag"><span class="dotc" style="background: var(--blue);"></span>마무리</span>
+    <h2>오늘 기억할 것은 <span class="hl">세 줄</span>입니다.</h2>
+    <div class="decide">
+      <div class="row">
+        <div class="a"><span class="ibadge"><svg><use href="#ic-plug"></use></svg></span>__한 마디__</div>
+        <div class="b"><span class="lbl">한 문장</span>__…__</div>
+        <div class="c"><span class="lbl">그래서</span>__…__</div>
+      </div>
+    </div>
+    <ul class="tlist"><li class="lead">__…__</li></ul>
+    <div class="teamstrip" aria-hidden="true">
+      <img src="__CHR_DDAKJI__" alt=""><img src="__CHR_DAESIK__" alt=""><img src="__CHR_BOKSIL__" alt=""><img src="__CHR_YONGHEE__" alt="">
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 부록 · 출처 ══════════ -->
+<section class="slide">
+  <div class="inner">
+    <span class="tag"><span class="dotc" style="background: var(--ink);"></span>부록 · 출처</span>
+    <h2>이 자료가 <span class="hl">근거로 삼은 것</span></h2>
+    <div class="tblwrap">
+      <table class="dense src">
+        <thead><tr><th style="width:96px">쓰인 곳</th><th style="width:330px">자료</th><th style="width:80px">날짜</th><th>주소</th></tr></thead>
+        <tbody>
+          <tr><td class="yr">__슬라이드 번호__</td><td class="strong">__제목__</td><td class="nw">__YYYY.MM__</td><td class="ref">__url__</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="tlist"><li class="lead">__수치의 기준 시점을 명시__</li></ul>
+  </div>
+</section>
+
+<div id="hud">
+  <span class="title">__TITLE__ · __SUBTITLE__</span>
+  <span class="ctrl">
+    <button id="prev" aria-label="이전 슬라이드">&#8592;</button>
+    <span id="counter" class="num">1 / 1</span>
+    <button id="next" aria-label="다음 슬라이드">&#8594;</button>
+  </span>
+</div>
+
+<script>
+  (function () {
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var counter = document.getElementById('counter');
+    var progress = document.getElementById('progress');
+    var idx = 0;
+
+    function show(i) {
+      idx = Math.max(0, Math.min(slides.length - 1, i));
+      slides.forEach(function (s, k) { s.classList.toggle('active', k === idx); });
+      counter.textContent = (idx + 1) + ' / ' + slides.length;
+      progress.style.width = ((idx + 1) / slides.length * 100) + '%';
+      slides[idx].scrollTop = 0;
+    }
+
+    document.getElementById('prev').addEventListener('click', function () { show(idx - 1); });
+    document.getElementById('next').addEventListener('click', function () { show(idx + 1); });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); show(idx + 1); }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); show(idx - 1); }
+      else if (e.key === 'Home') { e.preventDefault(); show(0); }
+      else if (e.key === 'End') { e.preventDefault(); show(slides.length - 1); }
+    });
+
+    var tx = null;
+    document.addEventListener('touchstart', function (e) { tx = e.changedTouches[0].clientX; }, { passive: true });
+    document.addEventListener('touchend', function (e) {
+      if (tx === null) return;
+      var dx = e.changedTouches[0].clientX - tx;
+      if (Math.abs(dx) > 60) { if (dx < 0) show(idx + 1); else show(idx - 1); }
+      tx = null;
+    }, { passive: true });
+
+    show(idx);
+  })();
+</script>
