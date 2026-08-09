@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 
 from .schema import Content, Output, Trace, LegalMeta, QualityMeta
@@ -84,6 +85,7 @@ class HCtx:
     halt: bool = False                 # legal RED → 조기 종료
     pred_v: object = None              # 임베딩 2차의견(YELLOW 판단 캐리)
     pred_c: object = None
+    t0: float = 0.0                    # 실행 시작 시각(wall-clock 지연 측정 · run() 이 설정)
 
 
 # ── 스테이지(에이전트 그래프 노드). 각자 ctx 를 변이. ──
@@ -202,7 +204,8 @@ def run(content_dict: dict, llm, methodology: Methodology = None, *,
     ctx = HCtx(content=content, llm=llm, methodology=m, emb=emb,
                prefilter=quality_prefilter, fewshot_pool=fewshot_pool,
                legal_meta=LegalMeta(enabled=False),
-               trace=Trace(prompt_version=f"{P.quality_version()}, {P.IMETA_VERSION}"))
+               trace=Trace(prompt_version=f"{P.quality_version()}, {P.IMETA_VERSION}"),
+               t0=time.time())
     for key in m.stages:
         if ctx.halt:
             break
@@ -293,18 +296,40 @@ def _assemble(ctx: HCtx) -> dict:
     t.agent_verdicts = [v for v in ctx.verdicts if v.get("evidence") or v.get("fail")]
     t.fallbacks = ctx.fallbacks
     t.cost_usd = round(sum(r.cost_usd for r in ctx.results), 6)
+    # 캐시 토큰(cache_read/cache_write)은 제공자가 보고할 때만 0 이상이다. 이 값이 계속 0 이면
+    # '캐싱이 아예 안 걸림'이고, in 대비 cache_read 비율이 캐시 적중률이다(효과 측정의 유일한 원천).
     t.tokens = {"in": sum(r.in_tok for r in ctx.results),
-                "out": sum(r.out_tok for r in ctx.results)}
+                "out": sum(r.out_tok for r in ctx.results),
+                "cache_read": sum(int(getattr(r, "cache_read_tok", 0) or 0) for r in ctx.results),
+                "cache_write": sum(int(getattr(r, "cache_write_tok", 0) or 0) for r in ctx.results)}
+    # total = 콜 지연의 단순 '합'(다운스트림 계약 · abtest 의 latency_p50/p95 원천이라 의미 고정).
+    # wall  = 이 콘텐츠 1건 처리에 실제로 걸린 시간(스테이지 그래프 전체의 wall-clock).
+    # 병렬 구간(summary∥entities · quality∥item)은 total 에서 이중 계상되므로 total - wall ≈
+    # 병렬로 겹쳐 아낀 시간이다. **병렬화 개선은 반드시 wall 로 측정할 것**(total 로 보면 0 으로 보인다).
     t.latency_ms = {"total": sum(r.latency_ms for r in ctx.results)}
+    if ctx.t0:
+        t.latency_ms["wall"] = max(0, int((time.time() - ctx.t0) * 1000))
     by_call = {}
     for r in ctx.results:                              # 콜 태그별 비용·토큰 분해(콜별 모델 라우팅 근거)
         tag = getattr(r, "tag", "") or "(기타)"
-        b = by_call.setdefault(tag, {"n": 0, "cost": 0.0, "in": 0, "out": 0, "ms": 0})
+        b = by_call.setdefault(tag, {"n": 0, "cost": 0.0, "in": 0, "out": 0, "ms": 0,
+                                     "cache_read": 0, "cache_write": 0, "retries": 0})
         b["n"] += 1
         b["cost"] = round(b["cost"] + r.cost_usd, 6)
         b["in"] += r.in_tok
         b["out"] += r.out_tok
         b["ms"] += r.latency_ms
+        b["cache_read"] += int(getattr(r, "cache_read_tok", 0) or 0)
+        b["cache_write"] += int(getattr(r, "cache_write_tok", 0) or 0)
+        # 캐시 값이 0 일 때 원인이 둘로 갈린다: 라우터가 usage 에 캐시 필드를 아예 안 실어 줌
+        # (cache_src="") vs 실어 주는데 매번 미스(cache_src="miss:…"). 진단의 유일한 단서라
+        # 마지막 비어 있지 않은 출처를 남긴다(숫자가 아니므로 롤업 합산 대상 아님).
+        src = getattr(r, "cache_source", "") or ""
+        if src:
+            b["cache_src"] = src
+        # 재시도 횟수: LLMResult.retries 는 종전에 어디에도 안 실려 '몇 번 만에 성공했는지'가
+        # 사라졌다(429·파싱 실패로 인한 숨은 지연·비용의 원인). 콜별로 올려 둔다.
+        b["retries"] += int(getattr(r, "retries", 0) or 0)
     t.by_call = by_call
     # 콜 실패 표면화: LLMResult.fail_kind 를 trace 로 올려 빈 산출의 원인을 진단 가능하게 한다
     # (모델 A/B 에서 '빈값인데 왜'를 하네스가 스스로 보고 · 예: gemini 침묵 빈응답 → parse_empty).

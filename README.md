@@ -148,6 +148,8 @@ prism/serve.py (stdlib http.server)
 | `PRISM_BASE_URL` / `PRISM_API_KEY` | 임의 OpenAI 호환 엔드포인트·키 |
 | `PRISM_MODEL` | 기본 실행 모델 |
 | `PRISM_CONCURRENCY` / `PRISM_RPM` / `PRISM_TPM` | 동시성·분당 요청·분당 토큰 제한 |
+| `PRISM_PROMPT_CACHE` | 프롬프트 캐싱 옵트인(`1`=요청에 `prompt_cache_key` 전송 · 기본 꺼짐 · `0` 으로 끔) |
+| `PRISM_PRICE_CACHE_READ` | 캐시 읽기 단가(USD/1M) · 미설정이면 캐시 토큰도 정가로 계산 |
 
 > [!WARNING]
 > 키는 환경 변수 또는 권한 600 키 파일로만 주입 · 저장소·이미지에 포함 금지

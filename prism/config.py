@@ -38,6 +38,9 @@ class Prices:
     # USD per 1M tokens (공시 2026-06-04, 미확정값은 콘솔 실측)
     chat_in: float = 0.15
     chat_out: float = 0.60
+    # 프롬프트 캐시 '읽기' 단가. None = 미설정 → 캐시 토큰도 정가(chat_in)로 계산(종전 동작 유지).
+    # 값을 넣으면 LLMResult.cost_usd 가 캐시로 읽은 토큰만 이 단가로 계산한다
+    # (Upstage 공시 기준 입력가의 0.1배 → chat_in * 0.1 을 넣으면 된다).
     cache_read: float | None = None
     embedding: float = 0.10
 
@@ -98,6 +101,9 @@ class Config:
     # 실행
     concurrency: int = 12
     timeout: int = 60
+    # 프롬프트 캐싱 옵트인: 요청 바디에 prompt_cache_key 를 실을지(기본 off).
+    # 근거는 llm.LLMClient._cache_key 주석. 끄는 법 = 이 값 false 또는 env PRISM_PROMPT_CACHE=0.
+    prompt_cache: bool = False
 
     # 정책(중첩)
     retry: RetryPolicy = field(default_factory=RetryPolicy)
@@ -137,6 +143,13 @@ class Config:
             cfg.set_base_url(os.environ["PRISM_BASE_URL"])
         if os.environ.get("PRISM_EMBED_MODEL"):
             cfg.embed_query_model = cfg.embed_passage_model = os.environ["PRISM_EMBED_MODEL"]
+        if os.environ.get("PRISM_PROMPT_CACHE") is not None:      # 프롬프트 캐싱 옵트인 스위치
+            cfg.prompt_cache = _envbool(os.environ["PRISM_PROMPT_CACHE"])
+        if os.environ.get("PRISM_PRICE_CACHE_READ"):              # 캐시 읽기 단가(USD/1M) 주입
+            try:
+                cfg.prices.cache_read = float(os.environ["PRISM_PRICE_CACHE_READ"])
+            except ValueError:
+                pass
         return cfg
 
     def is_configured(self) -> bool:
@@ -164,6 +177,11 @@ class Config:
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
         with open(target, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False, indent=2)
+
+
+def _envbool(v: str) -> bool:
+    """env 스위치 해석. 빈 값·0·false·off·no = 꺼짐(그 밖은 켜짐)."""
+    return str(v or "").strip().lower() not in ("", "0", "false", "off", "no")
 
 
 def _merge(cfg: Config, data: dict) -> Config:

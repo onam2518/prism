@@ -8,6 +8,11 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       get costMax() { return Math.max(0.000001, ...(((this.costData || {}).by_day) || []).map((d) => d.cost)); },
       usdTxt(v) { return v == null ? '·' : ('$' + (Math.round(v * 10000) / 10000)); },
+      // 프롬프트 캐시 적중률 = 캐시로 읽은 입력 토큰 / 전체 입력 토큰. 0%면 캐시가 안 먹는 것이고,
+      // 값이 없으면(null) 제공자·라우터가 캐시 토큰 자체를 보고하지 않는 것 — 둘은 원인이 다르다.
+      get cacheHitPct() { const t = (this.costData || {}).total || {}; const i = +t['in'] || 0; return i ? Math.round((+t.cache_read || 0) / i * 100) : null; },
+      // 콜별 평균 지연(실행 수 기준). 0 이면 롤업에 ms 가 쌓이기 전(2026-08-09 이전) 적재분.
+      msTxt(c) { const n = +(c || {}).n || 0; const ms = +(c || {}).ms || 0; return (n && ms) ? (Math.round(ms / n) + 'ms') : '·'; },
       // 실패 트리아지(종류×모델×서비스 · 관리자): 실행 시점 누적 원장(reports fail_rollup)
       failData: null,
       async loadFails() {
