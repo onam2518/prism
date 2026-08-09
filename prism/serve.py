@@ -50,7 +50,7 @@ from .topicops import (topics_data, topic_studio_action,
                        start_topic_scheduler, topic_drill)
 from .mediaops import media_action, media_native
 from .dictops import (dict_data, load_dict_overrides, edit_dict,
-                      reset_dict_overrides, entdict_data, entdict_action, _ENRICH_STATE)
+                      reset_dict_overrides, entdict_data, entdict_action, enrich_running)
 
 TPO._SV = sys.modules[__name__]     # 토픽 도메인 주입(라우트 분리 4차)
 MO._SV = sys.modules[__name__]      # 미디어 실험실 주입(동일)
@@ -1056,7 +1056,7 @@ def config_status(team=None) -> dict:
         "keyManagedByServer": bool(_supa()),           # 운영: 키는 서버 관리(UI 키 입력 숨김)
         # 큐 실행 여부(공개 · 무인증): 배포 워크플로가 이걸 보고 배치가 끝날 때까지 배포를 대기한다
         # (기존 /ingest-status 는 supabase 모드에서 401 이라 워크플로의 큐 보호가 무력화됐음).
-        "ingesting": bool(ingest_status().get("running") or _ENRICH_STATE.get("running")),
+        "ingesting": bool(ingest_status().get("running") or enrich_running()),
         # 모델 슬롯
         "hasBizKey": bool(IMG.router_key("bizrouter")),
         "bizPersisted": _key_persisted(_ROUTER_KEY_PATHS["bizrouter"]),
@@ -1402,7 +1402,7 @@ def _g_config(h, q):
         return {"bootId": _BOOT_ID, "build": _build_id(),
                 "configured": Config.load().is_configured(),
                 "forcedMock": Handler.server_mock,
-                "ingesting": bool(ingest_status().get("running") or _ENRICH_STATE.get("running")),
+                "ingesting": bool(ingest_status().get("running") or enrich_running()),
                 "backend": "supabase", "authRequired": True, "keyManagedByServer": True}
     return config_status(h._req_team())
 
