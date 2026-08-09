@@ -9,6 +9,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-08-09 | [MCP vs API · 비개발자를 위한 MCP 스터디](https://claude.ai/code/artifact/b4b15d4f-9130-4e65-9995-2f6a391a3d5d) |
 | 2026-08-06 | [스펙트럼 화면 시안 4종](https://claude.ai/code/artifact/797f8b9d-916a-4b05-bf50-f91daacc9e21) |
 | 2026-08-04 | [검수운영 '이번 배정' 현황 · 화면 캡처](https://claude.ai/code/artifact/75d2f4d2-2f52-42b1-85f4-267e58c3f3aa) |
 | 2026-08-03 | [포토·영상 중심 · 구조적 제약](https://claude.ai/code/artifact/4b615df7-4809-43fa-9065-39b592b7649d) |
