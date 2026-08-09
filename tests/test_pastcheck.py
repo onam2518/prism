@@ -88,7 +88,7 @@ class TestPastCheck(unittest.TestCase):
         self.assertEqual(len(inj), 7)
         # 중복 쌍의 원본(앱 실행)은 정상이라 pass · 재전송본만 경고
         self.assertEqual({l["verdict"] for l in inj}, {"pass", "fail", "warn", "info"})
-        msgs = " ".join(m for l in inj for _, m in l["violations"])
+        msgs = " ".join(v[1] for l in inj for v in l["violations"])
         self.assertIn("무효값 전송: action_kind", msgs)
         self.assertIn("필수 필드 누락: page", msgs)
         self.assertIn("광고 계측 이벤트 혼입", msgs)
