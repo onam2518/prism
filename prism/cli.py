@@ -267,7 +267,7 @@ def cmd_eval(a):
                      ensure_ascii=False, indent=2))
     acc = metrics["grade_accuracy"]
     gate = cfg.thresholds.eval_gate
-    print(f"\n[게이트] 등급 일치율 {acc:.1%} · 유해 미탐률 {metrics['harm_miss_rate']:.1%}")
+    print(f"\n[게이트] 등급 일치율 {acc:.1%} · 유해 미탐률 {_pct_or_na(metrics['harm_miss_rate'])}")
     if acc < gate:
         print(f"  → 임계({gate:.0%}) 미달. §6.4 에스컬레이션 검토: (a)하이브리드 (b)분해형 (c)모델교체")
     run_id = _run_id()
@@ -589,10 +589,14 @@ def cmd_tune(a):
         ca = cand_m["by_reason_bucket"].get(b, {}).get("grade_acc", ba)
         if ca < ba - 0.10:
             regress.append(f"{b} {ba:.0%}→{ca:.0%}")
-    # 엄격 개선: 등급이 실제로 올라가고(>), 유해미탐 악화 없고, 회귀 버킷 없을 때만 채택
-    improved = cand_acc > base_acc and cand_miss <= base_miss + 1e-9 and not regress
+    # 엄격 개선: 등급이 실제로 올라가고(>), 유해미탐 악화 없고, 회귀 버킷 없을 때만 채택.
+    # 정답셋에 기대 R 행이 없으면 harm_miss_rate 는 None(측정 불가) — 두 런이 같은 정답셋을
+    # 쓰므로 양쪽이 함께 None 이다. 측정할 수 없는 기준은 공허참으로 두고 등급·회귀로만 판정한다.
+    miss_ok = True if (base_miss is None or cand_miss is None) else cand_miss <= base_miss + 1e-9
+    improved = cand_acc > base_acc and miss_ok and not regress
     unchanged = abs(cand_acc - base_acc) < 1e-9 and not regress
-    print(f"  등급 {base_acc:.1%}→{cand_acc:.1%} · 유해미탐 {base_miss:.1%}→{cand_miss:.1%}")
+    print(f"  등급 {base_acc:.1%}→{cand_acc:.1%} · "
+          f"유해미탐 {_pct_or_na(base_miss)}→{_pct_or_na(cand_miss)}")
     if regress:
         print(f"  ⚠️ 회귀 버킷: {', '.join(regress)}")
     if improved and not a.dry_run:
@@ -609,9 +613,15 @@ def cmd_tune(a):
         print(f"  ✗ 미개선/회귀 → rollback (active={base} 유지)")
 
 
+def _pct_or_na(v) -> str:
+    """유해 미탐률 표시. 분모(기대 R 행)가 0이면 harm_miss_rate 는 None 이다 —
+    '해당 없음'을 0% 로 찍으면 '한 건도 안 놓쳤다'로 읽혀 정반대로 오독된다(감사 L7)."""
+    return "해당 없음(기대 R 0건)" if v is None else f"{float(v):.1%}"
+
+
 def _fmt_metrics(m):
     return (f"  등급 {m['grade_accuracy']:.1%} · reason완전 {m['reason_exact_match']:.1%} · "
-            f"유해미탐 {m['harm_miss_rate']:.1%} · EMPTY {m['empty_rate']:.1%} · ${m['cost_usd']:.4f}")
+            f"유해미탐 {_pct_or_na(m['harm_miss_rate'])} · EMPTY {m['empty_rate']:.1%} · ${m['cost_usd']:.4f}")
 
 
 # 공통
