@@ -55,6 +55,11 @@ def _log_cost_rollup(trace: dict, team=None):
             m = d["models"].setdefault(model, {"cost": 0.0, "n": 0})
             m["cost"] = round(m["cost"] + cost, 6)
             m["n"] += 1
+            # 과금된 실행만 따로 센다 — 비용 등급(modelmeta.tiers_from_cost)의 건당 평균 분모다.
+            # n 으로 나누면 실패 건이 분모에 남아 평균이 희석되고, 실패율 26% 만 넘어도
+            # 고비용 모델의 '고비용' 배지가 사라진다(감사 L4). 구 원장엔 이 키가 없어 읽기측이 n 으로 폴백.
+            if cost > 0:
+                m["n_billed"] = int(m.get("n_billed") or 0) + 1
             for tag, b in by_call.items():
                 b = b or {}
                 cle = d["calls"].setdefault(str(tag), {"cost": 0.0, "n": 0, "in": 0, "out": 0})
