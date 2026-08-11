@@ -627,11 +627,11 @@
           </div>
           <div x-show="!assignCandidates.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 검수자가 없습니다(최종검수자 제외) · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
           <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) · 그룹 모드에선 그룹별 지정으로 대체 -->
-          <div x-show="bulkGrps <= 1" style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">
+          <div x-show="bulkGrps <= 1" class="flexrow" style="gap:9px;flex-wrap:wrap;margin-bottom:12px">
             <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
             <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 검수자에게 콘텐츠를 분할 배정합니다 · 잔여 배정이 적은 검수자부터 채웁니다" data-tip-pos="top">균등 분배</button>
           </div>
-          <div x-show="bulkGrps <= 1" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px">
+          <div x-show="bulkGrps <= 1" class="flexrow" style="flex-wrap:wrap;gap:9px;margin-bottom:14px">
             <template x-for="m in assignCandidates" x-bind:key="'bpk'+m.id">
               <label class="pickchip" x-bind:class="bulkPick.includes(m.id) ? 'on' : ''">
                 <input type="checkbox" x-bind:checked="bulkPick.includes(m.id)" x-on:change="bulkPickToggle(m.id)"><span x-text="m.name"></span>
@@ -640,7 +640,7 @@
           </div>
           <!-- 그룹 모드: 그룹마다 담당자를 따로 지정(그룹 전체가 같은 담당자에게 배정)
                그룹 배지를 제목 줄로 분리 + 2번째 그룹부터 구분선. 칩이 줄바꿈돼도 그룹 경계가 보이게 -->
-          <div x-show="bulkGrps > 1" style="display:flex;flex-direction:column;gap:22px;margin-bottom:14px">
+          <div x-show="bulkGrps > 1" class="flexcol" style="gap:22px;margin-bottom:14px">
             <template x-for="g in bulkGrps" x-bind:key="'bgp'+g">
               <div x-bind:style="g > 1 ? 'border-top:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));padding-top:20px' : ''">
                 <span class="ds-badge ds-badge--status tnum" style="display:inline-flex;margin-bottom:9px" x-text="'그룹' + g + ' · ' + (bulkGrpCounts[g-1] || 0) + '건'"></span>

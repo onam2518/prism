@@ -54,7 +54,7 @@
               <input class="field" type="number" style="width:96px" min="1" max="200" x-model.number="ingestN" placeholder="수량">
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="ingestOnceBusy" x-on:click="ingestRun()" x-text="ingestOnceBusy ? '가져오는 중…' : '가져오기 실행'"></button>
             </div>
-            <span class="text-xs text-muted" style="display:block;margin-top:7px" x-text="ingestMsg"></span>
+            <span class="text-xs text-muted" style="display:block;margin-top:7px" x-text="ingestOnceMsg"></span>
           </div>
         </section>
         <section class="panel" data-fn><div class="panel-hd"><b>인입 소스 추가</b></div>

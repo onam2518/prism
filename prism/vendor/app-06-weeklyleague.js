@@ -107,7 +107,7 @@ window.PRISM_APP_PARTS.push(() => ({
       ensureReviewer() { if (!(this.reviewer || '').trim()) { this.reviewerEditing = true; return false; } return true; },
       learnedStages: { extract: false, analyze: false, review: false, judge: false },
       async loadPromptDefaults() { try { await this.refreshConfig(); const d = await (await fetch('/prompt-defaults', { headers: this._authHeaders() })).json(); this.learnedStages = d.learned || this.learnedStages; } catch (e) {} },
-      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); this._ensureStudioModels(); } catch (e) {} this.modBusy = false; },
+      async loadTopics() { this.modBusy = true; try { this.topicData = await (await fetch('/topics', { headers: this._authHeaders() })).json(); this._syncTopicSettings(); this._ensureStudioModels(); } catch (e) { this._err('토픽 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요'); } this.modBusy = false; },
       // 자동 리프레시 배지 툴팁: 지난 스냅샷 대비 변화 요약(상위 5개)
       topicSnapTip() {
         const s = (this.topicData || {}).snapshot || {}; const d = s.delta || {};

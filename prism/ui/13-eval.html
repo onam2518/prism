@@ -158,7 +158,7 @@
                 <li>한 라운드 = <b>학습 반영</b>(검수 피드백 → 프롬프트 보정) 후 같은 정답셋으로 <b>재평가</b> · 점수가 나빠지면 그 라운드 보정은 반영하지 않습니다(자동 원복).</li>
                 <li>종료 조건: <b>목표 달성</b> · <b>개선 정체</b>(2라운드 연속 향상 없음) · <b>최대 라운드</b> · 수동 중지 · 라운드마다 실모델 호출 비용이 듭니다.</li>
               </ul>
-              <div x-show="!(pilot && pilot.status==='running')" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <div x-show="!(pilot && pilot.status==='running')" class="flexrow" style="gap:10px;align-items:center;flex-wrap:wrap">
                 <span class="selctl"><span class="selctl__lbl">목표 일치율</span>
                   <select class="field" x-model="pilotTarget"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option></select></span>
                 <span class="selctl"><span class="selctl__lbl">최대 라운드</span>
@@ -229,7 +229,7 @@
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
                   <!-- 원클릭 승격: 합격 최저 비용 모델 → 기본 모델(다음 실행 초안 생성 모델) -->
-                  <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap" x-show="assignAdmin && cmpResult.cheapest_passing">
+                  <div class="flexrow" style="margin-top:10px;align-items:center;gap:10px;flex-wrap:wrap" x-show="assignAdmin && cmpResult.cheapest_passing">
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="applyBusy || cfgModel===cmpResult.cheapest_passing" x-on:click="applyModel(cmpResult.cheapest_passing)" x-text="cfgModel===cmpResult.cheapest_passing ? '이미 기본 모델입니다 · ' + cmpResult.cheapest_passing : (applyBusy ? '적용 중…' : '기본 모델로 적용 · ' + cmpResult.cheapest_passing)"></button>
                     <span class="text-xs text-muted">합격 기준 = 등급 일치율 <span class="tnum" x-text="pctTxt(cmpResult.eval_gate)"></span> 이상 · 그중 비용이 가장 낮은 모델을 추천합니다</span>
                   </div>
