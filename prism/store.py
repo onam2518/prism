@@ -850,8 +850,9 @@ class Store:
             e["stage"], e["note"] = last["stage"], last["note"]
         return out
 
-    def save_reap(self, content_hash, reviewer, reap: dict):
-        """REAP 산출(remember/explain/ask/plan)을 해당 검수자 피드백 행에 기록."""
+    def save_reap(self, content_hash, reviewer, reap: dict, team=None):
+        """REAP 산출(remember/explain/ask/plan)을 해당 검수자 피드백 행에 기록.
+        team 은 원격 스토어와의 시그니처 정합용(로컬 단일 팀이라 무시)."""
         c = self._conn()
         c.execute("""UPDATE feedback SET remember=?, explain=?, ask=?, plan=?
           WHERE content_hash=? AND reviewer=?""",
@@ -859,8 +860,9 @@ class Store:
            reap.get("plan", ""), content_hash, reviewer or "(익명)"))
         c.commit()
 
-    def get_reap(self, content_hash) -> list:
-        """콘텐츠의 검수자별 REAP 산출 목록(UI 표시용)."""
+    def get_reap(self, content_hash, team=None) -> list:
+        """콘텐츠의 검수자별 REAP 산출 목록(UI 표시용).
+        team 은 원격 스토어와의 시그니처 정합용(로컬 단일 팀이라 무시)."""
         c = self._conn()
         out = []
         for rv, rm, ex, ak, pl, st in c.execute(
@@ -1848,8 +1850,9 @@ class Store:
             out[ch] = {"displayServiceName": svc or "", "title": ti or "", "subtitle": "", "body": body}
         return out
 
-    def get_item_meta(self, content_hash) -> dict | None:
-        """저장된 item_meta 조회(교정 로그의 before 스냅샷용). 없으면 None."""
+    def get_item_meta(self, content_hash, team=None) -> dict | None:
+        """저장된 item_meta 조회(교정 로그의 before 스냅샷용). 없으면 None.
+        team 은 원격 스토어와의 시그니처 정합용(로컬 단일 팀이라 무시)."""
         c = self._conn()
         row = c.execute("SELECT item_meta FROM results WHERE content_hash=?", (content_hash,)).fetchone()
         if not row:
@@ -1864,9 +1867,10 @@ class Store:
         c = self._conn()
         c.execute("DELETE FROM feedback"); c.commit()
 
-    def update_item_meta(self, content_hash, patch: dict) -> bool:
+    def update_item_meta(self, content_hash, patch: dict, team=None) -> bool:
         """검수자 구조화 교정: item_meta 패치(예: 빈 content_category 채우기).
-        recent() 가 payload 를 읽으므로 item_meta 컬럼 + payload.item_meta 둘 다 갱신."""
+        recent() 가 payload 를 읽으므로 item_meta 컬럼 + payload.item_meta 둘 다 갱신.
+        team 은 원격 스토어와의 시그니처 정합용(로컬 단일 팀이라 무시)."""
         c = self._conn()
         row = c.execute("SELECT item_meta,payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
         if not row:
@@ -1888,9 +1892,10 @@ class Store:
         c.commit()
         return True
 
-    def update_quality(self, content_hash, grade: str, reasons=None):
+    def update_quality(self, content_hash, grade: str, reasons=None, team=None):
         """최종검수자 등급 교정: final_grade 컬럼 + payload.quality_meta 동시 갱신.
-        반환 = 이전 등급 문자열(행 없으면 None) · patch_log 의 교정 전/후 기록용."""
+        반환 = 이전 등급 문자열(행 없으면 None) · patch_log 의 교정 전/후 기록용.
+        team 은 원격 스토어와의 시그니처 정합용(로컬 단일 팀이라 무시)."""
         c = self._conn()
         row = c.execute("SELECT final_grade,payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
         if not row:

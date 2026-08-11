@@ -41,7 +41,9 @@ window.mreview = () => ({
   },
   async checkBoot() {
     if (this.updateAvail) return;                  // 이미 감지됨 · 재확인 불필요
-    try { this._seenBoot(((await (await fetch('/config')).json()) || {}).bootId); } catch (e) {}
+    // 경량 /boot(bootId·build 만) · 부팅 시 1회 /config 와 달리 여기선 bootId 하나만 쓴다
+    // (탭 복귀 + 10분 주기마다 22KB 짜리 /config 를 통째로 받던 낭비 제거)
+    try { this._seenBoot(((await (await fetch('/boot')).json()) || {}).bootId); } catch (e) {}
   },
 
   _hdrs() { const h = { 'Content-Type': 'application/json' }; if (this.authToken) h['Authorization'] = 'Bearer ' + this.authToken; return h; },

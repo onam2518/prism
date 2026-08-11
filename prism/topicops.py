@@ -41,15 +41,17 @@ def _save_studio_config(cfg: dict):
                                         "exclusions": cfg.get("exclusions") or {}})
 
 
-def topics_data() -> dict:
-    """토픽 모듈 데이터(30s 캐시). 드릴다운 클릭마다 전체 재클러스터링하던 비용 제거 —
-    쓰기(추출·스튜디오 변경)는 _agg_bump 로 즉시 무효화된다."""
-    return _SV._agg_cached(("topics",), _topics_compute)
+def topics_data(team=None) -> dict:
+    """토픽 모듈 데이터(팀별 30s 캐시). 드릴다운 클릭마다 전체 재클러스터링하던 비용 제거 —
+    쓰기(추출·스튜디오 변경)는 _agg_bump 로 즉시 무효화된다.
+    team 은 결과 행(results_rows)의 스코프다 — 넘기지 않으면 supabase 에서 팀 필터가 생략돼
+    응답 titles 에 전 팀 콘텐츠 제목이 실린다(형제 라우트는 전부 팀을 넘긴다)."""
+    return _SV._agg_cached(("topics", team), lambda: _topics_compute(team))
 
 
-def _topics_compute() -> dict:
+def _topics_compute(team=None) -> dict:
     """토픽 모듈: 적재된 결과에서 엔티티형·사건형·조건형 토픽 + 사용자 정의 토픽 빌드."""
-    rows = _SV.results_rows()
+    rows = _SV.results_rows(team=team)
     cfg = _studio_config()
     if not rows:
         return {"n_contents": 0, "single": [], "composite": [], "custom": [],
@@ -146,12 +148,16 @@ def start_topic_scheduler(interval_min: int = 60):
 
 def _ent_index() -> dict:
     """토픽 매칭용 개체 속성 인덱스({content_hash: [속성 dict]}) · 사전 미구축이면 빈 dict.
-    토픽은 전역(무팀 results_rows) 뷰라 인덱스도 전역(team="")."""
+    개체 사전은 전역이라 인덱스도 전역(team="").
+    30s 집계 캐시: 원천(supastore.ent_attr_index)이 entities 2만행 + content_entities 5만행을
+    필터 없이 통째로 내려받는데, 스튜디오 미리보기·제안은 타이핑 디바운스(260ms)마다 이걸
+    호출한다 — 캐시가 붙는 _topics_compute 와 달리 미리보기 경로만 무캐시로 비대칭이었다.
+    등재·수정·보강(dictops.entdict_action)은 _agg_bump 로 즉시 무효화한다."""
     st = _SV.get_store()
     if not (st and hasattr(st, "ent_attr_index")):
         return {}
     from . import entdict as ED
-    return ED.attr_index(st, team="")
+    return _SV._agg_cached(("entidx", ""), lambda: ED.attr_index(st, team=""))
 
 
 def _sanitize_def(d: dict, existing_ids=None) -> dict:
@@ -310,18 +316,22 @@ def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list
     return out[:3]
 
 
-def topic_studio_action(data: dict, mock: bool = False) -> dict:
-    """토픽 스튜디오 변경/조회: save·delete·settings·preview·suggest."""
+def topic_studio_action(data: dict, mock: bool = False, team=None) -> dict:
+    """토픽 스튜디오 변경/조회: save·delete·settings·preview·suggest.
+    rows·topics_data 는 topics_data(team) 인덱스와 정합해야 하므로 같은 team 으로 통일한다."""
     from . import topic as TP
     action = (data.get("action") or "").strip()
     if action not in ("preview", "suggest"):
         _SV._agg_bump()                                   # 변경성 액션(save·delete·settings·exclude 등) → 토픽 캐시 무효화
-    rows = _SV.results_rows()
+    rows = _SV.results_rows(team=team)
     svc = TP._service_names(rows) if rows else set()
 
     if action == "preview":
         d = _sanitize_def(data.get("def") or {})
-        pv = (TP.preview_definition(rows, svc, d, ent_index=_ent_index()) if rows else
+        # 개체 속성 조건이 없으면 인덱스 자체가 필요 없다(_content_dims 가 ent_index=None 이면
+        # 빈 속성 목록을 쓴다) — 타이핑 중 대부분의 미리보기가 사전 조회를 아예 건너뛴다.
+        eidx = _ent_index() if d.get("eattrs") else None
+        pv = (TP.preview_definition(rows, svc, d, ent_index=eidx) if rows else
               {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0})
         # 표본을 상세 화면 계약(_detail_row)으로 확장: 미리보기 배지 클릭 → 공통 스플릿뷰로 바로 열람
         for b in pv.get("bundles") or []:
@@ -367,7 +377,7 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
         else:
             custom.append(d)
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
-        out = dict(_SV.topics_data())
+        out = dict(_SV.topics_data(team))
         out["similar"] = dups
         return out
     elif action == "delete":
@@ -403,7 +413,7 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
     else:
         return {"ok": False, "error": "알 수 없는 동작"}
-    return _SV.topics_data()
+    return _SV.topics_data(team)
 
 
 
@@ -437,12 +447,12 @@ def topic_personas(entities: list, team=None) -> list:
 
 def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape.
-    ⚠️ rows 는 _SV.topics_data() 의 content_ids 인덱스와 정합해야 해서 무필터 유지 · 피드백 부착만
-    팀 스코프. 토픽 자체의 팀 파라미터화(topics_data)는 후속(실험실 메뉴 · 관리자용)."""
-    rows = _SV.results_rows()
+    rows 는 _SV.topics_data(team) 의 content_ids 인덱스와 정합해야 하므로 같은 team 으로 뽑는다
+    (예전엔 둘 다 무필터라 팀원이 타 팀 콘텐츠를 드릴다운으로 열 수 있었다)."""
+    rows = _SV.results_rows(team=team)
     if not rows or not cluster_id:
         return {"ok": True, "kind": "topic", "value": cluster_id or "", "items": [], "n": 0}
-    td = _SV.topics_data()                        # single/composite(각 content_ids) · custom(그룹→bundles)
+    td = _SV.topics_data(team)                    # single/composite(각 content_ids) · custom(그룹→bundles)
     cluster, topic_id = None, cluster_id      # topic_id = 제외(큐레이션) 키 · 사용자 토픽은 그룹 id
     for grp in ("single", "composite"):
         for c in td.get(grp, []):

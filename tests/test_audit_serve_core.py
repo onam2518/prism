@@ -135,12 +135,27 @@ class TestGetDispatch500(_ServerMixin, unittest.TestCase):
     def tearDownClass(cls):
         cls._halt()
 
-    def test_bad_int_query_returns_500_json(self):
-        # 수정 전: int('abc') ValueError 가 do_GET 밖으로 전파 → 응답 없이 연결 종료(empty reply)
-        for path in ("/raw?limit=abc", "/entdict?limit=abc"):
-            code, body = self._req(path)
-            self.assertEqual(code, 500, path)
-            self.assertIn("error", json.loads(body), path)
+    def test_handler_exception_returns_500_json(self):
+        # 수정 전: 핸들러 예외가 do_GET 밖으로 전파 → 응답 없이 연결 종료(empty reply)
+        SV = self.SV
+        orig = SV._GET_ROUTES["/vocab"]
+
+        def _boom(h, q):
+            raise RuntimeError("경계 밖 실패")
+        SV._GET_ROUTES["/vocab"] = (_boom, orig[1])
+        self.addCleanup(lambda: SV._GET_ROUTES.__setitem__("/vocab", orig))
+        code, body = self._req("/vocab")
+        self.assertEqual(code, 500)
+        # 고정 문구만 · 파이썬 예외 원문은 서버 로그로만(내부 구현 노출 차단 · 감사 H3)
+        self.assertIn("error", json.loads(body))
+        self.assertNotIn("경계 밖 실패", body)
+
+    def test_bad_int_query_falls_back_to_default(self):
+        """정수 쿼리 검증(_qint): 비수치·범위 밖은 500 이 아니라 기본값·경계로 수렴(감사 H3)."""
+        for path in ("/raw?limit=abc", "/entdict?limit=abc", "/raw?limit=-1",
+                     "/raw?limit=99999999999", "/crew-weekly?weeks=abc"):
+            code, _body = self._req(path)
+            self.assertIn(code, (200, 403), path)     # 403 = 역할 게이트(로컬 sqlite 는 200)
 
     def test_valid_get_still_ok(self):
         code, body = self._req("/raw?limit=2")

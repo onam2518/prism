@@ -803,17 +803,23 @@ class SupabaseStore:
                 e["week"] += b
         return out
 
-    def save_reap(self, content_hash, reviewer, reap: dict):
+    def save_reap(self, content_hash, reviewer, reap: dict, team=None):
         q = f"content_hash=eq.{urllib.parse.quote(content_hash)}&reviewer_id=eq.{urllib.parse.quote(reviewer)}"
+        if team:                                     # 같은 해시에 여러 팀의 feedback 행이 존재할 수 있다
+            q += f"&team_id=eq.{urllib.parse.quote(team)}"
         self._req("PATCH", "feedback", query=q, body={
             "reap_remember": reap.get("remember", ""), "reap_explain": reap.get("explain", ""),
             "reap_ask": reap.get("ask", ""), "reap_plan": reap.get("plan", ""),
         }, prefer="return=minimal")
 
-    def get_reap(self, content_hash) -> list:
+    def get_reap(self, content_hash, team=None) -> list:
+        """콘텐츠의 검수자별 REAP 산출. prism_contents 는 hash 가 전역 PK 라 같은 콘텐츠를
+        두 팀이 검수하면 같은 content_hash 에 두 팀의 feedback 행이 있다 — 핸드오프 번들
+        (knowhow·rationale)에 타 팀 검수자 실명·사유가 섞이지 않게 팀으로 좁힌다."""
+        tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("feedback", "select=reviewer_id,reap_remember,reap_explain,reap_ask,reap_plan,stage"
-                         f"&content_hash=eq.{urllib.parse.quote(content_hash)}&reap_plan=not.is.null")
-        names = self.reviewers_map()
+                         f"&content_hash=eq.{urllib.parse.quote(content_hash)}{tq}&reap_plan=not.is.null")
+        names = self.reviewers_map(team)
         return [{"reviewer": names.get(r["reviewer_id"], {}).get("name", r["reviewer_id"]),
                  "remember": r.get("reap_remember"), "explain": r.get("reap_explain"),
                  "ask": r.get("reap_ask"), "plan": r.get("reap_plan"), "stage": r.get("stage")}
@@ -1261,23 +1267,30 @@ class SupabaseStore:
         return {r["hash"]: {"displayServiceName": r.get("service") or "", "title": r.get("title") or "",
                             "subtitle": r.get("subtitle") or "", "body": r.get("body") or ""} for r in rows}
 
-    def get_item_meta(self, content_hash) -> dict | None:
+    def _hash_q(self, content_hash, team=None) -> str:
+        """(hash, team) 복합 필터. content_hash 는 콘텐츠 내용의 순수 함수라 같은 기사를
+        넣어 본 사람은 다른 팀의 해시를 자동으로 알게 된다 — 교정 계열 쓰기는 팀까지 맞아야 한다.
+        team 이 falsy(로컬·팀 개념 없는 호출)면 기존대로 해시만(무필터 관례 유지)."""
+        q = f"hash=eq.{urllib.parse.quote(content_hash or '')}"
+        return q + (f"&team_id=eq.{urllib.parse.quote(team)}" if team else "")
+
+    def get_item_meta(self, content_hash, team=None) -> dict | None:
         """저장된 item_meta 조회(교정 로그 before 스냅샷용)."""
-        rows = self._get("contents", f"select=item_meta&hash=eq.{urllib.parse.quote(content_hash)}")
+        rows = self._get("contents", "select=item_meta&" + self._hash_q(content_hash, team))
         if not rows:
             return None
         im = rows[0].get("item_meta")
         return im if isinstance(im, dict) else {}
 
-    def update_item_meta(self, content_hash, patch: dict) -> bool:
+    def update_item_meta(self, content_hash, patch: dict, team=None) -> bool:
         """검수자 구조화 교정: contents.item_meta 패치(빈 카테고리 채우기 등)."""
-        rows = self._get("contents", f"select=item_meta&hash=eq.{urllib.parse.quote(content_hash)}")
+        q = self._hash_q(content_hash, team)
+        rows = self._get("contents", "select=item_meta&" + q)
         if not rows:
             return False
         im = rows[0].get("item_meta") or {}
         im.update(patch or {})
-        self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(content_hash)}",
-                  body={"item_meta": im}, prefer="return=minimal")
+        self._req("PATCH", "contents", query=q, body={"item_meta": im}, prefer="return=minimal")
         return True
 
     def set_ops_hold(self, content_hash, on, team=None) -> bool:
@@ -1286,13 +1299,13 @@ class SupabaseStore:
         h = (content_hash or "").strip()
         if not h:
             return False
-        rows = self._get("contents", f"select=quality_meta&hash=eq.{urllib.parse.quote(h)}")
+        q = self._hash_q(h, team)                    # (hash, team) 복합 필터 · 타 팀 콘텐츠 조작 차단
+        rows = self._get("contents", "select=quality_meta&" + q)
         if not rows:
             return False
         qm = rows[0].get("quality_meta") or {}
         qm["ops_hold"] = bool(on)
-        self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(h)}",
-                  body={"quality_meta": qm}, prefer="return=minimal")
+        self._req("PATCH", "contents", query=q, body={"quality_meta": qm}, prefer="return=minimal")
         return True
 
     def set_source_status(self, content_hash, state, by, team=None) -> bool:
@@ -1306,18 +1319,20 @@ class SupabaseStore:
         h = (content_hash or "").strip()
         if not h:
             return False
-        rows = self._get("contents", f"select=quality_meta&hash=eq.{urllib.parse.quote(h)}")
+        q = self._hash_q(h, team)                    # (hash, team) 복합 필터 · 타 팀 콘텐츠 조작 차단
+        rows = self._get("contents", "select=quality_meta&" + q)
         if not rows:
             return False
         qm = rows[0].get("quality_meta") or {}
         qm["source_status"] = {"state": state, "by": by or "", "ts": time.time()}
-        self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(h)}",
-                  body={"quality_meta": qm}, prefer="return=minimal")
+        self._req("PATCH", "contents", query=q, body={"quality_meta": qm}, prefer="return=minimal")
         return True
 
-    def update_quality(self, content_hash, grade: str, reasons=None):
-        """최종검수자 등급 교정: final_grade + quality_meta 동시 갱신. 반환 = 이전 등급(행 없으면 None)."""
-        rows = self._get("contents", f"select=final_grade,quality_meta&hash=eq.{urllib.parse.quote(content_hash)}")
+    def update_quality(self, content_hash, grade: str, reasons=None, team=None):
+        """최종검수자 등급 교정: final_grade + quality_meta 동시 갱신. 반환 = 이전 등급(행 없으면 None).
+        등급은 골든 승격 게이트의 입력이라 팀 필터 없이 열어 두면 정답셋이 타 팀 손에 오염된다."""
+        q = self._hash_q(content_hash, team)
+        rows = self._get("contents", "select=final_grade,quality_meta&" + q)
         if not rows:
             return None
         prev = rows[0].get("final_grade") or ""
@@ -1325,7 +1340,7 @@ class SupabaseStore:
         qm["finalGrade"] = grade
         if reasons is not None:
             qm["reasons"] = reasons
-        self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(content_hash)}",
+        self._req("PATCH", "contents", query=q,
                   body={"final_grade": grade, "quality_meta": qm}, prefer="return=minimal")
         return prev
 
@@ -1921,10 +1936,12 @@ class SupabaseStore:
         return out
 
     def deploy_key_revoke(self, key_id, dep_id) -> bool:
-        self._req("PATCH", "deployment_keys",
-                  query=f"id=eq.{int(key_id)}&deployment_id=eq.{int(dep_id)}",
-                  body={"revoked": True}, prefer="return=minimal")
-        return True
+        # 갱신 행을 돌려받아 실제 폐기 여부를 반환(rowcount 확인 없이 항상 True 를 주던 탓에
+        # 없는 키를 폐기해도 {"ok": true} 가 나갔다 · sqlite Store.deploy_key_revoke 와 동일 계약)
+        rows = self._req("PATCH", "deployment_keys",
+                         query=f"id=eq.{int(key_id)}&deployment_id=eq.{int(dep_id)}",
+                         body={"revoked": True}, prefer="return=representation")
+        return bool(rows)
 
     def deploy_key_touch(self, key_id):
         self._req("PATCH", "deployment_keys", query=f"id=eq.{int(key_id)}",

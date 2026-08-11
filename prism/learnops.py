@@ -900,7 +900,7 @@ def learn_export(kind: str, team=None):
                 reaps = []
                 if count < 300 and hasattr(st, "get_reap"):    # REAP 조회 상한(요청 비용 억제)
                     try:
-                        reaps = st.get_reap(ch)
+                        reaps = st.get_reap(ch, team=team)     # 팀 스코프: 타 팀 검수자 사유 혼입 차단
                     except Exception:
                         reaps = []
                 rp = next((r for r in reaps if r.get("reviewer") == v.get("reviewer")), {})
@@ -951,7 +951,7 @@ def knowhow_rows(team=None) -> list:
                 rationales = [{"reviewer": r.get("reviewer"), "explain": r.get("explain") or "",
                                "plan": r.get("plan") or "", "remember": r.get("remember") or "",
                                "ask": r.get("ask") or "", "stage": r.get("stage")}
-                              for r in st.get_reap(ch)]
+                              for r in st.get_reap(ch, team=team)]   # 팀 스코프(핸드오프 번들 유출 차단)
                 reap_joined += 1
             except Exception:
                 rationales = []
