@@ -305,16 +305,16 @@ def award_quest_bonus(team=None) -> dict:
     if not (st and hasattr(st, "log_event_once") and hasattr(st, "assignees")):
         return {"ok": False, "awarded": [], "bonus": QUEST_BONUS_PT}
     try:
-        dts = st.draft_times(team) if hasattr(st, "draft_times") else {}
-    except Exception:
-        dts = {}
-    try:
         targets = (st.review_targets(team) if hasattr(st, "review_targets")
                    else st.yellow_hashes(team) if hasattr(st, "yellow_hashes") else None)
     except Exception:
         targets = None
+    fm = st.feedback_map(team=team) or {}
+    # 초안 시각은 '판정이 있는 대상 콘텐츠'에 대해서만 쓴다 → 그 해시로 좁혀 조회
+    # (초안 이력 전량 = 11왕복/10,000행 · 2026-08 감사 S6 · 값은 동일)
+    dts = _draft_times(st, team, set(fm) if targets is None else (set(fm) & set(targets)))
     per = {}                                    # 검수자 → 유효 검수한 대상 집합
-    for ch, e in (st.feedback_map(team=team) or {}).items():
+    for ch, e in fm.items():
         if targets is not None and ch not in targets:
             continue
         base = float(dts.get(ch) or 0)
@@ -697,14 +697,32 @@ def _fb_epoch(ts) -> float:
             return 0.0
 
 
+def _draft_times(st, team, hashes) -> dict:
+    """콘텐츠별 최신 초안 시각 · 필요한 해시로 좁혀 조회한다(전량 = 왕복·행 수가 초안 이력에 선형).
+    hashes 인자를 모르는 스토어(구 계약·목)는 전량 조회로 폴백 — 값은 어느 쪽이든 같다."""
+    fn = getattr(st, "draft_times", None)
+    if not fn:
+        return {}
+    try:
+        import inspect
+        narrow = hashes is not None and "hashes" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        narrow = False
+    try:
+        return (fn(team, hashes=hashes) if narrow else fn(team)) or {}
+    except Exception:                                # noqa: BLE001 · 초안 시각 미상은 전건 유효 취급
+        return {}
+
+
 def _arena_compute(team=None) -> dict:
     st = _SV.get_store()
     if not st:
         return {"accuracy": 0, "good": 0, "bad": 0, "reviews": 0, "week_reviews": 0,
                 "accuracy_delta": 0, "target": 0.9, "leaderboard": [], "queue": 0}
     d = st.arena_stats(team=team)
-    try:
-        d["queue"] = len(st.review_queue(team=team))  # 미검수 YELLOW = 남은 퀘스트
+    try:                                          # 미검수 YELLOW = 남은 퀘스트 · 개수만 필요하다
+        d["queue"] = (st.review_queue_count(team=team) if hasattr(st, "review_queue_count")
+                      else len(st.review_queue(team=team)))
     except Exception:
         d["queue"] = 0
     try:                                          # 팀 퀘스트: 다음 버전(검수 목표 일시)까지 완주
@@ -730,16 +748,14 @@ def _arena_compute(team=None) -> dict:
             # 유효 검수 = '그 콘텐츠의 현재(최신) 초안 생성 이후'의 표. 퀘스트 생성 시각 창은
             # 생성 전에 해 둔 현행 초안 검수를 놓쳐 홈 팀 진척율과 어긋난다(hash×버전 스키마 전까지의 근사.
             # 초안 시각 미상 콘텐츠는 전부 유효 취급 · 퀘스트 중 재실행은 가드로 차단되어 창이 흔들리지 않음)
-            try:
-                dts = st.draft_times(team) if hasattr(st, "draft_times") else {}
-            except Exception:
-                dts = {}
             try:                                  # 모집단 = 검수 대상(YELLOW ∪ 배정) — 분모(total_targets)와 동일.
                 targets = (st.review_targets(team) if hasattr(st, "review_targets")
                            else st.yellow_hashes(team) if hasattr(st, "yellow_hashes") else None)
             except Exception:
                 targets = None
             fm = st.feedback_map(team=team) or {}
+            # 초안 시각은 아래 루프가 보는 해시(판정 있는 대상)만 필요 → 그 집합으로 좁혀 조회(감사 S6)
+            dts = _draft_times(st, team, set(fm) if targets is None else (set(fm) & set(targets)))
             per = {}                              # 검수자 → 유효 검수한 대상 집합
             for ch, e in fm.items():
                 if targets is not None and ch not in targets:

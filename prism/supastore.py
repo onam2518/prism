@@ -128,10 +128,10 @@ class SupabaseStore:
         호출측이 행 다운로드 방식으로 폴백한다(마이그레이션 순서와 무관하게 안전)."""
         if fn in self._RPC_MISSING:
             return None
-        headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
-                   "Accept": "application/json", "Content-Type": "application/json"}
-        data = json.dumps(args or {}, ensure_ascii=False).encode("utf-8")
-        try:
+        try:                                          # 헤더 구성(자격증명 부재 등)도 폴백 대상
+            headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
+                       "Accept": "application/json", "Content-Type": "application/json"}
+            data = json.dumps(args or {}, ensure_ascii=False).encode("utf-8")
             status, raw, _ = self._http("POST", f"/rest/v1/rpc/{fn}", data, headers)
             if status >= 400:
                 raise RuntimeError(f"HTTP{status}")
@@ -316,14 +316,26 @@ class SupabaseStore:
         self._req("POST", "assignments", body=rows, prefer="return=minimal")
         return len(hs)
 
-    def assignees(self, team=None) -> dict:
-        """콘텐츠별 배정 현황 {hash: {"reviewers":[...], "min":N}} · 배정 콘텐츠만 포함."""
+    def assignees(self, team=None, hashes=None) -> dict:
+        """콘텐츠별 배정 현황 {hash: {"reviewers":[...], "min":N}} · 배정 콘텐츠만 포함.
+        hashes 를 주면 그 콘텐츠분만 조회한다(content_hash=in.() 청크) — 큐처럼 후보가
+        한정된 호출이 배정 전량(6,000행 = 7왕복)을 받지 않게(2026-08 감사 S3)."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         # ts 는 벌크 배정(트랜잭션 now())에서 동률 → PK 타이브레이크로 offset 페이징 안정화
         # (contents_by_hash 와 같은 수법 · 없으면 1000행 초과 시 페이지 경계 중복/누락)
-        rows = self._get("assignments",
-                         "select=content_hash,reviewer_id,min_reviewers" + tq
-                         + "&order=ts,content_hash,reviewer_id")
+        base = ("select=content_hash,reviewer_id,min_reviewers" + tq
+                + "&order=ts,content_hash,reviewer_id")
+        if hashes is None:
+            hq = [""]
+        else:
+            hs = [h for h in dict.fromkeys(hashes) if h]
+            if not hs:
+                return {}
+            hq = ["&content_hash=in.(" + ",".join(urllib.parse.quote(h) for h in hs[i:i + 100]) + ")"
+                  for i in range(0, len(hs), 100)]
+        rows = []
+        for f in hq:
+            rows.extend(self._get("assignments", base + f))
         out = {}
         for r in rows:
             d = out.setdefault(r["content_hash"], {"reviewers": [], "min": 1})
@@ -570,19 +582,27 @@ class SupabaseStore:
         return out
 
     def remove_golden(self, content_hash, team=None) -> bool:
-        self._req("DELETE", "golden",
-                  query=f"{self._team_q(team)}&content_hash=eq.{urllib.parse.quote(content_hash)}",
-                  prefer="return=minimal")
-        return True
+        """실제로 지운 행이 있었는지 반환(sqlite 의 rowcount>0 과 동일 계약).
+        무조건 True 를 돌려주면 없는 해시·타 팀 해시에도 화면에 '삭제됨'이 뜬다(2026-08 감사 S12).
+        판별은 set_source_url 과 같은 return=representation 수법."""
+        rows = self._req("DELETE", "golden",
+                         query=f"{self._team_q(team)}&content_hash=eq.{urllib.parse.quote(content_hash)}",
+                         prefer="return=representation")
+        return bool(rows)
 
     def golden_count(self, team):
-        return len(self._get("golden", f"select=id&{self._team_q(team)}"))
+        # 존재 확인(evalops)·골든 패널·학습 리포트가 부르는 경로 · 1왕복·0행(_count)
+        return self._count("golden", f"select=id&{self._team_q(team)}")
 
     def clear_golden(self, team):
         self._req("DELETE", "golden", query=self._team_q(team), prefer="return=minimal")
 
     def golden_contrib_counts(self, team=None) -> dict:
-        """reviewer → 골든 확정 기여 수(events kind='golden:*' 1회 기록 기반)."""
+        """reviewer → 골든 확정 기여 수(events kind='golden:*' 1회 기록 기반).
+        서버측 집계 RPC 우선 · 미존재면 행 다운로드 폴백(감사 S4)."""
+        agg = self._rpc_or_none("prism_agg_golden_contrib", {"p_team": team})
+        if isinstance(agg, dict):
+            return {k: int(v or 0) for k, v in agg.items()}
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("events", f"select=reviewer_id&kind=like.golden:*{tq}&limit=20000")
         out = {}
@@ -643,7 +663,12 @@ class SupabaseStore:
 
     def patch_counts(self, team=None) -> dict:
         """검수자별 교정 건수. 카운트만 필요하므로 before/after JSON 블롭을 내려받지 않는다
-        (아레나 집계 경로 · patch_rows(10000) 재사용 시 페이로드가 수 MB 까지 커짐)."""
+        (아레나 집계 경로 · patch_rows(10000) 재사용 시 페이로드가 수 MB 까지 커짐).
+        집계 자체도 서버측 RPC 로 — 10,000행이면 11왕복/10,000행이 매 아레나 재계산마다
+        붙었다(2026-08 감사 S4). RPC 미존재면 아래 행 다운로드로 폴백(마이그레이션 순서 무관)."""
+        agg = self._rpc_or_none("prism_agg_patch_counts", {"p_team": team})
+        if isinstance(agg, dict):
+            return {k: int(v or 0) for k, v in agg.items() if k}
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         out = {}
         for r in self._get("patch_log", f"select=reviewer_id{tq}&limit=20000"):
@@ -797,6 +822,12 @@ class SupabaseStore:
             return True
 
     def event_bonus(self, team=None) -> dict:
+        """검수자별 보너스 합계 {uid: {total, week}} · 서버측 집계 RPC 우선(감사 S4).
+        events 는 append-only 라 행 수가 단조 증가한다 — 5,000행 = 6왕복/5,000행."""
+        agg = self._rpc_or_none("prism_agg_event_bonus", {"p_team": team})
+        if isinstance(agg, dict):
+            return {k: {"total": int((v or {}).get("total") or 0),
+                        "week": int((v or {}).get("week") or 0)} for k, v in agg.items()}
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("events", f"select=reviewer_id,bonus,created_at{tq}&limit=20000")
         week_ago = time.time() - 7 * 86400.0
@@ -1046,8 +1077,11 @@ class SupabaseStore:
 
         # 검수 대상 집합 = YELLOW ∪ 배정된 살아있는 콘텐츠 → 진척율 분모이자 분자의 공통 모집단.
         # (일괄 배정 운영은 auto 콘텐츠도 배정해 검수시키므로 YELLOW 만으로는 팀 목표와 어긋남)
+        # 배정은 1회만 내려받아 review_targets·개인 진척이 같이 쓴다 — 종전엔 같은 assignments
+        # 테이블을 재계산마다 2회(+review_queue 까지 3회) 전량 다운로드했다(2026-08 감사 S2).
+        asg_all = self.assignees(team) or {}
         if team:
-            targets = self.review_targets(team)
+            targets = self.review_targets(team, assigned=set(asg_all))
             total_targets = len(targets)
         else:                                         # 팀 미스코프(레거시): 전체 콘텐츠 = 모집단
             targets = None
@@ -1064,7 +1098,7 @@ class SupabaseStore:
 
         # 담당 배정: 개인 진척 분모 = 내 담당 콘텐츠 수, 완료 = 내가 검수한 담당 콘텐츠 수
         # 삭제된 콘텐츠의 고아 배정은 제외(분모·'내 담당' 수 오염 방지)
-        asg = {ch: a for ch, a in (self.assignees(team) or {}).items()
+        asg = {ch: a for ch, a in asg_all.items()      # 위에서 1회 조회한 배정 재사용
                if targets is None or ch in targets}
         mine_total, mine_done = {}, {}
         for ch, a in asg.items():
@@ -1212,13 +1246,15 @@ class SupabaseStore:
         self._upsert("contents", rows)
         return len(rows)
 
-    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None,
-                     see_all: bool = False) -> list:
-        """정렬 = split 재검토 우선 → 모델 확신 낮은 순(불확실성 샘플링) → 최신순.
-        배정된 콘텐츠는 담당자 전용(배타적) · 담당자는 자기가 아직 검수 안 한 것만 봄.
-        see_all=True(생성자·슈퍼관리자)는 배정 배타 규칙을 우회해 남의 담당 콘텐츠도 큐에 노출한다."""
+    _QUEUE_SEL = ("hash,service,title,body,source_url,final_grade,item_meta,"
+                  "quality_meta,review,model,created_at")
+
+    def _queue_rows(self, select: str, limit: int, only_unreviewed: bool, team, reviewer,
+                    see_all: bool) -> list:
+        """큐 후보 필터(공통부) → [(row, is_rev, is_split, assign)].
+        select 로 프로젝션을 바꿔 카운트 경로(review_queue_count)가 본문·메타를 받지 않게 한다."""
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,body,source_url,final_grade,item_meta,quality_meta,review,model,created_at"
+        rows = self._get("contents", f"select={select}"
                          f"&review=eq.yellow{tq}&order=created_at.desc&limit={int(limit) * 4}")
         # 판정은 화면에 뜰 후보 행의 것만 필요 — feedback 전량(무제한 페이징) 대신 후보 해시로
         # in.() 청크 조회(split_reviewed_today 와 같은 수법 · 1만 행 테이블 10왕복 → 청크 수 왕복).
@@ -1230,13 +1266,13 @@ class SupabaseStore:
                                 f"select=content_hash,verdict,reviewer_id&content_hash=in.({ids})" + tq))
         reviewed = {r["content_hash"] for r in fb}
         mine = {r["content_hash"] for r in fb if reviewer and r.get("reviewer_id") == reviewer}
-        asg = self.assignees(team)                    # {hash: {"reviewers", "min"}} · 배정 콘텐츠만
+        asg = self.assignees(team, hashes=hs)         # 후보 해시분만(배정 전량 다운로드 제거 · 감사 S3)
         by_c = {}
         for r in fb:
             if r.get("verdict") in ("good", "bad"):
                 by_c.setdefault(r["content_hash"], set()).add(r["verdict"])
         split = {ch for ch, vs in by_c.items() if len(vs) > 1}
-        out = []
+        picked = []
         for r in rows:
             is_rev = r["hash"] in reviewed
             is_split = r["hash"] in split
@@ -1248,6 +1284,25 @@ class SupabaseStore:
                     continue                          # 내 몫은 이미 검수함
             elif only_unreviewed and is_rev and not is_split:
                 continue                              # 미배정 오픈 큐 · 생성자 전체 열람도 검수완료분은 동일 규칙
+            picked.append((r, is_rev, is_split, a))
+        return picked
+
+    def review_queue_count(self, limit: int = 100, only_unreviewed: bool = True, team=None,
+                           reviewer=None, see_all: bool = False) -> int:
+        """큐 '개수'만 · len(review_queue(...)) 과 같은 값(상한 limit 포함).
+        아레나 재계산은 이 정수 하나만 쓰는데 종전엔 본문 포함 400행 + 배정 전량(12왕복·
+        6,800행 · 근사 1~2MB)을 받아 전부 버렸다(2026-08 감사 S3)."""
+        picked = self._queue_rows("hash,created_at", limit, only_unreviewed, team, reviewer, see_all)
+        return min(len(picked), int(limit))
+
+    def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None,
+                     see_all: bool = False) -> list:
+        """정렬 = split 재검토 우선 → 모델 확신 낮은 순(불확실성 샘플링) → 최신순.
+        배정된 콘텐츠는 담당자 전용(배타적) · 담당자는 자기가 아직 검수 안 한 것만 봄.
+        see_all=True(생성자·슈퍼관리자)는 배정 배타 규칙을 우회해 남의 담당 콘텐츠도 큐에 노출한다."""
+        out = []
+        for r, is_rev, is_split, a in self._queue_rows(self._QUEUE_SEL, limit, only_unreviewed,
+                                                       team, reviewer, see_all):
             qm = r.get("quality_meta") or {}
             im = r.get("item_meta") or {}
             out.append({"hash": r["hash"], "service": r.get("service") or "", "title": r.get("title") or "",
@@ -1379,21 +1434,63 @@ class SupabaseStore:
         body = {k: fields[k] for k in allowed if k in fields}
         if not body:
             return False
-        self._req("PATCH", "entities", query=f"entity_id=eq.{urllib.parse.quote(entity_id)}",
-                  body=body, prefer="return=minimal")
-        return True
+        rows = self._req("PATCH", "entities", query=f"entity_id=eq.{urllib.parse.quote(entity_id)}",
+                         body=body, prefer="return=representation")
+        return bool(rows)                            # 없는 개체면 False(sqlite rowcount 계약)
 
     def ent_get(self, entity_id: str):
         rows = self._get("entities", f"{self._ENT_SEL}&entity_id=eq.{urllib.parse.quote(entity_id)}")
         return self._ent_norm(rows[0]) if rows else None
 
+    def ent_upsert_many(self, rows):
+        """개체 일괄 upsert · ent_upsert 와 같은 컬럼 집합(entity_id 중복은 제거)."""
+        seen, payload = set(), []
+        now = time.time()
+        for e in rows or []:
+            eid = e.get("entity_id")
+            if not eid or eid in seen:
+                continue
+            seen.add(eid)
+            payload.append({
+                "entity_id": eid, "name": e.get("name", ""), "type": e.get("type", ""),
+                "status": e.get("status", "pending"), "attrs": e.get("attrs") or {},
+                "attr_meta": e.get("attr_meta") or {}, "external_ids": e.get("external_ids") or {},
+                "merged_into": e.get("merged_into", ""),
+                "created_at": e.get("created_at") or now, "updated_at": e.get("updated_at") or now})
+        for i in range(0, len(payload), 500):
+            self._upsert("entities", payload[i:i + 500])
+
     def ent_id_by_alias(self, name: str) -> str:
         rows = self._get("entity_aliases", f"select=entity_id&alias=eq.{urllib.parse.quote(name)}")
         return rows[0]["entity_id"] if rows else ""
 
+    def ent_ids_by_aliases(self, names) -> dict:
+        """{별칭: entity_id} 일괄 조회(alias=in.() 청크 100 · ent_by_names 와 같은 수법).
+        적재 훅이 개체 1건당 GET 1회를 내던 N+1 을 청크 수 왕복으로 바꾼다(2026-08 감사 S1)."""
+        out = {}
+        ns = [n for n in dict.fromkeys(names or []) if n]
+        for i in range(0, len(ns), 100):
+            enc = ",".join('"' + urllib.parse.quote(n) + '"' for n in ns[i:i + 100])
+            for r in self._get("entity_aliases", f"select=alias,entity_id&alias=in.({enc})"):
+                if r.get("alias") and r.get("entity_id"):
+                    out[r["alias"]] = r["entity_id"]
+        return out
+
     def ent_alias_add(self, alias: str, entity_id: str):
         self._req("POST", "entity_aliases", body=[{"alias": alias, "entity_id": entity_id}],
                   prefer="resolution=ignore-duplicates,return=minimal")
+
+    def ent_alias_add_many(self, pairs):
+        """[(별칭, entity_id)] 일괄 등록 · 기존 별칭은 무시(ent_alias_add 와 동일 ignore-duplicates)."""
+        seen, rows = set(), []
+        for alias, eid in pairs or []:
+            if not (alias and eid) or alias in seen:
+                continue
+            seen.add(alias)
+            rows.append({"alias": alias, "entity_id": eid})
+        for i in range(0, len(rows), 500):
+            self._req("POST", "entity_aliases", body=rows[i:i + 500],
+                      prefer="resolution=ignore-duplicates,return=minimal")
 
     def ent_aliases(self, entity_id: str) -> list:
         rows = self._get("entity_aliases",
@@ -1405,6 +1502,21 @@ class SupabaseStore:
             "content_hash": content_hash, "entity_id": entity_id, "surface": surface,
             "team": team or "", "ts": time.time()}],
             prefer="resolution=ignore-duplicates,return=minimal")
+
+    def ent_link_many(self, links, team=None):
+        """[(content_hash, entity_id, surface)] 일괄 링크 · ignore-duplicates(ent_link 와 동일 의미).
+        (content_hash, entity_id) 는 PK 라 같은 배치 안의 중복은 미리 제거한다."""
+        now = time.time()
+        seen, rows = set(), []
+        for ch, eid, surface in links or []:
+            if not (ch and eid) or (ch, eid) in seen:
+                continue
+            seen.add((ch, eid))
+            rows.append({"content_hash": ch, "entity_id": eid, "surface": surface or "",
+                         "team": team or "", "ts": now})
+        for i in range(0, len(rows), 500):
+            self._req("POST", "content_entities", body=rows[i:i + 500],
+                      prefer="resolution=ignore-duplicates,return=minimal")
 
     def ent_list(self, q: str = "", type_: str = "", status: str = "", limit: int = 300) -> list:
         """status: ''=미등재 제외(기본) · 'all'=전부 · 그 외 해당 상태만(SQLite 와 동일 계약)."""
@@ -1442,7 +1554,9 @@ class SupabaseStore:
         now = time.time()
         cut1 = now - hours * 3600.0
         cut0 = now - 2 * hours * 3600.0
-        tq = f"&team=eq.{urllib.parse.quote(team or '')}"
+        # falsy team = 전역(무팀 필터 없음) · ent_attr_index 와 동일 규칙. team=eq.'' 로 걸면
+        # 링크가 실제 팀(uuid)으로 저장된 운영에서 0건이라 급상승 카드가 조용히 비었다(2026-08 감사 S8).
+        tq = f"&team=eq.{urllib.parse.quote(team)}" if team else ""
         rows = self._get("content_entities",
                          f"select=entity_id,surface,ts&ts=gte.{cut0}{tq}&limit=20000")
         rec, prev = {}, {}
@@ -1483,25 +1597,37 @@ class SupabaseStore:
         return {"total": len(rows), "byType": by_type, "pending": pending, "unlisted": unlisted,
                 "enriched": enriched, "links": n_links}
 
+    @staticmethod
+    def _ent_id_chunks(ids, size: int = 100):
+        """entity_id 목록 → in.() 필터 문자열 청크(URL 길이 상한 대비 · retention 과 같은 관례)."""
+        ids = [str(i) for i in ids if i]
+        for i in range(0, len(ids), size):
+            yield ",".join(urllib.parse.quote(e) for e in ids[i:i + size])
+
     def ent_mark_unlisted(self) -> int:
-        """기존 데이터 정규화(1회성): 보강 미스 기록이 있는 보류 개체 → 미등재로 이행."""
+        """기존 데이터 정규화(1회성): 보강 미스 기록이 있는 보류 개체 → 미등재로 이행.
+        건별 PATCH(N왕복) 대신 100개 청크 in.() 단일 PATCH(2026-08 감사 S7)."""
         rows = self._get("entities", "select=entity_id,attr_meta&status=eq.pending&limit=20000")
-        n = 0
-        for r in rows:
-            am = r.get("attr_meta")
-            if isinstance(am, dict) and (am.get("_enrich") or {}).get("result") == "miss":
-                self._req("PATCH", "entities",
-                          query=f"entity_id=eq.{urllib.parse.quote(r['entity_id'])}",
-                          body={"status": "unlisted"}, prefer="return=minimal")
-                n += 1
-        return n
+        ids = [r["entity_id"] for r in rows
+               if isinstance(r.get("attr_meta"), dict)
+               and (r["attr_meta"].get("_enrich") or {}).get("result") == "miss"]
+        for enc in self._ent_id_chunks(ids):
+            self._req("PATCH", "entities", query=f"entity_id=in.({enc})",
+                      body={"status": "unlisted"}, prefer="return=minimal")
+        return len(ids)
 
     def ent_purge_unlisted(self) -> int:
-        """미등재 일괄 정리(링크·별칭 포함 삭제) · 관리자 버튼."""
+        """미등재 일괄 정리(링크·별칭 포함 삭제) · 관리자 버튼.
+        개체 1건당 3왕복(ent_delete 반복)이면 1,000건 = 3,000왕복(약 5분)이라 브라우저가
+        먼저 끊겨 부분 삭제 상태가 남았다 → retention 과 같은 100개 청크 in.() 로 묶는다
+        (3N → 3×청크수 · 2026-08 감사 S7)."""
         rows = self._get("entities", "select=entity_id&status=eq.unlisted&limit=20000")
-        for r in rows:
-            self.ent_delete(r["entity_id"])
-        return len(rows)
+        ids = [r["entity_id"] for r in rows if r.get("entity_id")]
+        for enc in self._ent_id_chunks(ids):             # 자식(링크·별칭) 먼저 · ent_delete 와 같은 순서
+            self._req("DELETE", "content_entities", query=f"entity_id=in.({enc})", prefer="return=minimal")
+            self._req("DELETE", "entity_aliases", query=f"entity_id=in.({enc})", prefer="return=minimal")
+            self._req("DELETE", "entities", query=f"entity_id=in.({enc})", prefer="return=minimal")
+        return len(ids)
 
     def ent_pending_ids(self, limit: int = 200) -> list:
         rows = self._get("entities",
@@ -1539,8 +1665,9 @@ class SupabaseStore:
         enc = urllib.parse.quote(entity_id)
         self._req("DELETE", "content_entities", query=f"entity_id=eq.{enc}", prefer="return=minimal")
         self._req("DELETE", "entity_aliases", query=f"entity_id=eq.{enc}", prefer="return=minimal")
-        self._req("DELETE", "entities", query=f"entity_id=eq.{enc}", prefer="return=minimal")
-        return True
+        rows = self._req("DELETE", "entities", query=f"entity_id=eq.{enc}",
+                         prefer="return=representation")
+        return bool(rows)                            # 없는 개체면 False(sqlite rowcount 계약)
 
     def ent_attr_index(self, team=None) -> dict:
         ents = {r["entity_id"]: {"type": r.get("type") or "", "name": r.get("name") or "",
@@ -1593,14 +1720,18 @@ class SupabaseStore:
         return len(hs)
 
     # ── dashboard/config 호환(검토 콘텐츠 기준) ──
-    def count(self) -> int:
-        """행 수만 필요한데 전 행을 내려받지 않는다 — /config GET(로그인 화면 포함) 마다
-        실행되는 공개 경로라 Content-Range 카운트(Range 0-0)로 왕복 페이로드 최소화."""
+    def _count(self, table: str, query: str = "select=id") -> int:
+        """행 수만 필요한 조회 · Content-Range 카운트(Prefer count=exact + Range 0-0)로
+        1왕복·0행. 행을 다 받아 len() 을 재면 테이블이 커질수록 선형으로 느려진다
+        (골든 3,000행 = 4왕복/3,000행 · 2026-08 감사 S5). 실패 시 행 조회로 폴백."""
         headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
                    "Accept": "application/json", "Prefer": "count=exact",
                    "Range-Unit": "items", "Range": "0-0"}
-        url = f"{self.base}/prism_contents?select=hash"
-        status, raw, hdrs = self._http("GET", url[len(self.url):], None, headers)
+        url = f"{self.base}/prism_{table}?{query}"
+        try:
+            status, raw, hdrs = self._http("GET", url[len(self.url):], None, headers)
+        except Exception:                                 # noqa: BLE001 · 네트워크 오류는 폴백에서 재시도
+            status, hdrs = 599, {}
         if status < 400:
             cr = hdrs.get("Content-Range") or hdrs.get("content-range") or ""
             if "/" in cr:
@@ -1608,7 +1739,12 @@ class SupabaseStore:
                     return int(cr.rsplit("/", 1)[1])
                 except ValueError:
                     pass
-        return len(self._get("contents", "select=hash"))   # 폴백(구 PostgREST 등)
+        return len(self._get(table, query))                # 폴백(구 PostgREST 등)
+
+    def count(self) -> int:
+        """행 수만 필요한데 전 행을 내려받지 않는다 — /config GET(로그인 화면 포함) 마다
+        실행되는 공개 경로라 Content-Range 카운트(Range 0-0)로 왕복 페이로드 최소화."""
+        return self._count("contents", "select=hash")
 
     def recent_meta(self, limit: int = 200, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
@@ -1658,21 +1794,22 @@ class SupabaseStore:
         return self._board_row(rows[0]) if rows else None
 
     def board_set_status(self, bid: int, status: str, team=None) -> bool:
-        self._req("PATCH", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}",
-                  body={"status": status}, prefer="return=minimal")
-        return True
+        rows = self._req("PATCH", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}",
+                         body={"status": status}, prefer="return=representation")
+        return bool(rows)
 
     def board_answer(self, bid: int, answer: str, team=None) -> bool:
         """게시판 글에 관리자 답변 저장(문의 응답)."""
         import time as _t
         ts = _t.strftime("%Y-%m-%dT%H:%M:%S+00:00", _t.gmtime())
-        self._req("PATCH", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}",
-                  body={"answer": answer or "", "answered_at": ts}, prefer="return=minimal")
-        return True
+        rows = self._req("PATCH", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}",
+                         body={"answer": answer or "", "answered_at": ts}, prefer="return=representation")
+        return bool(rows)
 
     def board_delete(self, bid: int, team=None) -> bool:
-        self._req("DELETE", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}")
-        return True
+        rows = self._req("DELETE", "board", query=f"id=eq.{int(bid)}&team_key=eq.{urllib.parse.quote(team or '')}",
+                         prefer="return=representation")
+        return bool(rows)
 
     def save_draft(self, content_hash, model, version, item_meta, quality_meta, team=None):
         """(콘텐츠, 모델, 버전) 초안 스냅샷 upsert · 결과 비교 팝업의 전체 이력 원천."""
@@ -1680,16 +1817,29 @@ class SupabaseStore:
                                  "model": model or "", "version": int(version or 1),
                                  "item_meta": item_meta or {}, "quality_meta": quality_meta or {}}])
 
-    def draft_times(self, team=None) -> dict:
+    def draft_times(self, team=None, hashes=None) -> dict:
         """콘텐츠별 최신 초안 생성 시각(epoch) · '현재 초안 이후 검수' 유효성 판정 원천.
-        PostgREST 기본 상한(1000행)을 넘는 이력은 최신순 상위만 반영(콘텐츠당 초안 수가 적어 실질 무영향)."""
-        q = (f"select=content_hash,created_at&team_key=eq.{urllib.parse.quote(team or '')}"
-             "&order=created_at.desc,content_hash,model,version")   # 동률(벌크 저장) 대비 PK 타이브레이크
+        초안은 (콘텐츠, 모델, 버전)마다 쌓이는 append 성 테이블이라 팀 전량 조회는 행 수에
+        선형이다(10,000행 = 11왕복/10,000행 · 2026-08 감사 S6). hashes 를 주면 그 콘텐츠로
+        좁혀 조회한다(content_hash=in.() 청크) — 좁힌 집합의 값은 전량 조회와 동일.
+        (종전 주석은 '1000행 초과분은 최신순 상위만 반영'이라 했지만 _get 은 limit 미지정 시
+        끝까지 페이징하므로 실제로는 전량을 받는다 — 동작에 맞게 교정)"""
+        base = (f"select=content_hash,created_at&team_key=eq.{urllib.parse.quote(team or '')}")
+        order = "&order=created_at.desc,content_hash,model,version"   # 동률(벌크 저장) 대비 PK 타이브레이크
+        if hashes is None:
+            hq = [""]
+        else:
+            hs = [h for h in dict.fromkeys(hashes) if h]
+            if not hs:
+                return {}
+            hq = ["&content_hash=in.(" + ",".join(urllib.parse.quote(h) for h in hs[i:i + 100]) + ")"
+                  for i in range(0, len(hs), 100)]      # URL 길이 상한 대비 청크(같은 파일 관례)
         out = {}
-        for r in self._get("drafts", q):
-            ch = r.get("content_hash") or ""
-            if ch and ch not in out:
-                out[ch] = _epoch(r.get("created_at"))
+        for f in hq:
+            for r in self._get("drafts", base + f + order):
+                ch = r.get("content_hash") or ""
+                if ch and ch not in out:               # 청크는 서로 소 · 최신순 첫 행이 그 콘텐츠의 최신
+                    out[ch] = _epoch(r.get("created_at"))
         return out
 
     def draft_history(self, content_hash, team=None, limit: int = 20) -> list:
