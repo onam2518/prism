@@ -202,7 +202,7 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
             fields["attrs"] = attrs
         alias = ED.normalize_name(data.get("alias") or "")
         if alias:
-            other = st.ent_id_by_alias(alias)
+            other = ED._eid_by_alias(st, alias)
             if other and other != eid:
                 return {"ok": False, "error": "이미 다른 개체의 별칭입니다"}
             st.ent_alias_add(alias, eid)
@@ -217,7 +217,7 @@ def entdict_action(data: dict, team=None, mock: bool = False) -> dict:
         name = ED.normalize_name(data.get("name") or "")
         if not name:
             return {"ok": False, "error": "이름이 필요합니다"}
-        if st.ent_id_by_alias(name):
+        if ED._eid_by_alias(st, name):                # NFD 로 등재된 구 개체와 중복 생성 방지
             return {"ok": False, "error": "이미 등재된 개체(별칭 포함)입니다"}
         e = ED._empty_entry(name)
         st.ent_upsert(e)
@@ -298,9 +298,37 @@ def load_dict_overrides():
     for path, vals in sorted((rep.get("dropped") or {}).items()):
         print(f"  ⚠️ 사전 오버라이드가 코드 기본값 {len(vals)}종 제외(사용자 삭제 기록): "
               f"{path} · {_fmt_vals(vals)}")
+    for path, vals in sorted((rep.get("type_kept") or {}).items()):
+        print(f"  ⚠️ 사전 오버라이드의 값 형태가 코드와 달라 무시하고 기본값 유지: "
+              f"{path} · {_fmt_vals(vals)} · 오버라이드 파일을 확인하세요")
     if restored and D.REMOVED_KEY not in ov:
         print("  · 삭제 기록이 없는 구형 오버라이드입니다 — 사전 편집 화면에서 한 번 저장하면 "
               "삭제 의도가 기록되고 이후 코드 신규 값과 구분됩니다")
+
+
+def _shape_error(target: str, key, val) -> str:
+    """편집 값의 형태 검증(2026-08 감사 T2). 통과면 빈 문자열.
+
+    리스트 사전(iab_tier1·intent_universal)에 key 를 함께 보내면 오버라이드가 dict 로
+    만들어져 **전역 사전 자체가 dict 로 뒤바뀐 채 파일에 영속**됐다(카테고리 프롬프트·
+    검증 화이트리스트·학습 커버리지가 전부 1종만 보게 된다). target 이름만 보던 검사에
+    기대 형태를 더해 진입부에서 막는다. 기준은 현재 전역값이 아니라 **코드 기본값**
+    (_base_of) — 이미 오염된 전역값을 기준으로 삼으면 오염이 정상으로 통과한다."""
+    from . import dictionaries as D
+    base = D._base_of(D._PROFILE_KEYMAP.get(target, ""))
+    if base is None:
+        return ""
+    kind = D._kind
+    if key is not None:
+        if not isinstance(base, dict):
+            return f"'{target}' 은 키 단위 편집 대상이 아닙니다 · 값 전체를 보내세요(key 없이)"
+        cur = base.get(key)
+        if cur is not None and kind(cur) != kind(val):
+            return f"'{target}' 의 '{key}' 값 형태가 다릅니다: {kind(cur)} 자리에 {kind(val)}"
+        return ""
+    if kind(base) != kind(val):
+        return f"'{target}' 의 값 형태가 다릅니다: {kind(base)} 자리에 {kind(val)}"
+    return ""
 
 
 def edit_dict(data: dict) -> dict:
@@ -314,6 +342,9 @@ def edit_dict(data: dict) -> dict:
     ov = _read_overrides()
     key = data.get("key")
     val = data.get("value")
+    err = _shape_error(target, key, val)
+    if err:
+        return {"error": err}
     if key is not None:
         if not isinstance(ov.get(target), dict):
             # 베이스 dict 를 복사해 시작(부분 키 편집이 다른 키를 지우지 않도록)

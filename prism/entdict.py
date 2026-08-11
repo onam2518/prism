@@ -17,6 +17,7 @@ import html as _html
 import json
 import os
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -75,7 +76,33 @@ def snap_occupation(labels) -> str:
 
 # ── 등록(정규화·게이트·고유키) ──────────────────────────────────────────────
 def normalize_name(s: str) -> str:
-    return " ".join(str(s or "").split())
+    """개체 이름 정규화 = 유니코드 NFC + 공백 축약. entity_id·별칭 조회·등재 게이트의 기준.
+
+    NFC 가 없으면 같은 이름이 NFD/NFC 두 개체로 갈라져 별칭 조회가 미스하고(정확 문자열 비교),
+    코드포인트 길이가 2~3배로 세어져 긴 이름이 eligible 길이 컷에서 조용히 탈락했다
+    (2026-08 감사 T5). 파이프라인 입력은 이미 NFC(schema.normalize_text)라 신규 데이터에는
+    영향이 없고, 손으로 등재한 NFD 이름만 기준이 바뀐다 → _eid_by_alias 가 흡수한다."""
+    return " ".join(unicodedata.normalize("NFC", str(s or "")).split())
+
+
+def _eid_by_alias(store, norm: str) -> str:
+    """별칭 조회 + NFC 이행 흡수. normalize_name 에 NFC 가 붙기 전(2026-08 이전)에 등재된
+    NFD 별칭은 NFC 이름으로 찾으면 미스라, 그대로 두면 같은 개체가 하나 더 생긴다.
+    NFD 형태로 한 번 더 찾아보고 맞으면 **NFC 별칭을 덧붙여**(entity_id 재계산·재발급 없이)
+    이후 조회가 바로 걸리게 한다. 기존 별칭은 INSERT OR IGNORE 라 재바인딩되지 않는다."""
+    eid = store.ent_id_by_alias(norm)
+    if eid:
+        return eid
+    legacy = unicodedata.normalize("NFD", norm)
+    if legacy == norm:
+        return eid
+    eid = store.ent_id_by_alias(legacy)
+    if eid:
+        try:
+            store.ent_alias_add(norm, eid)
+        except Exception:
+            pass
+    return eid
 
 
 import re as _re
@@ -118,7 +145,7 @@ def ingest_meta(store, items, team="") -> dict:
             if norm in seen or not eligible(norm):
                 continue
             seen.add(norm)
-            eid = store.ent_id_by_alias(norm)
+            eid = _eid_by_alias(store, norm)
             if not eid:
                 e = _empty_entry(norm)
                 eid = e["entity_id"]

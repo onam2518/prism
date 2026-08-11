@@ -224,28 +224,36 @@ def _bad_on(team) -> bool:
 
 
 def logviewer_data(team=None) -> dict:
+    """검증 결과 한 벌. 판정·교차 검사는 **세션 전체 봉투**로 하고 표시만 상한을 건다.
+
+    표시 상한(LOGS_MAX)으로 자른 목록에 교차 검사(노출-클릭 연결)를 걸면, 노출 로그가
+    창 밖으로 밀리는 순간 이후의 정상 클릭이 전부 '연결 끊김'으로 오탐됐다 —
+    노출은 피드 진입 때 한 번만 쌓이고 이벤트는 계속 붙기 때문(2026-08 감사 T6).
+    중복(dup) 집계·중복 판정도 같은 이유로 잘리지 않은 전체가 기준이다."""
     events = list(MF._demo_session(team).get("events") or [])
     records = [{"env": _envelope(e, i), "label": MF.EV_LABEL.get(e.get("event"), str(e.get("event")))}
-               for i, e in enumerate(events)][-LOGS_MAX:]
+               for i, e in enumerate(events)]
     bad_on = _bad_on(team)
     if bad_on:
         records += [dict(r, injected=True) for r in _bad_examples(MF._now_t())]
-    seen, logs, dup = set(), [], 0
+    seen, judged, dup = set(), [], 0
     for r in records:
         env = r["env"]
         vio = _judge(env, seen)
         seen.add(env.get("log_unique_id"))
         dup += 1 if any(v[3] == RULE_DUP for v in vio) else 0
         kind = env.get("action_kind")
-        logs.append({"t": _dt.datetime.fromtimestamp(env["access_timestamp"] / 1000).strftime("%H:%M:%S"),
-                     "label": r.get("label", ""),
-                     "title": "[" + str(env.get("action_type")) + "] "
-                              + (str(kind) + " · " if kind is not None else "") + str(env.get("action_name")),
-                     "verdict": _verdict(vio), "violations": vio,
-                     "feedback": kind in FEEDBACK_KINDS,
-                     "injected": bool(r.get("injected")),
-                     "fields": [[k, ("true" if v is True else "false" if v is False else str(v)),
-                                 GRADE.get(k, "선택")] for k, v in env.items()]})
+        judged.append({"t": _dt.datetime.fromtimestamp(env["access_timestamp"] / 1000).strftime("%H:%M:%S"),
+                       "label": r.get("label", ""),
+                       "title": "[" + str(env.get("action_type")) + "] "
+                                + (str(kind) + " · " if kind is not None else "") + str(env.get("action_name")),
+                       "verdict": _verdict(vio), "violations": vio,
+                       "feedback": kind in FEEDBACK_KINDS,
+                       "injected": bool(r.get("injected")),
+                       "fields": [[k, ("true" if v is True else "false" if v is False else str(v)),
+                                   GRADE.get(k, "선택")] for k, v in env.items()]})
+    # 표시용만 상한: 세션 로그는 최근 LOGS_MAX 건 · 주입 예시는 항상 함께 보인다
+    logs = judged[:len(events)][-LOGS_MAX:] + judged[len(events):]
     counts = {}
     for e in events:
         ev = e.get("event")
@@ -282,7 +290,9 @@ def _bypass_summary(records: list) -> dict:
     """피드백 바이패스 확인(R7): 값의 의미는 판정하지 않고 존재·형식·연결만 본다.
 
     노출-클릭 연결 키는 로그 하나로는 볼 수 없어(교차 검사) 여기서 집계한다 —
-    클릭한 content.id 가 앞선 노출 집합에 있어야 노출·클릭이 이어진다."""
+    클릭한 content.id 가 앞선 노출 집합에 있어야 노출·클릭이 이어진다.
+    ⚠ records 는 표시 상한을 적용하기 **전** 전체 봉투여야 한다(잘린 목록으로 판정하면
+    창 밖으로 밀린 노출 때문에 정상 계측이 연결 끊김으로 오탐된다)."""
     imp, hit, miss, tesla, badjson = set(), 0, [], 0, 0
     for r in records:
         env = r["env"]

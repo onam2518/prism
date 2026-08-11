@@ -43,6 +43,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 W_TITLE = 0.5       # 제목 포함(단독으로 경계선 · 0.5)
 W_SUMMARY = 0.25    # 리드문(summary) 포함
@@ -57,8 +58,14 @@ _STRIP = re.compile(r"[\s·]+")   # 공백 전부 + 가운뎃점
 
 
 def _norm(s) -> str:
-    """가벼운 정규화: casefold + 공백·가운뎃점 제거(부분일치 판정용)."""
-    return _STRIP.sub("", str(s or "")).casefold()
+    """가벼운 정규화: 유니코드 NFC + casefold + 공백·가운뎃점 제거(부분일치 판정용).
+
+    NFC 가 필요한 이유: 엔티티·리드문은 NFC 정규화된 입력(schema.normalize_text)에서 나오는데
+    저장 payload 의 content_ref 4필드는 재실행 해시 안정성 때문에 **원본 그대로** 되박힌다
+    (store._payload_with_identity · 의도된 계약). 원본이 NFD(맥OS 발 파일 등)면 같은 한글이라도
+    코드포인트가 달라 제목·본문 신호가 전부 0 이 됐다 — 실측 conf(삼성전자) NFD 0.25 / NFC 1.0
+    으로, 정상 엔티티가 통째로 '연관 낮음'(<0.5)에 접혔다(2026-08 감사 T5)."""
+    return _STRIP.sub("", unicodedata.normalize("NFC", str(s or ""))).casefold()
 
 
 def entity_confidence(entity: str, content_ref: dict, item_meta: dict) -> float:
