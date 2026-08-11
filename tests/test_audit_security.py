@@ -24,8 +24,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 운영(supabase) 모드 흉내: 저장소는 sqlite 그대로 두고 인증·팀 판정만 가짜로 켠다.
 # 토큰 2개 — tok-team(teamA 소속) · tok-noteam(인증됨 · 팀 없음 = 솔로 가입 계정)
 # ════════════════════════════════════════════════════════════════════════════
-_UIDS = {"tok-team": "uid-team", "tok-noteam": "uid-noteam"}
-_TEAMS = {"uid-team": "teamA"}
+_UIDS = {"tok-team": "uid-team", "tok-team-b": "uid-team-b", "tok-noteam": "uid-noteam"}
+_TEAMS = {"uid-team": "teamA", "uid-team-b": "teamB"}
 
 
 class SupaGateMixin:
@@ -37,7 +37,8 @@ class SupaGateMixin:
         os.environ["PRISM_DB"] = os.path.join(tempfile.mkdtemp(), "audit_sec.db")
         from http.server import ThreadingHTTPServer
         from prism import serve as SV
-        cls.SV = SV
+        from prism import topicops as TPO
+        cls.SV, cls.TPO = SV, TPO
         SV._STORE = None
         SV.Handler.server_mock = True
         cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), SV.Handler)
@@ -195,6 +196,63 @@ class TestPatchMetaTeamScope(unittest.TestCase):
         self.assertFalse(out["ok"])
 
 
+class TestTeamIdsContract(unittest.TestCase):
+    """[H2-2] 팀 단위 배치의 순회 원천 · 두 백엔드가 같은 계약을 지켜야 분기 없이 돈다."""
+
+    def test_sqlite_returns_single_bucket(self):
+        from prism.store import Store
+        st = Store(os.path.join(tempfile.mkdtemp(), "teams.db"))
+        self.assertEqual(st.team_ids(), [None])       # 로컬 = 무팀 버킷 하나
+
+    def test_supastore_lists_teams_in_one_roundtrip(self):
+        from prism import supastore
+        st = supastore.SupabaseStore.__new__(supastore.SupabaseStore)
+        seen = []
+        st._get = lambda table, query="": (seen.append((table, query))
+                                           or [{"id": "teamA"}, {"id": "teamB"}, {"id": None}])
+        self.assertEqual(st.team_ids(50), ["teamA", "teamB"])   # 빈 id 는 버린다
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0][0], "teams")
+        self.assertIn("select=id", seen[0][1])
+        self.assertIn("limit=50", seen[0][1])
+
+    def test_snapshot_teams_caps_and_warns(self):
+        from prism import serve as SV, topicops as TPO
+        cap = TPO._TOPIC_SNAP_TEAM_CAP
+
+        class _ManyTeams:
+            def team_ids(_s, limit=200):
+                return [f"t{i}" for i in range(cap + 5)][:limit]
+
+        orig = SV._STORE
+        SV._STORE = _ManyTeams()
+        self.addCleanup(lambda: setattr(SV, "_STORE", orig))
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            teams = TPO.snapshot_teams()
+        self.assertEqual(len(teams), cap)
+        self.assertIn("상한", buf.getvalue())         # 조용히 자르지 않는다
+
+    def test_snapshot_teams_survives_store_failure(self):
+        from prism import serve as SV, topicops as TPO
+
+        class _Broken:
+            def team_ids(_s, limit=200):
+                raise RuntimeError("teams 조회 실패")
+
+        orig = SV._STORE
+        SV._STORE = _Broken()
+        self.addCleanup(lambda: setattr(SV, "_STORE", orig))
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(TPO.snapshot_teams(), [])
+        self.assertIn("팀 목록 조회 실패", buf.getvalue())
+
+
 class TestSupastoreTeamFilters(unittest.TestCase):
     """[D5·D6] supastore 쿼리에 team_id=eq. 가 실제로 붙는지(교차 팀 PATCH 차단의 실체)."""
 
@@ -292,6 +350,50 @@ class TestTopicsTeamScope(SupaGateMixin, unittest.TestCase):
         SV.topics_data("teamB")
         SV.topics_data("teamA")                       # 캐시 적중 → 재조회 없음
         self.assertEqual(seen, ["teamA", "teamB"])
+
+    def test_snapshot_badge_is_per_team(self):
+        """[H2-2] 스냅샷 적재도 팀 버킷 — 읽기만 팀 스코프면 배지가 조용히 비고,
+        전역 버킷으로 폴백하면 last_delta 의 토픽 라벨(전 팀 콘텐츠 파생)이 다시 샌다."""
+        SV, TPO = self.SV, self.TPO
+        secret = {"single": [{"cluster_id": "S-비밀", "name": "팀A비밀토픽",
+                              "type": "single", "count": 3}],
+                  "composite": [], "custom": []}
+        empty = {"single": [], "composite": [], "custom": []}
+        orig = SV.topics_data
+        SV.topics_data = lambda team=None: (secret if team == "teamA" else empty)
+        self.addCleanup(lambda: setattr(SV, "topics_data", orig))
+
+        delta = TPO.topic_snapshot("teamA")
+        self.assertEqual(delta["changed_n"], 1)
+        code, body = self._call("/topics", token="tok-team")           # 팀 A = 자기 배지
+        self.assertEqual(code, 200)
+        snap = json.loads(body)["snapshot"]
+        self.assertTrue(snap["last_ts"])
+        self.assertIn("팀A비밀토픽", body)
+
+        code, body_b = self._call("/topics", token="tok-team-b")       # 팀 B = 남의 라벨 없음
+        self.assertEqual(code, 200)
+        self.assertNotIn("팀A비밀토픽", body_b)
+        self.assertIsNone(json.loads(body_b)["snapshot"]["last_ts"])
+
+    def test_snapshot_all_iterates_teams_and_survives_failure(self):
+        """주기 배치는 팀을 순회하고, 한 팀에서 터져도 나머지 팀은 계속 돈다."""
+        SV, TPO = self.SV, self.TPO
+        seen = []
+
+        def _fake(team=None):
+            seen.append(team)
+            if team == "teamB":
+                raise RuntimeError("팀 B 계산 실패")
+            return {"single": [], "composite": [], "custom": []}
+
+        orig = (SV.topics_data, TPO.snapshot_teams)
+        SV.topics_data = _fake
+        TPO.snapshot_teams = lambda: ["teamA", "teamB", "teamC"]
+        self.addCleanup(lambda: (setattr(SV, "topics_data", orig[0]),
+                                 setattr(TPO, "snapshot_teams", orig[1])))
+        self.assertEqual(TPO.topic_snapshot_all(), 2)                  # A·C 성공 · B 만 실패
+        self.assertEqual(seen, ["teamA", "teamB", "teamC"])
 
     def test_drill_uses_same_team(self):
         SV = self.SV

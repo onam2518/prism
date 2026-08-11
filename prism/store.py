@@ -872,6 +872,11 @@ class Store:
                         "plan": pl, "stage": st})
         return out
 
+    def team_ids(self, limit: int = 200) -> list:
+        """팀 id 목록. 로컬(sqlite)은 팀 개념이 없는 단일 팀 운영이라 무팀 버킷 하나([None]).
+        SupabaseStore.team_ids 와 동일 계약 — 팀 단위 배치(토픽 스냅샷 등)가 백엔드 분기 없이 돈다."""
+        return [None]
+
     def save_report(self, kind: str, payload, team=None):
         """운영 리포트 upsert(JSON 직렬화 · 재시작 영속 · 팀 스코프)."""
         c = self._conn()

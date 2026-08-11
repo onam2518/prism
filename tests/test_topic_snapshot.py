@@ -2,7 +2,8 @@
 
 실행: python3 -m pytest tests/ -q  (stdlib unittest · 의존성 0)
 배경: 토픽은 조건 재평가 방식이라 열어둔 화면이 낡고, 성과 추이를 볼 원천이 없었다
-(2026-07-15 리뷰 P2-5 · reports kind='topic_snapshots' · 토픽은 무팀 전역 뷰).
+(2026-07-15 리뷰 P2-5 · reports kind='topic_snapshots').
+스냅샷은 팀 버킷 단위다(2026-08-11 감사 H2) — 아래는 무팀(로컬 sqlite) 버킷 계약.
 """
 import os
 import sys
@@ -30,8 +31,8 @@ class TestTopicSnapshot(unittest.TestCase):
              "composite": [], "custom": []},
         ]
         orig = serve.topics_data
-        serve.topics_data = lambda: (fixtures.pop(0) if fixtures
-                                     else {"single": [], "composite": [], "custom": []})
+        serve.topics_data = lambda team=None: (fixtures.pop(0) if fixtures
+                                               else {"single": [], "composite": [], "custom": []})
         self.addCleanup(lambda: setattr(serve, "topics_data", orig))
         d1 = serve.topic_snapshot()
         self.assertEqual(d1["changed_n"], 2)             # 첫 스냅샷: 둘 다 0→n (신규)
@@ -49,7 +50,7 @@ class TestTopicSnapshot(unittest.TestCase):
     def test_entries_capped(self):
         serve = self._serve()
         orig = serve.topics_data
-        serve.topics_data = lambda: {"single": [], "composite": [], "custom": []}
+        serve.topics_data = lambda team=None: {"single": [], "composite": [], "custom": []}
         self.addCleanup(lambda: setattr(serve, "topics_data", orig))
         for _ in range(serve._TOPIC_SNAP_CAP + 5):
             serve.topic_snapshot()

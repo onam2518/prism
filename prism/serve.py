@@ -188,6 +188,7 @@ _log_activity_rollup = DS._log_activity_rollup
 
 # 테스트·외부 호환 재수출(serve.<이름> 계약 유지) · 대입 형태 = pyflakes 미사용 오탐 회피
 topic_snapshot = TPO.topic_snapshot
+topic_snapshot_all = TPO.topic_snapshot_all
 similar_topics = TPO.similar_topics
 topic_personas = TPO.topic_personas
 _sanitize_def = TPO._sanitize_def

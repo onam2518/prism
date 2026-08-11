@@ -389,6 +389,12 @@ class SupabaseStore:
                          prefer="return=representation")
         return rows[0]["id"] if rows else None
 
+    def team_ids(self, limit: int = 200) -> list:
+        """팀 id 목록(1왕복). 팀 단위로 도는 배치(토픽 스냅샷 등)의 순회 원천.
+        SQLite Store 와 동일 계약 — 로컬은 단일 팀이라 [None] 을 돌려준다."""
+        rows = self._get("teams", f"select=id&order=id&limit={max(1, int(limit))}")
+        return [r["id"] for r in rows if r.get("id")]
+
     def team_info(self, team_id):
         if not team_id:
             return None

@@ -100,12 +100,14 @@ def _topic_rows_brief(data: dict) -> dict:
     return out
 
 
-def topic_snapshot() -> dict:
-    """토픽 현황 스냅샷 적재(성과 시계열 기초 · reports kind='topic_snapshots' · 토픽은 무팀 뷰).
-    직전 스냅샷 대비 변화(신규·소멸·건수 증감)를 계산해 함께 저장 → /topics 가 배지로 노출."""
+def topic_snapshot(team=None) -> dict:
+    """토픽 현황 스냅샷 적재(성과 시계열 기초 · reports kind='topic_snapshots').
+    직전 스냅샷 대비 변화(신규·소멸·건수 증감)를 계산해 함께 저장 → /topics 가 배지로 노출.
+    ⚠️ 계산·적재·조회가 같은 team 버킷이어야 한다 — 전역으로 적재하면 /topics(팀 스코프)가
+    영영 빈 배지를 보거나, 반대로 전 팀 콘텐츠에서 파생된 토픽 라벨(last_delta)이 새어 나간다."""
     _SV._agg_bump()                                        # 강제 재계산: 열어둔 화면 낡음(수동 새로고침 의존) 해소
-    brief = _topic_rows_brief(_SV.topics_data())
-    rep = _SV._report_get("topic_snapshots", None, {}) or {}
+    brief = _topic_rows_brief(_SV.topics_data(team))
+    rep = _SV._report_get("topic_snapshots", team, {}) or {}
     entries = rep.get("entries") or []
     prev = ((entries[-1] or {}).get("topics") or {}) if entries else {}
     changed = []
@@ -121,15 +123,48 @@ def topic_snapshot() -> dict:
              "changed_n": len(changed), "gone_n": len(gone)}
     entries.append({"ts": delta["ts"], "topics": brief})
     _SV._report_save("topic_snapshots", {"entries": entries[-_TOPIC_SNAP_CAP:],
-                                     "last_delta": delta}, None)
+                                     "last_delta": delta}, team)
     return delta
+
+
+_TOPIC_SNAP_TEAM_CAP = 50                             # 한 주기에 스냅샷을 뜨는 팀 수 상한
+
+
+def snapshot_teams() -> list:
+    """스냅샷 대상 팀 목록. sqlite(로컬 단일 팀)는 [None] · supabase 는 teams 목록(1왕복).
+    상한을 넘기면 잘렸다는 사실을 로그로 남긴다(조용히 자르면 뒤쪽 팀 배지가 이유 없이 빈다)."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "team_ids")):
+        return [None]
+    try:
+        teams = list(st.team_ids(_TOPIC_SNAP_TEAM_CAP + 1) or [])
+    except Exception as e:
+        print(f"  [warn] 팀 목록 조회 실패 · 이번 주기 토픽 스냅샷 건너뜀: {e}")
+        return []
+    if len(teams) > _TOPIC_SNAP_TEAM_CAP:
+        print(f"  [warn] 팀 {len(teams)}개 중 {_TOPIC_SNAP_TEAM_CAP}개만 토픽 스냅샷 적재 "
+              f"(상한 _TOPIC_SNAP_TEAM_CAP) · 나머지 팀은 이번 주기 배지가 갱신되지 않는다")
+        teams = teams[:_TOPIC_SNAP_TEAM_CAP]
+    return teams
+
+
+def topic_snapshot_all() -> int:
+    """팀별 스냅샷 1주기. 한 팀에서 터져도 나머지 팀은 계속 돈다. 반환 = 적재 성공 팀 수."""
+    done = 0
+    for t in snapshot_teams():
+        try:
+            topic_snapshot(t)
+            done += 1
+        except Exception as e:
+            print(f"  [warn] 토픽 스냅샷 실패(team={t or '-'}): {e}")
+    return done
 
 
 _topic_sched_started = False
 
 
 def start_topic_scheduler(interval_min: int = 60):
-    """토픽 자동 리프레시(기본 1시간): 재계산 + 스냅샷 적재. 서버당 1회 · 데몬 스레드."""
+    """토픽 자동 리프레시(기본 1시간): 재계산 + 팀별 스냅샷 적재. 서버당 1회 · 데몬 스레드."""
     global _topic_sched_started
     if _topic_sched_started:
         return
@@ -139,9 +174,9 @@ def start_topic_scheduler(interval_min: int = 60):
         while True:
             try:
                 time.sleep(max(300, int(interval_min) * 60))
-                topic_snapshot()
+                topic_snapshot_all()
             except Exception as e:
-                print(f"  [warn] 토픽 스냅샷 실패: {e}")
+                print(f"  [warn] 토픽 스냅샷 주기 실패: {e}")
 
     threading.Thread(target=_loop, daemon=True).start()
 
