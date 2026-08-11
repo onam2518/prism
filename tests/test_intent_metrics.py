@@ -112,7 +112,10 @@ class TestIntentScore(unittest.TestCase):
         self.assertEqual(m["grade_accuracy"], 1.0)
         self.assertEqual(m["reason_exact_match"], 1.0)
         self.assertEqual(m["reason_jaccard"], 1.0)
-        self.assertEqual(m["harm_miss_rate"], 0)
+        # 2026-08-11 계약 변경: harm_miss_rate 분모 = 기대 R 행 수(=1-recall(R)).
+        # 이 행은 기대 G 뿐이라 분모가 0 → 정의되지 않음(None). 종전 정의는 harm_miss_share 로 병기.
+        self.assertIsNone(m["harm_miss_rate"])
+        self.assertEqual(m["harm_miss_share"], 0)
         self.assertEqual(m["intent_exact"], 0.0)
 
 

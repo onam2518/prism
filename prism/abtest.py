@@ -145,6 +145,7 @@ def score(rows: list, outs: list) -> dict:
     """골든셋 정답(rows[i].expected)과 산출(outs[i])을 비교해 지표 산출.
     cli.cmd_eval 과 동일 지표 · 채점 로직 단일 소스."""
     grade_hit = reason_exact = fn_block = empties = 0
+    harm_n = 0                                   # 기대 R 행 수 = 유해 미탐률의 분모
     jac = cost = 0.0
     tin = tout = 0
     n = len(rows)
@@ -155,6 +156,8 @@ def score(rows: list, outs: list) -> dict:
     for row, out in zip(rows, outs):
         exp = row.get("expected", {}) or {}
         intent_tally(iacc, exp, out)             # 실패(None) 산출도 '빈 집합'으로 채점
+        if exp.get("finalGrade") == "R":
+            harm_n += 1                          # 산출 실패(None) 행도 분모에 포함(분자에는 미포함)
         if out is None:
             empties += 1
             continue
@@ -196,7 +199,12 @@ def score(rows: list, outs: list) -> dict:
         "grade_accuracy": round(grade_hit / n, 4) if n else 0,
         "reason_exact_match": round(reason_exact / n, 4) if n else 0,
         "reason_jaccard": round(jac / n, 4) if n else 0,
-        "harm_miss_rate": round(fn_block / n, 4) if n else 0,
+        # 유해 미탐률 = 기대 R 중 자동 G 로 흘린 비율(=1-recall(R)). 종전 분모는 '전체 행'이라
+        # R 유병률만큼 축소된 값이었고, 골든에 정상 건만 늘려도 '개선'으로 보였다(2026-08-11).
+        # 기대 R 행이 0이면 정의되지 않음(None) — 0% 로 표기하면 '완벽'으로 오독된다.
+        "harm_miss_rate": (round(fn_block / harm_n, 4) if harm_n else None),
+        "harm_miss_share": round(fn_block / n, 4) if n else 0,   # 종전 정의(전체 행 대비) 병기
+        "harm_expected_n": harm_n,                               # 분모(기대 R 행 수) 노출
         "empty_rate": round(empties / n, 4) if n else 0,
         "cost_usd": round(cost, 6),
         "tokens": {"in": tin, "out": tout},
@@ -255,8 +263,9 @@ def ab_test(rows: list, meth_a: H.Methodology, meth_b: H.Methodology, llm, **kw)
     a_m = evaluate(rows, meth_a, llm, **kw)
     b_m = evaluate(rows, meth_b, llm, **kw)
     diff = {k: round((b_m.get(k, 0) or 0) - (a_m.get(k, 0) or 0), 6) for k in _AB_KEYS}
-    a_key = (a_m["grade_accuracy"], -a_m["harm_miss_rate"])
-    b_key = (b_m["grade_accuracy"], -b_m["harm_miss_rate"])
+    # 기대 R 행이 없으면 harm_miss_rate 는 None(정의 없음) → 승자 판정에서는 0 으로 본다
+    a_key = (a_m["grade_accuracy"], -(a_m.get("harm_miss_rate") or 0.0))
+    b_key = (b_m["grade_accuracy"], -(b_m.get("harm_miss_rate") or 0.0))
     winner = "b" if b_key > a_key else "a" if a_key > b_key else "tie"
     # cost_usd(지표)는 LLM-only. 임베딩은 공유 클라이언트라 A/B로 쪼갤 수 없어 전체 1회로 별도 노출.
     emb = kw.get("emb")
