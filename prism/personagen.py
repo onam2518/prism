@@ -14,6 +14,8 @@ AGE_BANDS = ("10대", "20대", "30대", "40대", "50대", "60대 이상", "미�
 DAY_PARTS = ("출퇴근", "주간", "야간", "주말", "수시")
 
 GEN_CAP = 200        # 한 번에 생성하는 최대 사용자 수(비용 가드)
+# 재실행해도 계속 실패하는 종류(크레딧 소진·지출 한도·인증) · runops._NONRETRY_KINDS 와 동일 정책
+NONRETRY_FAIL_KINDS = ("billing", "quota", "auth")
 
 
 def profile_template_csv() -> bytes:
@@ -126,8 +128,19 @@ def _gen_one(llm, profile: dict, u: dict) -> dict:
         "대표 소비 콘텐츠": u.get("rep_contents") or [],
     }, ensure_ascii=False)
     obj, _res = llm.complete_json(_SYSTEM, user, tag="persona_gen")
+    if isinstance(obj, dict) and obj.get("_fail"):
+        # 호출 실패 표면화: 종전에는 표식 없이 폴백 카드가 저장돼 화면에서 LLM 생성물과
+        # 구분되지 않았다(키 만료·402 면 200명 전원이 조용히 휴리스틱 카드가 된다).
+        kind = str(obj.get("_fail_kind") or "unknown")
+        fb = _fallback(profile, u)
+        fb["downgraded"] = f"LLM 호출 실패({kind}) · 결정론 폴백"
+        fb["fail_kind"] = kind
+        return fb
     if not (isinstance(obj, dict) and obj.get("name") and obj.get("desc")):
-        return _fallback(profile, u)
+        fb = _fallback(profile, u)
+        if not getattr(llm, "mock", False):      # mock(키 없음)은 폴백이 정상 동작 · 표식 없음
+            fb["downgraded"] = "LLM 응답이 스키마(name·desc)를 채우지 못함 · 결정론 폴백"
+        return fb
     basis = obj.get("basis") if isinstance(obj.get("basis"), list) else []
     card = {"name": str(obj.get("name"))[:12], "full": str(obj.get("full") or obj.get("name"))[:20],
             "desc": str(obj.get("desc"))[:80], "basis": [str(b)[:60] for b in basis[:3]] or _fallback(profile, u)["basis"]}
@@ -152,4 +165,8 @@ def generate_personas(llm, profiles: dict, users: list, start_idx: int = 0) -> d
                     "intensity": u.get("intensity") or {}}
         if card.get("downgraded"):
             out[uid]["downgraded"] = card["downgraded"]
+        # 비재시도성 실패(크레딧·한도·인증)는 남은 사람에게도 계속 실패한다 —
+        # 최대 200명분을 무의미하게 호출하지 않고 즉시 중단한다(runops._nonretry_kinds 와 같은 정책).
+        if card.get("fail_kind") in NONRETRY_FAIL_KINDS:
+            break
     return out
