@@ -4,12 +4,22 @@ import functools
 import hashlib
 import json
 import os
+import sys
+import tempfile
+import threading
 
 from . import dictionaries as D
 
 HOME = os.path.dirname(os.path.dirname(__file__))
 PROMPTS_DIR = os.path.join(HOME, "prompts")
 QUALITY_PATH = os.path.join(PROMPTS_DIR, "quality.json")
+
+# 저장·시드 직렬화. 서버는 ThreadingHTTPServer(요청당 스레드) · 평가는 ThreadPoolExecutor 라
+# 콜드스타트에 여러 스레드가 동시에 시드를 시도한다. 종전에는 open(w) 로 truncate 한 사이에
+# 다른 스레드가 0바이트 파일을 읽어 JSONDecodeError 가 났다(20회 중 12회 재현 · 2026-08-11).
+# RLock 인 이유: ensure_seeded → _reseed_builtins → _save 가 같은 스레드에서 중첩된다.
+_LOCK = threading.RLock()
+_SEEDED = set()                 # 이 프로세스에서 시드를 확인한 경로(핫패스에서 제외)
 
 
 # 기본 시드 (v31 = 현행, 코드에서 추출)
@@ -90,29 +100,82 @@ def _reseed_builtins(data: dict):
     _save(data)
 
 
+def _read_raw():
+    """quality.json 읽기. 파일이 없거나 **손상**이면 None(=재시드 필요).
+
+    손상 파일은 `.bad` 로 밀어내고 재시드한다 — 종전에는 '파일이 없을 때만' 시드해서
+    쓰기 도중 죽어 절단된 파일이 영구 방치되고 이후 모든 품질 호출이 예외로 죽었다."""
+    try:
+        with open(QUALITY_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (ValueError, UnicodeDecodeError, OSError) as e:      # JSONDecodeError ⊂ ValueError
+        with _LOCK:
+            try:
+                os.replace(QUALITY_PATH, QUALITY_PATH + ".bad")  # 원인 분석용 보존(덮어씀)
+            except OSError:
+                pass
+        sys.stderr.write("[prism] WARNING: quality.json 손상(%s) → .bad 백업 후 재시드\n" % e)
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("versions"), dict):
+        return None                                              # 구조 파손도 재시드 대상
+    return data
+
+
 def ensure_seeded():
-    """파일이 없으면 시드 생성. 있으면 시드 지문이 바뀐 경우에만 내장 버전을
+    """파일이 없거나 손상이면 시드 생성. 있으면 시드 지문이 바뀐 경우에만 내장 버전을
     코드 시드로 재동기화한다(시드 문구 개정이 기존 설치에도 전파되도록)."""
-    os.makedirs(PROMPTS_DIR, exist_ok=True)
-    if not os.path.exists(QUALITY_PATH):
-        _save(_default_data())
+    with _LOCK:
+        os.makedirs(PROMPTS_DIR, exist_ok=True)
+        data = _read_raw()
+        if data is None:
+            _save(_default_data())
+            return
+        if data.get("seed_stamp") != _seed_stamp():
+            _reseed_builtins(data)
+
+
+def _seed_once():
+    """시드 확인은 프로세스(경로)당 1회. 종전에는 품질 콜마다 돌아 콜드스타트 경합의
+    원천이었다. CLI 로 파일을 직접 고친 경우는 재시드 대상이 아니므로(내장 버전만 동기화)
+    기동 1회로 충분하다 · 파일이 사라지거나 손상되면 _load 가 그 자리에서 복구한다."""
+    if QUALITY_PATH in _SEEDED:
         return
-    with open(QUALITY_PATH, encoding="utf-8") as f:
-        data = json.load(f)
-    if data.get("seed_stamp") != _seed_stamp():
-        _reseed_builtins(data)
+    with _LOCK:
+        if QUALITY_PATH in _SEEDED:
+            return
+        ensure_seeded()
+        _SEEDED.add(QUALITY_PATH)
 
 
 def _load() -> dict:
-    ensure_seeded()
-    with open(QUALITY_PATH, encoding="utf-8") as f:
-        return json.load(f)
+    _seed_once()
+    data = _read_raw()          # os.replace 원자 교체라 '옛 파일 or 새 파일' 둘 중 하나만 보인다
+    if data is None:            # 시드 후 삭제·손상 → 그 자리에서 복구(예외로 배치를 죽이지 않는다)
+        with _LOCK:
+            data = _read_raw()
+            if data is None:
+                data = _default_data()
+                _save(data)
+    return data
 
 
 def _save(data: dict):
-    os.makedirs(PROMPTS_DIR, exist_ok=True)
-    with open(QUALITY_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    """임시파일 + os.replace 원자 교체. truncate 상태를 다른 스레드가 읽는 창을 없앤다."""
+    with _LOCK:
+        os.makedirs(PROMPTS_DIR, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=PROMPTS_DIR, prefix=".quality-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, QUALITY_PATH)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
 
 # 공개 API
@@ -132,19 +195,21 @@ def list_versions() -> list:
 
 
 def set_active(version: str):
-    data = _load()
-    if version not in data["versions"]:
-        raise KeyError(version)
-    data["active"] = version
-    _save(data)
+    with _LOCK:                                   # 읽기-수정-쓰기 원자화(동시 편집 유실 방지)
+        data = _load()
+        if version not in data["versions"]:
+            raise KeyError(version)
+        data["active"] = version
+        _save(data)
 
 
 
 def new_from(base: str, new_version: str) -> dict:
-    data = _load()
-    body = json.loads(json.dumps(data["versions"][base]))  # deep copy
-    data["versions"][new_version] = body
-    _save(data)
+    with _LOCK:
+        data = _load()
+        body = json.loads(json.dumps(data["versions"][base]))  # deep copy
+        data["versions"][new_version] = body
+        _save(data)
     return body
 
 
