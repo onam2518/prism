@@ -246,7 +246,8 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
             return {"ok": False, "error": "이미 인입 중", "skipped_run": True}
         _INGEST_STATE[sid] = {"name": source.get("name") or "소스", "endpoint": source.get("endpoint", ""),
                               "kind": "자동 인입", "started": time.time(),
-                              "running": True, "total": 0, "done": 0, "last_run": _INGEST_STATE.get(sid, {}).get("last_run", 0),
+                              "running": True, "total": 0, "done": 0, "failed": 0,
+                              "last_run": _INGEST_STATE.get(sid, {}).get("last_run", 0),
                               "last_msg": "수신 중…", "last_ok": None, "trigger": trigger}
     try:
         rows, err = _fetch_records(source.get("endpoint", ""), limit,
@@ -262,10 +263,11 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
             _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=msg)
             _jobs_persist()
             return {"ok": False, "error": msg, "headers": list(rows[0].keys()) if rows else []}
-        _INGEST_STATE[sid].update(total=len(contents), done=0, last_msg="추출 중…")
+        _INGEST_STATE[sid].update(total=len(contents), done=0, failed=0, last_msg="추출 중…")
         cfg = Config.load()
         llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
         pairs = []
+        failed, first_err = 0, ""
         from .runops import _log_run_ledgers
         from .store import content_hash as _chash
         for c in contents:
@@ -275,8 +277,18 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
                 # 비용·실패 원장: 자동 인입도 run_pipeline 을 안 타므로 여기서 직접 기록 —
                 # 종전엔 크레딧이 마른 상태로 매 폴링 402 가 반복돼도 원장·트리아지 신호가 0 이었다.
                 _log_run_ledgers(c, out, mock=llm.mock, content_hash=_chash(c))
-            except Exception:
-                pass
+            except Exception as e:
+                # 조용한 유실 금지: 삼키기만 하면 화면엔 '제외 0'이 찍혀 유실이 오히려 부정된다.
+                # 계수해서 완료 메시지·실행 큐 배지·last_ok 에 드러내고, 실패 원장에도 남긴다.
+                failed += 1
+                first_err = first_err or (str(e)[:160] or e.__class__.__name__)
+                _INGEST_STATE[sid]["failed"] = failed
+                try:
+                    _log_run_ledgers(c, {"trace": {"fails": [{"kind": "extract", "tag": "ingest",
+                                                              "detail": str(e)[:160]}]}},
+                                     mock=llm.mock, content_hash=_chash(c))
+                except Exception:
+                    pass
             _INGEST_STATE[sid]["done"] += 1
         stats = {"inserted": 0, "updated": 0, "skipped": 0}
         st = _SV.get_store()
@@ -289,9 +301,14 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         from .runops import _img_note, img_coverage
         msg = (f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
                + _img_note(contents))
-        _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=True, last_msg=msg)
+        if failed:
+            msg += f" · 추출 실패 {failed}건({first_err})"
+        # 한 건이라도 유실됐으면 성공(초록불)이 아니다 — 5분마다 초록불이면 유실을 아무도 못 본다.
+        _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=(failed == 0),
+                                  failed=failed, last_msg=msg)
         _jobs_persist()
         return {"ok": True, "fetched": len(rows), "extracted": len(pairs),
+                "failed": failed, "fail_error": first_err,
                 "mapping": m, "mock": llm.mock,
                 "with_images": img_coverage(contents)["with_images"], **stats}
     except Exception as e:

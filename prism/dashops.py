@@ -55,6 +55,11 @@ def _log_cost_rollup(trace: dict, team=None):
             m = d["models"].setdefault(model, {"cost": 0.0, "n": 0})
             m["cost"] = round(m["cost"] + cost, 6)
             m["n"] += 1
+            # 과금된 실행만 따로 센다 — 비용 등급(modelmeta.tiers_from_cost)의 건당 평균 분모다.
+            # n 으로 나누면 실패 건이 분모에 남아 평균이 희석되고, 실패율 26% 만 넘어도
+            # 고비용 모델의 '고비용' 배지가 사라진다(감사 L4). 구 원장엔 이 키가 없어 읽기측이 n 으로 폴백.
+            if cost > 0:
+                m["n_billed"] = int(m.get("n_billed") or 0) + 1
             for tag, b in by_call.items():
                 b = b or {}
                 cle = d["calls"].setdefault(str(tag), {"cost": 0.0, "n": 0, "in": 0, "out": 0})
@@ -69,7 +74,9 @@ def _log_cost_rollup(trace: dict, team=None):
                     days.pop(k, None)
             _SV._report_save("cost_rollup", rep, team)
             day_total = d["cost"]
-        AL.on_cost(day, day_total)                   # 당일 임계 초과 통지(웹훅 미설정 시 무동작)
+        # 당일 임계 초과 통지(웹훅 미설정 시 무동작) · 누적이 팀 스코프이므로 팀도 함께 넘긴다
+        # — 안 넘기면 그날 임계를 먼저 넘은 팀 하나만 알림을 받는다.
+        AL.on_cost(day, day_total, team=team)
     except Exception:
         pass
 
@@ -265,19 +272,23 @@ def _dashboard_compute(team=None) -> dict:
     g = sum(1 for r in rows if (r.get("quality_meta") or {}).get("finalGrade") == "G")
     intent_c, cat_c, reason_c = {}, {}, {}
     lead_sum = lead_n = ent_total = 0
+    # 계수 단위는 **콘텐츠**다. 콘텐츠 1건에 같은 Tier1 의 하위 분류가 여럿 붙으면
+    # (뉴스/정치 + 뉴스/경제) 태그 단위로 세던 때는 그 콘텐츠가 '뉴스'에 두 번 계수돼
+    # pct 분모(행 수 n)·드릴다운(콘텐츠 단위)과 단위가 어긋났다(실측 pct 200% · 집계 4 vs 드릴 1).
+    # dict.fromkeys = 중복 제거 + 첫 등장 순서 유지(동률 정렬이 실행마다 흔들리지 않게).
     for r in rows:
         im = r.get("item_meta") or {}
-        for t in (im.get("intent") or []):
+        for t in dict.fromkeys(im.get("intent") or []):
             intent_c[t] = intent_c.get(t, 0) + 1
-        for v in (im.get("content_category") or []):
-            top = (v or "").split("/")[0].strip()
+        for top in dict.fromkeys((v or "").split("/")[0].strip()
+                                 for v in (im.get("content_category") or [])):
             if top:
                 cat_c[top] = cat_c.get(top, 0) + 1
         ent_total += len(im.get("entities") or [])
         s = im.get("summary") or ""
         if s:
             lead_sum += len(s); lead_n += 1
-        for rs in ((r.get("quality_meta") or {}).get("reasons") or []):
+        for rs in dict.fromkeys((r.get("quality_meta") or {}).get("reasons") or []):
             reason_c[rs] = reason_c.get(rs, 0) + 1
 
     def topk(dd, k=8):
@@ -336,9 +347,23 @@ def drill_contents(kind: str, value: str, team=None, reviewer: str = "") -> dict
     return {"ok": True, "kind": kind, "value": value, "items": _SV._attach_fb(out, team, reviewer), "n": len(out)}
 
 
+# CSV 내보내기 상한(행). 결과 행에는 본문까지 실려 있고 전량을 메모리에 올려 한 번에
+# write 하는 구조라 상한 자체는 필요하다. 다만 **조용히 자르지는 않는다** — 넘치면 파일
+# 첫 줄에 잘림 고지를 넣는다. 종전에는 results_rows 의 기본값 5000 이 그대로 상한이라,
+# 5000건이 넘는 팀은 잘린 사실을 모른 채 파일을 받았다(내보내기의 가장 나쁜 실패 모드).
+CSV_MAX_ROWS = 20000
+_CSV_TRUNC_NOTE = ("⚠ 내보내기 상한 {n:,}행 초과 · 최신 {n:,}건만 들어 있습니다"
+                   "(전체는 이보다 많습니다 · 기간을 나눠 다시 받아주세요)")
+
+
 def build_results_csv(team=None) -> bytes:
-    """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄. team 스코프 강제(전 팀 유출 방지)."""
-    rows = _SV.results_rows(team=team)
+    """적재된 추출 결과(콘텐츠 현황)를 CSV(엑셀)로 내보냄. team 스코프 강제(전 팀 유출 방지).
+
+    행 수가 CSV_MAX_ROWS 를 넘으면 최신분만 담고 **첫 줄에 잘렸다고 적는다**."""
+    rows = _SV.results_rows(limit=CSV_MAX_ROWS + 1, team=team)
+    truncated = len(rows) > CSV_MAX_ROWS
+    if truncated:
+        rows = rows[-CSV_MAX_ROWS:]                 # recent 는 오래된 것부터 나열 → 최신분을 남긴다
     out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유,노출제한"]
     def esc(v):
         s = str(v if v is not None else "")
@@ -347,6 +372,8 @@ def build_results_csv(team=None) -> bytes:
         if s[:1] in ("=", "+", "-", "@", "\t", "\r"):
             s = "'" + s
         return '"' + s.replace('"', '""') + '"'
+    if truncated:                                   # 파일을 여는 순간 보이게 첫 줄에
+        out.append(",".join([esc(_CSV_TRUNC_NOTE.format(n=CSV_MAX_ROWS))] + [esc("")] * 8))
     for r in rows:
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}

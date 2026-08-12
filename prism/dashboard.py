@@ -224,8 +224,10 @@ def _aggregate(rows):
             intents[c] = intents.get(c, 0) + 1
         for e in im.get("entities", []):
             ents.add(e)
-        for cat in (im.get("content_category") or []):   # 콘텐츠 단위 N개
-            t1 = tier1_remap(cat)
+        # 콘텐츠 단위 N개 · 계수도 콘텐츠 단위다(같은 Tier1 의 하위 분류가 여럿 붙어도 1건).
+        # 그래프 경로(_graph)가 이미 집합으로 세고 있어, 태그 단위로 세면 같은 리포트 안에서
+        # 카테고리 막대만 하위 분류를 잘게 쪼갠 쪽으로 부풀었다.
+        for t1 in dict.fromkeys(tier1_remap(cat) for cat in (im.get("content_category") or [])):
             if t1 and t1 != "Unclassified":      # 미분류는 분포에서 제외
                 ecats[t1] = ecats.get(t1, 0) + 1
         svc = r.get("content_ref", {}).get("displayServiceName", "?")
