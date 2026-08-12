@@ -279,6 +279,12 @@ class Store:
         CREATE INDEX IF NOT EXISTS ix_results_created ON results(created_at);
         CREATE INDEX IF NOT EXISTS ix_gold_reviewer ON gold_checks(reviewer);
         CREATE INDEX IF NOT EXISTS ix_events_reviewer ON events(reviewer, kind, day);
+        -- patch_log 는 인덱스가 아예 없어 단건 이력(/history)이 SCAN + TEMP B-TREE 였고,
+        -- feedback PK 는 (content_hash, reviewer) 라 reviewer 단독 조회(오늘 검수·내 큐)가 풀스캔이었다
+        -- (2026-08 감사 S9 · EXPLAIN QUERY PLAN 실측). 행 수에 선형이라 개발 DB 가 쌓일수록 악화된다.
+        CREATE INDEX IF NOT EXISTS ix_patch_hash ON patch_log(content_hash, ts);
+        CREATE INDEX IF NOT EXISTS ix_patch_reviewer ON patch_log(reviewer, ts);
+        CREATE INDEX IF NOT EXISTS ix_feedback_reviewer ON feedback(reviewer, ts);
         """)
         c.commit()
         self._migrate_feedback(c)
@@ -908,12 +914,23 @@ class Store:
                    json.dumps(quality_meta or {}, ensure_ascii=False), time.time()))
         c.commit()
 
-    def draft_times(self, team=None) -> dict:
-        """콘텐츠별 최신 초안 생성 시각(epoch) · '현재 초안 이후 검수' 유효성 판정 원천."""
+    def draft_times(self, team=None, hashes=None) -> dict:
+        """콘텐츠별 최신 초안 생성 시각(epoch) · '현재 초안 이후 검수' 유효성 판정 원천.
+        hashes 를 주면 그 콘텐츠로 좁힌다(supastore 와 동일 계약 · 값은 좁힌 집합에서 동일)."""
         c = self._conn()
-        return {ch: float(ts or 0) for ch, ts in c.execute(
-            "SELECT content_hash, MAX(ts) FROM drafts WHERE team=? GROUP BY content_hash",
-            (team or "",))}
+        if hashes is None:
+            return {ch: float(ts or 0) for ch, ts in c.execute(
+                "SELECT content_hash, MAX(ts) FROM drafts WHERE team=? GROUP BY content_hash",
+                (team or "",))}
+        hs = [h for h in dict.fromkeys(hashes) if h]
+        out = {}
+        for i in range(0, len(hs), 500):               # sqlite 변수 상한(999) 대비 청크
+            chunk = hs[i:i + 500]
+            ph = ",".join("?" * len(chunk))
+            out.update({ch: float(ts or 0) for ch, ts in c.execute(
+                f"SELECT content_hash, MAX(ts) FROM drafts WHERE team=? AND content_hash IN ({ph})"
+                " GROUP BY content_hash", (team or "", *chunk))})
+        return out
 
     # ── 콘텐츠별 검수 담당 배정(배타적 노출 · 진척 개인화) ─────────────────
     def set_assignees(self, content_hash, reviewers, min_reviewers=1, team=None):
@@ -960,14 +977,18 @@ class Store:
         c.commit()
         return len(hs)
 
-    def assignees(self, team=None) -> dict:
+    def assignees(self, team=None, hashes=None) -> dict:
         """콘텐츠별 배정 현황 {hash: {"reviewers":[...], "min":N}} · 큐·진척 산정 주입용.
-        배정된 콘텐츠만 키로 포함(미배정 콘텐츠는 오픈 큐)."""
+        배정된 콘텐츠만 키로 포함(미배정 콘텐츠는 오픈 큐).
+        hashes 를 주면 그 콘텐츠분만(supastore 와 동일 계약 · 원격은 왕복 절감)."""
         c = self._conn()
         tm = team or ""
+        keep = None if hashes is None else {h for h in hashes if h}
         out = {}
         for ch, rv in c.execute(
                 "SELECT content_hash,reviewer FROM assignments WHERE team=? ORDER BY rowid", (tm,)):
+            if keep is not None and ch not in keep:
+                continue
             out.setdefault(ch, {"reviewers": [], "min": 1})["reviewers"].append(rv)
         for ch, n in c.execute("SELECT content_hash,min_reviewers FROM assignment_cfg WHERE team=?", (tm,)):
             if ch in out:
@@ -1696,7 +1717,9 @@ class Store:
             return s
 
         chars = self.reviewers_map()
-        targets = self.review_targets(team)              # 검수 대상 = YELLOW ∪ 배정(분자·분모 공통 모집단)
+        # 배정은 1회만 조회해 review_targets·개인 진척이 같이 쓴다(supastore 와 동일 · 감사 S2)
+        asg_all = self.assignees(team) or {}
+        targets = self.review_targets(team, assigned=set(asg_all))   # 검수 대상 = YELLOW ∪ 배정(분자·분모 공통 모집단)
         total_targets = len(targets)
         tgt_done = {}                                    # 검수자 → 현재 검수 대상 중 검수한 건수
         for ch, rv in reviewed_pairs:
@@ -1710,7 +1733,7 @@ class Store:
 
         # 담당 배정: 개인 진척 분모 = 내 담당 콘텐츠 수, 완료 = 내가 검수한 담당 콘텐츠 수
         # 삭제된 콘텐츠의 고아 배정은 제외(분모·'내 담당' 수 오염 방지)
-        asg = {ch: a for ch, a in (self.assignees(team) or {}).items() if ch in targets}
+        asg = {ch: a for ch, a in asg_all.items() if ch in targets}   # 위에서 1회 조회한 배정 재사용
         mine_total, mine_done = {}, {}
         for ch, a in asg.items():
             for rv in a["reviewers"]:
@@ -1782,6 +1805,12 @@ class Store:
                 "target": target, "leaderboard": leaderboard,
                 "total_targets": total_targets, "team_progress": team_progress}
 
+    def review_queue_count(self, limit: int = 100, only_unreviewed: bool = True, team=None,
+                           reviewer=None, see_all: bool = False) -> int:
+        """큐 '개수'만 · supastore 와 동일 계약(로컬 조회라 값은 review_queue 길이 그대로)."""
+        return len(self.review_queue(limit=limit, only_unreviewed=only_unreviewed, team=team,
+                                     reviewer=reviewer, see_all=see_all))
+
     def review_queue(self, limit: int = 100, only_unreviewed: bool = True, team=None, reviewer=None,
                      see_all: bool = False) -> list:
         """검수 대기 큐: YELLOW(사람검수 티어) 콘텐츠.
@@ -1846,13 +1875,17 @@ class Store:
         for ch, svc, ti, payload in c.execute(
                 "SELECT content_hash,service,title,payload FROM results ORDER BY created_at DESC LIMIT ?",
                 (int(limit),)):
-            body = ""
+            body = sub = ""
             try:
                 ref = (json.loads(payload) if payload else {}).get("content_ref") or {}
                 body = ref.get("body", "") or ""
+                # subtitle 은 content_hash 입력 4필드 중 하나(IDENTITY_FIELDS) · 빈 값으로 고정하면
+                # 학습데이터(DPO·rationale)에서 부제가 통째로 빠지고, 이 dict 로 해시를 다시 만드는
+                # 호출부가 생기면 recent() 와 같은 유령 행 사고가 재발한다(2026-08 감사 S11).
+                sub = ref.get("subtitle", "") or ""
             except Exception:
                 pass
-            out[ch] = {"displayServiceName": svc or "", "title": ti or "", "subtitle": "", "body": body}
+            out[ch] = {"displayServiceName": svc or "", "title": ti or "", "subtitle": sub, "body": body}
         return out
 
     def get_item_meta(self, content_hash, team=None) -> dict | None:
@@ -1939,17 +1972,22 @@ class Store:
 
     def register_golden(self, team, rows, replace=True, source="manual"):
         """골든셋 등록. replace=True 면 전체 교체, False 면 기존에 병합(upsert).
-        rows: [{content, expected}]. content_hash 로 키."""
+        rows: [{content, expected}]. content_hash 로 키.
+        건별 upsert_golden(행마다 commit)이 아니라 executemany + 단일 커밋 —
+        같은 파일의 다른 일괄 경로(save_many·save_dedup·eval_results_add)와 같은 관례
+        (500건 실측 50ms → 10ms · 2026-08 감사 S10). 단건 upsert_golden 은 그대로 둔다."""
         c = self._conn()
         if replace:
             c.execute("DELETE FROM golden")
-            c.commit()
-        n = 0
-        for r in rows:
-            if r.get("content") and r.get("expected"):
-                self.upsert_golden(content_hash(r["content"]), r["content"], r["expected"], source=source)
-                n += 1
-        return n
+        vals = [(content_hash(r["content"]), json.dumps(r["content"], ensure_ascii=False),
+                 json.dumps(r["expected"], ensure_ascii=False), time.time(), source or "manual")
+                for r in rows if r.get("content") and r.get("expected")]
+        if vals:
+            c.executemany("""INSERT INTO golden(content_hash,content,expected,ts,source) VALUES(?,?,?,?,?)
+              ON CONFLICT(content_hash) DO UPDATE SET content=excluded.content,
+                expected=excluded.expected, ts=excluded.ts, source=excluded.source""", vals)
+        c.commit()
+        return len(vals)
 
     def get_golden(self, team=None, limit=1000):
         c = self._conn()
@@ -2023,20 +2061,40 @@ class Store:
 
     _ENT_SEL = "SELECT entity_id,name,type,status,attrs,attr_meta,external_ids,merged_into,created_at,updated_at FROM entities"
 
-    def ent_upsert(self, e: dict):
-        c = self._conn()
-        c.execute("""INSERT INTO entities(entity_id,name,type,status,attrs,attr_meta,external_ids,merged_into,created_at,updated_at)
+    _ENT_UPSERT_SQL = """INSERT INTO entities(entity_id,name,type,status,attrs,attr_meta,external_ids,merged_into,created_at,updated_at)
           VALUES(?,?,?,?,?,?,?,?,?,?)
           ON CONFLICT(entity_id) DO UPDATE SET
             name=excluded.name, type=excluded.type, status=excluded.status,
             attrs=excluded.attrs, attr_meta=excluded.attr_meta, external_ids=excluded.external_ids,
-            merged_into=excluded.merged_into, updated_at=excluded.updated_at""",
-          (e["entity_id"], e.get("name", ""), e.get("type", ""), e.get("status", "pending"),
-           json.dumps(e.get("attrs") or {}, ensure_ascii=False),
-           json.dumps(e.get("attr_meta") or {}, ensure_ascii=False),
-           json.dumps(e.get("external_ids") or {}, ensure_ascii=False),
-           e.get("merged_into", ""), e.get("created_at") or time.time(),
-           e.get("updated_at") or time.time()))
+            merged_into=excluded.merged_into, updated_at=excluded.updated_at"""
+
+    @staticmethod
+    def _ent_vals(e: dict) -> tuple:
+        now = time.time()
+        return (e["entity_id"], e.get("name", ""), e.get("type", ""), e.get("status", "pending"),
+                json.dumps(e.get("attrs") or {}, ensure_ascii=False),
+                json.dumps(e.get("attr_meta") or {}, ensure_ascii=False),
+                json.dumps(e.get("external_ids") or {}, ensure_ascii=False),
+                e.get("merged_into", ""), e.get("created_at") or now, e.get("updated_at") or now)
+
+    def ent_upsert(self, e: dict):
+        c = self._conn()
+        c.execute(self._ENT_UPSERT_SQL, self._ent_vals(e))
+        c.commit()
+
+    def ent_upsert_many(self, rows):
+        """개체 일괄 upsert(executemany + 단일 커밋) · supastore 와 동일 계약(감사 S1)."""
+        seen, vals = set(), []
+        for e in rows or []:
+            eid = e.get("entity_id")
+            if not eid or eid in seen:
+                continue
+            seen.add(eid)
+            vals.append(self._ent_vals(e))
+        if not vals:
+            return
+        c = self._conn()
+        c.executemany(self._ENT_UPSERT_SQL, vals)
         c.commit()
 
     def ent_update(self, entity_id: str, fields: dict) -> bool:
@@ -2067,9 +2125,31 @@ class Store:
         r = c.execute("SELECT entity_id FROM entity_aliases WHERE alias=?", (name,)).fetchone()
         return r[0] if r else ""
 
+    def ent_ids_by_aliases(self, names) -> dict:
+        """{별칭: entity_id} 일괄 조회 · supastore 와 동일 계약(적재 훅의 건별 조회 제거)."""
+        c = self._conn()
+        ns = [n for n in dict.fromkeys(names or []) if n]
+        out = {}
+        for i in range(0, len(ns), 500):               # sqlite 변수 상한(999) 대비 청크
+            chunk = ns[i:i + 500]
+            ph = ",".join("?" * len(chunk))
+            for a, e in c.execute(
+                    f"SELECT alias,entity_id FROM entity_aliases WHERE alias IN ({ph})", chunk):
+                out[a] = e
+        return out
+
     def ent_alias_add(self, alias: str, entity_id: str):
         c = self._conn()
         c.execute("INSERT OR IGNORE INTO entity_aliases(alias,entity_id) VALUES(?,?)", (alias, entity_id))
+        c.commit()
+
+    def ent_alias_add_many(self, pairs):
+        """[(별칭, entity_id)] 일괄 등록 · 기존 별칭은 무시(INSERT OR IGNORE · 재바인딩 없음)."""
+        vals = [(a, e) for a, e in (pairs or []) if a and e]
+        if not vals:
+            return
+        c = self._conn()
+        c.executemany("INSERT OR IGNORE INTO entity_aliases(alias,entity_id) VALUES(?,?)", vals)
         c.commit()
 
     def ent_aliases(self, entity_id: str) -> list:
@@ -2081,6 +2161,17 @@ class Store:
         c = self._conn()
         c.execute("""INSERT OR IGNORE INTO content_entities(content_hash,entity_id,surface,team,ts)
                      VALUES(?,?,?,?,?)""", (content_hash, entity_id, surface, team or "", time.time()))
+        c.commit()
+
+    def ent_link_many(self, links, team=None):
+        """[(content_hash, entity_id, surface)] 일괄 링크 · supastore 와 동일 계약(감사 S1)."""
+        now = time.time()
+        vals = [(ch, eid, sf or "", team or "", now) for ch, eid, sf in (links or []) if ch and eid]
+        if not vals:
+            return
+        c = self._conn()
+        c.executemany("""INSERT OR IGNORE INTO content_entities(content_hash,entity_id,surface,team,ts)
+                         VALUES(?,?,?,?,?)""", vals)
         c.commit()
 
     def ent_list(self, q: str = "", type_: str = "", status: str = "", limit: int = 300) -> list:
@@ -2120,9 +2211,13 @@ class Store:
         cut1 = now - hours * 3600.0
         cut0 = now - 2 * hours * 3600.0
         rec, prev = {}, {}
-        for eid, surface, ts in c.execute(
-                "SELECT entity_id, surface, ts FROM content_entities WHERE ts>=? AND team=?",
-                (cut0, team or "")):
+        # falsy team = 전역(무팀 필터 없음) · ent_attr_index·supastore 와 동일 규칙(2026-08 감사 S8).
+        q = "SELECT entity_id, surface, ts FROM content_entities WHERE ts>=?"
+        params = [cut0]
+        if team:
+            q += " AND team=?"
+            params.append(team)
+        for eid, surface, ts in c.execute(q, params):
             b = rec if (ts or 0) >= cut1 else prev
             e = b.setdefault(eid, {"n": 0, "surface": surface or eid})
             e["n"] += 1
@@ -2161,15 +2256,16 @@ class Store:
         return cur.rowcount
 
     def ent_purge_unlisted(self) -> int:
-        """미등재 일괄 정리(링크·별칭 포함 삭제) · 관리자 버튼."""
+        """미등재 일괄 정리(링크·별칭 포함 삭제) · 관리자 버튼.
+        개체별 3문 루프 대신 서브쿼리 3문(자식 먼저 · supastore 청크 삭제와 같은 순서)."""
         c = self._conn()
-        ids = [r[0] for r in c.execute("SELECT entity_id FROM entities WHERE status='unlisted'")]
-        for eid in ids:
-            c.execute("DELETE FROM entities WHERE entity_id=?", (eid,))
-            c.execute("DELETE FROM entity_aliases WHERE entity_id=?", (eid,))
-            c.execute("DELETE FROM content_entities WHERE entity_id=?", (eid,))
+        sub = "SELECT entity_id FROM entities WHERE status='unlisted'"
+        n = c.execute("SELECT COUNT(*) FROM entities WHERE status='unlisted'").fetchone()[0]
+        c.execute(f"DELETE FROM content_entities WHERE entity_id IN ({sub})")
+        c.execute(f"DELETE FROM entity_aliases WHERE entity_id IN ({sub})")
+        c.execute("DELETE FROM entities WHERE status='unlisted'")
         c.commit()
-        return len(ids)
+        return n
 
     def ent_pending_ids(self, limit: int = 200) -> list:
         """보강 대상: 위키데이터 조회 이력(_enrich) 자체가 없는 개체(미스 기록은 재조회 제외)."""

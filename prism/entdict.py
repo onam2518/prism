@@ -132,12 +132,57 @@ def _empty_entry(name: str) -> dict:
             "external_ids": {}, "merged_into": "", "created_at": now, "updated_at": now}
 
 
+def _eids_by_aliases(store, names) -> dict:
+    """별칭 일괄 조회 + NFC 이행 흡수. {정규명: entity_id} · 미스는 키 없음.
+
+    normalize_name 에 NFC 가 붙기 전(2026-08 이전)에 등재된 NFD 별칭은 NFC 이름으로 찾으면
+    미스라, 그대로 두면 같은 개체가 하나 더 생긴다. 1차 조회에서 빠진 이름만 NFD 형태로 한 번 더
+    찾아보고 맞으면 **NFC 별칭을 덧붙여**(entity_id 재계산·재발급 없이) 이후 조회가 바로 걸리게
+    한다. 기존 별칭은 ignore-duplicates 라 재바인딩되지 않는다(건별 조회판과 동일한 의미)."""
+    ns = [n for n in dict.fromkeys(names or []) if n]
+    if not ns:
+        return {}
+    if hasattr(store, "ent_ids_by_aliases"):
+        found = dict(store.ent_ids_by_aliases(ns) or {})
+    else:                                            # 구 계약 스토어(목 등) → 건별 폴백
+        found = {n: eid for n in ns if (eid := store.ent_id_by_alias(n))}
+    legacy = {}                                      # {NFD 별칭: NFC 이름}
+    for n in ns:
+        if n in found:
+            continue
+        nfd = unicodedata.normalize("NFD", n)
+        if nfd != n:
+            legacy[nfd] = n
+    if not legacy:
+        return found
+    if hasattr(store, "ent_ids_by_aliases"):
+        hits = store.ent_ids_by_aliases(list(legacy)) or {}
+    else:
+        hits = {a: eid for a in legacy if (eid := store.ent_id_by_alias(a))}
+    add = [(legacy[a], eid) for a, eid in hits.items() if eid]
+    for name, eid in add:
+        found[name] = eid
+    if add:
+        try:
+            if hasattr(store, "ent_alias_add_many"):
+                store.ent_alias_add_many(add)
+            else:
+                for name, eid in add:
+                    store.ent_alias_add(name, eid)
+        except Exception:                            # noqa: BLE001 · 흡수 실패는 조회 결과에 영향 없음
+            pass
+    return found
+
+
 def ingest_meta(store, items, team="") -> dict:
     """적재 훅 본체. items = [(content_hash, entities[str]), …].
     사전 조회(별칭 포함) → 히트 시 링크만, 미스 시 신규 등록(보류) + 링크. 개체당 재판정 없음.
-    반환: {created, linked, new_ids} · new_ids 는 후속 보강(위키데이터) 대상."""
-    created = linked = 0
-    new_ids = []
+    반환: {created, linked, new_ids} · new_ids 는 후속 보강(위키데이터) 대상.
+
+    ① 별칭 일괄 조회 → ② 미스분 일괄 등록 → ③ 링크 일괄 삽입 3단계. 종전 건별 루프는
+    개체 1건당 2~4 원격 왕복이라 배치 200건(개체 1,200)이면 약 4,800왕복(4~12분)이 저장 뒤에
+    순수 대기로 붙었다(2026-08 감사 S1). 왕복이 개체 수 비례에서 청크 수 비례로 떨어진다."""
+    pairs = []                                       # [(content_hash, 원표기, 정규명)] · 등장 순서 보존
     for ch, ents in items:
         seen = set()
         for surface in (ents or []):
@@ -145,17 +190,36 @@ def ingest_meta(store, items, team="") -> dict:
             if norm in seen or not eligible(norm):
                 continue
             seen.add(norm)
-            eid = _eid_by_alias(store, norm)
-            if not eid:
-                e = _empty_entry(norm)
-                eid = e["entity_id"]
+            pairs.append((ch, surface, norm))
+    if not pairs:
+        return {"created": 0, "linked": 0, "new_ids": []}
+    names = list(dict.fromkeys(n for _, _, n in pairs))
+    found = _eids_by_aliases(store, names)
+    new_ents, new_aliases, new_ids = [], [], []
+    for n in names:
+        if found.get(n):
+            continue
+        e = _empty_entry(n)
+        found[n] = e["entity_id"]
+        new_ents.append(e)
+        new_aliases.append((n, e["entity_id"]))
+        new_ids.append(e["entity_id"])
+    if new_ents:
+        if hasattr(store, "ent_upsert_many"):
+            store.ent_upsert_many(new_ents)
+            store.ent_alias_add_many(new_aliases)
+        else:                                        # 구 계약 스토어(목 등) → 건별 폴백
+            for e in new_ents:
                 store.ent_upsert(e)
-                store.ent_alias_add(norm, eid)
-                created += 1
-                new_ids.append(eid)
-            store.ent_link(ch, eid, surface, team=team)
-            linked += 1
-    return {"created": created, "linked": linked, "new_ids": new_ids}
+            for alias, eid in new_aliases:
+                store.ent_alias_add(alias, eid)
+    links = [(ch, found[n], sf) for ch, sf, n in pairs]
+    if hasattr(store, "ent_link_many"):
+        store.ent_link_many(links, team=team)
+    else:
+        for ch, eid, sf in links:
+            store.ent_link(ch, eid, sf, team=team)
+    return {"created": len(new_ids), "linked": len(pairs), "new_ids": new_ids}
 
 
 def ingest_pairs(store, pairs, team="") -> dict:
