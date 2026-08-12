@@ -17,6 +17,7 @@ import heapq
 import threading
 import time
 
+from . import dictionaries as D
 from . import entconf as EC
 from . import feedback_loop as FL
 from . import learnops as LO
@@ -24,6 +25,40 @@ from . import prompts as PR
 from .config import Config
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
+
+# ── 골드 문항(정답 알려진 검증 문항)이 뒤집는 값 ──────────────────────────────
+#
+# 골드는 골든셋 콘텐츠에 **결함 하나를 심어** 큐에 섞고, 검수자가 그 결함을 잡는지로
+# 신뢰도를 잰다. 2026-08-13 이전에는 심는 결함이 '등급(G↔R)' 이었다. 그것을 카테고리로
+# 옮긴다. 이유는 셋이고, 전부 운영 데이터로 확인했다.
+#
+# ① **등급은 근거와 한 몸이라 화면과 저장값이 반드시 어긋난다.** `quality_meta.evidence`
+#    는 그 등급을 그렇게 본 이유 문장이다. 화면의 등급만 뒤집으면 저장된 근거가 곧
+#    "이 문항은 뒤집혔다" 는 해설이 된다. 검수 보조(reviewassist)가 근거를 보여주는
+#    기능이라 골드에서만 아무것도 주지 않는 예외를 두어 막고 있었는데, 그 완화는
+#    근거 적재율이 오를수록 사라진다(빈칸이 곧 골드 표시가 된다).
+# ② **등급은 검수자가 가장 덜 보는 값이다.** 운영 실측(2026-08-13):
+#    '수정필요' 표 731건이 지목한 요소 = 인텐트 441(60.3%) · 엔티티 168(23.0%) ·
+#    리드문 114(15.6%) · 카테고리 98(13.4%) · 품질사유 58(7.9%) · **등급 39(5.3%)**.
+#    구조화 교정(patch_log · 재실행 로그 제외 80건) = 인텐트 36 · 엔티티 21 ·
+#    카테고리 16 · **등급 7**. 골드는 검수자가 실제로 평가하는 값을 물어야 한다.
+# ③ **카테고리는 근거 문장에 등장할 수 없다.** 품질 콜의 입력은 (서비스명·제목·본문)과
+#    품질 규칙서뿐이고, 근거는 그 둘에서 나온다. 운영 콘텐츠 1,441건 실측에서
+#    카테고리 값 2,209개 중 원문에 그대로 나타난 것 **0개**, 품질 규칙서에 나오는 것도
+#    **0개**(IAB 라벨은 영문 · 근거·규칙서는 한국어). 엔티티는 7,488개 중 7,203개
+#    (96.2%)가 원문에 그대로 있어 근거가 본문을 인용하면 같이 새고, 인텐트는 라벨
+#    '보도자료·공식발표' 가 광고성 규칙 정의문에 그대로 들어 있다(골든의 19.6%가 그 값).
+#
+# 등급·리드문·엔티티·인텐트는 그대로 참값으로 둔다 · 화면에 참값이 그려지므로
+# 저장된 근거·저장된 값과 어긋나지 않는다.
+#
+# 이 상수는 '골드가 어느 자리를 건드리는가' 의 단일 원천이다. 검수 보조처럼 저장값을
+# 보여주는 기능은 이 자리만 골드에서 가려 주면 되고(나머지는 참값이라 가릴 것이 없다),
+# 응답 원장의 회차 표기도 여기서 나온다.
+GOLD_FLIP_ELEMENT = "category"      # 뒤집는 요소(피드백 요소 id · FL.ELEMENTS 와 같은 어휘)
+# gold_checks 에 남기는 출제 방식 표기. 과거 회차(등급 뒤집기)는 표기가 없어 값만 보고
+# 구분된다 · 표기 없는 행을 새 회차와 같은 분모에 넣으면 과거 신뢰도가 조용히 섞인다.
+GOLD_SCHEME = GOLD_FLIP_ELEMENT
 
 
 def distribute_assignments(st, hashes, reviewers, min_reviewers=1, team=None) -> dict:
@@ -199,7 +234,8 @@ def _finals_today(reviewer: str, team=None) -> int:
 
 def _inject_gold_final(items: list, reviewer: str, team=None) -> list:
     """최종검수 큐 골드 캘리브레이션(블라인드): 기확정 골든 1건을 미확정분처럼 섞어 출제.
-    변형은 기초 골드(G-1)와 동일 규칙 — hash 짝수 = 원본(정답 편입) / 홀수 = 등급 뒤집기(정답 제외).
+    변형은 기초 골드(G-1)와 동일 규칙 · hash 짝수 = 원본(정답 편입) /
+    홀수 = 카테고리 한 자리 뒤집기(정답 제외 · 2026-08-13 이전에는 등급 뒤집기였다).
     hash 'goldf:' 접두 → /final-verdict 가 gold_checks 로 분리 기록(final_verdicts 무오염 ·
     정확도는 gold_stats 를 타고 신뢰가중에 합류). 선택·위치는 (검수자, 일자) 시드로 결정적 ·
     응답한 문항은 재출제 안 함(기초 골드와 응답 원장 공유)."""
@@ -207,37 +243,30 @@ def _inject_gold_final(items: list, reviewer: str, team=None) -> list:
     if not (reviewer and st and hasattr(st, "get_golden") and hasattr(st, "gold_answered")):
         return items
     try:
-        golden = (_SV._agg_cached_store(("golden", team), st, lambda: st.get_golden(team))
-                  if getattr(st, "REMOTE", False) else st.get_golden(team))   # 기초 큐와 캐시 공유
         answered = st.gold_answered(reviewer, team=team)
+        cands = _gold_candidates(st, team, answered)   # 기초 큐와 후보·캐시·변형 규칙 공유
     except Exception:
         return items
-    from .store import content_hash as _chash
-    cands = []
-    for g in golden:
-        content, exp = g.get("content") or {}, g.get("expected") or {}
-        h = _chash(content)
-        if h not in answered and content.get("title"):
-            cands.append((h, content, exp))
     if not cands:
         return items
     import hashlib as _hl
     import random as _rd
     day = int(time.time() // 86400)
     rng = _rd.Random(int(_hl.sha1(f"goldf:{reviewer}:{day}".encode()).hexdigest()[:8], 16))
-    h, content, exp = cands[rng.randrange(len(cands))]
-    flip = int(h, 16) % 2 == 1                     # 홀수 = 등급 뒤집기(정답 '제외')
-    grade = exp.get("finalGrade", "") or "G"
+    h, content, exp, om, shown, flip = cands[rng.randrange(len(cands))]
     out = list(items)
     out.insert(rng.randint(0, len(out)), {
         "hash": f"goldf:{'bad' if flip else 'ok'}:{h}",
         "title": content.get("title", ""), "subtitle": content.get("subtitle", ""),
-        "service": content.get("displayServiceName", ""), "url": "", "model": "",
+        "service": content.get("displayServiceName", ""),
+        # 원문 링크·모델·버전은 원본 콘텐츠 행에서 읽어 온 값 · 빈 값이면 화면에서
+        # 링크·배지가 사라져 그 부재가 골드 표시가 된다(지어내지 않고 가져온다).
+        "url": om.get("url", ""), "model": om.get("model", ""), "version": om.get("version"),
         "body": content.get("body", ""), "summary": exp.get("summary", ""),
         "entities": exp.get("entities", []) or [], "intent": exp.get("intent", []) or [],
-        "category": exp.get("content_category", []) or [],
-        "grade": ("R" if grade == "G" else "G") if flip else grade,
-        "reasons": exp.get("reasons", []) or [], "version": None,
+        "category": shown,
+        "grade": exp.get("finalGrade", "") or "G",
+        "reasons": exp.get("reasons", []) or [],
         "final_reason": "의견 갈림", "final": "",
         "fb": {"n": 2, "good": 1, "bad": 1, "verdict": "", "ts": 0}})
     return out
@@ -448,7 +477,12 @@ def apply_gold_answer(data: dict) -> dict:
         return {"ok": True, "gold": None}
     expected = "good" if parts[1] == "ok" else "bad"
     reviewer = (data.get("reviewer") or "").strip() or "(익명)"
-    correct = st.save_gold_check(parts[2], reviewer, expected, verdict, team=data.get("_team"))
+    # 원장에는 출제 방식을 붙여 남긴다(`bad@category`). 2026-08-13 이전 회차는 심는 결함이
+    # 등급이었고 지금은 카테고리라, 같은 `correct` 라도 **잰 것이 다르다**. 표기 없는 행이
+    # 옛 회차다 · 표기를 안 붙이면 과거 신뢰도와 조용히 한 분모에 섞인다.
+    # 정오 판정은 저장 계층의 expected==verdict 그대로다(양쪽에 같은 표기를 붙인다).
+    correct = st.save_gold_check(parts[2], reviewer, f"{expected}@{GOLD_SCHEME}",
+                                 f"{verdict}@{GOLD_SCHEME}", team=data.get("_team"))
     _SV._log_activity_rollup(team=data.get("_team"), gold_n=1,
                              gold_correct=(1 if correct else 0))   # 활동 원장(골드 응답)
     missions = _check_missions(reviewer, data.get("_team"))
@@ -632,6 +666,25 @@ def save_badges(uid, earned) -> dict:
     return {"ok": True, "badges": labels, "persisted": False}
 
 
+def _gold_patch() -> dict:
+    """골드 문항 교정 요청: **받되 아무 데도 쓰지 않는다.** 응답은 성공한 교정과 똑같다.
+
+    골드 문항이 카테고리를 뒤집어 내보내면 검수자가 그 자리를 고치려 드는 것이 정상 반응이다.
+    종전에는 합성 해시(`gold:…`)가 어느 콘텐츠 행에도 없어 `{"ok": false}` 가 나갔고,
+    화면은 "저장 실패" 토스트를 띄웠다 · **골드에서만 뜨는 오류는 곧 골드 표시**다.
+    그렇다고 어딘가에 쓸 수도 없다. 쓸 수 있는 자리가 둘 다 못 쓴다:
+      · 밑에 깔린 골든 콘텐츠 행: 그 행의 item_meta 가 곧 정답이다. 덮어쓰면 정답셋이
+        검수자의 오답으로 바뀐다.
+      · patch_log: learnops 의 DPO 내보내기가 이 표를 그대로 선호쌍(before=rejected /
+        after=chosen)으로 쓴다. 우리가 심은 가짜 카테고리가 '모델이 낸 나쁜 값'으로
+        학습 데이터에 들어간다. 게다가 adminops 는 patch_log 행마다 점수를 준다.
+    그래서 받아만 두고 버린다. 검수자 화면은 로컬 사본을 갱신하므로 평범한 콘텐츠와
+    동작이 같고, 골드의 채점은 원래대로 판정(정확/수정필요) 하나로 이뤄진다.
+    (요소 단위 채점 = '그 자리를 되돌리는 교정을 냈는가' 는 gold_checks 스키마 확장이
+    필요해 이번 변경에 넣지 않았다 · PR 본문의 마이그레이션 SQL 참고)"""
+    return {"ok": True}
+
+
 def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     """검수자 구조화 교정(빈 카테고리 채우기 등) → 저장된 item_meta 패치. 골든 완성에 기여.
     교정 전/후를 patch_log 에 append(선호쌍 데이터 원천 · 다중 요소 교정 무손실).
@@ -640,6 +693,8 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     if not (st and hasattr(st, "update_item_meta")):
         return {"ok": False, "error": "지원하지 않는 저장소"}
     ch = (content_hash or "").strip()
+    if ch.startswith(("gold:", "goldf:")):
+        return _gold_patch()
     patch = dict(patch or {})
     grade = patch.pop("finalGrade", None)
     reasons = patch.pop("reasons", None)
@@ -902,22 +957,36 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "source_status": ref.get("source_status") or {}})   # 원문 소실 신고 플래그(게시판 #10)
     # 골드 문항(정답 알려진 검증 문항) 삽입: 큐와 동일 규칙, 표 형태로 어댑트.
     # 검수할 실제 콘텐츠가 있을 때만 섞는다 — 콘텐츠 전체 삭제 후 골드만 홀로 남는 오인 방지.
+    # 모델·버전·검수티어·원문링크는 골드 문항이 **원본 콘텐츠 행에서 실어 온 값**을 그대로
+    # 쓴다. 종전에는 여기서 ""·None·"yellow" 를 박았는데, 2026-08-13 운영 실측으로
+    # 콘텐츠 1,451건 전량이 model·version·source_url 을 갖고 있고 review 는 99.1%(1,438건)가
+    # 'auto' 였다 · 즉 '모델 배지 없음'·'원문 탭 없음'·'항상 YELLOW' 셋 다 골드에만 나타나는
+    # 모양이었다. 가리는 값이 아니라 원본 값을 실어야 구분되지 않는다.
     if reviewer and out:
         gold_items = _SV._inject_gold([], reviewer, team)
         for g in gold_items:
+            gcats = g.get("category", []) or []
             out.insert(0, {"hash": g["hash"], "service": g.get("service", ""), "title": g.get("title", ""),
-                           "body": g.get("body", ""), "url": "", "images": [],
+                           "body": g.get("body", ""), "url": g.get("url", ""), "images": [],
                            "grade": g.get("grade", ""), "reasons": g.get("reasons", []) or [],
-                           "category": g.get("category", []) or [],
+                           "category": gcats,
                            "summary": g.get("summary", ""), "entities": g.get("entities", []) or [],
                            "entities_scored": EC.scored_entities(
                                {"entities": g.get("entities", []) or [], "summary": g.get("summary", "")},
                                {"title": g.get("title", ""), "body": g.get("body", "")}),
                            "intent": g.get("intent", []) or [],
-                           "model": "", "version": None, "review": "yellow", "split": False,
+                           "model": g.get("model", ""), "version": g.get("version"),
+                           "review": g.get("review", ""), "split": False,
+                           # 분류 부족 배지·정렬(rawGapFirst)이 읽는 값 · 화면에 그려진 카테고리 기준
+                           "class_gap": bool(lack and {str(c).split("/")[0].strip()
+                                                       for c in gcats} & lack),
+                           # 아래 다섯은 값이 '없음' 인 게 참이다(골드는 배정·최종판정·
+                           # 노출제한·원문신고 대상이 아니다). 키를 빼면 행 모양이 달라진다.
+                           "final": "", "ops_hold": False, "source_status": {},
+                           "assignees": [], "min_reviewers": 0,
                            "fb": {"verdict": "", "n": 0, "ts": 0},
                            "item_meta": {"summary": g.get("summary", ""), "entities": g.get("entities", []),
-                                         "intent": g.get("intent", []), "content_category": g.get("category", [])},
+                                         "intent": g.get("intent", []), "content_category": gcats},
                            "quality_meta": {"finalGrade": g.get("grade", ""), "reasons": g.get("reasons", [])}})
     return {"ok": True, "items": out, "n": len(out)}
 
@@ -1094,30 +1163,106 @@ def review_queue(data: dict) -> dict:
     return {"ok": True, "items": items, "n": len(items)}
 
 
+def gold_wrong_category(cats, h: str):
+    """골드 변형: 카테고리 한 자리를 같은 분류 체계 안의 **다른** 값으로 바꾼다.
+
+    · 참값과 Tier1 이 하나도 겹치지 않는 값만 고른다. 정답이 하나로 정해져야 "그 자리를
+      되돌리는 교정" 이라는 이분 채점이 성립한다(같은 Tier1 안의 이웃 Tier2 로 바꾸면
+      '둘 다 맞다' 는 판단이 정당해져 채점이 흐려진다).
+    · 자리 수는 그대로 둔다(참값 목록 길이 = 표시 목록 길이). 개수가 달라지면 그 자체가
+      평범한 초안과 다른 모양이 된다.
+    · 고르는 값은 **콘텐츠 해시로만** 결정한다. 검수자·시각과 무관해야 같은 문항이 폴링
+      때마다, 사람마다 같은 모양으로 보인다.
+    반환: 바꾼 목록 · 바꿀 수 없으면 None(그 골든은 출제 후보에서 빠진다)."""
+    true = [str(c).strip() for c in (cats or []) if str(c).strip()]
+    if not true:
+        return None                                  # 뒤집을 값이 없다
+    taken = {c.split("/")[0].strip() for c in true}
+    pool = [f"{t1} / {t2}" for t1 in D.IAB_TIER1 if t1 not in taken
+            for t2 in D.CONTENT_CATEGORY_TIER2.get(t1, [])]
+    if not pool:
+        return None
+    import random as _rd
+    rng = _rd.Random(int(h, 16))
+    out = list(true)
+    out[rng.randrange(len(out))] = pool[rng.randrange(len(pool))]
+    return out
+
+
+def _golden_rows(st, team):
+    """골든 전량(원문 포함) · 원격 스토어만 30s 캐시 · /queue·/raw 로드마다 재조회 방지.
+    골든 쓰기 경로(등록·삭제·학습 배치)는 전부 _agg_bump 호출 · 문항 선택은 (검수자,일자)
+    시드로 결정적이라 캐시로 출제가 달라지지 않는다."""
+    if getattr(st, "REMOTE", False):
+        return _SV._agg_cached_store(("golden", team), st, lambda: st.get_golden(team))
+    return st.get_golden(team)
+
+
+def _gold_origin_meta(st, hashes, team) -> dict:
+    """골든 해시 → 원본 콘텐츠 행의 {"model","version","review","url"}.
+    조회 실패는 빈 dict(= 전 후보 탈락 · fail-closed). 캐시 키는 팀 단위 · 후보 목록은
+    검수자마다 다르지만 이 표는 팀에서 하나뿐이라 검수자별로 갈리지 않는다."""
+    fn = getattr(st, "origin_meta_for", None)
+    hs = sorted({h for h in (hashes or []) if h})
+    if not (fn and hs):
+        return {}
+    try:
+        if getattr(st, "REMOTE", False):
+            return _SV._agg_cached_store(("goldorigin", team), st, lambda: fn(hs, team=team)) or {}
+        return fn(hs, team=team) or {}
+    except Exception:
+        return {}
+
+
+def _gold_candidates(st, team, answered) -> list:
+    """출제 가능한 골드 후보 [(h, content, exp, origin, shown_cats, flip)].
+
+    후보에서 빠지는 두 경우 모두 **골드가 화면에서 티 나는 것을 막기 위한 fail-closed** 다.
+      · 원본 콘텐츠 행을 못 읽는 골든: 모델·버전·검수티어·원문링크가 빈 행은 화면에서
+        배지와 탭이 통째로 사라지고, 그 부재가 곧 골드 표시다. 없는 값을 지어내는 대신
+        출제를 포기한다(2026-08-13 운영 실측: 골든 240건 중 218건(90.8%)이 원본 생존 ·
+        그 218건은 전부 model·version·review·source_url 을 갖고 있다).
+      · 해시 홀짝이 '뒤집기' 인데 카테고리를 뒤집을 수 없는 골든: 뒤집지 않은 채 정답만
+        '수정필요' 로 매기면 채점이 거짓이 된다."""
+    from .store import content_hash as _chash
+    rows = []
+    for g in _golden_rows(st, team):
+        content, exp = g.get("content") or {}, g.get("expected") or {}
+        h = _chash(content)
+        if not content.get("title"):
+            continue
+        rows.append((h, content, exp))
+    origin = _gold_origin_meta(st, [h for h, _c, _e in rows], team)
+    out = []
+    for h, content, exp in rows:
+        if h in answered:
+            continue
+        om = origin.get(h) or {}
+        if not (om.get("model") or "").strip():      # 원본 미상 = 부속 정보가 빈 행 = 골드 표시
+            continue
+        flip = int(h, 16) % 2 == 1                   # 홀수 = 카테고리 한 자리 뒤집기(정답 bad)
+        cats = exp.get("content_category", []) or []
+        shown = gold_wrong_category(cats, h) if flip else [str(c) for c in cats]
+        if shown is None:
+            continue
+        out.append((h, content, exp, om, shown, flip))
+    return out
+
+
 def _inject_gold(items: list, reviewer: str, team=None) -> list:
     """골든셋에서 골드 문항을 생성해 큐에 삽입(블라인드). [Oleson 2011 · Kittur 2008]
-    변형: hash 짝수 = 원본 그대로(정답 good) / 홀수 = 등급 뒤집기(정답 bad).
+    변형: hash 짝수 = 원본 그대로(정답 good) / 홀수 = **카테고리 한 자리 뒤집기**(정답 bad).
+    등급·리드문·엔티티·인텐트는 참값 그대로 · 뒤집는 값을 등급에서 옮긴 이유는 이 모듈
+    머리의 GOLD_FLIP_ELEMENT 주석 참고(저장된 근거와 화면이 어긋나지 않게 · 2026-08-13).
     선택·위치는 (검수자, 일자) 시드로 결정적(폴링 때마다 재배치 방지). 응답한 문항은 재출제 안 함."""
     st = _SV.get_store()
     if not (reviewer and st and hasattr(st, "get_golden") and hasattr(st, "gold_answered")):
         return items
     try:
-        # 골든 전량(원문 포함)은 원격 스토어만 30s 캐시 — /queue·/raw 로드마다 재조회 방지.
-        # 골든 쓰기 경로(등록·삭제·학습 배치)는 전부 _agg_bump 호출 · 문항 선택은
-        # (검수자,일자) 시드 결정적이라 캐시로 출제가 달라지지 않는다.
-        golden = (_SV._agg_cached_store(("golden", team), st, lambda: st.get_golden(team))
-                  if getattr(st, "REMOTE", False) else st.get_golden(team))
         answered = st.gold_answered(reviewer, team=team)
+        cands = _gold_candidates(st, team, answered)
     except Exception:
         return items
-    from .store import content_hash as _chash
-    cands = []
-    for g in golden:
-        content, exp = g.get("content") or {}, g.get("expected") or {}
-        h = _chash(content)
-        if h in answered or not content.get("title"):
-            continue
-        cands.append((h, content, exp))
     if not cands:
         return items
     import hashlib as _hl
@@ -1127,16 +1272,23 @@ def _inject_gold(items: list, reviewer: str, team=None) -> list:
     rng.shuffle(cands)
     k = min(len(cands), max(1, len(items) // 10))
     out = list(items)
-    for h, content, exp in cands[:k]:
-        flip = int(h, 16) % 2 == 1                  # 홀수 = 등급 뒤집기(정답 bad)
-        grade = exp.get("finalGrade", "") or "G"
-        item = {"hash": f"gold:{'bad' if flip else 'ok'}:{h}",
-                "service": content.get("displayServiceName", ""), "title": content.get("title", ""),
-                "body": content.get("body", ""), "summary": exp.get("summary", ""),
-                "entities": exp.get("entities", []) or [], "intent": exp.get("intent", []) or [],
-                "category": exp.get("content_category", []) or [],
-                "grade": ("R" if grade == "G" else "G") if flip else grade,
-                "reasons": exp.get("reasons", []) or [], "review_reason": "",
-                "reviewed": False, "split": False, "confidence": None, "ts": None}
-        out.insert(rng.randint(0, len(out)), item)
+    for h, content, exp, om, shown, flip in cands[:k]:
+        out.insert(rng.randint(0, len(out)), _gold_item(h, content, exp, om, shown, flip))
     return out
+
+
+def _gold_item(h, content, exp, om, shown, flip) -> dict:
+    """골드 문항 1건(큐 행 계약). 뒤집는 값은 카테고리 하나뿐이고 나머지는 전부 참값이다.
+    모델·버전·검수티어·원문링크는 **원본 콘텐츠 행에서 읽어 온 값** · 지어내지 않는다.
+    (빈 값이면 화면에서 배지·탭이 사라져 그 부재가 골드 표시가 된다. 못 읽은 골든은
+    애초에 후보에서 빠진다 · _gold_candidates)"""
+    return {"hash": f"gold:{'bad' if flip else 'ok'}:{h}",
+            "service": content.get("displayServiceName", ""), "title": content.get("title", ""),
+            "body": content.get("body", ""), "summary": exp.get("summary", ""),
+            "entities": exp.get("entities", []) or [], "intent": exp.get("intent", []) or [],
+            "category": shown,
+            "grade": exp.get("finalGrade", "") or "G",
+            "reasons": exp.get("reasons", []) or [], "review_reason": "",
+            "model": om.get("model", ""), "version": om.get("version"),
+            "review": om.get("review", ""), "url": om.get("url", ""),
+            "reviewed": False, "split": False, "confidence": None, "ts": None}

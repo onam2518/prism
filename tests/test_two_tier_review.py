@@ -32,7 +32,11 @@ class TwoTierBase(unittest.TestCase):
         ch = content_hash(content)
         im = {"summary": title, "entities": [], "intent": [], "content_category": list(cats)}
         payload = {"quality_meta": {"review": "yellow", "finalGrade": grade, "reasons": []},
-                   "item_meta": im, "content_ref": dict(content)}
+                   "item_meta": im,
+                   "content_ref": dict(content, source_url="https://example.test/" + ch),
+                   # 골드 문항이 모델·버전·검수티어·원문링크를 원본 행에서 실어 온다
+                   # (없으면 출제 후보에서 빠진다 · reviewops._gold_candidates)
+                   "trace": {"model": "m-test", "version": 2}}
         c = st._conn()
         c.execute("INSERT OR REPLACE INTO results(content_hash,service,title,final_grade,reasons,item_meta,payload,created_at) "
                   "VALUES(?,?,?,?,?,?,?,?)",
