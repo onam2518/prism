@@ -72,6 +72,7 @@ from . import evalops as EVO
 from . import deployops as DEP
 from . import crewops as CRW           # 검수 인력 운영(HR) · '검수운영' 메뉴
 from . import weekops as WKO           # 주간 운영 기록(주 마감 스냅샷 적립·조회)
+from . import mcpkeys as MK           # MCP 파트너 키(트랙 B · 외부 MCP) · 발급·해석·레이트리밋
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
@@ -80,6 +81,8 @@ from . import caagent as CA           # 콘텐츠 에이전트(실험실): 자�
 CA._SV = sys.modules[__name__]      # 동일 주입
 from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외부 MCP 공용 단일 원천
 PTL._SV = sys.modules[__name__]     # 동일 주입
+from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
+RA._SV = sys.modules[__name__]      # 동일 주입
 from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
@@ -88,6 +91,7 @@ DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Ateli
 CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
 ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
 WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
+MK._SV = sys.modules[__name__]      # MCP 파트너 키 주입(동일 · 전송 /mcp 는 mcpkeys 만 부른다)
 
 # 스펙트럼(실험실 · 사내 MCP 허브): serve 상태를 쓰지 않는 자립 모듈이라 _SV 주입이 없다.
 from . import spectrumops as SPO
@@ -1768,6 +1772,20 @@ def _g_deployments(h, q):
     return deployments_list(h._req_team())
 
 
+@_get_route("/mcp-keys")                             # 내 MCP 파트너 키 목록(비밀 없음 · 접두 6자만)
+def _g_mcp_keys(h, q):
+    # 소유자는 세션에서만 온다 · 쿼리로 남의 uid 를 넣어 목록을 바꿔치기할 자리를 두지 않는다.
+    # 관리자라도 남의 키는 보지 않는다(키 = 개인 자격증명 · 권한이 아니라 소유의 문제).
+    team = MK.scope_team(h._req_team())
+    uid = h._bearer_uid() or "local"
+    items = MK.list_keys(uid, team)
+    for k in items:                                  # 오늘 사용량(성공/실패 버킷 분리 · 감사 O2)
+        k["usage"] = MK.usage(k["key_id"], team, uid)
+    return {"ok": True, "items": items, "max": MK.MAX_KEYS_PER_USER,
+            "default_days": MK.DEFAULT_DAYS, "max_days": MK.MAX_DAYS,
+            "per_min": MK.PER_MIN, "per_day": MK.PER_DAY, "hint": MK.ONCE_HINT}
+
+
 @_get_route("/api/v1/prompt")                        # 공개 서빙: slug + Bearer pr_live_ 키(자체 검증)
 def _g_api_prompt(h, q):
     # 무인증 공개 경로 · 호출마다 원격 왕복(deploy_by_slug + deploy_keys_for)을 유발하므로
@@ -2189,6 +2207,24 @@ def _p_deployment_key_new(h, body):
 def _p_deployment_key_revoke(h, body):
     d = json.loads(body or b"{}")
     return deployment_key_revoke(int(d.get("id") or 0), int(d.get("key_id") or 0), h._req_team())
+
+
+# ── MCP 파트너 키(트랙 B · 외부 MCP) · 로직은 전부 mcpkeys.py ──
+# gate="team" 인 이유: 팀 없는 계정이 키를 만들면 그 키의 모든 스토어 호출이 team=None 으로
+# 나가고 저장 계층이 그걸 '전 팀'으로 읽는다(감사 H1). mcpkeys.issue 도 같은 것을 다시 막는다.
+@_post_route("/mcp-key-new", gate="team")            # 키 발급(평문 1회 노출 · sha256 저장)
+def _p_mcp_key_new(h, body):
+    d = json.loads(body or b"{}")
+    return MK.issue(h._bearer_uid() or "local", MK.scope_team(h._req_team()),
+                    days=d.get("days") or MK.DEFAULT_DAYS, label=d.get("label") or "")
+
+
+@_post_route("/mcp-key-revoke", gate="team")         # 폐기: (key_id, team, 소유자) 3중 필터(감사 O3)
+def _p_mcp_key_revoke(h, body):
+    # 소유자는 **세션에서만** 온다(본문에서 받지 않는다) — 받으면 그 값이 곧 사칭 파라미터가 된다.
+    d = json.loads(body or b"{}")
+    ok = MK.revoke(d.get("key_id") or "", MK.scope_team(h._req_team()), h._bearer_uid() or "local")
+    return {"ok": ok} if ok else {"ok": False, "error": "키를 찾을 수 없습니다"}
 
 
 @_post_route("/builder-test", gate="admin")          # 컴파일 산출을 테스트 모델로 1회 실행(실모델 비용)
@@ -2829,6 +2865,23 @@ def _p_run(h, body):
         import traceback
         traceback.print_exc()                        # 인입 실패는 원인 추적용 트레이스 유지(기존 동작)
         raise
+
+
+@_post_route("/assist", gate="team")                 # 내부 검수 보조(트랙 A) 도구 · 팀 콘텐츠·검수 이력을 읽는다
+def _p_assist(h, body):
+    try:
+        d = json.loads(body or b"{}")
+    except (TypeError, ValueError):
+        d = None
+    d = d if isinstance(d, dict) else {}         # 본문이 배열·스칼라여도 500 이 아니라 도구 오류로
+    # 팀은 세션에서 해석한 값만 넘긴다(본문의 team 은 무시 · 도구 스키마에도 없다).
+    # 로컬 sqlite 는 단일 팀이라 저장 계층이 team 을 무시하므로, 고정 스코프를 넣어
+    # 도구 게이트(need_team)를 통과시킨다. supabase 에서 팀이 없으면 그대로 fail-closed.
+    team = h._req_team() or (None if _supa() else "local")
+    r = RA.call(d.get("tool"), d.get("args") or {}, team=team)
+    if isinstance(r, dict) and r.get("error"):
+        return {"ok": False, "error": r["error"]}
+    return {"ok": True, "result": r}
 
 
 # 디스패치 순서: 접두 길이 내림차순 → /reviewer-role·/content-assign-bulk·/golden-remove·

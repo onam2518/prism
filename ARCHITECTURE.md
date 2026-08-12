@@ -19,6 +19,8 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
    ├─ topic.py / entdict.py / dictionaries.py / usermeta.py / mediaext.py / imagext.py
    │  modelmeta.py(모델 표시 정보 · 이름/제공자/비용 등급 · 선택 드롭다운 원천)
+   │  mcpkeys.py(MCP 파트너 키 · 트랙 B 외부 MCP · 발급/해석/레이트리밋/사용 기록 ·
+   │             저장은 store/supastore 의 mcp_* 계약 · 전송 /mcp 는 resolve·rate_check·log_call 만 쓴다)
    │  spectrumops.py(스펙트럼 · 사내 MCP 허브 프로토타입 · _SV 없이 독립 · 저장은 JSON 사이드카)
    │              도메인 모듈(비교적 잘 분리된 편 · 새 기능은 이 패턴을 따를 것)
    └─ store.py(SQLite 로컬) / supastore.py(Supabase 팀 운영)   저장 계층(동일 계약)
@@ -87,6 +89,10 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   검수운영 마크업은 `19b-crew.html`, 탭 게이트는 권한 id `crew`(앞뒤 동일).
   **주의 ③**: `x-show` 와 같은 요소에 인라인 `display:flex` 를 주지 않는다. Alpine 이 보일 때
   display 속성을 지워 flex 가 날아간다(자식이 세로로 쌓여 그래프가 뭉갬) — `.flexrow` 클래스 사용.
+  **주의 ④**: 조각은 최상위로만 이어붙는다 — 기존 화면 **안쪽**에 끼워야 하면 그 자리에
+  자리표 한 줄(`<div id="…" style="display:contents">`)만 두고 본문은 새 조각에서
+  `<template x-teleport="#자리표">` 로 꽂는다(예: 검수 보조 `19e-review-assist.html` →
+  `20-ingest-policy.html` 의 `#asxSlot`). 충돌 잦은 조각에 큰 마크업을 밀어 넣지 않기 위한 관례.
 - 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 14개 + 로더 `vendor/app.js` 가
   디스크립터 병합(게터 보존 · 조각 간 `this` 공유). 조각 → 로더 로드 순서는
   `ui/00-head.html` 의 script 태그가 원천. `vendor/mobile.js` = /m 전용(단일 파일).

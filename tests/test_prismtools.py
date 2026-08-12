@@ -105,6 +105,27 @@ class TestTaxonomy(unittest.TestCase):
             self.assertIsInstance(v["desc"], str)
 
 
+class TestEntityLookup(unittest.TestCase):
+    def test_no_cross_team_frequency_is_emitted(self):
+        """엔티티 등장 수는 팀에 종속되는데 ent_list 는 team 축이 없다(카운트가 무조건 전역).
+
+        종전 seen 필드는 스토어가 다는 키(n_contents)와 이름이 어긋나 늘 0 이었고, 그 죽은
+        상태가 우연히 유출을 막고 있었다. '오타' 로 보고 키만 맞추면 그 순간 교차 팀 유출이
+        생긴다 — 필드가 다시 생기지 않게 항목 키를 고정한다(되살리려면 스토어부터)."""
+        class FakeStore:
+            def ent_list(self, q="", type_="", status="", limit=300):
+                return [{"entity_id": "e1", "name": "벨루가", "type": "PS",
+                         "status": "listed", "aliases": ["beluga"], "n_contents": 3}]
+
+        orig = PT._SV
+        PT._SV = type("SV", (), {"get_store": staticmethod(lambda: FakeStore())})
+        self.addCleanup(lambda: setattr(PT, "_SV", orig))
+        r = PT.call("lookup_entity", {"name": "벨루가"}, team=TEAM)
+        self.assertEqual(r["items"][0].keys() | set(),
+                         {"entity_id", "name", "type", "status", "aliases"})
+        self.assertNotIn("3", str(r))               # 전역 카운트가 어떤 이름으로도 새지 않는다
+
+
 class TestRegistry(unittest.TestCase):
     def test_scope_filtering(self):
         for scope in ("internal", "external"):
