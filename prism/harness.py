@@ -120,8 +120,11 @@ def st_quality(ctx: HCtx):
     if ctx.prefilter is not None:
         ctx.pred_v, ctx.pred_c, pre_reasons = ctx.prefilter.predict(ctx.content)
         if ctx.pred_v is not None and ctx.pred_c >= m.prefilter_conf:    # 고신뢰 → LLM skip
+            # 근거는 '모델이 설명한 문장'이 아니라 '임베딩이 자동 판정했다'는 사실 그대로 남긴다.
+            # 검수 보조 브리핑이 이 값을 근거로 보여주므로, LLM 이 안 돈 건을 돈 것처럼 보이면 안 된다.
             qm = QualityMeta(finalGrade=ctx.pred_v, reasons=list(pre_reasons),
-                             confidence=round(ctx.pred_c, 3))
+                             confidence=round(ctx.pred_c, 3),
+                             evidence=f"임베딩 사전필터 자동 판정(신뢰도 {round(ctx.pred_c, 3)}) · LLM 미호출")
             ctx.verdicts.append({"agent": "QualityPrefilter(emb)",
                                  "evidence": f"conf={ctx.pred_c} (auto)", "fail": None})
         else:

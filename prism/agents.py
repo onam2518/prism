@@ -4,6 +4,23 @@ from . import prompts as P
 from .schema import QualityMeta, ItemMeta, LegalMeta, HarmType
 
 
+EVIDENCE_MAX = 400        # 근거 문장 보관 상한(문장 한둘이면 충분 · 적재 payload 비대화 방지)
+
+
+def _evidence_text(obj) -> str:
+    """모델 응답에서 근거 문장을 꺼낸다. 문자열이 아니면(목록·객체) 읽을 수 있게 펴서 담는다.
+
+    지어내지 않는다 — 모델이 준 값만 쓰고, 없으면 빈 문자열이다. 이 값은 검수 보조 브리핑의
+    '왜 그렇게 판정했나' 원천이라, 나중에 다시 물어 재생성하면 사후 추측이 된다(2026-08-12)."""
+    ev = obj.get("evidence") if isinstance(obj, dict) else None
+    if isinstance(ev, (list, tuple)):
+        ev = " · ".join(str(x).strip() for x in ev if str(x).strip())
+    elif isinstance(ev, dict):
+        ev = " · ".join(f"{k}: {v}" for k, v in ev.items())
+    ev = str(ev or "").strip()
+    return ev[:EVIDENCE_MAX]
+
+
 def run_quality(llm, content, routing, fewshot: str = "") -> tuple[QualityMeta, list]:
     """단일 좁힌 콜(기본). active set 으로 규칙 적재를 줄여 Solar 규칙망각 완화.
     fewshot: 쿡북 Ch4 few-shot 예시 블록(모델 레시피로 결정)."""
@@ -11,27 +28,29 @@ def run_quality(llm, content, routing, fewshot: str = "") -> tuple[QualityMeta, 
                            examples=fewshot)
     obj, res = llm.complete_json(sys, P.quality_user(content), tag="quality")
     grade = obj.get("finalGrade")
+    ev = _evidence_text(obj)
     if obj.get("_fail"):                       # 호출 실패 = 판정 보류(빈 응답을 G 로 유통하지 않는다 · fail-open 금지)
         qm = QualityMeta(finalGrade="", reasons=[], review="yellow",
-                         review_reason="품질 호출 실패 · 판정 보류")
+                         review_reason="품질 호출 실패 · 판정 보류", evidence=ev)
     elif not isinstance(grade, str) or not grade.strip():
         # 계약 키 부재(래핑·이름 변형 응답)·빈 등급 = 판정이 없는 것. 종전 기본값 "G" 는
         # 모델이 R 이라고 해도 자동 G 로 유통시켰다(파싱은 성공해 fail_kind 도 안 붙는 사각지대).
         qm = QualityMeta(finalGrade="", reasons=obj.get("reasons", []) or [], review="yellow",
-                         review_reason="품질 응답에 finalGrade 없음 · 판정 보류")
+                         review_reason="품질 응답에 finalGrade 없음 · 판정 보류", evidence=ev)
     else:
         qm = QualityMeta(
             finalGrade=grade,
             reasons=obj.get("reasons", []) or [],
+            evidence=ev,
         )
-    verdict = {"agent": "QualityAgent", "evidence": obj.get("evidence", ""),
+    verdict = {"agent": "QualityAgent", "evidence": ev,
                "fail": obj.get("_fail")}
     return qm, [res, verdict]
 
 
 def run_quality_split(llm, content, routing) -> tuple[QualityMeta, list]:
     """분해형(옵션 A/B). 4개 관심사 묶음을 각각 좁은 규칙으로 호출."""
-    reasons, results, verdicts = [], [], []
+    reasons, results, verdicts, evs = [], [], [], []
     failed = False
     for gkey in P.QUALITY_GROUPS:
         sys = P.quality_group_system(gkey, routing.active_quality_metas, routing.service_group)
@@ -41,12 +60,16 @@ def run_quality_split(llm, content, routing) -> tuple[QualityMeta, list]:
         failed = failed or bool(obj.get("_fail"))
         reasons += obj.get("reasons", []) or []
         results.append(res)
-        verdicts.append({"agent": f"QualityAgent:{gkey}", "evidence": obj.get("evidence", "")})
+        ev = _evidence_text(obj)
+        if ev:                                 # 묶음별 근거는 어느 묶음 것인지 붙여 합친다
+            evs.append(f"[{gkey}] {ev}")
+        verdicts.append({"agent": f"QualityAgent:{gkey}", "evidence": ev})
+    ev_all = " · ".join(evs)[:EVIDENCE_MAX]
     if failed:                                 # 일부 묶음이라도 실패 = 커버리지 불명 → 판정 보류(fail-open 금지)
         qm = QualityMeta(finalGrade="", reasons=reasons, review="yellow",
-                         review_reason="품질 호출 일부 실패 · 판정 보류")
+                         review_reason="품질 호출 일부 실패 · 판정 보류", evidence=ev_all)
     else:
-        qm = QualityMeta(finalGrade="R" if reasons else "G", reasons=reasons)
+        qm = QualityMeta(finalGrade="R" if reasons else "G", reasons=reasons, evidence=ev_all)
     return qm, results + verdicts
 
 
