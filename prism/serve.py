@@ -2748,8 +2748,15 @@ def _p_usermeta(h, body):
 @_post_route("/spectrum-gw")                         # 스펙트럼 관문(공개): 로그인 대신 접속 키로만 판단
 def _p_spectrum_gw(h, body):                         # MCP(JSON-RPC) · 단순 REST 두 갈래를 모듈이 구분
     # 로그인·팀·메뉴 게이트가 전부 면제된 무인증 경로 · 키 대입과 상태 파일 쓰기 증폭 억제
-    # (/auth·/check-source 와 같은 패턴 · MCP 클라이언트의 정상 연사에는 여유 있는 상한)
-    if rate_limited("spgw:" + _client_ip(h), min_interval=0.1, per_min=120):
+    # (/auth·/check-source 와 같은 패턴)
+    #
+    # 최소 간격을 두지 않는다. 종전 0.1초는 "MCP 클라이언트의 정상 연사에는 여유 있다" 는
+    # 전제였는데 틀렸다 — 접속 절차(initialize → notifications/initialized → tools/list)가
+    # 한 연결에서 수십 ms 안에 끝나기 때문이다. 2026-08-12 운영 실측: 연결을 재사용해 보내면
+    # 1회 401(0.127s) → 2회 429(41ms 뒤) → 3회 429. 브라우저로 눌러 보는 시연은 간격이
+    # 넉넉해 통과하지만 `claude mcp add` 로 붙는 실제 클라이언트는 접속 단계에서 끊긴다.
+    # 남용 억제는 분당 총량이 맡는다(키 대입은 한 연결에서도 분당 120회를 넘길 수 없다).
+    if rate_limited("spgw:" + _client_ip(h), min_interval=0, per_min=120):
         h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
                                 ensure_ascii=False), _JSON)
         return None

@@ -623,6 +623,21 @@ class TestSpectrumGatewayRateLimit(SupaGateMixin, unittest.TestCase):
                  for _ in range(140)]
         self.assertIn(429, codes)
 
+    def test_mcp_handshake_is_not_rate_limited(self):
+        """MCP 접속 절차는 한 연결에서 연달아 나간다 — 최소 간격을 두면 정상 클라이언트가 끊긴다.
+
+        2026-08-12 운영 실측(연결 재사용): 1회 401(0.127s) → 2회 429(41ms 뒤) → 3회 429.
+        종전 min_interval=0.1 은 "정상 연사에는 여유 있다" 는 전제였는데, 접속 절차
+        (initialize → notifications/initialized → tools/list)가 수십 ms 안에 끝나 걸렸다.
+        브라우저 시연은 간격이 넉넉해 통과하므로 눈으로는 안 보인다.
+
+        상한 자체를 없애자는 게 아니다. 분당 총량(per_min)은 그대로여서 위 test_rate_limited
+        가 계속 지킨다. 여기서 막는 것은 **간격 규칙의 부활**뿐이다."""
+        codes = [self._call("/spectrum-gw",
+                            {"jsonrpc": "2.0", "id": i, "method": m, "params": {}})[0]
+                 for i, m in enumerate(("initialize", "notifications/initialized", "tools/list"))]
+        self.assertNotIn(429, codes, f"접속 절차가 상한에 걸렸다: {codes}")
+
 
 # ── P1: 클라이언트 조기 종료 가드 ────────────────────────────────────────────
 class TestDisconnectGuard(SupaGateMixin, unittest.TestCase):
