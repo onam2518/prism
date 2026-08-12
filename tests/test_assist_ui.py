@@ -16,9 +16,13 @@
 
 실행: python3 -m pytest tests/ -q  (stdlib unittest · 의존성 0)
 """
+import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -225,12 +229,110 @@ class TestAssistApp(unittest.TestCase):
         self.assertIn("asxSuggestOn()", _fn(js, "asxSuggest"))
 
     def test_parses_as_javascript(self):
-        import shutil
-        import subprocess
         if not shutil.which("node"):
             self.skipTest("node 미설치")
         r = subprocess.run(["node", "--check", APPJS], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr[:400])
+
+
+# ── 실행 단언(정적 검사로 못 잡는 것) ────────────────────────────────────────
+# 앞의 검사들은 "코드가 서버 응답을 읽는가" 를 문자열로 본다. 그것만으로는 부족하다.
+# 이번 작업에서 독립성이 깨진 세 자리 중 **플레이스홀더 건은 클라이언트의 렌더 선택**이라
+# 서버 응답이 양쪽 다 같았고(title=""), 서버 테스트로는 원리적으로 잡히지 않았다.
+# 잡을 수 있는 곳이 여기뿐이라 조각을 실제로 실행해 결과를 맞대 본다.
+#
+# 핵심은 '포함'이 아니라 '동일성'이다. "골드 자료가 안 들어갔다" 는 세 번 다 통과했다.
+# 물어야 할 것은 "평범한 행과 골드 행의 결과가 같은가" 이고, 다른 곳은 화면에 이미
+# 그려진 등급 한 글자뿐이어야 한다.
+_HARNESS = r"""
+const fs = require('fs');
+global.window = {};
+eval(fs.readFileSync(__JS__, 'utf8'));
+const part = window.PRISM_APP_PARTS[0]();
+const stubs = {                                  // 다른 조각이 주는 것들(app-01·03·08)
+  catKo: (v) => v,
+  reasonBoth: (v) => v,
+  INTENT_DEF: { '속보·사건 추적': '막 발생한 사건을 처음 알리는 글.' },
+  dictData: { qualityMetas: { ad: '광고성 정의문' }, qualityNames: { ad: '광고성' } },
+  myVerdict: () => '',
+  finalMode: false,
+};
+const app = Object.assign({}, stubs, part);
+const row = { hash: 'abc123', service: '뉴스', title: '전기요금 개편안 발표, 가구별 영향은',
+              category: ['News/Politics'], grade: 'G', reasons: ['ad'],
+              intent: ['속보·사건 추적'], entities: ['전기요금', '가구별'], fb: {} };
+const brief = { stage: 'before', has_evidence: false, evidence: null };
+
+app.detail = row;                                // (가) 평범한 행
+app.asxBrief = brief;
+const normal = { summary: app.asxSummary(), criteria: app.asxCriteria(), avail: app.asxAvail() };
+
+// (나) 같은 콘텐츠의 골드 사본 — 큐가 등급을 뒤집어 보여준다(_inject_gold) · 서버는 안 부른다
+app.detail = Object.assign({}, row, { hash: 'gold:bad:abc123', grade: 'R' });
+app.asxBrief = brief;
+const gold = { summary: app.asxSummary(), criteria: app.asxCriteria(), avail: app.asxAvail() };
+
+// (다) 서버가 저장된 참값(뒤집기 전 등급 G)을 실어 보내도 화면은 그걸 그리지 않는다
+app.asxBrief = Object.assign({}, brief, {
+  summary3: ['서버가 만든 요약', '모델 초안: 등급 G · 광고성', '서버 셋째 줄'],
+  values: { grade: 'G' },
+  criteria: [{ key: '서버기준', desc: '서버가 고른 기준' }],
+});
+const poisoned = { summary: app.asxSummary(), criteria: app.asxCriteria() };
+
+console.log(JSON.stringify({ normal, gold, poisoned }));
+"""
+
+
+class TestAssistGoldParityByExecution(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node 미설치")
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+            f.write(_HARNESS.replace("__JS__", json.dumps(APPJS)))
+            path = f.name
+        try:
+            r = subprocess.run(["node", path], capture_output=True, text=True)
+        finally:
+            os.unlink(path)
+        if r.returncode != 0:
+            raise AssertionError("조각 실행 실패: " + r.stderr[:500])
+        cls.out = json.loads(r.stdout)
+
+    def test_gold_row_still_gets_the_panel(self):
+        """패널 유무로 골드를 가르면 검수자가 골드를 배운다."""
+        self.assertTrue(self.out["normal"]["avail"])
+        self.assertTrue(self.out["gold"]["avail"])
+
+    def test_summary_differs_only_by_what_is_on_screen(self):
+        """평범한 행과 골드 사본의 3줄 요약은 **화면에 그려진 등급 한 글자**만 달라야 한다.
+
+        골드는 큐가 등급을 뒤집어 보여주므로 요약도 뒤집힌 값을 따라가야 화면과 일치한다.
+        서버가 만든 요약을 그리면 여기서 화면 등급과 요약 등급이 갈리고, 그 어긋남만으로
+        뒤집힌 문항이 드러난다."""
+        a, b = self.out["normal"]["summary"], self.out["gold"]["summary"]
+        self.assertEqual(len(a), 3)
+        self.assertEqual(len(b), 3)
+        self.assertEqual(a[0], b[0])                                   # 서비스·제목·카테고리
+        self.assertEqual(a[2], b[2])                                   # 인텐트·개체
+        self.assertIn("등급 G", a[1])
+        self.assertIn("등급 R", b[1])
+        self.assertEqual(a[1].replace("등급 G", "등급 R"), b[1])        # 나머지는 한 글자도 다르지 않다
+
+    def test_criteria_are_identical(self):
+        """분류 기준은 공용 사전에서 오므로 골드든 아니든 같아야 한다."""
+        self.assertEqual(self.out["normal"]["criteria"], self.out["gold"]["criteria"])
+        self.assertTrue(self.out["gold"]["criteria"])                  # 빈 비교로 통과하지 않게
+
+    def test_server_values_never_reach_the_panel(self):
+        """서버가 뒤집기 전 참값을 실어 보내도 화면 출력이 흔들리지 않는다(오라클 차단)."""
+        self.assertEqual(self.out["poisoned"]["summary"], self.out["gold"]["summary"])
+        self.assertEqual(self.out["poisoned"]["criteria"], self.out["gold"]["criteria"])
+        blob = " ".join(self.out["poisoned"]["summary"]) + json.dumps(
+            self.out["poisoned"]["criteria"], ensure_ascii=False)
+        for leaked in ("서버가 만든 요약", "서버 셋째 줄", "서버기준", "서버가 고른 기준"):
+            self.assertNotIn(leaked, blob, leaked)
 
 
 if __name__ == "__main__":
