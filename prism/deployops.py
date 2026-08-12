@@ -76,9 +76,14 @@ def deployment_key_new(dep_id, team=None) -> dict:
 
 
 def deployment_key_revoke(dep_id, key_id, team=None) -> dict:
+    """키 폐기. 형제 동작(key_new·remove·save·list)과 같은 (id, team) 소유 확인을 선행한다 —
+    이 경로만 team 을 받아 놓고 안 써서, 팀 관리자가 남의 팀 dep_id/key_id(순차 정수)로
+    타 팀 배포 키를 끊을 수 있었다(deployment_keys 에는 team 컬럼이 없어 스토어 필터가 유일한 방벽)."""
     st = _SV.get_store()
-    ok = bool(st and hasattr(st, "deploy_key_revoke")
-              and st.deploy_key_revoke(int(key_id), int(dep_id)))
+    dep = st.deploy_get(int(dep_id), team) if (st and hasattr(st, "deploy_get")) else None
+    if not dep:
+        return {"ok": False, "error": "배포를 찾을 수 없습니다"}
+    ok = bool(hasattr(st, "deploy_key_revoke") and st.deploy_key_revoke(int(key_id), int(dep_id)))
     return {"ok": ok} if ok else {"ok": False, "error": "키를 찾을 수 없습니다"}
 
 
@@ -90,20 +95,26 @@ def _snapshot(team, version: int):
         return None
 
 
+def _not_found():                # 슬러그·키 오류 공통 응답(호출마다 새 dict)
+    return 404, {"error": "unknown deployment or invalid api key"}
+
+
 def serve_prompt(slug: str, bearer: str, call: str = "") -> tuple[int, dict]:
     """공개 서빙: (HTTP 상태, 본문). 키는 배포별 sha256 대조 · revoked 제외.
-    반환 본문은 pin 된 스냅샷의 콜별 시스템 프롬프트(외부 호출측 계약)."""
+    반환 본문은 pin 된 스냅샷의 콜별 시스템 프롬프트(외부 호출측 계약).
+    슬러그 오류와 키 오류를 같은 404 로 답한다 — 예전처럼 '없는 슬러그 404 / 슬러그는 맞고
+    키만 틀리면 401' 로 갈리면 무인증 호출자가 응답 코드만으로 슬러그를 열거할 수 있다."""
     st = _SV.get_store()
     if not (st and hasattr(st, "deploy_by_slug")):
         return 503, {"error": "deployment store unavailable"}
     dep = st.deploy_by_slug((slug or "").strip().lower())
     if not dep or not dep.get("active"):
-        return 404, {"error": "unknown deployment"}
+        return _not_found()
     token = (bearer or "").strip()
     if token.lower().startswith("bearer "):
         token = token[7:].strip()
     if not token.startswith(KEY_PREFIX):
-        return 401, {"error": "missing or malformed api key"}
+        return _not_found()
     h = _hash(token)
     match = None
     for k in st.deploy_keys_for(dep["id"]):
@@ -111,7 +122,7 @@ def serve_prompt(slug: str, bearer: str, call: str = "") -> tuple[int, dict]:
             match = k
             break
     if not match:
-        return 401, {"error": "invalid api key"}
+        return _not_found()
     snap = _snapshot(dep.get("team"), int(dep.get("version") or 0))
     if not snap:
         return 404, {"error": "no prompt snapshot pinned"}

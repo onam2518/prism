@@ -188,6 +188,7 @@ _log_activity_rollup = DS._log_activity_rollup
 
 # 테스트·외부 호환 재수출(serve.<이름> 계약 유지) · 대입 형태 = pyflakes 미사용 오탐 회피
 topic_snapshot = TPO.topic_snapshot
+topic_snapshot_all = TPO.topic_snapshot_all
 similar_topics = TPO.similar_topics
 topic_personas = TPO.topic_personas
 _sanitize_def = TPO._sanitize_def
@@ -328,12 +329,24 @@ def _agg_bump():
     _AGG_VERSION += 1
 
 
+def _agg_sweep(now: float):
+    """만료·구버전 항목 회수. TTL 은 '읽을 때 무시' 판정일 뿐이라 이 정리가 없으면
+    값(전체 스냅샷)이 영구 적재된다 — 키에 사용자 식별자가 들어가는 항목(('crew', team, uid))이
+    있어 항목 수가 사용자 수에 비례한다. _RL_HITS·_TEAM_CACHE·_JWT_CACHE 와 같은 관례."""
+    if len(_AGG_CACHE) <= 256:
+        return
+    for k, v in list(_AGG_CACHE.items()):
+        if v[0] <= now or v[1] != _AGG_VERSION:
+            _AGG_CACHE.pop(k, None)
+
+
 def _agg_cached(key, fn, ttl: float = _AGG_TTL):
     now = time.time()
     hit = _AGG_CACHE.get(key)
     if hit and hit[0] > now and hit[1] == _AGG_VERSION:
         return hit[2]
     val = fn()
+    _agg_sweep(now)
     _AGG_CACHE[key] = (now + ttl, _AGG_VERSION, val)
     return val
 
@@ -347,6 +360,7 @@ def _agg_cached_store(key, st, fn, ttl: float = _AGG_TTL):
     if hit and hit[0] > now and hit[1] == _AGG_VERSION and len(hit) == 4 and hit[3]() is st:
         return hit[2]
     val = fn()
+    _agg_sweep(now)
     _AGG_CACHE[key] = (now + ttl, _AGG_VERSION, val, weakref.ref(st))
     return val
 
@@ -1347,7 +1361,7 @@ except ValueError:
 
 _FETCH_MAX = 16 * 1024 * 1024           # 인입 아웃바운드 응답 크기 상한(메모리 소진 방어)
 
-_PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/template.csv",
+_PUBLIC_GET = {"/", "/m", "/config", "/boot", "/favicon.ico", "/template.xlsx", "/template.csv",
                "/usermeta-template.csv", "/usermeta-profile-template.csv",
                "/api/v1/prompt",   # 배포 프롬프트 서빙(자체 Bearer 키 검증 · deployops)
                "/spectrum-gw"}     # 스펙트럼 관문 안내(무인증 · 실제 호출은 접속 키 검증)
@@ -1355,6 +1369,18 @@ _PUBLIC_GET = {"/", "/m", "/config", "/favicon.ico", "/template.xlsx", "/templat
 # 팀 없이도 접근 가능한 인증 GET(전역 참조·관리자 판정 · 팀 콘텐츠 데이터 아님).
 # 그 외 데이터 GET 은 supabase 모드에서 팀 소속을 요구(team=None 전 팀 폴백 격리 붕괴 차단).
 _TEAMLESS_OK_GET = {"/admin", "/models", "/vocab", "/dict", "/ingest-status"}
+
+
+def _qint(q, key: str, default: int, lo: int = 0, hi: int = 5000) -> int:
+    """쿼리 정수 파라미터 공통 파싱(라우트별 제각각이던 규약 통일).
+    비수치(`?limit=abc`)는 500 + 파이썬 예외 원문이 아니라 기본값으로 수렴하고,
+    범위 밖(음수·초대형)은 [lo, hi] 로 클램프한다 — 그대로 흘러가면 PostgREST 가 400 을
+    돌려주거나(음수) 상한 없는 전량 조회가 된다(512MB VM)."""
+    try:
+        v = int((q.get(key) or [default])[0])
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, v))
 
 
 def is_public_get(path: str) -> bool:
@@ -1407,6 +1433,14 @@ def _g_config(h, q):
     return config_status(h._req_team())
 
 
+@_get_route("/boot")                                 # 배포 감지 전용 경량 응답(무인증 공개)
+def _g_boot(h, q):
+    """부팅 ID 만 확인하는 폴링 경로. /m 이 새 버전 감지에 22KB 짜리 /config 를 통째로 받던 것을
+    대체한다(탭 복귀마다 + 10분 주기 · 실제로 쓰는 값은 18B bootId 하나).
+    데스크탑은 SSE hello 이벤트에 boot 이 실려 오므로 이 경로가 필요 없다."""
+    return {"bootId": _BOOT_ID, "build": _build_id()}
+
+
 @_get_route("/models")
 def _g_models(h, q):
     return list_models()
@@ -1428,7 +1462,7 @@ def _g_entdict_lookup(h, q):
 @_get_route("/entdict")
 def _g_entdict(h, q):
     return entdict_data(q=q.get("q", [""])[0], type_=q.get("type", [""])[0],
-                        status=q.get("status", [""])[0], limit=int(q.get("limit", ["300"])[0]))
+                        status=q.get("status", [""])[0], limit=_qint(q, "limit", 300, 1, 5000))
 
 
 @_get_route("/dict")
@@ -1444,9 +1478,10 @@ def _g_topic_drill(h, q):
 
 @_get_route("/topics")
 def _g_topics(h, q):
-    td = dict(topics_data())
+    team = h._req_team()
+    td = dict(topics_data(team))
     try:                                             # 자동 스냅샷 메타(마지막 시각·변화) 동반
-        snap = _report_get("topic_snapshots", None, {}) or {}
+        snap = _report_get("topic_snapshots", team, {}) or {}
         td["snapshot"] = {"last_ts": ((snap.get("entries") or [{}])[-1] or {}).get("ts"),
                           "delta": snap.get("last_delta")}
     except Exception:
@@ -1511,14 +1546,14 @@ def _g_queue(h, q):
     # 생성자(팀 생성자·슈퍼관리자)는 배정 배타 규칙을 우회해 전체 큐를 본다(/history 열람 권한과 동일 기준).
     see_all = is_super_admin_user(uid, h._req_team(), h._bearer_email())
     return review_queue({"only_unreviewed": q.get("all", ["0"])[0] not in ("1", "true"),
-                         "limit": (q.get("limit", ["100"])[0]), "team": h._req_team(),
+                         "limit": _qint(q, "limit", 100, 1, 5000), "team": h._req_team(),
                          "reviewer": uid or q.get("reviewer", [""])[0],
                          "see_all": see_all})
 
 
 @_get_route("/raw")                                  # 검수 대상 콘텐츠(모델·버전 필터 표 · 슬림 응답)
 def _g_raw(h, q):
-    return raw_rows(int(q.get("limit", ["100"])[0]), h._req_team(),
+    return raw_rows(_qint(q, "limit", 100, 1, 5000), h._req_team(),
                     reviewer=(h._bearer_uid() or q.get("reviewer", [""])[0]))
 
 
@@ -1631,20 +1666,12 @@ def _g_learn_data(h, q):
 
 @_get_route("/cost-rollup", admin=True)              # 비용 롤업(일별×모델×콜 · 관리자)
 def _g_cost_rollup(h, q):
-    try:
-        dq = int((q.get("days") or ["30"])[0])
-    except (TypeError, ValueError):
-        dq = 30
-    return cost_rollup_data(h._req_team(), days=dq)
+    return cost_rollup_data(h._req_team(), days=_qint(q, "days", 30, 1, 365))
 
 
 @_get_route("/fail-rollup", admin=True)              # 실패 트리아지(종류×모델×서비스 · 관리자)
 def _g_fail_rollup(h, q):
-    try:
-        fq = int((q.get("days") or ["30"])[0])
-    except (TypeError, ValueError):
-        fq = 30
-    return fail_rollup_data(h._req_team(), days=fq)
+    return fail_rollup_data(h._req_team(), days=_qint(q, "days", 30, 1, 365))
 
 
 @_get_route("/assign-log", admin=True)               # 배정 이력(누가·언제·어떻게 · 관리자)
@@ -1703,7 +1730,7 @@ def _g_crew_weekly(h, q):
         WKO.capture(team, crew=data)
     except Exception:
         pass
-    return WKO.weekly_records(team, weeks=int(q.get("weeks", ["8"])[0] or 8), crew=data)
+    return WKO.weekly_records(team, weeks=_qint(q, "weeks", 8, 1, 104), crew=data)
 
 
 @_get_route("/routes-raw", admin=True)               # 학습 지시 원본 목록 + 끔 상태(관리자)
@@ -1740,6 +1767,12 @@ def _g_deployments(h, q):
 
 @_get_route("/api/v1/prompt")                        # 공개 서빙: slug + Bearer pr_live_ 키(자체 검증)
 def _g_api_prompt(h, q):
+    # 무인증 공개 경로 · 호출마다 원격 왕복(deploy_by_slug + deploy_keys_for)을 유발하므로
+    # IP당 상한을 둔다(/auth·/check-source 와 같은 패턴). 키 대입 속도 제한도 겸한다.
+    if rate_limited("apiprompt:" + _client_ip(h), min_interval=0.2, per_min=60):
+        h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                ensure_ascii=False), _JSON)
+        return None
     status, body = serve_prompt((q.get("slug") or [""])[0],
                                 h.headers.get("Authorization") or "",
                                 call=(q.get("call") or [""])[0])
@@ -1749,30 +1782,18 @@ def _g_api_prompt(h, q):
 
 @_get_route("/eval-run-compare")                     # 두 런 비교(a=기준·b=대상) · 회귀 가드 판정
 def _g_eval_run_compare(h, q):
-    try:
-        a = int((q.get("a") or ["0"])[0])
-        b = int((q.get("b") or ["0"])[0])
-    except (TypeError, ValueError):
-        a = b = 0
-    return eval_run_compare(a, b, h._req_team())
+    return eval_run_compare(_qint(q, "a", 0, 0, 2 ** 31), _qint(q, "b", 0, 0, 2 ** 31),
+                            h._req_team())
 
 
 @_get_route("/eval-run")                             # 런 리포트(진행 중이면 부분 리포트 · 폴링용)
 def _g_eval_run(h, q):
-    try:
-        rid = int((q.get("id") or ["0"])[0])
-    except (TypeError, ValueError):
-        rid = 0
-    return eval_run_report(rid, h._req_team())
+    return eval_run_report(_qint(q, "id", 0, 0, 2 ** 31), h._req_team())
 
 
 @_get_route("/activity-daily")                       # 검수 활동 추이(일별 · 최근 N일 · 팀 스코프 · 롤업 병합)
 def _g_activity_daily(h, q):
-    try:
-        days = int((q.get("days") or ["30"])[0])
-    except (TypeError, ValueError):
-        days = 30
-    return activity_daily_data(h._req_team(), days=days)
+    return activity_daily_data(h._req_team(), days=_qint(q, "days", 30, 1, 365))
 
 
 @_get_route("/golden-status")                        # 골든 생성 현황(팀원 공개): 확정·분류필요·불일치
@@ -1960,7 +1981,7 @@ def _p_auth(h, body):
     return auth_action(json.loads(body or b"{}"))
 
 
-@_post_route("/feedback")
+@_post_route("/feedback", gate="team")               # 팀 콘텐츠 읽기·쓰기 → GET 과 같은 fail-closed
 def _p_feedback(h, body):
     data = json.loads(body or b"{}")
     if data.get("clear"):
@@ -1993,7 +2014,7 @@ def _p_ops_hold(h, body):
     return {"ok": ok}
 
 
-@_post_route("/source-status", gate="login")         # 원문 소실 신고 토글(게시판 #10 · A안) · 검수자 신고라 admin 아닌 login
+@_post_route("/source-status", gate="team")          # 원문 소실 신고 토글(게시판 #10 · A안) · 검수자 신고라 admin 아닌 팀원
 def _p_source_status(h, body):
     data = json.loads(body or b"{}")
     ch = (data.get("hash") or "").strip()
@@ -2092,7 +2113,7 @@ def _p_compare_models(h, body):
                                     scope=(data.get("scope") or "all").strip())
 
 
-@_post_route("/patch-meta")                          # 검수자 구조화 교정(빈 카테고리 채우기 등)
+@_post_route("/patch-meta", gate="team")             # 검수자 구조화 교정(빈 카테고리 채우기 등)
 def _p_patch_meta(h, body):
     data = json.loads(body or b"{}")
     if not h._inject_reviewer(data):
@@ -2185,12 +2206,10 @@ def _p_meta_compile(h, body):
     return meta_compile_run(h._req_team())
 
 
-@_post_route("/eval-judge")                          # 평가 상세 · 건별 판정(집단 지성)
+@_post_route("/eval-judge", gate="team")             # 평가 상세 · 건별 판정(집단 지성)
 def _p_eval_judge(h, body):
-    # 팀원 기능이지만 미인증 직접 호출은 차단(supabase 모드 · 판정 위조 방지)
-    if _supa() and not h._bearer_uid():
-        h._send(403, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
-        return None
+    # 팀원 기능이지만 미인증·팀 미소속 직접 호출은 차단(판정 위조 방지 + 응답의 eval_check_counts
+    # 가 team 없이는 전 팀 미필터 집계가 되어 타 팀 검수자 id·판정이 새던 경로 차단)
     data = json.loads(body or b"{}")
     # 검수자 귀속은 서버가 Bearer uid 로 강제(바디 reviewer 위조로 합의 스터핑·점수 파밍 방지).
     rv = h._bearer_uid() if _supa() else (data.get("reviewer") or "").strip()
@@ -2590,6 +2609,10 @@ def _p_entdict(h, body):
     # 등재/삭제/일괄 보강/백필 같은 사전 전체 작업은 관리자 전용(사전·정책과 동일 게이트)
     act = (data.get("action") or "").strip()
     if _supa():
+        # GET /entdict 는 팀 소속을 요구하므로(_TEAMLESS_OK_GET 미포함) POST 도 같은 기준.
+        # backfill 은 team 으로 st.recent 를 훑는다 — 팀이 없으면 전 팀 스캔이 된다.
+        if not h._require_team():
+            return None
         if act in ("detail", "update", "enrich"):
             if not h._bearer_uid():
                 h._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
@@ -2607,7 +2630,7 @@ def _p_dict(h, body):
     return fn()
 
 
-@_post_route("/board")                               # 게시판: 등록·상태 변경·삭제(팀 스코프)
+@_post_route("/board", gate="team")                  # 게시판: 등록·상태 변경·삭제(팀 스코프)
 def _p_board(h, body):
     data = json.loads(body or b"{}")
     if not h._inject_reviewer(data):
@@ -2632,14 +2655,15 @@ def _p_ca_understand(h, body):
 def _p_topic_studio(h, body):
     data = json.loads(body or b"{}")
     action = (data.get("action") or "").strip()
-    # 조회성(preview·suggest)은 로그인 필수(익명 LLM 호출·데이터 열람 차단) · 변경성은 /config 와 동일 관리자 가드
+    # 조회성(preview·suggest)은 팀 소속 필수(익명 LLM 호출 차단 + 미리보기가 results_rows 를
+    # 훑으므로 팀 없는 계정이면 전 팀 콘텐츠가 표본으로 나온다) · 변경성은 /config 와 동일 관리자 가드
     if action not in ("preview", "suggest"):
         if not h._admin_gate():
             return None
-    elif not h._require_login():
+    elif not h._require_team():
         return None
     # 변경성 액션의 캐시 무효화는 topic_studio_action 내부에서 처리
-    return topic_studio_action(data, mock=Handler.server_mock)
+    return topic_studio_action(data, mock=Handler.server_mock, team=h._req_team())
 
 
 @_post_route("/media-extract", gate="login")         # 미디어 메타 파이프라인: 자막 파싱(JSON) · 영상 네이티브(multipart)
@@ -2721,6 +2745,12 @@ def _p_usermeta(h, body):
 
 @_post_route("/spectrum-gw")                         # 스펙트럼 관문(공개): 로그인 대신 접속 키로만 판단
 def _p_spectrum_gw(h, body):                         # MCP(JSON-RPC) · 단순 REST 두 갈래를 모듈이 구분
+    # 로그인·팀·메뉴 게이트가 전부 면제된 무인증 경로 · 키 대입과 상태 파일 쓰기 증폭 억제
+    # (/auth·/check-source 와 같은 패턴 · MCP 클라이언트의 정상 연사에는 여유 있는 상한)
+    if rate_limited("spgw:" + _client_ip(h), min_interval=0.1, per_min=120):
+        h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                ensure_ascii=False), _JSON)
+        return None
     status, out = SPO.gateway_request(h.headers.get("Authorization") or "", body)
     if out is None:                                  # MCP 알림(notifications/*) = 본문 없는 202
         h._send(202, b"", _JSON)
@@ -2789,6 +2819,15 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def handle_one_request(self):
+        """요청 1건 처리. 클라이언트 조기 종료는 stderr 트레이스백 없이 연결만 정리한다
+        (본문 read 중 끊김 포함 · 응답 쓰기 쪽 가드는 _flush). 그 밖의 예외는 그대로 올려
+        socketserver 의 handle_error 가 찍게 둔다 — 진짜 장애는 계속 보여야 한다."""
+        try:
+            super().handle_one_request()
+        except self._DISCONNECT:
+            self.close_connection = True
+
     _GZIP_CT = ("text/html", "application/json", "text/css", "application/javascript",
                 "text/csv", "image/svg", "text/plain")
 
@@ -2811,6 +2850,33 @@ class Handler(BaseHTTPRequestHandler):
 
     _VENDOR_CACHE = {}   # path → (mtime, raw, gz) · 파일 ~20개·수 MB → 메모리 부담 없음
 
+    # 클라이언트 조기 종료(로딩 중 새로고침·뒤로가기·탭 닫기)로 나는 전송 실패.
+    # 서버 결함이 아니라 정상 흐름이므로 응답 쓰기 경로에서만 조용히 흡수한다.
+    _DISCONNECT = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, TimeoutError)
+
+    def _flush(self, data=b"") -> bool:
+        """헤더 플러시 + 본문 전송. 끊김이면 False(연결 종료 표시) · 그 외 예외는 그대로 전파.
+        가드가 없으면 중단된 요청 1건마다 stderr 로 스택트레이스 3.2KB·34줄이 쏟아져
+        (/ 는 gzip 149KB) 진짜 예외를 덮는다. SSE(_serve_sse)가 쓰던 규약을 일반 응답에도 적용."""
+        try:
+            self.end_headers()
+            if data:
+                self.wfile.write(data)
+            return True
+        except self._DISCONNECT:
+            self.close_connection = True
+            return False
+        except OSError:                              # 소켓 계층 실패 전반(전송 중 끊김) · 앱이 할 일 없음
+            self.close_connection = True
+            return False
+
+    def _fail_500(self, where: str, exc: Exception):
+        """핸들러 예외 → 고정 문구 500. 상세(파이썬 예외 원문)는 서버 로그로만 보낸다 —
+        `?limit=abc` 같은 사용자 입력 오류가 내부 구현 문자열을 응답에 싣던 경로 차단
+        (supastore.py 의 '상세는 로그 · 응답은 고정 문구' 관례와 동일)."""
+        print(f"  [ERROR] {where}: {type(exc).__name__}: {exc}")
+        self._send(500, json.dumps({"error": "요청을 처리하지 못했습니다"}, ensure_ascii=False), _JSON)
+
     def _send_prezipped(self, code, raw, gz, ctype, cache="", etag=""):
         """사전 압축 자산 전송(_send 와 동일한 헤더 규약).
         불변 자산(벤더·부팅당 정적 HTML)이 요청마다 gzip 레벨6 재압축을 하지 않게 한다."""
@@ -2828,8 +2894,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", cache)
         if etag:
             self.send_header("ETag", etag)
-        self.end_headers()
-        self.wfile.write(data)
+        self._flush(data)
 
     def _send_page(self, mobile=False):
         """SPA HTML: 부팅당 1회 사전압축 + ETag(부팅ID) 재검증.
@@ -2841,7 +2906,7 @@ class Handler(BaseHTTPRequestHandler):
             self._security_headers()
             self.send_header("ETag", etag)
             self.send_header("Cache-Control", "no-cache")
-            self.end_headers()
+            self._flush()
             return
         raw, gz = _page_payload(mobile)
         self._send_prezipped(200, raw, gz, "text/html; charset=utf-8",
@@ -2864,8 +2929,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", cache)
         elif "text/html" in ctype:      # WKWebView 가 옛 페이지를 캐시하지 않도록
             self.send_header("Cache-Control", "no-store, must-revalidate")
-        self.end_headers()
-        self.wfile.write(data)
+        self._flush(data)
 
     def _gate_get(self):
         """supabase(운영) 모드 데이터 GET 전역 게이트: 공개 경로 외에는 로그인(JWT) 필수.
@@ -2907,7 +2971,7 @@ class Handler(BaseHTTPRequestHandler):
                     if out is not None:              # dict 반환 = 200 JSON · None = 핸들러가 직접 응답
                         self._send(200, json.dumps(out, ensure_ascii=False), _JSON)
                 except Exception as e:
-                    self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+                    self._fail_500("GET " + p, e)
                 return
         if p.startswith("/vendor/"):
             self._send_vendor(p.rsplit("/", 1)[-1])
@@ -2939,7 +3003,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _inject_reviewer(self, data):
         """supabase 모드: Bearer JWT 검증 → data['reviewer']=uid(사칭 불가) + data['_team']=팀.
-        sqlite 모드: True(클라이언트 이름 그대로). 인증 실패 시 False(=401)."""
+        sqlite 모드: True(클라이언트 이름 그대로). 인증 실패 시 False(=401).
+        ⚠️ 여기서 팀 유무는 판정하지 않는다(가입 경로 /reviewer 는 팀 없는 상태로 들어온다) —
+        팀 콘텐츠를 읽고 쓰는 라우트의 fail-closed 는 라우트 테이블 gate='team' 이 맡는다."""
         if not _supa():
             return True
         uid = self._bearer_uid()
@@ -2996,8 +3062,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        self._flush(data)
 
     def _serve_sse(self, team=None):
         """SSE 스트림: 검수 이벤트를 실시간 푸시. ThreadingHTTPServer 라 블로킹 OK.
@@ -3007,7 +3072,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")     # 프록시 버퍼링 방지
-        self.end_headers()
+        if not self._flush():
+            return
         q = _sse_subscribe(team)                     # 구독을 구독자 팀에 묶어 교차팀 이벤트 수신 차단
         try:
             # 접속 인사에 부팅 ID 동봉: 배포로 서버가 교체되면 재연결 시 값이 달라진다(새 버전 배너 트리거)
@@ -3116,7 +3182,7 @@ class Handler(BaseHTTPRequestHandler):
                     if out is not None:              # dict 반환 = 200 JSON · None = 핸들러가 직접 응답
                         self._send(200, json.dumps(out, ensure_ascii=False), _JSON)
                 except Exception as e:
-                    self._send(500, json.dumps({"error": str(e)}, ensure_ascii=False), _JSON)
+                    self._fail_500("POST " + p, e)
                 return
         self._send(404, "not found")
 

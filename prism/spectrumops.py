@@ -314,7 +314,7 @@ def state_path() -> str:
 
 
 def _empty_state() -> dict:
-    return {"keys": [], "usage": []}
+    return {"keys": [], "usage": [], "usage_fail": []}
 
 
 def _load() -> dict:
@@ -328,10 +328,10 @@ def _load() -> dict:
         return _empty_state()
     data.setdefault("keys", [])
     data.setdefault("usage", [])
-    if not isinstance(data["keys"], list):
-        data["keys"] = []
-    if not isinstance(data["usage"], list):
-        data["usage"] = []
+    data.setdefault("usage_fail", [])            # 실패 기록 분리 보관(옛 파일엔 없다 · 빈 목록으로 시작)
+    for k in ("keys", "usage", "usage_fail"):
+        if not isinstance(data[k], list):
+            data[k] = []
     return data
 
 
@@ -644,12 +644,21 @@ def dispatch(tool: str, params: dict = None) -> dict:
 
 # ── 관문 코어 ───────────────────────────────────────────────────────────────
 def _record(state: dict, user: str, tool: str, ok: bool, ms: int, note: str = ""):
-    """사용 기록 적재(최근 USAGE_CAP 건만 남긴다). 호출 전에 _LOCK 을 잡는다."""
-    state["usage"].append({"ts": _now(), "user": user or "unknown",
-                           "connector": CONNECTOR_ID, "tool": tool,
-                           "ok": bool(ok), "ms": int(ms), "note": (note or "")[:200]})
-    if len(state["usage"]) > USAGE_CAP:
-        state["usage"] = state["usage"][-USAGE_CAP:]
+    """사용 기록 적재(최근 USAGE_CAP 건만 남긴다). 호출 전에 _LOCK 을 잡는다.
+    성공 기록과 실패 기록을 각각 상한까지 보관한다 — 한 갈래로 합쳐 두면 무인증 실패
+    트래픽 500건이 실사용 감사 기록을 통째로 밀어낸다(usage_list·metrics 는 병합해서 본다)."""
+    bucket = "usage" if ok else "usage_fail"
+    rows = state.setdefault(bucket, [])
+    rows.append({"ts": _now(), "user": user or "unknown",
+                 "connector": CONNECTOR_ID, "tool": tool,
+                 "ok": bool(ok), "ms": int(ms), "note": (note or "")[:200]})
+    if len(rows) > USAGE_CAP:
+        state[bucket] = rows[-USAGE_CAP:]
+
+
+def _usage_all(state: dict) -> list:
+    """성공·실패 기록 병합 뷰(시간순 정렬은 호출측)."""
+    return list(state.get("usage") or []) + list(state.get("usage_fail") or [])
 
 
 def call(tool: str, params: dict = None, key: str = "", key_id: str = "", user: str = None):
@@ -662,8 +671,11 @@ def call(tool: str, params: dict = None, key: str = "", key_id: str = "", user: 
         rec, err = authenticate(key=key, key_id=key_id, user=user, state=st)
         who = (rec or {}).get("user") or (user or "unknown")
         if err:
+            # 인증 실패는 기록·저장하지 않는다. 관문은 무인증 공개라, 틀린 키로 두드리기만 해도
+            # 요청마다 상태 파일 전량(JSON 재직렬화 + os.replace)이 다시 써지고 사용 기록이
+            # 밀려 나갔다(600회면 실사용 감사 기록 전량 소실 · 주간 지표도 오염).
             return _finish(st, 401, {"ok": False, "error": err, "detail": _ERR_TEXT[err]},
-                           who, tool or "(없음)", t0, _ERR_TEXT[err])
+                           who, tool or "(없음)", t0, _ERR_TEXT[err], record=False)
         if tool not in _TOOL_BY_NAME:
             return _finish(st, 400,
                            {"ok": False, "error": "unknown_tool",
@@ -685,11 +697,13 @@ def call(tool: str, params: dict = None, key: str = "", key_id: str = "", user: 
                                  "result": result}, who, tool, t0, "")
 
 
-def _finish(state: dict, status: int, body: dict, user: str, tool: str, t0: float, note: str):
+def _finish(state: dict, status: int, body: dict, user: str, tool: str, t0: float, note: str,
+            record: bool = True):
     ms = int((time.time() - t0) * 1000)
     body["ms"] = ms
-    _record(state, user, tool, status == 200, ms, note)
-    _save(state)
+    if record:
+        _record(state, user, tool, status == 200, ms, note)
+        _save(state)                                 # 기록이 없으면 저장도 없다(디스크 쓰기 증폭 차단)
     return status, body
 
 
@@ -698,7 +712,7 @@ def metrics(state: dict = None) -> dict:
     """주간 지표: 호출 수 · 쓴 사람 수 · 살아 있는 키 · 평균 응답 · 실패 비율."""
     st = _load() if state is None else state
     now = _now()
-    week = [u for u in st["usage"] if float(u.get("ts") or 0) >= now - 7 * 86400]
+    week = [u for u in _usage_all(st) if float(u.get("ts") or 0) >= now - 7 * 86400]
     ms = [int(u.get("ms") or 0) for u in week]
     fails = sum(1 for u in week if not u.get("ok"))
     active = sum(1 for k in st["keys"]
@@ -709,13 +723,13 @@ def metrics(state: dict = None) -> dict:
         "activeKeys": active,
         "avgMs": int(sum(ms) / len(ms)) if ms else 0,
         "failRate": round(fails / len(week), 3) if week else 0.0,
-        "totalCalls": len(st["usage"]),
+        "totalCalls": len(_usage_all(st)),
     }
 
 
 def usage_list(limit: int = 50, state: dict = None) -> list:
     st = _load() if state is None else state
-    rows = sorted(st["usage"], key=lambda u: float(u.get("ts") or 0), reverse=True)
+    rows = sorted(_usage_all(st), key=lambda u: float(u.get("ts") or 0), reverse=True)
     return rows[:max(1, min(USAGE_CAP, int(limit or 50)))]
 
 
@@ -723,8 +737,9 @@ def reset_demo() -> dict:
     """시연 초기화: 사용 기록만 지운다(발급한 키는 그대로 둔다)."""
     with _LOCK:
         st = _load()
-        n = len(st["usage"])
+        n = len(_usage_all(st))
         st["usage"] = []
+        st["usage_fail"] = []
         _save(st)
     return {"ok": True, "cleared": n}
 
@@ -847,10 +862,7 @@ def _mcp(key: str, data: dict):
     with _LOCK:
         st = _load()
         rec, err = authenticate(key=key, state=st)
-        if err:
-            _record(st, (rec or {}).get("user") or "unknown", method or "(없음)",
-                    False, 0, _ERR_TEXT[err])
-            _save(st)
+        if err:                                    # 무인증 실패는 기록·저장하지 않는다(call 과 동일 규약)
             return 401, _rpc_err(rid, -32001, _ERR_TEXT[err])
         who = rec.get("user") or "unknown"
         if method == "initialize":

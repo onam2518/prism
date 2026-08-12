@@ -56,11 +56,12 @@ class TestDeployops(unittest.TestCase):
         self.assertEqual(body["system"], "등급 시스템")
         code, body = serve.serve_prompt("item-meta", "Bearer " + k["key"], call="없음")
         self.assertEqual(code, 404)
-        # 키 오류 경로: 무키 · 위조 · 회수
-        self.assertEqual(serve.serve_prompt("item-meta", "")[0], 401)
-        self.assertEqual(serve.serve_prompt("item-meta", "Bearer pr_live_fake")[0], 401)
+        # 키 오류 경로: 무키 · 위조 · 회수 — 슬러그 오류와 같은 404 로 통일(슬러그 열거 차단 · 감사 H4).
+        # 예전엔 401 이라 "이 슬러그는 있고 키만 틀렸다" 를 무인증 호출자가 응답 코드로 알 수 있었다.
+        self.assertEqual(serve.serve_prompt("item-meta", "")[0], 404)
+        self.assertEqual(serve.serve_prompt("item-meta", "Bearer pr_live_fake")[0], 404)
         serve.deployment_key_revoke(rid, k["id"])
-        self.assertEqual(serve.serve_prompt("item-meta", "Bearer " + k["key"])[0], 401)
+        self.assertEqual(serve.serve_prompt("item-meta", "Bearer " + k["key"])[0], 404)
         # 미지 slug · 중지된 배포
         self.assertEqual(serve.serve_prompt("ghost", "Bearer " + k["key"])[0], 404)
         serve.deployment_save(None, dep_id=rid, slug="item-meta", version=3, active=False)

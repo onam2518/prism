@@ -418,7 +418,8 @@ def apply_feedback(data: dict) -> dict:
                   "elements": elements, "_team": data.get("_team"),
                   "model": (data.get("model") or "").strip()}
             try:                                   # 요소 메타 맥락(재분류 정확도용)
-                im = st.get_item_meta(ch) if hasattr(st, "get_item_meta") else None
+                im = (st.get_item_meta(ch, team=data.get("_team"))
+                      if hasattr(st, "get_item_meta") else None)
                 if im:
                     fb["output"] = {"item_meta": im}
             except Exception:
@@ -556,7 +557,7 @@ def _reap_async(content_hash: str, reviewer: str, fb: dict):
                            model=fb.get("model", ""))
         reap = FL.run_reap(llm, fb)
         if st:
-            st.save_reap(content_hash, reviewer, reap)
+            st.save_reap(content_hash, reviewer, reap, team=fb.get("_team"))
         # 프롬프트 즉시반영 없음(일배치 학습에서 합의 반영). plan 은 저장·브로드캐스트만.
         _SV.broadcast({"type": "reap", "hash": content_hash, "reviewer": reviewer,
                    "stage": reap.get("stage", ""), "plan": reap.get("plan", ""),
@@ -650,12 +651,14 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     before = None
     if patch and hasattr(st, "get_item_meta"):
         try:
-            cur = st.get_item_meta(ch)
+            cur = st.get_item_meta(ch, team=team)
             if isinstance(cur, dict):
                 before = {k: cur.get(k) for k in patch}           # 패치 대상 키의 이전 값만
         except Exception:
             before = None
-    ok = st.update_item_meta(ch, patch) if patch else False
+    # 읽기·쓰기 모두 team 을 함께 넘긴다 — 해시만 알면 타 팀 콘텐츠의 분류·요약·등급을
+    # 덮어쓸 수 있었다(감사 기록 log_patch 는 호출자 팀에 남아 원 소유 팀 이력엔 안 보였다).
+    ok = st.update_item_meta(ch, patch, team=team) if patch else False
     if ok and before is not None and hasattr(st, "log_patch"):
         element = "category" if "content_category" in patch else ",".join(sorted(patch))
         try:
@@ -663,7 +666,7 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
         except Exception:
             pass
     if grade in ("G", "R") and hasattr(st, "update_quality"):     # 등급 교정(이전 등급을 이력에 보존)
-        prev = st.update_quality(ch, grade, reasons)
+        prev = st.update_quality(ch, grade, reasons, team=team)
         if prev is not None:
             ok = True
             if prev != grade and hasattr(st, "log_patch"):

@@ -41,15 +41,17 @@ def _save_studio_config(cfg: dict):
                                         "exclusions": cfg.get("exclusions") or {}})
 
 
-def topics_data() -> dict:
-    """토픽 모듈 데이터(30s 캐시). 드릴다운 클릭마다 전체 재클러스터링하던 비용 제거 —
-    쓰기(추출·스튜디오 변경)는 _agg_bump 로 즉시 무효화된다."""
-    return _SV._agg_cached(("topics",), _topics_compute)
+def topics_data(team=None) -> dict:
+    """토픽 모듈 데이터(팀별 30s 캐시). 드릴다운 클릭마다 전체 재클러스터링하던 비용 제거 —
+    쓰기(추출·스튜디오 변경)는 _agg_bump 로 즉시 무효화된다.
+    team 은 결과 행(results_rows)의 스코프다 — 넘기지 않으면 supabase 에서 팀 필터가 생략돼
+    응답 titles 에 전 팀 콘텐츠 제목이 실린다(형제 라우트는 전부 팀을 넘긴다)."""
+    return _SV._agg_cached(("topics", team), lambda: _topics_compute(team))
 
 
-def _topics_compute() -> dict:
+def _topics_compute(team=None) -> dict:
     """토픽 모듈: 적재된 결과에서 엔티티형·사건형·조건형 토픽 + 사용자 정의 토픽 빌드."""
-    rows = _SV.results_rows()
+    rows = _SV.results_rows(team=team)
     cfg = _studio_config()
     if not rows:
         return {"n_contents": 0, "single": [], "composite": [], "custom": [],
@@ -98,12 +100,14 @@ def _topic_rows_brief(data: dict) -> dict:
     return out
 
 
-def topic_snapshot() -> dict:
-    """토픽 현황 스냅샷 적재(성과 시계열 기초 · reports kind='topic_snapshots' · 토픽은 무팀 뷰).
-    직전 스냅샷 대비 변화(신규·소멸·건수 증감)를 계산해 함께 저장 → /topics 가 배지로 노출."""
+def topic_snapshot(team=None) -> dict:
+    """토픽 현황 스냅샷 적재(성과 시계열 기초 · reports kind='topic_snapshots').
+    직전 스냅샷 대비 변화(신규·소멸·건수 증감)를 계산해 함께 저장 → /topics 가 배지로 노출.
+    ⚠️ 계산·적재·조회가 같은 team 버킷이어야 한다 — 전역으로 적재하면 /topics(팀 스코프)가
+    영영 빈 배지를 보거나, 반대로 전 팀 콘텐츠에서 파생된 토픽 라벨(last_delta)이 새어 나간다."""
     _SV._agg_bump()                                        # 강제 재계산: 열어둔 화면 낡음(수동 새로고침 의존) 해소
-    brief = _topic_rows_brief(_SV.topics_data())
-    rep = _SV._report_get("topic_snapshots", None, {}) or {}
+    brief = _topic_rows_brief(_SV.topics_data(team))
+    rep = _SV._report_get("topic_snapshots", team, {}) or {}
     entries = rep.get("entries") or []
     prev = ((entries[-1] or {}).get("topics") or {}) if entries else {}
     changed = []
@@ -119,15 +123,48 @@ def topic_snapshot() -> dict:
              "changed_n": len(changed), "gone_n": len(gone)}
     entries.append({"ts": delta["ts"], "topics": brief})
     _SV._report_save("topic_snapshots", {"entries": entries[-_TOPIC_SNAP_CAP:],
-                                     "last_delta": delta}, None)
+                                     "last_delta": delta}, team)
     return delta
+
+
+_TOPIC_SNAP_TEAM_CAP = 50                             # 한 주기에 스냅샷을 뜨는 팀 수 상한
+
+
+def snapshot_teams() -> list:
+    """스냅샷 대상 팀 목록. sqlite(로컬 단일 팀)는 [None] · supabase 는 teams 목록(1왕복).
+    상한을 넘기면 잘렸다는 사실을 로그로 남긴다(조용히 자르면 뒤쪽 팀 배지가 이유 없이 빈다)."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "team_ids")):
+        return [None]
+    try:
+        teams = list(st.team_ids(_TOPIC_SNAP_TEAM_CAP + 1) or [])
+    except Exception as e:
+        print(f"  [warn] 팀 목록 조회 실패 · 이번 주기 토픽 스냅샷 건너뜀: {e}")
+        return []
+    if len(teams) > _TOPIC_SNAP_TEAM_CAP:
+        print(f"  [warn] 팀 {len(teams)}개 중 {_TOPIC_SNAP_TEAM_CAP}개만 토픽 스냅샷 적재 "
+              f"(상한 _TOPIC_SNAP_TEAM_CAP) · 나머지 팀은 이번 주기 배지가 갱신되지 않는다")
+        teams = teams[:_TOPIC_SNAP_TEAM_CAP]
+    return teams
+
+
+def topic_snapshot_all() -> int:
+    """팀별 스냅샷 1주기. 한 팀에서 터져도 나머지 팀은 계속 돈다. 반환 = 적재 성공 팀 수."""
+    done = 0
+    for t in snapshot_teams():
+        try:
+            topic_snapshot(t)
+            done += 1
+        except Exception as e:
+            print(f"  [warn] 토픽 스냅샷 실패(team={t or '-'}): {e}")
+    return done
 
 
 _topic_sched_started = False
 
 
 def start_topic_scheduler(interval_min: int = 60):
-    """토픽 자동 리프레시(기본 1시간): 재계산 + 스냅샷 적재. 서버당 1회 · 데몬 스레드."""
+    """토픽 자동 리프레시(기본 1시간): 재계산 + 팀별 스냅샷 적재. 서버당 1회 · 데몬 스레드."""
     global _topic_sched_started
     if _topic_sched_started:
         return
@@ -137,21 +174,25 @@ def start_topic_scheduler(interval_min: int = 60):
         while True:
             try:
                 time.sleep(max(300, int(interval_min) * 60))
-                topic_snapshot()
+                topic_snapshot_all()
             except Exception as e:
-                print(f"  [warn] 토픽 스냅샷 실패: {e}")
+                print(f"  [warn] 토픽 스냅샷 주기 실패: {e}")
 
     threading.Thread(target=_loop, daemon=True).start()
 
 
 def _ent_index() -> dict:
     """토픽 매칭용 개체 속성 인덱스({content_hash: [속성 dict]}) · 사전 미구축이면 빈 dict.
-    토픽은 전역(무팀 results_rows) 뷰라 인덱스도 전역(team="")."""
+    개체 사전은 전역이라 인덱스도 전역(team="").
+    30s 집계 캐시: 원천(supastore.ent_attr_index)이 entities 2만행 + content_entities 5만행을
+    필터 없이 통째로 내려받는데, 스튜디오 미리보기·제안은 타이핑 디바운스(260ms)마다 이걸
+    호출한다 — 캐시가 붙는 _topics_compute 와 달리 미리보기 경로만 무캐시로 비대칭이었다.
+    등재·수정·보강(dictops.entdict_action)은 _agg_bump 로 즉시 무효화한다."""
     st = _SV.get_store()
     if not (st and hasattr(st, "ent_attr_index")):
         return {}
     from . import entdict as ED
-    return ED.attr_index(st, team="")
+    return _SV._agg_cached(("entidx", ""), lambda: ED.attr_index(st, team=""))
 
 
 def _sanitize_def(d: dict, existing_ids=None) -> dict:
@@ -310,18 +351,22 @@ def similar_topics(new_def: dict, custom: list, threshold: float = 0.86) -> list
     return out[:3]
 
 
-def topic_studio_action(data: dict, mock: bool = False) -> dict:
-    """토픽 스튜디오 변경/조회: save·delete·settings·preview·suggest."""
+def topic_studio_action(data: dict, mock: bool = False, team=None) -> dict:
+    """토픽 스튜디오 변경/조회: save·delete·settings·preview·suggest.
+    rows·topics_data 는 topics_data(team) 인덱스와 정합해야 하므로 같은 team 으로 통일한다."""
     from . import topic as TP
     action = (data.get("action") or "").strip()
     if action not in ("preview", "suggest"):
         _SV._agg_bump()                                   # 변경성 액션(save·delete·settings·exclude 등) → 토픽 캐시 무효화
-    rows = _SV.results_rows()
+    rows = _SV.results_rows(team=team)
     svc = TP._service_names(rows) if rows else set()
 
     if action == "preview":
         d = _sanitize_def(data.get("def") or {})
-        pv = (TP.preview_definition(rows, svc, d, ent_index=_ent_index()) if rows else
+        # 개체 속성 조건이 없으면 인덱스 자체가 필요 없다(_content_dims 가 ent_index=None 이면
+        # 빈 속성 목록을 쓴다) — 타이핑 중 대부분의 미리보기가 사전 조회를 아예 건너뛴다.
+        eidx = _ent_index() if d.get("eattrs") else None
+        pv = (TP.preview_definition(rows, svc, d, ent_index=eidx) if rows else
               {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0})
         # 표본을 상세 화면 계약(_detail_row)으로 확장: 미리보기 배지 클릭 → 공통 스플릿뷰로 바로 열람
         for b in pv.get("bundles") or []:
@@ -367,7 +412,7 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
         else:
             custom.append(d)
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
-        out = dict(_SV.topics_data())
+        out = dict(_SV.topics_data(team))
         out["similar"] = dups
         return out
     elif action == "delete":
@@ -403,7 +448,7 @@ def topic_studio_action(data: dict, mock: bool = False) -> dict:
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions})
     else:
         return {"ok": False, "error": "알 수 없는 동작"}
-    return _SV.topics_data()
+    return _SV.topics_data(team)
 
 
 
@@ -437,12 +482,12 @@ def topic_personas(entities: list, team=None) -> list:
 
 def topic_drill(cluster_id: str, team=None, reviewer: str = "") -> dict:
     """토픽 드릴다운: 해당 토픽(클러스터)에 묶인 콘텐츠 목록. 배치 결과 드릴다운과 동일 shape.
-    ⚠️ rows 는 _SV.topics_data() 의 content_ids 인덱스와 정합해야 해서 무필터 유지 · 피드백 부착만
-    팀 스코프. 토픽 자체의 팀 파라미터화(topics_data)는 후속(실험실 메뉴 · 관리자용)."""
-    rows = _SV.results_rows()
+    rows 는 _SV.topics_data(team) 의 content_ids 인덱스와 정합해야 하므로 같은 team 으로 뽑는다
+    (예전엔 둘 다 무필터라 팀원이 타 팀 콘텐츠를 드릴다운으로 열 수 있었다)."""
+    rows = _SV.results_rows(team=team)
     if not rows or not cluster_id:
         return {"ok": True, "kind": "topic", "value": cluster_id or "", "items": [], "n": 0}
-    td = _SV.topics_data()                        # single/composite(각 content_ids) · custom(그룹→bundles)
+    td = _SV.topics_data(team)                    # single/composite(각 content_ids) · custom(그룹→bundles)
     cluster, topic_id = None, cluster_id      # topic_id = 제외(큐레이션) 키 · 사용자 토픽은 그룹 id
     for grp in ("single", "composite"):
         for c in td.get(grp, []):

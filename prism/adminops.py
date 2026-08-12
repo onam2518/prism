@@ -93,9 +93,14 @@ def auth_action(data: dict) -> dict:
         return {"ok": True, "access_token": at, "refresh_token": tok.get("refresh_token") or "",
                 "uid": (tok.get("user") or {}).get("id"), "email": email}
     except urllib.error.HTTPError as e:
-        return {"ok": False, "error": f"HTTP{e.code}: {e.read().decode('utf-8', 'replace')[:160]}"}
+        # /auth 는 무인증 공개 경로다. GoTrue 원문(계정 존재·잠금·오류 코드)을 그대로 돌려주면
+        # 계정 열거 신호가 되므로 사용자에겐 고정 문구, 상세는 서버 로그로만 보낸다
+        # (supastore._req 의 'PostgREST 본문은 로그만' 관례와 동일).
+        print(f"  [auth] HTTP{e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
+        return {"ok": False, "error": "로그인에 실패했습니다 · 이메일·비밀번호를 확인하세요"}
     except Exception as e:
-        return {"ok": False, "error": str(e)[:160]}
+        print(f"  [auth] {type(e).__name__}: {e}")   # 네트워크·설정 오류 상세(호스트명 등)도 로그만
+        return {"ok": False, "error": "인증 서버에 연결할 수 없습니다 · 잠시 후 다시 시도하세요"}
 
 class AuthBackendUnavailable(Exception):
     """인증 서버(supabase auth) 일시 장애: 토큰 무효와 구분해 재시도 가능(503)으로 응답하기 위한 신호."""
