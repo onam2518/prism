@@ -590,6 +590,15 @@ class TestErrorsAndRegistry(Base):
         fn, gate = SV._POST_ROUTES["/assist"]
         self.assertEqual(gate, "team")                    # 로그인 + 팀 소속(fail-closed)
 
+    def test_serve_injects_the_module_reference(self):
+        """주입이 빠지면 도구가 오류 없이 '콘텐츠를 찾지 못했습니다' 만 낸다 — 조용한 열화라
+        증상만 보면 원인을 못 찾는다.
+
+        serve.py 는 여러 세션이 동시에 만지는 허브 파일이고 이 주입은 import 바로 다음 줄이라
+        머지 해소에서 흘리기 쉽다(2026-08-12 트랙 B 브랜치와 실제로 인접 충돌). 다른 테스트도
+        결국 깨지긴 하지만 NOT_FOUND 무더기로 깨져 원인이 안 보인다 — 사고를 이름으로 못박는다."""
+        self.assertIs(RA._SV, SV)
+
 
 if __name__ == "__main__":
     unittest.main()
