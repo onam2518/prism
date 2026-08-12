@@ -108,6 +108,9 @@ window.PRISM_APP_PARTS.push(() => ({
         this.asxLoad();
       },
       _asxEnv() { return { items: [], total: 0, truncated: false }; },
+      // 다른 검수자 의견은 목록이 아니라 요약이다(아래 asxDisLines 주석 참고) — 빈 모양이 다르다.
+      // 서버의 '의견 없음' 응답과 **글자 하나까지 같아야** 골드가 티나지 않는다.
+      _asxDigest() { return { lines: [], n: 0, split: false, truncated: false }; },
       asxReset() { this.asxBrief = null; this.asxPrec = null; this.asxDis = null; this.asxErr = ''; },
 
       async asxLoad() {
@@ -123,7 +126,7 @@ window.PRISM_APP_PARTS.push(() => ({
         // 그건 평범한 콘텐츠에서도 흔히 비는 값이다.
         if (this.asxGold(this.detail)) {
           this.asxBrief = { stage: stage, evidence: null, has_evidence: false, suggestions: [] };
-          this.asxPrec = this._asxEnv(); this.asxDis = this._asxEnv();
+          this.asxPrec = this._asxEnv(); this.asxDis = this._asxDigest();
           return;
         }
         this.asxBusy = true;
@@ -141,7 +144,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (!this.detail || this.detail.hash !== hash) return;
           this.asxBrief = brief;
           this.asxPrec = prec || this._asxEnv();
-          this.asxDis = dis || this._asxEnv();
+          this.asxDis = dis || this._asxDigest();
         } finally { this.asxBusy = false; }
       },
 
@@ -203,11 +206,32 @@ window.PRISM_APP_PARTS.push(() => ({
       // content_brief.values(초안 필드값)는 그리지 않는다. 검수 상세가 바로 옆에 이미 같은 값을
       // 배지로 그리고 있어 중복이고, 골드에서는 저장된 참값이라 뒤집힌 화면과 어긋난다.
       asxPrecItems() { return ((this.asxPrec || {}).items) || []; },
-      asxDisItems() { return ((this.asxDis || {}).items) || []; },
-      // 잘렸으면 잘렸다고 쓴다(조용한 절단 금지) · 선례·다른 검수자 의견 공통 봉투
+      /* ── 다른 검수자 의견: 사람별 나열이 아니라 3줄 요약 ────────────────────
+         사람 이름과 사유 원문을 사람 수만큼 그리면 읽는 데 시간이 걸리고, 특정 사람의
+         문장에 판단이 끌려간다. 그래서 서버가 조립한 세 줄만 받아 그대로 쓴다.
+
+         **화면이 다시 가공하지 않는다.** 자르거나 이어 붙이거나 순서를 바꾸면 그 순간
+         무엇이 왜 그렇게 보이는지가 두 곳으로 갈린다.
+
+         이름과 사유는 응답에서 빠지지만, 남아 오더라도 그리지 않는다 — 누가 그렇게
+         봤는지가 보이면 그게 판단에 섞인다. 대신 몇 명 것을 모았는지(n)는 남긴다.
+         사람이 사라지면 무게를 가늠할 근거도 같이 사라지기 때문이다. */
+      asxDisLines() { return ((this.asxDis || {}).lines) || []; },
+      asxDisN() { return Number((this.asxDis || {}).n || 0) || 0; },
+      // 잘렸으면 잘렸다고 쓴다(조용한 절단 금지) · 선례처럼 목록을 그리는 영역용
       asxCut(res) {
         if (!res || !res.truncated) return '';
         return '전체 ' + (res.total || 0) + '건 중 ' + (((res.items) || []).length) + '건만 보여줍니다';
+      },
+      // 의견 요약의 truncated 는 선례의 것과 뜻이 다르다. 목록이 잘린 게 아니라
+      // **둘째 줄의 지적 요소 나열**이 상한에서 잘린 것이다(의견 자체는 전부 셌다).
+      // 그래서 '몇 건 중 몇 건' 이 아니라 요소가 더 있다고 쓴다 — 건수를 쓰면
+      // 의견을 일부만 봤다는 뜻으로 읽힌다.
+      // 상한 값(서버 DIGEST_ELEM_MAX)은 문구에 넣지 않는다. 두 곳에 두면 한쪽만 바뀐다.
+      asxDisCut() {
+        const d = this.asxDis;
+        if (!d || !d.truncated) return '';
+        return '지적한 요소가 더 있습니다 · 많이 나온 것부터 적었습니다';
       },
       // 선례에 참여한 검수 인원. 몇 사람이 그렇게 봤는지가 무게를 다는 근거라 함께 보여 준다.
       // (1인 판정은 선례로 내려오지 않는다 · 값이 없으면 지어내지 않고 비워 둔다)
