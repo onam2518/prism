@@ -72,6 +72,7 @@ from . import evalops as EVO
 from . import deployops as DEP
 from . import crewops as CRW           # 검수 인력 운영(HR) · '검수운영' 메뉴
 from . import weekops as WKO           # 주간 운영 기록(주 마감 스냅샷 적립·조회)
+from . import mcpkeys as MK           # MCP 파트너 키(트랙 B · 외부 MCP) · 발급·해석·레이트리밋
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
@@ -89,6 +90,7 @@ DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Ateli
 CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
 ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
 WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
+MK._SV = sys.modules[__name__]      # MCP 파트너 키 주입(동일 · 전송 /mcp 는 mcpkeys 만 부른다)
 
 # 스펙트럼(실험실 · 사내 MCP 허브): serve 상태를 쓰지 않는 자립 모듈이라 _SV 주입이 없다.
 from . import spectrumops as SPO
@@ -1769,6 +1771,20 @@ def _g_deployments(h, q):
     return deployments_list(h._req_team())
 
 
+@_get_route("/mcp-keys")                             # 내 MCP 파트너 키 목록(비밀 없음 · 접두 6자만)
+def _g_mcp_keys(h, q):
+    # 소유자는 세션에서만 온다 · 쿼리로 남의 uid 를 넣어 목록을 바꿔치기할 자리를 두지 않는다.
+    # 관리자라도 남의 키는 보지 않는다(키 = 개인 자격증명 · 권한이 아니라 소유의 문제).
+    team = MK.scope_team(h._req_team())
+    uid = h._bearer_uid() or "local"
+    items = MK.list_keys(uid, team)
+    for k in items:                                  # 오늘 사용량(성공/실패 버킷 분리 · 감사 O2)
+        k["usage"] = MK.usage(k["key_id"], team, uid)
+    return {"ok": True, "items": items, "max": MK.MAX_KEYS_PER_USER,
+            "default_days": MK.DEFAULT_DAYS, "max_days": MK.MAX_DAYS,
+            "per_min": MK.PER_MIN, "per_day": MK.PER_DAY, "hint": MK.ONCE_HINT}
+
+
 @_get_route("/api/v1/prompt")                        # 공개 서빙: slug + Bearer pr_live_ 키(자체 검증)
 def _g_api_prompt(h, q):
     # 무인증 공개 경로 · 호출마다 원격 왕복(deploy_by_slug + deploy_keys_for)을 유발하므로
@@ -2190,6 +2206,24 @@ def _p_deployment_key_new(h, body):
 def _p_deployment_key_revoke(h, body):
     d = json.loads(body or b"{}")
     return deployment_key_revoke(int(d.get("id") or 0), int(d.get("key_id") or 0), h._req_team())
+
+
+# ── MCP 파트너 키(트랙 B · 외부 MCP) · 로직은 전부 mcpkeys.py ──
+# gate="team" 인 이유: 팀 없는 계정이 키를 만들면 그 키의 모든 스토어 호출이 team=None 으로
+# 나가고 저장 계층이 그걸 '전 팀'으로 읽는다(감사 H1). mcpkeys.issue 도 같은 것을 다시 막는다.
+@_post_route("/mcp-key-new", gate="team")            # 키 발급(평문 1회 노출 · sha256 저장)
+def _p_mcp_key_new(h, body):
+    d = json.loads(body or b"{}")
+    return MK.issue(h._bearer_uid() or "local", MK.scope_team(h._req_team()),
+                    days=d.get("days") or MK.DEFAULT_DAYS, label=d.get("label") or "")
+
+
+@_post_route("/mcp-key-revoke", gate="team")         # 폐기: (key_id, team, 소유자) 3중 필터(감사 O3)
+def _p_mcp_key_revoke(h, body):
+    # 소유자는 **세션에서만** 온다(본문에서 받지 않는다) — 받으면 그 값이 곧 사칭 파라미터가 된다.
+    d = json.loads(body or b"{}")
+    ok = MK.revoke(d.get("key_id") or "", MK.scope_team(h._req_team()), h._bearer_uid() or "local")
+    return {"ok": ok} if ok else {"ok": False, "error": "키를 찾을 수 없습니다"}
 
 
 @_post_route("/builder-test", gate="admin")          # 컴파일 산출을 테스트 모델로 1회 실행(실모델 비용)
