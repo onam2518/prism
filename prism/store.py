@@ -356,6 +356,28 @@ class Store:
         c.commit()
         return True
 
+    def set_image_urls(self, content_hash, urls, team=None) -> bool:
+        """참조 이미지 백필: payload.content_ref.image_urls 만 교체(초안·판정·적재 시각 불변).
+
+        source_url 과 같은 참조 필드라 정체성 해시(서비스+제목+부제+본문)에 들어가지 않는다.
+        즉 링크 백필과 똑같이 콘텐츠 정체성을 바꾸지 않는다.
+        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 미사용)."""
+        c = self._conn()
+        row = c.execute("SELECT payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
+        if not row:
+            return False
+        try:
+            payload = json.loads(row[0])
+        except (TypeError, ValueError):
+            return False
+        ref = payload.get("content_ref") or {}
+        ref["image_urls"] = list(urls or [])
+        payload["content_ref"] = ref
+        c.execute("UPDATE results SET payload=? WHERE content_hash=?",
+                  (json.dumps(payload, ensure_ascii=False), content_hash))
+        c.commit()
+        return True
+
     def set_ops_hold(self, content_hash, on, team=None) -> bool:
         """운영자 수동 노출제한 플래그: payload.quality_meta.ops_hold 에 저장.
         품질 라벨(finalGrade·reasons)이 아니라 별도 키라 학습 루프(골든·피드백)가 읽지 않는다(학습 미포함)."""

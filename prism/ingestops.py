@@ -23,9 +23,15 @@ _SV = None                      # serve 모듈 객체(컴포지션 루트) · se
 
 
 def backfill_urls(file_bytes: bytes, filename: str, team=None) -> dict:
-    """원문 링크 백필(관리자): 해시/제목 ↔ URL 매핑 표로 기존 콘텐츠의 source_url 만 갱신.
-    초안(item_meta)·검수 판정·적재 시각은 건드리지 않는다 — 해시가 서비스+제목+부제+본문으로만
-    계산되므로 링크 교체는 콘텐츠 정체성을 바꾸지 않는다(링크 없이 인입된 과거분 구제)."""
+    """원문 링크·참조 이미지 백필(관리자): 해시/제목 ↔ 링크·이미지 매핑 표로 기존 콘텐츠의
+    source_url · image_urls 만 갱신. 초안(item_meta)·검수 판정·적재 시각은 건드리지 않는다 —
+    해시가 서비스+제목+부제+본문으로만 계산되므로 둘 다 콘텐츠 정체성을 바꾸지 않는다.
+
+    이미지 백필을 붙인 이유(2026-08-12): 운영 1,451건이 image_urls 전부 빈 목록인데
+    원문 링크는 100% 채워져 있었다(업로드 시 '이미지 URL' 칸만 비운 것). 그 결과
+    '포토·영상 중심' 판정이 근거 없이 이뤄져 검수 지적 단일 최다(39건)가 됐다.
+    프롬프트는 이미 이미지 수를 신호로 받게 돼 있으므로 입력만 채우면 그대로 살아난다.
+    링크 컬럼·이미지 컬럼 중 **하나만 있어도** 동작한다(둘 다 있으면 둘 다 갱신)."""
     from . import ingest as ING
     ext = os.path.splitext(filename or "")[1].lower() or ".csv"
     fd, tmp = tempfile.mkstemp(suffix=ext)
@@ -48,30 +54,39 @@ def backfill_urls(file_bytes: bytes, filename: str, team=None) -> dict:
                 return h
         return None
     url_col = _find(set(ING.ALIASES["source_url"]))
+    img_col = _find(set(ING.ALIASES["image_urls"]))
     hash_col = _find({"hash", "해시", "contenthash", "콘텐츠해시"})
     title_col = _find(set(ING.ALIASES["title"]))
-    if not url_col or not (hash_col or title_col):
-        return {"error": "필수 컬럼을 찾지 못했습니다 · URL(링크) 컬럼과 해시 또는 제목 컬럼이 필요합니다",
-                "headers": headers}
+    if not (url_col or img_col) or not (hash_col or title_col):
+        return {"error": "필수 컬럼을 찾지 못했습니다 · 링크 또는 이미지 URL 컬럼과 "
+                         "해시 또는 제목 컬럼이 필요합니다", "headers": headers}
     st = _SV.get_store()
     if not (st and hasattr(st, "set_source_url")):
         return {"error": "저장소가 준비되지 않았습니다"}
-    by_hash, by_title = {}, {}                     # 현재 적재분 색인: 매칭 + 변화 없음 판별
+    if img_col and not hasattr(st, "set_image_urls"):   # 구 계약 스토어면 링크만 처리(조용히 넘기지 않는다)
+        img_col = None
+    by_hash, by_title, by_img = {}, {}, {}          # 현재 적재분 색인: 매칭 + 변화 없음 판별
     for r in _SV.results_rows(team=team):
         ref = r.get("content_ref") or {}
         h = _SV._row_key(ref)
         by_hash[h] = ref.get("source_url", "") or r.get("url", "")
+        by_img[h] = list(ref.get("image_urls") or [])
         t = (ref.get("title", "") or r.get("title", "")).strip()
         if t:
             by_title.setdefault(t, []).append(h)
     updated = unchanged = no_match = ambiguous = bad_url = 0
+    img_updated = img_unchanged = 0
     misses = []                                    # 미매칭 표본(최대 10) · 사용자가 원인 파악
     for row in rows:
-        url = str(row.get(url_col) or "").strip()
+        url = str(row.get(url_col) or "").strip() if url_col else ""
+        imgs = ING.normalize_image_urls(row.get(img_col)) if img_col else []
+        imgs = [u for u in imgs if u.startswith("http://") or u.startswith("https://")]
         h = str(row.get(hash_col) or "").strip() if hash_col else ""
         t = str(row.get(title_col) or "").strip() if title_col else ""
-        if not (url.startswith("http://") or url.startswith("https://")):
+        has_url = bool(url) and (url.startswith("http://") or url.startswith("https://"))
+        if url and not has_url:                    # 링크 칸에 링크가 아닌 값이 들어온 경우만 집계
             bad_url += 1
+        if not has_url and not imgs:               # 이 행에서 쓸 값이 없다
             continue
         if h and h in by_hash:
             target = h
@@ -87,17 +102,26 @@ def backfill_urls(file_bytes: bytes, filename: str, team=None) -> dict:
             if len(misses) < 10:
                 misses.append(h or t or "(해시·제목 빈 행)")
             continue
-        if by_hash.get(target, "") == url:
-            unchanged += 1
-            continue
-        if st.set_source_url(target, url, team=team):
-            by_hash[target] = url
-            updated += 1
-        else:
-            no_match += 1
-    if updated:
+        if has_url:
+            if by_hash.get(target, "") == url:
+                unchanged += 1
+            elif st.set_source_url(target, url, team=team):
+                by_hash[target] = url
+                updated += 1
+            else:
+                no_match += 1
+        if imgs:
+            if by_img.get(target) == imgs:
+                img_unchanged += 1
+            elif st.set_image_urls(target, imgs, team=team):
+                by_img[target] = imgs
+                img_updated += 1
+            else:
+                no_match += 1
+    if updated or img_updated:
         _SV._agg_bump()
     return {"ok": True, "rows": len(rows), "updated": updated, "unchanged": unchanged,
+            "imgUpdated": img_updated, "imgUnchanged": img_unchanged,
             "noMatch": no_match, "ambiguous": ambiguous, "badUrl": bad_url, "misses": misses}
 
 
