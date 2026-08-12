@@ -299,7 +299,6 @@ window.PRISM_APP_PARTS.push(() => ({
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') {
           this.loadAdmin();
-          if (id === 'system') this.mkLoad();          // 시스템 설정 = 자격증명 자리(API 키 · MCP 파트너 키)
           // 볼 수 없는 탭이 선택돼 있으면 빈 화면이 된다 · 접근 가능한 탭으로 옮긴다
           if (id === 'admin') {
             if (this.adminTab === 'team' && !this.canTeamTab && this.canCrewTab) this.adminTab = 'crew';

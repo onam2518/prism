@@ -5,6 +5,7 @@
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
       // ── 실험실 · MCP 키 탭 ──
+      labMcpView: 'keys',                           // MCP 탭 서브뷰: keys(내 키) | connect(연결 방법)
       mkKeys: [],                                   // 목록(비밀 없음 · 접두 6자 + 사용량)
       mkMeta: { max: 5, default_days: 90, max_days: 365, per_min: 60, per_day: 5000, hint: '' },
       mkNew: { days: 90, label: '' },

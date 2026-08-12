@@ -217,7 +217,7 @@ alter table public.prism_prompt_library enable row level security;
 ```
 스튜디오 라이브러리 탭: 패턴 저장·핀 우선 정렬·복사·단계 원천 지시 적용(빌더 결과 저장 연동).
 
-**MCP 파트너 키(`prism_mcp_keys` 외 1, 2026-08-12 · ⚠️ 미적용 · 트랙 B 외부 MCP · `prism/mcpkeys.py`)**:
+**MCP 파트너 키(`prism_mcp_keys` 외 1, 2026-08-13 · 적용됨 · 트랙 B 외부 MCP · `prism/mcpkeys.py`)**:
 ```sql
 -- 키는 sha256 해시만 저장(평문 미보관 · 발급 시 1회 표시).
 -- key_id 는 난수 문자열이다 — 순차 정수면 남의 키 id 를 찍어 맞힐 수 있다(감사 O3).
@@ -253,9 +253,13 @@ create table if not exists public.prism_mcp_calls (
 create index if not exists ix_mcpcalls_key on public.prism_mcp_calls(key_id, created_at desc);
 alter table public.prism_mcp_calls enable row level security;
 ```
-조회·폐기는 전부 `(key_id, team_id)` 복합 필터(`supastore.mcp_key_revoke`) — 팀 스코프 없이 만든
-배포 키에서 자기 팀 관리자가 타 팀 키를 끊을 수 있었던 감사 O3 를 되풀이하지 않는다.
-**적용 전에는** supabase 모드에서 `/mcp-keys` 발급이 PostgREST 404 로 실패한다(sqlite 는 무관).
+조회는 `(user_id, team_id)`, 폐기는 `(key_id, team_id, user_id)` 복합 필터다(`supastore.mcp_key_revoke`).
+팀 필터는 팀 스코프 없이 만든 배포 키에서 자기 팀 관리자가 타 팀 키를 끊을 수 있었던 감사 O3 의
+회귀 방지이고, 소유자 필터는 그 반대편(팀은 맞는데 소유자를 안 봐 같은 팀 아무나 동료 키를 끊는 것)이다.
+키는 개인 자격증명이라 관리자도 남의 키를 보거나 지우지 못한다.
+
+> 적용: 2026-08-13 · 운영 프로젝트 `uycdzslkhkruvmyjcbgj` · 두 테이블 RLS enable + 정책 0(서버 전용) ·
+> 인덱스·외래키 확인 완료. 기존 테이블 무변경.
 
 ## 테이블 네임스페이스 정리 방침 (2026-07-18)
 
