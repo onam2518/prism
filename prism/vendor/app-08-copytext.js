@@ -65,6 +65,8 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.cfg.textProvider) this.textProvider = this.cfg.textProvider;
           if (typeof this.cfg.textModel === 'string' && this.cfg.textModel) this.textModel = this.cfg.textModel;
           if (typeof this.cfg.legalEnabled === 'boolean') this.legalEnabled = this.cfg.legalEnabled;
+          if (typeof this.cfg.assistModel === 'string' && this.cfg.assistModel) this.assistModel = this.cfg.assistModel;
+          if (Array.isArray(this.cfg.assistModels)) this.assistModels = this.cfg.assistModels;
         } catch (e) { /* noop */ }
       },
       async toggleLegal() {
@@ -124,6 +126,20 @@ window.PRISM_APP_PARTS.push(() => ({
         try { const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
             body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
         catch (e) { this.slotMsg = '오류: ' + e; }
+      },
+      // 검수 보조 에이전트 모델(시스템 설정 · 관리자). 고른 즉시 저장하고 서버가 해석한 값을
+      // 되받아 화면에 반영한다. 화면이 실제로 쓰이는 모델과 다른 이름을 들고 있으면 안 된다
+      // (해석은 서버 config.assist_model 한 곳 · 화면은 판정하지 않는다).
+      async saveAssistModel() {
+        this.assistMsg = '저장 중…';
+        try {
+          const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ assist_model: this.assistModel || '' }) });
+          const j = await r.json();
+          if (!r.ok || (j && j.error)) { this.assistMsg = '오류: ' + ((j && j.error) || r.status); return; }
+          this.cfg = j;
+          if (typeof j.assistModel === 'string' && j.assistModel) this.assistModel = j.assistModel;
+          this.assistMsg = '✓ 저장됨';
+        } catch (e) { this.assistMsg = '오류: ' + e; }
       },
       setReasoning(id) { this.reasoning = id; fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reasoning: id }) }).catch(() => {}); },
       async clearStore() {

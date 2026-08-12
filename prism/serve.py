@@ -38,7 +38,8 @@ from . import agents as AG
 from . import meta_prompts as MP
 from . import learnops as LO
 from . import adminops as AO
-from .config import Config, DEFAULT_CONFIG_PATH
+from .config import (Config, DEFAULT_CONFIG_PATH, MODEL_DEFAULT,
+                     assist_model, assist_model_options)   # 검수 보조 모델: 해석 함수 하나
 
 LO._SV = sys.modules[__name__]      # 학습 도메인에 서버 컴포지션 주입(-m 실행의 __main__ 포함)
 AO._SV = sys.modules[__name__]      # 관리자·인증 도메인에도 동일 주입
@@ -1058,6 +1059,10 @@ def config_status(team=None) -> dict:
         "learnRepeatDays": int(getattr(cfg, "learn_repeat_days", 0) or 0),
         "fallbackModels": list(getattr(cfg, "fallback_models", None) or []),
         "batchBudgetUsd": float(getattr(cfg, "batch_budget_usd", 0.0) or 0.0),
+        # 검수 보조 에이전트 모델(팀 공유 · 관리자 설정). 저장된 글자가 아니라 **해석된 값**을
+        # 싣는다. 화면이 실제로 쓰이는 모델과 다른 이름을 보여 주면 그것부터가 거짓말이다.
+        "assistModel": assist_model(cfg),
+        "assistModels": assist_model_options(),
         "finalRerunAfterBatch": bool(getattr(cfg, "final_rerun_after_batch", True)),
         "finalGoldCheck": bool(getattr(cfg, "final_gold_check", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
@@ -1140,7 +1145,8 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_4c = "meta_four_calls" in data
     has_misc = (("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
                 or ("fallback_models" in data) or ("batch_budget_usd" in data)
-                or ("final_rerun_after_batch" in data) or ("final_gold_check" in data))
+                or ("final_rerun_after_batch" in data) or ("final_gold_check" in data)
+                or ("assist_model" in data))
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
@@ -1230,6 +1236,12 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 cfg.batch_budget_usd = max(0.0, min(1000.0, float(data.get("batch_budget_usd") or 0)))
             except (TypeError, ValueError):
                 pass
+        if "assist_model" in data:                # 검수 보조 에이전트 모델(빈 값 = 미설정 = 기본값)
+            # 글자만 다듬어 그대로 담는다. 유효성은 읽는 쪽(config.assist_model)이 판정한다.
+            # 검사를 쓰기에도 두면 규칙이 두 벌이 되고, 손으로 고친 config.json 은 어차피
+            # 이 경로를 지나지 않으므로 읽는 쪽 검사가 유일하게 빠짐없는 자리다.
+            cfg.assist_model = (data.get("assist_model") or "").strip() \
+                if isinstance(data.get("assist_model"), str) else ""
         if "final_rerun_after_batch" in data:     # 학습 반영 후 미확정분 새 버전 자동 재실행(2층 검수 3-1)
             cfg.final_rerun_after_batch = bool(data.get("final_rerun_after_batch"))
         if "final_gold_check" in data:            # 최종검수 골드 캘리브레이션 출제 켬/끔
@@ -1290,7 +1302,7 @@ def list_models() -> dict:
 
 
 _SOLAR_BASE_DEFAULT = "https://api.upstage.ai/v1"
-_SOLAR_MODEL_DEFAULT = "solar-pro2"
+_SOLAR_MODEL_DEFAULT = MODEL_DEFAULT              # 기본 모델 이름의 원천은 config 한 곳
 
 
 def _seed_solar_defaults():
