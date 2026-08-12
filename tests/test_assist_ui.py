@@ -43,6 +43,16 @@ def _fn(js, name):
     return m.group(0) if m else ""
 
 
+def _dissent_block(markup: str) -> str:
+    """'다른 검수자 의견' 섹션 마크업만 떼어 낸다.
+
+    문자열 첫 등장으로 자르면 상단 배지 툴팁이 잡힌다(그 문구에도 같은 말이 들어 있다).
+    섹션 라벨을 앵커로 쓴다."""
+    start = markup.index('<div class="dve__lbl">다른 검수자 의견')
+    end = markup.index('<div class="dve__lbl">비슷한 교정 사례')
+    return markup[start:end]
+
+
 class TestAssistMarkup(unittest.TestCase):
     def test_fragment_is_composed_into_page(self):
         """조각이 PAGE 에 합성되고, 검수 상세의 자리표(#asxSlot)로 텔레포트된다."""
@@ -69,7 +79,7 @@ class TestAssistMarkup(unittest.TestCase):
         self.assertIn('x-if="asxAfter()"', m)
         after = m[m.index('x-if="asxAfter()"'):]
         before = m[:m.index('x-if="asxAfter()"')]
-        for needle in ("asxPrecItems()", "asxDisItems()", "asxSuggest()", "asxCut("):
+        for needle in ("asxPrecItems()", "asxDisLines()", "asxSuggest()", "asxCut("):
             self.assertIn(needle, after, needle)
             self.assertNotIn(needle, before, f"{needle} 이 판정 전 화면에 있습니다")
 
@@ -94,14 +104,46 @@ class TestAssistMarkup(unittest.TestCase):
         self.assertIn("asxStageEcho()", _read(MARKUP))
 
     def test_truncation_is_visible_on_both_lists(self):
-        """조용한 절단은 '다 봤다'로 읽힌다 · 선례와 다른 검수자 의견 양쪽 다."""
-        m = _read(MARKUP)
+        """조용한 절단은 '다 봤다'로 읽힌다 · 선례와 다른 검수자 의견 양쪽 다.
+
+        뜻이 서로 다르다 — 선례는 목록이 잘린 것이고, 의견 요약은 둘째 줄의 **지적 요소
+        나열**이 잘린 것이다(의견 자체는 전부 셌다). 의견 요약에 '몇 건 중 몇 건' 을 쓰면
+        의견을 일부만 봤다는 뜻으로 읽힌다."""
+        m, js = _read(MARKUP), _read(APPJS)
         self.assertIn("asxCut(asxPrec)", m)
-        self.assertIn("asxCut(asxDis)", m)
+        self.assertIn("asxDisCut()", m)
+        self.assertIn("건만 보여줍니다", _fn(js, "asxCut"))
+        cut = _fn(js, "asxDisCut")
+        self.assertIn("지적한 요소가 더 있습니다", cut)
+        self.assertNotIn("건 중", cut)
+        self.assertNotIn("4", cut)                                     # 상한 값은 서버 한 곳에만
 
     def test_precedent_shows_how_many_agreed(self):
         """몇 사람이 그렇게 봤는지가 검수자가 무게를 다는 근거다."""
         self.assertIn("asxWho(p.n)", _read(MARKUP))
+
+    def test_dissent_is_a_digest_not_a_roster(self):
+        """다른 검수자 의견은 사람별 나열이 아니라 서버가 조립한 3줄 요약이다.
+
+        디테일이 과하면 판단을 저해한다 — 사람 수만큼 이름·사유 원문을 읽는 동안
+        특정 사람의 문장에 판단이 끌려간다."""
+        m = _read(MARKUP)
+        blk = _dissent_block(m)
+        self.assertIn("asxDisLines()", blk)
+        self.assertIn("asxDisN()", blk)
+        for gone in ("v.reviewer", "v.reason", "asxVerdictLabel(v", "asxDisItems"):
+            self.assertNotIn(gone, blk, f"{gone} 이 아직 그려집니다")
+        self.assertIn("의견 갈림", blk)                                  # split 배지는 유지
+        self.assertIn("다른 의견 없음", blk)                              # 비면 자리를 채우지 않는다
+
+    def test_dissent_lines_are_drawn_verbatim(self):
+        """서버가 준 줄을 그대로 쓴다 · 화면이 다시 가공하면 왜 그렇게 보이는지가 두 곳으로 갈린다."""
+        m = _read(MARKUP)
+        blk = _dissent_block(m)
+        self.assertIn('x-text="s"', blk)                                # 줄 자체는 손대지 않는다
+        body = _fn(_read(APPJS), "asxDisLines")
+        for banned in (".slice(", ".join(", ".map(", ".substring(", ".replace("):
+            self.assertNotIn(banned, body, f"asxDisLines 가 {banned} 로 가공합니다")
 
     def test_masked_precedent_identifiers_are_left_blank(self):
         """선례가 정답셋 원본이면 서버가 hash·title·reason 을 지운다.
@@ -258,6 +300,7 @@ const stubs = {                                  // 다른 조각이 주는 것�
   finalMode: false,
 };
 const app = Object.assign({}, stubs, part);
+(async () => {
 const row = { hash: 'abc123', service: '뉴스', title: '전기요금 개편안 발표, 가구별 영향은',
               category: ['News/Politics'], grade: 'G', reasons: ['ad'],
               intent: ['속보·사건 추적'], entities: ['전기요금', '가구별'], fb: {} };
@@ -280,7 +323,32 @@ app.asxBrief = Object.assign({}, brief, {
 });
 const poisoned = { summary: app.asxSummary(), criteria: app.asxCriteria() };
 
-console.log(JSON.stringify({ normal, gold, poisoned }));
+// (라) 골드에서 asxLoad 가 서버를 **부르지 않고** 빈 의견 요약을 만든다.
+//      _afetch 를 부르면 즉시 실패하도록 심어 둔다 — 정적 검사가 아니라 실행으로 막는다.
+let called = 0;
+app._afetch = () => { called += 1; return Promise.reject(new Error('골드는 서버를 부르면 안 된다')); };
+app._authHeaders = () => ({});
+app.myVerdict = () => 'good';                    // 판정 후 = 선례·의견을 부르는 단계
+app.detail = Object.assign({}, row, { hash: 'gold:bad:abc123', grade: 'R' });
+app.asxOff = false; app.asxKey = '';
+await app.asxLoad();
+const goldDis = { called, lines: app.asxDisLines(), n: app.asxDisN(), cut: app.asxDisCut(),
+                  split: !!(app.asxDis || {}).split, prec: app.asxPrecItems().length };
+
+// (마) 평범한 콘텐츠인데 의견이 하나도 없을 때(서버가 빈 요약을 준다)
+app.asxDis = { lines: [], n: 0, split: false, truncated: false };
+app.asxPrec = { items: [], total: 0, truncated: false };
+const bareDis = { called, lines: app.asxDisLines(), n: app.asxDisN(), cut: app.asxDisCut(),
+                  split: !!app.asxDis.split, prec: app.asxPrecItems().length };
+
+// (바) 요약이 있을 때: 줄은 그대로 · 인원은 남고 · 이름/사유가 남아 와도 안 그린다 · 잘림은 '반영' 문장
+app.asxDis = { lines: ['정확 쪽이 우세합니다.', '분류가 넓다는 지적이 있습니다.', '리드문은 문제없다고 봤습니다.'],
+               n: 4, split: true, truncated: true,
+               items: [{ reviewer: '복실', reason: '분류 적절', verdict: 'good' }] };
+const digest = { lines: app.asxDisLines(), n: app.asxDisN(), cut: app.asxDisCut() };
+
+console.log(JSON.stringify({ normal, gold, poisoned, goldDis, bareDis, digest }));
+})();
 """
 
 
@@ -333,6 +401,35 @@ class TestAssistGoldParityByExecution(unittest.TestCase):
             self.out["poisoned"]["criteria"], ensure_ascii=False)
         for leaked in ("서버가 만든 요약", "서버 셋째 줄", "서버기준", "서버가 고른 기준"):
             self.assertNotIn(leaked, blob, leaked)
+
+    def test_gold_never_calls_the_server_for_dissent(self):
+        """정적 검사가 아니라 실행으로 막는다 · _afetch 를 부르면 실패하도록 심어 뒀다."""
+        self.assertEqual(self.out["goldDis"]["called"], 0)
+
+    def test_gold_dissent_looks_like_a_content_with_no_opinions(self):
+        """골드의 의견 요약이 '의견이 하나도 없는 평범한 콘텐츠'와 한 글자도 다르지 않아야 한다."""
+        self.assertEqual(self.out["goldDis"], self.out["bareDis"])
+        self.assertEqual(self.out["goldDis"]["lines"], [])
+        self.assertEqual(self.out["goldDis"]["cut"], "")               # 없는 절단을 말하지 않는다
+
+    def test_dissent_lines_pass_through_untouched(self):
+        """서버가 준 줄을 그대로 쓴다 · 인원은 남기고 이름·사유는 남아 와도 안 쓴다."""
+        d = self.out["digest"]
+        self.assertEqual(d["lines"], ["정확 쪽이 우세합니다.", "분류가 넓다는 지적이 있습니다.",
+                                      "리드문은 문제없다고 봤습니다."])
+        self.assertEqual(d["n"], 4)
+        blob = " ".join(d["lines"]) + d["cut"]
+        for leaked in ("복실", "분류 적절"):
+            self.assertNotIn(leaked, blob, leaked)
+
+    def test_truncated_digest_talks_about_elements_not_opinions(self):
+        """의견 요약의 truncated 는 둘째 줄의 지적 요소가 잘렸다는 뜻이다.
+
+        의견 자체는 전부 셌으므로 '몇 건 중 몇 건' 으로 쓰면 안 된다 — 일부만 봤다는
+        뜻으로 읽힌다."""
+        cut = self.out["digest"]["cut"]
+        self.assertEqual(cut, "지적한 요소가 더 있습니다 · 많이 나온 것부터 적었습니다")
+        self.assertNotIn("건 중", cut)
 
 
 if __name__ == "__main__":
