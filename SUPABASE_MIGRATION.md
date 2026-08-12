@@ -9,7 +9,7 @@
 
 | 항목 | 결정 | 근거 |
 |---|---|---|
-| 프로젝트 | 기존 **PromptForge**(`yujinhcdbllcnnfvcmfp`), **`public.prism_*`** 테이블(접두사) | +$0. public 기본 노출 → **REST 노출 설정 불필요**. Auth 공유 수용(소수 팀) |
+| 프로젝트 | ~~기존 **PromptForge**(`yujinhcdbllcnnfvcmfp`) 공유~~ → **2026-08-12 전용 프로젝트 분리: `prism`(`uycdzslkhkruvmyjcbgj` · ap-northeast-1)** | 공유 nano 인스턴스 CPU 고갈로 전 쿼리 8s 타임아웃 장애(8/12 오후) → 전용 Micro 분리. 스키마·데이터·auth.users(38 · UUID/해시 보존) 전량 이관, 옛 프로젝트의 `prism_*` 는 1주 보관 후 삭제 예정 백업 |
 | 아키텍처 | **Frontend → Prism 서버 → Supabase** (서버가 허브) | 현 구조 유지, store만 교체 |
 | store 접근 | **PostgREST REST + urllib**(stdlib 유지) | "의존성 0" 거의 보존. psycopg는 선택지(직접연결·의존성↑) |
 | 모드 | **dual-mode**: `PRISM_BACKEND=sqlite`(기본·로컬) ↔ `supabase`(팀) | 로컬 오프라인 사용 보존 |
