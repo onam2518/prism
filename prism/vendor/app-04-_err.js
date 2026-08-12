@@ -136,7 +136,7 @@ window.PRISM_APP_PARTS.push(() => ({
         }
       },
       liveToast(msg) { this.liveMsg = msg; clearTimeout(this._lt); this._lt = setTimeout(() => { this.liveMsg = ''; }, 4200); },
-      async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; const r = await this._afetch('/arena' + p); const d = await r.json(); if (r.ok && d) { this.arenaData = d; this.maybeQuestReminder(); } } catch (e) {} this.checkBadges(); },
+      async loadArena() { try { const p = this.reviewer ? ('?reviewer=' + encodeURIComponent(this.reviewer)) : ''; const r = await this._afetch('/arena' + p); const d = await r.json(); if (r.ok && d) { this.arenaData = d; this.maybeQuestReminder(); } } catch (e) { this._err('아레나 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요'); } this.checkBadges(); },
       async loadAdmin() { try { this.adminData = await (await this._afetch('/admin', { headers: this._authHeaders() })).json(); this._initMenuPerms(); } catch (e) { this._err('팀 관리 불러오기 실패'); } },
       _initMenuPerms() {                     // 유효 매트릭스 → 편집 상태(각 메뉴 {super,admin} 보장)
         const src = (this.adminData && this.adminData.menuPerms) || {};
@@ -203,6 +203,8 @@ window.PRISM_APP_PARTS.push(() => ({
       get filteredGolden() {                   // 정답셋 목록 · 모델별 분리 없음(정답은 모델 무관 사람 확정값)
         return (this.goldenList && this.goldenList.items) || [];
       },
+      goldenShown: 200,                        // 정답셋 표시 캡(더 보기 증분) · 검수 표 rawShown 200 과 동일 규약
+      get goldenShownList() { return this.filteredGolden.slice(0, this.goldenShown); },
       // 프롬프트 스튜디오 · 기준 계약/계열 래퍼/미리보기
       contractCall: 'summary', wrapFam: 'solar', wrapDraft: '', wrapMsg: '',
       pvModel: '', pvCall: 'summary', pvService: '뉴스', pvData: null,
@@ -324,7 +326,14 @@ window.PRISM_APP_PARTS.push(() => ({
             clearTimeout(this._pilotPollT);
             if (r.run && r.run.status === 'running' && !r.run.stalled) this._pilotPollT = setTimeout(() => this.loadPilot(), 5000);
           }
-        } catch (e) {}
+        } catch (e) {
+          // 순단으로 상태 조회가 실패해도 폴링을 이어간다 — 재예약이 catch 밖에만 있으면
+          // 한 번의 실패로 진행률 갱신이 조용히 멎는다(실행은 서버에서 계속 중).
+          if (this.pilot && this.pilot.status === 'running' && !this.pilot.stalled) {
+            clearTimeout(this._pilotPollT);
+            this._pilotPollT = setTimeout(() => this.loadPilot(), 5000);
+          }
+        }
       },
       async startPilot() {
         this.pilotBusy = true; this.pilotMsg = '';

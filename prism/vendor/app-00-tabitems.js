@@ -139,7 +139,7 @@ window.PRISM_APP_PARTS.push(() => ({
       assignSel: null, assignPick: [], assignMin: 1, assignBusy: false,
       // 기본 창 2000건(서버 슬림 목록 · DOM 은 rawShownList 200 캡이 지킨다). 종전 '최신 200건'
       // 창은 방금 올린 것만 보이는 착시를 만들었다(400건 넣고 목록·배정 풀에 200건만 · 2026-08-06 운영).
-      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || 2000) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail(); } } catch (e) {} },
+      async loadRaw(limit) { try { const p = new URLSearchParams({ limit: String(limit || 2000) }); if (this.reviewer) p.set('reviewer', this.reviewer); const r = await (await this._afetch('/raw?' + p.toString())).json(); if (r && r.ok) { this.rawData = r; this.rawSel = null; this.assignSel = null; this._absorbFreshFb(); if (this._pendingDetail) this._consumePendingDetail(); } } catch (e) { this._err('검수 목록 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요'); } },
       // 딥링크 ?detail=<hash> 소진: 로드된 목록에서 찾아 상세 열기(없으면 1회 더 넓게 재조회 후 포기)
       _consumePendingDetail() {
         const h = this._pendingDetail;
@@ -207,7 +207,7 @@ window.PRISM_APP_PARTS.push(() => ({
       openBulk() { this.bulkChecked = {}; this.bulkPick = []; this.bulkMin = 1; this.bulkQ = ''; this.bulkMode = 'same'; this.bulkGrpN = 1; this.bulkPickG = []; this.bulkRandMsg = ''; this.bulkOpen = true; this.loadRaw(); this.loadAssignLog(); },
       // 배정 감사 이력: 누가·언제·어떤 방식으로 몇 건을 배정/해제했는지(모달 하단 표시)
       assignLog: null,
-      async loadAssignLog() { try { const r = await (await this._afetch('/assign-log', { headers: this._authHeaders() })).json(); if (r && r.ok) this.assignLog = r.items; } catch (e) {} },
+      async loadAssignLog() { try { const r = await (await this._afetch('/assign-log', { headers: this._authHeaders() })).json(); if (r && r.ok) this.assignLog = r.items; } catch (e) { this._err('배정 이력 불러오기 실패'); } },
       assignLogTxt(it) {
         const who = (it.reviewers || []).map((id) => ((this.assignMembers.find((m) => m.id === id) || {}).name || String(id).slice(0, 6))).join('·');
         return this.fmtTs(it.ts) + ' · ' + it.by + ' · ' + it.mode + ' ' + it.n + '건' + (who ? (' → ' + who) : '');
