@@ -1,9 +1,11 @@
 """중앙 설정 (운영 하드닝). 모델·엔드포인트·단가·동시성·재시도·레이트리밋·임계·경로를 한 곳에."""
 from __future__ import annotations
 from dataclasses import dataclass, field, asdict
+import copy
 import json
 import os
 import sys
+import threading
 
 HOME = os.path.dirname(os.path.dirname(__file__))
 
@@ -19,7 +21,12 @@ else:
 
 @dataclass
 class RetryPolicy:
-    max_retries: int = 4            # 콜당 최대 재시도
+    max_retries: int = 4            # 콜당 최대 재시도(429·5xx·네트워크 · 과금 없음)
+    # 형식 실패(JSON 파싱 불가·빈 응답) 재시도 상한. 네트워크 재시도와 분리한 이유:
+    # 이쪽은 HTTP 200 을 받고 버리는 것이라 **매회 과금**되고, temperature=0 이라 같은 요청을
+    # 반복하면 같은 답이 온다(형식 불일치 모델에서 콘텐츠 1건당 15콜·46초 대기 실측 2026-08-11).
+    # 재시도 시 프롬프트에 형식 지시를 덧붙여 요청 자체를 다르게 만든다(llm.complete_json).
+    max_format_retries: int = 1
     base_delay: float = 1.0         # 지수백오프 기준(초)
     max_delay: float = 30.0
     jitter: float = 0.4             # 지터 비율(0~1)
@@ -123,11 +130,12 @@ class Config:
     def load(cls, path: str | None = None) -> "Config":
         cfg = cls()
         p = path or DEFAULT_CONFIG_PATH
-        if os.path.exists(p):
-            with open(p, encoding="utf-8") as f:
-                data = json.load(f)
+        data = _read_config_file(p)
+        if data:
             cfg = _merge(cfg, data)
-        # env 오버라이드
+        # env 오버라이드 — **캐시 대상이 아니다**. 44개 호출 지점 중에는 env 를 바꿔 가며
+        # 재로드를 기대하는 경로(테스트·PRISM_CONFIG 격리 절차)가 있어서, 파일 파싱만 캐시하고
+        # env 는 매번 다시 읽는다.
         cfg.api_key = os.environ.get("PRISM_API_KEY", os.environ.get("UPSTAGE_API_KEY", cfg.api_key))
         if os.environ.get("PRISM_DB"):                 # 컨테이너 볼륨 등으로 DB 경로 지정
             cfg.db_path = os.environ["PRISM_DB"]
@@ -179,13 +187,48 @@ class Config:
             json.dump(d, f, ensure_ascii=False, indent=2)
 
 
+_FILE_CACHE = {}                 # path → (mtime_ns, size, data)
+_FILE_LOCK = threading.Lock()
+
+
+def _read_config_file(p: str):
+    """config.json 파싱 결과를 mtime+size 로 메모이즈.
+
+    종전에는 `Config.load()` 가 호출마다 exists+open+json.load 를 돌았다(29.2us/call ·
+    호출 지점 44곳 · /config 는 15초 헬스체크 경로). 파일은 1.4KB 이고 런타임에 거의 안 바뀐다.
+    stat 은 매번 하므로 **파일이 바뀌면 즉시 반영**되고(save_template 직후 포함),
+    env 오버라이드는 캐시하지 않는다(load 본문에서 매번 적용).
+    반환 dict 는 캐시 공유본이라 호출부가 통째로 바꿔 쓰지 못하게 _merge 가 컨테이너를 복사한다."""
+    try:
+        st = os.stat(p)
+    except OSError:
+        return None                                  # 파일 없음(= 기본값 Config)
+    key = (st.st_mtime_ns, st.st_size)
+    hit = _FILE_CACHE.get(p)
+    if hit and hit[0] == key:
+        return hit[1]
+    with open(p, encoding="utf-8") as f:             # 손상 파일은 종전대로 예외 전파(조용한 기본값 금지)
+        data = json.load(f)
+    if not isinstance(data, dict):
+        return None
+    with _FILE_LOCK:
+        _FILE_CACHE[p] = (key, data)
+        if len(_FILE_CACHE) > 8:                     # 경로가 여럿(테스트·앱 번들)일 때 무한 성장 방지
+            for k in list(_FILE_CACHE)[:-8]:
+                _FILE_CACHE.pop(k, None)
+    return data
+
+
 def _envbool(v: str) -> bool:
     """env 스위치 해석. 빈 값·0·false·off·no = 꺼짐(그 밖은 켜짐)."""
     return str(v or "").strip().lower() not in ("", "0", "false", "off", "no")
 
 
 def _merge(cfg: Config, data: dict) -> Config:
-    """평면/중첩 키를 dataclass 에 안전 병합(알 수 없는 키 무시)."""
+    """평면/중첩 키를 dataclass 에 안전 병합(알 수 없는 키 무시).
+
+    dict·list 값은 **복사해서** 싣는다: data 는 _read_config_file 의 캐시 공유본이라
+    호출부가 `cfg.stage_prompts[...] = …` 처럼 제자리 수정하면 캐시가 오염된다."""
     nested = {"retry": RetryPolicy, "rate": RateLimit,
               "prices": Prices, "thresholds": Thresholds}
     for k, v in data.items():
@@ -195,5 +238,5 @@ def _merge(cfg: Config, data: dict) -> Config:
                 if hasattr(sub, sk):
                     setattr(sub, sk, sv)
         elif hasattr(cfg, k) and k != "api_key":
-            setattr(cfg, k, v)
+            setattr(cfg, k, copy.deepcopy(v) if isinstance(v, (dict, list)) else v)
     return cfg

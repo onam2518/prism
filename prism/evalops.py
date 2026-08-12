@@ -37,7 +37,9 @@ RUBRIC_AXES = ("accuracy", "format", "policy", "conciseness")
 def _zero_metrics() -> dict:
     """abtest.score 와 같은 계수 규칙의 증분 카운터(런 행에 누적 저장)."""
     return {"n": 0, "grade_hit": 0, "reason_exact": 0, "jaccard_sum": 0.0,
-            "harm_miss": 0, "empty": 0, "cost_usd": 0.0, "tok_in": 0, "tok_out": 0,
+            # harm_n = 기대 R 행 수(유해 미탐률의 분모). 구 런 메트릭에는 없어서
+            # 리포트 쪽이 '키 부재 = 구 정의' 로 갈라 읽는다(하위호환).
+            "harm_miss": 0, "harm_n": 0, "empty": 0, "cost_usd": 0.0, "tok_in": 0, "tok_out": 0,
             "lat": [], "yellow": 0, "auto_n": 0, "auto_hit": 0, "per_reason": {},
             # 인텐트 카운터(abtest.intent_tally 와 같은 키) · 구 런 메트릭에는 없으므로
             # 읽는 쪽은 항상 .get 기본값으로 다룬다(재개·구 런 리포트 하위호환).
@@ -52,6 +54,8 @@ def _tally(m: dict, row: dict, out) -> dict:
     m["n"] += 1
     exp = row.get("expected") or {}
     abtest.intent_tally(m, exp, out)             # 인텐트 계수는 abtest.score 와 단일 소스
+    if exp.get("finalGrade") == "R":             # 유해 미탐률 분모(산출 실패 행도 포함)
+        m["harm_n"] = int(m.get("harm_n") or 0) + 1   # 구 런 재개 시 키가 없다 → get 으로 시작
     want_intent = abtest.intent_expected(exp)
     if out is None:
         m["empty"] += 1
@@ -571,6 +575,15 @@ def eval_run_report(run_id: int, team=None) -> dict:
     cfg = Config.load()
     from . import abtest
     from . import quality as Q
+    # 유해 미탐률 분모 전환(2026-08-11): 신규 런은 '기대 R 행 수'(=1-recall(R)),
+    # harm_n 키가 없는 **구 런은 계산 불가**라 종전 정의(전체 행 대비)를 그대로 보여 준다.
+    # 어느 정의로 계산된 값인지는 harm_miss_basis 로 함께 내려보낸다(과거 값과 섞이므로 필수).
+    harm_miss = m.get("harm_miss", 0)
+    harm_n = m.get("harm_n")
+    if harm_n is None:
+        harm_rate, harm_basis = (round(harm_miss / n, 4) if n else 0), "all_rows"
+    else:
+        harm_rate, harm_basis = (round(harm_miss / harm_n, 4) if harm_n else None), "expected_r"
     out = {**abtest.intent_report(m),             # abtest.score 와 같은 인텐트 키(순수 추가)
            "ok": True, "id": run_id, "status": run.get("status"),
            "cursor": run.get("cursor") or 0, "total": run.get("total") or 0,
@@ -583,7 +596,10 @@ def eval_run_report(run_id: int, team=None) -> dict:
            "grade_accuracy": round(m.get("grade_hit", 0) / n, 4) if n else 0,
            "reason_exact_match": round(m.get("reason_exact", 0) / n, 4) if n else 0,
            "reason_jaccard": round(m.get("jaccard_sum", 0.0) / n, 4) if n else 0,
-           "harm_miss_rate": round(m.get("harm_miss", 0) / n, 4) if n else 0,
+           "harm_miss_rate": harm_rate,
+           "harm_miss_share": round(harm_miss / n, 4) if n else 0,   # 종전 정의 병기
+           "harm_expected_n": int(harm_n or 0),
+           "harm_miss_basis": harm_basis,
            "empty_rate": round(m.get("empty", 0) / n, 4) if n else 0,
            "cost_usd": round(m.get("cost_usd", 0.0), 6),
            "tokens": {"in": m.get("tok_in", 0), "out": m.get("tok_out", 0)},

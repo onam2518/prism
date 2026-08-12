@@ -289,10 +289,13 @@ window.PRISM_APP_PARTS.push(() => ({
           try { const u = new URL(location.href); u.searchParams.set('m', id); history.pushState({ m: id }, '', u); } catch (e) {}
         }
         // 메뉴별 데이터 로드: 메뉴당 1회씩만(중복 fetch 제거) · 탭 데이터는 현재 탭 것만(나머지는 탭 클릭 시 lazy)
-        if (id === 'home') { this.loadArena(); this.loadDash(); }
-        else if (id === 'create') { this.loadDash(); this.loadRaw(); }
-        else if (id === 'evaluate') { this.loadDash(); this.loadGoldenStatus(); this.loadEvalRuns(); this.loadPilot(); }
-        else if (id === 'arena') this.loadArena();
+        // 메뉴 왕복 재조회 억제(2026-08-11): 여러 메뉴가 공유하는 로더는 4초 스로틀 변형을 쓴다.
+        // SSE(app-04 startLive)가 판정·변경 시 같은 스로틀 로더를 이미 부르므로 신선도는 그쪽이 지킨다.
+        // 예외 — crew 의 loadRaw(:아래)는 배정 직후 최신 후보 풀이 목적이라 스로틀 없이 그대로 둔다.
+        if (id === 'home') { this.loadArenaThrottled(); this.loadDashThrottled(); }
+        else if (id === 'create') { this.loadDashThrottled(); this.loadRawThrottled(); }
+        else if (id === 'evaluate') { this.loadDashThrottled(); this.loadGoldenStatusThrottled(); this.loadEvalRuns(); this.loadPilot(); }
+        else if (id === 'arena') this.loadArenaThrottled();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') {
           this.loadAdmin();
@@ -300,24 +303,24 @@ window.PRISM_APP_PARTS.push(() => ({
           if (id === 'admin') {
             if (this.adminTab === 'team' && !this.canTeamTab && this.canCrewTab) this.adminTab = 'crew';
             else if (this.adminTab === 'crew' && !this.canCrewTab && this.canTeamTab) this.adminTab = 'team';
-            if (this.adminTab === 'crew') { this.loadCrew(); this.loadRaw(); }   // 후보 풀 = 기본 창(2000) 전체
+            if (this.adminTab === 'crew') { this.loadCrew(); this.loadRaw(); }   // 후보 풀 = 기본 창(2000) 전체 · 배정 직후 최신화가 목적이라 스로틀 제외
           }
         }
-        else if (id === 'testset') { this.loadGoldenStatus(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
-        else if (id === 'lab') { this.loadDash(); this.loadUser(); }
+        else if (id === 'testset') { this.loadGoldenStatusThrottled(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
+        else if (id === 'lab') { this.loadDashThrottled(); this.loadUser(); }
         else if (id === 'dict') {
-          this.loadDict();
+          if (!this.dictData) this.loadDict();          // /dict 는 세션 중 사실상 불변(36KB) · 편집·초기화는 응답으로 dictData 를 직접 갱신한다
           if (this.dictTab === 'entity') this.loadEntdict();
           else if (this.dictTab === 'prompt') this.loadStageDrafts();
           else if (this.dictTab === 'engine') { this.syncWrapDraft(); this.loadPreview(); this.loadPromptDefaults(); }
         }
         else if (id === 'studio') {
-          this.loadGoldenStatus();
+          this.loadGoldenStatusThrottled();
           if (this.studioTab === 'topic') this.loadTopics();
           else if (this.promptSub === 'deploy') this.loadDeploys();      // 프롬프트 탭 = 빌더+하위(배포·라이브러리)
           else if (this.promptSub === 'library') this.loadLibrary();
         }
-        else if (id === 'content') { this.loadDash(); this.loadGoldenStatus(); this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); this.loadFails(); }
+        else if (id === 'content') { this.loadDashThrottled(); this.loadGoldenStatusThrottled(); if (!this.dictData) this.loadDict(); this.fetchIngestStatus(); this.pollIngestStatus(); this.loadFails(); }
       },
       toggleTheme() {
         this.theme = this.theme === 'dark' ? 'light' : 'dark';
@@ -337,7 +340,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return (text || '').split(',').map(s => s.trim()).filter(Boolean)
           .filter(t => !uni.has(t) && !own.has(t) && owner[t] && owner[t].indexOf(key) < 0);
       },
-      async loadDash() { this.modBusy = true; try { const r = await this._afetch('/dashboard'); const d = await r.json(); if (r.ok && d && !d.error) this.dashData = d; } catch (e) {} this.modBusy = false; },
+      async loadDash() { this.modBusy = true; try { const r = await this._afetch('/dashboard'); const d = await r.json(); if (r.ok && d && !d.error) this.dashData = d; } catch (e) { this._err('대시보드 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요'); } this.modBusy = false; },
       // _afetch 사용: 토큰 만료 시 자동 갱신·재로그인 안내(만료를 '불러오기 실패'로 오인하던 문제) · 성공 응답만 반영
       async topicDrill(t) {                              // 토픽 → 묶인 콘텐츠(배치 결과 드릴다운과 동일 모달)
         if (!t || !t.cluster_id) return;

@@ -319,7 +319,7 @@
             <template x-if="goldenList && goldenList.items && goldenList.items.length">
               <div style="margin-top:12px">
               <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:56px">등급</th><th>카테고리</th><th style="width:56px">버전</th><th style="width:74px">출처</th><th style="width:60px"></th></tr></thead><tbody>
-                <template x-for="g in filteredGolden" x-bind:key="g.hash">
+                <template x-for="g in goldenShownList" x-bind:key="g.hash">
                   <tr>
                     <td><span x-text="g.title || '(제목 없음)'"></span> <span class="ds-badge ds-badge--error" style="cursor:help" x-show="g.flagged && !g.fix_needed" data-tip="최근 평가에서 모델과 불일치 · 정답 오류 후보" data-tip-pos="top">오류 의심</span> <span class="ds-badge ds-badge--warning" style="cursor:help" x-show="g.fix_needed" data-tip="평가 판정에서 '모델이 맞음' 합의 · 모델 결과가 맞다고 확정된 정답(제거 후 재등록 또는 검수 재확정 필요)" data-tip-pos="top">교정 필요</span></td>
                     <td><span class="ds-badge" style="cursor:help" x-bind:class="g.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', g.grade)" data-tip-pos="top" x-text="g.grade || '·'"></span></td>
@@ -330,6 +330,7 @@
                   </tr>
                 </template>
               </tbody></table></div>
+              <button type="button" class="copybtn" style="width:100%;margin-top:6px" x-show="filteredGolden.length > goldenShown" x-cloak x-on:click="goldenShown += 200" x-text="'더 보기 · 남은 ' + (filteredGolden.length - goldenShown) + '건'"></button>
               </div>
             </template>
           </div>

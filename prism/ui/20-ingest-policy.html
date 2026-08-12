@@ -523,7 +523,7 @@
                   <span class="text-xs text-muted" x-text="'팀 의견 · 정확 ' + (detail.fb.good||0) + '개 · 수정 필요 ' + (detail.fb.bad||0) + '개'"></span>
                 </div>
                 <!-- 리드 최종판정: 의견 갈림을 리드(슈퍼관리자 이상)가 확정 · 골든 승격에서 다수결보다 우선 -->
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px" x-show="opsAdmin && (detail.fb.verdict==='split' || detail.final)" x-cloak>
+                <div class="flexrow" style="align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px" x-show="opsAdmin && (detail.fb.verdict==='split' || detail.final)" x-cloak>
                   <span class="text-xs text-muted">리드 최종판정</span>
                   <span class="ds-badge" x-show="detail.final" x-bind:class="detail.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" x-text="detail.final==='good' ? '확정 · 정확' : '확정 · 수정 필요'"></span>
                   <button type="button" class="ds-btn ds-btn--outline ds-btn--s-sm" x-show="detail.final!=='good'" x-on:click="setFinal(detail, 'good')" data-tip="이 콘텐츠를 '정확'으로 확정합니다 · 정답셋 승격에서 다수결보다 우선" data-tip-pos="top">정확으로 확정</button>

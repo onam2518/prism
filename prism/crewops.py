@@ -79,6 +79,34 @@ DEFAULT_SETTINGS = {
     "lack_first": 1,            # 정답셋이 부족한 분류를 먼저 배정
 }
 
+# 키별 허용 범위(최소, 최대). 운영 파라미터는 화면에서 손으로 넣는 값이라 오입력 한 번에
+# 배정 계획·신호등이 통째로 무의미해진다 — 음수 buffer 는 주간 캐파를 음수로 만들고(실측 -25),
+# 그 뒤 `cap = max(1, weekly or 1)` 때문에 전원 캐파 1 로 붕괴해 모두가 '초과' 구간으로 떨어졌다.
+# 음수 stale_days 는 미완료가 있는 전원을 즉시 노랑·빨강으로 만든다. 그래서 저장 시점에 클램프한다.
+SETTINGS_RANGE = {
+    "rate_cap_per_hour": (1, 600),      # 시간당 상한(40초/건 = 90 이 기본)
+    "buffer": (0.1, 1.0),               # 여유율 · 0 이하면 캐파가 0/음수
+    "stale_days": (1, 30),              # 정체 판정일 · 0 이하면 전원 즉시 정체
+    "speed_floor_sec": (1, 600),
+    "gold_min_acc": (0.0, 1.0),
+    "calib_target": (1, 200),
+    "default_hours": (0.5, 40.0),       # set_profile 의 hours_per_week 상한(40)과 같은 눈금
+    "rate_shrink": (0.0, 1.0),
+    "unconfirmed_factor": (0.1, 1.0),
+    "min_fill_ratio": (0.0, 1.0),
+    "cap_limit": (0.1, 5.0),
+    "auto_wave": (0, 1),
+    "auto_rebalance": (0, 1),
+    "wave_weekday": (0, 6),
+    "wave_hour": (0, 23),
+    "wave_days": (1, 14),
+    "wave_batch": (1, 5000),
+    "wave_min_reviewers": (1, 10),
+    "auto_escalate": (0, 1),
+    "match_strength": (0, 1),
+    "lack_first": (0, 1),
+}
+
 # 실측 표본 하한: 이보다 적으면 처리율을 신뢰하지 않고 팀 중앙값을 쓴다(신규·복귀자 보호)
 _MIN_GAP_SAMPLE = 8
 _GAP_MIN, _GAP_MAX = 1.0, 600.0     # 판정 간격 유효 구간(초) · 10분 초과는 휴지로 보고 제외
@@ -96,18 +124,42 @@ def settings(team=None) -> dict:
     return out
 
 
+def _fmt_num(x) -> str:
+    return f"{x:g}"
+
+
 def set_settings(patch: dict, team=None) -> dict:
+    """운영 파라미터 저장(허용 범위로 클램프). 반환은 저장 후 설정 전체.
+
+    손대거나 버린 값은 `_notes` 에 사유를 담는다 — 종전에는 모르는 키·숫자가 아닌 값·
+    범위 밖 값이 전부 조용히 무시되거나 그대로 저장돼, 사용자는 저장이 됐는지조차 알 수 없었다."""
     cur = dict(((_SV._report_get(SETTINGS_KIND, team, {}) or {}).get("items") or {}))
+    notes = []
     for k, v in (patch or {}).items():
         if k not in DEFAULT_SETTINGS:
+            notes.append(f"{k}: 모르는 설정이라 저장하지 않았습니다")
             continue
+        is_float = isinstance(DEFAULT_SETTINGS[k], float)
         try:
-            cur[k] = float(v) if isinstance(DEFAULT_SETTINGS[k], float) else int(v)
+            val = float(v) if is_float else int(v)
         except (TypeError, ValueError):
+            notes.append(f"{k}: 숫자로 읽을 수 없어 종전 값을 그대로 둡니다")
             continue
+        rng = SETTINGS_RANGE.get(k)
+        if rng:
+            lo, hi = rng
+            fixed = max(lo, min(hi, val))
+            if fixed != val:
+                notes.append(f"{k}: {_fmt_num(lo)}~{_fmt_num(hi)} 안에서만 쓸 수 있어 "
+                             f"{_fmt_num(val)} → {_fmt_num(fixed)} 로 맞췄습니다")
+            val = float(fixed) if is_float else int(fixed)
+        cur[k] = val
     _SV._report_save(SETTINGS_KIND, {"items": cur}, team)
     _SV._agg_bump()
-    return settings(team)
+    out = settings(team)
+    if notes:
+        out["_notes"] = notes
+    return out
 
 
 def profiles(team=None) -> dict:
@@ -150,14 +202,25 @@ def needs_confirm(uid: str, team=None) -> dict:
     return out
 
 
+# 본인 확인 팝업이 스스로 고칠 수 있는 항목(화이트리스트). /crew-confirm 은 게이트가 login 이라
+# 전 검수자에게 열려 있는데, 종전에는 patch 를 통째로 set_profile 에 넘겨 **관리자 전용 HR 필드까지**
+# 본인이 바꿀 수 있었다 — 특히 `rate_override`(처리율 수동 상한 = 자기 배정량 조작)와
+# `leave_from/leave_to`(임의 기간 부재 등록)는 화면 어디에도 본인 입력란이 없는 관리자 값이다.
+# 그 둘은 /crew-profile(admin)에만 남긴다.
+# `status` 는 뺄 수 없다 — 주간 확인 팝업이 상태 드롭다운을 직접 제공하고("휴가·교육 중·비활성으로
+# 두면 이번 주 배정에서 빠집니다" · ui/19b-crew.html) 그 값을 보내는 설계다. 여기서 막으면
+# 검수자가 고른 상태가 조용히 저장되지 않는다(무반응 저장 = 또 다른 조용한 유실).
+CONFIRM_FIELDS = ("hours_per_week", "workdays", "note", "status")
+
+
 def confirm_week(uid: str, patch=None, team=None) -> dict:
-    """본인 확인(+ 그 자리에서 고친 이번 주 일정). 본인만 호출한다(라우트가 uid 를 강제)."""
+    """본인 확인(+ 그 자리에서 고친 이번 주 일정). 본인만 호출한다(라우트가 uid 를 강제).
+    받는 항목은 CONFIRM_FIELDS 로 좁힌다(관리자 전용 HR 필드는 여기로 들어오지 않는다)."""
     uid = (uid or "").strip()
     if not uid:
         return {"ok": False, "error": "로그인이 필요합니다"}
-    body = dict(patch or {})
-    body.pop("confirmed_week", None)                # 확인 주차는 서버가 정한다(위조 방지)
-    body["confirmed"] = True
+    body = {k: v for k, v in (patch or {}).items() if k in CONFIRM_FIELDS}
+    body["confirmed"] = True                        # 확인 주차(confirmed_week)는 서버가 정한다(위조 방지)
     r = set_profile(uid, body, team=team, by=uid)
     if r.get("ok"):
         r["week"] = _current_week()
@@ -416,6 +479,7 @@ def _crew_compute(team=None, scope_uid: str = "", raw_out=None) -> dict:
             asg, asg_ts = (st.assignees(team=team) or {}), _assign_ts(team)
         if raw_out is not None:
             raw_out["asg"] = asg
+            raw_out["asg_ts"] = asg_ts              # 슬롯별 배정 시각 · rebalance 의 슬롯 단위 정체 판정용
     except Exception:
         asg, asg_ts = {}, {}
     try:                                            # 배정 해시를 넘겨 assignments 재조회 생략
@@ -812,11 +876,18 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
 
     정체 = 배정 후 stale_days 를 넘겼는데 아직 판정하지 않은 슬롯. 배정 시각을 알 수
     없는 스토어에서는(assignment_times 미지원) 진행률 0% + 미완료 보유를 정체로 본다.
-    한 콘텐츠에 같은 사람이 둘 들어가지 않도록 이관 대상에서 기존 담당은 제외한다."""
+    한 콘텐츠에 같은 사람이 둘 들어가지 않도록 이관 대상에서 기존 담당은 제외한다.
+
+    판정은 **슬롯 단위**다 — 사람 단위로만 보면 10일 묵은 1건 때문에 몇 초 전 배정된
+    나머지까지 통째로 남에게 넘어간다(검수자가 열어 두고 보던 목록이 사라지고,
+    set_assignees 가 DELETE+INSERT 라 실제 정체분의 정체일마저 0 으로 리셋된다).
+    부재·비활성 인원 몫은 슬롯 나이와 무관하게 전량 회수한다 — 그 사람은 이번 주에
+    아무것도 못 보므로 새 배정이든 옛 배정이든 남겨 두면 그 콘텐츠는 멈춘다."""
     st = _SV.get_store()
     if not st:
         return {"ok": False, "error": "store unavailable", "moves": [], "n": 0}
     cfg = settings(team)
+    now = time.time()
     raw = {}
     data = _crew_compute(team, raw_out=raw)         # 원천 테이블 공유(직후 전량 재조회 방지)
     by_id = {m["id"]: m for m in data["members"]}
@@ -832,6 +903,7 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
         return {"ok": False, "error": "받을 여력이 있는 검수자가 없습니다(최종검수자 제외)", "moves": [], "n": 0}
     if all(k in raw for k in ("asg", "fmap", "targets")):   # _crew_compute 조회분 재사용
         asg, fmap, targets = raw["asg"], raw["fmap"], raw["targets"]
+        asg_ts = raw.get("asg_ts") or {}
     else:                                           # 일부 조회 실패 시에만 직접 재시도(기존 오류 계약 유지)
         try:
             asg = st.assignees(team=team) or {}
@@ -839,6 +911,7 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
             targets = st.review_targets(team) if hasattr(st, "review_targets") else set()
         except Exception:
             return {"ok": False, "error": "누가 무엇을 맡았는지 불러오지 못했습니다", "moves": [], "n": 0}
+        asg_ts = {}                                 # 배정 시각 불명 → 슬롯 나이 검사 없이 현행 동작
     done_pairs = {(ch, (v.get("reviewer_id") or v.get("reviewer") or ""))
                   for ch, e in fmap.items() for v in (e.get("verdicts") or [])
                   if v.get("verdict") in ("good", "bad")}
@@ -854,6 +927,14 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
         for rv in list(cur):
             if rv not in stale_ids or (ch, rv) in done_pairs or len(moves) >= max(1, int(limit)):
                 continue
+            # 슬롯 단위 정체 검사: 아직 자리에 있는 사람(available)이라면 '이 슬롯이 실제로
+            # 묵었는지'를 본다. 배정 시각을 못 주는 스토어(asg_ts 빈 dict)는 종전대로 사람 단위.
+            # 시각이 없는 개별 슬롯은 _crew_compute 의 정체일 계산과 같게 나이 0 으로 본다.
+            if asg_ts and (by_id.get(rv) or {}).get("available"):
+                ts = asg_ts.get((ch, rv), 0)
+                age = (now - ts) / 86400 if ts else 0.0
+                if age < float(cfg["stale_days"]):
+                    continue
             cand = []                               # 이 콘텐츠에 아직 없는 사람 중 가장 여유 있는 사람
             pick = None
             while heap:
@@ -906,6 +987,28 @@ def auto_state(team=None) -> dict:
     return dict((_SV._report_get(AUTO_KIND, team, {}) or {}).get("item") or {})
 
 
+def _claim_cycle(name: str, cycle: str, team=None, attempt: int = 0):
+    """이번 회차를 **선점**한다(원자적 · 처음 잡은 호출만 True). 선점 장치가 없으면 None.
+
+    종전에는 `state.get("wave_cycle") != cycle` 로 확인하고 배분이 끝난 **뒤에야** 회차 키를
+    저장했다(check-then-act). 그 사이에 다른 실행이 끼면 같은 사이클에 웨이브가 두 번 나간다 —
+    검수운영 화면의 '지금 실행'(POST /crew-auto)과 크론(`python3 -m prism.crewbot` · 01:00 UTC
+    = 10:00 KST 로 기본 사이클 시작 시각과 같다)은 프로세스가 달라 파이썬 락으로도 못 막는다.
+    set_wave 가 같은 기한이면 계획을 합산하므로 결과는 '계획이 실제 배정의 2배'였다.
+    log_event_once 는 미션 보상 이중 지급을 막으려고 이미 둔 원자적 멱등 장치라 그대로 쓴다.
+
+    attempt: 앞선 시도가 실패했으면(예: 그 순간 배정 가능한 사람이 0명) 다음 점검이 다시
+    시도할 수 있어야 한다 — 회차 키에 시도 번호를 붙여 '1회 보장'과 '재시도 여지'를 같이 둔다."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "log_event_once")):
+        return None                                 # 선점 불가 → 호출측이 종전 동작으로 퇴화
+    key = f"crew_{name}:{cycle}" + (f"#{int(attempt)}" if attempt else "")
+    try:
+        return bool(st.log_event_once(None, key, 0, 0, meta="자동 운영 회차 선점", team=team))
+    except Exception:
+        return None
+
+
 def _last_open_ts(now: float, cfg: dict) -> float:
     """지금 기준으로 가장 최근에 지난 '사이클 시작 시각'(epoch).
     팀 타임존으로 요일·시각을 해석한다(day_key 와 같은 기준 · 기본 KST)."""
@@ -949,7 +1052,23 @@ def auto_tick(team=None, now=None, apply: bool = True) -> dict:
            "wave": None, "rebalance": None, "escalate": None}
     changed = dict(state)
 
-    if int(cfg["auto_wave"]) and state.get("wave_cycle") != cycle:
+    def _claimed(name: str, field: str, attempt: int) -> bool:
+        """회차 선점 + '이 시도를 썼다'를 즉시 남긴다. 선점은 apply 일 때만 한다 —
+        dry-run 이 회차 키를 소비하면 미리보기 한 번에 그 사이클의 자동 운영이 통째로
+        사라진다(계획만 보고 아무것도 바꾸지 않는다는 계약 위반).
+        시도 번호를 **실행 전에** 저장하는 이유: 배분 도중 예외로 죽어도(원격 쓰기 실패 등)
+        다음 점검이 새 키로 다시 시도할 수 있어야 한다 — 안 그러면 그 주 자동 운영이 사라진다."""
+        if not apply:
+            return True
+        if _claim_cycle(name, cycle, team, attempt) is False:
+            return False                            # 다른 실행이 이미 이번 회차를 가져갔다
+        changed[field] = attempt + 1
+        _SV._report_save(AUTO_KIND, {"item": dict(changed, last_run=now)}, team)
+        return True
+
+    wave_try = int(state.get("wave_retry") or 0)
+    if (int(cfg["auto_wave"]) and state.get("wave_cycle") != cycle
+            and _claimed("wave", "wave_retry", wave_try)):
         hs = _unassigned_targets(team, int(cfg["wave_batch"]))
         due = open_ts + float(cfg["wave_days"]) * 86400
         if hs:
@@ -959,21 +1078,27 @@ def auto_tick(team=None, now=None, apply: bool = True) -> dict:
                            "due_at": due, "error": r.get("error", "")}
             if apply and r.get("ok"):
                 changed["wave_cycle"] = cycle
+                changed.pop("wave_retry", None)
+            # 실패면 wave_retry(=이번에 쓴 시도 번호 + 1)가 그대로 남아 다음 점검이 새 키로 재시도한다
         else:
             out["wave"] = {"ok": True, "n": 0, "plan": {}, "due_at": due,
                            "error": "아직 아무도 안 맡은 콘텐츠가 없습니다"}
             if apply:
                 changed["wave_cycle"] = cycle       # 내보낼 게 없어도 이번 사이클은 처리한 것으로 본다
+                changed.pop("wave_retry", None)
 
+    reb_try = int(state.get("rebalance_retry") or 0)
     if int(cfg["auto_rebalance"]) and state.get("rebalance_cycle") != cycle:
         due = float(wave(team).get("due_at") or 0)
-        if due and now >= due - 86400:              # 기한 하루 전부터 · 지나서도 한 번은 잡는다
+        if (due and now >= due - 86400                  # 기한 하루 전부터 · 지나서도 한 번은 잡는다
+                and _claimed("rebalance", "rebalance_retry", reb_try)):
             r = rebalance(team=team, apply=apply, by="자동 운영")
             out["rebalance"] = {"ok": r.get("ok"), "n": r.get("n", 0),
                                 "to": r.get("to_counts", {}), "from": r.get("from_counts", {}),
                                 "error": r.get("error", "") or r.get("reason", "")}
             if apply and r.get("ok"):
                 changed["rebalance_cycle"] = cycle
+                changed.pop("rebalance_retry", None)
 
     # 갈린 건은 사이클과 무관하게 계속 생기므로 회차 키로 묶지 않고 매번 점검한다.
     if int(cfg["auto_escalate"]):

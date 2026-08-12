@@ -104,7 +104,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 학습 지시 원본 관리(개별 끄기 · 관리자): 끈 지시는 다음 학습 반영부터 제외
       routesOpen: false, routesRaw: null,
-      async loadRoutesRaw() { try { const r = await (await this._afetch('/routes-raw', { headers: this._authHeaders() })).json(); if (r && r.ok) this.routesRaw = r; } catch (e) {} },
+      async loadRoutesRaw() { try { const r = await (await this._afetch('/routes-raw', { headers: this._authHeaders() })).json(); if (r && r.ok) this.routesRaw = r; } catch (e) { this._err('학습 지시 원본 불러오기 실패'); } },
       async toggleRoute(r) {
         try {
           const res = await (await this._afetch('/route-disable', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ text: r.text, disabled: !r.disabled }) })).json();
@@ -114,10 +114,10 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 골든 생성 현황(팀원 공개)
       goldenStatus: null,
-      async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.goldenStatus = r; this.loadVerHist(); } } catch (e) {} },
+      async loadGoldenStatus() { try { const r = await (await this._afetch('/golden-status', { headers: this._authHeaders() })).json(); if (r && r.ok) { this.goldenStatus = r; this.loadVerHist(); } } catch (e) { this._err('정답셋 현황 불러오기 실패'); } },
       // 관리자 골든 브라우저
       goldenList: null,
-      async loadGoldenList() { try { const r = await (await this._afetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) {} },
+      async loadGoldenList() { try { const r = await (await this._afetch('/golden-list', { headers: this._authHeaders() })).json(); if (r && r.ok) this.goldenList = r; } catch (e) { this._err('정답셋 목록 불러오기 실패'); } },
       async removeGolden(h) {
         if (!(await this.dsConfirm('이 정답 항목을 제거할까요? (정답셋에서 빠집니다)', { ok: '제거', danger: true }))) return;
         try { await this._afetch('/golden-remove', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: h }) }); } catch (e) {}
@@ -134,7 +134,7 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this._err('일배치 실행 실패'); }
         this.learnBusy = false; this.loadPromptDefaults(); this.loadGoldenStatus();
       },
-      async loadLearnReport() { try { const r = await (await this._afetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; if (r && r.next_batch_at) this.nextBatchAt = r.next_batch_at; } catch (e) {} },
+      async loadLearnReport() { try { const r = await (await this._afetch('/learn-report')).json(); if (r && r.report && r.report.ts) this.learnReport = r.report; if (r && r.next_batch_at) this.nextBatchAt = r.next_batch_at; } catch (e) { this._err('학습 리포트 불러오기 실패'); } },
       async loadVerHist() {                                      // 표 행 = v2..현재(반영 회차+1) · 각 버전 지표를 병렬 로드
         const seq = (this.goldenStatus && this.goldenStatus.batch_seq != null) ? this.goldenStatus.batch_seq : 0;
         const cur = seq + 1;
@@ -411,13 +411,15 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       copyInvite() { try { navigator.clipboard.writeText((this.adminData && this.adminData.team && this.adminData.team.invite_code) || ''); this.inviteCopied = true; setTimeout(() => { this.inviteCopied = false; }, 1500); } catch (e) {} },
       inviteCopied: false,
-      // ingestOnceBusy: 일회성 크롤러 가져오기 전용 · 소스별 맵(ingestBusy: {})과 키 충돌 금지(중복 선언 시 버튼 영구 비활성)
-      ingestEndpoint: '', ingestN: 20, ingestMsg: '', ingestOnceBusy: false,
+      // ingestOnceBusy/ingestOnceMsg: 일회성 크롤러 가져오기 전용 · 소스별 맵(ingestBusy: {})과
+      // 인입 소스 저장 메시지(app-08 의 ingestMsg)와 키 충돌 금지 — 같은 화면(02-content-manage)에
+      // 두 패널이 동시에 렌더되므로 이름이 겹치면 서로의 메시지가 상대 패널에도 뜬다.
+      ingestEndpoint: '', ingestN: 20, ingestOnceMsg: '', ingestOnceBusy: false,
       async ingestRun() {
-        if (!(this.ingestEndpoint || '').trim()) { this.ingestMsg = '크롤러 엔드포인트를 입력하세요'; return; }
-        this.ingestOnceBusy = true; this.ingestMsg = '인입·추출 중…';
+        if (!(this.ingestEndpoint || '').trim()) { this.ingestOnceMsg = '크롤러 엔드포인트를 입력하세요'; return; }
+        this.ingestOnceBusy = true; this.ingestOnceMsg = '인입·추출 중…';
         try { const r = await (await this._afetch('/admin', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ action: 'ingest', endpoint: this.ingestEndpoint, n: this.ingestN }) })).json();
-          this.ingestMsg = r.ok ? ('✓ ' + r.fetched + '건 인입 → 검수 대기 ' + r.queued + '건 적재') : (r.error || '실패'); } catch (e) { this.ingestMsg = '오류'; }
+          this.ingestOnceMsg = r.ok ? ('✓ ' + r.fetched + '건 인입 → 검수 대기 ' + r.queued + '건 적재') : (r.error || '실패'); } catch (e) { this.ingestOnceMsg = '오류'; }
         this.ingestOnceBusy = false;
       },
       // 아레나 파생값(게이지·내 순위)

@@ -24,6 +24,9 @@
 - 최종 프롬프트 = 래퍼 템플릿에 {ROLE}/{SCHEMA}/{RULES}/{EXAMPLES}/{SELF_CHECK}/{LEARNED} 삽입.
 """
 from __future__ import annotations
+import functools
+import json
+
 from . import dictionaries as D
 
 CALLS = ("summary", "entities", "intent", "category")
@@ -179,8 +182,12 @@ GOLD = [
 _FIELD_KEY = {"summary": "summary", "entities": "entities", "intent": "intent", "category": "content_category"}
 
 
+@functools.lru_cache(maxsize=8)
 def gold_examples(call: str | None = None) -> str:
-    """골드 예시 텍스트. call 지정 시 해당 호출의 입·출력만, None 이면 4필드 통합."""
+    """골드 예시 텍스트. call 지정 시 해당 호출의 입·출력만, None 이면 4필드 통합.
+
+    입력이 모듈 상수(GOLD)뿐인 순수 함수라 반환값이 절대 변하지 않는다 → 메모이즈.
+    (요청당 15회 json.dumps · /config x200 프로파일에서 핸들러 시간의 19% 를 먹던 자리)"""
     out = []
     for i, ex in enumerate(GOLD, 1):
         if call is None:
@@ -194,8 +201,7 @@ def gold_examples(call: str | None = None) -> str:
 
 
 def _ja(xs) -> str:
-    import json
-    return json.dumps(xs, ensure_ascii=False)
+    return json.dumps(xs, ensure_ascii=False)      # import 는 모듈 상단(호출당 import 조회 제거)
 
 
 # ── 사전 주입 텍스트 ──

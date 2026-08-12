@@ -270,6 +270,9 @@ window.PRISM_APP_PARTS.push(() => ({
       loadDashThrottled() { const now = Date.now(); if (now - (this._lastDash || 0) > 4000) { this._lastDash = now; this.loadDash(); } },
       loadRawThrottled() { const now = Date.now(); if (now - (this._lastRaw || 0) > 4000) { this._lastRaw = now; this.loadRaw(); } },
       loadArenaThrottled() { const now = Date.now(); if (now - (this._lastArena || 0) > 4000) { this._lastArena = now; this.loadArena(); } },
+      // 정답셋 현황은 loadVerHist() 로 버전별 지표를 병렬 팬아웃한다 · 메뉴 왕복 시 재조회 억제.
+      // 직접 호출(새로고침 버튼·학습 반영 직후·SSE)은 스로틀을 거치지 않아 최신화가 보장된다.
+      loadGoldenStatusThrottled() { const now = Date.now(); if (now - (this._lastGoldenStatus || 0) > 4000) { this._lastGoldenStatus = now; this.loadGoldenStatus(); } },
       get runningJobs() { return (this.ingestJobs || []).filter((j) => j.running); },
       get runningCount() { return (this.loading ? 1 : 0) + this.runningJobs.length; },
       srcJob(s) { return (this.ingestJobs || []).find((j) => j.id === s.id); },

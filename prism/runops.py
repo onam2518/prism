@@ -385,12 +385,14 @@ def rerun_all(model: str, team=None, limit: int = 200, scope: str = "all",
             # 크레딧 소진·지출 한도·인증 실패는 재실행해도 계속 실패한다 — 이 건은 실패로
             # 집계하고 남은 대상은 즉시 중단한다(수천 회 무의미한 402 호출 방지).
             halt_kinds = [] if res.get("error") else _nonretry_kinds(res.get("output") or {})
+            # 실패 건도 이미 지불한 비용이 있다(재시도로 버린 200 응답 · llm._fail 이 실어 준다).
+            # 종전에는 성공 분기에서만 더해서, 실패가 많은 배치가 예산 상한을 그대로 뚫었다.
+            spent += float((((res.get("output") or {}).get("trace") or {}).get("cost_usd")) or 0.0)
             if res.get("error") or halt_kinds:
                 failed += 1
                 _SV._INGEST_STATE[jid]["failed"] = failed
             else:
                 done += 1
-                spent += float((((res.get("output") or {}).get("trace") or {}).get("cost_usd")) or 0.0)
             _SV._INGEST_STATE[jid]["done"] += 1
             if halt_kinds:
                 break

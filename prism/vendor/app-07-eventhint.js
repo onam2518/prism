@@ -78,7 +78,7 @@ window.PRISM_APP_PARTS.push(() => ({
         out.sort((a, b) => b.ts - a.ts); return out;
       },
       qexN() { const d = this.topicData; return (d && d.n_eligible != null) ? Math.max(0, (d.n_contents || 0) - d.n_eligible) : 0; },
-      async loadDict() { this.modBusy = true; try { const r = await this._afetch('/dict'); const d = await r.json(); if (r.ok && d && !d.error && d.serviceGroups) { this.dictData = d; if (!this.dictGroup) this.dictGroup = (d.serviceGroups || [])[0] || ''; } } catch (e) {} this.modBusy = false; },
+      async loadDict() { this.modBusy = true; try { const r = await this._afetch('/dict'); const d = await r.json(); if (r.ok && d && !d.error && d.serviceGroups) { this.dictData = d; if (!this.dictGroup) this.dictGroup = (d.serviceGroups || [])[0] || ''; } } catch (e) { this._err('사전 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요'); } this.modBusy = false; },
       // 성공 응답(사전 본문)일 때만 dictData 반영 · 401 등 오류 본문을 넣으면 dictData.iabMap 등이
       // undefined 라 Object.keys() 마운트 크래시로 본문 전체가 안 뜬다(초기 토큰 준비 전 /dict 401 레이스·토큰 만료).
       // ── 엔티티 사전(별도 메뉴): 목록·필터·수동 편집(사람 확정)·위키데이터/나무위키 보강 ──
@@ -94,7 +94,10 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.entType) p.set('type', this.entType);
           if (this.entStatus) p.set('status', this.entStatus);
           this.entData = await (await this._afetch('/entdict?' + p.toString())).json();
-        } catch (e) {}
+        } catch (e) {
+          // 폴링(silent)은 조용히 넘기고 다음 회차로 자력 복구 · 사용자가 부른 조회만 알린다
+          if (!silent) this._err('엔티티 사전 불러오기 실패 · 네트워크 확인 후 새로고침 해주세요');
+        }
         if (!silent) this.modBusy = false;
         // 일괄 보강 진척: 실행 중이면 1.5초 폴링으로 목록·카운트 실시간 갱신(수동 새로고침 불필요)
         const s = (this.entData && this.entData.enrich) || {};
@@ -220,7 +223,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // 버전 토큰 · 끝에 추가 · 삭제)과 주입 미리보기. 응답의 wrote 로 방금 기록분 하이라이트.
       memData: null, memSel: '', memDraft: '', memVer: 0, memLine: '', memMsg: '',
       memNew: { kind: 'topics', name: '' }, memInject: false, memFlash: '', memLog: [], memBusy: false,
-      async loadMem() { try { const d = await (await this._afetch('/usermeta-memory', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) this.memData = d; } catch (e) {} },
+      async loadMem() { try { const d = await (await this._afetch('/usermeta-memory', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) this.memData = d; } catch (e) { this._err('메모리 파일 불러오기 실패'); } },
       memFile(p) { return ((this.memData && this.memData.files) || []).find(f => f.path === p) || null; },
       memOpen(p) { const f = this.memFile(p); if (!f) return; this.memSel = p; this.memDraft = f.content; this.memVer = f.ver; this.memMsg = ''; },
       async memPost(body, okMsg) {
@@ -389,7 +392,7 @@ window.PRISM_APP_PARTS.push(() => ({
       demoBusy: false, demoMsg: '', demoImpressed: false, demoChainOpen: false, demoDefsOpen: false,
       _demoQueue: null, _demoInflight: 0,
       demoX: 10,                                    // 가상 체류 배속(화면에 명시)
-      async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; this.demoImpress(); } } catch (e) {} },
+      async loadDemoLab() { try { const d = await (await this._afetch('/usermeta-demo', { headers: this.authToken ? { 'Authorization': 'Bearer ' + this.authToken } : {} })).json(); if (d && !d.error) { this.demoData = d; this.demoImpress(); } } catch (e) { this._err('데모 실험실 불러오기 실패'); } },
       demoPost(body) {                              // 순차 큐: 서버가 세션을 통째로 읽고-쓰므로 동시 요청은 앞선 이벤트를 덮어쓴다
         this._demoInflight++; this.demoBusy = true;
         const p = (this._demoQueue || Promise.resolve()).then(() => this._demoPostNow(body))

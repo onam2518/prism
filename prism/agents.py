@@ -10,12 +10,18 @@ def run_quality(llm, content, routing, fewshot: str = "") -> tuple[QualityMeta, 
     sys = P.quality_system(routing.active_quality_metas, routing.service_group,
                            examples=fewshot)
     obj, res = llm.complete_json(sys, P.quality_user(content), tag="quality")
+    grade = obj.get("finalGrade")
     if obj.get("_fail"):                       # 호출 실패 = 판정 보류(빈 응답을 G 로 유통하지 않는다 · fail-open 금지)
         qm = QualityMeta(finalGrade="", reasons=[], review="yellow",
                          review_reason="품질 호출 실패 · 판정 보류")
+    elif not isinstance(grade, str) or not grade.strip():
+        # 계약 키 부재(래핑·이름 변형 응답)·빈 등급 = 판정이 없는 것. 종전 기본값 "G" 는
+        # 모델이 R 이라고 해도 자동 G 로 유통시켰다(파싱은 성공해 fail_kind 도 안 붙는 사각지대).
+        qm = QualityMeta(finalGrade="", reasons=obj.get("reasons", []) or [], review="yellow",
+                         review_reason="품질 응답에 finalGrade 없음 · 판정 보류")
     else:
         qm = QualityMeta(
-            finalGrade=obj.get("finalGrade", "G"),
+            finalGrade=grade,
             reasons=obj.get("reasons", []) or [],
         )
     verdict = {"agent": "QualityAgent", "evidence": obj.get("evidence", ""),
@@ -62,6 +68,15 @@ def _call_llm(main_llm, call: str):
     return main_llm
 
 
+def _retry_hint(what: str, bad_values: list, allowed: list) -> str:
+    """전량 드롭 재요청용 user 말미 추가문. 프리픽스(system)는 건드리지 않으므로
+    프롬프트 캐시에도 영향이 없다(캐시 키는 system 지문 기반)."""
+    bad = " · ".join(str(v) for v in (bad_values or [])[:5])
+    lst = " · ".join(str(v) for v in (allowed or [])[:60])
+    return (f"\n\n[재요청] {what} [{bad}] 은(는) 허용 목록에 없는 표기다. "
+            f"아래 목록의 표기를 **그대로** 복사해 다시 고르라(목록 밖 값·변형 표기 금지).\n{lst}")
+
+
 def run_item(llm, content, parallel: bool = False) -> tuple[ItemMeta, list]:
     if META_CFG.get("four_calls", True):
         return _run_item_calls(llm, content, parallel=parallel)
@@ -96,14 +111,22 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     def _canon(x):                                 # 규칙 보정: '속보 · 단신' 등 공백 변형 흡수
         return _re.sub(r"\s*·\s*", "·", str(x).strip())
 
-    def ask(call: str, tag: str, sink: list = None) -> dict:
+    def ask(call: str, tag: str, sink: list = None, extra: str = "", require: str = "") -> dict:
         out = results if sink is None else sink
         c_llm = _call_llm(llm, call)
         sysp = P.call_system(content, call, getattr(c_llm, "model", "") or "")
-        obj, res = c_llm.complete_json(sysp, P.call_user(call, content, prior), tag=tag)
+        obj, res = c_llm.complete_json(sysp, P.call_user(call, content, prior) + extra, tag=tag)
+        # 계약 키 부재를 실패로 승격: 파싱은 됐지만 계약을 안 지킨 응답(래핑·이름 변형)은
+        # fail_kind 가 없어 하네스의 yellow 가드를 그대로 빠져나갔다 — 빈 메타가 review=auto 로
+        # 유통되던 사각지대(2026-07-28 사고와 결과 동일). 빈 값(정당한 신호)과는 구분한다.
+        miss = bool(require) and not obj.get("_fail") and require not in obj
+        if miss:
+            res.fail_kind = getattr(res, "fail_kind", None) or "contract_miss"
+            if not getattr(res, "fail_detail", ""):
+                res.fail_detail = f"응답에 '{require}' 키 없음: {str(obj)[:120]}"
         out.append(res)
         out.append({"agent": f"ItemAgent:{call}", "model": getattr(c_llm, "model", "") or "",
-                    "fail": obj.get("_fail")})
+                    "fail": obj.get("_fail") or (f"계약 키 없음: {require}" if miss else None)})
         return obj
 
     # ①·② (parallel 이면 동시 · 아니면 계약 순차)
@@ -111,20 +134,20 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
         import threading
         box, errs, r1, r2 = {}, [], [], []
 
-        def _t(key, call, tag, sink):
+        def _t(key, call, tag, sink, require):
             try:
-                box[key] = ask(call, tag, sink)
+                box[key] = ask(call, tag, sink, require=require)
             except Exception as e:                 # 순차 모드와 동일하게 전파
                 errs.append(e)
-        t1 = threading.Thread(target=_t, args=("o1", "summary", "item_summary", r1))
-        t2 = threading.Thread(target=_t, args=("o2", "entities", "item_entities", r2))
+        t1 = threading.Thread(target=_t, args=("o1", "summary", "item_summary", r1, "summary"))
+        t2 = threading.Thread(target=_t, args=("o2", "entities", "item_entities", r2, "entities"))
         t1.start(); t2.start(); t1.join(); t2.join()
         results += r1 + r2                          # 트레이스 순서 결정론(①→②)
         if errs:
             raise errs[0]
         o1, o2 = box.get("o1") or {}, box.get("o2") or {}
     else:
-        o1 = ask("summary", "item_summary")
+        o1 = ask("summary", "item_summary", require="summary")
 
     summary = (o1.get("summary") or "").strip() if isinstance(o1.get("summary"), str) else ""
     prior["summary"] = summary
@@ -133,7 +156,7 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
 
     # ② 엔티티(핵심만 · 개수 상한 없음 · 2026-07-08 수량 정책 전환)
     if not parallel:
-        o2 = ask("entities", "item_entities")
+        o2 = ask("entities", "item_entities", require="entities")
     ents = [str(x).strip() for x in _aslist(o2.get("entities")) if str(x).strip()]
     prior["entities"] = ents
 
@@ -147,13 +170,16 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
             hit = canon_map.get(_canon(x))
             (ok if hit else bad).append(hit or x)
         return ok, bad
-    o3 = ask("intent", "item_intent")
+    o3 = ask("intent", "item_intent", require="intent")
     raw3 = [str(x).strip() for x in _aslist(o3.get("intent")) if str(x).strip()]
     intent, dropped3 = _match_intents(raw3)
     retried3 = False
     if raw3 and not intent:
         retried3 = True
-        o3 = ask("intent", "item_intent")
+        # 재요청은 **요청이 달라야** 의미가 있다(temperature=0 · 종전에는 바이트 단위로 같은
+        # 요청을 보내 같은 답을 받고 비용만 2배였다). 실패 값과 허용 목록을 명시해 다시 묻는다.
+        o3 = ask("intent", "item_intent", require="intent",
+                 extra=_retry_hint("직전 응답의 인텐트", raw3, sorted(valid_intents)))
         raw3 = [str(x).strip() for x in _aslist(o3.get("intent")) if str(x).strip()]
         got2, bad2 = _match_intents(raw3)
         intent = got2
@@ -167,13 +193,15 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     prior["intent"] = intent
 
     # ④ 콘텐츠 카테고리: 사전 경로 정규화(스냅), 전량 드롭이면 1회 재요청
-    o4 = ask("category", "item_category")
+    o4 = ask("category", "item_category", require="content_category")
     raw4 = [str(x) for x in _aslist(o4.get("content_category")) if str(x).strip()]
     cats = D.normalize_category_list(raw4)
     retried4 = False
     if raw4 and not cats:
         retried4 = True
-        o4 = ask("category", "item_category")
+        o4 = ask("category", "item_category", require="content_category",
+                 extra=_retry_hint("직전 응답의 콘텐츠 카테고리", raw4,
+                                   [f"{t1} / …" for t1 in sorted(D.IAB_TIER1)]))
         raw4 = [str(x) for x in _aslist(o4.get("content_category")) if str(x).strip()]
         cats = D.normalize_category_list(raw4)
     dropped4 = [x for x in raw4 if not D.normalize_category_list([x])]
@@ -187,6 +215,22 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     return ItemMeta(summary=summary, entities=ents, intent=intent, content_category=cats), results
 
 
+def _num(v):
+    """모델이 숫자를 문자열("20")로 내도 배치를 죽이지 않게 하는 안전 변환.
+    변환 불가는 None — 호출부가 '점수 불신(보류)' 경로로 합류시킨다.
+    (종전: "20"+"15"+"10" = "201510" → 등급 비교에서 TypeError 가 추출 전체로 전파돼
+     이미 추출한 앞 건들의 LLM 비용까지 통째로 버려졌다 · llm._fail 의 배치 비중단 계약 붕괴)"""
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    try:
+        f = float(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+    return int(f) if f.is_integer() else f
+
+
 def run_legal(llm, content) -> tuple[LegalMeta, list]:
     """LegalRouter → 유형별 LegalScorer. 유형별은 병렬 가능(여기선 순차, pipeline 에서 묶음)."""
     sys = P.legal_router_system()
@@ -197,8 +241,17 @@ def run_legal(llm, content) -> tuple[LegalMeta, list]:
         lm.failed = True
         return lm, results
     for cand in obj.get("harm_types", []) or []:
-        code, conf = cand.get("code"), cand.get("confidence", 0)
-        if not code or conf < 0.3:
+        if not isinstance(cand, dict):          # 형식 이탈(문자열 나열 등) → 유형 열거 불신
+            lm.failed = True
+            continue
+        code = cand.get("code")
+        conf = _num(cand.get("confidence", 0))
+        if not code:
+            continue
+        if conf is None:                        # 신뢰도 형식 불량 → 임계 판정 불가 · 보류(0점 GREEN 방지)
+            lm.failed = True
+            continue
+        if conf < 0.3:
             continue
         from . import dictionaries as D
         if code not in D.LEGAL_HARM_TYPES:
@@ -209,7 +262,10 @@ def run_legal(llm, content) -> tuple[LegalMeta, list]:
         if sobj.get("_fail"):                   # 스코어러 실패 → 이 유형 점수 불신 · 보류 표식(0점 GREEN 방지)
             lm.failed = True
             continue
-        a, b, c = sobj.get("a", 0), sobj.get("b", 0), sobj.get("c", 0)
+        a, b, c = (_num(sobj.get("a", 0)), _num(sobj.get("b", 0)), _num(sobj.get("c", 0)))
+        if a is None or b is None or c is None:  # 점수 형식 불량 → 스코어러 실패와 동일 취급
+            lm.failed = True
+            continue
         total = a + b + c
         lm.harm_types.append(HarmType(
             code=code, routed_article=D.LEGAL_HARM_TYPES[code]["article"],
