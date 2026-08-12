@@ -6,7 +6,12 @@
 1. **판정 전에는 근거·기준만.** `stage='before'` 응답에는 추천성 키가 아예 없다(빈 값이
    아니라 키 부재). 비워서 내려보내면 클라이언트가 언젠가 그 키를 읽고, 그때부터 조용히
    답이 샌다. 모르는 stage 값은 'before' 로 수렴한다(모르면 덜 주는 쪽).
-2. **추천·수정 제안은 판정 뒤에만.** `stage='after'` 에서만 suggestions 가 붙는다.
+2. **추천·수정 제안, 그리고 남이 내린 판정은 판정 뒤에만.** `stage='after'` 에서만
+   suggestions 가 붙고, 선례(`verdict_precedents`)·다른 검수자 의견(`reviewer_dissent`)은
+   아예 거절된다. 남의 판정을 먼저 보면 그 값이 기준점이 된다 — 프리즘은 검수자끼리의
+   일치도로 신뢰도를 재는데, B 가 A 의 판정을 보고 정하면 그 일치는 독립된 근거가 아니다.
+   지표가 조용히 부풀고, 부풀었다는 것을 알 방법이 없다. 그래서 화면이 아니라 **서버에서**
+   막는다(규칙이 클라이언트에 있으면 다음 클라이언트가 어긴다).
 3. **골드 문항은 어떤 경로로도 나가지 않는다.** 요청 해시가 골드면 거절하고, 선례·제안
    목록에서도 거른다. 골드는 검수자 신뢰도를 재는 장치라 보조가 개입하면 측정이 무너진다.
 4. **근거를 지어내지 않는다.** 저장된 값을 조립할 뿐 모델을 새로 돌리지 않는다. 판정 근거를
@@ -34,6 +39,8 @@ SUGGESTIVE_KEYS = ("suggestions", "recommendation", "recommended", "answer", "ve
 
 GOLD_MSG = "골드 문항에는 검수 보조를 제공하지 않습니다"
 NOT_FOUND_MSG = "콘텐츠를 찾지 못했습니다"
+# 남의 판정(선례·다른 검수자 의견)은 판정 뒤에만 나간다. 다음 행동을 알 수 있게 쓴다.
+AFTER_ONLY_MSG = "판정을 낸 뒤에 조회할 수 있습니다 · 판정 후 stage=\"after\" 로 다시 부르세요"
 # 근거가 없을 때 내려보내는 문장. '없다' 를 말하는 것이 이 도구의 정확성이다.
 NO_EVIDENCE = "저장된 모델 판정 근거가 없습니다(근거 저장 이전 데이터) · 근거는 지어내지 않습니다"
 
@@ -43,10 +50,18 @@ PRECEDENT_DEFAULT, PRECEDENT_MAX = 5, 20
 DISSENT_MAX = 20
 PATCH_SCAN, SUGGEST_MAX = 400, 5
 
+# 확정 선례의 최소 판정 인원. 1인 판정을 '확정 선례' 로 되먹이면 그 한 사람의 편향이 증폭되고,
+# 무엇보다 '선례' 라는 말이 거짓이 된다. 저장 계층의 agree 는 n=1 에서도 참이라 여기서 막는다.
+PRECEDENT_MIN_N = 2
+# 제안 노출 최소 건수. 1건은 선례가 아니라 한 사람의 판단이다.
+SUGGEST_MIN = 2
+
 # 교정 로그(patch_log)가 쓰는 요소 키 → 이 콘텐츠의 현재 값을 읽어 올 자리.
 # 여기 없는 키는 제안 대상이 아니다(모르는 필드로 추측하지 않는다).
 PATCH_FIELDS = ("summary", "entities", "intent", "content_category", "topic",
                 "finalGrade", "reasons")
+# 목록으로 저장되는 필드 = 요소 단위로 비교한다(목록 전체 일치를 요구하면 운영에서 거의 안 걸린다).
+LIST_FIELDS = ("entities", "intent", "content_category", "reasons")
 # 교정 로그 요소 키 → _values 의 키(이름이 다른 것만).
 _VAL_KEY = {"finalGrade": "grade"}
 
@@ -84,6 +99,13 @@ def _norm(v) -> str:
     if isinstance(v, (list, tuple)):
         return " · ".join(str(x).strip() for x in v if str(x).strip())
     return str(v if v is not None else "").strip()
+
+
+def _stage(v) -> str:
+    """단계 해석. 모르는 값은 'before' 로 수렴한다 — 오타·구버전 클라이언트가 판정 뒤 자료를
+    열지 못하게 하는 쪽이 안전하다(모르면 덜 주는 쪽)."""
+    s = str(v or "").strip().lower()
+    return s if s in STAGES else "before"
 
 
 def _reason_label(rid: str) -> str:
@@ -184,10 +206,43 @@ def _criteria(vals: dict, team) -> list:
     return out[:CRITERIA_MAX]
 
 
-def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
-    """수정 제안 = 같은 서비스에서 **같은 값을 같게 고친 선례**의 집계. 새로 만들어 내는 값이 없다.
+def _elems(v) -> list:
+    """목록 필드의 요소들. 스칼라는 1개짜리 목록으로 본다."""
+    if isinstance(v, (list, tuple)):
+        return [s for s in (str(x).strip() for x in v) if s]
+    s = str(v if v is not None else "").strip()
+    return [s] if s else []
 
-    판정 뒤에만 부른다. before 에서 이 함수가 불릴 일이 없어야 한다(content_brief 가 분기)."""
+
+def _observations(field: str, bv, av, cur) -> list:
+    """교정 1건에서 읽어 낼 (출발값 → 도착값) 관찰. **짝이 분명한 것만** 센다.
+
+    목록 필드는 요소 단위로 본다 — 목록 전체가 같아야 한다면 운영에서 거의 안 걸려 기능이
+    없는 것과 같다. 다만 여러 개가 한꺼번에 바뀐 교정은 무엇이 무엇으로 바뀌었는지 알 수
+    없으므로 짝짓지 않는다. 짝을 지어내는 것이 곧 없는 근거를 만드는 것이다."""
+    if field not in LIST_FIELDS:
+        b, a = _norm(bv), _norm(av)
+        return [(b, a)] if (a and a != b and b == _norm(cur)) else []
+    bl, al, cl = _elems(bv), _elems(av), _elems(cur)
+    removed = [x for x in bl if x not in al]
+    added = [x for x in al if x not in bl]
+    if len(removed) == 1 and len(added) == 1:     # 한 요소를 다른 요소로 바꾼 교정
+        return [(removed[0], added[0])] if removed[0] in cl else []
+    if added and not removed and not bl and not cl:
+        return [("", a) for a in added]           # 비어 있던 필드를 채운 교정(대상도 비어 있을 때만)
+    return []
+
+
+def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
+    """수정 제안 = 같은 서비스에서 **같은 출발값을 같게 고친 과거 교정**의 집계.
+
+    새로 만들어 내는 값이 없다. 셀 뿐이다. 그래서 다음 셋을 지킨다.
+      · 출발값이 같을 때만 센다(다른 값에서 출발한 교정은 이 콘텐츠의 선례가 아니다)
+      · SUGGEST_MIN 건 이상 쌓여야 내보낸다 — 1건은 선례가 아니라 한 사람의 판단이다
+      · 센 건수와 검수자 수를 함께 실어 무게는 검수자가 스스로 단다
+    basis 에는 **세어진 사실만** 적는다. "이렇게 고치세요" 는 이 도구가 할 말이 아니다.
+
+    판정 뒤에만 부른다(content_brief 가 stage 로 분기)."""
     st = _SV.get_store() if _SV else None
     if not (st and hasattr(st, "patch_rows")):
         return []
@@ -197,7 +252,7 @@ def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
         return []
     svc_of = {h: str((r.get("content_ref") or {}).get("displayServiceName", "") or "")
               for h, r in idx.items()}
-    cur = {k: _norm(vals[_VAL_KEY.get(k, k)]) for k in PATCH_FIELDS}
+    cur = {k: vals[_VAL_KEY.get(k, k)] for k in PATCH_FIELDS}
     tally = {}
     for pr in PT.strip_gold(rows):
         h = str(pr.get("hash") or "")
@@ -206,18 +261,28 @@ def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
         before, after = pr.get("before"), pr.get("after")
         if not (isinstance(before, dict) and isinstance(after, dict)):
             continue
+        who = str(pr.get("reviewer") or "")
         for k, av in after.items():
             if k not in cur:
                 continue
-            b, a = _norm(before.get(k)), _norm(av)
-            if not a or a == b or b != cur[k]:    # 같은 값에서 출발해 실제로 바뀐 교정만
-                continue
-            key = (k, b, a)
-            tally[key] = tally.get(key, 0) + 1
-    ranked = sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))
-    return [{"field": k, "from": b, "to": a,
-             "basis": f"같은 서비스({vals['service']})에서 같은 값을 이렇게 고친 선례 {n}건"}
-            for (k, b, a), n in ranked[:SUGGEST_MAX]]
+            for b, a in _observations(k, before.get(k), av, cur[k]):
+                e = tally.setdefault((k, b, a), {"n": 0, "who": set()})
+                e["n"] += 1
+                if who:
+                    e["who"].add(who)
+    out = []
+    for (k, b, a), e in sorted(tally.items(),
+                               key=lambda kv: (-kv[1]["n"], -len(kv[1]["who"]), kv[0])):
+        if e["n"] < SUGGEST_MIN:                  # 1건은 선례가 아니라 한 사람의 판단이다
+            continue
+        n, w = e["n"], len(e["who"])
+        basis = (f"이 서비스({vals['service']})에서 같은 출발값을 이렇게 고친 교정 {n}건" if b
+                 else f"이 서비스({vals['service']})에서 비어 있던 {k} 를 이렇게 채운 교정 {n}건")
+        out.append({"field": k, "from": b, "to": a, "count": n, "reviewers": w,
+                    "basis": f"{basis} · 검수자 {w}명"})
+        if len(out) >= SUGGEST_MAX:
+            break
+    return out
 
 
 def content_brief(hash: str = "", stage: str = "before", team=None) -> dict:
@@ -230,9 +295,7 @@ def content_brief(hash: str = "", stage: str = "before", team=None) -> dict:
         return {"error": "콘텐츠를 지정해 주세요"}
     if PT.is_gold(ch):
         return {"error": GOLD_MSG}
-    stage = str(stage or "").strip().lower()
-    if stage not in STAGES:
-        stage = "before"                          # 모르는 값 = 덜 주는 쪽으로 수렴
+    stage = _stage(stage)
     idx = _index(team)
     row = idx.get(ch)
     if row is None:
@@ -256,15 +319,22 @@ def content_brief(hash: str = "", stage: str = "before", team=None) -> dict:
 
 
 # ── verdict_precedents ───────────────────────────────────────────────────────
-def verdict_precedents(hash: str = "", limit=None, team=None) -> dict:
+def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=None) -> dict:
     """비슷한 과거 판정(선례). 무엇이 '비슷함'인지(why_similar)를 함께 실어 검수자가 스스로 본다.
 
-    확정된 것만 센다 = 표가 있고 갈리지 않은 건(agree). 갈린 건은 reviewer_dissent 쪽이다."""
+    **판정 뒤에만 나간다.** 남이 내린 판정을 먼저 보면 그 값이 기준점이 된다. 프리즘은
+    검수자끼리의 일치도로 신뢰도를 재는데, B 가 A 의 판정을 보고 정하면 그 일치는 독립된
+    근거가 아니다 — 지표가 조용히 부풀고, 부풀었다는 것을 알 방법이 없다.
+
+    확정된 것만 센다 = PRECEDENT_MIN_N 인 이상이 갈리지 않고 같은 판정을 낸 건. 갈린 건은
+    reviewer_dissent 쪽이고, 1인 판정은 어느 쪽도 아니다(그냥 근거가 부족한 것이다)."""
     blocked = PT.need_team(team)
     if blocked:
         return blocked
     ch = str(hash or "").strip()
     empty = {"items": [], "total": 0, "truncated": False}
+    if _stage(stage) != "after":
+        return dict(empty, error=AFTER_ONLY_MSG)
     if not ch:
         return dict(empty, error="콘텐츠를 지정해 주세요")
     if PT.is_gold(ch):
@@ -286,7 +356,10 @@ def verdict_precedents(hash: str = "", limit=None, team=None) -> dict:
         if v["service"] != me["service"]:
             continue
         fb = fbm.get(h) or {}
-        if not (fb.get("n") and fb.get("agree")):  # 확정(만장일치)된 판정만 선례로 쓴다
+        n = int(fb.get("n") or 0)
+        # 확정 = 최소 인원 이상이 갈리지 않고 같게 본 것. 저장 계층의 agree 는 n=1 에서도
+        # 참이라 여기서 인원을 함께 본다(1인 판정을 선례라 부르면 그 말이 거짓이 된다).
+        if n < PRECEDENT_MIN_N or not fb.get("agree"):
             continue
         verdict = str(fb.get("consensus") or fb.get("verdict") or "")
         if verdict not in ("good", "bad"):
@@ -315,6 +388,7 @@ def verdict_precedents(hash: str = "", limit=None, team=None) -> dict:
             "hash": h,
             "title": _clip(v["title"], TITLE_MAX),
             "verdict": verdict,
+            "n": n,                               # 몇 사람이 같게 봤나(화면이 '3인 일치' 로 쓴다)
             "reason": _clip(fb.get("note") or last.get("note") or "", NOTE_MAX),
             "ts": ts,
             "why_similar": " · ".join([f"같은 서비스: {v['service']}"] + why),
@@ -324,16 +398,19 @@ def verdict_precedents(hash: str = "", limit=None, team=None) -> dict:
 
 
 # ── reviewer_dissent ─────────────────────────────────────────────────────────
-def reviewer_dissent(hash: str = "", team=None) -> dict:
+def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
     """다른 검수자 의견·불일치. 양쪽을 시간순으로 나란히 준다.
 
-    다수결·합의 값을 담지 않는다 — 담는 순간 그것이 정답으로 읽히고, 검수자가 자기 판단 대신
+    **판정 뒤에만 나간다**(verdict_precedents 와 같은 이유 · 남의 판정은 기준점이 된다).
+    다수결·합의 값도 담지 않는다 — 담는 순간 그것이 정답으로 읽히고, 검수자가 자기 판단 대신
     다수를 따라간다(측정하려던 값이 사라진다)."""
     blocked = PT.need_team(team)
     if blocked:
         return blocked
     ch = str(hash or "").strip()
     empty = {"items": [], "total": 0, "truncated": False, "split": False}
+    if _stage(stage) != "after":
+        return dict(empty, error=AFTER_ONLY_MSG)
     if not ch:
         return dict(empty, error="콘텐츠를 지정해 주세요")
     if PT.is_gold(ch):
@@ -351,6 +428,11 @@ def reviewer_dissent(hash: str = "", team=None) -> dict:
 # ── 도구 등록부(트랙 A 전용) ─────────────────────────────────────────────────
 # scope 는 전부 internal — 이 도구들은 팀 콘텐츠와 검수자 판정을 읽는다. 외부 MCP(트랙 B)에
 # 열리면 파트너 키로 팀 검수 이력이 통째로 나간다.
+# after_only=True 는 '판정 뒤에만 나가는 도구' 표시다. 실제 차단은 각 도구 함수가 하고
+# (직접 호출도 막아야 한다) 이 플래그는 그 사실을 밖에서 읽을 수 있게 하는 선언이다.
+_STAGE_PROP = {"type": "string", "enum": list(STAGES),
+               "description": "before=판정 전 · after=판정 뒤"}
+
 TOOLS = {
     "content_brief": {
         "scope": "internal",
@@ -371,29 +453,35 @@ TOOLS = {
     },
     "verdict_precedents": {
         "scope": "internal",
+        "after_only": True,
         "title": "비슷한 과거 판정",
-        "desc": "같은 서비스에서 같은 사유·같은 값으로 확정된 과거 판정을 준다. "
-                "무엇이 비슷한지(why_similar)를 함께 주므로 판단은 검수자가 한다.",
+        "desc": f"같은 서비스에서 {PRECEDENT_MIN_N}인 이상이 같게 확정한 과거 판정을 준다. "
+                "무엇이 비슷한지(why_similar)와 몇 사람이 같게 봤는지(n)를 함께 주므로 판단은 검수자가 한다. "
+                "**검수자가 판정을 낸 뒤에만**(stage=after) 쓸 수 있다.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "hash": {"type": "string", "description": "콘텐츠 해시"},
+                "stage": _STAGE_PROP,
                 "limit": {"type": "integer", "minimum": 1, "maximum": PRECEDENT_MAX,
                           "description": f"가져올 수(기본 {PRECEDENT_DEFAULT} · 최대 {PRECEDENT_MAX})"},
             },
-            "required": ["hash"],
+            "required": ["hash", "stage"],
             "additionalProperties": False,
         },
         "fn": verdict_precedents,
     },
     "reviewer_dissent": {
         "scope": "internal",
+        "after_only": True,
         "title": "검수자 의견·불일치",
-        "desc": "이 콘텐츠에 판정이 갈린 이력이 있으면 양쪽을 나란히 준다(다수결을 정답으로 주지 않는다).",
+        "desc": "이 콘텐츠에 판정이 갈린 이력이 있으면 양쪽을 나란히 준다(다수결을 정답으로 주지 않는다). "
+                "**검수자가 판정을 낸 뒤에만**(stage=after) 쓸 수 있다.",
         "inputSchema": {
             "type": "object",
-            "properties": {"hash": {"type": "string", "description": "콘텐츠 해시"}},
-            "required": ["hash"],
+            "properties": {"hash": {"type": "string", "description": "콘텐츠 해시"},
+                           "stage": _STAGE_PROP},
+            "required": ["hash", "stage"],
             "additionalProperties": False,
         },
         "fn": reviewer_dissent,

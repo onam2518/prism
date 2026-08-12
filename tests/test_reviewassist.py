@@ -4,10 +4,13 @@
 그래서 문구가 아니라 규칙을 단언한다. 문구는 바뀌어도 되지만 아래는 바뀌면 안 된다.
 
   · 팀 없이는 돌지 않는다 · 도구 사용자가 team 을 지정할 수 없다(교차 팀 통로)
+  · 로컬 편의값("local")이 supabase 모드로 새지 않는다(새면 전 팀 조회 · 감사 H1)
   · 골드 문항은 어떤 경로로도 안 나간다(요청 해시 · 목록 양쪽)
   · 잘리면 말한다 · 예외 원문을 응답에 싣지 않는다
-  · **판정 전(before) 응답에는 추천성 키가 존재하지 않는다** — 이 파일에서 가장 중요한 단언.
-    비어 있는 게 아니라 키가 없어야 한다. 있으면 클라이언트가 언젠가 읽고 답이 샌다.
+  · **판정 전(before)에는 판단 재료가 나가지 않는다** — 이 파일에서 가장 중요한 단언.
+    추천성 키는 비어 있는 게 아니라 키가 없어야 하고(있으면 클라이언트가 언젠가 읽는다),
+    남이 내린 판정(선례·다른 검수자 의견)은 아예 거절돼야 한다(먼저 보면 기준점이 된다).
+  · 1인 판정은 선례가 아니다 · 1건짜리 교정은 제안이 아니다
   · 저장된 근거가 없으면 없다고 말한다(지어내지 않는다)
 
 실행: python3 -m pytest tests/ -q
@@ -36,6 +39,13 @@ H1 = _h(1)
 # 골드 해시도 16자로 만들어 실제 _row_key 를 통과시킨다(골드가 데이터에 섞인 상황 재현).
 GOLD_H = "gold:00000000001"
 
+AFTER = {"stage": "after"}
+
+
+def _args(h=H1, **kw):
+    """판정 뒤 단계로 부르는 인자(선례·불일치는 after 가 아니면 거절된다)."""
+    return dict({"hash": h}, **dict(AFTER, **kw))
+
 
 def _row(h, *, service=SVC, title="제목", grade="R", reasons=("ad",), intent=(INTENT,),
          cats=("정치",), evidence="", summary="요약문", entities=()):
@@ -60,6 +70,16 @@ def _fb(*pairs):
             "agree": len(vs) > 0 and (g == 0 or b == 0),
             "verdict": cons or (vs[-1]["verdict"] if vs else ""),
             "stage": "", "note": vs[-1]["note"] if vs else ""}
+
+
+def _confirmed(note="광고성으로 봤다", ts=1.0):
+    """확정 판정 = 최소 인원 이상이 갈리지 않고 같게 본 것."""
+    return _fb(*[(f"검수자{i}", "bad", note, ts + i) for i in range(RA.PRECEDENT_MIN_N)])
+
+
+def _patch(h, reviewer, field, before, after, ts=10.0):
+    return {"hash": h, "reviewer": reviewer, "element": field,
+            "before": {field: before}, "after": {field: after}, "ts": ts}
 
 
 class _FakeStore:
@@ -110,14 +130,14 @@ class TestTeamScope(Base):
     def test_no_tool_runs_without_a_team(self):
         for tool in RA.TOOLS:
             for t in (None, "", "   "):
-                r = RA.call(tool, {"hash": H1}, team=t)
+                r = RA.call(tool, _args(), team=t)
                 self.assertIn("error", r, f"{tool} team={t!r} 인데 실행됐다")
 
     def test_direct_call_also_refuses_without_a_team(self):
         """등록부를 거치지 않고 함수를 직접 불러도 팀 없이는 돌지 않는다(저장 계층이 전 팀을 준다)."""
         self.assertIn("error", RA.content_brief(hash=H1, team=None))
-        self.assertIn("error", RA.verdict_precedents(hash=H1, team=""))
-        self.assertIn("error", RA.reviewer_dissent(hash=H1, team=None))
+        self.assertIn("error", RA.verdict_precedents(hash=H1, stage="after", team=""))
+        self.assertIn("error", RA.reviewer_dissent(hash=H1, stage="after", team=None))
 
     def test_team_in_args_is_ignored(self):
         r = RA.call("content_brief", {"hash": H1, "team": "다른팀"}, team=TEAM)
@@ -130,30 +150,79 @@ class TestTeamScope(Base):
             self.assertNotIn("team", spec["inputSchema"].get("properties", {}), name)
 
     def test_unknown_tool_is_rejected(self):
-        self.assertIn("error", RA.call("없는도구", {"hash": H1}, team=TEAM))
+        self.assertIn("error", RA.call("없는도구", _args(), team=TEAM))
+
+
+# ── 라우트의 팀 해석(로컬 편의값이 운영으로 새지 않는다) ────────────────────
+class _FakeHandler:
+    def __init__(self, team):
+        self._team = team
+
+    def _req_team(self):
+        return self._team
+
+
+class TestRouteTeamResolution(unittest.TestCase):
+    """라우트는 sqlite 단일 팀 편의를 위해 고정 스코프("local")를 쓴다. 이 값이 supabase
+    모드로 새면 저장 계층이 팀 필터를 건 채로 존재하지 않는 팀을 보거나, 최악에는 가드가
+    풀려 전 팀을 읽는다(감사 H1 과 같은 실패). 코드를 읽어야만 안전한 상태로 두지 않는다."""
+
+    def _resolve(self, supa, req_team, body=b'{"tool":"content_brief","args":{"hash":"x"}}'):
+        seen = []
+        o_supa, o_call = SV._supa, RA.call
+        SV._supa = lambda: supa
+        RA.call = lambda name, args, team=None: (seen.append(team), {"ok": True})[1]
+        self.addCleanup(lambda: setattr(SV, "_supa", o_supa))
+        self.addCleanup(lambda: setattr(RA, "call", o_call))
+        fn, _gate = SV._POST_ROUTES["/assist"]
+        fn(_FakeHandler(req_team), body)
+        return seen[0]
+
+    def test_local_scope_never_appears_in_supabase_mode(self):
+        for req_team in (None, "", "team-7"):
+            got = self._resolve(True, req_team)
+            self.assertNotEqual(got, "local", f"req_team={req_team!r} 인데 로컬 스코프가 샜다")
+
+    def test_supabase_without_a_team_fails_closed(self):
+        self.assertIsNone(self._resolve(True, None))      # 도구 계층이 need_team 으로 거절한다
+
+    def test_supabase_uses_the_session_team(self):
+        self.assertEqual(self._resolve(True, "team-7"), "team-7")
+
+    def test_body_cannot_inject_the_team(self):
+        body = '{"tool":"content_brief","args":{"hash":"x","team":"침입팀"},"team":"침입팀"}'.encode()
+        self.assertIsNone(self._resolve(True, None, body))
+
+    def test_local_sqlite_gets_a_fixed_scope(self):
+        self.assertEqual(self._resolve(False, None), "local")
+
+    def test_malformed_body_does_not_crash_the_route(self):
+        for body in (b"", b"[]", b'"scalar"', b"not json", b"null"):
+            self.assertIsNone(self._resolve(True, None, body), body)
 
 
 # ── 골드 문항 차단 ───────────────────────────────────────────────────────────
 class TestGoldIsNeverExposed(Base):
     def setUp(self):
         # 골드 행이 콘텐츠·판정·교정 로그 어디에 섞여도 나가면 안 된다.
+        # 교정은 임계값(2건) 이상 깔아 둔다 — 1건이면 임계값 때문에 안 나온 것인지
+        # 골드 가드 때문에 안 나온 것인지 구분되지 않아 테스트가 거짓 안심을 준다.
         self.install(
             rows=[_row(H1), _row(GOLD_H, title="골드 원문")],
-            feedback={GOLD_H: _fb(("복실", "bad", "골드 정답", 100.0))},
-            patches=[{"hash": GOLD_H, "reviewer": "복실", "element": "summary",
-                      "before": {"summary": "요약문"}, "after": {"summary": "골드 정답 요약"},
-                      "ts": 100.0}],
+            feedback={GOLD_H: _confirmed("골드 정답")},
+            patches=[_patch(GOLD_H, "복실", "content_category", ["정치"], ["사회"], 10.0),
+                     _patch(GOLD_H, "딱지", "content_category", ["정치"], ["사회"], 11.0)],
         )
 
     def test_requesting_a_gold_hash_is_refused_by_every_tool(self):
         for gh in ("gold:ok:abc", "goldf:bad:abc", GOLD_H):
             for tool in RA.TOOLS:
-                r = RA.call(tool, {"hash": gh}, team=TEAM)
-                self.assertIn("error", r, f"{tool}({gh}) 가 응답을 냈다")
+                r = RA.call(tool, _args(gh), team=TEAM)
+                self.assertEqual(r.get("error"), RA.GOLD_MSG, f"{tool}({gh})")
                 self.assertFalse(r.get("items"), f"{tool}({gh}) 가 항목을 냈다")
 
     def test_gold_never_appears_among_precedents(self):
-        r = RA.call("verdict_precedents", {"hash": H1}, team=TEAM)
+        r = RA.call("verdict_precedents", _args(), team=TEAM)
         for it in r.get("items") or []:
             self.assertFalse(PT.is_gold(it["hash"]), f"골드가 선례로 샜다: {it['hash']}")
 
@@ -166,18 +235,39 @@ class TestGoldIsNeverExposed(Base):
 class TestIndependence(Base):
     def setUp(self):
         self.install(
-            rows=[_row(H1), _row(_h(2))],
-            patches=[{"hash": _h(2), "reviewer": "딱지", "element": "summary",
-                      "before": {"summary": "요약문"}, "after": {"summary": "고친 요약문"},
-                      "ts": 10.0}],
+            rows=[_row(H1), _row(_h(2)), _row(_h(3))],
+            feedback={_h(2): _confirmed(), _h(3): _confirmed()},
+            patches=[_patch(_h(2), "딱지", "content_category", ["정치"], ["사회"], 10.0),
+                     _patch(_h(3), "복실", "content_category", ["정치"], ["사회"], 11.0)],
         )
 
-    def test_before_response_has_no_suggestive_key_at_all(self):
-        """비어 있는 게 아니라 키 자체가 없어야 한다 — 있으면 클라이언트가 언젠가 쓴다."""
-        r = RA.call("content_brief", {"hash": H1, "stage": "before"}, team=TEAM)
-        self.assertNotIn("error", r)
-        leaked = set(_keys(r)) & set(RA.SUGGESTIVE_KEYS)
-        self.assertEqual(leaked, set(), f"판정 전 응답에 추천성 키가 있다: {leaked}")
+    def test_before_stage_yields_no_judgment_material_from_any_tool(self):
+        """도구 전체를 돈다 — 도구가 늘어도 이 단언이 그대로 지킨다.
+
+        추천성 키는 비어 있는 게 아니라 **없어야** 하고, 남이 내린 판정은 아예 안 나가야 한다."""
+        for tool, spec in RA.TOOLS.items():
+            r = RA.call(tool, {"hash": H1, "stage": "before"}, team=TEAM)
+            leaked = set(_keys(r)) & set(RA.SUGGESTIVE_KEYS)
+            self.assertEqual(leaked, set(), f"{tool}: 판정 전 응답에 추천성 키가 있다: {leaked}")
+            self.assertFalse(r.get("items"), f"{tool}: 판정 전인데 남의 판정을 줬다")
+            if spec.get("after_only"):
+                self.assertEqual(r.get("error"), RA.AFTER_ONLY_MSG, tool)
+
+    def test_after_only_tools_are_blocked_on_the_server_not_the_screen(self):
+        """규칙이 클라이언트에 있으면 다음 클라이언트가 어긴다. 직접 호출도 막혀야 한다."""
+        for tool, spec in RA.TOOLS.items():
+            if not spec.get("after_only"):
+                continue
+            for stage in ("before", "", None, "later", "판정중", 7):
+                r = spec["fn"](hash=H1, stage=stage, team=TEAM)
+                self.assertEqual(r.get("error"), RA.AFTER_ONLY_MSG, f"{tool} stage={stage!r}")
+                self.assertEqual(r.get("items"), [], f"{tool} stage={stage!r}")
+
+    def test_after_only_tools_answer_once_the_verdict_is_in(self):
+        for tool, spec in RA.TOOLS.items():
+            if spec.get("after_only"):
+                r = RA.call(tool, _args(), team=TEAM)
+                self.assertNotIn("error", r, tool)
 
     def test_unknown_stage_falls_back_to_before(self):
         """모르는 값은 덜 주는 쪽으로 수렴한다(오타·구버전 클라이언트가 추천을 열지 못하게)."""
@@ -196,7 +286,7 @@ class TestIndependence(Base):
         self.install(rows=[_row(H1)],
                      feedback={H1: _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0),
                                        ("대식", "bad", "", 3.0))})
-        r = RA.call("reviewer_dissent", {"hash": H1}, team=TEAM)
+        r = RA.call("reviewer_dissent", _args(), team=TEAM)
         for k in ("consensus", "majority", "verdict", "agree", "good", "bad", "recommended"):
             self.assertNotIn(k, r, f"불일치 응답에 {k} 가 있다")
 
@@ -243,50 +333,56 @@ class TestPrecedents(Base):
         fb = {}
         for i in range(2, 2 + n):
             rows.append(_row(_h(i), title=f"과거 {i}"))
-            fb[_h(i)] = _fb((f"검수자{i}", "bad", "광고성으로 봤다", float(i)))
+            fb[_h(i)] = _confirmed(ts=float(i))
         self.install(rows, feedback=fb)
 
     def test_truncation_is_reported(self):
         self._many(8)
-        r = RA.call("verdict_precedents", {"hash": H1, "limit": 3}, team=TEAM)
+        r = RA.call("verdict_precedents", _args(limit=3), team=TEAM)
         self.assertEqual(len(r["items"]), 3)
         self.assertEqual(r["total"], 8)
         self.assertTrue(r["truncated"])
 
     def test_nothing_cut_says_so(self):
         self._many(2)
-        r = RA.call("verdict_precedents", {"hash": H1, "limit": 20}, team=TEAM)
+        r = RA.call("verdict_precedents", _args(limit=20), team=TEAM)
         self.assertEqual(r["total"], 2)
         self.assertFalse(r["truncated"])
 
     def test_limit_is_clamped_not_errored(self):
         self._many(3)
         for bad in ("abc", -5, 9999, None):
-            r = RA.call("verdict_precedents", {"hash": H1, "limit": bad}, team=TEAM)
+            r = RA.call("verdict_precedents", _args(limit=bad), team=TEAM)
             self.assertNotIn("error", r, f"limit={bad!r}")
 
-    def test_items_carry_the_similarity_basis(self):
-        """무엇이 비슷한지 밝히지 않으면 검수자가 스스로 판단할 수 없다."""
+    def test_items_carry_the_similarity_basis_and_headcount(self):
+        """무엇이 비슷한지·몇 사람이 같게 봤는지 밝히지 않으면 검수자가 스스로 판단할 수 없다."""
         self._many(1)
-        it = RA.call("verdict_precedents", {"hash": H1}, team=TEAM)["items"][0]
-        self.assertEqual(set(it), {"hash", "title", "verdict", "reason", "ts", "why_similar"})
+        it = RA.call("verdict_precedents", _args(), team=TEAM)["items"][0]
+        self.assertEqual(set(it), {"hash", "title", "verdict", "reason", "ts", "why_similar", "n"})
+        self.assertEqual(it["n"], RA.PRECEDENT_MIN_N)
         self.assertIn(SVC, it["why_similar"])
         self.assertIn("광고성", it["why_similar"])        # 공유한 품질 사유를 이름으로 밝힌다
+
+    def test_a_single_reviewer_verdict_is_not_a_precedent(self):
+        """1인 판정을 확정 선례로 되먹이면 그 한 사람의 편향이 증폭되고 '선례' 가 거짓이 된다."""
+        self.install([_row(H1), _row(_h(2))],
+                     feedback={_h(2): _fb(("복실", "bad", "혼자 봤다", 1.0))})
+        self.assertEqual(RA.call("verdict_precedents", _args(), team=TEAM)["total"], 0)
 
     def test_unconfirmed_and_split_verdicts_are_not_precedents(self):
         self.install([_row(H1), _row(_h(2)), _row(_h(3))],
                      feedback={_h(2): _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0)),
                                _h(3): {}})
-        self.assertEqual(RA.call("verdict_precedents", {"hash": H1}, team=TEAM)["total"], 0)
+        self.assertEqual(RA.call("verdict_precedents", _args(), team=TEAM)["total"], 0)
 
     def test_other_services_and_unrelated_values_are_excluded(self):
         self.install(
             [_row(H1),
              _row(_h(2), service="스포츠"),                              # 다른 서비스
              _row(_h(3), reasons=("hate",), intent=("실용 정보",), cats=("스포츠",))],  # 겹치는 값 없음
-            feedback={_h(2): _fb(("복실", "bad", "", 1.0)),
-                      _h(3): _fb(("딱지", "bad", "", 2.0))})
-        self.assertEqual(RA.call("verdict_precedents", {"hash": H1}, team=TEAM)["total"], 0)
+            feedback={_h(2): _confirmed(), _h(3): _confirmed()})
+        self.assertEqual(RA.call("verdict_precedents", _args(), team=TEAM)["total"], 0)
 
 
 # ── 불일치 ───────────────────────────────────────────────────────────────────
@@ -295,7 +391,7 @@ class TestDissent(Base):
         self.install([_row(H1)],
                      feedback={H1: _fb(("복실", "good", "문제 없다", 100.0),
                                        ("딱지", "bad", "광고성이다", "2026-08-01T00:00:00+00:00"))})
-        r = RA.call("reviewer_dissent", {"hash": H1}, team=TEAM)
+        r = RA.call("reviewer_dissent", _args(), team=TEAM)
         self.assertTrue(r["split"])
         self.assertEqual([i["verdict"] for i in r["items"]], ["good", "bad"])   # ISO ts 도 흡수
         self.assertEqual(set(r["items"][0]), {"reviewer", "verdict", "reason", "ts"})
@@ -304,52 +400,105 @@ class TestDissent(Base):
     def test_agreement_is_not_a_split(self):
         self.install([_row(H1)],
                      feedback={H1: _fb(("복실", "bad", "", 1.0), ("딱지", "bad", "", 2.0))})
-        r = RA.call("reviewer_dissent", {"hash": H1}, team=TEAM)
+        r = RA.call("reviewer_dissent", _args(), team=TEAM)
         self.assertFalse(r["split"])
         self.assertEqual(r["total"], 2)
 
     def test_no_verdicts_yet(self):
         self.install([_row(H1)])
-        r = RA.call("reviewer_dissent", {"hash": H1}, team=TEAM)
+        r = RA.call("reviewer_dissent", _args(), team=TEAM)
         self.assertEqual(r["items"], [])
         self.assertFalse(r["split"])
 
 
 # ── 수정 제안(판정 뒤) ───────────────────────────────────────────────────────
 class TestSuggestions(Base):
+    def _brief(self):
+        return RA.call("content_brief", {"hash": H1, "stage": "after"}, team=TEAM)["suggestions"]
+
     def test_suggestion_is_assembled_from_past_corrections(self):
         self.install(
             rows=[_row(H1), _row(_h(2)), _row(_h(3))],
-            patches=[{"hash": _h(2), "reviewer": "복실", "element": "content_category",
-                      "before": {"content_category": ["정치"]},
-                      "after": {"content_category": ["사회"]}, "ts": 10.0},
-                     {"hash": _h(3), "reviewer": "딱지", "element": "content_category",
-                      "before": {"content_category": ["정치"]},
-                      "after": {"content_category": ["사회"]}, "ts": 11.0}])
-        sg = RA.call("content_brief", {"hash": H1, "stage": "after"}, team=TEAM)["suggestions"]
+            patches=[_patch(_h(2), "복실", "content_category", ["정치"], ["사회"], 10.0),
+                     _patch(_h(3), "딱지", "content_category", ["정치"], ["사회"], 11.0)])
+        sg = self._brief()
         self.assertEqual(len(sg), 1)
-        self.assertEqual(set(sg[0]), {"field", "from", "to", "basis"})
+        self.assertEqual(set(sg[0]), {"field", "from", "to", "count", "reviewers", "basis"})
         self.assertEqual((sg[0]["field"], sg[0]["from"], sg[0]["to"]),
                          ("content_category", "정치", "사회"))
-        self.assertIn("2건", sg[0]["basis"])              # 근거는 실제로 센 선례 수다
+        self.assertEqual((sg[0]["count"], sg[0]["reviewers"]), (2, 2))
+        self.assertIn("2건", sg[0]["basis"])              # 근거는 실제로 센 사실뿐이다
+        self.assertIn("2명", sg[0]["basis"])
+
+    def test_one_correction_is_not_a_precedent(self):
+        """1건은 선례가 아니라 한 사람의 판단이다."""
+        self.install(rows=[_row(H1), _row(_h(2))],
+                     patches=[_patch(_h(2), "복실", "content_category", ["정치"], ["사회"])])
+        self.assertEqual(self._brief(), [])
+
+    def test_headcount_is_reported_separately_from_the_count(self):
+        """같은 사람이 두 번 고친 것과 두 사람이 각각 고친 것은 무게가 다르다 · 판단은 검수자 몫."""
+        self.install(rows=[_row(H1), _row(_h(2)), _row(_h(3))],
+                     patches=[_patch(_h(2), "복실", "content_category", ["정치"], ["사회"], 10.0),
+                              _patch(_h(3), "복실", "content_category", ["정치"], ["사회"], 11.0)])
+        sg = self._brief()
+        self.assertEqual((sg[0]["count"], sg[0]["reviewers"]), (2, 1))
+
+    def test_list_fields_are_compared_element_by_element(self):
+        """목록 전체가 같아야 한다면 운영에서 거의 안 걸려 기능이 없는 것과 같다."""
+        self.install(
+            rows=[_row(H1, cats=("정치", "사회")), _row(_h(2), cats=("정치", "경제")),
+                  _row(_h(3), cats=("정치", "문화"))],
+            patches=[_patch(_h(2), "복실", "content_category", ["정치", "경제"], ["정치", "국제"], 10.0),
+                     _patch(_h(3), "딱지", "content_category", ["정치", "문화"], ["정치", "국제"], 11.0)])
+        # 대상의 현재 값에 없는 요소('경제'·'문화')에서 출발한 교정이라 제안이 되지 않는다
+        self.assertEqual(self._brief(), [])
+        self.install(
+            rows=[_row(H1, cats=("정치", "사회")), _row(_h(2), cats=("정치", "사회")),
+                  _row(_h(3), cats=("정치", "사회"))],
+            patches=[_patch(_h(2), "복실", "content_category", ["정치", "사회"], ["정치", "국제"], 10.0),
+                     _patch(_h(3), "딱지", "content_category", ["정치", "사회"], ["정치", "국제"], 11.0)])
+        sg = self._brief()
+        self.assertEqual((sg[0]["from"], sg[0]["to"]), ("사회", "국제"))   # 바뀐 요소만 짚는다
+
+    def test_ambiguous_multi_element_changes_are_not_paired(self):
+        """여러 개가 한꺼번에 바뀌면 무엇이 무엇으로 바뀌었는지 모른다. 짝을 지어내지 않는다."""
+        self.install(
+            rows=[_row(H1, cats=("정치", "사회")), _row(_h(2), cats=("정치", "사회")),
+                  _row(_h(3), cats=("정치", "사회"))],
+            patches=[_patch(_h(2), "복실", "content_category", ["정치", "사회"], ["경제", "국제"], 10.0),
+                     _patch(_h(3), "딱지", "content_category", ["정치", "사회"], ["경제", "국제"], 11.0)])
+        self.assertEqual(self._brief(), [])
+
+    def test_filling_an_empty_field_is_counted(self):
+        """빈 카테고리 채우기는 실제로 가장 잦은 교정이다 · 대상도 비어 있을 때만 센다."""
+        self.install(
+            rows=[_row(H1, cats=()), _row(_h(2), cats=()), _row(_h(3), cats=())],
+            patches=[_patch(_h(2), "복실", "content_category", [], ["사회"], 10.0),
+                     _patch(_h(3), "딱지", "content_category", [], ["사회"], 11.0)])
+        sg = self._brief()
+        self.assertEqual((sg[0]["from"], sg[0]["to"], sg[0]["count"]), ("", "사회", 2))
 
     def test_corrections_from_a_different_starting_value_are_not_suggested(self):
         self.install(
-            rows=[_row(H1), _row(_h(2), cats=("경제",))],
-            patches=[{"hash": _h(2), "reviewer": "복실", "element": "content_category",
-                      "before": {"content_category": ["경제"]},
-                      "after": {"content_category": ["사회"]}, "ts": 10.0}])
-        r = RA.call("content_brief", {"hash": H1, "stage": "after"}, team=TEAM)
-        self.assertEqual(r["suggestions"], [])            # 출발값이 다르면 선례가 아니다
+            rows=[_row(H1), _row(_h(2), cats=("경제",)), _row(_h(3), cats=("경제",))],
+            patches=[_patch(_h(2), "복실", "content_category", ["경제"], ["사회"], 10.0),
+                     _patch(_h(3), "딱지", "content_category", ["경제"], ["사회"], 11.0)])
+        self.assertEqual(self._brief(), [])               # 출발값이 다르면 선례가 아니다
+
+    def test_other_services_are_not_suggested(self):
+        self.install(
+            rows=[_row(H1), _row(_h(2), service="스포츠"), _row(_h(3), service="스포츠")],
+            patches=[_patch(_h(2), "복실", "content_category", ["정치"], ["사회"], 10.0),
+                     _patch(_h(3), "딱지", "content_category", ["정치"], ["사회"], 11.0)])
+        self.assertEqual(self._brief(), [])
 
     def test_own_corrections_are_not_suggested_back(self):
         self.install(
             rows=[_row(H1)],
-            patches=[{"hash": H1, "reviewer": "복실", "element": "content_category",
-                      "before": {"content_category": ["정치"]},
-                      "after": {"content_category": ["사회"]}, "ts": 10.0}])
-        r = RA.call("content_brief", {"hash": H1, "stage": "after"}, team=TEAM)
-        self.assertEqual(r["suggestions"], [])
+            patches=[_patch(H1, "복실", "content_category", ["정치"], ["사회"], 10.0),
+                     _patch(H1, "딱지", "content_category", ["정치"], ["사회"], 11.0)])
+        self.assertEqual(self._brief(), [])
 
 
 # ── 오류 처리 · 등록부 · 라우트 ──────────────────────────────────────────────
@@ -368,7 +517,7 @@ class TestErrorsAndRegistry(Base):
 
     def test_unknown_content_is_a_readable_error(self):
         for tool in ("content_brief", "verdict_precedents"):
-            r = RA.call(tool, {"hash": _h(99)}, team=TEAM)
+            r = RA.call(tool, _args(_h(99)), team=TEAM)
             self.assertEqual(r.get("error"), RA.NOT_FOUND_MSG, tool)
 
     def test_malformed_input_becomes_a_tool_error_not_a_crash(self):
@@ -381,7 +530,7 @@ class TestErrorsAndRegistry(Base):
 
     def test_missing_hash_is_rejected(self):
         for tool in RA.TOOLS:
-            self.assertIn("error", RA.call(tool, {"hash": "  "}, team=TEAM), tool)
+            self.assertIn("error", RA.call(tool, _args("  "), team=TEAM), tool)
 
     def test_every_tool_is_internal_only(self):
         """외부 MCP(트랙 B)에 열리면 파트너 키로 팀 검수 이력이 통째로 나간다."""
@@ -398,6 +547,8 @@ class TestErrorsAndRegistry(Base):
             self.assertFalse(schema.get("additionalProperties", True), f"{name}: 미정의 인자 허용")
             for req in schema.get("required", []):
                 self.assertIn(req, schema.get("properties", {}), f"{name}: required {req} 미정의")
+            if spec.get("after_only"):               # 단계를 못 받으면 막을 수가 없다
+                self.assertIn("stage", schema.get("properties", {}), name)
 
     def test_route_is_registered_behind_the_team_gate(self):
         fn, gate = SV._POST_ROUTES["/assist"]
