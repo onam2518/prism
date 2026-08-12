@@ -9,7 +9,7 @@
 사람은 올라온 PR 만 검토·머지하면 된다(에이전트는 머지하지 않음).
 
 ## 데이터 소스 (검증 완료)
-- Supabase 프로젝트: **`yujinhcdbllcnnfvcmfp`** (Prism 운영 DB · docker-compose 기본 URL 과 일치)
+- Supabase 프로젝트: **`uycdzslkhkruvmyjcbgj`** (Prism 운영 DB · 2026-08-12 전용 프로젝트 분리 · 구 `yujinhcdbllcnnfvcmfp` 는 백업)
 - 테이블: **`public.prism_board`**
   - 컬럼: `id, team_key, kind, title, body, author_id, status, created_at`
   - `kind` ∈ {`feature`, `bug`} · `status` ∈ {`open`, `doing`, `done`}
@@ -37,7 +37,7 @@
 (main 직접 커밋·push 금지 · feat/… 또는 fix/… 브랜치 → PR · pip 의존성 추가 금지(파이썬 표준 라이브러리만) ·
 커밋 전 python3 -m unittest discover tests 전체 통과 · 커밋 메시지 한국어 conventional + Co-Authored-By 트레일러).
 
-1. 소요 수집: Supabase MCP 로 프로젝트 yujinhcdbllcnnfvcmfp 의 public.prism_board 에서 status='open' 인 글
+1. 소요 수집: Supabase MCP 로 프로젝트 uycdzslkhkruvmyjcbgj 의 public.prism_board 에서 status='open' 인 글
    (id, kind, title, body, team_key)을 조회한다. 한 건도 없으면 아무 것도 하지 말고 종료한다(빈 PR 금지).
 2. 과제 도출: 글들을 클러스터링해 실행 가능한 기능개선/버그수정 과제로 정리하고, 이번 회차에 처리할
    '가장 가치 높고 안전·자기완결적인 1건'을 고른다. 대규모 리팩터·DB 마이그레이션 필요·프롬프트/등급 로직
