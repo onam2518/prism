@@ -129,7 +129,20 @@ def lookup_entity(name: str, limit=None, team=None) -> dict:
     """엔티티 사전 조회(이름·별칭 부분일치).
 
     한글 NFD 입력도 찾는다 — 저장 payload 는 재실행 해시 안정성 때문에 원본을 되박아
-    맥OS 발 파일이 NFD 로 들어오는데, 조회 정규화가 NFC 라 종전에는 미스했다(감사 T5)."""
+    맥OS 발 파일이 NFD 로 들어오는데, 조회 정규화가 NFC 라 종전에는 미스했다(감사 T5).
+
+    ⚠️ **등장 수(콘텐츠 빈도)를 여기 싣지 말 것.** 2026-08-12 트랙 B 제보로 확인: 종전
+    `seen` 필드는 `r.get("n") or r.get("count")` 를 읽었는데 `ent_list` 가 다는 키는
+    `n_contents` 라 값이 항상 0 이었다(죽은 필드). 그런데 키 이름만 맞추면 **그 순간 교차 팀
+    유출이 생긴다** — `ent_list` 는 시그니처에 team 인자가 없고 카운트 쿼리에도 team 필터가
+    없어 무조건 전역이다(형제인 `ent_trending` 은 team 을 받는 비대칭 · 이 모듈 독스트링이
+    경고한 바로 그 모양). 죽은 채로 우연히 유출을 막고 있던 필드라 되살리는 대신 뺐다.
+    파트너 계약에 항상 0 인 필드를 두면 빈도 신호로 읽혀 조용히 틀린다.
+    되살리려면 순서가 있다: ① `ent_list` 에 team 축 추가(store·supastore 양쪽 · 카운트
+    쿼리 포함) → ② 그 다음에야 여기에 필드 복원. ① 없이 ② 만 하면 감사 H1 재현이다.
+
+    개체 레지스트리 자체(이름·별칭·타입)가 전역인 것은 결함이 아니다 — `entities` 테이블에
+    team 컬럼이 없는 공용 참조 데이터다. 팀에 종속되는 것은 '어느 콘텐츠에 몇 번 나왔나' 뿐이다."""
     q = str(name or "").strip()
     if not q:
         return {"error": "찾을 이름을 넣어 주세요", "items": [], "total": 0, "truncated": False}
@@ -143,8 +156,7 @@ def lookup_entity(name: str, limit=None, team=None) -> dict:
         return {"error": "사전을 읽지 못했습니다", "items": [], "total": 0, "truncated": False}
     items = [{"entity_id": r.get("entity_id", ""), "name": r.get("name", ""),
               "type": r.get("type", ""), "status": r.get("status", ""),
-              "aliases": list(r.get("aliases") or [])[:8],
-              "seen": int(r.get("n") or r.get("count") or 0)} for r in rows]
+              "aliases": list(r.get("aliases") or [])[:8]} for r in rows]
     return envelope(items, lim, query=q)
 
 

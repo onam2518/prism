@@ -214,12 +214,34 @@ class TestGoldIsNeverExposed(Base):
                      _patch(GOLD_H, "딱지", "content_category", ["정치"], ["사회"], 11.0)],
         )
 
-    def test_requesting_a_gold_hash_is_refused_by_every_tool(self):
+    def test_gold_never_gets_data_from_any_tool(self):
         for gh in ("gold:ok:abc", "goldf:bad:abc", GOLD_H):
             for tool in RA.TOOLS:
                 r = RA.call(tool, _args(gh), team=TEAM)
-                self.assertEqual(r.get("error"), RA.GOLD_MSG, f"{tool}({gh})")
                 self.assertFalse(r.get("items"), f"{tool}({gh}) 가 항목을 냈다")
+                self.assertNotIn("values", r, f"{tool}({gh}) 가 부여값을 냈다")
+                self.assertNotIn("summary3", r, f"{tool}({gh}) 가 브리핑을 냈다")
+
+    def test_list_tools_return_empty_not_an_error_for_gold(self):
+        """오류 문구는 화면에 뜨고, 뜨는 순간 '이건 골드다' 신호가 된다.
+
+        검수자가 골드를 알아보면 골드가 재려던 것(평소의 검수)이 사라진다 — 골드는 선례가
+        없는 게 자연스러우므로 '선례 없는 평범한 콘텐츠' 와 같은 응답을 준다."""
+        for tool, spec in RA.TOOLS.items():
+            if not spec.get("after_only"):
+                continue
+            gold = RA.call(tool, _args(GOLD_H), team=TEAM)
+            plain = RA.call(tool, _args(H1), team=TEAM)      # 실재하되 선례가 없는 평범한 콘텐츠
+            self.assertNotIn("error", gold, f"{tool}: 골드에서만 오류가 뜨면 그게 신호다")
+            self.assertEqual(gold, plain, f"{tool}: 골드 응답이 평범한 콘텐츠와 다르다")
+
+    def test_content_brief_still_refuses_gold(self):
+        """골드 문항의 화면 값은 골든 정답을 일부러 뒤집은 사본이다(reviewops._inject_gold).
+
+        저장된 행으로 브리핑을 만들면 화면과 어긋나고, 그 어긋남 자체가 정답이 된다.
+        서버가 안전하게 만들 수 없으므로 아예 주지 않는다(클라이언트가 화면 값으로 조립)."""
+        r = RA.call("content_brief", {"hash": GOLD_H, "stage": "after"}, team=TEAM)
+        self.assertEqual(r.get("error"), RA.GOLD_MSG)
 
     def test_gold_never_appears_among_precedents(self):
         r = RA.call("verdict_precedents", _args(), team=TEAM)
@@ -549,6 +571,20 @@ class TestErrorsAndRegistry(Base):
                 self.assertIn(req, schema.get("properties", {}), f"{name}: required {req} 미정의")
             if spec.get("after_only"):               # 단계를 못 받으면 막을 수가 없다
                 self.assertIn("stage", schema.get("properties", {}), name)
+
+    def test_shared_internal_tools_are_reachable(self):
+        """골드 브리핑은 클라이언트가 화면 값으로 조립해야 하는데(서버가 못 만든다) 그러려면
+        분류 기준 정의문이 필요하다. get_taxonomy 는 해시를 안 받아 어떤 콘텐츠를 보는지
+        서버에 알리지 않고, 응답도 콘텐츠와 무관해 골드든 아니든 완전히 같다."""
+        r = RA.call("get_taxonomy", {"kind": "intent", "service": SVC}, team=TEAM)
+        self.assertNotIn("error", r)
+        self.assertTrue(r["values"])
+        self.assertIn("get_taxonomy", RA.registry())
+        for name in RA.TOOLS:                        # 트랙 A 정의가 이름 충돌에서 이긴다
+            self.assertIs(RA.registry()[name], RA.TOOLS[name], name)
+
+    def test_shared_tools_still_need_a_team(self):
+        self.assertIn("error", RA.call("get_taxonomy", {"kind": "intent"}, team=None))
 
     def test_route_is_registered_behind_the_team_gate(self):
         fn, gate = SV._POST_ROUTES["/assist"]

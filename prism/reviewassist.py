@@ -12,8 +12,16 @@
    일치도로 신뢰도를 재는데, B 가 A 의 판정을 보고 정하면 그 일치는 독립된 근거가 아니다.
    지표가 조용히 부풀고, 부풀었다는 것을 알 방법이 없다. 그래서 화면이 아니라 **서버에서**
    막는다(규칙이 클라이언트에 있으면 다음 클라이언트가 어긴다).
-3. **골드 문항은 어떤 경로로도 나가지 않는다.** 요청 해시가 골드면 거절하고, 선례·제안
-   목록에서도 거른다. 골드는 검수자 신뢰도를 재는 장치라 보조가 개입하면 측정이 무너진다.
+3. **골드 문항은 어떤 경로로도 나가지 않는다.** 골드는 검수자 신뢰도를 재는 장치라 보조가
+   개입하면 측정이 무너진다. 선례·제안 목록에서 거르고, 요청 해시가 골드면 자료를 주지 않는다.
+   다만 **거절 방식도 신호가 된다** — 골드에서만 오류가 뜨면 검수자가 그것으로 골드를
+   알아보고, 알아보는 순간 골드가 재려던 것(평소의 검수)이 사라진다. 그래서 목록형 도구는
+   오류가 아니라 **빈 결과**를 준다(선례 없는 평범한 콘텐츠와 구분되지 않는다).
+   `content_brief` 만 거절을 유지한다. 골드 문항이 화면에 보여 주는 값은 저장된 행이 아니라
+   골든 정답을 **일부러 뒤집은** 사본이라(`reviewops._inject_gold` · 해시 홀짝으로 등급 반전),
+   저장된 행으로 브리핑을 만들면 화면과 어긋나고 그 어긋남 자체가 정답이 된다. 골드 브리핑은
+   서버가 안전하게 만들 방법이 없으므로 클라이언트가 이미 렌더한 값으로 직접 조립한다
+   (분류 기준 정의문은 해시가 필요 없는 `get_taxonomy` 로 받는다 · 아래 등록부 주석 참고).
 4. **근거를 지어내지 않는다.** 저장된 값을 조립할 뿐 모델을 새로 돌리지 않는다. 판정 근거를
    사후에 재생성하면 그럴듯한 창작이 된다(모델은 자기 추론 과정에 접근하지 못한다).
    `quality_meta.evidence` 가 비어 있으면 없다고 말한다 — 2026-08-12 신설 필드라 그 이전
@@ -338,7 +346,7 @@ def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=N
     if not ch:
         return dict(empty, error="콘텐츠를 지정해 주세요")
     if PT.is_gold(ch):
-        return dict(empty, error=GOLD_MSG)
+        return dict(empty)                        # 오류가 아니라 빈 결과(오류는 화면에 뜨고 = 골드 신호)
     lim = PT.qint(limit, PRECEDENT_DEFAULT, 1, PRECEDENT_MAX)
     idx = _index(team)
     row = idx.get(ch)
@@ -414,7 +422,7 @@ def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
     if not ch:
         return dict(empty, error="콘텐츠를 지정해 주세요")
     if PT.is_gold(ch):
-        return dict(empty, error=GOLD_MSG)
+        return dict(empty)                        # 오류가 아니라 빈 결과(위와 같은 이유)
     fb = _feedback(team).get(ch) or {}
     rows = sorted((fb.get("verdicts") or []), key=lambda v: _epoch(v.get("ts")))
     items = [{"reviewer": str(v.get("reviewer") or ""),
@@ -489,6 +497,20 @@ TOOLS = {
 }
 
 
+def registry() -> dict:
+    """이 앞단(/assist)이 노출할 도구 = 트랙 A 전용 + prismtools 의 internal 스코프.
+
+    공용 도구를 함께 여는 이유가 있다. 골드 문항은 브리핑을 서버에서 만들 수 없어(위 3번)
+    클라이언트가 화면에 이미 그린 값으로 조립해야 하는데, 그러려면 분류 기준 정의문이
+    필요하다. `get_taxonomy` 는 **해시를 받지 않아** 어떤 콘텐츠를 보고 있는지 서버에
+    알리지 않고, 응답도 콘텐츠와 무관해 골드든 아니든 완전히 같다. 골드용 우회로를 따로
+    파는 것보다 이미 있는 공용 도구를 쓰는 편이 안전하다 — 우회로는 언젠가 골드를 안다.
+    이름이 겹치면 트랙 A 정의가 이긴다."""
+    reg = dict(PT.tools_for("internal"))
+    reg.update(TOOLS)
+    return reg
+
+
 def call(name, args, team=None) -> dict:
     """도구 실행 진입점. 가드·디스패치는 prismtools.call 을 그대로 쓴다(규칙 단일 원천).
 
@@ -496,4 +518,4 @@ def call(name, args, team=None) -> dict:
     이름·인자의 타입은 여기서 강제한다 — 앞단이 HTTP 본문이라 문자열도 dict 도 아닌 값이
     그대로 들어올 수 있고, 그러면 도구 오류가 아니라 500 이 난다(내부 노출)."""
     return PT.call(str(name or ""), args if isinstance(args, dict) else {},
-                   team=team, registry=TOOLS)
+                   team=team, registry=registry())
