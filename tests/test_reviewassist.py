@@ -41,6 +41,11 @@ GOLD_H = "gold:00000000001"
 
 AFTER = {"stage": "after"}
 
+# 판단 재료를 담을 수 있는 키 전부. 도구 응답 모양이 바뀌어도 "재료가 안 나간다" 단언이
+# 따라가도록 여기 모아 둔다 — 특정 키 이름을 테스트에 박으면 계약이 바뀔 때 단언이 조용히
+# 무력해진다(2026-08-13 dissent 를 3줄 집계로 바꾸며 items 가 사라졌다).
+PAYLOAD_KEYS = ("items", "lines", "values", "summary3", "suggestions", "evidence", "criteria")
+
 
 def _args(h=H1, **kw):
     """판정 뒤 단계로 부르는 인자(선례·불일치는 after 가 아니면 거절된다)."""
@@ -226,9 +231,8 @@ class TestGoldIsNeverExposed(Base):
         for gh in ("gold:ok:abc", "goldf:bad:abc", GOLD_H):
             for tool in RA.TOOLS:
                 r = RA.call(tool, _args(gh), team=TEAM)
-                self.assertFalse(r.get("items"), f"{tool}({gh}) 가 항목을 냈다")
-                self.assertNotIn("values", r, f"{tool}({gh}) 가 부여값을 냈다")
-                self.assertNotIn("summary3", r, f"{tool}({gh}) 가 브리핑을 냈다")
+                for key in PAYLOAD_KEYS:
+                    self.assertFalse(r.get(key), f"{tool}({gh}) 가 {key} 를 냈다")
 
     def test_list_tools_return_empty_not_an_error_for_gold(self):
         """오류 문구는 화면에 뜨고, 뜨는 순간 '이건 골드다' 신호가 된다.
@@ -291,7 +295,8 @@ class TestIndependence(Base):
             for stage in ("before", "", None, "later", "판정중", 7):
                 r = spec["fn"](hash=H1, stage=stage, team=TEAM)
                 self.assertEqual(r.get("error"), RA.AFTER_ONLY_MSG, f"{tool} stage={stage!r}")
-                self.assertEqual(r.get("items"), [], f"{tool} stage={stage!r}")
+                for key in PAYLOAD_KEYS:          # 모양이 바뀌어도 '재료가 안 나간다' 는 그대로
+                    self.assertFalse(r.get(key), f"{tool} stage={stage!r} · {key}")
 
     def test_after_only_tools_answer_once_the_verdict_is_in(self):
         for tool, spec in RA.TOOLS.items():
@@ -450,30 +455,86 @@ class TestPrecedents(Base):
         self.assertEqual(RA.call("verdict_precedents", _args(), team=TEAM)["total"], 0)
 
 
-# ── 불일치 ───────────────────────────────────────────────────────────────────
+# ── 불일치 집계(3줄) ─────────────────────────────────────────────────────────
 class TestDissent(Base):
-    def test_both_sides_are_shown_in_time_order(self):
-        self.install([_row(H1)],
-                     feedback={H1: _fb(("복실", "good", "문제 없다", 100.0),
-                                       ("딱지", "bad", "광고성이다", "2026-08-01T00:00:00+00:00"))})
-        r = RA.call("reviewer_dissent", _args(), team=TEAM)
-        self.assertTrue(r["split"])
-        self.assertEqual([i["verdict"] for i in r["items"]], ["good", "bad"])   # ISO ts 도 흡수
-        self.assertEqual(set(r["items"][0]), {"reviewer", "verdict", "reason", "ts"})
-        self.assertEqual(r["items"][1]["reason"], "광고성이다")
+    def _digest(self, feedback=None, patches=None):
+        self.install([_row(H1)], feedback=feedback, patches=patches)
+        return RA.call("reviewer_dissent", _args(), team=TEAM)
+
+    def test_no_reviewer_name_or_note_survives_anywhere(self):
+        """이름이 보이면 누가 그렇게 봤는지가 판단에 섞이고, 사유 원문은 가장 끌려가기 쉽다.
+
+        응답을 통째로 문자열로 훑는다 — 어느 키에 담기든 새면 잡힌다."""
+        r = self._digest(
+            feedback={H1: _fb(("복실", "good", "문제 없다", 100.0),
+                              ("딱지", "bad", "광고성이다", "2026-08-01T00:00:00+00:00"))},
+            patches=[_patch(H1, "대식", "intent", ["A"], ["B"])])
+        blob = str(r)
+        for leaked in ("복실", "딱지", "대식", "문제 없다", "광고성이다"):
+            self.assertNotIn(leaked, blob, f"{leaked} 가 응답에 남았다")
+
+    def test_three_lines_are_assembled_from_stored_counts(self):
+        r = self._digest(feedback={H1: _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0),
+                                           ("대식", "bad", "", 3.0))})
+        self.assertEqual(len(r["lines"]), 3)
+        self.assertIn("정확 1명", r["lines"][0])
+        self.assertIn("수정 필요 2명", r["lines"][0])
+        self.assertIn("소수 의견 1명", r["lines"][2])
+        self.assertEqual((r["n"], r["split"]), (3, True))
+
+    def test_element_line_counts_people_from_both_axes(self):
+        """판정 시 고른 요소와 실제 교정 로그를 합쳐 '몇 사람이' 지적했나를 센다."""
+        fb = _fb(("복실", "bad", "", 1.0), ("딱지", "bad", "", 2.0))
+        fb["verdicts"][0]["element"] = "intent,category"
+        fb["verdicts"][1]["element"] = "intent"
+        r = self._digest(feedback={H1: fb},
+                         patches=[_patch(H1, "대식", "category", ["A"], ["B"])])
+        line = r["lines"][1]
+        self.assertIn("인텐트 2명", line)                  # 판정 축
+        self.assertIn("카테고리 2명", line)                # 판정 + 교정 축 합산
+        self.assertFalse(r["truncated"])
+
+    def test_element_labels_come_from_the_single_source(self):
+        """라벨을 여기서 새로 지으면 같은 요소가 검수 화면과 다른 이름으로 불린다."""
+        from prism import feedback_loop as FL
+        fb = _fb(("복실", "bad", "", 1.0))
+        fb["verdicts"][0]["element"] = "summary"
+        self.assertIn(FL.ELEM_KO["summary"], self._digest(feedback={H1: fb})["lines"][1])
+
+    def test_unknown_and_operational_elements_are_not_counted(self):
+        """rerun·undo 는 검수자의 요소 지적이 아니라 운영 기록이다 · 모르는 것은 버린다."""
+        r = self._digest(feedback={H1: _fb(("복실", "bad", "", 1.0))},
+                         patches=[_patch(H1, "복실", "rerun:a->b", {}, {}),
+                                  _patch(H1, "복실", "undo:verdict", {}, {}),
+                                  _patch(H1, "복실", "없는요소", {}, {})])
+        self.assertIn("지적한 요소 없음", r["lines"][1])
+
+    def test_too_many_elements_are_reported_as_truncated(self):
+        fb = _fb(("복실", "bad", "", 1.0))
+        fb["verdicts"][0]["element"] = "summary,entities,intent,category,grade,quality"
+        r = self._digest(feedback={H1: fb})
+        self.assertTrue(r["truncated"])                   # 조용히 줄이지 않는다
+        self.assertEqual(r["lines"][1].count("명"), RA.DIGEST_ELEM_MAX)
 
     def test_agreement_is_not_a_split(self):
-        self.install([_row(H1)],
-                     feedback={H1: _fb(("복실", "bad", "", 1.0), ("딱지", "bad", "", 2.0))})
-        r = RA.call("reviewer_dissent", _args(), team=TEAM)
+        r = self._digest(feedback={H1: _fb(("복실", "bad", "", 1.0), ("딱지", "bad", "", 2.0))})
         self.assertFalse(r["split"])
-        self.assertEqual(r["total"], 2)
+        self.assertEqual(r["n"], 2)
+        self.assertIn("의견 일치", r["lines"][2])
 
-    def test_no_verdicts_yet(self):
-        self.install([_row(H1)])
-        r = RA.call("reviewer_dissent", _args(), team=TEAM)
-        self.assertEqual(r["items"], [])
-        self.assertFalse(r["split"])
+    def test_no_verdicts_yields_an_empty_digest(self):
+        """재료가 없으면 자리를 채우지 않는다 — 빈 줄 3개가 아니라 빈 목록이다."""
+        r = self._digest()
+        self.assertEqual(r["lines"], [])
+        self.assertEqual((r["n"], r["split"], r["truncated"]), (0, False, False))
+
+    def test_lines_are_never_a_length_other_than_zero_or_three(self):
+        """화면이 개수를 분기하지 않아도 되게 · 0 아니면 3만 나온다."""
+        cases = [None,
+                 {H1: _fb(("복실", "good", "", 1.0))},
+                 {H1: _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0))}]
+        for feedback in cases:
+            self.assertIn(len(self._digest(feedback=feedback)["lines"]), (0, 3))
 
 
 # ── 수정 제안(판정 뒤) ───────────────────────────────────────────────────────
@@ -730,15 +791,29 @@ class TestRealStoreRoundTrip(unittest.TestCase):
         self.assertEqual((it["verdict"], it["n"]), ("bad", 2))
         self.assertIn("광고성", it["why_similar"])
 
-    def test_dissent_reads_real_feedback_rows(self):
+    def test_dissent_digest_reads_real_feedback_rows(self):
+        """집계 수치가 실제 저장 행과 맞는지 · 가짜로는 feedback_map 계약 변화를 못 잡는다."""
         from prism.store import content_hash
         st = SV.get_store()
         h = content_hash(self.target)
-        st.save_feedback(h, SVC, "t", "good", "analyze", "문제 없다", 1.0, reviewer="복실")
-        st.save_feedback(h, SVC, "t", "bad", "analyze", "광고다", 2.0, reviewer="딱지")
+        # 정확 2 · 수정 필요 1 로 **비대칭**하게 만든다. 1대1 이면 라벨이 뒤바뀌어도 문자열이
+        # 같아서 수치가 틀려도 단언이 통과한다(무력화 실측에서 실제로 안 잡혔다).
+        st.save_feedback(h, SVC, "t", "good", "analyze", "문제 없다", 1.0,
+                         reviewer="복실", element="summary")
+        st.save_feedback(h, SVC, "t", "good", "analyze", "괜찮다", 2.0,
+                         reviewer="대식", element="summary")
+        st.save_feedback(h, SVC, "t", "bad", "analyze", "광고다", 3.0,
+                         reviewer="딱지", element="intent")
         r = RA.call("reviewer_dissent", _args(h), team=TEAM)
         self.assertTrue(r["split"])
-        self.assertEqual([i["verdict"] for i in r["items"]], ["good", "bad"])
+        self.assertEqual(r["n"], 3)
+        self.assertIn("정확 2명", r["lines"][0])
+        self.assertIn("수정 필요 1명", r["lines"][0])
+        self.assertIn("소수 의견 1명", r["lines"][2])
+        self.assertIn("리드문 2명", r["lines"][1])        # 실제 feedback.element 축
+        self.assertIn("인텐트 1명", r["lines"][1])
+        for leaked in ("복실", "딱지", "대식", "문제 없다", "괜찮다", "광고다"):
+            self.assertNotIn(leaked, str(r), leaked)
 
 
 if __name__ == "__main__":

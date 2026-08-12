@@ -67,6 +67,7 @@
 from __future__ import annotations
 
 from . import dictionaries as D
+from . import feedback_loop as FL      # 교정 요소 id·한글 라벨 단일 원천(검수 화면과 같은 사전)
 from . import prismtools as PT
 
 _SV = None                                   # serve 주입(컴포지션 루트)
@@ -87,7 +88,8 @@ NO_EVIDENCE = "저장된 모델 판정 근거가 없습니다(근거 저장 이�
 TITLE_MAX, NOTE_MAX, EVIDENCE_SNIP = 60, 200, 200
 CRITERIA_MAX = 12
 PRECEDENT_DEFAULT, PRECEDENT_MAX = 5, 20
-DISSENT_MAX = 20
+# 불일치 집계 3줄의 둘째 줄(지적 요소)에 나열할 요소 수 상한. 넘으면 truncated 로 밝힌다.
+DIGEST_ELEM_MAX = 4
 PATCH_SCAN, SUGGEST_MAX = 400, 5
 
 # 확정 선례의 최소 판정 인원. 1인 판정을 '확정 선례' 로 되먹이면 그 한 사람의 편향이 증폭되고,
@@ -479,17 +481,75 @@ def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=N
 
 
 # ── reviewer_dissent ─────────────────────────────────────────────────────────
-def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
-    """다른 검수자 의견·불일치. 양쪽을 시간순으로 나란히 준다.
+def _elem_tally(ch: str, verdicts: list, team) -> tuple:
+    """요소별로 **몇 사람이** 지적했나. (라벨→인원, 잘림) · 이름은 세는 데만 쓰고 내보내지 않는다.
 
-    **판정 뒤에만 나간다**(verdict_precedents 와 같은 이유 · 남의 판정은 기준점이 된다).
-    다수결·합의 값도 담지 않는다 — 담는 순간 그것이 정답으로 읽히고, 검수자가 자기 판단 대신
-    다수를 따라간다(측정하려던 값이 사라진다)."""
+    두 축을 합친다: 판정 시 고른 교정 요소(feedback.element)와 실제 교정 로그(patch_log.element).
+    라벨 원천은 `feedback_loop.ELEM_KO` 하나 — 검수 화면이 `/dict` 로 받는 것과 같은 사전이라
+    여기서 새로 지으면 같은 요소가 화면과 다른 이름으로 불린다."""
+    people = {}
+    for v in verdicts or []:
+        who = str(v.get("reviewer") or "")
+        for e in _elem_ids(v.get("element")):
+            people.setdefault(e, set()).add(who)
+    st = _SV.get_store() if _SV else None
+    if st and hasattr(st, "patch_rows"):
+        try:
+            for pr in (st.patch_rows(team=team, content_hash=ch) or []):
+                if pr.get("hash") != ch:
+                    continue
+                for e in _elem_ids(pr.get("element")):
+                    people.setdefault(e, set()).add(str(pr.get("reviewer") or ""))
+        except Exception:
+            pass
+    ranked = sorted(people.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    return ([(FL.ELEM_KO.get(e, e), len(who)) for e, who in ranked[:DIGEST_ELEM_MAX]],
+            len(ranked) > DIGEST_ELEM_MAX)
+
+
+def _elem_ids(raw) -> list:
+    """저장된 요소 문자열 → 아는 요소 id 목록. 모르는 것은 버린다(추측해서 만들지 않는다).
+
+    두 축의 표기가 다르다: 판정은 FL.ELEMENTS id 를 쉼표로 잇고, 교정 로그는 item_meta 키를
+    잇는다(`content_category` 는 이미 'category' 로 접힌 채 들어온다). rerun·undo 는 검수자의
+    요소 지적이 아니라 운영 기록이라 세지 않는다."""
+    out = []
+    for tok in str(raw or "").split(","):
+        e = _ELEM_ALIAS.get(tok.strip(), tok.strip())
+        if e in FL.ELEMENTS and e not in out:
+            out.append(e)
+    return out
+
+
+_ELEM_ALIAS = {"content_category": "category", "reasons": "quality", "finalGrade": "grade"}
+
+
+def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
+    """다른 검수자 의견을 **3줄 집계**로 준다(사람별 나열이 아니라).
+
+    사람별로 이름·판정·사유 원문을 늘어놓으면 읽는 데 시간이 걸리고 특정 사람의 문장에
+    끌려간다. 검수자가 자기 판단을 마친 뒤 참고하는 자리라 '대략 어떻게 갈렸나' 면 족하다.
+
+    **이름과 사유 원문은 담지 않는다.** 이름이 보이면 누가 그렇게 봤는지가 판단에 섞이고,
+    사유 원문은 가장 자세해서 가장 끌려가기 쉽다. 대신 몇 건을 집계했는지(n)를 실어 화면이
+    "N명 의견을 모았습니다" 라고 말할 수 있게 한다 — 조용히 줄이면 그것도 조용한 절단이다.
+
+    **세 줄은 저장된 값에서 기계적으로 조립한다.** 모델을 돌려 요약하지 않는다. 판정을 재는
+    자리 옆에 생성된 문장을 놓으면 그것이 미묘하게 틀렸을 때 아무도 확인하지 않고, 없는 합의를
+    있는 것처럼 쓰면 그 문장이 곧 새 오라클이 된다(이 모듈 4번 규칙 그대로).
+
+    재료가 없으면 자리를 채우지 않는다 — 집계할 의견이 없으면 `lines` 는 빈 목록이다.
+    판정이 하나라도 있으면 세 줄 모두 실재하는 사실이라 항상 3줄이 된다(분포·지적 요소·갈린
+    정도). 즉 `lines` 의 길이는 0 아니면 3이다.
+
+    **판정 뒤에만 나간다**(verdict_precedents 와 같은 이유 · 남의 판정은 기준점이 된다)."""
     blocked = PT.need_team(team)
     if blocked:
         return blocked
     ch = str(hash or "").strip()
-    empty = {"items": [], "total": 0, "truncated": False, "split": False}
+    # 골드와 '의견 없는 평범한 콘텐츠' 가 같은 모양이어야 한다. 골드에서만 다른 모양이 되면
+    # 그 차이가 곧 "이건 골드다" 신호다(2026-08-12 에 세 번 밟은 함정).
+    empty = {"lines": [], "n": 0, "split": False, "truncated": False}
     if _stage(stage) != "after":
         return dict(empty, error=AFTER_ONLY_MSG)
     if not ch:
@@ -497,13 +557,20 @@ def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
     if PT.is_gold(ch):
         return dict(empty)                        # 오류가 아니라 빈 결과(위와 같은 이유)
     fb = _feedback(team).get(ch) or {}
-    rows = sorted((fb.get("verdicts") or []), key=lambda v: _epoch(v.get("ts")))
-    items = [{"reviewer": str(v.get("reviewer") or ""),
-              "verdict": str(v.get("verdict") or ""),
-              "reason": _clip(v.get("note") or "", NOTE_MAX),
-              "ts": _epoch(v.get("ts"))} for v in rows]
-    split = bool(fb.get("good")) and bool(fb.get("bad"))
-    return PT.envelope(items, DISSENT_MAX, split=split)
+    verdicts = list(fb.get("verdicts") or [])
+    if not verdicts:
+        return dict(empty)
+    good, bad = int(fb.get("good") or 0), int(fb.get("bad") or 0)
+
+    dist = " · ".join([s for s in (f"정확 {good}명" if good else "",
+                                   f"수정 필요 {bad}명" if bad else "") if s])
+    elems, cut = _elem_tally(ch, verdicts, team)
+    picked = "지적한 요소: " + " · ".join(f"{lbl} {cnt}명" for lbl, cnt in elems) \
+        if elems else "지적한 요소 없음"
+    split = bool(good) and bool(bad)
+    agree = f"의견 갈림 · 소수 의견 {min(good, bad)}명" if split else "의견 일치"
+    return {"lines": [f"판정 {dist}", picked, agree],
+            "n": len(verdicts), "split": split, "truncated": cut}
 
 
 # ── 도구 등록부(트랙 A 전용) ─────────────────────────────────────────────────
@@ -555,8 +622,10 @@ TOOLS = {
     "reviewer_dissent": {
         "scope": "internal",
         "after_only": True,
-        "title": "검수자 의견·불일치",
-        "desc": "이 콘텐츠에 판정이 갈린 이력이 있으면 양쪽을 나란히 준다(다수결을 정답으로 주지 않는다). "
+        "title": "검수자 의견 집계",
+        "desc": "다른 검수자들의 의견을 3줄로 집계해 준다(판정 분포 · 지적한 요소 · 갈린 정도). "
+                "검수자 이름과 사유 원문은 담지 않는다 — 누가 그렇게 봤는지가 판단에 섞이고, "
+                "원문은 가장 끌려가기 쉬운 부분이다. 집계한 인원(n)은 함께 준다. "
                 "**검수자가 판정을 낸 뒤에만**(stage=after) 쓸 수 있다.",
         "inputSchema": {
             "type": "object",
