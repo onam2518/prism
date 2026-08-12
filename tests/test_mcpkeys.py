@@ -596,6 +596,22 @@ class TestScopeTeam(unittest.TestCase):
         self.assertEqual(self.mk.scope_team(None), self.mk.LOCAL_TEAM)
         self.assertEqual(self.mk.scope_team(TEAM_A), TEAM_A)
 
+    def test_teamless_ops_admin_cannot_issue(self):
+        """운영 관리자(허용목록)는 **팀이 없어도** serve 의 gate='team'(_require_team)을 통과한다 —
+        `is_sys_admin_user(uid, None, email) or team_of(uid) is not None`. 그러니 게이트만 믿으면
+        팀 없는 키가 실제로 만들어지고, 그 키의 모든 스토어 호출이 team=None 으로 나가
+        저장 계층이 '전 팀'으로 읽는다(감사 H1). 마지막 방벽은 issue 다."""
+        from prism import mcpkeys
+        st = _sqlite_store()
+        mcpkeys._SV = _FakeServe(st, supa=True, admins={("ops-admin", None)})
+        mcpkeys._reset_state()
+        self.addCleanup(mcpkeys._reset_state)
+        self.assertIsNone(self.mk.scope_team(None))
+        r = self.mk.issue("ops-admin", self.mk.scope_team(None))
+        self.assertFalse(r.get("ok"), "팀 없는 운영 관리자에게 키가 발급됐다")
+        self.assertIn("팀", r.get("error", ""))
+        self.assertEqual(st._conn().execute("SELECT COUNT(*) FROM mcp_keys").fetchone()[0], 0)
+
     def test_local_mode_key_is_admin(self):
         """로컬 단독은 게이트 자체가 열려 있으므로 키도 관리자."""
         from prism import mcpkeys
