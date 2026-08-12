@@ -687,6 +687,10 @@ _BASE_SNAPSHOT = None                   # dict | None · 최초 override 직전�
 # 값이 REMOVE_ALL("*") 이면 그 대상은 병합 없이 완전 교체(회사 프로파일이 체계를 통째로 갈아끼울 때).
 REMOVED_KEY = "_removed"
 REMOVE_ALL = "*"
+# dict 툼스톤 안의 예약 항목: 사용자가 **지운 하위키 이름** 목록(리스트 툼스톤과 같은 규약).
+# dict 하위키도 리스트 원소처럼 병합 대상이라, 삭제 기록이 없으면 (a)사용자 삭제 와
+# (b)나중에 코드에 추가된 하위키 를 구분할 수 없다. 사전 하위키 이름과 겹치지 않게 '_' 접두.
+REMOVED_SUBKEYS = "_keys"
 
 
 def _base_of(gk: str):
@@ -697,7 +701,7 @@ def _base_of(gk: str):
 
 
 def _sub_tomb(tomb, key):
-    """중첩 구조(dict 안의 리스트)용 툼스톤 하위 선택. '*' 는 하위까지 전파."""
+    """중첩 구조(dict 안의 리스트·dict)용 툼스톤 하위 선택. '*' 는 하위까지 전파."""
     if tomb == REMOVE_ALL:
         return REMOVE_ALL
     if isinstance(tomb, dict):
@@ -705,11 +709,27 @@ def _sub_tomb(tomb, key):
     return None
 
 
+def _removed_subkeys(tomb) -> list:
+    """dict 툼스톤에 기록된 '사용자가 지운 하위키' 이름 목록."""
+    if isinstance(tomb, dict) and isinstance(tomb.get(REMOVED_SUBKEYS), list):
+        return list(tomb[REMOVED_SUBKEYS])
+    return []
+
+
+def _kind(v) -> str:
+    """병합 판정용 값 형태(list·dict·text) — 형태가 바뀌는 오버라이드를 걸러내는 기준."""
+    return "list" if isinstance(v, list) else "dict" if isinstance(v, dict) else "text"
+
+
 def _merge_override(base, ov, tomb, path: str, report: dict):
-    """리스트 오버라이드 = 덮어쓰기가 아니라 **병합**.
-    · 결과 순서 = 오버라이드 순서(사용자 정렬 의도 우선) + 코드 기본값에만 있는 원소를 코드 순서대로 뒤에 덧붙임.
-    · 툼스톤(사용자가 뺀 값)에 있으면 덧붙이지 않는다 → 삭제는 그대로 유지.
-    dict 는 기존 의미론 유지(오버라이드에 있는 키만 반영 · 키 삭제 없음) + 하위 리스트에 같은 규칙 재귀 적용."""
+    """리스트·dict 오버라이드 = 덮어쓰기가 아니라 **병합**.
+    · 리스트 결과 순서 = 오버라이드 순서(사용자 정렬 의도 우선) + 코드 기본값에만 있는 원소를 코드 순서대로 뒤에.
+    · dict 는 오버라이드 하위키로 덮되 **코드 기본값에만 있는 하위키는 살린다**(2026-08 감사 T1).
+      최상위는 apply_profile 의 cur.update 가 지켜 줬지만 한 단계 아래 dict 는 통째로 교체돼,
+      코드가 나중에 추가한 하위키가 편집한 사전 전체에서 영구히 사라졌다(intake_policy·legal_types).
+    · 툼스톤(사용자가 뺀 값·하위키)에 있으면 되살리지 않는다 → 삭제는 그대로 유지.
+    · base 와 형태가 다른 오버라이드는 base 를 유지한다(리스트 사전이 dict 로 뒤바뀌던 결함 방어선)."""
+    import copy
     if isinstance(base, list) and isinstance(ov, list):
         merged = []
         for v in ov:                                   # 오버라이드 순서 유지 · 중복 제거
@@ -729,13 +749,36 @@ def _merge_override(base, ov, tomb, path: str, report: dict):
             report.setdefault("dropped", {})[path] = dropped
         return merged + restored
     if isinstance(base, dict) and isinstance(ov, dict):
-        return {k: _merge_override(base.get(k), v, _sub_tomb(tomb, k), f"{path}.{k}", report)
-                for k, v in ov.items()}
+        out = {k: _merge_override(base.get(k), v, _sub_tomb(tomb, k), f"{path}.{k}", report)
+               for k, v in ov.items()}
+        if tomb == REMOVE_ALL:
+            gone = [k for k in base if k not in out]
+            if gone:
+                report.setdefault("dropped", {})[path] = gone
+            return out
+        drop = _removed_subkeys(tomb)
+        restored = [k for k in base if k not in out and k not in drop]
+        dropped = [k for k in base if k not in out and k in drop]
+        for k in restored:                             # 코드 기본값에만 있는 하위키 생존
+            out[k] = copy.deepcopy(base[k])            # 스냅샷과 참조 공유 금지(restore_base 보호)
+        if restored:
+            report.setdefault("restored", {})[path] = restored
+        if dropped:
+            report.setdefault("dropped", {})[path] = dropped
+        return out
+    if base is not None and _kind(base) != _kind(ov):
+        # 형태가 다른 오버라이드(예: 리스트 사전에 dict 가 저장됨)는 적용하지 않는다.
+        # 적용하면 그 사전을 순회하는 전 경로가 조용히 오작동하고 재기동으로도 안 풀린다.
+        report.setdefault("type_kept", {})[path] = [f"{_kind(ov)} → {_kind(base)} 유지"]
+        return copy.deepcopy(base)
     return ov
 
 
 def _removals_of(base, ov):
-    """base 대비 ov 에서 빠진 리스트 원소를 구조 그대로 미러링해 반환(없으면 None)."""
+    """base 대비 ov 에서 빠진 리스트 원소·dict 하위키를 구조 그대로 미러링해 반환(없으면 None).
+
+    dict 하위키 삭제는 예약 항목 REMOVED_SUBKEYS 에 이름 목록으로 남긴다 — 하위키도 병합
+    대상이 된 뒤로는 이 기록이 있어야 '사용자가 뺀 하위키'와 '코드 신규 하위키'가 구분된다."""
     if isinstance(base, list) and isinstance(ov, list):
         gone = [v for v in base if v not in ov]
         return gone or None
@@ -745,6 +788,9 @@ def _removals_of(base, ov):
             r = _removals_of(base.get(k), v)
             if r:
                 out[k] = r
+        gone = [k for k in base if k not in ov]
+        if gone:
+            out[REMOVED_SUBKEYS] = gone
         return out or None
     return None
 
@@ -791,9 +837,11 @@ def apply_profile(prof: dict) -> dict:
     """회사별/운영자 프로파일로 사전을 비파괴 override. 코어 파이프라인은 그대로, 사전만 교체.
     어드민 편집(사용자 직접 수정)에서도 동일 경로 사용.
 
-    리스트는 병합(_merge_override) — 저장 시점 스냅샷이 이후 코드에 추가된 사전 값을 영구히
-    지우던 결함을 막는다. 사용자가 의도적으로 뺀 값은 prof[REMOVED_KEY] 툼스톤으로 유지된다.
-    반환: {"restored": {경로: [값]}, "dropped": {경로: [값]}} — 기동 로그 경고용 리포트."""
+    리스트·dict 는 병합(_merge_override) — 저장 시점 스냅샷이 이후 코드에 추가된 사전 값·
+    하위키를 영구히 지우던 결함을 막는다. 사용자가 의도적으로 뺀 값은 prof[REMOVED_KEY]
+    툼스톤으로 유지된다.
+    반환: {"restored": {경로: [값]}, "dropped": {경로: [값]}} (+형태 불일치 시 "type_kept")
+    — 기동 로그 경고용 리포트."""
     import copy
     global _BASE_SNAPSHOT
     g = globals()

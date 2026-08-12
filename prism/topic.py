@@ -44,15 +44,19 @@ def _angle(intent: str) -> str:
 
 
 def _content_entities(rows, service_names):
-    """콘텐츠별 (정크 제외) 엔티티 집합. 품질 미달은 빈 집합(사건 클러스터에 안 섞임)."""
+    """콘텐츠별 (정크 제외) 엔티티 목록 · 중복 제거 + **모델 출력 순서 보존**.
+    품질 미달은 빈 목록(사건 클러스터에 안 섞임).
+
+    set 을 쓰면 순회 순서가 문자열 해시 시드(프로세스마다 새로 뽑힘)에 좌우돼
+    대표 엔티티·cluster_id 가 재기동마다 달라졌다(2026-08 감사 T3)."""
     out = []
     for r in rows:
         if not _eligible(r):
-            out.append(set())
+            out.append([])
             continue
         im = r.get("item_meta") or {}
         ents = [e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)]
-        out.append(set(ents))
+        out.append(list(dict.fromkeys(ents)))
     return out
 
 
@@ -162,11 +166,14 @@ def build_event_topics(rows, service_names, co_min=None):
         members = sorted(set(members))
         if len(members) < 2:
             continue
-        # 대표 엔티티 = 클러스터 내 콘텐츠 다수에 등장한 엔티티 상위
+        # 대표 엔티티 = 클러스터 내 콘텐츠 다수에 등장한 엔티티 상위.
+        # 동률은 이름 오름차순으로 고정한다 — most_common 은 안정 정렬이라 동률 순서가
+        # 입력 순서를 그대로 물려받고, cluster_id 는 큐레이션 제외의 영속 키라
+        # 재기동마다 값이 바뀌면 운영자가 걷어낸 콘텐츠가 되살아난다(2026-08 감사 T3).
         ent_freq = Counter()
         for i in members:
             ent_freq.update(cent[i])
-        rep_entities = [e for e, _ in ent_freq.most_common(5)]
+        rep_entities = [e for e, _ in sorted(ent_freq.items(), key=lambda x: (-x[1], x[0]))[:5]]
         # 앵글 = 인텐트를 관점(속보/분석/반응/화제)으로 정규화. 중복 = 동일 인텐트셋
         angles, intent_sets = {}, {}
         for i in members:
@@ -186,7 +193,7 @@ def build_event_topics(rows, service_names, co_min=None):
             "dup_count": dup, "dup_rate": round(dup / len(members), 2),
             "lifecycle": "단기", "origin": "auto",
         })
-    pools.sort(key=lambda p: -p["count"])
+    pools.sort(key=lambda p: (-p["count"], p["cluster_id"]))   # 동수 클러스터 순서도 고정
     return pools
 
 

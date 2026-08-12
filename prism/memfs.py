@@ -23,6 +23,7 @@ MAX_FILES = 64                  # 계정당 파일 수 제한
 MAX_BYTES = 4000                # 파일당 크기 제한(설계 명세의 '파일당 크기 제한 존재')
 ROOT_FILES = ("profile.md", "preferences.md")
 DIRS = ("topics", "areas", "people")
+NAME_MAX = 39                   # 파일 이름(확장자 제외) 길이 상한 · _NAME 정규식과 같은 값
 _NAME = re.compile(r"^[0-9A-Za-z가-힣][0-9A-Za-z가-힣_-]{0,38}\.md$")
 _ORDER = {"profile.md": 0, "preferences.md": 1, "topics": 2, "areas": 3, "people": 4}
 
@@ -64,8 +65,11 @@ def _order_key(p: str):
 
 
 def _slug(cat: str) -> str:
+    """주제 → 파일 이름(확장자 제외). 길이도 _NAME 상한(39자)에 맞춰 자른다 —
+    자동 생성 경로가 valid_path 를 못 넘기면 그 파일은 수정·삭제가 영구히 불가능해지고
+    MAX_FILES 정원만 점유한다(2026-08 감사 T4 · 40자 이상 검색어 한 번이면 발생)."""
     s = re.sub(r"[^0-9A-Za-z가-힣]+", "-", (cat or "").strip()).strip("-").lower()
-    return s or "misc"
+    return s[:NAME_MAX].strip("-") or "misc"
 
 
 def injection_text(files: dict) -> str:
@@ -151,7 +155,7 @@ def _bump_desc(content: str, cat: str, n: int) -> str:
 
 def _observe(files, title, cat, intent, label, dwell=None, tag="observed"):
     """관찰([observed]) 또는 발화([stated]) 1건 → /topics/<주제>.md 에 한 줄 기록(공용)."""
-    path = "topics/" + _slug(cat) + ".md"
+    path = valid_path("topics/" + _slug(cat) + ".md") or "topics/misc.md"   # 자기검증 후 폴백
     if path not in files and len(files) >= MAX_FILES:
         return None, "파일 수 제한(" + str(MAX_FILES) + "개)에 도달했습니다"
     prev = (files.get(path) or {}).get("content") or _topic_header(path, cat, 0)
@@ -210,7 +214,9 @@ def memory_ops(body: dict, team=None) -> dict:
         wrote = {"path": path, "line": line}
 
     elif op == "delete":                             # 삭제는 명시적 요청이 있을 때만(UI 확인 후)
-        path = valid_path(body.get("path"))
+        # 규칙 밖 이름으로 이미 만들어진 파일(구 _observe 산물)도 지울 수 있어야 한다 —
+        # 목록에 실재하는 경로면 허용(정리 수단이 없으면 MAX_FILES 정원을 영구 점유한다).
+        path = valid_path(body.get("path")) or (body.get("path") or "").strip().lstrip("/")
         if not path or path not in files:
             return {"error": "삭제할 파일이 없습니다"}
         del files[path]
