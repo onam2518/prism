@@ -210,8 +210,16 @@ class TestPhotoIntentCriteria(unittest.TestCase):
         self.assertIn("X)", ex)
 
     def test_imeta_version_bumped(self):
+        """포토 기준 개정(v16) 이후로 버전이 내려가지 않는다.
+
+        종전에는 'imeta@v16' 으로 정확히 고정해 **버전을 올릴 때마다 이 테스트가 깨졌다**
+        (2026-08-12 v17 에서 실제로 걸림). 이 테스트의 의도는 '개정 시 버전을 올렸는가'이므로
+        하한만 단언한다 — 검증은 그대로 유지되고 정상적인 버전업을 막지 않는다."""
+        import re
         from prism import prompts as P
-        self.assertTrue(P.IMETA_VERSION.startswith("imeta@v16"), P.IMETA_VERSION)
+        m = re.match(r"imeta@v(\d+)", P.IMETA_VERSION)
+        self.assertIsNotNone(m, P.IMETA_VERSION)
+        self.assertGreaterEqual(int(m.group(1)), 16, P.IMETA_VERSION)
 
 
 # ── 2026-07-10 보완: 시드 지문 불일치 시 내장 버전 자동 재시드 ──

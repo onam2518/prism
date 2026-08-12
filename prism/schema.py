@@ -245,6 +245,11 @@ class QualityMeta:
     review: str = "auto"          # auto | yellow(사람 검수 필요)
     confidence: float | None = None   # 0~1 (YELLOW 판단 근거)
     review_reason: str = ""       # YELLOW 사유(불일치/중간대역)
+    # 모델이 그 등급으로 본 근거 문장. 종전에는 trace.agent_verdicts 에만 담겨
+    # supabase 적재에서 버려졌다(contents 는 model·version 만 남긴다) — 저장되는 곳이
+    # sqlite payload 뿐이라 운영에서는 0% 였다. quality_meta 는 jsonb 로 그대로 실리므로
+    # 여기에 담으면 마이그레이션 없이 남는다(2026-08-12).
+    evidence: str = ""
 
 
 @dataclass
