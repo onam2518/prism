@@ -217,6 +217,46 @@ alter table public.prism_prompt_library enable row level security;
 ```
 스튜디오 라이브러리 탭: 패턴 저장·핀 우선 정렬·복사·단계 원천 지시 적용(빌더 결과 저장 연동).
 
+**MCP 파트너 키(`prism_mcp_keys` 외 1, 2026-08-12 · ⚠️ 미적용 · 트랙 B 외부 MCP · `prism/mcpkeys.py`)**:
+```sql
+-- 키는 sha256 해시만 저장(평문 미보관 · 발급 시 1회 표시).
+-- key_id 는 난수 문자열이다 — 순차 정수면 남의 키 id 를 찍어 맞힐 수 있다(감사 O3).
+-- team_id NOT NULL 이 핵심: 팀 없는 키는 DB 가 거절한다. 저장 계층은 team falsy 를
+-- '내 팀 없음' 이 아니라 '전 팀' 으로 읽으므로(감사 H1) 그런 키가 있으면 안 된다.
+create table if not exists public.prism_mcp_keys (
+  key_id       text primary key,
+  team_id      uuid not null,
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  key_hash     text not null,
+  key_prefix   text not null default '',        -- 화면에 남는 접두 6자
+  label        text not null default '',
+  revoked      boolean not null default false,
+  created_at   timestamptz not null default now(),
+  expires_at   timestamptz not null,            -- 기본 90일 · 최대 365일
+  last_used_at timestamptz
+);
+create unique index if not exists ux_mcpkeys_hash on public.prism_mcp_keys(key_hash);
+create index if not exists ix_mcpkeys_owner on public.prism_mcp_keys(team_id, user_id);
+alter table public.prism_mcp_keys enable row level security;   -- 정책 없음 = service_role(서버) 전용
+
+-- 사용 기록: **인증을 통과한 호출만** 쌓인다. 인증 실패를 적재하면 틀린 키를 난타하는 것만으로
+-- 실사용 감사 기록이 밀려난다(감사 O2 · 스펙트럼 관문 실측).
+create table if not exists public.prism_mcp_calls (
+  id          bigint generated always as identity primary key,
+  key_id      text not null references public.prism_mcp_keys(key_id) on delete cascade,
+  team_id     uuid, user_id uuid,
+  key_prefix  text not null default '', tool text not null default '',
+  ok          boolean not null default false,
+  ms          integer not null default 0, resp_bytes integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+create index if not exists ix_mcpcalls_key on public.prism_mcp_calls(key_id, created_at desc);
+alter table public.prism_mcp_calls enable row level security;
+```
+조회·폐기는 전부 `(key_id, team_id)` 복합 필터(`supastore.mcp_key_revoke`) — 팀 스코프 없이 만든
+배포 키에서 자기 팀 관리자가 타 팀 키를 끊을 수 있었던 감사 O3 를 되풀이하지 않는다.
+**적용 전에는** supabase 모드에서 `/mcp-keys` 발급이 PostgREST 404 로 실패한다(sqlite 는 무관).
+
 ## 테이블 네임스페이스 정리 방침 (2026-07-18)
 
 같은 Supabase 프로젝트(구 PromptForge)에 두 제품의 테이블이 공존해 왔다. Atelier 를

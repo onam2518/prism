@@ -265,6 +265,25 @@ class Store:
           key_hash TEXT, key_prefix TEXT, revoked INTEGER NOT NULL DEFAULT 0,
           ts REAL, last_used REAL);
         CREATE INDEX IF NOT EXISTS ix_depkeys_dep ON deployment_keys(deployment_id);
+        -- MCP 파트너 키(트랙 B · prism/mcpkeys.py): sha256 해시만 저장(평문 미보관) ·
+        -- (user_id, team) 을 발급 시점에 고정 · 조회·폐기는 (key_id, team) 복합 필터.
+        -- key_id 는 난수 문자열이다 — 순차 정수면 남의 키 id 를 찍어 맞힐 수 있다(감사 O3).
+        -- team 은 NOT NULL + 빈 문자열 금지: 팀 없는 키는 스토어에도 들어오지 못한다(감사 H1).
+        CREATE TABLE IF NOT EXISTS mcp_keys(
+          key_id TEXT PRIMARY KEY,
+          team TEXT NOT NULL CHECK(team <> ''), user_id TEXT NOT NULL CHECK(user_id <> ''),
+          key_hash TEXT NOT NULL UNIQUE, prefix TEXT NOT NULL DEFAULT '',
+          label TEXT NOT NULL DEFAULT '', revoked INTEGER NOT NULL DEFAULT 0,
+          created_at REAL, expires_at REAL, last_used REAL);
+        CREATE INDEX IF NOT EXISTS ix_mcpkeys_owner ON mcp_keys(team, user_id);
+        -- MCP 사용 기록: 인증을 통과한 호출만 쌓인다(인증 실패 미적재 · 감사 O2).
+        CREATE TABLE IF NOT EXISTS mcp_calls(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, key_id TEXT NOT NULL,
+          team TEXT NOT NULL DEFAULT '', user_id TEXT NOT NULL DEFAULT '',
+          prefix TEXT NOT NULL DEFAULT '', tool TEXT NOT NULL DEFAULT '',
+          ok INTEGER NOT NULL DEFAULT 0, ms INTEGER NOT NULL DEFAULT 0,
+          resp_bytes INTEGER NOT NULL DEFAULT 0, ts REAL);
+        CREATE INDEX IF NOT EXISTS ix_mcpcalls_key ON mcp_calls(key_id, ts);
         -- 프롬프트 라이브러리: 잘 나온 프롬프트 패턴 저장·재사용(Atelier prompt_library 이식).
         CREATE TABLE IF NOT EXISTS prompt_library(
           id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
@@ -1586,6 +1605,84 @@ class Store:
         c = self._conn()
         c.execute("UPDATE deployment_keys SET last_used=? WHERE id=?", (time.time(), int(key_id)))
         c.commit()
+
+    # ── MCP 파트너 키(트랙 B · mcpkeys.py) · supastore 와 동일 계약 ───────────
+    # 읽기 계약에 **key_hash 를 절대 담지 않는다**. 해시는 대조용으로 넣기만 하고
+    # 어떤 조회 경로로도 나오지 않아야 유출 표면이 0 이 된다(deploy_keys_for 는
+    # meta_only 인자로 감췄지만, 새 표면은 애초에 낼 수 없게 만든다).
+    _MCPKEY_COLS = "key_id,team,user_id,prefix,label,revoked,created_at,expires_at,last_used"
+
+    def _mcpkey_row(self, r) -> dict:
+        return {"key_id": r[0], "team": r[1] or "", "user_id": r[2] or "", "prefix": r[3] or "",
+                "label": r[4] or "", "revoked": bool(r[5]), "created_at": r[6],
+                "expires_at": r[7], "last_used_at": r[8]}
+
+    def mcp_key_add(self, user_id, team, key_id, key_hash, prefix, label, expires_at) -> str:
+        c = self._conn()
+        c.execute("INSERT INTO mcp_keys(key_id,team,user_id,key_hash,prefix,label,created_at,expires_at) "
+                  "VALUES(?,?,?,?,?,?,?,?)",
+                  (str(key_id), str(team or ""), str(user_id or ""), key_hash, prefix or "",
+                   label or "", time.time(), float(expires_at or 0)))
+        c.commit()
+        return str(key_id)
+
+    def mcp_key_find(self, key_hash=None, key_id=None):
+        """해시 또는 key_id 로 단건 조회(비밀 미포함). 해시 조회는 팀 필터가 없다 —
+        해시가 곧 팀을 **결정**하기 때문(교차 팀 열람 경로가 아니다)."""
+        if not (key_hash or key_id):
+            return None
+        c = self._conn()
+        if key_hash:
+            r = c.execute(f"SELECT {self._MCPKEY_COLS} FROM mcp_keys WHERE key_hash=?",
+                          (key_hash,)).fetchone()
+        else:
+            r = c.execute(f"SELECT {self._MCPKEY_COLS} FROM mcp_keys WHERE key_id=?",
+                          (str(key_id),)).fetchone()
+        return self._mcpkey_row(r) if r else None
+
+    def mcp_keys_for(self, user_id, team) -> list:
+        """(user_id, team) 복합 필터. 둘 중 하나라도 비면 빈 목록 — falsy 를 '전체'로
+        읽는 폴백을 만들지 않는다(감사 H1)."""
+        if not (user_id and team):
+            return []
+        c = self._conn()
+        return [self._mcpkey_row(r) for r in c.execute(
+            f"SELECT {self._MCPKEY_COLS} FROM mcp_keys WHERE user_id=? AND team=? "
+            "ORDER BY created_at DESC", (str(user_id), str(team)))]
+
+    def mcp_key_revoke(self, key_id, team) -> bool:
+        """(key_id, team) 복합 필터 폐기. team 불일치면 0행 → False.
+        team 단독 조건을 빼면 감사 O3(타 팀 키 폐기)가 그대로 재현된다."""
+        if not (key_id and team):
+            return False
+        c = self._conn()
+        n = c.execute("UPDATE mcp_keys SET revoked=1 WHERE key_id=? AND team=? AND revoked=0",
+                      (str(key_id), str(team))).rowcount
+        c.commit()
+        return bool(n)
+
+    def mcp_key_touch(self, key_id):
+        c = self._conn()
+        c.execute("UPDATE mcp_keys SET last_used=? WHERE key_id=?", (time.time(), str(key_id)))
+        c.commit()
+
+    def mcp_call_add(self, key_id, user_id, team, prefix, tool, ok, ms, resp_bytes):
+        c = self._conn()
+        c.execute("INSERT INTO mcp_calls(key_id,team,user_id,prefix,tool,ok,ms,resp_bytes,ts) "
+                  "VALUES(?,?,?,?,?,?,?,?,?)",
+                  (str(key_id), str(team or ""), str(user_id or ""), prefix or "", tool or "",
+                   int(bool(ok)), int(ms or 0), int(resp_bytes or 0), time.time()))
+        c.commit()
+
+    def mcp_call_count(self, key_id, since_ts, ok=None) -> int:
+        """키의 since_ts 이후 호출 수. ok=None 은 전체(일일 상한 판정) · True/False 는 버킷별."""
+        c = self._conn()
+        q = "SELECT COUNT(*) FROM mcp_calls WHERE key_id=? AND ts>=?"
+        args = [str(key_id), float(since_ts or 0)]
+        if ok is not None:
+            q += " AND ok=?"
+            args.append(int(bool(ok)))
+        return int(c.execute(q, args).fetchone()[0] or 0)
 
     def existing_hashes(self, hashes, team=None) -> dict:
         """저장된 해시 → 실행 여부(bool). STEP 1 추가의 신규/기존 구분과 엑셀 일괄 추출의

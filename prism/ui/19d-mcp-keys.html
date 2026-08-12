@@ -1,0 +1,63 @@
+      <!-- ═══ 모듈: 실험실 › MCP 키 · 트랙 B(외부 MCP) 파트너 키 발급·폐기 ═══
+           동작·상태는 vendor/app-16-mcpkeys.js · 백엔드 GET /mcp-keys · POST /mcp-key-new · /mcp-key-revoke
+           (로직은 prism/mcpkeys.py). 화면의 유일한 강제 규칙: 평문 키는 발급 직후 한 번만 보이고
+           목록에는 접두 6자만 남는다 — 서버가 sha256 만 저장하므로 재조회 경로 자체가 없다.
+           파일명이 20-ingest-policy.html 보다 앞이어야 x-data 스코프 안에 든다(ARCHITECTURE 주의 ①). -->
+      <template x-if="mod === 'lab'">
+        <div x-show="labTab === 'mcpkeys'" x-cloak class="w-full space-y-4">
+
+        <section class="panel"><div class="panel-hd"><b>MCP 파트너 키</b><span class="meta">외부 서비스·다른 팀이 프리즘 MCP 를 부를 때 쓰는 키입니다</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:11px">
+              <li>키는 <b>발급한 순간 한 번만</b> 전체가 보입니다 · 서버는 해시만 저장하므로 <b>잃어버리면 다시 볼 수 없고</b>, 새로 발급해야 합니다.</li>
+              <li>키에는 <b>발급한 사람과 팀</b>이 붙습니다 · 도구를 부를 때 팀을 따로 넘기지 않고, 그 키의 팀 데이터만 보입니다.</li>
+              <li>권한은 <b>발급한 사람의 권한을 넘지 않습니다</b> · 관리자 전용 도구는 관리자가 발급한 키에만 보입니다.</li>
+              <li>연결: <code class="tnum" x-text="'claude mcp add --transport http prism ' + location.origin + '/mcp'"></code> · 헤더 <code class="tnum">Authorization: Bearer pmk_…</code></li>
+              <li>호출 상한은 키 하나당 <b class="tnum" x-text="'분당 ' + (mkMeta.per_min || 60) + '회 · 하루 ' + (mkMeta.per_day || 5000) + '회'"></b> 입니다.</li>
+            </ul>
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+              <span class="selctl"><span class="selctl__lbl">용도 메모</span><input class="field" style="width:240px" x-model="mkNew.label" placeholder="ex) 검색팀 파이프라인"></span>
+              <span class="selctl"><span class="selctl__lbl" x-text="'만료(일 · 최대 ' + (mkMeta.max_days || 365) + ')'"></span><input class="field tnum" style="width:120px" type="number" min="1" x-bind:max="mkMeta.max_days || 365" x-model="mkNew.days"></span>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="mkBusy || mkFull()" x-on:click="mkIssue()" x-text="mkBusy ? '발급 중…' : '키 발급'"></button>
+              <span class="text-xs text-muted" x-show="mkFull()" x-text="'키는 한 사람당 ' + (mkMeta.max || 5) + '개까지입니다 · 쓰지 않는 키를 폐기하세요'"></span>
+              <span class="text-xs text-muted" x-show="mkMsg" x-text="mkMsg"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 발급 직후 1회 노출 · 닫으면 끝이라는 것을 문구와 동작 양쪽에서 알린다 -->
+        <template x-if="mkIssued && mkIssued.key">
+          <section class="panel"><div class="panel-hd"><b>새 MCP 키 · 지금만 보입니다</b><span class="meta" x-text="mkIssued.hint || '서버는 해시만 저장합니다 · 다시 조회할 수 없습니다'"></span></div>
+            <div class="panel-bd">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <code class="tnum" style="font-size:13px;word-break:break-all" x-text="mkIssued.key"></code>
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="mkCopy()" x-text="mkCopied ? '복사함' : '복사'"></button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="mkDismiss()">닫기</button>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:6px" x-text="'만료 ' + mkWhen(mkIssued.expires_at) + ' · 이후 목록에는 ' + (mkIssued.prefix || '') + ' 만 남습니다'"></div>
+            </div>
+          </section>
+        </template>
+
+        <section class="panel"><div class="panel-hd"><b>내 키</b><span class="meta tnum" x-text="(mkKeys || []).length + '개 · 유효 ' + mkLive.length + '/' + (mkMeta.max || 5)"></span></div>
+          <div class="panel-bd">
+            <div class="text-xs text-muted" x-show="!(mkKeys || []).length">아직 발급한 키가 없습니다 · 위에서 만들 수 있습니다.</div>
+            <template x-for="k in mkKeys" x-bind:key="'mk' + k.key_id">
+              <div style="border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <code class="tnum" x-text="k.prefix"></code>
+                  <span class="text-xs text-muted" x-text="k.label || '메모 없음'"></span>
+                  <span class="ds-badge tnum" x-bind:class="mkState(k)" x-text="mkLeft(k)"></span>
+                  <span style="margin-left:auto">
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!k.revoked" data-tip="이 키를 쓰는 호출이 즉시 끊깁니다 · 되돌릴 수 없습니다" data-tip-pos="top" x-on:click="mkRevoke(k)">폐기</button>
+                  </span>
+                </div>
+                <div class="text-xs text-muted tnum" style="margin-top:6px"
+                     x-text="'발급 ' + mkWhen(k.created_at) + ' · 만료 ' + mkWhen(k.expires_at) + ' · 마지막 사용 ' + mkWhen(k.last_used_at) + ' · 오늘 성공 ' + ((k.usage || {}).ok || 0) + ' / 실패 ' + ((k.usage || {}).fail || 0)"></div>
+              </div>
+            </template>
+          </div>
+        </section>
+
+      </div>
+      </template>

@@ -119,6 +119,7 @@ class SupabaseStore:
         "content_entities": "content_hash,entity_id", "teams": "id",
         "eval_runs": "id", "eval_results": "run_id,content_hash", "autopilot_runs": "id",
         "deployments": "id", "deployment_keys": "id", "prompt_library": "id",
+        "mcp_keys": "key_id", "mcp_calls": "id",
     }
 
     _RPC_MISSING = set()   # 마이그레이션 전 미존재 집계 함수 · 프로세스당 1회만 시도(왕복 낭비 방지)
@@ -2115,6 +2116,75 @@ class SupabaseStore:
     def deploy_key_touch(self, key_id):
         self._req("PATCH", "deployment_keys", query=f"id=eq.{int(key_id)}",
                   body={"last_used_at": _iso(time.time())}, prefer="return=minimal")
+
+    # ── MCP 파트너 키(트랙 B · mcpkeys.py) · SQLite Store 와 동일 계약 ───────
+    # 읽기 계약에 key_hash 를 담지 않는다(select 에서 아예 제외 — 유출 표면 0).
+    # id 는 클라이언트 입력이므로 조회·폐기는 전부 (key_id, team_id) 복합 필터다(감사 O3).
+    _MCPKEY_SEL = "select=key_id,team_id,user_id,key_prefix,label,revoked,created_at,expires_at,last_used_at"
+
+    def _mcpkey_row(self, r) -> dict:
+        return {"key_id": r.get("key_id") or "", "team": r.get("team_id") or "",
+                "user_id": r.get("user_id") or "", "prefix": r.get("key_prefix") or "",
+                "label": r.get("label") or "", "revoked": bool(r.get("revoked")),
+                "created_at": _epoch(r.get("created_at")), "expires_at": _epoch(r.get("expires_at")),
+                "last_used_at": _epoch(r.get("last_used_at"))}
+
+    def mcp_key_add(self, user_id, team, key_id, key_hash, prefix, label, expires_at) -> str:
+        # team_id 는 컬럼이 NOT NULL 이라 빈 팀은 DB 가 거절한다(mcpkeys 의 거부와 이중 방어).
+        self._req("POST", "mcp_keys",
+                  body=[{"key_id": str(key_id), "team_id": team, "user_id": user_id,
+                         "key_hash": key_hash, "key_prefix": prefix or "", "label": label or "",
+                         "expires_at": _iso(expires_at)}],
+                  prefer="return=minimal")
+        return str(key_id)
+
+    def mcp_key_find(self, key_hash=None, key_id=None):
+        if key_hash:
+            q = f"{self._MCPKEY_SEL}&key_hash=eq.{urllib.parse.quote(key_hash)}"
+        elif key_id:
+            q = f"{self._MCPKEY_SEL}&key_id=eq.{urllib.parse.quote(str(key_id))}"
+        else:
+            return None
+        rows = self._get("mcp_keys", q)
+        return self._mcpkey_row(rows[0]) if rows else None
+
+    def mcp_keys_for(self, user_id, team) -> list:
+        if not (user_id and team):
+            return []                                # falsy 를 '전체'로 읽는 폴백을 만들지 않는다(감사 H1)
+        rows = self._get("mcp_keys",
+                         f"{self._MCPKEY_SEL}&user_id=eq.{urllib.parse.quote(str(user_id))}"
+                         f"&team_id=eq.{urllib.parse.quote(str(team))}&order=created_at.desc")
+        return [self._mcpkey_row(r) for r in rows]
+
+    def mcp_key_revoke(self, key_id, team) -> bool:
+        """갱신 행을 돌려받아 실제 폐기 여부를 반환(없는 키·타 팀 키는 False).
+        team 필터를 빼면 감사 O3(타 팀 키 폐기)가 그대로 재현된다."""
+        if not (key_id and team):
+            return False
+        rows = self._req("PATCH", "mcp_keys",
+                         query=f"key_id=eq.{urllib.parse.quote(str(key_id))}"
+                               f"&team_id=eq.{urllib.parse.quote(str(team))}&revoked=is.false",
+                         body={"revoked": True}, prefer="return=representation")
+        return bool(rows)
+
+    def mcp_key_touch(self, key_id):
+        self._req("PATCH", "mcp_keys", query=f"key_id=eq.{urllib.parse.quote(str(key_id))}",
+                  body={"last_used_at": _iso(time.time())}, prefer="return=minimal")
+
+    def mcp_call_add(self, key_id, user_id, team, prefix, tool, ok, ms, resp_bytes):
+        self._req("POST", "mcp_calls",
+                  body=[{"key_id": str(key_id), "team_id": team or None, "user_id": user_id or None,
+                         "key_prefix": prefix or "", "tool": tool or "", "ok": bool(ok),
+                         "ms": int(ms or 0), "resp_bytes": int(resp_bytes or 0)}],
+                  prefer="return=minimal")
+
+    def mcp_call_count(self, key_id, since_ts, ok=None) -> int:
+        """서버측 count(행 다운로드 없음) · Prefer: count=exact 의 Content-Range 를 읽는다."""
+        q = (f"select=key_id&key_id=eq.{urllib.parse.quote(str(key_id))}"
+             f"&created_at=gte.{urllib.parse.quote(_iso(since_ts))}")
+        if ok is not None:
+            q += f"&ok=is.{'true' if ok else 'false'}"
+        return self._count("mcp_calls", q)
 
     def set_purpose(self, hashes, purpose, team=None) -> int:
         """콘텐츠 용도 지정: review(검수용)|eval(평가용 홀드아웃)."""
