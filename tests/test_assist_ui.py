@@ -71,13 +71,19 @@ class TestAssistMarkup(unittest.TestCase):
 
     def test_section_skeleton_is_constant(self):
         """자료가 없어도 섹션은 그대로 선다 · 섹션 유무가 콘텐츠 힌트가 되면 안 된다
-        (골드 문항이 '선례 없는 신규 콘텐츠'와 같은 모양이어야 하는 이유이기도 하다)."""
+        (골드 문항이 '선례 없는 평범한 콘텐츠'와 같은 모양이어야 하는 이유이기도 하다)."""
         m = _read(MARKUP)
         before = m[:m.index('x-if="asxAfter()"')]
-        self.assertEqual(before.count('class="asx__sec"'), 4)          # 요약·근거·초안 값·기준
+        self.assertEqual(before.count('class="asx__sec"'), 3)          # 요약·근거·기준
         self.assertNotIn('class="asx__sec" x-show=', before)           # 판정 전 섹션은 조건부 표시 없음
-        for empty in ("요약 없음", "저장된 근거 없음", "값 없음", "기준 없음"):
+        for empty in ("요약 없음", "저장된 근거 없음", "기준 없음"):
             self.assertIn(empty, before, empty)
+
+    def test_draft_values_section_is_gone(self):
+        """content_brief.values 는 그리지 않는다 · 골드에서는 뒤집기 전 참값이라 화면과 어긋난다."""
+        m = _read(MARKUP)
+        self.assertNotIn("asxValues", m)
+        self.assertNotIn("초안 값", m)
 
     def test_stage_echo_mismatch_is_surfaced(self):
         """서버가 다른 단계로 처리했으면 화면이 알아야 한다(조용한 before 강등 탐지)."""
@@ -144,7 +150,7 @@ class TestAssistApp(unittest.TestCase):
     def test_gold_looks_like_any_other_content(self):
         """골드에서 패널이 사라지면 그게 골드 신호다 · 패널은 그대로 두고 빈 상태로 그린다.
 
-        서버를 부르지도 않는다(부르면 골드 거절 문구가 화면에 뜬다)."""
+        서버를 부르지도 않는다(부르면 골드 거절 문구가 뜨거나, 뒤집기 전 참값이 내려온다)."""
         js = _read(APPJS)
         avail = _fn(js, "asxAvail")
         self.assertNotIn("asxGold", avail, "패널 유무로 골드를 가르면 검수자가 골드를 배웁니다")
@@ -153,6 +159,29 @@ class TestAssistApp(unittest.TestCase):
         gold = load[load.index("this.asxGold(this.detail)"):]
         self.assertIn("return;", gold)
         self.assertNotIn("asxErr", gold)                               # 골드에서 오류 문구가 뜨면 안 된다
+
+    def test_summary_and_criteria_never_come_from_the_server(self):
+        """불변식: 패널에 그리는 텍스트는 화면 값 또는 공용 사전에서만 나온다.
+
+        골드 문항은 큐가 등급을 뒤집어 보여주는데(reviewops._inject_gold) 서버 도구는 같은
+        해시의 저장된 참값을 읽는다. 서버가 만든 요약을 그리면 화면과 어긋나고, 그 어긋남만으로
+        뒤집힌 문항이 드러난다 = 정답 유출."""
+        js = _read(APPJS)
+        summ, crit = _fn(js, "asxSummary"), _fn(js, "asxCriteria")
+        for body, name in ((summ, "asxSummary"), (crit, "asxCriteria")):
+            self.assertIn("this.detail", body, name)
+            self.assertNotIn("asxBrief", body, f"{name} 가 서버 응답을 읽고 있습니다")
+        self.assertIn("INTENT_DEF", crit)                              # /dict = get_taxonomy 와 같은 원천
+        self.assertIn("qualityMetas", crit)
+        # 뒤집기 규칙을 화면이 다시 구현하면 그 어긋남이 새 오라클이 된다
+        for banned in ("flip", "뒤집", "golden_hashes"):
+            self.assertNotIn(banned, summ + crit, banned)
+
+    def test_gold_flip_rule_still_matches_the_comment(self):
+        """이 패널의 설계 근거(큐가 골드 등급을 뒤집는다)가 사라지면 설계도 다시 봐야 한다."""
+        src = _read(os.path.join(ROOT, "prism", "reviewops.py"))
+        self.assertIn("flip = int(h, 16) % 2 == 1", src)
+        self.assertIn('"hash": f"gold:', src)
 
     def test_missing_route_disables_quietly(self):
         """/assist 404 = 보조 영역만 조용히 비활성 · 토스트(_err)로 검수를 방해하지 않는다."""

@@ -8,13 +8,16 @@
            이 조각에 모아 둔다(같은 기법: page.py 의 모델 선택 메뉴 x-teleport).
 
            독립성 원칙(훼손 금지)
-           · 판정 전: 콘텐츠 자체에서 나오는 것만 — 3줄 요약 · 모델 판정 근거 · 초안 값 · 분류 기준.
-           · 판정 후: 위 + 선례 + 다른 검수자 의견 + 수정 제안.
+           · 판정 전: 3줄 요약 · 모델 판정 근거 · 이 콘텐츠에 걸린 분류 기준.
+           · 판정 후: 위 + 선례 + 다른 검수자 의견 + 비슷한 교정 사례.
              선례와 다른 검수자 의견은 남이 내린 판정이라 판정 전에는 x-if 로 **그리지 않는다**
              (숨기는 게 아니다 · 호출도 하지 않는다). 먼저 보면 그 값이 기준점이 되고,
              검수자끼리의 일치도로 계산하는 신뢰도 지표가 조용히 부푼다.
            · 골드 문항도 패널이 똑같이 붙는다 — 패널이 사라지면 그게 골드 신호가 된다.
-             서버를 부르지 않고 '자료 없는 콘텐츠'와 같은 빈 상태로 그린다.
+           · **콘텐츠 해시로 서버가 만든 텍스트는 그리지 않는다.** 골드는 큐가 등급을 뒤집어
+             보여주므로(reviewops._inject_gold) 서버가 저장된 참값으로 만든 요약을 그리면
+             화면과 어긋나고, 그 어긋남만으로 뒤집힌 문항이 드러난다. 요약은 화면 값으로,
+             기준은 공용 사전으로 만든다(둘 다 골드든 아니든 같은 경로).
            · 섹션 뼈대는 자료 유무와 무관하게 고정이다(빈 상태 문구로 자리를 지킨다).
              섹션이 있다 없다 하면 그 자체가 콘텐츠에 대한 힌트가 된다. -->
       <template x-teleport="#asxSlot">
@@ -45,7 +48,9 @@
                 <div class="text-xs" style="color:var(--ds-error);padding:8px 0" x-show="asxStageEcho()"
                      x-text="'요청한 단계 ' + asxStageLabel(asxSent) + ' · 서버가 처리한 단계 ' + asxStageLabel(asxStageEcho()) + ' · 아래 내용은 서버가 처리한 단계 기준입니다'"></div>
 
-                <!-- 3줄 요약 -->
+                <!-- 3줄 요약: 화면에 그려진 값으로 조립한다(서버가 해시로 만든 요약을 쓰지 않는다).
+                     골드 문항은 큐가 등급을 뒤집어 보여주므로 서버 요약과 화면이 어긋나고,
+                     그 어긋남만으로 뒤집힌 문항을 골라낼 수 있다(= 정답 유출). -->
                 <div class="asx__sec">
                   <div class="dve__lbl">3줄 요약</div>
                   <ul class="ds-bullets" x-show="asxSummary().length">
@@ -62,18 +67,10 @@
                   <div class="text-xs text-muted" x-show="!(asxBrief && asxBrief.has_evidence)">저장된 근거 없음</div>
                 </div>
 
-                <!-- 초안 값: 도구가 준 필드값 묶음을 그대로 편다(화면이 해석해 꾸미지 않는다) -->
+                <!-- 이 콘텐츠에 걸린 분류 기준: 정의문 원천은 /dict(서버 도구 get_taxonomy 와 동일).
+                     고르는 기준도 화면에 그려진 인텐트·품질 사유라 콘텐츠 해시가 서버로 가지 않는다. -->
                 <div class="asx__sec">
-                  <div class="dve__lbl">초안 값</div>
-                  <template x-for="row in asxValues()" x-bind:key="'asxval'+row.k">
-                    <div class="asx__kv"><span class="asx__k" x-text="row.k"></span><span class="asx__v" x-text="row.v || '·'"></span></div>
-                  </template>
-                  <div class="text-xs text-muted" x-show="!asxValues().length">값 없음</div>
-                </div>
-
-                <!-- 이 서비스의 분류 기준 -->
-                <div class="asx__sec">
-                  <div class="dve__lbl">이 서비스의 분류 기준</div>
+                  <div class="dve__lbl">이 콘텐츠에 걸린 분류 기준</div>
                   <template x-for="c in asxCriteria()" x-bind:key="'asxcri'+c.key">
                     <div class="asx__kv"><span class="asx__k" x-text="c.key"></span><span class="asx__v" x-text="c.desc"></span></div>
                   </template>

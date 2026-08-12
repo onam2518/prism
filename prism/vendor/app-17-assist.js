@@ -21,8 +21,29 @@
    4. **골드 문항이 화면에서 티가 나면 안 된다.** 골드는 검수자 신뢰도를 재는 장치라
       보조가 붙으면 측정이 사라진다. 그런데 **막는 방식이 골드를 알려 주면 그것도 측정이
       사라진다** — 패널이 골드에서만 사라지면 검수자가 "이건 골드구나"를 배운다.
-      그래서 패널은 모든 콘텐츠에 똑같이 붙이고, 골드는 서버를 부르지 않은 채
-      '자료 없는 콘텐츠'와 같은 빈 상태로 그린다(오류 문구·섹션 수·높이 모두 동일).
+      그래서 패널은 모든 콘텐츠에 똑같이 붙이고, 골드는 서버를 부르지 않는다.
+
+   ## 요약·기준을 서버에서 받지 않고 화면 값으로 만드는 이유(중요)
+
+   골드 문항은 큐가 **등급을 일부러 뒤집어** 보여준다(reviewops._inject_gold · 해시 홀짝으로
+   대략 절반). 화면에는 뒤집힌 값이 그려지는데 서버 도구는 같은 해시의 **저장된 참값**을 읽는다.
+   그래서 서버가 만든 요약을 그대로 그리면 "화면은 G인데 요약은 R" 이 되어, 브리핑만 열면
+   뒤집힌 문항을 100% 골라낼 수 있다. 정답이 그대로 새는 것이다.
+
+   서버가 화면과 똑같이 뒤집어 답하게 하는 방법도 있지만, 그러면 뒤집기 규칙이 두 곳에
+   생기고 나중에 한쪽만 바뀌면 그 어긋남이 다시 오라클이 된다.
+
+   그래서 이 패널은 다음 불변식을 지킨다.
+
+     **패널에 그리는 값은 (가) 이미 화면에 그려진 값 또는 (나) 콘텐츠와 무관한 공용 사전에서
+     만들어진다. 콘텐츠 해시로 서버가 만든 텍스트는 그리지 않는다.**
+
+   - 3줄 요약 = detail(화면 값)로 조립 · 골드는 뒤집힌 값 그대로라 화면과 항상 일치한다
+   - 분류 기준 = /dict 의 정의문(INTENT_VALUE_DEFS · QUALITY_METAS)에서 화면에 걸린 값만 추림.
+     서버 도구 get_taxonomy 와 같은 원천이라 따로 부를 필요가 없다(해시도 보내지 않는다).
+   - 서버에서 받는 것은 evidence(있으면) · stage 확인 · 교정 사례 · 선례 · 다른 검수자 의견뿐이고,
+     이것들은 골드에서 비어도 평범한 콘텐츠에서 흔히 비는 값이라 신호가 되지 않는다.
+     (evidence 는 2026-08-12 신설 필드라 운영 데이터 대부분이 비어 있다)
 
    ## 없는 건 없다고 말한다
 
@@ -96,11 +117,12 @@ window.PRISM_APP_PARTS.push(() => ({
         this.asxKey = hash + '|' + stage;      // 중복 호출 차단은 먼저(응답 대기 중 재진입 방지)
         this.asxSent = stage;
         this.asxErr = '';
-        // 골드: 서버를 부르지 않고 '자료 없는 콘텐츠'와 같은 빈 상태로 그린다.
-        // 부르면 서버가 골드라고 거절하는데, 그 오류 문구가 화면에 뜨는 순간 골드가 드러난다.
+        // 골드: 서버를 부르지 않는다. 부르면 (가) 도구가 골드라고 거절해 그 문구가 뜨거나
+        // (나) 거절하지 않으면 뒤집기 전 참값이 내려와 정답이 샌다. 둘 다 골드를 알려 준다.
+        // 요약·기준은 어차피 화면 값으로 만드니, 여기서 비는 건 근거·교정 사례·선례뿐이고
+        // 그건 평범한 콘텐츠에서도 흔히 비는 값이다.
         if (this.asxGold(this.detail)) {
-          this.asxBrief = { stage: stage, summary3: [], evidence: null, has_evidence: false,
-                            values: {}, criteria: [], suggestions: [] };
+          this.asxBrief = { stage: stage, evidence: null, has_evidence: false, suggestions: [] };
           this.asxPrec = this._asxEnv(); this.asxDis = this._asxEnv();
           return;
         }
@@ -141,26 +163,43 @@ window.PRISM_APP_PARTS.push(() => ({
       },
 
       // ── 표시 도우미 ────────────────────────────────────────────────────────
-      asxSummary() { return ((this.asxBrief || {}).summary3) || []; },
-      asxCriteria() { return ((this.asxBrief || {}).criteria) || []; },
+      // 3줄 요약: 화면에 그려진 값(detail)만으로 만든다. 서버가 해시로 만든 요약을 쓰지
+      // 않는 이유는 파일 상단 주석 참고 — 골드는 큐가 등급을 뒤집어 보여주므로 서버 요약과
+      // 화면이 어긋나고, 그 어긋남이 곧 정답 유출이다. 모든 콘텐츠가 이 한 경로를 쓴다.
+      asxSummary() {
+        const d = this.detail;
+        if (!d) return [];
+        const cat = (d.category || []).map((c) => this.catKo(c)).join(' · ') || '카테고리 미부여';
+        const rs = (d.reasons || []).map((r) => this.reasonBoth(r)).join(', ') || '지적된 품질 사유 없음';
+        const it = (d.intent || []).join(' · ') || '없음';
+        const en = (d.entities || []).slice(0, 5).join(' · ') || '없음';
+        return [
+          (d.service || '서비스 미상') + ' · ' + (d.title || '(제목 없음)') + ' · ' + cat,
+          '모델 초안: 등급 ' + (d.grade || '미상') + ' · ' + rs,
+          '인텐트 ' + it + ' · 개체 ' + en,
+        ];
+      },
+      // 이 콘텐츠에 걸린 분류 기준 발췌. 정의문 원천은 /dict 의 INTENT_VALUE_DEFS ·
+      // QUALITY_METAS 로 서버 도구(get_taxonomy)와 같은 하나뿐이라 따로 부르지 않는다.
+      // 고르는 기준도 화면에 그려진 인텐트·품질 사유라 콘텐츠 해시가 서버로 가지 않는다.
+      asxCriteria() {
+        const d = this.detail;
+        if (!d) return [];
+        const idefs = this.INTENT_DEF || {};                 // 게터가 /dict 지연 로드까지 처리
+        const dd = this.dictData || {};
+        const qm = dd.qualityMetas || {}, qn = dd.qualityNames || {};
+        const out = [];
+        (d.intent || []).forEach((k) => { if (idefs[k]) out.push({ key: k, desc: idefs[k] }); });
+        (d.reasons || []).forEach((k) => { if (qm[k]) out.push({ key: qn[k] || k, desc: qm[k] }); });
+        return out;
+      },
       // 판정 후에만 서버가 싣는다 · 화면에서도 stage 를 한 번 더 확인해 잘못 온 값을 그리지 않는다
       asxSuggest() {
         if (!this.asxSuggestOn()) return [];
         return ((this.asxBrief || {}).suggestions) || [];
       },
-      // values 는 초안의 필드값 묶음(형태가 도구 쪽 계약이라 키를 고정하지 않는다).
-      // 배열은 가운뎃점으로 펴고 객체는 JSON 그대로 — 화면이 값을 해석해 꾸미지 않는다.
-      asxValues() {
-        const v = (this.asxBrief || {}).values;
-        if (!v || typeof v !== 'object') return [];
-        return Object.keys(v).map((k) => {
-          const x = v[k];
-          const s = Array.isArray(x) ? x.join(' · ')
-                  : (x && typeof x === 'object') ? JSON.stringify(x)
-                  : (x === null || x === undefined || x === '') ? '' : String(x);
-          return { k: k, v: s };
-        });
-      },
+      // content_brief.values(초안 필드값)는 그리지 않는다. 검수 상세가 바로 옆에 이미 같은 값을
+      // 배지로 그리고 있어 중복이고, 골드에서는 저장된 참값이라 뒤집힌 화면과 어긋난다.
       asxPrecItems() { return ((this.asxPrec || {}).items) || []; },
       asxDisItems() { return ((this.asxDis || {}).items) || []; },
       // 잘렸으면 잘렸다고 쓴다(조용한 절단 금지) · 선례·다른 검수자 의견 공통 봉투
