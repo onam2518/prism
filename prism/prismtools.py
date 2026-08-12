@@ -195,12 +195,16 @@ def tools_for(scope: str) -> dict:
     return {k: v for k, v in TOOLS.items() if v["scope"] in (scope, "both")}
 
 
-def call(name: str, args: dict, team=None) -> dict:
+def call(name: str, args: dict, team=None, registry=None) -> dict:
     """도구 실행 공통 진입점.
 
     team 은 **호출자가 세션·키에서 해석한 값**이다. args 에 team 이 들어와도 무시한다 —
-    도구 사용자가 팀을 지정할 수 있으면 그 자체가 교차 팀 접근 통로가 된다."""
-    spec = TOOLS.get((name or "").strip())
+    도구 사용자가 팀을 지정할 수 있으면 그 자체가 교차 팀 접근 통로가 된다.
+
+    registry 를 주면 그 등록부에서 찾는다(앞단 전용 묶음 · reviewassist). 도구 목록만 다를 뿐
+    팀 강제·인자 필터·예외 은닉은 여기 한 벌을 쓴다 — 디스패치 규칙이 갈리면 한쪽이 조용히
+    느슨해지고, 느슨해진 쪽이 팀 밖 데이터를 흘린다."""
+    spec = (TOOLS if registry is None else registry).get((name or "").strip())
     if not spec:
         return {"error": f"모르는 도구입니다: {name or '(없음)'}"}
     blocked = need_team(team)
