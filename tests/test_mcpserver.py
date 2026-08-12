@@ -312,6 +312,22 @@ class TestServerIdentity(Base):
         self.assertEqual(serve._POST_ROUTES["/mcp"][1], "")
         self.assertIsNone(serve._menu_for_path("/mcp"))   # 실험실 메뉴 권한에 걸리지 않는다
 
+    def test_serve_injects_the_tool_layer_reference(self):
+        """`PTL._SV` 주입이 빠지면 도구가 **터지지 않고 조용히 열화한다.**
+
+        실측: 주입이 없으면 lookup_entity 가 500 도 스택도 없이
+        `{"error": "사전이 준비되지 않았습니다"}` 를 200 + isError 로 돌려준다.
+        파트너 눈에는 "사전이 아직 준비 안 됐나 보다" 로 보여 장애를 알아채기 어렵다.
+
+        이 한 줄을 지키는 이유는 위치 때문이다. serve.py 에서 `PTL._SV = …` 는
+        `from . import mcpserver` **바로 위 줄**이라, 같은 자리에 import 를 넣은 다른
+        브랜치와 충돌을 풀 때 함께 날아가기 쉽다(트랙 A `feat/assist-tools` 와 실제로
+        그 자리에서 충돌한다). 깨지면 실패 메시지가 원인을 바로 가리키게 둔다."""
+        from prism import serve
+        self.assertIs(PT._SV, serve,
+                      "serve 가 prismtools 에 _SV 를 주입하지 않았다 · "
+                      "serve.py 의 `PTL._SV = sys.modules[__name__]` 확인")
+
 
 if __name__ == "__main__":
     unittest.main()
