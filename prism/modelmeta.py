@@ -109,31 +109,41 @@ def label(model_id: str) -> str:
 def tiers_from_cost(cost_report: dict) -> dict:
     """비용 원장 → {model: {tier, avg_usd, n}}. tier ∈ 'high'|'low'|'' (표본 부족은 '').
 
-    cost_rollup 구조: days[YYYY-MM-DD].models[model] = {"n": 실행건수, "cost": USD}.
-    건당 평균 = Σcost / Σn. 실행이 적은 모델은 평균이 튀므로 등급을 비운다.
+    cost_rollup 구조: days[YYYY-MM-DD].models[model] = {"n": 실행건수, "cost": USD,
+    "n_billed": 과금된 실행 수(신규 키 · 구 원장에는 없다)}.
+    건당 평균 = Σcost / Σn_billed. 실행이 적은 모델은 평균이 튀므로 등급을 비운다.
 
     **비용 0 인 묶음은 통째로 뺀다**: 라우터가 402(잔액 부족)로 전건 거절하면 실행 건수만
     쌓이고 과금은 0 이라, 그대로 평균에 넣으면 비싼 모델이 싸 보인다(2026-07-28 실제 사고 —
     Opus 실제 $0.0067/건이 실패 600건 때문에 $0.0034/건으로 계산됨).
+    그런데 그 방어는 '전건 실패한 날'만 막았다: 성공과 실패가 **같은 날 섞이면** 묶음 cost 가
+    0 보다 커서 제외되지 않고 실패분 n 만 분모에 남아 평균이 희석된다(실패율 26% 면 등급 소멸).
+    → 분모를 `n_billed`(과금된 실행 수)로 바꾼다. 구 원장에는 이 키가 없으므로
+    `get(...) or 0` 으로 읽고 없으면 종전대로 n 을 쓴다(하위호환 · 그날부터 정확해진다).
     """
     agg = {}
     for _day, v in ((cost_report or {}).get("days") or {}).items():
         for m, mv in ((v or {}).get("models") or {}).items():
             m = (m or "").strip()
-            cost = float((mv or {}).get("cost") or 0.0)
+            mv = mv or {}
+            cost = float(mv.get("cost") or 0.0)
             if not m or cost <= 0:                    # 과금 0 = 실제로 돌지 않은 실행(실패분)
                 continue
-            cur = agg.setdefault(m, {"n": 0, "cost": 0.0})
-            cur["n"] += int((mv or {}).get("n") or 0)
+            n_day = int(mv.get("n") or 0)
+            billed = int(mv.get("n_billed") or 0)     # 신규 키(없으면 구 원장 = n 으로 폴백)
+            cur = agg.setdefault(m, {"n": 0, "billed": 0, "cost": 0.0})
+            cur["n"] += n_day
+            cur["billed"] += (billed if billed > 0 else n_day)
             cur["cost"] += cost
     out = {}
     for m, v in agg.items():
         n = int(v["n"])
-        avg = (v["cost"] / n) if n else 0.0
+        billed = int(v["billed"]) or n                # 분모 = 과금된 실행 수
+        avg = (v["cost"] / billed) if billed else 0.0
         tier = ""
-        if n >= TIER_MIN_SAMPLES and avg > 0:         # 표본이 쌓인 모델만 등급을 붙인다
+        if billed >= TIER_MIN_SAMPLES and avg > 0:    # 표본이 쌓인 모델만 등급을 붙인다
             tier = "high" if avg >= TIER_HIGH_USD else ("low" if avg <= TIER_LOW_USD else "")
-        out[m] = {"tier": tier, "avg_usd": round(avg, 6), "n": n}
+        out[m] = {"tier": tier, "avg_usd": round(avg, 6), "n": n, "n_billed": billed}
     return out
 
 
@@ -166,9 +176,10 @@ def model_meta(cost_report: dict, models=None) -> dict:
     ids = set(tiers) | {str(m).strip() for m in (models or []) if str(m).strip()}
     out = {}
     for mid in ids:
-        t = tiers.get(mid) or {"tier": "", "avg_usd": 0.0, "n": 0}
+        t = tiers.get(mid) or {"tier": "", "avg_usd": 0.0, "n": 0, "n_billed": 0}
         out[mid] = {"label": label(mid), "family": family(mid),
                     "familyLabel": FAMILY_LABEL.get(family(mid), "기타"),
                     "tier": t["tier"], "tierLabel": TIER_LABEL.get(t["tier"], ""),
-                    "avgUsd": t["avg_usd"], "runs": t["n"]}
+                    "avgUsd": t["avg_usd"], "runs": t["n"],
+                    "billedRuns": int(t.get("n_billed") or 0)}   # 평균의 분모(과금된 실행 수)
     return out

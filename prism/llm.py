@@ -108,6 +108,11 @@ class LLMResult:
         self.price_cache_read = price_cache_read   # None = 미설정 → 캐시 토큰도 정가(하위호환)
         self.fail_kind = fail_kind     # None | content_filter | too_long | auth | ...
         self.fail_detail = ""          # 실패 원문(예외 메시지·HTTP 본문 앞부분) · 운영 진단용
+        # 재시도로 버린 응답의 토큰(진단용 · in_tok/out_tok 에 **이미 포함**돼 있다).
+        # 파싱·빈응답 재시도는 HTTP 200 을 받고 버리는 것이라 매회 과금된다 —
+        # 종전에는 마지막 1회분만(최종 실패는 0) 원장에 실려 실지출이 최대 100% 누락됐다.
+        self.retry_in_tok = 0
+        self.retry_out_tok = 0
 
     @property
     def cost_usd(self) -> float:
@@ -221,22 +226,44 @@ class LLMClient:
         rp = self.cfg.retry
         last_err = None
         retries = 0
+        fmt_retries = 0          # 형식 실패(파싱·빈응답) 재시도 횟수 · 네트워크 재시도와 분리
+        # 재시도로 버리는 응답도 HTTP 200 = 과금 대상. 실지출을 원장에 싣기 위해 누적한다.
+        spent_in = spent_out = spent_cr = spent_cw = 0
+        max_fmt = int(getattr(rp, "max_format_retries", rp.max_retries))
+        fmt_hint = ("\n\n[재요청] 직전 응답이 JSON 으로 파싱되지 않았다(설명·코드펜스·빈 응답 금지). "
+                    "JSON 객체 하나만 출력하라.")
         # 최초 + max_retries 재시도, 지수백오프+지터(429/5xx), 비재시도성은 즉시 fail
         for attempt in range(rp.max_retries + 1):
+            res = None
             try:
-                res = self._call(system, user, tag=tag)
+                res = self._call(system, user + (fmt_hint if fmt_retries else ""), tag=tag)
                 obj = _parse_json(res.text)
                 res.retries = retries
                 res.tag = tag
+                if spent_in or spent_out:          # 버린 시도분 합산(원장·예산이 실지출을 보게)
+                    res.in_tok += spent_in
+                    res.out_tok += spent_out
+                    res.cache_read_tok += spent_cr
+                    res.cache_write_tok += spent_cw
+                    res.retry_in_tok, res.retry_out_tok = spent_in, spent_out
                 return obj, res
             except (ParseError, EmptyError) as e:
-                # 형식 실패도 재시도(EMPTY 는 테스트상 최대 손실원)
+                # 형식 실패도 재시도(EMPTY 는 테스트상 최대 손실원). 다만 **같은 요청을 그대로**
+                # 다시 보내면 temperature=0 모델은 같은 답을 준다 — 형식 지시를 덧붙여 요청을
+                # 다르게 만들고, 레이트리밋이 아니므로 백오프도 생략한다(콜당 15초 순수 대기 제거).
                 last_err = e
-                if attempt < rp.max_retries:
+                paid = res if res is not None else getattr(e, "result", None)
+                if paid is not None:               # 빈 응답도 과금됨(_call 이 결과를 실어 보낸다)
+                    spent_in += int(paid.in_tok or 0)
+                    spent_out += int(paid.out_tok or 0)
+                    spent_cr += int(getattr(paid, "cache_read_tok", 0) or 0)
+                    spent_cw += int(getattr(paid, "cache_write_tok", 0) or 0)
+                if attempt < rp.max_retries and fmt_retries < max_fmt:
                     retries += 1
-                    time.sleep(backoff_delay(attempt, rp.base_delay, rp.max_delay, rp.jitter))
+                    fmt_retries += 1
                     continue
-                return self._fail("parse_empty", str(e), retries, tag=tag)
+                return self._fail("parse_empty", str(e), retries, tag=tag,
+                                  spent=(spent_in, spent_out, spent_cr, spent_cw))
             except urllib.error.HTTPError as e:
                 try:
                     detail = e.read().decode()[:200]
@@ -275,7 +302,8 @@ class LLMClient:
                     continue
                 # 400(콘텐츠 필터 등) 비재시도성 → 분류 후 fail(배치 비중단)
                 kind = classify_http_error(e.code, detail)
-                return self._fail(kind, f"HTTP{e.code}: {detail}", retries, tag=tag)
+                return self._fail(kind, f"HTTP{e.code}: {detail}", retries, tag=tag,
+                                  spent=(spent_in, spent_out, spent_cr, spent_cw))
             except Exception as e:
                 # 네트워크/타임아웃/응답 형식: 백오프 재시도 후 종류를 나눠 기록
                 last_err = e
@@ -283,15 +311,25 @@ class LLMClient:
                     retries += 1
                     time.sleep(backoff_delay(attempt, rp.base_delay, rp.max_delay, rp.jitter))
                     continue
-                return self._fail(classify_exc(e), f"{type(e).__name__}: {e}", retries, tag=tag)
-        return self._fail("unknown", str(last_err), retries, tag=tag)
+                return self._fail(classify_exc(e), f"{type(e).__name__}: {e}", retries, tag=tag,
+                                  spent=(spent_in, spent_out, spent_cr, spent_cw))
+        return self._fail("unknown", str(last_err), retries, tag=tag,
+                          spent=(spent_in, spent_out, spent_cr, spent_cw))
 
-    def _fail(self, kind, detail, retries, tag=""):
+    def _fail(self, kind, detail, retries, tag="", spent=(0, 0, 0, 0)):
+        """실패 결과. spent = 재시도 중 이미 지불한 (in, out, cache_read, cache_write) 토큰.
+
+        종전에는 무조건 0 이라 '최종 실패한 콜의 지출'이 원장에서 통째로 사라졌고,
+        그 결과 runops 의 일괄 실행 예산 상한이 실패가 많은 배치에서 무력화됐다."""
         with self._lock:
             self.fail_counts[kind] = self.fail_counts.get(kind, 0) + 1
-        res = LLMResult("", 0, 0, 0, retries,
+        s_in, s_out, s_cr, s_cw = (list(spent) + [0, 0, 0, 0])[:4]
+        res = LLMResult("", int(s_in or 0), int(s_out or 0), 0, retries,
                         price_in=self.cfg.prices.chat_in,
-                        price_out=self.cfg.prices.chat_out, fail_kind=kind, tag=tag)
+                        price_out=self.cfg.prices.chat_out, fail_kind=kind, tag=tag,
+                        cache_read_tok=s_cr, cache_write_tok=s_cw,
+                        price_cache_read=self.cfg.prices.cache_read)
+        res.retry_in_tok, res.retry_out_tok = int(s_in or 0), int(s_out or 0)
         res.fail_detail = str(detail or "")[:300]      # 원인 원문 보존(하네스 → 실패 원장 → 화면)
         return ({"_fail": detail, "_fail_kind": kind}, res)
 
@@ -354,13 +392,15 @@ class LLMClient:
         out_tok = usage.get("completion_tokens", _approx_tokens(text))
         # 캐시 토큰 정규화: 제공자마다 필드명이 달라 전부 훑는다(없으면 0 · 비용식은 하위호환).
         c_read, c_write, c_src = parse_cache_tokens(usage)
+        res = LLMResult(text, in_tok, out_tok, latency, 0, raw=payload,
+                        price_in=self.cfg.prices.chat_in,
+                        price_out=self.cfg.prices.chat_out,
+                        cache_read_tok=c_read, cache_write_tok=c_write, cache_source=c_src,
+                        price_cache_read=self.cfg.prices.cache_read, tag=tag)
         if not text.strip():
-            raise EmptyError("empty completion")
-        return LLMResult(text, in_tok, out_tok, latency, 0, raw=payload,
-                         price_in=self.cfg.prices.chat_in,
-                         price_out=self.cfg.prices.chat_out,
-                         cache_read_tok=c_read, cache_write_tok=c_write, cache_source=c_src,
-                         price_cache_read=self.cfg.prices.cache_read, tag=tag)
+            # 빈 완성도 HTTP 200 = 과금된다. 결과를 예외에 실어 보내 재시도 원장에서 누락되지 않게 한다.
+            raise EmptyError("empty completion", res)
+        return res
 
     def _mock(self, system, user, tag) -> tuple[dict, LLMResult]:
         obj = self._mock_fn(system, user, tag) if self._mock_fn else {}
@@ -378,7 +418,12 @@ class ParseError(Exception):
 
 
 class EmptyError(Exception):
-    pass
+    """빈 완성. result 에 그 호출의 LLMResult(지불한 토큰 보유)를 실어 보낸다 —
+    재시도로 버려지는 응답의 비용을 원장에서 놓치지 않기 위한 통로."""
+
+    def __init__(self, message="", result=None):
+        super().__init__(message)
+        self.result = result
 
 
 class ResponseError(Exception):
@@ -404,6 +449,47 @@ def classify_exc(e: Exception) -> str:
     return "unknown"
 
 
+def _unwrap_single(obj: dict) -> dict:
+    """단일 키 래핑 풀기: {"result": {"finalGrade": "R"}} → 내부 객체.
+
+    우리 계약 스키마에는 **값이 객체인 필드가 없다**(전부 문자열·배열·숫자)이므로
+    '키 1개 + 값이 비지 않은 객체' 는 모델이 씌운 래퍼로 단정할 수 있다. 종전에는 이런 응답이
+    파싱만 성공하고 계약 키가 없어 빈 메타·기본값 G 로 조용히 유통됐다(agents 의 계약 키 승격과 짝)."""
+    if len(obj) == 1:
+        inner = next(iter(obj.values()))
+        if isinstance(inner, dict) and inner:
+            return inner
+    return obj
+
+
+def _top_level_objects(s: str) -> list:
+    """문자열 리터럴을 인식하며 균형 중괄호로 최상위 { … } 조각을 모두 잘라 낸다.
+    선행 설명문에 중괄호가 섞이면(예: `아래 {결과} 참고:`) '첫 { ~ 마지막 }' 슬라이스가
+    설명문부터 시작해 깨진다 — 그 경우의 마지막 복구 수단."""
+    out, depth, start, in_str, esc = [], 0, -1, False, False
+    for k, ch in enumerate(s):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = k
+            depth += 1
+        elif ch == "}" and depth:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                out.append(s[start:k + 1])
+                start = -1
+    return out
+
+
 def _parse_json(text: str) -> dict:
     """json_object 강제에도 모델이 코드펜스/잡텍스트를 붙이는 경우 복구."""
     if not text or not text.strip():
@@ -415,7 +501,7 @@ def _parse_json(text: str) -> dict:
         # 배치 전체가 죽는다(response_format 미지원 계열에서 실제 발생 가능).
         # dict 가 아니면 아래 { } 슬라이스 복구([{…}] → 내부 객체)로 폴백.
         if isinstance(obj, dict):
-            return obj
+            return _unwrap_single(obj)
     except json.JSONDecodeError:
         pass
     # 코드펜스 제거
@@ -423,15 +509,23 @@ def _parse_json(text: str) -> dict:
         s = s.strip("`")
         if s[:4].lower() == "json":
             s = s[4:]
-    # 첫 { ~ 마지막 } 슬라이스
+    # 첫 { ~ 마지막 } 슬라이스(기존 경로 · 먼저 시도)
     i, j = s.find("{"), s.rfind("}")
     if i != -1 and j != -1 and j > i:
         try:
             obj = json.loads(s[i:j + 1])
             if isinstance(obj, dict):
-                return obj
+                return _unwrap_single(obj)
         except json.JSONDecodeError:
             pass
+    # 균형 중괄호 스캔: 마지막 최상위 객체부터 시도(설명문 중괄호 · 객체 2개 연속 케이스 복구)
+    for cand in reversed(_top_level_objects(s)):
+        try:
+            obj = json.loads(cand)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and obj:
+            return _unwrap_single(obj)
     raise ParseError(f"unparseable: {text[:80]!r}")
 
 
