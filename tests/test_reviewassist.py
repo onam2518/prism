@@ -83,8 +83,12 @@ def _patch(h, reviewer, field, before, after, ts=10.0):
 
 
 class _FakeStore:
-    def __init__(self, feedback=None, patches=None):
+    def __init__(self, feedback=None, patches=None, golden=None):
         self._fb, self._pt = dict(feedback or {}), list(patches or [])
+        self._golden = set(golden or ())
+
+    def golden_hashes(self, team=None):
+        return set(self._golden)
 
     def feedback_map(self, team=None):
         return self._fb
@@ -109,10 +113,10 @@ def _keys(o):
 
 
 class Base(unittest.TestCase):
-    def install(self, rows, feedback=None, patches=None):
+    def install(self, rows, feedback=None, patches=None, golden=None):
         """저장 계층을 가짜로 갈아끼우고, 도구가 어떤 team 으로 조회했는지 기록한다."""
         self.seen_team = []
-        store = _FakeStore(feedback, patches)
+        store = _FakeStore(feedback, patches, golden)
         o_rows, o_store = SV.results_rows, SV.get_store
 
         def rows_fn(limit=5000, team=None):
@@ -401,6 +405,41 @@ class TestPrecedents(Base):
                      feedback={_h(2): _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0)),
                                _h(3): {}})
         self.assertEqual(RA.call("verdict_precedents", _args(), team=TEAM)["total"], 0)
+
+    def test_golden_origin_precedents_lose_their_identity_only(self):
+        """골드 문항의 원본은 골든셋에 올라간 확정 콘텐츠라 results 에 평범한 행으로 있다.
+
+        제목을 남기면 검수자가 나중에 큐의 골드 문항에서 그걸 알아보고 정답을 안다(선례에
+        확정 판정과 등급이 실려 있으니 곧 정답 해설이다). 통째로 빼면 기능 값이 크게 깎이므로
+        판단 재료는 남기고 알아보는 손잡이만 지운다."""
+        self.install([_row(H1), _row(_h(2), title="골든 원본"), _row(_h(3), title="평범한 선례")],
+                     feedback={_h(2): _confirmed(), _h(3): _confirmed()},
+                     golden={_h(2)})
+        items = {it["title"]: it for it in
+                 RA.call("verdict_precedents", _args(), team=TEAM)["items"]}
+        self.assertEqual(set(items), {"", "평범한 선례"})       # 골든 원본만 이름을 잃는다
+        blinded = items[""]
+        for f in RA.GOLDEN_BLIND_FIELDS:
+            self.assertEqual(blinded[f], "", f)
+        self.assertEqual((blinded["verdict"], blinded["n"]), ("bad", 2))   # 판단 재료는 남는다
+        self.assertIn("광고성", blinded["why_similar"])
+
+    def test_blinding_keeps_the_item_shape_identical(self):
+        """모양이 조건에 따라 달라지면 클라이언트가 갈라진다 — 키는 남기고 값만 비운다."""
+        self.install([_row(H1), _row(_h(2)), _row(_h(3))],
+                     feedback={_h(2): _confirmed(), _h(3): _confirmed()},
+                     golden={_h(2)})
+        shapes = {tuple(sorted(it)) for it in
+                  RA.call("verdict_precedents", _args(), team=TEAM)["items"]}
+        self.assertEqual(len(shapes), 1)
+
+    def test_unknown_golden_set_blinds_everything(self):
+        """안전장치가 오류에 열리면 안전장치가 아니다 — 못 읽으면 다 가리는 쪽으로 닫는다."""
+        store = self.install([_row(H1), _row(_h(2))], feedback={_h(2): _confirmed()})
+        store.golden_hashes = lambda team=None: (_ for _ in ()).throw(RuntimeError("조회 실패"))
+        it = RA.call("verdict_precedents", _args(), team=TEAM)["items"][0]
+        self.assertEqual(it["title"], "")
+        self.assertEqual(it["verdict"], "bad")            # 기능은 남고 식별자만 닫힌다
 
     def test_other_services_and_unrelated_values_are_excluded(self):
         self.install(

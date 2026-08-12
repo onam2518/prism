@@ -64,6 +64,19 @@ PATCH_SCAN, SUGGEST_MAX = 400, 5
 # 확정 선례의 최소 판정 인원. 1인 판정을 '확정 선례' 로 되먹이면 그 한 사람의 편향이 증폭되고,
 # 무엇보다 '선례' 라는 말이 거짓이 된다. 저장 계층의 agree 는 n=1 에서도 참이라 여기서 막는다.
 PRECEDENT_MIN_N = 2
+
+# 골든 원본 선례에서 지우는 필드 = '어느 콘텐츠인지 알아보는 손잡이'.
+#
+# 골드 문항의 원본(`gold:ok:<h>` 의 h)은 골든셋에 올라간 확정 검수 콘텐츠라 results 에
+# 평범한 행으로 있다. strip_gold 는 합성 해시만 거르지 이 원본은 못 거른다. 그대로 두면
+# 검수자가 선례에서 본 제목을 나중에 큐의 골드 문항에서 알아보고 정답을 안다 —
+# 선례에는 확정 판정과 등급이 실려 있으니 그게 곧 정답 해설이다.
+#
+# 그렇다고 골든 원본을 선례에서 통째로 빼면 기능 값이 크게 깎인다(골든이 곧 '확정된 좋은
+# 선례'다). 그래서 판단 재료(verdict·n·why_similar)는 남기고 식별자만 지운다. reason 은
+# 검수자가 쓴 자유 문장이라 소재를 그대로 부를 수 있어 함께 지운다.
+# 키는 남기고 값만 비운다 — 항목 모양이 조건에 따라 달라지면 클라이언트가 갈라진다.
+GOLDEN_BLIND_FIELDS = ("hash", "title", "reason")
 # 제안 노출 최소 건수. 1건은 선례가 아니라 한 사람의 판단이다.
 SUGGEST_MIN = 2
 
@@ -142,6 +155,20 @@ def _index(team) -> dict:
         if k:
             out[k] = r
     return out
+
+
+def _golden(team):
+    """골든셋에 올라간 콘텐츠 해시. 모르면 None(= 전부 골든으로 취급).
+
+    실패를 빈 집합으로 돌려주면 조회가 한 번 흔들릴 때마다 식별자가 그대로 나간다 —
+    안전장치가 오류에 열리면 안전장치가 아니다. 못 읽으면 다 가리는 쪽으로 닫는다."""
+    st = _SV.get_store() if _SV else None
+    if not (st and hasattr(st, "golden_hashes")):
+        return None
+    try:
+        return set(st.golden_hashes(team=team) or ())
+    except Exception:
+        return None
 
 
 def _feedback(team) -> dict:
@@ -405,7 +432,13 @@ def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=N
             "why_similar": " · ".join([f"같은 서비스: {v['service']}"] + why),
         }))
     ranked.sort(key=lambda x: (-x[0], -x[1]))
-    return PT.envelope([it for _, _, it in ranked], lim)
+    items = [it for _, _, it in ranked]
+    gold = _golden(team)                          # None = 모름 → 전부 가린다(fail-closed)
+    for it in items:
+        if gold is None or it["hash"] in gold:
+            for f in GOLDEN_BLIND_FIELDS:
+                it[f] = ""
+    return PT.envelope(items, lim)
 
 
 # ── reviewer_dissent ─────────────────────────────────────────────────────────
