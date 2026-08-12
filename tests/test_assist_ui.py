@@ -99,6 +99,18 @@ class TestAssistMarkup(unittest.TestCase):
         """몇 사람이 그렇게 봤는지가 검수자가 무게를 다는 근거다."""
         self.assertIn("asxWho(p.n)", _read(MARKUP))
 
+    def test_masked_precedent_identifiers_are_left_blank(self):
+        """선례가 정답셋 원본이면 서버가 hash·title·reason 을 지운다.
+
+        빈 자리를 '(제목 없음)' 같은 문구로 채우면 고장처럼 읽히고, 무엇보다 '가려진 항목'을
+        눈에 띄게 만들어 오히려 표시가 된다. 그냥 그리지 않는다."""
+        m = _read(MARKUP)
+        self.assertIn('x-show="p.title"', m)
+        self.assertIn('x-show="p.reason"', m)
+        prec = re.sub(r"<!--.*?-->", "", m, flags=re.S)                # 주석은 화면에 안 나온다
+        prec = prec[prec.index("asxPrecItems()"):prec.index("다른 검수자 의견")]
+        self.assertNotIn("제목 없음", prec)
+
     def test_suggestions_are_not_dressed_up(self):
         """제안은 '센 사실'이다 · 권장·정답으로 읽히게 꾸미지 않는다."""
         m = _read(MARKUP)

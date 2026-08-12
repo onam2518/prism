@@ -88,7 +88,11 @@
                           <div class="asx__row-hd">
                             <span class="ds-badge" x-bind:class="asxVerdictClass(p.verdict)" x-text="asxVerdictLabel(p.verdict)"></span>
                             <span class="ds-badge ds-badge--neutral" x-show="asxWho(p.n)" x-text="asxWho(p.n)"></span>
-                            <b class="asx__ttl" x-text="p.title || '(제목 없음)'"></b>
+                            <!-- 제목·사유는 비어 올 수 있다. 선례가 정답셋 원본이면 서버가 식별자를
+                                 지운다(hash·title·reason) — 검수자가 큐의 골드 문항과 제목을 이어
+                                 붙이면 답을 알게 되기 때문. 빈 자리를 '(제목 없음)' 같은 문구로 채우면
+                                 고장처럼 읽히므로 그냥 그리지 않는다. 판단 재료는 아래 '비슷한 이유'다. -->
+                            <b class="asx__ttl" x-show="p.title" x-text="p.title"></b>
                             <span class="text-xs text-muted tnum" x-show="p.ts" x-text="fmtTs(p.ts)"></span>
                           </div>
                           <div class="text-xs text-muted" x-show="p.reason" x-text="p.reason"></div>
