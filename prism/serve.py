@@ -80,6 +80,7 @@ from . import caagent as CA           # 콘텐츠 에이전트(실험실): 자�
 CA._SV = sys.modules[__name__]      # 동일 주입
 from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외부 MCP 공용 단일 원천
 PTL._SV = sys.modules[__name__]     # 동일 주입
+from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
@@ -2754,6 +2755,26 @@ def _p_spectrum_gw(h, body):                         # MCP(JSON-RPC) · 단순 R
                                 ensure_ascii=False), _JSON)
         return None
     status, out = SPO.gateway_request(h.headers.get("Authorization") or "", body)
+    if out is None:                                  # MCP 알림(notifications/*) = 본문 없는 202
+        h._send(202, b"", _JSON)
+    else:
+        h._send(status, json.dumps(out, ensure_ascii=False), _JSON)
+    return None
+
+
+@_post_route("/mcp")                                 # 프리즘 MCP(트랙 B · 외부): 파트너 키로만 판단
+def _p_mcp(h, body):                                 # 무세션 JSON-RPC · 도구는 prismtools 단일 원천
+    # 로그인·팀 게이트가 없는 공개 경로 · 키 대입 연사만 IP 로 억제한다. 인증 자체는
+    # mcpserver 가 하고, 키 모듈이 없으면 전부 401 로 닫힌다(fail-closed).
+    # 최소 간격을 두지 않는 이유(실측): MCP 접속 절차는 initialize → notifications/initialized
+    # → tools/list 를 왕복마다 곧바로 이어 보내 간격이 수 ms 다. 0.1초 간격 규칙을 걸면
+    # 정상 클라이언트가 접속 단계에서 429 를 맞는다. 키당 상한은 mcpkeys.rate_check 가 맡고,
+    # 여기는 분당 총량으로 키 대입 스프레이만 막는다.
+    if rate_limited("mcp:" + _client_ip(h), min_interval=0.0, per_min=240):
+        h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                ensure_ascii=False), _JSON)
+        return None
+    status, out = MCPS.handle(h.headers.get("Authorization") or "", body)
     if out is None:                                  # MCP 알림(notifications/*) = 본문 없는 202
         h._send(202, b"", _JSON)
     else:
