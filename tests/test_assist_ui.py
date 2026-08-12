@@ -1,12 +1,16 @@
 """검수 보조 패널(트랙 A · 화면) 회귀 가드.
 
-이 패널은 품질 측정의 독립성 위에 서 있다. 판정 전에 추천·정답 암시가 새면 재는 대상이
-사람이 아니라 모델이 되어 버린다. 그래서 문구가 아니라 **규칙**을 단언한다.
+이 패널은 품질 측정의 독립성 위에 서 있다. 판정 전에 남이 내린 판정이 새면 재는 대상이
+사람이 아니라 모델(또는 먼저 판정한 사람)이 되어 버린다. 그래서 문구가 아니라 **규칙**을
+단언한다.
 
   1. 기본은 접힘이고 펼 때만 부른다(호출 비용 + 주의 분산).
   2. stage 는 화면이 정하고 근거는 내 표(myVerdict) 하나뿐이다.
-  3. 수정 제안은 stage=after 에서만 그린다(서버 계약 + 화면 이중 방어).
-  4. 골드 문항에는 패널이 붙지 않는다.
+  3. 판정 전에는 선례·다른 검수자 의견을 **그리지도 부르지도** 않는다. 숨기는 것으로는
+     부족하다 — 검수자끼리의 일치도로 신뢰도를 계산하는데, B 가 A 의 판정을 보고 정하면
+     그 일치는 독립된 근거가 아니고 지표가 조용히 부푼다.
+  4. 골드 문항에서 패널이 다르게 보이면 안 된다. 막는 방식이 골드를 알려 주면
+     검수자가 그걸 배우고, 그 순간 측정 대상이 평소의 검수가 아니게 된다.
   5. 근거가 없으면 없다고 쓰고, 잘렸으면 잘렸다고 쓴다.
   6. /assist 가 없어도(404) 화면이 깨지지 않는다.
 
@@ -29,6 +33,12 @@ def _read(p):
         return f.read()
 
 
+def _fn(js, name):
+    """조각에서 메서드 본문 한 덩어리를 떼어 낸다(들여쓰기 6칸 관례)."""
+    m = re.search(r"\n      " + name + r"\(.*?\n      \}", js, re.S)
+    return m.group(0) if m else ""
+
+
 class TestAssistMarkup(unittest.TestCase):
     def test_fragment_is_composed_into_page(self):
         """조각이 PAGE 에 합성되고, 검수 상세의 자리표(#asxSlot)로 텔레포트된다."""
@@ -47,25 +57,53 @@ class TestAssistMarkup(unittest.TestCase):
         self.assertIn("19e-review-assist.html", names)
         self.assertLess(names.index("19e-review-assist.html"), names.index("20-ingest-policy.html"))
 
-    def test_suggestions_only_after_verdict(self):
-        """수정 제안 영역은 stage=after 에서만 그린다(화면 쪽 이중 방어)."""
-        m = _read(MARKUP)
-        sec = m[m.index("수정 제안"):]
-        self.assertIn("asxStage()==='after'", m)
-        self.assertIn("asxSuggest()", sec)
-        # 판정 전 화면(선례·다른 검수자 의견)에는 제안 바인딩이 없다
-        before = m[:m.index("수정 제안")]
-        self.assertNotIn("asxSuggest", before)
+    def test_others_verdicts_are_not_rendered_before_mine(self):
+        """선례·다른 검수자 의견·수정 제안은 판정 후 블록 안에만 있다.
 
-    def test_missing_evidence_is_said_out_loud(self):
-        """근거 필드 신설 이전 데이터는 실제로 비어 있다 · 빈 자리를 채우지 않는다."""
+        x-show(숨김)가 아니라 x-if(미생성)여야 한다 — 숨긴 값은 DOM 에 남아 언젠가 읽힌다."""
         m = _read(MARKUP)
-        self.assertIn("저장된 근거 없음", m)
-        self.assertIn("asxBrief && !asxBrief.has_evidence", m)
+        self.assertIn('x-if="asxAfter()"', m)
+        after = m[m.index('x-if="asxAfter()"'):]
+        before = m[:m.index('x-if="asxAfter()"')]
+        for needle in ("asxPrecItems()", "asxDisItems()", "asxSuggest()", "asxCut("):
+            self.assertIn(needle, after, needle)
+            self.assertNotIn(needle, before, f"{needle} 이 판정 전 화면에 있습니다")
 
-    def test_truncation_is_visible(self):
-        """조용한 절단은 '다 봤다'로 읽힌다 · 잘림 표시를 화면에 남긴다."""
-        self.assertIn("asxCut(asxPrec)", _read(MARKUP))
+    def test_section_skeleton_is_constant(self):
+        """자료가 없어도 섹션은 그대로 선다 · 섹션 유무가 콘텐츠 힌트가 되면 안 된다
+        (골드 문항이 '선례 없는 신규 콘텐츠'와 같은 모양이어야 하는 이유이기도 하다)."""
+        m = _read(MARKUP)
+        before = m[:m.index('x-if="asxAfter()"')]
+        self.assertEqual(before.count('class="asx__sec"'), 4)          # 요약·근거·초안 값·기준
+        self.assertNotIn('class="asx__sec" x-show=', before)           # 판정 전 섹션은 조건부 표시 없음
+        for empty in ("요약 없음", "저장된 근거 없음", "값 없음", "기준 없음"):
+            self.assertIn(empty, before, empty)
+
+    def test_stage_echo_mismatch_is_surfaced(self):
+        """서버가 다른 단계로 처리했으면 화면이 알아야 한다(조용한 before 강등 탐지)."""
+        self.assertIn("asxStageEcho()", _read(MARKUP))
+
+    def test_truncation_is_visible_on_both_lists(self):
+        """조용한 절단은 '다 봤다'로 읽힌다 · 선례와 다른 검수자 의견 양쪽 다."""
+        m = _read(MARKUP)
+        self.assertIn("asxCut(asxPrec)", m)
+        self.assertIn("asxCut(asxDis)", m)
+
+    def test_precedent_shows_how_many_agreed(self):
+        """몇 사람이 그렇게 봤는지가 검수자가 무게를 다는 근거다."""
+        self.assertIn("asxWho(p.n)", _read(MARKUP))
+
+    def test_suggestions_are_not_dressed_up(self):
+        """제안은 '센 사실'이다 · 권장·정답으로 읽히게 꾸미지 않는다."""
+        m = _read(MARKUP)
+        self.assertIn("s.basis", m)
+        self.assertNotIn("'근거 · ' + s.basis", m)                     # basis 문구를 화면이 덧칠하지 않는다
+        shown = re.sub(r"<!--.*?-->", "", m, flags=re.S)               # 주석은 화면에 안 나온다
+        for word in ("권장", "추천", "정답"):
+            self.assertNotIn(word, shown, f"화면 문구에 '{word}' 가 있습니다")
+        css = _read(os.path.join(ROOT, "prism", "vendor", "app.css"))
+        to = re.search(r"\.asx__to\{[^}]*\}", css).group(0)
+        self.assertNotIn("font-weight", to)                            # 고친 값을 굵기로 밀지 않는다
 
     def test_panel_starts_collapsed(self):
         m = _read(MARKUP)
@@ -83,24 +121,38 @@ class TestAssistApp(unittest.TestCase):
 
     def test_stage_comes_from_my_own_verdict(self):
         """팀 합의(fb.verdict)가 아니라 내 표 · 남의 판정으로 내 화면이 after 가 되면 안 된다."""
-        js = _read(APPJS)
-        m = re.search(r"asxStage\(\)\s*\{[^}]*\}", js)
-        self.assertIsNotNone(m)
-        self.assertIn("myVerdict", m.group(0))
-        self.assertNotIn("fb.verdict", m.group(0))
+        body = _fn(_read(APPJS), "asxStage")
+        self.assertIn("myVerdict", body)
+        self.assertNotIn("fb.verdict", body)
 
-    def test_stage_is_sent_to_server(self):
+    def test_stage_is_sent_and_echo_is_compared(self):
         js = _read(APPJS)
         self.assertIn("'content_brief', { hash: hash, stage: stage }", js)
+        self.assertIn("this.asxSent = stage", js)
+        echo = _fn(js, "asxStageEcho")
+        self.assertIn("this.asxSent", echo)
 
-    def test_gold_gets_no_assist(self):
-        """골드는 검수자 신뢰도를 재는 장치 · 보조가 붙으면 측정이 사라진다."""
+    def test_others_verdicts_are_not_even_fetched_before_mine(self):
+        """판정 전에는 선례·다른 검수자 의견을 호출조차 하지 않는다."""
+        load = _fn(_read(APPJS), "async asxLoad")
+        self.assertIn("if (stage === 'after')", load)
+        gate = load.index("if (stage === 'after')")
+        for tool in ("verdict_precedents", "reviewer_dissent"):
+            self.assertIn(tool, load[gate:], tool)
+            self.assertNotIn(tool, load[:gate], f"{tool} 이 stage 게이트 밖에서 불립니다")
+
+    def test_gold_looks_like_any_other_content(self):
+        """골드에서 패널이 사라지면 그게 골드 신호다 · 패널은 그대로 두고 빈 상태로 그린다.
+
+        서버를 부르지도 않는다(부르면 골드 거절 문구가 화면에 뜬다)."""
         js = _read(APPJS)
-        self.assertIn("asxGold", js)
-        self.assertIn("/^gold/", js)
-        m = re.search(r"asxAvail\(\)\s*\{.*?\n      \}", js, re.S)
-        self.assertIsNotNone(m)
-        self.assertIn("asxGold", m.group(0))
+        avail = _fn(js, "asxAvail")
+        self.assertNotIn("asxGold", avail, "패널 유무로 골드를 가르면 검수자가 골드를 배웁니다")
+        load = _fn(js, "async asxLoad")
+        self.assertIn("this.asxGold(this.detail)", load)
+        gold = load[load.index("this.asxGold(this.detail)"):]
+        self.assertIn("return;", gold)
+        self.assertNotIn("asxErr", gold)                               # 골드에서 오류 문구가 뜨면 안 된다
 
     def test_missing_route_disables_quietly(self):
         """/assist 404 = 보조 영역만 조용히 비활성 · 토스트(_err)로 검수를 방해하지 않는다."""
@@ -111,16 +163,15 @@ class TestAssistApp(unittest.TestCase):
 
     def test_closed_panel_never_calls(self):
         """접혀 있으면 부르지 않는다(호출 비용 · 주의 분산)."""
-        js = _read(APPJS)
-        m = re.search(r"asxWatch\(\)\s*\{.*?\n      \}", js, re.S)
-        self.assertIsNotNone(m)
-        self.assertIn("if (!this.asxOpen", m.group(0))
+        self.assertIn("if (!this.asxOpen", _fn(_read(APPJS), "asxWatch"))
 
-    def test_suggestions_guarded_in_app_too(self):
+    def test_suggestions_guarded_by_both_sides(self):
+        """화면 판단과 서버가 되돌려 준 단계가 모두 '판정 후'일 때만 제안을 그린다."""
         js = _read(APPJS)
-        m = re.search(r"asxSuggest\(\)\s*\{.*?\n      \}", js, re.S)
-        self.assertIsNotNone(m)
-        self.assertIn("asxStage() !== 'after'", m.group(0))
+        on = _fn(js, "asxSuggestOn")
+        self.assertIn("asxAfter()", on)
+        self.assertIn("asxEff() === 'after'", on)
+        self.assertIn("asxSuggestOn()", _fn(js, "asxSuggest"))
 
     def test_parses_as_javascript(self):
         import shutil

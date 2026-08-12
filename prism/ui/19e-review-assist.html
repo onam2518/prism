@@ -7,21 +7,30 @@
            가장 자주 부딪히는 자리다. 그 파일에는 자리표(#asxSlot) 한 줄만 두고 본문은
            이 조각에 모아 둔다(같은 기법: page.py 의 모델 선택 메뉴 x-teleport).
 
-           독립성 원칙(훼손 금지): 판정 전에는 근거와 기준만 보인다. 추천·수정 제안은
-           검수자가 판정을 낸 뒤에만 나타난다. 골드 문항에는 패널 자체가 붙지 않는다.
-           보조를 켜지 않아도 검수는 그대로 된다 — 기본은 접힘이고 펼 때만 호출한다. -->
+           독립성 원칙(훼손 금지)
+           · 판정 전: 콘텐츠 자체에서 나오는 것만 — 3줄 요약 · 모델 판정 근거 · 초안 값 · 분류 기준.
+           · 판정 후: 위 + 선례 + 다른 검수자 의견 + 수정 제안.
+             선례와 다른 검수자 의견은 남이 내린 판정이라 판정 전에는 x-if 로 **그리지 않는다**
+             (숨기는 게 아니다 · 호출도 하지 않는다). 먼저 보면 그 값이 기준점이 되고,
+             검수자끼리의 일치도로 계산하는 신뢰도 지표가 조용히 부푼다.
+           · 골드 문항도 패널이 똑같이 붙는다 — 패널이 사라지면 그게 골드 신호가 된다.
+             서버를 부르지 않고 '자료 없는 콘텐츠'와 같은 빈 상태로 그린다.
+           · 섹션 뼈대는 자료 유무와 무관하게 고정이다(빈 상태 문구로 자리를 지킨다).
+             섹션이 있다 없다 하면 그 자체가 콘텐츠에 대한 힌트가 된다. -->
       <template x-teleport="#asxSlot">
         <div class="dve__sec asx" x-show="asxAvail()" x-cloak x-effect="asxWatch()">
           <div class="flexrow" style="align-items:center;gap:8px;flex-wrap:wrap">
             <button type="button" class="copybtn" x-on:click="asxToggle()"
                     x-bind:aria-expanded="asxOpen ? 'true' : 'false'"
-                    data-tip="검수를 대신하지 않습니다 · 판정 전에는 근거와 기준만 보이고, 수정 제안은 판정을 낸 뒤에 나옵니다" data-tip-pos="top"
+                    data-tip="검수를 대신하지 않습니다 · 판정 전에는 이 콘텐츠에서 나오는 것만 보이고, 남이 내린 판정과 수정 제안은 판정을 낸 뒤에 나옵니다" data-tip-pos="top"
                     x-text="asxOpen ? '검수 보조 닫기' : '검수 보조 열기'"></button>
             <span class="text-xs text-muted" x-show="asxOpen && asxBusy">불러오는 중…</span>
-            <span class="ds-badge ds-badge--neutral" x-show="asxOpen && !asxBusy && !asxOff && asxStage()==='before'"
-                  style="cursor:help" data-tip="아직 판정을 내지 않았습니다 · 근거와 기준만 보여 드립니다" data-tip-pos="top">판정 전 · 근거와 기준</span>
-            <span class="ds-badge ds-badge--success" x-show="asxOpen && !asxBusy && !asxOff && asxStage()==='after'"
-                  style="cursor:help" data-tip="판정을 낸 뒤라 수정 제안까지 함께 보여 드립니다" data-tip-pos="top">판정 후 · 수정 제안 포함</span>
+            <!-- 배지는 '지금 이 패널이 그리고 있는 단계'를 말한다(그리기 기준 = asxAfter).
+                 서버가 다르게 처리했으면 아래 어긋남 안내가 따로 뜬다. -->
+            <span class="ds-badge ds-badge--neutral" x-show="asxOpen && !asxBusy && !asxOff && !asxAfter()"
+                  style="cursor:help" data-tip="아직 판정을 내지 않았습니다 · 이 콘텐츠에서 나오는 근거와 기준만 보여 드립니다" data-tip-pos="top">판정 전 · 근거와 기준</span>
+            <span class="ds-badge ds-badge--success" x-show="asxOpen && !asxBusy && !asxOff && asxAfter()"
+                  style="cursor:help" data-tip="판정을 낸 뒤라 선례와 다른 검수자 의견, 비슷한 교정 사례까지 함께 보여 드립니다" data-tip-pos="top">판정 후 · 선례와 사례 포함</span>
           </div>
 
           <div class="asx__body" x-show="asxOpen" x-cloak>
@@ -31,6 +40,11 @@
 
             <template x-if="!asxOff && !asxErr">
               <div>
+                <!-- 보낸 stage 와 서버가 처리한 stage 가 어긋나면 알린다.
+                     조용히 before 로 떨어지면 검수자는 '제안이 없다'로 잘못 읽는다. -->
+                <div class="text-xs" style="color:var(--ds-error);padding:8px 0" x-show="asxStageEcho()"
+                     x-text="'요청한 단계 ' + asxStageLabel(asxSent) + ' · 서버가 처리한 단계 ' + asxStageLabel(asxStageEcho()) + ' · 아래 내용은 서버가 처리한 단계 기준입니다'"></div>
+
                 <!-- 3줄 요약 -->
                 <div class="asx__sec">
                   <div class="dve__lbl">3줄 요약</div>
@@ -45,15 +59,16 @@
                 <div class="asx__sec">
                   <div class="dve__lbl">모델 판정 근거</div>
                   <div class="tbox" x-show="asxBrief && asxBrief.has_evidence" x-text="asxBrief ? asxBrief.evidence : ''"></div>
-                  <div class="text-xs text-muted" x-show="asxBrief && !asxBrief.has_evidence">저장된 근거 없음</div>
+                  <div class="text-xs text-muted" x-show="!(asxBrief && asxBrief.has_evidence)">저장된 근거 없음</div>
                 </div>
 
                 <!-- 초안 값: 도구가 준 필드값 묶음을 그대로 편다(화면이 해석해 꾸미지 않는다) -->
-                <div class="asx__sec" x-show="asxValues().length" x-cloak>
+                <div class="asx__sec">
                   <div class="dve__lbl">초안 값</div>
                   <template x-for="row in asxValues()" x-bind:key="'asxval'+row.k">
                     <div class="asx__kv"><span class="asx__k" x-text="row.k"></span><span class="asx__v" x-text="row.v || '·'"></span></div>
                   </template>
+                  <div class="text-xs text-muted" x-show="!asxValues().length">값 없음</div>
                 </div>
 
                 <!-- 이 서비스의 분류 기준 -->
@@ -65,55 +80,62 @@
                   <div class="text-xs text-muted" x-show="!asxCriteria().length">기준 없음</div>
                 </div>
 
-                <!-- 선례: 비슷한 콘텐츠에 이미 내려진 판정 -->
-                <div class="asx__sec">
-                  <div class="dve__lbl">선례</div>
-                  <div class="text-xs text-muted" style="margin-bottom:6px" x-show="asxStage()==='before' && asxPrecItems().length">남이 내린 판정입니다 · 내 판단을 먼저 정한 뒤 참고하세요</div>
-                  <template x-for="(p, pi) in asxPrecItems()" x-bind:key="'asxprec'+pi+(p.hash||'')">
-                    <div class="asx__row">
-                      <div class="asx__row-hd">
-                        <span class="ds-badge" x-bind:class="asxVerdictClass(p.verdict)" x-text="asxVerdictLabel(p.verdict)"></span>
-                        <b class="asx__ttl" x-text="p.title || '(제목 없음)'"></b>
-                        <span class="text-xs text-muted tnum" x-show="p.ts" x-text="fmtTs(p.ts)"></span>
-                      </div>
-                      <div class="text-xs text-muted" x-show="p.reason" x-text="p.reason"></div>
-                      <div class="text-xs" style="color:var(--ds-placeholder)" x-show="p.why_similar" x-text="'비슷한 이유 · ' + p.why_similar"></div>
+                <!-- ── 여기부터는 판정을 낸 뒤에만 그린다(x-show 가 아니라 x-if = DOM 에 없다) ── -->
+                <template x-if="asxAfter()">
+                  <div>
+                    <!-- 선례: 확정된 비슷한 판정 · 몇 사람이 그렇게 봤는지가 무게를 다는 근거다 -->
+                    <div class="asx__sec">
+                      <div class="dve__lbl">선례</div>
+                      <template x-for="(p, pi) in asxPrecItems()" x-bind:key="'asxprec'+pi+(p.hash||'')">
+                        <div class="asx__row">
+                          <div class="asx__row-hd">
+                            <span class="ds-badge" x-bind:class="asxVerdictClass(p.verdict)" x-text="asxVerdictLabel(p.verdict)"></span>
+                            <span class="ds-badge ds-badge--neutral" x-show="asxWho(p.n)" x-text="asxWho(p.n)"></span>
+                            <b class="asx__ttl" x-text="p.title || '(제목 없음)'"></b>
+                            <span class="text-xs text-muted tnum" x-show="p.ts" x-text="fmtTs(p.ts)"></span>
+                          </div>
+                          <div class="text-xs text-muted" x-show="p.reason" x-text="p.reason"></div>
+                          <div class="text-xs" style="color:var(--ds-placeholder)" x-show="p.why_similar" x-text="'비슷한 이유 · ' + p.why_similar"></div>
+                        </div>
+                      </template>
+                      <div class="text-xs text-muted" x-show="!asxPrecItems().length">선례 없음</div>
+                      <!-- 잘렸으면 잘렸다고 쓴다 · 조용히 자르면 '다 봤다'로 읽힌다 -->
+                      <span class="ds-badge ds-badge--warning" x-show="asxCut(asxPrec)" x-text="asxCut(asxPrec)"></span>
                     </div>
-                  </template>
-                  <div class="text-xs text-muted" x-show="!asxPrecItems().length">선례 없음</div>
-                  <!-- 잘렸으면 잘렸다고 쓴다 · 조용히 자르면 '다 봤다'로 읽힌다 -->
-                  <span class="ds-badge ds-badge--warning" x-show="asxCut(asxPrec)" x-text="asxCut(asxPrec)"></span>
-                </div>
 
-                <!-- 다른 검수자 의견 -->
-                <div class="asx__sec">
-                  <div class="dve__lbl">다른 검수자 의견
-                    <span class="ds-badge ds-badge--reason" x-show="asxDis && asxDis.split" style="margin-left:4px">의견 갈림</span></div>
-                  <template x-for="(v, vi) in asxDisItems()" x-bind:key="'asxdis'+vi">
-                    <div class="asx__row">
-                      <div class="asx__row-hd">
-                        <span class="ds-badge" x-bind:class="asxVerdictClass(v.verdict)" x-text="asxVerdictLabel(v.verdict)"></span>
-                        <b class="asx__ttl" x-text="v.reviewer || '(이름 없음)'"></b>
-                        <span class="text-xs text-muted tnum" x-show="v.ts" x-text="fmtTs(v.ts)"></span>
-                      </div>
-                      <div class="text-xs text-muted" x-show="v.reason" x-text="v.reason"></div>
+                    <!-- 다른 검수자 의견 -->
+                    <div class="asx__sec">
+                      <div class="dve__lbl">다른 검수자 의견
+                        <span class="ds-badge ds-badge--reason" x-show="asxDis && asxDis.split" style="margin-left:4px">의견 갈림</span></div>
+                      <template x-for="(v, vi) in asxDisItems()" x-bind:key="'asxdis'+vi">
+                        <div class="asx__row">
+                          <div class="asx__row-hd">
+                            <span class="ds-badge" x-bind:class="asxVerdictClass(v.verdict)" x-text="asxVerdictLabel(v.verdict)"></span>
+                            <b class="asx__ttl" x-text="v.reviewer || '(이름 없음)'"></b>
+                            <span class="text-xs text-muted tnum" x-show="v.ts" x-text="fmtTs(v.ts)"></span>
+                          </div>
+                          <div class="text-xs text-muted" x-show="v.reason" x-text="v.reason"></div>
+                        </div>
+                      </template>
+                      <div class="text-xs text-muted" x-show="!asxDisItems().length">다른 의견 없음</div>
+                      <span class="ds-badge ds-badge--warning" x-show="asxCut(asxDis)" x-text="asxCut(asxDis)"></span>
                     </div>
-                  </template>
-                  <div class="text-xs text-muted" x-show="!asxDisItems().length">다른 의견 없음</div>
-                </div>
 
-                <!-- 수정 제안: 판정을 낸 뒤에만 · 서버도 stage=after 에만 싣고 화면도 한 번 더 막는다 -->
-                <div class="asx__sec" x-show="asxStage()==='after'" x-cloak>
-                  <div class="dve__lbl">수정 제안 <span class="text-xs text-muted" style="font-weight:400">· 판정을 낸 뒤에만 보입니다</span></div>
-                  <template x-for="(s, gi) in asxSuggest()" x-bind:key="'asxsug'+gi">
-                    <div class="asx__row">
-                      <div class="asx__row-hd"><b class="asx__ttl" x-text="s.field"></b></div>
-                      <div class="text-xs"><span class="asx__from" x-text="s.from || '(비어 있음)'"></span> → <span class="asx__to" x-text="s.to"></span></div>
-                      <div class="text-xs text-muted" x-show="s.basis" x-text="'근거 · ' + s.basis"></div>
+                    <!-- 수정 제안: 같은 값을 같게 고친 과거 교정을 센 것이다. 권장도 정답도 아니라서
+                         강조하지 않는다 — 건수를 그대로 보여 주고 판단은 검수자가 한다. -->
+                    <div class="asx__sec" x-show="asxSuggestOn()">
+                      <div class="dve__lbl">비슷한 교정 사례</div>
+                      <template x-for="(s, gi) in asxSuggest()" x-bind:key="'asxsug'+gi">
+                        <div class="asx__row">
+                          <div class="asx__row-hd"><b class="asx__ttl" x-text="s.field"></b></div>
+                          <div class="text-xs"><span class="asx__from" x-text="s.from || '(비어 있음)'"></span> → <span class="asx__to" x-text="s.to"></span></div>
+                          <div class="text-xs text-muted" x-show="s.basis" x-text="s.basis"></div>
+                        </div>
+                      </template>
+                      <div class="text-xs text-muted" x-show="!asxSuggest().length">비슷한 교정 사례 없음 · 같은 교정이 2건 이상 쌓인 필드만 올라옵니다</div>
                     </div>
-                  </template>
-                  <div class="text-xs text-muted" x-show="!asxSuggest().length">수정 제안 없음</div>
-                </div>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
