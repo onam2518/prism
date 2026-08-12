@@ -76,6 +76,14 @@ PRECEDENT_MIN_N = 2
 # 선례'다). 그래서 판단 재료(verdict·n·why_similar)는 남기고 식별자만 지운다. reason 은
 # 검수자가 쓴 자유 문장이라 소재를 그대로 부를 수 있어 함께 지운다.
 # 키는 남기고 값만 비운다 — 항목 모양이 조건에 따라 달라지면 클라이언트가 갈라진다.
+#
+# 이 가리기는 골드 원본을 **빠짐없이** 덮는다. 두 가지가 맞물려서다.
+#   ① 골드 문항은 골든셋에서만 만들어진다(`_inject_gold` 가 `get_golden` 만 돈다).
+#   ② 골든 행의 content_hash 컬럼과 `_inject_gold` 가 쓰는 `_chash(content)` 가 같은 값이다
+#      — 등록 경로가 전부 같은 content_hash() 로 키와 본문을 함께 넣기 때문이다
+#      (learnops.build_golden_from_reviews · supastore.register_golden).
+# 둘 중 하나라도 깨지면(골든 아닌 콘텐츠로 골드를 만들거나, 키와 본문이 따로 놀면)
+# 이 방어에 구멍이 생긴다. 그때는 여기가 아니라 그 전제를 고쳐야 한다.
 GOLDEN_BLIND_FIELDS = ("hash", "title", "reason")
 # 제안 노출 최소 건수. 1건은 선례가 아니라 한 사람의 판단이다.
 SUGGEST_MIN = 2
