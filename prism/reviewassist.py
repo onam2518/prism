@@ -1,0 +1,598 @@
+"""내부 검수 보조(트랙 A) 도구 · 검수자가 화면에서 판정을 빨리 내리도록 돕는다.
+
+검수를 대신하는 기능이 아니다. 검수 결과는 **사람의 판단을 재는 값**이라, 보조가 답을
+흘리는 순간 측정 대상이 사람이 아니게 된다. 그래서 아래 넷은 편의 요구가 아니라 계약이다.
+
+1. **판정 전에는 근거·기준만.** `stage='before'` 응답에는 추천성 키가 아예 없다(빈 값이
+   아니라 키 부재). 비워서 내려보내면 클라이언트가 언젠가 그 키를 읽고, 그때부터 조용히
+   답이 샌다. 모르는 stage 값은 'before' 로 수렴한다(모르면 덜 주는 쪽).
+2. **추천·수정 제안, 그리고 남이 내린 판정은 판정 뒤에만.** `stage='after'` 에서만
+   suggestions 가 붙고, 선례(`verdict_precedents`)·다른 검수자 의견(`reviewer_dissent`)은
+   아예 거절된다. 남의 판정을 먼저 보면 그 값이 기준점이 된다 — 프리즘은 검수자끼리의
+   일치도로 신뢰도를 재는데, B 가 A 의 판정을 보고 정하면 그 일치는 독립된 근거가 아니다.
+   지표가 조용히 부풀고, 부풀었다는 것을 알 방법이 없다. 그래서 화면이 아니라 **서버에서**
+   막는다(규칙이 클라이언트에 있으면 다음 클라이언트가 어긴다).
+3. **골드 문항은 어떤 경로로도 나가지 않는다.** 골드는 검수자 신뢰도를 재는 장치라 보조가
+   개입하면 측정이 무너진다. 선례·제안 목록에서 거르고, 요청 해시가 골드면 자료를 주지 않는다.
+   다만 **거절 방식도 신호가 된다** — 골드에서만 오류가 뜨면 검수자가 그것으로 골드를
+   알아보고, 알아보는 순간 골드가 재려던 것(평소의 검수)이 사라진다. 그래서 목록형 도구는
+   오류가 아니라 **빈 결과**를 준다(선례 없는 평범한 콘텐츠와 구분되지 않는다).
+   `content_brief` 만 거절을 유지한다. 골드 문항이 화면에 보여 주는 값은 저장된 행이 아니라
+   골든 정답을 **일부러 뒤집은** 사본이라(`reviewops._inject_gold` · 해시 홀짝으로 등급 반전 ·
+   골든 `content_hash` 는 `results` 키와 같은 16자라 저장 행이 그대로 잡힌다), 저장된 행으로
+   브리핑을 만들면 화면은 G·브리핑은 R 이 되고 그 어긋남 자체가 정답이 된다. 골드 브리핑은
+   서버가 안전하게 만들 방법이 없다 — 화면과 똑같이 뒤집어 답하려면 이 모듈이 골든 정답을
+   읽고 뒤집기 규칙을 두 번째로 구현해야 하고, 나중에 한쪽만 바뀌면 그 어긋남이 새 오라클이
+   된다. 그래서 골드에는 아무것도 주지 않고, 브리핑은 클라이언트가 이미 화면에 그린 값과
+   이미 받아 둔 공용 사전(`/dict`)으로 조립한다(해시가 서버로 나가지 않는다).
+4. **근거를 지어내지 않는다.** 저장된 값을 조립할 뿐 모델을 새로 돌리지 않는다. 판정 근거를
+   사후에 재생성하면 그럴듯한 창작이 된다(모델은 자기 추론 과정에 접근하지 못한다).
+   `quality_meta.evidence` 가 비어 있으면 없다고 말한다 — 2026-08-12 신설 필드라 그 이전
+   운영 데이터는 대부분 비어 있고, 그 빈칸을 메우려는 순간 이 도구는 거짓말을 시작한다.
+
+## 이 규칙들을 어떻게 검증하나 (여기 손대는 다음 사람에게)
+
+**"골드 자료를 안 담았다" 를 단언하는 테스트로는 부족하다.** 위 규칙은 전부 *차이가 보이나*에
+관한 것이라, 자료를 안 담고도 깨진다. 2026-08-12 작업에서 실제로 세 번 같은 모양으로 밟았다.
+
+  · 골드에 오류를 돌려줌 → 오류 문구가 화면에 떠서 그게 곧 "이건 골드다" 신호
+  · 화면이 빈 제목을 `(제목 없음)` 으로 그림 → 가려진 항목에 오히려 표시가 붙음
+  · 평범한 콘텐츠 전부에 근거가 생기면 → 골드의 "근거 없음" 한 줄이 신호
+
+셋 다 "골드 자료 미포함" 단언은 통과했다. **가리는 행위 자체가 표시가 된다** — 규칙의 문자는
+지키면서 목적은 어기는 자리다.
+
+그래서 응답 수준 규칙은 포함/미포함이 아니라 **동일성**으로 적는다: "골드 응답이 평범한
+콘텐츠 응답과 같다"(`test_list_tools_return_empty_not_an_error_for_gold` 가 그 모양). 첫째
+경우가 정확히 이걸로 잡힌다.
+
+**나머지 둘은 서버 테스트로 잡을 수 없다.** 둘째는 클라이언트의 렌더 선택이고(서버 응답은
+양쪽 다 `title=""` 로 같다), 셋째는 한 응답이 아니라 콘텐츠 전체에 근거가 얼마나 찼는가 하는
+분포의 성질이라 단건 단언이 닿지 않는다. 이 계층의 회귀가 **테스트 통과로 확인되지 않는**
+이유가 이것이다. 위 셋과 `stage` 필수 누락까지 넷 다 목이 아니라 실 백엔드를 붙여 화면에
+그려 본 뒤에 나왔다(정적으로는 전부 "골드를 막고 있다" 로 읽혔다).
+
+다만 "그려 봐야 보인다" 가 "자동화하지 않아도 된다" 는 뜻은 아니다 — **잡을 수 있는 자리가
+옮겨간 것뿐**이다. 둘째는 서버에서 못 잡을 뿐 클라이언트에서는 잡힌다(화면 조각을 실제로
+실행해 골드 사본과 평범한 콘텐츠의 출력 동일성을 묻는 테스트가 UI 쪽에 있다 · 2026-08-12).
+사람이 매번 그려 보는 것은 두 세션이 붙어 있을 때만 되므로, 규칙이 어느 계층에서든 실행으로
+표현될 수 있으면 거기에 고정한다. 사람 손에 남기는 것은 셋째처럼 **어느 한 실행으로도
+드러나지 않는 것**뿐이다.
+
+공통 가드(팀 강제·상한·잘림 보고·예외 은닉)와 디스패치는 `prismtools` 를 그대로 쓴다.
+도구 계층 규칙이 두 벌이 되면 반드시 어긋나고, 어긋난 쪽이 조용히 틀린 답을 낸다.
+
+앞단은 `serve.py` 의 `/assist`(gate=team) 하나. 팀은 세션에서 해석한 값만 들어온다.
+"""
+from __future__ import annotations
+
+from . import dictionaries as D
+from . import prismtools as PT
+
+_SV = None                                   # serve 주입(컴포지션 루트)
+
+STAGES = ("before", "after")
+
+# stage='before' 응답에서 존재 자체가 금지된 키. 코드가 실수로 담아도 마지막에 떨어낸다
+# (테스트뿐 아니라 런타임에서도 막는 이중 방어 · 이 목록이 독립성의 경계선이다).
+SUGGESTIVE_KEYS = ("suggestions", "recommendation", "recommended", "answer", "verdict_hint", "advice")
+
+GOLD_MSG = "골드 문항에는 검수 보조를 제공하지 않습니다"
+NOT_FOUND_MSG = "콘텐츠를 찾지 못했습니다"
+# 남의 판정(선례·다른 검수자 의견)은 판정 뒤에만 나간다. 다음 행동을 알 수 있게 쓴다.
+AFTER_ONLY_MSG = "판정을 낸 뒤에 조회할 수 있습니다 · 판정 후 stage=\"after\" 로 다시 부르세요"
+# 근거가 없을 때 내려보내는 문장. '없다' 를 말하는 것이 이 도구의 정확성이다.
+NO_EVIDENCE = "저장된 모델 판정 근거가 없습니다(근거 저장 이전 데이터) · 근거는 지어내지 않습니다"
+
+TITLE_MAX, NOTE_MAX, EVIDENCE_SNIP = 60, 200, 200
+CRITERIA_MAX = 12
+PRECEDENT_DEFAULT, PRECEDENT_MAX = 5, 20
+DISSENT_MAX = 20
+PATCH_SCAN, SUGGEST_MAX = 400, 5
+
+# 확정 선례의 최소 판정 인원. 1인 판정을 '확정 선례' 로 되먹이면 그 한 사람의 편향이 증폭되고,
+# 무엇보다 '선례' 라는 말이 거짓이 된다. 저장 계층의 agree 는 n=1 에서도 참이라 여기서 막는다.
+PRECEDENT_MIN_N = 2
+
+# 골든 원본 선례에서 지우는 필드 = '어느 콘텐츠인지 알아보는 손잡이'.
+#
+# 골드 문항의 원본(`gold:ok:<h>` 의 h)은 골든셋에 올라간 확정 검수 콘텐츠라 results 에
+# 평범한 행으로 있다. strip_gold 는 합성 해시만 거르지 이 원본은 못 거른다. 그대로 두면
+# 검수자가 선례에서 본 제목을 나중에 큐의 골드 문항에서 알아보고 정답을 안다 —
+# 선례에는 확정 판정과 등급이 실려 있으니 그게 곧 정답 해설이다.
+#
+# 그렇다고 골든 원본을 선례에서 통째로 빼면 기능 값이 크게 깎인다(골든이 곧 '확정된 좋은
+# 선례'다). 그래서 판단 재료(verdict·n·why_similar)는 남기고 식별자만 지운다. reason 은
+# 검수자가 쓴 자유 문장이라 소재를 그대로 부를 수 있어 함께 지운다.
+# 키는 남기고 값만 비운다 — 항목 모양이 조건에 따라 달라지면 클라이언트가 갈라진다.
+#
+# 이 가리기는 골드 원본을 **빠짐없이** 덮는다. 두 가지가 맞물려서다.
+#   ① 골드 문항은 골든셋에서만 만들어진다(`_inject_gold` 가 `get_golden` 만 돈다).
+#   ② 골든 행의 content_hash 컬럼과 `_inject_gold` 가 쓰는 `_chash(content)` 가 같은 값이다
+#      — 등록 경로가 전부 같은 content_hash() 로 키와 본문을 함께 넣기 때문이다
+#      (learnops.build_golden_from_reviews · supastore.register_golden).
+# 둘 중 하나라도 깨지면(골든 아닌 콘텐츠로 골드를 만들거나, 키와 본문이 따로 놀면)
+# 이 방어에 구멍이 생긴다. 그때는 여기가 아니라 그 전제를 고쳐야 한다.
+GOLDEN_BLIND_FIELDS = ("hash", "title", "reason")
+# 제안 노출 최소 건수. 1건은 선례가 아니라 한 사람의 판단이다.
+SUGGEST_MIN = 2
+
+# 교정 로그(patch_log)가 쓰는 요소 키 → 이 콘텐츠의 현재 값을 읽어 올 자리.
+# 여기 없는 키는 제안 대상이 아니다(모르는 필드로 추측하지 않는다).
+PATCH_FIELDS = ("summary", "entities", "intent", "content_category", "topic",
+                "finalGrade", "reasons")
+# 목록으로 저장되는 필드 = 요소 단위로 비교한다(목록 전체 일치를 요구하면 운영에서 거의 안 걸린다).
+LIST_FIELDS = ("entities", "intent", "content_category", "reasons")
+# 교정 로그 요소 키 → _values 의 키(이름이 다른 것만).
+_VAL_KEY = {"finalGrade": "grade"}
+
+
+# ── 소소한 도구 ──────────────────────────────────────────────────────────────
+def _clip(s, n: int) -> str:
+    s = str(s or "").strip()
+    return s if len(s) <= n else s[:n].rstrip() + "…"
+
+
+def _names(vs) -> list:
+    """엔티티 등 문자열/객체 혼재 목록을 표시 문자열 목록으로."""
+    out = []
+    for v in vs or []:
+        n = (v.get("name") or v.get("text") or "") if isinstance(v, dict) else str(v or "")
+        n = str(n).strip()
+        if n:
+            out.append(n)
+    return out
+
+
+def _epoch(ts) -> float:
+    """정렬용 epoch. sqlite=float · supabase=ISO 문자열 혼재를 흡수(reviewops 이력과 같은 해석)."""
+    if isinstance(ts, (int, float)):
+        return float(ts)
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _norm(v) -> str:
+    """값 비교용 정규화. 목록은 순서를 지켜 잇는다(순서도 교정 대상이라 정렬하지 않는다)."""
+    if isinstance(v, (list, tuple)):
+        return " · ".join(str(x).strip() for x in v if str(x).strip())
+    return str(v if v is not None else "").strip()
+
+
+def _stage(v) -> str:
+    """단계 해석. 모르는 값은 'before' 로 수렴한다 — 오타·구버전 클라이언트가 판정 뒤 자료를
+    열지 못하게 하는 쪽이 안전하다(모르면 덜 주는 쪽)."""
+    s = str(v or "").strip().lower()
+    return s if s in STAGES else "before"
+
+
+def _reason_label(rid: str) -> str:
+    return (getattr(D, "QUALITY_META_NAMES", {}) or {}).get(rid, rid)
+
+
+def _index(team) -> dict:
+    """팀 스코프 콘텐츠 해시 → 저장 행. 팀 필터는 저장 계층이 건다(호출자 팀만 넘긴다)."""
+    if not _SV:
+        return {}
+    try:
+        rows = _SV.results_rows(team=team) or []
+    except Exception:
+        return {}
+    out = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        try:
+            k = _SV._row_key(r.get("content_ref") or {})
+        except Exception:
+            continue
+        if k:
+            out[k] = r
+    return out
+
+
+def _golden(team):
+    """골든셋에 올라간 콘텐츠 해시. 모르면 None(= 전부 골든으로 취급).
+
+    실패를 빈 집합으로 돌려주면 조회가 한 번 흔들릴 때마다 식별자가 그대로 나간다 —
+    안전장치가 오류에 열리면 안전장치가 아니다. 못 읽으면 다 가리는 쪽으로 닫는다."""
+    st = _SV.get_store() if _SV else None
+    if not (st and hasattr(st, "golden_hashes")):
+        return None
+    try:
+        return set(st.golden_hashes(team=team) or ())
+    except Exception:
+        return None
+
+
+def _feedback(team) -> dict:
+    st = _SV.get_store() if _SV else None
+    if not (st and hasattr(st, "feedback_map")):
+        return {}
+    try:
+        return st.feedback_map(team=team) or {}
+    except Exception:
+        return {}
+
+
+def _values(row: dict) -> dict:
+    """부여된 값 묶음. 저장된 것만 담는다(빈 값은 빈 값으로 남긴다)."""
+    ref = row.get("content_ref") or {}
+    qm = row.get("quality_meta") or {}
+    im = row.get("item_meta") or {}
+    reasons = [str(r) for r in (qm.get("reasons") or []) if r]
+    return {
+        "service": str(ref.get("displayServiceName", "") or ""),
+        "title": str(ref.get("title", "") or ""),
+        "grade": str(qm.get("finalGrade", "") or ""),
+        "reasons": reasons,
+        "reason_labels": [_reason_label(r) for r in reasons],
+        "review": str(qm.get("review", "") or ""),
+        "review_reason": str(qm.get("review_reason", "") or ""),
+        "confidence": qm.get("confidence"),
+        "intent": _names(im.get("intent")),
+        "content_category": _names(im.get("content_category")),
+        "entities": _names(im.get("entities")),
+        "summary": str(im.get("summary", "") or ""),
+        "topic": str(im.get("topic", "") or ""),
+    }
+
+
+# ── content_brief ────────────────────────────────────────────────────────────
+def _summary3(vals: dict, evidence: str) -> list:
+    """3줄 요약. 저장된 값을 잇는 것뿐이라 문장이 늘거나 줄지 않는다(항상 3줄)."""
+    cat = " · ".join(vals["content_category"]) or "카테고리 미부여"
+    l1 = f"{vals['service'] or '서비스 미상'} · {_clip(vals['title'], TITLE_MAX)} · {cat}"
+    rs = ", ".join(vals["reason_labels"]) or "지적된 품질 사유 없음"
+    l2 = f"모델 초안: 등급 {vals['grade'] or '미상'} · {rs}"
+    if vals["review"] == "yellow":
+        l2 += " · 사람 검수 필요" + (f"({vals['review_reason']})" if vals["review_reason"] else "")
+    l3 = ("모델이 남긴 판정 근거: " + _clip(evidence, EVIDENCE_SNIP)) if evidence else NO_EVIDENCE
+    return [l1, l2, l3]
+
+
+def _criteria(vals: dict, team) -> list:
+    """이 콘텐츠에 걸린 분류 기준 발췌. 정의문 원천은 INTENT_VALUE_DEFS·QUALITY_METAS 하나뿐이라
+    prismtools.get_taxonomy 를 그대로 재사용한다(검수 화면·추출 프롬프트와 같은 문장)."""
+    tx = PT.get_taxonomy("intent", service=vals["service"], team=team) or {}
+    defs = {v.get("key"): v.get("desc", "") for v in (tx.get("values") or [])}
+    picked = [k for k in vals["intent"] if k in defs]
+    items = [{"key": k, "desc": defs.get(k, "")} for k in picked]
+
+    rtx = PT.get_taxonomy("reason", team=team) or {}
+    rdefs = {v.get("key"): (v.get("label") or v.get("key"), v.get("desc", ""))
+             for v in (rtx.get("values") or [])}
+    for r in vals["reasons"]:
+        lbl, desc = rdefs.get(r, (_reason_label(r), ""))
+        items.append({"key": lbl, "desc": desc})
+
+    if not picked:              # 부여된 인텐트가 없으면 그 서비스의 후보 기준을 보여 준다(추천 아님)
+        room = max(0, CRITERIA_MAX - len(items))
+        items += [{"key": k, "desc": defs.get(k, "")} for k in list(defs)[:room]]
+
+    out, seen = [], set()
+    for it in items:
+        if it["key"] and it["key"] not in seen:
+            seen.add(it["key"])
+            out.append(it)
+    return out[:CRITERIA_MAX]
+
+
+def _elems(v) -> list:
+    """목록 필드의 요소들. 스칼라는 1개짜리 목록으로 본다."""
+    if isinstance(v, (list, tuple)):
+        return [s for s in (str(x).strip() for x in v) if s]
+    s = str(v if v is not None else "").strip()
+    return [s] if s else []
+
+
+def _observations(field: str, bv, av, cur) -> list:
+    """교정 1건에서 읽어 낼 (출발값 → 도착값) 관찰. **짝이 분명한 것만** 센다.
+
+    목록 필드는 요소 단위로 본다 — 목록 전체가 같아야 한다면 운영에서 거의 안 걸려 기능이
+    없는 것과 같다. 다만 여러 개가 한꺼번에 바뀐 교정은 무엇이 무엇으로 바뀌었는지 알 수
+    없으므로 짝짓지 않는다. 짝을 지어내는 것이 곧 없는 근거를 만드는 것이다."""
+    if field not in LIST_FIELDS:
+        b, a = _norm(bv), _norm(av)
+        return [(b, a)] if (a and a != b and b == _norm(cur)) else []
+    bl, al, cl = _elems(bv), _elems(av), _elems(cur)
+    removed = [x for x in bl if x not in al]
+    added = [x for x in al if x not in bl]
+    if len(removed) == 1 and len(added) == 1:     # 한 요소를 다른 요소로 바꾼 교정
+        return [(removed[0], added[0])] if removed[0] in cl else []
+    if added and not removed and not bl and not cl:
+        return [("", a) for a in added]           # 비어 있던 필드를 채운 교정(대상도 비어 있을 때만)
+    return []
+
+
+def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
+    """수정 제안 = 같은 서비스에서 **같은 출발값을 같게 고친 과거 교정**의 집계.
+
+    새로 만들어 내는 값이 없다. 셀 뿐이다. 그래서 다음 셋을 지킨다.
+      · 출발값이 같을 때만 센다(다른 값에서 출발한 교정은 이 콘텐츠의 선례가 아니다)
+      · SUGGEST_MIN 건 이상 쌓여야 내보낸다 — 1건은 선례가 아니라 한 사람의 판단이다
+      · 센 건수와 검수자 수를 함께 실어 무게는 검수자가 스스로 단다
+    basis 에는 **세어진 사실만** 적는다. "이렇게 고치세요" 는 이 도구가 할 말이 아니다.
+
+    판정 뒤에만 부른다(content_brief 가 stage 로 분기)."""
+    st = _SV.get_store() if _SV else None
+    if not (st and hasattr(st, "patch_rows")):
+        return []
+    try:
+        rows = st.patch_rows(limit=PATCH_SCAN, team=team) or []
+    except Exception:
+        return []
+    svc_of = {h: str((r.get("content_ref") or {}).get("displayServiceName", "") or "")
+              for h, r in idx.items()}
+    cur = {k: vals[_VAL_KEY.get(k, k)] for k in PATCH_FIELDS}
+    tally = {}
+    for pr in PT.strip_gold(rows):
+        h = str(pr.get("hash") or "")
+        if not h or h == ch or svc_of.get(h) != vals["service"]:
+            continue                              # 다른 서비스·자기 자신의 교정은 선례가 아니다
+        before, after = pr.get("before"), pr.get("after")
+        if not (isinstance(before, dict) and isinstance(after, dict)):
+            continue
+        who = str(pr.get("reviewer") or "")
+        for k, av in after.items():
+            if k not in cur:
+                continue
+            for b, a in _observations(k, before.get(k), av, cur[k]):
+                e = tally.setdefault((k, b, a), {"n": 0, "who": set()})
+                e["n"] += 1
+                if who:
+                    e["who"].add(who)
+    out = []
+    for (k, b, a), e in sorted(tally.items(),
+                               key=lambda kv: (-kv[1]["n"], -len(kv[1]["who"]), kv[0])):
+        if e["n"] < SUGGEST_MIN:                  # 1건은 선례가 아니라 한 사람의 판단이다
+            continue
+        n, w = e["n"], len(e["who"])
+        basis = (f"이 서비스({vals['service']})에서 같은 출발값을 이렇게 고친 교정 {n}건" if b
+                 else f"이 서비스({vals['service']})에서 비어 있던 {k} 를 이렇게 채운 교정 {n}건")
+        out.append({"field": k, "from": b, "to": a, "count": n, "reviewers": w,
+                    "basis": f"{basis} · 검수자 {w}명"})
+        if len(out) >= SUGGEST_MAX:
+            break
+    return out
+
+
+def content_brief(hash: str = "", stage: str = "before", team=None) -> dict:
+    """이 콘텐츠가 왜 이렇게 판정됐나 · 3줄 요약 + 저장된 근거 + 부여된 값 + 분류 기준."""
+    blocked = PT.need_team(team)
+    if blocked:
+        return blocked
+    ch = str(hash or "").strip()
+    if not ch:
+        return {"error": "콘텐츠를 지정해 주세요"}
+    if PT.is_gold(ch):
+        return {"error": GOLD_MSG}
+    stage = _stage(stage)
+    idx = _index(team)
+    row = idx.get(ch)
+    if row is None:
+        return {"error": NOT_FOUND_MSG}
+    vals = _values(row)
+    ev = str((row.get("quality_meta") or {}).get("evidence") or "").strip()
+    out = {
+        "stage": stage,
+        "summary3": _summary3(vals, ev),
+        "evidence": ev or None,                   # 없으면 없다고 말한다(빈 문자열로 얼버무리지 않는다)
+        "has_evidence": bool(ev),
+        "values": vals,
+        "criteria": _criteria(vals, team),
+    }
+    if stage == "after":
+        out["suggestions"] = _suggestions(ch, vals, idx, team)
+    else:
+        for k in SUGGESTIVE_KEYS:                 # 이중 방어: 판정 전에는 키 자체가 없어야 한다
+            out.pop(k, None)
+    return out
+
+
+# ── verdict_precedents ───────────────────────────────────────────────────────
+def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=None) -> dict:
+    """비슷한 과거 판정(선례). 무엇이 '비슷함'인지(why_similar)를 함께 실어 검수자가 스스로 본다.
+
+    **판정 뒤에만 나간다.** 남이 내린 판정을 먼저 보면 그 값이 기준점이 된다. 프리즘은
+    검수자끼리의 일치도로 신뢰도를 재는데, B 가 A 의 판정을 보고 정하면 그 일치는 독립된
+    근거가 아니다 — 지표가 조용히 부풀고, 부풀었다는 것을 알 방법이 없다.
+
+    확정된 것만 센다 = PRECEDENT_MIN_N 인 이상이 갈리지 않고 같은 판정을 낸 건. 갈린 건은
+    reviewer_dissent 쪽이고, 1인 판정은 어느 쪽도 아니다(그냥 근거가 부족한 것이다)."""
+    blocked = PT.need_team(team)
+    if blocked:
+        return blocked
+    ch = str(hash or "").strip()
+    empty = {"items": [], "total": 0, "truncated": False}
+    if _stage(stage) != "after":
+        return dict(empty, error=AFTER_ONLY_MSG)
+    if not ch:
+        return dict(empty, error="콘텐츠를 지정해 주세요")
+    if PT.is_gold(ch):
+        return dict(empty)                        # 오류가 아니라 빈 결과(오류는 화면에 뜨고 = 골드 신호)
+    lim = PT.qint(limit, PRECEDENT_DEFAULT, 1, PRECEDENT_MAX)
+    idx = _index(team)
+    row = idx.get(ch)
+    if row is None:
+        return dict(empty, error=NOT_FOUND_MSG)
+    me = _values(row)
+    mine = (set(me["reasons"]), set(me["intent"]), set(me["content_category"]))
+    fbm = _feedback(team)
+
+    ranked = []
+    for h, r in idx.items():
+        if h == ch or PT.is_gold(h):              # 골드는 선례로도 나가지 않는다
+            continue
+        v = _values(r)
+        if v["service"] != me["service"]:
+            continue
+        fb = fbm.get(h) or {}
+        n = int(fb.get("n") or 0)
+        # 확정 = 최소 인원 이상이 갈리지 않고 같게 본 것. 저장 계층의 agree 는 n=1 에서도
+        # 참이라 여기서 인원을 함께 본다(1인 판정을 선례라 부르면 그 말이 거짓이 된다).
+        if n < PRECEDENT_MIN_N or not fb.get("agree"):
+            continue
+        verdict = str(fb.get("consensus") or fb.get("verdict") or "")
+        if verdict not in ("good", "bad"):
+            continue
+        why, score = [], 0
+        shared = mine[0] & set(v["reasons"])
+        if shared:
+            why.append("같은 품질 사유: " + ", ".join(_reason_label(x) for x in sorted(shared)))
+            score += 3
+        shared = mine[1] & set(v["intent"])
+        if shared:
+            why.append("같은 인텐트: " + ", ".join(sorted(shared)))
+            score += 2
+        shared = mine[2] & set(v["content_category"])
+        if shared:
+            why.append("같은 카테고리: " + ", ".join(sorted(shared)))
+            score += 2
+        if not score:                             # 서비스만 같은 건 '비슷함' 이 아니다
+            continue
+        if v["grade"] and v["grade"] == me["grade"]:
+            why.append(f"같은 등급: {v['grade']}")
+            score += 1
+        last = (fb.get("verdicts") or [{}])[-1]
+        ts = _epoch(last.get("ts"))
+        ranked.append((score, ts, {
+            "hash": h,
+            "title": _clip(v["title"], TITLE_MAX),
+            "verdict": verdict,
+            "n": n,                               # 몇 사람이 같게 봤나(화면이 '3인 일치' 로 쓴다)
+            "reason": _clip(fb.get("note") or last.get("note") or "", NOTE_MAX),
+            "ts": ts,
+            "why_similar": " · ".join([f"같은 서비스: {v['service']}"] + why),
+        }))
+    ranked.sort(key=lambda x: (-x[0], -x[1]))
+    items = [it for _, _, it in ranked]
+    gold = _golden(team)                          # None = 모름 → 전부 가린다(fail-closed)
+    for it in items:
+        if gold is None or it["hash"] in gold:
+            for f in GOLDEN_BLIND_FIELDS:
+                it[f] = ""
+    return PT.envelope(items, lim)
+
+
+# ── reviewer_dissent ─────────────────────────────────────────────────────────
+def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
+    """다른 검수자 의견·불일치. 양쪽을 시간순으로 나란히 준다.
+
+    **판정 뒤에만 나간다**(verdict_precedents 와 같은 이유 · 남의 판정은 기준점이 된다).
+    다수결·합의 값도 담지 않는다 — 담는 순간 그것이 정답으로 읽히고, 검수자가 자기 판단 대신
+    다수를 따라간다(측정하려던 값이 사라진다)."""
+    blocked = PT.need_team(team)
+    if blocked:
+        return blocked
+    ch = str(hash or "").strip()
+    empty = {"items": [], "total": 0, "truncated": False, "split": False}
+    if _stage(stage) != "after":
+        return dict(empty, error=AFTER_ONLY_MSG)
+    if not ch:
+        return dict(empty, error="콘텐츠를 지정해 주세요")
+    if PT.is_gold(ch):
+        return dict(empty)                        # 오류가 아니라 빈 결과(위와 같은 이유)
+    fb = _feedback(team).get(ch) or {}
+    rows = sorted((fb.get("verdicts") or []), key=lambda v: _epoch(v.get("ts")))
+    items = [{"reviewer": str(v.get("reviewer") or ""),
+              "verdict": str(v.get("verdict") or ""),
+              "reason": _clip(v.get("note") or "", NOTE_MAX),
+              "ts": _epoch(v.get("ts"))} for v in rows]
+    split = bool(fb.get("good")) and bool(fb.get("bad"))
+    return PT.envelope(items, DISSENT_MAX, split=split)
+
+
+# ── 도구 등록부(트랙 A 전용) ─────────────────────────────────────────────────
+# scope 는 전부 internal — 이 도구들은 팀 콘텐츠와 검수자 판정을 읽는다. 외부 MCP(트랙 B)에
+# 열리면 파트너 키로 팀 검수 이력이 통째로 나간다.
+# after_only=True 는 '판정 뒤에만 나가는 도구' 표시다. 실제 차단은 각 도구 함수가 하고
+# (직접 호출도 막아야 한다) 이 플래그는 그 사실을 밖에서 읽을 수 있게 하는 선언이다.
+_STAGE_PROP = {"type": "string", "enum": list(STAGES),
+               "description": "before=판정 전 · after=판정 뒤"}
+
+TOOLS = {
+    "content_brief": {
+        "scope": "internal",
+        "title": "판정 근거 브리핑",
+        "desc": "이 콘텐츠가 왜 그렇게 판정됐는지 3줄로 준다. 저장된 모델 근거·부여된 값·해당 분류 기준. "
+                "판정 전(before)에는 근거와 기준만, 판정 뒤(after)에만 수정 제안이 붙는다.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "hash": {"type": "string", "description": "콘텐츠 해시"},
+                "stage": {"type": "string", "enum": list(STAGES),
+                          "description": "before=판정 전(근거·기준만) · after=판정 뒤(수정 제안 포함)"},
+            },
+            "required": ["hash"],
+            "additionalProperties": False,
+        },
+        "fn": content_brief,
+    },
+    "verdict_precedents": {
+        "scope": "internal",
+        "after_only": True,
+        "title": "비슷한 과거 판정",
+        "desc": f"같은 서비스에서 {PRECEDENT_MIN_N}인 이상이 같게 확정한 과거 판정을 준다. "
+                "무엇이 비슷한지(why_similar)와 몇 사람이 같게 봤는지(n)를 함께 주므로 판단은 검수자가 한다. "
+                "**검수자가 판정을 낸 뒤에만**(stage=after) 쓸 수 있다.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "hash": {"type": "string", "description": "콘텐츠 해시"},
+                "stage": _STAGE_PROP,
+                "limit": {"type": "integer", "minimum": 1, "maximum": PRECEDENT_MAX,
+                          "description": f"가져올 수(기본 {PRECEDENT_DEFAULT} · 최대 {PRECEDENT_MAX})"},
+            },
+            "required": ["hash", "stage"],
+            "additionalProperties": False,
+        },
+        "fn": verdict_precedents,
+    },
+    "reviewer_dissent": {
+        "scope": "internal",
+        "after_only": True,
+        "title": "검수자 의견·불일치",
+        "desc": "이 콘텐츠에 판정이 갈린 이력이 있으면 양쪽을 나란히 준다(다수결을 정답으로 주지 않는다). "
+                "**검수자가 판정을 낸 뒤에만**(stage=after) 쓸 수 있다.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"hash": {"type": "string", "description": "콘텐츠 해시"},
+                           "stage": _STAGE_PROP},
+            "required": ["hash", "stage"],
+            "additionalProperties": False,
+        },
+        "fn": reviewer_dissent,
+    },
+}
+
+
+def registry() -> dict:
+    """이 앞단(/assist)이 노출할 도구 = 트랙 A 전용 + prismtools 의 internal 스코프.
+
+    `/assist` 의 소비자는 검수 화면만이 아니라 **내부 검수 보조 에이전트**다(트랙 A의 본체).
+    에이전트가 판정 근거를 읽을 때 분류 체계·엔티티 사전을 함께 봐야 하고, 그 도구들은 이미
+    `prismtools` 에 한 벌 있다. `tools_for("internal")` 이 바로 이 앞단을 위한 계약이라
+    복제하지 않고 그대로 받는다 — 도구가 두 벌이 되면 어긋나고, 어긋난 쪽이 조용히 틀린다.
+
+    공용 도구는 해시를 받지 않는다(`get_taxonomy` 는 kind·service, `lookup_entity` 는 이름).
+    어떤 콘텐츠를 보고 있는지 서버에 알리지 않고 응답도 콘텐츠와 무관하므로, 골드 문항을
+    보는 중에 불려도 그 사실이 새지 않는다. 팀 강제는 `call` 이 공통으로 건다.
+
+    이름이 겹치면 트랙 A 정의가 이긴다."""
+    reg = dict(PT.tools_for("internal"))
+    reg.update(TOOLS)
+    return reg
+
+
+def call(name, args, team=None) -> dict:
+    """도구 실행 진입점. 가드·디스패치는 prismtools.call 을 그대로 쓴다(규칙 단일 원천).
+
+    team 은 **호출자가 세션에서 해석한 값**이다. args 의 team 은 무시된다(스키마에 없다).
+    이름·인자의 타입은 여기서 강제한다 — 앞단이 HTTP 본문이라 문자열도 dict 도 아닌 값이
+    그대로 들어올 수 있고, 그러면 도구 오류가 아니라 500 이 난다(내부 노출)."""
+    return PT.call(str(name or ""), args if isinstance(args, dict) else {},
+                   team=team, registry=registry())

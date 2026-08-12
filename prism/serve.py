@@ -80,6 +80,8 @@ from . import caagent as CA           # 콘텐츠 에이전트(실험실): 자�
 CA._SV = sys.modules[__name__]      # 동일 주입
 from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외부 MCP 공용 단일 원천
 PTL._SV = sys.modules[__name__]     # 동일 주입
+from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
+RA._SV = sys.modules[__name__]      # 동일 주입
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
@@ -2808,6 +2810,23 @@ def _p_run(h, body):
         import traceback
         traceback.print_exc()                        # 인입 실패는 원인 추적용 트레이스 유지(기존 동작)
         raise
+
+
+@_post_route("/assist", gate="team")                 # 내부 검수 보조(트랙 A) 도구 · 팀 콘텐츠·검수 이력을 읽는다
+def _p_assist(h, body):
+    try:
+        d = json.loads(body or b"{}")
+    except (TypeError, ValueError):
+        d = None
+    d = d if isinstance(d, dict) else {}         # 본문이 배열·스칼라여도 500 이 아니라 도구 오류로
+    # 팀은 세션에서 해석한 값만 넘긴다(본문의 team 은 무시 · 도구 스키마에도 없다).
+    # 로컬 sqlite 는 단일 팀이라 저장 계층이 team 을 무시하므로, 고정 스코프를 넣어
+    # 도구 게이트(need_team)를 통과시킨다. supabase 에서 팀이 없으면 그대로 fail-closed.
+    team = h._req_team() or (None if _supa() else "local")
+    r = RA.call(d.get("tool"), d.get("args") or {}, team=team)
+    if isinstance(r, dict) and r.get("error"):
+        return {"ok": False, "error": r["error"]}
+    return {"ok": True, "result": r}
 
 
 # 디스패치 순서: 접두 길이 내림차순 → /reviewer-role·/content-assign-bulk·/golden-remove·
