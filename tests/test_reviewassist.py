@@ -92,6 +92,10 @@ class _FakeStore:
     def patch_rows(self, limit=5000, team=None, content_hash=None):
         return list(self._pt)
 
+    def ent_list(self, q="", type_="", status="", limit=300):
+        return [{"entity_id": "e1", "name": "벨루가", "type": "PS",
+                 "status": "listed", "aliases": ["beluga"], "n_contents": 3}]
+
 
 def _keys(o):
     """응답 어디에든(중첩 포함) 나타나는 키 전부."""
@@ -585,6 +589,17 @@ class TestErrorsAndRegistry(Base):
 
     def test_shared_tools_still_need_a_team(self):
         self.assertIn("error", RA.call("get_taxonomy", {"kind": "intent"}, team=None))
+
+    def test_shared_tools_reach_the_store_through_assist(self):
+        """get_taxonomy 는 사전만 읽어 주입 없이도 답한다 — 그것만으로는 배선이 검증되지 않는다.
+
+        lookup_entity 는 prismtools 의 _SV 주입에 의존하고, 그 주입 줄은 serve.py 에서 이
+        모듈 import 바로 윗줄이라 머지 해소 때 함께 날아가기 쉽다(2026-08-12 트랙 B 실측:
+        주입이 빠지면 500 이 아니라 '사전이 준비되지 않았습니다' 가 조용히 나간다). /assist 가
+        공용 도구를 열어 준 이상 그 조용한 열화는 검수 화면에서도 그대로 보인다."""
+        r = RA.call("lookup_entity", {"name": "벨루가"}, team=TEAM)
+        self.assertNotIn("error", r)
+        self.assertEqual(r["items"][0]["name"], "벨루가")
 
     def test_route_is_registered_behind_the_team_gate(self):
         fn, gate = SV._POST_ROUTES["/assist"]
