@@ -505,6 +505,19 @@ class SupabaseStore:
                          body={"source_url": url}, prefer="return=representation")
         return bool(rows)
 
+    def set_image_urls(self, content_hash, urls, team=None) -> bool:
+        """참조 이미지 백필: contents.image_urls 단일 컬럼만 PATCH(초안·판정 등 파생 불변).
+
+        source_url 과 같은 참조 필드라 정체성 해시에 들어가지 않는다 — 링크 백필과 같은 규약.
+        (id, team) 복합 필터로 타 팀 콘텐츠 수정을 막고, return=representation 으로 매칭을 판별한다."""
+        h = (content_hash or "").strip()
+        if not h:
+            return False
+        tid = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
+        rows = self._req("PATCH", "contents", query=f"hash=eq.{urllib.parse.quote(h)}" + tid,
+                         body={"image_urls": list(urls or [])}, prefer="return=representation")
+        return bool(rows)
+
     def delete_team(self, team):
         """팀 삭제(위험): 멤버 소속 해제 후 팀 행 삭제. 콘텐츠·피드백 등 팀 데이터는 별도 삭제."""
         if not team:
