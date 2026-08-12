@@ -296,6 +296,40 @@ class TestClientModel(Base):
         self.assertNotIn("isError", body["result"])
 
 
+class TestRealRoundTrip(Base):
+    """도구 실행 경로 전체를 한 번은 **진짜로** 지난다.
+
+    `/mcp` → mcprpc → mcpserver → prismtools → 저장 계층. 나머지 도구 테스트는
+    `get_taxonomy`(사전만 읽음) 아니면 `PT.call` 을 가짜로 바꿔 쓰기 때문에, 저장 계층
+    배선이 끊기거나 도구 응답 모양이 바뀌어도 아무도 모른다. 실제로 트랙 A 가
+    `lookup_entity` 의 출력 필드를 하나 뺐는데 이 파일의 어떤 테스트도 반응하지 않았다.
+    외부에 나가는 계약이므로 한 경로는 끝까지 실물로 확인한다."""
+
+    ENT = "MCP왕복시험개체"
+
+    def test_lookup_entity_round_trips_through_the_store(self):
+        self.use(FakeKeys())
+        from prism import serve
+        st = serve.get_store()
+        c = st._conn()
+        c.execute("INSERT OR REPLACE INTO entities"
+                  "(entity_id,name,type,status,created_at,updated_at)"
+                  " VALUES('mcp-e2e-1',?,'org','confirmed',1,1)", (self.ENT,))
+        c.commit()
+        self.addCleanup(c.commit)
+        self.addCleanup(c.execute, "DELETE FROM entities WHERE entity_id='mcp-e2e-1'")
+
+        status, body = self.tool("lookup_entity", {"name": self.ENT})
+        self.assertEqual(status, 200)
+        self.assertNotIn("isError", body["result"], "실 저장 계층까지 못 닿았다")
+        payload = json.loads(body["result"]["content"][0]["text"])
+        self.assertEqual(payload["total"], 1)
+        self.assertFalse(payload["truncated"])            # 잘림 고지 계약(감사 P3)
+        item = payload["items"][0]
+        self.assertEqual(item["name"], self.ENT)
+        self.assertNotIn("team", item)                    # 팀 식별자가 밖으로 나가지 않는다
+
+
 class TestServerIdentity(Base):
     def test_initialize_tells_the_client_how_to_use_prism(self):
         self.use(FakeKeys())
