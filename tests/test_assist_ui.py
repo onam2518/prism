@@ -147,6 +147,16 @@ class TestAssistApp(unittest.TestCase):
             self.assertIn(tool, load[gate:], tool)
             self.assertNotIn(tool, load[:gate], f"{tool} 이 stage 게이트 밖에서 불립니다")
 
+    def test_after_only_tools_carry_stage(self):
+        """서버가 stage 를 필수로 받아 판정 전 호출을 거절한다(after_only) · 빠뜨리면 오류만 뜬다.
+
+        실 백엔드 연동에서 실제로 밟은 자리다 — 초기 계약에는 두 도구에 stage 가 없었다."""
+        load = _fn(_read(APPJS), "async asxLoad")
+        for tool in ("verdict_precedents", "reviewer_dissent"):
+            call = re.search(r"'" + tool + r"', \{[^}]*\}", load)
+            self.assertIsNotNone(call, tool)
+            self.assertIn("stage: stage", call.group(0), f"{tool} 호출에 stage 가 없습니다")
+
     def test_gold_looks_like_any_other_content(self):
         """골드에서 패널이 사라지면 그게 골드 신호다 · 패널은 그대로 두고 빈 상태로 그린다.
 

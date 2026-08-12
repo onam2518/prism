@@ -128,11 +128,13 @@ window.PRISM_APP_PARTS.push(() => ({
         }
         this.asxBusy = true;
         try {
-          // 판정 전에는 선례·다른 검수자 의견을 부르지 않는다(그리지도 않는다 · 규칙 1)
+          // 판정 전에는 선례·다른 검수자 의견을 부르지 않는다(그리지도 않는다 · 규칙 1).
+          // 두 도구는 서버도 stage 를 필수로 받아 판정 전 호출을 거절한다(after_only) —
+          // 화면이 안 부르는 것과 서버가 막는 것 둘 다 있어야 다음 클라이언트도 못 어긴다.
           const calls = [this.asxCall('content_brief', { hash: hash, stage: stage })];
           if (stage === 'after') {
-            calls.push(this.asxCall('verdict_precedents', { hash: hash, limit: 5 }));
-            calls.push(this.asxCall('reviewer_dissent', { hash: hash }));
+            calls.push(this.asxCall('verdict_precedents', { hash: hash, stage: stage, limit: 5 }));
+            calls.push(this.asxCall('reviewer_dissent', { hash: hash, stage: stage }));
           }
           const [brief, prec, dis] = await Promise.all(calls);
           // 응답을 기다리는 사이 다른 콘텐츠로 넘어갔으면 버린다(잔상 방지)
