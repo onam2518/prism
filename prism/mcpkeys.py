@@ -7,16 +7,18 @@
   저장      sha256 해시만 · 평문은 발급 응답에서 1회만 나가고 어디에도 남지 않는다
   바인딩    (user_id, team) 을 발급 시점에 고정 · 이후 도구 인자로 팀을 받지 않는다
   만료      기본 90일 · 최대 365일        사용자당 상한  5개(유효 키 기준)
-  폐기      즉시 무효 · **(key_id, team) 복합 필터**로만 조회·폐기
+  폐기      즉시 무효 · **(key_id, team, user_id) 3중 필터**로만 조회·폐기
+  소유      목록·폐기 모두 본인 것만. 같은 팀이어도, 관리자여도 남의 키는 못 보고 못 지운다
 
 설계가 감사 결과를 그대로 반영한 곳(그냥 취향이 아니다):
 
 · `team` 이 비면 발급을 **거부**한다. 저장 계층은 team falsy 를 '내 팀 없음'이 아니라
   '전 팀'으로 해석한다 — 감사 H1 에서 팀 미소속 계정이 그 폴백을 타고 타 팀 콘텐츠를
   덮어썼다. 팀 없는 키는 만들지 않는 것이 유일하게 안전한 처리다.
-· `revoke` 는 `(key_id, team)` 복합 필터다. 배포 키가 팀 스코프 없이 만들어져 자기 팀
+· `revoke` 는 `(key_id, team, user_id)` 3중 필터다. 배포 키가 팀 스코프 없이 만들어져 자기 팀
   관리자가 **타 팀** 키를 끊을 수 있었다(감사 O3 · deployops.deployment_key_revoke 주석).
-  key_id 단독으로 지우는 경로를 이 모듈에 두지 않는다.
+  소유자 필터는 그 반대편이다 — 팀 경계는 봤는데 소유자를 안 보면 같은 팀 아무나 남의 키를
+  끊는다. key_id 단독으로 지우는 경로를 이 모듈에 두지 않는다.
 · `key_id` 는 순차 정수가 아니라 난수 문자열이다. 감사 O3 의 피해가 커진 이유가 순차 id 라
   남의 키를 찍어 맞힐 수 있었던 것이다.
 · 인증 실패는 **기록하지 않는다**. 감사 O2 에서 스펙트럼 관문이 인증 실패마다 상태 파일을
@@ -27,7 +29,10 @@
     resolve(raw_key)  -> {"user_id","team","key_id","is_admin"} | None
     rate_check(key_id)-> (allowed: bool, retry_after_sec: int)
     log_call(key_id, tool, ok, ms, resp_bytes) -> None
-관리용: issue(user_id, team, days, label) · list_keys(user_id, team) · revoke(key_id, team)
+관리용(전송은 안 쓴다): issue(user_id, team, days, label) · list_keys(user_id, team) ·
+    revoke(key_id, team, user_id) · usage(key_id, team, user_id)
+관리용 셋은 전부 **소유자 축을 필수로** 받는다. 화면이 '내 키만' 을 지키는 것이 아니라
+백엔드가 지킨다 — 화면을 우회해 직접 POST 해도 남의 키는 손댈 수 없어야 한다.
 
 컴포지션: learnops·deployops 와 동일 — serve 가 기동 시 `_SV`(자기 모듈 객체)를 주입한다.
 저장은 store.py(SQLite) / supastore.py(Supabase) 가 같은 계약으로 구현한다.
@@ -49,8 +54,19 @@ MAX_DAYS = 365
 MAX_KEYS_PER_USER = 5
 MAX_LABEL = 60
 
-PER_MIN = 60                    # 키당 분당 호출 상한(감사 H4)
-PER_DAY = 5000                  # 키당 일일 호출 상한(같은 근거 · 분당만으로는 하루 86,400 호출이 통과한다)
+# ── 호출 상한(감사 H4) · **아래 두 값은 근거 없는 초안이다** ───────────────
+# 실사용 데이터가 없는 상태에서 정한 자리 지킴이 숫자다. 분당만 두면 하루 86,400 호출이
+# 통과하므로 일일 상한을 같이 둔다는 '구조'만 확정이고, 숫자 자체는 미확정이다.
+#
+# 무엇을 보고 조정하나 — 이미 다 기록하고 있으므로 새로 계측할 것은 없다:
+#   · 키·도구별 호출 분포   mcp_calls(key_id, tool, ts)          → 정상 사용의 분당 최대치
+#   · 성공/실패 비율        mcp_calls.ok                          → 실패 폭주(재시도 루프) 탐지
+#   · 응답 크기·소요        mcp_calls(resp_bytes, ms)             → 비용 기준 상한이 필요한지
+# 조정 기준: 정상 사용 상위 백분위(p99)가 상한에 닿기 시작하면 올린다. 반대로 상한에 닿는
+# 키가 계속 특정 하나뿐이면 그건 상한이 낮은 게 아니라 그 키가 잘못 쓰이는 것이다.
+# 스펙 §7 이 '도구별 호출 분포를 2단계 도구 선정 근거로 쓴다'고 한 것과 같은 원천을 본다.
+PER_MIN = 60                    # 키당 분당 호출 상한 · 초안
+PER_DAY = 5000                  # 키당 일일 호출 상한 · 초안
 DAY_SEC = 86400.0
 
 # 발급 응답 안내 문구(화면·API 공통 · 평문을 다시 볼 수 없다는 사실을 여기 한 곳에서 정한다)
@@ -160,30 +176,41 @@ def list_keys(user_id, team) -> list:
     return out
 
 
-def revoke(key_id, team) -> bool:
-    """키 폐기(즉시 무효). **(key_id, team) 복합 필터** — team 이 안 맞으면 False.
-    감사 O3 회귀 지점이다. key_id 단독으로 지우는 분기를 여기 두면 안 된다."""
+def revoke(key_id, team, user_id) -> bool:
+    """키 폐기(즉시 무효). **(key_id, team, user_id) 3중 필터** — 하나라도 안 맞으면 False.
+
+    팀 필터는 감사 O3(자기 팀 관리자가 타 팀 키를 폐기) 회귀 지점이고, 소유자 필터는 그
+    반대편이다: 팀 경계는 봤는데 소유자를 안 보면 같은 팀 아무나 남의 키를 끊을 수 있다.
+    키는 개인 자격증명이므로 **관리자도 남의 키를 지우지 못한다**(권한이 아니라 소유의 문제).
+    셋 중 하나라도 비면 거부한다 — falsy 를 '전체'로 읽는 자리를 만들지 않는다.
+    """
     st = _store()
     tm = _team(team)
     kid = str(key_id or "").strip()
-    if not (st and tm and kid):
-        return False                                  # 팀 미상 = 거부(fail-closed)
-    ok = bool(st.mcp_key_revoke(kid, tm))
+    uid = (user_id or "").strip()
+    if not (st and tm and kid and uid):
+        return False                                  # 팀·소유자 미상 = 거부(fail-closed)
+    ok = bool(st.mcp_key_revoke(kid, tm, uid))
     if ok:
         with _RL_LOCK:                                # 폐기 즉시 캐시에서도 지운다
             _META.pop(kid, None)
     return ok
 
 
-def usage(key_id, team) -> dict:
-    """키 1개의 오늘 사용량(성공/실패 버킷 분리). 화면 표시용 · 판정에는 쓰지 않는다."""
+def usage(key_id, team, user_id) -> dict:
+    """키 1개의 오늘 사용량(성공/실패 버킷 분리). 화면 표시용 · 판정에는 쓰지 않는다.
+
+    호출처(GET /mcp-keys)가 이미 소유자 목록만 넘기지만 여기서도 팀·소유자를 다시 본다 —
+    단독으로 불러도 남의 키 사용량이 새지 않아야 다음 호출자가 실수할 여지가 없다.
+    """
     st = _store()
     kid = str(key_id or "").strip()
     tm = _team(team)
-    if not (st and kid and tm and hasattr(st, "mcp_call_count")):
+    uid = (user_id or "").strip()
+    if not (st and kid and tm and uid and hasattr(st, "mcp_call_count")):
         return {"ok": 0, "fail": 0}
-    row = st.mcp_key_find(key_id=kid)                 # 팀 확인 후에만 카운트를 보여 준다
-    if not row or _team(row.get("team")) != tm:
+    row = st.mcp_key_find(key_id=kid)
+    if not row or _team(row.get("team")) != tm or (row.get("user_id") or "") != uid:
         return {"ok": 0, "fail": 0}
     since = _day_start(time.time())
     return {"ok": int(st.mcp_call_count(kid, since, ok=True)),

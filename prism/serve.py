@@ -1771,10 +1771,13 @@ def _g_deployments(h, q):
 
 @_get_route("/mcp-keys")                             # 내 MCP 파트너 키 목록(비밀 없음 · 접두 6자만)
 def _g_mcp_keys(h, q):
+    # 소유자는 세션에서만 온다 · 쿼리로 남의 uid 를 넣어 목록을 바꿔치기할 자리를 두지 않는다.
+    # 관리자라도 남의 키는 보지 않는다(키 = 개인 자격증명 · 권한이 아니라 소유의 문제).
     team = MK.scope_team(h._req_team())
-    items = MK.list_keys(h._bearer_uid() or "local", team)
+    uid = h._bearer_uid() or "local"
+    items = MK.list_keys(uid, team)
     for k in items:                                  # 오늘 사용량(성공/실패 버킷 분리 · 감사 O2)
-        k["usage"] = MK.usage(k["key_id"], team)
+        k["usage"] = MK.usage(k["key_id"], team, uid)
     return {"ok": True, "items": items, "max": MK.MAX_KEYS_PER_USER,
             "default_days": MK.DEFAULT_DAYS, "max_days": MK.MAX_DAYS,
             "per_min": MK.PER_MIN, "per_day": MK.PER_DAY, "hint": MK.ONCE_HINT}
@@ -2213,10 +2216,11 @@ def _p_mcp_key_new(h, body):
                     days=d.get("days") or MK.DEFAULT_DAYS, label=d.get("label") or "")
 
 
-@_post_route("/mcp-key-revoke", gate="team")         # 폐기: (key_id, team) 복합 필터(감사 O3)
+@_post_route("/mcp-key-revoke", gate="team")         # 폐기: (key_id, team, 소유자) 3중 필터(감사 O3)
 def _p_mcp_key_revoke(h, body):
+    # 소유자는 **세션에서만** 온다(본문에서 받지 않는다) — 받으면 그 값이 곧 사칭 파라미터가 된다.
     d = json.loads(body or b"{}")
-    ok = MK.revoke(d.get("key_id") or "", MK.scope_team(h._req_team()))
+    ok = MK.revoke(d.get("key_id") or "", MK.scope_team(h._req_team()), h._bearer_uid() or "local")
     return {"ok": ok} if ok else {"ok": False, "error": "키를 찾을 수 없습니다"}
 
 

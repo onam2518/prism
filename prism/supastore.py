@@ -2156,14 +2156,16 @@ class SupabaseStore:
                          f"&team_id=eq.{urllib.parse.quote(str(team))}&order=created_at.desc")
         return [self._mcpkey_row(r) for r in rows]
 
-    def mcp_key_revoke(self, key_id, team) -> bool:
-        """갱신 행을 돌려받아 실제 폐기 여부를 반환(없는 키·타 팀 키는 False).
-        team 필터를 빼면 감사 O3(타 팀 키 폐기)가 그대로 재현된다."""
-        if not (key_id and team):
+    def mcp_key_revoke(self, key_id, team, user_id) -> bool:
+        """갱신 행을 돌려받아 실제 폐기 여부를 반환(없는 키·타 팀 키·남의 키는 False).
+        team 필터를 빼면 감사 O3(타 팀 키 폐기)가 재현되고, user_id 를 빼면 그 반대편
+        (같은 팀 아무나 남의 키 폐기)이 열린다. 키는 개인 자격증명이라 관리자도 예외가 아니다."""
+        if not (key_id and team and user_id):
             return False
         rows = self._req("PATCH", "mcp_keys",
                          query=f"key_id=eq.{urllib.parse.quote(str(key_id))}"
-                               f"&team_id=eq.{urllib.parse.quote(str(team))}&revoked=is.false",
+                               f"&team_id=eq.{urllib.parse.quote(str(team))}"
+                               f"&user_id=eq.{urllib.parse.quote(str(user_id))}&revoked=is.false",
                          body={"revoked": True}, prefer="return=representation")
         return bool(rows)
 

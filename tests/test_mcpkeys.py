@@ -222,7 +222,7 @@ class McpKeysContractMixin:
         self.assertTrue(self.mk.issue(USER_2, TEAM_A).get("ok"))
         # 폐기하면 자리가 난다(안 그러면 5회 교체 후 영구 잠김)
         first = self.mk.list_keys(USER_1, TEAM_A)[0]
-        self.assertTrue(self.mk.revoke(first["key_id"], TEAM_A))
+        self.assertTrue(self.mk.revoke(first["key_id"], TEAM_A, USER_1))
         self.assertTrue(self.mk.issue(USER_1, TEAM_A).get("ok"))
 
     # ── 해석(resolve) ──
@@ -255,7 +255,7 @@ class McpKeysContractMixin:
 
     def test_revoked_key_stops_resolving(self):
         r = self.mk.issue(USER_1, TEAM_A)
-        self.assertTrue(self.mk.revoke(r["key_id"], TEAM_A))
+        self.assertTrue(self.mk.revoke(r["key_id"], TEAM_A, USER_1))
         self.assertIsNone(self.mk.resolve(r["key"]))
 
     def test_expired_key_stops_resolving(self):
@@ -271,30 +271,71 @@ class McpKeysContractMixin:
         배포 키(pr_live_)가 팀 스코프 없이 만들어져 실제로 이게 가능했다."""
         mine = self.mk.issue(USER_1, TEAM_A)
         theirs = self.mk.issue(USER_2, TEAM_B)
-        self.assertFalse(self.mk.revoke(theirs["key_id"], TEAM_A), "타 팀 키가 폐기됐다")
+        self.assertFalse(self.mk.revoke(theirs["key_id"], TEAM_A, USER_1), "타 팀 키가 폐기됐다")
         self.assertIsNotNone(self.mk.resolve(theirs["key"]), "타 팀 키가 무효화됐다")
         # 자기 팀 키는 정상 폐기
-        self.assertTrue(self.mk.revoke(mine["key_id"], TEAM_A))
+        self.assertTrue(self.mk.revoke(mine["key_id"], TEAM_A, USER_1))
         # 반대 방향도 같다
-        self.assertFalse(self.mk.revoke(mine["key_id"], TEAM_B))
+        self.assertFalse(self.mk.revoke(mine["key_id"], TEAM_B, USER_1))
 
     def test_revoke_without_team_fails(self):
         """team 을 안 주면(=falsy) 절대 지우지 않는다 — 그게 '전 팀'으로 읽히는 자리다."""
         r = self.mk.issue(USER_1, TEAM_A)
         for bad in (None, "", "   "):
-            self.assertFalse(self.mk.revoke(r["key_id"], bad))
+            self.assertFalse(self.mk.revoke(r["key_id"], bad, USER_1))
+            self.assertFalse(self.mk.revoke(r["key_id"], TEAM_A, bad))
+        self.assertIsNotNone(self.mk.resolve(r["key"]))
+
+    # ── 소유자 경계(같은 팀 안에서) · 감사 O3 의 반대편 ──
+    def test_same_team_other_user_key_is_invisible_and_unrevocable(self):
+        """같은 팀이라도 남의 키는 **목록에 안 나오고 폐기도 안 된다.**
+        감사 O3 는 '팀 경계를 안 봐서' 뚫렸고, 이건 그 반대편이다 — 팀은 맞는데
+        소유자를 안 보면 팀원 아무나 동료의 키를 끊어 그 연동을 죽일 수 있다.
+        키는 권한이 아니라 **소유**의 문제라 관리자도 예외가 아니다(아래 별도 테스트)."""
+        mine = self.mk.issue(USER_1, TEAM_A, label="내 것")
+        theirs = self.mk.issue(USER_2, TEAM_A, label="동료 것")
+        # 목록: 각자 자기 것만
+        self.assertEqual([k["label"] for k in self.mk.list_keys(USER_1, TEAM_A)], ["내 것"])
+        self.assertNotIn(theirs["key_id"], [k["key_id"] for k in self.mk.list_keys(USER_1, TEAM_A)])
+        # 폐기: 팀이 같아도 소유자가 다르면 거부
+        self.assertFalse(self.mk.revoke(theirs["key_id"], TEAM_A, USER_1), "동료 키가 폐기됐다")
+        self.assertIsNotNone(self.mk.resolve(theirs["key"]), "동료 키가 무효화됐다")
+        # 자기 것은 정상
+        self.assertTrue(self.mk.revoke(mine["key_id"], TEAM_A, USER_1))
+        # 반대 방향도 같다
+        self.assertFalse(self.mk.revoke(mine["key_id"], TEAM_A, USER_2))
+
+    def test_admin_cannot_touch_other_users_key(self):
+        """관리자 계정으로도 남의 키는 못 본다·못 지운다. USER_1 은 TEAM_A 관리자다
+        (setUp 의 admins) — 그래도 USER_2 의 키에는 손댈 수 없어야 한다."""
+        self.assertTrue(self.serve.is_admin_user(USER_1, TEAM_A), "전제: USER_1 은 관리자")
+        theirs = self.mk.issue(USER_2, TEAM_A, label="동료 것")
+        self.assertEqual(self.mk.list_keys(USER_1, TEAM_A), [], "관리자 목록에 남의 키가 섞였다")
+        self.assertFalse(self.mk.revoke(theirs["key_id"], TEAM_A, USER_1),
+                         "관리자가 남의 키를 폐기했다")
+        self.assertIsNotNone(self.mk.resolve(theirs["key"]))
+        self.assertEqual(self.mk.usage(theirs["key_id"], TEAM_A, USER_1), {"ok": 0, "fail": 0},
+                         "관리자가 남의 키 사용량을 봤다")
+
+    def test_revoke_without_owner_fails(self):
+        """소유자를 안 주면(=falsy) 지우지 않는다 — team 과 같은 이유로 '전체'가 되면 안 된다."""
+        r = self.mk.issue(USER_1, TEAM_A)
+        for bad in (None, "", "   "):
+            self.assertFalse(self.mk.revoke(r["key_id"], TEAM_A, bad))
         self.assertIsNotNone(self.mk.resolve(r["key"]))
 
     def test_revoke_unknown_key_is_false(self):
-        self.assertFalse(self.mk.revoke("없는키", TEAM_A))
-        self.assertFalse(self.mk.revoke("", TEAM_A))
+        self.assertFalse(self.mk.revoke("없는키", TEAM_A, USER_1))
+        self.assertFalse(self.mk.revoke("", TEAM_A, USER_1))
 
     def test_store_revoke_needs_both_filters(self):
         """스토어 계층도 같은 계약: (key_id, team) 둘 다 맞아야 폐기된다."""
         r = self.mk.issue(USER_1, TEAM_A)
-        self.assertFalse(self.st.mcp_key_revoke(r["key_id"], TEAM_B))
-        self.assertFalse(self.st.mcp_key_revoke(r["key_id"], None))
-        self.assertTrue(self.st.mcp_key_revoke(r["key_id"], TEAM_A))
+        self.assertFalse(self.st.mcp_key_revoke(r["key_id"], TEAM_B, USER_1))
+        self.assertFalse(self.st.mcp_key_revoke(r["key_id"], None, USER_1))
+        self.assertFalse(self.st.mcp_key_revoke(r["key_id"], TEAM_A, USER_2))
+        self.assertFalse(self.st.mcp_key_revoke(r["key_id"], TEAM_A, None))
+        self.assertTrue(self.st.mcp_key_revoke(r["key_id"], TEAM_A, USER_1))
 
     # ── 목록 격리 ──
     def test_list_is_scoped_to_owner_and_team(self):
@@ -402,10 +443,12 @@ class McpKeysContractMixin:
         self.assertEqual(self.st.mcp_call_count(r["key_id"], since, ok=True), 2)
         self.assertEqual(self.st.mcp_call_count(r["key_id"], since, ok=False), 1)
         self.assertEqual(self.st.mcp_call_count(r["key_id"], since), 3)
-        u = self.mk.usage(r["key_id"], TEAM_A)
+        u = self.mk.usage(r["key_id"], TEAM_A, USER_1)
         self.assertEqual((u["ok"], u["fail"]), (2, 1))
-        self.assertEqual(self.mk.usage(r["key_id"], TEAM_B), {"ok": 0, "fail": 0},
+        self.assertEqual(self.mk.usage(r["key_id"], TEAM_B, USER_1), {"ok": 0, "fail": 0},
                          "타 팀이 남의 키 사용량을 본다")
+        self.assertEqual(self.mk.usage(r["key_id"], TEAM_A, USER_2), {"ok": 0, "fail": 0},
+                         "같은 팀 다른 사람이 남의 키 사용량을 본다")
 
     def test_auth_failures_are_never_logged(self):
         """감사 O2: 틀린 키를 아무리 두드려도 사용 기록은 1건도 늘지 않는다.
@@ -417,7 +460,7 @@ class McpKeysContractMixin:
         for i in range(200):
             self.assertIsNone(self.mk.resolve("pmk_" + "wrong%030d" % i))
         revoked = self.mk.issue(USER_2, TEAM_A)
-        self.mk.revoke(revoked["key_id"], TEAM_A)
+        self.mk.revoke(revoked["key_id"], TEAM_A, USER_2)
         self.assertIsNone(self.mk.resolve(revoked["key"]))
         expired = self.mk.issue(USER_2, TEAM_A, days=1)
         self._expire(expired["key_id"])
@@ -507,7 +550,7 @@ class TestSupabaseMcpKeys(McpKeysContractMixin, unittest.TestCase):
         r = self.mk.issue(USER_1, TEAM_A)
         seen.clear()
         self.mk.list_keys(USER_1, TEAM_A)
-        self.mk.revoke(r["key_id"], TEAM_A)
+        self.mk.revoke(r["key_id"], TEAM_A, USER_1)
         for method, table, q in seen:
             if table == "mcp_keys" and method in ("GET", "PATCH"):
                 self.assertIn("team_id=eq.", q, "팀 필터 없는 질의: %s %s %s" % (method, table, q))
@@ -647,6 +690,36 @@ class TestServeWiring(unittest.TestCase):
     def test_key_routes_are_not_public(self):
         from prism import serve
         self.assertNotIn("/mcp-keys", serve._TEAMLESS_OK_GET)
+
+    def test_owner_comes_from_session_not_body(self):
+        """본문에 user_id 를 실어 보내도 남의 키를 지울 수 없다. 소유자는 세션(Bearer)에서만
+        온다 — 본문에서 받으면 그 필드가 곧 사칭 파라미터가 된다."""
+        import json as _j
+        from prism import mcpkeys, serve
+        st = _sqlite_store()
+        serve._STORE = st
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        prev = mcpkeys._SV
+        mcpkeys._SV = _FakeServe(st, supa=True)
+        self.addCleanup(lambda: setattr(mcpkeys, "_SV", prev))
+        mcpkeys._reset_state()
+        self.addCleanup(mcpkeys._reset_state)
+        victim = mcpkeys.issue(USER_2, TEAM_A, label="피해자 키")
+
+        class _H:                                    # 공격자 세션: 같은 팀 · 다른 사용자
+            def _bearer_uid(self):
+                return USER_1
+
+            def _req_team(self):
+                return TEAM_A
+
+        body = _j.dumps({"key_id": victim["key_id"], "user_id": USER_2}).encode()
+        out = serve._POST_ROUTES["/mcp-key-revoke"][0](_H(), body)
+        self.assertFalse(out.get("ok"), "본문 user_id 로 남의 키가 폐기됐다")
+        self.assertIsNotNone(mcpkeys.resolve(victim["key"]), "피해자 키가 무효화됐다")
+        # 목록도 마찬가지 — 본문·쿼리로 소유자를 바꿔치기할 자리가 없다
+        listed = serve._GET_ROUTES["/mcp-keys"][0](_H(), {"user_id": [USER_2]})
+        self.assertEqual(listed["items"], [], "쿼리 user_id 로 남의 키 목록이 나왔다")
 
 
 if __name__ == "__main__":

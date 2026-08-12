@@ -1650,14 +1650,16 @@ class Store:
             f"SELECT {self._MCPKEY_COLS} FROM mcp_keys WHERE user_id=? AND team=? "
             "ORDER BY created_at DESC", (str(user_id), str(team)))]
 
-    def mcp_key_revoke(self, key_id, team) -> bool:
-        """(key_id, team) 복합 필터 폐기. team 불일치면 0행 → False.
-        team 단독 조건을 빼면 감사 O3(타 팀 키 폐기)가 그대로 재현된다."""
-        if not (key_id and team):
+    def mcp_key_revoke(self, key_id, team, user_id) -> bool:
+        """(key_id, team, user_id) 3중 필터 폐기. 하나라도 불일치면 0행 → False.
+        team 을 빼면 감사 O3(타 팀 키 폐기)가 재현되고, user_id 를 빼면 그 반대편
+        (같은 팀 아무나 남의 키 폐기)이 열린다. 키는 개인 자격증명이라 관리자도 예외가 아니다."""
+        if not (key_id and team and user_id):
             return False
         c = self._conn()
-        n = c.execute("UPDATE mcp_keys SET revoked=1 WHERE key_id=? AND team=? AND revoked=0",
-                      (str(key_id), str(team))).rowcount
+        n = c.execute("UPDATE mcp_keys SET revoked=1 "
+                      "WHERE key_id=? AND team=? AND user_id=? AND revoked=0",
+                      (str(key_id), str(team), str(user_id))).rowcount
         c.commit()
         return bool(n)
 
