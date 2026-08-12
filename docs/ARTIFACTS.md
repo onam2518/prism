@@ -10,6 +10,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-08-13 | [검수 보조 패널 시안](https://claude.ai/code/artifact/49ec0f98-6f79-46d7-977b-8b89d8ac24cd) |
 | 2026-08-12 | [에이전트 스터디 진행자 런시트](https://claude.ai/code/artifact/bf6f4188-ced0-4e87-98d8-7c0bfa050559) |
 | 2026-08-12 | [콘텐츠 에이전트 90분 스터디](https://claude.ai/code/artifact/f1a2df73-9e2a-485e-82c3-2525ac9a428d) |
 | 2026-08-10 | [MCP란 무엇인가 · 정의 및 현황](https://claude.ai/code/artifact/b4b15d4f-9130-4e65-9995-2f6a391a3d5d) |
