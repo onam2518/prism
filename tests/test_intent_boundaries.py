@@ -51,12 +51,21 @@ class TestSpecificBoundaryRules(unittest.TestCase):
     """검수자가 실제로 지적한 규칙이 정의에 들어갔는지."""
 
     def test_policy_is_judged_by_topic_not_by_actor(self):
+        """핵심 규칙은 '주체가 아니라 주제'다.
+
+        종전에는 갈 곳으로 '뉴스·소식' 을 단언했는데, 그 값은 콘텐츠뷰·커뮤니티 후보이고
+        정책·행정이 사는 뉴스에는 없다 — 고를 수 없는 값을 가리키던 결함을 이 테스트가
+        오히려 못 박고 있었다(2026-08-12 수정). 지금은 규칙 자체와, 갈 곳이 없을 때의
+        지시(서비스값을 비운다)를 단언한다."""
         d = D.INTENT_VALUE_DEFS["정책·행정"]
         self.assertIn("주체", d)
-        self.assertIn("뉴스·소식", d)      # 갈 곳을 알려준다
+        self.assertIn("주제가 행정 자체", d)
+        self.assertIn("서비스값을 비우고", d)
+        self.assertNotIn("'뉴스·소식'", d)
 
     def test_news_absorbs_government_hosted_events(self):
-        self.assertIn("정책·행정", D.INTENT_VALUE_DEFS["뉴스·소식"])
+        """정부 주최 행사 소식을 받는 쪽 규칙은 '뉴스·소식' 정의에 남아 있어야 한다."""
+        self.assertIn("정부·지자체가 주최한 행사", D.INTENT_VALUE_DEFS["뉴스·소식"])
 
     def test_formal_info_requires_actual_periodicity(self):
         d = D.INTENT_VALUE_DEFS["정형정보"]
