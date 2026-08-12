@@ -577,9 +577,9 @@ class TestErrorsAndRegistry(Base):
                 self.assertIn("stage", schema.get("properties", {}), name)
 
     def test_shared_internal_tools_are_reachable(self):
-        """골드 브리핑은 클라이언트가 화면 값으로 조립해야 하는데(서버가 못 만든다) 그러려면
-        분류 기준 정의문이 필요하다. get_taxonomy 는 해시를 안 받아 어떤 콘텐츠를 보는지
-        서버에 알리지 않고, 응답도 콘텐츠와 무관해 골드든 아니든 완전히 같다."""
+        """/assist 의 소비자는 검수 화면만이 아니라 내부 검수 보조 에이전트다. 에이전트가
+        분류 체계·엔티티 사전을 함께 봐야 하고, 그 도구는 prismtools 에 이미 한 벌 있다 —
+        tools_for("internal") 이 이 앞단을 위한 계약이라 복제하지 않고 그대로 받는다."""
         r = RA.call("get_taxonomy", {"kind": "intent", "service": SVC}, team=TEAM)
         self.assertNotIn("error", r)
         self.assertTrue(r["values"])
@@ -613,6 +613,87 @@ class TestErrorsAndRegistry(Base):
         머지 해소에서 흘리기 쉽다(2026-08-12 트랙 B 브랜치와 실제로 인접 충돌). 다른 테스트도
         결국 깨지긴 하지만 NOT_FOUND 무더기로 깨져 원인이 안 보인다 — 사고를 이름으로 못박는다."""
         self.assertIs(RA._SV, SV)
+
+
+class TestRealStoreRoundTrip(unittest.TestCase):
+    """가짜 스토어를 안 쓰고 실제 sqlite 를 한 번 지난다.
+
+    다른 테스트의 _FakeStore 는 이 모듈의 판단 로직을 검증하지만 **저장 계층과의 계약이
+    어긋나는 것은 못 잡는다** — 가짜가 옛 모양 그대로 답하면 테스트는 계속 통과하고 운영만
+    깨진다(2026-08-12 트랙 B 가 자기 파일에서 같은 사각지대를 발견 · 그쪽은 응답 필드가
+    빠졌는데도 테스트가 하나도 안 깨졌다).
+
+    무엇을 잡는지 무력화 실험으로 확인한 것만 적는다.
+      · **evidence 가 적재를 통과하는지.** 이 필드는 원래 trace.agent_verdicts 에만 있다가
+        supabase 적재에서 버려져 운영에서 0% 였고, 그래서 jsonb 로 실리는 quality_meta 로
+        옮긴 것이다(schema.py 2026-08-12). 적재가 다시 흘리면 이 도구는 근거가 있는 콘텐츠에도
+        "근거 없음" 을 말한다 — 조용히 틀리는 쪽이라 가짜로는 영영 안 보인다.
+        (실측: 저장에서 evidence 를 빼면 evidence=None 으로 이 테스트가 깨진다)
+      · **feedback_map 의 합의 계약(n·agree·consensus).** 가짜는 이 모양을 손으로 만든다.
+        실제가 바뀌면 선례가 조용히 0건이 된다. (실측: agree 를 빼면 total 이 1→0)
+
+    _row_key 는 여기서 검증되지 않는다 — body_hash 가 16자가 아니면 정체성 4필드로 다시
+    계산하는 폴백이 있어서, 저장 키가 안 실려도 같은 값이 나온다(실측 확인). 그 폴백이
+    있다는 사실 자체가 계약이므로 굳이 여기서 재확인하지 않는다."""
+
+    def setUp(self):
+        import tempfile
+        from prism.store import Store, content_hash
+
+        self.chash = content_hash
+        d = tempfile.mkdtemp()
+        store = Store(os.path.join(d, "t.db"))
+
+        def _content(title, body):
+            return {"displayServiceName": SVC, "title": title, "subtitle": "", "body": body}
+
+        def _out(grade="R", reasons=("ad",), evidence=""):
+            return {"content_ref": {}, "routing": {}, "legal_meta": {},
+                    "quality_meta": {"finalGrade": grade, "reasons": list(reasons),
+                                     "review": "auto", "evidence": evidence},
+                    "item_meta": {"summary": "요약", "entities": [], "intent": [INTENT],
+                                  "content_category": ["정치"], "topic": ""},
+                    "trace": {"model": "m", "cost_usd": 0.0}}
+
+        self.target = _content("검수 대상 기사", "본문 A")
+        past = _content("과거 확정 기사", "본문 B")
+        store.save_many([(self.target, _out(evidence="구매 링크로 끝난다")),
+                         (past, _out())], run_id="r1")
+        for i, who in enumerate(("복실", "딱지")):     # 2인 확정 = 선례 자격
+            store.save_feedback(self.chash(past), SVC, past["title"], "bad",
+                                "analyze", "광고성으로 봤다", 100.0 + i, reviewer=who)
+
+        o_store, o_cache = SV.get_store, SV._STORE
+        SV.get_store = lambda: store
+        SV._STORE = store
+        self.addCleanup(lambda: setattr(SV, "get_store", o_store))
+        self.addCleanup(lambda: setattr(SV, "_STORE", o_cache))
+
+    def test_brief_and_precedents_survive_a_real_store(self):
+        h = self.chash(self.target)
+        brief = RA.call("content_brief", {"hash": h}, team=TEAM)
+        self.assertNotIn("error", brief)
+        self.assertEqual(brief["values"]["service"], SVC)
+        # 적재가 evidence 를 흘리면 근거 있는 콘텐츠에도 "근거 없음" 을 말하게 된다
+        self.assertEqual(brief["evidence"], "구매 링크로 끝난다")
+        self.assertTrue(brief["has_evidence"])
+
+        pre = RA.call("verdict_precedents", _args(h), team=TEAM)
+        self.assertNotIn("error", pre)
+        self.assertEqual(pre["total"], 1, "실제 feedback_map 의 합의 계약이 어긋났다")
+        it = pre["items"][0]
+        self.assertEqual((it["verdict"], it["n"]), ("bad", 2))
+        self.assertIn("광고성", it["why_similar"])
+
+    def test_dissent_reads_real_feedback_rows(self):
+        from prism.store import content_hash
+        st = SV.get_store()
+        h = content_hash(self.target)
+        st.save_feedback(h, SVC, "t", "good", "analyze", "문제 없다", 1.0, reviewer="복실")
+        st.save_feedback(h, SVC, "t", "bad", "analyze", "광고다", 2.0, reviewer="딱지")
+        r = RA.call("reviewer_dissent", _args(h), team=TEAM)
+        self.assertTrue(r["split"])
+        self.assertEqual([i["verdict"] for i in r["items"]], ["good", "bad"])
 
 
 if __name__ == "__main__":
