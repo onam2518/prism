@@ -2937,6 +2937,33 @@ def _p_assist(h, body):
     return {"ok": True, "result": r}
 
 
+@_post_route("/assist-ask", gate="team")             # 검수 보조 자유질문(모델 호출) · gate=team 이 로그인+팀을 함께 건다
+def _p_assist_ask(h, body):
+    """칩(도구)으로 안 되는 것을 검수자가 직접 묻는 경로. 규칙은 reviewassist 의 자유질문 블록.
+
+    라우트가 지는 몫은 셋이다. ① 팀은 세션에서만(/assist 와 같은 해석 · 본문의 team 은 무시)
+    ② 해시는 **본문 값 그대로 도구에 못 박는다**(모델이 고를 수 없다) ③ 남용 억제.
+    모델 호출은 과금이라 분당 상한(여기)과 사용자당 하루 상한(도구 계층) 둘 다 건다."""
+    try:
+        d = json.loads(body or b"{}")
+    except (TypeError, ValueError):
+        d = None
+    d = d if isinstance(d, dict) else {}         # 본문이 배열·스칼라여도 500 이 아니라 오류 응답으로
+    team = h._req_team() or (None if _supa() else "local")
+    # 상한 키는 사용자 우선(로그인 계정) · 없으면 IP. 사용자별로 갈라야 한 사람이 팀 전체의
+    # 분당 예산을 소진하지 않는다.
+    who = h._bearer_uid() or _client_ip(h)
+    if rate_limited("assist-ask:" + who, min_interval=2.0, per_min=10):
+        h._send(429, json.dumps({"error": "질문이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                ensure_ascii=False), _JSON)
+        return None
+    r = RA.ask(hash=d.get("hash"), stage=d.get("stage"), question=d.get("question"),
+               team=team, uid=who, mock=Handler.server_mock)
+    if isinstance(r, dict) and r.get("error"):
+        return {"ok": False, "error": r["error"]}
+    return {"ok": True, "result": r}
+
+
 # 디스패치 순서: 접두 길이 내림차순 → /reviewer-role·/content-assign-bulk·/golden-remove·
 # /rerun-all·/usermeta-profiles 가 짧은 형제 라우트보다 항상 먼저 검사된다.
 _POST_ORDER = sorted(_POST_ROUTES, key=len, reverse=True)
