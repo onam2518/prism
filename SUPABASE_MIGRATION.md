@@ -9,7 +9,7 @@
 
 | 항목 | 결정 | 근거 |
 |---|---|---|
-| 프로젝트 | ~~기존 **PromptForge**(`yujinhcdbllcnnfvcmfp`) 공유~~ → **2026-08-12 전용 프로젝트 분리: `prism`(`uycdzslkhkruvmyjcbgj` · ap-northeast-1)** | 공유 nano 인스턴스 CPU 고갈로 전 쿼리 8s 타임아웃 장애(8/12 오후) → 전용 Micro 분리. 스키마·데이터·auth.users(38 · UUID/해시 보존) 전량 이관, 옛 프로젝트의 `prism_*` 는 1주 보관 후 삭제 예정 백업 |
+| 프로젝트 | ~~기존 **PromptForge**(`yujinhcdbllcnnfvcmfp`) 공유~~ → **2026-08-12 전용 프로젝트 분리: `prism`(`uycdzslkhkruvmyjcbgj` · ap-northeast-1)** | 공유 nano 인스턴스 CPU 고갈로 전 쿼리 8s 타임아웃 장애(8/12 오후) → 전용 Micro 분리. 스키마·데이터·auth.users(38 · UUID/해시 보존) 전량 이관, 옛 프로젝트(`yujinhcdbllcnnfvcmfp`)는 **2026-08-13 소유자 지시로 즉시 삭제**(1주 보관 계획 앞당김) |
 | 아키텍처 | **Frontend → Prism 서버 → Supabase** (서버가 허브) | 현 구조 유지, store만 교체 |
 | store 접근 | **PostgREST REST + urllib**(stdlib 유지) | "의존성 0" 거의 보존. psycopg는 선택지(직접연결·의존성↑) |
 | 모드 | **dual-mode**: `PRISM_BACKEND=sqlite`(기본·로컬) ↔ `supabase`(팀) | 로컬 오프라인 사용 보존 |
