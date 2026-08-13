@@ -12,19 +12,29 @@
    일치도로 신뢰도를 재는데, B 가 A 의 판정을 보고 정하면 그 일치는 독립된 근거가 아니다.
    지표가 조용히 부풀고, 부풀었다는 것을 알 방법이 없다. 그래서 화면이 아니라 **서버에서**
    막는다(규칙이 클라이언트에 있으면 다음 클라이언트가 어긴다).
-3. **골드 문항은 어떤 경로로도 나가지 않는다.** 골드는 검수자 신뢰도를 재는 장치라 보조가
-   개입하면 측정이 무너진다. 선례·제안 목록에서 거르고, 요청 해시가 골드면 자료를 주지 않는다.
-   다만 **거절 방식도 신호가 된다** — 골드에서만 오류가 뜨면 검수자가 그것으로 골드를
-   알아보고, 알아보는 순간 골드가 재려던 것(평소의 검수)이 사라진다. 그래서 목록형 도구는
-   오류가 아니라 **빈 결과**를 준다(선례 없는 평범한 콘텐츠와 구분되지 않는다).
-   `content_brief` 만 거절을 유지한다. 골드 문항이 화면에 보여 주는 값은 저장된 행이 아니라
-   골든 정답을 **일부러 뒤집은** 사본이라(`reviewops._inject_gold` · 해시 홀짝으로 등급 반전 ·
-   골든 `content_hash` 는 `results` 키와 같은 16자라 저장 행이 그대로 잡힌다), 저장된 행으로
-   브리핑을 만들면 화면은 G·브리핑은 R 이 되고 그 어긋남 자체가 정답이 된다. 골드 브리핑은
-   서버가 안전하게 만들 방법이 없다 — 화면과 똑같이 뒤집어 답하려면 이 모듈이 골든 정답을
-   읽고 뒤집기 규칙을 두 번째로 구현해야 하고, 나중에 한쪽만 바뀌면 그 어긋남이 새 오라클이
-   된다. 그래서 골드에는 아무것도 주지 않고, 브리핑은 클라이언트가 이미 화면에 그린 값과
-   이미 받아 둔 공용 사전(`/dict`)으로 조립한다(해시가 서버로 나가지 않는다).
+3. **골드 문항이 응답에서 티 나지 않는다.** 골드는 검수자 신뢰도를 재는 장치라 보조가
+   골드를 알려 주면 측정이 무너진다. 그런데 **가리는 방식도 신호가 된다** · 골드에서만
+   오류가 뜨거나 골드에서만 빈칸이 생기면 검수자가 그것으로 골드를 알아보고, 알아보는
+   순간 골드가 재려던 것(평소의 검수)이 사라진다.
+
+   2026-08-13 에 큐가 뒤집는 값이 등급에서 **카테고리**로 옮겨졌다(`reviewops.GOLD_FLIP_ELEMENT`).
+   등급을 뒤집던 시절에는 저장된 근거(`quality_meta.evidence`)가 곧 그 등급의 이유 문장이라
+   저장된 행으로 브리핑을 만들면 화면은 G·브리핑은 R 이 되어 안전하게 만들 방법이 없었고,
+   그래서 `content_brief` 는 골드를 거절했다. 지금은 어긋날 수 있는 자리가 **한 요소뿐**이라
+   그 자리만 다루면 된다. 거절을 유지하면 오히려 골드만 "저장된 근거 없음" 이 되고, 근거
+   적재율이 오를수록 그 빈칸이 골드를 가리킨다(그 완화는 기능이 성공할수록 사라진다).
+
+   그래서 지금 규칙은 이렇다.
+     · 골드 합성 해시는 **밑에 깔린 콘텐츠로 풀어** 평소대로 답한다(`_resolve`).
+     · 큐가 뒤집는 그 요소는 **전 콘텐츠에서** 사실로 말하지 않는다(값·요약·제안·유사도 축).
+       골드에서만 가리면 그 차이가 다음 신호이고, 골드에서만 다르게 답하려면 뒤집기 규칙을
+       이 모듈에 두 번째로 구현해야 한다(그러면 한쪽만 바뀔 때 그 어긋남이 새 오라클이 된다).
+     · 결과: `content_brief(gold:bad:<h>)` 와 `content_brief(<h>)` 의 응답이 **완전히 같다.**
+       패널이 안 그리는 필드까지 같아야 한다 · `/assist-ask`(자유질문)가 같은 응답을 모델에
+       통째로 먹이므로 화면 밖 필드에서 갈려도 모델의 답이 갈린다.
+     · `reviewer_dissent` 만 골드에서 닫힌다. 골드 원본은 '정확' 다수결로 골든이 된 콘텐츠라
+       그 의견 목록이 곧 정답이다. 대신 **오류가 아니라 빈 결과**를 준다(운영에서 의견이
+       갈린 콘텐츠는 13.0% 뿐이라 흔한 빈칸이다).
 4. **근거를 지어내지 않는다.** 저장된 값을 조립할 뿐 모델을 새로 돌리지 않는다. 판정 근거를
    사후에 재생성하면 그럴듯한 창작이 된다(모델은 자기 추론 과정에 접근하지 못한다).
    `quality_meta.evidence` 가 비어 있으면 없다고 말한다 — 2026-08-12 신설 필드라 그 이전
@@ -127,6 +137,55 @@ PATCH_FIELDS = ("summary", "entities", "intent", "content_category", "topic",
 LIST_FIELDS = ("entities", "intent", "content_category", "reasons")
 # 교정 로그 요소 키 → _values 의 키(이름이 다른 것만).
 _VAL_KEY = {"finalGrade": "grade"}
+
+# ── 큐가 뒤집는 자리는 이 모듈이 사실로 말하지 않는다 ────────────────────────
+#
+# 큐는 골드 문항에서 **한 요소만** 참값과 다르게 보여 준다(reviewops.GOLD_FLIP_ELEMENT ·
+# 2026-08-13 부터 카테고리 · 그전에는 등급이었다). 나머지는 전부 참값이라, 이 모듈이
+# 저장된 값을 그대로 답해도 화면과 어긋나지 않는다. 어긋날 수 있는 자리는 **그 한 요소뿐**이다.
+#
+# 그 한 요소는 **모든 콘텐츠에서** 뺀다. 골드일 때만 빼지 않는다. 이유가 셋이다.
+#   ① 골드에서만 빠지면 그 차이가 다음 신호다. 우리가 지금까지 세 번 밟은 모양이 전부
+#      "가리는 행위 자체가 표시가 된다" 였다.
+#   ② 뒤집기 규칙이 이 모듈에 두 번째로 구현되면(골드일 때만 다르게 답하려면 결국
+#      그래야 한다) 나중에 한쪽만 바뀔 때 그 어긋남이 새 오라클이 된다.
+#   ③ 애초에 **참이 아닐 수 있는 값을 사실로 말하면 안 된다.** 그 값이 뒤집힌 문항이 같은
+#      큐에 섞여 있다. 검수자는 그 값을 화면에서 이미 보고 있으므로 이 모듈이 다시 말해
+#      줄 필요도 없다.
+#
+# 이 규칙은 도구 응답 전체에 걸린다. 패널이 안 그리는 필드에도 걸어야 한다. `/assist-ask`
+# (자유질문)가 같은 도구 응답을 **모델에 통째로 먹이기** 때문에, 화면이 안 그리는 값에서
+# 갈리면 모델의 답이 갈리고 그 답이 곧 골드 표시가 된다(2026-08-13 · PR #440 의존).
+#
+# 결과: `content_brief(gold:bad:<h>)` 는 `content_brief(<h>)` 와 **완전히 같은 응답**이다.
+# 골드에서 달라지는 것은 '어느 행을 읽는가' 뿐이고(_resolve), 읽은 뒤 동작은 하나다.
+#
+# 뒤집는 요소가 또 바뀌어도 여기는 따라간다. 원천은 reviewops 의 상수 하나다.
+_ELEM_VAL_KEY = {"summary": "summary", "entities": "entities", "intent": "intent",
+                 "category": "content_category", "grade": "grade", "quality": "reasons"}
+
+
+def flip_blind_key() -> str:
+    """사실로 말하지 않을 값 키(_values·PATCH_FIELDS 어휘). 모르는 요소면 빈 문자열."""
+    from . import reviewops as RV
+    return _ELEM_VAL_KEY.get(getattr(RV, "GOLD_FLIP_ELEMENT", ""), "")
+
+
+def _blank_like(v):
+    """같은 자리에 들어갈 '값 없음'. 모양은 유지한다(목록은 목록, 문자열은 문자열)."""
+    return [] if isinstance(v, (list, tuple)) else ""
+
+
+def _resolve(ch: str) -> tuple:
+    """조회에 쓸 콘텐츠 해시. 골드 합성 해시(`gold:<ok|bad>:<hash>`)는 밑에 깔린 콘텐츠로 푼다.
+
+    반환 (조회 해시, 골드 여부). **풀 수 없는 골드 해시는 ("", True)** 로 닫는다.
+    형식이 다른 골드 접두 해시를 그대로 조회하면 골드 행 자체를 자료로 내주게 된다."""
+    if not PT.is_gold(ch):
+        return str(ch or "").strip(), False
+    parts = str(ch or "").split(":")
+    under = parts[2].strip() if len(parts) >= 3 else ""
+    return ("", True) if (not under or PT.is_gold(under)) else (under, True)
 
 
 # ── 소소한 도구 ──────────────────────────────────────────────────────────────
@@ -245,11 +304,19 @@ def _values(row: dict) -> dict:
 
 # ── content_brief ────────────────────────────────────────────────────────────
 def _summary3(vals: dict, evidence: str) -> list:
-    """3줄 요약. 저장된 값을 잇는 것뿐이라 문장이 늘거나 줄지 않는다(항상 3줄)."""
-    cat = " · ".join(vals["content_category"]) or "카테고리 미부여"
-    l1 = f"{vals['service'] or '서비스 미상'} · {_clip(vals['title'], TITLE_MAX)} · {cat}"
+    """3줄 요약. 저장된 값을 잇는 것뿐이라 문장이 늘거나 줄지 않는다(항상 3줄).
+
+    큐가 뒤집는 요소는 여기서도 말하지 않는다. 값을 비워 놓고 "미부여" 라고 쓰면 화면에는
+    값이 그려져 있는 골드에서 앞뒤가 안 맞으므로, 그 자리는 **문장에서 통째로 뺀다**
+    (전 콘텐츠 공통 · 검수자는 그 값을 화면에서 이미 보고 있다)."""
+    blind = flip_blind_key()
+    head = [vals["service"] or "서비스 미상", _clip(vals["title"], TITLE_MAX)]
+    if blind != "content_category":
+        head.append(" · ".join(vals["content_category"]) or "카테고리 미부여")
+    l1 = " · ".join(head)
     rs = ", ".join(vals["reason_labels"]) or "지적된 품질 사유 없음"
-    l2 = f"모델 초안: 등급 {vals['grade'] or '미상'} · {rs}"
+    l2 = (f"모델 초안: 등급 {vals['grade'] or '미상'} · {rs}" if blind != "grade"
+          else f"모델 초안: {rs}")
     if vals["review"] == "yellow":
         l2 += " · 사람 검수 필요" + (f"({vals['review_reason']})" if vals["review_reason"] else "")
     l3 = ("모델이 남긴 판정 근거: " + _clip(evidence, EVIDENCE_SNIP)) if evidence else NO_EVIDENCE
@@ -310,7 +377,7 @@ def _observations(field: str, bv, av, cur) -> list:
     return []
 
 
-def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
+def _suggestions(ch: str, vals: dict, idx: dict, team, skip: str = "") -> list:
     """수정 제안 = 같은 서비스에서 **같은 출발값을 같게 고친 과거 교정**의 집계.
 
     새로 만들어 내는 값이 없다. 셀 뿐이다. 그래서 다음 셋을 지킨다.
@@ -318,6 +385,9 @@ def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
       · SUGGEST_MIN 건 이상 쌓여야 내보낸다 — 1건은 선례가 아니라 한 사람의 판단이다
       · 센 건수와 검수자 수를 함께 실어 무게는 검수자가 스스로 단다
     basis 에는 **세어진 사실만** 적는다. "이렇게 고치세요" 는 이 도구가 할 말이 아니다.
+
+    skip: 제외할 필드(골드에서 큐가 뒤집는 자리). 그 자리는 vals 가 비워져 있어 그냥 두면
+    '비어 있던 필드를 채운 교정' 제안이 붙는데, 화면에는 값이 그려져 있어 앞뒤가 안 맞는다.
 
     판정 뒤에만 부른다(content_brief 가 stage 로 분기)."""
     st = _SV.get_store() if _SV else None
@@ -329,7 +399,7 @@ def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
         return []
     svc_of = {h: str((r.get("content_ref") or {}).get("displayServiceName", "") or "")
               for h, r in idx.items()}
-    cur = {k: vals[_VAL_KEY.get(k, k)] for k in PATCH_FIELDS}
+    cur = {k: vals[_VAL_KEY.get(k, k)] for k in PATCH_FIELDS if _VAL_KEY.get(k, k) != skip}
     tally = {}
     for pr in PT.strip_gold(rows):
         h = str(pr.get("hash") or "")
@@ -363,32 +433,41 @@ def _suggestions(ch: str, vals: dict, idx: dict, team) -> list:
 
 
 def content_brief(hash: str = "", stage: str = "before", team=None) -> dict:
-    """이 콘텐츠가 왜 이렇게 판정됐나 · 3줄 요약 + 저장된 근거 + 부여된 값 + 분류 기준."""
+    """이 콘텐츠가 왜 이렇게 판정됐나 · 3줄 요약 + 저장된 근거 + 부여된 값 + 분류 기준.
+
+    골드 문항도 평소대로 답한다(2026-08-13). 종전에는 거절했는데, 큐가 **등급을** 뒤집던
+    시절에는 저장된 근거가 곧 뒤집힘의 해설이라 안전하게 만들 방법이 없었기 때문이다.
+    지금 큐가 뒤집는 것은 카테고리 한 자리뿐이고 등급·근거·리드문·엔티티·인텐트는 참값이라,
+    **그 한 자리만 비우면** 나머지는 화면과 그대로 맞는다. 거절을 유지하면 골드에서만
+    "저장된 근거 없음" 이 되고, 근거 적재율이 오를수록 그 빈칸이 골드를 가리킨다."""
     blocked = PT.need_team(team)
     if blocked:
         return blocked
     ch = str(hash or "").strip()
     if not ch:
         return {"error": "콘텐츠를 지정해 주세요"}
-    if PT.is_gold(ch):
-        return {"error": GOLD_MSG}
     stage = _stage(stage)
     idx = _index(team)
-    row = idx.get(ch)
+    look, _is_gold = _resolve(ch)                 # 골드면 밑에 깔린 콘텐츠로 읽는다
+    row = idx.get(look) if look else None
     if row is None:
         return {"error": NOT_FOUND_MSG}
     vals = _values(row)
+    blind = flip_blind_key()                      # 큐가 뒤집는 그 한 자리(전 콘텐츠 공통)
+    if blind and blind in vals:
+        vals[blind] = _blank_like(vals[blind])    # 참이 아닐 수 있는 값을 사실로 말하지 않는다
     ev = str((row.get("quality_meta") or {}).get("evidence") or "").strip()
     out = {
         "stage": stage,
-        "summary3": _summary3(vals, ev),
+        "summary3": _summary3(vals, ev),          # 비운 값 기준(문구도 화면과 어긋나지 않게)
         "evidence": ev or None,                   # 없으면 없다고 말한다(빈 문자열로 얼버무리지 않는다)
         "has_evidence": bool(ev),
         "values": vals,
         "criteria": _criteria(vals, team),
     }
     if stage == "after":
-        out["suggestions"] = _suggestions(ch, vals, idx, team)
+        out["suggestions"] = _suggestions(look, vals, idx, team, skip=blind)
+    # 이 지점에서 응답은 골드든 아니든 완전히 같다(다른 것은 어느 행을 읽었는가뿐).
     else:
         for k in SUGGESTIVE_KEYS:                 # 이중 방어: 판정 전에는 키 자체가 없어야 한다
             out.pop(k, None)
@@ -396,6 +475,30 @@ def content_brief(hash: str = "", stage: str = "before", team=None) -> dict:
 
 
 # ── verdict_precedents ───────────────────────────────────────────────────────
+# 선례 유사도 축: (검수 요소 id, _values 키, 화면 문구, 가중치, 값 표시 변환).
+# 등급은 목록이 아니라 스칼라 비교라 아래 표가 아니라 따로 다룬다(_axis_on 으로 같은 규칙 적용).
+_AXES = (
+    ("quality", "reasons", "같은 품질 사유", 3, _reason_label),
+    ("intent", "intent", "같은 인텐트", 2, None),
+    ("category", "content_category", "같은 카테고리", 2, None),
+)
+
+
+def _axis_on(element: str) -> bool:
+    """그 요소를 유사도 근거로 써도 되는가.
+
+    큐가 뒤집는 요소는 **모든 콘텐츠에서** 뺀다. 골드에서만 빼면 그 차이가 다음 신호이고,
+    참이 아닐 수 있는 값을 '비슷함' 의 근거로 삼는 것 자체가 성립하지 않는다(그 값이
+    뒤집힌 문항이 같은 큐에 섞여 있다). 무엇보다 `why_similar` 는 화면에 그대로 뜨는
+    문구라 `같은 카테고리: …` 가 뒤집힌 화면과 어긋나면 그 어긋남이 곧 정답이다."""
+    from . import reviewops as RV
+    return element != getattr(RV, "GOLD_FLIP_ELEMENT", "")
+
+
+def _similarity_axes() -> tuple:
+    return tuple(a for a in _AXES if _axis_on(a[0]))
+
+
 def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=None) -> dict:
     """비슷한 과거 판정(선례). 무엇이 '비슷함'인지(why_similar)를 함께 실어 검수자가 스스로 본다.
 
@@ -414,15 +517,20 @@ def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=N
         return dict(empty, error=AFTER_ONLY_MSG)
     if not ch:
         return dict(empty, error="콘텐츠를 지정해 주세요")
-    if PT.is_gold(ch):
-        return dict(empty)                        # 오류가 아니라 빈 결과(오류는 화면에 뜨고 = 골드 신호)
     lim = PT.qint(limit, PRECEDENT_DEFAULT, 1, PRECEDENT_MAX)
     idx = _index(team)
+    # 골드는 밑에 깔린 콘텐츠로 읽는다. 선례는 **자기 자신을 뺀 남의 판정**이라 정답이 새지
+    # 않고(골든 원본은 아래에서 식별자가 가려진다), 골드만 늘 비어 있으면 그 빈칸이 신호다
+    # (운영 실측 2026-08-13: 평범한 콘텐츠는 1,451/1,451 이 선례를 갖는다).
+    ch, _is_gold = _resolve(ch)
+    if not ch:
+        return dict(empty)                        # 못 푸는 골드 해시 = 빈 결과(오류는 곧 신호)
     row = idx.get(ch)
     if row is None:
         return dict(empty, error=NOT_FOUND_MSG)
     me = _values(row)
-    mine = (set(me["reasons"]), set(me["intent"]), set(me["content_category"]))
+    axes = _similarity_axes()
+    mine = {key: set(me[key]) for _el, key, _lbl, _w, _fmt in axes}
     fbm = _feedback(team)
 
     ranked = []
@@ -442,21 +550,14 @@ def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=N
         if verdict not in ("good", "bad"):
             continue
         why, score = [], 0
-        shared = mine[0] & set(v["reasons"])
-        if shared:
-            why.append("같은 품질 사유: " + ", ".join(_reason_label(x) for x in sorted(shared)))
-            score += 3
-        shared = mine[1] & set(v["intent"])
-        if shared:
-            why.append("같은 인텐트: " + ", ".join(sorted(shared)))
-            score += 2
-        shared = mine[2] & set(v["content_category"])
-        if shared:
-            why.append("같은 카테고리: " + ", ".join(sorted(shared)))
-            score += 2
+        for _el, key, label, weight, fmt in axes:
+            shared = mine[key] & set(v[key])
+            if shared:
+                why.append(f"{label}: " + ", ".join((fmt or str)(x) for x in sorted(shared)))
+                score += weight
         if not score:                             # 서비스만 같은 건 '비슷함' 이 아니다
             continue
-        if v["grade"] and v["grade"] == me["grade"]:
+        if _axis_on("grade") and v["grade"] and v["grade"] == me["grade"]:
             why.append(f"같은 등급: {v['grade']}")
             score += 1
         last = (fb.get("verdicts") or [{}])[-1]
@@ -554,8 +655,12 @@ def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
         return dict(empty, error=AFTER_ONLY_MSG)
     if not ch:
         return dict(empty, error="콘텐츠를 지정해 주세요")
+    # 여기만 골드에서 닫힌다. content_brief·verdict_precedents 는 골드를 밑 콘텐츠로 풀어
+    # 평소대로 답하지만(2026-08-13), 이 도구는 풀면 안 된다. 골드 원본은 '정확' 다수결로
+    # 골든이 된 콘텐츠라 **그 의견 목록이 곧 정답**이다. 대신 오류가 아니라 빈 결과를 준다
+    # (운영 실측: 의견이 갈린 콘텐츠는 13.0% 뿐이라 빈 요약은 흔한 모양이다).
     if PT.is_gold(ch):
-        return dict(empty)                        # 오류가 아니라 빈 결과(위와 같은 이유)
+        return dict(empty)
     fb = _feedback(team).get(ch) or {}
     verdicts = list(fb.get("verdicts") or [])
     if not verdicts:

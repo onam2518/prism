@@ -223,8 +223,8 @@ class TestGoldIsNeverExposed(Base):
         self.install(
             rows=[_row(H1), _row(GOLD_H, title="골드 원문")],
             feedback={GOLD_H: _confirmed("골드 정답")},
-            patches=[_patch(GOLD_H, "복실", "content_category", ["정치"], ["사회"], 10.0),
-                     _patch(GOLD_H, "딱지", "content_category", ["정치"], ["사회"], 11.0)],
+            patches=[_patch(GOLD_H, "복실", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 10.0),
+                     _patch(GOLD_H, "딱지", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 11.0)],
         )
 
     def test_gold_never_gets_data_from_any_tool(self):
@@ -247,13 +247,19 @@ class TestGoldIsNeverExposed(Base):
             self.assertNotIn("error", gold, f"{tool}: 골드에서만 오류가 뜨면 그게 신호다")
             self.assertEqual(gold, plain, f"{tool}: 골드 응답이 평범한 콘텐츠와 다르다")
 
-    def test_content_brief_still_refuses_gold(self):
-        """골드 문항의 화면 값은 골든 정답을 일부러 뒤집은 사본이다(reviewops._inject_gold).
+    def test_unresolvable_gold_hash_gets_nothing(self):
+        """접두만 골드이고 밑 콘텐츠를 못 푸는 해시는 조회하지 않는다(fail-closed).
 
-        저장된 행으로 브리핑을 만들면 화면과 어긋나고, 그 어긋남 자체가 정답이 된다.
-        서버가 안전하게 만들 수 없으므로 아예 주지 않는다(클라이언트가 화면 값으로 조립)."""
+        그대로 조회하면 데이터에 섞인 골드 행 자체를 자료로 내주게 된다."""
         r = RA.call("content_brief", {"hash": GOLD_H, "stage": "after"}, team=TEAM)
-        self.assertEqual(r.get("error"), RA.GOLD_MSG)
+        self.assertEqual(r.get("error"), RA.NOT_FOUND_MSG)
+        for tool, spec in RA.TOOLS.items():
+            if not spec.get("after_only"):
+                continue
+            r = RA.call(tool, _args(GOLD_H), team=TEAM)
+            self.assertNotIn("error", r, tool)             # 오류 문구는 화면에 뜨고 = 신호
+            for key in PAYLOAD_KEYS:
+                self.assertFalse(r.get(key), f"{tool} 가 {key} 를 냈다")
 
     def test_gold_never_appears_among_precedents(self):
         r = RA.call("verdict_precedents", _args(), team=TEAM)
@@ -265,14 +271,95 @@ class TestGoldIsNeverExposed(Base):
         self.assertEqual(r["suggestions"], [])            # 골드 교정만 있었으므로 제안이 없다
 
 
+# ── 골드 문항에도 평소대로 답한다(2026-08-13) ────────────────────────────────
+class TestGoldAnsweredLikeAnyContent(Base):
+    """큐가 뒤집는 자리가 등급에서 카테고리로 옮겨져(reviewops.GOLD_FLIP_ELEMENT) 이 모듈이
+    골드에 답할 수 있게 됐다. 거절을 유지하면 골드에서만 "저장된 근거 없음" 이 되고,
+    근거 적재율이 오를수록 그 빈칸이 골드를 가리킨다(그게 이 변경의 이유다).
+
+    답하는 방식이 핵심이다. **큐가 뒤집는 요소는 전 콘텐츠에서 말하지 않는다.** 골드에서만
+    가리면 그 차이가 다음 신호이고, 골드에서만 다르게 답하려면 뒤집기 규칙을 이 모듈에
+    두 번째로 구현해야 한다. 그래서 골드 응답과 밑 콘텐츠 응답이 **완전히 같다** ·
+    `/assist-ask`(자유질문)가 이 응답을 모델에 통째로 먹이므로, 화면이 안 그리는 필드에서
+    갈려도 모델의 답이 갈리고 그 답이 곧 골드 표시가 된다."""
+
+    def setUp(self):
+        self.install(
+            rows=[_row(H1, evidence="광고 문구 없음"), _row(_h(2)), _row(_h(3))],
+            feedback={_h(2): _confirmed(), _h(3): _confirmed()},
+            patches=[_patch(_h(2), "복실", "summary", "옛 리드문", "새 리드문", 10.0),
+                     _patch(_h(3), "딱지", "summary", "옛 리드문", "새 리드문", 11.0)],
+        )
+        self.gold = "gold:bad:" + H1              # 큐가 내보내는 형식
+
+    def _brief(self, h, stage="after"):
+        return RA.call("content_brief", {"hash": h, "stage": stage}, team=TEAM)
+
+    def test_gold_brief_is_identical_to_the_underlying_content(self):
+        """도구 응답 자체가 한 글자도 다르지 않아야 한다(패널이 안 그리는 필드까지)."""
+        g, n = self._brief(self.gold), self._brief(H1)
+        self.assertNotIn("error", g)
+        self.assertEqual(g, n)
+        self.assertTrue(n["has_evidence"])                # 빈 비교로 통과하지 않게
+        for stage in ("before", "after"):
+            self.assertEqual(self._brief(self.gold, stage), self._brief(H1, stage), stage)
+
+    def test_the_flipped_field_is_never_stated_as_fact(self):
+        """참이 아닐 수 있는 값은 사실로 말하지 않는다 · 전 콘텐츠 공통(골드 분기 없음)."""
+        key = RA.flip_blind_key()
+        self.assertTrue(key)
+        for h in (H1, self.gold):
+            vals = self._brief(h)["values"]
+            self.assertIn(key, vals)                      # 키는 남긴다(모양이 갈리면 안 된다)
+            self.assertFalse(vals[key], h)
+
+    def test_the_flipped_field_does_not_come_back_through_summary3(self):
+        """비운 값이 3줄 요약으로 되돌아오면 자리만 옮긴 것이다."""
+        for h in (H1, self.gold):
+            blob = " ".join(self._brief(h)["summary3"])
+            for v in _row(H1)["item_meta"]["content_category"]:
+                self.assertNotIn(str(v), blob, h)
+            self.assertNotIn("카테고리", blob, h)          # "미부여" 로 말하지도 않는다
+
+    def test_no_suggestion_for_the_flipped_field(self):
+        """비운 자리는 '비어 있던 필드를 채운 교정' 제안을 부른다. 그 자리는 아예 뺀다."""
+        key = RA.flip_blind_key()
+        for h in (H1, self.gold):
+            for s in self._brief(h).get("suggestions") or []:
+                self.assertNotEqual(s["field"], key, h)
+
+    def test_precedents_for_gold_match_the_underlying_content(self):
+        """골드만 늘 선례가 비면 그 빈칸이 신호다(운영에서 평범한 콘텐츠는 100% 선례가 있다)."""
+        g = RA.call("verdict_precedents", _args(self.gold), team=TEAM)
+        n = RA.call("verdict_precedents", _args(H1), team=TEAM)
+        self.assertEqual(g, n)
+        self.assertTrue(n["items"])                       # 빈 비교로 통과하지 않게
+
+    def test_dissent_stays_shut_for_gold(self):
+        """골드 원본은 '정확' 다수결로 골든이 된 콘텐츠라 그 의견 목록이 곧 정답이다.
+        여기만 골드에서 닫힌다 · 운영에서 의견이 갈린 콘텐츠는 13.0% 뿐이라 흔한 빈칸이다."""
+        g = RA.call("reviewer_dissent", _args(self.gold), team=TEAM)
+        self.assertFalse(g.get("lines"))
+        self.assertFalse(g.get("items"))
+
+    def test_flipped_element_is_never_a_similarity_axis(self):
+        """유사도 축 제외도 **전 콘텐츠 공통**. `why_similar` 는 화면에 그대로 뜨는 문구라
+        `같은 카테고리: …` 가 뒤집힌 화면과 어긋나면 그 어긋남이 곧 정답이다."""
+        from prism import reviewops as RV
+        self.assertNotIn(RV.GOLD_FLIP_ELEMENT, [a[0] for a in RA._similarity_axes()])
+        for h in (H1, self.gold):
+            for it in RA.call("verdict_precedents", _args(h), team=TEAM)["items"]:
+                self.assertNotIn("같은 카테고리", it["why_similar"], h)
+
+
 # ── 독립성(가장 중요) ────────────────────────────────────────────────────────
 class TestIndependence(Base):
     def setUp(self):
         self.install(
             rows=[_row(H1), _row(_h(2)), _row(_h(3))],
             feedback={_h(2): _confirmed(), _h(3): _confirmed()},
-            patches=[_patch(_h(2), "딱지", "content_category", ["정치"], ["사회"], 10.0),
-                     _patch(_h(3), "복실", "content_category", ["정치"], ["사회"], 11.0)],
+            patches=[_patch(_h(2), "딱지", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 10.0),
+                     _patch(_h(3), "복실", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 11.0)],
         )
 
     def test_before_stage_yields_no_judgment_material_from_any_tool(self):
@@ -545,13 +632,13 @@ class TestSuggestions(Base):
     def test_suggestion_is_assembled_from_past_corrections(self):
         self.install(
             rows=[_row(H1), _row(_h(2)), _row(_h(3))],
-            patches=[_patch(_h(2), "복실", "content_category", ["정치"], ["사회"], 10.0),
-                     _patch(_h(3), "딱지", "content_category", ["정치"], ["사회"], 11.0)])
+            patches=[_patch(_h(2), "복실", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 10.0),
+                     _patch(_h(3), "딱지", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 11.0)])
         sg = self._brief()
         self.assertEqual(len(sg), 1)
         self.assertEqual(set(sg[0]), {"field", "from", "to", "count", "reviewers", "basis"})
         self.assertEqual((sg[0]["field"], sg[0]["from"], sg[0]["to"]),
-                         ("content_category", "정치", "사회"))
+                         ("intent", "속보·사건 추적", "해설·팩트체크"))
         self.assertEqual((sg[0]["count"], sg[0]["reviewers"]), (2, 2))
         self.assertIn("2건", sg[0]["basis"])              # 근거는 실제로 센 사실뿐이다
         self.assertIn("2명", sg[0]["basis"])
@@ -559,71 +646,71 @@ class TestSuggestions(Base):
     def test_one_correction_is_not_a_precedent(self):
         """1건은 선례가 아니라 한 사람의 판단이다."""
         self.install(rows=[_row(H1), _row(_h(2))],
-                     patches=[_patch(_h(2), "복실", "content_category", ["정치"], ["사회"])])
+                     patches=[_patch(_h(2), "복실", "intent", ["속보·사건 추적"], ["해설·팩트체크"])])
         self.assertEqual(self._brief(), [])
 
     def test_headcount_is_reported_separately_from_the_count(self):
         """같은 사람이 두 번 고친 것과 두 사람이 각각 고친 것은 무게가 다르다 · 판단은 검수자 몫."""
         self.install(rows=[_row(H1), _row(_h(2)), _row(_h(3))],
-                     patches=[_patch(_h(2), "복실", "content_category", ["정치"], ["사회"], 10.0),
-                              _patch(_h(3), "복실", "content_category", ["정치"], ["사회"], 11.0)])
+                     patches=[_patch(_h(2), "복실", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 10.0),
+                              _patch(_h(3), "복실", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 11.0)])
         sg = self._brief()
         self.assertEqual((sg[0]["count"], sg[0]["reviewers"]), (2, 1))
 
     def test_list_fields_are_compared_element_by_element(self):
         """목록 전체가 같아야 한다면 운영에서 거의 안 걸려 기능이 없는 것과 같다."""
         self.install(
-            rows=[_row(H1, cats=("정치", "사회")), _row(_h(2), cats=("정치", "경제")),
-                  _row(_h(3), cats=("정치", "문화"))],
-            patches=[_patch(_h(2), "복실", "content_category", ["정치", "경제"], ["정치", "국제"], 10.0),
-                     _patch(_h(3), "딱지", "content_category", ["정치", "문화"], ["정치", "국제"], 11.0)])
+            rows=[_row(H1, intent=("속보·사건 추적", "해설·팩트체크")), _row(_h(2), intent=("속보·사건 추적", "인터뷰")),
+                  _row(_h(3), intent=("속보·사건 추적", "심층 분석"))],
+            patches=[_patch(_h(2), "복실", "intent", ["속보·사건 추적", "인터뷰"], ["속보·사건 추적", "후기·리뷰·비평"], 10.0),
+                     _patch(_h(3), "딱지", "intent", ["속보·사건 추적", "심층 분석"], ["속보·사건 추적", "후기·리뷰·비평"], 11.0)])
         # 대상의 현재 값에 없는 요소('경제'·'문화')에서 출발한 교정이라 제안이 되지 않는다
         self.assertEqual(self._brief(), [])
         self.install(
-            rows=[_row(H1, cats=("정치", "사회")), _row(_h(2), cats=("정치", "사회")),
-                  _row(_h(3), cats=("정치", "사회"))],
-            patches=[_patch(_h(2), "복실", "content_category", ["정치", "사회"], ["정치", "국제"], 10.0),
-                     _patch(_h(3), "딱지", "content_category", ["정치", "사회"], ["정치", "국제"], 11.0)])
+            rows=[_row(H1, intent=("속보·사건 추적", "해설·팩트체크")), _row(_h(2), intent=("속보·사건 추적", "해설·팩트체크")),
+                  _row(_h(3), intent=("속보·사건 추적", "해설·팩트체크"))],
+            patches=[_patch(_h(2), "복실", "intent", ["속보·사건 추적", "해설·팩트체크"], ["속보·사건 추적", "후기·리뷰·비평"], 10.0),
+                     _patch(_h(3), "딱지", "intent", ["속보·사건 추적", "해설·팩트체크"], ["속보·사건 추적", "후기·리뷰·비평"], 11.0)])
         sg = self._brief()
-        self.assertEqual((sg[0]["from"], sg[0]["to"]), ("사회", "국제"))   # 바뀐 요소만 짚는다
+        self.assertEqual((sg[0]["from"], sg[0]["to"]), ("해설·팩트체크", "후기·리뷰·비평"))   # 바뀐 요소만 짚는다
 
     def test_ambiguous_multi_element_changes_are_not_paired(self):
         """여러 개가 한꺼번에 바뀌면 무엇이 무엇으로 바뀌었는지 모른다. 짝을 지어내지 않는다."""
         self.install(
-            rows=[_row(H1, cats=("정치", "사회")), _row(_h(2), cats=("정치", "사회")),
-                  _row(_h(3), cats=("정치", "사회"))],
-            patches=[_patch(_h(2), "복실", "content_category", ["정치", "사회"], ["경제", "국제"], 10.0),
-                     _patch(_h(3), "딱지", "content_category", ["정치", "사회"], ["경제", "국제"], 11.0)])
+            rows=[_row(H1, intent=("속보·사건 추적", "해설·팩트체크")), _row(_h(2), intent=("속보·사건 추적", "해설·팩트체크")),
+                  _row(_h(3), intent=("속보·사건 추적", "해설·팩트체크"))],
+            patches=[_patch(_h(2), "복실", "intent", ["속보·사건 추적", "해설·팩트체크"], ["인터뷰", "후기·리뷰·비평"], 10.0),
+                     _patch(_h(3), "딱지", "intent", ["속보·사건 추적", "해설·팩트체크"], ["인터뷰", "후기·리뷰·비평"], 11.0)])
         self.assertEqual(self._brief(), [])
 
     def test_filling_an_empty_field_is_counted(self):
         """빈 카테고리 채우기는 실제로 가장 잦은 교정이다 · 대상도 비어 있을 때만 센다."""
         self.install(
-            rows=[_row(H1, cats=()), _row(_h(2), cats=()), _row(_h(3), cats=())],
-            patches=[_patch(_h(2), "복실", "content_category", [], ["사회"], 10.0),
-                     _patch(_h(3), "딱지", "content_category", [], ["사회"], 11.0)])
+            rows=[_row(H1, intent=()), _row(_h(2), intent=()), _row(_h(3), intent=())],
+            patches=[_patch(_h(2), "복실", "intent", [], ["해설·팩트체크"], 10.0),
+                     _patch(_h(3), "딱지", "intent", [], ["해설·팩트체크"], 11.0)])
         sg = self._brief()
-        self.assertEqual((sg[0]["from"], sg[0]["to"], sg[0]["count"]), ("", "사회", 2))
+        self.assertEqual((sg[0]["from"], sg[0]["to"], sg[0]["count"]), ("", "해설·팩트체크", 2))
 
     def test_corrections_from_a_different_starting_value_are_not_suggested(self):
         self.install(
-            rows=[_row(H1), _row(_h(2), cats=("경제",)), _row(_h(3), cats=("경제",))],
-            patches=[_patch(_h(2), "복실", "content_category", ["경제"], ["사회"], 10.0),
-                     _patch(_h(3), "딱지", "content_category", ["경제"], ["사회"], 11.0)])
+            rows=[_row(H1), _row(_h(2), intent=("인터뷰",)), _row(_h(3), intent=("인터뷰",))],
+            patches=[_patch(_h(2), "복실", "intent", ["인터뷰"], ["해설·팩트체크"], 10.0),
+                     _patch(_h(3), "딱지", "intent", ["인터뷰"], ["해설·팩트체크"], 11.0)])
         self.assertEqual(self._brief(), [])               # 출발값이 다르면 선례가 아니다
 
     def test_other_services_are_not_suggested(self):
         self.install(
             rows=[_row(H1), _row(_h(2), service="스포츠"), _row(_h(3), service="스포츠")],
-            patches=[_patch(_h(2), "복실", "content_category", ["정치"], ["사회"], 10.0),
-                     _patch(_h(3), "딱지", "content_category", ["정치"], ["사회"], 11.0)])
+            patches=[_patch(_h(2), "복실", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 10.0),
+                     _patch(_h(3), "딱지", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 11.0)])
         self.assertEqual(self._brief(), [])
 
     def test_own_corrections_are_not_suggested_back(self):
         self.install(
             rows=[_row(H1)],
-            patches=[_patch(H1, "복실", "content_category", ["정치"], ["사회"], 10.0),
-                     _patch(H1, "딱지", "content_category", ["정치"], ["사회"], 11.0)])
+            patches=[_patch(H1, "복실", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 10.0),
+                     _patch(H1, "딱지", "intent", ["속보·사건 추적"], ["해설·팩트체크"], 11.0)])
         self.assertEqual(self._brief(), [])
 
 
