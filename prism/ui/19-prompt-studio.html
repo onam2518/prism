@@ -13,7 +13,7 @@
       <!-- ── 프롬프트 · 빌더: STEP 1 선언 → STEP 2 컴파일 → 테스트 → 적용·저장 ── -->
       <template x-if="mod === 'studio'">
         <div x-show="studioTab === 'prompt' && promptSub === 'builder'" x-cloak class="w-full space-y-4">
-        <!-- 프로세스 안내(표준 · 시안 A): 설계 도구(파이프라인 밖) → 캐릭터 없이 표준 힌트박스 -->
+        <!-- 빌더가 무엇을 만들어 주는지 · 표준 힌트박스 -->
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>과업·역할·제약·출력 형식을 <b>말로 선언</b>하면, 메타 컴파일러가 <b>계열(Claude·GPT·Gemini·Solar)별 프롬프트</b>를 만듭니다.</li>
           <li>만든 프롬프트는 <b>테스트</b>를 거쳐 적용·라이브러리 저장·배포합니다(채택 전 테스트 필수).</li>
