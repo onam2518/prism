@@ -78,6 +78,30 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 - 집계 캐시 `_agg_cached`(+`_agg_bump`), 인입 잡 `_INGEST_STATE`, SSE 구독자 목록도
   serve 전역 — 도메인 추출 시 이 상태들은 serve 에 남기고 함수만 옮긴다.
 
+## 검수 보조 에이전트 모델 (설정 계약 · 두 모듈이 의존)
+
+검수 보조가 답할 때 쓰는 모델은 **품질 판정 모델과 따로** 고른다. 판정한 모델이 그 판정을
+설명까지 하면 틀린 판정도 말이 되게 꾸며 내기 때문이다.
+
+| 무엇 | 이름 |
+|---|---|
+| 설정 필드 | `Config.assist_model`(config.json · `POST /config` 본문 키 `assist_model`) |
+| 해석 함수 | `config.assist_model(cfg=None) -> str` (serve 재수출 · **유일한 해석기**) |
+| 유효값 집합 | `config.assist_model_options()`(원천 `modelmeta.KNOWN_ROUTER_MODELS`) |
+| 기본값 | `config.MODEL_DEFAULT`(= `serve._SOLAR_MODEL_DEFAULT` 와 같은 값) |
+| /config 응답 | `assistModel`(해석된 값) · `assistModels`(키로 부를 수 있는 후보 · `serve._assist_candidates`) |
+
+- `assist_model()` 은 **미설정·잘못된 값·정상값 모두**에서 곧바로 쓸 수 있는 이름을 준다.
+  부르는 쪽은 분기하지 않는다: `llm_for_model(assist_model(), mock)`.
+- **미설정일 때 실행 모델(`cfg.model`)을 따라가지 않는다.** 따라가면 이 설정이 막으려던
+  상황(판정한 모델이 자기 판정을 설명하는 것)이 기본 동작이 된다.
+- 저장 시점에도 같은 목록으로 거른다(`apply_config` 가 `error` 한 줄로 거절 · 부분 반영 없음).
+  읽는 쪽 해석은 손으로 고친 파일·예전에 저장된 값을 위한 안전망으로 남는다.
+- 키가 빠지면 저장된 모델이 런타임에 안 불릴 수 있다. 그 실패는 **설정 화면을 가리키는
+  문구**로 알린다(예: "설정된 모델을 부를 수 없습니다 · 시스템 설정에서 다시 골라 주세요").
+- 화면: 시스템 설정 `ui/16-settings.html` · 동작 `vendor/app-08-copytext.js`
+  (`saveAssistModel` · `judgeModel`/`assistSameAsJudge` = 판정 모델과 같아지면 알림 · 막지 않음).
+
 ## UI 구조
 
 - 마크업: `prism/ui/NN-*.html` 화면 섹션 조각 24개를 `page.py` 가 파일명 순으로

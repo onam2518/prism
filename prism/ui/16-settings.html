@@ -93,6 +93,25 @@
         </div>
           </div>
         </section>
+        <!-- 검수 보조 에이전트가 답할 때 쓰는 모델. 품질 판정 모델과 **따로** 고른다
+             (같은 모델이면 자기 판정을 자기가 변호한다) · 저장은 기존 /config 경로.
+             드롭다운은 x-modelpick 한 줄 · 이름·비용 등급은 page.py 가 펼쳐 준다.
+             (주석 안에서도 그 태그를 그대로 쓰면 합성기가 펼쳐 버리므로 꺾쇠는 뺀다) -->
+        <section class="panel" data-fn><div class="panel-hd"><b>검수 보조 에이전트 모델</b><span class="meta">검수 보조가 답할 때 쓰는 모델 · 팀 전체 공유</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:12px">
+              <li>판정한 모델이 설명까지 하면 틀린 판정도 맞는 것처럼 편들기 때문에, 설명은 다른 모델에게 맡깁니다.</li>
+              <li>고르면 바로 저장되고 팀 전체에 적용됩니다 · 아직 고르지 않았으면 기본 모델이 보입니다(그 모델로 답합니다).</li>
+            </ul>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <x-modelpick key="asm" value="assistModel" set="assistModel=$v; saveAssistModel()" options="assistModels" width="248px" tip="검수 보조가 답할 때 쓰는 모델 · 이름 옆은 건당 평균 비용 등급" tip-pos="top"></x-modelpick>
+              <!-- 판정 모델과 같아졌을 때 알려만 준다(막지 않는다 · 같은 모델이 나은 상황도 있고
+                   판단은 사람이 한다). 아무 말도 안 하면 이 설정을 따로 둔 이유가 사라진다. -->
+              <span class="ds-badge ds-badge--warning" x-show="assistSameAsJudge" x-cloak>지금 판정 모델과 같습니다 · 자기 판정을 자기가 설명하게 됩니다</span>
+              <span class="text-xs text-muted" aria-live="polite" x-text="assistMsg"></span>
+            </div>
+          </div>
+        </section>
 
       </div>
       </template>

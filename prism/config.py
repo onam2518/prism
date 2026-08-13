@@ -7,7 +7,14 @@ import os
 import sys
 import threading
 
+from . import modelmeta as _MM     # 고를 수 있는 모델 목록의 유일한 원천(이름·비용 등급도 여기)
+
 HOME = os.path.dirname(os.path.dirname(__file__))
+
+# 아무도 모델을 고르지 않았을 때 쓰는 이름 하나. serve 의 Upstage 시드 기본값
+# (_SOLAR_MODEL_DEFAULT)도 이 값을 받아 쓴다. 같은 기본값을 두 곳에 적으면 한쪽만 바뀌어
+# 조용히 어긋난다.
+MODEL_DEFAULT = "solar-pro2"
 
 # 앱 번들(.app)은 읽기전용 → config 는 사용자 디렉터리에 둔다. 일반 실행은 레포 루트.
 # 컨테이너(상시 서버)는 PRISM_CONFIG 로 볼륨 경로 지정(재시작 시 퀘스트 일시·모델 설정 보존).
@@ -104,6 +111,9 @@ class Config:
     final_gold_check: bool = True         # 최종검수 큐에 골드 캘리브레이션 문항 블라인드 출제(정확도→신뢰가중)
     fallback_models: list = field(default_factory=list)   # 산출 전량 빈값 시 순서 폴백 모델(최대 3 · 실호출만)
     batch_budget_usd: float = 0.0         # 일괄 실행(재실행) 1회 비용 상한($) · 0 = 무제한
+    # 검수 보조 에이전트가 답할 때 쓰는 모델(팀 공유 설정 · 시스템 설정 화면에서 관리자가 고른다).
+    # 빈 값 = 미설정 = MODEL_DEFAULT. 해석은 아래 assist_model() 한 곳에서만 한다.
+    assist_model: str = ""
 
     # 실행
     concurrency: int = 12
@@ -185,6 +195,41 @@ class Config:
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
         with open(target, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False, indent=2)
+
+
+# ── 검수 보조 에이전트 모델 ──────────────────────────────────────────────────
+# 설정 필드 `assist_model` 을 읽는 자리는 여기 둘뿐이다(목록·해석). 값을 읽는 쪽은
+# assist_model() 하나만 부르면 되고, 미설정·잘못된 값·정상값을 구분하지 않아도 된다.
+def assist_model_options() -> list:
+    """고를 수 있는 모델 목록 = 설정 화면 드롭다운의 선택지이자 해석 함수의 유효값 집합.
+
+    두 목록을 따로 두면 '화면에서는 고를 수 있는데 저장하면 기본값으로 되돌아가는 모델'이
+    생긴다. 원천은 modelmeta 하나뿐이라 여기서 새로 만들지 않고 그대로 받는다.
+    기본값은 항상 목록에 있어야 한다(그래야 해석 결과가 언제나 고를 수 있는 이름이다)."""
+    out = [m for m in (_MM.KNOWN_ROUTER_MODELS or []) if isinstance(m, str) and m.strip()]
+    if MODEL_DEFAULT not in out:
+        out.append(MODEL_DEFAULT)
+    return out
+
+
+def assist_model(cfg: "Config | None" = None) -> str:
+    """검수 보조 에이전트가 쓸 모델 이름. **언제나 바로 쓸 수 있는 이름 하나**를 돌려준다.
+
+    미설정·잘못된 값·정상값 세 경우가 모두 여기서 끝난다(부르는 쪽이 분기하지 않아도 되게).
+    기본값 수렴과 잘못된 값 처리가 두 군데로 갈리면 반드시 어긋나고, 어긋난 쪽이 조용히
+    다른 모델을 부른다.
+
+    모르는 이름은 예외가 아니라 기본값으로 조용히 수렴한다. 설정은 사람이 손으로 고치는
+    자리라 오타·없어진 모델명·문자열 아닌 값이 실제로 들어오는데, 검수 보조는 검수 화면 옆에
+    붙는 기능이라 설정 한 줄 때문에 검수가 멈추면 안 된다.
+
+    미설정일 때 실행 모델(cfg.model)을 따라가지 않는 것도 규칙이다. 따라가면 이 설정이
+    막으려던 상황(판정한 모델이 자기 판정을 설명하는 것)이 오히려 기본 동작이 된다.
+    """
+    c = cfg if isinstance(cfg, Config) else Config.load()
+    name = getattr(c, "assist_model", "")
+    name = name.strip() if isinstance(name, str) else ""
+    return name if name in assist_model_options() else MODEL_DEFAULT
 
 
 _FILE_CACHE = {}                 # path → (mtime_ns, size, data)
