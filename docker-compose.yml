@@ -9,7 +9,7 @@ services:
     environment:
       # ── 운영 백엔드: Supabase(필수) ── 미설정/오설정이면 시작이 실패한다(조용한 로컬 폴백 없음)
       - PRISM_BACKEND=supabase
-      - SUPABASE_URL=${SUPABASE_URL:-https://yujinhcdbllcnnfvcmfp.supabase.co}
+      - SUPABASE_URL=${SUPABASE_URL:?Supabase 프로젝트 URL 필요 (.env 또는 호스트 env)}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY:?service_role 키 필요 (.env 또는 호스트 env)}
       # ── 추출 모델(Upstage · 선택: Timely 라우터) ──
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY:-}
