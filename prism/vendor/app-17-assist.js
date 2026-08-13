@@ -51,6 +51,7 @@
      만들어진다. 콘텐츠 해시로 서버가 만든 텍스트는 그대로 옮겨 적을 뿐 화면이 다시 가공하지
      않는다.**
 
+   - 첫 인사의 제목 = detail(화면 값) · 서버에서 받으면 골드에서 화면과 갈릴 수 있다
    - 3줄 요약 = detail(화면 값)로 조립 · 골드는 뒤집힌 값 그대로라 화면과 항상 일치한다
    - 분류 기준 = /dict 의 정의문(INTENT_VALUE_DEFS · QUALITY_METAS)에서 화면에 걸린 값만 추림.
      서버 도구 get_taxonomy 와 같은 원천이라 따로 부를 필요가 없다(해시도 보내지 않는다).
@@ -113,12 +114,48 @@ window.PRISM_APP_PARTS.push(() => ({
       // 잠긴 칩에 붙는 문구. **단계만 본다** — 콘텐츠에 대해서는 아무것도 말하지 않는다.
       ASX_LOCK_TIP: '판정을 낸 뒤에 볼 수 있어요 · 남이 내린 판정을 먼저 보면 검수 결과를 그대로 재기 어려워요',
 
-      // 이 조각에는 골드 분기가 **없다**. 분기가 하나라도 있으면 언젠가 그 분기가 화면 차이로
-      // 새고, 검수자가 그것으로 골드를 배운다. 골드를 안전하게 만드는 일은 전부 서버가 한다.
-      // 보조를 붙일 화면인가: 기초 검수 상세. 최종검수(편입·제외)는 다른 결정이라 제외.
-      asxAvail() {
-        const d = this.detail;
-        return !!(d && d.hash) && !this.finalMode;
+      /* ── 지금 어느 자리에 서 있나 ──────────────────────────────────────────
+         'ready'      기초 검수 상세가 열려 있다 = 대화가 된다
+         'no-content' 콘텐츠 검수 화면인데 아직 콘텐츠를 안 열었다
+         'final'      최종 검수 상세다(편입·제외는 다른 결정이라 보조를 붙이지 않는다)
+         'elsewhere'  그 밖의 화면
+
+         **화면 상태만 본다.** 콘텐츠 값이 노출·안내에 섞이면 그게 곧 신호가 된다(이 조각의
+         오래된 규칙 그대로). 그래서 여기서 읽는 것은 메뉴(mod)·상세 열림(detailOpen)·
+         최종검수 여부뿐이고, 골드 분기는 여전히 하나도 없다.
+
+         종전에는 상세가 없으면 버튼째 사라져서 이 기능이 있는지조차 몰랐다. 이제 버튼은
+         어디서나 서고, 못 쓰는 자리에서는 **왜 못 쓰는지와 어디로 가야 하는지**를 말한다. */
+      ASX_MOD: 'create',                             // 콘텐츠 검수 메뉴 id(app-00 navGroups)
+      asxState() {
+        if (this.mod !== this.ASX_MOD) return 'elsewhere';
+        if (this.finalMode) return 'final';
+        if (!(this.detailOpen && this.detail && this.detail.hash)) return 'no-content';
+        return 'ready';
+      },
+      asxAvail() { return this.asxState() === 'ready'; },
+      // 안내 문구. 자리마다 할 일이 달라서 한 문구로 뭉뚱그리지 않는다.
+      asxGuideText() {
+        const s = this.asxState();
+        if (s === 'no-content') return '검수할 콘텐츠를 열면 그 콘텐츠를 같이 봐 드려요';
+        if (s === 'final') return '최종 검수에서는 아직 못 씁니다 · 검수 대상 콘텐츠를 판정할 때 쓸 수 있어요';
+        return '콘텐츠 검수에서만 동작합니다';
+      },
+      /* 바로가기 문구. **이미 콘텐츠 검수 화면이면 붙이지 않는다**(같은 자리로 보내는
+         버튼은 없는 것만 못하다). 최종 검수는 콘텐츠 검수 **안의 탭**이라 '콘텐츠 검수로
+         가기' 가 거짓이 된다 — 그 자리에서는 옆 탭 이름을 그대로 부른다. */
+      asxGoLabel() {
+        const s = this.asxState();
+        if (s === 'elsewhere') return '콘텐츠 검수로 가기';
+        if (s === 'final') return '검수 대상 콘텐츠로 가기';
+        return '';
+      },
+      // 실제로 그 화면으로 옮긴다(링크만 있고 안 가면 없는 것만 못하다).
+      // 옮긴 뒤에는 상태가 'no-content' 가 되어 안내가 "콘텐츠를 열면…" 으로 자연히 바뀐다.
+      asxGo() {
+        const s = this.asxState();
+        if (s === 'elsewhere') { this.selectMod(this.ASX_MOD); this.createTab = 'raw'; }
+        else if (s === 'final') { this.detailOpen = false; this.finalCtx = null; this.createTab = 'raw'; }
       },
       // 판정 전/후는 화면 상태에서 정한다 — 내 표(myVerdict)가 있으면 판정을 낸 것.
       asxStage() { return (this.detail && this.myVerdict(this.detail.fb)) ? 'after' : 'before'; },
@@ -182,11 +219,12 @@ window.PRISM_APP_PARTS.push(() => ({
       // x-effect 대상(마크업 루트). **열어 두면 콘텐츠가 바뀔 때 따라간다.** 사용자가 매번
       // 다시 여는 것을 복잡해했고 종전 패널도 그렇게 동작했다. 대화 내용은 다른 콘텐츠 이야기라
       // 비우고, 열림 상태는 유지한다. asxKey 를 읽고 쓰지만 값이 같아지면 재실행이 멈춘다.
+      // 자리(state)와 콘텐츠(hash)를 함께 키로 쓴다 — 화면을 옮겨 안내로 바뀔 때도 지난 대화가
+      // 남아 있으면 안 되고, 안내에서 상세로 들어올 때는 인사가 새로 서야 한다.
       asxWatch() {
-        if (!this.asxAvail()) return;
-        const h = this.detail.hash;
-        if (this.asxKey === h) return;
-        this.asxKey = h;
+        const key = this.asxState() + '|' + ((this.detail || {}).hash || '');
+        if (this.asxKey === key) return;
+        this.asxKey = key;
         this.asxReset();
         if (this.asxOpen) this.asxGreet();
       },
@@ -194,11 +232,35 @@ window.PRISM_APP_PARTS.push(() => ({
         this.asxMsgs = []; this.asxBrief = null; this.asxBriefKey = '';
         this.asxErr = ''; this.asxQ = '';
       },
-      // 첫 화면 = 3줄 요약 하나. 화면 값으로만 만들므로 서버를 부르지 않고, 콘텐츠를 옮기면
-      // 누르지 않아도 새 콘텐츠 요약이 선다(종전 패널이 열려 있을 때 하던 일).
+      /* 첫 화면 = **콘텐츠 제목을 부르며 묻는 인사** 하나.
+
+         종전에는 3줄 요약을 자동으로 띄웠는데, 그 요약은 바로 옆 검수 상세에 이미 그려져
+         있어 중복이었고 대화창이 대화처럼 열리지도 않았다. 제목을 부르면 이 창이 **지금 어느
+         콘텐츠를 보고 있는지**가 먼저 분명해진다 — 콘텐츠를 넘겨 가며 쓰는 도구라 그게 요약
+         보다 중요하다. 3줄 요약은 칩으로 그대로 있다(없어지는 기능은 없다).
+
+         제목은 **화면에 그려진 값(detail)**에서 가져온다. 서버에서 새로 받으면 골드에서
+         화면과 어긋날 수 있고, 그 어긋남이 곧 정답 유출이다(요약이 화면 값을 쓰는 것과 같은
+         이유 · 파일 상단 주석). 그래서 서버를 부르지 않는다.
+
+         콘텐츠를 옮기면 대화가 비워지고 이 인사가 새 제목으로 다시 선다(asxWatch). */
       asxGreet() {
         if (!this.asxAvail() || this.asxMsgs.length) return;
-        this.asxPush(Object.assign({ role: 'bot' }, this.asxSummaryMsg()));
+        this.asxPush({ role: 'bot', kind: 'hello', text: this.asxHello() });
+      },
+      /* 인사 문구. 제목이 비면 **지어내지 않고** 제목 없이 묻는다("(제목 없음)" 같은 문구를
+         채우면 그 자리가 오히려 표시가 된다 · 선례에서 같은 함정을 밟았다). */
+      asxHello() {
+        const t = String(((this.detail || {}).title) || '').trim();
+        return t ? ('「' + this.asxTitleClip(t) + '」에 대해 무엇이 궁금하세요?')
+          : '이 콘텐츠에 대해 무엇이 궁금하세요?';
+      },
+      // 인사에 넣을 제목 길이 상한. **모든 콘텐츠에 같은 규칙**을 건다 — 골드에서만 자르거나
+      // 골드에서만 안 자르면 그 차이가 곧 "이건 골드다" 신호다(길이만 보고 판단한다).
+      ASX_TITLE_MAX: 42,
+      asxTitleClip(s) {
+        s = String(s || '');
+        return s.length <= this.ASX_TITLE_MAX ? s : (s.slice(0, this.ASX_TITLE_MAX).trim() + '…');
       },
       asxPush(m) {
         this.asxMsgs = this.asxMsgs.concat([m]);
