@@ -138,7 +138,7 @@ window.PRISM_APP_PARTS.push(() => ({
       asxGuideText() {
         const s = this.asxState();
         if (s === 'no-content') return '검수할 콘텐츠를 열면 그 콘텐츠를 같이 봐 드려요';
-        if (s === 'final') return '최종 검수에서는 아직 못 씁니다 · 검수 대상 콘텐츠를 판정할 때 쓸 수 있어요';
+        if (s === 'final') return '최종 검수에서는 쓸 수 없습니다 · 검수 대상 콘텐츠를 판정할 때 쓸 수 있어요';
         return '콘텐츠 검수에서만 동작합니다';
       },
       /* 바로가기 문구. **이미 콘텐츠 검수 화면이면 붙이지 않는다**(같은 자리로 보내는
