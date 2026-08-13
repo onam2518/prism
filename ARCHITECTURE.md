@@ -117,8 +117,10 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   display 속성을 지워 flex 가 날아간다(자식이 세로로 쌓여 그래프가 뭉갬) — `.flexrow` 클래스 사용.
   **주의 ④**: 조각은 최상위로만 이어붙는다 — 기존 화면 **안쪽**에 끼워야 하면 그 자리에
   자리표 한 줄(`<div id="…" style="display:contents">`)만 두고 본문은 새 조각에서
-  `<template x-teleport="#자리표">` 로 꽂는다(예: 검수 보조 `19e-review-assist.html` →
-  `20-ingest-policy.html` 의 `#asxSlot`). 충돌 잦은 조각에 큰 마크업을 밀어 넣지 않기 위한 관례.
+  `<template x-teleport="#자리표">` 로 꽂는다. 충돌 잦은 조각에 큰 마크업을 밀어 넣지 않기
+  위한 관례다. 화면 위에 **떠 있는** 창(플로팅 버튼·대화창·드롭다운)은 자리표 대신
+  `x-teleport="body"` 를 쓴다 — 탭 컨테이너 안에 있으면 조상 스타일에 눌리고 탭을 옮길 때
+  같이 숨는다(예: 검수 보조 `19e-review-assist.html` · 모델 선택 메뉴 `page.py`).
 - 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 14개 + 로더 `vendor/app.js` 가
   디스크립터 병합(게터 보존 · 조각 간 `this` 공유). 조각 → 로더 로드 순서는
   `ui/00-head.html` 의 script 태그가 원천. `vendor/mobile.js` = /m 전용(단일 파일).
