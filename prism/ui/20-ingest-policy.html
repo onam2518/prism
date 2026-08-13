@@ -492,8 +492,9 @@
               <div x-show="!histBusy && !histItems.length" class="text-xs text-muted">아직 기록이 없습니다</div>
             </div>
           </div>
-          <!-- 검수 보조 자리표: 본문 마크업은 ui/19e-review-assist.html 이 x-teleport 로 꽂는다(이 파일 충돌 최소화) -->
-          <div id="asxSlot" style="display:contents"></div>
+          <!-- 검수 보조 자리표(#asxSlot)는 2026-08-13 에 걷었다. 보조가 접이식 패널에서
+               대화창이 되면서 화면 우하단 플로팅 버튼으로 옮겨졌다(ui/19e-review-assist.html
+               이 body 로 텔레포트). 여기 있던 패널이 판정 UI 를 아래로 밀던 것도 함께 사라졌다. -->
           <div class="dve__verdict">
             <div class="dve__lbl" style="display:flex;align-items:center;gap:8px"><span x-text="finalMode ? '최종검수 결정' : '검수 판정'"></span>
               <label x-show="detailNav && !finalMode" class="chk-inline" style="font-size:11px;font-weight:400;color:var(--ds-muted);margin-left:auto">
