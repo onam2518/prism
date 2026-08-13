@@ -1,19 +1,6 @@
       <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
       <template x-if="mod === 'evaluate'">
         <div class="w-full space-y-4">
-          <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 용희(학습·평가) -->
-          <div class="ds-guide">
-            <span class="ds-guide__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span>
-            <div class="ds-guide__bubble">
-              <div class="ds-guide__who">용희 · 학습·평가 담당</div>
-              <div class="ds-guide__say">정답셋을 기준으로 모델 결과를 재는 화면입니다.</div>
-              <ul class="ds-bullets">
-                <li>검수 합의로 쌓인 <b>정답셋</b>과 모델 결과를 비교해 요약 수치와 <b>불일치 목록</b>을 만듭니다(건수가 적으면 오차가 큽니다).</li>
-                <li>불일치 건은 하나씩 판정합니다 · <b>모델이 맞음</b> = 정답 교정 후보 · <b>정답 유지</b> = 모델 오답 확정.</li>
-                <li>평가·진단 결과는 <b>프롬프트 개선(학습 반영)</b>으로 이어집니다 · 점수가 낮아진 보정은 채택되지 않습니다.</li>
-              </ul>
-            </div>
-          </div>
           <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
             <div class="panel-bd">
               <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
