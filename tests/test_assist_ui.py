@@ -215,18 +215,17 @@ class TestAssistApp(unittest.TestCase):
             self.assertIsNotNone(call, tool)
             self.assertIn("stage: stage", call.group(0), f"{tool} 호출에 stage 가 없습니다")
 
-    def test_gold_looks_like_any_other_content(self):
-        """골드에서 패널이 사라지면 그게 골드 신호다 · 패널은 그대로 두고 빈 상태로 그린다.
+    def test_the_panel_has_no_gold_branch_at_all(self):
+        """골드 분기가 화면에 하나도 없어야 한다(2026-08-13 에 마지막 하나를 지웠다).
 
-        서버를 부르지도 않는다(부르면 골드 거절 문구가 뜨거나, 뒤집기 전 참값이 내려온다)."""
+        분기는 언젠가 화면 차이로 새고, 검수자는 그 차이로 골드를 배운다. 골드를 안전하게
+        만드는 일은 전부 서버가 한다(reviewassist 가 큐가 뒤집는 그 한 자리만 비운다).
+        종전에는 `asxLoad` 가 골드에서 서버를 아예 안 불러 골드만 '저장된 근거 없음' 이
+        됐고, 근거 적재율이 오를수록 그 빈칸이 골드를 가리켰다."""
         js = _read(APPJS)
-        avail = _fn(js, "asxAvail")
-        self.assertNotIn("asxGold", avail, "패널 유무로 골드를 가르면 검수자가 골드를 배웁니다")
-        load = _fn(js, "async asxLoad")
-        self.assertIn("this.asxGold(this.detail)", load)
-        gold = load[load.index("this.asxGold(this.detail)"):]
-        self.assertIn("return;", gold)
-        self.assertNotIn("asxErr", gold)                               # 골드에서 오류 문구가 뜨면 안 된다
+        code = "\n".join(line.split("//")[0] for line in js.splitlines())   # 주석 제외
+        for banned in ("asxGold", "'gold", '"gold', "/^gold"):
+            self.assertNotIn(banned, code, f"화면에 골드 분기가 남아 있습니다: {banned}")
 
     def test_summary_and_criteria_never_come_from_the_server(self):
         """불변식: 패널에 그리는 텍스트는 화면 값 또는 공용 사전에서만 나온다.
@@ -314,7 +313,7 @@ class TestAssistApp(unittest.TestCase):
 #
 # 핵심은 '포함'이 아니라 '동일성'이다. "골드 자료가 안 들어갔다" 는 세 번 다 통과했다.
 # 물어야 할 것은 "평범한 행과 골드 행의 결과가 같은가" 이고, 다른 곳은 화면에 이미
-# 그려진 등급 한 글자뿐이어야 한다.
+# 그려진 **카테고리 배지뿐**이어야 한다(2026-08-13 · 그전에는 등급 한 글자였다).
 _HARNESS = r"""
 const fs = require('fs');
 global.window = {};
@@ -339,36 +338,51 @@ app.detail = row;                                // (가) 평범한 행
 app.asxBrief = brief;
 const normal = { summary: app.asxSummary(), criteria: app.asxCriteria(), avail: app.asxAvail() };
 
-// (나) 같은 콘텐츠의 골드 사본 — 큐가 등급을 뒤집어 보여준다(_inject_gold) · 서버는 안 부른다
-app.detail = Object.assign({}, row, { hash: 'gold:bad:abc123', grade: 'R' });
+// (나) 같은 콘텐츠의 골드 사본 · 큐가 **카테고리 한 자리**를 뒤집어 보여준다(_inject_gold).
+//      등급·인텐트·개체는 참값 그대로라 화면과 저장값이 어긋나지 않는다.
+app.detail = Object.assign({}, row, { hash: 'gold:bad:abc123', category: ['Religion/Spirituality'] });
 app.asxBrief = brief;
 const gold = { summary: app.asxSummary(), criteria: app.asxCriteria(), avail: app.asxAvail() };
 
-// (다) 서버가 저장된 참값(뒤집기 전 등급 G)을 실어 보내도 화면은 그걸 그리지 않는다
+// (다) 서버가 저장된 참값(뒤집기 전 카테고리)을 실어 보내도 화면은 그걸 그리지 않는다
 app.asxBrief = Object.assign({}, brief, {
   summary3: ['서버가 만든 요약', '모델 초안: 등급 G · 광고성', '서버 셋째 줄'],
-  values: { grade: 'G' },
+  values: { content_category: ['News/Politics'] },
   criteria: [{ key: '서버기준', desc: '서버가 고른 기준' }],
 });
 const poisoned = { summary: app.asxSummary(), criteria: app.asxCriteria() };
 
-// (라) 골드에서 asxLoad 가 서버를 **부르지 않고** 빈 의견 요약을 만든다.
-//      _afetch 를 부르면 즉시 실패하도록 심어 둔다 — 정적 검사가 아니라 실행으로 막는다.
-let called = 0;
-app._afetch = () => { called += 1; return Promise.reject(new Error('골드는 서버를 부르면 안 된다')); };
+// (라) 골드에서도 asxLoad 가 서버를 **평소대로** 부른다(2026-08-13).
+//      호출 유무·인자·그린 결과가 평범한 콘텐츠와 갈리면 그 차이가 곧 골드 신호다.
+//      같은 서버 응답을 주고, 부른 것과 그린 것이 한 글자도 다르지 않은지 본다.
+const reply = {
+  content_brief: { stage: 'after', has_evidence: true, evidence: '광고 문구 없음',
+                   values: {}, criteria: [], suggestions: [{ field: 'intent', from: 'a', to: 'b',
+                                                             count: 2, reviewers: 2, basis: '근거' }] },
+  verdict_precedents: { items: [{ hash: 'x', title: 'T', verdict: 'good', n: 2, reason: '',
+                                  ts: 0, why_similar: '같은 서비스: 뉴스' }], total: 1, truncated: false },
+  reviewer_dissent: { lines: ['정확 쪽이 우세합니다.'], n: 3, split: true, truncated: false },
+};
+let calls = [];
+app._afetch = (url, opt) => {
+  const b = JSON.parse(opt.body);
+  calls.push(b.tool + '|' + (b.args.stage || '') + '|' + (b.args.limit || ''));
+  return Promise.resolve({ status: 200, json: async () => ({ ok: true, result: reply[b.tool] }) });
+};
 app._authHeaders = () => ({});
 app.myVerdict = () => 'good';                    // 판정 후 = 선례·의견을 부르는 단계
-app.detail = Object.assign({}, row, { hash: 'gold:bad:abc123', grade: 'R' });
-app.asxOff = false; app.asxKey = '';
-await app.asxLoad();
-const goldDis = { called, lines: app.asxDisLines(), n: app.asxDisN(), cut: app.asxDisCut(),
-                  split: !!(app.asxDis || {}).split, prec: app.asxPrecItems().length };
 
-// (마) 평범한 콘텐츠인데 의견이 하나도 없을 때(서버가 빈 요약을 준다)
-app.asxDis = { lines: [], n: 0, split: false, truncated: false };
-app.asxPrec = { items: [], total: 0, truncated: false };
-const bareDis = { called, lines: app.asxDisLines(), n: app.asxDisN(), cut: app.asxDisCut(),
-                  split: !!app.asxDis.split, prec: app.asxPrecItems().length };
+async function loadWith(hash) {
+  calls = [];
+  app.detail = Object.assign({}, row, { hash: hash });
+  app.asxOff = false; app.asxKey = ''; app.asxBrief = null; app.asxPrec = null; app.asxDis = null;
+  await app.asxLoad();
+  return { calls: calls.slice(), lines: app.asxDisLines(), n: app.asxDisN(), cut: app.asxDisCut(),
+           prec: app.asxPrecItems().length, sugg: app.asxSuggest().length, err: app.asxErr,
+           evidence: (app.asxBrief || {}).evidence, has: (app.asxBrief || {}).has_evidence };
+}
+const normalLoad = await loadWith('abc123');
+const goldLoad = await loadWith('gold:bad:abc123');
 
 // (바) 요약이 있을 때: 줄은 그대로 · 인원은 남고 · 이름/사유가 남아 와도 안 그린다 · 잘림은 '반영' 문장
 app.asxDis = { lines: ['정확 쪽이 우세합니다.', '분류가 넓다는 지적이 있습니다.', '리드문은 문제없다고 봤습니다.'],
@@ -376,7 +390,7 @@ app.asxDis = { lines: ['정확 쪽이 우세합니다.', '분류가 넓다는 �
                items: [{ reviewer: '복실', reason: '분류 적절', verdict: 'good' }] };
 const digest = { lines: app.asxDisLines(), n: app.asxDisN(), cut: app.asxDisCut() };
 
-console.log(JSON.stringify({ normal, gold, poisoned, goldDis, bareDis, digest }));
+console.log(JSON.stringify({ normal, gold, poisoned, normalLoad, goldLoad, digest }));
 })();
 """
 
@@ -403,19 +417,19 @@ class TestAssistGoldParityByExecution(unittest.TestCase):
         self.assertTrue(self.out["gold"]["avail"])
 
     def test_summary_differs_only_by_what_is_on_screen(self):
-        """평범한 행과 골드 사본의 3줄 요약은 **화면에 그려진 등급 한 글자**만 달라야 한다.
+        """평범한 행과 골드 사본의 3줄 요약은 **화면에 그려진 카테고리**만 달라야 한다.
 
-        골드는 큐가 등급을 뒤집어 보여주므로 요약도 뒤집힌 값을 따라가야 화면과 일치한다.
-        서버가 만든 요약을 그리면 여기서 화면 등급과 요약 등급이 갈리고, 그 어긋남만으로
-        뒤집힌 문항이 드러난다."""
+        골드는 큐가 카테고리 한 자리를 뒤집어 보여주므로 요약도 뒤집힌 값을 따라가야 화면과
+        일치한다. 서버가 만든 요약을 그리면 화면 카테고리와 요약 카테고리가 갈리고, 그
+        어긋남만으로 뒤집힌 문항이 드러난다."""
         a, b = self.out["normal"]["summary"], self.out["gold"]["summary"]
         self.assertEqual(len(a), 3)
         self.assertEqual(len(b), 3)
-        self.assertEqual(a[0], b[0])                                   # 서비스·제목·카테고리
-        self.assertEqual(a[2], b[2])                                   # 인텐트·개체
-        self.assertIn("등급 G", a[1])
-        self.assertIn("등급 R", b[1])
-        self.assertEqual(a[1].replace("등급 G", "등급 R"), b[1])        # 나머지는 한 글자도 다르지 않다
+        self.assertEqual(a[1], b[1])                                   # 등급·품질 사유 = 참값
+        self.assertEqual(a[2], b[2])                                   # 인텐트·개체 = 참값
+        self.assertIn("News/Politics", a[0])
+        self.assertIn("Religion/Spirituality", b[0])
+        self.assertEqual(a[0].replace("News/Politics", "Religion/Spirituality"), b[0])
 
     def test_criteria_are_identical(self):
         """분류 기준은 공용 사전에서 오므로 골드든 아니든 같아야 한다."""
@@ -431,15 +445,23 @@ class TestAssistGoldParityByExecution(unittest.TestCase):
         for leaked in ("서버가 만든 요약", "서버 셋째 줄", "서버기준", "서버가 고른 기준"):
             self.assertNotIn(leaked, blob, leaked)
 
-    def test_gold_never_calls_the_server_for_dissent(self):
-        """정적 검사가 아니라 실행으로 막는다 · _afetch 를 부르면 실패하도록 심어 뒀다."""
-        self.assertEqual(self.out["goldDis"]["called"], 0)
+    def test_gold_calls_the_server_exactly_like_any_content(self):
+        """골드에서도 같은 도구를 같은 인자로 부른다(2026-08-13).
 
-    def test_gold_dissent_looks_like_a_content_with_no_opinions(self):
-        """골드의 의견 요약이 '의견이 하나도 없는 평범한 콘텐츠'와 한 글자도 다르지 않아야 한다."""
-        self.assertEqual(self.out["goldDis"], self.out["bareDis"])
-        self.assertEqual(self.out["goldDis"]["lines"], [])
-        self.assertEqual(self.out["goldDis"]["cut"], "")               # 없는 절단을 말하지 않는다
+        종전에는 골드에서 서버를 아예 안 불렀다. 그러면 골드만 '저장된 근거 없음' 이 되고,
+        근거 적재율이 오를수록 그 빈칸이 골드를 가리킨다. 호출 유무가 갈리는 것 자체가
+        신호이므로 **부르는 것까지 같게** 만든다."""
+        self.assertTrue(self.out["normalLoad"]["calls"])                # 빈 비교로 통과하지 않게
+        self.assertEqual(self.out["goldLoad"]["calls"], self.out["normalLoad"]["calls"])
+
+    def test_gold_renders_identically_given_the_same_server_answer(self):
+        """같은 서버 응답이면 그린 결과가 한 글자도 다르지 않아야 한다.
+
+        골드를 안전하게 만드는 일은 전부 서버가 한다(뒤집는 그 한 자리만 비운다).
+        화면에 골드 분기가 하나라도 생기면 여기서 깨진다."""
+        self.assertEqual(self.out["goldLoad"], self.out["normalLoad"])
+        self.assertEqual(self.out["goldLoad"]["err"], "")               # 골드에서만 뜨는 오류 금지
+        self.assertTrue(self.out["goldLoad"]["has"])                    # 근거도 평소대로 온다
 
     def test_dissent_lines_pass_through_untouched(self):
         """서버가 준 줄을 그대로 쓴다 · 인원은 남기고 이름·사유는 남아 와도 안 쓴다."""
