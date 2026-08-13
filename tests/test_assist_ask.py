@@ -376,7 +376,15 @@ class TestGoldTakesTheSamePath(Base):
     def test_gold_answers_exactly_like_a_content_with_no_material(self):
         """거절 방식도 신호가 된다. 골드에서만 다른 모양이면 검수자가 골드를 알아본다.
 
-        알아보는 순간 골드가 재려던 것(평소의 검수)이 사라진다."""
+        알아보는 순간 골드가 재려던 것(평소의 검수)이 사라진다.
+
+        ⚠️ **이 단언은 언젠가 깨진다. 그때 지우지 말고 기준선을 옮길 것.** 여기서 지키는 규칙은
+        "골드가 자료 없는 콘텐츠와 같다" 가 아니라 **"골드 응답이 어떤 평범한 콘텐츠 부류와도
+        구분되지 않는다"** 이고, 무엇과 같아야 하는지는 `content_brief` 가 골드에 무엇을 주느냐로
+        정해진다. 지금은 거절이라 '자료 없는 콘텐츠'(H_MISSING)와 같다. 그 거절이 걷히면
+        (골드가 등급 대신 카테고리를 뒤집게 된 뒤로 근거·등급이 참값이다 · PR #438) 골드에도
+        자료가 채워지므로 비교 대상을 **평범한 콘텐츠(H1)** 로 바꿔 다시 재야 한다.
+        모양·길이뿐 아니라 `remaining` 까지 같은지 함께 볼 것."""
         fake = self.llm()
         gold = self.ask(hash=GOLD_H, question=Q_CONTENT)
         missing = self.ask(hash=H_MISSING, question=Q_CONTENT)
