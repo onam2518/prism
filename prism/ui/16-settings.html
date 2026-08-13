@@ -105,6 +105,9 @@
             </ul>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <x-modelpick key="asm" value="assistModel" set="assistModel=$v; saveAssistModel()" options="assistModels" width="248px" tip="검수 보조가 답할 때 쓰는 모델 · 이름 옆은 건당 평균 비용 등급" tip-pos="top"></x-modelpick>
+              <!-- 판정 모델과 같아졌을 때 알려만 준다(막지 않는다 · 같은 모델이 나은 상황도 있고
+                   판단은 사람이 한다). 아무 말도 안 하면 이 설정을 따로 둔 이유가 사라진다. -->
+              <span class="ds-badge ds-badge--warning" x-show="assistSameAsJudge" x-cloak>지금 판정 모델과 같습니다 · 자기 판정을 자기가 설명하게 됩니다</span>
               <span class="text-xs text-muted" aria-live="polite" x-text="assistMsg"></span>
             </div>
           </div>

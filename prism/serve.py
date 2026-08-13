@@ -956,6 +956,38 @@ def _vision_candidates(cfg) -> list:
     return out
 
 
+def _assist_reachable(model: str) -> bool:
+    """지금 등록된 키로 이 모델을 실제로 부를 수 있나.
+
+    판정 규칙은 `llm_for_model` 이 원천이다(solar* 는 Upstage 직접 · 그 밖은 라우터 키).
+    여기서 다시 적는 이유는 클라이언트 34개를 만들어 보지 않고 묻기 위해서고, 두 규칙이
+    어긋나지 않게 테스트가 전 모델에서 두 판정의 일치를 확인한다(test_assist_model)."""
+    bare = (model or "").strip().split("/")[-1]
+    if not bare:
+        return False
+    if bare.startswith("solar"):
+        return bool(IMG._api_key() or Config.load().api_key)
+    return any(IMG.router_key(s) for s in IMG.ROUTERS)
+
+
+def _assist_candidates(cfg) -> list:
+    """설정 화면 드롭다운에 보일 검수 보조 모델 목록 = 지금 키로 부를 수 있는 것만.
+
+    부를 수 없는 모델을 고를 수 있게 두면 설정 화면은 멀쩡한데 자유질문만 실패한다.
+    원인이 화면에서 안 보이는 종류의 고장이다. 값 형식은 그대로 평평한 모델 id 목록이다
+    (그룹형으로 바꾸면 `provider|model` 이 되어 이 설정을 읽는 쪽 계약까지 흔들린다).
+
+    키가 하나도 없으면(새 설치·mock) 전체 목록으로 되돌린다. 빈 드롭다운은 고를 수 없는
+    화면이라 안내가 아니라 고장으로 읽힌다. 현재 값은 부를 수 없더라도 목록에 남긴다
+    (드롭다운이 지금 무엇이 골라져 있는지 보여 줄 수 있어야 한다)."""
+    opts = assist_model_options()
+    out = [m for m in opts if _assist_reachable(m)] or list(opts)
+    cur = assist_model(cfg)
+    if cur not in out:
+        out.insert(0, cur)
+    return out
+
+
 def team_links() -> dict:
     """팀 가이드 링크(reports kind='team_links' 전역 행 · 운영 관리자가 시스템 설정에서 등록).
     내부 위키 URL 은 코드에 두지 않는다(공개 데모 docs/demo.html 유출 방지)."""
@@ -1062,7 +1094,7 @@ def config_status(team=None) -> dict:
         # 검수 보조 에이전트 모델(팀 공유 · 관리자 설정). 저장된 글자가 아니라 **해석된 값**을
         # 싣는다. 화면이 실제로 쓰이는 모델과 다른 이름을 보여 주면 그것부터가 거짓말이다.
         "assistModel": assist_model(cfg),
-        "assistModels": assist_model_options(),
+        "assistModels": _assist_candidates(cfg),
         "finalRerunAfterBatch": bool(getattr(cfg, "final_rerun_after_batch", True)),
         "finalGoldCheck": bool(getattr(cfg, "final_gold_check", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
@@ -1103,6 +1135,17 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     if backend_mode()[0] == "supabase" and not allow_key:
         data = {k: v for k, v in data.items()
                 if k not in ("api_key", "persist", "forget", "bizrouter_api_key", "timely_api_key")}
+    if "assist_model" in data:
+        # 검수 보조 모델은 **저장 때도** 거른다. 읽을 때만 거르면 config.json 에는 없는 모델명이
+        # 남고 화면에는 기본값이 보인다. 나중에 파일을 열어 본 사람이 "왜 이 모델로 안 돌지"를
+        # 한참 찾는다. 목록은 읽는 쪽과 같은 assist_model_options() 이라 규칙은 여전히 한 벌이다
+        # (config.assist_model 은 예전에 저장된 값·손으로 고친 파일을 위한 안전망으로 남는다).
+        # 아무것도 쓰기 전에 통째로 거절한다. 절반만 반영된 설정이 제일 찾기 어렵다.
+        v = data.get("assist_model")
+        v = v.strip() if isinstance(v, str) else ""
+        if v and v not in assist_model_options():
+            return dict(config_status(team),
+                        error="고를 수 없는 모델입니다: %s · 시스템 설정의 목록에서 골라 주세요" % v[:40])
     key = (data.get("api_key") or "").strip()
     if key:
         os.environ["UPSTAGE_API_KEY"] = key
@@ -1237,9 +1280,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             except (TypeError, ValueError):
                 pass
         if "assist_model" in data:                # 검수 보조 에이전트 모델(빈 값 = 미설정 = 기본값)
-            # 글자만 다듬어 그대로 담는다. 유효성은 읽는 쪽(config.assist_model)이 판정한다.
-            # 검사를 쓰기에도 두면 규칙이 두 벌이 되고, 손으로 고친 config.json 은 어차피
-            # 이 경로를 지나지 않으므로 읽는 쪽 검사가 유일하게 빠짐없는 자리다.
+            # 여기 닿는 값은 위에서 이미 걸러진 것(목록에 있는 이름 또는 빈 값)뿐이다.
             cfg.assist_model = (data.get("assist_model") or "").strip() \
                 if isinstance(data.get("assist_model"), str) else ""
         if "final_rerun_after_batch" in data:     # 학습 반영 후 미확정분 새 버전 자동 재실행(2층 검수 3-1)

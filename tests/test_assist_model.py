@@ -16,8 +16,14 @@
   4. 저장은 기존 /config(관리자 게이트) 한 경로뿐이고 새 저장 계층·새 라우트를 만들지 않는다.
      화면에는 저장된 글자가 아니라 **해석된 값**이 보인다(실제로 쓰이는 모델과 다른 이름을
      보여 주면 그것부터가 거짓말이다).
-  5. 고를 수 있는 목록과 해석의 유효값 집합이 같다. 두 벌이 되면 "화면에서는 고를 수 있는데
-     저장하면 기본값으로 되돌아가는 모델"이 생긴다.
+  5. 저장 시점에도 같은 목록으로 거른다. 읽을 때만 거르면 config.json 에는 없는 모델명이
+     남고 화면에는 기본값이 보여서, 나중에 파일을 열어 본 사람이 틀린 결론을 낸다.
+     거절은 부분 반영 없이 통째로 하고 사람이 읽을 한 줄을 돌려준다.
+  6. 고를 수 있는 목록과 해석의 유효값 집합이 같다. 두 벌이 되면 "화면에서는 고를 수 있는데
+     저장하면 기본값으로 되돌아가는 모델"이 생긴다. 화면 목록은 거기서 **지금 키로 부를 수
+     있는 것만** 남긴다(못 부르는 모델을 고르면 설정 화면은 멀쩡한데 자유질문만 실패한다).
+  7. 고른 모델이 판정 모델과 같아지면 화면이 알린다(막지는 않는다 · 판단은 사람이 한다).
+     아무 말도 안 하면 이 설정을 따로 둔 이유가 사라진다.
 
 실행: python3 -m pytest tests/test_assist_model.py -q  (stdlib unittest · 의존성 0)
 """
@@ -54,7 +60,7 @@ def _fn(js, name):
 
     이웃 함수까지 훑으면 단언이 헐거워진다. 실제로 '저장 경로를 다른 주소로 바꾼다'는
     무력화가 옆 함수의 '/config' 때문에 통과했다(2026-08-13 실측)."""
-    m = re.search(r"\n      (?:async )?" + name + r"\(.*?\n      \},", js, re.S)
+    m = re.search(r"\n      (?:async |get )?" + name + r"\(.*?\n      \},", js, re.S)
     return m.group(0) if m else ""
 
 
@@ -169,7 +175,10 @@ class _CfgIsolate(unittest.TestCase):
 
     def _save(self, value):
         """관리자가 화면에서 고른 것과 같은 경로(POST /config 본문 → apply_config)."""
-        out = self.SV.apply_config({"assist_model": value}, allow_key=True, team="teamA")
+        return self._save_many({"assist_model": value})
+
+    def _save_many(self, body):
+        out = self.SV.apply_config(dict(body), allow_key=True, team="teamA")
         CFG._FILE_CACHE.clear()                        # 같은 경로 재기록(mtime 동일 창) 방지
         return out
 
@@ -189,9 +198,29 @@ class TestSaveAndRead(_CfgIsolate):
         with open(self.cfg_path, encoding="utf-8") as f:
             self.assertEqual(json.load(f)["assist_model"], "gpt-5.4-mini")
 
-    def test_unknown_saved_value_reads_back_as_default(self):
+    def test_unknown_value_is_refused_at_save_time(self):
+        """읽을 때만 거르면 파일에는 없는 모델명이 남는다. 저장 때 거절하고 한 줄로 말한다."""
         self._save("claude-opus-5")
-        self._save("no-such-model")                    # 손편집·구버전 화면이 보낼 수 있는 값
+        out = self._save("no-such-model")
+        self.assertIn("error", out)
+        self.assertIn("no-such-model", out["error"])   # 무엇이 거절됐는지 그대로 말한다
+        self.assertTrue(len(out["error"]) > 10)
+        with open(self.cfg_path, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["assist_model"], "claude-opus-5")   # 파일 불변
+        self.assertEqual(CFG.assist_model(), "claude-opus-5")                 # 앞의 값 그대로
+
+    def test_refusal_does_not_half_apply_the_request(self):
+        """거절은 통째로 한다. 절반만 반영된 설정이 제일 찾기 어렵다."""
+        before = self.SV.config_status(team="teamA")["legalEnabled"]
+        out = self._save_many({"assist_model": "no-such-model", "legal_enabled": not before})
+        self.assertIn("error", out)
+        self.assertEqual(self.SV.config_status(team="teamA")["legalEnabled"], before)
+
+    def test_hand_edited_unknown_value_still_reads_back_as_default(self):
+        """안전망은 그대로 남는다 = 저장 경로를 지나지 않은 값(손편집·예전 값)."""
+        with open(self.cfg_path, "w", encoding="utf-8") as f:
+            json.dump({"assist_model": "no-such-model"}, f)
+        CFG._FILE_CACHE.clear()
         self.assertEqual(CFG.assist_model(), CFG.MODEL_DEFAULT)
         self.assertEqual(self.SV.config_status(team="teamA")["assistModel"], CFG.MODEL_DEFAULT)
 
@@ -218,8 +247,114 @@ class TestSaveAndRead(_CfgIsolate):
 
     def test_status_carries_the_selectable_list(self):
         st = self.SV.config_status(team="teamA")
-        self.assertEqual(st["assistModels"], CFG.assist_model_options())
+        self.assertTrue(set(st["assistModels"]) <= set(CFG.assist_model_options() + [st["assistModel"]]))
         self.assertIn(st["assistModel"], st["assistModels"])   # 현재 값이 목록에 있다
+
+
+class _KeyEnv(unittest.TestCase):
+    """키 환경변수 조작(테스트 간 오염 방지 · llm_for_model 캐시도 함께 비운다)."""
+
+    KEYS = ("UPSTAGE_API_KEY", "PRISM_API_KEY", "PRISM_BIZROUTER_KEY",
+            "PRISM_ROUTER_KEY", "PRISM_TIMELY_KEY")
+
+    def _keys(self, **on):
+        from prism import serve as SV
+        for k in self.KEYS:
+            orig = os.environ.get(k)
+            self.addCleanup(lambda k=k, v=orig: (os.environ.pop(k, None) if v is None
+                                                 else os.environ.__setitem__(k, v)))
+            os.environ.pop(k, None)
+        for k, v in on.items():
+            os.environ[k] = v
+        SV._LLM_CACHE.clear()
+        self.addCleanup(SV._LLM_CACHE.clear)
+
+
+class TestCandidateList(_KeyEnv):
+    """화면 목록은 지금 키로 부를 수 있는 모델만. 값 형식은 평평한 모델 id 그대로."""
+
+    def _cands(self):
+        from prism import serve as SV
+        return SV._assist_candidates(CFG.Config())
+
+    def test_flat_ids_not_provider_pairs(self):
+        """`provider|model` 로 바꾸지 않는다(이 값을 읽는 쪽 계약까지 흔들린다)."""
+        self._keys(PRISM_TIMELY_KEY="t-key")
+        for m in self._cands():
+            self.assertIsInstance(m, str)
+            self.assertNotIn("|", m)
+
+    def test_router_key_only_drops_direct_solar_models(self):
+        """solar* 는 Upstage 직접 호출이라 라우터 키만으로는 못 부른다(llm_for_model 규칙)."""
+        self._keys(PRISM_TIMELY_KEY="t-key")
+        cands = self._cands()
+        self.assertIn("claude-opus-5", cands)
+        self.assertNotIn("solar-pro3", cands)
+
+    def test_upstage_key_only_keeps_solar_models(self):
+        self._keys(UPSTAGE_API_KEY="up-key")
+        cands = self._cands()
+        self.assertIn("solar-pro3", cands)
+        self.assertNotIn("claude-opus-5", cands)
+
+    def test_no_keys_falls_back_to_full_list(self):
+        """빈 드롭다운은 안내가 아니라 고장으로 읽힌다(새 설치·mock)."""
+        self._keys()
+        self.assertEqual(set(self._cands()), set(CFG.assist_model_options()))
+
+    def test_current_value_always_listed(self):
+        """부를 수 없게 됐어도 지금 골라진 값은 보여야 한다(드롭다운이 현재 선택을 표시)."""
+        self._keys(PRISM_TIMELY_KEY="t-key")             # 기본값(solar)은 못 부르는 상태
+        from prism import serve as SV
+        cands = SV._assist_candidates(CFG.Config())
+        self.assertIn(CFG.assist_model(CFG.Config()), cands)
+
+    def test_status_serves_the_filtered_list(self):
+        """화면에 실제로 나가는 것이 걸러진 목록이어야 한다.
+
+        후보 함수만 검사하면 '함수는 거르는데 응답은 전체 목록'인 회귀가 그대로 지나간다
+        (2026-08-13 무력화 실측에서 아무 단언도 안 걸렸다)."""
+        from prism import serve as SV
+        self._keys(PRISM_TIMELY_KEY="t-key")
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        orig_path = CFG.DEFAULT_CONFIG_PATH
+        CFG.DEFAULT_CONFIG_PATH = os.path.join(td.name, "config.json")
+        self.addCleanup(lambda: setattr(CFG, "DEFAULT_CONFIG_PATH", orig_path))
+        orig_db = os.environ.get("PRISM_DB")
+        os.environ["PRISM_DB"] = os.path.join(td.name, "t.db")
+        self.addCleanup(lambda: (os.environ.pop("PRISM_DB", None) if orig_db is None
+                                 else os.environ.__setitem__("PRISM_DB", orig_db)))
+        SV._STORE = None
+        self.addCleanup(lambda: setattr(SV, "_STORE", None))
+        SV._MMETA_CACHE.clear()
+        self.addCleanup(SV._MMETA_CACHE.clear)
+        CFG._FILE_CACHE.clear()
+        self.addCleanup(CFG._FILE_CACHE.clear)
+
+        served = self.SV_status()
+        self.assertNotIn("solar-pro3", served)          # 라우터 키로는 못 부르는 모델
+        self.assertIn("claude-opus-5", served)
+        self.assertEqual(served, SV._assist_candidates(CFG.Config.load()))
+
+    def SV_status(self):
+        from prism import serve as SV
+        return SV.config_status(team="teamA")["assistModels"]
+
+    def test_reachability_agrees_with_the_router(self):
+        """판정 규칙 원천은 llm_for_model 하나. 두 벌이 어긋나면 여기서 잡힌다."""
+        from prism import serve as SV
+        self._keys()                                     # 원복 예약 먼저(아래에서 env 를 헤집는다)
+        for env in ({}, {"PRISM_TIMELY_KEY": "t"}, {"UPSTAGE_API_KEY": "u"},
+                    {"PRISM_BIZROUTER_KEY": "b"}, {"UPSTAGE_API_KEY": "u", "PRISM_TIMELY_KEY": "t"}):
+            with self.subTest(env=sorted(env)):
+                for k in self.KEYS:
+                    os.environ.pop(k, None)
+                os.environ.update(env)
+                SV._LLM_CACHE.clear()
+                for m in CFG.assist_model_options():
+                    llm, why = SV.llm_for_model(m, False)
+                    self.assertEqual(SV._assist_reachable(m), llm is not None, f"{m} · {why}")
 
 
 class TestTeamScope(_CfgIsolate):
@@ -312,6 +447,31 @@ class TestSettingsScreen(unittest.TestCase):
         """서버가 해석한 값을 되받아 그린다. 화면이 실제로 쓰이는 모델과 다른 이름을 들면 안 된다."""
         self.assertIn("j.assistModel", _fn(self.js, "saveAssistModel"))
         self.assertRegex(self.js, r"this\.assistModel = this\.cfg\.assistModel")
+
+    def test_warns_when_it_equals_the_judging_model(self):
+        """같아지면 알린다. 아무 말도 안 하면 이 설정을 따로 둔 이유가 사라진다."""
+        i = self.markup.index("검수 보조 에이전트 모델")
+        block = self.markup[i:i + 1600]
+        self.assertIn("assistSameAsJudge", block)
+        self.assertIn("판정 모델과 같습니다", block)
+        self.assertIn("x-show", block)                 # 같을 때만 뜬다
+
+    def test_warning_does_not_block_the_choice(self):
+        """막지 않는다 · 판단은 사람이 한다(disabled·확인창으로 손을 묶지 않는다)."""
+        i = self.markup.index("검수 보조 에이전트 모델")
+        block = self.markup[i:i + 1600]
+        self.assertNotIn("disabled", block)
+        self.assertNotIn("dsConfirm", block)
+        fn = _fn(self.js, "saveAssistModel")
+        self.assertNotIn("assistSameAsJudge", fn)      # 저장 경로가 이 판단에 걸리지 않는다
+
+    def test_judging_model_is_read_from_the_server_config(self):
+        """판정 모델은 단계 모델(judge) 우선 · 없으면 실행 모델(라우터면 그쪽 id)."""
+        fn = _fn(self.js, "judgeModel")
+        self.assertTrue(fn)
+        self.assertIn("stageModels", fn)
+        self.assertIn("judge", fn)
+        self.assertIn("textModel", fn)
 
     def test_list_comes_from_the_server(self):
         """선택지를 화면에서 따로 만들면 서버가 인정하지 않는 모델을 고를 수 있게 된다."""

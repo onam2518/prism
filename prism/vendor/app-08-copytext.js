@@ -127,9 +127,24 @@ window.PRISM_APP_PARTS.push(() => ({
             body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
+      // 지금 품질 판정에 쓰이는 모델. 단계 모델(judge)을 따로 지정했으면 그것이고,
+      // 아니면 실행 모델이다(라우터 슬롯이면 그쪽 모델 id).
+      get judgeModel() {
+        const c = this.cfg || {};
+        const sm = c.stageModels || {};
+        const run = this.isRouter(c.textProvider) ? (c.textModel || c.model || '') : (c.model || '');
+        return String((sm.judge || '') || run || '').trim();
+      },
+      // 검수 보조가 판정 모델과 같아졌나. 알려만 주고 막지 않는다(판단은 사람이 한다).
+      get assistSameAsJudge() {
+        const a = String(this.assistModel || '').trim();
+        return !!a && !!this.judgeModel && a === this.judgeModel;
+      },
       // 검수 보조 에이전트 모델(시스템 설정 · 관리자). 고른 즉시 저장하고 서버가 해석한 값을
       // 되받아 화면에 반영한다. 화면이 실제로 쓰이는 모델과 다른 이름을 들고 있으면 안 된다
       // (해석은 서버 config.assist_model 한 곳 · 화면은 판정하지 않는다).
+      // 서버가 거절하면(목록에 없는 모델) 그 한 줄을 그대로 보여 준다. 화면이 말을 바꾸면
+      // 무엇이 왜 거절됐는지 알 수 없다.
       async saveAssistModel() {
         this.assistMsg = '저장 중…';
         try {
