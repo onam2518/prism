@@ -947,6 +947,31 @@ def _ask_terms(q: str) -> tuple:
     return intents[:ASK_TERM_MAX], cats[:ASK_TERM_MAX]
 
 
+def _ask_vals(vals: dict, blind: str, group) -> tuple:
+    """(라벨, 문장). 부여된 값을 자료 한 줄로 만든다. group = ((표시명, _values 키, 요소 키), …)
+
+    **큐가 뒤집는 자리는 문장에서도 라벨에서도 통째로 뺀다.** 비워 놓고 "없음"·"미상" 이라고
+    쓰면 화면에는 값이 그려져 있는 골드에서 앞뒤가 안 맞고, 그 어긋남이 곧 골드 표시가 된다.
+    `_summary3` 가 같은 이유로 같은 처리를 한다(전 콘텐츠 공통 · 검수자는 그 값을 화면에서
+    이미 보고 있다). 자유질문은 이 문장을 **모델에 통째로 먹이므로** 화면이 안 그리는 값이라도
+    여기서 갈리면 모델의 답이 갈리고, 그 답이 곧 골드 표시가 된다.
+
+    품질 사유는 표시용 `reason_labels` 를 쓰지만 가림 판정은 원본 키(`reasons`)로 한다.
+    라벨은 `_values` 가 미리 만들어 둔 파생값이라 `content_brief` 가 원본을 비워도 남는다.
+    표시 키로 판정하면 그 파생값이 그대로 새어 나간다."""
+    names, parts = [], []
+    for label, vkey, ekey in group:
+        if ekey == blind:
+            continue
+        v = vals.get(vkey)
+        s = " · ".join(str(x) for x in v if str(x).strip()) if isinstance(v, (list, tuple)) \
+            else str(v or "").strip()
+        if s:
+            names.append(label)
+            parts.append("%s %s" % (label, s))
+    return ("부여된 " + "·".join(names), " · ".join(parts)) if parts else ("", "")
+
+
 def _ask_sources(ch: str, question: str, team) -> tuple:
     """(자료 목록, 잘림). 답의 재료를 **서버가** 모아 온다.
 
@@ -968,14 +993,14 @@ def _ask_sources(ch: str, question: str, team) -> tuple:
     vals = brief.get("values") or {}
     if brief.get("has_evidence"):
         add("content_brief", "evidence", "모델이 남긴 판정 근거", brief.get("evidence"))
-    grade, rl = str(vals.get("grade") or ""), ", ".join(vals.get("reason_labels") or [])
-    if grade or rl:
-        add("content_brief", "values.grade", "부여된 등급·품질 사유",
-            "등급 %s · 품질 사유 %s" % (grade or "미상", rl or "없음"))
-    if vals.get("intent") or vals.get("content_category"):
-        add("content_brief", "values.intent", "부여된 인텐트·카테고리",
-            "인텐트 %s · 카테고리 %s" % (" · ".join(vals.get("intent") or []) or "없음",
-                                     " · ".join(vals.get("content_category") or []) or "없음"))
+    blind = flip_blind_key()                      # 큐가 뒤집는 그 한 자리(전 콘텐츠 공통)
+    for field, group in (("values.grade", (("등급", "grade", "grade"),
+                                           ("품질 사유", "reason_labels", "reasons"))),
+                         ("values.intent", (("인텐트", "intent", "intent"),
+                                            ("카테고리", "content_category", "content_category")))):
+        label, line = _ask_vals(vals, blind, group)
+        if line:
+            add("content_brief", field, label, line)
     for c in (brief.get("criteria") or [])[:ASK_TERM_MAX]:
         add("content_brief", "criteria.%s" % (c.get("key") or ""),
             "분류 기준 · %s" % (c.get("key") or ""), c.get("desc"))

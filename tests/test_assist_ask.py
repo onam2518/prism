@@ -27,11 +27,11 @@
 
 ## 무력화 실측 (2026-08-13 · 규칙을 하나씩 깨고 전체 스위트를 돌린 결과)
 
-24개 무력화 전건이 잡혔다(탈출 0). 괄호 안은 **잡은 단언 수**다.
+27개 무력화 전건이 잡혔다(탈출 0). 괄호 안은 **잡은 단언 수**다.
 
   01 판정 전 거절 제거 (4)          · 02 모델이 준 해시를 쓴다 setdefault (1)
   03 자료 없이도 모델 호출 (3)      · 04 출처 없는 문장 통과 (2)
-  05 없는 출처 id 유지 (2)          · 06 골드만 따로 거절 (5)
+  05 없는 출처 id 유지 (2)          · 06 골드만 따로 거절 (9)
   07 도구 오류 응답을 자료로 (1)    · 08 사용자 상한 제거 (1)
   09 자료 없는 질문은 미과금 (1)    · 10 예시 초안 표시 제거 (1)
   11 초안 표시가 프롬프트에서 누락 (1) · 12 빈 예시를 정의문으로 채움 (1)
@@ -41,12 +41,22 @@
   19 시도한 모델 미기록 (1)         · 20 모델 예외 원문 노출 (1)
   21 라우트가 본문 team 을 믿음 (1) · 22 속도 제한 제거 (2)
   23 속도 제한 키 전역 공유 (1)     · 24 자료 상한 제거로 절단 은폐 (1)
+  25 가린 자리를 '없음' 이라 말함 (3) · 26 가림 판정 건너뜀 (1)
+  27 가림 판정을 표시 키로 함 (1)
 
-⚠️ **(1) 인 항목은 그 단언이 유일한 눈이다. 지우지 말 것.** 24개 중 17개가 그렇다.
+⚠️ **(1) 인 항목은 그 단언이 유일한 눈이다. 지우지 말 것.** 27개 중 19개가 그렇다.
 특히 02 는 통합 경로로는 전혀 드러나지 않는다(지금은 서버가 도구 인자를 직접 만들어
-경쟁하는 해시가 없다). 규칙을 고칠 때는 단언을 지우지 말고 **먼저 이 실험을 다시 돌려**
-무엇이 유일한 눈인지부터 확인할 것. 실측하지 않으면 "테스트가 있으니 안전하다" 는
-착각으로 남는다(2026-08-12 검수자 의견 집계 작업에서 실제로 1건짜리 눈을 하나 놓쳤다).
+경쟁하는 해시가 없다). 26·27 은 **지금 설정에서는 아예 드러나지 않는다.** 큐가 뒤집는 요소가
+카테고리라 값이 이미 비어 있어서다. 그 요소가 품질 사유로 옮겨 가는 날에만 작동하는 눈이다.
+
+규칙을 고칠 때는 단언을 지우지 말고 **먼저 이 실험을 다시 돌려** 무엇이 유일한 눈인지부터
+확인할 것. 실측하지 않으면 "테스트가 있으니 안전하다" 는 착각으로 남는다(2026-08-12 검수자
+의견 집계 작업에서 실제로 1건짜리 눈을 하나 놓쳤다).
+
+**기준선이 낡을 수 있다는 것도 남겨 둔다.** PR #441 로 `content_brief` 의 골드 거절이 걷히자
+골드에 자료가 생겼고, 그러자 두 단언이 '자료 없는 경우'를 더는 재지 않게 됐다. 골드 동일성
+쪽은 깨져서 알았지만 **09 는 깨지지도 않고 조용히 통과했다.** 실측을 다시 돌려서 잡았다.
+계약이 바뀌면 실패한 테스트뿐 아니라 **통과한 테스트도 의심할 것.**
 
 실행: python3 -m pytest tests/ -q
 """
@@ -67,9 +77,11 @@ INTENT = "속보·사건 추적"
 CAT = "News and Politics / Politics"
 EVIDENCE = "본문이 제품 구매 링크로 끝나 광고성으로 봤다"
 
-H1 = "0000000000000001"          # 자료가 있는 평범한 콘텐츠
+H1 = "0000000000000001"          # 자료가 있는 평범한 콘텐츠 · 골드가 깔고 앉은 밑 콘텐츠
 H_BARE = "0000000000000002"      # 실재하지만 근거·선례가 없는 평범한 콘텐츠
+H_OPIN = "0000000000000003"      # 검수자 의견이 갈린 콘텐츠(운영 13.0%)
 H_MISSING = "0000000000000009"   # 이 팀 색인에 없는 해시
+# 골드 합성 해시. content_brief 가 밑 콘텐츠(H1)로 풀어 평소대로 답한다(PR #441).
 GOLD_H = "gold:ok:0000000000000001"
 
 # 콘텐츠에만 답이 있는 질문(사전 이름이 등장하지 않는다) · 자료 유무가 갈리는 자리를 만든다.
@@ -88,15 +100,24 @@ def _row(h, *, evidence="", intent=(INTENT,), cats=(CAT,)):
             "trace": {}}
 
 
+def _fb(*reviewers):
+    """확정 판정 한 건(store/supastore 와 같은 shape)."""
+    vs = [{"reviewer": r, "verdict": "bad", "note": "광고성으로 봤다", "ts": 1.0 + i,
+           "element": "quality"} for i, r in enumerate(reviewers)]
+    return {"verdicts": vs, "good": 0, "bad": len(vs), "n": len(vs), "consensus": "bad",
+            "agree": True, "verdict": "bad", "stage": "", "note": "광고성으로 봤다"}
+
+
 class _FakeStore:
-    def __init__(self):
+    def __init__(self, feedback=None):
         self.reports = {}
+        self._fb = dict(feedback or {})
 
     def golden_hashes(self, team=None):
-        return set()
+        return {H1}                 # 골드가 깔고 앉은 콘텐츠는 골든셋에 올라 있다
 
     def feedback_map(self, team=None):
-        return {}
+        return self._fb
 
     def patch_rows(self, limit=5000, team=None, content_hash=None):
         return []
@@ -373,24 +394,107 @@ class TestEverySentenceIsCited(Base):
 
 # ── 5. 골드를 특별 취급하지 않는다 ───────────────────────────────────────────
 class TestGoldTakesTheSamePath(Base):
-    def test_gold_answers_exactly_like_a_content_with_no_material(self):
+    def test_gold_answers_exactly_like_the_content_underneath(self):
         """거절 방식도 신호가 된다. 골드에서만 다른 모양이면 검수자가 골드를 알아본다.
 
         알아보는 순간 골드가 재려던 것(평소의 검수)이 사라진다.
 
-        ⚠️ **이 단언은 언젠가 깨진다. 그때 지우지 말고 기준선을 옮길 것.** 여기서 지키는 규칙은
-        "골드가 자료 없는 콘텐츠와 같다" 가 아니라 **"골드 응답이 어떤 평범한 콘텐츠 부류와도
-        구분되지 않는다"** 이고, 무엇과 같아야 하는지는 `content_brief` 가 골드에 무엇을 주느냐로
-        정해진다. 지금은 거절이라 '자료 없는 콘텐츠'(H_MISSING)와 같다. 그 거절이 걷히면
-        (골드가 등급 대신 카테고리를 뒤집게 된 뒤로 근거·등급이 참값이다 · PR #438) 골드에도
-        자료가 채워지므로 비교 대상을 **평범한 콘텐츠(H1)** 로 바꿔 다시 재야 한다.
-        모양·길이뿐 아니라 `remaining` 까지 같은지 함께 볼 것."""
+        기준선(2026-08-13 · PR #441 로 이동): 종전에는 `content_brief` 가 골드를 거절해
+        '자료 없는 콘텐츠'와 같았다. 지금은 골드 합성 해시를 **밑 콘텐츠로 풀어 평소대로**
+        답하므로 비교 대상이 그 밑 콘텐츠(H1)다. 지키는 규칙 자체는 안 바뀌었다.
+        **"골드 응답이 어떤 평범한 콘텐츠 부류와도 구분되지 않는다."**
+
+        ⚠️ 뒤집는 요소(`reviewops.GOLD_FLIP_ELEMENT`)가 또 옮겨 가면 이 단언이 먼저 깨진다.
+        그때도 지우지 말고 무엇과 같아야 하는지만 다시 정할 것."""
         fake = self.llm()
         gold = self.ask(hash=GOLD_H, question=Q_CONTENT)
-        missing = self.ask(hash=H_MISSING, question=Q_CONTENT)
+        under = self.ask(hash=H1, question=Q_CONTENT)
+        self.assertEqual(len(fake.calls), 2, "둘 중 하나가 모델을 건너뛰었다 = 경로가 갈렸다")
+        self.assertTrue(gold["sources"], "골드가 여전히 빈손이다(거절이 남아 있나)")
         for k in ("answer", "sources", "generated", "note", "truncated", "model", "model_label"):
-            self.assertEqual(gold[k], missing[k], f"골드의 {k} 가 자료 없는 콘텐츠와 다르다")
-        self.assertEqual(fake.calls, [])
+            self.assertEqual(gold[k], under[k], f"골드의 {k} 가 밑 콘텐츠와 다르다")
+
+    def test_gold_now_answers_the_question_that_used_to_come_back_empty(self):
+        """"이건 왜 R 이야" 는 콘텐츠에만 답이 있어 종전에는 골드에서 늘 빈손이었다.
+
+        빈손이 빠르기까지 해서 그 속도 차이가 골드 신호였다. 그래서 이 PR 의 머지를 #441
+        뒤로 미뤘다. 지금은 등급·근거가 참값이라(뒤집는 것은 카테고리 한 자리뿐) 평소대로 답한다."""
+        fake = self.llm()
+        r = self.ask(hash=GOLD_H, question="이건 왜 R 이야")
+        self.assertTrue(r["generated"], "골드에서 모델을 안 불렀다")
+        self.assertEqual(len(fake.calls), 1)
+        self.assertTrue(r["answer"], "골드에서 답이 안 나갔다")
+        self.assertEqual(r["note"], "")
+        tools = {s["tool"] for s in r["sources"]}
+        self.assertIn("content_brief", tools)          # 근거·등급이 실제로 실렸다
+        self.assertIn(EVIDENCE, str(r["sources"]))
+
+    def test_the_flipped_element_is_never_stated_as_absent(self):
+        """큐가 뒤집는 자리를 비운 뒤 "카테고리 없음" 이라고 쓰면 화면에는 값이 그려져 있는
+        골드에서 앞뒤가 안 맞고, 그 어긋남이 곧 정답이다. 자리를 **문장에서 통째로 뺀다.**
+
+        자유질문은 도구 응답을 모델에 통째로 먹이므로 화면이 안 그리는 값도 여기서 갈리면
+        모델의 답이 갈린다. `_summary3` 가 같은 이유로 같은 처리를 한다."""
+        self.llm()
+        blind = RA.flip_blind_key()
+        self.assertTrue(blind, "가릴 요소를 못 읽었다(reviewops 상수 연결 확인)")
+        label = {"content_category": "카테고리", "grade": "등급", "intent": "인텐트",
+                 "reasons": "품질 사유"}[blind]
+        for h in (GOLD_H, H1, H_BARE):
+            blob = str(self.ask(hash=h, question=Q_CONTENT)["sources"])
+            for lie in (f"{label} 없음", f"{label} 미부여", f"{label} 미상"):
+                self.assertNotIn(lie, blob, f"{h}: 가린 자리를 '{lie}' 라고 사실처럼 말했다")
+            self.assertNotIn(f"{label} {CAT}", blob, f"{h}: 가린 값을 그대로 실었다")
+
+    def test_the_blind_rule_follows_the_element_key_not_the_display_key(self):
+        """가림 판정은 표시 키가 아니라 **요소 키**로 한다.
+
+        지금 뒤집는 것은 카테고리라 `content_brief` 가 값을 비워 두면 표시 로직만으로도 안 샌다.
+        그런데 요소가 품질 사유로 옮겨 가면 다르다. `reason_labels` 는 `_values` 가 미리 만들어
+        둔 **파생값**이라 원본(`reasons`)을 비워도 그대로 남는다. 표시 키로 판정하면 그때 가려야
+        할 값이 라벨로 새어 나가고, 새는 그 순간은 아무도 안 보고 있을 것이다.
+        **유일한 눈이다. 지우지 말 것** (지금 설정에서는 드러나지 않는 미래를 고정한다)."""
+        from prism import reviewops as RV
+        old = getattr(RV, "GOLD_FLIP_ELEMENT", "")
+        RV.GOLD_FLIP_ELEMENT = "quality"
+        self.addCleanup(lambda: setattr(RV, "GOLD_FLIP_ELEMENT", old))
+        self.assertEqual(RA.flip_blind_key(), "reasons")
+        self.llm()
+        for h in (GOLD_H, H1):
+            blob = str(self.ask(hash=h, question=Q_CONTENT)["sources"])
+            self.assertNotIn("품질 사유", blob, f"{h}: 가려야 할 품질 사유가 라벨로 샜다")
+
+    def test_remaining_falls_by_the_same_step_for_gold_and_plain(self):
+        """자료가 채워졌으니 '자료가 없어 모델을 안 부르는' 경로 자체가 사라졌다.
+        그래도 셈은 답의 내용과 무관해야 한다(줄어드는 폭이 다르면 그게 골드 판별기다)."""
+        self.llm()
+        steps = {}
+        for name, h in (("gold", GOLD_H), ("plain", H1), ("bare", H_BARE)):
+            RA._ASK_HITS.clear()
+            seen = [self.ask(hash=h, question=Q_CONTENT, uid="u")["remaining"] for _ in range(3)]
+            steps[name] = seen
+        self.assertEqual(steps["gold"], steps["plain"])
+        self.assertEqual(steps["gold"], steps["bare"])
+        self.assertEqual(steps["gold"], [RA.ASK_DAILY_MAX - i for i in (1, 2, 3)])
+
+    def test_gold_matches_the_majority_class_when_opinions_exist(self):
+        """`reviewer_dissent` 만 골드에서 닫힌다(골드 원본의 의견 목록이 곧 정답이라서).
+
+        그래서 남는 차이는 '의견 자료가 없다' 하나인데, 그 모양이 **의견 없는 평범한 콘텐츠**
+        (운영 87.0%)와 같다. 골드를 특정하지 못한다는 뜻이다. 반대로 의견이 있는 콘텐츠(13.0%)
+        와는 자료가 다른데, 그건 골드가 아니라 그 13% 쪽이 예외인 것이다."""
+        self.store._fb = {H1: _fb("복실", "딱지"), H_OPIN: _fb("복실", "딱지")}
+        self.rows = self.rows + [_row(H_OPIN, evidence=EVIDENCE)]
+        self.llm()
+        place = {}
+        for name, h in (("gold", GOLD_H), ("no_opinion", H_BARE), ("has_opinion", H_OPIN)):
+            r = self.ask(hash=h, question=Q_CONTENT)
+            place[name] = {s["tool"] for s in r["sources"]}
+        self.assertNotIn("reviewer_dissent", place["gold"])
+        self.assertNotIn("reviewer_dissent", place["no_opinion"])
+        self.assertIn("reviewer_dissent", place["has_opinion"])
+        self.assertEqual(place["gold"], place["no_opinion"],
+                         "골드가 다수 부류(의견 없는 콘텐츠)와도 구분된다")
 
     def test_a_tool_error_yields_no_source_even_when_it_carries_data(self):
         """도구가 오류와 데이터를 함께 돌려줘도 오류면 자료로 쓰지 않는다.
@@ -440,15 +544,23 @@ class TestGoldTakesTheSamePath(Base):
         self.assertNotIn("GOLD_PREFIXES", src)
 
     def test_the_quota_is_spent_even_when_there_is_no_material(self):
-        """자료 없는 질문만 공짜면 남은 횟수가 안 줄어드는 것 자체가 골드 신호가 된다.
+        """**셈은 답의 내용과 무관해야 한다.** 자료가 있든 없든 접수된 질문은 모두 센다.
 
-        **유일한 눈이다. 지우지 말 것.** '과금된 것만 세자' 는 아껴 쓰는 쪽으로 자연스러워
-        보이는 수정인데, 그 순간 remaining 이 골드 판별기가 된다."""
+        기준선(2026-08-13 · PR #441 로 이동): 종전에는 골드가 늘 자료 없는 쪽이라 골드 대
+        평범한 콘텐츠로 쟀다. 지금은 골드에도 자료가 채워지므로 **정말로 자료가 없는 요청**
+        (색인에 없는 해시)으로 잰다. 지키는 규칙은 그대로다.
+
+        **유일한 눈이다. 지우지 말 것.** '모델을 부른 것만 세자' 는 아껴 쓰는 쪽으로 자연스러워
+        보이는 수정인데, 그 순간 두 가지가 생긴다. ① 남은 횟수가 그 콘텐츠에 자료가 있는지를
+        일러 주는 판별기가 된다 ② 자료 없는 해시로는 상한 없이 두드릴 수 있는 길이 열린다."""
         self.llm()
-        gold = self.ask(hash=GOLD_H, question=Q_CONTENT, uid="uq")
-        plain = self.ask(hash=H1, question=Q_CONTENT, uid="uq")
-        self.assertEqual(gold["remaining"], RA.ASK_DAILY_MAX - 1)
-        self.assertEqual(plain["remaining"], RA.ASK_DAILY_MAX - 2)
+        empty = self.ask(hash=H_MISSING, question=Q_CONTENT, uid="uq")
+        self.assertFalse(empty["sources"], "자료 없는 요청이 아니다(이 단언이 공회전한다)")
+        self.assertFalse(empty["generated"])
+        rich = self.ask(hash=H1, question=Q_CONTENT, uid="uq")
+        self.assertTrue(rich["generated"])
+        self.assertEqual(empty["remaining"], RA.ASK_DAILY_MAX - 1)
+        self.assertEqual(rich["remaining"], RA.ASK_DAILY_MAX - 2)
 
 
 # ── 6. 사용자당 상한 ─────────────────────────────────────────────────────────
