@@ -22,6 +22,7 @@ serve 역참조(`_SV`)는 learnops·topicops 관례를 따른다.
 from __future__ import annotations
 
 from . import dictionaries as D
+from . import promptdist as PD               # 프롬프트 배포·결과 규칙 검증(트랙 B 전용 도구 2종)
 
 _SV = None                                   # serve 주입(컴포지션 루트)
 
@@ -315,6 +316,62 @@ TOOLS = {
             "additionalProperties": False,
         },
         "fn": get_examples,
+    },
+    "get_extraction_prompt": {
+        # scope=external 인 근거: 이 도구가 주는 것은 **learned 를 뺀** 프롬프트다. 프리즘이
+        # 실제로 돌리는 것과 한 조각 다르다. 밖에서는 그게 정답이다(팀 데이터를 못 주고,
+        # 버전 고정이 재현성의 전부다). 안에서는 아니다 · 내부 검수 보조가 이걸 '지금 모델이
+        # 받은 지시' 로 읽으면 실제 실행과 다른 문서를 근거 삼게 된다. 내부에 열려면 실행
+        # 프롬프트 그대로를 주는 별도 경로여야 하고, 그건 팀 데이터라 이 도구와 규칙이 다르다.
+        "scope": "external",
+        "title": "추출 프롬프트 배포",
+        "desc": "프리즘의 현행 아이템 메타 추출 프롬프트를 콜 단위로 내려준다(순차 4콜: "
+                "summary → entities → intent → category). 받은 프롬프트를 그쪽 모델로 돌리면 "
+                "기준이 프리즘 것이라 결과가 프리즘 정의를 따르고, 응답의 version·fingerprint 로 "
+                "어떤 기준으로 만든 결과인지 나중에 되짚을 수 있다. "
+                "학습 보정(팀 검수 이력 누적분)은 빠져 있어 프리즘 실제 실행과 다를 수 있다 · "
+                "무엇이 다른지는 응답의 differs_from_prism_run 에 적혀 있다.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "call": {"type": "string", "enum": list(PD.CALLS),
+                         "description": "받을 콜 하나(순차 4콜 중)"},
+                "service": {"type": "string",
+                            "description": "displayServiceName(뉴스·연예·스포츠·티스토리 등) · "
+                                           "인텐트 후보가 서비스마다 달라 프롬프트가 바뀐다 · "
+                                           "미정의 값이면 범용 분류값만 담긴다"},
+                "client_model": {"type": "string",
+                                 "description": "돌릴 모델 이름(선택 · 예: gpt-5 · gemini-3-pro) · "
+                                                "모델 계열에 맞는 래퍼로 조립한다 · 모르는 이름이면 범용 래퍼"},
+            },
+            "required": ["call"],
+            "additionalProperties": False,
+        },
+        "fn": PD.get_extraction_prompt,
+    },
+    "validate_result": {
+        # scope=external 인 근거: 형제 도구(get_extraction_prompt)로 만든 결과를 되받는 짝이다.
+        # 내부 메타는 실제 파이프라인과 검수 화면을 지나므로 이 검사가 하는 일이 이미 끝나 있다.
+        "scope": "external",
+        "title": "결과 규칙 검증",
+        "desc": "그쪽에서 만든 메타를 프리즘 규칙으로 검사한다. 사전 밖의 값·그 서비스에 없는 값·"
+                "형식 오류·정의상 함께 못 쓰는 조합·계약 수량 규칙만 본다. "
+                "**품질을 판정하지 않는다** · 등급·점수를 내지 않으며, 위반 0건은 '규칙 위반 없음' 이지 "
+                "'정확하다' 는 뜻이 아니다(값이 콘텐츠에 맞는지는 검사 대상이 아니다).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "result": {"type": "object",
+                           "description": "검사할 메타 JSON(키: summary · entities · intent · "
+                                          "content_category · 있는 필드만 검사한다)"},
+                "service": {"type": "string",
+                            "description": "그 콘텐츠의 displayServiceName · 서비스 전용 인텐트를 "
+                                           "가리는 데 쓴다"},
+            },
+            "required": ["result", "service"],
+            "additionalProperties": False,
+        },
+        "fn": PD.validate_result,
     },
 }
 
