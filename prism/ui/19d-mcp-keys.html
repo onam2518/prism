@@ -37,7 +37,7 @@
               <b>이 키는 나에게 묶입니다 · 남에게 건네지 마세요</b>
               <ul class="ds-bullets" style="margin-top:6px">
                 <li>발급하는 순간 키에 <b>내 계정</b>이 박힙니다 · 이 키로 일어난 <b>모든 호출이 내 이름으로</b> 기록됩니다.</li>
-                <li>남을 대신해 발급해 건네면 <b>사용 기록도, 폐기 권한도 전부 나를 가리킵니다</b> — 실제로 쓴 사람이 누구인지 추적할 방법이 사라지고, 그 사람은 자기 키를 스스로 끊을 수도 없습니다.</li>
+                <li>남을 대신해 발급해 건네면 <b>사용 기록도, 폐기 권한도 전부 나를 가리킵니다</b>. 실제로 쓴 사람이 누구인지 추적할 방법이 사라지고, 그 사람은 자기 키를 스스로 끊을 수도 없습니다.</li>
                 <li>다른 사람이 써야 하면 <b>그 사람이 직접 이 화면에서 발급</b>하게 하세요.</li>
               </ul>
             </div>
@@ -93,9 +93,9 @@
         <section class="panel"><div class="panel-hd"><b>연결 방법</b><span class="meta">Claude 등 MCP 클라이언트에서 프리즘에 붙이는 절차</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
-              <li><b>① 키 발급</b> — '내 키' 에서 본인 계정으로 발급합니다(남이 준 키를 쓰지 마세요 · 기록이 그 사람 이름으로 남습니다).</li>
-              <li><b>② 클라이언트에 등록</b> — 아래 한 줄이면 됩니다.</li>
-              <li><b>③ 확인</b> — 도구 목록에 프리즘 도구가 보이면 연결된 것입니다 · 보이는 도구는 <b>키에 박힌 권한</b>에 따라 다릅니다.</li>
+              <li><b>① 키 발급</b>: '내 키' 에서 본인 계정으로 발급합니다(남이 준 키를 쓰지 마세요 · 기록이 그 사람 이름으로 남습니다).</li>
+              <li><b>② 클라이언트에 등록</b>: 아래 한 줄이면 됩니다.</li>
+              <li><b>③ 확인</b>: 도구 목록에 프리즘 도구가 보이면 연결된 것입니다 · 보이는 도구는 <b>키에 박힌 권한</b>에 따라 다릅니다.</li>
             </ul>
             <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>등록<span class="codeblock__stage">CLI</span></div><textarea readonly spellcheck="false" style="min-height:44px" x-bind:value="'claude mcp add --transport http prism ' + location.origin + '/mcp --header \'Authorization: Bearer pmk_…\''"></textarea></div>
             <ul class="ds-bullets" style="margin-top:11px">

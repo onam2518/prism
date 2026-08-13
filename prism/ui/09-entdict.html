@@ -19,7 +19,7 @@
           <div class="ds-stat"><div class="ds-stat__value ds-stat__value--accent tnum" x-text="(entData && entData.stats.total) || 0"></div><div class="ds-stat__label">총 개체</div></div>
           <div class="ds-stat"><div class="ds-stat__value tnum" x-text="entData ? ((entData.stats.total || 0) - (((entData.stats.byType || {})['(보류)']) || 0)) : 0"></div><div class="ds-stat__label">타입 부여</div></div>
           <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.pending) || 0"></div><div class="ds-stat__label" style="cursor:help" data-tip="타입 미부여 · 미조회 또는 동음이의 = 보강·수동 확정 대기" data-tip-pos="top">보강 대기(보류)</div></div>
-          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.unlisted) || 0"></div><div class="ds-stat__label" style="cursor:help" data-tip="나무위키·위키데이터 모두 미스 · 복합명사구·개념어(TM 후보) — 개체는 사전에 남고 속성 축에서만 빠짐" data-tip-pos="top">미등재(소스 없음)</div></div>
+          <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.unlisted) || 0"></div><div class="ds-stat__label" style="cursor:help" data-tip="나무위키·위키데이터 모두 미스 · 복합명사구·개념어(TM 후보) · 개체는 사전에 남고 속성 축에서만 빠짐" data-tip-pos="top">미등재(소스 없음)</div></div>
           <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.enriched) || 0"></div><div class="ds-stat__label">소스 매칭</div></div>
           <div class="ds-stat"><div class="ds-stat__value tnum" x-text="(entData && entData.stats.links) || 0"></div><div class="ds-stat__label">콘텐츠 링크</div></div>
         </div></div></div>
