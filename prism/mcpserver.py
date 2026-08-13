@@ -31,6 +31,10 @@ tools/call 시점까지 들고 있으려면 키별 상태를 둬야 해서 무�
 그래서 **도구 인자**로 받는다. 스키마에 선택 인자로 얹고 실행 직전에 떼어내므로
 `prismtools` 도구 정의는 그대로다. 안 채우면 조용히 기본값으로 수렴하고 실패하지 않는다.
 metadata 로 넣고 싶은 클라이언트를 위해 `params._meta["prism/clientModel"]` 도 읽는다.
+
+예외 하나: 도구가 `client_model` 을 **스스로 선언한 경우**에는 떼어낸 값을 그 도구에 그대로
+넘긴다(`get_extraction_prompt` 는 이 값으로 모델 계열 래퍼를 고른다 = 응답 분량이 아니라
+응답 내용이 달라진다). 안 그러면 그 도구는 스키마에 인자를 걸어 두고도 영원히 빈 값을 받는다.
 """
 from __future__ import annotations
 
@@ -44,6 +48,10 @@ INSTRUCTIONS = (
     "프리즘(콘텐츠 검수·메타데이터 운영)의 읽기 도구입니다. "
     "분류 체계의 허용값과 개체 사전을 물어볼 수 있습니다. "
     "값을 지어내지 말고 get_taxonomy 로 쓸 수 있는 값을 먼저 확인하세요. "
+    "메타를 직접 만들 때는 get_extraction_prompt 로 프리즘의 현행 프롬프트를 받아 그 프롬프트로 "
+    "돌리세요. 그래야 기준이 프리즘 것이 되고, 응답의 version·fingerprint 로 나중에 되짚을 수 "
+    "있습니다(학습 보정이 빠져 있어 프리즘 실제 실행과는 다를 수 있습니다). "
+    "만든 결과는 validate_result 로 규칙 위반만 확인할 수 있습니다 · 품질 판정이 아닙니다. "
     "조회 범위(팀)는 접속 키에서 정해집니다 — 인자로 팀을 넣지 않습니다. "
     "응답에 truncated 가 true 면 더 있다는 뜻이니 조건을 좁혀 다시 부르세요."
 )
@@ -137,10 +145,14 @@ def visible_tools(ctx) -> dict:
 
 
 def _schema(spec) -> dict:
-    """도구 스키마 + 선택 인자 client_model. 원본(prismtools)은 건드리지 않는다."""
+    """도구 스키마 + 선택 인자 client_model. 원본(prismtools)은 건드리지 않는다.
+
+    도구가 client_model 을 **스스로 선언한 경우**(그 값이 응답 내용을 바꾸는 도구 ·
+    get_extraction_prompt 는 모델 계열로 래퍼를 고른다)에는 그 설명을 덮지 않는다.
+    전송 계층의 설명("응답 분량을 맞춘다")은 그 도구에서 사실이 아니다."""
     src = spec["inputSchema"]
     props = dict(src.get("properties") or {})
-    props[CLIENT_MODEL_ARG] = {"type": "string", "description": CLIENT_MODEL_DESC}
+    props.setdefault(CLIENT_MODEL_ARG, {"type": "string", "description": CLIENT_MODEL_DESC})
     out = dict(src)
     out["properties"] = props
     return out
@@ -186,7 +198,14 @@ def call_tool(ctx, name: str, args: dict, meta=None):
                           % (name or "(없음)", " · ".join(sorted(tools)) or "없음")}, True)
     # 도구가 선언한 인자만 넘긴다. team 은 여기서 떨어진다 — prismtools 도 args 의 team 을
     # 버리지만, 교차 팀 통로는 두 겹으로 막는다(감사 H1).
-    args = {k: v for k, v in args.items() if k in (spec["inputSchema"].get("properties") or {})}
+    props = spec["inputSchema"].get("properties") or {}
+    args = {k: v for k, v in args.items() if k in props}
+    if CLIENT_MODEL_ARG in props:
+        # 위에서 pop 한 값을 **도구가 스스로 선언했을 때만** 되돌려 준다. 이 층은 client_model 을
+        # 응답 분량 조정용으로 떼어 가는데, 그 값이 응답 **내용**을 정하는 도구도 있다
+        # (get_extraction_prompt = 모델 계열 래퍼 선택). 떼어 가기만 하면 그 도구는 인자를
+        # 스키마에 걸어 두고도 영원히 빈 값을 받는다. _meta 로 온 값도 같은 자리로 들어간다.
+        args[CLIENT_MODEL_ARG] = model
     out = PT.call(name, _fit(args, spec, model), team=ctx["team"])
     if not isinstance(out, dict):
         return ({"error": "도구가 예상 밖 형식을 돌려줬습니다"}, True)

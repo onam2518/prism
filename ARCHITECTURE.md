@@ -21,6 +21,8 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    │  modelmeta.py(모델 표시 정보 · 이름/제공자/비용 등급 · 선택 드롭다운 원천)
    │  mcpkeys.py(MCP 파트너 키 · 트랙 B 외부 MCP · 발급/해석/레이트리밋/사용 기록 ·
    │             저장은 store/supastore 의 mcp_* 계약 · 전송 /mcp 는 resolve·rate_check·log_call 만 쓴다)
+   │  promptdist.py(외부 파트너용 추출 프롬프트 배포 + 결과 규칙 검증 · 조립은 meta_prompts
+   │             단일 원천 · 학습 보정 제외 + 버전·지문 동봉이 계약 · 등록은 prismtools.TOOLS)
    │  spectrumops.py(스펙트럼 · 사내 MCP 허브 프로토타입 · _SV 없이 독립 · 저장은 JSON 사이드카)
    │              도메인 모듈(비교적 잘 분리된 편 · 새 기능은 이 패턴을 따를 것)
    └─ store.py(SQLite 로컬) / supastore.py(Supabase 팀 운영)   저장 계층(동일 계약)

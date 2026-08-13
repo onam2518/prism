@@ -296,6 +296,52 @@ class TestClientModel(Base):
         self.assertNotIn("isError", body["result"])
 
 
+class TestClientModelReachesToolsThatDeclareIt(Base):
+    """이 층은 client_model 을 응답 **분량** 조정용으로 떼어 간다. 그런데 그 값이 응답 **내용**을
+    정하는 도구가 있다(`get_extraction_prompt` = 모델 계열 래퍼 선택). 떼어 가기만 하면 그 도구는
+    스키마에 인자를 걸어 두고도 영원히 빈 값을 받아, 파트너가 모델을 알려줘도 늘 범용 래퍼가 나간다.
+
+    무력화 실험(call_tool 의 되돌려주기 3줄 삭제): 이 클래스 **3건**이 잡는다. 스위트 전체에서
+    이 배선을 보는 눈은 여기뿐이다(promptdist 테스트는 도구를 직접 불러 전송을 안 지난다).
+    **지우지 말 것.**"""
+
+    def setUp(self):
+        self.fake = self.use(FakeKeys())
+
+    def payload(self, args):
+        body = self.tool("get_extraction_prompt", args)[1]
+        return json.loads(body["result"]["content"][0]["text"])
+
+    def test_the_declared_client_model_reaches_the_tool(self):
+        self.assertEqual(self.payload({"call": "intent", "service": "뉴스",
+                                       "client_model": "gemini-3-pro"})["family"], "gemini")
+
+    def test_it_also_arrives_through_request_metadata(self):
+        status, body = MS.handle("Bearer " + GOOD_KEY, json.dumps({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "get_extraction_prompt",
+                       "arguments": {"call": "intent", "service": "뉴스"},
+                       "_meta": {MS.CLIENT_MODEL_META: "claude-opus-5"}}}).encode())
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body["result"]["content"][0]["text"])["family"], "claude")
+
+    def test_a_tool_that_does_not_declare_it_still_never_sees_it(self):
+        """선언하지 않은 도구에는 여전히 안 간다(되돌려주기가 전면 개방이 되면 안 된다)."""
+        seen = {}
+        orig = PT.call
+        PT.call = lambda name, args, team=None: seen.update(args=args) or {"ok": True}
+        self.addCleanup(lambda: setattr(PT, "call", orig))
+        self.tool("lookup_entity", {"name": "가", "client_model": "gpt-5"})
+        self.assertNotIn("client_model", seen["args"])
+
+    def test_the_tools_own_argument_description_is_not_overwritten(self):
+        """전송 계층 설명('응답 분량을 맞춘다')은 이 도구에서 사실이 아니다."""
+        tools = {t["name"]: t for t in self.call("tools/list")[1]["result"]["tools"]}
+        desc = tools["get_extraction_prompt"]["inputSchema"]["properties"]["client_model"]["description"]
+        self.assertNotEqual(desc, MS.CLIENT_MODEL_DESC)
+        self.assertIn("래퍼", desc)
+
+
 class TestRealRoundTrip(Base):
     """도구 실행 경로 전체를 한 번은 **진짜로** 지난다.
 
