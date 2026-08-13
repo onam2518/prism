@@ -770,3 +770,412 @@ def call(name, args, team=None) -> dict:
     그대로 들어올 수 있고, 그러면 도구 오류가 아니라 500 이 난다(내부 노출)."""
     return PT.call(str(name or ""), args if isinstance(args, dict) else {},
                    team=team, registry=registry())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 자유질문(/assist-ask) · 칩으로 안 되는 것을 검수자가 직접 묻는 경로
+# ══════════════════════════════════════════════════════════════════════════════
+# 검수 보조가 접이식 패널에서 대화창이 된다. 칩(위의 도구들)은 모델을 거치지 않고 도구를
+# 그대로 부르고, 칩으로 안 되는 것만 여기로 온다. **모델이 등장하는 유일한 자리**라
+# 이 모듈의 규칙이 가장 쉽게 무너지는 곳이기도 하다. 그래서 아래 여섯을 구조로 박는다.
+#
+# 1. **판정 뒤에만 열린다.** 판정 전에 열면 반드시 "그래서 이거 맞아 틀려" 가 나오고,
+#    모델이 근거와 기준만으로 사실상 판정을 해 버린다. 그 순간 우리가 재는 대상이 사람이
+#    아니라 모델이 된다. 이 기능 전체의 전제라 타협 대상이 아니다(`_stage` 로 수렴 · 모르는
+#    값은 before 로 떨어져 거절된다).
+# 2. **콘텐츠 해시는 서버가 못 박는다.** 모델이 도구 인자로 다른 해시를 넣을 수 있으면
+#    그게 곧 남의 콘텐츠 통로다. team 을 도구 스키마에서 뺀 것과 같은 이유다. 팀은 세션에서,
+#    해시는 요청 본문에서 오고 둘 다 모델 손이 닿지 않는다(`_ask_tool`).
+# 3. **모델에게는 우리 도구 결과만 준다.** 웹 검색·파일 읽기·외부 페치가 없다. 도구가 답을
+#    못 주면 거기서 끝낸다. 재료가 비면 **모델을 부르지 않는다**(프롬프트로 부탁하는 게
+#    아니라 호출 자체가 일어나지 않는다).
+# 4. **출처 없는 문장은 나가지 못한다.** 응답의 답변은 문자열이 아니라 {text, sources} 목록이고,
+#    서버가 실재하지 않는 id 를 지운 뒤 남은 id 가 없는 항목을 통째로 버린다. 화면은 출처 없는
+#    문장을 그릴 방법이 없다. 검수자가 대조할 수 없는 문장은 보조가 아니라 또 하나의 추측이다.
+# 5. **골드 문항을 특별 취급하지 않는다.** 이 경로에는 `is_gold` 분기가 없다. 골드는 도구가
+#    이미 빈 결과를 주므로 '자료 없는 콘텐츠' 와 같은 자리에서 같은 모양으로 끝난다.
+#    `content_brief` 의 골드 거절이 걷히면(그 거절은 골드가 등급을 뒤집던 시절의 잔재다 ·
+#    `_ask_terms` 주석) 골드에도 자료가 채워져 '평범한 콘텐츠' 와 같아진다. **이 파일은 그때
+#    고칠 것이 없다.** 분기가 없다는 것이 곧 두 상태 모두에서 맞다는 뜻이다.
+# 6. **어떤 모델이 답했는지 남긴다.** 응답에도 싣고 롤링 로그에도 적는다. 설정이 바뀌면 답의
+#    성격도 바뀌는데 기록이 없으면 나중에 "그때 왜 이렇게 답했지" 를 되짚을 수 없다.
+#
+# import 를 파일 끝에 두는 이유: 이 블록은 통째로 뒤에 붙은 것이라 상단 import 를 건드리면
+# 같은 파일을 만지는 다른 작업과 첫 줄부터 충돌한다. 모듈 수준 import 는 위치 제약이 없다.
+import threading as _threading                    # noqa: E402  (아래 상한 카운터 전용)
+import time as _time                              # noqa: E402
+from . import modelmeta as _MM                    # noqa: E402  (답한 모델 이름 표기)
+
+ASK_STAGE_MSG = "판정을 낸 뒤에 물어볼 수 있습니다 · 먼저 판정해 주세요"
+ASK_EMPTY_Q = "무엇이 궁금한지 적어 주세요"
+ASK_NO_CONTENT = "콘텐츠를 지정해 주세요"
+# 자료가 없을 때 문구. '골드라서' 가 아니라 '자료가 없어서' 다. 골드도, 자료 없는 평범한
+# 콘텐츠도 같은 문구로 끝난다(둘을 구분하는 문장을 만드는 순간 그게 골드 신호다).
+ASK_NO_SOURCE = "가지고 있는 자료로는 답할 수 없습니다 · 사전·정책 탭에서 확인해 주세요"
+# 모델 호출 실패 문구는 **어디를 봐야 하는지** 가리킨다. 선택지에 라우터 키가 없는 모델도
+# 뜨므로 '설정은 멀쩡한데 호출만 실패' 하는 경우가 실제로 생긴다. "답하지 못했습니다" 로
+# 끝내면 검수자도 관리자도 갈 곳을 모른다(도구 오류를 다음 행동이 보이게 쓰는 것과 같은 이유).
+_NO_MODEL_HEAD = "설정된 검수 보조 모델%s을 부를 수 없습니다"
+_NO_MODEL_TAIL = " · 시스템 설정에서 다시 골라 주세요 · 아래 자료는 그대로 보실 수 있습니다"
+ASK_NO_MODEL = (_NO_MODEL_HEAD % "") + _NO_MODEL_TAIL
+
+
+def _ask_no_model(mid: str) -> str:
+    """어느 모델이 안 되는지까지 적는다. 관리자가 그 이름을 설정에서 찾아 바꾸면 된다.
+    라우터가 돌려준 사유 원문은 싣지 않는다(내부 구현 노출)."""
+    return (_NO_MODEL_HEAD % ("(%s)" % _clip(mid, 60) if mid else "")) + _NO_MODEL_TAIL
+ASK_QUOTA_MSG = "오늘 물어볼 수 있는 횟수를 다 썼습니다"
+ASK_UNGROUNDED = "근거를 댈 수 있는 답이 나오지 않았습니다 · 아래 자료를 직접 봐 주세요"
+
+ASK_Q_MAX = 300                                   # 질문 길이 상한(프롬프트 주입 면적 제한)
+ASK_SRC_TEXT_MAX = 400                            # 자료 1건 길이 상한
+ASK_SRC_MAX = 12                                  # 자료 건수 상한(넘으면 truncated 로 밝힌다)
+ASK_LINE_MAX = 300                                # 답변 1줄 길이 상한
+ASK_LINES_MAX = 5                                 # 답변 줄 수 상한
+ASK_CITE_MAX = 4                                  # 한 줄에 다는 출처 수 상한
+ASK_TERM_MAX = 4                                  # 사전에서 끌어올 분류값 수 상한
+# 사용자당 하루 질문 수(모델 호출 = 과금). 값은 초안이고 실사용을 보고 조정한다.
+# ⚠️ **실제로는 "하루 30건" 이 아니라 "재시작 사이 30건" 이다.** 카운터(_ASK_HITS)가 프로세스
+# 메모리라 배포·재시작마다 0 으로 돌아가는데, 이 저장소는 main 머지마다 자동 배포라 재시작이
+# 잦다. 단단한 일일 상한으로 믿고 과금을 계산하면 틀린다. 원장으로 올리는 것은 자유질문이
+# 실제로 얼마나 쓰이는지 본 뒤에 정한다(지금 올리면 쓰이지도 않는 것에 저장 계층을 늘린다).
+ASK_DAILY_MAX = 30
+
+
+# ── 모델 선택 자리 ───────────────────────────────────────────────────────────
+# 모델은 **시스템 설정의 검수 보조 모델 항목**이 정한다. 해석은 `prism.config.assist_model`
+# 하나뿐이고(serve 가 같은 이름으로 재수출) 미설정·잘못된 값·정상값 어디서도 항상 쓸 수 있는
+# 모델명을 돌려준다. 그래서 이 파일에는 기본값 표도 분기도 없다. 두 벌이 되면 반드시
+# 어긋나고, 어긋난 쪽이 조용히 다른 모델로 과금한다.
+#
+# 다른 컴포지션 루트(테스트 등)에서 갈아끼우려면 한 줄:  RA.ASK_MODEL_RESOLVER = <함수>
+ASK_MODEL_RESOLVER = None
+
+
+def ask_model() -> str:
+    """자유질문에 쓸 모델 id. **해석은 설정 계층이 한다.**
+
+    미설정일 때 판정 모델(`cfg.model`)을 따라가지 않는 것도 설정 계층의 계약이다. 이 설정을
+    따로 둔 이유가 자기 판정을 자기가 변호하지 않게 하려는 것이라서다.
+
+      ① `ASK_MODEL_RESOLVER`: 명시 주입(테스트·다른 컴포지션 루트)
+      ② `_SV.assist_model`: 설정 계층의 해석 함수(정상 경로 · `config.assist_model` 재수출)
+      ③ `""`: ②가 없을 때만 닿는 마지막 가지. `llm_for_model` 이 기존 설정 모델로 해석한다.
+         PR #439 로 ②가 들어와 지금은 죽은 가지다. **여기에 모델 이름을 적어 넣지 말 것.**
+         설정 계층의 기본값과 갈라지는 순간 화면에 표시된 모델과 실제 과금 모델이 달라진다.
+
+    ②를 하드 import 하지 않고 `_SV` 로 더듬는 이유: 이 브랜치를 딸 때는 설정 항목이 머지 전이라
+    import 하면 모듈이 통째로 못 떴다. 이름만 맞으면 붙게 해 둔 덕에 #439 머지 뒤 이 파일을
+    한 줄도 안 고치고 연결됐다(실측: `ask_model()` → `solar-pro2`). 그대로 둔다."""
+    for fn in (ASK_MODEL_RESOLVER, getattr(_SV, "assist_model", None)):
+        if not callable(fn):
+            continue
+        try:
+            mid = str(fn() or "").strip()
+        except Exception:
+            continue                              # 해석이 흔들려도 답은 나간다
+        if mid:
+            return mid
+    return ""
+
+
+# ── 사용자당 상한 ────────────────────────────────────────────────────────────
+_ASK_HITS = {}          # (day, uid) -> 사용 횟수 · **프로세스 메모리**(재시작마다 0 · ASK_DAILY_MAX 주석)
+_ASK_LOCK = _threading.Lock()
+
+
+def _ask_quota(uid) -> tuple:
+    """(허용?, 오늘 남은 수). 모델 호출은 과금이라 상한이 없으면 한 사람이 예산을 다 쓴다.
+
+    **자료가 있든 없든 접수된 질문은 모두 센다.** 자료 없는 질문만 공짜로 두면 남은 횟수가
+    줄지 않는 것 자체가 "이건 자료가 없는 문항(=골드)" 신호가 된다. 셈이 답의 내용에 따라
+    갈리지 않게 하는 것이 이 함수의 계약이다."""
+    key = (_time.strftime("%Y-%m-%d"), str(uid or "?")[:64])
+    with _ASK_LOCK:
+        if len(_ASK_HITS) > 4096:                 # 지난 날짜 정리(장기 가동 시 무한 성장 방지)
+            for k in [k for k in _ASK_HITS if k[0] != key[0]]:
+                _ASK_HITS.pop(k, None)
+        n = int(_ASK_HITS.get(key, 0))
+        if n >= ASK_DAILY_MAX:
+            return False, 0
+        _ASK_HITS[key] = n + 1
+        return True, max(0, ASK_DAILY_MAX - (n + 1))
+
+
+# ── 자료 수집 ────────────────────────────────────────────────────────────────
+def _ask_tool(name: str, args: dict, ch: str, team) -> dict:
+    """자유질문 경로의 도구 호출. **해시는 서버가 못 박는다.**
+
+    args 에 hash 가 무엇으로 들어오든 화면이 열고 있는 콘텐츠로 덮어쓴다. 지금은 서버가 도구
+    순서를 정하지만 나중에 모델이 도구를 고르게 되어도 이 함수만 지나면 해시는 고정된다.
+    그래서 덮어쓰기를 호출부마다가 아니라 여기 한 곳에 둔다(호출부에 두면 새 호출부가 빠뜨린다).
+
+    **도구 오류는 자료 없음과 똑같이 다룬다.** 문구를 밖으로 내보내지 않는다: 골드 문항에서
+    `content_brief` 는 거절 문구를 돌려주는데 그게 답변이나 자료 목록에 실리면 그 한 줄이 곧
+    "이건 골드다" 신호다. 찾지 못한 콘텐츠·팀 밖 콘텐츠도 같은 모양으로 끝난다."""
+    a = {k: v for k, v in (args or {}).items() if k != "team"}
+    spec = registry().get(name) or {}
+    if "hash" in ((spec.get("inputSchema") or {}).get("properties") or {}):
+        a["hash"] = ch
+    r = call(name, a, team=team)
+    return r if (isinstance(r, dict) and not r.get("error")) else {}
+
+
+def _ask_terms(q: str) -> tuple:
+    """질문에 이름이 그대로 등장한 분류값 (인텐트, 카테고리).
+
+    이 조회에는 **해시가 들어가지 않는다**(공용 사전 = 콘텐츠와 무관). 그래서 골드 문항에서도
+    평범한 콘텐츠와 똑같이 자료가 잡히고, 정책을 묻는 질문은 자료 유무로 갈리지 않는다.
+    골드 경로를 평범한 경로와 같게 유지하는 장치가 이것이다.
+
+    남은 자리와 그 자리를 닫는 곳: "이건 왜 R 이야" 처럼 **콘텐츠에만 답이 있는 질문**은
+    `content_brief` 가 골드를 거절하는 동안 자료가 비고, 자료가 비면 빨리 끝난다.
+    **이 함수가 고칠 자리가 아니다.** 그 거절은 골드가 **등급**을 뒤집던 시절의 잔재이고,
+    2026-08-13 부터 골드는 카테고리를 뒤집는다(PR #438). 등급과 저장된 근거가 참값이 됐으니
+    숨길 이유가 사라졌다. 후속 작업이 거절을 걷고 카테고리 관련 두 자리만 비우면, 골드에도
+    평소대로 자료가 채워져 분포 자체가 같아진다.
+
+    그러니 여기서 억지로 메우지 말 것. 없는 자료를 지어내면 4번 규칙이 깨지고, 가짜 지연은
+    거짓말이지 방어가 아니다. **화면이 골드에서 서버를 안 부르게 하는 방향도 아니다.**
+    무응답이 다시 골드 신호가 되고, 무엇보다 지금 없애는 중인 단락을 되살리는 일이 된다."""
+    s = str(q or "")
+    pool = list(D.INTENT_VALUE_DEFS) + [k for k in D.INTENT_EXAMPLES
+                                        if k not in D.INTENT_VALUE_DEFS]
+    intents = [k for k in pool if k and k in s]
+    cats = [k for k, ko in (getattr(D, "TIER2_KO", {}) or {}).items()
+            if (k and k in s) or (ko and ko in s)]
+    return intents[:ASK_TERM_MAX], cats[:ASK_TERM_MAX]
+
+
+def _ask_vals(vals: dict, blind: str, group) -> tuple:
+    """(라벨, 문장). 부여된 값을 자료 한 줄로 만든다. group = ((표시명, _values 키, 요소 키), …)
+
+    **큐가 뒤집는 자리는 문장에서도 라벨에서도 통째로 뺀다.** 비워 놓고 "없음"·"미상" 이라고
+    쓰면 화면에는 값이 그려져 있는 골드에서 앞뒤가 안 맞고, 그 어긋남이 곧 골드 표시가 된다.
+    `_summary3` 가 같은 이유로 같은 처리를 한다(전 콘텐츠 공통 · 검수자는 그 값을 화면에서
+    이미 보고 있다). 자유질문은 이 문장을 **모델에 통째로 먹이므로** 화면이 안 그리는 값이라도
+    여기서 갈리면 모델의 답이 갈리고, 그 답이 곧 골드 표시가 된다.
+
+    품질 사유는 표시용 `reason_labels` 를 쓰지만 가림 판정은 원본 키(`reasons`)로 한다.
+    라벨은 `_values` 가 미리 만들어 둔 파생값이라 `content_brief` 가 원본을 비워도 남는다.
+    표시 키로 판정하면 그 파생값이 그대로 새어 나간다."""
+    names, parts = [], []
+    for label, vkey, ekey in group:
+        if ekey == blind:
+            continue
+        v = vals.get(vkey)
+        s = " · ".join(str(x) for x in v if str(x).strip()) if isinstance(v, (list, tuple)) \
+            else str(v or "").strip()
+        if s:
+            names.append(label)
+            parts.append("%s %s" % (label, s))
+    return ("부여된 " + "·".join(names), " · ".join(parts)) if parts else ("", "")
+
+
+def _ask_sources(ch: str, question: str, team) -> tuple:
+    """(자료 목록, 잘림). 답의 재료를 **서버가** 모아 온다.
+
+    모델은 이 목록 밖을 볼 수 없다. 도구도 웹도 파일도 주지 않고 여기서 만든 문자열만
+    프롬프트에 실린다. '지어내지 말라' 가 부탁이 아니라 구조가 되는 자리다."""
+    out, seen = [], set()
+
+    def add(tool, field, label, text):
+        """같은 문장은 한 번만 싣는다. 분류 기준(content_brief.criteria)과 분류 정의
+        (get_examples.desc)는 같은 사전에서 오므로 그대로 두면 자료 자리를 둘씩 먹는다."""
+        t = _clip(text, ASK_SRC_TEXT_MAX)
+        if t and t not in seen:
+            seen.add(t)
+            out.append({"id": "s%d" % (len(out) + 1), "tool": tool, "field": field,
+                        "label": label, "text": t})
+
+    # ① 이 콘텐츠(해시는 _ask_tool 이 못 박는다 · 여기는 이미 판정 뒤라 stage=after)
+    brief = _ask_tool("content_brief", {"stage": "after"}, ch, team)
+    vals = brief.get("values") or {}
+    if brief.get("has_evidence"):
+        add("content_brief", "evidence", "모델이 남긴 판정 근거", brief.get("evidence"))
+    blind = flip_blind_key()                      # 큐가 뒤집는 그 한 자리(전 콘텐츠 공통)
+    for field, group in (("values.grade", (("등급", "grade", "grade"),
+                                           ("품질 사유", "reason_labels", "reasons"))),
+                         ("values.intent", (("인텐트", "intent", "intent"),
+                                            ("카테고리", "content_category", "content_category")))):
+        label, line = _ask_vals(vals, blind, group)
+        if line:
+            add("content_brief", field, label, line)
+    for c in (brief.get("criteria") or [])[:ASK_TERM_MAX]:
+        add("content_brief", "criteria.%s" % (c.get("key") or ""),
+            "분류 기준 · %s" % (c.get("key") or ""), c.get("desc"))
+    for sg in (brief.get("suggestions") or [])[:3]:
+        add("content_brief", "suggestions.%s" % (sg.get("field") or ""), "과거 교정 집계",
+            "%s: %s → %s · %s" % (sg.get("field") or "", sg.get("from") or "(빈값)",
+                                  sg.get("to") or "", sg.get("basis") or ""))
+
+    # ② 남이 내린 판정 · 판정 뒤에만 나가는 도구다(after_only). 여기는 이미 판정 뒤다.
+    prec = _ask_tool("verdict_precedents", {"stage": "after", "limit": 3}, ch, team)
+    for it in (prec.get("items") or [])[:3]:
+        add("verdict_precedents", "items.verdict", "비슷한 과거 판정",
+            "%s · %s인 일치 · %s" % (it.get("verdict") or "", it.get("n") or 0,
+                                  it.get("why_similar") or ""))
+    dis = _ask_tool("reviewer_dissent", {"stage": "after"}, ch, team)
+    for i, ln in enumerate((dis.get("lines") or [])[:3]):
+        add("reviewer_dissent", "lines.%d" % i, "다른 검수자 의견 집계", ln)
+
+    # ③ 정책 사전(콘텐츠와 무관) = 화면에 걸린 값 + 질문에 등장한 값.
+    #    질문에서 뽑은 쪽은 골드에서도 잡히는 자료라 경로가 갈리는 것을 줄인다(_ask_terms 주석).
+    qi, qc = _ask_terms(question)
+    svc = str(vals.get("service") or "")
+    for kind, want in (("intent", list(vals.get("intent") or []) + qi),
+                       ("category", list(vals.get("content_category") or []) + qc)):
+        want = [w for w in dict.fromkeys(want) if w][:ASK_TERM_MAX]
+        if not want:
+            continue
+        ex = _ask_tool("get_examples", {"kind": kind, "values": want, "service": svc}, ch, team)
+        for it in (ex.get("items") or [])[:ASK_TERM_MAX]:
+            key, lbl = it.get("key") or "", it.get("label") or it.get("key") or ""
+            if it.get("has_example"):
+                # 초안 표시를 자료 문장에 함께 싣는다. 모델이 확정 정책처럼 옮겨 적지 못하게.
+                add("get_examples", "items.%s.example" % key, "정책 예시(초안) · %s" % lbl,
+                    "%s · %s" % (it.get("example") or "", PT.EXAMPLES_DRAFT_NOTE))
+            elif it.get("desc"):
+                add("get_examples", "items.%s.desc" % key, "분류 정의 · %s" % lbl, it.get("desc"))
+
+    rows, truncated, _total = PT.cap(out, ASK_SRC_MAX)
+    return rows, truncated
+
+
+# ── 모델 호출 ────────────────────────────────────────────────────────────────
+ASK_SYSTEM = (
+    "너는 콘텐츠 검수자를 돕는 보조다. 검수자는 **이미 판정을 냈고** 지금은 왜 그런지 확인하는 중이다.\n"
+    "\n"
+    "규칙(어기면 그 문장은 서버가 버린다):\n"
+    "1. 아래 [자료] 에 적힌 것만 근거로 쓴다. 자료 밖의 지식·짐작·일반 상식을 쓰지 않는다.\n"
+    "2. 문장마다 근거가 된 자료의 id 를 단다. 근거를 달 수 없는 문장은 아예 쓰지 않는다.\n"
+    "3. 자료가 질문에 답하지 못하면 answer 를 빈 목록으로 두고 unknown 에 무엇이 없는지 한 줄로 적는다.\n"
+    "   모르는 것을 채우지 않는다. 없다고 말하는 것이 이 보조의 정확성이다.\n"
+    "4. 등급을 새로 판정하지 않는다. 맞다·틀리다를 말하지 말고 자료가 무엇을 말하는지만 옮긴다.\n"
+    "5. 자료에 '초안' 이라고 적혀 있으면 그 사실을 그대로 옮긴다(확정 정책처럼 쓰지 않는다).\n"
+    "6. 한국어로 짧게 쓴다. 한 문장에 한 가지만 담는다.\n"
+    "\n"
+    '반드시 이 JSON 만 출력한다: {"answer":[{"text":"한 문장","sources":["s1"]}],"unknown":""}'
+)
+
+
+def _ask_user(question: str, sources: list) -> str:
+    lines = ["[%s] (%s · %s) %s: %s" % (s["id"], s["tool"], s["field"], s["label"], s["text"])
+             for s in sources]
+    return "# 질문\n%s\n\n# 자료 (이 밖의 것은 쓸 수 없다)\n%s" % (question, "\n".join(lines))
+
+
+def _ask_llm(model: str, mock: bool) -> tuple:
+    """(llm, 실제 모델 id). 부를 수 없으면 (None, ""): 사유 원문은 응답에 싣지 않는다."""
+    if _SV is None:
+        return None, ""
+    try:
+        llm, _route = _SV.llm_for_model(str(model or ""), bool(mock))
+    except Exception:
+        return None, ""
+    if llm is None:
+        return None, ""
+    return llm, str(getattr(llm, "model", "") or model or "")
+
+
+def _ask_clean(obj, sources: list) -> list:
+    """모델 응답 → 화면에 그릴 수 있는 답. **출처 없는 문장은 여기서 사라진다.**
+
+    검사가 프롬프트가 아니라 여기 있는 이유: 프롬프트는 지켜 달라는 부탁이고 이 함수는 지키지
+    않은 문장을 못 나가게 하는 문이다. 없는 id 를 붙였거나(환각 인용) id 를 안 붙인 문장은
+    통째로 버린다. 검수자가 대조할 수 없는 문장은 보조가 아니라 또 하나의 추측이다."""
+    ok = {s["id"] for s in sources}
+    rows = (obj.get("answer") if isinstance(obj, dict) else None) or []
+    if not isinstance(rows, (list, tuple)):
+        return []
+    out = []
+    for it in rows:
+        if not isinstance(it, dict):
+            continue
+        raw = it.get("sources")
+        raw = [raw] if isinstance(raw, str) else (raw if isinstance(raw, (list, tuple)) else [])
+        ids = [x for x in dict.fromkeys(str(v).strip() for v in raw) if x in ok]
+        text = _clip(it.get("text"), ASK_LINE_MAX)
+        if not (text and ids):
+            continue
+        out.append({"text": text, "sources": ids[:ASK_CITE_MAX]})
+        if len(out) >= ASK_LINES_MAX:
+            break
+    return out
+
+
+def _ask_log(team, uid, ch: str, model: str, question: str, n_src: int, generated: bool):
+    """무엇으로 답했는지 남긴다(롤링 200건 · handoff_log 관례).
+
+    설정이 바뀌면 답의 성격도 바뀌는데 기록이 없으면 나중에 "그때 왜 이렇게 답했지" 를
+    되짚을 수 없다. 실패해도 흐름은 계속한다. 기록 때문에 답이 막히지는 않는다."""
+    if _SV is None:
+        return
+    try:
+        with _ASK_LOCK:
+            rep = _SV._report_get("assist_ask_log", team, {}) or {}
+            entries = list(rep.get("entries") or [])
+            entries.append({"ts": _time.time(), "uid": str(uid or "")[:64],
+                            "hash": str(ch or "")[:32], "model": str(model or ""),
+                            "sources": int(n_src), "generated": bool(generated),
+                            "q": _clip(question, 80)})
+            _SV._report_save("assist_ask_log", {"entries": entries[-200:]}, team)
+    except Exception:
+        pass
+
+
+def ask(hash: str = "", stage: str = "", question: str = "", team=None,
+        uid="", mock=False) -> dict:
+    """자유질문 1건. 계약은 이 블록 머리말의 여섯 항목이다.
+
+    응답(화면 계약):
+      stage · question(서버가 자른 실제 질문) · answer[{text, sources[]}] ·
+      sources[{id, tool, field, label, text}] · generated(모델을 불렀나) ·
+      model · model_label · note(사람이 읽을 한 줄) · remaining(오늘 남은 질문 수) · truncated
+    answer 의 각 항목은 **반드시** 실재하는 sources id 를 하나 이상 갖는다(없으면 서버가 버렸다)."""
+    blocked = PT.need_team(team)
+    if blocked:
+        return blocked
+    # 판정 전 거절이 먼저다. 해시·질문 검증보다 앞에 두어 '그 해시가 있기는 한가' 같은 부수
+    # 정보도 판정 전에는 새지 않게 한다(모르는 stage 는 _stage 가 before 로 수렴시킨다).
+    if _stage(stage) != "after":
+        return {"error": ASK_STAGE_MSG}
+    ch = str(hash or "").strip()
+    if not ch:
+        return {"error": ASK_NO_CONTENT}
+    q = _clip(question, ASK_Q_MAX)
+    if not q:
+        return {"error": ASK_EMPTY_Q}
+    allowed, remaining = _ask_quota(uid)
+    if not allowed:
+        return {"error": ASK_QUOTA_MSG}
+
+    sources, truncated = _ask_sources(ch, q, team)
+    out = {"stage": "after", "question": q, "answer": [], "sources": sources,
+           "truncated": truncated, "generated": False, "model": "", "model_label": "",
+           "note": "" if sources else ASK_NO_SOURCE, "remaining": remaining}
+    if not sources:
+        # 도구가 답을 못 주면 여기서 끝낸다. 모델을 부르지 않으므로 지어낼 자리가 없다.
+        _ask_log(team, uid, ch, "", q, 0, False)
+        return out
+
+    want = ask_model()
+    llm, used = _ask_llm(want, mock)
+    if llm is None:
+        # 자료는 그대로 준다(빈손으로 돌려보내지 않는다) + 어디를 봐야 하는지 가리킨다.
+        # 로그에는 **부르려던 모델**을 남긴다. generated=False 와 함께 읽으면
+        # "그 모델로 시도했는데 안 됐다" 가 되고, 그게 나중에 되짚을 수 있는 유일한 단서다.
+        out["note"] = _ask_no_model(want)
+        _ask_log(team, uid, ch, want, q, len(sources), False)
+        return out
+    out["model"], out["model_label"] = used, _MM.label(used)
+    out["generated"] = True
+    try:
+        obj, _res = llm.complete_json(ASK_SYSTEM, _ask_user(q, sources), tag="assist_ask")
+    except Exception:
+        obj = None                                # 예외 원문은 응답에 싣지 않는다(내부 노출)
+    out["answer"] = _ask_clean(obj, sources)
+    if not out["answer"]:
+        out["note"] = ASK_UNGROUNDED
+    _ask_log(team, uid, ch, used, q, len(sources), True)
+    return out

@@ -160,6 +160,95 @@ def lookup_entity(name: str, limit=None, team=None) -> dict:
     return envelope(items, lim, query=q)
 
 
+# ── 도구: 정책 예시 ──────────────────────────────────────────────────────────
+EXAMPLE_KINDS = ("intent", "category")
+EXAMPLE_LIMIT_DEFAULT, EXAMPLE_LIMIT_MAX = 20, 60
+
+# 예시가 **초안**이라는 사실은 응답에 실려야 한다. 사전 코드에 그렇게 적혀 있고
+# (`INTENT_EXAMPLES` = "초안 · 부분" · `TIER2_DEFS` = "예시: 초안(팀 확정 대상)"),
+# 확정 정책으로 읽히면 검수자가 틀린 기준으로 판정한다. 그 판정은 되돌릴 수도 없다.
+# 검수 결과는 그대로 품질 측정값으로 쓰이기 때문이다. 그래서 봉투와 항목 양쪽에 표시한다
+# (봉투만 표시하면 항목만 뽑아 쓰는 화면에서 표시가 떨어져 나간다).
+EXAMPLES_DRAFT_NOTE = ("예시는 초안입니다(팀 확정 전) · 확정 정책이 아니므로 판단 기준으로 삼지 마세요 · "
+                       "정의(desc)는 확정 사전입니다")
+NO_EXAMPLE = "등록된 예시가 없습니다"
+
+
+def _tier2_key(v: str) -> str:
+    """카테고리 값 → Tier2 사전 키. 'Tier1 / Tier2' 경로·개명 구표기·한글 표시명을 흡수한다.
+
+    저장된 값은 영문 경로('News and Politics / Politics')이고 화면은 한글로 그리므로, 둘 중
+    무엇이 들어와도 같은 항목을 찾아야 한다. 못 찾으면 빈 문자열 = '모르는 값'(뒤에서 unknown
+    으로 되돌려 준다). 비슷한 이름으로 갈음하지 않는다. 그 순간 없는 정책을 지어내는 것이다."""
+    s = str(v or "").strip()
+    if not s:
+        return ""
+    if s in D.TIER2_DEFS:
+        return s
+    last = s.split("/")[-1].strip()
+    last = (getattr(D, "RENAMED_TIER2", {}) or {}).get(last, last)
+    if last in D.TIER2_DEFS:
+        return last
+    for k, ko in (getattr(D, "TIER2_KO", {}) or {}).items():   # 한글 표시명 역인용
+        if ko == last and k in D.TIER2_DEFS:
+            return k
+    return ""
+
+
+def _ex_item(key: str, label: str, desc: str, example: str) -> dict:
+    ex = str(example or "").strip()
+    return {"key": key, "label": label or key, "desc": str(desc or ""),
+            "example": ex, "has_example": bool(ex), "draft": True,
+            "note": "" if ex else NO_EXAMPLE}
+
+
+def get_examples(kind: str = "", values=None, service: str = "", limit=None, team=None) -> dict:
+    """분류값의 **정책 예시**와 정의문. 검수 화면에서 사전·정책 탭으로 건너가는 왕복을 없앤다.
+
+    원천은 사전의 예시 텍스트 하나뿐이다(`INTENT_EXAMPLES` · `TIER2_DEFS`). 도움말 표가 쓰는
+    바로 그 값이라 화면과 도구가 갈릴 수 없다.
+
+    ⚠️ **골든셋 실물 콘텐츠를 예시로 끌어오지 않는다.** 골드 문항은 골든셋에서 만들어지므로
+    (`reviewops._inject_gold` 가 `get_golden` 만 돈다) 골든 콘텐츠를 예시로 보여 주는 것은
+    골드의 답을 미리 보여 주는 것과 같다. 검수자가 예시에서 본 제목을 큐의 골드에서 알아보는
+    순간 골드가 재려던 것이 사라진다. '실물이라 더 좋은 예시'라는 이유로도 열지 않는다.
+    선례 도구가 골든 원본의 식별자를 지우는 것(GOLDEN_BLIND_FIELDS)과 같은 이유다.
+
+    모르는 값은 `unknown` 으로 되돌려 준다. 비슷한 값으로 갈음하면 없는 정책이 생긴다."""
+    kind = (kind or "").strip()
+    if kind not in EXAMPLE_KINDS:
+        return {"error": f"kind 는 {' · '.join(EXAMPLE_KINDS)} 중 하나입니다"}
+    lim = qint(limit, EXAMPLE_LIMIT_DEFAULT, 1, EXAMPLE_LIMIT_MAX)
+    if isinstance(values, (list, tuple)):
+        asked = [str(v).strip() for v in values if str(v or "").strip()]
+    else:
+        asked = [str(values).strip()] if str(values or "").strip() else []
+
+    items, unknown = [], []
+    if kind == "intent":
+        defs = D.INTENT_VALUE_DEFS
+        pool = (D.intent_categories_for(service) if service
+                else list(D.INTENT_CATEGORIES_UNIVERSAL) + list(D.INTENT_FORM_UNIVERSAL))
+        keys = []
+        for v in (asked or pool):
+            # 특정 값을 콕 집어 물으면 서비스 후보 밖이어도 답한다(정의가 있는 값이면 실재한다).
+            (keys if (v in pool or v in defs) else unknown).append(v)
+        for k in dict.fromkeys(keys):
+            items.append(_ex_item(k, k, defs.get(k, ""), D.INTENT_EXAMPLES.get(k, "")))
+    else:
+        allt = [t2 for lst in D.CONTENT_CATEGORY_TIER2.values() for t2 in lst]
+        keys = []
+        for v in (asked or allt):
+            k = _tier2_key(v)
+            (keys.append(k) if k else unknown.append(v))
+        for k in dict.fromkeys(keys):
+            desc, ex = (tuple(D.TIER2_DEFS.get(k) or ("", "")) + ("", ""))[:2]
+            items.append(_ex_item(k, (getattr(D, "TIER2_KO", {}) or {}).get(k, k), desc, ex))
+
+    return envelope(items, lim, kind=kind, service=service or "", draft=True,
+                    draft_note=EXAMPLES_DRAFT_NOTE, unknown=unknown[:EXAMPLE_LIMIT_MAX])
+
+
 # ── 도구 등록부 ──────────────────────────────────────────────────────────────
 # scope: internal(트랙 A 전용) · external(트랙 B 전용) · both
 # 각 앞단은 이 표에서 자기 scope 만 골라 노출한다. inputSchema 는 MCP tools/list 가 그대로
@@ -198,6 +287,34 @@ TOOLS = {
             "additionalProperties": False,
         },
         "fn": lookup_entity,
+    },
+    "get_examples": {
+        # scope=both 인 근거: 이 도구는 **콘텐츠를 읽지 않는다**. 인자에 해시가 없고 응답도
+        # 팀 데이터와 무관한 공용 사전 문자열뿐이라, get_taxonomy 와 정확히 같은 부류다
+        # (팀 강제는 call 이 공통으로 걸어 두므로 무팀 호출은 어차피 막힌다).
+        # 외부에 여는 위험은 하나: 초안 예시가 확정 정책으로 읽히는 것. 그건 봉투와 항목
+        # 양쪽의 draft 표시로 계약에 박아 막는다(파트너가 표시를 지우면 그건 파트너 책임).
+        "scope": "both",
+        "title": "정책 예시 조회",
+        "desc": "분류값(인텐트 · 콘텐츠 카테고리 Tier2)의 정책 예시와 정의문을 준다. "
+                "예시는 **초안**이라 확정 정책이 아니며 응답에 그 사실이 함께 실린다. "
+                "등록된 예시가 없는 값은 없다고 답한다(지어내지 않는다).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": list(EXAMPLE_KINDS),
+                         "description": "intent=인텐트 · category=콘텐츠 카테고리(Tier2)"},
+                "values": {"type": "array", "items": {"type": "string"},
+                           "description": "궁금한 값들(비우면 kind·service 의 후보 전체)"},
+                "service": {"type": "string",
+                            "description": "서비스명 · 인텐트일 때만 의미 있음(그 서비스 후보로 좁힌다)"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": EXAMPLE_LIMIT_MAX,
+                          "description": f"가져올 수(기본 {EXAMPLE_LIMIT_DEFAULT} · 최대 {EXAMPLE_LIMIT_MAX})"},
+            },
+            "required": ["kind"],
+            "additionalProperties": False,
+        },
+        "fn": get_examples,
     },
 }
 
