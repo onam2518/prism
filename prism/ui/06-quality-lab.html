@@ -1,44 +1,15 @@
-      <!-- ═══ 모듈: 품질 메타 ═══ -->
-      <!-- ═══ 모듈: 실험실(관리자) · 지금 테스트하지 않는 탐구 요소 ═══ -->
+      <!-- ═══ 모듈: 실험실(관리자) · 지금 테스트하지 않는 탐구 요소 ═══
+           탭 골격(공통): 뒤따르는 조각(10-usermeta·19c-spectrum·19d-mcp-keys)이 이 탭 바에 의존 ·
+           파일명 번호가 10 미만이어야 탭 바가 패널 위에 렌더된다 -->
+      <!-- 법령 탭은 제거(2026-08-13 · 무사용) · 법령 필터 토글은 시스템 설정으로 이동 -->
+      <!-- 미디어 탭은 콘텐츠 관리 › 콘텐츠 추가로 승격(03-run.html) · 콘텐츠 에이전트는 폐기 -->
       <template x-if="mod === 'lab'">
         <div class="w-full" style="margin-bottom:10px">
         <div class="evaltabs">
-          <button type="button" x-bind:class="labTab==='legal'?'sel':''" x-on:click="labTab='legal'">법령</button>
           <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
-          <button type="button" x-bind:class="labTab==='media'?'sel':''" x-on:click="labTab='media'">미디어</button>
-          <button type="button" x-bind:class="labTab==='ca'?'sel':''" x-on:click="labTab='ca'">콘텐츠 에이전트</button>
           <button type="button" x-bind:class="labTab==='spectrum'?'sel':''" x-on:click="labTab='spectrum'; spLoad()">스펙트럼</button>
+          <button type="button" x-bind:class="labTab==='mcp'?'sel':''" x-on:click="labTab='mcp'; mkLoad()">MCP 키</button>
         </div>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
       </div>
       </template>
-      <template x-if="mod === 'lab'">
-        <div x-show="labTab === 'legal'" x-cloak class="w-full space-y-4">
-        <div class="panel"><div class="panel-bd flex items-center justify-between gap-3">
-          <ul class="ds-bullets"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출).</li></ul>
-          <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
-            <input type="checkbox" x-model="legalEnabled" x-on:change="toggleLegal()" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
-            법령 필터 포함
-          </label>
-        </div></div>
-        <div x-show="!result" class="empty"><b class="text-body">실행 · 추출</b>에서 단건 추출을 실행하면 그 콘텐츠의 품질·법령 판정 상세가 여기에 표시됩니다</div>
-        <div x-show="result" class="space-y-4">
-          <div class="panel"><div class="panel-hd"><b>유통 판정</b>
-            <span x-show="qm.finalGrade === 'G'" class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>유통 가능 · G</span>
-            <span x-show="qm.finalGrade === 'R'" class="ds-badge ds-badge--error"><span class="ds-badge__dot"></span>차단 · R</span>
-            <span x-show="!qm.finalGrade" class="ds-badge ds-badge--reason" style="cursor:help" data-tip="품질 호출이 실패해 판정을 보류했습니다 · 재실행하면 다시 판정합니다" data-tip-pos="top"><span class="ds-badge__dot"></span>판정 보류 · 재실행 필요</span>
-          </div><div class="panel-bd">
-            <div class="drow"><div class="k">검수</div><div class="v text-sm text-body" x-text="(qm.review || 'auto') + (qm.confidence != null ? (' · conf ' + qm.confidence) : '')"></div></div>
-            <div class="drow"><div class="k">품질 사유</div><div class="v flex flex-wrap gap-1.5">
-              <template x-for="r in (qm.reasons || [])" x-bind:key="r"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="termDef('reason', r)" data-tip-pos="top" x-text="reasonBoth(r)"></span></template>
-              <span x-show="!(qm.reasons || []).length" class="text-xs text-muted">없음(통과)</span>
-            </div></div>
-            <div class="drow"><div class="k">법령</div><div class="v">
-              <span class="text-sm text-body" x-text="lm.enabled ? ('대표등급 ' + lm.representative_grade + ' · ' + lm.representative_score) : '법령 필터 비활성(옵션)'"></span>
-              <div class="mt-1.5 flex flex-wrap gap-1.5"><template x-for="h in (lm.harm_types || [])" x-bind:key="h.code"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="'유해 유형 코드 ' + h.code + ' · 판정 등급 ' + h.grade" data-tip-pos="top" x-text="h.code + ' · ' + h.grade"></span></template></div>
-            </div></div>
-          </div></div>
-        </div>
-      </div>
-      </template>
-

@@ -386,6 +386,8 @@
   .histrow__label{color:var(--ds-text-secondary)}
   .histrow__label.is-sub{color:var(--ds-muted)}
   .histrow__note{margin-left:auto;flex:none;font-size:11px;color:var(--ds-primary);cursor:help;text-decoration:underline dotted}
+  /* 검수 보조 스타일은 이 자리에 없다 — 2026-08-13 에 검수 상세 안 패널에서 화면 우하단
+     대화창이 되면서 정책 팔레트 옆(.asxfab/.asxchat 블록)으로 옮겼다. */
   .dve__verdict{margin-top:auto;padding-top:var(--ds-space-4);border-top:1px solid var(--ds-divider-section)}
   @media (max-width:720px){.detailview__body{grid-template-columns:1fr}.detailview__content{border-right:0;border-bottom:1px solid var(--ds-divider-section)}}
   /* ── 하이브리드 선택형 입력(최종 검수 수정 · 시안 3): 추천 칩(점선) + 검색 드롭다운 ── */
@@ -972,8 +974,14 @@
   .ds-table td{padding:12px 14px}
   .ds-table thead tr{border-bottom:1px solid var(--ds-divider-section, rgba(0,0,0,0.08))}
 
+/* ── 플로팅 버튼 두 개(정책 도움말 ? · 검수 보조 캐릭터) ─────────────────────
+   화면 우하단에 나란히 선다. 크기를 두 곳에 적으면 한쪽만 바뀌어 높이가 어긋나고 간격이
+   벌어지므로 값은 여기 하나뿐이다(자리 계산도 이 변수 + 간격 토큰으로만 한다). */
+:root{--ds-fab-size:44px}
+
 /* ── 정책 팔레트(플로팅 도움말): 검수 중 사전·정책 기준 참조 · 드래그 이동 ── */
-.polfab{position:fixed;right:var(--ds-space-5);bottom:var(--ds-space-5);z-index:80;width:44px;height:44px;border-radius:50%;
+.polfab{position:fixed;right:var(--ds-space-5);bottom:var(--ds-space-5);z-index:80;
+  width:var(--ds-fab-size);height:var(--ds-fab-size);border-radius:50%;
   border:1px solid var(--ds-hairline);background:var(--ds-surface-white);color:var(--ds-ink);
   font:700 17px/1 GmarketSans,Pretendard,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.14);cursor:pointer}
 .polfab:hover{border-color:var(--ds-primary);color:var(--ds-primary)}
@@ -1016,6 +1024,69 @@
 .polmatch__row b{display:block;font-size:12.5px;color:var(--ds-ink);line-height:1.35;font-weight:600}
 .polmatch__row span{font-size:11px;color:var(--ds-muted)}
 .polmatch__empty{padding:16px;text-align:center;color:var(--ds-muted);font-size:12px}
+
+/* ── 검수 보조 대화창(트랙 A · ui/19e-review-assist.html · vendor/app-17-assist.js) ──
+   플로팅 버튼은 정책 도움말(?) 버튼 **왼쪽**에 같은 높이로 선다. 자리 계산은 위 --ds-fab-size
+   와 간격 토큰만 쓴다(px 를 다시 적으면 두 버튼이 어긋난다). 대화창 자체는 정책 팔레트와
+   같은 관례다 — 우하단 기본 자리 · 머리를 잡고 드래그 · 자리 기억. */
+.asxfab{position:fixed;right:calc(var(--ds-space-5) + var(--ds-fab-size) + var(--ds-space-2));
+  bottom:var(--ds-space-5);z-index:80;width:var(--ds-fab-size);height:var(--ds-fab-size);border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;overflow:hidden;
+  border:1px solid var(--ds-hairline);background:var(--ds-surface-white);
+  box-shadow:0 6px 20px rgba(0,0,0,.14);cursor:pointer}
+.asxfab:hover{border-color:var(--ds-primary)}
+.asxfab__char{width:84%;height:84%;object-fit:contain;pointer-events:none}
+.asxchat{position:fixed;right:var(--ds-space-5);bottom:calc(var(--ds-space-5) + var(--ds-fab-size) + var(--ds-space-2));
+  z-index:80;width:min(400px,calc(100vw - 24px));max-width:calc(100vw - 24px);
+  background:var(--ds-surface-white);border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-card);
+  box-shadow:0 14px 44px rgba(0,0,0,.2);display:flex;flex-direction:column}
+.asxchat__hd{display:flex;align-items:center;gap:8px;padding:10px var(--ds-pad-inset);cursor:grab;user-select:none;
+  border-bottom:1px solid var(--ds-hairline)}
+.asxchat__hd:active{cursor:grabbing}
+.asxchat__hd b{font:600 13.5px/1.2 GmarketSans,Pretendard,sans-serif;color:var(--ds-ink)}
+.asxchat__char{width:26px;height:26px;border-radius:50%;background:var(--ds-hairline-soft);flex:none;
+  display:inline-flex;align-items:center;justify-content:center;overflow:hidden}
+.asxchat__char img{width:88%;height:88%;object-fit:contain}
+.asxchat__bd{padding:10px var(--ds-pad-inset);display:flex;flex-direction:column;gap:8px;
+  overflow-y:auto;max-height:min(420px,48vh)}
+.asxchat__chips{display:flex;flex-wrap:wrap;gap:var(--ds-space-1);padding:8px var(--ds-pad-inset);
+  border-top:1px dashed var(--ds-hairline)}
+.asxchat__ask{padding:8px var(--ds-pad-inset) var(--ds-pad-inset);border-top:1px solid var(--ds-hairline)}
+.asxask{display:flex;align-items:center;gap:var(--ds-space-1)}
+.asxask .field{flex:1;min-width:0;height:34px;font-size:12.5px}
+.asxmsg{display:flex}
+.asxmsg--me{justify-content:flex-end}
+/* 보조 말풍선은 중첩 면(surface-on) · 내 말풍선만 강조색을 옅게 쓴다(다크 테마도 같은 토큰) */
+.asxbub{max-width:90%;padding:8px 11px;border-radius:12px;background:var(--ds-surface-on);
+  border:1px solid var(--ds-hairline-soft,rgba(0,0,0,.06));font-size:12.5px;color:var(--ds-body);
+  line-height:1.55;overflow-wrap:anywhere}
+.asxbub--me{background:var(--ds-primary-tint);border-color:var(--ds-hairline);color:var(--ds-text-secondary)}
+.asxbub__ttl{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:11px;font-weight:700;
+  color:var(--ds-muted);margin-bottom:4px}
+/* 칩 = 도구 호출. 잠긴 칩도 같은 크기·같은 자리를 지킨다(사라지면 왜 없는지 알 수 없다). */
+.asxchip{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;
+  border-radius:var(--ds-radius-chip);border:1px solid var(--ds-hairline);background:var(--ds-surface-white);
+  font-size:11.5px;font-weight:600;color:var(--ds-text-secondary);cursor:pointer}
+.asxchip:hover{border-color:var(--ds-primary);color:var(--ds-primary)}
+.asxchip.is-locked{color:var(--ds-placeholder);background:var(--ds-interaction-subtlest,transparent);cursor:not-allowed}
+.asxchip.is-locked:hover{border-color:var(--ds-hairline);color:var(--ds-placeholder)}
+.asxchip__lock{flex:none}
+/* 자유질문 답변: 문장 + 그 문장이 기댄 자료 칩. 칩 없는 문장은 애초에 그리지 않는다. */
+.asxans{padding:4px 0}
+.asxans__src{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.asxsrc{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:var(--ds-radius-full);
+  border:1px dashed var(--ds-hairline);font-size:10.5px;color:var(--ds-muted)}
+/* 말풍선 안 목록(선례·교정 사례·기준) · 종전 패널에서 쓰던 것을 그대로 이어 쓴다 */
+.asx__kv{display:grid;grid-template-columns:minmax(72px,30%) minmax(0,1fr);gap:8px;font-size:12px;padding:3px 0}
+.asx__k{font-weight:650;color:var(--ds-text-secondary);overflow-wrap:anywhere}
+.asx__v{color:var(--ds-muted);overflow-wrap:anywhere}
+.asx__row{padding:7px 0;border-bottom:1px dashed var(--ds-hairline-soft,rgba(0,0,0,.06))}
+.asx__row:last-of-type{border-bottom:0}
+.asx__row-hd{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px}
+.asx__ttl{font-size:12.5px;color:var(--ds-ink);min-width:0;overflow-wrap:anywhere}
+/* 교정 사례의 '고친 값'은 권장도 정답도 아니다 · 색·굵기로 밀지 않고 본문과 같은 무게로 둔다 */
+.asx__from{color:var(--ds-muted);text-decoration:line-through}
+.asx__to{color:var(--ds-text-secondary)}
 
 
 /* 팀 퀘스트 카드(게임형 · RPG 퀘스트 트래커 관례 차용): 에이전트 카드 아래 · 전 메뉴 노출

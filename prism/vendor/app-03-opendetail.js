@@ -268,14 +268,28 @@ window.PRISM_APP_PARTS.push(() => ({
           return { t1, rule: (d.categoryCriteria || {})[t1] || '', rows };
         }).filter((g) => g.rows.length);
       },
-      polRows() {                                       // 인텐트·품질·등급 탭 → 표 행 [{k,t,d,ex}]
+      // 인텐트 탭: 범용①·②/서비스 분기 소속이 보이도록 그룹 렌더 · 값·정의는 /dict 단일 원천 그대로
+      // (게시판 #13·#15: 서비스 전용 값을 다른 서비스에 부여하는 혼동 방지 · 후보 전량이 세 그룹에 1:1 소속)
+      polIntentGroups() {
+        const d = this.dictData || {};
+        const defs = d.intentDefs || {};
+        const ex = d.intentExamples || {};
+        const q = (this.polQ || '').trim().toLowerCase();
+        const mk = (k) => ({ k, t: k, d: defs[k] || '', ex: ex[k] || '' });
+        const hit = (r) => !q || (r.t + ' ' + (r.d || '') + ' ' + (r.ex || '')).toLowerCase().indexOf(q) >= 0;
+        const out = [
+          { label: '범용① 소비 방식', note: '전 서비스 공통', rows: (d.intentUniversal || []).map(mk).filter(hit) },
+          { label: '범용② 형식·전달', note: '전 서비스 공통', rows: (d.intentForm || []).map(mk).filter(hit) },
+        ];
+        Object.keys(d.intentByService || {}).forEach((svc) => {
+          out.push({ label: '서비스 분기 · ' + svc, note: '이 서비스 콘텐츠에만 부여', rows: ((d.intentByService || {})[svc] || []).map(mk).filter(hit) });
+        });
+        return out.filter((g) => g.rows.length);
+      },
+      polRows() {                                       // 품질·등급 탭 → 표 행 [{k,t,d,ex}] · 인텐트 탭은 polIntentGroups
         const d = this.dictData || {};
         let out = [];
-        if (this.polTab === 'intent') {
-          const defs = d.intentDefs || {};
-          const ex = d.intentExamples || {};
-          out = Object.keys(defs).map((k) => ({ k, t: k, d: defs[k], ex: ex[k] || '' }));
-        } else if (this.polTab === 'quality') {
+        if (this.polTab === 'quality') {
           const qm = d.qualityMetas || {};
           const nm = d.qualityNames || {};
           out = Object.keys(qm).map((k) => ({ k, t: nm[k] ? (nm[k] + ' (' + k + ')') : k, d: qm[k],

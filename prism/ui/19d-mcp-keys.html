@@ -1,0 +1,112 @@
+      <!-- ═══ 모듈: 실험실 › MCP 키 · 트랙 B(외부 MCP) 파트너 키 ═══
+           동작·상태는 vendor/app-16-mcpkeys.js · 백엔드 GET /mcp-keys · POST /mcp-key-new · /mcp-key-revoke
+           (로직은 prism/mcpkeys.py). 실험실 하위는 탭 안에서 서브뷰로 다시 나눈다
+           (10-usermeta.html 의 labUserView 관례 · 여기서는 labMcpView).
+           화면의 강제 규칙 셋:
+             ① 평문 키는 발급 직후 한 번만 보이고 목록에는 접두 6자만 남는다 —
+                서버가 sha256 만 저장하므로 재조회 경로 자체가 없다.
+             ② 목록·폐기 모두 **본인이 만든 키만** 다룬다. 같은 팀이어도, 관리자여도 남의 키는
+                보이지도 지워지지도 않는다(백엔드가 (key_id, team, user_id) 3중 필터로 강제).
+             ③ **대리 발급 경고를 반드시 띄운다.** 서버는 발급받은 문자열을 남에게 건네는 것을
+                막을 수 없다(문자열이 어디로 가는지 알 방법이 없다). 그래서 무엇이 걸린 일인지를
+                화면이 말해야 한다 — 아래 '대리 발급' 경고 블록을 지우지 말 것.
+           파일명이 20-ingest-policy.html 보다 앞이어야 x-data 스코프 안에 든다(ARCHITECTURE 주의 ①). -->
+      <template x-if="mod === 'lab'">
+        <div x-show="labTab === 'mcp'" x-cloak class="w-full space-y-4">
+
+        <!-- 서브메뉴(실험실 하위 화면 관례 · 10-usermeta.html 과 같은 형태) -->
+        <div class="flex items-center gap-2">
+          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labMcpView==='keys' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labMcpView='keys'; mkLoad()">내 키</button>
+          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labMcpView==='connect' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labMcpView='connect'">연결 방법</button>
+        </div>
+
+        <!-- ── 서브뷰: 내 키(발급·폐기) ── -->
+        <div x-show="labMcpView === 'keys'" class="w-full space-y-4">
+
+        <section class="panel"><div class="panel-hd"><b>MCP 파트너 키</b><span class="meta">외부 서비스·다른 팀이 프리즘 MCP 를 부를 때 쓰는 키입니다</span><span class="ds-badge ds-badge--neutral ml-auto">내 키만</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:11px">
+              <li>키는 <b>발급한 순간 한 번만</b> 전체가 보입니다 · 서버는 해시만 저장하므로 <b>잃어버리면 다시 볼 수 없고</b>, 새로 발급해야 합니다.</li>
+              <li>아래 목록은 <b>내가 만든 키</b>만 보여 줍니다 · 같은 팀 다른 사람의 키는 보이지도, 폐기되지도 않습니다.</li>
+              <li>권한은 <b>발급한 사람의 권한을 넘지 않습니다</b> · 관리자 전용 도구는 관리자가 발급한 키에만 보입니다.</li>
+              <li>호출 상한은 키 하나당 <b class="tnum" x-text="'분당 ' + (mkMeta.per_min || 60) + '회 · 하루 ' + (mkMeta.per_day || 5000) + '회'"></b> 입니다.</li>
+            </ul>
+
+            <!-- 대리 발급 경고: 서버가 막을 수 없는 일이라 화면이 대신 말한다(위 주석 ③) -->
+            <div class="hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-bottom:12px;border-left:3px solid var(--ds-warning, var(--ds-primary))">
+              <b>이 키는 나에게 묶입니다 · 남에게 건네지 마세요</b>
+              <ul class="ds-bullets" style="margin-top:6px">
+                <li>발급하는 순간 키에 <b>내 계정</b>이 박힙니다 · 이 키로 일어난 <b>모든 호출이 내 이름으로</b> 기록됩니다.</li>
+                <li>남을 대신해 발급해 건네면 <b>사용 기록도, 폐기 권한도 전부 나를 가리킵니다</b> — 실제로 쓴 사람이 누구인지 추적할 방법이 사라지고, 그 사람은 자기 키를 스스로 끊을 수도 없습니다.</li>
+                <li>다른 사람이 써야 하면 <b>그 사람이 직접 이 화면에서 발급</b>하게 하세요.</li>
+              </ul>
+            </div>
+
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+              <span class="selctl"><span class="selctl__lbl">용도 메모</span><input class="field" style="width:240px" x-model="mkNew.label" placeholder="ex) 검색팀 파이프라인"></span>
+              <span class="selctl"><span class="selctl__lbl" x-text="'만료(일 · 최대 ' + (mkMeta.max_days || 365) + ')'"></span><input class="field tnum" style="width:120px" type="number" min="1" x-bind:max="mkMeta.max_days || 365" x-model="mkNew.days"></span>
+              <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="mkBusy || mkFull()" x-on:click="mkIssue()" x-text="mkBusy ? '발급 중…' : '내 키 발급'"></button>
+              <span class="text-xs text-muted" x-show="mkFull()" x-text="'키는 한 사람당 ' + (mkMeta.max || 5) + '개까지입니다 · 쓰지 않는 키를 폐기하세요'"></span>
+              <span class="text-xs text-muted" x-show="mkMsg" x-text="mkMsg"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 발급 직후 1회 노출 · 닫으면 끝이라는 것을 문구와 동작 양쪽에서 알린다 -->
+        <template x-if="mkIssued && mkIssued.key">
+          <section class="panel"><div class="panel-hd"><b>새 MCP 키 · 지금만 보입니다</b><span class="meta" x-text="mkIssued.hint || '서버는 해시만 저장합니다 · 다시 조회할 수 없습니다'"></span></div>
+            <div class="panel-bd">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <code class="tnum" style="font-size:13px;word-break:break-all" x-text="mkIssued.key"></code>
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="mkCopy()" x-text="mkCopied ? '복사함' : '복사'"></button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="mkDismiss()">닫기</button>
+              </div>
+              <div class="text-xs text-muted" style="margin-top:6px" x-text="'만료 ' + mkWhen(mkIssued.expires_at) + ' · 이후 목록에는 ' + (mkIssued.prefix || '') + ' 만 남습니다'"></div>
+              <div class="text-xs" style="margin-top:4px"><b>내 계정에 묶인 키입니다</b> · 이 키로 일어난 호출은 전부 내 이름으로 기록됩니다 · 남에게 건네지 마세요.</div>
+            </div>
+          </section>
+        </template>
+
+        <section class="panel"><div class="panel-hd"><b>내 키</b><span class="meta tnum" x-text="(mkKeys || []).length + '개 · 유효 ' + mkLive.length + '/' + (mkMeta.max || 5)"></span></div>
+          <div class="panel-bd">
+            <div class="text-xs text-muted" x-show="!(mkKeys || []).length">아직 내가 발급한 키가 없습니다 · 위에서 만들 수 있습니다.</div>
+            <template x-for="k in mkKeys" x-bind:key="'mk' + k.key_id">
+              <div style="border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <code class="tnum" x-text="k.prefix"></code>
+                  <span class="text-xs text-muted" x-text="k.label || '메모 없음'"></span>
+                  <span class="ds-badge tnum" x-bind:class="mkState(k)" x-text="mkLeft(k)"></span>
+                  <span style="margin-left:auto">
+                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!k.revoked" data-tip="이 키를 쓰는 호출이 즉시 끊깁니다 · 되돌릴 수 없습니다" data-tip-pos="top" x-on:click="mkRevoke(k)">폐기</button>
+                  </span>
+                </div>
+                <div class="text-xs text-muted tnum" style="margin-top:6px"
+                     x-text="'발급 ' + mkWhen(k.created_at) + ' · 만료 ' + mkWhen(k.expires_at) + ' · 마지막 사용 ' + mkWhen(k.last_used_at) + ' · 오늘 성공 ' + ((k.usage || {}).ok || 0) + ' / 실패 ' + ((k.usage || {}).fail || 0)"></div>
+              </div>
+            </template>
+          </div>
+        </section>
+        </div>
+
+        <!-- ── 서브뷰: 연결 방법 ── -->
+        <div x-show="labMcpView === 'connect'" class="w-full space-y-4">
+        <section class="panel"><div class="panel-hd"><b>연결 방법</b><span class="meta">Claude 등 MCP 클라이언트에서 프리즘에 붙이는 절차</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:11px">
+              <li><b>① 키 발급</b> — '내 키' 에서 본인 계정으로 발급합니다(남이 준 키를 쓰지 마세요 · 기록이 그 사람 이름으로 남습니다).</li>
+              <li><b>② 클라이언트에 등록</b> — 아래 한 줄이면 됩니다.</li>
+              <li><b>③ 확인</b> — 도구 목록에 프리즘 도구가 보이면 연결된 것입니다 · 보이는 도구는 <b>키에 박힌 권한</b>에 따라 다릅니다.</li>
+            </ul>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>등록<span class="codeblock__stage">CLI</span></div><textarea readonly spellcheck="false" style="min-height:44px" x-bind:value="'claude mcp add --transport http prism ' + location.origin + '/mcp --header \'Authorization: Bearer pmk_…\''"></textarea></div>
+            <ul class="ds-bullets" style="margin-top:11px">
+              <li>인증 헤더: <code class="tnum">Authorization: Bearer pmk_…</code> · 키 없이 부르면 전부 거절됩니다.</li>
+              <li>팀은 <b>넘기지 않습니다</b> · 키에 박힌 팀의 데이터만 보입니다(도구 인자로 팀을 받지 않습니다).</li>
+              <li>상한을 넘으면 잠시 뒤 다시 시도하라는 응답이 옵니다 · 키 하나당 <b class="tnum" x-text="'분당 ' + (mkMeta.per_min || 60) + '회 · 하루 ' + (mkMeta.per_day || 5000) + '회'"></b>.</li>
+              <li>키를 잃어버렸거나 유출됐으면 <b>'내 키' 에서 폐기</b>하고 새로 발급하세요 · 폐기는 즉시 적용됩니다.</li>
+            </ul>
+          </div>
+        </section>
+        </div>
+
+      </div>
+      </template>

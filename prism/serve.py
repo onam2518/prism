@@ -38,7 +38,8 @@ from . import agents as AG
 from . import meta_prompts as MP
 from . import learnops as LO
 from . import adminops as AO
-from .config import Config, DEFAULT_CONFIG_PATH
+from .config import (Config, DEFAULT_CONFIG_PATH, MODEL_DEFAULT,
+                     assist_model, assist_model_options)   # 검수 보조 모델: 해석 함수 하나
 
 LO._SV = sys.modules[__name__]      # 학습 도메인에 서버 컴포지션 주입(-m 실행의 __main__ 포함)
 AO._SV = sys.modules[__name__]      # 관리자·인증 도메인에도 동일 주입
@@ -72,14 +73,16 @@ from . import evalops as EVO
 from . import deployops as DEP
 from . import crewops as CRW           # 검수 인력 운영(HR) · '검수운영' 메뉴
 from . import weekops as WKO           # 주간 운영 기록(주 마감 스냅샷 적립·조회)
+from . import mcpkeys as MK           # MCP 파트너 키(트랙 B · 외부 MCP) · 발급·해석·레이트리밋
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
 MF._SV = sys.modules[__name__]      # 파일 기반 메모리(실험실) 주입(동일)
-from . import caagent as CA           # 콘텐츠 에이전트(실험실): 자연어 → 위젯 조건
-CA._SV = sys.modules[__name__]      # 동일 주입
 from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외부 MCP 공용 단일 원천
 PTL._SV = sys.modules[__name__]     # 동일 주입
+from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
+RA._SV = sys.modules[__name__]      # 동일 주입
+from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
 EVO._SV = sys.modules[__name__]     # 평가 런 도메인 주입(Atelier eval_runs 이식)
@@ -87,6 +90,7 @@ DEP._SV = sys.modules[__name__]     # 프롬프트 배포 도메인 주입(Ateli
 CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
 ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
 WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
+MK._SV = sys.modules[__name__]      # MCP 파트너 키 주입(동일 · 전송 /mcp 는 mcpkeys 만 부른다)
 
 # 스펙트럼(실험실 · 사내 MCP 허브): serve 상태를 쓰지 않는 자립 모듈이라 _SV 주입이 없다.
 from . import spectrumops as SPO
@@ -512,7 +516,9 @@ def _safe_url(u: str) -> str:
 _MENU_POST_ROUTES = (
     ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
     ("/builder", "studio"), ("/deployment", "studio"),
-    ("/media-extract", "lab"), ("/usermeta", "lab"), ("/spectrum", "lab"),
+    # 미디어는 콘텐츠 추가 탭으로 승격(2026-08-13) · 인입 계열과 같은 content 메뉴로 게이트
+    ("/media-extract", "content"), ("/media-register", "content"),
+    ("/usermeta", "lab"), ("/spectrum", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
     ("/ingest-run", "content"), ("/rerun", "content"), ("/run", "content"), ("/store", "content"),
@@ -950,6 +956,38 @@ def _vision_candidates(cfg) -> list:
     return out
 
 
+def _assist_reachable(model: str) -> bool:
+    """지금 등록된 키로 이 모델을 실제로 부를 수 있나.
+
+    판정 규칙은 `llm_for_model` 이 원천이다(solar* 는 Upstage 직접 · 그 밖은 라우터 키).
+    여기서 다시 적는 이유는 클라이언트 34개를 만들어 보지 않고 묻기 위해서고, 두 규칙이
+    어긋나지 않게 테스트가 전 모델에서 두 판정의 일치를 확인한다(test_assist_model)."""
+    bare = (model or "").strip().split("/")[-1]
+    if not bare:
+        return False
+    if bare.startswith("solar"):
+        return bool(IMG._api_key() or Config.load().api_key)
+    return any(IMG.router_key(s) for s in IMG.ROUTERS)
+
+
+def _assist_candidates(cfg) -> list:
+    """설정 화면 드롭다운에 보일 검수 보조 모델 목록 = 지금 키로 부를 수 있는 것만.
+
+    부를 수 없는 모델을 고를 수 있게 두면 설정 화면은 멀쩡한데 자유질문만 실패한다.
+    원인이 화면에서 안 보이는 종류의 고장이다. 값 형식은 그대로 평평한 모델 id 목록이다
+    (그룹형으로 바꾸면 `provider|model` 이 되어 이 설정을 읽는 쪽 계약까지 흔들린다).
+
+    키가 하나도 없으면(새 설치·mock) 전체 목록으로 되돌린다. 빈 드롭다운은 고를 수 없는
+    화면이라 안내가 아니라 고장으로 읽힌다. 현재 값은 부를 수 없더라도 목록에 남긴다
+    (드롭다운이 지금 무엇이 골라져 있는지 보여 줄 수 있어야 한다)."""
+    opts = assist_model_options()
+    out = [m for m in opts if _assist_reachable(m)] or list(opts)
+    cur = assist_model(cfg)
+    if cur not in out:
+        out.insert(0, cur)
+    return out
+
+
 def team_links() -> dict:
     """팀 가이드 링크(reports kind='team_links' 전역 행 · 운영 관리자가 시스템 설정에서 등록).
     내부 위키 URL 은 코드에 두지 않는다(공개 데모 docs/demo.html 유출 방지)."""
@@ -1053,6 +1091,10 @@ def config_status(team=None) -> dict:
         "learnRepeatDays": int(getattr(cfg, "learn_repeat_days", 0) or 0),
         "fallbackModels": list(getattr(cfg, "fallback_models", None) or []),
         "batchBudgetUsd": float(getattr(cfg, "batch_budget_usd", 0.0) or 0.0),
+        # 검수 보조 에이전트 모델(팀 공유 · 관리자 설정). 저장된 글자가 아니라 **해석된 값**을
+        # 싣는다. 화면이 실제로 쓰이는 모델과 다른 이름을 보여 주면 그것부터가 거짓말이다.
+        "assistModel": assist_model(cfg),
+        "assistModels": _assist_candidates(cfg),
         "finalRerunAfterBatch": bool(getattr(cfg, "final_rerun_after_batch", True)),
         "finalGoldCheck": bool(getattr(cfg, "final_gold_check", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
@@ -1093,6 +1135,17 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     if backend_mode()[0] == "supabase" and not allow_key:
         data = {k: v for k, v in data.items()
                 if k not in ("api_key", "persist", "forget", "bizrouter_api_key", "timely_api_key")}
+    if "assist_model" in data:
+        # 검수 보조 모델은 **저장 때도** 거른다. 읽을 때만 거르면 config.json 에는 없는 모델명이
+        # 남고 화면에는 기본값이 보인다. 나중에 파일을 열어 본 사람이 "왜 이 모델로 안 돌지"를
+        # 한참 찾는다. 목록은 읽는 쪽과 같은 assist_model_options() 이라 규칙은 여전히 한 벌이다
+        # (config.assist_model 은 예전에 저장된 값·손으로 고친 파일을 위한 안전망으로 남는다).
+        # 아무것도 쓰기 전에 통째로 거절한다. 절반만 반영된 설정이 제일 찾기 어렵다.
+        v = data.get("assist_model")
+        v = v.strip() if isinstance(v, str) else ""
+        if v and v not in assist_model_options():
+            return dict(config_status(team),
+                        error="고를 수 없는 모델입니다: %s · 시스템 설정의 목록에서 골라 주세요" % v[:40])
     key = (data.get("api_key") or "").strip()
     if key:
         os.environ["UPSTAGE_API_KEY"] = key
@@ -1135,7 +1188,8 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_4c = "meta_four_calls" in data
     has_misc = (("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
                 or ("fallback_models" in data) or ("batch_budget_usd" in data)
-                or ("final_rerun_after_batch" in data) or ("final_gold_check" in data))
+                or ("final_rerun_after_batch" in data) or ("final_gold_check" in data)
+                or ("assist_model" in data))
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
@@ -1225,6 +1279,10 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 cfg.batch_budget_usd = max(0.0, min(1000.0, float(data.get("batch_budget_usd") or 0)))
             except (TypeError, ValueError):
                 pass
+        if "assist_model" in data:                # 검수 보조 에이전트 모델(빈 값 = 미설정 = 기본값)
+            # 여기 닿는 값은 위에서 이미 걸러진 것(목록에 있는 이름 또는 빈 값)뿐이다.
+            cfg.assist_model = (data.get("assist_model") or "").strip() \
+                if isinstance(data.get("assist_model"), str) else ""
         if "final_rerun_after_batch" in data:     # 학습 반영 후 미확정분 새 버전 자동 재실행(2층 검수 3-1)
             cfg.final_rerun_after_batch = bool(data.get("final_rerun_after_batch"))
         if "final_gold_check" in data:            # 최종검수 골드 캘리브레이션 출제 켬/끔
@@ -1285,7 +1343,7 @@ def list_models() -> dict:
 
 
 _SOLAR_BASE_DEFAULT = "https://api.upstage.ai/v1"
-_SOLAR_MODEL_DEFAULT = "solar-pro2"
+_SOLAR_MODEL_DEFAULT = MODEL_DEFAULT              # 기본 모델 이름의 원천은 config 한 곳
 
 
 def _seed_solar_defaults():
@@ -1767,6 +1825,20 @@ def _g_deployments(h, q):
     return deployments_list(h._req_team())
 
 
+@_get_route("/mcp-keys")                             # 내 MCP 파트너 키 목록(비밀 없음 · 접두 6자만)
+def _g_mcp_keys(h, q):
+    # 소유자는 세션에서만 온다 · 쿼리로 남의 uid 를 넣어 목록을 바꿔치기할 자리를 두지 않는다.
+    # 관리자라도 남의 키는 보지 않는다(키 = 개인 자격증명 · 권한이 아니라 소유의 문제).
+    team = MK.scope_team(h._req_team())
+    uid = h._bearer_uid() or "local"
+    items = MK.list_keys(uid, team)
+    for k in items:                                  # 오늘 사용량(성공/실패 버킷 분리 · 감사 O2)
+        k["usage"] = MK.usage(k["key_id"], team, uid)
+    return {"ok": True, "items": items, "max": MK.MAX_KEYS_PER_USER,
+            "default_days": MK.DEFAULT_DAYS, "max_days": MK.MAX_DAYS,
+            "per_min": MK.PER_MIN, "per_day": MK.PER_DAY, "hint": MK.ONCE_HINT}
+
+
 @_get_route("/api/v1/prompt")                        # 공개 서빙: slug + Bearer pr_live_ 키(자체 검증)
 def _g_api_prompt(h, q):
     # 무인증 공개 경로 · 호출마다 원격 왕복(deploy_by_slug + deploy_keys_for)을 유발하므로
@@ -2188,6 +2260,24 @@ def _p_deployment_key_new(h, body):
 def _p_deployment_key_revoke(h, body):
     d = json.loads(body or b"{}")
     return deployment_key_revoke(int(d.get("id") or 0), int(d.get("key_id") or 0), h._req_team())
+
+
+# ── MCP 파트너 키(트랙 B · 외부 MCP) · 로직은 전부 mcpkeys.py ──
+# gate="team" 인 이유: 팀 없는 계정이 키를 만들면 그 키의 모든 스토어 호출이 team=None 으로
+# 나가고 저장 계층이 그걸 '전 팀'으로 읽는다(감사 H1). mcpkeys.issue 도 같은 것을 다시 막는다.
+@_post_route("/mcp-key-new", gate="team")            # 키 발급(평문 1회 노출 · sha256 저장)
+def _p_mcp_key_new(h, body):
+    d = json.loads(body or b"{}")
+    return MK.issue(h._bearer_uid() or "local", MK.scope_team(h._req_team()),
+                    days=d.get("days") or MK.DEFAULT_DAYS, label=d.get("label") or "")
+
+
+@_post_route("/mcp-key-revoke", gate="team")         # 폐기: (key_id, team, 소유자) 3중 필터(감사 O3)
+def _p_mcp_key_revoke(h, body):
+    # 소유자는 **세션에서만** 온다(본문에서 받지 않는다) — 받으면 그 값이 곧 사칭 파라미터가 된다.
+    d = json.loads(body or b"{}")
+    ok = MK.revoke(d.get("key_id") or "", MK.scope_team(h._req_team()), h._bearer_uid() or "local")
+    return {"ok": ok} if ok else {"ok": False, "error": "키를 찾을 수 없습니다"}
 
 
 @_post_route("/builder-test", gate="admin")          # 컴파일 산출을 테스트 모델로 1회 실행(실모델 비용)
@@ -2642,17 +2732,6 @@ def _p_board(h, body):
                         email=h._bearer_email())
 
 
-@_post_route("/ca-understand", gate="login")          # 콘텐츠 에이전트(실험실): 자연어 → 위젯 조건(LLM · 실패 시 클라이언트 규칙 폴백)
-def _p_ca_understand(h, body):
-    data = json.loads(body or b"{}")
-    text = (data.get("text") or "").strip()[:400]
-    dic = data.get("dict") or {}
-    if not isinstance(dic, dict):
-        dic = {}
-    out, via = CA.understand(text, dic, (data.get("model") or "").strip(), Handler.server_mock)
-    return {"ok": bool(out), "cond": out, "via": via}
-
-
 @_post_route("/topic-studio")                        # 토픽 스튜디오: 생성·삭제·튜닝(변경은 관리자) · 미리보기·제안(조회)
 def _p_topic_studio(h, body):
     data = json.loads(body or b"{}")
@@ -2668,10 +2747,10 @@ def _p_topic_studio(h, body):
     return topic_studio_action(data, mock=Handler.server_mock, team=h._req_team())
 
 
-@_post_route("/media-extract", gate="login")         # 미디어 메타 파이프라인: 자막 파싱(JSON) · 영상 네이티브(multipart)
+@_post_route("/media-extract", gate="login")         # 미디어 메타 파이프라인(콘텐츠 추가 탭): 자막 파싱(JSON) · 영상 네이티브(multipart)
 def _p_media_extract(h, body):
     ctype = h.headers.get("Content-Type", "")
-    if "multipart/form-data" in ctype:               # 업로드 → 미디어 실험(미저장): 이미지(image*) | 영상(file)
+    if "multipart/form-data" in ctype:               # 업로드 → 추출 미리보기(미저장): 이미지(image*) | 영상(file)
         fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
         imgs = {k: v for k, v in fields.items()
                 if k.startswith("image") and isinstance(v, dict) and v.get("bytes")}
@@ -2696,6 +2775,19 @@ def _p_media_extract(h, body):
                             model=fields.get("model", ""),
                             subtitles=fields.get("subtitles", ""))
     return media_action(json.loads(body or b"{}"))
+
+
+@_post_route("/media-register", gate="login")        # 미디어 추출 결과를 콘텐츠로 등록(메타 보존 · STEP 2 재실행 불필요)
+def _p_media_register(h, body):
+    # 콘텐츠 인입 경로(/run)와 같은 관리자 통제(supabase 모드) · 만료 로그인은 메시지로 구분
+    if _supa() and not is_admin_user(h._bearer_uid(), h._req_team(), h._bearer_email()):
+        msg = ("로그인이 만료됐습니다 · 다시 로그인 후 시도하세요" if not h._bearer_uid()
+               else "콘텐츠 인입은 관리자 전용입니다")
+        h._send(403, json.dumps({"error": msg}, ensure_ascii=False), _JSON)
+        return None
+    data = json.loads(body or b"{}")
+    return MO.media_register(data.get("content") or {}, data.get("output") or {},
+                             purpose=str(data.get("purpose") or ""), team=h._req_team())
 
 
 @_post_route("/usermeta-profiles", gate="team")      # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
@@ -2768,6 +2860,26 @@ def _p_spectrum_gw(h, body):                         # MCP(JSON-RPC) · 단순 R
     return None
 
 
+@_post_route("/mcp")                                 # 프리즘 MCP(트랙 B · 외부): 파트너 키로만 판단
+def _p_mcp(h, body):                                 # 무세션 JSON-RPC · 도구는 prismtools 단일 원천
+    # 로그인·팀 게이트가 없는 공개 경로 · 키 대입 연사만 IP 로 억제한다. 인증 자체는
+    # mcpserver 가 하고, 키 모듈이 없으면 전부 401 로 닫힌다(fail-closed).
+    # 최소 간격을 두지 않는 이유(실측): MCP 접속 절차는 initialize → notifications/initialized
+    # → tools/list 를 왕복마다 곧바로 이어 보내 간격이 수 ms 다. 0.1초 간격 규칙을 걸면
+    # 정상 클라이언트가 접속 단계에서 429 를 맞는다. 키당 상한은 mcpkeys.rate_check 가 맡고,
+    # 여기는 분당 총량으로 키 대입 스프레이만 막는다.
+    if rate_limited("mcp:" + _client_ip(h), min_interval=0.0, per_min=240):
+        h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                ensure_ascii=False), _JSON)
+        return None
+    status, out = MCPS.handle(h.headers.get("Authorization") or "", body)
+    if out is None:                                  # MCP 알림(notifications/*) = 본문 없는 202
+        h._send(202, b"", _JSON)
+    else:
+        h._send(status, json.dumps(out, ensure_ascii=False), _JSON)
+    return None
+
+
 @_post_route("/spectrum", gate="team")               # 스펙트럼(실험실): 키 발급·폐기 · 관문 체험 · 시연 초기화
 def _p_spectrum(h, body):
     return SPO.spectrum_action(json.loads(body or b"{}"),
@@ -2815,6 +2927,64 @@ def _p_run(h, body):
         import traceback
         traceback.print_exc()                        # 인입 실패는 원인 추적용 트레이스 유지(기존 동작)
         raise
+
+
+def _assist_me(h, d) -> str:
+    """'묻는 사람'(검수자 식별자). 검수 보조가 **내 판정을 빼고** 남들 의견을 집계할 때 쓴다.
+
+    해석 규칙은 검수 저장 경로(`_inject_reviewer`)와 같다: supabase 는 Bearer JWT 의 uid 만
+    믿고(사칭 불가 · feedback.reviewer 에도 같은 uid 가 들어간다), 로컬 sqlite 는 로그인이
+    없으므로 클라이언트가 보낸 이름을 쓴다. 두 벌의 규칙을 만들지 않기 위해 여기 한 곳에 둔다.
+
+    ⚠️ supabase 에서 본문 값을 절대 쓰지 않는다. 남의 이름을 넣어 두 번 부르면 그 차이로
+    **그 사람의 판정**이 드러난다 — 이 도구가 감추려는 것이 정확히 그것이다."""
+    if _supa():
+        return str(h._bearer_uid() or "")
+    return str((d or {}).get("reviewer") or "")[:64].strip()
+
+
+@_post_route("/assist", gate="team")                 # 내부 검수 보조(트랙 A) 도구 · 팀 콘텐츠·검수 이력을 읽는다
+def _p_assist(h, body):
+    try:
+        d = json.loads(body or b"{}")
+    except (TypeError, ValueError):
+        d = None
+    d = d if isinstance(d, dict) else {}         # 본문이 배열·스칼라여도 500 이 아니라 도구 오류로
+    # 팀은 세션에서 해석한 값만 넘긴다(본문의 team 은 무시 · 도구 스키마에도 없다).
+    # 로컬 sqlite 는 단일 팀이라 저장 계층이 team 을 무시하므로, 고정 스코프를 넣어
+    # 도구 게이트(need_team)를 통과시킨다. supabase 에서 팀이 없으면 그대로 fail-closed.
+    team = h._req_team() or (None if _supa() else "local")
+    r = RA.call(d.get("tool"), d.get("args") or {}, team=team, me=_assist_me(h, d))
+    if isinstance(r, dict) and r.get("error"):
+        return {"ok": False, "error": r["error"]}
+    return {"ok": True, "result": r}
+
+
+@_post_route("/assist-ask", gate="team")             # 검수 보조 자유질문(모델 호출) · gate=team 이 로그인+팀을 함께 건다
+def _p_assist_ask(h, body):
+    """칩(도구)으로 안 되는 것을 검수자가 직접 묻는 경로. 규칙은 reviewassist 의 자유질문 블록.
+
+    라우트가 지는 몫은 셋이다. ① 팀은 세션에서만(/assist 와 같은 해석 · 본문의 team 은 무시)
+    ② 해시는 **본문 값 그대로 도구에 못 박는다**(모델이 고를 수 없다) ③ 남용 억제.
+    모델 호출은 과금이라 분당 상한(여기)과 사용자당 하루 상한(도구 계층) 둘 다 건다."""
+    try:
+        d = json.loads(body or b"{}")
+    except (TypeError, ValueError):
+        d = None
+    d = d if isinstance(d, dict) else {}         # 본문이 배열·스칼라여도 500 이 아니라 오류 응답으로
+    team = h._req_team() or (None if _supa() else "local")
+    # 상한 키는 사용자 우선(로그인 계정) · 없으면 IP. 사용자별로 갈라야 한 사람이 팀 전체의
+    # 분당 예산을 소진하지 않는다.
+    who = h._bearer_uid() or _client_ip(h)
+    if rate_limited("assist-ask:" + who, min_interval=2.0, per_min=10):
+        h._send(429, json.dumps({"error": "질문이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
+                                ensure_ascii=False), _JSON)
+        return None
+    r = RA.ask(hash=d.get("hash"), stage=d.get("stage"), question=d.get("question"),
+               team=team, uid=who, mock=Handler.server_mock, me=_assist_me(h, d))
+    if isinstance(r, dict) and r.get("error"):
+        return {"ok": False, "error": r["error"]}
+    return {"ok": True, "result": r}
 
 
 # 디스패치 순서: 접두 길이 내림차순 → /reviewer-role·/content-assign-bulk·/golden-remove·

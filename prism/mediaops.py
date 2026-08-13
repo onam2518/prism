@@ -1,9 +1,10 @@
-"""미디어 실험실 도메인 (serve 에서 분리 · 라우트 분리 4차).
+"""미디어 도메인 (serve 에서 분리 · 라우트 분리 4차 · 2026-08-13 콘텐츠 추가 탭으로 승격).
 
-자막 파싱(T1)·S5 메타추출 모델 A/B·네이티브 비디오(T4) 실험 액션 디스패치.
-결과를 저장하지 않는다(persist=False) · 트랙 분해 실체는 mediaext 모듈.
+자막 파싱(T1)·S5 메타추출 모델 A/B·네이티브 비디오(T4) 액션 디스패치.
+추출은 미리보기(persist=False)로 돌고, 등록은 media_register 가 추출 결과를
+그대로 영속한다 · 트랙 분해 실체는 mediaext 모듈.
 
-컴포지션: run_pipeline·mock 플래그는 serve 가 `_SV` 로 주입(learnops 와 동일 관례).
+컴포지션: run_pipeline·store_save·mock 플래그는 serve 가 `_SV` 로 주입(learnops 와 동일 관례).
 """
 from __future__ import annotations
 
@@ -98,3 +99,50 @@ def media_native(content_bytes: bytes, mime: str, *, caption: str = "",
                        mock=mock, model=model, persist=False)
     return {"ok": True, "mock": bool(res.get("mock")), "native": nv,
             "merged": merged, "content": content, "output": res.get("output") or {}}
+
+
+def media_register(content: dict, output: dict, *, purpose: str = "", team=None) -> dict:
+    """미디어 추출 미리보기 결과(합성 Content + ItemMeta)를 콘텐츠로 등록.
+
+    add_contents 를 쓰지 않는 이유: 그 경로는 메타를 빈 dict 로 저장해 STEP 2 가
+    텍스트 파이프라인으로 재추출한다(비전·영상 메타 유실 + 이중 과금). 여기서는
+    run_pipeline persist=True 와 같은 (content, out) 쌍을 store_save 해 등록 즉시
+    '실행 완료' 상태가 된다. 재추출이 없으니 추가 모델 호출도 없다.
+    이미 등록된 콘텐츠(동일 4필드 해시)는 add_contents 와 같은 정책으로 불변."""
+    if not isinstance(content, dict) or not isinstance(output, dict):
+        return {"ok": False, "error": "등록할 추출 결과가 없습니다 · 먼저 추출을 실행하세요"}
+    from .schema import normalize_image_urls
+    c = {"displayServiceName": str(content.get("displayServiceName") or ""),
+         "title": str(content.get("title") or ""),
+         "subtitle": str(content.get("subtitle") or ""),
+         "body": str(content.get("body") or ""),
+         "source_url": _SV._safe_url(str(content.get("source_url") or "")),
+         "image_urls": normalize_image_urls(content.get("image_urls") or [])}
+    if not (c["title"].strip() or c["body"].strip()):
+        return {"ok": False, "error": "제목·본문이 비어 있습니다"}
+    out = {k: (output.get(k) if isinstance(output.get(k), dict) else {})
+           for k in ("item_meta", "quality_meta", "trace")}
+    if not (out["item_meta"] or out["quality_meta"]):
+        return {"ok": False, "error": "추출 메타가 없습니다 · 먼저 추출을 실행하세요"}
+    from .store import content_hash as _chash
+    ch = _chash(c)
+    st = _SV.get_store()
+    known = {}
+    if st is not None and hasattr(st, "existing_hashes"):
+        try:
+            known = st.existing_hashes([ch], team=team) or {}
+        except Exception:
+            known = {}    # 조회 실패 → 신규 취급(upsert 멱등 · save_dedup 가드가 보호)
+    if ch in known:
+        return {"ok": True, "added": 0, "existing": 1}
+    saved = _SV.store_save([(c, out)], source="미디어", team=team)
+    if isinstance(saved, dict) and saved.get("error"):
+        return {"ok": False, "error": "저장 실패 · 다시 시도하세요 (" + saved["error"][:120] + ")"}
+    if (purpose or "") == "eval":                 # 평가용 지정: 검수 대상 제외(홀드아웃) · /run 과 동일
+        try:
+            stp = _SV.get_store()
+            if stp and hasattr(stp, "set_purpose"):
+                stp.set_purpose([ch], "eval", team=team)
+        except Exception:
+            pass
+    return {"ok": True, "added": 1, "existing": 0, "hash": ch}

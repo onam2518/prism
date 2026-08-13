@@ -12,6 +12,9 @@ window.PRISM_APP_PARTS.push(() => ({
         this.mod = 'home'; this.reviewerEditing = true;
       },
       goldenMinGood: 1,
+      // 검수 보조 에이전트 모델(시스템 설정) · 값·선택지 모두 서버 /config 가 원천이다.
+      // 목록을 화면에서 따로 만들면 서버가 인정하지 않는 모델을 고를 수 있게 된다.
+      assistModel: '', assistModels: [], assistMsg: '',
       _loadCred() {
         try {
           localStorage.removeItem('prism_cred');       // 레거시: 평문 비밀번호 저장분 제거(마이그레이션)

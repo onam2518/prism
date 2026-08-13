@@ -6,23 +6,6 @@
         <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
       </div></div>
       </template>
-      <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 용희(학습·평가) -->
-      <template x-if="mod === 'testset'">
-        <div class="w-full" style="margin-bottom:12px">
-        <div class="ds-guide">
-          <span class="ds-guide__av"><img src="/vendor/yonghee-pitcher.svg" alt=""></span>
-          <div class="ds-guide__bubble">
-            <div class="ds-guide__who">용희 · 학습·평가 담당</div>
-            <div class="ds-guide__say">검수로 쌓인 정답셋을 관리하고 학습 반영을 실행하는 화면입니다.</div>
-            <ul class="ds-bullets">
-              <li>검수에서 <b>'정확' 합의</b>된 건이 학습 반영 때 정답셋으로 승격됩니다.</li>
-              <li><b>학습 반영</b>은 검수 피드백으로 프롬프트를 보정하고 버전을 하나 올립니다(점수가 낮아진 보정은 자동 원복).</li>
-              <li>쌓인 데이터는 <b>정답셋 목록 · 학습 데이터</b> 탭에서 확인하고 내려받습니다.</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-      </template>
       <!-- 정답셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
       <template x-if="mod === 'testset'">
         <div x-show="testTab === 'status'" x-cloak class="w-full space-y-4">
@@ -474,19 +457,6 @@
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <template x-if="mod === 'create'">
         <div x-show="createTab === 'raw'" x-cloak class="w-full space-y-4">
-        <!-- 프로세스 안내(표준 · 시안 A): 담당 캐릭터 = 복실(검수) -->
-        <div class="ds-guide">
-          <span class="ds-guide__av"><img src="/vendor/boksil-catcher.svg" alt=""></span>
-          <div class="ds-guide__bubble">
-            <div class="ds-guide__who">복실 · 검수 담당</div>
-            <div class="ds-guide__say">모델이 만든 초안을 사람이 판정하고 고치는 화면입니다.</div>
-            <ul class="ds-bullets">
-              <li>모델 실행으로 만들어진 <b>초안</b>이 올라옵니다 · 확신이 낮은 건은 <b>YELLOW</b>로 표시됩니다.</li>
-              <li>행을 열어 <b>정확 · 수정</b>을 판정하고, 필요하면 내용을 고칩니다 · 여러 검수자가 실시간으로 함께 봅니다.</li>
-              <li>판정이 합의되면 학습 반영 때 <b>정답셋</b>으로 쌓이고, 의견이 갈리면 <b>최종 검수</b>로 넘어갑니다.</li>
-            </ul>
-          </div>
-        </div>
         <!-- 모델 선택(별도 영역 · selctl 정책): 아래 목록의 기준 모델 지정 -->
         <section class="panel" data-fn><div class="panel-hd"><b>모델 선택</b><span class="meta">아래 목록의 기준 모델 지정</span></div>
           <div class="panel-bd">

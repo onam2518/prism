@@ -19,6 +19,10 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
    ├─ topic.py / entdict.py / dictionaries.py / usermeta.py / mediaext.py / imagext.py
    │  modelmeta.py(모델 표시 정보 · 이름/제공자/비용 등급 · 선택 드롭다운 원천)
+   │  mcpkeys.py(MCP 파트너 키 · 트랙 B 외부 MCP · 발급/해석/레이트리밋/사용 기록 ·
+   │             저장은 store/supastore 의 mcp_* 계약 · 전송 /mcp 는 resolve·rate_check·log_call 만 쓴다)
+   │  promptdist.py(외부 파트너용 추출 프롬프트 배포 + 결과 규칙 검증 · 조립은 meta_prompts
+   │             단일 원천 · 학습 보정 제외 + 버전·지문 동봉이 계약 · 등록은 prismtools.TOOLS)
    │  spectrumops.py(스펙트럼 · 사내 MCP 허브 프로토타입 · _SV 없이 독립 · 저장은 JSON 사이드카)
    │              도메인 모듈(비교적 잘 분리된 편 · 새 기능은 이 패턴을 따를 것)
    └─ store.py(SQLite 로컬) / supastore.py(Supabase 팀 운영)   저장 계층(동일 계약)
@@ -46,7 +50,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
 | 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
 | 사용자 메타 → **umops.py** | `usermeta_*` `build_template_xlsx` | /usermeta* |
-| 미디어 → **mediaops.py** | `media_action` `media_s5ab` `media_native` | /media-extract |
+| 미디어(콘텐츠 추가 탭) → **mediaops.py** | `media_action` `media_s5ab` `media_native` `media_register` | /media-extract /media-register |
 | 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` `check_source_url` | /ingest-* /backfill-urls /check-source |
 | 대시보드·롤업 → **dashops.py** | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` `activity_daily_data` | /dashboard /drill /cost-rollup /fail-rollup /activity-daily |
 | 게시판 → **boardops.py** | `board_data` `board_action` | /board |
@@ -76,6 +80,30 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 - 집계 캐시 `_agg_cached`(+`_agg_bump`), 인입 잡 `_INGEST_STATE`, SSE 구독자 목록도
   serve 전역 — 도메인 추출 시 이 상태들은 serve 에 남기고 함수만 옮긴다.
 
+## 검수 보조 에이전트 모델 (설정 계약 · 두 모듈이 의존)
+
+검수 보조가 답할 때 쓰는 모델은 **품질 판정 모델과 따로** 고른다. 판정한 모델이 그 판정을
+설명까지 하면 틀린 판정도 말이 되게 꾸며 내기 때문이다.
+
+| 무엇 | 이름 |
+|---|---|
+| 설정 필드 | `Config.assist_model`(config.json · `POST /config` 본문 키 `assist_model`) |
+| 해석 함수 | `config.assist_model(cfg=None) -> str` (serve 재수출 · **유일한 해석기**) |
+| 유효값 집합 | `config.assist_model_options()`(원천 `modelmeta.KNOWN_ROUTER_MODELS`) |
+| 기본값 | `config.MODEL_DEFAULT`(= `serve._SOLAR_MODEL_DEFAULT` 와 같은 값) |
+| /config 응답 | `assistModel`(해석된 값) · `assistModels`(키로 부를 수 있는 후보 · `serve._assist_candidates`) |
+
+- `assist_model()` 은 **미설정·잘못된 값·정상값 모두**에서 곧바로 쓸 수 있는 이름을 준다.
+  부르는 쪽은 분기하지 않는다: `llm_for_model(assist_model(), mock)`.
+- **미설정일 때 실행 모델(`cfg.model`)을 따라가지 않는다.** 따라가면 이 설정이 막으려던
+  상황(판정한 모델이 자기 판정을 설명하는 것)이 기본 동작이 된다.
+- 저장 시점에도 같은 목록으로 거른다(`apply_config` 가 `error` 한 줄로 거절 · 부분 반영 없음).
+  읽는 쪽 해석은 손으로 고친 파일·예전에 저장된 값을 위한 안전망으로 남는다.
+- 키가 빠지면 저장된 모델이 런타임에 안 불릴 수 있다. 그 실패는 **설정 화면을 가리키는
+  문구**로 알린다(예: "설정된 모델을 부를 수 없습니다 · 시스템 설정에서 다시 골라 주세요").
+- 화면: 시스템 설정 `ui/16-settings.html` · 동작 `vendor/app-08-copytext.js`
+  (`saveAssistModel` · `judgeModel`/`assistSameAsJudge` = 판정 모델과 같아지면 알림 · 막지 않음).
+
 ## UI 구조
 
 - 마크업: `prism/ui/NN-*.html` 화면 섹션 조각 24개를 `page.py` 가 파일명 순으로
@@ -87,6 +115,12 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   검수운영 마크업은 `19b-crew.html`, 탭 게이트는 권한 id `crew`(앞뒤 동일).
   **주의 ③**: `x-show` 와 같은 요소에 인라인 `display:flex` 를 주지 않는다. Alpine 이 보일 때
   display 속성을 지워 flex 가 날아간다(자식이 세로로 쌓여 그래프가 뭉갬) — `.flexrow` 클래스 사용.
+  **주의 ④**: 조각은 최상위로만 이어붙는다 — 기존 화면 **안쪽**에 끼워야 하면 그 자리에
+  자리표 한 줄(`<div id="…" style="display:contents">`)만 두고 본문은 새 조각에서
+  `<template x-teleport="#자리표">` 로 꽂는다. 충돌 잦은 조각에 큰 마크업을 밀어 넣지 않기
+  위한 관례다. 화면 위에 **떠 있는** 창(플로팅 버튼·대화창·드롭다운)은 자리표 대신
+  `x-teleport="body"` 를 쓴다 — 탭 컨테이너 안에 있으면 조상 스타일에 눌리고 탭을 옮길 때
+  같이 숨는다(예: 검수 보조 `19e-review-assist.html` · 모델 선택 메뉴 `page.py`).
 - 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 14개 + 로더 `vendor/app.js` 가
   디스크립터 병합(게터 보존 · 조각 간 `this` 공유). 조각 → 로더 로드 순서는
   `ui/00-head.html` 의 script 태그가 원천. `vendor/mobile.js` = /m 전용(단일 파일).
