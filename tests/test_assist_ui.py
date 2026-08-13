@@ -29,7 +29,7 @@
 
 ## 무력화 실측 (2026-08-13 · 규칙을 하나씩 깨고 이 파일을 돌린 결과)
 
-39개 중 이 파일이 34개를 잡는다(전체 탈출 0). 괄호 안은 **잡은 단언 수**다.
+57개 중 이 파일이 52개를 잡는다(전체 탈출 0). 괄호 안은 **잡은 단언 수**다.
 33~36·39(본인 판정 제외의 서버 쪽)는 `tests/test_reviewassist.py`·`tests/test_assist_ask.py`
 가 잡는다 — 그쪽 실측은 `TestMyOwnVerdictIsExcluded` 주석 참고.
 
@@ -50,8 +50,23 @@
   29 이미지가 없으면 버튼째 숨김 (1)   · 30 고친 값을 굵기로 강조 (1)
   31 교정 사례를 '권장' 이라 부름 (1)  · 32 서버 단계 강등을 조용히 넘김 (1)
   37 인원 수 문구에서 '내 판정은 빼고' 삭제 (2) · 38 reviewer 를 도구 인자에 실음 (2)
+  ── 첫 인사(제목) · 어디서나 뜨는 버튼과 안내(2026-08-13 3회차) ──
+  40 인사 제목을 서버 응답에서 가져옴 (4) · 41 서버 요약을 인사로 씀 (1)
+  42 빈 제목을 '(제목 없음)' 으로 채움 (1) · 43 인사를 반말로 (3)
+  44 골드에서만 제목을 자름 (3)             · 45 옮겨도 옛 제목으로 인사 (1)
+  46 버튼을 다시 검수 상세에서만 띄움 (1)   · 47 안내를 한 문구로 뭉뚱그림 (1)
+  48 이미 그 화면인데 바로가기를 붙임 (1)   · 49 최종 검수에서 '콘텐츠 검수로 가기' (1)
+  50 바로가기가 죽은 링크가 됨 (1)          · 51 최종 검수 바로가기가 탭을 안 바꿈 (1)
+  52 안내 자리에 칩을 그림 (1)              · 53 안내 자리에 입력칸을 그림 (1)
+  54 안내 자리에서 칩 호출이 나감 (1)       · 55 안내가 콘텐츠 값을 봄 (2)
+  56 화면을 옮기면 창을 닫음 (2)            · 57 옮겨도 옛 대화가 남음 (1)
 
-⚠️ **(1) 인 항목은 그 단언이 유일한 눈이다. 지우지 말 것.** 39개 중 20개가 그렇다.
+⚠️ **(1) 인 항목은 그 단언이 유일한 눈이다. 지우지 말 것.** 57개 중 33개가 그렇다.
+
+56·57 은 3회차에서 **탈출했다**(0건). 화면을 옮겼다 돌아오는 경로가 검수 안에서 콘텐츠가
+바뀌는 경로와 달라서, 콘텐츠 추종만 재던 단언에 걸리지 않았다. 왕복을 그대로 재는 단언
+(`test_the_window_stays_open_across_screens`·`test_no_stale_talk_survives_leaving_the_review_screen`·
+`test_coming_back_binds_to_the_new_content`)을 추가해 막았다.
 
 15·22 는 처음에 **탈출했다**(0건). 15 는 "저장된 근거 없음" 문자열이 파일 머리말 주석에도
 있어 코드에서 문구를 바꿔도 문자열 검사가 통과했고, 22 는 응답 **필드**만 봐서 화면이 그
@@ -144,6 +159,14 @@ class TestAssistMarkup(unittest.TestCase):
         self.assertIn("target.style.display", err.group(1))
         self.assertNotIn("closest('button')", err.group(1))
 
+    def test_the_greeting_bubble_is_drawn_from_the_message_text(self):
+        """첫 인사는 말풍선 한 줄이다 · 마크업이 제목을 다시 만들지 않는다(문구는 JS 한 곳)."""
+        m = _read(MARKUP)
+        blk = _block(m, "m.kind === 'hello'", "m.kind === 'text'")
+        self.assertIn('x-text="m.text"', blk)
+        for banned in ("detail.title", "asxHello()", "asxBrief"):
+            self.assertNotIn(banned, blk, f"인사 마크업이 {banned} 를 읽습니다")
+
     def test_chip_row_is_one_fixed_list(self):
         """칩은 asxChips 한 목록에서 나온다 · 콘텐츠에 따라 늘거나 줄면 그게 골드 힌트다."""
         m = _read(MARKUP)
@@ -153,8 +176,11 @@ class TestAssistMarkup(unittest.TestCase):
             self.assertNotIn(banned, chips, f"칩 목록이 {banned} 를 봅니다")
 
     def test_locked_chips_are_shown_not_hidden(self):
-        """판정 전 칩은 지우지 않고 잠근다 · 없으면 '왜 없지', 잠겨 있으면 규칙이 드러난다."""
-        chips = _block(_read(MARKUP), 'class="asxchat__chips"', 'class="asxchat__ask"')
+        """판정 전 칩은 지우지 않고 잠근다 · 없으면 '왜 없지', 잠겨 있으면 규칙이 드러난다.
+
+        (칩 줄 전체는 '대화가 되는 자리'에서만 그린다 — 그건 화면 상태이지 판정 단계가 아니다.
+        여기서 보는 것은 **칩 하나하나**가 단계 때문에 사라지지 않는가다.)"""
+        chips = _block(_read(MARKUP), '<template x-for="c in asxChips"', "</template>")
         self.assertIn("asxLocked(c)", chips)
         self.assertIn("is-locked", chips)
         self.assertIn('aria-disabled', chips)
@@ -477,12 +503,22 @@ const stubs = {                                  // 다른 조각이 주는 것�
   _myVerdict: '',
   myVerdict() { return this._myVerdict; },
   fmtTs: () => '8.13 10:00',
-  finalMode: false,
+  // 화면 상태(다른 조각이 준다): 콘텐츠 검수 메뉴 · 상세 열림 · 최종검수 맥락.
+  // finalMode 는 실물과 같이 **게터**다(app-01) — 맥락이 풀리면 저절로 false 가 된다.
+  // 여기서 평범한 불리언으로 두면 asxGo 가 맥락을 지워도 테스트만 계속 최종검수라고 믿는다.
+  mod: 'create', detailOpen: true, createTab: 'raw', finalCtx: null,
+  get finalMode() { return !!(this.finalCtx && this.detail && this.finalCtx.hash === this.detail.hash); },
+  _went: [],
+  selectMod(id) { this._went.push(id); this.mod = id; },
   $nextTick: (fn) => fn && fn(),
   $refs: {},
   _authHeaders: () => ({}),
 };
-const app = Object.assign({}, stubs, part);
+// 로더(app.js)와 같은 방식으로 합친다 — **게터를 보존**해야 한다.
+// Object.assign 은 게터를 그 순간의 값으로 굳혀 버려서 finalMode 같은 파생 상태가 죽는다.
+const app = {};
+Object.defineProperties(app, Object.getOwnPropertyDescriptors(stubs));
+Object.defineProperties(app, Object.getOwnPropertyDescriptors(part));
 const row = { hash: 'abc123', service: '뉴스', title: '전기요금 개편안 발표',
               category: ['Sports / Golf'], grade: 'R', reasons: ['ad'],
               intent: ['실용 정보'], entities: ['김도현'], fb: {} };
@@ -519,6 +555,7 @@ async function run(detail, verdict, reply, opts) {
   calls = [];
   REPLY = reply;
   app._myVerdict = verdict;
+  app.mod = 'create'; app.detailOpen = true; app.finalCtx = null;      // 검수 상세가 열린 자리
   app.asxOff = false; app.asxAskOff = false; app.asxOpen = false;
   app.asxKey = ''; app.asxMsgs = []; app.asxBrief = null; app.asxBriefKey = ''; app.asxErr = '';
   app.detail = detail;
@@ -598,6 +635,83 @@ out.cut = await run(row, 'bad', cutReply);
 app.detail = Object.assign({}, row, { hash: 'other999', title: '다른 콘텐츠' });
 app.asxWatch();
 out.moved = { open: app.asxOpen, msgs: JSON.parse(JSON.stringify(app.asxMsgs)) };
+
+// 첫 인사: 제목만 화면 값에서 갈아 끼우며 문구를 받아 본다(서버는 안 부른다).
+// 서버가 다른 제목을 실어 보내는 상황도 함께 본다 — 화면이 그걸 읽으면 골드에서 갈린다.
+const LONG = '한국은행 금융통화위원회가 기준금리를 연 3.50%로 여덟 차례 연속 동결하기로 결정했다고 밝혔다';
+app.asxBrief = { stage: 'after', values: { title: '서버가 준 제목' }, summary3: ['서버 요약'] };
+out.hello = {};
+[['normal', 'abc123', '한국은행 기준금리 동결 결정'],
+ ['gold', 'gold:bad:abc123', '한국은행 기준금리 동결 결정'],
+ ['goldLong', 'gold:bad:abc123', LONG],
+ ['long', 'abc123', LONG],
+ ['short', 'abc123', '금리 동결'],
+ ['empty', 'abc123', ''],
+ ['spaces', 'abc123', '   ']].forEach(([k, hash, title]) => {
+  app.detail = Object.assign({}, row, { hash: hash, title: title });
+  out.hello[k] = app.asxHello();
+});
+// 어느 자리에 서 있나: 화면 상태만 보고 갈린다(콘텐츠 값은 안 본다)
+function place(setup) {
+  app.mod = 'create'; app.detailOpen = true; app.createTab = 'raw';
+  app.finalCtx = null; app.detail = row; app._went = [];
+  setup();
+  app.asxKey = ''; app.asxMsgs = []; app.asxOpen = false;
+  app.asxWatch();
+  app.asxToggle();                                 // 열어 본다(안내는 열었을 때 보인다)
+  const before = { state: app.asxState(), avail: app.asxAvail(), text: app.asxGuideText(),
+                   go: app.asxGoLabel(), msgs: app.asxMsgs.length, open: app.asxOpen };
+  app.asxGo();                                     // 바로가기가 실제로 옮기는가
+  return Object.assign(before, { after: { mod: app.mod, tab: app.createTab,
+                                          detailOpen: app.detailOpen, went: app._went.slice(),
+                                          state: app.asxState() } });
+}
+out.place = {
+  ready: place(() => {}),
+  noContent: place(() => { app.detailOpen = false; }),
+  noContentButDetailKept: place(() => { app.detailOpen = false; app.detail = row; }),
+  final: place(() => { app.finalCtx = { hash: row.hash }; }),   // 최종검수 맥락(게터가 본다)
+  elsewhere: place(() => { app.mod = 'dict'; app.detailOpen = false; }),
+  elsewhereGold: place(() => { app.mod = 'dict'; app.detailOpen = false; app.detail = goldReal; }),
+};
+/* 창을 열어 둔 채 화면을 옮겼다가 **다른 콘텐츠**로 돌아온다.
+   ① 창은 닫히지 않는다(검수로 돌아왔을 때 다시 열게 하지 않는다)
+   ② 검수 밖에서는 옛 대화가 남지 않는다(어느 콘텐츠 얘기인지 모른 채 읽는 것이 제일 나쁘다)
+   ③ 돌아오면 **새 콘텐츠**로 붙는다 */
+app.mod = 'create'; app.detailOpen = true; app.finalCtx = null; app.detail = row;
+app._myVerdict = 'bad'; REPLY = normal;
+app.asxOff = false; app.asxKey = ''; app.asxMsgs = []; app.asxOpen = false;
+app.asxWatch();
+app.asxToggle();
+await app.asxChip(app.asxChips[0]);                // 대화를 쌓아 둔다
+const tripStart = { open: app.asxOpen, msgs: app.asxMsgs.length,
+                    first: JSON.parse(JSON.stringify(app.asxMsgs[0] || {})) };
+app.mod = 'dict'; app.detailOpen = false;          // 다른 화면으로
+app.asxWatch();
+const tripAway = { open: app.asxOpen, msgs: app.asxMsgs.length, state: app.asxState(),
+                   guide: app.asxGuideText(), go: app.asxGoLabel() };
+app.mod = 'create'; app.detailOpen = true;         // 검수로 복귀 + 다른 콘텐츠
+app.detail = Object.assign({}, row, { hash: 'zzz999', title: '두 번째 콘텐츠' });
+app.asxWatch();
+out.trip = { start: tripStart, away: tripAway,
+             back: { open: app.asxOpen, state: app.asxState(),
+                     msgs: JSON.parse(JSON.stringify(app.asxMsgs)) } };
+app.mod = 'create'; app.detailOpen = true; app.detail = row;
+
+// 안내 자리에서는 칩을 눌러도 아무 일이 없어야 한다(마크업에도 없지만 호출도 막는다)
+app.mod = 'dict'; app.detailOpen = false; app.asxKey = ''; app.asxMsgs = []; calls = [];
+app.asxWatch();
+await app.asxChip(app.asxChips[0]);
+app.asxQ = '여기서도 물어볼래'; await app.asxAsk();
+out.placeInert = { calls: calls.slice(), msgs: app.asxMsgs.length };
+app.mod = 'create'; app.detailOpen = true;
+
+// 인사가 실제로 첫 말풍선으로 서는가(제목이 비어도 깨지지 않는가)
+app.asxMsgs = [];
+app.detail = Object.assign({}, row, { hash: 'bare000', title: '' });
+app.asxKey = 'bare000';
+app.asxGreet();
+out.helloBare = JSON.parse(JSON.stringify(app.asxMsgs));
 
 console.log(JSON.stringify(out));
 })();
@@ -805,8 +919,160 @@ class TestAssistByExecution(unittest.TestCase):
         """열어 두면 따라간다 · 대화는 새 콘텐츠 것으로 갈아 끼우고 창은 그대로 둔다."""
         mv = self.out["moved"]
         self.assertTrue(mv["open"])
-        self.assertEqual(len(mv["msgs"]), 1)                       # 새 콘텐츠 3줄 요약 하나
-        self.assertIn("다른 콘텐츠", mv["msgs"][0]["lines"][0])
+        self.assertEqual(len(mv["msgs"]), 1)                       # 새 콘텐츠 인사 하나
+        self.assertEqual(mv["msgs"][0]["kind"], "hello")
+        self.assertIn("다른 콘텐츠", mv["msgs"][0]["text"])         # 새 제목으로 다시 묻는다
+
+    # ── 첫 화면 = 제목을 부르며 묻는 인사 ──────────────────────────────────
+    def test_the_greeting_names_the_content_it_is_looking_at(self):
+        """콘텐츠를 넘겨 가며 쓰는 도구라 '지금 어느 콘텐츠인지' 가 먼저 분명해야 한다."""
+        hello = self.out["hello"]
+        self.assertEqual(hello["normal"], "「한국은행 기준금리 동결 결정」에 대해 무엇이 궁금하세요?")
+        first = self.out["normalAfter"]["msgs"][0]
+        self.assertEqual(first["kind"], "hello")                   # 대화의 첫 말풍선이다
+        self.assertEqual(first["role"], "bot")
+
+    def test_the_greeting_is_identical_for_a_gold_copy(self):
+        """같은 제목이면 골드 사본에서도 한 글자도 다르지 않아야 한다(길이 규칙도 같다)."""
+        hello = self.out["hello"]
+        self.assertEqual(hello["normal"], hello["gold"])
+        self.assertEqual(hello["long"], hello["goldLong"])          # 긴 제목도 같은 규칙으로 자른다
+
+    def test_a_long_title_is_clipped_by_one_rule(self):
+        """한쪽만 자르면 그게 신호다 · 상한은 콘텐츠를 보지 않는 상수 하나뿐이다."""
+        js = _read(APPJS)
+        clip = _fn(js, "asxTitleClip")
+        self.assertIn("ASX_TITLE_MAX", clip)
+        for banned in ("gold", "hash", "detail"):
+            self.assertNotIn(banned, clip, f"제목 자르기가 {banned} 를 봅니다")
+        long_hi = self.out["hello"]["long"]
+        self.assertTrue(long_hi.endswith("…」에 대해 무엇이 궁금하세요?"), long_hi)
+        self.assertLess(len(long_hi), 70)
+        self.assertEqual(self.out["hello"]["short"], "「금리 동결」에 대해 무엇이 궁금하세요?")
+
+    def test_an_empty_title_does_not_get_an_invented_one(self):
+        """빈 자리를 '(제목 없음)' 으로 채우면 그 자리가 오히려 표시가 된다(선례에서 밟은 함정).
+
+        제목 없이 묻는 형태로 떨어지고, 인사 자체는 깨지지 않는다."""
+        hello = self.out["hello"]
+        self.assertEqual(hello["empty"], "이 콘텐츠에 대해 무엇이 궁금하세요?")
+        self.assertEqual(hello["spaces"], hello["empty"])           # 공백뿐인 제목도 같은 자리
+        for bad in ("(제목 없음)", "제목 없음", "「」", "undefined", "null"):
+            self.assertNotIn(bad, hello["empty"], bad)
+        bare = self.out["helloBare"]
+        self.assertEqual(len(bare), 1)
+        self.assertEqual(bare[0]["text"], hello["empty"])
+
+    def test_the_greeting_never_reads_the_server_answer(self):
+        """서버가 다른 제목을 실어 보내도 인사는 화면 값만 쓴다(골드에서 갈릴 자리를 안 만든다)."""
+        blob = json.dumps(self.out["hello"], ensure_ascii=False)
+        self.assertNotIn("서버가 준 제목", blob)
+        self.assertNotIn("서버 요약", blob)
+        body = _fn(_read(APPJS), "asxHello")
+        self.assertIn("this.detail", body)
+        self.assertNotIn("asxBrief", body)
+
+    def test_the_greeting_asks_politely(self):
+        """제품 카피가 전부 존댓말이라 여기만 반말이면 튄다."""
+        for k, v in self.out["hello"].items():
+            self.assertTrue(v.endswith("무엇이 궁금하세요?"), f"{k}: {v}")
+
+    # ── 못 쓰는 자리: 왜 못 쓰는지 + 어디로 가야 하는지 ──────────────────────
+    def test_each_place_says_what_to_do_there(self):
+        """한 문구로 뭉뚱그리지 않는다 · 자리마다 할 일이 다르다."""
+        p = self.out["place"]
+        self.assertEqual(p["ready"]["state"], "ready")
+        self.assertTrue(p["ready"]["avail"])
+        self.assertEqual(p["noContent"]["state"], "no-content")
+        self.assertIn("콘텐츠를 열면", p["noContent"]["text"])
+        self.assertEqual(p["final"]["state"], "final")
+        self.assertIn("최종 검수", p["final"]["text"])
+        self.assertEqual(p["elsewhere"]["state"], "elsewhere")
+        self.assertEqual(p["elsewhere"]["text"], "콘텐츠 검수에서만 동작합니다")
+
+    def test_the_shortcut_is_only_offered_where_it_leads_somewhere_else(self):
+        """이미 콘텐츠 검수 화면이면 바로가기를 붙이지 않는다(같은 자리로 보내는 버튼).
+
+        최종 검수는 콘텐츠 검수 **안의 탭**이라 '콘텐츠 검수로 가기' 가 거짓이 된다 —
+        그 자리에서는 옆 탭 이름을 그대로 부른다."""
+        p = self.out["place"]
+        self.assertEqual(p["noContent"]["go"], "")
+        self.assertEqual(p["elsewhere"]["go"], "콘텐츠 검수로 가기")
+        self.assertEqual(p["final"]["go"], "검수 대상 콘텐츠로 가기")
+
+    def test_the_shortcut_actually_moves(self):
+        """링크만 있고 안 가면 없는 것만 못하다 · 눌렀을 때 화면이 실제로 바뀐다."""
+        p = self.out["place"]
+        self.assertEqual(p["elsewhere"]["after"]["went"], ["create"])       # 메뉴를 옮긴다
+        self.assertEqual(p["elsewhere"]["after"]["mod"], "create")
+        self.assertEqual(p["elsewhere"]["after"]["tab"], "raw")
+        self.assertEqual(p["elsewhere"]["after"]["state"], "no-content")    # 안내가 다음 단계로 바뀐다
+        fin = p["final"]["after"]
+        self.assertEqual(fin["tab"], "raw")                                 # 옆 탭으로 옮긴다
+        self.assertFalse(fin["detailOpen"])                                 # 최종검수 상세는 닫는다
+        self.assertEqual(fin["state"], "no-content")                        # 안내가 다음 단계로 바뀐다
+        self.assertEqual(p["noContent"]["after"]["went"], [])               # 갈 곳이 없으면 안 움직인다
+
+    def test_the_guidance_never_looks_at_the_content(self):
+        """노출·안내가 콘텐츠 값을 타면 그게 신호가 된다 · 골드에서도 같은 문구·같은 자리다."""
+        p = self.out["place"]
+        self.assertEqual(p["elsewhere"]["text"], p["elsewhereGold"]["text"])
+        self.assertEqual(p["elsewhere"]["go"], p["elsewhereGold"]["go"])
+        self.assertEqual(p["elsewhere"]["state"], p["elsewhereGold"]["state"])
+        js = _read(APPJS)
+        # asxState 는 '상세가 열렸나' 를 보느라 detail.hash 유무만 확인한다(값은 안 본다).
+        for name in ("asxState", "asxGuideText", "asxGoLabel"):
+            body = _fn(js, name)
+            for banned in ("title", "category", "grade", "reasons", "asxBrief", "isGold"):
+                self.assertNotIn(banned, body, f"{name} 가 콘텐츠 값({banned})을 봅니다")
+        for name in ("asxGuideText", "asxGoLabel"):
+            self.assertNotIn("detail", _fn(js, name), f"{name} 가 콘텐츠를 봅니다")
+
+    def test_nothing_is_clickable_in_the_guidance_state(self):
+        """쓸 수 없는 것을 보여주면 눌러 보게 된다 · 칩도 입력칸도 아예 없고 호출도 안 된다."""
+        inert = self.out["placeInert"]
+        self.assertEqual(inert["calls"], [])
+        self.assertEqual(inert["msgs"], 0)
+        m = _shown(_read(MARKUP))                                  # 주석은 화면에 안 나온다
+        for tag in ('class="asxchat__chips"', 'class="asxchat__ask"'):
+            head = m[:m.index(tag)].rstrip()
+            head = head[:head.rfind("<div")].rstrip()
+            self.assertTrue(head.endswith('<template x-if="asxAvail()">'),
+                            f"{tag} 가 대화 가능한 자리에서만 그려지지 않습니다: …{head[-60:]}")
+
+    def test_the_window_stays_open_across_screens(self):
+        """화면을 옮겨도 창은 닫지 않는다 · 검수로 돌아왔을 때 다시 열게 하지 않는다.
+
+        사용자가 "매번 누르는 게 복잡하다" 고 한 것과 같은 문제다."""
+        t = self.out["trip"]
+        self.assertTrue(t["start"]["open"])
+        self.assertTrue(t["away"]["open"], "화면을 옮겼다고 창을 닫았습니다")
+        self.assertTrue(t["back"]["open"])
+
+    def test_no_stale_talk_survives_leaving_the_review_screen(self):
+        """검수 밖에서 옛 대화가 남으면 **어느 콘텐츠 얘기인지 모른 채** 읽게 된다(제일 나쁘다)."""
+        t = self.out["trip"]
+        self.assertGreater(t["start"]["msgs"], 1)                  # 실제로 쌓아 두고 시작한다
+        self.assertEqual(t["away"]["msgs"], 0, "화면을 옮겼는데 옛 대화가 남아 있습니다")
+        self.assertEqual(t["away"]["state"], "elsewhere")
+        self.assertEqual(t["away"]["go"], "콘텐츠 검수로 가기")
+
+    def test_coming_back_binds_to_the_new_content(self):
+        """돌아오면 그 콘텐츠로 바로 붙는다 · 인사가 새 제목으로 다시 선다."""
+        back = self.out["trip"]["back"]
+        self.assertEqual(back["state"], "ready")
+        self.assertEqual(len(back["msgs"]), 1)
+        self.assertEqual(back["msgs"][0]["kind"], "hello")
+        self.assertIn("두 번째 콘텐츠", back["msgs"][0]["text"])
+        blob = json.dumps(back["msgs"], ensure_ascii=False)
+        self.assertNotIn("한국은행", blob)                          # 옛 콘텐츠 흔적이 없다
+
+    def test_the_button_shows_everywhere(self):
+        """버튼이 검수 상세에서만 뜨면 이 기능이 있는지조차 모른다 · 노출은 화면 상태로만."""
+        fab = _block(_read(MARKUP), '<button type="button" class="asxfab"', "</button>")
+        self.assertIn('x-show="!asxOpen && !asxOff"', fab)
+        self.assertNotIn("asxAvail()", fab)
+        self.assertNotIn("detail", fab)
 
     def test_the_button_wears_the_chosen_character(self):
         """버튼 얼굴은 그 사람이 고른 캐릭터 · 못 찾으면 기본값으로 조용히 수렴한다."""
