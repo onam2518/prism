@@ -1,6 +1,6 @@
 """MCP 전송 공통 모듈(mcprpc) 회귀 테스트 (2026-08-12).
 
-전송은 프리즘 `/mcp` 와 스펙트럼 관문이 함께 쓸 자리다. 여기서 규약이 흔들리면 두 표면이
+전송은 프리즘 `/mcp` 의 자리다. 여기서 규약이 흔들리면 그 표면이
 같이 흔들리므로, 도구가 아니라 **규칙 자체**를 단언한다.
 
 지키는 것(전부 2026-08-11 감사에서 실제로 뚫렸던 것들):
@@ -248,7 +248,7 @@ class TestToolFailuresStayInsideTheResult(unittest.TestCase):
 
 
 class TestHandleBodyEntry(unittest.TestCase):
-    """스펙트럼 관문처럼 MCP·REST 를 한 경로에서 가르는 호출자를 위한 진입점."""
+    """MCP·REST 를 한 경로에서 가르는 호출자를 위한 진입점."""
 
     def test_parsed_body_entry_shares_the_same_rules(self):
         ep = endpoint()

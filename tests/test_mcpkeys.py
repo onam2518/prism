@@ -452,7 +452,7 @@ class McpKeysContractMixin:
 
     def test_auth_failures_are_never_logged(self):
         """감사 O2: 틀린 키를 아무리 두드려도 사용 기록은 1건도 늘지 않는다.
-        (스펙트럼 관문은 실패마다 상태를 전량 재기록해 실사용 기록 500건을 밀어냈다.)"""
+        (옛 스펙트럼 관문은 실패마다 상태를 전량 재기록해 실사용 기록 500건을 밀어냈다.)"""
         good = self.mk.issue(USER_1, TEAM_A)
         self.mk.resolve(good["key"])
         self.mk.log_call(good["key_id"], "real", True, 5, 50)
