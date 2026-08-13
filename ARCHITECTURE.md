@@ -50,7 +50,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
 | 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
 | 사용자 메타 → **umops.py** | `usermeta_*` `build_template_xlsx` | /usermeta* |
-| 미디어 → **mediaops.py** | `media_action` `media_s5ab` `media_native` | /media-extract |
+| 미디어(콘텐츠 추가 탭) → **mediaops.py** | `media_action` `media_s5ab` `media_native` `media_register` | /media-extract /media-register |
 | 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` `check_source_url` | /ingest-* /backfill-urls /check-source |
 | 대시보드·롤업 → **dashops.py** | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` `activity_daily_data` | /dashboard /drill /cost-rollup /fail-rollup /activity-daily |
 | 게시판 → **boardops.py** | `board_data` `board_action` | /board |

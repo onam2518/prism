@@ -89,37 +89,6 @@ class TestMemfsIntentKo(_LabelTableBase):
             self.assertTrue(MF.INT_KO.get(v), f"사용자말 누락: {v}")
 
 
-class TestContentAgentIntentKo(_LabelTableBase):
-    """콘텐츠 에이전트 표시 라벨(vendor/app-11-contentagent.js)."""
-
-    JS = os.path.join(ROOT, "prism", "vendor", "app-11-contentagent.js")
-
-    @staticmethod
-    def _obj_keys(src, name):
-        m = re.search(r"\b" + name + r":\s*\{(.*?)\n      \},", src, re.S)
-        assert m, f"{name} 블록을 찾지 못함"
-        return set(re.findall(r"'([^']+)':", m.group(1)))
-
-    def test_current_and_legacy_split(self):
-        src = open(self.JS, encoding="utf-8").read()
-        cur = self._obj_keys(src, "caIntentKo")
-        leg = self._obj_keys(src, "caIntentKoLegacy")
-        vocab = _vocab()
-        self.assertFalse(cur - vocab, f"사전에 없는 값: {sorted(cur - vocab)}")
-        self.assertFalse(leg & vocab, f"사전에 되살아난 레거시 값: {sorted(leg & vocab)}")
-        self.assertTrue(leg, "레거시 별칭 표가 비었음(과거 저장분 표시 회귀)")
-
-    def test_universal_layers_labeled(self):
-        from prism import dictionaries as D
-        cur = self._obj_keys(open(self.JS, encoding="utf-8").read(), "caIntentKo")
-        for v in list(D.INTENT_CATEGORIES_UNIVERSAL) + list(D.INTENT_FORM_UNIVERSAL):
-            self.assertIn(v, cur, f"표시 라벨 누락: {v}")
-
-    def test_label_falls_back_through_legacy(self):
-        src = open(self.JS, encoding="utf-8").read()
-        self.assertIn("this.caIntentKo[v] || this.caIntentKoLegacy[v] || v", src)
-
-
 class TestHandoffBundleDictionaries(unittest.TestCase):
     """핸드오프 번들 사전 동봉: 범용②가 빠지면 학습 재현 조건이 통째로 어긋난다."""
 

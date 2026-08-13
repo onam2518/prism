@@ -120,7 +120,7 @@ window.PRISM_APP_PARTS.push(() => ({
         try { const j = await (await fetch('/models', { headers: this._authHeaders() })).json(); if (j && j.ok && Array.isArray(j.models)) { this.models = j.models; if (!this.cfgModel) this.cfgModel = j.current || ''; } } catch (e) {}
       },
       _syncTopicSettings() { const s = (this.topicData && this.topicData.settings) || {}; this.settingsDraft = { co_min: s.co_min || 2, entity_min: s.entity_min || 2 }; },
-      // ── 미디어: 영상(미저장) ──
+      // ── 미디어(콘텐츠 추가 탭): 추출은 미리보기(미저장) · 등록은 mediaRegister ──
       mediaVidPick(e) { this.mediaVid.file = (e.target.files && e.target.files[0]) || null; this.mediaVidRes = null; this.mediaVidMsg = ''; },
       async mediaNative() {
         if (!this.mediaVid.file) return;
@@ -136,7 +136,6 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this.mediaVidMsg = '처리 실패'; }
         this.mediaVidBusy = false;
       },
-      // ── 미디어: 이미지(미저장) ──
       mediaImgAdd(list) {                                  // 선택·드롭 공통: 이미지 파일을 목록에 추가(썸네일 생성)
         const fs = Array.from(list || []).filter((f) => f && (f.type || '').startsWith('image/'));
         fs.forEach((f) => { this.mediaImg.files.push(f); this.mediaImg.thumbs.push(URL.createObjectURL(f)); });
@@ -167,6 +166,29 @@ window.PRISM_APP_PARTS.push(() => ({
           else { this.mediaImgMsg = (r && r.error) || '처리 실패'; }
         } catch (e) { this.mediaImgMsg = '처리 실패'; }
         this.mediaImgBusy = false;
+      },
+      // 추출 미리보기 결과(합성 Content + ItemMeta)를 그대로 등록 — 재추출 없음(이중 과금 방지)
+      async mediaRegister(kind) {
+        const vid = kind === 'video';
+        const res = vid ? this.mediaVidRes : this.mediaImgRes;
+        if (!res || !res.content) return;
+        const content = Object.assign({}, res.content);
+        if (vid) {   // 영상은 합성 Content 에 그룹·링크가 없어 등록 시점 입력으로 채운다
+          if (this.mediaVid.group) content.displayServiceName = this.mediaVid.group;
+          if ((this.mediaVid.url || '').trim()) content.source_url = this.mediaVid.url.trim();
+        }
+        const setMsg = (m) => { if (vid) this.mediaVidMsg = m; else this.mediaImgMsg = m; };
+        if (vid) this.mediaVidBusy = true; else this.mediaImgBusy = true;
+        setMsg('등록 중…');
+        try {
+          const r = await (await this._afetch('/media-register', { method: 'POST', headers: this._authHeaders(),
+            body: JSON.stringify({ content, output: res.output || {}, purpose: this.addPurpose || 'review' }) })).json();
+          if (r && r.ok) {
+            setMsg(r.existing ? '이미 등록된 콘텐츠입니다(기존 유지)' : ('✓ 콘텐츠로 등록됨 · 메타까지 저장되어 STEP 2 재실행이 필요 없습니다' + (this.addPurpose === 'eval' ? ' · 평가용(검수 제외)' : '')));
+            this.loadDash();
+          } else setMsg((r && r.error) || '등록 실패');
+        } catch (e) { setMsg('등록 실패'); }
+        if (vid) this.mediaVidBusy = false; else this.mediaImgBusy = false;
       },
       // ── 토픽 스튜디오 ──
       async _studioPost(payload) {
