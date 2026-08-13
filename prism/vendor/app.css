@@ -843,7 +843,12 @@
   .appbody{flex:1;display:grid;grid-template-columns:232px minmax(0,1fr);gap:18px;
     padding:22px 22px 0;align-items:start}
   /* 푸터: 문서 최하단(짧은 페이지에서도 바닥 고정 · appshell flex 의 마지막 행) */
-  .appfoot{display:flex;align-items:center;gap:12px;margin:26px 22px 0;padding:14px 4px 18px;
+  /* 아래 여백은 플로팅 버튼(검수 보조·정책 도움말) 자리를 비워 두는 몫이다. 버튼은 화면에
+     고정이고 푸터는 문서와 함께 스크롤해서, 맨 아래로 내리면 버튼이 '문의 및 제안' 을 덮었다.
+     버튼을 위로 올리면 푸터가 안 보이는 대부분의 화면에서 붕 뜨므로, 푸터 쪽에서 비켜 준다.
+     값은 --ds-fab-size 에 묶여 있어 버튼 크기가 바뀌면 따라간다. */
+  .appfoot{display:flex;align-items:center;gap:12px;margin:26px 22px 0;
+    padding:14px 4px calc(var(--ds-fab-size) + var(--ds-space-5) * 2);
     border-top:1px solid var(--ds-hairline-soft);color:var(--ds-muted);font-size:11.5px}
   .appfoot__prism{height:20px;width:auto;display:block;opacity:.92}
   .appfoot__prism--dark{display:none}
