@@ -582,12 +582,21 @@ def verdict_precedents(hash: str = "", stage: str = "before", limit=None, team=N
 
 
 # ── reviewer_dissent ─────────────────────────────────────────────────────────
-def _elem_tally(ch: str, verdicts: list, team) -> tuple:
+def _is_me(who, me: str) -> bool:
+    """이 판정이 묻는 사람 본인 것인가. me 가 비면 아무도 나가 아니다(구 클라이언트 호환)."""
+    me = str(me or "").strip()
+    return bool(me) and str(who or "").strip() == me
+
+
+def _elem_tally(ch: str, verdicts: list, team, me: str = "") -> tuple:
     """요소별로 **몇 사람이** 지적했나. (라벨→인원, 잘림) · 이름은 세는 데만 쓰고 내보내지 않는다.
 
     두 축을 합친다: 판정 시 고른 교정 요소(feedback.element)와 실제 교정 로그(patch_log.element).
     라벨 원천은 `feedback_loop.ELEM_KO` 하나 — 검수 화면이 `/dict` 로 받는 것과 같은 사전이라
-    여기서 새로 지으면 같은 요소가 화면과 다른 이름으로 불린다."""
+    여기서 새로 지으면 같은 요소가 화면과 다른 이름으로 불린다.
+
+    묻는 사람 본인은 두 축 모두에서 뺀다. 판정 분포에서만 빼고 여기서 안 빼면 "정확 0명인데
+    지적한 요소는 2명" 같은 앞뒤 안 맞는 세 줄이 나온다."""
     people = {}
     for v in verdicts or []:
         who = str(v.get("reviewer") or "")
@@ -597,7 +606,7 @@ def _elem_tally(ch: str, verdicts: list, team) -> tuple:
     if st and hasattr(st, "patch_rows"):
         try:
             for pr in (st.patch_rows(team=team, content_hash=ch) or []):
-                if pr.get("hash") != ch:
+                if pr.get("hash") != ch or _is_me(pr.get("reviewer"), me):
                     continue
                 for e in _elem_ids(pr.get("element")):
                     people.setdefault(e, set()).add(str(pr.get("reviewer") or ""))
@@ -625,8 +634,21 @@ def _elem_ids(raw) -> list:
 _ELEM_ALIAS = {"content_category": "category", "reasons": "quality", "finalGrade": "grade"}
 
 
-def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
-    """다른 검수자 의견을 **3줄 집계**로 준다(사람별 나열이 아니라).
+def reviewer_dissent(hash: str = "", stage: str = "before", team=None, me: str = "") -> dict:
+    """**다른** 검수자 의견을 3줄 집계로 준다(사람별 나열이 아니라).
+
+    묻는 사람 본인의 판정은 뺀다(`me` · 앞단이 세션에서 해석해 넣는다 · 인자로는 못 넣는다).
+    이름이 그렇게 말하고 있고, 내 판정은 내가 안다. 2026-08-13 이전에는 내 표가 섞여 있었다.
+
+    빼는 것이 골드도 함께 지킨다. 이 도구는 골드에서 빈 결과를 주는데, 내 표를 세면
+    **판정 뒤에는 평범한 콘텐츠가 절대 비지 않는다**(stage=after 가 곧 '내 표가 있다' 는 뜻이라).
+    그러면 빈 결과 = 골드가 되어 칩 한 번으로 골드를 알아본다(2026-08-13 실측: 나만 판정한
+    콘텐츠 3줄·n=1 vs 골드 빈 결과). 내 표를 빼면 '나만 판정한 콘텐츠' 도 빈 결과가 되어
+    골드의 빈 결과가 흔한 모양이 된다.
+
+    **다 막지는 못한다.** 검수 인원이 늘어 대부분 2~3명씩 붙으면 골드만 다시 늘 비어 보인다.
+    골드 합성 해시는 feedback 표에 아예 안 들어가는 구조라 이 계층에서 닫을 수 있는 문제가
+    아니다(백로그). 여기서 억지로 지어내면 4번 규칙이 깨진다.
 
     사람별로 이름·판정·사유 원문을 늘어놓으면 읽는 데 시간이 걸리고 특정 사람의 문장에
     끌려간다. 검수자가 자기 판단을 마친 뒤 참고하는 자리라 '대략 어떻게 갈렸나' 면 족하다.
@@ -662,14 +684,19 @@ def reviewer_dissent(hash: str = "", stage: str = "before", team=None) -> dict:
     if PT.is_gold(ch):
         return dict(empty)
     fb = _feedback(team).get(ch) or {}
-    verdicts = list(fb.get("verdicts") or [])
+    # 본인 판정을 빼고 센다. 집계 필드(fb 의 good·bad·n)는 나를 포함한 수라 여기서 쓰지 않고
+    # 남은 판정으로 다시 센다 — 한쪽만 빼면 "정확 0명인데 소수 의견 1명" 같은 답이 나온다.
+    verdicts = [v for v in (fb.get("verdicts") or []) if not _is_me(v.get("reviewer"), me)]
     if not verdicts:
         return dict(empty)
-    good, bad = int(fb.get("good") or 0), int(fb.get("bad") or 0)
+    good = sum(1 for v in verdicts if str(v.get("verdict") or "") == "good")
+    bad = sum(1 for v in verdicts if str(v.get("verdict") or "") == "bad")
+    if not (good or bad):                         # 셀 판정이 없으면 자리를 채우지 않는다
+        return dict(empty)
 
     dist = " · ".join([s for s in (f"정확 {good}명" if good else "",
                                    f"수정 필요 {bad}명" if bad else "") if s])
-    elems, cut = _elem_tally(ch, verdicts, team)
+    elems, cut = _elem_tally(ch, verdicts, team, me)
     picked = "지적한 요소: " + " · ".join(f"{lbl} {cnt}명" for lbl, cnt in elems) \
         if elems else "지적한 요소 없음"
     split = bool(good) and bool(bad)
@@ -729,9 +756,14 @@ TOOLS = {
         "after_only": True,
         "title": "검수자 의견 집계",
         "desc": "다른 검수자들의 의견을 3줄로 집계해 준다(판정 분포 · 지적한 요소 · 갈린 정도). "
+                "**묻는 사람 본인의 판정은 빠진다** — 분포도 인원(n)도 나를 뺀 수다. "
                 "검수자 이름과 사유 원문은 담지 않는다 — 누가 그렇게 봤는지가 판단에 섞이고, "
                 "원문은 가장 끌려가기 쉬운 부분이다. 집계한 인원(n)은 함께 준다. "
                 "**검수자가 판정을 낸 뒤에만**(stage=after) 쓸 수 있다.",
+        # `me`(묻는 사람)는 **스키마에 없다.** team 과 같은 이유다: 도구 사용자가 지정할 수
+        # 있으면 남의 이름을 넣어 두 번 부르고 그 차이로 **그 사람의 판정을 알아낼 수 있다**
+        # (이 도구가 일부러 감추는 개인 판정이 바로 그것이다). 앞단이 세션에서 해석해 넣는다.
+        "needs_me": True,
         "inputSchema": {
             "type": "object",
             "properties": {"hash": {"type": "string", "description": "콘텐츠 해시"},
@@ -762,14 +794,32 @@ def registry() -> dict:
     return reg
 
 
-def call(name, args, team=None) -> dict:
+def _bind_me(reg: dict, me: str) -> dict:
+    """`needs_me` 도구에 '묻는 사람' 을 묶는다. **인자로 들어올 길은 없다.**
+
+    team 과 같은 방식으로 앞단이 세션에서 해석해 넣는다. 스키마에 두지 않는 이유는
+    `reviewer_dissent` 등록부 주석 참고(남의 이름으로 두 번 부르면 그 사람 판정이 드러난다).
+    prismtools.call 은 손대지 않는다 — 공용 디스패처에 이 앞단만 쓰는 축을 넣으면 규칙이
+    두 벌이 되고, 그 순간 한쪽이 조용히 느슨해진다."""
+    if not me:
+        return reg
+    out = dict(reg)
+    for k, spec in reg.items():
+        if not spec.get("needs_me"):
+            continue
+        fn = spec["fn"]
+        out[k] = dict(spec, fn=lambda team=None, _f=fn, **kw: _f(team=team, me=me, **kw))
+    return out
+
+
+def call(name, args, team=None, me: str = "") -> dict:
     """도구 실행 진입점. 가드·디스패치는 prismtools.call 을 그대로 쓴다(규칙 단일 원천).
 
-    team 은 **호출자가 세션에서 해석한 값**이다. args 의 team 은 무시된다(스키마에 없다).
+    team·me 는 **호출자가 세션에서 해석한 값**이다. args 의 team·me 는 무시된다(스키마에 없다).
     이름·인자의 타입은 여기서 강제한다 — 앞단이 HTTP 본문이라 문자열도 dict 도 아닌 값이
     그대로 들어올 수 있고, 그러면 도구 오류가 아니라 500 이 난다(내부 노출)."""
     return PT.call(str(name or ""), args if isinstance(args, dict) else {},
-                   team=team, registry=registry())
+                   team=team, registry=_bind_me(registry(), str(me or "").strip()))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -903,7 +953,7 @@ def _ask_quota(uid) -> tuple:
 
 
 # ── 자료 수집 ────────────────────────────────────────────────────────────────
-def _ask_tool(name: str, args: dict, ch: str, team) -> dict:
+def _ask_tool(name: str, args: dict, ch: str, team, me: str = "") -> dict:
     """자유질문 경로의 도구 호출. **해시는 서버가 못 박는다.**
 
     args 에 hash 가 무엇으로 들어오든 화면이 열고 있는 콘텐츠로 덮어쓴다. 지금은 서버가 도구
@@ -917,7 +967,9 @@ def _ask_tool(name: str, args: dict, ch: str, team) -> dict:
     spec = registry().get(name) or {}
     if "hash" in ((spec.get("inputSchema") or {}).get("properties") or {}):
         a["hash"] = ch
-    r = call(name, a, team=team)
+    # me 도 해시와 같은 취급이다: 모델이 아니라 세션이 정한다(자유질문 자료에서도 묻는 사람
+    # 본인의 판정은 빠진다 — 칩과 자유질문이 다른 집계를 쓰면 그 차이가 또 하나의 신호다).
+    r = call(name, a, team=team, me=me)
     return r if (isinstance(r, dict) and not r.get("error")) else {}
 
 
@@ -972,7 +1024,7 @@ def _ask_vals(vals: dict, blind: str, group) -> tuple:
     return ("부여된 " + "·".join(names), " · ".join(parts)) if parts else ("", "")
 
 
-def _ask_sources(ch: str, question: str, team) -> tuple:
+def _ask_sources(ch: str, question: str, team, me: str = "") -> tuple:
     """(자료 목록, 잘림). 답의 재료를 **서버가** 모아 온다.
 
     모델은 이 목록 밖을 볼 수 없다. 도구도 웹도 파일도 주지 않고 여기서 만든 문자열만
@@ -989,7 +1041,7 @@ def _ask_sources(ch: str, question: str, team) -> tuple:
                         "label": label, "text": t})
 
     # ① 이 콘텐츠(해시는 _ask_tool 이 못 박는다 · 여기는 이미 판정 뒤라 stage=after)
-    brief = _ask_tool("content_brief", {"stage": "after"}, ch, team)
+    brief = _ask_tool("content_brief", {"stage": "after"}, ch, team, me)
     vals = brief.get("values") or {}
     if brief.get("has_evidence"):
         add("content_brief", "evidence", "모델이 남긴 판정 근거", brief.get("evidence"))
@@ -1010,12 +1062,12 @@ def _ask_sources(ch: str, question: str, team) -> tuple:
                                   sg.get("to") or "", sg.get("basis") or ""))
 
     # ② 남이 내린 판정 · 판정 뒤에만 나가는 도구다(after_only). 여기는 이미 판정 뒤다.
-    prec = _ask_tool("verdict_precedents", {"stage": "after", "limit": 3}, ch, team)
+    prec = _ask_tool("verdict_precedents", {"stage": "after", "limit": 3}, ch, team, me)
     for it in (prec.get("items") or [])[:3]:
         add("verdict_precedents", "items.verdict", "비슷한 과거 판정",
             "%s · %s인 일치 · %s" % (it.get("verdict") or "", it.get("n") or 0,
                                   it.get("why_similar") or ""))
-    dis = _ask_tool("reviewer_dissent", {"stage": "after"}, ch, team)
+    dis = _ask_tool("reviewer_dissent", {"stage": "after"}, ch, team, me)
     for i, ln in enumerate((dis.get("lines") or [])[:3]):
         add("reviewer_dissent", "lines.%d" % i, "다른 검수자 의견 집계", ln)
 
@@ -1028,7 +1080,7 @@ def _ask_sources(ch: str, question: str, team) -> tuple:
         want = [w for w in dict.fromkeys(want) if w][:ASK_TERM_MAX]
         if not want:
             continue
-        ex = _ask_tool("get_examples", {"kind": kind, "values": want, "service": svc}, ch, team)
+        ex = _ask_tool("get_examples", {"kind": kind, "values": want, "service": svc}, ch, team, me)
         for it in (ex.get("items") or [])[:ASK_TERM_MAX]:
             key, lbl = it.get("key") or "", it.get("label") or it.get("key") or ""
             if it.get("has_example"):
@@ -1125,8 +1177,12 @@ def _ask_log(team, uid, ch: str, model: str, question: str, n_src: int, generate
 
 
 def ask(hash: str = "", stage: str = "", question: str = "", team=None,
-        uid="", mock=False) -> dict:
+        uid="", mock=False, me: str = "") -> dict:
     """자유질문 1건. 계약은 이 블록 머리말의 여섯 항목이다.
+
+    me 는 '묻는 사람'(앞단이 세션에서 해석) — 자료에서 본인 판정을 뺀다. uid(상한 키)와 따로
+    받는 이유: uid 는 로그인 아이디가 없으면 IP 로 떨어지는데 그걸 검수자 이름으로 쓰면
+    엉뚱한 사람을 빼거나 아무도 못 뺀다.
 
     응답(화면 계약):
       stage · question(서버가 자른 실제 질문) · answer[{text, sources[]}] ·
@@ -1150,7 +1206,7 @@ def ask(hash: str = "", stage: str = "", question: str = "", team=None,
     if not allowed:
         return {"error": ASK_QUOTA_MSG}
 
-    sources, truncated = _ask_sources(ch, q, team)
+    sources, truncated = _ask_sources(ch, q, team, me)
     out = {"stage": "after", "question": q, "answer": [], "sources": sources,
            "truncated": truncated, "generated": False, "model": "", "model_label": "",
            "note": "" if sources else ASK_NO_SOURCE, "remaining": remaining}

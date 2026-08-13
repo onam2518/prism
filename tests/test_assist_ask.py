@@ -249,9 +249,9 @@ class TestServerPinsTheHash(Base):
         seen = []
         o_call = RA.call
 
-        def spy(name, args, team=None):
-            seen.append({"tool": name, "args": dict(args or {}), "team": team})
-            return o_call(name, args, team=team)
+        def spy(name, args, team=None, me=""):
+            seen.append({"tool": name, "args": dict(args or {}), "team": team, "me": me})
+            return o_call(name, args, team=team, me=me)
 
         RA.call = spy
         self.addCleanup(lambda: setattr(RA, "call", o_call))
@@ -503,7 +503,7 @@ class TestGoldTakesTheSamePath(Base):
         곧 "이건 골드다" 신호다. **지금 도구들은 오류일 때 데이터를 함께 싣지 않아 통합
         경로로는 이 규칙이 드러나지 않는다. 이 단언이 유일한 눈이다. 지우지 말 것.**"""
         o_call = RA.call
-        RA.call = lambda name, args, team=None: {
+        RA.call = lambda name, args, team=None, me="": {
             "error": RA.GOLD_MSG, "values": {"grade": "R", "reason_labels": ["광고성"]},
             "evidence": "새면 안 되는 근거", "has_evidence": True,
             "items": [{"verdict": "bad", "n": 2, "why_similar": "같은 서비스"}],
@@ -832,6 +832,33 @@ class TestDraftMarkSurvivesTheAskPath(Base):
             self.assertIn("초안", s["text"])
         self.assertEqual(len(fake.calls), 1)
         self.assertIn("초안", fake.calls[0]["user"])
+
+
+# ── 10b. 자유질문 자료에서도 내 판정은 빠진다 ────────────────────────────────
+class TestTheAskerIsExcludedFromTheMaterials(Base):
+    """칩('다른 검수자 의견')과 자유질문이 서로 다른 집계를 쓰면 그 차이가 또 하나의 신호다.
+
+    골드에서 이 도구는 빈 결과를 준다. 내 표를 세면 **판정 뒤 평범한 콘텐츠는 절대 비지
+    않으므로**(stage=after 가 곧 '내 표가 있다') 자료 목록에 의견 줄이 있나 없나로 골드를
+    가려낼 수 있다. 자료를 모으는 경로(`_ask_sources`)에서도 나를 빼야 그 구분이 사라진다."""
+
+    def test_my_own_verdict_is_not_material_for_my_own_question(self):
+        """나만 판정한 콘텐츠 = 의견 자료 없음(골드와 같은 모양).
+
+        **유일한 눈이다. 지우지 말 것.** `_ask_sources` 가 `me` 를 도구에 안 넘겨도 도구
+        자체를 재는 테스트는 전부 통과한다(무력화 실측 39번에서 실제로 탈출했다)."""
+        self.store._fb = {H1: _fb("나")}
+        self.llm()
+        r = self.ask(hash=H1, me="나")
+        self.assertFalse([s for s in r["sources"] if s["tool"] == "reviewer_dissent"],
+                         "내 판정이 내 질문의 자료로 실렸다")
+
+    def test_other_peoples_verdicts_are_still_material(self):
+        """빼는 건 나뿐이다 — 남들 의견까지 사라지면 기능이 없는 것과 같다."""
+        self.store._fb = {H1: _fb("복실", "딱지")}
+        self.llm()
+        r = self.ask(hash=H1, me="나")
+        self.assertTrue([s for s in r["sources"] if s["tool"] == "reviewer_dissent"])
 
 
 # ── 11. 라우트 ───────────────────────────────────────────────────────────────

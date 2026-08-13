@@ -29,7 +29,9 @@
 
 ## 무력화 실측 (2026-08-13 · 규칙을 하나씩 깨고 이 파일을 돌린 결과)
 
-32개 무력화 전건이 잡혔다(탈출 0). 괄호 안은 **잡은 단언 수**다.
+39개 중 이 파일이 34개를 잡는다(전체 탈출 0). 괄호 안은 **잡은 단언 수**다.
+33~36·39(본인 판정 제외의 서버 쪽)는 `tests/test_reviewassist.py`·`tests/test_assist_ask.py`
+가 잡는다 — 그쪽 실측은 `TestMyOwnVerdictIsExcluded` 주석 참고.
 
   01 잠긴 칩을 화면에서 지움 (1)      · 02 잠긴 칩도 눌리게 (2)
   03 판정 전 자유질문 허용 (2)        · 04 출처 없는 문장 통과 (1)
@@ -47,8 +49,9 @@
   27 잠긴 칩이 몰래 선례를 미리 부름 (2) · 28 버튼 자리를 px 로 박음 (1)
   29 이미지가 없으면 버튼째 숨김 (1)   · 30 고친 값을 굵기로 강조 (1)
   31 교정 사례를 '권장' 이라 부름 (1)  · 32 서버 단계 강등을 조용히 넘김 (1)
+  37 인원 수 문구에서 '내 판정은 빼고' 삭제 (2) · 38 reviewer 를 도구 인자에 실음 (2)
 
-⚠️ **(1) 인 항목은 그 단언이 유일한 눈이다. 지우지 말 것.** 32개 중 17개가 그렇다.
+⚠️ **(1) 인 항목은 그 단언이 유일한 눈이다. 지우지 말 것.** 39개 중 20개가 그렇다.
 
 15·22 는 처음에 **탈출했다**(0건). 15 는 "저장된 근거 없음" 문자열이 파일 머리말 주석에도
 있어 코드에서 문구를 바꿔도 문자열 검사가 통과했고, 22 는 응답 **필드**만 봐서 화면이 그
@@ -213,6 +216,29 @@ class TestAssistMarkup(unittest.TestCase):
         prec = _shown(m)
         prec = _block(prec, "m.kind === 'prec'", "m.kind === 'sug'")
         self.assertNotIn("제목 없음", prec)
+
+    def test_the_headcount_says_it_excludes_me(self):
+        """'3명 의견을 모았습니다' 로는 나를 포함하는지 알 수 없다 · 서버가 나를 뺀 수를 준다.
+
+        읽는 사람이 헷갈린 채로 읽으면 무게를 잘못 단다(칩 이름이 '다른 검수자 의견' 인 것과
+        같은 뜻이라 문구도 그렇게 적는다)."""
+        self.assertIn("asxDisNote(m.n)", _read(MARKUP))
+        note = _fn(_read(APPJS), "asxDisNote")
+        self.assertIn("내 판정은 빼고", note)
+        self.assertIn("명 의견을 모았습니다", note)
+
+    def test_the_asker_is_sent_so_the_server_can_drop_my_own_verdict(self):
+        """로컬(로그인 없음)에서도 내 판정을 뺄 수 있게 이름을 보낸다.
+
+        **도구 인자(args)가 아니라 본문 최상위**에 둔다 — 인자로 받으면 남의 이름을 넣어
+        두 번 불러 그 사람의 판정을 알아낼 수 있고, 그게 이 도구가 감추려는 것이다.
+        운영(supabase)에서는 서버가 로그인 uid 로 덮어 이 값을 무시한다."""
+        js = _read(APPJS)
+        for fn in ("async asxCall", "async asxAsk"):
+            body = _fn(js, fn)
+            self.assertIn("reviewer: this.reviewer", body, fn)
+        self.assertNotIn("args: { reviewer", js)
+        self.assertNotIn("reviewer: this.reviewer })", _fn(js, "async asxAnswer"))
 
     def test_dissent_is_a_digest_not_a_roster(self):
         """다른 검수자 의견은 사람별 나열이 아니라 서버가 조립한 3줄 요약 말풍선 하나다."""
@@ -470,12 +496,14 @@ app._afetch = (url, opt) => {
   const b = JSON.parse(opt.body);
   if (url === '/assist-ask') {
     // 해시 **값**은 콘텐츠마다 다른 게 당연하다. 비교할 것은 '해시를 실었나' 다.
-    calls.push('ask|' + b.stage + '|' + (b.hash ? 'hash' : 'empty'));
+    calls.push('ask|' + b.stage + '|' + (b.hash ? 'hash' : 'empty')
+               + '|' + (b.reviewer === undefined ? 'no-me' : 'me'));
     return Promise.resolve({ status: REPLY.__askStatus || 200,
                              json: async () => ({ ok: true, result: REPLY.ask }) });
   }
   calls.push(b.tool + '|' + (b.args.stage || '') + '|' + (b.args.limit || '') + '|' + (b.args.kind || '')
-             + '|' + (b.args.hash === undefined ? '-' : (b.args.hash ? 'hash' : 'empty')));
+             + '|' + (b.args.hash === undefined ? '-' : (b.args.hash ? 'hash' : 'empty'))
+             + '|' + (b.reviewer === undefined ? 'no-me' : 'me') + (b.args.reviewer ? '|IN-ARGS' : ''));
   return Promise.resolve({ status: REPLY.__status || 200,
                            json: async () => ({ ok: true, result: REPLY[b.tool] }) });
 };
@@ -498,6 +526,7 @@ async function run(detail, verdict, reply, opts) {
   app.asxToggle();                               // 열기
   for (const c of app.asxChips) await app.asxChip(c);
   if (opts.ask) { app.asxQ = opts.ask; await app.asxAsk(); }
+  const dis = app.asxMsgs.filter((m) => m.title === '다른 검수자 의견')[0];
   const ans = app.asxMsgs.filter((m) => m.kind === 'ans')[0];
   return { calls: calls.slice(), msgs: JSON.parse(JSON.stringify(app.asxMsgs)),
            chips: app.asxChips.map((c) => [c.label, app.asxLocked(c), app.asxChipTip(c)]),
@@ -505,6 +534,7 @@ async function run(detail, verdict, reply, opts) {
            avail: app.asxAvail(), fab: app.charImg(app.reviewerChar),
            // 화면이 실제로 그리는 문장들(빈 자리 문구·답한 모델) — 필드가 아니라 출력으로 본다
            modelLine: ans ? app.asxModelLine(ans) : '',
+           disNote: dis && dis.n ? app.asxDisNote(dis.n) : '',
            askHint: app.asxAskHint(),
            empties: app.asxMsgs.filter((m) => m.empty !== undefined).map((m) => [m.title, m.empty]) };
 }
@@ -663,15 +693,15 @@ class TestAssistByExecution(unittest.TestCase):
 
     def test_after_only_tools_are_called_with_the_after_stage(self):
         after = self.out["normalAfter"]["calls"]
-        self.assertIn("verdict_precedents|after|5||hash", after)
-        self.assertIn("reviewer_dissent|after|||hash", after)
-        self.assertIn("ask|after|hash", after)
+        self.assertIn("verdict_precedents|after|5||hash|me", after)
+        self.assertIn("reviewer_dissent|after|||hash|me", after)
+        self.assertIn("ask|after|hash|me", after)
 
     def test_dictionary_tools_carry_no_hash(self):
         """정책 예시·개체 사전은 콘텐츠를 서버에 알리지 않는다(공용 사전 조회)."""
         for c in self.out["normalAfter"]["calls"]:
             if c.startswith("get_examples") or c.startswith("lookup_entity"):
-                self.assertTrue(c.endswith("|-"), c)
+                self.assertIn("|-|", c, c)                         # 해시 자리가 비어 있다
 
     # ── 자유질문: 출처 없는 문장은 그리지 않는다 ────────────────────────────
     def test_ungrounded_lines_are_dropped_by_the_screen_too(self):
@@ -732,6 +762,14 @@ class TestAssistByExecution(unittest.TestCase):
         self.assertEqual(d[0]["lines"], _LIVE_DISSENT["lines"])    # 그대로
         self.assertEqual(d[0]["n"], 3)
         self.assertNotIn("reviewer", json.dumps(d[0], ensure_ascii=False))
+        # 그 수가 나를 뺀 수라는 것을 문장이 말한다(서버가 본인 판정을 뺀다)
+        self.assertEqual(self.out["normalAfter"]["disNote"], "내 판정은 빼고 3명 의견을 모았습니다")
+
+    def test_who_is_asking_is_sent_outside_the_tool_arguments(self):
+        """서버가 내 판정을 빼려면 누가 묻는지 알아야 한다 · 단 **인자로는 못 넣게** 한다."""
+        for c in self.out["normalAfter"]["calls"]:
+            self.assertTrue(c.endswith("|me"), c)
+            self.assertNotIn("IN-ARGS", c, "reviewer 가 도구 인자에 실렸습니다")
 
     def test_gold_empty_dissent_looks_like_a_content_with_no_opinions(self):
         """골드는 서버가 빈 결과를 준다 · 그 모양이 '의견 없는 콘텐츠'와 같아야 한다."""

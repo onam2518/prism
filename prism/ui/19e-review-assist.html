@@ -75,8 +75,10 @@
                         </ul>
                         <!-- 없는 자리를 채우지 않는다 · 있는 그대로 '없음' 이라고 쓴다 -->
                         <div class="text-xs text-muted" x-show="!m.lines.length" x-text="m.empty"></div>
-                        <!-- 몇 명 것을 모았는지는 남긴다(이름·사유 원문은 그리지 않는다) -->
-                        <div class="text-xs text-muted" x-show="m.lines.length && m.n" x-text="m.n + '명 의견을 모았습니다'"></div>
+                        <!-- 몇 명 것을 모았는지는 남긴다(이름·사유 원문은 그리지 않는다).
+                             내 판정이 빠진 수라는 것을 문구에 적는다 — 그냥 'N명' 이면 나를
+                             포함하는지 읽는 사람이 헷갈리고, 그 오해가 곧 잘못된 무게가 된다. -->
+                        <div class="text-xs text-muted" x-show="m.lines.length && m.n" x-text="asxDisNote(m.n)"></div>
                         <!-- 잘렸으면 잘렸다고 쓴다 · 조용히 자르면 '다 봤다'로 읽힌다 -->
                         <span class="ds-badge ds-badge--warning" x-show="m.cut" x-text="m.cut"></span>
                       </div>

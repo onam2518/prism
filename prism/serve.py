@@ -2920,6 +2920,20 @@ def _p_run(h, body):
         raise
 
 
+def _assist_me(h, d) -> str:
+    """'묻는 사람'(검수자 식별자). 검수 보조가 **내 판정을 빼고** 남들 의견을 집계할 때 쓴다.
+
+    해석 규칙은 검수 저장 경로(`_inject_reviewer`)와 같다: supabase 는 Bearer JWT 의 uid 만
+    믿고(사칭 불가 · feedback.reviewer 에도 같은 uid 가 들어간다), 로컬 sqlite 는 로그인이
+    없으므로 클라이언트가 보낸 이름을 쓴다. 두 벌의 규칙을 만들지 않기 위해 여기 한 곳에 둔다.
+
+    ⚠️ supabase 에서 본문 값을 절대 쓰지 않는다. 남의 이름을 넣어 두 번 부르면 그 차이로
+    **그 사람의 판정**이 드러난다 — 이 도구가 감추려는 것이 정확히 그것이다."""
+    if _supa():
+        return str(h._bearer_uid() or "")
+    return str((d or {}).get("reviewer") or "")[:64].strip()
+
+
 @_post_route("/assist", gate="team")                 # 내부 검수 보조(트랙 A) 도구 · 팀 콘텐츠·검수 이력을 읽는다
 def _p_assist(h, body):
     try:
@@ -2931,7 +2945,7 @@ def _p_assist(h, body):
     # 로컬 sqlite 는 단일 팀이라 저장 계층이 team 을 무시하므로, 고정 스코프를 넣어
     # 도구 게이트(need_team)를 통과시킨다. supabase 에서 팀이 없으면 그대로 fail-closed.
     team = h._req_team() or (None if _supa() else "local")
-    r = RA.call(d.get("tool"), d.get("args") or {}, team=team)
+    r = RA.call(d.get("tool"), d.get("args") or {}, team=team, me=_assist_me(h, d))
     if isinstance(r, dict) and r.get("error"):
         return {"ok": False, "error": r["error"]}
     return {"ok": True, "result": r}
@@ -2958,7 +2972,7 @@ def _p_assist_ask(h, body):
                                 ensure_ascii=False), _JSON)
         return None
     r = RA.ask(hash=d.get("hash"), stage=d.get("stage"), question=d.get("question"),
-               team=team, uid=who, mock=Handler.server_mock)
+               team=team, uid=who, mock=Handler.server_mock, me=_assist_me(h, d))
     if isinstance(r, dict) and r.get("error"):
         return {"ok": False, "error": r["error"]}
     return {"ok": True, "result": r}

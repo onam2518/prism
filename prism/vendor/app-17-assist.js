@@ -106,7 +106,7 @@ window.PRISM_APP_PARTS.push(() => ({
         { id: 'prec', label: '비슷한 선례', after: true,
           tip: '비슷한 과거 판정과 몇 사람이 그렇게 봤는지 보여 드려요' },
         { id: 'dissent', label: '다른 검수자 의견', after: true,
-          tip: '다른 검수자 의견을 세 줄로 묶어 드려요 · 이름과 사유 원문은 안 보여 드려요' },
+          tip: '내 판정은 빼고 다른 검수자 의견을 세 줄로 묶어 드려요 · 이름과 사유 원문은 안 보여 드려요' },
         { id: 'sugg', label: '비슷한 교정 사례', after: true,
           tip: '같은 값을 같게 고친 과거 교정이 몇 건인지 세어 드려요' },
       ],
@@ -339,7 +339,10 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           r = await this._afetch('/assist', {
             method: 'POST', headers: this._authHeaders(),
-            body: JSON.stringify({ tool: tool, args: args }),
+            // reviewer = 내 이름. '다른 검수자 의견' 에서 내 판정을 빼는 데만 쓴다.
+            // 운영(supabase)에서는 서버가 로그인 uid 로 덮으므로 이 값은 무시된다(사칭 방지) ·
+            // 로그인이 없는 로컬에서만 쓰인다(검수 저장 경로와 같은 규칙).
+            body: JSON.stringify({ tool: tool, args: args, reviewer: this.reviewer || '' }),
           });
         } catch (e) { this.asxErr = '검수 보조를 부르지 못했습니다'; return null; }
         // 아직 라우트가 없는 단계(404) · 조용히 접기만 하고 토스트는 띄우지 않는다
@@ -365,7 +368,8 @@ window.PRISM_APP_PARTS.push(() => ({
           try {
             r = await this._afetch('/assist-ask', {
               method: 'POST', headers: this._authHeaders(),
-              body: JSON.stringify({ hash: hash, stage: 'after', question: q }),
+              body: JSON.stringify({ hash: hash, stage: 'after', question: q,
+                                     reviewer: this.reviewer || '' }),
             });
           } catch (e) { this.asxPush({ role: 'bot', kind: 'text', text: '검수 보조를 부르지 못했습니다' }); return; }
           // 라우트가 없으면 입력칸만 조용히 접는다(칩은 그대로 쓴다 · 토스트 없음)
@@ -445,6 +449,10 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // content_brief.values(초안 필드값)는 그리지 않는다. 검수 상세가 바로 옆에 이미 같은 값을
       // 배지로 그리고 있어 중복이고, 골드에서는 저장된 참값이라 뒤집힌 화면과 어긋난다.
+      /* 몇 사람 의견을 모았나. **내 판정은 빠진 수다**(서버가 묻는 사람 본인을 뺀다 ·
+         reviewassist.reviewer_dissent). 그냥 'N명' 이라고 쓰면 나를 포함하는지 헷갈리고,
+         헷갈린 채로 읽으면 무게를 잘못 단다. 칩 이름이 '다른 검수자 의견' 인 것과 같은 뜻이다. */
+      asxDisNote(n) { return '내 판정은 빼고 ' + (Number(n) || 0) + '명 의견을 모았습니다'; },
       // 잘렸으면 잘렸다고 쓴다(조용한 절단 금지) · 선례처럼 목록을 그리는 영역용
       asxCut(res) {
         if (!res || !res.truncated) return '';

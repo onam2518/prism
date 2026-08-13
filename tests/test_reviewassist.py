@@ -168,11 +168,15 @@ class TestTeamScope(Base):
 
 # ── 라우트의 팀 해석(로컬 편의값이 운영으로 새지 않는다) ────────────────────
 class _FakeHandler:
-    def __init__(self, team):
+    def __init__(self, team, uid=""):
         self._team = team
+        self._uid = uid
 
     def _req_team(self):
         return self._team
+
+    def _bearer_uid(self):
+        return self._uid
 
 
 class TestRouteTeamResolution(unittest.TestCase):
@@ -180,16 +184,20 @@ class TestRouteTeamResolution(unittest.TestCase):
     모드로 새면 저장 계층이 팀 필터를 건 채로 존재하지 않는 팀을 보거나, 최악에는 가드가
     풀려 전 팀을 읽는다(감사 H1 과 같은 실패). 코드를 읽어야만 안전한 상태로 두지 않는다."""
 
-    def _resolve(self, supa, req_team, body=b'{"tool":"content_brief","args":{"hash":"x"}}'):
+    def _both(self, supa, req_team, body=b'{"tool":"content_brief","args":{"hash":"x"}}', uid=""):
+        """라우트가 도구에 넘기는 (팀, 묻는 사람)."""
         seen = []
         o_supa, o_call = SV._supa, RA.call
         SV._supa = lambda: supa
-        RA.call = lambda name, args, team=None: (seen.append(team), {"ok": True})[1]
+        RA.call = lambda name, args, team=None, me="": (seen.append((team, me)), {"ok": True})[1]
         self.addCleanup(lambda: setattr(SV, "_supa", o_supa))
         self.addCleanup(lambda: setattr(RA, "call", o_call))
         fn, _gate = SV._POST_ROUTES["/assist"]
-        fn(_FakeHandler(req_team), body)
+        fn(_FakeHandler(req_team, uid), body)
         return seen[0]
+
+    def _resolve(self, supa, req_team, body=b'{"tool":"content_brief","args":{"hash":"x"}}'):
+        return self._both(supa, req_team, body)[0]
 
     def test_local_scope_never_appears_in_supabase_mode(self):
         for req_team in (None, "", "team-7"):
@@ -212,6 +220,26 @@ class TestRouteTeamResolution(unittest.TestCase):
     def test_malformed_body_does_not_crash_the_route(self):
         for body in (b"", b"[]", b'"scalar"', b"not json", b"null"):
             self.assertIsNone(self._resolve(True, None, body), body)
+
+    # ── 묻는 사람(me): '다른 검수자 의견' 에서 내 판정을 빼는 데 쓴다 ──────────
+    def test_supabase_takes_me_from_the_session_only(self):
+        """운영에서 본문 값을 쓰면 남의 이름으로 두 번 불러 **그 사람의 판정**을 알아낼 수 있다
+        (이 도구가 감추려는 것이 정확히 그것이다). 로그인 uid 만 믿는다."""
+        body = '{"tool":"reviewer_dissent","args":{"hash":"x","stage":"after"},"reviewer":"남의이름"}'.encode()
+        self.assertEqual(self._both(True, "team-7", body, uid="uid-9")[1], "uid-9")
+
+    def test_supabase_without_a_login_has_no_me(self):
+        body = '{"tool":"reviewer_dissent","args":{"hash":"x","stage":"after"},"reviewer":"남의이름"}'.encode()
+        self.assertEqual(self._both(True, "team-7", body, uid="")[1], "")
+
+    def test_local_sqlite_takes_me_from_the_body(self):
+        """로컬은 로그인이 없다 — 검수 저장 경로(_inject_reviewer)와 같은 규칙을 쓴다."""
+        body = '{"tool":"reviewer_dissent","args":{"hash":"x","stage":"after"},"reviewer":"복실"}'.encode()
+        self.assertEqual(self._both(False, None, body)[1], "복실")
+
+    def test_me_is_absent_when_the_client_says_nothing(self):
+        """구 클라이언트는 reviewer 를 안 보낸다 · 그때는 아무도 빼지 않는다(오류가 아니다)."""
+        self.assertEqual(self._both(False, None)[1], "")
 
 
 # ── 골드 문항 차단 ───────────────────────────────────────────────────────────
@@ -622,6 +650,94 @@ class TestDissent(Base):
                  {H1: _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0))}]
         for feedback in cases:
             self.assertIn(len(self._digest(feedback=feedback)["lines"]), (0, 3))
+
+
+# ── 묻는 사람 본인의 판정은 빼고 센다 ────────────────────────────────────────
+class TestMyOwnVerdictIsExcluded(Base):
+    """'다른 검수자 의견' 이 이름값을 하게 만드는 규칙(2026-08-13 신설).
+
+    ## 이 변경이 닫는 것
+
+    내 표를 세면 **판정 뒤에는 평범한 콘텐츠가 절대 비지 않는다**(stage=after 가 곧 '내 표가
+    있다' 는 뜻이라). 이 도구는 골드에서 빈 결과를 주므로 그 상태에서는 빈 결과 = 골드였고,
+    검수자가 칩 한 번으로 골드를 알아볼 수 있었다(2026-08-13 실측: 나만 판정한 콘텐츠는
+    3줄·n=1 · 골드는 빈 결과 · 화면 말풍선 높이도 128.9px 대 58.4px 로 갈렸다).
+    내 표를 빼면 '나만 판정한 콘텐츠' 도 빈 결과가 되어 골드의 빈 결과가 흔한 모양이 된다.
+
+    ## 이 변경이 닫지 못하는 것 (다음 사람에게)
+
+    **다 막히지 않았다.** 검수 인원이 늘어 콘텐츠마다 나 말고도 2~3명이 붙는 운영에서는
+    평범한 콘텐츠가 다시 거의 안 비고, 골드만 늘 빈다. 골드 합성 해시(`gold:*`)는 feedback
+    표에 아예 들어가지 않는 구조라 이 계층에서 닫을 수 있는 문제가 아니다(백로그).
+    여기서 없는 의견을 지어내면 이 모듈 4번 규칙이 깨진다 — 완화가 아니라 거짓말이 된다.
+
+    ## 무력화 실측 (2026-08-13 · 이 규칙을 깨고 이 파일 + test_assist_ask.py 를 돌린 결과)
+
+      33 내 표를 그대로 센다 (5)          · 34 분포에서만 빼고 요소 축은 안 뺌 (1)
+      35 me 를 도구 인자로 받게 엶 (1)    · 36 운영에서도 본문 reviewer 를 믿음 (2)
+      39 자유질문 자료는 내 표를 그대로 셈 (1)
+
+    ⚠️ 34·35·39 는 **유일한 눈이다. 지우지 말 것.** 특히 39 는 처음에 탈출했다 —
+    도구를 직접 부르는 단언만으로는 `_ask_sources` 가 `me` 를 안 넘겨도 전부 통과한다.
+    """
+
+    def _digest(self, feedback, me="", patches=None):
+        self.install([_row(H1)], feedback=feedback, patches=patches)
+        return RA.call("reviewer_dissent", _args(), team=TEAM, me=me)
+
+    def test_only_me_looks_exactly_like_a_content_nobody_judged(self):
+        """**이 파일에서 가장 중요한 단언.** 나만 판정한 콘텐츠와 아무도 안 본 콘텐츠, 그리고
+        골드가 모두 같은 모양이어야 골드가 티 나지 않는다."""
+        mine = self._digest({H1: _fb(("복실", "bad", "광고성", 1.0))}, me="복실")
+        nobody = self._digest({}, me="복실")
+        gold = RA.call("reviewer_dissent", _args(GOLD_H), team=TEAM, me="복실")
+        self.assertEqual(mine, nobody)
+        self.assertEqual(mine, gold)
+        self.assertEqual(mine["lines"], [])
+
+    def test_my_verdict_is_out_of_every_number(self):
+        """분포·인원·갈림 모두 나를 뺀 값이다. 한쪽만 빼면 앞뒤가 안 맞는 세 줄이 나온다."""
+        r = self._digest({H1: _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0),
+                                  ("대식", "bad", "", 3.0))}, me="복실")
+        self.assertEqual(r["n"], 2)                       # 3명 중 나를 뺀 2명
+        self.assertIn("수정 필요 2명", r["lines"][0])
+        self.assertNotIn("정확", r["lines"][0])           # 내 '정확' 은 남의 분포가 아니다
+        self.assertFalse(r["split"])                      # 남들끼리는 갈리지 않았다
+        self.assertIn("의견 일치", r["lines"][2])
+
+    def test_my_pointed_elements_are_out_of_the_second_line(self):
+        """요소 축에서도 나를 뺀다(판정 시 고른 요소 · 내가 남긴 교정 로그 둘 다)."""
+        fb = _fb(("복실", "bad", "", 1.0), ("딱지", "bad", "", 2.0))
+        fb["verdicts"][0]["element"] = "summary"          # 나만 지적한 요소
+        fb["verdicts"][1]["element"] = "intent"
+        r = self._digest({H1: fb}, me="복실",
+                         patches=[_patch(H1, "복실", "category", ["A"], ["B"])])
+        line = r["lines"][1]
+        self.assertIn("인텐트 1명", line)
+        self.assertNotIn("리드문", line)                  # 내 판정 축
+        self.assertNotIn("카테고리", line)                # 내 교정 로그 축
+
+    def test_an_unknown_asker_changes_nothing(self):
+        """구 클라이언트는 이름을 안 보낸다 · 그때는 아무도 빼지 않는다(오류가 아니다)."""
+        fb = {H1: _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0))}
+        self.assertEqual(self._digest(fb, me="")["n"], 2)
+        self.assertEqual(self._digest(fb, me="없는사람")["n"], 2)
+
+    def test_the_asker_cannot_be_chosen_from_the_arguments(self):
+        """인자로 남의 이름을 넣어 두 번 부르면 그 차이로 **그 사람의 판정**이 드러난다.
+
+        `me` 는 스키마에 없으므로 공용 디스패처가 걸러 낸다 — 앞단이 세션에서 넣는 값만 산다.
+        (`needs_me` 를 지우면 세션 값도 안 들어가고, 그때는 이 단언이 아니라 위 단언들이 깨진다)"""
+        fb = {H1: _fb(("복실", "good", "", 1.0), ("딱지", "bad", "", 2.0))}
+        self.install([_row(H1)], feedback=fb)
+        r = RA.call("reviewer_dissent", dict(_args(), me="복실"), team=TEAM)
+        self.assertEqual(r["n"], 2, "인자로 넣은 이름이 먹혔다(개인 판정 노출 통로)")
+
+    def test_the_free_question_uses_the_same_digest(self):
+        """칩과 자유질문이 다른 집계를 쓰면 그 차이가 또 하나의 신호다."""
+        self.install([_row(H1)], feedback={H1: _fb(("복실", "bad", "광고성", 1.0))})
+        got = RA._ask_tool("reviewer_dissent", dict(AFTER), H1, TEAM, "복실")
+        self.assertEqual(got.get("lines"), [])
 
 
 # ── 수정 제안(판정 뒤) ───────────────────────────────────────────────────────
