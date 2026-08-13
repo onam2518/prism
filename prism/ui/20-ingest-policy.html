@@ -230,20 +230,26 @@
             <div x-show="!polCatGroups().length" class="text-xs text-muted">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
           </div>
         </template>
-        <!-- 인텐트: 인텐트 | 정의 | 예시 -->
+        <!-- 인텐트: 범용①·② / 서비스 분기 그룹 → (인텐트 | 정의 | 예시) 표 -->
         <template x-if="polTab==='intent'">
-          <div>
-            <table class="poltbl">
-              <thead><tr><th style="width:158px">인텐트</th><th>정의</th><th style="width:178px">예시 (초안)</th></tr></thead>
-              <tbody><template x-for="e in polRows()" x-bind:key="'pi'+e.k">
-                <tr x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
-                  <td><span class="ds-badge ds-badge--intent" style="cursor:pointer" x-on:click="polShowMatch('intent', e.k, e.t)" data-tip="이 인텐트로 분류된 콘텐츠 보기" data-tip-pos="top" x-text="e.t"></span></td>
-                  <td x-text="e.d || '·'"></td>
-                  <td class="text-muted" x-text="e.ex || '·'"></td>
-                </tr>
-              </template></tbody>
-            </table>
-            <div x-show="!polRows().length" class="text-xs text-muted" style="margin-top:6px">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div class="text-xs text-muted">범용①·②는 전 서비스 공통 · 서비스 분기 값은 그 서비스 콘텐츠에만 부여합니다</div>
+            <template x-for="g in polIntentGroups()" x-bind:key="'pig'+g.label">
+              <div class="polsec">
+                <div class="polsec__hd"><b x-text="g.label"></b> <span class="text-xs text-muted" x-text="g.note"></span></div>
+                <table class="poltbl">
+                  <thead><tr><th style="width:158px">인텐트</th><th>정의</th><th style="width:178px">예시 (초안)</th></tr></thead>
+                  <tbody><template x-for="e in g.rows" x-bind:key="'pi'+e.k">
+                    <tr x-bind:data-pol="e.k" x-bind:class="polHl===e.k ? 'is-hl' : ''">
+                      <td><span class="ds-badge ds-badge--intent" style="cursor:pointer" x-on:click="polShowMatch('intent', e.k, e.t)" data-tip="이 인텐트로 분류된 콘텐츠 보기" data-tip-pos="top" x-text="e.t"></span></td>
+                      <td x-text="e.d || '·'"></td>
+                      <td class="text-muted" x-text="e.ex || '·'"></td>
+                    </tr>
+                  </template></tbody>
+                </table>
+              </div>
+            </template>
+            <div x-show="!polIntentGroups().length" class="text-xs text-muted">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
           </div>
         </template>
         <!-- 품질 사유: 사유(병기) | 정의·판정 기준 | 적용 -->
