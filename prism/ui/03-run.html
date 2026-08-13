@@ -4,7 +4,7 @@
 
         <!-- 콘텐츠 추가 = 저장만(미실행 대기) · 초안 생성은 STEP 2 모델 실행이 담당 -->
         <section class="panel" data-fn>
-          <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">추가는 저장만 합니다 · 초안 생성은 STEP 2 모델 실행에서 · 이미지·영상은 실험실 미디어 탭</span></div>
+          <div class="panel-hd"><b>콘텐츠 추가</b><span class="meta">텍스트·엑셀은 저장만(초안은 STEP 2 모델 실행) · 미디어는 추출 미리보기 후 등록</span></div>
           <div class="panel-bd">
           <!-- 입력 방식 -->
           <div class="seg seg3 mb-5">
@@ -12,14 +12,13 @@
               <button type="button" x-on:click="selectTab(t.id)" x-bind:class="activeTabId === t.id ? 'on' : ''" x-text="t.label"></button>
             </template>
           </div>
-          <!-- 콘텐츠 그룹: 입력 시 지정(이미지·텍스트 공용) 엑셀은 컬럼에서 자동 -->
-          <div x-show="activeTabId !== 'excel'" x-cloak class="mb-4">
+          <!-- 콘텐츠 그룹: 텍스트만 여기서 지정 · 미디어는 패널 안(양식별) · 엑셀은 컬럼에서 자동 -->
+          <div x-show="activeTabId === 'text'" x-cloak class="mb-4">
             <label class="lbl">콘텐츠 그룹</label>
             <select x-model="group" class="field">
               <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
             </select>
           </div>
-          <!-- 이미지 입력은 실험실 · 미디어 탭으로 이관됨(실험실 전담) -->
           <!-- 텍스트 -->
           <div x-show="activeTabId === 'text'" x-cloak class="space-y-4">
             <div><label class="lbl">제목 (title)</label>
@@ -28,6 +27,139 @@
               <textarea x-model="txtBody" rows="5" class="field" placeholder="본문 내용"></textarea></div>
             <div><label class="lbl">원문 링크 (선택)</label>
               <input x-model="txtUrl" class="field" placeholder="https:// 원문 주소 · 검수 화면에서 원문 페이지를 바로 볼 수 있습니다"></div>
+          </div>
+          <!-- 미디어(이미지·영상): 실험실에서 승격(2026-08-13) · 추출 미리보기 → '콘텐츠로 등록'.
+               텍스트·엑셀과 달리 등록 시점에 이미 메타가 있어 STEP 2 재실행이 필요 없다 -->
+          <div x-show="activeTabId === 'media'" x-cloak class="space-y-4">
+            <div class="seg mb-4" style="max-width:220px">
+              <button type="button" x-bind:class="mediaTab==='image'?'on':''" x-on:click="mediaTab='image'">이미지</button>
+              <button type="button" x-bind:class="mediaTab==='video'?'on':''" x-on:click="mediaTab='video'">영상</button>
+            </div>
+            <!-- ── 이미지 ── -->
+            <div x-show="mediaTab==='image'" x-cloak class="space-y-4">
+              <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+                <li>콘텐츠 정보(그룹·제목·본문)와 이미지를 함께 넣고 <b>시각 이해 방식</b>을 고른 뒤 실행하면, 본문과 이미지 신호를 합쳐 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다.</li>
+                <li>이미지 여러 장은 하나의 콘텐츠로 통합합니다 · 결과 확인 후 <b>콘텐츠로 등록</b>하면 검수 대상이 됩니다.</li>
+              </ul>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div style="flex:0 0 200px;min-width:160px"><label class="lbl">콘텐츠 그룹</label>
+                  <select class="field" x-model="mediaImg.group">
+                    <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+                  </select>
+                </div>
+                <div style="flex:1;min-width:220px"><label class="lbl">제목</label>
+                  <input class="field" x-model="mediaImg.title" placeholder="기사·게시글 제목">
+                </div>
+              </div>
+              <div><label class="lbl">본문 (선택)</label>
+                <textarea class="field" rows="4" x-model="mediaImg.body" placeholder="이미지 외 본문이 있으면 함께 · 이미지만 있으면 비워도 됩니다"></textarea>
+              </div>
+              <div><label class="lbl">이미지 첨부 (여러 장 = 하나로 통합)</label>
+                <label class="dropzone" x-bind:class="mediaImgDrag ? 'drag' : ''"
+                       x-on:dragover.prevent="mediaImgDrag = true" x-on:dragleave.prevent="mediaImgDrag = false"
+                       x-on:drop.prevent="mediaImgDropZone($event)">
+                  <span class="name" x-text="mediaImgDrag ? '여기에 놓기' : (mediaImg.files.length ? (mediaImg.files.length + '장 선택됨 · 하나로 통합') : '파일을 끌어다 놓거나 선택하세요')"></span>
+                  <span class="pick">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>
+                    파일 선택
+                  </span>
+                  <input type="file" accept="image/*" multiple class="sr-only" x-on:change="mediaImgPick($event)">
+                </label>
+              </div>
+              <div x-show="mediaImg.thumbs.length" class="mediaup__thumbs">
+                <template x-for="(t,i) in mediaImg.thumbs" x-bind:key="t">
+                  <div class="mediaup__thumb"><img x-bind:src="t" alt=""><button type="button" title="제거" x-on:click="mediaImgDrop(i)">×</button></div>
+                </template>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div style="flex:1;min-width:220px"><label class="lbl">원문 링크 (선택)</label>
+                  <input class="field" x-model="mediaImg.url" placeholder="https:// 원문 주소">
+                </div>
+                <div style="flex:0 0 240px;min-width:200px"><label class="lbl">시각 이해 방식</label>
+                  <select class="field" x-model="mediaImg.vision">
+                    <template x-for="v in visionCandidates" x-bind:key="v.id"><option x-bind:value="v.id" x-text="v.label"></option></template>
+                    <option x-show="!visionCandidates.length" value="upstage_ie">기본 · 문서 시각 이해(Upstage)</option>
+                  </select>
+                </div>
+                <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaImgRun()" x-bind:disabled="mediaImgBusy||!mediaImg.files.length">추출 실행</button>
+              </div>
+              <div x-show="mediaImgMsg" aria-live="polite" class="text-xs text-muted" x-text="mediaImgMsg"></div>
+              <div x-show="mediaImgRes" class="space-y-3">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span x-show="mediaImgRes && mediaImgRes.mock" class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock · 비전 미연결(키 없음)</span>
+                  <span x-show="mediaImgRes && !mediaImgRes.mock && mediaImgRes.vision_used" class="ds-badge ds-badge--intent"><span class="ds-badge__dot"></span><span x-text="mediaImgRes && mediaImgRes.vision_used ? ('시각: ' + (mediaImgRes.vision_used.model ? (mediaImgRes.vision_used.model + ' (' + mediaImgRes.vision_used.provider + ')') : mediaImgRes.vision_used.provider)) : ''"></span></span>
+                </div>
+                <div x-show="mediaImgRes && mediaImgRes.signals && mediaImgRes.signals.length && mediaImgRes.signals[0].note" class="text-xs text-muted" x-text="(mediaImgRes && mediaImgRes.signals && mediaImgRes.signals[0]) ? mediaImgRes.signals[0].note : ''"></div>
+                <div><label class="lbl">합성 Content (본문)</label>
+                  <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaImgRes ? (mediaImgRes.content.body || '') : ''"></pre></div>
+                <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타</b><span class="meta">등록 전 미리보기 · 등록하면 이 메타 그대로 저장</span></div>
+                  <div class="panel-bd space-y-3">
+                    <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="mediaImgRes ? ((mediaImgRes.output.item_meta||{}).summary || '—') : ''"></div></div>
+                    <div><div class="lbl">인텐트</div><div class="flex flex-wrap gap-1.5"><template x-for="it in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">—</span></div></div>
+                    <div><div class="lbl">엔티티</div><div class="flex flex-wrap gap-1.5"><template x-for="e in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">—</span></div></div>
+                    <div><div class="lbl">카테고리</div><div class="flex flex-wrap gap-1.5"><template x-for="c in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">—</span></div></div>
+                  </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end">
+                  <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaRegister('image')" x-bind:disabled="mediaImgBusy">콘텐츠로 등록</button>
+                </div>
+              </div>
+            </div>
+            <!-- ── 영상 ── -->
+            <div x-show="mediaTab==='video'" x-cloak class="space-y-4">
+              <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+                <li>영상을 올리면 프레임+오디오를 한 번에 토큰화해 통합 원고를 만들고 <b>리드문·인텐트·엔티티·IAB</b>를 추출합니다 · 결과 확인 후 <b>콘텐츠로 등록</b>하면 검수 대상이 됩니다.</li>
+                <li><b>자막을 붙여넣으면 영상 모델 호출 없이 자막으로 원고를 만듭니다(비용 0).</b></li>
+              </ul>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div style="flex:0 0 200px;min-width:160px"><label class="lbl">콘텐츠 그룹</label>
+                  <select class="field" x-model="mediaVid.group">
+                    <template x-for="g in groups" x-bind:key="g"><option x-bind:value="g" x-text="g"></option></template>
+                  </select>
+                </div>
+                <div style="flex:1;min-width:240px"><label class="lbl">영상 파일</label>
+                  <div class="mediaup">
+                    <label class="mediaup__btn">파일 선택<input type="file" accept="video/*" class="sr-only" x-on:change="mediaVidPick($event)"></label>
+                    <span class="mediaup__hint" x-text="mediaVid.file ? mediaVid.file.name : '선택된 파일 없음'"></span>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div style="flex:1;min-width:200px"><label class="lbl">캡션·설명 (선택)</label>
+                  <input class="field" x-model="mediaVid.caption" placeholder="기존 텍스트 메타(제목·설명)와 결합">
+                </div>
+                <div style="flex:1;min-width:220px"><label class="lbl">원문 링크 (선택)</label>
+                  <input class="field" x-model="mediaVid.url" placeholder="https:// 원문 주소">
+                </div>
+                <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaNative()" x-bind:disabled="mediaVidBusy||!mediaVid.file">추출 실행</button>
+              </div>
+              <div><label class="lbl">자막 원문 (선택 · SRT/VTT)</label>
+                <textarea class="field" rows="3" x-model="mediaVid.subs" placeholder="자막을 붙여넣으면 영상 모델을 부르지 않고 자막으로 원고를 만듭니다 (비용 0)"></textarea>
+              </div>
+              <div x-show="mediaVidMsg" aria-live="polite" class="text-xs text-muted" x-text="mediaVidMsg"></div>
+              <div x-show="mediaVidRes" class="space-y-3">
+                <div x-show="mediaVidRes && mediaVidRes.mock"><span class="ds-badge ds-badge--neutral"><span class="ds-badge__dot"></span>mock · 라우터 미연결(키 없음)</span></div>
+                <div x-show="mediaVidRes && mediaVidRes.native && mediaVidRes.native.skipped"><span class="ds-badge ds-badge--success" style="cursor:help" data-tip="자막이 있어 발화 원고를 자막에서 얻었습니다 · 영상 모델 호출이 없어 비용이 들지 않아요" data-tip-pos="top"><span class="ds-badge__dot"></span>자막 우선 · 영상 모델 호출 생략</span></div>
+                <div><label class="lbl">발화 전사 (오디오 트랙)</label>
+                  <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? (mediaVidRes.native.audio.transcript || '(발화 없음)') : ''"></pre></div>
+                <div><label class="lbl">비주얼 묘사</label>
+                  <div class="text-sm text-body" x-text="mediaVidRes ? mediaVidRes.native.visual.description : ''"></div>
+                  <div class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.native.visual.on_screen_text" x-text="'[화면 텍스트] ' + (mediaVidRes ? mediaVidRes.native.visual.on_screen_text : '')"></div></div>
+                <div><label class="lbl">통합 원고 <span class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.merged.spoken_source" x-text="'· 발화 출처: ' + (mediaVidRes && mediaVidRes.merged.spoken_source === 'subtitle' ? '자막(모델 0건)' : '오디오 전사')"></span></label>
+                  <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? mediaVidRes.merged.transcript : ''"></pre></div>
+                <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타</b><span class="meta">등록 전 미리보기 · 등록하면 이 메타 그대로 저장</span></div>
+                  <div class="panel-bd space-y-3">
+                    <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="mediaVidRes ? ((mediaVidRes.output.item_meta||{}).summary || '—') : ''"></div></div>
+                    <div><div class="lbl">인텐트</div><div class="flex flex-wrap gap-1.5"><template x-for="it in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">—</span></div></div>
+                    <div><div class="lbl">엔티티</div><div class="flex flex-wrap gap-1.5"><template x-for="e in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">—</span></div></div>
+                    <div><div class="lbl">카테고리</div><div class="flex flex-wrap gap-1.5"><template x-for="c in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">—</span></div></div>
+                  </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end">
+                  <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaRegister('video')" x-bind:disabled="mediaVidBusy">콘텐츠로 등록</button>
+                </div>
+              </div>
+            </div>
           </div>
           <!-- 엑셀 -->
           <div x-show="activeTabId === 'excel'" x-cloak class="space-y-4">
@@ -58,7 +190,8 @@
             </div>
           </div>
 
-          <div class="mt-5 flex items-center gap-3">
+          <!-- 공용 실행 버튼: 텍스트·엑셀 전용 · 미디어는 패널 안 자체 버튼(추출 실행 → 콘텐츠로 등록) -->
+          <div x-show="activeTabId !== 'media'" class="mt-5 flex items-center gap-3">
             <button type="button" x-on:click="run()" x-bind:disabled="loading"
               class="ds-btn ds-btn--primary ds-btn--s-lg disabled:opacity-50">
               <svg x-show="loading" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>

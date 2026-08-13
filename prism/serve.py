@@ -78,8 +78,6 @@ from . import mcpkeys as MK           # MCP 파트너 키(트랙 B · 외부 MCP
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
 MF._SV = sys.modules[__name__]      # 파일 기반 메모리(실험실) 주입(동일)
-from . import caagent as CA           # 콘텐츠 에이전트(실험실): 자연어 → 위젯 조건
-CA._SV = sys.modules[__name__]      # 동일 주입
 from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외부 MCP 공용 단일 원천
 PTL._SV = sys.modules[__name__]     # 동일 주입
 from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
@@ -518,7 +516,9 @@ def _safe_url(u: str) -> str:
 _MENU_POST_ROUTES = (
     ("/topic-studio", "studio"), ("/prompt", "studio"), ("/meta-compile", "studio"),
     ("/builder", "studio"), ("/deployment", "studio"),
-    ("/media-extract", "lab"), ("/usermeta", "lab"), ("/spectrum", "lab"),
+    # 미디어는 콘텐츠 추가 탭으로 승격(2026-08-13) · 인입 계열과 같은 content 메뉴로 게이트
+    ("/media-extract", "content"), ("/media-register", "content"),
+    ("/usermeta", "lab"), ("/spectrum", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
     ("/ingest-run", "content"), ("/rerun", "content"), ("/run", "content"), ("/store", "content"),
@@ -2732,17 +2732,6 @@ def _p_board(h, body):
                         email=h._bearer_email())
 
 
-@_post_route("/ca-understand", gate="login")          # 콘텐츠 에이전트(실험실): 자연어 → 위젯 조건(LLM · 실패 시 클라이언트 규칙 폴백)
-def _p_ca_understand(h, body):
-    data = json.loads(body or b"{}")
-    text = (data.get("text") or "").strip()[:400]
-    dic = data.get("dict") or {}
-    if not isinstance(dic, dict):
-        dic = {}
-    out, via = CA.understand(text, dic, (data.get("model") or "").strip(), Handler.server_mock)
-    return {"ok": bool(out), "cond": out, "via": via}
-
-
 @_post_route("/topic-studio")                        # 토픽 스튜디오: 생성·삭제·튜닝(변경은 관리자) · 미리보기·제안(조회)
 def _p_topic_studio(h, body):
     data = json.loads(body or b"{}")
@@ -2758,10 +2747,10 @@ def _p_topic_studio(h, body):
     return topic_studio_action(data, mock=Handler.server_mock, team=h._req_team())
 
 
-@_post_route("/media-extract", gate="login")         # 미디어 메타 파이프라인: 자막 파싱(JSON) · 영상 네이티브(multipart)
+@_post_route("/media-extract", gate="login")         # 미디어 메타 파이프라인(콘텐츠 추가 탭): 자막 파싱(JSON) · 영상 네이티브(multipart)
 def _p_media_extract(h, body):
     ctype = h.headers.get("Content-Type", "")
-    if "multipart/form-data" in ctype:               # 업로드 → 미디어 실험(미저장): 이미지(image*) | 영상(file)
+    if "multipart/form-data" in ctype:               # 업로드 → 추출 미리보기(미저장): 이미지(image*) | 영상(file)
         fields = _parse_multipart(body, ctype.split("boundary=", 1)[1].strip())
         imgs = {k: v for k, v in fields.items()
                 if k.startswith("image") and isinstance(v, dict) and v.get("bytes")}
@@ -2786,6 +2775,19 @@ def _p_media_extract(h, body):
                             model=fields.get("model", ""),
                             subtitles=fields.get("subtitles", ""))
     return media_action(json.loads(body or b"{}"))
+
+
+@_post_route("/media-register", gate="login")        # 미디어 추출 결과를 콘텐츠로 등록(메타 보존 · STEP 2 재실행 불필요)
+def _p_media_register(h, body):
+    # 콘텐츠 인입 경로(/run)와 같은 관리자 통제(supabase 모드) · 만료 로그인은 메시지로 구분
+    if _supa() and not is_admin_user(h._bearer_uid(), h._req_team(), h._bearer_email()):
+        msg = ("로그인이 만료됐습니다 · 다시 로그인 후 시도하세요" if not h._bearer_uid()
+               else "콘텐츠 인입은 관리자 전용입니다")
+        h._send(403, json.dumps({"error": msg}, ensure_ascii=False), _JSON)
+        return None
+    data = json.loads(body or b"{}")
+    return MO.media_register(data.get("content") or {}, data.get("output") or {},
+                             purpose=str(data.get("purpose") or ""), team=h._req_team())
 
 
 @_post_route("/usermeta-profiles", gate="team")      # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)

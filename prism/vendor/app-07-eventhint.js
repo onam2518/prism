@@ -484,8 +484,6 @@ window.PRISM_APP_PARTS.push(() => ({
         if (hasLog) await this._demoResetCore();
         else { this.demoQ = ''; this.demoQFilter = ''; this.demoImpress(); }   // 리셋 없는 경로도 칩 필터 잔존 방지
       },
-      get qm() { return (this.result && this.result.output && this.result.output.quality_meta) || {}; },
-      get lm() { return (this.result && this.result.output && this.result.output.legal_meta) || {}; },
       get tr() { return (this.result && this.result.output && this.result.output.trace) || {}; },
       isRouter(p) { return p === 'bizrouter' || p === 'timely'; },
       // ── 모델 선택(Atelier 방식): 소스별 그룹 + 연결된 제공자만 활성 ──

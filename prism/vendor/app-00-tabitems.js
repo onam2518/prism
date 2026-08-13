@@ -3,7 +3,7 @@
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
 
-      tabItems: [{ id: 'text', label: '텍스트' }, { id: 'excel', label: '엑셀' }],   // 이미지는 실험실 미디어 탭 전담(이관)
+      tabItems: [{ id: 'text', label: '텍스트' }, { id: 'media', label: '미디어' }, { id: 'excel', label: '엑셀' }],   // 미디어=이미지·영상(실험실에서 승격 · 2026-08-13)
       activeTabId: 'text',
       // 위젯 홈 셸 · 홈(캔버스) + 카테고리 내비
       mod: 'home',
@@ -51,7 +51,7 @@ window.PRISM_APP_PARTS.push(() => ({
           { id: 'dict', label: '사전 · 정책', ic: 'dict', cond: 'opsadmin' },
           // 스튜디오 = 설계 도구 묶음: 프롬프트(계약·래퍼) + 토픽(클러스터링 설계 · 실험실에서 승격)
           { id: 'studio', label: '스튜디오', ic: 'prompt', cond: 'opsadmin' },
-          // 실험실: 지금 테스트하지 않는 탐구 요소(법령·사용자·미디어) 보관
+          // 실험실: 지금 테스트하지 않는 탐구 요소(사용자·스펙트럼·MCP 키) 보관
           { id: 'lab', label: '실험실', ic: 'auto', cond: 'opsadmin' },
           // 시스템 설정: 데이터 관리(상단) + API 키·모델(하단) 통합 · 운영 관리자 전용(위험 작업)
           { id: 'system', label: '시스템 설정', ic: 'system', cond: 'sysadmin' } ] },
@@ -87,8 +87,7 @@ window.PRISM_APP_PARTS.push(() => ({
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 정답셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
-      labTab: 'legal',                        // 실험실(지금 미테스트 요소): legal(법령) | user(사용자) | media(미디어) | ca(콘텐츠 에이전트) | spectrum(스펙트럼·사내 MCP 허브) | mcp(MCP 파트너 키·트랙 B)
-      caTab: 'home',                          // 실험실·콘텐츠 에이전트(사용자향 미리보기): home | make | edit
+      labTab: 'user',                         // 실험실(지금 미테스트 요소): user(사용자) | spectrum(스펙트럼·사내 MCP 허브) | mcp(MCP 파트너 키·트랙 B)
       studioTab: 'prompt',                    // 스튜디오: prompt(빌더+배포+라이브러리) | topic(토픽 설계)
       dictTab: 'intent',                      // 사전·정책: intent | category | entity | policy | prompt(단계 지시) | engine(계약·래퍼·미리보기)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
@@ -106,9 +105,9 @@ window.PRISM_APP_PARTS.push(() => ({
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], eattrs: [], kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } },
       studioPreview: { bundles: [], n_total: 0, must_n: 0, opt_n: 0 },
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
-      // 미디어(이미지·영상 → 메타 추출)
+      // 미디어(이미지·영상 → 메타 추출 → 콘텐츠 등록) · 콘텐츠 추가 탭
       mediaTab: 'image',                      // 미디어 하위 탭: image(이미지) | video(영상)
-      mediaVid: { file: null, caption: '', subs: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
+      mediaVid: { file: null, caption: '', subs: '', group: '동영상', url: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
       mediaImg: { files: [], thumbs: [], vision: 'upstage_ie', group: '뉴스', title: '', body: '', url: '' },
       mediaImgDrag: false, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,

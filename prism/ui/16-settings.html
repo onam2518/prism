@@ -93,6 +93,19 @@
         </div>
           </div>
         </section>
+        <!-- 법령 필터: 구 실험실 · 법령 탭에서 이동(2026-08-13 · 탭은 제거). 유일한 토글 UI 라
+             여기 없으면 팀이 법령 필터를 켜고 끌 방법이 사라진다 · 저장은 기존 /config 경로 -->
+        <section class="panel" data-fn><div class="panel-hd"><b>법령 필터</b><span class="meta">추출에 법령 1차 필터 포함 여부 · 팀 전체 공유</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
+          <div class="panel-bd">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+              <ul class="ds-bullets" style="margin:0"><li>법령 1차 필터(13종 위반 라우팅·스코어링)를 추출에 포함합니다.</li><li>켜면 다음 추출부터 적용됩니다(추가 호출 · 건당 비용 증가).</li></ul>
+              <label class="inline-flex cursor-pointer items-center gap-2 text-[13px] text-body">
+                <input type="checkbox" x-model="legalEnabled" x-on:change="toggleLegal()" class="h-4 w-4 rounded border-black/15 bg-canvas text-violet">
+                법령 필터 포함
+              </label>
+            </div>
+          </div>
+        </section>
         <!-- 검수 보조 에이전트가 답할 때 쓰는 모델. 품질 판정 모델과 **따로** 고른다
              (같은 모델이면 자기 판정을 자기가 변호한다) · 저장은 기존 /config 경로.
              드롭다운은 x-modelpick 한 줄 · 이름·비용 등급은 page.py 가 펼쳐 준다.
