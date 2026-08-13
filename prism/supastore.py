@@ -234,6 +234,26 @@ class SupabaseStore:
                 out[r["hash"]] = bool((r.get("model") or "") or (r.get("final_grade") or ""))
         return out
 
+    def origin_meta_for(self, hashes, team=None) -> dict:
+        """해시 → {"model", "version", "review", "url"} · sqlite Store.origin_meta_for 와 동일 계약.
+        골드 문항이 화면에 내보내는 부속 정보를 원본 콘텐츠 행에서 가져오는 조회(지어내지 않는다)."""
+        out = {}
+        hs = [h for h in dict.fromkeys(hashes or []) if h]
+        for i in range(0, len(hs), 100):                 # URL 길이 상한 대비 청크
+            chunk = hs[i:i + 100]
+            q = "select=hash,model,version,review,source_url&hash=in.(" + ",".join(chunk) + ")"
+            if team:
+                q += f"&team_id=eq.{urllib.parse.quote(str(team))}"
+            for r in self._get("contents", q):
+                try:
+                    ver = int(r.get("version") or 1)
+                except (TypeError, ValueError):
+                    ver = 1
+                out[r["hash"]] = {"model": r.get("model") or "", "version": ver,
+                                  "review": r.get("review") or "",
+                                  "url": r.get("source_url") or ""}
+        return out
+
     def yellow_hashes(self, team=None) -> set:
         """검수 대상(YELLOW·실행됨) 해시 집합 · 진척율/퀘스트 분자·분모가 공유하는 모집단.
         미실행(추가만) 콘텐츠는 arena_stats 분모와 동일하게 제외."""

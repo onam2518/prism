@@ -20,20 +20,44 @@ class TestServeGamification(unittest.TestCase):
         self.addCleanup(lambda: setattr(serve, "_STORE", None))
         return serve, st
 
+    def _seed_gold(self, st, title="골드 문항", cats=("Sports / Golf",)):
+        """골든 1건 + 그 원본 콘텐츠 행. 원본 행이 있어야 골드가 출제된다.
+        모델·버전·검수티어·원문링크를 원본에서 실어 오기 때문(fail-closed)."""
+        import json as _j
+        import time as _t
+        from prism.store import content_hash
+        content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문"}
+        exp = {"finalGrade": "G", "reasons": [], "content_category": list(cats), "summary": "s"}
+        st.register_golden(None, [{"content": content, "expected": exp}])
+        ch = content_hash(content)
+        payload = {"quality_meta": {"review": "auto", "finalGrade": "G", "reasons": []},
+                   "item_meta": {"summary": "s", "entities": [], "intent": [],
+                                 "content_category": list(cats)},
+                   "content_ref": dict(content, source_url="https://example.test/a"),
+                   "trace": {"model": "m-test", "version": 3}}
+        c = st._conn()
+        c.execute("INSERT OR REPLACE INTO results(content_hash,service,title,final_grade,reasons,"
+                  "item_meta,payload,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                  (ch, "뉴스", title, "G", "[]", _j.dumps(payload["item_meta"]),
+                   _j.dumps(payload), _t.time()))
+        c.commit()
+        return ch, exp
+
     def test_gold_injection_deterministic_and_answer(self):
         serve, st = self._with_store()
-        content = {"displayServiceName": "뉴스", "title": "골드 문항", "subtitle": "", "body": "본문"}
-        st.register_golden(None, [{"content": content,
-                                   "expected": {"finalGrade": "G", "reasons": [],
-                                                "content_category": ["Sports"], "summary": "s"}}])
+        _ch, exp = self._seed_gold(st)
         items1 = serve._inject_gold([], "tester")
         items2 = serve._inject_gold([], "tester")
         self.assertEqual(len(items1), 1)
         self.assertEqual(items1[0]["hash"], items2[0]["hash"])       # (검수자,일자) 결정적
         self.assertTrue(items1[0]["hash"].startswith("gold:"))
         variant = items1[0]["hash"].split(":")[1]
-        # 등급 뒤집기 변형이면 표시 등급 R(정답 bad), 원본이면 G(정답 good)
-        self.assertEqual(items1[0]["grade"], "R" if variant == "bad" else "G")
+        # 뒤집는 값은 등급이 아니라 카테고리다(2026-08-13) · 등급은 어느 변형이든 참값 그대로.
+        self.assertEqual(items1[0]["grade"], exp["finalGrade"])
+        if variant == "bad":
+            self.assertNotEqual(items1[0]["category"], exp["content_category"])
+        else:
+            self.assertEqual(items1[0]["category"], exp["content_category"])
         r = serve.apply_gold_answer({"hash": items1[0]["hash"], "verdict": "good", "reviewer": "tester"})
         self.assertTrue(r["ok"])
         self.assertEqual(r["gold"]["correct"], variant == "ok")
@@ -43,10 +67,8 @@ class TestServeGamification(unittest.TestCase):
         """콘텐츠 전체 삭제(빈 목록) 후 골드 문항만 홀로 남지 않아야 한다.
         (clear_contents 는 정답셋을 지우지 않으므로 골드가 큐에 계속 섞여 1건이 남던 문제.)"""
         serve, st = self._with_store()
-        content = {"displayServiceName": "뉴스", "title": "골드 문항", "subtitle": "", "body": "본문"}
-        st.register_golden(None, [{"content": content,
-                                   "expected": {"finalGrade": "G", "reasons": [],
-                                                "content_category": ["Sports"], "summary": "s"}}])
+        ch, _exp = self._seed_gold(st)
+        st.set_purpose([ch], "eval")            # 원본은 평가용 홀드아웃 = 검수 대상 목록에서 제외
         self.assertEqual(len(serve._inject_gold([], "tester")), 1)    # 골드 후보 자체는 존재
         raw = serve.raw_rows(reviewer="tester")                       # 검수 대상 0건
         self.assertEqual(raw["n"], 0)                                 # 골드가 홀로 뜨지 않음

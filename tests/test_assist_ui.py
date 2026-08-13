@@ -245,11 +245,40 @@ class TestAssistApp(unittest.TestCase):
         for banned in ("flip", "뒤집", "golden_hashes"):
             self.assertNotIn(banned, summ + crit, banned)
 
-    def test_gold_flip_rule_still_matches_the_comment(self):
-        """이 패널의 설계 근거(큐가 골드 등급을 뒤집는다)가 사라지면 설계도 다시 봐야 한다."""
-        src = _read(os.path.join(ROOT, "prism", "reviewops.py"))
-        self.assertIn("flip = int(h, 16) % 2 == 1", src)
-        self.assertIn('"hash": f"gold:', src)
+    def test_gold_flip_target_still_matches_this_panel_design(self):
+        """이 패널의 설계 근거는 '큐가 골드의 **어떤 값을** 뒤집는가' 다.
+
+        종전 이 테스트는 뒤집기 **식**(`flip = int(h,16) % 2 == 1`)과 해시 접두만 봤다.
+        2026-08-13 에 뒤집는 대상이 등급에서 카테고리로 바뀌었는데 식도 접두도 그대로라
+        **그대로 통과했다**. 감시 장치가 감시를 안 하고 있었던 것이다. 대상이 무엇인지
+        모르면 이 패널이 무엇을 가려야 하는지도 알 수 없으므로(가릴 자리가 곧 뒤집는 자리다)
+        문자열이 아니라 **큐가 실제로 내보내는 값**으로 못박는다.
+
+        여기가 깨지면 패널 설계를 다시 봐야 한다: 저장된 참값을 보여 주는 자리
+        (`content_brief` 의 values·suggestions)에서 **새로 바뀐 그 요소**를 가려야 한다.
+        """
+        from prism import feedback_loop as FL
+        from prism import reviewops as RV
+        self.assertIn(RV.GOLD_FLIP_ELEMENT, FL.ELEMENTS)          # 검수 요소 어휘 안의 값
+        h = "0" * 15 + "1"                                        # 홀수 = 뒤집기 변형
+        self.assertTrue(int(h, 16) % 2 == 1)
+        content = {"displayServiceName": "뉴스", "title": "골드", "subtitle": "", "body": "본문"}
+        exp = {"finalGrade": "G", "reasons": ["ad"], "summary": "리드문",
+               "entities": ["개체A"], "intent": ["실용 정보"],
+               "content_category": ["Sports / Golf", "Travel / Hotels"]}
+        om = {"model": "m", "version": 3, "review": "auto", "url": "https://ex.test/x"}
+        shown = RV.gold_wrong_category(exp["content_category"], h)
+        item = RV._gold_item(h, content, exp, om, shown, True)
+        self.assertTrue(item["hash"].startswith("gold:bad:"))
+        # 큐가 보여 주는 값 ↔ 골든 정답: 다른 자리가 GOLD_FLIP_ELEMENT 하나뿐이어야 한다
+        # 검수 요소 id → (큐 행 키, 골든 정답 키). quality(품질 사유)는 행에서 reasons 다.
+        pairs = {"summary": ("summary", "summary"), "entities": ("entities", "entities"),
+                 "intent": ("intent", "intent"), "category": ("category", "content_category"),
+                 "grade": ("grade", "finalGrade"), "quality": ("reasons", "reasons")}
+        self.assertEqual(set(pairs), set(FL.ELEMENTS))            # 요소가 늘면 여기도 봐야 한다
+        differ = {el for el, (rk, ek) in pairs.items() if item[rk] != exp[ek]}
+        self.assertEqual(differ, {RV.GOLD_FLIP_ELEMENT},
+                         f"큐가 뒤집는 자리가 바뀌었습니다: {differ} · 패널이 가리는 자리도 함께 봐야 합니다")
 
     def test_missing_route_disables_quietly(self):
         """/assist 404 = 보조 영역만 조용히 비활성 · 토스트(_err)로 검수를 방해하지 않는다."""
