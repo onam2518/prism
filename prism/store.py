@@ -642,10 +642,6 @@ class Store:
         c = self._conn()
         return int(c.execute("SELECT COUNT(*) FROM results").fetchone()[0])
 
-    def clear(self):
-        c = self._conn()
-        c.execute("DELETE FROM results"); c.execute("DELETE FROM usage"); c.commit()
-
     def recent_meta(self, limit: int = 200, team=None) -> list:
         """배치 결과 콘텐츠별 행(피드백 부착용): content_hash·서비스·제목·등급·요약·카테고리."""
         c = self._conn()
