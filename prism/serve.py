@@ -2006,6 +2006,13 @@ def _g_template_csv(h, q):
     h._send_file(build_template_csv(), "text/csv; charset=utf-8", "prism_template.csv")
 
 
+@_get_route("/autoreview-status", admin=True)        # AI 초안 판정 진척도·부분 결과 폴링(운영 관리자 · 화이트리스트)
+def _g_autoreview_status(h, q):                       # 게이트 상세는 _autoreview_denied(POST 구역에 정의 · 호출 시점 해석)
+    if _autoreview_denied(h):
+        return None
+    return AR.status(q.get("id", [""])[0])
+
+
 # 디스패치 순서: 접두 길이 내림차순 → /entdict-lookup 이 /entdict 보다, /usermeta-*.csv 가
 # /usermeta 보다 항상 먼저 검사된다(등록 순서 무관 · 가로채기 불가).
 _GET_ORDER = sorted(_GET_ROUTES, key=len, reverse=True)
@@ -2940,15 +2947,22 @@ def _autoreview_emails() -> set:
     return {e.strip().lower() for e in raw.replace("\n", ",").split(",") if e.strip()}
 
 
-@_post_route("/autoreview-run", gate="super")        # AI 초안 판정(실험실) · 운영 관리자 + 옵션 이메일 화이트리스트
-def _p_autoreview_run(h, body):
+def _autoreview_denied(h) -> bool:
+    """운영 관리자 게이트는 gate=super/admin 이 이미 처리 · 여기선 이메일 화이트리스트만 추가로 본다.
+    거부 시 403 을 직접 보내고 True 반환."""
     allow = _autoreview_emails()
     if allow and (h._bearer_email() or "").strip().lower() not in allow:
         h._send(403, json.dumps({"error": "이 기능은 지정된 계정만 쓸 수 있습니다"}, ensure_ascii=False), _JSON)
+        return True
+    return False
+
+
+@_post_route("/autoreview-run", gate="super")        # AI 초안 판정 시작(백그라운드 잡) · 운영 관리자 + 옵션 화이트리스트
+def _p_autoreview_run(h, body):
+    if _autoreview_denied(h):
         return None
-    data = json.loads(body or b"{}")
-    return AR.suggest(team=h._req_team(), reviewer=(h._bearer_uid() or h._bearer_email() or ""),
-                      limit=int(data.get("limit") or 20))
+    return AR.start(team=h._req_team(), reviewer=(h._bearer_uid() or h._bearer_email() or ""))
+# GET /autoreview-status 는 GET 라우트 구역(_GET_ORDER 스냅샷 앞)에 등록돼 있다.
 
 
 @_post_route("/assist", gate="team")                 # 내부 검수 보조(트랙 A) 도구 · 팀 콘텐츠·검수 이력을 읽는다

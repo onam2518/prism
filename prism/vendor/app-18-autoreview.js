@@ -1,13 +1,14 @@
-/* Prism 앱 조각 18 · AI 초안 판정(실험실 · 운영자 전용). 별도 심판 모델이 대기 콘텐츠의
-   메타데이터를 정확/수정 초안 + 근거 + 확신도로 채우면, 사람은 확정/뒤집기만 한다.
-   판정을 자동 커밋하지 않는다 — 확정은 평소 검수와 같은 /feedback(사람 행위)으로만.
-   골드 문항은 대상이 아니다(서버 autoreview.suggest 가 실 콘텐츠만 본다).
+/* Prism 앱 조각 18 · AI 초안 판정(실험실 · 운영자 전용). 별도 심판 모델이 나에게 배정된
+   대기 콘텐츠를 미리 채점(정확/수정 + 근거 + 확신도) → 사람은 확정/뒤집기만 한다.
+   오래 걸릴 수 있어 백그라운드 잡 + 진척도/예상 시간(평가 런과 같은 폴링 패턴).
+   자동 커밋 안 함 · 확정은 평소 검수와 같은 /feedback(사람 행위). 골드는 대상 아님.
    로더(app.js)가 파일명 순으로 디스크립터 병합(게터 보존) · 조각 간 this 공유. */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
 
-      arModel: '', arModels: [],            // 심판 모델(설정) · 후보(config.draftJudgeModel*)
-      arItems: [], arBusy: false, arMsg: '', arLimit: 20,
+      arModel: '', arModels: [],            // 심판 모델(설정) · 후보
+      arRunId: null, arRunning: false, arDone: 0, arTotal: 0, arPct: 0, arEta: '', arScope: '',
+      arItems: [], arMsg: '', _arPollT: null,
 
       arInit() {                            // 서브탭 진입: cfg 에서 심판 모델·후보 받기
         const c = this.cfg || {};
@@ -27,16 +28,36 @@ window.PRISM_APP_PARTS.push(() => ({
       arConf(ai) { return ai && ai.confidence != null ? Math.round(ai.confidence * 100) : 0; },
       arLow(it) { return it.ai && it.ai.verdict && (it.ai.confidence || 0) < 0.6; },  // 저확신 = 꼭 직접 보게 강조
       arDoneN() { return (this.arItems || []).filter((x) => x._done).length; },
+      arScopeTxt() { return (this.arScope === 'assigned' ? '내 배정' : '대기') + ' 콘텐츠'; },
 
-      async arRun() {                       // 대기 콘텐츠에 AI 초안 판정 채우기(커밋 안 함)
-        this.arBusy = true; this.arMsg = ''; this.arItems = [];
+      async arRun() {                       // 백그라운드 잡 시작 → 폴링으로 진척도·부분 결과
+        clearTimeout(this._arPollT);
+        this.arMsg = ''; this.arItems = []; this.arDone = 0; this.arTotal = 0; this.arPct = 0; this.arEta = '';
+        this.arRunning = true;
         try {
-          const r = await (await this._afetch('/autoreview-run', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ limit: this.arLimit }) })).json();
-          if (!r || r.error) { this.arMsg = (r && r.error) || '실행 실패'; return; }
-          this.arItems = (r.items || []).map((x) => Object.assign({ _done: '' }, x));
-          this.arMsg = this.arItems.length ? ('심판 ' + (r.model || '') + ' · ' + this.arItems.length + '건 · 확정/뒤집기는 직접 눌러야 반영됩니다')
-                                           : '검수 대기 콘텐츠가 없습니다';
-        } catch (e) { this.arMsg = '실행 실패'; } finally { this.arBusy = false; }
+          const r = await (await this._afetch('/autoreview-run', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({}) })).json();
+          if (!r || r.error) { this.arRunning = false; this.arMsg = (r && r.error) || '실행 실패'; return; }
+          this.arScope = r.scope || '';
+          if (!r.total) { this.arRunning = false; this.arMsg = r.empty || '검수 대상이 없습니다'; return; }
+          this.arRunId = r.id; this.arTotal = r.total;
+          this.arMsg = '심판 ' + (r.model || '') + ' · ' + this.arScopeTxt() + ' ' + r.total + '건 채점 중…' + (r.truncated ? (' (상한 초과 ' + r.truncated + '건 제외)') : '');
+          this._arPoll(r.id);
+        } catch (e) { this.arRunning = false; this.arMsg = '실행 실패'; }
+      },
+      _arPoll(id) {
+        const tick = async () => {
+          let r = null;
+          try { r = await (await this._afetch('/autoreview-status?id=' + id, { headers: this._authHeaders() })).json(); } catch (e) {}
+          if (!r || this.arRunId !== id) return;
+          if (r.error) { this.arRunning = false; this.arMsg = r.error; return; }
+          this.arDone = r.done || 0; this.arTotal = r.total || 0; this.arPct = r.pct || 0;
+          this.arEta = r.eta || '';
+          this.arItems = (r.items || []).map((x) => { const p = this.arItems.find((y) => y.hash === x.hash); return Object.assign({ _done: p ? p._done : '' }, x); });
+          this.arRunning = !!r.running;
+          if (r.running) { this._arPollT = setTimeout(tick, 1500); }
+          else { this.arMsg = this.arScopeTxt() + ' ' + this.arTotal + '건 완료' + (r.elapsed ? (' · 소요 ' + r.elapsed) : '') + ' · 확정/뒤집기는 직접 눌러야 반영됩니다'; }
+        };
+        tick();
       },
       async arConfirm(it, verdict) {        // 확정 = 평소 검수와 같은 /feedback(사람 행위) · 초안임을 note 에 표기
         if (it._done || !verdict) return;
