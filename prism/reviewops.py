@@ -412,7 +412,7 @@ def apply_feedback(data: dict) -> dict:
             _SV.broadcast({"type": "feedback", "hash": ch, "reviewer": disp, "verdict": "",
                        "title": data.get("title", ""), "service": data.get("service", ""), "ts": time.time()},
                       team=data.get("_team"))
-            _SV._agg_bump()
+            _SV._agg_bump("feedback")                # 판정 취소 = 피드백만 변경(콘텐츠·골든 불변)
             return {"ok": True, "feedback": st.feedback_stats(team=data.get("_team")),
                     "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
         # 배정 배타 검수: 지정 검수자가 있는 콘텐츠는 지정된 사람만 판정할 수 있다.
@@ -457,7 +457,9 @@ def apply_feedback(data: dict) -> dict:
                              daemon=True).start()
         missions = _check_missions(reviewer, data.get("_team"))
     # 프롬프트 반영은 '일배치 학습'에서 합의 후 1회(진동 방지). 여기선 수집만.
-    _SV._agg_bump()                                    # 피드백/진척율 변경 → 집계·아레나 캐시 무효화
+    # 판정 쓰기는 피드백·진척율·아레나만 바꾼다(콘텐츠 행·골든셋·회차 불변) → 콘텐츠 캐시는 유지.
+    # REAP(원문 재분류)는 별도 스레드에서 콘텐츠를 바꿀 때 자체적으로 전역 무효화를 부른다.
+    _SV._agg_bump("feedback")
     out = {"ok": True, "feedback": st.feedback_stats(team=data.get("_team")),
            "learned": {k: bool(v) for k, v in (PR.LEARNED or {}).items()}}
     if not data.get("clear") and missions:
@@ -1194,7 +1196,7 @@ def _golden_rows(st, team):
     골든 쓰기 경로(등록·삭제·학습 배치)는 전부 _agg_bump 호출 · 문항 선택은 (검수자,일자)
     시드로 결정적이라 캐시로 출제가 달라지지 않는다."""
     if getattr(st, "REMOTE", False):
-        return _SV._agg_cached_store(("golden", team), st, lambda: st.get_golden(team))
+        return _SV._agg_cached_store(("golden", team), st, lambda: st.get_golden(team), content=True)
     return st.get_golden(team)
 
 
@@ -1208,7 +1210,7 @@ def _gold_origin_meta(st, hashes, team) -> dict:
         return {}
     try:
         if getattr(st, "REMOTE", False):
-            return _SV._agg_cached_store(("goldorigin", team), st, lambda: fn(hs, team=team)) or {}
+            return _SV._agg_cached_store(("goldorigin", team), st, lambda: fn(hs, team=team), content=True) or {}
         return fn(hs, team=team) or {}
     except Exception:
         return {}

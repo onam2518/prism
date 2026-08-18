@@ -101,5 +101,37 @@ class TestRowsCache(unittest.TestCase):
         self.assertEqual(lo.calls, 2)
 
 
+class TestAggDomainSeparation(unittest.TestCase):
+    """피드백 도메인 무효화(_agg_bump("feedback"))는 콘텐츠 캐시(rows·golden)를 유지하고
+    전역 캐시(feedback)만 비운다. 판정 쓰기가 매번 최대 5000행 재스캔·골든 재조회를
+    반복하던 것을 없앤다(감사 P1). fail-safe: 콘텐츠를 바꾸는 쓰기는 domain 없이 부른다."""
+
+    def setUp(self):
+        self._orig = serve._STORE
+        self.st = _CountingStore()
+        serve._STORE = self.st
+        serve._agg_bump()                              # 이전 테스트 캐시 격리
+        self.addCleanup(lambda: (setattr(serve, "_STORE", self._orig), serve._agg_bump()))
+
+    def test_feedback_bump_keeps_content_caches(self):
+        serve.results_rows(team="t")                   # rows(콘텐츠) 프라임
+        RV._inject_gold([{"hash": "x"}], "rv", "t")     # golden(콘텐츠) 프라임
+        serve.feedback_map_cached("t")                  # feedback(전역) 프라임
+        self.assertEqual((self.st.recent_calls, self.st.get_golden_calls, self.st.feedback_calls),
+                         (1, 1, 1))
+        serve._agg_bump("feedback")                    # 판정 쓰기 = 피드백만 무효화
+        serve.results_rows(team="t")
+        RV._inject_gold([{"hash": "x"}], "rv", "t")
+        serve.feedback_map_cached("t")
+        self.assertEqual(self.st.recent_calls, 1)      # rows 유지(재스캔 없음)
+        self.assertEqual(self.st.get_golden_calls, 1)  # golden 유지(재조회 없음)
+        self.assertEqual(self.st.feedback_calls, 2)    # feedback 은 재조회
+        serve._agg_bump()                              # 콘텐츠 쓰기 = 전체 무효화(fail-safe 기본)
+        serve.results_rows(team="t")
+        RV._inject_gold([{"hash": "x"}], "rv", "t")
+        self.assertEqual(self.st.recent_calls, 2)      # 이제 rows 도 재스캔
+        self.assertEqual(self.st.get_golden_calls, 2)  # golden 도 재조회
+
+
 if __name__ == "__main__":
     unittest.main()
