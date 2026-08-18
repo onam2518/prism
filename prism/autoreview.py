@@ -4,18 +4,22 @@
 정확/수정 초안 + 근거 + 확신도를 미리 채운다. 사람은 그걸 보며 확정/뒤집기만 한다.
 판정을 자동 커밋하지 않는다 — 확정은 평소 검수와 같은 /feedback 경로(사람 행위)로만.
 
-측정 독립성:
-- **골드 문항은 대상이 아니다.** results_rows(실 콘텐츠)만 보고, 골드는 _inject_gold 로만
-  큐에 섞이므로 애초에 여기 들어오지 않는다(별도 제외 로직 불필요).
-- **심판 모델 ≠ 콘텐츠 생성 모델** 이 원칙(assist_model 과 같은 이유 · 자기 숙제 자기 채점 방지).
-  모델은 config.draft_judge_model() 로 고른다(기본 = 목록 최고 지능). 콘텐츠 모델을 출력에
-  실어 같은 모델이면 화면에서 눈에 띄게 한다.
+대상: **나에게 배정된 대기(YELLOW) 콘텐츠 전부**(아직 내가 판정 안 한 것). 배정이 없으면
+미배정 포함 대기 큐로 폴백한다. 골드 문항은 대상이 아니다(results_rows 실 콘텐츠만 · 골드는
+_inject_gold 로만 큐에 섞이므로 애초에 안 들어옴).
+
+실행은 오래 걸릴 수 있어 **백그라운드 잡 + 진척도/예상 시간**으로 돈다(평가 런과 같은 패턴):
+start() 가 잡을 띄우고 id·total 을 주면, status(id) 를 폴링해 done/total·ETA·부분 결과를 본다.
+
+측정 정직성: 심판 모델 ≠ 콘텐츠 생성 모델 권장(assist_model 과 같은 이유) · 같으면 sameModel 표기.
 
 컴포지션: 스토어·LLM 라우팅·결과 뷰는 serve 가 _SV 로 주입(learnops 관례).
 """
 from __future__ import annotations
 
 import json
+import threading
+import time
 
 from . import config as C
 
@@ -34,6 +38,11 @@ _JUDGE_SYSTEM = (
 )
 
 _ELEM_OK = {"summary", "entities", "intent", "category", "grade"}
+_CAP = 200                      # 한 번에 채점할 최대 콘텐츠(비용·시간 상한 · 넘치면 truncated)
+
+_RUNS: dict = {}                # {id: {running,total,done,started,items,model,scope,error,reviewer}}
+_LOCK = threading.Lock()
+_SEQ = 0
 
 
 def _clip(s, n: int) -> str:
@@ -41,35 +50,57 @@ def _clip(s, n: int) -> str:
     return s if len(s) <= n else s[:n].rstrip() + "…"
 
 
-def _pending_rows(st, team, reviewer, limit: int) -> list:
-    """검수 대기(YELLOW)이면서 이 사람이 아직 판정하지 않은 실 콘텐츠 행. 골드는 실 콘텐츠가
-    아니라 여기 없다. reviewer 는 본인 판정 제외 판별용(이름 또는 uid)."""
+def _fmt_dur(sec: float) -> str:
+    sec = int(max(0, sec))
+    if sec < 60:
+        return f"{sec}초"
+    if sec < 3600:
+        return f"{sec // 60}분 {sec % 60}초"
+    return f"{sec // 3600}시간 {(sec % 3600) // 60}분"
+
+
+def _target_rows(st, team, reviewer: str):
+    """(rows, scope). 배정된 대기(YELLOW) 콘텐츠 중 아직 내가 판정 안 한 것 · 없으면 미배정 포함 큐로 폴백.
+    골드는 실 콘텐츠가 아니라 results_rows 에 없다(별도 제외 불필요)."""
     rows = _SV.results_rows(team=team)
     try:
         fmap = _SV.feedback_map_cached(team)
     except Exception:
         fmap = {}
+    assigned = {}
+    try:
+        if hasattr(st, "assignees"):
+            assigned = st.assignees(team=team) or {}
+    except Exception:
+        assigned = {}
     me = (reviewer or "").strip()
+    mine = {ch for ch, a in assigned.items()
+            if me and me in (a.get("reviewers") or [])}                # 나에게 배정된 해시
+    scope = "assigned" if mine else "all"
+
+    def _pending(r):
+        qm = r.get("quality_meta") or {}
+        if (qm.get("review") or "") != "yellow":
+            return None
+        ch = _SV._row_key(r.get("content_ref") or {})
+        fb = fmap.get(ch) or {}
+        if me and any((v.get("reviewer") == me or v.get("reviewer_id") == me)
+                      for v in (fb.get("verdicts") or [])):             # 이미 내가 판정 = 제외
+            return None
+        return ch
+
     out = []
     for r in rows:
-        qm = r.get("quality_meta") or {}
-        if (qm.get("review") or "") != "yellow":       # 검수 대상(YELLOW)만
+        ch = _pending(r)
+        if ch is None:
             continue
-        ref = r.get("content_ref") or {}
-        ch = _SV._row_key(ref)
-        fb = fmap.get(ch) or {}
-        judged = any((v.get("reviewer") == me or v.get("reviewer_id") == me)
-                     for v in (fb.get("verdicts") or [])) if me else False
-        if judged:                                      # 이미 내가 판정한 건 다시 제안하지 않는다
+        if scope == "assigned" and ch not in mine:                     # 배정 모드: 내 배정만
             continue
         out.append((ch, r))
-        if len(out) >= limit:
-            break
-    return out
+    return out, scope
 
 
 def _judge_one(llm, r: dict) -> dict:
-    """콘텐츠 1건을 심판 모델에 넘겨 정확/수정 초안을 받는다. 실패·형식오류는 낮은 확신도로 표기."""
     ref = r.get("content_ref") or {}
     im = r.get("item_meta") or {}
     qm = r.get("quality_meta") or {}
@@ -95,27 +126,83 @@ def _judge_one(llm, r: dict) -> dict:
             "reason": _clip(obj.get("reason", ""), 200), "elements": elems if verdict == "bad" else []}
 
 
-def suggest(team=None, reviewer: str = "", limit: int = 20) -> dict:
-    """대기 콘텐츠에 AI 초안 판정을 채워 돌려준다(커밋하지 않음). 확정은 화면에서 사람이 /feedback 으로.
-    반환 {ok, model, items:[{hash,title,service,contentModel,sameModel, ai:{verdict,confidence,reason,elements}}], n}."""
+def _run_loop(run_id, targets, llm, judge):
+    for ch, r in targets:
+        with _LOCK:
+            run = _RUNS.get(run_id)
+            if not run or not run["running"]:                          # 취소·정리됨
+                return
+        ai = _judge_one(llm, r)                                        # LLM 호출은 락 밖(느림)
+        cmodel = (r.get("trace") or {}).get("model", "") or ""
+        ref = r.get("content_ref") or {}
+        item = {"hash": ch, "title": ref.get("title", "") or "(제목 없음)",
+                "service": ref.get("displayServiceName", ""),
+                "contentModel": cmodel, "sameModel": bool(cmodel and cmodel == judge), "ai": ai}
+        with _LOCK:
+            run = _RUNS.get(run_id)
+            if not run:
+                return
+            run["items"].append(item)
+            run["done"] += 1
+    with _LOCK:
+        run = _RUNS.get(run_id)
+        if run:
+            run["running"] = False
+
+
+def start(team=None, reviewer: str = "") -> dict:
+    """AI 초안 판정 백그라운드 잡 시작. 반환 {ok, id, total, model, scope}(또는 error)."""
+    global _SEQ
     st = _SV.get_store()
     if not st:
-        return {"ok": False, "error": "store unavailable", "items": [], "n": 0}
+        return {"ok": False, "error": "store unavailable"}
     cfg = C.Config.load()
     judge = C.draft_judge_model(cfg)
     mock = bool(getattr(_SV.Handler, "server_mock", False))
     llm, route = _SV.llm_for_model(judge, mock)
     if llm is None:
         return {"ok": False, "error": "심판 모델을 부를 수 없습니다(%s) · 실험실에서 다른 모델을 고르거나 "
-                                      "라우터 키를 등록하세요" % (route or judge), "model": judge, "items": [], "n": 0}
-    limit = max(1, min(100, int(limit or 20)))
-    items = []
-    for ch, r in _pending_rows(st, team, reviewer, limit):
-        ai = _judge_one(llm, r)
-        cmodel = (r.get("trace") or {}).get("model", "") or ""
-        ref = r.get("content_ref") or {}
-        items.append({"hash": ch, "title": ref.get("title", "") or "(제목 없음)",
-                      "service": ref.get("displayServiceName", ""),
-                      "contentModel": cmodel, "sameModel": bool(cmodel and cmodel == judge),
-                      "ai": ai})
-    return {"ok": True, "model": judge, "items": items, "n": len(items)}
+                                      "라우터 키를 등록하세요" % (route or judge), "model": judge}
+    targets, scope = _target_rows(st, team, reviewer)
+    truncated = max(0, len(targets) - _CAP)
+    targets = targets[:_CAP]
+    with _LOCK:
+        _SEQ += 1
+        run_id = _SEQ
+        _RUNS[run_id] = {"running": True, "total": len(targets), "done": 0, "started": time.time(),
+                         "items": [], "model": judge, "scope": scope, "error": "",
+                         "reviewer": reviewer, "truncated": truncated}
+        for k in [k for k, v in _RUNS.items() if not v["running"] and k < run_id - 20]:   # 오래된 잡 정리
+            _RUNS.pop(k, None)
+    if not targets:
+        with _LOCK:
+            _RUNS[run_id]["running"] = False
+        return {"ok": True, "id": run_id, "total": 0, "model": judge, "scope": scope,
+                "empty": ("배정된" if scope == "assigned" else "대기") + " 검수 대상이 없습니다"}
+    threading.Thread(target=_run_loop, args=(run_id, targets, llm, judge), daemon=True).start()
+    return {"ok": True, "id": run_id, "total": len(targets), "model": judge, "scope": scope,
+            **({"truncated": truncated} if truncated else {})}
+
+
+def status(run_id) -> dict:
+    """폴링: 진척도(done/total·pct·ETA) + 지금까지의 초안(items). 완료면 running=False."""
+    try:
+        rid = int(run_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "잘못된 id"}
+    with _LOCK:
+        run = _RUNS.get(rid)
+        if not run:
+            return {"ok": False, "error": "만료된 실행입니다 · 다시 실행하세요"}
+        done, total, started = run["done"], run["total"], run["started"]
+        snap = list(run["items"])
+        out = {"ok": True, "id": rid, "running": run["running"], "done": done, "total": total,
+               "model": run["model"], "scope": run["scope"], "items": snap,
+               "truncated": run.get("truncated", 0)}
+    out["pct"] = round(done / total, 3) if total else 1.0
+    if run["running"] and done and total:                              # 남은 예상 시간(평균 속도 × 남은 건)
+        per = (time.time() - started) / done
+        out["eta"] = _fmt_dur(per * (total - done))
+    elif not run["running"]:
+        out["elapsed"] = _fmt_dur(time.time() - started)
+    return out

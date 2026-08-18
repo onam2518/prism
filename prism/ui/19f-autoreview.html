@@ -6,7 +6,7 @@
           <div class="panel-hd"><b>AI 초안 판정</b><span class="meta">심판 모델이 대기 콘텐츠를 미리 채점 · 확정은 내가</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
-              <li>대기(YELLOW) 콘텐츠에 <b>별도 심판 모델</b>이 정확/수정 초안 + 근거 + 확신도를 채웁니다 · <b>골드 문항은 대상이 아닙니다</b>(측정 독립성 유지).</li>
+              <li><b>나에게 배정된</b> 대기(YELLOW) 콘텐츠 전부에 <b>별도 심판 모델</b>이 정확/수정 초안 + 근거 + 확신도를 채웁니다(배정이 없으면 대기 큐 전체) · <b>골드 문항은 대상이 아닙니다</b>(측정 독립성 유지).</li>
               <li>자동으로 기록하지 않습니다 · <b>확정/뒤집기는 내가 눌러야</b> 반영됩니다(평소 검수와 같은 경로) · <b>저확신 건은 강조</b>되니 그것만이라도 직접 보세요.</li>
               <li>심판 모델은 <b>콘텐츠를 만든 모델과 다른 고지능 모델</b>을 쓰세요 · 같으면 '자기 채점'이라 신뢰가 낮고 화면에서 '같은 모델' 배지로 표시됩니다.</li>
             </ul>
@@ -14,8 +14,22 @@
             <div class="flexrow" style="align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
               <span class="lbl" style="margin:0">심판 모델</span>
               <x-modelpick key="drj" value="arModel" set="arModel=$v; saveDraftJudgeModel()" options="arModels" width="240px" tip="콘텐츠 만든 모델과 다른 고지능 모델을 쓰세요(자기 채점 방지)" tip-pos="top"></x-modelpick>
-              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="arBusy" x-on:click="arRun()" x-text="arBusy ? '판정 중…' : 'AI 초안 판정 실행'"></button>
+              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="arRunning" x-on:click="arRun()" x-text="arRunning ? '채점 중…' : 'AI 초안 판정 실행'"></button>
               <span class="meta" x-text="arMsg" x-show="arMsg"></span>
+            </div>
+
+            <!-- 진척도 + 예상 시간(백그라운드 잡 폴링) -->
+            <div x-show="arTotal > 0" x-cloak style="margin-bottom:14px;max-width:520px">
+              <div class="flexrow" style="align-items:baseline;gap:10px;font-size:13px">
+                <span class="tnum" style="font-weight:700" x-text="arDone + ' / ' + arTotal + '건'"></span>
+                <span class="meta" x-show="arRunning && arEta" x-text="'예상 ' + arEta + ' 남음'"></span>
+                <span class="meta" x-show="arRunning && !arEta">채점 중…</span>
+                <span class="meta" x-show="!arRunning">완료</span>
+                <span class="meta" style="margin-left:auto" x-text="Math.round((arPct||0)*100) + '%'"></span>
+              </div>
+              <div style="height:8px;border-radius:6px;background:var(--ds-hairline);overflow:hidden;margin-top:6px">
+                <div style="height:100%;background:var(--ds-primary);transition:width .35s ease" x-bind:style="'width:' + Math.round((arPct||0)*100) + '%'"></div>
+              </div>
             </div>
 
             <div x-show="arItems.length" x-cloak class="w-full" style="overflow-x:auto">
