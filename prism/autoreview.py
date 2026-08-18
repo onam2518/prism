@@ -60,34 +60,45 @@ def _fmt_dur(sec: float) -> str:
 
 
 def _target_rows(st, team, reviewer: str):
-    """(rows, scope). 선택은 **실제 검수 큐**(st.review_queue: YELLOW·배정 배타·미검수·split 판정)를
-    그대로 재사용한다 — 직접 results_rows 에서 review=="yellow" 를 보면 supabase 의 큐 판정과
-    미묘하게 갈려 배정 콘텐츠가 통째로 빠졌다(배정 있는데 '대상 없음' · 2026-08-18 실사용).
-    본문·메타는 채점에 필요하니 큐 해시를 results_rows 원본 행에 매칭한다. 골드는 store.review_queue
-    가 넣지 않으므로(주입은 reviewops 계층) 자연히 제외. 배정이 있으면 내 배정분만, 없으면 큐 전체."""
+    """(rows, scope). 배정이 있으면 **나에게 배정된 미검수 콘텐츠 전부**(진척율 '내 담당 N중 M검수'
+    와 같은 정의 = 배정분 중 내가 아직 판정 안 한 것 · YELLOW 여부 무관 — 배정 대부분이 자동 확정
+    G/R 이라 YELLOW 만 보면 몇 건만 잡혔다 · 2026-08-18). 실제 검수가 필요한 YELLOW 를 앞에 둔다.
+    배정이 없으면 오픈 검수 큐(YELLOW)로 폴백. 채점엔 본문·메타가 필요하니 results_rows 원본을 쓴다.
+    골드는 실 콘텐츠가 아니라 results_rows 에 없다(자연 제외)."""
     me = (reviewer or "").strip()
     try:
-        qitems = (st.review_queue(limit=_CAP, only_unreviewed=True, team=team,
-                                  reviewer=me or None, see_all=False)
-                  if hasattr(st, "review_queue") else [])
+        fmap = _SV.feedback_map_cached(team)
     except Exception:
-        qitems = []
-    rows_by = {}
-    for r in _SV.results_rows(team=team):
-        rows_by[_SV._row_key(r.get("content_ref") or {})] = r          # 채점용 본문·메타 원본
+        fmap = {}
+
+    def _judged(ch):
+        fb = fmap.get(ch) or {}
+        return bool(me) and any((v.get("reviewer") == me or v.get("reviewer_id") == me)
+                                for v in (fb.get("verdicts") or []))
+
     try:
         assigned = st.assignees(team=team) or {}
     except Exception:
         assigned = {}
     mine = {ch for ch, a in assigned.items() if me and me in (a.get("reviewers") or [])}
     scope = "assigned" if mine else "all"
+    rows = _SV.results_rows(team=team)
     out = []
-    for q in qitems:
-        ch = q.get("hash")
-        if scope == "assigned" and ch not in mine:                     # 배정 모드: 내 배정만
-            continue
-        r = rows_by.get(ch)
-        if r is not None:                                              # 원본 행이 있어야 본문·메타로 채점
+    if scope == "assigned":
+        rows_by = {_SV._row_key(r.get("content_ref") or {}): r for r in rows}
+        for ch in mine:
+            r = rows_by.get(ch)
+            if r is None or _judged(ch):                               # 원본 없음(옛 콘텐츠)·이미 판정 = 제외
+                continue
+            out.append((ch, r))
+        out.sort(key=lambda cr: 0 if (cr[1].get("quality_meta") or {}).get("review") == "yellow" else 1)
+    else:                                                              # 배정 없음: 오픈 검수 큐(YELLOW)
+        for r in rows:
+            if ((r.get("quality_meta") or {}).get("review") or "") != "yellow":
+                continue
+            ch = _SV._row_key(r.get("content_ref") or {})
+            if _judged(ch):
+                continue
             out.append((ch, r))
     return out, scope
 
