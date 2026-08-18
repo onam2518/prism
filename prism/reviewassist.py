@@ -588,6 +588,19 @@ def _is_me(who, me: str) -> bool:
     return bool(me) and str(who or "").strip() == me
 
 
+def _is_me_row(row, me: str) -> bool:
+    """이 판정/교정 행이 본인 것인가. supabase 는 reviewer=표시명·reviewer_id=uid 로 두 키가
+    다르고 me 는 Bearer uid 라, 두 키 중 하나라도 me 와 같으면 본인이다(serve._fb_public 과
+    동일 규약). sqlite 는 reviewer=이름 단일 키. 한쪽만 보면 본인 판정 제외가 조용히 실패한다."""
+    return _is_me(row.get("reviewer"), me) or _is_me(row.get("reviewer_id"), me)
+
+
+def _who(row) -> str:
+    """검수자 식별을 한 어휘로: supabase reviewer_id(uid) 우선, 없으면 reviewer(표시명).
+    판정 축(verdicts)과 교정 축(patch_rows)이 다른 키를 써 같은 사람을 둘로 세던 것 방지."""
+    return str(row.get("reviewer_id") or row.get("reviewer") or "")
+
+
 def _elem_tally(ch: str, verdicts: list, team, me: str = "") -> tuple:
     """요소별로 **몇 사람이** 지적했나. (라벨→인원, 잘림) · 이름은 세는 데만 쓰고 내보내지 않는다.
 
@@ -599,17 +612,17 @@ def _elem_tally(ch: str, verdicts: list, team, me: str = "") -> tuple:
     지적한 요소는 2명" 같은 앞뒤 안 맞는 세 줄이 나온다."""
     people = {}
     for v in verdicts or []:
-        who = str(v.get("reviewer") or "")
+        who = _who(v)                                 # 판정·교정 두 축을 한 식별 어휘로(uid 우선)
         for e in _elem_ids(v.get("element")):
             people.setdefault(e, set()).add(who)
     st = _SV.get_store() if _SV else None
     if st and hasattr(st, "patch_rows"):
         try:
             for pr in (st.patch_rows(team=team, content_hash=ch) or []):
-                if pr.get("hash") != ch or _is_me(pr.get("reviewer"), me):
+                if pr.get("hash") != ch or _is_me_row(pr, me):   # supabase reviewer_id 도 본다
                     continue
                 for e in _elem_ids(pr.get("element")):
-                    people.setdefault(e, set()).add(str(pr.get("reviewer") or ""))
+                    people.setdefault(e, set()).add(_who(pr))
         except Exception:
             pass
     ranked = sorted(people.items(), key=lambda kv: (-len(kv[1]), kv[0]))
@@ -686,7 +699,7 @@ def reviewer_dissent(hash: str = "", stage: str = "before", team=None, me: str =
     fb = _feedback(team).get(ch) or {}
     # 본인 판정을 빼고 센다. 집계 필드(fb 의 good·bad·n)는 나를 포함한 수라 여기서 쓰지 않고
     # 남은 판정으로 다시 센다 — 한쪽만 빼면 "정확 0명인데 소수 의견 1명" 같은 답이 나온다.
-    verdicts = [v for v in (fb.get("verdicts") or []) if not _is_me(v.get("reviewer"), me)]
+    verdicts = [v for v in (fb.get("verdicts") or []) if not _is_me_row(v, me)]
     if not verdicts:
         return dict(empty)
     good = sum(1 for v in verdicts if str(v.get("verdict") or "") == "good")
@@ -700,7 +713,12 @@ def reviewer_dissent(hash: str = "", stage: str = "before", team=None, me: str =
     picked = "지적한 요소: " + " · ".join(f"{lbl} {cnt}명" for lbl, cnt in elems) \
         if elems else "지적한 요소 없음"
     split = bool(good) and bool(bad)
-    agree = f"의견 갈림 · 소수 의견 {min(good, bad)}명" if split else "의견 일치"
+    if not split:
+        agree = "의견 일치"
+    elif good == bad:                                 # 동수: '소수 의견 N명' 은 사실과 다르다
+        agree = f"의견 갈림 · 동수(정확 {good} · 수정 {bad})"
+    else:
+        agree = f"의견 갈림 · 소수 의견 {min(good, bad)}명"
     return {"lines": [f"판정 {dist}", picked, agree],
             "n": len(verdicts), "split": split, "truncated": cut}
 
