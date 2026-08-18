@@ -26,7 +26,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - 배포: main 최신화 → `git worktree add --detach <경로> origin/main` → 그 안에서 `fly deploy` → `curl https://prism-item.fly.dev/config` 검증(backend supabase · configured true).
 
 ## 운영 모드 (중요 · supabase 전용화됨)
-- **로컬(sqlite 단독) 모드는 UI 상 제거**. 첫 화면 = 로그인/가입.
+- 첫 화면 = 검수자 온보딩 모달. **supabase 운영 모드**는 로그인/가입, **로컬(sqlite) 모드**는 로그인 없이 닉네임·캐릭터만 정하고 시작(`backend!=='supabase'` 분기 · `ui/00-head.html`).
 - 모드 스위치: `PRISM_BACKEND=supabase` + `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` 셋 다 있으면 팀(supabase) 모드(`_supa()`), 아니면 sqlite.
 - 로컬 supabase 검증 시 키파일 참조: `~/.prism_supabase_key`(service_role 키) · `~/.prism_supabase_url`(project URL) — env 로 주입해 기동.
 - **보안 게이트**: supabase 모드에서 `/store` clear·`/config` POST 는 `is_admin_user(uid, team, email)` 관리자 한정(비관리자 403). 관리자 허용목록 `~/.prism_admin_emails`(예: `pete.ryu@axzcorp.com`) 또는 `PRISM_ADMIN_EMAILS`.
@@ -200,8 +200,8 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 `ItemMeta` 키: `summary`(리드문) · `entities` · `intent`(속성 분류) · `content_category` · `topic`/`topic_categories`(3차, 기본 빈값). 메타풀→토픽 전환(`metapool.py→topic.py`, `build_topics`).
 
 ## 코드 구조 (핵심 파일)
-- `prism/serve.py`(~2,900줄) · HTTP 디스패치 + 콘텐츠 실행·검수 라우트(stdlib http.server). 컴포지션 루트(learnops/adminops 에 `_SV` 주입 + 하위호환 별칭).
-- UI 는 2026-07-17 분할: 마크업 `prism/ui/NN-*.html` 24조각(`prism/page.py` 가 합성) · 앱 Alpine JS `prism/vendor/app-NN-*.js` 14조각(로더 `app.js`) + `app.css`. 도메인 지도는 `ARCHITECTURE.md` · 데모는 make_demo 가 재인라인.
+- `prism/serve.py`(~3,400줄) · HTTP 디스패치 + 콘텐츠 실행·검수 라우트(stdlib http.server). 컴포지션 루트(learnops/adminops 에 `_SV` 주입 + 하위호환 별칭).
+- UI 는 2026-07-17 분할: 마크업 `prism/ui/NN-*.html` 23조각(`prism/page.py` 가 합성) · 앱 Alpine JS `prism/vendor/app-NN-*.js` 16조각(로더 `app.js`) + `app.css`. 도메인 지도는 `ARCHITECTURE.md` · 데모는 make_demo 가 재인라인.
 - `prism/learnops.py` · 학습·골든·평가 도메인(learning_batch·eval_golden·소요서·버전 스냅샷). `prism/adminops.py` · 인증 프록시·JWT 캐시·권한 2단계·팀 액션.
 - `prism/store.py`·`supastore.py` · dual-mode 저장소 + golden.
 - `prism/pipeline.py·agents.py·prompts.py·verify.py·schema.py` · 추출 파이프라인. `abtest.py` · 평가 지표(grade_accuracy·reason_jaccard·empty_rate·cost).

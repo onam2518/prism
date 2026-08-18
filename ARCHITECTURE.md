@@ -11,11 +11,12 @@
    │  fetch(JSON) / SSE(/events)
    ▼
 serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) + 컴포지션 루트
-   │         (전역 상태 _STORE/_agg/SSE · 설정/LLM 라우팅 · 각 도메인에 _SV 주입) ≈2.9k줄
+   │         (전역 상태 _STORE/_agg/SSE · 설정/LLM 라우팅 · 각 도메인에 _SV 주입) ≈3.4k줄
    ├─ *ops.py 도메인 모듈(serve 를 _SV 로 역참조 · 아래 표): learnops(학습) adminops(인증)
    │   reviewops(검수·배정·게임화) runops(실행 파이프라인) ingestops(인입·잡)
    │   topicops(토픽) dictops(사전) dashops(대시보드·롤업·리포트) mediaops umops boardops
-   │   crewops(검수 인력 운영·캐파·스케줄)
+   │   crewops(검수 인력 운영·캐파·스케줄) evalops(런 비교·평가) weekops(주간기록) deployops(배포 게이트)
+   │   reviewassist(검수 보조 에이전트 · 트랙 A 도구)
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
    ├─ topic.py / entdict.py / dictionaries.py / usermeta.py / mediaext.py / imagext.py
    │  modelmeta.py(모델 표시 정보 · 이름/제공자/비용 등급 · 선택 드롭다운 원천)
@@ -48,7 +49,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 학습 연동 | `learn-*` 핸들러(실체는 learnops) `apply_gold_answer` `disabled_directives` | /learn-* /golden* /apply-directive |
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
 | 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
-| 사용자 메타 → **umops.py** | `usermeta_*` `build_template_xlsx` | /usermeta* |
+| 사용자 메타 → **umops.py** | `usermeta_*` (입력 서식 `build_template_xlsx` 는 runops) | /usermeta* |
 | 미디어(콘텐츠 추가 탭) → **mediaops.py** | `media_action` `media_s5ab` `media_native` `media_register` | /media-extract /media-register |
 | 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` `check_source_url` | /ingest-* /backfill-urls /check-source |
 | 대시보드·롤업 → **dashops.py** | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` `activity_daily_data` | /dashboard /drill /cost-rollup /fail-rollup /activity-daily |
@@ -119,7 +120,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   위한 관례다. 화면 위에 **떠 있는** 창(플로팅 버튼·대화창·드롭다운)은 자리표 대신
   `x-teleport="body"` 를 쓴다 — 탭 컨테이너 안에 있으면 조상 스타일에 눌리고 탭을 옮길 때
   같이 숨는다(예: 검수 보조 `19e-review-assist.html` · 모델 선택 메뉴 `page.py`).
-- 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 14개 + 로더 `vendor/app.js` 가
+- 동작·상태: `vendor/app-NN-*.js` 프로퍼티 그룹 조각 16개 + 로더 `vendor/app.js` 가
   디스크립터 병합(게터 보존 · 조각 간 `this` 공유). 조각 → 로더 로드 순서는
   `ui/00-head.html` 의 script 태그가 원천. `vendor/mobile.js` = /m 전용(단일 파일).
 - 캐시버스터: 부팅 ID(`_BOOT_ID`)를 `?v=` 로 주입(serve 하단 `_PAGE_V` 재작성).
