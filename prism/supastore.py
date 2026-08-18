@@ -2247,9 +2247,6 @@ class SupabaseStore:
     def clear_feedback(self):
         self._req("DELETE", "feedback", query="content_hash=neq.__none__", prefer="return=minimal")
 
-    def clear(self):
-        self._req("DELETE", "contents", query="hash=neq.__none__", prefer="return=minimal")
-
     def log_usage(self, *a, **k):                  # supabase 모드는 usage 미적재(no-op)
         return None
 

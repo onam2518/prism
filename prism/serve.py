@@ -2043,10 +2043,7 @@ def _p_store(h, body):
         if _supa() and not team:                     # 팀 스코프 없이 전 팀 삭제 금지
             h._send(403, json.dumps({"error": "팀 스코프가 필요합니다"}, ensure_ascii=False), _JSON)
             return None
-        if hasattr(st, "clear_team_contents"):
-            st.clear_team_contents(team)
-        else:
-            st.clear()
+        st.clear_team_contents(team)                 # 두 스토어 공통 · 팀 스코프 삭제(전 팀 무필터 clear 제거)
         _LAST_RESULTS[:] = []                        # 메모리 미러 동반 정리(삭제 후 잔상 방지)
         _agg_bump()
     return {"ok": True, "count": (st.count() if st else 0)}
