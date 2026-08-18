@@ -8,8 +8,6 @@ from __future__ import annotations
 import json
 import re
 
-# 프로필 스키마(식별 정보는 받지 않는다 · 실명/연락처 없음)
-PROFILE_FIELDS = ("user_id", "age_band", "interests", "day_part", "note")
 AGE_BANDS = ("10대", "20대", "30대", "40대", "50대", "60대 이상", "미상")
 DAY_PARTS = ("출퇴근", "주간", "야간", "주말", "수시")
 

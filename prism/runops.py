@@ -290,7 +290,6 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
     store_save([(content, out)], team=team)      # 영속 저장(+미러, 팀 태깅)
     if (fields.get("purpose") or "") == "eval":  # 평가용 지정: 검수 대상에서 제외(홀드아웃)
         try:
-            from .store import content_hash as _chash
             stp = _SV.get_store()
             if stp and hasattr(stp, "set_purpose"):
                 stp.set_purpose([_chash(content)], "eval", team=team)

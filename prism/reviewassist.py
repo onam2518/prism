@@ -885,7 +885,6 @@ ASK_NO_SOURCE = "가지고 있는 자료로는 답할 수 없습니다 · 사전
 # 끝내면 검수자도 관리자도 갈 곳을 모른다(도구 오류를 다음 행동이 보이게 쓰는 것과 같은 이유).
 _NO_MODEL_HEAD = "설정된 검수 보조 모델%s을 부를 수 없습니다"
 _NO_MODEL_TAIL = " · 시스템 설정에서 다시 골라 주세요 · 아래 자료는 그대로 보실 수 있습니다"
-ASK_NO_MODEL = (_NO_MODEL_HEAD % "") + _NO_MODEL_TAIL
 
 
 def _ask_no_model(mid: str) -> str:
