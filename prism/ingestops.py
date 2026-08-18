@@ -287,13 +287,26 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
             _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=msg)
             _jobs_persist()
             return {"ok": False, "error": msg, "headers": list(rows[0].keys()) if rows else []}
-        _INGEST_STATE[sid].update(total=len(contents), done=0, failed=0, last_msg="추출 중…")
         cfg = Config.load()
         llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
         pairs = []
         failed, first_err = 0, ""
-        from .runops import _log_run_ledgers
+        from .runops import _log_run_ledgers, _nonretry_kinds
         from .store import content_hash as _chash
+        # 재추출 재과금 방지: 이미 실행 완료된 기존 해시는 건너뛴다(run_batch 와 동일 · 신규+미실행만).
+        # 자동 인입이 매 폴링마다 '최신 N건'을 통째로 다시 추출하며 LLM 을 재호출하던 것(신규 2건이어도
+        # 98건 재추출 · interval 5분이면 시간당 수천 회 중복 실호출). save_dedup(추출 후)만으론 비용이
+        # 이미 지불된 뒤라 못 막는다.
+        skipped_done = 0
+        st_pre = _SV.get_store()
+        if st_pre is not None and hasattr(st_pre, "existing_hashes"):
+            try:
+                known = st_pre.existing_hashes([_chash(c) for c in contents]) or {}
+                skipped_done = sum(1 for c in contents if known.get(_chash(c)))
+                contents = [c for c in contents if not known.get(_chash(c))]
+            except Exception:
+                pass
+        _INGEST_STATE[sid].update(total=len(contents), done=0, failed=0, last_msg="추출 중…")
         for c in contents:
             try:
                 out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
@@ -301,6 +314,13 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
                 # 비용·실패 원장: 자동 인입도 run_pipeline 을 안 타므로 여기서 직접 기록 —
                 # 종전엔 크레딧이 마른 상태로 매 폴링 402 가 반복돼도 원장·트리아지 신호가 0 이었다.
                 _log_run_ledgers(c, out, mock=llm.mock, content_hash=_chash(c))
+                halt = [] if llm.mock else _nonretry_kinds(out)
+                if halt:                              # 크레딧 소진·인증 실패 = 재시도해도 계속 실패 → 즉시 중단
+                    failed += 1
+                    first_err = first_err or ("비재시도 실패로 중단(" + ",".join(halt) + ")")
+                    _INGEST_STATE[sid]["failed"] = failed
+                    _INGEST_STATE[sid]["done"] += 1
+                    break
             except Exception as e:
                 # 조용한 유실 금지: 삼키기만 하면 화면엔 '제외 0'이 찍혀 유실이 오히려 부정된다.
                 # 계수해서 완료 메시지·실행 큐 배지·last_ok 에 드러내고, 실패 원장에도 남긴다.
@@ -324,6 +344,7 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         # 우리 매핑이 컬럼을 못 잡는지 실행 큐에서 바로 구분된다(조용한 0건 재발 방지).
         from .runops import _img_note, img_coverage
         msg = (f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
+               + (f" · 기존 실행완료 {skipped_done}건 건너뜀" if skipped_done else "")
                + _img_note(contents))
         if failed:
             msg += f" · 추출 실패 {failed}건({first_err})"
