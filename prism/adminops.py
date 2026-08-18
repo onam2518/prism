@@ -80,6 +80,13 @@ def auth_action(data: dict) -> dict:
         if not email or not pw:
             return {"ok": False, "error": "이메일·비밀번호를 입력하세요"}
         if data.get("mode") == "signup":            # 내부 도구: 가입 즉시 확인(admin)
+            # 운영 관리자 허용목록 이메일은 셀프 가입을 막는다. signup 은 email_confirm=True 로
+            # 실제 메일 소유 검증을 건너뛰므로, 아직 계정이 없는 관리자 이메일을 타인이 선점해
+            # 가입하면 그 즉시 운영 관리자(is_sys_admin_user = 허용목록 판정)가 된다(권한 상승).
+            # 관리자 계정은 운영자가 사전 발급한다 · 이미 있으면 로그인 경로를 쓴다.
+            if email.strip().lower() in admin_emails():
+                return {"ok": False, "error": "이 이메일은 셀프 가입 대상이 아닙니다 · "
+                        "계정이 있으면 로그인, 없으면 운영자에게 발급을 요청하세요"}
             try:
                 _auth_post(url, "/auth/v1/admin/users", key,
                            {"email": email, "password": pw, "email_confirm": True})

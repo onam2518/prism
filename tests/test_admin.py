@@ -210,6 +210,34 @@ class TestAdminTiers(unittest.TestCase):
         r = AO.admin_action("boss", "t1", {"action": "set_super", "member": "boss"}, "boss@x.com")
         self.assertIn("생성자의 권한", r.get("error", ""))
 
+    def test_signup_blocked_for_allowlisted_admin_email(self):
+        """셀프 가입 권한 상승 차단: 허용목록(운영 관리자) 이메일은 signup 을 거부한다.
+        signup 은 email_confirm=True 로 메일 소유 검증을 건너뛰므로, 미생성 관리자 이메일을
+        타인이 선점 가입하면 즉시 운영 관리자가 되던 경로를 막는다. 일반 이메일은 정상 가입."""
+        from prism import adminops as AO
+        orig = (AO._supa, AO._auth_post, AO.admin_emails)
+        self.addCleanup(lambda: (setattr(AO, "_supa", orig[0]),
+                                 setattr(AO, "_auth_post", orig[1]),
+                                 setattr(AO, "admin_emails", orig[2])))
+        AO._supa = lambda: ("http://auth.test", "k")
+        AO.admin_emails = lambda: {"ops@corp.com"}
+        calls = []
+
+        def fake_post(url, path, key, body):
+            calls.append(path)
+            return {"access_token": "at", "refresh_token": "rt", "user": {"id": "u1", "email": body.get("email")}}
+        AO._auth_post = fake_post
+        # 허용목록 이메일 대문자·공백 변형도 차단 · admin/users 생성 호출이 나가지 않는다
+        r = AO.auth_action({"mode": "signup", "email": " OPS@corp.com ", "password": "pw123456"})
+        self.assertFalse(r["ok"])
+        self.assertIn("셀프 가입", r["error"])
+        self.assertEqual(calls, [])                              # 계정 생성·로그인 어느 호출도 없음
+        # 일반 이메일은 종전대로 가입(admin/users 생성 후 토큰 발급)
+        r2 = AO.auth_action({"mode": "signup", "email": "user@corp.com", "password": "pw123456"})
+        self.assertTrue(r2["ok"])
+        self.assertTrue(any("admin/users" in p for p in calls))
+        self.assertTrue(any("grant_type=password" in p for p in calls))
+
 
 if __name__ == "__main__":
     unittest.main()
