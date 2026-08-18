@@ -1,4 +1,4 @@
-"""SQLite 영속성 (운영 하드닝). 결과·usage·판정사례를 파일 DB에 적재."""
+"""SQLite 영속성 (운영 하드닝). 결과·usage·검수 피드백을 파일 DB에 적재."""
 from __future__ import annotations
 import json
 import os
@@ -161,10 +161,6 @@ class Store:
         CREATE TABLE IF NOT EXISTS runs(
           run_id TEXT PRIMARY KEY, started_at REAL, finished_at REAL,
           n INTEGER, config TEXT, metrics TEXT);
-        CREATE TABLE IF NOT EXISTS cases(
-          content_hash TEXT PRIMARY KEY, service TEXT, title TEXT,
-          final_grade TEXT, reasons TEXT, source TEXT, manual_review INTEGER,
-          created_at REAL);
         -- 팀 HITL: 검수자별 다중 의견 보존(PK = content_hash + reviewer).
         CREATE TABLE IF NOT EXISTS feedback(
           content_hash TEXT, reviewer TEXT, service TEXT, title TEXT,
@@ -1807,7 +1803,7 @@ class Store:
         week_ago = now - 7 * DAY
         prev_ago = now - 14 * DAY                     # 지난주 창(리그 승급/강등 비교)
         today = int(now // DAY)
-        good = bad = wk_good = wk_bad = pv_good = pv_bad = 0
+        good = bad = wk_good = wk_bad = 0
         board = {}
         days_by = {}
         by_content = {}                               # 합의·불일치 산정용 {hash: [(reviewer, verdict)]}
@@ -1840,13 +1836,9 @@ class Store:
                         b["pv_corr"] += 1
             if t >= week_ago:
                 wk_good += int(g); wk_bad += int(d)
-            else:
-                pv_good += int(g); pv_bad += int(d)
             days_by.setdefault(rv, set()).add(int(t // DAY))
         total = good + bad
         accuracy = round(good / total, 4) if total else 0.0
-        pv_total = pv_good + pv_bad
-        pv_acc = round(pv_good / pv_total, 4) if pv_total else accuracy
 
         # 합의 일치·불일치 참여·합의 대비 일치율(n>=2 콘텐츠만) [von Ahn 2004 · Dawid-Skene 1979 근사]
         cons_match, split_part, agree_hit, agree_n = {}, {}, {}, {}
@@ -1963,7 +1955,7 @@ class Store:
             members = set(board.keys()) | set(chars.keys())  # 검수 이력 없는 팀원도 평균에 포함
             team_progress = round(sum(_prog(m) for m in members) / len(members), 4) if (members and total_targets) else 0.0
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
-                "week_reviews": wk_good + wk_bad, "accuracy_delta": round(accuracy - pv_acc, 4),
+                "week_reviews": wk_good + wk_bad,
                 "target": target, "leaderboard": leaderboard,
                 "total_targets": total_targets, "team_progress": team_progress}
 

@@ -874,8 +874,8 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
 def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) -> dict:
     """정체된 배정을 회수해 여력 있는 사람에게 넘긴다.
 
-    정체 = 배정 후 stale_days 를 넘겼는데 아직 판정하지 않은 슬롯. 배정 시각을 알 수
-    없는 스토어에서는(assignment_times 미지원) 진행률 0% + 미완료 보유를 정체로 본다.
+    정체 = 배정 후 stale_days 를 넘겼는데 아직 판정하지 않은 슬롯(미완료 보유 전제) ·
+    또는 부재·비활성 인원의 슬롯(슬롯 나이 무관 전량 회수).
     한 콘텐츠에 같은 사람이 둘 들어가지 않도록 이관 대상에서 기존 담당은 제외한다.
 
     판정은 **슬롯 단위**다 — 사람 단위로만 보면 10일 묵은 1건 때문에 몇 초 전 배정된
@@ -893,7 +893,6 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
     by_id = {m["id"]: m for m in data["members"]}
     stale_ids = {m["id"] for m in data["members"]
                  if m["load"]["pending"] and (m["load"]["stale_days"] >= float(cfg["stale_days"])
-                                              or (m["load"]["progress"] == 0.0 and not m["available"])
                                               or not m["available"])}
     if not stale_ids:
         return {"ok": True, "moves": [], "n": 0, "reason": "현재 재배정할 정체 배정이 없습니다"}

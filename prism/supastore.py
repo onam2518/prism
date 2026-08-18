@@ -1202,7 +1202,7 @@ class SupabaseStore:
             members = set(names.keys()) | set(board.keys())  # 팀 전원(검수 이력 없어도 평균에 포함)
             team_progress = round(sum(_prog(m) for m in members) / len(members), 4) if (members and total_targets) else 0.0
         return {"accuracy": accuracy, "good": good, "bad": bad, "reviews": total,
-                "week_reviews": wk_good + wk_bad, "accuracy_delta": 0.0,
+                "week_reviews": wk_good + wk_bad,
                 "target": target, "leaderboard": leaderboard,
                 "total_targets": total_targets, "team_progress": team_progress}
 
