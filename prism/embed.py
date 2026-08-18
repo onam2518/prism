@@ -55,9 +55,6 @@ class EmbeddingClient:
         self._cache[key] = vec
         return vec
 
-    def embed_many(self, texts: list, *, is_query=True) -> list:
-        return [self.embed(t, is_query=is_query) for t in texts]
-
     def flush(self):
         if self.cache_path:
             _save_cache(self.cache_path, self._cache)

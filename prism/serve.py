@@ -167,16 +167,8 @@ drafts_for = RV.drafts_for
 review_queue = RV.review_queue
 _inject_gold = RV._inject_gold
 # 검수 인력 운영(HR) 재수출 · 테스트·핸들러 호환
-crew_data = CRW.crew_data
+crew_data = CRW.crew_data                             # weekops._SV.crew_data 가 참조(재수출 유지)
 weekly_records = WKO.weekly_records
-capture_week = WKO.capture
-crew_capacity = CRW.capacity
-crew_profiles = CRW.profiles
-set_crew_profile = CRW.set_profile
-crew_plan_distribute = CRW.plan_distribute
-crew_rebalance = CRW.rebalance
-crew_auto_tick = CRW.auto_tick
-crew_escalate = CRW.escalate_split
 crew_needs_confirm = CRW.needs_confirm
 crew_confirm_week = CRW.confirm_week
 dashboard_data = DS.dashboard_data
