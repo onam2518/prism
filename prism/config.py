@@ -114,6 +114,9 @@ class Config:
     # 검수 보조 에이전트가 답할 때 쓰는 모델(팀 공유 설정 · 시스템 설정 화면에서 관리자가 고른다).
     # 빈 값 = 미설정 = MODEL_DEFAULT. 해석은 아래 assist_model() 한 곳에서만 한다.
     assist_model: str = ""
+    # AI 초안 판정(실험실)이 쓰는 심판 모델. 콘텐츠를 만든 모델과 다른 고지능 모델로 채점해야
+    # '자기 숙제 자기 채점'을 피한다(assist_model 과 같은 이유). 빈 값 = DRAFT_JUDGE_DEFAULT.
+    draft_judge_model: str = ""
 
     # 실행
     concurrency: int = 12
@@ -230,6 +233,28 @@ def assist_model(cfg: "Config | None" = None) -> str:
     name = getattr(c, "assist_model", "")
     name = name.strip() if isinstance(name, str) else ""
     return name if name in assist_model_options() else MODEL_DEFAULT
+
+
+# ── AI 초안 판정 심판 모델(실험실 · assist_model 과 동일 규약) ────────────────
+# 기본은 목록에서 가장 지능이 높은 모델(콘텐츠 채점이라 실행 기본값보다 강한 모델을 쓴다).
+DRAFT_JUDGE_DEFAULT = "claude-opus-5"
+
+
+def draft_judge_model_options() -> list:
+    """AI 초안 판정 심판 모델 후보 = assist 와 같은 원천(modelmeta) · 기본값은 항상 포함."""
+    out = [m for m in (_MM.KNOWN_ROUTER_MODELS or []) if isinstance(m, str) and m.strip()]
+    if DRAFT_JUDGE_DEFAULT not in out:
+        out.append(DRAFT_JUDGE_DEFAULT)
+    return out
+
+
+def draft_judge_model(cfg: "Config | None" = None) -> str:
+    """AI 초안 판정이 쓸 심판 모델 이름. 언제나 바로 쓸 수 있는 이름 하나를 돌려준다
+    (미설정·오타·없어진 모델명 모두 여기서 DRAFT_JUDGE_DEFAULT 로 수렴 · 부르는 쪽 무분기)."""
+    c = cfg if isinstance(cfg, Config) else Config.load()
+    name = getattr(c, "draft_judge_model", "")
+    name = name.strip() if isinstance(name, str) else ""
+    return name if name in draft_judge_model_options() else DRAFT_JUDGE_DEFAULT
 
 
 _FILE_CACHE = {}                 # path → (mtime_ns, size, data)

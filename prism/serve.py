@@ -39,7 +39,8 @@ from . import meta_prompts as MP
 from . import learnops as LO
 from . import adminops as AO
 from .config import (Config, DEFAULT_CONFIG_PATH, MODEL_DEFAULT,
-                     assist_model, assist_model_options)   # 검수 보조 모델: 해석 함수 하나
+                     assist_model, assist_model_options,    # 검수 보조 모델: 해석 함수 하나
+                     draft_judge_model, draft_judge_model_options)   # AI 초안 판정 심판 모델
 
 LO._SV = sys.modules[__name__]      # 학습 도메인에 서버 컴포지션 주입(-m 실행의 __main__ 포함)
 AO._SV = sys.modules[__name__]      # 관리자·인증 도메인에도 동일 주입
@@ -82,6 +83,8 @@ from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외
 PTL._SV = sys.modules[__name__]     # 동일 주입
 from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
 RA._SV = sys.modules[__name__]      # 동일 주입
+from . import autoreview as AR       # AI 초안 판정(실험실 · 운영자 전용) · /autoreview-run
+AR._SV = sys.modules[__name__]      # 동일 주입
 from . import mcpserver as MCPS       # 외부 MCP(트랙 B): 전송은 mcprpc · 도구는 위 prismtools
 IG._SV = sys.modules[__name__]      # 인입·잡 주입(동일)
 BD._SV = sys.modules[__name__]      # 게시판 주입(동일)
@@ -987,6 +990,16 @@ def _assist_candidates(cfg) -> list:
     return out
 
 
+def _draft_judge_candidates(cfg) -> list:
+    """AI 초안 판정(실험실) 심판 모델 드롭다운 = 지금 키로 부를 수 있는 것만 · assist 와 같은 규약."""
+    opts = draft_judge_model_options()
+    out = [m for m in opts if _assist_reachable(m)] or list(opts)
+    cur = draft_judge_model(cfg)
+    if cur not in out:
+        out.insert(0, cur)
+    return out
+
+
 def team_links() -> dict:
     """팀 가이드 링크(reports kind='team_links' 전역 행 · 운영 관리자가 시스템 설정에서 등록).
     내부 위키 URL 은 코드에 두지 않는다(공개 데모 docs/demo.html 유출 방지)."""
@@ -1094,6 +1107,8 @@ def config_status(team=None) -> dict:
         # 싣는다. 화면이 실제로 쓰이는 모델과 다른 이름을 보여 주면 그것부터가 거짓말이다.
         "assistModel": assist_model(cfg),
         "assistModels": _assist_candidates(cfg),
+        "draftJudgeModel": draft_judge_model(cfg),       # AI 초안 판정(실험실) 심판 모델
+        "draftJudgeModels": _draft_judge_candidates(cfg),
         "finalRerunAfterBatch": bool(getattr(cfg, "final_rerun_after_batch", True)),
         "finalGoldCheck": bool(getattr(cfg, "final_gold_check", True)),
         "metaFourCalls": bool(getattr(cfg, "meta_four_calls", True)),
@@ -1154,6 +1169,12 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
         if v and v not in assist_model_options():
             return dict(config_status(team),
                         error="고를 수 없는 모델입니다: %s · 시스템 설정의 목록에서 골라 주세요" % v[:40])
+    if "draft_judge_model" in data:                   # AI 초안 판정 심판 모델도 저장 때 거른다(assist 와 동일 규약)
+        v = data.get("draft_judge_model")
+        v = v.strip() if isinstance(v, str) else ""
+        if v and v not in draft_judge_model_options():
+            return dict(config_status(team),
+                        error="고를 수 없는 모델입니다: %s · 실험실 목록에서 골라 주세요" % v[:40])
     key = (data.get("api_key") or "").strip()
     if key:
         os.environ["UPSTAGE_API_KEY"] = key
@@ -1197,7 +1218,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_misc = (("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
                 or ("fallback_models" in data) or ("batch_budget_usd" in data)
                 or ("final_rerun_after_batch" in data) or ("final_gold_check" in data)
-                or ("assist_model" in data))
+                or ("assist_model" in data) or ("draft_judge_model" in data))
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
             or has_smodels or has_mprompts or has_wrappers or has_callm or has_4c or has_misc):
         cfg = Config.load()
@@ -1291,6 +1312,9 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             # 여기 닿는 값은 위에서 이미 걸러진 것(목록에 있는 이름 또는 빈 값)뿐이다.
             cfg.assist_model = (data.get("assist_model") or "").strip() \
                 if isinstance(data.get("assist_model"), str) else ""
+        if "draft_judge_model" in data:           # AI 초안 판정 심판 모델(빈 값 = 미설정 = 기본값)
+            cfg.draft_judge_model = (data.get("draft_judge_model") or "").strip() \
+                if isinstance(data.get("draft_judge_model"), str) else ""
         if "final_rerun_after_batch" in data:     # 학습 반영 후 미확정분 새 버전 자동 재실행(2층 검수 3-1)
             cfg.final_rerun_after_batch = bool(data.get("final_rerun_after_batch"))
         if "final_gold_check" in data:            # 최종검수 골드 캘리브레이션 출제 켬/끔
@@ -2908,6 +2932,23 @@ def _assist_me(h, d) -> str:
     if _supa():
         return str(h._bearer_uid() or "")
     return str((d or {}).get("reviewer") or "")[:64].strip()
+
+
+def _autoreview_emails() -> set:
+    """AI 초안 판정 허용 이메일(옵션). 설정 시 운영 관리자 중 이 목록만 · 미설정이면 운영 관리자 전체."""
+    raw = os.environ.get("PRISM_AUTOREVIEW_EMAILS", "")
+    return {e.strip().lower() for e in raw.replace("\n", ",").split(",") if e.strip()}
+
+
+@_post_route("/autoreview-run", gate="super")        # AI 초안 판정(실험실) · 운영 관리자 + 옵션 이메일 화이트리스트
+def _p_autoreview_run(h, body):
+    allow = _autoreview_emails()
+    if allow and (h._bearer_email() or "").strip().lower() not in allow:
+        h._send(403, json.dumps({"error": "이 기능은 지정된 계정만 쓸 수 있습니다"}, ensure_ascii=False), _JSON)
+        return None
+    data = json.loads(body or b"{}")
+    return AR.suggest(team=h._req_team(), reviewer=(h._bearer_uid() or h._bearer_email() or ""),
+                      limit=int(data.get("limit") or 20))
 
 
 @_post_route("/assist", gate="team")                 # 내부 검수 보조(트랙 A) 도구 · 팀 콘텐츠·검수 이력을 읽는다
