@@ -513,7 +513,7 @@
                 <div class="text-xs text-muted" style="margin-top:6px" x-text="'기초 의견 · 정확 ' + ((finalCtx.fb&&finalCtx.fb.good)||0) + '개 · 수정 필요 ' + ((finalCtx.fb&&finalCtx.fb.bad)||0) + '개'"></div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
                   <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx.final!=='good'" x-on:click="finalDecide(finalCtx,'good')" data-tip="이 초안 그대로 정답셋 편입 확정 · 다수결보다 우선 (단축키 A)" data-tip-pos="top">편입</button>
-                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx.final!=='good'" x-on:click="openFinalAnswer(finalCtx)" data-tip="요약·분류·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 정답" data-tip-pos="top">고쳐서 편입</button>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="finalCtx.final!=='good' && !(finalCtx.hash||'').startsWith('goldf:')" x-on:click="openFinalAnswer(finalCtx)" data-tip="요약·분류·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 정답" data-tip-pos="top">고쳐서 편입</button>
                   <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="finalCtx.final!=='bad'" x-on:click="finalDecide(finalCtx,'bad')" data-tip="정답셋 승격 금지 (단축키 S)" data-tip-pos="top">제외</button>
                   <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="finalCtx.final" x-on:click="finalDecide(finalCtx,'')">철회</button>
                 </div>
