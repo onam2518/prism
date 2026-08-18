@@ -162,6 +162,37 @@ class TestGetDispatch500(_ServerMixin, unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertIn("items", json.loads(body))
 
+    def test_get_gate_exception_returns_500_not_hang(self):
+        """게이트(_gate_get)가 스토어·인증 일시 오류로 던져도 무응답 종료가 아니라 500 JSON.
+        do_GET 의 게이트 호출이 per-route try 밖이던 자리(감사 P1)."""
+        SV = self.SV
+        orig = SV.Handler._gate_get
+
+        def _boom(h):
+            raise RuntimeError("스토어 일시 오류")
+        SV.Handler._gate_get = _boom
+        self.addCleanup(lambda: setattr(SV.Handler, "_gate_get", orig))
+        code, body = self._req("/raw?limit=2")
+        self.assertEqual(code, 500)
+        self.assertIn("error", json.loads(body))
+        self.assertNotIn("스토어 일시 오류", body)              # 예외 원문은 로그로만
+
+    def test_post_menu_gate_exception_returns_500_not_hang(self):
+        """do_POST 메뉴 게이트가 일시 오류로 던져도 무응답 종료가 아니라 500 JSON.
+        게이트 분기를 확실히 타도록 _menu_for_path 도 강제(메뉴 매핑 여부와 무관하게 경로 검증)."""
+        SV = self.SV
+        orig_menu, orig_allowed = SV._menu_for_path, SV.menu_allowed
+        self.addCleanup(lambda: (setattr(SV, "_menu_for_path", orig_menu),
+                                 setattr(SV, "menu_allowed", orig_allowed)))
+
+        def _boom(*a, **k):
+            raise RuntimeError("역할 조회 실패")
+        SV._menu_for_path = lambda path: "content"            # 게이트 분기 강제
+        SV.menu_allowed = _boom
+        code, body = self._req("/feedback", obj={"hash": "h", "verdict": "good"})
+        self.assertEqual(code, 500)
+        self.assertNotIn("역할 조회 실패", body)              # 예외 원문은 로그로만
+
 
 class TestProxyRateLimitKey(_ServerMixin, unittest.TestCase):
     """감사 idx 1(HTTP 왕복): Fly 프록시 뒤에서 레이트리밋 버킷이 실제 클라이언트 IP 로 갈린다."""
