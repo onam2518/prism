@@ -255,6 +255,7 @@ def _inject_gold_final(items: list, reviewer: str, team=None) -> list:
     rng = _rd.Random(int(_hl.sha1(f"goldf:{reviewer}:{day}".encode()).hexdigest()[:8], 16))
     h, content, exp, om, shown, flip = cands[rng.randrange(len(cands))]
     out = list(items)
+    _gent = exp.get("entities", []) or []
     out.insert(rng.randint(0, len(out)), {
         "hash": f"goldf:{'bad' if flip else 'ok'}:{h}",
         "title": content.get("title", ""), "subtitle": content.get("subtitle", ""),
@@ -262,13 +263,22 @@ def _inject_gold_final(items: list, reviewer: str, team=None) -> list:
         # 원문 링크·모델·버전은 원본 콘텐츠 행에서 읽어 온 값 · 빈 값이면 화면에서
         # 링크·배지가 사라져 그 부재가 골드 표시가 된다(지어내지 않고 가져온다).
         "url": om.get("url", ""), "model": om.get("model", ""), "version": om.get("version"),
+        "images": content.get("image_urls", []) or [],
         "body": content.get("body", ""), "summary": exp.get("summary", ""),
-        "entities": exp.get("entities", []) or [], "intent": exp.get("intent", []) or [],
+        "entities": _gent, "intent": exp.get("intent", []) or [],
+        # 실제 행(_detail_row + _attach_fb)과 같은 키 셋으로 맞춘다 — entities_scored·source_status·
+        # final_by/ts·fb 하위키(note·stage·elems·mine)가 골드에만 없으면 상세에서 확신도 배지가
+        # 골드에서만 사라져 그 부재가 골드 표시가 된다(2026-08-13).
+        "entities_scored": EC.scored_entities(
+            {"entities": _gent, "summary": exp.get("summary", "")},
+            {"title": content.get("title", ""), "body": content.get("body", "")}),
         "category": shown,
         "grade": exp.get("finalGrade", "") or "G",
         "reasons": exp.get("reasons", []) or [],
-        "final_reason": "의견 갈림", "final": "",
-        "fb": {"n": 2, "good": 1, "bad": 1, "verdict": "", "ts": 0}})
+        "source_status": {},
+        "final_reason": "의견 갈림", "final": "", "final_by": "", "final_ts": 0,
+        "fb": {"n": 2, "good": 1, "bad": 1, "verdict": "", "ts": 0,
+               "note": "", "stage": "", "elems": [], "mine": ""}})
     return out
 
 
@@ -966,9 +976,16 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
     # 모양이었다. 가리는 값이 아니라 원본 값을 실어야 구분되지 않는다.
     if reviewer and out:
         gold_items = _SV._inject_gold([], reviewer, team)
+        # 삽입 위치도 큐(_inject_gold)와 동일하게 (검수자, 일자) 시드 랜덤으로. 맨 위(0) 고정은
+        # 위치 자체가 골드 표시가 된다 · 폴링 사이 위치는 시드로 고정돼 흔들리지 않는다(2026-08-13).
+        import hashlib as _ghl
+        import random as _grd
+        _grng = _grd.Random(int(_ghl.sha1(
+            f"{reviewer}:{int(time.time() // 86400)}".encode()).hexdigest()[:8], 16))
         for g in gold_items:
             gcats = g.get("category", []) or []
-            out.insert(0, {"hash": g["hash"], "service": g.get("service", ""), "title": g.get("title", ""),
+            out.insert(_grng.randint(0, min(len(out), 30)),
+                       {"hash": g["hash"], "service": g.get("service", ""), "title": g.get("title", ""),
                            "body": g.get("body", ""), "url": g.get("url", ""), "images": [],
                            "grade": g.get("grade", ""), "reasons": g.get("reasons", []) or [],
                            "category": gcats,
@@ -1106,11 +1123,49 @@ def content_history(content_hash: str, team=None) -> dict:
     return {"ok": True, "items": items[:100], "n": len(items)}
 
 
+def _gold_drafts(ch: str, team=None) -> dict:
+    """골드 합성 해시(gold:/goldf:)의 '결과 비교': 다른 행과 같은 '현재' 1건만 합성한다.
+    빈 결과(초안 0건)는 골드에만 나타나 그 자체가 골드 표시가 되므로 닫는다(2026-08-13).
+    참값 이력은 싣지 않고, 화면 표시값(뒤집힌 카테고리 shown)을 그대로 써 큐 행과 일치시킨다 —
+    flip 은 해시만으로 결정적(int(h,16)%2)이라 검수자 없이 재유도한다."""
+    st = _SV.get_store()
+    parts = ch.split(":")
+    under = parts[2].strip() if len(parts) >= 3 else ""
+    empty = {"ok": True, "items": [], "n": 0}
+    if not (under and st and hasattr(st, "get_golden")):
+        return empty
+    from .store import content_hash as _chash
+    try:
+        rows = _golden_rows(st, team)
+    except Exception:
+        return empty
+    for g in rows:
+        content, exp = g.get("content") or {}, g.get("expected") or {}
+        if _chash(content) != under:
+            continue
+        om = (_gold_origin_meta(st, [under], team) or {}).get(under) or {}
+        cats = exp.get("content_category", []) or []
+        flip = int(under, 16) % 2 == 1
+        shown = gold_wrong_category(cats, under) if flip else [str(c) for c in cats]
+        if shown is None:                             # 뒤집을 수 없으면 참값(출제 자체가 이 경우 제외됨)
+            shown = [str(c) for c in cats]
+        cur = {"label": f"{om.get('model') or '모델 미기록'} · v{int(om.get('version') or 1)} (현재)",
+               "model": om.get("model", ""), "version": int(om.get("version") or 1),
+               "item_meta": {"summary": exp.get("summary", ""), "entities": exp.get("entities", []) or [],
+                             "intent": exp.get("intent", []) or [], "content_category": shown},
+               "quality_meta": {"finalGrade": exp.get("finalGrade", "") or "G",
+                                "reasons": exp.get("reasons", []) or []}}
+        return {"ok": True, "items": [cur], "n": 1}
+    return empty
+
+
 def drafts_for(content_hash: str, team=None) -> dict:
     """결과 비교용 초안 스냅샷: 현재 초안 + (hash, 모델, 버전) 전체 이력(drafts).
     이력 테이블이 비어 있으면(과거 데이터) 재실행 patch_log 의 이전 초안으로 폴백."""
     st = _SV.get_store()
     ch = (content_hash or "").strip()
+    if ch.startswith(("gold:", "goldf:")):            # 골드 합성 해시: 빈 결과가 골드 표시가 되지 않게
+        return _gold_drafts(ch, team)
     cur = None
     for r in _SV.results_rows(team=team):
         if _row_key(r.get("content_ref") or {}) == ch:
