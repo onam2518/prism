@@ -311,7 +311,7 @@ def results_rows(limit: int = 5000, team=None) -> list:
         try:
             if getattr(st, "REMOTE", False):
                 return list(_agg_cached_store(("rows", team, limit), st,
-                                              lambda: st.recent(limit, team=team)))
+                                              lambda: st.recent(limit, team=team), content=True))
             return st.recent(limit, team=team)
         except Exception:
             pass
@@ -322,49 +322,61 @@ def results_rows(limit: int = 5000, team=None) -> list:
 # 쓰기(추출·인입·피드백·동기화) 시 _agg_bump() 로 무효화. ThreadingHTTPServer 다중스레드는
 # GIL 하 dict 원자성으로 충분(중복 계산은 무해). TTL 은 안전망(무효화 누락 대비).
 _AGG_CACHE = {}                      # key -> (expiry_ts, version, value)
-_AGG_VERSION = 0
+_AGG_VERSION = 0                     # 전역 버전(대시보드·아레나·크루·fmap·토픽 등 모든 캐시)
+_CONTENT_VERSION = 0                 # 콘텐츠 캐시(rows·golden·goldorigin·batchseq) 전용 버전 ·
+#                                     피드백 판정 쓰기는 이걸 안 올린다(콘텐츠 행·골든셋·회차 불변)
 _AGG_TTL = 30.0
 
 
-def _agg_bump():
-    """집계 캐시 무효화(버전 증가). 결과·피드백이 바뀌는 모든 경로에서 호출."""
-    global _AGG_VERSION
+def _agg_bump(domain=None):
+    """집계 캐시 무효화(버전 증가). 결과·피드백이 바뀌는 모든 경로에서 호출.
+    기본(domain=None)은 전 캐시 무효화(종전 동작 · 모든 기존 호출·테스트 호환).
+    domain="feedback" 는 콘텐츠 캐시(rows·golden·goldorigin·batchseq)를 건드리지 않는다 —
+    판정 쓰기는 콘텐츠 행·골든셋·학습 회차를 바꾸지 않으므로, 매 판정마다 최대 5000행
+    재스캔·골든 재조회를 반복하던 것을 없앤다. fail-safe: 콘텐츠를 바꾸는 쓰기는 domain 을
+    주지 않아(=None) 종전대로 콘텐츠 캐시까지 무효화된다(태깅 누락이 스테일이 아니라 재계산)."""
+    global _AGG_VERSION, _CONTENT_VERSION
     _AGG_VERSION += 1
+    if domain != "feedback":
+        _CONTENT_VERSION += 1
 
 
 def _agg_sweep(now: float):
-    """만료·구버전 항목 회수. TTL 은 '읽을 때 무시' 판정일 뿐이라 이 정리가 없으면
-    값(전체 스냅샷)이 영구 적재된다 — 키에 사용자 식별자가 들어가는 항목(('crew', team, uid))이
-    있어 항목 수가 사용자 수에 비례한다. _RL_HITS·_TEAM_CACHE·_JWT_CACHE 와 같은 관례."""
+    """만료 항목 회수. TTL 은 '읽을 때 무시' 판정일 뿐이라 이 정리가 없으면 값(전체 스냅샷)이
+    영구 적재된다 — 키에 사용자 식별자가 들어가는 항목(('crew', team, uid))이 있어 항목 수가
+    사용자 수에 비례한다. 버전 스테일 항목은 읽을 때 덮이므로 여기선 만료만 본다(콘텐츠·전역
+    두 버전이 갈려 한 버전으로 스테일을 판정할 수 없다). _RL_HITS·_TEAM_CACHE 와 같은 관례."""
     if len(_AGG_CACHE) <= 256:
         return
     for k, v in list(_AGG_CACHE.items()):
-        if v[0] <= now or v[1] != _AGG_VERSION:
+        if v[0] <= now:
             _AGG_CACHE.pop(k, None)
 
 
-def _agg_cached(key, fn, ttl: float = _AGG_TTL):
+def _agg_cached(key, fn, ttl: float = _AGG_TTL, content: bool = False):
     now = time.time()
+    ver = _CONTENT_VERSION if content else _AGG_VERSION
     hit = _AGG_CACHE.get(key)
-    if hit and hit[0] > now and hit[1] == _AGG_VERSION:
+    if hit and hit[0] > now and hit[1] == ver:
         return hit[2]
     val = fn()
     _agg_sweep(now)
-    _AGG_CACHE[key] = (now + ttl, _AGG_VERSION, val)
+    _AGG_CACHE[key] = (now + ttl, ver, val)
     return val
 
 
-def _agg_cached_store(key, st, fn, ttl: float = _AGG_TTL):
+def _agg_cached_store(key, st, fn, ttl: float = _AGG_TTL, content: bool = False):
     """_agg_cached + 스토어 동일성 검증(약참조). 원본 행처럼 '어느 스토어에서 읽었는지'가
     정합의 전제인 캐시에 쓴다 — 테스트의 _STORE 교체·백엔드 전환 시 즉시 미스가 되어
-    이전 스토어의 행이 유령처럼 남지 않는다."""
+    이전 스토어의 행이 유령처럼 남지 않는다. content=True 는 콘텐츠 버전으로 검증한다."""
     now = time.time()
+    ver = _CONTENT_VERSION if content else _AGG_VERSION
     hit = _AGG_CACHE.get(key)
-    if hit and hit[0] > now and hit[1] == _AGG_VERSION and len(hit) == 4 and hit[3]() is st:
+    if hit and hit[0] > now and hit[1] == ver and len(hit) == 4 and hit[3]() is st:
         return hit[2]
     val = fn()
     _agg_sweep(now)
-    _AGG_CACHE[key] = (now + ttl, _AGG_VERSION, val, weakref.ref(st))
+    _AGG_CACHE[key] = (now + ttl, ver, val, weakref.ref(st))
     return val
 
 
@@ -375,7 +387,7 @@ def _batch_seq_cached(team) -> int:
     def _get():
         stv = get_store()
         return stv.batch_seq(team) if (stv and hasattr(stv, "batch_seq")) else 0
-    return _agg_cached(("batchseq", team), _get)
+    return _agg_cached(("batchseq", team), _get, content=True)
 
 
 def feedback_map_cached(team=None) -> dict:
