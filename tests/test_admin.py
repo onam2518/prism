@@ -62,6 +62,30 @@ class TestAdminTiers(unittest.TestCase):
         SV.apply_config({"api_key": "sk-test-gate"}, allow_key=True)   # 운영 관리자: 반영
         self.assertEqual(os.environ.get("UPSTAGE_API_KEY"), "sk-test-gate")
 
+    def test_apply_config_global_settings_gate_supabase(self):
+        """supabase 모드 전역 설정(추출 모델·프롬프트·인입 소스): 운영 관리자만 반영 · 팀 관리자(비운영)
+        요청은 무시. config.json 이 전역 공유라 팀 관리자가 전역 추출 설정을 바꾸던 권한 상승 차단(감사 ⑤)."""
+        import tempfile
+        import prism.serve as SV
+        from prism import config as C
+        orig_mode, orig_path = SV.backend_mode, C.DEFAULT_CONFIG_PATH
+        SV.backend_mode = lambda: ("supabase", True)
+        C.DEFAULT_CONFIG_PATH = os.path.join(tempfile.mkdtemp(), "config.json")
+        self.addCleanup(lambda: (setattr(SV, "backend_mode", orig_mode),
+                                 setattr(C, "DEFAULT_CONFIG_PATH", orig_path)))
+        # 비운영(팀 관리자): 전역 필드 무시 · 부분 반영 없음
+        SV.apply_config({"model": "evil-model", "system_prompt": "탈취",
+                         "ingest_sources": [{"endpoint": "http://x"}]})
+        cfg = C.Config.load()
+        self.assertNotEqual(cfg.model, "evil-model")
+        self.assertNotEqual(cfg.system_prompt, "탈취")
+        self.assertFalse(cfg.ingest_sources)
+        # 운영 관리자(allow_key=True): 반영
+        SV.apply_config({"model": "good-model", "system_prompt": "정상"}, allow_key=True)
+        cfg2 = C.Config.load()
+        self.assertEqual(cfg2.model, "good-model")
+        self.assertEqual(cfg2.system_prompt, "정상")
+
     def test_rerun_blocked_while_quest_active(self):
         """퀘스트 진행 중 전체 재실행 차단(검수 중 초안 교체 = 합의 오염 방지) · 미실행만은 허용."""
         import prism.serve as SV

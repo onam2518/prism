@@ -1140,8 +1140,17 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     운영(supabase): 키 변경은 운영 관리자(allow_key=True, /config 게이트에서 판정)만 허용.
     비관리자·미인증 요청의 키 필드는 무시(서버 키 보호)."""
     if backend_mode()[0] == "supabase" and not allow_key:
-        data = {k: v for k, v in data.items()
-                if k not in ("api_key", "persist", "forget", "bizrouter_api_key", "timely_api_key")}
+        # 운영(supabase): config.json 은 전역 공유 파일이다. 키뿐 아니라 파괴적/공유 설정
+        # (추출 모델·엔드포인트·프롬프트·인입 소스)도 운영 관리자만 바꾼다 — 팀 관리자(gate="admin"
+        # 통과)가 전역 추출 프롬프트·인입 소스를 바꾸던 권한 상승을 막는다(감사 ⑤). 비관리자·미인증의
+        # 이 필드들은 무시(부분 반영 없음). team_links 는 _p_config 에서 이미 별도 게이트.
+        _ADMIN_ONLY_CFG = (
+            "api_key", "persist", "forget", "bizrouter_api_key", "timely_api_key",
+            "model", "base_url", "reasoning", "system_prompt", "stage_prompts", "stage_models",
+            "model_prompts", "ingest_sources", "fallback_models", "meta_four_calls",
+            "meta_call_models", "family_wrappers", "text_provider", "text_model",
+            "vision_provider", "vision_model", "legal_enabled")
+        data = {k: v for k, v in data.items() if k not in _ADMIN_ONLY_CFG}
     if "assist_model" in data:
         # 검수 보조 모델은 **저장 때도** 거른다. 읽을 때만 거르면 config.json 에는 없는 모델명이
         # 남고 화면에는 기본값이 보인다. 나중에 파일을 열어 본 사람이 "왜 이 모델로 안 돌지"를
