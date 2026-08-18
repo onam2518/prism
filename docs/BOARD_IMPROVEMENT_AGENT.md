@@ -9,7 +9,7 @@
 사람은 올라온 PR 만 검토·머지하면 된다(에이전트는 머지하지 않음).
 
 ## 데이터 소스 (검증 완료)
-- Supabase 프로젝트: **`uycdzslkhkruvmyjcbgj`** (Prism 운영 DB · 2026-08-12 전용 프로젝트 분리 · 구 `yujinhcdbllcnnfvcmfp` 는 백업)
+- Supabase 프로젝트: **`uycdzslkhkruvmyjcbgj`** (Prism 운영 DB · 2026-08-12 전용 프로젝트 분리 · 구 `yujinhcdbllcnnfvcmfp` 는 2026-08-13 완전 삭제)
 - 테이블: **`public.prism_board`**
   - 컬럼: `id, team_key, kind, title, body, author_id, status, created_at`
   - `kind` ∈ {`feature`, `bug`} · `status` ∈ {`open`, `doing`, `done`}

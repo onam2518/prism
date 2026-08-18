@@ -20,9 +20,12 @@ docker run -p 8765:8765 -e UPSTAGE_API_KEY=up_xxx -v prism-data:/data prism
 ## compose (권장 — 팀 서버)
 
 ```bash
-export UPSTAGE_API_KEY=up_xxx          # 또는 .env 파일
+export SUPABASE_URL=https://<프로젝트>.supabase.co   # 필수(compose 기본 = supabase 모드)
+export SUPABASE_SERVICE_KEY=<service_role 키>         # 필수 · 없으면 기동 실패(:? 가드)
+export UPSTAGE_API_KEY=up_xxx                         # 선택 · 또는 .env 파일
 docker compose up -d                   # 백그라운드 상시 가동(restart)
 docker compose logs -f                 # REAP/검수 로그 확인
+# 로컬 SQLite 로 돌리려면 SUPABASE_* 제거 + PRISM_BACKEND=sqlite(docker-compose.yml 주석 참고)
 ```
 
 LAN의 팀원은 `http://<호스트IP>:8765` 로 접속해 같은 검수 큐·피드백을 공유한다.
