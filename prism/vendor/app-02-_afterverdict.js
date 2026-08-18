@@ -277,7 +277,6 @@ window.PRISM_APP_PARTS.push(() => ({
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') id = 'lab';   // 구 품질 딥링크: 법령 탭 제거(2026-08-13) → 실험실 기본 탭으로
         if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
-        if (id === 'spectrum') { id = 'lab'; this.labTab = 'spectrum'; this.spLoad(); }   // 사내 MCP 허브(실험실 탭) 딥링크
         if (id === 'prompt') { id = 'studio'; this.studioTab = 'prompt'; }   // 구 메뉴 · 위젯·URL 호환
         if (id === 'topic') { id = 'studio'; this.studioTab = 'topic'; }     // 실험실 시절 딥링크 호환
         if (id === 'entdict') { id = 'dict'; this.dictTab = 'entity'; }      // 별도 메뉴 시절 딥링크 호환

@@ -92,9 +92,6 @@ ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
 WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
 MK._SV = sys.modules[__name__]      # MCP 파트너 키 주입(동일 · 전송 /mcp 는 mcpkeys 만 부른다)
 
-# 스펙트럼(실험실 · 사내 MCP 허브): serve 상태를 쓰지 않는 자립 모듈이라 _SV 주입이 없다.
-from . import spectrumops as SPO
-
 _run_id = RN._run_id
 _build_id = RN._build_id
 _save_drafts = RN._save_drafts
@@ -518,7 +515,7 @@ _MENU_POST_ROUTES = (
     ("/builder", "studio"), ("/deployment", "studio"),
     # 미디어는 콘텐츠 추가 탭으로 승격(2026-08-13) · 인입 계열과 같은 content 메뉴로 게이트
     ("/media-extract", "content"), ("/media-register", "content"),
-    ("/usermeta", "lab"), ("/spectrum", "lab"),
+    ("/usermeta", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
     ("/ingest-run", "content"), ("/rerun", "content"), ("/run", "content"), ("/store", "content"),
@@ -529,9 +526,7 @@ _MENU_POST_ROUTES = (
 # 접두 매칭의 예외: 메뉴 권한과 무관한 '본인 것' 액션. /crew-confirm 은 전 검수자가
 # 자기 일정을 확인하는 경로인데 접두가 /crew 라 검수운영(슈퍼관리자 전용) 메뉴 권한에
 # 걸려 일반 검수자가 확인 자체를 못 했다(2026-07-28 실사용 신고).
-# /spectrum-gw 는 접두가 /spectrum 이라 실험실 메뉴 권한에 걸린다. 관문은 로그인이 아니라
-# 접속 키로만 판단하는 공개 경로이므로(외부 MCP 클라이언트가 부른다) 반드시 예외로 둔다.
-_MENU_POST_EXEMPT = ("/crew-confirm", "/spectrum-gw")
+_MENU_POST_EXEMPT = ("/crew-confirm",)
 
 
 def _menu_for_path(path: str):
@@ -1423,8 +1418,7 @@ _FETCH_MAX = 16 * 1024 * 1024           # 인입 아웃바운드 응답 크기 �
 
 _PUBLIC_GET = {"/", "/m", "/config", "/boot", "/favicon.ico", "/template.xlsx", "/template.csv",
                "/usermeta-template.csv", "/usermeta-profile-template.csv",
-               "/api/v1/prompt",   # 배포 프롬프트 서빙(자체 Bearer 키 검증 · deployops)
-               "/spectrum-gw"}     # 스펙트럼 관문 안내(무인증 · 실제 호출은 접속 키 검증)
+               "/api/v1/prompt"}   # 배포 프롬프트 서빙(자체 Bearer 키 검증 · deployops)
 
 # 팀 없이도 접근 가능한 인증 GET(전역 참조·관리자 판정 · 팀 콘텐츠 데이터 아님).
 # 그 외 데이터 GET 은 supabase 모드에서 팀 소속을 요구(team=None 전 팀 폴백 격리 붕괴 차단).
@@ -1951,14 +1945,6 @@ def _g_usermeta_logviewer(h, q):
     return PCK.logviewer_data(team=h._req_team())
 
 
-@_get_route("/spectrum-gw")                          # 스펙트럼 관문 안내(공개 · 붙는 방법 한 줄)
-def _g_spectrum_gw(h, q):
-    return SPO.gateway_info()
-
-
-@_get_route("/spectrum")                             # 스펙트럼(실험실): 카탈로그·내 키·사용 기록·지표
-def _g_spectrum(h, q):
-    return SPO.spectrum_data(h._bearer_email() or h._bearer_uid() or "local")
 
 
 @_get_route("/board")                                # 게시판: 기능개선·오류 제보(팀 스코프)
@@ -2837,28 +2823,6 @@ def _p_usermeta(h, body):
     return usermeta_data(logs, name, team=h._req_team())
 
 
-@_post_route("/spectrum-gw")                         # 스펙트럼 관문(공개): 로그인 대신 접속 키로만 판단
-def _p_spectrum_gw(h, body):                         # MCP(JSON-RPC) · 단순 REST 두 갈래를 모듈이 구분
-    # 로그인·팀·메뉴 게이트가 전부 면제된 무인증 경로 · 키 대입과 상태 파일 쓰기 증폭 억제
-    # (/auth·/check-source 와 같은 패턴)
-    #
-    # 최소 간격을 두지 않는다. 종전 0.1초는 "MCP 클라이언트의 정상 연사에는 여유 있다" 는
-    # 전제였는데 틀렸다 — 접속 절차(initialize → notifications/initialized → tools/list)가
-    # 한 연결에서 수십 ms 안에 끝나기 때문이다. 2026-08-12 운영 실측: 연결을 재사용해 보내면
-    # 1회 401(0.127s) → 2회 429(41ms 뒤) → 3회 429. 브라우저로 눌러 보는 시연은 간격이
-    # 넉넉해 통과하지만 `claude mcp add` 로 붙는 실제 클라이언트는 접속 단계에서 끊긴다.
-    # 남용 억제는 분당 총량이 맡는다(키 대입은 한 연결에서도 분당 120회를 넘길 수 없다).
-    if rate_limited("spgw:" + _client_ip(h), min_interval=0, per_min=120):
-        h._send(429, json.dumps({"error": "요청이 너무 잦습니다 · 잠시 후 다시 시도하세요"},
-                                ensure_ascii=False), _JSON)
-        return None
-    status, out = SPO.gateway_request(h.headers.get("Authorization") or "", body)
-    if out is None:                                  # MCP 알림(notifications/*) = 본문 없는 202
-        h._send(202, b"", _JSON)
-    else:
-        h._send(status, json.dumps(out, ensure_ascii=False), _JSON)
-    return None
-
 
 @_post_route("/mcp")                                 # 프리즘 MCP(트랙 B · 외부): 파트너 키로만 판단
 def _p_mcp(h, body):                                 # 무세션 JSON-RPC · 도구는 prismtools 단일 원천
@@ -2879,11 +2843,6 @@ def _p_mcp(h, body):                                 # 무세션 JSON-RPC · 도
         h._send(status, json.dumps(out, ensure_ascii=False), _JSON)
     return None
 
-
-@_post_route("/spectrum", gate="team")               # 스펙트럼(실험실): 키 발급·폐기 · 관문 체험 · 시연 초기화
-def _p_spectrum(h, body):
-    return SPO.spectrum_action(json.loads(body or b"{}"),
-                               h._bearer_email() or h._bearer_uid() or "local")
 
 
 @_post_route("/run")                                 # 추출 실행(단건 /run · 배치 /run-batch) = 콘텐츠 인입

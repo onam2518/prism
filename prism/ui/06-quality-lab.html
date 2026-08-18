@@ -1,5 +1,5 @@
       <!-- ═══ 모듈: 실험실(관리자) · 지금 테스트하지 않는 탐구 요소 ═══
-           탭 골격(공통): 뒤따르는 조각(10-usermeta·19c-spectrum·19d-mcp-keys)이 이 탭 바에 의존 ·
+           탭 골격(공통): 뒤따르는 조각(10-usermeta·19d-mcp-keys)이 이 탭 바에 의존 ·
            파일명 번호가 10 미만이어야 탭 바가 패널 위에 렌더된다 -->
       <!-- 법령 탭은 제거(2026-08-13 · 무사용) · 법령 필터 토글은 시스템 설정으로 이동 -->
       <!-- 미디어 탭은 콘텐츠 관리 › 콘텐츠 추가로 승격(03-run.html) · 콘텐츠 에이전트는 폐기 -->
@@ -7,7 +7,6 @@
         <div class="w-full" style="margin-bottom:10px">
         <div class="evaltabs">
           <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
-          <button type="button" x-bind:class="labTab==='spectrum'?'sel':''" x-on:click="labTab='spectrum'; spLoad()">스펙트럼</button>
           <button type="button" x-bind:class="labTab==='mcp'?'sel':''" x-on:click="labTab='mcp'; mkLoad()">MCP 키</button>
         </div>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>

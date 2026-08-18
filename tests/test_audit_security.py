@@ -550,65 +550,14 @@ class TestAuthErrorHygiene(unittest.TestCase):
         self.assertNotIn("supa-internal", r["error"])
 
 
-# ── O2: 스펙트럼 관문 무인증 실패 트래픽 ─────────────────────────────────────
-class TestSpectrumGatewayAbuse(unittest.TestCase):
-    """[O2] 인증 실패 요청마다 상태 파일 전량 재기록 + 사용 기록 적재 → 감사 기록 전량 소실."""
 
-    def setUp(self):
-        from prism import spectrumops as spo
-        self.spo = spo
-        self._tmp = tempfile.mkdtemp()
-        self._old = os.environ.get("PRISM_SPECTRUM_PATH")
-        os.environ["PRISM_SPECTRUM_PATH"] = os.path.join(self._tmp, "spectrum.json")
+class TestMcpGatewayRateLimit(SupaGateMixin, unittest.TestCase):
+    """[O2-2] 무인증 공개 경로에 IP 상한이 없으면 실패 트래픽이 무제한이 된다.
 
-    def tearDown(self):
-        if self._old is None:
-            os.environ.pop("PRISM_SPECTRUM_PATH", None)
-        else:
-            os.environ["PRISM_SPECTRUM_PATH"] = self._old
-
-    def test_failed_auth_neither_records_nor_rewrites_state(self):
-        spo = self.spo
-        k = spo.issue_key("alice@t")
-        for _ in range(3):
-            spo.call("list_tables", key=k["key"])
-        path = spo.state_path()
-        before = (os.path.getmtime(path), os.path.getsize(path))
-        time.sleep(0.01)
-        for i in range(600):
-            status, _ = spo.call("list_tables", key="spk_" + f"{i:032x}")
-            self.assertEqual(status, 401)
-        self.assertEqual((os.path.getmtime(path), os.path.getsize(path)), before)
-        data = spo.spectrum_data("alice@t")
-        alice = [u for u in data["usage"] if u.get("user") == "alice@t"]
-        self.assertEqual(len(alice), 3)               # 실사용 감사 기록 보존
-        self.assertEqual(data["metrics"]["failRate"], 0.0)
-        self.assertEqual(data["metrics"]["weekCalls"], 3)
-
-    def test_mcp_failed_auth_also_silent(self):
-        spo = self.spo
-        spo.issue_key("bob@t")
-        path = spo.state_path()
-        before = os.path.getsize(path)
-        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode()
-        status, _out = spo.gateway_request("Bearer spk_" + "f" * 32, body)
-        self.assertEqual(status, 401)
-        self.assertEqual(os.path.getsize(path), before)
-
-    def test_success_records_survive_failure_flood(self):
-        """실패 기록은 성공 기록과 다른 버킷에 쌓인다 — 상한을 넘겨도 실사용 기록을 밀어내지 않는다."""
-        spo = self.spo
-        k = spo.issue_key("carol@t")
-        spo.call("list_tables", key=k["key"])
-        for _ in range(spo.USAGE_CAP + 20):           # 키는 맞고 권한이 없는 실패(기록 대상)
-            spo.call("query_search_terms", key=k["key"])
-        st = spo._load()
-        self.assertEqual(len(st["usage"]), 1)         # 성공 기록은 실패 폭주에 밀려나지 않는다
-        self.assertEqual(len(st["usage_fail"]), spo.USAGE_CAP)   # 실패는 자기 버킷에서만 잘린다
-
-
-class TestSpectrumGatewayRateLimit(SupaGateMixin, unittest.TestCase):
-    """[O2-2] 무인증 관문에 IP 상한이 없어 실패 트래픽이 무제한이었다."""
+    이 클래스는 2026-08-13 스펙트럼 관문 제거 때 그쪽에서 옮겨 왔다. 관문은 사라졌지만
+    거기서 배운 것은 `/mcp` 에 그대로 적용된다. **옮겨 오지 않았으면 그 교훈이 모듈과
+    함께 사라졌을 것이다** — 프리즘의 무인증 MCP 표면은 이제 `/mcp` 하나뿐이고,
+    이 파일이 그 표면의 상한 규칙을 지키는 유일한 자리다. 지우지 말 것."""
 
     @classmethod
     def setUpClass(cls):
@@ -618,24 +567,27 @@ class TestSpectrumGatewayRateLimit(SupaGateMixin, unittest.TestCase):
     def tearDownClass(cls):
         cls._halt()
 
+    def _hit(self, method="tools/list", i=1):
+        return self._call("/mcp", {"jsonrpc": "2.0", "id": i, "method": method, "params": {}})[0]
+
     def test_rate_limited(self):
-        codes = [self._call("/spectrum-gw", {"tool": "list_tables", "key": "spk_x"})[0]
-                 for _ in range(140)]
+        """총량 상한은 있어야 한다. 키 대입 스프레이를 IP 로 억제하는 몫이다."""
+        codes = [self._hit() for _ in range(260)]
         self.assertIn(429, codes)
 
-    def test_mcp_handshake_is_not_rate_limited(self):
-        """MCP 접속 절차는 한 연결에서 연달아 나간다 — 최소 간격을 두면 정상 클라이언트가 끊긴다.
+    def test_handshake_is_not_rate_limited(self):
+        """MCP 접속 절차는 한 연결에서 연달아 나간다. 최소 간격을 두면 정상 클라이언트가 끊긴다.
 
-        2026-08-12 운영 실측(연결 재사용): 1회 401(0.127s) → 2회 429(41ms 뒤) → 3회 429.
-        종전 min_interval=0.1 은 "정상 연사에는 여유 있다" 는 전제였는데, 접속 절차
-        (initialize → notifications/initialized → tools/list)가 수십 ms 안에 끝나 걸렸다.
-        브라우저 시연은 간격이 넉넉해 통과하므로 눈으로는 안 보인다.
+        2026-08-12 운영 실측(연결 재사용 · 당시 스펙트럼 관문):
+        1회 401(0.127s) → 2회 429(41ms 뒤) → 3회 429. `min_interval=0.1` 은
+        "정상 연사에는 여유 있다" 는 전제였는데, 접속 절차(initialize →
+        notifications/initialized → tools/list)가 수십 ms 안에 끝나 그 전제가 틀렸다.
+        브라우저로 눌러 보는 시연은 간격이 넉넉해 통과하므로 눈으로는 안 보인다.
 
-        상한 자체를 없애자는 게 아니다. 분당 총량(per_min)은 그대로여서 위 test_rate_limited
-        가 계속 지킨다. 여기서 막는 것은 **간격 규칙의 부활**뿐이다."""
-        codes = [self._call("/spectrum-gw",
-                            {"jsonrpc": "2.0", "id": i, "method": m, "params": {}})[0]
-                 for i, m in enumerate(("initialize", "notifications/initialized", "tools/list"))]
+        상한 자체를 없애자는 게 아니다. 분당 총량은 위 test_rate_limited 가 계속 지킨다.
+        여기서 막는 것은 **간격 규칙의 부활**뿐이다."""
+        codes = [self._hit(m, i) for i, m in
+                 enumerate(("initialize", "notifications/initialized", "tools/list"))]
         self.assertNotIn(429, codes, f"접속 절차가 상한에 걸렸다: {codes}")
 
 
