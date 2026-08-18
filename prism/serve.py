@@ -3094,7 +3094,12 @@ class Handler(BaseHTTPRequestHandler):
         return team_of(uid) is not None
 
     def do_GET(self):
-        if not self._gate_get():
+        try:                                         # 게이트(_team_ok→team_of·인증)가 스토어·인증
+            gate_ok = self._gate_get()               # 일시 오류로 던지면 무응답 연결 종료로 새던 것 →
+        except Exception as e:                        # per-route try 밖이라 못 잡히던 자리 · 500 JSON 으로
+            self._fail_500("GET gate " + self.path.split("?", 1)[0], e)
+            return
+        if not gate_ok:
             self._send(401, json.dumps({"error": "로그인이 필요합니다"}, ensure_ascii=False), _JSON)
             return
         p = self.path.split("?", 1)[0]
@@ -3299,7 +3304,13 @@ class Handler(BaseHTTPRequestHandler):
 
         # 메뉴별 권한(생성자 설정) 백엔드 강제: 숨긴 메뉴의 액션은 서버가 차단(프론트 숨김만으론 보안 아님)
         _menu = _menu_for_path(self.path)
-        if _menu and not menu_allowed(self._bearer_uid(), self._req_team(), self._bearer_email(), _menu):
+        try:                                         # 게이트(인증·team_of·역할 조회)가 일시 오류로
+            _blocked = bool(_menu) and not menu_allowed(   # 던져도 per-route try 밖이라 무응답 종료로
+                self._bearer_uid(), self._req_team(), self._bearer_email(), _menu)  # 새던 자리 · 500 JSON
+        except Exception as e:
+            self._fail_500("POST gate " + self.path.split("?", 1)[0], e)
+            return
+        if _blocked:
             self._send(403, json.dumps({"error": "이 메뉴에 대한 권한이 없습니다"}, ensure_ascii=False), _JSON)
             return
 
