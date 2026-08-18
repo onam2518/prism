@@ -1019,5 +1019,60 @@ class TestRealStoreRoundTrip(unittest.TestCase):
             self.assertNotIn(leaked, str(r), leaked)
 
 
+def _fbx(*triples):
+    """supabase 셰이프 feedback 한 건: verdicts 항목이 reviewer(표시명)·reviewer_id(uid) 둘 다.
+    triples=(display_name, uid, verdict)."""
+    vs = [{"reviewer": nm, "reviewer_id": uid, "verdict": v, "note": "", "ts": 1.0 + i}
+          for i, (nm, uid, v) in enumerate(triples)]
+    g = sum(1 for x in vs if x["verdict"] == "good")
+    b = sum(1 for x in vs if x["verdict"] == "bad")
+    return {"verdicts": vs, "good": g, "bad": b, "n": len(vs),
+            "consensus": "good" if g > b else "bad" if b > g else "split",
+            "agree": g == 0 or b == 0, "verdict": "", "stage": "", "note": ""}
+
+
+class TestDissentUidNormalization(Base):
+    """supabase 모드: me 는 Bearer uid 인데 verdicts 는 reviewer=표시명·reviewer_id=uid 라
+    본인 판정 제외가 uid 대 표시명 불일치로 실패하던 것(감사 P1). 골드 빈 결과가 곧 골드
+    표시로 새던 자리이기도 하다."""
+
+    def test_my_verdict_excluded_by_uid_in_supabase_shape(self):
+        self.install([_row(H1)], feedback={H1: _fbx(
+            ("복실", "uid-me", "good"),                # 나(표시명은 복실, uid 로 로그인)
+            ("딱지", "uid-2", "bad"),
+            ("대식", "uid-3", "bad"))})
+        r = RA.reviewer_dissent(hash=H1, stage="after", team=TEAM, me="uid-me")
+        self.assertEqual(r["n"], 2)                    # 내 표 제외 → 남 2명
+        self.assertFalse(r["split"])                   # 남은 둘 다 bad = 일치(내 good 이 섞이면 split 오판)
+        self.assertIn("수정 필요 2명", r["lines"][0])
+
+    def test_only_my_verdict_becomes_empty_like_gold(self):
+        """나만 판정한 콘텐츠는 빈 결과가 되어 골드의 빈 결과와 같은 모양이 된다(누수 차단)."""
+        self.install([_row(H1)], feedback={H1: _fbx(("복실", "uid-me", "good"))})
+        r = RA.reviewer_dissent(hash=H1, stage="after", team=TEAM, me="uid-me")
+        self.assertEqual(r["lines"], [])
+        self.assertEqual(r["n"], 0)
+
+    def test_tie_is_labeled_even(self):
+        """동수는 '소수 의견 N명'(사실과 다름)이 아니라 '동수'로 표기."""
+        self.install([_row(H1)], feedback={H1: _fbx(
+            ("복실", "uid-me", "good"),                # 나 = 제외
+            ("딱지", "uid-2", "good"),
+            ("대식", "uid-3", "bad"))})
+        r = RA.reviewer_dissent(hash=H1, stage="after", team=TEAM, me="uid-me")
+        self.assertTrue(r["split"])
+        self.assertIn("동수", r["lines"][2])
+
+    def test_elem_tally_counts_a_person_once_across_axes(self):
+        """같은 사람이 판정(verdicts)과 교정(patch_rows)에 다른 키로 나타나도 한 명으로 센다."""
+        self.install([_row(H1)],
+                     feedback={H1: _fbx(("딱지", "uid-2", "bad"), ("대식", "uid-3", "bad"))},
+                     patches=[{"hash": H1, "reviewer": "딱지", "reviewer_id": "uid-2",
+                               "element": "ad", "before": {}, "after": {}, "ts": 9.0}])
+        r = RA.reviewer_dissent(hash=H1, stage="after", team=TEAM, me="uid-me")
+        # uid-2 는 판정·교정 양쪽에 있으나 한 명 · 지적 요소 인원이 2를 넘지 않는다
+        self.assertLessEqual(r["n"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
