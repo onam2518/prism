@@ -235,5 +235,21 @@ class TestSimilarityAndAffinity(unittest.TestCase):
         self.assertIn("entity_persona", data["aggregate"])
 
 
+class TestNumericParsing(unittest.TestCase):
+    """행동 로그의 dwell_sec·scroll_pct 가 빈 셀·소수점 문자열이어도 모듈이 죽지 않는다.
+    실데이터 jsonl 에 ''·'3.5' 가 섞여 int() 직접 변환이 사용자 메타 전체를 오류로
+    고착시키던 버그(저장이 파싱보다 앞서 재로딩마다 재발)의 회귀 가드."""
+    def test_bad_numeric_fields_do_not_crash(self):
+        contents = [_content("정치", title="a"), _content("경제", title="b")]
+        logs = [_log("u1", 0, 0, 9, dwell="", scroll=""),       # 빈 셀
+                _log("u1", 1, 0, 10, dwell="3.5", scroll="80.0"),  # 소수점 문자열
+                _log("u1", 0, 0, 11, dwell="oops", scroll=None)]   # 잘못된 값·None
+        data = _build(contents, logs)                            # 예외 없이 완료되어야 한다
+        u = _user(data, "u1")
+        dwells = [b["dwell_sec"] for b in u["behavior_log"]]
+        self.assertEqual(dwells, [0, 3, 0])                      # ''→0 · '3.5'→3 · 'oops'→0
+        self.assertTrue(all(isinstance(b["scroll_pct"], int) for b in u["behavior_log"]))
+
+
 if __name__ == "__main__":
     unittest.main()

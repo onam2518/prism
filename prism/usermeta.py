@@ -72,6 +72,16 @@ def _t1(v):
     return tier1_remap(v)
 
 
+def _num(x, default=0):
+    """행동 로그의 숫자 필드를 관대하게 정수화한다(빈 셀·소수점 문자열·잘못된 값도 예외 없이).
+    실데이터 jsonl 은 dwell_sec·scroll_pct 가 ''·'3.5' 로 들어오기도 해 int() 직접 변환이
+    한 행 때문에 사용자 메타 모듈 전체를 오류로 고착시켰다(저장이 파싱보다 앞서 재로딩마다 재발)."""
+    try:
+        return int(float(x))
+    except (TypeError, ValueError):
+        return default
+
+
 def build_user_meta(results_path: str, n_users: int = 200,
                     logs_path: str = None, demo: bool = False, profiles: dict = None) -> dict:
     """logs_path 있으면 실데이터, demo=True 면 합성 목업, 기본은 빈 상태(개념·명세만).
@@ -168,7 +178,7 @@ def _time_features(evs):
         else:
             b = "야간"
         buckets[b] += 1
-        dw = int(lg.get("dwell_sec", 0) or 0)
+        dw = _num(lg.get("dwell_sec"))              # 원시 로그: 빈 셀·소수점 문자열 관대 처리
         if wd < 5 and 9 <= h < 18:
             day_dw.append(dw)
         elif h >= 20 or h < 6:
@@ -323,7 +333,7 @@ def build_from_logs(results_path: str, logs_path: str, profiles: dict = None) ->
         viewed = list({it["idx"]: it for it, _ in evs}.values())
         logs = [{"seq": j + 1, "content_idx": it["idx"], "title": it["title"][:30],
                  "service": it["service"], "event": lg.get("event", "impression"),
-                 "dwell_sec": int(lg.get("dwell_sec", 0)), "scroll_pct": int(lg.get("scroll_pct", 0)),
+                 "dwell_sec": _num(lg.get("dwell_sec")), "scroll_pct": _num(lg.get("scroll_pct")),
                  "cat": (it["entity_categories"][0] if it["entity_categories"] else "기타"),
                  "intent": (it["intent_categories"][0] if it["intent_categories"] else "기타")}
                 for j, (it, lg) in enumerate(evs)]
