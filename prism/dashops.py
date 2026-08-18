@@ -343,8 +343,13 @@ def drill_contents(kind: str, value: str, team=None, reviewer: str = "") -> dict
         else:
             hit = False
         if hit:
-            out.append(_SV._detail_row(r))
-    return {"ok": True, "kind": kind, "value": value, "items": _SV._attach_fb(out, team, reviewer), "n": len(out)}
+            out.append(r)                             # 상한 넘는 행은 _detail_row(본문·entities_scored 재계산) 생략
+    n = len(out)
+    DRILL_CAP = 500                                   # 무상한 응답(수십 MB·행당 CPU) 방지 · 총계 n 은 별도로 싣는다
+    rows_capped = [_SV._detail_row(r) for r in out[:DRILL_CAP]]
+    return {"ok": True, "kind": kind, "value": value,
+            "items": _SV._attach_fb(rows_capped, team, reviewer), "n": n,
+            **({"truncated": n - DRILL_CAP} if n > DRILL_CAP else {})}
 
 
 # CSV 내보내기 상한(행). 결과 행에는 본문까지 실려 있고 전량을 메모리에 올려 한 번에
