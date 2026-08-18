@@ -61,10 +61,6 @@ window.PRISM_APP_PARTS.push(() => ({
       lvTally(v) { return ((this.lv && this.lv.logs) || []).filter((l) => l.verdict === v).length; },
       // 판정 근거 규칙 항목(R2 수용 기준) · 같은 규칙이 여러 번 걸리면 한 번만 보여 준다
       lvRules(l) { return [...new Set(((l && l.violations) || []).map((v) => v[3]).filter(Boolean))]; },
-      // 필드 상세: 필수인데 값이 없는 필드를 시각 구분(R3 수용 기준)
-      lvFieldBad(l, f) {
-        return f[2] === '필수' && ((l.violations || []).some((v) => v[2] === f[0] && v[0] === 'fail'));
-      },
       lvChecklist() {
         const items = (this.lv && this.lv.checklist && this.lv.checklist.items) || [];
         return this.lvOnlyMiss ? items.filter((it) => it.state !== 'pass') : items;
