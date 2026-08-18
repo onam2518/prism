@@ -44,7 +44,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 검수(1층) → **reviewops.py** | `apply_feedback` `review_queue` `raw_rows` `patch_content_meta` `content_history` `drafts_for` | /feedback /queue /raw /history /drafts /source-status |
 | 검수(2층·최종) → **reviewops.py** | `final_review_queue` `set_final_verdict` `reviewer_roles` `_inject_gold_final` | /final-queue /final-verdict /reviewer-role |
 | 배정 → **reviewops.py** | `distribute_assignments` `assign_log_data` | /content-assign* /assign-log |
-| 검수 인력 운영(HR) → **crewops.py** | `capacity` `profiles`/`set_profile` `crew_data` `plan_distribute` `rebalance` `escalate_split` `category_reliability` `auto_tick` | /crew /crew-profile /crew-assign /crew-rebalance /crew-wave /crew-escalate /crew-auto |
+| 검수 인력 운영(HR) → **crewops.py** | `capacity` `profiles`/`set_profile` `crew_data` `plan_distribute` `rebalance` `escalate_split` `category_reliability` `auto_tick` | /crew /crew-profile /crew-assign /crew-rebalance /crew-wave /crew-auto |
 | 게임화 → **reviewops.py** | `arena_data` `mission_progress` `save_badges` `reviewer_weights` | /arena /badges |
 | 학습 연동 | `learn-*` 핸들러(실체는 learnops) `apply_gold_answer` `disabled_directives` | /learn-* /golden* /apply-directive |
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
