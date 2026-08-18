@@ -775,7 +775,7 @@ def _arena_compute(team=None) -> dict:
     st = _SV.get_store()
     if not st:
         return {"accuracy": 0, "good": 0, "bad": 0, "reviews": 0, "week_reviews": 0,
-                "accuracy_delta": 0, "target": 0.9, "leaderboard": [], "queue": 0}
+                "target": 0.9, "leaderboard": [], "queue": 0}
     d = st.arena_stats(team=team)
     try:                                          # 미검수 YELLOW = 남은 퀘스트 · 개수만 필요하다
         d["queue"] = (st.review_queue_count(team=team) if hasattr(st, "review_queue_count")
