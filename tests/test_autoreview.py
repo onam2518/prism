@@ -99,6 +99,18 @@ class TestAutoReviewRun(_Base):
         s = self._finish(run)
         self.assertEqual([it["title"] for it in s["items"]], ["내 배정"])   # 내 배정만
 
+    def test_assigned_includes_auto_decided_yellow_first(self):
+        # 배정 미검수는 자동 확정(G/R · 비-YELLOW)도 대상 · YELLOW 가 앞에(진짜 검수 필요 우선)
+        serve = self._serve()
+        self._seed(serve, "자동확정 배정", "G", "auto", assign_to="pete")   # 비-YELLOW
+        self._seed(serve, "검수필요 배정", "R", "yellow", assign_to="pete")  # YELLOW
+        run = self.AR.start(team=None, reviewer="pete")
+        self.assertEqual(run["scope"], "assigned")
+        self.assertEqual(run["total"], 2)                                  # 자동확정도 포함(종전엔 빠졌다)
+        s = self._finish(run)
+        self.assertEqual(s["items"][0]["title"], "검수필요 배정")           # YELLOW 우선
+        self.assertEqual({it["title"] for it in s["items"]}, {"자동확정 배정", "검수필요 배정"})
+
     def test_falls_back_to_queue_when_no_assignments(self):
         serve = self._serve()
         self._seed(serve, "대기 글", "G", "yellow")
