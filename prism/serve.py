@@ -1491,7 +1491,12 @@ def _g_config(h, q):
     # 로그인 화면·배포 검증(curl /config: backend·configured)·15초 헬스체크가 쓰는 최소 필드만
     # 공개 — config_status 전체 계산(모델 목록·저장 건수·팀 링크 = 원격 왕복 약 3회)을 생략하고
     # 로컬 값만으로 즉시 응답한다(헬스체크가 supabase 지연에 물려 timeout 나는 경로 차단).
-    if _supa() and not h._bearer_uid():
+    # 무인증뿐 아니라 '팀 없는 비운영관리자'(셀프가입 등)도 슬림. config_status 는 시스템/단계/
+    # 모델 프롬프트(분류 IP)·인입 소스 엔드포인트를 담아, 로그인만 하면 통째로 나가던 것.
+    # 팀원·운영관리자만 전체를 받는다(다른 데이터 GET 은 _team_ok 로 fail-closed 인데 /config 만 열려 있었다).
+    uid = h._bearer_uid()
+    if _supa() and not (uid and (h._req_team() is not None
+                                 or is_sys_admin_user(uid, None, h._bearer_email()))):
         return {"bootId": _BOOT_ID, "build": _build_id(),
                 "configured": Config.load().is_configured(),
                 "forcedMock": Handler.server_mock,
