@@ -38,7 +38,7 @@ _JUDGE_SYSTEM = (
 )
 
 _ELEM_OK = {"summary", "entities", "intent", "category", "grade"}
-_CAP = 200                      # 한 번에 채점할 최대 콘텐츠(비용·시간 상한 · 넘치면 truncated)
+_CAP = 1000                     # 한 번에 채점할 최대 콘텐츠(대부분 배정을 한 런으로 · 넘치면 truncated → '이어서 실행')
 
 _RUNS: dict = {}                # {id: {running,total,done,started,items,model,scope,error,reviewer}}
 _LOCK = threading.Lock()
@@ -174,7 +174,7 @@ def start(team=None, reviewer: str = "") -> dict:
         run_id = _SEQ
         _RUNS[run_id] = {"running": True, "total": len(targets), "done": 0, "started": time.time(),
                          "items": [], "model": judge, "scope": scope, "error": "",
-                         "reviewer": reviewer, "truncated": truncated}
+                         "reviewer": reviewer, "team": team, "truncated": truncated}
         for k in [k for k, v in _RUNS.items() if not v["running"] and k < run_id - 20]:   # 오래된 잡 정리
             _RUNS.pop(k, None)
     if not targets:
@@ -199,9 +199,28 @@ def status(run_id) -> dict:
             return {"ok": False, "error": "만료된 실행입니다 · 다시 실행하세요"}
         done, total, started = run["done"], run["total"], run["started"]
         snap = list(run["items"])
+        reviewer, team = run.get("reviewer", ""), run.get("team")
         out = {"ok": True, "id": rid, "running": run["running"], "done": done, "total": total,
-               "model": run["model"], "scope": run["scope"], "items": snap,
+               "model": run["model"], "scope": run["scope"],
                "truncated": run.get("truncated", 0)}
+    # 각 초안이 이미 내가 확정됐는지(feedback) 표시 — 페이지 나갔다 와도 '반영됨' 이 복원되고
+    # 재접속이 이미 한 것을 다시 하지 않게 한다(확정은 /feedback 이 원천 · 서버 권위).
+    try:
+        fmap = _SV.feedback_map_cached(team)
+    except Exception:
+        fmap = {}
+    me = (reviewer or "").strip()
+    items = []
+    for it in snap:
+        fb = fmap.get(it.get("hash")) or {}
+        judged = ""
+        if me:
+            for v in (fb.get("verdicts") or []):
+                if v.get("reviewer") == me or v.get("reviewer_id") == me:
+                    judged = v.get("verdict") or ""
+                    break
+        items.append(dict(it, judged=judged))         # 저장본은 안 바꾸고 오버레이만
+    out["items"] = items
     out["pct"] = round(done / total, 3) if total else 1.0
     if run["running"] and done and total:                              # 남은 예상 시간(평균 속도 × 남은 건)
         per = (time.time() - started) / done
