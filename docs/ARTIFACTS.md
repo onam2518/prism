@@ -10,6 +10,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-08-19 | [프리즘 주간회의 08.19](https://claude.ai/code/artifact/c7b0c99e-846b-430a-b490-c786d3297062) |
 | 2026-08-18 | [에이전트 스터디 진행자 런시트](https://claude.ai/code/artifact/bf6f4188-ced0-4e87-98d8-7c0bfa050559) |
 | 2026-08-18 | [콘텐츠 에이전트 90분 스터디](https://claude.ai/code/artifact/f1a2df73-9e2a-485e-82c3-2525ac9a428d) |
 | 2026-08-13 | [검수 보조 패널 시안](https://claude.ai/code/artifact/49ec0f98-6f79-46d7-977b-8b89d8ac24cd) |
