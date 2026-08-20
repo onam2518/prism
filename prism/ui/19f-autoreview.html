@@ -61,11 +61,11 @@
 
             <!-- 세그먼트 필터: 콘텐츠 관리 evaltabs 차용 -->
             <div class="evaltabs evaltabs--sub" x-show="arItems.length" x-cloak style="margin-bottom:0">
-              <button type="button" x-bind:class="arFilter==='all'?'sel':''" x-on:click="arFilter='all'">전체 <span class="cnt" x-text="arCounts().all"></span></button>
-              <button type="button" x-bind:class="arFilter==='pending'?'sel':''" x-on:click="arFilter='pending'">미확정 <span class="cnt" x-text="arCounts().pending"></span></button>
-              <button type="button" x-bind:class="arFilter==='low'?'sel':''" x-on:click="arFilter='low'">저확신 <span class="cnt" x-text="arCounts().low"></span></button>
-              <button type="button" x-bind:class="arFilter==='bad'?'sel':''" x-on:click="arFilter='bad'">수정 제안 <span class="cnt" x-text="arCounts().bad"></span></button>
-              <button type="button" x-bind:class="arFilter==='done'?'sel':''" x-on:click="arFilter='done'">확정됨 <span class="cnt" x-text="arCounts().done"></span></button>
+              <button type="button" x-bind:class="arFilter==='all'?'sel':''" x-on:click="arSetFilter('all')">전체 <span class="cnt" x-text="arCounts().all"></span></button>
+              <button type="button" x-bind:class="arFilter==='pending'?'sel':''" x-on:click="arSetFilter('pending')">미확정 <span class="cnt" x-text="arCounts().pending"></span></button>
+              <button type="button" x-bind:class="arFilter==='low'?'sel':''" x-on:click="arSetFilter('low')">저확신 <span class="cnt" x-text="arCounts().low"></span></button>
+              <button type="button" x-bind:class="arFilter==='bad'?'sel':''" x-on:click="arSetFilter('bad')">수정 제안 <span class="cnt" x-text="arCounts().bad"></span></button>
+              <button type="button" x-bind:class="arFilter==='done'?'sel':''" x-on:click="arSetFilter('done')">확정됨 <span class="cnt" x-text="arCounts().done"></span></button>
             </div>
 
             <!-- 인박스(서브헤더 + 표 + 요약 + 범례) -->
@@ -75,7 +75,7 @@
                 <table class="ds-table w-full">
                   <thead><tr><th style="width:52px">등급</th><th>콘텐츠</th><th style="width:120px">AI 초안</th><th style="width:150px">확신도</th><th>근거</th><th style="width:168px">확정</th></tr></thead>
                   <tbody>
-                    <template x-for="it in arView()" x-bind:key="it.hash">
+                    <template x-for="it in arPaged()" x-bind:key="it.hash">
                       <tr x-bind:class="(arLow(it) && !it._done) ? 'ar-low' : (it._done ? 'ar-fin' : '')">
                         <td><span class="argdot" x-bind:class="arGradeCls(it.grade)" x-text="it.grade || '·'"></span></td>
                         <td class="text-ink"><span x-text="it.title"></span><span class="uid" x-text="it.service"></span><span class="ds-badge ds-badge--warning" x-show="it.sameModel" data-tip="콘텐츠를 만든 모델과 심판 모델이 같음 · 자기 채점이라 신뢰 낮음" data-tip-pos="top" style="cursor:help;margin-left:6px">같은 모델</span></td>
@@ -97,6 +97,12 @@
                     </template>
                   </tbody>
                 </table>
+              </div>
+              <!-- 페이지네이션: 현재 페이지만 렌더(목록이 길어도 DOM 절약) -->
+              <div class="ar-pager" x-show="arView().length > arPageSize" x-cloak>
+                <button type="button" class="ds-btn ds-btn--outline ds-btn--c-ghost ds-btn--s-sm" x-bind:disabled="arPageNow() <= 1" x-on:click="arGoto(arPageNow()-1)">이전</button>
+                <span class="meta tnum" x-text="arPageNow() + ' / ' + arPages() + ' 페이지 · 전체 ' + arView().length + '건'"></span>
+                <button type="button" class="ds-btn ds-btn--outline ds-btn--c-ghost ds-btn--s-sm" x-bind:disabled="arPageNow() >= arPages()" x-on:click="arGoto(arPageNow()+1)">다음</button>
               </div>
               <div class="flexrow" style="align-items:center;gap:10px;flex-wrap:wrap">
                 <span class="meta"><b class="tnum text-ink" x-text="arDoneN()"></b> / <span class="tnum" x-text="arItems.length"></span>건 확정</span>
