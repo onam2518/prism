@@ -200,6 +200,15 @@ class Store:
           content_hash TEXT, team TEXT NOT NULL DEFAULT '', model TEXT, version INTEGER,
           item_meta TEXT, quality_meta TEXT, ts REAL,
           PRIMARY KEY(content_hash, team, model, version));
+        -- AI 초안 판정(실험실): 심판 모델이 검수자별로 미리 채운 정확/수정 초안.
+        -- 콘텐츠 검수처럼 상시 적재 → 나갔다 와도·배포돼도 유지 · 재실행 시 이미 초안 있는 건 스킵.
+        -- 확정은 별개(feedback) · 초안은 남겨 audit/학습 신호(초안 verdict vs 사람 최종)로 쓴다.
+        CREATE TABLE IF NOT EXISTS autoreview(
+          content_hash TEXT, reviewer TEXT, team TEXT NOT NULL DEFAULT '',
+          verdict TEXT, confidence REAL, reason TEXT, elements TEXT,
+          model TEXT, content_model TEXT, same_model INTEGER,
+          service TEXT, title TEXT, grade TEXT, ts REAL,
+          PRIMARY KEY(content_hash, reviewer));
         -- 피드백 라우팅(append-only): 교정 원문을 요소·단계별 개선 지시로 재분류한 결과.
         CREATE TABLE IF NOT EXISTS feedback_routes(
           id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, reviewer TEXT,
@@ -300,6 +309,7 @@ class Store:
         CREATE INDEX IF NOT EXISTS ix_patch_hash ON patch_log(content_hash, ts);
         CREATE INDEX IF NOT EXISTS ix_patch_reviewer ON patch_log(reviewer, ts);
         CREATE INDEX IF NOT EXISTS ix_feedback_reviewer ON feedback(reviewer, ts);
+        CREATE INDEX IF NOT EXISTS ix_autoreview_reviewer ON autoreview(reviewer, ts);
         """)
         c.commit()
         self._migrate_feedback(c)
@@ -963,6 +973,50 @@ class Store:
             out.update({ch: float(ts or 0) for ch, ts in c.execute(
                 f"SELECT content_hash, MAX(ts) FROM drafts WHERE team=? AND content_hash IN ({ph})"
                 " GROUP BY content_hash", (team or "", *chunk))})
+        return out
+
+    # ── AI 초안 판정(실험실) · 검수자별 상시 적재 ──────────────────────────
+    def save_ai_draft(self, content_hash, reviewer, draft: dict, team=None):
+        """심판 모델 초안 1건 upsert(검수자당 콘텐츠 1건 · 재실행하면 갱신).
+        콘텐츠 검수처럼 저장 계층에 남겨 페이지 이탈·배포에도 유지된다.
+        team 은 supabase 와 시그니처 통일용(sqlite 단일팀이라 컬럼만 채운다)."""
+        d = draft or {}
+        c = self._conn()
+        c.execute("""INSERT INTO autoreview(content_hash,reviewer,team,verdict,confidence,reason,
+              elements,model,content_model,same_model,service,title,grade,ts)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(content_hash,reviewer) DO UPDATE SET
+            team=excluded.team, verdict=excluded.verdict, confidence=excluded.confidence,
+            reason=excluded.reason, elements=excluded.elements, model=excluded.model,
+            content_model=excluded.content_model, same_model=excluded.same_model,
+            service=excluded.service, title=excluded.title, grade=excluded.grade, ts=excluded.ts""",
+          (content_hash, reviewer or "", team or "", d.get("verdict") or "",
+           float(d.get("confidence") or 0), d.get("reason") or "",
+           json.dumps(d.get("elements") or [], ensure_ascii=False), d.get("model") or "",
+           d.get("content_model") or "", 1 if d.get("same_model") else 0,
+           d.get("service") or "", d.get("title") or "", d.get("grade") or "", time.time()))
+        c.commit()
+
+    def ai_drafts(self, reviewer, team=None) -> dict:
+        """검수자의 저장된 초안 전부 → {content_hash: draft}. 초안 판정 서브탭의 상시 목록 ·
+        재실행 시 '이미 초안 있는 것' 스킵 원천. team 은 supabase 와 계약 통일용(sqlite 미사용)."""
+        me = (reviewer or "").strip()
+        if not me:
+            return {}
+        c = self._conn()
+        out = {}
+        for row in c.execute("""SELECT content_hash,verdict,confidence,reason,elements,model,
+              content_model,same_model,service,title,grade,ts FROM autoreview WHERE reviewer=?
+              ORDER BY ts""", (me,)):
+            try:
+                elems = json.loads(row[4] or "[]")
+            except (ValueError, TypeError):
+                elems = []
+            out[row[0]] = {"verdict": row[1] or "", "confidence": float(row[2] or 0),
+                           "reason": row[3] or "", "elements": elems, "model": row[5] or "",
+                           "content_model": row[6] or "", "same_model": bool(row[7]),
+                           "service": row[8] or "", "title": row[9] or "",
+                           "grade": row[10] or "", "ts": float(row[11] or 0)}
         return out
 
     # ── 콘텐츠별 검수 담당 배정(배타적 노출 · 진척 개인화) ─────────────────

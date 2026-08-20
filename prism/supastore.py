@@ -115,6 +115,7 @@ class SupabaseStore:
         "feedback": "content_hash,reviewer_id", "golden": "id", "gold_checks": "id",
         "events": "id", "board": "id", "eval_checks": "hash,reviewer", "patch_log": "id",
         "reports": "kind,team_key", "drafts": "content_hash,model,version",
+        "autoreview": "content_hash,reviewer_id",
         "feedback_routes": "id", "entities": "entity_id", "entity_aliases": "alias",
         "content_entities": "content_hash,entity_id", "teams": "id",
         "eval_runs": "id", "eval_results": "run_id,content_hash", "autopilot_runs": "id",
@@ -671,6 +672,42 @@ class SupabaseStore:
             return ""
         self._req("DELETE", "feedback", query=q, prefer="return=minimal")
         return rows[0].get("verdict") or ""
+
+    # ── AI 초안 판정(실험실) · 검수자별 상시 적재 ──
+    def save_ai_draft(self, content_hash, reviewer, draft: dict, team=None):
+        """심판 모델 초안 1건 upsert(prism_autoreview · PK content_hash+reviewer_id).
+        콘텐츠 검수처럼 서버에 남겨 페이지 이탈·재배포에도 유지된다."""
+        d = draft or {}
+        row = {"content_hash": content_hash, "reviewer_id": reviewer,
+               "verdict": d.get("verdict") or "", "confidence": float(d.get("confidence") or 0),
+               "reason": d.get("reason") or "", "elements": d.get("elements") or [],
+               "model": d.get("model") or "", "content_model": d.get("content_model") or "",
+               "same_model": bool(d.get("same_model")),
+               "service": d.get("service") or "", "title": d.get("title") or "",
+               "grade": d.get("grade") or ""}
+        if team:
+            row["team_id"] = team
+        self._upsert("autoreview", [row])
+
+    def ai_drafts(self, reviewer, team=None) -> dict:
+        """검수자의 저장된 초안 전부 → {content_hash: draft}. 상시 목록 · 재실행 스킵 원천."""
+        me = (reviewer or "").strip()
+        if not me:
+            return {}
+        q = ("select=content_hash,verdict,confidence,reason,elements,model,content_model,"
+             "same_model,service,title,grade,created_at&reviewer_id=eq." + urllib.parse.quote(me))
+        if team:
+            q += f"&team_id=eq.{urllib.parse.quote(team)}"
+        out = {}
+        for r in self._get("autoreview", q):
+            out[r["content_hash"]] = {
+                "verdict": r.get("verdict") or "", "confidence": float(r.get("confidence") or 0),
+                "reason": r.get("reason") or "", "elements": r.get("elements") or [],
+                "model": r.get("model") or "", "content_model": r.get("content_model") or "",
+                "same_model": bool(r.get("same_model")),
+                "service": r.get("service") or "", "title": r.get("title") or "",
+                "grade": r.get("grade") or "", "ts": _epoch(r.get("created_at"))}
+        return out
 
     # ── 교정 로그(append-only) · 골드 문항 · 이벤트 ──
     def log_patch(self, content_hash, reviewer, element, before, after, team=None):

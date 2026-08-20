@@ -4,12 +4,16 @@
 정확/수정 초안 + 근거 + 확신도를 미리 채운다. 사람은 그걸 보며 확정/뒤집기만 한다.
 판정을 자동 커밋하지 않는다 — 확정은 평소 검수와 같은 /feedback 경로(사람 행위)로만.
 
-대상: **나에게 배정된 대기(YELLOW) 콘텐츠 전부**(아직 내가 판정 안 한 것). 배정이 없으면
-미배정 포함 대기 큐로 폴백한다. 골드 문항은 대상이 아니다(results_rows 실 콘텐츠만 · 골드는
-_inject_gold 로만 큐에 섞이므로 애초에 안 들어옴).
+대상: **나에게 배정된 미검수 콘텐츠 전부**(아직 내가 판정도, 초안도 안 한 것 · YELLOW 우선).
+배정이 없으면 미배정 포함 대기 큐로 폴백한다. 골드 문항은 대상이 아니다(results_rows 실 콘텐츠만 ·
+골드는 _inject_gold 로만 큐에 섞이므로 애초에 안 들어옴).
+
+초안은 **콘텐츠 검수처럼 저장 계층에 상시 적재**한다(store.save_ai_draft · 검수자별 upsert). 그래서
+페이지를 나갔다 와도·서버가 재배포돼도 초안이 그대로 남고, 재실행하면 **이미 초안 있는 건 건너뛴다**
+(같은 걸 두 번 판정하지 않는다). 서브탭 진입 시 inbox() 가 저장된 초안으로 표를 채운다(실행과 무관).
 
 실행은 오래 걸릴 수 있어 **백그라운드 잡 + 진척도/예상 시간**으로 돈다(평가 런과 같은 패턴):
-start() 가 잡을 띄우고 id·total 을 주면, status(id) 를 폴링해 done/total·ETA·부분 결과를 본다.
+start() 가 잡을 띄우고 id·total 을 주면, status(id) 를 폴링해 done/total·ETA·새 초안을 본다.
 
 측정 정직성: 심판 모델 ≠ 콘텐츠 생성 모델 권장(assist_model 과 같은 이유) · 같으면 sameModel 표기.
 
@@ -70,8 +74,14 @@ def _target_rows(st, team, reviewer: str):
         fmap = _SV.feedback_map_cached(team)
     except Exception:
         fmap = {}
+    try:
+        drafted = set(st.ai_drafts(me, team=team).keys())              # 이미 초안 있는 것은 재판정 안 함
+    except Exception:
+        drafted = set()
 
-    def _judged(ch):
+    def _skip(ch):
+        if ch in drafted:                                             # 상시 적재된 초안 있음 = 스킵
+            return True
         fb = fmap.get(ch) or {}
         return bool(me) and any((v.get("reviewer") == me or v.get("reviewer_id") == me)
                                 for v in (fb.get("verdicts") or []))
@@ -88,7 +98,7 @@ def _target_rows(st, team, reviewer: str):
         rows_by = {_SV._row_key(r.get("content_ref") or {}): r for r in rows}
         for ch in mine:
             r = rows_by.get(ch)
-            if r is None or _judged(ch):                               # 원본 없음(옛 콘텐츠)·이미 판정 = 제외
+            if r is None or _skip(ch):                                 # 원본 없음(옛 콘텐츠)·이미 판정/초안 = 제외
                 continue
             out.append((ch, r))
         out.sort(key=lambda cr: 0 if (cr[1].get("quality_meta") or {}).get("review") == "yellow" else 1)
@@ -97,7 +107,7 @@ def _target_rows(st, team, reviewer: str):
             if ((r.get("quality_meta") or {}).get("review") or "") != "yellow":
                 continue
             ch = _SV._row_key(r.get("content_ref") or {})
-            if _judged(ch):
+            if _skip(ch):
                 continue
             out.append((ch, r))
     return out, scope
@@ -129,7 +139,7 @@ def _judge_one(llm, r: dict) -> dict:
             "reason": _clip(obj.get("reason", ""), 200), "elements": elems if verdict == "bad" else []}
 
 
-def _run_loop(run_id, targets, llm, judge):
+def _run_loop(run_id, targets, llm, judge, st, team, reviewer):
     for ch, r in targets:
         with _LOCK:
             run = _RUNS.get(run_id)
@@ -138,9 +148,18 @@ def _run_loop(run_id, targets, llm, judge):
         ai = _judge_one(llm, r)                                        # LLM 호출은 락 밖(느림)
         cmodel = (r.get("trace") or {}).get("model", "") or ""
         ref = r.get("content_ref") or {}
-        item = {"hash": ch, "title": ref.get("title", "") or "(제목 없음)",
-                "service": ref.get("displayServiceName", ""),
-                "contentModel": cmodel, "sameModel": bool(cmodel and cmodel == judge), "ai": ai}
+        title = ref.get("title", "") or "(제목 없음)"
+        service = ref.get("displayServiceName", "")
+        grade = (r.get("quality_meta") or {}).get("finalGrade", "") or ""
+        same = bool(cmodel and cmodel == judge)
+        try:                                                           # 상시 적재: 나갔다 와도·배포돼도 유지
+            st.save_ai_draft(ch, reviewer, {**ai, "model": judge, "content_model": cmodel,
+                                            "same_model": same, "service": service,
+                                            "title": title, "grade": grade}, team=team)
+        except Exception as e:
+            print(f"  [autoreview] save_ai_draft 실패({e}) · 메모리 결과는 유지")
+        item = {"hash": ch, "title": title, "service": service, "grade": grade,
+                "contentModel": cmodel, "sameModel": same, "ai": ai}
         with _LOCK:
             run = _RUNS.get(run_id)
             if not run:
@@ -181,10 +200,54 @@ def start(team=None, reviewer: str = "") -> dict:
         with _LOCK:
             _RUNS[run_id]["running"] = False
         return {"ok": True, "id": run_id, "total": 0, "model": judge, "scope": scope,
-                "empty": ("배정된" if scope == "assigned" else "대기") + " 검수 대상이 없습니다"}
-    threading.Thread(target=_run_loop, args=(run_id, targets, llm, judge), daemon=True).start()
+                "empty": "새로 판정할 대상이 없습니다 · 이미 초안이 있거나 모두 확정됨(아래 목록에서 확정하세요)"}
+    threading.Thread(target=_run_loop, args=(run_id, targets, llm, judge, st, team, reviewer),
+                     daemon=True).start()
     return {"ok": True, "id": run_id, "total": len(targets), "model": judge, "scope": scope,
             **({"truncated": truncated} if truncated else {})}
+
+
+def _judged_verdict(fb: dict, me: str) -> str:
+    """이 콘텐츠를 내가 이미 확정했으면 그 verdict, 아니면 '' (확정은 /feedback 이 원천 · 서버 권위)."""
+    if not me:
+        return ""
+    for v in (fb.get("verdicts") or []):
+        if v.get("reviewer") == me or v.get("reviewer_id") == me:
+            return v.get("verdict") or ""
+    return ""
+
+
+def inbox(team=None, reviewer: str = "") -> dict:
+    """저장된 초안 전부(실행과 무관 · 상시 목록). 서브탭 진입/재접속 시 이걸로 표를 채운다 —
+    페이지 나갔다 와도·배포돼도 유지된다. 미확정을 앞에, 최신순. 확정분은 judged 로 표시."""
+    st = _SV.get_store()
+    if not st:
+        return {"ok": False, "error": "store unavailable"}
+    me = (reviewer or "").strip()
+    try:
+        drafts = st.ai_drafts(me, team=team)
+    except Exception as e:
+        return {"ok": False, "error": "초안을 불러오지 못했습니다(%s)" % e}
+    try:
+        fmap = _SV.feedback_map_cached(team)
+    except Exception:
+        fmap = {}
+    try:                                                              # 진척 스트립: 내 배정 총건(초안 대비 남은 몫)
+        assigned = st.assignees(team=team) or {}
+        assigned_n = sum(1 for a in assigned.values() if me and me in (a.get("reviewers") or []))
+    except Exception:
+        assigned_n = 0
+    items = []
+    for ch, d in drafts.items():
+        ai = {"verdict": d.get("verdict") or "", "confidence": d.get("confidence") or 0,
+              "reason": d.get("reason") or "", "elements": d.get("elements") or []}
+        items.append({"hash": ch, "title": d.get("title") or "(제목 없음)",
+                      "service": d.get("service") or "", "grade": d.get("grade") or "",
+                      "contentModel": d.get("content_model") or "",
+                      "sameModel": bool(d.get("same_model")), "ai": ai, "ts": d.get("ts") or 0,
+                      "judged": _judged_verdict(fmap.get(ch) or {}, me)})
+    items.sort(key=lambda it: (bool(it["judged"]), -(it.get("ts") or 0)))   # 미확정 먼저 · 최신순
+    return {"ok": True, "total": len(items), "assigned": assigned_n, "items": items}
 
 
 def status(run_id) -> dict:
@@ -210,17 +273,8 @@ def status(run_id) -> dict:
     except Exception:
         fmap = {}
     me = (reviewer or "").strip()
-    items = []
-    for it in snap:
-        fb = fmap.get(it.get("hash")) or {}
-        judged = ""
-        if me:
-            for v in (fb.get("verdicts") or []):
-                if v.get("reviewer") == me or v.get("reviewer_id") == me:
-                    judged = v.get("verdict") or ""
-                    break
-        items.append(dict(it, judged=judged))         # 저장본은 안 바꾸고 오버레이만
-    out["items"] = items
+    items = [dict(it, judged=_judged_verdict(fmap.get(it.get("hash")) or {}, me)) for it in snap]
+    out["items"] = items                               # 저장본은 안 바꾸고 오버레이만
     out["pct"] = round(done / total, 3) if total else 1.0
     if run["running"] and done and total:                              # 남은 예상 시간(평균 속도 × 남은 건)
         per = (time.time() - started) / done
