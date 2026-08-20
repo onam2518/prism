@@ -13,6 +13,7 @@ window.PRISM_APP_PARTS.push(() => ({
       arRunId: null, arRunning: false, arDone: 0, arTotal: 0, arPct: 0, arEta: '', arScope: '',
       arTruncated: 0, arItems: [], arMsg: '', _arPollT: null,
       arAssigned: 0, arFilter: 'all',       // 내 배정 총건(진척 스트립) · 인박스 세그먼트 필터
+      arPage: 1, arPageSize: 50,            // 목록 페이지네이션(현재 페이지만 렌더 · DOM 절약)
 
       _arSaveRun(id) { try { if (id) localStorage.setItem('prism_ar_run', String(id)); else localStorage.removeItem('prism_ar_run'); } catch (e) {} },
       _arLoadRun() { try { const v = parseInt(localStorage.getItem('prism_ar_run') || '', 10); return Number.isFinite(v) ? v : null; } catch (e) { return null; } },
@@ -68,6 +69,14 @@ window.PRISM_APP_PARTS.push(() => ({
         if (f === 'done') return its.filter((x) => x._done);
         return its;
       },
+      arPages() { return Math.max(1, Math.ceil(this.arView().length / this.arPageSize)); },   // 총 페이지 수
+      arPageNow() { return Math.min(Math.max(1, this.arPage), this.arPages()); },              // 범위 클램프한 현재 페이지
+      arPaged() {                           // 현재 페이지 조각만 렌더 → 목록이 길어도 DOM 은 한 페이지
+        const p = this.arPageNow(), sz = this.arPageSize;
+        return this.arView().slice((p - 1) * sz, p * sz);
+      },
+      arGoto(p) { this.arPage = Math.min(Math.max(1, p), this.arPages()); },                   // 이전/다음
+      arSetFilter(f) { this.arFilter = f; this.arPage = 1; },                                  // 필터 바꾸면 1페이지로
 
       async arRun() {                       // 백그라운드 잡 시작 → 폴링으로 진척도·부분 결과
         clearTimeout(this._arPollT);
