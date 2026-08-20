@@ -10,6 +10,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-08-19 | [초안 판정 인박스](https://claude.ai/code/artifact/963d6969-7819-4d4d-80d0-038da6232969) |
 | 2026-08-19 | [프리즘 주간회의 08.19](https://claude.ai/code/artifact/c7b0c99e-846b-430a-b490-c786d3297062) |
 | 2026-08-18 | [에이전트 스터디 진행자 런시트](https://claude.ai/code/artifact/bf6f4188-ced0-4e87-98d8-7c0bfa050559) |
 | 2026-08-18 | [콘텐츠 에이전트 90분 스터디](https://claude.ai/code/artifact/f1a2df73-9e2a-485e-82c3-2525ac9a428d) |

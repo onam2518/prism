@@ -2013,6 +2013,13 @@ def _g_autoreview_status(h, q):                       # 게이트 상세는 _aut
     return AR.status(q.get("id", [""])[0])
 
 
+@_get_route("/autoreview-drafts", admin=True)        # AI 초안 판정 상시 목록(저장된 초안 · 실행 무관 · 서브탭 진입/재접속)
+def _g_autoreview_drafts(h, q):
+    if _autoreview_denied(h):
+        return None
+    return AR.inbox(team=h._req_team(), reviewer=(h._bearer_uid() or h._bearer_email() or ""))
+
+
 # 디스패치 순서: 접두 길이 내림차순 → /entdict-lookup 이 /entdict 보다, /usermeta-*.csv 가
 # /usermeta 보다 항상 먼저 검사된다(등록 순서 무관 · 가로채기 불가).
 _GET_ORDER = sorted(_GET_ROUTES, key=len, reverse=True)

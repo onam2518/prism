@@ -139,6 +139,64 @@ class TestAutoReviewRun(_Base):
         self.assertIn("empty", run)
 
 
+class TestAutoReviewPersistence(_Base):
+    """초안은 콘텐츠 검수처럼 저장 계층에 상시 적재된다 — 나갔다 와도·재시작해도 유지 ·
+    재실행하면 이미 초안 있는 건 스킵(같은 걸 두 번 판정하지 않는다)."""
+
+    def test_drafts_persisted_to_store(self):
+        serve = self._serve()
+        ch = self._seed(serve, "배정 글", "R", "yellow", assign_to="pete")
+        self._finish(self.AR.start(team=None, reviewer="pete"))
+        saved = serve._STORE.ai_drafts("pete")
+        self.assertIn(ch, saved)
+        self.assertEqual(saved[ch]["verdict"], "bad")
+        self.assertEqual(saved[ch]["model"], "claude-opus-5")
+        self.assertIn("grade", saved[ch]["elements"])
+        self.assertEqual(serve._STORE.ai_drafts("other"), {})       # 검수자별 격리
+
+    def test_rerun_skips_already_drafted(self):
+        serve = self._serve()
+        self._seed(serve, "배정 글", "R", "yellow", assign_to="pete")
+        self._finish(self.AR.start(team=None, reviewer="pete"))       # 1회차: 초안 적재
+        run2 = self.AR.start(team=None, reviewer="pete")             # 2회차: 이미 초안 있음 → 없음
+        self.assertEqual(run2["total"], 0)
+        self.assertIn("empty", run2)
+
+    def test_inbox_survives_memory_wipe(self):
+        # 배포/재시작로 _RUNS(메모리)가 비어도 저장된 초안은 inbox 로 그대로 복원된다(Pete 의 요지).
+        serve = self._serve()
+        ch = self._seed(serve, "배정 글", "R", "yellow", assign_to="pete")
+        self._finish(self.AR.start(team=None, reviewer="pete"))
+        self.AR._RUNS.clear()                                        # 서버 재시작 시뮬레이션
+        inb = self.AR.inbox(team=None, reviewer="pete")
+        self.assertTrue(inb["ok"])
+        self.assertEqual([it["title"] for it in inb["items"]], ["배정 글"])
+        self.assertEqual(inb["items"][0]["ai"]["verdict"], "bad")
+        self.assertEqual(inb["items"][0]["grade"], "R")             # 등급 dot 원천(콘텐츠 관리 차용)
+        self.assertEqual(inb["items"][0]["judged"], "")             # 아직 확정 안 함
+        self.assertEqual(inb["assigned"], 1)                        # 진척 스트립 '내 배정' 수
+
+    def test_inbox_marks_confirmed(self):
+        serve = self._serve()
+        ch = self._seed(serve, "배정 글", "G", "yellow", assign_to="pete")
+        self._finish(self.AR.start(team=None, reviewer="pete"))
+        serve._STORE.save_feedback(ch, "뉴스", "배정 글", "good", "review", "AI 초안 확인", time.time(), reviewer="pete")
+        serve._agg_bump()
+        inb = self.AR.inbox(team=None, reviewer="pete")
+        self.assertEqual(inb["items"][0]["judged"], "good")         # 확정분은 '반영됨' 으로
+
+    def test_inbox_unconfirmed_first(self):
+        serve = self._serve()
+        a = self._seed(serve, "확정할 글", "G", "yellow", assign_to="pete")
+        self._seed(serve, "안 본 글", "R", "yellow", assign_to="pete")
+        self._finish(self.AR.start(team=None, reviewer="pete"))
+        serve._STORE.save_feedback(a, "뉴스", "확정할 글", "good", "review", "", time.time(), reviewer="pete")
+        serve._agg_bump()
+        inb = self.AR.inbox(team=None, reviewer="pete")
+        self.assertEqual(inb["items"][0]["title"], "안 본 글")        # 미확정 먼저
+        self.assertEqual(inb["items"][-1]["title"], "확정할 글")       # 확정분은 뒤로
+
+
 class TestAutoReviewGate(unittest.TestCase):
     def test_email_allowlist_restricts(self):
         from prism import serve

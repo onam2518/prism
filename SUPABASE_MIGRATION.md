@@ -261,6 +261,30 @@ alter table public.prism_mcp_calls enable row level security;
 > 적용: 2026-08-13 · 운영 프로젝트 `uycdzslkhkruvmyjcbgj` · 두 테이블 RLS enable + 정책 0(서버 전용) ·
 > 인덱스·외래키 확인 완료. 기존 테이블 무변경.
 
+**AI 초안 판정 상시 적재(`prism_autoreview`, 2026-08-19 · 적용됨 · 실험실 초안 판정 인박스 · `prism/autoreview.py`)**:
+```sql
+create table if not exists public.prism_autoreview (
+  content_hash  text not null,
+  reviewer_id   uuid not null references public.prism_reviewers(id) on delete cascade,
+  team_id       uuid,
+  verdict       text not null default '', confidence real not null default 0,
+  reason        text not null default '', elements jsonb not null default '[]'::jsonb,
+  model         text not null default '', content_model text not null default '',
+  same_model    boolean not null default false,
+  service       text not null default '', title text not null default '',
+  grade         text not null default '',                -- 등급 dot(콘텐츠 관리 차용) 원천 · G/R
+  created_at    timestamptz not null default now(),
+  primary key (content_hash, reviewer_id)
+);
+create index if not exists ix_autoreview_reviewer on public.prism_autoreview(reviewer_id, created_at desc);
+alter table public.prism_autoreview enable row level security;   -- 정책 없음 = service_role(서버) 전용
+```
+심판 모델이 검수자별로 채운 정확/수정 초안을 저장 → 페이지 이탈·재배포에도 유지 · 재실행 시 이미 초안
+있는 건 스킵. 확정은 별개(`prism_feedback`) · 초안은 남겨 audit/학습 신호(초안 vs 사람 최종)로 쓴다.
+검수자당 콘텐츠 1건(PK content_hash+reviewer_id · team_id 는 PK 밖 · feedback 관례와 동일).
+> 적용: 2026-08-19 · 운영 프로젝트 `uycdzslkhkruvmyjcbgj` · `create_prism_autoreview` + `add_grade_to_prism_autoreview` ·
+> RLS enable + 정책 0(서버 전용) · 스키마 리로드 완료. 기존 테이블 무변경.
+
 ## 테이블 네임스페이스 정리 방침 (2026-07-18)
 
 같은 Supabase 프로젝트(구 PromptForge)에 두 제품의 테이블이 공존해 왔다. Atelier 를

@@ -1541,3 +1541,42 @@
     font-variant-numeric:tabular-nums}
   .selctl .mpick__btn{height:30px}
   .abslot .mpick__btn{height:32px}
+
+  /* ── AI 초안 판정 인박스(실험실) · 검수·콘텐츠 관리 요소 버무림 ──────────────
+     상시 적재 초안을 검수 큐처럼 보여준다: 진척 스트립(검수 '내 담당 N중 M') +
+     등급 dot·서비스(콘텐츠 관리) + 정확/수정 배지·확신도 막대·확정 버튼(검수).
+     영역은 .ar-body 의 gap 으로 균일하게 띄워 가독성을 높인다. */
+  .ar-body{display:flex;flex-direction:column;gap:22px}
+  .ar-prog{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--ds-surface-on);
+    border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:13px 16px}
+  .ar-stat{display:flex;flex-direction:column;gap:2px;min-width:64px}
+  .ar-stat b{font-family:var(--ds-font-display);font-size:19px;font-weight:800;color:var(--ds-ink);letter-spacing:-.02em}
+  .ar-stat span{font-size:11px;color:var(--ds-muted);font-weight:600}
+  .ar-stat--accent b{color:var(--ds-primary)}
+  .ar-stat--warn b{color:var(--ds-warning)}
+  .ar-progbar{flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px}
+  .ar-progbar .top{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--ds-muted);font-weight:600}
+  .ar-track{height:8px;border-radius:var(--ds-radius-chip);background:var(--ds-hairline);overflow:hidden;display:flex}
+  .ar-track i{display:block;height:100%}
+  .ar-track i.done{background:var(--ds-success)}
+  .ar-track i.draft{background:var(--ds-primary);opacity:.55}
+  .ar-track i.solo{border-radius:var(--ds-radius-chip)}
+  .argdot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+    font-family:var(--ds-font-display);font-size:11px;font-weight:800}
+  .argdot--g{background:rgba(24,186,69,.16);color:var(--ds-success)}
+  .argdot--r{background:rgba(255,78,51,.16);color:var(--ds-error)}
+  .argdot--n{background:var(--ds-hairline-soft);color:var(--ds-muted)}
+  .abbar--conf{min-width:118px}
+  .abbar--good .abbar__fill{background:var(--ds-success)}
+  .abbar--low .abbar__fill{background:var(--ds-warning)}
+  .abbar__num{font-family:var(--ds-font-display);font-size:12.5px;font-weight:700;color:var(--ds-body);min-width:34px;text-align:right}
+  .abbar--low .abbar__num{color:var(--ds-warning)}
+  .ar-donebadge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--ds-success)}
+  .ar-donebadge svg{width:14px;height:14px}
+  .ds-table tr.ar-low td{background:rgba(255,148,41,.07)}
+  .ds-table tr.ar-low:hover td{background:rgba(255,148,41,.13)}
+  .ds-table tr.ar-fin td{opacity:.62}
+  .evaltabs .cnt{font-family:var(--ds-font-display);font-weight:800;margin-left:5px;opacity:.85}
+  .ar-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ds-muted)}
+  .ar-legend span{display:inline-flex;align-items:center;gap:6px}
+  .ar-legend i{width:11px;height:11px;border-radius:3px}
