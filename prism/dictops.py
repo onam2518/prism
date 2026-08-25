@@ -41,6 +41,7 @@ def dict_data() -> dict:
         "domainGroups": {k: list(v) for k, v in getattr(D, "DOMAIN_GROUP_MAP", {}).items()},
         # 인텐트 정의 = 범용①(UI 전용) + 사전 원문 병합 · 데스크탑·모바일 검수 화면 공용 단일 원천
         "intentDefs": dict(getattr(D, "INTENT_VALUE_DEFS", {})),
+        "intentRefNote": getattr(D, "INTENT_REF_NOTE", ""),   # 정의 속 괄호 값 읽는 법(게시판 #17)
         # 교정 요소 사전(id·한글 라벨·단계) · feedback_loop 가 단일 원천(검수 UI 이원화 부채 해소)
         "fixElements": [{"id": e, "label": FL.ELEM_KO.get(e, e), "stage": FL.ELEM_STAGE.get(e, "analyze")}
                         for e in FL.ELEMENTS],

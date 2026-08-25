@@ -277,9 +277,10 @@ window.PRISM_APP_PARTS.push(() => ({
         const q = (this.polQ || '').trim().toLowerCase();
         const mk = (k) => ({ k, t: k, d: defs[k] || '', ex: ex[k] || '' });
         const hit = (r) => !q || (r.t + ' ' + (r.d || '') + ' ' + (r.ex || '')).toLowerCase().indexOf(q) >= 0;
+        const uniNote = '전 서비스 공통' + (d.intentRefNote ? ' · ' + d.intentRefNote : '');   // 괄호 값 읽는 법(게시판 #17)
         const out = [
-          { label: '범용① 소비 방식', note: '전 서비스 공통', rows: (d.intentUniversal || []).map(mk).filter(hit) },
-          { label: '범용② 형식·전달', note: '전 서비스 공통', rows: (d.intentForm || []).map(mk).filter(hit) },
+          { label: '범용① 소비 방식', note: uniNote, rows: (d.intentUniversal || []).map(mk).filter(hit) },
+          { label: '범용② 형식·전달', note: uniNote, rows: (d.intentForm || []).map(mk).filter(hit) },
         ];
         Object.keys(d.intentByService || {}).forEach((svc) => {
           out.push({ label: '서비스 분기 · ' + svc, note: '이 서비스 콘텐츠에만 부여', rows: ((d.intentByService || {})[svc] || []).map(mk).filter(hit) });
