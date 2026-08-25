@@ -209,6 +209,34 @@ class TestAutoReviewPersistence(_Base):
         self.assertEqual(inb["items"][-1]["title"], "확정할 글")       # 확정분은 뒤로
 
 
+class TestAutoReviewFailReason(unittest.TestCase):
+    """판정 실패 시 사유를 초안에 남긴다 — 종전엔 버려서 '직접 검수'만 떠 원인 파악이 안 됐다
+    (에디 2026-08-25: 라우터 키 401 인데 화면엔 이유가 없었다)."""
+
+    def test_auth_fail_surfaces_key_hint(self):
+        from prism import autoreview as AR
+
+        class _FailLLM:
+            def complete_json(self, system, user, tag=""):
+                return {"_fail": "HTTP401: unauthorized", "_fail_kind": "auth"}, None
+
+        d = AR._judge_one(_FailLLM(), {"content_ref": {"title": "x"}, "item_meta": {}, "quality_meta": {}})
+        self.assertEqual(d["verdict"], "")
+        self.assertEqual(d["fail_kind"], "auth")
+        self.assertIn("PRISM_TIMELY_KEY", d["reason"])       # 원인·조치가 화면에 바로 보이게
+
+    def test_unknown_fail_generic_reason(self):
+        from prism import autoreview as AR
+
+        class _FailLLM:
+            def complete_json(self, system, user, tag=""):
+                return {"_fail": "boom", "_fail_kind": "weird"}, None
+
+        d = AR._judge_one(_FailLLM(), {"content_ref": {}, "item_meta": {}, "quality_meta": {}})
+        self.assertEqual(d["verdict"], "")
+        self.assertIn("직접 검수", d["reason"])
+
+
 class TestAutoReviewGate(unittest.TestCase):
     def test_email_allowlist_restricts(self):
         from prism import serve
