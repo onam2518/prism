@@ -43,6 +43,18 @@ _JUDGE_SYSTEM = (
 )
 
 _ELEM_OK = {"summary", "entities", "intent", "category", "grade"}
+_FAIL_HINT = {                  # 판정 실패 종류(llm.classify_*) → 화면에 보일 원인 힌트(즉시 원인 파악)
+    "auth": "심판 모델 인증 실패(401) · 라우터 키(PRISM_TIMELY_KEY)를 확인하세요",
+    "forbidden": "라우터 접근 거부(403) · 키 권한/모델 접근을 확인하세요",
+    "not_found": "라우터에 없는 모델(404) · 다른 심판 모델을 고르세요",
+    "billing": "라우터 잔액 소진 · 크레딧을 충전하세요",
+    "quota": "라우터 지출 한도 도달 · 한도를 올리세요",
+    "too_long": "입력이 너무 김 · 본문이 긴 콘텐츠는 직접 검수하세요",
+    "content_filter": "콘텐츠 필터로 판정 거부됨 · 직접 검수하세요",
+    "bad_request": "요청 거부(400) · 모델 설정을 확인하세요",
+    "timeout": "응답 지연/타임아웃 · 다시 판정하세요",
+    "network": "라우터 연결 실패 · 다시 판정하세요",
+}
 _CAP = 1000                     # 한 번에 채점할 최대 콘텐츠(대부분 배정을 한 런으로 · 넘치면 truncated → '이어서 실행')
 
 _RUNS: dict = {}                # {id: {running,total,done,started,items,model,scope,error,reviewer}}
@@ -128,8 +140,11 @@ def _judge_one(llm, r: dict) -> dict:
     }
     obj, _res = llm.complete_json(_JUDGE_SYSTEM, json.dumps(payload, ensure_ascii=False), tag="autoreview")
     if not isinstance(obj, dict) or obj.get("_fail"):
+        # 실패 사유를 초안에 남긴다(종전엔 버려서 화면엔 '직접 검수'만 떴다 · 원인 파악 불가).
+        kind = (obj.get("_fail_kind") if isinstance(obj, dict) else "") or "unknown"
+        hint = _FAIL_HINT.get(kind, "심판 모델 호출 실패")
         return {"verdict": "", "confidence": 0.0,
-                "reason": "심판 모델 호출 실패 · 직접 검수하세요", "elements": []}
+                "reason": hint + " · 직접 검수하세요", "elements": [], "fail_kind": kind}
     verdict = "bad" if str(obj.get("verdict") or "").lower() == "bad" else \
         ("good" if str(obj.get("verdict") or "").lower() == "good" else "")
     try:
