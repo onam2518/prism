@@ -158,9 +158,21 @@ class TestAutoReviewPersistence(_Base):
         serve = self._serve()
         self._seed(serve, "배정 글", "R", "yellow", assign_to="pete")
         self._finish(self.AR.start(team=None, reviewer="pete"))       # 1회차: 초안 적재
-        run2 = self.AR.start(team=None, reviewer="pete")             # 2회차: 이미 초안 있음 → 없음
+        run2 = self.AR.start(team=None, reviewer="pete")             # 2회차: 이미 초안(정확/수정) 있음 → 없음
         self.assertEqual(run2["total"], 0)
         self.assertIn("empty", run2)
+
+    def test_rerun_retries_failed_drafts(self):
+        # 라우터 실패로 verdict 빈 초안('직접 검수')은 재실행 시 다시 판정한다(에디 케이스 2026-08-25).
+        serve = self._serve()
+        ch = self._seed(serve, "실패했던 글", "G", "yellow", assign_to="pete")
+        serve._STORE.save_ai_draft(ch, "pete", {"verdict": "", "confidence": 0,
+            "reason": "심판 모델 호출 실패 · 직접 검수하세요", "elements": [], "model": "claude-opus-5"})
+        run = self.AR.start(team=None, reviewer="pete")
+        self.assertEqual(run["total"], 1)                            # 실패분은 재판정 대상(스킵 안 함)
+        s = self._finish(run)
+        self.assertEqual(s["items"][0]["ai"]["verdict"], "good")     # 다시 돌려 정상 판정됨
+        self.assertEqual(serve._STORE.ai_drafts("pete")[ch]["verdict"], "good")   # 저장본도 갱신(upsert)
 
     def test_inbox_survives_memory_wipe(self):
         # 배포/재시작로 _RUNS(메모리)가 비어도 저장된 초안은 inbox 로 그대로 복원된다(Pete 의 요지).

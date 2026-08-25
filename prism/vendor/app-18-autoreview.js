@@ -54,11 +54,14 @@ window.PRISM_APP_PARTS.push(() => ({
       arPendingN() { return (this.arItems || []).filter((x) => !x._done).length; },   // 미확정(초안만 있고 아직 확정 안 함)
       arScopeTxt() { return (this.arScope === 'assigned' ? '내 배정' : '대기') + ' 콘텐츠'; },
       arGradeCls(g) { return g === 'G' ? 'argdot--g' : g === 'R' ? 'argdot--r' : 'argdot--n'; },  // 등급 dot 색
+      arFailed(x) { return !x._done && (!x.ai || !x.ai.verdict); },   // 판정 실패(라우터 실패로 verdict 없음) · 재판정 대상
+      arFailedN() { return (this.arItems || []).filter((x) => this.arFailed(x)).length; },
       arCounts() {                          // 세그먼트 필터 배지 수
         const its = this.arItems || [];
         return { all: its.length, pending: its.filter((x) => !x._done).length,
                  low: its.filter((x) => !x._done && this.arLow(x)).length,
                  bad: its.filter((x) => x.ai && x.ai.verdict === 'bad').length,
+                 failed: its.filter((x) => this.arFailed(x)).length,
                  done: its.filter((x) => x._done).length };
       },
       arView() {                            // 현재 필터로 좁힌 인박스(미확정 먼저 · 서버 정렬 유지)
@@ -66,6 +69,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (f === 'pending') return its.filter((x) => !x._done);
         if (f === 'low') return its.filter((x) => !x._done && this.arLow(x));
         if (f === 'bad') return its.filter((x) => x.ai && x.ai.verdict === 'bad');
+        if (f === 'failed') return its.filter((x) => this.arFailed(x));
         if (f === 'done') return its.filter((x) => x._done);
         return its;
       },

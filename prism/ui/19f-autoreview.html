@@ -39,9 +39,11 @@
                 <span class="lbl" style="margin:0">심판 모델</span>
                 <x-modelpick key="drj" value="arModel" set="arModel=$v; saveDraftJudgeModel()" options="arModels" width="240px" tip="콘텐츠 만든 모델과 다른 고지능 모델을 쓰세요(자기 채점 방지)" tip-pos="top"></x-modelpick>
                 <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="arRunning" x-on:click="arRun()" x-text="arRunning ? '채점 중…' : (arItems.length ? '미채점분 판정 실행' : 'AI 초안 판정 실행')"></button>
+                <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="!arRunning && arFailedN() > 0" x-cloak x-on:click="arRun()" data-tip="라우터 실패로 판정 못한 건을 다시 판정합니다" data-tip-pos="top" x-text="'판정 실패 ' + arFailedN() + '건 다시 판정'"></button>
                 <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-show="!arRunning && arTruncated > 0" x-cloak x-on:click="arRun()" data-tip="상한을 넘어 못 채점한 나머지를 이어서" data-tip-pos="top" x-text="'이어서 실행 (남은 ' + arTruncated + '건)'"></button>
                 <span class="meta" x-text="arMsg" x-show="arMsg"></span>
               </div>
+              <p class="meta" style="margin:0" x-show="!arRunning && arFailedN() > 0" x-cloak>심판 모델(라우터) 연결 실패로 <b class="text-ink" x-text="arFailedN() + '건'"></b>이 '직접 검수'로 남았습니다 · 라우터가 정상이면 <b>다시 판정</b>으로 재시도하세요.</p>
               <p class="meta" style="margin:0" x-show="arRunning" x-cloak>채점은 백그라운드로 돕니다 · <b>페이지를 나갔다 와도 이어집니다</b>(다시 실행 안 해도 됨).</p>
 
               <!-- 실행 중 진척 + 예상 시간(백그라운드 잡 폴링) -->
@@ -65,6 +67,7 @@
               <button type="button" x-bind:class="arFilter==='pending'?'sel':''" x-on:click="arSetFilter('pending')">미확정 <span class="cnt" x-text="arCounts().pending"></span></button>
               <button type="button" x-bind:class="arFilter==='low'?'sel':''" x-on:click="arSetFilter('low')">저확신 <span class="cnt" x-text="arCounts().low"></span></button>
               <button type="button" x-bind:class="arFilter==='bad'?'sel':''" x-on:click="arSetFilter('bad')">수정 제안 <span class="cnt" x-text="arCounts().bad"></span></button>
+              <button type="button" x-show="arCounts().failed > 0" x-cloak x-bind:class="arFilter==='failed'?'sel':''" x-on:click="arSetFilter('failed')">판정 실패 <span class="cnt" x-text="arCounts().failed"></span></button>
               <button type="button" x-bind:class="arFilter==='done'?'sel':''" x-on:click="arSetFilter('done')">확정됨 <span class="cnt" x-text="arCounts().done"></span></button>
             </div>
 

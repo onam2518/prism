@@ -9,8 +9,9 @@
 골드는 _inject_gold 로만 큐에 섞이므로 애초에 안 들어옴).
 
 초안은 **콘텐츠 검수처럼 저장 계층에 상시 적재**한다(store.save_ai_draft · 검수자별 upsert). 그래서
-페이지를 나갔다 와도·서버가 재배포돼도 초안이 그대로 남고, 재실행하면 **이미 초안 있는 건 건너뛴다**
-(같은 걸 두 번 판정하지 않는다). 서브탭 진입 시 inbox() 가 저장된 초안으로 표를 채운다(실행과 무관).
+페이지를 나갔다 와도·서버가 재배포돼도 초안이 그대로 남고, 재실행하면 **성공한 초안(정확/수정)은
+건너뛴다**(같은 걸 두 번 판정하지 않는다). 단 **판정 실패(라우터 실패로 verdict 빈 것)는 재판정 대상**이라
+다시 실행하면 그것부터 다시 돌린다. 서브탭 진입 시 inbox() 가 저장된 초안으로 표를 채운다(실행과 무관).
 
 실행은 오래 걸릴 수 있어 **백그라운드 잡 + 진척도/예상 시간**으로 돈다(평가 런과 같은 패턴):
 start() 가 잡을 띄우고 id·total 을 주면, status(id) 를 폴링해 done/total·ETA·새 초안을 본다.
@@ -74,13 +75,14 @@ def _target_rows(st, team, reviewer: str):
         fmap = _SV.feedback_map_cached(team)
     except Exception:
         fmap = {}
-    try:
-        drafted = set(st.ai_drafts(me, team=team).keys())              # 이미 초안 있는 것은 재판정 안 함
+    try:                                                              # 성공한 초안(정확/수정)만 스킵.
+        drafted = {ch for ch, d in st.ai_drafts(me, team=team).items()   # 판정 실패(verdict 빈 것)는 재판정 대상
+                   if (d.get("verdict") or "") in ("good", "bad")}       # (라우터 실패로 '직접 검수'만 뜬 건 다시 돌림)
     except Exception:
         drafted = set()
 
     def _skip(ch):
-        if ch in drafted:                                             # 상시 적재된 초안 있음 = 스킵
+        if ch in drafted:                                             # 성공 초안 있음 = 스킵(실패분은 통과 → 재판정)
             return True
         fb = fmap.get(ch) or {}
         return bool(me) and any((v.get("reviewer") == me or v.get("reviewer_id") == me)
