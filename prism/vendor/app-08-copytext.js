@@ -29,6 +29,7 @@ window.PRISM_APP_PARTS.push(() => ({
             await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
               body: JSON.stringify({ api_key: this.keyInputs.solar }) });
           }
+          let liveN = 0;
           try {                                    // Solar 는 실조회(키 있을 때) · 실패해도 전체는 계속
             const j = await (await fetch('/models', { headers: this._authHeaders() })).json();
             if (j.ok) {
@@ -36,11 +37,21 @@ window.PRISM_APP_PARTS.push(() => ({
               if (!this.cfgModel || !this.models.includes(this.cfgModel))
                 this.cfgModel = this.cfg.model || this.models[0] || '';
             }
+            // 라우터(Timely) 실목록 합류: 카탈로그는 7/29 스냅샷이라 그 뒤 나온 모델을 못 골랐다.
+            // 스냅샷 항목은 지우지 않고(사라진 모델은 호출 시점에 사유가 남는다) 새 id 만 뒤에 붙인다 →
+            // textGroups 를 쓰는 모든 픽커(평가 기준·스튜디오·사용 모델)에 즉시 반영.
+            const live = (j && j.router && Array.isArray(j.router.timely)) ? j.router.timely : [];
+            if (live.length) {
+              const cur = this.modelCatalog.timely.text;
+              this.modelCatalog.timely.text = cur.concat(live.filter((m) => !cur.includes(m)));
+              liveN = live.length;
+            }
           } catch (e) {}
           await this.refreshConfig();
           const total = this.textGroups.reduce((n, g) => n + g.items.length, 0);
           const on = this.textGroups.filter((g) => g.on).length;
-          this.modelsMsg = '전 제공자 ' + total + '개 모델 · 연결 ' + on + '/' + this.textGroups.length;
+          this.modelsMsg = '전 제공자 ' + total + '개 모델 · 연결 ' + on + '/' + this.textGroups.length
+            + (liveN ? ' · Timely 실목록 ' + liveN + '개 반영' : '');
         } catch (e) { this.modelsMsg = '오류: ' + e; }
         this.cfgBusy = false;
       },

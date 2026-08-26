@@ -250,7 +250,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async runGolden() {
         this.goldenBusy = true; this.goldenResult = null;
         try {
-          const r = await (await this._afetch('/eval-run-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: this.evalModel, scope: this.evalScope }) })).json();
+          const r = await (await this._afetch('/eval-run-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: String(this.evalModel || '').split('|').pop(), scope: this.evalScope }) })).json();   // 픽커 값은 provider|model → 서버(llm_for_model)엔 model id 만
           if (!r || !r.ok) { this.goldenResult = r; this.goldenBusy = false; return; }
           this.evalRunId = r.id; this.loadEvalRuns(); this.pollEvalRun(r.id);
         } catch (e) { this.goldenBusy = false; }

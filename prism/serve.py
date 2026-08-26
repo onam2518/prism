@@ -1352,6 +1352,40 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
 
 
 def list_models() -> dict:
+    """모델 새로고침 응답. models = Upstage 직접(/models 실조회 · ok/detail 은 이쪽 결과) ·
+    router = 연결된 라우터(Timely)의 실목록. 화면 카탈로그(app-02 modelCatalog)는 7/29 스냅샷이라
+    그 뒤 나온 모델(2026-08-26 기준 24개)을 평가 기준 등에서 고를 수 없었다 — 실목록을 실어
+    보내면 화면이 스냅샷에 합쳐 모든 픽커에 반영한다."""
+    out = _solar_models()
+    out["router"] = _router_models()
+    return out
+
+
+# 라우터 목록 중 텍스트 생성이 아닌 것(임베딩·음성·이미지 생성 등)은 픽커에 올리지 않는다.
+_NON_TEXT_MODEL = re.compile(r"embed|whisper|tts|rerank|image|dall|moderation|audio|realtime|transcri", re.I)
+
+
+def _router_models(service: str = "timely", timeout: float = 10.0) -> dict:
+    """라우터 /models 실조회 → {service: [id…]}. 키 없으면 {} · 조회 실패는 빈 목록 + detail
+    (새로고침 전체를 막지 않는다 · 화면은 스냅샷을 그대로 쓴다)."""
+    key = IMG.router_key(service)
+    if not key:
+        return {}
+    try:
+        req = urllib.request.Request(IMG.router_base(service) + "/models", method="GET")
+        req.add_header("Authorization", f"Bearer {key}")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        data = payload.get("data") or payload.get("models") or []
+        ids = sorted({str(m.get("id") or m.get("name") or "") for m in data if isinstance(m, dict)} - {""})
+        return {service: [i for i in ids if not _NON_TEXT_MODEL.search(i)]}
+    except urllib.error.HTTPError as e:
+        return {service: [], "detail": f"{service} HTTP{e.code}"}
+    except Exception as e:
+        return {service: [], "detail": f"{service} {str(e)[:120]}"}
+
+
+def _solar_models() -> dict:
     """현재 키로 접근 가능한 모델 목록을 Upstage /models 에서 조회."""
     if not IMG._api_key():
         return {"ok": False, "detail": "API 키가 설정되지 않았습니다", "models": []}
