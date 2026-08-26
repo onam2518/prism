@@ -236,3 +236,31 @@ console.log(JSON.stringify({
         self.assertEqual(out["passed"], " · 기한 지남")
         self.assertEqual(out["three_days"], " · D-3")
         self.assertEqual(out["none"], "")
+
+
+class TestEvalModelRefresh(unittest.TestCase):
+    """평가 기준의 기준 모델: '써 본 모델'(availableModels)만 보이던 픽커를 제공자별 전체 카탈로그
+    (textGroups)로 바꾸고 새로고침을 붙였다(2026-08-26 · 새 모델을 고를 수 없던 문제)."""
+
+    def test_eval_pick_uses_full_catalog_with_refresh(self):
+        src = _read("prism/ui/13-eval.html")
+        m = re.search(r'<x-modelpick[^>]*value="evalModel"[^>]*>', src)
+        self.assertIsNotNone(m, "evalModel 을 쓰는 x-modelpick 이 없습니다")
+        self.assertIn('groups="textGroups"', m.group(0))        # 데이터 원천 = 공통 제공자 그룹
+        self.assertNotIn('options="availableModels"', m.group(0))
+        self.assertIn('x-on:click="loadModels()"', src)         # 설정 화면과 같은 새로고침 재사용
+
+    def test_eval_run_sends_bare_model_id(self):
+        """x-modelpick 값은 provider|model — /eval-run-start 엔 model id 만 보낸다."""
+        src = _read("prism/vendor/app-04-_err.js")
+        i = src.index("'/eval-run-start'")
+        line = src[i:src.index("\n", i)]
+        self.assertIn("split('|').pop()", line)
+        self.assertNotIn("model: this.evalModel,", line)
+
+    def test_refresh_merges_live_router_list(self):
+        """새로고침은 라우터 실목록(j.router.timely)을 스냅샷 카탈로그에 합친다(지우지 않고 추가)."""
+        src = _read("prism/vendor/app-08-copytext.js")
+        body = src[src.index("async loadModels()"):src.index("async refreshConfig()")]
+        self.assertIn("j.router.timely", body)
+        self.assertIn("this.modelCatalog.timely.text = cur.concat(", body)
