@@ -10,6 +10,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-08-31 | [아이템 메타란 무엇인가 · 정의와 구성 요소](https://claude.ai/code/artifact/e2f8e5e7-16bf-4a49-aef3-0c80fdf383fb) |
 | 2026-08-26 | [프리즘 주간회의 08.26](https://claude.ai/code/artifact/10b2fc5e-35a2-46e6-9900-17ff3d5b95f8) |
 | 2026-08-25 | [슬레이트 · bi-portal 클로드코드 연결 · 설치부터 첫 대시보드까지](https://claude.ai/code/artifact/c17d2e23-22b2-42cb-b07a-2c89046ca743) |
 | 2026-08-19 | [초안 판정 인박스](https://claude.ai/code/artifact/963d6969-7819-4d4d-80d0-038da6232969) |
