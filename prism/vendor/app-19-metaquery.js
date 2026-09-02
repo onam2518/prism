@@ -15,6 +15,7 @@ window.PRISM_APP_PARTS.push(() => ({
   mqSource: 'stage',         // stage 수집분(기본) | metabase 서버 직접 호출
 
   mqState: '',               // 인입 상태(화면 필터): '' 전체 | open 미인입 | done 인입됨
+  mqIntent: '', mqCategory: '', mqEntity: '', mqModel: '', mqMeta: '',   // 메타별 필터(서버가 행 JSON 에서 거른다)
   async mqLoad() {           // 메뉴 진입: 상태 로드 + 수집분 첫 조회(검수 대상 목록처럼 바로 보인다)
     if (this.mqStatus) return;
     await this.mqStatusLoad();
@@ -32,9 +33,19 @@ window.PRISM_APP_PARTS.push(() => ({
     return Array.from(set).sort();
   },
   get mqFilterN() {
-    return [this.mqService, this.mqGrade, this.mqFrom, this.mqTo, this.mqState].filter(Boolean).length + (this.mqSource !== 'stage' ? 1 : 0);
+    return [this.mqService, this.mqGrade, this.mqFrom, this.mqTo, this.mqState, this.mqIntent, this.mqCategory, this.mqEntity, this.mqModel, this.mqMeta]
+      .filter(Boolean).length + (this.mqSource !== 'stage' ? 1 : 0);
   },
-  mqFilterReset() { this.mqService = ''; this.mqGrade = ''; this.mqFrom = ''; this.mqTo = ''; this.mqState = ''; this.mqSource = 'stage'; this.mqSearch(); },
+  mqFilterReset() {
+    this.mqService = ''; this.mqGrade = ''; this.mqFrom = ''; this.mqTo = ''; this.mqState = ''; this.mqSource = 'stage';
+    this.mqIntent = ''; this.mqCategory = ''; this.mqEntity = ''; this.mqModel = ''; this.mqMeta = '';
+    this.mqSearch();
+  },
+  mqFacet(k) {               // 선택지: 서버 패싯(스테이징 실제 값) + 현재 선택값(비어 있어도 표시 유지)
+    const list = (((this.mqStatus || {}).facets) || {})[k] || [];
+    const cur = { intents: this.mqIntent, categories: this.mqCategory, models: this.mqModel }[k];
+    return cur && list.indexOf(cur) < 0 ? list.concat([cur]) : list;
+  },
   get mqShown() {            // 인입 상태만 화면에서 거른다(나머지 조건은 서버 조회)
     if (!this.mqState) return this.mqRows;
     return this.mqRows.filter((r) => this.mqState === 'done' ? r.registered : !r.registered);
@@ -47,7 +58,8 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   mqFilters() {
     return { source: this.mqSource, service: this.mqService, grade: this.mqGrade, keyword: this.mqKeyword,
-             date_from: this.mqFrom, date_to: this.mqTo, limit: this.mqLimit, offset: this.mqOffset };
+             date_from: this.mqFrom, date_to: this.mqTo, limit: this.mqLimit, offset: this.mqOffset,
+             intent: this.mqIntent, category: this.mqCategory, entity: this.mqEntity, model: this.mqModel, meta: this.mqMeta };
   },
   async mqSearch(reset = true) {
     if (reset) this.mqOffset = 0;
@@ -85,7 +97,7 @@ window.PRISM_APP_PARTS.push(() => ({
     const s = (v == null ? '' : String(v)).trim();
     if (!s) return [];
     if (s[0] === '[') { try { return JSON.parse(s).map(String).filter((x) => x.trim()); } catch (e) {} }
-    return s.split(/[,·]/).map((x) => x.trim()).filter(Boolean);
+    return s.split(/\||,| · /).map((x) => x.trim()).filter(Boolean);   // 붙여 쓴 가운뎃점은 값의 일부(인텐트 명칭)
   },
   mqOpen(r) {                // 제목 클릭: 검수 상세의 콘텐츠 영역과 같은 읽기 전용 보기(판정·이력 없음 · 지정 전이라 검수 대상 아님)
     this.openContentView({ hash: r.hash, title: r.title || '', service: r.service || '', body: r.body || '', url: r.url || '',

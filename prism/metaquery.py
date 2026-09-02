@@ -34,6 +34,8 @@ _LIMIT_DEFAULT = 50
 _LIMIT_MAX = 200
 _TIMEOUT_S = 30
 _STAGE_TTL_DAYS = 7    # 스테이징 행 보존(올린 뒤 · 지정 여부 무관)
+_STAGE_SCAN = 5000     # 메타 필터·패싯 계산 시 훑는 상한(스테이징은 TTL 로 작게 유지된다)
+_META_KEYS = ("intent", "category", "entity", "model", "meta")   # 저장소 SQL 밖에서 거르는 조건
 
 # 조회 결과 행의 열 계약(운영자 SQL 별칭). 순서는 화면 표 기본 순서.
 COLUMNS = ("id", "service", "title", "subtitle", "body", "url", "published_at",
@@ -56,18 +58,20 @@ def mq_status(team=None) -> dict:
     query = (getattr(cfg, "metabase_query", "") or "").strip()
     db_id = int(getattr(cfg, "metabase_db_id", 0) or 0)
     mock = bool(_SV.Handler.server_mock)
-    staged, services = 0, []
+    staged, services, facets = 0, [], {"intents": [], "categories": [], "models": []}
     st = _SV.get_store()
     if st is not None and hasattr(st, "stage_count"):
         try:
             staged = int(st.stage_count(team=team))
             services = list(st.stage_services(team=team)) if staged else []
+            if staged:
+                facets = _stage_facets(st, team)
         except Exception:
             staged = -1                                   # 표 미생성 등 · 화면은 '확인 불가'
     return {"ok": True, "url": url, "dbId": db_id, "hasKey": bool(_api_key()),
             "queryConfigured": bool(query), "mock": mock,
             "configured": mock or bool(url and db_id and _api_key() and query),
-            "staged": staged, "stageTtlDays": _STAGE_TTL_DAYS, "services": services,
+            "staged": staged, "stageTtlDays": _STAGE_TTL_DAYS, "services": services, "facets": facets,
             "columns": list(COLUMNS)}
 
 
@@ -127,7 +131,8 @@ def _as_list(v) -> list:
                 return [str(x).strip() for x in arr if str(x).strip()]
         except Exception:
             pass
-    for sep in ("·", "|", ","):
+    # 구분자: 세로줄·쉼표·띄어 쓴 가운뎃점(" · "). 붙여 쓴 가운뎃점은 값의 일부다("속보·단신" 같은 인텐트 명칭).
+    for sep in ("|", ",", " · "):
         if sep in s:
             return [p.strip() for p in s.split(sep) if p.strip()]
     return [s]
@@ -172,6 +177,46 @@ def _mock_rows(f: dict, limit: int, offset: int) -> list:
     return base[offset:offset + limit]
 
 
+def _stage_facets(st, team) -> dict:
+    """스테이징에 실제 있는 인텐트·카테고리·모델 값(필터 선택지). 행 수가 TTL 로 작아 전량 훑는다."""
+    intents, cats, models = set(), set(), set()
+    for r in st.stage_list({}, _STAGE_SCAN, 0, team=team):
+        intents.update(_as_list(r.get("intent")))
+        cats.update(_as_list(r.get("category")))
+        m = str(r.get("model") or "").strip()
+        if m:
+            models.add(m)
+    return {"intents": sorted(intents), "categories": sorted(cats), "models": sorted(models)}
+
+
+def _has_meta(r: dict) -> bool:
+    g = str(r.get("grade") or "").strip().upper()
+    return bool(str(r.get("summary") or "").strip() or _as_list(r.get("entities")) or _as_list(r.get("intent"))
+                or _as_list(r.get("category")) or g in ("G", "R"))
+
+
+def _meta_match(r: dict, f: dict) -> bool:
+    """메타별 필터: 인텐트·카테고리(값 포함) · 엔티티(부분 일치) · 모델(일치) · 메타 유무(with|without)."""
+    v = (f.get("intent") or "").strip()
+    if v and v not in _as_list(r.get("intent")):
+        return False
+    v = (f.get("category") or "").strip()
+    if v and v not in _as_list(r.get("category")):
+        return False
+    v = (f.get("entity") or "").strip().lower()
+    if v and not any(v in e.lower() for e in _as_list(r.get("entities"))):
+        return False
+    v = (f.get("model") or "").strip()
+    if v and str(r.get("model") or "").strip() != v:
+        return False
+    v = (f.get("meta") or "").strip()
+    if v == "with" and not _has_meta(r):
+        return False
+    if v == "without" and _has_meta(r):
+        return False
+    return True
+
+
 def mq_search(data: dict, team=None) -> dict:
     """조건 조회. source=stage(기본 · 수집기가 올린 스테이징) | metabase(서버 직접 호출 · 사내망 전용).
     반환 행에 프리즘 인입 여부(registered)를 함께 표시한다."""
@@ -179,18 +224,25 @@ def mq_search(data: dict, team=None) -> dict:
     limit = max(1, min(_LIMIT_MAX, int(data.get("limit") or _LIMIT_DEFAULT)))
     offset = max(0, int(data.get("offset") or 0))
     f = {k: data.get(k) for k in ("service", "grade", "keyword", "date_from", "date_to")}
+    mf = {k: str(data.get(k) or "") for k in _META_KEYS}
+    meta_on = any(v.strip() for v in mf.values())
     source = str(data.get("source") or "stage")
     if source == "stage":
         st = _SV.get_store()
         if st is None or not hasattr(st, "stage_list"):
             return {"ok": False, "error": "저장소가 준비되지 않았습니다"}
         try:
-            rows = st.stage_list(f, limit, offset, team=team)
+            if meta_on:                                   # 메타 조건은 행 JSON 안이라 훑은 뒤 페이지를 자른다
+                allrows = [r for r in st.stage_list(f, _STAGE_SCAN, 0, team=team) if _meta_match(r, mf)]
+                rows = allrows[offset:offset + limit]
+            else:
+                rows = st.stage_list(f, limit, offset, team=team)
         except Exception as e:
             return {"ok": False, "error": "스테이징 조회 실패 · 표(prism_mq_stage) 생성 여부를 확인하세요 (SUPABASE_MIGRATION.md) · "
                     + str(e)[:120]}
     elif st_info["mock"]:
-        rows = _mock_rows(f, limit, offset)
+        rows = [r for r in _mock_rows(f, _LIMIT_MAX, 0) if _meta_match(r, mf)][offset:offset + limit] if meta_on \
+            else _mock_rows(f, limit, offset)
     elif not st_info["configured"]:
         return {"ok": False, "error": "메타베이스 연결이 설정되지 않았습니다 · 시스템 설정에서 URL·DB·키·기본 SQL 을 저장하세요"}
     else:
@@ -237,6 +289,9 @@ def mq_stage(data: dict, team=None) -> dict:
             continue
         row = {k: r.get(k) for k in COLUMNS}
         row["url"] = c["source_url"]                      # 스킴 화이트리스트 통과분만 보관
+        for k in ("entities", "intent", "category"):      # 목록 필드는 리스트로 통일(필터·표시 일관)
+            row[k] = _as_list(r.get(k))
+        row["model"] = str(r.get("model") or "").strip()
         items.append((_row_hash(r), row))
     if not items:
         return {"ok": False, "error": "올릴 수 있는 행이 없습니다 (제목·본문 비어 있음)"}
