@@ -34,6 +34,8 @@ window.PRISM_APP_PARTS.push(() => ({
       // 멤버 메뉴: 콘텐츠 검수(판정·교정 → 정답 축적) / 평가(일치율·모델 비교) / 게시판(제안·오류)
       mods: [
         { g: '검수 · 평가', items: [
+          // 콘텐츠 조회: 데브 발행 콘텐츠·메타를 메타베이스로 조회해 검수 대상으로 지정(인입 행위 · 슈퍼관리자 이상)
+          { id: 'metaq', label: '콘텐츠 조회', ic: 'queue', cond: 'opsadmin' },
           { id: 'create', label: '콘텐츠 검수', ic: 'eval' },
           { id: 'evaluate', label: '평가', ic: 'dash' },
           { id: 'board', label: '게시판', ic: 'board' } ] },

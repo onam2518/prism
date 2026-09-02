@@ -87,6 +87,11 @@ class Config:
     model_prompts: dict = field(default_factory=dict)        # {model_id: {stage: prompt}}
     # 자동 인입 파이프라인 소스(API/Kafka 등). 각: {id,type,name,enabled,...연결정보}
     ingest_sources: list = field(default_factory=list)
+    # 콘텐츠 조회(메타베이스 경유): URL·DB id·기본 SQL(별칭 계약은 metaquery.COLUMNS).
+    # API 키는 여기 저장하지 않는다(env PRISM_METABASE_KEY + 키 파일 · serve 관례).
+    metabase_url: str = ""
+    metabase_db_id: int = 0
+    metabase_query: str = ""
 
     # ── 모델 슬롯(제공자 선택) ──
     # 텍스트 슬롯: 메타·품질·법령 추출. solar(직접) | bizrouter | timely(통합 라우터).

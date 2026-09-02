@@ -17,6 +17,7 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    │   topicops(토픽) dictops(사전) dashops(대시보드·롤업·리포트) mediaops umops boardops
    │   crewops(검수 인력 운영·캐파·스케줄) evalops(런 비교·평가) weekops(주간기록) deployops(배포 게이트)
    │   reviewassist(검수 보조 에이전트 · 트랙 A 도구)
+   │   metaquery(콘텐츠 조회 · 메타베이스 경유 데브 발행분 조회→검수 지정 · 2026-09-02)
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
    ├─ topic.py / entdict.py / dictionaries.py / usermeta.py / mediaext.py / imagext.py
    │  modelmeta.py(모델 표시 정보 · 이름/제공자/비용 등급 · 선택 드롭다운 원천)
@@ -51,7 +52,8 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
 | 사용자 메타 → **umops.py** | `usermeta_*` (입력 서식 `build_template_xlsx` 는 runops) | /usermeta* |
 | 미디어(콘텐츠 추가 탭) → **mediaops.py** | `media_action` `media_s5ab` `media_native` `media_register` | /media-extract /media-register |
-| 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` `check_source_url` | /ingest-* /backfill-urls /check-source |
+| 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` `check_source_url` · 스케줄러는 기본 비활성(PRISM_INGEST_AUTO=1 로 opt-in · 2026-09-02) | /ingest-* /backfill-urls /check-source |
+| 콘텐츠 조회 → **metaquery.py** | `mq_status` `mq_search` `mq_register`(발행 메타를 초안으로 복사 인입 · 재추출 없음 · media_register 와 같은 계약) · 설정은 config.metabase_* + env PRISM_METABASE_KEY | /metaquery /metaquery-search /metaquery-register |
 | 대시보드·롤업 → **dashops.py** | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` `activity_daily_data` | /dashboard /drill /cost-rollup /fail-rollup /activity-daily |
 | 게시판 → **boardops.py** | `board_data` `board_action` | /board |
 | HTTP 계층 | `Handler`(게이트 `_gate_get` `_admin_gate` `_require_*` · 응답 `_send` `_send_file`) | 전 라우트 |

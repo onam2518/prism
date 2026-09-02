@@ -75,6 +75,7 @@ from . import deployops as DEP
 from . import crewops as CRW           # 검수 인력 운영(HR) · '검수운영' 메뉴
 from . import weekops as WKO           # 주간 운영 기록(주 마감 스냅샷 적립·조회)
 from . import mcpkeys as MK           # MCP 파트너 키(트랙 B · 외부 MCP) · 발급·해석·레이트리밋
+from . import metaquery as MQ         # 콘텐츠 조회(메타베이스 경유) · 검수 지정
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
 UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
@@ -94,6 +95,7 @@ CRW._SV = sys.modules[__name__]     # 검수 인력 운영(HR) 주입(동일)
 ELB._SV = sys.modules[__name__]     # 엔티티 라벨 원장 주입(동일)
 WKO._SV = sys.modules[__name__]     # 주간 운영 기록 주입(동일)
 MK._SV = sys.modules[__name__]      # MCP 파트너 키 주입(동일 · 전송 /mcp 는 mcpkeys 만 부른다)
+MQ._SV = sys.modules[__name__]      # 콘텐츠 조회(메타베이스) 주입(동일)
 
 _run_id = RN._run_id
 _build_id = RN._build_id
@@ -527,6 +529,8 @@ _MENU_POST_ROUTES = (
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
     ("/ingest-run", "content"), ("/rerun", "content"), ("/run", "content"), ("/store", "content"),
     ("/crew", "crew"),
+    # 콘텐츠 조회(메타베이스)·검수 지정 = 인입 행위 · content 메뉴 권한으로 게이트
+    ("/metaquery", "content"),
 )
 
 
@@ -654,6 +658,9 @@ _ROUTER_KEY_PATHS = {
     "bizrouter": os.path.join(_key_dir(), ".prism_bizrouter_key"),
     "timely": os.path.join(_key_dir(), ".prism_timely_key"),
 }
+# 콘텐츠 조회(메타베이스) API 키: LLM 라우터가 아니라서 _ROUTER_KEY_PATHS 에 넣지 않고
+# (라우터 루프가 IMG.ROUTERS 메타를 요구) 같은 저장 관례만 따른다. env PRISM_METABASE_KEY.
+_METABASE_KEY_PATH = os.path.join(_key_dir(), ".prism_metabase_key")
 
 
 def _legacy_key_path(path):
@@ -709,6 +716,10 @@ def load_persisted_key():
             k = _read_key_file(path)
             if k:
                 os.environ[env] = k
+    if not (os.environ.get("PRISM_METABASE_KEY") or "").strip():
+        k = _read_key_file(_METABASE_KEY_PATH)
+        if k:
+            os.environ["PRISM_METABASE_KEY"] = k
 
 
 def make_text_llm(cfg: Config, mock: bool) -> LLMClient:
@@ -1139,6 +1150,12 @@ def config_status(team=None) -> dict:
         "visionProvider": cfg.vision_provider or "upstage_ie",
         "visionModel": cfg.vision_model or "",
         "legalEnabled": bool(cfg.legal_enabled),
+        # 콘텐츠 조회(메타베이스) · 키는 존재 여부만(실값 금지)
+        "metabaseUrl": getattr(cfg, "metabase_url", "") or "",
+        "metabaseDbId": int(getattr(cfg, "metabase_db_id", 0) or 0),
+        "metabaseQuery": getattr(cfg, "metabase_query", "") or "",
+        "hasMetabaseKey": bool((os.environ.get("PRISM_METABASE_KEY") or "").strip()),
+        "metabasePersisted": _key_persisted(_METABASE_KEY_PATH),
     }
 
 
@@ -1156,7 +1173,9 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             "model", "base_url", "reasoning", "system_prompt", "stage_prompts", "stage_models",
             "model_prompts", "ingest_sources", "fallback_models", "meta_four_calls",
             "meta_call_models", "family_wrappers", "text_provider", "text_model",
-            "vision_provider", "vision_model", "legal_enabled")
+            "vision_provider", "vision_model", "legal_enabled",
+            "metabase_url", "metabase_db_id", "metabase_query",
+            "metabase_api_key", "forget_metabase")
         data = {k: v for k, v in data.items() if k not in _ADMIN_ONLY_CFG}
     if "assist_model" in data:
         # 검수 보조 모델은 **저장 때도** 거른다. 읽을 때만 거르면 config.json 에는 없는 모델명이
@@ -1201,6 +1220,18 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
         elif data.get("forget_" + service):
             os.environ.pop(env, None)
             _remove_key_file(path)
+    # 메타베이스 API 키(콘텐츠 조회 · LLM 라우터 아님 · 저장 관례는 동일)
+    mbkey = (data.get("metabase_api_key") or "").strip()
+    if mbkey:
+        os.environ["PRISM_METABASE_KEY"] = mbkey
+        if data.get("persist"):
+            try:
+                _write_private(_METABASE_KEY_PATH, mbkey)
+            except Exception:
+                pass
+    elif data.get("forget_metabase"):
+        os.environ.pop("PRISM_METABASE_KEY", None)
+        _remove_key_file(_METABASE_KEY_PATH)
     model = (data.get("model") or "").strip()
     base = (data.get("base_url") or "").strip()
     reasoning = (data.get("reasoning") or "").strip()
@@ -1217,6 +1248,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_4c = "meta_four_calls" in data
     has_misc = (("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
                 or ("fallback_models" in data) or ("batch_budget_usd" in data)
+                or ("metabase_url" in data) or ("metabase_db_id" in data) or ("metabase_query" in data)
                 or ("final_rerun_after_batch" in data) or ("final_gold_check" in data)
                 or ("assist_model" in data) or ("draft_judge_model" in data))
     if (model or base or reasoning or has_sp or has_stage or has_slot or has_legal or has_ingest
@@ -1308,6 +1340,16 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 cfg.batch_budget_usd = max(0.0, min(1000.0, float(data.get("batch_budget_usd") or 0)))
             except (TypeError, ValueError):
                 pass
+        if "metabase_url" in data:                # 콘텐츠 조회(메타베이스) 연결 URL
+            cfg.metabase_url = (data.get("metabase_url") or "").strip() \
+                if isinstance(data.get("metabase_url"), str) else ""
+        if "metabase_db_id" in data:              # 메타베이스 database id(정수)
+            try:
+                cfg.metabase_db_id = max(0, int(data.get("metabase_db_id") or 0))
+            except (TypeError, ValueError):
+                pass
+        if "metabase_query" in data:              # 기본 SQL(별칭 계약 · metaquery.COLUMNS)
+            cfg.metabase_query = str(data.get("metabase_query") or "").strip()
         if "assist_model" in data:                # 검수 보조 에이전트 모델(빈 값 = 미설정 = 기본값)
             # 여기 닿는 값은 위에서 이미 걸러진 것(목록에 있는 이름 또는 빈 값)뿐이다.
             cfg.assist_model = (data.get("assist_model") or "").strip() \
@@ -2052,6 +2094,11 @@ def _g_autoreview_drafts(h, q):
     if _autoreview_denied(h):
         return None
     return AR.inbox(team=h._req_team(), reviewer=(h._bearer_uid() or h._bearer_email() or ""))
+
+
+@_get_route("/metaquery", admin=True)                # 콘텐츠 조회(메타베이스) 설정·연결 상태
+def _g_metaquery(h, q):
+    return MQ.mq_status(team=h._req_team())
 
 
 # 디스패치 순서: 접두 길이 내림차순 → /entdict-lookup 이 /entdict 보다, /usermeta-*.csv 가
@@ -2854,6 +2901,16 @@ def _p_media_register(h, body):
     data = json.loads(body or b"{}")
     return MO.media_register(data.get("content") or {}, data.get("output") or {},
                              purpose=str(data.get("purpose") or ""), team=h._req_team())
+
+
+@_post_route("/metaquery-search", gate="admin")      # 콘텐츠 조회(메타베이스): 조건 검색 · 서버가 대신 호출(키 보호)
+def _p_metaquery_search(h, body):
+    return MQ.mq_search(json.loads(body or b"{}"), team=h._req_team())
+
+
+@_post_route("/metaquery-register", gate="admin")    # 검수 지정: 발행 메타를 초안으로 복사 인입(재추출 없음)
+def _p_metaquery_register(h, body):
+    return MQ.mq_register(json.loads(body or b"{}"), team=h._req_team())
 
 
 @_post_route("/usermeta-profiles", gate="team")      # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)

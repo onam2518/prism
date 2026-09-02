@@ -483,7 +483,14 @@ def _ingest_scheduler():
 
 
 def start_ingest_scheduler():
-    """백그라운드 자동 인입 스케줄러 시작(중복 방지)."""
+    """백그라운드 자동 인입 스케줄러 시작(중복 방지).
+
+    기본 비활성(2026-09-02 · 조회→검수 지정 전환): 인입 기본 경로가 메타베이스 조회로
+    바뀌어 자동 폴링은 명시적으로 켠 환경(PRISM_INGEST_AUTO=1)에서만 돈다.
+    retention 스케줄러(PRISM_RETENTION_DAYS)와 같은 opt-in 관례. 수동 실행(/ingest-run)은
+    스케줄러와 무관하게 그대로 동작하고, ingest_status().scheduler 가 꺼짐을 드러낸다."""
+    if (os.environ.get("PRISM_INGEST_AUTO") or "0") != "1":
+        return
     global _INGEST_THREAD
     if _INGEST_THREAD and _INGEST_THREAD.is_alive():
         return
