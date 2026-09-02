@@ -58,6 +58,8 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 게시판 → **boardops.py** | `board_data` `board_action` | /board |
 | HTTP 계층 | `Handler`(게이트 `_gate_get` `_admin_gate` `_require_*` · 응답 `_send` `_send_file`) | 전 라우트 |
 
+콘텐츠 조회의 수집 환경(bi-portal 은 사내망 전용 · 사내망 엔진이 register 를 호출) 설계는 `docs/METACOLLECT_DESIGN.md`.
+
 ### 라우트 추가 방법
 
 - **GET**: `serve.py` 의 GET 라우트 테이블 섹션에 핸들러 1개 등록. 끝.
