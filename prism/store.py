@@ -195,6 +195,12 @@ class Store:
         -- 콘텐츠 용도: review(검수용, 기본)=검수·골든 축적 / eval(평가용)=평가 전용 홀드아웃.
         CREATE TABLE IF NOT EXISTS content_purpose(
           content_hash TEXT PRIMARY KEY, purpose TEXT, ts REAL);
+        -- 조회 스테이징(콘텐츠 조회 → 검수 지정): 사내망 수집기가 올린 발행분 행. 검수 콘텐츠가
+        -- 아니라 '고르기 전' 목록이라 results 와 분리 · 지정하지 않은 행은 TTL 로 자동 삭제.
+        CREATE TABLE IF NOT EXISTS mq_stage(
+          hash TEXT, team TEXT NOT NULL DEFAULT '', row TEXT, service TEXT, grade TEXT,
+          title TEXT, published_at TEXT, staged_at REAL,
+          PRIMARY KEY(hash, team));
         -- 초안 이력: (콘텐츠, 모델, 버전) 별 산출 스냅샷. 결과 비교 팝업의 전체 이력 원천.
         CREATE TABLE IF NOT EXISTS drafts(
           content_hash TEXT, team TEXT NOT NULL DEFAULT '', model TEXT, version INTEGER,
@@ -1206,6 +1212,81 @@ class Store:
         """{content_hash: purpose}. 미지정은 review 취급(호출부 기본값)."""
         c = self._conn()
         return {h: p for h, p in c.execute("SELECT content_hash,purpose FROM content_purpose")}
+
+    # ── 조회 스테이징(metaquery) · 수집기가 올린 발행분을 '고르기 전' 목록으로 보관 ──
+    def stage_put(self, items, team=None) -> dict:
+        """items = [(hash, row_dict)]. 같은 해시는 최신 행으로 덮는다(발행 메타 갱신 반영)."""
+        c = self._conn()
+        t = team or ""
+        hs = [h for h, _ in items]
+        known = set()
+        for i in range(0, len(hs), 500):
+            marks = ",".join("?" * len(hs[i:i + 500]))
+            known.update(h for (h,) in c.execute(
+                f"SELECT hash FROM mq_stage WHERE team=? AND hash IN ({marks})", [t, *hs[i:i + 500]]))
+        now = time.time()
+        c.executemany("INSERT INTO mq_stage(hash,team,row,service,grade,title,published_at,staged_at) "
+                      "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(hash,team) DO UPDATE SET row=excluded.row, "
+                      "service=excluded.service, grade=excluded.grade, title=excluded.title, "
+                      "published_at=excluded.published_at, staged_at=excluded.staged_at",
+                      [(h, t, json.dumps(r, ensure_ascii=False), str(r.get("service") or ""),
+                        str(r.get("grade") or ""), str(r.get("title") or ""),
+                        str(r.get("published_at") or ""), now) for h, r in items])
+        c.commit()
+        return {"added": len([h for h in hs if h not in known]), "updated": len([h for h in hs if h in known])}
+
+    def stage_list(self, f, limit=50, offset=0, team=None) -> list:
+        """조건 조회(서비스·등급·키워드·발행 기간). 최근 올린 순 → 발행 최신 순."""
+        w, args = ["team=?"], [team or ""]
+        if (f.get("service") or "").strip():
+            w.append("service=?"); args.append(f["service"].strip())
+        if (f.get("grade") or "").strip():
+            w.append("grade=?"); args.append(f["grade"].strip())
+        kw = (f.get("keyword") or "").strip()
+        if kw:
+            w.append("(title LIKE ? OR json_extract(row,'$.body') LIKE ?)"); args += ["%" + kw + "%"] * 2
+        if (f.get("date_from") or "").strip():
+            w.append("published_at>=?"); args.append(f["date_from"].strip())
+        if (f.get("date_to") or "").strip():
+            w.append("published_at<?"); args.append(f["date_to"].strip())
+        c = self._conn()
+        out = []
+        for h, row, ts in c.execute("SELECT hash,row,staged_at FROM mq_stage WHERE " + " AND ".join(w) +
+                                    " ORDER BY staged_at DESC, published_at DESC LIMIT ? OFFSET ?",
+                                    [*args, int(limit), int(offset)]):
+            try:
+                r = json.loads(row)
+            except Exception:
+                continue
+            r["hash"] = h
+            r["staged_at"] = ts
+            out.append(r)
+        return out
+
+    def stage_delete(self, hashes, team=None) -> int:
+        hs = [h for h in dict.fromkeys(hashes or []) if h]
+        if not hs:
+            return 0
+        c = self._conn()
+        n = 0
+        for i in range(0, len(hs), 500):
+            chunk = hs[i:i + 500]
+            n += c.execute(f"DELETE FROM mq_stage WHERE team=? AND hash IN ({','.join('?' * len(chunk))})",
+                           [team or "", *chunk]).rowcount
+        c.commit()
+        return n
+
+    def stage_purge(self, days, team=None) -> int:
+        """올린 뒤 days 일이 지난 행 삭제(지정 여부 무관 · 지정된 콘텐츠는 results 에 따로 있다)."""
+        c = self._conn()
+        n = c.execute("DELETE FROM mq_stage WHERE team=? AND staged_at<?",
+                      (team or "", time.time() - float(days) * 86400)).rowcount
+        c.commit()
+        return n
+
+    def stage_count(self, team=None) -> int:
+        c = self._conn()
+        return int(c.execute("SELECT COUNT(*) FROM mq_stage WHERE team=?", (team or "",)).fetchone()[0])
 
     def save_routes(self, content_hash, reviewer, items, team=None, model=""):
         """오케스트레이터 재분류 결과 append(초안 생성 모델 귀속 포함)."""

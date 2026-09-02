@@ -53,12 +53,12 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 사용자 메타 → **umops.py** | `usermeta_*` (입력 서식 `build_template_xlsx` 는 runops) | /usermeta* |
 | 미디어(콘텐츠 추가 탭) → **mediaops.py** | `media_action` `media_s5ab` `media_native` `media_register` | /media-extract /media-register |
 | 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` `check_source_url` · 스케줄러는 기본 비활성(PRISM_INGEST_AUTO=1 로 opt-in · 2026-09-02) | /ingest-* /backfill-urls /check-source |
-| 콘텐츠 조회 → **metaquery.py** | `mq_status` `mq_search` `mq_register`(발행 메타를 초안으로 복사 인입 · 재추출 없음 · media_register 와 같은 계약) · 설정은 config.metabase_* + env PRISM_METABASE_KEY | /metaquery /metaquery-search /metaquery-register |
+| 콘텐츠 조회 → **metaquery.py** | `mq_status` `mq_search`(기본 source=stage · 스테이징) `mq_stage`·`mq_stage_delete`(사내망 수집기가 올린 발행분 · TTL 7일) `mq_register`(발행 메타를 초안으로 복사 인입 · 재추출 없음 · media_register 와 같은 계약) · 표 mq_stage(store)/prism_mq_stage(supastore) · 직접 조회 설정은 config.metabase_* + env PRISM_METABASE_KEY | /metaquery /metaquery-search /metaquery-stage /metaquery-stage-delete /metaquery-register |
 | 대시보드·롤업 → **dashops.py** | `dashboard_data` `drill_contents` `cost_rollup_data` `fail_rollup_data` `activity_daily_data` | /dashboard /drill /cost-rollup /fail-rollup /activity-daily |
 | 게시판 → **boardops.py** | `board_data` `board_action` | /board |
 | HTTP 계층 | `Handler`(게이트 `_gate_get` `_admin_gate` `_require_*` · 응답 `_send` `_send_file`) | 전 라우트 |
 
-콘텐츠 조회의 수집 환경(bi-portal 은 사내망 전용 · 사내망 엔진이 register 를 호출) 설계는 `docs/METACOLLECT_DESIGN.md`.
+콘텐츠 조회의 수집 환경(bi-portal 은 사내망 전용 · 사내망 수집기가 스테이징에 올리고 화면에서 골라 지정) 설계는 `docs/METACOLLECT_DESIGN.md`.
 
 ### 라우트 추가 방법
 

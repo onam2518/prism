@@ -444,3 +444,31 @@ create trigger prism_contents_keep_first_source
   before update on public.prism_contents
   for each row execute function public.prism_keep_first_source();
 ```
+
+## 조회 스테이징 `prism_mq_stage` (2026-09-02 · 콘텐츠 조회 → 검수 지정)
+
+bi-portal 메타베이스가 사내망 전용이라 운영 서버가 직접 조회하지 못한다. 사내망 수집기(status-agent
+`prism_push.py`)가 발행분 행을 `/metaquery-stage` 로 올리고, 운영자가 조회 화면에서 보고 고른 것만
+검수로 지정한다(`/metaquery-register`). 스테이징은 검수 콘텐츠가 아니다: `prism_contents` 와 분리 ·
+선택 삭제(`/metaquery-stage-delete`) · 올린 뒤 7일이 지나면 서버가 올릴 때마다 정리한다.
+설계: `docs/METACOLLECT_DESIGN.md`.
+
+```sql
+create table if not exists public.prism_mq_stage (
+  hash         text not null,                     -- 콘텐츠 해시(store.content_hash · contents 와 같은 계약)
+  team_key     text not null default '',
+  row          jsonb not null,                    -- metaquery.COLUMNS 별칭 행(제목·본문·발행 메타)
+  service      text not null default '',
+  grade        text not null default '',
+  title        text not null default '',
+  published_at text not null default '',
+  staged_at    timestamptz not null default now(),
+  primary key (hash, team_key)
+);
+create index if not exists ix_mqstage_team_staged on public.prism_mq_stage(team_key, staged_at desc);
+alter table public.prism_mq_stage enable row level security;   -- 정책 없음 = service_role(서버) 전용
+```
+
+> 적용: 미적용(2026-09-02 기준). 표가 없으면 조회 화면이 "스테이징 조회 실패 · 표 생성 여부 확인" 안내를 띄우고
+> 다른 기능은 영향 없다.
+

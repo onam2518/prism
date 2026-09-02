@@ -1,6 +1,6 @@
-// 콘텐츠 조회(메타베이스 경유) · 검수 지정 — mod === 'metaq'
-// 서버(/metaquery*)가 메타베이스를 대신 호출한다(키 보호 · 브라우저 직접 호출 없음).
-// 발행 메타는 재추출 없이 모델 초안으로 인입되어 기존 검수 흐름을 그대로 탄다.
+// 콘텐츠 조회 · 검수 지정 · mod === 'metaq'
+// 기본 소스는 스테이징(사내망 수집기가 /metaquery-stage 로 올린 발행분). 메타베이스 직접 조회는
+// 서버가 대신 호출(사내망에서 띄운 프리즘에서만 유효). 발행 메타는 재추출 없이 모델 초안으로 인입.
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
   mqStatus: null,            // GET /metaquery 응답(설정·연결 상태) · null = 미로드
@@ -12,6 +12,7 @@ window.PRISM_APP_PARTS.push(() => ({
   mqService: '', mqGrade: '', mqKeyword: '', mqFrom: '', mqTo: '',
   mqOffset: 0, mqLimit: 50,
   mqSearched: false,         // 첫 조회 전에는 빈 표 대신 안내를 보여 준다
+  mqSource: 'stage',         // stage 수집분(기본) | metabase 서버 직접 호출
 
   async mqLoad() {           // 메뉴 진입: 상태 1회 로드(조회는 버튼으로)
     if (this.mqStatus) return;
@@ -19,7 +20,7 @@ window.PRISM_APP_PARTS.push(() => ({
     catch (e) { this.mqStatus = { ok: false, configured: false }; }
   },
   mqFilters() {
-    return { service: this.mqService, grade: this.mqGrade, keyword: this.mqKeyword,
+    return { source: this.mqSource, service: this.mqService, grade: this.mqGrade, keyword: this.mqKeyword,
              date_from: this.mqFrom, date_to: this.mqTo, limit: this.mqLimit, offset: this.mqOffset };
   },
   async mqSearch(reset = true) {
@@ -38,21 +39,40 @@ window.PRISM_APP_PARTS.push(() => ({
     finally { this.mqBusy = false; }
   },
   async mqMore() { this.mqOffset += this.mqLimit; await this.mqSearch(false); },
-  mqToggle(row) {            // 이미 인입된 행은 선택 불가(중복 방지 안내)
-    if (row.registered) return;
+  mqSelectable(row) {        // 수집분에서는 인입된 행도 '목록에서 삭제' 용으로 고를 수 있다 · 직접 조회에서는 미인입만
+    return this.mqSource === 'stage' || !row.registered;
+  },
+  mqToggle(row) {
+    if (!this.mqSelectable(row)) return;
     if (this.mqSel[row.hash]) delete this.mqSel[row.hash];
     else this.mqSel[row.hash] = true;
   },
   mqToggleAll() {
-    const open = this.mqRows.filter((r) => !r.registered);
+    const open = this.mqRows.filter((r) => this.mqSelectable(r));
     const all = open.length && open.every((r) => this.mqSel[r.hash]);
     this.mqSel = {};
     if (!all) open.forEach((r) => { this.mqSel[r.hash] = true; });
   },
   get mqSelCount() { return Object.keys(this.mqSel).length; },
+  async mqDelete() {         // 선택 행을 수집분 목록에서 삭제(검수 콘텐츠는 영향 없음)
+    const hashes = this.mqRows.filter((r) => this.mqSel[r.hash]).map((r) => r.hash);
+    if (!hashes.length) { this.mqMsg = '먼저 삭제할 행을 선택하세요'; return; }
+    this.mqBusy = true; this.mqMsg = '삭제 중…';
+    try {
+      const r = await this._afetch('/metaquery-stage-delete', { method: 'POST', headers: this._authHeaders(),
+        body: JSON.stringify({ hashes: hashes }) });
+      const j = await r.json();
+      if (!r.ok || j.error) { this.mqMsg = '오류: ' + (j.error || r.status); return; }
+      this.mqRows = this.mqRows.filter((row) => !this.mqSel[row.hash]);
+      this.mqSel = {};
+      if (this.mqStatus) this.mqStatus.staged = j.staged;
+      this.mqMsg = '✓ 목록에서 ' + j.deleted + '건 삭제';
+    } catch (e) { this.mqMsg = '오류: ' + e; }
+    finally { this.mqBusy = false; }
+  },
   async mqRegister() {       // 선택 행을 검수 대상으로 지정(복사 인입 · 재추출 없음)
-    const rows = this.mqRows.filter((r) => this.mqSel[r.hash]);
-    if (!rows.length) { this.mqMsg = '먼저 지정할 콘텐츠를 선택하세요'; return; }
+    const rows = this.mqRows.filter((r) => this.mqSel[r.hash] && !r.registered);
+    if (!rows.length) { this.mqMsg = '먼저 지정할 콘텐츠를 선택하세요 (이미 인입된 행은 제외)'; return; }
     this.mqBusy = true; this.mqMsg = '지정 중…';
     try {
       const r = await this._afetch('/metaquery-register', { method: 'POST', headers: this._authHeaders(),
