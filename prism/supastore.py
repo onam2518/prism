@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import http.client
 import json
+from datetime import datetime, timedelta, timezone
 import re
 import threading
 import os
@@ -120,7 +121,7 @@ class SupabaseStore:
         "content_entities": "content_hash,entity_id", "teams": "id",
         "eval_runs": "id", "eval_results": "run_id,content_hash", "autopilot_runs": "id",
         "deployments": "id", "deployment_keys": "id", "prompt_library": "id",
-        "mcp_keys": "key_id", "mcp_calls": "id",
+        "mcp_keys": "key_id", "mcp_calls": "id", "mq_stage": "hash",
     }
 
     _RPC_MISSING = set()   # 마이그레이션 전 미존재 집계 함수 · 프로세스당 1회만 시도(왕복 낭비 방지)
@@ -1840,6 +1841,75 @@ class SupabaseStore:
         tq = urllib.parse.quote(team or "")
         rows = self._get("reports", f"select=payload&kind=eq.{urllib.parse.quote(kind)}&team_key=eq.{tq}")
         return rows[0]["payload"] if rows else None
+
+    # ── 조회 스테이징(metaquery) · SQLite Store 와 동일 계약 · 표 prism_mq_stage ──
+    @staticmethod
+    def _stage_kw(kw: str) -> str:
+        """PostgREST or=() 안의 ilike 값: 구문 문자 제거 후 큰따옴표로 감싼다."""
+        clean = "".join(ch for ch in kw if ch not in '",()\\')
+        return urllib.parse.quote('"*' + clean + '*"', safe="*")
+
+    def stage_put(self, items, team=None) -> dict:
+        tk = team or ""
+        hs = [h for h, _ in items]
+        known = set()
+        for i in range(0, len(hs), 100):
+            q = "select=hash&team_key=eq.%s&hash=in.(%s)" % (urllib.parse.quote(tk), ",".join(hs[i:i + 100]))
+            known.update(r["hash"] for r in self._get("mq_stage", q))
+        now = datetime.now(timezone.utc).isoformat()
+        body = [{"hash": h, "team_key": tk, "row": r, "service": str(r.get("service") or ""),
+                 "grade": str(r.get("grade") or ""), "title": str(r.get("title") or ""),
+                 "published_at": str(r.get("published_at") or ""), "staged_at": now} for h, r in items]
+        for i in range(0, len(body), 200):
+            self._upsert("mq_stage", body[i:i + 200])
+        return {"added": len([h for h in hs if h not in known]), "updated": len([h for h in hs if h in known])}
+
+    def stage_list(self, f, limit=50, offset=0, team=None) -> list:
+        q = ["select=hash,row,staged_at", "team_key=eq." + urllib.parse.quote(team or "")]
+        if (f.get("service") or "").strip():
+            q.append("service=eq." + urllib.parse.quote(f["service"].strip()))
+        if (f.get("grade") or "").strip():
+            q.append("grade=eq." + urllib.parse.quote(f["grade"].strip()))
+        kw = (f.get("keyword") or "").strip()
+        if kw:
+            v = self._stage_kw(kw)
+            q.append("or=(title.ilike.%s,row->>body.ilike.%s)" % (v, v))
+        if (f.get("date_from") or "").strip():
+            q.append("published_at=gte." + urllib.parse.quote(f["date_from"].strip()))
+        if (f.get("date_to") or "").strip():
+            q.append("published_at=lt." + urllib.parse.quote(f["date_to"].strip()))
+        q.append("order=staged_at.desc,published_at.desc")
+        q.append("limit=%d&offset=%d" % (int(limit), int(offset)))
+        out = []
+        for r in self._req("GET", "mq_stage", query="&".join(q)):
+            row = r.get("row") or {}
+            if isinstance(row, str):
+                try:
+                    row = json.loads(row)
+                except Exception:
+                    continue
+            row["hash"] = r["hash"]
+            row["staged_at"] = r.get("staged_at")
+            out.append(row)
+        return out
+
+    def stage_delete(self, hashes, team=None) -> int:
+        hs = [h for h in dict.fromkeys(hashes or []) if h]
+        tq = "&team_key=eq." + urllib.parse.quote(team or "")
+        for i in range(0, len(hs), 100):
+            self._req("DELETE", "mq_stage", query="hash=in.(%s)" % ",".join(hs[i:i + 100]) + tq,
+                      prefer="return=minimal")
+        return len(hs)
+
+    def stage_purge(self, days, team=None) -> int:
+        cut = datetime.now(timezone.utc) - timedelta(days=float(days))
+        q = "staged_at=lt.%s&team_key=eq.%s" % (urllib.parse.quote(cut.isoformat()), urllib.parse.quote(team or ""))
+        rows = self._req("DELETE", "mq_stage", query=q, prefer="return=representation")
+        return len(rows or [])
+
+    def stage_count(self, team=None) -> int:
+        rows = self._get("mq_stage", "select=hash&team_key=eq." + urllib.parse.quote(team or ""))
+        return len(rows)
 
     # ── 게시판(기능개선·오류 제보 · 팀 스코프) · SQLite Store 와 동일 계약 ──
     def board_add(self, kind, title, body, reviewer, team=None) -> int:

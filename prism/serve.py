@@ -2913,6 +2913,16 @@ def _p_metaquery_register(h, body):
     return MQ.mq_register(json.loads(body or b"{}"), team=h._req_team())
 
 
+@_post_route("/metaquery-stage", gate="admin")       # 조회 스테이징: 사내망 수집기가 발행분 행을 올림(지정 아님)
+def _p_metaquery_stage(h, body):
+    return MQ.mq_stage(json.loads(body or b"{}"), team=h._req_team())
+
+
+@_post_route("/metaquery-stage-delete", gate="admin")  # 조회 스테이징 정리: 고르고 남은 행 삭제
+def _p_metaquery_stage_delete(h, body):
+    return MQ.mq_stage_delete(json.loads(body or b"{}"), team=h._req_team())
+
+
 @_post_route("/usermeta-profiles", gate="team")      # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
 def _p_usermeta_profiles(h, body):
     from . import personagen as PG

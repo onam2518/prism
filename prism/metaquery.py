@@ -4,6 +4,12 @@
 프리즘으로 끌어와 기존 검수 계약(판정·교정·학습·정답셋)을 그대로 태운다.
 기획 스펙: DNM 위키 Prism 페이지 "기획 · 콘텐츠 조회 → 검수 지정" 섹션.
 
+수집 환경(2026-09-02 · docs/METACOLLECT_DESIGN.md): bi-portal 메타베이스는 사내망 전용이라
+운영 서버가 직접 조회하지 못한다. 사내망 수집기(status-agent prism_push.py)가 발행분 행을
+**스테이징**(/metaquery-stage)에 올리고, 운영자가 조회 화면에서 보고 고른 것만 검수로 지정한다.
+스테이징은 검수 콘텐츠가 아니다(results 와 분리 · 지정 안 한 행은 TTL 로 삭제 · 보존 90일 대상 아님).
+서버 직접 조회(source=metabase)는 사내망에서 프리즘을 띄운 경우에만 유효하다.
+
 원칙
 - 메타베이스 경유 · DB 직결 아님: DB 자격 증명을 보유하지 않는다. API 키(env
   PRISM_METABASE_KEY)로 요청하고 접근 범위·감사는 메타베이스가 담당.
@@ -27,6 +33,7 @@ _SV = None            # serve 모듈 역참조(순환 import 회피 · serve 가
 _LIMIT_DEFAULT = 50
 _LIMIT_MAX = 200
 _TIMEOUT_S = 30
+_STAGE_TTL_DAYS = 7    # 스테이징 행 보존(올린 뒤 · 지정 여부 무관)
 
 # 조회 결과 행의 열 계약(운영자 SQL 별칭). 순서는 화면 표 기본 순서.
 COLUMNS = ("id", "service", "title", "subtitle", "body", "url", "published_at",
@@ -49,9 +56,17 @@ def mq_status(team=None) -> dict:
     query = (getattr(cfg, "metabase_query", "") or "").strip()
     db_id = int(getattr(cfg, "metabase_db_id", 0) or 0)
     mock = bool(_SV.Handler.server_mock)
+    staged = 0
+    st = _SV.get_store()
+    if st is not None and hasattr(st, "stage_count"):
+        try:
+            staged = int(st.stage_count(team=team))
+        except Exception:
+            staged = -1                                   # 표 미생성 등 · 화면은 '확인 불가'
     return {"ok": True, "url": url, "dbId": db_id, "hasKey": bool(_api_key()),
             "queryConfigured": bool(query), "mock": mock,
             "configured": mock or bool(url and db_id and _api_key() and query),
+            "staged": staged, "stageTtlDays": _STAGE_TTL_DAYS,
             "columns": list(COLUMNS)}
 
 
@@ -157,12 +172,23 @@ def _mock_rows(f: dict, limit: int, offset: int) -> list:
 
 
 def mq_search(data: dict, team=None) -> dict:
-    """조건 조회. 반환 행에 프리즘 인입 여부(registered)를 함께 표시한다."""
+    """조건 조회. source=stage(기본 · 수집기가 올린 스테이징) | metabase(서버 직접 호출 · 사내망 전용).
+    반환 행에 프리즘 인입 여부(registered)를 함께 표시한다."""
     st_info = mq_status(team)
     limit = max(1, min(_LIMIT_MAX, int(data.get("limit") or _LIMIT_DEFAULT)))
     offset = max(0, int(data.get("offset") or 0))
     f = {k: data.get(k) for k in ("service", "grade", "keyword", "date_from", "date_to")}
-    if st_info["mock"]:
+    source = str(data.get("source") or "stage")
+    if source == "stage":
+        st = _SV.get_store()
+        if st is None or not hasattr(st, "stage_list"):
+            return {"ok": False, "error": "저장소가 준비되지 않았습니다"}
+        try:
+            rows = st.stage_list(f, limit, offset, team=team)
+        except Exception as e:
+            return {"ok": False, "error": "스테이징 조회 실패 · 표(prism_mq_stage) 생성 여부를 확인하세요 (SUPABASE_MIGRATION.md) · "
+                    + str(e)[:120]}
+    elif st_info["mock"]:
         rows = _mock_rows(f, limit, offset)
     elif not st_info["configured"]:
         return {"ok": False, "error": "메타베이스 연결이 설정되지 않았습니다 · 시스템 설정에서 URL·DB·키·기본 SQL 을 저장하세요"}
@@ -185,9 +211,62 @@ def mq_search(data: dict, team=None) -> dict:
         row = {k: r.get(k) for k in COLUMNS}
         row["hash"] = ch
         row["registered"] = ch in known
+        if r.get("staged_at") is not None:
+            row["staged_at"] = r.get("staged_at")
         out.append(row)
     return {"ok": True, "rows": out, "n": len(out), "offset": offset, "limit": limit,
-            "mock": st_info["mock"]}
+            "source": source, "mock": st_info["mock"] and source != "stage"}
+
+
+def mq_stage(data: dict, team=None) -> dict:
+    """수집기(사내망)가 조회 결과 행을 올린다. 검수 지정이 아니다 · 화면에서 고르기 전 목록.
+    행 모양은 register 와 같다(COLUMNS 별칭). 제목·본문이 모두 비면 제외. 같은 해시는 최신으로 덮는다."""
+    rows = data.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return {"ok": False, "error": "올릴 행이 없습니다"}
+    if len(rows) > _LIMIT_MAX:
+        return {"ok": False, "error": "한 번에 %d건까지 올릴 수 있습니다" % _LIMIT_MAX}
+    items, empty = [], 0
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        c = _row_content(r)
+        if not (c["title"].strip() or c["body"].strip()):
+            empty += 1
+            continue
+        row = {k: r.get(k) for k in COLUMNS}
+        row["url"] = c["source_url"]                      # 스킴 화이트리스트 통과분만 보관
+        items.append((_row_hash(r), row))
+    if not items:
+        return {"ok": False, "error": "올릴 수 있는 행이 없습니다 (제목·본문 비어 있음)"}
+    st = _SV.get_store()
+    if st is None or not hasattr(st, "stage_put"):
+        return {"ok": False, "error": "저장소가 준비되지 않았습니다"}
+    try:
+        res = st.stage_put(items, team=team)
+        purged = int(st.stage_purge(_STAGE_TTL_DAYS, team=team) or 0)
+        staged = int(st.stage_count(team=team))
+    except Exception as e:
+        return {"ok": False, "error": "스테이징 저장 실패 · 표(prism_mq_stage) 생성 여부를 확인하세요 (SUPABASE_MIGRATION.md) · "
+                + str(e)[:120]}
+    return {"ok": True, "added": int(res.get("added", 0)), "updated": int(res.get("updated", 0)),
+            "skipped_empty": empty, "purged": purged, "staged": staged}
+
+
+def mq_stage_delete(data: dict, team=None) -> dict:
+    """스테이징 행 삭제(화면에서 고른 뒤 남은 것 정리). 검수 콘텐츠(results)는 건드리지 않는다."""
+    hashes = [str(h) for h in (data.get("hashes") or []) if h]
+    if not hashes:
+        return {"ok": False, "error": "삭제할 행을 선택하세요"}
+    st = _SV.get_store()
+    if st is None or not hasattr(st, "stage_delete"):
+        return {"ok": False, "error": "저장소가 준비되지 않았습니다"}
+    try:
+        n = int(st.stage_delete(hashes, team=team) or 0)
+        staged = int(st.stage_count(team=team))
+    except Exception as e:
+        return {"ok": False, "error": "스테이징 삭제 실패 · " + str(e)[:120]}
+    return {"ok": True, "deleted": n, "staged": staged}
 
 
 def _row_out(row: dict, team=None) -> dict:
