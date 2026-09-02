@@ -34,7 +34,7 @@ _LIMIT_DEFAULT = 50
 _LIMIT_MAX = 200
 _TIMEOUT_S = 30
 _STAGE_TTL_DAYS = 7    # 스테이징 행 보존(올린 뒤 · 지정 여부 무관)
-_STAGE_SCAN = 5000     # 메타 필터·패싯 계산 시 훑는 상한(스테이징은 TTL 로 작게 유지된다)
+_FACET_SAMPLE = 2000   # 필터 선택지(서비스·인텐트·카테고리·모델)는 최근 올린 N건 표본에서 뽑는다(전량 훑기 회피)
 _META_KEYS = ("intent", "category", "entity", "model", "meta")   # 저장소 SQL 밖에서 거르는 조건
 
 # 조회 결과 행의 열 계약(운영자 SQL 별칭). 순서는 화면 표 기본 순서.
@@ -63,9 +63,9 @@ def mq_status(team=None) -> dict:
     if st is not None and hasattr(st, "stage_count"):
         try:
             staged = int(st.stage_count(team=team))
-            services = list(st.stage_services(team=team)) if staged else []
             if staged:
                 facets = _stage_facets(st, team)
+                services = facets.pop("services")
         except Exception:
             staged = -1                                   # 표 미생성 등 · 화면은 '확인 불가'
     return {"ok": True, "url": url, "dbId": db_id, "hasKey": bool(_api_key()),
@@ -178,15 +178,18 @@ def _mock_rows(f: dict, limit: int, offset: int) -> list:
 
 
 def _stage_facets(st, team) -> dict:
-    """스테이징에 실제 있는 인텐트·카테고리·모델 값(필터 선택지). 행 수가 TTL 로 작아 전량 훑는다."""
-    intents, cats, models = set(), set(), set()
-    for r in st.stage_list({}, _STAGE_SCAN, 0, team=team):
+    """필터 선택지(서비스·인텐트·카테고리·모델): 최근 올린 _FACET_SAMPLE 건 표본에서 뽑는다.
+    하루 3.5만 건 규모에서 전량 훑지 않기 위한 타협 · 선택지는 '최근 수집분 기준'이다."""
+    svcs, intents, cats, models = set(), set(), set(), set()
+    for r in st.stage_list({}, _FACET_SAMPLE, 0, team=team):
+        if str(r.get("service") or "").strip():
+            svcs.add(str(r["service"]).strip())
         intents.update(_as_list(r.get("intent")))
         cats.update(_as_list(r.get("category")))
         m = str(r.get("model") or "").strip()
         if m:
             models.add(m)
-    return {"intents": sorted(intents), "categories": sorted(cats), "models": sorted(models)}
+    return {"services": sorted(svcs), "intents": sorted(intents), "categories": sorted(cats), "models": sorted(models)}
 
 
 def _has_meta(r: dict) -> bool:
@@ -232,11 +235,7 @@ def mq_search(data: dict, team=None) -> dict:
         if st is None or not hasattr(st, "stage_list"):
             return {"ok": False, "error": "저장소가 준비되지 않았습니다"}
         try:
-            if meta_on:                                   # 메타 조건은 행 JSON 안이라 훑은 뒤 페이지를 자른다
-                allrows = [r for r in st.stage_list(f, _STAGE_SCAN, 0, team=team) if _meta_match(r, mf)]
-                rows = allrows[offset:offset + limit]
-            else:
-                rows = st.stage_list(f, limit, offset, team=team)
+            rows = st.stage_list({**f, **mf}, limit, offset, team=team)   # 메타 조건도 저장소가 거른다(전량 훑기 없음)
         except Exception as e:
             return {"ok": False, "error": "스테이징 조회 실패 · 표(prism_mq_stage) 생성 여부를 확인하세요 (SUPABASE_MIGRATION.md) · "
                     + str(e)[:120]}

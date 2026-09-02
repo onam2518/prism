@@ -1249,6 +1249,25 @@ class Store:
             w.append("published_at>=?"); args.append(f["date_from"].strip())
         if (f.get("date_to") or "").strip():
             w.append("published_at<?"); args.append(f["date_to"].strip())
+        # 메타별 조건(행 JSON 안 · 3.5만 건/일 규모에서도 SQL 로 거른다 · 리스트 필드는 stage 저장 시 정규화됨)
+        for key, col in (("intent", "$.intent"), ("category", "$.category")):
+            v = (f.get(key) or "").strip()
+            if v:
+                w.append(f"json_extract(row,'{col}') LIKE ?"); args.append("%" + json.dumps(v, ensure_ascii=False) + "%")
+        v = (f.get("entity") or "").strip()
+        if v:
+            w.append("json_extract(row,'$.entities') LIKE ?"); args.append("%" + v + "%")
+        v = (f.get("model") or "").strip()
+        if v:
+            w.append("json_extract(row,'$.model')=?"); args.append(v)
+        has_meta = ("(grade IN ('G','R') OR COALESCE(json_extract(row,'$.summary'),'')<>'' "
+                    "OR COALESCE(json_array_length(row,'$.entities'),0)>0 OR COALESCE(json_array_length(row,'$.intent'),0)>0 "
+                    "OR COALESCE(json_array_length(row,'$.category'),0)>0)")
+        v = (f.get("meta") or "").strip()
+        if v == "with":
+            w.append(has_meta)
+        elif v == "without":
+            w.append("NOT " + has_meta)
         c = self._conn()
         out = []
         for h, row, ts in c.execute("SELECT hash,row,staged_at FROM mq_stage WHERE " + " AND ".join(w) +
