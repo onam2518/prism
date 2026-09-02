@@ -20,9 +20,9 @@
             <div class="filterbar">
               <input class="field" placeholder="제목·본문 검색" x-model="mqKeyword" x-on:keydown.enter="mqSearch()">
               <div class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false"
-                   x-on:click.outside="if (fpOpen) { fpOpen=false; mqSearch() }" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
+                   x-on:click.outside="fpOpen=false" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
                 <button type="button" class="fpop__btn" x-bind:class="(fpOpen ? 'is-open' : '') + (mqFilterN ? ' is-on' : '')"
-                        x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el); else mqSearch()"
+                        x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el)"
                         x-bind:aria-expanded="fpOpen ? 'true' : 'false'" aria-haspopup="dialog"
                         data-tip="서비스·등급·발행일과 인텐트·카테고리·엔티티·모델 등 메타 조건을 한곳에서 지정합니다" data-tip-pos="top">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -44,11 +44,11 @@
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-from">발행 시작</label>
-                    <input id="mq-from" class="field" type="date" x-model="mqFrom" data-tip="발행 시작일(포함)" data-tip-pos="top">
+                    <input id="mq-from" class="field" type="date" x-model="mqFrom" data-tip="발행 시작일(포함) · 기본은 오늘" data-tip-pos="top">
                   </div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-to">발행 종료</label>
-                    <input id="mq-to" class="field" type="date" x-model="mqTo" data-tip="발행 종료일(미포함)" data-tip-pos="top">
+                    <input id="mq-to" class="field" type="date" x-model="mqTo" data-tip="발행 종료일(포함) · 비우면 시작일 이후 전부" data-tip-pos="top">
                   </div>
                   <div class="fpop__sep"></div>
                   <!-- 메타별 필터: 발행 메타(인텐트·카테고리·엔티티·모델)로 거른다 · 선택지는 스테이징에 실제 있는 값 -->
@@ -78,14 +78,15 @@
                     <select id="mq-state" class="field" x-model="mqState"><option value="">전체</option><option value="open">미인입</option><option value="done">인입됨</option></select>
                   </div>
                   <div class="fpop__ft">
-                    <span class="text-xs text-muted tnum" x-text="mqShown.length + ' / ' + ((mqStatus &amp;&amp; mqStatus.staged &gt; 0) ? mqStatus.staged : mqRows.length) + '건'"></span>
+                    <span class="text-xs text-muted tnum" x-text="mqTotalLabel()"></span>
                     <button type="button" class="copybtn" x-bind:disabled="!mqFilterN" x-on:click="mqFilterReset()">필터 초기화</button>
-                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="fpOpen=false; mqSearch()">닫기</button>
+                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="fpOpen=false; mqSearch()">조회</button>
                   </div>
                 </div>
               </div>
-              <span class="text-xs text-muted tnum" x-text="mqShown.length + ' / ' + ((mqStatus &amp;&amp; mqStatus.staged &gt; 0) ? mqStatus.staged : mqRows.length) + '건'"></span>
+              <span class="text-xs text-muted tnum" x-text="mqTotalLabel()"></span>
               <span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="정렬 기준 · 최근 올린 순, 같은 회차 안에서는 발행 최신 순" data-tip-pos="top">최근순</span>
+              <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-show="mqFrom" data-tip="발행 기간 · 기본은 오늘 하루 · 필터에서 기간을 바꿀 수 있습니다" data-tip-pos="top" x-text="mqRangeLabel()"></span>
               <span class="text-xs text-muted" x-show="mqBusy" x-cloak>조회 중…</span>
             </div>
 
@@ -114,9 +115,16 @@
             <div class="ds-empty" style="border:0;padding:20px 8px" x-show="mqSearched &amp;&amp; !mqShown.length" x-cloak>
               <div class="ds-empty__desc" x-text="(mqStatus &amp;&amp; mqStatus.staged === 0 &amp;&amp; mqSource === 'stage') ? '수집기가 올린 콘텐츠가 아직 없습니다 · 사내망 수집기(prism_push)가 올리면 여기에 나타납니다' : '조건에 맞는 콘텐츠가 없습니다 · 필터를 바꿔 보세요'"></div>
             </div>
+            <div class="ds-empty" style="border:0;padding:20px 8px" x-show="!mqSearched" x-cloak>
+              <div class="ds-empty__desc"><b class="text-ink">필터</b>에서 발행일과 조건을 고른 뒤 <b class="text-ink">조회</b>를 누르면 그 범위의 콘텐츠만 불러옵니다 · 기본 발행 기간은 오늘 하루</div>
+            </div>
 
             <div class="filterbar" style="margin-top:10px" x-show="mqRows.length" x-cloak>
-              <button type="button" class="copybtn" x-bind:disabled="mqBusy || mqRows.length &lt; mqLimit" x-on:click="mqMore()">더 가져오기</button>
+              <span style="display:flex;align-items:center;gap:6px">
+                <button type="button" class="ds-iconbtn ds-iconbtn--sm ds-iconbtn--bordered" x-bind:disabled="mqBusy || mqOffset &lt;= 0" x-on:click="mqPage(-1)" data-tip="이전 페이지" data-tip-pos="top" aria-label="이전 페이지"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                <span class="text-xs text-muted tnum" x-text="mqPageLabel()"></span>
+                <button type="button" class="ds-iconbtn ds-iconbtn--sm ds-iconbtn--bordered" x-bind:disabled="mqBusy || !mqHasNext()" x-on:click="mqPage(1)" data-tip="다음 페이지" data-tip-pos="top" aria-label="다음 페이지"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              </span>
               <button type="button" class="copybtn" x-show="mqSource === 'stage'" x-cloak x-bind:disabled="!mqSelCount || mqBusy" x-on:click="mqDelete()" data-tip="선택한 행을 수집분 목록에서 지웁니다 · 이미 지정된 검수 콘텐츠는 영향 없음" data-tip-pos="top" x-text="'목록에서 삭제' + (mqSelCount ? (' ' + mqSelCount + '건') : '')"></button>
               <span class="ml-auto" style="display:flex;align-items:center;gap:8px">
                 <span class="text-xs text-muted tnum" x-text="mqSelCount + '건 선택'"></span>
@@ -128,6 +136,7 @@
             </div>
             <div class="text-xs" style="margin-top:6px" aria-live="polite" x-text="mqMsg"></div>
             <ul class="ds-bullets" style="margin-top:10px">
+              <li>발행 기간 기본은 오늘 하루이고 필터에서 기간을 넓힐 수 있습니다 · 조건을 먼저 고르고 조회하면 그 범위만 읽어 부담이 적습니다 · 목록은 50건씩 페이지로 넘깁니다.</li>
               <li>제목을 누르면 검수 상세와 같은 화면으로 본문과 발행 메타를 확인할 수 있습니다(읽기 전용 · 판정은 지정 뒤 검수에서).</li>
               <li>지정하면 콘텐츠와 발행 메타가 프리즘으로 복사되고, 발행 메타가 그대로 모델 초안이 됩니다(다시 추출하지 않음).</li>
               <li>같은 콘텐츠는 두 번 인입되지 않습니다 · 이미 인입된 행은 <b class="text-ink">인입됨</b>으로 표시됩니다.</li>

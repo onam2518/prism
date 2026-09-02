@@ -9,23 +9,28 @@ window.PRISM_APP_PARTS.push(() => ({
   mqBusy: false,
   mqMsg: '',
   mqPurpose: 'review',       // 지정 용도: review 검수용(기본) | eval 평가용(홀드아웃)
-  mqService: '', mqGrade: '', mqKeyword: '', mqFrom: '', mqTo: '',
-  mqOffset: 0, mqLimit: 50,
+  mqService: '', mqGrade: '', mqKeyword: '',
+  mqFrom: '', mqTo: '',      // 발행 기간(종료일 포함) · 기본 오늘 하루 · 필터에서 넓힐 수 있다
+  mqOffset: 0, mqLimit: 50, mqTotal: -1,
   mqSearched: false,         // 첫 조회 전에는 빈 표 대신 안내를 보여 준다
   mqSource: 'stage',         // stage 수집분(기본) | metabase 서버 직접 호출
 
   mqState: '',               // 인입 상태(화면 필터): '' 전체 | open 미인입 | done 인입됨
   mqIntent: '', mqCategory: '', mqEntity: '', mqModel: '', mqMeta: '',   // 메타별 필터(서버가 행 JSON 에서 거른다)
-  async mqLoad() {           // 메뉴 진입: 상태 로드 + 수집분 첫 조회(검수 대상 목록처럼 바로 보인다)
+  async mqLoad() {           // 메뉴 진입: 상태만 로드 · 조회는 필터를 고른 뒤 사용자가 누른다(범위를 좁혀 부담을 줄인다)
+    if (!this.mqFrom) { this.mqFrom = this.mqToday(); this.mqTo = this.mqFrom; }
     if (this.mqStatus) return;
     await this.mqStatusLoad();
-    await this.mqSearch();
+  },
+  mqToday() {                // KST 기준 오늘(YYYY-MM-DD)
+    const d = new Date(Date.now() + 9 * 3600 * 1000);
+    return d.toISOString().slice(0, 10);
   },
   async mqStatusLoad() {
     try { const r = await this._afetch('/metaquery'); this.mqStatus = await r.json(); }
     catch (e) { this.mqStatus = { ok: false, configured: false, staged: -1, services: [] }; }
   },
-  async mqRefresh() { await this.mqStatusLoad(); await this.mqSearch(); },
+  async mqRefresh() { await this.mqStatusLoad(); if (this.mqSearched) await this.mqSearch(false); },
   mqSvcs() {                 // 서비스 선택지: 서버가 준 스테이징 목록 + 현재 표에 보이는 값
     const set = new Set(((this.mqStatus || {}).services) || []);
     this.mqRows.forEach((r) => { if (r.service) set.add(r.service); });
@@ -33,13 +38,12 @@ window.PRISM_APP_PARTS.push(() => ({
     return Array.from(set).sort();
   },
   get mqFilterN() {
-    return [this.mqService, this.mqGrade, this.mqFrom, this.mqTo, this.mqState, this.mqIntent, this.mqCategory, this.mqEntity, this.mqModel, this.mqMeta]
-      .filter(Boolean).length + (this.mqSource !== 'stage' ? 1 : 0);
+    return [this.mqService, this.mqGrade, this.mqState, this.mqIntent, this.mqCategory, this.mqEntity, this.mqModel, this.mqMeta]
+      .filter(Boolean).length + (this.mqSource !== 'stage' ? 1 : 0) + ((this.mqFrom !== this.mqToday() || this.mqTo !== this.mqToday()) ? 1 : 0);
   },
-  mqFilterReset() {
-    this.mqService = ''; this.mqGrade = ''; this.mqFrom = ''; this.mqTo = ''; this.mqState = ''; this.mqSource = 'stage';
+  mqFilterReset() {          // 조건 초기화(발행일은 오늘로) · 조회는 다시 누른다
+    this.mqService = ''; this.mqGrade = ''; this.mqFrom = this.mqToday(); this.mqTo = this.mqFrom; this.mqState = ''; this.mqSource = 'stage';
     this.mqIntent = ''; this.mqCategory = ''; this.mqEntity = ''; this.mqModel = ''; this.mqMeta = '';
-    this.mqSearch();
   },
   mqFacet(k) {               // 선택지: 서버 패싯(스테이징 실제 값) + 현재 선택값(비어 있어도 표시 유지)
     const list = (((this.mqStatus || {}).facets) || {})[k] || [];
@@ -58,7 +62,7 @@ window.PRISM_APP_PARTS.push(() => ({
   },
   mqFilters() {
     return { source: this.mqSource, service: this.mqService, grade: this.mqGrade, keyword: this.mqKeyword,
-             date_from: this.mqFrom, date_to: this.mqTo, limit: this.mqLimit, offset: this.mqOffset,
+             date_from: this.mqFrom || this.mqToday(), date_to: this.mqTo || '', limit: this.mqLimit, offset: this.mqOffset,
              intent: this.mqIntent, category: this.mqCategory, entity: this.mqEntity, model: this.mqModel, meta: this.mqMeta };
   },
   async mqSearch(reset = true) {
@@ -69,14 +73,31 @@ window.PRISM_APP_PARTS.push(() => ({
         body: JSON.stringify(this.mqFilters()) });
       const j = await r.json();
       if (!r.ok || j.error) { this.mqMsg = '오류: ' + (j.error || r.status); return; }
-      this.mqRows = reset ? (j.rows || []) : this.mqRows.concat(j.rows || []);
-      if (reset) this.mqSel = {};
+      this.mqRows = j.rows || [];                        // 페이지 단위 교체(누적 아님)
+      this.mqTotal = (typeof j.total === 'number') ? j.total : -1;
+      this.mqSel = {};
       this.mqSearched = true;
       this.mqMsg = (j.rows && j.rows.length) || reset ? '' : '더 가져올 콘텐츠가 없습니다';
     } catch (e) { this.mqMsg = '오류: ' + e; }
     finally { this.mqBusy = false; }
   },
-  async mqMore() { this.mqOffset += this.mqLimit; await this.mqSearch(false); },
+  async mqPage(dir) { this.mqOffset = Math.max(0, this.mqOffset + dir * this.mqLimit); await this.mqSearch(false); },
+  mqHasNext() { return this.mqTotal >= 0 ? (this.mqOffset + this.mqRows.length) < this.mqTotal : this.mqRows.length >= this.mqLimit; },
+  mqPageLabel() {
+    const cur = Math.floor(this.mqOffset / this.mqLimit) + 1;
+    if (this.mqTotal < 0) return cur + ' 페이지';
+    return cur + ' / ' + Math.max(1, Math.ceil(this.mqTotal / this.mqLimit)) + ' 페이지';
+  },
+  mqRangeLabel() {
+    if (!this.mqFrom) return '';
+    if (!this.mqTo) return this.mqFrom + ' 이후';
+    return this.mqFrom === this.mqTo ? ('발행일 ' + this.mqFrom) : (this.mqFrom + ' ~ ' + this.mqTo);
+  },
+  mqTotalLabel() {           // 조건에 맞는 총건수(서버) · 인입 상태 필터는 화면에서 걸러 표시 건수만 줄어든다
+    if (!this.mqSearched) return (this.mqStatus && this.mqStatus.staged >= 0) ? ('수집분 ' + this.mqStatus.staged + '건') : '';
+    const total = this.mqTotal >= 0 ? this.mqTotal : this.mqRows.length;
+    return this.mqShown.length + ' / ' + total + '건';
+  },
   mqSelectable(row) {        // 수집분에서는 인입된 행도 '목록에서 삭제' 용으로 고를 수 있다 · 직접 조회에서는 미인입만
     return this.mqSource === 'stage' || !row.registered;
   },
