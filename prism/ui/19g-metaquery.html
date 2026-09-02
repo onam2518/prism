@@ -24,7 +24,7 @@
                 <button type="button" class="fpop__btn" x-bind:class="(fpOpen ? 'is-open' : '') + (mqFilterN ? ' is-on' : '')"
                         x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el); else mqSearch()"
                         x-bind:aria-expanded="fpOpen ? 'true' : 'false'" aria-haspopup="dialog"
-                        data-tip="서비스·등급·발행일·인입 상태 조건을 한곳에서 지정합니다" data-tip-pos="top">
+                        data-tip="서비스·등급·발행일과 인텐트·카테고리·엔티티·모델 등 메타 조건을 한곳에서 지정합니다" data-tip-pos="top">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                   <span>필터</span>
                   <span class="fpop__n tnum" x-show="mqFilterN" x-cloak x-text="mqFilterN"></span>
@@ -50,6 +50,29 @@
                     <label class="fpop__lbl" for="mq-to">발행 종료</label>
                     <input id="mq-to" class="field" type="date" x-model="mqTo" data-tip="발행 종료일(미포함)" data-tip-pos="top">
                   </div>
+                  <div class="fpop__sep"></div>
+                  <!-- 메타별 필터: 발행 메타(인텐트·카테고리·엔티티·모델)로 거른다 · 선택지는 스테이징에 실제 있는 값 -->
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-intent">인텐트</label>
+                    <select id="mq-intent" class="field" x-model="mqIntent"><option value="">전체</option><template x-for="v in mqFacet('intents')" x-bind:key="'fi'+v"><option x-bind:value="v" x-text="v"></option></template></select>
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-cat">카테고리</label>
+                    <select id="mq-cat" class="field" x-model="mqCategory"><option value="">전체</option><template x-for="v in mqFacet('categories')" x-bind:key="'fc'+v"><option x-bind:value="v" x-text="catKo(v)"></option></template></select>
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-ent">엔티티</label>
+                    <input id="mq-ent" class="field" placeholder="이름 일부 (예: 홍명보)" x-model="mqEntity" x-on:keydown.enter="fpOpen=false; mqSearch()">
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-model">모델</label>
+                    <select id="mq-model" class="field" x-model="mqModel"><option value="">전체</option><template x-for="v in mqFacet('models')" x-bind:key="'fm'+v"><option x-bind:value="v" x-text="v"></option></template></select>
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-meta">메타</label>
+                    <select id="mq-meta" class="field" x-model="mqMeta" data-tip="발행 메타(요약·엔티티·인텐트·카테고리·등급) 중 하나라도 있는지" data-tip-pos="top"><option value="">전체</option><option value="with">메타 있음</option><option value="without">메타 없음</option></select>
+                  </div>
+                  <div class="fpop__sep"></div>
                   <div class="fpop__row">
                     <label class="fpop__lbl" for="mq-state">인입 상태</label>
                     <select id="mq-state" class="field" x-model="mqState"><option value="">전체</option><option value="open">미인입</option><option value="done">인입됨</option></select>

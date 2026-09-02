@@ -200,6 +200,27 @@ class TestMetaqueryStage(MetaqueryBase):
         self.assertEqual((again["added"], again["updated"], again["staged"]), (0, 3, 3))
         self.assertTrue(all(r["grade"] == "R" for r in MQ.mq_search({})["rows"]))
 
+    def test_meta_filters_and_facets(self):
+        """메타별 필터: 인텐트·카테고리 포함 · 엔티티 부분 일치 · 모델 일치 · 메타 유무. 선택지는 실제 값."""
+        from prism import metaquery as MQ
+        self._serve()
+        rows = self._rows(3)
+        rows[0].update({"intent": "속보·단신", "category": ["News and Politics / Politics"], "entities": "정몽규, 홍명보", "model": "dev-a", "summary": "요약"})
+        rows[1].update({"intent": ["분석·해설"], "model": "dev-b"})
+        MQ.mq_stage({"rows": rows})
+        st = MQ.mq_status()
+        self.assertEqual(st["facets"], {"intents": ["분석·해설", "속보·단신"], "categories": ["News and Politics / Politics"], "models": ["dev-a", "dev-b"]})
+        self.assertEqual(MQ.mq_search({"intent": "속보·단신"})["n"], 1)
+        self.assertEqual(MQ.mq_search({"category": "News and Politics / Politics"})["n"], 1)
+        self.assertEqual(MQ.mq_search({"entity": "홍명"})["n"], 1)
+        self.assertEqual(MQ.mq_search({"model": "dev-b"})["n"], 1)
+        self.assertEqual(MQ.mq_search({"meta": "with"})["n"], 3)        # grade G 둘 + 메타 있는 하나(중복 포함 3행 중 3)
+        self.assertEqual(MQ.mq_search({"meta": "without"})["n"], 0)
+        MQ.mq_stage({"rows": self._rows(1, id="bare", title="메타 없음", grade="")})
+        self.assertEqual(MQ.mq_search({"meta": "without"})["n"], 1)
+        got = MQ.mq_search({"intent": "속보·단신"})["rows"][0]
+        self.assertEqual((got["intent"], got["entities"]), (["속보·단신"], ["정몽규", "홍명보"]))   # 리스트로 정규화 저장
+
     def test_stage_rejects_empty_and_unsafe_url(self):
         from prism import metaquery as MQ
         self._serve()
