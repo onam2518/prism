@@ -4,43 +4,80 @@
            지정하지 않은 행은 선택 삭제 또는 TTL(기본 7일) 자동 정리 · 검수 콘텐츠와 분리 저장.
            메타베이스 직접 조회(source=metabase)는 사내망에서 프리즘을 띄운 경우에만 유효. -->
       <template x-if="mod === 'metaq'">
-        <div class="w-full" x-init="mqLoad()">
+        <div class="w-full" x-init="mqLoad()" x-on:keydown.window="mqKeys($event)">
 
         <!-- 조회 · 지정 -->
-        <section class="panel">
-          <div class="panel-hd"><b>콘텐츠 조회</b><span class="meta">수집기가 올린 발행분을 조건으로 봅니다 · 고른 건만 검수 대상이 됩니다</span>
-            <span class="ml-auto text-xs text-muted tnum" x-show="mqStatus &amp;&amp; mqStatus.staged &gt;= 0" x-cloak
-                  x-text="'수집분 ' + mqStatus.staged + '건 · ' + mqStatus.stageTtlDays + '일 뒤 자동 정리'"></span>
-            <span class="ds-badge ds-badge--neutral" style="margin-left:8px" x-show="mqStatus &amp;&amp; mqStatus.mock &amp;&amp; mqSource === 'metabase'" x-cloak data-tip="모의 모드 · 예시 데이터로 흐름만 확인" data-tip-pos="top">모의</span>
-          </div>
+        <section class="panel" data-fn><div class="panel-hd"><b>콘텐츠 조회</b><span class="meta tnum" x-text="mqStatus &amp;&amp; mqStatus.staged &gt;= 0 ? (mqStatus.staged + '건 · 최근순') : ''"></span>
+          <span class="ml-auto" style="display:flex;gap:var(--ds-space-2);align-items:center">
+            <span class="text-xs text-muted" x-show="mqStatus &amp;&amp; mqStatus.staged &gt; 0" x-cloak x-text="'수집분 · ' + (mqStatus ? mqStatus.stageTtlDays : 7) + '일 뒤 자동 정리'"></span>
+            <span class="ds-badge ds-badge--neutral" x-show="mqStatus &amp;&amp; mqStatus.mock &amp;&amp; mqSource === 'metabase'" x-cloak data-tip="모의 모드 · 예시 데이터로 흐름만 확인" data-tip-pos="bottom">모의</span>
+            <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-bind:disabled="mqBusy" x-on:click="mqRefresh()" data-tip="새로고침 · 수집분을 다시 불러옵니다" data-tip-pos="bottom" aria-label="수집분 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </span>
+        </div>
           <div class="panel-bd">
+            <!-- 필터: 검색 + '필터' 버튼 하나(검수 대상 콘텐츠와 같은 형식 · 2026-09-02).
+                 조건은 서버 조회(스테이징)로 적용 · 검색은 Enter, 팝오버는 닫을 때 재조회. 인입 상태만 화면에서 거른다. -->
             <div class="filterbar">
-              <select class="field" style="width:auto" x-model="mqSource" x-show="mqStatus &amp;&amp; mqStatus.configured" x-cloak data-tip="수집분 = 사내망 수집기가 올린 행(기본) · 메타베이스 직접 = 서버가 호출(사내망에서만)" data-tip-pos="top">
-                <option value="stage">수집분</option><option value="metabase">메타베이스 직접</option>
-              </select>
-              <input class="field" style="width:130px" placeholder="서비스 (예: 뉴스)" x-model="mqService" x-on:keydown.enter="mqSearch()">
-              <select class="field" style="width:auto" x-model="mqGrade">
-                <option value="">등급 전체</option><option value="G">G</option><option value="R">R</option>
-              </select>
-              <input class="field" style="width:200px" placeholder="제목·본문 키워드" x-model="mqKeyword" x-on:keydown.enter="mqSearch()">
-              <input class="field" style="width:150px" type="date" x-model="mqFrom" data-tip="발행 시작일(포함)" data-tip-pos="top">
-              <input class="field" style="width:150px" type="date" x-model="mqTo" data-tip="발행 종료일(미포함)" data-tip-pos="top">
-              <button type="button" class="ds-btn ds-btn--primary" style="height:30px;padding:0 16px" x-bind:disabled="mqBusy" x-on:click="mqSearch()" x-text="mqBusy ? '조회 중…' : '조회'"></button>
-              <span class="text-xs text-muted tnum" x-show="mqRows.length" x-text="mqRows.length + '건'"></span>
+              <input class="field" placeholder="제목·본문 검색" x-model="mqKeyword" x-on:keydown.enter="mqSearch()">
+              <div class="fpop" x-data="{ fpOpen:false, fpBox:{} }" x-on:keydown.escape="fpOpen=false"
+                   x-on:click.outside="if (fpOpen) { fpOpen=false; mqSearch() }" x-on:scroll.window="fpOpen=false" x-on:resize.window="fpOpen=false">
+                <button type="button" class="fpop__btn" x-bind:class="(fpOpen ? 'is-open' : '') + (mqFilterN ? ' is-on' : '')"
+                        x-on:click="fpOpen=!fpOpen; if(fpOpen) fpBox=mpMenuBox($el); else mqSearch()"
+                        x-bind:aria-expanded="fpOpen ? 'true' : 'false'" aria-haspopup="dialog"
+                        data-tip="서비스·등급·발행일·인입 상태 조건을 한곳에서 지정합니다" data-tip-pos="top">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                  <span>필터</span>
+                  <span class="fpop__n tnum" x-show="mqFilterN" x-cloak x-text="mqFilterN"></span>
+                </button>
+                <div class="fpop__panel" x-show="fpOpen" x-cloak x-bind:style="fpBox" x-on:click.stop role="dialog" aria-label="콘텐츠 조회 필터">
+                  <div class="fpop__row" x-show="mqStatus &amp;&amp; mqStatus.configured" x-cloak>
+                    <label class="fpop__lbl" for="mq-src">소스</label>
+                    <select id="mq-src" class="field" x-model="mqSource" data-tip="수집분 = 사내망 수집기가 올린 행(기본) · 메타베이스 직접 = 서버가 호출(사내망에서만)" data-tip-pos="top"><option value="stage">수집분</option><option value="metabase">메타베이스 직접</option></select>
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-grade">등급</label>
+                    <select id="mq-grade" class="field" x-model="mqGrade"><option value="">전체</option><option value="G">G</option><option value="R">R</option></select>
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-svc">서비스</label>
+                    <select id="mq-svc" class="field" x-model="mqService"><option value="">전체</option><template x-for="sv in mqSvcs()" x-bind:key="sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-from">발행 시작</label>
+                    <input id="mq-from" class="field" type="date" x-model="mqFrom" data-tip="발행 시작일(포함)" data-tip-pos="top">
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-to">발행 종료</label>
+                    <input id="mq-to" class="field" type="date" x-model="mqTo" data-tip="발행 종료일(미포함)" data-tip-pos="top">
+                  </div>
+                  <div class="fpop__row">
+                    <label class="fpop__lbl" for="mq-state">인입 상태</label>
+                    <select id="mq-state" class="field" x-model="mqState"><option value="">전체</option><option value="open">미인입</option><option value="done">인입됨</option></select>
+                  </div>
+                  <div class="fpop__ft">
+                    <span class="text-xs text-muted tnum" x-text="mqShown.length + ' / ' + ((mqStatus &amp;&amp; mqStatus.staged &gt; 0) ? mqStatus.staged : mqRows.length) + '건'"></span>
+                    <button type="button" class="copybtn" x-bind:disabled="!mqFilterN" x-on:click="mqFilterReset()">필터 초기화</button>
+                    <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="fpOpen=false; mqSearch()">닫기</button>
+                  </div>
+                </div>
+              </div>
+              <span class="text-xs text-muted tnum" x-text="mqShown.length + ' / ' + ((mqStatus &amp;&amp; mqStatus.staged &gt; 0) ? mqStatus.staged : mqRows.length) + '건'"></span>
+              <span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="정렬 기준 · 최근 올린 순, 같은 회차 안에서는 발행 최신 순" data-tip-pos="top">최근순</span>
+              <span class="text-xs text-muted" x-show="mqBusy" x-cloak>조회 중…</span>
             </div>
 
-            <div class="overflow-auto" style="max-height:52vh" x-show="mqRows.length" x-cloak>
+            <div class="overflow-auto" style="max-height:52vh" x-show="mqShown.length" x-cloak>
               <table class="ds-table"><thead><tr>
                 <th style="width:34px"><input type="checkbox" x-on:change="mqToggleAll()" x-bind:checked="mqSelCount &amp;&amp; mqRows.filter(r =&gt; mqSelectable(r)).every(r =&gt; mqSel[r.hash])" data-tip="전체 선택/해제 (수집분에서는 인입된 행도 삭제용으로 선택 가능)" data-tip-pos="top"></th>
                 <th style="width:90px">서비스</th><th>콘텐츠</th><th style="width:52px">등급</th>
                 <th style="width:140px">인텐트</th><th style="width:180px">카테고리</th>
                 <th style="width:120px">발행</th><th style="width:80px">상태</th>
               </tr></thead><tbody>
-                <template x-for="r in mqRows" x-bind:key="r.hash">
+                <template x-for="r in mqShown" x-bind:key="r.hash">
                   <tr x-bind:style="r.registered ? 'opacity:.55;cursor:pointer' : 'cursor:pointer'" x-on:click="mqToggle(r)">
                     <td><input type="checkbox" x-bind:checked="!!mqSel[r.hash]" x-bind:disabled="!mqSelectable(r)" x-on:click.stop="mqToggle(r)"></td>
                     <td x-text="r.service"></td>
-                    <td><div class="text-ink" style="font-weight:600" x-text="r.title"></div>
+                    <td><div class="text-ink" style="font-weight:600;cursor:pointer;text-decoration:underline;text-decoration-color:var(--ds-hairline-soft);text-underline-offset:3px" x-on:click.stop="mqOpen(r)" data-tip="제목·본문·발행 메타를 검수 상세와 같은 화면으로 봅니다(읽기 전용 · 판정 없음)" data-tip-pos="top" x-text="r.title"></div>
                       <div class="text-xs text-muted" style="max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="r.summary || ''"></div></td>
                     <td><span class="ds-badge" x-bind:class="r.grade === 'R' ? 'ds-badge--error' : 'ds-badge--success'" x-text="r.grade || '-'"></span></td>
                     <td class="text-xs" x-text="Array.isArray(r.intent) ? r.intent.join(' · ') : (r.intent || '')"></td>
@@ -51,15 +88,12 @@
                 </template>
               </tbody></table>
             </div>
-            <div class="ds-empty" style="border:0;padding:20px 8px" x-show="mqSearched &amp;&amp; !mqRows.length" x-cloak>
-              <div class="ds-empty__desc">조건에 맞는 콘텐츠가 없습니다 · 조건을 바꿔 다시 조회해 보세요</div>
-            </div>
-            <div class="ds-empty" style="border:0;padding:20px 8px" x-show="!mqSearched" x-cloak>
-              <div class="ds-empty__desc">조건을 정하고 <b class="text-ink">조회</b>를 누르면 수집기가 올린 발행 콘텐츠가 여기에 나타납니다</div>
+            <div class="ds-empty" style="border:0;padding:20px 8px" x-show="mqSearched &amp;&amp; !mqShown.length" x-cloak>
+              <div class="ds-empty__desc" x-text="(mqStatus &amp;&amp; mqStatus.staged === 0 &amp;&amp; mqSource === 'stage') ? '수집기가 올린 콘텐츠가 아직 없습니다 · 사내망 수집기(prism_push)가 올리면 여기에 나타납니다' : '조건에 맞는 콘텐츠가 없습니다 · 필터를 바꿔 보세요'"></div>
             </div>
 
             <div class="filterbar" style="margin-top:10px" x-show="mqRows.length" x-cloak>
-              <button type="button" class="copybtn" x-bind:disabled="mqBusy" x-on:click="mqMore()">더 가져오기</button>
+              <button type="button" class="copybtn" x-bind:disabled="mqBusy || mqRows.length &lt; mqLimit" x-on:click="mqMore()">더 가져오기</button>
               <button type="button" class="copybtn" x-show="mqSource === 'stage'" x-cloak x-bind:disabled="!mqSelCount || mqBusy" x-on:click="mqDelete()" data-tip="선택한 행을 수집분 목록에서 지웁니다 · 이미 지정된 검수 콘텐츠는 영향 없음" data-tip-pos="top" x-text="'목록에서 삭제' + (mqSelCount ? (' ' + mqSelCount + '건') : '')"></button>
               <span class="ml-auto" style="display:flex;align-items:center;gap:8px">
                 <span class="text-xs text-muted tnum" x-text="mqSelCount + '건 선택'"></span>
@@ -71,6 +105,7 @@
             </div>
             <div class="text-xs" style="margin-top:6px" aria-live="polite" x-text="mqMsg"></div>
             <ul class="ds-bullets" style="margin-top:10px">
+              <li>제목을 누르면 검수 상세와 같은 화면으로 본문과 발행 메타를 확인할 수 있습니다(읽기 전용 · 판정은 지정 뒤 검수에서).</li>
               <li>지정하면 콘텐츠와 발행 메타가 프리즘으로 복사되고, 발행 메타가 그대로 모델 초안이 됩니다(다시 추출하지 않음).</li>
               <li>같은 콘텐츠는 두 번 인입되지 않습니다 · 이미 인입된 행은 <b class="text-ink">인입됨</b>으로 표시됩니다.</li>
               <li>수집분은 검수 콘텐츠가 아닙니다 · 지정하지 않은 행은 <b class="text-ink">목록에서 삭제</b>하거나 두면 정리 기한 뒤 자동으로 지워집니다.</li>

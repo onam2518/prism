@@ -56,17 +56,18 @@ def mq_status(team=None) -> dict:
     query = (getattr(cfg, "metabase_query", "") or "").strip()
     db_id = int(getattr(cfg, "metabase_db_id", 0) or 0)
     mock = bool(_SV.Handler.server_mock)
-    staged = 0
+    staged, services = 0, []
     st = _SV.get_store()
     if st is not None and hasattr(st, "stage_count"):
         try:
             staged = int(st.stage_count(team=team))
+            services = list(st.stage_services(team=team)) if staged else []
         except Exception:
             staged = -1                                   # 표 미생성 등 · 화면은 '확인 불가'
     return {"ok": True, "url": url, "dbId": db_id, "hasKey": bool(_api_key()),
             "queryConfigured": bool(query), "mock": mock,
             "configured": mock or bool(url and db_id and _api_key() and query),
-            "staged": staged, "stageTtlDays": _STAGE_TTL_DAYS,
+            "staged": staged, "stageTtlDays": _STAGE_TTL_DAYS, "services": services,
             "columns": list(COLUMNS)}
 
 

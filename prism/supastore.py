@@ -1911,6 +1911,10 @@ class SupabaseStore:
         rows = self._get("mq_stage", "select=hash&team_key=eq." + urllib.parse.quote(team or ""))
         return len(rows)
 
+    def stage_services(self, team=None) -> list:
+        rows = self._get("mq_stage", "select=service&team_key=eq." + urllib.parse.quote(team or ""))
+        return sorted({str(r.get("service") or "") for r in rows} - {""})
+
     # ── 게시판(기능개선·오류 제보 · 팀 스코프) · SQLite Store 와 동일 계약 ──
     def board_add(self, kind, title, body, reviewer, team=None) -> int:
         rows = self._req("POST", "board", body=[{"team_key": team or "", "kind": kind, "title": title,

@@ -1288,6 +1288,12 @@ class Store:
         c = self._conn()
         return int(c.execute("SELECT COUNT(*) FROM mq_stage WHERE team=?", (team or "",)).fetchone()[0])
 
+    def stage_services(self, team=None) -> list:
+        """스테이징에 있는 서비스 이름(필터 선택지)."""
+        c = self._conn()
+        return [r[0] for r in c.execute("SELECT DISTINCT service FROM mq_stage WHERE team=? AND service<>'' ORDER BY service",
+                                        (team or "",))]
+
     def save_routes(self, content_hash, reviewer, items, team=None, model=""):
         """오케스트레이터 재분류 결과 append(초안 생성 모델 귀속 포함)."""
         c = self._conn()
