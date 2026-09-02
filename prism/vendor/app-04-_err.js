@@ -367,7 +367,24 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this._err('중단 요청 실패'); }
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 슬롯 N개(2~6) 동시 실호출 · 이항 95% CI 표기 · 건별 비교표
-      cmpModels: ['', ''], cmpBusy: false, cmpResult: null, cmpItemFilter: 'miss',
+      cmpModels: ['', ''], cmpBusy: false, cmpResult: null, cmpItemFilter: 'miss', cmpLoopModel: '', cookBusy: false,
+      _CMP_FIELD_KO: { grade_accuracy: '등급 일치율', intent_f1: '인텐트 F1', cat_hf1: '카테고리 F1', ent_f1: '엔티티 F1', summary_sim: '리드문 유사도', grade: '등급', intent: '인텐트', category: '카테고리', entities: '엔티티', summary: '리드문' },
+      cmpFieldKo(k) { return this._CMP_FIELD_KO[k] || k; },
+      get cmpIssues() {                        // 개선 루프 대상 모델(기본 best)의 진단 목록
+        const c = this.cmpCols; if (!c.length) return [];
+        const m = c.find((x) => x.model === this.cmpLoopModel) || c.find((x) => x.model === (this.cmpResult && this.cmpResult.best)) || c[0];
+        return m.issues || [];
+      },
+      async applyRecipe(it) {                  // 쿡북 지시 → 공통 스테이지 프롬프트 끝에 얹기(/cookbook-apply · 관리자)
+        if (!it || this.cookBusy) return;
+        this.cookBusy = true;
+        try {
+          const r = await (await this._afetch('/cookbook-apply', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ stage: it.stage, directive: it.directive }) })).json();
+          if (r && r.ok) { it.applied = true; this.liveToast((r.added ? '프롬프트에 반영 · ' : '이미 반영돼 있음 · ') + it.stage + ' 단계 · 다시 비교 실행으로 확인하세요'); }
+          else this._err((r && r.error) || '반영 실패');
+        } catch (e) { this._err('반영 실패'); }
+        this.cookBusy = false;
+      },
       _CMP_COLORS: ['var(--ds-primary)', 'var(--ds-warning)', 'var(--ds-success)', 'var(--ds-error)', '#7c3aed', '#0891b2'],
       cmpTag(i) { return 'ABCDEF'[i] || String(i + 1); },
       cmpColor(i) { return this._CMP_COLORS[i % this._CMP_COLORS.length]; },

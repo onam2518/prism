@@ -214,6 +214,13 @@
                       </span>
                       <div class="text-xs text-muted tnum" style="margin-top:3px" x-text="'(' + ciOf(m.grade_accuracy, m.n) + ')'"></div></td></template></tr>
                     <tr><td class="text-ink">사유 일치</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cj'+mi"><td><b class="tnum" x-text="pctTxt(m.reason_jaccard)"></b> <span class="abwin" x-show="cmpWin('reason_jaccard', mi)">▲</span></td></template></tr>
+                    <tr><td class="text-ink">종합 점수 <span class="text-xs text-muted">(등급 0.4 · 메타 4항목 각 0.15)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'co'+mi"><td>
+                      <b class="tnum" x-text="pctTxt(m.overall)"></b> <span class="abwin" x-show="cmpWin('overall', mi)">▲</span>
+                      <div style="margin-top:3px"><span class="ds-badge" x-bind:class="m.passed ? 'ds-badge--success' : 'ds-badge--warning'" style="cursor:help" x-bind:data-tip="m.passed ? '모든 게이트 통과 · 등급 ' + pctTxt(cmpResult.eval_gate) + ' · 메타 ' + pctTxt(cmpResult.meta_gate) + ' 이상' : '미달: ' + (m.gate_fails||[]).map(cmpFieldKo).join(', ')" data-tip-pos="top" x-text="m.passed ? '게이트 통과' : '게이트 미달 ' + (m.gate_fails||[]).length"></span></div></td></template></tr>
+                    <tr><td class="text-ink">인텐트 F1 <span class="text-xs text-muted">(표본)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'ci1'+mi"><td><b class="tnum" x-text="m.intent_n ? pctTxt(m.intent_f1) : '·'"></b> <span class="abwin" x-show="cmpWin('intent_f1', mi)">▲</span> <span class="text-xs text-muted tnum" x-text="m.intent_n ? '(' + m.intent_n + ')' : ''"></span></td></template></tr>
+                    <tr><td class="text-ink">카테고리 F1 <span class="text-xs text-muted">(계층 · 부모만 맞아도 반점)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cc1'+mi"><td><b class="tnum" x-text="m.cat_n ? pctTxt(m.cat_hf1) : '·'"></b> <span class="abwin" x-show="cmpWin('cat_hf1', mi)">▲</span> <span class="text-xs text-muted tnum" x-text="m.cat_n ? '(정확 ' + pctTxt(m.cat_f1) + ' · ' + m.cat_n + ')' : ''"></span></td></template></tr>
+                    <tr><td class="text-ink">엔티티 F1 <span class="text-xs text-muted">(정규화 · 부분 일치)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'ce1'+mi"><td><b class="tnum" x-text="m.ent_n ? pctTxt(m.ent_f1) : '·'"></b> <span class="abwin" x-show="cmpWin('ent_f1', mi)">▲</span> <span class="text-xs text-muted tnum" x-text="m.ent_n ? '(부분 ' + pctTxt(m.ent_f1_partial) + ' · ' + m.ent_n + ')' : ''"></span></td></template></tr>
+                    <tr><td class="text-ink">리드문 유사도 <span class="text-xs text-muted">(문자 2-gram)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'cs1'+mi"><td><b class="tnum" x-text="m.summary_n ? pctTxt(m.summary_sim) : '·'"></b> <span class="abwin" x-show="cmpWin('summary_sim', mi)">▲</span></td></template></tr>
                     <tr><td class="text-ink">유해 미탐률 <span class="text-xs text-muted">(정답 R 중 G 로 흘림)</span></td><template x-for="(m,mi) in cmpCols" x-bind:key="'chm'+mi"><td><b class="tnum" x-text="m.harm_miss_rate!=null ? pctTxt(m.harm_miss_rate) : '·'"></b> <span class="abwin" x-show="cmpWin('harm_miss_rate', mi, true)">▲</span></td></template></tr>
                     <tr><td class="text-ink">빈 결과</td><template x-for="(m,mi) in cmpCols" x-bind:key="'ce'+mi"><td class="tnum" x-text="pctTxt(m.empty_rate)"></td></template></tr>
                     <tr><td class="text-ink">비용($)</td><template x-for="(m,mi) in cmpCols" x-bind:key="'cc'+mi"><td><span class="tnum" x-text="m.cost_usd!=null ? ('$'+(Math.round(m.cost_usd*10000)/10000)) : '·'"></span> <span class="abwin" x-show="cmpWin('cost_usd', mi, true)">▲</span></td></template></tr>
@@ -222,7 +229,7 @@
                       <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="cfgModel===m.model ? 'ds-btn--ghost' : 'ds-btn--secondary'" x-bind:disabled="applyBusy || cfgModel===m.model" x-on:click="applyModel(m.model)" x-text="cfgModel===m.model ? '현재 기본 모델' : (applyBusy ? '적용 중…' : '이 모델로 확정')"></button></td></template></tr>
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="(cmpResult.skipped||[]).length">비교 제외: <span x-text="(cmpResult.skipped||[]).map(s => s.model + ' (' + s.reason + ')').join(' · ')"></span></div>
-                  <div class="text-xs text-muted" style="margin-top:4px">▲ = 그 줄에서 가장 좋은 값 · 신뢰구간이 겹치면 우열 판단 보류 · 정답셋이 쌓일수록 오차가 줄어듭니다<span x-show="cmpResult.cheapest_passing"> · 합격 기준 = 등급 일치율 <span class="tnum" x-text="pctTxt(cmpResult.eval_gate)"></span> 이상 · 그중 비용이 가장 낮은 모델 = <b x-text="cmpResult.cheapest_passing"></b></span></div>
+                  <div class="text-xs text-muted" style="margin-top:4px">★ best = 게이트를 통과한 모델 중 종합 점수 1위 · ▲ = 그 줄에서 가장 좋은 값 · 신뢰구간이 겹치면 우열 판단 보류 · 정답셋이 쌓일수록 오차가 줄어듭니다<span x-show="cmpResult.cheapest_passing"> · 합격 기준 = 등급 일치율 <span class="tnum" x-text="pctTxt(cmpResult.eval_gate)"></span> 이상 · 그중 비용이 가장 낮은 모델 = <b x-text="cmpResult.cheapest_passing"></b></span></div>
                   <!-- 건별 비교: 정답 vs 모델별 등급 · 틀린 건·갈린 건만 추려 어디서 차이가 나는지 본다 -->
                   <div class="flexrow" style="margin-top:14px;align-items:center;gap:10px;flex-wrap:wrap">
                     <b>건별 비교</b>
@@ -247,6 +254,29 @@
                     <tr x-show="!cmpItems.length"><td x-bind:colspan="2 + cmpCols.length" class="text-muted text-xs">해당하는 건이 없습니다</td></tr>
                   </tbody></table></div>
                   <div class="text-xs text-muted" style="margin-top:4px" x-show="cmpItemsMore">처음 <span x-text="cmpItems.length"></span>건만 표시 · 필터를 좁혀 보세요</div>
+                  <!-- 개선 루프: 지표 → 문제점 → 쿡북 지시 → 스테이지 프롬프트 반영 → 다시 비교 -->
+                  <div class="flexrow" style="margin-top:14px;align-items:center;gap:10px;flex-wrap:wrap">
+                    <b>개선 루프</b>
+                    <span class="text-xs text-muted">문제점을 골라 프롬프트에 반영하고 다시 비교합니다 · 반영은 공통 스테이지 프롬프트(사전·정책 › 메타 프롬프트)에 얹힙니다</span>
+                    <span class="srcfilter" style="margin-left:auto">
+                      <template x-for="(m,mi) in cmpCols" x-bind:key="'lp'+mi"><button type="button" class="srcfilter__chip" x-bind:class="cmpLoopModel===m.model ? 'sel' : ''" x-on:click="cmpLoopModel=m.model" x-text="cmpTag(mi) + ' ' + m.model"></button></template>
+                    </span>
+                  </div>
+                  <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:90px">영역</th><th style="width:220px">문제점</th><th>쿡북 지시(프롬프트에 얹을 문장)</th><th style="width:120px">반영</th></tr></thead><tbody>
+                    <template x-for="it in cmpIssues" x-bind:key="'is'+it.id">
+                      <tr>
+                        <td><span class="ds-badge ds-badge--neutral" x-text="cmpFieldKo(it.field)"></span><div class="text-xs text-muted" x-text="it.stage"></div></td>
+                        <td><span x-text="it.why"></span></td>
+                        <td class="text-xs" x-text="it.directive"></td>
+                        <td>
+                          <span class="ds-badge ds-badge--success" x-show="it.applied">반영됨</span>
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!it.applied && assignAdmin" x-bind:disabled="cookBusy" x-on:click="applyRecipe(it)" x-text="cookBusy ? '반영 중…' : '프롬프트에 반영'"></button>
+                        </td>
+                      </tr>
+                    </template>
+                    <tr x-show="!cmpIssues.length"><td colspan="4" class="text-muted text-xs">눈에 띄는 문제점이 없습니다 · 표본이 3건 미만인 항목은 진단하지 않습니다</td></tr>
+                  </tbody></table></div>
+                  <div class="text-xs text-muted" style="margin-top:4px">반영 뒤 '비교 실행' 을 다시 눌러 지표가 오르는지 확인합니다 · 내려가면 사전·정책 › 메타 프롬프트에서 해당 문장을 지웁니다</div>
                 </div>
               </template>
             </div>
