@@ -14,10 +14,36 @@ window.PRISM_APP_PARTS.push(() => ({
   mqSearched: false,         // 첫 조회 전에는 빈 표 대신 안내를 보여 준다
   mqSource: 'stage',         // stage 수집분(기본) | metabase 서버 직접 호출
 
-  async mqLoad() {           // 메뉴 진입: 상태 1회 로드(조회는 버튼으로)
+  mqState: '',               // 인입 상태(화면 필터): '' 전체 | open 미인입 | done 인입됨
+  async mqLoad() {           // 메뉴 진입: 상태 로드 + 수집분 첫 조회(검수 대상 목록처럼 바로 보인다)
     if (this.mqStatus) return;
+    await this.mqStatusLoad();
+    await this.mqSearch();
+  },
+  async mqStatusLoad() {
     try { const r = await this._afetch('/metaquery'); this.mqStatus = await r.json(); }
-    catch (e) { this.mqStatus = { ok: false, configured: false }; }
+    catch (e) { this.mqStatus = { ok: false, configured: false, staged: -1, services: [] }; }
+  },
+  async mqRefresh() { await this.mqStatusLoad(); await this.mqSearch(); },
+  mqSvcs() {                 // 서비스 선택지: 서버가 준 스테이징 목록 + 현재 표에 보이는 값
+    const set = new Set(((this.mqStatus || {}).services) || []);
+    this.mqRows.forEach((r) => { if (r.service) set.add(r.service); });
+    if (this.mqService) set.add(this.mqService);
+    return Array.from(set).sort();
+  },
+  get mqFilterN() {
+    return [this.mqService, this.mqGrade, this.mqFrom, this.mqTo, this.mqState].filter(Boolean).length + (this.mqSource !== 'stage' ? 1 : 0);
+  },
+  mqFilterReset() { this.mqService = ''; this.mqGrade = ''; this.mqFrom = ''; this.mqTo = ''; this.mqState = ''; this.mqSource = 'stage'; this.mqSearch(); },
+  get mqShown() {            // 인입 상태만 화면에서 거른다(나머지 조건은 서버 조회)
+    if (!this.mqState) return this.mqRows;
+    return this.mqRows.filter((r) => this.mqState === 'done' ? r.registered : !r.registered);
+  },
+  mqKeys(e) {                // 단축키(검수 대상 목록과 같은 결) · 입력 중이거나 팝업이 열려 있으면 무시
+    if (this.mod !== 'metaq' || this.detailOpen || this.cmpOpen) return;
+    const t = e.target || {};
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName || '')) return;
+    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); this.mqRefresh(); }
   },
   mqFilters() {
     return { source: this.mqSource, service: this.mqService, grade: this.mqGrade, keyword: this.mqKeyword,
@@ -34,7 +60,7 @@ window.PRISM_APP_PARTS.push(() => ({
       this.mqRows = reset ? (j.rows || []) : this.mqRows.concat(j.rows || []);
       if (reset) this.mqSel = {};
       this.mqSearched = true;
-      this.mqMsg = j.rows && j.rows.length ? '' : (reset ? '조건에 맞는 콘텐츠가 없습니다' : '더 가져올 콘텐츠가 없습니다');
+      this.mqMsg = (j.rows && j.rows.length) || reset ? '' : '더 가져올 콘텐츠가 없습니다';
     } catch (e) { this.mqMsg = '오류: ' + e; }
     finally { this.mqBusy = false; }
   },
@@ -54,6 +80,19 @@ window.PRISM_APP_PARTS.push(() => ({
     if (!all) open.forEach((r) => { this.mqSel[r.hash] = true; });
   },
   get mqSelCount() { return Object.keys(this.mqSel).length; },
+  _mqList(v) {               // 서버 _as_list 와 같은 해석: 배열 그대로 · 문자열은 쉼표·가운뎃점 분리
+    if (Array.isArray(v)) return v.map(String).filter((x) => x.trim());
+    const s = (v == null ? '' : String(v)).trim();
+    if (!s) return [];
+    if (s[0] === '[') { try { return JSON.parse(s).map(String).filter((x) => x.trim()); } catch (e) {} }
+    return s.split(/[,·]/).map((x) => x.trim()).filter(Boolean);
+  },
+  mqOpen(r) {                // 제목 클릭: 검수 상세의 콘텐츠 영역과 같은 읽기 전용 보기(판정·이력 없음 · 지정 전이라 검수 대상 아님)
+    this.openContentView({ hash: r.hash, title: r.title || '', service: r.service || '', body: r.body || '', url: r.url || '',
+      summary: r.summary || '', entities: this._mqList(r.entities), intent: this._mqList(r.intent), category: this._mqList(r.category),
+      grade: r.grade || '', model: r.model ? ('dev:' + r.model) : '' });
+    this.cmp.subtitle = r.subtitle || '';
+  },
   async mqDelete() {         // 선택 행을 수집분 목록에서 삭제(검수 콘텐츠는 영향 없음)
     const hashes = this.mqRows.filter((r) => this.mqSel[r.hash]).map((r) => r.hash);
     if (!hashes.length) { this.mqMsg = '먼저 삭제할 행을 선택하세요'; return; }
@@ -65,7 +104,7 @@ window.PRISM_APP_PARTS.push(() => ({
       if (!r.ok || j.error) { this.mqMsg = '오류: ' + (j.error || r.status); return; }
       this.mqRows = this.mqRows.filter((row) => !this.mqSel[row.hash]);
       this.mqSel = {};
-      if (this.mqStatus) this.mqStatus.staged = j.staged;
+      if (this.mqStatus) { this.mqStatus.staged = j.staged; this.mqStatus.services = this.mqSvcs().filter((sv) => this.mqRows.some((r) => r.service === sv)); }
       this.mqMsg = '✓ 목록에서 ' + j.deleted + '건 삭제';
     } catch (e) { this.mqMsg = '오류: ' + e; }
     finally { this.mqBusy = false; }

@@ -185,7 +185,8 @@ class TestMetaqueryStage(MetaqueryBase):
         for row in got["rows"]:
             self.assertIn("hash", row); self.assertFalse(row["registered"]); self.assertIn("staged_at", row)
         self.assertEqual(serve.results_rows(), [])        # 검수 콘텐츠에는 아무것도 없다
-        self.assertEqual(MQ.mq_status()["staged"], 3)
+        stt = MQ.mq_status()
+        self.assertEqual((stt["staged"], stt["services"]), (3, ["뉴스", "스포츠"]))   # 필터 선택지
 
     def test_stage_filters_and_upsert(self):
         from prism import metaquery as MQ
