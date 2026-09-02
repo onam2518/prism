@@ -397,9 +397,38 @@ def cheapest_passing_model(models: list, gate: float) -> str:
     return ok[0].get("model") or ""
 
 
+_COMPARE_MAX_MODELS = 6                               # 한 번에 비교하는 모델 수 상한(라우터 부하 · 표 폭)
+_COMPARE_MAX_ROWS = 200                               # 모델당 골든 건수 상한
+
+
+def _compare_item(row: dict, outs_by_model: dict) -> dict:
+    """건 1개의 정답 vs 모델별 산출(등급·사유·정오) · 화면의 건별 비교표 행."""
+    from .store import content_hash
+    c = row.get("content") or {}
+    exp = row.get("expected") or {}
+    want_g = exp.get("finalGrade") or ""
+    want_r = sorted(exp.get("reasons") or [])
+    got = {}
+    for model, out in outs_by_model.items():
+        if out is None:
+            got[model] = {"grade": "", "reasons": [], "ok": False, "empty": True}
+            continue
+        qm = out.get("quality_meta") or {}
+        g = qm.get("finalGrade") or ""
+        got[model] = {"grade": g, "reasons": sorted(qm.get("reasons") or []),
+                      "ok": (g == want_g), "empty": False}
+    grades = {v["grade"] for v in got.values()}
+    return {"hash": content_hash(c), "title": (c.get("title") or "")[:60],
+            "expected": {"grade": want_g, "reasons": want_r}, "got": got,
+            "all_ok": all(v["ok"] for v in got.values()),
+            "split": len(grades) > 1}               # 모델끼리 등급이 갈린 건
+
+
 def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict:
     """골든셋(사람 확정 정답)을 여러 모델에 실호출로 돌려 정합성 비교 → 최적 모델 선택 근거.
-    모델별 제공자·엔드포인트를 라우팅(llm_for_model)하고, 키 없는 모델은 건너뛰되 사유를 노출."""
+    모델별 제공자·엔드포인트를 라우팅(llm_for_model)하고, 키 없는 모델은 건너뛰되 사유를 노출.
+    모델들은 동시에 돌린다(모델 간 병렬 · 모델 안 8-way). 결과는 건별 산출까지 담아
+    reports(model_compare) 에 영속 → 화면을 닫아도 마지막 비교를 다시 볼 수 있다."""
     st = _SV.get_store()
     if not (st and hasattr(st, "get_golden")):
         return {"ok": False, "error": "골든셋을 지원하지 않는 저장소"}
@@ -409,30 +438,61 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
     rows = _scope_golden(rows, scope, st, team)
     if not rows:
         return {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
+    from concurrent.futures import ThreadPoolExecutor
     from . import abtest
     from . import harness as H
     cfg = Config.load()
     cand = list(dict.fromkeys(m for m in (models or []) if m)) or [cfg.model]
-    out, skipped = [], []
+    if len(cand) > _COMPARE_MAX_MODELS:
+        return {"ok": False, "error": f"한 번에 {_COMPARE_MAX_MODELS}개까지 비교할 수 있습니다"}
+    rows = rows[:_COMPARE_MAX_ROWS]
+    ready, skipped = [], []
     for model in cand:
         llm, route = _SV.llm_for_model(model, _SV.Handler.server_mock)
         if llm is None:
             skipped.append({"model": model, "reason": route})
-            continue
-        m = abtest.evaluate(rows[:200], H.Methodology(name=model), llm, concurrency=8)
-        out.append({"model": model, "route": route, "real": (not llm.mock), "n": min(len(rows), 200),
-                    "grade_accuracy": m.get("grade_accuracy"), "reason_jaccard": m.get("reason_jaccard"),
-                    "reason_exact_match": m.get("reason_exact_match"), "empty_rate": m.get("empty_rate"),
-                    "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens"),
-                    "latency_p50_ms": m.get("latency_p50_ms"), "latency_p95_ms": m.get("latency_p95_ms")})
-    if not out:
+        else:
+            ready.append((model, llm, route))
+    if not ready:
         return {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
                 "skipped": skipped, "golden_n": len(rows)}
+
+    def _one(item):
+        model, llm, route = item
+        outs = abtest.run_methodology(rows, H.Methodology(name=model), llm, concurrency=8)
+        m = abtest.score(rows, outs)
+        return {"model": model, "route": route, "real": (not llm.mock), "n": len(rows),
+                "grade_accuracy": m.get("grade_accuracy"), "reason_jaccard": m.get("reason_jaccard"),
+                "reason_exact_match": m.get("reason_exact_match"), "empty_rate": m.get("empty_rate"),
+                "harm_miss_rate": m.get("harm_miss_rate"),
+                "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens"),
+                "latency_p50_ms": m.get("latency_p50_ms"), "latency_p95_ms": m.get("latency_p95_ms")}, outs
+
+    with ThreadPoolExecutor(max_workers=max(1, min(4, len(ready)))) as ex:
+        done = list(ex.map(_one, ready))
+    out = [d[0] for d in done]
+    outs_by = {d[0]["model"]: d[1] for d in done}
+    items = [_compare_item(row, {m: outs_by[m][i] for m in outs_by}) for i, row in enumerate(rows)]
     out.sort(key=lambda r: (-(r.get("grade_accuracy") or 0), -(r.get("reason_jaccard") or 0)))
     gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
-    return {"ok": True, "models": out, "skipped": skipped,
-            "best": out[0]["model"], "golden_n": len(rows),
-            "eval_gate": gate, "cheapest_passing": cheapest_passing_model(out, gate)}
+    res = {"ok": True, "models": out, "skipped": skipped,
+           "best": out[0]["model"], "golden_n": len(rows), "scope": scope, "ts": time.time(),
+           "eval_gate": gate, "cheapest_passing": cheapest_passing_model(out, gate),
+           "items": items,
+           "split_n": sum(1 for it in items if it["split"]),
+           "miss_n": sum(1 for it in items if not it["all_ok"])}
+    try:
+        st.save_report("model_compare", res, team)
+    except Exception as e:                        # 영속 실패는 비교 결과 자체를 막지 않는다
+        print(f"  [compare] 결과 저장 실패: {e}")
+    return res
+
+
+def last_model_compare(team=None) -> dict:
+    """마지막 모델 비교 결과(영속분) · 없으면 ok=False."""
+    st = _SV.get_store()
+    rep = st.get_report("model_compare", team) if (st and hasattr(st, "get_report")) else None
+    return rep if rep else {"ok": False, "error": "저장된 비교 결과가 없습니다"}
 
 def snapshot_prompts(team=None) -> dict:
     """학습 반영 직후, 다음 초안 버전(v = 반영 회차 + 1)이 쓰게 될 단계(콜)별 최종

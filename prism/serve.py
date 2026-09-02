@@ -218,6 +218,7 @@ golden_list = LO.golden_list
 build_golden_from_reviews = LO.build_golden_from_reviews
 promotion_pending = LO.promotion_pending
 compare_models_on_golden = LO.compare_models_on_golden
+last_model_compare = LO.last_model_compare
 eval_run_start = EVO.eval_run_start
 eval_run_resume = EVO.eval_run_resume
 eval_run_cancel = EVO.eval_run_cancel
@@ -1918,6 +1919,11 @@ def _g_golden_list(h, q):
 @_get_route("/eval-runs")                            # 평가 런 이력(런 단위 영속 · Atelier 이식)
 def _g_eval_runs(h, q):
     return eval_runs_list(h._req_team())
+
+
+@_get_route("/model-compare-last")                   # 마지막 모델 비교 결과(영속분 · 평가 탭 재진입용)
+def _g_model_compare_last(h, q):
+    return last_model_compare(h._req_team())
 
 
 @_get_route("/autopilot-status")                     # 오토파일럿 최신 런 상태(폴링용)
