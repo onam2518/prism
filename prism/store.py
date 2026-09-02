@@ -1235,8 +1235,8 @@ class Store:
         c.commit()
         return {"added": len([h for h in hs if h not in known]), "updated": len([h for h in hs if h in known])}
 
-    def stage_list(self, f, limit=50, offset=0, team=None) -> list:
-        """조건 조회(서비스·등급·키워드·발행 기간). 최근 올린 순 → 발행 최신 순."""
+    def _stage_where(self, f, team):
+        """스테이징 조건(서비스·등급·키워드·발행 기간·메타별) → (WHERE 절, 인자). 목록·총건수가 같은 조건을 쓴다."""
         w, args = ["team=?"], [team or ""]
         if (f.get("service") or "").strip():
             w.append("service=?"); args.append(f["service"].strip())
@@ -1268,9 +1268,18 @@ class Store:
             w.append(has_meta)
         elif v == "without":
             w.append("NOT " + has_meta)
+        return " AND ".join(w), args
+
+    def stage_total(self, f, team=None) -> int:
+        where, args = self._stage_where(f, team)
+        return int(self._conn().execute("SELECT COUNT(*) FROM mq_stage WHERE " + where, args).fetchone()[0])
+
+    def stage_list(self, f, limit=50, offset=0, team=None) -> list:
+        """조건 조회 · 최근 올린 순 → 발행 최신 순. 페이지는 limit/offset."""
+        where, args = self._stage_where(f, team)
         c = self._conn()
         out = []
-        for h, row, ts in c.execute("SELECT hash,row,staged_at FROM mq_stage WHERE " + " AND ".join(w) +
+        for h, row, ts in c.execute("SELECT hash,row,staged_at FROM mq_stage WHERE " + where +
                                     " ORDER BY staged_at DESC, published_at DESC LIMIT ? OFFSET ?",
                                     [*args, int(limit), int(offset)]):
             try:

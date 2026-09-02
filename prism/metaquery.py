@@ -24,6 +24,7 @@ SELECT 하면 화면·인입이 그대로 동작한다(데브 스키마가 확�
 """
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import os
 import urllib.request
@@ -230,18 +231,32 @@ def mq_search(data: dict, team=None) -> dict:
     mf = {k: str(data.get(k) or "") for k in _META_KEYS}
     meta_on = any(v.strip() for v in mf.values())
     source = str(data.get("source") or "stage")
+    total = -1                                            # 직접 조회(메타베이스)는 총건수를 모른다
     if source == "stage":
         st = _SV.get_store()
         if st is None or not hasattr(st, "stage_list"):
             return {"ok": False, "error": "저장소가 준비되지 않았습니다"}
+        # 발행 기간: 시작·종료 모두 날짜(YYYY-MM-DD)면 종료일을 포함한다(화면 기본은 시작=종료=오늘 · 하루).
+        for k in ("date_from", "date_to"):
+            v = (f.get(k) or "").strip()
+            if not v:
+                continue
+            try:
+                d = _dt.date.fromisoformat(v[:10])
+            except ValueError:
+                return {"ok": False, "error": "발행일 형식이 올바르지 않습니다 (YYYY-MM-DD)"}
+            if len(v) == 10:                              # 날짜만 주면 종료일은 포함(다음날 0시 미만)
+                f[k] = (d + _dt.timedelta(days=1)).isoformat() if k == "date_to" else v
         try:
-            rows = st.stage_list({**f, **mf}, limit, offset, team=team)   # 메타 조건도 저장소가 거른다(전량 훑기 없음)
+            cond = {**f, **mf}
+            rows = st.stage_list(cond, limit, offset, team=team)   # 메타 조건도 저장소가 거른다(전량 훑기 없음)
+            total = int(st.stage_total(cond, team=team)) if hasattr(st, "stage_total") else -1
         except Exception as e:
             return {"ok": False, "error": "스테이징 조회 실패 · 표(prism_mq_stage) 생성 여부를 확인하세요 (SUPABASE_MIGRATION.md) · "
                     + str(e)[:120]}
     elif st_info["mock"]:
-        rows = [r for r in _mock_rows(f, _LIMIT_MAX, 0) if _meta_match(r, mf)][offset:offset + limit] if meta_on \
-            else _mock_rows(f, limit, offset)
+        allm = [r for r in _mock_rows(f, _LIMIT_MAX, 0) if _meta_match(r, mf)]
+        rows, total = allm[offset:offset + limit], len(allm)
     elif not st_info["configured"]:
         return {"ok": False, "error": "메타베이스 연결이 설정되지 않았습니다 · 시스템 설정에서 URL·DB·키·기본 SQL 을 저장하세요"}
     else:
@@ -266,7 +281,7 @@ def mq_search(data: dict, team=None) -> dict:
         if r.get("staged_at") is not None:
             row["staged_at"] = r.get("staged_at")
         out.append(row)
-    return {"ok": True, "rows": out, "n": len(out), "offset": offset, "limit": limit,
+    return {"ok": True, "rows": out, "n": len(out), "offset": offset, "limit": limit, "total": total,
             "source": source, "mock": st_info["mock"] and source != "stage"}
 
 

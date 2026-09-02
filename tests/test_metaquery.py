@@ -195,7 +195,12 @@ class TestMetaqueryStage(MetaqueryBase):
         self.assertEqual(MQ.mq_search({"service": "뉴스"})["n"], 2)
         self.assertEqual(MQ.mq_search({"grade": "G"})["n"], 2)
         self.assertEqual(MQ.mq_search({"keyword": "기사 2"})["n"], 1)
-        self.assertEqual(MQ.mq_search({"date_from": "2026-09-02", "date_to": "2026-09-03"})["n"], 1)
+        self.assertEqual(MQ.mq_search({"date_from": "2026-09-02", "date_to": "2026-09-02"})["n"], 1)   # 종료일 포함(하루)
+        self.assertEqual(MQ.mq_search({"date_from": "2026-09-02", "date_to": "2026-09-03"})["n"], 2)   # 기간 지정
+        self.assertEqual(MQ.mq_search({"date_from": "2026-09-02"})["n"], 2)                            # 종료 없음 = 이후 전부
+        self.assertFalse(MQ.mq_search({"date_from": "어제"})["ok"])
+        page = MQ.mq_search({"limit": 2, "offset": 2})
+        self.assertEqual((page["n"], page["total"]), (1, 3))                    # 페이지 넘김: 총건수는 조건 기준
         again = MQ.mq_stage({"rows": self._rows(3, grade="R")})   # 같은 콘텐츠 재수집 → 덮어쓰기(행 수 불변)
         self.assertEqual((again["added"], again["updated"], again["staged"]), (0, 3, 3))
         self.assertTrue(all(r["grade"] == "R" for r in MQ.mq_search({})["rows"]))

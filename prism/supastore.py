@@ -1865,8 +1865,9 @@ class SupabaseStore:
             self._upsert("mq_stage", body[i:i + 200])
         return {"added": len([h for h in hs if h not in known]), "updated": len([h for h in hs if h in known])}
 
-    def stage_list(self, f, limit=50, offset=0, team=None) -> list:
-        q = ["select=hash,row,staged_at", "team_key=eq." + urllib.parse.quote(team or "")]
+    def _stage_query(self, f, team) -> list:
+        """스테이징 조건 → PostgREST 쿼리 조각 목록(select 제외). 목록·총건수가 같은 조건을 쓴다."""
+        q = ["team_key=eq." + urllib.parse.quote(team or "")]
         if (f.get("service") or "").strip():
             q.append("service=eq." + urllib.parse.quote(f["service"].strip()))
         if (f.get("grade") or "").strip():
@@ -1898,6 +1899,13 @@ class SupabaseStore:
             q.append("and=(grade.not.in.(G,R),or(row->>summary.is.null,row->>summary.eq.),"
                      "or(row->entities.is.null,row->entities.eq.%s),or(row->intent.is.null,row->intent.eq.%s),"
                      "or(row->category.is.null,row->category.eq.%s))" % (empty, empty, empty))
+        return q
+
+    def stage_total(self, f, team=None) -> int:
+        return self._count("mq_stage", "select=hash&" + "&".join(self._stage_query(f, team)))
+
+    def stage_list(self, f, limit=50, offset=0, team=None) -> list:
+        q = ["select=hash,row,staged_at"] + self._stage_query(f, team)
         q.append("order=staged_at.desc,published_at.desc")
         q.append("limit=%d&offset=%d" % (int(limit), int(offset)))
         out = []
