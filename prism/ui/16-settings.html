@@ -125,6 +125,30 @@
             </div>
           </div>
         </section>
+        <!-- 메타베이스 연결(콘텐츠 조회): 데브 발행 콘텐츠·메타를 조회하는 경로의 1회 설정.
+             API 키는 서버 env·키 파일에만 저장(설정 파일·응답에 실값 없음) · 저장은 기존 /config 경로 -->
+        <section class="panel" data-fn x-init="mqSyncCfg()"><div class="panel-hd"><b>메타베이스 연결</b><span class="meta">콘텐츠 조회 메뉴가 쓰는 데브 DB 연결 · 팀 전체 공유</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>
+          <div class="panel-bd">
+            <ul class="ds-bullets" style="margin-bottom:12px">
+              <li>프리즘 서버가 메타베이스 API 를 대신 호출합니다 · DB 접속 정보는 받지 않습니다.</li>
+              <li>기본 SQL 은 열 별칭 계약(id · service · title · body · url · published_at · grade · summary · entities · intent · category · model · version)에 맞춥니다 · 조건·페이지는 프리즘이 얹습니다.</li>
+            </ul>
+            <div style="display:flex;flex-direction:column;gap:8px;max-width:720px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input class="field" style="flex:1;min-width:260px" placeholder="메타베이스 URL (예: https://metabase.example.com)" x-model="mbUrl">
+                <input class="field" style="width:120px" placeholder="DB 번호" x-model="mbDbId" data-tip="메타베이스의 database id(정수)" data-tip-pos="top">
+              </div>
+              <input class="field" type="password" placeholder="API 키 · 저장된 키를 바꿀 때만 입력" x-model="mbKey" autocomplete="off">
+              <textarea class="field" rows="4" placeholder="기본 SQL (SELECT … AS id, … AS service, … AS title …)" x-model="mbQuery" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="ds-btn ds-btn--primary" style="height:30px;padding:0 16px" x-on:click="saveMetabase()">저장</button>
+                <span class="ds-badge" x-bind:class="cfg.hasMetabaseKey ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="cfg.hasMetabaseKey ? ('키 연결됨' + (cfg.metabasePersisted ? ' · 저장됨' : '')) : '키 없음'"></span>
+                <button type="button" class="copybtn" x-show="cfg.hasMetabaseKey" x-cloak x-on:click="forgetMetabaseKey()">키 삭제</button>
+                <span class="text-xs text-muted" aria-live="polite" x-text="mbMsg"></span>
+              </div>
+            </div>
+          </div>
+        </section>
 
       </div>
       </template>
