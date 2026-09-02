@@ -1878,6 +1878,25 @@ class SupabaseStore:
             q.append("published_at=gte." + urllib.parse.quote(f["date_from"].strip()))
         if (f.get("date_to") or "").strip():
             q.append("published_at=lt." + urllib.parse.quote(f["date_to"].strip()))
+        # 메타별 조건: jsonb 포함(cs)·텍스트 부분 일치·동등 · PostgREST 가 서버에서 거른다(행 다운로드 없음)
+        for key, col in (("intent", "intent"), ("category", "category")):
+            v = (f.get(key) or "").strip()
+            if v:
+                q.append("row->%s=cs.%s" % (col, urllib.parse.quote(json.dumps([v], ensure_ascii=False), safe="")))
+        v = (f.get("entity") or "").strip()
+        if v:
+            q.append("row->>entities=ilike." + self._stage_kw(v))
+        v = (f.get("model") or "").strip()
+        if v:
+            q.append("row->>model=eq." + urllib.parse.quote(v, safe=""))
+        v = (f.get("meta") or "").strip()
+        empty = urllib.parse.quote("[]", safe="")
+        if v == "with":
+            q.append("or=(grade.in.(G,R),row->>summary.neq.,row->entities.neq.%s,row->intent.neq.%s,row->category.neq.%s)" % (empty, empty, empty))
+        elif v == "without":
+            q.append("and=(grade.not.in.(G,R),or(row->>summary.is.null,row->>summary.eq.),"
+                     "or(row->entities.is.null,row->entities.eq.%s),or(row->intent.is.null,row->intent.eq.%s),"
+                     "or(row->category.is.null,row->category.eq.%s))" % (empty, empty, empty))
         q.append("order=staged_at.desc,published_at.desc")
         q.append("limit=%d&offset=%d" % (int(limit), int(offset)))
         out = []
@@ -1902,14 +1921,16 @@ class SupabaseStore:
         return len(hs)
 
     def stage_purge(self, days, team=None) -> int:
+        """만료 행 삭제 · 건수는 삭제 전 count 로 잰다(대량일 때 삭제 행 본문을 내려받지 않도록)."""
         cut = datetime.now(timezone.utc) - timedelta(days=float(days))
         q = "staged_at=lt.%s&team_key=eq.%s" % (urllib.parse.quote(cut.isoformat()), urllib.parse.quote(team or ""))
-        rows = self._req("DELETE", "mq_stage", query=q, prefer="return=representation")
-        return len(rows or [])
+        n = self._count("mq_stage", "select=hash&" + q)
+        if n:
+            self._req("DELETE", "mq_stage", query=q, prefer="return=minimal")
+        return n
 
     def stage_count(self, team=None) -> int:
-        rows = self._get("mq_stage", "select=hash&team_key=eq." + urllib.parse.quote(team or ""))
-        return len(rows)
+        return self._count("mq_stage", "select=hash&team_key=eq." + urllib.parse.quote(team or ""))
 
     def stage_services(self, team=None) -> list:
         rows = self._get("mq_stage", "select=service&team_key=eq." + urllib.parse.quote(team or ""))
