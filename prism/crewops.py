@@ -37,6 +37,9 @@ _SV = None                      # serve 모듈 객체(컴포지션 루트) · se
 PROFILE_KIND = "crew_profile"   # {uid: {hours_per_week, workdays, status, leave_from, leave_to, note, rate_override}}
 SETTINGS_KIND = "crew_settings"
 WAVE_KIND = "crew_wave"         # 현재 웨이브 {due_at, opened_at, by, plan:{uid:n}}
+OWNER_KIND = "crew_owner"       # 담당 규칙 {items:[{kind: service|category, value, reviewers:[uid…]}]}
+OWNER_KINDS = ("service", "category")   # 서비스(displayServiceName) · 주제(Tier1 분류)
+OWNER_MAX_RULES = 200
 
 STATUSES = ("active", "onboarding", "leave", "inactive")
 
@@ -616,6 +619,11 @@ def _crew_compute(team=None, scope_uid: str = "", raw_out=None) -> dict:
            "scope": "me" if scope_uid else "team", "server_now": now}
     if scope_uid:
         return out
+    try:                                            # 담당 규칙(서비스·주제별 전담) · 화면 편집용 선택지
+        out["owner_rules"] = owner_rules(team)
+        out["owner_options"] = owner_options(team)
+    except Exception:
+        out["owner_rules"], out["owner_options"] = [], {"service": [], "category": []}
     orphan_info = [{"id": rv, "name": (rvs.get(rv) or {}).get("name") or rv[:8],
                     "pending": (load.get(rv) or [0, 0, 0.0])[1]} for rv in orphan]
     out["summary"] = _summary(members, fmap, targets, golden, cfg, due_at, now, team_rate,
@@ -756,6 +764,13 @@ def _burndown(fmap, targets, asg, days: int = 21) -> list:
 MATCH_ITEMS = 5.0
 
 
+def _name_of(members, rid: str) -> str:
+    for m in members or []:
+        if m.get("id") == rid:
+            return m.get("name") or rid
+    return rid
+
+
 def _assignable(members) -> list:
     """기초 검수 배정 대상. **최종검수자는 제외한다**(사용자 결정 2026-07-28).
 
@@ -807,7 +822,12 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
     if use_lack:
         hs = prioritize(hs, team)                    # 정답셋이 부족한 분류를 먼저 내보낸다
     strengths = category_reliability(team, fmap=raw.get("fmap")) if use_match else {}   # fmap 재사용
-    cats = content_categories(team) if use_match else {}
+    rules = owner_rules(team)
+    need_cats = use_match or any(r.get("kind") == "category" for r in rules)
+    cats = content_categories(team) if need_cats else {}
+    svcs = content_services(team) if any(r.get("kind") == "service" for r in rules) else {}
+    oidx = _owner_index(rules)
+    owned_ids = {x for r in rules for x in (r.get("reviewers") or [])}   # 담당 영역이 있는 사람
     ids = [m["id"] for m in pool]
     idx = {m["id"]: i for i, m in enumerate(pool)}   # 동률 시 선택 순서 유지
 
@@ -837,25 +857,54 @@ def plan_distribute(hashes, min_reviewers: int = 1, reviewers=None, team=None,
             return adj / cap[rid]
         return 100.0 + adj / cap[rid]
 
-    groups, per = {}, {}
+    def _band(sc: float) -> int:
+        """_score 의 구간만 뽑는다(0 하한 미달 · 1 정상 · 2 초과) · 담당 우선은 구간 안에서만 작동."""
+        return 0 if sc < -1.0 else (1 if sc < 100.0 else 2)
+
+    groups, per, per_owned = {}, {}, {}
+    owner_held, owner_used = [], {}                  # 담당자 전원 불가로 보류된 건 · 규칙별 배정 수
     for h in hs:
         cs = cats.get(h) or []
-        order = sorted(ids, key=lambda r: (_score(r, cs), idx[r]))
-        picked = order[:n_per]
+        hit = owners_for(h, oidx, svcs, cats) if rules else None
+        picked = []
+        if hit:
+            rule, owners = hit
+            rank = {rid: i for i, rid in enumerate(owners)}
+            cand = [r for r in owners if r in idx]   # 부재·최종검수자·선택 제외자는 빠진다
+            if not cand:
+                owner_held.append({"hash": h, "rule": owner_label(rule),
+                                   "owners": [(_name_of(data["members"], r)) for r in owners]})
+                continue                             # 전담 · 남에게 보내지 않는다
+            # 주 담당이 초과 구간에 들어가기 전까지는 부 담당에게 가지 않는다
+            cand.sort(key=lambda r: (_band(_score(r, cs)) >= 2, rank[r], _score(r, cs)))
+            picked = cand[:n_per]
+            owner_used[owner_label(rule)] = owner_used.get(owner_label(rule), 0) + 1
+        if len(picked) < n_per:
+            # 담당 없는 콘텐츠(또는 담당자 수 < 건당 인원의 나머지 자리)는 담당 영역이 없는 사람 먼저.
+            # 단 구간(하한→정상→초과)은 넘지 않는다 · 전담자가 놀고 있어도 초과자보다 먼저 받는다.
+            rest = [r for r in ids if r not in picked]
+            rest.sort(key=lambda r: (_band(_score(r, cs)), r in owned_ids, _score(r, cs), idx[r]))
+            picked = picked + rest[:n_per - len(picked)]
         groups.setdefault(tuple(picked), []).append(h)
         for rid in picked:
             used[rid] += 1
             per[rid] = per.get(rid, 0) + 1
+            if hit and rid in rank:
+                per_owned[rid] = per_owned.get(rid, 0) + 1
     plan = {rid: {"n": n, "name": next(m["name"] for m in pool if m["id"] == rid),
                   "capacity": cap[rid], "pending_after": used[rid],
-                  "floor": floors.get(rid, 0),
+                  "floor": floors.get(rid, 0), "owned": per_owned.get(rid, 0),
                   "over": used[rid] > cap[rid]} for rid, n in per.items()}
     # 이번 배정에서 한 건도 못 받은 사람 = 잔여가 이미 캐파를 넘겨 뒤로 밀린 사람
     held = [{"name": m["name"], "pending": used[m["id"]], "capacity": cap[m["id"]]}
             for m in pool if m["id"] not in per and used[m["id"]] >= cap[m["id"]] * cap_limit]
-    out = {"ok": True, "plan": plan, "n": len(hs), "min_reviewers": n_per,
+    n_plan = sum(len(c) for c in groups.values())
+    out = {"ok": True, "plan": plan, "n": n_plan, "min_reviewers": n_per,
            "blocked": blocked, "applied": False, "held": held,
            "fill_ratio": fill_ratio,
+           # 담당 규칙: 규칙별 배정 수 · 담당자 전원 불가로 이번엔 배정하지 않은 건(미배정 유지)
+           "owner_used": owner_used, "owner_held": owner_held,
+           "owner_held_n": len(owner_held),
            "over": [p["name"] for p in plan.values() if p["over"]]}
     if not apply:
         return out
@@ -918,7 +967,13 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
     cap = {m["id"]: max(1, m["weekly_capacity"] or 1) for m in takers}
     heap = [(used[m["id"]] / cap[m["id"]], i, m["id"]) for i, m in enumerate(takers)]
     heapq.heapify(heap)
-    moves, changed = [], {}
+    # 담당 규칙이 있으면 전담 콘텐츠는 같은 담당자 그룹 안에서만 옮긴다(받을 담당자가 없으면 남긴다)
+    rules = owner_rules(team)
+    oidx = _owner_index(rules)
+    svcs = content_services(team) if any(r.get("kind") == "service" for r in rules) else {}
+    cats = content_categories(team) if any(r.get("kind") == "category" for r in rules) else {}
+    taker_ids = {m["id"] for m in takers}
+    moves, changed, owner_kept = [], {}, 0
     for ch, a in sorted(asg.items()):
         if targets and ch not in targets:
             continue
@@ -934,6 +989,19 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
                 age = (now - ts) / 86400 if ts else 0.0
                 if age < float(cfg["stale_days"]):
                     continue
+            hit = owners_for(ch, oidx, svcs, cats) if rules else None
+            if hit:                                 # 전담 콘텐츠 · 담당자 중 가장 여유 있는 사람에게만
+                own = [o for o in hit[1] if o in taker_ids and o not in cur]
+                if not own:
+                    owner_kept += 1
+                    continue
+                to = min(own, key=lambda o: (used[o] / cap[o], hit[1].index(o)))
+                cur[cur.index(rv)] = to
+                used[to] += 1
+                moves.append({"hash": ch, "from": rv, "from_name": by_id[rv]["name"],
+                              "to": to, "to_name": by_id[to]["name"], "owner": True})
+                changed[ch] = (cur, max(1, int(a.get("min") or 1)))
+                continue
             cand = []                               # 이 콘텐츠에 아직 없는 사람 중 가장 여유 있는 사람
             pick = None
             while heap:
@@ -955,7 +1023,8 @@ def rebalance(team=None, apply: bool = False, by: str = "", limit: int = 200) ->
                           "to": to, "to_name": by_id[to]["name"]})
             changed[ch] = (cur, max(1, int(a.get("min") or 1)))
     out = {"ok": True, "moves": moves, "n": len(moves), "applied": False,
-           "from_counts": _count(moves, "from_name"), "to_counts": _count(moves, "to_name")}
+           "from_counts": _count(moves, "from_name"), "to_counts": _count(moves, "to_name"),
+           "owner_kept": owner_kept}               # 담당자 그룹에 받을 사람이 없어 남겨 둔 전담 슬롯
     if not (apply and moves):
         return out
     for ch, (rvlist, minr) in changed.items():
@@ -1210,6 +1279,97 @@ def escalate_split(team=None, apply: bool = False, by: str = "", limit: int = 20
 
 
 # ── 강점 매칭 · 부족 분류 우선 ───────────────────────────────────────────────
+# ── 담당 규칙: 서비스·주제별 전담 검수자 ──────────────────────────────────────
+# 규칙 한 줄 = 기준(service|category) + 값 + 담당자 목록(순서 = 주 → 부).
+# · 전담: 그 콘텐츠는 담당자에게만 간다. 담당자 전원이 부재·초과·제외면 배정하지 않고
+#   '보류'로 드러낸다(남에게 새지 않는다 · 사용자 결정 2026-09-02).
+# · 주/부: 목록 첫 사람이 주 담당. 부 담당은 주 담당 잔여가 상한을 넘겼을 때만 받는다.
+# · 담당이 정해지지 않은 콘텐츠는 '담당 영역이 없는 사람'이 먼저 받는다(전담자의 여력을
+#   그 영역에 남겨 두기 위해).
+# · 한 콘텐츠가 서비스 규칙과 주제 규칙에 함께 걸리면 서비스 규칙이 이긴다(더 좁은 기준).
+def owner_rules(team=None) -> list:
+    """담당 규칙 목록(저장 순서 유지 · 순서가 주제 규칙 간 우선순위)."""
+    items = (_SV._report_get(OWNER_KIND, team, {}) or {}).get("items") or []
+    return [dict(r) for r in items if isinstance(r, dict)]
+
+
+def set_owner_rules(rules, team=None, by: str = "") -> dict:
+    """담당 규칙 전체 교체(화면이 표를 통째로 저장한다). 검증에 하나라도 걸리면 저장하지 않는다."""
+    out, seen = [], set()
+    for i, r in enumerate(list(rules or [])[:OWNER_MAX_RULES]):
+        if not isinstance(r, dict):
+            continue
+        kind = (r.get("kind") or "").strip()
+        value = str(r.get("value") or "").strip()[:120]
+        rvs = []
+        for x in (r.get("reviewers") or []):
+            x = str(x or "").strip()
+            if x and x not in rvs:
+                rvs.append(x)
+        if kind not in OWNER_KINDS:
+            return {"ok": False, "error": "%d번째 규칙: 기준은 서비스 또는 주제여야 합니다" % (i + 1)}
+        if not value:
+            return {"ok": False, "error": "%d번째 규칙: 값을 고르세요" % (i + 1)}
+        if not rvs:
+            return {"ok": False, "error": "%d번째 규칙(%s): 담당자를 한 명 이상 고르세요" % (i + 1, value)}
+        if (kind, value) in seen:
+            return {"ok": False, "error": "'%s' 규칙이 두 번 있습니다 · 하나로 합치세요" % value}
+        seen.add((kind, value))
+        out.append({"kind": kind, "value": value, "reviewers": rvs})
+    _SV._report_save(OWNER_KIND, {"items": out, "updated_at": time.time(),
+                                  "updated_by": (by or "")[:80]}, team)
+    _SV._agg_bump()
+    return {"ok": True, "rules": out, "n": len(out)}
+
+
+def owner_label(rule: dict) -> str:
+    return ("서비스 " if rule.get("kind") == "service" else "주제 ") + str(rule.get("value") or "")
+
+
+def _owner_index(rules) -> tuple:
+    """(서비스→담당 목록, 주제→담당 목록). 주제는 규칙 순서를 지킨다(먼저 적은 규칙이 이긴다)."""
+    svc, cat = {}, {}
+    for r in rules or []:
+        tgt = svc if r.get("kind") == "service" else cat
+        tgt.setdefault(str(r.get("value") or ""), (r, list(r.get("reviewers") or [])))
+    return svc, cat
+
+
+def owners_for(h: str, idx: tuple, services: dict, cats: dict):
+    """콘텐츠 하나의 (규칙, 담당자 목록) · 없으면 None. 서비스 규칙 → 주제 규칙 순."""
+    svc, cat = idx
+    hit = svc.get(services.get(h) or "")
+    if hit:
+        return hit
+    for c in cats.get(h) or []:
+        hit = cat.get(c)
+        if hit:
+            return hit
+    return None
+
+
+def content_services(team=None) -> dict:
+    """{hash: 서비스명(displayServiceName)} · 담당 규칙의 재료(content_categories 관례)."""
+    def _calc():
+        out = {}
+        for r in _SV.results_rows(team=team) or []:
+            ref = r.get("content_ref") or {}
+            ch = _row_key(ref)
+            if ch:
+                out[ch] = str(ref.get("displayServiceName") or r.get("service") or "").strip()
+        return out
+    return _SV._agg_cached(("crewsvcs", team), _calc, ttl=60.0)
+
+
+def owner_options(team=None) -> dict:
+    """화면 드롭다운용 · 지금 데이터에 있는 서비스·Tier1 주제 목록(규칙에 이미 쓴 값도 포함)."""
+    svcs = {v for v in content_services(team).values() if v}
+    cats = {c for cs in content_categories(team).values() for c in cs}
+    for r in owner_rules(team):
+        (svcs if r.get("kind") == "service" else cats).add(str(r.get("value") or ""))
+    return {"service": sorted(v for v in svcs if v), "category": sorted(c for c in cats if c)}
+
+
 def content_categories(team=None) -> dict:
     """{hash: [Tier1 분류]} · 강점 매칭과 부족 분류 우선의 재료.
     콘텐츠마다 get_item_meta 를 부르면 왕복이 폭발하므로 결과 뷰에서 한 번에 만든다."""

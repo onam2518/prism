@@ -12,6 +12,48 @@ window.PRISM_APP_PARTS.push(() => ({
       // 혼선을 만들었다(2026-08-06 운영) · 나눠 뿌리고 싶을 때만 낮춰 쓴다
       crewAsgScope: 'unassigned', crewAsgLimit: 2000, crewAsgMin: 2, crewDue: '',
 
+      // 담당 규칙(서비스·주제별 전담) · 서버 원본은 crewData.owner_rules, 편집본은 여기(저장 전까지)
+      crewOwnerRules: [], crewOwnerDirty: false,
+      get crewOwnerCandidates() { return this.crewMembers.filter((m) => !m.is_final); },   // 최종검수자는 기초 배정 대상 아님
+      crewOwnerValues(kind) {
+        const o = (this.crewData && this.crewData.owner_options) || {};
+        return o[kind === 'service' ? 'service' : 'category'] || [];
+      },
+      crewOwnerLabel(r) { return (r.kind === 'service' ? '서비스 ' : '주제 ') + (r.value || ''); },
+      crewOwnedOf(uid) {
+        return ((this.crewData && this.crewData.owner_rules) || [])
+          .filter((r) => (r.reviewers || []).includes(uid))
+          .map((r) => this.crewOwnerLabel(r) + ((r.reviewers || [])[0] === uid ? ' 주' : ' 부'));
+      },
+      get crewOwnerHeldTxt() {
+        const held = (this.crewPlanRes && this.crewPlanRes.owner_held) || [];
+        const by = {};
+        held.forEach((h) => { by[h.rule] = (by[h.rule] || 0) + 1; });
+        return Object.keys(by).map((k) => k + ' ' + by[k] + '건').join(' · ');
+      },
+      crewOwnerReset() {
+        this.crewOwnerRules = ((this.crewData && this.crewData.owner_rules) || [])
+          .map((r) => ({ kind: r.kind, value: r.value, reviewers: (r.reviewers || []).slice() }));
+        this.crewOwnerDirty = false;
+      },
+      crewOwnerAdd() { this.crewOwnerRules.push({ kind: 'service', value: '', reviewers: [] }); this.crewOwnerDirty = true; },
+      crewOwnerDel(i) { this.crewOwnerRules.splice(i, 1); this.crewOwnerDirty = true; },
+      crewOwnerToggle(r, uid) {
+        // 고른 순서가 주→부. 빼면 다음 사람이 주 담당으로 올라온다.
+        const at = r.reviewers.indexOf(uid);
+        if (at >= 0) r.reviewers.splice(at, 1); else r.reviewers.push(uid);
+        this.crewOwnerDirty = true;
+      },
+      async crewOwnerSave() {
+        this.crewBusy = true;
+        try {
+          const r = await this._crewPost('/crew-owner', { rules: this.crewOwnerRules });
+          if (r && r.ok) { this.liveToast('담당 규칙 저장 · ' + r.n + '개'); this.crewOwnerDirty = false; await this.loadCrew(); }
+          else this._err((r && r.error) || '담당 규칙을 저장하지 못했습니다');
+        } catch (e) { this._err('담당 규칙을 저장하지 못했습니다'); }
+        finally { this.crewBusy = false; }
+      },
+
       crewScope: 'wave',                  // 현황 범위: wave(이번 배정) | all(전체 누적)
       crewDueEdit: false, crewDueNew: '', // 기한 조정 인라인 편집기
       get crewMembers() { return (this.crewData && this.crewData.members) || []; },
@@ -91,7 +133,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.crewBusy = true;
         try {
           const r = await (await this._afetch('/crew', { headers: this._authHeaders() })).json();
-          if (r && r.ok) this.crewData = r;
+          if (r && r.ok) { this.crewData = r; if (!this.crewOwnerDirty) this.crewOwnerReset(); }
           else this._err((r && r.error) || '검수운영 정보를 불러오지 못했습니다');
         } catch (e) { this._err('검수운영 정보를 불러오지 못했습니다'); }
         finally { this.crewBusy = false; }
