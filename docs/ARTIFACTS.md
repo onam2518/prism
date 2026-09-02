@@ -10,6 +10,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-09-02 | [프리즘 주간회의 09.02](https://claude.ai/code/artifact/ed7175f2-baea-42e7-8bcc-0634f287087d) |
 | 2026-09-02 | [프리즘 저장 비용 시뮬레이션](https://claude.ai/code/artifact/4ba284c4-c913-411e-9e7b-5d03bc799a60) |
 | 2026-09-01 | [DNM이란 무엇인가](https://claude.ai/code/artifact/e2f8e5e7-16bf-4a49-aef3-0c80fdf383fb) |
 | 2026-08-26 | [프리즘 주간회의 08.26](https://claude.ai/code/artifact/10b2fc5e-35a2-46e6-9900-17ff3d5b95f8) |
