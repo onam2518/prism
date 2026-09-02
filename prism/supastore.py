@@ -1845,9 +1845,10 @@ class SupabaseStore:
     # ── 조회 스테이징(metaquery) · SQLite Store 와 동일 계약 · 표 prism_mq_stage ──
     @staticmethod
     def _stage_kw(kw: str) -> str:
-        """PostgREST or=() 안의 ilike 값: 구문 문자 제거 후 큰따옴표로 감싼다."""
+        """PostgREST ilike 값(*kw*): 구문 문자(쉼표·괄호·따옴표·역슬래시)만 제거하고 따옴표로 감싸지 않는다.
+        큰따옴표로 감싸면 최상위 필터에서는 따옴표가 값의 일부로 붙어 매칭이 깨진다(2026-09-02 운영 실측)."""
         clean = "".join(ch for ch in kw if ch not in '",()\\')
-        return urllib.parse.quote('"*' + clean + '*"', safe="*")
+        return urllib.parse.quote("*" + clean + "*", safe="*")
 
     def stage_put(self, items, team=None) -> dict:
         tk = team or ""
