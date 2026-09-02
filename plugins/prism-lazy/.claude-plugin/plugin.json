@@ -1,0 +1,6 @@
+{
+  "name": "prism-lazy",
+  "version": "0.1.0",
+  "description": "게으른 시니어 모드(ponytail 사다리)의 프리즘 판. 가장 짧게 동작하는 코드 · 표준 라이브러리 먼저 · 요청 없는 추상화 금지.",
+  "author": { "name": "Prism" }
+}
