@@ -230,6 +230,9 @@
               <b x-text="m.name"></b>
               <span class="ds-badge" x-bind:class="crewStatusCls(m)" x-text="crewStatusTxt(m)"></span>
               <span class="ds-badge ds-badge--intent" x-show="m.is_final">최종검수자</span>
+              <template x-for="lb in crewOwnedOf(m.id)" x-bind:key="lb">
+                <span class="ds-badge ds-badge--neutral" x-text="lb" data-tip="담당 규칙 · 이 영역의 콘텐츠는 이 사람에게만 배정됩니다" data-tip-pos="top"></span>
+              </template>
               <span class="meta" x-show="m.profile.confirmed">본인 확인 완료</span>
               <span class="meta" x-show="!m.profile.confirmed">본인 확인 전</span>
               <span class="crewsig ml-auto" x-bind:class="'crewsig--' + m.signal" x-text="crewSigTxt(m.signal)"></span>
@@ -317,6 +320,46 @@
       <!-- ── 배정 ───────────────────────────────────────────────── -->
       <template x-if="mod === 'admin'">
         <div x-show="adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
+        <!-- 담당 규칙: 서비스·주제(Tier1)별 전담 검수자. 규칙에 걸린 콘텐츠는 담당자에게만 가고,
+             담당자 전원이 못 받으면 남에게 보내지 않고 보류로 드러낸다(사용자 결정 2026-09-02). -->
+        <section class="panel"><div class="panel-hd"><b>담당 규칙</b>
+          <span class="meta">서비스 또는 주제별 전담 검수자 · 규칙에 걸린 콘텐츠는 담당자에게만 배정됩니다</span>
+          <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
+                  x-on:click="crewOwnerAdd()">규칙 추가</button></div>
+          <div class="panel-bd">
+            <div class="text-xs text-muted" x-show="!crewOwnerRules.length">
+              아직 규칙이 없습니다 · 모든 콘텐츠를 여력 비례로 나눕니다. 규칙을 추가하면 그 서비스·주제는 지정한 담당자에게만 갑니다.</div>
+            <div class="overflow-auto" x-show="crewOwnerRules.length"><table class="ds-table"><thead><tr>
+              <th style="width:110px">기준</th><th style="width:220px">값</th><th>담당자 <span class="text-muted" style="font-weight:400">· 첫 사람이 주 담당, 나머지는 부 담당</span></th>
+              <th style="width:60px"></th></tr></thead><tbody>
+              <template x-for="(r, i) in crewOwnerRules" x-bind:key="'own'+i">
+                <tr>
+                  <td><select class="field" x-model="r.kind" x-on:change="r.value=''; crewOwnerDirty=true">
+                    <option value="service">서비스</option><option value="category">주제</option></select></td>
+                  <td><select class="field" x-model="r.value" x-on:change="crewOwnerDirty=true">
+                    <option value="">고르세요</option>
+                    <template x-for="v in crewOwnerValues(r.kind)" x-bind:key="v"><option x-bind:value="v" x-text="v"></option></template>
+                  </select></td>
+                  <td><div class="flex flex-wrap gap-1">
+                    <template x-for="m in crewOwnerCandidates" x-bind:key="m.id">
+                      <button type="button" class="srcfilter__chip" x-bind:class="r.reviewers.includes(m.id) ? 'sel' : ''"
+                              x-on:click="crewOwnerToggle(r, m.id)"
+                              x-text="m.name + (r.reviewers[0] === m.id ? ' · 주' : (r.reviewers.includes(m.id) ? ' · 부' : ''))"></button>
+                    </template></div></td>
+                  <td><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="crewOwnerDel(i)">삭제</button></td>
+                </tr>
+              </template>
+            </tbody></table></div>
+            <div class="flex items-center gap-2" style="margin-top:10px" x-show="crewOwnerDirty">
+              <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="crewBusy" x-on:click="crewOwnerSave()">규칙 저장</button>
+              <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-md" x-on:click="crewOwnerReset()">되돌리기</button>
+              <span class="text-xs text-muted">저장한 뒤부터 자동 배정 · 자동 운영 · 재배정에 적용됩니다</span>
+            </div>
+            <div class="text-xs text-muted" style="margin-top:8px" x-show="crewOwnerRules.length && !crewOwnerDirty">
+              담당이 없는 콘텐츠는 담당 영역이 없는 검수자가 먼저 받습니다 · 서비스 규칙과 주제 규칙이 겹치면 서비스 규칙을 따릅니다</div>
+          </div>
+        </section>
+
         <section class="panel"><div class="panel-hd"><b>자동 배정</b>
           <span class="meta">검수자별 잔여 여력에 비례해 자동으로 나눕니다 · 휴가·교육 중·비활성·최종검수자는 제외</span>
           <span class="ds-badge ds-badge--neutral ml-auto" style="cursor:help"
@@ -348,6 +391,7 @@
               <div class="overflow-auto"><table class="ds-table"><thead><tr>
                 <th>검수자</th><th style="width:120px">배정량</th><th style="width:150px">배정 후 잔여</th>
                 <th style="width:130px">주간 처리 가능량</th><th style="width:90px">보장 하한</th>
+                <th style="width:90px">담당 규칙</th>
                 <th style="width:100px"></th></tr></thead><tbody>
                 <template x-for="(p, rid) in (crewPlanRes ? crewPlanRes.plan : {})" x-bind:key="rid">
                   <tr>
@@ -356,6 +400,8 @@
                     <td class="tnum" x-text="p.pending_after + '건'"></td>
                     <td class="tnum" x-text="p.capacity + '건'"></td>
                     <td class="tnum text-muted" x-text="p.floor ? (p.floor + '건') : '·'"></td>
+                    <td class="tnum text-muted" x-text="p.owned ? (p.owned + '건') : '·'"
+                        data-tip="담당 규칙으로 이 사람에게 간 건수" data-tip-pos="top"></td>
                     <td><span class="ds-badge ds-badge--warning" x-show="p.over">여력 초과</span></td>
                   </tr>
                 </template>
@@ -366,6 +412,10 @@
               <div class="ds-badge ds-badge--neutral" style="margin-top:8px;cursor:help" x-show="crewPlanRes && (crewPlanRes.held || []).length"
                    data-tip="잔여가 이미 주간 처리 가능량을 넘겨 이번 배정에서 제외했습니다 · 기존 배정은 그대로이며, 필요하면 재배정으로 회수하세요" data-tip-pos="top"
                    x-text="'이번엔 새 배정 없음(잔여가 처리 가능량 초과): ' + (crewPlanRes ? (crewPlanRes.held || []).map(h => h.name + ' ' + h.pending + '/' + h.capacity).join(', ') : '')"></div>
+              <!-- 담당자 전원이 부재·초과·제외라 남에게 보내지 않고 미배정으로 남긴 건 -->
+              <div class="ds-badge ds-badge--warning" style="margin-top:8px;cursor:help" x-show="crewPlanRes && crewPlanRes.owner_held_n"
+                   data-tip="담당 규칙이 있는데 담당자 전원이 부재·여력 초과·제외 상태입니다 · 남에게 보내지 않고 미배정으로 남겨 둡니다 · 담당자를 추가하거나 규칙을 고치세요" data-tip-pos="top"
+                   x-text="'담당자 없음으로 보류 ' + (crewPlanRes ? crewPlanRes.owner_held_n : 0) + '건: ' + crewOwnerHeldTxt"></div>
               <div class="ds-badge ds-badge--neutral" style="margin-top:8px" x-show="crewPlanRes && crewPlanRes.blocked && crewPlanRes.blocked.length"
                    x-text="'제외: ' + (crewPlanRes ? crewPlanRes.blocked.join(', ') : '') + ' (휴가·교육 중·비활성)'"></div>
               <div class="flex items-center gap-2" style="margin-top:10px">
@@ -404,6 +454,8 @@
                 <template x-for="(n, nm) in (crewMoveRes ? crewMoveRes.to_counts : {})" x-bind:key="'t'+nm">
                   <span class="ds-badge ds-badge--success" x-text="nm + ' +' + n"></span></template>
               </div>
+              <div class="text-xs text-muted" style="margin-top:8px" x-show="crewMoveRes && crewMoveRes.owner_kept"
+                   x-text="crewMoveRes ? ('전담 콘텐츠 ' + crewMoveRes.owner_kept + '건은 담당자 그룹에 받을 사람이 없어 그대로 둡니다') : ''"></div>
               <div class="text-xs text-muted" style="margin-top:8px" x-show="crewMoveRes && !crewMoveRes.n"
                    x-text="crewMoveRes ? (crewMoveRes.reason || crewMoveRes.error || '현재 재배정할 건이 없습니다') : ''"></div>
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" style="margin-top:10px"

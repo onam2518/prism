@@ -2545,6 +2545,13 @@ def _p_crew_profile(h, body):
                            team=h._req_team(), by=actor)
 
 
+@_post_route("/crew-owner", gate="super")            # 검수운영: 담당 규칙(서비스·주제별 전담 검수자) 전체 교체
+def _p_crew_owner(h, body):
+    data = json.loads(body or b"{}")
+    actor = h._bearer_email() or h._bearer_uid() or "(로컬)"
+    return CRW.set_owner_rules(data.get("rules") or [], team=h._req_team(), by=actor)
+
+
 @_post_route("/crew-wave", gate="super")             # 검수운영: 웨이브(주 사이클) 마감 설정·해제
 def _p_crew_wave(h, body):
     data = json.loads(body or b"{}")
