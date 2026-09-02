@@ -522,12 +522,28 @@ def admin_action(uid, team, data, email="") -> dict:
 # supabase 콘텐츠는 무기한 누적되면 용량·조회 성능을 잠식한다(설계 기준 8GB).
 # 삭제 작업이라 명시적 opt-in: PRISM_RETENTION_DAYS(>0) 설정 시에만 가동한다.
 # 평가용(purpose=eval) 보존·파생 행 연쇄 정리는 supastore.retention 이 보장.
+def _retention_drain(st, days: int, per_call: int = 5000, max_calls: int = 60) -> int:
+    """하루치 보존 정리를 다 지울 때까지 반복(드레인).
+
+    회당 5,000건 상한은 PostgREST 요청 폭주 방지용으로 유지하되, 1회 호출로 끝내면
+    일 35,000건 인입(2026-09 조회→지정 전환 물량)을 못 따라가 잔여가 무한 누적된다.
+    반환량이 상한에 못 미치면 그날 지울 것이 소진된 것이므로 멈춘다.
+    max_calls(기본 60 = 일 30만 건)는 첫 가동 때 쌓인 과거분을 며칠에 나눠 지우는 안전판."""
+    total = 0
+    for _ in range(max_calls):
+        n = st.retention(days=days, max_rows=per_call) if hasattr(st, "retention") else 0
+        total += n
+        if n < per_call:
+            break
+        time.sleep(2)                              # 회차 간 소폭 숨 고르기(운영 쿼리 양보)
+    return total
+
+
 def _retention_loop(days: int):
     time.sleep(120)                                # 기동 직후 부하 회피(헬스체크·복원 우선)
     while True:
         try:
-            st = _SV.get_store()
-            n = st.retention(days=days) if hasattr(st, "retention") else 0
+            n = _retention_drain(_SV.get_store(), days)
             if n:
                 print(f"  [retention] {days}일 초과 검토 콘텐츠 {n}건 정리(평가용 보존 · 파생 연쇄)")
         except Exception as e:
