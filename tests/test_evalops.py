@@ -395,3 +395,32 @@ class TestAutopilotModel(TestAutopilot if 'TestAutopilot' in globals() else unit
         self.assertEqual(run["status"], "failed")
         self.assertIn("모델 호출 실패", run["error"]); self.assertIn("solar-pro2", run["error"])
         self.assertEqual(seen, ["solar-pro2"])                     # 첫 라운드에서 바로 멈춤(라운드 낭비 없음)
+
+
+class TestAutopilotRoundMetrics(TestAutopilot):
+    """라운드 이력에 비교표와 같은 지표 · 목표 달성은 등급 목표 + 메타 게이트 전부 통과."""
+
+    def test_metrics_and_gate(self):
+        from prism import learnops as LO
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        orig = LO.learning_batch
+        evs = [{"grade_accuracy": 0.95, "intent_n": 10, "intent_f1": 0.4, "cat_n": 10, "cat_hf1": 0.9, "cost_usd": 0.5, "empty_rate": 0.0},
+               {"grade_accuracy": 0.96, "intent_n": 10, "intent_f1": 0.8, "cat_n": 10, "cat_hf1": 0.9, "cost_usd": 0.4, "empty_rate": 0.0}]
+        state = {"i": 0}
+        def fake(team=None, models=None, **kw):
+            ev = evs[min(state["i"], 1)]; state["i"] += 1
+            return {"ok": True, "grade_accuracy": ev["grade_accuracy"], "eval": ev,
+                    "eval_pre": {"grade_accuracy": 0.9}, "improve": {"reverted": False},
+                    "improve_delta": 0.05, "prompt_snapshot": {"version": state["i"]}}
+        LO.learning_batch = fake
+        self.addCleanup(lambda: setattr(LO, "learning_batch", orig))
+        r = serve.autopilot_start(None, target=0.9, max_rounds=5)
+        self.assertTrue(r.get("ok"), r)
+        run = self._wait(st)
+        h = run["history"]
+        self.assertEqual(len(h), 2)                                  # 1라운드는 인텐트 게이트 미달 → 계속 · 2라운드 통과
+        self.assertEqual(h[0]["metrics"]["gate_fails"], ["intent_f1"]); self.assertFalse(h[0]["metrics"]["passed"])
+        self.assertTrue(h[1]["metrics"]["passed"]); self.assertIn("overall", h[1]["metrics"])
+        self.assertEqual(h[1]["metrics"]["cat_hf1"], 0.9)
+        self.assertIn("게이트 전부 통과", run["stop_reason"])

@@ -320,7 +320,13 @@ window.PRISM_APP_PARTS.push(() => ({
         return rows;
       },
       // 오토파일럿(자동 개선 루프 · Atelier 이식): 시작/중지 + 상태 폴링(라운드가 길어 5s)
-      pilot: null, pilotTarget: '0.9', pilotRounds: '5', pilotModel: '', pilotBusy: false, pilotMsg: '', _pilotPollT: null,
+      pilot: null, pilotTarget: '0.9', pilotRounds: '5', pilotModel: '',
+      pilotM(hh) { return (hh && hh.metrics) || { grade_accuracy: hh && hh.accuracy }; },   // 구 라운드(metrics 없음)는 등급만
+      pilotWin(f, hh) {                        // 라운드 중 유일하게 가장 좋은 값(비용·지연은 낮을수록)
+        const hs = (this.pilot && this.pilot.history) || []; if (hs.length < 2) return false;
+        const lower = (f === 'cost_usd' || f === 'latency_p50_ms'); const v = this.pilotM(hh)[f]; if (v == null) return false;
+        return hs.every((o) => o === hh || this.pilotM(o)[f] == null || (lower ? v < this.pilotM(o)[f] : v > this.pilotM(o)[f]));
+      }, pilotBusy: false, pilotMsg: '', _pilotPollT: null,
       async loadPilot() {
         try {
           const r = await (await this._afetch('/autopilot-status', { headers: this._authHeaders() })).json();
