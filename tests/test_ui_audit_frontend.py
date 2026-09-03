@@ -248,7 +248,8 @@ class TestEvalModelRefresh(unittest.TestCase):
         self.assertIsNotNone(m, "evalModel 을 쓰는 x-modelpick 이 없습니다")
         self.assertIn('groups="textGroups"', m.group(0))        # 데이터 원천 = 공통 제공자 그룹
         self.assertNotIn('options="availableModels"', m.group(0))
-        self.assertIn('x-on:click="loadModels()"', src)         # 설정 화면과 같은 새로고침 재사용
+        from prism import page                                  # 새로고침은 픽커 합성 단계에서 자동 삽입(개별 버튼 없음)
+        self.assertIn('x-on:click.stop="loadModels()"', page.PAGE)
 
     def test_eval_run_sends_bare_model_id(self):
         """x-modelpick 값은 provider|model — /eval-run-start 엔 model id 만 보낸다."""

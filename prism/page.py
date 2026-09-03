@@ -64,6 +64,14 @@ def _mpick_markup(a: dict) -> str:
         '<path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"'
         ' stroke-linejoin="round"/></svg>'
         '</button>'
+        # 규칙(2026-09-03): 모델 픽커가 있는 곳엔 무조건 '모델 새로고침'이 붙는다 — 픽커 합성 단계에서
+        # 자동으로 넣어 새 화면도 빠지지 않게 한다. 호출 가능한 모델 실목록(Solar 실조회 + 라우터)을 다시 받는다.
+        '<button type="button" class="mpick__refresh" x-bind:disabled="cfgBusy"'
+        ' x-on:click.stop="loadModels()" x-bind:title="cfgBusy ? \'불러오는 중…\' : \'모델 새로고침 · 호출 가능한 모델 목록을 다시 불러옵니다\'"'
+        ' aria-label="모델 새로고침">'
+        '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" x-bind:class="cfgBusy ? \'is-spin\' : \'\'">'
+        '<path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" stroke="currentColor" stroke-width="1.9"'
+        ' stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
         # 메뉴는 body 로 텔레포트한다: 패널이 overflow:hidden 인 데다 :hover 에 transform 이
         # 걸려 있어(카드 살짝 뜨는 효과) fixed 로도 패널 안에 갇힌다 — 조상에서 빼내야 안 잘린다.
         # click.stop 은 메뉴 안 클릭이 루트의 click.outside 를 건드리지 않게 한다.
