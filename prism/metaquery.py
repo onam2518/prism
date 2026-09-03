@@ -229,7 +229,6 @@ def mq_search(data: dict, team=None) -> dict:
     offset = max(0, int(data.get("offset") or 0))
     f = {k: data.get(k) for k in ("service", "grade", "keyword", "date_from", "date_to")}
     mf = {k: str(data.get(k) or "") for k in _META_KEYS}
-    meta_on = any(v.strip() for v in mf.values())
     source = str(data.get("source") or "stage")
     total = -1                                            # 직접 조회(메타베이스)는 총건수를 모른다
     if source == "stage":
