@@ -19,6 +19,7 @@ import threading
 import time
 
 from .config import Config
+from . import metaeval as ME
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
 
@@ -335,6 +336,15 @@ def autopilot_status(team=None) -> dict:
     return {"ok": True, "run": run}
 
 
+_ROUND_KEYS = ("grade_accuracy", "reason_jaccard", "harm_miss_rate", "empty_rate", "meta_hold_rate",
+               "intent_n", "intent_f1", "cat_n", "cat_hf1", "ent_n", "ent_f1", "summary_n", "summary_sim",
+               "cost_usd", "latency_p50_ms", "latency_p95_ms")
+
+
+def _meta_gate() -> float:
+    return float(getattr(Config.load().thresholds, "meta_gate", 0.6) or 0.6)
+
+
 def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = ""):
     """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속."""
     from . import learnops as LO
@@ -366,7 +376,12 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "")
                 return
             pre = (rep.get("eval_pre") or {}).get("grade_accuracy")
             reverted = bool((rep.get("improve") or {}).get("reverted"))
-            history.append({"round": rnd, "accuracy": acc, "pre": pre, "model": model,
+            # 모델별 비교와 같은 평가 항목(종합·게이트·메타 F1·비용·속도)을 라운드마다 남긴다
+            ev = rep.get("eval") or {"grade_accuracy": acc}
+            ov = ME.overall(ev, target, _meta_gate())
+            metrics = {k: ev.get(k) for k in _ROUND_KEYS}
+            metrics.update(ov)
+            history.append({"round": rnd, "accuracy": acc, "pre": pre, "model": model, "metrics": metrics,
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
             improved = best is None or acc > best + 1e-9
@@ -376,9 +391,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "")
             if rnd == 1:
                 fields["start_accuracy"] = pre if pre is not None else acc
             st.autopilot_update(rid, team=team, **fields)
-            if acc >= target - 1e-9:
+            if acc >= target - 1e-9 and ov["passed"]:   # 목표 = 등급 일치율 + 메타 게이트 전부 통과(비교표와 같은 기준)
                 st.autopilot_update(rid, team=team, status="done",
-                                    stop_reason=f"목표 달성 · 일치율 {acc:.0%} ≥ 목표 {target:.0%}",
+                                    stop_reason=f"목표 달성 · 일치율 {acc:.0%} ≥ 목표 {target:.0%} · 게이트 전부 통과 · 종합 {ov['overall']:.0%}",
                                     finished=time.time())
                 return
             no_improve = 0 if improved else no_improve + 1
