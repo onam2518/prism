@@ -12,6 +12,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 from . import harness as H
+from . import metaeval as ME
 
 
 # ── 방법론 프리셋: 흔한 '방법론 선택' 후보 ──
@@ -109,6 +110,7 @@ def intent_tally(acc: dict, exp: dict, out) -> None:
     acc["intent_exact"] = acc.get("intent_exact", 0) + int(sw == sg)
     u = sw | sg
     acc["intent_jac_sum"] = acc.get("intent_jac_sum", 0.0) + ((len(sw & sg) / len(u)) if u else 1.0)
+    acc["intent_f1_sum"] = acc.get("intent_f1_sum", 0.0) + (2 * len(sw & sg) / (len(sw) + len(sg)))   # 샘플 기준 F1
     acc["intent_top1"] = acc.get("intent_top1", 0) + int(bool(got) and got[0] == want[0])
     per = acc.setdefault("per_intent", {})
     for v in sw | sg:
@@ -136,6 +138,7 @@ def intent_report(acc: dict) -> dict:
         "intent_skipped": int(acc.get("intent_skipped") or 0),   # 기대 인텐트 없어 제외한 행
         "intent_exact": round(acc.get("intent_exact", 0) / n, 4) if n else 0,
         "intent_jaccard": round(acc.get("intent_jac_sum", 0.0) / n, 4) if n else 0,
+        "intent_f1": round(acc.get("intent_f1_sum", 0.0) / n, 4) if n else 0,
         "intent_top1": round(acc.get("intent_top1", 0) / n, 4) if n else 0,
         "by_intent_value": by,
     }
@@ -156,6 +159,7 @@ def score(rows: list, outs: list) -> dict:
     for row, out in zip(rows, outs):
         exp = row.get("expected", {}) or {}
         intent_tally(iacc, exp, out)             # 실패(None) 산출도 '빈 집합'으로 채점
+        ME.meta_tally(iacc, exp, out)            # 카테고리·엔티티·리드문(같은 카운터 dict)
         if exp.get("finalGrade") == "R":
             harm_n += 1                          # 산출 실패(None) 행도 분모에 포함(분자에는 미포함)
         if out is None:
@@ -195,6 +199,7 @@ def score(rows: list, outs: list) -> dict:
                  for k, v in sorted(per_reason.items())}
     return {
         **intent_report(iacc),                   # 순수 추가: 기존 키 의미·이름·값 불변
+        **ME.meta_report(iacc),
         "n": n,
         "grade_accuracy": round(grade_hit / n, 4) if n else 0,
         "reason_exact_match": round(reason_exact / n, 4) if n else 0,

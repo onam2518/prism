@@ -2271,6 +2271,28 @@ def _p_learn_batch(h, body):
     return learning_batch(h._req_team(), data.get("models"))
 
 
+def _append_stage_directive(cfg, model: str, stage: str, d: str) -> bool:
+    """지시 한 덩이를 공통(stage_prompts) 또는 특정 모델(model_prompts[model]) 프롬프트 끝에 얹는다.
+    이미 들어 있으면 건너뛴다(False). /apply-directive · /cookbook-apply 공용."""
+    if model == "common":                            # 공통 = 모든 모델 프롬프트에 얹힘
+        cur = dict(cfg.stage_prompts or {})
+        base = (cur.get(stage) or "").strip()
+        if d in base:
+            return False
+        cur[stage] = (base + ("\n\n" if base else "") + d).strip()
+        cfg.stage_prompts = cur
+    else:                                            # 특정 모델 전용
+        mp = dict(cfg.model_prompts or {})
+        mm = dict(mp.get(model) or {})
+        base = (mm.get(stage) or "").strip()
+        if d in base:
+            return False
+        mm[stage] = (base + ("\n\n" if base else "") + d).strip()
+        mp[model] = mm
+        cfg.model_prompts = mp
+    return True
+
+
 @_post_route("/apply-directive", gate="admin")       # 버전 지시를 공통/특정 모델 프롬프트에 적용
 def _p_apply_directive(h, body):
     data = json.loads(body or b"{}")
@@ -2285,26 +2307,28 @@ def _p_apply_directive(h, body):
         d = (learned.get(s) or "").strip()
         if not d:
             continue
-        if model == "common":                        # 공통 = 모든 모델 프롬프트에 얹힘(stage_prompts)
-            cur = dict(cfg.stage_prompts or {})
-            base = (cur.get(s) or "").strip()
-            if d not in base:
-                cur[s] = (base + ("\n\n" if base else "") + d).strip()
-                cfg.stage_prompts = cur
-        else:                                        # 특정 모델 전용(model_prompts[model][stage])
-            mp = dict(cfg.model_prompts or {})
-            mm = dict(mp.get(model) or {})
-            base = (mm.get(s) or "").strip()
-            if d not in base:
-                mm[s] = (base + ("\n\n" if base else "") + d).strip()
-                mp[model] = mm
-                cfg.model_prompts = mp
+        _append_stage_directive(cfg, model, s, d)
         applied.append(s)
     cfg.save_template()
     sync_prompt()
     print(f"  [apply-directive] v{v} → {model} · 단계 {applied}")
     return {"ok": True, "applied": applied, "model": model, "version": v}
 
+
+
+@_post_route("/cookbook-apply", gate="admin")        # 모델 비교 진단의 쿡북 지시를 스테이지 프롬프트에 반영
+def _p_cookbook_apply(h, body):
+    data = json.loads(body or b"{}")
+    stage = (data.get("stage") or "").strip()
+    d = (data.get("directive") or "").strip()
+    if stage not in ("extract", "analyze", "review", "judge") or not d or len(d) > 2000:
+        return {"ok": False, "error": "stage·directive 가 올바르지 않습니다"}
+    cfg = Config.load()
+    added = _append_stage_directive(cfg, (data.get("model") or "common").strip(), stage, d)
+    if added:
+        cfg.save_template()
+        sync_prompt()
+    return {"ok": True, "added": added, "stage": stage}
 
 @_post_route("/compare-models", gate="admin")        # 골든셋 다중 모델 비교
 def _p_compare_models(h, body):

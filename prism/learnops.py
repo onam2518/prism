@@ -16,6 +16,7 @@ from . import feedback_loop as FL
 from . import meta_prompts as MP
 from . import prompts as PR
 from .config import Config
+from . import metaeval as ME
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
 
@@ -461,23 +462,31 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
         model, llm, route = item
         outs = abtest.run_methodology(rows, H.Methodology(name=model), llm, concurrency=8)
         m = abtest.score(rows, outs)
+        keep = ("grade_accuracy", "reason_jaccard", "reason_exact_match", "empty_rate", "harm_miss_rate",
+                "cost_usd", "tokens", "latency_p50_ms", "latency_p95_ms",
+                "intent_n", "intent_f1", "cat_n", "cat_f1", "cat_hf1", "ent_n", "ent_f1", "ent_f1_partial",
+                "summary_n", "summary_sim")
         return {"model": model, "route": route, "real": (not llm.mock), "n": len(rows),
-                "grade_accuracy": m.get("grade_accuracy"), "reason_jaccard": m.get("reason_jaccard"),
-                "reason_exact_match": m.get("reason_exact_match"), "empty_rate": m.get("empty_rate"),
-                "harm_miss_rate": m.get("harm_miss_rate"),
-                "cost_usd": m.get("cost_usd"), "tokens": m.get("tokens"),
-                "latency_p50_ms": m.get("latency_p50_ms"), "latency_p95_ms": m.get("latency_p95_ms")}, outs
+                **{k: m.get(k) for k in keep},
+                **ME.overall(m, gate, meta_gate),
+                "issues": ME.diagnose(m)}, outs
 
+    gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
+    meta_gate = float(getattr(cfg.thresholds, "meta_gate", 0.6) or 0.6)
     with ThreadPoolExecutor(max_workers=max(1, min(4, len(ready)))) as ex:
         done = list(ex.map(_one, ready))
     out = [d[0] for d in done]
     outs_by = {d[0]["model"]: d[1] for d in done}
     items = [_compare_item(row, {m: outs_by[m][i] for m in outs_by}) for i, row in enumerate(rows)]
-    out.sort(key=lambda r: (-(r.get("grade_accuracy") or 0), -(r.get("reason_jaccard") or 0)))
-    gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
+    # 순위 = 게이트 통과 먼저 · 그다음 종합 점수(등급 0.4 + 인텐트·카테고리·엔티티·리드문 각 0.15)
+    out.sort(key=lambda r: (not r.get("passed"), -(r.get("overall") or 0), -(r.get("grade_accuracy") or 0)))
+    stage_prompts = dict(cfg.stage_prompts or {})
+    for r in out:                                 # 이미 프롬프트에 들어간 지시는 '반영됨' 표시
+        for it in r.get("issues") or []:
+            it["applied"] = it["directive"] in (stage_prompts.get(it["stage"]) or "")
     res = {"ok": True, "models": out, "skipped": skipped,
            "best": out[0]["model"], "golden_n": len(rows), "scope": scope, "ts": time.time(),
-           "eval_gate": gate, "cheapest_passing": cheapest_passing_model(out, gate),
+           "eval_gate": gate, "meta_gate": meta_gate, "cheapest_passing": cheapest_passing_model(out, gate),
            "items": items,
            "split_n": sum(1 for it in items if it["split"]),
            "miss_n": sum(1 for it in items if not it["all_ok"])}
