@@ -366,17 +366,51 @@ window.PRISM_APP_PARTS.push(() => ({
           if (!(r && r.ok)) this._err((r && r.error) || '중단 요청 실패');
         } catch (e) { this._err('중단 요청 실패'); }
       },
-      // 모델별 정합성 비교(골든셋 평가 탭) · 이항 95% CI 표기
-      cmpA: '', cmpB: '', cmpBusy: false, cmpResult: null,
+      // 모델별 정합성 비교(골든셋 평가 탭) · 슬롯 N개(2~6) 동시 실호출 · 이항 95% CI 표기 · 건별 비교표
+      cmpModels: ['', ''], cmpBusy: false, cmpResult: null, cmpItemFilter: 'miss',
+      _CMP_COLORS: ['var(--ds-primary)', 'var(--ds-warning)', 'var(--ds-success)', 'var(--ds-error)', '#7c3aed', '#0891b2'],
+      cmpTag(i) { return 'ABCDEF'[i] || String(i + 1); },
+      cmpColor(i) { return this._CMP_COLORS[i % this._CMP_COLORS.length]; },
+      cmpRemoveSlot(i) { if (this.cmpModels.length > 2) this.cmpModels.splice(i, 1); },
+      get cmpPicked() { return Array.from(new Set(this.cmpModels.map((v) => String(v || '').split('|').pop()).filter(Boolean))); },   // 픽커 값은 provider|model → 서버엔 model id 만 · 중복 제거
       get cmpCols() {
         const ms = (this.cmpResult && this.cmpResult.models) || [];
-        return [this.cmpA, this.cmpB].map((id) => ms.find((m) => m.model === id)).filter(Boolean);
+        const picked = this.cmpPicked;
+        const cols = picked.map((id) => ms.find((m) => m.model === id)).filter(Boolean);
+        return cols.length ? cols : ms;          // 저장된 비교를 불러온 직후엔 슬롯과 무관하게 결과 순서대로
       },
-      cmpWin(f, mi) { const c = this.cmpCols; return c.length === 2 && (c[mi][f] || 0) > (c[1 - mi][f] || 0); },
+      cmpWin(f, mi, lower) {                     // 그 줄에서 유일하게 가장 좋은 값(동률이면 표시 안 함)
+        const c = this.cmpCols; if (c.length < 2) return false;
+        const v = c[mi][f]; if (v == null) return false;
+        return c.every((o, oi) => oi === mi || o[f] == null || (lower ? v < o[f] : v > o[f]));
+      },
+      cmpCell(it, model) { return (it.got && it.got[model]) || { grade: '', reasons: [], ok: false, empty: true }; },
+      get cmpItems() {
+        const all = (this.cmpResult && this.cmpResult.items) || [];
+        const f = this.cmpItemFilter;
+        const sel = f === 'all' ? all : (f === 'split' ? all.filter((it) => it.split) : all.filter((it) => !it.all_ok));
+        return sel.slice(0, 100);
+      },
+      get cmpItemsMore() {
+        const all = (this.cmpResult && this.cmpResult.items) || [];
+        const f = this.cmpItemFilter;
+        const n = f === 'all' ? all.length : (f === 'split' ? all.filter((it) => it.split).length : all.filter((it) => !it.all_ok).length);
+        return n > 100;
+      },
       async runCompare() {
+        if (this.cmpPicked.length < 2) return;
         this.cmpBusy = true; this.cmpResult = null;
-        try { this.cmpResult = await (await this._afetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: [this.cmpA, this.cmpB], scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
+        try { this.cmpResult = await (await this._afetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: this.cmpPicked, scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
         this.cmpBusy = false;
+      },
+      async loadCompareLast() {                  // 탭 재진입 시 마지막 비교(영속분) 복원 · 슬롯이 비어 있으면 비교했던 모델로 채움
+        if (this.cmpResult || this.cmpBusy) return;
+        try {
+          const r = await (await this._afetch('/model-compare-last', { headers: this._authHeaders() })).json();
+          if (!(r && r.ok)) return;
+          this.cmpResult = r;
+          if (!this.cmpPicked.length) this.cmpModels = (r.models || []).map((m) => m.model).concat(['', '']).slice(0, Math.max(2, (r.models || []).length));
+        } catch (e) {}
       },
       // 비교 결과의 추천 모델을 기본 모델(cfg.model)로 승격 · /config POST(관리자 게이트는 서버가 판정)
       applyBusy: false,
