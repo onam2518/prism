@@ -146,7 +146,7 @@
                 <li>한 라운드 = <b>학습 반영</b>(검수 피드백 → 프롬프트 보정) 후 같은 정답셋으로 <b>재평가</b> · 점수가 나빠지면 그 라운드 보정은 반영하지 않습니다(자동 원복).</li>
                 <li>종료 조건: <b>목표 달성</b> · <b>개선 정체</b>(2라운드 연속 향상 없음) · <b>최대 라운드</b> · 수동 중지 · 라운드마다 실모델 호출 비용이 듭니다.</li>
               </ul>
-              <div x-show="!(pilot && pilot.status==='running')" class="flexrow" style="gap:10px;align-items:center;flex-wrap:wrap">
+              <div x-show="!(pilot && pilot.status==='running' && !pilot.stalled)" class="flexrow" style="gap:10px;align-items:center;flex-wrap:wrap">
                 <span class="selctl"><span class="selctl__lbl">평가 모델</span>
                   <x-modelpick key="ap" value="pilotModel" set="pilotModel=$v" groups="textGroups" first-label="기본 설정 모델" first-value="" width="212px" tip="라운드마다 이 모델로 정답셋을 재평가합니다 · 비워두면 기본 텍스트 슬롯(설정) · 미연결 제공자는 키 등록 후 선택"></x-modelpick></span>
                 <span class="selctl"><span class="selctl__lbl">목표 일치율</span>

@@ -333,6 +333,13 @@ def autopilot_status(team=None) -> dict:
             run["stalled"] = bool(run.get("status") == "running"
                                   and not (run["id"] in _PILOT_ACTIVE
                                            and _PILOT_ACTIVE[run["id"]].is_alive()))
+        if run["stalled"]:                        # 스레드가 없는 running = 서버 재시작(배포)으로 죽은 런 → 기록으로 정리해 화면을 풀어 준다
+            try:
+                st.autopilot_update(run["id"], team=team, status="stopped",
+                                    stop_reason="서버 재시작으로 중단 · 다시 시작하세요", finished=time.time())
+                run["status"], run["stop_reason"] = "stopped", "서버 재시작으로 중단 · 다시 시작하세요"
+            except Exception:
+                pass
     return {"ok": True, "run": run}
 
 
