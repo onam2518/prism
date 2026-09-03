@@ -414,13 +414,52 @@ window.PRISM_APP_PARTS.push(() => ({
         const n = f === 'all' ? all.length : (f === 'split' ? all.filter((it) => it.split).length : all.filter((it) => !it.all_ok).length);
         return n > 100;
       },
+      cmpJob: null, _cmpPollT: null,           // 백그라운드 비교 잡(진척은 별도 창 · 메인은 완료만 받아 표를 채움)
+      get cmpProgressTxt() {
+        const j = this.cmpJob; if (!j) return '';
+        const ms = Object.values(j.models || {}); const done = ms.reduce((n, m) => n + (m.done || 0), 0); const tot = ms.reduce((n, m) => n + (m.total || 0), 0);
+        return tot ? (done + '/' + tot + ' · 모델 ' + ms.filter((m) => m.status === 'done').length + '/' + ms.length) : '';
+      },
+      openCompareWindow(id) {                  // 앱 안 팝업이 아니라 브라우저 새 창(진척도 큐)
+        try { const w = window.open('/vendor/compare-window.html' + (id ? '?id=' + id : ''), 'prism-compare-queue', 'width=860,height=720,noopener=false'); if (w) w.focus(); return w; } catch (e) { return null; }
+      },
       async runCompare() {
-        if (this.cmpPicked.length < 2) return;
-        this.cmpBusy = true; this.cmpResult = null;
-        try { this.cmpResult = await (await this._afetch('/compare-models', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: this.cmpPicked, scope: this.evalScope }) })).json(); } catch (e) { this._err('모델 비교 실패'); }
-        this.cmpBusy = false;
+        if (this.cmpPicked.length < 2 || this.cmpBusy) return;
+        const win = this.openCompareWindow();   // 클릭 동기 구간에서 먼저 열어야 팝업 차단을 피한다
+        this.cmpBusy = true; this.cmpResult = null; this.cmpJob = null;
+        try {
+          const r = await (await this._afetch('/compare-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ models: this.cmpPicked, scope: this.evalScope }) })).json();
+          if (!(r && r.ok)) { this.cmpResult = r; this.cmpBusy = false; if (win) win.close(); return; }
+          if (win) { try { win.location.replace('/vendor/compare-window.html?id=' + r.id); } catch (e) {} }
+          this.pollCompare(r.id);
+        } catch (e) { this._err('모델 비교 시작 실패'); this.cmpBusy = false; }
+      },
+      pollCompare(id) {
+        clearTimeout(this._cmpPollT);
+        const step = async () => {
+          try {
+            const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json();
+            if (r && r.ok) {
+              this.cmpJob = r.job;
+              if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
+              if (r.job.status === 'failed') { this._err('모델 비교 실패: ' + (r.job.error || '')); this.cmpBusy = false; return; }
+            } else if (r && r.error) { this._err(r.error); this.cmpBusy = false; return; }
+          } catch (e) {}
+          this._cmpPollT = setTimeout(step, 3000);
+        };
+        step();
+      },
+      _cmpMsgBound: false,
+      _bindCompareMessage() {                  // 진척도 창의 '메인 화면에서 자세히' → 결과 불러와 평가 탭으로
+        if (this._cmpMsgBound) return; this._cmpMsgBound = true;
+        window.addEventListener('message', async (ev) => {
+          if (ev.origin !== location.origin || !ev.data || ev.data.type !== 'prism-compare-done') return;
+          try { const r = await (await this._afetch('/compare-status?id=' + ev.data.id, { headers: this._authHeaders() })).json(); if (r && r.ok && r.job.result) { this.cmpResult = r.job.result; this.cmpBusy = false; this.cmpJob = r.job; } } catch (e) {}
+          if (this.mod !== 'evaluate') this.selectMod('evaluate');
+        });
       },
       async loadCompareLast() {                  // 탭 재진입 시 마지막 비교(영속분) 복원 · 슬롯이 비어 있으면 비교했던 모델로 채움
+        this._bindCompareMessage();
         if (this.cmpResult || this.cmpBusy) return;
         try {
           const r = await (await this._afetch('/model-compare-last', { headers: this._authHeaders() })).json();

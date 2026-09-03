@@ -199,7 +199,8 @@
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="cmpModels.length < 6" x-on:click="cmpModels.push('')">+ 모델 추가</button>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="cfgBusy" x-on:click="loadModels()" x-text="cfgBusy ? '불러오는 중…' : '모델 새로고침'" data-tip="Solar·Timely 라우터의 지금 호출 가능한 모델 목록을 다시 불러옵니다" data-tip-pos="top"></button>
                 <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
-                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || cmpPicked.length < 2" x-on:click="runCompare()" x-text="cmpBusy ? '비교 중… (' + cmpPicked.length + '개 모델 동시 추출)' : '비교 실행'"></button>
+                <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || cmpPicked.length < 2" x-on:click="runCompare()" x-text="cmpBusy ? ('비교 중… ' + (cmpProgressTxt || (cmpPicked.length + '개 모델 동시 추출'))) : '비교 실행'"></button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openCompareWindow(cmpJob ? cmpJob.id : 0)" data-tip="모델별 진척도와 최근 비교 결과를 브라우저 새 창으로 봅니다 · 닫아도 비교는 계속 돕니다" data-tip-pos="top">진척도 창</button>
                 <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
                 <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="'마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건'"></span>
               </div>
