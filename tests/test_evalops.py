@@ -424,3 +424,16 @@ class TestAutopilotRoundMetrics(TestAutopilot):
         self.assertTrue(h[1]["metrics"]["passed"]); self.assertIn("overall", h[1]["metrics"])
         self.assertEqual(h[1]["metrics"]["cat_hf1"], 0.9)
         self.assertIn("게이트 전부 통과", run["stop_reason"])
+
+
+class TestAutopilotStalled(TestAutopilot):
+    def test_status_marks_dead_running_as_stopped(self):
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        self._patch_batch([0.95])
+        rid = st.autopilot_create(None, 0.9, 5)                    # running 인데 스레드는 없다(서버 재시작 상황)
+        r = serve.autopilot_status(None)
+        self.assertEqual(r["run"]["id"], rid); self.assertTrue(r["run"]["stalled"])
+        self.assertEqual(r["run"]["status"], "stopped")
+        self.assertEqual(st.autopilot_latest(None)["status"], "stopped")   # DB 에도 정리 → 시작 폼이 다시 보인다
+        self.assertTrue(serve.autopilot_start(None, target=0.9, max_rounds=1).get("ok"))
