@@ -437,3 +437,4 @@ class TestAutopilotStalled(TestAutopilot):
         self.assertEqual(r["run"]["status"], "stopped")
         self.assertEqual(st.autopilot_latest(None)["status"], "stopped")   # DB 에도 정리 → 시작 폼이 다시 보인다
         self.assertTrue(serve.autopilot_start(None, target=0.9, max_rounds=1).get("ok"))
+        self._wait(st)                                             # 스레드가 끝난 뒤 정리(가짜 배치 복원 전에 실런 방지)
