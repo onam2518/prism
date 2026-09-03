@@ -193,10 +193,12 @@
               <div class="filterbar" style="margin:0 0 12px;flex-wrap:wrap;gap:8px">
                 <template x-for="(slot, si) in cmpModels" x-bind:key="'cs'+si">
                   <span class="selctl abslot"><span class="selctl__tag" x-bind:style="'background:' + cmpColor(si)" x-text="cmpTag(si)"></span><span class="selctl__lbl">모델</span>
-                    <x-modelpick key="cm" value="cmpModels[si]" set="cmpModels[si]=$v" options="availableModels" first-label="선택…" first-value="" width="200px"></x-modelpick>
+                    <x-modelpick key="cm" value="cmpModels[si]" set="cmpModels[si]=$v" groups="textGroups" first-label="선택…" first-value="" width="212px" tip="직접(Solar)·라우터 전체에서 고름 · 미연결 제공자는 키 등록 후 선택 · 목록이 오래됐으면 '모델 새로고침'"></x-modelpick>
                     <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="cmpModels.length > 2" x-on:click="cmpRemoveSlot(si)" title="이 슬롯 빼기">✕</button></span>
                 </template>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="cmpModels.length < 6" x-on:click="cmpModels.push('')">+ 모델 추가</button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="cfgBusy" x-on:click="loadModels()" x-text="cfgBusy ? '불러오는 중…' : '모델 새로고침'" data-tip="Solar·Timely 라우터의 지금 호출 가능한 모델 목록을 다시 불러옵니다" data-tip-pos="top"></button>
+                <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || cmpPicked.length < 2" x-on:click="runCompare()" x-text="cmpBusy ? '비교 중… (' + cmpPicked.length + '개 모델 동시 추출)' : '비교 실행'"></button>
                 <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
                 <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="'마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건'"></span>
