@@ -454,7 +454,7 @@ def _compare_prepare(models, team, scope: str):
     return {"rows": rows, "ready": ready, "skipped": skipped, "cfg": cfg, "scope": scope}, None
 
 
-_COMPARE_CHUNK = 24                                   # 진척도 갱신 주기(모델 안 8-way 의 3배)
+_COMPARE_CHUNK = 8                                    # 진척도 갱신 주기(8-way 한 바퀴 · 창에서 막대가 자주 움직이게)
 
 
 def _compare_run_model(item, rows, cfg, progress=None):
