@@ -296,7 +296,7 @@ class TestAutopilot(unittest.TestCase):
         orig = LO.learning_batch
         state = {"i": 0}
 
-        def fake(team=None, models=None):
+        def fake(team=None, models=None, **kw):
             import time as _t
             if delay:
                 _t.sleep(delay)
@@ -369,3 +369,29 @@ class TestAutopilot(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAutopilotModel(TestAutopilot if 'TestAutopilot' in globals() else unittest.TestCase):
+    """평가 모델 지정 · 호출 실패 라운드는 장애로 종료."""
+
+    def test_model_passthrough_and_empty_guard(self):
+        from prism import learnops as LO
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        om = serve.Handler.server_mock; serve.Handler.server_mock = True      # 모델 라우팅은 mock 클라이언트로
+        self.addCleanup(lambda: setattr(serve.Handler, "server_mock", om))
+        seen = []
+        orig = LO.learning_batch
+        def fake(team=None, models=None, model="", **kw):
+            seen.append(model)
+            return {"ok": True, "grade_accuracy": 0.0, "eval": {"empty_rate": 1.0},
+                    "eval_pre": {"grade_accuracy": 0.0}, "improve": {"reverted": False},
+                    "improve_delta": 0.0, "prompt_snapshot": {"version": 1}}
+        LO.learning_batch = fake
+        self.addCleanup(lambda: setattr(LO, "learning_batch", orig))
+        r = serve.autopilot_start(None, target=0.9, max_rounds=5, model="solar-pro2")
+        self.assertTrue(r.get("ok"), r); self.assertEqual(r["model"], "solar-pro2")
+        run = self._wait(st)
+        self.assertEqual(run["status"], "failed")
+        self.assertIn("모델 호출 실패", run["error"]); self.assertIn("solar-pro2", run["error"])
+        self.assertEqual(seen, ["solar-pro2"])                     # 첫 라운드에서 바로 멈춤(라운드 낭비 없음)

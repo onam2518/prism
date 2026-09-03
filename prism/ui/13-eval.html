@@ -148,6 +148,8 @@
                 <li>종료 조건: <b>목표 달성</b> · <b>개선 정체</b>(2라운드 연속 향상 없음) · <b>최대 라운드</b> · 수동 중지 · 라운드마다 실모델 호출 비용이 듭니다.</li>
               </ul>
               <div x-show="!(pilot && pilot.status==='running')" class="flexrow" style="gap:10px;align-items:center;flex-wrap:wrap">
+                <span class="selctl"><span class="selctl__lbl">평가 모델</span>
+                  <x-modelpick key="ap" value="pilotModel" set="pilotModel=$v" groups="textGroups" first-label="기본 설정 모델" first-value="" width="212px" tip="라운드마다 이 모델로 정답셋을 재평가합니다 · 비워두면 기본 텍스트 슬롯(설정) · 미연결 제공자는 키 등록 후 선택"></x-modelpick></span>
                 <span class="selctl"><span class="selctl__lbl">목표 일치율</span>
                   <select class="field" x-model="pilotTarget"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option></select></span>
                 <span class="selctl"><span class="selctl__lbl">최대 라운드</span>
@@ -169,11 +171,12 @@
                     <div class="tile tile--hero"><div class="n tnum" x-text="pilot.best_accuracy!=null ? Math.round(pilot.best_accuracy*100)+'%' : '·'"></div><div class="t">최고 일치율</div></div>
                   </div>
                   <template x-if="(pilot.history||[]).length">
-                    <div class="overflow-auto" style="margin-top:10px"><table class="ds-table"><thead><tr><th style="width:70px">라운드</th><th style="width:80px">버전</th><th>전 → 후</th><th style="width:90px">변화</th><th style="width:110px">반영</th></tr></thead><tbody>
+                    <div class="overflow-auto" style="margin-top:10px"><table class="ds-table"><thead><tr><th style="width:70px">라운드</th><th style="width:80px">버전</th><th style="width:150px">모델</th><th>전 → 후</th><th style="width:90px">변화</th><th style="width:110px">반영</th></tr></thead><tbody>
                       <template x-for="hh in pilot.history" x-bind:key="'ph'+hh.round">
                         <tr>
                           <td class="tnum" x-text="hh.round"></td>
                           <td class="tnum" x-text="hh.version ? ('v'+hh.version) : '·'"></td>
+                          <td class="text-xs" x-text="hh.model || '기본 설정'"></td>
                           <td class="tnum" x-text="(hh.pre!=null ? Math.round(hh.pre*100)+'%' : '·') + ' → ' + Math.round(hh.accuracy*100)+'%'"></td>
                           <td><b class="tnum" x-bind:style="(hh.delta||0) > 0 ? 'color:var(--ds-success-deep)' : ((hh.delta||0) < 0 ? 'color:var(--ds-error-deep)' : '')" x-text="hh.delta!=null ? ((hh.delta>0?'+':'') + Math.round(hh.delta*100) + '%p') : '·'"></b></td>
                           <td><span class="ds-badge" x-bind:class="hh.reverted ? 'ds-badge--warning' : 'ds-badge--success'" x-bind:data-tip="hh.reverted ? '이 라운드 보정은 점수를 낮춰 반영하지 않았습니다(이전 프롬프트 유지)' : '이 라운드 보정이 반영됐습니다'" data-tip-pos="top" style="cursor:help" x-text="hh.reverted ? '원복' : '반영'"></span></td>
