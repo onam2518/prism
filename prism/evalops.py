@@ -269,7 +269,7 @@ PILOT_ROUNDS_CAP = 10           # 폭주 방지 상한(Atelier max_versions cap 
 PILOT_STALL_ROUNDS = 2          # 연속 무향상 허용 라운드(초과 시 정체 종료)
 
 
-def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="") -> dict:
+def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="", model: str = "") -> dict:
     st = _SV.get_store()
     if not (st and hasattr(st, "autopilot_create")):
         return {"ok": False, "error": "스토어가 오토파일럿을 지원하지 않습니다"}
@@ -291,13 +291,18 @@ def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="") -> dict:
             return {"ok": False, "error": "이미 오토파일럿이 실행 중입니다"}
         st.autopilot_update(latest["id"], team=team, status="stopped",
                             stop_reason="서버 재시작으로 중단", finished=time.time())
+    model = (model or "").strip()
+    if model:                                        # 원하는 모델로 라운드 평가 · 호출 불가면 시작 전에 막는다
+        llm, route = _SV.llm_for_model(model, _SV.Handler.server_mock)
+        if llm is None:
+            return {"ok": False, "error": f"모델 호출 불가({route}): {model}"}
     rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "")
-    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds),
+    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds, model),
                           name=f"prism-autopilot-{rid}", daemon=True)
     with _LOCK:
         _PILOT_ACTIVE[rid] = th
     th.start()
-    return {"ok": True, "id": rid, "target": target, "max_rounds": max_rounds}
+    return {"ok": True, "id": rid, "target": target, "max_rounds": max_rounds, "model": model}
 
 
 def autopilot_stop(team=None) -> dict:
@@ -330,7 +335,7 @@ def autopilot_status(team=None) -> dict:
     return {"ok": True, "run": run}
 
 
-def _pilot_loop(rid: int, team, target: float, max_rounds: int):
+def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = ""):
     """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속."""
     from . import learnops as LO
     st = _SV.get_store()
@@ -345,16 +350,23 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int):
                                     finished=time.time())
                 return
             st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
-            rep = LO.learning_batch(team)
+            rep = LO.learning_batch(team, model=model)
             acc = rep.get("grade_accuracy")
             if acc is None:
                 st.autopilot_update(rid, team=team, status="failed",
                                     error="라운드 평가 불가 · 정답셋·모델 설정을 확인하세요",
                                     history=history, finished=time.time())
                 return
+            empty = float(((rep.get("eval") or {}).get("empty_rate")) or 0)
+            if empty >= 0.9:                        # 호출이 거의 다 실패한 라운드는 '정체'가 아니라 장애(한도·키·모델명)
+                st.autopilot_update(rid, team=team, status="failed",
+                                    error=f"모델 호출 실패 · 빈 결과 {empty:.0%} · "
+                                          f"{model or '기본 텍스트 슬롯'} 의 API 키·지출 한도·모델명을 확인하세요",
+                                    history=history, finished=time.time())
+                return
             pre = (rep.get("eval_pre") or {}).get("grade_accuracy")
             reverted = bool((rep.get("improve") or {}).get("reverted"))
-            history.append({"round": rnd, "accuracy": acc, "pre": pre,
+            history.append({"round": rnd, "accuracy": acc, "pre": pre, "model": model,
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
             improved = best is None or acc > best + 1e-9

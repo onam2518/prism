@@ -693,7 +693,7 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     return out
 
 
-def learning_batch(team=None, models=None) -> dict:
+def learning_batch(team=None, models=None, model: str = "") -> dict:
     """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
     ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성 2%p 초과 악화·유해 미탐 악화·버킷 회귀
     중 하나라도 걸리면 개선을 반영하지 않고 이전 프롬프트를 유지한다(방향 검증 · 진동 방지)."""
@@ -704,12 +704,12 @@ def learning_batch(team=None, models=None) -> dict:
     golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
     prev_learned = dict(PR.LEARNED)
     prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
-    eval_pre = eval_golden(team)                         # 개선 전(현행 프롬프트) 점수
+    eval_pre = eval_golden(team, model=model)            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
     improve = meta_compile_run(team)
     changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
     delta = None
     if changed and eval_pre.get("ok"):
-        evalr = eval_golden(team)                        # 개선 후 점수(같은 셋)
+        evalr = eval_golden(team, model=model)           # 개선 후 점수(같은 셋 · 같은 모델)
         try:
             delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
         except (TypeError, ValueError):

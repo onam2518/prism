@@ -320,7 +320,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return rows;
       },
       // 오토파일럿(자동 개선 루프 · Atelier 이식): 시작/중지 + 상태 폴링(라운드가 길어 5s)
-      pilot: null, pilotTarget: '0.9', pilotRounds: '5', pilotBusy: false, pilotMsg: '', _pilotPollT: null,
+      pilot: null, pilotTarget: '0.9', pilotRounds: '5', pilotModel: '', pilotBusy: false, pilotMsg: '', _pilotPollT: null,
       async loadPilot() {
         try {
           const r = await (await this._afetch('/autopilot-status', { headers: this._authHeaders() })).json();
@@ -341,7 +341,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async startPilot() {
         this.pilotBusy = true; this.pilotMsg = '';
         try {
-          const r = await (await this._afetch('/autopilot-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ target: parseFloat(this.pilotTarget), max_rounds: parseInt(this.pilotRounds, 10) }) })).json();
+          const r = await (await this._afetch('/autopilot-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ target: parseFloat(this.pilotTarget), max_rounds: parseInt(this.pilotRounds, 10), model: String(this.pilotModel || '').split('|').pop() }) })).json();   // 픽커 값은 provider|model → 서버(llm_for_model)엔 model id 만
           if (!r || !r.ok) this.pilotMsg = (r && r.error) || '시작 실패';
           this.loadPilot();
         } catch (e) { this.pilotMsg = '시작 실패'; }
