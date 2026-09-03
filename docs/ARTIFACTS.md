@@ -10,6 +10,7 @@
 
 | 최종 수정 | 자료 |
 | --- | --- |
+| 2026-09-03 | [DNM 메타 두 층 구조](https://claude.ai/code/artifact/5ea2d2e2-d88e-45e9-a2b0-94531b78b7d4) |
 | 2026-09-02 | [프리즘 주간회의 09.02](https://claude.ai/code/artifact/164a2f90-f5de-4d6d-b057-9e97896c0710) |
 | 2026-09-02 | [프리즘 저장 비용 시뮬레이션](https://claude.ai/code/artifact/4ba284c4-c913-411e-9e7b-5d03bc799a60) |
 | 2026-09-01 | [DNM이란 무엇인가](https://claude.ai/code/artifact/e2f8e5e7-16bf-4a49-aef3-0c80fdf383fb) |
