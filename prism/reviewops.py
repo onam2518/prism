@@ -716,16 +716,23 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
         patch["entities"] = list(dict.fromkeys(
             s for s in (str(x).strip() for x in ents if x is not None) if s))
     before = None
+    hold_left = None
     if patch and hasattr(st, "get_item_meta"):
         try:
             cur = st.get_item_meta(ch, team=team)
             if isinstance(cur, dict):
                 before = {k: cur.get(k) for k in patch}           # 패치 대상 키의 이전 값만
+                hold = cur.get("hold_fields") or []
+                if hold:                                          # 메타 보류: 채워진 필드는 보류 목록에서 뺀다
+                    hold_left = [f for f in hold if not patch.get(f)]
+                    patch["hold_fields"] = hold_left
         except Exception:
             before = None
     # 읽기·쓰기 모두 team 을 함께 넘긴다 — 해시만 알면 타 팀 콘텐츠의 분류·요약·등급을
     # 덮어쓸 수 있었다(감사 기록 log_patch 는 호출자 팀에 남아 원 소유 팀 이력엔 안 보였다).
     ok = st.update_item_meta(ch, patch, team=team) if patch else False
+    if ok and hold_left == [] and hasattr(st, "release_meta_hold"):   # 전부 채워지면 yellow(메타 보류) 해제
+        st.release_meta_hold(ch, team=team)
     if ok and before is not None and hasattr(st, "log_patch"):
         element = "category" if "content_category" in patch else ",".join(sorted(patch))
         try:
@@ -958,6 +965,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                     "model": tr.get("model", "") or "",
                     "version": int(tr.get("version") or 1),
                     "review": qm.get("review", "") or "",
+                    "hold": bool(im.get("hold_fields")),           # 메타 보류(사람이 채울 필드 있음)
                     "split": bool(fb.get("good") and fb.get("bad")),
                     "final": (finals.get(ch) or {}).get("verdict", ""),
                     "class_gap": bool(lack and {str(c).split("/")[0].strip()
@@ -995,7 +1003,7 @@ def raw_rows(limit: int = 100, team=None, reviewer: str = "") -> dict:
                                {"title": g.get("title", ""), "body": g.get("body", "")}),
                            "intent": g.get("intent", []) or [],
                            "model": g.get("model", ""), "version": g.get("version"),
-                           "review": g.get("review", ""), "split": False,
+                           "review": g.get("review", ""), "hold": False, "split": False,
                            # 분류 부족 배지·정렬(rawGapFirst)이 읽는 값 · 화면에 그려진 카테고리 기준
                            "class_gap": bool(lack and {str(c).split("/")[0].strip()
                                                        for c in gcats} & lack),
