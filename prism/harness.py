@@ -154,6 +154,21 @@ def st_quality(ctx: HCtx):
     ctx.fallbacks += V.verify_quality(qm, ctx.routing.active_quality_metas)
 
 
+META_HOLD_PREFIX = "메타 보류"                   # review_reason 접두 · 판정 보류(등급 없음)와 구분하는 유일한 표식
+
+
+def _mark_meta_hold(ctx, im) -> None:
+    """메타 추출 실패(hold_fields)를 사람 검수 큐(review=yellow)로 올린다. 등급은 건드리지 않는다
+    (판정 보류는 finalGrade 를 비우지만 메타 보류는 등급이 멀쩡할 수 있다). R 억제분은 오지 않는다."""
+    hold = list(getattr(im, "hold_fields", None) or [])
+    if not hold or ctx.qm.review == "yellow":
+        return
+    ctx.qm.review = "yellow"
+    ctx.qm.review_reason = (f"{META_HOLD_PREFIX} · 리드문 추출 실패 · 하위 호출 생략" if "summary" in hold
+                            else f"{META_HOLD_PREFIX} · 추출 실패: " + ", ".join(hold))
+    ctx.verdicts.append({"agent": "MetaHold", "evidence": ctx.qm.review_reason, "fail": None})
+
+
 _COMMERCE_METAS = {"ad", "spam"}                 # 광고성 계열(상거래) · D3 우선순위 적용 대상(유해·법령 메타 제외)
 _AD_SUPPRESS_INTENTS = {"보도자료·공식발표"}       # 이 편집 인텐트가 붙으면 commerce 단독 R 을 사람 검수로 내린다
 
@@ -173,6 +188,7 @@ def st_item(ctx: HCtx):
         return
     im, ires = A.run_item(ctx.llm, ctx.content, parallel=m.parallel_calls)
     ctx.item_meta = im
+    _mark_meta_hold(ctx, im)
     ctx.results += [r for r in ires if hasattr(r, "cost_usd")]
     ctx.verdicts += [r for r in ires if isinstance(r, dict)]
     # 인텐트는 임베딩 결정론 분류(있을 때). 콘텐츠 카테고리는 1312 기준 '콘텐츠 단위 N개'라
@@ -258,6 +274,7 @@ def _run_quality_item_parallel(ctx: HCtx):
     gate = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow" or _commerce_only_r(ctx.qm))
     if gate and ctx.routing.content_track != "image_only":
         ctx.item_meta = ci.item_meta                   # 광고성 단독 R 은 인텐트 확인 위해 아이템 메타 보존(D3)
+        _mark_meta_hold(ctx, ci.item_meta)             # 병렬 스테이지는 qm 이 갈라져 있어 여기서 다시 표시
     elif ci.item_meta is not None:
         ctx.item_meta = None
         ctx.fallbacks.append("병렬 스테이지: R 판정 → 아이템 메타 폐기(비용 트레이드오프)")

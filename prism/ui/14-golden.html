@@ -548,6 +548,7 @@
                   <td><span class="ds-badge" style="cursor:help" x-bind:class="r.grade==='G' ? 'ds-badge--success' : 'ds-badge--neutral'" x-bind:data-tip="termDef('grade', r.grade)" data-tip-pos="right" x-text="r.grade||'·'"></span></td>
                   <td class="text-ink"><span x-text="r.title || '(제목 없음)'"></span>
                     <span class="ds-badge ds-badge--yellow" style="cursor:help;margin-left:4px" x-show="r.review==='yellow'" data-tip="AI 확신이 낮아 사람 확인이 필요한 콘텐츠" data-tip-pos="top">YELLOW</span>
+                    <span class="ds-badge ds-badge--warning" x-show="r.hold" style="cursor:help;margin-left:4px" data-tip="리드문·엔티티·인텐트·카테고리 추출이 실패해 사람이 채워야 하는 건 · 상세 화면의 채울 필드를 교정하면 YELLOW 가 풀립니다" data-tip-pos="top">메타 보류</span>
                     <span class="ds-badge ds-badge--reason" style="margin-left:4px" x-show="r.split && !r.final" data-tip="검수자 의견이 갈려 재검토가 필요합니다 · 우선 검수 대상" data-tip-pos="top">재검토 필요</span>
                     <span class="ds-badge" style="margin-left:4px;cursor:help" x-show="r.final" x-bind:class="r.final==='good' ? 'ds-badge--success' : 'ds-badge--error'" data-tip="리드(슈퍼관리자 이상)가 확정한 최종판정 · 정답셋 승격에서 다수결보다 우선" data-tip-pos="top" x-text="r.final==='good' ? '리드 확정 · 정확' : '리드 확정 · 수정'"></span>
                     <span class="ds-badge ds-badge--intent" style="margin-left:4px;cursor:help" x-show="r.class_gap" data-tip="이 분류는 정답셋이 부족합니다(클래스당 8건 미만) · 이 콘텐츠의 검수가 더 가치 있어요" data-tip-pos="top">분류 부족</span>

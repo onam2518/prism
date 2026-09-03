@@ -154,6 +154,7 @@ def score(rows: list, outs: list) -> dict:
     n = len(rows)
     per_reason = {}
     yellow_n = auto_n = auto_hit = 0
+    meta_hold = 0                                # 메타 보류(리드문·하위 추출 실패 → 사람이 채움) 행 수
     lat = []                                     # 건별 총 지연(ms) · p50/p95 산출용
     iacc: dict = {"per_intent": {}}              # 인텐트 카운터(intent_tally 단일 소스)
     for row, out in zip(rows, outs):
@@ -167,6 +168,8 @@ def score(rows: list, outs: list) -> dict:
             continue
         qm = out["quality_meta"]
         tr = out.get("trace", {})
+        if ((out.get("item_meta") or {}).get("hold_fields") if isinstance(out.get("item_meta"), dict) else None):
+            meta_hold += 1
         cost += tr.get("cost_usd", 0.0)
         tin += tr.get("tokens", {}).get("in", 0)
         tout += tr.get("tokens", {}).get("out", 0)
@@ -217,6 +220,7 @@ def score(rows: list, outs: list) -> dict:
         "latency_p95_ms": _percentile(lat, 0.95),
         "by_reason_bucket": by_reason,
         "yellow_rate": round(yellow_n / n, 4) if n else 0,
+        "meta_hold_rate": round(meta_hold / n, 4) if n else 0,   # yellow 중 '메타 보류' 몫 · 모델이 틀린 게 아니라 못 뽑은 비율
         "auto_coverage": round(auto_n / n, 4) if n else 0,
         "auto_grade_accuracy": round(auto_hit / auto_n, 4) if auto_n else 0,
     }

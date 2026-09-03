@@ -127,6 +127,7 @@ class TestFourCallExtraction(unittest.TestCase):
         im, _ = AG.run_item(llm, self._content(title="", body=""))
         self.assertEqual(llm.calls, ["item_summary"])               # 후속 호출 생략
         self.assertEqual((im.summary, im.entities, im.intent), ("", [], []))
+        self.assertEqual(im.hold_fields, [])                        # 빈 문자열 = 정당한 차단 신호 · 보류 아님
 
     def test_rule_fixes_rescue_before_drop(self):
         """규칙 보정: 공백 변형 인텐트 구제 + 문자열 단일값 코어션(재요청·드롭 절감)."""

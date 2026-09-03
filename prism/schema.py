@@ -262,6 +262,9 @@ class ItemMeta:
     # 3차 메타(생성 시점 부여) · 사건형 토픽 식별·연결 신호. 1차 추출에서는 빈 값
     topic: str = ""                                       # 토픽 (사안 명사구)
     topic_categories: list = field(default_factory=list)  # 토픽 카테고리
+    # 메타 보류: 추출이 실패해 사람이 채워야 하는 필드 목록(비어 있으면 정상). 하네스가 이 값을 보고
+    # quality_meta.review 를 yellow(사유 '메타 보류 · …')로 올린다 · 검수자가 채우면 비워지고 yellow 해제.
+    hold_fields: list = field(default_factory=list)
 
 
 @dataclass

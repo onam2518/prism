@@ -174,13 +174,20 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
 
     summary = (o1.get("summary") or "").strip() if isinstance(o1.get("summary"), str) else ""
     prior["summary"] = summary
-    if not summary:                                # 단락 차단: 하위 호출 생략, 빈 값 적재
-        return ItemMeta(summary="", entities=[], intent=[], content_category=[]), results
+    if not summary:                                # 단락 차단: 하위 호출 생략
+        # 호출 실패·계약 키 부재 = 메타 보류(사람이 채움 · yellow). 키는 있는데 빈 문자열이면
+        # '생성 불가' 라는 정당한 차단 신호라 보류로 올리지 않는다(test_audit_llm 계약).
+        failed = bool(o1.get("_fail")) or "summary" not in o1
+        return ItemMeta(summary="", entities=[], intent=[], content_category=[],
+                        hold_fields=(["summary", "entities", "intent", "content_category"] if failed else [])), results
+    hold = []                                      # 하위 호출 실패분만 보류(성공한 필드는 살린다)
 
     # ② 엔티티(핵심만 · 개수 상한 없음 · 2026-07-08 수량 정책 전환)
     if not parallel:
         o2 = ask("entities", "item_entities", require="entities")
     ents = [str(x).strip() for x in _aslist(o2.get("entities")) if str(x).strip()]
+    if o2.get("_fail"):
+        hold.append("entities")
     prior["entities"] = ents
 
     # ③ 인텐트: 사전 표기 정확 일치만 통과, 전량 드롭이면 1회 재요청
@@ -213,6 +220,8 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
                                     + (" (전량 드롭 → 재요청 1회)" if retried3 else ""),
                         "drop": {"call": "intent", "values": dropped3[:10],
                                  "service": content.displayServiceName, "retried": retried3}})
+    if o3.get("_fail"):
+        hold.append("intent")
     prior["intent"] = intent
 
     # ④ 콘텐츠 카테고리: 사전 경로 정규화(스냅), 전량 드롭이면 1회 재요청
@@ -235,7 +244,10 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
                         "drop": {"call": "category", "values": dropped4[:10],
                                  "service": content.displayServiceName, "retried": retried4}})
 
-    return ItemMeta(summary=summary, entities=ents, intent=intent, content_category=cats), results
+    if o4.get("_fail"):
+        hold.append("content_category")
+    return ItemMeta(summary=summary, entities=ents, intent=intent, content_category=cats,
+                    hold_fields=hold), results
 
 
 def _num(v):
