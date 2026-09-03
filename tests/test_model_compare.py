@@ -58,3 +58,40 @@ class TestCompareModels(unittest.TestCase):
     def test_route_registered(self):
         from prism import serve
         self.assertIn("/model-compare-last", serve._GET_ROUTES)
+
+
+class TestCompareBackground(unittest.TestCase):
+    def setUp(self):
+        from prism import serve
+        self.st = _mk_store()
+        self._orig_store = serve.get_store
+        self._orig_mock = serve.Handler.server_mock
+        serve.get_store = lambda: self.st
+        serve.Handler.server_mock = True
+        self.addCleanup(lambda: (setattr(serve, "get_store", self._orig_store),
+                                 setattr(serve.Handler, "server_mock", self._orig_mock)))
+
+    def test_start_status_jobs(self):
+        import time
+        from prism import learnops as LO, serve
+        _seed_golden(self.st, 5)
+        r = LO.compare_start(["solar-pro2", "gpt-5.4"])
+        self.assertTrue(r["ok"], r); jid = r["id"]
+        for _ in range(100):                             # mock 이라 금방 끝난다
+            s = LO.compare_status(jid)
+            if s["job"]["status"] == "done":
+                break
+            time.sleep(0.05)
+        self.assertEqual(s["job"]["status"], "done")
+        pm = s["job"]["models"]["solar-pro2"]
+        self.assertEqual((pm["done"], pm["total"], pm["status"]), (5, 5, "done"))
+        self.assertEqual(len(s["job"]["result"]["items"]), 5)
+        self.assertIn("overall", s["job"]["result"]["models"][0])
+        jobs = LO.compare_jobs()["jobs"]
+        self.assertEqual(jobs[0]["id"], jid); self.assertNotIn("result", jobs[0])
+        self.assertFalse(LO.compare_status(jid, team="other")["ok"])         # 팀 스코프
+        self.assertTrue(LO.last_model_compare()["ok"])                       # 완료분 영속
+        for p in ("/compare-status", "/compare-jobs"):
+            self.assertIn(p, serve._GET_ROUTES)
+        self.assertIn("/compare-start", serve._POST_ROUTES)
+        self.assertTrue(serve.is_public_get("/vendor/compare-window.html"))

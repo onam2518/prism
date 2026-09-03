@@ -425,27 +425,21 @@ def _compare_item(row: dict, outs_by_model: dict) -> dict:
             "split": len(grades) > 1}               # 모델끼리 등급이 갈린 건
 
 
-def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict:
-    """골든셋(사람 확정 정답)을 여러 모델에 실호출로 돌려 정합성 비교 → 최적 모델 선택 근거.
-    모델별 제공자·엔드포인트를 라우팅(llm_for_model)하고, 키 없는 모델은 건너뛰되 사유를 노출.
-    모델들은 동시에 돌린다(모델 간 병렬 · 모델 안 8-way). 결과는 건별 산출까지 담아
-    reports(model_compare) 에 영속 → 화면을 닫아도 마지막 비교를 다시 볼 수 있다."""
+def _compare_prepare(models, team, scope: str):
+    """골든 준비 + 모델별 클라이언트 라우팅. 실패면 (None, 오류 dict)."""
     st = _SV.get_store()
     if not (st and hasattr(st, "get_golden")):
-        return {"ok": False, "error": "골든셋을 지원하지 않는 저장소"}
+        return None, {"ok": False, "error": "골든셋을 지원하지 않는 저장소"}
     rows = st.get_golden(team)
     if not rows:
-        return {"ok": False, "error": "골든셋이 비어 있습니다 · 검수로 '정확' 확정분을 쌓으세요"}
+        return None, {"ok": False, "error": "골든셋이 비어 있습니다 · 검수로 '정확' 확정분을 쌓으세요"}
     rows = _scope_golden(rows, scope, st, team)
     if not rows:
-        return {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
-    from concurrent.futures import ThreadPoolExecutor
-    from . import abtest
-    from . import harness as H
+        return None, {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
     cfg = Config.load()
     cand = list(dict.fromkeys(m for m in (models or []) if m)) or [cfg.model]
     if len(cand) > _COMPARE_MAX_MODELS:
-        return {"ok": False, "error": f"한 번에 {_COMPARE_MAX_MODELS}개까지 비교할 수 있습니다"}
+        return None, {"ok": False, "error": f"한 번에 {_COMPARE_MAX_MODELS}개까지 비교할 수 있습니다"}
     rows = rows[:_COMPARE_MAX_ROWS]
     ready, skipped = [], []
     for model in cand:
@@ -455,26 +449,39 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
         else:
             ready.append((model, llm, route))
     if not ready:
-        return {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
-                "skipped": skipped, "golden_n": len(rows)}
+        return None, {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
+                      "skipped": skipped, "golden_n": len(rows)}
+    return {"rows": rows, "ready": ready, "skipped": skipped, "cfg": cfg, "scope": scope}, None
 
-    def _one(item):
-        model, llm, route = item
-        outs = abtest.run_methodology(rows, H.Methodology(name=model), llm, concurrency=8)
-        m = abtest.score(rows, outs)
-        keep = ("grade_accuracy", "reason_jaccard", "reason_exact_match", "empty_rate", "harm_miss_rate",
-                "cost_usd", "tokens", "latency_p50_ms", "latency_p95_ms",
-                "intent_n", "intent_f1", "cat_n", "cat_f1", "cat_hf1", "ent_n", "ent_f1", "ent_f1_partial",
-                "summary_n", "summary_sim")
-        return {"model": model, "route": route, "real": (not llm.mock), "n": len(rows),
-                **{k: m.get(k) for k in keep},
-                **ME.overall(m, gate, meta_gate),
-                "issues": ME.diagnose(m)}, outs
 
+_COMPARE_CHUNK = 24                                   # 진척도 갱신 주기(모델 안 8-way 의 3배)
+
+
+def _compare_run_model(item, rows, cfg, progress=None):
+    """모델 1개를 청크 단위로 돌려 (지표 dict, 산출 list). progress(done) 로 진척을 알린다."""
+    from . import abtest
+    from . import harness as H
+    model, llm, route = item
+    meth = H.Methodology(name=model)
+    outs = []
+    for i in range(0, len(rows), _COMPARE_CHUNK):
+        outs += abtest.run_methodology(rows[i:i + _COMPARE_CHUNK], meth, llm, concurrency=8)
+        if progress:
+            progress(len(outs))
+    m = abtest.score(rows, outs)
     gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
     meta_gate = float(getattr(cfg.thresholds, "meta_gate", 0.6) or 0.6)
-    with ThreadPoolExecutor(max_workers=max(1, min(4, len(ready)))) as ex:
-        done = list(ex.map(_one, ready))
+    keep = ("grade_accuracy", "reason_jaccard", "reason_exact_match", "empty_rate", "harm_miss_rate",
+            "cost_usd", "tokens", "latency_p50_ms", "latency_p95_ms",
+            "intent_n", "intent_f1", "cat_n", "cat_f1", "cat_hf1", "ent_n", "ent_f1", "ent_f1_partial",
+            "summary_n", "summary_sim")
+    return {"model": model, "route": route, "real": (not llm.mock), "n": len(rows),
+            **{k: m.get(k) for k in keep}, **ME.overall(m, gate, meta_gate), "issues": ME.diagnose(m)}, outs
+
+
+def _compare_finish(prep: dict, done: list, team) -> dict:
+    """모델별 (지표, 산출) → 순위 · 건별 비교 · 영속. 동기·백그라운드 공용."""
+    cfg, rows = prep["cfg"], prep["rows"]
     out = [d[0] for d in done]
     outs_by = {d[0]["model"]: d[1] for d in done}
     items = [_compare_item(row, {m: outs_by[m][i] for m in outs_by}) for i, row in enumerate(rows)]
@@ -484,17 +491,105 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
     for r in out:                                 # 이미 프롬프트에 들어간 지시는 '반영됨' 표시
         for it in r.get("issues") or []:
             it["applied"] = it["directive"] in (stage_prompts.get(it["stage"]) or "")
-    res = {"ok": True, "models": out, "skipped": skipped,
-           "best": out[0]["model"], "golden_n": len(rows), "scope": scope, "ts": time.time(),
-           "eval_gate": gate, "meta_gate": meta_gate, "cheapest_passing": cheapest_passing_model(out, gate),
+    gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
+    res = {"ok": True, "models": out, "skipped": prep["skipped"],
+           "best": out[0]["model"], "golden_n": len(rows), "scope": prep["scope"], "ts": time.time(),
+           "eval_gate": gate, "meta_gate": float(getattr(cfg.thresholds, "meta_gate", 0.6) or 0.6),
+           "cheapest_passing": cheapest_passing_model(out, gate),
            "items": items,
            "split_n": sum(1 for it in items if it["split"]),
            "miss_n": sum(1 for it in items if not it["all_ok"])}
     try:
-        st.save_report("model_compare", res, team)
+        _SV.get_store().save_report("model_compare", res, team)
     except Exception as e:                        # 영속 실패는 비교 결과 자체를 막지 않는다
         print(f"  [compare] 결과 저장 실패: {e}")
     return res
+
+
+def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict:
+    """골든셋(사람 확정 정답)을 여러 모델에 실호출로 돌려 정합성 비교 → 최적 모델 선택 근거(동기).
+    모델들은 동시에 돌린다(모델 간 병렬 · 모델 안 8-way). 결과는 reports(model_compare) 에 영속."""
+    from concurrent.futures import ThreadPoolExecutor
+    prep, err = _compare_prepare(models, team, scope)
+    if err:
+        return err
+    with ThreadPoolExecutor(max_workers=max(1, min(4, len(prep["ready"])))) as ex:
+        done = list(ex.map(lambda it: _compare_run_model(it, prep["rows"], prep["cfg"]), prep["ready"]))
+    return _compare_finish(prep, done, team)
+
+
+# ── 백그라운드 큐: 모델별 진척도를 보이며 돌린다(별도 창 /vendor/compare-window.html 이 폴링) ──
+# ponytail: 잡은 프로세스 메모리(최근 20건) · 재시작하면 사라진다 · 이력이 필요해지면 eval_runs 처럼 테이블로
+_COMPARE_JOBS: dict = {}
+_COMPARE_LOCK = threading.Lock()
+_COMPARE_SEQ = [0]
+_COMPARE_KEEP = 20
+
+
+def _job_public(j: dict, with_result: bool) -> dict:
+    d = {k: j[k] for k in ("id", "ts", "scope", "status", "golden_n", "skipped", "error", "finished")}
+    d["models"] = {m: dict(v) for m, v in j["models"].items()}
+    if with_result and j.get("result"):
+        d["result"] = j["result"]
+    return d
+
+
+def compare_start(models, team=None, scope: str = "all") -> dict:
+    """비교를 백그라운드로 시작 → {ok, id}. 진척은 compare_status(id) 로 본다."""
+    from concurrent.futures import ThreadPoolExecutor
+    prep, err = _compare_prepare(models, team, scope)
+    if err:
+        return err
+    with _COMPARE_LOCK:
+        _COMPARE_SEQ[0] += 1
+        jid = _COMPARE_SEQ[0]
+        job = {"id": jid, "ts": time.time(), "team": team or "", "scope": scope, "status": "running",
+               "golden_n": len(prep["rows"]), "skipped": prep["skipped"], "error": "", "finished": None,
+               "models": {m: {"done": 0, "total": len(prep["rows"]), "status": "queued", "route": r}
+                          for m, _, r in prep["ready"]}, "result": None}
+        _COMPARE_JOBS[jid] = job
+        for old in sorted(_COMPARE_JOBS)[:-_COMPARE_KEEP]:
+            _COMPARE_JOBS.pop(old, None)
+
+    def _one(item):
+        pm = job["models"][item[0]]
+        pm["status"] = "running"
+        def _prog(n):
+            pm["done"] = n
+        r = _compare_run_model(item, prep["rows"], prep["cfg"], _prog)
+        pm["status"] = "done"
+        return r
+
+    def _run():
+        try:
+            with ThreadPoolExecutor(max_workers=max(1, min(4, len(prep["ready"])))) as ex:
+                done = list(ex.map(_one, prep["ready"]))
+            job["result"] = _compare_finish(prep, done, team)
+            job["status"] = "done"
+        except Exception as e:                    # 무음 실패 방지: 창에 사유를 보인다
+            job["status"] = "failed"
+            job["error"] = str(e)[:300]
+            for pm in job["models"].values():
+                if pm["status"] != "done":
+                    pm["status"] = "failed"
+        job["finished"] = time.time()
+
+    threading.Thread(target=_run, name=f"prism-compare-{jid}", daemon=True).start()
+    return {"ok": True, "id": jid, "models": list(job["models"]), "golden_n": len(prep["rows"]),
+            "skipped": prep["skipped"]}
+
+
+def compare_status(job_id, team=None) -> dict:
+    j = _COMPARE_JOBS.get(int(job_id or 0))
+    if not j or (j["team"] or "") != (team or ""):
+        return {"ok": False, "error": "그런 비교 작업이 없습니다(서버 재시작으로 사라졌을 수 있음)"}
+    return {"ok": True, "job": _job_public(j, with_result=True)}
+
+
+def compare_jobs(team=None) -> dict:
+    """이 팀의 최근 비교 작업 목록(최신순 · 결과 본문 없이)."""
+    js = [_job_public(j, False) for j in _COMPARE_JOBS.values() if (j["team"] or "") == (team or "")]
+    return {"ok": True, "jobs": sorted(js, key=lambda d: -d["id"])}
 
 
 def last_model_compare(team=None) -> dict:

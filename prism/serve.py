@@ -219,6 +219,9 @@ build_golden_from_reviews = LO.build_golden_from_reviews
 promotion_pending = LO.promotion_pending
 compare_models_on_golden = LO.compare_models_on_golden
 last_model_compare = LO.last_model_compare
+compare_start = LO.compare_start
+compare_status = LO.compare_status
+compare_jobs = LO.compare_jobs
 eval_run_start = EVO.eval_run_start
 eval_run_resume = EVO.eval_run_resume
 eval_run_cancel = EVO.eval_run_cancel
@@ -1921,6 +1924,16 @@ def _g_eval_runs(h, q):
     return eval_runs_list(h._req_team())
 
 
+@_get_route("/compare-status")                       # 백그라운드 비교 진척(모델별 done/total) · 완료 시 결과 포함
+def _g_compare_status(h, q):
+    return compare_status((q.get("id") or [""])[0], h._req_team())
+
+
+@_get_route("/compare-jobs")                         # 이 팀의 최근 비교 작업 큐(별도 창 목록용)
+def _g_compare_jobs(h, q):
+    return compare_jobs(h._req_team())
+
+
 @_get_route("/model-compare-last")                   # 마지막 모델 비교 결과(영속분 · 평가 탭 재진입용)
 def _g_model_compare_last(h, q):
     return last_model_compare(h._req_team())
@@ -2329,6 +2342,12 @@ def _p_cookbook_apply(h, body):
         cfg.save_template()
         sync_prompt()
     return {"ok": True, "added": added, "stage": stage}
+
+@_post_route("/compare-start", gate="admin")         # 골든셋 다중 모델 비교 · 백그라운드(진척도 창)
+def _p_compare_start(h, body):
+    data = json.loads(body or b"{}")
+    return compare_start(data.get("models"), h._req_team(), scope=(data.get("scope") or "all").strip())
+
 
 @_post_route("/compare-models", gate="admin")        # 골든셋 다중 모델 비교
 def _p_compare_models(h, body):
@@ -3448,6 +3467,7 @@ class Handler(BaseHTTPRequestHandler):
     _VENDOR_CT = {
         ".js": "application/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8",
+        ".html": "text/html; charset=utf-8",         # 독립 창(비교 진척도 큐 등) · 앱 페이지와 별개
         ".woff2": "font/woff2",
         ".woff": "font/woff",
         ".svg": "image/svg+xml",
