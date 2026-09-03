@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "prism",
+  "description": "프리즘 저장소 전용 Claude Code 플러그인 카탈로그",
+  "owner": { "name": "Prism", "url": "https://github.com/onam2518/prism" },
+  "plugins": [
+    {
+      "name": "prism-lazy",
+      "description": "게으른 시니어 규칙(ponytail 사다리)을 프리즘 제약(표준 라이브러리만 · Alpine 조각 · serve.py 허브)에 맞춘 코딩 규칙 + 리뷰 · 감사 스킬",
+      "source": "./plugins/prism-lazy",
+      "category": "productivity"
+    }
+  ]
+}

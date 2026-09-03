@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "prism": {
+      "source": { "source": "github", "repo": "onam2518/prism" }
+    }
+  },
+  "enabledPlugins": {
+    "prism-lazy@prism": true
+  }
+}
