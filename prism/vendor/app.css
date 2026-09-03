@@ -1504,6 +1504,12 @@
   .mpick__btn:focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}
   .mpick__cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .mpick__caret{width:14px;height:14px;flex:none;color:var(--ds-muted)}
+  .mpick__refresh{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;margin-left:4px;padding:0;border:1px solid var(--ds-border);border-radius:var(--ds-radius-md);background:var(--ds-surface);color:var(--ds-muted);cursor:pointer;flex:none}
+  .mpick__refresh:hover{color:var(--ds-ink);border-color:var(--ds-ink-soft,var(--ds-border))}
+  .mpick__refresh:disabled{opacity:.5;cursor:default}
+  .mpick__refresh svg{width:15px;height:15px}
+  .mpick__refresh svg.is-spin{animation:mpick-spin 1s linear infinite}
+  @keyframes mpick-spin{to{transform:rotate(360deg)}}
   /* 위치는 열 때 JS(mpMenuBox)가 화면 좌표로 계산해 fixed 로 붙인다 —
      패널이 overflow:hidden 이라 absolute 로는 메뉴가 잘린다. */
   .mpick__menu{position:fixed;z-index:120;overflow:auto;padding:6px;
