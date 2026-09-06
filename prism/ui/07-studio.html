@@ -2,14 +2,14 @@
       <!-- ═══ 모듈: 스튜디오 · 설계 도구 묶음(프롬프트 + 토픽 · 실험실에서 승격) ═══ -->
       <template x-if="mod === 'studio'">
         <div class="w-full" style="margin-bottom:10px">
-        <div class="evaltabs">
-          <button type="button" x-bind:class="studioTab==='prompt'?'sel':''" x-on:click="studioTab='prompt'">프롬프트</button>
-          <button type="button" x-bind:class="studioTab==='topic'?'sel':''" x-on:click="studioTab='topic'; loadTopics()">토픽</button>
+        <div class="evaltabs" role="tablist" aria-label="스튜디오">
+          <button type="button" id="studio-prompt-tab" role="tab" aria-controls="studio-prompt-panel" x-bind:aria-selected="studioTab==='prompt' ? 'true' : 'false'" x-bind:class="studioTab==='prompt'?'sel':''" x-on:click="studioTab='prompt'">프롬프트</button>
+          <button type="button" id="studio-topic-tab" role="tab" aria-controls="studio-topic-panel" x-bind:aria-selected="studioTab==='topic' ? 'true' : 'false'" x-bind:class="studioTab==='topic'?'sel':''" x-on:click="studioTab='topic'; loadTopics()">토픽</button>
         </div>
       </div>
       </template>
       <template x-if="mod === 'studio'">
-        <div x-show="studioTab === 'topic'" x-cloak class="w-full space-y-4">
+        <div id="studio-topic-panel" role="tabpanel" aria-labelledby="studio-topic-tab" x-show="studioTab === 'topic'" x-cloak class="w-full space-y-4">
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li><b>토픽 스튜디오</b>는 클러스터링 체계(어떤 콘텐츠를 어떻게 묶을지)를 <b>자연어</b>로 정의하고 즉시 실험하는 공간입니다.</li>
           <li>원하는 묶음을 문장으로 설명하면 조건값이 자동으로 채워집니다 · 채워진 조건값은 직접 켜고 끌 수 있습니다.</li>
@@ -28,9 +28,9 @@
             <!-- 타이틀은 정적 텍스트 유지(헤드 데코레이터가 b.textContent 를 복사하므로 x-text 는 빈 타이틀이 된다) -->
             <div class="panel-hd"><b>토픽 생성하기</b><span class="meta">직접 정의하거나 자동 묶기 기준을 조절합니다</span>
               <span class="ds-badge ds-badge--status" x-show="studio.editId" x-cloak>수정 중</span>
-              <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
-                <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='manual'?'sel':''" x-on:click="topicGenTab='manual'">수동 생성</button>
-                <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='auto'?'sel':''" x-on:click="topicGenTab='auto'">자동 생성</button>
+              <span class="evaltabs" style="margin-left:auto" role="tablist" aria-label="토픽 생성 방식">
+                <button type="button" id="topic-manual-tab" role="tab" aria-controls="topic-manual-panel" x-bind:aria-selected="topicGenTab==='manual' ? 'true' : 'false'" x-bind:class="topicGenTab==='manual'?'sel':''" x-on:click="topicGenTab='manual'">수동 생성</button>
+                <button type="button" id="topic-auto-tab" role="tab" aria-controls="topic-auto-panel" x-bind:aria-selected="topicGenTab==='auto' ? 'true' : 'false'" x-bind:class="topicGenTab==='auto'?'sel':''" x-on:click="topicGenTab='auto'">자동 생성</button>
               </span>
               <span class="meta tnum" x-show="topicGenTab==='manual'" x-text="tStepDone()+' / 4 단계'"></span>
               <span class="tprog" x-show="topicGenTab==='manual'"><i x-bind:style="'width:'+(tStepDone()/4*100)+'%'"></i></span>
@@ -53,7 +53,7 @@
                   </template>
                 </div>
               </div>
-              <div class="ds-steps ds-steps--labeled" x-show="topicGenTab==='manual'">
+              <div id="topic-manual-panel" role="tabpanel" aria-labelledby="topic-manual-tab" class="ds-steps ds-steps--labeled" x-show="topicGenTab==='manual'">
 
                 <!-- STEP 1 · 이름 -->
                 <div class="ds-step" x-bind:class="{'ds-step--done': !!studio.name.trim(), 'ds-step--active': tActive()===1}">
@@ -161,7 +161,7 @@
               </div>
 
               <!-- 자동 생성 탭: 자동 토픽(엔티티형·사건형) 묶기 기준 -->
-              <div x-show="topicGenTab==='auto'" x-cloak class="space-y-4">
+              <div id="topic-auto-panel" role="tabpanel" aria-labelledby="topic-auto-tab" x-show="topicGenTab==='auto'" x-cloak class="space-y-4">
                 <div class="text-xs text-muted">자동 토픽(엔티티형·사건형)은 추출 결과에서 계속 생성됩니다 · 아래 기준은 묶는 촘촘함을 조절합니다</div>
                 <div>
                   <label class="lbl">여러 기사를 ‘같은 사건’으로 묶는 기준</label>
@@ -193,10 +193,10 @@
           <div class="panel"><div class="panel-hd"><b>토픽 현황</b>
               <span class="meta tnum" x-text="((topicData.custom||[]).length)+'개 수동 · '+(((topicData.single||[]).length)+((topicData.composite||[]).length))+'개 자동'"></span>
               <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-show="topicData.snapshot && topicData.snapshot.last_ts" x-bind:data-tip="topicSnapTip()" data-tip-pos="bottom" x-text="'자동 리프레시 · ' + fmtTs(topicData.snapshot && topicData.snapshot.last_ts) + (topicData.snapshot && topicData.snapshot.delta && topicData.snapshot.delta.changed_n ? (' · 변화 ' + topicData.snapshot.delta.changed_n + '건') : ' · 변화 없음')"></span>
-              <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
-                <button type="button" class="srcfilter__chip" x-bind:class="topicView==='all'?'sel':''" x-on:click="topicView='all'">전체</button>
-                <button type="button" class="srcfilter__chip" x-bind:class="topicView==='manual'?'sel':''" x-on:click="topicView='manual'">수동 생성</button>
-                <button type="button" class="srcfilter__chip" x-bind:class="topicView==='auto'?'sel':''" x-on:click="topicView='auto'">자동 생성</button>
+              <span class="ds-segmented" style="margin-left:auto" aria-label="토픽 생성 방식 필터">
+                <button type="button" class="ds-segmented__item" x-bind:aria-pressed="topicView==='all' ? 'true' : 'false'" x-bind:class="topicView==='all'?'is-on':''" x-on:click="topicView='all'">전체</button>
+                <button type="button" class="ds-segmented__item" x-bind:aria-pressed="topicView==='manual' ? 'true' : 'false'" x-bind:class="topicView==='manual'?'is-on':''" x-on:click="topicView='manual'">수동 생성</button>
+                <button type="button" class="ds-segmented__item" x-bind:aria-pressed="topicView==='auto' ? 'true' : 'false'" x-bind:class="topicView==='auto'?'is-on':''" x-on:click="topicView='auto'">자동 생성</button>
               </span>
               <button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button>
               <!-- 토픽은 조건 재평가 방식(서버 캐시는 쓰기마다 무효화) · 탭을 열어둔 채 추출·검수·사전 보강이 진행되면 화면만 낡음 → 수동 재조회 -->
@@ -215,7 +215,7 @@
                     </template>
                   </div></td>
                   <td class="tnum" x-text="g.core_count||0"></td>
-                  <td style="text-align:right;white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="copybtn" x-on:click="studioDelete(g)">삭제</button></td>
+                  <td style="text-align:right;white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="studioDelete(g)">삭제</button></td>
                 </tr>
               </template>
               <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id">
@@ -254,4 +254,3 @@
         </div>
       </div>
       </template>
-
