@@ -932,6 +932,23 @@ class Store:
         SupabaseStore.team_ids 와 동일 계약 — 팀 단위 배치(토픽 스냅샷 등)가 백엔드 분기 없이 돈다."""
         return [None]
 
+    def claim_crew_auto(self, owner: str, now: float, ttl: float, team=None) -> bool:
+        """팀별 자동 운영 lease · SQLite 제약/조건부 UPDATE 로 프로세스 간 선점."""
+        c = self._conn()
+        with c:
+            c.execute("INSERT OR IGNORE INTO reports(kind,team,payload,ts) VALUES(?,?,?,?)",
+                      ("crew_auto_lease", team or "", '{}', 0))
+            result = c.execute(
+                "UPDATE reports SET payload=?, ts=? WHERE kind=? AND team=? AND ts<=?",
+                (json.dumps({"owner": owner}), now + ttl, "crew_auto_lease", team or "", now))
+        return result.rowcount == 1
+
+    def release_crew_auto(self, owner: str, team=None):
+        c = self._conn()
+        with c:
+            c.execute("DELETE FROM reports WHERE kind=? AND team=? AND payload=?",
+                      ("crew_auto_lease", team or "", json.dumps({"owner": owner})))
+
     def save_report(self, kind: str, payload, team=None):
         """운영 리포트 upsert(JSON 직렬화 · 재시작 영속 · 팀 스코프)."""
         c = self._conn()

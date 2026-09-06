@@ -1845,6 +1845,24 @@ class SupabaseStore:
                         "source_status": (r.get("quality_meta") or {}).get("source_status") or {}})
         return out
 
+    def claim_crew_auto(self, owner: str, now: float, ttl: float, team=None) -> bool:
+        """기존 reports PK + 조건부 PATCH 로 팀별 lease 선점(새 RPC/마이그레이션 없음)."""
+        row = {"kind": "crew_auto_lease", "team_key": team or "",
+               "payload": {"owner": owner, "expires": now + ttl}}
+        inserted = self._req("POST", "reports", body=[row],
+                             prefer="resolution=ignore-duplicates,return=representation")
+        if inserted:
+            return True
+        query = ("kind=eq.crew_auto_lease&team_key=eq." + urllib.parse.quote(team or "", safe="")
+                 + "&payload->expires=lte." + str(float(now)))
+        return bool(self._req("PATCH", "reports", query=query, body={"payload": row["payload"]},
+                              prefer="return=representation"))
+
+    def release_crew_auto(self, owner: str, team=None):
+        query = ("kind=eq.crew_auto_lease&team_key=eq." + urllib.parse.quote(team or "", safe="")
+                 + "&payload->>owner=eq." + urllib.parse.quote(owner, safe=""))
+        self._req("DELETE", "reports", query=query, prefer="return=minimal")
+
     def save_report(self, kind: str, payload, team=None):
         row = {"kind": kind, "team_key": team or "", "payload": payload}
         self._upsert("reports", [row])

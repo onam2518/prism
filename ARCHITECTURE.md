@@ -29,6 +29,7 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    └─ store.py(SQLite 로컬) / supastore.py(Supabase 팀 운영)   저장 계층(동일 계약)
 ```
 
+- 자동 검수운영: `crewops.auto_tick`은 팀별 `crew_auto_lease` 리포트를 원자적으로 선점한 뒤 회차 상태를 읽는다. SQLite 조건부 UPDATE / Supabase 조건부 PATCH 계약은 `claim_crew_auto`·`release_crew_auto`이며, 종료 시 해제·프로세스 중단 시 1시간 만료로 재시도한다.
 - 백엔드 선택: `PRISM_BACKEND`(sqlite|supabase) → `serve.get_store()` 가 단일 진입점.
 - 배포: main 머지 → GitHub Actions(test → fly deploy) → `prism-item.fly.dev`.
 
