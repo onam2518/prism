@@ -30,6 +30,10 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
 ```
 
 - 백엔드 선택: `PRISM_BACKEND`(sqlite|supabase) → `serve.get_store()` 가 단일 진입점.
+- Supabase 콘텐츠 쓰기: `save_many`/`save_dedup` → `sync_contents` → `_upsert("contents")`
+  → `prism_sync_contents(jsonb)` RPC. 전역 hash 충돌은 DB에서 팀 비교 후 배치 전체 거부,
+  같은 팀의 출처·운영 플래그는 최신 DB 값 보존. 선행 조회 실패·RPC 미설치 시 저장 중단.
+  설치 계약: `scripts/migrate_content_team_guard.sql` · `SUPABASE_MIGRATION.md`.
 - 배포: main 머지 → GitHub Actions(test → fly deploy) → `prism-item.fly.dev`.
 
 ## serve.py 내부 지도 (도메인 클러스터)

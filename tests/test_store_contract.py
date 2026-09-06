@@ -413,7 +413,7 @@ class TestSupastoreFirstSourceKept(unittest.TestCase):
         st = SupabaseStore.__new__(SupabaseStore)
         cap = {}
         st._get = lambda table, query="": (cap.__setitem__("get_q", query) or existing)
-        st._req = lambda method, table, **kw: cap.__setitem__("rows", kw.get("body") or [])
+        st._req = lambda method, table, **kw: cap.__setitem__("rows", kw["body"]["p_rows"])
         return st, cap
 
     def _hash(self):
@@ -439,12 +439,13 @@ class TestSupastoreFirstSourceKept(unittest.TestCase):
         st.sync_contents([(self.CONTENT, self.OUT)], source="단건", include_all=True)
         self.assertEqual(cap["rows"][0]["source"], "단건")
 
-    def test_lookup_failure_does_not_block_save(self):
-        """라벨 조회가 실패해도 적재는 계속된다(보존은 최선 노력)."""
+    def test_lookup_failure_blocks_save(self):
+        """보존 조회 실패 시 쓰기 요청을 보내지 않는다."""
         st, cap = self._stub([])
         st._get = lambda table, query="": (_ for _ in ()).throw(RuntimeError("supabase GET 실패"))
-        st.sync_contents([(self.CONTENT, self.OUT)], source="재실행", include_all=True)
-        self.assertEqual(cap["rows"][0]["source"], "재실행")
+        with self.assertRaisesRegex(RuntimeError, "GET 실패"):
+            st.sync_contents([(self.CONTENT, self.OUT)], source="재실행", include_all=True)
+        self.assertNotIn("rows", cap)
 
 
 if __name__ == "__main__":

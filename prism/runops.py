@@ -132,7 +132,7 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
         try:
             known = st0.existing_hashes(list(uniq.keys()), team=team) or {}
         except Exception:
-            known = {}    # 조회 실패 → 전량 신규 취급(upsert 멱등 · 빈 결과는 save_dedup 가드가 보호)
+            return {"error": "기존 콘텐츠 조회 실패 · 저장하지 않았습니다. 다시 시도하세요"}
     existing = sum(1 for h in uniq if h in known)
     # 참조 이미지 URL 정규화(http(s)·중복 제거·상한)를 인입 경로 공통으로. 원본 dict 는 건드리지 않는다.
     rows = [dict(c, image_urls=normalize_image_urls(c.get("image_urls") or c.get("images")))
