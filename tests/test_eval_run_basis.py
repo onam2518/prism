@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import Mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -140,25 +141,36 @@ class TestEvalRunBasisFlow(unittest.TestCase):
 
 
 class TestSupabaseEvalRunBasisContract(unittest.TestCase):
-    def test_atomic_rpc_contract_and_no_fallback(self):
+    def test_atomic_rpc_uses_shared_request_contract_and_no_fallback(self):
         from prism.supastore import SupabaseStore
         st = SupabaseStore.__new__(SupabaseStore)
         captured = {}
-        st._rpc_required = lambda fn, args: (captured.update(fn=fn, args=args) or
-                                             {"id": 12, "reused": True})
-        st._req = lambda *args, **kwargs: self.fail("RPC 실패 시 REST create 폴백은 금지")
+        st._req = lambda method, table, **kwargs: (captured.update(method=method, table=table,
+                                                                     kwargs=kwargs) or
+                                                    {"id": 12, "reused": True})
         got = st.eval_run_start_or_reuse("team-A", "m", "eval", 5, "sha256:x",
                                          created_by="uid", new_experiment=True)
         self.assertEqual(got, {"id": 12, "reused": True})
-        self.assertEqual(captured["fn"], "prism_eval_run_start_or_reuse")
-        self.assertEqual(captured["args"], {"p_team": "team-A", "p_model": "m",
-                                             "p_scope": "eval", "p_total": 5,
-                                             "p_created_by": "uid", "p_basis_fingerprint": "sha256:x",
-                                             "p_new_experiment": True})
+        self.assertEqual((captured["method"], captured["table"]),
+                         ("POST", "rpc/prism_eval_run_start_or_reuse"))
+        self.assertEqual(captured["kwargs"]["body"], {"p_team": "team-A", "p_model": "m",
+                                                         "p_scope": "eval", "p_total": 5,
+                                                         "p_created_by": "uid", "p_basis_fingerprint": "sha256:x",
+                                                         "p_new_experiment": True})
 
-        st._rpc_required = lambda *args: None
+        st._req = lambda *args, **kwargs: None
         with self.assertRaises(RuntimeError):
             st.eval_run_start_or_reuse("team-A", "m", "all", 1, "sha256:x")
+
+    def test_shared_request_keeps_rpc_endpoint_unprefixed(self):
+        from prism.supastore import SupabaseStore
+        st = SupabaseStore.__new__(SupabaseStore)
+        st.url, st.base, st.key = "https://example.test", "https://example.test/rest/v1", "key"
+        st._http = Mock(return_value=(200, '{"id":12,"reused":false}', {}))
+        self.assertEqual(st._req("POST", "rpc/prism_eval_run_start_or_reuse", body={"p_total": 1}),
+                         {"id": 12, "reused": False})
+        self.assertEqual(st._http.call_args.args[:2],
+                         ("POST", "/rest/v1/rpc/prism_eval_run_start_or_reuse"))
 
 
 if __name__ == "__main__":

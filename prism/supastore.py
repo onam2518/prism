@@ -64,7 +64,8 @@ class SupabaseStore:
     # ── REST 헬퍼 ──────────────────────────────────────────────────────────
     def _req(self, method: str, table: str, *, query: str = "", body=None, prefer: str = "") -> list:
         # public 스키마(기본 노출) + prism_ 접두사 → 노출 설정 불필요.
-        url = f"{self.base}/prism_{table}" + (f"?{query}" if query else "")
+        endpoint = table if table.startswith("rpc/") else f"prism_{table}"
+        url = f"{self.base}/{endpoint}" + (f"?{query}" if query else "")
         headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
@@ -2071,21 +2072,10 @@ class SupabaseStore:
         rows = self._req("POST", "eval_runs", body=[row], prefer="return=representation")
         return int(rows[0]["id"]) if rows else 0
 
-    def _rpc_required(self, fn: str, args: dict):
-        """원자성이 보안·정확성 계약인 RPC: 미설치 시 읽기-쓰기 폴백을 금지한다."""
-        headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
-                   "Accept": "application/json", "Content-Type": "application/json"}
-        data = json.dumps(args or {}, ensure_ascii=False).encode("utf-8")
-        status, raw, _ = self._http("POST", f"/rest/v1/rpc/{fn}", data, headers)
-        if status >= 400:
-            print(f"  [supabase] rpc {fn} HTTP{status}: {raw[:300]}")
-            raise RuntimeError(f"supabase rpc {fn} 실패(HTTP{status})")
-        return json.loads(raw) if raw.strip() else None
-
     def eval_run_start_or_reuse(self, team, model, scope, total, basis_fingerprint,
                                 created_by="", new_experiment=False) -> dict:
         """PostgreSQL RPC만 사용: 병렬 POST의 조회-삽입 경쟁을 허용하지 않는다."""
-        row = self._rpc_required("prism_eval_run_start_or_reuse", {
+        row = self._req("POST", "rpc/prism_eval_run_start_or_reuse", body={
             "p_team": team, "p_model": model or "", "p_scope": scope or "all",
             "p_total": int(total), "p_created_by": created_by or "",
             "p_basis_fingerprint": basis_fingerprint or "",

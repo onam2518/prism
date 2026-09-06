@@ -3,6 +3,8 @@
 -- 앱이 안전한 새 시작을 요구한다. 이 파일을 Supabase Database Migrations에서 적용한 뒤
 -- PRISM_BACKEND=supabase 평가 시작을 활성화한다.
 
+begin;
+
 alter table public.prism_eval_runs
   add column if not exists basis_fingerprint text not null default '';
 
@@ -17,6 +19,8 @@ create or replace function public.prism_eval_run_start_or_reuse(
   p_new_experiment boolean default false
 ) returns jsonb
 language plpgsql
+security invoker
+set search_path = pg_catalog, public
 as $$
 declare
   v_id bigint;
@@ -56,3 +60,6 @@ revoke all on function public.prism_eval_run_start_or_reuse(uuid, text, text, in
   from public, anon, authenticated;
 grant execute on function public.prism_eval_run_start_or_reuse(uuid, text, text, integer, text, text, boolean)
   to service_role;
+
+notify pgrst, 'reload schema';
+commit;
