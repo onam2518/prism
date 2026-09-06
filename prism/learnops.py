@@ -85,8 +85,22 @@ def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
         used_model = cfg.model or getattr(llm, "model", "") or ""
     meth = H.Methodology(name="골든셋")
     sample = rows[:300]
-    outs = abtest.run_methodology(sample, meth, llm, concurrency=8)
+    from .config import task_budget
+    from .runops import _log_run_ledgers
+    budget, spent, outs = task_budget(cfg.task_budget_usd), 0.0, []
+    for i in range(0, len(sample), _COMPARE_CHUNK):
+        if budget > 0 and spent >= budget:
+            break
+        chunk = sample[i:i + _COMPARE_CHUNK]
+        got = abtest.run_methodology(chunk, meth, llm, concurrency=8)
+        outs += got
+        for row, out in zip(chunk, got):
+            spent += float(((out or {}).get("trace") or {}).get("cost_usd") or 0.0)
+            _log_run_ledgers(row.get("content") or {}, out, mock=llm.mock, team=team)
+    skipped = len(sample) - len(outs)
+    sample = sample[:len(outs)]
     m = abtest.score(sample, outs)
+    m.update(budget_usd=budget, spent_usd=round(spent, 6), budget_stop=bool(skipped), skipped=skipped)
     m["methodology"] = meth.to_dict()
     global _LAST_EVAL_DETAIL
     detail = []
@@ -112,7 +126,9 @@ def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
     from . import quality as Q
     lo, hi = Q.binomial_ci(m.get("grade_accuracy") or 0.0, len(sample))
     m["grade_ci"] = {"lo": lo, "hi": hi, "n": len(sample)}   # 95% CI(Miller 2024)
-    m["ok"] = True
+    m["ok"] = not bool(skipped)
+    if skipped:
+        m["error"] = f"예산 중단 · 비용 ${spent:.6f} · 미실행 {skipped}건"
     m["evaluated"] = len(sample)
     try:                                         # 평가 기준(어떤 모델·버전으로 쟀는지) 명시
         seq = st.batch_seq(team) if hasattr(st, "batch_seq") else 0
@@ -451,32 +467,52 @@ def _compare_prepare(models, team, scope: str):
     if not ready:
         return None, {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
                       "skipped": skipped, "golden_n": len(rows)}
-    return {"rows": rows, "ready": ready, "skipped": skipped, "cfg": cfg, "scope": scope}, None
+    from .config import task_budget
+    try:
+        budget = task_budget(cfg.task_budget_usd)
+    except ValueError as e:
+        return None, {"ok": False, "error": str(e)}
+    return {"rows": rows, "ready": ready, "skipped": skipped, "cfg": cfg, "scope": scope,
+            "budget": {"limit": budget, "spent": 0.0, "lock": threading.Lock()}}, None
 
 
 _COMPARE_CHUNK = 8                                    # 진척도 갱신 주기(8-way 한 바퀴 · 창에서 막대가 자주 움직이게)
 
 
-def _compare_run_model(item, rows, cfg, progress=None):
+def _compare_run_model(item, rows, cfg, progress=None, *, budget, team=None):
     """모델 1개를 청크 단위로 돌려 (지표 dict, 산출 list). progress(done) 로 진척을 알린다."""
     from . import abtest
     from . import harness as H
     model, llm, route = item
     meth = H.Methodology(name=model)
+    from .runops import _log_run_ledgers
     outs = []
     for i in range(0, len(rows), _COMPARE_CHUNK):
-        outs += abtest.run_methodology(rows[i:i + _COMPARE_CHUNK], meth, llm, concurrency=8)
+        with budget["lock"]:
+            if budget["limit"] > 0 and budget["spent"] >= budget["limit"]:
+                break
+        chunk = rows[i:i + _COMPARE_CHUNK]
+        got = abtest.run_methodology(chunk, meth, llm, concurrency=8)
+        outs += got
+        with budget["lock"]:
+            budget["spent"] += sum(float(((out or {}).get("trace") or {}).get("cost_usd") or 0.0)
+                                   for out in got)
+        for row, out in zip(chunk, got):
+            _log_run_ledgers(row.get("content") or {}, out, mock=llm.mock, team=team)
         if progress:
             progress(len(outs))
-    m = abtest.score(rows, outs)
+    skipped = len(rows) - len(outs)
+    m = abtest.score(rows[:len(outs)], outs)
     gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
     meta_gate = float(getattr(cfg.thresholds, "meta_gate", 0.6) or 0.6)
     keep = ("grade_accuracy", "reason_jaccard", "reason_exact_match", "empty_rate", "harm_miss_rate",
             "cost_usd", "tokens", "latency_p50_ms", "latency_p95_ms",
             "intent_n", "intent_f1", "cat_n", "cat_f1", "cat_hf1", "ent_n", "ent_f1", "ent_f1_partial",
             "summary_n", "summary_sim")
-    return {"model": model, "route": route, "real": (not llm.mock), "n": len(rows),
-            **{k: m.get(k) for k in keep}, **ME.overall(m, gate, meta_gate), "issues": ME.diagnose(m)}, outs
+    return {"model": model, "route": route, "real": (not llm.mock), "n": len(outs),
+            **{k: m.get(k) for k in keep}, **ME.overall(m, gate, meta_gate), "issues": ME.diagnose(m),
+            "budget_stop": bool(skipped), "budget_skipped": skipped,
+            **({"passed": False} if skipped else {})}, outs
 
 
 def _compare_finish(prep: dict, done: list, team) -> dict:
@@ -484,7 +520,11 @@ def _compare_finish(prep: dict, done: list, team) -> dict:
     cfg, rows = prep["cfg"], prep["rows"]
     out = [d[0] for d in done]
     outs_by = {d[0]["model"]: d[1] for d in done}
-    items = [_compare_item(row, {m: outs_by[m][i] for m in outs_by}) for i, row in enumerate(rows)]
+    # 미실행 행을 실패 산출(None)로 채점하지 않는다. 모델들이 공통 실행한 행만 건별 비교한다.
+    common_n = min((len(v) for v in outs_by.values()), default=0)
+    items = [_compare_item(row, {m: outs_by[m][i] for m in outs_by})
+             for i, row in enumerate(rows[:common_n])]
+    budget_skipped = sum(m.get("budget_skipped", 0) for m in out)
     # 순위 = 게이트 통과 먼저 · 그다음 종합 점수(등급 0.4 + 인텐트·카테고리·엔티티·리드문 각 0.15)
     out.sort(key=lambda r: (not r.get("passed"), -(r.get("overall") or 0), -(r.get("grade_accuracy") or 0)))
     stage_prompts = dict(cfg.stage_prompts or {})
@@ -493,9 +533,11 @@ def _compare_finish(prep: dict, done: list, team) -> dict:
             it["applied"] = it["directive"] in (stage_prompts.get(it["stage"]) or "")
     gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
     res = {"ok": True, "models": out, "skipped": prep["skipped"],
-           "best": out[0]["model"], "golden_n": len(rows), "scope": prep["scope"], "ts": time.time(),
+           "best": "" if budget_skipped else out[0]["model"], "golden_n": len(rows), "scope": prep["scope"], "ts": time.time(),
            "eval_gate": gate, "meta_gate": float(getattr(cfg.thresholds, "meta_gate", 0.6) or 0.6),
-           "cheapest_passing": cheapest_passing_model(out, gate),
+           "cheapest_passing": None if budget_skipped else cheapest_passing_model(out, gate),
+           "budget_usd": prep["budget"]["limit"], "spent_usd": round(prep["budget"]["spent"], 6),
+           "budget_stop": bool(budget_skipped), "budget_skipped": budget_skipped,
            "items": items,
            "split_n": sum(1 for it in items if it["split"]),
            "miss_n": sum(1 for it in items if not it["all_ok"])}
@@ -514,7 +556,8 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
     if err:
         return err
     with ThreadPoolExecutor(max_workers=max(1, min(4, len(prep["ready"])))) as ex:
-        done = list(ex.map(lambda it: _compare_run_model(it, prep["rows"], prep["cfg"]), prep["ready"]))
+        done = list(ex.map(lambda it: _compare_run_model(it, prep["rows"], prep["cfg"],
+                                                        budget=prep["budget"], team=team), prep["ready"]))
     return _compare_finish(prep, done, team)
 
 
@@ -529,6 +572,10 @@ _COMPARE_KEEP = 20
 def _job_public(j: dict, with_result: bool) -> dict:
     d = {k: j[k] for k in ("id", "ts", "scope", "status", "golden_n", "skipped", "error", "finished")}
     d["models"] = {m: dict(v) for m, v in j["models"].items()}
+    with j["budget"]["lock"]:
+        d.update(budget_usd=j["budget"]["limit"], spent_usd=round(j["budget"]["spent"], 6))
+    d.update(budget_stop=bool((j.get("result") or {}).get("budget_stop")),
+             budget_skipped=(j.get("result") or {}).get("budget_skipped", 0))
     if with_result and j.get("result"):
         d["result"] = j["result"]
     return d
@@ -544,7 +591,7 @@ def compare_start(models, team=None, scope: str = "all") -> dict:
         _COMPARE_SEQ[0] += 1
         jid = _COMPARE_SEQ[0]
         job = {"id": jid, "ts": time.time(), "team": team or "", "scope": scope, "status": "running",
-               "golden_n": len(prep["rows"]), "skipped": prep["skipped"], "error": "", "finished": None,
+               "golden_n": len(prep["rows"]), "skipped": prep["skipped"], "budget": prep["budget"], "error": "", "finished": None,
                "models": {m: {"done": 0, "total": len(prep["rows"]), "status": "queued", "route": r}
                           for m, _, r in prep["ready"]}, "result": None}
         _COMPARE_JOBS[jid] = job
@@ -556,8 +603,8 @@ def compare_start(models, team=None, scope: str = "all") -> dict:
         pm["status"] = "running"
         def _prog(n):
             pm["done"] = n
-        r = _compare_run_model(item, prep["rows"], prep["cfg"], _prog)
-        pm["status"] = "done"
+        r = _compare_run_model(item, prep["rows"], prep["cfg"], _prog, budget=prep["budget"], team=team)
+        pm["status"] = "budget_stop" if r[0]["budget_stop"] else "done"
         return r
 
     def _run():
@@ -565,7 +612,7 @@ def compare_start(models, team=None, scope: str = "all") -> dict:
             with ThreadPoolExecutor(max_workers=max(1, min(4, len(prep["ready"])))) as ex:
                 done = list(ex.map(_one, prep["ready"]))
             job["result"] = _compare_finish(prep, done, team)
-            job["status"] = "done"
+            job["status"] = "budget_stop" if job["result"]["budget_stop"] else "done"
         except Exception as e:                    # 무음 실패 방지: 창에 사유를 보인다
             job["status"] = "failed"
             job["error"] = str(e)[:300]
@@ -705,6 +752,8 @@ def learning_batch(team=None, models=None, model: str = "") -> dict:
     prev_learned = dict(PR.LEARNED)
     prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
     eval_pre = eval_golden(team, model=model)            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
+    if eval_pre.get("budget_stop"):
+        return {"ok": False, "error": eval_pre["error"], "eval": eval_pre, "budget_stop": True}
     improve = meta_compile_run(team)
     changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
     delta = None
@@ -715,6 +764,8 @@ def learning_batch(team=None, models=None, model: str = "") -> dict:
         except (TypeError, ValueError):
             delta = None
         regressions = _batch_regressions(eval_pre, evalr) if evalr.get("ok") else []
+        if evalr.get("budget_stop"):
+            regressions = [evalr["error"]]
         if regressions:                                  # 악화 가드: 이전 프롬프트로 원복
             PR.LEARNED = prev_learned
             PR.LEARNED_BY_MODEL = prev_by_model

@@ -32,8 +32,8 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function when(ts) { var d = new Date(ts * 1000); return (d.getMonth() + 1) + '.' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   function dur(a, b) { var s = Math.max(0, Math.round((b || Date.now() / 1000) - a)); return s < 60 ? s + '초' : Math.floor(s / 60) + '분 ' + (s % 60) + '초'; }
-  function stName(s) { return { queued: '대기', running: '실행 중', done: '완료', failed: '실패' }[s] || s; }
-  function stBadge(s) { return { queued: 'ds-badge--neutral', running: 'ds-badge--intent', done: 'ds-badge--success', failed: 'ds-badge--error' }[s] || 'ds-badge--neutral'; }
+  function stName(s) { return { queued: '대기', running: '실행 중', done: '완료', failed: '실패', budget_stop: '예산 중단' }[s] || s; }
+  function stBadge(s) { return { queued: 'ds-badge--neutral', running: 'ds-badge--intent', done: 'ds-badge--success', failed: 'ds-badge--error', budget_stop: 'ds-badge--warning' }[s] || 'ds-badge--neutral'; }
   function fillCls(s) { return s === 'done' ? 'ds-progress__fill--success' : s === 'failed' ? 'ds-progress__fill--error' : 'ds-progress__fill--primary'; }
   function resultTable(r) {
     var h = '<div class="cw-res overflow-auto"><table class="ds-table"><thead><tr><th>모델</th><th>종합</th><th>게이트</th><th>등급</th><th>인텐트</th><th>카테고리</th><th>엔티티</th><th>리드문</th><th>비용($)</th><th>보통 속도</th></tr></thead><tbody>';
@@ -58,9 +58,10 @@
       var doneN = ms.filter(function (m) { return j.models[m].status === 'done'; }).length;
       var h = '<section class="panel"><div class="panel-hd"><b>#' + j.id + '</b><span class="ds-badge ' + stBadge(j.status) + '">' + stName(j.status) + '</span>'
         + '<span class="meta">' + when(j.ts) + ' · 정답 ' + j.golden_n + '건 · ' + (j.scope === 'eval' ? '평가용 홀드아웃' : '전체') + ' · 모델 ' + doneN + '/' + ms.length + ' 완료 · ' + (j.status === 'running' ? '경과 ' : '소요 ') + dur(j.ts, j.finished) + '</span>';
-      if (j.status === 'done') h += '<span class="cw-actions"><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" data-open="' + j.id + '">' + (opened[j.id] ? '결과 접기' : '결과 보기') + '</button><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-main="' + j.id + '">메인 화면에서 자세히</button></span>';
+      if (j.status === 'done' || j.status === 'budget_stop') h += '<span class="cw-actions"><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" data-open="' + j.id + '">' + (opened[j.id] ? '결과 접기' : '결과 보기') + '</button><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-main="' + j.id + '">메인 화면에서 자세히</button></span>';
       if (j.status === 'failed') h += '<span class="cw-actions text-xs text-muted">' + esc(j.error) + '</span>';
       h += '</div><div class="panel-bd">';
+      if (j.spent_usd != null) h += '<p class="text-xs text-muted">' + (j.budget_stop ? '예산 중단 · 부분 결과 · 모델 추천 보류 · ' : '') + '비용 $' + esc(j.spent_usd) + ' · 미실행 ' + esc(j.budget_skipped || 0) + '건(모델×콘텐츠)</p>';
       ms.forEach(function (m) {
         var p = j.models[m]; var w = p.total ? Math.max(p.done / p.total * 100, p.status === 'queued' ? 0 : 2) : 0;
         h += '<div class="cw-row"><span title="' + esc(p.route || '') + '"><b>' + esc(m) + '</b><div class="text-xs text-muted">' + esc(p.route || '') + '</div></span>'
@@ -84,8 +85,8 @@
       var jobs = r.jobs || [];
       var running = jobs.some(function (j) { return j.status === 'running'; });
       var f = jobs.find(function (j) { return j.id === focusId; });
-      if (f && f.status === 'done' && (lastRunning === null || lastRunning) && opened[focusId] == null) opened[focusId] = true;   // 지켜보던 잡이 끝나면 결과를 바로 펼친다
-      var pending = jobs.filter(function (j) { return j.status === 'done' && opened[j.id] && !results[j.id]; }).map(function (j) { return load(j.id); });
+      if (f && (f.status === 'done' || f.status === 'budget_stop') && (lastRunning === null || lastRunning) && opened[focusId] == null) opened[focusId] = true;   // 지켜보던 잡이 끝나면 결과를 바로 펼친다
+      var pending = jobs.filter(function (j) { return (j.status === 'done' || j.status === 'budget_stop') && opened[j.id] && !results[j.id]; }).map(function (j) { return load(j.id); });
       Promise.all(pending).then(function () { render(jobs); });
       lastRunning = running;
       document.getElementById('hint').textContent = running ? '이 창은 닫아도 비교는 계속 돕니다 · 2초마다 갱신 · 막대는 8건마다 움직입니다' : '진행 중인 비교 없음 · 새 비교는 메인 화면에서 시작합니다';

@@ -287,7 +287,10 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
             _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=msg)
             _jobs_persist()
             return {"ok": False, "error": msg, "headers": list(rows[0].keys()) if rows else []}
+        from .config import task_budget
         cfg = Config.load()
+        budget = task_budget(cfg.task_budget_usd)
+        spent, budget_stop = 0.0, False
         llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
         pairs = []
         failed, first_err = 0, ""
@@ -308,8 +311,13 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
                 pass
         _INGEST_STATE[sid].update(total=len(contents), done=0, failed=0, last_msg="추출 중…")
         for c in contents:
+            if budget > 0 and spent >= budget:
+                budget_stop = True
+                break
             try:
                 out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+                spent += float((out.get("trace") or {}).get("cost_usd") or 0.0)
+                _INGEST_STATE[sid].update(spent_usd=round(spent, 6), budget_usd=budget)
                 pairs.append((c, out))
                 # 비용·실패 원장: 자동 인입도 run_pipeline 을 안 타므로 여기서 직접 기록 —
                 # 종전엔 크레딧이 마른 상태로 매 폴링 402 가 반복돼도 원장·트리아지 신호가 0 이었다.
@@ -346,15 +354,22 @@ def ingest_run_source(source: dict, trigger: str = "manual") -> dict:
         msg = (f"{len(rows)}건 수신 → 신규 {stats['inserted']} · 갱신 {stats['updated']} · 제외 {stats['skipped']}"
                + (f" · 기존 실행완료 {skipped_done}건 건너뜀" if skipped_done else "")
                + _img_note(contents))
+        budget_fields = {"spent_usd": round(spent, 6), "budget_usd": budget,
+                         "budget_stop": budget_stop,
+                         "budget_skipped": len(contents) - _INGEST_STATE[sid]["done"] if budget_stop else 0}
+        _INGEST_STATE[sid].update(budget_fields)
+        msg += f" · 비용 ${spent:.6f} · 예산 미실행 {budget_fields['budget_skipped']}건"
+        if budget_stop:
+            msg += " · 예산 중단"
         if failed:
             msg += f" · 추출 실패 {failed}건({first_err})"
         # 한 건이라도 유실됐으면 성공(초록불)이 아니다 — 5분마다 초록불이면 유실을 아무도 못 본다.
-        _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=(failed == 0),
+        _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=(failed == 0 and not budget_stop),
                                   failed=failed, last_msg=msg)
         _jobs_persist()
         return {"ok": True, "fetched": len(rows), "extracted": len(pairs),
                 "failed": failed, "fail_error": first_err,
-                "mapping": m, "mock": llm.mock,
+                "mapping": m, "mock": llm.mock, **budget_fields,
                 "with_images": img_coverage(contents)["with_images"], **stats}
     except Exception as e:
         _INGEST_STATE[sid].update(running=False, last_run=time.time(), last_ok=False, last_msg=str(e)[:160])

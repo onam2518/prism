@@ -107,6 +107,14 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 - 화면: 시스템 설정 `ui/16-settings.html` · 동작 `vendor/app-08-copytext.js`
   (`saveAssistModel` · `judgeModel`/`assistSameAsJudge` = 판정 모델과 같아지면 알림 · 막지 않음).
 
+## 작업 비용 중단 기준
+
+- `batch_budget_usd`는 일괄·미확정 재실행에 적용. `task_budget_usd`는 업로드 추출·소스 인입·골든 평가(즉시/런)·모델 비교 각각 1회에 적용하며 기본 0(무제한).
+- 금액 검증은 `config.task_budget`, 비용 원천은 기존 `trace.cost_usd`와 `runops._log_run_ledgers`. 실패 trace 비용도 합산. 다음 행·청크 제출 전에 검사하므로 진행 중 요청 묶음의 초과 비용은 허용됨.
+- 평가 런은 기존 `metrics`에 `budget_stop/spent_usd/skipped` 보존. 재개 시 누적 비용을 유지하고 현재 설정 기준을 다시 적용. 비교는 전체 모델의 비용을 같은 작업에서 합산하며 부분 결과는 모델 추천에서 제외.
+- 업로드·인입은 기존 실행 큐에 종료 사유와 비용 보존. 인입·비교의 기존 `skipped` 의미는 유지하고 예산 미실행 수는 `budget_skipped`로 제공. 비교의 단위는 모델×콘텐츠.
+- 설정은 전역 공유. 예약 인입은 매 실행 새로 계산하며 오토파일럿 전체 누적·루브릭 채점은 제외. DB 스키마 변경 없음.
+
 ## UI 구조
 
 - 마크업: `prism/ui/NN-*.html` 화면 섹션 조각 24개를 `page.py` 가 파일명 순으로

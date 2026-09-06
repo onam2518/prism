@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 import copy
 import json
+import math
 import os
 import sys
 import threading
@@ -115,7 +116,8 @@ class Config:
     final_rerun_after_batch: bool = True  # 학습 반영 후 미확정분을 새 버전으로 자동 재실행(2층 검수 3-1)
     final_gold_check: bool = True         # 최종검수 큐에 골드 캘리브레이션 문항 블라인드 출제(정확도→신뢰가중)
     fallback_models: list = field(default_factory=list)   # 산출 전량 빈값 시 순서 폴백 모델(최대 3 · 실호출만)
-    batch_budget_usd: float = 0.0         # 일괄 실행(재실행) 1회 비용 상한($) · 0 = 무제한
+    batch_budget_usd: float = 0.0         # 일괄·미확정 재실행 1회 중단 기준($) · 0 = 무제한
+    task_budget_usd: float = 0.0          # 업로드·인입·골든 평가·모델 비교 작업 각각의 중단 기준
     # 검수 보조 에이전트가 답할 때 쓰는 모델(팀 공유 설정 · 시스템 설정 화면에서 관리자가 고른다).
     # 빈 값 = 미설정 = MODEL_DEFAULT. 해석은 아래 assist_model() 한 곳에서만 한다.
     assist_model: str = ""
@@ -315,3 +317,16 @@ def _merge(cfg: Config, data: dict) -> Config:
         elif hasattr(cfg, k) and k != "api_key":
             setattr(cfg, k, copy.deepcopy(v) if isinstance(v, (dict, list)) else v)
     return cfg
+
+
+def task_budget(value=None) -> float:
+    """작업별 금액 설정의 저장·실행 공통 검증. 잘못된 설정을 무제한으로 바꾸지 않는다."""
+    if value is None:
+        value = Config.load().task_budget_usd
+    try:
+        amount = float(value)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError("작업 비용 기준은 0~1000 사이의 유한한 달러 금액이어야 합니다")
+    if isinstance(value, bool) or not math.isfinite(amount) or not 0 <= amount <= 1000:
+        raise ValueError("작업 비용 기준은 0~1000 사이의 유한한 달러 금액이어야 합니다")
+    return amount
