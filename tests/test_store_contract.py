@@ -2,8 +2,8 @@
 메서드들을 하나의 시나리오 모음으로 검증한다(이중 구현 표류 방지).
 
 - 기본: sqlite 에 대해 항상 실행.
-- supabase: 환경변수 PRISM_TEST_SUPABASE=1 + SUPABASE_URL/SUPABASE_SERVICE_KEY 가 있을 때만
-  같은 시나리오를 라이브로 실행(테스트 전용 team_key 로 스코프 · 종료 시 정리). CI 기본은 skip.
+- supabase: PRISM_TEST_SUPABASE=1 과 명시적인 테스트 프로젝트 환경변수가 있을 때만
+  같은 시나리오를 라이브로 실행(두 일회용 계정·팀으로 격리 검증 · 종료 시 정리). CI 기본은 skip.
 
 실행: python3 -m pytest tests/test_store_contract.py -q
 """
@@ -12,10 +12,75 @@ import sys
 import tempfile
 import time
 import unittest
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 TEST_TEAM = None            # sqlite 는 단일 팀(None)
+_SUPABASE_SUFFIX = ".supabase.co"
+_PRODUCTION_PROJECT_REF = "uycdzslkhkruvmyjcbgj"     # SUPABASE_MIGRATION.md의 현재 운영 프로젝트
+_REQUIRED_LIVE_ENV = ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "PRISM_TEST_SUPABASE_PROJECT_REF")
+
+
+def _live_supabase_config(environ):
+    """live 계약 테스트 대상이 명시된 비운영 Supabase 프로젝트인지 검증한다."""
+    missing = [k for k in _REQUIRED_LIVE_ENV if not (environ.get(k) or "").strip()]
+    if missing:
+        raise RuntimeError("Supabase live 계약 테스트 필수 환경변수 누락: " + ", ".join(missing))
+    url = environ["SUPABASE_URL"].strip().rstrip("/")
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not host.endswith(_SUPABASE_SUFFIX) or host == _SUPABASE_SUFFIX[1:]:
+        raise RuntimeError("SUPABASE_URL은 테스트 프로젝트의 https://<project-ref>.supabase.co 형식이어야 합니다")
+    ref = host[:-len(_SUPABASE_SUFFIX)]
+    expected = environ["PRISM_TEST_SUPABASE_PROJECT_REF"].strip().lower()
+    if ref != expected:
+        raise RuntimeError("SUPABASE_URL project ref가 PRISM_TEST_SUPABASE_PROJECT_REF와 다릅니다")
+    if ref == _PRODUCTION_PROJECT_REF:
+        raise RuntimeError("운영 Supabase project ref에서는 live 계약 테스트를 실행할 수 없습니다")
+    return url, environ["SUPABASE_SERVICE_KEY"], ref
+
+
+class TestSupabaseLiveConfiguration(unittest.TestCase):
+    def _env(self, **patch):
+        env = {"SUPABASE_URL": "https://contracttest.supabase.co", "SUPABASE_SERVICE_KEY": "secret",
+               "PRISM_TEST_SUPABASE_PROJECT_REF": "contracttest"}
+        env.update(patch)
+        return env
+
+    def test_accepts_only_matching_nonproduction_project(self):
+        self.assertEqual(_live_supabase_config(self._env())[2], "contracttest")
+        with self.assertRaisesRegex(RuntimeError, "project ref"):
+            _live_supabase_config(self._env(PRISM_TEST_SUPABASE_PROJECT_REF="another"))
+        with self.assertRaisesRegex(RuntimeError, "운영 Supabase"):
+            _live_supabase_config(self._env(SUPABASE_URL=f"https://{_PRODUCTION_PROJECT_REF}.supabase.co",
+                                             PRISM_TEST_SUPABASE_PROJECT_REF=_PRODUCTION_PROJECT_REF))
+
+    def test_missing_secret_fails_instead_of_skipping(self):
+        with self.assertRaisesRegex(RuntimeError, "SUPABASE_SERVICE_KEY"):
+            _live_supabase_config(self._env(SUPABASE_SERVICE_KEY=""))
+
+    def test_rejects_nonproject_url(self):
+        with self.assertRaisesRegex(RuntimeError, "supabase.co"):
+            _live_supabase_config(self._env(SUPABASE_URL="https://db.example.test"))
+
+    def test_ci_never_sends_secrets_to_pull_requests(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, ".github", "workflows", "supabase-contract.yml"),
+                  encoding="utf-8") as f:
+            workflow = f.read()
+        self.assertNotIn("pull_request:", workflow)
+        self.assertNotIn("pull_request_target:", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn("PRISM_SUPABASE_CONTRACT_SCHEDULE == 'enabled'", workflow)
+        self.assertIn("environment: supabase-contract-test", workflow)
+
+    def test_default_ci_covers_fix_pushes_and_stacked_bases(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, ".github", "workflows", "test.yml"), encoding="utf-8") as f:
+            workflow = f.read()
+        self.assertIn('branches: [main, "feat/**", "fix/**"]', workflow)
+        self.assertIn('branches: [main, "fix/**"]', workflow)
 
 
 class StoreContractMixin:
@@ -213,8 +278,22 @@ class TestSqliteContract(StoreContractMixin, unittest.TestCase):
 @unittest.skipUnless(os.environ.get("PRISM_TEST_SUPABASE") == "1",
                      "라이브 supabase 계약 테스트는 PRISM_TEST_SUPABASE=1 일 때만")
 class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
-    """일회용 auth 계정 + 팀을 만들어 스코프하고 종료 시 전부 정리한다
+    """두 일회용 auth 계정 + 팀을 만들어 스코프하고 종료 시 전부 정리한다
     (contents.team_id 가 prism_teams FK · created_by 가 auth.users FK 라 실제 생성 필요)."""
+
+    REQUIRED_RPCS = ("prism_agg_assignment_load", "prism_agg_golden_contrib",
+                     "prism_agg_patch_counts", "prism_agg_gold_stats",
+                     "prism_agg_event_bonus", "prism_agg_feedback_stats")
+    REQUIRED_SCHEMA = {"teams": "id,created_by", "contents": "hash,team_id,source,quality_meta,purpose",
+                       "golden": "content_hash,team_id", "eval_checks": "hash,team_id",
+                       "reports": "kind,team_key", "drafts": "content_hash,team_key",
+                       "feedback_routes": "id,team_id", "mcp_keys": "key_id,team_id,user_id,revoked",
+                       "mcp_calls": "id,team_id,key_id"}
+    CLEANUP_TABLES = (("mcp_calls", "team_id"), ("mcp_keys", "team_id"),
+                      ("assignments", "team_id"), ("feedback", "team_id"),
+                      ("eval_checks", "team_id"), ("golden", "team_id"),
+                      ("reports", "team_key"), ("drafts", "team_key"),
+                      ("feedback_routes", "team_id"), ("contents", "team_id"))
 
     @classmethod
     def setUpClass(cls):
@@ -222,56 +301,73 @@ class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
         import secrets
         import urllib.request
         import uuid
-        cls._env_added = []                               # 이 클래스가 주입한 env 만 종료 시 제거
-        for k, f in (("SUPABASE_URL", "~/.prism_supabase_url"), ("SUPABASE_SERVICE_KEY", "~/.prism_supabase_key")):
-            if not os.environ.get(k):
-                pth = os.path.expanduser(f)
-                if os.path.exists(pth):
-                    os.environ[k] = open(pth, encoding="utf-8").read().strip()
-                    cls._env_added.append(k)
-        if not os.environ.get("SUPABASE_KEY"):
-            os.environ["SUPABASE_KEY"] = os.environ.get("SUPABASE_SERVICE_KEY", "")
-            cls._env_added.append("SUPABASE_KEY")
+        cls.base, cls.service_key, _ = _live_supabase_config(os.environ)
         from prism.supastore import SupabaseStore
         cls.st_cls = SupabaseStore()
-        base, key = os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_KEY"]
-        # 실행마다 일회용 자격증명(고정 비밀번호 하드코딩 금지 · 잔존 계정의 로그인 가능성 차단)
-        email = f"contract-bot-{uuid.uuid4().hex[:12]}@prism.test"
-        body = _j.dumps({"email": email, "password": secrets.token_urlsafe(24),
-                         "email_confirm": True}).encode()
-        req = urllib.request.Request(f"{base}/auth/v1/admin/users", data=body, method="POST",
-                                     headers={"apikey": key, "Authorization": f"Bearer {key}",
-                                              "Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=20) as r:
-            cls.uid = _j.loads(r.read().decode()).get("id")
-        cls.team_id = cls.st_cls.ensure_team(cls.uid, "create", "계약 테스트팀(자동 정리)")
+        cls.uids, cls.team_ids = [], []
+        try:
+            for n in (1, 2):
+                email = f"contract-bot-{uuid.uuid4().hex[:12]}@prism.test"
+                body = _j.dumps({"email": email, "password": secrets.token_urlsafe(24),
+                                 "email_confirm": True}).encode()
+                req = urllib.request.Request(f"{cls.base}/auth/v1/admin/users", data=body, method="POST",
+                                             headers=cls._auth_headers())
+                with urllib.request.urlopen(req, timeout=20) as response:
+                    uid = _j.loads(response.read().decode()).get("id")
+                if not uid:
+                    raise RuntimeError("Supabase 테스트 사용자 생성 응답에 id가 없습니다")
+                cls.uids.append(uid)
+                team = cls.st_cls.ensure_team(uid, "create", f"계약 테스트팀 {n}(자동 정리)")
+                if not team:
+                    raise RuntimeError("Supabase 테스트 팀 생성 응답에 id가 없습니다")
+                cls.team_ids.append(team)
+            cls.uid, cls.team_id = cls.uids[0], cls.team_ids[0]
+            cls.other_uid, cls.other_team = cls.uids[1], cls.team_ids[1]
+        except Exception as setup_error:
+            cleanup_errors = cls._cleanup()
+            detail = "; ".join(cleanup_errors)
+            raise RuntimeError("Supabase live 계약 테스트 준비 실패" +
+                               (f"; 정리 실패: {detail}" if detail else "")) from setup_error
+
+    @classmethod
+    def _auth_headers(cls):
+        return {"apikey": cls.service_key, "Authorization": f"Bearer {cls.service_key}",
+                "Content-Type": "application/json"}
+
+    @classmethod
+    def _cleanup(cls):
+        import urllib.request
+        errors = []
+        st = cls.st_cls
+        for team in reversed(getattr(cls, "team_ids", [])):
+            q = urllib.parse.quote(team)
+            for table, col in cls.CLEANUP_TABLES:
+                try:
+                    st._req("DELETE", table, query=f"{col}=eq.{q}", prefer="return=minimal")
+                    if st._get(table, f"select={col}&{col}=eq.{q}&limit=1"):
+                        raise AssertionError("삭제 후 행이 남음")
+                except Exception as e:
+                    errors.append(f"{table}({team}): {e}")
+            try:
+                st.delete_team(team)
+                if st.team_info(team):
+                    raise AssertionError("삭제 후 팀이 남음")
+            except Exception as e:
+                errors.append(f"team({team}): {e}")
+        for uid in reversed(getattr(cls, "uids", [])):
+            try:
+                req = urllib.request.Request(f"{cls.base}/auth/v1/admin/users/{uid}", method="DELETE",
+                                             headers=cls._auth_headers())
+                urllib.request.urlopen(req, timeout=20).read()
+            except Exception as e:
+                errors.append(f"auth-user({uid}): {e}")
+        return errors
 
     @classmethod
     def tearDownClass(cls):
-        import urllib.parse
-        import urllib.request
-        st, team = cls.st_cls, cls.team_id
-        q = urllib.parse.quote(team or "")
-        for table, col in (("contents", "team_id"), ("eval_checks", "team_id"),
-                           ("golden", "team_id"), ("reports", "team_key"),
-                           ("drafts", "team_key"), ("feedback_routes", "team_id")):
-            try:
-                st._req("DELETE", table, query=f"{col}=eq.{q}", prefer="return=minimal")
-            except Exception:
-                pass
-        try:
-            st.delete_team(team)
-        except Exception:
-            pass
-        try:                                              # 일회용 계정 삭제
-            base, key = os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_KEY"]
-            req = urllib.request.Request(f"{base}/auth/v1/admin/users/{cls.uid}", method="DELETE",
-                                         headers={"apikey": key, "Authorization": f"Bearer {key}"})
-            urllib.request.urlopen(req, timeout=20).read()
-        except Exception:
-            pass
-        for k in getattr(cls, "_env_added", []):          # 주입 env 정리(타 테스트 모드 판정 오염 방지)
-            os.environ.pop(k, None)
+        errors = cls._cleanup()
+        if errors:
+            raise AssertionError("Supabase live 계약 테스트 정리 실패: " + "; ".join(errors))
 
     def setUp(self):
         self.st = self.st_cls
@@ -280,6 +376,56 @@ class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
     def _seed_content(self, h, title):
         self.st._upsert("contents", [{"hash": h, "service": "뉴스", "title": title,
                                       "review": "yellow", "team_id": self.team}])
+
+    def test_required_schema_and_rpcs_exist(self):
+        import json as _j
+        headers = self._auth_headers()
+        for table, columns in self.REQUIRED_SCHEMA.items():
+            with self.subTest(table=table):
+                self.st._req("GET", table, query=f"select={columns}&limit=1")
+        for fn in self.REQUIRED_RPCS:
+            with self.subTest(rpc=fn):
+                status, _, _ = self.st._http("POST", f"/rest/v1/rpc/{fn}",
+                                              _j.dumps({"p_team": self.team}).encode(), headers)
+                self.assertLess(status, 400, f"필수 Supabase RPC 누락/권한 오류: {fn} (HTTP {status})")
+
+    def test_two_team_write_read_change_and_cleanup(self):
+        from prism.store import content_hash
+
+        def pair(title, grade):
+            content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문"}
+            out = {"quality_meta": {"finalGrade": grade, "review": "yellow"}, "item_meta": {},
+                   "trace": {"model": "contract-scope", "version": 1}}
+            return content, out
+
+        a, b = pair("계약-팀A-격리", "G"), pair("계약-팀B-격리", "R")
+        ha, hb = content_hash(a[0]), content_hash(b[0])
+        self.st.save_dedup([a], "scope-a", source="계약", team=self.team)
+        self.st.save_dedup([b], "scope-b", source="계약", team=self.other_team)
+        rows_a = {r["hash"] for r in self.st.recent_meta(200, team=self.team)}
+        rows_b = {r["hash"] for r in self.st.recent_meta(200, team=self.other_team)}
+        self.assertIn(ha, rows_a)
+        self.assertNotIn(hb, rows_a)
+        self.assertIn(hb, rows_b)
+        self.assertNotIn(ha, rows_b)
+        self.st.update_quality(ha, "R", team=self.team)
+        self.assertEqual(next(r for r in self.st.recent_meta(200, team=self.team) if r["hash"] == ha)["grade"], "R")
+        self.assertTrue(self.st.remove_content(ha, team=self.team))
+        self.assertNotIn(ha, {r["hash"] for r in self.st.recent_meta(200, team=self.team)})
+        self.assertIn(hb, {r["hash"] for r in self.st.recent_meta(200, team=self.other_team)})
+
+    def test_mcp_key_lifecycle_is_team_scoped(self):
+        import secrets
+        key_a, key_b = "ct_" + secrets.token_hex(12), "ct_" + secrets.token_hex(12)
+        expires = time.time() + 3600
+        self.st.mcp_key_add(self.uid, self.team, key_a, secrets.token_hex(32), "ct_a", "contract", expires)
+        self.st.mcp_key_add(self.other_uid, self.other_team, key_b, secrets.token_hex(32), "ct_b", "contract", expires)
+        self.assertEqual([r["key_id"] for r in self.st.mcp_keys_for(self.uid, self.team)], [key_a])
+        self.assertEqual([r["key_id"] for r in self.st.mcp_keys_for(self.other_uid, self.other_team)], [key_b])
+        self.assertFalse(self.st.mcp_key_revoke(key_b, self.team, self.uid))
+        self.assertFalse(self.st.mcp_key_find(key_id=key_b)["revoked"])
+        self.assertTrue(self.st.mcp_key_revoke(key_a, self.team, self.uid))
+        self.assertTrue(self.st.mcp_key_find(key_id=key_a)["revoked"])
 
 
 class TestSupastoreSystemEventNull(unittest.TestCase):
