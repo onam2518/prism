@@ -380,6 +380,11 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "")
                 return
             st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
             rep = LO.learning_batch(team, model=model)
+            if not rep.get("ok"):
+                st.autopilot_update(rid, team=team, status="failed", round=rnd - 1,
+                                    error=rep.get("error") or "학습 배치 실행 실패",
+                                    history=history, finished=time.time())
+                return
             acc = rep.get("grade_accuracy")
             if acc is None:
                 st.autopilot_update(rid, team=team, status="failed",

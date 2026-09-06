@@ -111,7 +111,9 @@ def seed(team=None, verbose=True) -> dict:
                     hashes["구단, 간판 수비수와 3년 재계약 공식 발표"]], "eval", team=team)
 
     # ⑤ 학습 반영 1회(골든 승격 + batch_seq → 다음 실행 버전 v2 표기)
-    serve.learning_batch(team)
+    batch = serve.learning_batch(team)
+    if not batch.get("ok"):
+        return batch
 
     out = {"ok": True, "contents": len(QA_CONTENTS) + len(QA_YELLOW), "yellow": len(QA_YELLOW),
            "feedback": sum(len(v) for _, v in fb),
