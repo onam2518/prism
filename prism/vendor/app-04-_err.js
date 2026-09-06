@@ -442,6 +442,13 @@ window.PRISM_APP_PARTS.push(() => ({
           this.pollCompare(r.id);
         } catch (e) { this._err('모델 비교 시작 실패'); this.cmpBusy = false; }
       },
+      async cancelCompare() {
+        if (!this.cmpJob || !['queued', 'running'].includes(this.cmpJob.status)) return;
+        try {
+          const r = await (await this._afetch('/compare-cancel', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id: this.cmpJob.id }) })).json();
+          if (r && r.ok) this.cmpJob.status = r.status; else this._err((r && r.error) || '모델 비교 중단 요청 실패');
+        } catch (e) { this._err('모델 비교 중단 요청 실패'); }
+      },
       pollCompare(id) {
         clearTimeout(this._cmpPollT);
         const step = async () => {
@@ -451,6 +458,7 @@ window.PRISM_APP_PARTS.push(() => ({
               this.cmpJob = r.job;
               if (['done', 'budget_stop'].includes(r.job.status)) { this.cmpResult = r.job.result; this.cmpBusy = false; this.liveToast((r.job.budget_stop ? '모델 비교 예산 중단 · #' : '모델 비교 완료 · #') + id); return; }
               if (r.job.status === 'failed') { this._err('모델 비교 실패: ' + (r.job.error || '')); this.cmpBusy = false; return; }
+              if (r.job.status === 'interrupted') { this._err('모델 비교 중단: ' + (r.job.end_reason || '진척도 창에서 재시작할 수 있습니다')); this.cmpBusy = false; return; }
             } else if (r && r.error) { this._err(r.error); this.cmpBusy = false; return; }
           } catch (e) {}
           this._cmpPollT = setTimeout(step, 3000);

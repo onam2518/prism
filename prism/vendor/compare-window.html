@@ -28,13 +28,14 @@
   var opened = {}, results = {}, lastRunning = null;
   function tok() { try { return localStorage.getItem('prism_token') || ''; } catch (e) { return ''; } }
   function get(p) { return fetch(p, { headers: tok() ? { Authorization: 'Bearer ' + tok() } : {} }).then(function (r) { return r.json(); }); }
+  function post(p, body) { return fetch(p, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, tok() ? { Authorization: 'Bearer ' + tok() } : {}), body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }
   function pct(v) { return v == null ? '·' : Math.round(v * 100) + '%'; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function when(ts) { var d = new Date(ts * 1000); return (d.getMonth() + 1) + '.' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   function dur(a, b) { var s = Math.max(0, Math.round((b || Date.now() / 1000) - a)); return s < 60 ? s + '초' : Math.floor(s / 60) + '분 ' + (s % 60) + '초'; }
-  function stName(s) { return { queued: '대기', running: '실행 중', done: '완료', failed: '실패', budget_stop: '예산 중단' }[s] || s; }
-  function stBadge(s) { return { queued: 'ds-badge--neutral', running: 'ds-badge--intent', done: 'ds-badge--success', failed: 'ds-badge--error', budget_stop: 'ds-badge--warning' }[s] || 'ds-badge--neutral'; }
-  function fillCls(s) { return s === 'done' ? 'ds-progress__fill--success' : s === 'failed' ? 'ds-progress__fill--error' : 'ds-progress__fill--primary'; }
+  function stName(s) { return { queued: '대기', running: '실행 중', cancel_requested: '중단 요청', interrupted: '중단됨', done: '완료', failed: '실패', budget_stop: '예산 중단' }[s] || s; }
+  function stBadge(s) { return { queued: 'ds-badge--neutral', running: 'ds-badge--intent', cancel_requested: 'ds-badge--warning', interrupted: 'ds-badge--warning', done: 'ds-badge--success', failed: 'ds-badge--error', budget_stop: 'ds-badge--warning' }[s] || 'ds-badge--neutral'; }
+  function fillCls(s) { return s === 'done' ? 'ds-progress__fill--success' : (s === 'failed' || s === 'interrupted' ? 'ds-progress__fill--error' : 'ds-progress__fill--primary'); }
   function resultTable(r) {
     var h = '<div class="cw-res overflow-auto"><table class="ds-table"><thead><tr><th>모델</th><th>종합</th><th>게이트</th><th>등급</th><th>인텐트</th><th>카테고리</th><th>엔티티</th><th>리드문</th><th>비용($)</th><th>보통 속도</th></tr></thead><tbody>';
     (r.models || []).forEach(function (m) {
@@ -57,8 +58,11 @@
       var ms = Object.keys(j.models);
       var doneN = ms.filter(function (m) { return j.models[m].status === 'done'; }).length;
       var h = '<section class="panel"><div class="panel-hd"><b>#' + j.id + '</b><span class="ds-badge ' + stBadge(j.status) + '">' + stName(j.status) + '</span>'
-        + '<span class="meta">' + when(j.ts) + ' · 정답 ' + j.golden_n + '건 · ' + (j.scope === 'eval' ? '평가용 홀드아웃' : '전체') + ' · 모델 ' + doneN + '/' + ms.length + ' 완료 · ' + (j.status === 'running' ? '경과 ' : '소요 ') + dur(j.ts, j.finished) + '</span>';
+        + '<span class="meta">' + when(j.ts) + ' · 정답 ' + j.golden_n + '건 · ' + (j.scope === 'eval' ? '평가용 홀드아웃' : '전체') + ' · 모델 ' + doneN + '/' + ms.length + ' 완료 · ' + ((j.status === 'running' || j.status === 'cancel_requested') ? '경과 ' : '소요 ') + dur(j.ts, j.finished) + '</span>';
       if (j.status === 'done' || j.status === 'budget_stop') h += '<span class="cw-actions"><button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" data-open="' + j.id + '">' + (opened[j.id] ? '결과 접기' : '결과 보기') + '</button><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-main="' + j.id + '">메인 화면에서 자세히</button></span>';
+      if (j.status === 'queued' || j.status === 'running') h += '<span class="cw-actions"><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-cancel="' + j.id + '">중단</button></span>';
+      if (j.status === 'cancel_requested') h += '<span class="cw-actions text-xs text-muted">현재 8건 청크가 끝나면 중단합니다</span>';
+      if (j.status === 'interrupted') h += '<span class="cw-actions"><span class="text-xs text-muted">' + esc(j.end_reason || '중단됨') + '</span><button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-restart="' + j.id + '">처음부터 재시작</button></span>';
       if (j.status === 'failed') h += '<span class="cw-actions text-xs text-muted">' + esc(j.error) + '</span>';
       h += '</div><div class="panel-bd">';
       if (j.spent_usd != null) h += '<p class="text-xs text-muted">' + (j.budget_stop ? '예산 중단 · 부분 결과 · 모델 추천 보류 · ' : '') + '비용 $' + esc(j.spent_usd) + ' · 미실행 ' + esc(j.budget_skipped || 0) + '건(모델×콘텐츠)</p>';
@@ -77,13 +81,15 @@
       try { if (window.opener && !window.opener.closed) { window.opener.postMessage({ type: 'prism-compare-done', id: +b.dataset.main }, location.origin); window.opener.focus(); return; } } catch (e) {}
       window.open('/', '_blank');
     }; });
+    el.querySelectorAll('[data-cancel]').forEach(function (b) { b.onclick = function () { b.disabled = true; post('/compare-cancel', { id: +b.dataset.cancel }).then(tick); }; });
+    el.querySelectorAll('[data-restart]').forEach(function (b) { b.onclick = function () { b.disabled = true; post('/compare-restart', { id: +b.dataset.restart }).then(function (r) { if (r && r.ok) { focusId = r.id; } tick(); }); }; });
   }
   function load(id) { return get('/compare-status?id=' + id).then(function (r) { if (r.ok && r.job && r.job.result) results[id] = r.job.result; }); }
   function tick() {
     get('/compare-jobs').then(function (r) {
       if (!r.ok) { document.getElementById('list').innerHTML = '<div class="panel"><div class="panel-bd cw-empty text-muted">' + esc(r.error || '불러오지 못했습니다 · 메인 화면에 로그인돼 있어야 합니다') + '</div></div>'; return; }
       var jobs = r.jobs || [];
-      var running = jobs.some(function (j) { return j.status === 'running'; });
+      var running = jobs.some(function (j) { return j.status === 'queued' || j.status === 'running' || j.status === 'cancel_requested'; });
       var f = jobs.find(function (j) { return j.id === focusId; });
       if (f && (f.status === 'done' || f.status === 'budget_stop') && (lastRunning === null || lastRunning) && opened[focusId] == null) opened[focusId] = true;   // 지켜보던 잡이 끝나면 결과를 바로 펼친다
       var pending = jobs.filter(function (j) { return (j.status === 'done' || j.status === 'budget_stop') && opened[j.id] && !results[j.id]; }).map(function (j) { return load(j.id); });
