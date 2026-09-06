@@ -222,6 +222,8 @@ last_model_compare = LO.last_model_compare
 compare_start = LO.compare_start
 compare_status = LO.compare_status
 compare_jobs = LO.compare_jobs
+compare_cancel = LO.compare_cancel
+compare_restart = LO.compare_restart
 eval_run_start = EVO.eval_run_start
 eval_run_resume = EVO.eval_run_resume
 eval_run_cancel = EVO.eval_run_cancel
@@ -2359,6 +2361,18 @@ def _p_cookbook_apply(h, body):
 def _p_compare_start(h, body):
     data = json.loads(body or b"{}")
     return compare_start(data.get("models"), h._req_team(), scope=(data.get("scope") or "all").strip())
+
+
+@_post_route("/compare-cancel", gate="admin")        # 팀 스코프 비교 작업 취소(8건 청크 경계에서 중단)
+def _p_compare_cancel(h, body):
+    data = json.loads(body or b"{}")
+    return compare_cancel(data.get("id"), h._req_team())
+
+
+@_post_route("/compare-restart", gate="admin")       # 재기동 등으로 interrupted 된 작업의 명시 재시작
+def _p_compare_restart(h, body):
+    data = json.loads(body or b"{}")
+    return compare_restart(data.get("id"), h._req_team())
 
 
 @_post_route("/compare-models", gate="admin")        # 골든셋 다중 모델 비교

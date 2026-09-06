@@ -8,6 +8,7 @@
 serve 인스턴스가 이중 생성되는 문제를 피하기 위한 구조 · 순환 import 없음.
 """
 from __future__ import annotations
+import copy
 import json
 import threading
 import time
@@ -479,15 +480,22 @@ def _compare_prepare(models, team, scope: str):
 _COMPARE_CHUNK = 8                                    # 진척도 갱신 주기(8-way 한 바퀴 · 창에서 막대가 자주 움직이게)
 
 
-def _compare_run_model(item, rows, cfg, progress=None, *, budget, team=None):
+class _CompareInterrupted(Exception):
+    """취소 요청은 진행 중인 8건 청크가 끝난 뒤에만 멈춘다."""
+
+
+def _compare_run_model(item, rows, cfg, progress=None, *, budget=None, team=None, cancelled=None):
     """모델 1개를 청크 단위로 돌려 (지표 dict, 산출 list). progress(done) 로 진척을 알린다."""
     from . import abtest
     from . import harness as H
     model, llm, route = item
     meth = H.Methodology(name=model)
     from .runops import _log_run_ledgers
+    budget = budget or {"limit": 0.0, "spent": 0.0, "lock": threading.Lock()}
     outs = []
     for i in range(0, len(rows), _COMPARE_CHUNK):
+        if cancelled and cancelled():
+            raise _CompareInterrupted()
         with budget["lock"]:
             if budget["limit"] > 0 and budget["spent"] >= budget["limit"]:
                 break
@@ -501,6 +509,8 @@ def _compare_run_model(item, rows, cfg, progress=None, *, budget, team=None):
             _log_run_ledgers(row.get("content") or {}, out, mock=llm.mock, team=team)
         if progress:
             progress(len(outs))
+        if cancelled and cancelled():
+            raise _CompareInterrupted()
     skipped = len(rows) - len(outs)
     m = abtest.score(rows[:len(outs)], outs)
     gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
@@ -561,19 +571,128 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
     return _compare_finish(prep, done, team)
 
 
-# ── 백그라운드 큐: 모델별 진척도를 보이며 돌린다(별도 창 /vendor/compare-window.html 이 폴링) ──
-# ponytail: 잡은 프로세스 메모리(최근 20건) · 재시작하면 사라진다 · 이력이 필요해지면 eval_runs 처럼 테이블로
-_COMPARE_JOBS: dict = {}
-_COMPARE_LOCK = threading.Lock()
+# ── 백그라운드 큐: reports(model_compare_jobs) 에 최근 20개를 팀별 영속 ──
+_COMPARE_REPORT = "model_compare_jobs"
+_COMPARE_JOBS: dict = {}                           # {(team_key, id): job} · 실행 중인 스레드의 빠른 조회
+_COMPARE_LOCK = threading.RLock()
 _COMPARE_SEQ = [0]
 _COMPARE_KEEP = 20
+_COMPARE_STORE = [None]                            # 테스트/재기동의 새 Store 에 메모리 상태를 섞지 않는다
+_COMPARE_LOADED = set()
+
+
+def _compare_team(team):
+    return team or ""
+
+
+def _compare_key(team, job_id):
+    return (_compare_team(team), int(job_id))
+
+
+def _compare_store():
+    """현재 저장소가 바뀌면 옛 프로세스 캐시를 버리고 reports에서 다시 읽는다."""
+    st = _SV.get_store()
+    with _COMPARE_LOCK:
+        if _COMPARE_STORE[0] != id(st):
+            _COMPARE_STORE[0] = id(st)
+            _COMPARE_JOBS.clear()
+            _COMPARE_LOADED.clear()
+            _COMPARE_SEQ[0] = 0
+    return st
+
+
+def _compare_persist(team, st=None):
+    """팀 하나의 최근 20개 이력을 원자적인 reports 행 하나로 저장한다."""
+    st = st or _compare_store()
+    if not (st and hasattr(st, "save_report")):
+        return False
+    tk = _compare_team(team)
+    with _COMPARE_LOCK:
+        jobs = [_compare_snapshot(j) for (jt, _), j in _COMPARE_JOBS.items() if jt == tk]
+        jobs.sort(key=lambda j: -j["id"])
+        jobs = jobs[:_COMPARE_KEEP]
+        try:
+            st.save_report(_COMPARE_REPORT, {"seq": _COMPARE_SEQ[0], "jobs": jobs}, team=team)
+            return True
+        except Exception as e:
+            print(f"  [compare] 이력 저장 실패: {e}")
+            return False
+
+
+def _compare_snapshot(job):
+    """reports JSON에는 실행용 Lock 대신 현재 예산 숫자만 남긴다."""
+    d = {k: copy.deepcopy(v) for k, v in job.items() if k != "budget"}
+    budget = job.get("budget") or {}
+    lock = budget.get("lock")
+    if lock:
+        with lock:
+            d["budget"] = {"limit": budget.get("limit", 0.0), "spent": budget.get("spent", 0.0)}
+    else:
+        d["budget"] = {"limit": budget.get("limit", 0.0), "spent": budget.get("spent", 0.0)}
+    return d
+
+
+def _compare_restore(team):
+    """부팅 뒤 첫 조회에서 미종료 작업은 자동 재개하지 않고 interrupted 로 확정한다."""
+    st = _compare_store()
+    tk = _compare_team(team)
+    with _COMPARE_LOCK:
+        if tk in _COMPARE_LOADED:
+            return st
+        _COMPARE_LOADED.add(tk)
+    try:
+        rep = st.get_report(_COMPARE_REPORT, team=team) if (st and hasattr(st, "get_report")) else None
+    except Exception:
+        rep = None
+    changed = False
+    with _COMPARE_LOCK:
+        for raw in (rep or {}).get("jobs") or []:
+            try:
+                jid = int(raw.get("id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if jid < 1:
+                continue
+            job = copy.deepcopy(raw)
+            job["team"] = tk
+            job.setdefault("models", {})
+            job.setdefault("skipped", [])
+            job.setdefault("error", "")
+            job.setdefault("finished", None)
+            job.setdefault("end_reason", "")
+            budget = job.get("budget") or {}
+            job["budget"] = {"limit": budget.get("limit", 0.0), "spent": budget.get("spent", 0.0),
+                             "lock": threading.Lock()}
+            if job.get("status") in ("queued", "running", "cancel_requested"):
+                job["status"] = "interrupted"
+                job["finished"] = time.time()
+                job["end_reason"] = "서버 재시작으로 중단됨"
+                for pm in job["models"].values():
+                    if pm.get("status") in ("queued", "running"):
+                        pm["status"] = "interrupted"
+                changed = True
+            _COMPARE_JOBS[_compare_key(team, jid)] = job
+            _COMPARE_SEQ[0] = max(_COMPARE_SEQ[0], jid)
+    if changed:
+        _compare_persist(team, st)
+    return st
+
+
+def _compare_job(job_id, team):
+    try:
+        jid = int(job_id or 0)
+    except (TypeError, ValueError):
+        return None
+    return _COMPARE_JOBS.get(_compare_key(team, jid)) if jid > 0 else None
 
 
 def _job_public(j: dict, with_result: bool) -> dict:
-    d = {k: j[k] for k in ("id", "ts", "scope", "status", "golden_n", "skipped", "error", "finished")}
+    d = {k: j.get(k) for k in ("id", "ts", "scope", "status", "golden_n", "skipped", "error", "finished",
+                                "end_reason", "restart_of")}
     d["models"] = {m: dict(v) for m, v in j["models"].items()}
-    with j["budget"]["lock"]:
-        d.update(budget_usd=j["budget"]["limit"], spent_usd=round(j["budget"]["spent"], 6))
+    budget = j.get("budget") or {"limit": 0.0, "spent": 0.0, "lock": threading.Lock()}
+    with budget["lock"]:
+        d.update(budget_usd=budget["limit"], spent_usd=round(budget["spent"], 6))
     d.update(budget_stop=bool((j.get("result") or {}).get("budget_stop")),
              budget_skipped=(j.get("result") or {}).get("budget_skipped", 0))
     if with_result and j.get("result"):
@@ -581,45 +700,77 @@ def _job_public(j: dict, with_result: bool) -> dict:
     return d
 
 
-def compare_start(models, team=None, scope: str = "all") -> dict:
+def compare_start(models, team=None, scope: str = "all", restart_of=None) -> dict:
     """비교를 백그라운드로 시작 → {ok, id}. 진척은 compare_status(id) 로 본다."""
     from concurrent.futures import ThreadPoolExecutor
     prep, err = _compare_prepare(models, team, scope)
     if err:
         return err
+    st = _compare_restore(team)
     with _COMPARE_LOCK:
         _COMPARE_SEQ[0] += 1
         jid = _COMPARE_SEQ[0]
-        job = {"id": jid, "ts": time.time(), "team": team or "", "scope": scope, "status": "running",
+        job = {"id": jid, "ts": time.time(), "team": _compare_team(team), "scope": scope, "status": "running",
                "golden_n": len(prep["rows"]), "skipped": prep["skipped"], "budget": prep["budget"], "error": "", "finished": None,
                "models": {m: {"done": 0, "total": len(prep["rows"]), "status": "queued", "route": r}
-                          for m, _, r in prep["ready"]}, "result": None}
-        _COMPARE_JOBS[jid] = job
-        for old in sorted(_COMPARE_JOBS)[:-_COMPARE_KEEP]:
-            _COMPARE_JOBS.pop(old, None)
+                          for m, _, r in prep["ready"]}, "result": None,
+               "end_reason": "", "restart_of": restart_of}
+        _COMPARE_JOBS[_compare_key(team, jid)] = job
+        old = sorted((k for k in _COMPARE_JOBS if k[0] == _compare_team(team)), key=lambda k: -k[1])[_COMPARE_KEEP:]
+        for key in old:
+            _COMPARE_JOBS.pop(key, None)
+    if not _compare_persist(team, st):
+        with _COMPARE_LOCK:
+            _COMPARE_JOBS.pop(_compare_key(team, jid), None)
+        return {"ok": False, "error": "비교 이력을 저장하지 못했습니다 · 다시 시도하세요"}
 
     def _one(item):
-        pm = job["models"][item[0]]
-        pm["status"] = "running"
+        with _COMPARE_LOCK:
+            pm = job["models"][item[0]]
+            if job["status"] == "cancel_requested":
+                pm["status"] = "interrupted"
+                raise _CompareInterrupted()
+            pm["status"] = "running"
+            job["status"] = "running"
+        _compare_persist(team, st)
         def _prog(n):
-            pm["done"] = n
-        r = _compare_run_model(item, prep["rows"], prep["cfg"], _prog, budget=prep["budget"], team=team)
-        pm["status"] = "budget_stop" if r[0]["budget_stop"] else "done"
+            with _COMPARE_LOCK:
+                pm["done"] = n
+            _compare_persist(team, st)
+        r = _compare_run_model(item, prep["rows"], prep["cfg"], _prog,
+                               budget=prep["budget"], team=team,
+                               cancelled=lambda: job["status"] == "cancel_requested")
+        with _COMPARE_LOCK:
+            pm["status"] = "budget_stop" if r[0]["budget_stop"] else "done"
+        _compare_persist(team, st)
         return r
 
     def _run():
         try:
             with ThreadPoolExecutor(max_workers=max(1, min(4, len(prep["ready"])))) as ex:
                 done = list(ex.map(_one, prep["ready"]))
-            job["result"] = _compare_finish(prep, done, team)
-            job["status"] = "budget_stop" if job["result"]["budget_stop"] else "done"
+            with _COMPARE_LOCK:
+                job["result"] = _compare_finish(prep, done, team)
+                job["status"] = "budget_stop" if job["result"]["budget_stop"] else "done"
+                job["end_reason"] = "예산 한도 도달" if job["result"]["budget_stop"] else "완료"
+        except _CompareInterrupted:
+            with _COMPARE_LOCK:
+                job["status"] = "interrupted"
+                job["end_reason"] = "사용자 취소"
+                for pm in job["models"].values():
+                    if pm["status"] not in ("done", "budget_stop"):
+                        pm["status"] = "interrupted"
         except Exception as e:                    # 무음 실패 방지: 창에 사유를 보인다
-            job["status"] = "failed"
-            job["error"] = str(e)[:300]
-            for pm in job["models"].values():
-                if pm["status"] != "done":
-                    pm["status"] = "failed"
-        job["finished"] = time.time()
+            with _COMPARE_LOCK:
+                job["status"] = "failed"
+                job["error"] = str(e)[:300]
+                job["end_reason"] = "실행 오류"
+                for pm in job["models"].values():
+                    if pm["status"] not in ("done", "budget_stop"):
+                        pm["status"] = "failed"
+        with _COMPARE_LOCK:
+            job["finished"] = time.time()
+        _compare_persist(team, st)
 
     threading.Thread(target=_run, name=f"prism-compare-{jid}", daemon=True).start()
     return {"ok": True, "id": jid, "models": list(job["models"]), "golden_n": len(prep["rows"]),
@@ -627,16 +778,48 @@ def compare_start(models, team=None, scope: str = "all") -> dict:
 
 
 def compare_status(job_id, team=None) -> dict:
-    j = _COMPARE_JOBS.get(int(job_id or 0))
-    if not j or (j["team"] or "") != (team or ""):
-        return {"ok": False, "error": "그런 비교 작업이 없습니다(서버 재시작으로 사라졌을 수 있음)"}
+    _compare_restore(team)
+    j = _compare_job(job_id, team)
+    if not j:
+        return {"ok": False, "error": "그런 비교 작업이 없습니다"}
     return {"ok": True, "job": _job_public(j, with_result=True)}
 
 
 def compare_jobs(team=None) -> dict:
     """이 팀의 최근 비교 작업 목록(최신순 · 결과 본문 없이)."""
-    js = [_job_public(j, False) for j in _COMPARE_JOBS.values() if (j["team"] or "") == (team or "")]
+    _compare_restore(team)
+    tk = _compare_team(team)
+    js = [_job_public(j, False) for (jt, _), j in _COMPARE_JOBS.items() if jt == tk]
     return {"ok": True, "jobs": sorted(js, key=lambda d: -d["id"])}
+
+
+def compare_cancel(job_id, team=None) -> dict:
+    """취소 요청만 기록하고 실행 스레드는 다음 8건 청크 경계에서 interrupted 로 끝낸다."""
+    st = _compare_restore(team)
+    with _COMPARE_LOCK:
+        j = _compare_job(job_id, team)
+        if not j:
+            return {"ok": False, "error": "그런 비교 작업이 없습니다"}
+        if j["status"] not in ("queued", "running", "cancel_requested"):
+            return {"ok": False, "error": "종료된 비교 작업입니다"}
+        j["status"] = "cancel_requested"
+        j["end_reason"] = "사용자 취소 요청"
+    if not _compare_persist(team, st):
+        return {"ok": False, "error": "취소 요청을 저장하지 못했습니다 · 다시 시도하세요"}
+    return {"ok": True, "id": j["id"], "status": "cancel_requested"}
+
+
+def compare_restart(job_id, team=None) -> dict:
+    """재시작은 명시 요청만 허용하며, 기존 부분 결과를 자동 재개하지 않는다."""
+    _compare_restore(team)
+    with _COMPARE_LOCK:
+        j = _compare_job(job_id, team)
+        if not j:
+            return {"ok": False, "error": "그런 비교 작업이 없습니다"}
+        if j.get("status") != "interrupted":
+            return {"ok": False, "error": "중단된 비교 작업만 다시 시작할 수 있습니다"}
+        models, scope = list(j.get("models") or {}), j.get("scope") or "all"
+    return compare_start(models, team, scope=scope, restart_of=j["id"])
 
 
 def last_model_compare(team=None) -> dict:
