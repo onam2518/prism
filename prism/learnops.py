@@ -740,22 +740,19 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     return out
 
 
-_BATCH_LOCKS = {}
-_BATCH_LOCKS_GUARD = threading.Lock()
+_BATCH_LOCK = threading.Lock()
 
 
 def learning_batch(team=None, models=None, model: str = "") -> dict:
-    """모든 배치 호출자의 팀별 공통 진입점. 실행 중이면 기다리지 않고 거절한다."""
+    """공유 프롬프트의 평가·반영·원복을 보호한다. 실행 중이면 팀과 무관하게 거절한다."""
     # ponytail: 단일 Python 프로세스만 보호 · 복수 프로세스/인스턴스 도입 시 DB lease로 교체.
-    with _BATCH_LOCKS_GUARD:
-        lock = _BATCH_LOCKS.setdefault(team or None, threading.Lock())
-    if not lock.acquire(blocking=False):
+    if not _BATCH_LOCK.acquire(blocking=False):
         return {"ok": False, "busy": True,
-                "error": "이 팀의 학습 배치가 이미 실행 중입니다 · 완료 후 다시 시도하세요"}
+                "error": "학습 배치가 이미 실행 중입니다 · 팀 간 프롬프트를 공유하므로 완료 후 다시 시도하세요"}
     try:
         return _learning_batch(team, models, model)
     finally:
-        lock.release()
+        _BATCH_LOCK.release()
 
 
 def _learning_batch(team=None, models=None, model: str = "") -> dict:

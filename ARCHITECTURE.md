@@ -82,9 +82,10 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   런타임에 참조한다. 순환 import 를 피한 구조이므로 유지.
 - 집계 캐시 `_agg_cached`(+`_agg_bump`), 인입 잡 `_INGEST_STATE`, SSE 구독자 목록도
   serve 전역 — 도메인 추출 시 이 상태들은 serve 에 남기고 함수만 옮긴다.
-- 학습 배치의 수동 API·예약·오토파일럿·QA 시드는 `learnops.learning_batch`의 팀별
-  nonblocking 잠금을 공유한다. busy 응답은 `ok=false, busy=true`이며 예약은 일정을 유지하고
-  오토파일럿은 실패로 종료한다. 보호 범위는 단일 Python 프로세스이며 복수 인스턴스에는 DB lease가 필요하다.
+- 학습 배치의 수동 API·예약·오토파일럿·QA 시드는 `learnops.learning_batch`의 프로세스 전체
+  nonblocking 잠금을 공유한다. `PR.LEARNED`·`PR.LEARNED_BY_MODEL`이 팀 간 전역 상태이므로
+  다른 팀의 평가·반영·원복도 동시에 실행하지 않는다. busy 응답은 `ok=false, busy=true`이며
+  예약은 일정을 유지하고 오토파일럿은 실패로 종료한다. 복수 프로세스·인스턴스에는 DB lease가 필요하다.
 
 ## 검수 보조 에이전트 모델 (설정 계약 · 두 모듈이 의존)
 

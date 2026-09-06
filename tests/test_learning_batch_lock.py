@@ -1,13 +1,13 @@
-"""모든 학습 배치 호출자의 팀별 중복 거절 · 재시도 계약 (실 LLM 없음)."""
+"""공유 프롬프트를 보호하는 모든 학습 배치 호출자의 중복 거절 · 재시도 계약 (실 LLM 없음)."""
 import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from prism import evalops, learnops, qa_seed, serve
+from prism import evalops, learnops, prompts, qa_seed, serve
 from prism.store import Store
 
 
@@ -51,11 +51,13 @@ class TestLearningBatchLock(unittest.TestCase):
             self.assertTrue(learnops.learning_batch("")["busy"])
             self.assertEqual(work.call_count, 1)
 
-    def test_teams_can_run_independently(self):
+    def test_other_team_is_busy_then_can_retry_with_model(self):
         with self.running_batch("team-A") as work:
+            self.assertTrue(learnops.learning_batch("team-B", ["m"], "chosen")["busy"])
+            self.assertEqual(work.call_count, 1)
+        with patch.object(learnops, "_learning_batch", return_value={"ok": True}) as work:
             self.assertTrue(learnops.learning_batch("team-B", ["m"], "chosen")["ok"])
-            work.assert_called_with("team-B", ["m"], "chosen")
-            self.assertEqual(work.call_count, 2)
+            work.assert_called_once_with("team-B", ["m"], "chosen")
 
     def test_exception_releases_lock(self):
         for error in (RuntimeError("batch failed"), KeyboardInterrupt()):
@@ -142,3 +144,59 @@ class TestLearningBatchLock(unittest.TestCase):
                 self.assertEqual(run["round"], 1)
                 self.assertEqual(len(run["history"]), 1)
                 self.assertEqual(run["best_accuracy"], 0.7)
+
+    def test_cross_team_cannot_overlap_shared_prompt_rollback(self):
+        evaluating, release = threading.Event(), threading.Event()
+        eval_calls, compiled = {}, []
+        original = {"analyze": "original"}
+        original_models = {"model": {"analyze": "original-model"}}
+
+        def compile_batch(team):
+            compiled.append(team)
+            prompts.LEARNED = {"analyze": team}
+            prompts.LEARNED_BY_MODEL = {"model": {"analyze": team}}
+            return {"ok": True}
+
+        def evaluate(team, model=""):
+            eval_calls[team] = eval_calls.get(team, 0) + 1
+            if team == "team-A" and eval_calls[team] == 2:
+                evaluating.set()
+                if not release.wait(5):
+                    raise TimeoutError("test did not release evaluation")
+                accuracy = 0.5  # A must roll both global prompt maps back.
+            else:
+                accuracy = 0.9 if eval_calls[team] == 1 else 1.0
+            return {"ok": True, "grade_accuracy": accuracy, "evaluated": 10}
+
+        sv = SimpleNamespace(award_quest_bonus=Mock(), get_store=lambda: None,
+                             _report_save=Mock(), _agg_bump=Mock(), broadcast=Mock())
+        with ExitStack() as patches:
+            for obj, name, value in (
+                    (prompts, "LEARNED", original),
+                    (prompts, "LEARNED_BY_MODEL", original_models),
+                    (learnops, "_SV", sv),
+                    (learnops, "_LAST_LEARN_REPORT", {}),
+                    (learnops, "build_golden_from_reviews", Mock(return_value={"confirmed": 0})),
+                    (learnops, "snapshot_prompts", Mock(return_value={})),
+                    (learnops, "meta_compile_run", compile_batch),
+                    (learnops, "eval_golden", evaluate)):
+                patches.enter_context(patch.object(obj, name, value))
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                first = pool.submit(learnops.learning_batch, "team-A")
+                try:
+                    self.assertTrue(evaluating.wait(2))
+                    self.assertTrue(learnops.learning_batch("team-B")["busy"])
+                    self.assertEqual(compiled, ["team-A"])
+                    self.assertNotIn("team-B", eval_calls)
+                    self.assertEqual(prompts.LEARNED, {"analyze": "team-A"})
+                    self.assertEqual(prompts.LEARNED_BY_MODEL, {"model": {"analyze": "team-A"}})
+                finally:
+                    release.set()
+                    report = first.result(timeout=2)
+            self.assertTrue(report["improve"]["reverted"])
+            self.assertEqual(prompts.LEARNED, original)
+            self.assertEqual(prompts.LEARNED_BY_MODEL, original_models)
+            self.assertTrue(learnops.learning_batch("team-B")["ok"])
+            self.assertEqual(compiled, ["team-A", "team-B"])
+            self.assertEqual(prompts.LEARNED, {"analyze": "team-B"})
+            self.assertEqual(prompts.LEARNED_BY_MODEL, {"model": {"analyze": "team-B"}})
