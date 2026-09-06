@@ -1,5 +1,8 @@
 # 위젯형 SaaS · 표준 디자인 정책 · 가이드
 
+> 운영 적용 기준 (2026-09-06): [DESIGN_COMPONENTS.md](../DESIGN_COMPONENTS.md)가 운영 Prism의 최종 컴포넌트 계약입니다. 구현 원천은 `prism/ui/NN-*.html` → `prism/page.py` 합성, `prism/vendor/ds-theme.css`·`ds-components.css`·`app.css`, Alpine `app-NN-*.js`입니다. 아래 위젯 홈·Anchor 예시는 참고 설계이며 운영 화면의 구조·브랜드 변경 지시가 아닙니다. 운영 폰트는 본문 Pretendard, 제목 GmarketSans, 코드의 기존 모노스페이스를 유지하고 React·새 폰트·의존성을 도입하지 않습니다.
+
+
 > 위젯(widget)을 1급 단위로 삼는 SaaS 제품의 **표준 디자인 정책**. Prism(이미지→메타 파이프라인)을 레퍼런스 구현으로 일반화했다.
 > 이 문서는 제품 비종속 표준이다. 제품별 적용은 토큰·카테고리·캐릭터만 갈아끼운다.
 

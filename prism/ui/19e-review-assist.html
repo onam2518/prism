@@ -47,8 +47,8 @@
                화면은 닫힘). 자리 기억 스타일은 그대로 두고 여닫기만 x-if 로 옮겨 그 겹침을 없앤다.
                닫으면 DOM 에서 사라지지만 대화 내용·입력값은 상태(asxMsgs·asxQ)에 있어 잃지 않는다. -->
           <template x-if="asxOpen">
-          <div class="asxchat" x-ref="asxchat"
-               x-bind:style="asxStyle()" role="dialog" aria-label="검수 보조 대화창">
+          <div class="asxchat" data-dialog-companion x-ref="asxchat"
+               x-bind:style="asxStyle()" x-on:keydown.escape.stop="asxOpen=false; asxSave(); $nextTick(() => document.querySelector('.asxfab')?.focus())" role="dialog" aria-label="검수 보조 대화창">
             <div class="asxchat__hd" x-on:pointerdown="asxDragStart($event)">
               <span class="asxchat__char"><img x-bind:src="charImg(reviewerChar)" alt="" aria-hidden="true"
                     x-on:error="$event.target.style.display='none'"></span>

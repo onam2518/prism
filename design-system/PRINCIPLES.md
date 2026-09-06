@@ -1,5 +1,8 @@
 # Prism 디자인 원칙
 
+> 운영 적용 기준 (2026-09-06): [DESIGN_COMPONENTS.md](../DESIGN_COMPONENTS.md)가 운영 Prism의 최종 컴포넌트 계약입니다. 구현 원천은 `prism/ui/NN-*.html` → `prism/page.py` 합성, `prism/vendor/ds-theme.css`·`ds-components.css`·`app.css`, Alpine `app-NN-*.js`입니다. 아래 위젯 홈·Anchor 예시는 참고 설계이며 운영 화면의 구조·브랜드 변경 지시가 아닙니다. 운영 폰트는 본문 Pretendard, 제목 GmarketSans, 코드의 기존 모노스페이스를 유지하고 React·새 폰트·의존성을 도입하지 않습니다.
+
+
 Perplexity 정렬 비주얼(`DESIGN.md`) 위에 얹는 **UX·플로우 원칙**. 비주얼이 "어떻게 보이나"라면, 이 문서는 "사용자가 어떻게 흐르나"를 정한다.
 
 > 한 줄 강령 · **각 단계는 명확하게 파악되고, 컴포넌트는 사용 순서를 따라 간결·명확·심플하다.**
@@ -18,7 +21,7 @@ Perplexity 정렬 비주얼(`DESIGN.md`) 위에 얹는 **UX·플로우 원칙**.
 
 ## 1. 단계(Step)를 명확하게 만드는 규칙
 
-1. **한 화면 = 한 주요 행동.** 주 CTA(Blue primary)는 화면당 하나. 나머지는 secondary/ghost로 내린다.
+1. **한 화면 = 한 주요 행동.** 주 CTA(Blue primary)는 동시에 활성인 작업 맥락당 하나. 배타 화면과 모달은 별도 맥락이며 반복 행 이동은 실행 CTA 수에 포함하지 않는다. 나머지는 secondary/ghost로 내린다.
 2. **현재 위치를 항상 표시.** 멀티스텝은 단계 라벨(`1 / 3`)이나 활성 탭으로 "여기"를 고정한다.
 3. **상태를 숨기지 않는다.** 로딩·진행·완료·에러는 각각 고유한 시각 상태를 가진다(아래 6장).
 4. **다음 행동을 미리 보여준다.** 빈 상태(empty)도 "무엇을 하면 되는지" 한 줄로 안내한다. 사과하지 않는다.
@@ -38,7 +41,7 @@ Perplexity 정렬 비주얼(`DESIGN.md`) 위에 얹는 **UX·플로우 원칙**.
 | 순서 | 단계 | 주 컴포넌트 | 역할 |
 |---|---|---|---|
 | 1 | **시작** | `Input(composer)` | 사용자의 첫 입력 · 화면의 주인공, 가장 크게 |
-| 2 | **범위 좁히기** | `Button(pill)` | 모드/필터 선택. 입력 바로 곁, 선택은 1개 활성 |
+| 2 | **범위 좁히기** | `Button(pill)` | 모드 이동은 underline 탭, 단일 지정은 selctl, 다중 토글은 srcfilter__chip |
 | 3 | **실행** | `Button(primary)` | 단 하나의 Blue CTA로 진행 |
 | 4 | **진행/대기** | 상태(skeleton·streaming) | 결과가 오는 중임을 명확히 |
 | 5 | **결과 읽기** | `Card(answer)` + `ds-answer` | 콘텐츠가 주인공, 68ch 리딩 폭 |

@@ -72,7 +72,7 @@
             <div class="arena-hero__target">팀 평균 <b x-text="teamProgressPct + '%'"></b></div>
           </div>
           <!-- 게이지: 내 진척 채움 + 팀 평균 마커 -->
-          <div class="arena-gauge">
+          <div class="arena-gauge" role="progressbar" aria-label="내 검수 진행" aria-valuemin="0" aria-valuemax="100" x-bind:aria-valuenow="myProgressPct" x-bind:aria-valuetext="myProgressPct + '% · 팀 평균 ' + teamProgressPct + '%'">
             <div class="arena-gauge__fill" x-bind:style="'width:' + myProgressPct + '%'"></div>
             <div class="arena-gauge__target" x-bind:style="'left:' + teamProgressPct + '%'" title="팀 평균"></div>
           </div>
@@ -126,7 +126,7 @@
             </div>
             <div class="panel-bd">
               <div x-show="nickEdit" x-cloak class="flex flex-wrap items-center gap-2" style="padding-bottom:10px">
-                <input x-model="nickNew" class="field" style="max-width:200px;height:32px" maxlength="20" placeholder="새 닉네임" x-on:keydown.enter="saveNick()">
+                <input aria-label="새 닉네임" x-model="nickNew" class="field" style="max-width:200px;height:32px" maxlength="20" placeholder="새 닉네임" x-on:keydown.enter="saveNick()">
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="nickBusy" x-on:click="saveNick()" x-text="nickBusy ? '저장 중…' : '저장'"></button>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="nickEdit = false; nickMsg = ''">취소</button>
                 <span class="text-xs text-muted" x-text="nickMsg"></span>
@@ -144,7 +144,7 @@
                     <div class="charcard__info">
                       <div class="charcard__title"><span x-text="levelEmoji(arenaMe.level)"></span> <span x-text="levelTitle(arenaMe.level)"></span> <span class="charcard__flow" x-text="flowStageKr(arenaMe.level)"></span></div>
                       <div class="charcard__xpwrap">
-                        <div class="charcard__xpbar"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
+                        <div class="charcard__xpbar" role="progressbar" aria-label="다음 레벨까지 경험치" aria-valuemin="0" aria-valuemax="100" x-bind:aria-valuenow="xpPct(arenaMe)"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
                         <div class="charcard__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
                       </div>
                       <div class="charcard__stats">
@@ -157,7 +157,7 @@
                       <template x-if="missionList.length">
                         <div class="charcard__missions">
                           <template x-for="ms in missionList" x-bind:key="ms.id">
-                            <div class="charcard__mission" x-bind:class="ms.completed ? 'is-done' : ''" x-on:click="selectMod('review')">
+                            <div class="charcard__mission" role="button" tabindex="0" x-on:keydown.enter="$el.click()" x-on:keydown.space.prevent="$el.click()" x-bind:class="ms.completed ? 'is-done' : ''" x-on:click="selectMod('review')">
                               <span class="charcard__mission-ic" x-text="ms.completed ? '✅' : '🎯'"></span>
                               <span class="charcard__mission-tx" x-text="ms.label + ' · ' + ms.done + '/' + ms.total"></span>
                               <span class="charcard__mission-cta" x-text="ms.completed ? ('+' + ms.bonus + 'pt') : '도전 →'"></span>
@@ -166,7 +166,7 @@
                         </div>
                       </template>
                       <template x-if="!missionList.length">
-                        <div class="charcard__mission" x-on:click="selectMod(todayMission.to)">
+                        <div class="charcard__mission" role="button" tabindex="0" x-on:keydown.enter="$el.click()" x-on:keydown.space.prevent="$el.click()" x-on:click="selectMod(todayMission.to)">
                           <span class="charcard__mission-ic">🎯</span>
                           <span class="charcard__mission-tx" x-text="todayMission.txt"></span>
                           <span class="charcard__mission-cta" x-text="todayMission.cta + ' →'"></span>
@@ -193,7 +193,7 @@
               <div x-show="reviewer && !arenaMe" class="charcard charcard--egg" data-tier="0">
                 <div class="charcard__avatar"><img x-bind:src="charImg(reviewerChar)" alt="" style="opacity:.5;filter:grayscale(1)"><span class="charcard__lvl">Lv.0</span></div>
                 <div class="charcard__title">🥚 검수 새싹</div>
-                <div class="charcard__hint"><b class="text-ink" x-text="reviewer"></b> 의 첫 검수로 캐릭터를 깨워요 · <span class="arena-quest" x-on:click="selectMod('review')">검수하러 가기 →</span></div>
+                <div class="charcard__hint"><b class="text-ink" x-text="reviewer"></b> 의 첫 검수로 캐릭터를 깨워요 · <span class="arena-quest" role="button" tabindex="0" x-on:keydown.enter="$el.click()" x-on:keydown.space.prevent="$el.click()" x-on:click="selectMod('review')">검수하러 가기 →</span></div>
               </div>
             </div>
           </section>

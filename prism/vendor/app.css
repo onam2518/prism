@@ -1592,3 +1592,5 @@
   .ar-legend i{width:11px;height:11px;border-radius:3px}
   .ar-pager{display:flex;align-items:center;justify-content:center;gap:12px}
   .ar-pager .meta{font-variant-numeric:tabular-nums}
+
+:where([role='button']):focus-visible{outline:none;box-shadow:var(--ds-focus-ring)}

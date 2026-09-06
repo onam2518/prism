@@ -89,3 +89,12 @@
 - 새 컴포넌트/상태 추가 시: 이 문서에 행 추가 → 구현 → 스모크에 렌더 마커 추가.
 - 상태 색·간격을 바꿀 때는 컴포넌트 CSS 가 아니라 토큰(ds-theme)에서 바꾼다.
 - 근거 참조: Astryx 컴포넌트 상태 매트릭스 관례(문서 형식만 차용 · React 계층 미도입).
+
+## 키보드·모달 계약
+
+- 운영 마크업 원천은 `prism/ui/NN-*.html`과 `prism/page_mobile.py`, 공유 키보드는 `prism/vendor/app-19-ui-a11y.js`입니다. 탐색용 design-system 예시보다 이 문서와 운영 CSS가 우선합니다.
+- 탭은 `role=tablist/tab/tabpanel`, 안정적인 id, `aria-controls`·`aria-labelledby`·`aria-selected`, 선택 탭 `tabindex=0`을 연결합니다. 가로 ArrowLeft/Right(세로 Up/Down), Home/End는 선택과 포커스를 함께 이동합니다.
+- 모달은 이름 있는 `role=dialog` 또는 `alertdialog` + `aria-modal=true`, 기존 취소·닫기 버튼에 `data-dialog-close`를 붙입니다. 초기 포커스·Tab 순환·Escape 닫기·열었던 위치 복귀를 공유합니다. 위험 확인은 취소에 `data-dialog-initial-focus`를 붙입니다. 배타적으로 전환하는 화면은 열린 최상위 모달만 가둡니다.
+- 함께 비교하는 상세·원문은 `data-dialog-scope` 영역에서 이동합니다. 비모달 검수 보조·정책 도움말은 `aria-modal`을 붙이지 않고 독립 포커스를 가두지 않습니다. `data-dialog-companion`으로 표시해 열린 상세와 함께 키보드로 이동할 수 있습니다.
+- visible label과 입력 for/id 연결, 진행 막대 role/범위/현재값, 오류 alert·피드백 status를 제공합니다.
+- primary는 동시에 활성인 작업 맥락당 한 개입니다. 배타 탭·모달은 별도 맥락이며 반복 행 이동을 경쟁 실행 CTA로 세지 않습니다.
