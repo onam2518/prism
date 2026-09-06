@@ -12,16 +12,16 @@
                 화면이 말해야 한다 — 아래 '대리 발급' 경고 블록을 지우지 말 것.
            파일명이 20-ingest-policy.html 보다 앞이어야 x-data 스코프 안에 든다(ARCHITECTURE 주의 ①). -->
       <template x-if="mod === 'lab'">
-        <div x-show="labTab === 'mcp'" x-cloak class="w-full space-y-4">
+        <div x-show="labTab === 'mcp'" x-cloak class="w-full space-y-4" id="lab-panel-mcp" role="tabpanel" aria-labelledby="lab-tab-mcp">
 
         <!-- 서브메뉴(실험실 하위 화면 관례 · 10-usermeta.html 과 같은 형태) -->
-        <div class="flex items-center gap-2">
-          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labMcpView==='keys' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labMcpView='keys'; mkLoad()">내 키</button>
-          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labMcpView==='connect' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labMcpView='connect'">연결 방법</button>
+        <div class="evaltabs evaltabs--sub" role="tablist" aria-label="MCP 키">
+          <button type="button" id="mcp-tab-keys" role="tab" aria-controls="mcp-panel-keys" x-bind:aria-selected="labMcpView==='keys'" x-bind:class="labMcpView==='keys' ? 'sel' : ''" x-on:click="labMcpView='keys'; mkLoad()">내 키</button>
+          <button type="button" id="mcp-tab-connect" role="tab" aria-controls="mcp-panel-connect" x-bind:aria-selected="labMcpView==='connect'" x-bind:class="labMcpView==='connect' ? 'sel' : ''" x-on:click="labMcpView='connect'">연결 방법</button>
         </div>
 
         <!-- ── 서브뷰: 내 키(발급·폐기) ── -->
-        <div x-show="labMcpView === 'keys'" class="w-full space-y-4">
+        <div x-show="labMcpView === 'keys'" class="w-full space-y-4" id="mcp-panel-keys" role="tabpanel" aria-labelledby="mcp-tab-keys">
 
         <section class="panel"><div class="panel-hd"><b>MCP 파트너 키</b><span class="meta">외부 서비스·다른 팀이 프리즘 MCP 를 부를 때 쓰는 키입니다</span><span class="ds-badge ds-badge--neutral ml-auto">내 키만</span></div>
           <div class="panel-bd">
@@ -43,8 +43,8 @@
             </div>
 
             <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-              <span class="selctl"><span class="selctl__lbl">용도 메모</span><input class="field" style="width:240px" x-model="mkNew.label" placeholder="ex) 검색팀 파이프라인"></span>
-              <span class="selctl"><span class="selctl__lbl" x-text="'만료(일 · 최대 ' + (mkMeta.max_days || 365) + ')'"></span><input class="field tnum" style="width:120px" type="number" min="1" x-bind:max="mkMeta.max_days || 365" x-model="mkNew.days"></span>
+              <label class="selctl"><span class="selctl__lbl">용도 메모</span><input class="field" style="width:240px" x-model="mkNew.label" placeholder="ex) 검색팀 파이프라인"></label>
+              <label class="selctl"><span class="selctl__lbl" x-text="'만료(일 · 최대 ' + (mkMeta.max_days || 365) + ')'"></span><input class="field tnum" style="width:120px" type="number" min="1" x-bind:max="mkMeta.max_days || 365" x-model="mkNew.days"></label>
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="mkBusy || mkFull()" x-on:click="mkIssue()" x-text="mkBusy ? '발급 중…' : '내 키 발급'"></button>
               <span class="text-xs text-muted" x-show="mkFull()" x-text="'키는 한 사람당 ' + (mkMeta.max || 5) + '개까지입니다 · 쓰지 않는 키를 폐기하세요'"></span>
               <span class="text-xs text-muted" x-show="mkMsg" x-text="mkMsg"></span>
@@ -77,7 +77,7 @@
                   <span class="text-xs text-muted" x-text="k.label || '메모 없음'"></span>
                   <span class="ds-badge tnum" x-bind:class="mkState(k)" x-text="mkLeft(k)"></span>
                   <span style="margin-left:auto">
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!k.revoked" data-tip="이 키를 쓰는 호출이 즉시 끊깁니다 · 되돌릴 수 없습니다" data-tip-pos="top" x-on:click="mkRevoke(k)">폐기</button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="!k.revoked" data-tip="이 키를 쓰는 호출이 즉시 끊깁니다 · 되돌릴 수 없습니다" data-tip-pos="top" x-on:click="mkRevoke(k)">폐기</button>
                   </span>
                 </div>
                 <div class="text-xs text-muted tnum" style="margin-top:6px"
@@ -89,7 +89,7 @@
         </div>
 
         <!-- ── 서브뷰: 연결 방법 ── -->
-        <div x-show="labMcpView === 'connect'" class="w-full space-y-4">
+        <div x-show="labMcpView === 'connect'" class="w-full space-y-4" id="mcp-panel-connect" role="tabpanel" aria-labelledby="mcp-tab-connect">
         <section class="panel"><div class="panel-hd"><b>연결 방법</b><span class="meta">Claude 등 MCP 클라이언트에서 프리즘에 붙이는 절차</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
@@ -97,7 +97,7 @@
               <li><b>② 클라이언트에 등록</b>: 아래 한 줄이면 됩니다.</li>
               <li><b>③ 확인</b>: 도구 목록에 프리즘 도구가 보이면 연결된 것입니다 · 보이는 도구는 <b>키에 박힌 권한</b>에 따라 다릅니다.</li>
             </ul>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>등록<span class="codeblock__stage">CLI</span></div><textarea readonly spellcheck="false" style="min-height:44px" x-bind:value="'claude mcp add --transport http prism ' + location.origin + '/mcp --header \'Authorization: Bearer pmk_…\''"></textarea></div>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>등록<span class="codeblock__stage">CLI</span></div><textarea aria-label="MCP 클라이언트 등록 명령" readonly spellcheck="false" style="min-height:44px" x-bind:value="'claude mcp add --transport http prism ' + location.origin + '/mcp --header \'Authorization: Bearer pmk_…\''"></textarea></div>
             <ul class="ds-bullets" style="margin-top:11px">
               <li>인증 헤더: <code class="tnum">Authorization: Bearer pmk_…</code> · 키 없이 부르면 전부 거절됩니다.</li>
               <li>팀은 <b>넘기지 않습니다</b> · 키에 박힌 팀의 데이터만 보입니다(도구 인자로 팀을 받지 않습니다).</li>

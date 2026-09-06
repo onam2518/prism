@@ -5,10 +5,10 @@
       <!-- 미디어 탭은 콘텐츠 관리 › 콘텐츠 추가로 승격(03-run.html) · 콘텐츠 에이전트는 폐기 -->
       <template x-if="mod === 'lab'">
         <div class="w-full" style="margin-bottom:10px">
-        <div class="evaltabs">
-          <button type="button" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
-          <button type="button" x-bind:class="labTab==='mcp'?'sel':''" x-on:click="labTab='mcp'; mkLoad()">MCP 키</button>
-          <button type="button" x-bind:class="labTab==='auto'?'sel':''" x-on:click="labTab='auto'; arInit()">AI 초안 판정</button>
+        <div class="evaltabs" role="tablist" aria-label="실험실">
+          <button type="button" id="lab-tab-user" role="tab" x-bind:aria-selected="labTab==='user'" aria-controls="lab-panel-user" x-bind:class="labTab==='user'?'sel':''" x-on:click="labTab='user'; loadUser()">사용자</button>
+          <button type="button" id="lab-tab-mcp" role="tab" x-bind:aria-selected="labTab==='mcp'" aria-controls="lab-panel-mcp" x-bind:class="labTab==='mcp'?'sel':''" x-on:click="labTab='mcp'; mkLoad()">MCP 키</button>
+          <button type="button" id="lab-tab-auto" role="tab" x-bind:aria-selected="labTab==='auto'" aria-controls="lab-panel-auto" x-bind:class="labTab==='auto'?'sel':''" x-on:click="labTab='auto'; arInit()">AI 초안 판정</button>
         </div>
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4);margin-top:10px"><li>지금 테스트 대상이 아닌 <b>탐구 요소</b>를 모아둔 공간입니다 · 테스트 대상으로 확정되면 본 메뉴로 승격합니다.</li></ul>
       </div>

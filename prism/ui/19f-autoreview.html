@@ -2,7 +2,7 @@
       <!-- 상시 적재 인박스: 검수(진척 스트립·정확/수정 배지·확신도 막대·확정 버튼·저확신 강조) +
            콘텐츠 관리(등급 dot·서비스·세그먼트 필터·서브헤더) 요소를 버무림 · 영역은 .ar-body gap 으로 띄움 -->
       <template x-if="mod === 'lab'">
-        <div x-show="labTab === 'auto'" x-cloak class="w-full">
+        <div x-show="labTab === 'auto'" x-cloak class="w-full" id="lab-panel-auto" role="tabpanel" aria-labelledby="lab-tab-auto">
 
         <section class="panel">
           <div class="panel-hd"><b>AI 초안 판정</b><span class="meta">심판 모델이 내 배정 콘텐츠를 미리 채점 · 확정은 내가</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
@@ -62,13 +62,13 @@
             </div>
 
             <!-- 세그먼트 필터: 콘텐츠 관리 evaltabs 차용 -->
-            <div class="evaltabs evaltabs--sub" x-show="arItems.length" x-cloak style="margin-bottom:0">
-              <button type="button" x-bind:class="arFilter==='all'?'sel':''" x-on:click="arSetFilter('all')">전체 <span class="cnt" x-text="arCounts().all"></span></button>
-              <button type="button" x-bind:class="arFilter==='pending'?'sel':''" x-on:click="arSetFilter('pending')">미확정 <span class="cnt" x-text="arCounts().pending"></span></button>
-              <button type="button" x-bind:class="arFilter==='low'?'sel':''" x-on:click="arSetFilter('low')">저확신 <span class="cnt" x-text="arCounts().low"></span></button>
-              <button type="button" x-bind:class="arFilter==='bad'?'sel':''" x-on:click="arSetFilter('bad')">수정 제안 <span class="cnt" x-text="arCounts().bad"></span></button>
-              <button type="button" x-show="arCounts().failed > 0" x-cloak x-bind:class="arFilter==='failed'?'sel':''" x-on:click="arSetFilter('failed')">판정 실패 <span class="cnt" x-text="arCounts().failed"></span></button>
-              <button type="button" x-bind:class="arFilter==='done'?'sel':''" x-on:click="arSetFilter('done')">확정됨 <span class="cnt" x-text="arCounts().done"></span></button>
+            <div class="evaltabs evaltabs--sub" role="group" aria-label="초안 상태 필터" x-show="arItems.length" x-cloak style="margin-bottom:0">
+              <button type="button" x-bind:aria-pressed="arFilter==='all'" x-bind:class="arFilter==='all'?'sel':''" x-on:click="arSetFilter('all')">전체 <span class="cnt" x-text="arCounts().all"></span></button>
+              <button type="button" x-bind:aria-pressed="arFilter==='pending'" x-bind:class="arFilter==='pending'?'sel':''" x-on:click="arSetFilter('pending')">미확정 <span class="cnt" x-text="arCounts().pending"></span></button>
+              <button type="button" x-bind:aria-pressed="arFilter==='low'" x-bind:class="arFilter==='low'?'sel':''" x-on:click="arSetFilter('low')">저확신 <span class="cnt" x-text="arCounts().low"></span></button>
+              <button type="button" x-bind:aria-pressed="arFilter==='bad'" x-bind:class="arFilter==='bad'?'sel':''" x-on:click="arSetFilter('bad')">수정 제안 <span class="cnt" x-text="arCounts().bad"></span></button>
+              <button type="button" x-show="arCounts().failed > 0" x-cloak x-bind:aria-pressed="arFilter==='failed'" x-bind:class="arFilter==='failed'?'sel':''" x-on:click="arSetFilter('failed')">판정 실패 <span class="cnt" x-text="arCounts().failed"></span></button>
+              <button type="button" x-bind:aria-pressed="arFilter==='done'" x-bind:class="arFilter==='done'?'sel':''" x-on:click="arSetFilter('done')">확정됨 <span class="cnt" x-text="arCounts().done"></span></button>
             </div>
 
             <!-- 인박스(서브헤더 + 표 + 요약 + 범례) -->

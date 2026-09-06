@@ -29,7 +29,7 @@
               <li>매핑 파일(xlsx/csv/tsv/jsonl)에 <b>URL(링크) 컬럼</b>과 <b>해시 또는 제목 컬럼</b>이 있으면 됩니다 · 해시가 있으면 해시 우선, 제목은 정확히 일치하는 1건에만 적용합니다(동일 제목 다건은 건너뜀).</li>
             </ul>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <input type="file" accept=".xlsx,.csv,.tsv,.jsonl,.json" x-ref="bfFile" class="text-[13px]">
+              <label class="sr-only" for="backfill-file">원문 링크 매핑 파일</label><input id="backfill-file" type="file" accept=".xlsx,.csv,.tsv,.jsonl,.json" x-ref="bfFile" class="text-[13px]">
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md disabled:opacity-50" x-bind:disabled="bfBusy" x-on:click="backfillUrls()" x-text="bfBusy ? '적용 중…' : '링크 백필 실행'"></button>
             </div>
             <div class="text-xs text-muted" style="margin-top:8px" aria-live="polite" x-text="bfMsg"></div>
@@ -61,12 +61,12 @@
                   </select></label>
                 <span class="sdot" x-bind:class="keyState(keyTarget) ? 'ok' : 'off'" style="cursor:help" x-bind:data-tip="keyState(keyTarget) ? '연결됨' : '미연결 · 키를 저장하면 연결됩니다'" data-tip-pos="top"></span>
                 <div class="keyin" style="flex:1;min-width:220px;margin:0">
-                  <input x-bind:type="keyShow[keyTarget] ? 'text' : 'password'" x-model="keyInputs[keyTarget]" x-bind:placeholder="keyDefs[keyTarget].ph" class="field" autocomplete="off">
+                  <label class="sr-only" for="api-key-value">API 키</label><input id="api-key-value" x-bind:type="keyShow[keyTarget] ? 'text' : 'password'" x-model="keyInputs[keyTarget]" x-bind:placeholder="keyDefs[keyTarget].ph" class="field" autocomplete="off">
                   <button type="button" class="eye" x-on:click="keyShow[keyTarget] = !keyShow[keyTarget]" aria-label="키 보기">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                   </button>
                 </div>
-                <button type="button" x-on:click="saveKey(keyTarget)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--primary ds-btn--s-sm disabled:opacity-50" x-text="keyState(keyTarget) ? '변경' : '저장'"></button>
+                <button type="button" x-on:click="saveKey(keyTarget)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50" x-text="keyState(keyTarget) ? '변경' : '저장'"></button>
                 <button type="button" x-show="keyState(keyTarget)" x-on:click="testConn(keyTarget)" x-bind:disabled="cfgBusy" class="ds-btn ds-btn--secondary ds-btn--s-sm disabled:opacity-50">연결 테스트</button>
                 <button type="button" x-show="keyPersisted(keyTarget)" x-on:click="forgetKey(keyTarget)" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm">삭제</button>
               </div>
@@ -86,7 +86,7 @@
                       <option value="guide_admin">관리자 가이드</option>
                     </select></label>
                   <label class="selctl" style="flex:1;min-width:240px"><span class="selctl__tag">URL</span><input type="url" x-model="teamLinks[tlTarget]" placeholder="https://…" class="w-full bg-transparent text-[13px]" style="border:none;outline:none;min-width:0"></label>
-                  <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="saveTeamLinks()">저장</button>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="saveTeamLinks()">저장</button>
                   <span class="text-xs text-muted" aria-live="polite" x-text="tlMsg || tlStatus"></span>
                 </div>
               </div>
@@ -135,15 +135,15 @@
             </ul>
             <div style="display:flex;flex-direction:column;gap:8px;max-width:720px">
               <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <input class="field" style="flex:1;min-width:260px" placeholder="메타베이스 URL (예: https://metabase.example.com)" x-model="mbUrl">
-                <input class="field" style="width:120px" placeholder="DB 번호" x-model="mbDbId" data-tip="메타베이스의 database id(정수)" data-tip-pos="top">
+                <label class="sr-only" for="metabase-url">메타베이스 URL</label><input id="metabase-url" class="field" style="flex:1;min-width:260px" placeholder="메타베이스 URL (예: https://metabase.example.com)" x-model="mbUrl">
+                <label class="sr-only" for="metabase-db-id">메타베이스 DB 번호</label><input id="metabase-db-id" class="field" style="width:120px" placeholder="DB 번호" x-model="mbDbId" data-tip="메타베이스의 database id(정수)" data-tip-pos="top">
               </div>
-              <input class="field" type="password" placeholder="API 키 · 저장된 키를 바꿀 때만 입력" x-model="mbKey" autocomplete="off">
-              <textarea class="field" rows="4" placeholder="기본 SQL (SELECT … AS id, … AS service, … AS title …)" x-model="mbQuery" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
+              <label class="sr-only" for="metabase-key">메타베이스 API 키</label><input id="metabase-key" class="field" type="password" placeholder="API 키 · 저장된 키를 바꿀 때만 입력" x-model="mbKey" autocomplete="off">
+              <label class="sr-only" for="metabase-query">기본 SQL</label><textarea id="metabase-query" class="field" rows="4" placeholder="기본 SQL (SELECT … AS id, … AS service, … AS title …)" x-model="mbQuery" style="font-family:ui-monospace,monospace;font-size:12px"></textarea>
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <button type="button" class="ds-btn ds-btn--primary" style="height:30px;padding:0 16px" x-on:click="saveMetabase()">저장</button>
+                <button type="button" class="ds-btn ds-btn--secondary" style="height:30px;padding:0 16px" x-on:click="saveMetabase()">저장</button>
                 <span class="ds-badge" x-bind:class="cfg.hasMetabaseKey ? 'ds-badge--success' : 'ds-badge--neutral'" x-text="cfg.hasMetabaseKey ? ('키 연결됨' + (cfg.metabasePersisted ? ' · 저장됨' : '')) : '키 없음'"></span>
-                <button type="button" class="copybtn" x-show="cfg.hasMetabaseKey" x-cloak x-on:click="forgetMetabaseKey()">키 삭제</button>
+                <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="cfg.hasMetabaseKey" x-cloak x-on:click="forgetMetabaseKey()">키 삭제</button>
                 <span class="text-xs text-muted" aria-live="polite" x-text="mbMsg"></span>
               </div>
             </div>
@@ -152,4 +152,3 @@
 
       </div>
       </template>
-

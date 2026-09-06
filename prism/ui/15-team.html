@@ -4,15 +4,15 @@
            잠그면, 한쪽을 끈 설정이 다른 쪽까지 숨긴다(2026-07-29 실제 사고). -->
       <template x-if="mod === 'admin'">
         <div class="w-full" style="margin-bottom:0">
-        <div class="evaltabs">
-          <button type="button" x-show="canTeamTab" x-bind:class="adminTab==='team'?'sel':''" x-on:click="adminTab='team'; loadAdmin()">팀 관리</button>
+        <div class="evaltabs" role="tablist" aria-label="운영 관리">
+          <button type="button" id="admin-tab-team" role="tab" aria-controls="admin-panel-team" x-show="canTeamTab" x-bind:aria-selected="adminTab==='team'" x-bind:class="adminTab==='team'?'sel':''" x-on:click="adminTab='team'; loadAdmin()">팀 관리</button>
           <button type="button" x-show="canCrewTab" x-bind:class="adminTab==='crew'?'sel':''"
-                  x-on:click="adminTab='crew'; loadCrew(); loadRaw()">검수운영 관리</button>
+                  id="admin-tab-crew" role="tab" aria-controls="admin-panel-crew" x-bind:aria-selected="adminTab==='crew'" x-on:click="adminTab='crew'; loadCrew(); loadRaw()">검수운영 관리</button>
         </div>
       </div>
       </template>
       <template x-if="mod === 'admin'">
-        <div x-show="adminTab === 'team' && canTeamTab" x-cloak class="w-full space-y-4">
+        <div x-show="adminTab === 'team' && canTeamTab" x-cloak class="w-full space-y-4" id="admin-panel-team" role="tabpanel" aria-labelledby="admin-tab-team">
         <section class="panel" x-show="backend !== 'supabase'"><div class="panel-hd"><b>팀 관리</b><span class="meta">로컬 단독 실행</span></div>
           <div class="panel-bd"><ul class="ds-bullets">
             <li>팀 기능(팀 생성 · 초대 코드 · 멤버 관리)은 <b>팀 모드(공유 서버)</b>에서 동작합니다.</li>
@@ -28,7 +28,7 @@
               <li>팀원은 가입 시 이 코드로 참가합니다(팀 생성은 관리자만).</li>
             </ul>
             <div style="display:flex;gap:var(--ds-space-2);flex-wrap:wrap;align-items:center">
-              <input class="field" style="flex:1;min-width:200px;height:38px" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="newTeamName" x-on:keydown.enter="createTeam()">
+              <label class="sr-only" for="new-team-name">팀 이름</label><input id="new-team-name" class="field" style="flex:1;min-width:200px;height:38px" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="newTeamName" x-on:keydown.enter="createTeam()">
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-on:click="createTeam()" x-bind:disabled="!(newTeamName||'').trim()">만들기</button>
               <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="teamMsg"></span>
             </div>
@@ -82,7 +82,7 @@
               </div>
             </div>
             <div class="ds-dialog__footer">
-              <button type="button" class="ds-btn ds-btn--primary" x-on:click="pwReset=null">확인</button>
+              <button type="button" class="ds-btn ds-btn--primary" data-dialog-close x-on:click="pwReset=null">확인</button>
             </div>
           </div>
         </div>
@@ -101,8 +101,8 @@
                   <template x-for="mid in (adminData.menuOrder||[])" x-bind:key="mid">
                     <tr style="border-top:1px solid var(--ds-hairline-soft)">
                       <td style="padding:8px" x-text="(adminData.menuLabels||{})[mid]||mid"></td>
-                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].super"></td>
-                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].admin"></td>
+                      <td style="text-align:center;padding:8px"><input type="checkbox" x-bind:aria-label="((adminData.menuLabels||{})[mid]||mid) + ' · 슈퍼관리자 메뉴 권한'" x-model="menuPermsEdit[mid].super"></td>
+                      <td style="text-align:center;padding:8px"><input type="checkbox" x-bind:aria-label="((adminData.menuLabels||{})[mid]||mid) + ' · 관리자 메뉴 권한'" x-model="menuPermsEdit[mid].admin"></td>
                     </tr>
                   </template>
                 </tbody>
@@ -120,4 +120,3 @@
         </template>
       </div>
       </template>
-
