@@ -6,11 +6,11 @@
       <!-- 하위 탭은 상위 탭(운영 관리) 바로 아래 붙어야 한 묶음으로 읽힌다.
            .canvas 는 flex gap 20px 이라 그대로 두면 상·하위 탭이 따로 노는 두 줄로 보인다. -->
       <template x-if="mod === 'admin'">
-        <div x-show="adminTab === 'crew'" x-cloak class="w-full subtabrow">
-        <div class="evaltabs evaltabs--sub">
-          <button type="button" x-bind:class="crewTab==='dash'?'sel':''" x-on:click="crewTab='dash'; loadCrew()">현황</button>
-          <button type="button" x-bind:class="crewTab==='people'?'sel':''" x-on:click="crewTab='people'; loadCrew()">검수자 · 가용 일정</button>
-          <button type="button" x-bind:class="crewTab==='assign'?'sel':''" x-on:click="crewTab='assign'; loadCrew(); loadRaw()">배정</button>
+        <div x-show="adminTab === 'crew'" x-cloak class="w-full subtabrow" id="admin-panel-crew" role="tabpanel" aria-labelledby="admin-tab-crew">
+        <div class="evaltabs evaltabs--sub" role="tablist" aria-label="검수 운영">
+          <button type="button" id="crew-tab-dash" role="tab" aria-controls="crew-panel-dash" x-bind:aria-selected="crewTab==='dash'" x-bind:class="crewTab==='dash'?'sel':''" x-on:click="crewTab='dash'; loadCrew()">현황</button>
+          <button type="button" id="crew-tab-people" role="tab" aria-controls="crew-panel-people" x-bind:aria-selected="crewTab==='people'" x-bind:class="crewTab==='people'?'sel':''" x-on:click="crewTab='people'; loadCrew()">검수자 · 가용 일정</button>
+          <button type="button" id="crew-tab-assign" role="tab" aria-controls="crew-panel-assign" x-bind:aria-selected="crewTab==='assign'" x-bind:class="crewTab==='assign'?'sel':''" x-on:click="crewTab='assign'; loadCrew(); loadRaw()">배정</button>
           <span class="ml-auto text-xs text-muted" x-show="crewBusy">불러오는 중…</span>
         </div>
       </div>
@@ -18,7 +18,7 @@
 
       <!-- ── 현황 ───────────────────────────────────────────────── -->
       <template x-if="mod === 'admin'">
-        <div x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">
+        <div x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4" id="crew-panel-dash" role="tabpanel" aria-labelledby="crew-tab-dash">
         <div class="panel"><div class="panel-bd">
           <!-- 기한을 걸고 배정하면 기본은 '이번 배정'만 본다 · 과거 누적은 토글로 -->
           <div class="flex items-center gap-1" style="margin-bottom:10px" x-show="crewWaveOn" x-cloak>
@@ -217,7 +217,7 @@
 
       <!-- ── 검수자 · 가용 일정 ───────────────────────────────────────────────── -->
       <template x-if="mod === 'admin'">
-        <div x-show="adminTab === 'crew' && crewTab === 'people'" x-cloak class="w-full space-y-4">
+        <div x-show="adminTab === 'crew' && crewTab === 'people'" x-cloak class="w-full space-y-4" id="crew-panel-people" role="tabpanel" aria-labelledby="crew-tab-people">
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li>왼쪽은 <b>신고 일정</b>(관리자 입력 · 본인 확인), 오른쪽은 <b>실측 기록</b>입니다.</li>
           <li>상태가 휴가·교육 중·비활성이면 배정 대상에서 자동 제외됩니다.</li>
@@ -319,7 +319,7 @@
 
       <!-- ── 배정 ───────────────────────────────────────────────── -->
       <template x-if="mod === 'admin'">
-        <div x-show="adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4">
+        <div x-show="adminTab === 'crew' && crewTab === 'assign'" x-cloak class="w-full space-y-4" id="crew-panel-assign" role="tabpanel" aria-labelledby="crew-tab-assign">
         <!-- 담당 규칙: 서비스·주제(Tier1)별 전담 검수자. 규칙에 걸린 콘텐츠는 담당자에게만 가고,
              담당자 전원이 못 받으면 남에게 보내지 않고 보류로 드러낸다(사용자 결정 2026-09-02). -->
         <section class="panel"><div class="panel-hd"><b>담당 규칙</b>
@@ -346,7 +346,7 @@
                               x-on:click="crewOwnerToggle(r, m.id)"
                               x-text="m.name + (r.reviewers[0] === m.id ? ' · 주' : (r.reviewers.includes(m.id) ? ' · 부' : ''))"></button>
                     </template></div></td>
-                  <td><button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="crewOwnerDel(i)">삭제</button></td>
+                  <td><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="crewOwnerDel(i)">삭제</button></td>
                 </tr>
               </template>
             </tbody></table></div>
@@ -680,9 +680,9 @@
           </div>
           <div x-show="!assignCandidates.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 검수자가 없습니다(최종검수자 제외) · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
           <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) · 그룹 모드에선 그룹별 지정으로 대체 -->
-          <div x-show="bulkGrps <= 1" class="flexrow" style="gap:9px;flex-wrap:wrap;margin-bottom:12px">
-            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
-            <button type="button" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 검수자에게 콘텐츠를 분할 배정합니다 · 잔여 배정이 적은 검수자부터 채웁니다" data-tip-pos="top">균등 분배</button>
+          <div x-show="bulkGrps <= 1" class="flexrow" style="gap:9px;flex-wrap:wrap;margin-bottom:12px" role="radiogroup" aria-label="배정 방식">
+            <button type="button" role="radio" x-bind:aria-checked="bulkMode==='same'" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
+            <button type="button" role="radio" x-bind:aria-checked="bulkMode==='distribute'" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 검수자에게 콘텐츠를 분할 배정합니다 · 잔여 배정이 적은 검수자부터 채웁니다" data-tip-pos="top">균등 분배</button>
           </div>
           <div x-show="bulkGrps <= 1" class="flexrow" style="flex-wrap:wrap;gap:9px;margin-bottom:14px">
             <template x-for="m in assignCandidates" x-bind:key="'bpk'+m.id">

@@ -1,16 +1,16 @@
       <!-- ═══ 모듈: 사용자 메타(실험실) · 서브탭 4개 = 시연 | 생성 과정 | 정책 | 로그뷰어 (분리형 모듈 · 독립 관리) ═══ -->
       <template x-if="mod === 'lab'">
-        <div x-show="labTab === 'user'" x-cloak class="w-full space-y-4">
-        <div class="flex items-center gap-2">
-          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='run' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='run'">시연</button>
-          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='gen' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='gen'">생성 과정</button>
-          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='policy' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='policy'">정책</button>
-          <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labUserView==='viewer' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labUserView='viewer'; loadLogViewer()">로그뷰어</button>
-          <a class="ds-btn ds-btn--secondary ds-btn--s-sm" href="https://claude.ai/code/artifact/762ef566-1220-4f06-a07f-6c2012da44db" target="_blank" rel="noopener" data-tip="MY 콘텐츠 탭 기획안 · 새 창" data-tip-pos="top">기획안 ↗</a>
+        <div x-show="labTab === 'user'" x-cloak class="w-full space-y-4" id="lab-panel-user" role="tabpanel" aria-labelledby="lab-tab-user">
+        <div class="evaltabs evaltabs--sub" role="tablist" aria-label="사용자 메타">
+          <button type="button" id="user-tab-run" role="tab" aria-controls="user-panel-run" x-bind:aria-selected="labUserView==='run'" x-bind:class="labUserView==='run' ? 'sel' : ''" x-on:click="labUserView='run'">시연</button>
+          <button type="button" id="user-tab-gen" role="tab" aria-controls="user-panel-gen" x-bind:aria-selected="labUserView==='gen'" x-bind:class="labUserView==='gen' ? 'sel' : ''" x-on:click="labUserView='gen'">생성 과정</button>
+          <button type="button" id="user-tab-policy" role="tab" aria-controls="user-panel-policy" x-bind:aria-selected="labUserView==='policy'" x-bind:class="labUserView==='policy' ? 'sel' : ''" x-on:click="labUserView='policy'">정책</button>
+          <button type="button" id="user-tab-viewer" role="tab" aria-controls="user-panel-viewer" x-bind:aria-selected="labUserView==='viewer'" x-bind:class="labUserView==='viewer' ? 'sel' : ''" x-on:click="labUserView='viewer'; loadLogViewer()">로그뷰어</button>
+          <a class="ds-btn ds-btn--ghost ds-btn--s-sm ml-auto" href="https://claude.ai/code/artifact/762ef566-1220-4f06-a07f-6c2012da44db" target="_blank" rel="noopener" data-tip="MY 콘텐츠 탭 기획안 · 새 창" data-tip-pos="top">기획안 ↗</a>
         </div>
 
         <!-- ═══ 시연: 상단 2단(실제 서비스 화면 | 실시간 로그 누적) + 하단 1단(측정 결과 · 로직 · 결론 개별 패널) ═══ -->
-        <div x-show="labUserView==='run'" class="space-y-4">
+        <div x-show="labUserView==='run'" class="space-y-4" id="user-panel-run" role="tabpanel" aria-labelledby="user-tab-run">
           <div class="panel"><div class="panel-hd"><b>시연</b>
               <span class="meta tnum" x-text="demoData ? ('이벤트 ' + demoData.session.events_n + '건 · 소비 ' + demoData.session.consumed + '건') : ''"></span>
               <span class="ml-auto flex items-center gap-2"><span class="text-xs" style="color:var(--ds-primary)" x-show="demoMsg" x-text="demoMsg"></span>
@@ -413,7 +413,7 @@
         </div>
 
         <!-- ═══ 생성 과정: 파일 기반 메모리(자동 기록 확인 + 수동 조작 + 주입) ═══ -->
-        <div x-show="labUserView==='gen'" x-cloak class="space-y-4">
+        <div x-show="labUserView==='gen'" x-cloak class="space-y-4" id="user-panel-gen" role="tabpanel" aria-labelledby="user-tab-gen">
           <div class="panel"><div class="panel-hd"><b>생성 과정</b><span class="meta">파일 기반 메모리</span>
               <span class="meta tnum" x-text="memData ? ('파일 ' + memData.files.length + '/' + memData.limits.max_files) : ''"></span>
               <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadMem()" data-tip="새로고침" data-tip-pos="bottom" aria-label="메모리 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
@@ -467,7 +467,7 @@
                   <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" data-tip="버전 토큰 · 저장 시 서버 버전과 일치해야 덮어씁니다 (그 사이 파일이 바뀌었으면 충돌 안내)" data-tip-pos="top" x-text="'버전 v' + memVer"></span>
                   <span class="ml-auto flex items-center gap-1">
                     <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memSave()">저장 (전체 쓰기)</button>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memDelete()">삭제</button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memDelete()">삭제</button>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="memSel=''">닫기</button>
                   </span>
                 </div>
@@ -498,7 +498,7 @@
         </div>
 
         <!-- ═══ 정책: 이 화면이 실제로 남기는 로그 체계(PAST)와 측정 · 판정 · 기록 정책 ═══ -->
-        <div x-show="labUserView==='policy'" x-cloak class="space-y-4">
+        <div x-show="labUserView==='policy'" x-cloak class="space-y-4" id="user-panel-policy" role="tabpanel" aria-labelledby="user-tab-policy">
           <div class="panel"><div class="panel-hd"><b>로그 체계</b><span class="meta">PAST · 다음 전용 경량 사용자 행동 로그</span></div>
             <div class="panel-bd">
               <ul class="ds-bullets hintbox" style="padding:14px 16px;margin-bottom:12px">
@@ -584,7 +584,7 @@
         </div>
 
         <!-- ═══ 로그뷰어: PAST 로그 검증 도구(기획 13) · 뷰어가 아니라 "맞게 심어졌는지" 판정 ═══ -->
-        <div x-show="labUserView==='viewer'" x-cloak class="space-y-4">
+        <div x-show="labUserView==='viewer'" x-cloak class="space-y-4" id="user-panel-viewer" role="tabpanel" aria-labelledby="user-tab-viewer">
           <!-- 이 화면의 지위(기획 131 배치 검토): 결론은 3안 독립 신설이고 Prism 배치는 부적합
                (실 로그를 외부 인프라로 반출 불가 · 합성 데이터 원칙과 충돌). 그 문서가 Prism 에
                남긴 조기 시범 범위가 "판정 규칙 시뮬레이터"라 화면이 스스로를 본 도구로 오인하지

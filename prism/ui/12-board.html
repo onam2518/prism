@@ -4,12 +4,12 @@
         <div class="panel"><div class="panel-hd"><b>새 글 등록</b><span class="meta">기능개선 제안 · 오류 제보 · 우리 팀에만 공개</span></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2">
-              <div style="min-width:130px"><label class="lbl">유형</label>
-                <select x-model="boardForm.kind" class="field"><option value="bug">오류</option><option value="feature">기능개선</option></select></div>
-              <div style="flex:1;min-width:220px"><label class="lbl">제목</label><input x-model="boardForm.title" class="field" maxlength="80" placeholder="예) 검수 저장 시 화면이 멈춰요" x-on:keydown.enter="boardSubmit()"></div>
+              <div style="min-width:130px"><label class="lbl" for="board-kind">유형</label>
+                <select id="board-kind" x-model="boardForm.kind" class="field"><option value="bug">오류</option><option value="feature">기능개선</option></select></div>
+              <div style="flex:1;min-width:220px"><label class="lbl" for="board-title">제목</label><input id="board-title" x-model="boardForm.title" class="field" maxlength="80" placeholder="예) 검수 저장 시 화면이 멈춰요" x-on:keydown.enter="boardSubmit()"></div>
             </div>
-            <div style="margin-top:8px"><label class="lbl">내용 (선택)</label>
-              <textarea x-model="boardForm.body" class="field" rows="3" maxlength="2000" placeholder="오류: 재현 방법 · 기대 동작 / 기능개선: 배경 · 제안 내용" style="height:auto;padding-top:8px"></textarea></div>
+            <div style="margin-top:8px"><label class="lbl" for="board-body">내용 (선택)</label>
+              <textarea id="board-body" x-model="boardForm.body" class="field" rows="3" maxlength="2000" placeholder="오류: 재현 방법 · 기대 동작 / 기능개선: 배경 · 제안 내용" style="height:auto;padding-top:8px"></textarea></div>
             <div class="flex items-center gap-2" style="margin-top:10px">
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="boardBusy" x-on:click="boardSubmit()" x-text="boardBusy ? '등록 중…' : '등록'"></button>
               <span class="text-xs text-muted" x-text="boardMsg"></span>
@@ -40,7 +40,7 @@
                   </div>
                 </td>
                 <td><span class="text-xs text-muted tnum" x-text="fmtTs(b.ts)"></span>
-                  <button type="button" class="copybtn" x-show="b.mine || boardAdmin" x-on:click="boardDelete(b)" style="margin-left:6px">삭제</button></td>
+                  <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="b.mine || boardAdmin" x-on:click="boardDelete(b)" style="margin-left:6px">삭제</button></td>
               </tr>
             </template>
             <template x-if="!(boardData && boardData.items && boardData.items.length)"><tr><td colspan="6" class="text-muted">아직 글이 없습니다 · 불편한 점이나 아이디어를 첫 글로 남겨보세요</td></tr></template>
@@ -59,7 +59,7 @@
               <div>
                 <div class="text-xs" style="color:var(--ds-muted);margin-bottom:2px">답변</div>
                 <template x-if="baEdit">
-                  <textarea x-model="baText" rows="8" class="field" style="min-height:180px" placeholder="문의에 대한 답변을 입력하세요" x-on:keydown.escape="baOpen=false"></textarea>
+                  <label class="sr-only" for="board-answer">답변</label><textarea id="board-answer" x-model="baText" rows="8" class="field" style="min-height:180px" placeholder="문의에 대한 답변을 입력하세요" x-on:keydown.escape="baOpen=false"></textarea>
                 </template>
                 <template x-if="!baEdit">
                   <div class="tbox" style="white-space:pre-wrap;line-height:1.6" x-text="baItem && (baItem.answer || '아직 답변이 없습니다')"></div>
@@ -76,4 +76,3 @@
         </div>
       </div>
       </template>
-

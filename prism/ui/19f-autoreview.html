@@ -2,7 +2,7 @@
       <!-- 상시 적재 인박스: 검수(진척 스트립·정확/수정 배지·확신도 막대·확정 버튼·저확신 강조) +
            콘텐츠 관리(등급 dot·서비스·세그먼트 필터·서브헤더) 요소를 버무림 · 영역은 .ar-body gap 으로 띄움 -->
       <template x-if="mod === 'lab'">
-        <div x-show="labTab === 'auto'" x-cloak class="w-full">
+        <div x-show="labTab === 'auto'" x-cloak class="w-full" id="lab-panel-auto" role="tabpanel" aria-labelledby="lab-tab-auto">
 
         <section class="panel">
           <div class="panel-hd"><b>AI 초안 판정</b><span class="meta">심판 모델이 내 배정 콘텐츠를 미리 채점 · 확정은 내가</span><span class="ds-badge ds-badge--neutral ml-auto">운영자 전용</span></div>
