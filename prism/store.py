@@ -251,7 +251,7 @@ class Store:
           total INTEGER NOT NULL DEFAULT 0, metrics TEXT, error TEXT,
           created_by TEXT, ts REAL, finished REAL,
           rubric_status TEXT NOT NULL DEFAULT '', rubric_cursor INTEGER NOT NULL DEFAULT 0,
-          rubric TEXT);
+          rubric TEXT, basis_fingerprint TEXT NOT NULL DEFAULT '');
         -- 평가 런 건별 결과: 기대 vs 실제 등급·사유 스냅샷(불일치 감사·재개 판별 원천).
         -- rubric = 4축 저지 채점(accuracy/format/policy/conciseness/note · Atelier 이식).
         CREATE TABLE IF NOT EXISTS eval_results(
@@ -329,6 +329,9 @@ class Store:
             c.execute("ALTER TABLE eval_runs ADD COLUMN rubric_status TEXT NOT NULL DEFAULT ''")
             c.execute("ALTER TABLE eval_runs ADD COLUMN rubric_cursor INTEGER NOT NULL DEFAULT 0")
             c.execute("ALTER TABLE eval_runs ADD COLUMN rubric TEXT"); c.commit()
+        if "basis_fingerprint" not in [r[1] for r in c.execute("PRAGMA table_info(eval_runs)")]:
+            c.execute("ALTER TABLE eval_runs ADD COLUMN basis_fingerprint TEXT NOT NULL DEFAULT ''")
+            c.commit()  # 구 런은 지문 없음: evalops가 재개 대신 안전한 새 시작을 요구한다.
         bcols = [r[1] for r in c.execute("PRAGMA table_info(board)")]
         if "answer" not in bcols:
             c.execute("ALTER TABLE board ADD COLUMN answer TEXT"); c.commit()          # 게시판 관리자 답변
@@ -1497,14 +1500,38 @@ class Store:
         return {"ok": True, "moved": moved}
 
     # ── 평가 런(이력) · Atelier eval_runs 이식 · supastore 와 동일 계약 ──────
-    def eval_run_create(self, team, model, scope, total, created_by="") -> int:
+    def eval_run_create(self, team, model, scope, total, created_by="", basis_fingerprint="") -> int:
         c = self._conn()
-        cur = c.execute("INSERT INTO eval_runs(team,model,scope,status,cursor,total,created_by,ts) "
-                        "VALUES(?,?,?,?,0,?,?,?)",
+        cur = c.execute("INSERT INTO eval_runs(team,model,scope,status,cursor,total,created_by,ts,basis_fingerprint) "
+                        "VALUES(?,?,?,?,0,?,?,?,?)",
                         (team or "", model or "", scope or "all", "running",
-                         int(total), created_by or "", time.time()))
+                         int(total), created_by or "", time.time(), basis_fingerprint or ""))
         c.commit()
         return int(cur.lastrowid)
+
+    def eval_run_start_or_reuse(self, team, model, scope, total, basis_fingerprint,
+                                created_by="", new_experiment=False) -> dict:
+        """SQLite의 BEGIN IMMEDIATE로 동시 시작을 한 건의 running 런으로 직렬화한다."""
+        c = self._conn()
+        team, model, scope = team or "", model or "", scope or "all"
+        c.execute("BEGIN IMMEDIATE")
+        try:
+            if not new_experiment:
+                row = c.execute("SELECT id FROM eval_runs WHERE team=? AND model=? AND scope=? "
+                                "AND basis_fingerprint=? AND status='running' ORDER BY id DESC LIMIT 1",
+                                (team, model, scope, basis_fingerprint or "")).fetchone()
+                if row:
+                    c.commit()
+                    return {"id": int(row[0]), "reused": True}
+            cur = c.execute("INSERT INTO eval_runs(team,model,scope,status,cursor,total,created_by,ts,basis_fingerprint) "
+                            "VALUES(?,?,?,?,0,?,?,?,?)",
+                            (team, model, scope, "running", int(total), created_by or "", time.time(),
+                             basis_fingerprint or ""))
+            c.commit()
+            return {"id": int(cur.lastrowid), "reused": False}
+        except Exception:
+            c.rollback()
+            raise
 
     def eval_run_update(self, run_id, team=None, **fields):
         """부분 갱신(status·cursor·total·metrics·error·finished·rubric_*). json 필드는 직렬화."""
@@ -1534,10 +1561,11 @@ class Store:
         return {"id": r[0], "model": r[2] or "", "scope": r[3] or "all", "status": r[4] or "",
                 "cursor": int(r[5] or 0), "total": int(r[6] or 0), "metrics": _j(r[7]),
                 "error": r[8] or "", "created_by": r[9] or "", "ts": r[10], "finished": r[11],
-                "rubric_status": r[12] or "", "rubric_cursor": int(r[13] or 0), "rubric": _j(r[14])}
+                "rubric_status": r[12] or "", "rubric_cursor": int(r[13] or 0), "rubric": _j(r[14]),
+                "basis_fingerprint": r[15] or ""}
 
     _EVAL_RUN_COLS = ("id,team,model,scope,status,cursor,total,metrics,error,created_by,"
-                      "ts,finished,rubric_status,rubric_cursor,rubric")
+                      "ts,finished,rubric_status,rubric_cursor,rubric,basis_fingerprint")
 
     def eval_run_get(self, run_id, team=None):
         c = self._conn()

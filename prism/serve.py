@@ -2512,7 +2512,8 @@ def _p_eval_run_start(h, body):
     data = json.loads(body or b"{}")
     return eval_run_start(h._req_team(), model=(data.get("model") or "").strip(),
                           scope=(data.get("scope") or "all").strip(),
-                          created_by=h._bearer_uid() or "")
+                          created_by=h._bearer_uid() or "",
+                          new_experiment=data.get("newExperiment") is True)
 
 
 @_post_route("/eval-run-resume", gate="admin")       # 중단 런 재개(남은 건만 실행)

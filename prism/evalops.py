@@ -14,6 +14,7 @@ Atelier(구 PromptForge)의 eval_runs/eval_run_results 체계에서 가져온 �
 HTTP 디스패치는 serve 가 유지.
 """
 from __future__ import annotations
+import hashlib
 import json
 import threading
 import time
@@ -138,22 +139,48 @@ def _prepare(team, model: str, scope: str):
     return rows[:MAX_ROWS], llm, used_model, ""
 
 
-def eval_run_start(team=None, model: str = "", scope: str = "all", created_by: str = "") -> dict:
+def _golden_fingerprint(rows: list) -> str:
+    """평가 입력·기대값의 순서 독립적인 결정론 지문.
+
+    결과 행의 hash만 쓰지 않고 실제 입력과 expected를 함께 넣는다. 따라서 같은 해시의
+    기대값 수정, scope/MAX_ROWS 변화도 재개 전에 잡는다.
+    """
+    items = [{"content": row.get("content") or {}, "expected": row.get("expected") or {}}
+             for row in rows]
+    payload = json.dumps(sorted(items, key=lambda v: json.dumps(v, ensure_ascii=False,
+                                                                 sort_keys=True, separators=(",", ":"))),
+                         ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def eval_run_start(team=None, model: str = "", scope: str = "all", created_by: str = "",
+                   new_experiment: bool = False) -> dict:
     """평가 런 생성 + 백그라운드 실행 시작. 즉시 {id,total} 반환(진행은 폴링)."""
     st = _SV.get_store()
     rows, llm, used_model, err = _prepare(team, model, scope)
     if rows is None:
         return {"ok": False, "error": err}
-    if not hasattr(st, "eval_run_create"):
+    if not hasattr(st, "eval_run_start_or_reuse"):
         return {"ok": False, "error": "스토어가 평가 런을 지원하지 않습니다"}
-    run_id = st.eval_run_create(team, used_model, scope, len(rows), created_by=created_by or "")
+    fingerprint = _golden_fingerprint(rows)
+    try:
+        started = st.eval_run_start_or_reuse(team, used_model, scope, len(rows), fingerprint,
+                                              created_by=created_by or "",
+                                              new_experiment=bool(new_experiment))
+    except Exception:
+        # Supabase는 원자 RPC가 마이그레이션되지 않았을 때 create로 폴백하지 않는다.
+        return {"ok": False, "error": "평가 런 시작 저장소 준비가 필요합니다 · 운영 DB 마이그레이션 후 다시 시작하세요"}
+    run_id = int((started or {}).get("id") or 0)
+    if not run_id:
+        return {"ok": False, "error": "평가 런을 시작하지 못했습니다"}
+    if started.get("reused"):
+        return {"ok": True, "id": run_id, "total": len(rows), "reused": True}
     _launch(run_id, rows, llm, team, _zero_metrics())
-    return {"ok": True, "id": run_id, "total": len(rows)}
+    return {"ok": True, "id": run_id, "total": len(rows), "reused": False}
 
 
 def eval_run_resume(run_id: int, team=None) -> dict:
-    """중단(서버 재시작·실패)된 런 재개: 저장된 건별 결과를 빼고 남은 건만 실행.
-    같은 모델·범위로 골든셋을 다시 읽으므로, 그사이 골든이 바뀌면 남은 건 기준도 그에 따른다."""
+    """중단(서버 재시작·실패)된 런 재개: 같은 골든 지문일 때만 남은 건을 실행한다."""
     st = _SV.get_store()
     run = st.eval_run_get(run_id, team) if hasattr(st, "eval_run_get") else None
     if not run:
@@ -166,6 +193,11 @@ def eval_run_resume(run_id: int, team=None) -> dict:
     rows, llm, _used, err = _prepare(team, run.get("model") or "", run.get("scope") or "all")
     if rows is None:
         return {"ok": False, "error": err}
+    saved_fingerprint = run.get("basis_fingerprint") or ""
+    if not saved_fingerprint:
+        return {"ok": False, "error": "기존 평가 런에 골든 기준 지문이 없습니다 · 안전하게 새 평가를 시작하세요"}
+    if saved_fingerprint != _golden_fingerprint(rows):
+        return {"ok": False, "error": "골든 기준이 시작 후 변경되었습니다 · 혼합 측정을 막기 위해 새 평가를 시작하세요"}
     from .store import content_hash
     done = st.eval_result_hashes(run_id, team)
     remain = [r for r in rows if content_hash(r.get("content") or {}) not in done]
