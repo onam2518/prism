@@ -6,6 +6,8 @@ import os
 import sys
 import time
 import unittest
+import threading
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -150,3 +152,156 @@ class TestCompareBackground(unittest.TestCase):
         self.assertEqual(LO.compare_cancel(11, "team-a")["status"], "cancel_requested")
         saved = self.st.get_report(LO._COMPARE_REPORT, "team-a")["jobs"][0]
         self.assertEqual((saved["status"], saved["end_reason"]), ("cancel_requested", "사용자 취소 요청"))
+
+
+class TestComparePersistence(unittest.TestCase):
+    """이벤트로 복원 경합을 고정하고 백그라운드 진입점을 직접 실행한다."""
+
+    setUp = TestCompareBackground.setUp
+
+    def saved(self, jid=7, status="done"):
+        return {"id": jid, "ts": jid, "status": status, "models": {}, "scope": "all"}
+
+    def start_deferred(self, models=None):
+        from prism import learnops as LO
+        with patch.object(LO.threading, "Thread") as thread:
+            result = LO.compare_start(models or ["solar-pro2"])
+        self.assertTrue(result["ok"], result)
+        return result["id"], thread.call_args.kwargs["target"]
+
+    def test_failed_restore_never_writes_and_retries(self):
+        from prism import learnops as LO
+        _seed_golden(self.st, 2)
+        self.st.save_report(LO._COMPARE_REPORT, {"seq": 30, "jobs": [self.saved()]})
+        with patch.object(self.st, "get_report", side_effect=OSError("offline")), \
+                patch.object(self.st, "save_report") as save:
+            for _ in range(2):
+                result = LO.compare_start(["solar-pro2"])
+                self.assertFalse(result["ok"])
+                self.assertIn("복원 실패", result["error"])
+                self.assertNotIn("", LO._COMPARE_LOADED)
+                self.assertFalse(LO._compare_persist(None, self.st))
+            save.assert_not_called()
+        jid, _ = self.start_deferred()
+        self.assertEqual(jid, 31)
+        self.assertEqual({j["id"] for j in self.st.get_report(LO._COMPARE_REPORT)["jobs"]}, {7, 31})
+        self.assertIs(LO._COMPARE_STORE[0], self.st)
+
+    def test_first_restore_serializes_overlapping_start(self):
+        from prism import learnops as LO
+        _seed_golden(self.st, 2)
+        self.st.save_report(LO._COMPARE_REPORT, {"seq": 7, "jobs": [self.saved(status="running")]})
+        entered, release, blocked = threading.Event(), threading.Event(), threading.Event()
+        lock = threading.RLock()
+        class ObservedLock:
+            def __enter__(self):
+                if not lock.acquire(blocking=False):
+                    if threading.current_thread().name == "overlapping-start":
+                        blocked.set()
+                    lock.acquire()
+                return self
+            def __exit__(self, *args):
+                lock.release()
+        original_get = self.st.get_report
+        results = {}
+        def read(*a, **kw):
+            entered.set()
+            self.assertTrue(release.wait(3))
+            return original_get(*a, **kw)
+        def start():
+            results["start"] = LO.compare_start(["solar-pro2"])
+        loader = threading.Thread(target=lambda: results.update(restored=LO.compare_jobs()))
+        starter = threading.Thread(target=start, name="overlapping-start")
+        with patch.object(self.st, "get_report", side_effect=read) as get, \
+                patch.object(LO, "_COMPARE_LOCK", ObservedLock()), \
+                patch.object(LO.threading, "Thread"):
+            loader.start()
+            try:
+                self.assertTrue(entered.wait(3))
+                starter.start()
+                self.assertTrue(blocked.wait(3))
+            finally:
+                release.set()
+                loader.join(3)
+                if starter.ident is not None:
+                    starter.join(3)
+        self.assertFalse(loader.is_alive())
+        self.assertFalse(starter.is_alive())
+        self.assertTrue(results["start"]["ok"], results)
+        jid = results["start"]["id"]
+        self.assertEqual(jid, 8)
+        self.assertEqual(get.call_count, 1)
+        self.assertEqual(LO.compare_status(7)["job"]["status"], "interrupted")
+        self.assertEqual(LO.compare_status(jid)["job"]["status"], "running")
+
+    def test_active_jobs_survive_terminal_history_limit_and_remain_cancellable(self):
+        from prism import learnops as LO
+        _seed_golden(self.st, 1)
+        ids = [self.start_deferred()[0] for _ in range(LO._COMPARE_KEEP + 2)]
+        with LO._COMPARE_LOCK:
+            for jid in range(100, 100 + LO._COMPARE_KEEP + 3):
+                LO._COMPARE_JOBS[("", jid)] = self.saved(jid)
+            self.assertTrue(LO._compare_persist(None, self.st))
+        saved = self.st.get_report(LO._COMPARE_REPORT)["jobs"]
+        self.assertEqual(len(saved), len(ids) + LO._COMPARE_KEEP)
+        self.assertEqual({j["id"] for j in saved if j["status"] == "running"}, set(ids))
+        self.assertTrue(LO.compare_cancel(ids[0])["ok"])
+        self.assertEqual(LO.compare_status(ids[0])["job"]["status"], "cancel_requested")
+        self.assertEqual(len(LO.compare_jobs()["jobs"]), len(saved))
+
+    def test_progress_save_failure_stops_paid_chunks_and_queued_models(self):
+        from prism import learnops as LO, abtest
+        _seed_golden(self.st, 16)
+        original_save = self.st.save_report
+        charged = []
+        def save(kind, report, *a, **kw):
+            if kind == LO._COMPARE_REPORT and any(
+                    m.get("done", 0) for j in report["jobs"] for m in j["models"].values()):
+                raise OSError("disk full")
+            return original_save(kind, report, *a, **kw)
+        # 한 worker로 대기 모델을 확정: 첫 진척 저장 실패 뒤 나머지 모델의 호출도 없어야 한다.
+        from concurrent.futures import ThreadPoolExecutor
+        with patch.object(self.st, "save_report", side_effect=save), \
+                patch.object(abtest, "run_methodology", side_effect=lambda rows, *a, **kw:
+                             charged.append(len(rows)) or [None] * len(rows)), \
+                patch("concurrent.futures.ThreadPoolExecutor", side_effect=lambda **kw: ThreadPoolExecutor(max_workers=1)):
+            jid, run = self.start_deferred(["a", "b", "c", "d", "e", "f"])
+            run()
+        job = LO.compare_status(jid)["job"]
+        self.assertEqual(charged, [8])
+        self.assertEqual(job["status"], "failed")
+        self.assertIn("저장 실패", job["error"])
+        self.assertIsNone(job.get("result"))
+
+    def test_final_history_save_failure_is_not_done(self):
+        from prism import learnops as LO
+        _seed_golden(self.st, 1)
+        jid, run = self.start_deferred()
+        original_save = self.st.save_report
+        def save(kind, report, *a, **kw):
+            if kind == LO._COMPARE_REPORT and any(j["status"] == "done" for j in report["jobs"]):
+                raise OSError("disk full")
+            return original_save(kind, report, *a, **kw)
+        with patch.object(self.st, "save_report", side_effect=save):
+            run()
+        job = LO.compare_status(jid)["job"]
+        self.assertEqual(job["status"], "failed")
+        self.assertFalse(job["result"]["ok"])
+        self.assertIn("저장 실패", job["error"])
+
+    def test_final_result_save_failure_surfaces_in_sync_and_background(self):
+        from prism import learnops as LO
+        _seed_golden(self.st, 1)
+        jid, run = self.start_deferred()
+        original_save = self.st.save_report
+        def save(kind, report, *a, **kw):
+            if kind == "model_compare":
+                raise OSError("disk full")
+            return original_save(kind, report, *a, **kw)
+        with patch.object(self.st, "save_report", side_effect=save):
+            result = LO.compare_models_on_golden(["solar-pro2"])
+            self.assertFalse(result["ok"])
+            run()
+        job = LO.compare_status(jid)["job"]
+        self.assertEqual(job["status"], "failed")
+        self.assertIn("결과 저장 실패", job["error"])
