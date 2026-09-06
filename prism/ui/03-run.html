@@ -1,6 +1,6 @@
       <!-- ═══ 모듈: 실행 · 추출 ═══ -->
       <template x-if="mod === 'content'">
-        <div x-show="contentTab === 'run'" class="w-full space-y-4">
+        <div id="content-run-panel" role="tabpanel" aria-labelledby="content-run-tab" x-show="contentTab === 'run'" class="w-full space-y-4">
 
         <!-- 콘텐츠 추가 = 저장만(미실행 대기) · 초안 생성은 STEP 2 모델 실행이 담당 -->
         <section class="panel" data-fn>
@@ -81,7 +81,7 @@
                     <option x-show="!visionCandidates.length" value="upstage_ie">기본 · 문서 시각 이해(Upstage)</option>
                   </select>
                 </div>
-                <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaImgRun()" x-bind:disabled="mediaImgBusy||!mediaImg.files.length">추출 실행</button>
+                <button type="button" class="ds-btn" x-bind:class="mediaImgRes ? 'ds-btn--secondary' : 'ds-btn--primary'" x-on:click="mediaImgRun()" x-bind:disabled="mediaImgBusy||!mediaImg.files.length" x-text="mediaImgRes ? '다시 추출' : '추출 실행'"></button>
               </div>
               <div x-show="mediaImgMsg" aria-live="polite" class="text-xs text-muted" x-text="mediaImgMsg"></div>
               <div x-show="mediaImgRes" class="space-y-3">
@@ -92,14 +92,13 @@
                 <div x-show="mediaImgRes && mediaImgRes.signals && mediaImgRes.signals.length && mediaImgRes.signals[0].note" class="text-xs text-muted" x-text="(mediaImgRes && mediaImgRes.signals && mediaImgRes.signals[0]) ? mediaImgRes.signals[0].note : ''"></div>
                 <div><label class="lbl">합성 Content (본문)</label>
                   <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaImgRes ? (mediaImgRes.content.body || '') : ''"></pre></div>
-                <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타</b><span class="meta">등록 전 미리보기 · 등록하면 이 메타 그대로 저장</span></div>
-                  <div class="panel-bd space-y-3">
-                    <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="mediaImgRes ? ((mediaImgRes.output.item_meta||{}).summary || '—') : ''"></div></div>
-                    <div><div class="lbl">인텐트</div><div class="flex flex-wrap gap-1.5"><template x-for="it in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">—</span></div></div>
-                    <div><div class="lbl">엔티티</div><div class="flex flex-wrap gap-1.5"><template x-for="e in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">—</span></div></div>
-                    <div><div class="lbl">카테고리</div><div class="flex flex-wrap gap-1.5"><template x-for="c in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">—</span></div></div>
-                  </div>
-                </div>
+                <section aria-labelledby="media-image-meta-title" class="space-y-3" style="padding-top:var(--ds-space-3);border-top:1px solid var(--ds-hairline)">
+                  <div class="subhd" id="media-image-meta-title">아이템 메타 <span class="meta">등록 전 미리보기 · 등록하면 이 메타 그대로 저장</span></div>
+                  <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="mediaImgRes ? ((mediaImgRes.output.item_meta||{}).summary || '·') : ''"></div></div>
+                  <div><div class="lbl">인텐트</div><div class="flex flex-wrap gap-1.5"><template x-for="it in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', it)" data-tip-pos="top" x-text="it"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">·</span></div></div>
+                  <div><div class="lbl">엔티티</div><div class="flex flex-wrap gap-1.5"><template x-for="e in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">·</span></div></div>
+                  <div><div class="lbl">카테고리</div><div class="flex flex-wrap gap-1.5"><template x-for="c in (mediaImgRes ? ((mediaImgRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span x-show="mediaImgRes && !((mediaImgRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">·</span></div></div>
+                </section>
                 <div style="display:flex;justify-content:flex-end">
                   <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaRegister('image')" x-bind:disabled="mediaImgBusy">콘텐츠로 등록</button>
                 </div>
@@ -131,7 +130,7 @@
                 <div style="flex:1;min-width:220px"><label class="lbl">원문 링크 (선택)</label>
                   <input class="field" x-model="mediaVid.url" placeholder="https:// 원문 주소">
                 </div>
-                <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaNative()" x-bind:disabled="mediaVidBusy||!mediaVid.file">추출 실행</button>
+                <button type="button" class="ds-btn" x-bind:class="mediaVidRes ? 'ds-btn--secondary' : 'ds-btn--primary'" x-on:click="mediaNative()" x-bind:disabled="mediaVidBusy||!mediaVid.file" x-text="mediaVidRes ? '다시 추출' : '추출 실행'"></button>
               </div>
               <div><label class="lbl">자막 원문 (선택 · SRT/VTT)</label>
                 <textarea class="field" rows="3" x-model="mediaVid.subs" placeholder="자막을 붙여넣으면 영상 모델을 부르지 않고 자막으로 원고를 만듭니다 (비용 0)"></textarea>
@@ -147,14 +146,13 @@
                   <div class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.native.visual.on_screen_text" x-text="'[화면 텍스트] ' + (mediaVidRes ? mediaVidRes.native.visual.on_screen_text : '')"></div></div>
                 <div><label class="lbl">통합 원고 <span class="text-xs text-muted" x-show="mediaVidRes && mediaVidRes.merged.spoken_source" x-text="'· 발화 출처: ' + (mediaVidRes && mediaVidRes.merged.spoken_source === 'subtitle' ? '자막(모델 0건)' : '오디오 전사')"></span></label>
                   <pre class="field" style="max-height:150px;overflow:auto;white-space:pre-wrap;font-size:12px" x-text="mediaVidRes ? mediaVidRes.merged.transcript : ''"></pre></div>
-                <div class="panel" style="margin:0"><div class="panel-hd"><b>아이템 메타</b><span class="meta">등록 전 미리보기 · 등록하면 이 메타 그대로 저장</span></div>
-                  <div class="panel-bd space-y-3">
-                    <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="mediaVidRes ? ((mediaVidRes.output.item_meta||{}).summary || '—') : ''"></div></div>
-                    <div><div class="lbl">인텐트</div><div class="flex flex-wrap gap-1.5"><template x-for="it in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" x-text="it"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">—</span></div></div>
-                    <div><div class="lbl">엔티티</div><div class="flex flex-wrap gap-1.5"><template x-for="e in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" x-text="e"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">—</span></div></div>
-                    <div><div class="lbl">카테고리</div><div class="flex flex-wrap gap-1.5"><template x-for="c in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" x-text="c"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">—</span></div></div>
-                  </div>
-                </div>
+                <section aria-labelledby="media-video-meta-title" class="space-y-3" style="padding-top:var(--ds-space-3);border-top:1px solid var(--ds-hairline)">
+                  <div class="subhd" id="media-video-meta-title">아이템 메타 <span class="meta">등록 전 미리보기 · 등록하면 이 메타 그대로 저장</span></div>
+                  <div><div class="lbl">리드문</div><div class="text-sm text-body" x-text="mediaVidRes ? ((mediaVidRes.output.item_meta||{}).summary || '·') : ''"></div></div>
+                  <div><div class="lbl">인텐트</div><div class="flex flex-wrap gap-1.5"><template x-for="it in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).intent||[]) : [])" x-bind:key="it"><span class="ds-badge ds-badge--intent" style="cursor:help" x-bind:data-tip="termDef('intent', it)" data-tip-pos="top" x-text="it"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).intent||[]).length" class="text-xs text-muted">·</span></div></div>
+                  <div><div class="lbl">엔티티</div><div class="flex flex-wrap gap-1.5"><template x-for="e in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).entities||[]) : [])" x-bind:key="e"><span class="ds-badge ds-badge--entity" style="cursor:help" x-bind:data-tip="termDef('entity', e)" data-tip-pos="top" x-text="e"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).entities||[]).length" class="text-xs text-muted">·</span></div></div>
+                  <div><div class="lbl">카테고리</div><div class="flex flex-wrap gap-1.5"><template x-for="c in (mediaVidRes ? ((mediaVidRes.output.item_meta||{}).content_category||[]) : [])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template><span x-show="mediaVidRes && !((mediaVidRes.output.item_meta||{}).content_category||[]).length" class="text-xs text-muted">·</span></div></div>
+                </section>
                 <div style="display:flex;justify-content:flex-end">
                   <button type="button" class="ds-btn ds-btn--primary" x-on:click="mediaRegister('video')" x-bind:disabled="mediaVidBusy">콘텐츠로 등록</button>
                 </div>
@@ -262,4 +260,3 @@
         </div>
       </div>
       </template>
-
