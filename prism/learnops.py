@@ -740,7 +740,22 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     return out
 
 
+_BATCH_LOCK = threading.Lock()
+
+
 def learning_batch(team=None, models=None, model: str = "") -> dict:
+    """공유 프롬프트의 평가·반영·원복을 보호한다. 실행 중이면 팀과 무관하게 거절한다."""
+    # ponytail: 단일 Python 프로세스만 보호 · 복수 프로세스/인스턴스 도입 시 DB lease로 교체.
+    if not _BATCH_LOCK.acquire(blocking=False):
+        return {"ok": False, "busy": True,
+                "error": "학습 배치가 이미 실행 중입니다 · 팀 간 프롬프트를 공유하므로 완료 후 다시 시도하세요"}
+    try:
+        return _learning_batch(team, models, model)
+    finally:
+        _BATCH_LOCK.release()
+
+
+def _learning_batch(team=None, models=None, model: str = "") -> dict:
     """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
     ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성 2%p 초과 악화·유해 미탐 악화·버킷 회귀
     중 하나라도 걸리면 개선을 반영하지 않고 이전 프롬프트를 유지한다(방향 검증 · 진동 방지)."""
@@ -1338,7 +1353,9 @@ def _run_due_batch(cfg, now=None) -> bool:
     due = next_batch_time(getattr(cfg, "learn_next_at", ""))
     if not due or due > (now if now is not None else time.time()):
         return False
-    learning_batch(getattr(cfg, "learn_team", "") or None)   # 골든·버전을 그 팀에 태깅
+    report = learning_batch(getattr(cfg, "learn_team", "") or None)
+    if (report or {}).get("busy"):               # 중복 거절은 일정 유지 · 다음 스케줄러 tick에서 재시도
+        return False
     try:
         c = Config.load()
         rep = int(getattr(c, "learn_repeat_days", 0) or 0)
