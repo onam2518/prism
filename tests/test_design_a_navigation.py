@@ -38,3 +38,46 @@ Object.assign(a, {mod: 'home', _authHeaders: () => ({}),
 })().catch(e => {console.error(e); process.exit(1)});
 """
         subprocess.run(['node', '-e', script], cwd=ROOT, check=True, capture_output=True, text=True)
+
+    def test_compare_results_ignore_out_of_order_responses(self):
+        script = r"""
+const assert = require('assert');
+global.window = {PRISM_APP_PARTS: [], addEventListener() {}};
+global.location = {origin: 'http://fixture'};
+require('./prism/vendor/app-04-_err.js');
+const a = window.PRISM_APP_PARTS[0]();
+const selected17 = {ok: true, marker: 'selected-17', models: []};
+const selected18 = {ok: true, marker: 'selected-18', models: []};
+const older = {ok: true, marker: 'older-last', models: []};
+let resolveLast;
+Object.assign(a, {mod: 'evaluate', _authHeaders: () => ({}), liveToast() {},
+  selectMod(id) { this.mod = id; },
+  _afetch: async (url) => {
+    if (url === '/model-compare-last') return await new Promise(resolve => { resolveLast = resolve; });
+    if (url === '/compare-status?id=17') return {json: async () => ({ok: true, job: {id: 17, result: selected17}})};
+    throw new Error('unexpected URL: ' + url);
+  }});
+(async () => {
+  const preload = a.loadCompareLast();
+  await Promise.resolve();
+  await a.openCompareResult(17);
+  resolveLast({json: async () => older});
+  await preload;
+  assert.equal(a.cmpResult, selected17);
+
+  let resolve17, resolve18;
+  a._afetch = async (url) => await new Promise(resolve => {
+    if (url.endsWith('17')) resolve17 = resolve;
+    else if (url.endsWith('18')) resolve18 = resolve;
+    else throw new Error('unexpected URL: ' + url);
+  });
+  const open17 = a.openCompareResult(17);
+  const open18 = a.openCompareResult(18);
+  resolve18({json: async () => ({ok: true, job: {id: 18, result: selected18}})});
+  await open18;
+  resolve17({json: async () => ({ok: true, job: {id: 17, result: selected17}})});
+  await open17;
+  assert.equal(a.cmpResult, selected18);
+})().catch(e => {console.error(e); process.exit(1)});
+"""
+        subprocess.run(['node', '-e', script], cwd=ROOT, check=True, capture_output=True, text=True)

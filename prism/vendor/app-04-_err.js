@@ -431,7 +431,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const n = f === 'all' ? all.length : (f === 'split' ? all.filter((it) => it.split).length : all.filter((it) => !it.all_ok).length);
         return n > 100;
       },
-      cmpJob: null, _cmpPollT: null,           // 백그라운드 비교 잡(진척은 별도 창 · 메인은 완료만 받아 표를 채움)
+      cmpJob: null, _cmpPollT: null, _cmpOpenSeq: 0, // 백그라운드 비교 잡(진척은 별도 창 · 메인은 완료만 받아 표를 채움)
       get cmpProgressTxt() {
         const j = this.cmpJob; if (!j) return '';
         const ms = Object.values(j.models || {}); const done = ms.reduce((n, m) => n + (m.done || 0), 0); const tot = ms.reduce((n, m) => n + (m.total || 0), 0);
@@ -468,8 +468,9 @@ window.PRISM_APP_PARTS.push(() => ({
         step();
       },
       async openCompareResult(id) {
+        const seq = ++this._cmpOpenSeq;
         this.evalMode = 'compare';
-        try { const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json(); if (r && r.ok && r.job.result) { this.cmpResult = r.job.result; this.cmpBusy = false; this.cmpJob = r.job; } } catch (e) {}
+        try { const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json(); if (seq === this._cmpOpenSeq && r && r.ok && r.job.result) { this.cmpResult = r.job.result; this.cmpBusy = false; this.cmpJob = r.job; } } catch (e) {}
         if (this.mod !== 'evaluate') this.selectMod('evaluate');
       },
       _cmpMsgBound: false,
@@ -483,9 +484,10 @@ window.PRISM_APP_PARTS.push(() => ({
       async loadCompareLast() {                  // 탭 재진입 시 마지막 비교(영속분) 복원 · 슬롯이 비어 있으면 비교했던 모델로 채움
         this._bindCompareMessage();
         if (this.cmpResult || this.cmpBusy) return;
+        const seq = this._cmpOpenSeq;
         try {
           const r = await (await this._afetch('/model-compare-last', { headers: this._authHeaders() })).json();
-          if (!(r && r.ok)) return;
+          if (!(r && r.ok) || seq !== this._cmpOpenSeq || this.cmpResult || this.cmpBusy) return;
           this.cmpResult = r;
           if (!this.cmpPicked.length) this.cmpModels = (r.models || []).map((m) => m.model).concat(['', '']).slice(0, Math.max(2, (r.models || []).length));
         } catch (e) {}
