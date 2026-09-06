@@ -1,5 +1,8 @@
 # Prism 컴포넌트 구조 사전
 
+> 운영 적용 기준 (2026-09-06): [DESIGN_COMPONENTS.md](../DESIGN_COMPONENTS.md)가 운영 Prism의 최종 컴포넌트 계약입니다. 구현 원천은 `prism/ui/NN-*.html` → `prism/page.py` 합성, `prism/vendor/ds-theme.css`·`ds-components.css`·`app.css`, Alpine `app-NN-*.js`입니다. 아래 위젯 홈·Anchor 예시는 참고 설계이며 운영 화면의 구조·브랜드 변경 지시가 아닙니다. 운영 폰트는 본문 Pretendard, 제목 GmarketSans, 코드의 기존 모노스페이스를 유지하고 React·새 폰트·의존성을 도입하지 않습니다.
+
+
 각 컴포넌트의 **해부(anatomy) · 부품(parts) · API · variant · 상태 · 구성 규칙**을 사전에 못박는 문서. Anchor(axz) 기준.
 
 - 비주얼 토큰 → `DESIGN.md`
@@ -59,7 +62,7 @@ Operations (3)
 
 ## 1. Button
 
-화면당 주 행동을 나르는 최소 단위. Blue(Solid/Primary)는 화면당 하나. 상세 계약 → `anchor/Button.md`.
+화면당 주 행동을 나르는 최소 단위. Blue(Solid/Primary)는 화면당 하나. 운영 상세 계약 → `../DESIGN_COMPONENTS.md` · Anchor 문서는 참고.
 
 ```
 ┌─────────────────────────────┐
@@ -74,7 +77,7 @@ Operations (3)
 | `__icon` | ○ | 16–18px, `currentColor` 상속 |
 | `__label` | ● | 15px / 700 / Pretendard |
 
-- **variant×color**(Anchor): `Solid×Primary`(Blue) · `Outline×Neutral` · `Outline×Ghost` · `Solid×Danger` … Size Sm~3Xl · Shape Square(R8)/Rounded(R100). 구 API(primary/secondary/ghost/pill)는 back-compat 매핑.
+- **variant×color**(Anchor): `Solid×Primary`(Blue) · `Outline×Neutral` · `Outline×Ghost` · `Outline×Danger` … Size Sm~3Xl · Shape Square(R8)/Rounded(R100). 구 API(primary/secondary/ghost/pill)는 back-compat 매핑.
 - **상태**: default · hover(HoverLayer) · loading(스피너·폭 고정) · disabled(interaction.disabled) · focus(Blue 2px ring)
 - **API**: `variant`, `active`(pill 전용), 그 외 표준 `<button>` 속성
 - **구성 규칙**: 아이콘은 라벨 좌측 기본. 아이콘 단독이면 `aria-label` 필수.
@@ -256,7 +259,7 @@ underline                         sidebar
 - **API**: `open`, `onClose`, `title`, `footer`, `closeOnBackdrop`
 - **상태**: 열림(fade+rise 애니메이션) · 닫힘(unmount) · reduced-motion(애니메이션 제거)
 - **닫기 경로**: Esc · 백드롭 · 취소 버튼 (셋 다 제공)
-- **구성 규칙**: footer는 ghost→primary 순(왼→오). 파괴적 확인은 primary 대신 error 톤 검토.
+- **구성 규칙**: footer는 ghost→primary 순(왼→오). 파괴적 확인은 `ds-btn--outline ds-btn--c-danger` 고정.
 - **Don't**: 닫기 경로 없는 모달 · 모달 위에 모달 중첩.
 
 ---

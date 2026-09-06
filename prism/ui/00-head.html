@@ -36,6 +36,8 @@
       var el = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
       if (el) show(el); else hide();
     });
+    document.addEventListener('focusin', function(e) { var el = e.target.closest('[data-tip]'); if (el) show(el); });
+    document.addEventListener('focusout', hide);
     document.addEventListener('scroll', hide, true);
     document.addEventListener('mousedown', hide, true);
   })();
@@ -53,7 +55,7 @@
 
   <!-- ━━━━━ 상단 바: 로고 | 타이틀(고정) | 도구 ━━━━━ -->
   <header class="topbar">
-    <div class="topbar__brand" x-on:click="selectMod('home')" style="cursor:pointer" role="button" aria-label="홈으로">
+    <div class="topbar__brand" x-on:click="selectMod('home')" style="cursor:pointer" role="button" tabindex="0" x-on:keydown.enter="$el.click()" x-on:keydown.space.prevent="$el.click()" aria-label="홈으로">
       <img class="topbar__logo topbar__logo--light" src="/vendor/prism-logo-tagline-light.png" alt="Prism · A lens on content & users">
       <img class="topbar__logo topbar__logo--dark" src="/vendor/prism-logo-tagline-dark.png" alt="Prism · A lens on content & users"></div>
     <div class="topbar__title">
@@ -99,7 +101,7 @@
 
   <!-- 배지 전체 보기 모달(목록 + 달성 여부·진행도) -->
   <div class="ds-dialog-backdrop" x-show="badgeModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="badgeModalOpen=false" style="z-index:74">
-    <div class="badgemodal" x-show="badgeModalOpen" x-transition>
+    <div role="dialog" aria-modal="true" aria-label="배지 컬렉션" class="badgemodal" x-show="badgeModalOpen" x-transition>
       <div class="badgemodal__hd">
         <div class="badgemodal__ttl">배지 컬렉션</div>
         <template x-if="arenaMe">
@@ -108,11 +110,11 @@
             <span class="badgemodal__count"><b x-text="badgeGot"></b> / <span x-text="badges().length"></span></span>
           </div>
         </template>
-        <button type="button" class="ds-iconbtn" x-on:click="badgeModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button type="button" class="ds-iconbtn" data-dialog-close x-on:click="badgeModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
       <template x-if="arenaMe">
         <div class="badgemodal__xp">
-          <div class="charcard__xpbar"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
+          <div class="charcard__xpbar" role="progressbar" aria-label="다음 레벨까지 경험치" aria-valuemin="0" aria-valuemax="100" x-bind:aria-valuenow="xpPct(arenaMe)"><div class="charcard__xpfill" x-bind:style="'width:' + xpPct(arenaMe) + '%'"></div></div>
           <div class="badgemodal__xptxt">다음 레벨까지 <b x-text="xpToNext(arenaMe) + 'pt'"></b> · 순위 #<span x-text="arenaMyRank"></span></div>
         </div>
       </template>

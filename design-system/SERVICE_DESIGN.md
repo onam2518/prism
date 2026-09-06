@@ -1,5 +1,8 @@
 # Prism 서비스 디자인 가이드
 
+> 운영 적용 기준 (2026-09-06): [DESIGN_COMPONENTS.md](../DESIGN_COMPONENTS.md)가 운영 Prism의 최종 컴포넌트 계약입니다. 구현 원천은 `prism/ui/NN-*.html` → `prism/page.py` 합성, `prism/vendor/ds-theme.css`·`ds-components.css`·`app.css`, Alpine `app-NN-*.js`입니다. 아래 위젯 홈·Anchor 예시는 참고 설계이며 운영 화면의 구조·브랜드 변경 지시가 아닙니다. 운영 폰트는 본문 Pretendard, 제목 GmarketSans, 코드의 기존 모노스페이스를 유지하고 React·새 폰트·의존성을 도입하지 않습니다.
+
+
 Prism(이미지 → 메타데이터 파이프라인)의 종합 서비스 디자인 가이드. **위젯 홈을 단일 중심**으로 한 위젯-기반 아키텍처를 정의한다.
 
 > 이 문서가 최상위 가이드다. 세부는 링크로 위임한다 ·
@@ -28,7 +31,7 @@ Anchor(axz)의 "무채색 캔버스 + 의미 있는 곳에만 액센트 · answe
 | Surface | base(page) `#f4f5f7` · surface(card) `#ffffff` · 무채색 캔버스 |
 | Ink | text.primary `#000000` · body `rgba(0,0,0,.88)` · muted `rgba(0,0,0,.48)` (알파 기반) |
 | Dark | base `#161718` · surface `#202122` · Blue `#66a8ff` · 같은 토큰의 자동 swap |
-| Font | Pretendard(UI·본문 단일 패밀리) · Berkeley Mono(코드) |
+| Font | Pretendard(UI·본문) · GmarketSans(제목·숫자 강조) · 기존 모노스페이스(코드) |
 | Radius | 4·8·12·16·24·100(pill) | Shadow | low·medium·high 3단(surface 대비 우선) |
 
 **브랜드 결정(확정):** Source of truth = **Anchor Design System(axz)**. Blue(Primary)·Red(Accent)·무채색 캔버스·Pretendard·Light/Dark 자동 swap. 원본 `anchor/DESIGN.md`·`anchor/Button.md`·`anchor/tokens.json`. → `COMPONENT_ROADMAP.md §0`.
@@ -283,7 +286,7 @@ Prism은 "에이전트"가 아니라 **데이터 추출·부여 프로세스**�
 
 ## 11. serve.py 이행 (위젯 홈 중심)
 
-- 현 `serve.py`(다크+violet, Alpine)는 **위젯 홈 기준으로 이행**: `<style>`/`tailwind.config`을 토큰으로 교체, 마크업을 `ds-*`/위젯으로 매핑(`chip-ent/int/cat → ds-badge--entity/intent/category`).
+- 과거 탐색 시안의 위젯 홈 이행안(현재 운영 적용 지시 아님): `<style>`/`tailwind.config`을 토큰으로 교체, 마크업을 `ds-*`/위젯으로 매핑(`chip-ent/int/cat → ds-badge--entity/intent/category`).
 - 백엔드 핸들러(라우트)는 불변. UI(`PAGE` 문자열)만 교체 → git 충돌 최소.
 
 ---

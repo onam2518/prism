@@ -39,19 +39,22 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
     <p class="m-login__sub">팀 계정으로 로그인하면<br>이동 중에도 검수를 이어갑니다</p>
     <template x-if="backend === 'supabase'">
       <div>
-        <input class="field" type="email" inputmode="email" autocomplete="username" placeholder="이메일" x-model="email">
-        <input class="field" type="password" autocomplete="current-password" placeholder="비밀번호" x-model="pw" x-on:keydown.enter="login()">
+        <label class="lbl" for="m-email">이메일</label>
+        <input id="m-email" class="field" type="email" inputmode="email" autocomplete="username" placeholder="이메일" x-model="email">
+        <label class="lbl" for="m-pw">비밀번호</label>
+        <input id="m-pw" class="field" type="password" autocomplete="current-password" placeholder="비밀번호" x-model="pw" x-on:keydown.enter="login()">
         <button type="button" class="ds-btn ds-btn--primary m-cta" x-bind:disabled="busy" x-on:click="login()" x-text="busy ? '로그인 중…' : '로그인하고 시작'"></button>
       </div>
     </template>
     <template x-if="backend && backend !== 'supabase'">
       <div>
-        <input class="field" placeholder="닉네임" x-model="nick" x-on:keydown.enter="nickStart()">
+        <label class="lbl" for="m-nick">닉네임</label>
+        <input id="m-nick" class="field" placeholder="닉네임" x-model="nick" x-on:keydown.enter="nickStart()">
         <button type="button" class="ds-btn ds-btn--primary m-cta" x-on:click="nickStart()">시작하기</button>
       </div>
     </template>
     <div class="m-login__hint">계정은 데스크탑과 동일 · 가입은 데스크탑에서</div>
-    <div class="m-err" x-show="err" x-text="err"></div>
+    <div role="alert" class="m-err" x-show="err" x-text="err"></div>
   </section>
 
   <!-- ━━ 검수 카드(메인) ━━ -->
@@ -66,7 +69,7 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
     </header>
     <div class="m-prog">
       <div class="m-prog__row"><span>팀 검수 진행</span><b class="tnum" x-text="progDone() + ' / ' + progTotal() + '건'"></b></div>
-      <div class="m-bar"><i x-bind:style="'width:' + progPct() + '%'"></i></div>
+      <div class="m-bar" role="progressbar" aria-label="팀 검수 진행" aria-valuemin="0" x-bind:aria-valuemax="progTotal() || 1" x-bind:aria-valuenow="progDone()" x-bind:aria-valuetext="progDone() + ' / ' + progTotal() + '건'"><i x-bind:style="'width:' + progPct() + '%'"></i></div>
     </div>
 
     <!-- 목록: 전체 콘텐츠 · 미검수 배지 · 탭하면 카드로 -->
@@ -172,24 +175,25 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
   <!-- ━━ 오버레이: 교정 = 바텀시트(키보드 입력) · 도움말/용어 정의 = 중앙 모달 ━━ -->
   <div class="m-dim" x-show="sheet" x-on:click="sheet = ''"></div>
 
-  <div class="m-sheet" x-show="sheet === 'fix'">
+  <div class="m-sheet" x-show="sheet === 'fix'" role="dialog" aria-modal="true" aria-labelledby="m-fix-title">
     <div class="m-grab"></div>
-    <h3>어떤 요소를 고칠까요?</h3>
+    <h3 id="m-fix-title">어떤 요소를 고칠까요?</h3>
     <div class="m-elems">
       <template x-for="fe in FIX_ELEMENTS" x-bind:key="fe.id">
-        <button type="button" class="m-elem" x-bind:class="fix.elems.includes(fe.id) ? 'sel' : ''" x-on:click="toggleElem(fe.id)" x-text="fe.label"></button>
+        <button type="button" class="m-elem" x-bind:aria-pressed="fix.elems.includes(fe.id)" x-bind:class="fix.elems.includes(fe.id) ? 'sel' : ''" x-on:click="toggleElem(fe.id)" x-text="fe.label"></button>
       </template>
     </div>
-    <textarea class="field m-memo" rows="3" x-model="fix.note" x-bind:placeholder="fix.elems.map((e) => elemLabel(e)).join('·') + ' 이(가) 왜 잘못됐는지 · 여러 요소를 고르면 각 단계로 나눠 반영됩니다'"></textarea>
+    <label class="lbl" for="m-fix-note">교정 이유</label>
+    <textarea id="m-fix-note" class="field m-memo" rows="3" x-model="fix.note" x-bind:placeholder="fix.elems.map((e) => elemLabel(e)).join('·') + ' 이(가) 왜 잘못됐는지 · 여러 요소를 고르면 각 단계로 나눠 반영됩니다'"></textarea>
     <div class="m-sheet__row">
-      <button type="button" class="ds-btn ds-btn--secondary" x-on:click="sheet = ''">취소</button>
+      <button type="button" class="ds-btn ds-btn--secondary" data-dialog-close x-on:click="sheet = ''">취소</button>
       <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="!(fix.note || '').trim()" x-on:click="saveFix()">교정 저장</button>
     </div>
   </div>
 
-  <div class="m-modal" x-show="sheet === 'help'">
-    <button type="button" class="m-modal__close" x-on:click="sheet = ''" aria-label="닫기">✕</button>
-    <h3>검수 도움말</h3>
+  <div class="m-modal" x-show="sheet === 'help'" role="dialog" aria-modal="true" aria-labelledby="m-help-title">
+    <button type="button" class="m-modal__close" data-dialog-close x-on:click="sheet = ''" aria-label="닫기">✕</button>
+    <h3 id="m-help-title">검수 도움말</h3>
     <div class="m-hsec">
       <h4>판정 기준</h4>
       <div class="m-hrow"><span class="m-hrow__k"><span class="ds-badge ds-badge--success"><span class="ds-badge__dot"></span>정확</span></span><span>초안(리드문·엔티티·인텐트·카테고리)이 본문과 맞으면</span></div>
@@ -203,9 +207,9 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
     <button type="button" class="m-logout" x-on:click="logout()">로그아웃</button>
   </div>
 
-  <div class="m-modal m-modal--def" x-show="sheet === 'def'">
-    <button type="button" class="m-modal__close" x-on:click="sheet = ''" aria-label="닫기">✕</button>
-    <h3 x-text="defTitle"></h3>
+  <div class="m-modal m-modal--def" x-show="sheet === 'def'" role="dialog" aria-modal="true" aria-labelledby="m-def-title">
+    <button type="button" class="m-modal__close" data-dialog-close x-on:click="sheet = ''" aria-label="닫기">✕</button>
+    <h3 id="m-def-title" x-text="defTitle"></h3>
     <p class="m-def" x-text="defBody"></p>
     <button type="button" class="ds-btn ds-btn--secondary m-modal__ok" x-on:click="sheet = ''">확인</button>
   </div>
@@ -216,8 +220,9 @@ try{var t=localStorage.getItem('prism_m_theme')||(window.matchMedia&&matchMedia(
     <button type="button" class="ds-btn ds-btn--primary" x-on:click="location.reload()">새로고침</button>
   </div>
 
-  <div class="m-toast" x-show="toast" x-text="toast"></div>
+  <div role="status" aria-live="polite" class="m-toast" x-show="toast" x-text="toast"></div>
 </div>
+<script src="/vendor/app-19-ui-a11y.js"></script>
 <script src="/vendor/mobile.js"></script>
 <script defer src="/vendor/alpine.js"></script>
 </body>
