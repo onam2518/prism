@@ -1,6 +1,12 @@
       <!-- ═══ 모듈: 평가 · 테스트셋(골든) 기준 정합성 수치화 + 모델별 비교(단일 페이지) ═══ -->
       <template x-if="mod === 'evaluate'">
         <div class="w-full space-y-4">
+          <div class="evaltabs" role="tablist" aria-label="평가 작업 방식">
+            <button type="button" id="eval-run-tab" role="tab" aria-controls="eval-run-panel" x-bind:aria-selected="evalMode==='run' ? 'true' : 'false'" x-bind:tabindex="evalMode==='run' ? 0 : -1" x-bind:class="evalMode==='run' ? 'sel' : ''" x-on:click="evalMode='run'">평가 실행</button>
+            <button type="button" id="eval-pilot-tab" role="tab" aria-controls="eval-pilot-panel" x-bind:aria-selected="evalMode==='pilot' ? 'true' : 'false'" x-bind:tabindex="evalMode==='pilot' ? 0 : -1" x-bind:class="evalMode==='pilot' ? 'sel' : ''" x-on:click="evalMode='pilot'">오토파일럿</button>
+            <button type="button" id="eval-compare-tab" role="tab" aria-controls="eval-compare-panel" x-bind:aria-selected="evalMode==='compare' ? 'true' : 'false'" x-bind:tabindex="evalMode==='compare' ? 0 : -1" x-bind:class="evalMode==='compare' ? 'sel' : ''" x-on:click="evalMode='compare'">모델별 비교</button>
+          </div>
+          <div id="eval-run-panel" role="tabpanel" aria-labelledby="eval-run-tab" x-show="evalMode==='run'" x-cloak class="space-y-4">
           <section class="panel" data-fn><div class="panel-hd"><b>평가 기준</b><span class="meta">어떤 모델·버전을 어떤 콘텐츠로 잴지 먼저 정합니다</span></div>
             <div class="panel-bd">
               <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -9,10 +15,7 @@
                 <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
                 <span class="selctl" data-tip="프롬프트 버전 = 학습 반영 회차 + 1 · 평가는 항상 현재 버전으로 실행됩니다" data-tip-pos="bottom"><span class="selctl__lbl">프롬프트 버전</span>
                   <b class="tnum" style="padding:0 8px;font-size:13px;height:30px;display:inline-flex;align-items:center" x-text="verTxt"></b></span>
-                <span style="display:flex;gap:6px;align-items:center;margin-left:6px"><span class="selctl__lbl">대상 콘텐츠</span>
-                  <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='all' ? 'sel' : ''" x-on:click="evalScope='all'">전체 정답셋</button>
-                  <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='eval' ? 'sel' : ''" x-on:click="evalScope='eval'">평가용만</button>
-                </span>
+                <span class="selctl"><label class="selctl__lbl" for="eval-scope">대상 콘텐츠</label><select id="eval-scope" class="field" x-model="evalScope"><option value="all">전체 정답셋</option><option value="eval">평가용만</option></select></span>
               </div>
               <ul class="ds-bullets" style="margin:11px 0 0">
                 <li><b>평가용</b> 콘텐츠는 <b>콘텐츠 관리 · STEP 1</b>에서 지정합니다 · 검수 목록에서 제외되어 오염 없이 평가에만 쓰입니다.</li>
@@ -142,7 +145,9 @@
               </template>
             </div>
           </section>
+          </div>
           <!-- 오토파일럿: 자동 개선 루프(Atelier 이식) · 라운드=학습 반영→재평가 · 악화 자동 원복 -->
+          <div id="eval-pilot-panel" role="tabpanel" aria-labelledby="eval-pilot-tab" x-show="evalMode==='pilot'" x-cloak>
           <section class="panel"><div class="panel-hd"><b>오토파일럿 · 자동 개선 루프</b><span class="meta">목표 달성까지 학습 반영 → 재평가 반복 · 악화 라운드는 자동 원복</span></div>
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:11px">
@@ -204,7 +209,9 @@
               </template>
             </div>
           </section>
+          </div>
           <!-- 모델별 비교: 같은 정답셋을 여러 모델(최대 6개)에 동시 실호출 → 지표표 · 건별 비교표 · 최종 모델 선정 -->
+          <div id="eval-compare-panel" role="tabpanel" aria-labelledby="eval-compare-tab" x-show="evalMode==='compare'" x-cloak>
           <section class="panel"><div class="panel-hd"><b>모델별 비교</b><span class="meta">같은 정답셋으로 여러 모델을 동시에 실호출 · 나란히 보고 최종 모델을 고릅니다</span></div>
             <div class="panel-bd">
               <div class="filterbar" style="margin:0 0 12px;flex-wrap:wrap;gap:8px">
@@ -253,11 +260,7 @@
                   <div class="flexrow" style="margin-top:14px;align-items:center;gap:10px;flex-wrap:wrap">
                     <b>건별 비교</b>
                     <span class="text-xs text-muted" x-text="'전체 ' + (cmpResult.items||[]).length + '건 · 하나라도 틀린 건 ' + (cmpResult.miss_n||0) + ' · 모델끼리 갈린 건 ' + (cmpResult.split_n||0)"></span>
-                    <span class="srcfilter" style="margin-left:auto">
-                      <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='miss' ? 'sel' : ''" x-on:click="cmpItemFilter='miss'">틀린 건만</button>
-                      <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='split' ? 'sel' : ''" x-on:click="cmpItemFilter='split'">갈린 건만</button>
-                      <button type="button" class="srcfilter__chip" x-bind:class="cmpItemFilter==='all' ? 'sel' : ''" x-on:click="cmpItemFilter='all'">전체</button>
-                    </span>
+                    <span class="selctl ml-auto"><label class="selctl__lbl" for="compare-item-filter">건별 표시</label><select id="compare-item-filter" class="field" x-model="cmpItemFilter"><option value="miss">틀린 건만</option><option value="split">갈린 건만</option><option value="all">전체</option></select></span>
                   </div>
                   <div class="overflow-auto" style="margin-top:8px;max-height:420px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th style="width:70px">정답</th>
                     <template x-for="(m,mi) in cmpCols" x-bind:key="'ih'+mi"><th style="width:110px"><span class="selctl__tag" x-bind:style="'background:' + cmpColor(mi)" x-text="cmpTag(mi)"></span> <span class="text-xs" x-text="m.model"></span></th></template>
@@ -277,9 +280,7 @@
                   <div class="flexrow" style="margin-top:14px;align-items:center;gap:10px;flex-wrap:wrap">
                     <b>개선 루프</b>
                     <span class="text-xs text-muted">문제점을 골라 프롬프트에 반영하고 다시 비교합니다 · 반영은 공통 스테이지 프롬프트(사전·정책 › 메타 프롬프트)에 얹힙니다</span>
-                    <span class="srcfilter" style="margin-left:auto">
-                      <template x-for="(m,mi) in cmpCols" x-bind:key="'lp'+mi"><button type="button" class="srcfilter__chip" x-bind:class="cmpLoopModel===m.model ? 'sel' : ''" x-on:click="cmpLoopModel=m.model" x-text="cmpTag(mi) + ' ' + m.model"></button></template>
-                    </span>
+                    <span class="selctl ml-auto"><span class="selctl__lbl">개선 대상</span><x-modelpick key="compare-loop" value="cmpLoopModel" set="cmpLoopModel=$v" options="cmpCols.map(m=&gt;m.model)" width="212px" tip="개선할 비교 모델"></x-modelpick></span>
                   </div>
                   <div class="overflow-auto" style="margin-top:8px"><table class="ds-table"><thead><tr><th style="width:90px">영역</th><th style="width:220px">문제점</th><th>쿡북 지시(프롬프트에 얹을 문장)</th><th style="width:120px">반영</th></tr></thead><tbody>
                     <template x-for="it in cmpIssues" x-bind:key="'is'+it.id">
@@ -300,5 +301,6 @@
               </template>
             </div>
           </section>
+          </div>
         </div>
       </template>

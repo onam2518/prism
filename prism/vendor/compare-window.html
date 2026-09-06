@@ -74,7 +74,7 @@
     el.querySelectorAll('[data-open]').forEach(function (b) { b.onclick = function () { var id = +b.dataset.open; opened[id] = !opened[id]; if (opened[id] && !results[id]) load(id).then(tick); else tick(); }; });
     el.querySelectorAll('[data-main]').forEach(function (b) { b.onclick = function () {
       try { if (window.opener && !window.opener.closed) { window.opener.postMessage({ type: 'prism-compare-done', id: +b.dataset.main }, location.origin); window.opener.focus(); return; } } catch (e) {}
-      window.open('/', '_blank');
+      window.open('/?m=evaluate&compare=' + encodeURIComponent(b.dataset.main), '_blank');
     }; });
   }
   function load(id) { return get('/compare-status?id=' + id).then(function (r) { if (r.ok && r.job && r.job.result) results[id] = r.job.result; }); }

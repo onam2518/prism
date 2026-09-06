@@ -1,15 +1,15 @@
       <!-- ═══ 모듈: 콘텐츠 검수(멤버) · 탭: 검수 대상 콘텐츠(기본) | 결과 비교 ═══ -->
       <template x-if="mod === 'create'">
-        <div class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
-        <button type="button" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadModelStats(); loadRaw()">결과 비교</button>
-        <button type="button" x-show="isFinalReviewer || opsAdmin" x-bind:class="createTab==='final'?'sel':''" x-on:click="createTab='final'; loadFinalQueue()">최종 검수 <span class="tnum" x-show="finalQueue && finalQueue.n" x-text="'(' + (finalQueue ? finalQueue.n : 0) + ')'"></span></button>
+        <div class="w-full" style="margin-bottom:10px"><div class="evaltabs" role="tablist" aria-label="콘텐츠 검수 작업">
+        <button type="button" id="review-raw-tab" role="tab" aria-controls="review-raw-panel" x-bind:aria-selected="createTab==='raw' ? 'true' : 'false'" x-bind:tabindex="createTab==='raw' ? 0 : -1" x-bind:class="createTab==='raw'?'sel':''" x-on:click="createTab='raw'; loadRaw()">검수 대상 콘텐츠</button>
+        <button type="button" id="review-edit-tab" role="tab" aria-controls="review-edit-panel" x-bind:aria-selected="createTab==='edit' ? 'true' : 'false'" x-bind:tabindex="createTab==='edit' ? 0 : -1" x-bind:class="createTab==='edit'?'sel':''" x-on:click="createTab='edit'; loadModelStats(); loadRaw()">결과 비교</button>
+        <button type="button" id="review-final-tab" role="tab" aria-controls="review-final-panel" x-show="isFinalReviewer || opsAdmin" x-bind:aria-selected="createTab==='final' ? 'true' : 'false'" x-bind:tabindex="createTab==='final' ? 0 : -1" x-bind:class="createTab==='final'?'sel':''" x-on:click="createTab='final'; loadFinalQueue()">최종 검수 <span class="tnum" x-show="finalQueue && finalQueue.n" x-text="'(' + (finalQueue ? finalQueue.n : 0) + ')'"></span></button>
       </div></div>
       </template>
 
       <!-- 최종 검수(2층): 기초 검수를 거쳤지만 골든으로 확정되지 못한 미확정분 · 편입/제외 결정 -->
       <template x-if="mod === 'create'">
-        <div x-show="createTab === 'final'" x-cloak class="w-full space-y-4">
+        <div id="review-final-panel" role="tabpanel" aria-labelledby="review-final-tab" x-show="createTab === 'final'" x-cloak class="w-full space-y-4">
         <section class="panel"><div class="panel-hd"><b>최종 검수</b><span class="meta tnum" x-text="finalQueue ? (finalQueue.n + '건 대기') : ''"></span>
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadFinalQueue()" data-tip="새로고침" data-tip-pos="bottom" aria-label="최종 검수 큐 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
           <div class="panel-bd">
@@ -41,9 +41,9 @@
         <!-- 정답 확정(고쳐서 편입): 초안 필드를 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 골든 정답
              z-index 는 콘텐츠 상세(74)보다 위 · 상세의 결정 바에서 열리는 흐름 -->
         <div class="ds-dialog-backdrop" x-show="faOpen" x-cloak x-transition.opacity x-on:mousedown.self="faOpen=false" style="z-index:76">
-          <div class="badgemodal" x-show="faOpen" x-transition style="max-width:620px" x-on:keydown.escape.window="faOpen=false">
-            <div class="flex items-center" style="margin-bottom:2px"><b style="font-size:15px">정답 확정</b>
-              <button type="button" class="ds-iconbtn ml-auto" x-on:click="faOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+          <div class="badgemodal" role="dialog" aria-modal="true" aria-labelledby="final-answer-dialog-title" x-show="faOpen" x-transition style="max-width:620px" x-on:keydown.escape.window="faOpen=false">
+            <div class="flex items-center" style="margin-bottom:2px"><b id="final-answer-dialog-title" style="font-size:15px">정답 확정</b>
+              <button type="button" class="ds-iconbtn ml-auto" data-dialog-close x-on:click="faOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
             <div class="text-xs text-muted" style="margin-bottom:10px" x-text="fa ? fa.title : ''"></div>
             <div class="text-xs" style="background:var(--ds-primary-tint);border-radius:8px;padding:8px 11px;margin-bottom:12px" x-show="fa && (fa.note || (fa.elems||[]).length)">
               <b>기초 검수 의견</b> · <span x-text="fa ? [fa.note, (fa.elems||[]).join(', ')].filter(Boolean).join(' · ') : ''"></span>
@@ -101,7 +101,7 @@
               </div></div>
             </div></template>
             <div class="flex gap-2" style="margin-top:6px;padding-top:14px;border-top:1px solid var(--ds-hairline);justify-content:flex-end">
-              <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="faOpen=false">취소</button>
+              <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" data-dialog-close x-on:click="faOpen=false">취소</button>
               <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="faBusy || !(fa && (fa.grade==='G' || fa.grade==='R'))" x-on:click="saveFinalAnswer()" data-tip="등급을 G 또는 R로 선택한 뒤 수정한 내용을 저장하고 이 상태를 정답으로 편입" data-tip-pos="top" x-text="faBusy ? '저장 중…' : '저장하고 편입'"></button>
             </div>
           </div>
@@ -110,7 +110,7 @@
       </template>
 
       <template x-if="mod === 'create'">
-        <div x-show="createTab === 'edit'" x-cloak class="w-full">
+        <div id="review-edit-panel" role="tabpanel" aria-labelledby="review-edit-tab" x-show="createTab === 'edit'" x-cloak class="w-full">
         <div class="space-y-4">
           <!-- 요소 단위 모델별 결과 현황: 같은 정보요소를 모델 축으로 비교 -->
           <!-- A/B 선택: 비교할 모델과 버전 지정(별도 패널 · abslot 디자인) -->
@@ -178,9 +178,9 @@
 
       <!-- 콘텐츠별 초안 비교 팝업 -->
       <div class="ds-dialog-backdrop" x-show="cmpModalOpen" x-cloak x-transition.opacity x-on:mousedown.self="cmpModalOpen=false" style="z-index:74">
-        <div class="badgemodal" x-show="cmpModalOpen" x-transition style="max-width:860px">
-          <div class="panel-hd" style="padding:0 0 12px;margin-bottom:var(--ds-space-3);border-bottom:1px solid var(--ds-hairline)"><b>모델별 콘텐츠 상세 비교</b><span class="meta" x-text="cmpTitle"></span>
-            <button type="button" class="ds-iconbtn ml-auto" x-on:click="cmpModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <div class="badgemodal" role="dialog" aria-modal="true" aria-labelledby="draft-compare-dialog-title" x-show="cmpModalOpen" x-transition style="max-width:860px">
+          <div class="panel-hd" style="padding:0 0 12px;margin-bottom:var(--ds-space-3);border-bottom:1px solid var(--ds-hairline)"><b id="draft-compare-dialog-title">모델별 콘텐츠 상세 비교</b><span class="meta" x-text="cmpTitle"></span>
+            <button type="button" class="ds-iconbtn ml-auto" data-dialog-close x-on:click="cmpModalOpen=false" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
           </div>
           <!-- 상단(모델·버전별 결과 현황)에서 설정한 A/B 를 그대로 상속(공통 콘텐츠 대상) -->
           <div class="flexrow" style="gap:var(--ds-space-2);flex-wrap:wrap;align-items:center;margin-bottom:10px" x-show="draftsData && draftsData.items.length">

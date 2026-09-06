@@ -244,10 +244,11 @@ window.PRISM_APP_PARTS.push(() => ({
           else this._err((r && r.error) || '용도 전환 실패');
         } catch (e) { this._err('용도 전환 실패'); }
       },
-      evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
+      evalMode: 'run', evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
       // 평가 런(이력 영속 · Atelier 이식): 시작 → 백그라운드 실행 → 폴링으로 진행률·리포트
       evalRuns: [], evalRunsBusy: false, evalRunsErr: '', evalRunId: null, _evalPollT: null,
       async runGolden() {
+        this.evalMode = 'run';
         this.goldenBusy = true; this.goldenResult = null; this.goldenMsg = '';
         try {
           const r = await (await this._afetch('/eval-run-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: String(this.evalModel || '').split('|').pop(), scope: this.evalScope }) })).json();   // 픽커 값은 provider|model → 서버(llm_for_model)엔 model id 만
@@ -279,12 +280,13 @@ window.PRISM_APP_PARTS.push(() => ({
         } catch (e) { this.evalRunsErr = '평가 이력을 불러오지 못했습니다 · 다시 시도하세요'; }
         finally { this.evalRunsBusy = false; }
       },
-      openEvalRun(id) { this.evalRunId = id; this.goldenResult = null; this.pollEvalRun(id); },
+      openEvalRun(id) { this.evalMode = 'run'; this.evalRunId = id; this.goldenResult = null; this.pollEvalRun(id); },
       async cancelEvalRun(id) {
         try { await (await this._afetch('/eval-run-cancel', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id }) })).json(); } catch (e) {}
         this.loadEvalRuns(); if (this.evalRunId === id) this.pollEvalRun(id);
       },
       async resumeEvalRun(id) {
+        this.evalMode = 'run';
         try {
           const r = await (await this._afetch('/eval-run-resume', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ id }) })).json();
           if (r && r.ok) { this.evalRunId = id; this.pollEvalRun(id); }
@@ -300,7 +302,7 @@ window.PRISM_APP_PARTS.push(() => ({
       setCmpBase(id) { this.cmpRunA = (this.cmpRunA === id ? null : id); this.evalCmp = null; },
       async compareRuns(bId) {
         if (!this.cmpRunA || this.cmpRunA === bId) return;
-        this.evalCmpBusy = true; this.evalCmp = null;
+        this.evalMode = 'run'; this.evalCmpBusy = true; this.evalCmp = null;
         try { this.evalCmp = await (await this._afetch('/eval-run-compare?a=' + this.cmpRunA + '&b=' + bId, { headers: this._authHeaders() })).json(); } catch (e) {}
         this.evalCmpBusy = false;
       },
@@ -353,6 +355,7 @@ window.PRISM_APP_PARTS.push(() => ({
         }
       },
       async startPilot() {
+        this.evalMode = 'pilot';
         this.pilotBusy = true; this.pilotMsg = '';
         try {
           const r = await (await this._afetch('/autopilot-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ target: parseFloat(this.pilotTarget), max_rounds: parseInt(this.pilotRounds, 10), model: String(this.pilotModel || '').split('|').pop() }) })).json();   // 픽커 값은 provider|model → 서버(llm_for_model)엔 model id 만
@@ -428,7 +431,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const n = f === 'all' ? all.length : (f === 'split' ? all.filter((it) => it.split).length : all.filter((it) => !it.all_ok).length);
         return n > 100;
       },
-      cmpJob: null, _cmpPollT: null,           // 백그라운드 비교 잡(진척은 별도 창 · 메인은 완료만 받아 표를 채움)
+      cmpJob: null, _cmpPollT: null, _cmpOpenSeq: 0, // 백그라운드 비교 잡(진척은 별도 창 · 메인은 완료만 받아 표를 채움)
       get cmpProgressTxt() {
         const j = this.cmpJob; if (!j) return '';
         const ms = Object.values(j.models || {}); const done = ms.reduce((n, m) => n + (m.done || 0), 0); const tot = ms.reduce((n, m) => n + (m.total || 0), 0);
@@ -439,6 +442,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       async runCompare() {
         if (this.cmpPicked.length < 2 || this.cmpBusy) return;
+        this.evalMode = 'compare';
         const win = this.openCompareWindow();   // 클릭 동기 구간에서 먼저 열어야 팝업 차단을 피한다
         this.cmpBusy = true; this.cmpResult = null; this.cmpJob = null;
         try {
@@ -463,21 +467,27 @@ window.PRISM_APP_PARTS.push(() => ({
         };
         step();
       },
+      async openCompareResult(id) {
+        const seq = ++this._cmpOpenSeq;
+        this.evalMode = 'compare';
+        try { const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json(); if (seq === this._cmpOpenSeq && r && r.ok && r.job.result) { this.cmpResult = r.job.result; this.cmpBusy = false; this.cmpJob = r.job; } } catch (e) {}
+        if (this.mod !== 'evaluate') this.selectMod('evaluate');
+      },
       _cmpMsgBound: false,
       _bindCompareMessage() {                  // 진척도 창의 '메인 화면에서 자세히' → 결과 불러와 평가 탭으로
         if (this._cmpMsgBound) return; this._cmpMsgBound = true;
         window.addEventListener('message', async (ev) => {
           if (ev.origin !== location.origin || !ev.data || ev.data.type !== 'prism-compare-done') return;
-          try { const r = await (await this._afetch('/compare-status?id=' + ev.data.id, { headers: this._authHeaders() })).json(); if (r && r.ok && r.job.result) { this.cmpResult = r.job.result; this.cmpBusy = false; this.cmpJob = r.job; } } catch (e) {}
-          if (this.mod !== 'evaluate') this.selectMod('evaluate');
+          await this.openCompareResult(ev.data.id);
         });
       },
       async loadCompareLast() {                  // 탭 재진입 시 마지막 비교(영속분) 복원 · 슬롯이 비어 있으면 비교했던 모델로 채움
         this._bindCompareMessage();
         if (this.cmpResult || this.cmpBusy) return;
+        const seq = this._cmpOpenSeq;
         try {
           const r = await (await this._afetch('/model-compare-last', { headers: this._authHeaders() })).json();
-          if (!(r && r.ok)) return;
+          if (!(r && r.ok) || seq !== this._cmpOpenSeq || this.cmpResult || this.cmpBusy) return;
           this.cmpResult = r;
           if (!this.cmpPicked.length) this.cmpModels = (r.models || []).map((m) => m.model).concat(['', '']).slice(0, Math.max(2, (r.models || []).length));
         } catch (e) {}

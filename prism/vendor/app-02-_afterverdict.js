@@ -201,6 +201,7 @@ window.PRISM_APP_PARTS.push(() => ({
           const dh = q.get('detail');                  // 콘텐츠 상세 딥링크(정책 팔레트 매칭 목록 → 새 탭)
           if (dh) { this._pendingDetail = dh; this._pendingRetry = false; this.selectMod('create'); this.loadRaw(2000); }
           else if (m) this.selectMod(m);
+          if (m === 'evaluate' && /^\d+$/.test(q.get('compare') || '')) this.openCompareResult(Number(q.get('compare')));
           if (q.has('settings')) this.selectMod('system');
           // 서브뷰 딥링크(?view=): 메뉴 단위까지만 있어 위키·문서에서 특정 화면을 걸 수 없었다.
           // 사용자 탭 서브뷰(시연·생성 과정·정책·로그뷰어)를 주소로 지정한다.

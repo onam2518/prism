@@ -8,11 +8,7 @@
         <div class="w-full">
         <section class="panel"><div class="panel-hd"><b>실행 큐 · 이력</b><span class="meta" x-text="(runningCount ? (runningCount + ' 실행중') : '대기 없음')"></span>
           <!-- 자동/수동 구분 필터 -->
-          <span class="ml-auto" style="display:flex;gap:6px">
-            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='' ? 'sel' : ''" x-on:click="queueTrig=''">전체</button>
-            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='auto' ? 'sel' : ''" x-on:click="queueTrig='auto'">자동</button>
-            <button type="button" class="srcfilter__chip" x-bind:class="queueTrig==='manual' ? 'sel' : ''" x-on:click="queueTrig='manual'">수동</button>
-          </span>
+          <span class="selctl ml-auto"><label class="selctl__lbl" for="queue-trigger">실행 방식</label><select id="queue-trigger" class="field" x-model="queueTrig"><option value="">전체</option><option value="auto">자동</option><option value="manual">수동</option></select></span>
         </div>
           <div class="panel-bd">
             <template x-for="j in filteredJobs" x-bind:key="j.id">
@@ -89,7 +85,7 @@
       <template x-if="mod === 'content'">
         <div class="w-full space-y-4" style="margin-top:14px">
         <section class="panel" data-fn id="added-contents"><div class="panel-hd"><b>추가된 콘텐츠 · 용도</b><span class="meta">평가용은 검수 목록에서 제외되어 평가 전용으로 보존됩니다</span>
-          <button type="button" class="srcfilter__chip sel" x-show="jobFilter" x-cloak x-on:click="jobFilter = null" x-text="jobFilter ? (jobFilter.name + ' 결과 ' + contentRows.length + '건 · 전체 보기 ×') : ''"></button>
+          <button type="button" class="copybtn" x-show="jobFilter" x-cloak x-on:click="jobFilter = null" x-text="jobFilter ? (jobFilter.name + ' 결과 ' + contentRows.length + '건 · 전체 보기 ×') : ''"></button>
           <button type="button" class="ds-iconbtn ds-iconbtn--bordered ml-auto" x-on:click="loadDash()" data-tip="새로고침" data-tip-pos="bottom" aria-label="콘텐츠 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
           <!-- 모델 필터 + 다중 선택 재실행: 특정 모델로 뽑힌 초안만 골라 한 번에 다시 돌린다 -->
