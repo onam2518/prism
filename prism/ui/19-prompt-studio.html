@@ -1,18 +1,18 @@
       <!-- ═══ 모듈: 프롬프트 스튜디오 · 선언형 빌더(제작) + 하위(배포 · 라이브러리) ═══
            운영 엔진(계약·계열 래퍼·미리보기·추론 강도)은 사전·정책 → 프롬프트 엔진 탭으로 이동 -->
       <template x-if="mod === 'studio'">
-        <div x-show="studioTab === 'prompt'" x-cloak class="w-full" style="margin-bottom:10px">
-        <div class="evaltabs">
-          <button type="button" x-bind:class="promptSub==='builder'?'sel':''" x-on:click="promptSub='builder'">빌더</button>
-          <button type="button" x-bind:class="promptSub==='deploy'?'sel':''" x-on:click="promptSub='deploy'; loadDeploys()">배포</button>
-          <button type="button" x-bind:class="promptSub==='library'?'sel':''" x-on:click="promptSub='library'; loadLibrary()">라이브러리</button>
+        <div id="studio-prompt-panel" role="tabpanel" aria-labelledby="studio-prompt-tab" x-show="studioTab === 'prompt'" x-cloak class="w-full" style="margin-bottom:10px">
+        <div class="evaltabs" role="tablist" aria-label="프롬프트 스튜디오">
+          <button type="button" id="prompt-builder-tab" role="tab" aria-controls="prompt-builder-panel" x-bind:aria-selected="promptSub==='builder' ? 'true' : 'false'" x-bind:class="promptSub==='builder'?'sel':''" x-on:click="promptSub='builder'">빌더</button>
+          <button type="button" id="prompt-deploy-tab" role="tab" aria-controls="prompt-deploy-panel" x-bind:aria-selected="promptSub==='deploy' ? 'true' : 'false'" x-bind:class="promptSub==='deploy'?'sel':''" x-on:click="promptSub='deploy'; loadDeploys()">배포</button>
+          <button type="button" id="prompt-library-tab" role="tab" aria-controls="prompt-library-panel" x-bind:aria-selected="promptSub==='library' ? 'true' : 'false'" x-bind:class="promptSub==='library'?'sel':''" x-on:click="promptSub='library'; loadLibrary()">라이브러리</button>
         </div>
       </div>
       </template>
 
       <!-- ── 프롬프트 · 빌더: STEP 1 선언 → STEP 2 컴파일 → 테스트 → 적용·저장 ── -->
       <template x-if="mod === 'studio'">
-        <div x-show="studioTab === 'prompt' && promptSub === 'builder'" x-cloak class="w-full space-y-4">
+        <div id="prompt-builder-panel" role="tabpanel" aria-labelledby="prompt-builder-tab" x-show="studioTab === 'prompt' && promptSub === 'builder'" x-cloak class="w-full space-y-4">
         <!-- 빌더가 무엇을 만들어 주는지 · 표준 힌트박스 -->
         <ul class="ds-bullets hintbox" style="padding:14px 16px">
           <li>과업·역할·제약·출력 형식을 <b>말로 선언</b>하면, 메타 컴파일러가 <b>계열(Claude·GPT·Gemini·Solar)별 프롬프트</b>를 만듭니다.</li>
@@ -92,7 +92,7 @@
 
       <!-- ── 프롬프트 · 배포: 스냅샷 버전 pin → 외부 API 서빙(Atelier deployments 이식) ── -->
       <template x-if="mod === 'studio'">
-        <div x-show="studioTab === 'prompt' && promptSub === 'deploy'" x-cloak class="w-full space-y-4">
+        <div id="prompt-deploy-panel" role="tabpanel" aria-labelledby="prompt-deploy-tab" x-show="studioTab === 'prompt' && promptSub === 'deploy'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>프롬프트 배포 · 외부 API 제공</b><span class="meta">스냅샷 버전을 slug 에 고정(pin) · 외부 서비스가 키로 당겨 씁니다</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
@@ -131,7 +131,7 @@
                   <span style="margin-left:auto;display:inline-flex;gap:6px">
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="newKeyFor(d)">키 발급</button>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="toggleDeploy(d)" x-text="d.active ? '중지' : '재개'"></button>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="배포와 키를 삭제합니다 · 호출측은 즉시 401" data-tip-pos="top" x-on:click="removeDeploy(d)">삭제</button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" data-tip="배포와 키를 삭제합니다 · 호출측은 즉시 401" data-tip-pos="top" x-on:click="removeDeploy(d)">삭제</button>
                   </span>
                 </div>
                 <div style="margin-top:8px" x-show="(d.keys||[]).length">
@@ -140,7 +140,7 @@
                       <code class="tnum" x-text="k.prefix"></code>
                       <span class="ds-badge ds-badge--neutral" x-show="k.revoked">회수됨</span>
                       <span class="text-muted tnum" x-text="k.last_used ? ('마지막 사용 ' + fmtTs(k.last_used)) : '미사용'"></span>
-                      <button type="button" class="copybtn" x-show="!k.revoked" x-on:click="revokeKey(d, k)">회수</button>
+                      <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="!k.revoked" x-on:click="revokeKey(d, k)">회수</button>
                     </div>
                   </template>
                 </div>
@@ -153,7 +153,7 @@
 
       <!-- ── 프롬프트 · 라이브러리: 패턴 저장·재사용(Atelier prompt_library 이식) ── -->
       <template x-if="mod === 'studio'">
-        <div x-show="studioTab === 'prompt' && promptSub === 'library'" x-cloak class="w-full space-y-4">
+        <div id="prompt-library-panel" role="tabpanel" aria-labelledby="prompt-library-tab" x-show="studioTab === 'prompt' && promptSub === 'library'" x-cloak class="w-full space-y-4">
         <section class="panel" data-fn><div class="panel-hd"><b>프롬프트 라이브러리</b><span class="meta">잘 나온 프롬프트를 저장해 두고 · 복사·단계 적용으로 재사용</span></div>
           <div class="panel-bd">
             <ul class="ds-bullets" style="margin-bottom:11px">
@@ -189,7 +189,7 @@
                     <span class="selctl"><span class="selctl__lbl">단계</span>
                       <select class="field" x-model="bApplyStage"><option value="">선택…</option><option value="extract">추출</option><option value="analyze">분석</option><option value="review">검수</option><option value="judge">판정</option></select></span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="!bApplyStage" x-on:click="applyLibrary(it)">단계 적용</button>
-                    <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="removeLibrary(it)">삭제</button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="removeLibrary(it)">삭제</button>
                   </span>
                 </div>
                 <div class="text-xs text-muted" style="margin-top:6px" x-show="it.note" x-text="it.note"></div>

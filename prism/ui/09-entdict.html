@@ -1,6 +1,6 @@
       <!-- ═══ 모듈: 엔티티 사전 · 개체 고유키·타입(NER 6종)·속성 관리 (사전·정책 · 엔티티 탭) ═══ -->
       <template x-if="mod === 'dict'">
-        <div x-show="dictTab === 'entity'" x-cloak class="w-full space-y-4">
+        <div id="dict-entity-panel" role="tabpanel" aria-labelledby="dict-entity-tab" x-show="dictTab === 'entity'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd flex items-center justify-between gap-3 flex-wrap">
           <ul class="ds-bullets">
             <li>콘텐츠 적재 시 엔티티가 <b>개체 사전에 자동 등재</b>됩니다 · 개체당 고유키 1개, 타입·속성은 등록 시 1회 부여(재판정 없음).</li>
@@ -53,13 +53,13 @@
                 <tr>
                   <td class="text-ink" style="font-weight:600;cursor:pointer" role="button" tabindex="0" x-on:click="openEntEdit(e)" x-on:keydown.enter="openEntEdit(e)" data-tip="클릭해 상세·수정" data-tip-pos="top" x-text="e.name"></td>
                   <td><span class="ds-badge" x-bind:class="e.type ? 'ds-badge--entity' : 'ds-badge--neutral'" x-text="entTypeLabel(e.type)"></span></td>
-                  <td class="text-muted" x-text="entAttrSummary(e) || '—'"></td>
+                  <td class="text-muted" x-text="entAttrSummary(e) || '·'"></td>
                   <td><a x-show="entSrc(e) === 'namuwiki'" x-bind:href="'https://namu.wiki/w/' + encodeURIComponent((e.external_ids && e.external_ids.namuwiki) || e.name)" target="_blank" rel="noopener" class="text-violet" data-tip="나무위키 · POC 전용(통검 연동 시 폐기)" data-tip-pos="top">나무위키</a><a x-show="entSrc(e) === 'wikidata'" x-bind:href="'https://www.wikidata.org/wiki/' + (e.external_ids && e.external_ids.wikidata)" target="_blank" rel="noopener" class="text-violet" x-text="e.external_ids && e.external_ids.wikidata"></a><span x-show="!entSrc(e)" class="text-xs text-muted" x-text="(e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'miss') ? '미등재' : ((e.attr_meta && e.attr_meta._enrich && e.attr_meta._enrich.result === 'ambiguous') ? '동음이의(보류)' : '미조회')"></span></td>
                   <td class="tnum" x-text="e.n_contents || 0"></td>
                   <td><div class="flex items-center gap-1.5">
                     <button type="button" class="copybtn" x-on:click="openEntEdit(e)">편집</button>
                     <button type="button" class="copybtn" x-on:click="entEnrich(e)" data-tip="위키데이터 조회로 타입·속성 채우기" data-tip-pos="top">보강</button>
-                    <button type="button" class="copybtn" style="color:var(--ds-error)" x-on:click="entDelete(e)">삭제</button>
+                    <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="entDelete(e)">삭제</button>
                   </div></td>
                 </tr>
               </template>
@@ -69,4 +69,3 @@
         </div>
       </div>
       </template>
-

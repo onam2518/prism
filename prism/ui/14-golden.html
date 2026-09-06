@@ -1,14 +1,14 @@
       <!-- ═══ 모듈: 정답셋 관리(관리자) · 탭 바 + 정답셋 목록 + 학습 데이터 + 분석 ═══ -->
       <template x-if="mod === 'testset'">
-        <div class="w-full" style="margin-bottom:10px"><div class="evaltabs">
-        <button type="button" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport(); loadActivity()">현황 · 학습 반영</button>
-        <button type="button" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
-        <button type="button" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
+        <div class="w-full" style="margin-bottom:10px"><div class="evaltabs" role="tablist" aria-label="정답셋 관리">
+        <button type="button" id="test-status-tab" role="tab" aria-controls="test-status-panel" x-bind:aria-selected="testTab==='status' ? 'true' : 'false'" x-bind:class="testTab==='status'?'sel':''" x-on:click="testTab='status'; loadGoldenStatus(); loadLearnReport(); loadActivity()">현황 · 학습 반영</button>
+        <button type="button" id="test-golden-tab" role="tab" aria-controls="test-golden-panel" x-bind:aria-selected="testTab==='golden' ? 'true' : 'false'" x-bind:class="testTab==='golden'?'sel':''" x-on:click="testTab='golden'; loadGoldenList()">정답셋 목록</button>
+        <button type="button" id="test-data-tab" role="tab" aria-controls="test-data-panel" x-bind:aria-selected="testTab==='data' ? 'true' : 'false'" x-bind:class="testTab==='data'?'sel':''" x-on:click="testTab='data'; loadLearnData()">학습 데이터</button>
       </div></div>
       </template>
       <!-- 정답셋 관리 · 현황 탭: 정답 축적 현황 + 학습 반영(지금 실행 = 관리자) -->
       <template x-if="mod === 'testset'">
-        <div x-show="testTab === 'status'" x-cloak class="w-full space-y-4">
+        <div id="test-status-panel" role="tabpanel" aria-labelledby="test-status-tab" x-show="testTab === 'status'" x-cloak class="w-full space-y-4">
           <!-- 학습 반영 이력(실데이터 · verRows): 반영일 · 버전 · 반영 정답 · 일치율 -->
           <section class="panel" data-fn><div class="panel-hd"><b>학습 반영 이력</b><span class="meta">반영마다 프롬프트가 보정되고 버전이 오릅니다</span></div>
             <div class="panel-bd">
@@ -96,7 +96,7 @@
           <!-- 실패 진단(현 '메타 생성 실패 콘텐츠')은 콘텐츠 관리(STEP 3 실행 큐 아래 · 18-queue.html)로 이동(2026-07-22) -->
           <!-- 검수 목표 / 퀘스트 생성: 관리자가 지정한 일시(모델 버전 시한)에 학습 반영 1회 · 홈·사이드바 팀 퀘스트와 같은 원천 -->
           <section class="panel" data-fn x-init="loadLearnReport()"><div class="panel-hd"><b>검수 목표 / 퀘스트 생성</b><span class="meta">지정한 일시까지 모인 검수 의견이 새 버전 프롬프트에 반영됩니다</span>
-            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '즉시 반영'"></button>
+            <button type="button" class="ds-btn ml-auto" x-bind:class="schedEditing ? 'ds-btn--secondary ds-btn--s-sm' : 'ds-btn--primary'" style="height:30px;padding:0 12px" x-bind:disabled="learnBusy" x-on:click="runLearnBatch()" x-text="learnBusy ? '실행 중…' : '즉시 반영'"></button>
           </div>
             <div class="panel-bd">
               <div style="display:flex;align-items:center;gap:var(--ds-space-4);flex-wrap:wrap">
@@ -122,7 +122,7 @@
               </div>
               <div style="display:flex;align-items:center;gap:var(--ds-space-2);margin-top:12px;flex-wrap:wrap">
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="!schedEditing" x-on:click="schedEdit()" x-text="nextBatchAt ? '수정' : '퀘스트 생성'"></button>
-                <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!schedEditing && nextBatchAt" x-on:click="deleteQuest()" data-tip="반영 예약을 해제합니다 · 검수 의견과 점수는 그대로 남습니다" data-tip-pos="top">퀘스트 삭제</button>
+                <button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-show="!schedEditing && nextBatchAt" x-on:click="deleteQuest()" data-tip="반영 예약을 해제합니다 · 검수 의견과 점수는 그대로 남습니다" data-tip-pos="top">퀘스트 삭제</button>
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="schedEditing" x-on:click="saveLearnSched()">저장</button>
                 <span class="text-xs" style="color:var(--ds-success)" x-text="learnSchedMsg"></span>
                 <span x-show="learnReport && learnReport.ts" style="width:1px;height:14px;background:var(--ds-hairline)" aria-hidden="true"></span>
@@ -260,8 +260,8 @@
 
           <!-- 모델 적용 팝업: 그 버전 지시를 공통/특정 모델 프롬프트에 얹기 -->
           <div class="dmov" x-show="dmOpen" x-cloak x-on:click="dmOpen=false">
-            <div class="dmodal" x-on:click.stop>
-              <div class="dmodal__hd"><b x-text="'v' + dmVer + ' 지시를 모델 프롬프트에 적용'"></b><button type="button" class="dmodal__x" x-on:click="dmOpen=false">×</button></div>
+            <div class="dmodal" role="dialog" aria-modal="true" aria-labelledby="directive-modal-title" x-on:click.stop>
+              <div class="dmodal__hd"><b id="directive-modal-title" x-text="'v' + dmVer + ' 지시를 모델 프롬프트에 적용'"></b><button type="button" class="dmodal__x" aria-label="지시 적용 창 닫기" data-dialog-close x-on:click="dmOpen=false">×</button></div>
               <div class="dmodal__bd">
                 <div class="dmfld">
                   <label>적용 대상 모델</label>
@@ -279,7 +279,7 @@
               </div>
               <div class="dmodal__ft">
                 <button type="button" class="dmbtn" x-bind:disabled="dmBusy" x-on:click="applyDir()">적용</button>
-                <button type="button" class="dmbtn dmbtn--ghost" x-on:click="dmOpen=false">취소</button>
+                <button type="button" class="dmbtn dmbtn--ghost" data-dialog-close x-on:click="dmOpen=false">취소</button>
                 <span class="dmmsg" x-text="dmMsg" x-show="dmMsg"></span>
               </div>
             </div>
@@ -289,7 +289,7 @@
 
 
       <template x-if="mod === 'testset'">
-        <div x-show="testTab === 'golden'" x-cloak class="w-full space-y-4">
+        <div id="test-golden-panel" role="tabpanel" aria-labelledby="test-golden-tab" x-show="testTab === 'golden'" x-cloak class="w-full space-y-4">
         <section class="panel" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadGoldenList()"><div class="panel-hd"><b>정답셋 목록</b>
           <span class="meta" x-text="goldenList ? (goldenList.total + '건 · 검수로 확정 ' + ((goldenList.source_counts&&goldenList.source_counts.review)||0) + ' · 직접 등록 ' + ((goldenList.source_counts&&goldenList.source_counts.manual)||0)) : ((adminData&&adminData.goldenCount?adminData.goldenCount+'건 등록됨':'미등록'))"></span>
           <span class="ml-auto" style="display:flex;gap:6px">
@@ -309,7 +309,7 @@
                     <td><template x-for="c in (g.category||[])" x-bind:key="c"><span class="ds-badge ds-badge--category" style="cursor:help;margin:1px" x-bind:data-tip="termDef('category', c)" data-tip-pos="top" x-text="catKo(c)"></span></template></td>
                     <td class="tnum" x-text="g.version ? ('v' + g.version) : '·'"></td>
                     <td><span class="ds-badge ds-badge--neutral" x-text="g.source === 'manual' ? '직접' : '검수'"></span></td>
-                    <td><button type="button" class="copybtn" x-on:click="removeGolden(g.hash)">제거</button></td>
+                    <td><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="removeGolden(g.hash)">제거</button></td>
                   </tr>
                 </template>
               </tbody></table></div>
@@ -322,7 +322,7 @@
       </template><!-- /정답셋 목록 -->
       <!-- 학습 데이터: 항목별 카드(요약 | 내보내기 | 소요 산정 | 커버리지·신뢰도 | 오류 후보) · 용어는 호버 정의 -->
       <template x-if="mod === 'testset'">
-        <div x-show="testTab === 'data'" x-cloak class="w-full">
+        <div id="test-data-panel" role="tabpanel" aria-labelledby="test-data-tab" x-show="testTab === 'data'" x-cloak class="w-full">
         <div x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)" x-init="loadLearnData()" class="space-y-4">
         <section class="panel" data-fn>
             <div class="panel-hd"><b>학습 데이터 현황</b><span class="meta">특화 LLM 학습데이터 요약 · 용어는 항목에 마우스를 올리면 설명됩니다</span>
@@ -445,7 +445,7 @@
             <div class="overflow-auto" style="max-height:220px"><table class="ds-table"><thead><tr><th>콘텐츠</th><th>정답</th><th>모델</th><th style="width:60px"></th></tr></thead><tbody>
               <template x-for="f in learnData.label_flags" x-bind:key="f.hash">
                 <tr><td x-text="f.title || f.hash"></td><td class="tnum" x-text="f.expected"></td><td class="tnum" x-text="f.got"></td>
-                  <td><button type="button" class="copybtn" x-on:click="removeGolden(f.hash)">제거</button></td></tr>
+                  <td><button type="button" class="ds-btn ds-btn--outline ds-btn--c-danger ds-btn--s-sm" x-on:click="removeGolden(f.hash)">제거</button></td></tr>
               </template>
             </tbody></table></div>
         </section>
@@ -456,7 +456,7 @@
 
       <!-- 콘텐츠 검수 · 원본 목록: 결과 원본을 가공 없이 빠르게 -->
       <template x-if="mod === 'create'">
-        <div x-show="createTab === 'raw'" x-cloak class="w-full space-y-4">
+        <div id="review-raw-panel" role="tabpanel" aria-labelledby="review-raw-tab" x-show="createTab === 'raw'" x-cloak class="w-full space-y-4">
         <!-- 모델 선택(별도 영역 · selctl 정책): 아래 목록의 기준 모델 지정 -->
         <section class="panel" data-fn><div class="panel-hd"><b>모델 선택</b><span class="meta">아래 목록의 기준 모델 지정</span></div>
           <div class="panel-bd">
@@ -477,7 +477,7 @@
             <span class="copybtn" style="cursor:help" data-tip="목록: J/K 행 이동 · Enter 상세 열기 · 상세: A=정확 S=수정 ←→=이동(자동 다음) · JSON 원문은 행 우측 { }" data-tip-pos="bottom">⌨ 단축키</span>
             <button type="button" class="copybtn" x-on:click="exportDash()" data-tip="전체 결과 CSV 다운로드" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>CSV</button>
             <button type="button" class="copybtn" x-on:click="openReport()" data-tip="브라우저용 HTML 리포트 열기" data-tip-pos="bottom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>리포트</button>
-<!-- 여럿에게 한 번에 나눠 맡기는 일은 '검수운영' 메뉴로 옮겼다(2026-07-28) — 목록은 콘텐츠를
+<!-- 여럿에게 한 번에 나눠 맡기는 일은 '검수운영' 메뉴로 옮겼다(2026-07-28) · 목록은 콘텐츠를
                  보는 곳이고, 누구에게 맡길지는 사람의 여력·일정을 함께 봐야 정할 수 있기 때문. -->
             <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-on:click="loadRaw()" data-tip="새로고침" data-tip-pos="bottom" aria-label="원본 목록 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </span>
@@ -611,4 +611,3 @@
         </section>
       </div>
       </template><!-- /콘텐츠 검수 · 원본 목록 -->
-
