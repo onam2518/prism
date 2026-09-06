@@ -5,8 +5,8 @@
         <div class="stepline"><span class="stepline__no">STEP 1</span><b>콘텐츠 추가</b><span class="meta">수동·자동으로 콘텐츠를 모으고 용도를 지정합니다</span>
           <span class="evaltabs ml-auto" role="tablist" aria-label="콘텐츠 추가 방식" style="align-items:center">
             <span class="selctl" data-tip="검수용=검수·정답 축적 대상 · 평가용=검수 목록에서 제외되는 평가 전용 홀드아웃" data-tip-pos="bottom"><span class="selctl__lbl">추가 용도</span><select class="field" x-model="addPurpose"><option value="review">검수용</option><option value="eval">평가용</option></select></span>
-            <button type="button" id="content-run-tab" role="tab" aria-controls="content-run-panel" x-bind:aria-selected="contentTab==='run' ? 'true' : 'false'" x-bind:class="contentTab==='run'?'sel':''" x-on:click="contentTab='run'">수동 추가</button>
-            <button type="button" id="content-auto-tab" role="tab" aria-controls="content-auto-panel" x-bind:aria-selected="contentTab==='auto' ? 'true' : 'false'" x-bind:class="contentTab==='auto'?'sel':''" x-on:click="contentTab='auto'; fetchIngestStatus()">자동 추가</button>
+            <button type="button" id="content-run-tab" role="tab" aria-controls="content-run-panel" x-bind:aria-selected="contentTab==='run' ? 'true' : 'false'" x-bind:tabindex="contentTab==='run' ? 0 : -1" x-bind:class="contentTab==='run'?'sel':''" x-on:click="contentTab='run'">수동 추가</button>
+            <button type="button" id="content-auto-tab" role="tab" aria-controls="content-auto-panel" x-bind:aria-selected="contentTab==='auto' ? 'true' : 'false'" x-bind:tabindex="contentTab==='auto' ? 0 : -1" x-bind:class="contentTab==='auto'?'sel':''" x-on:click="contentTab='auto'; fetchIngestStatus()">자동 추가</button>
           </span>
         </div>
       </div>

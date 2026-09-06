@@ -34,7 +34,7 @@ class TestDesignAUiContract(unittest.TestCase):
 
     def test_evaluation_actions_are_exclusive_peer_modes(self):
         src = read("prism/ui/13-eval.html")
-        self.assertIn("x-data=\"{ evalMode: 'run' }\"", src)
+        self.assertNotIn("x-data=\"{ evalMode:", src)
         for name in ("run", "pilot", "compare"):
             self.assertIn('id="eval-%s-panel" role="tabpanel"' % name, src)
             self.assertIn("evalMode==='%s'" % name, src)
