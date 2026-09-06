@@ -392,13 +392,15 @@ class TestSupabaseContract(StoreContractMixin, unittest.TestCase):
     def test_two_team_write_read_change_and_cleanup(self):
         from prism.store import content_hash
 
-        def pair(title, grade):
-            content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문"}
+        def pair(team, grade):
+            identity = str(team)
+            content = {"displayServiceName": "뉴스", "title": f"계약-팀격리-{identity}",
+                       "subtitle": "", "body": f"본문-{identity}"}
             out = {"quality_meta": {"finalGrade": grade, "review": "yellow"}, "item_meta": {},
                    "trace": {"model": "contract-scope", "version": 1}}
             return content, out
 
-        a, b = pair("계약-팀A-격리", "G"), pair("계약-팀B-격리", "R")
+        a, b = pair(self.team, "G"), pair(self.other_team, "R")
         ha, hb = content_hash(a[0]), content_hash(b[0])
         self.st.save_dedup([a], "scope-a", source="계약", team=self.team)
         self.st.save_dedup([b], "scope-b", source="계약", team=self.other_team)

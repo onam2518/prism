@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: supabase-contract-live
+  cancel-in-progress: false
+
 jobs:
   live-contract:
     if: github.event_name == 'workflow_dispatch' || vars.PRISM_SUPABASE_CONTRACT_SCHEDULE == 'enabled'
