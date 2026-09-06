@@ -48,8 +48,11 @@ class TestSupabaseGoldenAtomicWrite(unittest.TestCase):
     def _stub(self, rpc):
         from prism.supastore import SupabaseStore
         store = SupabaseStore.__new__(SupabaseStore)
-        store._rpc_required = rpc
-        store._req = lambda *args, **kwargs: self.fail("골든 RPC 실패 후 REST DELETE/POST 폴백이 실행됐다")
+        def request(method, table, *, body=None):
+            self.assertEqual((method, table), ("POST", "rpc/prism_write_golden"))
+            return call("prism_write_golden", body)
+        call = rpc
+        store._req = request
         return store
 
     def test_replace_uses_one_team_bound_rpc_for_more_than_two_legacy_chunks(self):
@@ -65,21 +68,11 @@ class TestSupabaseGoldenAtomicWrite(unittest.TestCase):
         self.assertEqual(len(args["p_rows"]), len(rows))
         self.assertTrue(all("team_id" not in row for row in args["p_rows"]))
 
-    def test_first_or_second_legacy_chunk_failure_has_no_delete_post_fallback(self):
-        from prism.store import Store
-        for failed_chunk in ("first", "second"):
-            calls = []
-            mirror = Store(os.path.join(tempfile.mkdtemp(), "before-failure.db"))
-            mirror.register_golden(None, [_row("기존 정답")], replace=True)
-            def fail(fn, args):
-                calls.append((fn, args))
-                raise RuntimeError("%s chunk insert failed" % failed_chunk)
-            store = self._stub(fail)
-            with self.subTest(failed_chunk=failed_chunk):
-                with self.assertRaisesRegex(RuntimeError, "chunk insert failed"):
-                    store.register_golden(self.TEAM, [_row("실패-%s" % failed_chunk)] * 501, replace=True)
-                self.assertEqual(len(calls), 1)
-                self.assertEqual([r["content"]["title"] for r in mirror.get_golden(None)], ["기존 정답"])
+    def test_rpc_failure_is_propagated_without_rest_fallback(self):
+        def fail(fn, args):
+            raise RuntimeError("RPC unavailable")
+        with self.assertRaisesRegex(RuntimeError, "RPC unavailable"):
+            self._stub(fail).register_golden(self.TEAM, [_row("실패")], replace=True)
 
     def test_merge_and_replace_match_sqlite_row_contract(self):
         from prism.store import Store

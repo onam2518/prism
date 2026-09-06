@@ -64,7 +64,8 @@ class SupabaseStore:
     # ── REST 헬퍼 ──────────────────────────────────────────────────────────
     def _req(self, method: str, table: str, *, query: str = "", body=None, prefer: str = "") -> list:
         # public 스키마(기본 노출) + prism_ 접두사 → 노출 설정 불필요.
-        url = f"{self.base}/prism_{table}" + (f"?{query}" if query else "")
+        endpoint = table if table.startswith("rpc/") else f"prism_{table}"
+        url = f"{self.base}/{endpoint}" + (f"?{query}" if query else "")
         headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
@@ -143,20 +144,6 @@ class SupabaseStore:
             self._RPC_MISSING.add(fn)
             print(f"  [supabase] rpc {fn} 미가용({e}) → 행 다운로드 폴백 · SUPABASE_MIGRATION.md 확인")
             return None
-
-    def _rpc_required(self, fn: str, args: dict):
-        """데이터 보존 쓰기용 RPC. 미설치·실패 시 REST 분해 폴백 없이 실패시킨다."""
-        headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
-                   "Accept": "application/json", "Content-Type": "application/json"}
-        data = json.dumps(args or {}, ensure_ascii=False).encode("utf-8")
-        status, raw, _ = self._http("POST", f"/rest/v1/rpc/{fn}", data, headers)
-        if status >= 400:
-            print(f"  [supabase] rpc {fn} HTTP{status}: {raw[:300]}")
-            raise RuntimeError(f"supabase rpc {fn} 실패(HTTP{status})")
-        try:
-            return json.loads(raw) if raw.strip() else None
-        except (TypeError, ValueError):
-            raise RuntimeError(f"supabase rpc {fn} 응답 형식 오류")
 
     def _get(self, table, query=""):
         """GET 조회 · 서버 행 상한을 넘어도 끝까지 수집.
@@ -576,7 +563,7 @@ class SupabaseStore:
         """팀을 RPC 인자로 고정해 교체·병합을 PostgreSQL 한 트랜잭션으로 처리한다."""
         if not team:
             raise ValueError("Supabase 골든 쓰기에는 팀이 필요합니다")
-        result = self._rpc_required("prism_write_golden", {
+        result = self._req("POST", "rpc/prism_write_golden", body={
             "p_team_id": team, "p_rows": rows, "p_replace": bool(replace),
             "p_source": source or "manual",
         })

@@ -5,6 +5,8 @@
 --       prism_golden 행은 바뀌지 않는다. p_replace=true + []만 의도적인 팀 전체 삭제다.
 --       RPC가 없거나 실패한 애플리케이션은 DELETE/POST 폴백을 하지 않고 업로드를 거절한다.
 
+begin;
+
 do $$
 declare
   team_att smallint;
@@ -28,7 +30,7 @@ begin
   if not exists (
     select 1 from pg_index
     where indrelid = 'public.prism_golden'::regclass
-      and indisunique
+      and indisunique and indisvalid and indpred is null and indexprs is null
       and indnkeyatts = 2
       and indkey::text = team_att::text || ' ' || hash_att::text
   ) then
@@ -44,6 +46,8 @@ create or replace function public.prism_write_golden(
   p_source text default 'manual'
 ) returns integer
 language plpgsql
+security invoker
+set search_path = pg_catalog, public
 as $$
 declare
   row_count integer;
@@ -65,6 +69,8 @@ begin
     raise exception 'golden rows require object content/expected and a 16-character lowercase hex content_hash';
   end if;
 
+  -- 같은 팀의 교체·병합을 직렬화해 동시 전체 교체가 두 세트의 합집합이 되지 않게 한다.
+  perform pg_advisory_xact_lock(hashtextextended('prism_golden:' || p_team_id::text, 0));
   row_count := jsonb_array_length(p_rows);
   if p_replace then
     delete from public.prism_golden where team_id = p_team_id;
@@ -93,5 +99,8 @@ begin
 end;
 $$;
 
-revoke all on function public.prism_write_golden(uuid, jsonb, boolean, text) from public;
+revoke all on function public.prism_write_golden(uuid, jsonb, boolean, text) from public, anon, authenticated;
 grant execute on function public.prism_write_golden(uuid, jsonb, boolean, text) to service_role;
+
+notify pgrst, 'reload schema';
+commit;
