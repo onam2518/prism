@@ -6,6 +6,23 @@
     return el.isConnected && !el.closest('[inert]') && !!el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
   };
   const focusable = root => [...root.querySelectorAll('button,a[href],input,select,textarea,[tabindex]')].filter(el => !el.disabled && el.tabIndex >= 0 && visible(el));
+  const tabsIn = list => [...list.querySelectorAll('[role="tab"]')].filter(tab => tab.closest('[role="tablist"]') === list);
+  const enabledTab = tab => !tab.disabled && tab.getAttribute('aria-disabled') !== 'true' && visible(tab);
+  function syncTabStops() {
+    document.querySelectorAll('[role="tablist"]').forEach(list => tabsIn(list).forEach(tab => {
+      // Hidden and disabled tabs retain their component-owned tabindex until they can participate again.
+      if (enabledTab(tab)) tab.tabIndex = tab.getAttribute('aria-selected') === 'true' ? 0 : -1;
+    }));
+  }
+  let tabsScheduled = false;
+  function scheduleTabStops() {
+    if (!tabsScheduled) { tabsScheduled = true; requestAnimationFrame(() => { tabsScheduled = false; syncTabStops(); }); }
+  }
+  // Alpine changes aria-selected in place and can insert x-for tablists. tabindex is deliberately not observed,
+  // so our own normalization cannot schedule another pass.
+  new MutationObserver(scheduleTabStops).observe(document.body, {
+    subtree: true, childList: true, attributes: true, attributeFilter: ['aria-selected']
+  });
   let current = null, scheduled = false;
   const openers = new WeakMap();
   const scope = el => el.closest('[data-dialog-scope]') || el;
@@ -66,12 +83,13 @@
     const vertical = list.getAttribute('aria-orientation') === 'vertical';
     const keys = vertical ? ['ArrowUp','ArrowDown'] : ['ArrowLeft','ArrowRight'];
     if (![...keys, 'Home','End'].includes(e.key)) return;
-    const tabs = [...list.querySelectorAll('[role="tab"]')].filter(t => t.closest('[role="tablist"]') === list && !t.disabled && t.getAttribute('aria-disabled') !== 'true' && visible(t));
+    const tabs = tabsIn(list).filter(enabledTab);
     let index = tabs.indexOf(tab);
     if (e.key === 'Home') index = 0;
     else if (e.key === 'End') index = tabs.length - 1;
     else index = (index + (e.key === keys[0] ? -1 : 1) + tabs.length) % tabs.length;
     if (tabs[index]) { e.preventDefault(); tabs[index].focus(); tabs[index].click(); }
   }, true);
+  syncTabStops();
   sync();
 })();
