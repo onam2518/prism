@@ -71,7 +71,7 @@
           </div>
         </section>
         <!-- 비밀번호 재설정 결과: 임시 비밀번호는 이 화면에서만 1회 노출(저장 안 함) · 생성자가 직접 전달 -->
-        <div class="ds-dialog-backdrop" x-show="pwReset" x-cloak x-on:mousedown.self="pwReset=null" x-on:keydown.escape.window="pwReset && (pwReset=null)" style="z-index:76">
+        <div class="ds-dialog-backdrop" x-show="pwReset" x-cloak x-on:mousedown.self="pwReset=null" style="z-index:76">
           <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="임시 비밀번호 발급">
             <h2 class="ds-dialog__title"><span x-text="pwReset && pwReset.member"></span> 님 임시 비밀번호</h2>
             <div class="ds-dialog__body">
@@ -82,7 +82,7 @@
               </div>
             </div>
             <div class="ds-dialog__footer">
-              <button type="button" class="ds-btn ds-btn--primary" x-on:click="pwReset=null">확인</button>
+              <button type="button" class="ds-btn ds-btn--primary" data-dialog-close x-on:click="pwReset=null">확인</button>
             </div>
           </div>
         </div>
@@ -101,8 +101,8 @@
                   <template x-for="mid in (adminData.menuOrder||[])" x-bind:key="mid">
                     <tr style="border-top:1px solid var(--ds-hairline-soft)">
                       <td style="padding:8px" x-text="(adminData.menuLabels||{})[mid]||mid"></td>
-                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].super"></td>
-                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].admin"></td>
+                      <td style="text-align:center;padding:8px"><input type="checkbox" x-bind:aria-label="((adminData.menuLabels||{})[mid]||mid) + ' · 슈퍼관리자 메뉴 권한'" x-model="menuPermsEdit[mid].super"></td>
+                      <td style="text-align:center;padding:8px"><input type="checkbox" x-bind:aria-label="((adminData.menuLabels||{})[mid]||mid) + ' · 관리자 메뉴 권한'" x-model="menuPermsEdit[mid].admin"></td>
                     </tr>
                   </template>
                 </tbody>

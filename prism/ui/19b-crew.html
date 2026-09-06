@@ -23,10 +23,10 @@
           <!-- 기한을 걸고 배정하면 기본은 '이번 배정'만 본다 · 과거 누적은 토글로 -->
           <div class="flex items-center gap-1" style="margin-bottom:10px" x-show="crewWaveOn" x-cloak>
             <button type="button" class="ds-btn ds-btn--s-sm"
-                    x-bind:class="crewScope === 'wave' ? 'ds-btn--primary' : 'ds-btn--ghost'"
+                    x-bind:aria-pressed="crewScope === 'wave'" x-bind:class="crewScope === 'wave' ? 'ds-btn--primary' : 'ds-btn--ghost'"
                     x-on:click="crewScope = 'wave'">이번 배정</button>
             <button type="button" class="ds-btn ds-btn--s-sm"
-                    x-bind:class="crewScope === 'all' ? 'ds-btn--primary' : 'ds-btn--ghost'"
+                    x-bind:aria-pressed="crewScope === 'all'" x-bind:class="crewScope === 'all' ? 'ds-btn--primary' : 'ds-btn--ghost'"
                     x-on:click="crewScope = 'all'">전체 누적</button>
             <span class="meta ml-auto" x-show="crewScopeEff === 'wave'"
                   x-text="'이번 배정 ' + (crewWave ? crewWave.assigned : 0) + '건 · 기한 ' + crewDate(crewSum.due_at) + crewDdayTxt"></span>
@@ -35,7 +35,7 @@
               <span class="flex items-center gap-1">
                 <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!crewDueEdit"
                         x-on:click="crewDueEditOpen()">기한 조정</button>
-                <input type="datetime-local" class="field" style="height:30px;width:190px"
+                <input aria-label="배정 기한 조정" type="datetime-local" class="field" style="height:30px;width:190px"
                        x-show="crewDueEdit" x-model="crewDueNew">
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="crewDueEdit"
                         x-bind:disabled="crewBusy || !crewDueNew" x-on:click="crewAdjustDue()">저장</button>
@@ -243,31 +243,32 @@
                 <div>
                   <div class="text-xs" style="font-weight:700;margin-bottom:8px">신고 일정</div>
                   <div class="flex flex-wrap gap-2" style="align-items:flex-end">
-                    <div style="width:132px"><label class="lbl">주간 가용 시간</label>
-                      <input type="number" min="0" max="40" step="0.5" class="field tnum"
+                    <div style="width:132px"><label x-bind:for="'crew-hours-' + m.id" class="lbl">주간 가용 시간</label>
+                      <input x-bind:id="'crew-hours-' + m.id" type="number" min="0" max="40" step="0.5" class="field tnum"
                              x-bind:value="m.profile.hours_per_week"
                              x-on:change="crewSave(m, { hours_per_week: $event.target.value })"></div>
-                    <div style="width:132px"><label class="lbl">상태</label>
-                      <select class="field" x-bind:value="m.profile.status" x-on:change="crewSave(m, { status: $event.target.value })">
+                    <div style="width:132px"><label x-bind:for="'crew-status-' + m.id" class="lbl">상태</label>
+                      <select x-bind:id="'crew-status-' + m.id" class="field" x-bind:value="m.profile.status" x-on:change="crewSave(m, { status: $event.target.value })">
                         <option value="active">활동 중</option><option value="onboarding">교육 중</option>
                         <option value="leave">휴가</option><option value="inactive">비활성</option></select></div>
-                    <div style="width:150px"><label class="lbl">부재 시작</label>
-                      <input type="date" class="field" x-bind:value="m.profile.leave_from"
+                    <div style="width:150px"><label x-bind:for="'crew-leave-from-' + m.id" class="lbl">부재 시작</label>
+                      <input x-bind:id="'crew-leave-from-' + m.id" type="date" class="field" x-bind:value="m.profile.leave_from"
                              x-on:change="crewSave(m, { leave_from: $event.target.value })"></div>
-                    <div style="width:150px"><label class="lbl">부재 종료</label>
-                      <input type="date" class="field" x-bind:value="m.profile.leave_to"
+                    <div style="width:150px"><label x-bind:for="'crew-leave-to-' + m.id" class="lbl">부재 종료</label>
+                      <input x-bind:id="'crew-leave-to-' + m.id" type="date" class="field" x-bind:value="m.profile.leave_to"
                              x-on:change="crewSave(m, { leave_to: $event.target.value })"></div>
                   </div>
-                  <div style="margin-top:10px"><label class="lbl">근무 요일</label>
+                  <div style="margin-top:10px"><span class="lbl">근무 요일</span>
                     <div class="flex flex-wrap gap-1">
                       <template x-for="(d, i) in ['월','화','수','목','금','토','일']" x-bind:key="i">
                         <button type="button" class="srcfilter__chip"
+                                x-bind:aria-pressed="(m.profile.workdays||[]).includes(i)" x-bind:aria-label="m.name + ' · ' + d + '요일 근무'"
                                 x-bind:class="(m.profile.workdays||[]).includes(i) ? 'sel' : ''"
                                 x-on:click="crewSave(m, { workdays: crewToggleDay(m, i) })" x-text="d"></button>
                       </template>
                     </div></div>
-                  <div style="margin-top:10px"><label class="lbl">메모 (선택)</label>
-                    <input class="field" maxlength="200" placeholder="예) 오전만 가능 · 스포츠 분야 강점"
+                  <div style="margin-top:10px"><label x-bind:for="'crew-note-' + m.id" class="lbl">메모 (선택)</label>
+                    <input x-bind:id="'crew-note-' + m.id" class="field" maxlength="200" placeholder="예) 오전만 가능 · 스포츠 분야 강점"
                            x-bind:value="m.profile.note" x-on:change="crewSave(m, { note: $event.target.value })"></div>
                   <div class="flex items-center gap-2" style="margin-top:10px">
                     <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-sm"
@@ -334,9 +335,9 @@
               <th style="width:60px"></th></tr></thead><tbody>
               <template x-for="(r, i) in crewOwnerRules" x-bind:key="'own'+i">
                 <tr>
-                  <td><select class="field" x-model="r.kind" x-on:change="r.value=''; crewOwnerDirty=true">
+                  <td><select aria-label="담당 규칙 유형" class="field" x-model="r.kind" x-on:change="r.value=''; crewOwnerDirty=true">
                     <option value="service">서비스</option><option value="category">주제</option></select></td>
-                  <td><select class="field" x-model="r.value" x-on:change="crewOwnerDirty=true">
+                  <td><select aria-label="담당 규칙 대상" class="field" x-model="r.value" x-on:change="crewOwnerDirty=true">
                     <option value="">고르세요</option>
                     <template x-for="v in crewOwnerValues(r.kind)" x-bind:key="v"><option x-bind:value="v" x-text="v"></option></template>
                   </select></td>
@@ -367,16 +368,16 @@
                 data-tip-pos="left">배분 기준</span></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2" style="align-items:flex-end">
-              <div style="width:180px"><label class="lbl">대상 콘텐츠</label>
-                <select class="field" x-model="crewAsgScope">
+              <div style="width:180px"><label for="crew-assignment-scope" class="lbl">대상 콘텐츠</label>
+                <select id="crew-assignment-scope" class="field" x-model="crewAsgScope">
                   <option value="unassigned">미배정만</option>
                   <option value="all">검수 대상 전체</option></select></div>
-              <div style="width:120px"><label class="lbl">최대 건수</label>
-                <input type="number" min="1" max="2000" class="field tnum" x-model.number="crewAsgLimit"></div>
-              <div style="width:140px"><label class="lbl">건당 검수 인원</label>
-                <input type="number" min="1" max="9" class="field tnum" x-model.number="crewAsgMin"></div>
-              <div style="width:200px"><label class="lbl">기한 (선택)</label>
-                <input type="datetime-local" class="field" x-model="crewDue"></div>
+              <div style="width:120px"><label for="crew-assignment-limit" class="lbl">최대 건수</label>
+                <input id="crew-assignment-limit" type="number" min="1" max="2000" class="field tnum" x-model.number="crewAsgLimit"></div>
+              <div style="width:140px"><label for="crew-assignment-minimum" class="lbl">건당 검수 인원</label>
+                <input id="crew-assignment-minimum" type="number" min="1" max="9" class="field tnum" x-model.number="crewAsgMin"></div>
+              <div style="width:200px"><label for="crew-assignment-due" class="lbl">기한 (선택)</label>
+                <input id="crew-assignment-due" type="datetime-local" class="field" x-model="crewDue"></div>
               <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ds-btn--s-md"
                       x-bind:disabled="crewBusy" x-on:click="crewPlan(false)">배정 계획 보기</button>
             </div>
@@ -482,39 +483,39 @@
                 <span>기한 1일 전 정체분 재배정</span></label>
             </div>
             <div class="flex flex-wrap gap-2" style="align-items:flex-end;margin-top:10px">
-              <div style="width:150px"><label class="lbl">주기 시작 요일</label>
-                <select class="field" x-bind:value="crewCfg.wave_weekday" x-on:change="crewSetting('wave_weekday', $event.target.value)">
+              <div style="width:150px"><label for="crew-wave-weekday" class="lbl">주기 시작 요일</label>
+                <select id="crew-wave-weekday" class="field" x-bind:value="crewCfg.wave_weekday" x-on:change="crewSetting('wave_weekday', $event.target.value)">
                   <template x-for="(d, i) in ['월','화','수','목','금','토','일']" x-bind:key="i">
                     <option x-bind:value="i" x-text="d + '요일'"></option></template></select></div>
-              <div style="width:120px"><label class="lbl">주기 시작 시각</label>
-                <input type="number" min="0" max="23" class="field tnum" x-bind:value="crewCfg.wave_hour"
+              <div style="width:120px"><label for="crew-wave-hour" class="lbl">주기 시작 시각</label>
+                <input id="crew-wave-hour" type="number" min="0" max="23" class="field tnum" x-bind:value="crewCfg.wave_hour"
                        x-on:change="crewSetting('wave_hour', $event.target.value)"></div>
-              <div style="width:120px"><label class="lbl">기한 (일)</label>
-                <input type="number" min="1" max="14" class="field tnum" x-bind:value="crewCfg.wave_days"
+              <div style="width:120px"><label for="crew-wave-days" class="lbl">기한 (일)</label>
+                <input id="crew-wave-days" type="number" min="1" max="14" class="field tnum" x-bind:value="crewCfg.wave_days"
                        x-on:change="crewSetting('wave_days', $event.target.value)"></div>
-              <div style="width:140px"><label class="lbl">회당 최대 건수</label>
-                <input type="number" min="1" max="2000" class="field tnum" x-bind:value="crewCfg.wave_batch"
+              <div style="width:140px"><label for="crew-wave-batch" class="lbl">회당 최대 건수</label>
+                <input id="crew-wave-batch" type="number" min="1" max="2000" class="field tnum" x-bind:value="crewCfg.wave_batch"
                        x-on:change="crewSetting('wave_batch', $event.target.value)"></div>
-              <div style="width:140px"><label class="lbl">건당 검수 인원</label>
-                <input type="number" min="1" max="9" class="field tnum" x-bind:value="crewCfg.wave_min_reviewers"
+              <div style="width:140px"><label for="crew-wave-reviewers" class="lbl">건당 검수 인원</label>
+                <input id="crew-wave-reviewers" type="number" min="1" max="9" class="field tnum" x-bind:value="crewCfg.wave_min_reviewers"
                        x-on:change="crewSetting('wave_min_reviewers', $event.target.value)"></div>
             </div>
             <!-- 과거 실측 vs 이번 주 신고: 무엇에 무게를 둘지. 실측만 보면 빠른 소수에게 쏠린다. -->
             <div class="flex flex-wrap gap-2" style="align-items:flex-end;margin-top:10px">
-              <div style="width:190px"><label class="lbl">과거 속도 반영도</label>
-                <input type="number" min="0" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.rate_shrink"
+              <div style="width:190px"><label for="crew-rate-shrink" class="lbl">과거 속도 반영도</label>
+                <input id="crew-rate-shrink" type="number" min="0" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.rate_shrink"
                        x-on:change="crewSetting('rate_shrink', $event.target.value)"
                        data-tip="1 = 실측 속도 그대로 · 0 = 전원 팀 중앙값(이번 주 신고 시간에만 비례) · 낮출수록 배정 쏠림이 줄어듭니다" data-tip-pos="top"></div>
-              <div style="width:190px"><label class="lbl">보장 하한(캐파 대비)</label>
-                <input type="number" min="0" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.min_fill_ratio"
+              <div style="width:190px"><label for="crew-min-fill" class="lbl">보장 하한(캐파 대비)</label>
+                <input id="crew-min-fill" type="number" min="0" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.min_fill_ratio"
                        x-on:change="crewSetting('min_fill_ratio', $event.target.value)"
                        data-tip="아무도 처리 가능량의 이만큼을 채우기 전에는 다음 사람으로 넘어가지 않습니다 · 소수에게 몰아주고 나머지를 0건으로 두는 것도 쏠림입니다" data-tip-pos="top"></div>
-              <div style="width:190px"><label class="lbl">새 배정 상한(캐파 배수)</label>
-                <input type="number" min="0.5" max="5" step="0.1" class="field tnum" x-bind:value="crewCfg.cap_limit"
+              <div style="width:190px"><label for="crew-cap-limit" class="lbl">새 배정 상한(캐파 배수)</label>
+                <input id="crew-cap-limit" type="number" min="0.5" max="5" step="0.1" class="field tnum" x-bind:value="crewCfg.cap_limit"
                        x-on:change="crewSetting('cap_limit', $event.target.value)"
                        data-tip="잔여가 처리 가능량의 이 배를 넘긴 검수자는 새 배정을 뒤로 미룹니다 · 다른 후보가 없으면 받습니다(배정이 멈추지 않게)" data-tip-pos="top"></div>
-              <div style="width:190px"><label class="lbl">미확인자 반영도</label>
-                <input type="number" min="0.1" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.unconfirmed_factor"
+              <div style="width:190px"><label for="crew-unconfirmed-factor" class="lbl">미확인자 반영도</label>
+                <input id="crew-unconfirmed-factor" type="number" min="0.1" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.unconfirmed_factor"
                        x-on:change="crewSetting('unconfirmed_factor', $event.target.value)"
                        data-tip="이번 주 일정을 확인하지 않은 검수자의 처리 가능량에 곱하는 값 · 지난주 신고라 근거가 약해 보수적으로 잡습니다" data-tip-pos="top"></div>
             </div>
@@ -538,7 +539,7 @@
             <span class="meta" x-text="'현재 기한 ' + crewDate(crewSum.due_at) + crewDdayTxt"></span>
             <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!crewDueEdit"
                     x-on:click="crewDueEditOpen()">기한 조정</button>
-            <input type="datetime-local" class="field" style="height:30px;width:190px"
+            <input aria-label="배정 기한 조정" type="datetime-local" class="field" style="height:30px;width:190px"
                    x-show="crewDueEdit" x-model="crewDueNew">
             <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="crewDueEdit"
                     x-bind:disabled="crewBusy || !crewDueNew" x-on:click="crewAdjustDue()">저장</button>
@@ -584,18 +585,19 @@
           <li>휴가·교육 중·비활성으로 두면 이번 주 배정에서 빠집니다.</li>
         </ul>
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
-          <div style="width:170px"><label class="lbl">주간 가용 시간 (합계)</label>
-            <input type="number" min="0" max="40" step="0.5" class="field tnum" x-model.number="wkForm.hours_per_week"
+          <div style="width:170px"><label for="crew-week-hours" class="lbl">주간 가용 시간 (합계)</label>
+            <input id="crew-week-hours" type="number" min="0" max="40" step="0.5" class="field tnum" x-model.number="wkForm.hours_per_week"
                    data-tip="이번 주 전체에 검수로 낼 수 있는 시간의 합 · 하루 기준이 아닙니다" data-tip-pos="top"></div>
-          <div style="width:150px"><label class="lbl">상태</label>
-            <select class="field" x-model="wkForm.status">
+          <div style="width:150px"><label for="crew-week-status" class="lbl">상태</label>
+            <select id="crew-week-status" class="field" x-model="wkForm.status">
               <option value="active">활동 중</option><option value="onboarding">교육 중</option>
               <option value="leave">휴가</option><option value="inactive">비활성</option></select></div>
         </div>
-        <div style="margin-top:12px"><label class="lbl">근무 요일</label>
+        <div style="margin-top:12px"><span class="lbl">근무 요일</span>
           <div class="flex flex-wrap gap-1">
             <template x-for="(d, i) in ['월','화','수','목','금','토','일']" x-bind:key="'wk'+i">
               <button type="button" class="srcfilter__chip"
+                      x-bind:aria-pressed="wkForm.workdays.includes(i)" x-bind:aria-label="d + '요일 근무'"
                       x-bind:class="wkForm.workdays.includes(i) ? 'sel' : ''"
                       x-on:click="wkToggleDay(i)" x-text="d"></button>
             </template>
@@ -609,7 +611,7 @@
     </div>
   </div>
   <!-- 검수자 일괄 배정(슈퍼관리자 이상): ① 콘텐츠 선택 → ② 담당자 지정 → ③ 확인 · 배정 -->
-  <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && (bulkOpen=false)" style="z-index:78">
+  <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" style="z-index:78">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">
       <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px;font-family:var(--ds-font-display)">검수자 일괄 배정
         <span class="text-xs text-muted" style="font-family:var(--ds-font-body);font-weight:400">여러 콘텐츠에 한 번에 지정합니다 · 슈퍼관리자 이상</span></h2>
@@ -623,18 +625,18 @@
             <span class="ds-badge ds-badge--status stepcard__badge tnum" x-text="bulkGrps > 1 ? ('선택 ' + bulkGrpCounts.join('·') + ' / ' + bulkFiltered.length + '건') : ('선택 ' + bulkSelHashes.length + ' / ' + bulkFiltered.length + '건')"></span>
           </div>
           <div class="filterbar" style="margin-bottom:12px">
-            <input class="field" placeholder="제목·카테고리·사유 검색" x-model="bulkQ">
-            <select class="field" style="width:auto" x-model="bulkGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
-            <select class="field" style="width:auto" x-model="bulkSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="'b'+sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
-            <select class="field" style="width:auto" x-model="bulkRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
-            <select class="field" style="width:auto" x-model="bulkAsg"><option value="">배정 전체</option><option value="unassigned">미배정만</option><option value="assigned">배정됨만</option></select>
+            <input aria-label="배정 콘텐츠 검색" class="field" placeholder="제목·카테고리·사유 검색" x-model="bulkQ">
+            <select aria-label="콘텐츠 등급" class="field" style="width:auto" x-model="bulkGrade"><option value="">등급 전체</option><option value="G">G</option><option value="R">R</option></select>
+            <select aria-label="서비스" class="field" style="width:auto" x-model="bulkSvc"><option value="">서비스 전체</option><template x-for="sv in rawSvcs" x-bind:key="'b'+sv"><option x-bind:value="sv" x-text="sv"></option></template></select>
+            <select aria-label="검수 상태" class="field" style="width:auto" x-model="bulkRev"><option value="">검수 전체</option><option value="todo">미검수</option><option value="done">검수 완료</option></select>
+            <select aria-label="배정 상태" class="field" style="width:auto" x-model="bulkAsg"><option value="">배정 전체</option><option value="unassigned">미배정만</option><option value="assigned">배정됨만</option></select>
           </div>
           <!-- 무작위 수량 자동 선택: 현재 필터 결과 중 N건 × G그룹 랜덤 추출(그룹끼리 비중복) -->
           <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 12px;margin-bottom:12px;background:var(--ds-tint-bg);border-radius:var(--ds-radius-md)">
             <b class="text-xs" style="color:var(--ds-primary)">⚄ 무작위 자동 선택</b>
-            <input type="number" class="field" style="width:78px" min="1" x-model.number="bulkRandN">
+            <input aria-label="그룹당 무작위 선택 건수" type="number" class="field" style="width:78px" min="1" x-model.number="bulkRandN">
             <span class="text-xs text-muted">건 ×</span>
-            <input type="number" class="field" style="width:64px" min="1" max="8" x-model.number="bulkGrpN" x-on:input="bulkGrpChanged()" data-tip="2 이상이면 그룹별로 담당자를 따로 지정합니다" data-tip-pos="top">
+            <input aria-label="배정 그룹 수" type="number" class="field" style="width:64px" min="1" max="8" x-model.number="bulkGrpN" x-on:input="bulkGrpChanged()" data-tip="2 이상이면 그룹별로 담당자를 따로 지정합니다" data-tip-pos="top">
             <span class="text-xs text-muted">그룹</span>
             <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="bulkRandom()">랜덤 선택</button>
             <span class="text-xs text-muted" x-text="bulkGrps > 1 ? '그룹당 ' + bulkRandN + '건씩 중복 없이 추출 · 행 클릭 = 그룹 순환' : '필터 결과 중 무작위로 · 다시 누르면 재추출'"></span>
@@ -651,7 +653,7 @@
               <tbody>
                 <template x-for="r in bulkFiltered" x-bind:key="'bk'+r.hash">
                   <tr style="cursor:pointer" x-bind:class="bulkChecked[r.hash] ? 'is-sel' : ''" x-on:click="bulkToggle(r.hash)">
-                    <td style="text-align:center"><input type="checkbox" class="bulkcb" x-bind:checked="!!bulkChecked[r.hash]" tabindex="-1" style="pointer-events:none"></td>
+                    <td style="text-align:center"><input type="checkbox" class="bulkcb" x-bind:checked="!!bulkChecked[r.hash]" x-bind:aria-label="(r.title || '제목 없음') + ' 선택'" x-on:click.stop x-on:change="bulkToggle(r.hash)"></td>
                     <td class="text-ink" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                       <span class="ds-badge ds-badge--intent tnum" x-show="bulkGrps > 1 && bulkChecked[r.hash]" style="margin-right:5px" x-text="'그룹' + bulkChecked[r.hash]"></span>
                       <span x-text="r.title || '(제목 없음)'"></span>
@@ -680,9 +682,9 @@
           </div>
           <div x-show="!assignCandidates.length" class="text-xs text-muted" style="padding:2px 0 10px">배정 가능한 검수자가 없습니다(최종검수자 제외) · <b class="text-ink">팀 관리</b>에서 멤버를 초대하세요</div>
           <!-- 배정 방식: 같은 담당자(전원 동일) / 균등 분배(부하 적은 사람부터 나눠 배정) · 그룹 모드에선 그룹별 지정으로 대체 -->
-          <div x-show="bulkGrps <= 1" class="flexrow" style="gap:9px;flex-wrap:wrap;margin-bottom:12px" role="radiogroup" aria-label="배정 방식">
-            <button type="button" role="radio" x-bind:aria-checked="bulkMode==='same'" class="srcfilter__chip" x-bind:class="bulkMode==='same' ? 'sel' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
-            <button type="button" role="radio" x-bind:aria-checked="bulkMode==='distribute'" class="srcfilter__chip" x-bind:class="bulkMode==='distribute' ? 'sel' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 검수자에게 콘텐츠를 분할 배정합니다 · 잔여 배정이 적은 검수자부터 채웁니다" data-tip-pos="top">균등 분배</button>
+          <div x-show="bulkGrps <= 1" class="ds-segmented" style="margin-bottom:12px" role="group" aria-label="배정 방식">
+            <button type="button" x-bind:aria-pressed="bulkMode==='same'" class="ds-segmented__item" x-bind:class="bulkMode==='same' ? 'is-on' : ''" x-on:click="bulkMode='same'" data-tip="선택한 콘텐츠 전부를 같은 사람들에게 지정합니다" data-tip-pos="top">같은 담당자로 지정</button>
+            <button type="button" x-bind:aria-pressed="bulkMode==='distribute'" class="ds-segmented__item" x-bind:class="bulkMode==='distribute' ? 'is-on' : ''" x-on:click="bulkMode='distribute'" data-tip="선택한 검수자에게 콘텐츠를 분할 배정합니다 · 잔여 배정이 적은 검수자부터 채웁니다" data-tip-pos="top">균등 분배</button>
           </div>
           <div x-show="bulkGrps <= 1" class="flexrow" style="flex-wrap:wrap;gap:9px;margin-bottom:14px">
             <template x-for="m in assignCandidates" x-bind:key="'bpk'+m.id">
@@ -744,7 +746,7 @@
 
       </div>
       <div class="ds-dialog__footer" style="margin-top:16px">
-        <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-md" x-on:click="bulkOpen=false">취소</button>
+        <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-md" data-dialog-close x-on:click="bulkOpen=false">취소</button>
         <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="assignBulkBusy || !bulkSelHashes.length || (bulkGrps > 1 ? !bulkGrpReady : !bulkPick.length)" x-on:click="saveBulk()" x-text="assignBulkBusy ? '배정 중…' : (bulkGrps > 1 ? (bulkSelHashes.length + '건 · ' + bulkGrps + '그룹 배정 실행 →') : (bulkSelHashes.length + '건 배정 실행 →'))"></button>
       </div>
     </div>

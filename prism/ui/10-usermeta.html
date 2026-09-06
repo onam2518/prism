@@ -60,7 +60,7 @@
                           </div>
                           <div class="an-sect">
                             <div class="an-cmt-row">
-                              <input class="an-cmt-in" x-model="demoCmt" placeholder="댓글로 의견을 남겨주세요." x-on:keydown.enter="demoComment()">
+                              <input aria-label="댓글" class="an-cmt-in" x-model="demoCmt" placeholder="댓글로 의견을 남겨주세요." x-on:keydown.enter="demoComment()">
                               <button type="button" class="an-btn an-btn--primary" x-bind:disabled="demoBusy" x-on:click="demoComment()">등록</button>
                             </div>
                             <template x-for="(cm, cmi) in ((demoReading && demoReading.comments) || [])" x-bind:key="'cm'+cmi">
@@ -76,7 +76,7 @@
                           <div class="an-search">
                             <div class="an-search-cap">원하는 콘텐츠를 찾아드려요 · 찾을수록 추천이 취향에 가까워집니다</div>
                             <div class="an-search-box">
-                              <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
+                              <input aria-label="콘텐츠 검색" class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
                               <button type="button" class="an-search-go an-search-go--icon" x-bind:class="demoBusy ? 'is-spin' : ''" aria-label="찾기" data-tip="찾기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#3EC9F5" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A7DF7" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#6E56F0" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#E85B8A" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
@@ -105,7 +105,7 @@
                         <div x-show="demoVariant==='b'" x-cloak>
                           <div class="an-search">
                             <div class="an-search-box">
-                              <input class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
+                              <input aria-label="콘텐츠 검색" class="an-search-in" x-model="demoQ" placeholder="보고 싶은 콘텐츠를 말해보세요" x-on:keydown.enter="demoSearch()">
                               <button type="button" class="an-search-go an-search-go--icon" x-bind:class="demoBusy ? 'is-spin' : ''" aria-label="찾기" data-tip="찾기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#3EC9F5" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A7DF7" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#6E56F0" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#E85B8A" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
@@ -140,7 +140,7 @@
                           <div class="an-search">
                             <div class="an-search-cap">물어보면 그 주제의 보드가 생기고, 다음부터 새 소식이 거기 쌓여요</div>
                             <div class="an-search-box">
-                              <input class="an-search-in" x-model="demoQ" placeholder="무엇이 궁금하세요?" x-on:keydown.enter="demoSearch()">
+                              <input aria-label="콘텐츠 검색" class="an-search-in" x-model="demoQ" placeholder="무엇이 궁금하세요?" x-on:keydown.enter="demoSearch()">
                               <button type="button" class="an-search-go an-search-go--icon" x-bind:class="demoBusy ? 'is-spin' : ''" aria-label="보드 만들기" data-tip="보드 만들기" data-tip-pos="top" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#3EC9F5" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A7DF7" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#6E56F0" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#E85B8A" stroke-width="5" stroke-linecap="round"/></svg></button>
                             </div>
                           </div>
@@ -171,7 +171,7 @@
                         <!-- 시안 D · 대화형: 프롬프트가 주인공 · 카드마다 설명 한 줄 · 무결과는 솔직하게 -->
                         <div x-show="demoVariant==='d'" x-cloak>
                           <div class="an-ask">
-                            <input x-model="demoQ" placeholder="어떤 콘텐츠가 보고 싶으세요?" x-on:keydown.enter="demoSearch()">
+                            <input aria-label="콘텐츠 검색" x-model="demoQ" placeholder="어떤 콘텐츠가 보고 싶으세요?" x-on:keydown.enter="demoSearch()">
                             <button type="button" class="send send--icon" x-bind:class="demoBusy ? 'is-spin' : ''" aria-label="보내기" x-bind:disabled="demoBusy" x-on:click="demoSearch()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3.14 10.44 A9 9 0 0 1 10.44 3.14" stroke="#3EC9F5" stroke-width="5" stroke-linecap="round"/><path d="M13.56 3.14 A9 9 0 0 1 20.86 10.44" stroke="#4A7DF7" stroke-width="5" stroke-linecap="round"/><path d="M20.86 13.56 A9 9 0 0 1 13.56 20.86" stroke="#6E56F0" stroke-width="5" stroke-linecap="round"/><path d="M10.44 20.86 A9 9 0 0 1 3.14 13.56" stroke="#E85B8A" stroke-width="5" stroke-linecap="round"/></svg></button>
                           </div>
                           <div class="an-chipbar" x-on:wheel.prevent="$event.currentTarget.scrollLeft += ($event.deltaY + $event.deltaX)" x-on:pointerdown="demoDragStart($event)" x-on:pointermove="demoDragMove($event)" x-on:pointerup="demoDragEnd()" x-on:pointercancel="demoDragEnd()" x-on:pointerleave="demoDragEnd()" x-on:click.capture="demoDragMoved && ($event.stopPropagation(), $event.preventDefault())">
@@ -448,14 +448,14 @@
                   </template>
                 </div>
                 <div class="flex items-center gap-2" style="margin-top:8px">
-                  <select x-model="memNew.kind" class="field" style="width:150px">
+                  <select aria-label="메모리 유형" x-model="memNew.kind" class="field" style="width:150px">
                     <option value="profile.md">/profile.md</option>
                     <option value="preferences.md">/preferences.md</option>
                     <option value="topics">/topics/…</option>
                     <option value="areas">/areas/…</option>
                     <option value="people">/people/…</option>
                   </select>
-                  <input x-model="memNew.name" class="field" style="flex:1;min-width:0" placeholder="이름 (한글·영문·숫자·-_)" x-show="memNew.kind!=='profile.md' && memNew.kind!=='preferences.md'" x-on:keydown.enter="memCreate()">
+                  <input aria-label="메모리 이름" x-model="memNew.name" class="field" style="flex:1;min-width:0" placeholder="이름 (한글·영문·숫자·-_)" x-show="memNew.kind!=='profile.md' && memNew.kind!=='preferences.md'" x-on:keydown.enter="memCreate()">
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memCreate()">새 파일</button>
                 </div>
                 <div class="text-xs text-muted" style="margin-top:4px" x-show="memMsg" x-text="memMsg"></div>
@@ -471,9 +471,9 @@
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="memSel=''">닫기</button>
                   </span>
                 </div>
-                <textarea x-model="memDraft" class="field" spellcheck="false" style="width:100%;min-height:170px;resize:vertical;font-size:12.5px"></textarea>
+                <textarea aria-label="메모리 내용" x-model="memDraft" class="field" spellcheck="false" style="width:100%;min-height:170px;resize:vertical;font-size:12.5px"></textarea>
                 <div class="flex items-center gap-2" style="margin-top:6px">
-                  <input x-model="memLine" class="field" style="flex:1" placeholder="사용자가 직접 말한 사실 한 줄 · [stated] 태그가 자동으로 붙습니다" x-on:keydown.enter="memAppendLine()">
+                  <input aria-label="사용자가 말한 사실" x-model="memLine" class="field" style="flex:1" placeholder="사용자가 직접 말한 사실 한 줄 · [stated] 태그가 자동으로 붙습니다" x-on:keydown.enter="memAppendLine()">
                   <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-bind:disabled="memBusy" x-on:click="memAppendLine()">끝에 추가</button>
                 </div>
               </div>
@@ -612,7 +612,7 @@
                 <li>JSON 배열 · 단건 객체 · 줄당 1건(JSONL) 모두 받습니다 · 그룹 표기(<code class="text-violet">common.page</code> · <code class="text-violet">action.type</code>)는 판정 키로 자동 정렬합니다.</li>
                 <li>판정 규칙은 스트림과 같은 원천입니다 · 정본은 11. 정책 및 운영 · 12. 수집 데이터 정의이고 도구 안에 사본을 두지 않습니다.</li>
               </ul>
-              <textarea class="field w-full" style="min-height:150px;font-family:var(--ds-font-mono,ui-monospace),monospace;font-size:12px" placeholder='PAST 로그를 붙여넣으세요 · 예: [{"log_unique_id":"a1","common":{"page":"home_tab"},"action":{"type":"Event","name":"홈탭_기사_클릭","kind":"ClickContent"}}]' x-model="lvSimText"></textarea>
+              <textarea aria-label="PAST 로그" class="field w-full" style="min-height:150px;font-family:var(--ds-font-mono,ui-monospace),monospace;font-size:12px" placeholder='PAST 로그를 붙여넣으세요 · 예: [{"log_unique_id":"a1","common":{"page":"home_tab"},"action":{"type":"Event","name":"홈탭_기사_클릭","kind":"ClickContent"}}]' x-model="lvSimText"></textarea>
               <template x-if="lvSim">
                 <div style="margin-top:12px">
                   <div class="flex flex-wrap items-center gap-2" style="margin-bottom:8px">
@@ -676,8 +676,8 @@
               <!-- 필터·검색(R8): 현행 2축(행동 유형·서비스)에서 판정 결과 축과 필드값 검색을 더한다.
                    R8 수용 기준 = 판정 결과 기준 필터로 불합격 항목만 즉시 확인. -->
               <div class="filterbar" style="margin:0 0 10px">
-                <input class="field" placeholder="필드명·값·사유 검색" x-model="lvQ">
-                <select class="field" style="width:auto" x-model="lvType"><option value="">행동 유형 전체</option><template x-for="t in lvTypes()" x-bind:key="'lvt'+t"><option x-bind:value="t" x-text="t"></option></template></select>
+                <input aria-label="로그 검색" class="field" placeholder="필드명·값·사유 검색" x-model="lvQ">
+                <select aria-label="행동 유형" class="field" style="width:auto" x-model="lvType"><option value="">행동 유형 전체</option><template x-for="t in lvTypes()" x-bind:key="'lvt'+t"><option x-bind:value="t" x-text="t"></option></template></select>
                 <template x-for="f in [['','전체'],['fail','불합격'],['warn','경고'],['info','정보'],['pass','합격']]" x-bind:key="'lvf'+f[0]">
                   <button type="button" class="srcfilter__chip" x-bind:class="lvFilter===f[0] ? 'sel' : ''" x-on:click="lvFilter=f[0]; lvSel=-1"><span x-text="f[1]"></span><span x-show="f[0]" class="tnum" x-text="lvTally(f[0])"></span></button>
                 </template>

@@ -1,6 +1,7 @@
 """Focused markup contracts for the operations and lab design pass."""
 
 import os
+from html.parser import HTMLParser
 import unittest
 
 
@@ -31,11 +32,43 @@ class DesignOpsSurfaceTests(unittest.TestCase):
             self.assertIn("ds-btn--outline", line)
             self.assertIn("ds-btn--c-danger", line)
 
+    def test_board_answer_template_keeps_label_and_editor_in_one_root(self):
+        class Roots(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.depth = 0
+                self.roots = []
+                self.editor = False
+                self.active = False
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if tag == "template" and attrs.get("x-if") == "baEdit":
+                    self.active = True
+                    return
+                if self.active:
+                    if self.depth == 0:
+                        self.roots.append(tag)
+                    self.editor |= tag == "textarea" and attrs.get("id") == "board-answer"
+                    self.depth += 1
+
+            def handle_endtag(self, tag):
+                if self.active:
+                    if tag == "template" and self.depth == 0:
+                        self.active = False
+                    else:
+                        self.depth -= 1
+
+        parsed = Roots()
+        parsed.feed(_ui("12-board.html"))
+        self.assertEqual(len(parsed.roots), 1, "Alpine x-if renders only its first root")
+        self.assertTrue(parsed.editor)
+
     def test_assignment_mode_is_a_single_choice_group(self):
         crew = _ui("19b-crew.html")
-        self.assertIn('role="radiogroup" aria-label="배정 방식"', crew)
-        self.assertIn('role="radio" x-bind:aria-checked="bulkMode===\'same\'"', crew)
-        self.assertIn('role="radio" x-bind:aria-checked="bulkMode===\'distribute\'"', crew)
+        self.assertIn('role="group" aria-label="배정 방식"', crew)
+        self.assertIn('x-bind:aria-pressed="bulkMode===\'same\'"', crew)
+        self.assertIn('x-bind:aria-pressed="bulkMode===\'distribute\'"', crew)
 
 
 if __name__ == "__main__":

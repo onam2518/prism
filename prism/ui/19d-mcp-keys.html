@@ -43,8 +43,8 @@
             </div>
 
             <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-              <span class="selctl"><span class="selctl__lbl">용도 메모</span><input class="field" style="width:240px" x-model="mkNew.label" placeholder="ex) 검색팀 파이프라인"></span>
-              <span class="selctl"><span class="selctl__lbl" x-text="'만료(일 · 최대 ' + (mkMeta.max_days || 365) + ')'"></span><input class="field tnum" style="width:120px" type="number" min="1" x-bind:max="mkMeta.max_days || 365" x-model="mkNew.days"></span>
+              <label class="selctl"><span class="selctl__lbl">용도 메모</span><input class="field" style="width:240px" x-model="mkNew.label" placeholder="ex) 검색팀 파이프라인"></label>
+              <label class="selctl"><span class="selctl__lbl" x-text="'만료(일 · 최대 ' + (mkMeta.max_days || 365) + ')'"></span><input class="field tnum" style="width:120px" type="number" min="1" x-bind:max="mkMeta.max_days || 365" x-model="mkNew.days"></label>
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="mkBusy || mkFull()" x-on:click="mkIssue()" x-text="mkBusy ? '발급 중…' : '내 키 발급'"></button>
               <span class="text-xs text-muted" x-show="mkFull()" x-text="'키는 한 사람당 ' + (mkMeta.max || 5) + '개까지입니다 · 쓰지 않는 키를 폐기하세요'"></span>
               <span class="text-xs text-muted" x-show="mkMsg" x-text="mkMsg"></span>
@@ -97,7 +97,7 @@
               <li><b>② 클라이언트에 등록</b>: 아래 한 줄이면 됩니다.</li>
               <li><b>③ 확인</b>: 도구 목록에 프리즘 도구가 보이면 연결된 것입니다 · 보이는 도구는 <b>키에 박힌 권한</b>에 따라 다릅니다.</li>
             </ul>
-            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>등록<span class="codeblock__stage">CLI</span></div><textarea readonly spellcheck="false" style="min-height:44px" x-bind:value="'claude mcp add --transport http prism ' + location.origin + '/mcp --header \'Authorization: Bearer pmk_…\''"></textarea></div>
+            <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>등록<span class="codeblock__stage">CLI</span></div><textarea aria-label="MCP 클라이언트 등록 명령" readonly spellcheck="false" style="min-height:44px" x-bind:value="'claude mcp add --transport http prism ' + location.origin + '/mcp --header \'Authorization: Bearer pmk_…\''"></textarea></div>
             <ul class="ds-bullets" style="margin-top:11px">
               <li>인증 헤더: <code class="tnum">Authorization: Bearer pmk_…</code> · 키 없이 부르면 전부 거절됩니다.</li>
               <li>팀은 <b>넘기지 않습니다</b> · 키에 박힌 팀의 데이터만 보입니다(도구 인자로 팀을 받지 않습니다).</li>
