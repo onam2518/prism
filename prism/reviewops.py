@@ -183,8 +183,10 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         # 승격 게이트(build_golden_from_reviews)와 동일 판정: 등급(G/R)과 분류가 모두 있어야
         # '다음 학습 반영 때 승격'이 성립한다. 등급 공백(judge 실패·보류)을 승격 예정으로
         # 오인해 건너뛰면 골든도 큐도 아닌 채 영구 미확정으로 남는다.
-        grade_ok = (r.get("quality_meta") or {}).get("finalGrade", "") in ("G", "R")
-        if agreed and cats and grade_ok:           # 정상 확정 경로(다음 학습 반영 때 승격) → 대상 아님
+        # 단 R 은 아이템 메타가 폐기돼 분류가 영구 공백 → 분류 요건 면제(승격 게이트와 동일).
+        grade = (r.get("quality_meta") or {}).get("finalGrade", "")
+        grade_ok = grade in ("G", "R")
+        if agreed and grade_ok and (cats or grade == "R"):   # 정상 확정 경로(다음 학습 반영 때 승격) → 대상 아님
             continue
         if agreed and not grade_ok:                # 승격 게이트의 no_grade 분기와 동일 사유
             reason = "등급 없음"

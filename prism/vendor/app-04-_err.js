@@ -299,8 +299,8 @@ window.PRISM_APP_PARTS.push(() => ({
       get evalCmpRows() {                      // 비교 표 행: a·b 표시값 + 델타(inv=낮을수록 좋음)
         const c = this.evalCmp; if (!c || !c.ok) return [];
         const pct = (v) => v == null ? '·' : Math.round(v * 100) + '%';
-        const mk = (k, f, inv, fmt) => {
-          const av = c.a[f], bv = c.b[f];
+        const mk = (k, f, inv, fmt, nf) => {                    // nf: 표본수 필드 · n=0 이면 그 쪽은 '·'
+          const av = (nf && !c.a[nf]) ? null : c.a[f], bv = (nf && !c.b[nf]) ? null : c.b[f];
           const d = (av == null || bv == null) ? null : (bv - av);
           const good = d == null || Math.abs(d) < 1e-9 ? '' : ((d > 0) !== !!inv ? 'up' : 'down');
           const dTxt = d == null ? '·' : (Math.abs(d) < 1e-9 ? '=' : ((d > 0 ? '+' : '') + (fmt === 'raw' ? (Math.round(d * 100) / 100) : Math.round(d * 100) + '%p')));
@@ -308,7 +308,12 @@ window.PRISM_APP_PARTS.push(() => ({
         };
         const rows = [mk('등급 일치율', 'grade_accuracy'), mk('사유 일치', 'reason_jaccard'),
                       mk('유해 놓침', 'harm_miss_rate', true), mk('빈 결과', 'empty_rate', true),
-                      mk('비용($)', 'cost_usd', true, 'raw')];
+                      mk('비용($)', 'cost_usd', true, 'raw'),
+                      // 아이템 메타 4축(ME.FIELD_KO 와 같은 라벨) · 표본(n) 없는 축은 '·'
+                      mk('인텐트 F1', 'intent_f1', false, '', 'intent_n'),
+                      mk('카테고리 F1(계층)', 'cat_hf1', false, '', 'cat_n'),
+                      mk('엔티티 F1', 'ent_f1', false, '', 'ent_n'),
+                      mk('리드문 유사도', 'summary_sim', false, '', 'summary_n')];
         if (c.a.rubric && c.a.rubric.n && c.b.rubric && c.b.rubric.n) {
           const ax = [['정확성', 'accuracy'], ['형식', 'format'], ['정책', 'policy'], ['간결성', 'conciseness']];
           for (const [k, f] of ax) {

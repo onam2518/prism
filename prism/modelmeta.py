@@ -149,6 +149,47 @@ def tiers_from_cost(cost_report: dict) -> dict:
 
 TIER_LABEL = {"high": "고비용", "low": "저비용"}
 
+# 모델별 공시 단가(USD / 1M 토큰) = (입력, 출력, 캐시 읽기). 캐시 읽기는 세 제공자 모두
+# 입력가의 0.1 배로 공시돼 있어 그 값을 적었다.
+# 출처(2026-09-08 확인): Anthropic 공식 모델·가격표 · OpenAI API 가격(gpt-5.6 sol/terra/luna ·
+# gpt-5.4 계열) · Google Gemini API 가격 · Upstage Solar 가격.
+# 등급(tier)은 우리 원장에서 뽑지만 **단가는 남의 공시가라 원장으로 대체할 수 없다** —
+# 모델 비교표의 비용 축은 이 표가 유일한 원천이다(없으면 설정 단가 하나로 계산돼 토큰 수 순위가 된다).
+# **모르는 모델은 넣지 않는다**: 단가 미상 → 비용 None → 화면 '·' · '합격 최저 비용'에서 제외.
+# 라우터 접두(provider/)와 버전 표기(4.6 vs 4-6)는 조회에서 흡수한다.
+_PRICES = {k.replace(".", "-"): v for k, v in {
+    # Anthropic
+    "claude-fable-5": (10.0, 50.0, 1.0),
+    "claude-opus-5": (5.0, 25.0, 0.5),
+    "claude-opus-4-8": (5.0, 25.0, 0.5),
+    "claude-opus-4-7": (5.0, 25.0, 0.5),
+    "claude-opus-4-6": (5.0, 25.0, 0.5),
+    "claude-sonnet-5": (2.0, 10.0, 0.2),
+    "claude-sonnet-4-6": (3.0, 15.0, 0.3),
+    "claude-haiku-4-5": (1.0, 5.0, 0.1),
+    # OpenAI
+    "gpt-5.6-sol": (4.0, 20.0, 0.4),
+    "gpt-5.6-terra": (2.0, 12.0, 0.2),
+    "gpt-5.6-luna": (0.20, 1.20, 0.02),
+    "gpt-5.4": (2.50, 15.0, 0.25),
+    "gpt-5.4-mini": (0.75, 4.50, 0.075),
+    "gpt-5.4-nano": (0.20, 1.25, 0.02),
+    "gpt-5-mini": (0.25, 2.0, 0.025),
+    # Google (장문 할증 구간은 미반영 — 3.1 Pro 는 200K 초과 시 $4/$18)
+    "gemini-3.5-flash": (1.50, 9.0, 0.15),
+    "gemini-3.1-pro-preview": (2.0, 12.0, 0.20),
+    "gemini-2.5-pro": (1.25, 10.0, 0.125),
+    "gemini-2.5-flash": (0.15, 1.25, 0.015),
+    # Upstage
+    "solar-pro3": (0.15, 0.60, 0.015),
+}.items()}
+
+
+def prices(model_id: str):
+    """모델 id → (입력, 출력, 캐시읽기) USD/1M. 표에 없으면 None(= 단가 미상)."""
+    return _PRICES.get((model_id or "").strip().lower().split("/")[-1].replace(".", "-"))
+
+
 # 라우터가 제공하는 모델 목록(표시 전용). 한 번도 안 돌린 모델은 비용 원장에 없어서
 # 이름·아이콘을 만들 근거가 없다 — 이 목록이 있어야 처음 고를 때부터 제대로 보인다.
 # 실제 호출 대상 목록은 화면(vendor/app-02 modelCatalog)이 원천이고 여기는 그 사본이다.
