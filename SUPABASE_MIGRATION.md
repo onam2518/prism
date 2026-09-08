@@ -180,6 +180,12 @@ alter table public.prism_autopilot_runs enable row level security;
 ```sql
 alter table public.prism_autopilot_runs add column if not exists meta_target real;
 ```
+2026-09-08 추가(미적용 · 정답셋 고정):
+```sql
+alter table public.prism_autopilot_runs add column if not exists golden_hashes jsonb;
+```
+라운드마다 build_golden_from_reviews 로 정답셋이 늘면 최고·정체 비교가 서로 다른 셋끼리가 된다.
+시작 시점 해시 목록을 런에 박아 두고 라운드 평가는 그 셋만 본다(새 골든은 다음 런부터).
 한 라운드 = learnops.learning_batch(피드백 보정→같은 정답셋 재평가 · 악화 자동 원복).
 종료 = 목표 달성 · 개선 정체(2라운드 연속 무향상) · 최대 라운드(cap 10) · 수동 중지.
 

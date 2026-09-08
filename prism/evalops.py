@@ -308,13 +308,16 @@ def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="", model: s
         llm, route = _SV.llm_for_model(model, _SV.Handler.server_mock)
         if llm is None:
             return {"ok": False, "error": f"모델 호출 불가({route}): {model}"}
-    rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "", meta_target=meta_target)
-    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds, model, meta_target),
+    frozen = sorted(st.golden_hashes(team))       # 라운드마다 정답셋이 늘면 최고/정체 비교가 다른 셋끼리가 된다 → 시작 셋으로 고정
+    rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "", meta_target=meta_target,
+                              golden_hashes=frozen)
+    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds, model, meta_target, frozen),
                           name=f"prism-autopilot-{rid}", daemon=True)
     with _LOCK:
         _PILOT_ACTIVE[rid] = th
     th.start()
-    return {"ok": True, "id": rid, "target": target, "max_rounds": max_rounds, "model": model}
+    return {"ok": True, "id": rid, "target": target, "max_rounds": max_rounds, "model": model,
+            "golden_n": len(frozen)}
 
 
 def autopilot_stop(team=None) -> dict:
@@ -351,6 +354,7 @@ def autopilot_status(team=None) -> dict:
                 run["status"], run["stop_reason"] = "stopped", "서버 재시작으로 중단 · 다시 시작하세요"
             except Exception:
                 pass
+        run["golden_n"] = len(run.pop("golden_hashes", None) or [])   # 화면엔 건수만(해시 목록은 응답에서 뺀다)
     return {"ok": True, "run": run}
 
 
@@ -363,7 +367,8 @@ def _meta_gate() -> float:
     return float(getattr(Config.load().thresholds, "meta_gate", 0.6) or 0.6)
 
 
-def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "", meta_target: float = 0.6):
+def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "", meta_target: float = 0.6,
+                golden_hashes=None):
     """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속.
     향상 판정 = 종합 점수 상승 AND 등급 신뢰구간이 최고 라운드와 안 겹침(ci_overlap) ·
     두 구간이 겹치면 점 추정치가 올라도 '동등'으로 보고 향상 없음으로 집계한다(표본 노이즈 방지).
@@ -383,10 +388,10 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                                     finished=time.time())
                 return
             st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
-            rep = LO.learning_batch(team, model=model)
+            rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes)
             if rep.get("skipped"):          # 다른 호출자와 배치 겹침 · 잠깐 대기 후 한 번만 재시도
                 time.sleep(2)
-                rep = LO.learning_batch(team, model=model)
+                rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes)
             acc = rep.get("grade_accuracy")
             if acc is None:
                 st.autopilot_update(rid, team=team, status="failed",

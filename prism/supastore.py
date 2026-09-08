@@ -2147,9 +2147,11 @@ class SupabaseStore:
         return {r.get("content_hash") or "" for r in rows}
 
     # ── 오토파일럿 런 · Atelier autopilot 이식 · SQLite Store 와 동일 계약 ──
-    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None) -> int:
+    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None,
+                         golden_hashes=None) -> int:
         row = {"status": "running", "target": float(target), "meta_target": meta_target, "max_rounds": int(max_rounds),
-               "round": 0, "created_by": created_by or ""}
+               "round": 0, "created_by": created_by or "",
+               "golden_hashes": sorted(golden_hashes or [])}
         if team:
             row["team_id"] = team
         rows = self._req("POST", "autopilot_runs", body=[row], prefer="return=representation")
@@ -2178,7 +2180,7 @@ class SupabaseStore:
                 "history": r.get("history") or [], "stop_reason": r.get("stop_reason") or "",
                 "error": r.get("error") or "", "created_by": r.get("created_by") or "",
                 "ts": _epoch(r.get("created_at")), "heartbeat": _epoch(r.get("heartbeat_at")),
-                "finished": _epoch(r.get("finished_at"))}
+                "finished": _epoch(r.get("finished_at")), "golden_hashes": r.get("golden_hashes") or []}
 
     def autopilot_latest(self, team=None):
         rows = self._get("autopilot_runs",

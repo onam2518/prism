@@ -49,29 +49,35 @@ def sync_learned():
 
 _LAST_EVAL_DETAIL = []                             # (폴백 캐시) 최근 평가 불일치 · 원천은 store reports
 
-def _scope_golden(rows, scope, st, team=None):
-    """평가 대상 콘텐츠 풀 필터: eval=평가용 홀드아웃만 / all=전체 정답셋."""
+def _scope_golden(rows, scope, st, team=None, hashes=None):
+    """평가 대상 콘텐츠 풀 필터: eval=평가용 홀드아웃만 / all=전체 정답셋.
+    hashes 를 주면 그 해시만 남긴다(오토파일럿 고정 정답셋 · 라운드마다 같은 셋으로 재평가)."""
+    from .store import content_hash
+    if hashes:
+        keep = set(hashes)
+        rows = [r for r in rows if content_hash(r.get("content") or {}) in keep]
     if scope != "eval" or not rows:
         return rows
-    from .store import content_hash
     try:
         pm = st.purpose_map(team) if hasattr(st, "purpose_map") else {}
     except Exception:
         pm = {}
     return [r for r in rows if pm.get(content_hash(r.get("content") or {}), "review") == "eval"]
 
-def _holdout_scope(team=None) -> str:
+def _holdout_scope(team=None, hashes=None) -> str:
     """배치·오토파일럿 평가 범위: 홀드아웃(용도=eval) 정답이 있으면 'eval'(개선 단계가 못 본 셋으로 측정),
-    없으면 'all' 로 되돌린다(용도를 지정한 적 없는 팀 하위호환 · 대신 누수 경고를 남긴다)."""
+    없으면 'all' 로 되돌린다(용도를 지정한 적 없는 팀 하위호환 · 대신 누수 경고를 남긴다).
+    hashes 가 오면 그 고정 셋 안에서 판정한다(오토파일럿 런은 시작 시점 셋으로만 평가하므로,
+    고정 셋에 eval 이 하나도 없는데 scope='eval' 을 고르면 라운드 평가가 통째로 빈다)."""
     st = _SV.get_store()
     rows = st.get_golden(team) if (st and hasattr(st, "get_golden")) else None
-    if rows and _scope_golden(rows, "eval", st, team):
+    if rows and _scope_golden(rows, "eval", st, team, hashes):
         return "eval"
     print("[learn] 평가용(용도=eval) 정답이 없어 전체 골든으로 평가합니다 · "
           "개선에 쓴 콘텐츠가 평가셋에 섞입니다(콘텐츠 관리 STEP 1에서 용도를 지정하세요)")
     return "all"
 
-def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
+def eval_golden(team=None, model: str = "", scope: str = "all", hashes=None) -> dict:
     """프로세스 1 · 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용.
     건별 불일치를 _LAST_EVAL_DETAIL 로 보존 → 라벨 오류 후보 플래깅(Northcutt 2021: 기계 플래그→휴먼 확정)."""
     from .store import content_hash
@@ -81,7 +87,7 @@ def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
     rows = st.get_golden(team)
     if not rows:
         return {"ok": False, "error": "등록된 골든셋이 없습니다 · 팀 관리에서 등록하세요"}
-    rows = _scope_golden(rows, scope, st, team)
+    rows = _scope_golden(rows, scope, st, team, hashes)
     if not rows:
         return {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
     from . import abtest
@@ -743,7 +749,7 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     return out
 
 
-def learning_batch(team=None, models=None, model: str = "") -> dict:
+def learning_batch(team=None, models=None, model: str = "", golden_hashes=None) -> dict:
     """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
     ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성 2%p 초과 악화·유해 미탐 악화·버킷 회귀
     중 하나라도 걸리면 개선을 반영하지 않고 이전 프롬프트를 유지한다(방향 검증 · 진동 방지)."""
@@ -756,15 +762,16 @@ def learning_batch(team=None, models=None, model: str = "") -> dict:
         except Exception:
             quest_bonus = None
         golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
+        gopt = {"hashes": golden_hashes} if golden_hashes else {}   # 오토파일럿: 런 시작 셋만 평가(새 골든은 다음 런부터)
         prev_learned = dict(PR.LEARNED)
         prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
-        scope = _holdout_scope(team)                        # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체)
-        eval_pre = eval_golden(team, model=model, scope=scope)            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
+        scope = _holdout_scope(team, golden_hashes)          # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체 · 고정 셋 안에서 판정)
+        eval_pre = eval_golden(team, model=model, scope=scope, **gopt)            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
         improve = meta_compile_run(team)
         changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
         delta = None
         if changed and eval_pre.get("ok"):
-            evalr = eval_golden(team, model=model, scope=scope)           # 개선 후 점수(같은 셋 · 같은 모델)
+            evalr = eval_golden(team, model=model, scope=scope, **gopt)           # 개선 후 점수(같은 셋 · 같은 모델)
             try:
                 delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
             except (TypeError, ValueError):
