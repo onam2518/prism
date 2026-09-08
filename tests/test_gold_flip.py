@@ -330,27 +330,46 @@ class TestFailClosed(GoldFlipBase):
             st.__class__, "origin_meta_for", _ORIGIN_META_FOR))
         self.assertEqual(serve._inject_gold([], "tester"), [])
 
+    def _clear_category(self, st):
+        """화면에 보일 카테고리를 정답·원본 산출 양쪽에서 없앤다(같은 해시 = 같은 변형).
+        정답이 비면 원본 산출로 채워 보여 주므로(reviewops.gold_shown_meta) 둘 다 비워야
+        '보이는 카테고리가 없는' 상태가 된다."""
+        rows = st.get_golden(None)
+        self.assertEqual(len(rows), 1)
+        content = rows[0]["content"]
+        st.register_golden(None, [{"content": content,
+                                   "expected": dict(rows[0]["expected"], content_category=[])}])
+        self._put_row(st, content, [])
+        return content
+
+    def test_review_golden_without_corrections_still_shows_meta(self):
+        """검수 유래 골든의 정답은 사람이 고친 축만 담는다(learnops.build_golden_from_reviews).
+        빈 축을 그대로 내보내면 리드문·엔티티가 골드 문항에서만 사라져 그 부재가 골드 표시가
+        된다 — 없는 축은 원본 콘텐츠 행의 산출로 채워 보낸다(지어내지 않는다)."""
+        serve, st = self._with_store()
+        content = self._content("교정 없는 검수 골든")
+        st.register_golden(None, [{"content": content,
+                                   "expected": {"finalGrade": "G", "reasons": []}}])
+        self._put_row(st, content, TRUE_CATS)
+        g = self._gold_of(serve)
+        self.assertEqual(g["summary"], "리드문 교정 없는 검수 골든")
+        self.assertEqual(g["entities"], ["개체A"])
+        self.assertEqual(g["intent"], ["실용 정보"])
+        self.assertEqual(len(g["category"]), len(TRUE_CATS))
+
     def test_unflippable_golden_is_not_offered(self):
         """**유일한 눈**: 카테고리가 없어 뒤집을 수 없는 골든은 '뒤집기' 변형으로 내보내지 않는다.
         내보내면 화면은 멀쩡한데 정답만 '수정필요' 가 되어 채점이 거짓말을 한다."""
         serve, st = self._with_store()
         self._seed_variant(st, want_flip=True)          # 뒤집기 변형인 골든을 심고
-        # 카테고리를 지운 골든으로 갈아끼운다(같은 해시 = 같은 변형)
-        rows = st.get_golden(None)
-        self.assertEqual(len(rows), 1)
-        content = rows[0]["content"]
-        exp = dict(rows[0]["expected"], content_category=[])
-        st.register_golden(None, [{"content": content, "expected": exp}])
+        self._clear_category(st)                        # 보이는 카테고리를 지운다
         self.assertEqual(serve._inject_gold([], "tester"), [])
 
     def test_clean_variant_without_category_is_still_offered(self):
         """반대로 '원본 그대로' 변형은 카테고리가 없어도 출제된다(뒤집을 것이 없어도 정답은 '정확')."""
         serve, st = self._with_store()
         self._seed_variant(st, want_flip=False)
-        rows = st.get_golden(None)
-        content = rows[0]["content"]
-        exp = dict(rows[0]["expected"], content_category=[])
-        st.register_golden(None, [{"content": content, "expected": exp}])
+        self._clear_category(st)
         items = serve._inject_gold([], "tester")
         self.assertEqual(len(items), 1)
         self.assertTrue(items[0]["hash"].startswith("gold:ok:"))

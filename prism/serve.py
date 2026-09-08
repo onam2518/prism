@@ -2057,7 +2057,7 @@ def _g_golden_status(h, q):
         "pending": pending,
         "stale_days": stale_days,
         "last_batch": {k: g.get(k) for k in ("confirmed", "new", "demoted", "need_category",
-                                             "disagree", "min_good")},
+                                             "disagree", "min_good", "meta_n")},
         "need_list": g.get("need_list") or [],
         "ts": _ts}
 

@@ -1888,7 +1888,7 @@ class Store:
         return out
 
     def origin_meta_for(self, hashes, team=None) -> dict:
-        """해시 → {"model", "version", "review", "url"}.
+        """해시 → {"model", "version", "review", "url", "item_meta"}.
 
         **골드 문항이 원본 콘텐츠 행에서 화면 부속 정보를 가져오기 위한 조회다.**
         골든 레코드에는 이 값들이 없어서 종전에는 빈 값이 나갔는데, 빈 값은 화면에서 배지·
@@ -1897,12 +1897,18 @@ class Store:
         행은 골드뿐이었다). 지어내지 않고 원본에서 읽어 오고, 읽히지 않으면 그 골든은
         출제 후보에서 빠진다(reviewops._gold_candidates · fail-closed).
         team 은 원격 스토어와의 시그니처 정합용(로컬 단일 팀이라 무시)."""
-        def row(model, ver, review, url):
+        def row(model, ver, review, url, im=None):
             try:
                 ver = int(ver or 1)
             except (TypeError, ValueError):
                 ver = 1
-            return {"model": model or "", "version": ver, "review": review or "", "url": url or ""}
+            if isinstance(im, str):
+                try:
+                    im = json.loads(im or "{}")
+                except Exception:
+                    im = {}
+            return {"model": model or "", "version": ver, "review": review or "", "url": url or "",
+                    "item_meta": im if isinstance(im, dict) else {}}
 
         out = {}
         c = self._conn()
@@ -1910,15 +1916,16 @@ class Store:
         for i in range(0, len(hs), 500):                 # IN 절 변수 상한 대비 청크
             chunk = hs[i:i + 500]
             marks = ",".join("?" * len(chunk))
-            try:                                         # 4필드만 뽑는다(payload 에는 본문이 들어
-                for ch, m, v, rv, u in c.execute(        # 있어 전량 파싱하면 호출마다 수 MB)
+            try:                                         # 부속 5필드만 뽑는다(payload 에는 본문이 들어
+                for ch, m, v, rv, u, im in c.execute(    # 있어 전량 파싱하면 호출마다 수 MB)
                         "SELECT content_hash,"
                         " COALESCE(json_extract(payload,'$.trace.model'),''),"
                         " COALESCE(json_extract(payload,'$.trace.version'),1),"
                         " COALESCE(json_extract(payload,'$.quality_meta.review'),''),"
-                        " COALESCE(json_extract(payload,'$.content_ref.source_url'),'')"
+                        " COALESCE(json_extract(payload,'$.content_ref.source_url'),''),"
+                        " COALESCE(item_meta,'{}')"
                         f" FROM results WHERE content_hash IN ({marks})", chunk):
-                    out[ch] = row(m, v, rv, u)
+                    out[ch] = row(m, v, rv, u, im)
             except Exception:                            # json_extract 미지원 빌드 폴백
                 for ch, payload in c.execute(
                         f"SELECT content_hash, payload FROM results WHERE content_hash IN ({marks})",
@@ -1929,7 +1936,8 @@ class Store:
                         pl = {}
                     tr, qm = pl.get("trace") or {}, pl.get("quality_meta") or {}
                     out[ch] = row(tr.get("model"), tr.get("version"), qm.get("review"),
-                                  (pl.get("content_ref") or {}).get("source_url"))
+                                  (pl.get("content_ref") or {}).get("source_url"),
+                                  pl.get("item_meta"))
         return out
 
     def yellow_hashes(self, team=None) -> set:

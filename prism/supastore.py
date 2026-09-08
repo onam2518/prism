@@ -237,13 +237,14 @@ class SupabaseStore:
         return out
 
     def origin_meta_for(self, hashes, team=None) -> dict:
-        """해시 → {"model", "version", "review", "url"} · sqlite Store.origin_meta_for 와 동일 계약.
+        """해시 → {"model", "version", "review", "url", "item_meta"} · sqlite Store 와 동일 계약.
         골드 문항이 화면에 내보내는 부속 정보를 원본 콘텐츠 행에서 가져오는 조회(지어내지 않는다)."""
         out = {}
         hs = [h for h in dict.fromkeys(hashes or []) if h]
         for i in range(0, len(hs), 100):                 # URL 길이 상한 대비 청크
             chunk = hs[i:i + 100]
-            q = "select=hash,model,version,review,source_url&hash=in.(" + ",".join(chunk) + ")"
+            q = ("select=hash,model,version,review,source_url,item_meta&hash=in.("
+                 + ",".join(chunk) + ")")
             if team:
                 q += f"&team_id=eq.{urllib.parse.quote(str(team))}"
             for r in self._get("contents", q):
@@ -251,9 +252,11 @@ class SupabaseStore:
                     ver = int(r.get("version") or 1)
                 except (TypeError, ValueError):
                     ver = 1
+                im = r.get("item_meta")
                 out[r["hash"]] = {"model": r.get("model") or "", "version": ver,
                                   "review": r.get("review") or "",
-                                  "url": r.get("source_url") or ""}
+                                  "url": r.get("source_url") or "",
+                                  "item_meta": im if isinstance(im, dict) else {}}
         return out
 
     def yellow_hashes(self, team=None) -> set:

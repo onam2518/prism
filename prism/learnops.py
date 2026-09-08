@@ -251,11 +251,32 @@ def golden_list(team=None) -> dict:
             "source_counts": (st.golden_source_counts(team) if hasattr(st, "golden_source_counts") else {}),
             "total": (st.golden_count(team) if hasattr(st, "golden_count") else len(items))}
 
+META_AXES = ("intent", "content_category", "summary", "entities")   # 골든 정답으로 삼는 아이템 메타 4축
+
+
+def reviewer_fixed_meta(st, team=None) -> dict:
+    """교정 이력(patch_log) → {hash: {축: 사람이 고친 값}}. 골든 정답의 메타는 여기서만 온다.
+    모델 산출(item_meta)을 그대로 정답에 복사하면 메타 F1 이 '현행 모델과의 근접도'가 되어
+    비교에서 현행 모델이 자동으로 유리해진다 — 사람이 실제로 고친 값만 정답 자격이 있다.
+    patch_rows 는 최신순이라 먼저 만난 값이 최신(setdefault)."""
+    out = {}
+    for p in (st.patch_rows(team=team) if hasattr(st, "patch_rows") else []):
+        af = p.get("after")
+        if not isinstance(af, dict):              # 재실행 이력·판정취소 등 메타 교정이 아닌 행
+            continue
+        d = out.setdefault(p.get("hash") or "", {})
+        for k in META_AXES:
+            if k in af:
+                d.setdefault(k, af[k])
+    return out
+
+
 def build_golden_from_reviews(team=None) -> dict:
     """검수 = 골든 생성: '정확' 신뢰도 가중 다수결 + 카테고리 채워진 콘텐츠 → 골든셋에 **누적**(upsert).
     전체 교체가 아니므로 관리자 등록분(source=manual)과 과거 확정분을 보존하고, 합의가 '수정필요'로
     뒤집힌 검수 유래 골든은 강등(제거)한다. 신규 확정 기여 검수자에게 1회 보상(지연 보상 · von Ahn 2004).
-    반환: 확정 총계·신규·강등·카테고리필요(목록 포함)·불일치."""
+    정답의 메타 4축(인텐트·분류·리드문·엔티티)은 검수자가 교정한 값만 싣는다(reviewer_fixed_meta).
+    반환: 확정 총계·신규·강등·카테고리필요(목록 포함)·불일치·축별 정답 수(meta_n)."""
     from .store import content_hash
     st = _SV.get_store()
     if not (st and hasattr(st, "feedback_map") and hasattr(st, "upsert_golden")):
@@ -265,6 +286,10 @@ def build_golden_from_reviews(team=None) -> dict:
         fmap = st.feedback_map(team=team)
     except Exception:
         fmap = {}
+    try:                                               # 사람이 고친 메타(정답 자격) · patch_rows 기본 상한 5000행
+        fixed = reviewer_fixed_meta(st, team)          # ponytail: 상한 넘으면 오래된 교정이 빠진다(축이 분모에서 빠질 뿐 오답은 안 생김)
+    except Exception:
+        fixed = {}
     weights = _SV.reviewer_weights(team)               # 골드 정확도 기반 신뢰도(G-4)
     min_good = max(1, int(getattr(Config.load(), "golden_min_good", 1) or 1))   # 확정 최소 '정확' 인원
     try:                                               # 리드 최종판정: 다수결보다 우선(타이브레이크)
@@ -321,9 +346,7 @@ def build_golden_from_reviews(team=None) -> dict:
                               "service": content.get("displayServiceName", "")})
             continue
         exp = {"finalGrade": grade, "reasons": qm.get("reasons", []) or []}
-        if cats:                                      # 메타 키는 있을 때만 — 빈 기대는 채점 분모에서 빠진다(metaeval.meta_tally)
-            exp.update({"intent": im.get("intent", []) or [], "content_category": cats,
-                        "summary": im.get("summary", ""), "entities": im.get("entities", []) or []})
+        exp.update(fixed.get(ch) or {})           # 사람이 고친 축만 정답으로 · 안 고친 축은 키를 빼서 채점 분모에서 제외
         entries.append({"hash": ch, "content": content, "expected": exp})
         contributors[ch] = [v.get("reviewer_id") or v.get("reviewer")
                             for v in fb.get("verdicts", []) if v.get("verdict") == "good"]
@@ -350,7 +373,9 @@ def build_golden_from_reviews(team=None) -> dict:
     total = st.golden_count(team) if hasattr(st, "golden_count") else len(entries)
     return {"ok": True, "confirmed": len(entries), "new": new, "demoted": len(demote),
             "total": total, "need_category": no_cat, "need_grade": no_grade,
-            "need_list": need_list[:50], "disagree": disagree, "min_good": min_good}
+            "need_list": need_list[:50], "disagree": disagree, "min_good": min_good,
+            # 축별 정답 보유 수 = 모델 비교 메타 F1 의 분모(0 이면 그 축은 측정되지 않는다)
+            "meta_n": {k: sum(1 for e in entries if e["expected"].get(k)) for k in META_AXES}}
 
 def promotion_pending(team=None) -> dict:
     """반영 대기 집계(읽기 전용 · 쓰기 없음): 다음 학습 반영 때 승격될 수와 승격을 막는
