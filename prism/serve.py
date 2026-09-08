@@ -785,6 +785,15 @@ def llm_for_model(model: str, mock: bool):
 def _llm_for_model_build(model: str, mock: bool):
     cfg = Config.load()                                # 모델별 사본(공유 cfg 변형 방지)
     mid = (model or "").strip() or cfg.model
+    # 이 모델의 공시 단가를 실어 준다 — 안 실으면 모든 모델이 설정 단가 하나로 계산돼
+    # 비교표의 '비용'이 사실상 토큰 수 순위가 된다. 표에 없는 모델은 단가를 비워
+    # 비용을 None 으로 만든다(0 이나 설정 단가로 때우면 조용히 틀린 순위가 나온다).
+    # 설정 단가는 기본 실행 모델(cfg.model)의 폴백으로만 남긴다.
+    p = MM.prices(mid)
+    if p:
+        cfg.prices.chat_in, cfg.prices.chat_out, cfg.prices.cache_read = p
+    elif mid != cfg.model:
+        cfg.prices.chat_in = cfg.prices.chat_out = cfg.prices.cache_read = None
     if mock:
         return LLMClient(mock=True, config=cfg, model=mid), "mock"
     bare = mid.split("/")[-1]
