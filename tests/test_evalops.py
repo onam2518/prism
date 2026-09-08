@@ -112,6 +112,32 @@ class TestEvalRunFlow(unittest.TestCase):
         self.assertEqual(lst["items"][0]["id"], r["id"])
         self.assertFalse(lst["items"][0]["stalled"])
 
+    def test_report_has_item_meta_axes(self):
+        """즉시 평가·비교표와 같은 4축(인텐트·카테고리·엔티티·리드문)이 런 리포트에도 실린다
+        (ME.meta_tally/_report 를 _tally/eval_run_report 가 abtest.score 와 같은 방식으로 호출)."""
+        from prism.store import content_hash
+        serve, evalops, st = self._with_serve()
+        content = {"displayServiceName": "뉴스", "title": "카카오뱅크 실적 발표",
+                   "subtitle": "", "body": "카카오뱅크가 3분기 실적을 발표했다 카카오뱅크 주가는 상승했다"}
+        expected = {"finalGrade": "G", "reasons": [],
+                    "intent": ["속보·사건 추적", "심층 분석"],   # mock: D.intent_categories_for('뉴스')[:2]
+                    "entities": ["카카오뱅크"],
+                    "content_category": ["News and Politics / Society"]}   # mock 은 항상 이 값을 낸다
+        st.upsert_golden(content_hash(content), content, expected)
+        r = serve.eval_run_start(None, model="", scope="all")
+        self.assertTrue(r.get("ok"), r)
+        self._wait_done(st, r["id"])
+        rep = serve.eval_run_report(r["id"])
+        self.assertTrue(rep["ok"])
+        for k in ("intent_f1", "cat_hf1", "ent_f1", "summary_sim"):
+            self.assertIn(k, rep)
+        self.assertEqual(rep["intent_n"], 1)
+        self.assertEqual(rep["intent_f1"], 1.0)              # 기대·산출 인텐트 완전 일치
+        self.assertEqual(rep["ent_n"], 1)
+        self.assertGreater(rep["ent_f1"], 0)                 # 산출 엔티티에 기대값이 부분적으로 포함
+        self.assertEqual(rep["cat_n"], 1)
+        self.assertEqual(rep["cat_exact"], 1.0)               # mock 산출 카테고리가 기대값과 정확히 일치
+
     def test_start_without_golden(self):
         serve, evalops, st = self._with_serve()
         r = serve.eval_run_start(None)
