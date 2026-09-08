@@ -176,6 +176,10 @@ create table if not exists public.prism_autopilot_runs (
 create index if not exists ix_autopilot_team on public.prism_autopilot_runs(team_id, id desc);
 alter table public.prism_autopilot_runs enable row level security;
 ```
+2026-09-08 추가(적용됨 · 메타 일치율 목표 · PR#541):
+```sql
+alter table public.prism_autopilot_runs add column if not exists meta_target real;
+```
 한 라운드 = learnops.learning_batch(피드백 보정→같은 정답셋 재평가 · 악화 자동 원복).
 종료 = 목표 달성 · 개선 정체(2라운드 연속 무향상) · 최대 라운드(cap 10) · 수동 중지.
 

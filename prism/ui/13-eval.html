@@ -151,6 +151,8 @@
                   <x-modelpick key="ap" value="pilotModel" set="pilotModel=$v" groups="textGroups" first-label="기본 설정 모델" first-value="" width="212px" tip="라운드마다 이 모델로 정답셋을 재평가합니다 · 비워두면 기본 텍스트 슬롯(설정) · 미연결 제공자는 키 등록 후 선택"></x-modelpick></span>
                 <span class="selctl"><span class="selctl__lbl">목표 일치율</span>
                   <select class="field" x-model="pilotTarget"><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option><option value="0.95">95%</option></select></span>
+                <span class="selctl"><span class="selctl__lbl">메타 일치율</span>
+                  <select class="field" x-model="pilotMeta" title="아이템 메타(인텐트·카테고리·엔티티·리드문) 4축 각각이 이 값 이상이어야 목표 달성"><option value="">설정값</option><option value="0.6">60%</option><option value="0.7">70%</option><option value="0.8">80%</option><option value="0.9">90%</option></select></span>
                 <span class="selctl"><span class="selctl__lbl">최대 라운드</span>
                   <select class="field" x-model="pilotRounds"><option value="3">3</option><option value="5">5</option><option value="8">8</option></select></span>
                 <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="pilotBusy" x-on:click="startPilot()">오토파일럿 시작</button>
@@ -161,7 +163,7 @@
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                     <span class="ds-badge" x-bind:class="pilot.status==='running' ? (pilot.stalled ? 'ds-badge--warning' : 'ds-badge--intent') : (pilot.status==='done' ? 'ds-badge--success' : (pilot.status==='failed' ? 'ds-badge--error' : 'ds-badge--neutral'))"
                       x-text="pilot.status==='running' ? (pilot.stalled ? '중단됨(서버 재시작)' : ('라운드 ' + pilot.round + '/' + pilot.max_rounds + ' 진행 중')) : ({done:'완료',stopped:'중지',failed:'실패'}[pilot.status] || pilot.status)"></span>
-                    <span class="text-xs text-muted tnum" x-text="'목표 ' + Math.round((pilot.target||0)*100) + '%'"></span>
+                    <span class="text-xs text-muted tnum" x-text="'목표 등급 ' + Math.round((pilot.target||0)*100) + '%' + (pilot.meta_target!=null ? ' · 메타 ' + Math.round(pilot.meta_target*100) + '%' : '')"></span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="pilot.status==='running' && !pilot.stalled" x-on:click="stopPilot()">중지</button>
                   </div>
                   <div class="tiles" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
@@ -193,7 +195,7 @@
                         </tr>
                       </template>
                     </tbody></table></div>
-                    <div class="text-xs text-muted" style="margin-top:6px">평가 항목은 모델별 비교와 같습니다 · ▲ = 라운드 중 가장 좋은 값 · 목표 달성 = 등급 일치율 목표 + 메타 게이트(인텐트·카테고리·엔티티·리드문) 전부 통과</div>
+                    <div class="text-xs text-muted" style="margin-top:6px">평가 항목은 모델별 비교와 같습니다 · ▲ = 라운드 중 가장 좋은 값 · 목표 달성 = 등급 일치율 목표 + 메타 일치율 목표(인텐트·카테고리·엔티티·리드문 각각) 전부 통과</div>
                   </template>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="pilot.stop_reason" x-text="'종료: ' + pilot.stop_reason"></div>
                   <span class="text-xs text-muted" x-show="pilot.error" x-text="pilot.error"></span>

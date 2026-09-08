@@ -261,7 +261,7 @@ class Store:
         -- 오토파일럿 런: 자동 개선 루프(라운드=learning_batch) 상태머신 · 이력(Atelier autopilot 이식).
         CREATE TABLE IF NOT EXISTS autopilot_runs(
           id INTEGER PRIMARY KEY AUTOINCREMENT, team TEXT NOT NULL DEFAULT '',
-          status TEXT, target REAL, max_rounds INTEGER, round INTEGER NOT NULL DEFAULT 0,
+          status TEXT, target REAL, meta_target REAL, max_rounds INTEGER, round INTEGER NOT NULL DEFAULT 0,
           start_accuracy REAL, best_accuracy REAL, last_accuracy REAL,
           history TEXT, stop_reason TEXT, error TEXT, created_by TEXT,
           ts REAL, heartbeat REAL, finished REAL);
@@ -332,6 +332,8 @@ class Store:
         bcols = [r[1] for r in c.execute("PRAGMA table_info(board)")]
         if "answer" not in bcols:
             c.execute("ALTER TABLE board ADD COLUMN answer TEXT"); c.commit()          # 게시판 관리자 답변
+        if "meta_target" not in [r[1] for r in c.execute("PRAGMA table_info(autopilot_runs)")]:
+            c.execute("ALTER TABLE autopilot_runs ADD COLUMN meta_target REAL"); c.commit()   # 아이템 메타 일치율 목표
         if "answered_at" not in bcols:
             c.execute("ALTER TABLE board ADD COLUMN answered_at REAL"); c.commit()
 
@@ -1609,11 +1611,11 @@ class Store:
             "SELECT content_hash FROM eval_results WHERE run_id=?", (int(run_id),))}
 
     # ── 오토파일럿 런 · Atelier autopilot 이식 · supastore 와 동일 계약 ─────
-    def autopilot_create(self, team, target, max_rounds, created_by="") -> int:
+    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None) -> int:
         c = self._conn()
-        cur = c.execute("INSERT INTO autopilot_runs(team,status,target,max_rounds,round,created_by,ts) "
-                        "VALUES(?,?,?,?,0,?,?)",
-                        (team or "", "running", float(target), int(max_rounds),
+        cur = c.execute("INSERT INTO autopilot_runs(team,status,target,meta_target,max_rounds,round,created_by,ts) "
+                        "VALUES(?,?,?,?,?,0,?,?)",
+                        (team or "", "running", float(target), meta_target, int(max_rounds),
                          created_by or "", time.time()))
         c.commit()
         return int(cur.lastrowid)
@@ -1636,7 +1638,7 @@ class Store:
         c.commit()
 
     _PILOT_COLS = ("id,team,status,target,max_rounds,round,start_accuracy,best_accuracy,"
-                   "last_accuracy,history,stop_reason,error,created_by,ts,heartbeat,finished")
+                   "last_accuracy,history,stop_reason,error,created_by,ts,heartbeat,finished,meta_target")
 
     def _pilot_row(self, r) -> dict:
         try:
@@ -1647,7 +1649,7 @@ class Store:
                 "round": int(r[5] or 0), "start_accuracy": r[6], "best_accuracy": r[7],
                 "last_accuracy": r[8], "history": history, "stop_reason": r[10] or "",
                 "error": r[11] or "", "created_by": r[12] or "", "ts": r[13],
-                "heartbeat": r[14], "finished": r[15]}
+                "heartbeat": r[14], "finished": r[15], "meta_target": r[16]}
 
     def autopilot_latest(self, team=None):
         c = self._conn()

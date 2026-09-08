@@ -270,15 +270,20 @@ PILOT_ROUNDS_CAP = 10           # 폭주 방지 상한(Atelier max_versions cap 
 PILOT_STALL_ROUNDS = 2          # 연속 무향상 허용 라운드(초과 시 정체 종료)
 
 
-def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="", model: str = "") -> dict:
+def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="", model: str = "",
+                    meta_target=None) -> dict:
+    """meta_target: 아이템 메타(인텐트·카테고리·엔티티·리드문) 일치율 목표 · 비면 설정 meta_gate."""
     st = _SV.get_store()
     if not (st and hasattr(st, "autopilot_create")):
         return {"ok": False, "error": "스토어가 오토파일럿을 지원하지 않습니다"}
     try:
         target = float(target)
         max_rounds = int(max_rounds)
+        meta_target = float(meta_target) if meta_target not in (None, "") else _meta_gate()
     except (TypeError, ValueError):
         return {"ok": False, "error": "목표·라운드 값이 올바르지 않습니다"}
+    if not (0.5 <= meta_target <= 1.0):
+        return {"ok": False, "error": "메타 일치율 목표는 50~100% 사이여야 합니다"}
     if not (0.5 <= target <= 1.0):
         return {"ok": False, "error": "목표 일치율은 50~100% 사이여야 합니다"}
     max_rounds = max(1, min(PILOT_ROUNDS_CAP, max_rounds))
@@ -297,8 +302,8 @@ def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="", model: s
         llm, route = _SV.llm_for_model(model, _SV.Handler.server_mock)
         if llm is None:
             return {"ok": False, "error": f"모델 호출 불가({route}): {model}"}
-    rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "")
-    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds, model),
+    rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "", meta_target=meta_target)
+    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds, model, meta_target),
                           name=f"prism-autopilot-{rid}", daemon=True)
     with _LOCK:
         _PILOT_ACTIVE[rid] = th
@@ -352,7 +357,7 @@ def _meta_gate() -> float:
     return float(getattr(Config.load().thresholds, "meta_gate", 0.6) or 0.6)
 
 
-def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = ""):
+def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "", meta_target: float = 0.6):
     """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속."""
     from . import learnops as LO
     st = _SV.get_store()
@@ -386,7 +391,7 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "")
             reverted = bool((rep.get("improve") or {}).get("reverted"))
             # 모델별 비교와 같은 평가 항목(종합·게이트·메타 F1·비용·속도)을 라운드마다 남긴다
             ev = rep.get("eval") or {"grade_accuracy": acc}
-            ov = ME.overall(ev, target, _meta_gate())
+            ov = ME.overall(ev, target, meta_target)
             metrics = {k: ev.get(k) for k in _ROUND_KEYS}
             metrics.update(ov)
             history.append({"round": rnd, "accuracy": acc, "pre": pre, "model": model, "metrics": metrics,
@@ -400,9 +405,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "")
             if rnd == 1:
                 fields["start_accuracy"] = pre if pre is not None else acc
             st.autopilot_update(rid, team=team, **fields)
-            if acc >= target - 1e-9 and ov["passed"]:   # 목표 = 등급 일치율 + 메타 게이트 전부 통과(비교표와 같은 기준)
+            if acc >= target - 1e-9 and ov["passed"]:   # 목표 = 등급 일치율 + 메타 목표 전부 통과(비교표와 같은 두 손잡이)
                 st.autopilot_update(rid, team=team, status="done",
-                                    stop_reason=f"목표 달성 · 일치율 {acc:.0%} ≥ 목표 {target:.0%} · 게이트 전부 통과 · 종합 {ov['overall']:.0%}",
+                                    stop_reason=f"목표 달성 · 일치율 {acc:.0%} ≥ 목표 {target:.0%} · 메타 {meta_target:.0%} 전부 통과 · 종합 {ov['overall']:.0%}",
                                     finished=time.time())
                 return
             no_improve = 0 if improved else no_improve + 1
