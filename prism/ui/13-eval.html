@@ -34,7 +34,7 @@
                   <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
                     <div class="tile tile--hero"><div class="n tnum" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="t">등급 일치율<span class="tnum" x-text="goldenResult.grade_ci ? (' · 신뢰구간 ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
                     <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></div><div class="t">사유 일치</div></div>
-                    <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></div><div class="t">유해 놓침</div></div>
+                    <div class="tile"><div class="n tnum" x-text="goldenResult.harm_miss_rate!=null ? pctTxt(goldenResult.harm_miss_rate) : '·'"></div><div class="t">유해 놓침<span class="tnum" x-text="goldenResult.harm_miss_rate==null ? ' · 측정 불가(기대 R 0건)' : (goldenResult.harm_expected_n ? (' · 기대 R ' + goldenResult.harm_expected_n + '건') : '')"></span></div></div>
                     <div class="tile"><div class="n tnum" x-text="goldenResult.evaluated"></div><div class="t">평가 건수</div></div>
                   </div>
                   <div class="tile" style="margin-top:10px">
@@ -163,7 +163,7 @@
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                     <span class="ds-badge" x-bind:class="pilot.status==='running' ? (pilot.stalled ? 'ds-badge--warning' : 'ds-badge--intent') : (pilot.status==='done' ? 'ds-badge--success' : (pilot.status==='failed' ? 'ds-badge--error' : 'ds-badge--neutral'))"
                       x-text="pilot.status==='running' ? (pilot.stalled ? '중단됨(서버 재시작)' : ('라운드 ' + pilot.round + '/' + pilot.max_rounds + ' 진행 중')) : ({done:'완료',stopped:'중지',failed:'실패'}[pilot.status] || pilot.status)"></span>
-                    <span class="text-xs text-muted tnum" x-text="'목표 등급 ' + Math.round((pilot.target||0)*100) + '%' + (pilot.meta_target!=null ? ' · 메타 ' + Math.round(pilot.meta_target*100) + '%' : '')"></span>
+                    <span class="text-xs text-muted tnum" x-text="'목표 등급 ' + Math.round((pilot.target||0)*100) + '%' + (pilot.meta_target!=null ? ' · 메타 ' + Math.round(pilot.meta_target*100) + '%' : '') + (pilot.golden_n ? ' · 고정 정답셋 ' + pilot.golden_n + '건' : '')"></span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="pilot.status==='running' && !pilot.stalled" x-on:click="stopPilot()">중지</button>
                   </div>
                   <div class="tiles" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
@@ -218,6 +218,7 @@
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openCompareWindow(cmpJob ? cmpJob.id : 0)" data-tip="모델별 진척도와 최근 비교 결과를 브라우저 새 창으로 봅니다 · 닫아도 비교는 계속 돕니다" data-tip-pos="top">진척도 창</button>
                 <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
                 <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="'마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건'"></span>
+                <span class="text-xs text-muted tnum" x-show="cmpResult && cmpResult.ok && cmpResult.prompt_snapshot_version" x-text="'프롬프트 v' + cmpResult.prompt_snapshot_version" data-tip="비교 시작 시점 프롬프트 버전 · 도중에 학습이 반영되면 결과가 다른 버전 기준일 수 있어요" data-tip-pos="top"></span>
               </div>
               <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
                 <div>

@@ -26,6 +26,19 @@ class TestMetaScore(unittest.TestCase):
         self.assertEqual(r["cat_confusion"][0]["n"], 1)
         self.assertEqual(r["ent_missed"][0]["name"], "이재명")
 
+    def test_survives_json_roundtrip(self):
+        """evalops 는 acc 를 청크마다 JSON 으로 저장·재개 시 다시 읽는다(Counter·튜플 키는
+        왕복 후 plain dict 로 바뀐다) · 재개 후 meta_tally/meta_report 가 그대로 동작해야 한다."""
+        import json
+        acc = {}
+        ME.meta_tally(acc, EXP, OUT)
+        acc = json.loads(json.dumps(acc, ensure_ascii=False))    # 저장→재개 흉내
+        ME.meta_tally(acc, EXP, OUT)                              # 재개 후 이어서 누적
+        r = ME.meta_report(acc)
+        self.assertEqual(r["cat_n"], 2)
+        self.assertEqual(r["cat_confusion"][0]["n"], 2)
+        self.assertEqual(r["ent_missed"][0]["name"], "이재명")
+
     def test_empty_expected_skipped_and_none_out(self):
         acc = {}
         ME.meta_tally(acc, {"content_category": [], "entities": [], "summary": ""}, OUT)

@@ -109,6 +109,13 @@ def _im(out) -> dict:
     return im if isinstance(im, dict) else {}
 
 
+def _bump(d: dict, keys) -> None:
+    """plain dict 카운터 증가(Counter 대신). evalops 는 acc 를 청크마다 JSON 으로
+    영속화해 재개하므로 Counter·튜플 키는 왕복 후 깨진다(per_reason/per_intent 와 같은 관례)."""
+    for k in keys:
+        d[k] = d.get(k, 0) + 1
+
+
 def meta_tally(acc: dict, exp: dict, out) -> None:
     """건 1개를 카테고리·엔티티·리드문 카운터에 반영. 기대값이 비어 있는 필드는 분모 제외.
     산출 None(실패)은 빈 산출로 채점(등급·인텐트 규칙과 동일)."""
@@ -127,18 +134,19 @@ def meta_tally(acc: dict, exp: dict, out) -> None:
                 d["n"] += 1; d["tp" if v in gc else "fn"] += 1
             else:
                 d["fp"] += 1
-        conf = acc.setdefault("cat_conf", Counter())
+        conf = acc.setdefault("cat_conf", {})
         for w in wc - gc:
             for g in gc - wc:
-                conf[(w, g)] += 1
+                k = w + "\x1f" + g
+                conf[k] = conf.get(k, 0) + 1
     we = _ents(exp.get("entities"))
     if we:
         ge = _ents(im.get("entities"))
         acc["ent_n"] = acc.get("ent_n", 0) + 1
         acc["ent_f1_sum"] = acc.get("ent_f1_sum", 0.0) + _f1(we, ge)
         acc["ent_pf1_sum"] = acc.get("ent_pf1_sum", 0.0) + _ent_partial_f1(we, ge)
-        acc.setdefault("ent_missed", Counter()).update(we - ge)
-        acc.setdefault("ent_spurious", Counter()).update(ge - we)
+        _bump(acc.setdefault("ent_missed", {}), we - ge)
+        _bump(acc.setdefault("ent_spurious", {}), ge - we)
     ws = str(exp.get("summary") or "").strip()
     if ws:
         acc.setdefault("sum_pairs", []).append((ws, str(im.get("summary") or "")))
@@ -152,6 +160,10 @@ def _prf(d: dict) -> dict:
             "f1": round((2 * p * r / (p + r)) if (p + r) else 0.0, 3)}
 
 
+def _top(d: dict, n: int = 10) -> list:
+    return sorted(d.items(), key=lambda kv: -kv[1])[:n]
+
+
 def meta_report(acc: dict) -> dict:
     cn, en = acc.get("cat_n", 0), acc.get("ent_n", 0)
     pairs = acc.get("sum_pairs") or []
@@ -162,11 +174,11 @@ def meta_report(acc: dict) -> dict:
         "cat_n": cn, "cat_f1": r4(acc.get("cat_f1_sum", 0.0), cn), "cat_hf1": r4(acc.get("cat_hf1_sum", 0.0), cn),
         "cat_exact": r4(acc.get("cat_exact", 0), cn),
         "by_category": {v: _prf(d) for v, d in sorted((acc.get("per_cat") or {}).items())},
-        "cat_confusion": [{"expected": w, "got": g, "n": n}
-                          for (w, g), n in (acc.get("cat_conf") or Counter()).most_common(10)],
+        "cat_confusion": [{"expected": k.split("\x1f")[0], "got": k.split("\x1f")[1], "n": n}
+                          for k, n in _top(acc.get("cat_conf") or {})],
         "ent_n": en, "ent_f1": r4(acc.get("ent_f1_sum", 0.0), en), "ent_f1_partial": r4(acc.get("ent_pf1_sum", 0.0), en),
-        "ent_missed": [{"name": k, "n": n} for k, n in (acc.get("ent_missed") or Counter()).most_common(10)],
-        "ent_spurious": [{"name": k, "n": n} for k, n in (acc.get("ent_spurious") or Counter()).most_common(10)],
+        "ent_missed": [{"name": k, "n": n} for k, n in _top(acc.get("ent_missed") or {})],
+        "ent_spurious": [{"name": k, "n": n} for k, n in _top(acc.get("ent_spurious") or {})],
         "summary_n": sn, "summary_sim": r4(sum(sims), sn), "summary_low_n": sum(1 for s in sims if s < 0.3),
         "summary_sim_method": sim_method,        # embed_cosine · bigram_f1(게이트·툴팁 표기 근거)
     }
