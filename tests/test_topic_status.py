@@ -131,6 +131,7 @@ class TestStatusActions(unittest.TestCase):
         g = self._custom(r, cid)
         self.assertEqual(g["status"], "active"); self.assertGreaterEqual(g["core_count"], 2)
         self.assertEqual(g["log"][-1]["who"], "pete"); self.assertTrue(g["log"][-1]["what"].startswith("만듦"))
+        self.assertEqual(g["via"], "talk")                                  # 만든 방식: 말로
         n = g["core_count"]
         r = self._act(action="status", id=cid, status="paused")
         g = self._custom(r, cid)

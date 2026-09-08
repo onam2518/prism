@@ -147,7 +147,22 @@ window.PRISM_APP_PARTS.push(() => ({
       feedMissText(miss) { const KO = { days: '기간', types: '형식', svc_cats: '서비스 분류', creators: '작성자', image: '사진', video: '영상', len: '길이', rules: '룰', tags: '태그', dri: '열독률', cp_grades: '매체 등급', isExclusive: '단독', mainNews: '주요 뉴스', planning: '기획', isPhotoNews: '포토뉴스', subsequent: '후속', duplicate: '중복', copyNews: '복제', ads: '광고', adultImage: '성인 이미지', gutter: '선정', includePaidAd: '유료광고' }; return Object.keys(miss || {}).map(k => (KO[k] || k) + ' ' + miss[k] + '건').join(' · '); },
       // ── 토픽 현황(스펙 132112 화면 2): 상태 스위치 · 필터 · 기록 ──
       statusKo(st) { return { active: '활성', paused: '일시정지', draft: '초안', archived: '보관' }[st] || st || ''; },
-      topicRowOk(r) { const st = r.status || 'active'; const f = this.topicStatus; if (f === 'archived') return st === 'archived'; if (f === 'warn') return !!r.signal && st !== 'archived'; return st !== 'archived'; },
+      // 현황 행 필터: 상태(활성·정지·초안 | 정체·급감 | 보관) × 만든 방식(말로·직접·자동) × 검색(이름·문장·엔티티·묶음 ID)
+      topicRowOk(r, kind) {
+        const st = r.status || 'active'; const f = this.topicStatus;
+        if (f === 'archived' ? st !== 'archived' : st === 'archived') return false;
+        if (f === 'warn' && !r.signal) return false;
+        const v = this.topicView;
+        if (v === 'auto' && kind !== 'auto') return false;
+        if ((v === 'talk' || v === 'manual') && (kind !== 'custom' || (r.via || 'manual') !== v)) return false;
+        const q = (this.topicQuery || '').trim().toLowerCase();
+        if (q) {
+          const hay = [r.name, r.prompt, r.cluster_id].concat(r.entities || r.rep_entities || [], (r.must || []).map(m => m.v), (r.neg || []).map(m => m.v)).filter(Boolean).join(' ').toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      },
+      talkExample(text) { this.talk.input = text; return this.talkSend(); },
       topicSwTip(r) { const st = r.status || 'active'; return st === 'active' ? '켜짐 · 누르면 일시정지(건수는 계속 세고 유통만 멈춤)' : st === 'paused' ? '일시정지 · 누르면 켬' : st === 'draft' ? '초안 · 누르면 활성(0건이면 잠김)' : '보관 · 복구 버튼으로'; },
       logLine(log) { const e = (log || [])[log.length - 1]; if (!e) return ''; return this.fmtTs(e.ts) + (e.who ? ' ' + e.who : '') + ' · ' + e.what; },
       topicToggle(r) { const st = r.status || 'active'; return this.topicStatusSet(r, st === 'active' ? 'paused' : 'active'); },

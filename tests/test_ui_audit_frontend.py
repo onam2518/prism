@@ -37,15 +37,14 @@ def _vendor_sources():
 
 
 class TestStudioModelpick(unittest.TestCase):
-    """idx 19 · 토픽 스튜디오도 공통 <x-modelpick> 을 쓴다(전체 개수는 test_modelmeta 가 확인)."""
+    """idx 19 · 토픽 생성은 모델을 고르지 않는다(시스템 설정의 기본 실행 모델 · 2026-09-08).
+    화면에 모델 선택이 다시 생기면 네이티브 select 가 아니라 공통 <x-modelpick> 이어야 한다(전체 개수는 test_modelmeta)."""
 
     def test_studio_uses_modelpick_not_native_select(self):
         src = _read("prism/ui/07-studio.html")
         self.assertNotIn('x-model="studioModel"', src)          # 네이티브 select 잔존 금지
-        self.assertIn("<x-modelpick", src)
-        m = re.search(r'<x-modelpick[^>]*value="studioModel"[^>]*>', src)
-        self.assertIsNotNone(m, "studioModel 을 쓰는 x-modelpick 이 없습니다")
-        self.assertIn('groups="textGroups"', m.group(0))        # 데이터 원천 = 공통 제공자 그룹
+        self.assertNotIn("<x-modelpick", src)                   # 생성 영역 모델 선택 없음 · 기본 실행 모델
+        self.assertIn("기본 실행 모델", src)                      # 어느 모델을 쓰는지 안내는 남긴다
 
     def test_suggest_sends_bare_model_id(self):
         """x-modelpick 값은 provider|model — 서버(llm_for_model)엔 model id 만 보내야 한다."""

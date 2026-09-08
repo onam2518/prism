@@ -17,16 +17,17 @@
         </ul>
         <template x-if="!topicData || !topicData.n_contents"><div class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div></template>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
-          <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
-            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.custom||0):0"></div><div class="t">내 토픽(수동)</div></div>
-            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.single||0):0"></div><div class="t">엔티티형(자동)</div></div>
-            <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.composite||0):0"></div><div class="t">사건형(자동)</div></div>
-          </div>
+        <!-- 토픽 하위 탭: 만들기(기본) | 현황(대시보드 · 검색 · 상태 제어) -->
+        <div class="evaltabs">
+        <button type="button" x-bind:class="topicPage==='create'?'sel':''" x-on:click="topicPage='create'">만들기</button>
+        <button type="button" x-bind:class="topicPage==='board'?'sel':''" x-on:click="topicPage='board'">현황</button>
+        </div>
+        <div x-show="topicPage==='create'" class="space-y-4">
 
           <!-- 토픽 생성하기: 수동(4단계 스텝) | 자동(묶기 기준) 탭 -->
           <div class="panel">
             <!-- 타이틀은 정적 텍스트 유지(헤드 데코레이터가 b.textContent 를 복사하므로 x-text 는 빈 타이틀이 된다) -->
-            <div class="panel-hd"><b>토픽 생성하기</b><span class="meta">직접 정의하거나 자동 묶기 기준을 조절합니다</span>
+            <div class="panel-hd"><b>토픽 생성하기</b><span class="meta">문장으로 말하면 조건이 채워집니다 · 해석 모델은 시스템 설정의 기본 실행 모델</span>
               <span class="ds-badge ds-badge--status" x-show="studio.editId" x-cloak>수정 중</span>
               <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
                 <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='manual'&&!studioManual?'sel':''" x-on:click="topicGenTab='manual';studioManual=false">말로 만들기</button>
@@ -38,24 +39,31 @@
               <span class="meta tnum" x-show="topicGenTab==='auto'" x-cloak x-text="'엔티티형 '+(topicData.summary&&topicData.summary.single||0)+' · 사건형 '+(topicData.summary&&topicData.summary.composite||0)"></span>
             </div>
             <div class="panel-bd">
-              <!-- 추천: 떠오르는 엔티티 + 자동 사건 묶음 → 클릭으로 폼 프리필(reactive→proactive) -->
-              <div class="tbox" x-show="topicGenTab==='manual' && (((topicData.trending)||[]).length || ((topicData.composite)||[]).length)" style="padding:12px 14px;margin-bottom:14px">
-                <div class="text-xs" style="font-weight:700;margin-bottom:8px">추천 <span class="text-muted" style="font-weight:400">지금 데이터에서 뜨는 것들 · 누르면 아래 폼에 채워집니다</span></div>
-                <div class="flexrow" style="flex-wrap:wrap;gap:6px;align-items:center" x-show="((topicData.trending)||[]).length">
-                  <span class="text-xs text-muted" style="width:100px">떠오르는 엔티티</span>
-                  <template x-for="t in (topicData.trending||[])" x-bind:key="'tr'+t.id">
-                    <button type="button" class="srcfilter__chip" x-on:click="suggestKeyword(t.name)" x-bind:data-tip="'최근 48시간 ' + t.recent + '건 언급 (그 전 ' + t.prev + '건) · 누르면 키워드로 추가'" data-tip-pos="top" x-text="t.name + ' ↑' + (t.recent - t.prev)"></button>
-                  </template>
-                </div>
-                <div class="flexrow" style="flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px" x-show="((topicData.composite)||[]).length">
-                  <span class="text-xs text-muted" style="width:100px">자동 사건 묶음</span>
-                  <template x-for="p in (topicData.composite||[]).slice(0,5)" x-bind:key="'pc'+p.cluster_id">
-                    <button type="button" class="srcfilter__chip" x-on:click="promoteCluster(p)" x-bind:data-tip="'콘텐츠 ' + p.count + '건 · 누르면 이 사건을 수동 토픽 폼에 채웁니다'" data-tip-pos="top" x-text="p.name + ' (' + p.count + ')'"></button>
-                  </template>
-                </div>
-              </div>
               <!-- 말로 만들기(기본): 문장 → 해석 칩 + 매칭 건수 + 표본 → 문장 보태 다듬기 → 저장 · 칩 나열은 '직접' 토글 뒤(스펙 132112) -->
               <div class="talk" x-show="topicGenTab==='manual' && !studioManual">
+              <!-- 예시 명령(누르면 바로 해석) · 말할 수 있는 조건 가이드(스펙 132112 조건 사전) -->
+              <div class="tex" x-show="!talk.turns.length">
+              <span class="meta">예시 · 누르면 바로 해석합니다</span>
+              <template x-for="e in talkExamples" x-bind:key="e"><button type="button" class="tbchip" x-on:click="talkExample(e)" x-text="e"></button></template>
+              </div>
+              <details class="tguide" x-bind:open="!talk.turns.length">
+              <summary><b>말할 수 있는 조건</b><span class="meta">분야 · 의도 · 엔티티 · 출처 · 기간 · 형식 · 첨부 · 길이 · 표시 · 매체 등급 · 열독률 · 제외</span></summary>
+              <div class="tguide__g">
+              <div><b>분야</b><span>"스포츠", "경제", "범죄 관련"</span></div>
+              <div><b>의도</b><span>"분석 위주", "속보만", "후기", "심층"</span></div>
+              <div><b>엔티티</b><span>"손흥민", "삼성전자" · 사전에 있는 이름만</span></div>
+              <div><b>출처</b><span>"카카오TV만", "브런치는 빼고" · 데이터에 있는 서비스 · 매체만</span></div>
+              <div><b>기간</b><span>"최근 2주", "오늘 올라온", "이번 달"</span></div>
+              <div><b>형식</b><span>"영상만", "쇼츠 빼고", "글만", "라이브 제외"</span></div>
+              <div><b>첨부</b><span>"사진 있는 것만", "영상 딸린"</span></div>
+              <div><b>길이</b><span>"긴 글만"(1,500자 이상), "짧은 글 제외"</span></div>
+              <div><b>표시</b><span>"단독만", "주요 뉴스", "기획 기사", "중복 빼고", "후속 있는"</span></div>
+              <div><b>매체 등급</b><span>"우수 매체만", "블랙 제외"</span></div>
+              <div><b>열독률</b><span>"많이 읽힌"</span></div>
+              <div><b>제외</b><span>"…는 빼고 / 제외 / 말고" · 같은 축에서 제외가 이깁니다</span></div>
+              </div>
+              <p class="meta">사전에 없는 값은 만들지 않아요 · 지금 데이터에 있는 값만 조건이 됩니다 · 광고 · 성인 · 선정 · 삭제는 늘 빠지고 "광고 포함해도 돼"로 풉니다 · 데이터에 없는 필드는 "필드 없음"으로 알려 줍니다</p>
+              </details>
               <template x-for="(t,i) in talk.turns" x-bind:key="'t'+i">
               <div>
               <div class="talk__me"><span class="talk__who">나</span><span x-text="t.text"></span></div>
@@ -78,7 +86,6 @@
               <div class="talk__in">
               <textarea class="field" rows="2" style="resize:vertical" x-model="talk.input" x-on:keydown.enter.prevent="talkSend()" x-bind:placeholder="talk.turns.length?'더 말하기 · 예: 야구는 빼줘 · 쇼츠랑 라이브는 빼고 사진 있는 것만':'무엇을 묶을지 말해 주세요 · 예: 스포츠 경기 리뷰랑 전술 분석 위주로. 팬 응원은 빼고, 브런치 글도 빼줘. 최근 2주.'"></textarea>
               <div class="talk__row">
-              <x-modelpick key="tk" value="studioModel" set="studioModel=$v" groups="textGroups" first-label="기본 실행 모델" first-value="" width="212px" tip="문장을 조건으로 푸는 모델 · 기본 실행 모델은 /config 실행 설정"></x-modelpick>
               <button type="button" class="ds-btn ds-btn--primary" x-on:click="talkSend()" x-bind:disabled="talk.busy || !talk.input.trim()" x-text="talk.busy?'해석 중…':'보내기'"></button>
               <button type="button" class="ds-btn ds-btn--outline" x-show="talk.turns.length" x-on:click="talkReset()">처음부터</button>
               <span class="meta" x-show="studioMsg" x-text="studioMsg"></span>
@@ -110,10 +117,6 @@
                     <textarea class="field" rows="2" style="resize:vertical" x-model="studio.prompt" x-on:input="schedulePreview()" placeholder="예) 경제·산업 심층분석만 모으고 속보는 빼줘"></textarea>
                     <div class="tairow">
                       <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-on:click="studioSuggest()" x-bind:disabled="studioSuggesting || !studio.prompt.trim()" data-tip="설명을 읽고 아래 조건값을 자동으로 만듭니다" data-tip-pos="top" x-text="studioSuggesting ? '생성 중…' : '✨ 조건값 자동생성'"></button>
-                      <span class="tmodel">
-                        <span class="tmodel__lbl">모델</span>
-                        <x-modelpick key="st" value="studioModel" set="studioModel=$v" groups="textGroups" first-label="기본 실행 모델" first-value="" width="212px" tip="조건값 생성에 쓸 모델 · 직접(Solar)·라우터 선택 가능 · 미연결 제공자 모델은 키 등록 후 선택" tip-pos="top"></x-modelpick>
-                      </span>
                     </div>
                     <div class="text-xs" style="color:var(--ds-muted);margin-top:7px" aria-live="polite" x-text="studioMsg"></div>
                   </div>
@@ -258,14 +261,23 @@
             </div>
           </div>
 
-          <!-- 토픽 현황: 수동(스튜디오)+자동(엔티티형·사건형)을 한 양식으로 · 생성 방식 필터 -->
+          </div>
+          <div x-show="topicPage==='board'" class="space-y-4">
+          <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
+          <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.custom||0):0"></div><div class="t">내 토픽(수동)</div></div>
+          <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.single||0):0"></div><div class="t">엔티티형(자동)</div></div>
+          <div class="tile"><div class="n tnum" x-text="topicData?(topicData.summary.composite||0):0"></div><div class="t">사건형(자동)</div></div>
+          </div>
+          <!-- 토픽 현황: 수동(스튜디오)+자동(엔티티형·사건형)을 한 양식으로 · 생성 방식 필터 · 검색 -->
           <div class="panel"><div class="panel-hd"><b>토픽 현황</b>
               <span class="meta tnum" x-text="((topicData.custom||[]).length)+'개 수동 · '+(((topicData.single||[]).length)+((topicData.composite||[]).length))+'개 자동'"></span>
               <span class="ds-badge ds-badge--neutral tnum" style="cursor:help" x-show="topicData.snapshot && topicData.snapshot.last_ts" x-bind:data-tip="topicSnapTip()" data-tip-pos="bottom" x-text="'자동 리프레시 · ' + fmtTs(topicData.snapshot && topicData.snapshot.last_ts) + (topicData.snapshot && topicData.snapshot.delta && topicData.snapshot.delta.changed_n ? (' · 변화 ' + topicData.snapshot.delta.changed_n + '건') : ' · 변화 없음')"></span>
               <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
+                <input class="field" type="search" style="width:200px;padding:4px 10px" x-model="topicQuery" placeholder="이름 · 문장 · 엔티티로 찾기" aria-label="토픽 검색">
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='all'?'sel':''" x-on:click="topicView='all'">전체</button>
-                <button type="button" class="srcfilter__chip" x-bind:class="topicView==='manual'?'sel':''" x-on:click="topicView='manual'">수동 생성</button>
-                <button type="button" class="srcfilter__chip" x-bind:class="topicView==='auto'?'sel':''" x-on:click="topicView='auto'">자동 생성</button>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicView==='talk'?'sel':''" x-on:click="topicView='talk'">말로</button>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicView==='manual'?'sel':''" x-on:click="topicView='manual'">직접</button>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicView==='auto'?'sel':''" x-on:click="topicView='auto'">자동</button>
                 <span class="meta">|</span>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicStatus==='all'?'sel':''" x-on:click="topicStatus='all'">활성 · 정지 · 초안</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicStatus==='warn'?'sel':''" x-on:click="topicStatus='warn'">정체 · 급감</button>
@@ -277,9 +289,9 @@
             <div class="meta" style="padding:0 16px 6px" x-show="topicMsg" x-text="topicMsg"></div>
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th></th><th>구분</th><th>토픽</th><th>구성</th><th>콘텐츠</th><th>오늘</th><th>7일</th><th>신호</th><th style="text-align:right">관리</th></tr></thead><tbody>
             <template x-for="g in (topicData.custom||[])" x-bind:key="g.id">
-            <tr x-show="topicView!=='auto' && topicRowOk(g)" x-bind:class="{'trow--off': g.status && g.status!=='active'}">
+            <tr x-show="topicRowOk(g,'custom')" x-bind:class="{'trow--off': g.status && g.status!=='active'}">
             <td style="white-space:nowrap"><button type="button" role="switch" class="tsw" x-bind:aria-checked="g.status==='active'" x-bind:class="{on:g.status==='active'}" x-bind:disabled="!topicAdmin || topicBusy===g.id || g.status==='archived'" x-on:click="topicToggle(g)" x-bind:data-tip="topicSwTip(g)" data-tip-pos="top" x-bind:aria-label="topicSwTip(g)"></button></td>
-            <td style="white-space:nowrap"><span class="ds-badge ds-badge--entity">수동</span> <span class="ds-badge ds-badge--neutral" x-show="g.status && g.status!=='active'" x-text="statusKo(g.status)"></span></td>
+            <td style="white-space:nowrap"><span class="ds-badge ds-badge--entity" x-text="g.via==='talk'?'말로':'직접'"></span> <span class="ds-badge ds-badge--neutral" x-show="g.status && g.status!=='active'" x-text="statusKo(g.status)"></span></td>
             <td><div class="text-ink" style="font-weight:650" x-text="g.name"></div>
             <div class="text-xs text-muted" x-show="g.prompt" x-text="g.prompt"></div>
             <div class="flex flex-wrap gap-1" style="margin-top:3px" x-show="g.feed_chips && g.feed_chips.length"><template x-for="c in g.feed_chips" x-bind:key="'fc'+c.f+c.x"><span class="tbchip" x-bind:class="{neg:c.neg}"><span class="tbchip__k" x-text="c.k"></span> <span x-text="c.v"></span></span></template></div>
@@ -298,7 +310,7 @@
                   </tr>
               </template>
               <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id">
-                <tr x-show="topicView!=='manual' && topicRowOk(t)" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
+                <tr x-show="topicRowOk(t,'auto')" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
                   <td style="white-space:nowrap" x-on:click.stop><button type="button" role="switch" class="tsw" x-bind:aria-checked="t.status!=='paused'" x-bind:class="{on:t.status!=='paused'}" x-bind:disabled="!topicAdmin || topicBusy===t.cluster_id" x-on:click.stop="topicToggle(t)" x-bind:data-tip="topicSwTip(t)" data-tip-pos="top" x-bind:aria-label="topicSwTip(t)"></button></td>
                   <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 엔티티형</span> <span class="ds-badge ds-badge--neutral" x-show="t.status==='paused'">일시정지</span></td>
                   <td class="text-ink" x-text="t.cluster_id"></td>
@@ -310,7 +322,7 @@
                 </tr>
               </template>
               <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id">
-                <tr x-show="topicView!=='manual' && topicRowOk(t)" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
+                <tr x-show="topicRowOk(t,'auto')" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
                   <td style="white-space:nowrap" x-on:click.stop><button type="button" role="switch" class="tsw" x-bind:aria-checked="t.status!=='paused'" x-bind:class="{on:t.status!=='paused'}" x-bind:disabled="!topicAdmin || topicBusy===t.cluster_id" x-on:click.stop="topicToggle(t)" x-bind:data-tip="topicSwTip(t)" data-tip-pos="top" x-bind:aria-label="topicSwTip(t)"></button></td>
                   <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 사건형</span> <span class="ds-badge ds-badge--neutral" x-show="t.status==='paused'">일시정지</span></td>
                   <td class="text-ink" x-text="t.cluster_id"></td>
@@ -321,8 +333,8 @@
                   <td></td>
                 </tr>
               </template>
-              <tr x-show="topicView!=='auto' && !(topicData.custom||[]).length"><td colspan="9" class="text-muted">아직 만든 토픽이 없습니다 · 위 토픽 생성하기에서 정의해 저장하세요</td></tr>
-              <tr x-show="topicView!=='manual' && !((topicData.single||[]).length||(topicData.composite||[]).length)"><td colspan="9" class="text-muted">자동 생성 토픽 없음 · 데이터가 많을수록 · 자동으로 묶기 기준을 낮추면 더 형성됩니다</td></tr>
+              <tr x-show="topicView!=='auto' && !(topicData.custom||[]).length && !topicQuery"><td colspan="9" class="text-muted">아직 만든 토픽이 없습니다 · 위 토픽 생성하기에서 정의해 저장하세요</td></tr>
+              <tr x-show="(topicView==='all'||topicView==='auto') && !((topicData.single||[]).length||(topicData.composite||[]).length) && !topicQuery"><td colspan="9" class="text-muted">자동 생성 토픽 없음 · 데이터가 많을수록 · 자동으로 묶기 기준을 낮추면 더 형성됩니다</td></tr>
             </tbody></table></div>
           </div>
 
@@ -334,9 +346,10 @@
                 <tr><td x-text="e.topic || e.tid"></td><td class="text-ink" x-text="e.title || e.h"></td>
                 <td style="text-align:right"><button type="button" class="copybtn" x-show="topicAdmin" x-on:click="topicRestore(e.tid, e.h)">복구</button></td></tr>
               </template>
-            </tbody></table></div>
-          </div>
-        </div>
-      </div>
-      </template>
+              </tbody></table></div>
+              </div>
+              </div>
+              </div>
+              </div>
+              </template>
 

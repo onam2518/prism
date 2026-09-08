@@ -125,6 +125,7 @@ def _attach_status(out: dict, cfg: dict, rows: list):
     for g in out.get("custom") or []:
         d = defs.get(g.get("id")) or {}
         g["status"] = d.get("status") or "active"
+        g["via"] = d.get("via") or "manual"
         g["log"] = (d.get("log") or [])[-3:]
         g["feed_chips"] = TP.feed_labels(d.get("feed"))
         core = next((b.get("content_ids") or [] for b in (g.get("bundles") or []) if b.get("kind") == "core"), [])
@@ -137,7 +138,7 @@ def _attach_status(out: dict, cfg: dict, rows: list):
             "id": d.get("id"), "type": "custom", "origin": "user", "name": d.get("name") or "(무제 토픽)",
             "prompt": d.get("prompt") or "", "must": [], "opt": [],
             "neg": [{"dim": k, "v": v} for k in TP._DIMS for v in ((d.get("neg") or {}).get(k) or [])],
-            "bundles": [], "n_bundles": 0, "core_count": 0, "status": d.get("status"),
+            "bundles": [], "n_bundles": 0, "core_count": 0, "status": d.get("status"), "via": d.get("via") or "manual",
             "log": (d.get("log") or [])[-3:], "feed_chips": TP.feed_labels(d.get("feed")),
             "today": 0, "d7": 0, "prev7": 0, "stall_days": 0, "signal": ""})
     for key in ("single", "composite"):
@@ -300,6 +301,7 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     return {"id": cid, "name": name or "(무제 토픽)", "prompt": prompt,
             "cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs, "eattrs": eattrs,
             "req": req, "neg": neg, "feed": feed, "status": status,
+            "via": "talk" if d.get("via") == "talk" else "manual",   # 만든 방식: 말로 · 직접
             "talk_model": (d.get("talk_model") or "").strip()[:80]}
 
 
@@ -491,6 +493,8 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
         prev = custom[idx] if idx >= 0 else {}
         d["log"] = list(prev.get("log") or [])
+        if data.get("talk"):
+            d["via"] = "talk"
         # 활성 잠금: 지금 데이터에 0건이면 활성으로 저장하지 않는다(초안) · 일시정지·보관 요청은 그대로
         locked = False
         if d["status"] == "active" and rows:
