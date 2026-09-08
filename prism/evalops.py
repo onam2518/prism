@@ -45,7 +45,12 @@ def _zero_metrics() -> dict:
             # 인텐트 카운터(abtest.intent_tally 와 같은 키) · 구 런 메트릭에는 없으므로
             # 읽는 쪽은 항상 .get 기본값으로 다룬다(재개·구 런 리포트 하위호환).
             "intent_n": 0, "intent_exact": 0, "intent_jac_sum": 0.0,
-            "intent_top1": 0, "intent_skipped": 0, "per_intent": {}}
+            "intent_top1": 0, "intent_skipped": 0, "per_intent": {},
+            # 카테고리·엔티티·리드문 카운터(ME.meta_tally 와 같은 키) · 구 런 메트릭에는
+            # 없으므로(ME.meta_tally/meta_report 는 항상 .get 기본값으로 다뤄 하위호환).
+            "cat_n": 0, "cat_f1_sum": 0.0, "cat_hf1_sum": 0.0, "cat_exact": 0, "per_cat": {},
+            "ent_n": 0, "ent_f1_sum": 0.0, "ent_pf1_sum": 0.0,
+            "sum_n": 0, "sum_sim_sum": 0.0, "sum_low": 0}
 
 
 def _tally(m: dict, row: dict, out) -> dict:
@@ -55,6 +60,7 @@ def _tally(m: dict, row: dict, out) -> dict:
     m["n"] += 1
     exp = row.get("expected") or {}
     abtest.intent_tally(m, exp, out)             # 인텐트 계수는 abtest.score 와 단일 소스
+    ME.meta_tally(m, exp, out)                   # 카테고리·엔티티·리드문(같은 카운터 dict · abtest.score 와 단일 소스)
     if exp.get("finalGrade") == "R":             # 유해 미탐률 분모(산출 실패 행도 포함)
         m["harm_n"] = int(m.get("harm_n") or 0) + 1   # 구 런 재개 시 키가 없다 → get 으로 시작
     want_intent = abtest.intent_expected(exp)
@@ -363,12 +369,16 @@ def _meta_gate() -> float:
 
 def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "", meta_target: float = 0.6,
                 golden_hashes=None):
-    """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속."""
+    """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속.
+    향상 판정 = 종합 점수 상승 AND 등급 신뢰구간이 최고 라운드와 안 겹침(ci_overlap) ·
+    두 구간이 겹치면 점 추정치가 올라도 '동등'으로 보고 향상 없음으로 집계한다(표본 노이즈 방지).
+    n(evaluated) 을 모르는 라운드는 CI 판단이 불가하므로 종전처럼 종합 점수만으로 판정한다."""
     from . import learnops as LO
     st = _SV.get_store()
     history = []
     best = None          # 최고 등급 일치율(화면 표시용)
     best_score = None    # 최고 종합 점수(정체 판정용 · 목표 판정과 같은 5축)
+    best_acc, best_acc_n = None, None   # 최고 라운드의 등급 일치율·표본 n(CI 동등 판정용)
     no_improve = 0
     try:
         for rnd in range(1, max_rounds + 1):
@@ -379,6 +389,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                 return
             st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
             rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes)
+            if rep.get("skipped"):          # 다른 호출자와 배치 겹침 · 잠깐 대기 후 한 번만 재시도
+                time.sleep(2)
+                rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes)
             acc = rep.get("grade_accuracy")
             if acc is None:
                 st.autopilot_update(rid, team=team, status="failed",
@@ -403,8 +416,16 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
             best = acc if best is None else max(best, acc)
-            improved = best_score is None or ov["overall"] > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
-            best_score = ov["overall"] if improved else best_score
+            n_cur = int(ev.get("evaluated") or 0)
+            overall_up = best_score is None or ov["overall"] > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
+            # 종합이 올라도 등급 CI 가 최고 라운드와 겹치면(표본 노이즈로 동등) 향상으로 안 친다.
+            # n(evaluated) 을 모르는(구 리포트·페이크) 라운드는 CI 판단 불가 → 종전처럼 종합 점수만으로 판정.
+            if overall_up and best_score is not None and n_cur and best_acc_n \
+                    and LO.ci_overlap(acc, n_cur, best_acc, best_acc_n):
+                overall_up = False
+            improved = overall_up
+            if improved:
+                best_score, best_acc, best_acc_n = ov["overall"], acc, n_cur
             fields = {"last_accuracy": acc, "best_accuracy": best,
                       "history": history, "heartbeat": time.time()}
             if rnd == 1:
@@ -418,7 +439,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
             no_improve = 0 if improved else no_improve + 1
             if no_improve >= PILOT_STALL_ROUNDS:
                 st.autopilot_update(rid, team=team, status="done",
-                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 종합 향상 없음(최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
+                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 종합 향상 없음"
+                                                 f"(등급 신뢰구간이 최고 라운드와 겹치는 동등 라운드는 향상 없음으로 집계 · "
+                                                 f"최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
                                     finished=time.time())
                 return
         st.autopilot_update(rid, team=team, status="done",
@@ -631,6 +654,7 @@ def eval_run_report(run_id: int, team=None) -> dict:
     else:
         harm_rate, harm_basis = (round(harm_miss / harm_n, 4) if harm_n else None), "expected_r"
     out = {**abtest.intent_report(m),             # abtest.score 와 같은 인텐트 키(순수 추가)
+           **ME.meta_report(m),                   # abtest.score 와 같은 카테고리·엔티티·리드문 키(순수 추가)
            "ok": True, "id": run_id, "status": run.get("status"),
            "cursor": run.get("cursor") or 0, "total": run.get("total") or 0,
            "ts": run.get("ts"), "finished": run.get("finished"),
