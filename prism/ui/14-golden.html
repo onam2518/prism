@@ -41,6 +41,15 @@
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.new)||0"></div><div class="t">신규 승격</div></div>
                     <div class="tile"><div class="n tnum" x-text="(goldenStatus.last_batch&&goldenStatus.last_batch.need_category)||0"></div><div class="t">분류 필요</div></div>
                   </div>
+                  <!-- 메타 정답 표본: 모델 비교의 메타 F1 분모 · 검수자가 고친 값만 정답이라 0 이면 그 축은 측정되지 않는다 -->
+                  <div class="text-xs text-muted" style="margin-bottom:10px" x-show="goldenStatus.last_batch && goldenStatus.last_batch.meta_n" x-cloak>
+                    사람이 고쳐 확정한 메타 정답:
+                    인텐트 <b class="text-ink tnum" x-text="((goldenStatus.last_batch||{}).meta_n||{}).intent||0"></b>건 ·
+                    분류 <b class="text-ink tnum" x-text="((goldenStatus.last_batch||{}).meta_n||{}).content_category||0"></b>건 ·
+                    리드문 <b class="text-ink tnum" x-text="((goldenStatus.last_batch||{}).meta_n||{}).summary||0"></b>건 ·
+                    엔티티 <b class="text-ink tnum" x-text="((goldenStatus.last_batch||{}).meta_n||{}).entities||0"></b>건
+                    <span style="cursor:help" data-tip="모델 비교의 메타 F1 은 이 건수를 분모로 씁니다 · 검수에서 고치지 않은 축은 모델 산출을 정답으로 베끼지 않으므로 측정에서 빠집니다" data-tip-pos="top">(모델 비교 메타 F1 분모)</span>
+                  </div>
                   <!-- 반영 대기·정체 경고: 학습 반영이 멈추면 검수가 쌓여도 정답이 늘지 않는데
                        그 사실이 어디에도 안 보였다(운영 2026-08-06: 검수 488 vs 정답 122 · 15일 무실행) -->
                   <div class="text-xs" style="margin-bottom:10px" x-show="goldenStatus.pending && goldenStatus.pending.promote" x-cloak>

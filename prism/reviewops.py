@@ -1152,6 +1152,7 @@ def _gold_drafts(ch: str, team=None) -> dict:
         if _chash(content) != under:
             continue
         om = (_gold_origin_meta(st, [under], team) or {}).get(under) or {}
+        exp = gold_shown_meta(exp, om)                # 큐 행과 같은 화면값(빈 축 = 골드 표시 방지)
         cats = exp.get("content_category", []) or []
         flip = int(under, 16) % 2 == 1
         shown = gold_wrong_category(cats, under) if flip else [str(c) for c in cats]
@@ -1279,6 +1280,18 @@ def _gold_origin_meta(st, hashes, team) -> dict:
         return {}
 
 
+def gold_shown_meta(exp: dict, om: dict) -> dict:
+    """골드 문항이 화면에 내보낼 메타: 정답(사람 교정)이 있는 축은 그 값 · 없는 축은 원본 산출.
+    골든 정답의 메타 4축은 사람이 고친 축만 담기므로(learnops.build_golden_from_reviews) 그대로
+    내보내면 리드문·엔티티·인텐트가 골드 문항에서만 비어 그 부재가 골드 표시가 된다(2026-08-13)."""
+    im = om.get("item_meta") or {}
+    out = dict(exp or {})
+    for k in ("summary", "entities", "intent", "content_category"):
+        if not out.get(k):
+            out[k] = im.get(k) or ("" if k == "summary" else [])
+    return out
+
+
 def _gold_candidates(st, team, answered) -> list:
     """출제 가능한 골드 후보 [(h, content, exp, origin, shown_cats, flip)].
 
@@ -1305,6 +1318,7 @@ def _gold_candidates(st, team, answered) -> list:
         om = origin.get(h) or {}
         if not (om.get("model") or "").strip():      # 원본 미상 = 부속 정보가 빈 행 = 골드 표시
             continue
+        exp = gold_shown_meta(exp, om)               # 사람이 고치지 않은 축은 원본 산출로 채운다
         flip = int(h, 16) % 2 == 1                   # 홀수 = 카테고리 한 자리 뒤집기(정답 bad)
         cats = exp.get("content_category", []) or []
         shown = gold_wrong_category(cats, h) if flip else [str(c) for c in cats]
