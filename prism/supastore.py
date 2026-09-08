@@ -2178,6 +2178,11 @@ class SupabaseStore:
                          f"select=*&{self._team_q(team)}&order=id.desc&limit=1")
         return self._pilot_row(rows[0]) if rows else None
 
+    def autopilot_list(self, team=None, limit=10) -> list:
+        rows = self._get("autopilot_runs",
+                         f"select=*&{self._team_q(team)}&order=id.desc&limit={int(limit)}")
+        return [self._pilot_row(r) for r in rows]
+
     # ── 프롬프트 라이브러리 · Atelier prompt_library 이식 · Store 동일 계약 ──
     def lib_add(self, team, name, domain, prompt, note="", source="manual",
                 created_by="") -> int:

@@ -162,7 +162,7 @@
                   <select class="field" x-model="pvSrc" x-on:change="loadPvSource()">
                     <option value="">현재 합성</option>
                     <template x-for="v in pvVersions" x-bind:key="'pvv'+v"><option x-bind:value="'v:'+v" x-text="'학습 버전 v'+v"></option></template>
-                    <template x-for="r in evalRuns" x-bind:key="'pvr'+r.id"><option x-bind:value="'run:'+r.id" x-text="'평가 런 #'+r.id+' · '+(r.model||'설정 모델')+' · '+fmtTs(r.ts)"></option></template>
+                    <template x-for="r in evalRuns.filter(r => r.kind === 'eval')" x-bind:key="'pvr'+r.id"><option x-bind:value="'run:'+r.id" x-text="'평가 런 #'+r.id+' · '+(r.model||'설정 모델')+' · '+fmtTs(r.ts)"></option></template>
                   </select></span>
                 <span class="selctl" x-show="!pvSrc"><span class="selctl__lbl">모델</span>
                   <x-modelpick key="pv" value="pvModel" set="pvModel=$v; loadPreview()" options="availableModels" width="212px"></x-modelpick></span>

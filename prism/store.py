@@ -1671,6 +1671,11 @@ class Store:
                       "ORDER BY id DESC LIMIT 1").fetchone()
         return self._pilot_row(r) if r else None
 
+    def autopilot_list(self, team=None, limit=10) -> list:
+        c = self._conn()
+        return [self._pilot_row(r) for r in c.execute(
+            f"SELECT {self._PILOT_COLS} FROM autopilot_runs ORDER BY id DESC LIMIT ?", (int(limit),))]
+
     # ── 프롬프트 라이브러리 · Atelier prompt_library 이식 · supastore 동일 계약 ─
     def lib_add(self, team, name, domain, prompt, note="", source="manual",
                 created_by="") -> int:
