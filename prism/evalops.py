@@ -205,19 +205,31 @@ def _run_loop(run_id: int, rows: list, llm, team, m: dict):
     from . import abtest
     from . import harness as H
     from .store import content_hash
+    from .config import task_budget
+    from .runops import _log_run_ledgers
     meth = H.Methodology(name="골든셋")
     try:
+        budget = task_budget()
+        m.update(budget_usd=budget, spent_usd=m.get("cost_usd", 0.0), budget_stop=False, skipped=0)
         for i in range(0, len(rows), CHUNK):
             if run_id in _CANCEL:
                 st.eval_run_update(run_id, team=team, status="cancelled",
                                    metrics=m, finished=time.time())
+                return
+            if budget > 0 and m["cost_usd"] >= budget:
+                m.update(budget_stop=True, skipped=len(rows) - i)
+                st.eval_run_update(run_id, team=team, status="failed", metrics=m,
+                                   error=f"예산 중단 · 비용 ${m['spent_usd']:.6f} · 미실행 {m['skipped']}건",
+                                   finished=time.time())
                 return
             chunk = rows[i:i + CHUNK]
             outs = abtest.run_methodology(chunk, meth, llm, concurrency=8)
             results = []
             for row, out in zip(chunk, outs):
                 r = _tally(m, row, out)
+                m["spent_usd"] = m["cost_usd"]
                 c = row.get("content") or {}
+                _log_run_ledgers(c, out, mock=llm.mock, team=team)
                 r.update({"hash": content_hash(c), "title": (c.get("title") or "")[:60]})
                 results.append(r)
             st.eval_results_add(run_id, results, team)
@@ -594,6 +606,8 @@ def eval_runs_list(team=None, limit: int = 20) -> dict:
             it["stalled"] = bool(it.get("status") == "running"
                                  and not (it.get("id") in _ACTIVE and _ACTIVE[it["id"]].is_alive()))
             m = it.pop("metrics", None) or {}
+            it.update(budget_stop=m.get("budget_stop", False), spent_usd=m.get("cost_usd", 0.0),
+                      skipped=m.get("skipped", 0))
             n = m.get("n") or 0
             it["grade_accuracy"] = round(m.get("grade_hit", 0) / n, 4) if n else None
     return {"ok": True, "items": items}
@@ -629,6 +643,8 @@ def eval_run_report(run_id: int, team=None) -> dict:
            "rubric_cursor": run.get("rubric_cursor") or 0,
            "rubric": run.get("rubric"),
            "evaluated": n,
+           "budget_usd": m.get("budget_usd", 0.0), "budget_stop": m.get("budget_stop", False),
+           "spent_usd": m.get("spent_usd", m.get("cost_usd", 0.0)), "skipped": m.get("skipped", 0),
            "grade_accuracy": round(m.get("grade_hit", 0) / n, 4) if n else 0,
            "reason_exact_match": round(m.get("reason_exact", 0) / n, 4) if n else 0,
            "reason_jaccard": round(m.get("jaccard_sum", 0.0) / n, 4) if n else 0,

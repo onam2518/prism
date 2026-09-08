@@ -573,7 +573,9 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
     """엑셀/CSV 업로드 → ingest 매핑 → (add_only=추가만 | 행마다 추출 → 결과+리포트)."""
     from . import ingest as ING
     ext = os.path.splitext(filename or "")[1].lower() or ".xlsx"
+    from .config import task_budget
     cfg = Config.load()
+    budget = task_budget(cfg.task_budget_usd)
     llm = _SV.make_text_llm(cfg, _SV.Handler.server_mock)
     fd, tmp = tempfile.mkstemp(suffix=ext)
     try:
@@ -602,12 +604,18 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         skipped_done = sum(1 for c in contents if known.get(_bch(c)))
         contents = [c for c in contents if not known.get(_bch(c))][:200]
         results, items, pairs = [], [], []
+        spent, budget_stop = 0.0, False
         jid = "batch:" + time.strftime("%H%M%S")     # 실행 큐 등록(진행률·ETA)
         _SV._job_begin(jid, (filename or "엑셀"), "엑셀 일괄 추출", len(contents))
         _SV._INGEST_STATE[jid]["hashes"] = [_bch(c) for c in contents]
         try:
             for c in contents:
+                if budget > 0 and spent >= budget:
+                    budget_stop = True
+                    break
                 out = PIPE.extract(c, llm, legal=cfg.legal_enabled)
+                spent += float((out.get("trace") or {}).get("cost_usd") or 0.0)
+                _SV._INGEST_STATE[jid].update(spent_usd=round(spent, 6), budget_usd=budget)
                 # 비용·실패 원장: 이 경로는 run_pipeline 을 안 타므로 여기서 직접 기록 —
                 # 종전엔 엑셀 일괄 추출의 실키 지출·402 실패가 원장에 한 건도 안 남았다.
                 _log_run_ledgers(c, out, mock=llm.mock, team=team, content_hash=_bch(c))
@@ -626,7 +634,13 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         if pairs:
             store_save(pairs, source="배치", team=team)  # 영속 저장(단일 트랜잭션 배치)
         skip_note = f" · 기존 실행완료 {skipped_done}건 건너뜀" if skipped_done else ""
-        _SV._job_end(jid, True, f"{len(results)}건 추출 · 저장 완료" + skip_note + _img_note(contents))
+        budget_fields = {"spent_usd": round(spent, 6), "budget_usd": budget,
+                         "budget_stop": budget_stop, "skipped": len(contents) - len(results)}
+        _SV._INGEST_STATE[jid].update(budget_fields)
+        note = f" · 비용 ${spent:.6f} · 미실행 {budget_fields['skipped']}건"
+        if budget_stop:
+            note = " · 예산 중단" + note
+        _SV._job_end(jid, not budget_stop, f"{len(results)}건 추출 · 저장 완료" + skip_note + note + _img_note(contents))
         if (purpose or "") == "eval":               # 평가용 지정: 검수 대상에서 제외(홀드아웃)
             try:
                 from .store import content_hash as _chash
@@ -636,7 +650,7 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
             except Exception:
                 pass
         return {"source": "excel", "mock": llm.mock, "count": len(results),
-                "mapping": a["mapping"], "items": items,
+                "mapping": a["mapping"], "items": items, **budget_fields,
                 **({"skipped_done": skipped_done} if skipped_done else {}),
                 "with_images": img_coverage(contents)["with_images"]}   # 이미지 유실 관측(게시판 #9)
     finally:

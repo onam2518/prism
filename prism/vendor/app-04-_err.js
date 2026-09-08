@@ -284,6 +284,7 @@ window.PRISM_APP_PARTS.push(() => ({
         this.loadEvalRuns();
       },
       evalRunStatusTxt(r) {
+        if (r.budget_stop) return '예산 중단';
         if (r.status === 'running') return r.stalled ? '중단됨(재개 가능)' : ('실행 중 ' + (r.cursor || 0) + '/' + (r.total || 0));
         return { done: '완료', failed: '실패', cancelled: '중단' }[r.status] || r.status;
       },
@@ -403,6 +404,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return cols.length ? cols : ms;          // 저장된 비교를 불러온 직후엔 슬롯과 무관하게 결과 순서대로
       },
       cmpWin(f, mi, lower) {                     // 그 줄에서 유일하게 가장 좋은 값(동률이면 표시 안 함)
+        if (this.cmpResult && this.cmpResult.budget_stop) return false;
         const c = this.cmpCols; if (c.length < 2) return false;
         const v = c[mi][f]; if (v == null) return false;
         return c.every((o, oi) => oi === mi || o[f] == null || (lower ? v < o[f] : v > o[f]));
@@ -447,7 +449,7 @@ window.PRISM_APP_PARTS.push(() => ({
             const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json();
             if (r && r.ok) {
               this.cmpJob = r.job;
-              if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
+              if (['done', 'budget_stop'].includes(r.job.status)) { this.cmpResult = r.job.result; this.cmpBusy = false; this.liveToast((r.job.budget_stop ? '모델 비교 예산 중단 · #' : '모델 비교 완료 · #') + id); return; }
               if (r.job.status === 'failed') { this._err('모델 비교 실패: ' + (r.job.error || '')); this.cmpBusy = false; return; }
             } else if (r && r.error) { this._err(r.error); this.cmpBusy = false; return; }
           } catch (e) {}

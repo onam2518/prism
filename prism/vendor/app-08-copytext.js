@@ -2,6 +2,18 @@
    로더(app.js)가 파일명 순으로 디스크립터 병합(게터 보존) · 조각 간 this 공유. */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
+      taskBudgetMsg: '',
+      async saveTaskBudget(form) {
+        this.cfgBusy = true; this.taskBudgetMsg = '저장 중…';
+        try {
+          const r = await this._afetch('/config', {method: 'POST', headers: this._authHeaders(),
+            body: JSON.stringify({task_budget_usd: Number(new FormData(form).get('task_budget_usd'))})});
+          const j = await r.json();
+          if (!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status));
+          this.cfg = j; this.taskBudgetMsg = '저장됨 · 다음 작업부터 적용';
+        } catch (e) { this.taskBudgetMsg = '저장 실패 · ' + (e.message || String(e)); }
+        finally { this.cfgBusy = false; }
+      },
       async copyText(t, label) {
         try { await navigator.clipboard.writeText(t || ''); this.flashCopy((label || '복사') + ' 됨'); }
         catch (e) { this.flashCopy('복사 실패'); }

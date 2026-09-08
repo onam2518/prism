@@ -93,6 +93,19 @@
         </div>
           </div>
         </section>
+        <section class="panel" data-fn>
+          <header class="panel-hd"><b>작업 비용 중단 기준</b></header>
+          <form class="panel-bd" x-on:submit.prevent="saveTaskBudget($el)">
+            <p class="text-xs text-muted">기존 일괄·미확정 재실행 기준: $<strong x-text="cfg.batchBudgetUsd || 0"></strong> · 0 = 무제한</p>
+            <label>업로드 추출·소스 인입·골든 평가·모델 비교 각각 1회 ($)
+              <input class="field" name="task_budget_usd" type="number" min="0" max="1000" step="any" required x-bind:value="cfg.taskBudgetUsd || 0">
+            </label>
+            <button type="submit" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="cfgBusy">저장</button>
+            <p class="text-xs text-muted">0 = 무제한 · 다음 행·청크 시작 전에 확인합니다. 실패 비용도 합산하며, 이미 진행 중인 요청 묶음만큼 기준을 초과할 수 있습니다. 모델 비교는 모든 모델 비용을 합산합니다.</p>
+            <p class="text-xs text-muted">이 설정은 모든 팀이 공유합니다. 예약 인입은 실행마다 새로 계산하며, 오토파일럿 전체 누적 비용과 루브릭 채점에는 적용되지 않습니다.</p>
+            <output class="text-xs text-muted" aria-live="polite" x-text="taskBudgetMsg"></output>
+          </form>
+        </section>
         <!-- 법령 필터: 구 실험실 · 법령 탭에서 이동(2026-08-13 · 탭은 제거). 유일한 토글 UI 라
              여기 없으면 팀이 법령 필터를 켜고 끌 방법이 사라진다 · 저장은 기존 /config 경로 -->
         <section class="panel" data-fn><div class="panel-hd"><b>법령 필터</b><span class="meta">추출에 법령 1차 필터 포함 여부 · 팀 전체 공유</span><span class="ds-badge ds-badge--neutral ml-auto">운영 관리자</span></div>

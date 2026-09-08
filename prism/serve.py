@@ -1118,6 +1118,7 @@ def config_status(team=None) -> dict:
         "learnRepeatDays": int(getattr(cfg, "learn_repeat_days", 0) or 0),
         "fallbackModels": list(getattr(cfg, "fallback_models", None) or []),
         "batchBudgetUsd": float(getattr(cfg, "batch_budget_usd", 0.0) or 0.0),
+        "taskBudgetUsd": getattr(cfg, "task_budget_usd", 0.0),
         # 검수 보조 에이전트 모델(팀 공유 · 관리자 설정). 저장된 글자가 아니라 **해석된 값**을
         # 싣는다. 화면이 실제로 쓰이는 모델과 다른 이름을 보여 주면 그것부터가 거짓말이다.
         "assistModel": assist_model(cfg),
@@ -1177,10 +1178,18 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             "model", "base_url", "reasoning", "system_prompt", "stage_prompts", "stage_models",
             "model_prompts", "ingest_sources", "fallback_models", "meta_four_calls",
             "meta_call_models", "family_wrappers", "text_provider", "text_model",
-            "vision_provider", "vision_model", "legal_enabled",
+            "vision_provider", "vision_model", "legal_enabled", "task_budget_usd",
             "metabase_url", "metabase_db_id", "metabase_query",
             "metabase_api_key", "forget_metabase")
         data = {k: v for k, v in data.items() if k not in _ADMIN_ONLY_CFG}
+    if "task_budget_usd" in data:
+        from .config import task_budget
+        try:
+            if data["task_budget_usd"] is None:
+                raise ValueError("작업 비용 기준에 금액을 입력하세요 · 0 = 무제한")
+            data = dict(data, task_budget_usd=task_budget(data["task_budget_usd"]))
+        except ValueError as e:
+            return dict(config_status(team), error=str(e))
     if "assist_model" in data:
         # 검수 보조 모델은 **저장 때도** 거른다. 읽을 때만 거르면 config.json 에는 없는 모델명이
         # 남고 화면에는 기본값이 보인다. 나중에 파일을 열어 본 사람이 "왜 이 모델로 안 돌지"를
@@ -1251,7 +1260,7 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
     has_callm = "meta_call_models" in data and isinstance(data.get("meta_call_models"), dict)
     has_4c = "meta_four_calls" in data
     has_misc = (("golden_min_good" in data) or ("learn_next_at" in data) or ("learn_repeat_days" in data)
-                or ("fallback_models" in data) or ("batch_budget_usd" in data)
+                or ("fallback_models" in data) or ("batch_budget_usd" in data) or ("task_budget_usd" in data)
                 or ("metabase_url" in data) or ("metabase_db_id" in data) or ("metabase_query" in data)
                 or ("final_rerun_after_batch" in data) or ("final_gold_check" in data)
                 or ("assist_model" in data) or ("draft_judge_model" in data))
@@ -1339,6 +1348,8 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
             fl = data.get("fallback_models")
             if isinstance(fl, list):
                 cfg.fallback_models = [str(m).strip() for m in fl if str(m).strip()][:3]
+        if "task_budget_usd" in data:
+            cfg.task_budget_usd = data["task_budget_usd"]
         if "batch_budget_usd" in data:            # 일괄 실행 비용 상한($ · 0=무제한 · 상한 1000)
             try:
                 cfg.batch_budget_usd = max(0.0, min(1000.0, float(data.get("batch_budget_usd") or 0)))
@@ -1390,8 +1401,9 @@ def apply_config(data: dict, allow_key: bool = False, team=None) -> dict:
                 setattr(cfg, k, (data.get(k) or "").strip())
         try:
             cfg.save_template()                   # config.json 갱신(키는 저장 안 함)
-        except Exception:
-            pass
+        except Exception as e:
+            if "task_budget_usd" in data:
+                return dict(config_status(team), error="작업 비용 기준 저장 실패: " + str(e)[:160])
         _agg_bump()                               # 설정 파생 캐시 무효화(아레나 퀘스트 시한 등 즉시 반영)
     sync_prompt()
     return config_status(team)

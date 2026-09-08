@@ -24,6 +24,7 @@
             <div class="panel-bd">
               <button type="button" class="ds-btn ds-btn--primary" x-bind:disabled="goldenBusy" x-on:click="runGolden()" x-text="goldenBusy ? ('평가 중… ' + (goldenResult && goldenResult.total ? ((goldenResult.cursor||0) + '/' + goldenResult.total) : '(전건 추출)')) : '평가 실행'"></button>
               <span class="text-xs text-muted" style="margin-left:10px" x-show="goldenResult && !goldenResult.ok" x-text="goldenResult ? goldenResult.error : ''"></span>
+              <p class="text-xs text-muted" x-show="goldenResult && goldenResult.spent_usd != null" x-text="goldenResult ? ((goldenResult.budget_stop ? '예산 중단 · ' : '') + '비용 $' + goldenResult.spent_usd + ' · 미실행 ' + (goldenResult.skipped || 0) + '건') : ''"></p>
               <template x-if="goldenBusy && goldenResult && goldenResult.total">
                 <div class="ds-progress" style="margin-top:10px"><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:' + Math.max(((goldenResult.cursor||0)/goldenResult.total)*100, 3) + '%'"></div></div></div>
               </template>
@@ -217,6 +218,7 @@
                 <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
                 <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="'마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건'"></span>
               </div>
+              <p class="text-xs text-muted" x-show="cmpResult && cmpResult.spent_usd != null" x-text="cmpResult ? ((cmpResult.budget_stop ? '예산 중단 · 부분 결과 · 모델 추천 보류 · ' : '') + '비용 $' + cmpResult.spent_usd + ' · 미실행 ' + (cmpResult.budget_skipped || 0) + '건(모델×콘텐츠)') : ''"></p>
               <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
                 <div>
                   <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:150px">항목</th>
