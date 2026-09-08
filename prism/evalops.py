@@ -41,7 +41,7 @@ def _zero_metrics() -> dict:
             # harm_n = 기대 R 행 수(유해 미탐률의 분모). 구 런 메트릭에는 없어서
             # 리포트 쪽이 '키 부재 = 구 정의' 로 갈라 읽는다(하위호환).
             "harm_miss": 0, "harm_n": 0, "empty": 0, "cost_usd": 0.0, "tok_in": 0, "tok_out": 0,
-            "lat": [], "yellow": 0, "auto_n": 0, "auto_hit": 0, "per_reason": {},
+            "lat": [], "yellow": 0, "auto_n": 0, "auto_hit": 0, "per_reason": {}, "per_service": {},
             # 인텐트 카운터(abtest.intent_tally 와 같은 키) · 구 런 메트릭에는 없으므로
             # 읽는 쪽은 항상 .get 기본값으로 다룬다(재개·구 런 리포트 하위호환).
             "intent_n": 0, "intent_exact": 0, "intent_jac_sum": 0.0,
@@ -92,6 +92,10 @@ def _tally(m: dict, row: dict, out) -> dict:
     d = m["per_reason"].setdefault(bucket, {"n": 0, "grade_ok": 0})
     d["n"] += 1
     d["grade_ok"] += int(grade_ok)
+    # 서비스별 카운터는 구 런 메트릭에 없다 → setdefault 로 시작(재개 시 KeyError 방지)
+    sd = m.setdefault("per_service", {}).setdefault(abtest.service_key(row), {"n": 0, "grade_ok": 0})
+    sd["n"] += 1
+    sd["grade_ok"] += int(grade_ok)
     im = out.get("item_meta")
     summary = (im.get("summary") if isinstance(im, dict)
                else getattr(im, "summary", "")) or ""
@@ -348,7 +352,7 @@ def autopilot_status(team=None) -> dict:
     return {"ok": True, "run": run}
 
 
-_ROUND_KEYS = ("grade_accuracy", "reason_jaccard", "harm_miss_rate", "empty_rate", "meta_hold_rate",
+_ROUND_KEYS = ("n", "grade_accuracy", "reason_jaccard", "harm_miss_rate", "empty_rate", "meta_hold_rate",
                "intent_n", "intent_f1", "cat_n", "cat_hf1", "ent_n", "ent_f1", "summary_n", "summary_sim",
                "cost_usd", "latency_p50_ms", "latency_p95_ms")
 
@@ -652,6 +656,7 @@ def eval_run_report(run_id: int, team=None) -> dict:
                                    if m.get("auto_n") else 0),
            "by_reason_bucket": {k: {"n": v["n"], "grade_acc": round(v["grade_ok"] / v["n"], 3)}
                                 for k, v in sorted((m.get("per_reason") or {}).items()) if v.get("n")},
+           "by_service": abtest.service_report(m.get("per_service") or {}),
            "min_good": int(getattr(cfg, "golden_min_good", 1) or 1)}
     lo, hi = Q.binomial_ci(out["grade_accuracy"] or 0.0, n)
     out["grade_ci"] = {"lo": lo, "hi": hi, "n": n}

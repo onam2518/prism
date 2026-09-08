@@ -326,7 +326,19 @@ window.PRISM_APP_PARTS.push(() => ({
         const hs = (this.pilot && this.pilot.history) || []; if (hs.length < 2) return false;
         const lower = (f === 'cost_usd' || f === 'latency_p50_ms'); const v = this.pilotM(hh)[f]; if (v == null) return false;
         return hs.every((o) => o === hh || this.pilotM(o)[f] == null || (lower ? v < this.pilotM(o)[f] : v > this.pilotM(o)[f]));
-      }, pilotBusy: false, pilotMsg: '', _pilotPollT: null,
+      },
+      pilotCumCost(i) {                        // 1라운드부터 i라운드까지 실호출 비용 누계(개선 1%p 당 값을 가늠하는 축)
+        const hs = (this.pilot && this.pilot.history) || [];
+        let s = 0;
+        for (let k = 0; k <= i && k < hs.length; k++) s += (this.pilotM(hs[k]).cost_usd || 0);
+        return Math.round(s * 10000) / 10000;
+      },
+      // 최근 회차 추이: 버전별 학습 리포트(learn_report_v*) 최근 5건 · 표 하나(차트 없음)
+      learnTrend: [],
+      async loadLearnTrend() {
+        try { const r = await (await this._afetch('/learn-reports', { headers: this._authHeaders() })).json(); if (r && r.ok) this.learnTrend = r.items || []; } catch (e) {}
+      },
+      pilotBusy: false, pilotMsg: '', _pilotPollT: null,
       async loadPilot() {
         try {
           const r = await (await this._afetch('/autopilot-status', { headers: this._authHeaders() })).json();

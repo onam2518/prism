@@ -786,6 +786,34 @@ def learning_batch(team=None, models=None, model: str = "") -> dict:
           f"{golden.get('need_category')} · 정합성(grade) {report['grade_accuracy']}")
     return report
 
+
+def learn_report_trend(team=None, limit: int = 5) -> list:
+    """최근 학습 반영 회차 추이(버전 내림차순 · 최대 limit건). 화면은 버전·일시·등급 일치율·종합만 쓴다.
+    버전별 리포트는 reports 에 kind 단건(learn_report_v{n})으로만 있어 최신 버전부터 역순 조회한다 —
+    영속 실패로 빈 버전이 섞여도 limit*2 회까지만 훑고 멈춘다(조회 폭주 방지)."""
+    st = _SV.get_store()
+    try:
+        top = int(st.batch_seq(team)) + 1 if (st and hasattr(st, "batch_seq")) else 0
+    except Exception:
+        top = 0
+    cfg = Config.load()
+    gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
+    meta_gate = float(getattr(cfg.thresholds, "meta_gate", 0.6) or 0.6)
+    out = []
+    for v in range(top, max(0, top - limit * 2), -1):
+        rep = _SV._report_get(f"learn_report_v{v}", team)
+        if not rep:
+            continue
+        ev = rep.get("eval") or {}
+        out.append({"version": v, "ts": rep.get("ts"),
+                    "n": int(ev.get("n") or ev.get("evaluated") or 0),
+                    "grade_accuracy": rep.get("grade_accuracy"),
+                    "overall": ME.overall(ev, gate, meta_gate)["overall"] if ev.get("ok") else None})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def learn_data(team=None) -> dict:
     """학습 데이터 현황(관리자): 클래스 커버리지·일치도·검수자 신뢰도·라벨 오류 후보·추출 가능량·소요 대비.
     기준치는 논문 근거(LEARNING_DESIGN.md): SetFit 8/클래스 · LIMA 1k · Llama Guard 13.5k ·
