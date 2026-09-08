@@ -1054,8 +1054,9 @@ class SupabaseStore:
         for st, items in self.routes_by_stage(limit_per_stage, team=team, exclude=ex).items():
             out[st].extend(f"- {t}" for t in items)
         rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "", reverse=True)
+        holdout = {h for h, p in self.purpose_map(team).items() if p == "eval"}   # 평가용 콘텐츠 피드백 제외(누수 차단)
         for r in rows:
-            if r.get("verdict") != "bad":
+            if r.get("verdict") != "bad" or r.get("content_hash") in holdout:
                 continue
             text = (r.get("reap_plan") or "").strip() or (r.get("note") or "").strip()
             if text in ex:

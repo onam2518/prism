@@ -170,7 +170,8 @@ def score(rows: list, outs: list) -> dict:
         tr = out.get("trace", {})
         if ((out.get("item_meta") or {}).get("hold_fields") if isinstance(out.get("item_meta"), dict) else None):
             meta_hold += 1
-        cost += tr.get("cost_usd", 0.0)
+        c1 = tr.get("cost_usd")                  # 단가 미상 트레이스가 섞이면 합계도 None
+        cost = None if (cost is None or c1 is None) else cost + c1
         tin += tr.get("tokens", {}).get("in", 0)
         tout += tr.get("tokens", {}).get("out", 0)
         lt = tr.get("latency_ms")
@@ -214,7 +215,7 @@ def score(rows: list, outs: list) -> dict:
         "harm_miss_share": round(fn_block / n, 4) if n else 0,   # 종전 정의(전체 행 대비) 병기
         "harm_expected_n": harm_n,                               # 분모(기대 R 행 수) 노출
         "empty_rate": round(empties / n, 4) if n else 0,
-        "cost_usd": round(cost, 6),
+        "cost_usd": None if cost is None else round(cost, 6),   # None = 단가 미상(화면 '·')
         "tokens": {"in": tin, "out": tout},
         "latency_p50_ms": _percentile(lat, 0.5),
         "latency_p95_ms": _percentile(lat, 0.95),

@@ -112,6 +112,32 @@ class TestEvalRunFlow(unittest.TestCase):
         self.assertEqual(lst["items"][0]["id"], r["id"])
         self.assertFalse(lst["items"][0]["stalled"])
 
+    def test_report_has_item_meta_axes(self):
+        """즉시 평가·비교표와 같은 4축(인텐트·카테고리·엔티티·리드문)이 런 리포트에도 실린다
+        (ME.meta_tally/_report 를 _tally/eval_run_report 가 abtest.score 와 같은 방식으로 호출)."""
+        from prism.store import content_hash
+        serve, evalops, st = self._with_serve()
+        content = {"displayServiceName": "뉴스", "title": "카카오뱅크 실적 발표",
+                   "subtitle": "", "body": "카카오뱅크가 3분기 실적을 발표했다 카카오뱅크 주가는 상승했다"}
+        expected = {"finalGrade": "G", "reasons": [],
+                    "intent": ["속보·사건 추적", "심층 분석"],   # mock: D.intent_categories_for('뉴스')[:2]
+                    "entities": ["카카오뱅크"],
+                    "content_category": ["News and Politics / Society"]}   # mock 은 항상 이 값을 낸다
+        st.upsert_golden(content_hash(content), content, expected)
+        r = serve.eval_run_start(None, model="", scope="all")
+        self.assertTrue(r.get("ok"), r)
+        self._wait_done(st, r["id"])
+        rep = serve.eval_run_report(r["id"])
+        self.assertTrue(rep["ok"])
+        for k in ("intent_f1", "cat_hf1", "ent_f1", "summary_sim"):
+            self.assertIn(k, rep)
+        self.assertEqual(rep["intent_n"], 1)
+        self.assertEqual(rep["intent_f1"], 1.0)              # 기대·산출 인텐트 완전 일치
+        self.assertEqual(rep["ent_n"], 1)
+        self.assertGreater(rep["ent_f1"], 0)                 # 산출 엔티티에 기대값이 부분적으로 포함
+        self.assertEqual(rep["cat_n"], 1)
+        self.assertEqual(rep["cat_exact"], 1.0)               # mock 산출 카테고리가 기대값과 정확히 일치
+
     def test_start_without_golden(self):
         serve, evalops, st = self._with_serve()
         r = serve.eval_run_start(None)
@@ -237,20 +263,21 @@ class TestEvalRunCompare(unittest.TestCase):
         self.addCleanup(lambda: setattr(serve, "_STORE", None))
         return serve, st
 
-    def _done_run(self, st, ga, harm=0.0):
-        """지표를 지정한 완주 런 행 생성(실행 없이 · n=10 기준)."""
-        rid = st.eval_run_create("", "", "all", 10)
-        m = {"n": 10, "grade_hit": int(round(ga * 10)), "reason_exact": 8,
-             "jaccard_sum": 8.0, "harm_miss": int(round(harm * 10)), "empty": 0,
+    def _done_run(self, st, ga, harm=0.0, n=10):
+        """지표를 지정한 완주 런 행 생성(실행 없이 · 기본 n=10 기준)."""
+        rid = st.eval_run_create("", "", "all", n)
+        m = {"n": n, "grade_hit": int(round(ga * n)), "reason_exact": int(round(0.8 * n)),
+             "jaccard_sum": 0.8 * n, "harm_miss": int(round(harm * n)), "empty": 0,
              "cost_usd": 0.01, "tok_in": 100, "tok_out": 100, "lat": [5.0],
-             "yellow": 0, "auto_n": 10, "auto_hit": int(round(ga * 10)), "per_reason": {}}
-        st.eval_run_update(rid, status="done", cursor=10, metrics=m, finished=time.time())
+             "yellow": 0, "auto_n": n, "auto_hit": int(round(ga * n)), "per_reason": {}}
+        st.eval_run_update(rid, status="done", cursor=n, metrics=m, finished=time.time())
         return rid
 
     def test_regression_blocks_adoption(self):
         serve, st = self._with_serve()
-        a = self._done_run(st, 0.9)
-        b = self._done_run(st, 0.8)                    # 등급 일치율 -10%p → 회귀
+        # n=200: 10%p 하락이 CI 로도 확실히 갈리는 표본(작은 n 은 우연한 등락과 안 갈려 개입 안 함)
+        a = self._done_run(st, 0.9, n=200)
+        b = self._done_run(st, 0.8, n=200)              # 등급 일치율 -10%p → 회귀
         r = serve.eval_run_compare(a, b, None)
         self.assertTrue(r.get("ok"), r)
         self.assertEqual(r["verdict"], "regressed")
@@ -262,6 +289,18 @@ class TestEvalRunCompare(unittest.TestCase):
         b = self._done_run(st, 0.8)
         self.assertEqual(serve.eval_run_compare(a, b, None)["verdict"], "improved")
         self.assertEqual(serve.eval_run_compare(a, a, None)["verdict"], "even")
+
+    def test_harm_none_is_not_compared(self):
+        """기대 R 행이 0이면 harm_miss_rate 는 None(측정 불가) → 회귀 판정에서 비교하지 않는다.
+        0.0 으로 읽으면 유해 축을 한 건도 못 잰 런이 '악화 없음'으로 조용히 통과한다."""
+        from prism import learnops as LO
+        base = {"grade_accuracy": 0.8}
+        self.assertEqual(LO._batch_regressions(dict(base, harm_miss_rate=None),
+                                               dict(base, harm_miss_rate=0.2)), [])
+        self.assertEqual(LO._batch_regressions(dict(base, harm_miss_rate=0.0),
+                                               dict(base, harm_miss_rate=None)), [])
+        g = LO._batch_regressions(dict(base, harm_miss_rate=0.0), dict(base, harm_miss_rate=0.1))
+        self.assertTrue(any("유해 미탐" in x for x in g), g)
 
     def test_harm_miss_worsening_regresses(self):
         serve, st = self._with_serve()

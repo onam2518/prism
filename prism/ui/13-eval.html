@@ -34,7 +34,7 @@
                   <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
                     <div class="tile tile--hero"><div class="n tnum" x-text="Math.round((goldenResult.grade_accuracy||0)*100)+'%'"></div><div class="t">등급 일치율<span class="tnum" x-text="goldenResult.grade_ci ? (' · 신뢰구간 ' + pctTxt(goldenResult.grade_ci.lo) + '~' + pctTxt(goldenResult.grade_ci.hi)) : ''"></span></div></div>
                     <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.reason_jaccard||0)*100)+'%'"></div><div class="t">사유 일치</div></div>
-                    <div class="tile"><div class="n tnum" x-text="Math.round((goldenResult.harm_miss_rate||0)*100)+'%'"></div><div class="t">유해 놓침</div></div>
+                    <div class="tile"><div class="n tnum" x-text="goldenResult.harm_miss_rate!=null ? pctTxt(goldenResult.harm_miss_rate) : '·'"></div><div class="t">유해 놓침<span class="tnum" x-text="goldenResult.harm_miss_rate==null ? ' · 측정 불가(기대 R 0건)' : (goldenResult.harm_expected_n ? (' · 기대 R ' + goldenResult.harm_expected_n + '건') : '')"></span></div></div>
                     <div class="tile"><div class="n tnum" x-text="goldenResult.evaluated"></div><div class="t">평가 건수</div></div>
                   </div>
                   <div class="tile" style="margin-top:10px">
