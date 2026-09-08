@@ -48,6 +48,32 @@ class TestCompareModels(unittest.TestCase):
         from prism import learnops as LO
         self.assertFalse(LO.last_model_compare()["ok"])
 
+    def test_history_keys_and_latest_alias(self):
+        """두 번 비교 = 회차 키 2개(최신순 목록) · 최신 별칭·회차 조회 · 잘못된 키 차단."""
+        from prism import learnops as LO, serve
+        _seed_golden(self.st, 2)
+        a = LO.compare_models_on_golden(["solar-pro2", "gpt-5.4"])
+        b = LO.compare_models_on_golden(["solar-pro2", "gpt-5.4"])
+        self.assertTrue(a["key"].startswith("model_compare_v"))
+        self.assertNotEqual(a["key"], b["key"])
+        hist = LO.compare_history()["items"]
+        self.assertEqual([h["key"] for h in hist], [b["key"], a["key"]])       # 최신순
+        self.assertEqual(set(hist[0]["models"]), {"solar-pro2", "gpt-5.4"})
+        self.assertEqual(hist[0]["best"], b["best"])
+        self.assertEqual(LO.last_model_compare()["key"], b["key"])             # 최신 별칭은 그대로
+        self.assertEqual(LO.last_model_compare(key=a["key"])["key"], a["key"])
+        self.assertFalse(LO.last_model_compare(key="team_links")["ok"])        # 다른 리포트 종류 조회 차단
+        self.assertFalse(LO.last_model_compare(key="model_compare_v1")["ok"])  # 없는 회차
+        self.assertIn("/model-compare-list", serve._GET_ROUTES)
+
+    def test_lost_after_restart(self):
+        """시작 기록만 있고 결과가 없으면(재시작으로 메모리 큐 소실) 유실을 알린다."""
+        from prism import learnops as LO
+        LO._SV._report_save(LO._COMPARE_START, {"ts": 1.0, "id": 99, "models": ["solar-pro2"]}, None)
+        r = LO.last_model_compare()
+        self.assertTrue(r.get("lost"))
+        self.assertIn("유실", r["error"])
+
     def test_too_many_models(self):
         from prism import learnops as LO
         _seed_golden(self.st, 2)

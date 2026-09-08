@@ -299,8 +299,8 @@ window.PRISM_APP_PARTS.push(() => ({
       get evalCmpRows() {                      // 비교 표 행: a·b 표시값 + 델타(inv=낮을수록 좋음)
         const c = this.evalCmp; if (!c || !c.ok) return [];
         const pct = (v) => v == null ? '·' : Math.round(v * 100) + '%';
-        const mk = (k, f, inv, fmt) => {
-          const av = c.a[f], bv = c.b[f];
+        const mk = (k, f, inv, fmt, nf) => {                    // nf: 표본수 필드 · n=0 이면 그 쪽은 '·'
+          const av = (nf && !c.a[nf]) ? null : c.a[f], bv = (nf && !c.b[nf]) ? null : c.b[f];
           const d = (av == null || bv == null) ? null : (bv - av);
           const good = d == null || Math.abs(d) < 1e-9 ? '' : ((d > 0) !== !!inv ? 'up' : 'down');
           const dTxt = d == null ? '·' : (Math.abs(d) < 1e-9 ? '=' : ((d > 0 ? '+' : '') + (fmt === 'raw' ? (Math.round(d * 100) / 100) : Math.round(d * 100) + '%p')));
@@ -308,7 +308,12 @@ window.PRISM_APP_PARTS.push(() => ({
         };
         const rows = [mk('등급 일치율', 'grade_accuracy'), mk('사유 일치', 'reason_jaccard'),
                       mk('유해 놓침', 'harm_miss_rate', true), mk('빈 결과', 'empty_rate', true),
-                      mk('비용($)', 'cost_usd', true, 'raw')];
+                      mk('비용($)', 'cost_usd', true, 'raw'),
+                      // 아이템 메타 4축(ME.FIELD_KO 와 같은 라벨) · 표본(n) 없는 축은 '·'
+                      mk('인텐트 F1', 'intent_f1', false, '', 'intent_n'),
+                      mk('카테고리 F1(계층)', 'cat_hf1', false, '', 'cat_n'),
+                      mk('엔티티 F1', 'ent_f1', false, '', 'ent_n'),
+                      mk('리드문 유사도', 'summary_sim', false, '', 'summary_n')];
         if (c.a.rubric && c.a.rubric.n && c.b.rubric && c.b.rubric.n) {
           const ax = [['정확성', 'accuracy'], ['형식', 'format'], ['정책', 'policy'], ['간결성', 'conciseness']];
           for (const [k, f] of ax) {
@@ -326,7 +331,19 @@ window.PRISM_APP_PARTS.push(() => ({
         const hs = (this.pilot && this.pilot.history) || []; if (hs.length < 2) return false;
         const lower = (f === 'cost_usd' || f === 'latency_p50_ms'); const v = this.pilotM(hh)[f]; if (v == null) return false;
         return hs.every((o) => o === hh || this.pilotM(o)[f] == null || (lower ? v < this.pilotM(o)[f] : v > this.pilotM(o)[f]));
-      }, pilotBusy: false, pilotMsg: '', _pilotPollT: null,
+      },
+      pilotCumCost(i) {                        // 1라운드부터 i라운드까지 실호출 비용 누계(개선 1%p 당 값을 가늠하는 축)
+        const hs = (this.pilot && this.pilot.history) || [];
+        let s = 0;
+        for (let k = 0; k <= i && k < hs.length; k++) s += (this.pilotM(hs[k]).cost_usd || 0);
+        return Math.round(s * 10000) / 10000;
+      },
+      // 최근 회차 추이: 버전별 학습 리포트(learn_report_v*) 최근 5건 · 표 하나(차트 없음)
+      learnTrend: [],
+      async loadLearnTrend() {
+        try { const r = await (await this._afetch('/learn-reports', { headers: this._authHeaders() })).json(); if (r && r.ok) this.learnTrend = r.items || []; } catch (e) {}
+      },
+      pilotBusy: false, pilotMsg: '', _pilotPollT: null,
       async loadPilot() {
         try {
           const r = await (await this._afetch('/autopilot-status', { headers: this._authHeaders() })).json();
@@ -374,6 +391,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 슬롯 N개(2~6) 동시 실호출 · 이항 95% CI 표기 · 건별 비교표
       cmpModels: ['', ''], cmpBusy: false, cmpResult: null, cmpItemFilter: 'miss', cmpLoopModel: '', cookBusy: false,
+      cmpHist: [], cmpHistKey: '',            // 저장된 비교 회차 목록 · 고른 회차 키('' = 최신)
       _CMP_FIELD_KO: { grade_accuracy: '등급 일치율', intent_f1: '인텐트 F1', cat_hf1: '카테고리 F1', ent_f1: '엔티티 F1', summary_sim: '리드문 유사도', grade: '등급', intent: '인텐트', category: '카테고리', entities: '엔티티', summary: '리드문' },
       cmpFieldKo(k) { return this._CMP_FIELD_KO[k] || k; },
       get cmpIssues() {                        // 개선 루프 대상 모델(기본 best)의 진단 목록
@@ -404,6 +422,10 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       cmpWin(f, mi, lower) {                     // 그 줄에서 유일하게 가장 좋은 값(동률이면 표시 안 함)
         const c = this.cmpCols; if (c.length < 2) return false;
+        // 모델을 동시에(concurrent_models>1) 돌리면 같은 라우터 키를 나눠 써 지연시간이 실제보다
+        // 부풀 수 있다 → 속도만 승자 표시에서 제외(다른 지표는 병렬과 무관해 그대로 둔다)
+        if ((f === 'latency_p50_ms' || f === 'latency_p95_ms')
+            && ((this.cmpResult && this.cmpResult.concurrent_models) || 1) > 1) return false;
         const v = c[mi][f]; if (v == null) return false;
         return c.every((o, oi) => oi === mi || o[f] == null || (lower ? v < o[f] : v > o[f]));
       },
@@ -447,7 +469,7 @@ window.PRISM_APP_PARTS.push(() => ({
             const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json();
             if (r && r.ok) {
               this.cmpJob = r.job;
-              if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
+              if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpHistKey = (r.job.result || {}).key || ''; this.loadCompareHist(); this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
               if (r.job.status === 'failed') { this._err('모델 비교 실패: ' + (r.job.error || '')); this.cmpBusy = false; return; }
             } else if (r && r.error) { this._err(r.error); this.cmpBusy = false; return; }
           } catch (e) {}
@@ -464,15 +486,21 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.mod !== 'evaluate') this.selectMod('evaluate');
         });
       },
-      async loadCompareLast() {                  // 탭 재진입 시 마지막 비교(영속분) 복원 · 슬롯이 비어 있으면 비교했던 모델로 채움
+      async loadCompareLast(key) {               // 탭 재진입 시 마지막 비교(영속분) 복원 · key 를 주면 그 회차 · 슬롯이 비어 있으면 비교했던 모델로 채움
         this._bindCompareMessage();
-        if (this.cmpResult || this.cmpBusy) return;
+        if (!key) {
+          this.loadCompareHist();
+          if (this.cmpResult || this.cmpBusy) return;
+        }
         try {
-          const r = await (await this._afetch('/model-compare-last', { headers: this._authHeaders() })).json();
-          if (!(r && r.ok)) return;
-          this.cmpResult = r;
+          const r = await (await this._afetch('/model-compare-last' + (key ? '?key=' + encodeURIComponent(key) : ''), { headers: this._authHeaders() })).json();
+          if (!(r && r.ok)) { if (r && (r.lost || key)) this.cmpResult = r; return; }   // 재시작 유실·없는 회차는 사유를 보인다
+          this.cmpResult = r; this.cmpHistKey = r.key || '';
           if (!this.cmpPicked.length) this.cmpModels = (r.models || []).map((m) => m.model).concat(['', '']).slice(0, Math.max(2, (r.models || []).length));
         } catch (e) {}
+      },
+      async loadCompareHist() {                  // 지난 비교 회차 목록(최신순)
+        try { const r = await (await this._afetch('/model-compare-list', { headers: this._authHeaders() })).json(); this.cmpHist = (r && r.items) || []; } catch (e) {}
       },
       // 비교 결과의 추천 모델을 기본 모델(cfg.model)로 승격 · /config POST(관리자 게이트는 서버가 판정)
       applyBusy: false,
