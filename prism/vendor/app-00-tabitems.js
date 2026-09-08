@@ -101,13 +101,20 @@ window.PRISM_APP_PARTS.push(() => ({
       // null 이면 로드 전 첫 렌더에서 토픽 패널의 topicData.* 표현식들이 콘솔 TypeError 를 던진다(표시 영향은 없던 잔재)
       topicData: { n_contents: 0, single: [], composite: [], custom: [], customDefs: [],
                    settings: {}, exclusions: {}, catalog: { intents: [], cats: [], keywords: [], eattrs: [] }, summary: {} },
-      topicView: 'all',                     // 토픽 현황 필터: all | manual(수동 생성) | auto(자동 생성)
+      topicView: 'all',                     // 토픽 현황 필터(만든 방식): all | talk(말로) | manual(직접) | auto(자동)
       topicGenTab: 'manual',                // 토픽 생성하기 탭: manual(4단계 정의) | auto(자동 묶기 기준)
       // 토픽 스튜디오: 자연어+차원으로 조건 기반 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], srcs: [], eattrs: [], feed: {}, kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [], srcs: [] }, neg: { cats: [], intents: [], keywords: [], srcs: [] } },
       // 말로 만들기(기본 화면): 대화 턴(문장 · 해석 칩 · 건수 · 표본) · 뺀 칩은 다음 해석에서 되살리지 않는다
       talk: { turns: [], input: '', busy: false, dropped: [] }, studioManual: false,
       topicStatus: 'all',                   // 현황 상태 필터: all(활성 · 정지 · 초안) | warn(정체 · 급감) | archived(보관)
+      topicPage: 'create',                  // 토픽 하위 탭: create(만들기 · 기본) | board(현황 · 대시보드)
+      topicQuery: '',                       // 현황 검색: 이름 · 문장 · 엔티티 · 묶음 ID
+      talkExamples: ['스포츠 경기 리뷰랑 전술 분석 위주로. 팬 응원은 빼고, 브런치 글도 빼줘. 최근 2주.',
+                     '속보 중 범죄 관련. 연예 가십은 빼고.',
+                     '삼성전자 관련 경제 심층 분석만. 사진 있는 것만.',
+                     'K-POP 컴백 분석. 팬 반응 말고 음악 평론 위주. 쇼츠는 빼고.',
+                     '카카오TV 클립만. 오늘 올라온 것.'],
       topicBusy: '', topicMsg: '',
       feedTypes: ['TEXT', 'IMAGE', 'VIDEO', 'VIDEO/VOD', 'VIDEO/SHORTS', 'VIDEO/LIVE'],
       feedFlags: [{ k: 'isExclusive', ko: '단독' }, { k: 'mainNews', ko: '주요 뉴스' }, { k: 'planning', ko: '기획' }, { k: 'isPhotoNews', ko: '포토뉴스' }, { k: 'subsequent', ko: '후속 있음' }, { k: 'duplicate', ko: '중복' }, { k: 'copyNews', ko: '복제' }],
