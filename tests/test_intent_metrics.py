@@ -193,6 +193,17 @@ class TestIntentRegressionGuard(unittest.TestCase):
         g = LO._batch_regressions(pre, post)
         self.assertTrue(any("포토·영상 중심" in x and "F1" in x for x in g), g)
 
+    def test_meta_axes_guarded(self):
+        """⑥ 카테고리·엔티티·리드문도 원복 가드가 읽는다(표본 부족이면 skip)."""
+        from prism import learnops as LO
+        pre = dict(self._rep(0.8), ent_n=30, ent_f1=0.80, cat_n=3, cat_hf1=0.9)
+        post = dict(self._rep(0.8), ent_n=30, ent_f1=0.70, cat_n=3, cat_hf1=0.1)
+        g = LO._batch_regressions(pre, post)
+        self.assertTrue(any("엔티티 F1" in x for x in g), g)
+        self.assertFalse(any("카테고리" in x for x in g), g)      # n=3 < 최소 표본
+        post["ent_f1"] = 0.77
+        self.assertEqual(LO._batch_regressions(pre, post), [])
+
     def test_per_value_low_support_ignored(self):
         from prism import learnops as LO
         pre = self._rep(0.80, by={"인터뷰": {"n": 2, "f1": 0.9}})
