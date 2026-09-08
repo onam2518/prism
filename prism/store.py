@@ -645,12 +645,14 @@ class Store:
         대신 새 행을 만들었다(2026-07-29 로컬 재현 · 운영 supabase 는 해당 없음)."""
         c = self._conn()
         rows = []
-        for ch, payload in c.execute(
-                "SELECT content_hash,payload FROM results ORDER BY created_at DESC LIMIT ?",
+        for ch, payload, cat in c.execute(
+                "SELECT content_hash,payload,created_at FROM results ORDER BY created_at DESC LIMIT ?",
                 (int(limit),)):
             r = json.loads(payload)
             if isinstance(r, dict) and isinstance(r.get("content_ref"), dict) and ch:
                 r["content_ref"]["body_hash"] = ch
+            if isinstance(r, dict):
+                r["_ts"] = float(cat or 0)                 # 적재 시각 · 토픽 오늘/7일 집계(supastore 와 같은 계약)
             rows.append(r)
         rows.reverse()
         return rows

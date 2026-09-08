@@ -2374,11 +2374,12 @@ class SupabaseStore:
 
     def recent(self, limit: int = 5000, team=None) -> list:
         tq = f"&team_id=eq.{urllib.parse.quote(team)}" if team else ""
-        rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,image_urls,item_meta,quality_meta,model,version"
+        rows = self._get("contents", "select=hash,service,title,subtitle,body,source_url,image_urls,item_meta,quality_meta,model,version,created_at"
                          f"{tq}&order=created_at.desc,hash&limit={int(limit)}")   # 벌크 인입 동률 대비 PK 타이브레이크(contents_by_hash 와 동일)
         # subtitle 보존: 재구성 콘텐츠의 해시가 저장 해시와 일치해야 재실행 upsert·골든 매칭이
         # 같은 행을 가리킨다(과거엔 subtitle 소실로 부제 있는 콘텐츠가 유령 행을 만들었음).
         out = [{"item_meta": r.get("item_meta") or {}, "quality_meta": r.get("quality_meta") or {},
+                "_ts": _iso_epoch(r.get("created_at")),     # 적재 시각 · 토픽 오늘/7일 집계(store.recent 와 같은 계약)
                 "trace": {"model": r.get("model") or "", "version": int(r.get("version") or 1)},
                 "content_ref": {"title": r.get("title", ""), "displayServiceName": r.get("service", ""),
                                 "subtitle": r.get("subtitle", "") or "", "body": r.get("body", ""),
@@ -2407,6 +2408,22 @@ class SupabaseStore:
         # 목록에 안 뜨는 결함이 있었다(2026-07-06). 검수 대기 구분은 review 컬럼이 담당.
         n = self.sync_contents(pairs, source, team=team, include_all=True)
         return {"inserted": n, "updated": 0, "skipped": 0}
+
+
+def _iso_epoch(s) -> float:
+    """postgrest created_at(ISO · 마이크로초 · +00:00 또는 Z) → epoch · 실패 시 0."""
+    import calendar
+    try:
+        s = str(s or "").strip().replace("Z", "+00:00")
+        base, _, tz = s.partition("+")
+        base = base.split(".")[0]
+        t = calendar.timegm(time.strptime(base, "%Y-%m-%dT%H:%M:%S"))
+        if tz and ":" in tz:
+            hh, mm = tz.split(":")[:2]
+            t -= int(hh) * 3600 + int(mm) * 60
+        return float(t)
+    except Exception:
+        return 0.0
 
 
 def _iso(epoch) -> str:

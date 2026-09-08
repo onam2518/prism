@@ -104,7 +104,13 @@ window.PRISM_APP_PARTS.push(() => ({
       topicView: 'all',                     // 토픽 현황 필터: all | manual(수동 생성) | auto(자동 생성)
       topicGenTab: 'manual',                // 토픽 생성하기 탭: manual(4단계 정의) | auto(자동 묶기 기준)
       // 토픽 스튜디오: 자연어+차원으로 조건 기반 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
-      studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], eattrs: [], kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } },
+      studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], srcs: [], eattrs: [], feed: {}, kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [], srcs: [] }, neg: { cats: [], intents: [], keywords: [], srcs: [] } },
+      // 말로 만들기(기본 화면): 대화 턴(문장 · 해석 칩 · 건수 · 표본) · 뺀 칩은 다음 해석에서 되살리지 않는다
+      talk: { turns: [], input: '', busy: false, dropped: [] }, studioManual: false,
+      topicStatus: 'all',                   // 현황 상태 필터: all(활성 · 정지 · 초안) | warn(정체 · 급감) | archived(보관)
+      topicBusy: '', topicMsg: '',
+      feedTypes: ['TEXT', 'IMAGE', 'VIDEO', 'VIDEO/VOD', 'VIDEO/SHORTS', 'VIDEO/LIVE'],
+      feedFlags: [{ k: 'isExclusive', ko: '단독' }, { k: 'mainNews', ko: '주요 뉴스' }, { k: 'planning', ko: '기획' }, { k: 'isPhotoNews', ko: '포토뉴스' }, { k: 'subsequent', ko: '후속 있음' }, { k: 'duplicate', ko: '중복' }, { k: 'copyNews', ko: '복제' }],
       studioPreview: { bundles: [], n_total: 0, must_n: 0, opt_n: 0 },
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
       // 미디어(이미지·영상 → 메타 추출 → 콘텐츠 등록) · 콘텐츠 추가 탭

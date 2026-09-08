@@ -29,11 +29,12 @@
             <div class="panel-hd"><b>토픽 생성하기</b><span class="meta">직접 정의하거나 자동 묶기 기준을 조절합니다</span>
               <span class="ds-badge ds-badge--status" x-show="studio.editId" x-cloak>수정 중</span>
               <span style="margin-left:auto;display:inline-flex;gap:6px;align-items:center">
-                <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='manual'?'sel':''" x-on:click="topicGenTab='manual'">수동 생성</button>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='manual'&&!studioManual?'sel':''" x-on:click="topicGenTab='manual';studioManual=false">말로 만들기</button>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='manual'&&studioManual?'sel':''" x-on:click="topicGenTab='manual';studioManual=true">조건 직접 손보기</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicGenTab==='auto'?'sel':''" x-on:click="topicGenTab='auto'">자동 생성</button>
               </span>
-              <span class="meta tnum" x-show="topicGenTab==='manual'" x-text="tStepDone()+' / 4 단계'"></span>
-              <span class="tprog" x-show="topicGenTab==='manual'"><i x-bind:style="'width:'+(tStepDone()/4*100)+'%'"></i></span>
+              <span class="meta tnum" x-show="topicGenTab==='manual' && studioManual" x-text="tStepDone()+' / 4 단계'"></span>
+              <span class="tprog" x-show="topicGenTab==='manual' && studioManual"><i x-bind:style="'width:'+(tStepDone()/4*100)+'%'"></i></span>
               <span class="meta tnum" x-show="topicGenTab==='auto'" x-cloak x-text="'엔티티형 '+(topicData.summary&&topicData.summary.single||0)+' · 사건형 '+(topicData.summary&&topicData.summary.composite||0)"></span>
             </div>
             <div class="panel-bd">
@@ -53,7 +54,44 @@
                   </template>
                 </div>
               </div>
-              <div class="ds-steps ds-steps--labeled" x-show="topicGenTab==='manual'">
+              <!-- 말로 만들기(기본): 문장 → 해석 칩 + 매칭 건수 + 표본 → 문장 보태 다듬기 → 저장 · 칩 나열은 '직접' 토글 뒤(스펙 132112) -->
+              <div class="talk" x-show="topicGenTab==='manual' && !studioManual">
+              <template x-for="(t,i) in talk.turns" x-bind:key="'t'+i">
+              <div>
+              <div class="talk__me"><span class="talk__who">나</span><span x-text="t.text"></span></div>
+              <div class="talk__sys">
+              <div class="talk__hd"><b x-text="i?'바꿨어요':'이렇게 이해했어요'"></b><span class="meta" x-show="i===talk.turns.length-1">칩을 누르면 뺄 수 있어요 · 테두리는 이번에 바뀐 것 · ★는 필수</span><span class="meta" x-show="t.via" x-text="t.via==='llm'?('해석 '+(t.model||'기본 모델')):'해석 규칙(모델 응답 없음)'"></span></div>
+              <div class="flex flex-wrap gap-1.5" style="margin-top:6px">
+              <template x-for="c in t.chips" x-bind:key="c.key">
+              <button type="button" class="tbchip" x-bind:class="{neg:c.neg, 'new':c.new, req:c.req}" x-bind:disabled="i!==talk.turns.length-1" x-on:click="talkDrop(c)" data-tip="누르면 이 조건을 뺍니다" data-tip-pos="top"><span class="tbchip__k" x-text="c.k"></span> <span x-text="c.v"></span><span class="talk__x" x-show="i===talk.turns.length-1">×</span></button>
+              </template>
+              <span class="tbchip dim" x-show="!t.chips.length">조건을 찾지 못했어요 · 다른 말로 해 보세요</span>
+              </div>
+              <div class="talk__warn" x-show="t.miss" x-text="t.miss"></div>
+              <div class="talk__n"><b class="tnum" x-text="t.n"></b><span>건</span><span class="meta tnum" x-show="t.prev!=null" x-text="t.prev+' → '+t.n"></span><span class="meta tnum" x-show="t.neg_n" x-text="'제외로 빠짐 '+t.neg_n"></span><span class="meta tnum" x-show="t.feed_n" x-text="'원천 조건으로 빠짐 '+t.feed_n"></span></div>
+              <table class="ds-table talk__tbl" x-show="t.samples.length"><tbody>
+              <template x-for="s in t.samples" x-bind:key="'s'+(s.hash||s.title)"><tr><td x-text="s.title"></td><td class="text-muted" x-text="s.service||''"></td><td class="text-muted tnum" x-text="s.grade||''"></td></tr></template>
+              </tbody></table>
+              </div>
+              </div>
+              </template>
+              <div class="talk__in">
+              <textarea class="field" rows="2" style="resize:vertical" x-model="talk.input" x-on:keydown.enter.prevent="talkSend()" x-bind:placeholder="talk.turns.length?'더 말하기 · 예: 야구는 빼줘 · 쇼츠랑 라이브는 빼고 사진 있는 것만':'무엇을 묶을지 말해 주세요 · 예: 스포츠 경기 리뷰랑 전술 분석 위주로. 팬 응원은 빼고, 브런치 글도 빼줘. 최근 2주.'"></textarea>
+              <div class="talk__row">
+              <x-modelpick key="tk" value="studioModel" set="studioModel=$v" groups="textGroups" first-label="기본 실행 모델" first-value="" width="212px" tip="문장을 조건으로 푸는 모델 · 기본 실행 모델은 /config 실행 설정"></x-modelpick>
+              <button type="button" class="ds-btn ds-btn--primary" x-on:click="talkSend()" x-bind:disabled="talk.busy || !talk.input.trim()" x-text="talk.busy?'해석 중…':'보내기'"></button>
+              <button type="button" class="ds-btn ds-btn--outline" x-show="talk.turns.length" x-on:click="talkReset()">처음부터</button>
+              <span class="meta" x-show="studioMsg" x-text="studioMsg"></span>
+              </div>
+              <div class="talk__save" x-show="talk.turns.length">
+              <label class="meta">이름</label><input class="field" style="max-width:280px" x-model="studio.name" placeholder="토픽 이름 · 첫 문장에서 제안">
+              <span style="margin-left:auto"></span>
+              <button type="button" class="ds-btn ds-btn--secondary" x-on:click="talkSave('draft')" x-bind:disabled="studioSaving">초안 저장</button>
+              <button type="button" class="ds-btn ds-btn--primary" x-on:click="talkSave('active')" x-bind:disabled="studioSaving || !talkN()" x-bind:data-tip="talkN()?'저장하고 바로 활성':'0건이면 활성화할 수 없어요 · 초안으로 저장'" data-tip-pos="top" x-text="studio.editId?'수정 저장':'활성화'"></button>
+              </div>
+              </div>
+              </div>
+              <div class="ds-steps ds-steps--labeled" x-show="topicGenTab==='manual' && studioManual">
 
                 <!-- STEP 1 · 이름 -->
                 <div class="ds-step" x-bind:class="{'ds-step--done': !!studio.name.trim(), 'ds-step--active': tActive()===1}">
@@ -100,8 +138,39 @@
                       <div class="flex flex-wrap gap-1.5">
                         <template x-for="c in studioIntentChips()" x-bind:key="'int'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('intents',c.k,'ds-badge--intent')" x-on:click="studioCycle('intents',c.k)" data-tip="누를수록 후보→선택→필수→제외"><span x-show="studioState('intents',c.k)==='req'" class="treq">★필수</span><span x-show="studioState('intents',c.k)==='neg'" class="tneg">✖제외</span><span x-show="isAuto('intents',c.k)" class="tauto">✨</span><span x-text="c.k+' ('+c.v+')'"></span></span></template>
                         <span x-show="!studioIntentChips().length" class="text-xs text-muted">데이터에 인텐트가 없습니다</span>
-                      </div>
-                    </div>
+                        </div>
+                        </div>
+                        <div class="tcond__g">
+                        <div class="tcond__lbl">출처 <span x-text="'· 선택 '+studio.srcs.length+(studio.req.srcs.length?(' (필수 '+studio.req.srcs.length+')'):'')"></span><span class="meta" style="cursor:help" data-tip="서비스 · 매체명 · 적재 때 붙는 값(LLM 추출 없음)">?</span></div>
+                        <div class="flex flex-wrap gap-1.5">
+                        <template x-for="c in studioSrcChips()" x-bind:key="'src'+c.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="chipCls('srcs',c.k,'ds-badge--entity')" x-on:click="studioCycle('srcs',c.k)" data-tip="누를수록 후보→선택→필수→제외" data-tip-pos="top" x-text="c.k"></span></template>
+                        <span x-show="!studioSrcChips().length" class="text-xs text-muted">데이터에 출처가 없습니다</span>
+                        </div>
+                        </div>
+                        <div class="tcond__g">
+                        <div class="tcond__lbl">원천 조건 <span class="meta" style="cursor:help" data-tip="메타 축이 아닌 조건 · 행에 그 필드가 없으면 빠지고 미리보기에 '필드 없음'으로 집계">?</span></div>
+                        <div class="feedg">
+                        <label>기간 <input class="field" type="number" min="0" style="width:80px" x-model.number="studio.feed.days" x-on:change="schedulePreview()" placeholder="일"> <select class="field" style="width:auto" x-model="studio.feed.basis" x-on:change="schedulePreview()"><option value="org">발행일</option><option value="ingest">적재일</option></select></label>
+                        <label>사진 <select class="field" style="width:auto" x-model="studio.feed.image" x-on:change="schedulePreview()"><option value="">무관</option><option value="yes">있음</option><option value="no">없음</option></select></label>
+                        <label>영상 <select class="field" style="width:auto" x-model="studio.feed.video" x-on:change="schedulePreview()"><option value="">무관</option><option value="yes">있음</option><option value="no">없음</option></select></label>
+                        <label>길이 <input class="field" type="number" min="0" style="width:80px" x-model.number="studio.feed.min_len" x-on:change="schedulePreview()" placeholder="이상"> ~ <input class="field" type="number" min="0" style="width:80px" x-model.number="studio.feed.max_len" x-on:change="schedulePreview()" placeholder="이하"></label>
+                        <label>열독률 <input class="field" type="number" min="0" max="1" step="0.05" style="width:80px" x-model.number="studio.feed.min_dri" x-on:change="schedulePreview()" placeholder="이상"></label>
+                        <label><input type="checkbox" x-bind:checked="studio.feed.base_excl!==false" x-on:change="studio.feed.base_excl=$event.target.checked; schedulePreview()"> 광고 · 성인 · 선정 · 삭제 기본 제외</label>
+                        </div>
+                        <div class="tcond__lbl" style="margin-top:6px">형식 <span class="meta">누를수록 후보→포함→제외</span></div>
+                        <div class="flex flex-wrap gap-1.5"><template x-for="t in feedTypes" x-bind:key="'ft'+t"><span class="ds-badge" style="cursor:pointer" x-bind:class="feedCls('types','neg_types',t)" x-on:click="feedCycle('types','neg_types',t)" x-text="t"></span></template></div>
+                        <div class="tcond__lbl" style="margin-top:6px">표시 <span class="meta">단독 · 주요 · 기획 같은 원천 플래그</span></div>
+                        <div class="flex flex-wrap gap-1.5"><template x-for="f in feedFlags" x-bind:key="'ff'+f.k"><span class="ds-badge" style="cursor:pointer" x-bind:class="feedCls('flags','neg_flags',f.k)" x-on:click="feedCycle('flags','neg_flags',f.k)" x-text="f.ko"></span></template></div>
+                        <div class="tcond__lbl" style="margin-top:6px">매체 등급</div>
+                        <div class="flex flex-wrap gap-1.5"><template x-for="g in ['DEFAULT','BLACK','EXCELLENT']" x-bind:key="'cg'+g"><span class="ds-badge" style="cursor:pointer" x-bind:class="feedCls('cp_grades','',g)" x-on:click="feedCycle('cp_grades','',g)" x-text="g"></span></template></div>
+                        <div class="feedg" style="margin-top:6px">
+                        <label>작성자 <input class="field" style="width:180px" x-bind:value="(studio.feed.creators||[]).join(', ')" x-on:change="feedList('creators',$event.target.value)" placeholder="쉼표로 여러 명"></label>
+                        <label>서비스 분류 <input class="field" style="width:180px" x-bind:value="(studio.feed.svc_cats||[]).join(', ')" x-on:change="feedList('svc_cats',$event.target.value)" placeholder="예) 연예, IT"></label>
+                        <label>룰 <input class="field" style="width:140px" x-bind:value="(studio.feed.rules||[]).join(', ')" x-on:change="feedList('rules',$event.target.value)" placeholder="룰 키"></label>
+                        <label>태그 <input class="field" style="width:140px" x-bind:value="(studio.feed.tags||[]).join(', ')" x-on:change="feedList('tags',$event.target.value)" placeholder="태그"></label>
+                        </div>
+                        <div class="text-xs text-muted" style="margin-top:4px" x-show="studioPreview.feed_miss && Object.keys(studioPreview.feed_miss).length" x-text="'데이터에 없는 필드라 빠짐 · '+feedMissText(studioPreview.feed_miss)"></div>
+                        </div>
                     <div class="tcond__g">
                       <div class="tcond__lbl">엔티티 키워드 <span x-text="'· 선택 '+studio.keywords.length+(studio.req.keywords.length?(' (필수 '+studio.req.keywords.length+')'):'')"></span></div>
                       <div style="display:flex;gap:8px">
@@ -197,16 +266,24 @@
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='all'?'sel':''" x-on:click="topicView='all'">전체</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='manual'?'sel':''" x-on:click="topicView='manual'">수동 생성</button>
                 <button type="button" class="srcfilter__chip" x-bind:class="topicView==='auto'?'sel':''" x-on:click="topicView='auto'">자동 생성</button>
-              </span>
+                <span class="meta">|</span>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicStatus==='all'?'sel':''" x-on:click="topicStatus='all'">활성 · 정지 · 초안</button>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicStatus==='warn'?'sel':''" x-on:click="topicStatus='warn'">정체 · 급감</button>
+                <button type="button" class="srcfilter__chip" x-bind:class="topicStatus==='archived'?'sel':''" x-on:click="topicStatus='archived'">보관</button>
+                </span>
               <button type="button" class="copybtn" x-on:click="exportTopics()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></svg>엑셀 다운로드</button>
               <!-- 토픽은 조건 재평가 방식(서버 캐시는 쓰기마다 무효화) · 탭을 열어둔 채 추출·검수·사전 보강이 진행되면 화면만 낡음 → 수동 재조회 -->
               <button type="button" class="ds-iconbtn ds-iconbtn--bordered" x-bind:disabled="modBusy" x-on:click="loadTopics()" data-tip="새로고침 · 새 콘텐츠·등급 변경 재매칭" data-tip-pos="bottom" aria-label="토픽 현황 새로고침"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 1 0-.9 4.5M20 5v6h-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
-            <div class="overflow-auto"><table class="ds-table"><thead><tr><th>구분</th><th>토픽</th><th>구성</th><th>콘텐츠</th><th style="text-align:right">관리</th></tr></thead><tbody>
-              <template x-for="g in (topicData.custom||[])" x-bind:key="g.id">
-                <tr x-show="topicView!=='auto'">
-                  <td style="white-space:nowrap"><span class="ds-badge ds-badge--entity">수동</span></td>
-                  <td><div class="text-ink" style="font-weight:650" x-text="g.name"></div>
-                      <div class="text-xs text-muted" x-show="g.prompt" x-text="g.prompt"></div>
+            <div class="meta" style="padding:0 16px 6px" x-show="topicMsg" x-text="topicMsg"></div>
+            <div class="overflow-auto"><table class="ds-table"><thead><tr><th></th><th>구분</th><th>토픽</th><th>구성</th><th>콘텐츠</th><th>오늘</th><th>7일</th><th>신호</th><th style="text-align:right">관리</th></tr></thead><tbody>
+            <template x-for="g in (topicData.custom||[])" x-bind:key="g.id">
+            <tr x-show="topicView!=='auto' && topicRowOk(g)" x-bind:class="{'trow--off': g.status && g.status!=='active'}">
+            <td style="white-space:nowrap"><button type="button" role="switch" class="tsw" x-bind:aria-checked="g.status==='active'" x-bind:class="{on:g.status==='active'}" x-bind:disabled="!topicAdmin || topicBusy===g.id || g.status==='archived'" x-on:click="topicToggle(g)" x-bind:data-tip="topicSwTip(g)" data-tip-pos="top" x-bind:aria-label="topicSwTip(g)"></button></td>
+            <td style="white-space:nowrap"><span class="ds-badge ds-badge--entity">수동</span> <span class="ds-badge ds-badge--neutral" x-show="g.status && g.status!=='active'" x-text="statusKo(g.status)"></span></td>
+            <td><div class="text-ink" style="font-weight:650" x-text="g.name"></div>
+            <div class="text-xs text-muted" x-show="g.prompt" x-text="g.prompt"></div>
+            <div class="flex flex-wrap gap-1" style="margin-top:3px" x-show="g.feed_chips && g.feed_chips.length"><template x-for="c in g.feed_chips" x-bind:key="'fc'+c.f+c.x"><span class="tbchip" x-bind:class="{neg:c.neg}"><span class="tbchip__k" x-text="c.k"></span> <span x-text="c.v"></span></span></template></div>
+            <div class="text-xs text-muted" x-show="g.log && g.log.length" x-text="logLine(g.log)"></div>
                       <div class="text-xs" x-show="g.must && g.must.length" x-text="'필수: '+g.must.map(m=>m.dim==='cats'?catBoth(m.v):m.v).join(' · ')"></div>
                       <div class="text-xs" style="color:var(--ds-error)" x-show="g.neg && g.neg.length" x-text="'제외: '+(g.neg||[]).map(m=>m.dim==='cats'?catBoth(m.v):m.v).join(' · ')"></div></td>
                   <td><div class="flex flex-wrap gap-1.5">
@@ -215,29 +292,37 @@
                     </template>
                   </div></td>
                   <td class="tnum" x-text="g.core_count||0"></td>
-                  <td style="text-align:right;white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="copybtn" x-on:click="studioDelete(g)">삭제</button></td>
-                </tr>
+                  <td class="tnum" x-text="g.today||0"></td><td class="tnum" x-text="g.d7||0"></td>
+                  <td style="white-space:nowrap"><span class="ds-badge" x-bind:class="(g.signal||'').indexOf('급감')===0?'ds-badge--error':'ds-badge--status'" x-show="g.signal" x-text="g.signal"></span></td>
+                  <td style="text-align:right;white-space:nowrap"><button type="button" class="copybtn" x-on:click="talkEdit(g)">말로 다듬기</button> <button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="copybtn" x-show="topicAdmin && g.status!=='archived'" x-on:click="topicStatusSet(g,'archived')">보관</button><button type="button" class="copybtn" x-show="topicAdmin && g.status==='archived'" x-on:click="topicStatusSet(g,'active')">복구</button> <button type="button" class="copybtn" x-on:click="studioDelete(g)">삭제</button></td>
+                  </tr>
               </template>
               <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id">
-                <tr x-show="topicView!=='manual'" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
-                  <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 엔티티형</span></td>
+                <tr x-show="topicView!=='manual' && topicRowOk(t)" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
+                  <td style="white-space:nowrap" x-on:click.stop><button type="button" role="switch" class="tsw" x-bind:aria-checked="t.status!=='paused'" x-bind:class="{on:t.status!=='paused'}" x-bind:disabled="!topicAdmin || topicBusy===t.cluster_id" x-on:click.stop="topicToggle(t)" x-bind:data-tip="topicSwTip(t)" data-tip-pos="top" x-bind:aria-label="topicSwTip(t)"></button></td>
+                  <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 엔티티형</span> <span class="ds-badge ds-badge--neutral" x-show="t.status==='paused'">일시정지</span></td>
                   <td class="text-ink" x-text="t.cluster_id"></td>
                   <td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td>
                   <td class="tnum" x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.nondist_n?(' · 편입 '+t.nondist_n):'') + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td>
+                  <td class="tnum" x-text="t.today||0"></td><td class="tnum" x-text="t.d7||0"></td>
+                  <td style="white-space:nowrap"><span class="ds-badge" x-bind:class="(t.signal||'').indexOf('급감')===0?'ds-badge--error':'ds-badge--status'" x-show="t.signal" x-text="t.signal"></span></td>
                   <td></td>
                 </tr>
               </template>
               <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id">
-                <tr x-show="topicView!=='manual'" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
-                  <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 사건형</span></td>
+                <tr x-show="topicView!=='manual' && topicRowOk(t)" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
+                  <td style="white-space:nowrap" x-on:click.stop><button type="button" role="switch" class="tsw" x-bind:aria-checked="t.status!=='paused'" x-bind:class="{on:t.status!=='paused'}" x-bind:disabled="!topicAdmin || topicBusy===t.cluster_id" x-on:click.stop="topicToggle(t)" x-bind:data-tip="topicSwTip(t)" data-tip-pos="top" x-bind:aria-label="topicSwTip(t)"></button></td>
+                  <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 사건형</span> <span class="ds-badge ds-badge--neutral" x-show="t.status==='paused'">일시정지</span></td>
                   <td class="text-ink" x-text="t.cluster_id"></td>
                   <td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td>
                   <td class="tnum" x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.nondist_n?(' · 편입 '+t.nondist_n):'') + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td>
+                  <td class="tnum" x-text="t.today||0"></td><td class="tnum" x-text="t.d7||0"></td>
+                  <td style="white-space:nowrap"><span class="ds-badge" x-bind:class="(t.signal||'').indexOf('급감')===0?'ds-badge--error':'ds-badge--status'" x-show="t.signal" x-text="t.signal"></span></td>
                   <td></td>
                 </tr>
               </template>
-              <tr x-show="topicView!=='auto' && !(topicData.custom||[]).length"><td colspan="5" class="text-muted">아직 만든 토픽이 없습니다 · 위 토픽 생성하기에서 정의해 저장하세요</td></tr>
-              <tr x-show="topicView!=='manual' && !((topicData.single||[]).length||(topicData.composite||[]).length)"><td colspan="5" class="text-muted">자동 생성 토픽 없음 · 데이터가 많을수록 · 자동으로 묶기 기준을 낮추면 더 형성됩니다</td></tr>
+              <tr x-show="topicView!=='auto' && !(topicData.custom||[]).length"><td colspan="9" class="text-muted">아직 만든 토픽이 없습니다 · 위 토픽 생성하기에서 정의해 저장하세요</td></tr>
+              <tr x-show="topicView!=='manual' && !((topicData.single||[]).length||(topicData.composite||[]).length)"><td colspan="9" class="text-muted">자동 생성 토픽 없음 · 데이터가 많을수록 · 자동으로 묶기 기준을 낮추면 더 형성됩니다</td></tr>
             </tbody></table></div>
           </div>
 

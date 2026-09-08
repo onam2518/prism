@@ -110,7 +110,7 @@ class TestSanitizeAndSuggest(unittest.TestCase):
         from prism.topic import suggest_dims
         sug = suggest_dims("심층 분석 콘텐츠 모아줘", _rows(), {"뉴스"})
         self.assertIn("심층 분석", sug["intents"])
-        self.assertEqual(sug["neg"], {"cats": [], "intents": [], "keywords": []})
+        self.assertEqual(sug["neg"], {"cats": [], "intents": [], "keywords": [], "srcs": []})
 
 
 class TestSuggestPromptAllFamilies(unittest.TestCase):

@@ -1190,6 +1190,35 @@
 .tbchip:hover{border-color:var(--ds-border-input-hover)}
 .tbchip.core{border-color:var(--ds-primary);background:var(--ds-primary-tint);color:var(--ds-primary-deep)}
 .tbchip__k{font-weight:700;font-size:10px;opacity:.85}
+/* 말로 만들기(대화) · 조건 칩 상태 · 토픽 상태 스위치 */
+.tbchip.neg{border-color:var(--ds-error);color:var(--ds-error);background:var(--ds-error-tint,#fdeceb)}
+.tbchip.new{box-shadow:0 0 0 1.5px var(--ds-primary) inset}
+.tbchip.req .tbchip__k::after{content:" ★"}
+.tbchip.dim{color:var(--ds-muted,#7b8794);border-style:dashed}
+button.tbchip{cursor:pointer;font:inherit}
+button.tbchip:disabled{cursor:default;opacity:.8}
+.talk{display:flex;flex-direction:column;gap:10px;max-width:880px}
+.talk__me{align-self:flex-end;max-width:85%;background:var(--ds-primary-tint);color:var(--ds-ink);border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13px;line-height:1.5}
+.talk__who{display:block;font-size:10.5px;color:var(--ds-muted,#7b8794);margin-bottom:2px}
+.talk__sys{background:var(--ds-surface-white);border:1px solid var(--ds-hairline);border-radius:4px 14px 14px 14px;padding:10px 12px}
+.talk__hd{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px}
+.talk__n{display:flex;gap:10px;align-items:baseline;margin-top:8px;font-size:13px}
+.talk__n>b{font-size:18px;font-weight:700}
+.talk__tbl{margin-top:6px;font-size:12px}
+.talk__warn{margin-top:6px;padding:6px 10px;border-radius:8px;background:var(--ds-warning-tint,#fff6df);font-size:12px}
+.talk__in{display:flex;flex-direction:column;gap:8px;border:1px solid var(--ds-hairline);border-radius:12px;padding:10px;background:var(--ds-surface-white)}
+.talk__row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.talk__save{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px dashed var(--ds-hairline);padding-top:8px}
+.talk__x{font-size:10px;opacity:.6;margin-left:2px}
+.feedg{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:center;font-size:12.5px}
+.feedg label{display:inline-flex;gap:6px;align-items:center}
+.tsw{width:30px;height:17px;border-radius:999px;border:0;background:var(--ds-border-input-hover,#c3ccd9);position:relative;cursor:pointer;padding:0;vertical-align:middle}
+.tsw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .15s}
+.tsw.on{background:var(--ds-primary)}
+.tsw.on::after{left:15px}
+.tsw:disabled{opacity:.35;cursor:default}
+.tsw:focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px}
+.trow--off td{color:var(--ds-muted,#7b8794)}
 
 /* ── 학습 반영 이력(버전 기록) ── */
 .jour__book{flex:1;min-width:0;border:1px solid var(--ds-hairline);border-radius:14px;

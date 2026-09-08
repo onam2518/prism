@@ -2935,7 +2935,9 @@ def _p_topic_studio(h, body):
     elif not h._require_team():
         return None
     # 변경성 액션의 캐시 무효화는 topic_studio_action 내부에서 처리
-    return topic_studio_action(data, mock=Handler.server_mock, team=h._req_team())
+    # 변경 기록의 '누가': 로그인 이메일 우선 · 로컬(무로그인)은 클라이언트 reviewer 표시명
+    return topic_studio_action(data, mock=Handler.server_mock, team=h._req_team(),
+                               who=h._bearer_email() or (str(data.get("reviewer") or "")).strip())
 
 
 @_post_route("/media-extract", gate="login")         # 미디어 메타 파이프라인(콘텐츠 추가 탭): 자막 파싱(JSON) · 영상 네이티브(multipart)
