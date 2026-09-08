@@ -121,6 +121,15 @@ def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
     m["basis"] = {"model": used_model, "version": seq + 1, "scope": scope}
     return m
 
+def ci_overlap(p_a: float, n_a: int, p_b: float, n_b: int) -> bool:
+    """두 비율의 95% 신뢰구간(binomial_ci)이 겹치면 True(통계적으로 동등 · 판정 보류).
+    회귀·개선 판정을 점 추정치만으로 하면 표본이 작을 때 우연한 등락을 실제 변화로
+    오판한다 — 구간이 겹치면 '동등'으로 보고 회귀·향상 어느 쪽도 확정하지 않는다."""
+    from . import quality as Q
+    lo_a, hi_a = Q.binomial_ci(p_a or 0.0, int(n_a or 0))
+    lo_b, hi_b = Q.binomial_ci(p_b or 0.0, int(n_b or 0))
+    return lo_a <= hi_b and lo_b <= hi_a
+
 def _clean_intent(vals, display_name: str) -> tuple:
     """골든 기대 인텐트를 사전(D.intent_categories_for) 화이트리스트로 정제.
     반환 (통과값 리스트, 드롭된 원값 리스트). 표기 흔들림('속보 · 단신')은 agents 의
@@ -639,7 +648,9 @@ INTENT_JACCARD_DROP = 0.05                       # 인텐트 자카드 허용 �
 def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
                        min_intent_n: int = MIN_INTENT_N) -> list:
     """개선 후 평가가 전보다 나빠진 지점 목록(원복 사유 문구 · 없으면 빈 목록).
-    ① 정합성 2%p 초과 악화 ② 유해 미탐률(harm_miss_rate) 악화
+    ① 정합성 2%p 초과 악화 AND 두 신뢰구간(ci_overlap) 비중첩(표본 노이즈로 겹치면 동등 처리 ·
+       n(evaluated) 없는 구 리포트는 CI 판단 불가라 종전처럼 점 추정치만으로 판정)
+    ② 유해 미탐률(harm_miss_rate) 악화
     ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제)
     ④ 인텐트 자카드 5%p 초과 악화(측정 표본 min_intent_n 이상일 때만)
     ⑤ 인텐트 값별 F1 10%p 초과 하락(support min_bucket_n 이상 · ③과 동일 규칙)
@@ -659,7 +670,11 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
         d = round((post.get("grade_accuracy") or 0.0) - (pre.get("grade_accuracy") or 0.0), 4)
     except (TypeError, ValueError):
         return out
-    if d < -0.02:
+    n_pre, n_post = int(pre.get("evaluated") or 0), int(post.get("evaluated") or 0)
+    # n 없는 구 리포트는 CI 판단 불가 → 종전처럼 점 추정치만으로 판정(하위호환 · ④·⑤와 같은 규칙)
+    if d < -0.02 and not (n_pre and n_post
+                          and ci_overlap(pre.get("grade_accuracy") or 0.0, n_pre,
+                                         post.get("grade_accuracy") or 0.0, n_post)):
         out.append(f"정합성 {d:+.1%} 악화")
     pre_miss = float(pre.get("harm_miss_rate") or 0.0)
     post_miss = float(post.get("harm_miss_rate") or 0.0)

@@ -358,12 +358,16 @@ def _meta_gate() -> float:
 
 
 def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "", meta_target: float = 0.6):
-    """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속."""
+    """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속.
+    향상 판정 = 종합 점수 상승 AND 등급 신뢰구간이 최고 라운드와 안 겹침(ci_overlap) ·
+    두 구간이 겹치면 점 추정치가 올라도 '동등'으로 보고 향상 없음으로 집계한다(표본 노이즈 방지).
+    n(evaluated) 을 모르는 라운드는 CI 판단이 불가하므로 종전처럼 종합 점수만으로 판정한다."""
     from . import learnops as LO
     st = _SV.get_store()
     history = []
     best = None          # 최고 등급 일치율(화면 표시용)
     best_score = None    # 최고 종합 점수(정체 판정용 · 목표 판정과 같은 5축)
+    best_acc, best_acc_n = None, None   # 최고 라운드의 등급 일치율·표본 n(CI 동등 판정용)
     no_improve = 0
     try:
         for rnd in range(1, max_rounds + 1):
@@ -398,8 +402,16 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
             best = acc if best is None else max(best, acc)
-            improved = best_score is None or ov["overall"] > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
-            best_score = ov["overall"] if improved else best_score
+            n_cur = int(ev.get("evaluated") or 0)
+            overall_up = best_score is None or ov["overall"] > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
+            # 종합이 올라도 등급 CI 가 최고 라운드와 겹치면(표본 노이즈로 동등) 향상으로 안 친다.
+            # n(evaluated) 을 모르는(구 리포트·페이크) 라운드는 CI 판단 불가 → 종전처럼 종합 점수만으로 판정.
+            if overall_up and best_score is not None and n_cur and best_acc_n \
+                    and LO.ci_overlap(acc, n_cur, best_acc, best_acc_n):
+                overall_up = False
+            improved = overall_up
+            if improved:
+                best_score, best_acc, best_acc_n = ov["overall"], acc, n_cur
             fields = {"last_accuracy": acc, "best_accuracy": best,
                       "history": history, "heartbeat": time.time()}
             if rnd == 1:
@@ -413,7 +425,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
             no_improve = 0 if improved else no_improve + 1
             if no_improve >= PILOT_STALL_ROUNDS:
                 st.autopilot_update(rid, team=team, status="done",
-                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 종합 향상 없음(최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
+                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 종합 향상 없음"
+                                                 f"(등급 신뢰구간이 최고 라운드와 겹치는 동등 라운드는 향상 없음으로 집계 · "
+                                                 f"최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
                                     finished=time.time())
                 return
         st.autopilot_update(rid, team=team, status="done",

@@ -244,10 +244,10 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
         PR.LEARNED_BY_MODEL = {}
 
-        evals = [{"ok": True, "grade_accuracy": 0.9, "evaluated": 10},
-                 {"ok": True, "grade_accuracy": 0.5, "evaluated": 10}]      # 개선 후 대폭 악화
+        evals = [{"ok": True, "grade_accuracy": 0.9, "evaluated": 30},
+                 {"ok": True, "grade_accuracy": 0.5, "evaluated": 30}]      # 개선 후 대폭 악화(n=30 · CI 비중첩)
         def fake_eval(team=None, model="", scope="all"):
-            return evals.pop(0) if evals else {"ok": True, "grade_accuracy": 0.5, "evaluated": 10}
+            return evals.pop(0) if evals else {"ok": True, "grade_accuracy": 0.5, "evaluated": 30}
         def fake_improve(team=None):
             PR.LEARNED = {"extract": "", "analyze": "- 악화 지시", "review": "", "judge": ""}
             return {"ok": True, "results": {"analyze": {"directive": "- 악화 지시"}}}
@@ -448,6 +448,18 @@ class TestReviewerCalibration(unittest.TestCase):
         self.assertIsNone(row["gold_trend"])
 
 
+class TestCiOverlap(unittest.TestCase):
+    """ci_overlap: 두 이항 비율의 95% 신뢰구간 중첩 여부(동등 판정 helper)."""
+
+    def test_close_small_sample_overlaps(self):
+        from prism.learnops import ci_overlap
+        self.assertTrue(ci_overlap(0.90, 50, 0.87, 50))
+
+    def test_same_gap_large_sample_no_overlap(self):
+        from prism.learnops import ci_overlap
+        self.assertFalse(ci_overlap(0.90, 2000, 0.87, 2000))
+
+
 class TestBatchRegressions(unittest.TestCase):
     """강화된 회귀 게이트(_batch_regressions): 스칼라 2%p + 유해 미탐 + 버킷 10%p."""
 
@@ -478,6 +490,20 @@ class TestBatchRegressions(unittest.TestCase):
                "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9}}}
         post = {"grade_accuracy": 0.85, "harm_miss_rate": 0.0, "by_reason_bucket": {}}
         self.assertEqual(_batch_regressions(pre, post), ["정합성 -5.0% 악화"])
+
+    def test_small_sample_drop_within_ci_not_flagged(self):
+        """n=50 · 3%p 하락은 신뢰구간이 겹쳐(동등) 회귀로 보지 않는다."""
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.90, "harm_miss_rate": 0.0, "evaluated": 50, "by_reason_bucket": {}}
+        post = {"grade_accuracy": 0.87, "harm_miss_rate": 0.0, "evaluated": 50, "by_reason_bucket": {}}
+        self.assertEqual(_batch_regressions(pre, post), [])
+
+    def test_large_sample_drop_outside_ci_flagged(self):
+        """같은 3%p 하락도 n=2000 이면 신뢰구간이 안 겹쳐(유의미) 회귀로 잡는다."""
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.90, "harm_miss_rate": 0.0, "evaluated": 2000, "by_reason_bucket": {}}
+        post = {"grade_accuracy": 0.87, "harm_miss_rate": 0.0, "evaluated": 2000, "by_reason_bucket": {}}
+        self.assertEqual(_batch_regressions(pre, post), ["정합성 -3.0% 악화"])
 
     def test_learning_batch_reverts_on_harm_regression(self):
         """정확도가 올라도 유해 미탐이 악화되면 원복(단일 스칼라 가드의 사각 해소)."""
