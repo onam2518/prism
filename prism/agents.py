@@ -175,7 +175,7 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     summary = (o1.get("summary") or "").strip() if isinstance(o1.get("summary"), str) else ""
     prior["summary"] = summary
     if not summary:                                # 단락 차단: 하위 호출 생략
-        # 호출 실패·계약 키 부재 = 메타 보류(사람이 채움 · yellow). 키는 있는데 빈 문자열이면
+        # 호출 실패·계약 키 부재 = 입력 필요(사람이 채움 · hold_fields). 키는 있는데 빈 문자열이면
         # '생성 불가' 라는 정당한 차단 신호라 보류로 올리지 않는다(test_audit_llm 계약).
         failed = bool(o1.get("_fail")) or "summary" not in o1
         return ItemMeta(summary="", entities=[], intent=[], content_category=[],

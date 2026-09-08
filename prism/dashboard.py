@@ -668,10 +668,10 @@ function openD(i){
   h+=stage(isY?'gate':(qm.finalGrade==='G'?'ok':'gate'),'③ 품질 메타 '+qmethod,
     'decision '+decision,
    `<div class="kv"><b>판정</b> <span class="pill ${decision}">${decision}</span>
-      ${isY?((qm.review_reason||'').startsWith('메타 보류')?'메타 보류 · 사람이 채움':'사람 검수 필요(저신뢰)'):(qm.finalGrade==='G'?'유통 가능':'유통 불가')}
+      ${isY?'사람 검수 필요(저신뢰)':(qm.finalGrade==='G'?'유통 가능':'유통 불가')}
       ${qm.confidence!=null?` · conf=${qm.confidence}`:''}</div>
     ${isY&&qm.review_reason?`<div class="kv" style="color:var(--ent)"><b>YELLOW 사유</b> ${esc(qm.review_reason)}</div>`:''}
-    ${(im&&im.hold_fields&&im.hold_fields.length)?`<div class="kv" style="color:var(--ent)"><b>채울 필드</b> ${im.hold_fields.map(esc).join(', ')}</div>`:''}
+    ${(im&&im.hold_fields&&im.hold_fields.length)?`<div class="kv" style="color:var(--ent)"><b>입력 필요</b> ${im.hold_fields.map(esc).join(', ')} <span style="opacity:.7">(품질 등급과 별개)</span></div>`:''}
     <div class="kv"><b>reasons</b> ${(qm.reasons||[]).map(x=>`<span class="tag r">${esc(x)}</span>`).join('')||'없음(normal)'}</div>
     ${qv&&qv.evidence?`<div class="kv"><b>근거</b> ${esc(qv.evidence)}</div>`:''}`);
   h+='<div class="flowarrow">↓</div>';

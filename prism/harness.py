@@ -154,19 +154,30 @@ def st_quality(ctx: HCtx):
     ctx.fallbacks += V.verify_quality(qm, ctx.routing.active_quality_metas)
 
 
-META_HOLD_PREFIX = "메타 보류"                   # review_reason 접두 · 판정 보류(등급 없음)와 구분하는 유일한 표식
+HOLD_PREFIX = "입력 필요"                        # 사람이 채워야 하는 항목의 표기 · 품질 등급과 별개
+
+
+def hold_reason(hold) -> str:
+    """입력 필요 사유 문구. 리드문이 비면 하위 차수(인텐트·카테고리)가 연쇄로 비므로 따로 적는다."""
+    hold = list(hold or [])
+    if not hold:
+        return ""
+    if "summary" in hold:
+        return f"{HOLD_PREFIX} · 리드문 추출 실패 · 하위 호출 생략"
+    return f"{HOLD_PREFIX} · 추출 실패: " + ", ".join(hold)
 
 
 def _mark_meta_hold(ctx, im) -> None:
-    """메타 추출 실패(hold_fields)를 사람 검수 큐(review=yellow)로 올린다. 등급은 건드리지 않는다
-    (판정 보류는 finalGrade 를 비우지만 메타 보류는 등급이 멀쩡할 수 있다). R 억제분은 오지 않는다."""
+    """추출 실패 항목(hold_fields)을 trace 에 남긴다.
+
+    2026-09-08 정책: 입력 필요는 품질 등급(G·Y·R)과 원인이 다른 별개 상태다(품질 Yellow 는
+    콘텐츠 자체 판정 · 입력 필요는 추출 재료 부족). 종전에는 검수 큐로 올리려고
+    quality_meta.review 를 yellow 로 덮어썼는데, 그러면 유통 판단과 품질 지표가 함께 오염된다.
+    이제 hold_fields 만이 표식이고, 사람 검수 라우팅은 autoreview 가 그 값을 직접 본다."""
     hold = list(getattr(im, "hold_fields", None) or [])
-    if not hold or ctx.qm.review == "yellow":
+    if not hold:
         return
-    ctx.qm.review = "yellow"
-    ctx.qm.review_reason = (f"{META_HOLD_PREFIX} · 리드문 추출 실패 · 하위 호출 생략" if "summary" in hold
-                            else f"{META_HOLD_PREFIX} · 추출 실패: " + ", ".join(hold))
-    ctx.verdicts.append({"agent": "MetaHold", "evidence": ctx.qm.review_reason, "fail": None})
+    ctx.verdicts.append({"agent": "MetaHold", "evidence": hold_reason(hold), "fail": None})
 
 
 _COMMERCE_METAS = {"ad", "spam"}                 # 광고성 계열(상거래) · D3 우선순위 적용 대상(유해·법령 메타 제외)
@@ -180,11 +191,13 @@ def _commerce_only_r(qm) -> bool:
 
 
 def st_item(ctx: HCtx):
-    """아이템 메타(G 또는 YELLOW). 임베딩 kNN 카테고리(2-pass) + 사전화."""
+    """아이템 메타(품질 등급과 무관 · 전건). 임베딩 kNN 카테고리(2-pass) + 사전화.
+
+    2026-09-08 정책: 품질 메타는 아이템 메타의 실행 조건이 아니다(13112. 아이템 메타 "대상").
+    등급으로 거르던 실행 게이트를 폐지하고 전 콘텐츠에서 원천 메타를 확보한다 — 유통 노출은
+    품질 Green 으로 유통 단계에서 거른다. 이미지 전용 트랙만 별도 파이프라인이라 여전히 skip."""
     m = ctx.methodology
-    # 광고성 단독 R 도 아이템을 돌려 인텐트를 확보한다(D3: 편집 인텐트로 광고성-R 을 내릴지 판정하기 위함)
-    gate_item = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow" or _commerce_only_r(ctx.qm))
-    if not (gate_item and ctx.routing.content_track != "image_only"):
+    if ctx.routing.content_track == "image_only":
         return
     im, ires = A.run_item(ctx.llm, ctx.content, parallel=m.parallel_calls)
     ctx.item_meta = im
@@ -271,13 +284,9 @@ def _run_quality_item_parallel(ctx: HCtx):
     ctx.results += cq.results + ci.results
     ctx.verdicts += cq.verdicts + ci.verdicts
     ctx.fallbacks += cq.fallbacks + ci.fallbacks
-    gate = (ctx.qm.finalGrade == "G" or ctx.qm.review == "yellow" or _commerce_only_r(ctx.qm))
-    if gate and ctx.routing.content_track != "image_only":
-        ctx.item_meta = ci.item_meta                   # 광고성 단독 R 은 인텐트 확인 위해 아이템 메타 보존(D3)
+    if ctx.routing.content_track != "image_only":
+        ctx.item_meta = ci.item_meta                   # 등급과 무관하게 보존(2026-09-08 게이트 폐지)
         _mark_meta_hold(ctx, ci.item_meta)             # 병렬 스테이지는 qm 이 갈라져 있어 여기서 다시 표시
-    elif ci.item_meta is not None:
-        ctx.item_meta = None
-        ctx.fallbacks.append("병렬 스테이지: R 판정 → 아이템 메타 폐기(비용 트레이드오프)")
 
 
 def _assemble(ctx: HCtx) -> dict:

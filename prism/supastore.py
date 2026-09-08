@@ -1477,18 +1477,6 @@ class SupabaseStore:
                   body={"final_grade": grade, "quality_meta": qm}, prefer="return=minimal")
         return prev
 
-    def release_meta_hold(self, content_hash, team=None) -> bool:
-        """'메타 보류' yellow 해제(review=auto) · SQLite Store 와 동일 계약."""
-        q = self._hash_q(content_hash, team)
-        rows = self._get("contents", "select=quality_meta&" + q)
-        qm = (rows[0].get("quality_meta") if rows else None) or {}
-        if not (qm.get("review") == "yellow" and str(qm.get("review_reason") or "").startswith("메타 보류")):
-            return False
-        qm["review"] = "auto"
-        qm["review_reason"] = ""
-        self._req("PATCH", "contents", query=q, body={"quality_meta": qm}, prefer="return=minimal")
-        return True
-
     # ── 엔티티 사전(prism_entities · prism_entity_aliases · prism_content_entities) ──
     #    SQLite Store 와 동일 메서드 계약 · DDL 은 SUPABASE_MIGRATION.md 참조.
     _ENT_SEL = "select=entity_id,name,type,status,attrs,attr_meta,external_ids,merged_into,created_at,updated_at"
