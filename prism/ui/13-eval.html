@@ -104,28 +104,43 @@
               </template>
             </div>
           </section>
-          <!-- 평가 이력: 런 단위 영속(Atelier 이식) · 다시 열기 · 중단 런 재개 -->
-          <section class="panel"><div class="panel-hd"><b>평가 이력</b><span class="meta">평가는 런 단위로 저장됩니다 · 다시 열어 리포트 확인 · 중단된 런은 재개</span></div>
+          <!-- 평가 이력: 평가 실행(런 단위 영속 · Atelier 이식) + 오토파일럿 라운드 + 모델별 비교를 한 표에 · 종류로 구분 -->
+          <section class="panel"><div class="panel-hd"><b>평가 이력</b><span class="meta">평가 실행 · 오토파일럿 라운드 · 모델별 비교를 한 곳에 · 평가 실행은 다시 열어 리포트 확인 · 중단된 런은 재개</span></div>
             <div class="panel-bd">
               <div class="text-xs text-muted" x-show="!evalRuns.length">아직 실행한 평가가 없습니다 · 위에서 평가를 실행하면 이력이 쌓입니다</div>
               <template x-if="evalRuns.length">
-                <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th style="width:54px">#</th><th style="width:110px">시각</th><th>모델</th><th style="width:90px">범위</th><th style="width:150px">상태</th><th style="width:90px">일치율</th><th style="width:170px"></th></tr></thead><tbody>
+                <div class="overflow-auto" style="max-height:300px"><table class="ds-table"><thead><tr><th style="width:70px">#</th><th style="width:110px">시각</th><th style="width:100px">종류</th><th>모델</th><th style="width:110px">범위</th><th style="width:150px">상태</th><th style="width:90px">일치율</th><th style="width:170px"></th></tr></thead><tbody>
                   <template x-for="r in evalRuns" x-bind:key="'er'+r.id">
                     <tr x-bind:style="evalRunId===r.id ? 'background:var(--panel-hd-bg, rgba(0,0,0,.03))' : ''">
-                      <td class="tnum" x-text="r.id"></td>
+                      <td class="tnum" x-text="r.kind==='pilot' ? ('#'+r.pilot_id+' · '+r.round+'R') : (r.kind==='compare' ? '·' : r.id)"></td>
                       <td class="tnum" x-text="fmtTs(r.ts)"></td>
-                      <td x-text="r.model || '현재 설정 모델'"></td>
-                      <td x-text="r.scope === 'eval' ? '평가용만' : '전체 정답셋'"></td>
-                      <td><span class="ds-badge" x-bind:class="r.status==='done' ? 'ds-badge--success' : (r.status==='failed' ? 'ds-badge--error' : (r.stalled ? 'ds-badge--warning' : 'ds-badge--neutral'))" x-text="evalRunStatusTxt(r)"></span></td>
+                      <td><span class="ds-badge" x-bind:class="r.kind==='pilot' ? 'ds-badge--intent' : (r.kind==='compare' ? 'ds-badge--category' : 'ds-badge--neutral')" x-text="r.kind==='pilot' ? '오토파일럿' : (r.kind==='compare' ? '모델별 비교' : '평가 실행')"></span></td>
+                      <td x-text="r.kind==='compare' ? (r.model + (r.best ? ' · ★' + r.best : '')) : (r.model || (r.kind==='pilot' ? '기본 설정' : '현재 설정 모델'))"></td>
+                      <td x-text="r.kind==='pilot' ? ('고정 정답셋 ' + r.golden_n + '건') : ((r.scope === 'eval' ? '평가용만' : '전체 정답셋') + (r.kind==='compare' && r.golden_n ? ' ' + r.golden_n + '건' : ''))"></td>
+                      <td>
+                        <span class="ds-badge" x-show="r.kind==='eval'" x-bind:class="r.status==='done' ? 'ds-badge--success' : (r.status==='failed' ? 'ds-badge--error' : (r.stalled ? 'ds-badge--warning' : 'ds-badge--neutral'))" x-text="evalRunStatusTxt(r)"></span>
+                        <span class="ds-badge" x-show="r.kind==='pilot'" x-bind:class="r.status==='reverted' ? 'ds-badge--warning' : 'ds-badge--success'" style="cursor:help" x-bind:data-tip="r.status==='reverted' ? '이 라운드 보정은 점수를 낮춰 반영하지 않았습니다' : '이 라운드 보정이 반영됐습니다'" data-tip-pos="top" x-text="r.status==='reverted' ? '원복' : '반영'"></span>
+                        <span class="ds-badge ds-badge--success" x-show="r.kind==='compare'">완료</span>
+                      </td>
                       <td class="tnum" x-text="r.grade_accuracy != null ? Math.round(r.grade_accuracy*100)+'%' : '·'"></td>
-                      <td><span style="display:inline-flex;gap:6px">
-                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalRun(r.id)">보기</button>
-                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="이 런이 시작 시점에 실제로 쓴 프롬프트(.md) · 기록 기능 이전 런은 없음" data-tip-pos="top" x-on:click="downloadPrompt({ run: r.id })">프롬프트</button>
-                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='running' && !r.stalled" x-on:click="cancelEvalRun(r.id)">중단</button>
-                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.stalled || r.status==='failed'" data-tip="저장된 건을 빼고 남은 건만 이어서 실행합니다" data-tip-pos="top" x-on:click="resumeEvalRun(r.id)">재개</button>
-                        <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='done'" x-bind:class="cmpRunA===r.id ? 'is-on' : ''" data-tip="이 런을 비교 기준(개선 전)으로 지정합니다" data-tip-pos="top" x-on:click="setCmpBase(r.id)" x-text="cmpRunA===r.id ? '기준 ✓' : '기준'"></button>
-                        <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="r.status==='done' && cmpRunA && cmpRunA!==r.id" x-bind:disabled="evalCmpBusy" data-tip="기준 런 대비 이 런의 개선/회귀를 판정합니다" data-tip-pos="top" x-on:click="compareRuns(r.id)">비교</button>
-                      </span></td>
+                      <td>
+                        <template x-if="r.kind==='eval'"><span style="display:inline-flex;gap:6px">
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openEvalRun(r.id)">보기</button>
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="이 런이 시작 시점에 실제로 쓴 프롬프트(.md) · 기록 기능 이전 런은 없음" data-tip-pos="top" x-on:click="downloadPrompt({ run: r.id })">프롬프트</button>
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='running' && !r.stalled" x-on:click="cancelEvalRun(r.id)">중단</button>
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.stalled || r.status==='failed'" data-tip="저장된 건을 빼고 남은 건만 이어서 실행합니다" data-tip-pos="top" x-on:click="resumeEvalRun(r.id)">재개</button>
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.status==='done'" x-bind:class="cmpRunA===r.id ? 'is-on' : ''" data-tip="이 런을 비교 기준(개선 전)으로 지정합니다" data-tip-pos="top" x-on:click="setCmpBase(r.id)" x-text="cmpRunA===r.id ? '기준 ✓' : '기준'"></button>
+                          <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="r.status==='done' && cmpRunA && cmpRunA!==r.id" x-bind:disabled="evalCmpBusy" data-tip="기준 런 대비 이 런의 개선/회귀를 판정합니다" data-tip-pos="top" x-on:click="compareRuns(r.id)">비교</button>
+                        </span></template>
+                        <template x-if="r.kind==='pilot'"><span style="display:inline-flex;gap:6px">
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.version" data-tip="이 라운드가 만든 프롬프트(.md) 내려받기" data-tip-pos="top" x-on:click="downloadPrompt({ v: r.version })" x-text="'프롬프트 v' + r.version"></button>
+                          <span class="text-xs text-muted" x-show="!r.version">프롬프트 기록 없음</span>
+                        </span></template>
+                        <template x-if="r.kind==='compare'"><span style="display:inline-flex;gap:6px">
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" data-tip="아래 모델별 비교 표에서 이 회차를 다시 봅니다" data-tip-pos="top" x-on:click="cmpHistKey=r.key; cmpResult=null; loadCompareLast(r.key)">보기</button>
+                          <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="r.version" data-tip="비교 시작 시점 프롬프트(.md) 내려받기" data-tip-pos="top" x-on:click="downloadPrompt({ v: r.version })" x-text="'프롬프트 v' + r.version"></button>
+                        </span></template>
+                      </td>
                     </tr>
                   </template>
                 </tbody></table></div>

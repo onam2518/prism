@@ -581,7 +581,9 @@ def _compare_finish(prep: dict, done: list, team) -> dict:
         st.save_report("model_compare", res, team)   # 최신 별칭(기존 화면 계약 유지)
         st.save_report(_COMPARE_INDEX, {"items": ([{"key": key, "ts": res["ts"], "best": res["best"],
                                                     "models": [m["model"] for m in out],
-                                                    "golden_n": res["golden_n"], "scope": res["scope"]}]
+                                                    "golden_n": res["golden_n"], "scope": res["scope"],
+                                                    "grade_accuracy": out[0].get("grade_accuracy"),
+                                                    "prompt_snapshot_version": res.get("prompt_snapshot_version")}]
                                                   + idx)[:_COMPARE_HISTORY_KEEP]}, team)
     except Exception as e:                        # 영속 실패는 비교 결과 자체를 막지 않는다
         print(f"  [compare] 결과 저장 실패: {e}")

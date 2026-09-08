@@ -110,6 +110,7 @@ class TestEvalRunFlow(unittest.TestCase):
         lst = serve.eval_runs_list(None)
         self.assertTrue(lst["ok"])
         self.assertEqual(lst["items"][0]["id"], r["id"])
+        self.assertEqual(lst["items"][0]["kind"], "eval")
         self.assertFalse(lst["items"][0]["stalled"])
 
     def test_report_has_item_meta_axes(self):
@@ -372,6 +373,11 @@ class TestAutopilot(unittest.TestCase):
         self.assertEqual(run["best_accuracy"], 0.93)
         self.assertEqual(run["start_accuracy"], 0.65)   # 1라운드 개선 전 점수
         self.assertFalse(run["history"][0]["reverted"])
+        # 평가 이력에 라운드가 종류 'pilot' 로 합류 · 버전·일치율·시각 동반(최신 라운드가 위)
+        rounds = [it for it in serve.eval_runs_list(None)["items"] if it["kind"] == "pilot"]
+        self.assertEqual([it["round"] for it in rounds], [3, 2, 1])
+        self.assertEqual((rounds[0]["version"], rounds[0]["grade_accuracy"], rounds[0]["status"]), (3, 0.93, "applied"))
+        self.assertTrue(rounds[0]["ts"] and rounds[0]["id"] == f"p{run['id']}-3")
 
     def test_stall_stops(self):
         serve, st = self._with_serve()

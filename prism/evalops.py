@@ -423,7 +423,7 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
             ov = ME.overall(ev, target, meta_target)
             metrics = {k: ev.get(k) for k in _ROUND_KEYS}
             metrics.update(ov)
-            history.append({"round": rnd, "accuracy": acc, "pre": pre, "model": model, "metrics": metrics,
+            history.append({"round": rnd, "ts": time.time(), "accuracy": acc, "pre": pre, "model": model, "metrics": metrics,
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
             best = acc if best is None else max(best, acc)
@@ -640,6 +640,23 @@ def eval_runs_list(team=None, limit: int = 20) -> dict:
             m = it.pop("metrics", None) or {}
             n = m.get("n") or 0
             it["grade_accuracy"] = round(m.get("grade_hit", 0) / n, 4) if n else None
+            it["kind"] = "eval"
+    # 오토파일럿 라운드 · 모델별 비교도 '평가' 라 같은 이력에 합류(읽기 시 파생 · 저장 구조 무변경) · kind 로 구분
+    # id 는 화면 키라 종류 간 안 겹치게 접두어 · 라운드 시각은 구 라운드(ts 없음)면 런 시각으로 대신
+    for run in (st.autopilot_list(team, limit=10) if hasattr(st, "autopilot_list") else []):
+        n_gold = len(run.get("golden_hashes") or [])
+        for hh in run.get("history") or []:
+            items.append({"kind": "pilot", "id": f"p{run['id']}-{hh.get('round')}", "pilot_id": run["id"],
+                          "round": hh.get("round"), "ts": hh.get("ts") or run.get("ts"), "model": hh.get("model") or "",
+                          "golden_n": n_gold, "status": "reverted" if hh.get("reverted") else "applied",
+                          "grade_accuracy": hh.get("accuracy"), "version": hh.get("version") or 0})
+    from . import learnops as LO
+    for it in (LO.compare_history(team).get("items") or []):
+        items.append({"kind": "compare", "id": "c" + str(it.get("key")), "key": it.get("key"), "ts": it.get("ts"),
+                      "model": ", ".join(it.get("models") or []), "best": it.get("best") or "",
+                      "scope": it.get("scope") or "all", "golden_n": it.get("golden_n"), "status": "done",
+                      "grade_accuracy": it.get("grade_accuracy"), "version": it.get("prompt_snapshot_version") or 0})
+    items.sort(key=lambda x: -(x.get("ts") or 0))
     return {"ok": True, "items": items}
 
 
