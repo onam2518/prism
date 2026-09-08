@@ -261,6 +261,47 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertEqual(rep["grade_accuracy"], 0.9)                         # 유지 프롬프트 기준 보고
         self.assertEqual((rep.get("eval_pre") or {}).get("grade_accuracy"), 0.9)
 
+    def test_learning_batch_concurrent_lock(self):
+        """동시 호출 시 하나만 실행되고 나머지는 즉시 skipped=batch_running(대기·큐잉 없음).
+        락 없이는 스케줄러·오토파일럿·수동 실행이 겹칠 때 LEARNED 가 서로 다른 배치의
+        결과로 뒤섞일 수 있다(회귀 방지)."""
+        import tempfile
+        import threading
+        import time as _t
+        from prism import learnops as LO
+        from prism import serve
+        from prism.store import Store
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+
+        orig_golden, orig_eval, orig_improve = (LO.build_golden_from_reviews, LO.eval_golden, LO.meta_compile_run)
+
+        def slow_golden(team=None):
+            _t.sleep(0.3)                      # 락을 쥔 채 대기 → 다른 스레드가 확실히 부딪히게
+            return {"confirmed": 0, "need_category": 0}
+        LO.build_golden_from_reviews = slow_golden
+        LO.eval_golden = lambda team=None, model="", scope="all": {"ok": False}
+        LO.meta_compile_run = lambda team=None: {"ok": True, "results": {}}
+        self.addCleanup(lambda: (setattr(LO, "build_golden_from_reviews", orig_golden),
+                                 setattr(LO, "eval_golden", orig_eval),
+                                 setattr(LO, "meta_compile_run", orig_improve)))
+
+        results = []
+        def call():
+            results.append(LO.learning_batch(None))
+        t1 = threading.Thread(target=call)
+        t2 = threading.Thread(target=call)
+        t1.start()
+        _t.sleep(0.05)                          # t1 이 먼저 락을 쥐도록
+        t2.start()
+        t1.join(5)
+        t2.join(5)
+
+        oks = [r for r in results if r.get("ok")]
+        skips = [r for r in results if r.get("skipped") == "batch_running"]
+        self.assertEqual(len(oks), 1)
+        self.assertEqual(len(skips), 1)
+
     def test_run_due_batch_scopes_to_quest_team(self):
         """퀘스트 도달 시 learn_team 으로 배치 실행 + 목표 소진. team 없이 돌리면 골든 승격·
         버전(batch_seq)이 팀 스코프 조회에서 사라지는 회귀를 막는다(핵심 픽스)."""
