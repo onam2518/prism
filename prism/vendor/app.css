@@ -1221,10 +1221,12 @@ button.tbchip:disabled{cursor:default;opacity:.8}
 .tguide p{margin:8px 0 0}
 .feedg{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:center;font-size:12.5px}
 .feedg label{display:inline-flex;gap:6px;align-items:center}
-.tsw{width:30px;height:17px;border-radius:999px;border:0;background:var(--ds-border-input-hover,#c3ccd9);position:relative;cursor:pointer;padding:0;vertical-align:middle}
-.tsw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .15s}
+/* 손잡이는 실제 자식(.tsw__k): data-tip 툴팁이 ::before/::after 를 display:none 으로 잡아 가상 요소로는 안 보인다 */
+.tsw{width:34px;height:19px;border-radius:999px;border:0;background:#b9c3d0;position:relative;cursor:pointer;padding:0;vertical-align:middle;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);transition:background .15s}
+.tsw__k{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:left .15s}
 .tsw.on{background:var(--ds-primary)}
-.tsw.on::after{left:15px}
+.tsw.on .tsw__k{left:17px}
+.tsw:not(.on):hover{background:#a6b2c2}
 .tsw:disabled{opacity:.35;cursor:default}
 .tsw:focus-visible{outline:2px solid var(--ds-primary);outline-offset:2px}
 .trow--off td{color:var(--ds-muted,#7b8794)}

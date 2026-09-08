@@ -290,7 +290,7 @@
             <div class="overflow-auto"><table class="ds-table"><thead><tr><th></th><th>구분</th><th>토픽</th><th>구성</th><th>콘텐츠</th><th>오늘</th><th>7일</th><th>신호</th><th style="text-align:right">관리</th></tr></thead><tbody>
             <template x-for="g in (topicData.custom||[])" x-bind:key="g.id">
             <tr x-show="topicRowOk(g,'custom')" x-bind:class="{'trow--off': g.status && g.status!=='active'}">
-            <td style="white-space:nowrap"><button type="button" role="switch" class="tsw" x-bind:aria-checked="g.status==='active'" x-bind:class="{on:g.status==='active'}" x-bind:disabled="!topicAdmin || topicBusy===g.id || g.status==='archived'" x-on:click="topicToggle(g)" x-bind:data-tip="topicSwTip(g)" data-tip-pos="top" x-bind:aria-label="topicSwTip(g)"></button></td>
+            <td style="white-space:nowrap"><button type="button" role="switch" class="tsw" x-bind:aria-checked="g.status==='active'" x-bind:class="{on:g.status==='active'}" x-bind:disabled="!topicAdmin || topicBusy===g.id || g.status==='archived'" x-on:click="topicToggle(g)" x-bind:data-tip="topicSwTip(g)" data-tip-pos="top" x-bind:aria-label="topicSwTip(g)"><i class="tsw__k" aria-hidden="true"></i></button></td>
             <td style="white-space:nowrap"><span class="ds-badge ds-badge--entity" x-text="g.via==='talk'?'말로':'직접'"></span> <span class="ds-badge ds-badge--neutral" x-show="g.status && g.status!=='active'" x-text="statusKo(g.status)"></span></td>
             <td><div class="text-ink" style="font-weight:650" x-text="g.name"></div>
             <div class="text-xs text-muted" x-show="g.prompt" x-text="g.prompt"></div>
@@ -311,7 +311,7 @@
               </template>
               <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id">
                 <tr x-show="topicRowOk(t,'auto')" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
-                  <td style="white-space:nowrap" x-on:click.stop><button type="button" role="switch" class="tsw" x-bind:aria-checked="t.status!=='paused'" x-bind:class="{on:t.status!=='paused'}" x-bind:disabled="!topicAdmin || topicBusy===t.cluster_id" x-on:click.stop="topicToggle(t)" x-bind:data-tip="topicSwTip(t)" data-tip-pos="top" x-bind:aria-label="topicSwTip(t)"></button></td>
+                  <td style="white-space:nowrap" x-on:click.stop><button type="button" role="switch" class="tsw" x-bind:aria-checked="t.status!=='paused'" x-bind:class="{on:t.status!=='paused'}" x-bind:disabled="!topicAdmin || topicBusy===t.cluster_id" x-on:click.stop="topicToggle(t)" x-bind:data-tip="topicSwTip(t)" data-tip-pos="top" x-bind:aria-label="topicSwTip(t)"><i class="tsw__k" aria-hidden="true"></i></button></td>
                   <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 엔티티형</span> <span class="ds-badge ds-badge--neutral" x-show="t.status==='paused'">일시정지</span></td>
                   <td class="text-ink" x-text="t.cluster_id"></td>
                   <td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td>
@@ -323,7 +323,7 @@
               </template>
               <template x-for="t in (topicData?topicData.composite:[])" x-bind:key="t.cluster_id">
                 <tr x-show="topicRowOk(t,'auto')" style="cursor:pointer" role="button" tabindex="0" x-on:click="topicDrill(t)" x-on:keydown.enter="topicDrill(t)" data-tip="묶인 콘텐츠 보기" data-tip-pos="left">
-                  <td style="white-space:nowrap" x-on:click.stop><button type="button" role="switch" class="tsw" x-bind:aria-checked="t.status!=='paused'" x-bind:class="{on:t.status!=='paused'}" x-bind:disabled="!topicAdmin || topicBusy===t.cluster_id" x-on:click.stop="topicToggle(t)" x-bind:data-tip="topicSwTip(t)" data-tip-pos="top" x-bind:aria-label="topicSwTip(t)"></button></td>
+                  <td style="white-space:nowrap" x-on:click.stop><button type="button" role="switch" class="tsw" x-bind:aria-checked="t.status!=='paused'" x-bind:class="{on:t.status!=='paused'}" x-bind:disabled="!topicAdmin || topicBusy===t.cluster_id" x-on:click.stop="topicToggle(t)" x-bind:data-tip="topicSwTip(t)" data-tip-pos="top" x-bind:aria-label="topicSwTip(t)"><i class="tsw__k" aria-hidden="true"></i></button></td>
                   <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 사건형</span> <span class="ds-badge ds-badge--neutral" x-show="t.status==='paused'">일시정지</span></td>
                   <td class="text-ink" x-text="t.cluster_id"></td>
                   <td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td>
