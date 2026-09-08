@@ -264,6 +264,7 @@ class Store:
           status TEXT, target REAL, meta_target REAL, max_rounds INTEGER, round INTEGER NOT NULL DEFAULT 0,
           start_accuracy REAL, best_accuracy REAL, last_accuracy REAL,
           history TEXT, stop_reason TEXT, error TEXT, created_by TEXT,
+          golden_hashes TEXT,               -- 시작 시점 정답셋 해시(라운드마다 같은 셋으로 재평가)
           ts REAL, heartbeat REAL, finished REAL);
         -- 프롬프트 배포: 스냅샷 버전을 slug 에 pin · 외부가 Bearer 키로 당겨 씀(Atelier deployments 이식).
         CREATE TABLE IF NOT EXISTS deployments(
@@ -334,6 +335,8 @@ class Store:
             c.execute("ALTER TABLE board ADD COLUMN answer TEXT"); c.commit()          # 게시판 관리자 답변
         if "meta_target" not in [r[1] for r in c.execute("PRAGMA table_info(autopilot_runs)")]:
             c.execute("ALTER TABLE autopilot_runs ADD COLUMN meta_target REAL"); c.commit()   # 아이템 메타 일치율 목표
+        if "golden_hashes" not in [r[1] for r in c.execute("PRAGMA table_info(autopilot_runs)")]:
+            c.execute("ALTER TABLE autopilot_runs ADD COLUMN golden_hashes TEXT"); c.commit()  # 고정 정답셋
         if "answered_at" not in bcols:
             c.execute("ALTER TABLE board ADD COLUMN answered_at REAL"); c.commit()
 
@@ -1611,12 +1614,14 @@ class Store:
             "SELECT content_hash FROM eval_results WHERE run_id=?", (int(run_id),))}
 
     # ── 오토파일럿 런 · Atelier autopilot 이식 · supastore 와 동일 계약 ─────
-    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None) -> int:
+    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None,
+                         golden_hashes=None) -> int:
         c = self._conn()
-        cur = c.execute("INSERT INTO autopilot_runs(team,status,target,meta_target,max_rounds,round,created_by,ts) "
-                        "VALUES(?,?,?,?,?,0,?,?)",
+        cur = c.execute("INSERT INTO autopilot_runs(team,status,target,meta_target,max_rounds,round,created_by,"
+                        "golden_hashes,ts) VALUES(?,?,?,?,?,0,?,?,?)",
                         (team or "", "running", float(target), meta_target, int(max_rounds),
-                         created_by or "", time.time()))
+                         created_by or "", json.dumps(sorted(golden_hashes or []), ensure_ascii=False),
+                         time.time()))
         c.commit()
         return int(cur.lastrowid)
 
@@ -1638,18 +1643,24 @@ class Store:
         c.commit()
 
     _PILOT_COLS = ("id,team,status,target,max_rounds,round,start_accuracy,best_accuracy,"
-                   "last_accuracy,history,stop_reason,error,created_by,ts,heartbeat,finished,meta_target")
+                   "last_accuracy,history,stop_reason,error,created_by,ts,heartbeat,finished,meta_target,"
+                   "golden_hashes")
 
     def _pilot_row(self, r) -> dict:
         try:
             history = json.loads(r[9]) if r[9] else []
         except Exception:
             history = []
+        try:
+            frozen = json.loads(r[17]) if r[17] else []
+        except Exception:
+            frozen = []
         return {"id": r[0], "status": r[2] or "", "target": r[3], "max_rounds": int(r[4] or 0),
                 "round": int(r[5] or 0), "start_accuracy": r[6], "best_accuracy": r[7],
                 "last_accuracy": r[8], "history": history, "stop_reason": r[10] or "",
                 "error": r[11] or "", "created_by": r[12] or "", "ts": r[13],
-                "heartbeat": r[14], "finished": r[15], "meta_target": r[16]}
+                "heartbeat": r[14], "finished": r[15], "meta_target": r[16],
+                "golden_hashes": frozen}
 
     def autopilot_latest(self, team=None):
         c = self._conn()

@@ -48,18 +48,22 @@ def sync_learned():
 
 _LAST_EVAL_DETAIL = []                             # (폴백 캐시) 최근 평가 불일치 · 원천은 store reports
 
-def _scope_golden(rows, scope, st, team=None):
-    """평가 대상 콘텐츠 풀 필터: eval=평가용 홀드아웃만 / all=전체 정답셋."""
+def _scope_golden(rows, scope, st, team=None, hashes=None):
+    """평가 대상 콘텐츠 풀 필터: eval=평가용 홀드아웃만 / all=전체 정답셋.
+    hashes 를 주면 그 해시만 남긴다(오토파일럿 고정 정답셋 · 라운드마다 같은 셋으로 재평가)."""
+    from .store import content_hash
+    if hashes:
+        keep = set(hashes)
+        rows = [r for r in rows if content_hash(r.get("content") or {}) in keep]
     if scope != "eval" or not rows:
         return rows
-    from .store import content_hash
     try:
         pm = st.purpose_map(team) if hasattr(st, "purpose_map") else {}
     except Exception:
         pm = {}
     return [r for r in rows if pm.get(content_hash(r.get("content") or {}), "review") == "eval"]
 
-def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
+def eval_golden(team=None, model: str = "", scope: str = "all", hashes=None) -> dict:
     """프로세스 1 · 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용.
     건별 불일치를 _LAST_EVAL_DETAIL 로 보존 → 라벨 오류 후보 플래깅(Northcutt 2021: 기계 플래그→휴먼 확정)."""
     from .store import content_hash
@@ -69,7 +73,7 @@ def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
     rows = st.get_golden(team)
     if not rows:
         return {"ok": False, "error": "등록된 골든셋이 없습니다 · 팀 관리에서 등록하세요"}
-    rows = _scope_golden(rows, scope, st, team)
+    rows = _scope_golden(rows, scope, st, team, hashes)
     if not rows:
         return {"ok": False, "error": "평가용으로 지정된 콘텐츠의 정답이 없습니다 · 콘텐츠 관리 STEP 1에서 용도를 지정하세요"}
     from . import abtest
@@ -702,7 +706,7 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     return out
 
 
-def learning_batch(team=None, models=None, model: str = "") -> dict:
+def learning_batch(team=None, models=None, model: str = "", golden_hashes=None) -> dict:
     """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
     ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성 2%p 초과 악화·유해 미탐 악화·버킷 회귀
     중 하나라도 걸리면 개선을 반영하지 않고 이전 프롬프트를 유지한다(방향 검증 · 진동 방지)."""
@@ -711,14 +715,15 @@ def learning_batch(team=None, models=None, model: str = "") -> dict:
     except Exception:
         quest_bonus = None
     golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
+    gopt = {"hashes": golden_hashes} if golden_hashes else {}   # 오토파일럿: 런 시작 셋만 평가(새 골든은 다음 런부터)
     prev_learned = dict(PR.LEARNED)
     prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
-    eval_pre = eval_golden(team, model=model)            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
+    eval_pre = eval_golden(team, model=model, **gopt)    # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
     improve = meta_compile_run(team)
     changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
     delta = None
     if changed and eval_pre.get("ok"):
-        evalr = eval_golden(team, model=model)           # 개선 후 점수(같은 셋 · 같은 모델)
+        evalr = eval_golden(team, model=model, **gopt)   # 개선 후 점수(같은 셋 · 같은 모델)
         try:
             delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
         except (TypeError, ValueError):

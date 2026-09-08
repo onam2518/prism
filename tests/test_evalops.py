@@ -351,7 +351,7 @@ class TestAutopilot(unittest.TestCase):
         import prism.learnops as LO
         orig = LO.learning_batch
         ents = iter([0.5, 0.6, 0.7, 0.8, 0.9])
-        def fake(team=None, models=None, model=""):
+        def fake(team=None, models=None, model="", **kw):
             return {"ok": True, "grade_accuracy": 0.7, "eval_pre": {"grade_accuracy": 0.7},
                     "eval": {"ok": True, "grade_accuracy": 0.7, "ent_n": 10, "ent_f1": next(ents)},
                     "improve": {"reverted": False}, "prompt_snapshot": {"version": 1}}
@@ -370,7 +370,7 @@ class TestAutopilot(unittest.TestCase):
         import prism.learnops as LO
         orig = LO.learning_batch
         ents = iter([0.65, 0.75, 0.85])
-        def fake(team=None, models=None, model=""):
+        def fake(team=None, models=None, model="", **kw):
             return {"ok": True, "grade_accuracy": 0.95, "eval_pre": {"grade_accuracy": 0.9},
                     "eval": {"ok": True, "grade_accuracy": 0.95, "ent_n": 10, "ent_f1": next(ents)},
                     "improve": {"reverted": False}, "prompt_snapshot": {"version": 1}}
@@ -469,6 +469,55 @@ class TestAutopilotRoundMetrics(TestAutopilot):
         self.assertTrue(h[1]["metrics"]["passed"]); self.assertIn("overall", h[1]["metrics"])
         self.assertEqual(h[1]["metrics"]["cat_hf1"], 0.9)
         self.assertIn("전부 통과", run["stop_reason"])
+
+
+class TestAutopilotGoldenFreeze(TestAutopilot):
+    """정답셋 고정: 시작 시점 해시를 런에 남기고 라운드마다 그 셋만 재평가(늘어난 골든은 다음 런부터)."""
+
+    def test_run_stores_hashes_and_rounds_use_them(self):
+        from prism import learnops as LO
+        serve, st = self._with_serve()
+        hs = _seed_golden(st, 3)
+        seen = []
+        orig = LO.learning_batch
+        def fake(team=None, models=None, model="", golden_hashes=None):
+            seen.append(golden_hashes)
+            _seed_golden(st, 4)                       # 라운드 중 골든이 늘어도(build_golden_from_reviews 상응)
+            return {"ok": True, "grade_accuracy": 0.95, "eval_pre": {"grade_accuracy": 0.9},
+                    "improve": {"reverted": False}, "improve_delta": 0.05,
+                    "prompt_snapshot": {"version": 1}}
+        LO.learning_batch = fake
+        self.addCleanup(lambda: setattr(LO, "learning_batch", orig))
+        r = serve.autopilot_start(None, target=0.9, max_rounds=2)
+        self.assertEqual(r.get("golden_n"), 3)
+        self._wait(st)
+        self.assertEqual(st.autopilot_latest(None)["golden_hashes"], sorted(hs))   # 런 행에 고정 셋
+        self.assertEqual(seen[0], sorted(hs))                                      # 라운드에 그대로 전달
+        self.assertEqual(len(st.golden_hashes(None)), 4)                           # 새 골든은 쌓이되 평가엔 미포함
+        self.assertEqual(serve.autopilot_status(None)["run"]["golden_n"], 3)       # 화면엔 건수만
+
+    def test_golden_added_after_start_not_evaluated(self):
+        """learning_batch 는 고정 셋만 eval_golden 에 넘기고, 그 필터가 새 골든을 실제로 뺀다."""
+        from prism import learnops as LO
+        serve, st = self._with_serve()
+        hs = _seed_golden(st, 3)
+        seen = []
+        prev_rep = LO._LAST_LEARN_REPORT                                            # 실제 배치 호출 → 전역 리포트 누수 방지
+        self.addCleanup(lambda: setattr(LO, "_LAST_LEARN_REPORT", prev_rep))
+        orig_e, orig_i = LO.eval_golden, LO.meta_compile_run
+        def fake_eval(team=None, model="", scope="all", hashes=None):
+            seen.append(hashes)
+            return {"ok": True, "grade_accuracy": 0.9, "evaluated": len(hashes or [])}
+        LO.eval_golden, LO.meta_compile_run = fake_eval, (lambda team=None: {"ok": True, "results": {}})
+        self.addCleanup(lambda: (setattr(LO, "eval_golden", orig_e),
+                                 setattr(LO, "meta_compile_run", orig_i)))
+        new = [h for h in _seed_golden(st, 4) if h not in hs]                       # 시작 뒤 늘어난 골든 1건
+        LO.learning_batch(None, golden_hashes=sorted(hs))
+        self.assertEqual(seen[0], sorted(hs))
+        self.assertNotIn(new[0], seen[0])
+        rows = st.get_golden(None)
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(LO._scope_golden(rows, "all", st, None, sorted(hs))), 3)   # 필터가 실제로 뺀다
 
 
 class TestAutopilotStalled(TestAutopilot):

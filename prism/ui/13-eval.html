@@ -163,7 +163,7 @@
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                     <span class="ds-badge" x-bind:class="pilot.status==='running' ? (pilot.stalled ? 'ds-badge--warning' : 'ds-badge--intent') : (pilot.status==='done' ? 'ds-badge--success' : (pilot.status==='failed' ? 'ds-badge--error' : 'ds-badge--neutral'))"
                       x-text="pilot.status==='running' ? (pilot.stalled ? '중단됨(서버 재시작)' : ('라운드 ' + pilot.round + '/' + pilot.max_rounds + ' 진행 중')) : ({done:'완료',stopped:'중지',failed:'실패'}[pilot.status] || pilot.status)"></span>
-                    <span class="text-xs text-muted tnum" x-text="'목표 등급 ' + Math.round((pilot.target||0)*100) + '%' + (pilot.meta_target!=null ? ' · 메타 ' + Math.round(pilot.meta_target*100) + '%' : '')"></span>
+                    <span class="text-xs text-muted tnum" x-text="'목표 등급 ' + Math.round((pilot.target||0)*100) + '%' + (pilot.meta_target!=null ? ' · 메타 ' + Math.round(pilot.meta_target*100) + '%' : '') + (pilot.golden_n ? ' · 고정 정답셋 ' + pilot.golden_n + '건' : '')"></span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="pilot.status==='running' && !pilot.stalled" x-on:click="stopPilot()">중지</button>
                   </div>
                   <div class="tiles" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
