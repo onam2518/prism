@@ -20,7 +20,7 @@ class TestGoldenCreation(unittest.TestCase):
         self.addCleanup(lambda: setattr(serve, "_STORE", None))
         return serve, st
 
-    def _put_reviewed(self, st, title, verdicts, cats=("Sports",)):
+    def _put_reviewed(self, st, title, verdicts, cats=("Sports",), grade="G", reasons=()):
         """YELLOW 결과 + 검수자 판정 삽입 → content_hash 반환."""
         import json as _j
         import time as _t
@@ -28,12 +28,12 @@ class TestGoldenCreation(unittest.TestCase):
         content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문 " + title}
         ch = content_hash(content)
         im = {"summary": title, "entities": [], "intent": [], "content_category": list(cats)}
-        payload = {"quality_meta": {"review": "yellow", "finalGrade": "G", "reasons": []},
+        payload = {"quality_meta": {"review": "yellow", "finalGrade": grade, "reasons": list(reasons)},
                    "item_meta": im, "content_ref": dict(content)}
         c = st._conn()
         c.execute("INSERT OR REPLACE INTO results(content_hash,service,title,final_grade,reasons,item_meta,payload,created_at) "
                   "VALUES(?,?,?,?,?,?,?,?)",
-                  (ch, "뉴스", title, "G", "[]", _j.dumps(im), _j.dumps(payload), _t.time()))
+                  (ch, "뉴스", title, grade, _j.dumps(list(reasons)), _j.dumps(im), _j.dumps(payload), _t.time()))
         c.commit()
         now = _t.time()
         for rv, v in verdicts:
@@ -68,6 +68,25 @@ class TestGoldenCreation(unittest.TestCase):
         g = serve.build_golden_from_reviews(None)
         self.assertEqual(g["need_category"], 1)
         self.assertEqual(g["need_list"][0]["title"], "분류 없는 합의")
+
+    def test_r_grade_promoted_without_category(self):
+        """R 은 하네스가 아이템 메타를 폐기해 분류가 영구 공백이다(harness._assemble).
+        분류를 요구하면 기대 R 이 한 건도 골든에 못 들어가 유해 미탐률 분모가 늘 0(측정 불가)
+        → R 은 분류 요건 면제로 승격하고, 기대는 등급·사유만 담는다(빈 메타는 채점 분모 제외)."""
+        import json as _j
+        serve, st = self._with_store()
+        ch = self._put_reviewed(st, "유해 합의", [("A", "good"), ("B", "good")],
+                                cats=(), grade="R", reasons=["abuse"])
+        serve._agg_bump()
+        p0 = serve.promotion_pending(None)                             # 승격 게이트와 대기 분류 정합
+        self.assertEqual((p0["promote"], p0["no_cat"]), (1, 0))
+        g = serve.build_golden_from_reviews(None)
+        self.assertEqual((g["confirmed"], g["need_category"]), (1, 0))
+        self.assertIn(ch, st.golden_hashes())
+        exp = _j.loads(st._conn().execute(
+            "SELECT expected FROM golden WHERE content_hash=?", (ch,)).fetchone()[0])
+        self.assertEqual((exp["finalGrade"], exp["reasons"]), ("R", ["abuse"]))
+        self.assertNotIn("content_category", exp)     # 빈 메타 키를 넣으면 카테고리 F1 분모를 잠식한다
 
     def test_manual_golden_same_hash_not_overwritten(self):
         # P1-7: 같은 콘텐츠에 관리자 수동 골든이 있으면 검수 합의로 덮어쓰지 않는다(정답 소실 방지).
@@ -244,10 +263,10 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         PR.LEARNED = {"extract": "", "analyze": "", "review": "", "judge": ""}
         PR.LEARNED_BY_MODEL = {}
 
-        evals = [{"ok": True, "grade_accuracy": 0.9, "evaluated": 10},
-                 {"ok": True, "grade_accuracy": 0.5, "evaluated": 10}]      # 개선 후 대폭 악화
+        evals = [{"ok": True, "grade_accuracy": 0.9, "evaluated": 30},
+                 {"ok": True, "grade_accuracy": 0.5, "evaluated": 30}]      # 개선 후 대폭 악화(n=30 · CI 비중첩)
         def fake_eval(team=None, model="", scope="all"):
-            return evals.pop(0) if evals else {"ok": True, "grade_accuracy": 0.5, "evaluated": 10}
+            return evals.pop(0) if evals else {"ok": True, "grade_accuracy": 0.5, "evaluated": 30}
         def fake_improve(team=None):
             PR.LEARNED = {"extract": "", "analyze": "- 악화 지시", "review": "", "judge": ""}
             return {"ok": True, "results": {"analyze": {"directive": "- 악화 지시"}}}
@@ -260,6 +279,47 @@ class TestFeedbackOrchestrator(unittest.TestCase):
         self.assertEqual(PR.LEARNED["analyze"], "")                          # 원복됨
         self.assertEqual(rep["grade_accuracy"], 0.9)                         # 유지 프롬프트 기준 보고
         self.assertEqual((rep.get("eval_pre") or {}).get("grade_accuracy"), 0.9)
+
+    def test_learning_batch_concurrent_lock(self):
+        """동시 호출 시 하나만 실행되고 나머지는 즉시 skipped=batch_running(대기·큐잉 없음).
+        락 없이는 스케줄러·오토파일럿·수동 실행이 겹칠 때 LEARNED 가 서로 다른 배치의
+        결과로 뒤섞일 수 있다(회귀 방지)."""
+        import tempfile
+        import threading
+        import time as _t
+        from prism import learnops as LO
+        from prism import serve
+        from prism.store import Store
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+
+        orig_golden, orig_eval, orig_improve = (LO.build_golden_from_reviews, LO.eval_golden, LO.meta_compile_run)
+
+        def slow_golden(team=None):
+            _t.sleep(0.3)                      # 락을 쥔 채 대기 → 다른 스레드가 확실히 부딪히게
+            return {"confirmed": 0, "need_category": 0}
+        LO.build_golden_from_reviews = slow_golden
+        LO.eval_golden = lambda team=None, model="", scope="all": {"ok": False}
+        LO.meta_compile_run = lambda team=None: {"ok": True, "results": {}}
+        self.addCleanup(lambda: (setattr(LO, "build_golden_from_reviews", orig_golden),
+                                 setattr(LO, "eval_golden", orig_eval),
+                                 setattr(LO, "meta_compile_run", orig_improve)))
+
+        results = []
+        def call():
+            results.append(LO.learning_batch(None))
+        t1 = threading.Thread(target=call)
+        t2 = threading.Thread(target=call)
+        t1.start()
+        _t.sleep(0.05)                          # t1 이 먼저 락을 쥐도록
+        t2.start()
+        t1.join(5)
+        t2.join(5)
+
+        oks = [r for r in results if r.get("ok")]
+        skips = [r for r in results if r.get("skipped") == "batch_running"]
+        self.assertEqual(len(oks), 1)
+        self.assertEqual(len(skips), 1)
 
     def test_run_due_batch_scopes_to_quest_team(self):
         """퀘스트 도달 시 learn_team 으로 배치 실행 + 목표 소진. team 없이 돌리면 골든 승격·
@@ -448,6 +508,18 @@ class TestReviewerCalibration(unittest.TestCase):
         self.assertIsNone(row["gold_trend"])
 
 
+class TestCiOverlap(unittest.TestCase):
+    """ci_overlap: 두 이항 비율의 95% 신뢰구간 중첩 여부(동등 판정 helper)."""
+
+    def test_close_small_sample_overlaps(self):
+        from prism.learnops import ci_overlap
+        self.assertTrue(ci_overlap(0.90, 50, 0.87, 50))
+
+    def test_same_gap_large_sample_no_overlap(self):
+        from prism.learnops import ci_overlap
+        self.assertFalse(ci_overlap(0.90, 2000, 0.87, 2000))
+
+
 class TestBatchRegressions(unittest.TestCase):
     """강화된 회귀 게이트(_batch_regressions): 스칼라 2%p + 유해 미탐 + 버킷 10%p."""
 
@@ -478,6 +550,28 @@ class TestBatchRegressions(unittest.TestCase):
                "by_reason_bucket": {"ad": {"n": 10, "grade_acc": 0.9}}}
         post = {"grade_accuracy": 0.85, "harm_miss_rate": 0.0, "by_reason_bucket": {}}
         self.assertEqual(_batch_regressions(pre, post), ["정합성 -5.0% 악화"])
+
+    def test_small_sample_drop_within_ci_not_flagged(self):
+        """n=50 · 3%p 하락은 신뢰구간이 겹쳐(동등) 회귀로 보지 않는다."""
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.90, "harm_miss_rate": 0.0, "evaluated": 50, "by_reason_bucket": {}}
+        post = {"grade_accuracy": 0.87, "harm_miss_rate": 0.0, "evaluated": 50, "by_reason_bucket": {}}
+        self.assertEqual(_batch_regressions(pre, post), [])
+
+    def test_large_sample_drop_outside_ci_flagged(self):
+        """같은 3%p 하락도 n=2000 이면 신뢰구간이 안 겹쳐(유의미) 회귀로 잡는다."""
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.90, "harm_miss_rate": 0.0, "evaluated": 2000, "by_reason_bucket": {}}
+        post = {"grade_accuracy": 0.87, "harm_miss_rate": 0.0, "evaluated": 2000, "by_reason_bucket": {}}
+        self.assertEqual(_batch_regressions(pre, post), ["정합성 -3.0% 악화"])
+
+    def test_configured_grade_drop_widens_tolerance(self):
+        """regress_grade_drop 을 넓게 설정하면 기본(2%p)엔 걸릴 하락도 통과한다."""
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0, "by_reason_bucket": {}}
+        post = {"grade_accuracy": 0.85, "harm_miss_rate": 0.0, "by_reason_bucket": {}}   # -5%p
+        self.assertEqual(_batch_regressions(pre, post), ["정합성 -5.0% 악화"])           # 기본값 2%p 는 걸림
+        self.assertEqual(_batch_regressions(pre, post, grade_drop=0.10), [])            # 완화한 임계는 통과
 
     def test_learning_batch_reverts_on_harm_regression(self):
         """정확도가 올라도 유해 미탐이 악화되면 원복(단일 스칼라 가드의 사각 해소)."""

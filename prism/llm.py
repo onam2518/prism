@@ -124,7 +124,12 @@ class LLMResult:
           빼고 캐시 단가로 다시 더한다. 뒤집힌 값(캐시>입력)은 라우터 이상이므로 clamp.
         · 캐시 '쓰기'(cache_creation)는 제공자마다 프리미엄(예: 정가의 1.25배)이 있고 없고가
           갈리는데 Upstage 는 공시가 없다 → **지금은 정가(price_in)로 계산한다.** 단가가
-          확인되면 여기에 price_cache_write 분기를 추가할 것."""
+          확인되면 여기에 price_cache_write 분기를 추가할 것.
+        · price_in/price_out 이 None = **그 모델의 단가를 모른다** → None 을 돌려준다.
+          0 으로 두면 모델 비교에서 가장 싼 모델로 뽑히고, 설정 단가로 대신 계산하면
+          모든 모델이 같은 단가라 '비용'이 토큰 수 순위가 된다(둘 다 오답)."""
+        if self.price_in is None or self.price_out is None:
+            return None
         billed_in, cost = self.in_tok, 0.0
         if self.price_cache_read is not None and self.cache_read_tok > 0:
             cached = min(self.cache_read_tok, max(0, self.in_tok))
