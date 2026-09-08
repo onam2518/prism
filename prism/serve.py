@@ -1801,12 +1801,38 @@ def _g_prompt_preview(h, q):
         return {"ok": False, "error": str(e)[:300]}
 
 
-@_get_route("/prompt-snapshot", admin=True)          # 버전별 프롬프트 스냅샷(v 미지정 = 최신 · 관리자)
-def _g_prompt_snapshot(h, q):
+def _prompt_record(h, q):
+    """?run=평가 런 ID → 그 런이 시작 시 기록한 프롬프트 · ?v=N → 학습 스냅샷 · 둘 다 없으면 최신 스냅샷."""
+    run = (q.get("run") or [""])[0].strip()
     v = (q.get("v") or [""])[0].strip()
-    kind = f"prompt_snapshot_v{int(v)}" if v.isdigit() else "prompt_snapshot_latest"
-    snap = _report_get(kind, h._req_team())
+    if run.isdigit():
+        kind = f"eval_prompts_{int(run)}"
+    else:
+        kind = f"prompt_snapshot_v{int(v)}" if v.isdigit() else "prompt_snapshot_latest"
+    return _report_get(kind, h._req_team())
+
+
+@_get_route("/prompt-snapshot", admin=True)          # 프롬프트 기록 조회 · v=학습 버전 · run=평가 런이 실제로 쓴 것 · 미지정=최신(관리자)
+def _g_prompt_snapshot(h, q):
+    snap = _prompt_record(h, q)
     return {"ok": bool(snap), "snapshot": snap}
+
+
+@_get_route("/prompt-export", admin=True)            # 프롬프트 내려받기(.md) · run=평가 런 · v=학습 버전 · 없으면 현재 합성(model 지정 가능)
+def _g_prompt_export(h, q):
+    run = (q.get("run") or [""])[0].strip()
+    v = (q.get("v") or [""])[0].strip()
+    if run.isdigit() or v.isdigit():
+        snap = _prompt_record(h, q)
+        if not snap:
+            return {"ok": False, "error": (f"평가 런 #{run} 의 프롬프트 기록이 없습니다(기록 기능 이전 런)" if run.isdigit()
+                                           else f"프롬프트 스냅샷 v{v} 이 없습니다 · 학습 반영 이력을 확인하세요")}
+        title, name = ((f"평가 런 #{run}", f"prism_prompt_run{run}.md") if run.isdigit()
+                       else (f"학습 버전 v{v}", f"prism_prompt_v{v}.md"))
+    else:
+        snap = LO.compose_prompts(h._req_team(), (q.get("model") or [""])[0])
+        title, name = f"현재 합성 · v{snap.get('version')} 초안", "prism_prompt_current.md"
+    h._send_file(LO.prompt_markdown(snap, title).encode("utf-8"), "text/markdown; charset=utf-8", name)
 
 
 @_get_route("/learn-report")                         # 최근 배치 결과(GET) · ?v=N 이면 그 버전 리포트

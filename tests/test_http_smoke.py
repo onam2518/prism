@@ -190,6 +190,12 @@ class TestButtonsEndToEnd(unittest.TestCase):
         c = self.ok("/config", {"meta_call_models": {"category": "gpt-5.4"}, "meta_four_calls": True})
         self.assertEqual((c.get("metaCallModels") or {}).get("category"), "gpt-5.4")
         self.ok("/config", {"meta_call_models": {}})
+        # 프롬프트 내려받기: 현재 합성(.md · 4호출 + ③ 서비스별 전문) · 없는 버전은 JSON 오류
+        md = self.ok("/prompt-export?model=solar-pro2")
+        for needle in ("## ① 리드문 · solar-pro2", "### system · 스포츠", "경기 프리뷰", "### user 템플릿", "## ④ 카테고리"):
+            self.assertIn(needle, md)
+        self.assertFalse(self.ok("/prompt-export?v=999")["ok"])
+        self.assertFalse(self.ok("/prompt-snapshot?run=999")["ok"])
 
 
     # ── e2e: 콘텐츠 추가 → 검수 합의·교정 → 학습 반영 → 정답셋 승격 → 평가 ──
@@ -226,6 +232,12 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIn(fixed, sft_text)              # 교정 리드문이 SFT 정답으로 반영
         # 승격된 정답셋으로 평가 실행(모의)
         ev = self.ok("/eval-golden", {"model": "", "scope": "all"})
+        run = self.ok("/eval-run-start", {"model": "", "scope": "all"})   # 런 시작 = 실제로 쓴 프롬프트 기록
+        self.assertTrue(run.get("ok"), run)
+        snap = self.ok(f"/prompt-snapshot?run={run['id']}")["snapshot"]
+        self.assertEqual(snap["run_id"], run["id"])
+        self.assertIn("뉴스", snap["calls"]["intent"]["by_service"])
+        self.assertIn(f"# 프리즘 추출 프롬프트 · 평가 런 #{run['id']}", self.ok(f"/prompt-export?run={run['id']}"))
         self.assertTrue(ev.get("ok"), ev)
         self.assertGreaterEqual(ev.get("evaluated", 0), 1)
         ld = self.ok("/learn-data")

@@ -8,7 +8,7 @@
           <button type="button" x-bind:class="dictTab==='entity'?'sel':''" x-on:click="dictTab='entity'; loadEntdict()">엔티티</button>
           <button type="button" x-bind:class="dictTab==='policy'?'sel':''" x-on:click="dictTab='policy'">정책</button>
           <button type="button" x-bind:class="dictTab==='prompt'?'sel':''" x-on:click="dictTab='prompt'; loadStageDrafts()">메타 프롬프트</button>
-          <button type="button" x-bind:class="dictTab==='engine'?'sel':''" x-on:click="dictTab='engine'; syncWrapDraft(); loadPreview(); loadPromptDefaults()">프롬프트 엔진</button>
+          <button type="button" x-bind:class="dictTab==='engine'?'sel':''" x-on:click="dictTab='engine'; syncWrapDraft(); loadPreview(); loadPromptDefaults(); loadPromptSources()">프롬프트 엔진</button>
         </div>
       </div>
       </template>
@@ -155,20 +155,28 @@
                 <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="wrapMsg"></span>
               </div>
             </div></section>
-          <section class="panel" data-fn><div class="panel-hd"><b>최종 프롬프트 미리보기</b><span class="meta">호출×모델×서비스 조합의 실제 합성 결과</span></div>
+          <section class="panel" data-fn><div class="panel-hd"><b>최종 프롬프트 미리보기</b><span class="meta">지금 합성되는 프롬프트 · 학습 버전·평가 런이 실제로 쓴 프롬프트 · 내려받기</span></div>
             <div class="panel-bd">
               <div class="filterbar" style="margin:0 0 10px">
-                <span class="selctl"><span class="selctl__lbl">모델</span>
+                <span class="selctl" data-tip="현재 합성 = 지금 실행하면 쓰이는 프롬프트 · 학습 버전 = 학습 반영 때 남긴 스냅샷 · 평가 런 = 그 런이 시작 시점에 실제로 쓴 프롬프트" data-tip-pos="top"><span class="selctl__lbl">원천</span>
+                  <select class="field" x-model="pvSrc" x-on:change="loadPvSource()">
+                    <option value="">현재 합성</option>
+                    <template x-for="v in pvVersions" x-bind:key="'pvv'+v"><option x-bind:value="'v:'+v" x-text="'학습 버전 v'+v"></option></template>
+                    <template x-for="r in evalRuns" x-bind:key="'pvr'+r.id"><option x-bind:value="'run:'+r.id" x-text="'평가 런 #'+r.id+' · '+(r.model||'설정 모델')+' · '+fmtTs(r.ts)"></option></template>
+                  </select></span>
+                <span class="selctl" x-show="!pvSrc"><span class="selctl__lbl">모델</span>
                   <x-modelpick key="pv" value="pvModel" set="pvModel=$v; loadPreview()" options="availableModels" width="212px"></x-modelpick></span>
                 <span class="selctl"><span class="selctl__lbl">호출</span>
                   <select class="field" x-model="pvCall" x-on:change="loadPreview()">
                     <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'pc'+cl"><option x-bind:value="cl" x-text="callLabel(cl)"></option></template>
                   </select></span>
-                <span class="selctl"><span class="selctl__lbl">서비스</span>
+                <!-- ①·②·④ 는 서비스와 무관한 단일 프롬프트 · ③ 인텐트만 서비스별 분기절이 달라 그때만 노출 -->
+                <span class="selctl" x-show="pvCall==='intent'" data-tip="③ 인텐트만 콘텐츠 서비스에 따라 '[서비스 카테고리 분류값]' 절이 달라집니다 · 나머지 호출은 서비스와 무관" data-tip-pos="top"><span class="selctl__lbl">서비스</span>
                   <select class="field" x-model="pvService" x-on:change="loadPreview()"><template x-for="g in groups" x-bind:key="'pg'+g"><option x-bind:value="g" x-text="g"></option></template></select></span>
-                <span class="text-xs text-muted" x-text="pvData ? ('계열 ' + pvData.family) : ''"></span>
+                <span class="text-xs text-muted" x-text="pvSrc ? (pvStored ? ('v' + pvStored.version + ' · ' + fmtTs(pvStored.ts)) : pvMsg) : (pvData ? ('계열 ' + pvData.family) : '')"></span>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-left:auto" x-on:click="downloadPrompt(pvSrcParams())" data-tip="선택한 원천의 4호출 전체 system·user 템플릿을 한 파일(.md)로 · ③ 인텐트는 서비스별 전문 포함" data-tip-pos="top">내려받기(.md)</button>
               </div>
-              <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="pvModel"></span></div><textarea readonly spellcheck="false" x-bind:value="pvData ? pvData.system : '모델·호출을 선택하면 합성 결과가 표시됩니다'"></textarea></div>
+              <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="pvStageModel"></span></div><textarea readonly spellcheck="false" x-bind:value="pvSystem"></textarea></div>
               <div class="codeblock" style="margin-top:10px"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>user<span class="codeblock__stage">입력 템플릿</span></div><textarea readonly spellcheck="false" style="min-height:90px" x-bind:value="pvData ? pvData.user : ''"></textarea></div>
             </div></section>
           <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통 · 선택 시 즉시 저장</span></div>

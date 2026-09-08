@@ -157,6 +157,11 @@ def eval_run_start(team=None, model: str = "", scope: str = "all", created_by: s
     if not hasattr(st, "eval_run_create"):
         return {"ok": False, "error": "스토어가 평가 런을 지원하지 않습니다"}
     run_id = st.eval_run_create(team, used_model, scope, len(rows), created_by=created_by or "")
+    try:                                         # 이 런이 실제로 쓰는 프롬프트를 시작 시점에 기록(내려받기·재현 근거)
+        from . import learnops as LO
+        _SV._report_save(f"eval_prompts_{run_id}", {**LO.compose_prompts(team, used_model), "run_id": run_id}, team)
+    except Exception as e:
+        print(f"  [eval-run] #{run_id} 프롬프트 기록 실패: {e}")
     _launch(run_id, rows, llm, team, _zero_metrics())
     return {"ok": True, "id": run_id, "total": len(rows)}
 
