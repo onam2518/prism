@@ -150,6 +150,40 @@ class TestContentPurpose(unittest.TestCase):
         scoped = LO._scope_golden(rows, "eval", st)
         self.assertEqual([r["content"]["title"] for r in scoped], ["홀드아웃"])
 
+    def test_learned_by_stage_excludes_eval_holdout_feedback(self):
+        """평가용 콘텐츠의 검수 피드백은 프롬프트 개선에 흘러들면 안 된다(평가셋 누수)."""
+        import time as _t
+        _, st = self._with_store()
+        h_rev, h_eval = self._put(st, "검수용"), self._put(st, "평가용")
+        st.set_purpose([h_eval], "eval")
+        st.save_feedback(h_rev, "s", "검수용", "bad", "analyze", "검수셋 지적", _t.time(), reviewer="A")
+        st.save_feedback(h_eval, "s", "평가용", "bad", "analyze", "평가셋 지적", _t.time(), reviewer="A")
+        learned = st.learned_by_stage()
+        self.assertIn("검수셋 지적", learned.get("analyze", ""))
+        self.assertNotIn("평가셋 지적", learned.get("analyze", ""))
+
+    def test_learning_batch_evaluates_on_eval_scope(self):
+        """배치(=오토파일럿 라운드) 평가는 홀드아웃으로 · 지정이 없으면 전체로 폴백."""
+        from prism import learnops as LO
+        from prism.store import content_hash
+        _, st = self._with_store()
+        c = {"displayServiceName": "뉴스", "title": "홀드아웃", "subtitle": "", "body": "b"}
+        h = content_hash(c)
+        st.upsert_golden(h, c, {"finalGrade": "G"})
+        st.set_purpose([h], "eval")
+        seen = []
+        orig_e, orig_i = LO.eval_golden, LO.meta_compile_run
+        LO.eval_golden = lambda team=None, model="", scope="all": (
+            seen.append(scope) or {"ok": True, "grade_accuracy": 0.9, "evaluated": 1})
+        LO.meta_compile_run = lambda team=None: {"ok": True, "results": {}}
+        self.addCleanup(lambda: (setattr(LO, "eval_golden", orig_e), setattr(LO, "meta_compile_run", orig_i)))
+        LO.learning_batch(None)
+        self.assertEqual(seen, ["eval"])
+        st.set_purpose([h], "review")                        # 홀드아웃 지정이 없는 팀은 기존대로 전체 평가
+        seen.clear()
+        LO.learning_batch(None)
+        self.assertEqual(seen, ["all"])
+
 
 class TestEvalJudgment(unittest.TestCase):
     """평가 건별 판정(집단 지성): 1인 1표 upsert · 합의 → 정답 교정 필요 플래그."""
