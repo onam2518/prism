@@ -149,6 +149,15 @@ alter table public.prism_eval_results enable row level security;
 기존 즉시 평가(`/eval-golden`)와 채점 규칙 동일(abtest.score 단일 소스) · 런 영속화로
 이력 비교·서버 재시작 후 재개를 더한다. 설계 원천: Atelier(구 PromptForge) eval_runs/eval_run_results.
 
+**기준 지문·중복 시작(`migrations/20260906_eval_run_basis_fingerprint.sql`, 2026-09-06 · 적용 전)**:
+
+- `basis_fingerprint`은 시작 시 실제 골든 입력·expected·scope/MAX_ROWS 결과를 SHA-256으로 고정한다.
+  기존 런의 빈 값은 표시·조회는 호환하지만 재개하지 않으며, 새 평가 시작을 요구한다.
+- `prism_eval_run_start_or_reuse(...)` RPC는 같은 팀·모델·범위·지문의 `running` 런을 advisory lock 안에서
+  재사용한다. `p_new_experiment=true`은 의도적으로 별도 런을 만든다.
+- Supabase 백엔드는 이 RPC가 없는 경우 읽기→삽입 폴백을 하지 않고 시작을 거절한다. 운영 적용은 이 SQL을
+  먼저 migration으로 실행한 뒤, 테스트 전용 팀에서 병렬 시작·재개를 확인하는 것을 전제로 한다.
+
 **루브릭 진단(`prism_eval_rubric` 마이그레이션, 2026-07-18 · 적용됨 · Atelier rubric-judge 이식)**:
 ```sql
 alter table public.prism_eval_runs
@@ -471,4 +480,3 @@ alter table public.prism_mq_stage enable row level security;   -- 정책 없음 
 
 > 적용: 미적용(2026-09-02 기준). 표가 없으면 조회 화면이 "스테이징 조회 실패 · 표 생성 여부 확인" 안내를 띄우고
 > 다른 기능은 영향 없다.
-

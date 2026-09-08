@@ -122,7 +122,8 @@ class TestEvalRunFlow(unittest.TestCase):
         serve, evalops, st = self._with_serve()
         hashes = _seed_golden(st, 4)
         # 서버 재시작으로 유실된 런 흉내: running 행 + 앞 2건만 결과 존재 · 스레드 없음
-        rid = st.eval_run_create("", "", "all", 4)
+        rid = st.eval_run_create("", "", "all", 4,
+                                 basis_fingerprint=evalops._golden_fingerprint(st.get_golden(None)))
         st.eval_results_add(rid, [{"hash": h, "title": "", "expected": {"finalGrade": "G", "reasons": []},
                                    "got": {"finalGrade": "G", "reasons": []}, "passed": True, "error": ""}
                                   for h in hashes[:2]])

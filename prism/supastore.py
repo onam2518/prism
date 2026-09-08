@@ -64,7 +64,8 @@ class SupabaseStore:
     # ── REST 헬퍼 ──────────────────────────────────────────────────────────
     def _req(self, method: str, table: str, *, query: str = "", body=None, prefer: str = "") -> list:
         # public 스키마(기본 노출) + prism_ 접두사 → 노출 설정 불필요.
-        url = f"{self.base}/prism_{table}" + (f"?{query}" if query else "")
+        endpoint = table if table.startswith("rpc/") else f"prism_{table}"
+        url = f"{self.base}/{endpoint}" + (f"?{query}" if query else "")
         headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
@@ -2061,13 +2062,28 @@ class SupabaseStore:
         return out
 
     # ── 평가 런(이력) · Atelier eval_runs 이식 · SQLite Store 와 동일 계약 ──
-    def eval_run_create(self, team, model, scope, total, created_by="") -> int:
+    def eval_run_create(self, team, model, scope, total, created_by="", basis_fingerprint="") -> int:
         row = {"model": model or "", "scope": scope or "all", "status": "running",
                "cursor": 0, "total": int(total), "created_by": created_by or ""}
+        if basis_fingerprint:                       # 구 Supabase 스키마의 직접 생성 호출은 계속 호환
+            row["basis_fingerprint"] = basis_fingerprint
         if team:
             row["team_id"] = team
         rows = self._req("POST", "eval_runs", body=[row], prefer="return=representation")
         return int(rows[0]["id"]) if rows else 0
+
+    def eval_run_start_or_reuse(self, team, model, scope, total, basis_fingerprint,
+                                created_by="", new_experiment=False) -> dict:
+        """PostgreSQL RPC만 사용: 병렬 POST의 조회-삽입 경쟁을 허용하지 않는다."""
+        row = self._req("POST", "rpc/prism_eval_run_start_or_reuse", body={
+            "p_team": team, "p_model": model or "", "p_scope": scope or "all",
+            "p_total": int(total), "p_created_by": created_by or "",
+            "p_basis_fingerprint": basis_fingerprint or "",
+            "p_new_experiment": bool(new_experiment),
+        })
+        if not isinstance(row, dict) or not int(row.get("id") or 0):
+            raise RuntimeError("supabase rpc prism_eval_run_start_or_reuse 응답이 올바르지 않습니다")
+        return {"id": int(row["id"]), "reused": bool(row.get("reused"))}
 
     def eval_run_update(self, run_id, team=None, **fields):
         """부분 갱신(status·cursor·total·metrics·error·finished·rubric_*). finished 는 epoch→ISO."""
@@ -2092,7 +2108,8 @@ class SupabaseStore:
                 "created_by": r.get("created_by") or "",
                 "ts": _epoch(r.get("created_at")), "finished": _epoch(r.get("finished_at")),
                 "rubric_status": r.get("rubric_status") or "",
-                "rubric_cursor": int(r.get("rubric_cursor") or 0), "rubric": r.get("rubric")}
+                "rubric_cursor": int(r.get("rubric_cursor") or 0), "rubric": r.get("rubric"),
+                "basis_fingerprint": r.get("basis_fingerprint") or ""}
 
     def eval_run_get(self, run_id, team=None):
         # (id, team) 복합 필터: 타 팀 평가런 열람 차단(evalops 의 모든 흐름이 이 게이트를 먼저 통과)
