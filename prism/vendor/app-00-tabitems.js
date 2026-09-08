@@ -106,7 +106,7 @@ window.PRISM_APP_PARTS.push(() => ({
       // 토픽 스튜디오: 자연어+차원으로 조건 기반 토픽을 정의·미리보기·저장 + 자동 클러스터링 튜닝
       studio: { name: '', prompt: '', cats: [], intents: [], keywords: [], srcs: [], eattrs: [], feed: {}, kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [], srcs: [] }, neg: { cats: [], intents: [], keywords: [], srcs: [] } },
       // 말로 만들기(기본 화면): 대화 턴(문장 · 해석 칩 · 건수 · 표본) · 뺀 칩은 다음 해석에서 되살리지 않는다
-      talk: { turns: [], input: '', busy: false, dropped: [] }, studioManual: false,
+      talk: { turns: [], input: '', busy: false, dropped: [], help: false }, studioManual: false,
       topicStatus: 'all',                   // 현황 상태 필터: all(활성 · 정지 · 초안) | warn(정체 · 급감) | archived(보관)
       topicPage: 'create',                  // 토픽 하위 탭: create(만들기 · 기본) | board(현황 · 대시보드)
       topicQuery: '',                       // 현황 검색: 이름 · 문장 · 엔티티 · 묶음 ID

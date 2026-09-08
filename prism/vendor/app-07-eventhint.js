@@ -108,11 +108,11 @@ window.PRISM_APP_PARTS.push(() => ({
         this.talk.busy = false;
       },
       async talkDrop(c) { this._chipRemove(c); this.talk.dropped.push(c); await this._talkRefresh(); },
-      talkReset() { this.talk = { turns: [], input: '', busy: false, dropped: [] }; this.studioReset(); },
+      talkReset() { this.talk = { turns: [], input: '', busy: false, dropped: [], help: false }; this.studioReset(); },
       talkEdit(g) {
         this.studioEdit(g); this.studioManual = false;
         const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
-        this.talk = { turns: [{ text: def.prompt || g.prompt || g.name || '', chips: [], n: g.core_count || 0, prev: null, samples: [], via: '', model: '', miss: '', neg_n: 0, feed_n: 0 }], input: '', busy: false, dropped: [] };
+        this.talk = { turns: [{ text: def.prompt || g.prompt || g.name || '', chips: [], n: g.core_count || 0, prev: null, samples: [], via: '', model: '', miss: '', neg_n: 0, feed_n: 0 }], input: '', busy: false, dropped: [], help: false };
         this._talkRefresh();
       },
       async talkSave(status) {
