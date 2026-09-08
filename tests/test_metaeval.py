@@ -1,7 +1,8 @@
-"""메타 채점(metaeval): 카테고리 계층 F1 · 엔티티 정규화 F1 · 리드문 2-gram · 종합·게이트 · 진단·쿡북 · 반영 라우트."""
+"""메타 채점(metaeval): 카테고리 계층 F1 · 엔티티 정규화 F1 · 리드문 유사도 · 종합·게이트 · 진단·쿡북 · 반영 라우트."""
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -67,6 +68,52 @@ class TestMetaScore(unittest.TestCase):
         self.assertEqual(sum(1 for x in d if x["field"] == "category"), 1)   # 혼동으로 잡힌 카테고리는 누락으로 중복 안 함
         for x in d:
             self.assertIn(x["stage"], ("extract", "analyze", "review")); self.assertTrue(x["directive"] and x["id"])
+
+
+class TestSummarySimilarity(unittest.TestCase):
+    """리드문: 임베딩이 있으면 코사인(어순 달라도 높은 점수) · 없으면 2-gram + 낮은 게이트."""
+    PAIR = ("정부가 내년 예산안을 국회에 제출했다", "국회에 제출된 것은 정부의 내년 예산안이다")
+
+    @staticmethod
+    def _bag_embed(texts):
+        """어순을 무시하는 가짜 임베딩(글자 가방) · 실호출 없이 의미 비교 대역."""
+        out = []
+        for t in texts:
+            v = [0.0] * 64
+            for ch in "".join(str(t).split()):
+                v[ord(ch) % 64] += 1.0
+            out.append(v)
+        return out
+
+    def tearDown(self):
+        ME.EMBED_FN = None
+
+    def _report(self):
+        acc = {}
+        ME.meta_tally(acc, {"summary": self.PAIR[0]}, {"item_meta": {"summary": self.PAIR[1]}})
+        return ME.meta_report(acc)
+
+    def test_embedding_cosine_scores_paraphrase_high(self):
+        ME.EMBED_FN = self._bag_embed
+        r = self._report()
+        self.assertEqual(r["summary_sim_method"], "embed_cosine")
+        self.assertEqual(r["summary_n"], 1)
+        self.assertGreater(r["summary_sim"], 0.8)                 # 2-gram 으로는 0.6 미만인 같은 쌍
+        self.assertLess(ME.summary_sim(*self.PAIR), 0.6)
+
+    def test_embed_failure_falls_back(self):
+        ME.EMBED_FN = lambda texts: (_ for _ in ()).throw(RuntimeError("네트워크"))
+        self.assertEqual(self._report()["summary_sim_method"], "bigram_f1")
+
+    def test_no_key_uses_bigram_and_lower_gate(self):
+        with mock.patch.dict(os.environ, {"PRISM_API_KEY": "", "UPSTAGE_API_KEY": ""}):
+            r = self._report()                                    # 무키 → mock 클라이언트 → 폴백(오프라인 안전)
+        self.assertEqual(r["summary_sim_method"], "bigram_f1")
+        self.assertEqual(r["summary_sim"], round(ME.summary_sim(*self.PAIR), 4))
+        m = {"grade_accuracy": 0.9, "summary_n": 1, "summary_sim": 0.45, "summary_sim_method": "bigram_f1"}
+        self.assertEqual(ME.overall(m, 0.85, 0.6)["gate_fails"], [])                     # 리드문만 0.4 게이트
+        self.assertEqual(ME.overall({**m, "summary_sim_method": "embed_cosine"}, 0.85, 0.6)["gate_fails"],
+                         ["summary_sim"])                                                # 코사인이면 0.6 그대로
 
 
 class TestCookbookRoute(unittest.TestCase):

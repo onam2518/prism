@@ -511,7 +511,7 @@ def _compare_run_model(item, rows, cfg, progress=None):
     keep = ("grade_accuracy", "reason_jaccard", "reason_exact_match", "empty_rate", "harm_miss_rate",
             "cost_usd", "tokens", "latency_p50_ms", "latency_p95_ms",
             "intent_n", "intent_f1", "cat_n", "cat_f1", "cat_hf1", "ent_n", "ent_f1", "ent_f1_partial",
-            "summary_n", "summary_sim")
+            "summary_n", "summary_sim", "summary_sim_method")
     return {"model": model, "route": route, "real": (not llm.mock), "n": len(rows),
             **{k: m.get(k) for k in keep}, **ME.overall(m, gate, meta_gate), "issues": ME.diagnose(m)}, outs
 

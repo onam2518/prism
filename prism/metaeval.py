@@ -1,6 +1,7 @@
 """아이템 메타 채점 · 문제점 진단 · 쿡북(진단 → 프롬프트 지시) · 표준 라이브러리만.
 
-등급·사유·인텐트만 재던 평가에 카테고리(계층 F1) · 엔티티(정규화 F1) · 리드문(문자 2-gram F1)을
+등급·사유·인텐트만 재던 평가에 카테고리(계층 F1) · 엔티티(정규화 F1) · 리드문(임베딩 코사인 ·
+무키·오류면 문자 2-gram F1)을
 더한다. 근거는 docs/EVAL_META_SIMILARITY.md. abtest.score 가 행마다 meta_tally 를 부르고
 마지막에 meta_report 를 합친다(인텐트 계수와 같은 구조).
 """
@@ -13,7 +14,8 @@ from collections import Counter
 from . import dictionaries as D
 from .entdict import normalize_name
 
-# ponytail: 리드문 유사도는 문자 2-gram F1(표준 라이브러리) · 의미 비교가 더 필요하면 embed.cosine 으로 올린다
+EMBED_FN = None                  # 리드문 임베딩 주입 훅([텍스트] → [벡터]) · None 이면 실키가 있을 때만 클라이언트 생성
+SUMMARY_FALLBACK_GATE = 0.4      # 2-gram 폴백일 때 리드문에만 쓰는 게이트 · 메타 게이트(0.6)는 코사인 기준
 _ENT_STRIP = re.compile(r"\(주\)|㈜|주식회사|\([^)]*\)|[\s·,.'\"]+")
 
 
@@ -67,10 +69,39 @@ def _bigrams(s: str) -> Counter:
 
 
 def summary_sim(a: str, b: str) -> float:
+    """폴백: 문자 2-gram F1. 어순만 다른 동의문에 박하다(그래서 게이트도 SUMMARY_FALLBACK_GATE)."""
     x, y = _bigrams(a), _bigrams(b)
     if not (x or y):
         return 1.0
     return 2 * sum((x & y).values()) / (sum(x.values()) + sum(y.values()))
+
+
+def _auto_embed(texts: list):
+    """실키가 있을 때만 임베딩. mock(키 없음)이면 None → 2-gram 폴백."""
+    from .config import Config
+    from .embed import EmbeddingClient
+    emb = EmbeddingClient(cache_path=Config.load().emb_cache_path)
+    if emb.mock:                                 # mock 은 해싱 임베딩이라 의미 비교가 아니다(topicops 와 같은 규칙)
+        return None
+    vecs = [emb.embed(t, is_query=False) for t in texts]
+    emb.flush()                                  # 같은 정답셋을 라운드마다 다시 재는 오토파일럿의 재호출을 줄인다
+    return vecs
+
+
+def summary_sims(pairs: list) -> tuple:
+    """(기대, 산출) 리드문 쌍 목록 → (유사도 목록, 방법). 평가 1회분 리드문을 한 번에 모아 넘긴다.
+    ponytail: EmbeddingClient 가 단건 API 라 호출 수는 문장 수 그대로(캐시로 중복만 흡수) ·
+    배치 입력이 필요하면 embed._api_embed 에 input 리스트를 먼저 넣는다."""
+    texts = [t for p in pairs for t in p]
+    try:
+        vecs = (EMBED_FN or _auto_embed)(texts) if texts else None
+    except Exception:                            # 무키·네트워크·한도 오류로 평가가 멈추지 않게
+        vecs = None
+    if vecs and len(vecs) == len(texts):
+        from .embed import cosine
+        return ([min(1.0, max(0.0, cosine(vecs[i], vecs[i + 1]))) for i in range(0, len(texts), 2)],
+                "embed_cosine")
+    return [summary_sim(a, b) for a, b in pairs], "bigram_f1"
 
 
 def _im(out) -> dict:
@@ -118,10 +149,7 @@ def meta_tally(acc: dict, exp: dict, out) -> None:
         _bump(acc.setdefault("ent_spurious", {}), ge - we)
     ws = str(exp.get("summary") or "").strip()
     if ws:
-        s = summary_sim(ws, im.get("summary") or "")
-        acc["sum_n"] = acc.get("sum_n", 0) + 1
-        acc["sum_sim_sum"] = acc.get("sum_sim_sum", 0.0) + s
-        acc["sum_low"] = acc.get("sum_low", 0) + int(s < 0.3)
+        acc.setdefault("sum_pairs", []).append((ws, str(im.get("summary") or "")))
 
 
 def _prf(d: dict) -> dict:
@@ -137,7 +165,10 @@ def _top(d: dict, n: int = 10) -> list:
 
 
 def meta_report(acc: dict) -> dict:
-    cn, en, sn = acc.get("cat_n", 0), acc.get("ent_n", 0), acc.get("sum_n", 0)
+    cn, en = acc.get("cat_n", 0), acc.get("ent_n", 0)
+    pairs = acc.get("sum_pairs") or []
+    sims, sim_method = summary_sims(pairs)       # 리드문은 여기서 한 번에(임베딩 호출을 한 지점으로)
+    sn = len(pairs)
     r4 = lambda s, n: round(s / n, 4) if n else 0
     return {
         "cat_n": cn, "cat_f1": r4(acc.get("cat_f1_sum", 0.0), cn), "cat_hf1": r4(acc.get("cat_hf1_sum", 0.0), cn),
@@ -148,7 +179,8 @@ def meta_report(acc: dict) -> dict:
         "ent_n": en, "ent_f1": r4(acc.get("ent_f1_sum", 0.0), en), "ent_f1_partial": r4(acc.get("ent_pf1_sum", 0.0), en),
         "ent_missed": [{"name": k, "n": n} for k, n in _top(acc.get("ent_missed") or {})],
         "ent_spurious": [{"name": k, "n": n} for k, n in _top(acc.get("ent_spurious") or {})],
-        "summary_n": sn, "summary_sim": r4(acc.get("sum_sim_sum", 0.0), sn), "summary_low_n": acc.get("sum_low", 0),
+        "summary_n": sn, "summary_sim": r4(sum(sims), sn), "summary_low_n": sum(1 for s in sims if s < 0.3),
+        "summary_sim_method": sim_method,        # embed_cosine · bigram_f1(게이트·툴팁 표기 근거)
     }
 
 
@@ -168,7 +200,10 @@ def overall(m: dict, grade_gate: float, meta_gate: float) -> dict:
             continue
         v = float(m.get(k) or 0)
         s += w * v; tot += w
-        if v < (grade_gate if k == "grade_accuracy" else meta_gate):
+        g = grade_gate if k == "grade_accuracy" else meta_gate
+        if k == "summary_sim" and m.get("summary_sim_method") == "bigram_f1":
+            g = SUMMARY_FALLBACK_GATE            # 2-gram 은 어순 차이에 박하다 → 리드문만 낮은 선
+        if v < g:
             fails.append(k)
     return {"overall": round(s / tot, 4) if tot else 0, "gate_fails": fails, "passed": not fails}
 
