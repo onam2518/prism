@@ -339,7 +339,8 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertGreater(td.get("n_contents") or 0, 0, "선행 테스트가 콘텐츠를 적재해야 함")
         # 카탈로그·설정·사용자 정의 컨테이너 노출(생성 폼 원천)
         self.assertIn("catalog", td)
-        self.assertEqual(set(td["catalog"]), {"intents", "cats", "keywords", "eattrs"})
+        self.assertEqual(set(td["catalog"]), {"intents", "cats", "keywords", "eattrs",
+                                                "srcs", "types", "creators", "svc_cats", "rules", "tags", "flags"})   # 출처 축 · 원천 필드 사전(스펙 132112)
         self.assertEqual(set(td.get("settings") or {}), {"co_min", "entity_min"})
         self.assertIsInstance(td.get("customDefs"), list)
         n = td["n_contents"]
@@ -358,8 +359,8 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertGreaterEqual(kinds.count("related"), 2)          # 선택값마다 관련 묶음
         # 자연어 제안: 필수/선택(req) 포함 반환 · 모델 지정 시 LLM 개입(mock 은 휴리스틱 폴백)
         sg = self.ok("/topic-studio", {"action": "suggest", "text": "심층 분석 콘텐츠", "model": "solar-pro2"})
-        self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords", "eattrs", "req", "neg"})
-        self.assertEqual(set(sg["suggest"]["neg"]), {"cats", "intents", "keywords"})
+        self.assertEqual(set(sg["suggest"]), {"cats", "intents", "keywords", "eattrs", "req", "neg", "srcs", "feed"})   # 출처 축 · 원천 조건
+        self.assertEqual(set(sg["suggest"]["neg"]), {"cats", "intents", "keywords", "srcs"})
         self.assertIn(sg.get("via"), ("llm", "heuristic", "none"))
         self.assertEqual(sg.get("model"), "solar-pro2")            # 선택 모델 에코(버튼이 헛돌지 않음)
         self.assertIn("심층 분석", sg["suggest"]["intents"])         # 전체 아이템메타 분류(사전) 고려 · 데이터 유무 무관

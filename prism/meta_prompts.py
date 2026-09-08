@@ -417,7 +417,12 @@ TOPIC_SUGGEST_SCHEMA = (
     '{"must": {"cats": string[], "intents": string[], "keywords": string[]}, '
     '"optional": {"cats": string[], "intents": string[], "keywords": string[]}, '
     '"exclude": {"cats": string[], "intents": string[], "keywords": string[]}, '
-    '"eattrs": string[] ("key:value" · 개체 속성 후보 목록의 값만 · 해당 없으면 빈 배열)}')
+    '"eattrs": string[] ("key:value" · 개체 속성 후보 목록의 값만 · 해당 없으면 빈 배열), '
+    '"srcs": string[] (출처 · 아래 출처 목록의 값만), "neg_srcs": string[] (제외할 출처), '
+    '"feed": {"days": int, "basis": "org"|"ingest", "types": string[], "neg_types": string[], '
+    '"svc_cats": string[], "creators": string[], "image": ""|"yes"|"no", "video": ""|"yes"|"no", '
+    '"min_len": int, "max_len": int, "flags": string[], "neg_flags": string[], "rules": string[], '
+    '"tags": string[], "min_dri": number, "cp_grades": string[], "base_excl": bool}}')
 TOPIC_SUGGEST_RULES = (
     "- 목적: 하나의 토픽을 '핵심 묶음(필수+모든 선택)'과 '관련 묶음(필수+선택 하나씩)'으로 펼칠 수 있게 조건을 설계한다.\n"
     "- must(필수): 이 토픽이 무엇에 관한 것인지 규정하는 축. 보통 주제 카테고리·대상 키워드 1~2개. 비우지 않는다.\n"
@@ -428,7 +433,14 @@ TOPIC_SUGGEST_RULES = (
     "- 현재 데이터에 있는 값을 우선하되, 설명에 부합하면 데이터에 아직 없는 값도 가능(미래 매칭).\n"
     "- eattrs(개체 속성): 설명이 '개체의 불변 속성'(성별·직업·국적·소속·타입)을 조건으로 삼을 때만 사용. "
     "예) '여성 스포츠인' → [\"gender:여성\", \"occupation:스포츠인\"]. 조건 전부를 한 개체가 만족해야 하며 항상 필수 취급. "
-    "아래 개체 속성 후보 목록의 값만 쓴다(목록 외 생성 금지 · 후보가 없으면 keywords 로 대신하지 말고 빈 배열).")
+    "아래 개체 속성 후보 목록의 값만 쓴다(목록 외 생성 금지 · 후보가 없으면 keywords 로 대신하지 말고 빈 배열).\n"
+    "- srcs(출처): 서비스명 · 매체명(카카오TV · 브런치 · 뉴스 등). 아래 출처 목록의 값만 · '브런치는 빼고' 는 neg_srcs.\n"
+    "- feed(원천 조건): 메타 축이 아닌 조건. 기간('최근 2주'→days 14 · basis 는 원문 발행일 org 기본, '적재/들어온' 이면 ingest) · "
+    "형식 types(TEXT · IMAGE · VIDEO · VIDEO/VOD · VIDEO/SHORTS · VIDEO/LIVE · '쇼츠 빼고'→neg_types) · "
+    "서비스 자체 분류 svc_cats · 작성자 creators · 첨부 image/video(yes|no) · 길이 min_len/max_len(긴 글=1500 · 짧은 글=500) · "
+    "표시 flags/neg_flags(isExclusive 단독 · mainNews 주요 뉴스 · planning 기획 · isPhotoNews 포토뉴스 · subsequent 후속 · "
+    "duplicate 중복 · copyNews 복제) · 룰 rules · 태그 tags · 열독률 min_dri(많이 읽힌=0.3) · 매체 등급 cp_grades(DEFAULT · BLACK · EXCELLENT) · "
+    "base_excl 는 '광고 포함해도' 같은 말이 있을 때만 false. 해당 없는 키는 빈 값(0 · [] · \"\" · true).")
 TOPIC_SUGGEST_SELF_CHECK = (
     "- must 최소 1개인가 · must+optional 이 설명의 핵심을 담는가 · 허용 목록 외 cats/intents 를 만들지 않았는가 · "
     "관련 묶음이 생기도록 optional 을 최소 1개 제안했는가 · 배제 표현('빼줘' 등)의 대상을 exclude 로만 보냈는가 · "
@@ -445,10 +457,15 @@ TOPIC_SUGGEST_EXAMPLES = (
     '설명: "경제·산업 심층분석만 모으고 속보는 빼줘"\n'
     '→ {"must":{"cats":["Business and Finance"],"intents":[],"keywords":[]},'
     '"optional":{"cats":[],"intents":["심층 분석","트렌드·시장 분석"],"keywords":[]},'
-    '"exclude":{"cats":[],"intents":["속보","사건 경과 보도"],"keywords":[]}}')
+    '"exclude":{"cats":[],"intents":["속보","사건 경과 보도"],"keywords":[]}}\n'
+    '설명: "스포츠 경기 리뷰랑 전술 분석 위주로. 팬 응원은 빼고, 브런치 글도 빼줘. 최근 2주, 사진 있는 것만"\n'
+    '→ {"must":{"cats":["Sports"],"intents":[],"keywords":[]},'
+    '"optional":{"cats":[],"intents":["경기 결과·리뷰","전술·데이터 분석"],"keywords":[]},'
+    '"exclude":{"cats":[],"intents":["팬·응원 문화"],"keywords":[]},"eattrs":[],'
+    '"srcs":[],"neg_srcs":["브런치"],"feed":{"days":14,"basis":"org","image":"yes"}}')
 
 
-def topic_suggest_system(model: str, cats_ko, intents, data_cats, data_int, eattrs=None) -> str:
+def topic_suggest_system(model: str, cats_ko, intents, data_cats, data_int, eattrs=None, srcs=None) -> str:
     """조건값 자동생성 시스템 프롬프트. 모델 계열 쿡북 래퍼로 조립 + 허용 목록(전체 분류·데이터 우선) 주입.
     eattrs = 엔티티 사전 실재 속성 후보('key:value (라벨 · N건)') · 개체 속성 조건 축."""
     rules = (TOPIC_SUGGEST_RULES
@@ -456,7 +473,8 @@ def topic_suggest_system(model: str, cats_ko, intents, data_cats, data_int, eatt
              + "\n[전체 인텐트]: " + _ja(intents)
              + "\n[현재 데이터에 있는 값(우선)] 카테고리: " + _ja(data_cats) + " · 인텐트: " + _ja(data_int)
              + "\n[개체 속성 후보(엔티티 사전 실재값 · 이 목록의 key:value 만)]: "
-             + (_ja(eattrs) if eattrs else "(없음 · eattrs 는 빈 배열)"))
+             + (_ja(eattrs) if eattrs else "(없음 · eattrs 는 빈 배열)")
+             + "\n[출처 목록(현재 데이터의 서비스 · 매체명 · 이 값만)]: " + (_ja(srcs) if srcs else "(없음 · srcs 는 빈 배열)"))
     return _compose(family_of(model), TOPIC_SUGGEST_ROLE, TOPIC_SUGGEST_SCHEMA, rules,
                     TOPIC_SUGGEST_EXAMPLES, TOPIC_SUGGEST_SELF_CHECK, "")
 

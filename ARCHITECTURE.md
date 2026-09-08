@@ -49,6 +49,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 게임화 → **reviewops.py** | `arena_data` `mission_progress` `save_badges` `reviewer_weights` | /arena /badges |
 | 학습 연동 | `learn-*` 핸들러(실체는 learnops) `apply_gold_answer` `disabled_directives` | /learn-* /golden* /apply-directive |
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
+|  ↳ 토픽 조건 · 상태 (2026-09-08 · 스펙 132112) | `topic.py`: 4축(`_DIMS` 에 출처 `srcs`) + 원천 조건 `feed`(`feed_fields` 가 `row["src"]` 계약을 읽음 · 없으면 서비스명·이미지 수·본문 길이·적재 시각 `_ts` 로 대신) · `topicops.py`: 상태 `status`(active·paused·draft·archived)·변경 기록 `log`·오늘/7일/신호 `_row_stats` · 액션 `status` | /topic-studio |
 | 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
 | 사용자 메타 → **umops.py** | `usermeta_*` (입력 서식 `build_template_xlsx` 는 runops) | /usermeta* |
 | 미디어(콘텐츠 추가 탭) → **mediaops.py** | `media_action` `media_s5ab` `media_native` `media_register` | /media-extract /media-register |

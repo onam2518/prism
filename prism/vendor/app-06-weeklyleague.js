@@ -195,7 +195,7 @@ window.PRISM_APP_PARTS.push(() => ({
         const r = await (await this._afetch('/topic-studio', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload) })).json();
         return r;
       },
-      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords, eattrs: this.studio.eattrs, req: this.studio.req, neg: this.studio.neg }; },
+      studioDef() { return { id: this.studio.editId, name: this.studio.name, prompt: this.studio.prompt, cats: this.studio.cats, intents: this.studio.intents, keywords: this.studio.keywords, srcs: this.studio.srcs || [], feed: this.studio.feed || {}, eattrs: this.studio.eattrs, req: this.studio.req, neg: this.studio.neg }; },
       // 엔티티 속성 조건(개체 사전 축): 'key:value' · 항상 필수(같은 개체 AND · 예: 여성 스포츠인)
       eattrLabel(s) { const i = s.indexOf(':'); const ko = { type: '타입', gender: '성별', occupation: '직업', nationality: '국적', affiliation: '소속', org_kind: '조직', country: '국가', loc_kind: '장소', af_kind: '종류', ev_kind: '종류', domain: '도메인' }; return i < 0 ? s : (ko[s.slice(0, i)] || s.slice(0, i)) + '=' + s.slice(i + 1); },
       studioAddEattr(v) {
@@ -219,10 +219,11 @@ window.PRISM_APP_PARTS.push(() => ({
         else neg.splice(neg.indexOf(val), 1);                                         // 제외 → off(키워드는 제거)
         this.schedulePreview();
       },
-      negText() { const m = []; const c = this.studio.neg; ['cats', 'intents', 'keywords'].forEach(d => (c[d] || []).forEach(v => m.push(d === 'cats' ? this.catBoth(v) : v))); return m.join(' · '); },
+      negText() { const m = []; const c = this.studio.neg; ['cats', 'intents', 'keywords', 'srcs'].forEach(d => (c[d] || []).forEach(v => m.push(d === 'cats' ? this.catBoth(v) : v))); return m.join(' · '); },
+      studioSrcChips() { const cat = ((this.topicData && this.topicData.catalog && this.topicData.catalog.srcs) || []).map(c => c.k); const extra = (this.studio.srcs || []).concat(this.studio.neg.srcs || []).filter(k => !cat.includes(k)); return cat.concat(extra).map(k => ({ k })); },
       studioKwChips() { return this.studio.keywords.concat((this.studio.neg.keywords || []).filter(k => !this.studio.keywords.includes(k))); },
       bundleLabel(b) { return (b.valueset || []).map(v => v.dim === 'cats' ? this.catBoth(v.v) : v.v).join(' · ') || '전체(조건 없음)'; },
-      mustText() { const m = []; const c = this.studio.req; ['cats', 'intents', 'keywords'].forEach(d => (c[d] || []).forEach(v => m.push(d === 'cats' ? this.catBoth(v) : v))); return m.join(' · '); },
+      mustText() { const m = []; const c = this.studio.req; ['cats', 'intents', 'keywords', 'srcs'].forEach(d => (c[d] || []).forEach(v => m.push(d === 'cats' ? this.catBoth(v) : v))); return m.join(' · '); },
       chipCls(dim, val, base) { const s = this.studioState(dim, val); if (s === 'off') return 'ds-badge--neutral'; if (s === 'neg') return 'ds-badge--error is-neg'; return base + (s === 'req' ? ' is-req' : ''); },
       coreSamples() { const c = (this.studioPreview.bundles || []).find(b => b.kind === 'core'); return (c && c.samples) || []; },
       _escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
@@ -274,24 +275,7 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           const r = await this._studioPost({ action: 'suggest', text, model: mid });
           const s = (r && r.suggest) || {};
-          (s.cats || []).forEach(c => { if (!this.studio.cats.includes(c)) this.studio.cats.push(c); });
-          (s.intents || []).forEach(c => { if (!this.studio.intents.includes(c)) this.studio.intents.push(c); });
-          (s.keywords || []).forEach(c => { if (!this.studio.keywords.includes(c)) this.studio.keywords.push(c); });
-          // 필수(req) 반영: 자동생성이 필수로 지정한 값을 필수 상태로(선택은 그대로 선택)
-          const rq = (s.req) || { cats: [], intents: [], keywords: [] };
-          ['cats', 'intents', 'keywords'].forEach(dim => { (rq[dim] || []).forEach(v => { if (this.studio[dim].includes(v) && !this.studio.req[dim].includes(v)) this.studio.req[dim].push(v); }); });
-          // 제외(neg) 반영: 배제 표현('속보는 빼줘')의 대상 → 제외 상태로(선택·필수와 상충 시 제외 우선)
-          const ng = (s.neg) || { cats: [], intents: [], keywords: [] };
-          let negN = 0;
-          ['cats', 'intents', 'keywords'].forEach(dim => { (ng[dim] || []).forEach(v => {
-            const si = this.studio[dim].indexOf(v); if (si >= 0) this.studio[dim].splice(si, 1);
-            const ri = this.studio.req[dim].indexOf(v); if (ri >= 0) this.studio.req[dim].splice(ri, 1);
-            if (!this.studio.neg[dim].includes(v)) { this.studio.neg[dim].push(v); negN++; }
-          }); });
-          // 개체 속성(eattrs) 반영: 항상 필수 취급 · 사전 실재값만 서버가 검증해 내려줌
-          (s.eattrs || []).forEach(v => { if (!this.studio.eattrs.includes(v)) this.studio.eattrs.push(v); });
-          this.studio.auto = { cats: (s.cats || []).slice(), intents: (s.intents || []).slice(), keywords: (s.keywords || []).slice() };
-          const n = (s.cats || []).length + (s.intents || []).length + (s.keywords || []).length + (s.eattrs || []).length + negN;
+          const { n } = this._applySuggest(s);   // 축 · 제외 · 필수 · 출처 · 원천 조건 반영(말로 만들기와 공용)
           const viaLlm = r && r.via === 'llm';
           const src = viaLlm ? ('모델(' + (mid || '기본') + ')') : '규칙';
           // 모델을 골랐는데 규칙으로 떨어졌으면 이유를 밝힌다(모델이 빈 응답·키 없음 등 · 조용한 폴백 방지)

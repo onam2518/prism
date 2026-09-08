@@ -27,16 +27,153 @@ window.PRISM_APP_PARTS.push(() => ({
           }
         } catch (e) { this.studioMsg = '저장 실패'; } this.studioSaving = false;
       },
+      // ── 말로 만들기(스펙 132112 화면 1): 문장 → suggest → preview → 칩 · 건수 · 표본 · 문장을 보태 다듬기 ──
+      _applySuggest(s) {
+        const st = this.studio; let negN = 0;
+        ['cats', 'intents', 'keywords', 'srcs'].forEach(dim => {
+          st[dim] = st[dim] || []; st.req[dim] = st.req[dim] || []; st.neg[dim] = st.neg[dim] || [];
+          (s[dim] || []).forEach(v => { if (!st[dim].includes(v)) st[dim].push(v); });
+          // 필수(req): 자동생성이 필수로 지정한 값을 필수 상태로(선택은 그대로 선택)
+          (((s.req) || {})[dim] || []).forEach(v => { if (st[dim].includes(v) && !st.req[dim].includes(v)) st.req[dim].push(v); });
+          // 제외(neg): 배제 표현의 대상 → 제외 상태로(선택 · 필수와 상충 시 제외 우선)
+          (((s.neg) || {})[dim] || []).forEach(v => {
+            const si = st[dim].indexOf(v); if (si >= 0) st[dim].splice(si, 1);
+            const ri = st.req[dim].indexOf(v); if (ri >= 0) st.req[dim].splice(ri, 1);
+            if (!st.neg[dim].includes(v)) { st.neg[dim].push(v); negN++; }
+          });
+        });
+        (s.eattrs || []).forEach(v => { if (!st.eattrs.includes(v)) st.eattrs.push(v); });
+        // 원천 조건(feed): 목록은 합치고 값은 새 해석이 덮는다(빈 값은 기존 유지)
+        const fd = Object.assign({}, st.feed || {}); let feedN = 0;
+        Object.entries(s.feed || {}).forEach(([k, v]) => {
+          if (Array.isArray(v)) { if (v.length) { fd[k] = Array.from(new Set((fd[k] || []).concat(v))); feedN += v.length; } }
+          else if (k === 'base_excl') { if (v === false) { fd.base_excl = false; feedN++; } }
+          else if (k === 'basis') { if (s.feed.days) fd.basis = v; }
+          else if (v) { fd[k] = v; feedN++; }
+        });
+        st.feed = fd;
+        st.auto = { cats: (s.cats || []).slice(), intents: (s.intents || []).slice(), keywords: (s.keywords || []).slice() };
+        const n = ['cats', 'intents', 'keywords', 'srcs', 'eattrs'].reduce((a, d) => a + ((s[d] || []).length), 0) + negN + feedN;
+        return { n, negN };
+      },
+      _talkChips() {
+        const KO = { cats: '분야', intents: '의도', keywords: '엔티티', srcs: '출처' }; const st = this.studio; const out = [];
+        const lab = (dim, v) => dim === 'cats' ? this.catBoth(v) : v;
+        ['cats', 'intents', 'keywords', 'srcs'].forEach(dim => (st[dim] || []).forEach(v => out.push({ key: dim + ':' + v, dim, k: KO[dim], v: lab(dim, v), req: (st.req[dim] || []).includes(v) })));
+        (st.eattrs || []).forEach(v => out.push({ key: 'eattrs:' + v, dim: 'eattrs', k: '속성', v: this.eattrLabel(v), req: true }));
+        ['cats', 'intents', 'keywords', 'srcs'].forEach(dim => ((st.neg || {})[dim] || []).forEach(v => out.push({ key: 'neg:' + dim + ':' + v, dim, k: KO[dim] + ' 제외', v: lab(dim, v), neg: true })));
+        ((this.studioPreview && this.studioPreview.feed_chips) || []).forEach(c => out.push({ key: 'feed:' + c.f + ':' + c.x, feed: true, f: c.f, x: c.x, k: c.k, v: c.v, neg: !!c.neg }));
+        return out;
+      },
+      _chipRemove(c) {
+        const st = this.studio;
+        if (c.feed) { const fd = Object.assign({}, st.feed || {}); const cur = fd[c.f]; if (Array.isArray(cur)) fd[c.f] = cur.filter(x => x !== c.x); else if (c.f === 'base_excl') fd.base_excl = true; else fd[c.f] = (typeof cur === 'number') ? 0 : ''; st.feed = fd; }
+        else if (c.dim === 'eattrs') st.eattrs = st.eattrs.filter(x => x !== c.v);
+        else if (c.neg) st.neg[c.dim] = (st.neg[c.dim] || []).filter(x => x !== c.rawV);
+        else { st[c.dim] = (st[c.dim] || []).filter(x => x !== c.rawV); st.req[c.dim] = (st.req[c.dim] || []).filter(x => x !== c.rawV); }
+      },
+      _talkPrune() { this.talk.dropped.forEach(c => this._chipRemove(c)); },
+      talkN() { const t = this.talk.turns[this.talk.turns.length - 1]; return t ? (t.n || 0) : 0; },
+      async _talkRefresh(before) {
+        const p = await this._studioPost({ action: 'preview', def: this.studioDef() });
+        const pv = (p && p.preview) || { bundles: [], n_total: 0, feed_chips: [] };
+        this.studioPreview = pv;
+        const t = this.talk.turns[this.talk.turns.length - 1]; if (!t) return;
+        const chips = this._talkChips().map(c => Object.assign(c, { rawV: c.rawV || this._rawV(c) }));
+        if (before) chips.forEach(c => { c.new = !before.has(c.key); });
+        const core = (pv.bundles || []).find(b => b.kind === 'core') || { count: 0, samples: [] };
+        t.chips = chips; t.n = core.count || 0; t.samples = (core.samples || []).slice(0, 5);
+        t.neg_n = pv.neg_blocked || 0; t.feed_n = pv.feed_blocked || 0;
+        const miss = pv.feed_miss || {}; const mk = Object.keys(miss);
+        t.miss = mk.length ? ('데이터에 없는 필드라 빠짐 · ' + this.feedMissText(miss) + ' · 적재 때 원천 필드(src)가 채워지면 다시 계산돼요') : '';
+      },
+      _rawV(c) { if (c.feed || c.dim === 'eattrs') return c.v; const src = c.neg ? (this.studio.neg[c.dim] || []) : (this.studio[c.dim] || []); return src.find(v => (c.dim === 'cats' ? this.catBoth(v) : v) === c.v) || c.v; },
+      async talkSend() {
+        const s = (this.talk.input || '').trim(); if (!s || this.talk.busy) return;
+        this.talk.busy = true; this.studioMsg = '';
+        const sentences = this.talk.turns.map(t => t.text).concat([s]);
+        const mid = String(this.studioModel || '').split('|').pop();
+        try {
+          // 누적 해석: 문장 전체를 다시 풀되, 사용자가 뺀 칩은 되살리지 않는다
+          const r = await this._studioPost({ action: 'suggest', text: sentences.join(' '), model: mid });
+          const before = new Set(this._talkChips().map(c => c.key));
+          this._applySuggest((r && r.suggest) || {}); this._talkPrune();
+          if (!this.studio.name.trim()) this.studio.name = s.replace(/[.。!?]+$/, '').slice(0, 40);
+          this.studio.prompt = sentences.join(' / ');
+          const prev = this.talk.turns.length ? this.talk.turns[this.talk.turns.length - 1].n : null;
+          this.talk.turns.push({ text: s, chips: [], n: 0, prev, samples: [], via: (r && r.via) || '', model: mid, miss: '', neg_n: 0, feed_n: 0 });
+          await this._talkRefresh(before);
+          this.talk.input = '';
+        } catch (e) { this.studioMsg = '해석 실패 · 다시 시도하세요'; }
+        this.talk.busy = false;
+      },
+      async talkDrop(c) { this._chipRemove(c); this.talk.dropped.push(c); await this._talkRefresh(); },
+      talkReset() { this.talk = { turns: [], input: '', busy: false, dropped: [] }; this.studioReset(); },
+      talkEdit(g) {
+        this.studioEdit(g); this.studioManual = false;
+        const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
+        this.talk = { turns: [{ text: def.prompt || g.prompt || g.name || '', chips: [], n: g.core_count || 0, prev: null, samples: [], via: '', model: '', miss: '', neg_n: 0, feed_n: 0 }], input: '', busy: false, dropped: [] };
+        this._talkRefresh();
+      },
+      async talkSave(status) {
+        if (!this.talk.turns.length || this.studioSaving) return;
+        if (!this.studio.name.trim()) { this.studioMsg = '토픽 이름을 적어 주세요'; return; }
+        this.studioSaving = true; this.studioMsg = '저장 중…';
+        const def = this.studioDef(); def.status = status; def.talk_model = String(this.studioModel || '').split('|').pop();
+        try {
+          const r = await this._studioPost({ action: 'save', def, talk: true, reviewer: this.reviewer || '' });
+          if (r && r.error) { this.studioMsg = '오류: ' + r.error; }
+          else {
+            this.topicData = r; this._syncTopicSettings();
+            const sv = r.saved || {};
+            const msg = sv.locked ? '지금 데이터에 0건이라 초안으로 저장했어요' : (sv.status === 'active' ? '활성화했어요 · 현황 표에서 스위치로 켜고 끕니다' : '초안으로 저장했어요');
+            const dup = (r.similar || [])[0];
+            if (dup) this.liveToast('⚠ 비슷한 토픽이 이미 있어요 · 「' + dup.name + '」 (' + Math.round(dup.score * 100) + '% 유사) · 겹치면 하나로 합쳐 주세요');
+            this.talkReset(); this.studioMsg = msg;
+          }
+        } catch (e) { this.studioMsg = '저장 실패 · 다시 시도하세요'; }
+        this.studioSaving = false;
+      },
+      // ── 원천 조건(직접 손보기) ──
+      feedState(list, negList, v) { const fd = this.studio.feed || {}; if (negList && (fd[negList] || []).includes(v)) return 'neg'; return (fd[list] || []).includes(v) ? 'sel' : 'off'; },
+      feedCls(list, negList, v) { const s = this.feedState(list, negList, v); return s === 'off' ? 'ds-badge--neutral' : s === 'neg' ? 'ds-badge--error is-neg' : 'ds-badge--entity'; },
+      feedCycle(list, negList, v) {
+        const fd = Object.assign({}, this.studio.feed || {}); const s = this.feedState(list, negList, v);
+        fd[list] = (fd[list] || []).filter(x => x !== v); if (negList) fd[negList] = (fd[negList] || []).filter(x => x !== v);
+        if (s === 'off') fd[list].push(v); else if (s === 'sel' && negList) fd[negList].push(v);
+        this.studio.feed = fd; this.schedulePreview();
+      },
+      feedList(k, text) { const fd = Object.assign({}, this.studio.feed || {}); fd[k] = String(text || '').split(',').map(x => x.trim()).filter(Boolean); this.studio.feed = fd; this.schedulePreview(); },
+      feedMissText(miss) { const KO = { days: '기간', types: '형식', svc_cats: '서비스 분류', creators: '작성자', image: '사진', video: '영상', len: '길이', rules: '룰', tags: '태그', dri: '열독률', cp_grades: '매체 등급', isExclusive: '단독', mainNews: '주요 뉴스', planning: '기획', isPhotoNews: '포토뉴스', subsequent: '후속', duplicate: '중복', copyNews: '복제', ads: '광고', adultImage: '성인 이미지', gutter: '선정', includePaidAd: '유료광고' }; return Object.keys(miss || {}).map(k => (KO[k] || k) + ' ' + miss[k] + '건').join(' · '); },
+      // ── 토픽 현황(스펙 132112 화면 2): 상태 스위치 · 필터 · 기록 ──
+      statusKo(st) { return { active: '활성', paused: '일시정지', draft: '초안', archived: '보관' }[st] || st || ''; },
+      topicRowOk(r) { const st = r.status || 'active'; const f = this.topicStatus; if (f === 'archived') return st === 'archived'; if (f === 'warn') return !!r.signal && st !== 'archived'; return st !== 'archived'; },
+      topicSwTip(r) { const st = r.status || 'active'; return st === 'active' ? '켜짐 · 누르면 일시정지(건수는 계속 세고 유통만 멈춤)' : st === 'paused' ? '일시정지 · 누르면 켬' : st === 'draft' ? '초안 · 누르면 활성(0건이면 잠김)' : '보관 · 복구 버튼으로'; },
+      logLine(log) { const e = (log || [])[log.length - 1]; if (!e) return ''; return this.fmtTs(e.ts) + (e.who ? ' ' + e.who : '') + ' · ' + e.what; },
+      topicToggle(r) { const st = r.status || 'active'; return this.topicStatusSet(r, st === 'active' ? 'paused' : 'active'); },
+      async topicStatusSet(r, st) {
+        const id = r.id || r.cluster_id; if (!id) return;
+        this.topicBusy = id; this.topicMsg = '';
+        try {
+          const res = await this._studioPost({ action: 'status', id, status: st, reviewer: this.reviewer || '' });
+          if (res && !res.error) {
+            this.topicData = res; this._syncTopicSettings();
+            const sv = res.saved || {};
+            this.topicMsg = sv.locked ? '지금 데이터에 0건이라 켤 수 없어요 · 초안 그대로' : ({ paused: '일시정지했어요 · 건수는 계속 세고 유통만 멈춰요', active: '켰어요', archived: '보관했어요 · 보관 필터에서 복구', draft: '초안으로 돌렸어요' }[sv.status] || '');
+          } else this.topicMsg = (res && res.error) || '상태 변경 실패';
+        } catch (e) { this.topicMsg = '상태 변경 실패 · 다시 시도하세요'; }
+        this.topicBusy = '';
+      },
       studioEdit(g) {
         this.topicGenTab = 'manual';         // 수정은 수동 정의 위저드에서
         const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
         const rq = def.req || { cats: [], intents: [], keywords: [] };
         const ng = def.neg || { cats: [], intents: [], keywords: [] };
-        this.studio = { name: def.name || g.name || '', prompt: def.prompt || g.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], eattrs: [...(def.eattrs || [])], kwInput: '', eaKey: 'gender', eaVal: '', editId: g.id, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [...(rq.cats || [])], intents: [...(rq.intents || [])], keywords: [...(rq.keywords || [])] }, neg: { cats: [...(ng.cats || [])], intents: [...(ng.intents || [])], keywords: [...(ng.keywords || [])] } };
+        this.studio = { name: def.name || g.name || '', prompt: def.prompt || g.prompt || '', cats: [...(def.cats || [])], intents: [...(def.intents || [])], keywords: [...(def.keywords || [])], srcs: [...(def.srcs || [])], feed: Object.assign({}, def.feed || {}), eattrs: [...(def.eattrs || [])], kwInput: '', eaKey: 'gender', eaVal: '', editId: g.id, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [...(rq.cats || [])], intents: [...(rq.intents || [])], keywords: [...(rq.keywords || [])], srcs: [...(rq.srcs || [])] }, neg: { cats: [...(ng.cats || [])], intents: [...(ng.intents || [])], keywords: [...(ng.keywords || [])], srcs: [...(ng.srcs || [])] } };
         this.studioMsg = ''; this.studioPreviewNow();
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
       },
-      studioReset() { this.studio = { name: '', prompt: '', cats: [], intents: [], keywords: [], eattrs: [], kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [] }, neg: { cats: [], intents: [], keywords: [] } }; this.studioPreview = { bundles: [], n_total: (this.topicData && this.topicData.n_contents) || 0, must_n: 0, opt_n: 0 }; },
+      studioReset() { this.studio = { name: '', prompt: '', cats: [], intents: [], keywords: [], srcs: [], eattrs: [], feed: {}, kwInput: '', eaKey: 'gender', eaVal: '', editId: null, auto: { cats: [], intents: [], keywords: [] }, req: { cats: [], intents: [], keywords: [], srcs: [] }, neg: { cats: [], intents: [], keywords: [], srcs: [] } }; this.studioPreview = { bundles: [], n_total: (this.topicData && this.topicData.n_contents) || 0, must_n: 0, opt_n: 0 }; },
       async studioDelete(g) {
         if (!(await this.dsConfirm('토픽 “' + (g.name || g.id) + '” 을 삭제할까요?', { ok: '삭제', danger: true }))) return;
         try { const r = await this._studioPost({ action: 'delete', id: g.id }); if (r && !r.error) { this.topicData = r; this._syncTopicSettings(); if (this.studio.editId === g.id) this.studioReset(); } } catch (e) { this._err('삭제 실패'); }

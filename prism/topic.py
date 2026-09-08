@@ -1,5 +1,6 @@
 """토픽 생성 체계: 엔티티형/사건형(자동) + 사용자 정의(토픽 스튜디오)."""
 from __future__ import annotations
+import re
 from collections import Counter, defaultdict
 from itertools import combinations
 
@@ -217,7 +218,7 @@ def _content_dims(rows, service_names, ent_index=None):
     개체속성 = 엔티티 사전 링크(content_entities)의 타입·속성 dict 들 · 사전 미사용 시 빈 리스트.
     콘텐츠 표면에 없는 속성(성별·직업 등)으로 매칭하는 축(예: '여성 스포츠인')."""
     from .entdict import row_hash
-    c_cat, c_int, c_ent, elig, c_att = [], [], [], [], []
+    c_cat, c_int, c_ent, elig, c_att, c_src, c_feed = [], [], [], [], [], [], []
     for r in rows:
         im = r.get("item_meta") or {}
         c_cat.append({tier1_remap(c) for c in (im.get("content_category") or [])})
@@ -225,7 +226,10 @@ def _content_dims(rows, service_names, ent_index=None):
         c_ent.append([e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)])
         elig.append(_eligible(r))
         c_att.append(ent_index.get(row_hash(r), []) if ent_index else [])
-    return c_cat, c_int, c_ent, elig, c_att
+        f = feed_fields(r)
+        c_feed.append(f)
+        c_src.append({s.lower() for s in (f["service"], f["cp"]) if s})   # 출처 축: 서비스명 · 매체명
+    return c_cat, c_int, c_ent, elig, c_att, c_src, c_feed
 
 
 def _eattr_conds(values):
@@ -240,7 +244,323 @@ def _ent_match(ents, conds):
     return any(all(str(e.get(k, "")) == v for k, v in conds) for e in ents)
 
 
-_DIMS = ("cats", "intents", "keywords")
+# ── 출처 축(srcs) · 원천(피딩) 필드 조건(feed) ─────────────────────────────
+# 기획 13211 4축 중 출처 = 적재 시 붙는 값(서비스 · 매체) · 스펙 132112 조건 사전.
+_DIMS = ("cats", "intents", "keywords", "srcs")
+FEED_TYPES = ("TEXT", "IMAGE", "VIDEO", "VIDEO/VOD", "VIDEO/SHORTS", "VIDEO/LIVE")
+FEED_FLAGS = ("isExclusive", "mainNews", "planning", "isPhotoNews", "subsequent", "duplicate",
+              "copyNews", "ads", "adultImage", "gutter", "includePaidAd")
+FEED_FLAG_KO = {"isExclusive": "단독", "mainNews": "주요 뉴스", "planning": "기획", "isPhotoNews": "포토뉴스",
+                "subsequent": "후속 있음", "duplicate": "중복", "copyNews": "복제", "ads": "광고",
+                "adultImage": "성인 이미지", "gutter": "선정", "includePaidAd": "유료광고 포함"}
+CP_GRADES = ("DEFAULT", "BLACK", "EXCELLENT")
+FEED_LEN_LONG, FEED_LEN_SHORT, FEED_DRI_HIGH = 1500, 500, 0.3     # 사전 기준값: '긴 글' · '짧은 글' · '많이 읽힌'
+_FEED_KEYS = ("days", "basis", "types", "neg_types", "svc_cats", "creators", "image", "video",
+              "min_len", "max_len", "flags", "neg_flags", "rules", "tags", "min_dri", "cp_grades", "base_excl")
+
+
+def feed_fields(r) -> dict:
+    """행의 원천(피딩) 필드. 적재 계약: r["src"] = {service, cp, cp_grade, type, subtype, svc_cats[],
+    creator, image_cnt, video_cnt, len, org_ts(epoch), status, rules[], tags[], dri, <FEED_FLAGS>: bool}.
+    src 가 없으면 행에 이미 있는 것으로 대신(서비스명 · 이미지 수 · 본문 길이 · 적재 시각) · 나머지는 None(모름)."""
+    src = r.get("src") or {}
+    ref = r.get("content_ref") or {}
+    imgs = ref.get("image_urls")
+    out = {"service": (ref.get("displayServiceName") or src.get("service") or "").strip(),
+           "cp": (src.get("cp") or "").strip(),
+           "cp_grade": (str(src.get("cp_grade") or "").strip().upper() or None),
+           "type": (str(src.get("type") or "").strip().upper() or None),
+           "subtype": (str(src.get("subtype") or "").strip().upper() or None),
+           "svc_cats": [str(x) for x in (src.get("svc_cats") or [])] if "svc_cats" in src else None,
+           "creator": (str(src.get("creator") or "").strip() or None),
+           "image_cnt": src.get("image_cnt") if src.get("image_cnt") is not None
+                        else (len(imgs) if isinstance(imgs, list) else None),
+           "video_cnt": src.get("video_cnt"),
+           "len": src.get("len") if src.get("len") is not None else len(ref.get("body") or ""),
+           "org_ts": src.get("org_ts"), "ingest_ts": r.get("_ts"),
+           "status": (str(src.get("status") or "").upper() or None),
+           "rules": [str(x) for x in (src.get("rules") or [])] if "rules" in src else None,
+           "tags": [str(x) for x in (src.get("tags") or [])] if "tags" in src else None,
+           "dri": src.get("dri")}
+    for k in FEED_FLAGS:
+        out[k] = bool(src[k]) if k in src else None
+    return out
+
+
+def sanitize_feed(v) -> dict:
+    """정의의 feed 조건 정규화(허용 값만). 조건이 하나도 없고 기본 제외도 그대로면 빈 dict."""
+    if not isinstance(v, dict):
+        v = {}
+
+    def _lst(k, allow=None, n=20, ln=60):
+        amap = {a.lower(): a for a in (allow or ())}
+        out = []
+        for x in (v.get(k) or []):
+            s = str(x).strip()[:ln]
+            if allow is not None:
+                s = amap.get(s.lower(), "")
+            if s and s not in out:
+                out.append(s)
+            if len(out) >= n:
+                break
+        return out
+
+    def _int(k, hi=10 ** 7):
+        try:
+            return max(0, min(hi, int(v.get(k) or 0)))
+        except (TypeError, ValueError):
+            return 0
+
+    try:
+        dri = max(0.0, min(1.0, float(v.get("min_dri") or 0)))
+    except (TypeError, ValueError):
+        dri = 0.0
+    out = {"days": _int("days", 3650), "basis": "ingest" if v.get("basis") == "ingest" else "org",
+           "types": _lst("types", FEED_TYPES), "neg_types": _lst("neg_types", FEED_TYPES),
+           "svc_cats": _lst("svc_cats"), "creators": _lst("creators"),
+           "image": v.get("image") if v.get("image") in ("yes", "no") else "",
+           "video": v.get("video") if v.get("video") in ("yes", "no") else "",
+           "min_len": _int("min_len"), "max_len": _int("max_len"),
+           "flags": _lst("flags", FEED_FLAGS), "neg_flags": _lst("neg_flags", FEED_FLAGS),
+           "rules": _lst("rules"), "tags": _lst("tags"), "min_dri": dri,
+           "cp_grades": _lst("cp_grades", CP_GRADES), "base_excl": v.get("base_excl", True) is not False}
+    out["neg_flags"] = [x for x in out["neg_flags"] if x not in out["flags"]]
+    out["neg_types"] = [x for x in out["neg_types"] if x not in out["types"]]
+    active = any(out[k] for k in _FEED_KEYS if k not in ("basis", "base_excl"))
+    return out if (active or not out["base_excl"]) else {}
+
+
+def _feed_pass(f: dict, fd: dict, now: float):
+    """원천 필드 조건 판정 → (통과, 모르는 필드명). 조건이 걸린 필드가 행에 없으면(None) 탈락하고 그 필드명을 돌려준다.
+    기본 제외(광고 · 성인 · 선정 · 삭제)는 값이 있을 때만 걸린다(모르면 통과)."""
+    if fd.get("base_excl", True):
+        if f.get("status") == "DELETE" or any(f.get(k) is True for k in ("ads", "adultImage", "gutter")):
+            return False, ""
+    if fd.get("days"):
+        ts = f.get("org_ts") if fd.get("basis", "org") == "org" else f.get("ingest_ts")
+        if not ts and fd.get("basis", "org") == "org":
+            ts = f.get("ingest_ts")                      # 원문 발행일이 없으면 적재일로 대신
+        if not ts:
+            return False, "days"
+        if float(ts) < now - int(fd["days"]) * 86400:
+            return False, ""
+    ty, st = f.get("type"), f.get("subtype")
+    code = (ty + ("/" + st if st else "")) if ty else None
+
+    def _tm(v):
+        return code is not None and (v == ty or v == code)
+    for key, want_hit in (("types", True), ("neg_types", False)):
+        if fd.get(key):
+            if code is None:
+                return False, "types"
+            if any(_tm(v) for v in fd[key]) != want_hit:
+                return False, ""
+    if fd.get("svc_cats"):
+        if f.get("svc_cats") is None:
+            return False, "svc_cats"
+        low = [x.lower() for x in f["svc_cats"]]
+        if not any(any(v.lower() in x for x in low) for v in fd["svc_cats"]):
+            return False, ""
+    if fd.get("creators"):
+        if not f.get("creator"):
+            return False, "creators"
+        if not any(v.lower() in f["creator"].lower() for v in fd["creators"]):
+            return False, ""
+    for key, cnt in (("image", "image_cnt"), ("video", "video_cnt")):
+        if fd.get(key):
+            n = f.get(cnt)
+            if n is None:
+                return False, key
+            if (fd[key] == "yes") != (int(n) > 0):
+                return False, ""
+    if fd.get("min_len") or fd.get("max_len"):
+        ln = f.get("len")
+        if ln is None:
+            return False, "len"
+        if (fd.get("min_len") and ln < fd["min_len"]) or (fd.get("max_len") and ln > fd["max_len"]):
+            return False, ""
+    for key, want in (("flags", True), ("neg_flags", False)):
+        for k in fd.get(key) or []:
+            v = f.get(k)
+            if v is None:
+                return False, k
+            if bool(v) != want:
+                return False, ""
+    for key in ("rules", "tags"):
+        if fd.get(key):
+            if f.get(key) is None:
+                return False, key
+            low = [x.lower() for x in f[key]]
+            if not any(v.lower() in low for v in fd[key]):
+                return False, ""
+    if fd.get("min_dri"):
+        if f.get("dri") is None:
+            return False, "dri"
+        if float(f["dri"]) < fd["min_dri"]:
+            return False, ""
+    if fd.get("cp_grades"):
+        if not f.get("cp_grade"):
+            return False, "cp_grades"
+        if f["cp_grade"] not in fd["cp_grades"]:
+            return False, ""
+    return True, ""
+
+
+def _feed_blocked(dims, feed, now=None):
+    """원천 필드 조건에 걸려 빠지는 인덱스 집합 + 필드가 없어서 빠진 수(필드명별)."""
+    import time as _t
+    fd = feed or {}
+    out, miss = set(), Counter()
+    now = now or _t.time()
+    for i, f in enumerate(dims[6]):
+        ok, m = _feed_pass(f, fd, now)
+        if not ok:
+            out.add(i)
+            if m:
+                miss[m] += 1
+    return out, miss
+
+
+def feed_labels(feed) -> list:
+    """feed 조건 → 화면 칩 [{k:축 이름표, v:값, neg, f:feed 키, x:값}] · 칩 제거는 (f, x) 로 되돌린다."""
+    fd = feed or {}
+    out = []
+
+    def add(k, v, f, x=None, neg=False):
+        out.append({"k": k, "v": v, "neg": neg, "f": f, "x": v if x is None else x})
+    if fd.get("days"):
+        add("기간", ("적재 " if fd.get("basis") == "ingest" else "발행 ") + str(fd["days"]) + "일", "days", fd["days"])
+    for t in fd.get("types") or []:
+        add("형식", t, "types")
+    for t in fd.get("neg_types") or []:
+        add("형식", t, "neg_types", neg=True)
+    for v in fd.get("svc_cats") or []:
+        add("서비스 분류", v, "svc_cats")
+    for v in fd.get("creators") or []:
+        add("작성자", v, "creators")
+    if fd.get("image"):
+        add("첨부", "사진 " + ("있음" if fd["image"] == "yes" else "없음"), "image", fd["image"])
+    if fd.get("video"):
+        add("첨부", "영상 " + ("있음" if fd["video"] == "yes" else "없음"), "video", fd["video"])
+    if fd.get("min_len"):
+        add("길이", str(fd["min_len"]) + "자 이상", "min_len", fd["min_len"])
+    if fd.get("max_len"):
+        add("길이", str(fd["max_len"]) + "자 이하", "max_len", fd["max_len"])
+    for k in fd.get("flags") or []:
+        add("표시", FEED_FLAG_KO.get(k, k), "flags", k)
+    for k in fd.get("neg_flags") or []:
+        add("표시", FEED_FLAG_KO.get(k, k), "neg_flags", k, neg=True)
+    for v in fd.get("rules") or []:
+        add("룰", v, "rules")
+    for v in fd.get("tags") or []:
+        add("태그", v, "tags")
+    if fd.get("min_dri"):
+        add("열독률", str(fd["min_dri"]) + " 이상", "min_dri", fd["min_dri"])
+    for v in fd.get("cp_grades") or []:
+        add("매체 등급", v, "cp_grades")
+    if fd.get("base_excl") is False:
+        add("기본", "광고 · 성인 · 선정 포함", "base_excl", False)
+    return out
+
+
+_FEED_PERIOD = re.compile(r"(?:최근|지난)\s*(\d+)\s*(일|주|개월|달)")
+
+
+def parse_feed_text(text, catalog=None) -> dict:
+    """문장 → feed 조건(휴리스틱 · 모델 없음). 기간 · 형식 · 첨부 · 길이 · 표시 · 매체 등급 · 열독률 ·
+    사전(catalog)에 실재하는 작성자 · 서비스 분류 · 룰 · 태그. 배제 표지는 _neg_after 로 판정."""
+    t = (text or "").lower()
+    fd = {}
+
+    def neg(frag):
+        return _neg_after(t, frag)
+
+    def hit(*frags):
+        return next((f for f in frags if f in t), "")
+    m = _FEED_PERIOD.search(t)
+    if m:
+        n, u = int(m.group(1)), m.group(2)
+        fd["days"] = n * (7 if u == "주" else 30 if u in ("개월", "달") else 1)
+    elif "오늘" in t:
+        fd["days"] = 1
+    elif "이번 주" in t or "이번주" in t:
+        fd["days"] = 7
+    elif "이번 달" in t or "이번달" in t:
+        fd["days"] = 30
+    if fd.get("days") and ("적재" in t or "들어온" in t):
+        fd["basis"] = "ingest"
+    types, neg_types = [], []
+    for frag, code in (("쇼츠", "VIDEO/SHORTS"), ("라이브", "VIDEO/LIVE"), ("생방송", "VIDEO/LIVE"),
+                       ("vod", "VIDEO/VOD"), ("다시보기", "VIDEO/VOD")):
+        if frag in t:
+            (neg_types if neg(frag) else types).append(code)
+    if re.search(r"(영상|동영상)\s*만", t):
+        types.append("VIDEO")
+    elif re.search(r"(영상|동영상)(은|는|도)?\s*(빼|제외|말고)", t):
+        neg_types.append("VIDEO")
+    elif re.search(r"(영상|동영상)\s*(딸린|있는|포함|붙은)", t):
+        fd["video"] = "yes"
+    elif re.search(r"(영상|동영상)\s*없는", t):
+        fd["video"] = "no"
+    if re.search(r"(사진|이미지)\s*만", t):
+        types.append("IMAGE")
+    elif re.search(r"(사진|이미지)(은|는|도)?\s*(빼|제외|말고)", t):
+        neg_types.append("IMAGE")
+    elif re.search(r"(사진|이미지)\s*(있는|딸린|포함|붙은)", t):
+        fd["image"] = "yes"
+    elif re.search(r"(사진|이미지)\s*없는", t):
+        fd["image"] = "no"
+    if re.search(r"(글|텍스트)\s*만", t):
+        types.append("TEXT")
+    elif re.search(r"(글|텍스트)(은|는|도)?\s*(빼|제외|말고)", t):
+        neg_types.append("TEXT")
+    if types:
+        fd["types"] = list(dict.fromkeys(types))
+    if neg_types:
+        fd["neg_types"] = [x for x in dict.fromkeys(neg_types) if x not in types]
+    if "긴 글" in t or "긴글" in t or "장문" in t:
+        fd["min_len"] = FEED_LEN_LONG
+    if re.search(r"(짧은\s*글|단문)(은|는|도)?\s*(빼|제외|말고)", t):
+        fd["min_len"] = max(fd.get("min_len", 0), FEED_LEN_SHORT)
+    elif re.search(r"(짧은\s*글|단문)\s*만", t):
+        fd["max_len"] = FEED_LEN_SHORT
+    flags, neg_flags = [], []
+    for frag, k in (("단독", "isExclusive"), ("주요 뉴스", "mainNews"), ("주요뉴스", "mainNews"), ("메인 뉴스", "mainNews"),
+                    ("기획", "planning"), ("포토뉴스", "isPhotoNews"), ("후속", "subsequent"),
+                    ("중복", "duplicate"), ("복제", "copyNews")):
+        if frag in t and k not in flags + neg_flags:
+            (neg_flags if neg(frag) else flags).append(k)
+    if flags:
+        fd["flags"] = flags
+    if neg_flags:
+        fd["neg_flags"] = neg_flags
+    if re.search(r"광고\s*(포함해도|있어도|넣어도|허용)", t):
+        fd["base_excl"] = False
+    if "우수 매체" in t or "우수매체" in t or "excellent" in t:
+        fd["cp_grades"] = ["EXCELLENT"]
+    elif "블랙" in t and neg("블랙"):
+        fd["cp_grades"] = ["DEFAULT", "EXCELLENT"]
+    if "많이 읽힌" in t or "열독률" in t or "많이 본" in t:
+        fd["min_dri"] = FEED_DRI_HIGH
+    cat = catalog or {}
+    for key in ("creators", "svc_cats", "rules", "tags"):
+        vals = [x["k"] for x in (cat.get(key) or []) if x.get("k") and str(x["k"]).lower() in t
+                and not neg(str(x["k"]).lower())]
+        if vals:
+            fd[key] = vals[:10]
+    return sanitize_feed(fd)
+
+
+def parse_srcs_text(text, catalog=None):
+    """문장 → 출처 축(서비스 · 매체) 값과 제외 값(사전 실재값만)."""
+    t = (text or "").lower()
+    srcs, neg = [], []
+    for x in (catalog or {}).get("srcs") or []:
+        k = str(x.get("k") or "")
+        if k and k.lower() in t:
+            (neg if _neg_after(t, k.lower()) else srcs).append(k)
+    return srcs[:10], neg[:10]
+
 
 
 def _def_bundles(d):
@@ -298,7 +618,7 @@ def _valueset_label(vs):
 def _match_valueset(dims, vs):
     """valueset(=[(dim,value)]) 를 전부 만족(AND)하는 콘텐츠 인덱스. 키워드는 엔티티 부분일치.
     eattrs 는 모아서 '같은 개체 AND' 로 판정."""
-    c_cat, c_int, c_ent, elig, c_att = dims
+    c_cat, c_int, c_ent, elig, c_att, c_src = dims[:6]
     econds = _eattr_conds([v for k, v in vs if k == "eattrs"])
     out = []
     for i in range(len(c_cat)):
@@ -314,6 +634,10 @@ def _match_valueset(dims, vs):
                     ok = False; break
             elif k == "eattrs":
                 continue                               # 아래에서 일괄 판정
+            elif k == "srcs":                          # 출처: 서비스명 · 매체명(부분일치)
+                vl = v.lower()
+                if not any(vl == s or vl in s for s in c_src[i]):
+                    ok = False; break
             else:  # keywords: 엔티티 부분일치
                 vl = v.lower()
                 if not any(vl in e.lower() for e in c_ent[i]):
@@ -328,18 +652,20 @@ def _match_valueset(dims, vs):
 def _neg_blocked(dims, neg) -> set:
     """제외 조건(neg={cats,intents,keywords})에 걸리는 콘텐츠 인덱스 집합.
     차원·값 무관 하나라도 걸리면 탈락(OR) · 토픽의 모든 묶음에 공통 적용 · 키워드는 엔티티 부분일치."""
-    c_cat, c_int, c_ent, elig, _c_att = dims
+    c_cat, c_int, c_ent, elig, _c_att, c_src = dims[:6]
     cats = set((neg or {}).get("cats") or [])
     intents = set((neg or {}).get("intents") or [])
     kws = [str(k).strip().lower() for k in ((neg or {}).get("keywords") or []) if str(k).strip()]
-    if not (cats or intents or kws):
+    srcs = [str(k).strip().lower() for k in ((neg or {}).get("srcs") or []) if str(k).strip()]
+    if not (cats or intents or kws or srcs):
         return set()
     out = set()
     for i in range(len(c_cat)):
         if not elig[i]:
             continue
         if (cats and c_cat[i] & cats) or (intents and c_int[i] & intents) or \
-           (kws and any(any(k in e.lower() for e in c_ent[i]) for k in kws)):
+           (kws and any(any(k in e.lower() for e in c_ent[i]) for k in kws)) or \
+           (srcs and any(v == s or v in s for v in srcs for s in c_src[i])):
             out.add(i)
     return out
 
@@ -371,7 +697,7 @@ def build_custom_topics(rows, service_names, defs, ent_index=None):
     for d in defs:
         specs, must, opt = _def_bundles(d)
         neg = d.get("neg") or {}
-        blocked = _neg_blocked(dims, neg)
+        blocked = _neg_blocked(dims, neg) | _feed_blocked(dims, d.get("feed"))[0]
         did = d.get("id") or ("U-" + _slug(d.get("name") or d.get("prompt") or "topic"))
         bundles = []
         for idx, (kind, vs) in enumerate(specs):
@@ -394,14 +720,17 @@ def preview_definition(rows, service_names, d, sample=6, ent_index=None):
     """생성 폼 실시간 미리보기: 저장 전 정의의 묶음(핵심+관련)별 매칭 수·표본."""
     dims = _content_dims(rows, service_names, ent_index=ent_index)
     specs, must, opt = _def_bundles(d)
-    blocked = _neg_blocked(dims, d.get("neg") or {})
+    neg_b = _neg_blocked(dims, d.get("neg") or {})
+    feed_b, feed_miss = _feed_blocked(dims, d.get("feed"))
+    blocked = neg_b | feed_b
     bundles = []
     for idx, (kind, vs) in enumerate(specs):
         bundles.append(_bundle(rows, dims, "prev-" + str(idx), kind, vs,
                                sample=sample if kind == "core" else 0, blocked=blocked))
     return {
         "n_total": sum(1 for x in dims[3] if x), "bundles": bundles,
-        "must_n": len(must), "opt_n": len(opt), "neg_blocked": len(blocked),
+        "must_n": len(must), "opt_n": len(opt), "neg_blocked": len(neg_b),
+        "feed_blocked": len(feed_b), "feed_miss": dict(feed_miss),   # 원천 조건으로 빠진 수 · 필드 없어 빠진 수(필드별)
     }
 
 
@@ -410,9 +739,27 @@ def studio_catalog(rows, service_names=None, top_kw=30):
     하드코딩 사전이 아니라 데이터에서 뽑아 매칭이 실제로 성립하는 값만 노출."""
     svc = service_names if service_names is not None else _service_names(rows)
     int_c, cat_c, ent_c = Counter(), Counter(), Counter()
+    src_c, type_c, cre_c, sc_c, rule_c, tag_c, flag_c = (Counter() for _ in range(7))
     for r in rows:
         if not _eligible(r):
             continue
+        f = feed_fields(r)                                  # 출처 축 · 원천 필드 사전(실재값만)
+        for s in (f["service"], f["cp"]):
+            if s:
+                src_c[s] += 1
+        if f["type"]:
+            type_c[f["type"] + ("/" + f["subtype"] if f["subtype"] else "")] += 1
+        if f["creator"]:
+            cre_c[f["creator"]] += 1
+        for v in (f["svc_cats"] or []):
+            sc_c[v] += 1
+        for v in (f["rules"] or []):
+            rule_c[v] += 1
+        for v in (f["tags"] or []):
+            tag_c[v] += 1
+        for k in FEED_FLAGS:
+            if f[k] is not None:
+                flag_c[k] += 1
         im = r.get("item_meta") or {}
         for t in (im.get("intent") or []):
             if t:
@@ -427,7 +774,10 @@ def studio_catalog(rows, service_names=None, top_kw=30):
         items = c.most_common(k) if k else sorted(c.items(), key=lambda x: (-x[1], x[0]))
         return [{"k": a, "v": b} for a, b in items]
 
-    return {"intents": rank(int_c), "cats": rank(cat_c), "keywords": rank(ent_c, top_kw)}
+    return {"intents": rank(int_c), "cats": rank(cat_c), "keywords": rank(ent_c, top_kw),
+            "srcs": rank(src_c), "types": rank(type_c), "creators": rank(cre_c, top_kw),
+            "svc_cats": rank(sc_c, top_kw), "rules": rank(rule_c, top_kw), "tags": rank(tag_c, top_kw),
+            "flags": dict(flag_c)}
 
 
 def eattr_catalog(ent_index, top=100) -> list:
@@ -549,9 +899,11 @@ def suggest_dims(text, rows, service_names=None, eattr_cands=None):
         if len(eattrs) >= 4:
             break
     # 필수/선택 기본값(휴리스틱): 주제·대상(카테고리·키워드)=필수(정체성), 관점·형식(인텐트)=선택(관련 확장)
-    req = {"cats": list(cats), "intents": [], "keywords": list(keywords)}
-    return {"cats": cats, "intents": intents, "keywords": keywords, "eattrs": eattrs, "req": req,
-            "neg": {"cats": neg_cat, "intents": neg_int, "keywords": neg_kw}}
+    srcs, neg_src = parse_srcs_text(text, cat)
+    req = {"cats": list(cats), "intents": [], "keywords": list(keywords), "srcs": []}
+    return {"cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs, "eattrs": eattrs, "req": req,
+            "neg": {"cats": neg_cat, "intents": neg_int, "keywords": neg_kw, "srcs": neg_src},
+            "feed": parse_feed_text(text, cat)}
 
 
 # 토픽 탭 HTML (대시보드와 동일 토큰)
