@@ -701,39 +701,86 @@ def compare_history(team=None) -> dict:
     idx = (st.get_report(_COMPARE_INDEX, team) or {}) if (st and hasattr(st, "get_report")) else {}
     return {"ok": True, "items": idx.get("items") or []}
 
-def snapshot_prompts(team=None) -> dict:
-    """학습 반영 직후, 다음 초안 버전(v = 반영 회차 + 1)이 쓰게 될 단계(콜)별 최종
-    시스템 프롬프트를 영속한다 · 버전별 산출을 그때의 프롬프트로 재현하는 근거."""
+def compose_prompts(team=None, model: str = "") -> dict:
+    """호출별 최종 시스템 프롬프트 묶음(현재 설정 · 학습 보정 포함). model 을 주면 호출별 모델 지정이
+    없는 콜은 그 모델로 · 평가 런이 실제로 쓰는 조합(agents._call_llm)과 같은 규칙.
+    ③ 인텐트만 콘텐츠 서비스에 따라 분기절이 달라 정의된 서비스 전부를 by_service 에 싣는다."""
     st = _SV.get_store()
-    if not st:
-        return {}
     try:
-        ver = int(st.batch_seq(team)) + 1
+        ver = int(st.batch_seq(team)) + 1 if st else 1
     except Exception:
         ver = 1
     from .schema import Content
-    c = Content(displayServiceName="뉴스", title="(스냅샷)", subtitle="", body="(스냅샷 본문)")
+    from . import dictionaries as D
     _SV.sync_prompt()
     cfg = Config.load()
-    base_model = cfg.model or ""
+    base_model = (model or "").strip() or cfg.model or ""
     cm = dict(getattr(cfg, "meta_call_models", {}) or {})
+
+    def _c(svc):
+        return Content(displayServiceName=svc, title="(스냅샷)", subtitle="", body="(스냅샷 본문)")
     calls = {}
     for call in MP.CALLS:
         m = cm.get(call) or base_model
         try:
-            calls[call] = {"model": m, "system": PR.call_system(c, call, m)}
+            calls[call] = {"model": m, "system": PR.call_system(_c("뉴스"), call, m)}
         except Exception:
             pass
+    if "intent" in calls:
+        m = calls["intent"]["model"]
+        calls["intent"]["by_service"] = {s: PR.call_system(_c(s), "intent", m) for s in D.INTENT_CATEGORIES_BY_SERVICE}
     payload = {"version": ver, "ts": time.time(), "model": base_model,
                "quality_version": PR.quality_version(), "calls": calls,
                "learned": dict(PR.LEARNED), "learned_by_model": dict(PR.LEARNED_BY_MODEL)}
     try:
-        payload["item"] = PR.item_system(c, base_model)
+        payload["item"] = PR.item_system(_c("뉴스"), base_model)
     except Exception:
         pass
+    return payload
+
+
+def snapshot_prompts(team=None) -> dict:
+    """학습 반영 직후, 다음 초안 버전(v = 반영 회차 + 1)이 쓰게 될 단계(콜)별 최종
+    시스템 프롬프트를 영속한다 · 버전별 산출을 그때의 프롬프트로 재현하는 근거."""
+    if not _SV.get_store():
+        return {}
+    payload = compose_prompts(team)
+    ver = payload["version"]
     _SV._report_save(f"prompt_snapshot_v{ver}", payload, team)
     _SV._report_save("prompt_snapshot_latest", payload, team)
-    return {"version": ver, "calls": list(calls.keys())}
+    return {"version": ver, "calls": list(payload["calls"].keys())}
+
+
+_CALL_KO = {"summary": "① 리드문", "entities": "② 엔티티", "intent": "③ 인텐트", "category": "④ 카테고리"}
+
+
+def prompt_markdown(payload: dict, title: str) -> str:
+    """프롬프트 묶음(compose_prompts 산출 · 학습 스냅샷 · 평가 런 기록)을 내려받기용 마크다운으로.
+    본문에 ``` 가 들어갈 수 있어 4중 백틱 펜스를 쓴다."""
+    from . import promptdist as PD
+    ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(payload.get("ts") or 0)))
+
+    def fence(s):
+        return "````text\n" + (s or "").rstrip() + "\n````"
+    out = [f"# 프리즘 추출 프롬프트 · {title}",
+           f"- 기록 시각 {ts} · 기본 모델 {payload.get('model') or '(설정 모델)'} · "
+           f"프롬프트 v{payload.get('version') or '?'} · 품질 기준 {payload.get('quality_version') or ''}",
+           "- 호출 순서: ① 리드문 → ② 엔티티 → ③ 인텐트 → ④ 카테고리 · 리드문이 비면 후속 호출 생략",
+           "- ①·②·④ 는 서비스와 무관한 단일 프롬프트 · ③ 인텐트만 콘텐츠 서비스에 따라 "
+           "'[서비스 카테고리 분류값]' 절이 달라져 서비스별 전문을 모두 실었습니다", ""]
+    for call, c in (payload.get("calls") or {}).items():
+        out += [f"## {_CALL_KO.get(call, call)} · {c.get('model') or ''}", ""]
+        by = c.get("by_service") or {}
+        for svc, sysp in (by.items() if by else [("", c.get("system"))]):
+            out += [f"### system{' · ' + svc if svc else ''}", fence(sysp), ""]
+        try:
+            out += ["### user 템플릿(현재 코드 기준)", fence(PD.user_template(call)), ""]
+        except Exception:
+            pass
+    if payload.get("item"):
+        out += ["## 통합(단일 호출) system · 4호출 비활성 설정일 때만 사용", fence(payload["item"]), ""]
+    return "\n".join(out)
+
 
 MIN_INTENT_N = 20                                # 인텐트 스칼라 가드 최소 측정 표본
 INTENT_JACCARD_DROP = 0.05                       # 인텐트 자카드 허용 악화 폭(초과 시 회귀)

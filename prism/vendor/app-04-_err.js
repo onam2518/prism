@@ -236,6 +236,39 @@ window.PRISM_APP_PARTS.push(() => ({
         if (!this.pvModel) return;
         try { this.pvData = await (await fetch('/prompt-preview?model=' + encodeURIComponent(this.pvModel) + '&call=' + encodeURIComponent(this.pvCall) + '&service=' + encodeURIComponent(this.pvService), { headers: this._authHeaders() })).json(); } catch (e) { this.pvData = null; }
       },
+      // 미리보기 원천: '' = 현재 합성 · 'v:N' = 학습 스냅샷 · 'run:ID' = 평가 런이 시작 시점에 실제로 쓴 프롬프트
+      pvSrc: '', pvStored: null, pvLatestVer: 0, pvMsg: '',
+      get pvVersions() { return Array.from({ length: this.pvLatestVer }, (_, i) => this.pvLatestVer - i); },
+      async loadPromptSources() {
+        this.loadEvalRuns();
+        try { const r = await (await this._afetch('/prompt-snapshot', { headers: this._authHeaders() })).json(); this.pvLatestVer = (r && r.snapshot && r.snapshot.version) || 0; } catch (e) {}
+      },
+      async loadPvSource() {
+        this.pvStored = null; this.pvMsg = '';
+        if (!this.pvSrc) { this.loadPreview(); return; }
+        const [k, id] = this.pvSrc.split(':');
+        try {
+          const r = await (await this._afetch('/prompt-snapshot?' + k + '=' + id, { headers: this._authHeaders() })).json();
+          if (r && r.snapshot) this.pvStored = r.snapshot;
+          else this.pvMsg = k === 'run' ? '이 런은 프롬프트 기록이 없습니다(기록 기능 이전 런)' : ('스냅샷 v' + id + ' 이 없습니다');
+        } catch (e) { this.pvMsg = '불러오기 실패'; }
+      },
+      get pvSystem() {
+        if (!this.pvSrc) return this.pvData ? this.pvData.system : '모델·호출을 선택하면 합성 결과가 표시됩니다';
+        const c = ((this.pvStored || {}).calls || {})[this.pvCall] || {};
+        return (c.by_service && c.by_service[this.pvService]) || c.system || this.pvMsg || '';
+      },
+      get pvStageModel() { return this.pvSrc ? ((((this.pvStored || {}).calls || {})[this.pvCall] || {}).model || '') : this.pvModel; },
+      pvSrcParams() { const [k, id] = this.pvSrc.split(':'); return this.pvSrc ? { [k]: id } : { model: this.pvModel }; },
+      async downloadPrompt(p) {                  // 프롬프트 .md 내려받기 · 인증 GET 이라 fetch+Blob(exportDash 와 같은 이유) · 기록 없으면 서버가 JSON 오류
+        try {
+          const r = await this._afetch('/prompt-export?' + new URLSearchParams(p || {}), { headers: this._authHeaders() });
+          if ((r.headers.get('content-type') || '').includes('json')) { const j = await r.json(); this._err(j.error || '내려받기 실패'); return; }
+          const m = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '');
+          const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = (m && m[1]) || 'prism_prompt.md'; a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+        } catch (e) { this._err('프롬프트 내려받기 실패'); }
+      },
       async togglePurpose(c) {               // 관리자: 용도 전환(검수용 ↔ 평가용 홀드아웃)
         const next = c.purpose === 'eval' ? 'review' : 'eval';
         try {

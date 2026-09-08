@@ -311,7 +311,7 @@ window.PRISM_APP_PARTS.push(() => ({
           if (!this.dictData) this.loadDict();          // /dict 는 세션 중 사실상 불변(36KB) · 편집·초기화는 응답으로 dictData 를 직접 갱신한다
           if (this.dictTab === 'entity') this.loadEntdict();
           else if (this.dictTab === 'prompt') this.loadStageDrafts();
-          else if (this.dictTab === 'engine') { this.syncWrapDraft(); this.loadPreview(); this.loadPromptDefaults(); }
+          else if (this.dictTab === 'engine') { this.syncWrapDraft(); this.loadPreview(); this.loadPromptDefaults(); this.loadPromptSources(); }
         }
         else if (id === 'studio') {
           this.loadGoldenStatusThrottled();
