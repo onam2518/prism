@@ -43,15 +43,16 @@ def _angle(intent: str) -> str:
     return ANGLE_MAP.get(intent, intent or "기타")
 
 
-def _content_entities(rows, service_names):
+def _content_entities(rows, service_names, include_all=False):
     """콘텐츠별 (정크 제외) 엔티티 목록 · 중복 제거 + **모델 출력 순서 보존**.
-    품질 미달은 빈 목록(사건 클러스터에 안 섞임).
+    기본은 품질 미달을 빈 목록으로 둔다(사건 클러스터 형성에 안 섞임).
+    include_all=True 면 등급과 무관하게 채운다 — 형성이 끝난 토픽에 사후 편입할 때 쓴다.
 
     set 을 쓰면 순회 순서가 문자열 해시 시드(프로세스마다 새로 뽑힘)에 좌우돼
     대표 엔티티·cluster_id 가 재기동마다 달라졌다(2026-08 감사 T3)."""
     out = []
     for r in rows:
-        if not _eligible(r):
+        if not include_all and not _eligible(r):
             out.append([])
             continue
         im = r.get("item_meta") or {}
@@ -833,6 +834,36 @@ def _apply_exclusion(pool, key, rows, hashes, exmap):
             pool["rep_title"] = _title(rows[ranked[0]]) if ranked else ""
 
 
+def attach_nondist(pools, rows, service_names, co_min=None):
+    """형성이 끝난 토픽에 **유통 불가 콘텐츠를 사후 편입**한다(13211 · 2026-09-08 정책).
+
+    매핑은 품질 등급과 무관하게 전 콘텐츠 대상이지만, 활성 판정과 대표 콘텐츠 선정은
+    유통 가능분만 센다. 그래서 클러스터 형성·이름·cluster_id·대표는 건드리지 않고
+    (cluster_id 가 바뀌면 운영자 제외 큐레이션이 되살아난다 · 2026-08 감사 T3)
+    편입분만 `nondist_ids`·`nondist_n` 으로 따로 표면화한다 — 사안 규모를 실제 보도량대로
+    보기 위한 참고 수치이지 count 가 아니다.
+
+    편입 기준: 엔티티 토픽은 그 엔티티를 가진 콘텐츠, 사건 토픽은 대표 엔티티와
+    co_min 개 이상 겹치는 콘텐츠."""
+    co_min = CO_MIN if co_min is None else max(1, int(co_min))
+    ents_all = _content_entities(rows, service_names, include_all=True)
+    nd = [i for i, r in enumerate(rows) if not _eligible(r)]
+    if not nd:
+        return
+    for p in pools:
+        if p.get("type") == "single":
+            name = p.get("name")
+            ids = [i for i in nd if name in ents_all[i]]
+        elif p.get("type") == "composite":
+            reps = set(p.get("representative_entities") or [])
+            ids = [i for i in nd if len(reps & set(ents_all[i])) >= co_min] if reps else []
+        else:
+            continue
+        if ids:
+            p["nondist_ids"] = ids
+            p["nondist_n"] = len(ids)
+
+
 def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120,
                  custom_defs=None, settings=None, exclusions=None, ent_index=None) -> dict:
     rows = _read_jsonl(results_path)
@@ -846,6 +877,7 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
     custom = build_custom_topics(rows, svc, custom_defs or [], ent_index=ent_index)
     catalog = studio_catalog(rows, svc)
     catalog["eattrs"] = eattr_catalog(ent_index)       # 엔티티 사전 속성 조건 후보(빈도순)
+    attach_nondist(single + composite, rows, svc, co_min=co_min)
     exmap = _exclusion_sets(exclusions)
     if exmap:
         hashes = [_row_hash(r) for r in rows]
