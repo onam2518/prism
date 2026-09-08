@@ -237,20 +237,21 @@ class TestEvalRunCompare(unittest.TestCase):
         self.addCleanup(lambda: setattr(serve, "_STORE", None))
         return serve, st
 
-    def _done_run(self, st, ga, harm=0.0):
-        """지표를 지정한 완주 런 행 생성(실행 없이 · n=10 기준)."""
-        rid = st.eval_run_create("", "", "all", 10)
-        m = {"n": 10, "grade_hit": int(round(ga * 10)), "reason_exact": 8,
-             "jaccard_sum": 8.0, "harm_miss": int(round(harm * 10)), "empty": 0,
+    def _done_run(self, st, ga, harm=0.0, n=10):
+        """지표를 지정한 완주 런 행 생성(실행 없이 · 기본 n=10 기준)."""
+        rid = st.eval_run_create("", "", "all", n)
+        m = {"n": n, "grade_hit": int(round(ga * n)), "reason_exact": int(round(0.8 * n)),
+             "jaccard_sum": 0.8 * n, "harm_miss": int(round(harm * n)), "empty": 0,
              "cost_usd": 0.01, "tok_in": 100, "tok_out": 100, "lat": [5.0],
-             "yellow": 0, "auto_n": 10, "auto_hit": int(round(ga * 10)), "per_reason": {}}
-        st.eval_run_update(rid, status="done", cursor=10, metrics=m, finished=time.time())
+             "yellow": 0, "auto_n": n, "auto_hit": int(round(ga * n)), "per_reason": {}}
+        st.eval_run_update(rid, status="done", cursor=n, metrics=m, finished=time.time())
         return rid
 
     def test_regression_blocks_adoption(self):
         serve, st = self._with_serve()
-        a = self._done_run(st, 0.9)
-        b = self._done_run(st, 0.8)                    # 등급 일치율 -10%p → 회귀
+        # n=200: 10%p 하락이 CI 로도 확실히 갈리는 표본(작은 n 은 우연한 등락과 안 갈려 개입 안 함)
+        a = self._done_run(st, 0.9, n=200)
+        b = self._done_run(st, 0.8, n=200)              # 등급 일치율 -10%p → 회귀
         r = serve.eval_run_compare(a, b, None)
         self.assertTrue(r.get("ok"), r)
         self.assertEqual(r["verdict"], "regressed")
