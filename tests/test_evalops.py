@@ -389,6 +389,12 @@ class TestAutopilot(unittest.TestCase):
         cfg = _merge(Config(), {"thresholds": {"meta_gate": 0.8}})
         self.assertEqual(cfg.thresholds.meta_gate, 0.8)
 
+    def test_regress_and_stall_thresholds_configurable(self):
+        from prism.config import Config, _merge
+        cfg = _merge(Config(), {"thresholds": {"regress_grade_drop": 0.05, "pilot_stall_rounds": 3}})
+        self.assertEqual(cfg.thresholds.regress_grade_drop, 0.05)
+        self.assertEqual(cfg.thresholds.pilot_stall_rounds, 3)
+
     def test_requires_golden(self):
         serve, st = self._with_serve()
         r = serve.autopilot_start(None)

@@ -141,6 +141,8 @@ def meta_report(acc: dict) -> dict:
 
 
 # ── 종합 점수 · 게이트 ───────────────────────────────────────────────────────
+# 등급(정합성)이 원 목적이라 0.4 로 절반 가중, 나머지 메타 4축(인텐트·카테고리·엔티티·리드문)은
+# 서로 우열 없이 0.15 씩 균등 배분(0.4 + 0.15*4 = 1.0).
 WEIGHTS = {"grade_accuracy": 0.4, "intent_f1": 0.15, "cat_hf1": 0.15, "ent_f1": 0.15, "summary_sim": 0.15}
 _FIELD_N = {"intent_f1": "intent_n", "cat_hf1": "cat_n", "ent_f1": "ent_n", "summary_sim": "summary_n"}
 FIELD_KO = {"grade_accuracy": "등급 일치율", "intent_f1": "인텐트 F1", "cat_hf1": "카테고리 F1(계층)",

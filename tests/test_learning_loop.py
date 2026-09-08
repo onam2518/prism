@@ -479,6 +479,14 @@ class TestBatchRegressions(unittest.TestCase):
         post = {"grade_accuracy": 0.85, "harm_miss_rate": 0.0, "by_reason_bucket": {}}
         self.assertEqual(_batch_regressions(pre, post), ["정합성 -5.0% 악화"])
 
+    def test_configured_grade_drop_widens_tolerance(self):
+        """regress_grade_drop 을 넓게 설정하면 기본(2%p)엔 걸릴 하락도 통과한다."""
+        from prism.learnops import _batch_regressions
+        pre = {"grade_accuracy": 0.9, "harm_miss_rate": 0.0, "by_reason_bucket": {}}
+        post = {"grade_accuracy": 0.85, "harm_miss_rate": 0.0, "by_reason_bucket": {}}   # -5%p
+        self.assertEqual(_batch_regressions(pre, post), ["정합성 -5.0% 악화"])           # 기본값 2%p 는 걸림
+        self.assertEqual(_batch_regressions(pre, post, grade_drop=0.10), [])            # 완화한 임계는 통과
+
     def test_learning_batch_reverts_on_harm_regression(self):
         """정확도가 올라도 유해 미탐이 악화되면 원복(단일 스칼라 가드의 사각 해소)."""
         import json as _j

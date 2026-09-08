@@ -250,7 +250,7 @@ def eval_run_compare(a_id: int, b_id: int, team=None) -> dict:
     if ra.get("status") != "done" or rb.get("status") != "done":
         return {"ok": False, "error": "완주한 런끼리만 비교할 수 있습니다"}
     from . import learnops as LO
-    regressions = LO._batch_regressions(ra, rb)
+    regressions = LO._batch_regressions(ra, rb, grade_drop=LO._regress_grade_drop())
     if regressions:                              # 부분 개선이라도 회귀 지점이 있으면 보류(보수 채택)
         verdict = "regressed"
     elif (rb.get("grade_accuracy") or 0) > (ra.get("grade_accuracy") or 0) + 1e-9:
@@ -365,6 +365,8 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
     best = None          # 최고 등급 일치율(화면 표시용)
     best_score = None    # 최고 종합 점수(정체 판정용 · 목표 판정과 같은 5축)
     no_improve = 0
+    stall_rounds = int(getattr(Config.load().thresholds, "pilot_stall_rounds", PILOT_STALL_ROUNDS)
+                       or PILOT_STALL_ROUNDS)
     try:
         for rnd in range(1, max_rounds + 1):
             if rid in _PILOT_STOP:
@@ -411,9 +413,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                                     finished=time.time())
                 return
             no_improve = 0 if improved else no_improve + 1
-            if no_improve >= PILOT_STALL_ROUNDS:
+            if no_improve >= stall_rounds:
                 st.autopilot_update(rid, team=team, status="done",
-                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 종합 향상 없음(최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
+                                    stop_reason=f"개선 정체 · {stall_rounds}라운드 연속 종합 향상 없음(최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
                                     finished=time.time())
                 return
         st.autopilot_update(rid, team=team, status="done",

@@ -400,6 +400,7 @@ def cheapest_passing_model(models: list, gate: float) -> str:
 
 _COMPARE_MAX_MODELS = 6                               # 한 번에 비교하는 모델 수 상한(라우터 부하 · 표 폭)
 _COMPARE_MAX_ROWS = 200                               # 모델당 골든 건수 상한
+_COMPARE_MAX_WORKERS = 4                              # 모델 간 동시 실행 상한(같은 라우터 키를 나눠 써 지연시간이 부풀 수 있음 · concurrent_models 로 표시)
 
 
 def _compare_item(row: dict, outs_by_model: dict) -> dict:
@@ -492,11 +493,14 @@ def _compare_finish(prep: dict, done: list, team) -> dict:
         for it in r.get("issues") or []:
             it["applied"] = it["directive"] in (stage_prompts.get(it["stage"]) or "")
     gate = float(getattr(cfg.thresholds, "eval_gate", 0.85) or 0.85)
+    # 모델 간 병렬 실행 수(같은 라우터 키를 나눠 쓰므로 >1 이면 지연시간이 실제보다 부풀 수 있음 · UI 는 이때 latency 를 승자 표시에서 제외)
+    concurrent_models = max(1, min(_COMPARE_MAX_WORKERS, len(prep["ready"])))
     res = {"ok": True, "models": out, "skipped": prep["skipped"],
            "best": out[0]["model"], "golden_n": len(rows), "scope": prep["scope"], "ts": time.time(),
            "eval_gate": gate, "meta_gate": float(getattr(cfg.thresholds, "meta_gate", 0.6) or 0.6),
            "cheapest_passing": cheapest_passing_model(out, gate),
            "items": items,
+           "concurrent_models": concurrent_models,
            "split_n": sum(1 for it in items if it["split"]),
            "miss_n": sum(1 for it in items if not it["all_ok"])}
     try:
@@ -513,7 +517,7 @@ def compare_models_on_golden(models=None, team=None, scope: str = "all") -> dict
     prep, err = _compare_prepare(models, team, scope)
     if err:
         return err
-    with ThreadPoolExecutor(max_workers=max(1, min(4, len(prep["ready"])))) as ex:
+    with ThreadPoolExecutor(max_workers=max(1, min(_COMPARE_MAX_WORKERS, len(prep["ready"])))) as ex:
         done = list(ex.map(lambda it: _compare_run_model(it, prep["rows"], prep["cfg"]), prep["ready"]))
     return _compare_finish(prep, done, team)
 
@@ -562,7 +566,7 @@ def compare_start(models, team=None, scope: str = "all") -> dict:
 
     def _run():
         try:
-            with ThreadPoolExecutor(max_workers=max(1, min(4, len(prep["ready"])))) as ex:
+            with ThreadPoolExecutor(max_workers=max(1, min(_COMPARE_MAX_WORKERS, len(prep["ready"])))) as ex:
                 done = list(ex.map(_one, prep["ready"]))
             job["result"] = _compare_finish(prep, done, team)
             job["status"] = "done"
@@ -634,10 +638,15 @@ def snapshot_prompts(team=None) -> dict:
 
 MIN_INTENT_N = 20                                # 인텐트 스칼라 가드 최소 측정 표본
 INTENT_JACCARD_DROP = 0.05                       # 인텐트 자카드 허용 악화 폭(초과 시 회귀)
+REGRESS_GRADE_DROP = 0.02                        # 정합성 허용 악화 폭(초과 시 회귀 · config.thresholds.regress_grade_drop 로 재정의)
+
+
+def _regress_grade_drop() -> float:
+    return float(getattr(Config.load().thresholds, "regress_grade_drop", REGRESS_GRADE_DROP) or REGRESS_GRADE_DROP)
 
 
 def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
-                       min_intent_n: int = MIN_INTENT_N) -> list:
+                       min_intent_n: int = MIN_INTENT_N, grade_drop: float = REGRESS_GRADE_DROP) -> list:
     """개선 후 평가가 전보다 나빠진 지점 목록(원복 사유 문구 · 없으면 빈 목록).
     ① 정합성 2%p 초과 악화 ② 유해 미탐률(harm_miss_rate) 악화
     ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제)
@@ -659,7 +668,7 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
         d = round((post.get("grade_accuracy") or 0.0) - (pre.get("grade_accuracy") or 0.0), 4)
     except (TypeError, ValueError):
         return out
-    if d < -0.02:
+    if d < -grade_drop:
         out.append(f"정합성 {d:+.1%} 악화")
     pre_miss = float(pre.get("harm_miss_rate") or 0.0)
     post_miss = float(post.get("harm_miss_rate") or 0.0)
@@ -723,7 +732,7 @@ def learning_batch(team=None, models=None, model: str = "") -> dict:
             delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
         except (TypeError, ValueError):
             delta = None
-        regressions = _batch_regressions(eval_pre, evalr) if evalr.get("ok") else []
+        regressions = _batch_regressions(eval_pre, evalr, grade_drop=_regress_grade_drop()) if evalr.get("ok") else []
         if regressions:                                  # 악화 가드: 이전 프롬프트로 원복
             PR.LEARNED = prev_learned
             PR.LEARNED_BY_MODEL = prev_by_model
