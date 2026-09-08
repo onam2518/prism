@@ -66,6 +66,7 @@ class Thresholds:
     legal_confidence: float = 0.30  # 법령 라우팅 임계
     legal_red: int = 70             # RED 차단 임계
     eval_gate: float = 0.85         # 정확도 게이트(§6.4)
+    meta_gate: float = 0.6          # 메타(인텐트·카테고리·엔티티·리드문) 게이트 · 비교표·오토파일럿 공용
 
 
 @dataclass

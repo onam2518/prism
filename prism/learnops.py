@@ -642,7 +642,9 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     ① 정합성 2%p 초과 악화 ② 유해 미탐률(harm_miss_rate) 악화
     ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제)
     ④ 인텐트 자카드 5%p 초과 악화(측정 표본 min_intent_n 이상일 때만)
-    ⑤ 인텐트 값별 F1 10%p 초과 하락(support min_bucket_n 이상 · ③과 동일 규칙).
+    ⑤ 인텐트 값별 F1 10%p 초과 하락(support min_bucket_n 이상 · ③과 동일 규칙)
+    ⑥ 카테고리 F1·엔티티 F1·리드문 유사도 5%p 초과 악화(표본 min_intent_n 이상 · ④와 동일 규칙 ·
+       오토파일럿 목표·종합 점수가 읽는 5축 전부를 원복 가드도 읽게).
     cli tune RegressionGuard 를 서버 자동 배치로 이식(단일 스칼라 가드의 사각 해소).
 
     ④ 임계 근거: 인텐트 측정 표본은 골든 전체가 아니라 '기대 인텐트가 달린 행'뿐이라
@@ -690,6 +692,13 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
             cf = float((post_i.get(v) or {}).get("f1", bf))
             if cf < bf - 0.10:
                 out.append(f"인텐트 {v} F1 {bf:.0%}→{cf:.0%} 회귀")
+    for k in ("cat_hf1", "ent_f1", "summary_sim"):                       # ⑥ 메타 나머지 축
+        nk = ME._FIELD_N[k]
+        if int(pre.get(nk) or 0) < min_intent_n or int(post.get(nk) or 0) < min_intent_n:
+            continue
+        dm = round(float(post.get(k) or 0.0) - float(pre.get(k) or 0.0), 4)
+        if dm < -INTENT_JACCARD_DROP:
+            out.append(f"{ME.FIELD_KO[k]} {dm:+.1%} 악화(n={int(post.get(nk) or 0)})")
     return out
 
 

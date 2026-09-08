@@ -357,7 +357,8 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "")
     from . import learnops as LO
     st = _SV.get_store()
     history = []
-    best = None
+    best = None          # 최고 등급 일치율(화면 표시용)
+    best_score = None    # 최고 종합 점수(정체 판정용 · 목표 판정과 같은 5축)
     no_improve = 0
     try:
         for rnd in range(1, max_rounds + 1):
@@ -391,8 +392,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "")
             history.append({"round": rnd, "accuracy": acc, "pre": pre, "model": model, "metrics": metrics,
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
-            improved = best is None or acc > best + 1e-9
-            best = acc if improved else best
+            best = acc if best is None else max(best, acc)
+            improved = best_score is None or ov["overall"] > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
+            best_score = ov["overall"] if improved else best_score
             fields = {"last_accuracy": acc, "best_accuracy": best,
                       "history": history, "heartbeat": time.time()}
             if rnd == 1:
@@ -406,7 +408,7 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "")
             no_improve = 0 if improved else no_improve + 1
             if no_improve >= PILOT_STALL_ROUNDS:
                 st.autopilot_update(rid, team=team, status="done",
-                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 향상 없음(최고 {best:.0%})",
+                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 종합 향상 없음(최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
                                     finished=time.time())
                 return
         st.autopilot_update(rid, team=team, status="done",

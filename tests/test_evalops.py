@@ -344,6 +344,30 @@ class TestAutopilot(unittest.TestCase):
         self.assertIn("정체", run["stop_reason"])
         self.assertEqual(run["round"], 3)               # 1라운드 최고 경신 후 2연속 무향상
 
+    def test_stall_uses_overall_score(self):
+        """등급이 제자리여도 메타 축(엔티티 F1)이 오르면 향상으로 본다 · 정체 판정 = 종합 점수."""
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        import prism.learnops as LO
+        orig = LO.learning_batch
+        ents = iter([0.5, 0.6, 0.7, 0.8, 0.9])
+        def fake(team=None, models=None, model=""):
+            return {"ok": True, "grade_accuracy": 0.7, "eval_pre": {"grade_accuracy": 0.7},
+                    "eval": {"ok": True, "grade_accuracy": 0.7, "ent_n": 10, "ent_f1": next(ents)},
+                    "improve": {"reverted": False}, "prompt_snapshot": {"version": 1}}
+        LO.learning_batch = fake
+        self.addCleanup(lambda: setattr(LO, "learning_batch", orig))
+        serve.autopilot_start(None, target=0.95, max_rounds=4)
+        run = self._wait(st)
+        self.assertIn("최대 라운드", run["stop_reason"])   # 종합이 매 라운드 올라 정체로 끊기지 않는다
+        self.assertEqual(run["round"], 4)
+        self.assertEqual(run["best_accuracy"], 0.7)
+
+    def test_meta_gate_configurable(self):
+        from prism.config import Config, _merge
+        cfg = _merge(Config(), {"thresholds": {"meta_gate": 0.8}})
+        self.assertEqual(cfg.thresholds.meta_gate, 0.8)
+
     def test_requires_golden(self):
         serve, st = self._with_serve()
         r = serve.autopilot_start(None)
