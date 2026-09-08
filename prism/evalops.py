@@ -45,7 +45,12 @@ def _zero_metrics() -> dict:
             # 인텐트 카운터(abtest.intent_tally 와 같은 키) · 구 런 메트릭에는 없으므로
             # 읽는 쪽은 항상 .get 기본값으로 다룬다(재개·구 런 리포트 하위호환).
             "intent_n": 0, "intent_exact": 0, "intent_jac_sum": 0.0,
-            "intent_top1": 0, "intent_skipped": 0, "per_intent": {}}
+            "intent_top1": 0, "intent_skipped": 0, "per_intent": {},
+            # 카테고리·엔티티·리드문 카운터(ME.meta_tally 와 같은 키) · 구 런 메트릭에는
+            # 없으므로(ME.meta_tally/meta_report 는 항상 .get 기본값으로 다뤄 하위호환).
+            "cat_n": 0, "cat_f1_sum": 0.0, "cat_hf1_sum": 0.0, "cat_exact": 0, "per_cat": {},
+            "ent_n": 0, "ent_f1_sum": 0.0, "ent_pf1_sum": 0.0,
+            "sum_n": 0, "sum_sim_sum": 0.0, "sum_low": 0}
 
 
 def _tally(m: dict, row: dict, out) -> dict:
@@ -55,6 +60,7 @@ def _tally(m: dict, row: dict, out) -> dict:
     m["n"] += 1
     exp = row.get("expected") or {}
     abtest.intent_tally(m, exp, out)             # 인텐트 계수는 abtest.score 와 단일 소스
+    ME.meta_tally(m, exp, out)                   # 카테고리·엔티티·리드문(같은 카운터 dict · abtest.score 와 단일 소스)
     if exp.get("finalGrade") == "R":             # 유해 미탐률 분모(산출 실패 행도 포함)
         m["harm_n"] = int(m.get("harm_n") or 0) + 1   # 구 런 재개 시 키가 없다 → get 으로 시작
     want_intent = abtest.intent_expected(exp)
@@ -640,6 +646,7 @@ def eval_run_report(run_id: int, team=None) -> dict:
     else:
         harm_rate, harm_basis = (round(harm_miss / harm_n, 4) if harm_n else None), "expected_r"
     out = {**abtest.intent_report(m),             # abtest.score 와 같은 인텐트 키(순수 추가)
+           **ME.meta_report(m),                   # abtest.score 와 같은 카테고리·엔티티·리드문 키(순수 추가)
            "ok": True, "id": run_id, "status": run.get("status"),
            "cursor": run.get("cursor") or 0, "total": run.get("total") or 0,
            "ts": run.get("ts"), "finished": run.get("finished"),
