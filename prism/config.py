@@ -67,6 +67,8 @@ class Thresholds:
     legal_red: int = 70             # RED 차단 임계
     eval_gate: float = 0.85         # 정확도 게이트(§6.4)
     meta_gate: float = 0.6          # 메타(인텐트·카테고리·엔티티·리드문) 게이트 · 비교표·오토파일럿 공용
+    regress_grade_drop: float = 0.02   # 학습 배치 원복 가드: 정합성 허용 악화 폭(초과 시 회귀 · learnops._batch_regressions)
+    pilot_stall_rounds: int = 2        # 오토파일럿 연속 무향상 허용 라운드(초과 시 정체 종료 · evalops._pilot_loop)
 
 
 @dataclass

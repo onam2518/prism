@@ -409,6 +409,10 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       cmpWin(f, mi, lower) {                     // 그 줄에서 유일하게 가장 좋은 값(동률이면 표시 안 함)
         const c = this.cmpCols; if (c.length < 2) return false;
+        // 모델을 동시에(concurrent_models>1) 돌리면 같은 라우터 키를 나눠 써 지연시간이 실제보다
+        // 부풀 수 있다 → 속도만 승자 표시에서 제외(다른 지표는 병렬과 무관해 그대로 둔다)
+        if ((f === 'latency_p50_ms' || f === 'latency_p95_ms')
+            && ((this.cmpResult && this.cmpResult.concurrent_models) || 1) > 1) return false;
         const v = c[mi][f]; if (v == null) return false;
         return c.every((o, oi) => oi === mi || o[f] == null || (lower ? v < o[f] : v > o[f]));
       },
