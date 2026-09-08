@@ -20,7 +20,7 @@ class TestGoldenCreation(unittest.TestCase):
         self.addCleanup(lambda: setattr(serve, "_STORE", None))
         return serve, st
 
-    def _put_reviewed(self, st, title, verdicts, cats=("Sports",)):
+    def _put_reviewed(self, st, title, verdicts, cats=("Sports",), grade="G", reasons=()):
         """YELLOW 결과 + 검수자 판정 삽입 → content_hash 반환."""
         import json as _j
         import time as _t
@@ -28,12 +28,12 @@ class TestGoldenCreation(unittest.TestCase):
         content = {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": "본문 " + title}
         ch = content_hash(content)
         im = {"summary": title, "entities": [], "intent": [], "content_category": list(cats)}
-        payload = {"quality_meta": {"review": "yellow", "finalGrade": "G", "reasons": []},
+        payload = {"quality_meta": {"review": "yellow", "finalGrade": grade, "reasons": list(reasons)},
                    "item_meta": im, "content_ref": dict(content)}
         c = st._conn()
         c.execute("INSERT OR REPLACE INTO results(content_hash,service,title,final_grade,reasons,item_meta,payload,created_at) "
                   "VALUES(?,?,?,?,?,?,?,?)",
-                  (ch, "뉴스", title, "G", "[]", _j.dumps(im), _j.dumps(payload), _t.time()))
+                  (ch, "뉴스", title, grade, _j.dumps(list(reasons)), _j.dumps(im), _j.dumps(payload), _t.time()))
         c.commit()
         now = _t.time()
         for rv, v in verdicts:
@@ -68,6 +68,25 @@ class TestGoldenCreation(unittest.TestCase):
         g = serve.build_golden_from_reviews(None)
         self.assertEqual(g["need_category"], 1)
         self.assertEqual(g["need_list"][0]["title"], "분류 없는 합의")
+
+    def test_r_grade_promoted_without_category(self):
+        """R 은 하네스가 아이템 메타를 폐기해 분류가 영구 공백이다(harness._assemble).
+        분류를 요구하면 기대 R 이 한 건도 골든에 못 들어가 유해 미탐률 분모가 늘 0(측정 불가)
+        → R 은 분류 요건 면제로 승격하고, 기대는 등급·사유만 담는다(빈 메타는 채점 분모 제외)."""
+        import json as _j
+        serve, st = self._with_store()
+        ch = self._put_reviewed(st, "유해 합의", [("A", "good"), ("B", "good")],
+                                cats=(), grade="R", reasons=["abuse"])
+        serve._agg_bump()
+        p0 = serve.promotion_pending(None)                             # 승격 게이트와 대기 분류 정합
+        self.assertEqual((p0["promote"], p0["no_cat"]), (1, 0))
+        g = serve.build_golden_from_reviews(None)
+        self.assertEqual((g["confirmed"], g["need_category"]), (1, 0))
+        self.assertIn(ch, st.golden_hashes())
+        exp = _j.loads(st._conn().execute(
+            "SELECT expected FROM golden WHERE content_hash=?", (ch,)).fetchone()[0])
+        self.assertEqual((exp["finalGrade"], exp["reasons"]), ("R", ["abuse"]))
+        self.assertNotIn("content_category", exp)     # 빈 메타 키를 넣으면 카테고리 F1 분모를 잠식한다
 
     def test_manual_golden_same_hash_not_overwritten(self):
         # P1-7: 같은 콘텐츠에 관리자 수동 골든이 있으면 검수 합의로 덮어쓰지 않는다(정답 소실 방지).

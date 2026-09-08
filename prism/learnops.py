@@ -284,16 +284,20 @@ def build_golden_from_reviews(team=None) -> dict:
             need_list.append({"hash": ch, "title": content.get("title", ""),
                               "service": content.get("displayServiceName", ""), "reason": "grade"})
             continue
+        grade = qm.get("finalGrade", "")
         cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
-        if not cats:                                  # 카테고리 공백 → 골든 미확정(채워야 함)
+        # R 은 하네스가 아이템 메타를 폐기(harness._assemble)해 분류가 영구 공백이다 → 분류 요건 면제.
+        # 요구하면 기대 R 행이 한 건도 골든에 못 들어가 유해 미탐률 분모가 늘 0(측정 불가)이 된다.
+        if not cats and grade != "R":                 # 카테고리 공백 → 골든 미확정(채워야 함)
             no_cat += 1
             need_list.append({"hash": ch, "title": content.get("title", ""),
                               "service": content.get("displayServiceName", "")})
             continue
-        entries.append({"hash": ch, "content": content, "expected": {
-            "finalGrade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
-            "intent": im.get("intent", []) or [], "content_category": cats,
-            "summary": im.get("summary", ""), "entities": im.get("entities", []) or []}})
+        exp = {"finalGrade": grade, "reasons": qm.get("reasons", []) or []}
+        if cats:                                      # 메타 키는 있을 때만 — 빈 기대는 채점 분모에서 빠진다(metaeval.meta_tally)
+            exp.update({"intent": im.get("intent", []) or [], "content_category": cats,
+                        "summary": im.get("summary", ""), "entities": im.get("entities", []) or []})
+        entries.append({"hash": ch, "content": content, "expected": exp})
         contributors[ch] = [v.get("reviewer_id") or v.get("reviewer")
                             for v in fb.get("verdicts", []) if v.get("verdict") == "good"]
     new = 0
@@ -369,10 +373,11 @@ def promotion_pending(team=None) -> dict:
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
         agreed = fv == "good" or (fb.get("good", 0) >= min_good and gw > bw)
-        grade_ok = (r.get("quality_meta") or {}).get("finalGrade", "") in ("G", "R")
+        grade = (r.get("quality_meta") or {}).get("finalGrade", "")
+        grade_ok = grade in ("G", "R")
         cats = [c for c in ((r.get("item_meta") or {}).get("content_category") or [])
                 if c and c != "Unclassified"]
-        if agreed and grade_ok and cats:
+        if agreed and grade_ok and (cats or grade == "R"):   # R 은 분류 요건 면제(승격 게이트와 동일)
             out["promote"] += 1
         elif agreed and not grade_ok:
             out["no_grade"] += 1
@@ -639,7 +644,9 @@ INTENT_JACCARD_DROP = 0.05                       # 인텐트 자카드 허용 �
 def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
                        min_intent_n: int = MIN_INTENT_N) -> list:
     """개선 후 평가가 전보다 나빠진 지점 목록(원복 사유 문구 · 없으면 빈 목록).
-    ① 정합성 2%p 초과 악화 ② 유해 미탐률(harm_miss_rate) 악화
+    ① 정합성 2%p 초과 악화 ② 유해 미탐률(harm_miss_rate) 악화 — 단 어느 한쪽이라도
+       None(기대 R 행 0 = **측정 불가**)이면 비교하지 않는다. 0.0 으로 읽으면 '악화 없음'이
+       되어 가드가 영원히 안 걸리고, 유해 축을 아예 못 잰 런이 조용히 통과한다.
     ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제)
     ④ 인텐트 자카드 5%p 초과 악화(측정 표본 min_intent_n 이상일 때만)
     ⑤ 인텐트 값별 F1 10%p 초과 하락(support min_bucket_n 이상 · ③과 동일 규칙)
@@ -661,10 +668,11 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
         return out
     if d < -0.02:
         out.append(f"정합성 {d:+.1%} 악화")
-    pre_miss = float(pre.get("harm_miss_rate") or 0.0)
-    post_miss = float(post.get("harm_miss_rate") or 0.0)
-    if post_miss > pre_miss + 1e-9:
-        out.append(f"유해 미탐 {pre_miss:.1%}→{post_miss:.1%} 악화")
+    pre_miss, post_miss = pre.get("harm_miss_rate"), post.get("harm_miss_rate")
+    if pre_miss is not None and post_miss is not None:      # None = 기대 R 행 0(측정 불가) → 비교 안 함
+        pre_miss, post_miss = float(pre_miss), float(post_miss)
+        if post_miss > pre_miss + 1e-9:
+            out.append(f"유해 미탐 {pre_miss:.1%}→{post_miss:.1%} 악화")
     post_b = post.get("by_reason_bucket") or {}
     for b, pv in (pre.get("by_reason_bucket") or {}).items():
         if int((pv or {}).get("n") or 0) < min_bucket_n:
