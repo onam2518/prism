@@ -41,9 +41,32 @@
             <div class="panel-bd">
               <!-- 말로 만들기(기본): 문장 → 해석 칩 + 매칭 건수 + 표본 → 문장 보태 다듬기 → 저장 · 칩 나열은 '직접' 토글 뒤(스펙 132112) -->
               <!-- 말로 만들기(기본): 왼쪽 = 대화(문장 → 해석 칩 · 건수 · 표본 → 다듬기 → 저장) · 오른쪽 = 예시 명령과 조건 가이드(스펙 132112 조건 사전) -->
-              <div class="talkwrap" x-show="topicGenTab==='manual' && !studioManual">
-              <div class="talk">
+              <div class="talk" x-show="topicGenTab==='manual' && !studioManual">
               <div class="talk__empty" x-show="!talk.turns.length"><b>무엇을 묶을까요?</b><span>문장으로 말하면 조건과 지금 데이터의 매칭 결과가 바로 나옵니다. 마음에 안 들면 말을 보태거나 칩을 빼세요.</span></div>
+              <div class="talk__help" x-show="!talk.turns.length || talk.help">
+              <div class="tg">
+              <div class="tg__h">예시 <span class="meta">누르면 바로 해석</span></div>
+              <template x-for="e in talkExamples" x-bind:key="e"><button type="button" class="tg__ex" x-on:click="talkExample(e)" x-text="e"></button></template>
+              </div>
+              <div class="tg">
+              <div class="tg__h">말할 수 있는 조건</div>
+              <dl class="tg__dl">
+              <dt>분야</dt><dd>스포츠 · 경제 · 범죄 관련</dd>
+              <dt>의도</dt><dd>분석 위주 · 속보만 · 후기 · 심층</dd>
+              <dt>엔티티</dt><dd>손흥민 · 삼성전자<small>사전에 있는 이름만</small></dd>
+              <dt>출처</dt><dd>카카오TV만 · 브런치는 빼고<small>데이터에 있는 서비스 · 매체만</small></dd>
+              <dt>기간</dt><dd>최근 2주 · 오늘 올라온 · 이번 달</dd>
+              <dt>형식</dt><dd>영상만 · 쇼츠 빼고 · 글만 · 라이브 제외</dd>
+              <dt>첨부</dt><dd>사진 있는 것만 · 영상 딸린</dd>
+              <dt>길이</dt><dd>긴 글만 · 짧은 글 제외<small>긴 글 = 1,500자 이상</small></dd>
+              <dt>표시</dt><dd>단독만 · 주요 뉴스 · 기획 기사 · 중복 빼고 · 후속 있는</dd>
+              <dt>매체 등급</dt><dd>우수 매체만 · 블랙 제외</dd>
+              <dt>열독률</dt><dd>많이 읽힌</dd>
+              <dt>제외</dt><dd>…는 빼고 · 제외 · 말고<small>같은 축에선 제외가 이깁니다</small></dd>
+              </dl>
+              <p class="tg__note">사전에 없는 값은 만들지 않습니다. 광고 · 성인 · 선정 · 삭제는 늘 빠지고 "광고 포함해도 돼"로 풉니다. 데이터에 없는 필드는 "필드 없음"으로 알려 줍니다.</p>
+              </div>
+              </div>
               <template x-for="(t,i) in talk.turns" x-bind:key="'t'+i">
               <div>
               <div class="talk__me"><span class="talk__who">나</span><span x-text="t.text"></span></div>
@@ -67,6 +90,7 @@
               <textarea class="field" rows="2" style="resize:vertical" x-model="talk.input" x-on:keydown.enter.prevent="talkSend()" x-bind:placeholder="talk.turns.length?'더 말하기 · 예: 야구는 빼줘 · 쇼츠랑 라이브는 빼고 사진 있는 것만':'무엇을 묶을지 말해 주세요 · 예: 스포츠 경기 리뷰랑 전술 분석 위주로. 팬 응원은 빼고, 브런치 글도 빼줘. 최근 2주.'"></textarea>
               <div class="talk__row">
               <span class="talk__hint">Enter 로 보내기 · 해석은 시스템 설정의 기본 실행 모델</span>
+              <button type="button" class="talk__link" x-show="talk.turns.length" x-on:click="talk.help=!talk.help" x-text="talk.help?'가이드 닫기':'말할 수 있는 조건'"></button>
               <span class="meta" x-show="studioMsg" x-text="studioMsg"></span>
               <span style="margin-left:auto"></span>
               <button type="button" class="ds-btn ds-btn--outline" x-show="talk.turns.length" x-on:click="talkReset()">처음부터</button>
@@ -79,31 +103,6 @@
               <button type="button" class="ds-btn ds-btn--primary" x-on:click="talkSave('active')" x-bind:disabled="studioSaving || !talkN()" x-bind:data-tip="talkN()?'저장하고 바로 활성':'0건이면 활성화할 수 없어요 · 초안으로 저장'" data-tip-pos="top" x-text="studio.editId?'수정 저장':'활성화'"></button>
               </div>
               </div>
-              </div>
-              <aside class="talkaside">
-              <div class="tg">
-              <div class="tg__h">예시 <span class="meta">누르면 바로 해석</span></div>
-              <template x-for="e in talkExamples" x-bind:key="e"><button type="button" class="tg__ex" x-on:click="talkExample(e)" x-text="e"></button></template>
-              </div>
-              <div class="tg">
-              <div class="tg__h">말할 수 있는 조건</div>
-              <dl class="tg__dl">
-              <dt>분야</dt><dd>스포츠 · 경제 · 범죄 관련</dd>
-              <dt>의도</dt><dd>분석 위주 · 속보만 · 후기 · 심층</dd>
-              <dt>엔티티</dt><dd>손흥민 · 삼성전자<small>사전에 있는 이름만</small></dd>
-              <dt>출처</dt><dd>카카오TV만 · 브런치는 빼고<small>데이터에 있는 서비스 · 매체만</small></dd>
-              <dt>기간</dt><dd>최근 2주 · 오늘 올라온 · 이번 달</dd>
-              <dt>형식</dt><dd>영상만 · 쇼츠 빼고 · 글만 · 라이브 제외</dd>
-              <dt>첨부</dt><dd>사진 있는 것만 · 영상 딸린</dd>
-              <dt>길이</dt><dd>긴 글만 · 짧은 글 제외<small>긴 글 = 1,500자 이상</small></dd>
-              <dt>표시</dt><dd>단독만 · 주요 뉴스 · 기획 기사 · 중복 빼고 · 후속 있는</dd>
-              <dt>매체 등급</dt><dd>우수 매체만 · 블랙 제외</dd>
-              <dt>열독률</dt><dd>많이 읽힌</dd>
-              <dt>제외</dt><dd>…는 빼고 · 제외 · 말고<small>같은 축에선 제외가 이깁니다</small></dd>
-              </dl>
-              <p class="tg__note">사전에 없는 값은 만들지 않습니다. 광고 · 성인 · 선정 · 삭제는 늘 빠지고 "광고 포함해도 돼"로 풉니다. 데이터에 없는 필드는 "필드 없음"으로 알려 줍니다.</p>
-              </div>
-              </aside>
               </div>
               <div class="ds-steps ds-steps--labeled" x-show="topicGenTab==='manual' && studioManual">
 
