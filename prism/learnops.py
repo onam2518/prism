@@ -433,6 +433,9 @@ def cheapest_passing_model(models: list, gate: float) -> str:
 _COMPARE_MAX_MODELS = 6                               # 한 번에 비교하는 모델 수 상한(라우터 부하 · 표 폭)
 _COMPARE_MAX_ROWS = 200                               # 모델당 골든 건수 상한
 _COMPARE_MAX_WORKERS = 4                              # 모델 간 동시 실행 상한(같은 라우터 키를 나눠 써 지연시간이 부풀 수 있음 · concurrent_models 로 표시)
+_COMPARE_INDEX = "model_compare_index"                # 회차 색인(키·일시·모델·승자) · 목록 라우트 원천
+_COMPARE_START = "model_compare_start"                # 시작 기록 · '결과 없는 시작' = 재시작 유실 판정
+_COMPARE_HISTORY_KEEP = 30                            # 색인에 남기는 회차 수
 
 
 def _compare_item(row: dict, outs_by_model: dict) -> dict:
@@ -542,7 +545,19 @@ def _compare_finish(prep: dict, done: list, team) -> dict:
            "miss_n": sum(1 for it in items if not it["all_ok"]),
            "prompt_snapshot_version": prep.get("snap_version")}   # 비교 시작 시점 프롬프트 버전(진행 중 반영 식별)
     try:
-        _SV.get_store().save_report("model_compare", res, team)
+        st = _SV.get_store()
+        # ponytail: 색인만 자르고 잘린 회차 본문은 reports 에 남는다 · 정리가 필요하면 store 에 delete_report 를 추가
+        idx = (st.get_report(_COMPARE_INDEX, team) or {}).get("items") or []
+        keys, n = {e.get("key") for e in idx}, int(res["ts"])
+        while f"model_compare_v{n}" in keys:      # 같은 초에 두 번 끝나도 회차가 서로 덮이지 않게
+            n += 1
+        res["key"] = key = f"model_compare_v{n}"
+        st.save_report(key, res, team)            # 회차별 영속(이력)
+        st.save_report("model_compare", res, team)   # 최신 별칭(기존 화면 계약 유지)
+        st.save_report(_COMPARE_INDEX, {"items": ([{"key": key, "ts": res["ts"], "best": res["best"],
+                                                    "models": [m["model"] for m in out],
+                                                    "golden_n": res["golden_n"], "scope": res["scope"]}]
+                                                  + idx)[:_COMPARE_HISTORY_KEEP]}, team)
     except Exception as e:                        # 영속 실패는 비교 결과 자체를 막지 않는다
         print(f"  [compare] 결과 저장 실패: {e}")
     return res
@@ -592,6 +607,7 @@ def compare_start(models, team=None, scope: str = "all") -> dict:
         _COMPARE_JOBS[jid] = job
         for old in sorted(_COMPARE_JOBS)[:-_COMPARE_KEEP]:
             _COMPARE_JOBS.pop(old, None)
+    _SV._report_save(_COMPARE_START, {"ts": job["ts"], "id": jid, "models": list(job["models"])}, team)
 
     def _one(item):
         pm = job["models"][item[0]]
@@ -634,11 +650,31 @@ def compare_jobs(team=None) -> dict:
     return {"ok": True, "jobs": sorted(js, key=lambda d: -d["id"])}
 
 
-def last_model_compare(team=None) -> dict:
-    """마지막 모델 비교 결과(영속분) · 없으면 ok=False."""
+def last_model_compare(team=None, key: str = "") -> dict:
+    """모델 비교 결과(영속분) · key 를 주면 그 회차, 없으면 최신(model_compare 별칭)."""
     st = _SV.get_store()
-    rep = st.get_report("model_compare", team) if (st and hasattr(st, "get_report")) else None
-    return rep if rep else {"ok": False, "error": "저장된 비교 결과가 없습니다"}
+    if not (st and hasattr(st, "get_report")):
+        return {"ok": False, "error": "저장된 비교 결과가 없습니다"}
+    if key:                                       # 신뢰 경계: 회차 키 형식을 강제(다른 리포트 종류 조회 차단)
+        if not (key.startswith("model_compare_v") and key[15:].isdigit()):
+            return {"ok": False, "error": "잘못된 비교 회차 키"}
+        return st.get_report(key, team) or {"ok": False, "error": "그 회차 비교 결과가 없습니다"}
+    rep = st.get_report("model_compare", team)
+    if rep:
+        return rep
+    # ponytail: 큐 상태는 프로세스 메모리라 재시작하면 사라진다 · '시작 기록은 있는데 결과가 없다'로만 유실을 알린다
+    #           (진행 중이던 잡을 되살리려면 큐 상태 자체를 리포트로 영속해야 한다)
+    start = st.get_report(_COMPARE_START, team) or {}
+    if start.get("ts") and int(start.get("id") or 0) not in _COMPARE_JOBS:
+        return {"ok": False, "lost": True, "error": "이전 실행이 재시작으로 유실됨 · 다시 실행하세요"}
+    return {"ok": False, "error": "저장된 비교 결과가 없습니다"}
+
+
+def compare_history(team=None) -> dict:
+    """저장된 비교 회차 목록(최신순 · 키·일시·모델·승자) · 지난 회차 다시 보기용."""
+    st = _SV.get_store()
+    idx = (st.get_report(_COMPARE_INDEX, team) or {}) if (st and hasattr(st, "get_report")) else {}
+    return {"ok": True, "items": idx.get("items") or []}
 
 def snapshot_prompts(team=None) -> dict:
     """학습 반영 직후, 다음 초안 버전(v = 반영 회차 + 1)이 쓰게 될 단계(콜)별 최종

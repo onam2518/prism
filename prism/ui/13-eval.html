@@ -251,6 +251,10 @@
                 <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-bind:disabled="cmpBusy || cmpPicked.length < 2" x-on:click="runCompare()" x-text="cmpBusy ? ('비교 중… ' + (cmpProgressTxt || (cmpPicked.length + '개 모델 동시 추출'))) : '비교 실행'"></button>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="openCompareWindow(cmpJob ? cmpJob.id : 0)" data-tip="모델별 진척도와 최근 비교 결과를 브라우저 새 창으로 봅니다 · 닫아도 비교는 계속 돕니다" data-tip-pos="top">진척도 창</button>
+                <select class="field" x-show="cmpHist.length" x-bind:disabled="cmpBusy" x-model="cmpHistKey" x-on:change="cmpResult=null; loadCompareLast(cmpHistKey)" title="저장된 지난 비교 회차를 골라 그대로 봅니다">
+                  <option value="">최근 비교</option>
+                  <template x-for="hh in cmpHist" x-bind:key="hh.key"><option x-bind:value="hh.key" x-text="fmtTs(hh.ts) + ' · ' + (hh.models||[]).join(', ') + ' · ★' + (hh.best||'')"></option></template>
+                </select>
                 <span class="text-xs text-muted" x-show="cmpResult && !cmpResult.ok" x-text="cmpResult ? cmpResult.error : ''"></span>
                 <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="'마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건'"></span>
                 <span class="text-xs text-muted tnum" x-show="cmpResult && cmpResult.ok && cmpResult.prompt_snapshot_version" x-text="'프롬프트 v' + cmpResult.prompt_snapshot_version" data-tip="비교 시작 시점 프롬프트 버전 · 도중에 학습이 반영되면 결과가 다른 버전 기준일 수 있어요" data-tip-pos="top"></span>
