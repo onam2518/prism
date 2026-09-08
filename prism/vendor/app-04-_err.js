@@ -320,7 +320,7 @@ window.PRISM_APP_PARTS.push(() => ({
         return rows;
       },
       // 오토파일럿(자동 개선 루프 · Atelier 이식): 시작/중지 + 상태 폴링(라운드가 길어 5s)
-      pilot: null, pilotTarget: '0.9', pilotRounds: '5', pilotModel: '',
+      pilot: null, pilotTarget: '0.9', pilotMeta: '', pilotRounds: '5', pilotModel: '',
       pilotM(hh) { return (hh && hh.metrics) || { grade_accuracy: hh && hh.accuracy }; },   // 구 라운드(metrics 없음)는 등급만
       pilotWin(f, hh) {                        // 라운드 중 유일하게 가장 좋은 값(비용·지연은 낮을수록)
         const hs = (this.pilot && this.pilot.history) || []; if (hs.length < 2) return false;
@@ -347,7 +347,7 @@ window.PRISM_APP_PARTS.push(() => ({
       async startPilot() {
         this.pilotBusy = true; this.pilotMsg = '';
         try {
-          const r = await (await this._afetch('/autopilot-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ target: parseFloat(this.pilotTarget), max_rounds: parseInt(this.pilotRounds, 10), model: String(this.pilotModel || '').split('|').pop() }) })).json();   // 픽커 값은 provider|model → 서버(llm_for_model)엔 model id 만
+          const r = await (await this._afetch('/autopilot-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ target: parseFloat(this.pilotTarget), meta_target: this.pilotMeta ? parseFloat(this.pilotMeta) : null, max_rounds: parseInt(this.pilotRounds, 10), model: String(this.pilotModel || '').split('|').pop() }) })).json();   // 픽커 값은 provider|model → 서버(llm_for_model)엔 model id 만
           if (!r || !r.ok) this.pilotMsg = (r && r.error) || '시작 실패';
           this.loadPilot();
         } catch (e) { this.pilotMsg = '시작 실패'; }

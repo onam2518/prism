@@ -2533,7 +2533,8 @@ def _p_autopilot_start(h, body):
     return autopilot_start(h._req_team(), target=data.get("target") or 0.9,
                            max_rounds=data.get("max_rounds") or 5,
                            created_by=h._bearer_uid() or "",
-                           model=(data.get("model") or "").strip())
+                           model=(data.get("model") or "").strip(),
+                           meta_target=data.get("meta_target"))
 
 
 @_post_route("/autopilot-stop", gate="admin")        # 라운드 경계에서 중지(반영 라운드 유지)

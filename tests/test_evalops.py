@@ -363,6 +363,27 @@ class TestAutopilot(unittest.TestCase):
         self.assertEqual(run["round"], 4)
         self.assertEqual(run["best_accuracy"], 0.7)
 
+    def test_meta_target_blocks_done(self):
+        """등급이 목표를 넘어도 아이템 메타가 메타 목표 미달이면 목표 달성이 아니다 · 런에 meta_target 기록."""
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        import prism.learnops as LO
+        orig = LO.learning_batch
+        ents = iter([0.65, 0.75, 0.85])
+        def fake(team=None, models=None, model=""):
+            return {"ok": True, "grade_accuracy": 0.95, "eval_pre": {"grade_accuracy": 0.9},
+                    "eval": {"ok": True, "grade_accuracy": 0.95, "ent_n": 10, "ent_f1": next(ents)},
+                    "improve": {"reverted": False}, "prompt_snapshot": {"version": 1}}
+        LO.learning_batch = fake
+        self.addCleanup(lambda: setattr(LO, "learning_batch", orig))
+        r = serve.autopilot_start(None, target=0.9, max_rounds=5, meta_target=0.8)
+        self.assertTrue(r.get("ok"), r)
+        run = self._wait(st)
+        self.assertIn("목표 달성", run["stop_reason"])
+        self.assertEqual(run["round"], 3)               # 0.65·0.75 는 메타 80% 미달 · 0.85 에서 달성
+        self.assertEqual(run["meta_target"], 0.8)
+        self.assertFalse(serve.autopilot_start(None, target=0.9, meta_target=0.3).get("ok"))
+
     def test_meta_gate_configurable(self):
         from prism.config import Config, _merge
         cfg = _merge(Config(), {"thresholds": {"meta_gate": 0.8}})
@@ -447,7 +468,7 @@ class TestAutopilotRoundMetrics(TestAutopilot):
         self.assertEqual(h[0]["metrics"]["gate_fails"], ["intent_f1"]); self.assertFalse(h[0]["metrics"]["passed"])
         self.assertTrue(h[1]["metrics"]["passed"]); self.assertIn("overall", h[1]["metrics"])
         self.assertEqual(h[1]["metrics"]["cat_hf1"], 0.9)
-        self.assertIn("게이트 전부 통과", run["stop_reason"])
+        self.assertIn("전부 통과", run["stop_reason"])
 
 
 class TestAutopilotStalled(TestAutopilot):

@@ -2146,8 +2146,8 @@ class SupabaseStore:
         return {r.get("content_hash") or "" for r in rows}
 
     # ── 오토파일럿 런 · Atelier autopilot 이식 · SQLite Store 와 동일 계약 ──
-    def autopilot_create(self, team, target, max_rounds, created_by="") -> int:
-        row = {"status": "running", "target": float(target), "max_rounds": int(max_rounds),
+    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None) -> int:
+        row = {"status": "running", "target": float(target), "meta_target": meta_target, "max_rounds": int(max_rounds),
                "round": 0, "created_by": created_by or ""}
         if team:
             row["team_id"] = team
@@ -2171,7 +2171,7 @@ class SupabaseStore:
 
     def _pilot_row(self, r) -> dict:
         return {"id": int(r.get("id") or 0), "status": r.get("status") or "",
-                "target": r.get("target"), "max_rounds": int(r.get("max_rounds") or 0),
+                "target": r.get("target"), "meta_target": r.get("meta_target"), "max_rounds": int(r.get("max_rounds") or 0),
                 "round": int(r.get("round") or 0), "start_accuracy": r.get("start_accuracy"),
                 "best_accuracy": r.get("best_accuracy"), "last_accuracy": r.get("last_accuracy"),
                 "history": r.get("history") or [], "stop_reason": r.get("stop_reason") or "",
