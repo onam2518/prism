@@ -1820,6 +1820,11 @@ def _g_learn_report(h, q):
     return {"ok": True, "report": rep, "next_batch_at": nb}
 
 
+@_get_route("/learn-reports")                        # 최근 회차 추이(버전별 리포트 N건 · 기본 5)
+def _g_learn_reports(h, q):
+    return {"ok": True, "items": LO.learn_report_trend(h._req_team(), _qint(q, "limit", 5, 1, 20))}
+
+
 @_get_route("/learn-export", admin=True)             # 학습데이터 JSONL 다운로드(관리자)
 def _g_learn_export(h, q):
     fname, text = learn_export(q.get("kind", ["sft"])[0], h._req_team())

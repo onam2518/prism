@@ -64,6 +64,8 @@
     padding:11px 15px;margin:0 0 2px;color:var(--ds-muted);font-size:12.5px;line-height:1.55;
     word-break:keep-all;overflow-wrap:break-word}
   .ds-table tr.is-sel td{background:var(--ds-primary-tint)}
+  /* 행 단위 회색 처리(표본이 얇아 참고용인 행): td 가 색을 직접 잡아 tr 의 .text-muted 가 안 먹는다 */
+  .ds-table tr.text-muted td{color:var(--ds-muted)}
   /* 목록 키보드 포커스(J/K): 배경(is-sel)과 겹쳐도 구분되는 상·하 인셋 라인 */
   .ds-table tr.is-kfocus td{box-shadow:inset 0 1px 0 var(--ds-primary),inset 0 -1px 0 var(--ds-primary);background:var(--ds-primary-tint)}
 

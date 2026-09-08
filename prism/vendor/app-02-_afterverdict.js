@@ -293,7 +293,7 @@ window.PRISM_APP_PARTS.push(() => ({
         // 예외 — crew 의 loadRaw(:아래)는 배정 직후 최신 후보 풀이 목적이라 스로틀 없이 그대로 둔다.
         if (id === 'home') { this.loadArenaThrottled(); this.loadDashThrottled(); }
         else if (id === 'create') { this.loadDashThrottled(); this.loadRawThrottled(); }
-        else if (id === 'evaluate') { this.loadDashThrottled(); this.loadGoldenStatusThrottled(); this.loadEvalRuns(); this.loadPilot(); this.loadCompareLast(); }
+        else if (id === 'evaluate') { this.loadDashThrottled(); this.loadGoldenStatusThrottled(); this.loadEvalRuns(); this.loadPilot(); this.loadLearnTrend(); this.loadCompareLast(); }
         else if (id === 'arena') this.loadArenaThrottled();
         else if (id === 'board') this.loadBoard();
         else if (id === 'admin' || id === 'system') {

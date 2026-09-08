@@ -43,6 +43,20 @@
                       <div class="ds-progress" style="margin:7px 0"><div class="ds-progress__head"><span class="ds-progress__label"><span class="ds-badge ds-badge--reason" style="cursor:help" x-bind:data-tip="k==='normal' ? '문제 사유 없는 일반 콘텐츠' : termDef('reason', k)" data-tip-pos="top" x-text="reasonBoth(k)"></span> <span class="tnum text-muted" x-text="'('+v.n+')'"></span></span><span class="ds-progress__pct tnum" x-text="Math.round(v.grade_acc*100)+'%'"></span></div><div class="ds-progress__track"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="'width:'+Math.max(v.grade_acc*100,3)+'%'"></div></div></div>
                     </template>
                   </div>
+                  <!-- 서비스별(원천) 쪼개 보기: 어느 서비스가 약한지 · 표본이 얇으면 신뢰구간이 넓다 -->
+                  <div class="tile" style="margin-top:10px" x-show="Object.keys(goldenResult.by_service||{}).length">
+                    <div class="t" style="margin:0 0 8px">서비스별 일치율 · 어느 원천이 약한지 <span class="text-xs text-muted">표본 20건 미만은 회색(참고용)</span></div>
+                    <div class="overflow-auto"><table class="ds-table"><thead><tr><th>서비스</th><th style="width:70px">표본</th><th style="width:100px">등급 일치율</th><th style="width:150px">신뢰구간(95%)</th></tr></thead><tbody>
+                      <template x-for="(v,k) in (goldenResult.by_service||{})" x-bind:key="'bs'+k">
+                        <tr x-bind:class="v.n < 20 ? 'text-muted' : ''">
+                          <td class="text-ink" x-text="k"></td>
+                          <td class="tnum" x-text="v.n"></td>
+                          <td class="tnum" x-text="pctTxt(v.grade_acc)"></td>
+                          <td class="tnum text-xs" x-text="pctTxt(v.ci_lo) + '~' + pctTxt(v.ci_hi)"></td>
+                        </tr>
+                      </template>
+                    </tbody></table></div>
+                  </div>
                   <!-- 루브릭 진단(Atelier rubric-judge 이식): 4축 평균 · 낮은 축 = 프롬프트 개선 우선순위 -->
                   <div class="tile" style="margin-top:10px">
                     <div class="t" style="margin:0 0 8px">루브릭 진단(4축 · LLM 심사) · 낮은 축이 프롬프트 개선 우선순위</div>
@@ -172,9 +186,9 @@
                     <div class="tile tile--hero"><div class="n tnum" x-text="pilot.best_accuracy!=null ? Math.round(pilot.best_accuracy*100)+'%' : '·'"></div><div class="t">최고 일치율</div></div>
                   </div>
                   <template x-if="(pilot.history||[]).length">
-                    <div class="overflow-auto" style="margin-top:10px"><table class="ds-table"><thead><tr><th style="width:60px">라운드</th><th style="width:60px">버전</th><th style="width:130px">모델</th><th>종합</th><th>게이트</th><th>등급 일치율</th><th>사유 일치</th><th>유해 미탐률</th><th>인텐트 F1</th><th>카테고리 F1</th><th>엔티티 F1</th><th>리드문 유사도</th><th>빈 결과</th><th>메타 보류</th><th>비용($)</th><th>응답 속도</th><th style="width:80px">반영</th></tr></thead><tbody>
-                      <template x-for="hh in pilot.history" x-bind:key="'ph'+hh.round">
-                        <tr>
+                    <div class="overflow-auto" style="margin-top:10px"><table class="ds-table"><thead><tr><th style="width:60px">라운드</th><th style="width:60px">버전</th><th style="width:130px">모델</th><th>종합</th><th>게이트</th><th>등급 일치율</th><th>사유 일치</th><th>유해 미탐률</th><th>인텐트 F1</th><th>카테고리 F1</th><th>엔티티 F1</th><th>리드문 유사도</th><th>빈 결과</th><th>메타 보류</th><th>비용($)</th><th style="width:90px">누적 비용($)</th><th>응답 속도</th><th style="width:80px">반영</th></tr></thead><tbody>
+                      <template x-for="(hh, hi) in pilot.history" x-bind:key="'ph'+hh.round">
+                        <tr x-bind:class="pilotM(hh).n != null && pilotM(hh).n < 20 ? 'text-muted' : ''">
                           <td class="tnum" x-text="hh.round"></td>
                           <td class="tnum" x-text="hh.version ? ('v'+hh.version) : '·'"></td>
                           <td class="text-xs" x-text="hh.model || '기본 설정'"></td>
@@ -190,17 +204,38 @@
                           <td class="tnum" x-text="pilotM(hh).empty_rate!=null ? pctTxt(pilotM(hh).empty_rate) : '·'"></td>
                           <td class="tnum" x-text="pilotM(hh).meta_hold_rate!=null ? pctTxt(pilotM(hh).meta_hold_rate) : '·'"></td>
                           <td class="tnum" x-text="pilotM(hh).cost_usd!=null ? ('$'+(Math.round(pilotM(hh).cost_usd*10000)/10000)) : '·'"></td>
+                          <td class="tnum" style="cursor:help" data-tip="1라운드부터 이 라운드까지 실호출 비용 합계 · 개선 1%p 를 얼마에 샀는지 보는 축" data-tip-pos="top" x-text="'$'+pilotCumCost(hi)"></td>
                           <td class="tnum" x-text="pilotM(hh).latency_p50_ms!=null ? (latTxt(pilotM(hh).latency_p50_ms) + ' · ' + latTxt(pilotM(hh).latency_p95_ms)) : '·'"></td>
                           <td><span class="ds-badge" x-bind:class="hh.reverted ? 'ds-badge--warning' : 'ds-badge--success'" x-bind:data-tip="hh.reverted ? '이 라운드 보정은 점수를 낮춰 반영하지 않았습니다(이전 프롬프트 유지)' : '이 라운드 보정이 반영됐습니다'" data-tip-pos="top" style="cursor:help" x-text="hh.reverted ? '원복' : '반영'"></span></td>
                         </tr>
                       </template>
                     </tbody></table></div>
-                    <div class="text-xs text-muted" style="margin-top:6px">평가 항목은 모델별 비교와 같습니다 · ▲ = 라운드 중 가장 좋은 값 · 목표 달성 = 등급 일치율 목표 + 메타 일치율 목표(인텐트·카테고리·엔티티·리드문 각각) 전부 통과</div>
+                    <div class="text-xs text-muted" style="margin-top:6px">평가 항목은 모델별 비교와 같습니다 · ▲ = 라운드 중 가장 좋은 값 · 정답셋 표본 20건 미만 라운드는 회색(참고용) · 목표 달성 = 등급 일치율 목표 + 메타 일치율 목표(인텐트·카테고리·엔티티·리드문 각각) 전부 통과</div>
                   </template>
                   <div class="text-xs text-muted" style="margin-top:8px" x-show="pilot.stop_reason" x-text="'종료: ' + pilot.stop_reason"></div>
                   <span class="text-xs text-muted" x-show="pilot.error" x-text="pilot.error"></span>
                 </div>
               </template>
+            </div>
+          </section>
+          <!-- 최근 회차: 버전별 학습 리포트(learn_report_v*) 추이 · 표 하나(차트 없음) -->
+          <section class="panel"><div class="panel-hd"><b>최근 회차</b><span class="meta">학습 반영 회차별 정합성 추이 · 최근 5회</span></div>
+            <div class="panel-bd">
+              <div class="text-xs text-muted" x-show="!(learnTrend||[]).length">아직 쌓인 회차 리포트가 없습니다 · 학습 반영(일배치·오토파일럿) 뒤부터 표시됩니다</div>
+              <template x-if="(learnTrend||[]).length">
+                <div class="overflow-auto"><table class="ds-table"><thead><tr><th style="width:70px">버전</th><th style="width:130px">일시</th><th style="width:70px">표본</th><th style="width:120px">등급 일치율</th><th style="width:90px">종합</th></tr></thead><tbody>
+                  <template x-for="t in learnTrend" x-bind:key="'lt'+t.version">
+                    <tr x-bind:class="t.n && t.n < 20 ? 'text-muted' : ''">
+                      <td class="text-ink tnum" x-text="'v'+t.version"></td>
+                      <td class="tnum text-xs" x-text="fmtTs(t.ts)"></td>
+                      <td class="tnum" x-text="t.n || '·'"></td>
+                      <td class="tnum" x-text="pctTxt(t.grade_accuracy)"></td>
+                      <td class="tnum" x-text="pctTxt(t.overall)"></td>
+                    </tr>
+                  </template>
+                </tbody></table></div>
+              </template>
+              <div class="text-xs text-muted" style="margin-top:6px">종합 = 모델별 비교·오토파일럿과 같은 가중(등급 0.4 · 메타 4항목 각 0.15) · 표본 20건 미만 회차는 회색(참고용)</div>
             </div>
           </section>
           <!-- 모델별 비교: 같은 정답셋을 여러 모델(최대 6개)에 동시 실호출 → 지표표 · 건별 비교표 · 최종 모델 선정 -->
