@@ -183,8 +183,10 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         # 승격 게이트(build_golden_from_reviews)와 동일 판정: 등급(G/R)과 분류가 모두 있어야
         # '다음 학습 반영 때 승격'이 성립한다. 등급 공백(judge 실패·보류)을 승격 예정으로
         # 오인해 건너뛰면 골든도 큐도 아닌 채 영구 미확정으로 남는다.
-        grade_ok = (r.get("quality_meta") or {}).get("finalGrade", "") in ("G", "R")
-        if agreed and cats and grade_ok:           # 정상 확정 경로(다음 학습 반영 때 승격) → 대상 아님
+        # 단 R 은 아이템 메타가 폐기돼 분류가 영구 공백 → 분류 요건 면제(승격 게이트와 동일).
+        grade = (r.get("quality_meta") or {}).get("finalGrade", "")
+        grade_ok = grade in ("G", "R")
+        if agreed and grade_ok and (cats or grade == "R"):   # 정상 확정 경로(다음 학습 반영 때 승격) → 대상 아님
             continue
         if agreed and not grade_ok:                # 승격 게이트의 no_grade 분기와 동일 사유
             reason = "등급 없음"
@@ -1150,6 +1152,7 @@ def _gold_drafts(ch: str, team=None) -> dict:
         if _chash(content) != under:
             continue
         om = (_gold_origin_meta(st, [under], team) or {}).get(under) or {}
+        exp = gold_shown_meta(exp, om)                # 큐 행과 같은 화면값(빈 축 = 골드 표시 방지)
         cats = exp.get("content_category", []) or []
         flip = int(under, 16) % 2 == 1
         shown = gold_wrong_category(cats, under) if flip else [str(c) for c in cats]
@@ -1277,6 +1280,18 @@ def _gold_origin_meta(st, hashes, team) -> dict:
         return {}
 
 
+def gold_shown_meta(exp: dict, om: dict) -> dict:
+    """골드 문항이 화면에 내보낼 메타: 정답(사람 교정)이 있는 축은 그 값 · 없는 축은 원본 산출.
+    골든 정답의 메타 4축은 사람이 고친 축만 담기므로(learnops.build_golden_from_reviews) 그대로
+    내보내면 리드문·엔티티·인텐트가 골드 문항에서만 비어 그 부재가 골드 표시가 된다(2026-08-13)."""
+    im = om.get("item_meta") or {}
+    out = dict(exp or {})
+    for k in ("summary", "entities", "intent", "content_category"):
+        if not out.get(k):
+            out[k] = im.get(k) or ("" if k == "summary" else [])
+    return out
+
+
 def _gold_candidates(st, team, answered) -> list:
     """출제 가능한 골드 후보 [(h, content, exp, origin, shown_cats, flip)].
 
@@ -1303,6 +1318,7 @@ def _gold_candidates(st, team, answered) -> list:
         om = origin.get(h) or {}
         if not (om.get("model") or "").strip():      # 원본 미상 = 부속 정보가 빈 행 = 골드 표시
             continue
+        exp = gold_shown_meta(exp, om)               # 사람이 고치지 않은 축은 원본 산출로 채운다
         flip = int(h, 16) % 2 == 1                   # 홀수 = 카테고리 한 자리 뒤집기(정답 bad)
         cats = exp.get("content_category", []) or []
         shown = gold_wrong_category(cats, h) if flip else [str(c) for c in cats]

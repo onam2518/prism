@@ -41,11 +41,16 @@ def _zero_metrics() -> dict:
             # harm_n = 기대 R 행 수(유해 미탐률의 분모). 구 런 메트릭에는 없어서
             # 리포트 쪽이 '키 부재 = 구 정의' 로 갈라 읽는다(하위호환).
             "harm_miss": 0, "harm_n": 0, "empty": 0, "cost_usd": 0.0, "tok_in": 0, "tok_out": 0,
-            "lat": [], "yellow": 0, "auto_n": 0, "auto_hit": 0, "per_reason": {},
+            "lat": [], "yellow": 0, "auto_n": 0, "auto_hit": 0, "per_reason": {}, "per_service": {},
             # 인텐트 카운터(abtest.intent_tally 와 같은 키) · 구 런 메트릭에는 없으므로
             # 읽는 쪽은 항상 .get 기본값으로 다룬다(재개·구 런 리포트 하위호환).
             "intent_n": 0, "intent_exact": 0, "intent_jac_sum": 0.0,
-            "intent_top1": 0, "intent_skipped": 0, "per_intent": {}}
+            "intent_top1": 0, "intent_skipped": 0, "per_intent": {},
+            # 카테고리·엔티티·리드문 카운터(ME.meta_tally 와 같은 키) · 구 런 메트릭에는
+            # 없으므로(ME.meta_tally/meta_report 는 항상 .get 기본값으로 다뤄 하위호환).
+            "cat_n": 0, "cat_f1_sum": 0.0, "cat_hf1_sum": 0.0, "cat_exact": 0, "per_cat": {},
+            "ent_n": 0, "ent_f1_sum": 0.0, "ent_pf1_sum": 0.0,
+            "sum_n": 0, "sum_sim_sum": 0.0, "sum_low": 0}
 
 
 def _tally(m: dict, row: dict, out) -> dict:
@@ -55,6 +60,7 @@ def _tally(m: dict, row: dict, out) -> dict:
     m["n"] += 1
     exp = row.get("expected") or {}
     abtest.intent_tally(m, exp, out)             # 인텐트 계수는 abtest.score 와 단일 소스
+    ME.meta_tally(m, exp, out)                   # 카테고리·엔티티·리드문(같은 카운터 dict · abtest.score 와 단일 소스)
     if exp.get("finalGrade") == "R":             # 유해 미탐률 분모(산출 실패 행도 포함)
         m["harm_n"] = int(m.get("harm_n") or 0) + 1   # 구 런 재개 시 키가 없다 → get 으로 시작
     want_intent = abtest.intent_expected(exp)
@@ -92,6 +98,10 @@ def _tally(m: dict, row: dict, out) -> dict:
     d = m["per_reason"].setdefault(bucket, {"n": 0, "grade_ok": 0})
     d["n"] += 1
     d["grade_ok"] += int(grade_ok)
+    # 서비스별 카운터는 구 런 메트릭에 없다 → setdefault 로 시작(재개 시 KeyError 방지)
+    sd = m.setdefault("per_service", {}).setdefault(abtest.service_key(row), {"n": 0, "grade_ok": 0})
+    sd["n"] += 1
+    sd["grade_ok"] += int(grade_ok)
     im = out.get("item_meta")
     summary = (im.get("summary") if isinstance(im, dict)
                else getattr(im, "summary", "")) or ""
@@ -250,7 +260,7 @@ def eval_run_compare(a_id: int, b_id: int, team=None) -> dict:
     if ra.get("status") != "done" or rb.get("status") != "done":
         return {"ok": False, "error": "완주한 런끼리만 비교할 수 있습니다"}
     from . import learnops as LO
-    regressions = LO._batch_regressions(ra, rb)
+    regressions = LO._batch_regressions(ra, rb, grade_drop=LO._regress_grade_drop())
     if regressions:                              # 부분 개선이라도 회귀 지점이 있으면 보류(보수 채택)
         verdict = "regressed"
     elif (rb.get("grade_accuracy") or 0) > (ra.get("grade_accuracy") or 0) + 1e-9:
@@ -302,13 +312,16 @@ def autopilot_start(team=None, target=0.9, max_rounds=5, created_by="", model: s
         llm, route = _SV.llm_for_model(model, _SV.Handler.server_mock)
         if llm is None:
             return {"ok": False, "error": f"모델 호출 불가({route}): {model}"}
-    rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "", meta_target=meta_target)
-    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds, model, meta_target),
+    frozen = sorted(st.golden_hashes(team))       # 라운드마다 정답셋이 늘면 최고/정체 비교가 다른 셋끼리가 된다 → 시작 셋으로 고정
+    rid = st.autopilot_create(team, target, max_rounds, created_by=created_by or "", meta_target=meta_target,
+                              golden_hashes=frozen)
+    th = threading.Thread(target=_pilot_loop, args=(rid, team, target, max_rounds, model, meta_target, frozen),
                           name=f"prism-autopilot-{rid}", daemon=True)
     with _LOCK:
         _PILOT_ACTIVE[rid] = th
     th.start()
-    return {"ok": True, "id": rid, "target": target, "max_rounds": max_rounds, "model": model}
+    return {"ok": True, "id": rid, "target": target, "max_rounds": max_rounds, "model": model,
+            "golden_n": len(frozen)}
 
 
 def autopilot_stop(team=None) -> dict:
@@ -345,10 +358,11 @@ def autopilot_status(team=None) -> dict:
                 run["status"], run["stop_reason"] = "stopped", "서버 재시작으로 중단 · 다시 시작하세요"
             except Exception:
                 pass
+        run["golden_n"] = len(run.pop("golden_hashes", None) or [])   # 화면엔 건수만(해시 목록은 응답에서 뺀다)
     return {"ok": True, "run": run}
 
 
-_ROUND_KEYS = ("grade_accuracy", "reason_jaccard", "harm_miss_rate", "empty_rate", "meta_hold_rate",
+_ROUND_KEYS = ("n", "grade_accuracy", "reason_jaccard", "harm_miss_rate", "empty_rate", "meta_hold_rate",
                "intent_n", "intent_f1", "cat_n", "cat_hf1", "ent_n", "ent_f1", "summary_n", "summary_sim",
                "cost_usd", "latency_p50_ms", "latency_p95_ms")
 
@@ -357,14 +371,21 @@ def _meta_gate() -> float:
     return float(getattr(Config.load().thresholds, "meta_gate", 0.6) or 0.6)
 
 
-def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "", meta_target: float = 0.6):
-    """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속."""
+def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "", meta_target: float = 0.6,
+                golden_hashes=None):
+    """라운드 반복: learning_batch → 정확도 추적 → 종료 조건 판정. 이력은 라운드마다 영속.
+    향상 판정 = 종합 점수 상승 AND 등급 신뢰구간이 최고 라운드와 안 겹침(ci_overlap) ·
+    두 구간이 겹치면 점 추정치가 올라도 '동등'으로 보고 향상 없음으로 집계한다(표본 노이즈 방지).
+    n(evaluated) 을 모르는 라운드는 CI 판단이 불가하므로 종전처럼 종합 점수만으로 판정한다."""
     from . import learnops as LO
     st = _SV.get_store()
     history = []
     best = None          # 최고 등급 일치율(화면 표시용)
     best_score = None    # 최고 종합 점수(정체 판정용 · 목표 판정과 같은 5축)
+    best_acc, best_acc_n = None, None   # 최고 라운드의 등급 일치율·표본 n(CI 동등 판정용)
     no_improve = 0
+    stall_rounds = int(getattr(Config.load().thresholds, "pilot_stall_rounds", PILOT_STALL_ROUNDS)
+                       or PILOT_STALL_ROUNDS)
     try:
         for rnd in range(1, max_rounds + 1):
             if rid in _PILOT_STOP:
@@ -373,7 +394,10 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                                     finished=time.time())
                 return
             st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
-            rep = LO.learning_batch(team, model=model)
+            rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes)
+            if rep.get("skipped"):          # 다른 호출자와 배치 겹침 · 잠깐 대기 후 한 번만 재시도
+                time.sleep(2)
+                rep = LO.learning_batch(team, model=model, golden_hashes=golden_hashes)
             acc = rep.get("grade_accuracy")
             if acc is None:
                 st.autopilot_update(rid, team=team, status="failed",
@@ -398,8 +422,16 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                             "delta": rep.get("improve_delta"), "reverted": reverted,
                             "version": int((rep.get("prompt_snapshot") or {}).get("version") or 0)})
             best = acc if best is None else max(best, acc)
-            improved = best_score is None or ov["overall"] > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
-            best_score = ov["overall"] if improved else best_score
+            n_cur = int(ev.get("evaluated") or 0)
+            overall_up = best_score is None or ov["overall"] > best_score + 1e-9   # 정체는 종합 점수로(등급 한 축 아님)
+            # 종합이 올라도 등급 CI 가 최고 라운드와 겹치면(표본 노이즈로 동등) 향상으로 안 친다.
+            # n(evaluated) 을 모르는(구 리포트·페이크) 라운드는 CI 판단 불가 → 종전처럼 종합 점수만으로 판정.
+            if overall_up and best_score is not None and n_cur and best_acc_n \
+                    and LO.ci_overlap(acc, n_cur, best_acc, best_acc_n):
+                overall_up = False
+            improved = overall_up
+            if improved:
+                best_score, best_acc, best_acc_n = ov["overall"], acc, n_cur
             fields = {"last_accuracy": acc, "best_accuracy": best,
                       "history": history, "heartbeat": time.time()}
             if rnd == 1:
@@ -411,9 +443,11 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                                     finished=time.time())
                 return
             no_improve = 0 if improved else no_improve + 1
-            if no_improve >= PILOT_STALL_ROUNDS:
+            if no_improve >= stall_rounds:
                 st.autopilot_update(rid, team=team, status="done",
-                                    stop_reason=f"개선 정체 · {PILOT_STALL_ROUNDS}라운드 연속 종합 향상 없음(최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
+                                    stop_reason=f"개선 정체 · {stall_rounds}라운드 연속 종합 향상 없음"
+                                                 f"(등급 신뢰구간이 최고 라운드와 겹치는 동등 라운드는 향상 없음으로 집계 · "
+                                                 f"최고 종합 {best_score:.0%} · 일치율 {best:.0%})",
                                     finished=time.time())
                 return
         st.autopilot_update(rid, team=team, status="done",
@@ -626,6 +660,7 @@ def eval_run_report(run_id: int, team=None) -> dict:
     else:
         harm_rate, harm_basis = (round(harm_miss / harm_n, 4) if harm_n else None), "expected_r"
     out = {**abtest.intent_report(m),             # abtest.score 와 같은 인텐트 키(순수 추가)
+           **ME.meta_report(m),                   # abtest.score 와 같은 카테고리·엔티티·리드문 키(순수 추가)
            "ok": True, "id": run_id, "status": run.get("status"),
            "cursor": run.get("cursor") or 0, "total": run.get("total") or 0,
            "ts": run.get("ts"), "finished": run.get("finished"),
@@ -652,6 +687,7 @@ def eval_run_report(run_id: int, team=None) -> dict:
                                    if m.get("auto_n") else 0),
            "by_reason_bucket": {k: {"n": v["n"], "grade_acc": round(v["grade_ok"] / v["n"], 3)}
                                 for k, v in sorted((m.get("per_reason") or {}).items()) if v.get("n")},
+           "by_service": abtest.service_report(m.get("per_service") or {}),
            "min_good": int(getattr(cfg, "golden_min_good", 1) or 1)}
     lo, hi = Q.binomial_ci(out["grade_accuracy"] or 0.0, n)
     out["grade_ci"] = {"lo": lo, "hi": hi, "n": n}

@@ -4,7 +4,8 @@
 실행: python3 -m pytest tests/ -q  (stdlib unittest · 의존성 0)
 계약: /patch-meta(patch_content_meta) 가 entities 패치를 받으면 문자열 목록으로 정규화해
 item_meta 에 반영하고 patch_log(element=entities)에 전/후를 남긴다. 골든 승격
-(build_golden_from_reviews)·관리자 등록(register_golden) 정답에는 entities 가 포함된다.
+(build_golden_from_reviews) 정답에는 **검수자가 고친 축만** 담기고(교정 없으면 키 자체가 없다),
+관리자 등록(register_golden) 정답에는 entities 가 포함된다.
 정합성(grade) 지표는 기존대로 finalGrade·reasons 만 비교(엔티티는 저장만 확장).
 """
 import json as _j
@@ -84,16 +85,30 @@ class TestEntityPatchRoundtrip(EntityEditBase):
 
 
 class TestGoldenIncludesEntities(EntityEditBase):
-    def test_promoted_golden_has_entities(self):
+    def test_uncorrected_meta_is_not_copied_into_golden(self):
+        """교정이 없으면 메타 4축은 정답에 담기지 않는다.
+
+        모델 산출(item_meta)을 그대로 정답으로 베끼면 메타 F1 이 '현행 모델과의 근접도'가
+        되어 모델 비교에서 현행 모델이 자동으로 유리해진다. 키가 없으면 meta_tally 가
+        그 행을 분모에서 뺀다(측정 안 함 > 거짓 측정)."""
+        from prism import metaeval as ME
         serve, st = self._with_store()
         ch = self._put_reviewed(st, "합의 승격 건", [("A", "good"), ("B", "good")],
                                 entities=("손흥민", "토트넘"))
         g = serve.build_golden_from_reviews(None)
         self.assertTrue(g["ok"])
-        self.assertIn(ch, st.golden_hashes())
+        self.assertIn(ch, st.golden_hashes())                       # 승격 자체는 그대로
         exp = next(x for x in st.get_golden(None)
                    if x["content"].get("title") == "합의 승격 건")["expected"]
-        self.assertEqual(exp.get("entities"), ["손흥민", "토트넘"])
+        for k in ("entities", "intent", "summary", "content_category"):
+            self.assertNotIn(k, exp)
+        self.assertEqual(exp.get("finalGrade"), "G")                # 등급·사유는 판정으로 확인된 값
+        self.assertEqual(g["meta_n"], {"intent": 0, "content_category": 0,
+                                       "summary": 0, "entities": 0})
+        acc = {}
+        ME.meta_tally(acc, exp, {"item_meta": {"entities": ["아무개"], "content_category": ["News"],
+                                               "summary": "아무 리드문"}})
+        self.assertEqual((acc.get("ent_n", 0), acc.get("cat_n", 0), acc.get("sum_n", 0)), (0, 0, 0))
 
     def test_patched_entities_become_golden_answer(self):
         serve, st = self._with_store()
@@ -102,11 +117,15 @@ class TestGoldenIncludesEntities(EntityEditBase):
         serve.patch_content_meta(ch, {"entities": ["정답개체"], "content_category": ["News"]},
                                  reviewer="리드")
         serve.set_final_verdict(ch, "good", by="리드", team=None)   # 고쳐서 편입
-        serve.build_golden_from_reviews(None)
+        g = serve.build_golden_from_reviews(None)
         exp = next(x for x in st.get_golden(None)
                    if x["content"].get("title") == "고쳐서 편입 건")["expected"]
         self.assertEqual(exp.get("entities"), ["정답개체"])          # 수정본이 곧 정답
         self.assertEqual(exp.get("content_category"), ["News"])
+        self.assertNotIn("summary", exp)                            # 안 고친 축은 정답에서 빠진다
+        self.assertNotIn("intent", exp)
+        self.assertEqual(g["meta_n"], {"intent": 0, "content_category": 1,
+                                       "summary": 0, "entities": 1})   # 축별 정답 수 = 메타 F1 분모
 
     def test_register_golden_normalizes_entities(self):
         serve, st = self._with_store()

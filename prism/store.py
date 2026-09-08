@@ -264,6 +264,7 @@ class Store:
           status TEXT, target REAL, meta_target REAL, max_rounds INTEGER, round INTEGER NOT NULL DEFAULT 0,
           start_accuracy REAL, best_accuracy REAL, last_accuracy REAL,
           history TEXT, stop_reason TEXT, error TEXT, created_by TEXT,
+          golden_hashes TEXT,               -- 시작 시점 정답셋 해시(라운드마다 같은 셋으로 재평가)
           ts REAL, heartbeat REAL, finished REAL);
         -- 프롬프트 배포: 스냅샷 버전을 slug 에 pin · 외부가 Bearer 키로 당겨 씀(Atelier deployments 이식).
         CREATE TABLE IF NOT EXISTS deployments(
@@ -334,6 +335,8 @@ class Store:
             c.execute("ALTER TABLE board ADD COLUMN answer TEXT"); c.commit()          # 게시판 관리자 답변
         if "meta_target" not in [r[1] for r in c.execute("PRAGMA table_info(autopilot_runs)")]:
             c.execute("ALTER TABLE autopilot_runs ADD COLUMN meta_target REAL"); c.commit()   # 아이템 메타 일치율 목표
+        if "golden_hashes" not in [r[1] for r in c.execute("PRAGMA table_info(autopilot_runs)")]:
+            c.execute("ALTER TABLE autopilot_runs ADD COLUMN golden_hashes TEXT"); c.commit()  # 고정 정답셋
         if "answered_at" not in bcols:
             c.execute("ALTER TABLE board ADD COLUMN answered_at REAL"); c.commit()
 
@@ -1400,7 +1403,8 @@ class Store:
         for stage, note, plan in c.execute(
                 "SELECT stage,note,plan FROM feedback "
                 "WHERE verdict='bad' AND (COALESCE(plan,'')!='' OR COALESCE(note,'')!='') "
-                "ORDER BY ts DESC"):
+                "AND content_hash NOT IN (SELECT content_hash FROM content_purpose WHERE purpose='eval') "
+                "ORDER BY ts DESC"):    # 평가용(홀드아웃) 콘텐츠의 피드백은 제외 · 개선이 평가셋을 보면 누수
             st = stage if stage in out else "analyze"
             text = (plan or "").strip() or (note or "").strip()
             if text in ex:
@@ -1611,12 +1615,14 @@ class Store:
             "SELECT content_hash FROM eval_results WHERE run_id=?", (int(run_id),))}
 
     # ── 오토파일럿 런 · Atelier autopilot 이식 · supastore 와 동일 계약 ─────
-    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None) -> int:
+    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None,
+                         golden_hashes=None) -> int:
         c = self._conn()
-        cur = c.execute("INSERT INTO autopilot_runs(team,status,target,meta_target,max_rounds,round,created_by,ts) "
-                        "VALUES(?,?,?,?,?,0,?,?)",
+        cur = c.execute("INSERT INTO autopilot_runs(team,status,target,meta_target,max_rounds,round,created_by,"
+                        "golden_hashes,ts) VALUES(?,?,?,?,?,0,?,?,?)",
                         (team or "", "running", float(target), meta_target, int(max_rounds),
-                         created_by or "", time.time()))
+                         created_by or "", json.dumps(sorted(golden_hashes or []), ensure_ascii=False),
+                         time.time()))
         c.commit()
         return int(cur.lastrowid)
 
@@ -1638,18 +1644,24 @@ class Store:
         c.commit()
 
     _PILOT_COLS = ("id,team,status,target,max_rounds,round,start_accuracy,best_accuracy,"
-                   "last_accuracy,history,stop_reason,error,created_by,ts,heartbeat,finished,meta_target")
+                   "last_accuracy,history,stop_reason,error,created_by,ts,heartbeat,finished,meta_target,"
+                   "golden_hashes")
 
     def _pilot_row(self, r) -> dict:
         try:
             history = json.loads(r[9]) if r[9] else []
         except Exception:
             history = []
+        try:
+            frozen = json.loads(r[17]) if r[17] else []
+        except Exception:
+            frozen = []
         return {"id": r[0], "status": r[2] or "", "target": r[3], "max_rounds": int(r[4] or 0),
                 "round": int(r[5] or 0), "start_accuracy": r[6], "best_accuracy": r[7],
                 "last_accuracy": r[8], "history": history, "stop_reason": r[10] or "",
                 "error": r[11] or "", "created_by": r[12] or "", "ts": r[13],
-                "heartbeat": r[14], "finished": r[15], "meta_target": r[16]}
+                "heartbeat": r[14], "finished": r[15], "meta_target": r[16],
+                "golden_hashes": frozen}
 
     def autopilot_latest(self, team=None):
         c = self._conn()
@@ -1876,7 +1888,7 @@ class Store:
         return out
 
     def origin_meta_for(self, hashes, team=None) -> dict:
-        """해시 → {"model", "version", "review", "url"}.
+        """해시 → {"model", "version", "review", "url", "item_meta"}.
 
         **골드 문항이 원본 콘텐츠 행에서 화면 부속 정보를 가져오기 위한 조회다.**
         골든 레코드에는 이 값들이 없어서 종전에는 빈 값이 나갔는데, 빈 값은 화면에서 배지·
@@ -1885,12 +1897,18 @@ class Store:
         행은 골드뿐이었다). 지어내지 않고 원본에서 읽어 오고, 읽히지 않으면 그 골든은
         출제 후보에서 빠진다(reviewops._gold_candidates · fail-closed).
         team 은 원격 스토어와의 시그니처 정합용(로컬 단일 팀이라 무시)."""
-        def row(model, ver, review, url):
+        def row(model, ver, review, url, im=None):
             try:
                 ver = int(ver or 1)
             except (TypeError, ValueError):
                 ver = 1
-            return {"model": model or "", "version": ver, "review": review or "", "url": url or ""}
+            if isinstance(im, str):
+                try:
+                    im = json.loads(im or "{}")
+                except Exception:
+                    im = {}
+            return {"model": model or "", "version": ver, "review": review or "", "url": url or "",
+                    "item_meta": im if isinstance(im, dict) else {}}
 
         out = {}
         c = self._conn()
@@ -1898,15 +1916,16 @@ class Store:
         for i in range(0, len(hs), 500):                 # IN 절 변수 상한 대비 청크
             chunk = hs[i:i + 500]
             marks = ",".join("?" * len(chunk))
-            try:                                         # 4필드만 뽑는다(payload 에는 본문이 들어
-                for ch, m, v, rv, u in c.execute(        # 있어 전량 파싱하면 호출마다 수 MB)
+            try:                                         # 부속 5필드만 뽑는다(payload 에는 본문이 들어
+                for ch, m, v, rv, u, im in c.execute(    # 있어 전량 파싱하면 호출마다 수 MB)
                         "SELECT content_hash,"
                         " COALESCE(json_extract(payload,'$.trace.model'),''),"
                         " COALESCE(json_extract(payload,'$.trace.version'),1),"
                         " COALESCE(json_extract(payload,'$.quality_meta.review'),''),"
-                        " COALESCE(json_extract(payload,'$.content_ref.source_url'),'')"
+                        " COALESCE(json_extract(payload,'$.content_ref.source_url'),''),"
+                        " COALESCE(item_meta,'{}')"
                         f" FROM results WHERE content_hash IN ({marks})", chunk):
-                    out[ch] = row(m, v, rv, u)
+                    out[ch] = row(m, v, rv, u, im)
             except Exception:                            # json_extract 미지원 빌드 폴백
                 for ch, payload in c.execute(
                         f"SELECT content_hash, payload FROM results WHERE content_hash IN ({marks})",
@@ -1917,7 +1936,8 @@ class Store:
                         pl = {}
                     tr, qm = pl.get("trace") or {}, pl.get("quality_meta") or {}
                     out[ch] = row(tr.get("model"), tr.get("version"), qm.get("review"),
-                                  (pl.get("content_ref") or {}).get("source_url"))
+                                  (pl.get("content_ref") or {}).get("source_url"),
+                                  pl.get("item_meta"))
         return out
 
     def yellow_hashes(self, team=None) -> set:

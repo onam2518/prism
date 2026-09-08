@@ -144,6 +144,27 @@ def intent_report(acc: dict) -> dict:
     }
 
 
+def service_key(row: dict) -> str:
+    """골든 행 → 서비스 구분 키(content.displayServiceName · 비면 '(미지정)').
+    abtest.score(일괄) 와 evalops._tally(증분) 가 같은 키로 세도록 단일 소스."""
+    return str(((row or {}).get("content") or {}).get("displayServiceName") or "").strip() or "(미지정)"
+
+
+def service_report(per: dict) -> dict:
+    """서비스별 카운터 → {서비스: {n, grade_acc, ci_lo, ci_hi}} · by_reason_bucket 과 같은 모양.
+    표본이 얇은 서비스를 '나쁜 서비스'로 오독하지 않게 이항 95% 신뢰구간(quality.binomial_ci)을 병기한다."""
+    from . import quality as Q
+    out = {}
+    for k, v in sorted(per.items()):
+        n = int(v.get("n") or 0)
+        if not n:
+            continue
+        acc = (v.get("grade_ok") or 0) / n
+        lo, hi = Q.binomial_ci(acc, n)
+        out[k] = {"n": n, "grade_acc": round(acc, 3), "ci_lo": lo, "ci_hi": hi}
+    return out
+
+
 def score(rows: list, outs: list) -> dict:
     """골든셋 정답(rows[i].expected)과 산출(outs[i])을 비교해 지표 산출.
     cli.cmd_eval 과 동일 지표 · 채점 로직 단일 소스."""
@@ -153,6 +174,7 @@ def score(rows: list, outs: list) -> dict:
     tin = tout = 0
     n = len(rows)
     per_reason = {}
+    per_service = {}                             # 서비스(displayServiceName)별 등급 일치 · by_reason_bucket 과 같은 규칙
     yellow_n = auto_n = auto_hit = 0
     meta_hold = 0                                # 입력 필요(리드문·하위 추출 실패 → 사람이 채움) 행 수
     lat = []                                     # 건별 총 지연(ms) · p50/p95 산출용
@@ -170,7 +192,8 @@ def score(rows: list, outs: list) -> dict:
         tr = out.get("trace", {})
         if ((out.get("item_meta") or {}).get("hold_fields") if isinstance(out.get("item_meta"), dict) else None):
             meta_hold += 1
-        cost += tr.get("cost_usd", 0.0)
+        c1 = tr.get("cost_usd")                  # 단가 미상 트레이스가 섞이면 합계도 None
+        cost = None if (cost is None or c1 is None) else cost + c1
         tin += tr.get("tokens", {}).get("in", 0)
         tout += tr.get("tokens", {}).get("out", 0)
         lt = tr.get("latency_ms")
@@ -198,6 +221,9 @@ def score(rows: list, outs: list) -> dict:
         d = per_reason.setdefault(bucket, {"n": 0, "grade_ok": 0})
         d["n"] += 1
         d["grade_ok"] += int(grade_ok)
+        s = per_service.setdefault(service_key(row), {"n": 0, "grade_ok": 0})
+        s["n"] += 1
+        s["grade_ok"] += int(grade_ok)
     by_reason = {k: {"n": v["n"], "grade_acc": round(v["grade_ok"] / v["n"], 3)}
                  for k, v in sorted(per_reason.items())}
     return {
@@ -214,11 +240,12 @@ def score(rows: list, outs: list) -> dict:
         "harm_miss_share": round(fn_block / n, 4) if n else 0,   # 종전 정의(전체 행 대비) 병기
         "harm_expected_n": harm_n,                               # 분모(기대 R 행 수) 노출
         "empty_rate": round(empties / n, 4) if n else 0,
-        "cost_usd": round(cost, 6),
+        "cost_usd": None if cost is None else round(cost, 6),   # None = 단가 미상(화면 '·')
         "tokens": {"in": tin, "out": tout},
         "latency_p50_ms": _percentile(lat, 0.5),
         "latency_p95_ms": _percentile(lat, 0.95),
         "by_reason_bucket": by_reason,
+        "by_service": service_report(per_service),               # 서비스별 정합성(원천 쪼개 보기)
         "yellow_rate": round(yellow_n / n, 4) if n else 0,
         "meta_hold_rate": round(meta_hold / n, 4) if n else 0,   # 전체 중 '입력 필요' 몫 · 모델이 틀린 게 아니라 못 뽑은 비율
         "auto_coverage": round(auto_n / n, 4) if n else 0,

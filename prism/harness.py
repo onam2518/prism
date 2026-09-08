@@ -324,7 +324,9 @@ def _assemble(ctx: HCtx) -> dict:
     t.model = getattr(ctx.llm, "model", "") or ""      # 초안 생성 모델 기록
     t.agent_verdicts = [v for v in ctx.verdicts if v.get("evidence") or v.get("fail")]
     t.fallbacks = ctx.fallbacks
-    t.cost_usd = round(sum(r.cost_usd for r in ctx.results), 6)
+    # 단가 미상(None) 이 한 콜이라도 섞이면 합계도 None — 0 으로 뭉개면 그 모델이 싸 보인다
+    costs = [r.cost_usd for r in ctx.results]
+    t.cost_usd = None if any(c is None for c in costs) else round(sum(costs), 6)
     # 캐시 토큰(cache_read/cache_write)은 제공자가 보고할 때만 0 이상이다. 이 값이 계속 0 이면
     # '캐싱이 아예 안 걸림'이고, in 대비 cache_read 비율이 캐시 적중률이다(효과 측정의 유일한 원천).
     t.tokens = {"in": sum(r.in_tok for r in ctx.results),
@@ -344,7 +346,8 @@ def _assemble(ctx: HCtx) -> dict:
         b = by_call.setdefault(tag, {"n": 0, "cost": 0.0, "in": 0, "out": 0, "ms": 0,
                                      "cache_read": 0, "cache_write": 0, "retries": 0})
         b["n"] += 1
-        b["cost"] = round(b["cost"] + r.cost_usd, 6)
+        b["cost"] = (None if (b["cost"] is None or r.cost_usd is None)
+                     else round(b["cost"] + r.cost_usd, 6))
         b["in"] += r.in_tok
         b["out"] += r.out_tok
         b["ms"] += r.latency_ms

@@ -237,13 +237,14 @@ class SupabaseStore:
         return out
 
     def origin_meta_for(self, hashes, team=None) -> dict:
-        """해시 → {"model", "version", "review", "url"} · sqlite Store.origin_meta_for 와 동일 계약.
+        """해시 → {"model", "version", "review", "url", "item_meta"} · sqlite Store 와 동일 계약.
         골드 문항이 화면에 내보내는 부속 정보를 원본 콘텐츠 행에서 가져오는 조회(지어내지 않는다)."""
         out = {}
         hs = [h for h in dict.fromkeys(hashes or []) if h]
         for i in range(0, len(hs), 100):                 # URL 길이 상한 대비 청크
             chunk = hs[i:i + 100]
-            q = "select=hash,model,version,review,source_url&hash=in.(" + ",".join(chunk) + ")"
+            q = ("select=hash,model,version,review,source_url,item_meta&hash=in.("
+                 + ",".join(chunk) + ")")
             if team:
                 q += f"&team_id=eq.{urllib.parse.quote(str(team))}"
             for r in self._get("contents", q):
@@ -251,9 +252,11 @@ class SupabaseStore:
                     ver = int(r.get("version") or 1)
                 except (TypeError, ValueError):
                     ver = 1
+                im = r.get("item_meta")
                 out[r["hash"]] = {"model": r.get("model") or "", "version": ver,
                                   "review": r.get("review") or "",
-                                  "url": r.get("source_url") or ""}
+                                  "url": r.get("source_url") or "",
+                                  "item_meta": im if isinstance(im, dict) else {}}
         return out
 
     def yellow_hashes(self, team=None) -> set:
@@ -1054,8 +1057,9 @@ class SupabaseStore:
         for st, items in self.routes_by_stage(limit_per_stage, team=team, exclude=ex).items():
             out[st].extend(f"- {t}" for t in items)
         rows = sorted(self._all_feedback(team), key=lambda r: r.get("ts") or "", reverse=True)
+        holdout = {h for h, p in self.purpose_map(team).items() if p == "eval"}   # 평가용 콘텐츠 피드백 제외(누수 차단)
         for r in rows:
-            if r.get("verdict") != "bad":
+            if r.get("verdict") != "bad" or r.get("content_hash") in holdout:
                 continue
             text = (r.get("reap_plan") or "").strip() or (r.get("note") or "").strip()
             if text in ex:
@@ -2134,9 +2138,11 @@ class SupabaseStore:
         return {r.get("content_hash") or "" for r in rows}
 
     # ── 오토파일럿 런 · Atelier autopilot 이식 · SQLite Store 와 동일 계약 ──
-    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None) -> int:
+    def autopilot_create(self, team, target, max_rounds, created_by="", meta_target=None,
+                         golden_hashes=None) -> int:
         row = {"status": "running", "target": float(target), "meta_target": meta_target, "max_rounds": int(max_rounds),
-               "round": 0, "created_by": created_by or ""}
+               "round": 0, "created_by": created_by or "",
+               "golden_hashes": sorted(golden_hashes or [])}
         if team:
             row["team_id"] = team
         rows = self._req("POST", "autopilot_runs", body=[row], prefer="return=representation")
@@ -2165,7 +2171,7 @@ class SupabaseStore:
                 "history": r.get("history") or [], "stop_reason": r.get("stop_reason") or "",
                 "error": r.get("error") or "", "created_by": r.get("created_by") or "",
                 "ts": _epoch(r.get("created_at")), "heartbeat": _epoch(r.get("heartbeat_at")),
-                "finished": _epoch(r.get("finished_at"))}
+                "finished": _epoch(r.get("finished_at")), "golden_hashes": r.get("golden_hashes") or []}
 
     def autopilot_latest(self, team=None):
         rows = self._get("autopilot_runs",

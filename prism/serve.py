@@ -219,6 +219,7 @@ build_golden_from_reviews = LO.build_golden_from_reviews
 promotion_pending = LO.promotion_pending
 compare_models_on_golden = LO.compare_models_on_golden
 last_model_compare = LO.last_model_compare
+compare_history = LO.compare_history
 compare_start = LO.compare_start
 compare_status = LO.compare_status
 compare_jobs = LO.compare_jobs
@@ -785,6 +786,15 @@ def llm_for_model(model: str, mock: bool):
 def _llm_for_model_build(model: str, mock: bool):
     cfg = Config.load()                                # 모델별 사본(공유 cfg 변형 방지)
     mid = (model or "").strip() or cfg.model
+    # 이 모델의 공시 단가를 실어 준다 — 안 실으면 모든 모델이 설정 단가 하나로 계산돼
+    # 비교표의 '비용'이 사실상 토큰 수 순위가 된다. 표에 없는 모델은 단가를 비워
+    # 비용을 None 으로 만든다(0 이나 설정 단가로 때우면 조용히 틀린 순위가 나온다).
+    # 설정 단가는 기본 실행 모델(cfg.model)의 폴백으로만 남긴다.
+    p = MM.prices(mid)
+    if p:
+        cfg.prices.chat_in, cfg.prices.chat_out, cfg.prices.cache_read = p
+    elif mid != cfg.model:
+        cfg.prices.chat_in = cfg.prices.chat_out = cfg.prices.cache_read = None
     if mock:
         return LLMClient(mock=True, config=cfg, model=mid), "mock"
     bare = mid.split("/")[-1]
@@ -1811,6 +1821,11 @@ def _g_learn_report(h, q):
     return {"ok": True, "report": rep, "next_batch_at": nb}
 
 
+@_get_route("/learn-reports")                        # 최근 회차 추이(버전별 리포트 N건 · 기본 5)
+def _g_learn_reports(h, q):
+    return {"ok": True, "items": LO.learn_report_trend(h._req_team(), _qint(q, "limit", 5, 1, 20))}
+
+
 @_get_route("/learn-export", admin=True)             # 학습데이터 JSONL 다운로드(관리자)
 def _g_learn_export(h, q):
     fname, text = learn_export(q.get("kind", ["sft"])[0], h._req_team())
@@ -1934,9 +1949,14 @@ def _g_compare_jobs(h, q):
     return compare_jobs(h._req_team())
 
 
-@_get_route("/model-compare-last")                   # 마지막 모델 비교 결과(영속분 · 평가 탭 재진입용)
+@_get_route("/model-compare-last")                   # 모델 비교 결과(영속분 · 평가 탭 재진입용) · key=회차면 그 회차
 def _g_model_compare_last(h, q):
-    return last_model_compare(h._req_team())
+    return last_model_compare(h._req_team(), (q.get("key") or [""])[0][:64])
+
+
+@_get_route("/model-compare-list")                   # 저장된 비교 회차 목록(최신순 · 지난 비교 다시 보기)
+def _g_model_compare_list(h, q):
+    return compare_history(h._req_team())
 
 
 @_get_route("/autopilot-status")                     # 오토파일럿 최신 런 상태(폴링용)
@@ -2037,7 +2057,7 @@ def _g_golden_status(h, q):
         "pending": pending,
         "stale_days": stale_days,
         "last_batch": {k: g.get(k) for k in ("confirmed", "new", "demoted", "need_category",
-                                             "disagree", "min_good")},
+                                             "disagree", "min_good", "meta_n")},
         "need_list": g.get("need_list") or [],
         "ts": _ts}
 
