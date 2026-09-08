@@ -219,6 +219,7 @@ build_golden_from_reviews = LO.build_golden_from_reviews
 promotion_pending = LO.promotion_pending
 compare_models_on_golden = LO.compare_models_on_golden
 last_model_compare = LO.last_model_compare
+compare_history = LO.compare_history
 compare_start = LO.compare_start
 compare_status = LO.compare_status
 compare_jobs = LO.compare_jobs
@@ -1934,9 +1935,14 @@ def _g_compare_jobs(h, q):
     return compare_jobs(h._req_team())
 
 
-@_get_route("/model-compare-last")                   # 마지막 모델 비교 결과(영속분 · 평가 탭 재진입용)
+@_get_route("/model-compare-last")                   # 모델 비교 결과(영속분 · 평가 탭 재진입용) · key=회차면 그 회차
 def _g_model_compare_last(h, q):
-    return last_model_compare(h._req_team())
+    return last_model_compare(h._req_team(), (q.get("key") or [""])[0][:64])
+
+
+@_get_route("/model-compare-list")                   # 저장된 비교 회차 목록(최신순 · 지난 비교 다시 보기)
+def _g_model_compare_list(h, q):
+    return compare_history(h._req_team())
 
 
 @_get_route("/autopilot-status")                     # 오토파일럿 최신 런 상태(폴링용)

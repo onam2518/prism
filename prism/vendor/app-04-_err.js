@@ -374,6 +374,7 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 모델별 정합성 비교(골든셋 평가 탭) · 슬롯 N개(2~6) 동시 실호출 · 이항 95% CI 표기 · 건별 비교표
       cmpModels: ['', ''], cmpBusy: false, cmpResult: null, cmpItemFilter: 'miss', cmpLoopModel: '', cookBusy: false,
+      cmpHist: [], cmpHistKey: '',            // 저장된 비교 회차 목록 · 고른 회차 키('' = 최신)
       _CMP_FIELD_KO: { grade_accuracy: '등급 일치율', intent_f1: '인텐트 F1', cat_hf1: '카테고리 F1', ent_f1: '엔티티 F1', summary_sim: '리드문 유사도', grade: '등급', intent: '인텐트', category: '카테고리', entities: '엔티티', summary: '리드문' },
       cmpFieldKo(k) { return this._CMP_FIELD_KO[k] || k; },
       get cmpIssues() {                        // 개선 루프 대상 모델(기본 best)의 진단 목록
@@ -447,7 +448,7 @@ window.PRISM_APP_PARTS.push(() => ({
             const r = await (await this._afetch('/compare-status?id=' + id, { headers: this._authHeaders() })).json();
             if (r && r.ok) {
               this.cmpJob = r.job;
-              if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
+              if (r.job.status === 'done') { this.cmpResult = r.job.result; this.cmpHistKey = (r.job.result || {}).key || ''; this.loadCompareHist(); this.cmpBusy = false; this.liveToast('모델 비교 완료 · #' + id); return; }
               if (r.job.status === 'failed') { this._err('모델 비교 실패: ' + (r.job.error || '')); this.cmpBusy = false; return; }
             } else if (r && r.error) { this._err(r.error); this.cmpBusy = false; return; }
           } catch (e) {}
@@ -464,15 +465,21 @@ window.PRISM_APP_PARTS.push(() => ({
           if (this.mod !== 'evaluate') this.selectMod('evaluate');
         });
       },
-      async loadCompareLast() {                  // 탭 재진입 시 마지막 비교(영속분) 복원 · 슬롯이 비어 있으면 비교했던 모델로 채움
+      async loadCompareLast(key) {               // 탭 재진입 시 마지막 비교(영속분) 복원 · key 를 주면 그 회차 · 슬롯이 비어 있으면 비교했던 모델로 채움
         this._bindCompareMessage();
-        if (this.cmpResult || this.cmpBusy) return;
+        if (!key) {
+          this.loadCompareHist();
+          if (this.cmpResult || this.cmpBusy) return;
+        }
         try {
-          const r = await (await this._afetch('/model-compare-last', { headers: this._authHeaders() })).json();
-          if (!(r && r.ok)) return;
-          this.cmpResult = r;
+          const r = await (await this._afetch('/model-compare-last' + (key ? '?key=' + encodeURIComponent(key) : ''), { headers: this._authHeaders() })).json();
+          if (!(r && r.ok)) { if (r && (r.lost || key)) this.cmpResult = r; return; }   // 재시작 유실·없는 회차는 사유를 보인다
+          this.cmpResult = r; this.cmpHistKey = r.key || '';
           if (!this.cmpPicked.length) this.cmpModels = (r.models || []).map((m) => m.model).concat(['', '']).slice(0, Math.max(2, (r.models || []).length));
         } catch (e) {}
+      },
+      async loadCompareHist() {                  // 지난 비교 회차 목록(최신순)
+        try { const r = await (await this._afetch('/model-compare-list', { headers: this._authHeaders() })).json(); this.cmpHist = (r && r.items) || []; } catch (e) {}
       },
       // 비교 결과의 추천 모델을 기본 모델(cfg.model)로 승격 · /config POST(관리자 게이트는 서버가 판정)
       applyBusy: false,
