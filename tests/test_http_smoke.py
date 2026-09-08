@@ -191,9 +191,14 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertEqual((c.get("metaCallModels") or {}).get("category"), "gpt-5.4")
         self.ok("/config", {"meta_call_models": {}})
         # 프롬프트 내려받기: 현재 합성(.md · 4호출 + ③ 서비스별 전문) · 없는 버전은 JSON 오류
-        md = self.ok("/prompt-export?model=solar-pro2")
-        for needle in ("## ① 리드문 · solar-pro2", "### system · 스포츠", "경기 프리뷰", "### user 템플릿", "## ④ 카테고리"):
-            self.assertIn(needle, md)
+        self.assertTrue(self.ok("/prompt-export?model=solar-pro2").startswith("PK"))   # zip
+        files = self.serve.LO.prompt_files(self.serve.LO.compose_prompts(None, "solar-pro2"), "t")
+        self.assertEqual([n for n in files if n.startswith("01-")], ["01-summary.system.txt", "01-summary.user.txt"])
+        self.assertIn("경기 프리뷰", files["03-intent.system.스포츠.txt"])
+        self.assertNotIn("03-intent.system.txt", files)                      # ③ 은 서비스별 파일만
+        self.assertIn("| 03-intent.system.뉴스.txt | ③ 인텐트 | solar-pro2 |", files["README.md"])
+        import io, zipfile
+        self.assertEqual(set(zipfile.ZipFile(io.BytesIO(self.serve.LO.prompt_zip({}, "빈"))).namelist()), {"README.md"})
         self.assertFalse(self.ok("/prompt-export?v=999")["ok"])
         self.assertFalse(self.ok("/prompt-snapshot?run=999")["ok"])
 
@@ -237,7 +242,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         snap = self.ok(f"/prompt-snapshot?run={run['id']}")["snapshot"]
         self.assertEqual(snap["run_id"], run["id"])
         self.assertIn("뉴스", snap["calls"]["intent"]["by_service"])
-        self.assertIn(f"# 프리즘 추출 프롬프트 · 평가 런 #{run['id']}", self.ok(f"/prompt-export?run={run['id']}"))
+        self.assertTrue(self.ok(f"/prompt-export?run={run['id']}").startswith("PK"))
         self.assertTrue(ev.get("ok"), ev)
         self.assertGreaterEqual(ev.get("evaluated", 0), 1)
         ld = self.ok("/learn-data")

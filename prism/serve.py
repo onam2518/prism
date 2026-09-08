@@ -1818,7 +1818,7 @@ def _g_prompt_snapshot(h, q):
     return {"ok": bool(snap), "snapshot": snap}
 
 
-@_get_route("/prompt-export", admin=True)            # 프롬프트 내려받기(.md) · run=평가 런 · v=학습 버전 · 없으면 현재 합성(model 지정 가능)
+@_get_route("/prompt-export", admin=True)            # 프롬프트 내려받기(zip · 호출×system/user 파일별) · run=평가 런 · v=학습 버전 · 없으면 현재 합성(model 지정 가능)
 def _g_prompt_export(h, q):
     run = (q.get("run") or [""])[0].strip()
     v = (q.get("v") or [""])[0].strip()
@@ -1827,12 +1827,12 @@ def _g_prompt_export(h, q):
         if not snap:
             return {"ok": False, "error": (f"평가 런 #{run} 의 프롬프트 기록이 없습니다(기록 기능 이전 런)" if run.isdigit()
                                            else f"프롬프트 스냅샷 v{v} 이 없습니다 · 학습 반영 이력을 확인하세요")}
-        title, name = ((f"평가 런 #{run}", f"prism_prompt_run{run}.md") if run.isdigit()
-                       else (f"학습 버전 v{v}", f"prism_prompt_v{v}.md"))
+        title, name = ((f"평가 런 #{run}", f"prism_prompt_run{run}.zip") if run.isdigit()
+                       else (f"학습 버전 v{v}", f"prism_prompt_v{v}.zip"))
     else:
         snap = LO.compose_prompts(h._req_team(), (q.get("model") or [""])[0])
-        title, name = f"현재 합성 · v{snap.get('version')} 초안", "prism_prompt_current.md"
-    h._send_file(LO.prompt_markdown(snap, title).encode("utf-8"), "text/markdown; charset=utf-8", name)
+        title, name = f"현재 합성 · v{snap.get('version')}", "prism_prompt_current.zip"
+    h._send_file(LO.prompt_zip(snap, title), "application/zip", name)
 
 
 @_get_route("/learn-report")                         # 최근 배치 결과(GET) · ?v=N 이면 그 버전 리포트

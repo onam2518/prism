@@ -756,32 +756,50 @@ def snapshot_prompts(team=None) -> dict:
 _CALL_KO = {"summary": "① 리드문", "entities": "② 엔티티", "intent": "③ 인텐트", "category": "④ 카테고리"}
 
 
-def prompt_markdown(payload: dict, title: str) -> str:
-    """프롬프트 묶음(compose_prompts 산출 · 학습 스냅샷 · 평가 런 기록)을 내려받기용 마크다운으로.
-    본문에 ``` 가 들어갈 수 있어 4중 백틱 펜스를 쓴다."""
+def prompt_files(payload: dict, title: str) -> dict:
+    """프롬프트 묶음(compose_prompts 산출 · 학습 스냅샷 · 평가 런 기록) → {파일명: 본문}.
+    호출마다 system/user 를 따로, ③ 인텐트는 서비스별로 따로 둔다 · 요소 하나만 고쳐 쓰기 위해서다.
+    본문은 가공 없는 원문(.txt) · 설명은 README.md 한 장."""
     from . import promptdist as PD
     ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(payload.get("ts") or 0)))
-
-    def fence(s):
-        return "````text\n" + (s or "").rstrip() + "\n````"
-    out = [f"# 프리즘 추출 프롬프트 · {title}",
-           f"- 기록 시각 {ts} · 기본 모델 {payload.get('model') or '(설정 모델)'} · "
-           f"프롬프트 v{payload.get('version') or '?'} · 품질 기준 {payload.get('quality_version') or ''}",
-           "- 호출 순서: ① 리드문 → ② 엔티티 → ③ 인텐트 → ④ 카테고리 · 리드문이 비면 후속 호출 생략",
-           "- ①·②·④ 는 서비스와 무관한 단일 프롬프트 · ③ 인텐트만 콘텐츠 서비스에 따라 "
-           "'[서비스 카테고리 분류값]' 절이 달라져 서비스별 전문을 모두 실었습니다", ""]
-    for call, c in (payload.get("calls") or {}).items():
-        out += [f"## {_CALL_KO.get(call, call)} · {c.get('model') or ''}", ""]
+    files = {}
+    for i, call in enumerate(MP.CALLS, 1):
+        c = (payload.get("calls") or {}).get(call)
+        if not c:
+            continue
         by = c.get("by_service") or {}
         for svc, sysp in (by.items() if by else [("", c.get("system"))]):
-            out += [f"### system{' · ' + svc if svc else ''}", fence(sysp), ""]
+            files[f"{i:02d}-{call}.system{'.' + svc if svc else ''}.txt"] = (sysp or "").rstrip() + "\n"
         try:
-            out += ["### user 템플릿(현재 코드 기준)", fence(PD.user_template(call)), ""]
+            files[f"{i:02d}-{call}.user.txt"] = PD.user_template(call).rstrip() + "\n"
         except Exception:
             pass
     if payload.get("item"):
-        out += ["## 통합(단일 호출) system · 4호출 비활성 설정일 때만 사용", fence(payload["item"]), ""]
-    return "\n".join(out)
+        files["item.system.txt"] = payload["item"].rstrip() + "\n"
+    readme = [f"# 프리즘 추출 프롬프트 · {title}", "",
+              f"- 기록 시각 {ts} · 기본 모델 {payload.get('model') or '(설정 모델)'} · "
+              f"프롬프트 v{payload.get('version') or '?'} · 품질 기준 {payload.get('quality_version') or ''}",
+              "- 호출 순서: ① 리드문 → ② 엔티티 → ③ 인텐트 → ④ 카테고리 · 리드문이 비면 후속 호출 생략",
+              "- 파일 하나 = 호출 하나의 system 또는 user 템플릿 · ①·②·④ 는 서비스와 무관한 단일 프롬프트,"
+              " ③ 인텐트만 콘텐츠 서비스에 따라 '[서비스 카테고리 분류값]' 절이 달라 서비스별 파일로 나눴습니다",
+              "- user 템플릿은 현재 코드 기준 자리표 · item.system.txt 는 4호출 비활성 설정일 때만 쓰는 통합 프롬프트", "",
+              "| 파일 | 호출 | 모델 |", "|---|---|---|"]
+    for name in files:
+        call = next((cl for cl in MP.CALLS if f"-{cl}." in name), "")
+        model = ((payload.get("calls") or {}).get(call) or {}).get("model", payload.get("model") or "") if call else (payload.get("model") or "")
+        readme.append(f"| {name} | {_CALL_KO.get(call, '통합')} | {model} |")
+    return {"README.md": "\n".join(readme) + "\n", **files}
+
+
+def prompt_zip(payload: dict, title: str) -> bytes:
+    """prompt_files 를 zip 바이트로(stdlib zipfile · 파일명 UTF-8)."""
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, body in prompt_files(payload, title).items():
+            z.writestr(name, body)
+    return buf.getvalue()
 
 
 MIN_INTENT_N = 20                                # 인텐트 스칼라 가드 최소 측정 표본
