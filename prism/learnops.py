@@ -19,6 +19,7 @@ from .config import Config
 from . import metaeval as ME
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
+_BATCH_LOCK = threading.Lock()  # learning_batch 동시 실행 방지(스케줄러·오토파일럿·수동 POST 공유)
 
 
 def sync_learned():
@@ -476,7 +477,12 @@ def _compare_prepare(models, team, scope: str):
     if not ready:
         return None, {"ok": False, "error": "호출 가능한 모델이 없습니다 · API 키(Upstage/라우터)를 확인하세요",
                       "skipped": skipped, "golden_n": len(rows)}
-    return {"rows": rows, "ready": ready, "skipped": skipped, "cfg": cfg, "scope": scope}, None
+    try:                                    # 비교 시작 시점 프롬프트 버전(진행 중 반영으로 갈아탄 비교 식별용)
+        snap_version = int(st.batch_seq(team)) + 1 if hasattr(st, "batch_seq") else 0
+    except Exception:
+        snap_version = 0
+    return {"rows": rows, "ready": ready, "skipped": skipped, "cfg": cfg, "scope": scope,
+            "snap_version": snap_version}, None
 
 
 _COMPARE_CHUNK = 8                                    # 진척도 갱신 주기(8-way 한 바퀴 · 창에서 막대가 자주 움직이게)
@@ -523,7 +529,8 @@ def _compare_finish(prep: dict, done: list, team) -> dict:
            "cheapest_passing": cheapest_passing_model(out, gate),
            "items": items,
            "split_n": sum(1 for it in items if it["split"]),
-           "miss_n": sum(1 for it in items if not it["all_ok"])}
+           "miss_n": sum(1 for it in items if not it["all_ok"]),
+           "prompt_snapshot_version": prep.get("snap_version")}   # 비교 시작 시점 프롬프트 버전(진행 중 반영 식별)
     try:
         _SV.get_store().save_report("model_compare", res, team)
     except Exception as e:                        # 영속 실패는 비교 결과 자체를 막지 않는다
@@ -740,86 +747,92 @@ def learning_batch(team=None, models=None, model: str = "") -> dict:
     """배치 학습: ① 정확분 골든 축적(평가 셋 고정) ② 개선 전 회귀 점수 ③ 피드백 병합→프롬프트 개선
     ④ 개선 후 회귀 점수 → 전/후 delta 기록. 정합성 2%p 초과 악화·유해 미탐 악화·버킷 회귀
     중 하나라도 걸리면 개선을 반영하지 않고 이전 프롬프트를 유지한다(방향 검증 · 진동 방지)."""
-    try:                                       # 퀘스트 완주 보상: 반영 시점, 기한 내 배정 완주자 +100P(회차당 1회 · 멱등)
-        quest_bonus = _SV.award_quest_bonus(team)
-    except Exception:
-        quest_bonus = None
-    golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
-    prev_learned = dict(PR.LEARNED)
-    prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
-    scope = _holdout_scope(team)                        # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체)
-    eval_pre = eval_golden(team, model=model, scope=scope)   # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
-    improve = meta_compile_run(team)
-    changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
-    delta = None
-    if changed and eval_pre.get("ok"):
-        evalr = eval_golden(team, model=model, scope=scope)   # 개선 후 점수(같은 셋 · 같은 모델)
-        try:
-            delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
-        except (TypeError, ValueError):
-            delta = None
-        regressions = _batch_regressions(eval_pre, evalr) if evalr.get("ok") else []
-        if regressions:                                  # 악화 가드: 이전 프롬프트로 원복
-            PR.LEARNED = prev_learned
-            PR.LEARNED_BY_MODEL = prev_by_model
-            improve = dict(improve or {})
-            improve["reverted"] = True
-            improve["revert_reason"] = " · ".join(regressions) + " → 이번 보정 미반영(이전 프롬프트 유지)"
-            evalr = eval_pre                             # 유지되는 프롬프트 기준 점수로 보고
-    else:
-        evalr = eval_pre
-        if eval_pre.get("ok"):
-            delta = 0.0
-    compare = compare_models_on_golden(models, team) if (models and len(models) > 1) else None
-    try:                                        # 학습 반영 회차 기록 → 초안 버전(v = 회차+1)
-        stv = _SV.get_store()
-        if stv and hasattr(stv, "log_event_once"):
-            # reviewer_id 는 uuid 컬럼(nullable) · 시스템 이벤트는 reviewer 없이 NULL 로 기록한다.
-            # '(system)' 문자열은 uuid 위반이라 supabase insert 가 실패 → 회차 미기록 → 버전 v1 고착의 원인.
-            stv.log_event_once(None, "learn_batch", int(time.time()), 0, team=team)
-    except Exception as e:
-        print(f"  [warn] learn_batch 회차 기록 실패: {e}")
-    try:                                        # 이번 회차가 만든 프롬프트를 버전과 함께 영속
-        snap = snapshot_prompts(team)
-    except Exception:
-        snap = {}
-    final_rerun = None
-    try:                                        # 2층 검수 3-1: 미확정분을 방금 반영된 새 버전으로 재실행
-        if bool(getattr(Config.load(), "final_rerun_after_batch", True)) and hasattr(_SV, "rerun_unconfirmed"):
-            final_rerun = _SV.rerun_unconfirmed(team)
-            if final_rerun and final_rerun.get("done"):
-                print(f"  [batch] 미확정분 {final_rerun['done']}건을 새 버전으로 재실행(최종검수용)")
-    except Exception:
+    if not _BATCH_LOCK.acquire(blocking=False):
+        print("  [batch] 이미 실행 중 · 건너뜀(skipped=batch_running)")
+        return {"ok": False, "skipped": "batch_running"}
+    try:
+        try:                                       # 퀘스트 완주 보상: 반영 시점, 기한 내 배정 완주자 +100P(회차당 1회 · 멱등)
+            quest_bonus = _SV.award_quest_bonus(team)
+        except Exception:
+            quest_bonus = None
+        golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
+        prev_learned = dict(PR.LEARNED)
+        prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
+        scope = _holdout_scope(team)                        # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체)
+        eval_pre = eval_golden(team, model=model, scope=scope)            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
+        improve = meta_compile_run(team)
+        changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
+        delta = None
+        if changed and eval_pre.get("ok"):
+            evalr = eval_golden(team, model=model, scope=scope)           # 개선 후 점수(같은 셋 · 같은 모델)
+            try:
+                delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
+            except (TypeError, ValueError):
+                delta = None
+            regressions = _batch_regressions(eval_pre, evalr) if evalr.get("ok") else []
+            if regressions:                                  # 악화 가드: 이전 프롬프트로 원복
+                PR.LEARNED = prev_learned
+                PR.LEARNED_BY_MODEL = prev_by_model
+                improve = dict(improve or {})
+                improve["reverted"] = True
+                improve["revert_reason"] = " · ".join(regressions) + " → 이번 보정 미반영(이전 프롬프트 유지)"
+                evalr = eval_pre                             # 유지되는 프롬프트 기준 점수로 보고
+        else:
+            evalr = eval_pre
+            if eval_pre.get("ok"):
+                delta = 0.0
+        compare = compare_models_on_golden(models, team) if (models and len(models) > 1) else None
+        try:                                        # 학습 반영 회차 기록 → 초안 버전(v = 회차+1)
+            stv = _SV.get_store()
+            if stv and hasattr(stv, "log_event_once"):
+                # reviewer_id 는 uuid 컬럼(nullable) · 시스템 이벤트는 reviewer 없이 NULL 로 기록한다.
+                # '(system)' 문자열은 uuid 위반이라 supabase insert 가 실패 → 회차 미기록 → 버전 v1 고착의 원인.
+                stv.log_event_once(None, "learn_batch", int(time.time()), 0, team=team)
+        except Exception as e:
+            print(f"  [warn] learn_batch 회차 기록 실패: {e}")
+        try:                                        # 이번 회차가 만든 프롬프트를 버전과 함께 영속
+            snap = snapshot_prompts(team)
+        except Exception:
+            snap = {}
         final_rerun = None
-    report = {"ok": True, "ts": time.time(), "improve": improve, "golden": golden,
-              "quest_bonus": quest_bonus,       # 완주 보너스 지급 결과(수령자·회차) — 리포트로 추적
-              "eval": evalr, "compare": compare, "prompt_snapshot": snap,
-              "eval_pre": ({"grade_accuracy": eval_pre.get("grade_accuracy"), "n": eval_pre.get("evaluated")}
-                           if eval_pre.get("ok") else None),
-              "improve_delta": delta, "final_rerun": final_rerun,
-              "grade_accuracy": evalr.get("grade_accuracy") if evalr.get("ok") else None}
-    global _LAST_LEARN_REPORT
-    _LAST_LEARN_REPORT = report
-    _SV._report_save("learn_report", report, team)
-    try:                                        # 버전별 리포트도 영속(버전 히스토리 상세용)
-        sver = int((snap or {}).get("version") or 0)
-        if sver:
-            _SV._report_save(f"learn_report_v{sver}", report, team)
-    except Exception:
-        pass
-    _SV._agg_bump()
-    try:                                        # 반영 완료 모먼트: 접속 팀원 전체에 축하 토스트(SSE)
-        stv2 = _SV.get_store()
-        done_ver = int(stv2.batch_seq(team)) if (stv2 and hasattr(stv2, "batch_seq")) else 0
-        _SV.broadcast({"type": "learn_batch", "version": done_ver,
-                       "grade_accuracy": report.get("grade_accuracy"),
-                       "improve_delta": delta, "reverted": bool((improve or {}).get("reverted")),
-                       "confirmed": golden.get("confirmed"), "ts": report["ts"]}, team=team)   # 팀 스코프 브로드캐스트(교차팀 유출 차단)
-    except Exception:
-        pass
-    print(f"  [batch] 학습 일배치 · 골든 확정 {golden.get('confirmed')} · 카테고리필요 "
-          f"{golden.get('need_category')} · 정합성(grade) {report['grade_accuracy']}")
-    return report
+        try:                                        # 2층 검수 3-1: 미확정분을 방금 반영된 새 버전으로 재실행
+            if bool(getattr(Config.load(), "final_rerun_after_batch", True)) and hasattr(_SV, "rerun_unconfirmed"):
+                final_rerun = _SV.rerun_unconfirmed(team)
+                if final_rerun and final_rerun.get("done"):
+                    print(f"  [batch] 미확정분 {final_rerun['done']}건을 새 버전으로 재실행(최종검수용)")
+        except Exception:
+            final_rerun = None
+        report = {"ok": True, "ts": time.time(), "improve": improve, "golden": golden,
+                  "quest_bonus": quest_bonus,       # 완주 보너스 지급 결과(수령자·회차) — 리포트로 추적
+                  "eval": evalr, "compare": compare, "prompt_snapshot": snap,
+                  "eval_pre": ({"grade_accuracy": eval_pre.get("grade_accuracy"), "n": eval_pre.get("evaluated")}
+                               if eval_pre.get("ok") else None),
+                  "improve_delta": delta, "final_rerun": final_rerun,
+                  "grade_accuracy": evalr.get("grade_accuracy") if evalr.get("ok") else None}
+        global _LAST_LEARN_REPORT
+        _LAST_LEARN_REPORT = report
+        _SV._report_save("learn_report", report, team)
+        try:                                        # 버전별 리포트도 영속(버전 히스토리 상세용)
+            sver = int((snap or {}).get("version") or 0)
+            if sver:
+                _SV._report_save(f"learn_report_v{sver}", report, team)
+        except Exception:
+            pass
+        _SV._agg_bump()
+        try:                                        # 반영 완료 모먼트: 접속 팀원 전체에 축하 토스트(SSE)
+            stv2 = _SV.get_store()
+            done_ver = int(stv2.batch_seq(team)) if (stv2 and hasattr(stv2, "batch_seq")) else 0
+            _SV.broadcast({"type": "learn_batch", "version": done_ver,
+                           "grade_accuracy": report.get("grade_accuracy"),
+                           "improve_delta": delta, "reverted": bool((improve or {}).get("reverted")),
+                           "confirmed": golden.get("confirmed"), "ts": report["ts"]}, team=team)   # 팀 스코프 브로드캐스트(교차팀 유출 차단)
+        except Exception:
+            pass
+        print(f"  [batch] 학습 일배치 · 골든 확정 {golden.get('confirmed')} · 카테고리필요 "
+              f"{golden.get('need_category')} · 정합성(grade) {report['grade_accuracy']}")
+        return report
+    finally:
+        _BATCH_LOCK.release()
 
 def learn_data(team=None) -> dict:
     """학습 데이터 현황(관리자): 클래스 커버리지·일치도·검수자 신뢰도·라벨 오류 후보·추출 가능량·소요 대비.
@@ -1331,7 +1344,9 @@ def _run_due_batch(cfg, now=None) -> bool:
     due = next_batch_time(getattr(cfg, "learn_next_at", ""))
     if not due or due > (now if now is not None else time.time()):
         return False
-    learning_batch(getattr(cfg, "learn_team", "") or None)   # 골든·버전을 그 팀에 태깅
+    rep_batch = learning_batch(getattr(cfg, "learn_team", "") or None)   # 골든·버전을 그 팀에 태깅
+    if (rep_batch or {}).get("skipped"):    # 다른 호출자가 실행 중 · 목표 미소진(다음 틱에 재시도)
+        return False
     try:
         c = Config.load()
         rep = int(getattr(c, "learn_repeat_days", 0) or 0)

@@ -384,6 +384,9 @@ def _pilot_loop(rid: int, team, target: float, max_rounds: int, model: str = "",
                 return
             st.autopilot_update(rid, team=team, round=rnd, heartbeat=time.time())
             rep = LO.learning_batch(team, model=model)
+            if rep.get("skipped"):          # 다른 호출자와 배치 겹침 · 잠깐 대기 후 한 번만 재시도
+                time.sleep(2)
+                rep = LO.learning_batch(team, model=model)
             acc = rep.get("grade_accuracy")
             if acc is None:
                 st.autopilot_update(rid, team=team, status="failed",
