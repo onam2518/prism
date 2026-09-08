@@ -1400,7 +1400,8 @@ class Store:
         for stage, note, plan in c.execute(
                 "SELECT stage,note,plan FROM feedback "
                 "WHERE verdict='bad' AND (COALESCE(plan,'')!='' OR COALESCE(note,'')!='') "
-                "ORDER BY ts DESC"):
+                "AND content_hash NOT IN (SELECT content_hash FROM content_purpose WHERE purpose='eval') "
+                "ORDER BY ts DESC"):    # 평가용(홀드아웃) 콘텐츠의 피드백은 제외 · 개선이 평가셋을 보면 누수
             st = stage if stage in out else "analyze"
             text = (plan or "").strip() or (note or "").strip()
             if text in ex:

@@ -264,6 +264,18 @@ class TestEvalRunCompare(unittest.TestCase):
         self.assertEqual(serve.eval_run_compare(a, b, None)["verdict"], "improved")
         self.assertEqual(serve.eval_run_compare(a, a, None)["verdict"], "even")
 
+    def test_harm_none_is_not_compared(self):
+        """기대 R 행이 0이면 harm_miss_rate 는 None(측정 불가) → 회귀 판정에서 비교하지 않는다.
+        0.0 으로 읽으면 유해 축을 한 건도 못 잰 런이 '악화 없음'으로 조용히 통과한다."""
+        from prism import learnops as LO
+        base = {"grade_accuracy": 0.8}
+        self.assertEqual(LO._batch_regressions(dict(base, harm_miss_rate=None),
+                                               dict(base, harm_miss_rate=0.2)), [])
+        self.assertEqual(LO._batch_regressions(dict(base, harm_miss_rate=0.0),
+                                               dict(base, harm_miss_rate=None)), [])
+        g = LO._batch_regressions(dict(base, harm_miss_rate=0.0), dict(base, harm_miss_rate=0.1))
+        self.assertTrue(any("유해 미탐" in x for x in g), g)
+
     def test_harm_miss_worsening_regresses(self):
         serve, st = self._with_serve()
         a = self._done_run(st, 0.8, harm=0.0)

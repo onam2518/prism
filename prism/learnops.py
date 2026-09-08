@@ -59,6 +59,17 @@ def _scope_golden(rows, scope, st, team=None):
         pm = {}
     return [r for r in rows if pm.get(content_hash(r.get("content") or {}), "review") == "eval"]
 
+def _holdout_scope(team=None) -> str:
+    """배치·오토파일럿 평가 범위: 홀드아웃(용도=eval) 정답이 있으면 'eval'(개선 단계가 못 본 셋으로 측정),
+    없으면 'all' 로 되돌린다(용도를 지정한 적 없는 팀 하위호환 · 대신 누수 경고를 남긴다)."""
+    st = _SV.get_store()
+    rows = st.get_golden(team) if (st and hasattr(st, "get_golden")) else None
+    if rows and _scope_golden(rows, "eval", st, team):
+        return "eval"
+    print("[learn] 평가용(용도=eval) 정답이 없어 전체 골든으로 평가합니다 · "
+          "개선에 쓴 콘텐츠가 평가셋에 섞입니다(콘텐츠 관리 STEP 1에서 용도를 지정하세요)")
+    return "all"
+
 def eval_golden(team=None, model: str = "", scope: str = "all") -> dict:
     """프로세스 1 · 관리자 등록 골든셋으로 원천 프롬프트 정합성 측정(기대 vs 실제). abtest 재사용.
     건별 불일치를 _LAST_EVAL_DETAIL 로 보존 → 라벨 오류 후보 플래깅(Northcutt 2021: 기계 플래그→휴먼 확정)."""
@@ -293,16 +304,20 @@ def build_golden_from_reviews(team=None) -> dict:
             need_list.append({"hash": ch, "title": content.get("title", ""),
                               "service": content.get("displayServiceName", ""), "reason": "grade"})
             continue
+        grade = qm.get("finalGrade", "")
         cats = [c for c in (im.get("content_category") or []) if c and c != "Unclassified"]
-        if not cats:                                  # 카테고리 공백 → 골든 미확정(채워야 함)
+        # R 은 하네스가 아이템 메타를 폐기(harness._assemble)해 분류가 영구 공백이다 → 분류 요건 면제.
+        # 요구하면 기대 R 행이 한 건도 골든에 못 들어가 유해 미탐률 분모가 늘 0(측정 불가)이 된다.
+        if not cats and grade != "R":                 # 카테고리 공백 → 골든 미확정(채워야 함)
             no_cat += 1
             need_list.append({"hash": ch, "title": content.get("title", ""),
                               "service": content.get("displayServiceName", "")})
             continue
-        entries.append({"hash": ch, "content": content, "expected": {
-            "finalGrade": qm.get("finalGrade", ""), "reasons": qm.get("reasons", []) or [],
-            "intent": im.get("intent", []) or [], "content_category": cats,
-            "summary": im.get("summary", ""), "entities": im.get("entities", []) or []}})
+        exp = {"finalGrade": grade, "reasons": qm.get("reasons", []) or []}
+        if cats:                                      # 메타 키는 있을 때만 — 빈 기대는 채점 분모에서 빠진다(metaeval.meta_tally)
+            exp.update({"intent": im.get("intent", []) or [], "content_category": cats,
+                        "summary": im.get("summary", ""), "entities": im.get("entities", []) or []})
+        entries.append({"hash": ch, "content": content, "expected": exp})
         contributors[ch] = [v.get("reviewer_id") or v.get("reviewer")
                             for v in fb.get("verdicts", []) if v.get("verdict") == "good"]
     new = 0
@@ -378,10 +393,11 @@ def promotion_pending(team=None) -> dict:
         bw = sum(weights.get(v.get("reviewer_id") or v.get("reviewer"), 1.0)
                  for v in fb.get("verdicts", []) if v.get("verdict") == "bad")
         agreed = fv == "good" or (fb.get("good", 0) >= min_good and gw > bw)
-        grade_ok = (r.get("quality_meta") or {}).get("finalGrade", "") in ("G", "R")
+        grade = (r.get("quality_meta") or {}).get("finalGrade", "")
+        grade_ok = grade in ("G", "R")
         cats = [c for c in ((r.get("item_meta") or {}).get("content_category") or [])
                 if c and c != "Unclassified"]
-        if agreed and grade_ok and cats:
+        if agreed and grade_ok and (cats or grade == "R"):   # R 은 분류 요건 면제(승격 게이트와 동일)
             out["promote"] += 1
         elif agreed and not grade_ok:
             out["no_grade"] += 1
@@ -650,7 +666,9 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
     """개선 후 평가가 전보다 나빠진 지점 목록(원복 사유 문구 · 없으면 빈 목록).
     ① 정합성 2%p 초과 악화 AND 두 신뢰구간(ci_overlap) 비중첩(표본 노이즈로 겹치면 동등 처리 ·
        n(evaluated) 없는 구 리포트는 CI 판단 불가라 종전처럼 점 추정치만으로 판정)
-    ② 유해 미탐률(harm_miss_rate) 악화
+    ② 유해 미탐률(harm_miss_rate) 악화 — 단 어느 한쪽이라도 None(기대 R 행 0 = **측정 불가**)이면
+       비교하지 않는다. 0.0 으로 읽으면 '악화 없음'이 되어 가드가 영원히 안 걸리고,
+       유해 축을 아예 못 잰 런이 조용히 통과한다.
     ③ 버킷별 정합성 10%p 초과 하락(표본 min_bucket_n 이상 버킷만 · 소표본 노이즈 배제)
     ④ 인텐트 자카드 5%p 초과 악화(측정 표본 min_intent_n 이상일 때만)
     ⑤ 인텐트 값별 F1 10%p 초과 하락(support min_bucket_n 이상 · ③과 동일 규칙)
@@ -676,10 +694,11 @@ def _batch_regressions(pre: dict, post: dict, min_bucket_n: int = 5,
                           and ci_overlap(pre.get("grade_accuracy") or 0.0, n_pre,
                                          post.get("grade_accuracy") or 0.0, n_post)):
         out.append(f"정합성 {d:+.1%} 악화")
-    pre_miss = float(pre.get("harm_miss_rate") or 0.0)
-    post_miss = float(post.get("harm_miss_rate") or 0.0)
-    if post_miss > pre_miss + 1e-9:
-        out.append(f"유해 미탐 {pre_miss:.1%}→{post_miss:.1%} 악화")
+    pre_miss, post_miss = pre.get("harm_miss_rate"), post.get("harm_miss_rate")
+    if pre_miss is not None and post_miss is not None:      # None = 기대 R 행 0(측정 불가) → 비교 안 함
+        pre_miss, post_miss = float(pre_miss), float(post_miss)
+        if post_miss > pre_miss + 1e-9:
+            out.append(f"유해 미탐 {pre_miss:.1%}→{post_miss:.1%} 악화")
     post_b = post.get("by_reason_bucket") or {}
     for b, pv in (pre.get("by_reason_bucket") or {}).items():
         if int((pv or {}).get("n") or 0) < min_bucket_n:
@@ -728,12 +747,13 @@ def learning_batch(team=None, models=None, model: str = "") -> dict:
     golden = build_golden_from_reviews(team)             # 전/후를 같은 정답셋으로 재도록 먼저 고정
     prev_learned = dict(PR.LEARNED)
     prev_by_model = {m: dict(v) for m, v in (PR.LEARNED_BY_MODEL or {}).items()}
-    eval_pre = eval_golden(team, model=model)            # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
+    scope = _holdout_scope(team)                        # 전/후를 개선이 못 본 홀드아웃으로 잰다(없으면 전체)
+    eval_pre = eval_golden(team, model=model, scope=scope)   # 개선 전(현행 프롬프트) 점수 · model 비면 기본 텍스트 슬롯
     improve = meta_compile_run(team)
     changed = (PR.LEARNED != prev_learned) or (PR.LEARNED_BY_MODEL != prev_by_model)
     delta = None
     if changed and eval_pre.get("ok"):
-        evalr = eval_golden(team, model=model)           # 개선 후 점수(같은 셋 · 같은 모델)
+        evalr = eval_golden(team, model=model, scope=scope)   # 개선 후 점수(같은 셋 · 같은 모델)
         try:
             delta = round((evalr.get("grade_accuracy") or 0.0) - (eval_pre.get("grade_accuracy") or 0.0), 4)
         except (TypeError, ValueError):
