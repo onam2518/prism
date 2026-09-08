@@ -180,7 +180,7 @@ alter table public.prism_autopilot_runs enable row level security;
 ```sql
 alter table public.prism_autopilot_runs add column if not exists meta_target real;
 ```
-2026-09-08 추가(미적용 · 정답셋 고정):
+2026-09-08 추가(적용됨 · 정답셋 고정 · PR#547):
 ```sql
 alter table public.prism_autopilot_runs add column if not exists golden_hashes jsonb;
 ```
