@@ -2306,26 +2306,6 @@ class Store:
         c.commit()
         return prev
 
-    def release_meta_hold(self, content_hash, team=None) -> bool:
-        """검수자가 보류 필드를 다 채운 뒤 '메타 보류' yellow 를 해제(review=auto). 판정 보류 yellow 는 건드리지 않는다."""
-        c = self._conn()
-        row = c.execute("SELECT payload FROM results WHERE content_hash=?", (content_hash,)).fetchone()
-        if not row:
-            return False
-        try:
-            pl = json.loads(row[0]) if row[0] else {}
-        except Exception:
-            return False
-        qm = pl.get("quality_meta") if isinstance(pl, dict) else None
-        if not (isinstance(qm, dict) and qm.get("review") == "yellow"
-                and str(qm.get("review_reason") or "").startswith("메타 보류")):
-            return False
-        qm["review"] = "auto"
-        qm["review_reason"] = ""
-        c.execute("UPDATE results SET payload=? WHERE content_hash=?", (json.dumps(pl, ensure_ascii=False), content_hash))
-        c.commit()
-        return True
-
     # ── 골든셋(검수 확정 정답셋 · 누적) ──
     def upsert_golden(self, content_hash, content, expected, team=None, source="review"):
         """골든 엔트리 upsert(누적). content_hash 키 · source = review(검수 유래)|manual(관리자 등록)."""

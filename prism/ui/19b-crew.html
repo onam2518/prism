@@ -656,7 +656,7 @@
                       <span class="ds-badge ds-badge--intent tnum" x-show="bulkGrps > 1 && bulkChecked[r.hash]" style="margin-right:5px" x-text="'그룹' + bulkChecked[r.hash]"></span>
                       <span x-text="r.title || '(제목 없음)'"></span>
                       <span class="ds-badge ds-badge--yellow" x-show="r.review==='yellow'" style="margin-left:5px">YELLOW</span>
-                      <span class="ds-badge ds-badge--warning" x-show="r.hold" style="cursor:help;margin-left:4px" data-tip="리드문·엔티티·인텐트·카테고리 추출이 실패해 사람이 채워야 하는 건 · 상세 화면의 채울 필드를 교정하면 YELLOW 가 풀립니다" data-tip-pos="top">메타 보류</span>
+                      <span class="ds-badge ds-badge--warning" x-show="r.hold" style="cursor:help;margin-left:4px" data-tip="리드문·엔티티·인텐트·카테고리 추출이 실패해 사람이 채워야 하는 건 · 품질 등급과 별개 상태이며 상세 화면에서 채우면 해제됩니다" data-tip-pos="top">입력 필요</span>
                     </td>
                     <td class="text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="r.service || '·'"></td>
                     <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">

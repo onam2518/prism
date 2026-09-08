@@ -239,7 +239,7 @@ Prism 은 콘텐츠 메타(리드문·엔티티·인텐트·카테고리) 추출
 - **사전 갭 관측**: ③④ 드롭 원값·재요청 여부를 트레이스 verdict(`drop`)로 보존, `/learn-data` 의 `dict_gap`(상위 10 + 재요청 수)으로 집계 · 학습 데이터 탭 노출.
 - **신뢰도 블렌드**: reviewer_weights = 골드 정확도 + Dawid-Skene EM 추정 정확도 평균(각 표본 5+).
 - **콜별 텔레메트리**: LLMResult.tag → trace.by_call({n·cost·in·out·ms}) · 처리 이력에 '콜별 비용' 행.
-- **quality ∥ item 병렬 옵션**: `Methodology.parallel_quality_item`(기본 off · 프리셋 `stage-parallel`) · 사후 게이트로 산출 파리티(R 이면 아이템 폐기 = 비용 트레이드오프) · 승격은 실측 A/B 후.
+- **quality ∥ item 병렬 옵션**: `Methodology.parallel_quality_item`(기본 off · 프리셋 `stage-parallel`) · 2026-09-08 정책으로 등급 게이트가 폐지돼 순차·병렬 산출이 동일(R 이어도 아이템 메타 보존) · 승격은 실측 A/B 후.
 - **REAP 라우팅 확신 가드**: 재분류 confidence < 0.5 면 검수자 선택 요소 폴백(스테이지 오염 방지).
 - **규칙 보정**: 문자열 단일값 코어션 + 인텐트 공백 변형(`속보 · 단신`) 구제로 재요청·드롭 절감.
 - **mock 스키마 계약 테스트**: 태그별 mock 응답 키 ⊇ 실스키마 필수 키(드리프트 감시).

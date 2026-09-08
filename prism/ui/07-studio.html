@@ -13,7 +13,7 @@
         <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
           <li><b>토픽 스튜디오</b>는 클러스터링 체계(어떤 콘텐츠를 어떻게 묶을지)를 <b>자연어</b>로 정의하고 즉시 실험하는 공간입니다.</li>
           <li>원하는 묶음을 문장으로 설명하면 조건값이 자동으로 채워집니다 · 채워진 조건값은 직접 켜고 끌 수 있습니다.</li>
-          <li>품질 통과(<b>G</b>) 콘텐츠만 토픽 대상이 됩니다<span x-show="qexN()"> · 현재 <b class="tnum" x-text="qexN()"></b>건이 품질 미달로 자동 제외</span> · 어울리지 않는 콘텐츠는 토픽을 열어 개별 <b>제외</b>할 수 있습니다.</li>
+          <li>토픽을 만들고 활성으로 볼지 정하는 기준은 품질 통과(<b>G</b>) 콘텐츠입니다<span x-show="qexN()"> · 현재 <b class="tnum" x-text="qexN()"></b>건이 유통 불가</span>. 유통 불가 콘텐츠도 조건이 맞으면 <b>편입</b>돼 사안 규모로 보이지만(표의 <b>편입</b> 수) 활성 판정과 대표 콘텐츠에는 들어가지 않습니다 · 어울리지 않는 콘텐츠는 토픽을 열어 개별 <b>제외</b>할 수 있습니다.</li>
         </ul>
         <template x-if="!topicData || !topicData.n_contents"><div class="empty">아직 토픽을 만들 결과가 없습니다 <b class="text-body">실행 · 추출</b>에서 여러 건(엑셀 일괄)을 추출하세요</div></template>
         <div x-show="topicData && topicData.n_contents" class="space-y-4">
@@ -303,7 +303,7 @@
                   <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 엔티티형</span> <span class="ds-badge ds-badge--neutral" x-show="t.status==='paused'">일시정지</span></td>
                   <td class="text-ink" x-text="t.cluster_id"></td>
                   <td x-text="(t.entities||t.rep_entities||[]).join(' · ')"></td>
-                  <td class="tnum" x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td>
+                  <td class="tnum" x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.nondist_n?(' · 편입 '+t.nondist_n):'') + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td>
                   <td class="tnum" x-text="t.today||0"></td><td class="tnum" x-text="t.d7||0"></td>
                   <td style="white-space:nowrap"><span class="ds-badge" x-bind:class="(t.signal||'').indexOf('급감')===0?'ds-badge--error':'ds-badge--status'" x-show="t.signal" x-text="t.signal"></span></td>
                   <td></td>
@@ -315,7 +315,7 @@
                   <td style="white-space:nowrap"><span class="ds-badge ds-badge--neutral">자동 · 사건형</span> <span class="ds-badge ds-badge--neutral" x-show="t.status==='paused'">일시정지</span></td>
                   <td class="text-ink" x-text="t.cluster_id"></td>
                   <td x-text="(t.rep_entities||t.entities||[]).join(' · ')"></td>
-                  <td class="tnum" x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td>
+                  <td class="tnum" x-text="(t.n_contents || t.count || (t.content_ids?t.content_ids.length:0)) + (t.nondist_n?(' · 편입 '+t.nondist_n):'') + (t.excluded_n?(' · 제외 '+t.excluded_n):'')"></td>
                   <td class="tnum" x-text="t.today||0"></td><td class="tnum" x-text="t.d7||0"></td>
                   <td style="white-space:nowrap"><span class="ds-badge" x-bind:class="(t.signal||'').indexOf('급감')===0?'ds-badge--error':'ds-badge--status'" x-show="t.signal" x-text="t.signal"></span></td>
                   <td></td>

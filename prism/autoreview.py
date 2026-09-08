@@ -62,6 +62,17 @@ _LOCK = threading.Lock()
 _SEQ = 0
 
 
+def _needs_human(row) -> bool:
+    """사람 눈이 필요한 행: 품질 판정 보류(yellow) 또는 입력 필요 항목이 남은 건.
+
+    입력 필요는 2026-09-08 정책으로 품질 등급과 분리됐다. 라우팅을 yellow 하나에 의존하면
+    빈 메타가 사람을 거치지 않고 정답 후보로 흐른다(2026-07-28 실사례) — 두 조건을 함께 본다."""
+    qm = row.get("quality_meta") or {}
+    im = row.get("item_meta") or {}
+    return bool((qm.get("review") or "") == "yellow"
+                or (im.get("hold_fields") if isinstance(im, dict) else None))
+
+
 def _clip(s, n: int) -> str:
     s = str(s or "").strip()
     return s if len(s) <= n else s[:n].rstrip() + "…"
@@ -115,10 +126,10 @@ def _target_rows(st, team, reviewer: str):
             if r is None or _skip(ch):                                 # 원본 없음(옛 콘텐츠)·이미 판정/초안 = 제외
                 continue
             out.append((ch, r))
-        out.sort(key=lambda cr: 0 if (cr[1].get("quality_meta") or {}).get("review") == "yellow" else 1)
-    else:                                                              # 배정 없음: 오픈 검수 큐(YELLOW)
+        out.sort(key=lambda cr: 0 if _needs_human(cr[1]) else 1)
+    else:                                                              # 배정 없음: 오픈 검수 큐(YELLOW · 입력 필요)
         for r in rows:
-            if ((r.get("quality_meta") or {}).get("review") or "") != "yellow":
+            if not _needs_human(r):
                 continue
             ch = _SV._row_key(r.get("content_ref") or {})
             if _skip(ch):

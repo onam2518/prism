@@ -186,7 +186,7 @@
                     <div class="tile tile--hero"><div class="n tnum" x-text="pilot.best_accuracy!=null ? Math.round(pilot.best_accuracy*100)+'%' : '·'"></div><div class="t">최고 일치율</div></div>
                   </div>
                   <template x-if="(pilot.history||[]).length">
-                    <div class="overflow-auto" style="margin-top:10px"><table class="ds-table"><thead><tr><th style="width:60px">라운드</th><th style="width:60px">버전</th><th style="width:130px">모델</th><th>종합</th><th>게이트</th><th>등급 일치율</th><th>사유 일치</th><th>유해 미탐률</th><th>인텐트 F1</th><th>카테고리 F1</th><th>엔티티 F1</th><th>리드문 유사도</th><th>빈 결과</th><th>메타 보류</th><th>비용($)</th><th style="width:90px">누적 비용($)</th><th>응답 속도</th><th style="width:80px">반영</th></tr></thead><tbody>
+                    <div class="overflow-auto" style="margin-top:10px"><table class="ds-table"><thead><tr><th style="width:60px">라운드</th><th style="width:60px">버전</th><th style="width:130px">모델</th><th>종합</th><th>게이트</th><th>등급 일치율</th><th>사유 일치</th><th>유해 미탐률</th><th>인텐트 F1</th><th>카테고리 F1</th><th>엔티티 F1</th><th>리드문 유사도</th><th>빈 결과</th><th>입력 필요</th><th>비용($)</th><th style="width:90px">누적 비용($)</th><th>응답 속도</th><th style="width:80px">반영</th></tr></thead><tbody>
                       <template x-for="(hh, hi) in pilot.history" x-bind:key="'ph'+hh.round">
                         <tr x-bind:class="pilotM(hh).n != null && pilotM(hh).n < 20 ? 'text-muted' : ''">
                           <td class="tnum" x-text="hh.round"></td>

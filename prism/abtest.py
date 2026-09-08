@@ -176,7 +176,7 @@ def score(rows: list, outs: list) -> dict:
     per_reason = {}
     per_service = {}                             # 서비스(displayServiceName)별 등급 일치 · by_reason_bucket 과 같은 규칙
     yellow_n = auto_n = auto_hit = 0
-    meta_hold = 0                                # 메타 보류(리드문·하위 추출 실패 → 사람이 채움) 행 수
+    meta_hold = 0                                # 입력 필요(리드문·하위 추출 실패 → 사람이 채움) 행 수
     lat = []                                     # 건별 총 지연(ms) · p50/p95 산출용
     iacc: dict = {"per_intent": {}}              # 인텐트 카운터(intent_tally 단일 소스)
     for row, out in zip(rows, outs):
@@ -247,7 +247,7 @@ def score(rows: list, outs: list) -> dict:
         "by_reason_bucket": by_reason,
         "by_service": service_report(per_service),               # 서비스별 정합성(원천 쪼개 보기)
         "yellow_rate": round(yellow_n / n, 4) if n else 0,
-        "meta_hold_rate": round(meta_hold / n, 4) if n else 0,   # yellow 중 '메타 보류' 몫 · 모델이 틀린 게 아니라 못 뽑은 비율
+        "meta_hold_rate": round(meta_hold / n, 4) if n else 0,   # 전체 중 '입력 필요' 몫 · 모델이 틀린 게 아니라 못 뽑은 비율
         "auto_coverage": round(auto_n / n, 4) if n else 0,
         "auto_grade_accuracy": round(auto_hit / auto_n, 4) if auto_n else 0,
     }
