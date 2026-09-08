@@ -2412,6 +2412,7 @@ class SupabaseStore:
 
 def _iso_epoch(s) -> float:
     """postgrest created_at(ISO · 마이크로초 · +00:00 또는 Z) → epoch · 실패 시 0."""
+    import calendar
     try:
         s = str(s or "").strip().replace("Z", "+00:00")
         base, _, tz = s.partition("+")
