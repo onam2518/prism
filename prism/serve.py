@@ -1818,6 +1818,17 @@ def _g_prompt_snapshot(h, q):
     return {"ok": bool(snap), "snapshot": snap}
 
 
+def _with_quality(snap: dict) -> dict:
+    """품질 프롬프트를 기록하기 전(2026-09-09 이전) 스냅샷·런 기록은 현재 기준 품질로 채우고 그렇게 표시한다."""
+    if snap.get("quality"):
+        return snap
+    try:
+        q = LO.quality_prompts(snap.get("model") or "")
+    except Exception:
+        return snap
+    return {**snap, "quality": {**q, "fallback": "기록 당시 품질 프롬프트 없음 · 현재 기준으로 채움"}}
+
+
 def _prompt_zip_name(snap: dict) -> str:
     """내려받기 파일명 = 모델_일자_버전.zip · 일자는 기록 시각 · 모델명의 경로·구분 문자는 '-'(헤더는 ASCII 만)."""
     model = re.sub(r"[^A-Za-z0-9._-]+", "-", str(snap.get("model") or "model")).strip("-") or "model"
@@ -1835,6 +1846,7 @@ def _g_prompt_export(h, q):
             return {"ok": False, "error": (f"평가 런 #{run} 의 프롬프트 기록이 없습니다(기록 기능 이전 런)" if run.isdigit()
                                            else f"프롬프트 스냅샷 v{v} 이 없습니다 · 학습 반영 이력을 확인하세요")}
         title = f"평가 런 #{run}" if run.isdigit() else f"학습 버전 v{v}"
+        snap = _with_quality(snap)
     else:
         snap = LO.compose_prompts(h._req_team(), (q.get("model") or [""])[0])
         title = f"현재 합성 · v{snap.get('version')}"
