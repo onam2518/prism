@@ -164,6 +164,19 @@ class TestGoldenCreation(unittest.TestCase):
 
 
 class TestFeedbackOrchestrator(unittest.TestCase):
+    def test_provenance_prefix_stripped_from_learning_input(self):
+        """AI 초안 판정 확정 메모의 'AI 초안 확인 · ' 접두어는 학습 입력(컴파일·라우팅)에서 벗긴다 · 접두어만인 줄은 버린다."""
+        from prism import feedback_loop as FL
+        from prism.llm import LLMClient
+        raw = "- AI 초안 확인 · 신차 보도자료에 '정책·행정' 인텐트는 부적절하다\n- AI 초안 확인\n- 조직명은 정식 명칭으로\nAI 초안 확인 · 심층 분석은 과도하다"
+        self.assertEqual(FL.strip_provenance(raw),
+                         "- 신차 보도자료에 '정책·행정' 인텐트는 부적절하다\n- 조직명은 정식 명칭으로\n심층 분석은 과도하다")
+        d = FL.meta_compile(LLMClient(mock=True), "analyze", raw)["directive"]
+        self.assertNotIn("AI 초안 확인", d); self.assertIn("정식 명칭", d)
+        items = FL.route_feedback(LLMClient(mock=True), {"note": "AI 초안 확인 · 리드문에 없는 제공자 정보가 들어갔다", "elements": ["summary"]})
+        self.assertEqual([it["directive"] for it in items], ["리드문에 없는 제공자 정보가 들어갔다"])
+        self.assertEqual(FL.route_feedback(LLMClient(mock=True), {"note": "AI 초안 확인", "elements": ["summary"]}), [])
+
     def test_route_fallback_splits_elements_by_stage(self):
         from prism import feedback_loop as FL
         from prism.llm import LLMClient
