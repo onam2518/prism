@@ -260,12 +260,12 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       get pvStageModel() { return this.pvSrc ? ((((this.pvStored || {}).calls || {})[this.pvCall] || {}).model || '') : this.pvModel; },
       pvSrcParams() { const [k, id] = this.pvSrc.split(':'); return this.pvSrc ? { [k]: id } : { model: this.pvModel }; },
-      async downloadPrompt(p) {                  // 프롬프트 .md 내려받기 · 인증 GET 이라 fetch+Blob(exportDash 와 같은 이유) · 기록 없으면 서버가 JSON 오류
+      async downloadPrompt(p) {                  // 프롬프트 zip(호출별 파일) 내려받기 · 인증 GET 이라 fetch+Blob(exportDash 와 같은 이유) · 기록 없으면 서버가 JSON 오류
         try {
           const r = await this._afetch('/prompt-export?' + new URLSearchParams(p || {}), { headers: this._authHeaders() });
           if ((r.headers.get('content-type') || '').includes('json')) { const j = await r.json(); this._err(j.error || '내려받기 실패'); return; }
           const m = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '');
-          const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = (m && m[1]) || 'prism_prompt.md'; a.click();
+          const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = (m && m[1]) || 'prism_prompt.zip'; a.click();
           setTimeout(() => URL.revokeObjectURL(a.href), 60000);
         } catch (e) { this._err('프롬프트 내려받기 실패'); }
       },
