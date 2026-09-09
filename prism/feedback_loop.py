@@ -67,10 +67,32 @@ def run_reap(llm, fb: dict) -> dict:
     return out
 
 
+# 출처 표시 접두어: 실험실 › AI 초안 판정에서 확정하면 메모 앞에 'AI 초안 확인 · ' 가 붙는다(app-18-autoreview.js).
+# 검수 로그에는 남겨야 하지만 학습 지시로 들어가면 토큰만 쓰고 모델에게 아무 지시가 안 된다 → 학습 입력에서만 벗긴다.
+_PROVENANCE = "AI 초안 확인"
+
+
+def strip_provenance(text: str) -> str:
+    """학습 입력(메모·plan 묶음)에서 출처 표시 접두어를 벗긴다 · 접두어만 남는 줄은 버린다."""
+    out = []
+    for ln in (text or "").splitlines():
+        body = ln.lstrip()
+        if body.startswith(_PROVENANCE) or body.startswith("- " + _PROVENANCE):
+            lead = ln[:len(ln) - len(body)] + ("- " if body.startswith("- ") else "")
+            rest = body[len("- " if body.startswith("- ") else "") + len(_PROVENANCE):].lstrip(" ·:-")
+            if not rest.strip():
+                continue
+            ln = lead + rest
+        out.append(ln)
+    return "\n".join(out)
+
+
 META_SYSTEM = (
     "너는 프롬프트 개선 '메타컴파일러'다. 한 단계(추출/분석/검수/판정)에 대한 여러 검수자의 교정 "
     "피드백 묶음을 받아 다음 추출 프롬프트에 넣을 '정제된 개선 지시'로 컴파일한다.\n"
     "- 중복·유사 항목은 하나로 병합. 자주 반복되는 교정을 우선(앞에).\n"
+    "- 콘텐츠 한 건에 대한 판정 메모(특정 상품·인물·기사 이름이 들어간 지적)는 여러 콘텐츠에 통하는 "
+    "규칙으로 일반화한다. 일반화가 안 되면 버린다. 'AI 초안 확인' 같은 출처 표시는 지시에 넣지 않는다.\n"
     "- 서로 충돌하는 지적은 directive 에 억지로 합치지 말고 ambiguities 로 분리한다"
     "(= 가이드가 모호하다는 신호 → 명확화 필요).\n"
     "반드시 JSON 만: {\"directive\": \"명령형 1~5줄, 일반화·구체적\", \"ambiguities\": [\"무엇에 대해 의견이 갈리는지\", ...]}"
@@ -80,6 +102,7 @@ META_SYSTEM = (
 def meta_compile(llm, stage: str, raw_text: str) -> dict:
     """한 단계의 누적 검수 피드백(plan 묶음) → {directive, ambiguities}. 다수 의견을 병합·정리하고
     충돌은 '명확화 필요'로 분리. 키 없으면 mock(원문 일부)."""
+    raw_text = strip_provenance(raw_text)
     if not (raw_text or "").strip():
         return {"stage": stage, "directive": "", "ambiguities": []}
     if getattr(llm, "mock", False):
@@ -91,6 +114,7 @@ def meta_compile(llm, stage: str, raw_text: str) -> dict:
     except Exception as e:
         print(f"  [warn] meta_compile 실패: {e}")
         obj = {}
+    # ponytail: 컴파일 실패·빈 응답이면 원문 폴백 · 건별 메모가 그대로 실릴 수 있다 · 잦으면 이전 지시 유지로 바꾼다
     return {"stage": stage,
             "directive": (obj.get("directive") or "").strip() or raw_text.strip(),
             "ambiguities": obj.get("ambiguities") or []}
@@ -121,7 +145,8 @@ ROUTE_MIN_CONF = 0.5     # 이 미만이면 재분류를 버리고 검수자 선
 def route_feedback(llm, fb: dict) -> list:
     """검수 교정 원문을 요소별 개선사항으로 재분류 → [{element, stage, directive}].
     mock/실패 시 폴백: 선택 요소(들) 그대로 원문을 지시로 사용(무손실)."""
-    note = (fb.get("note") or "").strip()
+    note = strip_provenance(fb.get("note") or "").strip()
+    fb = {**fb, "note": note}                      # 라우팅 LLM 입력(_reap_user)도 벗긴 메모로
     hint = [e for e in (fb.get("elements") or []) if e in ELEMENTS] or ["summary"]
     fallback = [{"element": e, "stage": ELEM_STAGE[e], "directive": note} for e in hint if note]
     if not note or getattr(llm, "mock", False):
