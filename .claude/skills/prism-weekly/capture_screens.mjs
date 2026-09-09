@@ -9,6 +9,7 @@
 // }
 // - clicks 는 버튼 텍스트 **정확 일치(===)** 로 찾는다. 부분 일치는 네비 메뉴 오클릭 위험.
 //   부분 일치가 꼭 필요하면 {"text":"...","exact":false} 로.
+// - {"js":"<식>","wait":ms} 단계는 페이지에서 JS 를 실행한다(입력·저장 등 Alpine 상태 조작).
 // - 검수자 등록 모달은 localStorage 프리셋(복실)으로 우회한다.
 // - 산출: <outdir>/<name>.png (embed_shots.py 규약: 이후 <name>.jpg 로 압축해 사용)
 
@@ -86,6 +87,12 @@ try {
     await send('Page.navigate', { url: s.url.startsWith('http') ? s.url : base + s.url });
     await new Promise((r) => setTimeout(r, s.wait || 2600));
     for (const c of (s.clicks || [])) {
+      if (c && c.js) {   // {"js": "<식>", "wait": ms} · 입력·저장처럼 버튼 클릭만으로 안 되는 단계(Alpine 상태 조작)
+        const r = await send('Runtime.evaluate', { expression: c.js, awaitPromise: true, returnByValue: true });
+        if (r.exceptionDetails) console.error(`경고: ${s.name} js 단계 오류 ` + JSON.stringify(r.exceptionDetails.exception?.description || r.exceptionDetails.text));
+        await new Promise((r) => setTimeout(r, c.wait || 900));
+        continue;
+      }
       const text = typeof c === 'string' ? c : c.text;
       const exact = typeof c === 'string' ? true : c.exact !== false;
       const ok = await evaluate(`(() => {
@@ -94,7 +101,7 @@ try {
           && (${exact} ? b.textContent.trim() === t : b.textContent.trim().includes(t)));
         if (bs[0]) { bs[0].click(); return true } return false })()`);
       if (!ok) console.error(`경고: ${s.name} 에서 버튼 "${text}" 못 찾음`);
-      await new Promise((r) => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, c.wait || 900));
     }
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(`${outDir}/${s.name}.png`, Buffer.from(shot.data, 'base64'));
