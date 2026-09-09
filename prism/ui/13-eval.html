@@ -9,7 +9,7 @@
                 <span class="text-xs text-muted" x-show="modelsMsg" x-text="modelsMsg"></span>
                 <span class="selctl" data-tip="프롬프트 버전 = 학습 반영 회차 + 1 · 평가는 항상 현재 버전으로 실행됩니다" data-tip-pos="bottom"><span class="selctl__lbl">프롬프트 버전</span>
                   <b class="tnum" style="padding:0 8px;font-size:13px;height:30px;display:inline-flex;align-items:center" x-text="verTxt"></b>
-                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="downloadPrompt({ model: String(evalModel || '').split('|').pop() })" data-tip="지금 평가에 쓰이는 프롬프트(4호출 system·user 템플릿)를 호출마다 파일로 나눈 zip 으로 내려받습니다 · 기준 모델 기준" data-tip-pos="bottom">내려받기</button></span>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="downloadPrompt({ model: String(evalModel || '').split('|').pop() })" data-tip="지금 평가에 쓰이는 프롬프트를 호출마다 파일 하나(① ~ ④ + ⑤ 품질) 로 zip 에 담아 내려받습니다 · 기준 모델 기준" data-tip-pos="bottom">내려받기</button></span>
                 <span style="display:flex;gap:6px;align-items:center;margin-left:6px"><span class="selctl__lbl">대상 콘텐츠</span>
                   <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='all' ? 'sel' : ''" x-on:click="evalScope='all'">전체 정답셋</button>
                   <button type="button" class="srcfilter__chip" x-bind:class="evalScope==='eval' ? 'sel' : ''" x-on:click="evalScope='eval'">평가용만</button>

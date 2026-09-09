@@ -174,7 +174,7 @@
                 <span class="selctl" x-show="pvCall==='intent'" data-tip="③ 인텐트만 콘텐츠 서비스에 따라 '[서비스 카테고리 분류값]' 절이 달라집니다 · 나머지 호출은 서비스와 무관" data-tip-pos="top"><span class="selctl__lbl">서비스</span>
                   <select class="field" x-model="pvService" x-on:change="loadPreview()"><template x-for="g in groups" x-bind:key="'pg'+g"><option x-bind:value="g" x-text="g"></option></template></select></span>
                 <span class="text-xs text-muted" x-text="pvSrc ? (pvStored ? ('v' + pvStored.version + ' · ' + fmtTs(pvStored.ts)) : pvMsg) : (pvData ? ('계열 ' + pvData.family) : '')"></span>
-                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-left:auto" x-on:click="downloadPrompt(pvSrcParams())" data-tip="선택한 원천의 4호출 system·user 템플릿을 호출마다 파일로 나눠 zip 으로 · ③ 인텐트는 서비스별 파일" data-tip-pos="top">내려받기(zip)</button>
+                <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" style="margin-left:auto" x-on:click="downloadPrompt(pvSrcParams())" data-tip="선택한 원천의 프롬프트를 호출마다 파일 하나(① ~ ④ + ⑤ 품질) 로 zip 에 담습니다 · 서비스별로 갈리는 부분은 파일 안 분기 블록" data-tip-pos="top">내려받기(zip)</button>
               </div>
               <div class="codeblock"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>system<span class="codeblock__stage" x-text="pvStageModel"></span></div><textarea readonly spellcheck="false" x-bind:value="pvSystem"></textarea></div>
               <div class="codeblock" style="margin-top:10px"><div class="codeblock__bar"><span class="codeblock__dots"><i></i><i></i><i></i></span>user<span class="codeblock__stage">입력 템플릿</span></div><textarea readonly spellcheck="false" style="min-height:90px" x-bind:value="pvData ? pvData.user : ''"></textarea></div>

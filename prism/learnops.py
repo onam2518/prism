@@ -738,6 +738,12 @@ def compose_prompts(team=None, model: str = "") -> dict:
         payload["item"] = PR.item_system(_c("뉴스"), base_model)
     except Exception:
         pass
+    try:                                         # 품질(등급·사유) 판정 · 서비스 묶음(media/ugc)마다 적재 규칙이 다르다 · few-shot 은 실행 시 모델별 부착이라 제외
+        groups = sorted({D.SERVICE_GROUP_DEFAULT, *D.SERVICE_GROUP.values()})
+        payload["quality"] = {"model": base_model,
+                              "by_service": {g: PR.quality_system(D.active_quality_metas(g), g) for g in groups}}
+    except Exception:
+        pass
     return payload
 
 
@@ -756,38 +762,70 @@ def snapshot_prompts(team=None) -> dict:
 _CALL_KO = {"summary": "① 리드문", "entities": "② 엔티티", "intent": "③ 인텐트", "category": "④ 카테고리"}
 
 
+_SEP = "━" * 8
+
+
+def _split_variants(by: dict):
+    """서비스별 변형 → (공통 앞부분, {서비스: 분기부}, 공통 뒷부분) · 앞+분기+뒤 = 원문 그대로 복원.
+    경계는 줄 단위로 물려 읽기 좋게 한다."""
+    import os
+    texts = list(by.values())
+    pre = os.path.commonprefix(texts)
+    pre = pre[:pre.rfind("\n") + 1]
+    rest = [t[len(pre):] for t in texts]
+    suf = os.path.commonprefix([r[::-1] for r in rest])[::-1]
+    k = suf.find("\n")
+    suf = suf[k:] if k >= 0 else ""
+    return pre, {svc: t[len(pre):len(t) - len(suf)] for svc, t in by.items()}, suf
+
+
+def _call_file(label: str, c: dict, user: str) -> str:
+    """한 호출 = 파일 하나: system(서비스별로 갈리면 공통부 + {서비스 분기} 자리 + 분기 블록들) + user 템플릿."""
+    by = c.get("by_service") or {}
+    model = c.get("model") or ""
+    parts = []
+    if len(by) > 1:
+        pre, mids, suf = _split_variants(by)
+        parts += [f"{_SEP} {label} · system · 모델 {model} · {{서비스 분기}} 자리에 아래 서비스 블록 중 하나가 들어간다 {_SEP}",
+                  pre + "{서비스 분기}" + suf.rstrip(), ""]
+        for svc, mid in mids.items():
+            parts += [f"{_SEP} {label} · 서비스 분기 · {svc} {_SEP}", mid.strip("\n"), ""]
+    else:
+        parts += [f"{_SEP} {label} · system · 모델 {model} {_SEP}",
+                  ((next(iter(by.values())) if by else c.get("system")) or "").rstrip(), ""]
+    if user:
+        parts += [f"{_SEP} {label} · user 템플릿(현재 코드 기준 자리표) {_SEP}", user.rstrip(), ""]
+    return "\n".join(parts)
+
+
 def prompt_files(payload: dict, title: str) -> dict:
     """프롬프트 묶음(compose_prompts 산출 · 학습 스냅샷 · 평가 런 기록) → {파일명: 본문}.
-    호출마다 system/user 를 따로, ③ 인텐트는 서비스별로 따로 둔다 · 요소 하나만 고쳐 쓰기 위해서다.
-    본문은 가공 없는 원문(.txt) · 설명은 README.md 한 장."""
+    호출마다 파일 하나(① ~ ④ + ⑤ 품질) · 설명은 README.md 한 장."""
     from . import promptdist as PD
     ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(payload.get("ts") or 0)))
-    files = {}
+    files, rows = {}, []
     for i, call in enumerate(MP.CALLS, 1):
         c = (payload.get("calls") or {}).get(call)
         if not c:
             continue
-        by = c.get("by_service") or {}
-        for svc, sysp in (by.items() if by else [("", c.get("system"))]):
-            files[f"{i:02d}-{call}.system{'.' + svc if svc else ''}.txt"] = (sysp or "").rstrip() + "\n"
         try:
-            files[f"{i:02d}-{call}.user.txt"] = PD.user_template(call).rstrip() + "\n"
+            user = PD.user_template(call)
         except Exception:
-            pass
-    if payload.get("item"):
-        files["item.system.txt"] = payload["item"].rstrip() + "\n"
+            user = ""
+        files[f"{i:02d}-{call}.txt"] = _call_file(_CALL_KO[call], c, user)
+        rows.append((f"{i:02d}-{call}.txt", _CALL_KO[call], c.get("model") or ""))
+    q = payload.get("quality")
+    if q:
+        files["05-quality.txt"] = _call_file("⑤ 품질(등급·사유)", q, PR.quality_user(PD._Slots()))
+        rows.append(("05-quality.txt", "⑤ 품질(등급·사유)", q.get("model") or ""))
     readme = [f"# 프리즘 추출 프롬프트 · {title}", "",
               f"- 기록 시각 {ts} · 기본 모델 {payload.get('model') or '(설정 모델)'} · "
               f"프롬프트 v{payload.get('version') or '?'} · 품질 기준 {payload.get('quality_version') or ''}",
-              "- 호출 순서: ① 리드문 → ② 엔티티 → ③ 인텐트 → ④ 카테고리 · 리드문이 비면 후속 호출 생략",
-              "- 파일 하나 = 호출 하나의 system 또는 user 템플릿 · ①·②·④ 는 서비스와 무관한 단일 프롬프트,"
-              " ③ 인텐트만 콘텐츠 서비스에 따라 '[서비스 카테고리 분류값]' 절이 달라 서비스별 파일로 나눴습니다",
-              "- user 템플릿은 현재 코드 기준 자리표 · item.system.txt 는 4호출 비활성 설정일 때만 쓰는 통합 프롬프트", "",
-              "| 파일 | 호출 | 모델 |", "|---|---|---|"]
-    for name in files:
-        call = next((cl for cl in MP.CALLS if f"-{cl}." in name), "")
-        model = ((payload.get("calls") or {}).get(call) or {}).get("model", payload.get("model") or "") if call else (payload.get("model") or "")
-        readme.append(f"| {name} | {_CALL_KO.get(call, '통합')} | {model} |")
+              "- 호출 순서: ① 리드문 → ② 엔티티 → ③ 인텐트 → ④ 카테고리 → ⑤ 품질(등급·사유) · 리드문이 비면 ②~④ 생략",
+              "- 파일 하나 = 호출 하나 · system 과 user 템플릿이 구분선(━━━━━━━━)으로 나뉘어 들어 있습니다",
+              "- ③ 인텐트와 ⑤ 품질은 콘텐츠의 서비스에 따라 일부가 달라집니다 · 공통부의 {서비스 분기} 자리에 파일 아래 서비스 블록 중 하나가 들어가면 그 서비스의 실제 프롬프트가 됩니다",
+              "- user 템플릿은 현재 코드 기준 자리표 · ⑤ 품질의 few-shot 예시는 실행 시 모델별로 붙어 여기엔 없습니다", "",
+              "| 파일 | 호출 | 모델 |", "|---|---|---|"] + [f"| {n} | {k} | {m} |" for n, k, m in rows]
     return {"README.md": "\n".join(readme) + "\n", **files}
 
 
