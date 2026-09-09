@@ -193,10 +193,15 @@ class TestButtonsEndToEnd(unittest.TestCase):
         # 프롬프트 내려받기: 현재 합성(.md · 4호출 + ③ 서비스별 전문) · 없는 버전은 JSON 오류
         self.assertTrue(self.ok("/prompt-export?model=solar-pro2").startswith("PK"))   # zip
         files = self.serve.LO.prompt_files(self.serve.LO.compose_prompts(None, "solar-pro2"), "t")
-        self.assertEqual([n for n in files if n.startswith("01-")], ["01-summary.system.txt", "01-summary.user.txt"])
-        self.assertIn("경기 프리뷰", files["03-intent.system.스포츠.txt"])
-        self.assertNotIn("03-intent.system.txt", files)                      # ③ 은 서비스별 파일만
-        self.assertIn("| 03-intent.system.뉴스.txt | ③ 인텐트 | solar-pro2 |", files["README.md"])
+        self.assertEqual(sorted(files), ["01-summary.txt", "02-entities.txt", "03-intent.txt", "04-category.txt", "05-quality.txt", "README.md"])
+        it = files["03-intent.txt"]                                          # 호출 하나 = 파일 하나 · 서비스 분기는 파일 안 블록
+        for needle in ("{서비스 분기}", "서비스 분기 · 스포츠", "경기 프리뷰", "user 템플릿"):
+            self.assertIn(needle, it)
+        self.assertNotIn("서비스 분기", files["01-summary.txt"])
+        self.assertIn("서비스 분기 · ugc", files["05-quality.txt"]); self.assertIn("[검수 지시]", files["05-quality.txt"])
+        self.assertIn("| 03-intent.txt | ③ 인텐트 | solar-pro2 |", files["README.md"])
+        pre, mids, suf = self.serve.LO._split_variants({"a": "X\nA1\nY", "b": "X\nB22\nY"})
+        self.assertEqual((pre, mids, suf), ("X\n", {"a": "A1", "b": "B22"}, "\nY"))
         import io, zipfile
         self.assertEqual(set(zipfile.ZipFile(io.BytesIO(self.serve.LO.prompt_zip({}, "빈"))).namelist()), {"README.md"})
         self.assertFalse(self.ok("/prompt-export?v=999")["ok"])
