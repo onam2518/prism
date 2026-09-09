@@ -738,13 +738,19 @@ def compose_prompts(team=None, model: str = "") -> dict:
         payload["item"] = PR.item_system(_c("뉴스"), base_model)
     except Exception:
         pass
-    try:                                         # 품질(등급·사유) 판정 · 서비스 묶음(media/ugc)마다 적재 규칙이 다르다 · few-shot 은 실행 시 모델별 부착이라 제외
-        groups = sorted({D.SERVICE_GROUP_DEFAULT, *D.SERVICE_GROUP.values()})
-        payload["quality"] = {"model": base_model,
-                              "by_service": {g: PR.quality_system(D.active_quality_metas(g), g) for g in groups}}
+    try:
+        payload["quality"] = quality_prompts(base_model)
     except Exception:
         pass
     return payload
+
+
+def quality_prompts(model: str = "") -> dict:
+    """품질(등급·사유) 판정 system · 서비스 묶음(media/ugc)마다 적재 규칙이 달라 묶음별로.
+    few-shot 예시는 실행 시 모델별 부착이라 제외."""
+    from . import dictionaries as D
+    groups = sorted({D.SERVICE_GROUP_DEFAULT, *D.SERVICE_GROUP.values()})
+    return {"model": model, "by_service": {g: PR.quality_system(D.active_quality_metas(g), g) for g in groups}}
 
 
 def snapshot_prompts(team=None) -> dict:
@@ -810,8 +816,9 @@ def prompt_files(payload: dict, title: str) -> dict:
     files, rows = {}, []
     q = payload.get("quality")                   # 실행 순서: 품질(등급·사유) 판정이 먼저, 그 다음 4호출 메타
     if q:
-        files["01-quality.txt"] = _call_file("품질(등급·사유)", q, PR.quality_user(PD._Slots()), head)
-        rows.append(("01-quality.txt", "품질(등급·사유)", q.get("model") or ""))
+        ql = "품질(등급·사유)" + (f" · {q['fallback']}" if q.get("fallback") else "")   # 기록에 없어 현재 기준으로 채운 경우 표시
+        files["01-quality.txt"] = _call_file(ql, q, PR.quality_user(PD._Slots()), head)
+        rows.append(("01-quality.txt", ql, q.get("model") or ""))
     for i, call in enumerate(MP.CALLS, 2):
         c = (payload.get("calls") or {}).get(call)
         if not c:

@@ -205,6 +205,11 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertNotIn("서비스 분기", files["02-summary.txt"].split("\n", 1)[1])
         self.assertIn("서비스 분기 · ugc", files["01-quality.txt"]); self.assertIn("[검수 지시]", files["01-quality.txt"])
         self.assertIn("| 04-intent.txt | ③ 인텐트 | solar-pro2 |", files["README.md"])
+        old = self.serve._with_quality({"model": "solar-pro2", "ts": 0, "version": 7, "calls": {}})   # 품질 기록 이전 스냅샷
+        self.assertIn("ugc", old["quality"]["by_service"])
+        qf = self.serve.LO.prompt_files(old, "t")["01-quality.txt"]
+        self.assertIn("현재 기준으로 채움", qf); self.assertIn("[검수 지시]", qf)
+        self.assertNotIn("fallback", self.serve._with_quality({"quality": {"by_service": {"media": "x"}}})["quality"])
         pre, mids, suf = self.serve.LO._split_variants({"a": "X\nA1\nY", "b": "X\nB22\nY"})
         self.assertEqual((pre, mids, suf), ("X\n", {"a": "A1", "b": "B22"}, "\nY"))
         import io, zipfile
