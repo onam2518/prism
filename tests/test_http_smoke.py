@@ -192,14 +192,19 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.ok("/config", {"meta_call_models": {}})
         # 프롬프트 내려받기: 현재 합성(.md · 4호출 + ③ 서비스별 전문) · 없는 버전은 JSON 오류
         self.assertTrue(self.ok("/prompt-export?model=solar-pro2").startswith("PK"))   # zip
+        # 파일명 = 모델_일자_버전 · 모델명의 '/' 등은 '-' · ts 는 낮 시각(UTC 13시)이라 어느 시간대든 같은 날
+        self.assertEqual(self.serve._prompt_zip_name({"model": "openai/gpt-5.4", "ts": 1757336400, "version": 3}),
+                         "openai-gpt-5.4_20250908_v3.zip")
+        self.assertEqual(self.serve._prompt_zip_name({"ts": 1757336400}), "model_20250908_v0.zip")
         files = self.serve.LO.prompt_files(self.serve.LO.compose_prompts(None, "solar-pro2"), "t")
-        self.assertEqual(sorted(files), ["01-summary.txt", "02-entities.txt", "03-intent.txt", "04-category.txt", "05-quality.txt", "README.md"])
-        it = files["03-intent.txt"]                                          # 호출 하나 = 파일 하나 · 서비스 분기는 파일 안 블록
+        self.assertEqual(sorted(files), ["01-quality.txt", "02-summary.txt", "03-entities.txt", "04-intent.txt", "05-category.txt", "README.md"])
+        it = files["04-intent.txt"]                                          # 호출 하나 = 파일 하나 · 서비스 분기는 파일 안 블록
         for needle in ("{서비스 분기}", "서비스 분기 · 스포츠", "경기 프리뷰", "user 템플릿"):
             self.assertIn(needle, it)
-        self.assertNotIn("서비스 분기", files["01-summary.txt"])
-        self.assertIn("서비스 분기 · ugc", files["05-quality.txt"]); self.assertIn("[검수 지시]", files["05-quality.txt"])
-        self.assertIn("| 03-intent.txt | ③ 인텐트 | solar-pro2 |", files["README.md"])
+        self.assertTrue(files["02-summary.txt"].startswith("━━━━━━━━ 원천 · t · 기록 "))   # 파일마다 머리 한 줄
+        self.assertNotIn("서비스 분기", files["02-summary.txt"].split("\n", 1)[1])
+        self.assertIn("서비스 분기 · ugc", files["01-quality.txt"]); self.assertIn("[검수 지시]", files["01-quality.txt"])
+        self.assertIn("| 04-intent.txt | ③ 인텐트 | solar-pro2 |", files["README.md"])
         pre, mids, suf = self.serve.LO._split_variants({"a": "X\nA1\nY", "b": "X\nB22\nY"})
         self.assertEqual((pre, mids, suf), ("X\n", {"a": "A1", "b": "B22"}, "\nY"))
         import io, zipfile

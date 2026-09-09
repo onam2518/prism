@@ -779,11 +779,12 @@ def _split_variants(by: dict):
     return pre, {svc: t[len(pre):len(t) - len(suf)] for svc, t in by.items()}, suf
 
 
-def _call_file(label: str, c: dict, user: str) -> str:
-    """한 호출 = 파일 하나: system(서비스별로 갈리면 공통부 + {서비스 분기} 자리 + 분기 블록들) + user 템플릿."""
+def _call_file(label: str, c: dict, user: str, head: str = "") -> str:
+    """한 호출 = 파일 하나: 머리 한 줄(원천·모델·버전) + system(서비스별로 갈리면 공통부 + {서비스 분기} 자리 +
+    분기 블록들) + user 템플릿 · 파일 하나만 따로 건네도 어느 프롬프트인지 알 수 있게."""
     by = c.get("by_service") or {}
     model = c.get("model") or ""
-    parts = []
+    parts = [head, ""] if head else []
     if len(by) > 1:
         pre, mids, suf = _split_variants(by)
         parts += [f"{_SEP} {label} · system · 모델 {model} · {{서비스 분기}} 자리에 아래 서비스 블록 중 하나가 들어간다 {_SEP}",
@@ -803,8 +804,15 @@ def prompt_files(payload: dict, title: str) -> dict:
     호출마다 파일 하나(① ~ ④ + ⑤ 품질) · 설명은 README.md 한 장."""
     from . import promptdist as PD
     ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(payload.get("ts") or 0)))
+    meta = (f"기록 {ts} · 기본 모델 {payload.get('model') or '(설정 모델)'} · "
+            f"프롬프트 v{payload.get('version') or '?'} · 품질 기준 {payload.get('quality_version') or ''}")
+    head = f"{_SEP} 원천 · {title} · {meta} {_SEP}"
     files, rows = {}, []
-    for i, call in enumerate(MP.CALLS, 1):
+    q = payload.get("quality")                   # 실행 순서: 품질(등급·사유) 판정이 먼저, 그 다음 4호출 메타
+    if q:
+        files["01-quality.txt"] = _call_file("품질(등급·사유)", q, PR.quality_user(PD._Slots()), head)
+        rows.append(("01-quality.txt", "품질(등급·사유)", q.get("model") or ""))
+    for i, call in enumerate(MP.CALLS, 2):
         c = (payload.get("calls") or {}).get(call)
         if not c:
             continue
@@ -812,19 +820,13 @@ def prompt_files(payload: dict, title: str) -> dict:
             user = PD.user_template(call)
         except Exception:
             user = ""
-        files[f"{i:02d}-{call}.txt"] = _call_file(_CALL_KO[call], c, user)
+        files[f"{i:02d}-{call}.txt"] = _call_file(_CALL_KO[call], c, user, head)
         rows.append((f"{i:02d}-{call}.txt", _CALL_KO[call], c.get("model") or ""))
-    q = payload.get("quality")
-    if q:
-        files["05-quality.txt"] = _call_file("⑤ 품질(등급·사유)", q, PR.quality_user(PD._Slots()))
-        rows.append(("05-quality.txt", "⑤ 품질(등급·사유)", q.get("model") or ""))
-    readme = [f"# 프리즘 추출 프롬프트 · {title}", "",
-              f"- 기록 시각 {ts} · 기본 모델 {payload.get('model') or '(설정 모델)'} · "
-              f"프롬프트 v{payload.get('version') or '?'} · 품질 기준 {payload.get('quality_version') or ''}",
-              "- 호출 순서: ① 리드문 → ② 엔티티 → ③ 인텐트 → ④ 카테고리 → ⑤ 품질(등급·사유) · 리드문이 비면 ②~④ 생략",
-              "- 파일 하나 = 호출 하나 · system 과 user 템플릿이 구분선(━━━━━━━━)으로 나뉘어 들어 있습니다",
-              "- ③ 인텐트와 ⑤ 품질은 콘텐츠의 서비스에 따라 일부가 달라집니다 · 공통부의 {서비스 분기} 자리에 파일 아래 서비스 블록 중 하나가 들어가면 그 서비스의 실제 프롬프트가 됩니다",
-              "- user 템플릿은 현재 코드 기준 자리표 · ⑤ 품질의 few-shot 예시는 실행 시 모델별로 붙어 여기엔 없습니다", "",
+    readme = [f"# 프리즘 추출 프롬프트 · {title}", "", f"- {meta}",
+              "- 실행 순서: 품질(등급·사유) 판정 → ① 리드문 → ② 엔티티 → ③ 인텐트 → ④ 카테고리 · 품질 등급은 메타 실행 조건이 아니고(2026-09-08 정책) 리드문이 비면 ②~④ 생략",
+              "- 파일 하나 = 호출 하나 · 첫 줄이 원천·모델·버전, 그 아래 system 과 user 템플릿이 구분선(━━━━━━━━)으로 나뉘어 들어 있습니다",
+              "- 품질과 ③ 인텐트는 콘텐츠의 서비스에 따라 일부가 달라집니다 · 공통부의 {서비스 분기} 자리에 파일 아래 서비스 블록 중 하나가 들어가면 그 서비스의 실제 프롬프트가 됩니다",
+              "- user 템플릿은 현재 코드 기준 자리표 · 품질의 few-shot 예시는 실행 시 모델별로 붙어 여기엔 없습니다", "",
               "| 파일 | 호출 | 모델 |", "|---|---|---|"] + [f"| {n} | {k} | {m} |" for n, k, m in rows]
     return {"README.md": "\n".join(readme) + "\n", **files}
 
