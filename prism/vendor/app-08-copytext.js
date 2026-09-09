@@ -135,7 +135,9 @@ window.PRISM_APP_PARTS.push(() => ({
         if (this.isRouter(this.textProvider)) payload.text_model = this.textModel;
         else if (this.cfgModel) payload.model = this.cfgModel;
         try { const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(),
-            body: JSON.stringify(payload) }); this.cfg = await r.json(); this.slotMsg = '✓ 적용됨'; }
+            body: JSON.stringify(payload) }); const j = await r.json();
+          if (!r.ok || !j || j.error) { this.slotMsg = '오류: ' + ((j && j.error) || r.status); return; }
+          this.cfg = j; this.slotMsg = '✓ 적용됨'; }
         catch (e) { this.slotMsg = '오류: ' + e; }
       },
       // 지금 품질 판정에 쓰이는 모델. 단계 모델(judge)을 따로 지정했으면 그것이고,
@@ -167,7 +169,17 @@ window.PRISM_APP_PARTS.push(() => ({
           this.assistMsg = '✓ 저장됨';
         } catch (e) { this.assistMsg = '오류: ' + e; }
       },
-      setReasoning(id) { this.reasoning = id; fetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reasoning: id }) }).catch(() => {}); },
+      async setReasoning(id) {
+        if (this.reasoningBusy || id === this.reasoning) return;
+        const before = this.reasoning; this.reasoning = id; this.reasoningBusy = true; this.reasoningMsg = '저장 중…';
+        try {
+          const r = await this._afetch('/config', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ reasoning: id }) });
+          const j = await r.json();
+          if (!r.ok || !j || j.error) { this.reasoning = before; this.reasoningMsg = '오류: ' + ((j && j.error) || r.status); return; }
+          this.cfg = j; this.reasoning = j.reasoning || id; this.reasoningMsg = '✓ 저장됨';
+        } catch (e) { this.reasoning = before; this.reasoningMsg = '오류: ' + e; }
+        finally { this.reasoningBusy = false; }
+      },
       async clearStore() {
         if (!(await this.dsConfirm('적재된 추출 결과를 모두 삭제할까요? (되돌릴 수 없음)', { ok: '삭제', danger: true }))) return;
         try { const r = await this._afetch('/store', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ clear: true }) });

@@ -182,10 +182,10 @@
           <section class="panel"><div class="panel-hd"><b>추론 강도</b><span class="meta">전 단계 공통 · 선택 시 즉시 저장</span></div>
             <div class="panel-bd">
               <div class="ds-segmented" style="max-width:300px">
-                <template x-for="o in reasoningOpts" x-bind:key="o.id"><button type="button" class="ds-segmented__item" x-bind:aria-pressed="reasoning === o.id ? 'true' : 'false'" x-on:click="setReasoning(o.id)" x-text="o.label"></button></template>
+                <template x-for="o in reasoningOpts" x-bind:key="o.id"><button type="button" class="ds-segmented__item" x-bind:disabled="reasoningBusy" x-bind:aria-pressed="reasoning === o.id ? 'true' : 'false'" x-on:click="setReasoning(o.id)" x-text="o.label"></button></template>
               </div>
+              <div class="text-xs text-muted" style="margin-top:7px" x-show="reasoningMsg" x-text="reasoningMsg"></div>
             </div></section>
         </div>
       </div>
       </template>
-

@@ -87,8 +87,8 @@
                         <td class="text-muted" style="max-width:300px" x-text="it.ai.reason"></td>
                         <td>
                           <span class="flexrow" style="gap:6px" x-show="!it._done && it.ai.verdict" x-cloak>
-                            <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-on:click="arConfirm(it, it.ai.verdict)" x-text="it.ai.verdict==='good' ? '정확 확정' : '수정 확정'"></button>
-                            <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="arConfirm(it, it.ai.verdict==='good' ? 'bad' : 'good')" data-tip="AI와 반대로 판정" data-tip-pos="top">뒤집기</button>
+                            <button type="button" class="ds-btn ds-btn--outline ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="it._saving" x-on:click="arConfirm(it, it.ai.verdict)" x-text="it._saving ? '저장 중…' : (it.ai.verdict==='good' ? '정확 확정' : '수정 확정')"></button>
+                            <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-bind:disabled="it._saving" x-on:click="arConfirm(it, it.ai.verdict==='good' ? 'bad' : 'good')" data-tip="AI와 반대로 판정" data-tip-pos="top">뒤집기</button>
                           </span>
                           <span class="meta" x-show="!it._done && !it.ai.verdict" x-cloak>직접 검수</span>
                           <span class="ar-donebadge" x-show="it._done" x-cloak><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span x-text="(it._done==='good'?'정확':'수정')+' 반영됨'"></span></span>

@@ -114,11 +114,15 @@ window.PRISM_APP_PARTS.push(() => ({
         tick();
       },
       async arConfirm(it, verdict) {        // 확정 = 평소 검수와 같은 /feedback(사람 행위) · 초안임을 note 에 표기
-        if (it._done || !verdict) return;
+        if (it._done || it._saving || !verdict) return;
+        it._saving = true;
         const els = verdict === 'bad' ? ((it.ai && it.ai.elements) || []) : [];
         const note = 'AI 초안 확인' + (it.ai && it.ai.reason ? (' · ' + it.ai.reason) : '');
-        const r = await this._postFb({ hash: it.hash, service: it.service, title: it.title, verdict: verdict, elements: els, note: note });
-        if (r && r.ok !== false) it._done = verdict;
-        else this.arMsg = '확정 저장 실패 · 다시 시도하세요';
+        try {
+          const r = await this._postFb({ hash: it.hash, service: it.service, title: it.title, verdict: verdict, elements: els, note: note });
+          if (r && r.ok !== false) it._done = verdict;
+          else this.arMsg = '확정 저장 실패 · 다시 시도하세요';
+        } catch (e) { this.arMsg = '확정 저장 실패 · 다시 시도하세요'; }
+        finally { it._saving = false; }
       },
 }));

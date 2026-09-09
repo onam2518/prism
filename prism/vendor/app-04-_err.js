@@ -279,22 +279,24 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       evalModel: '', evalScope: 'all',        // 평가 기준: 기준 모델 · 대상 콘텐츠 풀(all=전체 정답셋 | eval=평가용 홀드아웃)
       // 평가 런(이력 영속 · Atelier 이식): 시작 → 백그라운드 실행 → 폴링으로 진행률·리포트
-      evalRuns: [], evalRunId: null, _evalPollT: null,
+      evalRuns: [], evalRunsBusy: false, evalRunsErr: '', evalRunId: null, _evalPollT: null,
       async runGolden() {
-        this.goldenBusy = true; this.goldenResult = null;
+        this.goldenBusy = true; this.goldenResult = null; this.goldenMsg = '';
         try {
           const r = await (await this._afetch('/eval-run-start', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ model: String(this.evalModel || '').split('|').pop(), scope: this.evalScope }) })).json();   // 픽커 값은 provider|model → 서버(llm_for_model)엔 model id 만
           if (!r || !r.ok) { this.goldenResult = r; this.goldenBusy = false; return; }
           this.evalRunId = r.id; this.loadEvalRuns(); this.pollEvalRun(r.id);
-        } catch (e) { this.goldenBusy = false; }
+        } catch (e) { this.goldenBusy = false; this.goldenMsg = '평가 시작에 실패했습니다 · 다시 시도하세요'; }
       },
       pollEvalRun(id) {                        // 런 리포트 폴링: 실행 중엔 부분 리포트로 진행률 표시
         clearTimeout(this._evalPollT);
         const tick = async () => {
           let r = null;
           try { r = await (await this._afetch('/eval-run?id=' + id, { headers: this._authHeaders() })).json(); } catch (e) {}
-          if (!r || this.evalRunId !== id) { this.goldenBusy = false; return; }
+          if (this.evalRunId !== id) return;
+          if (!r || !r.ok) { this.goldenBusy = false; this.goldenMsg = (r && r.error) || '평가 상태를 불러오지 못했습니다 · 마지막 상태를 유지합니다 · 다시 시도하세요'; return; }
           this.goldenResult = r;
+          this.goldenMsg = '';
           this.goldenBusy = (r.status === 'running');
           if (r.status === 'running' || r.rubric_status === 'running') { this._evalPollT = setTimeout(tick, 2500); }
           else { this.loadEvalRuns(); }
@@ -302,7 +304,13 @@ window.PRISM_APP_PARTS.push(() => ({
         tick();
       },
       async loadEvalRuns() {
-        try { const r = await (await this._afetch('/eval-runs', { headers: this._authHeaders() })).json(); if (r && r.ok) this.evalRuns = r.items || []; } catch (e) {}
+        this.evalRunsBusy = true; this.evalRunsErr = '';
+        try {
+          const r = await (await this._afetch('/eval-runs', { headers: this._authHeaders() })).json();
+          if (r && r.ok) this.evalRuns = r.items || [];
+          else this.evalRunsErr = (r && r.error) || '평가 이력을 불러오지 못했습니다 · 다시 시도하세요';
+        } catch (e) { this.evalRunsErr = '평가 이력을 불러오지 못했습니다 · 다시 시도하세요'; }
+        finally { this.evalRunsBusy = false; }
       },
       openEvalRun(id) { this.evalRunId = id; this.goldenResult = null; this.pollEvalRun(id); },
       async cancelEvalRun(id) {

@@ -118,13 +118,17 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       detailNav: null,
       // ── 2층 검수: 최종검수자 역할 + 최종검수 큐(미확정분 편입/제외 결정) ──
-      finalQueue: null, finalBusy: false,
+      finalQueue: null, finalBusy: false, finalErr: '',
       get finalReviewers() { return (this.arenaData && this.arenaData.final_reviewers) || []; },
       get isFinalReviewer() { return !!(this.arenaData && this.arenaData.my_id && this.finalReviewers.includes(this.arenaData.my_id)); },
       async loadFinalQueue() {
-        this.finalBusy = true;
-        try { const r = await (await this._afetch('/final-queue', { headers: this._authHeaders() })).json(); if (r && r.ok) this.finalQueue = r; } catch (e) {}
-        this.finalBusy = false;
+        this.finalBusy = true; this.finalErr = '';
+        try {
+          const r = await (await this._afetch('/final-queue', { headers: this._authHeaders() })).json();
+          if (r && r.ok) this.finalQueue = r;
+          else this.finalErr = (r && r.error) || '최종 검수 큐를 불러오지 못했습니다 · 다시 시도하세요';
+        } catch (e) { this.finalErr = '최종 검수 큐를 불러오지 못했습니다 · 다시 시도하세요'; }
+        finally { this.finalBusy = false; }
       },
       async finalDecide(r, v) {                    // 편입(good)/제외(bad)/철회('') · 기존 /final-verdict 재사용
         try {
@@ -134,7 +138,7 @@ window.PRISM_APP_PARTS.push(() => ({
             this.finalQueue.items = ((this.finalQueue || {}).items || []).filter((x) => x.hash !== r.hash);
             (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
             if (this.finalCtx && this.finalCtx.hash === r.hash) { this.detailOpen = false; this.finalCtx = null; }
-            return;
+            return true;
           }
           if (res && res.ok) {
             r.final = v || '';
@@ -142,8 +146,10 @@ window.PRISM_APP_PARTS.push(() => ({
             r.final_ts = v ? (Date.now() / 1000) : 0;
             this.liveToast(v === 'good' ? '편입 확정 · 다음 학습 반영 때 정답셋으로 승격됩니다' : (v === 'bad' ? '제외 확정 · 정답셋으로 승격되지 않습니다' : '최종판정을 철회했어요'));
             (res.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
-          } else this._err((res && res.error) || '저장 실패');
-        } catch (e) { this._err('저장 실패'); }
+            return true;
+          }
+          this._err((res && res.error) || '저장 실패'); return false;
+        } catch (e) { this._err('저장 실패'); return false; }
       },
       // 최종검수 컨텍스트: 최종 검수 탭에서 상세로 들어오면 '검수 판정' 자리가 '최종검수 결정'으로 바뀐다
       finalCtx: null,
@@ -156,16 +162,16 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       // 정답 확정(고쳐서 편입): 요약·분류·의도·등급을 직접 고친 뒤 그 상태로 편입 · 수정본이 곧 골든 정답
       // 분류·의도·엔티티는 하이브리드 선택형(app-10-hybridpick · 시안 3) · 값은 처음부터 배열로 유지(저장 계약 동일)
-      faOpen: false, faBusy: false, fa: null,
+      faOpen: false, faBusy: false, faErr: '', fa: null,
       openFinalAnswer(r) {
         this.fa = { hash: r.hash, title: r.title || '(제목 없음)', row: r,
           summary: r.summary || '', cats: (r.category || []).slice(),
-          intent: (r.intent || []).slice(), grade: r.grade === 'R' ? 'R' : 'G',
+          intent: (r.intent || []).slice(), grade: (r.grade === 'G' || r.grade === 'R') ? r.grade : '',
           entities: (r.entities || []).slice(),
           note: (r.fb && r.fb.note) || '', elems: (r.fb && r.fb.elems) || [] };
         this.hybInit(['facat', 'faint', 'faent']);   // 픽커 상태(검색어·신규 표시) 초기화
         this.hybEntLoad();                           // 엔티티 추천·검색용 등재분 캐시 예열
-        this.faOpen = true;
+        this.faErr = ''; this.faOpen = true;
       },
       async toggleOpsHold(r) {                  // 운영자 수동 노출제한 토글(라벨·학습과 분리)
         if (!r || !r.hash) return;
@@ -213,6 +219,8 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       async saveFinalAnswer() {
         const f = this.fa; if (!f || this.faBusy) return;
+        if (f.grade !== 'G' && f.grade !== 'R') { this.faErr = '등급을 G 또는 R로 선택한 뒤 편입하세요'; return; }
+        this.faErr = '';
         this.faBusy = true;
         try {
           if (!(f.hash || '').startsWith('goldf:')) {   // 골드 문항은 편집 대상이 아니라 판정만 기록됨
@@ -228,7 +236,7 @@ window.PRISM_APP_PARTS.push(() => ({
             if (Object.keys(patch).length) {
               let pr = null;
               try { pr = await (await this._afetch('/patch-meta', { method: 'POST', headers: this._authHeaders(), body: JSON.stringify({ hash: f.hash, patch: patch, reviewer: this.reviewer || '' }) })).json(); } catch (e) {}
-              if (!(pr && pr.ok)) { this._err((pr && pr.error) || '교정 저장 실패 · 편입은 진행되지 않았어요'); return; }
+              if (!(pr && pr.ok)) { this.faErr = (pr && pr.error) || '교정 저장 실패 · 편입은 진행되지 않았어요'; return; }
               r0.summary = f.summary; r0.category = cats; r0.intent = intent; r0.entities = ents; r0.grade = f.grade;   // 목록 즉시 반영
               if (this.detail && this.detail.hash === f.hash) {                                     // 열려 있는 상세도 동기화
                 this.detail.summary = f.summary; this.detail.category = cats; this.detail.intent = intent; this.detail.entities = ents; this.detail.grade = f.grade;
@@ -236,8 +244,7 @@ window.PRISM_APP_PARTS.push(() => ({
               (pr.missions_completed || []).forEach((m) => this.celebratePoints(m.bonus, '미션 달성 · ' + m.label));
             }
           }
-          await this.finalDecide(f.row, 'good');
-          this.faOpen = false;
+          if (await this.finalDecide(f.row, 'good')) this.faOpen = false;
         } finally { this.faBusy = false; }
       },
       async toggleFinalRole(m) {                    // 팀 관리: 최종검수자 지정/해제(슈퍼관리자 이상)
