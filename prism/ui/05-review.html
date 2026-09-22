@@ -32,7 +32,8 @@
               </template>
             </tbody></table>
             <div x-show="finalBusy" class="text-xs text-muted" style="padding:10px">불러오는 중…</div>
-            <div x-show="!finalBusy && !((finalQueue&&finalQueue.items)||[]).length" class="text-xs text-muted" style="padding:10px">미확정 콘텐츠가 없습니다 · 기초 검수에서 의견이 갈리거나 분류가 비면 여기로 올라옵니다</div>
+            <div x-show="finalErr" class="text-xs text-muted" style="padding:10px"><span x-text="finalErr"></span> <button type="button" class="copybtn" x-on:click="loadFinalQueue()">다시 시도</button></div>
+            <div x-show="!finalBusy && !finalErr && !((finalQueue&&finalQueue.items)||[]).length" class="text-xs text-muted" style="padding:10px">미확정 콘텐츠가 없습니다 · 기초 검수에서 의견이 갈리거나 분류가 비면 여기로 올라옵니다</div>
             </div>
           </div>
         </section>
@@ -93,6 +94,7 @@
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='G' ? 'ds-btn--solid ds-btn--c-primary' : 'ds-btn--outline'" x-on:click="fa.grade='G'">G · 정상</button>
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.grade==='R' ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="fa.grade='R'">R · 차단</button>
               </div></div>
+              <div x-show="faErr" class="text-xs text-muted" style="color:var(--ds-error-deep)" x-text="faErr"></div>
               <!-- 운영자 수동 노출제한: 상위 노출 부적절하나 기준이 명확치 않은 콘텐츠 · 등급/학습과 분리(라벨 아님) -->
               <div class="fa-sec" x-show="backend !== 'supabase' || (adminData && adminData.isAdmin)"><span class="text-xs text-muted fa-lbl">노출제한 · 운영자 수동(라벨·학습과 분리)</span><div>
                 <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="fa && fa.row && fa.row.ops_hold ? 'ds-btn--solid ds-btn--c-danger' : 'ds-btn--outline'" x-on:click="toggleOpsHold(fa.row)" x-text="fa && fa.row && fa.row.ops_hold ? '✓ 노출제한 중 · 해제' : '상위 노출 제한'" data-tip="상위 노출에 부적절한 콘텐츠를 수동 표시 · 등급·학습에 영향 없이 내보내기(CSV)에만 표시" data-tip-pos="top"></button>
@@ -100,7 +102,7 @@
             </div></template>
             <div class="flex gap-2" style="margin-top:6px;padding-top:14px;border-top:1px solid var(--ds-hairline);justify-content:flex-end">
               <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-on:click="faOpen=false">취소</button>
-              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="faBusy" x-on:click="saveFinalAnswer()" data-tip="수정한 내용을 저장하고 이 상태를 정답으로 편입" data-tip-pos="top" x-text="faBusy ? '저장 중…' : '저장하고 편입'"></button>
+              <button type="button" class="ds-btn ds-btn--solid ds-btn--c-primary ds-btn--s-sm" x-bind:disabled="faBusy || !(fa && (fa.grade==='G' || fa.grade==='R'))" x-on:click="saveFinalAnswer()" data-tip="등급을 G 또는 R로 선택한 뒤 수정한 내용을 저장하고 이 상태를 정답으로 편입" data-tip-pos="top" x-text="faBusy ? '저장 중…' : '저장하고 편입'"></button>
             </div>
           </div>
         </div>
@@ -206,4 +208,3 @@
           <div x-show="draftsData && draftsData.items.length < 2" class="text-xs text-muted" style="margin-top:8px">비교할 초안이 하나뿐입니다 · <b class="text-ink">콘텐츠 관리 · 다른 모델로 재실행</b>으로 다른 모델 초안을 만들어 보세요</div>
         </div>
       </div>
-
