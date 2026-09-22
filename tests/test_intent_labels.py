@@ -74,21 +74,6 @@ class TestTopicAngleMap(_LabelTableBase):
             self.assertIn(angle, set(T._ANGLE_CURRENT.values()), angle)
 
 
-class TestMemfsIntentKo(_LabelTableBase):
-    """데모 카탈로그 사용자말(memfs.INT_KO)."""
-
-    def test_current_and_legacy_split(self):
-        from prism import memfs as MF
-        self._assert_split(MF._INT_KO_CURRENT, MF._INT_KO_LEGACY, MF.INT_KO, "memfs.INT_KO")
-
-    def test_universal_layers_all_have_user_phrases(self):
-        """범용①·② 전량은 사용자말이 있어야 한다 — 검색 칩·표시가 비면 데모가 값을 못 보여준다."""
-        from prism import dictionaries as D
-        from prism import memfs as MF
-        for v in list(D.INTENT_CATEGORIES_UNIVERSAL) + list(D.INTENT_FORM_UNIVERSAL):
-            self.assertTrue(MF.INT_KO.get(v), f"사용자말 누락: {v}")
-
-
 class TestHandoffBundleDictionaries(unittest.TestCase):
     """핸드오프 번들 사전 동봉: 범용②가 빠지면 학습 재현 조건이 통째로 어긋난다."""
 

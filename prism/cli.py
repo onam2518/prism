@@ -15,7 +15,6 @@ from .store import Store, content_hash
 from . import pipeline as PIPE
 from . import dashboard as DASH
 from . import classify as C
-from . import usermeta as UM
 
 HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)))
 
@@ -347,10 +346,7 @@ def cmd_ab(a):
 def cmd_dashboard(a):
     out = a.out or "dashboard.html"
     if getattr(a, "integrated", False):
-        info = DASH.build_integrated(a.results, out,
-                                     title=a.title or "Prism",
-                                     n_users=getattr(a, "users", 6),
-                                     logs_path=getattr(a,"logs",None), demo=getattr(a,"demo",False))
+        info = DASH.build_integrated(a.results, out, title=a.title or "Prism")
         print(f"✓ 통합 대시보드(콘텐츠+사용자메타 탭) → {out}  (콘텐츠 {info['contents']})")
     else:
         info = DASH.build(a.results, out, title=a.title or "아이템 메타 현황")
@@ -412,9 +408,7 @@ def cmd_report(a):
 
     out = a.out or "report.html"
     print("· [2/2] 토픽 + 통합 대시보드 생성 …")
-    info = DASH.build_integrated(results, out, title=a.title or "Prism",
-                                 n_users=getattr(a, "users", 200),
-                                 logs_path=getattr(a,"logs",None), demo=getattr(a,"demo",False))
+    info = DASH.build_integrated(results, out, title=a.title or "Prism")
     mp = MP.build_topics(results)["summary"]
     umode = ("실데이터" if getattr(a, "logs", None)
              else ("목업" if getattr(a, "demo", False) else "미연결(빈 상태)"))
@@ -422,17 +416,6 @@ def cmd_report(a):
     print(f"  토픽: 엔티티형 {mp['single']} · 사건형 {mp['composite']}"
           f"  ·  사용자 메타: {umode}")
     print(f"  열기:  open {out}")
-
-
-# usermeta (목업)
-def cmd_usermeta(a):
-    if a.out:
-        info = UM.build_html(a.results, a.out, n_users=a.users, logs_path=getattr(a,'logs',None), demo=getattr(a,'demo',False))
-        print(f"✓ 사용자 메타 목업 → {a.out}  (합성 사용자 {info['users']}명)")
-        print(f"  열기:  open {a.out}")
-    else:
-        data = UM.build_user_meta(a.results, n_users=a.users, logs_path=getattr(a,'logs',None), demo=getattr(a,'demo',False))
-        print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def cmd_usage(a):
@@ -708,7 +691,6 @@ def main(argv=None):
     pd.add_argument("--out"); pd.add_argument("--title")
     pd.add_argument("--integrated", action="store_true",
                     help="콘텐츠+사용자메타를 탭 단일 HTML 로 통합")
-    pd.add_argument("--users", type=int, default=200)
     pd.add_argument("--logs"); pd.add_argument("--demo", action="store_true")
     pd.set_defaults(func=cmd_dashboard)
 
@@ -727,23 +709,12 @@ def main(argv=None):
     prp.add_argument("--results", help="기존 추출 결과 jsonl 재사용")
     prp.add_argument("--out", help="출력 HTML 경로 (기본 report.html)")
     prp.add_argument("--title", default=None)
-    prp.add_argument("--users", type=int, default=200)
     prp.add_argument("--profile", default=None, help="회사별 설정 JSON(브랜딩·사전 override)")
     prp.add_argument("--resume", action="store_true")
     prp.add_argument("--concurrency", type=int, default=None)
     prp.add_argument("--map", help="엑셀/CSV 컬럼 매핑 강제")
-    prp.add_argument("--logs", help="실 행동 로그 jsonl (있으면 실데이터 사용자 메타)")
-    prp.add_argument("--demo", action="store_true", help="합성 목업 사용자 메타로 채움")
     _add_common(prp)
     prp.set_defaults(func=cmd_report)
-
-    pm = sub.add_parser("usermeta", help="사용자 메타: 실로그(--logs)/목업(--demo)/빈상태")
-    pm.add_argument("--results", required=True)
-    pm.add_argument("--out", help="HTML 출력(생략 시 JSON stdout)")
-    pm.add_argument("--users", type=int, default=200)
-    pm.add_argument("--logs", help="실 행동 로그 jsonl (있으면 실데이터)")
-    pm.add_argument("--demo", action="store_true", help="합성 목업으로 채움")
-    pm.set_defaults(func=cmd_usermeta)
 
     pu = sub.add_parser("usage", help="비용/호출 로그")
     pu.add_argument("--since"); pu.add_argument("--config", default=None)

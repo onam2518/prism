@@ -103,18 +103,14 @@ def _logo_data_uri(name: str) -> str:
         return ""
 
 
-def build_integrated(results_path: str, out_path: str,
-                     title: str = "Prism", n_users: int = 6,
-                     logs_path: str = None, demo: bool = False, notice: str = "") -> dict:
-    """아이템 메타 + 사용자 메타(목업)를 탭 전환 단일 HTML 로 통합.
+def build_integrated(results_path: str, out_path: str, title: str = "Prism", notice: str = "") -> dict:
+    """아이템 메타 + 토픽을 탭 전환 단일 HTML 로 통합(사용자 메타 탭은 2026-09-22 제거).
     각 패널은 iframe(srcdoc)으로 격리: 변수/ID 충돌 없이 기존 빌더 그대로 재사용."""
-    from . import usermeta as UM
     from . import topic as TP
     nt = notice
     ctitle = "아이템 메타 (DEMO)" if nt else "아이템 메타 현황"
     content_html, cinfo = render(results_path, ctitle, notice=nt)
     topic_html = TP.render_html(results_path, notice=nt)
-    user_html = UM.render_html(results_path, n_users=n_users, logs_path=logs_path, demo=demo, notice=nt)
 
     def esc(h):
         return h.replace("&", "&amp;").replace('"', "&quot;")
@@ -124,8 +120,7 @@ def build_integrated(results_path: str, out_path: str,
         .replace("__LOGO_LIGHT__", _logo_data_uri("prism-logo-tagline-light.png")) \
         .replace("__LOGO_DARK__", _logo_data_uri("prism-logo-tagline-dark.png")) \
         .replace("__CONTENT_SRCDOC__", esc(content_html)) \
-        .replace("__TOPIC_SRCDOC__", esc(topic_html)) \
-        .replace("__USER_SRCDOC__", esc(user_html))
+        .replace("__TOPIC_SRCDOC__", esc(topic_html))
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(page)
     return {"out": out_path, "contents": cinfo["contents"]}
@@ -167,13 +162,11 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 <div class="tabbar"><span class="brand" aria-label="Prism"><img class="lg lg-light" src="__LOGO_LIGHT__" alt="Prism"><img class="lg lg-dark" src="__LOGO_DARK__" alt="Prism"></span>
  <span class="tab on" data-t="content">아이템 메타</span>
  <span class="tab" data-t="topic">토픽</span>
- <span class="tab" data-t="user">사용자 메타</span>
  <span class="help" onclick="document.getElementById('hov').style.display='block';document.getElementById('hp').classList.add('on')">? 용어·구조</span>
 </div>
 <div class="wrap">
  <iframe id="f-content" class="on" sandbox="allow-scripts" srcdoc="__CONTENT_SRCDOC__"></iframe>
  <iframe id="f-topic" sandbox="allow-scripts" srcdoc="__TOPIC_SRCDOC__"></iframe>
- <iframe id="f-user" sandbox="allow-scripts" srcdoc="__USER_SRCDOC__"></iframe>
 </div>
 <div id="hov" onclick="this.style.display='none';document.getElementById('hp').classList.remove('on')"></div>
 <div id="hp"><span class="x" onclick="document.getElementById('hov').style.display='none';this.parentNode.classList.remove('on')">✕</span>
@@ -190,12 +183,6 @@ iframe{width:100%;height:100%;border:0;display:none}iframe.on{display:block}
 <dt>엔티티형</dt><dd class="pl">단일 엔티티 단위 · "이 인물·기업에 해당하는 콘텐츠" · 영속</dd>
 <dt>사건형</dt><dd class="pl">사건 단위 · 엔티티가 여러 콘텐츠에 함께 등장(공출현)하면 자동 묶임 · 단기</dd>
 <dt>수동(스튜디오)</dt><dd class="pl">조건 단위 · 운영자가 자연어+조건으로 직접 정의 · 중장기</dd>
-</dl>
-<h3>사용자 메타 (소비 측)</h3>
-<dl>
-<dt>소비 형태(FORM)</dt><dd>'무엇'이 아니라 '어떻게' 소비하는가: 세션 길이·체류/완주·전환·깊이·시간대</dd>
-<dt>소비 강도</dt><dd>형태에서 산출되는 평가값 · 인텐트(소비 맥락)별 <b>저·중·고</b></dd>
-<dt>페르소나</dt><dd>형태·강도를 결합한 사용자 유형(정독러·스낵러·팬덤 등) · 행동 로그 연결 시 실데이터</dd>
 </dl>
 </div>
 <script>

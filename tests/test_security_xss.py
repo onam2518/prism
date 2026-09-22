@@ -1,6 +1,6 @@
 """저장형 XSS 회귀 테스트(2026-07-15 감사 · /report DATA 임베드 브레이크아웃).
 
-- dashboard.render / usermeta.render_html: 콘텐츠 제목·본문·검수노트에 '</script>' 가 있어도
+- dashboard.render: 콘텐츠 제목·본문·검수노트에 '</script>' 가 있어도
   <script> DATA 블록을 조기 종료하지 못한다(graphviz 와 동일한 '</'→'<\\/' 규약).
 - 리포트 패널 iframe 은 sandbox(allow-scripts · same-origin 없음)로 격리.
 - _send 는 CSP·nosniff·frame-options 등 보안 헤더를 붙인다.
@@ -36,14 +36,6 @@ class TestReportScriptBreakout(unittest.TestCase):
             html, _ = D.render(self._results(tmp), title="t")
         self.assertNotIn("</script><img", html)      # 원본 브레이크아웃 시퀀스 소멸
         self.assertIn("<\\/script>", html)            # 이스케이프된 형태로 중화
-
-    def test_usermeta_render_neutralizes_breakout(self):
-        from prism import usermeta as U
-        data = {"users": [], "personas_def": [], "poison": _PAYLOAD}
-        html = U.render_html("", data=data)
-        self.assertNotIn("</script><img", html)
-        self.assertIn("<\\/script>", html)
-
     def test_report_iframes_sandboxed(self):
         from prism import dashboard as D
         self.assertIn('sandbox="allow-scripts"', D._INTEGRATED)   # same-origin 미허용 = 토큰 접근 불가

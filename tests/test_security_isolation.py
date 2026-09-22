@@ -2,7 +2,7 @@
 
 - _gate_get / _team_ok: supabase 모드에서 팀 미소속 인증계정의 데이터 GET 을 fail-closed
   (운영 관리자·전역 참조 라우트만 예외). 팀=None 폴백으로 전 팀 데이터를 열람하던 경로 차단.
-- _require_team: 데이터 POST(/usermeta)도 팀 소속 요구.
+- _require_team: 데이터 POST(/run)도 팀 소속 요구.
 - build_results_csv / build_report_html: team 스코프를 저장소 조회에 전달(전 팀 CSV/리포트 유출 방지).
 
 실행: python3 -m pytest tests/test_security_isolation.py -q
@@ -79,11 +79,11 @@ class TestTeamFailClosed(unittest.TestCase):
 
     def test_require_team_post(self):
         SV = self.SV
-        h = _fake_handler(SV, path="/usermeta")
+        h = _fake_handler(SV, path="/run")
         self.assertFalse(h._require_team())                  # 팀 없음 → False + 403
         self.assertIn(403, h._sent)
         SV.team_of = lambda uid: "teamA"
-        h2 = _fake_handler(SV, path="/usermeta")
+        h2 = _fake_handler(SV, path="/run")
         self.assertTrue(h2._require_team())
 
     def test_local_mode_open(self):
@@ -107,15 +107,6 @@ class TestExportTeamScope(unittest.TestCase):
         SV.build_report_html(team="teamB")
         self.assertEqual(seen, ["teamA", "teamB"])           # team=None 전 팀 폴백 아님
 
-    def test_usermeta_passes_team(self):
-        """usermeta 콘텐츠 조회도 team 스코프(supabase 다중팀 전 팀 혼입·content_id 오정렬 방지)."""
-        from prism import serve as SV, umops as UM
-        seen = []
-        orig = SV.results_rows
-        SV.results_rows = lambda limit=5000, team=None: (seen.append(team) or [])
-        self.addCleanup(lambda: setattr(SV, "results_rows", orig))
-        UM._usermeta_compute(None, "", "teamA")              # rows 비면 조기 반환 → 조회 team 만 확인
-        self.assertEqual(seen, ["teamA"])                    # team=None 전 팀 폴백 아님
 
 
 class TestJwtEmailExpiry(unittest.TestCase):
