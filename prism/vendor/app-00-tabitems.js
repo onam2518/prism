@@ -89,7 +89,7 @@ window.PRISM_APP_PARTS.push(() => ({
       addPurpose: 'review',                   // 추가 용도: review 검수용(기본) | eval 평가용(홀드아웃)
       createTab: 'raw',                       // 콘텐츠 검수: raw(검수 대상 콘텐츠·기본) | edit(결과 비교)
       testTab: 'status',                      // 정답셋 관리: status(현황·학습 반영) | golden(정답셋) | data(학습 데이터)
-      labTab: 'user',                         // 실험실(지금 미테스트 요소): user(사용자) | mcp(MCP 파트너 키·트랙 B)
+      labTab: 'mcp',                          // 실험실(지금 미테스트 요소): mcp(MCP 파트너 키·트랙 B) | auto(AI 초안 판정) · 사용자 탭은 2026-09-22 페이드아웃
       studioTab: 'prompt',                    // 스튜디오: prompt(빌더+배포+라이브러리) | topic(토픽 설계)
       dictTab: 'intent',                      // 사전·정책: intent | category | entity | policy | prompt(단계 지시) | engine(계약·래퍼·미리보기)
       queueTrig: '',                          // 실행 큐 자동/수동 필터
