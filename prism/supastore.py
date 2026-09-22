@@ -64,7 +64,8 @@ class SupabaseStore:
     # ── REST 헬퍼 ──────────────────────────────────────────────────────────
     def _req(self, method: str, table: str, *, query: str = "", body=None, prefer: str = "") -> list:
         # public 스키마(기본 노출) + prism_ 접두사 → 노출 설정 불필요.
-        url = f"{self.base}/prism_{table}" + (f"?{query}" if query else "")
+        endpoint = table if table.startswith("rpc/") else f"prism_{table}"
+        url = f"{self.base}/{endpoint}" + (f"?{query}" if query else "")
         headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
@@ -171,6 +172,10 @@ class SupabaseStore:
 
     def _upsert(self, table, rows):
         if not rows:
+            return
+        if table == "contents":
+            # 원자적 팀 충돌 거부·운영 플래그 보존. migration 미설치/실패 시 REST upsert 폴백 금지.
+            self._req("POST", "rpc/prism_sync_contents", body={"p_rows": rows})
             return
         self._req("POST", table, body=rows, prefer="resolution=merge-duplicates,return=minimal")
 
@@ -1304,10 +1309,7 @@ class SupabaseStore:
             uniq[(row["hash"], row.get("team_id") or "")] = row
         rows = list(uniq.values())
         if rows:
-            try:
-                kept = self._kept_sources([r["hash"] for r in rows])
-            except Exception:
-                kept = {}                             # 라벨 조회 실패가 적재 자체를 막지 않는다(최선 노력 보존)
+            kept = self._kept_sources([r["hash"] for r in rows])  # 실패하면 쓰기 전에 중단
             for row in rows:
                 prev = kept.get(row["hash"]) or {}
                 if prev.get("source"):

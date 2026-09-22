@@ -46,6 +46,43 @@ public.prism_feedback(content_hash, reviewer_id→prism_reviewers, service, titl
 RLS: 인증 사용자 읽기(리더보드·합의), 쓰기는 본인 행만. 색인: feedback(reviewer_id, verdict), contents(review).
 **REST 검증됨**: anon 키로 3 테이블 GET 200(노출 확인). 쓰기/인증 읽기는 service_role(서버).
 
+### 콘텐츠 저장 경계 (2026-09-06 · 운영 미적용)
+
+- 설치 파일: `scripts/migrate_content_team_guard.sql`. 문서의 전역 `hash` PK와
+  `team_id uuid`를 전제로 하며 운영 DDL은 확인하지 않았다. 기존 `subtitle`, `source_url`,
+  `model`, `version` 및 `migrate_content_images.sql`의 `image_urls jsonb` 컬럼이 필요하다.
+- `public.prism_sync_contents(p_rows jsonb)`는 콘텐츠 배열 한 번을 한 트랜잭션으로 저장한다.
+  `ON CONFLICT (hash)`의 행 잠금 아래 NULL까지 포함한 팀 일치를 검사한다. 다른 팀 행이
+  한 건이라도 있으면 SQLSTATE `23505`로 신규 행·같은 팀 갱신도 전부 롤백한다.
+  여러 팀이 같은 콘텐츠를 독립 보유하는 `(team_id, hash)` 이관은 포함하지 않는다.
+- 같은 팀의 모델 산출·모델·버전은 갱신하고, 최초의 비어 있지 않은 출처와 DB의 최신
+  `quality_meta.ops_hold`·`source_status`는 보존한다. 운영 플래그 변경/제거는 기존 팀 조건의
+  PATCH 경로를 사용한다. 재실행이 보낸 오래된 플래그가 이후 운영자 수정을 되돌리지 않는다.
+- 입력이 배열이 아니면 `22023`, 필수값·타입·제약 오류도 트랜잭션 전체 실패다. 함수는
+  `SECURITY INVOKER`이며 PUBLIC/anon/authenticated 실행 권한을 제거하고 service_role에만
+  허용한다. 기존 테이블/RLS 권한과 서버의 팀 인증 검증은 유지한다.
+- 앱의 기존 여부/보존값 조회 오류는 쓰기 전에 중단한다. RPC 미설치·스키마 캐시 지연은
+  저장 오류로 반환하며 직접 REST upsert로 폴백하지 않는다. 충돌은 HTTP 409 기반 저장
+  오류로 전달하고 성공 건수로 집계하지 않는다. 연결/응답 유실은 커밋 여부가 불명확할 수
+  있으므로 결과를 조회해 확인한다. 기존 공통 HTTP 재시도 정책은 이 변경 범위 밖이다.
+
+적용 순서(별도 운영 승인 후):
+
+1. 콘텐츠 쓰기 작업을 멈추고 운영 담당자가 대상 스키마/권한을 확인한다. 기존 버전의
+   직접 REST upsert에는 이 RPC 보호가 없으므로 구버전 작성자를 함께 중단한다.
+2. `psql -X -v ON_ERROR_STOP=1 "$PRISM_MIGRATION_DSN" -f scripts/migrate_content_team_guard.sql`
+   또는 SQL Editor에서 파일 전체를 실행한다. BEGIN/COMMIT과 권한 설정을 분리하지 않는다.
+   실패하면 전체 롤백 후 원인을 수정한다. 함수 재설치는 기존 콘텐츠를 수정하지 않는다.
+3. PostgREST schema reload 후 새 코드를 배포한다. 테스트 팀의 정상 저장·타 팀 충돌·
+   기존 운영 플래그 보존을 확인한 뒤 쓰기를 재개한다. 설치 없는 앱 선배포는 저장을 중단한다.
+4. 앱 롤백 시 RPC는 남겨도 되지만 구버전 쓰기는 재개하지 않는다. 함수 삭제는 작성자 중단
+   상태에서만 `DROP FUNCTION public.prism_sync_contents(jsonb)`로 수행한다.
+
+로컬 검증: `python3 -m unittest discover tests -p 'test_content_preservation.py'`.
+설치된 `initdb`/`pg_ctl`/`psql`로 일회용 Unix socket 전용 클러스터를 만들고 종료·삭제한다.
+실행 파일이 없으면 SQL 테스트는 명시적으로 skip한다. 모의 HTTP는 항상 검증하며,
+로컬 SQL 통과가 운영 DDL/실 PostgREST 설치 완료를 뜻하지 않는다.
+
 **학습 루프 확장(적용됨 · `prism_learning_loop_tables`, 2026-07-02)**:
 ```
 public.prism_feedback + element text                      -- 교정 대상 요소 영속
