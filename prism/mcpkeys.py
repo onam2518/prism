@@ -5,7 +5,7 @@
 
   접두어    pmk_ (Prism MCP Key)
   저장      sha256 해시만 · 평문은 발급 응답에서 1회만 나가고 어디에도 남지 않는다
-  바인딩    (user_id, team) 을 발급 시점에 고정 · 이후 도구 인자로 팀을 받지 않는다
+  바인딩    (user_id, team) 을 발급 시점에 고정 · 운영은 현재 소속과 맞을 때만 해석한다
   만료      기본 90일 · 최대 365일        사용자당 상한  5개(유효 키 기준)
   폐기      즉시 무효 · **(key_id, team, user_id) 3중 필터**로만 조회·폐기
   소유      목록·폐기 모두 본인 것만. 같은 팀이어도, 관리자여도 남의 키는 못 보고 못 지운다
@@ -117,6 +117,21 @@ def _is_admin(user_id, team) -> bool:
         return bool(_SV.is_admin_user(user_id, team, ""))
     except Exception:
         return False                                  # 판정 불가 = 비관리자(fail-closed)
+
+
+def _is_current_member(st, user_id, team) -> bool:
+    """운영 키의 발급자가 지금도 같은 팀 소속인지 확인한다.
+
+    로컬 SQLite 단일 팀 계약은 그대로 유지한다. 운영에서 조회 기능이 없거나
+    조회가 실패하면 현재 소속을 증명할 수 없으므로 인증을 거절한다.
+    """
+    try:
+        if not _SV._supa():
+            return True
+        lookup = getattr(st, "reviewer_team", None)
+        return callable(lookup) and _team(lookup(user_id)) == team
+    except Exception:
+        return False
 
 
 # ── 발급·목록·폐기(관리 화면) ────────────────────────────────────────────────
@@ -242,6 +257,8 @@ def resolve(raw_key):
     exp = float(row.get("expires_at") or 0)
     if exp and exp <= time.time():
         return None
+    if not _is_current_member(st, uid, team):
+        return None                                   # 소속 해제·이동·조회 실패 = 인증 거절
     kid = str(row.get("key_id") or "")
     prefix = row.get("prefix") or ""
     with _RL_LOCK:                                    # log_call 이 쓸 비밀 없는 메타(사용자·팀·접두)

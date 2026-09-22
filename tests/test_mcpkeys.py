@@ -30,10 +30,12 @@ USER_2 = "user-2"
 class _FakeServe:
     """mcpkeys 가 참조하는 serve 표면만 흉내낸다(get_store · _supa · is_admin_user)."""
 
-    def __init__(self, store, supa=True, admins=()):
+    def __init__(self, store, supa=True, admins=(), memberships=None):
         self._store = store
         self._supa_on = supa
         self._admins = set(admins)
+        self._memberships = dict(memberships or {USER_1: TEAM_A, USER_2: TEAM_A})
+        store.reviewer_team = self.reviewer_team
 
     def get_store(self):
         return self._store
@@ -43,6 +45,9 @@ class _FakeServe:
 
     def is_admin_user(self, uid, team, email=""):
         return (uid, team) in self._admins
+
+    def reviewer_team(self, uid):
+        return self._memberships.get(uid)
 
 
 # ── supabase 대역: PostgREST 질의를 메모리 표에 대고 흉내낸다(네트워크·운영 DB 무접촉) ──
@@ -236,9 +241,30 @@ class McpKeysContractMixin:
         self.assertEqual(self.mk.resolve("Bearer " + r["key"]), got, "Bearer 접두도 받는다")
 
     def test_key_power_does_not_exceed_issuer(self):
-        """비관리자가 발급한 키는 관리자 도구를 못 본다(키는 발급자 권한을 넘지 않는다)."""
+        """비관리자도 현재 소속이 맞으면 인증되되 관리자 도구만 못 본다."""
         r = self.mk.issue(USER_2, TEAM_A)
-        self.assertFalse(self.mk.resolve(r["key"])["is_admin"])
+        got = self.mk.resolve(r["key"])
+        self.assertIsNotNone(got, "비관리자 판정을 인증 거절로 혼동했다")
+        self.assertFalse(got["is_admin"])
+
+    def test_removed_member_stops_resolving(self):
+        r = self.mk.issue(USER_1, TEAM_A)
+        self.serve._memberships.pop(USER_1)
+        self.assertIsNone(self.mk.resolve(r["key"]))
+
+    def test_moved_member_stops_old_team_key_resolving(self):
+        r = self.mk.issue(USER_1, TEAM_A)
+        self.serve._memberships[USER_1] = TEAM_B
+        self.assertIsNone(self.mk.resolve(r["key"]))
+
+    def test_membership_lookup_failure_denies_authentication(self):
+        r = self.mk.issue(USER_1, TEAM_A)
+
+        def broken_lookup(uid):
+            raise RuntimeError("membership lookup failed")
+
+        self.st.reviewer_team = broken_lookup
+        self.assertIsNone(self.mk.resolve(r["key"]))
 
     def test_admin_flag_follows_current_role_not_snapshot(self):
         """발급 후 강등되면 그 키의 관리자 권한도 즉시 사라진다(스냅샷 아님)."""
@@ -272,6 +298,7 @@ class McpKeysContractMixin:
         mine = self.mk.issue(USER_1, TEAM_A)
         theirs = self.mk.issue(USER_2, TEAM_B)
         self.assertFalse(self.mk.revoke(theirs["key_id"], TEAM_A, USER_1), "타 팀 키가 폐기됐다")
+        self.serve._memberships[USER_2] = TEAM_B
         self.assertIsNotNone(self.mk.resolve(theirs["key"]), "타 팀 키가 무효화됐다")
         # 자기 팀 키는 정상 폐기
         self.assertTrue(self.mk.revoke(mine["key_id"], TEAM_A, USER_1))
@@ -656,13 +683,18 @@ class TestScopeTeam(unittest.TestCase):
         self.assertEqual(st._conn().execute("SELECT COUNT(*) FROM mcp_keys").fetchone()[0], 0)
 
     def test_local_mode_key_is_admin(self):
-        """로컬 단독은 게이트 자체가 열려 있으므로 키도 관리자."""
+        """로컬 단독은 소속 조회 없이 기존 단일 팀·관리자 계약을 유지한다."""
         from prism import mcpkeys
         st = _sqlite_store()
         mcpkeys._SV = _FakeServe(st, supa=False)
         mcpkeys._reset_state()
         self.addCleanup(mcpkeys._reset_state)
         r = self.mk.issue("local", self.mk.LOCAL_TEAM)
+
+        def unexpected_lookup(uid):
+            raise RuntimeError("should not run")
+
+        st.reviewer_team = unexpected_lookup
         self.assertTrue(self.mk.resolve(r["key"])["is_admin"])
 
 
