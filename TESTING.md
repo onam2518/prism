@@ -11,9 +11,41 @@ Prism의 검증 대상은 성격이 다른 세 층이므로, 테스트도 세 �
 | 1. 단위·계약 | `test_dictionaries` `test_quality_stats` `test_store` `test_gamification` `test_extraction` `test_learning_loop` `test_admin` `test_serve_views` | 순수 함수·스토어·계약 로직 (사전 정규화, 통계, 레벨 커브, 4호출 검증, 권한) | 결정론 입출력이라 고전적 example 기반 단위 테스트가 가장 저렴하고 정확 |
 | 2. 메타모픽·속성 | `test_metamorphic` | 오라클을 만들기 어려운 변환 계층 (정규화 멱등성, 서비스명 동치, 레벨 단조성, mock 파이프라인 INV/DIR, 프롬프트 합성 순수성) | 정답쌍 없이 "변환 전후 관계"로 결함을 잡는다. 케이스당 수백 조합을 고정 시드 난수로 탐색 |
 | 3. 통합·e2e | `test_http_smoke` | 실제 HTTP 서버를 스레드로 부팅해 화면 전 버튼의 엔드포인트 계약 + 검수→정답셋 승격 e2e | 프론트가 호출하는 실제 경로·파라미터·응답 형태를 검증. UI 회귀의 대부분이 이 층에서 잡힘 |
-| 4. 이중 구현 계약 | `test_store_contract` | sqlite(Store)와 supabase(SupabaseStore)가 같은 의미로 동작해야 하는 메서드(용도·평가 판정·리포트·골든·초안 이력·라우트 계층) | 동일 시나리오 Mixin 을 두 구현에 실행해 이중 구현 표류를 잡는다. 라이브는 `PRISM_TEST_SUPABASE=1`(일회용 계정·팀 생성 후 전부 정리), CI 기본은 skip |
+| 4. 이중 구현 계약 | `test_store_contract` | sqlite(Store)와 supabase(SupabaseStore)가 같은 의미로 동작해야 하는 메서드(용도·평가 판정·리포트·골든·초안 이력·라우트 계층) | 동일 시나리오 Mixin 을 두 구현에 실행해 이중 구현 표류를 잡는다. 라이브는 명시된 비운영 프로젝트에서 두 일회용 계정·팀의 쓰기·조회·변경·정리와 필수 RPC를 검증하며 기본 테스트에서는 skip |
 
 세 층 밖의 수동 확인은 `QA_CHECKLIST.md`(QA 빌드 기준 기대값)가 담당한다.
+
+## Supabase live 계약 CI 설정
+
+`.github/workflows/supabase-contract.yml`은 `workflow_dispatch` 수동 실행이 우선이며, 매주 월요일
+20:17 UTC 예약 실행은 저장소 변수 `PRISM_SUPABASE_CONTRACT_SCHEDULE=enabled`일 때만 동작한다.
+테스트 전용 Supabase 프로젝트가 준비되기 전에는 이 변수를 만들지 않는다. 이 워크플로에는
+`pull_request`/`pull_request_target` 트리거와 임의 checkout ref 입력을 추가하지 않는다. 포크 PR 등
+신뢰하지 않은 코드에 service-role 비밀이 전달되지 않게 하기 위한 경계다.
+
+1. 운영 프로젝트와 별개의 Supabase 프로젝트를 만들고 `SUPABASE_MIGRATION.md`의 현재 스키마와
+   집계 RPC 6종(`prism_agg_assignment_load`, `prism_agg_golden_contrib`,
+   `prism_agg_patch_counts`, `prism_agg_gold_stats`, `prism_agg_event_bonus`,
+   `prism_agg_feedback_stats`)을 적용한다. 이 프로젝트는 계약 테스트 데이터 외에는 사용하지 않는다.
+2. GitHub Environment `supabase-contract-test`에 secret `SUPABASE_TEST_URL`,
+   `SUPABASE_TEST_SERVICE_KEY`와 variable `SUPABASE_TEST_PROJECT_REF`를 설정한다. test ref는 URL의
+   `<project-ref>`와 정확히 같아야 한다. 누락·불일치 또는 저장소에 기록된 현재 운영 ref
+   (`uycdzslkhkruvmyjcbgj`) 지정은 테스트 시작 전에 실패한다.
+3. Actions의 **Supabase contract**에서 `Run workflow`로 먼저 실행한다. 테스트는 두 일회용 Auth
+   사용자와 팀을 만들고 콘텐츠·골든·MCP 키 계약을 수행한 뒤 관련 행, 팀, 사용자를 삭제한다.
+   삭제 또는 잔존 확인이 하나라도 실패하면 잡도 실패한다.
+4. 수동 실행이 안정적으로 통과하고 테스트 프로젝트 모니터링이 준비된 뒤에만 Environment 변수
+   `PRISM_SUPABASE_CONTRACT_SCHEDULE=enabled`를 추가한다. 예약 실행은 기본 브랜치의 커밋만 쓴다.
+
+로컬 live 실행도 키 파일 폴백 없이 같은 네 변수를 명시해야 한다.
+
+```bash
+PRISM_TEST_SUPABASE=1 \
+SUPABASE_URL=https://<test-project-ref>.supabase.co \
+SUPABASE_SERVICE_KEY='<test-service-role-key>' \
+PRISM_TEST_SUPABASE_PROJECT_REF='<test-project-ref>' \
+python3 -m unittest tests.test_store_contract.TestSupabaseContract -v
+```
 
 ## 방법론 근거 (논문)
 

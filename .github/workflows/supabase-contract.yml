@@ -1,0 +1,33 @@
+name: Supabase contract
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 20 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-contract-live
+  cancel-in-progress: false
+
+jobs:
+  live-contract:
+    if: github.event_name == 'workflow_dispatch' || vars.PRISM_SUPABASE_CONTRACT_SCHEDULE == 'enabled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: supabase-contract-test
+    env:
+      PRISM_BACKEND: supabase
+      PRISM_TEST_SUPABASE: "1"
+      SUPABASE_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_KEY }}
+      PRISM_TEST_SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_TEST_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run live Supabase store contract
+        run: python -m unittest tests.test_store_contract.TestSupabaseLiveConfiguration tests.test_store_contract.TestSupabaseContract -v
