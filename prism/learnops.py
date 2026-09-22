@@ -211,6 +211,11 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
                 intent_dropped += len(bad)
                 intent_samples.extend(bad)
         valid.append({"content": content, "expected": exp})
+    if not valid:
+        # 빈 업로드/전부 부적합 업로드가 replace=True 의 전체 삭제로 이어지면 안 된다.
+        # 관리자의 의도적 전체 삭제는 admin_action 이 저장 계층을 직접 호출하는 별도 경로다.
+        return {"ok": False, "error": "유효한 골든 행이 없습니다", "count": 0,
+                "skipped": skipped, "merged": bool(merge)}
     n = st.register_golden(team, valid, replace=not merge, source="manual")
     _SV._agg_bump()
     out = {"ok": True, "count": n, "skipped": skipped, "merged": bool(merge)}

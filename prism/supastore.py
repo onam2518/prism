@@ -64,7 +64,8 @@ class SupabaseStore:
     # ── REST 헬퍼 ──────────────────────────────────────────────────────────
     def _req(self, method: str, table: str, *, query: str = "", body=None, prefer: str = "") -> list:
         # public 스키마(기본 노출) + prism_ 접두사 → 노출 설정 불필요.
-        url = f"{self.base}/prism_{table}" + (f"?{query}" if query else "")
+        endpoint = table if table.startswith("rpc/") else f"prism_{table}"
+        url = f"{self.base}/{endpoint}" + (f"?{query}" if query else "")
         headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
@@ -561,35 +562,30 @@ class SupabaseStore:
     def _team_q(self, team) -> str:
         return f"team_id=eq.{urllib.parse.quote(team)}" if team else "team_id=is.null"
 
+    def _write_golden(self, team, rows, replace, source):
+        """팀을 RPC 인자로 고정해 교체·병합을 PostgreSQL 한 트랜잭션으로 처리한다."""
+        if not team:
+            raise ValueError("Supabase 골든 쓰기에는 팀이 필요합니다")
+        result = self._req("POST", "rpc/prism_write_golden", body={
+            "p_team_id": team, "p_rows": rows, "p_replace": bool(replace),
+            "p_source": source or "manual",
+        })
+        if isinstance(result, bool) or not isinstance(result, int):
+            raise RuntimeError("supabase rpc prism_write_golden 응답 형식 오류")
+        return result
+
     def upsert_golden(self, content_hash, content, expected, team=None, source="review"):
-        """골든 엔트리 upsert(누적). (team, content_hash) 키 · 서버 단일 작성자라 삭제 후 삽입."""
-        self._req("DELETE", "golden",
-                  query=f"{self._team_q(team)}&content_hash=eq.{urllib.parse.quote(content_hash)}",
-                  prefer="return=minimal")
-        row = {"content_hash": content_hash, "content": content, "expected": expected,
-               "source": source or "review"}
-        if team:
-            row["team_id"] = team
-        self._req("POST", "golden", body=[row], prefer="return=minimal")
+        """골든 엔트리 병합. DELETE→POST 대신 팀 고정 RPC의 원자적 upsert를 쓴다."""
+        return self._write_golden(team, [{"content_hash": content_hash, "content": content,
+                                          "expected": expected}], False, source or "review")
 
     def register_golden(self, team, rows, replace=True, source="manual"):
         """골든셋 등록. replace=True 면 팀 전체 교체, False 면 병합(upsert)."""
         from .store import content_hash
-        if replace:
-            self.clear_golden(team)
-            payload = [{"team_id": team, "content": r.get("content"), "expected": r.get("expected"),
-                        "content_hash": content_hash(r.get("content") or {}), "source": source or "manual"}
-                       for r in rows if r.get("content") and r.get("expected")]
-            for i in range(0, len(payload), 500):
-                self._req("POST", "golden", body=payload[i:i + 500], prefer="return=minimal")
-            return len(payload)
-        n = 0
-        for r in rows:
-            if r.get("content") and r.get("expected"):
-                self.upsert_golden(content_hash(r["content"]), r["content"], r["expected"],
-                                   team=team, source=source or "manual")
-                n += 1
-        return n
+        payload = [{"content": r.get("content"), "expected": r.get("expected"),
+                    "content_hash": content_hash(r.get("content") or {})}
+                   for r in rows if r.get("content") and r.get("expected")]
+        return self._write_golden(team, payload, replace, source or "manual")
 
     def get_golden(self, team, limit=1000):
         rows = self._get("golden", f"select=content,expected&{self._team_q(team)}&limit={int(limit)}")
