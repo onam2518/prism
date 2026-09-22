@@ -178,20 +178,7 @@ class TestRouteAndDeepLink(unittest.TestCase):
     def test_simulator_route_registered(self):
         import prism.serve as SV
         self.assertIn("/usermeta-logcheck", str(SV._POST_ROUTES))
-
-    def test_subview_deep_link(self):
-        """위키·문서에서 로그뷰어 화면을 바로 걸 수 있어야 한다(?m=user&view=viewer)."""
-        src = open(os.path.join(ROOT, "prism/vendor/app-02-_afterverdict.js"), encoding="utf-8").read()
-        self.assertIn("q.get('view')", src)
-        self.assertIn("this.labUserView = vw", src)
-        self.assertIn("loadLogViewer()", src)
-
-    def test_scope_is_stated_on_screen(self):
-        """131 결론은 독립 신설이다 · 화면이 스스로를 본 도구로 오인시키면 안 된다."""
-        from prism import page
-        self.assertIn("이 화면의 범위", page.PAGE)
-        self.assertIn("독립 신설", page.PAGE)
-        self.assertIn("443646328", page.PAGE)              # 131 원문 링크
+    # 로그뷰어 화면(실험실 › 사용자 탭)은 2026-09-22 페이드아웃 · 딥링크·화면 문구 검사는 화면과 함께 제거 · 시뮬레이터 라우트는 유지
 
 
 if __name__ == "__main__":

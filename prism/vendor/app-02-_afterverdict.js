@@ -202,14 +202,6 @@ window.PRISM_APP_PARTS.push(() => ({
           if (dh) { this._pendingDetail = dh; this._pendingRetry = false; this.selectMod('create'); this.loadRaw(2000); }
           else if (m) this.selectMod(m);
           if (q.has('settings')) this.selectMod('system');
-          // 서브뷰 딥링크(?view=): 메뉴 단위까지만 있어 위키·문서에서 특정 화면을 걸 수 없었다.
-          // 사용자 탭 서브뷰(시연·생성 과정·정책·로그뷰어)를 주소로 지정한다.
-          const vw = q.get('view');
-          if (vw && this.mod === 'lab' && ['run', 'gen', 'policy', 'viewer'].indexOf(vw) >= 0) {
-            this.labTab = 'user';                      // 이 서브뷰들은 사용자 탭에만 있다
-            this.labUserView = vw;
-            if (vw === 'viewer') this.loadLogViewer();
-          }
         } catch (e) {}
         this.loadVocab();
         this.loadDict();                               // 검수 요소·인텐트 정의 등 UI 사전 선로드(/dict 단일 원천)
@@ -276,7 +268,7 @@ window.PRISM_APP_PARTS.push(() => ({
         if (id === 'dash') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'review') { id = 'create'; this.createTab = 'raw'; }
         if (id === 'quality') id = 'lab';   // 구 품질 딥링크: 법령 탭 제거(2026-08-13) → 실험실 기본 탭으로
-        if (id === 'user') { id = 'lab'; this.labTab = 'user'; }
+        if (id === 'user') id = 'lab';     // 구 사용자 탭 딥링크: 탭 페이드아웃(2026-09-22) → 실험실 기본 탭으로
         if (id === 'prompt') { id = 'studio'; this.studioTab = 'prompt'; }   // 구 메뉴 · 위젯·URL 호환
         if (id === 'topic') { id = 'studio'; this.studioTab = 'topic'; }     // 실험실 시절 딥링크 호환
         if (id === 'entdict') { id = 'dict'; this.dictTab = 'entity'; }      // 별도 메뉴 시절 딥링크 호환
@@ -306,7 +298,7 @@ window.PRISM_APP_PARTS.push(() => ({
           }
         }
         else if (id === 'testset') { this.loadGoldenStatusThrottled(); this.loadLearnReport(); this.loadGoldenList(); this.loadLearnData(); this.loadAdmin(); this.loadActivity(); this.loadCost(); }
-        else if (id === 'lab') { this.loadDashThrottled(); this.loadUser(); }
+        else if (id === 'lab') { this.loadDashThrottled(); }
         else if (id === 'dict') {
           if (!this.dictData) this.loadDict();          // /dict 는 세션 중 사실상 불변(36KB) · 편집·초기화는 응답으로 dictData 를 직접 갱신한다
           if (this.dictTab === 'entity') this.loadEntdict();

@@ -143,8 +143,6 @@ class TestLoaderFailuresAreVisible(unittest.TestCase):
         ("app-05-costdata.js", "async loadLearnReport("),
         ("app-06-weeklyleague.js", "async loadTopics("),
         ("app-07-eventhint.js", "async loadDict("),
-        ("app-07-eventhint.js", "async loadMem("),
-        ("app-07-eventhint.js", "async loadDemoLab("),
         ("app-07-eventhint.js", "async loadEntdict("),
     ]
 

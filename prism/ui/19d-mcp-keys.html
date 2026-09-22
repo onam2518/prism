@@ -1,7 +1,7 @@
       <!-- ═══ 모듈: 실험실 › MCP 키 · 트랙 B(외부 MCP) 파트너 키 ═══
            동작·상태는 vendor/app-16-mcpkeys.js · 백엔드 GET /mcp-keys · POST /mcp-key-new · /mcp-key-revoke
            (로직은 prism/mcpkeys.py). 실험실 하위는 탭 안에서 서브뷰로 다시 나눈다
-           (10-usermeta.html 의 labUserView 관례 · 여기서는 labMcpView).
+           (서브뷰 상태는 labMcpView).
            화면의 강제 규칙 셋:
              ① 평문 키는 발급 직후 한 번만 보이고 목록에는 접두 6자만 남는다 —
                 서버가 sha256 만 저장하므로 재조회 경로 자체가 없다.
@@ -14,7 +14,7 @@
       <template x-if="mod === 'lab'">
         <div x-show="labTab === 'mcp'" x-cloak class="w-full space-y-4">
 
-        <!-- 서브메뉴(실험실 하위 화면 관례 · 10-usermeta.html 과 같은 형태) -->
+        <!-- 서브메뉴(실험실 하위 화면 관례) -->
         <div class="flex items-center gap-2">
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labMcpView==='keys' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labMcpView='keys'; mkLoad()">내 키</button>
           <button type="button" class="ds-btn ds-btn--s-sm" x-bind:class="labMcpView==='connect' ? 'ds-btn--primary' : 'ds-btn--secondary'" x-on:click="labMcpView='connect'">연결 방법</button>
