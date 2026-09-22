@@ -4,9 +4,7 @@
 - T1 dictionaries._merge_override: 중첩 dict 오버라이드가 코드 신규 하위키를 통째로 날렸다.
 - T2 dictops.edit_dict: 값 형태를 검증하지 않아 리스트 사전이 dict 로 뒤바뀐 채 영속됐다.
 - T3 topic.build_event_topics: cluster_id·대표 엔티티가 set 순회(해시 시드) 순서에 의존했다.
-- T4 memfs._observe: 자동 생성 경로가 자기 규칙(valid_path)을 벗어나 수정·삭제 불가가 됐다.
 - T5 entconf._norm / entdict.normalize_name: 한글 NFD 입력에서 확신도·개체키가 갈렸다.
-- T6 pastcheck.logviewer_data: 교차 검사(노출-클릭 연결)가 표시 상한 때문에 오탐했다.
 
 실행: python3 -m pytest tests/test_audit_data.py -q   (stdlib · 네트워크 0)
 """
@@ -25,8 +23,6 @@ from prism import dictionaries as D           # noqa: E402
 from prism import dictops as DO               # noqa: E402
 from prism import entconf as EC               # noqa: E402
 from prism import entdict as ED               # noqa: E402
-from prism import memfs as MF                 # noqa: E402
-from prism import pastcheck as PC             # noqa: E402
 from prism import topic as TP                 # noqa: E402
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -328,69 +324,6 @@ class TestEventTopicDeterminism(unittest.TestCase):
 
 
 # ── T4 ─────────────────────────────────────────────────────────────────────
-class TestMemfsObservePath(unittest.TestCase):
-    """T4: 자동 생성 경로도 자기 규칙(valid_path)을 지켜야 수정·삭제가 가능하다."""
-
-    LONG_Q = "오늘 하루 동안 있었던 국내외 스포츠 경기 결과와 선수 이적 소식을 모아 보고 싶어요"
-
-    def setUp(self):
-        self._old = MF._SV
-        MF._SV = _SV(rows=[{"content_ref": {"title": "반도체 실적"},
-                            "item_meta": {"content_category": ["Business and Finance"],
-                                          "intent": ["기획·심층"], "summary": "요약", "entities": []},
-                            "quality_meta": {"finalGrade": "G"}}])
-        self.addCleanup(lambda: setattr(MF, "_SV", self._old))
-
-    def test_long_topic_name_stays_within_rule(self):
-        for cat in (self.LONG_Q, "a" * 80, "가" * 60, "!!! ???", ""):
-            files = {}
-            wrote, err = MF._observe(files, "제목", cat, "검색", "라벨", tag="stated")
-            self.assertIsNone(err)
-            self.assertIsNotNone(MF.valid_path(wrote["path"]),
-                                 f"규칙 밖 경로 생성: {wrote['path']}")
-
-    def test_unusable_name_falls_back_to_misc(self):
-        files = {}
-        wrote, _ = MF._observe(files, "제목", "!!! ???", "검색", "라벨")
-        self.assertEqual(wrote["path"], "topics/misc.md")
-
-    def test_search_written_file_is_editable_and_deletable(self):
-        """무결과 검색(검색어가 곧 주제 파일) → 사용자가 그 파일을 고치고 지울 수 있다."""
-        MF.demo_ops({"op": "event", "event": "search", "query": self.LONG_Q}, team="t1")
-        path = MF.memory_data(team="t1")["files"][0]["path"]
-        self.assertIsNotNone(MF.valid_path(path))
-
-        ver = MF.memory_data(team="t1")["files"][0]["ver"]
-        r = MF.memory_ops({"op": "append", "path": path, "line": "- 손으로 덧붙임"}, team="t1")
-        self.assertNotIn("error", r)
-        r = MF.memory_ops({"op": "write", "path": path, "content": "새 내용", "ver": ver + 1}, team="t1")
-        self.assertNotIn("error", r)
-        r = MF.memory_ops({"op": "delete", "path": path}, team="t1")
-        self.assertNotIn("error", r)
-        self.assertEqual(MF.memory_data(team="t1")["files"], [])
-
-    def test_delete_clears_legacy_out_of_rule_file(self):
-        """이미 만들어진 규칙 밖 파일(구 _observe 산물)도 지울 수 있어야 정원이 풀린다."""
-        legacy = "topics/" + "가" * 45 + ".md"
-        MF._SV.store.save_report(MF.KIND, {"files": {legacy: {"content": "x", "ver": 1, "updated": ""}}},
-                                 team="t1")
-        self.assertIsNone(MF.valid_path(legacy))
-        r = MF.memory_ops({"op": "delete", "path": legacy}, team="t1")
-        self.assertNotIn("error", r)
-        self.assertEqual(MF.memory_data(team="t1")["files"], [])
-
-    def test_delete_still_rejects_unknown_paths(self):
-        for p in ("topics/nope.md", "../../etc/passwd", "", None):
-            r = MF.memory_ops({"op": "delete", "path": p}, team="t1")
-            self.assertIn("error", r)
-
-    def test_write_append_still_reject_out_of_rule_paths(self):
-        r = MF.memory_ops({"op": "write", "path": "topics/" + "가" * 45 + ".md", "content": "x"},
-                          team="t1")
-        self.assertIn("error", r)
-
-
-# ── T5 ─────────────────────────────────────────────────────────────────────
 def _nfd(s: str) -> str:
     return unicodedata.normalize("NFD", s)
 
@@ -452,52 +385,6 @@ class TestUnicodeNormalization(unittest.TestCase):
 
 
 # ── T6 ─────────────────────────────────────────────────────────────────────
-class TestPastLinkCheckWindow(unittest.TestCase):
-    """T6: 노출-클릭 교차 검사는 표시 상한과 분리 — 정상 계측을 오탐하지 않는다."""
-
-    N = 20
-
-    def setUp(self):
-        events = [{"idx": i, "event": "impression", "dwell": 0, "scroll": 0,
-                   "t": "10:00:%02d" % i, "title": "c%d" % i} for i in range(self.N)]
-        for j in range(self.N):                       # 노출된 콘텐츠만 클릭·읽기(정상 계측)
-            events.append({"idx": j, "event": "click", "dwell": 0, "scroll": 0,
-                           "t": "10:%02d:00" % (j + 1), "title": "c%d" % j})
-            events.append({"idx": j, "event": "read", "dwell": 30, "scroll": 80,
-                           "t": "10:%02d:30" % (j + 1), "title": "c%d" % j})
-        self.events = events
-        self._old = MF._SV
-        MF._SV = _SV()
-        MF._SV.store.save_report(MF.DEMO_KIND, {"events": events}, team="t1")
-        self.addCleanup(lambda: setattr(MF, "_SV", self._old))
-
-    def test_link_check_sees_impressions_outside_display_window(self):
-        d = PC.logviewer_data(team="t1")
-        self.assertGreater(len(self.events), PC.LOGS_MAX, "표시 상한을 넘겨야 회귀가 검증된다")
-        self.assertEqual(d["bypass"]["link_ok"], self.N)
-        self.assertEqual(d["bypass"]["link_miss"], [])
-        self.assertEqual(d["bypass"]["imp_ids"], self.N)
-
-    def test_display_cap_still_applies(self):
-        d = PC.logviewer_data(team="t1")
-        self.assertEqual(d["n"], PC.LOGS_MAX)
-        self.assertEqual(d["behavior"]["ops"], len(self.events))
-
-    def test_real_link_miss_still_reported(self):
-        """미탐 방지 확인: 노출되지 않은 콘텐츠 클릭은 여전히 연결 끊김으로 잡힌다."""
-        self.events.append({"idx": 999, "event": "click", "dwell": 0, "scroll": 0,
-                            "t": "11:00:00", "title": "c999"})
-        MF._SV.store.save_report(MF.DEMO_KIND, {"events": self.events}, team="t1")
-        d = PC.logviewer_data(team="t1")
-        self.assertEqual(d["bypass"]["link_miss"], ["999"])
-
-    def test_injected_examples_still_shown_and_counted(self):
-        d = PC.logviewer_ops({"op": "inject"}, team="t1")
-        self.assertEqual(len([l for l in d["logs"] if l["injected"]]), 7)
-        self.assertEqual(d["n"], PC.LOGS_MAX + 7)
-        self.assertEqual(d["behavior"]["dup"], 1)     # 중복 전송 예시 1건은 그대로 잡힌다
-        self.assertEqual(d["checklist"]["dups"], ["앱 실행"])   # 1회성 기대 2건 = 중복(주입 의도)
-
 
 if __name__ == "__main__":
     unittest.main()

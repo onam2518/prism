@@ -647,36 +647,6 @@ class _FailLLM:
                 LLMResult("", 0, 0, 0, 0, tag=tag, fail_kind=self.kind))
 
 
-class TestPersonaFallbackMarked(unittest.TestCase):
-    def _users(self, n):
-        return [{"user_id": "u%d" % i, "form": {"깊이": "몰입"}, "intensity": {},
-                 "engagement": {"views": 10, "avg_dwell_sec": 30, "click_rate": 0.1},
-                 "interest_entity_categories": [["스포츠", 3]], "rep_contents": []}
-                for i in range(n)]
-
-    def test_call_failure_is_marked_downgraded(self):
-        from prism import personagen as PG
-        llm = _FailLLM("billing")
-        out = PG.generate_personas(llm, {"u0": {"age_band": "30대"}}, self._users(1))
-        self.assertIn("downgraded", out["u0"])
-        self.assertIn("billing", out["u0"]["downgraded"])
-
-    def test_nonretryable_failure_stops_the_loop(self):
-        from prism import personagen as PG
-        llm = _FailLLM("billing")
-        out = PG.generate_personas(llm, {}, self._users(50))
-        self.assertEqual(llm.n, 1)                     # 종전: 최대 200명분 전부 호출
-        self.assertEqual(len(out), 1)
-
-    def test_transient_failure_continues(self):
-        from prism import personagen as PG
-        llm = _FailLLM("timeout")
-        out = PG.generate_personas(llm, {}, self._users(3))
-        self.assertEqual(llm.n, 3)
-        self.assertTrue(all("downgraded" in v for v in out.values()))
-
-
-# ── [P1] Config.load 메모이즈 ───────────────────────────────────────────────
 class TestConfigCache(unittest.TestCase):
     def _cfg_path(self, payload):
         from prism import config as C

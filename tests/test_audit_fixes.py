@@ -3,7 +3,6 @@
 - llm._parse_json: dict 강제([{…}] 복구 · 비객체는 ParseError)
 - store.rename_reviewer: assignments·board 키 이관
 - store.remove_content: assignments·assignment_cfg 연쇄 삭제
-- usermeta._parse_ts: aware/naive 혼재 정렬 안전 + 조인 키 네임스페이스 분리
 """
 import os
 import tempfile
@@ -54,38 +53,6 @@ class TestStoreCascades(unittest.TestCase):
         self.assertTrue(self.st.remove_content("h2"))
         self.assertIsNone(c.execute("SELECT 1 FROM assignments WHERE content_hash='h2'").fetchone())
         self.assertIsNone(c.execute("SELECT 1 FROM assignment_cfg WHERE content_hash='h2'").fetchone())
-
-
-class TestUsermetaTimeAndJoin(unittest.TestCase):
-    def test_parse_ts_mixed_aware_naive_sortable(self):
-        from prism.usermeta import _parse_ts
-        vals = [_parse_ts(1700000000), _parse_ts("2026-07-14T09:00:00Z"),
-                _parse_ts("2026-07-14T18:30:00")]
-        self.assertTrue(all(v is not None and v.tzinfo is None for v in vals))
-        sorted(vals)  # aware/naive 혼재였다면 TypeError
-
-    def test_join_key_namespaces_do_not_clobber(self):
-        import json
-        from prism.usermeta import build_from_logs
-        d = tempfile.mkdtemp()
-        rp, lp = os.path.join(d, "r.jsonl"), os.path.join(d, "l.jsonl")
-        rows = []
-        for i in range(4):
-            rows.append({"content_ref": {"title": f"제목{i}", "displayServiceName": "뉴스",
-                                          # 행 3의 외부 id 가 "1"(행 1의 인덱스 키와 충돌 후보)
-                                          **({"id": "1"} if i == 3 else {})},
-                         "item_meta": {"summary": f"s{i}", "intent": ["정보 획득"],
-                                       "content_category": ["News"], "entities": [f"e{i}"]},
-                         "quality_meta": {"finalGrade": "G"}})
-        with open(rp, "w", encoding="utf-8") as f:
-            f.write("\n".join(json.dumps(r, ensure_ascii=False) for r in rows))
-        with open(lp, "w", encoding="utf-8") as f:
-            f.write(json.dumps({"user_id": "u1", "content_id": "1", "event": "click"}))
-        out = build_from_logs(rp, lp)
-        u = out["users"][0]
-        # 계약: content_id=추출 순서 → 인덱스 1(제목1)에 조인돼야 함(외부 id "1"=행 3 아님)
-        self.assertIn("e1", json.dumps(u, ensure_ascii=False))
-
 
 if __name__ == "__main__":
     unittest.main()

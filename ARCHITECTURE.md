@@ -14,12 +14,12 @@ serve.py  ─ HTTP 계층(라우트 테이블 GET/POST · 최장 접두 우선) 
    │         (전역 상태 _STORE/_agg/SSE · 설정/LLM 라우팅 · 각 도메인에 _SV 주입) ≈3.4k줄
    ├─ *ops.py 도메인 모듈(serve 를 _SV 로 역참조 · 아래 표): learnops(학습) adminops(인증)
    │   reviewops(검수·배정·게임화) runops(실행 파이프라인) ingestops(인입·잡)
-   │   topicops(토픽) dictops(사전) dashops(대시보드·롤업·리포트) mediaops umops boardops
+   │   topicops(토픽) dictops(사전) dashops(대시보드·롤업·리포트) mediaops boardops
    │   crewops(검수 인력 운영·캐파·스케줄) evalops(런 비교·평가) weekops(주간기록) deployops(배포 게이트)
    │   reviewassist(검수 보조 에이전트 · 트랙 A 도구)
    │   metaquery(콘텐츠 조회 · 메타베이스 경유 데브 발행분 조회→검수 지정 · 2026-09-02)
    ├─ pipeline.py + prompts.py/meta_prompts.py/agents.py   LLM 추출 파이프라인
-   ├─ topic.py / entdict.py / dictionaries.py / usermeta.py / mediaext.py / imagext.py
+   ├─ topic.py / entdict.py / dictionaries.py / mediaext.py / imagext.py
    │  modelmeta.py(모델 표시 정보 · 이름/제공자/비용 등급 · 선택 드롭다운 원천)
    │  mcpkeys.py(MCP 파트너 키 · 트랙 B 외부 MCP · 발급/해석/레이트리밋/사용 기록 ·
    │             저장은 store/supastore 의 mcp_* 계약 · 전송 /mcp 는 resolve·rate_check·log_call 만 쓴다)
@@ -51,7 +51,6 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 | 토픽 → **topicops.py** | `topics_data` `topic_studio_action` `similar_topics` `topic_drill` `topic_snapshot` | /topics /topic-studio /topic-drill |
 |  ↳ 토픽 조건 · 상태 (2026-09-08 · 스펙 132112) | `topic.py`: 4축(`_DIMS` 에 출처 `srcs`) + 원천 조건 `feed`(`feed_fields` 가 `row["src"]` 계약을 읽음 · 없으면 서비스명·이미지 수·본문 길이·적재 시각 `_ts` 로 대신) · `topicops.py`: 상태 `status`(active·paused·draft·archived)·변경 기록 `log`·오늘/7일/신호 `_row_stats` · 액션 `status` | /topic-studio |
 | 사전 → **dictops.py** | `entdict_data` `entdict_action` `_enrich_*` / 구사전 `dict_data` `edit_dict` | /entdict* /dict |
-| 사용자 메타 → **umops.py** | `usermeta_*` (입력 서식 `build_template_xlsx` 는 runops) | /usermeta* |
 | 미디어(콘텐츠 추가 탭) → **mediaops.py** | `media_action` `media_s5ab` `media_native` `media_register` | /media-extract /media-register |
 | 인입·잡 → **ingestops.py** | `ingest_run_source` `_job_*` `_ingest_scheduler` `backfill_urls` `check_source_url` · 스케줄러는 기본 비활성(PRISM_INGEST_AUTO=1 로 opt-in · 2026-09-02) | /ingest-* /backfill-urls /check-source |
 | 콘텐츠 조회 → **metaquery.py** | `mq_status` `mq_search`(기본 source=stage · 스테이징) `mq_stage`·`mq_stage_delete`(사내망 수집기가 올린 발행분 · TTL 7일) `mq_register`(발행 메타를 초안으로 복사 인입 · 재추출 없음 · media_register 와 같은 계약) · 표 mq_stage(store)/prism_mq_stage(supastore) · 직접 조회 설정은 config.metabase_* + env PRISM_METABASE_KEY | /metaquery /metaquery-search /metaquery-stage /metaquery-stage-delete /metaquery-register |
@@ -149,11 +148,11 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
   serve._supa·serve._inject_gold·serve.rerun_unconfirmed 도 `_SV.` 경유.
 - [x] **2단계(3차) — 도메인 추출: 실행·인입·유저메타·게시판·리포트**: `runops.py` ·
   `ingestops.py`(_INGEST_STATE 는 serve 재수출과 같은 객체 공유 — 재바인딩 금지) ·
-  `umops.py` · `boardops.py` · 리포트 빌더는 dashops 로. serve 잔류 = HTTP 계층 +
+  `boardops.py` · 리포트 빌더는 dashops 로. serve 잔류 = HTTP 계층 +
   컴포지션 루트(전역 상태·설정/LLM — 의도된 책임)이며 2,435줄.
 - [x] **3단계 — page.py 분할** (PR #220): `PAGE` → `prism/ui/NN-*.html` 22조각,
   파일명 순 합성. 분할 전후 sha256 동일 검증 — 렌더 불변.
 - [x] **4단계 — app.js 분할** (PR #221): `app-NN-*.js` 9조각 + 병합 로더
   (`getOwnPropertyDescriptors` — 게터 보존). node 동등성 검증(프로퍼티 754개 동일).
-- [ ] **지속 — 새 도메인은 새 모듈**: usermeta.py·entdict.py 처럼 시작부터 별도
+- [ ] **지속 — 새 도메인은 새 모듈**: entdict.py·dictops.py 처럼 시작부터 별도
   파일 + serve 는 라우트 등록만. serve.py 가 다시 자라는 것을 막는 유일한 방법.

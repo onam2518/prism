@@ -65,9 +65,6 @@ RV._SV = sys.modules[__name__]      # 검수 도메인 주입(로드맵 2단계 
 DS._SV = sys.modules[__name__]      # 대시보드·롤업 주입(동일)
 
 from . import runops as RN
-from . import umops as UMO
-from . import memfs as MF
-from . import pastcheck as PCK          # PAST 로그 검증 도구(실험실 · 사용자 › 로그뷰어)
 from . import ingestops as IG
 from . import boardops as BD
 from . import evalops as EVO
@@ -78,8 +75,6 @@ from . import mcpkeys as MK           # MCP 파트너 키(트랙 B · 외부 MCP
 from . import metaquery as MQ         # 콘텐츠 조회(메타베이스 경유) · 검수 지정
 
 RN._SV = sys.modules[__name__]      # 실행 파이프라인 주입(로드맵 2단계 3차)
-UMO._SV = sys.modules[__name__]     # 사용자 메타 글루 주입(동일)
-MF._SV = sys.modules[__name__]      # 파일 기반 메모리(실험실) 주입(동일)
 from . import prismtools as PTL       # 도구 계층: 내부 검수 보조·외부 MCP 공용 단일 원천
 PTL._SV = sys.modules[__name__]     # 동일 주입
 from . import reviewassist as RA     # 내부 검수 보조(트랙 A) 도구 · /assist
@@ -109,12 +104,6 @@ rerun_content = RN.rerun_content
 build_template_csv = RN.build_template_csv
 build_template_xlsx = RN.build_template_xlsx
 run_batch = RN.run_batch
-_logs_rows = UMO._logs_rows
-_write_jsonl = UMO._write_jsonl
-usermeta_data = UMO.usermeta_data
-_usermeta_compute = UMO._usermeta_compute
-usermeta_save_profiles = UMO.usermeta_save_profiles
-build_usermeta_template_csv = UMO.build_usermeta_template_csv
 backfill_urls = IG.backfill_urls
 _validate_public_url = IG._validate_public_url
 _fetch_records = IG._fetch_records
@@ -190,7 +179,6 @@ _log_activity_rollup = DS._log_activity_rollup
 topic_snapshot = TPO.topic_snapshot
 topic_snapshot_all = TPO.topic_snapshot_all
 similar_topics = TPO.similar_topics
-topic_personas = TPO.topic_personas
 _sanitize_def = TPO._sanitize_def
 _ent_index = TPO._ent_index
 _TOPIC_SNAP_CAP = TPO._TOPIC_SNAP_CAP
@@ -529,7 +517,6 @@ _MENU_POST_ROUTES = (
     ("/builder", "studio"), ("/deployment", "studio"),
     # 미디어는 콘텐츠 추가 탭으로 승격(2026-08-13) · 인입 계열과 같은 content 메뉴로 게이트
     ("/media-extract", "content"), ("/media-register", "content"),
-    ("/usermeta", "lab"),
     ("/dict", "dict"),
     ("/golden", "testset"), ("/learn", "testset"), ("/compare-models", "testset"),
     ("/ingest-run", "content"), ("/rerun", "content"), ("/run", "content"), ("/store", "content"),
@@ -1544,7 +1531,6 @@ except ValueError:
 _FETCH_MAX = 16 * 1024 * 1024           # 인입 아웃바운드 응답 크기 상한(메모리 소진 방어)
 
 _PUBLIC_GET = {"/", "/m", "/config", "/boot", "/favicon.ico", "/template.xlsx", "/template.csv",
-               "/usermeta-template.csv", "/usermeta-profile-template.csv",
                "/api/v1/prompt"}   # 배포 프롬프트 서빙(자체 Bearer 키 검증 · deployops)
 
 # 팀 없이도 접근 가능한 인증 GET(전역 참조·관리자 판정 · 팀 콘텐츠 데이터 아님).
@@ -2114,40 +2100,6 @@ def _g_prompt_defaults(h, q):
                         for k in ("extract", "analyze", "review", "judge")}}
 
 
-@_get_route("/usermeta-template.csv")
-def _g_usermeta_template_csv(h, q):
-    h._send_file(build_usermeta_template_csv(), "text/csv; charset=utf-8",
-                 "prism_behavior_log.csv")
-
-
-@_get_route("/usermeta-profile-template.csv")
-def _g_usermeta_profile_template_csv(h, q):
-    from . import personagen as PG
-    h._send_file(PG.profile_template_csv(), "text/csv; charset=utf-8", "prism_user_profile.csv")
-
-
-@_get_route("/usermeta")
-def _g_usermeta(h, q):
-    return usermeta_data(team=h._req_team())
-
-
-@_get_route("/usermeta-memory")                      # 파일 기반 메모리(실험실): 파일 트리·주입 미리보기·소비 카탈로그
-def _g_usermeta_memory(h, q):
-    return MF.memory_data(team=h._req_team())
-
-
-@_get_route("/usermeta-demo")                        # 소비 시연(실험실 STEP 1~4): 피드·세션·실시간 측정·결론
-def _g_usermeta_demo(h, q):
-    return MF.demo_data(team=h._req_team())
-
-
-@_get_route("/usermeta-logviewer")                   # PAST 로그 검증(실험실): 시연 세션 판정 스트림·체크리스트
-def _g_usermeta_logviewer(h, q):
-    return PCK.logviewer_data(team=h._req_team())
-
-
-
-
 @_get_route("/board")                                # 게시판: 기능개선·오류 제보(팀 스코프)
 def _g_board(h, q):
     return board_data(h._req_team(), h._bearer_uid() or "")
@@ -2184,8 +2136,7 @@ def _g_metaquery(h, q):
     return MQ.mq_status(team=h._req_team())
 
 
-# 디스패치 순서: 접두 길이 내림차순 → /entdict-lookup 이 /entdict 보다, /usermeta-*.csv 가
-# /usermeta 보다 항상 먼저 검사된다(등록 순서 무관 · 가로채기 불가).
+# 디스패치 순서: 접두 길이 내림차순 → /entdict-lookup 이 /entdict 보다 항상 먼저 검사된다(등록 순서 무관 · 가로채기 불가).
 _GET_ORDER = sorted(_GET_ROUTES, key=len, reverse=True)
 
 
@@ -3047,54 +2998,6 @@ def _p_metaquery_stage_delete(h, body):
     return MQ.mq_stage_delete(json.loads(body or b"{}"), team=h._req_team())
 
 
-@_post_route("/usermeta-profiles", gate="team")      # 사용자 메타(프로필) 입력: 폼 단건(JSON)·서식 업로드(multipart)
-def _p_usermeta_profiles(h, body):
-    from . import personagen as PG
-    ctype = h.headers.get("Content-Type", "")
-    if "multipart/form-data" in ctype:
-        boundary = ctype.split("boundary=", 1)[1].strip()
-        f = _parse_multipart(body, boundary).get("file")
-        profs = (PG.parse_profiles(f["bytes"], f.get("filename", "profiles.csv"))
-                 if isinstance(f, dict) and f.get("bytes") else [])
-    else:
-        p = json.loads(body or b"{}")
-        profs = p.get("profiles") or ([p.get("profile")] if p.get("profile") else [])
-    return usermeta_save_profiles(profs, team=h._req_team())
-
-
-@_post_route("/usermeta-memory", gate="team")        # 파일 기반 메모리(실험실): 소비 자동 기록·쓰기·추가·삭제
-def _p_usermeta_memory(h, body):
-    return MF.memory_ops(json.loads(body or b"{}"), team=h._req_team())
-
-
-@_post_route("/usermeta-demo", gate="team")          # 소비 시연 조작: event(행동 수집)·finish(결론)·reset
-def _p_usermeta_demo(h, body):
-    return MF.demo_ops(json.loads(body or b"{}"), team=h._req_team())
-
-
-@_post_route("/usermeta-logviewer", gate="team")     # PAST 로그 검증 조작: inject(위반 예시 주입)·clear
-def _p_usermeta_logviewer(h, body):
-    return PCK.logviewer_ops(json.loads(body or b"{}"), team=h._req_team())
-
-
-@_post_route("/usermeta-logcheck", gate="team")      # 판정 규칙 시뮬레이터: 붙여넣은 표본만 판정(저장 없음)
-def _p_usermeta_logcheck(h, body):
-    return PCK.simulate(json.loads(body or b"{}"))
-
-
-@_post_route("/usermeta", gate="team")               # 행동 로그 업로드/현황 · 팀 미소속 전 팀 열람 차단
-def _p_usermeta(h, body):
-    ctype = h.headers.get("Content-Type", "")
-    f = None
-    if "multipart/form-data" in ctype:
-        boundary = ctype.split("boundary=", 1)[1].strip()
-        f = _parse_multipart(body, boundary).get("file")
-    logs = f["bytes"] if isinstance(f, dict) and f.get("bytes") else None
-    name = f.get("filename", "logs.csv") if isinstance(f, dict) else ""
-    return usermeta_data(logs, name, team=h._req_team())
-
-
-
 @_post_route("/mcp")                                 # 프리즘 MCP(트랙 B · 외부): 파트너 키로만 판단
 def _p_mcp(h, body):                                 # 무세션 JSON-RPC · 도구는 prismtools 단일 원천
     # 로그인·팀 게이트가 없는 공개 경로 · 키 대입 연사만 IP 로 억제한다. 인증 자체는
@@ -3242,7 +3145,7 @@ def _p_assist_ask(h, body):
 
 
 # 디스패치 순서: 접두 길이 내림차순 → /reviewer-role·/content-assign-bulk·/golden-remove·
-# /rerun-all·/usermeta-profiles 가 짧은 형제 라우트보다 항상 먼저 검사된다.
+# /rerun-all 이 짧은 형제 라우트보다 항상 먼저 검사된다.
 _POST_ORDER = sorted(_POST_ROUTES, key=len, reverse=True)
 
 

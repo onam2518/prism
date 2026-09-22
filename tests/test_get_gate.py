@@ -22,7 +22,7 @@ class TestPublicGetPolicy(unittest.TestCase):
     def test_public_paths(self):
         from prism import serve as SV
         for p in ("/", "/m", "/m/", "/vendor/app.js", "/config", "/config?x=1",
-                  "/template.csv", "/template.xlsx", "/usermeta-template.csv"):
+                  "/template.csv", "/template.xlsx"):
             self.assertTrue(SV.is_public_get(p), p)
 
     def test_data_paths_not_public(self):
