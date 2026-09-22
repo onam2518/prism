@@ -1055,28 +1055,6 @@ def auto_state(team=None) -> dict:
     return dict((_SV._report_get(AUTO_KIND, team, {}) or {}).get("item") or {})
 
 
-def _claim_cycle(name: str, cycle: str, team=None, attempt: int = 0):
-    """이번 회차를 **선점**한다(원자적 · 처음 잡은 호출만 True). 선점 장치가 없으면 None.
-
-    종전에는 `state.get("wave_cycle") != cycle` 로 확인하고 배분이 끝난 **뒤에야** 회차 키를
-    저장했다(check-then-act). 그 사이에 다른 실행이 끼면 같은 사이클에 웨이브가 두 번 나간다 —
-    검수운영 화면의 '지금 실행'(POST /crew-auto)과 크론(`python3 -m prism.crewbot` · 01:00 UTC
-    = 10:00 KST 로 기본 사이클 시작 시각과 같다)은 프로세스가 달라 파이썬 락으로도 못 막는다.
-    set_wave 가 같은 기한이면 계획을 합산하므로 결과는 '계획이 실제 배정의 2배'였다.
-    log_event_once 는 미션 보상 이중 지급을 막으려고 이미 둔 원자적 멱등 장치라 그대로 쓴다.
-
-    attempt: 앞선 시도가 실패했으면(예: 그 순간 배정 가능한 사람이 0명) 다음 점검이 다시
-    시도할 수 있어야 한다 — 회차 키에 시도 번호를 붙여 '1회 보장'과 '재시도 여지'를 같이 둔다."""
-    st = _SV.get_store()
-    if not (st and hasattr(st, "log_event_once")):
-        return None                                 # 선점 불가 → 호출측이 종전 동작으로 퇴화
-    key = f"crew_{name}:{cycle}" + (f"#{int(attempt)}" if attempt else "")
-    try:
-        return bool(st.log_event_once(None, key, 0, 0, meta="자동 운영 회차 선점", team=team))
-    except Exception:
-        return None
-
-
 def _last_open_ts(now: float, cfg: dict) -> float:
     """지금 기준으로 가장 최근에 지난 '사이클 시작 시각'(epoch).
     팀 타임존으로 요일·시각을 해석한다(day_key 와 같은 기준 · 기본 KST)."""
@@ -1105,14 +1083,42 @@ def _unassigned_targets(team=None, limit: int = 300) -> list:
     return sorted(targets - asg)[:max(1, int(limit))]
 
 
+# ponytail: 중단된 프로세스는 1시간 뒤 재시도 · 더 긴 작업은 갱신/쓰기 fencing 필요.
+_AUTO_LEASE_SECONDS = 3600
+
+
 def auto_tick(team=None, now=None, apply: bool = True) -> dict:
+    """HTTP/crewbot 전체 점검을 같은 팀의 영속 lease 아래 실행한다."""
+    if not apply:
+        return _auto_tick(team, now, apply=False)
+    import uuid
+    st = _SV.get_store()
+    owner = uuid.uuid4().hex
+    # 선점 실패/통신 오류는 실행하지 않는다. 회차 시각(now)은 lease 시계와 별개다.
+    if not st:
+        raise RuntimeError("자동 운영 저장소를 사용할 수 없습니다")
+    if not st.claim_crew_auto(owner, time.time(), _AUTO_LEASE_SECONDS, team):
+        cfg = settings(team)
+        tick_time = time.time() if now is None else float(now)
+        return {"ok": True, "applied": False, "busy": True,
+                "cycle": day_key(_last_open_ts(tick_time, cfg)),
+                "auto_wave": bool(int(cfg["auto_wave"])),
+                "auto_rebalance": bool(int(cfg["auto_rebalance"])), "wave": None,
+                "rebalance": None, "escalate": None}
+    try:
+        return _auto_tick(team, now, apply=True)
+    finally:
+        st.release_crew_auto(owner, team)
+
+
+def _auto_tick(team=None, now=None, apply: bool = True) -> dict:
     """자동 운영 1회 점검. 새 사이클이면 여력만큼 나눠 맡기고, 기한이 하루 안이면 멈춘 일을 넘긴다.
 
     같은 사이클에 두 번 돌지 않도록 회차 키(사이클 시작일)를 남긴다 — 화면 진입마다 호출해도
     안전하다. apply=False 면 무엇을 할지만 돌려주고 아무것도 바꾸지 않는다."""
     cfg = settings(team)
     now = time.time() if now is None else float(now)
-    state = auto_state(team)
+    state = dict((_SV.get_store().get_report(AUTO_KIND, team) or {}).get("item") or {})
     open_ts = _last_open_ts(now, cfg)
     cycle = day_key(open_ts)
     out = {"ok": True, "applied": bool(apply), "cycle": cycle,
@@ -1120,23 +1126,14 @@ def auto_tick(team=None, now=None, apply: bool = True) -> dict:
            "wave": None, "rebalance": None, "escalate": None}
     changed = dict(state)
 
-    def _claimed(name: str, field: str, attempt: int) -> bool:
-        """회차 선점 + '이 시도를 썼다'를 즉시 남긴다. 선점은 apply 일 때만 한다 —
-        dry-run 이 회차 키를 소비하면 미리보기 한 번에 그 사이클의 자동 운영이 통째로
-        사라진다(계획만 보고 아무것도 바꾸지 않는다는 계약 위반).
-        시도 번호를 **실행 전에** 저장하는 이유: 배분 도중 예외로 죽어도(원격 쓰기 실패 등)
-        다음 점검이 새 키로 다시 시도할 수 있어야 한다 — 안 그러면 그 주 자동 운영이 사라진다."""
-        if not apply:
-            return True
-        if _claim_cycle(name, cycle, team, attempt) is False:
-            return False                            # 다른 실행이 이미 이번 회차를 가져갔다
-        changed[field] = attempt + 1
-        _SV._report_save(AUTO_KIND, {"item": dict(changed, last_run=now)}, team)
-        return True
+    def save_progress():
+        nonlocal state
+        if apply and changed != state:
+            changed["last_run"] = now
+            _SV.get_store().save_report(AUTO_KIND, {"item": dict(changed)}, team)
+            state = dict(changed)
 
-    wave_try = int(state.get("wave_retry") or 0)
-    if (int(cfg["auto_wave"]) and state.get("wave_cycle") != cycle
-            and _claimed("wave", "wave_retry", wave_try)):
+    if int(cfg["auto_wave"]) and state.get("wave_cycle") != cycle:
         hs = _unassigned_targets(team, int(cfg["wave_batch"]))
         due = open_ts + float(cfg["wave_days"]) * 86400
         if hs:
@@ -1147,7 +1144,6 @@ def auto_tick(team=None, now=None, apply: bool = True) -> dict:
             if apply and r.get("ok"):
                 changed["wave_cycle"] = cycle
                 changed.pop("wave_retry", None)
-            # 실패면 wave_retry(=이번에 쓴 시도 번호 + 1)가 그대로 남아 다음 점검이 새 키로 재시도한다
         else:
             out["wave"] = {"ok": True, "n": 0, "plan": {}, "due_at": due,
                            "error": "아직 아무도 안 맡은 콘텐츠가 없습니다"}
@@ -1155,11 +1151,10 @@ def auto_tick(team=None, now=None, apply: bool = True) -> dict:
                 changed["wave_cycle"] = cycle       # 내보낼 게 없어도 이번 사이클은 처리한 것으로 본다
                 changed.pop("wave_retry", None)
 
-    reb_try = int(state.get("rebalance_retry") or 0)
+    save_progress()                                 # 뒤 단계가 실패해도 성공한 웨이브는 보존
     if int(cfg["auto_rebalance"]) and state.get("rebalance_cycle") != cycle:
         due = float(wave(team).get("due_at") or 0)
-        if (due and now >= due - 86400                  # 기한 하루 전부터 · 지나서도 한 번은 잡는다
-                and _claimed("rebalance", "rebalance_retry", reb_try)):
+        if due and now >= due - 86400:              # 기한 하루 전부터 · 지나서도 한 번은 잡는다
             r = rebalance(team=team, apply=apply, by="자동 운영")
             out["rebalance"] = {"ok": r.get("ok"), "n": r.get("n", 0),
                                 "to": r.get("to_counts", {}), "from": r.get("from_counts", {}),
@@ -1168,15 +1163,13 @@ def auto_tick(team=None, now=None, apply: bool = True) -> dict:
                 changed["rebalance_cycle"] = cycle
                 changed.pop("rebalance_retry", None)
 
+    save_progress()
     # 갈린 건은 사이클과 무관하게 계속 생기므로 회차 키로 묶지 않고 매번 점검한다.
     if int(cfg["auto_escalate"]):
         r = escalate_split(team=team, apply=apply, by="자동 운영")
         if r.get("n"):
             out["escalate"] = {"ok": r.get("ok"), "n": r["n"], "to": r.get("to_counts", {})}
 
-    if apply and changed != state:
-        changed["last_run"] = now
-        _SV._report_save(AUTO_KIND, {"item": changed}, team)
     return out
 
 
