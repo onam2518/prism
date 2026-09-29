@@ -71,7 +71,7 @@
                   </div>
                   <!-- 검색 드롭다운: 그룹 헤더 유지 · 한글·영문 동시 매칭 · Enter=첫 후보 · Esc=닫기 -->
                   <div class="hybwrap" x-on:click.outside="hybSt('fa'+fld.id).open=false">
-                    <input type="text" class="field w-full" style="height:32px;font-size:12.5px" x-bind:placeholder="fld.ph" x-bind:value="hybSt('fa'+fld.id).q" x-on:input="hybInput('fa'+fld.id, $event.target.value)" x-on:keydown.enter.prevent="hybEnter('fa'+fld.id, fld, fa.row, fa[fld.key])" x-on:keydown.escape="hybEsc('fa'+fld.id, $event)">
+                    <input type="text" class="field w-full field--compact" style="font-size:12.5px" x-bind:placeholder="fld.ph" x-bind:value="hybSt('fa'+fld.id).q" x-on:input="hybInput('fa'+fld.id, $event.target.value)" x-on:keydown.enter.prevent="hybEnter('fa'+fld.id, fld, fa.row, fa[fld.key])" x-on:keydown.escape="hybEsc('fa'+fld.id, $event)">
                     <div class="hybdd" x-show="hybSt('fa'+fld.id).open" x-cloak>
                       <template x-for="g in hybDrop('fa'+fld.id, fld.kind, fa.row, fa[fld.key])" x-bind:key="'fag'+fld.id+g.label">
                         <div>

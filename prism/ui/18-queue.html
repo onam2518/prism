@@ -54,7 +54,7 @@
                 <option value="">모델 전체</option>
                 <template x-for="m in failModelOpts" x-bind:key="'fmo'+m"><option x-bind:value="m" x-text="m"></option></template>
               </select>
-              <button type="button" class="ds-btn ds-btn--outline" style="height:28px;padding:0 12px;font-size:12px" x-bind:disabled="!failPicked.length || failBusy" x-on:click="rerunFailPicked()" x-text="failBusy ? '재실행 중…' : ('선택 재실행' + (failPicked.length ? (' ' + failPicked.length + '건') : ''))" data-tip="체크한 콘텐츠를 STEP 2의 사용 모델로 다시 실행합니다 · 성공하면 목록에서 사라집니다 · 건당 비용 발생" data-tip-pos="top"></button>
+              <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline" style="padding:0 12px;font-size:12px" x-bind:disabled="!failPicked.length || failBusy" x-on:click="rerunFailPicked()" x-text="failBusy ? '재실행 중…' : ('선택 재실행' + (failPicked.length ? (' ' + failPicked.length + '건') : ''))" data-tip="체크한 콘텐츠를 STEP 2의 사용 모델로 다시 실행합니다 · 성공하면 목록에서 사라집니다 · 건당 비용 발생" data-tip-pos="top"></button>
               <button type="button" class="copybtn" x-show="failPicked.length" x-cloak x-on:click="clearFailPick()">선택 해제</button>
               <span class="text-xs text-muted tnum" x-text="failRows.length + ' / ' + failAll.length + '건'"></span>
               <!-- 잔액 부족은 재실행으로 못 푼다 · '눌러도 안 사라진다'는 오해를 먼저 끊는다 -->
@@ -96,7 +96,7 @@
               <option value="(미실행)">미실행(초안 없음)</option>
               <template x-for="m in contentModels" x-bind:key="'cm'+m"><option x-bind:value="m" x-text="m"></option></template>
             </select>
-            <button type="button" class="ds-btn ds-btn--outline" style="height:28px;padding:0 12px;font-size:12px" x-bind:disabled="!pickedHashes.length || pickBusy" x-on:click="rerunPicked()" x-text="pickBusy ? '재실행 중…' : ('선택 재실행' + (pickedHashes.length ? (' ' + pickedHashes.length + '건') : ''))" data-tip="체크한 콘텐츠를 STEP 2의 사용 모델로 다시 실행합니다 · 기존 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="top"></button>
+            <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline" style="padding:0 12px;font-size:12px" x-bind:disabled="!pickedHashes.length || pickBusy" x-on:click="rerunPicked()" x-text="pickBusy ? '재실행 중…' : ('선택 재실행' + (pickedHashes.length ? (' ' + pickedHashes.length + '건') : ''))" data-tip="체크한 콘텐츠를 STEP 2의 사용 모델로 다시 실행합니다 · 기존 초안은 이력 보존 · 건당 비용 발생" data-tip-pos="top"></button>
             <button type="button" class="copybtn" x-show="pickedHashes.length" x-cloak x-on:click="clearPick()">선택 해제</button>
             <span class="text-xs text-muted tnum" x-text="contentRows.length + ' / ' + (((dashData||{}).contents||[]).length) + '건'"></span>
             <span class="ds-badge ds-badge--neutral" style="cursor:help" data-tip="이 표는 최신 200건만 보여 줍니다 · 그보다 오래된 콘텐츠는 필터·선택 대상에 들어오지 않습니다" data-tip-pos="top">최신 200건</span>

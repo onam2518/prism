@@ -15,7 +15,7 @@
       <template x-if="mod === 'dict'">
         <div class="w-full space-y-4">
         <!-- 공통 안내·편집 초기화는 편집형 사전 탭에만 · 엔티티 탭은 자체 헤더(자동 등재·보강) 사용 -->
-        <div class="panel" x-show="dictTab !== 'entity'"><div class="panel-bd flex items-center justify-between gap-3">
+        <div class="panel" x-show="dictTab !== 'entity'"><div class="panel-bd flex items-center justify-between gap-3 flex-wrap">
           <ul class="ds-bullets">
             <li>각 체계의 정책(사전·카테고리·법령)을 <b>직접 수정</b>할 수 있습니다.</li>
             <li>저장 시 즉시 추출에 반영되고 로컬에 영속됩니다.</li>
@@ -63,7 +63,7 @@
               </template>
             </tbody></table></div>
           </div>
-          <div class="grid grid-cols-2 gap-4">
+          <div class="layout-grid--two">
             <div class="panel"><div class="panel-hd"><b>도메인 그룹</b><span class="meta">Tier1 7묶음</span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th style="width:120px">그룹</th><th>포함 Tier1</th><th style="width:52px"></th></tr></thead><tbody>
                 <template x-for="(ts,g) in (dictData?dictData.domainGroups:{})" x-bind:key="g">
@@ -84,7 +84,7 @@
             <li>기획서 재편(2026-09-22)으로 <b>품질 메타</b>와 <b>법령(클린) 메타</b>는 후속 기능 메타로 분리됐습니다 · 1차 발행 범위는 아이템 메타 4종(리드문·엔티티·인텐트·카테고리)입니다.</li>
             <li>프리즘에서는 품질 판정을 계속 돌려 검수·평가에 씁니다 · <b>시스템 설정 › 품질 판정 단계</b>로 끌 수 있고, 끄면 등급이 비어 "판정 없음"으로 집계됩니다(빈 등급은 유통 가능으로 읽지 않습니다) · 법령 필터는 기본 꺼짐이며 켜도 아이템 메타 추출을 막지 않습니다.</li>
           </ul>
-          <div class="grid grid-cols-2 gap-4">
+          <div class="layout-grid--two">
             <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>ID</th><th>메타명 · 정의</th><th>적용</th><th></th></tr></thead><tbody>
                 <template x-for="(v,k) in (dictData?dictData.qualityMetas:{})" x-bind:key="k"><tr>

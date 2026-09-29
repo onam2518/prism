@@ -125,8 +125,8 @@
               <button type="button" class="copybtn" x-show="reviewer" x-on:click="nickEdit = !nickEdit; nickNew = reviewer; nickMsg = ''" data-tip="표시 이름(닉네임)만 바꿉니다 · 팀·캐릭터·검수 이력은 유지" data-tip-pos="top">닉네임 변경</button>
             </div>
             <div class="panel-bd">
-              <div x-show="nickEdit" x-cloak class="flex flex-wrap items-center gap-2" style="padding-bottom:10px">
-                <input x-model="nickNew" class="field" style="max-width:200px;height:32px" maxlength="20" placeholder="새 닉네임" x-on:keydown.enter="saveNick()">
+              <div x-show="nickEdit" x-cloak class="control-row control-row--compact" style="padding-bottom:10px">
+                <input x-model="nickNew" class="field field--compact" style="max-width:200px;" maxlength="20" placeholder="새 닉네임" x-on:keydown.enter="saveNick()">
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-bind:disabled="nickBusy" x-on:click="saveNick()" x-text="nickBusy ? '저장 중…' : '저장'"></button>
                 <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-on:click="nickEdit = false; nickMsg = ''">취소</button>
                 <span class="text-xs text-muted" x-text="nickMsg"></span>

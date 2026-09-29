@@ -126,12 +126,12 @@
                 <button type="button" class="ds-iconbtn ds-iconbtn--sm ds-iconbtn--bordered" x-bind:disabled="mqBusy || !mqHasNext()" x-on:click="mqPage(1)" data-tip="다음 페이지" data-tip-pos="top" aria-label="다음 페이지"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               </span>
               <button type="button" class="copybtn" x-show="mqSource === 'stage'" x-cloak x-bind:disabled="!mqSelCount || mqBusy" x-on:click="mqDelete()" data-tip="선택한 행을 수집분 목록에서 지웁니다 · 이미 지정된 검수 콘텐츠는 영향 없음" data-tip-pos="top" x-text="'목록에서 삭제' + (mqSelCount ? (' ' + mqSelCount + '건') : '')"></button>
-              <span class="ml-auto" style="display:flex;align-items:center;gap:8px">
+              <span class="control-row ml-auto">
                 <span class="text-xs text-muted tnum" x-text="mqSelCount + '건 선택'"></span>
                 <select class="field" style="width:auto" x-model="mqPurpose" data-tip="검수용 = 팀 검수 대상 · 평가용 = 검수에서 빼고 평가 전용 보존" data-tip-pos="top">
                   <option value="review">검수용</option><option value="eval">평가용</option>
                 </select>
-                <button type="button" class="ds-btn ds-btn--primary" style="height:30px;padding:0 16px" x-bind:disabled="!mqSelCount || mqBusy" x-on:click="mqRegister()" x-text="'검수 대상으로 지정' + (mqSelCount ? (' ' + mqSelCount + '건') : '')"></button>
+                <button type="button" class="ds-btn ds-btn--s-sm ds-btn--primary" style="padding:0 16px" x-bind:disabled="!mqSelCount || mqBusy" x-on:click="mqRegister()" x-text="'검수 대상으로 지정' + (mqSelCount ? (' ' + mqSelCount + '건') : '')"></button>
               </span>
             </div>
             <div class="text-xs" style="margin-top:6px" aria-live="polite" x-text="mqMsg"></div>
