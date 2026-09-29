@@ -192,12 +192,18 @@
               <template x-if="pilot">
                 <div style="margin-top:10px">
                   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                    <span class="ds-badge" x-bind:class="pilot.status==='running' ? (pilot.stalled ? 'ds-badge--warning' : 'ds-badge--intent') : (pilot.status==='done' ? 'ds-badge--success' : (pilot.status==='failed' ? 'ds-badge--error' : 'ds-badge--neutral'))"
-                      x-text="pilot.status==='running' ? (pilot.stalled ? '중단됨(서버 재시작)' : ('라운드 ' + pilot.round + '/' + pilot.max_rounds + ' 진행 중')) : ({done:'완료',stopped:'중지',failed:'실패'}[pilot.status] || pilot.status)"></span>
+                    <button type="button" class="ds-badge" style="cursor:pointer;border:0;font-family:inherit" x-on:click="openCompareWindow()" data-tip="라운드 안 단계별 진척도를 새 창으로 봅니다 · 닫아도 오토파일럿은 계속 돕니다" data-tip-pos="top" x-bind:class="pilot.status==='running' ? (pilot.stalled ? 'ds-badge--warning' : 'ds-badge--intent') : (pilot.status==='done' ? 'ds-badge--success' : (pilot.status==='failed' ? 'ds-badge--error' : 'ds-badge--neutral'))"
+                      x-text="pilot.status==='running' ? (pilot.stalled ? '중단됨(서버 재시작)' : ('라운드 ' + pilot.round + '/' + pilot.max_rounds + ' 진행 중')) : ({done:'완료',stopped:'중지',failed:'실패'}[pilot.status] || pilot.status)"></button>
                     <span class="text-xs text-muted tnum" x-text="'목표 등급 ' + Math.round((pilot.target||0)*100) + '%' + (pilot.meta_target!=null ? ' · 메타 ' + Math.round(pilot.meta_target*100) + '%' : '') + (pilot.golden_n ? ' · 고정 정답셋 ' + pilot.golden_n + '건' : '')"></span>
                     <button type="button" class="ds-btn ds-btn--secondary ds-btn--s-sm" x-show="pilot.status==='running' && !pilot.stalled" x-on:click="stopPilot()">중지</button>
                   </div>
-                  <div class="tiles" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+                  <template x-if="pilotStep">
+                    <div class="ds-progress" x-bind:class="pilotStep.total ? '' : 'ds-progress--indeterminate'" style="margin-top:10px">
+                      <div class="ds-progress__head"><span class="ds-progress__label" x-text="pilotStep.label"></span><span class="ds-progress__pct" x-text="pilotStep.total ? (pilotStep.done + ' / ' + pilotStep.total) : ''"></span></div>
+                      <div class="ds-progress__track" role="progressbar"><div class="ds-progress__fill ds-progress__fill--primary" x-bind:style="pilotStep.total ? ('width:' + Math.max(Math.round(pilotStep.done / pilotStep.total * 100), 2) + '%') : ''"></div></div>
+                    </div>
+                  </template>
+                  <div class="tiles" x-show="pilot.start_accuracy!=null || pilot.last_accuracy!=null" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
                     <div class="tile"><div class="n tnum" x-text="pilot.start_accuracy!=null ? Math.round(pilot.start_accuracy*100)+'%' : '·'"></div><div class="t">시작 일치율</div></div>
                     <div class="tile"><div class="n tnum" x-text="pilot.last_accuracy!=null ? Math.round(pilot.last_accuracy*100)+'%' : '·'"></div><div class="t">현재 일치율</div></div>
                     <div class="tile tile--hero"><div class="n tnum" x-text="pilot.best_accuracy!=null ? Math.round(pilot.best_accuracy*100)+'%' : '·'"></div><div class="t">최고 일치율</div></div>

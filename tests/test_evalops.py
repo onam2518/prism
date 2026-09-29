@@ -525,13 +525,41 @@ class TestAutopilotRoundMetrics(TestAutopilot):
 class TestAutopilotGoldenFreeze(TestAutopilot):
     """정답셋 고정: 시작 시점 해시를 런에 남기고 라운드마다 그 셋만 재평가(늘어난 골든은 다음 런부터)."""
 
+    def test_status_exposes_round_progress(self):
+        """라운드 도중 상태 조회에 단계·건수 진척이 실리고, 끝나면 사라진다."""
+        import threading
+        from prism import learnops as LO
+        serve, st = self._with_serve()
+        _seed_golden(st, 3)
+        mid, go = threading.Event(), threading.Event()
+        orig = LO.learning_batch
+        def fake(team=None, models=None, model="", golden_hashes=None, progress=None):
+            progress("pre", 3, 3)
+            progress("improve")
+            progress("wrap")                        # 보정이 안 바뀐 라운드: post 는 돌지 않는다
+            mid.set()
+            go.wait(10)
+            return {"ok": True, "grade_accuracy": 0.95, "eval_pre": {"grade_accuracy": 0.9},
+                    "improve": {"reverted": False}, "improve_delta": 0.05,
+                    "prompt_snapshot": {"version": 1}}
+        LO.learning_batch = fake
+        self.addCleanup(lambda: setattr(LO, "learning_batch", orig))
+        self.addCleanup(go.set)
+        serve.autopilot_start(None, target=0.9, max_rounds=1)
+        self.assertTrue(mid.wait(10))
+        p = serve.autopilot_status(None)["run"]["progress"]
+        self.assertEqual((p["round"], p["phase"], p["seen"]), (1, "wrap", ["pre", "improve", "wrap"]))
+        go.set()
+        self._wait(st)
+        self.assertIsNone(serve.autopilot_status(None)["run"].get("progress"))
+
     def test_run_stores_hashes_and_rounds_use_them(self):
         from prism import learnops as LO
         serve, st = self._with_serve()
         hs = _seed_golden(st, 3)
         seen = []
         orig = LO.learning_batch
-        def fake(team=None, models=None, model="", golden_hashes=None):
+        def fake(team=None, models=None, model="", golden_hashes=None, **kw):
             seen.append(golden_hashes)
             _seed_golden(st, 4)                       # 라운드 중 골든이 늘어도(build_golden_from_reviews 상응)
             return {"ok": True, "grade_accuracy": 0.95, "eval_pre": {"grade_accuracy": 0.9},
