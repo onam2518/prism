@@ -136,9 +136,9 @@ def get_extraction_prompt(call: str = "", service: str = "", client_model: str =
     call = 분리형 순차 4콜 중 하나(summary → entities → intent → category). 뒤 콜은 앞 콜의
     출력을 받으므로 `requires` 와 `user_template` 을 함께 준다.
 
-    service(displayServiceName)는 ③ 인텐트 사전의 서비스 분기에 쓰인다 · 후보가 서비스마다
-    다르므로 이 값이 프롬프트를 바꾼다. 미정의 값이면 프리즘 운영과 **똑같이** PGC 폴백으로
-    수렴한다(범용 분류값만 · `service_resolved` 가 빈 문자열로 그 사실을 알린다).
+    service(displayServiceName)는 2026-09-22 정책 전환 이후 ③ 인텐트 후보를 바꾸지 않는다 ·
+    모든 출처가 같은 68개를 받는다. 값은 ①③ 콜의 user 입력에만 투영되므로 인자는 남겨 두되
+    후보·분기 용도로는 쓰지 않는다(파트너 전환 안내 필요).
 
     client_model 은 계열 래퍼(gpt·gemini·claude·solar·default)를 고르는 데만 쓴다. 모르는
     이름이면 조용히 default 로 수렴하고 실패하지 않는다(`meta_prompts.family_of` 의 원래 동작)."""
@@ -159,7 +159,6 @@ def get_extraction_prompt(call: str = "", service: str = "", client_model: str =
         "call_order": list(MP.CALLS),
         "requires": _requires(template),
         "service": svc,
-        "service_resolved": D._service_key(svc),
         "client_model": model,
         "family": family,
         "version": IMETA_VERSION,
@@ -200,13 +199,11 @@ def get_extraction_prompt(call: str = "", service: str = "", client_model: str =
 #                    우리는 근거를 볼 수 없으므로 판단하지 않고 자리만 알린다.
 PAIR_RULES = (
     ("포토·영상 중심", "그래픽·인포그래픽", "violation", ("CALL_RULES", "intent"),
-     "'그래픽·인포그래픽'·(콘텐츠뷰)'카드뉴스·인포그래픽'과는 배타로 본다"),
+     "'그래픽·인포그래픽'·'카드뉴스·인포그래픽'과는 배타로 본다"),
     ("포토·영상 중심", "카드뉴스·인포그래픽", "violation", ("CALL_RULES", "intent"),
-     "'그래픽·인포그래픽'·(콘텐츠뷰)'카드뉴스·인포그래픽'과는 배타로 본다"),
-    ("실용 정보", "생활·실용정보", "violation", ("INTENT_VALUE_DEFS", "실용 정보"),
-     "콘텐츠뷰의 '생활·실용정보'와 같이 부여하지 않는다"),
+     "'그래픽·인포그래픽'·'카드뉴스·인포그래픽'과는 배타로 본다"),
     ("후기·리뷰·비평", "리뷰·분석", "check", ("INTENT_VALUE_DEFS", "후기·리뷰·비평"),
-     "미부여: 보거나 써 보지 않고 정보·스펙·시장 관점으로만 쓴 분석(티스토리 '리뷰·분석' · 다른 서비스에서는 심층 분석 등 해당 범용값) · 같은 근거로 두 값을 중복 부여하지 않음"),
+     "체험 근거 없는 정보 분석 제외('리뷰·분석'과 갈린다)"),
     ("정보 공유", "가이드·튜토리얼", "check", ("INTENT_VALUE_DEFS", "정보 공유"),
      "같은 근거로 셋을 중복 부여하지 않는다"),
     ("정보 공유", "실용 정보", "check", ("INTENT_VALUE_DEFS", "정보 공유"),
@@ -254,35 +251,22 @@ def _issue(code: str, kind: str, field: str, value, message: str, rule: str = ""
     return it
 
 
-def _known_intents() -> tuple:
-    """(서비스 후보 밖까지 포함한 전 사전값, {값: [소유 서비스…]}).
+def _check_intent(values: list) -> list:
+    """후보는 전 출처 공통 68개(2026-09-22). 서비스별 허용 목록과 intent_not_in_service 위반은 폐지했다.
 
     사전은 런타임 오버라이드(dictionaries.apply_profile)로 바뀔 수 있어 import 시점에 굳히지
     않는다 · 굳히면 프로필을 적용한 팀에서 멀쩡한 값이 '모르는 값' 으로 나간다."""
-    owners: dict = {}
-    for svc, vals in (D.INTENT_CATEGORIES_BY_SERVICE or {}).items():
-        for v in vals:
-            owners.setdefault(v, []).append(svc)
-    known = (set(D.INTENT_CATEGORIES_UNIVERSAL) | set(D.INTENT_FORM_UNIVERSAL)
-             | set(owners) | set(D.INTENT_VALUE_DEFS))
-    return known, owners
-
-
-def _check_intent(values: list, service: str) -> list:
-    pool = set(D.intent_categories_for(service))
-    known, owners = _known_intents()
-    svc_key = D._service_key(service)
+    pool = set(D.intent_categories())
     out = []
     for v in values:
         if v in pool:
             continue
-        if v in known:
-            own = owners.get(v) or []
-            where = (" · 이 값은 %s 서비스 후보입니다" % "·".join(own)) if own else ""
+        retired = D.INTENT_RETIRED.get(v)
+        if retired:
             out.append(_issue(
-                "intent_not_in_service", "violation", "intent", v,
-                "사전에 있는 값이지만 이 서비스(%s)의 후보가 아닙니다%s"
-                % (svc_key or "미정의 → 범용 분류값만", where), INTENT_ONLY_RULE))
+                "intent_retired", "violation", "intent", v,
+                "2026-09-22 통합으로 폐기된 값입니다 · 원문을 다시 보고 %s 중에서 재판정하세요"
+                % " 또는 ".join(retired), INTENT_ONLY_RULE))
         else:
             out.append(_issue(
                 "intent_unknown", "violation", "intent", v,
@@ -388,7 +372,7 @@ def _as_list(field: str, raw) -> tuple:
 def validate_result(result=None, service: str = "", team=None) -> dict:
     """클라이언트가 만든 메타를 **프리즘 규칙으로** 검사한다. 판정하지 않는다.
 
-    보는 것: 허용값 밖의 값 · 그 서비스에 없는 값 · 형식 오류 · 정의상 함께 못 쓰는 조합 ·
+    보는 것: 허용값 밖의 값 · 2026-09-22 통합으로 폐기된 값 · 형식 오류 · 정의상 함께 못 쓰는 조합 ·
     계약에 적힌 수량·표기 규칙. 전부 사전과 계약 원문에서 기계적으로 갈리는 것뿐이다.
 
     보지 않는 것: 값이 콘텐츠에 맞는지. 우리는 그 콘텐츠를 읽지 않았고 추출을 돌리지도 않았다.
@@ -428,7 +412,7 @@ def validate_result(result=None, service: str = "", team=None) -> dict:
     if "intent" in result:
         checked.append("intent")
         vals, bad = _as_list("intent", result.get("intent"))
-        items += bad + _check_intent(vals, svc) + _check_pairs(vals)
+        items += bad + _check_intent(vals) + _check_pairs(vals)
 
     if "content_category" in result:
         checked.append("content_category")
@@ -439,6 +423,6 @@ def validate_result(result=None, service: str = "", team=None) -> dict:
                                 "최소 1개(대표 도메인)는 부여해야 합니다", CATEGORY_MIN_RULE))
 
     from . import prismtools as PT               # 봉투 규칙 단일 원천(순환 회피: 함수 안 import)
-    return PT.envelope(items, ISSUE_LIMIT, service=svc, service_resolved=D._service_key(svc),
+    return PT.envelope(items, ISSUE_LIMIT, service=svc,
                        checked_fields=checked, version=IMETA_VERSION,
                        note=NOT_A_VERDICT, kinds=CHECK_MEANING)

@@ -45,8 +45,8 @@ def verify_item(im, content) -> list:
     # entities: 상한 없음 · 핵심만(2026-07-08 정책 전환 · 프롬프트가 통제) — 빈 값만 정제
     im.entities = [e for e in im.entities if isinstance(e, str) and e.strip()]
 
-    # intent(분류값): 사전 화이트리스트
-    valid_intents = set(D.intent_categories_for(content.displayServiceName))
+    # intent(분류값): 공통 68개 화이트리스트(2026-09-22 · 출처로 후보를 자르지 않는다)
+    valid_intents = set(D.intent_categories())
     clean_int = []
     for c in im.intent or []:
         if c in valid_intents:

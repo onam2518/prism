@@ -89,8 +89,8 @@ TAXONOMY_KINDS = ("category", "intent", "reason", "intake_policy", "legal_type")
 def get_taxonomy(kind: str, service: str = "", team=None) -> dict:
     """프리즘이 쓰는 분류 체계와 허용값. 외부(트랙 B)에 가장 값어치 있는 도구다.
 
-    intent 는 서비스마다 후보가 다르므로 service 를 받는다(미지정이면 범용만).
-    정의문은 INTENT_VALUE_DEFS 단일 원천 — 검수 화면·추출 프롬프트와 같은 문장이다."""
+    intent 후보는 2026-09-22 부터 전 출처 공통 68개다(service 는 응답 echo 전용).
+    정의문은 INTENT_VALUE_DEFS 단일 원천 · 검수 화면·추출 프롬프트와 같은 문장이다."""
     kind = (kind or "").strip()
     if kind not in TAXONOMY_KINDS:
         return {"error": f"kind 는 {' · '.join(TAXONOMY_KINDS)} 중 하나입니다"}
@@ -99,8 +99,7 @@ def get_taxonomy(kind: str, service: str = "", team=None) -> dict:
         vals = [{"key": t, "label": t, "desc": getattr(D, "IAB_TIER1_DESC", {}).get(t, ""),
                  "children": list((D.CONTENT_CATEGORY_TIER2.get(t) or []))} for t in D.IAB_TIER1]
     elif kind == "intent":
-        names = (D.intent_categories_for(service) if service
-                 else list(D.INTENT_CATEGORIES_UNIVERSAL) + list(D.INTENT_FORM_UNIVERSAL))
+        names = D.intent_categories()
         vals = [{"key": n, "label": n, "desc": D.INTENT_VALUE_DEFS.get(n, "")} for n in names]
     elif kind == "reason":
         names = getattr(D, "QUALITY_META_NAMES", {})
@@ -228,8 +227,7 @@ def get_examples(kind: str = "", values=None, service: str = "", limit=None, tea
     items, unknown = [], []
     if kind == "intent":
         defs = D.INTENT_VALUE_DEFS
-        pool = (D.intent_categories_for(service) if service
-                else list(D.INTENT_CATEGORIES_UNIVERSAL) + list(D.INTENT_FORM_UNIVERSAL))
+        pool = D.intent_categories()
         keys = []
         for v in (asked or pool):
             # 특정 값을 콕 집어 물으면 서비스 후보 밖이어도 답한다(정의가 있는 값이면 실재한다).
@@ -259,14 +257,14 @@ TOOLS = {
         "scope": "both",
         "title": "분류 체계 조회",
         "desc": "프리즘이 쓰는 분류 체계와 허용값을 준다. 카테고리·인텐트·품질 사유·인입 정책·법령 유형. "
-                "인텐트는 서비스마다 후보가 다르므로 service 를 함께 넣으면 그 서비스 것만 준다.",
+                "인텐트 후보는 2026-09-22 부터 출처와 무관한 공통 68개다(service 를 넣어도 줄지 않는다).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "kind": {"type": "string", "enum": list(TAXONOMY_KINDS),
                          "description": "보고 싶은 체계 하나"},
                 "service": {"type": "string",
-                            "description": "서비스명(뉴스·연예·스포츠·티스토리 등) · 인텐트일 때만 의미 있음"},
+                            "description": "서비스명(뉴스·연예·스포츠·티스토리 등) · 응답 echo 전용이며 후보를 바꾸지 않는다"},
             },
             "required": ["kind"],
             "additionalProperties": False,
@@ -306,9 +304,9 @@ TOOLS = {
                 "kind": {"type": "string", "enum": list(EXAMPLE_KINDS),
                          "description": "intent=인텐트 · category=콘텐츠 카테고리(Tier2)"},
                 "values": {"type": "array", "items": {"type": "string"},
-                           "description": "궁금한 값들(비우면 kind·service 의 후보 전체)"},
+                           "description": "궁금한 값들(비우면 kind 의 후보 전체)"},
                 "service": {"type": "string",
-                            "description": "서비스명 · 인텐트일 때만 의미 있음(그 서비스 후보로 좁힌다)"},
+                            "description": "서비스명 · 응답 echo 전용이며 후보를 좁히지 않는다(2026-09-22 공통 사전)"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": EXAMPLE_LIMIT_MAX,
                           "description": f"가져올 수(기본 {EXAMPLE_LIMIT_DEFAULT} · 최대 {EXAMPLE_LIMIT_MAX})"},
             },
@@ -338,8 +336,8 @@ TOOLS = {
                          "description": "받을 콜 하나(순차 4콜 중)"},
                 "service": {"type": "string",
                             "description": "displayServiceName(뉴스·연예·스포츠·티스토리 등) · "
-                                           "인텐트 후보가 서비스마다 달라 프롬프트가 바뀐다 · "
-                                           "미정의 값이면 범용 분류값만 담긴다"},
+                                           "③ 인텐트 콜의 입력에만 실린다 · 2026-09-22 부터 "
+                                           "후보 68개는 서비스와 무관하게 같다"},
                 "client_model": {"type": "string",
                                  "description": "돌릴 모델 이름(선택 · 예: gpt-5 · gemini-3-pro) · "
                                                 "모델 계열에 맞는 래퍼로 조립한다 · 모르는 이름이면 범용 래퍼"},
@@ -354,7 +352,7 @@ TOOLS = {
         # 내부 메타는 실제 파이프라인과 검수 화면을 지나므로 이 검사가 하는 일이 이미 끝나 있다.
         "scope": "external",
         "title": "결과 규칙 검증",
-        "desc": "그쪽에서 만든 메타를 프리즘 규칙으로 검사한다. 사전 밖의 값·그 서비스에 없는 값·"
+        "desc": "그쪽에서 만든 메타를 프리즘 규칙으로 검사한다. 사전 밖의 값·폐기된 값·"
                 "형식 오류·정의상 함께 못 쓰는 조합·계약 수량 규칙만 본다. "
                 "**품질을 판정하지 않는다** · 등급·점수를 내지 않으며, 위반 0건은 '규칙 위반 없음' 이지 "
                 "'정확하다' 는 뜻이 아니다(값이 콘텐츠에 맞는지는 검사 대상이 아니다).",
@@ -365,8 +363,8 @@ TOOLS = {
                            "description": "검사할 메타 JSON(키: summary · entities · intent · "
                                           "content_category · 있는 필드만 검사한다)"},
                 "service": {"type": "string",
-                            "description": "그 콘텐츠의 displayServiceName · 서비스 전용 인텐트를 "
-                                           "가리는 데 쓴다"},
+                            "description": "그 콘텐츠의 displayServiceName · 응답 echo 전용이며 "
+                                           "인텐트 후보를 가르지 않는다(2026-09-22 공통 사전)"},
             },
             "required": ["result", "service"],
             "additionalProperties": False,

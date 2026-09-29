@@ -148,10 +148,11 @@ def ci_overlap(p_a: float, n_a: int, p_b: float, n_b: int) -> bool:
     lo_b, hi_b = Q.binomial_ci(p_b or 0.0, int(n_b or 0))
     return lo_a <= hi_b and lo_b <= hi_a
 
-def _clean_intent(vals, display_name: str) -> tuple:
-    """골든 기대 인텐트를 사전(D.intent_categories_for) 화이트리스트로 정제.
+def _clean_intent(vals) -> tuple:
+    """골든 기대 인텐트를 공통 사전(D.intent_categories) 화이트리스트로 정제.
     반환 (통과값 리스트, 드롭된 원값 리스트). 표기 흔들림('속보 · 단신')은 agents 의
-    _canon 과 같은 규칙으로 흡수하고, 사전에 없는 값만 떨군다(오타 조용한 유입 차단)."""
+    _canon 과 같은 규칙으로 흡수하고, 사전에 없는 값만 떨군다(오타 조용한 유입 차단).
+    출처별 허용 목록은 2026-09-22 정책 전환으로 폐지 · 폐기 7개 값은 호출부가 재판정 안내로 가른다."""
     import re as _re
     from . import dictionaries as D
 
@@ -163,7 +164,7 @@ def _clean_intent(vals, display_name: str) -> tuple:
         vals = list(vals.values())
     elif not isinstance(vals, (list, tuple)):
         vals = [] if vals is None else [vals]
-    cmap = {canon(v): v for v in D.intent_categories_for(display_name or "")}
+    cmap = {canon(v): v for v in D.intent_categories()}
     ok, bad = [], []
     for x in vals:
         raw = str(x).strip() if x is not None else ""
@@ -204,8 +205,7 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
         exp["entities"] = list(dict.fromkeys(
             s for s in (str(x).strip() for x in ents if x is not None) if s))
         if "intent" in exp:                       # 키가 없으면 그대로 없음(측정 표본 제외 유지)
-            kept, bad = _clean_intent(exp.get("intent"),
-                                      content.get("displayServiceName", ""))
+            kept, bad = _clean_intent(exp.get("intent"))
             exp["intent"] = kept
             if bad:
                 intent_dropped += len(bad)
@@ -215,10 +215,18 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
     _SV._agg_bump()
     out = {"ok": True, "count": n, "skipped": skipped, "merged": bool(merge)}
     if intent_dropped:                            # 오타 조용한 유입 방지: 등록 응답에 경고 노출
+        from . import dictionaries as D
         seen = list(dict.fromkeys(intent_samples))[:10]
         out["intent_dropped"] = intent_dropped
         out["intent_dropped_values"] = seen
         out["warning"] = f"사전에 없는 인텐트 {intent_dropped}건 제외: " + " · ".join(seen)
+        # 2026-09-22 통합으로 폐기된 값은 오타가 아니라 '원문 재판정' 대상이라 따로 알린다.
+        # 자동 치환은 하지 않는다(정책: 조건부 전환값은 원문 재판정 · 단일 별칭 치환 금지).
+        retired = [v for v in seen if v in D.INTENT_RETIRED]
+        if retired:
+            out["intent_retired_values"] = retired
+            out["warning"] += " · 그중 폐기 값(원문 재판정 필요): " + " · ".join(
+                f"{v} → {' 또는 '.join(D.INTENT_RETIRED[v])}" for v in retired)
     return out
 
 def golden_list(team=None) -> dict:
@@ -728,9 +736,6 @@ def compose_prompts(team=None, model: str = "") -> dict:
             calls[call] = {"model": m, "system": PR.call_system(_c("뉴스"), call, m)}
         except Exception:
             pass
-    if "intent" in calls:
-        m = calls["intent"]["model"]
-        calls["intent"]["by_service"] = {s: PR.call_system(_c(s), "intent", m) for s in D.INTENT_CATEGORIES_BY_SERVICE}
     payload = {"version": ver, "ts": time.time(), "model": base_model,
                "quality_version": PR.quality_version(), "calls": calls,
                "learned": dict(PR.LEARNED), "learned_by_model": dict(PR.LEARNED_BY_MODEL)}
@@ -832,7 +837,7 @@ def prompt_files(payload: dict, title: str) -> dict:
     readme = [f"# 프리즘 추출 프롬프트 · {title}", "", f"- {meta}",
               "- 실행 순서: 품질(등급·사유) 판정 → ① 리드문 → ② 엔티티 → ③ 인텐트 → ④ 카테고리 · 품질 등급은 메타 실행 조건이 아니고(2026-09-08 정책) 리드문이 비면 ②~④ 생략",
               "- 파일 하나 = 호출 하나 · 첫 줄이 원천·모델·버전, 그 아래 system 과 user 템플릿이 구분선(━━━━━━━━)으로 나뉘어 들어 있습니다",
-              "- 품질과 ③ 인텐트는 콘텐츠의 서비스에 따라 일부가 달라집니다 · 공통부의 {서비스 분기} 자리에 파일 아래 서비스 블록 중 하나가 들어가면 그 서비스의 실제 프롬프트가 됩니다",
+              "- 품질 판정만 콘텐츠의 서비스 묶음에 따라 일부가 달라집니다 · 공통부의 {서비스 분기} 자리에 파일 아래 서비스 블록 중 하나가 들어가면 그 묶음의 실제 프롬프트가 됩니다 · ③ 인텐트는 2026-09-22 부터 전 출처 공통 하나입니다",
               "- user 템플릿은 현재 코드 기준 자리표 · 품질의 few-shot 예시는 실행 시 모델별로 붙어 여기엔 없습니다", "",
               "| 파일 | 호출 | 모델 |", "|---|---|---|"] + [f"| {n} | {k} | {m} |" for n, k, m in rows]
     return {"README.md": "\n".join(readme) + "\n", **files}
@@ -1487,14 +1492,13 @@ def handoff_bundle(team=None):
         "iab_tier1": list(D.IAB_TIER1),
         "tier2": {k: list(v) for k, v in (getattr(D, "CONTENT_CATEGORY_TIER2", {}) or {}).items()},
         "intent_universal": list(getattr(D, "INTENT_CATEGORIES_UNIVERSAL", []) or []),
-        # 범용②(형식·전달 8종)는 서비스와 무관하게 항상 프롬프트에 주입된다
-        # (meta_prompts.intent_dictionary_text) → 빠지면 '포토·영상 중심' 등이 라벨 공간에서
-        # 통째로 사라져 학습 재현이 안 된다.
         "intent_form_universal": list(getattr(D, "INTENT_FORM_UNIVERSAL", []) or []),
-        "intent_by_service": {k: list(v) for k, v in
-                              (getattr(D, "INTENT_CATEGORIES_BY_SERVICE", {}) or {}).items()},
-        # 값 정의문도 재현 조건: 서비스 분기 값은 설명이 프롬프트에 함께 들어가고(동 함수),
-        # 범용①·②는 검수 화면 정의(/dict intentDefs)와 같은 병합본이 라벨 판단 근거였다.
+        # 2026-09-22 전환: 후보 68개 전부가 출처와 무관하게 프롬프트에 주입된다
+        # (meta_prompts.intent_dictionary_text) → 하나라도 빠지면 라벨 공간이 달라져 재현이 안 된다.
+        "intent_common": list(getattr(D, "INTENT_CATEGORIES_COMMON", []) or []),
+        "intent_retired": {k: list(v) for k, v in (getattr(D, "INTENT_RETIRED", {}) or {}).items()},
+        # 값 정의문도 재현 조건: 정의가 프롬프트에 함께 들어가고(동 함수),
+        # 검수 화면 정의(/dict intentDefs)와 같은 원천이 라벨 판단 근거였다.
         "intent_defs": dict(getattr(D, "INTENT_VALUE_DEFS", {}) or {}),
     }, ensure_ascii=False, indent=2)
     snap = _SV._report_get("prompt_snapshot_latest", team)

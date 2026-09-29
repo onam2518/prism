@@ -191,7 +191,7 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     prior["entities"] = ents
 
     # ③ 인텐트: 사전 표기 정확 일치만 통과, 전량 드롭이면 1회 재요청
-    valid_intents = set(D.intent_categories_for(content.displayServiceName))
+    valid_intents = set(D.intent_categories())
     canon_map = {_canon(v): v for v in valid_intents}
 
     def _match_intents(vals):
