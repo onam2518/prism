@@ -80,6 +80,10 @@
           </div>
         </div>
         <div x-show="dictData && dictTab === 'policy'" class="space-y-4">
+          <ul class="ds-bullets hintbox" style="padding:var(--ds-space-3) var(--ds-space-4)">
+            <li>기획서 재편(2026-09-22)으로 <b>품질 메타</b>와 <b>법령(클린) 메타</b>는 후속 기능 메타로 분리됐습니다 · 1차 발행 범위는 아이템 메타 4종(리드문·엔티티·인텐트·카테고리)입니다.</li>
+            <li>프리즘에서는 품질 판정을 계속 돌려 검수·평가에 씁니다 · <b>시스템 설정 › 품질 판정 단계</b>로 끌 수 있고, 끄면 등급이 비어 "판정 없음"으로 집계됩니다(빈 등급은 유통 가능으로 읽지 않습니다) · 법령 필터는 기본 꺼짐이며 켜도 아이템 메타 추출을 막지 않습니다.</li>
+          </ul>
           <div class="layout-grid--two">
             <div class="panel"><div class="panel-hd"><b>품질 메타</b><span class="meta tnum" x-text="dictData?Object.keys(dictData.qualityMetas).length+'종':''"></span></div>
               <div class="overflow-auto" style="max-height:280px"><table class="ds-table"><thead><tr><th>ID</th><th>메타명 · 정의</th><th>적용</th><th></th></tr></thead><tbody>
@@ -129,7 +133,8 @@
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:10px">
                 <li>추출은 <b>독립 4호출</b>입니다: ① 리드문 · ② 엔티티 · ③ 인텐트(사전: 전 출처 공통 68개) · ④ 콘텐츠 카테고리(사전: Tier1/Tier2 + 구분 기준). 네 호출은 제목·본문에서 각각 추출하며, 하나가 비거나 실패해도 나머지는 그대로 실행합니다.</li>
-                <li>호출 사이 <b>기계 검증</b>: 사전 불일치 값 드롭 · 전량 드롭 시 1회 재요청 · 엔티티 1~3개 강제.</li>
+                <li>호출 뒤 <b>기계 검증</b>: 사전 불일치 값 드롭 · 전량 드롭 시 1회 재요청 · 엔티티는 개수 상한 없이 대표성 순(복합 명사는 원형 유지).</li>
+                <li>모델 입력은 <b>제목·본문</b>만입니다(서비스명은 수집·저장에만 유지) · 발행 키(item_unique_key·service_code·cp_type)는 모델에 보내지 않고 발행·라우팅 정보로 함께 저장합니다.</li>
               </ul>
               <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
                 <template x-for="cl in (cfg.metaCalls||[])" x-bind:key="'ct'+cl">
