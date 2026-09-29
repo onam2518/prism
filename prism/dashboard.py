@@ -663,10 +663,10 @@ function openD(i){
     ${qv&&qv.evidence?`<div class="kv"><b>근거</b> ${esc(qv.evidence)}</div>`:''}`);
   h+='<div class="flowarrow">↓</div>';
 
-  // 4. Item (G 또는 YELLOW)
+  // 4. Item (등급 무관 전건 · 2026-09-08 게이트 폐지)
   if(im){
     const ic=find(/IntentCategory/), ec=find(/EntityCategory/);
-    h+=stage('ok','④ 아이템 메타 (intent→entities→categories)','finalGrade=G',
+    h+=stage('ok','④ 아이템 메타 (요약·엔티티·인텐트·카테고리)','등급 무관 전건',
      `<div class="kv"><b>intent</b> ${esc(im.intent)}</div>
       <div class="kv"><b>entities</b> ${(im.entities||[]).map(x=>`<span class="tag">${esc(x)}</span>`).join('')}
         ${vbadge('Agent')}</div>
@@ -677,7 +677,7 @@ function openD(i){
         `<div class="kv">· ${esc(k)} → ${esc(v)}</div>`).join('')}`);
   }else{
     h+=stage('skip','④ 아이템 메타','SKIP',
-     '<div class="kv">finalGrade=R(또는 image_only) → 아이템 메타 생략(유통 불가)</div>');
+     '<div class="kv">이미지 전용 트랙 → 별도 파이프라인(품질 등급은 실행 조건이 아니다 · 2026-09-08)</div>');
   }
   h+='<div class="flowarrow">↓</div>';
 

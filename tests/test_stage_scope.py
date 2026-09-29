@@ -47,5 +47,43 @@ class TestServiceGroup(unittest.TestCase):
                 self.assertNotIn(m, active, f"{name} · {m}")
 
 
+def _legal_red_mock(system, user, tag):
+    """법령 대표 등급 RED(스코어 100)를 만드는 결정론 mock."""
+    from prism import harness as H
+    if tag == "legal_route":
+        return {"harm_types": [{"code": "fraud", "confidence": 0.9}]}
+    if tag.startswith("legal:"):
+        return {"a": 40, "b": 30, "c": 30, "evidence": "mock"}
+    return H._mock_generator(system, user, tag)
+
+
+def _mock_llm(fn=None):
+    from prism.llm import LLMClient
+    llm = LLMClient(model="mock-model", api_key="", mock=True)
+    llm._mock_fn = fn
+    return llm
+
+
+CONTENT = {"displayServiceName": "뉴스", "title": "삼성전자 노사 협상 결렬",
+           "body": "삼성전자 노사가 협상에 이르지 못해 노조가 총파업을 예고했다. " * 3}
+
+
+class TestLegalRedKeepsItemMeta(unittest.TestCase):
+    """4-8: 법령 최고 위험이어도 아이템 메타 4종은 추출한다(위키 364314733 · 2026-09-08)."""
+
+    def test_item_meta_survives_legal_red(self):
+        from prism import harness as H
+        out = H.run(CONTENT, _mock_llm(_legal_red_mock), H.Methodology(legal=True))
+        self.assertEqual(out["legal_meta"]["representative_grade"], "RED")
+        im = out["item_meta"]
+        self.assertIsNotNone(im, "법령 RED 에서 아이템 메타가 통째로 비었다(구 halt 회귀)")
+        self.assertTrue(im.get("summary"))
+        self.assertTrue(im.get("entities"))
+        self.assertTrue(im.get("intent"))
+        self.assertTrue(im.get("content_category"))
+        # 유통 차단은 등급으로 한다(품질 판정은 차단 표식으로 대체 · 추가 호출 없음)
+        self.assertEqual(out["quality_meta"]["finalGrade"], "R")
+
+
 if __name__ == "__main__":
     unittest.main()

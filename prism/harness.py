@@ -9,7 +9,8 @@
 
 흐름:  Dispatch → Legal → Quality → Item  → Assemble
        (no-LLM)  (opt)    (LLM)     (LLM)    (no-LLM)
-각 스테이지는 공유 컨텍스트(HCtx)를 읽고 쓴다. legal RED 면 halt → 이후 스테이지 skip.
+각 스테이지는 공유 컨텍스트(HCtx)를 읽고 쓴다. legal RED 는 품질 판정만 대체하고
+아이템 메타 추출은 그대로 간다(2026-09-08 정책 · 유통 차단은 등급으로).
 """
 from __future__ import annotations
 
@@ -81,7 +82,6 @@ class HCtx:
     verdicts: list = field(default_factory=list)
     fallbacks: list = field(default_factory=list)
     trace: object = None
-    halt: bool = False                 # legal RED → 조기 종료
     pred_v: object = None              # 임베딩 2차의견(YELLOW 판단 캐리)
     pred_c: object = None
     t0: float = 0.0                    # 실행 시작 시각(wall-clock 지연 측정 · run() 이 설정)
@@ -96,7 +96,7 @@ def st_dispatch(ctx: HCtx):
 
 
 def st_legal(ctx: HCtx):
-    """[옵션] 법령 스테이지. RED → 즉시 차단(halt)."""
+    """[옵션] 법령 스테이지. RED → 유통 차단 표식(품질 판정 대체)."""
     if not ctx.methodology.legal or ctx.routing.content_track == "image_only":
         return
     lm, lres = A.run_legal(ctx.llm, ctx.content)
@@ -104,14 +104,19 @@ def st_legal(ctx: HCtx):
     ctx.results += [r for r in lres if hasattr(r, "cost_usd")]
     ctx.fallbacks += V.verify_legal(lm)
     if lm.representative_grade == "RED":
+        # 2026-09-08 정책(364314733 "메타 추출 및 적재"): 법령 등급은 아이템 메타 4종의
+        # 선행 조건이 아니다. 종전에는 여기서 파이프라인을 끊어(halt) 최고 위험 건의 원천
+        # 메타를 통째로 버렸다. 이제 품질 판정만 차단 표식으로 대체하고 추출은 끝까지 돌린다.
+        # 유통 노출은 이 등급으로 유통 단계에서 거른다(감사 4-8).
         ctx.qm = _blocked_quality()
-        ctx.fallbacks.append("legal RED → 전체 차단")
-        ctx.halt = True
+        ctx.fallbacks.append("legal RED → 유통 차단 · 아이템 메타는 계속 추출")
 
 
 def st_quality(ctx: HCtx):
     """품질 메타(+ YELLOW: 저신뢰 → 사람 검수). 임베딩 사전필터 하이브리드 에스컬레이션."""
     m = ctx.methodology
+    if ctx.qm is not None:            # 법령 RED 차단 표식이 이미 있다 → 품질 호출 생략
+        return
     if ctx.routing.content_track == "image_only":
         ctx.qm = QualityMeta(finalGrade="G", reasons=[])
         return
@@ -240,8 +245,6 @@ def run(content_dict: dict, llm, methodology: Methodology = None, *,
                trace=Trace(prompt_version=f"{P.quality_version()}, {P.IMETA_VERSION}"),
                t0=time.time())
     for key in m.stages:
-        if ctx.halt:
-            break
         if m.parallel_quality_item and key == "quality" and "item" in m.stages:
             _run_quality_item_parallel(ctx)
             continue
@@ -295,7 +298,9 @@ def _assemble(ctx: HCtx) -> dict:
 
     주의: emb 는 배치 공유 클라이언트라 per-content 누적비용을 여기 더하면 중복계상된다.
     임베딩 비용은 호출측(cli)에서 배치 단위로 1회만 합산한다 → 여기선 LLM 비용만."""
-    # 법령 평가 실패(호출 장애) → 깨끗한 자동 G 로 유통하지 않고 사람 검수로 보류(fail-open 금지)
+    # 법령 평가 실패(호출 장애) → 깨끗한 자동 G 로 유통하지 않고 사람 검수로 보류(fail-open 금지).
+    # 감사 3-5(2026-09-29): 검수·제재 결과를 유통에 어떻게 반영할지는 회원 조직과 협의해
+    # 정한다(274040130 · 2026-09-22 수정). 협의 전까지 이 보류 계약은 그대로 둔다.
     if getattr(ctx.legal_meta, "failed", False) and ctx.qm and ctx.qm.finalGrade == "G" and ctx.qm.review != "yellow":
         ctx.qm.review = "yellow"
         ctx.qm.review_reason = ctx.qm.review_reason or "법령 평가 호출 실패 · 판정 보류"

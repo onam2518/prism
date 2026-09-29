@@ -1,7 +1,7 @@
 """토픽 도메인 (serve 에서 분리 · 라우트 분리 4차).
 
 토픽 빌드(자동·사용자 정의)·스튜디오 액션(save/delete/settings/preview/suggest/exclude)·
-중복 감지(similar_topics)·성과 스냅샷 시계열·드릴다운·타겟 페르소나를 담당한다.
+중복 감지(similar_topics)·성과 스냅샷 시계열·드릴다운을 담당한다.
 HTTP 디스패치는 serve 가 유지.
 
 컴포지션: 서버 환경(스토어·결과 뷰·집계 캐시·리포트 영속·LLM 라우팅·mock 플래그)은
