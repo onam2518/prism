@@ -66,20 +66,22 @@ def priority_rules_text(active_metas) -> str:
     return " / ".join(lines)
 
 
+# 법령 위반 유형 13종 · 라벨과 근거 법령 표기는 274040185 '위반 유형(요약)' 표 원문(VL-01~VL-13).
+# 코드값(키)은 그 표의 괄호 표기와 같아 바꾸지 않는다 · 저장된 판정 결과가 이 키로 적재돼 있다.
 LEGAL_HARM_TYPES = {
-    "defamation":           {"label": "명예훼손", "article": "형법 §307"},
+    "defamation":           {"label": "명예훼손", "article": "형법 §307·§309, 정보통신망법 §70"},
     "insult":               {"label": "모욕", "article": "형법 §311"},
-    "obscenity":            {"label": "음란물", "article": "정보통신망법 §44-7"},
-    "sexual_violence":      {"label": "성폭력(촬영물 등)", "article": "성폭력처벌법 §14"},
-    "privacy_violation":    {"label": "사생활 침해", "article": "개인정보보호법"},
-    "stalking":             {"label": "스토킹", "article": "스토킹처벌법"},
-    "hate_speech":          {"label": "혐오표현", "article": "포괄 규정(개별 조문 없음)"},
-    "copyright":            {"label": "저작권 침해", "article": "저작권법"},
-    "fraud":                {"label": "사기", "article": "형법 §347"},
-    "election_interference": {"label": "선거 개입", "article": "공직선거법"},
-    "ad_fraud":             {"label": "허위·과장 광고", "article": "표시광고법"},
-    "gambling":             {"label": "도박 개장/유도", "article": "형법 §247"},
-    "drug_weapon":          {"label": "마약·무기 거래", "article": "마약류관리법 등"},
+    "obscenity":            {"label": "음란물 유포", "article": "정보통신망법 §44의7①-1, 형법 §243"},
+    "sexual_violence":      {"label": "성폭력 촬영물·유포", "article": "성폭력처벌법 §14"},
+    "privacy_violation":    {"label": "개인정보 침해", "article": "개인정보보호법 §71"},
+    "stalking":             {"label": "스토킹·괴롭힘", "article": "스토킹처벌법 §18, 정보통신망법 §44의7①-3"},
+    "hate_speech":          {"label": "차별·혐오 조장", "article": "정보통신망법 §44의7①-2의2"},
+    "copyright":            {"label": "저작권 침해", "article": "저작권법 §136"},
+    "fraud":                {"label": "사기·허위 정보", "article": "형법 §347, 정보통신망법 §44의7②"},
+    "election_interference": {"label": "선거 관련 위반", "article": "공직선거법 §250·§230"},
+    "ad_fraud":             {"label": "기만적 광고", "article": "표시광고법 §3, 신문법 §6③"},
+    "gambling":             {"label": "사행성 조장", "article": "정보통신망법 §44의7①-6, 형법 §247"},
+    "drug_weapon":          {"label": "마약류·무기 제조 정보", "article": "정보통신망법 §44의7①-6의3·4"},
 }
 
 # 스코어 = A(구성요건 0~40) + B(제재 0~30) + C(맥락 0~30)
