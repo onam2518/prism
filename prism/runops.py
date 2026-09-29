@@ -503,39 +503,20 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
     return result
 
 
-def build_template_csv() -> bytes:
-    """엑셀 일괄 입력용 CSV 템플릿(UTF-8 BOM → Excel 한글 정상). 헤더+예시 2행.
-
-    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문·원문 링크·이미지 URL·발행 키 3열.
-    제목·본문이 필수(원문 링크·이미지 URL 은 선택 · 이미지는 쉼표로 여러 개, 게시판 #9).
-    발행 키(item_unique_key·service_code·cp_type)도 선택 · 원문 그대로 보존한다(511607345).
-    """
-    import csv
-    import io
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크", "이미지 URL",
-                "item_unique_key", "service_code", "cp_type"])
-    w.writerow(["뉴스", "삼성전자 노조 임금 협상 결렬",
-                "중앙노동위 조정 불성립",
-                "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다.",
-                "https://v.daum.net/v/20260101000000000",
-                "https://img1.daumcdn.net/example/photo1.jpg",
-                "hamny-20260619181200992", "contentview", "media"])
-    w.writerow(["스포츠", "손흥민 시즌 10호골",
-                "",
-                "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다.",
-                "", "", "", "", ""])
-    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+# 메타 포함 템플릿의 추가 열(외부 파이프라인 결과 검증용 · with_meta 업로드). 헤더는
+# ingest.ALIASES 의 메타 별칭과 일치 · 값 구분자는 가운뎃점·쉼표·세미콜론·파이프.
+TEMPLATE_META_HEADERS = ["리드문", "엔티티", "인텐트", "콘텐츠 카테고리", "등급", "사유"]
+_TEMPLATE_META_ROWS = [
+    ["삼성전자와 노조의 임금 협상이 중앙노동위원회 조정에서 불성립으로 끝났다.",
+     "삼성전자 · 중앙노동위원회", "속보·사건 추적",
+     "Business and Finance / Industries", "G", ""],
+    ["토트넘이 홈에서 이겼고 손흥민이 시즌 10호골을 넣었다.",
+     "손흥민 · 토트넘", "경기 결과·리뷰", "Sports / Soccer (International)", "G", ""],
+]
 
 
-def build_template_xlsx() -> bytes:
-    """엑셀 일괄 입력용 .xlsx 템플릿(의존성 0: zipfile+xml, inline string).
-    헤더·예시는 CSV 템플릿과 동일 · ingest._read_xlsx 와 왕복 호환."""
-    import io
-    import zipfile
-    from xml.sax.saxutils import escape
-
+def _template_rows(with_meta: bool = False) -> list:
+    """입력 템플릿의 헤더 + 예시 2행. with_meta=True 면 메타 열을 뒤에 붙인다."""
     rows = [["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크", "이미지 URL",
              "item_unique_key", "service_code", "cp_type"],
             ["뉴스", "삼성전자 노조 임금 협상 결렬", "중앙노동위 조정 불성립",
@@ -546,6 +527,37 @@ def build_template_xlsx() -> bytes:
             ["스포츠", "손흥민 시즌 10호골", "",
              "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다.",
              "", "", "", "", ""]]
+    if with_meta:
+        for row, extra in zip(rows, [TEMPLATE_META_HEADERS] + _TEMPLATE_META_ROWS):
+            row.extend(extra)
+    return rows
+
+
+def build_template_csv(with_meta: bool = False) -> bytes:
+    """엑셀 일괄 입력용 CSV 템플릿(UTF-8 BOM → Excel 한글 정상). 헤더+예시 2행.
+
+    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문·원문 링크·이미지 URL·발행 키 3열.
+    제목·본문이 필수(원문 링크·이미지 URL 은 선택 · 이미지는 쉼표로 여러 개, 게시판 #9).
+    발행 키(item_unique_key·service_code·cp_type)도 선택 · 원문 그대로 보존한다(511607345).
+    with_meta=True 는 외부 파이프라인 메타 열까지 붙인 '메타 포함' 서식.
+    """
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    for row in _template_rows(with_meta):
+        w.writerow(row)
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+
+def build_template_xlsx(with_meta: bool = False) -> bytes:
+    """엑셀 일괄 입력용 .xlsx 템플릿(의존성 0: zipfile+xml, inline string).
+    헤더·예시는 CSV 템플릿과 동일 · ingest._read_xlsx 와 왕복 호환."""
+    import io
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    rows = _template_rows(with_meta)     # 최대 15열(A~O) · 열 문자는 한 자리로 충분
 
     def cell(r, ci, v):
         col = chr(ord("A") + ci)
@@ -586,9 +598,107 @@ def build_template_xlsx() -> bytes:
     return buf.getvalue()
 
 
+META_IMPORT_MAX = 200                        # 메타째 추가 1회 상한(엑셀 추출 경로와 동일)
+
+
+def _meta_terms(v, ok=None) -> list:
+    """메타 열 한 칸 → 값 목록. 구분자는 쉼표·세미콜론·파이프와 가운뎃점.
+
+    다만 사전 값 자체가 가운뎃점을 품는다('속보·사건 추적'·'경기 결과·리뷰'). 그래서
+    토막이 통째로 유효하면(ok) 가운뎃점으로 더 쪼개지 않는다. 쪼갰다면 모든 인텐트가
+    미등록 오류로 떨어진다. ok 가 없으면(엔티티 등 자유값) 가운뎃점도 구분자."""
+    out = []
+    for t in (x.strip() for x in re.split(r"[,;|]", str(v or ""))):
+        if not t:
+            continue
+        if "·" in t and not (ok and ok(t)):
+            out += [x.strip() for x in t.split("·") if x.strip()]
+        else:
+            out.append(t)
+    return out
+
+
+def import_meta_batch(contents: list, mapping: dict, label: str = "외부", team=None) -> dict:
+    """모델 실행 없이 외부 파이프라인 메타를 초안으로 적재(엑셀·CSV 한정).
+
+    다른 파이프라인(예: 발행 결과)이 이미 뽑아 둔 메타를 프리즘에 올려 검수·정답셋 대조·
+    모델별 비교로 검증하는 경로. out 은 run_pipeline 산출과 같은 모양이라(content_ref·
+    item_meta·quality_meta·trace) 검수 화면·초안 비교·모델별 집계가 그대로 읽는다.
+    trace.model 이 라벨이므로 _is_pending_row 가 '미실행' 으로 보지 않는다 →
+    STEP 2 모델 실행이 이 결과를 덮어쓰지 않는다.
+
+    메타는 신뢰 경계 입력이라 행마다 사전과 대조한다. 오류 행은 저장하지 않고 행 번호·
+    사유를 모아 돌려준다(유효 행은 저장 · 전량 거절 아님)."""
+    from dataclasses import asdict
+
+    from . import dictionaries as D
+    from .schema import Content, ItemMeta, QualityMeta, Trace
+    label = (str(label or "").strip() or "외부")[:40]
+    ok_intents = set(D.intent_categories())
+    truncated = max(0, len(contents) - META_IMPORT_MAX)
+    pairs, items, errors = [], [], []
+    for i, c in enumerate(contents[:META_IMPORT_MAX]):
+        errs = []
+        if not ((c.get("title") or "").strip() and (c.get("body") or "").strip()):
+            errs.append("제목·본문이 모두 있어야 합니다")
+        intent = _meta_terms(c.get("intent"),
+                             lambda t: t in ok_intents or t in D.INTENT_RETIRED)
+        for v in intent:
+            note = D.retired_note(v)
+            if note:
+                errs.append(f"인텐트 '{v}': {note}")
+            elif v not in ok_intents:
+                errs.append(f"인텐트 '{v}' 는 공통 사전(68종)에 없는 값")
+        cats = []
+        for v in _meta_terms(c.get("content_category"),
+                             lambda t: bool(D.normalize_category_list([t]))):
+            hit = D.normalize_category_list([v])
+            if not hit:
+                errs.append(f"카테고리 '{v}' 는 사전 미등록('Tier1 / Tier2' 경로로)")
+            cats += [x for x in hit if x not in cats]
+        grade = str(c.get("finalGrade") or "").strip().upper()
+        if grade not in ("", "G", "R"):
+            errs.append(f"등급 '{grade}' 는 G·R·빈값만 허용")
+            grade = ""
+        # 사유 없음을 뜻하는 normal 은 빈 목록과 같게 본다(파이프라인 산출 관례).
+        reasons = [r for r in _meta_terms(c.get("reasons"), lambda t: t in D.QUALITY_METAS)
+                   if r != D.QUALITY_NORMAL]
+        bad = [r for r in reasons if r not in D.QUALITY_METAS]
+        if bad:
+            errs.append("사유가 품질 메타 ID 가 아님: " + ", ".join(bad))
+        if reasons and grade != "R":
+            errs.append("사유가 있으면 등급은 R")
+        if grade == "R" and not reasons:
+            errs.append("등급 R 은 사유가 1개 이상 필요")
+        if errs:
+            errors.append({"row": i + 2, "title": (c.get("title") or "")[:40],
+                           "reason": " · ".join(errs)})
+            continue                                  # 오류 행은 저장하지 않는다
+        out = {"content_ref": Content.from_dict(c).ref(),
+               "item_meta": asdict(ItemMeta(summary=str(c.get("summary") or "").strip(),
+                                            entities=_meta_terms(c.get("entities")),
+                                            intent=intent, content_category=cats)),
+               "quality_meta": asdict(QualityMeta(finalGrade=grade, reasons=reasons)),
+               "trace": asdict(Trace(prompt_version="external", model=label))}
+        pairs.append((c, out))
+        items.append({"title": (c.get("title") or "")[:80],
+                      "summary": out["item_meta"]["summary"],
+                      "entities": out["item_meta"]["entities"],
+                      "intent": intent, "grade": grade})
+    saved = store_save(pairs, source=label, team=team) if pairs else None
+    if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '적재됨'으로 속이지 않는다
+        return {"error": "저장 실패 · 다시 시도하세요 (" + saved["error"][:120] + ")"}
+    return {"source": "excel", "with_meta": True, "label": label, "mapping": mapping,
+            "count": len(pairs), "saved": len(pairs), "items": items,
+            "errors": errors, "error_count": len(errors),
+            **({"truncated": truncated} if truncated else {})}
+
+
 def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
-              add_only: bool = False) -> dict:
-    """엑셀/CSV 업로드 → ingest 매핑 → (add_only=추가만 | 행마다 추출 → 결과+리포트)."""
+              add_only: bool = False, with_meta: bool = False,
+              model_label: str = "") -> dict:
+    """엑셀/CSV 업로드 → ingest 매핑 → (with_meta=메타째 추가 | add_only=추가만 |
+    행마다 추출 → 결과+리포트)."""
     from . import ingest as ING
     ext = os.path.splitext(filename or "")[1].lower() or ".xlsx"
     cfg = Config.load()
@@ -601,6 +711,8 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
         if not a["ok"]:
             return {"error": a["reason"], "headers": a.get("headers", [])}
         contents = ING.to_contents(tmp)
+        if with_meta:                                # 모델 미실행 · 외부 메타를 초안으로 적재
+            return import_meta_batch(contents, a["mapping"], label=model_label, team=team)
         truncated = max(0, len(contents) - BATCH_ADD_MAX)
         contents = contents[:BATCH_ADD_MAX]
         if add_only:                                 # STEP 1 = 추가만(모델 미실행 · 즉시 완료)

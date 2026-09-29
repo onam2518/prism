@@ -17,6 +17,20 @@ ALIASES = {
               "subject", "타이틀", "head"],
     "body": ["body", "본문", "본문내용", "기사본문", "기사내용", "content", "contents",
              "내용", "내용본문", "text", "article", "기사", "description", "desc", "원문"],
+    # 외부 파이프라인 메타(모델 실행 없이 메타째 추가 전용 · 콘텐츠 열이 아니다).
+    # subtitle·displayServiceName 보다 **앞에** 둬야 '리드문'을 subtitle 의 포함 별칭 '리드'가,
+    # '콘텐츠 카테고리'를 displayServiceName 의 포함 별칭 '카테고리'가 먼저 삼키지 않는다.
+    # ponytail: 단독 헤더 'summary'·'요약'·'카테고리'·'category' 는 종전대로 부제·콘텐츠 그룹으로
+    #   간다(기존 업로드 하위 호환 · 바꾸면 content_hash 가 달라져 중복 행이 생긴다).
+    #   메타 열은 템플릿 헤더('리드문'·'콘텐츠 카테고리')를 쓴다 · 겹치는 헤더를 메타로 받아야 하면
+    #   업로드 요청에 컬럼 override 를 실어 infer_mapping 으로 넘긴다.
+    "summary": ["리드문", "요약문", "메타리드문", "leadsummary", "metasummary"],
+    "entities": ["엔티티", "개체", "개체명", "entities", "entity"],
+    "intent": ["인텐트", "의도", "intent", "intents"],
+    "content_category": ["콘텐츠카테고리", "contentcategory", "contentcategories",
+                         "카테고리경로", "iab카테고리", "iab"],
+    "finalGrade": ["등급", "품질등급", "finalgrade", "grade"],
+    "reasons": ["사유", "품질사유", "reasons", "reason"],
     "subtitle": ["subtitle", "부제목", "부제", "summary", "요약", "subhead", "lead", "리드"],
     # 발행 키(선택 · 511607345). displayServiceName 의 포함 매칭 별칭 'service' 가
     # 'service_code' 헤더를 삼키지 않도록 **앞에** 둔다(image_urls 와 같은 이유).
