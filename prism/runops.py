@@ -455,7 +455,13 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
               # 이미지 URL도 동일하게 되실어야 한다(게시판 #9). 빠뜨리면 STEP 2 모델 실행(=일괄
               # 재실행)이 STEP 1 에서 들어온 수집 이미지를 매번 [] 로 덮어썼다 —
               # 운영 400건이 전부 source='재실행' · image_urls 빈 목록이던 원인(2026-08-03).
-              "image_urls": list(ref.get("image_urls") or [])}
+              "image_urls": list(ref.get("image_urls") or []),
+              # 발행 키도 같은 이유로 되실어야 한다(511607345). STEP 1 에서 들어온 키를
+              # 빼면 STEP 2 모델 실행(=일괄 재실행)이 payload 를 통째로 덮어쓰며 매번
+              # 지운다. 원문 링크·이미지가 지워졌던 것과 같은 자리.
+              "item_unique_key": ref.get("item_unique_key"),
+              "service_code": ref.get("service_code"),
+              "cp_type": ref.get("cp_type")}
     if _SV.quest_active() and not _SV._is_pending_row(row) and not force_quest:
         return {"error": "퀘스트 진행 중에는 검수 중 콘텐츠의 초안 재실행이 차단됩니다 · "
                          "반영 후 실행하거나 검수 목표 카드에서 목표를 해제하세요"}

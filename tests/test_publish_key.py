@@ -165,5 +165,53 @@ class TestIngestRoundtrip(unittest.TestCase):
         self.assertIn('"cafe"', csv_txt)            # 계산된 프리픽스 열
 
 
+class _FakeLLM:
+    def __init__(self, model="m1", mock=True):
+        self.model = model
+        self.mock = mock
+
+
+class TestRerunKeepsKeys(unittest.TestCase):
+    """STEP 2 모델 실행(재실행)이 발행 키를 지우지 않는다.
+
+    rerun_content 는 저장된 content_ref 로 입력을 재구성하고, save_many 가
+    payload=excluded.payload 로 통째로 덮어쓴다. 재구성 목록에서 빠진 필드는 재실행
+    한 번에 사라진다 · source_url·image_urls 가 같은 자리에서 지워졌던 전례(2026-08-03)."""
+
+    def _serve(self):
+        from prism import config as C
+        from prism import serve
+        from prism.store import Store
+        p = os.path.join(tempfile.mkdtemp(), "config.json")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("{}")
+        orig_cfg = C.DEFAULT_CONFIG_PATH
+        orig_mock = serve.Handler.server_mock
+        orig_llm = serve.make_text_llm
+        C.DEFAULT_CONFIG_PATH = p
+        serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+        serve.Handler.server_mock = True
+        serve.make_text_llm = lambda cfg, m: _FakeLLM()
+        serve._INGEST_STATE.clear()
+        self.addCleanup(serve._INGEST_STATE.clear)
+        self.addCleanup(lambda: setattr(C, "DEFAULT_CONFIG_PATH", orig_cfg))
+        self.addCleanup(lambda: setattr(serve.Handler, "server_mock", orig_mock))
+        self.addCleanup(lambda: setattr(serve, "make_text_llm", orig_llm))
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        self.addCleanup(serve._agg_bump)
+        return serve
+
+    def test_rerun_preserves_publish_keys(self):
+        serve = self._serve()
+        serve.add_contents([{"displayServiceName": "카페", "title": "제목", "body": "본문",
+                             "item_unique_key": "cafe-ok1221/9Zdf/2915857",
+                             "service_code": "unknown", "cp_type": "cafe"}], source="단건")
+        serve.rerun_all("m1", scope="pending")
+        ref = serve.results_rows()[0].get("content_ref") or {}
+        self.assertEqual(ref.get("item_unique_key"), "cafe-ok1221/9Zdf/2915857")
+        self.assertEqual(ref.get("service_code"), "unknown")
+        self.assertEqual(ref.get("cp_type"), "cafe")
+
+
 if __name__ == "__main__":
     unittest.main()
