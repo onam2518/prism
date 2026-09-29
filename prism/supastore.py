@@ -1289,6 +1289,10 @@ class SupabaseStore:
                    "body": content.get("body", ""),
                    "source_url": content.get("source_url", "") or content.get("url", ""),
                    "image_urls": content.get("image_urls") or [],   # 참조용(사진 확인) · migrate_content_images.sql 선적용 필요
+                   # ponytail: 팀(supabase) 모드는 발행 키 3필드를 적재하지 않는다 ·
+                   # contents 가 컬럼 화이트리스트라 자리가 없다(sqlite 는 payload.content_ref 로
+                   # 그대로 흐른다). 운영 발행이 필요해지면 item_unique_key·service_code·cp_type
+                   # 컬럼을 마이그레이션으로 추가하고 이 행과 recent() 에 한 줄씩 잇는다.
                    "source": source, "final_grade": qm.get("finalGrade", ""),
                    "item_meta": out.get("item_meta"), "quality_meta": qm,
                    "model": (out.get("trace") or {}).get("model", "") or "",

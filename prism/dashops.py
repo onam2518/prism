@@ -13,6 +13,7 @@ import tempfile
 import threading
 
 from . import alerts as AL
+from .schema import source_prefix
 from .store import day_key
 
 _SV = None                      # serve 모듈 객체(컴포지션 루트) · serve import 시 주입
@@ -369,7 +370,9 @@ def build_results_csv(team=None) -> bytes:
     truncated = len(rows) > CSV_MAX_ROWS
     if truncated:
         rows = rows[-CSV_MAX_ROWS:]                 # recent 는 오래된 것부터 나열 → 최신분을 남긴다
-    out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유,노출제한"]
+    # 발행 키 4열(511607345): 원문 3필드 + 키에서 계산한 프리픽스. 프리픽스는 저장하지 않는다.
+    out = ["제목,서비스,리드문,엔티티,인텐트,콘텐츠 카테고리,등급,품질 사유,노출제한,"
+           "item_unique_key,source_prefix,service_code,cp_type"]
     def esc(v):
         s = str(v if v is not None else "")
         # CSV 수식 인젝션 중화: 셀 선두 = + - @ 및 탭/CR 은 스프레드시트가 수식/DDE 로 실행 →
@@ -378,7 +381,7 @@ def build_results_csv(team=None) -> bytes:
             s = "'" + s
         return '"' + s.replace('"', '""') + '"'
     if truncated:                                   # 파일을 여는 순간 보이게 첫 줄에
-        out.append(",".join([esc(_CSV_TRUNC_NOTE.format(n=CSV_MAX_ROWS))] + [esc("")] * 8))
+        out.append(",".join([esc(_CSV_TRUNC_NOTE.format(n=CSV_MAX_ROWS))] + [esc("")] * 12))
     for r in rows:
         im = r.get("item_meta") or {}
         qm = r.get("quality_meta") or {}
@@ -389,6 +392,8 @@ def build_results_csv(team=None) -> bytes:
             " · ".join(im.get("entities") or []), " · ".join(im.get("intent") or []),
             cat, qm.get("finalGrade", ""), " · ".join(qm.get("reasons") or []),
             "제한" if qm.get("ops_hold") else "",
+            c.get("item_unique_key"), source_prefix(c.get("item_unique_key")),
+            c.get("service_code"), c.get("cp_type"),
         ]))
     return ("﻿" + "\r\n".join(out)).encode("utf-8")
 
