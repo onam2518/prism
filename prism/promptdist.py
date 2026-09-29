@@ -81,12 +81,14 @@ def _fingerprint(text: str) -> str:
 
 
 class _Slots:
-    """`meta_prompts.call_user` 가 읽는 필드만 가진 자리표 콘텐츠.
+    """`meta_prompts.call_user`(메타 4콜)와 `prompts.quality_user`(품질 · learnops 내려받기)가
+    읽는 필드만 가진 자리표 콘텐츠. 메타 4콜은 2026-09-22 부터 서비스명을 읽지 않지만 품질
+    판정은 계속 읽으므로 displayServiceName 자리는 남긴다.
 
     입력 계약(어느 콜에 무엇을 넣는가)을 손으로 다시 적지 않기 위해 실제 조립 함수를 그대로
     돌린다 · ③ 인텐트 콜의 투영은 2026-08-03 에 한 번 바뀌었고 또 바뀔 수 있다. 여기서 베껴
     적으면 그때 이 응답만 옛 계약을 말하게 된다."""
-    displayServiceName = "{displayServiceName}"
+    displayServiceName = "{displayServiceName}"   # 품질 콜 전용 · 메타 4콜은 읽지 않는다
     title = "{title}"
     body = _PH_BODY
     image_urls = None                    # 목록이 아니면 '정보 없음' 줄이 나온다(_intent_image_line)
@@ -136,8 +138,8 @@ def get_extraction_prompt(call: str = "", service: str = "", client_model: str =
     출력을 받지 않으므로 `requires` 는 비고, `user_template` 만으로 그대로 실행할 수 있다.
 
     service(displayServiceName)는 2026-09-22 정책 전환 이후 ③ 인텐트 후보를 바꾸지 않는다 ·
-    모든 출처가 같은 68개를 받는다. 값은 ①③ 콜의 user 입력에만 투영되므로 인자는 남겨 두되
-    후보·분기 용도로는 쓰지 않는다(파트너 전환 안내 필요).
+    모든 출처가 같은 68개를 받는다. 값은 어느 콜의 user 입력에도 들어가지 않으며 응답에
+    되비치기만 한다 · 후보·분기 용도로는 쓰지 않는다(파트너 전환 안내 필요).
 
     client_model 은 계열 래퍼(gpt·gemini·claude·solar·default)를 고르는 데만 쓴다. 모르는
     이름이면 조용히 default 로 수렴하고 실패하지 않는다(`meta_prompts.family_of` 의 원래 동작)."""
