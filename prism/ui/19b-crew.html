@@ -241,7 +241,7 @@
               <div class="crewgrid">
                 <!-- 약속한 일정(사람이 입력) -->
                 <div>
-                  <div class="text-xs" style="font-weight:700;margin-bottom:8px">신고 일정</div>
+                  <div class="subhd" style="margin:0 0 8px">신고 일정</div>
                   <div class="control-row" style="align-items:flex-end">
                     <div style="width:132px"><label class="lbl">주간 가용 시간</label>
                       <input type="number" min="0" max="40" step="0.5" class="field tnum"
@@ -280,7 +280,7 @@
                 </div>
                 <!-- 실제 기록(자동 집계) -->
                 <div>
-                  <div class="text-xs" style="font-weight:700;margin-bottom:8px">실측 기록 · 최근 4주</div>
+                  <div class="subhd" style="margin:0 0 8px">실측 기록 · 최근 4주</div>
                   <div class="drow"><div class="k">검수 속도</div><div class="v tnum">
                     <b x-text="m.measured.rate_per_hour ? ('시간당 ' + m.measured.rate_per_hour + '건') : '측정 기록 없음'"></b>
                     <span class="text-xs text-muted" x-show="m.measured.median_sec" x-text="' · 건당 ' + m.measured.median_sec + '초'"></span>
@@ -572,7 +572,7 @@
        검수운영 탭은 슈퍼관리자 전용이라 본인이 확인할 자리가 없던 문제도 이걸로 해소. -->
   <div class="ds-dialog-backdrop" x-show="wkConfirmOpen" x-cloak style="z-index:82">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="이번 주 일정 확인" style="max-width:460px">
-      <h2 class="ds-dialog__title" style="font-family:var(--ds-font-display);display:flex;align-items:baseline;gap:9px">
+      <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:9px">
         검수자 일정 확인
         <span class="text-xs text-muted tnum" style="font-family:var(--ds-font-body);font-weight:400"
               x-text="wkConfirmWeek + '주차' + (wkConfirmRange ? (' · ' + wkConfirmRange) : '')"></span></h2>
@@ -611,7 +611,7 @@
   <!-- 검수자 일괄 배정(슈퍼관리자 이상): ① 콘텐츠 선택 → ② 담당자 지정 → ③ 확인 · 배정 -->
   <div class="ds-dialog-backdrop" x-show="bulkOpen" x-cloak x-transition.opacity x-on:mousedown.self="bulkOpen=false" x-on:keydown.escape.window="bulkOpen && (bulkOpen=false)" style="z-index:78">
     <div class="ds-dialog" role="dialog" aria-modal="true" aria-label="검수자 일괄 배정" style="max-width:720px;display:flex;flex-direction:column;max-height:88vh">
-      <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px;font-family:var(--ds-font-display)">검수자 일괄 배정
+      <h2 class="ds-dialog__title" style="display:flex;align-items:baseline;gap:10px">검수자 일괄 배정
         <span class="text-xs text-muted" style="font-family:var(--ds-font-body);font-weight:400">여러 콘텐츠에 한 번에 지정합니다 · 슈퍼관리자 이상</span></h2>
       <div class="ds-dialog__body" style="overflow:auto;padding:4px 0 2px">
 
@@ -736,7 +736,7 @@
 
         <!-- 배정 이력: 누가·언제·어떻게 (감사 추적 · '누가 배정했지?' 방지) -->
         <div class="tbox" x-show="assignLog && assignLog.length" style="padding:10px 14px;margin-top:12px">
-          <div class="text-xs" style="font-weight:700;margin-bottom:6px">최근 배정 이력</div>
+          <div class="subhd" style="margin:0 0 8px">최근 배정 이력</div>
           <template x-for="(it, ii) in (assignLog||[]).slice(0,5)" x-bind:key="'al'+ii">
             <div class="text-xs text-muted tnum" style="line-height:1.8" x-text="assignLogTxt(it)"></div>
           </template>

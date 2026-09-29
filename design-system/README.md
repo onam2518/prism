@@ -1,6 +1,6 @@
 # Prism Design System
 
-Prism UI의 디자인 토큰과 React 컴포넌트. **Source of truth = Anchor Design System(axz)** · 무채색 캔버스 + **Blue(Primary 액션)·Red(Accent 강조)** + 도메인 카테고리색 · **Pretendard** 단일 패밀리 · **Light/Dark** 자동 swap을 코드로 고정한 시스템.
+Prism UI의 디자인 토큰과 React 컴포넌트. **Source of truth = Anchor Design System(axz)** · 무채색 캔버스 + **Blue(Primary 액션)·Red(Accent 강조)** + 도메인 카테고리색 · **GmarketSans(제목)·Pretendard(본문)** 역할 분리 · **Light/Dark** 자동 swap을 코드로 고정한 시스템.
 
 원본 스펙: [`anchor/DESIGN.md`](./anchor/DESIGN.md) · 대표 컴포넌트 [`anchor/Button.md`](./anchor/Button.md) · 토큰 스냅샷 [`anchor/tokens.json`](./anchor/tokens.json). 본 패키지의 `tokens/tokens.json`·`src/theme.css`는 Anchor semantic 토큰을 `--ds-*` 변수로 박제한 것입니다(원칙: Semantic 토큰만 사용 · Primitive 직접 참조 금지 · Light/Dark 분기 금지).
 
@@ -63,7 +63,7 @@ claude
 | Ink | text.primary `#000000` · body `rgba(0,0,0,.88)` · muted `rgba(0,0,0,.48)` · disabled `rgba(0,0,0,.32)` (알파 기반) |
 | Border | hairline `rgba(0,0,0,.08)` · soft `rgba(0,0,0,.04)` · 저대비 무채색 |
 | Dark | base `#161718` · surface `#202122` · Blue `#66a8ff` |
-| Font | Pretendard(UI·본문 단일 패밀리) · Berkeley Mono(코드) |
+| Font | GmarketSans(UI 제목) · Pretendard(본문·표·입력) · Berkeley Mono(코드) |
 | Radius | 4 · 8(버튼 Square/칩) · 12(카드) · 16 · 24(시트) · 100(pill) |
 | Shadow | low·medium·high 3단(순수 흑 알파). 깊이는 surface 대비가 1차, shadow는 보조 |
 
@@ -84,3 +84,5 @@ claude
 ## Prism UI(serve.py)와의 관계
 
 현재 Prism UI는 `serve.py` 안의 인라인 Tailwind입니다. `/design-sync` 후 이 토큰/컴포넌트 기준으로 `serve.py` 마크업을 맞춰갈 수 있습니다. `tailwind.preset.cjs` 를 preset 으로 물리면 같은 토큰을 클래스로 바로 사용 가능합니다.
+
+타이포 역할과 패널 규격은 [컴포넌트 계약](../DESIGN_COMPONENTS.md)을 따른다. Anchor 원본을 참조하되 앱의 서체 역할 확장은 `src/theme.css`와 `tokens/tokens.json`에 정의한다.

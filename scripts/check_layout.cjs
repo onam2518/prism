@@ -49,11 +49,21 @@ const output = process.argv[3] || '/tmp/prism-layout-check';
             noteSize:parseFloat(noteStyle.fontSize),
             noteLineHeight:parseFloat(noteStyle.lineHeight)
           };
-          return { alignments, controls, stats, cells, two, sections,
+          const typography = [...document.querySelectorAll('[data-type]')].map(el => {
+            const s = getComputedStyle(el);
+            return { role:el.dataset.type, family:s.fontFamily, size:s.fontSize, weight:s.fontWeight, lineHeight:s.lineHeight, tracking:s.letterSpacing };
+          });
+          return { alignments, controls, stats, cells, two, sections, typography,
             gridOverflow:grid.scrollWidth-grid.clientWidth,
             pageOverflow:document.documentElement.scrollWidth-innerWidth,
             tableOverflow:scroll.scrollWidth-scroll.clientWidth };
         });
+        const panelTypes = geometry.typography.filter(t => t.role === 'panel');
+        assert.equal(new Set(panelTypes.map(t => JSON.stringify(t))).size, 1, `${width}/${theme}: same-level panel typography differs`);
+        for (const t of geometry.typography) {
+          assert.ok(t.role === 'body' ? t.family.startsWith('"Pretendard') || t.family.startsWith('Pretendard') : t.family.startsWith('GmarketSans'), `${width}/${theme}: wrong font role ${JSON.stringify(t)}`);
+        }
+        assert.equal(await page.evaluate(() => document.fonts.check('700 16px GmarketSans')), true, 'Display font must load');
         for (const a of geometry.alignments) assert.ok(a.left <= 1 && a.right <= 1, `${width}/${theme}: ${a.key} alignment ${JSON.stringify(a)}`);
         for (const c of geometry.controls) assert.ok(Math.abs(c.height-c.target) <= 1, `${width}/${theme}: control ${JSON.stringify(c)}`);
         assert.ok(geometry.pageOverflow <= 1, `${width}/${theme}: page overflow ${geometry.pageOverflow}`);

@@ -15,6 +15,14 @@
 - 색은 토큰(`var(--ds-*)`) 경유가 기본. 상태 텍스트는 `--ds-success-deep`/`--ds-error-deep`(틴트 배경 위 가독 · 다크 자동 보정), 색 배경 위 글자는 `--ds-on-primary`(Primary) 또는 `--ds-text-static-white`(모드 무관).
 - **고정 액센트 예외**(값 직접 사용 허용 · 감사 제외): 게임화 티어 5색(#1e84ff·#5c77ff·#ff9429·#a05cff·#ffb020), 배지 금장 #b8791f·잠금 오브 #9aa0a6·축하 그라디언트, A/B 'B' 슬롯 주황 #ff6a3d, `[data-theme='dark']` 보정 전용 값. `var(--x, #hex)` 폴백은 하드코딩이 아니다.
 
+## 타이포 역할
+
+- 패널·위젯·독립 결과 패널 제목은 `--ds-font-display`와 `--ds-panel-heading-size`를 공유한다. 제목만 굵게 표시하며 설명·메타·조작 컨테이너에는 display 서체를 상속시키지 않는다.
+- 다이얼로그·로그인·진행·빈 상태·도움말의 UI 제목도 display 서체를 사용한다. 기사 제목과 데이터 값은 본문 서체를 유지한다.
+- `.tnum`은 숫자 폭 정렬만 담당한다. 큰 지표·점수만 해당 컴포넌트에서 display 서체를 지정하며 표 숫자·입력·키 문자열은 주변 본문 규칙을 따른다.
+- 기존 Anchor 원본은 참조 자료다. 앱의 GmarketSans/Pretendard 역할 분리는 이 계약과 `design-system/src/theme.css`의 font 토큰을 따른다.
+- GmarketSans 제목 굵기는 실제 제공되는700을 사용한다. 패널과 동급인 제목을 좁은 화면에서만 하위 제목 크기로 낮추지 않는다.
+
 ## 선택 컨트롤 3종 (혼용 금지)
 
 | 컴포넌트 | 용도 | 기본 | hover | 선택/활성 | 비고 |
@@ -54,7 +62,7 @@
 | `.panel` 내 표/필터 | `.panel-bd` 내부는 추가 좌우 margin 0. 패널 직속은 `--ds-pad-panel-x`(20px). 표 외곽과 필터 외곽을 정렬하며 셀 내부 padding은 별도로 유지 |
 | `.content-section` | 한 패널 안에서 목적이 바뀌는 구획. 앞의 표시 중인 구획과 간격32px + 구분선1px + 내부 상단24px. 600px 이하는24/20px. 숨긴 구획은 간격 기준에서 제외 |
 | `.content-section-stack` / `.content-section--panel` | 독립 작업 영역은 바깥 패널 밖에서 stack으로 묶고 각 section에 panel과 panel 변형을 적용. 패널 사이24px, 내부24px·좌우 공통 패널 여백, 선명한 content 경계색. 카드 안에 중첩하지 않는다 |
-| `.content-section__head` | 내부 div에 제목과 설명을 묶고, 별도 `.content-section__actions`에 조작 배치. 제목16px(좁은 화면15px), 설명13px·줄높이1.6 |
+| `.content-section__head` | 내부 div에 제목과 설명을 묶고, 별도 `.content-section__actions`에 조작 배치. 내부 구획 제목 GmarketSans16px(좁은 화면15px), 독립 패널 제목은 기존 패널과 동일한16.5px·700·줄높이1.4·자간−0.015em. 설명 Pretendard13px·줄높이1.6 |
 | `.result-notes` | 결과 해석 안내용 `ul > li` 목록. 13px·줄높이1.6·항목 간격8px. 단일 문장과 상태 메시지는 `.content-section__description` 사용 |
 | `.item-compare-table` | 콘텐츠240px + 정답70px + 동일 너비 모델 열 최소160px. 넘침은 표 wrapper 안에서 처리 |
 | `.stepline` | 프로세스 스텝 헤더: `STEP N` 배지(디스플레이 폰트) + 타이틀 + meta |
@@ -107,7 +115,7 @@
 
 공용 토큰과 기본 컴포넌트는 `design-system/src/{theme,components}.css`와 앱 배포본 `prism/vendor/ds-{theme,components}.css`에 함께 반영한다. 앱 전용 패널·모델 비교·타일 규칙은 `prism/vendor/app.css`가 담당한다. 기존 전체 파일을 서로 덮어쓰지 않는다.
 
-공통 배치 치수20개는 `design-system/tokens/tokens.json`의 `layout`과 `design-system/src/tokens.ts`에도 내보낸다. JSON 키는 CSS의 `--ds-` 접두사 뒤 이름과 같다.
+공통 배치·타이포 값23개는 `design-system/tokens/tokens.json`의 `layout`과 `design-system/src/tokens.ts`에도 내보낸다. JSON 키는 CSS의 `--ds-` 접두사 뒤 이름과 같다.
 
 실제 앱 CSS를 사용하는 [배치 검수 페이지](design-system/preview/layout.html)에서 직속/중첩 표, 기본/compact 컨트롤, 통계, 긴 모델명, 빈 상태, 라이트/다크를 확인한다.
 
@@ -118,4 +126,4 @@ python3 -m http.server 8000 --bind 127.0.0.1
 node scripts/check_layout.cjs http://127.0.0.1:8000 /tmp/prism-layout-check
 ```
 
-Playwright가 다른 경로에 설치되어 있으면 `PLAYWRIGHT_MODULE`에 모듈 경로를 전달한다. 검사는 패키지를 자동 설치하지 않는다. 375–1440px 9개 너비와 두 테마에서 외곽 오차≤1px, 컨트롤 높이36/32px, 그리드·페이지 넘침, 모델2/4/6열 균등폭, 포커스·disabled 상태, 구획 간격·구분선·설명 글자 크기를 검사하고 JSON 측정값과 스크린샷을 저장한다. 표 내부의 의도한 가로 스크롤은 허용한다.
+Playwright가 다른 경로에 설치되어 있으면 `PLAYWRIGHT_MODULE`에 모듈 경로를 전달한다. 검사는 패키지를 자동 설치하지 않는다. 375–1440px 9개 너비와 두 테마에서 외곽 오차≤1px, 컨트롤 높이36/32px, 그리드·페이지 넘침, 모델2/4/6열 균등폭, 포커스·disabled 상태, 구획 간격·구분선·설명 글자 크기, 동급 패널 제목의 서체·크기·굵기·행간·자간 일치와 본문 서체 분리를 검사하고 JSON 측정값과 스크린샷을 저장한다. 표 내부의 의도한 가로 스크롤은 허용한다.
