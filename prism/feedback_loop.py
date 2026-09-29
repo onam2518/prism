@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+from . import dictionaries as D
+
 REAP_STAGES = ("remember", "explain", "ask", "plan")
 _STAGE_KO = {"extract": "추출", "analyze": "분석", "review": "검수", "judge": "판정"}
 
@@ -87,6 +89,28 @@ def strip_provenance(text: str) -> str:
     return "\n".join(out)
 
 
+_RETIRED_MARK = ("[재확인 필요 · %s 는 2026-09-22 통합으로 폐기된 분류값이라 새 출력에 쓰지 않는다 · "
+                 "원문을 다시 보고 재판정할 것]")
+
+
+def mark_retired_intents(text: str) -> str:
+    """학습 피드백 줄에 폐기된 인텐트 명칭이 있으면 '재확인 필요' 표식을 덧붙인다.
+
+    왜 이름을 바꾸지 않고 표식만 붙이나 · 정책이 "조건부 전환값은 원문 재판정 · 단일 별칭
+    치환으로 전환 금지"(511247058 '구현 시 함께 맞출 계약')로 못 박았다. '의견·토론'은 원문을
+    봐야 의견·논쟁·옹호·지지·반박·비판 중 어디로 갈지 갈리고, 일대일로 보이는 셋도 기존
+    오분류 가능성 때문에 표본 점검이 전제다. 이름만 바꾸면 컴파일된 지시가 근거 없는 전환을
+    굳힌다 · 반대로 그냥 두면 그 지시가 폐기값을 새 출력으로 유도한다. 그래서 원문은 보존하고
+    '쓰지 말고 재판정하라'는 사실만 얹는다(strip_provenance 와 같은 자리에서 돈다)."""
+    out = []
+    for ln in (text or "").splitlines():
+        hits = [v for v in D.INTENT_RETIRED if v in ln]
+        if hits and "재확인 필요" not in ln:      # 두 번 돈다(route_feedback 저장분 → meta_compile)
+            ln = ln + "  " + _RETIRED_MARK % "·".join(hits)
+        out.append(ln)
+    return "\n".join(out)
+
+
 META_SYSTEM = (
     "너는 프롬프트 개선 '메타컴파일러'다. 한 단계(추출/분석/검수/판정)에 대한 여러 검수자의 교정 "
     "피드백 묶음을 받아 다음 추출 프롬프트에 넣을 '정제된 개선 지시'로 컴파일한다.\n"
@@ -102,7 +126,7 @@ META_SYSTEM = (
 def meta_compile(llm, stage: str, raw_text: str) -> dict:
     """한 단계의 누적 검수 피드백(plan 묶음) → {directive, ambiguities}. 다수 의견을 병합·정리하고
     충돌은 '명확화 필요'로 분리. 키 없으면 mock(원문 일부)."""
-    raw_text = strip_provenance(raw_text)
+    raw_text = mark_retired_intents(strip_provenance(raw_text))
     if not (raw_text or "").strip():
         return {"stage": stage, "directive": "", "ambiguities": []}
     if getattr(llm, "mock", False):
@@ -145,7 +169,7 @@ ROUTE_MIN_CONF = 0.5     # 이 미만이면 재분류를 버리고 검수자 선
 def route_feedback(llm, fb: dict) -> list:
     """검수 교정 원문을 요소별 개선사항으로 재분류 → [{element, stage, directive}].
     mock/실패 시 폴백: 선택 요소(들) 그대로 원문을 지시로 사용(무손실)."""
-    note = strip_provenance(fb.get("note") or "").strip()
+    note = mark_retired_intents(strip_provenance(fb.get("note") or "")).strip()
     fb = {**fb, "note": note}                      # 라우팅 LLM 입력(_reap_user)도 벗긴 메모로
     hint = [e for e in (fb.get("elements") or []) if e in ELEMENTS] or ["summary"]
     fallback = [{"element": e, "stage": ELEM_STAGE[e], "directive": note} for e in hint if note]

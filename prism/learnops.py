@@ -714,7 +714,7 @@ def compare_history(team=None) -> dict:
 def compose_prompts(team=None, model: str = "") -> dict:
     """호출별 최종 시스템 프롬프트 묶음(현재 설정 · 학습 보정 포함). model 을 주면 호출별 모델 지정이
     없는 콜은 그 모델로 · 평가 런이 실제로 쓰는 조합(agents._call_llm)과 같은 규칙.
-    ③ 인텐트만 콘텐츠 서비스에 따라 분기절이 달라 정의된 서비스 전부를 by_service 에 싣는다."""
+    메타 4호출은 2026-09-22 부터 전 출처 공통 하나뿐이라 서비스별 변형을 싣지 않는다(품질만 묶음별)."""
     st = _SV.get_store()
     try:
         ver = int(st.batch_seq(team)) + 1 if st else 1
@@ -726,20 +726,20 @@ def compose_prompts(team=None, model: str = "") -> dict:
     base_model = (model or "").strip() or cfg.model or ""
     cm = dict(getattr(cfg, "meta_call_models", {}) or {})
 
-    def _c(svc):
-        return Content(displayServiceName=svc, title="(스냅샷)", subtitle="", body="(스냅샷 본문)")
+    # 스냅샷용 자리표 콘텐츠. 메타 4호출·통합 1콜은 서비스명을 읽지 않으므로(2026-09-22) 비워 둔다.
+    snap = Content(displayServiceName="", title="(스냅샷)", subtitle="", body="(스냅샷 본문)")
     calls = {}
     for call in MP.CALLS:
         m = cm.get(call) or base_model
         try:
-            calls[call] = {"model": m, "system": PR.call_system(_c("뉴스"), call, m)}
+            calls[call] = {"model": m, "system": PR.call_system(snap, call, m)}
         except Exception:
             pass
     payload = {"version": ver, "ts": time.time(), "model": base_model,
                "quality_version": PR.quality_version(), "calls": calls,
                "learned": dict(PR.LEARNED), "learned_by_model": dict(PR.LEARNED_BY_MODEL)}
     try:
-        payload["item"] = PR.item_system(_c("뉴스"), base_model)
+        payload["item"] = PR.item_system(snap, base_model)
     except Exception:
         pass
     try:
