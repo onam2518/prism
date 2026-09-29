@@ -27,8 +27,8 @@
               <li>새 팀을 만들면 <b>초대 코드</b>가 발급됩니다.</li>
               <li>팀원은 가입 시 이 코드로 참가합니다(팀 생성은 관리자만).</li>
             </ul>
-            <div style="display:flex;gap:var(--ds-space-2);flex-wrap:wrap;align-items:center">
-              <input class="field" style="flex:1;min-width:200px;height:38px" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="newTeamName" x-on:keydown.enter="createTeam()">
+            <div class="control-row">
+              <input class="field" style="flex:1;min-width:200px" placeholder="팀 이름 (예: 콘텐츠검수팀)" x-model="newTeamName" x-on:keydown.enter="createTeam()">
               <button type="button" class="ds-btn ds-btn--primary ds-btn--s-md" x-on:click="createTeam()" x-bind:disabled="!(newTeamName||'').trim()">만들기</button>
               <span class="text-xs" style="color:var(--ds-success)" aria-live="polite" x-text="teamMsg"></span>
             </div>
@@ -90,19 +90,19 @@
         <section class="panel" x-show="adminData && adminData.isCreator" x-cloak>
           <div class="panel-hd"><b>메뉴 권한</b><span class="meta">슈퍼관리자·관리자에게 보여줄 메뉴 지정</span><span class="ds-badge ds-badge--status ml-auto">생성자 전용</span></div>
           <div class="panel-bd">
-            <div style="overflow-x:auto">
-              <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:280px">
-                <thead><tr style="color:var(--ds-muted)">
-                  <th style="text-align:left;padding:6px 8px;font-weight:500">메뉴</th>
-                  <th style="padding:6px 8px;font-weight:500">슈퍼관리자</th>
-                  <th style="padding:6px 8px;font-weight:500">관리자</th>
+            <div class="overflow-auto">
+              <table class="ds-table ds-table--compact" style="min-width:280px">
+                <thead><tr>
+                  <th scope="col">메뉴</th>
+                  <th scope="col" style="text-align:center">슈퍼관리자</th>
+                  <th scope="col" style="text-align:center">관리자</th>
                 </tr></thead>
                 <tbody>
                   <template x-for="mid in (adminData.menuOrder||[])" x-bind:key="mid">
-                    <tr style="border-top:1px solid var(--ds-hairline-soft)">
-                      <td style="padding:8px" x-text="(adminData.menuLabels||{})[mid]||mid"></td>
-                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].super"></td>
-                      <td style="text-align:center;padding:8px"><input type="checkbox" x-model="menuPermsEdit[mid].admin"></td>
+                    <tr>
+                      <td x-text="(adminData.menuLabels||{})[mid]||mid"></td>
+                      <td style="text-align:center"><input type="checkbox" x-model="menuPermsEdit[mid].super"></td>
+                      <td style="text-align:center"><input type="checkbox" x-model="menuPermsEdit[mid].admin"></td>
                     </tr>
                   </template>
                 </tbody>

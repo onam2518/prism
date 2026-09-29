@@ -21,7 +21,7 @@
         <div x-show="adminTab === 'crew' && crewTab === 'dash'" x-cloak class="w-full space-y-4">
         <div class="panel"><div class="panel-bd">
           <!-- 기한을 걸고 배정하면 기본은 '이번 배정'만 본다 · 과거 누적은 토글로 -->
-          <div class="flex items-center gap-1" style="margin-bottom:10px" x-show="crewWaveOn" x-cloak>
+          <div class="control-row control-row--compact" style="margin-bottom:10px" x-show="crewWaveOn" x-cloak>
             <button type="button" class="ds-btn ds-btn--s-sm"
                     x-bind:class="crewScope === 'wave' ? 'ds-btn--primary' : 'ds-btn--ghost'"
                     x-on:click="crewScope = 'wave'">이번 배정</button>
@@ -32,10 +32,10 @@
                   x-text="'이번 배정 ' + (crewWave ? crewWave.assigned : 0) + '건 · 기한 ' + crewDate(crewSum.due_at) + crewDdayTxt"></span>
             <!-- 기한 연장·단축: 배정을 다시 하지 않고 지금 묶음의 기한만 바꾼다(조정 내역은 배정 이력에) -->
             <template x-if="crewScopeEff === 'wave'">
-              <span class="flex items-center gap-1">
+              <span class="control-row control-row--compact">
                 <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!crewDueEdit"
                         x-on:click="crewDueEditOpen()">기한 조정</button>
-                <input type="datetime-local" class="field" style="height:30px;width:190px"
+                <input type="datetime-local" class="field field--compact" style="width:190px"
                        x-show="crewDueEdit" x-model="crewDueNew">
                 <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="crewDueEdit"
                         x-bind:disabled="crewBusy || !crewDueNew" x-on:click="crewAdjustDue()">저장</button>
@@ -78,7 +78,7 @@
         <div class="panel" x-show="(crewSum.orphan || []).length" x-cloak style="border-color:var(--ds-danger)">
           <div class="panel-hd"><b>팀에서 빠진 검수자의 배정</b>
             <span class="meta">이 콘텐츠는 지금 아무도 볼 수 없습니다 · 재배정으로 회수하세요</span>
-            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px"
+            <button type="button" class="ds-btn ds-btn--s-sm ds-btn--primary ml-auto" style="padding:0 12px"
                     x-bind:disabled="crewBusy" x-on:click="crewRebalance(false)">재배정 계획 보기</button></div>
           <div class="panel-bd flex flex-wrap gap-2">
             <template x-for="o in (crewSum.orphan || [])" x-bind:key="'orp'+o.id">
@@ -90,7 +90,7 @@
         <!-- 멈춘 일·여유 인원은 '알림'이 아니라 '지금 누를 수 있는 버튼'이어야 한다 -->
         <div class="panel" x-show="crewSum.stale_total" style="border-color:var(--ds-danger)">
           <div class="panel-hd"><b>정체 배정</b><span class="meta">방치해도 해소되지 않습니다 · 여력 있는 검수자에게 재배정하세요</span>
-            <button type="button" class="ds-btn ds-btn--primary ml-auto" style="height:30px;padding:0 12px"
+            <button type="button" class="ds-btn ds-btn--s-sm ds-btn--primary ml-auto" style="padding:0 12px"
                     x-bind:disabled="crewBusy" x-on:click="crewRebalance(false)">재배정 계획 보기</button></div>
           <div class="panel-bd">
             <div class="flex flex-wrap gap-2">
@@ -242,7 +242,7 @@
                 <!-- 약속한 일정(사람이 입력) -->
                 <div>
                   <div class="text-xs" style="font-weight:700;margin-bottom:8px">신고 일정</div>
-                  <div class="flex flex-wrap gap-2" style="align-items:flex-end">
+                  <div class="control-row" style="align-items:flex-end">
                     <div style="width:132px"><label class="lbl">주간 가용 시간</label>
                       <input type="number" min="0" max="40" step="0.5" class="field tnum"
                              x-bind:value="m.profile.hours_per_week"
@@ -324,7 +324,7 @@
              담당자 전원이 못 받으면 남에게 보내지 않고 보류로 드러낸다(사용자 결정 2026-09-02). -->
         <section class="panel"><div class="panel-hd"><b>담당 규칙</b>
           <span class="meta">서비스 또는 주제별 전담 검수자 · 규칙에 걸린 콘텐츠는 담당자에게만 배정됩니다</span>
-          <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
+          <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline ds-btn--c-neutral ml-auto" style="padding:0 12px"
                   x-on:click="crewOwnerAdd()">규칙 추가</button></div>
           <div class="panel-bd">
             <div class="text-xs text-muted" x-show="!crewOwnerRules.length">
@@ -366,7 +366,7 @@
                 x-bind:data-tip="'여력 = 이번 주 신고 시간 × 처리속도 × 버퍼 · 속도는 팀 중앙값 쪽으로 ' + Math.round((1-(crewCfg.rate_shrink ?? 0.5))*100) + '% 당겨 과거 실측 쏠림을 줄입니다'"
                 data-tip-pos="left">배분 기준</span></div>
           <div class="panel-bd">
-            <div class="flex flex-wrap gap-2" style="align-items:flex-end">
+            <div class="control-row" style="align-items:flex-end">
               <div style="width:180px"><label class="lbl">대상 콘텐츠</label>
                 <select class="field" x-model="crewAsgScope">
                   <option value="unassigned">미배정만</option>
@@ -432,7 +432,7 @@
              (정답셋 관리 목록에 있던 '일괄 배정'을 여기로 옮겨 왔다 · 2026-07-28) -->
         <section class="panel"><div class="panel-hd"><b>수동 배정</b>
           <span class="meta">콘텐츠와 검수자를 직접 골라 배정합니다 · 최종검수자는 후보에서 제외됩니다</span>
-          <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
+          <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline ds-btn--c-neutral ml-auto" style="padding:0 12px"
                   x-on:click="openBulk()">대상 선택</button></div>
           <div class="panel-bd text-xs text-muted">
             여력 계산을 거치지 않고 지정한 대로 배정합니다. 특정 분야 강점 검수자에게 몰아주거나,
@@ -442,7 +442,7 @@
 
         <section class="panel"><div class="panel-hd"><b>정체 · 부재분 재배정</b>
           <span class="meta" x-text="(crewData&&crewData.settings?crewData.settings.stale_days:3) + '일 이상 미진행 배정과 부재자 배정분을 여력 있는 검수자에게 재배정합니다'"></span>
-          <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
+          <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline ds-btn--c-neutral ml-auto" style="padding:0 12px"
                   x-bind:disabled="crewBusy" x-on:click="crewRebalance(false)">재배정 계획 보기</button></div>
           <div class="panel-bd">
             <div x-show="!crewMoveRes" class="text-xs text-muted">계획을 확인한 뒤 실행합니다 · 실행 내역은 아래 배정 이력에 남습니다</div>
@@ -470,10 +470,10 @@
              다만 남의 일을 옮기는 동작이라 기본은 꺼둔다. -->
         <section class="panel"><div class="panel-hd"><b>자동 운영</b>
           <span class="meta">주기마다 자동 배정하고, 기한이 임박하면 정체분을 재배정합니다 · 기본 꺼짐</span>
-          <button type="button" class="ds-btn ds-btn--outline ds-btn--c-neutral ml-auto" style="height:30px;padding:0 12px"
+          <button type="button" class="ds-btn ds-btn--s-sm ds-btn--outline ds-btn--c-neutral ml-auto" style="padding:0 12px"
                   x-bind:disabled="crewBusy" x-on:click="crewAuto()">지금 실행</button></div>
           <div class="panel-bd">
-            <div class="flex flex-wrap gap-2" style="align-items:flex-end">
+            <div class="control-row" style="align-items:flex-end">
               <label class="crewtoggle"><input type="checkbox" x-bind:checked="crewCfg.auto_wave == 1"
                      x-on:change="crewSetting('auto_wave', $event.target.checked ? 1 : 0)">
                 <span>주기 시작 시 자동 배정</span></label>
@@ -481,7 +481,7 @@
                      x-on:change="crewSetting('auto_rebalance', $event.target.checked ? 1 : 0)">
                 <span>기한 1일 전 정체분 재배정</span></label>
             </div>
-            <div class="flex flex-wrap gap-2" style="align-items:flex-end;margin-top:10px">
+            <div class="control-row" style="align-items:flex-end;margin-top:10px">
               <div style="width:150px"><label class="lbl">주기 시작 요일</label>
                 <select class="field" x-bind:value="crewCfg.wave_weekday" x-on:change="crewSetting('wave_weekday', $event.target.value)">
                   <template x-for="(d, i) in ['월','화','수','목','금','토','일']" x-bind:key="i">
@@ -500,7 +500,7 @@
                        x-on:change="crewSetting('wave_min_reviewers', $event.target.value)"></div>
             </div>
             <!-- 과거 실측 vs 이번 주 신고: 무엇에 무게를 둘지. 실측만 보면 빠른 소수에게 쏠린다. -->
-            <div class="flex flex-wrap gap-2" style="align-items:flex-end;margin-top:10px">
+            <div class="control-row" style="align-items:flex-end;margin-top:10px">
               <div style="width:190px"><label class="lbl">과거 속도 반영도</label>
                 <input type="number" min="0" max="1" step="0.1" class="field tnum" x-bind:value="crewCfg.rate_shrink"
                        x-on:change="crewSetting('rate_shrink', $event.target.value)"
@@ -534,11 +534,11 @@
           <span class="meta" x-text="crewSum.due_at ? '최근순 · 기한 조정은 현재 묶음에만 적용됩니다' : '최근순'"></span>
           <!-- 현재 묶음의 기한 조정을 이력 자리에서도 · 지난 이력 행의 기한은 소급 대상이 아니다
                (웨이브는 현재 1건만 저장 · 신호등·완주 보너스도 현재 기한만 본다) -->
-          <span class="flex items-center gap-1 ml-auto" x-show="crewSum.due_at" x-cloak>
+          <span class="panel-hd__controls control-row control-row--compact ml-auto" x-show="crewSum.due_at" x-cloak>
             <span class="meta" x-text="'현재 기한 ' + crewDate(crewSum.due_at) + crewDdayTxt"></span>
             <button type="button" class="ds-btn ds-btn--ghost ds-btn--s-sm" x-show="!crewDueEdit"
                     x-on:click="crewDueEditOpen()">기한 조정</button>
-            <input type="datetime-local" class="field" style="height:30px;width:190px"
+            <input type="datetime-local" class="field field--compact" style="width:190px"
                    x-show="crewDueEdit" x-model="crewDueNew">
             <button type="button" class="ds-btn ds-btn--primary ds-btn--s-sm" x-show="crewDueEdit"
                     x-bind:disabled="crewBusy || !crewDueNew" x-on:click="crewAdjustDue()">저장</button>
@@ -583,7 +583,7 @@
           <li><b>주간 가용 시간은 이번 주 전체 합계</b>입니다 · 하루 기준이 아닙니다.</li>
           <li>휴가·교육 중·비활성으로 두면 이번 주 배정에서 빠집니다.</li>
         </ul>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div class="control-row" style="align-items:flex-end">
           <div style="width:170px"><label class="lbl">주간 가용 시간 (합계)</label>
             <input type="number" min="0" max="40" step="0.5" class="field tnum" x-model.number="wkForm.hours_per_week"
                    data-tip="이번 주 전체에 검수로 낼 수 있는 시간의 합 · 하루 기준이 아닙니다" data-tip-pos="top"></div>

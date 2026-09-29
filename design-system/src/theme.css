@@ -139,6 +139,29 @@
   --ds-focus-ring: 0 0 0 3px rgba(30, 132, 255, 0.4);
   --ds-focus-ring-error: 0 0 0 3px rgba(255, 78, 51, 0.4);
 
+  /* spacing · shared 4px scale */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-space-8: 32px;
+  --ds-space-10: 40px;
+  --ds-pad-panel-x: 20px;
+  --ds-pad-inset: 16px;
+
+  /* shared layout metrics · panel, controls, tables and responsive grids */
+  --ds-control-height: 36px;
+  --ds-control-height-compact: 32px;
+  --ds-control-gap: 8px;
+  --ds-table-cell-x: 14px;
+  --ds-table-cell-y: 12px;
+  --ds-table-cell-y-compact: 8px;
+  --ds-grid-gap: 16px;
+  --ds-stat-gap: 10px;
+  --ds-stat-min-width: 140px;
+
   /* motion */
   --ds-motion-fast: 120ms;
   --ds-motion-standard: 220ms;

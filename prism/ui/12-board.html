@@ -25,7 +25,7 @@
                 <td class="text-body" x-text="b.author"></td>
                 <td>
                   <template x-if="boardAdmin">
-                    <select class="field" style="height:30px;padding:0 26px 0 9px;width:auto" x-bind:value="b.status" x-on:change="boardStatus(b, $event.target.value)" data-tip="관리자: 처리 상태를 팀에 공유" data-tip-pos="top">
+                    <select class="field field--compact" style="padding:0 26px 0 9px;width:auto" x-bind:value="b.status" x-on:change="boardStatus(b, $event.target.value)" data-tip="관리자: 처리 상태를 팀에 공유" data-tip-pos="top">
                       <option value="open">접수</option><option value="doing">처리 중</option><option value="done">완료</option></select>
                   </template>
                   <template x-if="!boardAdmin">

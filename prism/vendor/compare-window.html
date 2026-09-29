@@ -13,7 +13,21 @@
   .cw-row .ds-progress__track{height:8px}
   .cw-empty{padding:34px 0;text-align:center}
   .cw-actions{margin-left:auto;display:flex;gap:6px}
-  .cw-res{margin-top:12px}
+  #list{display:grid;gap:var(--ds-space-3)}
+  .cw-res{margin-top:var(--ds-space-3)}
+  .cw-row>span{min-width:0;overflow-wrap:anywhere}
+  /* PR #534 responsive layout; preserve the current queue behavior. */
+  @media(max-width:600px){
+    .cw-wrap{padding:var(--ds-space-3)}
+    .cw-row{grid-template-columns:minmax(0,1fr) auto}
+    .cw-row .ds-progress{grid-column:1/-1;grid-row:2}
+    .cw-top .meta,.cw-actions{margin-left:0}
+    .cw-wrap .panel-hd{flex-wrap:wrap;gap:var(--ds-space-2)}
+    .cw-wrap .panel-hd .meta{flex-basis:100%;order:1;margin-left:0}
+    .cw-actions{flex-basis:100%;order:2;flex-wrap:wrap}
+    .cw-actions button{white-space:nowrap}
+    .cw-row .ds-badge{justify-self:start}
+  }
 </style></head><body>
 <div class="cw-wrap">
   <div class="cw-top">

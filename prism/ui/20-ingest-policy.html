@@ -438,7 +438,7 @@
                   </template>
                 </div>
                 <div class="hybwrap" x-on:click.outside="hybSt('efent').open=false">
-                  <input type="text" class="field w-full" style="height:32px;font-size:12.5px" placeholder="엔티티 검색 · 사전에 없으면 Enter = 새 엔티티로 추가" x-bind:value="hybSt('efent').q" x-on:input="hybInput('efent', $event.target.value)" x-on:keydown.enter.prevent="hybEnter('efent', {kind:'entity', free:true}, detail, entFixList)" x-on:keydown.escape="hybEsc('efent', $event)">
+                  <input type="text" class="field w-full field--compact" style="font-size:12.5px" placeholder="엔티티 검색 · 사전에 없으면 Enter = 새 엔티티로 추가" x-bind:value="hybSt('efent').q" x-on:input="hybInput('efent', $event.target.value)" x-on:keydown.enter.prevent="hybEnter('efent', {kind:'entity', free:true}, detail, entFixList)" x-on:keydown.escape="hybEsc('efent', $event)">
                   <div class="hybdd" x-show="hybSt('efent').open" x-cloak>
                     <template x-for="g in hybDrop('efent', 'entity', detail, entFixList)" x-bind:key="'efg'+g.label">
                       <div>
@@ -467,7 +467,7 @@
               <template x-if="detail && !detail.category.length">
                 <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
                   <span class="ds-badge ds-badge--error">미분류 · 분류 필요</span>
-                  <select class="field" style="height:30px;width:auto;padding:0 24px 0 8px;font-size:12px" x-on:change="fillCategory(detail, $event.target.value); $event.target.value=''">
+                  <select class="field field--compact" style="width:auto;padding:0 24px 0 8px;font-size:12px" x-on:change="fillCategory(detail, $event.target.value); $event.target.value=''">
                     <option value="">분류 선택…</option>
                     <template x-for="opt in categoryOptions" x-bind:key="opt"><option x-bind:value="opt" x-text="catKo(opt)"></option></template>
                   </select>

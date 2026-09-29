@@ -7,7 +7,7 @@
 
 공통 원칙
 
-- 토큰 우선: 간격 `--ds-space-*`(4px 그리드) · 패널 좌우 `--ds-pad-panel-x` · 표/필터 인셋 `--ds-pad-inset` · radius 는 용도 별칭(`--ds-radius-card/control/chip`).
+- 토큰 우선: 간격 `--ds-space-*`(4px 그리드) · 패널 좌우 `--ds-pad-panel-x` · 본문 세로 간격 `--ds-pad-inset` · radius 는 용도 별칭(`--ds-radius-card/control/chip`). 표/필터의 좌우 여백은 부모 본문 또는 패널 직속 규칙 한 곳에서만 적용한다.
 - 포커스는 `--ds-focus-ring` box-shadow 하나로 통일(outline 하드코딩 금지). 전역 폴백: `:where(button,a,[role=tab],select,summary):focus-visible`.
 - 타이틀·소제목·스텝 배지·퀘스트·큰 숫자는 디스플레이 폰트(GmarketSans), 본문·표·입력은 Pretendard.
 - 값 태그(등급·인텐트·카테고리·사유·엔티티)는 반드시 호버 정의(`data-tip` + `termDef`)를 단다.
@@ -42,17 +42,23 @@
 | `.ds-btn--ghost` / `.copybtn` | 인라인 저강도 행동(닫기·복사·이동 링크) | 〃 |
 | `.ds-iconbtn--bordered` | 헤더 우측 아이콘 행동(새로고침·다운로드) · `data-tip` 필수 | 〃 |
 
-크기는 `--s-sm(26~28px)/--s-md(36px)` 중 택1, 같은 행에서는 같은 크기.
+앱의 독립 버튼 크기는 `--s-sm(28px)/--s-md(34px)/--s-lg(40px)`이며 크기 미지정은36px다. 입력·선택·버튼을 함께 배치할 때는 `.control-row`(36px) 또는 `.control-row--compact`(32px)를 사용한다. 행 규격이 개별 버튼 크기보다 우선하며 inline `height`로 덮어쓰지 않는다. textarea는 행 높이에 맞추지 않는다.
+
+복합 선택기 `.selctl`도 테두리를 포함한 외곽이 행 높이를 따른다. 내부 field는 테두리2px를 뺀34/30px이며, 필터 칩은 외곽36/32px다. `.ds-field`를 쓰는 공용 입력도 같은 규격을 따른다.
 
 ## 카드·구획
 
 | 컴포넌트 | 계약 |
 |---|---|
 | `.panel` | 카드 1구획. `--ds-radius-card` · 헤더 `.panel-hd`(타이틀 b + `.meta` 설명, 우측 액션은 `ml-auto`) · 본문 `.panel-bd`(`--ds-pad-inset`/`--ds-pad-panel-x`) |
-| `.panel` 내 표/필터 | 표 박스와 `.filterbar` 는 좌우 `--ds-pad-inset` 정렬(단일 원천) |
+| `.panel` 내 표/필터 | `.panel-bd` 내부는 추가 좌우 margin 0. 패널 직속은 `--ds-pad-panel-x`(20px). 표 외곽과 필터 외곽을 정렬하며 셀 내부 padding은 별도로 유지 |
 | `.stepline` | 프로세스 스텝 헤더: `STEP N` 배지(디스플레이 폰트) + 타이틀 + meta |
 | `.subhd` | 패널 내 소제목(디스플레이 폰트 13.5px) + `.meta` 설명 |
-| `.tiles`/`.tile` | 지표 타일. 숫자 `.n`(tnum·lh 1) + 라벨 `.t`(11px·margin 6px) · 통계 용어는 `data-tip` 필수 |
+| `.tiles`/`.tile` | 지표 타일. 기본 최대4열, `tiles--3/--5/--6`으로 최대 열수 지정. 칸 최소140px, 간격10px. 가용폭이 줄면 자동 줄바꿈. 숫자 `.n` + 라벨 `.t` · 통계 용어는 `data-tip` 필수 |
+| `.layout-grid--two` | 동일 비중의 두 영역, 간격16px. 화면1100px 이하 한 열. 고정 inline 열 정의 대신 사용 |
+| `.panel-hd__controls` | 헤더 우측 조작 그룹. 가용폭을 넘으면 줄바꿈. 같은 크기의 조작은 `.control-row`를 함께 사용 |
+| `.ds-table--compact` | 표 셀 좌우14px·상하8px. 기본 데이터 셀은 좌우14px·상하12px. 구조별 첫 셀 padding 예외 없음 |
+| `.model-compare-table` | 고정 항목 열180px + 동일 너비 모델 열 최소200px. 모델 수는 `--compare-model-count`, 항목 col은 `.model-compare-label`. 넘침은 표 wrapper 내부 스크롤로 처리 |
 | `.keyline` | 키·값 한 줄 행(이름 120px + 상태점 `.sdot` + 입력 flex + 버튼 + 메시지) · 행 사이 헤어라인 |
 
 ## 태그·표시
@@ -63,6 +69,8 @@
 | `.ds-badge--success/--error/--warning/--neutral` | 상태 태그(G/R·오류 의심·교정 필요·평가용 등). 의미 고정: warning=주의·보류, error=오류·확정 실패 |
 | `.abbar` | A/B 미니 막대(A 파랑/B 주황) + 우세 `▲`(`.abwin`) · 비교 표 수치 셀 전용 |
 | `#tipfloat` (`data-tip`/`data-tip-pos`) | 전역 고정 툴팁. CSS 의사요소 툴팁 금지(오버플로 클리핑) |
+
+상태 배지4종은 한 줄로 유지한다. 장문 콘텐츠를 담는 일반 값 태그에는 이 줄바꿈 제한을 적용하지 않는다.
 
 ## 진행·피드백
 
@@ -89,3 +97,20 @@
 - 새 컴포넌트/상태 추가 시: 이 문서에 행 추가 → 구현 → 스모크에 렌더 마커 추가.
 - 상태 색·간격을 바꿀 때는 컴포넌트 CSS 가 아니라 토큰(ds-theme)에서 바꾼다.
 - 근거 참조: Astryx 컴포넌트 상태 매트릭스 관례(문서 형식만 차용 · React 계층 미도입).
+
+## 배치 규격 검증
+
+공용 토큰과 기본 컴포넌트는 `design-system/src/{theme,components}.css`와 앱 배포본 `prism/vendor/ds-{theme,components}.css`에 함께 반영한다. 앱 전용 패널·모델 비교·타일 규칙은 `prism/vendor/app.css`가 담당한다. 기존 전체 파일을 서로 덮어쓰지 않는다.
+
+공통 배치 치수11개는 `design-system/tokens/tokens.json`의 `layout`과 `design-system/src/tokens.ts`에도 내보낸다. JSON 키는 CSS의 `--ds-` 접두사 뒤 이름과 같다.
+
+실제 앱 CSS를 사용하는 [배치 검수 페이지](design-system/preview/layout.html)에서 직속/중첩 표, 기본/compact 컨트롤, 통계, 긴 모델명, 빈 상태, 라이트/다크를 확인한다.
+
+```sh
+# 저장소 루트에서 정적 서버 실행
+python3 -m http.server 8000 --bind 127.0.0.1
+# 별도 터미널; 기존 Playwright 설치가 필요하다.
+node scripts/check_layout.cjs http://127.0.0.1:8000 /tmp/prism-layout-check
+```
+
+Playwright가 다른 경로에 설치되어 있으면 `PLAYWRIGHT_MODULE`에 모듈 경로를 전달한다. 검사는 패키지를 자동 설치하지 않는다. 375–1440px 9개 너비와 두 테마에서 외곽 오차≤1px, 컨트롤 높이36/32px, 그리드·페이지 넘침, 모델2/4/6열 균등폭, 포커스·disabled 상태를 검사하고 JSON 측정값과 스크린샷을 저장한다. 표 내부의 의도한 가로 스크롤은 허용한다.
