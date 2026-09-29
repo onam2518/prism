@@ -89,7 +89,9 @@ class TestEligibility(unittest.TestCase):
         rows = _rows()
         pv = TP.preview_definition(rows, {"뉴스"}, {"name": "x", "cats": [], "intents": [], "keywords": []})
         self.assertEqual(pv["n_total"], 3)
-        self.assertEqual(pv["bundles"][0]["count"], 3)       # 조건 없음 = 자격 전수
+        self.assertEqual(pv["bundles"], [])                  # 조건 0개 = 묶음 없음(전건 묶음 금지 · 4-15)
+        pv = TP.preview_definition(rows, {"뉴스"}, {"name": "x", "cats": ["Business and Finance"]})
+        self.assertEqual(pv["bundles"][0]["count"], 2)       # 축 하나면 성립(자격 있는 2건)
 
 
 class TestExclusionOverlay(unittest.TestCase):

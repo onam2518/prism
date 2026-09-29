@@ -344,12 +344,11 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertEqual(set(td.get("settings") or {}), {"co_min", "entity_min"})
         self.assertIsInstance(td.get("customDefs"), list)
         n = td["n_contents"]
-        # 미리보기: 조건 없음 = 단일 '핵심' 묶음 = 전체
+        # 미리보기: 조건 0개 = 묶음 없음(전건 묶음 금지 · 4-15)
         pv = self.ok("/topic-studio", {"action": "preview",
                                        "def": {"name": "전체", "cats": [], "intents": [], "keywords": []}})
         self.assertEqual(pv["preview"]["n_total"], n)
-        self.assertTrue(pv["preview"]["bundles"])
-        self.assertEqual(pv["preview"]["bundles"][0]["count"], n)   # 핵심 = 전체
+        self.assertEqual(pv["preview"]["bundles"], [])
         # 필수/선택 → 다중 묶음: 필수=Sports, 선택 2개 → 핵심 1 + 관련 2
         pv2 = self.ok("/topic-studio", {"action": "preview", "def": {
             "name": "스포츠 인물", "cats": ["Sports"], "intents": ["인물·사연", "인터뷰"], "keywords": [],
@@ -371,11 +370,12 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIn("Sports", sg2["suggest"]["req"]["cats"])      # 휴리스틱 기본: 카테고리=필수
         # 저장 → 사용자 정의로 영속 + 묶음(핵심) 생성
         saved = self.ok("/topic-studio", {"action": "save", "def": {
-            "name": "스모크 토픽", "prompt": "스모크 자연어 설명", "cats": [], "intents": [], "keywords": []}})
+            "name": "스모크 토픽", "prompt": "스모크 자연어 설명", "srcs": ["뉴스"],
+            "cats": [], "intents": [], "keywords": []}})
         mine = [g for g in saved.get("custom", []) if g["name"] == "스모크 토픽"]
         self.assertEqual(len(mine), 1)
         g = mine[0]
-        self.assertEqual(g["core_count"], n)                       # 조건 없음 = 핵심 = 전체
+        self.assertEqual(g["core_count"], n)                       # 출처 축 하나 = 적재 표본 전체
         did = g["id"]
         self.assertTrue(any(d["id"] == did for d in saved["customDefs"]))
         # 재조회에서도 유지(영속)
