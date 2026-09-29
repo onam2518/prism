@@ -39,9 +39,8 @@ class Methodology:
     prefilter_conf: float = 0.72
     yellow_low: float = 0.45
     slim: bool = False
-    # 4호출 중 ①리드문·②엔티티 동시 실행. 산출은 순차와 동일(두 콜 user 프롬프트가 prior 미사용),
-    # 차단 계약은 유지(① 빈값 → ② 결과 폐기·③④ 생략). 기본 on 근거: 실키 A/B(2026-07-03,
-    # solar-pro3 16쌍 교차 측정) 평균 -15.5%·중앙값 -18.0% 지연, API 실패 0, 산출 일치 16/16.
+    # 4호출 동시 실행. 네 콜의 user 프롬프트가 서로의 출력을 쓰지 않으므로(2026-09-22 정책)
+    # 산출은 순차와 동일하고 트레이스도 ①②③④ 순으로 적재된다.
     # 순차 회귀 비교는 abtest 프리셋 "sequential".
     parallel_calls: bool = True
     # quality ∥ item 스테이지 동시 실행(A/B 검증용 · 기본 off): 게이트는 사후 적용이라 산출은
@@ -158,13 +157,15 @@ HOLD_PREFIX = "입력 필요"                        # 사람이 채워야 하�
 
 
 def hold_reason(hold) -> str:
-    """입력 필요 사유 문구. 리드문이 비면 하위 차수(인텐트·카테고리)가 연쇄로 비므로 따로 적는다."""
+    """입력 필요 사유 문구. 항목별로 적는다(2026-09-22 · 364314733 '추출 상태와 입력 필요').
+    네 호출이 서로 독립이라 원인 항목·연쇄 항목 구분이 없다.
+
+    # ponytail: 다섯 상태(자동·수동·해당 없음·입력 필요·호출 실패) 중 저장하는 자리는
+    #   hold_fields 하나 = '사람이 채워야 하는 항목' 뿐이다. 호출 실패와 입력 부족을 나눠
+    #   보이려면 ItemMeta 에 항목별 상태 맵을 얹고 store 적재·검수 화면·채점을 함께 넓혀야
+    #   한다(이번 범위 밖). 지금은 fail_kind 가 있는 결과(trace fails)로 둘을 가른다."""
     hold = list(hold or [])
-    if not hold:
-        return ""
-    if "summary" in hold:
-        return f"{HOLD_PREFIX} · 리드문 추출 실패 · 하위 호출 생략"
-    return f"{HOLD_PREFIX} · 추출 실패: " + ", ".join(hold)
+    return (f"{HOLD_PREFIX} · 추출 실패: " + ", ".join(hold)) if hold else ""
 
 
 def _mark_meta_hold(ctx, im) -> None:
@@ -406,7 +407,7 @@ def _mock_generator(system: str, user: str, tag: str) -> dict:
         return {"finalGrade": "R" if reasons else "G", "reasons": reasons,
                 "evidence": "mock heuristic"}
 
-    if tag == "item_summary":                     # 분리형 ①: title·body 모두 비면 단락 차단 신호("")
+    if tag == "item_summary":                     # ①: title·body 모두 비면 '생성 불가' 신호("")
         title = _field(user, "title")
         b = _field(user, "body")
         if not title.strip() and not b.strip():

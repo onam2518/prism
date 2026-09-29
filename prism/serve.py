@@ -1777,7 +1777,7 @@ def _g_prompt_preview(h, q):
     try:
         if call in MP.CALLS:
             sysp = PR.call_system(c, call, model)
-            userp = MP.call_user(call, c, {"summary": "(리드문)", "entities": ["(엔티티)"], "intent": ["(인텐트)"]})
+            userp = MP.call_user(call, c)
         else:
             sysp = PR.item_system(c, model)
             userp = PR.item_user(c)

@@ -140,7 +140,9 @@ def item_system(content, model: str = "") -> str:
 
 
 def item_user(content) -> str:
-    return _content_block(content)
+    # 통합 1콜도 모델 입력은 title·body 다(2026-09-22 · 511247058 'AS-IS → TO-BE 비교').
+    # 품질·법령 판정은 서비스명을 계속 쓰므로 _content_block 은 그대로 둔다.
+    return f"title: {content.title}\nbody: {content.body}"
 
 
 def call_system(content, call: str, model: str = "") -> str:
@@ -150,8 +152,8 @@ def call_system(content, call: str, model: str = "") -> str:
     return MP.call_system(model, call, content.displayServiceName, learned)
 
 
-def call_user(call: str, content, prior: dict) -> str:
-    return MP.call_user(call, content, prior)
+def call_user(call: str, content) -> str:
+    return MP.call_user(call, content)
 
 
 # 법령 메타 (옵션)

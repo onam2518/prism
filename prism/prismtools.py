@@ -323,8 +323,8 @@ TOOLS = {
         # 프롬프트 그대로를 주는 별도 경로여야 하고, 그건 팀 데이터라 이 도구와 규칙이 다르다.
         "scope": "external",
         "title": "추출 프롬프트 배포",
-        "desc": "프리즘의 현행 아이템 메타 추출 프롬프트를 콜 단위로 내려준다(순차 4콜: "
-                "summary → entities → intent → category). 받은 프롬프트를 그쪽 모델로 돌리면 "
+        "desc": "프리즘의 현행 아이템 메타 추출 프롬프트를 콜 단위로 내려준다(독립 4콜: "
+                "summary · entities · intent · category). 받은 프롬프트를 그쪽 모델로 돌리면 "
                 "기준이 프리즘 것이라 결과가 프리즘 정의를 따르고, 응답의 version·fingerprint 로 "
                 "어떤 기준으로 만든 결과인지 나중에 되짚을 수 있다. "
                 "학습 보정(팀 검수 이력 누적분)은 빠져 있어 프리즘 실제 실행과 다를 수 있다 · "
@@ -333,11 +333,11 @@ TOOLS = {
             "type": "object",
             "properties": {
                 "call": {"type": "string", "enum": list(PD.CALLS),
-                         "description": "받을 콜 하나(순차 4콜 중)"},
+                         "description": "받을 콜 하나(독립 4콜 중)"},
                 "service": {"type": "string",
                             "description": "displayServiceName(뉴스·연예·스포츠·티스토리 등) · "
-                                           "③ 인텐트 콜의 입력에만 실린다 · 2026-09-22 부터 "
-                                           "후보 68개는 서비스와 무관하게 같다"},
+                                           "2026-09-22 부터 모델 입력·후보에 쓰지 않는다 · "
+                                           "응답에 그대로 되비칠 뿐 프롬프트를 바꾸지 않는다"},
                 "client_model": {"type": "string",
                                  "description": "돌릴 모델 이름(선택 · 예: gpt-5 · gemini-3-pro) · "
                                                 "모델 계열에 맞는 래퍼로 조립한다 · 모르는 이름이면 범용 래퍼"},

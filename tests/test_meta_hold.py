@@ -1,4 +1,4 @@
-"""입력 필요(hold_fields): 리드문·하위 실패 부분 보류(agents) · 품질 등급과 분리(harness) · 채우면 목록에서 빠짐(patch) · 검수 큐 라우팅(autoreview) · 채점 meta_hold_rate."""
+"""입력 필요(hold_fields): 호출별 부분 보류(agents) · 품질 등급과 분리(harness) · 채우면 목록에서 빠짐(patch) · 검수 큐 라우팅(autoreview) · 채점 meta_hold_rate."""
 import os
 import sys
 import tempfile
@@ -37,17 +37,26 @@ class TestAgentsHold(unittest.TestCase):
         from prism import agents as AG
         AG.META_CFG = {"four_calls": True, "call_models": {}}
 
-    def test_summary_failure_holds_all(self):
+    def test_summary_failure_holds_only_summary(self):
+        """2026-09-22 정책: ① 실패는 ① 만 보류한다. 나머지 셋은 실행되고 값이 남는다."""
         from prism import agents as AG
+        ok = {"item_entities": {"entities": ["한국은행"]}, "item_intent": {"intent": ["속보·단신"]},
+              "item_category": {"content_category": ["News and Politics / Society"]}}
         for obj in ({"_fail": "api"}, {"lead": "키 이름 틀림"}):            # 호출 실패 · 계약 키 부재
-            llm = _LLM({"item_summary": obj})
+            llm = _LLM(dict(ok, item_summary=obj))
             im, _ = AG.run_item(llm, _content())
-            self.assertEqual(llm.calls, ["item_summary"])               # 재호출 없이 보류(비용 0)
-            self.assertEqual(im.hold_fields, ["summary", "entities", "intent", "content_category"])
+            self.assertEqual(sorted(llm.calls),
+                             ["item_category", "item_entities", "item_intent", "item_summary"])
+            self.assertEqual(im.hold_fields, ["summary"])
+            self.assertEqual((im.summary, im.entities, im.intent), ("", ["한국은행"], ["속보·단신"]))
+            self.assertEqual(im.content_category, ["News and Politics / Society"])
 
     def test_empty_summary_is_signal_not_hold(self):
         from prism import agents as AG
-        im, _ = AG.run_item(_LLM({"item_summary": {"summary": ""}}), _content())
+        llm = _LLM({"item_summary": {"summary": ""}, "item_entities": {"entities": ["한국은행"]},
+                    "item_intent": {"intent": ["속보·단신"]},
+                    "item_category": {"content_category": ["News and Politics / Society"]}})
+        im, _ = AG.run_item(llm, _content())
         self.assertEqual(im.hold_fields, [])
 
     def test_partial_hold_keeps_good_fields(self):
@@ -70,7 +79,9 @@ class TestHarnessMark(unittest.TestCase):
         H._mark_meta_hold(ctx, ItemMeta(hold_fields=["summary", "entities", "intent", "content_category"]))
         self.assertEqual((ctx.qm.review, ctx.qm.finalGrade, ctx.qm.review_reason), ("auto", "G", ""))
         self.assertEqual(ctx.verdicts[0]["agent"], "MetaHold")
-        self.assertTrue(ctx.verdicts[0]["evidence"].startswith("입력 필요 · 리드문"))
+        # 2026-09-22 정책: 연쇄('하위 호출 생략') 문구 없이 실패한 항목만 나열한다.
+        self.assertEqual(ctx.verdicts[0]["evidence"],
+                         "입력 필요 · 추출 실패: summary, entities, intent, content_category")
         ctx2 = Ctx(); ctx2.qm = QualityMeta(finalGrade="G", reasons=[]); ctx2.verdicts = []
         H._mark_meta_hold(ctx2, ItemMeta(hold_fields=["intent"]))
         self.assertIn("추출 실패: intent", ctx2.verdicts[0]["evidence"])

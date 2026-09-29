@@ -326,24 +326,34 @@ class TestContractKeyIsFailure(unittest.TestCase):
         self.assertEqual((qm.finalGrade, qm.reasons, qm.review), ("R", ["ad"], "auto"))
 
     def test_item_summary_missing_key_marks_call_failed(self):
+        """① 만 계약 키가 없는 응답: summary 만 실패로 승격하고 나머지 셋은 그대로 살린다
+        (2026-09-22 정책 · 종전에는 여기서 ②③④ 를 아예 부르지 않았다)."""
         from prism import agents as A
         c = self._content()
-        llm = _StubLLM({"item_summary": {"lead": "노사 협상 결렬을 전한다"}})
+        llm = _StubLLM({"item_summary": {"lead": "노사 협상 결렬을 전한다"},
+                        "item_entities": {"entities": ["삼성전자"]},
+                        "item_intent": {"intent": ["속보·단신"]},
+                        "item_category": {"content_category": ["News and Politics / Society"]}})
         im, results = A.run_item(llm, c)
         self.assertEqual(im.summary, "")
         kinds = [getattr(r, "fail_kind", None) for r in results if hasattr(r, "fail_kind")]
         self.assertIn("contract_miss", kinds)        # 하네스 yellow 가드에 태워진다
-        self.assertEqual(len(llm.calls), 1)          # 단락 차단은 그대로
+        self.assertEqual(len(llm.calls), 4)          # 네 호출은 서로 독립
+        self.assertEqual(im.hold_fields, ["summary"])
+        self.assertEqual((im.entities, im.intent), (["삼성전자"], ["속보·단신"]))
 
     def test_empty_summary_is_not_contract_failure(self):
-        """빈 문자열은 '생성 불가' 라는 정당한 차단 신호 — 실패로 보지 않는다."""
+        """빈 문자열은 '생성 불가' 라는 정당한 신호 — 실패로 보지 않는다."""
         from prism import agents as A
         c = self._content()
-        llm = _StubLLM({"item_summary": {"summary": ""}})
+        llm = _StubLLM({"item_summary": {"summary": ""},
+                        "item_entities": {"entities": ["삼성전자"]},
+                        "item_intent": {"intent": ["속보·단신"]},
+                        "item_category": {"content_category": ["News and Politics / Society"]}})
         im, results = A.run_item(llm, c)
         self.assertEqual(im.summary, "")
         self.assertEqual([getattr(r, "fail_kind", None) for r in results
-                          if hasattr(r, "fail_kind")], [None])
+                          if hasattr(r, "fail_kind")], [None, None, None, None])
 
     def test_contract_miss_holds_auto_g_in_harness(self):
         """종단: 계약 키 없는 응답 → review=yellow(사람 검수)."""

@@ -1,6 +1,7 @@
 """추출 에이전트 래퍼 (Quality·Legal·Item)."""
 from __future__ import annotations
 from . import prompts as P
+from .meta_prompts import CALLS as CALL_ORDER      # ①②③④ · 트레이스 적재 순서의 단일 원천
 from .schema import QualityMeta, ItemMeta, LegalMeta, HarmType
 
 
@@ -117,14 +118,14 @@ def run_item(llm, content, parallel: bool = False) -> tuple[ItemMeta, list]:
 
 
 def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, list]:
-    """분리형 순차 4호출(계약): ① summary → ② entities → ③ intent → ④ content_category.
-    단락 차단(① 빈 문자열 → 후속 생략) · 호출 사이 기계 검증(사전 불일치 드롭, 전량 드롭 시 1회 재요청).
-    parallel=True(방법론 옵션 · A/B 검증용): ①·②만 동시 실행. 두 호출의 user 프롬프트가
-    prior 를 쓰지 않아(meta_prompts.call_user) 산출은 순차와 동일하고, 트레이스는 ①→② 순서로
-    적재해 결정론을 유지한다. 트레이드오프 = ① 빈 문자열일 때 ② 호출 비용 낭비(차단 계약 예외)."""
+    """독립 4호출(계약 2026-09-22 · 371131847 '호출 구조'): ① summary · ② entities ·
+    ③ intent · ④ content_category 를 제목·본문에서 각각 추출한다.
+    어느 호출도 다른 호출의 출력을 입력으로 받지 않으므로 ① 이 비거나 실패해도 나머지 셋을
+    실행하고 결과를 살린다. 호출 실패·계약 키 부재는 그 필드만 hold_fields 에 넣는다(항목별 상태).
+    호출별 기계 검증(사전 불일치 드롭, 전량 드롭 시 1회 재요청)은 그대로 둔다.
+    parallel=True(방법론 옵션): 네 호출 동시 실행 · 트레이스는 ①②③④ 순으로 적재해 결정론 유지."""
     import re as _re
     from . import dictionaries as D
-    results, prior = [], {}
 
     def _aslist(v):                                # 규칙 보정: 문자열 단일값 → 리스트(재요청 절감)
         if isinstance(v, str) and v.strip():
@@ -134,11 +135,13 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
     def _canon(x):                                 # 규칙 보정: '속보 · 단신' 등 공백 변형 흡수
         return _re.sub(r"\s*·\s*", "·", str(x).strip())
 
-    def ask(call: str, tag: str, sink: list = None, extra: str = "", require: str = "") -> dict:
-        out = results if sink is None else sink
+    sinks = {c: [] for c in CALL_ORDER}            # 호출별 트레이스(병렬이어도 적재 순서는 고정)
+
+    def ask(call: str, tag: str, extra: str = "", require: str = "") -> dict:
+        out = sinks[call]
         c_llm = _call_llm(llm, call)
         sysp = P.call_system(content, call, getattr(c_llm, "model", "") or "")
-        obj, res = c_llm.complete_json(sysp, P.call_user(call, content, prior) + extra, tag=tag)
+        obj, res = c_llm.complete_json(sysp, P.call_user(call, content) + extra, tag=tag)
         # 계약 키 부재를 실패로 승격: 파싱은 됐지만 계약을 안 지킨 응답(래핑·이름 변형)은
         # fail_kind 가 없어 하네스의 yellow 가드를 그대로 빠져나갔다 — 빈 메타가 review=auto 로
         # 유통되던 사각지대(2026-07-28 사고와 결과 동일). 빈 값(정당한 신호)과는 구분한다.
@@ -152,100 +155,103 @@ def _run_item_calls(llm, content, parallel: bool = False) -> tuple[ItemMeta, lis
                     "fail": obj.get("_fail") or (f"계약 키 없음: {require}" if miss else None)})
         return obj
 
-    # ①·② (parallel 이면 동시 · 아니면 계약 순차)
-    if parallel:
-        import threading
-        box, errs, r1, r2 = {}, [], [], []
+    def _failed(obj, key) -> bool:                 # 호출 실패 · 계약 키 부재 = 그 필드만 보류
+        return bool(obj.get("_fail")) or key not in obj
 
-        def _t(key, call, tag, sink, require):
-            try:
-                box[key] = ask(call, tag, sink, require=require)
-            except Exception as e:                 # 순차 모드와 동일하게 전파
-                errs.append(e)
-        t1 = threading.Thread(target=_t, args=("o1", "summary", "item_summary", r1, "summary"))
-        t2 = threading.Thread(target=_t, args=("o2", "entities", "item_entities", r2, "entities"))
-        t1.start(); t2.start(); t1.join(); t2.join()
-        results += r1 + r2                          # 트레이스 순서 결정론(①→②)
-        if errs:
-            raise errs[0]
-        o1, o2 = box.get("o1") or {}, box.get("o2") or {}
-    else:
-        o1 = ask("summary", "item_summary", require="summary")
-
-    summary = (o1.get("summary") or "").strip() if isinstance(o1.get("summary"), str) else ""
-    prior["summary"] = summary
-    if not summary:                                # 단락 차단: 하위 호출 생략
-        # 호출 실패·계약 키 부재 = 입력 필요(사람이 채움 · hold_fields). 키는 있는데 빈 문자열이면
-        # '생성 불가' 라는 정당한 차단 신호라 보류로 올리지 않는다(test_audit_llm 계약).
-        failed = bool(o1.get("_fail")) or "summary" not in o1
-        return ItemMeta(summary="", entities=[], intent=[], content_category=[],
-                        hold_fields=(["summary", "entities", "intent", "content_category"] if failed else [])), results
-    hold = []                                      # 하위 호출 실패분만 보류(성공한 필드는 살린다)
+    # ① 리드문 — 빈 문자열은 '생성 불가' 라는 정당한 신호이지 보류가 아니다.
+    def call_summary():
+        o = ask("summary", "item_summary", require="summary")
+        s = o.get("summary")
+        return (s.strip() if isinstance(s, str) else ""), _failed(o, "summary")
 
     # ② 엔티티(핵심만 · 개수 상한 없음 · 2026-07-08 수량 정책 전환)
-    if not parallel:
-        o2 = ask("entities", "item_entities", require="entities")
-    ents = [str(x).strip() for x in _aslist(o2.get("entities")) if str(x).strip()]
-    if o2.get("_fail"):
-        hold.append("entities")
-    prior["entities"] = ents
+    def call_entities():
+        o = ask("entities", "item_entities", require="entities")
+        return [str(x).strip() for x in _aslist(o.get("entities")) if str(x).strip()], _failed(o, "entities")
 
     # ③ 인텐트: 사전 표기 정확 일치만 통과, 전량 드롭이면 1회 재요청
-    valid_intents = set(D.intent_categories())
-    canon_map = {_canon(v): v for v in valid_intents}
+    def call_intent():
+        valid = set(D.intent_categories())
+        canon_map = {_canon(v): v for v in valid}
 
-    def _match_intents(vals):
-        ok, bad = [], []
-        for x in vals:
-            hit = canon_map.get(_canon(x))
-            (ok if hit else bad).append(hit or x)
-        return ok, bad
-    o3 = ask("intent", "item_intent", require="intent")
-    raw3 = [str(x).strip() for x in _aslist(o3.get("intent")) if str(x).strip()]
-    intent, dropped3 = _match_intents(raw3)
-    retried3 = False
-    if raw3 and not intent:
-        retried3 = True
-        # 재요청은 **요청이 달라야** 의미가 있다(temperature=0 · 종전에는 바이트 단위로 같은
-        # 요청을 보내 같은 답을 받고 비용만 2배였다). 실패 값과 허용 목록을 명시해 다시 묻는다.
-        o3 = ask("intent", "item_intent", require="intent",
-                 extra=_retry_hint("직전 응답의 인텐트", raw3, sorted(valid_intents)))
-        raw3 = [str(x).strip() for x in _aslist(o3.get("intent")) if str(x).strip()]
-        got2, bad2 = _match_intents(raw3)
-        intent = got2
-        dropped3 += bad2
-    if dropped3:                                   # 사전 갭 관측: 드롭 원값·재요청 여부를 트레이스에 보존
-        results.append({"agent": "Verifier:intent", "fail": None,
-                        "evidence": f"사전 불일치 드롭 {len(dropped3)}건: " + " · ".join(dropped3[:5])
-                                    + (" (전량 드롭 → 재요청 1회)" if retried3 else ""),
-                        "drop": {"call": "intent", "values": dropped3[:10],
-                                 "service": content.displayServiceName, "retried": retried3}})
-    if o3.get("_fail"):
-        hold.append("intent")
-    prior["intent"] = intent
+        def _match(vals):
+            ok, bad = [], []
+            for x in vals:
+                hit = canon_map.get(_canon(x))
+                (ok if hit else bad).append(hit or x)
+            return ok, bad
+        o = ask("intent", "item_intent", require="intent")
+        raw = [str(x).strip() for x in _aslist(o.get("intent")) if str(x).strip()]
+        intent, dropped = _match(raw)
+        retried = False
+        if raw and not intent:
+            retried = True
+            # 재요청은 **요청이 달라야** 의미가 있다(temperature=0 · 종전에는 바이트 단위로 같은
+            # 요청을 보내 같은 답을 받고 비용만 2배였다). 실패 값과 허용 목록을 명시해 다시 묻는다.
+            o = ask("intent", "item_intent", require="intent",
+                    extra=_retry_hint("직전 응답의 인텐트", raw, sorted(valid)))
+            raw = [str(x).strip() for x in _aslist(o.get("intent")) if str(x).strip()]
+            intent, bad2 = _match(raw)
+            dropped += bad2
+        if dropped:                                # 사전 갭 관측: 드롭 원값·재요청 여부를 트레이스에 보존
+            sinks["intent"].append({"agent": "Verifier:intent", "fail": None,
+                                    "evidence": f"사전 불일치 드롭 {len(dropped)}건: " + " · ".join(dropped[:5])
+                                                + (" (전량 드롭 → 재요청 1회)" if retried else ""),
+                                    "drop": {"call": "intent", "values": dropped[:10],
+                                             "service": content.displayServiceName, "retried": retried}})
+        return intent, _failed(o, "intent")
 
     # ④ 콘텐츠 카테고리: 사전 경로 정규화(스냅), 전량 드롭이면 1회 재요청
-    o4 = ask("category", "item_category", require="content_category")
-    raw4 = [str(x) for x in _aslist(o4.get("content_category")) if str(x).strip()]
-    cats = D.normalize_category_list(raw4)
-    retried4 = False
-    if raw4 and not cats:
-        retried4 = True
-        o4 = ask("category", "item_category", require="content_category",
-                 extra=_retry_hint("직전 응답의 콘텐츠 카테고리", raw4,
-                                   [f"{t1} / …" for t1 in sorted(D.IAB_TIER1)]))
-        raw4 = [str(x) for x in _aslist(o4.get("content_category")) if str(x).strip()]
-        cats = D.normalize_category_list(raw4)
-    dropped4 = [x for x in raw4 if not D.normalize_category_list([x])]
-    if dropped4:
-        results.append({"agent": "Verifier:category", "fail": None,
-                        "evidence": f"사전 스냅 실패 드롭 {len(dropped4)}건: " + " · ".join(dropped4[:5])
-                                    + (" (전량 드롭 → 재요청 1회)" if retried4 else ""),
-                        "drop": {"call": "category", "values": dropped4[:10],
-                                 "service": content.displayServiceName, "retried": retried4}})
+    def call_category():
+        o = ask("category", "item_category", require="content_category")
+        raw = [str(x) for x in _aslist(o.get("content_category")) if str(x).strip()]
+        cats = D.normalize_category_list(raw)
+        retried = False
+        if raw and not cats:
+            retried = True
+            o = ask("category", "item_category", require="content_category",
+                    extra=_retry_hint("직전 응답의 콘텐츠 카테고리", raw,
+                                      [f"{t1} / …" for t1 in sorted(D.IAB_TIER1)]))
+            raw = [str(x) for x in _aslist(o.get("content_category")) if str(x).strip()]
+            cats = D.normalize_category_list(raw)
+        dropped = [x for x in raw if not D.normalize_category_list([x])]
+        if dropped:
+            sinks["category"].append({"agent": "Verifier:category", "fail": None,
+                                      "evidence": f"사전 스냅 실패 드롭 {len(dropped)}건: " + " · ".join(dropped[:5])
+                                                  + (" (전량 드롭 → 재요청 1회)" if retried else ""),
+                                      "drop": {"call": "category", "values": dropped[:10],
+                                               "service": content.displayServiceName, "retried": retried}})
+        return cats, _failed(o, "content_category")
 
-    if o4.get("_fail"):
-        hold.append("content_category")
+    runners = {"summary": call_summary, "entities": call_entities,
+               "intent": call_intent, "category": call_category}
+    box, errs = {}, []
+
+    def _run(call):
+        try:
+            box[call] = runners[call]()
+        except Exception as e:                     # 순차 모드와 동일하게 전파
+            errs.append(e)
+
+    if parallel:
+        import threading
+        ts = [threading.Thread(target=_run, args=(c,)) for c in CALL_ORDER]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+    else:
+        for c in CALL_ORDER:
+            _run(c)
+    results = [r for c in CALL_ORDER for r in sinks[c]]   # 트레이스 순서 결정론(①②③④)
+    if errs:
+        raise errs[0]
+    summary, f_sum = box["summary"]
+    ents, f_ent = box["entities"]
+    intent, f_int = box["intent"]
+    cats, f_cat = box["category"]
+    hold = [k for k, f in (("summary", f_sum), ("entities", f_ent),
+                           ("intent", f_int), ("content_category", f_cat)) if f]
     return ItemMeta(summary=summary, entities=ents, intent=intent, content_category=cats,
                     hold_fields=hold), results
 

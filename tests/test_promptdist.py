@@ -266,12 +266,19 @@ class TestUserTemplate(unittest.TestCase):
         self.assertIn("0장", t)                     # '정보 없음 != 0장' 이 계약에 남아 있어야 한다
         self.assertNotIn(MP._IMG_UNKNOWN, t)        # 자리표로 바뀌었다
 
+    def test_every_call_takes_title_and_body_without_the_service_name(self):
+        """2026-09-22 정책(511247058 '호출별 입력 개정'): 네 콜 모두 title·body 만 받는다.
+        서비스명이 다시 투영되면 파트너 계약과 실제 입력이 함께 어긋난다."""
+        for call in PD.CALLS:
+            t = prompt(call=call)["user_template"]
+            self.assertIn("title:", t, call)
+            self.assertIn("body:", t, call)
+            self.assertNotIn("displayServiceName", t, call)
+
     def test_requires_is_derived_from_the_template_not_hand_written(self):
-        self.assertEqual(prompt(call="summary")["requires"], [])
-        self.assertEqual(prompt(call="entities")["requires"], [])
-        self.assertEqual(prompt(call="intent")["requires"], ["summary"])
-        self.assertEqual(sorted(prompt(call="category")["requires"]),
-                         ["entities", "intent", "summary"])
+        # 2026-09-22 정책: 네 콜이 독립이라 앞 콜의 출력을 받는 자리가 없다(전부 빈 목록).
+        for call in PD.CALLS:
+            self.assertEqual(prompt(call=call)["requires"], [], call)
 
     def test_every_required_prior_output_appears_in_the_template(self):
         for call in PD.CALLS:
@@ -402,8 +409,8 @@ class TestValidationCatchesTheRules(unittest.TestCase):
     def test_quantity_and_order_contract_rules(self):
         self.assertEqual(self.one({"content_category": []})["code"], "category_empty")
         self.assertEqual(self.one({"intent": ["속보·단신", "속보·단신"]})["code"], "duplicate")
-        self.assertEqual(self.one({"summary": "", "intent": ["속보·단신"]})["code"],
-                         "summary_empty_but_others_filled")
+        # 2026-09-22 독립 4콜: 빈 리드문 + 다른 필드 채움은 정상이라 위반이 아니다.
+        self.assertEqual(validate({"summary": "", "intent": ["속보·단신"]})["total"], 0)
 
     def test_fields_outside_the_four_field_contract(self):
         it = self.one({"grade": "G"})
