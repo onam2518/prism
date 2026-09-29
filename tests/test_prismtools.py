@@ -89,11 +89,14 @@ class TestTaxonomy(unittest.TestCase):
         self.assertIn("error", r)
         self.assertIn("intent", r["error"])          # 고를 수 있는 값을 알려준다
 
-    def test_intent_is_service_scoped(self):
+    def test_intent_candidates_are_common_to_every_service(self):
+        """2026-09-22 전환(2-13): service 를 줘도 후보가 줄지 않는다(응답 echo 전용)."""
         news = {v["key"] for v in PT.get_taxonomy("intent", service="뉴스", team=TEAM)["values"]}
         tstory = {v["key"] for v in PT.get_taxonomy("intent", service="티스토리", team=TEAM)["values"]}
-        self.assertIn("정책·행정", news)
-        self.assertNotIn("정책·행정", tstory)         # 서비스 전용 값이 새지 않는다
+        none = {v["key"] for v in PT.get_taxonomy("intent", team=TEAM)["values"]}
+        self.assertEqual(news, tstory)
+        self.assertEqual(news, none)
+        self.assertEqual(news, set(D.intent_categories()))
 
     def test_intent_definitions_come_from_the_single_source(self):
         """검수 화면·추출 프롬프트와 같은 문장이어야 한다(사전이 갈리면 기준이 갈린다)."""

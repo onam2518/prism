@@ -38,7 +38,7 @@ class TestIntentDefsReachPrompt(unittest.TestCase):
 
     def test_definitions_are_injected_into_the_prompt(self):
         # 수정 전에는 " / ".join(...) 로 이름만 나열해 정의가 프롬프트에 닿지 않았다.
-        block = M.intent_dictionary_text("뉴스").split("[범용 ②")[0]
+        block = M.intent_dictionary_text().split("[② 형식")[0]
         for v in D.INTENT_CATEGORIES_UNIVERSAL:
             self.assertIn(v, block, f"{v} 가 범용① 블록에 없다")
             self.assertIn(D.INTENT_VALUE_DEFS[v][:18], block, f"{v} 정의문이 주입되지 않았다")
@@ -49,9 +49,13 @@ class TestIntentDefsReachPrompt(unittest.TestCase):
             self.assertIn("미부여", D.INTENT_VALUE_DEFS[v], f"{v} 에 미부여 경계가 없다")
 
     def test_no_contradiction_with_call_rules_on_editorial(self):
-        """사설·칼럼 → 의견·논쟁 우선은 260715 회의 결정이다. 정의가 이를 뒤집으면 안 된다."""
+        """사설·칼럼 → 의견·논쟁 우선은 260715 회의 결정이다. 정의가 이를 뒤집으면 안 된다.
+
+        2026-09-22 개정 정의는 사설·칼럼 문장을 정의문 밖(CALL_RULES)에 두고 정의에는
+        '한쪽 논조 우선' 만 남겼다. 둘이 어긋나지 않는지를 양쪽에서 확인한다."""
         d = D.INTENT_VALUE_DEFS["의견·논쟁"]
-        self.assertIn("사설·칼럼", d)
+        self.assertIn("한쪽 논조는 옹호·지지 또는 반박·비판 우선", d)
+        self.assertIn("사설/칼럼은 '의견·논쟁'", M.CALL_RULES["intent"])
         self.assertNotIn("미부여: 한쪽 입장만", d)     # 초안이 회의 결정과 충돌하던 문구
 
     def test_prompt_version_bumped(self):

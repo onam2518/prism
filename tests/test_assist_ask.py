@@ -805,12 +805,12 @@ class TestGetExamples(unittest.TestCase):
         self.assertTrue(r["truncated"])
         self.assertGreater(r["total"], 3)
 
-    def test_service_narrows_the_intent_candidates(self):
-        news = {it["key"] for it in self.call(kind="intent", service="뉴스", limit=60)["items"]}
-        tstory = {it["key"] for it in self.call(kind="intent", service="티스토리", limit=60)["items"]}
-        self.assertNotEqual(news, tstory)
-        self.assertIn("속보·단신", news)
-        self.assertNotIn("속보·단신", tstory)
+    def test_service_no_longer_narrows_the_intent_candidates(self):
+        """2026-09-22 전환: 후보는 출처와 무관한 공통 68개다(옛 계약은 서비스별 축소)."""
+        news = {it["key"] for it in self.call(kind="intent", service="뉴스", limit=80)["items"]}
+        tstory = {it["key"] for it in self.call(kind="intent", service="티스토리", limit=80)["items"]}
+        self.assertEqual(news, tstory)
+        self.assertIn("속보·단신", tstory)
 
     def test_no_team_no_examples(self):
         for t in (None, "", "   "):

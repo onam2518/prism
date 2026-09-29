@@ -121,7 +121,7 @@ class TestEvalRunFlow(unittest.TestCase):
         content = {"displayServiceName": "뉴스", "title": "카카오뱅크 실적 발표",
                    "subtitle": "", "body": "카카오뱅크가 3분기 실적을 발표했다 카카오뱅크 주가는 상승했다"}
         expected = {"finalGrade": "G", "reasons": [],
-                    "intent": ["속보·사건 추적", "심층 분석"],   # mock: D.intent_categories_for('뉴스')[:2]
+                    "intent": ["속보·사건 추적", "심층 분석"],   # mock: D.intent_categories()[:2]
                     "entities": ["카카오뱅크"],
                     "content_category": ["News and Politics / Society"]}   # mock 은 항상 이 값을 낸다
         st.upsert_golden(content_hash(content), content, expected)

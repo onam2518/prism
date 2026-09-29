@@ -138,10 +138,13 @@ class TestVersionAlwaysShips(unittest.TestCase):
             self.assertTrue(r["fingerprint"].startswith("sha256:"), call)
 
     def test_the_fingerprint_actually_tracks_the_prompt_body(self):
-        """지문이 본문과 무관하면 '같은 버전 = 같은 프롬프트' 대조가 거짓말이 된다."""
-        a, b = prompt(service="뉴스"), prompt(service="티스토리")
+        """지문이 본문과 무관하면 '같은 버전 = 같은 프롬프트' 대조가 거짓말이 된다.
+
+        2026-09-22 공통 사전 전환으로 service 는 더 이상 프롬프트를 바꾸지 않는다.
+        본문이 갈리는 축은 콜(call)이므로 그것으로 대조한다."""
+        a, b = prompt(call="intent"), prompt(call="category")
         self.assertNotEqual(a["fingerprint"], b["fingerprint"])
-        self.assertEqual(a["fingerprint"], prompt(service="뉴스")["fingerprint"])
+        self.assertEqual(a["fingerprint"], prompt(call="intent")["fingerprint"])
 
     def test_the_validator_reports_the_rule_version_too(self):
         self.assertEqual(validate({"intent": []})["version"], PR.IMETA_VERSION)
@@ -202,35 +205,25 @@ class TestModelFamilyFallback(unittest.TestCase):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-class TestServiceScoping(unittest.TestCase):
-    """서비스별 후보가 섞이면 그 서비스에 없는 값이 정답처럼 보인다.
+class TestCandidatesAreCommonToEverySource(unittest.TestCase):
+    """2026-09-22 전환(2-13): 밖으로 나가는 프롬프트도 출처별로 갈리지 않는다.
 
-    무력화 실험 M6(call_system 에 넘기는 service 를 빈 문자열로 고정): 이 클래스가 **2건**,
-    조립 동일성·지문 테스트가 **2건**을 더 잡는다(합 4건 · 다른 파일에서는 0건).
-    후보 목록은 '- 값:' 정의문 줄로 본다 · 계약 원문과 골드 예시에는 다른 서비스 값이 문장으로
-    등장하므로(예: 티스토리 프롬프트의 골드 예시가 뉴스 값을 쓴다) 단순 substring 으로는
-    아무것도 잡지 못한다. 이 구분을 지운 채로 substring 검사만 남기지 말 것."""
+    종전에는 서비스별 후보 블록을 내보냈고, 미정의 서비스는 범용 18개로 수렴시켰다.
+    후보 목록은 '- 값:' 정의문 줄로 본다 · 계약 원문과 골드 예시에는 다른 값이 문장으로
+    등장하므로 단순 substring 으로는 아무것도 잡지 못한다. 이 구분을 지우지 말 것."""
 
-    def test_service_specific_candidates_do_not_bleed_across_services(self):
-        news = prompt(service="뉴스")["system"]
-        tstory = prompt(service="티스토리")["system"]
-        self.assertIn("- 정책·행정:", news)
-        self.assertNotIn("- 정책·행정:", tstory)
-        self.assertIn("- 리뷰·분석:", tstory)
-        self.assertNotIn("- 리뷰·분석:", news)
+    def test_the_same_68_candidates_ship_for_every_service(self):
+        base = prompt(service="뉴스")["system"]
+        for svc in ("티스토리", "멜론", "파트너서비스X", ""):
+            self.assertEqual(prompt(service=svc)["system"], base, svc)
+        for v in D.intent_categories():
+            self.assertIn("- %s:" % v, base, "후보 %s 누락" % v)
 
-    def test_every_service_gets_exactly_its_own_candidate_block(self):
-        for svc, vals in D.INTENT_CATEGORIES_BY_SERVICE.items():
-            sysmsg = prompt(service=svc)["system"]
-            self.assertIn("[서비스 카테고리 분류값 · %s]" % svc, sysmsg, svc)
-            for v in vals:
-                self.assertIn("- %s:" % v, sysmsg, "%s 후보 %s 누락" % (svc, v))
-
-    def test_an_unknown_service_converges_to_the_pgc_fallback(self):
-        """프리즘 운영과 같은 처리다(미정의 dsn = 범용 분류값만)."""
-        r = prompt(service="파트너서비스X")
-        self.assertEqual(r["service_resolved"], "")
-        self.assertIn("displayServiceName 미정의", r["system"])
+    def test_the_service_branch_block_is_gone(self):
+        sysmsg = prompt(service="파트너서비스X")["system"]
+        self.assertNotIn("[서비스 카테고리 분류값", sysmsg)
+        self.assertNotIn("displayServiceName 미정의", sysmsg)
+        self.assertNotIn("service_resolved", json.dumps(prompt(service="뉴스"), ensure_ascii=False))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -366,13 +359,16 @@ class TestValidationCatchesTheRules(unittest.TestCase):
     def test_a_value_outside_the_dictionary(self):
         self.assertEqual(self.one({"intent": ["초대박이슈"]})["code"], "intent_unknown")
 
-    def test_a_value_that_belongs_to_another_service(self):
-        it = self.one({"intent": ["리뷰·분석"]})
-        self.assertEqual(it["code"], "intent_not_in_service")
-        self.assertIn("티스토리", it["message"])       # 어느 서비스 것인지 알려준다
+    def test_a_retired_value_is_flagged_for_rejudgement(self):
+        """폐기 7개는 '사전에 없는 값' 이 아니라 '원문 재판정' 으로 알린다(3-1)."""
+        it = self.one({"intent": ["음원 리뷰·분석"]})
+        self.assertEqual(it["code"], "intent_retired")
+        self.assertIn("후기·리뷰·비평", it["message"])   # 어디로 재판정할지 알려준다
 
-    def test_the_same_value_is_fine_in_its_own_service(self):
-        self.assertEqual(validate({"intent": ["리뷰·분석"]}, "티스토리")["total"], 0)
+    def test_a_former_service_value_passes_for_every_service(self):
+        """옛 티스토리 전용 값도 이제 어느 출처에서나 유효하다(4-7)."""
+        for svc in ("뉴스", "티스토리", "파트너서비스X"):
+            self.assertEqual(validate({"intent": ["리뷰·분석"]}, svc)["total"], 0, svc)
 
     def test_a_type_error(self):
         it = self.one({"intent": "속보·단신"})
@@ -444,7 +440,7 @@ class TestRuleTextsAreRealContractText(unittest.TestCase):
             self.assertIn(text, source, "계약 원문에 없는 문구다: %r (자리 %r)" % (text, src))
 
     def test_every_pair_rule_names_values_that_exist_in_the_dictionary(self):
-        known, _ = PD._known_intents()
+        known = set(D.intent_categories())
         for a, b, _kind, _src, _rule in PD.PAIR_RULES:
             self.assertIn(a, known, a)
             self.assertIn(b, known, b)

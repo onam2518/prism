@@ -38,13 +38,11 @@ class TestOverassignedValuesHaveBoundaries(unittest.TestCase):
                 if not any(k in D.INTENT_VALUE_DEFS[v] for k in ("미부여", "부여하지 않는다", "아님"))]
         self.assertEqual(weak, [], f"미부여 경계 없음: {weak}")
 
-    def test_definitions_reach_every_service_prompt(self):
-        for svc in ("뉴스", "스포츠", "티스토리", "커뮤니티", "연예"):
-            txt = M.intent_dictionary_text(svc)
-            for v in OVERASSIGNED:
-                if v in D.intent_categories_for(svc):
-                    self.assertIn(D.INTENT_VALUE_DEFS[v][:16], txt,
-                                  f"{svc} 프롬프트에 {v} 정의문이 없다")
+    def test_definitions_reach_the_prompt(self):
+        """2026-09-22 전환: 프롬프트는 출처와 무관한 하나뿐이고 68개 정의가 전부 실린다."""
+        txt = M.intent_dictionary_text()
+        for v in OVERASSIGNED:
+            self.assertIn(D.INTENT_VALUE_DEFS[v][:16], txt, f"프롬프트에 {v} 정의문이 없다")
 
 
 class TestSpecificBoundaryRules(unittest.TestCase):
@@ -53,15 +51,14 @@ class TestSpecificBoundaryRules(unittest.TestCase):
     def test_policy_is_judged_by_topic_not_by_actor(self):
         """핵심 규칙은 '주체가 아니라 주제'다.
 
-        종전에는 갈 곳으로 '뉴스·소식' 을 단언했는데, 그 값은 콘텐츠뷰·커뮤니티 후보이고
-        정책·행정이 사는 뉴스에는 없다 — 고를 수 없는 값을 가리키던 결함을 이 테스트가
-        오히려 못 박고 있었다(2026-08-12 수정). 지금은 규칙 자체와, 갈 곳이 없을 때의
-        지시(서비스값을 비운다)를 단언한다."""
+        2026-08-12 에는 갈 곳으로 '뉴스·소식' 을 가리킬 수 없었다. 그 값이 콘텐츠뷰·커뮤니티
+        후보라 뉴스 기사에서는 고를 수 없었기 때문이고, 그래서 "서비스값을 비운다" 로 우회했다.
+        2026-09-22 공통 사전 전환으로 68개가 전부 선택 가능해져 다시 '뉴스·소식' 을 가리킨다."""
         d = D.INTENT_VALUE_DEFS["정책·행정"]
         self.assertIn("주체", d)
         self.assertIn("주제가 행정 자체", d)
-        self.assertIn("서비스값을 비우고", d)
-        self.assertNotIn("'뉴스·소식'", d)
+        self.assertIn("'뉴스·소식'", d)
+        self.assertNotIn("서비스값을 비우고", d)
 
     def test_news_absorbs_government_hosted_events(self):
         """정부 주최 행사 소식을 받는 쪽 규칙은 '뉴스·소식' 정의에 남아 있어야 한다."""
@@ -79,9 +76,7 @@ class TestSpecificBoundaryRules(unittest.TestCase):
 
     def test_no_boundary_points_at_a_nonexistent_value(self):
         """정의가 가리키는 이웃 값이 실제로 사전에 있어야 한다(오타·폐기값 참조 방지)."""
-        allv = set(D.INTENT_CATEGORIES_UNIVERSAL) | set(D.INTENT_FORM_UNIVERSAL)
-        for vals in D.INTENT_CATEGORIES_BY_SERVICE.values():
-            allv |= set(vals)
+        allv = set(D.intent_categories())
         for name in ("클립·하이라이트", "가이드·튜토리얼", "실용 정보",
                      "보도자료·공식발표", "오락·유머", "뉴스·소식", "정책·행정"):
             self.assertIn(name, allv, f"정의가 없는 값을 가리킨다: {name}")

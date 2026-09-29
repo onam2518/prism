@@ -35,12 +35,11 @@ class TestSingleSource(unittest.TestCase):
         self.assertEqual(data["intentDefs"], dict(D.INTENT_VALUE_DEFS))
 
     def test_prompt_and_screen_use_identical_text(self):
-        """서비스별 프롬프트에 실리는 문장이 검수 화면 정의와 글자 그대로 같아야 한다."""
-        for svc in ("뉴스", "스포츠", "티스토리", "커뮤니티", "연예"):
-            txt = M.intent_dictionary_text(svc)
-            for v in D.INTENT_CATEGORIES_UNIVERSAL:
-                self.assertIn(f"- {v}: {D.INTENT_VALUE_DEFS[v]}", txt,
-                              f"{svc} · {v} 정의문이 화면과 다르다")
+        """프롬프트에 실리는 문장이 검수 화면 정의와 글자 그대로 같아야 한다.
+        2026-09-22 전환 이후 프롬프트는 출처와 무관한 하나이므로 68개 전부를 대조한다."""
+        txt = M.intent_dictionary_text()
+        for v in D.intent_categories():
+            self.assertIn(f"- {v}: {D.INTENT_VALUE_DEFS[v]}", txt, f"{v} 정의문이 화면과 다르다")
 
 
 class TestRecoveredClause(unittest.TestCase):
@@ -48,9 +47,11 @@ class TestRecoveredClause(unittest.TestCase):
 
     def test_practical_info_keeps_interest_consumption_exclusion(self):
         # 옛 UI 정의: "…(이적 소식·경기 일정 등 관심사 소비형 정보 제외)"
-        d = D.INTENT_VALUE_DEFS["실용 정보"]
-        self.assertIn("관심사 소비형", d)
-        self.assertIn("이적 소식", d)
+        # 2026-09-22 개정으로 정의문은 정책 페이지 문구로 갈렸고, 이 단서는 CALL_RULES 가 갖는다.
+        # 어느 쪽이든 모델에 도달하면 되므로 도달 여부만 단언한다.
+        rules = M.CALL_RULES["intent"]
+        self.assertIn("관심사 소비형", rules)
+        self.assertIn("이적 소식", rules)
 
     def test_fandom_keeps_ugc_clause(self):
         self.assertIn("UGC", D.INTENT_VALUE_DEFS["팬덤·화제성"])

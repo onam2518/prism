@@ -36,7 +36,7 @@ class TestPromptPolicy(unittest.TestCase):
         from prism import verify as V
         from prism import dictionaries as D
         from prism.schema import ItemMeta, Content
-        vals = D.intent_categories_for("뉴스")[:5]
+        vals = D.intent_categories()[:5]
         im = ItemMeta(summary="s", entities=[], intent=list(vals), content_category=[])
         V.verify_item(im, Content(displayServiceName="뉴스", title="t", body="b"))
         self.assertEqual(im.intent, vals)                   # 5개 그대로 보존([:2] 절단 재유입 방지)
@@ -56,17 +56,16 @@ class TestPromptPolicy(unittest.TestCase):
 
     def test_perspective_intents_registered(self):
         from prism import dictionaries as D
-        for svc in ("뉴스", "티스토리", "미정의서비스"):
-            vals = D.intent_categories_for(svc)
-            self.assertIn("옹호·지지", vals)                 # 범용① = 전 서비스 주입·검증 통과
-            self.assertIn("반박·비판", vals)
+        vals = D.intent_categories()                     # 전 출처 공통 후보(2026-09-22)
+        self.assertIn("옹호·지지", vals)
+        self.assertIn("반박·비판", vals)
         self.assertIn("옹호·지지", D.INTENT_VALUE_DEFS)
         self.assertIn("반박·비판", D.INTENT_VALUE_DEFS)
         self.assertIn("의견·논쟁", D.INTENT_VALUE_DEFS.get("옹호·지지", ""))   # 경계 명시
 
     def test_intent_dictionary_text_has_boundary_rule(self):
         from prism import meta_prompts as MP
-        txt = MP.intent_dictionary_text("뉴스")
+        txt = MP.intent_dictionary_text()
         self.assertIn("옹호·지지", txt)
         self.assertIn("반박·비판", txt)
         self.assertIn("관점 축 구분", txt)                   # 경계 지침 주입
@@ -76,7 +75,7 @@ class TestPromptPolicy(unittest.TestCase):
         from prism import dictionaries as D
         from prism import meta_prompts as MP
         self.assertIn("반대하는 것이 논지의 중심", D.INTENT_VALUE_DEFS["반박·비판"])   # 정의 우선 규칙
-        self.assertIn("반박·비판을 우선", MP.intent_dictionary_text("뉴스"))          # 프롬프트 우선 규칙
+        self.assertIn("반박·비판을 우선", MP.intent_dictionary_text())               # 프롬프트 우선 규칙
 
     def test_intent_anchors_exclude_perspective(self):
         from prism import classify as C
@@ -85,10 +84,11 @@ class TestPromptPolicy(unittest.TestCase):
             def embed(self, text, is_query=False):
                 return [1.0, 0.0]
 
-        anchors = C.intent_category_anchors(_FakeEmb(), "뉴스")
+        anchors = C.intent_category_anchors(_FakeEmb())
         self.assertNotIn("옹호·지지", anchors)               # 논조는 kNN 후보에서 제외
         self.assertNotIn("반박·비판", anchors)
         self.assertIn("심층 분석", anchors)                  # 나머지 후보는 유지
+        self.assertIn("클립·하이라이트", anchors)            # 출처로 앵커를 좁히지 않는다(2026-09-22)
 
     def test_merge_perspective_preserves_llm_verdict(self):
         from prism.classify import merge_perspective
@@ -175,7 +175,7 @@ class TestPhotoIntentCriteria(unittest.TestCase):
         """범용②도 정의문 병기 → INTENT_VALUE_DEFS 수정만으로 프롬프트가 따라온다."""
         from prism import meta_prompts as MP
         from prism import dictionaries as D
-        txt = MP.intent_dictionary_text("뉴스")
+        txt = MP.intent_dictionary_text()
         self.assertIn(D.INTENT_VALUE_DEFS["포토·영상 중심"], txt)
         self.assertIn(D.INTENT_VALUE_DEFS["현장취재·르포"], txt)
         self.assertNotIn(" / ".join(D.INTENT_FORM_UNIVERSAL), txt)   # 구 '이름만 나열' 형태 제거

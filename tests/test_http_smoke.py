@@ -155,10 +155,11 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertEqual([e["id"] for e in d.get("fixElements") or []], list(FL.ELEMENTS))
         for e in d["fixElements"]:
             self.assertTrue(e.get("label") and e.get("stage") in ("analyze", "judge", "review"))
-        all_intents = set(d.get("intentUniversal") or []) | set(d.get("intentForm") or [])
-        for vs in (d.get("intentByService") or {}).values():
-            all_intents |= set(vs)
+        all_intents = (set(d.get("intentUniversal") or []) | set(d.get("intentForm") or [])
+                       | set(d.get("intentCommon") or []))
+        self.assertEqual(len(all_intents), 68)                   # 전 출처 공통 후보(2026-09-22)
         self.assertFalse(all_intents - set(d["intentDefs"]), "정의 없는 인텐트 값(intentDefs 누락)")
+        self.assertTrue(d.get("intentRetired"))                  # 폐기 값 재판정 대응표(표시 전용)
         status, html = _req(self.port, "/")
         self.assertEqual(status, 200)
         self.assertIn("polpal", html)                            # 정책 팔레트 렌더 마커
@@ -189,7 +190,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         c = self.ok("/config", {"meta_call_models": {"category": "gpt-5.4"}, "meta_four_calls": True})
         self.assertEqual((c.get("metaCallModels") or {}).get("category"), "gpt-5.4")
         self.ok("/config", {"meta_call_models": {}})
-        # 프롬프트 내려받기: 현재 합성(.md · 4호출 + ③ 서비스별 전문) · 없는 버전은 JSON 오류
+        # 프롬프트 내려받기: 현재 합성(.md · 4호출 · ③ 인텐트는 2026-09-22 부터 출처 공통 하나) · 없는 버전은 JSON 오류
         self.assertTrue(self.ok("/prompt-export?model=solar-pro2").startswith("PK"))   # zip
         # 파일명 = 모델_일자_버전 · 모델명의 '/' 등은 '-' · ts 는 낮 시각(UTC 13시)이라 어느 시간대든 같은 날
         self.assertEqual(self.serve._prompt_zip_name({"model": "openai/gpt-5.4", "ts": 1757336400, "version": 3}),
@@ -197,9 +198,10 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertEqual(self.serve._prompt_zip_name({"ts": 1757336400}), "model_20250908_v0.zip")
         files = self.serve.LO.prompt_files(self.serve.LO.compose_prompts(None, "solar-pro2"), "t")
         self.assertEqual(sorted(files), ["01-quality.txt", "02-summary.txt", "03-entities.txt", "04-intent.txt", "05-category.txt", "README.md"])
-        it = files["04-intent.txt"]                                          # 호출 하나 = 파일 하나 · 서비스 분기는 파일 안 블록
-        for needle in ("{서비스 분기}", "서비스 분기 · 스포츠", "경기 프리뷰", "user 템플릿"):
-            self.assertIn(needle, it)
+        it = files["04-intent.txt"]                                          # 호출 하나 = 파일 하나
+        for needle in ("경기 프리뷰", "클립·하이라이트", "user 템플릿"):
+            self.assertIn(needle, it)                                        # 68개 공통 후보가 한 블록에
+        self.assertNotIn("{서비스 분기}", it)                                 # 인텐트의 서비스 분기 폐지
         self.assertTrue(files["02-summary.txt"].startswith("━━━━━━━━ 원천 · t · 기록 "))   # 파일마다 머리 한 줄
         self.assertNotIn("서비스 분기", files["02-summary.txt"].split("\n", 1)[1])
         self.assertIn("서비스 분기 · ugc", files["01-quality.txt"]); self.assertIn("[검수 지시]", files["01-quality.txt"])
@@ -255,7 +257,7 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertTrue(run.get("ok"), run)
         snap = self.ok(f"/prompt-snapshot?run={run['id']}")["snapshot"]
         self.assertEqual(snap["run_id"], run["id"])
-        self.assertIn("뉴스", snap["calls"]["intent"]["by_service"])
+        self.assertNotIn("by_service", snap["calls"]["intent"])   # 인텐트는 출처 공통 하나(2026-09-22)
         self.assertTrue(self.ok(f"/prompt-export?run={run['id']}").startswith("PK"))
         self.assertTrue(ev.get("ok"), ev)
         self.assertGreaterEqual(ev.get("evaluated", 0), 1)
