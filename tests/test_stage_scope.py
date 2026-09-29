@@ -108,5 +108,41 @@ class TestQualityStageOff(unittest.TestCase):
         self.assertNotEqual(out["quality_meta"]["finalGrade"], "G")
 
 
+def _topic_row(title, ents, qm=None):
+    r = {"content_ref": {"displayServiceName": "뉴스", "title": title, "subtitle": "", "body": title},
+         "item_meta": {"summary": title, "entities": list(ents), "intent": ["속보·단신"],
+                       "content_category": ["News and Politics / Society"], "hold_fields": []}}
+    if qm is not None:
+        r["quality_meta"] = qm
+    return r
+
+
+class TestTopicWithoutQualityGrade(unittest.TestCase):
+    """4-9: 토픽 대상 조건은 품질 등급에 묶이지 않는다(위키 279904498 · 2026-09-22 수정)."""
+
+    def _rows(self):
+        return [
+            _topic_row("a", ["삼성전자", "총파업"]),                                   # 품질 단계 off = 등급 없음
+            _topic_row("b", ["삼성전자", "총파업"], {"finalGrade": "", "reasons": [], "review": "auto"}),
+            _topic_row("c", ["삼성전자"], {"finalGrade": "G", "reasons": [], "review": "auto"}),
+            _topic_row("d", ["삼성전자"], {"finalGrade": "R", "reasons": ["ad"], "review": "auto"}),
+            _topic_row("e", ["삼성전자"], {"finalGrade": "", "reasons": [], "review": "yellow"}),
+        ]
+
+    def test_no_grade_is_not_counted_as_green(self):
+        from prism import topic as T
+        rows = self._rows()
+        self.assertEqual([T._grade(r) for r in rows], ["", "", "G", "R", "YELLOW"])
+
+    def test_no_grade_rows_stay_in_topic_scope(self):
+        """등급 없음은 대상에서 빼지 않는다. 빠지는 것은 R 과 검수 대기(YELLOW)뿐."""
+        from prism import topic as T
+        rows = self._rows()
+        self.assertEqual([T._eligible(r) for r in rows], [True, True, True, False, False])
+        pools = T.build_entity_topics(rows, T._service_names(rows), {}, min_contents=2)
+        p = next(x for x in pools if x["name"] == "삼성전자")
+        self.assertEqual(p["content_ids"], [0, 1, 2])
+
+
 if __name__ == "__main__":
     unittest.main()

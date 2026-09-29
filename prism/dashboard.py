@@ -196,13 +196,15 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
 
 # 집계
 def _aggregate(rows):
-    grades = {"G": 0, "YELLOW": 0, "R": 0}
+    grades = {"G": 0, "YELLOW": 0, "R": 0, "none": 0}   # none = 판정 없음(품질 단계 off·미판정)
     reasons, intents, ecats, services = {}, {}, {}, {}
     ents = set()
     for r in rows:
         qm = r.get("quality_meta", {})
-        # 결정 = YELLOW(사람검수)면 YELLOW, 아니면 finalGrade
-        decision = "YELLOW" if qm.get("review") == "yellow" else qm.get("finalGrade", "G")
+        # 결정 = YELLOW(사람검수)면 YELLOW, 아니면 finalGrade.
+        # 등급이 비면 'none'(판정 없음)으로 센다. 종전 기본값 G 는 미판정을 유통 가능으로
+        # 부풀렸다(277118998 · 미판정·호출 실패를 자동 G로 처리하지 않음).
+        decision = "YELLOW" if qm.get("review") == "yellow" else (qm.get("finalGrade") or "none")
         grades[decision] = grades.get(decision, 0) + 1
         for x in qm.get("reasons", []):
             reasons[x] = reasons.get(x, 0) + 1
@@ -568,7 +570,8 @@ const A = DATA.agg;
 document.getElementById('grades').innerHTML =
  `<div class="gG"><b>${A.grades.G||0}</b>G · 유통가능</div>
   <div class="gY"><b>${A.grades.YELLOW||0}</b>YELLOW · 검수</div>
-  <div class="gR"><b>${A.grades.R||0}</b>R · 불가</div>`;
+  <div class="gR"><b>${A.grades.R||0}</b>R · 불가</div>`
+  + (A.grades.none? `<div><b>${A.grades.none}</b>판정 없음</div>`:'');
 bars(document.getElementById('reasons'), A.reasons, 'var(--r)');
 bars(document.getElementById('intents'), A.intent_categories, 'var(--int)');
 bars(document.getElementById('ecats'), A.entity_categories, 'var(--cat)');
@@ -580,7 +583,8 @@ let gradeFilter='ALL', textFilter='';
 // 등급 필터 칩
 const gcount=DATA.agg.grades;
 const chipDefs=[['ALL','전체',DATA.rows.length],['G','G',gcount.G||0],
-  ['YELLOW','YELLOW',gcount.YELLOW||0],['R','R',gcount.R||0]];
+  ['YELLOW','YELLOW',gcount.YELLOW||0],['R','R',gcount.R||0]]
+  .concat(gcount.none? [['','판정 없음',gcount.none]]:[]);
 document.getElementById('chips').innerHTML=chipDefs.map(([k,lab,n])=>
   `<span class="chip c${k} ${k==='ALL'?'on':''}" data-g="${k}">${lab} ${n}</span>`).join('');
 document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
