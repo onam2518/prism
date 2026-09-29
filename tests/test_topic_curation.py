@@ -203,8 +203,11 @@ class TestServeActions(unittest.TestCase):
         td = S.topic_studio_action({"action": "settings", "settings": {"co_min": 2}})
         self.assertIn(gid, td["exclusions"])                  # 튜닝 저장이 제외를 지우지 않는다
         td = S.topic_studio_action({"action": "delete", "id": gid})
-        self.assertNotIn(gid, td["exclusions"])               # 토픽 삭제 = 그 토픽 제외 정리
+        self.assertIn(gid, td["exclusions"])                  # 삭제 = 보관 · 개별 제외 목록 보존(3-11)
+        self.assertEqual(next(g["status"] for g in td["custom"] if g["id"] == gid), "archived")
         self.assertIn(auto_ev, td["exclusions"])              # 자동 토픽 제외는 유지
+        td = S.topic_studio_action({"action": "status", "id": gid, "status": "active"})
+        self.assertEqual(next(g["status"] for g in td["custom"] if g["id"] == gid), "active")     # 복구
 
     def test_entity_auto_topic_drill_and_exclude(self):
         S, rows = self.S, _rows()

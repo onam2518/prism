@@ -453,11 +453,14 @@ class TestButtonsEndToEnd(unittest.TestCase):
         self.assertIn("성별=여성", b["label"])                       # 비허용 키는 sanitize 에서 제거
         self.assertNotIn("몰래키", b["label"])
         self.assertGreaterEqual(b["count"], 1)                      # 본문에 '여성' 없이 속성으로 매칭
+        # 개체 속성은 보조 축(4-17) · 단독 저장은 막고 4축 하나와 함께 써야 한다(4-15)
+        self.assertFalse(self.ok("/topic-studio", {"action": "save", "def": {
+            "name": "속성만", "eattrs": ["gender:여성"]}})["ok"])
         saved = self.ok("/topic-studio", {"action": "save", "def": {
-            "name": "여성 스포츠인 스모크", "eattrs": ["gender:여성"]}})
+            "name": "여성 스포츠인 스모크", "srcs": ["스포츠"], "eattrs": ["gender:여성"]}})
         mine = [g for g in saved.get("custom", []) if g["name"] == "여성 스포츠인 스모크"]
         self.assertEqual(len(mine), 1)
-        self.assertTrue(any(x["dim"] == "eattrs" for x in mine[0]["must"]))   # 항상 필수
+        self.assertTrue(any(x["dim"] == "eattrs" for x in mine[0]["must"]))   # 걸릴 때는 필수
         self.ok("/topic-studio", {"action": "delete", "id": mine[0]["id"]})
         # 삭제 → 목록·링크 제거
         self.assertTrue(self.ok("/entdict", {"action": "delete", "id": eid})["ok"])

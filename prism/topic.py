@@ -648,7 +648,9 @@ def _def_bundles(d):
     하위호환: req 가 전혀 없으면 선택 없이 '전부 필수'(= 기존 AND 단일 묶음)로 해석."""
     sel = {k: [str(v) for v in (d.get(k) or []) if str(v).strip()] for k in _DIMS}
     req_raw = d.get("req") or {}
-    has_req = any(req_raw.get(k) for k in _DIMS)
+    # req 키가 있으면(현행 저장 형식) 값이 비어도 '필수 없음'으로 읽는다 — 합친 토픽처럼
+    # 전부 선택인 정의가 '전부 필수'로 뒤집히면 묶음이 통째로 0건이 된다.
+    has_req = any(req_raw.get(k) for k in _DIMS) or isinstance(d.get("req"), dict)
     if has_req:
         req = {k: [v for v in sel[k] if v in (req_raw.get(k) or [])] for k in _DIMS}
     else:
@@ -1286,6 +1288,22 @@ def _apply_exclusion(pool, key, rows, hashes, exmap):
             pool["rep_title"] = _title(rows[ranked[0]]) if ranked else ""
 
 
+def _apply_inclusion(pool, key, rows, hashes, incmap):
+    """운영자가 직접 넣은 콘텐츠를 풀에 더한다(2-17). 조건은 그대로 두는 편집 판단 ·
+    제외와 같은 키(토픽 id × content_hash)이고 겹치면 제외가 이긴다(제외를 나중에 적용)."""
+    hs = incmap.get(key)
+    ids = pool.get("content_ids")
+    if not hs or ids is None:
+        return
+    have = set(ids)
+    add = [i for i, h in enumerate(hashes) if h in hs and i not in have]
+    if not add:
+        return
+    pool["content_ids"] = sorted(ids + add)
+    pool["count"] = len(pool["content_ids"])
+    pool["included_n"] = len(add)
+
+
 def attach_nondist(pools, rows, service_names, co_min=None):
     """형성이 끝난 토픽에 **유통 불가 콘텐츠를 사후 편입**한다(13211 · 2026-09-08 정책).
 
@@ -1318,7 +1336,7 @@ def attach_nondist(pools, rows, service_names, co_min=None):
 
 def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120,
                  custom_defs=None, settings=None, exclusions=None, ent_index=None,
-                 ent_keys=None) -> dict:
+                 ent_keys=None, inclusions=None) -> dict:
     rows = _read_jsonl(results_path)
     svc = _service_names(rows)
     canon = _canonical_entity_categories(rows, svc)
@@ -1331,13 +1349,16 @@ def build_topics(results_path: str, max_single: int = 200, max_composite: int = 
     catalog = studio_catalog(rows, svc)
     catalog["eattrs"] = eattr_catalog(ent_index)       # 엔티티 사전 속성 조건 후보(빈도순)
     attach_nondist(single + composite, rows, svc, co_min=co_min)
-    exmap = _exclusion_sets(exclusions)
-    if exmap:
+    exmap, incmap = _exclusion_sets(exclusions), _exclusion_sets(inclusions)
+    if exmap or incmap:
         hashes = [_row_hash(r) for r in rows]
         for p in single + composite:
+            _apply_inclusion(p, p["cluster_id"], rows, hashes, incmap)
             _apply_exclusion(p, p["cluster_id"], rows, hashes, exmap)
         for g in custom:
             for b in (g.get("bundles") or []):
+                if b.get("kind") == "core":            # 편입은 핵심 묶음에만(관련 묶음 중복 방지)
+                    _apply_inclusion(b, g["id"], rows, hashes, incmap)
                 _apply_exclusion(b, g["id"], rows, hashes, exmap)
             g["core_count"] = next((b["count"] for b in g["bundles"] if b["kind"] == "core"), 0)
         single.sort(key=lambda p: -p["count"])

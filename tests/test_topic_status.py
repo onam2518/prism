@@ -82,12 +82,25 @@ class TestFeedAndSource(unittest.TestCase):
         st = _row_stats(list(range(26)), rows, now)
         self.assertEqual((st["today"], st["d7"], st["prev7"], st["signal"]), (1, 1, 25, "급감"))
 
+    def test_system_inactive_turns_on_and_revives(self):
+        """2-8: 설정 기간 동안 0건이면 시스템이 비활성으로 돌리고, 다시 매핑되면 되살린다."""
+        from prism.topicops import _row_stats
+        now = time.time()
+        rows = [_row("옛글", ts=now - 20 * 86400), _row("새글", ts=now - 3600)]
+        old = _row_stats([0], rows, now)
+        self.assertEqual((old["inactive"], old["signal"]), (True, "비활성"))
+        keep = _row_stats([0], rows, now, {"inactive_days": 60})          # 기간은 운영 설정
+        self.assertEqual((keep["inactive"], keep["signal"]), (False, "정체 20일"))
+        back = _row_stats([0, 1], rows, now)                              # 재매핑 → 되살아난다
+        self.assertEqual((back["inactive"], back["signal"]), (False, ""))
+        self.assertTrue(_row_stats([], rows, now)["inactive"])            # 매핑 0건도 비활성
+
     def test_sanitize_status_and_feed(self):
         from prism.serve import _sanitize_def
         d = _sanitize_def({"name": "x", "status": "weird", "srcs": ["뉴스"], "neg": {"srcs": ["뉴스", "카페"]},
                            "feed": {"days": "3", "types": ["shorts", "video/shorts"], "flags": ["isexclusive"]}})
         self.assertEqual(d["status"], "active")
-        self.assertEqual(d["neg"]["srcs"], ["카페"])                      # 선택과 겹치는 제외는 버림
+        self.assertEqual((d["srcs"], d["neg"]["srcs"]), ([], ["뉴스", "카페"]))   # 겹치면 제외 우선(4-14)
         self.assertEqual((d["feed"]["days"], d["feed"]["types"], d["feed"]["flags"]), (3, ["VIDEO/SHORTS"], ["isExclusive"]))
         self.assertEqual(_sanitize_def({"name": "y"})["feed"], {})
 
@@ -177,6 +190,39 @@ class TestStatusActions(unittest.TestCase):
         r = self._act(action="save", **{"def": {"name": "등재", "keywords": ["삼성전자"],
                                                 "req": {"keywords": ["삼성전자"]}}})
         self.assertNotIn("unknown_entities", r)
+
+    def test_zero_axis_save_is_refused(self):
+        """4-15: 네 축 중 하나도 없으면 저장하지 않는다(유통 가능 전건 묶음 금지)."""
+        r = self._act(action="save", **{"def": {"name": "전부"}})
+        self.assertFalse(r["ok"])
+        self.assertIn("조건", r["error"])
+
+    def test_merge_two_topics(self):
+        """2-16: 갈라진 두 토픽을 하나로 · 조건과 제외 목록을 합치고 원본은 보관."""
+        a = self._act(action="save", **{"def": {"name": "가", "cats": ["Business and Finance"],
+                                                "neg": {"intents": ["팬덤·화제성"]}}})["saved"]["id"]
+        b = self._act(action="save", **{"def": {"name": "나", "cats": ["Entertainment"]}})["saved"]["id"]
+        r = self._act(action="merge", id=b, into=a)
+        self.assertTrue(r["ok"])
+        merged = next(d for d in r["customDefs"] if d["id"] == a)
+        self.assertEqual(set(merged["cats"]), {"Business and Finance", "Entertainment"})
+        self.assertEqual(merged["neg"]["intents"], ["팬덤·화제성"])
+        self.assertEqual(next(g["status"] for g in r["custom"] if g["id"] == b), "archived")
+        ids = {i for bd in self._custom(r, a)["bundles"] for i in bd["content_ids"]}
+        self.assertEqual(len(ids), 3)                 # 합친 조건의 콘텐츠를 모두 묶는다(관련 묶음)
+        self.assertFalse(self._act(action="merge", id=a, into=a)["ok"])
+
+    def test_include_missing_content_and_undo(self):
+        """2-17: 조건에 안 걸린 콘텐츠를 운영자가 직접 넣고 되돌린다."""
+        cid = self._act(action="save", **{"def": {"name": "연예", "cats": ["Entertainment"]}})["saved"]["id"]
+        self.assertEqual(self._custom(self.S.topics_data(), cid)["core_count"], 1)
+        from prism.topic import _row_hash
+        h = _row_hash(_row("삼성 분석1", entities=["삼성전자"], cats=["Business and Finance"]))
+        r = self._act(action="include", id=cid, hash=h, title="삼성 분석1")
+        g = self._custom(r, cid)
+        self.assertEqual((g["core_count"], g["bundles"][0]["included_n"]), (2, 1))
+        g = self._custom(self._act(action="uninclude", id=cid, hash=h), cid)
+        self.assertEqual(g["core_count"], 1)
 
     def test_preview_and_suggest_carry_feed(self):
         r = self._act(action="preview", **{"def": {"keywords": ["삼성전자"], "req": {"keywords": ["삼성전자"]},

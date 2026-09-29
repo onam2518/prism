@@ -82,7 +82,8 @@ class TestSanitizeAndSuggest(unittest.TestCase):
         from prism.serve import _sanitize_def
         d = _sanitize_def({"name": "x", "intents": ["분석·해설"],
                            "neg": {"intents": ["속보", "분석·해설"], "keywords": ["한화"]}})
-        self.assertEqual(d["neg"]["intents"], ["속보"])       # 선택과 겹치면 선택 우선
+        self.assertEqual(d["neg"]["intents"], ["속보", "분석·해설"])   # 겹치면 제외 우선(4-14)
+        self.assertEqual(d["intents"], [])                            # 포함에서 빠진다
         self.assertEqual(d["neg"]["keywords"], ["한화"])
         self.assertEqual(d["neg"]["cats"], [])
 
