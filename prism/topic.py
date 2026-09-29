@@ -504,6 +504,14 @@ def feed_labels(feed) -> list:
 
     def add(k, v, f, x=None, neg=False):
         out.append({"k": k, "v": v, "neg": neg, "f": f, "x": v if x is None else x})
+    # 기본 제외(광고 · 성인 · 선정 · 삭제)는 흐린 칩으로 항상 보인다(2-19).
+    # 걸린 상태의 칩은 fixed(누를 수 없음) — 해제는 문장("광고 포함해도 돼")으로만.
+    # 풀린 상태의 칩은 눌러서 기본값으로 되돌릴 수 있다(되돌리는 방향은 해제가 아니다).
+    if fd.get("base_excl", True):
+        out.append({"k": "기본", "v": "광고 · 성인 · 선정 · 삭제 제외", "neg": False,
+                    "f": "base_excl", "x": True, "fixed": True})
+    else:
+        add("기본", "광고 · 성인 · 선정 포함", "base_excl", False)
     if fd.get("days"):
         add("기간", ("적재 " if fd.get("basis") == "ingest" else "발행 ") + str(fd["days"]) + "일", "days", fd["days"])
     for t in fd.get("types") or []:
@@ -534,8 +542,6 @@ def feed_labels(feed) -> list:
         add("열독률", str(fd["min_dri"]) + " 이상", "min_dri", fd["min_dri"])
     for v in fd.get("cp_grades") or []:
         add("매체 등급", v, "cp_grades")
-    if fd.get("base_excl") is False:
-        add("기본", "광고 · 성인 · 선정 포함", "base_excl", False)
     return out
 
 
