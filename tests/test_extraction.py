@@ -51,7 +51,7 @@ class TestMetaPromptBaseline(unittest.TestCase):
 
     def test_intent_dictionary_contract(self):
         from prism import dictionaries as D
-        cats = D.intent_categories_for("뉴스")
+        cats = D.intent_categories()
         self.assertIn("노동·사회 이슈", cats)          # 확정 1: 구 표기 교체
         self.assertNotIn("노동 이슈 보도", cats)
         for v in D.INTENT_FORM_UNIVERSAL:             # 확정 4: 범용② 8종 주입·검증 포함

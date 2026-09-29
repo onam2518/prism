@@ -415,17 +415,15 @@ def _mock_generator(system: str, user: str, tag: str) -> dict:
         return {"summary": f"{(ents[0] if ents else '주제')} 관련 내용을 정리"}
     if tag == "item_entities":                    # 분리형 ②
         return {"entities": _mock_entities(_field(user, "title") + " " + _field(user, "body"))}
-    if tag == "item_intent":                      # 분리형 ③: 사전 값에서 결정론 선택
-        svc = _field(user, "displayServiceName")
-        return {"intent": D.intent_categories_for(svc)[:2]}
+    if tag == "item_intent":                      # 분리형 ③: 공통 사전 값에서 결정론 선택
+        return {"intent": D.intent_categories()[:2]}
     if tag == "item_category":                    # 분리형 ④
         return {"content_category": ["News and Politics / Society"]}
 
     if tag == "item":
         title = _field(user, "title")
         ents = _mock_entities(title + " " + _field(user, "body"))
-        svc = _field(user, "displayServiceName")
-        cats = D.intent_categories_for(svc)[:2]
+        cats = D.intent_categories()[:2]
         return {"summary": f"{(ents[0] if ents else '주제')} 관련 내용을 정리",
                 "entities": ents, "intent": cats,
                 "content_category": ["News and Politics / Society"]}  # 콘텐츠 단위 N개

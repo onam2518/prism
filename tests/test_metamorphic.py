@@ -50,26 +50,21 @@ class TestDictionaryRelations(unittest.TestCase):
             for out in D.normalize_category_list(xs):
                 self.assertIn(out, valid, xs)
 
-    def test_mr_service_name_equivalence(self):
-        """MR(동치 입력): 구·신 서비스명과 레거시 UI 명은 같은 인텐트 후보를 만든다(마이그레이션 공존 계약)."""
-        from prism import dictionaries as D
-        for group in (("VOD", "루프", "카카오TV", "카카오비디오", "동영상"),
-                      ("다음카페", "콘텐츠뷰 (커뮤니티)", "커뮤니티"),
-                      ("멜론", "음악"), ("티스토리", "블로그")):
-            expect = D.intent_categories_for(group[0])
-            for alias in group[1:]:
-                self.assertEqual(D.intent_categories_for(alias), expect, alias)
+    def test_mr_source_does_not_change_the_prompt_candidates(self):
+        """MR(불변): 2026-09-22 전환 이후 서비스명·미정의 값·빈 값이 후보를 바꾸지 않는다.
 
-    def test_mr_unknown_service_gets_universal_only(self):
-        """MR(폴백): 미정의 서비스명은 항상 범용①+②만(서비스 분류값 미부여) · PGC 폴백 계약."""
+        종전 계약(구·신 서비스명 동치 · 미정의 서비스는 범용만)은 서비스 분기가 있을 때의
+        계약이었다. 지금은 분기 자체가 없으므로 "어떤 이름이 와도 같은 68개" 가 계약이다."""
         from prism import dictionaries as D
-        universal = D.INTENT_CATEGORIES_UNIVERSAL + D.INTENT_FORM_UNIVERSAL
+        from prism import meta_prompts as MP
+        base = MP.call_system("gpt-5.4", "intent", "뉴스")
         rng = random.Random(SEED + 2)
-        for _ in range(50):
-            name = "".join(rng.choice("XYZQW낯선서비스") for _ in range(rng.randint(3, 10)))
-            if name in getattr(D, "_SERVICE_NAME_MAP", {}):
-                continue
-            self.assertEqual(D.intent_categories_for(name), universal, name)
+        names = ["", "멜론", "티스토리", "콘텐츠뷰 (커뮤니티)", "카카오TV", "포토"]
+        names += ["".join(rng.choice("XYZQW낯선서비스") for _ in range(rng.randint(3, 10)))
+                  for _ in range(20)]
+        for name in names:
+            self.assertEqual(MP.call_system("gpt-5.4", "intent", name), base, name)
+        self.assertEqual(len(D.intent_categories()), 68)
 
 
 class TestLevelCurveProperties(unittest.TestCase):
@@ -121,11 +116,11 @@ class TestPipelineBehavior(unittest.TestCase):
         from prism.schema import Content
         llm = serve.make_text_llm(serve.Config.load(), True)
         AG.META_CFG = {"four_calls": True, "call_models": {}}
-        for svc in list(D.INTENT_CATEGORIES_BY_SERVICE) + ["낯선서비스"]:
+        valid = set(D.intent_categories())
+        for svc in ["뉴스", "연예", "스포츠", "티스토리", "낯선서비스", ""]:
             c = Content(displayServiceName=svc, title="속성 검증 제목",
                         subtitle="", body="속성 검증을 위한 충분히 긴 본문입니다. 결정론 모의 추출로 확인합니다.")
             im, _ = AG.run_item(llm, c)
-            valid = set(D.intent_categories_for(svc))
             self.assertTrue(set(im.intent).issubset(valid), (svc, im.intent))
 
 
@@ -150,7 +145,7 @@ class TestPromptComposition(unittest.TestCase):
         for model in ("gpt-5.4", "gemini-2.5-pro", "claude-sonnet-4.6", "solar-pro3", "unknown-model"):
             s3 = MP.call_system(model, "intent", "스포츠")
             s4 = MP.call_system(model, "category", "스포츠")
-            self.assertIn("경기 프리뷰", s3, model)
+            self.assertIn("경기 프리뷰", s3, model)          # 옛 스포츠 전용 값도 공통 후보
             self.assertNotIn("구분 기준", s3, model)
             self.assertIn("구분 기준", s4, model)
             self.assertNotIn("경기 프리뷰", s4, model)

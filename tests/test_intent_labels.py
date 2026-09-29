@@ -28,12 +28,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _vocab():
-    """현행 사전이 인정하는 인텐트 값 전량(범용①+범용②+서비스 분기)."""
+    """현행 사전이 인정하는 인텐트 값 전량(전 출처 공통 68개 · 2026-09-22)."""
     from prism import dictionaries as D
-    vals = set(D.INTENT_CATEGORIES_UNIVERSAL) | set(D.INTENT_FORM_UNIVERSAL)
-    for vs in D.INTENT_CATEGORIES_BY_SERVICE.values():
-        vals |= set(vs)
-    return vals
+    return set(D.intent_categories())
 
 
 class _LabelTableBase(unittest.TestCase):
@@ -111,32 +108,35 @@ class TestHandoffBundleDictionaries(unittest.TestCase):
         self.assertIn("포토·영상 중심", d["intent_form_universal"])     # 범용② 누락 회귀 가드
         self.assertEqual(d["intent_universal"], list(D.INTENT_CATEGORIES_UNIVERSAL))
         # 번들 사전만으로 라벨 공간 전량을 복원할 수 있어야 한다
-        shipped = set(d["intent_universal"]) | set(d["intent_form_universal"])
-        for vs in d["intent_by_service"].values():
-            shipped |= set(vs)
+        shipped = (set(d["intent_universal"]) | set(d["intent_form_universal"])
+                   | set(d["intent_common"]))
         self.assertFalse(_vocab() - shipped, sorted(_vocab() - shipped))
+        # 폐기 대응표도 동봉(과거 정답 라벨을 읽을 때 필요 · 자동 치환용 아님)
+        self.assertEqual(set(d["intent_retired"]), set(D.INTENT_RETIRED))
         # 정의문(프롬프트 주입·검수 판단 근거)도 동봉
         self.assertIn("포토·영상 중심", d["intent_defs"])
         self.assertIn("의견·논쟁", d["intent_defs"])                    # 범용① 정의
         self.assertFalse(_vocab() - set(d["intent_defs"]))
 
 
-class TestPhotoTrackServiceKey(unittest.TestCase):
-    """조사 결론 고정: "포토"·"영상"은 서비스명이 아니라 인입 트랙 표식 → PGC 폴백이 정상."""
+class TestCandidatesIgnoreSource(unittest.TestCase):
+    """2026-09-22 전환 고정: 출처가 무엇이든(트랙 표식 "포토"·빈 값 포함) 후보는 같은 68개다.
 
-    def test_track_markers_fall_back_to_pgc(self):
-        from prism import dictionaries as D
-        for marker in ("포토", "영상"):
-            self.assertEqual(D._service_key(marker), "", marker)
-            cats = D.intent_categories_for(marker)
-            self.assertEqual(cats, list(D.INTENT_CATEGORIES_UNIVERSAL) + list(D.INTENT_FORM_UNIVERSAL))
-            self.assertNotIn("속보·단신", cats)          # 서비스 분기 값은 열리지 않는다
+    종전에는 "포토"·"영상" 같은 인입 트랙 표식이 PGC 폴백으로 빠져 범용 18개만 받았다.
+    그 폴백(그리고 서비스 키 매핑 자체)이 정책상 금지돼 사라졌다."""
 
-    def test_ui_groups_all_map_to_a_service(self):
-        """반대로 UI 가 실제로 보내는 콘텐츠 그룹은 전부 서비스 키가 있어야 한다."""
+    def test_candidate_set_is_the_common_68(self):
         from prism import dictionaries as D
-        for g in D.SERVICE_GROUP:
-            self.assertTrue(D._service_key(g), g)
+        cats = D.intent_categories()
+        self.assertEqual(len(cats), 68)
+        self.assertEqual(len(set(cats)), 68)
+        self.assertIn("속보·단신", cats)          # 옛 서비스 분기 값도 전 출처 후보
+        self.assertIn("클립·하이라이트", cats)
+
+    def test_service_key_mapping_is_gone(self):
+        from prism import dictionaries as D
+        self.assertFalse(hasattr(D, "_service_key"))
+        self.assertFalse(hasattr(D, "INTENT_CATEGORIES_BY_SERVICE"))
 
 
 if __name__ == "__main__":

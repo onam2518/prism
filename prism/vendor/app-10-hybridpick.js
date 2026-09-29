@@ -1,6 +1,6 @@
 /* Prism 앱 조각 10 · 하이브리드 선택형 입력(최종 검수 수정 · 시안 3).
    추천 칩 상시 + 검색 드롭다운 병행 · 정답 확정 팝업(05-review)과 엔티티 수정(20-ingest-policy) 공용.
-   후보 원천 = /dict(dictData · 인텐트 범용①②+서비스 분기 · IAB Tier1/Tier2 · 한글 표시명)
+   후보 원천 = /dict(dictData · 인텐트 전 출처 공통 68개 · IAB Tier1/Tier2 · 한글 표시명)
    + /entdict(등재 개체 · 검색·추천용 캐시). 저장 계약 불변(카테고리=영문 경로 배열 · 인텐트=사전 표기 배열). */
 window.PRISM_APP_PARTS = window.PRISM_APP_PARTS || [];
 window.PRISM_APP_PARTS.push(() => ({
@@ -53,16 +53,13 @@ window.PRISM_APP_PARTS.push(() => ({
       hybGroups(kind, service) {
         const d = this.dictData;
         if (!d) { if (!this._dictReq) { this._dictReq = true; this.loadDict(); } return []; }
-        if (kind === 'intent') {
-          const key = (d.serviceKeyMap || {})[service] || service || '';
+        if (kind === 'intent') {               // 2026-09-22: 출처와 무관한 공통 68개 · 묶음은 표시용
           const mk = (v) => ({ v: v, ko: '', def: (d.intentDefs || {})[v] || '', tag: '' });
-          const out = [
-            { label: '범용① 소비 방식', items: (d.intentUniversal || []).map(mk) },
-            { label: '범용② 형식·전달', items: (d.intentForm || []).map(mk) },
+          return [
+            { label: '① 소비 방식', items: (d.intentUniversal || []).map(mk) },
+            { label: '② 형식·전달', items: (d.intentForm || []).map(mk) },
+            { label: '③ 세부 종류·속성', items: (d.intentCommon || []).map(mk) },
           ];
-          const own = (d.intentByService || {})[key] || [];
-          if (own.length) out.push({ label: '서비스 분기 · ' + key, items: own.map(mk) });
-          return out;
         }
         if (kind === 'category') {                 // 그룹 = Tier1(한글·영문 병기) · 항목 = Tier1 단독 + Tier1/Tier2 경로
           return (d.iabTier1 || []).map((t1) => ({
@@ -107,12 +104,8 @@ window.PRISM_APP_PARTS.push(() => ({
         const lead = ((ctx.title || '') + ' ' + (ctx.summary || '')).toLowerCase();
         const out = [];
         const push = (v, why) => { if (!(sel || []).includes(v) && !out.some((r) => r.v === v)) out.push({ v: v, why: why }); };
-        if (kind === 'intent') {                   // 서비스 분기 전량 + 리드문·제목 토큰 매칭 범용값 · 최대 8
-          const key = (d.serviceKeyMap || {})[ctx.service] || ctx.service || '';
-          const own = (d.intentByService || {})[key] || [];
-          own.filter((v) => this._hybHit(v, lead)).forEach((v) => push(v, '리드문 매칭'));
-          own.forEach((v) => push(v, '서비스 분기'));
-          [].concat(d.intentUniversal || [], d.intentForm || [])
+        if (kind === 'intent') {                   // 리드문·제목 토큰이 걸리는 값만 · 최대 8
+          [].concat(d.intentUniversal || [], d.intentForm || [], d.intentCommon || [])
             .filter((v) => this._hybHit(v, lead)).forEach((v) => push(v, '리드문 매칭'));
           return out.slice(0, 8);
         }
@@ -149,7 +142,7 @@ window.PRISM_APP_PARTS.push(() => ({
       get faFields() {
         return [
           { id: 'cat', key: 'cats', kind: 'category', label: '분류', pol: '사전 한정 · 표시는 한글, 저장은 영문 경로', free: false, ph: '카테고리 검색 · 한글·영문 모두 · 예) 야구, base' },
-          { id: 'int', key: 'intent', kind: 'intent', label: '의도', pol: '사전 한정 · 범용①+②+서비스 분기', free: false, ph: '인텐트 검색 · 예) 경기, 리뷰' },
+          { id: 'int', key: 'intent', kind: 'intent', label: '의도', pol: '사전 한정 · 전 출처 공통 68개', free: false, ph: '인텐트 검색 · 예) 경기, 리뷰' },
           // 소속 기준은 게시판 #16 확정(2026-08-13): 콘텐츠가 다루는 시점의 소속을 부여(현재 소속으로 바꾸지 않음)
           { id: 'ent', key: 'entities', kind: 'entity', label: '엔티티', pol: '사전 추천 + 새 엔티티 자유 입력 · 소속팀·소속사는 콘텐츠가 다루는 당시 기준', free: true, ph: '엔티티 검색 · 사전에 없으면 Enter = 새 엔티티로 추가' },
         ];

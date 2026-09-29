@@ -9,8 +9,9 @@ from .embed import rank_by_cosine
 PERSPECTIVE_INTENTS = ("옹호·지지", "반박·비판")
 
 
-def intent_category_anchors(emb, display_name: str) -> dict:
-    cats = [c for c in D.intent_categories_for(display_name) if c not in PERSPECTIVE_INTENTS]
+def intent_category_anchors(emb) -> dict:
+    """후보는 전 출처 공통 68개(2026-09-22). 출처로 앵커를 좁히면 모델 밖에서 값이 잘린다."""
+    cats = [c for c in D.intent_categories() if c not in PERSPECTIVE_INTENTS]
     return {c: emb.embed(c, is_query=False) for c in cats}
 
 
@@ -25,7 +26,7 @@ def merge_perspective(emb_intents: list, llm_intents: list) -> list:
 
 
 def intent_category_classify(emb, content, top_k=2, min_margin=0.0) -> tuple[list, float]:
-    anchors = intent_category_anchors(emb, content.displayServiceName)
+    anchors = intent_category_anchors(emb)
     q = emb.embed(_content_text(content), is_query=True)
     ranked = rank_by_cosine(q, anchors)
     if not ranked:

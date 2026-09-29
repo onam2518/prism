@@ -355,18 +355,24 @@ class TestRegisterGoldenIntent(unittest.TestCase):
         serve.register_golden("uid", None, rows)
         self.assertNotIn("intent", st.get_golden(None)[0]["expected"])
 
-    def test_service_specific_value_allowed(self):
-        """서비스 분기 인텐트는 해당 displayServiceName 에서만 통과."""
+    def test_any_dictionary_value_passes_regardless_of_source(self):
+        """2026-09-22 전환: 정답 정제도 출처별 허용 목록을 쓰지 않는다(2-12).
+        옛 계약은 '속보·단신은 뉴스에서만 통과' 였고, 그 때문에 같은 라벨이 출처에 따라 떨어졌다."""
         from prism import learnops as LO
-        ok, bad = LO._clean_intent(["속보·단신"], "뉴스")
-        self.assertEqual((ok, bad), (["속보·단신"], []))
-        ok2, bad2 = LO._clean_intent(["속보·단신"], "멜론")
-        self.assertEqual((ok2, bad2), ([], ["속보·단신"]))
+        self.assertEqual(LO._clean_intent(["속보·단신"]), (["속보·단신"], []))
+        self.assertEqual(LO._clean_intent(["클립·하이라이트"]), (["클립·하이라이트"], []))
+        self.assertEqual(LO._clean_intent(["없는 값"]), ([], ["없는 값"]))
+
+    def test_retired_value_is_dropped_not_substituted(self):
+        """폐기 7개는 통과시키지도, 새 값으로 몰래 바꾸지도 않는다(원문 재판정 대상)."""
+        from prism import learnops as LO
+        ok, bad = LO._clean_intent(["생활·실용정보"])
+        self.assertEqual((ok, bad), ([], ["생활·실용정보"]))
 
     def test_non_list_input_tolerated(self):
         from prism import learnops as LO
-        self.assertEqual(LO._clean_intent("인터뷰", "뉴스"), (["인터뷰"], []))
-        self.assertEqual(LO._clean_intent(None, "뉴스"), ([], []))
+        self.assertEqual(LO._clean_intent("인터뷰"), (["인터뷰"], []))
+        self.assertEqual(LO._clean_intent(None), ([], []))
 
 
 if __name__ == "__main__":

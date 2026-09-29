@@ -139,15 +139,19 @@ class TestNoCodeDefaultLost(_DictStateCase):
                 self.assertEqual(D.QUALITY_METAS[k], v, f"{k} 가 사라졌다")
 
     def test_nested_list_in_dict_target_merged(self):
-        """dict 안의 리스트(서비스별 인텐트 등)도 같은 병합 규칙."""
-        base_news = list(D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
-        D.apply_profile({"intent_by_service": {"뉴스": base_news[:2] + ["회사 전용"]}})
-        merged = D.INTENT_CATEGORIES_BY_SERVICE["뉴스"]
+        """dict 안의 리스트(Tier1 별 Tier2 등)도 같은 병합 규칙.
+
+        2026-09-22 공통 인텐트 전환 전에는 이 검사에 intent_by_service 를 썼다. 인텐트가
+        서비스별 dict 가 아니라 단일 리스트가 되어 표본을 tier2 로 옮겼다(계약은 그대로)."""
+        t1, other = "News and Politics", "Entertainment"
+        base_news = list(D.CONTENT_CATEGORY_TIER2[t1])
+        D.apply_profile({"tier2": {t1: base_news[:2] + ["회사 전용"]}})
+        merged = D.CONTENT_CATEGORY_TIER2[t1]
         self.assertEqual(merged[:3], base_news[:2] + ["회사 전용"])
         for v in base_news:
             self.assertIn(v, merged)
-        self.assertEqual(D.INTENT_CATEGORIES_BY_SERVICE["연예"],
-                         self._snap["INTENT_CATEGORIES_BY_SERVICE"]["연예"])
+        self.assertEqual(D.CONTENT_CATEGORY_TIER2[other],
+                         self._snap["CONTENT_CATEGORY_TIER2"][other])
 
 
 class TestIntentionalRemovalHonored(_DictStateCase):
@@ -270,7 +274,7 @@ class TestSiblingKeyEditNoFalseTombstone(_DictStateCase):
     stale 스냅샷이 '사용자 삭제'(툼스톤)로 오기록되어 코드 신규 값이 영구 소실된다.
     수정 계약: stamp_removals(key=) 는 편집된 키만 비교하고 형제 키 툼스톤은 유지한다."""
 
-    DICT_TARGETS = ["intent_by_service", "tier2", "quality_metas",
+    DICT_TARGETS = ["tier2", "quality_metas",
                     "domain_groups", "category_iab_map", "intake_policy"]
 
     @staticmethod
@@ -326,71 +330,71 @@ class TestSiblingKeyEditNoFalseTombstone(_DictStateCase):
     def test_keyed_deletion_tombstones_only_edited_key(self):
         """진짜 삭제는 여전히 기록된다 — 단, 편집한 키에만."""
         self._fresh()
-        base = copy.deepcopy(D.INTENT_CATEGORIES_BY_SERVICE)
+        base = copy.deepcopy(D.CONTENT_CATEGORY_TIER2)
         stale, victim, new_val = self._stale_snapshot(base)
         k_edit = next(k for k in stale if k != victim and len(stale[k]) >= 2)
         removed = stale[k_edit][-1]
-        ov = {"intent_by_service": stale}
-        ov["intent_by_service"][k_edit] = [v for v in base[k_edit] if v != removed]
-        D.stamp_removals(ov, "intent_by_service", key=k_edit)
+        ov = {"tier2": stale}
+        ov["tier2"][k_edit] = [v for v in base[k_edit] if v != removed]
+        D.stamp_removals(ov, "tier2", key=k_edit)
 
-        tomb = ov[D.REMOVED_KEY]["intent_by_service"]
+        tomb = ov[D.REMOVED_KEY]["tier2"]
         self.assertEqual(tomb, {k_edit: [removed]})    # victim(형제 키) 미포함
 
         D.apply_profile(ov)
-        self.assertNotIn(removed, D.INTENT_CATEGORIES_BY_SERVICE[k_edit])   # 삭제 유지
-        self.assertIn(new_val, D.INTENT_CATEGORIES_BY_SERVICE[victim])      # 신규 값 생존
+        self.assertNotIn(removed, D.CONTENT_CATEGORY_TIER2[k_edit])   # 삭제 유지
+        self.assertIn(new_val, D.CONTENT_CATEGORY_TIER2[victim])      # 신규 값 생존
 
     def test_sibling_tombstone_preserved_on_keyed_edit(self):
         """과거 다른 키를 편집하며 남긴 툼스톤은 이번 편집이 걷어내지 않는다."""
         self._fresh()
-        base = copy.deepcopy(D.INTENT_CATEGORIES_BY_SERVICE)
+        base = copy.deepcopy(D.CONTENT_CATEGORY_TIER2)
         keys = [k for k in base if len(base[k]) >= 2]
         k_prev, k_edit = keys[0], keys[1]
         gone = base[k_prev][-1]
-        ov = {"intent_by_service": copy.deepcopy(base),
-              D.REMOVED_KEY: {"intent_by_service": {k_prev: [gone]}}}
-        ov["intent_by_service"][k_prev] = [v for v in base[k_prev] if v != gone]
-        ov["intent_by_service"][k_edit] = list(base[k_edit]) + ["신설"]
-        D.stamp_removals(ov, "intent_by_service", key=k_edit)
+        ov = {"tier2": copy.deepcopy(base),
+              D.REMOVED_KEY: {"tier2": {k_prev: [gone]}}}
+        ov["tier2"][k_prev] = [v for v in base[k_prev] if v != gone]
+        ov["tier2"][k_edit] = list(base[k_edit]) + ["신설"]
+        D.stamp_removals(ov, "tier2", key=k_edit)
 
-        self.assertEqual(ov[D.REMOVED_KEY]["intent_by_service"].get(k_prev), [gone])
+        self.assertEqual(ov[D.REMOVED_KEY]["tier2"].get(k_prev), [gone])
         D.apply_profile(ov)
-        self.assertNotIn(gone, D.INTENT_CATEGORIES_BY_SERVICE[k_prev])
+        self.assertNotIn(gone, D.CONTENT_CATEGORY_TIER2[k_prev])
 
     def test_keyed_readd_clears_only_that_key_tombstone(self):
         """편집한 키의 값을 되살리면 그 키의 툼스톤만 걷어낸다."""
         self._fresh()
-        base = copy.deepcopy(D.INTENT_CATEGORIES_BY_SERVICE)
+        base = copy.deepcopy(D.CONTENT_CATEGORY_TIER2)
         keys = [k for k in base if len(base[k]) >= 2]
         k_prev, k_edit = keys[0], keys[1]
-        ov = {"intent_by_service": copy.deepcopy(base),
-              D.REMOVED_KEY: {"intent_by_service": {k_prev: [base[k_prev][-1]],
+        ov = {"tier2": copy.deepcopy(base),
+              D.REMOVED_KEY: {"tier2": {k_prev: [base[k_prev][-1]],
                                                     k_edit: [base[k_edit][-1]]}}}
-        ov["intent_by_service"][k_edit] = list(base[k_edit])       # 전부 되살림
-        D.stamp_removals(ov, "intent_by_service", key=k_edit)
-        tomb = ov[D.REMOVED_KEY]["intent_by_service"]
+        ov["tier2"][k_edit] = list(base[k_edit])       # 전부 되살림
+        D.stamp_removals(ov, "tier2", key=k_edit)
+        tomb = ov[D.REMOVED_KEY]["tier2"]
         self.assertNotIn(k_edit, tomb)
         self.assertIn(k_prev, tomb)
 
     def test_remove_all_untouched_by_keyed_edit(self):
         """완전 교체(*) 프로파일은 단건 키 편집이 툼스톤을 건드리지 않는다."""
         self._fresh()
-        ov = {"intent_by_service": {"뉴스": ["전용 A"]},
-              D.REMOVED_KEY: {"intent_by_service": D.REMOVE_ALL}}
-        D.stamp_removals(ov, "intent_by_service", key="뉴스")
-        self.assertEqual(ov[D.REMOVED_KEY]["intent_by_service"], D.REMOVE_ALL)
+        ov = {"tier2": {"뉴스": ["전용 A"]},
+              D.REMOVED_KEY: {"tier2": D.REMOVE_ALL}}
+        D.stamp_removals(ov, "tier2", key="뉴스")
+        self.assertEqual(ov[D.REMOVED_KEY]["tier2"], D.REMOVE_ALL)
 
     def test_whole_value_edit_still_full_stamps_dict_target(self):
         """key 없는 전체 값 저장은 기존대로 target 전체를 비교한다(사용자가 전체를 제출)."""
         self._fresh()
-        base = copy.deepcopy(D.INTENT_CATEGORIES_BY_SERVICE)
+        base = copy.deepcopy(D.CONTENT_CATEGORY_TIER2)
         keys = [k for k in base if len(base[k]) >= 2]
         k1 = keys[0]
         whole = copy.deepcopy(base)
         gone = whole[k1].pop()
-        ov = D.stamp_removals({"intent_by_service": whole}, "intent_by_service")
-        self.assertEqual(ov[D.REMOVED_KEY]["intent_by_service"], {k1: [gone]})
+        ov = D.stamp_removals({"tier2": whole}, "tier2")
+        self.assertEqual(ov[D.REMOVED_KEY]["tier2"], {k1: [gone]})
 
 
 class TestSiblingKeyEditRoundTrip(_DictStateCase):
@@ -411,53 +415,53 @@ class TestSiblingKeyEditRoundTrip(_DictStateCase):
 
     def _set_code_base(self):
         """합성 코드 기본값 설치(참조 유지 · in-place). 재기동 흉내에도 재사용."""
-        D.INTENT_CATEGORIES_BY_SERVICE.clear()
-        D.INTENT_CATEGORIES_BY_SERVICE.update(copy.deepcopy(self.BASE))
+        D.CONTENT_CATEGORY_TIER2.clear()
+        D.CONTENT_CATEGORY_TIER2.update(copy.deepcopy(self.BASE))
         D._BASE_SNAPSHOT = None
 
     def test_audit_scenario_sports_edit_keeps_news_new_value(self):
         # 시딩 시점(신규 값 추가 전) 스냅샷이 파일에 남아 있다
-        stale = {"intent_by_service": {"뉴스": ["속보", "심층"],
-                                       "스포츠": ["경기 결과", "구단 소식"]}}
+        stale = {"tier2": {"뉴스": ["속보", "심층"],
+                           "스포츠": ["경기 결과", "구단 소식"]}}
         with open(self.S._DICT_OVERRIDES_PATH, "w", encoding="utf-8") as f:
             json.dump(stale, f, ensure_ascii=False)
 
         self.S.load_dict_overrides()                   # 기동 병합: 신규 값 복원(정상)
-        self.assertIn("트렌드·시장 분석", D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
+        self.assertIn("트렌드·시장 분석", D.CONTENT_CATEGORY_TIER2["뉴스"])
 
         # 관리자가 '스포츠' 키 하나만 편집·저장(UI 는 target+key+value 단건 전송)
-        r = self.S.edit_dict({"target": "intent_by_service", "key": "스포츠",
+        r = self.S.edit_dict({"target": "tier2", "key": "스포츠",
                               "value": ["경기 결과", "구단 소식", "이적 시장"]})
         self.assertTrue(r.get("saved"))
 
         with open(self.S._DICT_OVERRIDES_PATH, encoding="utf-8") as f:
             saved = json.load(f)
-        tomb = (saved.get(D.REMOVED_KEY) or {}).get("intent_by_service") or {}
+        tomb = (saved.get(D.REMOVED_KEY) or {}).get("tier2") or {}
         self.assertNotIn("뉴스", tomb, "형제 키(뉴스)의 코드 신규 값이 사용자 삭제로 오기록")
-        self.assertEqual(saved["intent_by_service"]["스포츠"],
+        self.assertEqual(saved["tier2"]["스포츠"],
                          ["경기 결과", "구단 소식", "이적 시장"])
 
         # 저장 직후에도, 재기동 후에도 뉴스 신규 값 생존
-        self.assertIn("트렌드·시장 분석", D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
+        self.assertIn("트렌드·시장 분석", D.CONTENT_CATEGORY_TIER2["뉴스"])
         self._set_code_base()                          # 재기동 흉내
         self.S.load_dict_overrides()
-        self.assertIn("트렌드·시장 분석", D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
-        self.assertEqual(D.INTENT_CATEGORIES_BY_SERVICE["스포츠"],
+        self.assertIn("트렌드·시장 분석", D.CONTENT_CATEGORY_TIER2["뉴스"])
+        self.assertEqual(D.CONTENT_CATEGORY_TIER2["스포츠"],
                          ["경기 결과", "구단 소식", "이적 시장"])
 
     def test_keyed_edit_deletion_survives_restart(self):
         """단건 편집으로 뺀 값은 툼스톤으로 기록되어 재기동에도 되살아나지 않는다."""
-        r = self.S.edit_dict({"target": "intent_by_service", "key": "스포츠",
+        r = self.S.edit_dict({"target": "tier2", "key": "스포츠",
                               "value": ["경기 결과"]})       # '구단 소식' 삭제
         self.assertTrue(r.get("saved"))
         with open(self.S._DICT_OVERRIDES_PATH, encoding="utf-8") as f:
             saved = json.load(f)
-        self.assertEqual(saved[D.REMOVED_KEY]["intent_by_service"], {"스포츠": ["구단 소식"]})
+        self.assertEqual(saved[D.REMOVED_KEY]["tier2"], {"스포츠": ["구단 소식"]})
 
         self._set_code_base()                          # 재기동 흉내
         self.S.load_dict_overrides()
-        self.assertNotIn("구단 소식", D.INTENT_CATEGORIES_BY_SERVICE["스포츠"])
-        self.assertIn("트렌드·시장 분석", D.INTENT_CATEGORIES_BY_SERVICE["뉴스"])
+        self.assertNotIn("구단 소식", D.CONTENT_CATEGORY_TIER2["스포츠"])
+        self.assertIn("트렌드·시장 분석", D.CONTENT_CATEGORY_TIER2["뉴스"])
 
 
 if __name__ == "__main__":

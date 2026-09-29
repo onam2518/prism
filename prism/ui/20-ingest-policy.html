@@ -230,10 +230,10 @@
             <div x-show="!polCatGroups().length" class="text-xs text-muted">검색 결과가 없습니다 · 다른 탭도 확인해 보세요</div>
           </div>
         </template>
-        <!-- 인텐트: 범용①·② / 서비스 분기 그룹 → (인텐트 | 정의 | 예시) 표 -->
+        <!-- 인텐트: ①·②·③ 묶음 + 폐기 대응표 그룹 → (인텐트 | 정의 | 예시) 표 -->
         <template x-if="polTab==='intent'">
           <div style="display:flex;flex-direction:column;gap:10px">
-            <div class="text-xs text-muted">범용①·②는 전 서비스 공통 · 서비스 분기 값은 그 서비스 콘텐츠에만 부여합니다</div>
+            <div class="text-xs text-muted">2026-09-22 부터 68개 값 전부를 출처와 무관하게 부여합니다 · 묶음(①·②·③)은 읽기 편의용 표시입니다</div>
             <template x-for="g in polIntentGroups()" x-bind:key="'pig'+g.label">
               <div class="polsec">
                 <div class="polsec__hd"><b x-text="g.label"></b> <span class="text-xs text-muted" x-text="g.note"></span></div>
