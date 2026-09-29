@@ -946,7 +946,7 @@ def _neg_after(t, frag):
         p = i + 1
 
 
-def suggest_dims(text, rows, service_names=None, eattr_cands=None):
+def suggest_dims(text, rows, service_names=None, eattr_cands=None, thresholds=None):
     """자연어 문장 → 차원 제안(휴리스틱 · 모델 호출 없음, 의존성 0).
     전체 아이템메타 분류(사전) ∪ 현재 데이터 present 를 후보로. 전체 라벨 일치 또는
     라벨을 쪼갠 유의미 토큰 부분일치('인물들'→'인물·사연')까지 잡아 substring-only 누락을 줄인다.
@@ -1006,7 +1006,7 @@ def suggest_dims(text, rows, service_names=None, eattr_cands=None):
     req = {"cats": list(cats), "intents": [], "keywords": list(keywords), "srcs": []}
     return {"cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs, "eattrs": eattrs, "req": req,
             "neg": {"cats": neg_cat, "intents": neg_int, "keywords": neg_kw, "srcs": neg_src},
-            "feed": parse_feed_text(text, cat)}
+            "feed": parse_feed_text(text, cat, thresholds)}
 
 
 # 토픽 탭 HTML (대시보드와 동일 토큰)

@@ -362,7 +362,7 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
             "talk_model": (d.get("talk_model") or "").strip()[:80]}
 
 
-def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
+def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool, thresholds=None):
     """자연어 설명 → 토픽 차원(카테고리·인텐트·키워드)을 선택 모델로 매핑.
     허용 목록(현재 데이터의 실재 값)으로만 제약 · 실패 시 (None, 사유) 반환(호출부에서 휴리스틱 폴백)."""
     from . import topic as TP, meta_prompts as MP
@@ -426,7 +426,7 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     if not srcs and not neg["srcs"]:                       # 모델이 출처를 비우면 문장 휴리스틱(사전 실재값)으로 보강
         srcs, neg["srcs"] = TP.parse_srcs_text(text, cat)
     # 원천 조건(feed): 허용 값만 · 모델이 비우면 문장 휴리스틱으로 보강
-    feed = TP.sanitize_feed(obj.get("feed")) or TP.parse_feed_text(text, cat)
+    feed = TP.sanitize_feed(obj.get("feed")) or TP.parse_feed_text(text, cat, thresholds)
     sug = {"cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs, "eattrs": eattrs,
            "req": {"cats": [c for c in m_cats if c in cats], "intents": [i for i in m_int if i in intents],
                    "keywords": [k for k in m_kw if k in keywords], "srcs": []},
@@ -519,16 +519,17 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
                                 "neg": {"cats": [], "intents": [], "keywords": [], "srcs": []},
                                 "feed": TP.parse_feed_text(text, thresholds=_studio_config()["settings"])}}
         model = (data.get("model") or "").strip()          # "" = 기본 실행 모델
+        th = _studio_config()["settings"]                  # 긴 글 · 많이 읽힌 기준값(4-43)
         via, route, sug = "llm", "", None
         try:
-            sug, route = _studio_llm_suggest(text, model, rows, svc, mock)
+            sug, route = _studio_llm_suggest(text, model, rows, svc, mock, th)
         except Exception as e:
             sug, route = None, str(e)[:80]
         # 모델 호출 불가·실패·빈 결과 → 휴리스틱(즉시·의존성 0) 폴백. 버튼이 헛돌지 않게.
         core_empty = not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords") or sug.get("eattrs")
                                      or any(v for k, v in (sug.get("neg") or {}).items() if k != "srcs"))
         if core_empty:                               # 메타 축이 비면 휴리스틱 · 모델이 준 출처 · 원천 조건은 살린다
-            h = TP.suggest_dims(text, rows, svc, eattr_cands=TP.eattr_catalog(_ent_index()))
+            h = TP.suggest_dims(text, rows, svc, eattr_cands=TP.eattr_catalog(_ent_index()), thresholds=th)
             if sug:
                 h["srcs"] = sug.get("srcs") or h["srcs"]
                 h["neg"]["srcs"] = (sug.get("neg") or {}).get("srcs") or h["neg"]["srcs"]
