@@ -133,10 +133,11 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
         try:
             known = st0.existing_hashes(list(uniq.keys()), team=team) or {}
         except Exception:
-            known = {}    # 조회 실패 → 전량 신규 취급(upsert 멱등 · 빈 결과는 save_dedup 가드가 보호)
+            return {"error": "기존 콘텐츠 조회 실패 · 저장하지 않았습니다. 다시 시도하세요"}
     existing = sum(1 for h in uniq if h in known)
     # 참조 이미지 URL 정규화(http(s)·중복 제거·상한)를 인입 경로 공통으로. 원본 dict 는 건드리지 않는다.
-    rows = [dict(c, image_urls=normalize_image_urls(c.get("image_urls") or c.get("images")))
+    from .schema import input_auxiliary
+    rows = [dict(c, input_aux=input_auxiliary(c), image_urls=normalize_image_urls(c.get("image_urls") or c.get("images")))
             for h, c in uniq.items() if h not in known]
     pairs = [(c, {"content_ref": {"displayServiceName": c.get("displayServiceName", ""),
                                   "title": c.get("title", ""), "subtitle": c.get("subtitle", ""),
@@ -148,7 +149,10 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
                                   # 발행 키 원문 보존(511607345) · 부재는 None 으로 남긴다
                                   "item_unique_key": c.get("item_unique_key"),
                                   "service_code": c.get("service_code"),
-                                  "cp_type": c.get("cp_type")},
+                                  "cp_type": c.get("cp_type"),
+                                  "input_aux": c["input_aux"],
+                                  "source_fields": dict(c.get("source_fields") if isinstance(c.get("source_fields"), dict) else {
+                                      k: c[k] for k in ("item_unique_key", "service_code", "cp_type", "displayServiceName") if k in c})},
                   "quality_meta": {}, "item_meta": {}, "trace": {}}) for c in rows]
     saved = store_save(pairs, source=source, team=team) if rows else None
     if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '추가됨'으로 속이지 않는다

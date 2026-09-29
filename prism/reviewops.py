@@ -739,7 +739,14 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
     ch = (content_hash or "").strip()
     if ch.startswith(("gold:", "goldf:")):
         return _gold_patch()
-    patch = {k: v for k, v in dict(patch or {}).items() if k in (*MC.FIELDS, "finalGrade", "reasons")}
+    if not isinstance(patch, dict):
+        return {"ok": False, "error": "수정값은 객체여야 합니다"}
+    patch = {k: v for k, v in patch.items() if k in (*MC.FIELDS, "finalGrade", "reasons")}
+    if "summary" in patch and not isinstance(patch["summary"], str):
+        return {"ok": False, "error": "리드문은 문자열이어야 합니다"}
+    for key in ("intent", "content_category"):
+        if key in patch and not isinstance(patch[key], list):
+            return {"ok": False, "error": "인텐트·카테고리는 목록이어야 합니다"}
     grade = patch.pop("finalGrade", None)
     reasons = patch.pop("reasons", None)
     if "entities" in patch:                        # 엔티티 교정: 문자열 목록으로 정규화(공백·빈 값·None 제거 · 중복 제거 · 순서 보존)
@@ -773,7 +780,7 @@ def patch_content_meta(content_hash, patch, team=None, reviewer="") -> dict:
                     hold_left = [f for f in hold if not patch.get(f)]
                     patch["hold_fields"] = hold_left
         except Exception:
-            before = None
+            return {"ok": False, "error": "기존 메타 조회 실패 · 수정하지 않았습니다"}
     # 읽기·쓰기 모두 team 을 함께 넘긴다 — 해시만 알면 타 팀 콘텐츠의 분류·요약·등급을
     # 덮어쓸 수 있었다(감사 기록 log_patch 는 호출자 팀에 남아 원 소유 팀 이력엔 안 보였다).
     ok = st.update_item_meta(ch, patch, team=team) if patch else False

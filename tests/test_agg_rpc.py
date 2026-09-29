@@ -1,7 +1,7 @@
 """집계 RPC 폴백 회귀(P3-1 1단계).
 
 RPC 가용 시 통계는 서버측 집계 결과를 그대로 쓰고(행 전송 0), 미가용(마이그레이션 전)이면
-기존 행 다운로드 계산으로 폴백하며, 실패한 함수는 프로세스당 1회만 시도한다.
+기존 행 다운로드 계산으로 폴백하며, 미존재 함수만 스토어별로 5분 동안 재시도를 줄인다.
 RPC와 파이썬 계산의 수치 동일성은 운영 DB 전 팀 파리티 검증(2026-07-29)으로 확인됨.
 
 실행: python3 -m pytest tests/test_agg_rpc.py -q
@@ -42,11 +42,6 @@ def _mk(rpc_status, rpc_body):
 
 
 class TestAggRpc(unittest.TestCase):
-    def setUp(self):
-        SupabaseStore._RPC_MISSING = set()          # 클래스 공유 상태 격리
-
-    tearDown = setUp
-
     def test_rpc_hit_skips_row_download(self):
         agg = {"total": 3, "good": 1, "bad": 2, "learned": 1,
                "contents": 2, "reviewers": 2, "split": 1}

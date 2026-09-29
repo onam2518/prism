@@ -54,13 +54,14 @@ def _ent_partial_f1(want: set, got: set) -> float:
     """MUC 식: 정확 일치 1점 · 부분 일치 0.5점."""
     if not (want or got):
         return 1.0
-    hit = 0.0
-    left = set(got)
-    for w in want:
-        if w in left:
-            hit += 1; left.discard(w)
-        elif any(_partial(w, g) for g in left):
-            hit += 0.5; left.discard(next(g for g in left if _partial(w, g)))
+    exact = want & got
+    hit = float(len(exact))
+    left = set(got - exact)
+    for w in sorted(want - exact):
+        match = next((g for g in sorted(left) if _partial(w, g)), None)
+        if match is not None:
+            hit += 0.5
+            left.remove(match)
     return 2 * hit / (len(want) + len(got))
 
 
@@ -73,7 +74,7 @@ def summary_sim(a: str, b: str) -> float:
     """폴백: 문자 2-gram F1. 어순만 다른 동의문에 박하다(그래서 게이트도 SUMMARY_FALLBACK_GATE)."""
     x, y = _bigrams(a), _bigrams(b)
     if not (x or y):
-        return 1.0
+        return float("".join(str(a or "").split()) == "".join(str(b or "").split()))
     return 2 * sum((x & y).values()) / (sum(x.values()) + sum(y.values()))
 
 
@@ -151,8 +152,8 @@ def meta_tally(acc: dict, exp: dict, out) -> None:
         acc["ent_n"] = acc.get("ent_n", 0) + 1
         acc["ent_f1_sum"] = acc.get("ent_f1_sum", 0.0) + _f1(we, ge)
         acc["ent_pf1_sum"] = acc.get("ent_pf1_sum", 0.0) + _ent_partial_f1(we, ge)
-        typed = {(ent_norm(v["name"]), v.get("type")) for v in exp.get("entities", []) if isinstance(v, dict)}
-        got_typed = {(ent_norm(v["name"]), v.get("type")) for v in im.get("entities", []) if isinstance(v, dict) and "name" in v}
+        typed = {(ent_norm(v["name"]), v.get("type")) for v in MC.clean_entities(exp.get("entities")) if isinstance(v, dict)}
+        got_typed = {(ent_norm(v["name"]), v.get("type")) for v in MC.clean_entities(im.get("entities")) if isinstance(v, dict)}
         acc["ent_type_n"] = acc.get("ent_type_n", 0) + len(typed)
         acc["ent_type_hit"] = acc.get("ent_type_hit", 0) + len(typed & got_typed)
         _bump(acc.setdefault("ent_missed", {}), we - ge)

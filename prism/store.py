@@ -2362,17 +2362,18 @@ class Store:
         건별 upsert_golden(행마다 commit)이 아니라 executemany + 단일 커밋 —
         같은 파일의 다른 일괄 경로(save_many·save_dedup·eval_results_add)와 같은 관례
         (500건 실측 50ms → 10ms · 2026-08 감사 S10). 단건 upsert_golden 은 그대로 둔다."""
-        c = self._conn()
-        if replace:
-            c.execute("DELETE FROM golden")
         vals = [(content_hash(r["content"]), json.dumps(r["content"], ensure_ascii=False),
                  json.dumps(r["expected"], ensure_ascii=False), time.time(), source or "manual")
                 for r in rows if r.get("content") and r.get("expected")]
-        if vals:
+        if not vals:
+            return 0
+        c = self._conn()
+        with c:
+            if replace:
+                c.execute("DELETE FROM golden")
             c.executemany("""INSERT INTO golden(content_hash,content,expected,ts,source) VALUES(?,?,?,?,?)
               ON CONFLICT(content_hash) DO UPDATE SET content=excluded.content,
                 expected=excluded.expected, ts=excluded.ts, source=excluded.source""", vals)
-        c.commit()
         return len(vals)
 
     def get_golden(self, team=None, limit=1000):

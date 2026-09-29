@@ -66,7 +66,8 @@ class SupabaseStore:
     # ── REST 헬퍼 ──────────────────────────────────────────────────────────
     def _req(self, method: str, table: str, *, query: str = "", body=None, prefer: str = "") -> list:
         # public 스키마(기본 노출) + prism_ 접두사 → 노출 설정 불필요.
-        url = f"{self.base}/prism_{table}" + (f"?{query}" if query else "")
+        endpoint = table if table.startswith("rpc/") else f"prism_{table}"
+        url = f"{self.base}/{endpoint}" + (f"?{query}" if query else "")
         headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
@@ -92,7 +93,9 @@ class SupabaseStore:
         """PostgREST 호출을 keep-alive 연결로 실행. 매 호출 새 TLS 핸드셰이크(urllib)가
         도쿄(Fly)→서울(supabase) 왕복을 요청마다 추가하던 비용 제거(2026-07-08 실측 API 400~860ms)."""
         host = self.url.split("://", 1)[1]
-        for attempt in (0, 1):                           # 유휴 종료된 소켓은 1회 재수립
+        attempts = 2 if method in ("GET", "HEAD") else 1
+        # 쓰기는 응답 유실 전에 커밋됐을 수 있다. 자동 재전송으로 새 행을 중복 생성하지 않는다.
+        for attempt in range(attempts):
             conns = getattr(self._TLS, "conns", None)
             if conns is None:
                 conns = self._TLS.conns = {}
@@ -109,7 +112,7 @@ class SupabaseStore:
                 except Exception:
                     pass
                 conns.pop(host, None)
-                if attempt:
+                if attempt + 1 == attempts:
                     raise
 
     _PAGE = 1000                                     # PostgREST 서버 max-rows(기본 1000)와 동일한 페이지 크기
@@ -126,12 +129,14 @@ class SupabaseStore:
         "mcp_keys": "key_id", "mcp_calls": "id", "mq_stage": "hash",
     }
 
-    _RPC_MISSING = set()   # 마이그레이션 전 미존재 집계 함수 · 프로세스당 1회만 시도(왕복 낭비 방지)
 
     def _rpc_or_none(self, fn: str, args: dict):
         """PostgREST RPC(POST /rpc/<fn>) 서버측 집계 호출. 함수 미존재·오류면 None →
-        호출측이 행 다운로드 방식으로 폴백한다(마이그레이션 순서와 무관하게 안전)."""
-        if fn in self._RPC_MISSING:
+        호출측이 행 다운로드 방식으로 폴백한다. 미존재만 5분 기억하고 일시 장애는 다시 시도한다."""
+        missing = getattr(self, "_rpc_missing", None)
+        if missing is None:
+            missing = self._rpc_missing = {}
+        if missing.get(fn, 0) > time.monotonic():
             return None
         try:                                          # 헤더 구성(자격증명 부재 등)도 폴백 대상
             headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
@@ -139,10 +144,12 @@ class SupabaseStore:
             data = json.dumps(args or {}, ensure_ascii=False).encode("utf-8")
             status, raw, _ = self._http("POST", f"/rest/v1/rpc/{fn}", data, headers)
             if status >= 400:
+                if status == 404:
+                    missing[fn] = time.monotonic() + 300
                 raise RuntimeError(f"HTTP{status}")
+            missing.pop(fn, None)
             return json.loads(raw) if raw.strip() else None
         except Exception as e:
-            self._RPC_MISSING.add(fn)
             print(f"  [supabase] rpc {fn} 미가용({e}) → 행 다운로드 폴백 · SUPABASE_MIGRATION.md 확인")
             return None
 
@@ -173,6 +180,9 @@ class SupabaseStore:
 
     def _upsert(self, table, rows):
         if not rows:
+            return
+        if table == "contents":
+            self._req("POST", "rpc/prism_sync_contents", body={"p_rows": rows})
             return
         self._req("POST", table, body=rows, prefer="resolution=merge-duplicates,return=minimal")
 
@@ -564,34 +574,19 @@ class SupabaseStore:
         return f"team_id=eq.{urllib.parse.quote(team)}" if team else "team_id=is.null"
 
     def upsert_golden(self, content_hash, content, expected, team=None, source="review"):
-        """골든 엔트리 upsert(누적). (team, content_hash) 키 · 서버 단일 작성자라 삭제 후 삽입."""
-        self._req("DELETE", "golden",
-                  query=f"{self._team_q(team)}&content_hash=eq.{urllib.parse.quote(content_hash)}",
-                  prefer="return=minimal")
-        row = {"content_hash": content_hash, "content": content, "expected": expected,
-               "source": source or "review"}
-        if team:
-            row["team_id"] = team
-        self._req("POST", "golden", body=[row], prefer="return=minimal")
+        self._req("POST", "rpc/prism_write_golden", body={
+            "p_team_id": team, "p_rows": [{"content_hash": content_hash, "content": content, "expected": expected}],
+            "p_replace": False, "p_source": source or "review"})
 
     def register_golden(self, team, rows, replace=True, source="manual"):
-        """골든셋 등록. replace=True 면 팀 전체 교체, False 면 병합(upsert)."""
+        """검증된 전체 배치를 한 트랜잭션으로 교체·병합한다. 실패 시 기존 정답을 유지한다."""
         from .store import content_hash
-        if replace:
-            self.clear_golden(team)
-            payload = [{"team_id": team, "content": r.get("content"), "expected": r.get("expected"),
-                        "content_hash": content_hash(r.get("content") or {}), "source": source or "manual"}
-                       for r in rows if r.get("content") and r.get("expected")]
-            for i in range(0, len(payload), 500):
-                self._req("POST", "golden", body=payload[i:i + 500], prefer="return=minimal")
-            return len(payload)
-        n = 0
-        for r in rows:
-            if r.get("content") and r.get("expected"):
-                self.upsert_golden(content_hash(r["content"]), r["content"], r["expected"],
-                                   team=team, source=source or "manual")
-                n += 1
-        return n
+        payload = [{"content_hash": content_hash(r["content"]), "content": r["content"], "expected": r["expected"]}
+                   for r in rows if r.get("content") and r.get("expected")]
+        if not payload:
+            return 0
+        return int(self._req("POST", "rpc/prism_write_golden", body={
+            "p_team_id": team, "p_rows": payload, "p_replace": bool(replace), "p_source": source or "manual"}))
 
     def get_golden(self, team, limit=1000):
         rows = self._get("golden", f"select=content,expected&{self._team_q(team)}&limit={int(limit)}")
@@ -1317,10 +1312,7 @@ class SupabaseStore:
             uniq[(row["hash"], row.get("team_id") or "")] = row
         rows = list(uniq.values())
         if rows:
-            try:
-                kept = self._kept_sources([r["hash"] for r in rows])
-            except Exception:
-                kept = {}                             # 라벨 조회 실패가 적재 자체를 막지 않는다(최선 노력 보존)
+            kept = self._kept_sources([r["hash"] for r in rows])
             for row in rows:
                 prev = kept.get(row["hash"]) or {}
                 row["item_meta"] = MC.preserve_manual(prev.get("item_meta"), row.get("item_meta"))

@@ -78,6 +78,15 @@ class _CountingConn:
         self.commits += 1
         return self._c.commit()
 
+    def __enter__(self):
+        self._c.__enter__()
+        return self
+
+    def __exit__(self, kind, value, traceback):
+        if kind is None:
+            self.commits += 1
+        return self._c.__exit__(kind, value, traceback)
+
     def __getattr__(self, name):
         return getattr(self._c, name)
 
