@@ -144,6 +144,15 @@ def _topics_compute(team=None) -> dict:
 _TOPIC_SNAP_CAP = 90                                  # 보관 스냅샷 수(시간별 약 4일 · 추이 원천)
 
 
+def _recent_samples(ids, rows, n=3) -> list:
+    """토픽 펼침용 최근 샘플(적재 시각 내림차순 · 제목 · 서비스). 표시 전용이라 상세 계약까지 펼치지 않는다."""
+    from . import topic as TP
+    idx = sorted((i for i in ids if 0 <= i < len(rows)), key=lambda i: -float(rows[i].get("_ts") or 0))
+    return [{"title": TP._title(rows[i])[:70],
+             "service": (rows[i].get("content_ref") or {}).get("displayServiceName", ""),
+             "ts": float(rows[i].get("_ts") or 0)} for i in idx[:n]]
+
+
 def _attach_status(out: dict, cfg: dict, rows: list):
     """토픽 행에 운영자 상태 · 변경 기록 · 오늘/7일/신호를 붙이고, 초안 · 보관 정의는 건수 없는 행으로 덧붙인다."""
     from . import topic as TP
@@ -154,9 +163,10 @@ def _attach_status(out: dict, cfg: dict, rows: list):
         d = defs.get(g.get("id")) or {}
         g["status"] = d.get("status") or "active"
         g["via"] = d.get("via") or "manual"
-        g["log"] = (d.get("log") or [])[-3:]
+        g["log"] = (d.get("log") or [])[-10:]        # 펼침의 변경 기록(누가 · 언제 · 무엇 · 4-41)
         g["feed_chips"] = TP.feed_labels(d.get("feed"))
         core = next((b.get("content_ids") or [] for b in (g.get("bundles") or []) if b.get("kind") == "core"), [])
+        g["samples"] = _recent_samples(core, rows)   # 펼침의 최근 샘플 3건(4-41)
         g.update(_row_stats(core, rows, now, cfg["settings"]))
         g["sys_status"] = SYS_INACTIVE if (g["status"] == "active" and g["inactive"]) else g["status"]
     seen = {g.get("id") for g in out.get("custom") or []}
@@ -168,7 +178,7 @@ def _attach_status(out: dict, cfg: dict, rows: list):
             "prompt": d.get("prompt") or "", "must": [], "opt": [],
             "neg": [{"dim": k, "v": v} for k in TP._DIMS for v in ((d.get("neg") or {}).get(k) or [])],
             "bundles": [], "n_bundles": 0, "core_count": 0, "status": d.get("status"), "via": d.get("via") or "manual",
-            "log": (d.get("log") or [])[-3:], "feed_chips": TP.feed_labels(d.get("feed")),
+            "log": (d.get("log") or [])[-10:], "feed_chips": TP.feed_labels(d.get("feed")), "samples": [],
             "sys_status": d.get("status"), "inactive": True,
             "today": 0, "d7": 0, "prev7": 0, "stall_days": 0, "signal": ""})
     for key in ("single", "composite"):
@@ -349,6 +359,15 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     req = {k: [v for v in _strlist(rq.get(k)) if v in sel[k]] for k in TP._DIMS}
     status = d.get("status") if d.get("status") in TOPIC_STATUS else "active"
     feed = TP.sanitize_feed(d.get("feed"))
+    # 대화 기록(4-38): 턴마다 문장 원문 · 해석 모델 · 해석 결과(before) · 칩 조정 뒤(after).
+    # 파싱 정확도 검토 자료라 화면 표시용이 아니라 정의에 그대로 남긴다.
+    turns = []
+    for t in (d.get("turns") or [])[-20:]:
+        if isinstance(t, dict) and (t.get("text") or "").strip():
+            turns.append({"text": str(t["text"]).strip()[:600], "model": str(t.get("model") or "").strip()[:80],
+                          "via": str(t.get("via") or "").strip()[:20],
+                          "before": _strlist(t.get("before"), n=40, ln=80),
+                          "after": _strlist(t.get("after"), n=40, ln=80)})
     cid = (d.get("id") or "").strip()
     if not cid:
         base = "U-" + (TP._slug(name or prompt or "topic") or "topic")
@@ -360,7 +379,9 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
             "cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs, "eattrs": eattrs,
             "req": req, "neg": neg, "feed": feed, "status": status,
             "via": "talk" if d.get("via") == "talk" else "manual",   # 만든 방식: 말로 · 직접
-            "talk_model": (d.get("talk_model") or "").strip()[:80]}
+            "turns": turns,
+            # 해석 모델(4-45): 화면에 모델 선택이 없으니 마지막 턴이 쓴 모델을 기록값으로 삼는다
+            "talk_model": (d.get("talk_model") or "").strip()[:80] or (turns[-1]["model"] if turns else "")}
 
 
 def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool, thresholds=None):
@@ -509,6 +530,13 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
                 b["samples"] = [_SV._detail_row(rows[s["i"]]) for s in b["samples"]
                                 if isinstance(s.get("i"), int) and 0 <= s["i"] < len(rows)]
         pv["feed_chips"] = TP.feed_labels(TP.sanitize_feed((data.get("def") or {}).get("feed")))
+        # 걸린 이유(4-44): 표본이 어떤 조건 묶음으로 걸렸는지 · 메타 축이 없으면 원천 조건으로 표기
+        why_feed = " · ".join(c["v"] for c in pv["feed_chips"] if not c.get("fixed"))
+        for b in pv.get("bundles") or []:
+            for s in (b.get("samples") or []):
+                s["why"] = b.get("label") or why_feed or "조건 전체"
+        if data.get("similar"):          # 저장 전에도 가까운 기존 토픽을 보인다(4-44) · 임베딩 호출이라 요청할 때만
+            pv["similar"] = similar_topics(d, _studio_config()["custom"])
         return {"ok": True, "preview": pv}
 
     if action == "suggest":
@@ -519,7 +547,8 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
                                 "req": {"cats": [], "intents": [], "keywords": [], "srcs": []},
                                 "neg": {"cats": [], "intents": [], "keywords": [], "srcs": []},
                                 "feed": TP.parse_feed_text(text, thresholds=_studio_config()["settings"])}}
-        model = (data.get("model") or "").strip()          # "" = 기본 실행 모델
+        # 화면에서 모델을 고르지 않는다 → 시스템 기본 실행 모델로 확정해 응답에 실어 준다(기록용 · 4-45)
+        model = (data.get("model") or "").strip() or Config.load().model
         th = _studio_config()["settings"]                  # 긴 글 · 많이 읽힌 기준값(4-43)
         via, route, sug = "llm", "", None
         try:
@@ -559,6 +588,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         d["log"] = list(prev.get("log") or [])
         if data.get("talk"):
             d["via"] = "talk"
+            d["talk_model"] = d["talk_model"] or Config.load().model    # 기록이 빈 문자열이 되지 않게(4-45)
         # 활성 잠금: 지금 데이터에 0건이면 활성으로 저장하지 않는다(초안) · 일시정지·보관 요청은 그대로
         locked = False
         if d["status"] == "active" and rows:
