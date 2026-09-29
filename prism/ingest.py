@@ -39,7 +39,7 @@ ALIASES = {
                    "원문url", "articleurl", "weburl", "원문주소", "주소", "originurl"],
 }
 REQUIRED = ["title", "body"]            # 이 둘이 잡혀야 '가능'
-# 발행 키(item_unique_key·service_code·cp_type)는 기본값을 두지 않는다 — 컬럼 부재와
+# 발행 키(item_unique_key·service_code·cp_type)는 기본값을 두지 않는다. 컬럼 부재와
 # 빈 문자열을 갈라 보존해야 한다(511607345 '출처 필드의 발행 기준').
 OPTIONAL_DEFAULT = {"subtitle": "", "displayServiceName": "", "source_url": ""}
 

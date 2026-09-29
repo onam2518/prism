@@ -179,7 +179,7 @@ def _raw_key(v):
     return v if isinstance(v, str) else (str(v) if isinstance(v, (int, float)) else None)
 
 
-# 인식 프리픽스 9종(511607345 · 2026-09-22 관측 집계). 대소문자 원문 비교 —
+# 인식 프리픽스 9종(511607345 · 2026-09-22 관측 집계). 대소문자 원문 비교라
 # 'HAMNY-123' 은 소문자화해 hamny 로 치환하지 않는다(정책 명시 금지).
 SOURCE_PREFIXES = ("tv", "hamny", "cafe", "tstory", "vod", "short", "video", "melon", "table")
 
@@ -187,10 +187,10 @@ SOURCE_PREFIXES = ("tv", "hamny", "cafe", "tstory", "vod", "short", "video", "me
 def source_prefix(item_unique_key) -> str:
     """item_unique_key 의 첫 하이픈 앞 = 출처 구분값. 추출 불가면 "".
 
-    원문 보존 계약(511607345 '프리픽스별 발행 계약'): trim·소문자화·재조합 금지 —
+    원문 보존 계약(511607345 '프리픽스별 발행 계약'): trim·소문자화·재조합 금지.
     앞부분을 잘라 내기만 한다. 빈값·null·하이픈 없음('hamny')·앞부분 없음('-abc')은
     추출 불가로 ""('원문 키 예시와 오류 처리' 표), 'hamny-' 는 hamny 를 관찰값으로 낸다.
-    미등록 프리픽스('other-123')는 관찰값 그대로 내고 unknown 으로 대체하지 않는다 —
+    미등록 프리픽스('other-123')는 관찰값 그대로 내고 unknown 으로 대체하지 않는다.
     등록 여부는 호출자가 SOURCE_PREFIXES 멤버십으로 구분한다."""
     k = item_unique_key if isinstance(item_unique_key, str) else ""
     return k.split("-", 1)[0] if "-" in k else ""
@@ -227,7 +227,7 @@ class Content:
             body=normalize_rich_text(d.get("body", "")),
             source_url=normalize_text(d.get("source_url", "") or d.get("url", "")),
             image_urls=normalize_image_urls(d.get("image_urls") or d.get("images")),
-            # 발행 키는 원문 보존 — normalize_text(NFC·공백 정리·trim)를 태우지 않는다.
+            # 발행 키는 원문 보존 · normalize_text(NFC·공백 정리·trim)를 태우지 않는다.
             item_unique_key=_raw_key(d.get("item_unique_key")),
             service_code=_raw_key(d.get("service_code")),
             cp_type=_raw_key(d.get("cp_type")),
