@@ -62,10 +62,11 @@ window.PRISM_APP_PARTS.push(() => ({
         ['cats', 'intents', 'keywords', 'srcs'].forEach(dim => (st[dim] || []).forEach(v => out.push({ key: dim + ':' + v, dim, k: KO[dim], v: lab(dim, v), req: (st.req[dim] || []).includes(v) })));
         (st.eattrs || []).forEach(v => out.push({ key: 'eattrs:' + v, dim: 'eattrs', k: '속성', v: this.eattrLabel(v), req: true }));
         ['cats', 'intents', 'keywords', 'srcs'].forEach(dim => ((st.neg || {})[dim] || []).forEach(v => out.push({ key: 'neg:' + dim + ':' + v, dim, k: KO[dim] + ' 제외', v: lab(dim, v), neg: true })));
-        ((this.studioPreview && this.studioPreview.feed_chips) || []).forEach(c => out.push({ key: 'feed:' + c.f + ':' + c.x, feed: true, f: c.f, x: c.x, k: c.k, v: c.v, neg: !!c.neg }));
+        ((this.studioPreview && this.studioPreview.feed_chips) || []).forEach(c => out.push({ key: 'feed:' + c.f + ':' + c.x, feed: true, f: c.f, x: c.x, k: c.k, v: c.v, neg: !!c.neg, fixed: !!c.fixed }));
         return out;
       },
       _chipRemove(c) {
+        if (c.fixed) return;                 // 기본 제외 칩(2-19): 늘 보이고 문장으로만 풀린다
         const st = this.studio;
         if (c.feed) { const fd = Object.assign({}, st.feed || {}); const cur = fd[c.f]; if (Array.isArray(cur)) fd[c.f] = cur.filter(x => x !== c.x); else if (c.f === 'base_excl') fd.base_excl = true; else fd[c.f] = (typeof cur === 'number') ? 0 : ''; st.feed = fd; }
         else if (c.dim === 'eattrs') st.eattrs = st.eattrs.filter(x => x !== c.v);
@@ -75,7 +76,7 @@ window.PRISM_APP_PARTS.push(() => ({
       _talkPrune() { this.talk.dropped.forEach(c => this._chipRemove(c)); },
       talkN() { const t = this.talk.turns[this.talk.turns.length - 1]; return t ? (t.n || 0) : 0; },
       async _talkRefresh(before) {
-        const p = await this._studioPost({ action: 'preview', def: this.studioDef() });
+        const p = await this._studioPost({ action: 'preview', def: this.studioDef(), similar: true });
         const pv = (p && p.preview) || { bundles: [], n_total: 0, feed_chips: [] };
         this.studioPreview = pv;
         const t = this.talk.turns[this.talk.turns.length - 1]; if (!t) return;
@@ -83,6 +84,8 @@ window.PRISM_APP_PARTS.push(() => ({
         if (before) chips.forEach(c => { c.new = !before.has(c.key); });
         const core = (pv.bundles || []).find(b => b.kind === 'core') || { count: 0, samples: [] };
         t.chips = chips; t.n = core.count || 0; t.samples = (core.samples || []).slice(0, 5);
+        if (!t.saved) t.after = chips.map(c => c.key);     // 칩 조정 뒤(4-38 기록) · 저장된 옛 턴의 기록은 덮지 않는다
+        t.similar = pv.similar || [];                     // 가까운 기존 토픽 · 저장 전에도(4-44)
         t.neg_n = pv.neg_blocked || 0; t.feed_n = pv.feed_blocked || 0;
         const miss = pv.feed_miss || {}; const mk = Object.keys(miss);
         t.miss = mk.length ? ('데이터에 없는 필드라 빠짐 · ' + this.feedMissText(miss) + ' · 적재 때 원천 필드(src)가 채워지면 다시 계산돼요') : '';
@@ -96,13 +99,16 @@ window.PRISM_APP_PARTS.push(() => ({
         try {
           // 누적 해석: 문장 전체를 다시 풀되, 사용자가 뺀 칩은 되살리지 않는다
           const r = await this._studioPost({ action: 'suggest', text: sentences.join(' '), model: mid });
-          const before = new Set(this._talkChips().map(c => c.key));
-          this._applySuggest((r && r.suggest) || {}); this._talkPrune();
+          const prevKeys = new Set(this._talkChips().map(c => c.key));   // 직전 턴 상태(새 칩 표시용)
+          this._applySuggest((r && r.suggest) || {});
           if (!this.studio.name.trim()) this.studio.name = s.replace(/[.。!?]+$/, '').slice(0, 40);
           this.studio.prompt = sentences.join(' / ');
           const prev = this.talk.turns.length ? this.talk.turns[this.talk.turns.length - 1].n : null;
-          this.talk.turns.push({ text: s, chips: [], n: 0, prev, samples: [], via: (r && r.via) || '', model: mid, miss: '', neg_n: 0, feed_n: 0 });
-          await this._talkRefresh(before);
+          // 해석 모델은 서버가 확정해 돌려준 값(화면에 모델 선택이 없다 · 4-45)
+          this.talk.turns.push({ text: s, chips: [], n: 0, prev, samples: [], via: (r && r.via) || '', model: (r && r.model) || mid, miss: '', neg_n: 0, feed_n: 0, before: [], after: [], similar: [] });
+          await this._talkRefresh(prevKeys);                     // 미리보기가 원천 조건(기간·형식·기본 제외)까지 칩으로 돌려준다
+          const t = this.talk.turns[this.talk.turns.length - 1]; t.before = t.after.slice();   // 해석 결과(칩 조정 전 · 4-38 기록)
+          if (this.talk.dropped.length) { this._talkPrune(); await this._talkRefresh(prevKeys); }   // 이전 턴에서 뺀 칩은 되살리지 않는다 → after 갱신
           this.talk.input = '';
         } catch (e) { this.studioMsg = '해석 실패 · 다시 시도하세요'; }
         this.talk.busy = false;
@@ -112,14 +118,20 @@ window.PRISM_APP_PARTS.push(() => ({
       talkEdit(g) {
         this.studioEdit(g); this.studioManual = false;
         const def = (this.topicData.customDefs || []).find(d => d.id === g.id) || {};
-        this.talk = { turns: [{ text: def.prompt || g.prompt || g.name || '', chips: [], n: g.core_count || 0, prev: null, samples: [], via: '', model: '', miss: '', neg_n: 0, feed_n: 0 }], input: '', busy: false, dropped: [], help: false };
+        // 저장된 대화 기록(4-38)을 그대로 이어받는다 · 기록이 없는 옛 정의만 문장 요약으로 합성 턴(저장 안 함)
+        const hist = (def.turns || []).map(t => ({ text: t.text, chips: [], n: 0, prev: null, samples: [], via: t.via || '', model: t.model || '', miss: '', neg_n: 0, feed_n: 0, before: t.before || [], after: t.after || [], similar: [], saved: true }));
+        const seed = { text: def.prompt || g.prompt || g.name || '', chips: [], n: g.core_count || 0, prev: null, samples: [], via: '', model: def.talk_model || '', miss: '', neg_n: 0, feed_n: 0, before: [], after: [], similar: [], synthetic: true };
+        this.talk = { turns: hist.length ? hist : [seed], input: '', busy: false, dropped: [], help: false };
         this._talkRefresh();
       },
       async talkSave(status) {
         if (!this.talk.turns.length || this.studioSaving) return;
         if (!this.studio.name.trim()) { this.studioMsg = '토픽 이름을 적어 주세요'; return; }
         this.studioSaving = true; this.studioMsg = '저장 중…';
-        const def = this.studioDef(); def.status = status; def.talk_model = String(this.studioModel || '').split('|').pop();
+        const def = this.studioDef(); def.status = status;
+        // 기록(4-38): 문장 원문 · 해석 모델 · 해석 결과(before) · 칩 조정 뒤(after) 를 턴별로 저장
+        def.turns = this.talk.turns.filter(t => !t.synthetic).map(t => ({ text: t.text, model: t.model || '', via: t.via || '', before: t.before || [], after: t.after || [] }));
+        def.talk_model = (this.talk.turns[this.talk.turns.length - 1] || {}).model || '';
         try {
           const r = await this._studioPost({ action: 'save', def, talk: true, reviewer: this.reviewer || '' });
           if (r && r.error) { this.studioMsg = '오류: ' + r.error; }
@@ -147,11 +159,15 @@ window.PRISM_APP_PARTS.push(() => ({
       feedMissText(miss) { const KO = { days: '기간', types: '형식', svc_cats: '서비스 분류', creators: '작성자', image: '사진', video: '영상', len: '길이', rules: '룰', tags: '태그', dri: '열독률', cp_grades: '매체 등급', isExclusive: '단독', mainNews: '주요 뉴스', planning: '기획', isPhotoNews: '포토뉴스', subsequent: '후속', duplicate: '중복', copyNews: '복제', ads: '광고', adultImage: '성인 이미지', gutter: '선정', includePaidAd: '유료광고' }; return Object.keys(miss || {}).map(k => (KO[k] || k) + ' ' + miss[k] + '건').join(' · '); },
       // ── 토픽 현황(스펙 132112 화면 2): 상태 스위치 · 필터 · 기록 ──
       statusKo(st) { return { active: '활성', paused: '일시정지', draft: '초안', archived: '보관' }[st] || st || ''; },
-      // 현황 행 필터: 상태(활성·정지·초안 | 정체·급감 | 보관) × 만든 방식(말로·직접·자동) × 검색(이름·문장·엔티티·묶음 ID)
+      // 상태 칩(4-40): 다섯 가지를 개별로 켜고 끈다 · 아무것도 안 고르면 보관만 숨긴다
+      topicStatusOn(v) { return (this.topicStatus || []).includes(v); },
+      topicStatusChip(v) { const a = this.topicStatus; const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); },
+      // 현황 행 필터: 상태 칩 × 만든 방식(말로·직접·자동) × 검색(이름·문장·엔티티·묶음 ID)
       topicRowOk(r, kind) {
-        const st = r.status || 'active'; const f = this.topicStatus;
-        if (f === 'archived' ? st !== 'archived' : st === 'archived') return false;
-        if (f === 'warn' && !r.signal) return false;
+        const st = r.status || 'active'; const sel = this.topicStatus || [];
+        const sts = sel.filter(x => x !== 'warn');
+        if (sts.length ? !sts.includes(st) : st === 'archived') return false;
+        if (sel.includes('warn') && !r.signal) return false;
         const v = this.topicView;
         if (v === 'auto' && kind !== 'auto') return false;
         if ((v === 'talk' || v === 'manual') && (kind !== 'custom' || (r.via || 'manual') !== v)) return false;
@@ -164,19 +180,49 @@ window.PRISM_APP_PARTS.push(() => ({
       },
       talkExample(text) { this.talk.input = text; return this.talkSend(); },
       topicSwTip(r) { const st = r.status || 'active'; return st === 'active' ? '켜짐 · 누르면 일시정지(건수는 계속 세고 유통만 멈춤)' : st === 'paused' ? '일시정지 · 누르면 켬' : st === 'draft' ? '초안 · 누르면 활성(0건이면 잠김)' : '보관 · 복구 버튼으로'; },
-      logLine(log) { const e = (log || [])[log.length - 1]; if (!e) return ''; return this.fmtTs(e.ts) + (e.who ? ' ' + e.who : '') + ' · ' + e.what; },
       topicToggle(r) { const st = r.status || 'active'; return this.topicStatusSet(r, st === 'active' ? 'paused' : 'active'); },
-      async topicStatusSet(r, st) {
+      async topicStatusSet(r, st, undo) {
         const id = r.id || r.cluster_id; if (!id) return;
-        this.topicBusy = id; this.topicMsg = '';
+        const from = r.status || 'active';
+        this.topicBusy = id; this.topicMsg = ''; this.topicUndo = null;
         try {
           const res = await this._studioPost({ action: 'status', id, status: st, reviewer: this.reviewer || '' });
           if (res && !res.error) {
             this.topicData = res; this._syncTopicSettings();
             const sv = res.saved || {};
             this.topicMsg = sv.locked ? '지금 데이터에 0건이라 켤 수 없어요 · 초안 그대로' : ({ paused: '일시정지했어요 · 건수는 계속 세고 유통만 멈춰요', active: '켰어요', archived: '보관했어요 · 보관 필터에서 복구', draft: '초안으로 돌렸어요' }[sv.status] || '');
+            // 되돌리기(4-42): 확인창 없이 바로 바꾸는 대신 알림줄에서 직전 상태로 돌린다
+            this.topicUndo = (!undo && !sv.locked && sv.status !== from) ? { id, from } : null;
           } else this.topicMsg = (res && res.error) || '상태 변경 실패';
         } catch (e) { this.topicMsg = '상태 변경 실패 · 다시 시도하세요'; }
+        this.topicBusy = '';
+      },
+      topicUndoDo() { const u = this.topicUndo; if (!u) return; this.topicUndo = null; return this.topicStatusSet({ id: u.id }, u.from, true); },
+      // ── 현황 행 펼침(4-41): 조건 · 기록 · 개별 제외 · 최근 샘플 3건 · 동작 ──
+      topicOpenToggle(g) { const id = g.id || g.cluster_id; this.topicOpen = (this.topicOpen === id) ? '' : id; this.topicRenameDraft = g.name || ''; this.topicMergeInto = ''; },
+      topicExcl(id) { return this.exclusionRows().filter(e => e.tid === id); },
+      topicMergeCands(g) { return (this.topicData.custom || []).filter(x => x.id && x.id !== g.id && x.status !== 'archived'); },
+      _defOf(id) { return (this.topicData.customDefs || []).find(d => d.id === id) || null; },
+      async topicRename(g) {
+        const name = (this.topicRenameDraft || '').trim(); const def = this._defOf(g.id);
+        if (!name || !def || name === g.name) return;
+        this.topicBusy = g.id; this.topicMsg = ''; this.topicUndo = null;
+        try {
+          const r = await this._studioPost({ action: 'save', def: Object.assign({}, def, { name }), reviewer: this.reviewer || '' });
+          if (r && r.error) this.topicMsg = '오류: ' + r.error;
+          else { this.topicData = r; this._syncTopicSettings(); this.topicMsg = '이름을 바꿨어요'; }
+        } catch (e) { this.topicMsg = '이름 바꾸기 실패'; }
+        this.topicBusy = '';
+      },
+      async topicMerge(g) {
+        const into = this.topicMergeInto; if (!into) return;
+        if (!(await this.dsConfirm('「' + g.name + '」 을(를) 다른 토픽으로 합칠까요?\n조건 · 제외 · 개별 제외 목록을 합치고 이 토픽은 보관됩니다', { ok: '합치기' }))) return;
+        this.topicBusy = g.id; this.topicMsg = ''; this.topicUndo = null;
+        try {
+          const r = await this._studioPost({ action: 'merge', id: g.id, into, reviewer: this.reviewer || '' });
+          if (r && r.error) this.topicMsg = '오류: ' + r.error;
+          else { this.topicData = r; this._syncTopicSettings(); this.topicOpen = ''; this.topicMergeInto = ''; this.topicMsg = '합쳤어요 · 원본은 보관했습니다'; }
+        } catch (e) { this.topicMsg = '병합 실패'; }
         this.topicBusy = '';
       },
       studioEdit(g) {

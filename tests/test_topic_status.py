@@ -245,7 +245,9 @@ class TestStatusActions(unittest.TestCase):
                                                    "feed": {"image": "yes"}}})
         pv = r["preview"]
         self.assertEqual(pv["feed_miss"], {"image": 3})                    # 적재 표본엔 이미지 필드가 없다
-        self.assertEqual([c["k"] for c in pv["feed_chips"]], ["첨부"])
+        # 기본 제외 칩은 늘 맨 앞에 · 누를 수 없는 흐린 칩(2-19)
+        self.assertEqual([c["k"] for c in pv["feed_chips"]], ["기본", "첨부"])
+        self.assertTrue(pv["feed_chips"][0]["fixed"])
         r = self._act(action="suggest", text="삼성전자 분석. 카카오TV는 빼고 최근 3일")
         sg = r["suggest"]
         self.assertEqual(sg["neg"]["srcs"], ["카카오TV"])
