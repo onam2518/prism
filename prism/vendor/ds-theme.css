@@ -86,7 +86,7 @@
 
   /* ── typography · Pretendard 단일 패밀리 ── */
   --ds-font-sans: 'Pretendard', 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', sans-serif;
-  --ds-font-display: 'Pretendard', 'Pretendard Variable', -apple-system, sans-serif;
+  --ds-font-display: 'GmarketSans', 'Pretendard', 'Pretendard Variable', -apple-system, sans-serif;
   --ds-font-body: 'Pretendard', 'Pretendard Variable', -apple-system, sans-serif;
   --ds-font-mono: 'Berkeley Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
@@ -175,6 +175,9 @@
   --ds-section-padding: 24px;
   --ds-section-gap-compact: 24px;
   --ds-section-padding-compact: 20px;
+  --ds-panel-heading-size: 16.5px;
+  --ds-heading-line-height: 1.4;
+  --ds-heading-tracking: -0.015em;
   --ds-section-heading-size: 16px;
   --ds-section-heading-size-compact: 15px;
   --ds-section-description-size: 13px;

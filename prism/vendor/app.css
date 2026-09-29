@@ -8,14 +8,13 @@
   }
   [data-theme]{--ds-font-sans:var(--ds-font);--ds-font-body:var(--ds-font);--ds-font-display:var(--ds-font-game)}
   /* 게임형 디스플레이 폰트(GmarketSans) 적용: 제목·큰 숫자·레벨·점수 + 사이드바·타이틀·탭 등 UI 크롬. 본문·표·입력은 Pretendard 유지 */
-  .panel-hd>.ds-widget__title,.panel-hd b,.ds-widget__title,.homehead__title,.homehead__sub,
+  .panel-hd>.ds-widget__title,.panel-hd>b,.ds-widget__title,.homehead__title,
   .arena-hero__big,.arena-hero__eyebrow,.ds-stat__value,.tile .n,
   .lb-pts,.lb-name>span:first-child,.charcard__lvl,.charcard__title,.charcard__xptxt b,
   .badgeburst__label,.badgeburst__ttl,.badgeburst__exp,.side-profile__score,.side-profile__gain,.side-profile__name,
   .ds-navitem,.ds-navgroup__label,.evaltabs button,.seg button,.verdictbtn,
   .ds-btn,.copybtn,.srcfilter__chip,.ds-segmented__item,.ds-badge,
-  .panel-hd .meta,.panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions,.ds-widget__kind,
-  .tnum{font-family:var(--ds-font-display)}
+  .ds-widget__kind{font-family:var(--ds-font-display)}
   .codeblock textarea,.field,input,textarea,select{font-family:var(--ds-font)}   /* 입력·코드블록은 가독성 위해 Pretendard/모노 유지 */
   .codeblock textarea{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"D2Coding",monospace}
   .homehead__title{font-family:var(--ds-font-display)}   /* 폰트 그룹 규칙보다 뒤에 둬 재정의 방지 */
@@ -228,7 +227,7 @@
   .ds-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;
     padding:44px 24px;border:1px dashed var(--ds-hairline);border-radius:var(--ds-radius-lg);
     background:var(--ds-surface);font-family:var(--ds-font-body)}
-  .ds-empty__title{font-family:var(--ds-font-sans);font-size:var(--ds-size-subtitle);font-weight:600;color:var(--ds-ink);margin-top:10px}
+  .ds-empty__title{font-family:var(--ds-font-display);font-size:var(--ds-size-subtitle);font-weight:700;color:var(--ds-ink);margin-top:10px}
   .ds-empty__desc{font-size:var(--ds-size-body);color:var(--ds-muted)}
 
   /* 엑셀 드롭존(단행) */
@@ -425,7 +424,7 @@
   .ds-dialog-backdrop.is-split .detailview,.ds-dialog-backdrop.is-split .detailview--wide{width:min(760px,54vw)}
   .ds-dialog-backdrop.is-split .cmpview{width:min(480px,40vw)}
   @media (max-width:900px){.ds-dialog-backdrop.is-split{flex-direction:column;gap:var(--ds-space-2)}.ds-dialog-backdrop.is-split .detailview,.ds-dialog-backdrop.is-split .detailview--wide,.ds-dialog-backdrop.is-split .cmpview{width:94vw;max-height:44vh}}
-  .panel-hd b{color:var(--ds-ink);font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .panel-hd>b{color:var(--ds-ink);font-size:var(--ds-panel-heading-size);font-weight:700;line-height:var(--ds-heading-line-height);letter-spacing:var(--ds-heading-tracking)}
   .panel-hd .meta{font-size:12px;color:var(--ds-muted)}
   .panel-bd{padding:var(--ds-pad-inset,16px) var(--ds-pad-panel-x,20px) var(--ds-pad-panel-x,20px)}
   .drow{display:grid;grid-template-columns:124px 1fr;gap:var(--ds-space-4);padding:15px 18px;
@@ -473,7 +472,7 @@
   /* 스텝 번호 배지 = .stepline__no 와 공용(STEP N 필 · 콘텐츠 관리와 동일 룩) */
   /* 타이틀 폰트 = 앱 헤더와 동일한 디스플레이(GmarketSans) · .stepline b 규칙에 정렬 */
   .stepcard__ttl{font-family:var(--ds-font-display);font-size:var(--ds-size-body);font-weight:700;letter-spacing:-.01em;color:var(--ds-ink)}
-  .stepcard__sub{margin-left:8px;font-size:var(--ds-size-label);font-weight:400;color:var(--ds-muted)}
+  .stepcard__sub{font-family:var(--ds-font-body);margin-left:8px;font-size:var(--ds-size-label);font-weight:400;color:var(--ds-muted)}
   .stepcard__badge{margin-left:auto}
 
   /* 인포그래픽 · 타일·분포바·도넛 */
@@ -524,7 +523,7 @@
   /* 타이틀 = 아래 위젯 아이콘 라인(콘텐츠 패딩선)에 정렬: 구분선(232) + 37 */
   .topbar__title{flex:1;min-width:0;padding-left:37px;display:flex;flex-direction:column;justify-content:center;gap:3px}
   .topbar__title .homehead__title{font-size:15px;line-height:1.15}
-  .topbar__title .homehead__sub{font-size:12.5px;line-height:1.2}
+  .topbar__title .homehead__sub{font-size:12.5px;line-height:1.5}
   .topbar__tools{flex:none;display:flex;align-items:center;gap:6px;position:relative;padding-right:14px}
   /* 연결 현황(다중) · 제공자별 칩 */
   .topbar__conn{display:inline-flex;align-items:center;gap:var(--ds-space-2);border:0;background:none;cursor:pointer;padding:4px 6px;margin-right:var(--ds-space-1);border-radius:var(--ds-radius-sm)}
@@ -563,7 +562,7 @@
   .onboard__group{text-align:left;border:1px solid var(--ds-hairline);border-radius:14px;padding:var(--ds-space-4);margin-bottom:14px;background:var(--ds-surface)}
   .onboard__group--b{margin-top:2px}
   .onboard__grouphd{font-size:11px;font-weight:800;color:var(--ds-muted);letter-spacing:.03em;margin-bottom:var(--ds-space-3);text-transform:uppercase}
-  .onboard__title{font-size:23px;font-weight:800;color:var(--ds-ink);margin:0 0 8px}
+  .onboard__title{font-family:var(--ds-font-display);font-size:var(--ds-size-heading);font-weight:700;color:var(--ds-ink);margin:0 0 8px}
   .onboard__lead{font-size:13px;line-height:1.6;color:var(--ds-body,rgba(0,0,0,0.88));margin:0 0 22px}
   .onboard__lbl{display:block;text-align:left;font-size:12px;font-weight:700;color:var(--ds-ink);margin:0 0 7px}
   .onboard__hint{font-weight:500;color:var(--ds-muted)}
@@ -932,7 +931,7 @@
 
   /* ════ 공통 규칙 · 위젯 종류 무관 동일 타이포·정렬 기준(단일 소스) ════ */
   /* ① 타이틀: 모든 위젯/패널/타이틀바 14px·600 동일 */
-  .ds-widget__title,.homehead__title{font-size:13px;font-weight:700;line-height:1.3;color:var(--ds-ink);letter-spacing:-.01em}
+  .homehead__title{font-size:13px;font-weight:700;line-height:1.3;color:var(--ds-ink);letter-spacing:-.01em}
   /* ② 라벨(섹션·필드·표헤더·통계·eyebrow): 12px·600·muted·비대문자 동일 */
   .lbl,.ds-eyebrow,.tile .t,.ds-stat__label,.ds-table th{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--ds-muted)}
   .lbl{display:block;margin-bottom:var(--ds-space-2)}
@@ -964,7 +963,7 @@
   .ds-bullets li::before{content:"";position:absolute;left:3px;top:7px;width:4px;height:4px;border-radius:50%;background:var(--ds-primary)}
   .ds-bullets b{color:var(--ds-ink);font-weight:700}
   /* 패널 타이틀은 카드 구분이 명확하도록 크게(전 페이지) · 홈 위젯 타이틀보다 한 단계 위 위계 */
-  .panel-hd>.ds-widget__title{margin-right:auto;font-size:16.5px;font-weight:700;letter-spacing:-.015em}
+  .panel-hd>.ds-widget__title{margin-right:auto;font-size:var(--ds-panel-heading-size);font-weight:700;line-height:var(--ds-heading-line-height);letter-spacing:var(--ds-heading-tracking)}
   .panel-hd>.ds-widget__title span{font-size:inherit;font-weight:inherit}
   .panel-hd>.ds-widget__actions,.ds-widget__head>.ds-widget__actions{margin-left:auto}
   /* ⑨ 제목·본문·표 외곽은 패널 패딩에 정렬, 표 셀은 공통 14px 패딩을 쓴다. */
@@ -1229,7 +1228,7 @@ button.tbchip:disabled{cursor:default;opacity:.8}
 .talk__link{background:none;border:0;padding:0;font:inherit;font-size:11.5px;color:var(--ds-primary);cursor:pointer}
 .talk__link:hover{text-decoration:underline}
 .talk__empty{display:flex;flex-direction:column;gap:4px;padding:4px 2px 2px}
-.talk__empty b{font-size:15px;color:var(--ds-ink)}
+.talk__empty b{font-family:var(--ds-font-display);font-size:15px;color:var(--ds-ink)}
 .talk__empty span{font-size:12.5px;color:var(--ds-muted,#7b8794)}
 .talk__me{align-self:flex-end;max-width:85%;background:var(--ds-primary-tint);color:var(--ds-ink);border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13px;line-height:1.5}
 .talk__who{display:block;font-size:10.5px;color:var(--ds-muted,#7b8794);margin-bottom:2px}
@@ -1246,7 +1245,7 @@ button.tbchip:disabled{cursor:default;opacity:.8}
 .talk__x{font-size:10px;opacity:.6;margin-left:2px}
 /* 예시 명령 · 조건 가이드 카드 */
 .tg{background:var(--ds-surface);border:1px solid var(--ds-hairline);border-radius:12px;padding:12px 14px;font-size:12.5px}
-.tg__h{font-weight:700;font-size:12.5px;margin-bottom:6px;display:flex;gap:6px;align-items:baseline;color:var(--ds-ink)}
+.tg__h{font-family:var(--ds-font-display);font-weight:700;font-size:12.5px;margin-bottom:6px;display:flex;gap:6px;align-items:baseline;color:var(--ds-ink)}
 .tg__ex{display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--ds-hairline);padding:6px 0;font:inherit;font-size:12.5px;line-height:1.45;color:var(--ds-primary-deep,var(--ds-primary));cursor:pointer}
 .tg__ex:first-of-type{border-top:0}
 .tg__ex:hover{text-decoration:underline}
@@ -1641,8 +1640,8 @@ button.tbchip:disabled{cursor:default;opacity:.8}
   .ar-stat--warn b{color:var(--ds-warning)}
   .ar-run{display:flex;flex-direction:column;gap:11px;background:var(--ds-surface-on);
     border:1px solid var(--ds-hairline);border-radius:var(--ds-radius-md);padding:14px 16px}
-  .ar-run__hd{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--ds-ink)}
-  .ar-run__hd .meta{font-weight:500}
+  .ar-run__hd{font-family:var(--ds-font-display);display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--ds-ink)}
+  .ar-run__hd .meta{font-family:var(--ds-font-body);font-weight:500}
   .ar-progbar{flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px}
   .ar-progbar .top{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--ds-muted);font-weight:600}
   .ar-track{height:8px;border-radius:var(--ds-radius-chip);background:var(--ds-hairline);overflow:hidden;display:flex}

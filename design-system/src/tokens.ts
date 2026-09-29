@@ -44,7 +44,7 @@ export const tokens = {
   },
   font: {
     sans: "'Pretendard', 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', sans-serif",
-    display: "'Pretendard', 'Pretendard Variable', -apple-system, sans-serif",
+    display: "'GmarketSans', 'Pretendard', 'Pretendard Variable', -apple-system, sans-serif",
     body: "'Pretendard', 'Pretendard Variable', -apple-system, sans-serif",
     mono: "'Berkeley Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
   },
@@ -78,6 +78,9 @@ export const tokens = {
     sectionPadding: '24px',
     sectionGapCompact: '24px',
     sectionPaddingCompact: '20px',
+    panelHeadingSize: '16.5px',
+    headingLineHeight: 1.4,
+    headingTracking: '-0.015em',
     sectionHeadingSize: '16px',
     sectionHeadingSizeCompact: '15px',
     sectionDescriptionSize: '13px',
