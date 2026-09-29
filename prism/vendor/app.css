@@ -979,6 +979,15 @@
   .model-compare-table th,.model-compare-table td{box-sizing:border-box;overflow-wrap:anywhere}
   .model-compare-table tr>:first-child{position:sticky;left:0;z-index:1;background:var(--ds-surface-white)}
   .model-compare-table thead tr>:first-child{z-index:2}
+  /* A section owns its following gap; a final table must not add another 16px. */
+  .panel .content-section > .overflow-auto:has(> .ds-table){margin-bottom:0}
+  .item-compare-table{table-layout:fixed;width:100%;min-width:calc(240px + 70px + var(--compare-model-count,1) * 160px)}
+  .item-compare-table .item-compare-content{width:240px}
+  .item-compare-table .item-compare-expected{width:70px}
+  .item-compare-table th,.item-compare-table td{box-sizing:border-box;overflow-wrap:anywhere}
+  .compare-model-heading{display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0}
+  .compare-model-name{display:inline-block;max-width:100%;white-space:normal;word-break:normal;overflow-wrap:anywhere;hyphens:none}
+
   .ds-table thead tr{border-bottom:1px solid var(--ds-divider-section, rgba(0,0,0,0.08))}
 
 /* ── 플로팅 버튼 두 개(정책 도움말 ? · 검수 보조 캐릭터) ─────────────────────

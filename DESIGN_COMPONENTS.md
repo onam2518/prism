@@ -52,6 +52,10 @@
 |---|---|
 | `.panel` | 카드 1구획. `--ds-radius-card` · 헤더 `.panel-hd`(타이틀 b + `.meta` 설명, 우측 액션은 `ml-auto`) · 본문 `.panel-bd`(`--ds-pad-inset`/`--ds-pad-panel-x`) |
 | `.panel` 내 표/필터 | `.panel-bd` 내부는 추가 좌우 margin 0. 패널 직속은 `--ds-pad-panel-x`(20px). 표 외곽과 필터 외곽을 정렬하며 셀 내부 padding은 별도로 유지 |
+| `.content-section` | 한 패널 안에서 목적이 바뀌는 구획. 앞의 표시 중인 구획과 간격32px + 구분선1px + 내부 상단24px. 600px 이하는24/20px. 숨긴 구획은 간격 기준에서 제외 |
+| `.content-section__head` | 내부 div에 제목과 설명을 묶고, 별도 `.content-section__actions`에 조작 배치. 제목16px(좁은 화면15px), 설명13px·줄높이1.6 |
+| `.result-notes` | 결과 해석 안내용 `ul > li` 목록. 13px·줄높이1.6·항목 간격8px. 단일 문장과 상태 메시지는 `.content-section__description` 사용 |
+| `.item-compare-table` | 콘텐츠240px + 정답70px + 동일 너비 모델 열 최소160px. 넘침은 표 wrapper 안에서 처리 |
 | `.stepline` | 프로세스 스텝 헤더: `STEP N` 배지(디스플레이 폰트) + 타이틀 + meta |
 | `.subhd` | 패널 내 소제목(디스플레이 폰트 13.5px) + `.meta` 설명 |
 | `.tiles`/`.tile` | 지표 타일. 기본 최대4열, `tiles--3/--5/--6`으로 최대 열수 지정. 칸 최소140px, 간격10px. 가용폭이 줄면 자동 줄바꿈. 숫자 `.n` + 라벨 `.t` · 통계 용어는 `data-tip` 필수 |
@@ -102,7 +106,7 @@
 
 공용 토큰과 기본 컴포넌트는 `design-system/src/{theme,components}.css`와 앱 배포본 `prism/vendor/ds-{theme,components}.css`에 함께 반영한다. 앱 전용 패널·모델 비교·타일 규칙은 `prism/vendor/app.css`가 담당한다. 기존 전체 파일을 서로 덮어쓰지 않는다.
 
-공통 배치 치수11개는 `design-system/tokens/tokens.json`의 `layout`과 `design-system/src/tokens.ts`에도 내보낸다. JSON 키는 CSS의 `--ds-` 접두사 뒤 이름과 같다.
+공통 배치 치수20개는 `design-system/tokens/tokens.json`의 `layout`과 `design-system/src/tokens.ts`에도 내보낸다. JSON 키는 CSS의 `--ds-` 접두사 뒤 이름과 같다.
 
 실제 앱 CSS를 사용하는 [배치 검수 페이지](design-system/preview/layout.html)에서 직속/중첩 표, 기본/compact 컨트롤, 통계, 긴 모델명, 빈 상태, 라이트/다크를 확인한다.
 
@@ -113,4 +117,4 @@ python3 -m http.server 8000 --bind 127.0.0.1
 node scripts/check_layout.cjs http://127.0.0.1:8000 /tmp/prism-layout-check
 ```
 
-Playwright가 다른 경로에 설치되어 있으면 `PLAYWRIGHT_MODULE`에 모듈 경로를 전달한다. 검사는 패키지를 자동 설치하지 않는다. 375–1440px 9개 너비와 두 테마에서 외곽 오차≤1px, 컨트롤 높이36/32px, 그리드·페이지 넘침, 모델2/4/6열 균등폭, 포커스·disabled 상태를 검사하고 JSON 측정값과 스크린샷을 저장한다. 표 내부의 의도한 가로 스크롤은 허용한다.
+Playwright가 다른 경로에 설치되어 있으면 `PLAYWRIGHT_MODULE`에 모듈 경로를 전달한다. 검사는 패키지를 자동 설치하지 않는다. 375–1440px 9개 너비와 두 테마에서 외곽 오차≤1px, 컨트롤 높이36/32px, 그리드·페이지 넘침, 모델2/4/6열 균등폭, 포커스·disabled 상태, 구획 간격·구분선·설명 글자 크기를 검사하고 JSON 측정값과 스크린샷을 저장한다. 표 내부의 의도한 가로 스크롤은 허용한다.

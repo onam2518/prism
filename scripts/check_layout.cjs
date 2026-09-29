@@ -38,7 +38,18 @@ const output = process.argv[3] || '/tmp/prism-layout-check';
           const cells = [...comparison.querySelectorAll('thead th')].slice(1).map(rect);
           const scroll = document.querySelector('#compare-scroll');
           const two = [...document.querySelector('#two-column').children].map(rect);
-          return { alignments, controls, stats, cells, two,
+          const summary = document.querySelector('#summary-section');
+          const detail = document.querySelector('#detail-section');
+          const noteStyle = getComputedStyle(summary.querySelector('.result-notes'));
+          const detailStyle = getComputedStyle(detail);
+          const sections = {
+            gap:detail.getBoundingClientRect().top-summary.getBoundingClientRect().bottom,
+            padding:parseFloat(detailStyle.paddingTop),
+            divider:parseFloat(detailStyle.borderTopWidth),
+            noteSize:parseFloat(noteStyle.fontSize),
+            noteLineHeight:parseFloat(noteStyle.lineHeight)
+          };
+          return { alignments, controls, stats, cells, two, sections,
             gridOverflow:grid.scrollWidth-grid.clientWidth,
             pageOverflow:document.documentElement.scrollWidth-innerWidth,
             tableOverflow:scroll.scrollWidth-scroll.clientWidth };
@@ -47,6 +58,9 @@ const output = process.argv[3] || '/tmp/prism-layout-check';
         for (const c of geometry.controls) assert.ok(Math.abs(c.height-c.target) <= 1, `${width}/${theme}: control ${JSON.stringify(c)}`);
         assert.ok(geometry.pageOverflow <= 1, `${width}/${theme}: page overflow ${geometry.pageOverflow}`);
         assert.ok(geometry.gridOverflow <= 1, `${width}/${theme}: grid overflow`);
+        assert.ok(geometry.sections.gap >= 24, `${width}/${theme}: distinct sections need at least 24px separation`);
+        assert.ok(geometry.sections.padding >= 20 && geometry.sections.divider >= 1, `${width}/${theme}: missing section boundary`);
+        assert.ok(geometry.sections.noteSize >= 13 && geometry.sections.noteLineHeight >= 20, `${width}/${theme}: result notes too small or dense`);
         for (const tile of geometry.stats) assert.ok(tile.width >= 139, `${width}/${theme}: tile too narrow`);
         assert.ok(Math.max(...geometry.cells.map(c=>c.width))-Math.min(...geometry.cells.map(c=>c.width)) <= 1, 'Model columns must have equal widths');
         if (width <= 1100) assert.ok(Math.abs(geometry.two[0].left-geometry.two[1].left) <= 1, 'Narrow two-column layout should stack');
