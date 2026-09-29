@@ -209,12 +209,14 @@ class TestServeActions(unittest.TestCase):
     def test_entity_auto_topic_drill_and_exclude(self):
         S, rows = self.S, _rows()
         S.topic_studio_action({"action": "settings", "settings": {"entity_min": 1}})
-        dr = S.topic_drill("S-삼성전자")
-        self.assertEqual((dr["topic_id"], dr["n"]), ("S-삼성전자", 2))
-        td = S.topic_studio_action({"action": "exclude", "id": "S-삼성전자", "hash": _hash(rows, 0)})
+        # 식별자는 사전 공통키 기반(등재 전이면 이름 기준) — 이름으로 찾아서 쓴다(2-6)
+        cid = next(p["cluster_id"] for p in S.topics_data()["single"] if p["name"] == "삼성전자")
+        dr = S.topic_drill(cid)
+        self.assertEqual((dr["topic_id"], dr["n"]), (cid, 2))
+        td = S.topic_studio_action({"action": "exclude", "id": cid, "hash": _hash(rows, 0)})
         samsung = next(p for p in td["single"] if p["name"] == "삼성전자")
         self.assertEqual((samsung["count"], samsung["excluded_n"]), (1, 1))
-        self.assertEqual(S.topic_drill("S-삼성전자")["n"], 1)
+        self.assertEqual(S.topic_drill(cid)["n"], 1)
 
     def test_preview_samples_carry_detail_contract(self):
         """미리보기 표본 배지 클릭 → 공통 상세 스플릿뷰: 표본이 상세 필드 전체를 갖춘다."""

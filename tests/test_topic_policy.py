@@ -103,5 +103,47 @@ class TestEattrIsFifthAxis(unittest.TestCase):
         self.assertEqual([k for k, _ in must], ["cats"])                  # eattrs 없으면 축은 넷뿐
 
 
+class _FakeStore:
+    """별칭 조회만 하는 최소 스토어(엔티티 사전 대역)."""
+
+    def __init__(self, aliases):
+        self.aliases = aliases
+
+    def ent_id_by_alias(self, name):
+        return self.aliases.get(name, "")
+
+
+class TestEntityCommonKey(unittest.TestCase):
+    """2-6: 엔티티 조건은 문자열 부분일치가 아니라 공통키와 이표기 묶음."""
+
+    def _rows(self):
+        return [_row("A", entities=["손흥민"]), _row("B", entities=["쏘니"]),
+                _row("C", entities=["손흥민상회"])]
+
+    KEYS = {"손흥민": "e_son", "쏘니": "e_son"}
+
+    def test_alias_bundle_matches_and_substring_does_not(self):
+        core = _core(self._rows(), {"keywords": ["손흥민"]}, ent_keys=self.KEYS)
+        self.assertEqual(core["content_ids"], [0, 1])          # 이표기는 같은 묶음 · 다른 이름은 미매칭
+
+    def test_exclusion_uses_key_too(self):
+        blocked = TP._neg_blocked(TP._content_dims(self._rows(), set(), ent_keys=self.KEYS),
+                                  {"keywords": ["쏘니"]}, self.KEYS)
+        self.assertEqual(blocked, {0, 1})
+
+    def test_auto_entity_topic_id_is_common_key(self):
+        pools = TP.build_entity_topics(self._rows(), set(), {}, min_contents=1, ent_keys=self.KEYS)
+        son = next(p for p in pools if p["entity_key"] == "e_son")
+        self.assertEqual((son["cluster_id"], son["count"]), ("S-e_son", 2))
+        other = next(p for p in pools if not p["entity_key"])
+        self.assertEqual(other["cluster_id"], "S-손흥민상회")   # 미등재는 종전대로 이름 기준
+
+    def test_canon_keys_never_invents_values(self):
+        from prism import entdict as ED
+        st = _FakeStore({"손흥민": "e_son", "쏘니": "e_son"})
+        self.assertEqual(ED.canon_keys(st, ["손흥민", "쏘니", "없는이름"]),
+                         {"손흥민": "e_son", "쏘니": "e_son"})
+
+
 if __name__ == "__main__":
     unittest.main()

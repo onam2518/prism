@@ -174,6 +174,27 @@ def _eids_by_aliases(store, names) -> dict:
     return found
 
 
+def canon_keys(store, names) -> dict:
+    """이름 · 이표기 → 사전 공통키(entity_id). {입력 이름: entity_id} · 미등재 이름은 키 없음.
+    토픽 엔티티 조건이 자유 문자열이 아니라 공통키와 이표기 묶음을 참조하게 하는 연결점(2-6).
+    사전에 없는 이름은 만들지 않는다(값 생성 금지 · 등록 안내는 호출부)."""
+    if not (store and hasattr(store, "ent_id_by_alias")):
+        return {}
+    norm = {}
+    for n in (names or []):
+        k = normalize_name(n)
+        if k:
+            norm.setdefault(k, n)
+    if not norm:
+        return {}
+    try:
+        found = _eids_by_aliases(store, list(norm))
+    except Exception as e:                               # 조회 실패는 '미등재'로(부분일치 폴백 유지)
+        print(f"[entdict] canon_keys 실패 · 엔티티 조건은 문자열 폴백: {e}")
+        return {}
+    return {norm[k]: eid for k, eid in (found or {}).items() if eid and k in norm}
+
+
 def ingest_meta(store, items, team="") -> dict:
     """적재 훅 본체. items = [(content_hash, entities[str]), …].
     사전 조회(별칭 포함) → 히트 시 링크만, 미스 시 신규 등록(보류) + 링크. 개체당 재판정 없음.

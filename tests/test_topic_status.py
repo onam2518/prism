@@ -168,6 +168,16 @@ class TestStatusActions(unittest.TestCase):
         got = next(t for t in (r.get("single") or []) + (r.get("composite") or []) if t["cluster_id"] == cid)
         self.assertEqual(got["status"], "active")
 
+    def test_unknown_entity_returns_registration_notice(self):
+        """2-21: 사전에 없는 엔티티는 값을 만들지 않고 등록 안내로 돌린다."""
+        r = self._act(action="save", **{"def": {"name": "미등재", "cats": ["Entertainment"],
+                                                "keywords": ["없는엔티티요"]}})
+        self.assertEqual(r.get("unknown_entities"), ["없는엔티티요"])
+        self.assertIn("등록", r.get("notice") or "")
+        r = self._act(action="save", **{"def": {"name": "등재", "keywords": ["삼성전자"],
+                                                "req": {"keywords": ["삼성전자"]}}})
+        self.assertNotIn("unknown_entities", r)
+
     def test_preview_and_suggest_carry_feed(self):
         r = self._act(action="preview", **{"def": {"keywords": ["삼성전자"], "req": {"keywords": ["삼성전자"]},
                                                    "feed": {"image": "yes"}}})

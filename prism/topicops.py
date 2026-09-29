@@ -95,7 +95,8 @@ def _topics_compute(team=None) -> dict:
             # 초안 · 보관은 매칭하지 않는다(정의만 보존) · 일시정지는 매칭·건수 유지(유통만 멈춤 · 소비처가 status 로 거른다)
             live = [d for d in cfg["custom"] if (d.get("status") or "active") in ("active", "paused")]
             out = TP.build_topics(rpath, custom_defs=live, settings=cfg["settings"],
-                                  exclusions=cfg["exclusions"], ent_index=_ent_index())
+                                  exclusions=cfg["exclusions"], ent_index=_ent_index(),
+                                  ent_keys=_ent_keys(rows, team))
             out["exclusions"] = cfg["exclusions"]
             _attach_status(out, cfg, rows)
             try:                                     # 추천 카드 원천: 최근 48시간 언급 급증 엔티티(전역)
@@ -255,6 +256,32 @@ def _ent_index() -> dict:
         return {}
     from . import entdict as ED
     return _SV._agg_cached(("entidx", ""), lambda: ED.attr_index(st, team=""))
+
+
+def _ent_keys(rows, team=None) -> dict:
+    """엔티티 표면 문자열 → 사전 공통키(entity_id). 토픽 엔티티 조건이 자유 문자열이 아니라
+    공통키와 이표기 묶음을 참조하게 하는 연결점(2-6).
+    30s 집계 캐시(_ent_index 와 같은 규칙 · 등재·수정은 _agg_bump 로 즉시 무효화)."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "ent_id_by_alias")) or not rows:
+        return {}
+    from . import entdict as ED
+
+    def _calc():
+        names = {e for r in rows for e in ((r.get("item_meta") or {}).get("entities") or []) if e}
+        return ED.canon_keys(st, names)
+    return _SV._agg_cached(("entkeys", team or ""), _calc)
+
+
+def _unknown_entities(names) -> list:
+    """사전에 없는 엔티티 조건값. 값을 새로 만들지 않고 등록 안내로 돌린다(2-21)."""
+    st = _SV.get_store()
+    ns = [n for n in dict.fromkeys(names or []) if n]
+    if not ns or not (st and hasattr(st, "ent_id_by_alias")):
+        return []
+    from . import entdict as ED
+    known = ED.canon_keys(st, ns)
+    return [n for n in ns if n not in known]
 
 
 def _sanitize_def(d: dict, existing_ids=None) -> dict:
@@ -443,7 +470,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         # 개체 속성 조건이 없으면 인덱스 자체가 필요 없다(_content_dims 가 ent_index=None 이면
         # 빈 속성 목록을 쓴다) — 타이핑 중 대부분의 미리보기가 사전 조회를 아예 건너뛴다.
         eidx = _ent_index() if d.get("eattrs") else None
-        pv = (TP.preview_definition(rows, svc, d, ent_index=eidx) if rows else
+        pv = (TP.preview_definition(rows, svc, d, ent_index=eidx, ent_keys=_ent_keys(rows, team)) if rows else
               {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0})
         # 표본을 상세 화면 계약(_detail_row)으로 확장: 미리보기 배지 클릭 → 공통 스플릿뷰로 바로 열람
         for b in pv.get("bundles") or []:
@@ -490,6 +517,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
             return {"ok": False, "error": "토픽 정의(def)가 필요합니다"}
         d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
         dups = similar_topics(d, custom)             # 저장 전 기존 정의와 비교(경고 전용 · 저장은 진행)
+        unknown = _unknown_entities(list(d["keywords"]) + list(d["neg"].get("keywords") or []))
         idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
         prev = custom[idx] if idx >= 0 else {}
         d["log"] = list(prev.get("log") or [])
@@ -498,7 +526,8 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         # 활성 잠금: 지금 데이터에 0건이면 활성으로 저장하지 않는다(초안) · 일시정지·보관 요청은 그대로
         locked = False
         if d["status"] == "active" and rows:
-            pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index())
+            pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index(),
+                                       ent_keys=_ent_keys(rows, team))
             if not any(b.get("count") for b in pv["bundles"] if b.get("kind") == "core"):
                 d["status"], locked = "draft", True
         _log_add(d, ("수정" if idx >= 0 else "만듦") + (" · 말로" if data.get("talk") else "")
@@ -512,6 +541,10 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         out = dict(_SV.topics_data(team))
         out["similar"] = dups
         out["saved"] = {"id": d["id"], "status": d["status"], "locked": locked}
+        if unknown:                     # 사전에 없는 엔티티: 값을 만들지 않고 등록으로 안내(2-21)
+            out["unknown_entities"] = unknown
+            out["notice"] = ("엔티티 사전에 없는 값: " + " · ".join(unknown)
+                             + " · 사전에 등록하면 이 조건에 자동 반영됩니다(값을 새로 만들지 않습니다)")
         return out
     elif action == "status":
         # 운영자 스위치: 활성 ↔ 일시정지 · 초안 → 활성(0건이면 잠금) · 보관 ↔ 복구. 자동 토픽은 cluster_id 로 일시정지를 기억
@@ -529,7 +562,8 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         d = dict(custom[idx])
         locked = False
         if st == "active" and rows:
-            pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index())
+            pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index(),
+                                       ent_keys=_ent_keys(rows, team))
             if not any(b.get("count") for b in pv["bundles"] if b.get("kind") == "core"):
                 st, locked = "draft", True
         _log_add(d, "상태 " + (d.get("status") or "active") + " → " + st + (" · 0건이라 잠금" if locked else ""), who)
