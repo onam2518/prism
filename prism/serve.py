@@ -305,7 +305,8 @@ def results_rows(limit: int = 5000, team=None) -> list:
                                               lambda: st.recent(limit, team=team), content=True))
             return st.recent(limit, team=team)
         except Exception:
-            pass
+            if getattr(st, "REMOTE", False):
+                raise RuntimeError("콘텐츠 조회 실패 · 잠시 후 다시 시도하세요") from None
     return _LAST_RESULTS
 
 

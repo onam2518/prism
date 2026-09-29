@@ -121,6 +121,7 @@ class TestSupastoreSync(unittest.TestCase):
     def _fake_store(self, captured):
         from prism.supastore import SupabaseStore
         st = SupabaseStore.__new__(SupabaseStore)         # 네트워크 없이 행 구성만 검증
+        st._get = lambda table, query="": []            # 신규 행의 보존 조회 성공
         st._upsert = lambda table, rows: captured.update(table=table, rows=rows)
         return st
 

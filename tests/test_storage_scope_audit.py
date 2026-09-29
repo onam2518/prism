@@ -120,7 +120,7 @@ class TestSupastoreFlagsKeptOnSync(unittest.TestCase):
         st, _ = _stub_store()
         cap = {}
         st._get = lambda table, query="": (cap.__setitem__("get_q", query) or existing)
-        st._req = lambda method, table, query="", body=None, prefer="": cap.__setitem__("rows", body or [])
+        st._req = lambda method, table, **kw: cap.__setitem__("rows", kw["body"]["p_rows"])
         return st, cap
 
     def test_ops_flags_are_sent_back(self):

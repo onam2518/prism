@@ -10,10 +10,7 @@ serve 가 기동 시 `_SV`(자기 모듈 객체)로 주입한다(learnops 와 �
 """
 from __future__ import annotations
 
-import json
-import os
 import re
-import tempfile
 import threading
 import time
 
@@ -113,32 +110,26 @@ def _topics_compute(team=None) -> dict:
                 "customDefs": cfg["custom"], "settings": cfg["settings"], "exclusions": cfg["exclusions"],
                 "catalog": {"intents": [], "cats": [], "keywords": [], "eattrs": []}, "summary": {}}
     from . import topic as TP
-    with tempfile.TemporaryDirectory() as d:
-        rpath = os.path.join(d, "r.jsonl")
-        with open(rpath, "w", encoding="utf-8") as f:
-            for r in rows:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        try:
-            # 초안 · 보관은 매칭하지 않는다(정의만 보존) · 일시정지는 매칭·건수 유지(유통만 멈춤 · 소비처가 status 로 거른다)
-            live = [d for d in cfg["custom"] if (d.get("status") or "active") in ("active", "paused")]
-            out = TP.build_topics(rpath, custom_defs=live, settings=cfg["settings"],
-                                  exclusions=cfg["exclusions"], ent_index=_ent_index(),
-                                  ent_keys=_ent_keys(rows, team), inclusions=cfg["inclusions"])
-            out["exclusions"] = cfg["exclusions"]
-            _attach_status(out, cfg, rows)
-            try:                                     # 추천 카드 원천: 최근 48시간 언급 급증 엔티티(전역)
-                st = _SV.get_store()
-                out["trending"] = (st.ent_trending(hours=48, limit=8, team="")
-                                   if (st and hasattr(st, "ent_trending")) else [])
-            except Exception:
-                out["trending"] = []
-            return out
-        except Exception as e:
-            return {"error": str(e)[:200], "n_contents": len(rows),
-                    "single": [], "composite": [], "custom": [],
-                    "customDefs": cfg["custom"], "settings": cfg["settings"],
-                    "exclusions": cfg["exclusions"], "summary": {}}
-
+    try:
+        # 초안 · 보관은 매칭하지 않는다(정의만 보존) · 일시정지는 매칭·건수 유지(유통만 멈춤 · 소비처가 status 로 거른다)
+        live = [d for d in cfg["custom"] if (d.get("status") or "active") in ("active", "paused")]
+        out = TP.build_topics_rows(rows, custom_defs=live, settings=cfg["settings"],
+                                   exclusions=cfg["exclusions"], ent_index=_ent_index(),
+                                   ent_keys=_ent_keys(rows, team), inclusions=cfg["inclusions"])
+        out["exclusions"] = cfg["exclusions"]
+        _attach_status(out, cfg, rows)
+        try:                                     # 추천 카드 원천: 최근 48시간 언급 급증 엔티티(전역)
+            st = _SV.get_store()
+            out["trending"] = (st.ent_trending(hours=48, limit=8, team="")
+                               if (st and hasattr(st, "ent_trending")) else [])
+        except Exception:
+            out["trending"] = []
+        return out
+    except Exception as e:
+        return {"error": str(e)[:200], "n_contents": len(rows),
+                "single": [], "composite": [], "custom": [],
+                "customDefs": cfg["custom"], "settings": cfg["settings"],
+                "exclusions": cfg["exclusions"], "summary": {}}
 
 # ── 토픽 자동 리프레시 + 성과 스냅샷 ────────────────────────────────────────
 _TOPIC_SNAP_CAP = 90                                  # 보관 스냅샷 수(시간별 약 4일 · 추이 원천)
@@ -631,7 +622,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         locked = False
         if d["status"] == "active":
             pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index(),
-                                       ent_keys=_ent_keys(rows, team))
+                                            ent_keys=_ent_keys(rows, team))
             if not any(b.get("count") for b in pv["bundles"] if b.get("kind") == "core"):
                 d["status"], locked = "draft", True
         _log_add(d, ("수정" if idx >= 0 else "만듦") + (" · 말로" if data.get("talk") else "")
@@ -667,7 +658,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         locked = False
         if st == "active":
             pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index(),
-                                       ent_keys=_ent_keys(rows, team))
+                                            ent_keys=_ent_keys(rows, team))
             if not any(b.get("count") for b in pv["bundles"] if b.get("kind") == "core"):
                 st, locked = "draft", True
         _log_add(d, "상태 " + (d.get("status") or "active") + " → " + st + (" · 0건이라 잠금" if locked else ""), who)

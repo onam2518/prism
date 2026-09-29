@@ -160,3 +160,7 @@ serve.py 는 "모듈이 되다 만" 도메인들이 함수 접두어로 뭉쳐 �
 ### 공통 메타 계약 보완
 
 `meta_contract.py`는 객체형 값 검증·표시용 문자열 투영·수동값 보존을 공유한다. `topic_conditions.py`는 중첩 조건식과 unknown을 유지하는 3값 논리를 담당한다. SQLite와 Supabase의 수동값 보호·정답 이력 및 배포 순서는 [POLICY_CONTRACT_ROLLOUT](docs/POLICY_CONTRACT_ROLLOUT.md)를 따른다.
+
+## 런타임 보완(2026-09-29)
+
+운영 콘텐츠 저장은 `prism_sync_contents(jsonb)`, 정답 등록은 `prism_write_golden(uuid,jsonb,boolean,text)` RPC가 한 트랜잭션으로 처리한다. 설치 파일은 `supabase/migrations/20260929101722_atomic_content_and_golden_writes.sql`이다. RPC 실패 시 직접 REST 쓰기로 우회하지 않는다. 서버의 토픽 계산은 `topic.build_topics_rows`에 메모리 행을 전달하며 파일 기반 CLI도 같은 함수를 사용한다. 검사 범위와 측정치는 `docs/RUNTIME_AUDIT_20260929.md`를 참조한다.

@@ -234,6 +234,7 @@ def _aggregate(rows):
 
 
 import re as _re
+from functools import lru_cache
 _JUNK_WORDS = ("씨", "아내", "남편", "경찰", "네티즌", "누리꾼", "피해자", "가해자",
                "엄마", "아빠", "부모", "자녀", "남성", "여성", "시민", "유튜버", "기자")
 
@@ -245,6 +246,11 @@ def _is_junk_entity(e: str, service_names: set) -> bool:
         return True
     if e in service_names:
         return True
+    return _is_generic_entity(e)
+
+
+@lru_cache(maxsize=4096)
+def _is_generic_entity(e):
     if _re.fullmatch(r"[\d,.\s]+(원|％|%|년|월|일|명|개|위|호)?", e):
         return True
     if _re.fullmatch(r"[A-Z]씨", e) or e.endswith("씨") and len(e) <= 4:

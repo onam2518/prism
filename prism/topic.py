@@ -1402,7 +1402,13 @@ def attach_nondist(pools, rows, service_names, co_min=None):
 def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120,
                  custom_defs=None, settings=None, exclusions=None, ent_index=None,
                  ent_keys=None, inclusions=None) -> dict:
-    rows = _read_jsonl(results_path)
+    return build_topics_rows(_read_jsonl(results_path), max_single, max_composite, custom_defs,
+                             settings, exclusions, ent_index, ent_keys, inclusions)
+
+
+def build_topics_rows(rows, max_single=200, max_composite=120, custom_defs=None,
+                      settings=None, exclusions=None, ent_index=None, ent_keys=None, inclusions=None):
+    """이미 읽은 행으로 계산한다. 파일 진입점과 서버가 같은 계산 경로를 사용한다."""
     svc = _service_names(rows)
     canon = _canonical_entity_categories(rows, svc)
     settings = settings or {}
