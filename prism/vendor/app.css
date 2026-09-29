@@ -981,6 +981,7 @@
   .model-compare-table thead tr>:first-child{z-index:2}
   /* A section owns its following gap; a final table must not add another 16px. */
   .panel .content-section > .overflow-auto:has(> .ds-table){margin-bottom:0}
+  .panel.content-section--panel > .overflow-auto:has(> .ds-table){margin:0}
   .item-compare-table{table-layout:fixed;width:100%;min-width:calc(240px + 70px + var(--compare-model-count,1) * 160px)}
   .item-compare-table .item-compare-content{width:240px}
   .item-compare-table .item-compare-expected{width:70px}

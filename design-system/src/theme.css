@@ -55,6 +55,7 @@
   --ds-text-link: #004bcc;        /* atomic.Blue.Link.700 */
   --ds-border-card: rgba(0, 0, 0, 0.08);
   --ds-divider-section: rgba(0, 0, 0, 0.08);
+  --ds-divider-content: rgba(0, 0, 0, 0.20);
   --ds-divider-item: rgba(0, 0, 0, 0.04);
   --ds-divider-inline: rgba(0, 0, 0, 0.16);
   --ds-state-info: #1e84ff;
@@ -222,6 +223,7 @@
   --ds-text-link: #5796e1;         /* atomic.Blue.Link.300 */
   --ds-border-card: rgba(255, 255, 255, 0.08);
   --ds-divider-section: rgba(255, 255, 255, 0.08);
+  --ds-divider-content: rgba(255, 255, 255, 0.24);
   --ds-divider-item: rgba(255, 255, 255, 0.04);
   --ds-divider-inline: rgba(255, 255, 255, 0.16);
   --ds-state-info-subtle: rgba(30, 132, 255, 0.16);
@@ -291,6 +293,7 @@
     --ds-text-link: #5796e1;
     --ds-border-card: rgba(255, 255, 255, 0.08);
     --ds-divider-section: rgba(255, 255, 255, 0.08);
+  --ds-divider-content: rgba(255, 255, 255, 0.24);
     --ds-divider-item: rgba(255, 255, 255, 0.04);
     --ds-divider-inline: rgba(255, 255, 255, 0.16);
     --ds-state-info-subtle: rgba(30, 132, 255, 0.16);

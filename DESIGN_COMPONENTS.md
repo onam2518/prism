@@ -53,6 +53,7 @@
 | `.panel` | 카드 1구획. `--ds-radius-card` · 헤더 `.panel-hd`(타이틀 b + `.meta` 설명, 우측 액션은 `ml-auto`) · 본문 `.panel-bd`(`--ds-pad-inset`/`--ds-pad-panel-x`) |
 | `.panel` 내 표/필터 | `.panel-bd` 내부는 추가 좌우 margin 0. 패널 직속은 `--ds-pad-panel-x`(20px). 표 외곽과 필터 외곽을 정렬하며 셀 내부 padding은 별도로 유지 |
 | `.content-section` | 한 패널 안에서 목적이 바뀌는 구획. 앞의 표시 중인 구획과 간격32px + 구분선1px + 내부 상단24px. 600px 이하는24/20px. 숨긴 구획은 간격 기준에서 제외 |
+| `.content-section-stack` / `.content-section--panel` | 독립 작업 영역은 바깥 패널 밖에서 stack으로 묶고 각 section에 panel과 panel 변형을 적용. 패널 사이24px, 내부24px·좌우 공통 패널 여백, 선명한 content 경계색. 카드 안에 중첩하지 않는다 |
 | `.content-section__head` | 내부 div에 제목과 설명을 묶고, 별도 `.content-section__actions`에 조작 배치. 제목16px(좁은 화면15px), 설명13px·줄높이1.6 |
 | `.result-notes` | 결과 해석 안내용 `ul > li` 목록. 13px·줄높이1.6·항목 간격8px. 단일 문장과 상태 메시지는 `.content-section__description` 사용 |
 | `.item-compare-table` | 콘텐츠240px + 정답70px + 동일 너비 모델 열 최소160px. 넘침은 표 wrapper 안에서 처리 |

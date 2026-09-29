@@ -282,9 +282,11 @@
                 <span class="text-xs text-muted" x-show="cmpResult && cmpResult.ok && cmpResult.ts" x-text="cmpResult ? ('마지막 비교 ' + fmtTs(cmpResult.ts) + ' · 정답 ' + cmpResult.golden_n + '건') : ''"></span>
                 <button type="button" class="copybtn tnum" x-show="cmpResult && cmpResult.ok && cmpResult.prompt_snapshot_version" x-on:click="downloadPrompt({ v: cmpResult.prompt_snapshot_version })" x-text="cmpResult ? ('프롬프트 v' + cmpResult.prompt_snapshot_version + ' 내려받기') : ''" data-tip="비교 시작 시점 프롬프트 버전(zip · 호출별 파일) · 도중에 학습이 반영되면 결과가 다른 버전 기준일 수 있어요" data-tip-pos="top"></button>
               </div>
+            </div>
+          </section>
               <template x-if="cmpResult && cmpResult.ok && cmpCols.length">
-                <div>
-                  <section class="content-section" aria-labelledby="compare-summary-title">
+                <div class="content-section-stack">
+                  <section class="panel content-section content-section--panel" aria-labelledby="compare-summary-title">
                   <div class="content-section__head">
                     <div><h3 class="content-section__title" id="compare-summary-title">요약 지표</h3><p class="content-section__description">같은 정답셋에서 모델별 정확도, 비용과 응답 속도를 비교합니다.</p></div>
                   </div>
@@ -322,7 +324,7 @@
                   </ul>
                   </section>
                   <!-- 건별 비교: 정답 vs 모델별 등급 · 틀린 건·갈린 건만 추려 어디서 차이가 나는지 본다 -->
-                  <section class="content-section" aria-labelledby="compare-items-title">
+                  <section class="panel content-section content-section--panel" aria-labelledby="compare-items-title">
                   <div class="content-section__head">
                     <div><h3 class="content-section__title" id="compare-items-title">건별 비교</h3>
                     <p class="content-section__description" x-text="'전체 ' + (cmpResult.items||[]).length + '건 · 하나라도 틀린 건 ' + (cmpResult.miss_n||0) + ' · 모델끼리 갈린 건 ' + (cmpResult.split_n||0)"></p></div>
@@ -348,7 +350,7 @@
                   <p class="content-section__description" x-show="cmpItemsMore">처음 <span x-text="cmpItems.length"></span>건만 표시 · 필터를 좁혀 보세요</p>
                   </section>
                   <!-- 개선 루프: 지표 → 문제점 → 쿡북 지시 → 스테이지 프롬프트 반영 → 다시 비교 -->
-                  <section class="content-section" aria-labelledby="compare-loop-title">
+                  <section class="panel content-section content-section--panel" aria-labelledby="compare-loop-title">
                   <div class="content-section__head">
                     <div><h3 class="content-section__title" id="compare-loop-title">개선 루프</h3>
                     <p class="content-section__description">문제점을 골라 공통 스테이지 프롬프트(사전·정책 › 메타 프롬프트)에 반영하고 다시 비교합니다.</p></div>
@@ -377,8 +379,6 @@
                   </section>
                 </div>
               </template>
-            </div>
-          </section>
         </div>
       </template>
 
