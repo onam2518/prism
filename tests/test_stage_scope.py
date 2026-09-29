@@ -144,5 +144,31 @@ class TestTopicWithoutQualityGrade(unittest.TestCase):
         self.assertEqual(p["content_ids"], [0, 1, 2])
 
 
+class TestDashboardNoGrade(unittest.TestCase):
+    """4-24 · 4-9: 대시보드도 빈 등급을 G 로 세지 않는다(집계·관계도 같은 규칙)."""
+
+    ROWS = [
+        {"content_ref": {"displayServiceName": "뉴스", "title": "a"},
+         "quality_meta": {"finalGrade": "G", "reasons": []},
+         "item_meta": {"entities": ["삼성전자"], "intent": [], "content_category": []}},
+        {"content_ref": {"displayServiceName": "다음카페", "title": "b"},
+         "quality_meta": {"finalGrade": "", "reasons": []},
+         "item_meta": {"entities": ["총파업"], "intent": [], "content_category": []}},
+        {"content_ref": {"displayServiceName": "티스토리", "title": "c"},
+         "item_meta": {"entities": ["노조"], "intent": [], "content_category": []}},
+    ]
+
+    def test_aggregate_counts_empty_grade_as_none(self):
+        from prism import dashboard as DB
+        g = DB._aggregate(self.ROWS)["grades"]
+        self.assertEqual((g["G"], g["none"]), (1, 2))
+
+    def test_graph_node_grade_is_none_not_green(self):
+        from prism import dashboard as DB
+        nodes = DB._graph(self.ROWS)[0]
+        grades = [n.get("grade") for n in nodes if n["kind"] == "content"]
+        self.assertEqual(grades, ["G", "none", "none"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -122,7 +122,7 @@ window.PRISM_APP_PARTS.push(() => ({
       studioMsg: '', studioBusy: false, studioSaving: false, studioSuggesting: false, studioModel: '', _studioT: null,
       // 미디어(이미지·영상 → 메타 추출 → 콘텐츠 등록) · 콘텐츠 추가 탭
       mediaTab: 'image',                      // 미디어 하위 탭: image(이미지) | video(영상)
-      mediaVid: { file: null, caption: '', subs: '', group: '동영상', url: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
+      mediaVid: { file: null, caption: '', subs: '', group: 'VOD', url: '' }, mediaVidRes: null, mediaVidBusy: false, mediaVidMsg: '',
       mediaImg: { files: [], thumbs: [], vision: 'upstage_ie', group: '뉴스', title: '', body: '', url: '' },
       mediaImgDrag: false, mediaImgRes: null, mediaImgBusy: false, mediaImgMsg: '',
       settingsDraft: { co_min: 2, entity_min: 2 }, settingsMsg: '', settingsSaving: false,
