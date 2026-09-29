@@ -123,5 +123,77 @@ class TestTransport(unittest.TestCase):
         self.assertIsNone(SV.team_of(""))                   # uid 없음 = None(스토어 미호출)
 
 
+class TestSupabaseRetryContract(unittest.TestCase):
+    """응답 유실은 commit 뒤에도 일어난다. 실제 _http의 전송 횟수를 소켓 대역으로 센다."""
+
+    def setUp(self):
+        from prism import supastore
+        self.SS = supastore
+        self.old_conn = supastore.http.client.HTTPSConnection
+        self.old_tls = supastore.SupabaseStore._TLS
+        supastore.SupabaseStore._TLS = threading.local()
+        self.addCleanup(lambda: setattr(supastore.http.client, "HTTPSConnection", self.old_conn))
+        self.addCleanup(lambda: setattr(supastore.SupabaseStore, "_TLS", self.old_tls))
+
+    def _store(self):
+        st = self.SS.SupabaseStore.__new__(self.SS.SupabaseStore)
+        st.url, st.key, st.base = "https://x.supabase.co", "key", "https://x.supabase.co/rest/v1"
+        return st
+
+    def _connections(self, lose_first=True):
+        state = {"requests": 0}
+
+        class Response:
+            status = 200
+
+            def read(self):
+                return b"[]"
+
+            def getheaders(self):
+                return []
+
+        class Connection:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def request(self, *args, **kwargs):
+                state["requests"] += 1                 # 서버가 request body를 받은 뒤로 가정
+
+            def getresponse(self):
+                if lose_first and state["requests"] == 1:
+                    raise ConnectionError("commit 후 응답 유실")
+                return Response()
+
+            def close(self):
+                pass
+
+        self.SS.http.client.HTTPSConnection = Connection
+        return state
+
+    def test_get_recovers_one_idle_connection_loss(self):
+        state = self._connections()
+        self.assertEqual(self._store()._get("reviewers"), [])
+        self.assertEqual(state["requests"], 2)          # 읽기만 1회 재전송
+
+    def test_new_id_post_does_not_replay_after_response_loss(self):
+        state = self._connections()
+        with self.assertRaises(ConnectionError):
+            self._store()._req("POST", "teams", body=[{"name": "새 팀"}],
+                               prefer="return=representation")
+        self.assertLessEqual(state["requests"], 1)      # 새 ID 생성 결과는 unknown으로 호출자에게 전달
+
+    def test_upsert_replays_exactly_once_after_response_loss(self):
+        state = self._connections()
+        self._store()._upsert("reviewers", [{"id": "known-key"}])
+        self.assertEqual(state["requests"], 2)          # merge-duplicates로 명시된 키 기반 upsert만 예외
+
+    def test_rpc_post_does_not_assume_idempotency(self):
+        state = self._connections()
+        st = self._store()
+        st._RPC_MISSING = set()
+        self.assertIsNone(st._rpc_or_none("atomic_mutation", {}))
+        self.assertLessEqual(state["requests"], 1)      # 원자 RPC도 commit 여부를 알 수 없어 재전송 금지
+
+
 if __name__ == "__main__":
     unittest.main()

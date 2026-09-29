@@ -76,6 +76,8 @@ class SupabaseStore:
             headers["Prefer"] = prefer
         data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
         path = url[len(self.url):]                       # /rest/v1/… (keep-alive 는 host 기준)
+        # 새 ID 생성 POST는 응답 유실 때 서버가 이미 커밋했는지 알 수 없다. 예외를
+        # 그대로 호출자에게 전해 결과가 unknown임을 숨기지 않는다.
         status, raw, _ = self._http(method, path, data, headers)
         if status >= 400:
             # 상세(PostgREST 에러 본문 = 테이블·제약·컬럼·SQL 힌트)는 서버 로그만.
@@ -88,9 +90,17 @@ class SupabaseStore:
 
     def _http(self, method, path, data, headers):
         """PostgREST 호출을 keep-alive 연결로 실행. 매 호출 새 TLS 핸드셰이크(urllib)가
-        도쿄(Fly)→서울(supabase) 왕복을 요청마다 추가하던 비용 제거(2026-07-08 실측 API 400~860ms)."""
+        도쿄(Fly)→서울(supabase) 왕복을 요청마다 추가하던 비용 제거(2026-07-08 실측 API 400~860ms).
+
+        GET(읽기)와 ``resolution=merge-duplicates,return=minimal``을 명시한 PostgREST
+        upsert만 유휴 소켓 오류 뒤 한 번 재전송한다.
+        POST/PATCH/DELETE와 RPC는 응답 유실이 이미 커밋된 mutation을 뜻할 수 있어 기본 1회다.
+        """
         host = self.url.split("://", 1)[1]
-        for attempt in (0, 1):                           # 유휴 종료된 소켓은 1회 재수립
+        retryable = method == "GET" or (method == "POST" and
+                                         headers.get("Prefer") == "resolution=merge-duplicates,return=minimal")
+        attempts = 2 if retryable else 1
+        for attempt in range(attempts):                  # 허용된 요청만 유휴 종료 소켓에서 1회 재수립
             conns = getattr(self._TLS, "conns", None)
             if conns is None:
                 conns = self._TLS.conns = {}
@@ -107,7 +117,7 @@ class SupabaseStore:
                 except Exception:
                     pass
                 conns.pop(host, None)
-                if attempt:
+                if attempt + 1 == attempts:
                     raise
 
     _PAGE = 1000                                     # PostgREST 서버 max-rows(기본 1000)와 동일한 페이지 크기
@@ -172,6 +182,8 @@ class SupabaseStore:
     def _upsert(self, table, rows):
         if not rows:
             return
+        # PK/UNIQUE 충돌을 병합하는 PostgREST upsert만 _http가 재전송한다. 새 ID를 만드는
+        # POST, PATCH/DELETE, RPC는 커밋 뒤 응답 유실을 구별할 수 없어 기본 1회 계약을 따른다.
         self._req("POST", table, body=rows, prefer="resolution=merge-duplicates,return=minimal")
 
     # ── 검수자 등록 + 팀(멀티테넌시) ──────────────────────────────────────
