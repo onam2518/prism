@@ -181,17 +181,19 @@ class TestPhotoIntentCriteria(unittest.TestCase):
         self.assertNotIn(" / ".join(D.INTENT_FORM_UNIVERSAL), txt)   # 구 '이름만 나열' 형태 제거
 
     def test_intent_user_message_signals(self):
-        """③ 인텐트 콜 입력 확장: title·본문 글자수·이미지 수·본문 도입부."""
+        """③ 인텐트 콜 입력(2026-09-22): title·body + 보조 신호(본문 글자수·이미지 수).
+        서비스명·리드문은 빠진다 · 본문 전문이 들어오므로 도입부 발췌도 없다."""
         from prism import meta_prompts as MP
         from prism.schema import Content
         c = Content(displayServiceName="뉴스", title="[오늘의 1면 사진] 폭염", body="가" * 1200,
                     image_urls=["https://x/1.jpg", "https://x/2.jpg"])
-        u = MP.call_user("intent", c, {"summary": "리드문"})
+        u = MP.call_user("intent", c)
         self.assertIn("[오늘의 1면 사진]", u)                        # 제목 표지가 판정 단서
         self.assertIn("본문 글자수: 1200", u)
         self.assertIn("이미지 수: 2", u)
-        self.assertIn("본문 도입부:", u)
-        self.assertLess(len(u), 1200)                                # 본문 전문 주입 아님(토큰 억제)
+        self.assertIn("가" * 1200, u)                                # 본문 전문
+        self.assertNotIn("displayServiceName", u)
+        self.assertNotIn("summary", u)
 
     def test_image_count_unknown_is_not_zero(self):
         """image_urls 미제공(운영 인입 현황) → '0장'으로 단정하지 않는다."""
@@ -199,7 +201,7 @@ class TestPhotoIntentCriteria(unittest.TestCase):
         from prism.schema import Content
         for c in (Content(displayServiceName="뉴스", title="t", body="b"),
                   Content(displayServiceName="뉴스", title="t", body="b", image_urls=[])):
-            u = MP.call_user("intent", c, {"summary": "s"})
+            u = MP.call_user("intent", c)
             self.assertIn("이미지 수: 정보 없음", u)
             self.assertNotIn("이미지 수: 0", u)
 

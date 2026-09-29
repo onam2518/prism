@@ -1,21 +1,21 @@
 """모델별 아이템 메타 추출 프롬프트 · 기준: DNM 아이템 메타 계약(1312) + 인텐트·카테고리 사전 원문
 + contextual-meta-extraction.md v2.1 (모델별 쿡북 래퍼).
 
-계약(공식 가이드): 입력 3필드(displayServiceName·title·body) 고정, **분리형 순차 4호출**
-① 리드문 summary → ② 엔티티 entities → ③ 인텐트 intent(사전: 범용①·② + 서비스 분기)
-→ ④ 콘텐츠 카테고리 content_category(사전: IAB Tier1/Tier2 전체 + 구분 기준).
-출력 필드 4종은 다운스트림 계약 · 임의 추가·변경 금지. summary 가 빈 문자열이면 후속 호출 생략.
+계약(공식 가이드 2026-09-22 · 371131847): 모델 입력은 title·body, **독립 4호출**
+① 리드문 summary · ② 엔티티 entities · ③ 인텐트 intent(사전: 전 출처 공통 68개)
+· ④ 콘텐츠 카테고리 content_category(사전: IAB Tier1/Tier2 전체 + 구분 기준).
+출력 필드 4종은 다운스트림 계약 · 임의 추가·변경 금지.
 
-입력 계약 해석 개정(2026-08-03 · imeta@v16 · 왜 바꿨나):
-- '입력 3필드 고정'은 **추출 입력 원천**이 이 3필드뿐이라는 뜻이며, 콜별로 그 3필드를 어떻게
-  투영해 넣을지까지 고정한 규정이 아니다(② 엔티티는 애초에 dsn 을 넣지 않는 등 콜별 투영은 원래 가변).
-- ③ 인텐트는 종래 dsn+summary 만 받아, 형식·전달 수단을 보는 범용② 분류값('포토·영상 중심'·
-  '현장취재·르포' 등)의 판정 근거가 구조적으로 없었다. → title · 본문 글자수 · 본문 도입부 발췌를
-  추가 투영한다(원천은 여전히 3필드 · 새 필드를 인입에 요구하지 않는다).
-- 추가로 **참조 필드** image_urls(정체성 해시 불포함 · source_url 과 같은 참조 패턴)에서 파생한
-  이미지 수를 신호로 덧붙인다. 값이 비어 있으면 **'0장'으로 단정하지 않고 '정보 없음'으로 전달**한다
+입력 계약 개정(2026-09-22 · 왜 바꿨나):
+- 네 호출은 서로의 결과를 필수 입력으로 요구하지 않는다. 종전에는 ③ 이 dsn+summary 를,
+  ④ 가 summary·intent·entities 를 받아 ① 이 비면 나머지 셋이 통째로 비었다.
+  → 제목·본문에서 각각 독립 추출한다(항목별 상태 · 364314733 '추출 상태와 입력 필요').
+- displayServiceName 은 모델 입력에서 뺀다. 원천 저장과 발행·라우팅 정보로는 그대로 남지만
+  후보를 가르는 근거로 쓰지 않으므로 ③ 은 모든 콘텐츠에 같은 68개를 받는다.
+- ③ 은 title·body 에 본문 글자수·이미지 수를 보조 신호로 덧붙인다. 이미지 수의 원천인
+  **참조 필드** image_urls(정체성 해시 불포함 · source_url 과 같은 참조 패턴)가 비어 있으면
+  **'0장'으로 단정하지 않고 '정보 없음'으로 전달**한다
   (운영 인입이 아직 image_urls 를 채우지 않는 상태 · '정보 없음' ≠ '0장' · 오판정 방지).
-- **출력 4필드 다운스트림 계약은 그대로다.** 바뀐 것은 ③ 콜의 user 메시지 투영뿐이다.
 
 구조 원칙(수정 흐름):
 - 코어 규칙(CALL_RULES)·골드 예시(GOLD) = **계약**. 수정은 기준 문서 개정 → 본 모듈 동기화로만.
@@ -36,13 +36,13 @@ CALL_RULES = {
     "summary": """# 리드문 정의
 - 콘텐츠의 소비 맥락(왜·어떻게 소비되는가)을 콘텐츠 내용으로 구체화하여 생성한 핵심 문장 1개.
 - 사용자 관점의 소비 목적과 CP 관점의 노출·전환 의도를 함께 반영.
-- 본문 문장의 인용·발췌가 아니라 생성문. 이후 인텐트·콘텐츠 카테고리 판단의 기반 재료.
+- 본문 문장의 인용·발췌가 아니라 생성문. 다른 메타 호출의 선행 조건으로 사용하지 않는다.
 
 # 규칙
 - 정확히 1문장, 평서형 종결.
 - 핵심 고유명사·사실을 포함하되 과장·추측·평가 금지.
 - body가 비어있으면 title만으로 생성. title·body 모두 비어 의미 생성이 불가능하면
-  빈 문자열("")을 출력한다(하위 호출 생략 신호).""",
+  빈 문자열("")을 출력한다. 다른 메타 호출은 독립적으로 실행한다.""",
     "entities": """# 엔티티 정의
 - 콘텐츠 내 대표적·반복적으로 사용된 명사. 단일 명사가 원칙이며,
   고유명사(인명·지명·조직명·작품명 등)는 단일 단위로 취급. 구문구·수식 명사구 금지.
@@ -121,7 +121,8 @@ CALL_RULES = {
 - 아래 사전에 정의된 항목(21개 Tier 1 + Custom Tier 2) 중에서만 선택한다.
   Tier 1 / Tier 2 까지만 표기. 자유 생성·Tier 3 표기 금지.
 - 우선순위: 콘텐츠 맥락 > 개별 엔티티 고유 도메인.
-  리드문·인텐트·엔티티와 본문 핵심을 종합해 콘텐츠 전체의 도메인을 결정한다.
+  제목·본문의 전체 맥락을 종합해 콘텐츠 전체의 도메인을 결정한다.
+  요약·엔티티·인텐트 결과를 필수 입력이나 실행 조건으로 요구하지 않는다.
 - 근거가 약한 도메인은 부여하지 않는다(과잉 매핑 방지).
   사전에 없는 도메인이면 미분류로 두고 운영자 검토를 기다린다.""",
 }
@@ -129,8 +130,8 @@ CALL_RULES = {
 CALL_ROLES = {
     "summary": "너는 콘텐츠의 '리드문'을 생성하는 추출기다.",
     "entities": "너는 콘텐츠의 대표 '엔티티'를 추출·정제하는 추출기다.",
-    "intent": "너는 리드문을 기반으로 콘텐츠의 세부 종류·속성 분류값('인텐트')을 부여하는 분류기다.",
-    "category": "너는 리드문·인텐트·엔티티를 종합하여 콘텐츠의 대표 IAB 카테고리를 부여하는 분류기다.",
+    "intent": "너는 제목·본문을 근거로 콘텐츠의 세부 종류·속성 분류값('인텐트')을 부여하는 분류기다.",
+    "category": "너는 제목·본문의 전체 맥락을 근거로 콘텐츠의 대표 IAB 카테고리를 부여하는 분류기다.",
 }
 
 CALL_SCHEMAS = {
@@ -476,8 +477,6 @@ def topic_suggest_user(text: str) -> str:
     return "설명: " + (text or "").strip()
 
 
-INTENT_BODY_HEAD = 500          # ③ 인텐트 콜에 넣는 본문 도입부 길이(자) · 근거는 _intent_body_excerpt
-
 _IMG_UNKNOWN = "이미지 수: 정보 없음(입력에 이미지 목록이 없음 · '이미지가 0장'이라는 뜻이 아니다)"
 
 
@@ -494,36 +493,18 @@ def _intent_image_line(content) -> str:
     return f"이미지 수: {n}" if n else _IMG_UNKNOWN
 
 
-def _intent_body_excerpt(body: str) -> str:
-    """본문 도입부 발췌. 본문 전문을 넣지 않는 이유:
-    ① 리드문(summary)이 이미 본문 전량을 요약해 들어오므로 전문은 대부분 중복 토큰이다.
-    ② 인텐트 판정에 필요한 형식·취재 정황 단서(현장 방문·직접 촬영 서술, 코너 표지)는
-       제목과 도입부에 몰려 있다. ③ 인텐트는 전 아이템 필수 콜이라 전문 주입 시 비용 증가가
-       배치 전체에 곱해진다. → 제목 + 리드문 + 도입부 + 분량·이미지 신호의 조합을 택했다."""
-    b = (body or "").strip()
-    return b if len(b) <= INTENT_BODY_HEAD else b[:INTENT_BODY_HEAD] + " …(이하 생략)"
+def call_user(call: str, content) -> str:
+    """네 호출의 user 메시지. 어느 호출도 다른 호출의 출력을 받지 않는다(2026-09-22 정책).
 
-
-def call_user(call: str, content, prior: dict) -> str:
-    """분리형 호출의 user 메시지(문서 §2.6 주입 변수).
-
-    ③ 인텐트는 2026-08-03(imeta@v16)부터 dsn+summary 에 title·본문 글자수·이미지 수·본문 도입부를
-    더해 받는다. 종래 입력으로는 '포토·영상 중심'·'현장취재·르포' 같은 형식·전달 수단 분류값의
-    판정 근거가 없었다(모듈 docstring '입력 계약 해석 개정' 참조). 원천은 여전히 계약 3필드다."""
-    dsn = getattr(content, "displayServiceName", "") or ""
+    ③ 인텐트만 title·body 에 본문 글자수·이미지 수를 보조 신호로 덧붙인다. 형식·전달 수단을
+    보는 범용② 분류값('포토·영상 중심'·'현장취재·르포' 등)이 그 신호로 갈린다. 본문 도입부
+    발췌는 body 전문이 들어오면서 중복이라 뺐다."""
     title = getattr(content, "title", "") or ""
     body = getattr(content, "body", "") or ""
-    if call == "summary":
-        return f"displayServiceName: {dsn}\ntitle: {title}\nbody: {body}"
-    if call == "entities":
-        return f"title: {title}\nbody: {body}"
     if call == "intent":
-        return (f"displayServiceName: {dsn}\ntitle: {title}\n"
-                f"summary: {prior.get('summary', '')}\n"
-                f"본문 글자수: {len(body)}\n{_intent_image_line(content)}\n"
-                f"본문 도입부: {_intent_body_excerpt(body)}")
-    return (f"summary: {prior.get('summary', '')}\nintent: {_ja(prior.get('intent', []))}\n"
-            f"entities: {_ja(prior.get('entities', []))}\nbody: {body}")
+        return (f"title: {title}\nbody: {body}\n"
+                f"본문 글자수: {len(body)}\n{_intent_image_line(content)}")
+    return f"title: {title}\nbody: {body}"
 
 
 MERGED_SCHEMA = ('{"summary": string, "entities": string[] (핵심만 · 개수 상한 없음, 대표 첫 번째), '

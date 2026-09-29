@@ -128,7 +128,7 @@
             <span class="ds-badge ds-badge--success ml-auto" x-show="learnedStages.extract || learnedStages.analyze" style="cursor:help" data-tip="배치 결과 피드백이 각 호출 프롬프트에 자동 병기 중">학습 보정 반영</span></div>
             <div class="panel-bd">
               <ul class="ds-bullets" style="margin-bottom:10px">
-                <li>추출은 <b>분리형 순차 4호출</b>입니다: ① 리드문 → ② 엔티티 → ③ 인텐트(사전: 전 출처 공통 68개) → ④ 콘텐츠 카테고리(사전: Tier1/Tier2 + 구분 기준). 리드문이 비면 후속 호출을 생략합니다.</li>
+                <li>추출은 <b>독립 4호출</b>입니다: ① 리드문 · ② 엔티티 · ③ 인텐트(사전: 전 출처 공통 68개) · ④ 콘텐츠 카테고리(사전: Tier1/Tier2 + 구분 기준). 네 호출은 제목·본문에서 각각 추출하며, 하나가 비거나 실패해도 나머지는 그대로 실행합니다.</li>
                 <li>호출 사이 <b>기계 검증</b>: 사전 불일치 값 드롭 · 전량 드롭 시 1회 재요청 · 엔티티 1~3개 강제.</li>
               </ul>
               <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
