@@ -49,7 +49,7 @@ class TestNoServiceBranchInAnyFamily(unittest.TestCase):
     def test_every_family_composition_is_clean(self):
         for family, model in FAMILY_MODELS.items():
             blob = _all_call_systems(model)
-            for phrase in BANNED:
+            for phrase in tuple(BANNED) + tuple(D.INTENT_RETIRED):
                 self.assertNotIn(phrase, blob, f"{family}({model}) 합성 프롬프트에 '{phrase}'")
 
     def test_merged_single_call_is_clean(self):
