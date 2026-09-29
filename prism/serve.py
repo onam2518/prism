@@ -3052,6 +3052,9 @@ def _p_run(h, body):
                 # 참조 이미지 URL(게시판 #9) · 화이트리스트에서 빠져 있어 단건 추가는 항상 유실됐다.
                 # 정규화(http(s)·중복·상한)는 add_contents 가 담당.
                 "image_urls": fields.get("image_urls") or fields.get("images") or [],
+                # 발행 키(선택 · 511607345) · 부재는 키 자체를 넣지 않아 '없음' 으로 남긴다
+                **{k: fields[k] for k in ("item_unique_key", "service_code", "cp_type")
+                   if k in fields},
             }], purpose=str(fields.get("purpose") or ""), team=h._req_team())
         else:
             result = run_pipeline(fields, mock=h.server_mock, team=h._req_team())

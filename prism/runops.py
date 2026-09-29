@@ -143,7 +143,11 @@ def add_contents(contents: list, purpose: str = "", team=None, source: str = "�
                                   # 참조 이미지 URL(게시판 #9) · sqlite 는 payload.content_ref 가 유일한
                                   # 보존처라 여기서 빠지면 STEP 1 추가분의 이미지가 사라진다
                                   "image_urls": list(c.get("image_urls") or []),
-                                  "body": c.get("body", ""), "body_hash": _chash(c)},
+                                  "body": c.get("body", ""), "body_hash": _chash(c),
+                                  # 발행 키 원문 보존(511607345) · 부재는 None 으로 남긴다
+                                  "item_unique_key": c.get("item_unique_key"),
+                                  "service_code": c.get("service_code"),
+                                  "cp_type": c.get("cp_type")},
                   "quality_meta": {}, "item_meta": {}, "trace": {}}) for c in rows]
     saved = store_save(pairs, source=source, team=team) if rows else None
     if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '추가됨'으로 속이지 않는다
@@ -251,6 +255,9 @@ def run_pipeline(fields: dict, *, mock: bool, team=None, model: str = "", persis
             # 참조용 원문 링크 · 해시(서비스+제목+부제+본문) 불포함이라 정체성 무변
             "source_url": fields.get("source_url", "") or fields.get("url", ""),
             "image_urls": ref_images,             # 참조용 이미지 URL · 위와 같은 참조 패턴
+            # 발행 키(선택 · 511607345) · 발행·라우팅 정보라 모델 입력·해시에 안 들어간다
+            **{k: fields[k] for k in ("item_unique_key", "service_code", "cp_type")
+               if k in fields},
         }
 
     out = PIPE.extract(content, llm, legal=cfg.legal_enabled)
@@ -493,23 +500,26 @@ def rerun_content(content_hash: str, model: str, team=None, row=None, force_ques
 def build_template_csv() -> bytes:
     """엑셀 일괄 입력용 CSV 템플릿(UTF-8 BOM → Excel 한글 정상). 헤더+예시 2행.
 
-    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문·원문 링크·이미지 URL.
+    헤더는 ingest 별칭과 일치: 콘텐츠 그룹·제목·부제·본문·원문 링크·이미지 URL·발행 키 3열.
     제목·본문이 필수(원문 링크·이미지 URL 은 선택 · 이미지는 쉼표로 여러 개, 게시판 #9).
+    발행 키(item_unique_key·service_code·cp_type)도 선택 · 원문 그대로 보존한다(511607345).
     """
     import csv
     import io
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크", "이미지 URL"])
+    w.writerow(["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크", "이미지 URL",
+                "item_unique_key", "service_code", "cp_type"])
     w.writerow(["뉴스", "삼성전자 노조 임금 협상 결렬",
                 "중앙노동위 조정 불성립",
                 "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다.",
                 "https://v.daum.net/v/20260101000000000",
-                "https://img1.daumcdn.net/example/photo1.jpg"])
+                "https://img1.daumcdn.net/example/photo1.jpg",
+                "hamny-20260619181200992", "contentview", "media"])
     w.writerow(["스포츠", "손흥민 시즌 10호골",
                 "",
                 "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다.",
-                "", ""])
+                "", "", "", "", ""])
     return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
@@ -520,14 +530,16 @@ def build_template_xlsx() -> bytes:
     import zipfile
     from xml.sax.saxutils import escape
 
-    rows = [["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크", "이미지 URL"],
+    rows = [["콘텐츠 그룹", "제목", "부제", "본문", "원문 링크", "이미지 URL",
+             "item_unique_key", "service_code", "cp_type"],
             ["뉴스", "삼성전자 노조 임금 협상 결렬", "중앙노동위 조정 불성립",
              "삼성전자가 중앙노동위원회 조정에서 노조와 합의에 이르지 못했다. 양측은 임금 인상폭을 두고 이견을 좁히지 못했다.",
              "https://v.daum.net/v/20260101000000000",
-             "https://img1.daumcdn.net/example/photo1.jpg"],
+             "https://img1.daumcdn.net/example/photo1.jpg",
+             "hamny-20260619181200992", "contentview", "media"],
             ["스포츠", "손흥민 시즌 10호골", "",
              "토트넘이 홈 경기에서 승리했다. 손흥민이 후반 결승골을 터뜨리며 시즌 10호골을 기록했다.",
-             "", ""]]
+             "", "", "", "", ""]]
 
     def cell(r, ci, v):
         col = chr(ord("A") + ci)

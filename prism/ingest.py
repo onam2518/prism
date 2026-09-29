@@ -18,6 +18,12 @@ ALIASES = {
     "body": ["body", "본문", "본문내용", "기사본문", "기사내용", "content", "contents",
              "내용", "내용본문", "text", "article", "기사", "description", "desc", "원문"],
     "subtitle": ["subtitle", "부제목", "부제", "summary", "요약", "subhead", "lead", "리드"],
+    # 발행 키(선택 · 511607345). displayServiceName 의 포함 매칭 별칭 'service' 가
+    # 'service_code' 헤더를 삼키지 않도록 **앞에** 둔다(image_urls 와 같은 이유).
+    "item_unique_key": ["itemuniquekey", "uniquekey", "itemkey", "아이템키", "콘텐츠키",
+                        "아이템고유키", "고유키", "발행키"],
+    "service_code": ["servicecode", "서비스코드"],
+    "cp_type": ["cptype", "cp유형", "cp타입"],
     "displayServiceName": ["displayservicename", "콘텐츠그룹", "서비스명", "service", "서비스", "구분",
                            "채널", "channel", "category", "카테고리", "매체", "섹션",
                            "section", "source", "type", "지면"],
@@ -33,11 +39,14 @@ ALIASES = {
                    "원문url", "articleurl", "weburl", "원문주소", "주소", "originurl"],
 }
 REQUIRED = ["title", "body"]            # 이 둘이 잡혀야 '가능'
+# 발행 키(item_unique_key·service_code·cp_type)는 기본값을 두지 않는다 — 컬럼 부재와
+# 빈 문자열을 갈라 보존해야 한다(511607345 '출처 필드의 발행 기준').
 OPTIONAL_DEFAULT = {"subtitle": "", "displayServiceName": "", "source_url": ""}
 
 
 def _item_from_row(r: dict, mapping: dict) -> dict:
-    """매핑된 원본 행 → 콘텐츠 dict. image_urls 만 목록 정규화(그 외는 문자열)."""
+    """매핑된 원본 행 → 콘텐츠 dict. image_urls 만 목록 정규화(그 외는 문자열).
+    str(v or "") 는 문자열을 그대로 두므로 발행 키의 원문(공백·대소문자)도 보존된다."""
     item = dict(OPTIONAL_DEFAULT)
     item["image_urls"] = []
     for field, col in mapping.items():

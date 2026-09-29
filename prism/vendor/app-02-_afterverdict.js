@@ -122,7 +122,7 @@ window.PRISM_APP_PARTS.push(() => ({
       batchResult: null,
       groups: ['뉴스', '연예', '스포츠', '콘텐츠', '커뮤니티', '블로그', '음악', '동영상'],
       group: '뉴스',
-      txtTitle: '', txtBody: '', txtUrl: '',
+      txtTitle: '', txtBody: '', txtUrl: '', txtKey: '',   // txtKey = 발행 키 item_unique_key(선택 · 원문 보존)
       excelFile: null, xlsDrag: false,
       copyMsg: '',
 
