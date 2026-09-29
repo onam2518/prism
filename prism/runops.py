@@ -633,7 +633,9 @@ def import_meta_batch(contents: list, mapping: dict, label: str = "외부", team
 
     from . import dictionaries as D
     from .schema import Content, ItemMeta, QualityMeta, Trace
+    # 라벨은 늘 '외부:' 접두 · 실제 모델 ID(claude-… 등)로 위장해 모델별 집계·평가에 섞이는 것을 막는다
     label = (str(label or "").strip() or "외부")[:40]
+    label = label if label.startswith("외부:") else ("외부" if label == "외부" else f"외부:{label}")
     ok_intents = set(D.intent_categories())
     truncated = max(0, len(contents) - META_IMPORT_MAX)
     pairs, items, errors = [], [], []
@@ -709,7 +711,7 @@ def import_meta_batch(contents: list, mapping: dict, label: str = "외부", team
         seen.add(h)
         keep.append((c, out))
         kept_items.append(it)
-    saved = store_save(keep, source=label, team=team) if keep else None
+    saved = store_save(keep, source="외부메타", team=team) if keep else None   # 인입 경로 축은 고정 어휘 · 라벨은 trace.model 에만
     if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '적재됨'으로 속이지 않는다
         return {"error": "저장 실패 · 다시 시도하세요 (" + saved["error"][:120] + ")"}
     return {"source": "excel", "with_meta": True, "label": label, "mapping": mapping,
@@ -732,10 +734,10 @@ def run_batch(file_bytes: bytes, filename: str, purpose: str = "", team=None,
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(file_bytes)
-        a = ING.assess(tmp)
+        a = ING.assess(tmp, extra=ING.META_ALIASES if with_meta else None)
         if not a["ok"]:
             return {"error": a["reason"], "headers": a.get("headers", [])}
-        contents = ING.to_contents(tmp)
+        contents = ING.to_contents(tmp, extra=ING.META_ALIASES if with_meta else None)
         if with_meta:                                # 모델 미실행 · 외부 메타를 초안으로 적재
             return import_meta_batch(contents, a["mapping"], label=model_label, team=team)
         truncated = max(0, len(contents) - BATCH_ADD_MAX)

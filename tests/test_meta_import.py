@@ -36,8 +36,8 @@ def _contents(csv_bytes):
     p = os.path.join(tempfile.mkdtemp(), "u.csv")
     with open(p, "wb") as f:
         f.write(csv_bytes)
-    a = ING.assess(p)
-    return ING.to_contents(p), a["mapping"]
+    a = ING.assess(p, extra=ING.META_ALIASES)
+    return ING.to_contents(p, extra=ING.META_ALIASES), a["mapping"]
 
 
 class TestAliasAndSplit(unittest.TestCase):
@@ -48,6 +48,14 @@ class TestAliasAndSplit(unittest.TestCase):
         self.assertEqual(mapping["subtitle"], "부제")            # 하위 호환
         self.assertEqual(mapping["displayServiceName"], "콘텐츠 그룹")
         self.assertEqual(rows[0]["summary"], "리드문 하나")
+
+    def test_meta_aliases_do_not_leak_into_plain_uploads(self):
+        """with_meta 가 아니면 'IAB 카테고리'·'등급구분' 은 종전대로 콘텐츠 그룹 후보다 · 메타 필드는 잡히지 않는다."""
+        from prism import ingest as ING
+        m = ING.infer_mapping(["제목", "본문", "IAB 카테고리", "등급구분", "리드문"])
+        self.assertNotIn("content_category", m); self.assertNotIn("finalGrade", m); self.assertNotIn("summary", m)
+        self.assertEqual(m["subtitle"], "리드문")
+        self.assertEqual(m["displayServiceName"], "등급구분")
 
     def test_terms_keep_dictionary_dots_but_split_separators(self):
         from prism import runops as RN
@@ -127,7 +135,7 @@ class TestSavedShape(MetaImportBase):
     def test_saved_row_matches_pipeline_shape_and_is_not_pending(self):
         serve = self._serve()
         r = self._import(_csv(ROW_OK), label="벨루가")
-        self.assertEqual((r["saved"], r["error_count"], r["label"]), (1, 0, "벨루가"))
+        self.assertEqual((r["saved"], r["error_count"], r["label"]), (1, 0, "외부:벨루가"))
         row = serve.results_rows()[0]
         self.assertEqual(row["item_meta"]["summary"], "리드문 하나")
         self.assertEqual(row["item_meta"]["entities"], ["삼성전자", "노동위"])
@@ -136,7 +144,7 @@ class TestSavedShape(MetaImportBase):
                          ["Business and Finance / Industries"])
         self.assertEqual(row["quality_meta"]["finalGrade"], "G")
         self.assertEqual(row["quality_meta"]["reasons"], [])
-        self.assertEqual(row["trace"]["model"], "벨루가")
+        self.assertEqual(row["trace"]["model"], "외부:벨루가")
         self.assertEqual(row["trace"]["prompt_version"], "external")
         self.assertEqual(row["trace"]["cost_usd"], 0.0)
         self.assertEqual(row["content_ref"]["title"], "임금 협상 결렬")
@@ -224,7 +232,7 @@ class TestTemplate(unittest.TestCase):
         p = os.path.join(tempfile.mkdtemp(), "t.csv")
         with open(p, "wb") as f:
             f.write(RN.build_template_csv(True))
-        rows, mapping = ING.to_contents(p), ING.assess(p)["mapping"]
+        rows, mapping = ING.to_contents(p, extra=ING.META_ALIASES), ING.assess(p, extra=ING.META_ALIASES)["mapping"]
         from prism import serve
         from prism.store import Store
         serve._STORE = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
