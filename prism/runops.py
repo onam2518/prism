@@ -655,6 +655,10 @@ def import_meta_batch(contents: list, mapping: dict, label: str = "외부", team
             hit = D.normalize_category_list([v])
             if not hit:
                 errs.append(f"카테고리 '{v}' 는 사전 미등록('Tier1 / Tier2' 경로로)")
+            elif "/" in v and "/" not in hit[0]:
+                # normalize 는 Tier1 만 맞고 Tier2 가 틀리면 Tier1 으로 잘라 돌려준다.
+                # 조용히 잘라 저장하면 올린 쪽은 하위 분류가 버려진 걸 알 수 없다.
+                errs.append(f"카테고리 '{v}' 의 하위 분류가 사전 미등록('{hit[0]}' 의 Tier2 로)")
             cats += [x for x in hit if x not in cats]
         grade = str(c.get("finalGrade") or "").strip().upper()
         if grade not in ("", "G", "R"):
@@ -685,12 +689,33 @@ def import_meta_batch(contents: list, mapping: dict, label: str = "외부", team
                       "summary": out["item_meta"]["summary"],
                       "entities": out["item_meta"]["entities"],
                       "intent": intent, "grade": grade})
-    saved = store_save(pairs, source=label, team=team) if pairs else None
+    # 이미 결과가 있는 콘텐츠는 건드리지 않는다(엑셀 일괄 추출·add_contents·media_register 와
+    # 같은 재업로드 정책). 없으면 누적 파일을 다시 올릴 때마다 검수자 교정(update_item_meta·
+    # update_quality)과 모델 초안이 파일 값으로 되돌아간다. 미실행(STEP 1 추가만) 행은 대상.
+    from .store import content_hash as _chash
+    known = {}
+    st0 = _SV.get_store()
+    if pairs and st0 is not None and hasattr(st0, "existing_hashes"):
+        try:
+            known = st0.existing_hashes([_chash(c) for c, _ in pairs], team=team) or {}
+        except Exception:
+            known = {}    # 조회 실패 → 신규 취급(save_dedup 의 무변경 skip 가드가 받는다)
+    seen, keep, kept_items, skipped_done = set(), [], [], 0
+    for (c, out), it in zip(pairs, items):
+        h = _chash(c)
+        if known.get(h) or h in seen:                 # 기존 실행분 · 파일 안 중복 행
+            skipped_done += 1
+            continue
+        seen.add(h)
+        keep.append((c, out))
+        kept_items.append(it)
+    saved = store_save(keep, source=label, team=team) if keep else None
     if isinstance(saved, dict) and saved.get("error"):   # 저장 실패면 '적재됨'으로 속이지 않는다
         return {"error": "저장 실패 · 다시 시도하세요 (" + saved["error"][:120] + ")"}
     return {"source": "excel", "with_meta": True, "label": label, "mapping": mapping,
-            "count": len(pairs), "saved": len(pairs), "items": items,
+            "count": len(keep), "saved": len(keep), "items": kept_items,
             "errors": errors, "error_count": len(errors),
+            **({"skipped_done": skipped_done} if skipped_done else {}),
             **({"truncated": truncated} if truncated else {})}
 
 

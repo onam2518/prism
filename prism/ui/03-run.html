@@ -257,7 +257,7 @@
                 </div>
               </div>
               <div x-show="batchResult && batchResult.with_meta" x-cloak class="stack-2">
-                <p class="text-xs text-muted" style="margin:0" x-text="batchResult ? ('모델 실행 없이 메타째 추가 · 저장 ' + (batchResult.saved || 0) + '건 · 오류 ' + (batchResult.error_count || 0) + '건 · 라벨 ' + (batchResult.label || '')) : ''"></p>
+                <p class="text-xs text-muted" style="margin:0" x-text="batchResult ? ('모델 실행 없이 메타째 추가 · 저장 ' + (batchResult.saved || 0) + '건 · 오류 ' + (batchResult.error_count || 0) + '건' + (batchResult.skipped_done ? ' · 기존 결과가 있어 건너뜀 ' + batchResult.skipped_done + '건' : '') + ' · 라벨 ' + (batchResult.label || '')) : ''"></p>
                 <div x-show="batchResult && (batchResult.errors || []).length" class="overflow-auto" style="max-height:220px">
                   <table class="ds-table"><thead><tr><th style="width:64px">행</th><th style="width:220px">제목</th><th>저장하지 않은 이유</th></tr></thead><tbody>
                     <template x-for="e in (batchResult.errors || [])" x-bind:key="e.row">

@@ -98,6 +98,11 @@ class TestValidation(MetaImportBase):
         self.assertIn("공통 사전", r["errors"][0]["reason"])
         r2 = self._import(_csv(ROW_OK.replace("Business and Finance / Industries", "없는분류")))
         self.assertIn("사전 미등록", r2["errors"][0]["reason"])
+        # Tier1 만 맞는 오타는 조용히 Tier1 으로 잘리지 않고 그 행이 오류가 된다
+        r3 = self._import(_csv(ROW_OK.replace("Business and Finance / Industries",
+                                              "Sports / 없는하위분류")))
+        self.assertEqual((r3["saved"], r3["error_count"]), (0, 1))
+        self.assertIn("하위 분류", r3["errors"][0]["reason"])
 
     def test_grade_and_reason_consistency(self):
         self._serve()
@@ -137,6 +142,30 @@ class TestSavedShape(MetaImportBase):
         self.assertEqual(row["content_ref"]["title"], "임금 협상 결렬")
         # 결과가 있는 콘텐츠는 '대기' 가 아니다 → STEP 2 모델 실행이 덮어쓰지 않는다
         self.assertFalse(serve._is_pending_row(row))
+
+
+class TestReupload(MetaImportBase):
+    def test_existing_result_is_not_overwritten_by_reupload(self):
+        """재업로드가 검수자 교정을 되돌리지 않는다(엑셀 추출·add_contents 와 같은 정책)."""
+        serve = self._serve()
+        from prism.store import content_hash as ch
+        self._import(_csv(ROW_OK))
+        h = ch({"displayServiceName": "뉴스", "title": "임금 협상 결렬",
+                "subtitle": "조정 불성립", "body": "본문 하나"})
+        st = serve.get_store()
+        st.update_item_meta(h, {"summary": "검수자 교정"})
+        st.update_quality(h, "R", ["ad"])
+        r = self._import(_csv(ROW_OK))
+        self.assertEqual((r["saved"], r.get("skipped_done")), (0, 1))
+        row = serve.results_rows()[0]
+        self.assertEqual(row["item_meta"]["summary"], "검수자 교정")
+        self.assertEqual(row["quality_meta"]["finalGrade"], "R")
+
+    def test_duplicate_rows_in_one_file_save_once(self):
+        self._serve()
+        dup = ROW_OK.replace("리드문 하나", "리드문 둘")
+        r = self._import(_csv(ROW_OK, dup))
+        self.assertEqual((r["saved"], r.get("skipped_done")), (1, 1))
 
 
 class TestMultipartSmoke(MetaImportBase):
