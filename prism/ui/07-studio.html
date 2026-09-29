@@ -318,7 +318,7 @@
                   </div></td>
                   <td class="tnum" x-text="g.core_count||0"></td>
                   <td class="tnum" x-text="g.today||0"></td><td class="tnum" x-text="g.d7||0"></td>
-                  <td style="white-space:nowrap"><span class="ds-badge" x-bind:class="(g.signal||'').indexOf('급감')===0?'ds-badge--error':'ds-badge--status'" x-show="g.signal" x-text="g.signal"></span></td>
+                  <td style="white-space:nowrap"><span class="ds-badge" x-bind:class="(g.signal||'').indexOf('급감')===0?'ds-badge--error':'ds-badge--status'" x-show="g.signal" x-text="g.signal"></span> <span class="ds-badge ds-badge--warning" x-show="(g.review||[]).length" style="cursor:help" x-bind:data-tip="(g.review||[]).join(' / ')" data-tip-pos="top" x-bind:aria-label="'조건 재확인 · ' + (g.review||[]).join(' / ')">조건 재확인</span></td>
                   <td style="text-align:right;white-space:nowrap"><button type="button" class="copybtn" x-on:click="studioEdit(g)">조건 직접 손보기</button></td>
                   </tr>
                   <!-- 펼침(4-41): 조건 · 변경 기록 · 개별로 뺀 콘텐츠 · 최근 샘플 3건 · 동작 -->

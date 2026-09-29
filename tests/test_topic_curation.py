@@ -109,6 +109,25 @@ class TestExclusionOverlay(unittest.TestCase):
         other = next(p for p in d["single"] if p["name"] == "이재용")
         self.assertEqual(other["content_ids"], [0, 1])       # 다른 토픽은 무영향
 
+    def test_entity_pool_exclusion_survives_id_change(self):
+        """2-6 으로 식별자가 S-<이름> → S-<공통키> 로 바뀌어도 옛 식별자에 남은 개별 제외가 그대로 적용된다."""
+        rows = _rows()
+        h0 = _hash(rows, 0)
+        d = _build(rows, settings={"entity_min": 1}, ent_keys={"삼성전자": "e_samsung"},
+                   exclusions={"S-삼성전자": [{"h": h0}]})                   # 옛 키에 남은 기억
+        samsung = next(p for p in d["single"] if p["name"] == "삼성전자")
+        self.assertEqual(samsung["cluster_id"], "S-e_samsung")
+        self.assertEqual((samsung["content_ids"], samsung["excluded_n"]), ([1], 1))
+
+    def test_stale_definition_reasons(self):
+        """조건 축 0개 · 출처 부분 문자열 정의는 재확인 사유가 붙는다 · 정상 정의는 비어 있다."""
+        from prism import topicops as TO
+        cat = {"srcs": [{"k": "연합뉴스", "v": 3}]}
+        self.assertTrue(TO._stale_reasons({"req": {}, "opt": {}}, cat))
+        r = TO._stale_reasons({"req": {"srcs": ["연합"]}, "opt": {}}, cat)
+        self.assertEqual(len(r), 1); self.assertIn("연합", r[0])
+        self.assertEqual(TO._stale_reasons({"req": {"srcs": ["연합뉴스"], "cats": ["Sports"]}, "opt": {}}, cat), [])
+
     def test_event_rep_reselected(self):
         rows = _rows()
         d0 = _build(rows)
