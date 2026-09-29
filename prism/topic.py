@@ -112,9 +112,12 @@ def _row_hash(r) -> str:
 
 
 # 엔티티형 토픽
-def build_entity_topics(rows, service_names, canon, min_contents=2):
-    """단일 엔티티 → 콘텐츠. canon=엔티티→Tier1(정규화). 엔티티당 1개 풀."""
-    ent_contents = defaultdict(list)
+def build_entity_topics(rows, service_names, canon, min_contents=2, ent_keys=None):
+    """단일 엔티티 → 콘텐츠. canon=엔티티→Tier1(정규화). 엔티티당 1개 풀.
+    ent_keys(표면 문자열 → 사전 공통키)가 있으면 이표기를 한 묶음으로 모으고 식별자도
+    공통키로 낸다(2-6). 미등재 엔티티는 종전대로 이름 기준."""
+    keys = ent_keys or {}
+    ent_contents, names, surfaces = defaultdict(list), {}, defaultdict(set)
     for i, r in enumerate(rows):
         if not _eligible(r):
             continue
@@ -122,16 +125,25 @@ def build_entity_topics(rows, service_names, canon, min_contents=2):
         for e in (im.get("entities") or []):
             if _is_junk_entity(e, service_names):
                 continue
-            ent_contents[e].append(i)
+            k = keys.get(e) or e
+            names.setdefault(k, e)                      # 표시 이름 = 먼저 나온 표기(순서 고정)
+            surfaces[k].add(e)                          # 이표기 전부 · 옛 식별자(S-<이름>) 이월용
+            ent_contents[k].append(i)
     pools = []
-    for e, idxs in ent_contents.items():
+    for k, idxs in ent_contents.items():
         idxs = sorted(set(idxs))
         if len(idxs) < min_contents:
             continue
+        e = names[k]
         cat = tier1_remap(canon.get(e, "Unclassified"))
+        cid = "S-" + (k if keys.get(e) else _slug(e))
+        # 사전 등재 엔티티는 식별자가 S-<이름> → S-<공통키> 로 바뀌었다(2-6). 운영자가 옛 식별자에
+        # 남긴 개별 제외 · 편입 · 일시정지가 끊기지 않게 옛 식별자를 함께 실어 읽기 시 이월한다.
+        # ponytail: 일회성 이관 스크립트 대신 읽기 폴백 · 옛 키가 더 안 쓰이면 정리 스크립트 한 번으로 걷는다
+        legacy = sorted({"S-" + _slug(s) for s in surfaces[k]} - {cid}) if keys.get(e) else []
         pools.append({
-            "type": "single", "cluster_id": "S-" + _slug(e),
-            "name": e, "category": cat,
+            "type": "single", "cluster_id": cid, "legacy_ids": legacy,
+            "name": e, "entity_key": keys.get(e, ""), "category": cat,
             "content_ids": idxs, "count": len(idxs),
             "lifecycle": "영속", "origin": "auto",
             # 모니터링: 엔티티 커버리지(해당 엔티티 언급 콘텐츠 중 매칭 비율) = 1.0(정의상 전수)
@@ -205,7 +217,7 @@ def build_event_topics(rows, service_names, co_min=None):
         rep = sorted(members, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))[0]
         pools.append({
             "type": "composite", "cluster_id": "C-" + _slug("·".join(rep_entities[:2])),
-            "name": " · ".join(rep_entities[:3]),
+            "name": " · ".join(rep_entities[:3]), "category": _rep_category(rows, members),
             "representative_entities": rep_entities,
             "content_ids": members, "count": len(members),
             "representative_content": rep, "rep_title": _title(rows[rep]),
@@ -215,6 +227,17 @@ def build_event_topics(rows, service_names, co_min=None):
         })
     pools.sort(key=lambda p: (-p["count"], p["cluster_id"]))   # 동수 클러스터 순서도 고정
     return pools
+
+
+def _rep_category(rows, ids) -> str:
+    """묶인 콘텐츠의 최빈 Tier 1 = 토픽의 대표 도메인(4-36). 동률은 이름순으로 고정."""
+    c = Counter()
+    for i in ids or []:
+        if 0 <= i < len(rows):
+            for v in ((rows[i].get("item_meta") or {}).get("content_category") or []):
+                c[tier1_remap(v)] += 1
+    c.pop("Unclassified", None)
+    return sorted(c.items(), key=lambda x: (-x[1], x[0]))[0][0] if c else "Unclassified"
 
 
 def _dup_count(intent_sets: dict) -> int:
@@ -232,23 +255,41 @@ def _slug(s: str) -> str:
 # 매칭 의미: 필수 조건은 전부 AND, 선택 조건은 값마다 관련 묶음으로 분해(_def_bundles) ·
 # 정의를 운영자가 UI 에서 만들고 저장한다. 차원 = 카테고리(Tier1) × 인텐트 × 키워드 × 개체 속성(eattrs).
 
-def _content_dims(rows, service_names, ent_index=None):
+def cat_values(cats) -> set:
+    """콘텐츠 카테고리 매칭값 = Tier 1 과 정식 전체 경로(Tier 1 / Custom Tier 2) 둘 다.
+    경로를 Tier 1 으로 자르면 "Sports / Soccer (International)" 같은 Tier 2 조건을 걸 수 없다(2-7)."""
+    out = set()
+    for c in cats or []:
+        t1 = tier1_remap(c)
+        if t1:
+            out.add(t1)
+        parts = [x.strip() for x in str(c or "").split("/")]
+        if len(parts) > 1 and parts[1] and t1:
+            out.add(t1 + " / " + parts[1])
+    return out
+
+
+def _content_dims(rows, service_names, ent_index=None, ent_keys=None):
     """콘텐츠별 매칭 차원 사전계산: (Tier1 카테고리셋, 인텐트셋, 엔티티리스트, 자격, 개체속성리스트).
     개체속성 = 엔티티 사전 링크(content_entities)의 타입·속성 dict 들 · 사전 미사용 시 빈 리스트.
     콘텐츠 표면에 없는 속성(성별·직업 등)으로 매칭하는 축(예: '여성 스포츠인')."""
     from .entdict import row_hash
-    c_cat, c_int, c_ent, elig, c_att, c_src, c_feed = [], [], [], [], [], [], []
+    keys = ent_keys or {}
+    c_cat, c_int, c_ent, elig, c_att, c_src, c_feed, c_eid = [], [], [], [], [], [], [], []
     for r in rows:
         im = r.get("item_meta") or {}
-        c_cat.append({tier1_remap(c) for c in (im.get("content_category") or [])})
+        c_cat.append(cat_values(im.get("content_category")))
         c_int.append(set(im.get("intent") or []))
-        c_ent.append([e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)])
+        ents = [e for e in (im.get("entities") or []) if not _is_junk_entity(e, service_names)]
+        c_ent.append(ents)
+        c_eid.append({keys[e] for e in ents if e in keys})     # 엔티티 조건의 공통키 매칭 원천(2-6)
         elig.append(_eligible(r))
         c_att.append(ent_index.get(row_hash(r), []) if ent_index else [])
         f = feed_fields(r)
         c_feed.append(f)
-        c_src.append({s.lower() for s in (f["service"], f["cp"]) if s})   # 출처 축: 서비스명 · 매체명
-    return c_cat, c_int, c_ent, elig, c_att, c_src, c_feed
+        # 출처 축 4종(4-37): CP 종류 · 서비스 · 채널 · 매체. 정확 일치용 소문자 집합.
+        c_src.append({str(x).lower() for x in (f["service"], f["cp"], f["channel"], f["cp_type"]) if x})
+    return c_cat, c_int, c_ent, elig, c_att, c_src, c_feed, c_eid
 
 
 def _eattr_conds(values):
@@ -273,7 +314,26 @@ FEED_FLAG_KO = {"isExclusive": "단독", "mainNews": "주요 뉴스", "planning"
                 "subsequent": "후속 있음", "duplicate": "중복", "copyNews": "복제", "ads": "광고",
                 "adultImage": "성인 이미지", "gutter": "선정", "includePaidAd": "유료광고 포함"}
 CP_GRADES = ("DEFAULT", "BLACK", "EXCELLENT")
-FEED_LEN_LONG, FEED_LEN_SHORT, FEED_DRI_HIGH = 1500, 500, 0.3     # 사전 기준값: '긴 글' · '짧은 글' · '많이 읽힌'
+# 사전 기준값 기본치: '긴 글' · '짧은 글' · '많이 읽힌'. 정본은 운영 설정(feed_thresholds · 4-43).
+FEED_LEN_LONG, FEED_LEN_SHORT, FEED_DRI_HIGH = 1500, 500, 0.3
+# 기본 제외(스펙 132112 "말하지 않아도 걸림"): 정상 상태만 통과 + 아래 표시가 참이면 제외.
+BASE_EXCL_FLAGS = ("ads", "adultImage", "gutter", "includePaidAd")
+BASE_EXCL_STATUS = "SERVICE"
+
+
+def feed_thresholds(settings=None) -> dict:
+    """'긴 글' · '짧은 글' · '많이 읽힌' 기준값(운영 설정 · 없으면 기본치)."""
+    s = settings or {}
+
+    def _num(k, dflt, cast, lo, hi):
+        try:
+            v = cast(s.get(k))
+        except (TypeError, ValueError):
+            return dflt
+        return min(hi, max(lo, v)) if v else dflt
+    return {"len_long": _num("len_long", FEED_LEN_LONG, int, 1, 10 ** 6),
+            "len_short": _num("len_short", FEED_LEN_SHORT, int, 1, 10 ** 6),
+            "dri_high": _num("dri_high", FEED_DRI_HIGH, float, 0.0, 1.0)}
 _FEED_KEYS = ("days", "basis", "types", "neg_types", "svc_cats", "creators", "image", "video",
               "min_len", "max_len", "flags", "neg_flags", "rules", "tags", "min_dri", "cp_grades", "base_excl")
 
@@ -287,6 +347,8 @@ def feed_fields(r) -> dict:
     imgs = ref.get("image_urls")
     out = {"service": (ref.get("displayServiceName") or src.get("service") or "").strip(),
            "cp": (src.get("cp") or "").strip(),
+           "channel": (str(src.get("channel") or src.get("channel_id") or "").strip() or None),
+           "cp_type": (str(src.get("cp_type") or "").strip() or None),
            "cp_grade": (str(src.get("cp_grade") or "").strip().upper() or None),
            "type": (str(src.get("type") or "").strip().upper() or None),
            "subtype": (str(src.get("subtype") or "").strip().upper() or None),
@@ -353,7 +415,8 @@ def _feed_pass(f: dict, fd: dict, now: float):
     """원천 필드 조건 판정 → (통과, 모르는 필드명). 조건이 걸린 필드가 행에 없으면(None) 탈락하고 그 필드명을 돌려준다.
     기본 제외(광고 · 성인 · 선정 · 삭제)는 값이 있을 때만 걸린다(모르면 통과)."""
     if fd.get("base_excl", True):
-        if f.get("status") == "DELETE" or any(f.get(k) is True for k in ("ads", "adultImage", "gutter")):
+        st = f.get("status")
+        if (st is not None and st != BASE_EXCL_STATUS) or any(f.get(k) is True for k in BASE_EXCL_FLAGS):
             return False, ""
     if fd.get("days"):
         ts = f.get("org_ts") if fd.get("basis", "org") == "org" else f.get("ingest_ts")
@@ -485,10 +548,11 @@ def feed_labels(feed) -> list:
 _FEED_PERIOD = re.compile(r"(?:최근|지난)\s*(\d+)\s*(일|주|개월|달)")
 
 
-def parse_feed_text(text, catalog=None) -> dict:
+def parse_feed_text(text, catalog=None, thresholds=None) -> dict:
     """문장 → feed 조건(휴리스틱 · 모델 없음). 기간 · 형식 · 첨부 · 길이 · 표시 · 매체 등급 · 열독률 ·
     사전(catalog)에 실재하는 작성자 · 서비스 분류 · 룰 · 태그. 배제 표지는 _neg_after 로 판정."""
     t = (text or "").lower()
+    th = feed_thresholds(thresholds)
     fd = {}
 
     def neg(frag):
@@ -538,11 +602,11 @@ def parse_feed_text(text, catalog=None) -> dict:
     if neg_types:
         fd["neg_types"] = [x for x in dict.fromkeys(neg_types) if x not in types]
     if "긴 글" in t or "긴글" in t or "장문" in t:
-        fd["min_len"] = FEED_LEN_LONG
+        fd["min_len"] = th["len_long"]
     if re.search(r"(짧은\s*글|단문)(은|는|도)?\s*(빼|제외|말고)", t):
-        fd["min_len"] = max(fd.get("min_len", 0), FEED_LEN_SHORT)
+        fd["min_len"] = max(fd.get("min_len", 0), th["len_short"])
     elif re.search(r"(짧은\s*글|단문)\s*만", t):
-        fd["max_len"] = FEED_LEN_SHORT
+        fd["max_len"] = th["len_short"]
     flags, neg_flags = [], []
     for frag, k in (("단독", "isExclusive"), ("주요 뉴스", "mainNews"), ("주요뉴스", "mainNews"), ("메인 뉴스", "mainNews"),
                     ("기획", "planning"), ("포토뉴스", "isPhotoNews"), ("후속", "subsequent"),
@@ -560,7 +624,7 @@ def parse_feed_text(text, catalog=None) -> dict:
     elif "블랙" in t and neg("블랙"):
         fd["cp_grades"] = ["DEFAULT", "EXCELLENT"]
     if "많이 읽힌" in t or "열독률" in t or "많이 본" in t:
-        fd["min_dri"] = FEED_DRI_HIGH
+        fd["min_dri"] = th["dri_high"]
     cat = catalog or {}
     for key in ("creators", "svc_cats", "rules", "tags"):
         vals = [x["k"] for x in (cat.get(key) or []) if x.get("k") and str(x["k"]).lower() in t
@@ -590,15 +654,21 @@ def _def_bundles(d):
     하위호환: req 가 전혀 없으면 선택 없이 '전부 필수'(= 기존 AND 단일 묶음)로 해석."""
     sel = {k: [str(v) for v in (d.get(k) or []) if str(v).strip()] for k in _DIMS}
     req_raw = d.get("req") or {}
-    has_req = any(req_raw.get(k) for k in _DIMS)
+    # req 키가 있으면(현행 저장 형식) 값이 비어도 '필수 없음'으로 읽는다. 합친 토픽처럼
+    # 전부 선택인 정의가 '전부 필수'로 뒤집히면 묶음이 통째로 0건이 된다.
+    has_req = any(req_raw.get(k) for k in _DIMS) or isinstance(d.get("req"), dict)
     if has_req:
         req = {k: [v for v in sel[k] if v in (req_raw.get(k) or [])] for k in _DIMS}
     else:
         req = {k: list(sel[k]) for k in _DIMS}          # 하위호환: 전부 필수
     must = [(k, v) for k in _DIMS for v in req[k]]
-    # 개체 속성 조건(eattrs)은 항상 필수: '같은 개체 AND' 의미라 선택(관련 묶음) 분해가 성립하지 않음
-    must += [("eattrs", v) for v in dict.fromkeys(str(x).strip() for x in (d.get("eattrs") or []) if str(x).strip())]
     opt = [(k, v) for k in _DIMS for v in sel[k] if v not in req[k]]
+    # 개체 속성(eattrs)은 4축이 아니라 보조 축이다(4-17): 선택 사용이고, 걸릴 때는
+    # '같은 개체 AND' 의미라 선택(관련 묶음) 분해 없이 필수로 붙는다.
+    # 토픽 성립(4축 하나 이상)은 저장 경계(topicops)에서 막는다 · 여기서는 매칭만 본다.
+    must += [("eattrs", v) for v in dict.fromkeys(str(x).strip() for x in (d.get("eattrs") or []) if str(x).strip())]
+    if not must and not opt:
+        return [], [], []        # 조건 0개 → 묶음 없음. 전건을 묶는 토픽은 만들지 않는다(4-15)
     specs = []
     if opt:
         specs.append(("core", must + opt))
@@ -634,14 +704,17 @@ def _valueset_label(vs):
     return " · ".join(_label_one(k, v) for k, v in vs) if vs else "전체(조건 없음)"
 
 
-def _match_valueset(dims, vs):
+def _match_valueset(dims, vs, eligible_only=True, ent_keys=None):
     """valueset(=[(dim,value)]) 를 전부 만족(AND)하는 콘텐츠 인덱스. 키워드는 엔티티 부분일치.
-    eattrs 는 모아서 '같은 개체 AND' 로 판정."""
+    eattrs 는 모아서 '같은 개체 AND' 로 판정.
+    eligible_only=False 면 유통 불가 콘텐츠까지 센다(사후 편입 · 4-46)."""
     c_cat, c_int, c_ent, elig, c_att, c_src = dims[:6]
+    c_eid = dims[7]
+    keys = ent_keys or {}
     econds = _eattr_conds([v for k, v in vs if k == "eattrs"])
     out = []
     for i in range(len(c_cat)):
-        if not elig[i]:
+        if eligible_only and not elig[i]:
             continue
         ok = True
         for k, v in vs:
@@ -653,13 +726,17 @@ def _match_valueset(dims, vs):
                     ok = False; break
             elif k == "eattrs":
                 continue                               # 아래에서 일괄 판정
-            elif k == "srcs":                          # 출처: 서비스명 · 매체명(부분일치)
-                vl = v.lower()
-                if not any(vl == s or vl in s for s in c_src[i]):
+            elif k == "srcs":                          # 출처 4종(CP · 서비스 · 채널 · 매체) · 정확 일치
+                if v.lower() not in c_src[i]:
                     ok = False; break
-            else:  # keywords: 엔티티 부분일치
-                vl = v.lower()
-                if not any(vl in e.lower() for e in c_ent[i]):
+            else:  # keywords: 사전 공통키(이표기 묶음) 일치
+                kid = keys.get(v)
+                if kid:
+                    if kid not in c_eid[i]:
+                        ok = False; break
+                # ponytail: 미등재 엔티티는 표면 문자열 부분일치로 폴백 · 사전에 등재되면
+                # 공통키 매칭으로 자동 전환된다(등록 안내는 저장 경계에서).
+                elif not any(v.lower() in e.lower() for e in c_ent[i]):
                     ok = False; break
         if ok and econds and not _ent_match(c_att[i], econds):
             ok = False
@@ -668,29 +745,31 @@ def _match_valueset(dims, vs):
     return out
 
 
-def _neg_blocked(dims, neg) -> set:
+def _neg_blocked(dims, neg, ent_keys=None) -> set:
     """제외 조건(neg={cats,intents,keywords})에 걸리는 콘텐츠 인덱스 집합.
     차원·값 무관 하나라도 걸리면 탈락(OR) · 토픽의 모든 묶음에 공통 적용 · 키워드는 엔티티 부분일치."""
-    c_cat, c_int, c_ent, elig, _c_att, c_src = dims[:6]
+    c_cat, c_int, c_ent, _elig, _c_att, c_src = dims[:6]
+    c_eid, keys = dims[7], (ent_keys or {})
     cats = set((neg or {}).get("cats") or [])
     intents = set((neg or {}).get("intents") or [])
-    kws = [str(k).strip().lower() for k in ((neg or {}).get("keywords") or []) if str(k).strip()]
+    raw_kws = [str(k).strip() for k in ((neg or {}).get("keywords") or []) if str(k).strip()]
+    kids = {keys[k] for k in raw_kws if k in keys}         # 제외도 공통키 우선(2-6)
+    kws = [k.lower() for k in raw_kws if k not in keys]
     srcs = [str(k).strip().lower() for k in ((neg or {}).get("srcs") or []) if str(k).strip()]
-    if not (cats or intents or kws or srcs):
+    if not (cats or intents or kws or kids or srcs):
         return set()
     out = set()
     for i in range(len(c_cat)):
-        if not elig[i]:
-            continue
-        if (cats and c_cat[i] & cats) or (intents and c_int[i] & intents) or \
+        if (kids and c_eid[i] & kids) or \
+           (cats and c_cat[i] & cats) or (intents and c_int[i] & intents) or \
            (kws and any(any(k in e.lower() for e in c_ent[i]) for k in kws)) or \
-           (srcs and any(v == s or v in s for v in srcs for s in c_src[i])):
+           (srcs and any(v in c_src[i] for v in srcs)):
             out.add(i)
     return out
 
 
-def _bundle(rows, dims, cid, kind, vs, sample=0, blocked=None):
-    ids = _match_valueset(dims, vs)
+def _bundle(rows, dims, cid, kind, vs, sample=0, blocked=None, nondist=False, ent_keys=None):
+    ids = _match_valueset(dims, vs, ent_keys=ent_keys)
     if blocked:
         ids = [i for i in ids if i not in blocked]
     ranked = sorted(ids, key=lambda i: (0 if _grade(rows[i]) == "G" else 1, i))
@@ -701,28 +780,39 @@ def _bundle(rows, dims, cid, kind, vs, sample=0, blocked=None):
         "representative_content": ranked[0] if ranked else None,
         "rep_title": _title(rows[ranked[0]]) if ranked else "",
     }
+    if nondist:
+        # 유통 불가 콘텐츠 사후 편입(4-46): 건수·대표는 그대로 두고 참고 수치로만 붙인다.
+        seen = set(ids)
+        nd = [i for i in _match_valueset(dims, vs, eligible_only=False, ent_keys=ent_keys)
+              if i not in seen and not (blocked and i in blocked)]
+        if nd:
+            b["nondist_ids"], b["nondist_n"] = nd, len(nd)
     if sample:
         # i = 행 인덱스: 호출부(serve 미리보기)가 상세 화면 계약(_detail_row)으로 확장하는 키
         b["samples"] = [{"i": i, "title": _title(rows[i])[:70], "grade": _grade(rows[i])} for i in ranked[:sample]]
     return b
 
 
-def build_custom_topics(rows, service_names, defs, ent_index=None):
+def build_custom_topics(rows, service_names, defs, ent_index=None, ent_keys=None):
     """저장된 사용자 정의 목록 → 그룹 리스트. 각 그룹 = 토픽 1개가 여러 묶음(핵심+관련)으로 펼쳐짐."""
     if not defs:
         return []
-    dims = _content_dims(rows, service_names, ent_index=ent_index)
+    dims = _content_dims(rows, service_names, ent_index=ent_index, ent_keys=ent_keys)
     groups = []
     for d in defs:
         specs, must, opt = _def_bundles(d)
         neg = d.get("neg") or {}
-        blocked = _neg_blocked(dims, neg) | _feed_blocked(dims, d.get("feed"))[0]
+        blocked = _neg_blocked(dims, neg, ent_keys) | _feed_blocked(dims, d.get("feed"))[0]
         did = d.get("id") or ("U-" + _slug(d.get("name") or d.get("prompt") or "topic"))
         bundles = []
         for idx, (kind, vs) in enumerate(specs):
             cid = did + ("-core" if kind == "core" else "-r" + str(idx))
-            bundles.append(_bundle(rows, dims, cid, kind, vs, blocked=blocked))
+            bundles.append(_bundle(rows, dims, cid, kind, vs, blocked=blocked,
+                                   nondist=(kind == "core"), ent_keys=ent_keys))
+        core = next((b for b in bundles if b["kind"] == "core"), None)
         groups.append({
+            "category": _rep_category(rows, (core or {}).get("content_ids") or []),   # 대표 도메인(4-36)
+            "nondist_n": (core or {}).get("nondist_n", 0),
             "id": did, "type": "custom", "origin": "user",
             "name": d.get("name") or "(무제 토픽)", "prompt": d.get("prompt") or "",
             "must": [{"dim": k, "v": v, "label": _label_one(k, v)} for k, v in must],
@@ -735,17 +825,18 @@ def build_custom_topics(rows, service_names, defs, ent_index=None):
     return groups
 
 
-def preview_definition(rows, service_names, d, sample=6, ent_index=None):
+def preview_definition(rows, service_names, d, sample=6, ent_index=None, ent_keys=None):
     """생성 폼 실시간 미리보기: 저장 전 정의의 묶음(핵심+관련)별 매칭 수·표본."""
-    dims = _content_dims(rows, service_names, ent_index=ent_index)
+    dims = _content_dims(rows, service_names, ent_index=ent_index, ent_keys=ent_keys)
     specs, must, opt = _def_bundles(d)
-    neg_b = _neg_blocked(dims, d.get("neg") or {})
+    neg_b = _neg_blocked(dims, d.get("neg") or {}, ent_keys)
     feed_b, feed_miss = _feed_blocked(dims, d.get("feed"))
     blocked = neg_b | feed_b
     bundles = []
     for idx, (kind, vs) in enumerate(specs):
         bundles.append(_bundle(rows, dims, "prev-" + str(idx), kind, vs,
-                               sample=sample if kind == "core" else 0, blocked=blocked))
+                               sample=sample if kind == "core" else 0, blocked=blocked,
+                               ent_keys=ent_keys))
     return {
         "n_total": sum(1 for x in dims[3] if x), "bundles": bundles,
         "must_n": len(must), "opt_n": len(opt), "neg_blocked": len(neg_b),
@@ -763,7 +854,7 @@ def studio_catalog(rows, service_names=None, top_kw=30):
         if not _eligible(r):
             continue
         f = feed_fields(r)                                  # 출처 축 · 원천 필드 사전(실재값만)
-        for s in (f["service"], f["cp"]):
+        for s in (f["service"], f["cp"], f["channel"], f["cp_type"]):
             if s:
                 src_c[s] += 1
         if f["type"]:
@@ -783,8 +874,8 @@ def studio_catalog(rows, service_names=None, top_kw=30):
         for t in (im.get("intent") or []):
             if t:
                 int_c[t] += 1
-        for c in (im.get("content_category") or []):
-            cat_c[tier1_remap(c)] += 1
+        for c in cat_values(im.get("content_category")):
+            cat_c[c] += 1
         for e in (im.get("entities") or []):
             if not _is_junk_entity(e, svc):
                 ent_c[e] += 1
@@ -820,6 +911,8 @@ def meta_taxonomy():
     데이터에 아직 없는 값도 미래 매칭을 위해 조건으로 선택 가능."""
     from . import dictionaries as D
     cats = list(_TIER1_KO.keys()) if isinstance(_TIER1_KO, dict) else []
+    for t1 in list(cats):                  # Tier 1 과 Custom Tier 2 를 함께 걸 수 있게(2-7)
+        cats += [t1 + " / " + t2 for t2 in D.CONTENT_CATEGORY_TIER2.get(t1, [])]
     intents = []
 
     def _add(seq):
@@ -843,7 +936,7 @@ def _label_tokens(label):
 
 
 # 배제 표현: 라벨 언급 직후 이 표지가 이어지면 '빼 달라'는 뜻으로 해석("속보는 빼줘")
-_NEG_MARKS = ("빼", "제외", "말고", "제거", "없이")
+_NEG_MARKS = ("빼", "제외", "말고", "아닌")
 
 
 def _neg_after(t, frag):
@@ -859,7 +952,7 @@ def _neg_after(t, frag):
         p = i + 1
 
 
-def suggest_dims(text, rows, service_names=None, eattr_cands=None):
+def suggest_dims(text, rows, service_names=None, eattr_cands=None, thresholds=None):
     """자연어 문장 → 차원 제안(휴리스틱 · 모델 호출 없음, 의존성 0).
     전체 아이템메타 분류(사전) ∪ 현재 데이터 present 를 후보로. 전체 라벨 일치 또는
     라벨을 쪼갠 유의미 토큰 부분일치('인물들'→'인물·사연')까지 잡아 substring-only 누락을 줄인다.
@@ -919,7 +1012,7 @@ def suggest_dims(text, rows, service_names=None, eattr_cands=None):
     req = {"cats": list(cats), "intents": [], "keywords": list(keywords), "srcs": []}
     return {"cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs, "eattrs": eattrs, "req": req,
             "neg": {"cats": neg_cat, "intents": neg_int, "keywords": neg_kw, "srcs": neg_src},
-            "feed": parse_feed_text(text, cat)}
+            "feed": parse_feed_text(text, cat, thresholds)}
 
 
 # 토픽 탭 HTML (대시보드와 동일 토큰)
@@ -1201,6 +1294,22 @@ def _apply_exclusion(pool, key, rows, hashes, exmap):
             pool["rep_title"] = _title(rows[ranked[0]]) if ranked else ""
 
 
+def _apply_inclusion(pool, key, rows, hashes, incmap):
+    """운영자가 직접 넣은 콘텐츠를 풀에 더한다(2-17). 조건은 그대로 두는 편집 판단 ·
+    제외와 같은 키(토픽 id × content_hash)이고 겹치면 제외가 이긴다(제외를 나중에 적용)."""
+    hs = incmap.get(key)
+    ids = pool.get("content_ids")
+    if not hs or ids is None:
+        return
+    have = set(ids)
+    add = [i for i, h in enumerate(hashes) if h in hs and i not in have]
+    if not add:
+        return
+    pool["content_ids"] = sorted(ids + add)
+    pool["count"] = len(pool["content_ids"])
+    pool["included_n"] = len(add)
+
+
 def attach_nondist(pools, rows, service_names, co_min=None):
     """형성이 끝난 토픽에 **유통 불가 콘텐츠를 사후 편입**한다(13211 · 2026-09-08 정책).
 
@@ -1232,26 +1341,31 @@ def attach_nondist(pools, rows, service_names, co_min=None):
 
 
 def build_topics(results_path: str, max_single: int = 200, max_composite: int = 120,
-                 custom_defs=None, settings=None, exclusions=None, ent_index=None) -> dict:
+                 custom_defs=None, settings=None, exclusions=None, ent_index=None,
+                 ent_keys=None, inclusions=None) -> dict:
     rows = _read_jsonl(results_path)
     svc = _service_names(rows)
     canon = _canonical_entity_categories(rows, svc)
     settings = settings or {}
     co_min = max(1, int(settings.get("co_min") or CO_MIN))
     entity_min = max(1, int(settings.get("entity_min") or 2))
-    single = build_entity_topics(rows, svc, canon, min_contents=entity_min)
+    single = build_entity_topics(rows, svc, canon, min_contents=entity_min, ent_keys=ent_keys)
     composite = build_event_topics(rows, svc, co_min=co_min)
-    custom = build_custom_topics(rows, svc, custom_defs or [], ent_index=ent_index)
+    custom = build_custom_topics(rows, svc, custom_defs or [], ent_index=ent_index, ent_keys=ent_keys)
     catalog = studio_catalog(rows, svc)
     catalog["eattrs"] = eattr_catalog(ent_index)       # 엔티티 사전 속성 조건 후보(빈도순)
     attach_nondist(single + composite, rows, svc, co_min=co_min)
-    exmap = _exclusion_sets(exclusions)
-    if exmap:
+    exmap, incmap = _exclusion_sets(exclusions), _exclusion_sets(inclusions)
+    if exmap or incmap:
         hashes = [_row_hash(r) for r in rows]
         for p in single + composite:
-            _apply_exclusion(p, p["cluster_id"], rows, hashes, exmap)
+            for key in [p["cluster_id"]] + list(p.get("legacy_ids") or []):   # 옛 식별자에 남은 기억도 적용
+                _apply_inclusion(p, key, rows, hashes, incmap)
+                _apply_exclusion(p, key, rows, hashes, exmap)
         for g in custom:
             for b in (g.get("bundles") or []):
+                if b.get("kind") == "core":            # 편입은 핵심 묶음에만(관련 묶음 중복 방지)
+                    _apply_inclusion(b, g["id"], rows, hashes, incmap)
                 _apply_exclusion(b, g["id"], rows, hashes, exmap)
             g["core_count"] = next((b["count"] for b in g["bundles"] if b["kind"] == "core"), 0)
         single.sort(key=lambda p: -p["count"])

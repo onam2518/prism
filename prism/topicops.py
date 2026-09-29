@@ -31,7 +31,9 @@ def _studio_config() -> dict:
     settings = cfg.get("settings") if isinstance(cfg.get("settings"), dict) else {}
     exclusions = cfg.get("exclusions") if isinstance(cfg.get("exclusions"), dict) else {}
     paused_auto = cfg.get("paused_auto") if isinstance(cfg.get("paused_auto"), list) else []
-    return {"custom": custom, "settings": settings, "exclusions": exclusions, "paused_auto": paused_auto}
+    inclusions = cfg.get("inclusions") if isinstance(cfg.get("inclusions"), dict) else {}
+    return {"custom": custom, "settings": settings, "exclusions": exclusions,
+            "inclusions": inclusions, "paused_auto": paused_auto}
 
 
 def _save_studio_config(cfg: dict):
@@ -40,10 +42,13 @@ def _save_studio_config(cfg: dict):
         st.save_report("topic_studio", {"custom": cfg.get("custom") or [],
                                         "settings": cfg.get("settings") or {},
                                         "exclusions": cfg.get("exclusions") or {},
+                                        "inclusions": cfg.get("inclusions") or {},
                                         "paused_auto": cfg.get("paused_auto") or []})
 
 
-TOPIC_STATUS = ("active", "paused", "draft", "archived")      # 운영자 상태 · 기간 0건 자동 비활성(스냅샷)과 별개
+TOPIC_STATUS = ("active", "paused", "draft", "archived")      # 운영자 상태 네 가지
+SYS_INACTIVE = "inactive"        # 시스템 상태(2-8): 운영 설정 기간 0건이면 유통을 멈추고, 재매핑되면 되살아난다
+STALL_DAYS, INACTIVE_DAYS = 3, 14        # 신호 기본값(운영 설정 stall_days · inactive_days 로 덮어씀)
 _LOG_CAP = 30
 
 
@@ -51,9 +56,26 @@ def _log_add(d: dict, what: str, who: str = ""):
     d["log"] = ((d.get("log") or [])[-(_LOG_CAP - 1):]) + [{"ts": time.time(), "who": (who or "")[:80], "what": what[:120]}]
 
 
-def _row_stats(ids, rows, now=None):
-    """묶인 콘텐츠 인덱스 → 오늘 · 7일 · 지난 7일 건수와 신호(정체 N일 · 급감). 적재 시각(_ts) 기준 · 시각 없는 행은 집계 제외."""
+def _stat_days(settings=None) -> tuple:
+    """정체 · 시스템 비활성 판정 기간(운영 설정 · 없으면 기본값). 비활성은 정체보다 길어야 한다."""
+    s = settings or {}
+
+    def _d(k, dflt):
+        try:
+            v = int(s.get(k) or 0)
+        except (TypeError, ValueError):
+            return dflt
+        return min(365, v) if v > 0 else dflt
+    stall = _d("stall_days", STALL_DAYS)
+    return stall, max(stall, _d("inactive_days", INACTIVE_DAYS))
+
+
+def _row_stats(ids, rows, now=None, settings=None):
+    """묶인 콘텐츠 인덱스 → 오늘 · 7일 · 지난 7일 건수와 신호(정체 N일 · 급감 · 비활성).
+    적재 시각(_ts) 기준 · 시각 없는 행은 집계 제외.
+    비활성(2-8)은 저장 값이 아니라 매번 다시 세는 판정이라 재매핑되면 그대로 되살아난다."""
     now = now or time.time()
+    stall_min, inactive_min = _stat_days(settings)
     ts = [float(rows[i].get("_ts") or 0) for i in ids if 0 <= i < len(rows)]
     ts = [t for t in ts if t > 0]
     today = sum(1 for t in ts if t >= now - 86400)
@@ -61,12 +83,17 @@ def _row_stats(ids, rows, now=None):
     prev7 = sum(1 for t in ts if now - 14 * 86400 <= t < now - 7 * 86400)
     last = max(ts) if ts else 0
     stall = int((now - last) // 86400) if last else 0
+    # 시각을 모르는 행은 집계에서 빠질 뿐 '매핑 0건'이 아니다 · 묶인 게 있으면 비활성으로 보지 않는다
+    inactive = (stall >= inactive_min) if ts else not ids
     signal = ""
-    if prev7 >= 20 and d7 < prev7 * 0.5:
+    if inactive:
+        signal = "비활성"
+    elif prev7 >= 20 and d7 < prev7 * 0.5:
         signal = "급감"
-    elif stall >= 3:
+    elif stall >= stall_min:
         signal = "정체 %d일" % stall
-    return {"today": today, "d7": d7, "prev7": prev7, "stall_days": stall, "signal": signal}
+    return {"today": today, "d7": d7, "prev7": prev7, "stall_days": stall,
+            "inactive": inactive, "signal": signal}
 
 
 def topics_data(team=None) -> dict:
@@ -95,7 +122,8 @@ def _topics_compute(team=None) -> dict:
             # 초안 · 보관은 매칭하지 않는다(정의만 보존) · 일시정지는 매칭·건수 유지(유통만 멈춤 · 소비처가 status 로 거른다)
             live = [d for d in cfg["custom"] if (d.get("status") or "active") in ("active", "paused")]
             out = TP.build_topics(rpath, custom_defs=live, settings=cfg["settings"],
-                                  exclusions=cfg["exclusions"], ent_index=_ent_index())
+                                  exclusions=cfg["exclusions"], ent_index=_ent_index(),
+                                  ent_keys=_ent_keys(rows, team), inclusions=cfg["inclusions"])
             out["exclusions"] = cfg["exclusions"]
             _attach_status(out, cfg, rows)
             try:                                     # 추천 카드 원천: 최근 48시간 언급 급증 엔티티(전역)
@@ -116,6 +144,24 @@ def _topics_compute(team=None) -> dict:
 _TOPIC_SNAP_CAP = 90                                  # 보관 스냅샷 수(시간별 약 4일 · 추이 원천)
 
 
+def _stale_reasons(d: dict, catalog: dict) -> list:
+    """저장 시점 규칙과 지금 규칙이 달라 조용히 0건이 될 수 있는 정의를 짚는다(배포 전 결정 사항 · 검토 지적).
+    (1) 조건 축 0개 정의는 4-15 이후 묶음을 만들지 않는다 (2) 출처 축은 4-37 이후 정확 일치라
+    부분 문자열로 저장된 값('연합' 으로 '연합뉴스' 잡기)은 더 안 걸린다. 화면은 이 목록이 비어 있지 않으면
+    '조건 재확인' 을 보인다 · 값을 고쳐 저장하면 사라진다."""
+    from . import topic as TP
+    reasons = []
+    req, opt = (d.get("req") or {}), (d.get("opt") or {})
+    if not any((req.get(k) or opt.get(k)) for k in TP._DIMS):
+        reasons.append("조건 축이 없어 묶음이 만들어지지 않습니다 · 분야·의도·엔티티·출처 중 하나를 지정하세요")
+    have = {str(x.get("k", "")).strip().lower() for x in (catalog.get("srcs") or []) if isinstance(x, dict)}
+    if have:
+        miss = [v for v in list(req.get("srcs") or []) + list(opt.get("srcs") or []) if str(v).strip().lower() not in have]
+        if miss:
+            reasons.append("출처 조건이 지금 데이터 값과 정확히 일치하지 않습니다(부분 일치는 더 쓰지 않음): " + ", ".join(map(str, miss[:5])))
+    return reasons
+
+
 def _attach_status(out: dict, cfg: dict, rows: list):
     """토픽 행에 운영자 상태 · 변경 기록 · 오늘/7일/신호를 붙이고, 초안 · 보관 정의는 건수 없는 행으로 덧붙인다."""
     from . import topic as TP
@@ -129,7 +175,9 @@ def _attach_status(out: dict, cfg: dict, rows: list):
         g["log"] = (d.get("log") or [])[-3:]
         g["feed_chips"] = TP.feed_labels(d.get("feed"))
         core = next((b.get("content_ids") or [] for b in (g.get("bundles") or []) if b.get("kind") == "core"), [])
-        g.update(_row_stats(core, rows, now))
+        g.update(_row_stats(core, rows, now, cfg["settings"]))
+        g["sys_status"] = SYS_INACTIVE if (g["status"] == "active" and g["inactive"]) else g["status"]
+        g["review"] = _stale_reasons(d, out.get("catalog") or {})   # 규칙 변경으로 조용히 0건이 될 옛 정의 표시
     seen = {g.get("id") for g in out.get("custom") or []}
     for d in cfg["custom"]:
         if d.get("id") in seen or (d.get("status") or "active") in ("active", "paused"):
@@ -140,11 +188,14 @@ def _attach_status(out: dict, cfg: dict, rows: list):
             "neg": [{"dim": k, "v": v} for k in TP._DIMS for v in ((d.get("neg") or {}).get(k) or [])],
             "bundles": [], "n_bundles": 0, "core_count": 0, "status": d.get("status"), "via": d.get("via") or "manual",
             "log": (d.get("log") or [])[-3:], "feed_chips": TP.feed_labels(d.get("feed")),
+            "sys_status": d.get("status"), "inactive": True,
             "today": 0, "d7": 0, "prev7": 0, "stall_days": 0, "signal": ""})
     for key in ("single", "composite"):
         for t in out.get(key) or []:
-            t["status"] = "paused" if t.get("cluster_id") in paused else "active"
-            t.update(_row_stats(t.get("content_ids") or [], rows, now))
+            ids = [t.get("cluster_id")] + list(t.get("legacy_ids") or [])   # 옛 식별자의 일시정지도 승계
+            t["status"] = "paused" if any(i in paused for i in ids) else "active"
+            t.update(_row_stats(t.get("content_ids") or [], rows, now, cfg["settings"]))
+            t["sys_status"] = SYS_INACTIVE if (t["status"] == "active" and t["inactive"]) else t["status"]
 
 
 def _topic_rows_brief(data: dict) -> dict:
@@ -257,6 +308,32 @@ def _ent_index() -> dict:
     return _SV._agg_cached(("entidx", ""), lambda: ED.attr_index(st, team=""))
 
 
+def _ent_keys(rows, team=None) -> dict:
+    """엔티티 표면 문자열 → 사전 공통키(entity_id). 토픽 엔티티 조건이 자유 문자열이 아니라
+    공통키와 이표기 묶음을 참조하게 하는 연결점(2-6).
+    30s 집계 캐시(_ent_index 와 같은 규칙 · 등재·수정은 _agg_bump 로 즉시 무효화)."""
+    st = _SV.get_store()
+    if not (st and hasattr(st, "ent_id_by_alias")) or not rows:
+        return {}
+    from . import entdict as ED
+
+    def _calc():
+        names = {e for r in rows for e in ((r.get("item_meta") or {}).get("entities") or []) if e}
+        return ED.canon_keys(st, names)
+    return _SV._agg_cached(("entkeys", team or ""), _calc)
+
+
+def _unknown_entities(names) -> list:
+    """사전에 없는 엔티티 조건값. 값을 새로 만들지 않고 등록 안내로 돌린다(2-21)."""
+    st = _SV.get_store()
+    ns = [n for n in dict.fromkeys(names or []) if n]
+    if not ns or not (st and hasattr(st, "ent_id_by_alias")):
+        return []
+    from . import entdict as ED
+    known = ED.canon_keys(st, ns)
+    return [n for n in ns if n not in known]
+
+
 def _sanitize_def(d: dict, existing_ids=None) -> dict:
     """사용자 정의 정규화·검증. id 없으면 생성(중복 회피)."""
     from . import topic as TP
@@ -280,11 +357,12 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
     # 개체 속성 조건: 허용 키('key:value')만 · 항상 필수(같은 개체 AND) · 최대 10개
     from . import entdict as ED
     eattrs = [s for s in _strlist(d.get("eattrs"), n=10) if ED.parse_eattr(s)]
-    # 제외(neg): 선택과 독립인 배제 조건. 같은 값이 선택에도 있으면 선택을 우선(자기모순 방지).
+    # 제외(neg): 같은 축에서 포함과 겹치면 제외가 이긴다(4-14 · 해석 단계와 같은 규칙).
     ng = d.get("neg") or {}
-    neg = {k: [v for v in _strlist(ng.get(k))
-               if v not in {"cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs}[k]]
-           for k in TP._DIMS}
+    neg = {k: _strlist(ng.get(k)) for k in TP._DIMS}
+    sel_all = {"cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs}
+    for k in TP._DIMS:
+        sel_all[k][:] = [v for v in sel_all[k] if v not in neg[k]]
     # 필수(req): 선택된 값의 부분집합만 인정(값 없으면 하위호환으로 topic 이 '전부 필수' 처리)
     rq = d.get("req") or {}
     sel = {"cats": set(cats), "intents": set(intents), "keywords": set(keywords), "srcs": set(srcs)}
@@ -305,7 +383,7 @@ def _sanitize_def(d: dict, existing_ids=None) -> dict:
             "talk_model": (d.get("talk_model") or "").strip()[:80]}
 
 
-def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
+def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool, thresholds=None):
     """자연어 설명 → 토픽 차원(카테고리·인텐트·키워드)을 선택 모델로 매핑.
     허용 목록(현재 데이터의 실재 값)으로만 제약 · 실패 시 (None, 사유) 반환(호출부에서 휴리스틱 폴백)."""
     from . import topic as TP, meta_prompts as MP
@@ -369,7 +447,7 @@ def _studio_llm_suggest(text: str, model: str, rows, svc, mock: bool):
     if not srcs and not neg["srcs"]:                       # 모델이 출처를 비우면 문장 휴리스틱(사전 실재값)으로 보강
         srcs, neg["srcs"] = TP.parse_srcs_text(text, cat)
     # 원천 조건(feed): 허용 값만 · 모델이 비우면 문장 휴리스틱으로 보강
-    feed = TP.sanitize_feed(obj.get("feed")) or TP.parse_feed_text(text, cat)
+    feed = TP.sanitize_feed(obj.get("feed")) or TP.parse_feed_text(text, cat, thresholds)
     sug = {"cats": cats, "intents": intents, "keywords": keywords, "srcs": srcs, "eattrs": eattrs,
            "req": {"cats": [c for c in m_cats if c in cats], "intents": [i for i in m_int if i in intents],
                    "keywords": [k for k in m_kw if k in keywords], "srcs": []},
@@ -443,7 +521,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         # 개체 속성 조건이 없으면 인덱스 자체가 필요 없다(_content_dims 가 ent_index=None 이면
         # 빈 속성 목록을 쓴다) — 타이핑 중 대부분의 미리보기가 사전 조회를 아예 건너뛴다.
         eidx = _ent_index() if d.get("eattrs") else None
-        pv = (TP.preview_definition(rows, svc, d, ent_index=eidx) if rows else
+        pv = (TP.preview_definition(rows, svc, d, ent_index=eidx, ent_keys=_ent_keys(rows, team)) if rows else
               {"n_total": 0, "bundles": [], "must_n": 0, "opt_n": 0})
         # 표본을 상세 화면 계약(_detail_row)으로 확장: 미리보기 배지 클릭 → 공통 스플릿뷰로 바로 열람
         for b in pv.get("bundles") or []:
@@ -460,18 +538,19 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
                     "suggest": {"cats": [], "intents": [], "keywords": [], "srcs": [], "eattrs": [],
                                 "req": {"cats": [], "intents": [], "keywords": [], "srcs": []},
                                 "neg": {"cats": [], "intents": [], "keywords": [], "srcs": []},
-                                "feed": TP.parse_feed_text(text)}}
+                                "feed": TP.parse_feed_text(text, thresholds=_studio_config()["settings"])}}
         model = (data.get("model") or "").strip()          # "" = 기본 실행 모델
+        th = _studio_config()["settings"]                  # 긴 글 · 많이 읽힌 기준값(4-43)
         via, route, sug = "llm", "", None
         try:
-            sug, route = _studio_llm_suggest(text, model, rows, svc, mock)
+            sug, route = _studio_llm_suggest(text, model, rows, svc, mock, th)
         except Exception as e:
             sug, route = None, str(e)[:80]
         # 모델 호출 불가·실패·빈 결과 → 휴리스틱(즉시·의존성 0) 폴백. 버튼이 헛돌지 않게.
         core_empty = not sug or not (sug.get("cats") or sug.get("intents") or sug.get("keywords") or sug.get("eattrs")
                                      or any(v for k, v in (sug.get("neg") or {}).items() if k != "srcs"))
         if core_empty:                               # 메타 축이 비면 휴리스틱 · 모델이 준 출처 · 원천 조건은 살린다
-            h = TP.suggest_dims(text, rows, svc, eattr_cands=TP.eattr_catalog(_ent_index()))
+            h = TP.suggest_dims(text, rows, svc, eattr_cands=TP.eattr_catalog(_ent_index()), thresholds=th)
             if sug:
                 h["srcs"] = sug.get("srcs") or h["srcs"]
                 h["neg"]["srcs"] = (sug.get("neg") or {}).get("srcs") or h["neg"]["srcs"]
@@ -489,7 +568,12 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
             # def 누락(키 오타 포함)이 조용히 '(무제 토픽)' 을 만드는 것 방지 — 명시 에러로 반환
             return {"ok": False, "error": "토픽 정의(def)가 필요합니다"}
         d = _sanitize_def(data.get("def") or {}, existing_ids=[c.get("id") for c in custom])
+        if not any(d[k] for k in TP._DIMS):
+            # 4축 중 하나도 없으면 토픽이 성립하지 않는다(유통 가능 전건을 묶는 토픽 금지 · 4-15).
+            # 개체 속성은 보조 축이라 단독으로는 성립시키지 않는다(4-17).
+            return {"ok": False, "error": "조건을 하나 이상 지정해야 합니다(분야 · 의도 · 엔티티 · 출처)"}
         dups = similar_topics(d, custom)             # 저장 전 기존 정의와 비교(경고 전용 · 저장은 진행)
+        unknown = _unknown_entities(list(d["keywords"]) + list(d["neg"].get("keywords") or []))
         idx = next((i for i, c in enumerate(custom) if c.get("id") == d["id"]), -1)
         prev = custom[idx] if idx >= 0 else {}
         d["log"] = list(prev.get("log") or [])
@@ -498,7 +582,8 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         # 활성 잠금: 지금 데이터에 0건이면 활성으로 저장하지 않는다(초안) · 일시정지·보관 요청은 그대로
         locked = False
         if d["status"] == "active" and rows:
-            pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index())
+            pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index(),
+                                       ent_keys=_ent_keys(rows, team))
             if not any(b.get("count") for b in pv["bundles"] if b.get("kind") == "core"):
                 d["status"], locked = "draft", True
         _log_add(d, ("수정" if idx >= 0 else "만듦") + (" · 말로" if data.get("talk") else "")
@@ -508,10 +593,14 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         else:
             custom.append(d)
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions,
-                             "paused_auto": cfg["paused_auto"]})
+                             "inclusions": cfg["inclusions"], "paused_auto": cfg["paused_auto"]})
         out = dict(_SV.topics_data(team))
         out["similar"] = dups
         out["saved"] = {"id": d["id"], "status": d["status"], "locked": locked}
+        if unknown:                     # 사전에 없는 엔티티: 값을 만들지 않고 등록으로 안내(2-21)
+            out["unknown_entities"] = unknown
+            out["notice"] = ("엔티티 사전에 없는 값: " + " · ".join(unknown)
+                             + " · 사전에 등록하면 이 조건에 자동 반영됩니다(값을 새로 만들지 않습니다)")
         return out
     elif action == "status":
         # 운영자 스위치: 활성 ↔ 일시정지 · 초안 → 활성(0건이면 잠금) · 보관 ↔ 복구. 자동 토픽은 cluster_id 로 일시정지를 기억
@@ -524,26 +613,71 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
             if st == "paused":
                 paused_auto.append(cid)
             _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions,
-                                 "paused_auto": paused_auto})
+                                 "inclusions": cfg["inclusions"], "paused_auto": paused_auto})
             return dict(_SV.topics_data(team), ok=True, saved={"id": cid, "status": st, "locked": False})
         d = dict(custom[idx])
         locked = False
         if st == "active" and rows:
-            pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index())
+            pv = TP.preview_definition(rows, svc, d, sample=0, ent_index=_ent_index(),
+                                       ent_keys=_ent_keys(rows, team))
             if not any(b.get("count") for b in pv["bundles"] if b.get("kind") == "core"):
                 st, locked = "draft", True
         _log_add(d, "상태 " + (d.get("status") or "active") + " → " + st + (" · 0건이라 잠금" if locked else ""), who)
         d["status"] = st
         custom[idx] = d
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions,
-                             "paused_auto": paused_auto})
+                             "inclusions": cfg["inclusions"], "paused_auto": paused_auto})
         return dict(_SV.topics_data(team), ok=True, saved={"id": cid, "status": st, "locked": locked})
-    elif action == "delete":
+    elif action in ("delete", "archive"):
+        # 보관이 삭제를 대신한다(3-11): 목록에서만 숨기고 정의 · 개별 제외 목록은 그대로 둔다(복구 가능).
         cid = (data.get("id") or "").strip()
-        custom = [c for c in custom if c.get("id") != cid]
-        exclusions.pop(cid, None)               # 토픽 삭제 시 그 토픽의 제외 목록도 정리
+        idx = next((i for i, c in enumerate(custom) if c.get("id") == cid), -1)
+        if idx < 0:
+            return {"ok": False, "error": "토픽을 찾을 수 없습니다"}
+        d = dict(custom[idx])
+        _log_add(d, "상태 " + (d.get("status") or "active") + " → archived · 보관", who)
+        d["status"] = "archived"
+        custom[idx] = d
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions,
-                             "paused_auto": cfg["paused_auto"]})
+                             "inclusions": cfg["inclusions"], "paused_auto": cfg["paused_auto"]})
+        return dict(_SV.topics_data(team), ok=True, saved={"id": cid, "status": "archived", "locked": False})
+    elif action == "merge":
+        # 같은 사안이 갈라졌을 때 두 토픽을 하나로(2-16): 조건 · 제외 · 개별 제외 목록을 합치고 원본은 보관.
+        cid, into = (data.get("id") or "").strip(), (data.get("into") or "").strip()
+        i_src = next((i for i, c in enumerate(custom) if c.get("id") == cid), -1)
+        i_dst = next((i for i, c in enumerate(custom) if c.get("id") == into), -1)
+        if cid == into or i_src < 0 or i_dst < 0:
+            return {"ok": False, "error": "합칠 토픽 두 개(id · into)가 필요합니다"}
+        src, dst = custom[i_src], dict(custom[i_dst])
+
+        def _union(a, b):
+            return list(dict.fromkeys(list(a or []) + list(b or [])))
+        for k in TP._DIMS:
+            dst[k] = _union(dst.get(k), src.get(k))
+            dst["neg"] = dict(dst.get("neg") or {}, **{k: _union((dst.get("neg") or {}).get(k),
+                                                                 (src.get("neg") or {}).get(k))})
+            # 합친 뒤에는 한쪽에만 있던 필수 조건이 남으면 반대쪽 콘텐츠가 통째로 빠진다 → 교집합만 필수로
+            dst["req"] = dict(dst.get("req") or {}, **{k: [v for v in ((dst.get("req") or {}).get(k) or [])
+                                                          if v in ((src.get("req") or {}).get(k) or [])]})
+        dst["eattrs"] = _union(dst.get("eattrs"), src.get("eattrs"))
+        for k in TP._DIMS:                      # 제외 우선은 합칠 때도 유지(4-14)
+            dst[k] = [v for v in dst[k] if v not in (dst["neg"].get(k) or [])]
+            dst["req"][k] = [v for v in dst["req"][k] if v in dst[k]]
+        inclusions = dict(cfg["inclusions"] or {})
+        for m in (exclusions, inclusions):          # 개별 제외 · 직접 편입 기억도 합친 쪽으로 옮긴다
+            if m.get(cid):
+                m[into] = (m.get(into) or []) + m[cid]
+            m.pop(cid, None)
+        # ponytail: 합친 토픽의 핵심 묶음은 조건 교집합이라 0건일 수 있다 · 합집합은 관련 묶음이 표현한다.
+        # 현황 건수까지 합집합으로 올리려면 core_count(핵심 묶음 건수) 계약을 먼저 바꿔야 한다.
+        _log_add(dst, "병합 ← " + (src.get("name") or cid), who)
+        custom[i_dst] = dst
+        arch = dict(src, status="archived")
+        _log_add(arch, "병합 → " + (dst.get("name") or into) + " · 보관", who)
+        custom[i_src] = arch
+        _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions,
+                             "inclusions": inclusions, "paused_auto": cfg["paused_auto"]})
+        return dict(_SV.topics_data(team), ok=True, saved={"id": into, "merged": cid})
     elif action == "settings":
         s = data.get("settings") or {}
         settings = dict(cfg["settings"])
@@ -551,8 +685,41 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
             settings["co_min"] = max(1, min(6, int(s.get("co_min") or 2)))
         if s.get("entity_min") is not None:
             settings["entity_min"] = max(1, min(10, int(s.get("entity_min") or 2)))
+        for k, lo, hi, cast in (("len_long", 1, 10 ** 6, int), ("len_short", 1, 10 ** 6, int),
+                                ("dri_high", 0.0, 1.0, float),          # 사전 기준값(4-43)
+                                ("stall_days", 1, 365, int), ("inactive_days", 1, 365, int)):
+            if s.get(k) is not None:                                    # 비활성 판정 기간(2-8)
+                try:
+                    settings[k] = max(lo, min(hi, cast(s.get(k))))
+                except (TypeError, ValueError):
+                    return {"ok": False, "error": "설정값이 숫자가 아닙니다: " + k}
         _save_studio_config({"custom": custom, "settings": settings, "exclusions": exclusions,
-                             "paused_auto": cfg["paused_auto"]})
+                             "inclusions": cfg["inclusions"], "paused_auto": cfg["paused_auto"]})
+    elif action in ("include", "uninclude"):
+        # 조건에 안 걸린 콘텐츠를 운영자가 직접 넣는다(2-17) · 되돌리기는 uninclude.
+        # 제외와 같은 키(토픽 id × content_hash)이고, 둘 다 있으면 제외가 이긴다.
+        tid = (data.get("id") or "").strip()[:80]
+        h = (data.get("hash") or "").strip()[:80]
+        if not tid or not h:
+            return {"ok": False, "error": "토픽 id 와 콘텐츠 hash 가 필요합니다"}
+        inclusions = {k: list(v or []) for k, v in (cfg["inclusions"] or {}).items()}
+        lst = [e for e in (inclusions.get(tid) or [])
+               if (e.get("h") if isinstance(e, dict) else e) != h]
+        if action == "include":
+            lst.append({"h": h, "title": str(data.get("title") or "")[:80],
+                        "topic": str(data.get("topic") or "")[:60], "ts": time.time()})
+            lst = lst[-300:]                     # 토픽당 상한(폭주 방지 · 제외와 동일)
+            exclusions[tid] = [e for e in (exclusions.get(tid) or [])
+                               if (e.get("h") if isinstance(e, dict) else e) != h] or []
+            if not exclusions[tid]:
+                exclusions.pop(tid, None)
+        if lst:
+            inclusions[tid] = lst
+        else:
+            inclusions.pop(tid, None)
+        _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions,
+                             "inclusions": inclusions, "paused_auto": cfg["paused_auto"]})
+        return _SV.topics_data(team)
     elif action in ("exclude", "restore"):
         # 큐레이션 오버레이: 토픽(자동=cluster_id · 사용자=그룹 id)에서 콘텐츠(hash) 개별 제외/복구.
         # 매칭 정의는 그대로 두는 편집 판단 — 메타 교정(검수)·정의 수정과 구분되는 세 번째 수단.
@@ -571,7 +738,7 @@ def topic_studio_action(data: dict, mock: bool = False, team=None, who: str = ""
         else:
             exclusions.pop(tid, None)
         _save_studio_config({"custom": custom, "settings": cfg["settings"], "exclusions": exclusions,
-                             "paused_auto": cfg["paused_auto"]})
+                             "inclusions": cfg["inclusions"], "paused_auto": cfg["paused_auto"]})
     else:
         return {"ok": False, "error": "알 수 없는 동작"}
     return _SV.topics_data(team)

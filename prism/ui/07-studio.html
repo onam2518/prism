@@ -312,7 +312,7 @@
                   <td class="tnum" x-text="g.core_count||0"></td>
                   <td class="tnum" x-text="g.today||0"></td><td class="tnum" x-text="g.d7||0"></td>
                   <td style="white-space:nowrap"><span class="ds-badge" x-bind:class="(g.signal||'').indexOf('급감')===0?'ds-badge--error':'ds-badge--status'" x-show="g.signal" x-text="g.signal"></span></td>
-                  <td style="text-align:right;white-space:nowrap"><button type="button" class="copybtn" x-on:click="talkEdit(g)">말로 다듬기</button> <button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="copybtn" x-show="topicAdmin && g.status!=='archived'" x-on:click="topicStatusSet(g,'archived')">보관</button><button type="button" class="copybtn" x-show="topicAdmin && g.status==='archived'" x-on:click="topicStatusSet(g,'active')">복구</button> <button type="button" class="copybtn" x-on:click="studioDelete(g)">삭제</button></td>
+                  <td style="text-align:right;white-space:nowrap"><button type="button" class="copybtn" x-on:click="talkEdit(g)">말로 다듬기</button> <button type="button" class="copybtn" x-on:click="studioEdit(g)">수정</button> <button type="button" class="copybtn" x-show="topicAdmin && g.status!=='archived'" x-on:click="topicStatusSet(g,'archived')">보관</button><button type="button" class="copybtn" x-show="topicAdmin && g.status==='archived'" x-on:click="topicStatusSet(g,'active')">복구</button></td>
                   </tr>
               </template>
               <template x-for="t in (topicData?topicData.single:[])" x-bind:key="t.cluster_id">

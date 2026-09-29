@@ -52,5 +52,19 @@ class TestAttachNondist(unittest.TestCase):
         self.assertNotIn("nondist_n", pools[0])
 
 
+class TestCustomNondist(unittest.TestCase):
+    """4-46: 조건형(사용자 정의) 토픽도 유통 불가 콘텐츠를 사후 편입한다(참고 수치)."""
+
+    def test_custom_bundle_carries_nondist(self):
+        from prism import topic as TP
+        rows = [_row("a", ["삼성전자"]), _row("b", ["삼성전자"], grade="R"),
+                _row("c", ["삼성전자"], grade="", review="yellow")]
+        g = TP.build_custom_topics(rows, set(), [{"id": "U-s", "name": "사회",
+                                                  "cats": ["News and Politics"]}])[0]
+        core = next(b for b in g["bundles"] if b["kind"] == "core")
+        self.assertEqual(core["content_ids"], [0])             # 건수 · 대표는 유통 가능분만
+        self.assertEqual((core["nondist_ids"], g["nondist_n"]), ([1, 2], 2))
+
+
 if __name__ == "__main__":
     unittest.main()

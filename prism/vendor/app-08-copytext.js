@@ -352,11 +352,13 @@ window.PRISM_APP_PARTS.push(() => ({
           setTimeout(() => URL.revokeObjectURL(u), 60000);
         } catch (e) { this._err('리포트 열기 실패'); }
       },
+      // 유통 내보내기는 활성 토픽만(2-18) · 일시정지 · 초안 · 보관 · 시스템 비활성은 빼고 내려간다
       exportTopics() {
         const d = this.topicData || {}; const rows = [['구분', '토픽', '구성', '콘텐츠']];
-        (d.custom || []).forEach((g) => rows.push(['수동', g.name, (g.prompt || ''), g.core_count || '']));
-        (d.single || []).forEach((t) => rows.push(['자동 · 엔티티형', t.cluster_id, (t.entities || t.rep_entities || []).join(' · '), t.n_contents || '']));
-        (d.composite || []).forEach((t) => rows.push(['자동 · 사건형', t.cluster_id, (t.rep_entities || t.entities || []).join(' · '), t.n_contents || '']));
+        const live = (t) => (t.sys_status || t.status || 'active') === 'active';
+        (d.custom || []).filter(live).forEach((g) => rows.push(['수동', g.name, (g.prompt || ''), g.core_count || '']));
+        (d.single || []).filter(live).forEach((t) => rows.push(['자동 · 엔티티형', t.cluster_id, (t.entities || t.rep_entities || []).join(' · '), t.n_contents || '']));
+        (d.composite || []).filter(live).forEach((t) => rows.push(['자동 · 사건형', t.cluster_id, (t.rep_entities || t.entities || []).join(' · '), t.n_contents || '']));
         this._dl('prism_topics.csv', rows);
       },
       exportGolden() {                       // 정답셋 엑셀(CSV) 다운로드

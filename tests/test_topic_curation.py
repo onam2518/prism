@@ -89,7 +89,9 @@ class TestEligibility(unittest.TestCase):
         rows = _rows()
         pv = TP.preview_definition(rows, {"뉴스"}, {"name": "x", "cats": [], "intents": [], "keywords": []})
         self.assertEqual(pv["n_total"], 3)
-        self.assertEqual(pv["bundles"][0]["count"], 3)       # 조건 없음 = 자격 전수
+        self.assertEqual(pv["bundles"], [])                  # 조건 0개 = 묶음 없음(전건 묶음 금지 · 4-15)
+        pv = TP.preview_definition(rows, {"뉴스"}, {"name": "x", "cats": ["Business and Finance"]})
+        self.assertEqual(pv["bundles"][0]["count"], 2)       # 축 하나면 성립(자격 있는 2건)
 
 
 class TestExclusionOverlay(unittest.TestCase):
@@ -106,6 +108,25 @@ class TestExclusionOverlay(unittest.TestCase):
         self.assertEqual(samsung["excluded_n"], 1)
         other = next(p for p in d["single"] if p["name"] == "이재용")
         self.assertEqual(other["content_ids"], [0, 1])       # 다른 토픽은 무영향
+
+    def test_entity_pool_exclusion_survives_id_change(self):
+        """2-6 으로 식별자가 S-<이름> → S-<공통키> 로 바뀌어도 옛 식별자에 남은 개별 제외가 그대로 적용된다."""
+        rows = _rows()
+        h0 = _hash(rows, 0)
+        d = _build(rows, settings={"entity_min": 1}, ent_keys={"삼성전자": "e_samsung"},
+                   exclusions={"S-삼성전자": [{"h": h0}]})                   # 옛 키에 남은 기억
+        samsung = next(p for p in d["single"] if p["name"] == "삼성전자")
+        self.assertEqual(samsung["cluster_id"], "S-e_samsung")
+        self.assertEqual((samsung["content_ids"], samsung["excluded_n"]), ([1], 1))
+
+    def test_stale_definition_reasons(self):
+        """조건 축 0개 · 출처 부분 문자열 정의는 재확인 사유가 붙는다 · 정상 정의는 비어 있다."""
+        from prism import topicops as TO
+        cat = {"srcs": [{"k": "연합뉴스", "v": 3}]}
+        self.assertTrue(TO._stale_reasons({"req": {}, "opt": {}}, cat))
+        r = TO._stale_reasons({"req": {"srcs": ["연합"]}, "opt": {}}, cat)
+        self.assertEqual(len(r), 1); self.assertIn("연합", r[0])
+        self.assertEqual(TO._stale_reasons({"req": {"srcs": ["연합뉴스"], "cats": ["Sports"]}, "opt": {}}, cat), [])
 
     def test_event_rep_reselected(self):
         rows = _rows()
@@ -201,18 +222,23 @@ class TestServeActions(unittest.TestCase):
         td = S.topic_studio_action({"action": "settings", "settings": {"co_min": 2}})
         self.assertIn(gid, td["exclusions"])                  # 튜닝 저장이 제외를 지우지 않는다
         td = S.topic_studio_action({"action": "delete", "id": gid})
-        self.assertNotIn(gid, td["exclusions"])               # 토픽 삭제 = 그 토픽 제외 정리
+        self.assertIn(gid, td["exclusions"])                  # 삭제 = 보관 · 개별 제외 목록 보존(3-11)
+        self.assertEqual(next(g["status"] for g in td["custom"] if g["id"] == gid), "archived")
         self.assertIn(auto_ev, td["exclusions"])              # 자동 토픽 제외는 유지
+        td = S.topic_studio_action({"action": "status", "id": gid, "status": "active"})
+        self.assertEqual(next(g["status"] for g in td["custom"] if g["id"] == gid), "active")     # 복구
 
     def test_entity_auto_topic_drill_and_exclude(self):
         S, rows = self.S, _rows()
         S.topic_studio_action({"action": "settings", "settings": {"entity_min": 1}})
-        dr = S.topic_drill("S-삼성전자")
-        self.assertEqual((dr["topic_id"], dr["n"]), ("S-삼성전자", 2))
-        td = S.topic_studio_action({"action": "exclude", "id": "S-삼성전자", "hash": _hash(rows, 0)})
+        # 식별자는 사전 공통키 기반(등재 전이면 이름 기준) · 이름으로 찾아서 쓴다(2-6)
+        cid = next(p["cluster_id"] for p in S.topics_data()["single"] if p["name"] == "삼성전자")
+        dr = S.topic_drill(cid)
+        self.assertEqual((dr["topic_id"], dr["n"]), (cid, 2))
+        td = S.topic_studio_action({"action": "exclude", "id": cid, "hash": _hash(rows, 0)})
         samsung = next(p for p in td["single"] if p["name"] == "삼성전자")
         self.assertEqual((samsung["count"], samsung["excluded_n"]), (1, 1))
-        self.assertEqual(S.topic_drill("S-삼성전자")["n"], 1)
+        self.assertEqual(S.topic_drill(cid)["n"], 1)
 
     def test_preview_samples_carry_detail_contract(self):
         """미리보기 표본 배지 클릭 → 공통 상세 스플릿뷰: 표본이 상세 필드 전체를 갖춘다."""
