@@ -82,5 +82,27 @@ class TestMigrate(unittest.TestCase):
         self.assertEqual((row["intent_review"], row["intent"]), ("needed", ["실용 정보", "속보·사건 추적"]))
 
 
+class TestFinalQueue(unittest.TestCase):
+    """재확정 필요 정답은 최종검수(2차) 큐에 '인텐트 재확정' 항목으로 오른다 · 결과 행이 없는 정답은 제외."""
+
+    def test_reconfirm_items_in_final_queue(self):
+        from prism import serve, reviewops as RV, learnops as LO
+        from prism.store import content_hash
+        serve, st, h = _mk()
+        self.addCleanup(lambda: setattr(serve, "_STORE", None))
+        c = {"displayServiceName": "뉴스", "title": "일대일", "subtitle": "", "body": "본문 a"}
+        out = {"content_ref": c, "item_meta": {"summary": "s", "entities": [], "intent": ["실용 정보"], "content_category": ["News and Politics"]},
+               "quality_meta": {"finalGrade": "G", "reasons": []}, "trace": {"model": "m", "prompt_version": "x"}}
+        serve.store_save([(c, out)], source="테스트")               # 정답 a 의 결과 행
+        LO.golden_intent_migrate(None)
+        q = RV.final_review_queue(None)
+        items = [i for i in q["items"] if i.get("final_reason") == "인텐트 재확정"]
+        self.assertEqual([i["hash"] for i in items], [content_hash(c)])   # 결과 행이 있는 a 만 · b 는 결과 없음
+        self.assertEqual((items[0]["golden_intent"], items[0]["final"]), (["실용 정보", "속보·사건 추적"], ""))
+        LO.golden_intent_confirm(content_hash(c), ["실용 정보"], team=None, by="최종검수자")
+        q2 = RV.final_review_queue(None)
+        self.assertEqual([i for i in q2["items"] if i.get("final_reason") == "인텐트 재확정"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
