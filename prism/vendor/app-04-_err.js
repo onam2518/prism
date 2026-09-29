@@ -204,7 +204,8 @@ window.PRISM_APP_PARTS.push(() => ({
         } finally { this._adminBusy = false; }
       },
       get filteredGolden() {                   // 정답셋 목록 · 모델별 분리 없음(정답은 모델 무관 사람 확정값)
-        return (this.goldenList && this.goldenList.items) || [];
+        const its = (this.goldenList && this.goldenList.items) || [];
+        return this.giOnly ? its.filter(g => g.intent_review === 'needed') : its;   // 인텐트 재확정 필요만 보기
       },
       goldenShown: 200,                        // 정답셋 표시 캡(더 보기 증분) · 검수 표 rawShown 200 과 동일 규약
       get goldenShownList() { return this.filteredGolden.slice(0, this.goldenShown); },

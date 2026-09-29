@@ -234,6 +234,80 @@ def register_golden(uid, team, rows, email="", merge=False) -> dict:
                 f"{v} → {' 또는 '.join(D.INTENT_RETIRED[v])}" for v in retired)
     return out
 
+def _golden_one2one() -> dict:
+    """폐기 인텐트 중 대응 후보가 하나뿐인 값(표본 점검 뒤 일괄 치환 대상). 조건부(후보 여럿)는 재판정."""
+    from . import dictionaries as D
+    return {k: v[0] for k, v in (D.INTENT_RETIRED or {}).items() if len(v) == 1}
+
+
+def golden_intent_migrate(team=None) -> dict:
+    """공통 68 전환에 맞춘 정답셋 인텐트 일괄 정리(멱등). ① 일대일 폐기값은 새 값으로 치환
+    ② 조건부 폐기값은 남기고 intent_retired 로 표시(재판정 큐) ③ 인텐트가 있는 정답은 전부
+    intent_review=needed(재확정 필요 · 확정 전까지 인텐트 측정에서 제외). 이미 confirmed 인 행은 건너뛴다."""
+    from . import abtest
+    from . import dictionaries as D
+    st = _SV.get_store()
+    if not (st and hasattr(st, "golden_entries")):
+        return {"ok": False, "error": "지원하지 않는 저장소"}
+    one2one = _golden_one2one()
+    n = flagged = substituted = retired_rows = confirmed = 0
+    for row in st.golden_entries(team):
+        n += 1
+        exp = dict(row.get("expected") or {})
+        want = abtest.intent_expected(exp)
+        if not want:
+            continue
+        if exp.get("intent_review") == "confirmed":
+            confirmed += 1
+            continue
+        new, moved = [], []
+        for v in want:
+            t = one2one.get(v)
+            if t:
+                moved.append(f"{v} → {t}")
+            new.append(t or v)
+        new = list(dict.fromkeys(new))
+        left = [v for v in new if v in (D.INTENT_RETIRED or {})]
+        exp["intent"] = new
+        exp["intent_review"] = "needed"
+        if moved:
+            exp["intent_migrated"] = moved
+            substituted += 1
+        if left:
+            exp["intent_retired"] = left
+            retired_rows += 1
+        else:
+            exp.pop("intent_retired", None)
+        st.upsert_golden(row["hash"], row.get("content") or {}, exp, team=team, source=row.get("source") or "review")
+        flagged += 1
+    return {"ok": True, "total": n, "flagged": flagged, "substituted": substituted,
+            "retired_rows": retired_rows, "already_confirmed": confirmed}
+
+
+def golden_intent_confirm(content_hash: str, intents, team=None, by: str = "") -> dict:
+    """정답 한 건의 인텐트를 공통 68 기준으로 재확정. 사전 밖 값·폐기값은 거절(신뢰 경계)."""
+    from . import dictionaries as D
+    st = _SV.get_store()
+    if not (st and hasattr(st, "golden_entries")):
+        return {"ok": False, "error": "지원하지 않는 저장소"}
+    vals = list(dict.fromkeys(str(x).strip() for x in (intents or []) if str(x).strip()))
+    ok_vals = set(D.intent_categories())
+    bad = [v for v in vals if v not in ok_vals]
+    if bad:
+        return {"ok": False, "error": "공통 68 사전에 없는 값: " + ", ".join(bad[:5])}
+    row = next((r for r in st.golden_entries(team) if r.get("hash") == content_hash), None)
+    if not row:
+        return {"ok": False, "error": "정답 항목을 찾을 수 없습니다"}
+    exp = dict(row.get("expected") or {})
+    exp["intent"] = vals
+    exp["intent_review"] = "confirmed"
+    exp["intent_confirmed_at"] = time.time()
+    exp["intent_confirmed_by"] = (by or "")[:80]
+    exp.pop("intent_retired", None)
+    st.upsert_golden(content_hash, row.get("content") or {}, exp, team=team, source=row.get("source") or "review")
+    return {"ok": True, "hash": content_hash, "intent": vals}
+
+
 def golden_list(team=None) -> dict:
     """관리자 골든 브라우저: 목록 + 출처 집계 + 라벨 오류 의심(최근 평가 불일치) 표시."""
     st = _SV.get_store()
@@ -260,7 +334,18 @@ def golden_list(team=None) -> dict:
         it["version"] = m.get("version")
         j = jm.get(it["hash"]) or {}
         it["fix_needed"] = bool(j.get("adopt", 0) >= mg and j.get("adopt", 0) > j.get("reject", 0))
-    return {"ok": True, "items": items,
+    rc = {"needed": 0, "confirmed": 0, "retired": 0}
+    try:                                       # 인텐트 재확정 현황(전체 정답 기준)
+        for e in (st.golden_entries(team) if hasattr(st, "golden_entries") else []):
+            ex = e.get("expected") or {}
+            k = ex.get("intent_review") or ""
+            if k in rc:
+                rc[k] += 1
+            if ex.get("intent_retired"):
+                rc["retired"] += 1
+    except Exception:
+        pass
+    return {"ok": True, "items": items, "intent_review_counts": rc,
             "source_counts": (st.golden_source_counts(team) if hasattr(st, "golden_source_counts") else {}),
             "total": (st.golden_count(team) if hasattr(st, "golden_count") else len(items))}
 

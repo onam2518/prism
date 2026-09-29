@@ -2802,6 +2802,22 @@ def _p_golden_remove(h, body):
     return {"ok": ok}
 
 
+@_post_route("/golden-intent-migrate", gate="admin") # 공통 68 전환 정답 정리(멱등): 일대일 치환 · 조건부 표시 · 재확정 필요 표시
+def _p_golden_intent_migrate(h, body):
+    r = LO.golden_intent_migrate(h._req_team())
+    _agg_bump()
+    return r
+
+
+@_post_route("/golden-intent-confirm", gate="admin") # 정답 한 건 인텐트 재확정(공통 68 값만)
+def _p_golden_intent_confirm(h, body):
+    data = json.loads(body or b"{}")
+    r = LO.golden_intent_confirm((data.get("hash") or "").strip(), data.get("intent") or [],
+                                 team=h._req_team(), by=(h._bearer_email() or h._bearer_uid() or ""))
+    _agg_bump()
+    return r
+
+
 @_post_route("/golden")                              # 골든셋 등록(.jsonl 업로드 · merge 지원 · 권한은 register_golden 내부)
 def _p_golden(h, body):
     ctype = h.headers.get("Content-Type", "")

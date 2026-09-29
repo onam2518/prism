@@ -609,8 +609,16 @@ class SupabaseStore:
             out.append({"hash": r.get("content_hash") or "", "title": ct.get("title", ""),
                         "service": ct.get("displayServiceName", ""), "grade": ex.get("finalGrade", ""),
                         "category": ex.get("content_category", []) or [],
+                        "intent": ex.get("intent") or [], "intent_review": ex.get("intent_review") or "",
+                        "intent_retired": ex.get("intent_retired") or [],
                         "source": r.get("source") or "review", "ts": _epoch(r.get("created_at"))})
         return out
+
+    def golden_entries(self, team=None, limit=5000) -> list:
+        """정답 전체 항목(해시·내용·기대값·출처) · Store 동일 계약."""
+        rows = self._get("golden", f"select=content_hash,content,expected,source&{self._team_q(team)}&limit={int(limit)}")
+        return [{"hash": r.get("content_hash") or "", "content": r.get("content") or {},
+                 "expected": r.get("expected") or {}, "source": r.get("source") or "review"} for r in rows]
 
     def golden_source_counts(self, team=None) -> dict:
         rows = self._get("golden", f"select=source&{self._team_q(team)}&limit=10000")
