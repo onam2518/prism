@@ -52,9 +52,11 @@ from .prompts import IMETA_VERSION      # 버전 태그의 단일 원천(prompts
 PROMPT_MAX_BYTES = 60000
 ISSUE_LIMIT = 60                        # 검증 결과(위반·확인) 항목 상한
 
-CALLS = MP.CALLS                        # 분리형 순차 4콜(재수출 · 등록부 enum 의 원천)
+CALLS = MP.CALLS                        # 독립 4콜(재수출 · 등록부 enum 의 원천)
 CONTRACT_FIELDS = ("summary", "entities", "intent", "content_category")
-PRIOR_FIELDS = ("summary", "entities", "intent")     # 앞 콜의 출력을 뒤 콜이 받는 자리
+# 앞 콜의 출력을 뒤 콜이 받던 자리. 2026-09-22 정책으로 네 콜이 독립이라 지금은 전부 빈 목록이
+# 나온다 · 값을 손으로 적지 않고 자리표에서 읽어내는 구조(_requires)는 그대로 둔다.
+PRIOR_FIELDS = ("summary", "entities", "intent")
 
 # 자리표 렌더용(입력 계약을 파트너에게 보여줄 때만 쓴다 · 실제 추출 입력이 아니다)
 _PH_BODY = "{body}"
@@ -96,10 +98,7 @@ def user_template(call: str) -> str:
     글자수는 자리표 문자열의 길이가 그대로 찍히므로(예 '본문 글자수: 6') 반드시 되돌려야 한다.
     라벨이 바뀌면 이 치환이 조용히 no-op 이 되어 **엉뚱한 상수**가 파트너에게 나간다.
     tests/test_promptdist.py 가 자리표 존재와 상수 부재를 함께 단언한다(지우지 말 것)."""
-    prior = {"summary": "{summary · ① 리드문 콜의 출력}",
-             "intent": ["{intent · ③ 인텐트 콜의 출력}"],
-             "entities": ["{entities · ② 엔티티 콜의 출력}"]}
-    txt = MP.call_user(call, _Slots(), prior)
+    txt = MP.call_user(call, _Slots())
     txt = txt.replace("본문 글자수: %d" % len(_PH_BODY), _PH_LEN)
     return txt.replace(MP._IMG_UNKNOWN, _PH_IMG)
 
@@ -133,8 +132,8 @@ def get_extraction_prompt(call: str = "", service: str = "", client_model: str =
                           team=None) -> dict:
     """프리즘의 **현행 추출 프롬프트**를 콜 단위로 내려준다(클라이언트가 자기 모델로 실행).
 
-    call = 분리형 순차 4콜 중 하나(summary → entities → intent → category). 뒤 콜은 앞 콜의
-    출력을 받으므로 `requires` 와 `user_template` 을 함께 준다.
+    call = 독립 4콜 중 하나(summary · entities · intent · category). 어느 콜도 다른 콜의
+    출력을 받지 않으므로 `requires` 는 비고, `user_template` 만으로 그대로 실행할 수 있다.
 
     service(displayServiceName)는 2026-09-22 정책 전환 이후 ③ 인텐트 후보를 바꾸지 않는다 ·
     모든 출처가 같은 68개를 받는다. 값은 ①③ 콜의 user 입력에만 투영되므로 인자는 남겨 두되
@@ -144,7 +143,7 @@ def get_extraction_prompt(call: str = "", service: str = "", client_model: str =
     이름이면 조용히 default 로 수렴하고 실패하지 않는다(`meta_prompts.family_of` 의 원래 동작)."""
     c = str(call or "").strip()
     if c not in MP.CALLS:
-        return {"error": "call 은 %s 중 하나입니다(순차 4콜)" % " · ".join(MP.CALLS)}
+        return {"error": "call 은 %s 중 하나입니다(독립 4콜)" % " · ".join(MP.CALLS)}
     svc = str(service or "").strip()
     model = str(client_model or "").strip()
     family = MP.family_of(model)
@@ -166,10 +165,10 @@ def get_extraction_prompt(call: str = "", service: str = "", client_model: str =
         "wrapper_customized": customized,
         "output_schema": MP.CALL_SCHEMAS[c],
         "input_contract": [
-            "입력 원천은 계약 3필드(displayServiceName · title · body)뿐입니다. 콜마다 그중 필요한 것만 투영합니다.",
-            "③ 인텐트 콜의 '본문 도입부' 는 body 앞 %d자입니다(그보다 길면 뒤를 자릅니다)." % MP.INTENT_BODY_HEAD,
+            "모델 입력은 title · body 입니다. 서비스명(displayServiceName)은 넣지 않습니다.",
+            "③ 인텐트 콜에만 본문 글자수·이미지 수를 보조 신호로 덧붙입니다.",
             "이미지 수를 모르면 '정보 없음' 이라고 적으세요. '0장' 으로 단정하면 형식 분류값 판정이 틀어집니다.",
-            "① 리드문이 빈 문자열이면 뒤 콜(②③④)을 부르지 않는 것이 계약입니다.",
+            "네 콜은 서로 독립입니다. ① 리드문이 비거나 실패해도 나머지 셋을 그대로 부릅니다.",
         ],
         "user_template": template,
         "differs_from_prism_run": _differences(customized),
@@ -212,7 +211,6 @@ PAIR_RULES = (
 
 # 나머지 규칙 문구도 같은 원칙이다 · 계약 원문에서 그대로 따온 조각만 쓴다(요약·의역 금지).
 FIELD_RULE = "출력 필드 4종은 다운스트림 계약 · 임의 추가·변경 금지"
-EMPTY_SUMMARY_RULE = '빈 문자열("")을 출력한다(하위 호출 생략 신호)'
 INTENT_ONLY_RULE = "아래 목록에 정의된 분류값 중에서만 선택한다. 자유 생성·임의 변형 금지."
 CATEGORY_ONLY_RULE = "아래 사전에 정의된 항목(21개 Tier 1 + Custom Tier 2) 중에서만 선택한다."
 CATEGORY_MIN_RULE = "콘텐츠에 실재하는 도메인을 N개(1개 이상) 부여한다"
@@ -222,7 +220,6 @@ CATEGORY_TIER_RULE = "Tier 1 / Tier 2 까지만 표기. 자유 생성·Tier 3 �
 # 여기 문구가 유령이 되는데, 그건 파트너에게 '없는 규칙' 을 규칙이라고 말하는 것이다.
 RULE_TEXTS = (
     (FIELD_RULE, ("MODULE_DOC", "")),
-    (EMPTY_SUMMARY_RULE, ("CALL_RULES", "summary")),
     (INTENT_ONLY_RULE, ("CALL_RULES", "intent")),
     (CATEGORY_ONLY_RULE, ("CALL_RULES", "category")),
     (CATEGORY_MIN_RULE, ("CALL_RULES", "category")),
@@ -399,10 +396,7 @@ def validate_result(result=None, service: str = "", team=None) -> dict:
             items.append(_issue("wrong_type", "violation", "summary", s,
                                 "문자열이어야 합니다(받은 형식: %s)" % type(s).__name__,
                                 MP.CALL_SCHEMAS["summary"]))
-        elif not s.strip() and any(result.get(f) for f in CONTRACT_FIELDS if f != "summary"):
-            items.append(_issue("summary_empty_but_others_filled", "violation", "summary", s,
-                                "리드문이 빈 문자열인데 뒤 콜의 출력이 채워져 있습니다"
-                                "(빈 리드문은 하위 호출 생략 신호입니다)", EMPTY_SUMMARY_RULE))
+        # 빈 리드문 + 다른 필드 채움 = 정상이다(2026-09-22 독립 4콜). 종전의 연쇄 위반 검사는 폐지.
 
     if "entities" in result:
         checked.append("entities")
