@@ -206,10 +206,39 @@ def final_review_queue(team=None, reviewer: str = "") -> dict:
         out.append(d)
         if len(out) >= 200:
             break
+    out += _intent_reconfirm_items(rows, st, team, cap=200)   # 공통 68 전환 뒤 재확정 대기 정답(2차 검수 몫)
     out = _SV._attach_fb(out, team, reviewer, fmap=fmap)
     if reviewer and out and bool(getattr(Config.load(), "final_gold_check", True)):
         out = _inject_gold_final(out, reviewer, team)   # 골드 캘리브레이션(블라인드 · 응답은 gold_checks 로)
     return {"ok": True, "items": out, "n": len(out), "stats": _final_stats(finals)}
+
+
+def _intent_reconfirm_items(rows: list, st, team=None, cap: int = 200) -> list:
+    """정답셋에서 인텐트 재확정이 필요한 행(intent_review=needed · 2026-09-22 공통 68 전환)을 최종검수 큐 항목으로.
+    결정은 상세의 '이 인텐트로 재확정' 또는 '고쳐서 재확정'(의도 편집 뒤) → /final-verdict verdict=intent_confirm.
+    결과 행이 사라진 정답(재실행 전 삭제 등)은 상세를 열 수 없어 큐에 넣지 않는다(정답셋 화면의 편집기로)."""
+    try:
+        need = {e["hash"]: (e.get("expected") or {}) for e in (st.golden_entries(team) if hasattr(st, "golden_entries") else [])
+                if (e.get("expected") or {}).get("intent_review") == "needed"}
+    except Exception:
+        need = {}
+    if not need:
+        return []
+    out = []
+    for r in reversed(rows):
+        ch = _row_key(r.get("content_ref") or {})
+        exp = need.get(ch)
+        if exp is None:
+            continue
+        d = _SV._detail_row(r)
+        d["final_reason"] = "인텐트 재확정"
+        d["golden_intent"] = list(exp.get("intent") or [])
+        d["intent_retired"] = list(exp.get("intent_retired") or [])
+        d["final"], d["final_by"], d["final_ts"] = "", "", 0
+        out.append(d)
+        if len(out) >= cap:
+            break
+    return out
 
 
 def _final_stats(finals: dict) -> dict:

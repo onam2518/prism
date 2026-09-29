@@ -2783,6 +2783,10 @@ def _p_final_verdict(h, body):
     if (data.get("hash") or "").startswith("goldf:"):
         # 골드 캘리브레이션 응답 → gold_checks 분리 기록(최종판정 원장 무오염)
         return apply_gold_answer(data)
+    if (data.get("verdict") or "").strip() == "intent_confirm":   # 정답셋 인텐트 재확정(공통 68 값만 · learnops 가 검증)
+        res = LO.golden_intent_confirm(data.get("hash") or "", data.get("intent") or [], team=team, by=rv)
+        _agg_bump()
+        return res
     res = set_final_verdict(data.get("hash") or "", (data.get("verdict") or "").strip(),
                             by=rv, team=team)
     if res.get("ok") and (data.get("verdict") or "").strip():
